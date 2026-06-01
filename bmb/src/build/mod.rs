@@ -1020,6 +1020,19 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
         {
             cmd.args(["-mllvm", "-unroll-runtime=false"]);
         }
+        // Cycle 3559 (D4b): position-independent code for non-Windows shared libraries.
+        // On ELF/Mach-O a `-shared` link requires every object to be PIC; without it the
+        // runtime's thread-local FFI state (g_ffi_has_error, …) produces non-PIC TLS
+        // relocations that the linker rejects. The inkwell path got PIC for free
+        // (RelocMode::PIC via with_shared) + a hand-built `-fPIC` runtime archive in CI;
+        // the text-backend shared path was never exercised on Linux/macOS (those wheels
+        // used inkwell), so it needs `-fPIC` explicitly. Windows DLLs don't use PIC and
+        // MinGW clang warns on `-fPIC`, so this is gated off there → Windows builds (incl.
+        // the verified D4 fix) are byte-identical. Executables are unaffected (SharedLib only).
+        #[cfg(not(target_os = "windows"))]
+        if matches!(config.output_type, OutputType::SharedLib) {
+            cmd.arg("-fPIC");
+        }
         // v0.96.40: Use MinGW target on Windows to avoid MSVC header conflicts.
         // Cycle 2492: only when the active clang IS a MinGW driver — MSVC
         // clang on `windows-latest` has no MinGW headers/libs, and forcing
@@ -1049,6 +1062,12 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
         if matches!(config.opt_level, OptLevel::Release | OptLevel::Aggressive) {
             cmd.arg("-march=native");
         }
+        // Cycle 3559 (D4b): -fPIC for non-Windows shared libs (see BMB-IR compile above).
+        // The runtime carries thread-local FFI state, so its object must be PIC for `-shared`.
+        #[cfg(not(target_os = "windows"))]
+        if matches!(config.output_type, OutputType::SharedLib) {
+            cmd.arg("-fPIC");
+        }
         // v0.96.40: Use MinGW target on Windows to avoid MSVC header conflicts.
         // Cycle 2492: gate on actual clang ABI — see analogous comment above.
         #[cfg(target_os = "windows")]
@@ -1069,6 +1088,11 @@ pub fn build(config: &BuildConfig) -> BuildResult<()> {
             let mut cmd = Command::new(&clang);
             cmd.args([opt_flag, "-ffunction-sections", "-fdata-sections", "-c",
                        path_str(&event_loop_src)?, "-o", path_str(&event_loop_obj)?]);
+            // Cycle 3559 (D4b): -fPIC for non-Windows shared libs (see BMB-IR compile above).
+            #[cfg(not(target_os = "windows"))]
+            if matches!(config.output_type, OutputType::SharedLib) {
+                cmd.arg("-fPIC");
+            }
             // Cycle 2492: gate on actual clang ABI.
             #[cfg(target_os = "windows")]
             if clang_is_mingw {

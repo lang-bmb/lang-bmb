@@ -58,7 +58,13 @@ jobs:
             target: x86_64-unknown-linux-gnu
             llvm_setup: apt
             plat_tag: linux_x86_64
-            cargo_features: "--features llvm"
+            # Cycle 3559 (D4b): text backend on Linux/macOS too (was --features llvm).
+            # The D4 DP-unroll fix lives in the text backend's clang object-compile
+            # (build/mod.rs); the inkwell backend bypasses it, so the Linux/macOS wheels
+            # would otherwise ship without it. The text path now emits -fPIC for non-Windows
+            # shared libs (build/mod.rs, Cycle 3559). apt/brew LLVM is still installed so
+            # clang/opt/llc are on PATH (the text backend shells out to them).
+            cargo_features: ""
           # macos-13 (Intel) removed 2026-05-12: runner allocation consistently
           # times out (5h+ queue, no assignment). ARM wheel runs on Intel Macs
           # via Rosetta 2 — no separate x86_64 wheel needed.
@@ -66,7 +72,7 @@ jobs:
             target: aarch64-apple-darwin
             llvm_setup: brew
             plat_tag: macosx_11_0_arm64
-            cargo_features: "--features llvm"
+            cargo_features: ""  # Cycle 3559 (D4b) — see ubuntu note above
     steps:
       - uses: actions/checkout@v4
         with:
@@ -150,9 +156,11 @@ jobs:
         # Cycle 2479: matrix.cargo_features differs per OS — see bindings-ci.yml.
         run: cargo build --release ${{ matrix.cargo_features }} --target ${{ matrix.target }}
 
-      - name: Build BMB Runtime (inkwell .a archive — Linux/macOS)
-        # See bindings-ci.yml for full rationale (event_loop parity, -fPIC).
-        if: matrix.llvm_setup != 'mingw'
+      - name: Build BMB Runtime (inkwell .a archive — inkwell backend only)
+        # Inkwell's find_runtime() needs a -fPIC libbmb_runtime.a. Cycle 3559: gated on
+        # the inkwell backend (cargo_features != ''); with all platforms now on the text
+        # backend this step does not run, but is kept for any future inkwell matrix entry.
+        if: matrix.cargo_features != ''
         shell: bash
         run: |
           cd bmb/runtime
@@ -161,9 +169,10 @@ jobs:
           ar rcs libbmb_runtime.a bmb_runtime.o bmb_event_loop.o
           echo "BMB_RUNTIME_PATH=$(pwd)/libbmb_runtime.a" >> $GITHUB_ENV
 
-      - name: Set BMB_RUNTIME_PATH (text backend — Windows)
-        # Cycle 2479: text backend's find_runtime_c() expects the .c source.
-        if: matrix.llvm_setup == 'mingw'
+      - name: Set BMB_RUNTIME_PATH (text backend — all platforms)
+        # Cycle 2479/3559: text backend's find_runtime_c() expects the .c source dir;
+        # build/mod.rs compiles it with -fPIC for non-Windows shared libs (Cycle 3559).
+        if: matrix.cargo_features == ''
         shell: bash
         run: |
           echo "BMB_RUNTIME_PATH=${{ github.workspace }}/bmb/runtime" >> $GITHUB_ENV

@@ -69,18 +69,21 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             llvm_setup: apt
-            cargo_features: "--features llvm"
-          # macos-13 = Intel native; macos-latest = Apple Silicon. Pinning
-          # runner per arch avoids cross-compile with arch-specific brew LLVM
-          # breaking --features llvm linking. Mirrors pypi-publish.yml layout.
+            # Cycle 3559 (D4b): text backend on Linux/macOS too (was --features llvm), so the
+            # D4 DP-unroll fix (build/mod.rs text-backend clang compile) ships on these wheels;
+            # the text path now emits -fPIC for non-Windows shared libs. apt/brew LLVM still
+            # installed (clang/opt/llc on PATH). This is the PR-time verification gate for the
+            # never-before-exercised text-backend Linux/macOS shared-lib path.
+            cargo_features: ""
+          # macos-13 = Intel native; macos-latest = Apple Silicon.
           - os: macos-13
             target: x86_64-apple-darwin
             llvm_setup: brew
-            cargo_features: "--features llvm"
+            cargo_features: ""  # Cycle 3559 (D4b) — see ubuntu note above
           - os: macos-latest
             target: aarch64-apple-darwin
             llvm_setup: brew
-            cargo_features: "--features llvm"
+            cargo_features: ""  # Cycle 3559 (D4b) — see ubuntu note above
     steps:
       - uses: actions/checkout@v4
         with:
@@ -173,16 +176,12 @@ jobs:
         # MSVC LLVM 21 distribution lacks llvm-sys's static lib needs.
         run: cargo build --release ${{ matrix.cargo_features }} --target ${{ matrix.target }}
 
-      - name: Build BMB Runtime (inkwell .a archive — Linux/macOS)
-        # Inkwell backend's find_runtime() needs libbmb_runtime.a. Archive
-        # bmb_runtime.o + bmb_event_loop.o together (parity with
-        # scripts/bootstrap.sh — other workflows omit event_loop and would
-        # break on net/async consumers).
-        # Cycle 2476: `-fPIC` is required because binding libraries are built
-        # with `bmb build --shared`; without PIC, TLS vars (g_ffi_has_error,
-        # arena state, bmb_rng_state ...) yield R_X86_64_TPOFF32 relocations
-        # that `ld -shared` rejects.
-        if: matrix.llvm_setup != 'mingw'
+      - name: Build BMB Runtime (inkwell .a archive — inkwell backend only)
+        # Inkwell backend's find_runtime() needs a -fPIC libbmb_runtime.a.
+        # Cycle 3559: gated on the inkwell backend (cargo_features != ''). With all
+        # platforms now on the text backend this step does not run; kept for any future
+        # inkwell matrix entry.
+        if: matrix.cargo_features != ''
         shell: bash
         run: |
           cd bmb/runtime
@@ -191,12 +190,13 @@ jobs:
           ar rcs libbmb_runtime.a bmb_runtime.o bmb_event_loop.o
           echo "BMB_RUNTIME_PATH=$(pwd)/libbmb_runtime.a" >> $GITHUB_ENV
 
-      - name: Set BMB_RUNTIME_PATH (text backend — Windows)
-        # Cycle 2479: text backend's find_runtime_c() expects the .c source
-        # directly (it shells out to clang to compile on demand). No PIC
-        # concern on Windows because DLLs use a different relocation model
-        # than ELF shared objects.
-        if: matrix.llvm_setup == 'mingw'
+      - name: Set BMB_RUNTIME_PATH (text backend — all platforms)
+        # Cycle 2479/3559: text backend's find_runtime_c() expects the .c source dir; it
+        # shells out to clang to compile on demand. Cycle 3559: build/mod.rs now passes
+        # -fPIC for non-Windows shared libs, so the TLS R_X86_64_TPOFF32 relocations that
+        # previously forced the hand-built -fPIC archive are handled by the text backend
+        # itself. Windows DLLs use a different relocation model (no PIC needed).
+        if: matrix.cargo_features == ''
         shell: bash
         run: |
           echo "BMB_RUNTIME_PATH=${{ github.workspace }}/bmb/runtime" >> $GITHUB_ENV
