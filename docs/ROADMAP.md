@@ -4,14 +4,26 @@ BMB (Bare-Metal-Banter) is an AI-native, contract-verified systems programming l
 
 ---
 
-## 핵심 목표 (Immutable Goals)
+## 핵심 목표 (포지셔닝 LOCK 2026-06-02 재프레임)
 
-> 이 두 목표는 프로젝트 존재 이유다. 어떤 결정도 이 두 기준에 비추어 정당화되어야 한다.
+> 프로젝트 존재 이유. **이전 "#1 Performance / 가장 빠른 언어 / C/Rust 추월"은 폐기** — 측정 결과 성능은 LLVM 캡으로 C/Rust와 parity(추월 불가, 제거할 런타임 비효율이 C/Rust에 이미 없음). 살아남은 차별점은 속도축이 아니라 **검증축**.
 
 | 순위 | 목표 | 의미 |
 |------|------|------|
-| **1** | **Performance** | 가장 빠른 언어. C/Rust를 추월하거나 동등. 성능 저하 = 버그. |
-| **2** | **AI-Native** | 인간 편의성보다 AI 분석·작성 효율성 우선. 언어 설계, 출력 형식, 도구 전부. |
+| **1** | **Verifiable-by-construction, AI-authored** | AI가 행위계약을 작성하고 컴파일러가 검증. 언어를 검증가능 fragment로 *설계*(auto-active, retrofit 아님). **비협상 선행조건: 검증이 실제 코드에 작동**(현재 verify 프론트엔드 interprocedural/byte-indexing/match 미지원 → 측정상 0/12; 0→>0이 최우선). |
+| **2** | **Performance = native parity** | LLVM 캡 = C/Rust parity. **table stakes·회귀 게이트**이지 셀링포인트 아님. 성능 저하는 회귀로 막되, 추월은 목표 아님. |
+| **3** | **AI-Native ergonomics** | 인간 편의성보다 AI 분석·작성 효율 우선 (출력 형식, 도구, 계약 작성성). #1을 떠받침. |
+
+> 근거·측정: memory `project_ai_native_contract_probe_2026_06_02`, `project_unsafe_by_default_positioning`. CLAUDE.md "Core Philosophy: Verifiable-by-Construction, AI-Authored" 와 동기화됨.
+
+### 🔒 목적함수 (2026-06-02 결정): **연구/학습 비클** (채택 언어 아님)
+
+BMB는 **AI-네이티브 검증 언어 설계를 탐구하는 연구/학습 프로젝트**다. 성공 척도 = *채택*이 아니라 *통찰·기여*. 근거: deep-research incumbent 조사상 채택 niche는 Verus(실시스템Rust검증+bolt-on)·Dafny(AI-authorship 82% 1위, 배포)·SPARK(항공인증)가 점유, BMB는 검증축 뒤처짐(0/12 측정). **연구 목적함수에선 부정 finding도 산출물(지식)**이므로 "지속 가치"는 충족.
+
+**진짜 연구 질문 (thesis 사활)**: *재귀/string 시스템코드의 외부 정확성을 — body-재서술 계약이 아니라 추상 spec(+귀납) + 언어 제약(by-construction)으로 — AI가 작성·검증 가능하게 할 수 있는가?* (검증 프로토타입이 보인 것: 순수 술어 fragment는 FULL 검증되나 재귀/byte_at 층은 retrofit-검증이 의미상 공허 = 틀린 callee 못 잡음.)
+
+**연구 트랙(R1-R5)**: HANDOFF "연구 트랙 (R)" 표 참조. 최우선 R1 = 재귀 subject에 추상 spec+귀납 lemma 손작성 → Z3 dischargeable 진위시험(cheap, measure-first).
+> deprioritized: EL(everyday-library, 채택-데모) + CT-B/F/G(채택-계약 레버) → R 트랙 흡수/후순위. 옛 "B>P>A>D>C" 5축은 채택-프레임 잔재 → R 트랙이 대체.
 
 ---
 
