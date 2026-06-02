@@ -28,7 +28,7 @@ bmb run hello.bmb
 
 ## What Makes BMB Different
 
-BMB pursues **maximum performance through compile-time proofs**. Safety is not a separate goal — it's a natural consequence of proving everything at compile time.
+BMB pursues **maximum performance through compile-time proofs**. Safety is not a separate goal — when contracts are verified, it follows from those same compile-time proofs.
 
 ```bmb
 fn get(arr: &[i64], idx: i64) -> i64
@@ -37,7 +37,7 @@ fn get(arr: &[i64], idx: i64) -> i64
 = arr[idx];
 ```
 
-The `pre` conditions are verified at compile time by an SMT solver (Z3). At runtime, they generate **zero overhead** — no bounds checks, no null checks, nothing. The proof happens before execution.
+At runtime, contracts generate **zero overhead** — no bounds checks, no null checks, nothing; unproven access compiles to unchecked native code (same speed as unsafe C). Safety is **opt-in**: `bmb verify` discharges the `pre` conditions via an SMT solver (Z3) as a separate step — `bmb build` does **not** enforce it. The proof obligation is explicit, but not yet build-gated.
 
 | Approach | Safety Method | Runtime Cost |
 |----------|--------------|-------------|
@@ -297,8 +297,8 @@ See [Building from Source](docs/BUILD_FROM_SOURCE.md) for details.
 
 | Use Case | BMB Fit | Notes |
 |----------|---------|-------|
-| Performance-critical numeric computation | Good | Faster than Clang -O3 on measured workloads |
-| Safety-critical systems (avionics, medical) | Good | Contract verification eliminates runtime checks |
+| Performance-critical numeric computation | Good | Parity with Clang -O3 (faster on 3/7 measured workloads) |
+| Safety-critical systems (avionics, medical) | Not yet | Verification is opt-in (`bmb verify`), not build-enforced; contract completeness immature |
 | AI-generated code pipelines | Good | 100% pass rate on GPUStack benchmark |
 | General application development | Not yet | Ecosystem still growing |
 | Rapid prototyping | No | Use Python/TypeScript instead |
@@ -319,9 +319,9 @@ BMB's direction is opposite to Rust:
 | Language | Primary Goal | Method | Consequence |
 |----------|-------------|--------|------------|
 | Rust | Memory Safety | Ownership + Borrow Checker | Good performance |
-| **BMB** | **Performance** | **Compile-time proofs** | **Safety guaranteed** |
+| **BMB** | **Performance** | **Compile-time proofs** | **Safety provable** |
 
-**BMB is not "a safe language." It is a fast language that is safe as a consequence of how it achieves speed.**
+**BMB is not "a safe language." It is a fast language whose speed model makes safety provable — to the extent contracts are written and verified.**
 
 ---
 

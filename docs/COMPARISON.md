@@ -32,7 +32,7 @@ If memory safety is your primary requirement and you don't need contract verific
 ### Where BMB differs
 
 - **Functional correctness contracts**: Rust's type system catches memory bugs and a handful of API misuse patterns. It does not prove "this binary search returns the index of `target` if present, `-1` otherwise." BMB's `pre`/`post`/`invariant` plus Z3 do.
-- **Contract-driven optimization**: Rust's optimizer cannot use `// SAFETY: idx < arr.len()` comments — they are documentation. BMB's `pre idx < arr.len()` is a proof obligation that the optimizer can rely on, eliminating bounds checks unconditionally (see [RFC-0008](rfcs/RFC-0008-contract-driven-optimization.md)).
+- **Unchecked-by-default, with an explicit proof obligation**: Rust's optimizer cannot use `// SAFETY: idx < arr.len()` comments — they are documentation. BMB emits no bounds check at all (like unsafe C), and `pre idx < arr.len()` makes the safety obligation explicit and machine-checkable via `bmb verify` (Z3). Feeding those proofs back into codegen is a design goal; today, comparison/range facts are emitted as `llvm.assume`, array-bounds facts are not yet wired in, and verification is not build-enforced.
 - **Verbose-by-design syntax for AI generation**: explicit overflow operators (`+%`, `+|`, `+?`), explicit nullable (`T?`), explicit purity (`pure fn`). The hypothesis: LLMs make fewer mistakes when the syntax forces decisions to be visible. *This is a hypothesis under validation, not a proven advantage.*
 
 ### Rust + Kani specifically
@@ -68,7 +68,7 @@ If your problem is "prove this algorithm correct" and you don't care about nativ
 ### Where BMB differs
 
 - **Output**: Dafny extracts to .NET / Java / Go / Python — runtime-managed languages with their own GC and overhead. BMB compiles directly to native via LLVM, with contracts erased.
-- **Performance integration**: Dafny verifies, then extracts. BMB's contracts feed the optimizer (proven preconditions enable LLVM transformations that would otherwise be blocked). The two are connected, not sequential.
+- **Performance integration**: Dafny verifies, then extracts. BMB's contracts feed the optimizer — precondition facts are emitted as `llvm.assume`, enabling LLVM transformations. The two are connected, not sequential.
 - **Systems-level types**: Dafny doesn't have raw pointers, SIMD intrinsics, or explicit memory layout. BMB does, because the target is systems code.
 
 The mental model: **Dafny is a verification tool that happens to produce code; BMB is a systems language that happens to verify.** Different priorities, different shapes.

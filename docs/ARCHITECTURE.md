@@ -380,7 +380,7 @@ pub struct BasicBlock {
 | **Constant Propagation** | Including narrowing (i64→i32) | ✅ v0.50.80 |
 | **Semantic DCE** | Contract-based dead code elimination | 📋 CDO Phase |
 
-**CDO (Contract-Driven Optimization) Pipeline** — [RFC-0001](rfcs/RFC-0008-contract-driven-optimization.md):
+**CDO (Contract-Driven Optimization) Pipeline** — [RFC-0008](rfcs/RFC-0008-contract-driven-optimization.md) (⚠️ stale draft, not implemented):
 
 ```
 Typed AST

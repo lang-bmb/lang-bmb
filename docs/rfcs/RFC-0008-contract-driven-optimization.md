@@ -1,13 +1,17 @@
-# RFC-0001: Contract-Driven Optimization (CDO)
+# RFC-0008: Contract-Driven Optimization (CDO)
 
 > Expand the role of contracts beyond safety verification to enable unprecedented optimization across the entire programming workflow.
 
-**RFC ID**: RFC-0001
+**RFC ID**: RFC-0008
 **Title**: Contract-Driven Optimization
 **Author**: BMB Core Team
 **Date**: 2026-01-24
-**Status**: Draft
+**Status**: Draft — ⚠️ STALE / not implemented (see banner below)
 **Labels**: `enhancement`, `optimization`, `contracts`, `architecture`, `rfc`
+
+---
+
+> ⚠️ **STALE DRAFT (as of 2026-06-02) — not implemented.** The proposed milestones (v0.55–v0.65) are obsolete: the project is at v0.100.0 and none of the "Next Steps" below were started. The central pillar — **§3 Semantic Function Deduplication** and the Phase-1 Semantic Equivalence Checker — was investigated and measured **NO-GO** on 2026-06-02: in the self-hosted compiler 83.8% of contracts are partial (`it >= 0`) and only ~0.3% are sound-dedup-eligible, so **contract completeness is the actual prerequisite**, not the dedup machinery. Current contract→codegen wiring is limited to range/comparison facts emitted as `llvm.assume`; array-bounds facts are dropped, and `bmb verify` is not build-enforced. Treat this document as aspirational vision — **not a roadmap, and not evidence for current optimization behavior.**
 
 ---
 
