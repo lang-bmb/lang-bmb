@@ -1,5 +1,7 @@
 # 계약 완전성·등가 프로브 (Phase 1a) — 구현 계획
 
+> **⚠️ 상태 (2026-06-02): SHELVED — 미실행.** Task 1 discovery(계약 인덱스 포맷 확인)와 텍스트-스캔 측정만으로 go/no-go가 **NO-GO**로 답해짐(BMB SMT2 번역기·Z3 프로브 미구축). compiler.bmb 계약 83.8% 부분, sound-eligible ~0.3%, 완전성⊥레버. 상세: `claudedocs/measurements/contract_probe_self_2026-06-02.md`. advisor 권고 "가장 싼 텍스트 스캔 먼저"로 전체 구축을 단락. 아래 계획은 기록 보존.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** BMB 자기 코드베이스(`compiler.bmb` 48K)에서 계약(`pre`/`post`)의 완전성률·등가 dedup 기회·폴백률·Z3 레이턴시를 측정하는 `bmb contract-probe` 명령을 만든다. (설계 문서 §1~4의 go/no-go 측정 슬라이스)
