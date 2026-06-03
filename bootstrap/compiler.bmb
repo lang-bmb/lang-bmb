@@ -46638,6 +46638,7 @@ fn vc_sort(ty: String) -> String
   post it.len() >= 0
 = if ty == "i64" or ty == "i32" or ty == "int" { "Int" }
     else if ty == "bool" { "Bool" }
+    else if ty == "String" { "S" }
     else { "@UNSUP@" };
 
 // Emit SMT for a binary operator. @UNSUP@ for ops outside the leaf fragment.
@@ -46734,9 +46735,30 @@ fn vc_tr_s(node: String, formals: String, actuals: String, itrepl: String) -> St
             else if unpack_ast(ro) == "-" { "(- " + xt + ")" }
             else { "@UNSUP@" }
         }
+        else if head == "method" {
+            // P1 (O1): String method calls -> uninterpreted functions.
+            //   s.len()      -> (len s)        s.byte_at(i) -> (b s i)
+            // Receiver/arg translate recursively; all else abstains. The b/len
+            // UFs (and the len>=0 axiom) are declared by vc_build_smt's preamble.
+            let rm = vc_read_tok(inner, ap);
+            let rl = vc_read_tok(inner, unpack_pos(rm));
+            let lt = vc_tr_s(unpack_ast(rl), formals, actuals, itrepl);
+            let ra = vc_read_tok(inner, unpack_pos(rl));
+            let at = if unpack_ast(ra) == "" { "" } else { vc_tr_s(unpack_ast(ra), formals, actuals, itrepl) };
+            vc_tr_method(unpack_ast(rm), lt, at)
+        }
         else if head == "block" { let r1 = vc_read_tok(inner, ap); vc_tr_s(unpack_ast(r1), formals, actuals, itrepl) }
         else { "@UNSUP@" }
     };
+
+// SMT for a supported String method (P1, O1). @UNSUP@ outside {len, byte_at}
+// or when receiver/arg are untranslatable.
+fn vc_tr_method(mn: String, lt: String, at: String) -> String
+  post it.len() >= 0
+= if vc_is_unsup(lt) { "@UNSUP@" }
+    else if mn == "len" { "(len " + lt + ")" }
+    else if mn == "byte_at" { if vc_is_unsup(at) { "@UNSUP@" } else { "(b " + lt + " " + at + ")" } }
+    else { "@UNSUP@" };
 
 // Plain translation (no substitution): the leaf-fragment entry point.
 fn vc_tr(node: String) -> String
@@ -46883,7 +46905,7 @@ fn vc_discharge_pre(cparams: String, cpre: String, ee_pre: String, formals: Stri
 fn vc_assume_callee(rs: String, ee_pre: String, ee_post: String, formals: String, actuals: String, cparams: String, cpre: String, kk: i64) -> String
   pre kk >= 0
   post it.len() >= 0
-= if vc_is_unsup(rs) or ee_post.len() == 0 or vc_is_unsup(actuals) { "@UNSUP@" }
+= if vc_is_unsup(rs) or rs == "S" or ee_post.len() == 0 or vc_is_unsup(actuals) { "@UNSUP@" }
     else if vc_discharge_pre(cparams, cpre, ee_pre, formals, actuals) == 0 { "@UNSUP@" }
     else {
         let vname = "__vc_call_" + int_to_string(kk);
@@ -46922,9 +46944,19 @@ fn vc_proc_call(src: String, cname: String, cparams: String, cpre: String, calle
         else {
             let rn = vc_read_tok(callbody, unpack_pos(rh));
             let cal = vc_strip_name(unpack_ast(rn));
-            let after = if cal == cname { 0 - 2 } else { vc_find_callee_after(src, cal, 0) };
-            if after < 0 { "@UNSUP@" }
-            else { vc_proc_call2(src, cparams, cpre, after, callbody, unpack_pos(rn), kk) }
+            if cal == cname {
+                // P1 (O1): self-recursion translates to a HAVOC fresh var (the
+                // body becomes well-formed SMT) but emits a ;REC; sentinel so the
+                // verdict abstains — an unconstrained recursion result would
+                // spurious-refute any post that references it. The IH that makes
+                // it verify is P2. @@RETSORT@@ is resolved by vc_build_smt.
+                "(declare-const __vc_rec_" + int_to_string(kk) + " @@RETSORT@@)\n;REC;\n@@SP@@(var <__vc_rec_" + int_to_string(kk) + ">)"
+            }
+            else {
+                let after = vc_find_callee_after(src, cal, 0);
+                if after < 0 { "@UNSUP@" }
+                else { vc_proc_call2(src, cparams, cpre, after, callbody, unpack_pos(rn), kk) }
+            }
         }
     };
 
@@ -47011,23 +47043,33 @@ fn vc_conj_each(asts: String, acc: String) -> String
 fn vc_build_smt(cname: String, params: String, rty: String, pre_asts: String, post_asts: String, body: String, src: String) -> String
   post it.len() >= 0
 = let retsort = vc_sort(rty);
-    if vc_is_unsup(retsort) { "@UNSUP@" }
+    // P1: String params translate (sort S), but String-RETURN abstains — the
+    // ubiquitous `post it.len() >= 0` idiom would spurious-refute under an
+    // unconstrained len UF. Formal String-return support (it-len axiom) is a
+    // named follow-up.
+    if vc_is_unsup(retsort) or retsort == "S" { "@UNSUP@" }
     else {
         let decls = vc_decl_params(params, "");
         if vc_is_unsup(decls) { "@UNSUP@" }
         else {
+            // Preamble (only when a String param is present, i.e. decls uses S):
+            // declare the uninterpreted byte/len UFs + the sound len>=0 axiom so
+            // i64 functions over String params (relative bounds, absolute len)
+            // verify without spurious refutation. Leaf fragment is untouched.
+            let pre0 = if find_pattern_noa(decls, " S)", 0) >= 0 { "(declare-sort S 0)\n(declare-fun b (S Int) Int)\n(declare-fun len (S) Int)\n(assert (forall ((__x S)) (>= (len __x) 0)))\n" } else { "" };
             let r1 = vc_elim_calls(src, cname, params, pre_asts, body, "", 0);
             let nb = vc_before(r1, "@@SP@@");
             let r2 = vc_elim_calls(src, cname, params, pre_asts, pre_asts, vc_after(r1, "@@SP@@"), vc_kbase_pre());
             let npre = vc_before(r2, "@@SP@@");
             let r3 = vc_elim_calls(src, cname, params, pre_asts, post_asts, vc_after(r2, "@@SP@@"), vc_kbase_post());
             let npost = vc_before(r3, "@@SP@@");
-            let side3 = vc_after(r3, "@@SP@@");
+            let side3 = vc_after(r3, "@@SP@@").replace("@@RETSORT@@", retsort);
             let bodytr = vc_tr(nb);
             let pretr = vc_assert_each(npre, "");
             let postconj = vc_conj_each(npost, "");
             if vc_is_unsup(side3) or vc_is_unsup(bodytr) or vc_is_unsup(pretr) or vc_is_unsup(postconj) { "@UNSUP@" }
-            else { decls + side3 + "(declare-const it " + retsort + ")\n" + pretr + "(assert (= it " + bodytr + "))\n(assert (not " + postconj + "))\n(check-sat)\n" }
+            else if find_pattern_noa(side3, ";REC;", 0) >= 0 { "@RECABSTAIN@" }
+            else { pre0 + decls + side3 + "(declare-const it " + retsort + ")\n" + pretr + "(assert (= it " + bodytr + "))\n(assert (not " + postconj + "))\n(check-sat)\n" }
         }
     };
 
@@ -47046,7 +47088,8 @@ fn vc_emit_verdict(fname: String, params: String, ret_str: String, body: String,
         let verdict = if body == "@PARSEERR@" { "parse_error" }
             else {
                 let smt = vc_build_smt(fname, params, ret_str, pre_asts, post_asts, body, src);
-                if vc_is_unsup(smt) { "unsupported" }
+                if smt == "@RECABSTAIN@" { "unsupported_recursion" }
+                else if vc_is_unsup(smt) { "unsupported" }
                 else {
                     let z = eff_z3_invoke(smt);
                     if z == "unsat" { "verified" }
