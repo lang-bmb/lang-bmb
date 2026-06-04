@@ -46914,12 +46914,52 @@ fn vc_assume_callee(rs: String, ee_pre: String, ee_post: String, formals: String
         else { "(declare-const " + vname + " " + rs + ")\n(assert " + postsub + ")\n@@SP@@(var <" + vname + ">)" }
     };
 
+// Assume-guarantee soundness gate (R2 trusted-set T1): a callee's post may only
+// be assumed if the callee is itself LEAF-VERIFIED — its contract proven from its
+// own body with NO call-assumptions. This keeps the assume-guarantee relation
+// well-founded (every trusted post grounds out in a call-free leaf), so no
+// `verified` rests on an unproven (recursive / untranslatable) callee post.
+// Conservative depth-1: any user-call in the callee body/pre/post (incl. self-
+// recursion) => not leaf => untrusted (0). The `(call <` string scan rejects most
+// callees Z3-free; only genuine leaves reach Z3.
+fn vc_leaf_verified(src: String, cal: String, after: i64) -> i64
+  pre after >= 0
+  post it >= 0
+= let t2 = next_token_raw(src, after);
+    if tok_kind(t2) != TK_LPAREN() { 0 }
+    else {
+        let params_r = index_collect_params(src, tok_end(t2), "");
+        let rtype = index_read_ret_type(src, unpack_pos(params_r));
+        let rp = unpack_pos(rtype);
+        let pre_asts = extract_pre_asts(src, rp);
+        let post_asts = extract_post_asts(src, rp);
+        if post_asts.len() == 0 { 0 }
+        else if find_pattern_noa(pre_asts, "(call <", 0) >= 0 or find_pattern_noa(post_asts, "(call <", 0) >= 0 { 0 }
+        else {
+            let body_r = parse_expr(src, skip_contracts(src, rp));
+            if is_error(body_r) { 0 }
+            else {
+                let body = unpack_ast(body_r);
+                if find_pattern_noa(body, "(call <", 0) >= 0 { 0 }
+                else {
+                    let smt = vc_build_smt(cal, unpack_ast(params_r), unpack_ast(rtype), pre_asts, post_asts, body, src);
+                    if vc_is_unsup(smt) or smt == "@RECABSTAIN@" { 0 }
+                    else { if eff_z3_invoke(smt) == "unsat" { 1 } else { 0 } }
+                }
+            }
+        }
+    };
+
 // Resolve the callee at `after` (position of its '(') and assume its post.
-fn vc_proc_call2(src: String, cparams: String, cpre: String, after: i64, callbody: String, rnpos: i64, kk: i64) -> String
+// Only proceeds if the callee is leaf-verified (trusted-set gate, soundness);
+// untrusted callees abstain (@UNSUP@) so dependent callers degrade to
+// `unsupported` rather than silently trusting an unproven post.
+fn vc_proc_call2(src: String, cal: String, cparams: String, cpre: String, after: i64, callbody: String, rnpos: i64, kk: i64) -> String
   pre kk >= 0
   post it.len() >= 0
 = let t2g = next_token_raw(src, after);
     if tok_kind(t2g) != TK_LPAREN() { "@UNSUP@" }
+    else if vc_leaf_verified(src, cal, after) == 0 { "@UNSUP@" }
     else {
         let params_r = index_collect_params(src, tok_end(t2g), "");
         let rtype = index_read_ret_type(src, unpack_pos(params_r));
@@ -46955,7 +46995,7 @@ fn vc_proc_call(src: String, cname: String, cparams: String, cpre: String, calle
             else {
                 let after = vc_find_callee_after(src, cal, 0);
                 if after < 0 { "@UNSUP@" }
-                else { vc_proc_call2(src, cparams, cpre, after, callbody, unpack_pos(rn), kk) }
+                else { vc_proc_call2(src, cal, cparams, cpre, after, callbody, unpack_pos(rn), kk) }
             }
         }
     };
