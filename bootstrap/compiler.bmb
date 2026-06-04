@@ -46654,9 +46654,14 @@ fn vc_emit_binop(op: String, l: String, r: String) -> String
     else if op == ">=" { "(>= " + l + " " + r + ")" }
     else if op == "+" { "(+ " + l + " " + r + ")" }
     else if op == "-" { "(- " + l + " " + r + ")" }
-    else if op == "*" { "(* " + l + " " + r + ")" }
-    else if op == "/" { "(div " + l + " " + r + ")" }
-    else if op == "%" { "(mod " + l + " " + r + ")" }
+    // SOUNDNESS (machine-int idealization guard, scope-(b)): abstain on
+    // multiplicative ops. SMT models Int as unbounded, but i64 wraps: `acc*2`
+    // can overflow to a negative value, so a post like `it>=0`/`it>=1` over a
+    // `(* ..)` body is silently spurious-verified (e.g. cf_pow2 `2*cf_pow2(n-1)`,
+    // parse_bin_from `acc*2+(c-48)`). div/mod additionally differ (SMT Euclidean
+    // vs i64 truncating, plus div-by-zero). Emitting @UNSUP@ makes every
+    // surviving `verified` trustworthy; propagates to callers via vc_is_unsup.
+    // (+/- overflow remains idealized — documented latent, bitvector follow-up.)
     else { "@UNSUP@" };
 
 // Look up `name` in tab-terminated `formals`; return the parallel `actuals`
