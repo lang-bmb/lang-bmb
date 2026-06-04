@@ -1,0 +1,65 @@
+// R2 leaf VC-gen acceptance — verbatim real predicates + synthetic non-vacuity.
+//
+// FIDELITY CLASSES (see EXPECTED.md honesty note):
+//   * is_whitespace .. is_ident_start : VERBATIM copies of bootstrap/compiler.bmb
+//     leaf/non-recursive-call predicates. Their "verified" is a *retroactive*
+//     regression check — the verify-vc verdict on real compiler code, frozen.
+//   * is_digit_bad / is_hex_digit_badpost / no_pre_caller : SYNTHETIC mutations.
+//     Forward-only guards (a verdict change would be a reconstruction artifact OR
+//     a regression — indistinguishable), kept to prove the leaf path is
+//     non-vacuous: refuted and unsupported coexist with verified, so the verifier
+//     is not rubber-stamping.
+
+fn is_whitespace(c: i64) -> bool
+  pre c >= 0
+  post it == (c == 32 or c == 9 or c == 10 or c == 13)
+= c == 32 or c == 9 or c == 10 or c == 13;
+
+fn is_digit(c: i64) -> bool
+  pre c >= 0
+  post it == (c >= 48 and c <= 57)
+= c >= 48 and c <= 57;
+
+fn is_hex_digit(c: i64) -> bool
+  pre c >= 0
+  post it == (is_digit(c) or (c >= 65 and c <= 70) or (c >= 97 and c <= 102))
+= is_digit(c) or (c >= 65 and c <= 70) or (c >= 97 and c <= 102);
+
+fn hex_digit_val(c: i64) -> i64
+  pre (c >= 48 and c <= 57) or (c >= 65 and c <= 70) or (c >= 97 and c <= 102)
+  post it >= 0 and it <= 15
+= if c >= 48 and c <= 57 { c - 48 } else if c >= 65 and c <= 70 { c - 55 } else { c - 87 };
+
+fn is_alpha(c: i64) -> bool
+  pre c >= 0
+  post it == ((c >= 65 and c <= 90) or (c >= 97 and c <= 122))
+= (c >= 65 and c <= 90) or (c >= 97 and c <= 122);
+
+fn is_alnum_or_underscore(c: i64) -> bool
+  pre c >= 0
+  post it == (is_alpha(c) or is_digit(c) or c == 95)
+= is_alpha(c) or is_digit(c) or c == 95;
+
+fn is_ident_start(c: i64) -> bool
+  pre c >= 0
+  post it == (is_alpha(c) or c == 95)
+= is_alpha(c) or c == 95;
+
+// --- synthetic non-vacuity (forward guards) ---
+
+// Mutated post claims c==58 is a digit; body says 48..57 → refuted at c=58.
+fn is_digit_bad(c: i64) -> bool
+  pre c >= 0
+  post it == (c >= 48 and c <= 58)
+= c >= 48 and c <= 57;
+
+// Mutated post widens the upper hex bound to 71; body keeps 70 → refuted at c=71.
+fn is_hex_digit_badpost(c: i64) -> bool
+  pre c >= 0
+  post it == (is_digit(c) or (c >= 65 and c <= 71) or (c >= 97 and c <= 102))
+= is_digit(c) or (c >= 65 and c <= 70) or (c >= 97 and c <= 102);
+
+// No caller pre → is_digit's pre (c >= 0) cannot be discharged → abstain.
+fn no_pre_caller(c: i64) -> bool
+  post it == is_digit(c)
+= is_digit(c);

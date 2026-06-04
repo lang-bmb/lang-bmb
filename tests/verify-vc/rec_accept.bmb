@@ -1,0 +1,74 @@
+// R2 recursive (IH / path-sensitivity / soundness-gate) + trusted-set acceptance.
+// All SYNTHETIC (forward-only guards) — they exercise capabilities NOT covered by
+// cs_accept.bmb (which pins the scanner refute cases). The verified/refuted/abstain
+// mix is the non-vacuity battery proving the recursive + interprocedural paths do
+// not rubber-stamp. Latest documented verdicts (post path-sensitivity C3575):
+//   recursive-verified  : count_down, accum, rec_sum, down_to_zero
+//   recursive-refuted   : accum_bad (IH no rubber-stamp), bad_base (base case)
+//   soundness abstain   : unsound3 (recursive pre-obligation undischargeable)
+//   trusted-set         : leaf_pred/trusted_caller verified; untrusted_caller demoted
+
+// --- recursive IH (P2) + path-sensitivity (C3575) ---
+
+// IH post it>=0; recursive pre-obligation n-1>=0 discharged under else-guard n!=0.
+fn count_down(n: i64) -> i64
+  pre n >= 0
+  post it >= 0
+= if n == 0 { 0 } else { count_down(n - 1) };
+
+// Two formals: substitution of both pos and acc is load-bearing (P2).
+fn accum(pos: i64, acc: i64) -> i64
+  pre pos >= 0 and acc >= 0
+  post it >= 0
+= if pos == 0 { acc } else { accum(pos - 1, acc + 1) };
+
+// IH does NOT rubber-stamp: at base case it=acc, post it>=pos+1 false (acc may be 0).
+fn accum_bad(pos: i64, acc: i64) -> i64
+  pre pos >= 0 and acc >= 0
+  post it >= pos + 1
+= if pos == 0 { acc } else { accum_bad(pos - 1, acc + 1) };
+
+// Addition recursion; pre-obligation n-1>=0 needs the path guard n>0 (path-sensitive).
+fn rec_sum(n: i64) -> i64
+  pre n >= 0
+  post it >= 0
+= if n > 0 { n + rec_sum(n - 1) } else { 0 };
+
+// != guard variety.
+fn down_to_zero(n: i64) -> i64
+  pre n >= 0
+  post it >= 0
+= if n != 0 { down_to_zero(n - 1) } else { 0 };
+
+// Base case n<=0 returns 0, post it>=1 false → refuted (not masked by IH).
+fn bad_base(n: i64) -> i64
+  pre n >= 0
+  post it >= 1
+= if n > 0 { bad_base(n - 1) } else { 0 };
+
+// SOUNDNESS GATE: guard n>0 does NOT discharge pre n>=1 of the call (n=1→0<1).
+// Without the discharge gate, assuming the (false) IH would spurious-verify.
+fn unsound3(n: i64) -> i64
+  pre n >= 1
+  post it >= 1
+= if n > 0 { unsound3(n - 1) } else { 0 };
+
+// --- trusted-set (T1, C3573) ---
+
+fn leaf_pred(x: i64) -> i64
+  pre x >= 0
+  post it >= 0
+= x;
+
+// Calls a leaf-verified callee → its post may be trusted.
+fn trusted_caller(x: i64) -> i64
+  pre x >= 0
+  post it >= 0
+= leaf_pred(x);
+
+// Calls a recursive (non-leaf) callee. rec_sum's post is true, but T1 demotes the
+// caller (only leaf-verified callees are trusted) → unsupported, not verified.
+fn untrusted_caller(n: i64) -> i64
+  pre n >= 0
+  post it >= 0
+= rec_sum(n);
