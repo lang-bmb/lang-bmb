@@ -46831,17 +46831,21 @@ fn vc_param_names(params: String, acc: String) -> String
     };
 
 // Translate each call-argument S-expr (read from `inner` at `pos`) to SMT,
-// tab-terminated. @UNSUP@ if any argument leaves the leaf fragment.
-fn vc_read_actuals(inner: String, pos: i64, acc: String) -> String
+// tab-terminated. The in-scope let environment (letf/leta tab-lists, from the
+// ctx) is applied so arguments that reference let-bound locals (e.g. a recursive
+// arg acc*2+(c-48) with `c := byte_at(pos)`) substitute the local's definition
+// instead of emitting an undeclared name. letf == "" => plain vc_tr (legacy).
+// @UNSUP@ if any argument leaves the leaf fragment.
+fn vc_read_actuals(inner: String, pos: i64, acc: String, letf: String, leta: String) -> String
   pre pos >= 0
   post it.len() >= 0
 = let r = vc_read_tok(inner, pos);
     let tok = unpack_ast(r);
     if tok == "" { acc }
     else {
-        let t = vc_tr(tok);
+        let t = vc_tr_s(tok, letf, leta, "");
         if vc_is_unsup(t) { "@UNSUP@" }
-        else { vc_read_actuals(inner, unpack_pos(r), acc + t + "\t") }
+        else { vc_read_actuals(inner, unpack_pos(r), acc + t + "\t", letf, leta) }
     };
 
 // Conjoin tab-separated clauses, translating each with substitution.
@@ -46877,19 +46881,128 @@ fn vc_find_callee_after(src: String, name: String, pos: i64) -> i64
         } else { vc_find_callee_after(src, name, fn_pos + 3) }
     };
 
-// Discharge callee pre[formals:=actuals] under caller (cparams/cpre): returns 1
-// iff caller_pre and not(callee_pre) is UNSAT (no path conditions). Empty
-// callee pre => trivially discharged (1). Any untranslatable part => 0.
-fn vc_discharge_pre(cparams: String, cpre: String, ee_pre: String, formals: String, actuals: String) -> i64
+// ===================================================================
+// R2 path-sensitivity (CT-B): a call inside a branch may assume the enclosing
+// branch guard(s) when discharging its pre-obligation, and the post-assumption
+// is guarded by the same path condition. Sound — the call only executes when
+// the guards hold. The caller context is packed into a single `ctx` string of
+// five "@@CX@@"-separated fields: cparams, cpre, pc, letf, leta. The last three
+// are the call site's path condition and the in-scope let-binding environment
+// (parallel tab-lists of names and their already-translated SMT definitions),
+// computed by vc_pathcond_at. When all three are empty the behaviour is exactly
+// the path-insensitive O2-lite/P2 model (so non-branch calls never regress).
+// ===================================================================
+
+// Pack the caller context. pc/letf/leta == "" => path-insensitive (legacy) mode.
+fn vc_ctx_make(cparams: String, cpre: String, pc: String, letf: String, leta: String) -> String
+  post it.len() >= 0
+= cparams + "@@CX@@" + cpre + "@@CX@@" + pc + "@@CX@@" + letf + "@@CX@@" + leta;
+
+// Extract field `idx` (0..4) from a packed ctx ("@@CX@@" is 6 bytes).
+fn vc_ctx_field(ctx: String, idx: i64) -> String
+  pre idx >= 0
+  post it.len() >= 0
+= let i = find_pattern_noa(ctx, "@@CX@@", 0);
+    if idx == 0 { if i < 0 { ctx } else { ctx.slice(0, i) } }
+    else if i < 0 { "" }
+    else { vc_ctx_field(ctx.slice(i + 6, ctx.len()), idx - 1) };
+
+// Descend into whichever child token (read sequentially from `p`) contains the
+// absolute offset `cpos`, carrying pc/letenv unchanged. Used for every head that
+// does not alter the path condition (binop/unop/method/block/call args).
+fn vc_pc_findarg(target: String, inner: String, innerbase: i64, p: i64, cpos: i64, letf: String, leta: String, pc: String) -> String
+  pre p >= 0
+  post it.len() >= 0
+= let r = vc_read_tok(inner, p);
+    if unpack_ast(r) == "" { "@UNSUP@" }
+    else {
+        let cs = innerbase + vc_skip_sp(inner, p);
+        let ce = innerbase + unpack_pos(r);
+        if cpos >= cs and cpos < ce { vc_pathcond_at(target, cs, cpos, letf, leta, pc) }
+        else { vc_pc_findarg(target, inner, innerbase, unpack_pos(r), cpos, letf, leta, pc) }
+    };
+
+// Compute the path condition of the call node that begins at absolute offset
+// `cpos`, by structurally descending the body S-expr from the node at `ns`.
+// `if` then-branch adds the (translated) guard, else-branch adds its negation;
+// `let` extends the substitution env (name := translated value); all other heads
+// pass through unchanged. Returns "pc@@PC1@@letf@@PC2@@leta", or "@UNSUP@" when
+// any guard/value leaves the leaf fragment (caller then falls back to the
+// path-insensitive model — monotone, never unsound).
+fn vc_pathcond_at(target: String, ns: i64, cpos: i64, letf: String, leta: String, pc: String) -> String
+  pre ns >= 0
+  post it.len() >= 0
+= if ns == cpos { pc + "@@PC1@@" + letf + "@@PC2@@" + leta }
+    else if ns >= target.len() or target.byte_at(ns) != 40 { "@UNSUP@" }
+    else {
+        let ne = vc_match_paren(target, ns + 1, 1);
+        let inner = target.slice(ns + 1, ne - 1);
+        let innerbase = ns + 1;
+        let rh = vc_read_tok(inner, 0);
+        let head = unpack_ast(rh);
+        let p0 = unpack_pos(rh);
+        if head == "if" {
+            let rc = vc_read_tok(inner, p0);
+            let cs1 = innerbase + vc_skip_sp(inner, p0);
+            let ce1 = innerbase + unpack_pos(rc);
+            let rt = vc_read_tok(inner, unpack_pos(rc));
+            let cs2 = innerbase + vc_skip_sp(inner, unpack_pos(rc));
+            let ce2 = innerbase + unpack_pos(rt);
+            let re = vc_read_tok(inner, unpack_pos(rt));
+            let cs3 = innerbase + vc_skip_sp(inner, unpack_pos(rt));
+            let ce3 = innerbase + unpack_pos(re);
+            if cpos >= cs1 and cpos < ce1 { vc_pathcond_at(target, cs1, cpos, letf, leta, pc) }
+            else {
+                let condtr = vc_tr_s(unpack_ast(rc), letf, leta, "");
+                if vc_is_unsup(condtr) { "@UNSUP@" }
+                else if cpos >= cs2 and cpos < ce2 {
+                    let np = if pc == "" { condtr } else { "(and " + pc + " " + condtr + ")" };
+                    vc_pathcond_at(target, cs2, cpos, letf, leta, np)
+                }
+                else if cpos >= cs3 and cpos < ce3 {
+                    let nc = "(not " + condtr + ")";
+                    let np = if pc == "" { nc } else { "(and " + pc + " " + nc + ")" };
+                    vc_pathcond_at(target, cs3, cpos, letf, leta, np)
+                }
+                else { "@UNSUP@" }
+            }
+        }
+        else if head == "let" {
+            let rn = vc_read_tok(inner, p0);
+            let rv = vc_read_tok(inner, unpack_pos(rn));
+            let vs = innerbase + vc_skip_sp(inner, unpack_pos(rn));
+            let ve = innerbase + unpack_pos(rv);
+            let rb = vc_read_tok(inner, unpack_pos(rv));
+            let bs = innerbase + vc_skip_sp(inner, unpack_pos(rv));
+            let be = innerbase + unpack_pos(rb);
+            if cpos >= vs and cpos < ve { vc_pathcond_at(target, vs, cpos, letf, leta, pc) }
+            else if cpos >= bs and cpos < be {
+                let nm = vc_strip_name(unpack_ast(rn));
+                let vt = vc_tr_s(unpack_ast(rv), letf, leta, "");
+                if vc_is_unsup(vt) { "@UNSUP@" }
+                else { vc_pathcond_at(target, bs, cpos, letf + nm + "\t", leta + vt + "\t", pc) }
+            }
+            else { "@UNSUP@" }
+        }
+        else { vc_pc_findarg(target, inner, innerbase, p0, cpos, letf, leta, pc) }
+    };
+
+// Discharge callee pre[formals:=actuals] under the caller (ctx fields cparams /
+// cpre / pc): returns 1 iff caller_pre and pc and not(callee_pre) is UNSAT.
+// The path condition `pc` (field 2) is asserted alongside the caller pre, so a
+// pre that only holds under a branch guard is dischargeable. Empty callee pre =>
+// trivially discharged (1). Any untranslatable part => 0.
+fn vc_discharge_pre(ctx: String, ee_pre: String, formals: String, actuals: String) -> i64
   post it >= 0
 = let csub = vc_conj_subst(ee_pre, formals, actuals, "", "");
     if vc_is_unsup(csub) { 0 }
     else if csub == "" { 1 }
     else {
+        let cparams = vc_ctx_field(ctx, 0);
         let decls = vc_decl_params(cparams, "");
         if vc_is_unsup(decls) { 0 }
         else {
-            let pretr = vc_assert_each(cpre, "");
+            let pretr = vc_assert_each(vc_ctx_field(ctx, 1), "");
             if vc_is_unsup(pretr) { 0 }
             else {
                 // Standalone Z3 query: if a String param is present, decls uses
@@ -46898,7 +47011,9 @@ fn vc_discharge_pre(cparams: String, cpre: String, ee_pre: String, formals: Stri
                 // recursive scanners (P2) error on an undeclared sort S and
                 // spurious-abstain. (Leaf/i64 callees: pre0 = "", no change.)
                 let pre0 = if find_pattern_noa(decls, " S)", 0) >= 0 { "(declare-sort S 0)\n(declare-fun b (S Int) Int)\n(declare-fun len (S) Int)\n(assert (forall ((__x S)) (>= (len __x) 0)))\n" } else { "" };
-                let smt = pre0 + decls + pretr + "(assert (not " + csub + "))\n(check-sat)\n";
+                let pc = vc_ctx_field(ctx, 2);
+                let pca = if pc == "" { "" } else { "(assert " + pc + ")\n" };
+                let smt = pre0 + decls + pretr + pca + "(assert (not " + csub + "))\n(check-sat)\n";
                 let z = eff_z3_invoke(smt);
                 if z == "unsat" { 1 } else { 0 }
             }
@@ -46906,18 +47021,26 @@ fn vc_discharge_pre(cparams: String, cpre: String, ee_pre: String, formals: Stri
     };
 
 // Given a resolved callee (sort rs, pre ee_pre, post ee_post, formals) and the
-// translated actuals, discharge callee pre under the caller then emit the
-// post-assumption. Returns "<decls+assume>@@SP@@(var <__vc_call_K>)" or @UNSUP@.
-fn vc_assume_callee(rs: String, ee_pre: String, ee_post: String, formals: String, actuals: String, cparams: String, cpre: String, kk: i64) -> String
+// translated actuals, discharge callee pre under the caller (ctx) then emit the
+// post-assumption. The post is guarded by the path condition pc (ctx field 2):
+// `(assert (=> pc postsub))` — the post only holds where the call executes — so
+// asserting it is sound even when pc is non-trivial. When pc == "" this is the
+// legacy unconditional `(assert postsub)`. Returns
+// "<decls+assume>@@SP@@(var <__vc_call_K>)" or @UNSUP@.
+fn vc_assume_callee(rs: String, ee_pre: String, ee_post: String, formals: String, actuals: String, ctx: String, kk: i64) -> String
   pre kk >= 0
   post it.len() >= 0
 = if vc_is_unsup(rs) or rs == "S" or ee_post.len() == 0 or vc_is_unsup(actuals) { "@UNSUP@" }
-    else if vc_discharge_pre(cparams, cpre, ee_pre, formals, actuals) == 0 { "@UNSUP@" }
+    else if vc_discharge_pre(ctx, ee_pre, formals, actuals) == 0 { "@UNSUP@" }
     else {
         let vname = "__vc_call_" + int_to_string(kk);
         let postsub = vc_conj_subst(ee_post, formals, actuals, vname, "");
         if vc_is_unsup(postsub) { "@UNSUP@" }
-        else { "(declare-const " + vname + " " + rs + ")\n(assert " + postsub + ")\n@@SP@@(var <" + vname + ">)" }
+        else {
+            let pc = vc_ctx_field(ctx, 2);
+            let body = if pc == "" { postsub } else { "(=> " + pc + " " + postsub + ")" };
+            "(declare-const " + vname + " " + rs + ")\n(assert " + body + ")\n@@SP@@(var <" + vname + ">)"
+        }
     };
 
 // Assume-guarantee soundness gate (R2 trusted-set T1): a callee's post may only
@@ -46960,7 +47083,7 @@ fn vc_leaf_verified(src: String, cal: String, after: i64) -> i64
 // Only proceeds if the callee is leaf-verified (trusted-set gate, soundness);
 // untrusted callees abstain (@UNSUP@) so dependent callers degrade to
 // `unsupported` rather than silently trusting an unproven post.
-fn vc_proc_call2(src: String, cal: String, cparams: String, cpre: String, after: i64, callbody: String, rnpos: i64, kk: i64) -> String
+fn vc_proc_call2(src: String, cal: String, ctx: String, after: i64, callbody: String, rnpos: i64, kk: i64) -> String
   pre kk >= 0
   post it.len() >= 0
 = let t2g = next_token_raw(src, after);
@@ -46971,8 +47094,8 @@ fn vc_proc_call2(src: String, cal: String, cparams: String, cpre: String, after:
         let rtype = index_read_ret_type(src, unpack_pos(params_r));
         let rp = unpack_pos(rtype);
         let formals = vc_param_names(unpack_ast(params_r), "");
-        let actuals = vc_read_actuals(callbody, rnpos, "");
-        vc_assume_callee(vc_sort(unpack_ast(rtype)), extract_pre_asts(src, rp), extract_post_asts(src, rp), formals, actuals, cparams, cpre, kk)
+        let actuals = vc_read_actuals(callbody, rnpos, "", vc_ctx_field(ctx, 3), vc_ctx_field(ctx, 4));
+        vc_assume_callee(vc_sort(unpack_ast(rtype)), extract_pre_asts(src, rp), extract_post_asts(src, rp), formals, actuals, ctx, kk)
     };
 
 // R2 P2: induction-hypothesis (IH) instantiation for a SELF-recursive call.
@@ -46990,7 +47113,7 @@ fn vc_proc_call2(src: String, cal: String, cparams: String, cpre: String, after:
 // untranslatable / String return) fall back to the P1 havoc + ;REC; sentinel so
 // the verdict stays `unsupported_recursion`. Monotone: only genuinely-provable
 // recursions flip to verified; nothing is lost or unsoundly trusted.
-fn vc_proc_selfrec(src: String, cname: String, cparams: String, cpre: String, callbody: String, rnpos: i64, kk: i64) -> String
+fn vc_proc_selfrec(src: String, cname: String, ctx: String, callbody: String, rnpos: i64, kk: i64) -> String
   pre kk >= 0
   post it.len() >= 0
 = let havoc = "(declare-const __vc_rec_" + int_to_string(kk) + " @@RETSORT@@)\n;REC;\n@@SP@@(var <__vc_rec_" + int_to_string(kk) + ">)";
@@ -47004,8 +47127,8 @@ fn vc_proc_selfrec(src: String, cname: String, cparams: String, cpre: String, ca
             let rtype = index_read_ret_type(src, unpack_pos(params_r));
             let rp = unpack_pos(rtype);
             let formals = vc_param_names(unpack_ast(params_r), "");
-            let actuals = vc_read_actuals(callbody, rnpos, "");
-            let ih = vc_assume_callee(vc_sort(unpack_ast(rtype)), extract_pre_asts(src, rp), extract_post_asts(src, rp), formals, actuals, cparams, cpre, kk);
+            let actuals = vc_read_actuals(callbody, rnpos, "", vc_ctx_field(ctx, 3), vc_ctx_field(ctx, 4));
+            let ih = vc_assume_callee(vc_sort(unpack_ast(rtype)), extract_pre_asts(src, rp), extract_post_asts(src, rp), formals, actuals, ctx, kk);
             if vc_is_unsup(ih) { havoc } else { ih }
         }
     };
@@ -47013,7 +47136,7 @@ fn vc_proc_selfrec(src: String, cname: String, cparams: String, cpre: String, ca
 // Process one "(call <f> args...)" expr. Returns
 //   "<decls+assume>@@SP@@(var <__vc_call_K>)"  on success, or "@UNSUP@".
 // Self-recursive calls instantiate the IH (P2, vc_proc_selfrec).
-fn vc_proc_call(src: String, cname: String, cparams: String, cpre: String, callexpr: String, kk: i64) -> String
+fn vc_proc_call(src: String, cname: String, ctx: String, callexpr: String, kk: i64) -> String
   pre kk >= 0
   post it.len() >= 0
 = let inner = str_trim(callexpr);
@@ -47031,21 +47154,25 @@ fn vc_proc_call(src: String, cname: String, cparams: String, cpre: String, calle
                 // obligation). Falls back to the P1 havoc + ;REC; sentinel when
                 // the IH can't be soundly instantiated. @@RETSORT@@ (havoc only)
                 // is resolved by vc_build_smt.
-                vc_proc_selfrec(src, cname, cparams, cpre, callbody, unpack_pos(rn), kk)
+                vc_proc_selfrec(src, cname, ctx, callbody, unpack_pos(rn), kk)
             }
             else {
                 let after = vc_find_callee_after(src, cal, 0);
                 if after < 0 { "@UNSUP@" }
-                else { vc_proc_call2(src, cal, cparams, cpre, after, callbody, unpack_pos(rn), kk) }
+                else { vc_proc_call2(src, cal, ctx, after, callbody, unpack_pos(rn), kk) }
             }
         }
     };
 
-// Eliminate non-recursive user-calls in `target` (a body / pre / post string),
-// rightmost-first (so nested calls resolve inner-first). Accumulates each
-// call's decls+assume into `side`. Returns "newtarget@@SP@@side";
-// side == "@UNSUP@" signals an abstain.
-fn vc_elim_calls(src: String, cname: String, cparams: String, cpre: String, target: String, side: String, kk: i64) -> String
+// Eliminate user-calls in `target` (a body / pre / post string), rightmost-first
+// (so nested calls resolve inner-first). Accumulates each call's decls+assume
+// into `side`. Returns "newtarget@@SP@@side"; side == "@UNSUP@" signals an
+// abstain. When is_body == 1 the call's path condition + in-scope let-env are
+// computed (vc_pathcond_at) and packed into the ctx so the discharge/assume can
+// use the enclosing branch guards (path-sensitivity). For pre/post (is_body 0),
+// and whenever pathcond computation abstains, the ctx pc/letf/leta stay empty —
+// reproducing the path-insensitive O2-lite/P2 behaviour exactly (monotone).
+fn vc_elim_calls(src: String, cname: String, cparams: String, cpre: String, target: String, side: String, kk: i64, is_body: i64) -> String
   pre kk >= 0
   post it.len() >= 0
 = if vc_is_unsup(side) { target + "@@SP@@@UNSUP@" }
@@ -47055,13 +47182,18 @@ fn vc_elim_calls(src: String, cname: String, cparams: String, cpre: String, targ
     else {
         let endp = vc_match_paren(target, cpos + 1, 1);
         let callexpr = target.slice(cpos, endp);
-        let proc = vc_proc_call(src, cname, cparams, cpre, callexpr, kk);
+        let pcr = if is_body == 1 { vc_pathcond_at(target, vc_skip_sp(target, 0), cpos, "", "", "") } else { "@UNSUP@" };
+        let pc = if vc_is_unsup(pcr) { "" } else { vc_before(pcr, "@@PC1@@") };
+        let lf = if vc_is_unsup(pcr) { "" } else { vc_before(vc_after(pcr, "@@PC1@@"), "@@PC2@@") };
+        let la = if vc_is_unsup(pcr) { "" } else { vc_after(pcr, "@@PC2@@") };
+        let ctx = vc_ctx_make(cparams, cpre, pc, lf, la);
+        let proc = vc_proc_call(src, cname, ctx, callexpr, kk);
         if vc_is_unsup(proc) { target + "@@SP@@@UNSUP@" }
         else {
             let asmt = vc_before(proc, "@@SP@@");
             let repl = vc_after(proc, "@@SP@@");
             let newt = target.slice(0, cpos) + repl + target.slice(endp, target.len());
-            vc_elim_calls(src, cname, cparams, cpre, newt, side + asmt, kk + 1)
+            vc_elim_calls(src, cname, cparams, cpre, newt, side + asmt, kk + 1, is_body)
         }
     }
     };
@@ -47138,11 +47270,11 @@ fn vc_build_smt(cname: String, params: String, rty: String, pre_asts: String, po
             // i64 functions over String params (relative bounds, absolute len)
             // verify without spurious refutation. Leaf fragment is untouched.
             let pre0 = if find_pattern_noa(decls, " S)", 0) >= 0 { "(declare-sort S 0)\n(declare-fun b (S Int) Int)\n(declare-fun len (S) Int)\n(assert (forall ((__x S)) (>= (len __x) 0)))\n" } else { "" };
-            let r1 = vc_elim_calls(src, cname, params, pre_asts, body, "", 0);
+            let r1 = vc_elim_calls(src, cname, params, pre_asts, body, "", 0, 1);
             let nb = vc_before(r1, "@@SP@@");
-            let r2 = vc_elim_calls(src, cname, params, pre_asts, pre_asts, vc_after(r1, "@@SP@@"), vc_kbase_pre());
+            let r2 = vc_elim_calls(src, cname, params, pre_asts, pre_asts, vc_after(r1, "@@SP@@"), vc_kbase_pre(), 0);
             let npre = vc_before(r2, "@@SP@@");
-            let r3 = vc_elim_calls(src, cname, params, pre_asts, post_asts, vc_after(r2, "@@SP@@"), vc_kbase_post());
+            let r3 = vc_elim_calls(src, cname, params, pre_asts, post_asts, vc_after(r2, "@@SP@@"), vc_kbase_post(), 0);
             let npost = vc_before(r3, "@@SP@@");
             let side3 = vc_after(r3, "@@SP@@").replace("@@RETSORT@@", retsort);
             let bodytr = vc_tr(nb);
