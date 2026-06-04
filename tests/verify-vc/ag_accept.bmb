@@ -1,0 +1,47 @@
+// R2 machine-int abstain-guard acceptance (scope-(b): mul/div/mod).
+// Each post below is UNSAT (=> verified) under SMT's unbounded Int, but the
+// multiplicative bodies can overflow in i64 — so the guard must ABSTAIN on
+// mul/div/mod (verdict "unsupported") while + / - and leaves stay "verified".
+//
+// Expected verdicts after the fix:
+//   ag_mul  -> unsupported   (x*2 overflow-prone; pre-fix this was verified)
+//   ag_div  -> unsupported   (SMT Euclidean div / div-by-zero)
+//   ag_mod  -> unsupported
+//   ag_add  -> verified      (regression guard: + stays supported, (b) scope)
+//                            ⚠ RETAINED-LATENT: x=i64::MAX satisfies pre x>=0
+//                            but x+1 wraps to i64::MIN<0, so this "verified" is
+//                            itself overflow-idealized. Accepted under scope-(b)
+//                            (addition deferred to bitvector follow-up) — NOT a
+//                            clean win; documented so a reader doesn't mistake it.
+//   ag_sub  -> verified      (-  stays supported; same retained-latent caveat)
+//   ag_leaf -> verified      (no arithmetic)
+
+fn ag_mul(x: i64) -> i64
+  pre x >= 0
+  post it >= 0
+= x * 2;
+
+fn ag_div(x: i64) -> i64
+  pre x >= 0
+  post it >= 0
+= x / 2;
+
+fn ag_mod(x: i64) -> i64
+  pre x >= 0
+  post it >= 0
+= x % 3;
+
+fn ag_add(x: i64) -> i64
+  pre x >= 0
+  post it >= 0
+= x + 1;
+
+fn ag_sub(x: i64) -> i64
+  pre x >= 5
+  post it >= 0
+= x - 5;
+
+fn ag_leaf(x: i64) -> i64
+  pre x >= 5
+  post it >= 5
+= x;

@@ -1,0 +1,95 @@
+// R2 T-CS — corpus contract strengthening showcase (Cycle 3577).
+//
+// THESIS DEMO (AI-authored-contract loop): the verifier flags a genuine
+// too-weak contract (refuted), the missing precondition is added, and the SAME
+// function then verifies. Each pair below is a verbatim isomorph of a real
+// compiler.bmb scanner (extracted via `compiler.exe body`), differing ONLY in
+// the precondition. Run on PROBE ISOMORPHS — not live compiler.bmb — to avoid
+// the meta-circular Return-Range-Attribute footgun (strengthening a live
+// contract injects llvm.assume that callers must satisfy).
+//
+// Expected verdicts:
+//   *_weak   -> refuted   (verifier finds the genuine gap)
+//   *_strong -> verified  (missing pre added -> discharges)
+//
+// Missing-pre patterns covered:
+//   pos<=s.len()  (find_colon, scan_char_end)
+//   pos<=limit    (skip_sp_tab)
+//   count>=0      (count_newlines)
+//   pos>=0        (skip_spaces — had NO pre at all)
+
+// ── pattern: pre pos <= s.len()  (recursive, String) ───────────────────────
+fn find_colon_weak(s: String, pos: i64) -> i64
+  pre pos >= 0
+  post it >= pos and it <= s.len()
+= if pos >= s.len() { pos } else if s.byte_at(pos) == 58 { pos } else { find_colon_weak(s, pos + 1) };
+
+fn find_colon_strong(s: String, pos: i64) -> i64
+  pre pos >= 0 and pos <= s.len()
+  post it >= pos and it <= s.len()
+= if pos >= s.len() { pos } else if s.byte_at(pos) == 58 { pos } else { find_colon_strong(s, pos + 1) };
+
+// ── pattern: pre pos <= s.len()  (non-recursive) ───────────────────────────
+fn scan_char_end_weak(s: String, pos: i64) -> i64
+  pre pos >= 0
+  post it >= pos
+= if pos >= s.len() { s.len() }
+    else if s.byte_at(pos) == 92 { pos + 3 }
+    else { pos + 2 };
+
+fn scan_char_end_strong(s: String, pos: i64) -> i64
+  pre pos >= 0 and pos <= s.len()
+  post it >= pos
+= if pos >= s.len() { s.len() }
+    else if s.byte_at(pos) == 92 { pos + 3 }
+    else { pos + 2 };
+
+// ── pattern: pre pos <= limit  (recursive, 3-param) ────────────────────────
+fn skip_sp_tab_weak(s: String, pos: i64, limit: i64) -> i64
+  pre pos >= 0 and limit >= 0
+  post it >= pos and it <= limit
+= if pos >= limit { pos }
+    else {
+        let c = s.byte_at(pos);
+        if c == 32 or c == 9 { skip_sp_tab_weak(s, pos + 1, limit) }
+        else { pos }
+    };
+
+fn skip_sp_tab_strong(s: String, pos: i64, limit: i64) -> i64
+  pre pos >= 0 and limit >= 0 and pos <= limit
+  post it >= pos and it <= limit
+= if pos >= limit { pos }
+    else {
+        let c = s.byte_at(pos);
+        if c == 32 or c == 9 { skip_sp_tab_strong(s, pos + 1, limit) }
+        else { pos }
+    };
+
+// ── pattern: pre count >= 0  (recursive, 4-param accumulator) ──────────────
+fn count_newlines_weak(src: String, pos: i64, count: i64, limit: i64) -> i64
+  pre pos >= 0
+  post it >= 0
+= if pos >= limit or pos >= src.len() { count }
+    else if src.byte_at(pos) == 10 { count_newlines_weak(src, pos + 1, count + 1, limit) }
+    else { count_newlines_weak(src, pos + 1, count, limit) };
+
+fn count_newlines_strong(src: String, pos: i64, count: i64, limit: i64) -> i64
+  pre pos >= 0 and count >= 0
+  post it >= 0
+= if pos >= limit or pos >= src.len() { count }
+    else if src.byte_at(pos) == 10 { count_newlines_strong(src, pos + 1, count + 1, limit) }
+    else { count_newlines_strong(src, pos + 1, count, limit) };
+
+// ── pattern: pre pos >= 0  (recursive, had NO precondition) ────────────────
+fn skip_spaces_weak(s: String, pos: i64) -> i64
+  post it >= 0
+= if pos >= s.len() { pos }
+    else if s.byte_at(pos) == 32 { skip_spaces_weak(s, pos + 1) }
+    else { pos };
+
+fn skip_spaces_strong(s: String, pos: i64) -> i64
+  pre pos >= 0
+  post it >= 0
+= if pos >= s.len() { pos }
+    else if s.byte_at(pos) == 32 { skip_spaces_strong(s, pos + 1) }
+    else { pos };
