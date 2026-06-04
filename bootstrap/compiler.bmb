@@ -46892,7 +46892,13 @@ fn vc_discharge_pre(cparams: String, cpre: String, ee_pre: String, formals: Stri
             let pretr = vc_assert_each(cpre, "");
             if vc_is_unsup(pretr) { 0 }
             else {
-                let smt = decls + pretr + "(assert (not " + csub + "))\n(check-sat)\n";
+                // Standalone Z3 query: if a String param is present, decls uses
+                // sort S, so declare it (+ the byte/len UFs + len>=0 axiom) here,
+                // mirroring vc_build_smt's preamble. Without this, String-param
+                // recursive scanners (P2) error on an undeclared sort S and
+                // spurious-abstain. (Leaf/i64 callees: pre0 = "", no change.)
+                let pre0 = if find_pattern_noa(decls, " S)", 0) >= 0 { "(declare-sort S 0)\n(declare-fun b (S Int) Int)\n(declare-fun len (S) Int)\n(assert (forall ((__x S)) (>= (len __x) 0)))\n" } else { "" };
+                let smt = pre0 + decls + pretr + "(assert (not " + csub + "))\n(check-sat)\n";
                 let z = eff_z3_invoke(smt);
                 if z == "unsat" { 1 } else { 0 }
             }
@@ -46969,9 +46975,44 @@ fn vc_proc_call2(src: String, cal: String, cparams: String, cpre: String, after:
         vc_assume_callee(vc_sort(unpack_ast(rtype)), extract_pre_asts(src, rp), extract_post_asts(src, rp), formals, actuals, cparams, cpre, kk)
     };
 
+// R2 P2: induction-hypothesis (IH) instantiation for a SELF-recursive call.
+// Sound by the partial-correctness recursion rule: to prove {pre} f {post} we
+// may ASSUME {pre} f {post} for the recursive call. No termination is needed
+// (if the recursive call diverges so does the outer call, and partial-
+// correctness post holds vacuously); and, unlike T1's external callees, NO
+// leaf-verification is required, because the IH is self-justified rather than
+// borrowed from a separate proof — hence the leaf gate is (correctly) bypassed.
+// We DO discharge the call-site pre-obligation (own pre[actuals] under the
+// caller pre, no path conditions) before assuming the post: it is a SOUNDNESS
+// gate, not a completeness filter — globally asserting post[actuals] for args
+// that may violate pre is unsound (see unsound3). vc_assume_callee is reused
+// with the function's OWN contract. On any failure (pre not discharged / post
+// untranslatable / String return) fall back to the P1 havoc + ;REC; sentinel so
+// the verdict stays `unsupported_recursion`. Monotone: only genuinely-provable
+// recursions flip to verified; nothing is lost or unsoundly trusted.
+fn vc_proc_selfrec(src: String, cname: String, cparams: String, cpre: String, callbody: String, rnpos: i64, kk: i64) -> String
+  pre kk >= 0
+  post it.len() >= 0
+= let havoc = "(declare-const __vc_rec_" + int_to_string(kk) + " @@RETSORT@@)\n;REC;\n@@SP@@(var <__vc_rec_" + int_to_string(kk) + ">)";
+    let after = vc_find_callee_after(src, cname, 0);
+    if after < 0 { havoc }
+    else {
+        let t2g = next_token_raw(src, after);
+        if tok_kind(t2g) != TK_LPAREN() { havoc }
+        else {
+            let params_r = index_collect_params(src, tok_end(t2g), "");
+            let rtype = index_read_ret_type(src, unpack_pos(params_r));
+            let rp = unpack_pos(rtype);
+            let formals = vc_param_names(unpack_ast(params_r), "");
+            let actuals = vc_read_actuals(callbody, rnpos, "");
+            let ih = vc_assume_callee(vc_sort(unpack_ast(rtype)), extract_pre_asts(src, rp), extract_post_asts(src, rp), formals, actuals, cparams, cpre, kk);
+            if vc_is_unsup(ih) { havoc } else { ih }
+        }
+    };
+
 // Process one "(call <f> args...)" expr. Returns
 //   "<decls+assume>@@SP@@(var <__vc_call_K>)"  on success, or "@UNSUP@".
-// Self-recursive calls abstain (the IH case belongs to P2).
+// Self-recursive calls instantiate the IH (P2, vc_proc_selfrec).
 fn vc_proc_call(src: String, cname: String, cparams: String, cpre: String, callexpr: String, kk: i64) -> String
   pre kk >= 0
   post it.len() >= 0
@@ -46985,12 +47026,12 @@ fn vc_proc_call(src: String, cname: String, cparams: String, cpre: String, calle
             let rn = vc_read_tok(callbody, unpack_pos(rh));
             let cal = vc_strip_name(unpack_ast(rn));
             if cal == cname {
-                // P1 (O1): self-recursion translates to a HAVOC fresh var (the
-                // body becomes well-formed SMT) but emits a ;REC; sentinel so the
-                // verdict abstains — an unconstrained recursion result would
-                // spurious-refute any post that references it. The IH that makes
-                // it verify is P2. @@RETSORT@@ is resolved by vc_build_smt.
-                "(declare-const __vc_rec_" + int_to_string(kk) + " @@RETSORT@@)\n;REC;\n@@SP@@(var <__vc_rec_" + int_to_string(kk) + ">)"
+                // P2: instantiate the induction hypothesis (assume the own post
+                // for the recursive result, after discharging the call-site pre-
+                // obligation). Falls back to the P1 havoc + ;REC; sentinel when
+                // the IH can't be soundly instantiated. @@RETSORT@@ (havoc only)
+                // is resolved by vc_build_smt.
+                vc_proc_selfrec(src, cname, cparams, cpre, callbody, unpack_pos(rn), kk)
             }
             else {
                 let after = vc_find_callee_after(src, cal, 0);
