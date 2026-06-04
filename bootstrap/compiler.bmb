@@ -47224,6 +47224,31 @@ fn vc_decl_params(params: String, acc: String) -> String
         }
     };
 
+// T-CX: space-separated get-value TERMS for the params, for the refuted
+// counterexample. Int params -> the name; String params -> `(len nm)` (the
+// opaque sort-S const itself is not an informative witness, but its length is).
+// Non-{Int,S} params are skipped. Used only to enrich a `refuted` verdict.
+// (Named vc_cex_terms — vc_param_names already exists for tab-separated formals.)
+fn vc_cex_terms(params: String, acc: String) -> String
+  post it.len() >= 0
+= let p = str_trim(params);
+    if p.len() == 0 { acc }
+    else {
+        let ci = vc_find_byte(p, 0, 44);
+        let first = if ci < 0 { p } else { str_trim(p.slice(0, ci)) };
+        let rest = if ci < 0 { "" } else { p.slice(ci + 1, p.len()) };
+        let coloni = vc_find_byte(first, 0, 58);
+        if coloni < 0 { acc }
+        else {
+            let nm = str_trim(first.slice(0, coloni));
+            let ty = str_trim(first.slice(coloni + 1, first.len()));
+            let sort = vc_sort(ty);
+            let term = if sort == "S" { "(len " + nm + ")" } else if sort == "Int" { nm } else { "" };
+            let sep = if acc.len() == 0 { "" } else { " " };
+            vc_cex_terms(rest, if term == "" { acc } else { acc + sep + term })
+        }
+    };
+
 // Emit (assert TR) for each tab-separated clause. @UNSUP@ if any untranslatable.
 fn vc_assert_each(asts: String, acc: String) -> String
   post it.len() >= 0
@@ -47303,21 +47328,30 @@ fn vc_emit_verdict(fname: String, params: String, ret_str: String, body: String,
         0
     }
     else {
-        let verdict = if body == "@PARSEERR@" { "parse_error" }
+        let smt = if body == "@PARSEERR@" { "@PARSEERR@" }
+            else { vc_build_smt(fname, params, ret_str, pre_asts, post_asts, body, src) };
+        let verdict = if smt == "@PARSEERR@" { "parse_error" }
+            else if smt == "@RECABSTAIN@" { "unsupported_recursion" }
+            else if vc_is_unsup(smt) { "unsupported" }
             else {
-                let smt = vc_build_smt(fname, params, ret_str, pre_asts, post_asts, body, src);
-                if smt == "@RECABSTAIN@" { "unsupported_recursion" }
-                else if vc_is_unsup(smt) { "unsupported" }
-                else {
-                    let z = eff_z3_invoke(smt);
-                    if z == "unsat" { "verified" }
-                    else if z == "sat" { "refuted" }
-                    else if z == "unavailable" { "z3_unavailable" }
-                    else { "unknown" }
-                }
+                let z = eff_z3_invoke(smt);
+                if z == "unsat" { "verified" }
+                else if z == "sat" { "refuted" }
+                else if z == "unavailable" { "z3_unavailable" }
+                else { "unknown" }
             };
+        // T-CX: enrich a `refuted` verdict with the Z3 counterexample (the input
+        // assignment that violates the contract) — actionable signal for the
+        // AI-authored-contract loop (which precondition to add). smt already ends
+        // in (check-sat); append a (get-value ...) over `it` + the param terms.
+        let cex = if verdict == "refuted" {
+                let names = vc_cex_terms(params, "");
+                let gvline = if names.len() == 0 { "(get-value (it))\n" } else { "(get-value (it " + names + "))\n" };
+                let m = eff_z3_model(smt + gvline);
+                if m == "" { "" } else { ",\"counterexample\":\"" + json_esc(m) + "\"" }
+            } else { "" };
         let sep = if isfirst == 1 { "" } else { "," };
-        let _j = sb_push(sb, sep + "{\"function\":\"" + json_esc(fname) + "\",\"verdict\":\"" + verdict + "\"}");
+        let _j = sb_push(sb, sep + "{\"function\":\"" + json_esc(fname) + "\",\"verdict\":\"" + verdict + "\"" + cex + "}");
         0
     };
 
@@ -47759,6 +47793,27 @@ fn eff_z3_invoke(smt: String) -> String
     else if t == "" { "unavailable" }
 
     else { "unknown" }
+
+};
+
+// T-CX: run a model query (smt ending in check-sat + a get-value line) and
+// return the witness text after the leading "sat\n", whitespace-collapsed to a
+// compact one-liner (e.g. `((it 4) (pos 4))`). Returns "" if not sat / no model.
+fn eff_z3_model(smt: String) -> String
+
+  post it.len() >= 0
+
+= {
+
+    let raw = exec_with_stdin("z3", "-smt2 -in", smt);
+
+    let t = str_trim(raw);
+
+    let nl = str_find(t, "\n");
+
+    if nl < 0 { "" }
+
+    else { str_trim(t.slice(nl + 1, t.len())).replace("\r", "").replace("\n", " ") }
 
 };
 
