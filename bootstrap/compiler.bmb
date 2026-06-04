@@ -46581,10 +46581,11 @@ fn eff_smt_bool(eff: String, eff_name: String) -> String
 // ===================================================================
 // R2 P0: by-construction VC-generation (leaf fragment)
 // Translates pre/post/body AST S-expressions to SMT-LIB2 and discharges
-// post obligations via Z3. Leaf fragment ONLY: Int/Bool sorts, linear
-// arithmetic, comparison, and/or/not, if/let/block. Any call/match/index
-// (byte_at)/field/String/seq node => "@UNSUP@" (honest abstain — this is
-// the O1 boundary that P1+ closes). Acceptance oracle: claudedocs/probe/vc.
+// post obligations via Z3. Sorts: i64 => signed (_ BitVec 64) (T-BV — sound
+// i64 wrap), bool => Bool, String => uninterpreted S. Bitvector arithmetic,
+// comparison, and/or/not, if/let/block, byte_at/len UFs (P1). Any match/field/
+// seq node (and calls outside the O2-lite/IH model) => "@UNSUP@" (honest
+// abstain). Acceptance oracle: tests/verify-vc/.
 // ===================================================================
 
 fn vc_is_unsup(s: String) -> bool
@@ -46634,12 +46635,24 @@ fn vc_strip_name(s: String) -> String
     else { s };
 
 // Map a BMB return/param type to an SMT sort, or @UNSUP@.
+// T-BV: integers model as signed 64-bit bitvectors (not unbounded Int) so that
+// i64 wrap is sound — `acc*2`/`acc+1` overflow is faithfully a genuine `refuted`
+// rather than a spurious `verified`. Comparisons/arithmetic use the signed BV
+// ops (bvsge/bvadd/...); literals are `(_ bvN 64)`. See vc_emit_binop, vc_bv_lit.
 fn vc_sort(ty: String) -> String
   post it.len() >= 0
-= if ty == "i64" or ty == "i32" or ty == "int" { "Int" }
+= if ty == "i64" or ty == "i32" or ty == "int" { "(_ BitVec 64)" }
     else if ty == "bool" { "Bool" }
     else if ty == "String" { "S" }
     else { "@UNSUP@" };
+
+// T-BV: emit an SMT bitvector literal for a decimal integer-literal text.
+// `(_ bvN 64)` requires N to be a non-negative numeral, so a leading '-' is
+// peeled and wrapped in bvneg (two's-complement negation).
+fn vc_bv_lit(t: String) -> String
+  post it.len() >= 0
+= if t.len() > 0 and t.byte_at(0) == 45 { "(bvneg (_ bv" + t.slice(1, t.len()) + " 64))" }
+    else { "(_ bv" + t + " 64)" };
 
 // Emit SMT for a binary operator. @UNSUP@ for ops outside the leaf fragment.
 fn vc_emit_binop(op: String, l: String, r: String) -> String
@@ -46648,20 +46661,25 @@ fn vc_emit_binop(op: String, l: String, r: String) -> String
     else if op == "!=" { "(not (= " + l + " " + r + "))" }
     else if op == "and" { "(and " + l + " " + r + ")" }
     else if op == "or" { "(or " + l + " " + r + ")" }
-    else if op == "<" { "(< " + l + " " + r + ")" }
-    else if op == ">" { "(> " + l + " " + r + ")" }
-    else if op == "<=" { "(<= " + l + " " + r + ")" }
-    else if op == ">=" { "(>= " + l + " " + r + ")" }
-    else if op == "+" { "(+ " + l + " " + r + ")" }
-    else if op == "-" { "(- " + l + " " + r + ")" }
-    // SOUNDNESS (machine-int idealization guard, scope-(b)): abstain on
-    // multiplicative ops. SMT models Int as unbounded, but i64 wraps: `acc*2`
-    // can overflow to a negative value, so a post like `it>=0`/`it>=1` over a
-    // `(* ..)` body is silently spurious-verified (e.g. cf_pow2 `2*cf_pow2(n-1)`,
-    // parse_bin_from `acc*2+(c-48)`). div/mod additionally differ (SMT Euclidean
-    // vs i64 truncating, plus div-by-zero). Emitting @UNSUP@ makes every
-    // surviving `verified` trustworthy; propagates to callers via vc_is_unsup.
-    // (+/- overflow remains idealized — documented latent, bitvector follow-up.)
+    else if op == "<" { "(bvslt " + l + " " + r + ")" }
+    else if op == ">" { "(bvsgt " + l + " " + r + ")" }
+    else if op == "<=" { "(bvsle " + l + " " + r + ")" }
+    else if op == ">=" { "(bvsge " + l + " " + r + ")" }
+    // T-BV: signed 64-bit bitvector arithmetic — i64 wrap is now sound, so the
+    // multiplicative ops that the machine-int abstain-guard (scope-(b)) had to
+    // emit @UNSUP@ for are RE-ENABLED here as the proper fix. `acc*2` overflow to
+    // a negative value is faithfully modelled (cf_pow2/parse_bin become genuine
+    // verified/refuted instead of conservative abstain), and `+`/`-` overflow —
+    // previously the documented idealized latent — is now sound too. div/mod use
+    // bvsdiv/bvsrem (truncating toward zero, matching i64; SMT-defined total
+    // functions — div-by-zero returns a value, sound for partial correctness
+    // since a runtime trap is non-normal exit and vacuously satisfies post).
+    else if op == "+" { "(bvadd " + l + " " + r + ")" }
+    else if op == "-" { "(bvsub " + l + " " + r + ")" }
+    else if op == "*" { "(bvmul " + l + " " + r + ")" }
+    else if op == "/" { "(bvsdiv " + l + " " + r + ")" }
+    else if op == "%" { "(bvsrem " + l + " " + r + ")" }
+    // Wrapping/saturating (`*|`/`*%`/...), shifts, and bitwise ops still abstain.
     else { "@UNSUP@" };
 
 // Look up `name` in tab-terminated `formals`; return the parallel `actuals`
@@ -46691,7 +46709,7 @@ fn vc_tr_s(node: String, formals: String, actuals: String, itrepl: String) -> St
         let rh = vc_read_tok(inner, 0);
         let head = unpack_ast(rh);
         let ap = unpack_pos(rh);
-        if head == "int" { let r1 = vc_read_tok(inner, ap); unpack_ast(r1) }
+        if head == "int" { let r1 = vc_read_tok(inner, ap); vc_bv_lit(unpack_ast(r1)) }
         else if head == "bool" { let r1 = vc_read_tok(inner, ap); unpack_ast(r1) }
         else if head == "var" {
             let r1 = vc_read_tok(inner, ap);
@@ -46737,7 +46755,7 @@ fn vc_tr_s(node: String, formals: String, actuals: String, itrepl: String) -> St
             let xt = vc_tr_s(unpack_ast(rx), formals, actuals, itrepl);
             if vc_is_unsup(xt) { "@UNSUP@" }
             else if unpack_ast(ro) == "not" { "(not " + xt + ")" }
-            else if unpack_ast(ro) == "-" { "(- " + xt + ")" }
+            else if unpack_ast(ro) == "-" { "(bvneg " + xt + ")" }
             else { "@UNSUP@" }
         }
         else if head == "method" {
@@ -47011,14 +47029,16 @@ fn vc_discharge_pre(ctx: String, ee_pre: String, formals: String, actuals: Strin
             if vc_is_unsup(pretr) { 0 }
             else {
                 // Standalone Z3 query: if a String param is present, decls uses
-                // sort S, so declare it (+ the byte/len UFs + len>=0 axiom) here,
-                // mirroring vc_build_smt's preamble. Without this, String-param
-                // recursive scanners (P2) error on an undeclared sort S and
-                // spurious-abstain. (Leaf/i64 callees: pre0 = "", no change.)
-                let pre0 = if find_pattern_noa(decls, " S)", 0) >= 0 { "(declare-sort S 0)\n(declare-fun b (S Int) Int)\n(declare-fun len (S) Int)\n(assert (forall ((__x S)) (>= (len __x) 0)))\n" } else { "" };
+                // sort S, so declare it (+ the byte/len UFs + ground len>=0 axioms
+                // per String param) here, mirroring vc_build_smt's preamble.
+                // Without this, String-param recursive scanners (P2) error on an
+                // undeclared sort S and spurious-abstain. (Leaf/i64 callees:
+                // pre0 = "", no change.) lenax follows decls (references the names).
+                let pre0 = if find_pattern_noa(decls, " S)", 0) >= 0 { "(declare-sort S 0)\n(declare-fun b (S (_ BitVec 64)) (_ BitVec 64))\n(declare-fun len (S) (_ BitVec 64))\n" } else { "" };
+                let lenax = if find_pattern_noa(decls, " S)", 0) >= 0 { vc_len_axioms(cparams, "") } else { "" };
                 let pc = vc_ctx_field(ctx, 2);
                 let pca = if pc == "" { "" } else { "(assert " + pc + ")\n" };
-                let smt = pre0 + decls + pretr + pca + "(assert (not " + csub + "))\n(check-sat)\n";
+                let smt = pre0 + decls + lenax + pretr + pca + "(assert (not " + csub + "))\n(check-sat)\n";
                 let z = eff_z3_invoke(smt);
                 if z == "unsat" { 1 } else { 0 }
             }
@@ -47203,6 +47223,31 @@ fn vc_elim_calls(src: String, cname: String, cparams: String, cpre: String, targ
     }
     };
 
+// T-BV: emit a GROUND len>=0 assertion for each String (sort-S) param, e.g.
+// `(assert (bvsge (len s) (_ bv0 64)))`. Replaces the quantified
+// `(forall ((__x S)) (bvsge (len __x) 0))` — quantified BV (UFBV) is undecidable
+// and MBQI can blow up / hang, whereas in the P1 fragment `len`/`byte_at` only
+// ever apply to String PARAMETERS (no string construction), so the ground
+// instances suffice and keep every query in decidable QF_UFBV (fast + det.).
+// Must be emitted AFTER the param decls (it references the declared names).
+fn vc_len_axioms(params: String, acc: String) -> String
+  post it.len() >= 0
+= let p = str_trim(params);
+    if p.len() == 0 { acc }
+    else {
+        let ci = vc_find_byte(p, 0, 44);
+        let first = if ci < 0 { p } else { str_trim(p.slice(0, ci)) };
+        let rest = if ci < 0 { "" } else { p.slice(ci + 1, p.len()) };
+        let coloni = vc_find_byte(first, 0, 58);
+        if coloni < 0 { acc }
+        else {
+            let nm = str_trim(first.slice(0, coloni));
+            let ty = str_trim(first.slice(coloni + 1, first.len()));
+            let newacc = if vc_sort(ty) == "S" { acc + "(assert (bvsge (len " + nm + ") (_ bv0 64)))\n" } else { acc };
+            vc_len_axioms(rest, newacc)
+        }
+    };
+
 // Emit (declare-const NAME SORT) lines for a "name: Type, ..." param list.
 // @UNSUP@ if any param type is outside the leaf fragment.
 fn vc_decl_params(params: String, acc: String) -> String
@@ -47243,7 +47288,7 @@ fn vc_cex_terms(params: String, acc: String) -> String
             let nm = str_trim(first.slice(0, coloni));
             let ty = str_trim(first.slice(coloni + 1, first.len()));
             let sort = vc_sort(ty);
-            let term = if sort == "S" { "(len " + nm + ")" } else if sort == "Int" { nm } else { "" };
+            let term = if sort == "S" { "(len " + nm + ")" } else if sort == "(_ BitVec 64)" { nm } else { "" };
             let sep = if acc.len() == 0 { "" } else { " " };
             vc_cex_terms(rest, if term == "" { acc } else { acc + sep + term })
         }
@@ -47299,7 +47344,8 @@ fn vc_build_smt(cname: String, params: String, rty: String, pre_asts: String, po
             // declare the uninterpreted byte/len UFs + the sound len>=0 axiom so
             // i64 functions over String params (relative bounds, absolute len)
             // verify without spurious refutation. Leaf fragment is untouched.
-            let pre0 = if find_pattern_noa(decls, " S)", 0) >= 0 { "(declare-sort S 0)\n(declare-fun b (S Int) Int)\n(declare-fun len (S) Int)\n(assert (forall ((__x S)) (>= (len __x) 0)))\n" } else { "" };
+            let pre0 = if find_pattern_noa(decls, " S)", 0) >= 0 { "(declare-sort S 0)\n(declare-fun b (S (_ BitVec 64)) (_ BitVec 64))\n(declare-fun len (S) (_ BitVec 64))\n" } else { "" };
+            let lenax = if find_pattern_noa(decls, " S)", 0) >= 0 { vc_len_axioms(params, "") } else { "" };
             let r1 = vc_elim_calls(src, cname, params, pre_asts, body, "", 0, 1);
             let nb = vc_before(r1, "@@SP@@");
             let r2 = vc_elim_calls(src, cname, params, pre_asts, pre_asts, vc_after(r1, "@@SP@@"), vc_kbase_pre(), 0);
@@ -47312,7 +47358,7 @@ fn vc_build_smt(cname: String, params: String, rty: String, pre_asts: String, po
             let postconj = vc_conj_each(npost, "");
             if vc_is_unsup(side3) or vc_is_unsup(bodytr) or vc_is_unsup(pretr) or vc_is_unsup(postconj) { "@UNSUP@" }
             else if find_pattern_noa(side3, ";REC;", 0) >= 0 { "@RECABSTAIN@" }
-            else { pre0 + decls + side3 + "(declare-const it " + retsort + ")\n" + pretr + "(assert (= it " + bodytr + "))\n(assert (not " + postconj + "))\n(check-sat)\n" }
+            else { pre0 + decls + lenax + side3 + "(declare-const it " + retsort + ")\n" + pretr + "(assert (= it " + bodytr + "))\n(assert (not " + postconj + "))\n(check-sat)\n" }
         }
     };
 
@@ -47782,7 +47828,11 @@ fn eff_z3_invoke(smt: String) -> String
 
 = {
 
-    let raw = exec_with_stdin("z3", "-smt2 -in", smt);
+    // T-BV: soft per-query timeout (ms). Bitvector + quantifier (the len axiom)
+    // can make a query intractable where unbounded-Int was fast; without a
+    // timeout one hard corpus function hangs the whole run. On timeout z3 emits
+    // `unknown`, which degrades to the honest `unknown` verdict / no counterexample.
+    let raw = exec_with_stdin("z3", "-smt2 -in -t:10000", smt);
 
     let t = str_trim(raw);
 
@@ -47805,7 +47855,11 @@ fn eff_z3_model(smt: String) -> String
 
 = {
 
-    let raw = exec_with_stdin("z3", "-smt2 -in", smt);
+    // T-BV: soft per-query timeout (ms). Bitvector + quantifier (the len axiom)
+    // can make a query intractable where unbounded-Int was fast; without a
+    // timeout one hard corpus function hangs the whole run. On timeout z3 emits
+    // `unknown`, which degrades to the honest `unknown` verdict / no counterexample.
+    let raw = exec_with_stdin("z3", "-smt2 -in -t:10000", smt);
 
     let t = str_trim(raw);
 

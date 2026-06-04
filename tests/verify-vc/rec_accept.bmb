@@ -16,19 +16,26 @@ fn count_down(n: i64) -> i64
   post it >= 0
 = if n == 0 { 0 } else { count_down(n - 1) };
 
-// Two formals: substitution of both pos and acc is load-bearing (P2).
+// Two formals: substitution of both pos and acc is load-bearing (P2). Under T-BV
+// (Cycle 3582) this is unsupported_recursion: the `acc+1` recursive actual can
+// overflow (acc=i64::MAX), so the pre-obligation `acc+1>=0` is not dischargeable.
+// accum IS genuinely overflow-buggy (accum(1,MAX) wraps to MIN<0), so the
+// sound abstain is correct; the substitution machinery still runs first.
 fn accum(pos: i64, acc: i64) -> i64
   pre pos >= 0 and acc >= 0
   post it >= 0
 = if pos == 0 { acc } else { accum(pos - 1, acc + 1) };
 
-// IH does NOT rubber-stamp: at base case it=acc, post it>=pos+1 false (acc may be 0).
+// Under T-BV: unsupported_recursion (the same `acc+1` discharge failure as accum
+// masks the base-case refute). `bad_base` below still pins "IH no rubber-stamp"
+// via a genuine base-case refute (overflow-free).
 fn accum_bad(pos: i64, acc: i64) -> i64
   pre pos >= 0 and acc >= 0
   post it >= pos + 1
 = if pos == 0 { acc } else { accum_bad(pos - 1, acc + 1) };
 
-// Addition recursion; pre-obligation n-1>=0 needs the path guard n>0 (path-sensitive).
+// Addition recursion. Under T-BV: refuted — `n + rec_sum(n-1)` overflows for
+// large n (witness n=i64::MAX), a genuine reachable overflow (like cf_pow2).
 fn rec_sum(n: i64) -> i64
   pre n >= 0
   post it >= 0
