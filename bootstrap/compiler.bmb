@@ -31068,7 +31068,9 @@ fn count_struct_fields_at(registry: String, pos: i64, struct_name: String) -> i6
 
 fn count_commas(s: String, pos: i64) -> i64
 
-    post it >= 0
+    pre pos >= 0 and pos <= s.len()
+
+    post it >= 0 and it <= s.len() - pos
 
 = 
 
@@ -48277,9 +48279,9 @@ fn bc_get(contracts: String, key: String, pos: i64) -> String
 // Count commas at depth 0 (ignoring commas inside <>). Used for max_params check.
 fn count_top_commas(s: String, pos: i64, depth: i64) -> i64
 
-  pre pos >= 0
+  pre pos >= 0 and pos <= s.len()
 
-  post it >= 0
+  post it >= 0 and it <= s.len() - pos
 
 = if pos >= s.len() { 0 }
 

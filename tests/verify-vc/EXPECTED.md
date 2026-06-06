@@ -186,6 +186,12 @@ bootstrap/compiler.bmb`), 17 functions changed:
   count_commas / count_top_commas (unbounded IH ⇒ result=MAX ⇒ `delta+IH`
   overflows; needs `post it ≤ s.len()`), sim_find_start_rev (pos=i64::MAX
   false-witness; pre lacks `pos ≤ len`).
+  **[Resolved live in Cycle 3583 — T-CS-live]** count_commas / count_top_commas
+  received `pre pos≤s.len()` + `post it ≤ s.len()-pos` in `compiler.bmb`; both
+  flipped back to `verified` (corpus verified 150→152, refuted 26→24), all
+  callers discharge `pos≤s.len()` (every external caller passes `pos=0`), S3==S4
+  FIXED_POINT_OK. sim_find_start_rev (extreme-index false-witness) remains refuted
+  — its fix is option-B (bounded-length axiom), deferred. See cslive_accept.bmb.
 - **4 verified → unsupported_recursion** (recursive accumulator, sound abstain):
   count_line_at / find_separator / trl_count_chars / count_string_bytes_acc —
   `count+1` recursive actual not dischargeable; contract overflow-incomplete.
@@ -199,3 +205,27 @@ The takeaway is thesis-consistent: most non-machine-int losses are the verifier
 correctly reporting that a bounds-contract is too weak to guarantee
 overflow-freedom (`it ≤ len`, `pos ≤ len`, `count ≤ limit`) — exactly the
 strengthening the AI-authored-contract loop is meant to supply.
+
+## cslive_accept.bmb — unbounded-IH overflow, strengthen-and-verify (Cycle 3583, T-CS-live)
+
+Pins the exact class T-BV exposed and Cycle 3583 resolved *live* in
+`compiler.bmb`: a recursive counter `1 + f(pos+1)` whose only contract is
+`post it >= 0`. Under signed-BV the self-call's IH gives only `it >= 0` (may be
+MAX), so `1 + IH` overflows → the post is `refuted` with a MAX false-witness.
+The function is correct (return ≤ scanned positions); the contract is too weak.
+Adding `pre pos ≤ s.len()` + `post it ≤ s.len()-pos` bounds the IH so
+`1 + IH ≤ s.len()-pos ≤ s.len() ≤ 2^63-1` (no wrap) → verifies.
+
+`cc_*` is a verbatim isomorph of live `count_commas`, `ctc_*` of live
+`count_top_commas` (the two functions that received this strengthening in
+Cycle 3583). Synthetic/forward-only fidelity (the pre/post differ from the live
+functions only in name); the live verdict flip is recorded in the T-BV section
+above. This demonstrates the AI-authored-contract loop end-to-end: verifier
+refutes (overflow gap) → bounded post supplied → same function verifies.
+
+| function   | expected verdict | why |
+|------------|------------------|-----|
+| cc_weak    | refuted   | `1+cc_weak(pos+1)` overflows; IH=MAX false-witness (only `post it≥0`) |
+| cc_strong  | verified  | `post it ≤ s.len()-pos` bounds the IH ⇒ `1+IH ≤ s.len()-pos`, no wrap |
+| ctc_weak   | refuted   | same overflow gap with a 3-param depth scanner |
+| ctc_strong | verified  | bounded post; depth `+/-` irrelevant to the return-value bound |

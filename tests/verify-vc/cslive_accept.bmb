@@ -1,0 +1,61 @@
+// R2 T-CS-live — unbounded-IH overflow contract-strengthening (Cycle 3583).
+//
+// THESIS DEMO (AI-authored-contract loop), the class T-BV (C3582) newly exposed:
+// a recursive counter `1 + f(pos+1)` whose only contract is `post it >= 0`. Under
+// signed-BV the inductive hypothesis for the self-call gives only `it >= 0` (it
+// may be MAX), so `1 + IH` overflows -> the post is *refuted* with a MAX
+// false-witness. The function is CORRECT (real return <= scanned positions); the
+// contract is too weak to prove overflow-freedom.
+//
+// Fix: bound the IH with `post it <= s.len() - pos` (+ `pre pos <= s.len()` so the
+// base case pos == s.len() gives 0 <= 0). Then
+//   1 + IH <= 1 + (s.len()-(pos+1)) = s.len()-pos <= s.len() <= 2^63-1   (no wrap).
+//
+// These are verbatim isomorphs of the live compiler.bmb scanners count_commas /
+// count_top_commas. The live functions received this exact strengthening in
+// Cycle 3583 (corpus refuted->verified, all callers discharge `pos<=s.len()`,
+// S3==S4 FIXED_POINT_OK). This fixture pins the verdict flip as a tracked,
+// reproducible artifact (forward-only synthetic fidelity — see EXPECTED.md).
+//
+// Expected verdicts:
+//   *_weak   -> refuted   (verifier finds the genuine overflow gap, MAX witness)
+//   *_strong -> verified  (bounded post added -> IH can't overflow -> discharges)
+
+// ── count_commas: 2-param `1 + f(pos+1)` ───────────────────────────────────
+fn cc_weak(s: String, pos: i64) -> i64
+  post it >= 0
+= if pos >= s.len() { 0 }
+  else if s.byte_at(pos) == 44 { 1 + cc_weak(s, pos + 1) }
+  else { cc_weak(s, pos + 1) };
+
+fn cc_strong(s: String, pos: i64) -> i64
+  pre pos >= 0 and pos <= s.len()
+  post it >= 0 and it <= s.len() - pos
+= if pos >= s.len() { 0 }
+  else if s.byte_at(pos) == 44 { 1 + cc_strong(s, pos + 1) }
+  else { cc_strong(s, pos + 1) };
+
+// ── count_top_commas: 3-param, depth +/-, `1 + f(pos+1, depth)` ─────────────
+fn ctc_weak(s: String, pos: i64, depth: i64) -> i64
+  pre pos >= 0
+  post it >= 0
+= if pos >= s.len() { 0 }
+  else {
+    let c = s.byte_at(pos);
+    if c == 60 { ctc_weak(s, pos + 1, depth + 1) }
+    else if c == 62 { ctc_weak(s, pos + 1, depth - 1) }
+    else if c == 44 and depth == 0 { 1 + ctc_weak(s, pos + 1, depth) }
+    else { ctc_weak(s, pos + 1, depth) }
+  };
+
+fn ctc_strong(s: String, pos: i64, depth: i64) -> i64
+  pre pos >= 0 and pos <= s.len()
+  post it >= 0 and it <= s.len() - pos
+= if pos >= s.len() { 0 }
+  else {
+    let c = s.byte_at(pos);
+    if c == 60 { ctc_strong(s, pos + 1, depth + 1) }
+    else if c == 62 { ctc_strong(s, pos + 1, depth - 1) }
+    else if c == 44 and depth == 0 { 1 + ctc_strong(s, pos + 1, depth) }
+    else { ctc_strong(s, pos + 1, depth) }
+  };
