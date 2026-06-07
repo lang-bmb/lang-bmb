@@ -1,0 +1,16 @@
+// CT-G build-gate acceptance fixture.
+// `gate_ok` verifies (pre x>=0 => it=x>=0); `gate_bad` is refuted
+// (post it>=0 but body x-1 is negative at x=0). The require-verified gate must
+// PASS a manifest of {gate_ok} and REFUSE a manifest naming gate_bad (or any
+// non-verified / absent name).
+
+fn gate_ok(x: i64) -> i64
+  pre x >= 0
+  post it >= 0
+= x;
+
+fn gate_bad(x: i64) -> i64
+  post it >= 0
+= x - 1;
+
+fn main() -> i64 = 0;

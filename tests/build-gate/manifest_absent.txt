@@ -1,0 +1,2 @@
+gate_ok
+no_such_function

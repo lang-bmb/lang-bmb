@@ -47572,6 +47572,74 @@ fn verify_vc_file(input: String) -> i64
         0
     };
 
+// CT-G: build-time verification gate. Connects the live verify-vc verifier to
+// the build so a function that DECLARES it must be proven cannot silently ship
+// unproven. `compiler.exe build X.bmb --require-verified <manifest>` refuses the
+// build unless EVERY function named in the manifest has a verify-vc verdict of
+// exactly `verified`. Anything else — refuted / unsupported /
+// unsupported_recursion / unknown / no_postcondition / absent — fails the gate
+// (the soundness rule: opted-in AND not-verified => build refused; if
+// `unsupported` passed, the gate would be hollow theater). Opt-in by manifest
+// keeps the rest of the program unchecked-by-default (no false safety claim on
+// functions nobody asked to prove).
+
+// All verify-vc verdict objects for `src` as one JSON string (the comma-
+// separated {"function":..,"verdict":..} objects). Reuses the verify-vc scan.
+fn vc_verdicts_json(src: String) -> String
+  post it.len() >= 0
+= let sb = sb_new();
+    let _s = vc_scan(src, 0, sb, 1);
+    sb_build(sb);
+
+// Walk a require-verified manifest (one fn name per line). Returns the newline-
+// joined names that are NOT verified in `json` (empty => gate passes). A name
+// counts as verified only if its exact `verified` verdict object is present;
+// any other verdict, or absence, is a failure (sound: no unproven fn passes).
+fn vc_gate_failed(json: String, manifest: String, pos: i64, acc: String) -> String
+  pre pos >= 0
+  post it.len() >= 0
+= if pos >= manifest.len() { acc }
+    else {
+        let nl = find_pattern_noa(manifest, "\n", pos);
+        let eol = if nl < 0 { manifest.len() } else { nl };
+        let name = str_trim(manifest.slice(pos, eol));
+        let nacc = if name.len() == 0 { acc }
+            else if find_pattern_noa(json, "\"function\":\"" + json_esc(name) + "\",\"verdict\":\"verified\"", 0) >= 0 { acc }
+            else { acc + name + "\n" };
+        vc_gate_failed(json, manifest, eol + 1, nacc)
+    };
+
+// CT-G entry: run the require-verified gate (if a manifest path was given), then
+// build. Returns nonzero (build refused) when any opted-in function is unverified
+// or the manifest/source is unreadable. Output is machine-JSON (Rule 8).
+fn build_with_gate(input: String, output: String, fast: bool, runtime: String, stats: bool, safe: i64, manifest_path: String) -> i64
+  pre safe >= 0
+  post it >= 0
+= if manifest_path == "" { build_file_ex(input, output, fast, runtime, stats, safe) }
+    else {
+        let manifest = read_file(manifest_path);
+        if manifest.len() == 0 {
+            let _e = println_str("{\"gate\":\"require-verified\",\"status\":\"error\",\"reason\":\"manifest empty or unreadable\",\"manifest\":\"" + json_esc(manifest_path) + "\"}");
+            1
+        }
+        else {
+            let src = read_file(input);
+            if src.len() == 0 { err_no_file(input) }
+            else {
+                let json = vc_verdicts_json(src);
+                let failed = vc_gate_failed(json, manifest, 0, "");
+                if failed.len() == 0 {
+                    let _p = println_str("{\"gate\":\"require-verified\",\"status\":\"pass\",\"manifest\":\"" + json_esc(manifest_path) + "\"}");
+                    build_file_ex(input, output, fast, runtime, stats, safe)
+                }
+                else {
+                    let _f = println_str("{\"gate\":\"require-verified\",\"status\":\"fail\",\"manifest\":\"" + json_esc(manifest_path) + "\",\"unverified\":\"" + json_esc(failed) + "\"}");
+                    1
+                }
+            }
+        }
+    };
+
 fn eff_z3_gen_fn_decls(eff_map: String, pos: i64, sb: i64) -> i64
 
   pre pos >= 0
@@ -49819,7 +49887,9 @@ fn main_cmd_build(cmd: String, argc: i64) -> i64
 
         let safe = if check_arg_flag(argc, 3, "--safe") { 1 } else { 0 };
 
-        build_file_ex(input, output, fast, runtime, stats, safe)
+        let require = find_arg_value(argc, 3, "--require-verified", "");
+
+        build_with_gate(input, output, fast, runtime, stats, safe, require)
 
     } else if cmd == "emit-ir" and argc >= 4 {
 

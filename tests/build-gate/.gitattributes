@@ -1,0 +1,4 @@
+# Manifests are read byte-for-byte by the build gate; a CRLF would put a stray
+# \r on each function name and make the gate false-fail. The harness is bash.
+# Force LF on checkout regardless of core.autocrlf.
+* text eol=lf
