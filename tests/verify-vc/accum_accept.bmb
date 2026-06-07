@@ -1,0 +1,102 @@
+// R2 T-CS-live-acc — recursive accumulator overflow, strengthen-and-verify
+// (Cycle 3584). The class T-BV (C3582) exposed as `4 verified→unsupported_recursion`.
+//
+// Unlike cslive's `1 + f(pos+1)` (counter in RETURN position, bounded by a post),
+// these accumulate in ARGUMENT position (`count+1` / `line+1`). They are
+// `unsupported_recursion` (not refuted): the IH instantiation's call-site
+// pre-obligation `count+1 >= 0` cannot be discharged under signed-BV without an
+// upper bound on the accumulator (count = i64::MAX ⇒ count+1 < 0 SAT) →
+// vc_assume_callee abstains → havoc → unsup_rec.
+//
+// CLEAN class (tcc / csba): the accumulator counts a SUBSET of scanned positions,
+// so `count <= pos` is inductive; with `pre pos <= s.len()` and path-sensitivity
+// (recursive branch carries pc `pos < s.len()`):
+//   count <= pos < s.len() <= 2^63-1  ⇒ count < MAX ⇒ count+1 no overflow ⇒ verifies.
+// These two are the live compiler.bmb functions strengthened in C3584
+// (trl_count_chars / count_string_bytes_acc), verbatim-isomorph here.
+//
+// OPTION-B class (cla / fsep): NOT cleanly dischargeable — kept abstained as a
+// tracked boundary for a future bounded-length-axiom (option-B) cycle:
+//   cla (count_line_at): line is 1-indexed (line <= cur+1), so line+1 <= src.len()+1
+//     overflows when src.len()=MAX — the `+1` eats the headroom that count<=pos has.
+//   fsep (find_separator): the guard computes `pos+2`, which itself overflows at
+//     extreme index; no contract-only strengthening fixes it (logic change needed).
+//
+// Expected: *_weak / cla_* / fsep_* -> unsupported_recursion ; tcc_strong /
+// csba_strong -> verified.
+
+// ── trl_count_chars isomorph: tail accumulator `count+1` (CLEAN) ────────────
+fn tcc_weak(s: String, pos: i64, count: i64) -> i64
+  pre pos >= 0 and count >= 0
+  post it >= 0
+= if pos >= s.len() { count }
+  else if s.byte_at(pos) == 59 { tcc_weak(s, pos + 1, count + 1) }
+  else { tcc_weak(s, pos + 1, count) };
+
+fn tcc_strong(s: String, pos: i64, count: i64) -> i64
+  pre pos >= 0 and pos <= s.len() and count >= 0 and count <= pos
+  post it >= 0
+= if pos >= s.len() { count }
+  else if s.byte_at(pos) == 59 { tcc_strong(s, pos + 1, count + 1) }
+  else { tcc_strong(s, pos + 1, count) };
+
+// ── count_string_bytes_acc isomorph: branches pos+2 / pos+1, count+1 (CLEAN) ─
+fn csba_weak(s: String, pos: i64, count: i64) -> i64
+  pre pos >= 0 and count >= 0
+  post it >= 0
+= if pos >= s.len() { count }
+  else {
+    let ch = s.byte_at(pos);
+    if ch == 92 and pos + 1 < s.len() {
+      let next = s.byte_at(pos + 1);
+      if next == 110 { csba_weak(s, pos + 2, count + 1) }
+      else { csba_weak(s, pos + 1, count + 1) }
+    } else { csba_weak(s, pos + 1, count + 1) }
+  };
+
+fn csba_strong(s: String, pos: i64, count: i64) -> i64
+  pre pos >= 0 and pos <= s.len() and count >= 0 and count <= pos
+  post it >= 0
+= if pos >= s.len() { count }
+  else {
+    let ch = s.byte_at(pos);
+    if ch == 92 and pos + 1 < s.len() {
+      let next = s.byte_at(pos + 1);
+      if next == 110 { csba_strong(s, pos + 2, count + 1) }
+      else { csba_strong(s, pos + 1, count + 1) }
+    } else { csba_strong(s, pos + 1, count + 1) }
+  };
+
+// ── count_line_at isomorph: `line+1`, 1-indexed (OPTION-B boundary) ─────────
+fn cla_weak(src: String, pos: i64, cur: i64, line: i64) -> i64
+  pre pos >= 0 and cur >= 0 and line >= 1
+  post it >= line
+= if cur >= pos or cur >= src.len() { line }
+  else if src.byte_at(cur) == 10 { cla_weak(src, pos, cur + 1, line + 1) }
+  else { cla_weak(src, pos, cur + 1, line) };
+
+// Even with the tightest inductive bound `line <= cur + 1`, line+1 <= src.len()+1
+// overflows at src.len()=MAX ⇒ still unsupported_recursion (needs option-B).
+fn cla_strong(src: String, pos: i64, cur: i64, line: i64) -> i64
+  pre pos >= 0 and cur >= 0 and line >= 1 and line <= cur + 1
+  post it >= line
+= if cur >= pos or cur >= src.len() { line }
+  else if src.byte_at(cur) == 10 { cla_strong(src, pos, cur + 1, line + 1) }
+  else { cla_strong(src, pos, cur + 1, line) };
+
+// ── find_separator isomorph: `pos+2` guard overflow (OPTION-B boundary) ─────
+fn fsep_weak(s: String, pos: i64) -> i64
+  pre pos >= 0
+  post it >= 0
+= if pos + 2 >= s.len() { s.len() }
+  else if s.byte_at(pos) == 35 and s.byte_at(pos + 1) == 35 and s.byte_at(pos + 2) == 35 { pos }
+  else { fsep_weak(s, pos + 1) };
+
+// `pre pos <= s.len()` is not enough — the guard's `pos+2` overflows at extreme
+// index regardless ⇒ still unsupported_recursion (logic change, not contract).
+fn fsep_strong(s: String, pos: i64) -> i64
+  pre pos >= 0 and pos <= s.len()
+  post it >= 0
+= if pos + 2 >= s.len() { s.len() }
+  else if s.byte_at(pos) == 35 and s.byte_at(pos + 1) == 35 and s.byte_at(pos + 2) == 35 { pos }
+  else { fsep_strong(s, pos + 1) };

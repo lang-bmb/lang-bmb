@@ -195,6 +195,14 @@ bootstrap/compiler.bmb`), 17 functions changed:
 - **4 verified → unsupported_recursion** (recursive accumulator, sound abstain):
   count_line_at / find_separator / trl_count_chars / count_string_bytes_acc —
   `count+1` recursive actual not dischargeable; contract overflow-incomplete.
+  **[2 resolved live in Cycle 3584 — T-CS-live-acc]** trl_count_chars /
+  count_string_bytes_acc received `pre pos≤s.len() and count≤pos` in
+  `compiler.bmb`; both flipped `unsupported_recursion → verified` (corpus verified
+  152→154, unsup_rec 10→8), all callers pass `(_,0,0)`, S3==S4 FIXED_POINT_OK. The
+  other two stay abstained as the **option-B** boundary: count_line_at's `line+1`
+  is 1-indexed (`line≤cur+1` ⇒ `line+1≤src.len()+1` overflows at MAX) and
+  find_separator's guard computes `pos+2` (overflows at extreme index, logic-bound
+  not contract-bound). Both need the bounded-length axiom. See accum_accept.bmb.
 
 **Design choice — signed BV only, NO bounded-length axiom (option A).** A
 `forall x. len(x) < 2^62` axiom would recover the lone extreme-index false-witness
@@ -229,3 +237,31 @@ refutes (overflow gap) → bounded post supplied → same function verifies.
 | cc_strong  | verified  | `post it ≤ s.len()-pos` bounds the IH ⇒ `1+IH ≤ s.len()-pos`, no wrap |
 | ctc_weak   | refuted   | same overflow gap with a 3-param depth scanner |
 | ctc_strong | verified  | bounded post; depth `+/-` irrelevant to the return-value bound |
+
+## accum_accept.bmb — recursive accumulator overflow, strengthen-and-verify (Cycle 3584, T-CS-live-acc)
+
+The `count+1`/`line+1` accumulator class T-BV exposed as `4 verified →
+unsupported_recursion`. Unlike cslive's `1 + f(...)` (RETURN position, bounded by a
+post), these accumulate in ARGUMENT position; they are `unsupported_recursion` (not
+refuted) because the IH's call-site pre-obligation `count+1 ≥ 0` can't discharge
+under signed-BV without an upper bound on the accumulator.
+
+**CLEAN** (tcc / csba): the accumulator counts a subset of scanned positions, so
+`count ≤ pos` is inductive; with `pre pos ≤ s.len()` + path-sensitivity
+(`pos < s.len()` on the recursive branch), `count ≤ pos < s.len() ⇒ count+1` no
+overflow. tcc/csba are verbatim isomorphs of the live functions strengthened in
+Cycle 3584 (trl_count_chars / count_string_bytes_acc). **OPTION-B boundary** (cla /
+fsep): kept abstained — count_line_at's `line+1` is 1-indexed (the `+1` eats the
+headroom `count≤pos` has) and find_separator's guard computes `pos+2` (overflows by
+construction); both need the bounded-length axiom (a future cycle).
+
+| function    | expected verdict | why |
+|-------------|------------------|-----|
+| tcc_weak    | unsupported_recursion | `count+1≥0` pre-obligation undischargeable (count unbounded) |
+| tcc_strong  | verified  | `count ≤ pos < s.len()` ⇒ `count+1` no overflow |
+| csba_weak   | unsupported_recursion | same, with pos+2/pos+1 branches |
+| csba_strong | verified  | `count ≤ pos` inductive across both advance steps |
+| cla_weak    | unsupported_recursion | `line+1` accumulator unbounded |
+| cla_strong  | unsupported_recursion | even `line ≤ cur+1` ⇒ `line+1 ≤ src.len()+1` overflows at MAX (option-B) |
+| fsep_weak   | unsupported_recursion | guard `pos+2` overflows; recursive `pos+1` undischargeable |
+| fsep_strong | unsupported_recursion | `pre pos≤s.len()` insufficient — `pos+2` overflows by construction (option-B) |

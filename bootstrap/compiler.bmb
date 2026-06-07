@@ -24886,7 +24886,7 @@ fn trl_param_count(params: String) -> i64
 
 fn trl_count_chars(s: String, pos: i64, ch: i64, count: i64) -> i64
 
-    pre pos >= 0 and count >= 0
+    pre pos >= 0 and pos <= s.len() and count >= 0 and count <= pos
 
     post it >= 0
 
@@ -30143,7 +30143,7 @@ fn count_string_bytes(s: String) -> i64
 
 fn count_string_bytes_acc(s: String, pos: i64, count: i64) -> i64
 
-    pre pos >= 0 and count >= 0
+    pre pos >= 0 and pos <= s.len() and count >= 0 and count <= pos
 
     post it >= 0
 
