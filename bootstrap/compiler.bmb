@@ -172,7 +172,7 @@ fn is_error(s: String) -> bool
 
 fn count_line_at(src: String, pos: i64, cur: i64, line: i64) -> i64
 
-  pre pos >= 0 and cur >= 0 and line >= 1
+  pre pos >= 0 and cur >= 0 and line >= 1 and line <= cur + 1
 
   post it >= line
 
@@ -16920,7 +16920,7 @@ fn unpack_arg(pair: String) -> String
 
 fn find_separator(s: String, pos: i64) -> i64
 
-  pre pos >= 0
+  pre pos >= 0 and pos <= s.len()
 
   post it >= 0
 
@@ -47232,6 +47232,21 @@ fn vc_elim_calls(src: String, cname: String, cparams: String, cpre: String, targ
 // ever apply to String PARAMETERS (no string construction), so the ground
 // instances suffice and keep every query in decidable QF_UFBV (fast + det.).
 // Must be emitted AFTER the param decls (it references the declared names).
+//
+// OPTION-B (T-BV-ext): also emit a GROUND upper bound `len(s) < 2^62`
+// (`(assert (bvslt (len s) (_ bv4611686018427387904 64)))`). This is a modeling
+// axiom about the runtime, NOT derived from contracts: no string that can
+// physically exist on a 64-bit machine has length >= 2^62 (that is 4 EB of
+// contiguous memory). Real inputs satisfy it, so {real strings} subset
+// {len < 2^62}; proving a contract for all len < 2^62 thus proves it for every
+// real input — the axiom only removes SAT models with len >= 2^62 (impossible
+// executions) and cannot mask a real bug. It is the shared enabler for the
+// position-scanner overflow class: with `pos <= len < 2^62`, terms like `pos+2`
+// / `cur+1` / `line+1` provably do not wrap signed i64. The bound is MONOTONIC
+// (a stronger antecedent only flips verdicts toward `verified`, never down).
+// Soundness invariant amended: every `verified` is independent of
+// overflow-idealized arithmetic, EXCEPT it assumes `len < 2^62` — sound on any
+// physical 64-bit machine. See measurements/r2_optionb_lenbound_2026-06-07.md.
 fn vc_len_axioms(params: String, acc: String) -> String
   post it.len() >= 0
 = let p = str_trim(params);
@@ -47245,7 +47260,7 @@ fn vc_len_axioms(params: String, acc: String) -> String
         else {
             let nm = str_trim(first.slice(0, coloni));
             let ty = str_trim(first.slice(coloni + 1, first.len()));
-            let newacc = if vc_sort(ty) == "S" { acc + "(assert (bvsge (len " + nm + ") (_ bv0 64)))\n" } else { acc };
+            let newacc = if vc_sort(ty) == "S" { acc + "(assert (bvsge (len " + nm + ") (_ bv0 64)))\n(assert (bvslt (len " + nm + ") (_ bv4611686018427387904 64)))\n" } else { acc };
             vc_len_axioms(rest, newacc)
         }
     };

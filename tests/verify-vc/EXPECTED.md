@@ -42,20 +42,23 @@ contract) and carries a Z3 `counterexample`; adding the indicated `pre`
 (`_strong`) verifies. Demonstrates the verifier half of the AI-authored-contract
 loop (the contract-authoring step is hand-applied in the probe).
 
-**T-BV exception (Cycle 3582):** under sound i64 wrap the bounds `pre` alone no
-longer suffices for two pairs — `scan_char_end_strong` is `refuted` (`pos+2`
-overflows at extreme index) and `count_newlines_strong` is
-`unsupported_recursion` (`count+1` recursive actual not dischargeable). Those
-contracts need a further strengthening (no extreme index / `count ≤ limit`). The
-other three pairs (all `pos+1`) still verify. See the per-row notes and the T-BV
-section below.
+**T-BV exception (Cycle 3582), partly resolved by option-B (Cycle 3585):** under
+sound i64 wrap the bounds `pre` alone no longer sufficed for two pairs.
+`scan_char_end_strong` (`pos+2` overflow at extreme index) is **resolved in C3585**:
+its only counterexample was `pos≈2^63, len=2^63-1` (an impossible ~9 EB string), so
+the global `len < 2^62` axiom removes it and the function `verified` — a sound flip
+(verified per its baseline cex `len = 0x7fff…f ≥ 2^62`). `count_newlines_strong`
+stays `unsupported_recursion`: it is a `count+1` recursive accumulator and the
+axiom bounds `len`, NOT the accumulator `count` (its fix is a `count`-bounding
+contract, cf. the tcc/csba CLEAN class). The other three pairs (all `pos+1`) verify.
+See the per-row notes and the T-BV section below.
 
 | function              | expected verdict | counterexample pinpoints |
 |-----------------------|------------------|--------------------------|
 | find_colon_weak       | refuted          | pos=1, len s=0  → missing `pre pos <= s.len()` |
 | find_colon_strong     | verified         | `pos+1` (k=1) cannot overflow when pos≤len≤i64::MAX |
 | scan_char_end_weak    | refuted          | pos=1, len s=0  → missing `pre pos <= s.len()` |
-| scan_char_end_strong  | refuted (T-BV)   | `pos+2` overflows at pos≈2^63; adding `pre pos<=s.len()` is NOT enough under sound BV (len is only `len≥0`-bounded) — see T-BV note |
+| scan_char_end_strong  | verified (C3585) | `pos+2` overflow only at pos≈2^63 (baseline cex `len=2^63-1, pos=2^63-2`); option-B axiom `len<2^62` removes that impossible-length witness → sound flip — see T-BV note |
 | skip_sp_tab_weak      | refuted          | pos=1, limit=0  → missing `pre pos <= limit` |
 | skip_sp_tab_strong    | verified         | — |
 | count_newlines_weak   | refuted          | count=-1        → missing `pre count >= 0` |
@@ -198,16 +201,33 @@ bootstrap/compiler.bmb`), 17 functions changed:
   **[2 resolved live in Cycle 3584 — T-CS-live-acc]** trl_count_chars /
   count_string_bytes_acc received `pre pos≤s.len() and count≤pos` in
   `compiler.bmb`; both flipped `unsupported_recursion → verified` (corpus verified
-  152→154, unsup_rec 10→8), all callers pass `(_,0,0)`, S3==S4 FIXED_POINT_OK. The
-  other two stay abstained as the **option-B** boundary: count_line_at's `line+1`
-  is 1-indexed (`line≤cur+1` ⇒ `line+1≤src.len()+1` overflows at MAX) and
-  find_separator's guard computes `pos+2` (overflows at extreme index, logic-bound
-  not contract-bound). Both need the bounded-length axiom. See accum_accept.bmb.
+  152→154, unsup_rec 10→8), all callers pass `(_,0,0)`, S3==S4 FIXED_POINT_OK.
+  **[other 2 resolved live in Cycle 3585 — T-BV-ext / option-B]** count_line_at
+  (`pre line≤cur+1`) and find_separator (`pre pos≤s.len()`) flipped
+  `unsupported_recursion → verified` once the global `len < 2^62` axiom (below) made
+  `line+1` / `pos+2` provably non-wrapping (corpus verified 154→156, unsup_rec 8→6),
+  all callers discharge, S3==S4 FIXED_POINT_OK. See accum_accept.bmb.
 
-**Design choice — signed BV only, NO bounded-length axiom (option A).** A
-`forall x. len(x) < 2^62` axiom would recover the lone extreme-index false-witness
-(scan_char_end-class), but the corpus shows that class is ~1 function, and the
-axiom adds a soundness caveat (strings < 4 EB). Not worth it; A is soundness-pure.
+**Design choice — REVERSED in Cycle 3585: option-B (bounded-length axiom) ADOPTED.**
+Originally (T-BV) option A was chosen — signed BV only, no length axiom — because
+the extreme-index false-witness class was ~1 function and the axiom carries a
+soundness caveat (strings < 4 EB). C3584 grew that population to 3 concrete members
+(count_line_at, find_separator, sim_find_start_rev), weakening the "~1 function"
+rationale. C3585 adopts option-B as a GROUND per-String-param upper bound
+`(assert (bvslt (len p) (_ bv4611686018427387904 64)))` in `vc_len_axioms` (NOT a
+`forall` — that is undecidable UFBV; ground instances suffice in the P1 fragment).
+**Soundness:** the axiom only removes SAT models with `len ≥ 2^62` (a 4 EB string,
+physically impossible on 64-bit); every real input satisfies `len < 2^62`, so
+`verified under axiom ⇒ holds for all real inputs` — it cannot mask a real bug. The
+change is MONOTONIC (stronger antecedent ⇒ flips only toward `verified`): measured
+corpus impact of the axiom ALONE was 0 verdict changes (pure enabler); it recovers a
+function only when combined with a position-len-tying contract. Soundness invariant
+amended: *every `verified` is independent of overflow-idealized arithmetic, EXCEPT it
+assumes `len < 2^62` — a modeling axiom sound on any physical 64-bit machine.*
+sim_find_start_rev stays **refuted** (NOT recovered): its counterexample is
+`pos=i64::MAX, len=0` — a `pos`-overflow the `len` axiom does not bound, and its
+caller `sim_find_start` (`pre pos≥0` only) cannot discharge a `pos≤s.len()`
+strengthening (unbounded caller chain). Deferred — a genuine stop-finding.
 
 The takeaway is thesis-consistent: most non-machine-int losses are the verifier
 correctly reporting that a bounds-contract is too weak to guarantee
@@ -250,10 +270,15 @@ under signed-BV without an upper bound on the accumulator.
 `count ≤ pos` is inductive; with `pre pos ≤ s.len()` + path-sensitivity
 (`pos < s.len()` on the recursive branch), `count ≤ pos < s.len() ⇒ count+1` no
 overflow. tcc/csba are verbatim isomorphs of the live functions strengthened in
-Cycle 3584 (trl_count_chars / count_string_bytes_acc). **OPTION-B boundary** (cla /
-fsep): kept abstained — count_line_at's `line+1` is 1-indexed (the `+1` eats the
-headroom `count≤pos` has) and find_separator's guard computes `pos+2` (overflows by
-construction); both need the bounded-length axiom (a future cycle).
+Cycle 3584 (trl_count_chars / count_string_bytes_acc). The **OPTION-B class** (cla /
+fsep) — count_line_at's 1-indexed `line+1` and find_separator's `pos+2` guard, both
+of which overflow only at the abstract `len = MAX` — is RESOLVED in Cycle 3585
+(T-BV-ext) by the global `len < 2^62` modeling axiom in `vc_len_axioms`: with
+`pos/cur < s.len() < 2^62` (path-sensitivity + axiom), `pos+2` / `line+1` provably do
+not wrap. cla_strong (`line ≤ cur+1`) and fsep_strong (`pos ≤ s.len()`) are verbatim
+isomorphs of the live count_line_at / find_separator flipped to verified in C3585.
+The `_weak` rows stay `unsupported_recursion` (no position-len bound ⇒ the axiom alone
+cannot help — it bounds `len`, not `pos`/`cur`).
 
 | function    | expected verdict | why |
 |-------------|------------------|-----|
@@ -261,7 +286,7 @@ construction); both need the bounded-length axiom (a future cycle).
 | tcc_strong  | verified  | `count ≤ pos < s.len()` ⇒ `count+1` no overflow |
 | csba_weak   | unsupported_recursion | same, with pos+2/pos+1 branches |
 | csba_strong | verified  | `count ≤ pos` inductive across both advance steps |
-| cla_weak    | unsupported_recursion | `line+1` accumulator unbounded |
-| cla_strong  | unsupported_recursion | even `line ≤ cur+1` ⇒ `line+1 ≤ src.len()+1` overflows at MAX (option-B) |
-| fsep_weak   | unsupported_recursion | guard `pos+2` overflows; recursive `pos+1` undischargeable |
-| fsep_strong | unsupported_recursion | `pre pos≤s.len()` insufficient — `pos+2` overflows by construction (option-B) |
+| cla_weak    | unsupported_recursion | `line+1` accumulator unbounded (no `line ≤ cur+1`) |
+| cla_strong  | verified  | `line ≤ cur+1` + path-sens `cur < src.len() < 2^62` (option-B axiom) ⇒ `line+1` no overflow |
+| fsep_weak   | unsupported_recursion | `pos` unbounded ⇒ `pos+1`/`pos+2` undischargeable; axiom bounds `len` not `pos` |
+| fsep_strong | verified  | `pos ≤ s.len() < 2^62` (option-B axiom) ⇒ `pos+2` no overflow |

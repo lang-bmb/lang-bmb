@@ -1,5 +1,7 @@
-// R2 T-CS-live-acc — recursive accumulator overflow, strengthen-and-verify
-// (Cycle 3584). The class T-BV (C3582) exposed as `4 verified→unsupported_recursion`.
+// R2 T-CS-live-acc (Cycle 3584) + T-BV-ext / option-B (Cycle 3585) — recursive
+// accumulator overflow, strengthen-and-verify. The class T-BV (C3582) exposed as
+// `4 verified→unsupported_recursion`. C3584 resolved tcc/csba (CLEAN, count≤pos);
+// C3585 resolved cla/fsep via the global `len < 2^62` axiom (OPTION-B).
 //
 // Unlike cslive's `1 + f(pos+1)` (counter in RETURN position, bounded by a post),
 // these accumulate in ARGUMENT position (`count+1` / `line+1`). They are
@@ -15,15 +17,15 @@
 // These two are the live compiler.bmb functions strengthened in C3584
 // (trl_count_chars / count_string_bytes_acc), verbatim-isomorph here.
 //
-// OPTION-B class (cla / fsep): NOT cleanly dischargeable — kept abstained as a
-// tracked boundary for a future bounded-length-axiom (option-B) cycle:
-//   cla (count_line_at): line is 1-indexed (line <= cur+1), so line+1 <= src.len()+1
-//     overflows when src.len()=MAX — the `+1` eats the headroom that count<=pos has.
-//   fsep (find_separator): the guard computes `pos+2`, which itself overflows at
-//     extreme index; no contract-only strengthening fixes it (logic change needed).
+// OPTION-B class (cla / fsep): blocked only by the abstract `len = MAX` overflow.
+// RESOLVED in Cycle 3585 (T-BV-ext) by the global `len < 2^62` modeling axiom in
+// vc_len_axioms — with pos/cur < s.len() < 2^62, `pos+2` / `line+1` provably do not
+// wrap. cla_strong / fsep_strong are verbatim isomorphs of the live count_line_at /
+// find_separator flipped to verified in C3585.
 //
-// Expected: *_weak / cla_* / fsep_* -> unsupported_recursion ; tcc_strong /
-// csba_strong -> verified.
+// Expected: *_weak -> unsupported_recursion (no position-len bound; the axiom bounds
+// `len`, not pos/cur) ; tcc_strong / csba_strong / cla_strong / fsep_strong ->
+// verified.
 
 // ── trl_count_chars isomorph: tail accumulator `count+1` (CLEAN) ────────────
 fn tcc_weak(s: String, pos: i64, count: i64) -> i64
@@ -75,8 +77,9 @@ fn cla_weak(src: String, pos: i64, cur: i64, line: i64) -> i64
   else if src.byte_at(cur) == 10 { cla_weak(src, pos, cur + 1, line + 1) }
   else { cla_weak(src, pos, cur + 1, line) };
 
-// Even with the tightest inductive bound `line <= cur + 1`, line+1 <= src.len()+1
-// overflows at src.len()=MAX ⇒ still unsupported_recursion (needs option-B).
+// With `line <= cur + 1` + path-sens `cur < src.len()` (recursive branch) + the
+// C3585 global axiom `src.len() < 2^62`: line <= cur+1 < src.len()+1 < 2^62+1 ⇒
+// `line+1` no overflow ⇒ verified. Verbatim isomorph of live count_line_at.
 fn cla_strong(src: String, pos: i64, cur: i64, line: i64) -> i64
   pre pos >= 0 and cur >= 0 and line >= 1 and line <= cur + 1
   post it >= line
@@ -92,8 +95,9 @@ fn fsep_weak(s: String, pos: i64) -> i64
   else if s.byte_at(pos) == 35 and s.byte_at(pos + 1) == 35 and s.byte_at(pos + 2) == 35 { pos }
   else { fsep_weak(s, pos + 1) };
 
-// `pre pos <= s.len()` is not enough — the guard's `pos+2` overflows at extreme
-// index regardless ⇒ still unsupported_recursion (logic change, not contract).
+// With `pre pos <= s.len()` + the C3585 global axiom `s.len() < 2^62`:
+// pos <= s.len() < 2^62 ⇒ `pos+2` no overflow ⇒ verified. Verbatim isomorph of
+// live find_separator. (fsep_weak stays unsup_rec: no `pos <= s.len()`.)
 fn fsep_strong(s: String, pos: i64) -> i64
   pre pos >= 0 and pos <= s.len()
   post it >= 0
