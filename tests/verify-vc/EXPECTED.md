@@ -211,9 +211,12 @@ bootstrap/compiler.bmb`), 17 functions changed:
 **Design choice — REVERSED in Cycle 3585: option-B (bounded-length axiom) ADOPTED.**
 Originally (T-BV) option A was chosen — signed BV only, no length axiom — because
 the extreme-index false-witness class was ~1 function and the axiom carries a
-soundness caveat (strings < 4 EB). C3584 grew that population to 3 concrete members
-(count_line_at, find_separator, sim_find_start_rev), weakening the "~1 function"
-rationale. C3585 adopts option-B as a GROUND per-String-param upper bound
+soundness caveat (strings < 4 EB). The reversal is justified by C3585's results, NOT
+by raw population: 2 genuine live recoveries (count_line_at, find_separator) + the
+cleaner verification story + the cross-fixture catch (scan_char_end). (C3584's
+"population 1→3" framing was loose — sim_find_start_rev is a `pos`-overflow the len
+axiom does not touch, NOT a len=MAX option-B case; see its row below.) C3585 adopts
+option-B as a GROUND per-String-param upper bound
 `(assert (bvslt (len p) (_ bv4611686018427387904 64)))` in `vc_len_axioms` (NOT a
 `forall` — that is undecidable UFBV; ground instances suffice in the P1 fragment).
 **Soundness:** the axiom only removes SAT models with `len ≥ 2^62` (a 4 EB string,
@@ -222,8 +225,11 @@ physically impossible on 64-bit); every real input satisfies `len < 2^62`, so
 change is MONOTONIC (stronger antecedent ⇒ flips only toward `verified`): measured
 corpus impact of the axiom ALONE was 0 verdict changes (pure enabler); it recovers a
 function only when combined with a position-len-tying contract. Soundness invariant
-amended: *every `verified` is independent of overflow-idealized arithmetic, EXCEPT it
-assumes `len < 2^62` — a modeling axiom sound on any physical 64-bit machine.*
+(precise, per the 2a measurement): the pre-existing `verified` set does NOT depend on
+the axiom (axiom-alone = 0 verdict changes); only the 2 newly-enabled verdicts
+(count_line_at, find_separator) rest on `len < 2^62` — a modeling axiom sound on any
+physical 64-bit machine. (Re-running axiom-vs-baseline is a cheap future tripwire: any
+new divergence flags a function that started leaning on the bound.)
 sim_find_start_rev stays **refuted** (NOT recovered): its counterexample is
 `pos=i64::MAX, len=0` — a `pos`-overflow the `len` axiom does not bound, and its
 caller `sim_find_start` (`pre pos≥0` only) cannot discharge a `pos≤s.len()`

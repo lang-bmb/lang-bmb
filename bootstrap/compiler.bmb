@@ -47244,9 +47244,12 @@ fn vc_elim_calls(src: String, cname: String, cparams: String, cpre: String, targ
 // position-scanner overflow class: with `pos <= len < 2^62`, terms like `pos+2`
 // / `cur+1` / `line+1` provably do not wrap signed i64. The bound is MONOTONIC
 // (a stronger antecedent only flips verdicts toward `verified`, never down).
-// Soundness invariant amended: every `verified` is independent of
-// overflow-idealized arithmetic, EXCEPT it assumes `len < 2^62` — sound on any
-// physical 64-bit machine. See measurements/r2_optionb_lenbound_2026-06-07.md.
+// Soundness invariant (precise): the axiom is globally present, but the
+// axiom-alone corpus measurement (Cycle 3585 stage 2a) showed 0 verdict changes,
+// so the pre-existing `verified` set does NOT depend on it — only the verdicts it
+// newly enables (count_line_at / find_separator) rest on `len < 2^62`, which is
+// sound on any physical 64-bit machine (no string reaches 4 EB). See
+// measurements/r2_optionb_lenbound_2026-06-07.md.
 fn vc_len_axioms(params: String, acc: String) -> String
   post it.len() >= 0
 = let p = str_trim(params);
