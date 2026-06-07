@@ -1,0 +1,10 @@
+// CT-G in-language @verify acceptance fixture (FAIL case).
+// vbad declares @verify but is refuted (post it>=0, body x-1 negative at x=0),
+// so the by-construction gate must REFUSE the build (exit 1).
+
+@verify
+fn vbad(x: i64) -> i64
+  post it >= 0
+= x - 1;
+
+fn main() -> i64 = 0;

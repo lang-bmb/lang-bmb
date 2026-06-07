@@ -1,0 +1,11 @@
+// CT-G in-language @verify acceptance fixture (PASS case).
+// vok declares @verify and IS verifiable (pre x>=0 => post it=x>=0), so the
+// build must PASS its by-construction gate with no external manifest.
+
+@verify
+fn vok(x: i64) -> i64
+  pre x >= 0
+  post it >= 0
+= x;
+
+fn main() -> i64 = 0;

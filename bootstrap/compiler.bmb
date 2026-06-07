@@ -60,6 +60,13 @@ fn int_to_string(n: i64) -> String
 
 = if n < 0 { "-" + int_to_string_neg(n) } else if n < 10 { digit_char(n) } else { int_to_string(n / 10) + digit_char(n - (n / 10) * 10) };
 
+// CT-G self-application dogfood: these proven lexer contracts gate the compiler's
+// OWN build. With the in-language @verify surface, `compiler.exe build compiler.bmb`
+// refuses to produce a binary unless each @verify-annotated function's verify-vc
+// verdict is exactly `verified` — the by-construction thesis applied to the compiler
+// itself. (Chosen for complete behavioral postconditions: `post it == (full
+// predicate)`, not a partial `it >= 0`.)
+@verify
 fn is_whitespace(c: i64) -> bool
 
   pre c >= 0
@@ -68,6 +75,7 @@ fn is_whitespace(c: i64) -> bool
 
 = c == 32 or c == 9 or c == 10 or c == 13;
 
+@verify
 fn is_digit(c: i64) -> bool
 
   pre c >= 0
@@ -76,6 +84,7 @@ fn is_digit(c: i64) -> bool
 
 = c >= 48 and c <= 57;
 
+@verify
 fn is_hex_digit(c: i64) -> bool
 
   pre c >= 0
@@ -92,6 +101,7 @@ fn hex_digit_val(c: i64) -> i64
 
 = if c >= 48 and c <= 57 { c - 48 } else if c >= 65 and c <= 70 { c - 55 } else { c - 87 };
 
+@verify
 fn is_alpha(c: i64) -> bool
 
   pre c >= 0
@@ -6499,7 +6509,11 @@ fn parse_program_ann(src: String, pos: i64, ann: String, sb: i64) -> String
     let tok2 = next_token_raw(src, after_ann);
     let fn_tok = if tok_kind(tok2) == TK_PUB() { next_token_raw(src, tok_end(tok2)) } else { tok2 };
     if tok_kind(fn_tok) == TK_FN() {
-        let rf = parse_fn_with_annotation(src, tok_end(fn_tok), ann);
+        // CT-G in-language @verify: a verification directive, NOT a codegen
+        // attribute. Parse it as a plain (fn ...) node so it needs zero downstream
+        // transversal (no fn-verify node type); its sole effect is the build gate,
+        // applied by scanning the source for @verify in build_with_gate.
+        let rf = if ann == "verify" { parse_fn(src, tok_end(fn_tok)) } else { parse_fn_with_annotation(src, tok_end(fn_tok), ann) };
         if is_error(rf) { rf } else {
             let _w1 = sb_push(sb, " ");
             let _w2 = sb_push(sb, unpack_ast(rf));
@@ -47609,13 +47623,76 @@ fn vc_gate_failed(json: String, manifest: String, pos: i64, acc: String) -> Stri
         vc_gate_failed(json, manifest, eol + 1, nacc)
     };
 
-// CT-G entry: run the require-verified gate (if a manifest path was given), then
-// build. Returns nonzero (build refused) when any opted-in function is unverified
-// or the manifest/source is unreadable. Output is machine-JSON (Rule 8).
+// CT-G in-language `@verify` surface: derive the require-verified manifest from
+// the SOURCE itself. Every function annotated `@verify` is collected (one name
+// per line — exactly the format vc_gate_failed consumes). This makes verification
+// by-construction: the directive lives in the program, so any build of the file
+// is gated on it — no external manifest, no flag. Scans for the literal `@verify`
+// token (guarded: exactly the ident "verify", not in a // comment, immediately
+// followed by `(pub)? fn <name>`), so a `@verify` inside a string/comment or a
+// longer ident like @verifyx is ignored.
+fn vc_verify_scan(src: String, pos: i64, sb: i64) -> i64
+  pre pos >= 0
+  post it >= 0
+= let at = find_pattern_noa(src, "@verify", pos);
+    if at < 0 { 0 }
+    else {
+        let name_after = scan_ident_end(src, at + 1);
+        let is_word = name_after == at + 7;
+        let sol = lint_find_sol(src, at);
+        let not_comment = not (find_pattern_noa_range(src, "//", sol, at) >= 0);
+        let _c = if is_word and not_comment {
+            let t2 = next_token_raw(src, name_after);
+            let fn_tok = if tok_kind(t2) == TK_PUB() { next_token_raw(src, tok_end(t2)) } else { t2 };
+            if tok_kind(fn_tok) == TK_FN() {
+                let ns = skip_ws_comments(src, tok_end(fn_tok));
+                let ne = scan_ident_end(src, ns);
+                let fname = src.slice(ns, ne);
+                if fname != "" and ne > ns {
+                    let _p1 = sb_push(sb, fname);
+                    let _p2 = sb_push(sb, "\n");
+                    0
+                } else { 0 }
+            } else { 0 }
+        } else { 0 };
+        vc_verify_scan(src, at + 7, sb)
+    };
+
+// The in-source @verify manifest as a newline-joined name string (empty => no
+// @verify-annotated function => build is not gated).
+fn vc_verify_manifest(src: String) -> String
+  post it.len() >= 0
+= let sb = sb_new();
+    let _s = vc_verify_scan(src, 0, sb);
+    sb_build(sb);
+
+// CT-G entry: run the require-verified gate (if a manifest path was given) or the
+// in-language @verify gate (otherwise), then build. Returns nonzero (build
+// refused) when any opted-in function is unverified or the manifest/source is
+// unreadable. Output is machine-JSON (Rule 8).
 fn build_with_gate(input: String, output: String, fast: bool, runtime: String, stats: bool, safe: i64, manifest_path: String) -> i64
   pre safe >= 0
   post it >= 0
-= if manifest_path == "" { build_file_ex(input, output, fast, runtime, stats, safe) }
+= if manifest_path == "" {
+        let src = read_file(input);
+        if src.len() == 0 { err_no_file(input) }
+        else {
+            let inline_m = vc_verify_manifest(src);
+            if inline_m == "" { build_file_ex(input, output, fast, runtime, stats, safe) }
+            else {
+                let json = vc_verdicts_json(src);
+                let failed = vc_gate_failed(json, inline_m, 0, "");
+                if failed.len() == 0 {
+                    let _p = println_str("{\"gate\":\"verify-annotation\",\"status\":\"pass\"}");
+                    build_file_ex(input, output, fast, runtime, stats, safe)
+                }
+                else {
+                    let _f = println_str("{\"gate\":\"verify-annotation\",\"status\":\"fail\",\"unverified\":\"" + json_esc(failed) + "\"}");
+                    1
+                }
+            }
+        }
+    }
     else {
         let manifest = read_file(manifest_path);
         if manifest.len() == 0 {
@@ -50220,6 +50297,20 @@ fn show_help() -> i64
     println_str("  module-suggest <file>         Suggest module capability declarations");
 
     println_str("  semantic-duplicate <file>     Find functionally similar functions");
+
+    println_str("");
+
+    println_str("Verification gates (CT-G):");
+
+    println_str("  verify-vc <file>              Per-function contract verdicts (JSON)");
+
+    println_str("  build <file> --require-verified <manifest>  Refuse build unless every");
+
+    println_str("                                manifest-named function is 'verified'");
+
+    println_str("  @verify on a function         By-construction gate: build refuses unless");
+
+    println_str("                                that function's verify-vc verdict is 'verified'");
 
     0
 

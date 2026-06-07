@@ -30,6 +30,22 @@ check "refuted in manifest refuses"         1 fail  "$F/manifest_fail.txt"
 check "absent fn in manifest refuses"       1 fail  "$F/manifest_absent.txt"
 check "missing manifest errors"             1 error "$F/does_not_exist.txt"
 
+# In-language @verify gate (no flag — the manifest is the source itself).
+# A @verify-annotated function must pass verify-vc or the build is refused.
+vcheck() { # $1=label  $2=fixture  $3=expected_exit  $4=expected_status
+  rm -f "$OUT"* "$F/$2" "$F/$2.exe" "$F/$2.ll" "$F/${2}_opt.ll" 2>/dev/null
+  out=$("$EXE" build "$F/$2.bmb" -o "$OUT" 2>&1)
+  code=$?
+  line=$(echo "$out" | grep -E '"gate"' | head -1)
+  if [ "$code" = "$3" ] && echo "$line" | grep -q "\"gate\":\"verify-annotation\",\"status\":\"$4\""; then
+    echo "PASS  $1 (exit=$code status=$4)"
+  else
+    echo "FAIL  $1 (exit=$code, expected $3; line=$line)"; fails=$((fails+1))
+  fi
+}
+vcheck "@verify verifiable fn builds"        verify_demo_pass 0 pass
+vcheck "@verify refuted fn refuses"          verify_demo_fail 1 fail
+
 # baseline: no flag => no gate, normal build, exit 0
 rm -f "$OUT"* "$F/gate_demo" "$F/gate_demo.exe" "$F/gate_demo.ll" "$F/gate_demo_opt.ll" 2>/dev/null
 "$EXE" build "$F/gate_demo.bmb" -o "$OUT" >/dev/null 2>&1
