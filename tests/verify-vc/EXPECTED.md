@@ -296,3 +296,38 @@ cannot help — it bounds `len`, not `pos`/`cur`).
 | cla_strong  | verified  | `line ≤ cur+1` + path-sens `cur < src.len() < 2^62` (option-B axiom) ⇒ `line+1` no overflow |
 | fsep_weak   | unsupported_recursion | `pos` unbounded ⇒ `pos+1`/`pos+2` undischargeable; axiom bounds `len` not `pos` |
 | fsep_strong | verified  | `pos ≤ s.len() < 2^62` (option-B axiom) ⇒ `pos+2` no overflow |
+
+## modidiom_accept.bmb — modulo-idiom normalization, tok_end recovery (Cycle 3586, T-misc)
+
+`tok_end` returns `r - (r / tok_pack_mul()) * tok_pack_mul()` (the expanded form of
+`r % tok_pack_mul()`) with `post it >= 0 and it < 5000000`. Under the signed-BV model
+(T-BV, C3582) the body lowers to `(bvsub r (bvmul (bvsdiv r D) D))`; the variable-by-
+constant `bvmul` + `bvsdiv` is QF_BV-hard, so Z3 times out (`unknown`) — tok_end was
+the corpus's lone `unknown` verdict. The fix (`vc_mod_rewrite_all`) rewrites the idiom
+`a - (a/b)*b` → `a % b` on the raw AST before call-elimination (so the two identical
+`b` call-sites collapse to one fresh var); `%` emits `bvsrem`, decided in milliseconds.
+The **value** step is exact — `(bvsub a (bvmul (bvsdiv a b) b)) = (bvsrem a b)` is the
+SMT-LIB truncated-division identity (exhaustively checked at width 8 over all operands
+incl. `b = 0`; width-uniform). The **collapse** step (one copy of `a`/`b` instead of
+two) is airtight for tok_end specifically: `tok_pack_mul`'s post `it == 5000000` pins
+the divisor to a constant, so the un-rewritten two-fresh-var model already has
+`b1 = b2` in every model (tok_end was `unknown` purely from bvmul/bvsdiv hardness,
+never a `b1 ≠ b2` divergence). For the general rewrite of a *non-pure call* divisor
+whose post does not pin a unique value, collapsing relies on the assumption that the
+VC fragment admits only deterministic callees (pure ⇒ `b1 = b2`); this holds today and
+would need a purity/pinned-post guard if the fragment ever admits non-deterministic
+callees.
+
+`mod_call_ok` (call divisor, the exact tok_end isomorph) and `mod_const_ok` (literal
+divisor) are `unknown` pre-fix and `verified` post-fix — the load-bearing forward
+checks. `mod_native_ok` (native `%`) was always `verified` (same target form), a control.
+`mod_const_bad` is `refuted` (cex: any multiple of 5000000 ⇒ `it = 0`, violating
+`it > 0`) — non-vacuity: the rewrite produces a real decision, not a blanket verify.
+
+| function      | expected verdict | why |
+|---------------|------------------|-----|
+| pm            | verified | `post it == 5000000`, body `5000000` |
+| mod_call_ok   | verified | call-divisor idiom → `r % pm()` (bvsrem) ⇒ `0 ≤ it < 5000000` (was `unknown`) |
+| mod_const_ok  | verified | literal-divisor idiom → `r % 5000000` ⇒ `0 ≤ it < 5000000` (was `unknown`) |
+| mod_native_ok | verified | native `r % 5000000` (bvsrem) — control, decidable pre-fix |
+| mod_const_bad | refuted  | `it > 0` false at `r ≡ 0 (mod 5000000)` ⇒ counterexample (non-vacuity) |

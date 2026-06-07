@@ -47343,6 +47343,98 @@ fn vc_conj_each(asts: String, acc: String) -> String
         }
     };
 
+// T-misc (tok_end): rewrite the modulo idiom  a - (a/b)*b  into  a % b  on the
+// raw body AST, BEFORE call-elimination. This matters because after elimination
+// two syntactically-identical calls become two DISTINCT fresh vars, defeating any
+// later structural match (tok_end's divisor is `tok_pack_mul()`, appearing twice).
+//
+// VALUE step (the rewrite of one node): `(bvsub a (bvmul (bvsdiv a b) b))` is
+// value-identical to `(bvsrem a b)` for EVERY pair of operands (the SMT-LIB
+// truncated-division identity, checked exhaustively at width 8 incl. b=0;
+// width-uniform). Z3 returns `unknown` on the bvsub/bvmul/bvsdiv form at width 64
+// (variable-by-constant bvmul + bvsdiv is QF_BV-hard) but decides the bvsrem form
+// (via `%`) in milliseconds.
+//
+// COLLAPSE step (one copy of a,b instead of two): sound here in two layers.
+//   (1) tok_end specifically: airtight regardless of purity — `tok_pack_mul`'s
+//       post is `it == 5000000`, so even the un-rewritten two-fresh-var model
+//       already constrains both call vars `= 5000000`, i.e. b1=b2 in every model;
+//       likewise a literal/variable `b` never splits. tok_end was `unknown` purely
+//       from bvmul/bvsdiv hardness, never a b1≠b2 divergence.
+//   (2) general rewrite (a non-pure call `b` whose post does NOT pin a unique
+//       value): collapsing adds the constraint b1=b2, which would be UNSOUND if
+//       the two calls could differ. This relies on the ASSUMPTION that the VC
+//       fragment admits only deterministic callees (pure functions ⇒ b1=b2). That
+//       holds today; if the fragment ever admits a non-deterministic callee
+//       (input/time/mutation) this rewrite must gain a purity/pinned-post guard.
+//
+// The splice is byte-preserving for the a/b operands; only the matched node is
+// rewritten. Each rewrite strictly shrinks the string (drops the *,/ wrappers and
+// one copy of a and b), so the leftmost-match fixpoint terminates and also
+// normalizes nested idioms.
+fn vc_mod_rewrite_all(s: String) -> String
+  post it.len() >= 0
+= vc_mod_scan(s, 0);
+
+// Scan for the leftmost modulo idiom at or after index `i`; on a hit splice the
+// rewrite and restart from 0 (the spliced string is strictly shorter), otherwise
+// advance one byte. Returns the fully-normalized string.
+fn vc_mod_scan(s: String, i: i64) -> String
+  pre i >= 0
+  post it.len() >= 0
+= if i >= s.len() { s }
+    else if s.byte_at(i) == 40 {
+        let rep = vc_mod_try(s, i);
+        if rep == "@@NONE@@" { vc_mod_scan(s, i + 1) }
+        else { vc_mod_scan(rep, 0) }
+    }
+    else { vc_mod_scan(s, i + 1) };
+
+// Return the content between an s-expression node's outer parens, or "" when the
+// string is not a parenthesized node. Lets vc_mod_try read sub-nodes flatly (a
+// non-paren child yields "", whose token reads are empty and fail the guards).
+fn vc_paren_inner(s: String) -> String
+  post it.len() >= 0
+= if s.len() >= 2 and s.byte_at(0) == 40 and s.byte_at(s.len() - 1) == 41 { s.slice(1, s.len() - 1) }
+    else { "" };
+
+// If the node starting at `(` index `i` is exactly `(binop - A (binop * (binop /
+// A B) B))` (A,B byte-identical across their two occurrences), return the whole
+// string with that node spliced to `(binop % A B)`; otherwise "@@NONE@@". All
+// sub-nodes are read flatly (vc_read_tok is safe on "" / malformed input) and a
+// single combined guard validates the whole shape, so any non-match falls
+// through harmlessly.
+fn vc_mod_try(s: String, i: i64) -> String
+  pre i >= 0
+  post it.len() >= 0
+= let endp = vc_match_paren(s, i + 1, 1);
+    let inner = vc_paren_inner(s.slice(i, endp));
+    let rh = vc_read_tok(inner, 0);
+    let ro = vc_read_tok(inner, unpack_pos(rh));
+    let rl = vc_read_tok(inner, unpack_pos(ro));
+    let la = unpack_ast(rl);
+    let rr = vc_read_tok(inner, unpack_pos(rl));
+    let ri = vc_paren_inner(unpack_ast(rr));
+    let rh2 = vc_read_tok(ri, 0);
+    let ro2 = vc_read_tok(ri, unpack_pos(rh2));
+    let rm1 = vc_read_tok(ri, unpack_pos(ro2));
+    let m1 = unpack_ast(rm1);
+    let rm2 = vc_read_tok(ri, unpack_pos(rm1));
+    let m2 = unpack_ast(rm2);
+    let di = vc_paren_inner(m1);
+    let rh3 = vc_read_tok(di, 0);
+    let ro3 = vc_read_tok(di, unpack_pos(rh3));
+    let rd1 = vc_read_tok(di, unpack_pos(ro3));
+    let d1 = unpack_ast(rd1);
+    let rd2 = vc_read_tok(di, unpack_pos(rd1));
+    let d2 = unpack_ast(rd2);
+    let ok = unpack_ast(rh) == "binop" and unpack_ast(ro) == "-"
+        and unpack_ast(rh2) == "binop" and unpack_ast(ro2) == "*"
+        and unpack_ast(rh3) == "binop" and unpack_ast(ro3) == "/"
+        and la.len() > 0 and d2.len() > 0 and la == d1 and d2 == m2;
+    if ok { s.slice(0, i) + "(binop % " + la + " " + d2 + ")" + s.slice(endp, s.len()) }
+    else { "@@NONE@@" };
+
 // Build the full VC SMT for one function (one combined post obligation):
 //   decls; <call-assumes>; (assert pre_i); (assert (= it body)); (assert (not (and post_j))); (check-sat)
 // UNSAT => post verified. @UNSUP@ if anything leaves the leaf fragment.
@@ -47366,7 +47458,12 @@ fn vc_build_smt(cname: String, params: String, rty: String, pre_asts: String, po
             // verify without spurious refutation. Leaf fragment is untouched.
             let pre0 = if find_pattern_noa(decls, " S)", 0) >= 0 { "(declare-sort S 0)\n(declare-fun b (S (_ BitVec 64)) (_ BitVec 64))\n(declare-fun len (S) (_ BitVec 64))\n" } else { "" };
             let lenax = if find_pattern_noa(decls, " S)", 0) >= 0 { vc_len_axioms(params, "") } else { "" };
-            let r1 = vc_elim_calls(src, cname, params, pre_asts, body, "", 0, 1);
+            // T-misc: normalize the  a - (a/b)*b  modulo idiom to  a % b  so the
+            // bvsrem form (decidable) is verified instead of the QF_BV-hard
+            // bvmul/bvsdiv form (Z3 `unknown`). Done before call-elimination so
+            // identical call divisors collapse rather than splitting into vars.
+            let nbody = vc_mod_rewrite_all(body);
+            let r1 = vc_elim_calls(src, cname, params, pre_asts, nbody, "", 0, 1);
             let nb = vc_before(r1, "@@SP@@");
             let r2 = vc_elim_calls(src, cname, params, pre_asts, pre_asts, vc_after(r1, "@@SP@@"), vc_kbase_pre(), 0);
             let npre = vc_before(r2, "@@SP@@");

@@ -1,0 +1,53 @@
+// R2 T-misc (Cycle 3586) — modulo-idiom normalization (tok_end recovery).
+//
+// `tok_end` computes `r - (r / tok_pack_mul()) * tok_pack_mul()` — the expanded
+// form of `r % tok_pack_mul()` — with `post it >= 0 and it < 5000000`. Under the
+// signed-bitvector VC model (T-BV, C3582) this lowers to
+//   (bvsub r (bvmul (bvsdiv r D) D))
+// where the variable-by-constant `bvmul` plus `bvsdiv` is QF_BV-hard: Z3 returns
+// `unknown` (10s timeout), so tok_end was the corpus's lone `unknown` verdict.
+//
+// The fix (vc_mod_rewrite_all) recognizes the idiom `a - (a/b)*b` on the raw body
+// AST and rewrites it to `a % b` BEFORE call-elimination (so the two identical
+// `b` call-sites collapse to one fresh var instead of splitting into two). `%`
+// emits `bvsrem`, which Z3 decides in milliseconds. The rewrite is value-
+// preserving: `(bvsub a (bvmul (bvsdiv a b) b)) = (bvsrem a b)` is the SMT-LIB
+// truncated-division identity, verified exhaustively at width 8 over all operands
+// (incl. b = 0); BMB fragment functions are deterministic, so collapsing the
+// duplicated a/b is sound.
+//
+// Expected: every well-contracted idiom (call OR literal divisor) verifies, the
+// native `%` control verifies (it always did — same target form), and the
+// too-strong post is REFUTED (the rewrite yields a real decision, not a blanket
+// verify — non-vacuity). All four idiom/`%` rows were `unknown`/`refuted`
+// reachable only because the rewrite makes the query decidable.
+
+fn pm() -> i64
+  post it == 5000000
+= 5000000;
+
+// Exact tok_end isomorph: call divisor, expanded idiom -> verified (was `unknown`).
+fn mod_call_ok(r: i64) -> i64
+  pre r >= 0
+  post it >= 0 and it < 5000000
+= r - (r / pm()) * pm();
+
+// Literal divisor, expanded idiom -> verified (was `unknown`).
+fn mod_const_ok(r: i64) -> i64
+  pre r >= 0
+  post it >= 0 and it < 5000000
+= r - (r / 5000000) * 5000000;
+
+// Native `%` control: already decidable pre-change (same bvsrem target form).
+fn mod_native_ok(r: i64) -> i64
+  pre r >= 0
+  post it >= 0 and it < 5000000
+= r % 5000000;
+
+// Non-vacuity: the rewrite yields a DECISION, not a rubber-stamp. `it > 0` is
+// false at r = 0 (and any multiple of 5000000), so this is REFUTED with a
+// counterexample. Pre-change the idiom was intractable (`unknown`).
+fn mod_const_bad(r: i64) -> i64
+  pre r >= 0
+  post it > 0
+= r - (r / 5000000) * 5000000;
