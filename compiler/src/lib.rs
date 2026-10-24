@@ -52,7 +52,7 @@ fn frontend(files: &[(String, String)]) -> Frontend {
     for (name, text) in files {
         let id = sm.add(name.clone(), text.clone());
         let toks = lexer::lex(id, text, &mut diags);
-        let mut p = parser::Parser::new(toks, &mut diags);
+        let mut p = parser::Parser::new(toks, &mut diags, text);
         program.mods.extend(p.parse_program().mods);
     }
     let mut c = check::Checker::new(&mut diags);

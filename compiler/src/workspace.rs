@@ -66,7 +66,7 @@ pub fn read_dir_sources(dir: &Path) -> Result<Vec<(String, String)>, String> {
 fn parse_into(sm: &mut SourceMap, diags: &mut Diags, name: &str, text: &str) -> Program {
     let id = sm.add(name.to_string(), text.to_string());
     let toks = lexer::lex(id, text, diags);
-    parser::Parser::new(toks, diags).parse_program()
+    parser::Parser::new(toks, diags, text).parse_program()
 }
 
 fn find_mod<'a>(mods: &'a mut [Mod], path: &[&str]) -> Option<&'a mut Mod> {

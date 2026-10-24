@@ -265,12 +265,16 @@ impl<'a> Checker<'a> {
             self.diags.push(
                 Diag::new(
                     "E0601",
-                    f.name.span,
+                    // The `fn` keyword, so the replacement can prepend the attribute.
+                    Span {
+                        hi: f.span.lo + 2,
+                        ..f.span
+                    },
                     format!("`{}` has no `#[effects(..)]` attribute", f.name.name),
                 )
                 .fix(
                     "add `#[effects(pure)]` above the function",
-                    Some("#[effects(pure)]".into()),
+                    Some("#[effects(pure)] fn".into()),
                 ),
             );
         }
@@ -573,6 +577,29 @@ impl<'a> Checker<'a> {
 
     fn stmt(&mut self, cx: &mut FnCtx, s: &Stmt, mode: Mode) {
         match s {
+            Stmt::Let {
+                mutable,
+                name,
+                ty_missing: true,
+                init,
+                ..
+            } => {
+                // Rust habit: infer the type only to offer it as the fix.
+                let t = self.expr(cx, init, None, mode);
+                let mut d = Diag::new(
+                    "E0201",
+                    name.span,
+                    format!("`let {}` requires an explicit type", name.name),
+                );
+                d = if t == TypeKind::Error {
+                    d.fix("add `: T` after the name", None)
+                } else {
+                    let r = format!("{}: {}", name.name, ty_str(&t));
+                    d.fix(format!("write `{r}`"), Some(r))
+                };
+                self.diags.push(d);
+                self.declare(cx, name, t, *mutable, false);
+            }
             Stmt::Let {
                 mutable,
                 name,

@@ -106,6 +106,8 @@ pub enum Stmt {
         mutable: bool,
         name: Ident,
         ty: Type,
+        /// No `: T` was written (E0201); the checker infers it for the fix.
+        ty_missing: bool,
         init: Expr,
         span: Span,
     },

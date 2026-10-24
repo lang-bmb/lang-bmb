@@ -12,6 +12,8 @@ pub struct Parser<'a> {
     toks: Vec<Token>,
     pos: usize,
     diags: &'a mut Diags,
+    /// Source text, for fixes that copy part of it (e.g. `vec![..]` -> `[..]`).
+    text: &'a str,
 }
 
 /// Rust constructs recognised only to be rejected with a precise message.
@@ -79,8 +81,9 @@ const RESERVED: &[&str] = &[
 ];
 
 impl<'a> Parser<'a> {
-    pub fn new(toks: Vec<Token>, diags: &'a mut Diags) -> Self {
+    pub fn new(toks: Vec<Token>, diags: &'a mut Diags, text: &'a str) -> Self {
         Parser {
+            text,
             toks,
             pos: 0,
             diags,
@@ -479,7 +482,7 @@ impl<'a> Parser<'a> {
             let sp = self.prev_span();
             self.diags.push(
                 Diag::new("E0209", sp, "function return type is required")
-                    .fix("add `-> ()`", Some(" -> ()".into())),
+                    .fix("add `-> ()`", Some(") -> ()".into())),
             );
             Ret {
                 name: None,
@@ -833,17 +836,11 @@ impl<'a> Parser<'a> {
         let lo = self.bump().span;
         let mutable = self.eat_kw("mut");
         let name = self.ident("variable name")?;
+        // A missing type is reported by the checker, which can infer it for the fix.
+        let ty_missing = !self.is_p(":");
         let ty = if self.eat_p(":") {
             self.parse_type()
         } else {
-            self.diags.push(
-                Diag::new(
-                    "E0201",
-                    name.span,
-                    format!("`let {}` requires an explicit type", name.name),
-                )
-                .fix("add `: T` after the name", None),
-            );
             Type {
                 kind: TypeKind::Error,
                 span: name.span,
@@ -856,6 +853,7 @@ impl<'a> Parser<'a> {
             mutable,
             name,
             ty,
+            ty_missing,
             init,
             span: lo.to(hi),
         })
@@ -1288,7 +1286,14 @@ impl<'a> Parser<'a> {
         if let (Tok::Ident(name), Tok::P("!")) = (self.peek().clone(), self.peek_at(1).clone()) {
             self.bump();
             self.bump();
+            let group_lo = self.span().lo as usize;
+            let bracket = self.is_p("[");
             self.skip_group();
+            let group_hi = self.prev_span().hi as usize;
+            // `vec![a, b]` is mechanically the fixed array `[a, b]`.
+            let replacement = (name == "vec" && bracket)
+                .then(|| self.text.get(group_lo..group_hi).map(String::from))
+                .flatten();
             let fix = match name.as_str() {
                 "println" | "print" | "eprintln" => {
                     "call `print_i64(x)` from an `#[effects(io)]` function"
@@ -1308,7 +1313,7 @@ impl<'a> Parser<'a> {
                     lo.to(self.prev_span()),
                     format!("macro `{name}!` is not allowed"),
                 )
-                .fix(fix, None),
+                .fix(fix, replacement),
             );
             return Ok(Expr {
                 kind: ExprKind::Error,
