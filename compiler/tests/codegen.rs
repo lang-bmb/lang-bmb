@@ -166,7 +166,8 @@ mod m {
 }
 "#;
     let ir = bmb::emit_llvm_sources(&src("b.bmb", text)).ir.unwrap();
-    assert!(!ir.contains("store i1 ") || !ir.contains("ptr %t"), "{ir}");
+    let body = &ir[ir.find("@\"m::set_all\"").unwrap()..];
+    assert!(!body.contains("store i1 "), "{body}");
     assert!(
         ir.contains("getelementptr inbounds i8, ptr %\"a.ptr\""),
         "{ir}"
