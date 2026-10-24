@@ -54,6 +54,7 @@ pub struct Def<'p> {
     pub status: &'static str,
     pub obligations: usize,
     pub failed: usize,
+    pub rlimit_max: u64,
     pub body: String,
     pub iface: String,
 }
@@ -222,16 +223,17 @@ impl<'p> Model<'p> {
             .into_iter()
             .map(|h| (h.path, (h.body, h.iface)))
             .collect();
-        let status: BTreeMap<&str, (usize, usize)> = outcome
+        let status: BTreeMap<&str, (usize, usize, u64)> = outcome
             .statuses
             .iter()
-            .map(|s| (s.path.as_str(), (s.obligations, s.failed)))
+            .map(|s| (s.path.as_str(), (s.obligations, s.failed, s.rlimit_max)))
             .collect();
         let mut defs = BTreeMap::new();
         let mut edges = BTreeSet::new();
         for (path, unit, f) in list {
             let (line, _) = sm.line_col(f.name.span.file, f.name.span.lo);
-            let (obligations, failed) = status.get(path.as_str()).copied().unwrap_or((0, 0));
+            let (obligations, failed, rlimit_max) =
+                status.get(path.as_str()).copied().unwrap_or((0, 0, 0));
             let st = if failed > 0 {
                 "failed"
             } else if obligations > 0 {
@@ -319,6 +321,7 @@ impl<'p> Model<'p> {
                     status: st,
                     obligations,
                     failed,
+                    rlimit_max,
                     body,
                     iface,
                 },
@@ -397,6 +400,8 @@ impl<'p> Model<'p> {
             ("iface", J::S(d.iface.clone())),
             ("file", J::S(d.file.clone())),
             ("line", J::N(d.line as u64)),
+            // Added after version 1 (backward compatible, ADR-0020 §1).
+            ("rlimit_max", J::N(d.rlimit_max)),
         ])
     }
 
@@ -524,6 +529,7 @@ impl<'p> Model<'p> {
                             ("obligations", J::N(d.obligations as u64)),
                             ("failed", J::N(d.failed as u64)),
                             ("effects", J::S(Self::effects(d))),
+                            ("rlimit_max", J::N(d.rlimit_max)),
                         ])
                     })
                     .collect();

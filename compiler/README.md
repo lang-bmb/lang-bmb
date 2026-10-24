@@ -58,3 +58,13 @@ ADR-0016의 부분집합을 구체화한 것이다. 모두 "선택을 필수로"
 - 증명된 의무는 검사 없이 LLVM에 사실로 전달된다: 넘침 없음 → `nsw`/`nuw`, 범위 안 → 검사 없는 `getelementptr inbounds`, 0 아닌 제수 → 검사 없는 `sdiv`/`udiv`. 각 줄에 `; proved Exxxx` 주석이 붙는다.
 - 증명되지 않은 의무는 `llvm.trap`으로 가는 검사로 남는다(`; unproved: ..`). `bmb build`는 그런 프로그램을 거부한다.
 - `&mut` 슬라이스 매개변수는 `noalias`, `&` 슬라이스는 `readonly`(ADR-0015).
+
+## 맵 스키마에 추가된 키
+
+ADR-0020 §1의 하위 호환 규칙(키 추가 허용)에 따라 추가한 키다.
+
+| 키 | 위치 | 뜻 |
+| --- | --- | --- |
+| `rlimit_max` | L1 행, `status` 질의 행 | 가장 비싼 의무 하나의 해법기 자원 사용량. 고정 `rlimit`(scripts/toolchain.env)에 가까울수록 증명이 깨지기 쉽다(백로그 1B-15) |
+
+`bmb verify`의 상태 줄에는 `rlimit`(정의 전체 합)과 `rlimit_max`가 붙는다.

@@ -114,6 +114,18 @@ impl Solver {
         }
     }
 
+    /// Resource units spent since the last `(reset)` (deterministic for a
+    /// given solver version and query).
+    pub fn rlimit_used(&mut self) -> Result<u64, String> {
+        self.send("(get-info :rlimit)")?;
+        let r = self.read_response()?;
+        r.trim_matches(|c| c == '(' || c == ')')
+            .split_whitespace()
+            .nth(1)
+            .and_then(|n| n.parse().ok())
+            .ok_or_else(|| format!("unexpected rlimit answer: {r}"))
+    }
+
     pub fn check_sat(&mut self) -> Result<Answer, String> {
         self.send("(check-sat)")?;
         let r = self.read_response()?;

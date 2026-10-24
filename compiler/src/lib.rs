@@ -145,10 +145,12 @@ fn status_lines(outcome: &verify::Outcome) -> String {
     for s in &outcome.statuses {
         let status = if s.failed == 0 { "verified" } else { "failed" };
         out.push_str(&format!(
-            "{{\"def\":{},\"status\":\"{status}\",\"obligations\":{},\"failed\":{}}}\n",
+            "{{\"def\":{},\"status\":\"{status}\",\"obligations\":{},\"failed\":{},\"rlimit\":{},\"rlimit_max\":{}}}\n",
             diag::json_str(&s.path),
             s.obligations,
-            s.failed
+            s.failed,
+            s.rlimit_total,
+            s.rlimit_max
         ));
     }
     out

@@ -35,6 +35,10 @@ pub struct FnStatus {
     pub path: String,
     pub obligations: usize,
     pub failed: usize,
+    /// Solver resource units over all obligations, and the largest single one
+    /// (compare with the pinned rlimit to see how close a proof is to failing).
+    pub rlimit_total: u64,
+    pub rlimit_max: u64,
 }
 
 /// An obligation's identity: diagnostic code and source span `(file, lo, hi)`.
@@ -1380,6 +1384,7 @@ pub fn verify_program(p: &Program, t: &Tables, diags: &mut Diags) -> Outcome {
         let decls = enc.decls.join("\n");
         let mut script = String::new();
         let mut failed = 0usize;
+        let (mut rlimit_total, mut rlimit_max) = (0u64, 0u64);
         let mut solver = None;
         if !enc.obls.is_empty() {
             match Solver::start() {
@@ -1420,6 +1425,12 @@ pub fn verify_program(p: &Program, t: &Tables, diags: &mut Diags) -> Outcome {
                 .and_then(|_| sol.run(&base))
                 .and_then(|_| sol.run(&q))
                 .and_then(|_| sol.check_sat());
+            if answer.is_ok()
+                && let Ok(used) = sol.rlimit_used()
+            {
+                rlimit_total += used;
+                rlimit_max = rlimit_max.max(used);
+            }
             failed += 1;
             let key = (o.code, o.span.file, o.span.lo, o.span.hi);
             if matches!(answer, Ok(Answer::Unsat)) {
@@ -1471,6 +1482,8 @@ pub fn verify_program(p: &Program, t: &Tables, diags: &mut Diags) -> Outcome {
             path: path.clone(),
             obligations: enc.obls.len(),
             failed: failed + enc.unsupported.len(),
+            rlimit_total,
+            rlimit_max,
         });
         scripts.insert(path.clone(), script);
     }
