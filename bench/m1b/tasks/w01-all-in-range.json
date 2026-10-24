@@ -1,0 +1,38 @@
+{
+  "id": "w01-all-in-range",
+  "kind": "write",
+  "prompt": "Create unit `tasks` and implement `all_in_range`: return whether every element of `a` lies in [lo, hi]. The contract must state the result exactly (true if and only if all elements are in range).\n\nRequired signature (in unit `tasks`):\nfn all_in_range(a: &[i64], lo: i64, hi: i64) -> (r: bool)",
+  "unit": "tasks",
+  "def": "tasks::all_in_range",
+  "signature": "fn all_in_range(a: &[i64], lo: i64, hi: i64) -> (r: bool)",
+  "accept": {
+    "specs": "spec fn ref_post(a: &[i64], lo: i64, hi: i64, r: bool) -> bool { r == (forall|k: usize| k < a.len() ==> lo <= #[trigger] a[k] && a[k] <= hi) }",
+    "pre": null,
+    "post": "ref_post(a, lo, hi, r)",
+    "args": "a, lo, hi"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn in_below(a: &[i64], lo: i64, hi: i64, n: usize) -> bool { forall|k: usize| k < n ==> lo <= #[trigger] a[k] && a[k] <= hi }\n\nspec fn all_in(a: &[i64], lo: i64, hi: i64, r: bool) -> bool { r == (forall|k: usize| k < a.len() ==> lo <= #[trigger] a[k] && a[k] <= hi) }\n\n#[effects(pure)]\n#[uses(in_below, all_in)]\nfn all_in_range(a: &[i64], lo: i64, hi: i64) -> (r: bool)\n    ensures all_in(a, lo, hi, r),\n{\n    let mut k: usize = 0;\n    while k < a.len() && lo <= a[k] && a[k] <= hi\n        invariant k <= a.len(), in_below(a, lo, hi, k),\n        decreases a.len() - k,\n    {\n        k = k + 1;\n    }\n    k >= a.len()\n}"
+    }
+  ],
+  "weak_reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn in_below(a: &[i64], lo: i64, hi: i64, n: usize) -> bool { forall|k: usize| k < n ==> lo <= #[trigger] a[k] && a[k] <= hi }\n\nspec fn only_if(a: &[i64], lo: i64, hi: i64, r: bool) -> bool { r ==> (forall|k: usize| k < a.len() ==> lo <= #[trigger] a[k] && a[k] <= hi) }\n\n#[effects(pure)]\n#[uses(in_below, only_if)]\nfn all_in_range(a: &[i64], lo: i64, hi: i64) -> (r: bool)\n    ensures only_if(a, lo, hi, r),\n{\n    let mut k: usize = 0;\n    while k < a.len() && lo <= a[k] && a[k] <= hi\n        invariant k <= a.len(), in_below(a, lo, hi, k),\n        decreases a.len() - k,\n    {\n        k = k + 1;\n    }\n    k >= a.len()\n}"
+    }
+  ]
+}

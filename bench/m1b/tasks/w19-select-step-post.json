@@ -1,0 +1,28 @@
+{
+  "id": "w19-select-step-post",
+  "kind": "write",
+  "prompt": "The library function `order::select_step` has no postcondition. Give it one stating that the elements before index i are unchanged and that afterwards a[i] is <= every element at an index >= i, keeping its parameters, precondition and body. Change other definitions if the proof needs it; the whole workspace must still verify.\n\nRequired signature (in unit `order`):\nfn select_step(a: &mut [i64], i: usize) -> ()",
+  "unit": "order",
+  "def": "order::select_step",
+  "signature": "fn select_step(a: &mut [i64], i: usize) -> ()",
+  "accept": {
+    "specs": "spec fn ref_pre(a: &[i64], i: usize) -> bool { i < a.len() }\nspec fn ref_post(a: &[i64], b: &[i64], i: usize) -> bool { a.len() == b.len() && i < a.len() && (forall|k: usize| k < i ==> #[trigger] a[k] == b[k]) && (forall|j: usize| i <= j && j < a.len() ==> a[i] <= #[trigger] a[j]) }",
+    "pre": "ref_pre(a, i)",
+    "post": "ref_post(a, old(a), i)",
+    "args": "a, i"
+  },
+  "reference": [
+    {
+      "op": "put",
+      "unit": "order",
+      "code": "spec fn selected(a: &[i64], b: &[i64], i: usize) -> bool {\n    a.len() == b.len() && i < a.len() && (forall|k: usize| k < i ==> #[trigger] a[k] == b[k]) && (forall|j: usize| i <= j && j < a.len() ==> a[i] <= #[trigger] a[j])\n}\n\n#[effects(pure)]\n#[uses(from_ok, min_ok, selected, arr::idx2, arr::swapped)]\nfn select_step(a: &mut [i64], i: usize) -> ()\n    requires from_ok(a, i),\n    ensures selected(a, old(a), i),\n{\n    let j: usize = min_index(a, i);\n    arr::swap(a, i, j);\n}"
+    }
+  ],
+  "weak_reference": [
+    {
+      "op": "put",
+      "unit": "order",
+      "code": "#[effects(pure)]\n#[uses(from_ok, min_ok, arr::idx2, arr::swapped, arr::same_len)]\nfn select_step(a: &mut [i64], i: usize) -> ()\n    requires from_ok(a, i),\n    ensures arr::same_len(a, old(a)),\n{\n    let j: usize = min_index(a, i);\n    arr::swap(a, i, j);\n}"
+    }
+  ]
+}

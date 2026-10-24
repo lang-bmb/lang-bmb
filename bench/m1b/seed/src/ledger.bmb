@@ -1,0 +1,123 @@
+#[summary("상한이 있는 계좌 잔액 배열")]
+mod ledger {
+    spec fn acct(a: &[i64], i: usize) -> bool {
+        i < a.len()
+    }
+
+    spec fn amount_ok(x: i64) -> bool {
+        0 <= x && x <= 1000000000
+    }
+
+    #[effects(pure)]
+    #[uses(acct, cap_ok)]
+    fn balance(a: &[i64], i: usize) -> i64
+        requires cap_ok(a), acct(a, i),
+    {
+        a[i]
+    }
+
+    spec fn cap_ok(a: &[i64]) -> bool {
+        forall|k: usize| k < a.len() ==> 0 <= #[trigger] a[k] && a[k] <= 1000000000
+    }
+
+    spec fn credited(a: &[i64], b: &[i64], i: usize, x: i64, r: bool) -> bool {
+        (r ==> moved(a, b, i, x)) && (!r ==> moved(a, b, i, 0))
+    }
+
+    spec fn debited(a: &[i64], b: &[i64], i: usize, x: i64, r: bool) -> bool {
+        (r ==> moved(a, b, i, 0 - x)) && (!r ==> moved(a, b, i, 0))
+    }
+
+    #[effects(pure)]
+    #[uses(acct, amount_ok, cap_ok, credited, moved)]
+    fn deposit(a: &mut [i64], i: usize, x: i64) -> (r: bool)
+        requires cap_ok(a), acct(a, i), amount_ok(x),
+        ensures cap_ok(a), credited(a, old(a), i, x, r),
+    {
+        if a[i] <= 1000000000 - x {
+            a[i] = a[i] + x;
+            true
+        } else {
+            false
+        }
+    }
+
+    spec fn moved(a: &[i64], b: &[i64], i: usize, d: i64) -> bool {
+        a.len() == b.len() && a[i] == b[i] + d && (forall|k: usize| k < a.len() && k != i ==> #[trigger] a[k] == b[k])
+    }
+
+    #[effects(pure)]
+    #[uses(acct, amount_ok, cap_ok)]
+    fn pay_all(a: &mut [i64], from: usize, x: i64) -> (r: usize)
+        requires cap_ok(a), acct(a, from), amount_ok(x),
+        ensures cap_ok(a),
+    {
+        let mut paid: usize = 0;
+        let mut k: usize = 0;
+        while k < a.len()
+            invariant k <= a.len(), paid <= k, from < a.len(), cap_ok(a),
+            decreases a.len() - k,
+        {
+            if transfer(a, from, k, x) {
+                paid = paid + 1;
+            }
+            k = k + 1;
+        }
+        paid
+    }
+
+    spec fn small_book(a: &[i64]) -> bool {
+        a.len() <= 1000
+    }
+
+    #[effects(pure)]
+    #[uses(cap_ok, small_book, total_bound)]
+    fn total(a: &[i64]) -> (r: i64)
+        requires cap_ok(a), small_book(a),
+        ensures total_bound(r, a.len()),
+    {
+        let mut s: i64 = 0;
+        let mut k: usize = 0;
+        while k < a.len()
+            invariant k <= a.len(), total_bound(s, k),
+            decreases a.len() - k,
+        {
+            s = s + a[k];
+            k = k + 1;
+        }
+        s
+    }
+
+    spec fn total_bound(s: i64, n: usize) -> bool {
+        0 <= s && s <= 1000000000 * n
+    }
+
+    #[effects(pure)]
+    #[uses(acct, amount_ok, cap_ok, credited, debited, moved)]
+    fn transfer(a: &mut [i64], i: usize, j: usize, x: i64) -> (r: bool)
+        requires cap_ok(a), acct(a, i), acct(a, j), amount_ok(x),
+        ensures cap_ok(a),
+    {
+        let mut ok: bool = false;
+        if i != j && a[i] >= x && a[j] <= 1000000000 - x {
+            let w: bool = withdraw(a, i, x);
+            let d: bool = deposit(a, j, x);
+            ok = w && d;
+        }
+        ok
+    }
+
+    #[effects(pure)]
+    #[uses(acct, amount_ok, cap_ok, debited, moved)]
+    fn withdraw(a: &mut [i64], i: usize, x: i64) -> (r: bool)
+        requires cap_ok(a), acct(a, i), amount_ok(x),
+        ensures cap_ok(a), debited(a, old(a), i, x, r),
+    {
+        if a[i] >= x {
+            a[i] = a[i] - x;
+            true
+        } else {
+            false
+        }
+    }
+}

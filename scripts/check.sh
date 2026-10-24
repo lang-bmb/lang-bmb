@@ -18,4 +18,11 @@ rm -f "$tmp"
 python3 bench/m1/harness.py run --agent weak --expect weak-fail > /dev/null
 python3 bench/m1/test_anthropic_agent.py 2> /dev/null
 out=$(python3 bench/m1/test_harness.py 2>&1) || { printf '%s\n' "$out"; exit 1; }
+step "bench m1b"  # ADR-0025, backlog 2A-04. Sessions are independent: run them in parallel.
+jobs=$(nproc 2> /dev/null || echo 2)
+tmp=$(mktemp)
+python3 bench/m1/harness.py --set bench/m1b run --agent oracle --expect all-pass --jobs "$jobs" --out "$tmp" > /dev/null
+python3 bench/m1/harness.py summarize "$tmp" | grep -q "작성 1회 성공률 | 25/25 |" || { echo "m1b summarize: unexpected table"; exit 1; }
+rm -f "$tmp"
+python3 bench/m1/harness.py --set bench/m1b run --agent weak --expect weak-fail --jobs "$jobs" > /dev/null
 echo "all checks passed"

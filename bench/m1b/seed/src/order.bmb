@@ -1,0 +1,106 @@
+#[summary("정렬 검사와 선택 정렬 보조")]
+mod order {
+    spec fn adj_sorted_below(a: &[i64], n: usize) -> bool {
+        forall|k: usize| k + 1 < n ==> #[trigger] a[k] <= a[k + 1]
+    }
+
+    spec fn adj_sorted_spec(a: &[i64], r: bool) -> bool {
+        r == (forall|k: usize| k + 1 < a.len() ==> #[trigger] a[k] <= a[k + 1])
+    }
+
+    #[effects(pure)]
+    #[uses(descents_bound)]
+    fn count_descents(a: &[i64]) -> (r: usize)
+        ensures descents_bound(a, r),
+    {
+        let mut c: usize = 0;
+        let mut k: usize = 1;
+        while k < a.len()
+            invariant 1 <= k, c < k, k <= a.len() || k == 1,
+            decreases a.len() - k,
+        {
+            if a[k - 1] > a[k] {
+                c = c + 1;
+            }
+            k = k + 1;
+        }
+        c
+    }
+
+    spec fn descents_bound(a: &[i64], r: usize) -> bool {
+        r <= a.len()
+    }
+
+    spec fn from_ok(a: &[i64], from: usize) -> bool {
+        from < a.len()
+    }
+
+    #[effects(pure)]
+    #[uses(adj_sorted_below, adj_sorted_spec)]
+    fn is_sorted(a: &[i64]) -> (r: bool)
+        ensures adj_sorted_spec(a, r),
+    {
+        let mut k: usize = 1;
+        while k < a.len() && a[k - 1] <= a[k]
+            invariant 1 <= k, k <= a.len() || a.len() == 0, adj_sorted_below(a, k),
+            decreases a.len() - k,
+        {
+            k = k + 1;
+        }
+        k >= a.len()
+    }
+
+    spec fn min_from(a: &[i64], from: usize, n: usize, r: usize) -> bool {
+        from <= r && r < n && (forall|k: usize| from <= k && k < n ==> a[r] <= #[trigger] a[k])
+    }
+
+    #[effects(pure)]
+    #[uses(from_ok, min_from, min_ok)]
+    fn min_index(a: &[i64], from: usize) -> (r: usize)
+        requires from_ok(a, from),
+        ensures min_ok(a, from, r),
+    {
+        let mut best: usize = from;
+        let mut k: usize = from + 1;
+        while k < a.len()
+            invariant k <= a.len(), min_from(a, from, k, best),
+            decreases a.len() - k,
+        {
+            if a[k] < a[best] {
+                best = k;
+            }
+            k = k + 1;
+        }
+        best
+    }
+
+    spec fn min_ok(a: &[i64], from: usize, r: usize) -> bool {
+        from <= r && r < a.len() && (forall|k: usize| from <= k && k < a.len() ==> a[r] <= #[trigger] a[k])
+    }
+
+    #[effects(pure)]
+    #[uses(arr::idx2, from_ok, min_ok)]
+    fn select_step(a: &mut [i64], i: usize) -> ()
+        requires from_ok(a, i),
+    {
+        let j: usize = min_index(a, i);
+        arr::swap(a, i, j);
+    }
+
+    #[effects(pure)]
+    #[uses(from_ok)]
+    fn selection_sort(a: &mut [i64]) -> () {
+        let mut i: usize = 0;
+        while i < a.len()
+            invariant i <= a.len(),
+            decreases a.len() - i,
+        {
+            select_step(a, i);
+            i = i + 1;
+        }
+    }
+
+    spec fn sorted(a: &[i64]) -> bool {
+        forall|i: usize, j: usize| i < j && j < a.len() ==> #[trigger] a[i] <= #[trigger] a[j]
+    }
+}
