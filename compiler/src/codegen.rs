@@ -664,6 +664,19 @@ pub struct Module {
 /// `main` and the print helper, has `internal` linkage, so LLVM may inline
 /// and drop them freely. Only the C entry point `@main` is external.
 pub fn emit(p: &Program, t: &Tables, proven: &BTreeSet<ObKey>) -> Module {
+    emit_with(p, t, proven, None)
+}
+
+/// As `emit`, taking the IR of each definition from the incremental cache
+/// when its key (source, callee signatures, usable proofs inside it) is
+/// unchanged, and storing what it lowers (backlog 2D-10). Each definition's
+/// IR depends only on those, so the module is the same either way.
+pub fn emit_with(
+    p: &Program,
+    t: &Tables,
+    proven: &BTreeSet<ObKey>,
+    mut incr: Option<&mut crate::incremental::Session>,
+) -> Module {
     let mut defs = Vec::new();
     for m in &p.mods {
         collect(m, "", &mut defs);
@@ -695,6 +708,30 @@ pub fn emit(p: &Program, t: &Tables, proven: &BTreeSet<ObKey>) -> Module {
         }
         if f.name.name == "main" {
             main = Some(path.clone());
+        }
+        let usable: Vec<ObKey> = if incr.is_some() {
+            proven
+                .iter()
+                .filter(|(_, file, lo, hi)| {
+                    *file == f.span.file && f.span.lo <= *lo && *hi <= f.span.hi
+                })
+                .cloned()
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let hit = incr
+            .as_ref()
+            .and_then(|s| s.ir_lookup(&path, f.span, &usable));
+        if let Some((frag, c)) = &hit
+            && !incr.as_ref().is_some_and(|s| s.audit())
+        {
+            checks += c;
+            ir.push_str(frag);
+            if let Some(s) = incr.as_mut() {
+                s.stats.ir_reused.push(path.clone());
+            }
+            continue;
         }
         let mut g = Gen {
             t,
@@ -760,14 +797,23 @@ pub fn emit(p: &Program, t: &Tables, proven: &BTreeSet<ObKey>) -> Module {
             g.emit(format!("ret {ret} {}", rv.imm()));
         }
         checks += g.checks;
-        let _ = write!(
-            ir,
+        let frag = format!(
             "\ndefine internal {ret} {}({}) {{\nentry:\n{}{}}}\n",
             fn_sym(&path),
             params.join(", "),
             g.allocas,
             g.out
         );
+        if let Some(s) = incr.as_mut() {
+            s.stats.lowered.push(path.clone());
+            if let Some((old, c)) = &hit
+                && (old != &frag || *c != g.checks)
+            {
+                s.stats.audit_mismatches.push(path.clone());
+            }
+            s.ir_record(&path, f.span, &usable, &frag, g.checks);
+        }
+        ir.push_str(&frag);
     }
     if let Some(m) = &main {
         let _ = write!(

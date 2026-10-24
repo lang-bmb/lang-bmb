@@ -4,7 +4,8 @@ const USAGE: &str = "usage:
   bmb check <file.bmb>...   check sources; diagnostics as JSONL on stdout
   bmb verify [--emit-smt DIR] [--cache DIR] <file.bmb>...
                             check and prove; diagnostics and per-definition status as JSONL;
-                            --cache keeps proved obligations in DIR and skips them next time
+                            --cache keeps proved obligations in DIR and skips them next time,
+                            and reuses unchanged definitions without encoding them
   bmb stability [--seeds N] <file.bmb>...
                             prove under solver seeds 0..N (default 5); per-definition verdicts
                             and rlimit as JSONL; fails if a verdict depends on the seed
@@ -148,8 +149,13 @@ fn run() -> ExitCode {
                 Ok(f) => f,
                 Err(code) => return code,
             };
-            let out =
-                bmb::verify_sources_cached(&files, cache.as_deref().map(std::path::Path::new));
+            // `--emit-smt` needs every definition's script, so every
+            // definition is encoded (the proof cache still applies).
+            let out = bmb::verify_sources_opts(
+                &files,
+                cache.as_deref().map(std::path::Path::new),
+                emit.is_none(),
+            );
             if let Some(dir) = emit {
                 if let Err(e) = std::fs::create_dir_all(&dir) {
                     eprintln!("bmb: cannot create {dir}: {e}");

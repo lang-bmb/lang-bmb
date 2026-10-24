@@ -6,6 +6,7 @@ pub mod check;
 pub mod codegen;
 pub mod diag;
 pub mod fmt;
+pub mod incremental;
 pub mod json;
 pub mod lexer;
 pub mod lint;
@@ -57,8 +58,11 @@ pub struct VerifyOutput {
     pub output: String,
     /// SMT-LIB script per definition (empty when checking failed).
     pub scripts: BTreeMap<String, String>,
-    /// Proof cache (hits, misses); zero without a cache.
+    /// Proof cache (hits, misses); zero without a cache. Obligations of a
+    /// definition reused by the incremental cache count as hits.
     pub cache: (usize, usize),
+    /// What the incremental cache did (backlog 2D-10); empty without a cache.
+    pub incr: incremental::Stats,
 }
 
 struct Frontend {
@@ -266,11 +270,23 @@ pub fn verify_sources(files: &[(String, String)]) -> VerifyOutput {
 
 /// As `verify_sources`, with the proof cache in `cache_dir` (backlog 2D-01):
 /// obligations proved before with the same solver input are not sent to the
-/// solver again, and new proofs are added. The output is the same as without
-/// the cache.
+/// solver again, and new proofs are added. Definitions whose incremental key
+/// is unchanged are not even encoded (backlog 2D-10, `incremental.rs`). The
+/// output is the same as without the cache; `scripts` then holds only the
+/// definitions that were encoded.
 pub fn verify_sources_cached(
     files: &[(String, String)],
     cache_dir: Option<&std::path::Path>,
+) -> VerifyOutput {
+    verify_sources_opts(files, cache_dir, true)
+}
+
+/// As `verify_sources_cached`; `reuse: false` keeps the proof cache but
+/// encodes every definition (so `scripts` is complete, for `--emit-smt`).
+pub fn verify_sources_opts(
+    files: &[(String, String)],
+    cache_dir: Option<&std::path::Path>,
+    reuse: bool,
 ) -> VerifyOutput {
     let mut fe = frontend(files);
     if fe.diags.has_errors() {
@@ -279,16 +295,24 @@ pub fn verify_sources_cached(
             output: fe.diags.to_jsonl(&fe.sm),
             scripts: BTreeMap::new(),
             cache: (0, 0),
+            incr: incremental::Stats::default(),
         };
     }
-    let (outcome, cache) = prove(&mut fe, cache_dir);
+    let mut incr = cache_dir
+        .filter(|_| reuse)
+        .map(|d| incremental::Session::new(d, &fe.program, &fe.tables, &fe.sm));
+    let (outcome, cache) = prove(&mut fe, cache_dir, incr.as_mut());
     let mut output = fe.diags.to_jsonl(&fe.sm);
     output.push_str(&status_lines(&outcome));
+    if let Some(s) = &incr {
+        s.save();
+    }
     VerifyOutput {
         ok: !fe.diags.has_errors() && outcome.statuses.iter().all(|s| s.failed == 0),
         output,
         scripts: outcome.scripts,
         cache,
+        incr: incr.map(|s| s.stats).unwrap_or_default(),
     }
 }
 
@@ -394,19 +418,26 @@ fn emit_llvm(
                 output: fe.diags.to_jsonl(&fe.sm),
                 scripts: BTreeMap::new(),
                 cache: (0, 0),
+                incr: incremental::Stats::default(),
             },
             ir: None,
             checks: 0,
             has_main: false,
         };
     }
+    let mut incr = cache_dir
+        .filter(|_| !all_checks)
+        .map(|d| incremental::Session::new(d, &fe.program, &fe.tables, &fe.sm));
     let (outcome, cache) = if all_checks {
         (verify::Outcome::default(), (0, 0))
     } else {
-        prove(&mut fe, cache_dir)
+        prove(&mut fe, cache_dir, incr.as_mut())
     };
     let usable = usable_proofs(&fe, &outcome);
-    let module = codegen::emit(&fe.program, &fe.tables, &usable);
+    let module = codegen::emit_with(&fe.program, &fe.tables, &usable, incr.as_mut());
+    if let Some(s) = &incr {
+        s.save();
+    }
     let mut output = fe.diags.to_jsonl(&fe.sm);
     output.push_str(&status_lines(&outcome));
     LlvmOutput {
@@ -415,6 +446,7 @@ fn emit_llvm(
             output,
             scripts: outcome.scripts,
             cache,
+            incr: incr.map(|s| s.stats).unwrap_or_default(),
         },
         ir: Some(module.ir),
         checks: module.checks,
@@ -479,10 +511,21 @@ fn usable_proofs(
 fn prove(
     fe: &mut Frontend,
     cache_dir: Option<&std::path::Path>,
+    incr: Option<&mut incremental::Session>,
 ) -> (verify::Outcome, (usize, usize)) {
     let mut cache = cache_dir.map(cache::ProofCache::load);
-    let outcome =
-        verify::verify_program_with(&fe.program, &fe.tables, &mut fe.diags, 0, cache.as_mut());
+    let outcome = match incr {
+        Some(s) => verify::verify_program_incremental(
+            &fe.program,
+            &fe.tables,
+            &mut fe.diags,
+            cache.as_mut(),
+            s,
+        ),
+        None => {
+            verify::verify_program_with(&fe.program, &fe.tables, &mut fe.diags, 0, cache.as_mut())
+        }
+    };
     if let (Some(c), Some(dir)) = (&cache, cache_dir)
         && let Err(e) = c.save(dir)
     {
@@ -563,7 +606,13 @@ pub fn map_request_cached(
         _ => false,
     };
     let outcome = if needs_proof {
-        prove(&mut fe, cache_dir).0
+        let mut incr =
+            cache_dir.map(|d| incremental::Session::new(d, &fe.program, &fe.tables, &fe.sm));
+        let o = prove(&mut fe, cache_dir, incr.as_mut()).0;
+        if let Some(s) = &incr {
+            s.save();
+        }
+        o
     } else {
         verify::Outcome::default()
     };
