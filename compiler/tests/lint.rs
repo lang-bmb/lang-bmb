@@ -399,3 +399,98 @@ fn cache_does_not_change_the_report() {
     assert!(dir.join(bmb::incremental::FILE).exists());
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+// Backlog 2D-16: `*` -> `+`, `/` <-> `%`, `&&` <-> `||`, and an index shifted
+// by one either way.
+const OPS: &str = r#"#[summary("new mutation operators")]
+mod o {
+    spec fn small(x: i64) -> bool { x >= 0 && x < 1000 }
+
+    spec fn nonneg(r: i64) -> bool { r >= 0 }
+
+    // Weak: `*` -> `+` and `/` -> `%` keep the result non-negative.
+    #[effects(pure)]
+    #[uses(small, nonneg)]
+    fn mix(x: i64, y: i64) -> (r: i64)
+        requires small(x), small(y),
+        ensures nonneg(r),
+    {
+        x * y + x / 3
+    }
+
+    spec fn is_and(a: bool, b: bool, r: bool) -> bool { r == (a && b) }
+
+    // Exact: `&&` -> `||` is ruled out.
+    #[effects(pure)]
+    #[uses(is_and)]
+    fn both(a: bool, b: bool) -> (r: bool)
+        ensures is_and(a, b, r),
+    {
+        a && b
+    }
+
+    spec fn has3_nonneg(a: &[i64]) -> bool {
+        a.len() >= 3 && forall|i: usize| i < a.len() ==> #[trigger] a[i] >= 0
+    }
+
+    // Weak: says nothing about which element is read.
+    #[effects(pure)]
+    #[uses(has3_nonneg, nonneg)]
+    fn mid(a: &[i64]) -> (r: i64)
+        requires has3_nonneg(a),
+        ensures nonneg(r),
+    {
+        a[1]
+    }
+
+    spec fn inside(a: &[i64], i: usize) -> bool { i < a.len() }
+
+    spec fn is_at(a: &[i64], i: usize, r: i64) -> bool { i < a.len() && r == a[i] }
+
+    // Exact: the shifted reads are out of bounds or differ.
+    #[effects(pure)]
+    #[uses(inside, is_at)]
+    fn at(a: &[i64], i: usize) -> (r: i64)
+        requires inside(a, i),
+        ensures is_at(a, i, r),
+    {
+        a[i]
+    }
+}
+"#;
+
+#[test]
+fn operator_and_index_mutants() {
+    let out = lint_sources(&one("o.bmb", OPS)).unwrap();
+    assert!(out.ok, "{}", out.diagnostics);
+    let msgs: Vec<String> = rows(&out.diagnostics)
+        .iter()
+        .map(|d| {
+            assert_eq!(s(d, "code"), "W0904");
+            let m = s(d, "message");
+            m[m.find('`').unwrap()..m.find(" (").unwrap()].to_string()
+        })
+        .collect();
+    // mix: `+` -> `-` can go negative (killed); `*` -> `+`, `/` -> `%` and
+    // `3` -> `4` keep the result non-negative. both: `&&` -> `||` is killed
+    // by the exact postcondition. mid: both shifted reads stay in bounds
+    // and non-negative, as does `1` -> `2`. at: `a[i + 1]` and `a[i - 1]`
+    // are killed (bounds proof or postcondition).
+    assert_eq!(
+        msgs,
+        [
+            "`x * y` -> `x + y`",
+            "`x / 3` -> `x % 3`",
+            "`x / 3` -> `x / 4`",
+            "`a[1]` -> `a[1 + 1]`",
+            "`a[1]` -> `a[1 - 1]`",
+            "`1` -> `2`",
+        ]
+    );
+    // mix 4 sites, both 1, mid 3 (two index shifts and the literal), at 2.
+    assert_eq!((out.mutants, out.surviving), (10, 6));
+    assert_eq!(
+        out.report(),
+        lint_sources(&one("o.bmb", OPS)).unwrap().report()
+    );
+}

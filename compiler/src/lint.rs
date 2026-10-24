@@ -16,10 +16,13 @@
 //!   have callers, all of them verified, are examined.
 //! - `W0904` a single change to a function's body (backlog 2D-09) that its
 //!   specification does not distinguish: the mutated function still
-//!   verifies completely. Changes: `+`/`-`, `<`/`<=`, `>`/`>=`, `==`/`!=`
-//!   swapped, an integer literal `c` replaced by `c + 1`, a `bool` literal
-//!   flipped, an `if` condition negated, each in executable code only (not
-//!   in loop invariants, measures or `assert`). Only verified functions
+//!   verifies completely. Changes: `+`/`-`, `<`/`<=`, `>`/`>=`, `==`/`!=`,
+//!   `/`/`%`, `&&`/`||` swapped, `*` replaced by `+` (backlog 2D-16), an
+//!   integer literal `c` replaced by `c + 1`, a `bool` literal flipped, an
+//!   `if` condition negated, an index `a[i]` replaced by `a[i + 1]` and by
+//!   `a[i - 1]` (two mutants; often killed by the bounds proof, which is a
+//!   kill like any other), each in executable code only (not in loop
+//!   invariants, measures or `assert`). Only verified functions
 //!   with an `ensures` clause and satisfiable preconditions are mutated.
 //!   Equivalence of a mutant is not decided, so a report may be an
 //!   equivalent change (informational). At most `MAX_MUTANTS` mutants per
@@ -427,11 +430,18 @@ struct Site {
     after: String,
 }
 
-/// The mutated operator of a binary node, if it has one.
+/// The mutated operator of a binary node, if it has one. `*` becomes `+`
+/// (not the other way: `+` already becomes `-`, and a second mutant for the
+/// most common operator would crowd the `MAX_MUTANTS` budget).
 fn swap_op(op: BinOp) -> Option<BinOp> {
     Some(match op {
         BinOp::Add => BinOp::Sub,
         BinOp::Sub => BinOp::Add,
+        BinOp::Mul => BinOp::Add,
+        BinOp::Div => BinOp::Rem,
+        BinOp::Rem => BinOp::Div,
+        BinOp::And => BinOp::Or,
+        BinOp::Or => BinOp::And,
         BinOp::Lt => BinOp::Le,
         BinOp::Le => BinOp::Lt,
         BinOp::Gt => BinOp::Ge,
@@ -450,9 +460,36 @@ fn squash(s: &str) -> String {
     s.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// The site at node `e`, if `e` is one, described against its file's
-/// `text`. `parent` is the span of the enclosing operator node, shown as
-/// context for a changed literal.
+/// Index offsets tried at an index node `a[i]`: `a[i + 1]`, then `a[i - 1]`.
+const INDEX_SHIFTS: [BinOp; 2] = [BinOp::Add, BinOp::Sub];
+
+/// The sites at node `e`, described against its file's `text`, in the order
+/// `mutate` numbers them. `parent` is the span of the enclosing operator
+/// node, shown as context for a changed literal.
+fn sites_of(e: &Expr, parent: Option<Span>, text: &str) -> Vec<Site> {
+    if let ExprKind::Index { index, .. } = &e.kind {
+        if index.span.lo < e.span.lo || e.span.hi < index.span.hi {
+            return Vec::new();
+        }
+        let src = &text[e.span.lo as usize..e.span.hi as usize];
+        let (a, b) = (
+            (index.span.lo - e.span.lo) as usize,
+            (index.span.hi - e.span.lo) as usize,
+        );
+        let i = &src[a..b];
+        return INDEX_SHIFTS
+            .iter()
+            .map(|op| Site {
+                span: e.span,
+                before: squash(src),
+                after: squash(&format!("{}{i} {} 1{}", &src[..a], op.symbol(), &src[b..])),
+            })
+            .collect();
+    }
+    site_of(e, parent, text).into_iter().collect()
+}
+
+/// The single site at a non-index node `e`, if `e` is one.
 fn site_of(e: &Expr, parent: Option<Span>, text: &str) -> Option<Site> {
     let src = |sp: Span| &text[sp.lo as usize..sp.hi as usize];
     // The text of `ctx` with bytes `lo..hi` replaced by `new`.
@@ -495,9 +532,32 @@ fn site_of(e: &Expr, parent: Option<Span>, text: &str) -> Option<Site> {
     })
 }
 
-/// Applies the change `site_of` describes at node `e`.
-fn mutate(e: &mut Expr) {
+/// Applies the `variant`-th change `sites_of` describes at node `e`.
+fn mutate(e: &mut Expr, variant: usize) {
     match &mut e.kind {
+        // `i` becomes `i + 1` or `i - 1`. The new nodes take the span of `i`,
+        // so the type tables (keyed by span) give them the index type.
+        ExprKind::Index { index, .. } => {
+            let span = index.span;
+            let inner = std::mem::replace(
+                index.as_mut(),
+                Expr {
+                    kind: ExprKind::Unit,
+                    span,
+                },
+            );
+            **index = Expr {
+                kind: ExprKind::Binary(
+                    INDEX_SHIFTS[variant],
+                    Box::new(inner),
+                    Box::new(Expr {
+                        kind: ExprKind::Int(1),
+                        span,
+                    }),
+                ),
+                span,
+            };
+        }
         ExprKind::Binary(op, _, _) => *op = swap_op(*op).expect("a mutation site"),
         ExprKind::Int(c) => *c += 1,
         ExprKind::Bool(b) => *b = !*b,
@@ -589,9 +649,7 @@ fn sites(f: &FnDef, text: &str) -> Vec<Site> {
     let mut body = f.body.clone();
     let mut out = Vec::new();
     walk_block(&mut body, &mut |e, parent| {
-        if let Some(s) = site_of(e, parent, text) {
-            out.push(s);
-        }
+        out.extend(sites_of(e, parent, text));
     });
     out
 }
@@ -600,11 +658,10 @@ fn sites(f: &FnDef, text: &str) -> Vec<Site> {
 fn apply_site(f: &mut FnDef, text: &str, k: usize) {
     let mut i = 0;
     walk_block(&mut f.body, &mut |e, parent| {
-        if site_of(e, parent, text).is_some() {
-            if i == k {
-                mutate(e);
-            }
-            i += 1;
+        let n = sites_of(e, parent, text).len();
+        if i <= k && k < i + n {
+            mutate(e, k - i);
         }
+        i += n;
     });
 }
