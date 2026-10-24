@@ -1,0 +1,49 @@
+#[summary("지원하지 않는 구문")]
+mod unsupported {
+    const LIMIT: i64 = 10;
+
+    static COUNT: i64 = 0;
+
+    #[effects(pure)]
+    fn chars() -> i64 { 'a' 97 }
+
+    #[effects(pure)]
+    fn infinite() -> () { loop { } }
+
+    #[effects(pure)]
+    fn matches(x: i64) -> i64 { match x { _ => 0 } }
+
+    #[effects(pure)]
+    fn breaks(n: u64) -> () {
+        let mut i: u64 = 0;
+        while i < n
+            invariant i <= n,
+            decreases n - i,
+        {
+            break;
+        }
+    }
+
+    #[effects(pure)]
+    fn continues(n: u64) -> () {
+        let mut i: u64 = 0;
+        while i < n
+            invariant i <= n,
+            decreases n - i,
+        {
+            continue;
+        }
+    }
+
+    #[effects(pure)]
+    fn fields(p: i64) -> i64 { p.x }
+
+    #[effects(pure)]
+    fn tuples() -> i64 { (1, 2) }
+
+    #[effects(pure)]
+    fn closures() -> i64 { |x| x }
+
+    #[effects(pure)]
+    fn paths() -> i64 { other::value }
+}

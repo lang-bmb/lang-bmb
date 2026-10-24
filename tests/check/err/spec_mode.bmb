@@ -1,0 +1,36 @@
+#[summary("명세 문맥과 실행 문맥")]
+mod spec_mode {
+    spec fn pos(x: i64) -> bool { x > 0 }
+
+    spec fn contracted(x: i64) -> bool
+        requires pos(x),
+    {
+        x > 1
+    }
+
+    spec fn assigns(x: i64) -> bool {
+        let mut y: i64 = x;
+        y = 1;
+        y > 0
+    }
+
+    spec fn loops(n: u64) -> bool {
+        let i: u64 = 0;
+        while i < n
+            invariant i <= n,
+            decreases n - i,
+        {
+        }
+        i > 0
+    }
+
+    #[effects(pure)]
+    fn exec_trigger(a: &[i64]) -> bool { #[trigger] a[0] > 0 }
+
+    #[effects(pure)]
+    fn exec_old(a: &mut [i64]) -> usize { old(a).len() }
+
+    #[effects(pure)]
+    #[uses("pos")]
+    fn string_uses() -> () {}
+}

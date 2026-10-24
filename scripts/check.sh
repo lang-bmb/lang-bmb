@@ -17,4 +17,5 @@ python3 bench/m1/harness.py summarize "$tmp" | grep -q "작성 1회 성공률 | 
 rm -f "$tmp"
 python3 bench/m1/harness.py run --agent weak --expect weak-fail > /dev/null
 python3 bench/m1/test_anthropic_agent.py 2> /dev/null
+out=$(python3 bench/m1/test_harness.py 2>&1) || { printf '%s\n' "$out"; exit 1; }
 echo "all checks passed"
