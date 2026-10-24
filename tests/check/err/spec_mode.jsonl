@@ -5,3 +5,4 @@
 {"code":"E0503","severity":"error","message":"`#[trigger]` is only allowed in specifications","file":"err/spec_mode.bmb","line":28,"col":42,"end_line":28,"end_col":57}
 {"code":"E0503","severity":"error","message":"`old(x)` is only allowed in `ensures`, loop invariants and `assert`, on a `&mut` parameter `x`","file":"err/spec_mode.bmb","line":31,"col":43,"end_line":31,"end_col":49}
 {"code":"E0509","severity":"error","message":"`#[uses(..)]` takes spec function names","file":"err/spec_mode.bmb","line":34,"col":12,"end_line":34,"end_col":17}
+{"code":"E0503","severity":"error","message":"`assert` is not allowed in a specification","file":"err/spec_mode.bmb","line":41,"col":9,"end_line":41,"end_col":23}

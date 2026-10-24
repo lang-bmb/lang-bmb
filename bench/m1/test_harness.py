@@ -91,12 +91,10 @@ class JudgeNavigate(Workspace):
             wrong = harness.judge_navigate(self.task, self.ws, ["arrays::swap"])
             self.assertEqual((wrong["precision"], wrong["recall"]), (0.0, 1.0))
             self.assertFalse(wrong["success"])
-            # Finding (1D-21): the correct answer to a question with no
-            # definitions -- the empty list -- is judged a failure, because
-            # precision of an empty answer is 0.0 regardless of the truth.
+            # The empty list is the right answer when nothing is to be found.
             right = harness.judge_navigate(self.task, self.ws, [])
-            self.assertEqual((right["precision"], right["recall"]), (0.0, 1.0))
-            self.assertFalse(right["success"])
+            self.assertEqual((right["precision"], right["recall"]), (1.0, 1.0))
+            self.assertTrue(right["success"])
 
 
 class Signatures(unittest.TestCase):
@@ -164,15 +162,13 @@ class JudgeWrite(unittest.TestCase):
                          {"verified": True, "signature_ok": True, "spec_accepted": False, "success": False})
 
     def test_agent_unit_named_bmb_accept(self):
-        # Finding (1D-21): an extra agent unit named `bmb_accept` duplicates the
-        # hidden acceptance unit, so a correct solution is judged not accepted.
-        # A wrong solution cannot pass this way (the duplicate is an error).
+        # An agent unit named `bmb_accept` must not collide with the hidden
+        # acceptance unit: the correct solution is still accepted.
         extra = [{"op": "unit", "path": "bmb_accept", "summary": "도움"},
                  {"op": "put", "unit": "bmb_accept",
                   "code": "spec fn helper(x: i64) -> bool { x > 0 }"}]
         r = run_with_ops(self.task, self.task["reference"] + extra)
-        self.assertEqual(self.verdict(r),
-                         {"verified": True, "signature_ok": True, "spec_accepted": False, "success": False})
+        self.assertTrue(r["success"], self.verdict(r))
         r = run_with_ops(self.task, self.task["weak_reference"] + extra)
         self.assertFalse(r["success"], self.verdict(r))
 

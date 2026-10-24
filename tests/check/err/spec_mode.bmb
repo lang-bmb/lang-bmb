@@ -34,3 +34,11 @@ mod spec_mode {
     #[uses("pos")]
     fn string_uses() -> () {}
 }
+
+#[summary("명세 함수 본문의 assert")]
+mod spec_assert {
+    spec fn asserts(x: i64) -> bool {
+        assert(x > 0);
+        x > 1
+    }
+}

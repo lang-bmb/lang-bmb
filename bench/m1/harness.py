@@ -197,8 +197,13 @@ def judge_write(task, workspace):
         uses = ", ".join(["ref_post"] + (["ref_pre"] if a["pre"] else []) + specs)
         req = f"    requires {a['pre']},\n" if a["pre"] else ""
         ret = f"(r: {ret_ty})" if ret_ty != "()" else "()"
+        # The hidden unit takes a name the agent's workspace does not use.
+        units = {r["path"] for r in rows(l0) if r.get("kind") == "unit"}
+        hidden = "bmb_accept"
+        while hidden in units:
+            hidden += "_"
         accept = (
-            '#[summary("hidden acceptance check")]\nmod bmb_accept {\n'
+            f'#[summary("hidden acceptance check")]\nmod {hidden} {{\n'
             + a["specs"] + "\n\n"
             + f"#[effects(pure)]\n#[uses({uses})]\nfn check({params}) -> {ret}\n{req}"
             + f"    ensures {a['post']},\n{{\n    {task['def']}({a['args']})\n}}\n}}\n"
@@ -218,7 +223,8 @@ def judge_navigate(task, workspace, answer):
     want = truth(task, workspace)
     got = set(answer or [])
     tp = len(want & got)
-    precision = tp / len(got) if got else 0.0
+    # An empty answer is exact only when nothing is to be found.
+    precision = tp / len(got) if got else (1.0 if not want else 0.0)
     recall = tp / len(want) if want else 1.0
     return {"precision": round(precision, 3), "recall": round(recall, 3),
             "success": precision == 1.0 and recall == 1.0, "truth": sorted(want), "answer": sorted(got)}

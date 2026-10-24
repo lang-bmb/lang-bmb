@@ -691,7 +691,10 @@ impl<'a> Checker<'a> {
                 let bt = self.block(cx, body, Some(&TypeKind::Unit), mode);
                 self.expect_ty(&bt, &TypeKind::Unit, body.span);
             }
-            Stmt::Assert { cond, .. } => {
+            Stmt::Assert { cond, span } => {
+                if mode != Mode::Exec {
+                    self.err("E0503", *span, "`assert` is not allowed in a specification");
+                }
                 let t = self.expr(
                     cx,
                     cond,

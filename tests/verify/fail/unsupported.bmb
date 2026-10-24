@@ -9,15 +9,4 @@ mod unsupported {
             forall|i: usize| i < n ==> #[trigger] a[i] > 0 && all_pos(a, n - 1)
         }
     }
-
-    // The checker accepts `assert` in a spec fn body; the proof gate rejects
-    // it when the definition is unfolded.
-    spec fn asserts(x: i64) -> bool {
-        assert(x > 0);
-        x > 1
-    }
-
-    #[effects(pure)]
-    #[uses(asserts)]
-    fn unfolds() -> () { assert(asserts(5)); }
 }

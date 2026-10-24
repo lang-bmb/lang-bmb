@@ -239,7 +239,9 @@ mod m {
         "{ir}"
     );
     assert!(!body("unrelated").contains("unproved"), "{ir}");
+}
 
+#[test]
 fn only_the_entry_point_is_external() {
     // Closed world (backlog 2D-07): LLVM may inline and drop every function.
     let text = r#"

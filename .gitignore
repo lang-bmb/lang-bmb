@@ -1,3 +1,4 @@
 target/
 .bmb-cache/
 .claude/worktrees/
+__pycache__/
