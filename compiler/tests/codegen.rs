@@ -145,3 +145,31 @@ mod m {
         "assumes must come only from proofs"
     );
 }
+
+#[test]
+fn bool_arrays_are_bytes_in_memory() {
+    // `i1` in memory blocks LLVM's fill and vectorization idioms (backlog 1E-09).
+    let text = r#"
+#[summary("bool 배열")]
+mod m {
+    #[effects(pure)]
+    fn set_all(a: &mut [bool]) -> () {
+        let mut i: usize = 0;
+        while i < a.len()
+            invariant i <= a.len(),
+            decreases a.len() - i,
+        {
+            a[i] = !a[i];
+            i = i + 1;
+        }
+    }
+}
+"#;
+    let ir = bmb::emit_llvm_sources(&src("b.bmb", text)).ir.unwrap();
+    assert!(!ir.contains("store i1 ") || !ir.contains("ptr %t"), "{ir}");
+    assert!(
+        ir.contains("getelementptr inbounds i8, ptr %\"a.ptr\""),
+        "{ir}"
+    );
+    assert!(ir.contains("zext i1") && ir.contains("trunc i8"), "{ir}");
+}

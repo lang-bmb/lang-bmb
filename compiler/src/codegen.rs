@@ -62,6 +62,12 @@ fn elem_of(t: &TypeKind) -> TypeKind {
     }
 }
 
+/// In-memory type of an array element: `bool` is a byte, as in Rust and C,
+/// so LLVM recognizes fills and vectorizes loads (backlog 1E-09).
+fn mem(elem: &str) -> &str {
+    if elem == "i1" { "i8" } else { elem }
+}
+
 fn fn_sym(path: &str) -> String {
     format!("@\"{path}\"")
 }
@@ -117,6 +123,27 @@ impl<'p> Gen<'p> {
         let p = self.t();
         let _ = writeln!(self.allocas, "  {p} = alloca {ty}");
         p
+    }
+
+    fn load_elem(&mut self, elem: &str, ptr: &str) -> String {
+        let r = self.t();
+        self.emit(format!("{r} = load {}, ptr {ptr}", mem(elem)));
+        if elem != "i1" {
+            return r;
+        }
+        let b = self.t();
+        self.emit(format!("{b} = trunc i8 {r} to i1"));
+        b
+    }
+
+    fn store_elem(&mut self, elem: &str, v: &str, ptr: &str) {
+        if elem == "i1" {
+            let z = self.t();
+            self.emit(format!("{z} = zext i1 {v} to i8"));
+            self.emit(format!("store i8 {z}, ptr {ptr}"));
+        } else {
+            self.emit(format!("store {elem} {v}, ptr {ptr}"));
+        }
     }
 
     /// Branches to a trap unless `cond` holds.
@@ -262,9 +289,7 @@ impl<'p> Gen<'p> {
             }
             ExprKind::Index { base, index } => {
                 let (ptr, ty) = self.elem_ptr(e, base, index);
-                let r = self.t();
-                self.emit(format!("{r} = load {ty}, ptr {ptr}"));
-                CVal::Imm(r)
+                CVal::Imm(self.load_elem(ty, &ptr))
             }
             ExprKind::Method { recv, name, args } => {
                 let rv = self.expr(recv);
@@ -331,7 +356,7 @@ impl<'p> Gen<'p> {
                     unreachable!()
                 };
                 let elem = llty(&el.kind);
-                let ptr = self.alloca(&format!("[{n} x {elem}]"));
+                let ptr = self.alloca(&format!("[{n} x {}]", mem(elem)));
                 self.init_array(e, &ptr, elem);
                 CVal::Arr {
                     ptr,
@@ -390,7 +415,8 @@ impl<'p> Gen<'p> {
         };
         let p = self.t();
         self.emit(format!(
-            "{p} = getelementptr inbounds {elem}, ptr {ptr}, i64 {i}{note}"
+            "{p} = getelementptr inbounds {}, ptr {ptr}, i64 {i}{note}",
+            mem(elem)
         ));
         (p, elem)
     }
@@ -402,9 +428,10 @@ impl<'p> Gen<'p> {
                     let v = self.expr(it).imm();
                     let p = self.t();
                     self.emit(format!(
-                        "{p} = getelementptr inbounds {elem}, ptr {ptr}, i64 {k}"
+                        "{p} = getelementptr inbounds {}, ptr {ptr}, i64 {k}",
+                        mem(elem)
                     ));
-                    self.emit(format!("store {elem} {v}, ptr {p}"));
+                    self.store_elem(elem, &v, &p);
                 }
             }
             ExprKind::Repeat { value, count, .. } => {
@@ -425,9 +452,10 @@ impl<'p> Gen<'p> {
                 let p = self.t();
                 let k2 = self.t();
                 self.emit(format!(
-                    "{p} = getelementptr inbounds {elem}, ptr {ptr}, i64 {k}"
+                    "{p} = getelementptr inbounds {}, ptr {ptr}, i64 {k}",
+                    mem(elem)
                 ));
-                self.emit(format!("store {elem} {v}, ptr {p}"));
+                self.store_elem(elem, &v, &p);
                 self.emit(format!("{k2} = add nuw i64 {k}, 1"));
                 self.emit(format!("store i64 {k2}, ptr {i}"));
                 self.emit(format!("br label %{head}"));
@@ -509,7 +537,7 @@ impl<'p> Gen<'p> {
             Stmt::Let { name, ty, init, .. } => match &ty.kind {
                 TypeKind::Array(el, n) => {
                     let elem = llty(&el.kind);
-                    let ptr = self.alloca(&format!("[{n} x {elem}]"));
+                    let ptr = self.alloca(&format!("[{n} x {}]", mem(elem)));
                     self.init_array(init, &ptr, elem);
                     self.slots.insert(
                         name.name.clone(),
@@ -540,7 +568,7 @@ impl<'p> Gen<'p> {
                 ExprKind::Index { base, index } => {
                     let (ptr, ty) = self.elem_ptr(target, base, index);
                     let v = self.expr(value).imm();
-                    self.emit(format!("store {ty} {v}, ptr {ptr}"));
+                    self.store_elem(ty, &v, &ptr);
                 }
                 _ => unreachable!(),
             },
@@ -650,7 +678,7 @@ pub fn emit(p: &Program, t: &Tables, proven: &BTreeSet<ObKey>) -> Module {
                     // Arrays by value: copied into a local.
                     let elem = llty(&el.kind);
                     params.push(format!("ptr %\"{n}.in\""));
-                    let ptr = g.alloca(&format!("[{len} x {elem}]"));
+                    let ptr = g.alloca(&format!("[{len} x {}]", mem(elem)));
                     let bytes = if elem == "i1" { *len } else { len * 8 };
                     g.emit(format!(
                         "call void @llvm.memcpy.p0.p0.i64(ptr {ptr}, ptr %\"{n}.in\", i64 {bytes}, i1 false)"
