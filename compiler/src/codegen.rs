@@ -659,7 +659,10 @@ pub struct Module {
     pub main: Option<String>,
 }
 
-/// Emits one LLVM module for the whole program.
+/// Emits one LLVM module for the whole program. The module is the whole
+/// program (closed world, backlog 2D-07): every function, including the BMB
+/// `main` and the print helper, has `internal` linkage, so LLVM may inline
+/// and drop them freely. Only the C entry point `@main` is external.
 pub fn emit(p: &Program, t: &Tables, proven: &BTreeSet<ObKey>) -> Module {
     let mut defs = Vec::new();
     for m in &p.mods {
@@ -682,7 +685,7 @@ pub fn emit(p: &Program, t: &Tables, proven: &BTreeSet<ObKey>) -> Module {
         }
     }
     ir.push_str(
-        "define void @bmb_print_i64(i64 %x) {\n  call i32 (ptr, ...) @printf(ptr @bmb.fmt, i64 %x)\n  ret void\n}\n",
+        "define internal void @bmb_print_i64(i64 %x) {\n  call i32 (ptr, ...) @printf(ptr @bmb.fmt, i64 %x)\n  ret void\n}\n",
     );
     let mut checks = 0;
     let mut main = None;
@@ -759,7 +762,7 @@ pub fn emit(p: &Program, t: &Tables, proven: &BTreeSet<ObKey>) -> Module {
         checks += g.checks;
         let _ = write!(
             ir,
-            "\ndefine {ret} {}({}) {{\nentry:\n{}{}}}\n",
+            "\ndefine internal {ret} {}({}) {{\nentry:\n{}{}}}\n",
             fn_sym(&path),
             params.join(", "),
             g.allocas,
