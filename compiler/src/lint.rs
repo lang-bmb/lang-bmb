@@ -28,18 +28,22 @@
 //!
 //! Clauses are removed from the checked program itself (the syntax tree;
 //! nothing else changes, so the type tables still apply) and only the
-//! affected definitions are proved again (`verify::verify_defs`), through an
-//! in-memory proof cache. Each clause is judged on its own: two clauses
+//! affected definitions are proved again (`verify::verify_defs`), through a
+//! proof cache (in memory, or `DIR/proofs` with `--cache DIR`; with it, the
+//! first whole-program verification also goes through the incremental cache,
+//! backlog 2D-15). Each clause is judged on its own: two clauses
 //! reported separately may not be removable together. Re-verifications are
 //! capped (`MAX_PRE_TRIALS`, `MAX_POST_TRIALS`); clauses beyond the cap are
 //! counted as `skipped` in the summary, in a fixed (path, clause) order. It
 //! runs only on request (`bmb lint`); `check` and `verify` are unchanged.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::Path;
 
 use crate::ast::{BinOp, Block, Expr, ExprKind, FnDef, FnKind, Mod, Program, Stmt, UnOp};
 use crate::cache::ProofCache;
 use crate::diag::{Diag, Diags};
+use crate::incremental::Session;
 use crate::source::Span;
 
 /// Upper bound on re-verifications for unused-precondition checks (W0902).
@@ -138,18 +142,47 @@ fn clean(
 /// diagnostics when the program does not check. Deterministic: the result
 /// depends only on the input.
 pub fn lint_sources(files: &[(String, String)]) -> Result<LintOutput, String> {
+    lint_sources_cached(files, None)
+}
+
+/// As `lint_sources`, with the proof cache and the incremental cache kept in
+/// `cache_dir` (as `bmb verify --cache`, backlog 2D-15): the first, whole
+/// program verification reuses every unchanged definition, and the
+/// restricted re-verifications reuse proved obligations from earlier runs.
+/// The result is the same.
+pub fn lint_sources_cached(
+    files: &[(String, String)],
+    cache_dir: Option<&Path>,
+) -> Result<LintOutput, String> {
     let mut fe = crate::frontend(files);
     if fe.diags.has_errors() {
         return Err(fe.diags.to_jsonl(&fe.sm));
     }
-    let mut cache = ProofCache::default();
-    let base = crate::verify::verify_program_with(
-        &fe.program,
-        &fe.tables,
-        &mut fe.diags,
-        0,
-        Some(&mut cache),
-    );
+    let mut cache = cache_dir.map(ProofCache::load).unwrap_or_default();
+    // Only the first verification covers the whole program; the restricted
+    // ones below each change the definitions they prove, so the incremental
+    // cache serves this one alone (and records it, with `cache_dir`).
+    let base = match cache_dir {
+        Some(d) => {
+            let mut session = Session::new(d, &fe.program, &fe.tables, &fe.sm);
+            let o = crate::verify::verify_program_incremental(
+                &fe.program,
+                &fe.tables,
+                &mut fe.diags,
+                Some(&mut cache),
+                &mut session,
+            );
+            session.save();
+            o
+        }
+        None => crate::verify::verify_program_with(
+            &fe.program,
+            &fe.tables,
+            &mut fe.diags,
+            0,
+            Some(&mut cache),
+        ),
+    };
 
     let mut out = Diags::default();
     let gate_down: Vec<Diag> = fe
@@ -361,6 +394,12 @@ pub fn lint_sources(files: &[(String, String)]) -> Result<LintOutput, String> {
                 ),
             );
         }
+    }
+
+    if let Some(d) = cache_dir
+        && let Err(e) = cache.save(d)
+    {
+        eprintln!("bmb: cannot write proof cache in {}: {e}", d.display());
     }
 
     let reports = out.items.iter().filter(|d| d.code.starts_with('W')).count();

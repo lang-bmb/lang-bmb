@@ -382,3 +382,20 @@ fn codes_are_warnings_on_the_reference_page() {
     }
     assert_eq!(bmb::diag::severity("E0801"), "error");
 }
+
+/// With `--cache DIR` (backlog 2D-15) the report is the same, cold and warm.
+#[test]
+fn cache_does_not_change_the_report() {
+    let dir = std::env::temp_dir().join(format!("bmb-lint-cache-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    for (name, src) in [("l.bmb", SRC), ("w.bmb", MUT)] {
+        let input = one(name, src);
+        let plain = lint_sources(&input).unwrap().report();
+        for round in ["cold", "warm"] {
+            let out = bmb::lint::lint_sources_cached(&input, Some(&dir)).unwrap();
+            assert_eq!(out.report(), plain, "{name} {round}");
+        }
+    }
+    assert!(dir.join(bmb::incremental::FILE).exists());
+    let _ = std::fs::remove_dir_all(&dir);
+}

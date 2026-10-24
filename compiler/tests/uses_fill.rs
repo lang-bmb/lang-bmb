@@ -288,3 +288,21 @@ fn cli_reports_and_writes_only_with_write() {
     assert_eq!(std::fs::read_to_string(&path).unwrap(), after);
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+/// The caches (backlog 2D-15) change nothing: in memory between the runs of
+/// one call, and on disk with `--cache DIR`, cold and warm.
+#[test]
+fn caches_do_not_change_the_result() {
+    let input = one(SRC);
+    let plain = fill_uses(&input).unwrap();
+    let dir = std::env::temp_dir().join(format!("bmb-uses-cache-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    for round in ["cold", "warm"] {
+        let out = bmb::uses_fill::fill_uses_cached(&input, Some(&dir)).unwrap();
+        assert_eq!(out.report(&input), plain.report(&input), "{round}");
+        assert_eq!(out.files, plain.files, "{round}");
+    }
+    assert!(dir.join(bmb::incremental::FILE).exists());
+    assert!(dir.join(bmb::cache::FILE).exists());
+    let _ = std::fs::remove_dir_all(&dir);
+}

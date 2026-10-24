@@ -20,17 +20,20 @@ const USAGE: &str = "usage:
                             none applies; JSONL report of applied fixes, remaining diagnostics
                             and a summary; --write rewrites changed files in place, --print
                             prints the fixed text instead of the report; fails if errors remain
-  bmb uses [--write] <file.bmb>...
+  bmb uses [--write] [--cache DIR] <file.bmb>...
                             for each definition that fails to prove, find a minimal #[uses(..)]
                             list from its current entries and the hidden predicates its
                             diagnostics name; JSONL row per definition (status proved, unchanged
                             or not_found, with the attribute replacement) and a summary;
-                            --write rewrites changed files; fails if a definition stays unproved
-  bmb lint <file.bmb>...    contract lint (warnings W09xx as JSONL, then a summary): preconditions
+                            --write rewrites changed files; fails if a definition stays unproved;
+                            --cache uses and updates the caches in DIR as `verify --cache` does
+  bmb lint [--cache DIR] <file.bmb>...
+                            contract lint (warnings W09xx as JSONL, then a summary): preconditions
                             that cannot hold together, preconditions the function's proof does
                             not need, postconditions no caller's proof uses, body mutations the
                             specification does not distinguish; re-verifications and mutants are
-                            capped; fails only if the program does not check or the gate cannot run
+                            capped; fails only if the program does not check or the gate cannot run;
+                            --cache uses and updates the caches in DIR as `verify --cache` does
   bmb hash <file.bmb>...    definition hashes (body, iface) as JSONL
   bmb map [L0|L1|L2|all] <file.bmb>...
                             standard maps as JSONL (ADR-0020)
@@ -318,8 +321,22 @@ fn run() -> ExitCode {
             }
         }
         Some("uses") if args.len() > 1 => {
-            let write = args[1] == "--write";
-            let paths = if write { &args[2..] } else { &args[1..] };
+            let mut paths = &args[1..];
+            let mut write = false;
+            let mut cache = None;
+            loop {
+                match paths.first().map(String::as_str) {
+                    Some("--write") => {
+                        write = true;
+                        paths = &paths[1..];
+                    }
+                    Some("--cache") if paths.len() > 2 => {
+                        cache = Some(paths[1].clone());
+                        paths = &paths[2..];
+                    }
+                    _ => break,
+                }
+            }
             if paths.is_empty() {
                 eprintln!("{USAGE}");
                 return ExitCode::from(2);
@@ -328,7 +345,10 @@ fn run() -> ExitCode {
                 Ok(f) => f,
                 Err(code) => return code,
             };
-            let out = match bmb::uses_fill::fill_uses(&files) {
+            let out = match bmb::uses_fill::fill_uses_cached(
+                &files,
+                cache.as_deref().map(std::path::Path::new),
+            ) {
                 Ok(o) => o,
                 Err(diags) => {
                     print!("{diags}");
@@ -356,11 +376,16 @@ fn run() -> ExitCode {
             }
         }
         Some("lint") if args.len() > 1 => {
-            let files = match read_files(&args[1..]) {
+            let (cache, paths) = match args[1].as_str() {
+                "--cache" if args.len() > 3 => (Some(args[2].clone()), &args[3..]),
+                _ => (None, &args[1..]),
+            };
+            let files = match read_files(paths) {
                 Ok(f) => f,
                 Err(code) => return code,
             };
-            match bmb::lint::lint_sources(&files) {
+            match bmb::lint::lint_sources_cached(&files, cache.as_deref().map(std::path::Path::new))
+            {
                 Ok(out) => {
                     print!("{}", out.report());
                     if out.ok {
