@@ -63,3 +63,4 @@ BMB v2의 설계 결정을 한 건에 파일 하나로 남긴다. 현재 확정�
 | [0015](0015-second-class-references.md) | 소유·이동 + 2차 참조 | 채택 | genesis Q13 |
 | [0016](0016-milestone-1-scope.md) | 첫 마일스톤 범위: 언어 부분집합과 도구 질의 | 채택 | genesis §6-1 |
 | [0017](0017-integer-semantics-and-smt-encoding.md) | 정수 의미론과 SMT 인코딩 | 채택(자율) | 백로그 1B-01 |
+| [0018](0018-obligation-isolation-and-division-facts.md) | 증명 의무 격리와 나눗셈 보조 사실 | 채택(자율) | 1B 구현 |

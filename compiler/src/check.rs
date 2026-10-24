@@ -30,6 +30,10 @@ pub struct Checker<'a> {
     pub fns: BTreeMap<String, FnSig>,
     /// Exec-to-exec and spec-to-spec call edges, by path.
     calls: BTreeMap<String, BTreeSet<String>>,
+    /// Type of every checked expression, keyed by its span `(file, lo, hi)`.
+    pub types: BTreeMap<(u32, u32, u32), TypeKind>,
+    /// Recursive definitions: path -> id of its strongly connected component.
+    pub recursive: BTreeMap<String, usize>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -117,6 +121,17 @@ impl<'a> Checker<'a> {
             diags,
             fns,
             calls: BTreeMap::new(),
+            types: BTreeMap::new(),
+            recursive: BTreeMap::new(),
+        }
+    }
+
+    /// Hands the tables the proof gate needs to the verifier.
+    pub fn into_tables(self) -> crate::verify::Tables {
+        crate::verify::Tables {
+            fns: self.fns,
+            types: self.types,
+            recursive: self.recursive,
         }
     }
 
@@ -341,8 +356,12 @@ impl<'a> Checker<'a> {
                 for arg in &a.args {
                     match arg {
                         AttrArg::Ident(i) => {
-                            let ok = self
-                                .resolve(std::slice::from_ref(i), mod_path)
+                            let target = if i.name.contains("::") {
+                                Some(i.name.clone())
+                            } else {
+                                self.resolve(std::slice::from_ref(i), mod_path)
+                            };
+                            let ok = target
                                 .and_then(|p| self.fns.get(&p))
                                 .is_some_and(|s| s.kind == FnKind::Spec);
                             if !ok {
@@ -734,6 +753,19 @@ impl<'a> Checker<'a> {
         expected: Option<&TypeKind>,
         mode: Mode,
     ) -> TypeKind {
+        let t = self.expr_inner(cx, e, expected, mode);
+        self.types
+            .insert((e.span.file, e.span.lo, e.span.hi), t.clone());
+        t
+    }
+
+    fn expr_inner(
+        &mut self,
+        cx: &mut FnCtx,
+        e: &Expr,
+        expected: Option<&TypeKind>,
+        mode: Mode,
+    ) -> TypeKind {
         match &e.kind {
             ExprKind::Error => TypeKind::Error,
             ExprKind::Unit => TypeKind::Unit,
@@ -832,6 +864,14 @@ impl<'a> Checker<'a> {
                 }
             }
             ExprKind::Block(b) => self.block(cx, b, expected, mode),
+            ExprKind::Array(_) | ExprKind::Repeat { .. } if mode != Mode::Exec => {
+                self.err(
+                    "E0503",
+                    e.span,
+                    "array literals are only allowed in executable code",
+                );
+                TypeKind::Error
+            }
             ExprKind::Array(items) => {
                 let want_elem = match expected {
                     Some(TypeKind::Array(el, _)) => Some(el.kind.clone()),
@@ -910,6 +950,28 @@ impl<'a> Checker<'a> {
                         self.err("E0402", b.ty.span, "`forall` binders must be integers");
                     }
                     self.declare(cx, &b.name, b.ty.kind.clone(), false, false);
+                }
+                let mut triggers = Vec::new();
+                collect_triggers(body, &mut triggers);
+                if triggers.is_empty() {
+                    self.diags.push(
+                        Diag::new("E0511", e.span, "`forall` has no `#[trigger]`").fix(
+                            "mark a term that mentions every bound variable, e.g. `#[trigger] a[i]`",
+                            None,
+                        ),
+                    );
+                }
+                // All triggers of one `forall` form a single multi-pattern.
+                if !triggers.is_empty() {
+                    for b in binders {
+                        if !triggers.iter().any(|t| mentions_strict(t, &b.name.name)) {
+                            self.err(
+                                "E0512",
+                                b.name.span,
+                                format!("no trigger mentions bound variable `{}`", b.name.name),
+                            );
+                        }
+                    }
                 }
                 cx.forall_depth += 1;
                 let t = self.expr(cx, body, Some(&TypeKind::Bool), mode);
@@ -1363,7 +1425,13 @@ impl<'a> Checker<'a> {
         for m in &p.mods {
             walk(m, "", &mut defs);
         }
-        for path in sccs_with_cycles(&self.calls) {
+        let comps = sccs_with_cycles(&self.calls);
+        for (id, comp) in comps.iter().enumerate() {
+            for path in comp {
+                self.recursive.insert(path.clone(), id);
+            }
+        }
+        for path in comps.into_iter().flatten() {
             if let Some((span, has_dec)) = defs.get(&path)
                 && !has_dec
             {
@@ -1438,8 +1506,87 @@ fn mentions(e: &Expr, name: &str) -> bool {
     }
 }
 
-/// Nodes that lie on a cycle of the call graph (Tarjan's SCC), sorted.
-fn sccs_with_cycles(g: &BTreeMap<String, BTreeSet<String>>) -> Vec<String> {
+/// `#[trigger]` terms of a `forall` body, not descending into nested `forall`s.
+fn collect_triggers<'e>(e: &'e Expr, out: &mut Vec<&'e Expr>) {
+    match &e.kind {
+        ExprKind::Trigger(inner) => {
+            out.push(inner);
+            collect_triggers(inner, out);
+        }
+        ExprKind::Forall { .. } => {}
+        ExprKind::Call { args, .. } | ExprKind::Array(args) => {
+            args.iter().for_each(|a| collect_triggers(a, out))
+        }
+        ExprKind::Method { recv, args, .. } => {
+            collect_triggers(recv, out);
+            args.iter().for_each(|a| collect_triggers(a, out));
+        }
+        ExprKind::Index { base, index } => {
+            collect_triggers(base, out);
+            collect_triggers(index, out);
+        }
+        ExprKind::Unary(_, x) | ExprKind::Ref { expr: x, .. } | ExprKind::Old(x) => {
+            collect_triggers(x, out)
+        }
+        ExprKind::Repeat { value, .. } => collect_triggers(value, out),
+        ExprKind::Binary(_, l, r) => {
+            collect_triggers(l, out);
+            collect_triggers(r, out);
+        }
+        ExprKind::If { cond, then, els } => {
+            collect_triggers(cond, out);
+            if let Some(t) = &then.tail {
+                collect_triggers(t, out);
+            }
+            if let Some(x) = els {
+                collect_triggers(x, out);
+            }
+        }
+        ExprKind::Block(b) => {
+            if let Some(t) = &b.tail {
+                collect_triggers(t, out);
+            }
+        }
+        ExprKind::Var(_)
+        | ExprKind::Int(_)
+        | ExprKind::Bool(_)
+        | ExprKind::Unit
+        | ExprKind::Error => {}
+    }
+}
+
+/// Like `mentions`, but exact for every expression kind (used for triggers).
+fn mentions_strict(e: &Expr, name: &str) -> bool {
+    match &e.kind {
+        ExprKind::If { cond, then, els } => {
+            mentions_strict(cond, name)
+                || then.tail.as_ref().is_some_and(|t| mentions_strict(t, name))
+                || els.as_ref().is_some_and(|x| mentions_strict(x, name))
+        }
+        ExprKind::Block(b) => b.tail.as_ref().is_some_and(|t| mentions_strict(t, name)),
+        ExprKind::Forall { body, .. } => mentions_strict(body, name),
+        ExprKind::Call { args, .. } | ExprKind::Array(args) => {
+            args.iter().any(|a| mentions_strict(a, name))
+        }
+        ExprKind::Method { recv, args, .. } => {
+            mentions_strict(recv, name) || args.iter().any(|a| mentions_strict(a, name))
+        }
+        ExprKind::Index { base, index } => {
+            mentions_strict(base, name) || mentions_strict(index, name)
+        }
+        ExprKind::Unary(_, x)
+        | ExprKind::Ref { expr: x, .. }
+        | ExprKind::Old(x)
+        | ExprKind::Trigger(x) => mentions_strict(x, name),
+        ExprKind::Repeat { value, .. } => mentions_strict(value, name),
+        ExprKind::Binary(_, l, r) => mentions_strict(l, name) || mentions_strict(r, name),
+        _ => mentions(e, name),
+    }
+}
+
+/// Strongly connected components that contain a cycle (Tarjan), each sorted,
+/// in a deterministic order.
+fn sccs_with_cycles(g: &BTreeMap<String, BTreeSet<String>>) -> Vec<Vec<String>> {
     struct T<'g> {
         g: &'g BTreeMap<String, BTreeSet<String>>,
         index: BTreeMap<&'g str, usize>,
@@ -1447,7 +1594,7 @@ fn sccs_with_cycles(g: &BTreeMap<String, BTreeSet<String>>) -> Vec<String> {
         on: BTreeSet<&'g str>,
         stack: Vec<&'g str>,
         next: usize,
-        out: Vec<String>,
+        out: Vec<Vec<String>>,
     }
     impl<'g> T<'g> {
         fn visit(&mut self, v: &'g str) {
@@ -1483,7 +1630,9 @@ fn sccs_with_cycles(g: &BTreeMap<String, BTreeSet<String>>) -> Vec<String> {
                 }
                 let self_loop = self.g.get(v).is_some_and(|s| s.contains(v));
                 if comp.len() > 1 || self_loop {
-                    self.out.extend(comp.iter().map(|s| s.to_string()));
+                    let mut c: Vec<String> = comp.iter().map(|s| s.to_string()).collect();
+                    c.sort();
+                    self.out.push(c);
                 }
             }
         }

@@ -1,0 +1,17 @@
+#[summary("인덱스 의무 위반")]
+mod bounds {
+    #[effects(pure)]
+    fn read_any(a: &[i64], i: usize) -> i64 { a[i] }
+
+    #[effects(pure)]
+    fn read_len(a: &[i64]) -> i64 { a[a.len()] }
+
+    #[effects(pure)]
+    fn write_any(a: &mut [i64], i: usize) -> () { a[i] = 0; }
+
+    #[effects(pure)]
+    fn local_array() -> i64 {
+        let x: [i64; 3] = [1, 2, 3];
+        x[3]
+    }
+}

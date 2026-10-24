@@ -1,0 +1,107 @@
+#[summary("산술 의무 충족")]
+mod arith_ok {
+    spec fn below_max(x: i64) -> bool { x < 9223372036854775807 }
+
+    spec fn not_min_or_m1(a: i64, b: i64) -> bool { b != 0 && !(a == -9223372036854775808 && b == -1) }
+
+    spec fn le(a: u64, b: u64) -> bool { b <= a }
+
+    #[effects(pure)]
+    #[uses(below_max)]
+    fn add_guarded(x: i64) -> i64
+        requires below_max(x),
+    {
+        x + 1
+    }
+
+    #[effects(pure)]
+    #[uses(le)]
+    fn sub_guarded(a: u64, b: u64) -> u64
+        requires le(a, b),
+    {
+        a - b
+    }
+
+    #[effects(pure)]
+    #[uses(not_min_or_m1)]
+    fn div_guarded(a: i64, b: i64) -> i64
+        requires not_min_or_m1(a, b),
+    {
+        a / b
+    }
+
+    #[effects(pure)]
+    #[uses(not_min_or_m1)]
+    fn rem_guarded(a: i64, b: i64) -> i64
+        requires not_min_or_m1(a, b),
+    {
+        a % b
+    }
+
+    spec fn pos(b: u64) -> bool { b > 0 }
+
+    #[effects(pure)]
+    #[uses(pos)]
+    fn unsigned_div(a: u64, b: u64) -> u64
+        requires pos(b),
+    {
+        a / b
+    }
+
+    #[effects(pure)]
+    #[uses(pos)]
+    fn unsigned_rem(a: u64, b: u64) -> u64
+        requires pos(b),
+    {
+        a % b
+    }
+
+    #[effects(pure)]
+    fn wraps(x: u64) -> u64 { x.wrapping_mul(3).wrapping_add(7) }
+
+    #[effects(pure)]
+    fn literal_math() -> i64 { -9223372036854775808 + 1 }
+
+    spec fn is_abs(x: i64, r: i64) -> bool { r >= 0 && (r == x || r == -x) }
+
+    spec fn not_min(x: i64) -> bool { x > -9223372036854775808 }
+
+    #[effects(pure)]
+    #[uses(is_abs, not_min)]
+    fn abs(x: i64) -> (r: i64)
+        requires not_min(x),
+        ensures is_abs(x, r),
+    {
+        if x < 0 { -x } else { x }
+    }
+
+    spec fn is_max(a: &[i64], m: i64) -> bool {
+        forall|i: usize| i < a.len() ==> #[trigger] a[i] <= m
+    }
+
+    spec fn nonempty(a: &[i64]) -> bool { a.len() > 0 }
+
+    #[effects(pure)]
+    #[uses(is_max, nonempty, prefix_max)]
+    fn max_of(a: &[i64]) -> (m: i64)
+        requires nonempty(a),
+        ensures is_max(a, m),
+    {
+        let mut best: i64 = a[0];
+        let mut i: usize = 1;
+        while i < a.len()
+            invariant i <= a.len(), 0 < i, prefix_max(a, i, best),
+            decreases a.len() - i,
+        {
+            if a[i] > best {
+                best = a[i];
+            }
+            i = i + 1;
+        }
+        best
+    }
+
+    spec fn prefix_max(a: &[i64], k: usize, m: i64) -> bool {
+        forall|i: usize| i < k ==> #[trigger] a[i] <= m
+    }
+}

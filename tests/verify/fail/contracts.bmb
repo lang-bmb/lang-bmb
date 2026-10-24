@@ -1,0 +1,72 @@
+#[summary("계약 위반")]
+mod contracts {
+    spec fn is_succ(x: i64, r: i64) -> bool { r == x + 1 }
+
+    spec fn small(x: i64) -> bool { x < 100 }
+
+    #[effects(pure)]
+    #[uses(is_succ)]
+    fn wrong_post(x: i64) -> (r: i64)
+        ensures is_succ(x, r),
+    {
+        x
+    }
+
+    #[effects(pure)]
+    #[uses(small)]
+    fn needs_small(x: i64) -> i64
+        requires small(x),
+    {
+        x + 1
+    }
+
+    #[effects(pure)]
+    fn bad_caller() -> i64 { needs_small(200) }
+
+    #[effects(pure)]
+    fn opaque_caller() -> i64 { needs_small(1) }
+
+    #[effects(pure)]
+    fn no_decrease(n: u64) -> u64
+        decreases n,
+    {
+        if n == 0 { 0 } else { no_decrease(n) }
+    }
+
+    spec fn loops_forever(n: u64) -> u64
+        decreases n,
+    {
+        loops_forever(n)
+    }
+
+    #[effects(pure)]
+    fn false_assert(x: u64) -> () {
+        assert(x > 0);
+    }
+
+    spec fn zeroed(a: &[i64]) -> bool { a.len() == 0 || a[0] == 0 }
+
+    #[effects(pure)]
+    #[uses(zeroed)]
+    fn forgets_write(a: &mut [i64]) -> ()
+        ensures zeroed(a),
+    {
+    }
+}
+
+#[summary("감소하지 않는 상호 재귀")]
+mod mutual {
+    #[effects(pure)]
+    fn ping(n: u64) -> u64
+        decreases n,
+    {
+        if n == 0 { 0 } else { pong(n) }
+    }
+
+    #[effects(pure)]
+    fn pong(n: u64) -> u64
+        decreases n,
+    {
+        if n == 0 { 0 } else { ping(n - 1) }
+    }
+}

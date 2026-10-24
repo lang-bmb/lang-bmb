@@ -1,0 +1,51 @@
+#[summary("루프 의무 위반")]
+mod loops {
+    #[effects(pure)]
+    fn entry(n: u64) -> u64 {
+        let mut i: u64 = 0;
+        while i < n
+            invariant i == 1,
+            decreases n - i,
+        {
+            i = i + 1;
+        }
+        i
+    }
+
+    #[effects(pure)]
+    fn preserve(n: u64) -> u64 {
+        let mut i: u64 = 0;
+        while i < n
+            invariant i <= 1,
+            decreases n - i,
+        {
+            i = i + 1;
+        }
+        i
+    }
+
+    #[effects(pure)]
+    fn no_progress(n: u64) -> u64 {
+        let mut i: u64 = 0;
+        let mut s: u64 = 0;
+        while i < n
+            invariant i <= n,
+            decreases n - i,
+        {
+            s = 0;
+        }
+        i
+    }
+
+    #[effects(pure)]
+    fn negative_measure(n: i64) -> i64 {
+        let mut i: i64 = 10;
+        while i > n
+            invariant true,
+            decreases i,
+        {
+            i = i.wrapping_sub(1);
+        }
+        i
+    }
+}

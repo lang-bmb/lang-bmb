@@ -86,6 +86,11 @@ pub const CODES: &[(&str, &str)] = &[
     ),
     ("E0509", "`#[uses(..)]` entry is not a spec function"),
     ("E0510", "`#[trigger]` is only allowed inside `forall`"),
+    ("E0511", "`forall` requires at least one `#[trigger]`"),
+    (
+        "E0512",
+        "the triggers of a `forall` must together mention every bound variable",
+    ),
     // E06xx: effects and attributes
     ("E0601", "function requires an `#[effects(..)]` attribute"),
     ("E0602", "unknown effect"),
@@ -97,6 +102,30 @@ pub const CODES: &[(&str, &str)] = &[
     ("E0702", "more than one `main`"),
     ("E0703", "items must be declared inside a `mod`"),
     ("E0704", "`mod` requires a `#[summary(\"..\")]` attribute"),
+    // E08xx: proof gate (a failed or undecided proof obligation)
+    ("E0801", "precondition of a call may not hold"),
+    ("E0802", "postcondition may not hold"),
+    ("E0803", "arithmetic may overflow"),
+    ("E0804", "divisor may be zero"),
+    ("E0805", "index may be out of bounds"),
+    ("E0806", "loop invariant may not hold on entry"),
+    ("E0807", "loop invariant may not be preserved"),
+    (
+        "E0808",
+        "loop `decreases` may not decrease or may be negative",
+    ),
+    ("E0809", "recursive call may not decrease the measure"),
+    ("E0810", "assertion may not hold"),
+    (
+        "E0811",
+        "solver could not decide (resource limit or incompleteness)",
+    ),
+    (
+        "E0812",
+        "proof gate cannot run (solver missing, wrong version or failed)",
+    ),
+    ("E0813", "recursive spec function may not terminate"),
+    ("E0814", "construct not supported by the proof gate"),
 ];
 
 pub fn describe(code: &str) -> &'static str {

@@ -1,15 +1,16 @@
 # bmb 컴파일러
 
-M1(ADR-0016) 최소 관통 경로의 첫 단계: 파싱 → 이름·타입·소유권·명세·효과 검사 → JSONL 진단.
-증명(검증 조건 → Z3)과 LLVM IR 생성은 아직 없다.
+M1(ADR-0016) 최소 관통 경로: 파싱 → 이름·타입·소유권·명세·효과 검사 → 증명 게이트(Z3) → JSONL 진단.
+LLVM IR 생성은 아직 없다(1C). 의미론과 인코딩은 ADR-0017·0018.
 
 ```
 cargo run -- check a.bmb b.bmb   # 진단을 JSONL로 출력. 오류가 있으면 종료 코드 1
+cargo run -- verify a.bmb        # 검사 + 증명. 정의별 상태 줄 포함. --emit-smt DIR로 질의 저장
 cargo run -- codes               # 진단 코드 목록(JSONL)
 cargo run -- doctor              # 고정된 Z3·LLVM 버전 확인(scripts/toolchain.env)
 ../scripts/setup.sh              # 고정 버전 설치(새 클라우드 세션은 시작 훅이 자동 실행)
 ../scripts/check.sh              # 검증 게이트: fmt·clippy·test·백로그 검사
-cargo test                       # 회귀 코퍼스(tests/check)
+cargo test                       # 회귀 코퍼스(tests/check, tests/verify)와 게이트·보조 사실 테스트
 BMB_BLESS=1 cargo test           # 기대 진단(.jsonl) 갱신
 ```
 
@@ -37,3 +38,10 @@ ADR-0016의 부분집합을 구체화한 것이다. 모두 "선택을 필수로"
 - 위치 순으로 정렬되고 중복이 제거된다. 같은 입력이면 같은 바이트가 나온다.
 - 코드는 `src/diag.rs`의 `CODES`가 유일한 목록이다. 번호는 바꾸거나 재사용하지 않는다.
 - E02xx는 Rust 습관(타입 생략, 매크로, `return`, `as`, `?` 등)을 따로 묶는다. Rust 습관 오류율 측정(DESIGN.md §4.1)이 이 범주를 센다.
+
+## 증명 게이트
+
+- 실행 함수마다 기호 실행으로 증명 의무를 만든다: 넘침, 0 나눗셈, `i64::MIN % -1`, 인덱스 범위, 호출 전제, 사후 조건, 루프 불변식(진입·유지), `decreases`(루프·재귀·재귀 `spec fn`), `assert`.
+- 호출은 callee의 `requires`를 증명하고 `ensures`만 가정한다. `spec fn`은 `#[uses(..)]`에 이름(다른 단위는 `unit::name`)이 있을 때만 정의가 펼쳐지고, 펼침은 전이되지 않는다.
+- 의무마다 깨끗한 해법기 상태에서 푼다. `unsat`만 성공이고, `sat`은 반례, `unknown`·자원 초과·해법기 부재는 원인과 함께 실패다.
+- 진단 코드 E08xx. `bmb verify`의 마지막 줄들은 `{"def":..,"status":"verified"|"failed","obligations":n,"failed":k}`.

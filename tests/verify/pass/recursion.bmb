@@ -1,0 +1,30 @@
+#[summary("재귀와 상호 재귀")]
+mod rec {
+    spec fn parity(n: u64) -> u64 { n % 2 }
+
+    spec fn is_parity(n: u64, r: u64) -> bool { r == parity(n) }
+
+    #[effects(pure)]
+    #[uses(is_parity, parity)]
+    fn even_odd(n: u64) -> (r: u64)
+        ensures is_parity(n, r),
+        decreases n,
+    {
+        if n == 0 { 0 } else { 1 - odd_even(n - 1) }
+    }
+
+    #[effects(pure)]
+    #[uses(is_parity, parity)]
+    fn odd_even(n: u64) -> (r: u64)
+        ensures is_parity(n, r),
+        decreases n,
+    {
+        if n == 0 { 0 } else { 1 - even_odd(n - 1) }
+    }
+
+    spec fn fib_spec(n: u64) -> u64
+        decreases n,
+    {
+        if n < 2 { n } else { fib_spec(n - 1) + fib_spec(n - 2) }
+    }
+}

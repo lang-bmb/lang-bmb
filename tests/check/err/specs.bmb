@@ -89,3 +89,19 @@ mod specs {
         assert(helper(x) > 0);
     }
 }
+
+#[summary("트리거 규칙")]
+mod triggers {
+    spec fn no_trigger(a: &[i64]) -> bool {
+        forall|i: usize| i < a.len() ==> a[i] > 0
+    }
+
+    spec fn partial(a: &[i64]) -> bool {
+        forall|i: usize, j: usize| i < j ==> #[trigger] a[i] > 0
+    }
+}
+
+#[summary("명세 안의 배열 리터럴")]
+mod spec_arrays {
+    spec fn lit(x: i64) -> bool { [x, 1][0] == 1 }
+}

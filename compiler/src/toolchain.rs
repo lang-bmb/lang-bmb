@@ -7,7 +7,7 @@ use std::process::Command;
 
 const ENV: &str = include_str!("../../scripts/toolchain.env");
 
-fn pinned(key: &str) -> &'static str {
+pub fn pinned(key: &str) -> &'static str {
     ENV.lines()
         .filter_map(|l| l.split_once('='))
         .find(|(k, _)| k.trim() == key)

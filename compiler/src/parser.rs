@@ -311,8 +311,17 @@ impl<'a> Parser<'a> {
                 while !self.is_p(")") && !matches!(self.peek(), Tok::Eof) {
                     match self.peek().clone() {
                         Tok::Ident(s) => {
-                            let sp = self.bump().span;
-                            args.push(AttrArg::Ident(Ident { name: s, span: sp }));
+                            // A path argument `unit::name` is kept as one name.
+                            let mut name = s;
+                            let mut sp = self.bump().span;
+                            while self.is_p("::") && matches!(self.peek_at(1), Tok::Ident(_)) {
+                                self.bump();
+                                if let Tok::Ident(seg) = self.peek().clone() {
+                                    sp = sp.to(self.bump().span);
+                                    name = format!("{name}::{seg}");
+                                }
+                            }
+                            args.push(AttrArg::Ident(Ident { name, span: sp }));
                         }
                         Tok::Str(s) => {
                             let sp = self.bump().span;

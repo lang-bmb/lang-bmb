@@ -1,0 +1,35 @@
+#[summary("산술 의무 위반")]
+mod arith {
+    #[effects(pure)]
+    fn add_overflow(x: i64) -> i64 { x + 1 }
+
+    #[effects(pure)]
+    fn sub_underflow(a: u64, b: u64) -> u64 { a - b }
+
+    #[effects(pure)]
+    fn mul_overflow(x: u64) -> u64 { x * 2 }
+
+    #[effects(pure)]
+    fn neg_min(x: i64) -> i64 { -x }
+
+    #[effects(pure)]
+    fn div_zero(a: u64, b: u64) -> u64 { a / b }
+
+    spec fn nonzero(b: i64) -> bool { b != 0 }
+
+    #[effects(pure)]
+    #[uses(nonzero)]
+    fn div_min(a: i64, b: i64) -> i64
+        requires nonzero(b),
+    {
+        a / b
+    }
+
+    #[effects(pure)]
+    #[uses(nonzero)]
+    fn rem_min(a: i64, b: i64) -> i64
+        requires nonzero(b),
+    {
+        a % b
+    }
+}
