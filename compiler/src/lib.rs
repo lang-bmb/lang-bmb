@@ -8,6 +8,7 @@ pub mod diag;
 pub mod fmt;
 pub mod json;
 pub mod lexer;
+pub mod lint;
 pub mod map;
 pub mod mcp;
 pub mod parser;

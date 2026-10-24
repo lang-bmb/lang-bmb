@@ -127,7 +127,27 @@ pub const CODES: &[(&str, &str)] = &[
     ),
     ("E0813", "recursive spec function may not terminate"),
     ("E0814", "construct not supported by the proof gate"),
+    // W09xx: contract lint (`bmb lint` only; severity "warning", never from `check`/`verify`)
+    (
+        "W0901",
+        "preconditions are unsatisfiable together: the function can never be called and its proofs are vacuous",
+    ),
+    (
+        "W0902",
+        "precondition is not needed by this function's proof",
+    ),
+    ("W0903", "postcondition is not used by any caller's proof"),
 ];
+
+/// Severity of a code: `W` codes are warnings (reported only by `bmb lint`),
+/// every other code is an error.
+pub fn severity(code: &str) -> &'static str {
+    if code.starts_with('W') {
+        "warning"
+    } else {
+        "error"
+    }
+}
 
 pub fn describe(code: &str) -> &'static str {
     CODES
@@ -206,7 +226,7 @@ fn render(d: &Diag, sm: &SourceMap) -> String {
     let (eline, ecol) = sm.line_col(d.span.file, d.span.hi);
     let mut s = String::from("{");
     s.push_str(&format!("\"code\":{},", json_str(d.code)));
-    s.push_str("\"severity\":\"error\",");
+    s.push_str(&format!("\"severity\":\"{}\",", severity(d.code)));
     s.push_str(&format!("\"message\":{},", json_str(&d.message)));
     s.push_str(&format!("\"file\":{},", json_str(sm.name(d.span.file))));
     s.push_str(&format!(
@@ -265,6 +285,7 @@ pub fn codes_markdown() -> String {
         ("E06", "효과·속성"),
         ("E07", "프로그램 구조"),
         ("E08", "증명 게이트"),
+        ("W09", "계약 조정 린트(경고, `bmb lint`만)"),
     ];
     let mut out = String::from(
         "# 진단 코드\n\n> 생성 파일: `bmb codes --md`가 `compiler/src/diag.rs`의 `CODES`에서 만든다. 손으로 고치지 않는다.\n> 코드는 바꾸거나 재사용하지 않는다. 진단 형식은 `compiler/README.md`.\n",

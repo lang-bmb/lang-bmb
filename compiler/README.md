@@ -13,6 +13,7 @@ cargo run -- fix a.bmb           # 기계적 수정(replacement)을 적용·재�
 cargo run -- verify --cache .bmb-cache a.bmb  # 증명 캐시: 해법기 입력이 같은 증명된 의무는 다시 풀지 않음(2D-01)
 cargo run -- stability a.bmb     # Z3 시드 0..5로 증명해 판정이 시드에 따라 바뀌는 정의를 보고(1B-19)
 cargo run -- uses a.bmb          # 증명되지 않는 정의마다 최소 #[uses(..)] 목록을 찾아 보고. --write면 파일 수정(2D-05)
+cargo run -- lint a.bmb          # 계약 조정 린트: 불가능한 pre, 증명에 쓰이지 않는 pre, 호출자가 쓰지 않는 post(경고 W09xx, 2D-08)
 cargo run -- doctor              # 고정된 Z3·LLVM 버전 확인(scripts/toolchain.env)
 ../scripts/setup.sh              # 고정 버전 설치(새 클라우드 세션은 시작 훅이 자동 실행)
 ../scripts/check.sh              # 검증 게이트: fmt·clippy·test·백로그 검사
@@ -47,7 +48,7 @@ ADR-0016의 부분집합을 구체화한 것이다. 모두 "선택을 필수로"
 
 ## 진단
 
-- 한 줄에 객체 하나: `code`, `severity`, `message`, `file`, `line`, `col`, `end_line`, `end_col`, 선택적 `fix`(`message`, 기계적으로 고칠 수 있으면 `replacement`).
+- 한 줄에 객체 하나: `code`, `severity`(`W`로 시작하는 코드는 `warning`, 나머지는 `error`. `W` 코드는 `bmb lint`만 낸다), `message`, `file`, `line`, `col`, `end_line`, `end_col`, 선택적 `fix`(`message`, 기계적으로 고칠 수 있으면 `replacement`).
 - 위치 순으로 정렬되고 중복이 제거된다. 같은 입력이면 같은 바이트가 나온다.
 - 코드는 `src/diag.rs`의 `CODES`가 유일한 목록이다. 번호는 바꾸거나 재사용하지 않는다.
 - `bmb fix`(백로그 2D-04)는 `replacement`가 있는 진단을 모두 적용하고 다시 검사하기를 적용할 것이 없을 때까지 반복한다(최대 16회, 같은 텍스트가 다시 나오면 멈춤). 한 회차에는 (파일, 시작, 끝, 코드, 텍스트) 순으로 보며 이미 고른 것과 겹치지 않는 것만 적용한다(같은 위치의 삽입 둘도 겹침). 출력은 적용한 수정마다 `{"round","file","line","col","code","replacement"}`(위치는 그 회차 전 텍스트 기준), 남은 진단, 요약 행 `{"summary":true,"rounds","applied","changed","remaining","ok"}`. 증명은 돌리지 않는다. 기본은 파일을 바꾸지 않고, `--write`가 바뀐 파일만 제자리에 쓴다. 공백은 정리하지 않으므로 정규형이 필요하면 `bmb fmt`를 이어 쓴다. 오류가 남으면 종료 코드 1
@@ -70,6 +71,21 @@ ADR-0016의 부분집합을 구체화한 것이다. 모두 "선택을 필수로"
 - 시도마다 속성 텍스트를 고쳐 쓰고 프로그램 전체를 다시 검사·증명한다. 정의의 의무는 자신의 `#[uses]`에만 달려 있으므로(펼침은 전이되지 않고 피호출자는 계약으로만 본다, ADR-0017 §4) 실패한 정의들은 한 번의 검증에서 함께 한 단계씩 나아가고, 메모리 안 증명 캐시가 다른 정의의 증명된 의무를 다시 풀지 않게 한다. 정의당 검증은 최대 32회다. 끝으로 찾은 목록을 모두 넣고 한 번 더 검증해 증명되지 않는 정의는 되돌린다.
 - 출력(JSONL): 상태 줄이 있는 정의마다 `{"def","uses","status","verifications"}`. `status`는 `proved`(목록을 바꿔 증명됨), `unchanged`(이미 증명됨), `not_found`(힌트로 만든 어떤 목록으로도 증명되지 않음, 파일은 그대로). `proved` 줄에는 진단과 같은 위치 키(`file`,`line`,`col`,`end_line`,`end_col`)와 `fix.replacement`(속성 하나를 바꾸거나 `fn` 앞에 넣는 텍스트)가 붙는다. 마지막 줄은 `{"summary":true,"defs","proved","unchanged","not_found","verifications","changed"}`. `not_found`가 있으면 종료 코드 1.
 - 한계: 진단이 이름을 대지 않는 술어(어떤 의무의 질의에도 나타나지 않는 것)는 찾지 못한다. `spec fn`의 종료 의무는 `#[uses]`를 읽지 않으므로 실패하면 `not_found`다.
+
+## 계약 조정 린트
+
+`bmb lint <file.bmb|DIR>...`(백로그 2D-08, DESIGN.md §8.2 "계약 조정", `src/lint.rs`). 요청할 때만 돌고 `check`·`verify`의 출력은 그대로다. 출력은 경고 진단(JSONL, `"severity":"warning"`)과 요약 행 `{"summary":true,"defs","reports","verifications","skipped"}`. 프로그램이 검사를 통과하지 못하거나 증명 게이트가 돌 수 없을 때(E0812)만 종료 코드 1이다.
+
+| 코드 | 보고 | 방법 |
+| --- | --- | --- |
+| W0901 | 함수의 `requires`가 함께 성립할 수 없다. 호출할 수 없는 함수이고 그에 관한 증명은 모두 공허하다 | 증명기와 같은 인코딩(매개변수 범위 사실, `#[uses]`로 펼친 정의, 절들)의 충족 가능성 질의 하나(`verify::preconditions_satisfiable`). `unsat`일 때만 보고하고 `unknown`이면 보고하지 않는다. 수량자 정의로 `unknown`이면 증명기처럼 기저 인스턴스로 다시 묻는다 |
+| W0902 | `requires` 절 하나가 함수 자신의 증명에 필요 없다 | 그 절 하나를 구문 트리에서 빼고 그 정의만 다시 증명한다(`verify::verify_defs`). 완전히 증명되면 보고한다. pre를 빼도 호출자는 증명할 것이 줄 뿐이라 깨지지 않는다. 기준 검증에서 증명된 함수만, W0901 함수는 제외 |
+| W0903 | `ensures` 절 하나를 어느 호출자의 증명도 쓰지 않는다 | 그 절 하나를 빼고 호출자(실행 본문의 `calls` 간선, 재귀면 자신 포함)만 다시 증명한다. 모두 완전히 증명되면 보고한다. 호출자가 있고 기준 검증에서 모두 증명된 함수만 |
+
+- 절마다 따로 판정한다. 따로 보고된 두 절을 함께 뺄 수 있다는 뜻은 아니다.
+- 재검증은 비싸므로 W0902·W0903 각각 32회(`MAX_PRE_TRIALS`, `MAX_POST_TRIALS`)까지만 한다. 넘는 절은 (경로, 절 순서)로 정해진 순서에서 뒤쪽부터 건너뛰고 요약의 `skipped`에 센다. 메모리 안 증명 캐시가 바뀌지 않은 의무를 다시 풀지 않게 한다.
+- 결정론: 고정 시드·`rlimit`, 경로·절 순서. 같은 입력이면 같은 바이트다.
+- 한계: "구현을 변형해도 통과하는 약한 명세"(§8.2)는 아직 보지 않는다. W0903은 현재 프로그램의 호출자만 본다(공개 API로 쓸 post도 보고될 수 있어 정보성이다). 기준 검증에서 실패한 함수나 호출자가 실패한 함수는 판정하지 않는다.
 
 ## 코드 생성
 
