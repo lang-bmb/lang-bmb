@@ -72,13 +72,13 @@ BMB v2의 설계 결정을 한 건에 파일 하나로 남긴다. 현재 확정�
 | [0024](0024-checker-relaxations.md) | 검사기 완화 세 가지(읽기 전용 스칼라 인자, 명세의 부호 없는 부정·큰 리터럴) | 채택(승인) | 백로그 1A-13 |
 | [0025](0025-task-set-m1b.md) | 두 번째 동결 과제 집합 `m1b` | 채택(자율) | 백로그 2A-01 |
 | [0026](0026-data-types-surface.md) | 데이터 타입 표면: 구조체·열거형·`match`·`impl` | 제안 | 백로그 2B-01 |
-| [0027](0027-data-types-encoding.md) | 데이터 타입의 증명 인코딩(구조체는 필드 분해, 열거형은 SMT 데이터타입) | 제안 | 백로그 2B-02, `dev-docs/experiments/2B-02` |
+| [0027](0027-data-types-encoding.md) | 데이터 타입의 증명 인코딩(구조체는 필드 분해, 열거형은 SMT 데이터타입) | 채택(승인) | 백로그 2B-02, `dev-docs/experiments/2B-02` |
 | [0028](0028-integer-conversions.md) | 정수 변환과 검사·포화 산술 | 제안 | 백로그 2C-01 |
 | [0029](0029-escape-hatches-and-rationale.md) | 탈출구(`assume`·`external_body`)와 구조화 근거 | 제안 | 백로그 2E-01 |
 | [0030](0030-effects-alloc-panic-nondet.md) | 효과 확장(`alloc`·`panic`·`nondet`)과 테스트 필요 면적 | 제안 | 백로그 2F-01 |
 | [0031](0031-vec-and-ownership.md) | 힙 `Vec<T>`과 소유·이동 검사 | 제안 | 백로그 2G-01 |
 | [0032](0032-incremental-build-key.md) | 계약 방화벽 증분 빌드의 키 | 채택(자율) | 백로그 2D-10 |
 | [0033](0033-per-query-spec-declarations.md) | 의무별 `spec fn` 선언(질의 머리말 축소), ADR-0032 키 갱신 | 채택(자율) | 백로그 2D-14 |
-| [0034](0034-mission-goals-and-benchmarks.md) | 미션 목표와 벤치마크 체계(북극성, 목표 G1~G6, 만들 벤치마크 BVB·BRB·BNB·BSB) | 제안 | 조사 2026-10-24 |
+| [0034](0034-mission-goals-and-benchmarks.md) | 미션 목표와 벤치마크 체계(북극성, 목표 G1~G6, 만들 벤치마크 BVB·BRB·BNB·BSB) | 채택(승인, 목표값 잠정) | 조사 2026-10-24 |
 
-"제안" ADR(0026~0031)의 진단 코드 번호는 잠정이다. 제안끼리 겹치는 번호가 있으며(예: E0212·E0412), 채택 후 구현할 때 `compiler/src/diag.rs`에서 확정한다.
+채택 계획(2026-10-24 승인): 0026은 2B 착수 때, 0028은 2C 착수 때 채택한다. 0029·0030·0031은 2단계 측정(2H) 뒤로 미룬다. "제안" ADR의 진단 코드 번호는 잠정이다. 제안끼리 겹치는 번호가 있으며(예: E0212·E0412), 채택 후 구현할 때 `compiler/src/diag.rs`에서 확정한다.
