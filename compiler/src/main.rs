@@ -32,10 +32,11 @@ const USAGE: &str = "usage:
                             specification does not distinguish; re-verifications and mutants are
                             capped; fails only if the program does not check or the gate cannot run
   bmb hash <file.bmb>...    definition hashes (body, iface) as JSONL
-  bmb map [L0|L1|L2|all] <file.bmb>...
+  bmb map [--cache DIR] [L0|L1|L2|all] <file.bmb>...
                             standard maps as JSONL (ADR-0020)
-  bmb query <units|surface|edges|slice|find|contracts|status|impact|duplicates|effects> [args] -- <file.bmb>...
-                            read queries as JSONL (ADR-0020)
+  bmb query [--cache DIR] <units|surface|edges|slice|find|contracts|status|impact|duplicates|effects> [args] -- <file.bmb>...
+                            read queries as JSONL (ADR-0020); --cache as for verify (only
+                            the L1 rows, `surface` and `status` prove)
   bmb import DIR <file.bmb>...
                             create or replace workspace DIR from files, in normal form
   bmb apply DIR OPS.json    commit a transaction (JSON array of unit/put/remove/remove_unit ops)
@@ -45,6 +46,15 @@ const USAGE: &str = "usage:
 
 Any <file.bmb> argument may also be a workspace directory (its src/*.bmb).
   bmb doctor                check the pinned toolchain (z3, LLVM) as JSONL";
+
+/// A leading `--cache DIR` (proof cache and per-definition results, as for
+/// `verify`); returns it and the remaining arguments.
+fn cache_flag(args: &[String]) -> (Option<&str>, &[String]) {
+    match args {
+        [flag, dir, rest @ ..] if flag == "--cache" => (Some(dir.as_str()), rest),
+        _ => (None, args),
+    }
+}
 
 fn main() -> ExitCode {
     bmb::with_stack(run)
@@ -392,18 +402,28 @@ fn run() -> ExitCode {
             }
         }
         Some("map") if args.len() > 1 => {
-            let (level, paths) = if matches!(args[1].as_str(), "L0" | "L1" | "L2" | "all") {
-                (args[1].clone(), &args[2..])
+            let (cache, args) = cache_flag(&args[1..]);
+            let Some(first) = args.first() else {
+                eprintln!("{USAGE}");
+                return ExitCode::from(2);
+            };
+            let (level, paths) = if matches!(first.as_str(), "L0" | "L1" | "L2" | "all") {
+                (first.clone(), &args[1..])
             } else {
-                ("all".to_string(), &args[1..])
+                ("all".to_string(), args)
             };
             let files = match read_files(paths) {
                 Ok(f) => f,
                 Err(code) => return code,
             };
-            respond(bmb::map_request(&files, &["map".into(), level]))
+            respond(bmb::map_request_cached(
+                &files,
+                &["map".into(), level],
+                cache.map(std::path::Path::new),
+            ))
         }
         Some("query") if args.len() > 2 => {
+            let (cache, args) = cache_flag(&args[1..]);
             let Some(sep) = args.iter().position(|a| a == "--") else {
                 eprintln!("bmb: put `--` between the query and the files");
                 return ExitCode::from(2);
@@ -413,8 +433,12 @@ fn run() -> ExitCode {
                 Err(code) => return code,
             };
             let mut req = vec!["query".to_string()];
-            req.extend(args[1..sep].iter().cloned());
-            respond(bmb::map_request(&files, &req))
+            req.extend(args[..sep].iter().cloned());
+            respond(bmb::map_request_cached(
+                &files,
+                &req,
+                cache.map(std::path::Path::new),
+            ))
         }
         Some("import") if args.len() > 2 => {
             let files = match read_files(&args[2..]) {

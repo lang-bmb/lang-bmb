@@ -19,6 +19,7 @@ Agents:
 Standard library only.
 """
 import argparse
+import atexit
 import concurrent.futures
 import hashlib
 import json
@@ -28,6 +29,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
@@ -78,6 +80,41 @@ def check_manifest():
 def bmb(*args, input=None):
     r = subprocess.run([bmb_bin(), *args], capture_output=True, text=True, input=input)
     return r.returncode, r.stdout
+
+
+# ---------- proof cache (backlog INF-08) ----------
+#
+# Every `bmb` call on a session's workspace goes through the workspace's proof
+# cache (`.bmb-cache/`, the one `bmb mcp` keeps). Answers are the same bytes
+# with or without it (compiler tests/incremental.rs, tests/cache.rs); only
+# proved obligations are stored, keyed by the exact solver input, so a judge
+# that hits the cache gets the verdict a fresh proof would. The agent writes
+# the cache only by proving through MCP. Each session starts from a copy of a
+# cache warmed once per process on the seed, so the seed is proved once.
+
+_seed_cache = {}
+_seed_lock = threading.Lock()
+
+
+def cache_dir(workspace):
+    return os.path.join(workspace, ".bmb-cache")
+
+
+def cache_args(workspace):
+    return ["--cache", cache_dir(workspace)]
+
+
+def seed_cache():
+    """A proof cache warmed on this task set's seed (built once per process)."""
+    with _seed_lock:
+        if SET not in _seed_cache:
+            tmp = tempfile.mkdtemp(prefix="bmb-seed-cache-")
+            atexit.register(shutil.rmtree, tmp, True)
+            ws = os.path.join(tmp, "ws")
+            shutil.copytree(os.path.join(SET, "seed"), ws)
+            bmb("verify", *cache_args(ws), ws)
+            _seed_cache[SET] = cache_dir(ws)
+        return _seed_cache[SET]
 
 
 def rows(text):
@@ -173,7 +210,7 @@ def make_agent(kind, task, workspace):
 
 def truth_rows(t, query, workspace):
     found = set()
-    _, out = bmb("query", *query, "--", workspace)
+    _, out = bmb("query", *cache_args(workspace), *query, "--", workspace)
     for r in rows(out):
         if "list" in t:
             found |= set(r.get(t["list"], []))
@@ -228,7 +265,7 @@ def parse_signature(sig):
 def judge_write(task, workspace):
     """Whole-workspace proof, then signature and spec strength of every target:
     `def` and, for multi-unit tasks (m1b), each entry of `also_check`."""
-    code, _ = bmb("verify", workspace)
+    code, _ = bmb("verify", *cache_args(workspace), workspace)
     verified = code == 0
     sig_ok = accepted = True
     for target in [task] + task.get("also_check", []):
@@ -240,12 +277,12 @@ def judge_write(task, workspace):
 
 def judge_target(task, workspace, verified):
     """(signature ok, hidden reference contract proved) for one target."""
-    _, surf = bmb("query", "surface", task["def"], "--", workspace)
+    _, surf = bmb("query", *cache_args(workspace), "surface", task["def"], "--", workspace)
     found = [r for r in rows(surf) if r.get("level") == "L1"]
     sig_ok = bool(found) and strip_result_name(found[0]["signature"]) == strip_result_name(task["signature"])
     accepted = False
     if verified and sig_ok:
-        _, l0 = bmb("map", "L0", workspace)
+        _, l0 = bmb("map", *cache_args(workspace), "L0", workspace)
         specs = sorted(r["path"] for r in rows(l0) if r.get("def_kind") == "spec fn")
         a = task["accept"]
         _, params, ret_ty = parse_signature(task["signature"])
@@ -266,7 +303,7 @@ def judge_target(task, workspace, verified):
         with tempfile.NamedTemporaryFile("w", suffix=".bmb", delete=False) as f:
             f.write(accept)
         try:
-            code, _ = bmb("verify", workspace, f.name)
+            code, _ = bmb("verify", *cache_args(workspace), workspace, f.name)
             accepted = code == 0
         finally:
             os.unlink(f.name)
@@ -290,6 +327,8 @@ def run_task(task, agent_kind):
     tmp = tempfile.mkdtemp(prefix=f"bmb-{task['id']}-")
     ws = os.path.join(tmp, "ws")
     shutil.copytree(os.path.join(SET, "seed"), ws)
+    if os.path.isdir(seed_cache()):
+        shutil.copytree(seed_cache(), cache_dir(ws))
     mcp = Mcp(ws)
     agent = make_agent(agent_kind, task, ws)
     if hasattr(agent, "set_tools"):
@@ -328,11 +367,13 @@ def run_task(task, agent_kind):
                 break
     finally:
         mcp.close()
+    # Before judging: the acceptance check proves an extra file, whose new
+    # `spec fn`s change every query, so `status` here hits the session's cache.
+    _, st = bmb("query", *cache_args(ws), "status", "--", ws)
     if task["kind"] == "write":
         verdict = judge_write(task, ws)
     else:
         verdict = judge_navigate(task, ws, answer)
-    _, st = bmb("query", "status", "--", ws)
     summary = [r for r in rows(st) if r.get("summary")]
     status = [r for r in rows(st) if "status" in r]
     shutil.rmtree(tmp, ignore_errors=True)
