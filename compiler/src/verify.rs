@@ -45,6 +45,9 @@ pub struct FnStatus {
 /// An obligation's identity: diagnostic code and source span `(file, lo, hi)`.
 pub type ObKey = (&'static str, u32, u32, u32);
 
+/// What proving found. The default is the outcome of not proving: no
+/// statuses, nothing proven.
+#[derive(Default)]
 pub struct Outcome {
     pub statuses: Vec<FnStatus>,
     /// Obligations proved at every symbolic visit; code generation may drop
@@ -1423,6 +1426,12 @@ pub fn verify_program_with(
         .filter(|(_, d)| d.f.kind == FnKind::Spec)
         .map(|(p, _)| (p.clone(), sym(p)))
         .collect();
+    // One solver process serves every definition (backlog 1D-18): each
+    // obligation starts with `(reset)` and re-sends its whole base, options
+    // included (ADR-0018 §1), so nothing carries over between obligations.
+    // Started on the first obligation the cache does not hold, replaced when
+    // too old to take on another definition (`Solver::reusable`).
+    let mut solver: Option<Solver> = None;
     for (path, d) in &prog.defs {
         let mut enc = Enc::new(&prog, path, &d.mod_path);
         let mut header = vec![
@@ -1507,8 +1516,9 @@ pub fn verify_program_with(
         let mut script = String::new();
         let mut failed = 0usize;
         let (mut rlimit_total, mut rlimit_max) = (0u64, 0u64);
-        // Started on the first obligation the cache does not hold.
-        let mut solver: Option<Solver> = None;
+        if solver.as_ref().is_some_and(|s| !s.reusable()) {
+            solver = None;
+        }
         let mut solver_down = false;
         for (k, o) in enc.obls.iter().enumerate() {
             let q = format!(

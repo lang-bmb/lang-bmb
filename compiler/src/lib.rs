@@ -399,12 +399,7 @@ fn emit_llvm(
         };
     }
     let (outcome, cache) = if all_checks {
-        let none = verify::Outcome {
-            statuses: Vec::new(),
-            proven: Default::default(),
-            scripts: BTreeMap::new(),
-        };
-        (none, (0, 0))
+        (verify::Outcome::default(), (0, 0))
     } else {
         prove(&mut fe, cache_dir)
     };
@@ -554,7 +549,22 @@ pub fn map_request_cached(
     if fe.diags.has_errors() {
         return Err(fe.diags.to_jsonl(&fe.sm));
     }
-    let (outcome, _) = prove(&mut fe, cache_dir);
+    // Proof results reach only the L1 rows (`map L1`/`all`, `query surface`)
+    // and `query status` (backlog 1D-17). Every other answer is built from
+    // the checked program alone, so the solver does not run for it.
+    let needs_proof = match (
+        request.first().map(String::as_str),
+        request.get(1).map(String::as_str),
+    ) {
+        (Some("map"), level) => matches!(level.unwrap_or("all"), "L1" | "all"),
+        (Some("query"), name) => matches!(name, Some("surface" | "status")),
+        _ => false,
+    };
+    let outcome = if needs_proof {
+        prove(&mut fe, cache_dir).0
+    } else {
+        verify::Outcome::default()
+    };
     let model = map::Model::build(&fe.program, &fe.tables, &fe.sm, &outcome);
     match request.first().map(String::as_str) {
         Some("map") => {
