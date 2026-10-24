@@ -7,6 +7,9 @@ BMB v2: AI 에이전트가 쓰고 결정론적 도구로 다루는 Rust 방언. 
 - `docs/DESIGN.md`: 현재 확정된 설계. 설계를 바꾸면 반드시 함께 고친다.
 - `dev-docs/v2-genesis.md`: 착수 기록(결정 과정, v0 분석, 타당성). 역사 기록이므로 고치지 않는다.
 - `dev-docs/adr/`: 결정 기록. 형식과 규칙은 `dev-docs/adr/README.md`.
+- `docs/ROADMAP.md`: 단계와 통과 기준. 단계는 측정 결과를 커밋해야 닫힌다.
+- `dev-docs/BACKLOG.md`: 태스크 목록과 상태. 작업을 시작·완료하면 갱신한다(완료에는 커밋·테스트 근거).
+- `compiler/`: 컴파일러(Rust). 사용법과 표면 규칙은 `compiler/README.md`. 변경 후 `cargo fmt`, `cargo clippy --all-targets`, `cargo test` 통과.
 - v0(v0.100) 코드는 `legacy/v0` 브랜치에만 있다. v0 코드는 가져오지 않는다. 설계와 측정 자산만 참고한다.
 
 ## 커밋 규칙
