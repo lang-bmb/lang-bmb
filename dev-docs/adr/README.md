@@ -61,4 +61,4 @@ BMB v2의 설계 결정을 한 건에 파일 하나로 남긴다. 현재 확정�
 | [0013](0013-inherit-surface-strengthen-semantics.md) | 표면은 승계, 발전은 편의 포기에서 | 채택 | genesis Q11 |
 | [0014](0014-deterministic-tools-ai-judges.md) | 결정론적 도구가 메우고 AI는 판단만 | 채택 | genesis Q12 |
 | [0015](0015-second-class-references.md) | 소유·이동 + 2차 참조 | 채택 | genesis Q13 |
-| [0016](0016-milestone-1-scope.md) | 첫 마일스톤 범위: 언어 부분집합과 도구 질의 | 제안 | genesis §6-1 |
+| [0016](0016-milestone-1-scope.md) | 첫 마일스톤 범위: 언어 부분집합과 도구 질의 | 채택 | genesis §6-1 |
