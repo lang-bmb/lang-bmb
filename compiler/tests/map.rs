@@ -148,3 +148,28 @@ fn bad_queries_are_errors() {
     assert!(req(&["query", "edges", "lib::dec", "sideways"]).is_err());
     assert!(req(&["query", "teleport"]).is_err());
 }
+
+/// A huge depth stops once nothing new is reachable (backlog 1D-14).
+#[test]
+fn edges_with_a_huge_depth_terminate() {
+    let f = files(&[("a.bmb", A), ("b.bmb", B)]);
+    let t = std::time::Instant::now();
+    let all = run(&f, &["query", "edges", "app::main", "both", "100000000000"]);
+    let max = run(
+        &f,
+        &[
+            "query",
+            "edges",
+            "app::main",
+            "out",
+            &usize::MAX.to_string(),
+        ],
+    );
+    assert!(t.elapsed() < std::time::Duration::from_secs(5));
+    assert_eq!(all, run(&f, &["query", "edges", "app::main", "both", "50"]));
+    assert_eq!(max, run(&f, &["query", "edges", "app::main", "out", "50"]));
+    assert!(
+        max.contains("\"from\":\"lib::dec\",\"to\":\"lib::is_dec\""),
+        "{max}"
+    );
+}

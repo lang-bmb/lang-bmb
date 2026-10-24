@@ -635,6 +635,10 @@ impl<'p> Model<'p> {
         let mut frontier: BTreeSet<String> = [start.to_string()].into();
         let mut visited: BTreeSet<String> = frontier.clone();
         for _ in 0..depth {
+            // Nothing new to expand: further steps add nothing (backlog 1D-14).
+            if frontier.is_empty() {
+                break;
+            }
             let mut next = BTreeSet::new();
             for e in &self.edges {
                 let out = (dir != "in") && frontier.contains(&e.from);
