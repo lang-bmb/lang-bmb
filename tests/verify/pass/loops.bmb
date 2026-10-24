@@ -1,0 +1,134 @@
+#[summary("루프와 배열: 불변식, 수량자, &mut, old")]
+mod loops {
+    spec fn small(n: u64) -> bool { n <= 1000000 }
+
+    spec fn sum_bound(i: u64, s: u64) -> bool { s <= 1000000 * i }
+
+    #[effects(pure)]
+    #[uses(small, sum_bound)]
+    fn sum_to(n: u64) -> (r: u64)
+        requires small(n),
+        ensures sum_bound(n, r),
+    {
+        let mut s: u64 = 0;
+        let mut i: u64 = 0;
+        while i < n
+            invariant i <= n, sum_bound(i, s),
+            decreases n - i,
+        {
+            i = i + 1;
+            s = s + i;
+        }
+        s
+    }
+
+    spec fn at_most_len(a: &[i64], r: usize) -> bool { r <= a.len() }
+
+    #[effects(pure)]
+    #[uses(at_most_len)]
+    fn count_eq(a: &[i64], v: i64) -> (r: usize)
+        ensures at_most_len(a, r),
+    {
+        let mut c: usize = 0;
+        let mut i: usize = 0;
+        while i < a.len()
+            invariant i <= a.len(), c <= i,
+            decreases a.len() - i,
+        {
+            if a[i] == v {
+                c = c + 1;
+            }
+            i = i + 1;
+        }
+        c
+    }
+
+    spec fn nonempty(a: &[i64]) -> bool { a.len() > 0 }
+
+    spec fn is_max_index(a: &[i64], r: usize) -> bool {
+        r < a.len() && forall|i: usize| i < a.len() ==> #[trigger] a[i] <= a[r]
+    }
+
+    spec fn max_below(a: &[i64], k: usize, r: usize) -> bool {
+        r < k && forall|i: usize| i < k ==> #[trigger] a[i] <= a[r]
+    }
+
+    #[effects(pure)]
+    #[uses(nonempty, is_max_index, max_below)]
+    fn max_index(a: &[i64]) -> (r: usize)
+        requires nonempty(a),
+        ensures is_max_index(a, r),
+    {
+        let mut best: usize = 0;
+        let mut i: usize = 1;
+        while i < a.len()
+            invariant i <= a.len(), max_below(a, i, best),
+            decreases a.len() - i,
+        {
+            if a[i] > a[best] {
+                best = i;
+            }
+            i = i + 1;
+        }
+        best
+    }
+
+    spec fn same_len(a: &[i64], b: &[i64]) -> bool { a.len() == b.len() }
+
+    spec fn copied_below(dst: &[i64], src: &[i64], k: usize) -> bool {
+        forall|i: usize| i < k ==> #[trigger] dst[i] == src[i]
+    }
+
+    spec fn copy_of(dst: &[i64], src: &[i64]) -> bool {
+        dst.len() == src.len() && forall|i: usize| i < src.len() ==> #[trigger] dst[i] == src[i]
+    }
+
+    #[effects(pure)]
+    #[uses(same_len, copied_below, copy_of)]
+    fn copy(dst: &mut [i64], src: &[i64]) -> ()
+        requires same_len(dst, src),
+        ensures copy_of(dst, src),
+    {
+        let mut i: usize = 0;
+        while i < src.len()
+            invariant i <= src.len(), same_len(dst, src), copied_below(dst, src, i),
+            decreases src.len() - i,
+        {
+            dst[i] = src[i];
+            i = i + 1;
+        }
+    }
+
+    spec fn incremented(a: &[i64], b: &[i64]) -> bool {
+        a.len() == b.len() && forall|i: usize| i < a.len() ==> #[trigger] a[i] == b[i] + 1
+    }
+
+    spec fn incremented_below(a: &[i64], b: &[i64], k: usize) -> bool {
+        forall|i: usize| i < k ==> #[trigger] a[i] == b[i] + 1
+    }
+
+    spec fn unchanged_from(a: &[i64], b: &[i64], k: usize) -> bool {
+        forall|i: usize| k <= i && i < a.len() ==> #[trigger] a[i] == b[i]
+    }
+
+    spec fn all_small(a: &[i64]) -> bool {
+        forall|i: usize| i < a.len() ==> #[trigger] a[i] < 1000000
+    }
+
+    #[effects(pure)]
+    #[uses(incremented, incremented_below, unchanged_from, all_small, same_len)]
+    fn increment_all(a: &mut [i64]) -> ()
+        requires all_small(a),
+        ensures incremented(a, old(a)),
+    {
+        let mut i: usize = 0;
+        while i < a.len()
+            invariant i <= a.len(), same_len(a, old(a)), incremented_below(a, old(a), i),
+                unchanged_from(a, old(a), i),
+            decreases a.len() - i,
+        {
+            a[i] = a[i] + 1;
+            i = i + 1;
+        }
+    }
+}

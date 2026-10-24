@@ -1,0 +1,45 @@
+name: nightly
+
+# Long fuzzing runs (backlog INF-07). Each run uses new seeds (the run number),
+# so the nightly runs together cover far more inputs than the per-push gate.
+on:
+  schedule:
+    - cron: "17 18 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust toolchain (pinned by rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - name: Pinned tools (z3, LLVM)
+        run: sudo ./scripts/setup.sh
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            target
+          key: cargo-release-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+      - name: Front-end fuzzing
+        env:
+          BMB_FUZZ_ITERS: "100000"
+          BMB_FUZZ_SEED: ${{ github.run_number }}
+        run: cargo test --release --test fuzz -- --nocapture
+      - name: Soundness fuzzing
+        env:
+          BMB_SOUND_ITERS: "400"
+          BMB_SOUND_SEED: ${{ github.run_number }}000
+        run: cargo test --release --test soundness -- --nocapture
+      - name: Keep the failing input
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crash
+          path: /tmp/bmb-fuzz-crash.bmb
+          if-no-files-found: ignore

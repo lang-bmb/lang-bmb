@@ -2,8 +2,12 @@ use std::process::ExitCode;
 
 const USAGE: &str = "usage:
   bmb check <file.bmb>...   check sources; diagnostics as JSONL on stdout
-  bmb verify [--emit-smt DIR] <file.bmb>...
-                            check and prove; diagnostics and per-definition status as JSONL
+  bmb verify [--emit-smt DIR] [--cache DIR] <file.bmb>...
+                            check and prove; diagnostics and per-definition status as JSONL;
+                            --cache keeps proved obligations in DIR and skips them next time
+  bmb stability [--seeds N] <file.bmb>...
+                            prove under solver seeds 0..N (default 5); per-definition verdicts
+                            and rlimit as JSONL; fails if a verdict depends on the seed
   bmb emit-llvm <file.bmb>... -o OUT.ll
                             LLVM IR; unproved obligations keep runtime checks
   bmb build <file.bmb>... -o OUT
@@ -13,7 +17,7 @@ const USAGE: &str = "usage:
   bmb hash <file.bmb>...    definition hashes (body, iface) as JSONL
   bmb map [L0|L1|L2|all] <file.bmb>...
                             standard maps as JSONL (ADR-0020)
-  bmb query <units|surface|edges|slice|find|contracts|status> [args] -- <file.bmb>...
+  bmb query <units|surface|edges|slice|find|contracts|status|impact> [args] -- <file.bmb>...
                             read queries as JSONL (ADR-0020)
   bmb import DIR <file.bmb>...
                             create or replace workspace DIR from files, in normal form
@@ -76,18 +80,56 @@ fn main() -> ExitCode {
                 ExitCode::from(1)
             }
         }
-        Some("verify") if args.len() > 1 => {
+        Some("stability") if args.len() > 1 => {
             let mut rest = &args[1..];
-            let mut emit = None;
-            if rest.first().map(String::as_str) == Some("--emit-smt") && rest.len() > 2 {
-                emit = Some(rest[1].clone());
+            let mut seeds = 5;
+            if rest.first().map(String::as_str) == Some("--seeds") && rest.len() > 2 {
+                match rest[1].parse() {
+                    Ok(n) => seeds = n,
+                    Err(_) => {
+                        eprintln!("bmb: --seeds takes a number");
+                        return ExitCode::from(2);
+                    }
+                }
                 rest = &rest[2..];
             }
             let files = match read_files(rest) {
                 Ok(f) => f,
                 Err(code) => return code,
             };
-            let out = bmb::verify_sources(&files);
+            match bmb::stability_sources(&files, seeds) {
+                Ok((out, stable)) => {
+                    print!("{out}");
+                    if stable {
+                        ExitCode::SUCCESS
+                    } else {
+                        ExitCode::from(1)
+                    }
+                }
+                Err(diags) => {
+                    print!("{diags}");
+                    ExitCode::from(1)
+                }
+            }
+        }
+        Some("verify") if args.len() > 1 => {
+            let mut rest = &args[1..];
+            let mut emit = None;
+            let mut cache = None;
+            loop {
+                match rest.first().map(String::as_str) {
+                    Some("--emit-smt") if rest.len() > 2 => emit = Some(rest[1].clone()),
+                    Some("--cache") if rest.len() > 2 => cache = Some(rest[1].clone()),
+                    _ => break,
+                }
+                rest = &rest[2..];
+            }
+            let files = match read_files(rest) {
+                Ok(f) => f,
+                Err(code) => return code,
+            };
+            let out =
+                bmb::verify_sources_cached(&files, cache.as_deref().map(std::path::Path::new));
             if let Some(dir) = emit {
                 if let Err(e) = std::fs::create_dir_all(&dir) {
                     eprintln!("bmb: cannot create {dir}: {e}");

@@ -553,9 +553,65 @@ impl<'p> Model<'p> {
                 ]));
                 Self::lines(rows)
             }
+            "impact" => {
+                let d = def(0)?;
+                let change = args.get(1).map(String::as_str).unwrap_or("iface");
+                if !matches!(change, "body" | "iface") {
+                    return Err(format!("change must be body or iface, not `{change}`"));
+                }
+                Self::lines(self.impact(d, change))
+            }
             other => return Err(format!("unknown query `{other}`")),
         };
         Ok(body)
+    }
+
+    /// Definitions whose proofs must be redone when `d` changes (backlog
+    /// 2D-02). Proofs see callees only through their contracts and spec fns
+    /// only through `#[uses]`, which does not reach further (ADR-0017 §4),
+    /// so the set never grows past one step:
+    ///
+    /// - body of a `fn`: the definition itself;
+    /// - contract or signature of a `fn` (`iface`): itself and its callers;
+    /// - body of a `spec fn`: the definitions that reveal it with `#[uses]`,
+    ///   and itself when it is recursive (termination);
+    /// - signature of a `spec fn`: every definition that names it (they are
+    ///   re-checked, and re-proved where they reveal it).
+    fn impact(&self, d: &Def, change: &str) -> Vec<J> {
+        let spec = d.f.kind == FnKind::Spec;
+        let mut hit: BTreeMap<String, &'static str> = BTreeMap::new();
+        if !spec || d.f.decreases.is_some() || change == "iface" {
+            hit.insert(d.path.clone(), "changed");
+        }
+        for e in self
+            .edges
+            .iter()
+            .filter(|e| e.to == d.path && e.from != d.path)
+        {
+            let reason = match (spec, change, e.kind) {
+                (false, "iface", "calls") => "calls",
+                (true, _, "uses") => "uses",
+                (true, "iface", "contract" | "spec_calls") => "names",
+                _ => continue,
+            };
+            let slot = hit.entry(e.from.clone()).or_insert(reason);
+            if *slot == "names" {
+                *slot = reason;
+            }
+        }
+        let n = hit.len();
+        let mut rows: Vec<J> = hit
+            .into_iter()
+            .map(|(path, reason)| J::O(vec![("path", J::S(path)), ("reason", J::S(reason.into()))]))
+            .collect();
+        rows.push(J::O(vec![
+            ("summary", J::B(true)),
+            ("changed", J::S(d.path.clone())),
+            ("change", J::S(change.into())),
+            ("reprove", J::N(n as u64)),
+            ("defs", J::N(self.defs.len() as u64)),
+        ]));
+        rows
     }
 
     fn resolves_to(&self, path: &[Ident], unit: &str, target: &str) -> bool {

@@ -10,7 +10,12 @@
 
 ## 지금 할 일
 
-1단계에서 자율로 진행할 수 있는 태스크는 모두 마쳤다. 남은 것은 측정 결과에 묶여 있다.
+측정 결과와 무관하게 코드로 진행할 수 있는 것(2026-10-24 추가, 이 순서로):
+
+1. `INF-07` 장기 퍼징: 첫 야간 실행 확인
+2. 나머지(`1B-17`~`1B-20`, `1E-12`, `1E-13`, `2D-01`, `2D-02`)는 완료
+
+측정 결과에 묶인 것:
 
 1. `1E-10` 실제 모델 측정 — 사용자 머신에서 실행(`bench/m1/README.md`)
 2. 결과가 커밋되면 `1E-06` 보고서, `1E-11` 마찰 기록, `1E-07` 2단계 우선순위 ADR
@@ -35,6 +40,7 @@
 | INF-04 | 세션 시작 훅 | 리포의 `.claude/settings.json` SessionStart 훅으로 새 세션에서 Z3·LLVM이 준비되어 `scripts/check.sh`가 바로 통과 | INF-02, INF-03, INF-05 | ✅ `.claude/hooks/session-start.sh`(Z3 제거 후 재설치로 확인) |
 | INF-05 | 단일 검증 게이트 | `scripts/check.sh` 하나로 fmt·clippy(`-D warnings`)·test·백로그 검사를 실행. CI와 로컬이 같은 스크립트를 씀 | — | ✅ `scripts/check.sh` |
 | INF-06 | 백로그 검사 | ID 중복, 존재하지 않는 의존 ID, 근거 없는 ✅, 의존이 미완료인 🔄를 찾아 실패하는 스크립트. 게이트에 포함 | INF-05 | ✅ `scripts/check_backlog.py` |
+| INF-07 | 장기 퍼징 정기 실행 | 매일 1회 CI가 프론트엔드 퍼징(`BMB_FUZZ_ITERS`)과 건전성 퍼징(`BMB_SOUND_ITERS`)을 게이트보다 큰 횟수로 실행. 실패 시 시드가 로그에 남음 | 1A-09, 1B-17 | 🔄 `.github/workflows/nightly.yml`(매일, 수동 실행 가능). 첫 실행 확인 대기 |
 
 ## 1A 프론트엔드
 
@@ -70,6 +76,10 @@
 | 1B-14 | 양화 공리로 인한 `unknown`에서 반례 얻기 | 거짓 계약이 술어 정의 공리 때문에 `unknown`이 되는 경우(`fail/contracts.bmb`의 wrong_post)에도 반례를 보고. 방법은 실험으로 정함 | 1B-12 | ✅ ADR-0023 기저 인스턴스 재시도. `wrong_post`·`forgets_write`가 확정 반례(E0802)로 |
 | 1B-15 | 증명 비용 보고 | `bmb verify`가 의무별 `rlimit` 사용량을 출력. 안정성 추이를 1E에서 측정 가능 | 1B-12 | ✅ 상태 줄 `rlimit`·`rlimit_max`, L1·`status`의 `rlimit_max`(결정론 확인) |
 | 1B-16 | 비선형 의무 진단 | `unknown`의 원인이 비선형 산술일 때 그렇다고 진단하고 우회 방법(보조 술어·계약 분할)을 제안 | 1B-12 | ✅ `unknown`이고 변수끼리 곱하면 `fix`에 원인·우회 안내, `tests/verify/fail/nonlinear.bmb`, `nonlinear_detection` |
+| 1B-17 | 건전성 퍼징 | 임의 정수 함수·계약을 증명하고, 증명된 함수가 전제를 만족하는 입력에서 결함(오버플로·0 나눗셈)이나 사후 조건 위반을 내지 않음을 독립 해석기로 확인. 검사 제거 빌드와 전체 검사 빌드의 출력이 해석기와 일치 | 1B-12, 1C-05 | ✅ `compiler/tests/soundness.rs`(게이트 6배치). 60배치: 함수 480개 중 증명 109개를 전제 만족 입력 383개로 실행, 위반 0. 두 빌드 3,664회 실행이 해석기와 일치. 생성기 버그 1건(음수 리터럴 메서드 우선순위) 발견·수정, 컴파일러 버그 0 |
+| 1B-18 | 반례 재현 | 확정 반례(E08xx `counterexample:`)마다 입력이 전제를 만족하고 실제로 함수를 깨뜨림을 해석기로 확인 | 1B-12 | ✅ 같은 테스트. 60배치에서 확정 반례 620개 재현, 거짓 반례 0 |
+| 1B-19 | 증명 안정성 측정 | 코퍼스 전체를 Z3 시드 여러 개로 증명해 판정·`rlimit`이 변하는 의무를 보고하는 명령과 테스트 | 1B-15 | ✅ `bmb stability [--seeds N]`, `lib::stability_sources`, `tests/stability.rs`(코퍼스 전체 시드 3개). 시드 5개: 판정이 바뀐 정의 0, `rlimit` 변동 최대 2.21배(`fail/arith.bmb`) |
+| 1B-20 | 코퍼스 확장 | `tests/verify/pass`에 루프·재귀·배열·`&mut`·`old`·수량자 정의 8개 이상, `tests/run`에 그것을 실행하는 예제 1개 이상 | 1B-12, 1C-05 | ✅ `tests/verify/pass/loops.bmb`(5개)·`search.bmb`(3개), `tests/run/search.bmb`(+`.out`). 처음 쓴 `gcd` 명세가 틀린 것을 반례가 짚음. `check/ok`는 증명 코퍼스가 겸하므로 추가하지 않음 |
 
 ## 1C 코드 생성
 
@@ -117,6 +127,8 @@
 | 1E-09 | sieve·kadane 성능 차이 원인 분석 | BMB가 Rust보다 8~16% 느린 원인을 IR·어셈블리 비교로 특정(코드 생성 대 LLVM 버전 차이)하고, 코드 생성 원인이면 태스크로 등록 | 1E-05 | ✅ 원인: `bool` 원소를 메모리에 `i1`로 저장 → 바이트로 변경, sieve 1.20→1.03, `bool_arrays_are_bytes_in_memory` |
 | 1E-10 | 실제 모델 측정 실행 | `harness.py run --agent anthropic:MODEL`로 과제 15개를 1회씩 실행하고 결과 커밋. 유료 API라 **사용자 머신에서 실행**(2026-10-24 결정, 절차는 `bench/m1/README.md`) | 1E-03 | 🚫 사용자 실행 대기 |
 | 1E-11 | 측정 중 발견한 언어 마찰 기록 | 과제·벤치 작성 중 드러난 마찰(명세 정수 혼합 → ADR-0022, 불변식의 `old` 허용, `#[uses]` 누락 반복)을 측정 보고서에 포함 | 1E-06 | ⏳ |
+| 1E-12 | 결과 요약기 | `harness.py summarize RESULTS.jsonl`이 ADR-0021 §4 지표 표를 마크다운으로 출력. 대본 에이전트 결과로 테스트 | 1E-04 | ✅ `harness.py summarize`(파일마다 한 열), 게이트에서 oracle 결과로 확인, `bench/m1/README.md` |
+| 1E-13 | 보고서 초안 | 모델 실행과 무관한 부분(절차, 과제 편향, Rust 기준선, 마찰 기록)을 `dev-docs/measurements/`에 먼저 작성하고 모델 수치 자리를 비워 둠 | 1E-05 | ✅ `dev-docs/measurements/m1.md`(초안, §3 결과 자리 비움) |
 
 ## 통과 기준 추적
 
@@ -143,3 +155,10 @@ ROADMAP의 통과 기준마다 그것을 확인하는 태스크다. 빈칸이 �
 ## 2단계 이후 후보
 
 `docs/ROADMAP.md`의 2~4단계 표가 후보 목록이다. 1E-07에서 우선순위가 정해지면 태스크로 쪼개 여기에 올린다.
+
+1단계 태스크가 모두 막혀 당겨 온 것(AUTONOMY.md §3.1). 언어 범위를 바꾸지 않는 도구 작업만이다.
+
+| ID | 태스크 | 완료 기준 | 의존 | 상태 |
+| --- | --- | --- | --- | --- |
+| 2D-01 | 해시 키 증명 캐시 | 정의의 본문 해시와 의존 계약 해시를 키로 증명 결과를 저장해 바뀌지 않은 정의는 Z3를 부르지 않음. 캐시 유무로 판정이 같음을 테스트 | 1D-03, 1B-11 | ✅ `cache.rs`, `bmb verify --cache DIR`, `tests/cache.rs`(코퍼스 출력 동일, 재실행 시 증명된 의무는 해법기 생략, 펼친 정의가 바뀌면 무효). `run/search.bmb` 1.0초→0.02초. MCP·`build`에는 아직 연결 안 함 |
+| 2D-02 | 사전 영향 분석 질의 | 정의의 계약을 바꾸면 다시 증명해야 하는 정의 집합을 반환하는 `impact` 질의. CLI·MCP 노출, 결정론 테스트 | 1D-06 | ✅ `query impact DEF [body or iface]`, `tests/impact.rs`(본문 변경마다 SMT 스크립트가 바뀐 정의 ⊆ 보고 집합). MCP 설명문은 1E-10까지 유지 |

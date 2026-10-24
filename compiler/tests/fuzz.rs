@@ -1,6 +1,7 @@
 //! Deterministic mutation fuzzing of the front end (backlog 1A-09): mutated
 //! corpus programs must never make the lexer, parser or checker panic.
-//! `BMB_FUZZ_ITERS` raises the iteration count for longer runs.
+//! `BMB_FUZZ_ITERS` raises the iteration count for longer runs and
+//! `BMB_FUZZ_SEED` picks another mutant sequence.
 
 use std::fs;
 use std::panic;
@@ -154,7 +155,12 @@ fn front_end_never_panics_on_mutated_programs() {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(1500);
-    let mut rng = Rng(0x9E3779B97F4A7C15);
+    // `BMB_FUZZ_SEED` explores other mutants (the nightly run uses the run number).
+    let seed: u64 = std::env::var("BMB_FUZZ_SEED")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
+    let mut rng = Rng(0x9E3779B97F4A7C15 ^ seed.wrapping_mul(0xD1B54A32D192ED03) | 1);
     let mut failures = Vec::new();
     let mut clean = 0usize;
     for i in 0..iters {

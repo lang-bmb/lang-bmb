@@ -289,6 +289,72 @@ def run_task(task, agent_kind):
     }
 
 
+# ---------- summary (backlog 1E-12) ----------
+
+def summarize(paths):
+    """Markdown tables of the ADR-0021 §4 metrics, one column per results file."""
+    runs = []
+    for p in paths:
+        recs = [json.loads(l) for l in open(p) if l.strip()]
+        head = next((r for r in recs if r.get("summary")), {})
+        runs.append((os.path.basename(p), head, [r for r in recs if not r.get("summary")]))
+
+    def ratio(xs):
+        return f"{sum(1 for r in xs if r['success'])}/{len(xs)}" if xs else "—"
+
+    def mean(xs, key):
+        return f"{sum(r[key] for r in xs) / len(xs):.3f}" if xs else "—"
+
+    def metrics(tasks):
+        w = [r for r in tasks if r["kind"] == "write"]
+        n = [r for r in tasks if r["kind"] == "navigate"]
+        reads = sum(r["read_calls"] for r in tasks)
+        rbytes = sum(r["read_bytes"] for r in tasks)
+        commits = sum(r["commits"] for r in tasks)
+        usage = [r.get("model_usage") or {} for r in tasks]
+        return [
+            ("작성 1회 성공률", ratio(w)),
+            ("탐색 1회 성공률", ratio(n)),
+            ("탐색 정밀도(평균)", mean(n, "precision")),
+            ("탐색 재현율(평균)", mean(n, "recall")),
+            ("질의당 토큰(ceil(bytes/4), 전체 평균)", f"{-(-rbytes // 4) / reads:.1f}" if reads else "—"),
+            ("Rust 습관 오류율(E02xx / tx_commit)", f"{sum(r['e02'] for r in tasks) / commits:.3f}" if commits else "—"),
+            ("미증명 의무(합)", str(sum(r["unproved_obligations"] for r in tasks))),
+            ("`io` 정의(과제당 평균)", mean(tasks, "io_defs")),
+            ("도구 호출(합)", str(sum(r["tool_calls"] for r in tasks))),
+            ("한도 도달 과제", str(sum(1 for r in tasks if r["limit_hit"]))),
+            ("모델 입력 토큰(합)", str(sum(u.get("input_tokens", 0) for u in usage))),
+            ("모델 출력 토큰(합)", str(sum(u.get("output_tokens", 0) for u in usage))),
+        ]
+
+    out = ["| 지표 | " + " | ".join(name for name, _, _ in runs) + " |",
+           "| --- |" + " --- |" * len(runs)]
+    out.append("| 에이전트 | " + " | ".join(str(h.get("agent", "—")) for _, h, _ in runs) + " |")
+    out.append("| 컴파일러 커밋 | " + " | ".join(str(h.get("commit", "—"))[:12] for _, h, _ in runs) + " |")
+    cols = [metrics(t) for _, _, t in runs]
+    for i, (label, _) in enumerate(cols[0]):
+        out.append(f"| {label} | " + " | ".join(c[i][1] for c in cols) + " |")
+
+    ids = sorted({r["id"] for _, _, t in runs for r in t})
+    out += ["", "| 과제 | " + " | ".join(name for name, _, _ in runs) + " |",
+            "| --- |" + " --- |" * len(runs)]
+    for tid in ids:
+        cells = []
+        for _, _, t in runs:
+            r = next((r for r in t if r["id"] == tid), None)
+            if r is None:
+                cells.append("—")
+            elif r["success"]:
+                cells.append("성공")
+            elif r["kind"] == "write":
+                why = [k for k in ("verified", "signature_ok", "spec_accepted") if not r[k]]
+                cells.append("실패: " + ", ".join(why))
+            else:
+                cells.append(f"실패: P {r['precision']}, R {r['recall']}")
+        out.append(f"| {tid} | " + " | ".join(cells) + " |")
+    return "\n".join(out) + "\n"
+
+
 def main():
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -299,7 +365,13 @@ def main():
     rn.add_argument("--tasks")
     rn.add_argument("--out")
     rn.add_argument("--expect", choices=["all-pass", "weak-fail"])
+    sm = sub.add_parser("summarize")
+    sm.add_argument("results", nargs="+")
     args = ap.parse_args()
+
+    if args.cmd == "summarize":
+        sys.stdout.write(summarize(args.results))
+        return
 
     if args.cmd == "manifest":
         if args.write:

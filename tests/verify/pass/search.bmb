@@ -1,0 +1,65 @@
+#[summary("이분 탐색과 재귀")]
+mod bsearch {
+    spec fn is_sorted(a: &[i64]) -> bool {
+        forall|i: usize, j: usize| i < j && j < a.len() ==> #[trigger] a[i] <= #[trigger] a[j]
+    }
+
+    spec fn below_target(a: &[i64], t: i64, k: usize) -> bool {
+        forall|i: usize| i < k ==> #[trigger] a[i] < t
+    }
+
+    spec fn at_least_target(a: &[i64], t: i64, k: usize) -> bool {
+        forall|i: usize| k <= i && i < a.len() ==> #[trigger] a[i] >= t
+    }
+
+    spec fn lower_bound(a: &[i64], t: i64, r: usize) -> bool {
+        r <= a.len() && below_target(a, t, r) && at_least_target(a, t, r)
+    }
+
+    #[effects(pure)]
+    #[uses(is_sorted, below_target, at_least_target, lower_bound)]
+    fn lower_bound_of(a: &[i64], t: i64) -> (r: usize)
+        requires is_sorted(a),
+        ensures lower_bound(a, t, r),
+    {
+        let mut lo: usize = 0;
+        let mut hi: usize = a.len();
+        while lo < hi
+            invariant lo <= hi, hi <= a.len(), below_target(a, t, lo), at_least_target(a, t, hi),
+            decreases hi - lo,
+        {
+            let mid: usize = lo + (hi - lo) / 2;
+            if a[mid] < t {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        lo
+    }
+
+    spec fn pos(a: u64, b: u64) -> bool { a > 0 && b > 0 }
+
+    spec fn bounded_by_input(g: u64, a: u64, b: u64) -> bool { g > 0 && (g <= a || g <= b) }
+
+    #[effects(pure)]
+    #[uses(pos, bounded_by_input)]
+    fn gcd(a: u64, b: u64) -> (g: u64)
+        requires pos(a, b),
+        ensures bounded_by_input(g, a, b),
+        decreases b,
+    {
+        if a % b == 0 { if b <= a { b } else { a } } else { gcd(b, a % b) }
+    }
+
+    spec fn digit_sum_bound(n: u64, r: u64) -> bool { r <= n }
+
+    #[effects(pure)]
+    #[uses(digit_sum_bound)]
+    fn digit_sum(n: u64) -> (r: u64)
+        ensures digit_sum_bound(n, r),
+        decreases n,
+    {
+        if n < 10 { n } else { n % 10 + digit_sum(n / 10) }
+    }
+}

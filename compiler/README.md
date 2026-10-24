@@ -9,14 +9,17 @@ cargo run -- verify a.bmb        # 검사 + 증명. 정의별 상태 줄 포함.
 cargo run -- build a.bmb -o app  # 모든 의무가 증명된 경우에만 실행 파일 생성
 cargo run -- emit-llvm a.bmb -o a.ll  # IR. 증명되지 않은 의무는 런타임 검사(trap)로 남음
 cargo run -- codes               # 진단 코드 목록(JSONL)
+cargo run -- verify --cache .bmb-cache a.bmb  # 증명 캐시: 해법기 입력이 같은 증명된 의무는 다시 풀지 않음(2D-01)
+cargo run -- stability a.bmb     # Z3 시드 0..5로 증명해 판정이 시드에 따라 바뀌는 정의를 보고(1B-19)
 cargo run -- doctor              # 고정된 Z3·LLVM 버전 확인(scripts/toolchain.env)
 ../scripts/setup.sh              # 고정 버전 설치(새 클라우드 세션은 시작 훅이 자동 실행)
 ../scripts/check.sh              # 검증 게이트: fmt·clippy·test·백로그 검사
 cargo run -- map all a.bmb        # 표준 맵 L0~L2(JSONL, ADR-0020)
-cargo run -- query slice u::f -- a.bmb  # 읽기 질의: units surface edges slice find contracts status
+cargo run -- query slice u::f -- a.bmb  # 읽기 질의: units surface edges slice find contracts status impact
 cargo run -- import ws a.bmb     # 작업 공간 ws/src/에 단위당 정규형 파일 하나
 cargo run -- apply ws ops.json   # 쓰기 트랜잭션(unit/put/remove/remove_unit). 구조·타입 오류면 전체 거부
 cargo run -- mcp ws              # MCP 서버(stdio): query map verify build tx_begin/put/commit 등
+BMB_SOUND_ITERS=60 cargo test --release --test soundness  # 건전성 퍼징(1B-17): 증명·반례·빌드를 독립 해석기와 대조
 cargo test                       # 회귀 코퍼스(tests/check, tests/verify)와 게이트·보조 사실 테스트
 BMB_BLESS=1 cargo test           # 기대 진단(.jsonl) 갱신
 ```
@@ -68,3 +71,13 @@ ADR-0020 §1의 하위 호환 규칙(키 추가 허용)에 따라 추가한 키�
 | `rlimit_max` | L1 행, `status` 질의 행 | 가장 비싼 의무 하나의 해법기 자원 사용량. 고정 `rlimit`(scripts/toolchain.env)에 가까울수록 증명이 깨지기 쉽다(백로그 1B-15) |
 
 `bmb verify`의 상태 줄에는 `rlimit`(정의 전체 합)과 `rlimit_max`가 붙는다.
+
+## 추가된 질의
+
+ADR-0020 §5의 7개 질의 외에 추가한 질의다. 기존 질의와 행 형식은 바뀌지 않는다.
+
+| 질의 | 결과 |
+| --- | --- |
+| `impact DEF [body\|iface]` | DEF의 본문(`body`) 또는 계약·시그니처(`iface`, 기본값)를 바꾸면 다시 증명할 정의마다 `{"path","reason"}` 행, 그리고 요약 행 `{"summary":true,"changed","change","reprove","defs"}`. `reason`: `changed`(자신), `calls`(호출자: 계약이 바뀜), `uses`(`#[uses]`로 펼침), `names`(시그니처가 바뀐 `spec fn`을 이름으로 씀). 증명은 피호출자를 계약으로만, `spec fn`을 `#[uses]`로만 보므로(ADR-0017 §4) 영향은 한 단계에서 멈춘다(백로그 2D-02) |
+
+MCP `query` 도구의 설명문은 바꾸지 않았다. 실제 모델 측정(1E-10)이 끝날 때까지 에이전트가 보는 문구를 그대로 둔다. 도구는 `impact`도 받는다.

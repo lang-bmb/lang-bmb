@@ -1,6 +1,7 @@
 //! BMB v2 compiler. Milestone 1: parse, check, prove.
 
 pub mod ast;
+pub mod cache;
 pub mod check;
 pub mod codegen;
 pub mod diag;
@@ -36,6 +37,8 @@ pub struct VerifyOutput {
     pub output: String,
     /// SMT-LIB script per definition (empty when checking failed).
     pub scripts: BTreeMap<String, String>,
+    /// Proof cache (hits, misses); zero without a cache.
+    pub cache: (usize, usize),
 }
 
 struct Frontend {
@@ -78,22 +81,97 @@ pub fn check_sources(files: &[(String, String)]) -> CheckOutput {
 /// Parses, checks and proves the given files. Proof runs only on a program
 /// that checks cleanly.
 pub fn verify_sources(files: &[(String, String)]) -> VerifyOutput {
+    verify_sources_cached(files, None)
+}
+
+/// As `verify_sources`, with the proof cache in `cache_dir` (backlog 2D-01):
+/// obligations proved before with the same solver input are not sent to the
+/// solver again, and new proofs are added. The output is the same as without
+/// the cache.
+pub fn verify_sources_cached(
+    files: &[(String, String)],
+    cache_dir: Option<&std::path::Path>,
+) -> VerifyOutput {
     let mut fe = frontend(files);
     if fe.diags.has_errors() {
         return VerifyOutput {
             ok: false,
             output: fe.diags.to_jsonl(&fe.sm),
             scripts: BTreeMap::new(),
+            cache: (0, 0),
         };
     }
-    let outcome = verify::verify_program(&fe.program, &fe.tables, &mut fe.diags);
+    let mut cache = cache_dir.map(cache::ProofCache::load);
+    let outcome =
+        verify::verify_program_with(&fe.program, &fe.tables, &mut fe.diags, 0, cache.as_mut());
+    if let (Some(c), Some(dir)) = (&cache, cache_dir)
+        && let Err(e) = c.save(dir)
+    {
+        eprintln!("bmb: cannot write proof cache in {}: {e}", dir.display());
+    }
     let mut output = fe.diags.to_jsonl(&fe.sm);
     output.push_str(&status_lines(&outcome));
     VerifyOutput {
         ok: !fe.diags.has_errors() && outcome.statuses.iter().all(|s| s.failed == 0),
         output,
         scripts: outcome.scripts,
+        cache: cache.map(|c| (c.hits, c.misses)).unwrap_or((0, 0)),
     }
+}
+
+/// Proof stability (backlog 1B-19): proves the program once per solver seed
+/// `0..seeds` and reports, per definition, the verdict and `rlimit` under each
+/// seed. A definition is unstable when its verdict differs between seeds.
+/// Returns JSONL (one line per definition, then a summary line) and whether
+/// every definition was stable. `Err` carries diagnostics when the program
+/// does not check.
+pub fn stability_sources(files: &[(String, String)], seeds: u64) -> Result<(String, bool), String> {
+    let mut runs: Vec<Vec<verify::FnStatus>> = Vec::new();
+    for seed in 0..seeds.max(1) {
+        let mut fe = frontend(files);
+        if fe.diags.has_errors() {
+            return Err(fe.diags.to_jsonl(&fe.sm));
+        }
+        runs.push(
+            verify::verify_program_seeded(&fe.program, &fe.tables, &mut fe.diags, seed).statuses,
+        );
+    }
+    let mut out = String::new();
+    let mut unstable = 0;
+    let mut spread_max = 1.0f64;
+    for (i, s) in runs[0].iter().enumerate() {
+        let per: Vec<&verify::FnStatus> = runs.iter().map(|r| &r[i]).collect();
+        let verdicts: Vec<String> = per
+            .iter()
+            .map(|s| {
+                if s.failed == 0 {
+                    "\"verified\""
+                } else {
+                    "\"failed\""
+                }
+                .to_string()
+            })
+            .collect();
+        let stable = per.iter().all(|p| (p.failed == 0) == (s.failed == 0));
+        unstable += usize::from(!stable);
+        let lo = per.iter().map(|p| p.rlimit_total).min().unwrap_or(0);
+        let hi = per.iter().map(|p| p.rlimit_total).max().unwrap_or(0);
+        if lo > 0 {
+            spread_max = spread_max.max(hi as f64 / lo as f64);
+        }
+        out.push_str(&format!(
+            "{{\"def\":{},\"stable\":{stable},\"verdicts\":[{}],\"rlimit_min\":{lo},\"rlimit_max\":{hi}}}\n",
+            diag::json_str(&s.path),
+            verdicts.join(","),
+        ));
+    }
+    out.push_str(&format!(
+        "{{\"summary\":true,\"seeds\":{},\"defs\":{},\"unstable\":{unstable},\"rlimit_spread_max\":{:.2}}}\n",
+        runs.len(),
+        runs[0].len(),
+        spread_max
+    ));
+    Ok((out, unstable == 0))
 }
 
 /// Result of `emit_llvm_sources`.
@@ -111,6 +189,14 @@ pub struct LlvmOutput {
 /// obligations are unproved; those keep runtime checks. Building a binary
 /// additionally requires `verify.ok`.
 pub fn emit_llvm_sources(files: &[(String, String)]) -> LlvmOutput {
+    emit_llvm_sources_with(files, false)
+}
+
+/// As `emit_llvm_sources`; with `all_checks`, the prover does not run and
+/// every obligation keeps its runtime check (`verify` then carries only
+/// front-end diagnostics). Used to test that proofs are sound: a proved
+/// program must never trip one of these checks.
+pub fn emit_llvm_sources_with(files: &[(String, String)], all_checks: bool) -> LlvmOutput {
     let mut fe = frontend(files);
     if fe.diags.has_errors() {
         return LlvmOutput {
@@ -118,13 +204,22 @@ pub fn emit_llvm_sources(files: &[(String, String)]) -> LlvmOutput {
                 ok: false,
                 output: fe.diags.to_jsonl(&fe.sm),
                 scripts: BTreeMap::new(),
+                cache: (0, 0),
             },
             ir: None,
             checks: 0,
             has_main: false,
         };
     }
-    let outcome = verify::verify_program(&fe.program, &fe.tables, &mut fe.diags);
+    let outcome = if all_checks {
+        verify::Outcome {
+            statuses: Vec::new(),
+            proven: Default::default(),
+            scripts: BTreeMap::new(),
+        }
+    } else {
+        verify::verify_program(&fe.program, &fe.tables, &mut fe.diags)
+    };
     let module = codegen::emit(&fe.program, &fe.tables, &outcome.proven);
     let mut output = fe.diags.to_jsonl(&fe.sm);
     output.push_str(&status_lines(&outcome));
@@ -133,6 +228,7 @@ pub fn emit_llvm_sources(files: &[(String, String)]) -> LlvmOutput {
             ok: !fe.diags.has_errors() && outcome.statuses.iter().all(|s| s.failed == 0),
             output,
             scripts: outcome.scripts,
+            cache: (0, 0),
         },
         ir: Some(module.ir),
         checks: module.checks,

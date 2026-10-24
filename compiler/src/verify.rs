@@ -9,6 +9,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::ast::*;
+use crate::cache::ProofCache;
 use crate::check::FnSig;
 use crate::diag::{Diag, Diags};
 use crate::smt::{self, Answer, Solver};
@@ -1278,6 +1279,25 @@ fn uses_of(f: &FnDef, mod_path: &str, fns: &BTreeMap<String, FnSig>) -> Vec<Stri
 
 /// Verifies every definition of a checked program. Failures go to `diags`.
 pub fn verify_program(p: &Program, t: &Tables, diags: &mut Diags) -> Outcome {
+    verify_program_seeded(p, t, diags, 0)
+}
+
+/// As `verify_program` with another solver seed. Seed 0 is the pinned
+/// configuration; other seeds exist to measure proof stability (backlog
+/// 1B-19): a proof whose verdict depends on the seed is brittle.
+pub fn verify_program_seeded(p: &Program, t: &Tables, diags: &mut Diags, seed: u64) -> Outcome {
+    verify_program_with(p, t, diags, seed, None)
+}
+
+/// As `verify_program_seeded`, skipping obligations the proof cache already
+/// holds as proved (backlog 2D-01). Output is the same with or without it.
+pub fn verify_program_with(
+    p: &Program,
+    t: &Tables,
+    diags: &mut Diags,
+    seed: u64,
+    mut cache: Option<&mut ProofCache>,
+) -> Outcome {
     let mut defs = BTreeMap::new();
     for m in &p.mods {
         collect(m, "", &mut defs);
@@ -1314,7 +1334,8 @@ pub fn verify_program(p: &Program, t: &Tables, diags: &mut Diags) -> Outcome {
         let mut enc = Enc::new(&prog, path, &d.mod_path);
         let mut header = vec![
             "(set-option :produce-models true)".to_string(),
-            "(set-option :smt.random_seed 0)".to_string(),
+            format!("(set-option :smt.random_seed {seed})"),
+            format!("(set-option :sat.random_seed {seed})"),
             format!("(set-option :rlimit {})", smt::rlimit()),
             PRELUDE.to_string(),
         ];
@@ -1393,20 +1414,9 @@ pub fn verify_program(p: &Program, t: &Tables, diags: &mut Diags) -> Outcome {
         let mut script = String::new();
         let mut failed = 0usize;
         let (mut rlimit_total, mut rlimit_max) = (0u64, 0u64);
-        let mut solver = None;
-        if !enc.obls.is_empty() {
-            match Solver::start() {
-                Ok(s) => solver = Some(s),
-                Err(e) => {
-                    diags.push(Diag::new(
-                        "E0812",
-                        d.f.name.span,
-                        format!("solver error: {e}"),
-                    ));
-                    failed = enc.obls.len();
-                }
-            }
-        }
+        // Started on the first obligation the cache does not hold.
+        let mut solver: Option<Solver> = None;
+        let mut solver_down = false;
         for (k, o) in enc.obls.iter().enumerate() {
             let q = format!(
                 "{}\n(assert (not {}))",
@@ -1429,7 +1439,37 @@ pub fn verify_program(p: &Program, t: &Tables, diags: &mut Diags) -> Outcome {
                 "; obligation {k}: {} {}\n(reset)\n{base}\n{q}\n(check-sat)\n",
                 o.code, o.msg
             ));
-            let Some(sol) = solver.as_mut() else { continue };
+            let key = (o.code, o.span.file, o.span.lo, o.span.hi);
+            let cache_key = cache
+                .as_ref()
+                .map(|_| ProofCache::key(&format!("{base}\n{q}")));
+            if let (Some(c), Some(ck)) = (cache.as_mut(), cache_key.as_ref())
+                && let Some((total, max)) = c.get(ck)
+            {
+                rlimit_total += total;
+                rlimit_max = rlimit_max.max(max);
+                proved_keys.insert(key);
+                continue;
+            }
+            if solver.is_none() && !solver_down {
+                match Solver::start() {
+                    Ok(s) => solver = Some(s),
+                    Err(e) => {
+                        diags.push(Diag::new(
+                            "E0812",
+                            d.f.name.span,
+                            format!("solver error: {e}"),
+                        ));
+                        solver_down = true;
+                    }
+                }
+            }
+            let Some(sol) = solver.as_mut() else {
+                failed += 1;
+                continue;
+            };
+            let total_before = rlimit_total;
+            let mut first_used = 0;
             let mut answer = sol
                 .run("(reset)")
                 .and_then(|_| sol.run(&base))
@@ -1440,6 +1480,7 @@ pub fn verify_program(p: &Program, t: &Tables, diags: &mut Diags) -> Outcome {
             {
                 rlimit_total += used;
                 rlimit_max = rlimit_max.max(used);
+                first_used = used;
             }
             // Undecided with quantified definitions: retry quantifier-free with
             // ground instances (sound for both answers, see `ground_instances`).
@@ -1472,9 +1513,11 @@ pub fn verify_program(p: &Program, t: &Tables, diags: &mut Diags) -> Outcome {
                 }
             }
             failed += 1;
-            let key = (o.code, o.span.file, o.span.lo, o.span.hi);
             if matches!(answer, Ok(Answer::Unsat)) {
                 proved_keys.insert(key);
+                if let (Some(c), Some(ck)) = (cache.as_mut(), cache_key) {
+                    c.insert(ck, rlimit_total - total_before, first_used);
+                }
             } else {
                 failed_keys.insert(key);
             }
@@ -1519,6 +1562,7 @@ pub fn verify_program(p: &Program, t: &Tables, diags: &mut Diags) -> Outcome {
                 Err(e) => {
                     diags.push(Diag::new("E0812", o.span, format!("solver error: {e}")));
                     solver = None;
+                    solver_down = true;
                 }
             }
         }
