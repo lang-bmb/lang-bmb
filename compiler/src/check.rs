@@ -834,6 +834,9 @@ impl<'a> Checker<'a> {
                 let t = self.expr(cx, inner, expected, mode);
                 match t {
                     TypeKind::I64 | TypeKind::Error => t,
+                    // Specification integers are mathematical: `-x` of an
+                    // unsigned value is just an integer (ADR-0024).
+                    TypeKind::U64 | TypeKind::Usize if mode != Mode::Exec => TypeKind::I64,
                     TypeKind::U64 | TypeKind::Usize => {
                         self.err(
                             "E0411",
@@ -1094,7 +1097,8 @@ impl<'a> Checker<'a> {
                 v <= u64::MAX as u128
             }
         };
-        if !fits {
+        // Specification integers are unbounded (ADR-0017, ADR-0024).
+        if !fits && mode == Mode::Exec {
             self.err(
                 "E0406",
                 span,
@@ -1371,6 +1375,13 @@ impl<'a> Checker<'a> {
         }
         for (root, i) in mut_roots {
             for (j, a) in args.iter().enumerate() {
+                // A scalar argument that only reads the array is a value
+                // computed before the call, so it cannot alias (ADR-0024):
+                // `fill(&mut a, a.len())`, `put(&mut a, a[0])`.
+                let by_value = !matches!(sig.params.get(j), Some(TypeKind::Ref { .. }));
+                if j != i && by_value && reads_only(a) {
+                    continue;
+                }
                 if j != i && mentions_strict(a, &root) {
                     self.err(
                         "E0410",
@@ -1771,6 +1782,24 @@ fn untyped_literal(e: &Expr) -> bool {
                 && then.tail.as_ref().is_some_and(|t| untyped_literal(t))
                 && els.as_ref().is_some_and(|e| untyped_literal(e))
         }
+        _ => false,
+    }
+}
+
+/// An expression that cannot write anything: no calls (a call may take
+/// `&mut`) and no `&mut` borrows. Built-in methods (`len`, `wrapping_*`) only
+/// read.
+fn reads_only(e: &Expr) -> bool {
+    match &e.kind {
+        ExprKind::Call { .. }
+        | ExprKind::Ref { mutable: true, .. }
+        | ExprKind::Block(_)
+        | ExprKind::If { .. } => false,
+        ExprKind::Method { recv, args, .. } => reads_only(recv) && args.iter().all(reads_only),
+        ExprKind::Index { base, index } => reads_only(base) && reads_only(index),
+        ExprKind::Unary(_, x) | ExprKind::Ref { expr: x, .. } => reads_only(x),
+        ExprKind::Binary(_, l, r) => reads_only(l) && reads_only(r),
+        ExprKind::Int(_) | ExprKind::Bool(_) | ExprKind::Unit | ExprKind::Var(_) => true,
         _ => false,
     }
 }

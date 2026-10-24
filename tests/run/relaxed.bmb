@@ -1,0 +1,43 @@
+#[summary("ADR-0024: 값으로 읽는 인자와 &mut 함께 넘기기, 명세의 부호 없는 부정과 큰 리터럴")]
+mod relax {
+    spec fn idx_ok(a: &[i64], i: usize) -> bool { i < a.len() }
+
+    spec fn put_done(a: &[i64], i: usize, v: i64) -> bool { i < a.len() && a[i] == v }
+
+    #[effects(pure)]
+    #[uses(idx_ok, put_done)]
+    fn put(a: &mut [i64], i: usize, v: i64) -> ()
+        requires idx_ok(a, i),
+        ensures put_done(a, i, v),
+    {
+        a[i] = v;
+    }
+
+    // `a.len() - 1` and `a[0]` are values read before the call.
+    #[effects(pure)]
+    #[uses(idx_ok, put_done)]
+    fn last_gets_first() -> i64 {
+        let mut a: [i64; 3] = [7, 8, 9];
+        put(&mut a, a.len() - 1, a[0]);
+        a[2]
+    }
+
+    spec fn neg_below(x: u64, r: i64) -> bool { -x <= r && r < 100000000000000000000 }
+
+    #[effects(pure)]
+    #[uses(neg_below)]
+    fn bounded(x: u64) -> (r: i64)
+        ensures neg_below(x, r),
+    {
+        0
+    }
+}
+
+#[summary("진입점")]
+mod app {
+    #[effects(io)]
+    fn main() -> () {
+        print_i64(relax::last_gets_first());
+        print_i64(relax::bounded(5));
+    }
+}

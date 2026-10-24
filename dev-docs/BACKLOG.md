@@ -65,6 +65,7 @@
 | 1A-10 | 배열 길이 상한 | `[T; N]`의 N이 `u128 → u64`로 잘리지 않고, ADR-0017 §3 길이 상한을 넘으면 E0406. 코드 생성의 `len * 8` 넘침 방지 | 1A-03 | ✅ 타입 표기의 길이도 `u32::MAX` 상한(E0406, 잘림 없음, 후속 타입 오류 없음). 1A-11 작업 중 발견된 동일 문제 포함. `tests/check/err/types.bmb`의 `array_limits` |
 | 1A-11 | 중첩 깊이 제한 | 소스 파서와 JSON 파서에 깊이 상한(초과 시 진단·오류). 50k 괄호·200k `[`로 스택 넘침이 재현됨(MCP 서버 종료) | 1A-02 | ✅ JSON `MAX_DEPTH` 256, 파서 `MAX_NESTING` 256과 새 코드 E0107, CLI·MCP를 256MiB 스택에서 실행(`bmb::with_stack`). `tests/nesting.rs`, `check/err/nesting.bmb`, MCP 200k `[` 테스트 |
 | 1A-12 | 리터럴 식의 타입 추론 | 리터럴만으로 된 식(`(66 + 14)`, `if c { 5 } else { 7 }`)과 `if`의 리터럴 가지가 다른 쪽 피연산자·가지에서 타입을 받음(Rust와 같음). 이전에는 `i64`로 정해져 `u64` 코드가 E0401 | 1A-03 | ✅ 1B-33 퍼저가 발견. `check.rs`의 `untyped_literal`, `tests/check/ok/literals.bmb` |
+| 1A-13 | 검사기 완화 세 가지 | 읽기만 하는 스칼라 인자와 `&mut` 함께 넘기기, 명세의 부호 없는 부정, 명세의 큰 리터럴(감사에서 확인, 사람 승인) | 1A-03 | ✅ ADR-0024, `tests/run/relaxed.bmb`, 거부 유지 사례는 기존 `check/err` |
 
 ## 1B 증명 게이트
 
