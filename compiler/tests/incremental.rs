@@ -303,7 +303,14 @@ fn edits_that_shift_spans_or_change_context_keep_outputs_exact() {
     let edits = [
         // A comment shifts every span after it.
         base.replacen("mod m1 {", "mod m1 {\n    // moved\n", 1),
-        // A new spec fn changes the header of every query.
+        // A new spec fn that a definition of the unit names.
+        base.replacen(
+            "mod m2 {",
+            "mod m2 {\n    spec fn extra(x: i64) -> bool { x > 7 }\n",
+            1,
+        )
+        .replacen("ensures pos(r),\n    {\n        x + 2\n", "ensures pos(r) || extra(r),\n    {\n        x + 2\n", 1),
+        // An unrelated new spec fn (no query mentions it).
         base.replacen(
             "mod m2 {",
             "mod m2 {\n    spec fn extra(x: i64) -> bool { x > 7 }\n",
@@ -328,6 +335,42 @@ fn edits_that_shift_spans_or_change_context_keep_outputs_exact() {
         let (again, _) = cached(&f, &dir);
         assert_eq!(again, out, "edit {i} (warm)");
     }
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A query declares only the spec fns it mentions (backlog 2D-14), so an
+/// unrelated spec fn changes no query: nothing is encoded or lowered again,
+/// and every definition's script is byte-identical.
+#[test]
+fn adding_an_unrelated_spec_fn_reencodes_nothing() {
+    let dir = tmp("unrelated");
+    let base = generate(4);
+    cached(&files(&base), &dir);
+    let added = base.replacen(
+        "mod m2 {",
+        "mod m2 {\n    spec fn extra(x: i64, y: bool) -> bool { y && x > 7 }\n",
+        1,
+    );
+    let f = files(&added);
+    let (out, stats) = cached(&f, &dir);
+    assert_eq!(out, plain(&f));
+    assert!(
+        stats.encoded.is_empty() && stats.lowered.is_empty(),
+        "{stats:?}"
+    );
+    assert_eq!(stats.reused.len(), 20);
+    let before = bmb::verify_sources(&files(&base)).scripts;
+    let after = bmb::verify_sources(&f).scripts;
+    assert!(!before.is_empty());
+    assert_eq!(before, after);
+    assert!(after.values().all(|s| !s.contains("|m2::extra|")));
+    // The definitions that mention a spec fn declare it; the others do not.
+    let s = &after["m1::f0"];
+    assert!(s.contains("(declare-fun |m1::pos| (Int) Bool)"), "{s}");
+    assert!(
+        !s.contains("|m1::pos2|") && !s.contains("|m0::small|"),
+        "{s}"
+    );
     let _ = fs::remove_dir_all(&dir);
 }
 

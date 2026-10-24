@@ -13,16 +13,21 @@
 //! program, so the result is exactly what `bmb verify` would see. A
 //! definition's obligations depend only on its own `#[uses]` (revealing is not
 //! transitive, callees are seen through their contracts), so all failing
-//! definitions advance in lockstep, one program verification per step, and an
-//! in-memory proof cache keeps the other definitions' proved obligations from
-//! being solved again. It runs only on request (`bmb uses`); `check` and
+//! definitions advance in lockstep, one program verification per step. The
+//! runs share an incremental cache (backlog 2D-15, `incremental::Session`,
+//! in memory unless `--cache DIR`): a definition whose text and context did
+//! not change since an earlier run is not encoded again, and the proof cache
+//! keeps the changed definitions' unchanged obligations from being solved
+//! again. It runs only on request (`bmb uses`); `check` and
 //! `verify` are unchanged.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::Path;
 
 use crate::ast::{FnKind, Mod};
 use crate::cache::ProofCache;
 use crate::diag::json_str;
+use crate::incremental::Session;
 use crate::source::Span;
 
 /// Upper bound on verifications spent on one definition.
@@ -266,14 +271,39 @@ struct Seen {
     hints: BTreeSet<String>,
 }
 
+/// The caches every verification of one `fill_uses` call shares.
+struct Caches<'a> {
+    proofs: ProofCache,
+    /// Created on the first run; later runs re-key it (backlog 2D-15).
+    defs: Option<Session>,
+    dir: Option<&'a Path>,
+}
+
 /// Checks and proves `files`; `None` when the program does not check.
-fn run(files: &[(String, String)], cache: &mut ProofCache) -> Option<BTreeMap<String, Seen>> {
+/// Definitions unchanged since an earlier run (same incremental key) are
+/// not encoded again; the result is the same as a full verification.
+fn run(files: &[(String, String)], caches: &mut Caches) -> Option<BTreeMap<String, Seen>> {
     let mut fe = crate::frontend(files);
     if fe.diags.has_errors() {
         return None;
     }
-    let outcome =
-        crate::verify::verify_program_with(&fe.program, &fe.tables, &mut fe.diags, 0, Some(cache));
+    let session = match &mut caches.defs {
+        Some(s) => {
+            s.rekey(&fe.program, &fe.tables, &fe.sm);
+            s
+        }
+        slot => slot.insert(match caches.dir {
+            Some(d) => Session::new(d, &fe.program, &fe.tables, &fe.sm),
+            None => Session::in_memory(&fe.program, &fe.tables, &fe.sm),
+        }),
+    };
+    let outcome = crate::verify::verify_program_incremental(
+        &fe.program,
+        &fe.tables,
+        &mut fe.diags,
+        Some(&mut caches.proofs),
+        session,
+    );
     let mut defs = BTreeMap::new();
     for m in &fe.program.mods {
         walk(m, "", &mut defs);
@@ -334,6 +364,16 @@ enum State {
 /// name (see the module comment). Deterministic: the result depends only on
 /// the input. `Err` carries diagnostics when the program does not check.
 pub fn fill_uses(files: &[(String, String)]) -> Result<UsesOutput, String> {
+    fill_uses_cached(files, None)
+}
+
+/// As `fill_uses`, with the proof cache and the incremental cache kept in
+/// `cache_dir` (as `bmb verify --cache`): loaded before the first
+/// verification and written back after the last. The result is the same.
+pub fn fill_uses_cached(
+    files: &[(String, String)],
+    cache_dir: Option<&Path>,
+) -> Result<UsesOutput, String> {
     let fe = crate::frontend(files);
     if fe.diags.has_errors() {
         return Err(fe.diags.to_jsonl(&fe.sm));
@@ -342,7 +382,11 @@ pub fn fill_uses(files: &[(String, String)]) -> Result<UsesOutput, String> {
     for m in &fe.program.mods {
         walk(m, "", &mut targets);
     }
-    let mut cache = ProofCache::default();
+    let mut cache = Caches {
+        proofs: cache_dir.map(ProofCache::load).unwrap_or_default(),
+        defs: None,
+        dir: cache_dir,
+    };
     let mut total = 1;
     let first = run(files, &mut cache).unwrap_or_default();
 
@@ -491,6 +535,15 @@ pub fn fill_uses(files: &[(String, String)]) -> Result<UsesOutput, String> {
                 *status = UsesStatus::NotFound;
                 *set = targets[path].original.clone();
             }
+        }
+    }
+
+    if let Some(d) = cache_dir {
+        if let Some(s) = &cache.defs {
+            s.save();
+        }
+        if let Err(e) = cache.proofs.save(d) {
+            eprintln!("bmb: cannot write proof cache in {}: {e}", d.display());
         }
     }
 

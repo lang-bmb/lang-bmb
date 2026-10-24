@@ -1291,17 +1291,19 @@ pub const PRELUDE: &str = "(define-fun bmb_abs ((x Int)) Int (ite (>= x 0) x (- 
 (define-fun bmb_trem ((a Int) (b Int)) Int (- a (* b (bmb_tdiv a b))))";
 
 impl<'p> Prog<'p> {
-    fn spec_decls(&self) -> Vec<String> {
+    /// Declarations of every spec fn, as (path, SMT symbol, declaration).
+    fn spec_decls(&self) -> Vec<(String, String, String)> {
         self.defs
             .iter()
             .filter(|(_, d)| d.f.kind == FnKind::Spec)
             .map(|(path, d)| {
-                format!(
-                    "(declare-fun {} ({}) {})",
-                    sym(path),
+                let s = sym(path);
+                let decl = format!(
+                    "(declare-fun {s} ({}) {})",
                     param_sorts(d.f).join(" "),
                     sort_of(&d.f.ret.ty.kind)
-                )
+                );
+                (path.clone(), s, decl)
             })
             .collect()
     }
@@ -1426,15 +1428,27 @@ pub fn verify_program_incremental(
     verify_impl(p, t, diags, 0, cache, None, Some(incr))
 }
 
-/// Every solver query of a program starts with this text: options (seed 0,
-/// pinned `rlimit`), prelude, and the declarations of every `spec fn`.
-pub fn query_header(p: &Program, t: &Tables) -> String {
+/// Every solver query starts with this text: options (seed 0, pinned
+/// `rlimit`) and the prelude. The declarations of the spec fns the query
+/// mentions follow it (`needed_decls`).
+pub fn query_header() -> String {
+    header(0).join("\n")
+}
+
+/// The SMT declaration of every spec fn of a program, by full path. A query
+/// holds the declarations of exactly the spec fns its text mentions (backlog
+/// 2D-14), so the incremental key takes these for the spec fns a definition
+/// can reach.
+pub fn spec_decl_map(p: &Program, t: &Tables) -> BTreeMap<String, String> {
     let mut defs = BTreeMap::new();
     for m in &p.mods {
         collect(m, "", &mut defs);
     }
     let prog = Prog { defs, t };
-    header(&prog.spec_decls(), 0).join("\n")
+    prog.spec_decls()
+        .into_iter()
+        .map(|(path, _, decl)| (path, decl))
+        .collect()
 }
 
 /// As `verify_program_with` (seed 0), proving only the definitions in
@@ -1442,7 +1456,10 @@ pub fn query_header(p: &Program, t: &Tables) -> String {
 /// contract and `#[uses]`, exactly as in a whole-program run, so a listed
 /// definition gets the same verdict as there. Used by `bmb lint` to
 /// re-verify one definition or its callers after a contract change
-/// (backlog 2D-08).
+/// (backlog 2D-08). Lint only asks whether every listed definition verifies
+/// completely, so the run stops at the first obligation that fails
+/// (backlog 2D-15): after a failure, statuses and diagnostics cover only
+/// what ran.
 pub fn verify_defs(
     p: &Program,
     t: &Tables,
@@ -1453,16 +1470,32 @@ pub fn verify_defs(
     verify_impl(p, t, diags, 0, cache, Some(only), None)
 }
 
-fn header(spec_decls: &[String], seed: u64) -> Vec<String> {
-    let mut header = vec![
+fn header(seed: u64) -> Vec<String> {
+    vec![
         "(set-option :produce-models true)".to_string(),
         format!("(set-option :smt.random_seed {seed})"),
         format!("(set-option :sat.random_seed {seed})"),
         format!("(set-option :rlimit {})", smt::rlimit()),
         PRELUDE.to_string(),
-    ];
-    header.extend(spec_decls.iter().cloned());
-    header
+    ]
+}
+
+/// The declarations of the spec fns whose symbol occurs in `text`, one per
+/// line, in path order (backlog 2D-14). `text` is everything the query
+/// asserts after them (revealed definitions, local declarations, ground
+/// instances, assumptions and goal); revealed definitions are already closed
+/// over the spec fns their bodies name (`relevant_axioms`), so no symbol of
+/// the query is left undeclared. Symbols are `|path|`, delimited, so a
+/// substring test cannot confuse two of them.
+fn needed_decls(spec_decls: &[(String, String, String)], text: &str) -> String {
+    let mut out = String::new();
+    for (_, s, decl) in spec_decls {
+        if text.contains(s.as_str()) {
+            out.push_str(decl);
+            out.push('\n');
+        }
+    }
+    out
 }
 
 /// Whether the `requires` clauses of every executable function that has
@@ -1520,11 +1553,11 @@ pub fn preconditions_satisfiable(p: &Program, t: &Tables) -> Vec<(String, Span, 
             .collect::<Vec<_>>()
             .join("\n");
         let relevant = relevant_axioms(&axioms, &q);
-        let mut base = header(&spec_decls, 0).join("\n");
+        let mut base = header(0).join("\n");
         base.push('\n');
         let decls = enc.decls.join("\n");
-        let head = format!("{base}{decls}");
-        let full = format!("{base}{relevant}{decls}");
+        let used = needed_decls(&spec_decls, &format!("{relevant}{decls}\n{q}"));
+        let full = format!("{base}{used}{relevant}{decls}");
         if solver.as_ref().is_some_and(|s| !s.reusable()) {
             solver = None;
         }
@@ -1549,6 +1582,8 @@ pub fn preconditions_satisfiable(p: &Program, t: &Tables) -> Vec<(String, Span, 
         if matches!(answer, Ok(Answer::Unknown(_))) && !axiom_parts.is_empty() {
             let (inst, _) = ground_instances(&axiom_parts, &q, 3);
             if !inst.is_empty() {
+                let used = needed_decls(&spec_decls, &format!("{decls}\n{inst}{q}"));
+                let head = format!("{base}{used}{decls}");
                 let retry = sol
                     .run("(reset)")
                     .and_then(|_| sol.run(&head))
@@ -1582,6 +1617,8 @@ fn verify_impl(
     only: Option<&BTreeSet<String>>,
     mut incr: Option<&mut crate::incremental::Session>,
 ) -> Outcome {
+    // A restricted run (`verify_defs`) stops at the first failure.
+    let stop_at_failure = only.is_some();
     let mut defs = BTreeMap::new();
     for m in &p.mods {
         collect(m, "", &mut defs);
@@ -1620,7 +1657,11 @@ fn verify_impl(
     // Started on the first obligation the cache does not hold, replaced when
     // too old to take on another definition (`Solver::reusable`).
     let mut solver: Option<Solver> = None;
+    let mut stopped = false;
     for (path, d) in &prog.defs {
+        if stopped {
+            break;
+        }
         if only.is_some_and(|o| !o.contains(path)) {
             continue;
         }
@@ -1641,7 +1682,7 @@ fn verify_impl(
             continue;
         }
         let mut enc = Enc::new(&prog, path, &d.mod_path);
-        let header = header(&spec_decls, seed);
+        let header = header(seed);
         // Definitional axioms of revealed spec fns, filtered per obligation.
         let mut axioms: Vec<(String, String)> = Vec::new();
         let mut axiom_parts: Vec<AxiomParts> = Vec::new();
@@ -1710,8 +1751,8 @@ fn verify_impl(
         // Assemble and solve. Every obligation runs on a reset solver holding only
         // the definition's base (options, prelude, axioms, declarations), so one
         // obligation's result never depends on another's (ADR-0017 §5).
-        let mut base = header.join("\n");
-        base.push('\n');
+        let mut prefix = header.join("\n");
+        prefix.push('\n');
         let decls = enc.decls.join("\n");
         let mut script = String::new();
         let mut failed = 0usize;
@@ -1722,6 +1763,9 @@ fn verify_impl(
         let mut solver_down = false;
         let mut def_proved: Vec<ObKey> = Vec::new();
         for (k, o) in enc.obls.iter().enumerate() {
+            if stop_at_failure && (failed > 0 || !enc.unsupported.is_empty()) {
+                break;
+            }
             let q = format!(
                 "{}\n(assert (not {}))",
                 o.assumptions
@@ -1737,8 +1781,10 @@ fn verify_impl(
             let relevant_text = relevant.clone();
             let hint =
                 hidden_predicates(&spec_syms, &axioms, &format!("{q}{relevant}"), &d.mod_path);
-            let head = format!("{base}{decls}");
-            let base = format!("{base}{relevant}{decls}");
+            // Only the spec fns the query mentions are declared (backlog
+            // 2D-14): an unrelated spec fn does not change the query text.
+            let used = needed_decls(&spec_decls, &format!("{relevant}{decls}\n{q}"));
+            let base = format!("{prefix}{used}{relevant}{decls}");
             script.push_str(&format!(
                 "; obligation {k}: {} {}\n(reset)\n{base}\n{q}\n(check-sat)\n",
                 o.code, o.msg
@@ -1792,6 +1838,8 @@ fn verify_impl(
             if matches!(answer, Ok(Answer::Unknown(_))) && !axiom_parts.is_empty() {
                 let (inst, complete) = ground_instances(&axiom_parts, &q, 3);
                 if !inst.is_empty() {
+                    let used = needed_decls(&spec_decls, &format!("{decls}\n{inst}{q}"));
+                    let head = format!("{prefix}{used}{decls}");
                     script.push_str(&format!(
                         "; retry of obligation {k} with ground instances\n(reset)\n{head}\n{inst}{q}\n(check-sat)\n"
                     ));
@@ -1872,6 +1920,7 @@ fn verify_impl(
                 }
             }
         }
+        stopped = stop_at_failure && (failed > 0 || !enc.unsupported.is_empty());
         let status = FnStatus {
             path: path.clone(),
             obligations: enc.obls.len(),

@@ -9,8 +9,15 @@
 //!
 //! **Proof key.** Encoding a definition `D` (`verify::verify_impl`) reads:
 //!
-//! - the query header: solver options (seed, `rlimit`), the prelude and the
-//!   declarations of every `spec fn` in the program (`verify::query_header`);
+//! - the query header: solver options (seed, `rlimit`) and the prelude
+//!   (`verify::query_header`);
+//! - the declarations of the `spec fn`s its queries mention (backlog 2D-14:
+//!   a query declares only those). The key takes the declaration of every
+//!   `spec fn` reachable from `D`'s qualified text through executable
+//!   callees' contracts and `spec fn` texts, which covers every symbol a
+//!   query of `D` can contain: its assumptions and goals come from `D`, the
+//!   callee contracts and the revealed `spec fn` bodies, and those name
+//!   only what they name. An unrelated `spec fn` therefore changes no key;
 //! - `D` itself: its source text (spans of obligations are byte offsets, so
 //!   the key takes the raw text between `fn` and the closing brace and the
 //!   results are stored relative to its start) and its qualified normal form
@@ -19,14 +26,13 @@
 //! - each definition `D`'s qualified text names: an executable callee through
 //!   its contract and signature (iface hash), a `spec fn` revealed by
 //!   `#[uses]` or in `D`'s recursive component through its whole text (body
-//!   hash), any other `spec fn` only through its declaration (already in the
-//!   header);
+//!   hash), any other `spec fn` only through its declaration (above);
 //! - `D`'s recursive component (`decreases` obligations at calls inside it);
 //! - the compiler (a digest of its sources, `build.rs`) and the pinned Z3.
 //!
-//! These are exactly the edges of `query impact` (map.rs): `calls` (callee
-//! contract), `uses` (revealed body), `names` (spec signature, here through
-//! the header, which every query contains). So two runs with the same key
+//! These include the edges of `query impact` (map.rs): `calls` (callee
+//! contract), `uses` (revealed body), `names` (spec signature, through the
+//! declarations). So two runs with the same key
 //! send the same query text, and the stored verdict is the one the solver
 //! (and the proof cache, keyed by that text) would give. `with_audit` re-runs
 //! a hit anyway and compares the script digest, status and proved set;
@@ -279,7 +285,8 @@ fn parse_rel(text: &str, span: Span) -> Option<Vec<ObKey>> {
 /// One run's view of the cache: per-definition keys of the current program,
 /// the stored entries, and counters.
 pub struct Session {
-    dir: PathBuf,
+    /// `None`: in memory only, never saved (`bmb lint`, `bmb uses`).
+    dir: Option<PathBuf>,
     id: String,
     store: Store,
     audit: bool,
@@ -308,6 +315,57 @@ impl Session {
     pub fn new(dir: &Path, p: &Program, t: &Tables, sm: &SourceMap) -> Session {
         let id = compiler_id();
         let store = Store::load(dir, &id);
+        Session::with_store(Some(dir.to_path_buf()), id, store, p, t, sm)
+    }
+
+    /// A session that starts empty and keeps its entries in memory only
+    /// (backlog 2D-15): tools that verify a program several times with
+    /// small edits (`bmb uses`, `bmb lint`) reuse the unchanged definitions
+    /// between their own runs through `rekey`.
+    pub fn in_memory(p: &Program, t: &Tables, sm: &SourceMap) -> Session {
+        Session::with_store(None, compiler_id(), Store::default(), p, t, sm)
+    }
+
+    /// Recomputes the keys for another version of the program, keeping the
+    /// stored entries and counters. A definition whose key is unchanged is
+    /// then reused as in a new session over the same cache.
+    pub fn rekey(&mut self, p: &Program, t: &Tables, sm: &SourceMap) {
+        let (proof_keys, ir_keys) = Session::keys(&self.id, p, t, sm);
+        self.proof_keys = proof_keys;
+        self.ir_keys = ir_keys;
+    }
+
+    fn with_store(
+        dir: Option<PathBuf>,
+        id: String,
+        store: Store,
+        p: &Program,
+        t: &Tables,
+        sm: &SourceMap,
+    ) -> Session {
+        let (proof_keys, ir_keys) = Session::keys(&id, p, t, sm);
+        let stats = Stats {
+            damaged: store.damaged,
+            ..Stats::default()
+        };
+        Session {
+            dir,
+            id,
+            store,
+            audit: AUDIT.with(|a| a.get()),
+            proof_keys,
+            ir_keys,
+            stats,
+        }
+    }
+
+    /// Proof and IR keys of every definition (see the module comment).
+    fn keys(
+        id: &str,
+        p: &Program,
+        t: &Tables,
+        sm: &SourceMap,
+    ) -> (BTreeMap<String, String>, BTreeMap<String, String>) {
         let mut defs = Vec::new();
         for m in &p.mods {
             collect(m, "", &mut defs);
@@ -320,7 +378,23 @@ impl Session {
         let kinds: BTreeMap<&str, FnKind> =
             defs.iter().map(|(p, _, f)| (p.as_str(), f.kind)).collect();
         // Hashed once: it is the same for every definition.
-        let header = crate::sha256::hex(crate::verify::query_header(p, t).as_bytes());
+        let header = crate::sha256::hex(crate::verify::query_header().as_bytes());
+        let decls = crate::verify::spec_decl_map(p, t);
+        // Definitions a text names (full paths).
+        let names = |text: &str| -> BTreeSet<String> {
+            text.split(|c: char| !(c.is_alphanumeric() || c == '_' || c == ':'))
+                .filter(|w| w.contains("::") && kinds.contains_key(w))
+                .map(str::to_string)
+                .collect()
+        };
+        // What another definition's query can read of each definition: a
+        // spec fn's whole text, an executable function's contract only.
+        let mut reads: BTreeMap<&str, BTreeSet<String>> = BTreeMap::new();
+        for (path, unit, f) in &defs {
+            let with_body = f.kind == FnKind::Spec;
+            let text = crate::fmt::qualified_text(f, unit, &t.fns, with_body);
+            reads.insert(path.as_str(), names(&text));
+        }
         let z3 = crate::toolchain::z3_version();
         let mut proof_keys = BTreeMap::new();
         let mut ir_keys = BTreeMap::new();
@@ -347,7 +421,7 @@ impl Session {
                 None => Vec::new(),
             };
             let mut own = String::new();
-            section(&mut own, "id", &id);
+            section(&mut own, "id", id);
             section(&mut own, "path", path);
             section(&mut own, "unit", unit);
             section(&mut own, "source", slice);
@@ -370,26 +444,34 @@ impl Session {
                     FnKind::Spec if uses.contains(r) || comp.contains(&r) => {
                         section(&mut pk, "spec", &format!("{r} {body}"))
                     }
-                    // Named only: its declaration is in the header.
+                    // Named only: the query reads its declaration (below).
                     FnKind::Spec => section(&mut pk, "names", r),
+                }
+            }
+            // Declarations the queries can contain (backlog 2D-14): a query
+            // declares only the spec fns it mentions, and every symbol it
+            // mentions comes from `D`'s text, a callee's contract or a spec
+            // fn's text (a revealed body, a measure in the component), so
+            // the spec fns reachable along those texts cover it.
+            let mut reach: BTreeSet<String> = names(&qual);
+            reach.insert(path.clone());
+            let mut todo: Vec<String> = reach.iter().cloned().collect();
+            while let Some(r) = todo.pop() {
+                for n in reads.get(r.as_str()).into_iter().flatten() {
+                    if reach.insert(n.clone()) {
+                        todo.push(n.clone());
+                    }
+                }
+            }
+            for r in &reach {
+                if let Some(decl) = decls.get(r) {
+                    section(&mut pk, "decl", decl);
                 }
             }
             proof_keys.insert(path.clone(), crate::sha256::hex(pk.as_bytes()));
             ir_keys.insert(path.clone(), crate::sha256::hex(ik.as_bytes()));
         }
-        let stats = Stats {
-            damaged: store.damaged,
-            ..Stats::default()
-        };
-        Session {
-            dir: dir.to_path_buf(),
-            id,
-            store,
-            audit: AUDIT.with(|a| a.get()),
-            proof_keys,
-            ir_keys,
-            stats,
-        }
+        (proof_keys, ir_keys)
     }
 
     pub fn audit(&self) -> bool {
@@ -492,10 +574,11 @@ impl Session {
 
     /// Writes the cache back when something changed.
     pub fn save(&self) {
-        if let Err(e) = self.store.save(&self.dir, &self.id) {
+        let Some(dir) = &self.dir else { return };
+        if let Err(e) = self.store.save(dir, &self.id) {
             eprintln!(
                 "bmb: cannot write incremental cache in {}: {e}",
-                self.dir.display()
+                dir.display()
             );
         }
     }
