@@ -87,6 +87,16 @@ const RESERVED: &[&str] = &[
     "await",
 ];
 
+/// Whether `name` is a name the parser accepts for a unit or definition: the
+/// lexer's identifier rule (`[A-Za-z_][A-Za-z0-9_]*`) minus reserved words.
+pub fn is_ident(name: &str) -> bool {
+    let mut cs = name.chars();
+    cs.next()
+        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+        && cs.all(|c| c.is_ascii_alphanumeric() || c == '_')
+        && !RESERVED.contains(&name)
+}
+
 impl<'a> Parser<'a> {
     pub fn new(toks: Vec<Token>, diags: &'a mut Diags, text: &'a str) -> Self {
         Parser {

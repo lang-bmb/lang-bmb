@@ -105,6 +105,19 @@ fn new_mod(name: &str, summary: &str) -> Mod {
     }
 }
 
+/// Splits a `::` path whose segments must all be identifiers (backlog 1D-15:
+/// unit names become file names, so `../x` must never get through).
+fn segments<'p>(k: usize, what: &str, path: &'p str) -> Result<Vec<&'p str>, String> {
+    let segs: Vec<&str> = path.split("::").collect();
+    if segs.iter().all(|s| parser::is_ident(s)) {
+        Ok(segs)
+    } else {
+        Err(format!(
+            "op {k}: {what} `{path}` is not a valid path (each `::` segment must be an identifier, not a keyword)"
+        ))
+    }
+}
+
 fn hashes(p: &Program, fns: &BTreeMap<String, check::FnSig>) -> BTreeMap<String, String> {
     fmt::hashes(p, fns)
         .into_iter()
@@ -137,7 +150,13 @@ pub fn plan(files: &[(String, String)], ops: &[Op]) -> (Commit, Option<BTreeMap<
     for (k, op) in ops.iter().enumerate() {
         match op {
             Op::Unit { path, summary } => {
-                let segs: Vec<&str> = path.split("::").collect();
+                let segs = match segments(k, "unit", path) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        problems.push(e);
+                        continue;
+                    }
+                };
                 if let Some(m) = find_mod(&mut program.mods, &segs) {
                     m.attrs.retain(|a| a.name.name != "summary");
                     m.attrs.insert(0, summary_attr(summary));
@@ -157,12 +176,32 @@ pub fn plan(files: &[(String, String)], ops: &[Op]) -> (Commit, Option<BTreeMap<
                 }
             }
             Op::Put { unit, code } => {
-                let segs: Vec<&str> = unit.split("::").collect();
+                let segs = match segments(k, "unit", unit) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        problems.push(e);
+                        continue;
+                    }
+                };
                 let last = segs.last().copied().unwrap_or("");
                 // Wrap on the first line so diagnostic lines match the submitted code.
                 let wrapped = format!("#[summary(\"\")] mod {last} {{ {code}\n}}\n");
+                let before = diags.items.len();
                 let parsed = parse_into(&mut sm, &mut diags, &format!("tx/op{k}"), &wrapped);
+                let syntax_ok = diags.items.len() == before;
+                // The code must stay inside the wrapper and hold only definitions:
+                // anything else would be dropped silently.
+                if syntax_ok && (parsed.mods.len() != 1 || !parsed.mods[0].mods.is_empty()) {
+                    problems.push(format!(
+                        "op {k}: `code` must contain only `fn` / `spec fn` definitions (create units with a `unit` op)"
+                    ));
+                    continue;
+                }
                 let new_fns: Vec<FnDef> = parsed.mods.into_iter().flat_map(|m| m.fns).collect();
+                if syntax_ok && new_fns.is_empty() {
+                    problems.push(format!("op {k}: `code` contains no definition"));
+                    continue;
+                }
                 let Some(m) = find_mod(&mut program.mods, &segs) else {
                     problems.push(format!(
                         "op {k}: unit `{unit}` does not exist (create it with a `unit` op)"
@@ -175,7 +214,13 @@ pub fn plan(files: &[(String, String)], ops: &[Op]) -> (Commit, Option<BTreeMap<
                 }
             }
             Op::Remove { def } => {
-                let segs: Vec<&str> = def.split("::").collect();
+                let segs = match segments(k, "definition", def) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        problems.push(e);
+                        continue;
+                    }
+                };
                 let (name, unit) = segs.split_last().unwrap();
                 match find_mod(&mut program.mods, unit) {
                     Some(m) if m.fns.iter().any(|f| f.name.name == *name) => {
@@ -185,7 +230,13 @@ pub fn plan(files: &[(String, String)], ops: &[Op]) -> (Commit, Option<BTreeMap<
                 }
             }
             Op::RemoveUnit { path } => {
-                let segs: Vec<&str> = path.split("::").collect();
+                let segs = match segments(k, "unit", path) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        problems.push(e);
+                        continue;
+                    }
+                };
                 let (last, parent) = segs.split_last().unwrap();
                 let list = if parent.is_empty() {
                     Some(&mut program.mods)
@@ -254,12 +305,34 @@ pub fn commit(root: &Path, ops: &[Op]) -> Result<Commit, String> {
 }
 
 /// Writes the normal-form files and removes files of units that no longer exist.
+///
+/// Every unit name must be an identifier (it becomes a file name). New contents
+/// go to temporary files first and are renamed into place only when all of them
+/// were written, so a failed write leaves the old files untouched; stale files
+/// are removed last (backlog 1D-19).
 pub fn write_units(root: &Path, units: &BTreeMap<String, String>) -> Result<(), String> {
+    if let Some(bad) = units.keys().find(|u| !parser::is_ident(u)) {
+        return Err(format!("unit name `{bad}` is not an identifier"));
+    }
     let dir = src_dir(root);
     std::fs::create_dir_all(&dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+    let tmp = |unit: &str| dir.join(format!(".{unit}.bmb.tmp"));
+    let mut written = Vec::new();
     for (unit, text) in units {
+        let t = tmp(unit);
+        if let Err(e) = std::fs::write(&t, text) {
+            let _ = std::fs::remove_file(&t);
+            for w in &written {
+                let _ = std::fs::remove_file(w);
+            }
+            return Err(format!("cannot write {}: {e}", t.display()));
+        }
+        written.push(t);
+    }
+    for (unit, t) in units.keys().zip(&written) {
         let p = dir.join(format!("{unit}.bmb"));
-        std::fs::write(&p, text).map_err(|e| format!("cannot write {}: {e}", p.display()))?;
+        std::fs::rename(t, &p)
+            .map_err(|e| format!("cannot rename {} to {}: {e}", t.display(), p.display()))?;
     }
     for e in std::fs::read_dir(&dir).map_err(|e| e.to_string())? {
         let p = e.map_err(|e| e.to_string())?.path();
