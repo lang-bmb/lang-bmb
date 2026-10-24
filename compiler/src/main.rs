@@ -30,6 +30,10 @@ Any <file.bmb> argument may also be a workspace directory (its src/*.bmb).
   bmb doctor                check the pinned toolchain (z3, LLVM) as JSONL";
 
 fn main() -> ExitCode {
+    bmb::with_stack(run)
+}
+
+fn run() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
         Some("check") if args.len() > 1 => {

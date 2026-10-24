@@ -36,7 +36,8 @@ fn run(path: &Path) -> bmb::CheckOutput {
             .unwrap(),
         path.file_name().unwrap().to_str().unwrap()
     );
-    bmb::check_sources(&[(name, fs::read_to_string(path).unwrap())])
+    let text = fs::read_to_string(path).unwrap();
+    bmb::with_stack(|| bmb::check_sources(&[(name, text)]))
 }
 
 #[test]

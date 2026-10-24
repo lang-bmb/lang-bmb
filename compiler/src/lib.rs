@@ -23,6 +23,24 @@ use std::collections::BTreeMap;
 use diag::Diags;
 use source::SourceMap;
 
+/// Stack size for compiler work. Every recursive pass is bounded by the
+/// parser's nesting limit (`parser::MAX_NESTING`); this is enough for a program
+/// at that limit even in a debug build (backlog 1A-11, `tests/nesting.rs`).
+pub const STACK_BYTES: usize = 256 << 20;
+
+/// Runs `f` on a thread with `STACK_BYTES` of stack. The CLI and the MCP
+/// server run everything through this.
+pub fn with_stack<T: Send>(f: impl FnOnce() -> T + Send) -> T {
+    std::thread::scope(|s| {
+        std::thread::Builder::new()
+            .stack_size(STACK_BYTES)
+            .spawn_scoped(s, f)
+            .expect("cannot spawn the compiler thread")
+            .join()
+            .unwrap_or_else(|e| std::panic::resume_unwind(e))
+    })
+}
+
 /// Result of checking a set of source files.
 pub struct CheckOutput {
     pub ok: bool,
