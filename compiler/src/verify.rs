@@ -1804,7 +1804,10 @@ fn counterexample(sol: &mut Solver, inputs: &[(String, Val)]) -> String {
             Val::A { .. } => {
                 let len = it.next().unwrap_or_default();
                 let n: usize = len.parse().unwrap_or(SHOW).min(SHOW);
-                let elems: Vec<String> = (0..SHOW).filter_map(|_| it.next()).take(n).collect();
+                // Consume all SHOW values even when fewer are shown: the
+                // ones after belong to the next input.
+                let shown: Vec<String> = (0..SHOW).filter_map(|_| it.next()).collect();
+                let elems: Vec<String> = shown.into_iter().take(n).collect();
                 let more = if len.parse::<usize>().map(|l| l > SHOW).unwrap_or(false) {
                     ", .."
                 } else {

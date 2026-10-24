@@ -131,3 +131,23 @@ fn foreign_or_damaged_cache_files_are_ignored() {
     assert_eq!(out.output, bmb::verify_sources(&files(BASE)).output);
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn builds_and_maps_through_the_cache_match_the_uncached_ones() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests");
+    let dir = tmp("paths");
+    let f = files(&fs::read_to_string(root.join("run/search.bmb")).unwrap());
+    let plain = bmb::emit_llvm_sources(&f);
+    for _ in 0..2 {
+        let cached = bmb::emit_llvm_sources_cached(&f, Some(&dir));
+        assert_eq!(plain.verify.output, cached.verify.output);
+        assert_eq!(plain.ir, cached.ir, "same proofs, same checks removed");
+        assert_eq!(plain.checks, cached.checks);
+    }
+    let req = ["query".to_string(), "status".to_string()];
+    assert_eq!(
+        bmb::map_request(&f, &req).unwrap(),
+        bmb::map_request_cached(&f, &req, Some(&dir)).unwrap()
+    );
+    let _ = fs::remove_dir_all(&dir);
+}

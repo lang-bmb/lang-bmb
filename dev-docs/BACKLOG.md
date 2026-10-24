@@ -12,8 +12,7 @@
 
 측정 결과와 무관하게 코드로 진행할 수 있는 것(2026-10-24 추가, 이 순서로):
 
-1. `INF-07` 장기 퍼징: 첫 야간 실행 확인
-2. 나머지(`1B-17`~`1B-20`, `1E-12`, `1E-13`, `2D-01`, `2D-02`)는 완료
+1. 없음. 완료: `1B-17`~`1B-22`, `INF-07`, `1E-12`, `1E-13`, `2D-01`~`2D-03`
 
 측정 결과에 묶인 것:
 
@@ -40,7 +39,7 @@
 | INF-04 | 세션 시작 훅 | 리포의 `.claude/settings.json` SessionStart 훅으로 새 세션에서 Z3·LLVM이 준비되어 `scripts/check.sh`가 바로 통과 | INF-02, INF-03, INF-05 | ✅ `.claude/hooks/session-start.sh`(Z3 제거 후 재설치로 확인) |
 | INF-05 | 단일 검증 게이트 | `scripts/check.sh` 하나로 fmt·clippy(`-D warnings`)·test·백로그 검사를 실행. CI와 로컬이 같은 스크립트를 씀 | — | ✅ `scripts/check.sh` |
 | INF-06 | 백로그 검사 | ID 중복, 존재하지 않는 의존 ID, 근거 없는 ✅, 의존이 미완료인 🔄를 찾아 실패하는 스크립트. 게이트에 포함 | INF-05 | ✅ `scripts/check_backlog.py` |
-| INF-07 | 장기 퍼징 정기 실행 | 매일 1회 CI가 프론트엔드 퍼징(`BMB_FUZZ_ITERS`)과 건전성 퍼징(`BMB_SOUND_ITERS`)을 게이트보다 큰 횟수로 실행. 실패 시 시드가 로그에 남음 | 1A-09, 1B-17 | 🔄 `.github/workflows/nightly.yml`(매일, 수동 실행 가능). 첫 실행 확인 대기 |
+| INF-07 | 장기 퍼징 정기 실행 | 매일 1회 CI가 프론트엔드 퍼징(`BMB_FUZZ_ITERS`)과 건전성 퍼징(`BMB_SOUND_ITERS`)을 게이트보다 큰 횟수로 실행. 실패 시 시드가 로그에 남음 | 1A-09, 1B-17 | ✅ `.github/workflows/nightly.yml`(매일, 수동 실행 가능). 첫 실행(run 1, 수동) 성공: 프론트엔드 100,000회, 정수 건전성 400배치, 25분. 이후 루프 퍼징(1B-21) 추가 |
 
 ## 1A 프론트엔드
 
@@ -80,6 +79,8 @@
 | 1B-18 | 반례 재현 | 확정 반례(E08xx `counterexample:`)마다 입력이 전제를 만족하고 실제로 함수를 깨뜨림을 해석기로 확인 | 1B-12 | ✅ 같은 테스트. 60배치에서 확정 반례 620개 재현, 거짓 반례 0 |
 | 1B-19 | 증명 안정성 측정 | 코퍼스 전체를 Z3 시드 여러 개로 증명해 판정·`rlimit`이 변하는 의무를 보고하는 명령과 테스트 | 1B-15 | ✅ `bmb stability [--seeds N]`, `lib::stability_sources`, `tests/stability.rs`(코퍼스 전체 시드 3개). 시드 5개: 판정이 바뀐 정의 0, `rlimit` 변동 최대 2.21배(`fail/arith.bmb`) |
 | 1B-20 | 코퍼스 확장 | `tests/verify/pass`에 루프·재귀·배열·`&mut`·`old`·수량자 정의 8개 이상, `tests/run`에 그것을 실행하는 예제 1개 이상 | 1B-12, 1C-05 | ✅ `tests/verify/pass/loops.bmb`(5개)·`search.bmb`(3개), `tests/run/search.bmb`(+`.out`). 처음 쓴 `gcd` 명세가 틀린 것을 반례가 짚음. `check/ok`는 증명 코퍼스가 겸하므로 추가하지 않음 |
+| 1B-21 | 루프·배열 건전성 퍼징 | `&mut` 배열·`while`·불변식·`old`가 있는 임의 함수를 증명하고, 증명된 함수가 결함 없이 불변식(매 루프 머리)과 사후 조건을 지킴을 해석기로 확인. 진입 불변식 반례 재현, 두 빌드 출력(배열 내용 포함) 일치 | 1B-17 | ✅ `compiler/tests/soundness_loops.rs`(게이트 6배치, 야간 200배치). 정확한 템플릿 4종 + 변이 1개, 무작위 함수. 60배치: 함수 360개 중 증명 162개를 입력 964개로 실행(불변식·사후 조건·결함), 위반 0. 반례 131개 전제 만족, 진입 반례 9개 재현. 컴파일 출력 14,108개 일치. 발견: 1B-22(반례 표시), 합 루프의 길이 상한 필요(마찰, 판정은 옳음) |
+| 1B-22 | 반례 표시 버그: 짧은 배열 뒤 매개변수 값 밀림 | 길이 < 4인 배열 다음 매개변수에 배열 원소 값이 표시되던 문제 수정과 회귀 코퍼스 | 1B-10 | ✅ 1B-21 설계 중 `counterexample()` 검토로 발견. `x = 8`(실제 원소 1) → `x = 7`. `fail/bounds.bmb`의 `cex_after_array` |
 
 ## 1C 코드 생성
 
@@ -162,3 +163,4 @@ ROADMAP의 통과 기준마다 그것을 확인하는 태스크다. 빈칸이 �
 | --- | --- | --- | --- | --- |
 | 2D-01 | 해시 키 증명 캐시 | 정의의 본문 해시와 의존 계약 해시를 키로 증명 결과를 저장해 바뀌지 않은 정의는 Z3를 부르지 않음. 캐시 유무로 판정이 같음을 테스트 | 1D-03, 1B-11 | ✅ `cache.rs`, `bmb verify --cache DIR`, `tests/cache.rs`(코퍼스 출력 동일, 재실행 시 증명된 의무는 해법기 생략, 펼친 정의가 바뀌면 무효). `run/search.bmb` 1.0초→0.02초. MCP·`build`에는 아직 연결 안 함 |
 | 2D-02 | 사전 영향 분석 질의 | 정의의 계약을 바꾸면 다시 증명해야 하는 정의 집합을 반환하는 `impact` 질의. CLI·MCP 노출, 결정론 테스트 | 1D-06 | ✅ `query impact DEF [body or iface]`, `tests/impact.rs`(본문 변경마다 SMT 스크립트가 바뀐 정의 ⊆ 보고 집합). MCP 설명문은 1E-10까지 유지 |
+| 2D-03 | 증명 캐시를 `build`·`emit-llvm`·MCP에 연결 | CLI `--cache DIR`, MCP는 작업 공간의 `.bmb-cache/`. 캐시 유무로 출력·IR 동일 테스트 | 2D-01 | ✅ `lib::prove`, `emit_llvm_sources_cached`·`map_request_cached`, `tests/cache.rs`(IR·맵 동일), oracle 15/15 |

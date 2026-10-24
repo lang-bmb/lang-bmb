@@ -8,9 +8,9 @@ const USAGE: &str = "usage:
   bmb stability [--seeds N] <file.bmb>...
                             prove under solver seeds 0..N (default 5); per-definition verdicts
                             and rlimit as JSONL; fails if a verdict depends on the seed
-  bmb emit-llvm <file.bmb>... -o OUT.ll
+  bmb emit-llvm [--cache DIR] <file.bmb>... -o OUT.ll
                             LLVM IR; unproved obligations keep runtime checks
-  bmb build <file.bmb>... -o OUT
+  bmb build [--cache DIR] <file.bmb>... -o OUT
                             check, prove (all obligations) and build an executable
   bmb fmt [--check] <file.bmb>...
                             print the normal form (ADR-0019); --check fails if a file differs
@@ -159,16 +159,24 @@ fn main() -> ExitCode {
                 eprintln!("{USAGE}");
                 return ExitCode::from(2);
             };
-            let inputs: Vec<String> = args[1..pos]
+            let mut inputs: Vec<String> = args[1..pos]
                 .iter()
                 .chain(args[pos + 2..].iter())
                 .cloned()
                 .collect();
+            let mut cache = None;
+            if let Some(c) = inputs.iter().position(|a| a == "--cache")
+                && c + 1 < inputs.len()
+            {
+                cache = Some(inputs.remove(c + 1));
+                inputs.remove(c);
+            }
             let files = match read_files(&inputs) {
                 Ok(f) => f,
                 Err(code) => return code,
             };
-            let out = bmb::emit_llvm_sources(&files);
+            let out =
+                bmb::emit_llvm_sources_cached(&files, cache.as_deref().map(std::path::Path::new));
             print!("{}", out.verify.output);
             let Some(ir) = out.ir else {
                 return ExitCode::from(1);

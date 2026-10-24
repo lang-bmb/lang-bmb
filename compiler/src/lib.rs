@@ -101,21 +101,14 @@ pub fn verify_sources_cached(
             cache: (0, 0),
         };
     }
-    let mut cache = cache_dir.map(cache::ProofCache::load);
-    let outcome =
-        verify::verify_program_with(&fe.program, &fe.tables, &mut fe.diags, 0, cache.as_mut());
-    if let (Some(c), Some(dir)) = (&cache, cache_dir)
-        && let Err(e) = c.save(dir)
-    {
-        eprintln!("bmb: cannot write proof cache in {}: {e}", dir.display());
-    }
+    let (outcome, cache) = prove(&mut fe, cache_dir);
     let mut output = fe.diags.to_jsonl(&fe.sm);
     output.push_str(&status_lines(&outcome));
     VerifyOutput {
         ok: !fe.diags.has_errors() && outcome.statuses.iter().all(|s| s.failed == 0),
         output,
         scripts: outcome.scripts,
-        cache: cache.map(|c| (c.hits, c.misses)).unwrap_or((0, 0)),
+        cache,
     }
 }
 
@@ -192,11 +185,27 @@ pub fn emit_llvm_sources(files: &[(String, String)]) -> LlvmOutput {
     emit_llvm_sources_with(files, false)
 }
 
+/// As `emit_llvm_sources`, proving through the proof cache in `cache_dir`.
+pub fn emit_llvm_sources_cached(
+    files: &[(String, String)],
+    cache_dir: Option<&std::path::Path>,
+) -> LlvmOutput {
+    emit_llvm(files, false, cache_dir)
+}
+
 /// As `emit_llvm_sources`; with `all_checks`, the prover does not run and
 /// every obligation keeps its runtime check (`verify` then carries only
 /// front-end diagnostics). Used to test that proofs are sound: a proved
 /// program must never trip one of these checks.
 pub fn emit_llvm_sources_with(files: &[(String, String)], all_checks: bool) -> LlvmOutput {
+    emit_llvm(files, all_checks, None)
+}
+
+fn emit_llvm(
+    files: &[(String, String)],
+    all_checks: bool,
+    cache_dir: Option<&std::path::Path>,
+) -> LlvmOutput {
     let mut fe = frontend(files);
     if fe.diags.has_errors() {
         return LlvmOutput {
@@ -211,14 +220,15 @@ pub fn emit_llvm_sources_with(files: &[(String, String)], all_checks: bool) -> L
             has_main: false,
         };
     }
-    let outcome = if all_checks {
-        verify::Outcome {
+    let (outcome, cache) = if all_checks {
+        let none = verify::Outcome {
             statuses: Vec::new(),
             proven: Default::default(),
             scripts: BTreeMap::new(),
-        }
+        };
+        (none, (0, 0))
     } else {
-        verify::verify_program(&fe.program, &fe.tables, &mut fe.diags)
+        prove(&mut fe, cache_dir)
     };
     let module = codegen::emit(&fe.program, &fe.tables, &outcome.proven);
     let mut output = fe.diags.to_jsonl(&fe.sm);
@@ -228,12 +238,29 @@ pub fn emit_llvm_sources_with(files: &[(String, String)], all_checks: bool) -> L
             ok: !fe.diags.has_errors() && outcome.statuses.iter().all(|s| s.failed == 0),
             output,
             scripts: outcome.scripts,
-            cache: (0, 0),
+            cache,
         },
         ir: Some(module.ir),
         checks: module.checks,
         has_main: module.main.is_some(),
     }
+}
+
+/// Proves a checked program, through the proof cache in `cache_dir` when
+/// given (backlog 2D-01). Returns the outcome and the cache (hits, misses).
+fn prove(
+    fe: &mut Frontend,
+    cache_dir: Option<&std::path::Path>,
+) -> (verify::Outcome, (usize, usize)) {
+    let mut cache = cache_dir.map(cache::ProofCache::load);
+    let outcome =
+        verify::verify_program_with(&fe.program, &fe.tables, &mut fe.diags, 0, cache.as_mut());
+    if let (Some(c), Some(dir)) = (&cache, cache_dir)
+        && let Err(e) = c.save(dir)
+    {
+        eprintln!("bmb: cannot write proof cache in {}: {e}", dir.display());
+    }
+    (outcome, cache.map(|c| (c.hits, c.misses)).unwrap_or((0, 0)))
 }
 
 fn status_lines(outcome: &verify::Outcome) -> String {
@@ -283,11 +310,20 @@ pub fn hash_sources(files: &[(String, String)]) -> Result<String, String> {
 /// Builds the maps and answers a request against them (ADR-0020).
 /// `request` is `["map", level]` or `["query", name, args..]`.
 pub fn map_request(files: &[(String, String)], request: &[String]) -> Result<String, String> {
+    map_request_cached(files, request, None)
+}
+
+/// As `map_request`, proving through the proof cache in `cache_dir`.
+pub fn map_request_cached(
+    files: &[(String, String)],
+    request: &[String],
+    cache_dir: Option<&std::path::Path>,
+) -> Result<String, String> {
     let mut fe = frontend(files);
     if fe.diags.has_errors() {
         return Err(fe.diags.to_jsonl(&fe.sm));
     }
-    let outcome = verify::verify_program(&fe.program, &fe.tables, &mut fe.diags);
+    let (outcome, _) = prove(&mut fe, cache_dir);
     let model = map::Model::build(&fe.program, &fe.tables, &fe.sm, &outcome);
     match request.first().map(String::as_str) {
         Some("map") => {

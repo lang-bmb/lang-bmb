@@ -163,6 +163,12 @@ impl Server {
         }
     }
 
+    /// Proof cache of the workspace (backlog 2D-03): answers are the same with
+    /// or without it, only faster.
+    fn cache_dir(&self) -> std::path::PathBuf {
+        self.root.join(".bmb-cache")
+    }
+
     fn files(&self) -> Result<Vec<(String, String)>, String> {
         if workspace::src_dir(&self.root).is_dir() {
             workspace::read_dir_sources(&self.root)
@@ -191,7 +197,7 @@ impl Server {
                 if let Some(Value::Array(xs)) = a.get("args") {
                     req.extend(xs.iter().filter_map(|x| x.as_str().map(String::from)));
                 }
-                crate::map_request(&self.files()?, &req)
+                crate::map_request_cached(&self.files()?, &req, Some(&self.cache_dir()))
             }
             "map" => {
                 let level = a
@@ -199,10 +205,14 @@ impl Server {
                     .and_then(Value::as_str)
                     .unwrap_or("all")
                     .to_string();
-                crate::map_request(&self.files()?, &["map".into(), level])
+                crate::map_request_cached(
+                    &self.files()?,
+                    &["map".into(), level],
+                    Some(&self.cache_dir()),
+                )
             }
             "verify" => {
-                let out = crate::verify_sources(&self.files()?);
+                let out = crate::verify_sources_cached(&self.files()?, Some(&self.cache_dir()));
                 if out.ok {
                     Ok(out.output)
                 } else {
@@ -214,7 +224,7 @@ impl Server {
                 if exe.is_empty() || exe.contains(['/', '\\']) || exe.starts_with('.') {
                     return Err("`name` must be a plain file name".into());
                 }
-                let out = crate::emit_llvm_sources(&self.files()?);
+                let out = crate::emit_llvm_sources_cached(&self.files()?, Some(&self.cache_dir()));
                 if !out.verify.ok || out.checks > 0 || !out.has_main {
                     let why = if out.has_main {
                         "not fully proved"
