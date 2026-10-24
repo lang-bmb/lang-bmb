@@ -1,2 +1,0 @@
-// Undefined variable
-fn undefined_var(x: i32) -> i32 = y;

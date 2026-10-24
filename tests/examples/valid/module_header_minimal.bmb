@@ -1,7 +1,0 @@
-// Minimal Module Header Test (v0.31: RFC-0002)
-// Tests module header with only required fields (module name)
-
-module utils.helpers
-===
-
-fn identity(x: i64) -> i64 = x;

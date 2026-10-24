@@ -1,6 +1,0 @@
-// Conditional expressions
-fn abs(x: i64) -> i64 =
-  if x >= 0 { x } else { 0 - x };
-
-fn sign(x: i64) -> i64 =
-  if x > 0 { 1 } else if x < 0 { 0 - 1 } else { 0 };

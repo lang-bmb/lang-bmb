@@ -1,3 +1,0 @@
-// Stage 3 verification test: function composition
-fn double(x: i64) -> i64 = x + x;
-fn quadruple(x: i64) -> i64 = double(double(x));

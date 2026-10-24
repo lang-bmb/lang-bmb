@@ -1,6 +1,0 @@
-// Reverse String — reverse a string in-place (output reversed)
-fn main() -> i64 = {
-    let s = read_line();
-    println_str(str_reverse(s));
-    0
-};

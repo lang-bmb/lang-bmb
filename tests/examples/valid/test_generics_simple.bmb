@@ -1,8 +1,0 @@
-// Simple generic test
-// v0.15 integration test
-
-// Generic identity function
-fn identity<T>(x: T) -> T = x;
-
-// Test: call generic function and return result
-fn main() -> i64 = identity(42) + identity(100);
