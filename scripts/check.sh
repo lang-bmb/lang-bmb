@@ -25,4 +25,6 @@ python3 bench/m1/harness.py --set bench/m1b run --agent oracle --expect all-pass
 python3 bench/m1/harness.py summarize "$tmp" | grep -q "작성 1회 성공률 | 25/25 |" || { echo "m1b summarize: unexpected table"; exit 1; }
 rm -f "$tmp"
 python3 bench/m1/harness.py --set bench/m1b run --agent weak --expect weak-fail --jobs "$jobs" > /dev/null
+step "bench m3"   # backlog 3A-01: generator determinism, locality, normal form, all proved (N=100)
+python3 bench/m3/test_gen.py > /dev/null
 echo "all checks passed"
