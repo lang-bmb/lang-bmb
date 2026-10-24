@@ -443,14 +443,17 @@ impl<'p, 'q> Enc<'p, 'q> {
                 self.spec_pc.pop();
                 match (a, b) {
                     (Val::S(a), Val::S(b)) => Val::S(ite(&c, &a, &b)),
+                    (Val::A { elems: e1, len: l1 }, Val::A { elems: e2, len: l2 }) => Val::A {
+                        elems: ite(&c, &e1, &e2),
+                        len: ite(&c, &l1, &l2),
+                    },
                     _ => Val::Unit,
                 }
             }
             ExprKind::Block(b) => self.spec_block(b, env, old),
-            ExprKind::Array(_)
-            | ExprKind::Repeat { .. }
-            | ExprKind::Ref { .. }
-            | ExprKind::Error => {
+            // `p(&a)` on a local array: the reference denotes the array.
+            ExprKind::Ref { expr, .. } => self.spec(expr, env, old),
+            ExprKind::Array(_) | ExprKind::Repeat { .. } | ExprKind::Error => {
                 self.unsupported.push((
                     e.span,
                     "this expression is not supported in specifications".into(),
@@ -553,9 +556,15 @@ impl<'p, 'q> Enc<'p, 'q> {
                 } else {
                     (format!("(not {lt})"), "or")
                 };
-                self.pc.push(guard);
+                self.pc.push(guard.clone());
                 let rt = self.eval(r).s();
+                // Facts learned on the right (a callee's `ensures`, division
+                // lemmas, element ranges) hold whenever it ran (1B-29).
+                let facts: Vec<String> = self.pc[n + 1..].to_vec();
                 self.pc.truncate(n);
+                if !facts.is_empty() {
+                    self.pc.push(format!("(=> {guard} {})", and(&facts)));
+                }
                 Val::S(format!("({name} {lt} {rt})"))
             }
             ExprKind::Binary(op, l, r) => {
@@ -660,8 +669,10 @@ impl<'p, 'q> Enc<'p, 'q> {
             ExprKind::Call { path, args } => self.call(path, args, e.span),
             ExprKind::If { cond, then, els } => {
                 let c = self.eval(cond).s();
+                let t = self.ty(e);
                 self.branch(
                     &c,
+                    &t,
                     |s| s.block(then),
                     |s| match els {
                         Some(x) => s.eval(x),
@@ -705,6 +716,7 @@ impl<'p, 'q> Enc<'p, 'q> {
     fn branch(
         &mut self,
         c: &str,
+        ty: &TypeKind,
         then_f: impl FnOnce(&mut Self) -> Val,
         else_f: impl FnOnce(&mut Self) -> Val,
     ) -> Val {
@@ -723,14 +735,12 @@ impl<'p, 'q> Enc<'p, 'q> {
         let mut merged = BTreeMap::new();
         for k in base_vars.keys() {
             let (a, b) = (&then_vars[k], &else_vars[k]);
-            let v = match (a, b) {
-                (Val::S(x), Val::S(y)) => Val::S(ite(c, x, y)),
-                (Val::A { elems: e1, len: l1 }, Val::A { elems: e2, len: l2 }) => Val::A {
-                    elems: ite(c, e1, e2),
-                    len: ite(c, l1, l2),
-                },
-                _ => a.clone(),
+            let t = if a == b {
+                TypeKind::Error
+            } else {
+                self.local_ty(k)
             };
+            let v = self.merge(c, a, b, &t);
             merged.insert(k.clone(), v);
         }
         self.vars = merged;
@@ -740,9 +750,41 @@ impl<'p, 'q> Enc<'p, 'q> {
         if !else_facts.is_empty() {
             self.pc.push(format!("(=> (not {c}) {})", and(&else_facts)));
         }
-        match (tv, ev) {
-            (Val::S(a), Val::S(b)) => Val::S(ite(c, &a, &b)),
-            _ => Val::Unit,
+        self.merge(c, &tv, &ev, ty)
+    }
+
+    /// `ite(c, a, b)`. A large merged term is bound to a fresh constant so
+    /// that later merges refer to it instead of copying it: copying doubles
+    /// the term at every sequential `if` (backlog 1B-26).
+    fn merge(&mut self, c: &str, a: &Val, b: &Val, t: &TypeKind) -> Val {
+        const BIND_ABOVE: usize = 200;
+        match (a, b) {
+            (Val::S(x), Val::S(y)) => {
+                let term = ite(c, x, y);
+                if term.len() > BIND_ABOVE
+                    && !matches!(t, TypeKind::Error | TypeKind::Unit)
+                    && !is_array(t)
+                {
+                    let v = self.fresh("merge", sort_of(t));
+                    self.pc.push(format!("(= {v} {term})"));
+                    Val::S(v)
+                } else {
+                    Val::S(term)
+                }
+            }
+            (Val::A { elems: e1, len: l1 }, Val::A { elems: e2, len: l2 }) => {
+                let mut elems = ite(c, e1, e2);
+                if elems.len() > BIND_ABOVE && is_array(t) {
+                    let v = self.fresh("merge", &format!("(Array Int {})", sort_of(&elem_ty(t))));
+                    self.pc.push(format!("(= {v} {elems})"));
+                    elems = v;
+                }
+                Val::A {
+                    elems,
+                    len: ite(c, l1, l2),
+                }
+            }
+            _ => a.clone(),
         }
     }
 
@@ -1017,20 +1059,43 @@ fn root_var(e: &Expr) -> Option<String> {
     }
 }
 
+/// The declared type of local `name`, wherever its `let` is: names are
+/// unique within a function (no shadowing), so the first match is the one.
 fn find_let(b: &Block, name: &str, out: &mut Option<TypeKind>) {
     for s in &b.stmts {
+        if out.is_some() {
+            return;
+        }
         match s {
             Stmt::Let {
                 name: n, ty, init, ..
             } => {
                 if n.name == name {
                     *out = Some(ty.kind.clone());
+                    return;
                 }
                 find_let_expr(init, name, out);
             }
-            Stmt::While { body, .. } => find_let(body, name, out),
+            Stmt::Assign { target, value, .. } => {
+                find_let_expr(target, name, out);
+                find_let_expr(value, name, out);
+            }
+            Stmt::While {
+                cond,
+                invariants,
+                decreases,
+                body,
+                ..
+            } => {
+                find_let_expr(cond, name, out);
+                invariants.iter().for_each(|e| find_let_expr(e, name, out));
+                if let Some(d) = decreases {
+                    find_let_expr(d, name, out);
+                }
+                find_let(body, name, out);
+            }
+            Stmt::Assert { cond, .. } => find_let_expr(cond, name, out),
             Stmt::Expr(e) => find_let_expr(e, name, out),
-            _ => {}
         }
     }
     if let Some(t) = &b.tail {
@@ -1039,15 +1104,43 @@ fn find_let(b: &Block, name: &str, out: &mut Option<TypeKind>) {
 }
 
 fn find_let_expr(e: &Expr, name: &str, out: &mut Option<TypeKind>) {
+    if out.is_some() {
+        return;
+    }
     match &e.kind {
-        ExprKind::If { then, els, .. } => {
+        ExprKind::If { cond, then, els } => {
+            find_let_expr(cond, name, out);
             find_let(then, name, out);
             if let Some(x) = els {
                 find_let_expr(x, name, out);
             }
         }
         ExprKind::Block(b) => find_let(b, name, out),
-        _ => {}
+        ExprKind::Call { args, .. } => args.iter().for_each(|a| find_let_expr(a, name, out)),
+        ExprKind::Method { recv, args, .. } => {
+            find_let_expr(recv, name, out);
+            args.iter().for_each(|a| find_let_expr(a, name, out));
+        }
+        ExprKind::Index { base, index } => {
+            find_let_expr(base, name, out);
+            find_let_expr(index, name, out);
+        }
+        ExprKind::Binary(_, l, r) => {
+            find_let_expr(l, name, out);
+            find_let_expr(r, name, out);
+        }
+        ExprKind::Unary(_, x)
+        | ExprKind::Ref { expr: x, .. }
+        | ExprKind::Old(x)
+        | ExprKind::Trigger(x) => find_let_expr(x, name, out),
+        ExprKind::Repeat { value, .. } => find_let_expr(value, name, out),
+        ExprKind::Array(items) => items.iter().for_each(|a| find_let_expr(a, name, out)),
+        ExprKind::Forall { body, .. } => find_let_expr(body, name, out),
+        ExprKind::Int(_)
+        | ExprKind::Bool(_)
+        | ExprKind::Unit
+        | ExprKind::Var(_)
+        | ExprKind::Error => {}
     }
 }
 

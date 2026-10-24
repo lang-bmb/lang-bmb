@@ -1,0 +1,55 @@
+#[summary("조건과 배열: &&·|| 오른쪽의 사실, 배열 값 if, 지역 배열을 술어에")]
+mod cond {
+    spec fn first_is_one(a: &[i64]) -> bool { a.len() > 0 && a[0] == 1 }
+
+    spec fn nonempty(a: &[i64]) -> bool { a.len() > 0 }
+
+    #[effects(pure)]
+    #[uses(first_is_one, nonempty)]
+    fn set_first(a: &mut [i64]) -> (r: bool)
+        requires nonempty(a),
+        ensures first_is_one(a),
+    {
+        a[0] = 1;
+        true
+    }
+
+    // The `ensures` of the call on the right of `&&` holds in the branch.
+    #[effects(pure)]
+    #[uses(first_is_one, nonempty)]
+    fn after_and(c: bool) -> i64 {
+        let mut a: [i64; 3] = [0, 0, 0];
+        let mut r: i64 = 0;
+        if c && set_first(&mut a) {
+            assert(first_is_one(&a));
+            r = a[0];
+        }
+        r
+    }
+
+    // On the right of `||` the call ran only when the left side was false.
+    #[effects(pure)]
+    #[uses(first_is_one, nonempty)]
+    fn after_or(c: bool) -> i64 {
+        let mut a: [i64; 2] = [5, 5];
+        let mut r: i64 = 0;
+        if c || set_first(&mut a) {
+            r = 1;
+        }
+        if !c {
+            assert(first_is_one(&a));
+        }
+        r
+    }
+
+    spec fn picked(r: i64) -> bool { r == 1 || r == 7 }
+
+    #[effects(pure)]
+    #[uses(picked)]
+    fn array_if(c: bool) -> (r: i64)
+        ensures picked(r),
+    {
+        let a: [i64; 2] = if c { [1, 2] } else { [7, 8] };
+        a[0]
+    }
+}

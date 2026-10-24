@@ -1,2 +1,3 @@
 target/
 .bmb-cache/
+.claude/worktrees/

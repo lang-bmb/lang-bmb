@@ -189,3 +189,54 @@ fn word_elements_are_eight_byte_aligned() {
         "{body}"
     );
 }
+
+#[test]
+fn proofs_resting_on_failed_ones_keep_their_checks() {
+    // `caller` proves its index in bounds only through `pick`'s `ensures`,
+    // which `pick` itself fails to prove: the check must stay (1B-31).
+    let text = r#"
+#[summary("부분 증명")]
+mod m {
+    spec fn below(r: usize, n: usize) -> bool { r < n }
+
+    spec fn nonempty(a: &[i64]) -> bool { a.len() > 0 }
+
+    #[effects(pure)]
+    #[uses(below)]
+    fn pick(n: usize) -> (r: usize)
+        ensures below(r, n),
+    {
+        n
+    }
+
+    #[effects(pure)]
+    #[uses(below, nonempty)]
+    fn caller(a: &[i64]) -> i64
+        requires nonempty(a),
+    {
+        a[pick(a.len())]
+    }
+
+    #[effects(pure)]
+    #[uses(nonempty)]
+    fn unrelated(a: &[i64]) -> i64
+        requires nonempty(a),
+    {
+        a[0]
+    }
+}
+"#;
+    let out = bmb::emit_llvm_sources(&src("p.bmb", text));
+    assert!(!out.verify.ok);
+    let ir = out.ir.unwrap();
+    let body = |name: &str| -> String {
+        let start = ir.find(&format!("@\"m::{name}\"(")).unwrap();
+        let rest = &ir[start..];
+        rest[..rest.find("\n}").unwrap()].to_string()
+    };
+    assert!(
+        body("caller").contains("; unproved: index may be out of bounds"),
+        "{ir}"
+    );
+    assert!(!body("unrelated").contains("unproved"), "{ir}");
+}

@@ -230,7 +230,8 @@ fn emit_llvm(
     } else {
         prove(&mut fe, cache_dir)
     };
-    let module = codegen::emit(&fe.program, &fe.tables, &outcome.proven);
+    let usable = usable_proofs(&fe, &outcome);
+    let module = codegen::emit(&fe.program, &fe.tables, &usable);
     let mut output = fe.diags.to_jsonl(&fe.sm);
     output.push_str(&status_lines(&outcome));
     LlvmOutput {
@@ -244,6 +245,58 @@ fn emit_llvm(
         checks: module.checks,
         has_main: module.main.is_some(),
     }
+}
+
+/// Proved obligations whose runtime checks may be dropped (backlog 1B-31).
+/// A proof assumes the function's `requires` (established by its callers),
+/// its callees' `ensures` (proved by them, under their own callees), and
+/// earlier facts in the same function. So a proof is usable only when every
+/// function connected to its own by calls, in either direction, is fully
+/// proved; otherwise the whole component keeps its checks.
+fn usable_proofs(
+    fe: &Frontend,
+    outcome: &verify::Outcome,
+) -> std::collections::BTreeSet<verify::ObKey> {
+    let model = map::Model::build(&fe.program, &fe.tables, &fe.sm, outcome);
+    let paths: Vec<&String> = model.defs.keys().collect();
+    let index: BTreeMap<&String, usize> = paths.iter().enumerate().map(|(i, p)| (*p, i)).collect();
+    let mut parent: Vec<usize> = (0..paths.len()).collect();
+    fn root(parent: &mut [usize], mut i: usize) -> usize {
+        while parent[i] != i {
+            parent[i] = parent[parent[i]];
+            i = parent[i];
+        }
+        i
+    }
+    for e in model.edges.iter().filter(|e| e.kind == "calls") {
+        if let (Some(&a), Some(&b)) = (index.get(&e.from), index.get(&e.to)) {
+            let (ra, rb) = (root(&mut parent, a), root(&mut parent, b));
+            parent[ra] = rb;
+        }
+    }
+    let mut broken = std::collections::BTreeSet::new();
+    for s in outcome.statuses.iter().filter(|s| s.failed > 0) {
+        if let Some(&i) = index.get(&s.path) {
+            broken.insert(root(&mut parent, i));
+        }
+    }
+    let mut spans: Vec<(u32, u32, u32)> = Vec::new();
+    for (i, p) in paths.iter().enumerate() {
+        if broken.contains(&root(&mut parent, i)) {
+            let sp = model.defs[*p].f.span;
+            spans.push((sp.file, sp.lo, sp.hi));
+        }
+    }
+    outcome
+        .proven
+        .iter()
+        .filter(|(_, file, lo, hi)| {
+            !spans
+                .iter()
+                .any(|(f, a, b)| f == file && a <= lo && hi <= b)
+        })
+        .cloned()
+        .collect()
 }
 
 /// Proves a checked program, through the proof cache in `cache_dir` when

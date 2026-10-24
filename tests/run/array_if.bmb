@@ -1,0 +1,34 @@
+#[summary("배열 값 if: 가지마다 배열을 고르고, 대입에도 쓴다")]
+mod pick {
+    #[effects(pure)]
+    fn first(c: bool) -> i64 {
+        let a: [i64; 3] = if c { [1, 2, 3] } else { [7, 8, 9] };
+        a[0] * 10 + a[2]
+    }
+
+    #[effects(pure)]
+    fn swap_if(c: bool) -> i64 {
+        let mut a: [i64; 2] = [1, 2];
+        a = if c { [a[1], a[0]] } else { a };
+        a[0]
+    }
+
+    #[effects(pure)]
+    fn flags(c: bool) -> i64 {
+        let f: [bool; 2] = if c { [true, false] } else { [false, true] };
+        if f[0] { 1 } else { 0 }
+    }
+}
+
+#[summary("진입점")]
+mod app {
+    #[effects(io)]
+    fn main() -> () {
+        print_i64(pick::first(true));
+        print_i64(pick::first(false));
+        print_i64(pick::swap_if(true));
+        print_i64(pick::swap_if(false));
+        print_i64(pick::flags(true));
+        print_i64(pick::flags(false));
+    }
+}

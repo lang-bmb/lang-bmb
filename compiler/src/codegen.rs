@@ -324,6 +324,40 @@ impl<'p> Gen<'p> {
                 }
             }
             ExprKind::Call { path, args } => self.call(path, args, e),
+            ExprKind::If { cond, then, els } if matches!(self.ty(e), TypeKind::Array(..)) => {
+                // An array-valued `if`: each branch copies its array into
+                // one buffer (backlog 1B-25).
+                let TypeKind::Array(el, n) = self.ty(e) else {
+                    unreachable!()
+                };
+                let elem = llty(&el.kind);
+                let buf = self.alloca(&format!("[{n} x {}]", mem(elem)));
+                let bytes = if elem == "i1" { n } else { n * 8 };
+                let c = self.expr(cond).imm();
+                let lt = self.l("then");
+                let le = self.l("else");
+                let end = self.l("endif");
+                self.emit(format!("br i1 {c}, label %{lt}, label %{le}"));
+                for (label, branch) in [(lt, Some(then)), (le, None)] {
+                    self.block(&label);
+                    let v = match branch {
+                        Some(b) => self.block_expr(b),
+                        None => self.expr(els.as_ref().expect("array `if` has an else")),
+                    };
+                    let CVal::Arr { ptr: src, .. } = v else {
+                        unreachable!()
+                    };
+                    self.emit(format!(
+                        "call void @llvm.memcpy.p0.p0.i64(ptr {buf}, ptr {src}, i64 {bytes}, i1 false)"
+                    ));
+                    self.emit(format!("br label %{end}"));
+                }
+                self.block(&end);
+                CVal::Arr {
+                    ptr: buf,
+                    len: n.to_string(),
+                }
+            }
             ExprKind::If { cond, then, els } => {
                 let ty = self.ty(e);
                 let slot = if matches!(ty, TypeKind::Unit | TypeKind::Error) {
