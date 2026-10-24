@@ -92,3 +92,43 @@ fn benchmark_programs_are_proved() {
     let out = bmb::verify_sources(&files);
     assert!(out.ok, "seed workspace should verify:\n{}", out.output);
 }
+
+#[test]
+fn hidden_predicate_hint_leads_to_a_proof() {
+    let src = r#"
+#[summary("힌트")]
+mod h {
+    spec fn small(x: i64) -> bool { x < 100 }
+
+    spec fn bigger(x: i64, r: i64) -> bool { r > x }
+
+    #[effects(pure)]
+    #[uses(small, bigger)]
+    fn inc(x: i64) -> (r: i64)
+        requires small(x),
+        ensures bigger(x, r),
+    {
+        x + 1
+    }
+
+    #[effects(pure)]
+    #[uses(USES)]
+    fn caller() -> i64 {
+        let y: i64 = inc(5);
+        assert(bigger(5, y) && y > 5);
+        y
+    }
+}
+"#;
+    let run = |uses: &str| bmb::verify_sources(&[("h.bmb".into(), src.replace("USES", uses))]);
+    let first = run("bigger");
+    assert!(!first.ok);
+    // The precondition `small(5)` fails; the hint names `small` and nothing else.
+    let hint = first
+        .output
+        .lines()
+        .find(|l| l.contains("\"code\":\"E0801\""))
+        .expect("precondition failure");
+    assert!(hint.contains("add to #[uses(small)]"), "{hint}");
+    assert!(run("bigger, small").ok);
+}

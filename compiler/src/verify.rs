@@ -1293,6 +1293,13 @@ pub fn verify_program(p: &Program, t: &Tables, diags: &mut Diags) -> Outcome {
         ));
     }
 
+    // Every spec fn by SMT symbol, for proof-context suggestions (backlog 1D-13).
+    let spec_syms: Vec<(String, String)> = prog
+        .defs
+        .iter()
+        .filter(|(_, d)| d.f.kind == FnKind::Spec)
+        .map(|(p, _)| (p.clone(), sym(p)))
+        .collect();
     for (path, d) in &prog.defs {
         let mut enc = Enc::new(&prog, path, &d.mod_path);
         let mut header = vec![
@@ -1400,6 +1407,8 @@ pub fn verify_program(p: &Program, t: &Tables, diags: &mut Diags) -> Outcome {
             // Only definitions the obligation can reach (DESIGN.md §4.1:
             // unrelated context is the main source of solver instability).
             let relevant = relevant_axioms(&axioms, &q);
+            let hint =
+                hidden_predicates(&spec_syms, &axioms, &format!("{q}{relevant}"), &d.mod_path);
             let base = format!("{base}{relevant}{decls}");
             script.push_str(&format!(
                 "; obligation {k}: {} {}\n(reset)\n{base}\n{q}\n(check-sat)\n",
@@ -1426,7 +1435,7 @@ pub fn verify_program(p: &Program, t: &Tables, diags: &mut Diags) -> Outcome {
                     if !cex.is_empty() {
                         msg.push_str(&format!("; counterexample: {cex}"));
                     }
-                    diags.push(Diag::new(o.code, o.span, msg));
+                    diags.push(with_hint(Diag::new(o.code, o.span, msg), &hint));
                 }
                 Ok(Answer::Unknown(why)) => {
                     let why = if why.contains("canceled") || why.contains("resource") {
@@ -1440,7 +1449,7 @@ pub fn verify_program(p: &Program, t: &Tables, diags: &mut Diags) -> Outcome {
                     if !cex.is_empty() {
                         msg.push_str(&format!("; unconfirmed counterexample: {cex}"));
                     }
-                    diags.push(Diag::new("E0811", o.span, msg));
+                    diags.push(with_hint(Diag::new("E0811", o.span, msg), &hint));
                 }
                 // The resource limit can also stop a command before `check-sat`.
                 Err(e) if e.contains("canceled") => diags.push(Diag::new(
@@ -1471,6 +1480,47 @@ pub fn verify_program(p: &Program, t: &Tables, diags: &mut Diags) -> Outcome {
         proven,
         scripts,
     }
+}
+
+/// Spec fns the obligation mentions by name but whose definition the proof
+/// cannot see (not in `#[uses]`), as names to add to `#[uses(..)]`.
+fn hidden_predicates(
+    spec_syms: &[(String, String)],
+    revealed: &[(String, String)],
+    text: &str,
+    unit: &str,
+) -> Vec<String> {
+    spec_syms
+        .iter()
+        .filter(|(_, s)| text.contains(s.as_str()) && !revealed.iter().any(|(r, _)| r == s))
+        .map(|(p, _)| match p.strip_prefix(&format!("{unit}::")) {
+            Some(local) if !local.contains("::") => local.to_string(),
+            _ => p.clone(),
+        })
+        .collect()
+}
+
+fn with_hint(d: Diag, hidden: &[String]) -> Diag {
+    if hidden.is_empty() {
+        return d;
+    }
+    d.fix(
+        format!(
+            "the proof sees {} only by name; if the failure depends on {}, add to #[uses({})]",
+            hidden
+                .iter()
+                .map(|h| format!("`{h}`"))
+                .collect::<Vec<_>>()
+                .join(", "),
+            if hidden.len() == 1 {
+                "its definition"
+            } else {
+                "their definitions"
+            },
+            hidden.join(", ")
+        ),
+        None,
+    )
 }
 
 /// Axioms whose symbol occurs in `text`, closed over the axioms' own bodies.

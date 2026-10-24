@@ -322,8 +322,12 @@ def main():
         print(json.dumps(r, ensure_ascii=False))
     write = [r for r in results if r["kind"] == "write"]
     nav = [r for r in results if r["kind"] == "navigate"]
+    commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
+    dirty = bool(subprocess.run(["git", "status", "--porcelain"], cwd=ROOT, capture_output=True, text=True).stdout.strip())
     summary = {
         "summary": True, "agent": args.agent, "tasks": len(results),
+        # Results depend on the compiler (diagnostics, hints), so record it.
+        "commit": commit + ("+dirty" if dirty else ""),
         "write_success": f"{sum(r['success'] for r in write)}/{len(write)}",
         "navigate_success": f"{sum(r['success'] for r in nav)}/{len(nav)}",
         "navigate_precision": round(sum(r["precision"] for r in nav) / len(nav), 3) if nav else None,
