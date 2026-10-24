@@ -179,10 +179,123 @@ class JudgeWrite(unittest.TestCase):
         self.assertTrue(r["success"], self.verdict(r))
 
 
-class FrozenInputs(unittest.TestCase):
+M1B = os.path.join(os.path.dirname(HERE), "m1b")
+
+
+class OtherSet(unittest.TestCase):
+    """Runs a test with `harness.SET` pointing at the `m1b` task set (2A-04)."""
+
+    def setUp(self):
+        self.saved = harness.SET
+        harness.SET = M1B
+
+    def tearDown(self):
+        harness.SET = self.saved
+
+
+class FrozenInputs(OtherSet):
     def test_manifest_still_verifies(self):
+        harness.SET = HERE
         with open(os.path.join(HERE, "MANIFEST")) as f:
             self.assertEqual(f.read(), harness.manifest_text())
+
+    def test_m1b_manifest_still_verifies(self):
+        with open(os.path.join(M1B, "MANIFEST")) as f:
+            self.assertEqual(f.read(), harness.manifest_text())
+        self.assertEqual(harness.set_name(), "m1b")
+
+    def test_m1b_prompt_is_m1_prompt(self):
+        # ADR-0025 §1: the two sets differ only in seed and tasks.
+        with open(os.path.join(HERE, "prompt.md"), "rb") as a, open(os.path.join(M1B, "prompt.md"), "rb") as b:
+            self.assertEqual(a.read(), b.read())
+
+
+class TruthKinds(OtherSet):
+    """Navigation truths added for m1b: `impact` rows, transitive closure, several queries."""
+
+    def setUp(self):
+        super().setUp()
+        self.tmp = tempfile.mkdtemp(prefix="bmb-test-harness-")
+        self.ws = os.path.join(self.tmp, "ws")
+        shutil.copytree(os.path.join(M1B, "seed"), self.ws)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+        super().tearDown()
+
+    def truth(self, t):
+        return sorted(harness.truth({"truth": t}, self.ws))
+
+    def test_impact_stops_after_one_step(self):
+        t = {"query": ["impact", "num::max2", "iface"], "reasons": ["changed", "calls", "uses", "names"], "field": "path"}
+        self.assertEqual(self.truth(t), ["num::max2", "stats::max_of"])
+
+    def test_impact_body_is_only_itself(self):
+        t = {"query": ["impact", "ledger::withdraw", "body"], "reasons": ["changed", "calls", "uses", "names"], "field": "path"}
+        self.assertEqual(self.truth(t), ["ledger::withdraw"])
+
+    def test_closure_follows_calls(self):
+        one = {"query": ["edges", "ledger::deposit", "in", "1"], "kinds": ["calls"], "field": "from"}
+        self.assertEqual(self.truth(one), ["ledger::transfer"])
+        self.assertEqual(self.truth(dict(one, closure=True)), ["app::main", "ledger::pay_all", "ledger::transfer"])
+
+    def test_also_takes_one_query_or_a_list(self):
+        base = {"query": ["contracts", "num::small"], "list": "uses_by"}
+        one = self.truth(dict(base, also=["contracts", "num::ordered"]))
+        many = self.truth(dict(base, also=[["contracts", "num::ordered"]]))
+        self.assertEqual(one, many)
+        self.assertLess(len(self.truth(base)), len(one))
+
+
+class AlsoCheck(unittest.TestCase):
+    """Multi-unit write tasks: every target must pass signature and spec strength."""
+
+    def judge(self, outcomes):
+        task = {"def": "tasks::f", "also_check": [{"def": "num::g"}]}
+        with mock.patch.object(harness, "bmb", lambda *a: (0, "")), \
+                mock.patch.object(harness, "judge_target", lambda t, ws, v: outcomes[t["def"]]):
+            return harness.judge_write(task, "ws")
+
+    def test_all_targets_pass(self):
+        v = self.judge({"tasks::f": (True, True), "num::g": (True, True)})
+        self.assertTrue(v["success"])
+
+    def test_one_weak_target_fails(self):
+        v = self.judge({"tasks::f": (True, True), "num::g": (True, False)})
+        self.assertEqual((v["spec_accepted"], v["success"]), (False, False))
+
+    def test_one_wrong_signature_fails(self):
+        v = self.judge({"tasks::f": (False, False), "num::g": (True, True)})
+        self.assertEqual((v["signature_ok"], v["success"]), (False, False))
+
+
+class Summarize(unittest.TestCase):
+    def write(self, d, name, task_set):
+        head = {"summary": True, "agent": "oracle"}
+        if task_set:
+            head["task_set"] = task_set
+        rec = {"id": "w01", "kind": "write", "success": True, "verified": True, "signature_ok": True,
+               "spec_accepted": True, "read_calls": 0, "read_bytes": 0, "commits": 1, "e02": 0,
+               "unproved_obligations": 0, "io_defs": 0, "tool_calls": 3, "limit_hit": False}
+        p = os.path.join(d, name)
+        with open(p, "w") as f:
+            f.write(json.dumps(rec) + "\n" + json.dumps(head) + "\n")
+        return p
+
+    def test_mixed_task_sets_are_refused(self):
+        with tempfile.TemporaryDirectory() as d:
+            a = self.write(d, "a.jsonl", None)  # before 2A-04: m1
+            b = self.write(d, "b.jsonl", "m1b")
+            with self.assertRaises(SystemExit):
+                harness.summarize([a, b])
+
+    def test_same_task_set_is_one_table(self):
+        with tempfile.TemporaryDirectory() as d:
+            a = self.write(d, "a.jsonl", "m1b")
+            b = self.write(d, "b.jsonl", "m1b")
+            out = harness.summarize([a, b])
+            self.assertIn("| 과제 집합 | m1b | m1b |", out)
+            self.assertIn("| 작성 1회 성공률 | 1/1 | 1/1 |", out)
 
 
 if __name__ == "__main__":

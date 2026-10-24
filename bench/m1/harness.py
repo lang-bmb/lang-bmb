@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 """M1 measurement harness (ADR-0021, backlog 1E-03, 1E-04).
 
-  harness.py manifest [--write]      check (or rewrite) the frozen-input hashes
-  harness.py run --agent AGENT [--tasks ID,..] [--out FILE] [--expect all-pass|weak-fail]
+  harness.py [--set DIR] manifest [--write]   check (or rewrite) the frozen-input hashes
+  harness.py [--set DIR] run --agent AGENT [--tasks ID,..] [--out FILE] [--expect all-pass|weak-fail] [--jobs N]
+  harness.py summarize RESULTS.jsonl..        metric table, one column per file
+
+--set names the task-set directory (prompt.md, seed/, tasks/, MANIFEST); the
+default is this directory (`m1`). Task sets are never mixed (ADR-0021 §1,
+ADR-0025): `summarize` refuses files from different sets.
 
 Agents:
   oracle            submits each task's reference solution through MCP (CI check
@@ -14,6 +19,7 @@ Agents:
 Standard library only.
 """
 import argparse
+import concurrent.futures
 import hashlib
 import json
 import os
@@ -25,6 +31,8 @@ import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
+# The task set in use (backlog 2A-04). `main` changes it with --set.
+SET = HERE
 MAX_TOOL_CALLS = 40
 READ_TOOLS = {"query", "map"}
 
@@ -35,10 +43,14 @@ def bmb_bin():
 
 # ---------- frozen inputs ----------
 
+def set_name():
+    return os.path.basename(os.path.normpath(SET))
+
+
 def frozen_files():
-    files = [os.path.join(HERE, "prompt.md")]
+    files = [os.path.join(SET, "prompt.md")]
     for sub in ("seed/src", "tasks"):
-        d = os.path.join(HERE, sub)
+        d = os.path.join(SET, sub)
         files += sorted(os.path.join(d, f) for f in os.listdir(d))
     return files
 
@@ -47,12 +59,16 @@ def manifest_text():
     lines = []
     for f in frozen_files():
         digest = hashlib.sha256(open(f, "rb").read()).hexdigest()
-        lines.append(f"{digest}  {os.path.relpath(f, HERE)}")
+        lines.append(f"{digest}  {os.path.relpath(f, SET)}")
     return "\n".join(lines) + "\n"
 
 
+def manifest_digest():
+    return hashlib.sha256(open(os.path.join(SET, "MANIFEST"), "rb").read()).hexdigest()
+
+
 def check_manifest():
-    path = os.path.join(HERE, "MANIFEST")
+    path = os.path.join(SET, "MANIFEST")
     if not os.path.exists(path) or open(path).read() != manifest_text():
         sys.exit("frozen inputs differ from MANIFEST: refusing to run (ADR-0021 §1)")
 
@@ -148,25 +164,52 @@ def make_agent(kind, task, workspace):
     if kind.startswith("anthropic:"):
         sys.path.insert(0, HERE)
         from anthropic_agent import AnthropicAgent  # noqa: E402
-        prompt = open(os.path.join(HERE, "prompt.md")).read()
+        prompt = open(os.path.join(SET, "prompt.md")).read()
         return AnthropicAgent(kind.split(":", 1)[1], prompt, task["prompt"])
     sys.exit(f"unknown agent {kind}")
 
 
 # ---------- judging ----------
 
-def truth(task, workspace):
-    t = task["truth"]
+def truth_rows(t, query, workspace):
     found = set()
-    for q in [t["query"]] + ([t["also"]] if "also" in t else []):
-        _, out = bmb("query", *q, "--", workspace)
-        for r in rows(out):
-            if "list" in t:
-                found |= set(r.get(t["list"], []))
-            elif "kinds" in t and r.get("kind") in t["kinds"]:
-                found.add(r[t["field"]])
-            elif "effects" in t and r.get("effects") in t["effects"]:
-                found.add(r[t["field"]])
+    _, out = bmb("query", *query, "--", workspace)
+    for r in rows(out):
+        if "list" in t:
+            found |= set(r.get(t["list"], []))
+        elif "kinds" in t and r.get("kind") in t["kinds"]:
+            found.add(r[t["field"]])
+        elif "effects" in t and r.get("effects") in t["effects"]:
+            found.add(r[t["field"]])
+        elif "reasons" in t and r.get("reason") in t["reasons"]:
+            found.add(r[t["field"]])
+    return found
+
+
+def truth(task, workspace):
+    """The answer set, computed from the maps of the session's final workspace.
+
+    `query` (and `also`: one more query, or a list of them) are `bmb query`
+    arguments; rows are kept by `list`, `kinds`, `effects` or `reasons`
+    (`impact` rows). With `closure`, the query is repeated with each found
+    definition in place of `query[1]` until nothing new appears (transitive
+    callers or callees, m1b).
+    """
+    t = task["truth"]
+    also = t.get("also", [])
+    if also and isinstance(also[0], str):
+        also = [also]
+    found = set()
+    for q in [t["query"]] + also:
+        found |= truth_rows(t, q, workspace)
+    if t.get("closure"):
+        todo = sorted(found)
+        while todo:
+            d = todo.pop(0)
+            for x in sorted(truth_rows(t, [t["query"][0], d, *t["query"][2:]], workspace)):
+                if x not in found:
+                    found.add(x)
+                    todo.append(x)
     return found
 
 
@@ -183,8 +226,20 @@ def parse_signature(sig):
 
 
 def judge_write(task, workspace):
-    code, out = bmb("verify", workspace)
+    """Whole-workspace proof, then signature and spec strength of every target:
+    `def` and, for multi-unit tasks (m1b), each entry of `also_check`."""
+    code, _ = bmb("verify", workspace)
     verified = code == 0
+    sig_ok = accepted = True
+    for target in [task] + task.get("also_check", []):
+        s, a = judge_target(target, workspace, verified)
+        sig_ok, accepted = sig_ok and s, accepted and a
+    return {"verified": verified, "signature_ok": sig_ok, "spec_accepted": accepted,
+            "success": verified and sig_ok and accepted}
+
+
+def judge_target(task, workspace, verified):
+    """(signature ok, hidden reference contract proved) for one target."""
     _, surf = bmb("query", "surface", task["def"], "--", workspace)
     found = [r for r in rows(surf) if r.get("level") == "L1"]
     sig_ok = bool(found) and strip_result_name(found[0]["signature"]) == strip_result_name(task["signature"])
@@ -215,8 +270,7 @@ def judge_write(task, workspace):
             accepted = code == 0
         finally:
             os.unlink(f.name)
-    return {"verified": verified, "signature_ok": sig_ok, "spec_accepted": accepted,
-            "success": verified and sig_ok and accepted}
+    return sig_ok, accepted
 
 
 def judge_navigate(task, workspace, answer):
@@ -235,7 +289,7 @@ def judge_navigate(task, workspace, answer):
 def run_task(task, agent_kind):
     tmp = tempfile.mkdtemp(prefix=f"bmb-{task['id']}-")
     ws = os.path.join(tmp, "ws")
-    shutil.copytree(os.path.join(HERE, "seed"), ws)
+    shutil.copytree(os.path.join(SET, "seed"), ws)
     mcp = Mcp(ws)
     agent = make_agent(agent_kind, task, ws)
     if hasattr(agent, "set_tools"):
@@ -298,12 +352,18 @@ def run_task(task, agent_kind):
 # ---------- summary (backlog 1E-12) ----------
 
 def summarize(paths):
-    """Markdown tables of the ADR-0021 §4 metrics, one column per results file."""
+    """Markdown tables of the ADR-0021 §4 metrics, one column per results file.
+
+    Files from different task sets are refused (ADR-0025 §4); results written
+    before backlog 2A-04 carry no `task_set` and are `m1`."""
     runs = []
     for p in paths:
         recs = [json.loads(l) for l in open(p) if l.strip()]
         head = next((r for r in recs if r.get("summary")), {})
         runs.append((os.path.basename(p), head, [r for r in recs if not r.get("summary")]))
+    sets = sorted({h.get("task_set", "m1") for _, h, _ in runs})
+    if len(sets) > 1:
+        sys.exit(f"results from different task sets ({', '.join(sets)}) are not compared (ADR-0025)")
 
     def ratio(xs):
         return f"{sum(1 for r in xs if r['success'])}/{len(xs)}" if xs else "—"
@@ -335,6 +395,7 @@ def summarize(paths):
 
     out = ["| 지표 | " + " | ".join(name for name, _, _ in runs) + " |",
            "| --- |" + " --- |" * len(runs)]
+    out.append("| 과제 집합 | " + " | ".join(h.get("task_set", "m1") for _, h, _ in runs) + " |")
     out.append("| 에이전트 | " + " | ".join(str(h.get("agent", "—")) for _, h, _ in runs) + " |")
     out.append("| 컴파일러 커밋 | " + " | ".join(str(h.get("commit", "—"))[:12] for _, h, _ in runs) + " |")
     cols = [metrics(t) for _, _, t in runs]
@@ -362,7 +423,9 @@ def summarize(paths):
 
 
 def main():
+    global SET
     ap = argparse.ArgumentParser()
+    ap.add_argument("--set", default=HERE, help="task-set directory (default: bench/m1)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     mf = sub.add_parser("manifest")
     mf.add_argument("--write", action="store_true")
@@ -371,9 +434,13 @@ def main():
     rn.add_argument("--tasks")
     rn.add_argument("--out")
     rn.add_argument("--expect", choices=["all-pass", "weak-fail"])
+    # Sessions are independent (own workspace copy, own `bmb mcp`), so CI runs
+    # them in parallel; results keep task order.
+    rn.add_argument("--jobs", type=int, default=1)
     sm = sub.add_parser("summarize")
     sm.add_argument("results", nargs="+")
     args = ap.parse_args()
+    SET = os.path.abspath(args.set)
 
     if args.cmd == "summarize":
         sys.stdout.write(summarize(args.results))
@@ -381,21 +448,22 @@ def main():
 
     if args.cmd == "manifest":
         if args.write:
-            open(os.path.join(HERE, "MANIFEST"), "w").write(manifest_text())
+            open(os.path.join(SET, "MANIFEST"), "w").write(manifest_text())
         else:
             check_manifest()
             print("MANIFEST ok")
         return
 
     check_manifest()
-    tdir = os.path.join(HERE, "tasks")
+    tdir = os.path.join(SET, "tasks")
     tasks = [json.load(open(os.path.join(tdir, f))) for f in sorted(os.listdir(tdir))]
     if args.tasks:
         wanted = set(args.tasks.split(","))
         tasks = [t for t in tasks if t["id"] in wanted]
     if args.agent == "weak":
         tasks = [t for t in tasks if "weak_reference" in t]
-    results = [run_task(t, args.agent) for t in tasks]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
+        results = list(pool.map(lambda t: run_task(t, args.agent), tasks))
     for r in results:
         print(json.dumps(r, ensure_ascii=False))
     write = [r for r in results if r["kind"] == "write"]
@@ -404,6 +472,7 @@ def main():
     dirty = bool(subprocess.run(["git", "status", "--porcelain"], cwd=ROOT, capture_output=True, text=True).stdout.strip())
     summary = {
         "summary": True, "agent": args.agent, "tasks": len(results),
+        "task_set": set_name(), "manifest": manifest_digest(),
         # Results depend on the compiler (diagnostics, hints), so record it.
         "commit": commit + ("+dirty" if dirty else ""),
         "write_success": f"{sum(r['success'] for r in write)}/{len(write)}",

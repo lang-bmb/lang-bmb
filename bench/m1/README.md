@@ -19,6 +19,8 @@ python3 bench/m1/harness.py run --agent anthropic:claude-opus-5-5 --out results/
 python3 bench/m1/harness.py summarize results/*.jsonl  # ADR-0021 §4 지표 표(파일마다 한 열)
 ```
 
+하네스는 과제 집합 디렉터리를 `--set DIR`로 받는다(기본은 이 디렉터리). 두 번째 집합 `m1b`와 모델 비교 절차는 `bench/m1b/README.md`(ADR-0025). `--jobs N`은 세션을 N개씩 병렬로 돌린다(CI용, 기본 1).
+
 작성 과제의 성공 = 작업 공간 전체 증명 + 요구 시그니처 + **명세 강도 검사**(숨긴 `ref_pre ⇒ 에이전트 requires`, `에이전트 ensures ⇒ ref_post`를 판정용 정의로 증명). 탐색 과제의 정답은 맵에서 계산한다.
 
 ## 실제 모델 실행(사용자 머신)
