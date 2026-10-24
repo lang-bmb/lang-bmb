@@ -68,6 +68,11 @@ fn mem(elem: &str) -> &str {
     if elem == "i1" { "i8" } else { elem }
 }
 
+/// ABI alignment of an array element in memory (`&[i64]` is 8-aligned, as in Rust).
+fn align(elem: &str) -> u32 {
+    if elem == "i1" { 1 } else { 8 }
+}
+
 fn fn_sym(path: &str) -> String {
     format!("@\"{path}\"")
 }
@@ -127,7 +132,11 @@ impl<'p> Gen<'p> {
 
     fn load_elem(&mut self, elem: &str, ptr: &str) -> String {
         let r = self.t();
-        self.emit(format!("{r} = load {}, ptr {ptr}", mem(elem)));
+        self.emit(format!(
+            "{r} = load {}, ptr {ptr}, align {}",
+            mem(elem),
+            align(elem)
+        ));
         if elem != "i1" {
             return r;
         }
@@ -140,9 +149,12 @@ impl<'p> Gen<'p> {
         if elem == "i1" {
             let z = self.t();
             self.emit(format!("{z} = zext i1 {v} to i8"));
-            self.emit(format!("store i8 {z}, ptr {ptr}"));
+            self.emit(format!("store i8 {z}, ptr {ptr}, align 1"));
         } else {
-            self.emit(format!("store {elem} {v}, ptr {ptr}"));
+            self.emit(format!(
+                "store {elem} {v}, ptr {ptr}, align {}",
+                align(elem)
+            ));
         }
     }
 

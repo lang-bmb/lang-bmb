@@ -173,4 +173,23 @@ mod m {
         "{ir}"
     );
     assert!(ir.contains("zext i1") && ir.contains("trunc i8"), "{ir}");
+    assert!(
+        body.contains("load i8, ptr") && body.contains(", align 1"),
+        "{body}"
+    );
+}
+
+#[test]
+fn word_elements_are_eight_byte_aligned() {
+    let ir = bmb::emit_llvm_sources(&src("p.bmb", PROVED)).ir.unwrap();
+    let body = &ir[ir.find("@\"m::get\"").unwrap()..];
+    let load = body
+        .lines()
+        .find(|l| l.contains("= load i64, ptr %t") && !l.contains("ptr %t1"))
+        .unwrap_or("");
+    assert!(
+        body.lines()
+            .any(|l| l.contains("load i64") && l.ends_with("align 8")),
+        "{body}\n{load}"
+    );
 }

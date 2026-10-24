@@ -83,7 +83,7 @@
 | 1C-05 | 실행 코퍼스 | `tests/run`: 예제 실행 결과가 기대 출력과 일치 | 1C-02 | ✅ `tests/run/basics.bmb`, `run_corpus_prints_expected_output` |
 | 1C-06 | IR 검사 테스트 | 증명이 있으면 범위 검사가 없고, 없으면 남는 것을 IR에서 확인 | 1C-03 | ✅ `proved_index_has_no_check_and_unproved_keeps_one` |
 | 1C-07 | 증명된 사실을 `llvm.assume`으로 전달하는 실험 | 루프 불변식·사후 조건 중 증명된 것을 assume으로 내보냈을 때 성능 변화를 측정하고, 이득이 있을 때만 채택(ADR) | 1E-05 | ⏳ |
-| 1C-08 | 메모리 접근 정렬 표기 | 원소 load/store와 alloca에 `align 8` 등 정확한 정렬을 붙이고 IR 검사 테스트 추가 | 1C-01 | ⏳ |
+| 1C-08 | 메모리 접근 정렬 표기 | 원소 load/store와 alloca에 `align 8` 등 정확한 정렬을 붙이고 IR 검사 테스트 추가 | 1C-01 | ✅ 원소 load/store에 `align 8`(i64)·`align 1`(bool), `word_elements_are_eight_byte_aligned` |
 
 ## 1D 맵과 도구
 
