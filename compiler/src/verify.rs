@@ -37,8 +37,14 @@ pub struct FnStatus {
     pub failed: usize,
 }
 
+/// An obligation's identity: diagnostic code and source span `(file, lo, hi)`.
+pub type ObKey = (&'static str, u32, u32, u32);
+
 pub struct Outcome {
     pub statuses: Vec<FnStatus>,
+    /// Obligations proved at every symbolic visit; code generation may drop
+    /// the corresponding runtime check (DESIGN.md principle 9).
+    pub proven: BTreeSet<ObKey>,
     /// SMT-LIB script per definition, as sent to the solver (without model queries).
     pub scripts: BTreeMap<String, String>,
 }
@@ -1269,6 +1275,8 @@ pub fn verify_program(p: &Program, t: &Tables, diags: &mut Diags) -> Outcome {
     let prog = Prog { defs, t };
     let mut statuses = Vec::new();
     let mut scripts = BTreeMap::new();
+    let mut proved_keys: BTreeSet<ObKey> = BTreeSet::new();
+    let mut failed_keys: BTreeSet<ObKey> = BTreeSet::new();
     let spec_decls = prog.spec_decls();
     let first_span = prog
         .defs
@@ -1398,6 +1406,12 @@ pub fn verify_program(p: &Program, t: &Tables, diags: &mut Diags) -> Outcome {
                 .and_then(|_| sol.run(&q))
                 .and_then(|_| sol.check_sat());
             failed += 1;
+            let key = (o.code, o.span.file, o.span.lo, o.span.hi);
+            if matches!(answer, Ok(Answer::Unsat)) {
+                proved_keys.insert(key);
+            } else {
+                failed_keys.insert(key);
+            }
             match answer {
                 Ok(Answer::Unsat) => failed -= 1,
                 Ok(Answer::Sat) => {
@@ -1445,7 +1459,12 @@ pub fn verify_program(p: &Program, t: &Tables, diags: &mut Diags) -> Outcome {
         });
         scripts.insert(path.clone(), script);
     }
-    Outcome { statuses, scripts }
+    let proven = proved_keys.difference(&failed_keys).cloned().collect();
+    Outcome {
+        statuses,
+        proven,
+        scripts,
+    }
 }
 
 /// `x = 5, a = [1, 2] (len 2)` from the current model.

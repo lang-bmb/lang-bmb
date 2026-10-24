@@ -2,6 +2,7 @@
 
 pub mod ast;
 pub mod check;
+pub mod codegen;
 pub mod diag;
 pub mod lexer;
 pub mod parser;
@@ -81,18 +82,68 @@ pub fn verify_sources(files: &[(String, String)]) -> VerifyOutput {
     }
     let outcome = verify::verify_program(&fe.program, &fe.tables, &mut fe.diags);
     let mut output = fe.diags.to_jsonl(&fe.sm);
+    output.push_str(&status_lines(&outcome));
+    VerifyOutput {
+        ok: !fe.diags.has_errors() && outcome.statuses.iter().all(|s| s.failed == 0),
+        output,
+        scripts: outcome.scripts,
+    }
+}
+
+/// Result of `emit_llvm_sources`.
+pub struct LlvmOutput {
+    /// Diagnostics and statuses, as from `verify_sources`.
+    pub verify: VerifyOutput,
+    /// LLVM IR, when the program checks (proof may be partial).
+    pub ir: Option<String>,
+    /// Runtime checks kept because their obligation is unproved.
+    pub checks: u32,
+    pub has_main: bool,
+}
+
+/// Checks, proves and lowers to LLVM IR. IR is produced even when some
+/// obligations are unproved; those keep runtime checks. Building a binary
+/// additionally requires `verify.ok`.
+pub fn emit_llvm_sources(files: &[(String, String)]) -> LlvmOutput {
+    let mut fe = frontend(files);
+    if fe.diags.has_errors() {
+        return LlvmOutput {
+            verify: VerifyOutput {
+                ok: false,
+                output: fe.diags.to_jsonl(&fe.sm),
+                scripts: BTreeMap::new(),
+            },
+            ir: None,
+            checks: 0,
+            has_main: false,
+        };
+    }
+    let outcome = verify::verify_program(&fe.program, &fe.tables, &mut fe.diags);
+    let module = codegen::emit(&fe.program, &fe.tables, &outcome.proven);
+    let mut output = fe.diags.to_jsonl(&fe.sm);
+    output.push_str(&status_lines(&outcome));
+    LlvmOutput {
+        verify: VerifyOutput {
+            ok: !fe.diags.has_errors() && outcome.statuses.iter().all(|s| s.failed == 0),
+            output,
+            scripts: outcome.scripts,
+        },
+        ir: Some(module.ir),
+        checks: module.checks,
+        has_main: module.main.is_some(),
+    }
+}
+
+fn status_lines(outcome: &verify::Outcome) -> String {
+    let mut out = String::new();
     for s in &outcome.statuses {
         let status = if s.failed == 0 { "verified" } else { "failed" };
-        output.push_str(&format!(
+        out.push_str(&format!(
             "{{\"def\":{},\"status\":\"{status}\",\"obligations\":{},\"failed\":{}}}\n",
             diag::json_str(&s.path),
             s.obligations,
             s.failed
         ));
     }
-    VerifyOutput {
-        ok: !fe.diags.has_errors() && outcome.statuses.iter().all(|s| s.failed == 0),
-        output,
-        scripts: outcome.scripts,
-    }
+    out
 }

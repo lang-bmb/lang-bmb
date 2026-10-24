@@ -10,9 +10,9 @@
 
 ## 지금 할 일 (다음 3개)
 
-1. `1C-01` LLVM 텍스트 IR 생성
-2. `1C-02` 런타임과 링크
-3. `1C-05` 실행 코퍼스
+1. `1D-01` 정규형과 정의 해시 ADR
+2. `1D-02` 정규형 포매터 `bmb fmt`
+3. `1D-03` 정의 단위 content hash
 
 ## 0 착수
 
@@ -74,12 +74,14 @@
 
 | ID | 태스크 | 완료 기준 | 의존 | 상태 |
 | --- | --- | --- | --- | --- |
-| 1C-01 | LLVM 텍스트 IR 생성 | 정수·배열·루프·호출·`print_i64` | 1B-02, INF-03 | ⏳ |
-| 1C-02 | 런타임과 링크 | `print_i64` 구현, `bmb build`로 실행 파일 생성 | 1C-01 | ⏳ |
-| 1C-03 | 증명 기반 검사 제거 | 증명된 범위 사실이 있는 인덱스만 검사 생략. 증명 경로를 IR 주석으로 남김 | 1C-01, 1B-12 | ⏳ |
-| 1C-04 | `noalias`와 검증된 `llvm.assume` | `&mut` 인자에 `noalias`. assume은 증명된 사실만 | 1C-03 | ⏳ |
-| 1C-05 | 실행 코퍼스 | `tests/run`: 예제 실행 결과가 기대 출력과 일치 | 1C-02 | ⏳ |
-| 1C-06 | IR 검사 테스트 | 증명이 있으면 범위 검사가 없고, 없으면 남는 것을 IR에서 확인 | 1C-03 | ⏳ |
+| 1C-01 | LLVM 텍스트 IR 생성 | 정수·배열·루프·호출·`print_i64` | 1B-02, INF-03 | ✅ `codegen.rs`, `bmb emit-llvm` |
+| 1C-02 | 런타임과 링크 | `print_i64` 구현, `bmb build`로 실행 파일 생성 | 1C-01 | ✅ IR 내 `@bmb_print_i64`(printf), `bmb build`(clang) |
+| 1C-03 | 증명 기반 검사 제거 | 증명된 범위 사실이 있는 인덱스만 검사 생략. 증명 경로를 IR 주석으로 남김 | 1C-01, 1B-12 | ✅ 의무별 증명 여부로 검사 생략·잔존, `tests/codegen.rs` |
+| 1C-04 | `noalias`와 검증된 `llvm.assume` | `&mut` 인자에 `noalias`. assume은 증명된 사실만 | 1C-03 | ✅ `noalias`/`readonly`, `nsw`/`nuw`/`inbounds`에 `; proved Exxxx` 주석. assume은 아직 방출하지 않음 |
+| 1C-05 | 실행 코퍼스 | `tests/run`: 예제 실행 결과가 기대 출력과 일치 | 1C-02 | ✅ `tests/run/basics.bmb`, `run_corpus_prints_expected_output` |
+| 1C-06 | IR 검사 테스트 | 증명이 있으면 범위 검사가 없고, 없으면 남는 것을 IR에서 확인 | 1C-03 | ✅ `proved_index_has_no_check_and_unproved_keeps_one` |
+| 1C-07 | 증명된 사실을 `llvm.assume`으로 전달하는 실험 | 루프 불변식·사후 조건 중 증명된 것을 assume으로 내보냈을 때 성능 변화를 측정하고, 이득이 있을 때만 채택(ADR) | 1E-05 | ⏳ |
+| 1C-08 | 메모리 접근 정렬 표기 | 원소 load/store와 alloca에 `align 8` 등 정확한 정렬을 붙이고 IR 검사 테스트 추가 | 1C-01 | ⏳ |
 
 ## 1D 맵과 도구
 

@@ -73,6 +73,26 @@ pub fn check_llvm() -> Result<String, String> {
     }
 }
 
+/// Compiles LLVM IR to an executable with the pinned toolchain.
+pub fn build_executable(ir: &str, out: &str) -> Result<(), String> {
+    check_llvm()?;
+    let ll = format!("{out}.ll");
+    std::fs::write(&ll, ir).map_err(|e| format!("cannot write {ll}: {e}"))?;
+    let res = Command::new("clang")
+        .args(["-O2", "-Wno-override-module", "-o", out, &ll])
+        .output()
+        .map_err(|e| format!("cannot run clang: {e}"))?;
+    let _ = std::fs::remove_file(&ll);
+    if res.status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "clang failed: {}",
+            String::from_utf8_lossy(&res.stderr)
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

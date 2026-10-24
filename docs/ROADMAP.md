@@ -17,7 +17,7 @@ flowchart LR
     P0["0 착수 ✅"] --> P1
     subgraph P1["1 최소 관통 경로 (M1)"]
         direction LR
-        A["1A 프론트엔드 ✅"] --> B["1B 증명 게이트 ✅"] --> C["1C 코드 생성"]
+        A["1A 프론트엔드 ✅"] --> B["1B 증명 게이트 ✅"] --> C["1C 코드 생성 ✅"]
         A --> D["1D 맵·도구"]
         C --> E["1E 측정"]
         D --> E
@@ -28,7 +28,7 @@ flowchart LR
 | 단계 | 목적 | 상태 |
 | --- | --- | --- |
 | 0 착수 | v0 정리, 설계·결정 문서 | 완료 |
-| 1 최소 관통 경로 | "에이전트가 파일 없이, 테스트 없이, 증명된 코드를 쓴다"를 수십 개 정의 규모에서 측정 | 진행 중 (1A·1B 완료) |
+| 1 최소 관통 경로 | "에이전트가 파일 없이, 테스트 없이, 증명된 코드를 쓴다"를 수십 개 정의 규모에서 측정 | 진행 중 (1A·1B·1C 완료) |
 | 2 언어 확장 | 1단계 측정이 가리킨 병목을 푼다. 실용 프로그램을 쓸 수 있는 언어 | 대기 |
 | 3 대형 프로젝트 | 수천 개 정의 규모에서 탐색·증명 비용이 질의 범위에 비례함을 보인다 | 대기 |
 | 4 자립·생태계 | 셀프호스팅 결정, 생태계 개방 | 대기 |
@@ -68,7 +68,7 @@ flowchart LR
 
 **종료 감사(2026-10-24):** 기준 1은 `compiler/tests/verify.rs`의 `pass_corpus_is_proved`, 기준 2는 `fail_corpus_matches_expected`(위반 유형 23개, 모두 반례나 원인 포함), 기준 3은 `compiler/tests/gate.rs`, 기준 4는 `queries_and_output_are_deterministic`로 확인한다. 구현 중 결정은 ADR-0017·0018.
 
-### 1C 코드 생성
+### 1C 코드 생성 — 완료
 
 LLVM 텍스트 IR을 만들고 LLVM 도구로 바이너리를 만든다.
 
@@ -79,6 +79,10 @@ LLVM 텍스트 IR을 만들고 LLVM 도구로 바이너리를 만든다.
 1. 예제 프로그램이 바이너리로 실행되고 기대한 출력을 낸다.
 2. 증명된 인덱스 범위 사실 때문에 범위 검사가 IR에서 사라진 사례를 하나 이상 보인다. 같은 코드에서 증명을 빼면 검사가 남는 것도 보인다.
 3. `llvm.assume`은 모두 증명된 사실에서 나온다. 검증 경로를 IR 주석으로 추적할 수 있다.
+
+**종료 감사(2026-10-24):** 기준 1은 `compiler/tests/codegen.rs`의 `run_corpus_prints_expected_output`(Rust의 0 쪽 나눗셈·래핑 포함 8개 출력), 기준 2는 `proved_index_has_no_check_and_unproved_keeps_one`, 기준 3은 `mut_slices_are_noalias_and_shared_ones_readonly`(assume 미방출)와 IR의 `; proved Exxxx` 주석으로 확인한다. 증명된 사실은 현재 `nsw`/`nuw`/`inbounds`/`noalias`로 LLVM에 전달된다. assume 전달은 측정 후 결정한다(백로그 1C-07).
+
+**관찰:** M1에는 변환이 없어 `u64`·`usize` 값을 출력할 수 없다(`print_i64`만 있음). 2단계 "검사된 변환" 후보의 근거로 1E에서 빈도를 기록한다.
 
 ### 1D 맵과 도구
 

@@ -1,11 +1,13 @@
 # bmb 컴파일러
 
-M1(ADR-0016) 최소 관통 경로: 파싱 → 이름·타입·소유권·명세·효과 검사 → 증명 게이트(Z3) → JSONL 진단.
-LLVM IR 생성은 아직 없다(1C). 의미론과 인코딩은 ADR-0017·0018.
+M1(ADR-0016) 최소 관통 경로: 파싱 → 이름·타입·소유권·명세·효과 검사 → 증명 게이트(Z3) → LLVM IR → 실행 파일.
+의미론과 인코딩은 ADR-0017·0018.
 
 ```
 cargo run -- check a.bmb b.bmb   # 진단을 JSONL로 출력. 오류가 있으면 종료 코드 1
 cargo run -- verify a.bmb        # 검사 + 증명. 정의별 상태 줄 포함. --emit-smt DIR로 질의 저장
+cargo run -- build a.bmb -o app  # 모든 의무가 증명된 경우에만 실행 파일 생성
+cargo run -- emit-llvm a.bmb -o a.ll  # IR. 증명되지 않은 의무는 런타임 검사(trap)로 남음
 cargo run -- codes               # 진단 코드 목록(JSONL)
 cargo run -- doctor              # 고정된 Z3·LLVM 버전 확인(scripts/toolchain.env)
 ../scripts/setup.sh              # 고정 버전 설치(새 클라우드 세션은 시작 훅이 자동 실행)
@@ -45,3 +47,9 @@ ADR-0016의 부분집합을 구체화한 것이다. 모두 "선택을 필수로"
 - 호출은 callee의 `requires`를 증명하고 `ensures`만 가정한다. `spec fn`은 `#[uses(..)]`에 이름(다른 단위는 `unit::name`)이 있을 때만 정의가 펼쳐지고, 펼침은 전이되지 않는다.
 - 의무마다 깨끗한 해법기 상태에서 푼다. `unsat`만 성공이고, `sat`은 반례, `unknown`·자원 초과·해법기 부재는 원인과 함께 실패다.
 - 진단 코드 E08xx. `bmb verify`의 마지막 줄들은 `{"def":..,"status":"verified"|"failed","obligations":n,"failed":k}`.
+
+## 코드 생성
+
+- 증명된 의무는 검사 없이 LLVM에 사실로 전달된다: 넘침 없음 → `nsw`/`nuw`, 범위 안 → 검사 없는 `getelementptr inbounds`, 0 아닌 제수 → 검사 없는 `sdiv`/`udiv`. 각 줄에 `; proved Exxxx` 주석이 붙는다.
+- 증명되지 않은 의무는 `llvm.trap`으로 가는 검사로 남는다(`; unproved: ..`). `bmb build`는 그런 프로그램을 거부한다.
+- `&mut` 슬라이스 매개변수는 `noalias`, `&` 슬라이스는 `readonly`(ADR-0015).

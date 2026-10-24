@@ -4,6 +4,10 @@ const USAGE: &str = "usage:
   bmb check <file.bmb>...   check sources; diagnostics as JSONL on stdout
   bmb verify [--emit-smt DIR] <file.bmb>...
                             check and prove; diagnostics and per-definition status as JSONL
+  bmb emit-llvm <file.bmb>... -o OUT.ll
+                            LLVM IR; unproved obligations keep runtime checks
+  bmb build <file.bmb>... -o OUT
+                            check, prove (all obligations) and build an executable
   bmb codes                 list diagnostic codes as JSONL
   bmb doctor                check the pinned toolchain (z3, LLVM) as JSONL";
 
@@ -100,6 +104,59 @@ fn main() -> ExitCode {
                 ExitCode::SUCCESS
             } else {
                 ExitCode::from(1)
+            }
+        }
+        Some(cmd @ ("emit-llvm" | "build")) => {
+            let Some(pos) = args.iter().position(|a| a == "-o") else {
+                eprintln!("{USAGE}");
+                return ExitCode::from(2);
+            };
+            let Some(out_path) = args.get(pos + 1).cloned() else {
+                eprintln!("{USAGE}");
+                return ExitCode::from(2);
+            };
+            let inputs: Vec<&String> = args[1..pos].iter().chain(args[pos + 2..].iter()).collect();
+            let mut files = Vec::new();
+            for path in inputs {
+                match std::fs::read_to_string(path) {
+                    Ok(text) => files.push((path.clone(), text)),
+                    Err(e) => {
+                        eprintln!("bmb: cannot read {path}: {e}");
+                        return ExitCode::from(2);
+                    }
+                }
+            }
+            let out = bmb::emit_llvm_sources(&files);
+            print!("{}", out.verify.output);
+            let Some(ir) = out.ir else {
+                return ExitCode::from(1);
+            };
+            if cmd == "emit-llvm" {
+                if let Err(e) = std::fs::write(&out_path, ir) {
+                    eprintln!("bmb: cannot write {out_path}: {e}");
+                    return ExitCode::from(2);
+                }
+                return if out.verify.ok {
+                    ExitCode::SUCCESS
+                } else {
+                    ExitCode::from(1)
+                };
+            }
+            // build: no binary without a complete proof.
+            if !out.verify.ok || out.checks > 0 {
+                eprintln!("bmb: build refused: the program is not fully proved");
+                return ExitCode::from(1);
+            }
+            if !out.has_main {
+                eprintln!("bmb: build needs a `main`");
+                return ExitCode::from(1);
+            }
+            match bmb::toolchain::build_executable(&ir, &out_path) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(e) => {
+                    eprintln!("bmb: {e}");
+                    ExitCode::from(1)
+                }
             }
         }
         Some("codes") => {
