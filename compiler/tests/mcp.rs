@@ -423,3 +423,40 @@ fn tool_errors_over_mcp() {
     assert!(c.child.wait().unwrap().success());
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// Valid JSON that is not a request object, and a request without `method`,
+/// are answered with JSON-RPC "invalid request" (-32600) instead of silence,
+/// which left the client waiting (found by the session fuzzer, 1D-23).
+#[test]
+fn invalid_requests_get_an_error_response() {
+    let root = temp_root("invalid");
+    let mut c = Client::start(&root);
+    for (line, id) in [
+        ("\"str\"", "null"),
+        ("42", "null"),
+        ("[1,2]", "null"),
+        ("[]", "null"),
+        ("{\"jsonrpc\":\"2.0\",\"id\":7}", "7"),
+        ("{\"jsonrpc\":\"2.0\",\"id\":8,\"method\":3}", "8"),
+    ] {
+        c.send(line);
+        let mut out = String::new();
+        c.out.read_line(&mut out).unwrap();
+        let v = json::parse(&out).unwrap();
+        assert_eq!(v.get("id").unwrap().to_json(), id, "{line}: {out}");
+        assert_eq!(
+            v.get("error")
+                .and_then(|e| e.get("code"))
+                .and_then(Value::as_i64),
+            Some(-32600),
+            "{line}: {out}"
+        );
+    }
+    // A notification without `method` still gets no answer; the next request does.
+    c.send("{\"jsonrpc\":\"2.0\"}");
+    let v = c.request("ping", "{}");
+    assert!(v.get("result").is_some());
+    drop(c.child.stdin.take());
+    assert!(c.child.wait().unwrap().success());
+    let _ = std::fs::remove_dir_all(&root);
+}
