@@ -195,7 +195,7 @@ impl Diag {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Diags {
     pub items: Vec<Diag>,
 }

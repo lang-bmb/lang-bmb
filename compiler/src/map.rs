@@ -1,5 +1,7 @@
 //! Standard maps L0-L2 and read queries (ADR-0020, backlog 1D-05, 1D-06).
 
+use std::borrow::Cow;
+use std::cell::OnceCell;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::ast::*;
@@ -45,20 +47,40 @@ fn strs<I: IntoIterator<Item = String>>(xs: I) -> J {
     J::A(xs.into_iter().map(J::S).collect())
 }
 
-pub struct Def<'p> {
+/// One definition of an `Index`: what the maps know of it without proof
+/// results.
+#[derive(Clone)]
+pub struct Entry {
     pub path: String,
     pub unit: String,
-    pub f: &'p FnDef,
+    /// Position of the definition in program walk order (`fn_order`).
+    idx: usize,
     pub file: String,
     pub line: u32,
+    /// Body and interface hashes (ADR-0019 §2), computed on first use: most
+    /// queries never read them (backlog 3A-03).
+    hashes: OnceCell<(String, String)>,
+}
+
+/// A definition as a query sees it: its index entry, its syntax and its
+/// proof status.
+pub struct Def<'m> {
+    e: &'m Entry,
+    pub f: &'m FnDef,
     pub status: &'static str,
     pub obligations: usize,
     pub failed: usize,
     pub rlimit_max: u64,
-    pub body: String,
-    pub iface: String,
 }
 
+impl std::ops::Deref for Def<'_> {
+    type Target = Entry;
+    fn deref(&self) -> &Entry {
+        self.e
+    }
+}
+
+#[derive(Clone)]
 pub struct Unit {
     pub path: String,
     pub summary: String,
@@ -74,13 +96,54 @@ pub struct Edge {
     pub arg: Option<usize>,
 }
 
-pub struct Model<'p> {
+/// Everything the maps need from a checked program except proof results.
+/// It holds no reference into the program, so a long-lived MCP server keeps
+/// it between calls while the program is unchanged (backlog 3A-03) and
+/// answers each query through `Model::view`.
+#[derive(Clone)]
+pub struct Index {
     pub units: BTreeMap<String, Unit>,
-    pub defs: BTreeMap<String, Def<'p>>,
+    pub defs: BTreeMap<String, Entry>,
     pub edges: BTreeSet<Edge>,
     /// Executable definitions with effect `io`, built-ins (`print_i64`)
     /// included.
     pub io: BTreeSet<String>,
+    /// `edges` by target, each list in edge order.
+    incoming: BTreeMap<String, Vec<Edge>>,
+}
+
+/// The maps of one program with one proof outcome.
+pub struct Model<'p> {
+    ix: Cow<'p, Index>,
+    /// The program's definitions in walk order (`Entry::idx`).
+    fns: Vec<&'p FnDef>,
+    sigs: &'p BTreeMap<String, crate::check::FnSig>,
+    /// Proof results by path: (obligations, failed, rlimit_max).
+    status: BTreeMap<String, (usize, usize, u64)>,
+}
+
+impl std::ops::Deref for Model<'_> {
+    type Target = Index;
+    fn deref(&self) -> &Index {
+        &self.ix
+    }
+}
+
+/// The definitions of a program in walk order: in each unit, its sub-units'
+/// first, then its own (the order of `walk`).
+fn fn_order<'p>(m: &'p Mod, out: &mut Vec<&'p FnDef>) {
+    for s in &m.mods {
+        fn_order(s, out);
+    }
+    out.extend(m.fns.iter());
+}
+
+fn status_map(outcome: &Outcome) -> BTreeMap<String, (usize, usize, u64)> {
+    outcome
+        .statuses
+        .iter()
+        .map(|s| (s.path.clone(), (s.obligations, s.failed, s.rlimit_max)))
+        .collect()
 }
 
 fn resolve(path: &[Ident], unit: &str, t: &Tables) -> String {
@@ -215,36 +278,18 @@ fn walk<'p>(
     }
 }
 
-impl<'p> Model<'p> {
-    pub fn build(p: &'p Program, t: &Tables, sm: &SourceMap, outcome: &Outcome) -> Model<'p> {
+impl Index {
+    /// Builds the index of a checked program.
+    pub fn build(p: &Program, t: &Tables, sm: &SourceMap) -> Index {
         let mut units = BTreeMap::new();
         let mut list = Vec::new();
         for m in &p.mods {
             walk(m, "", &mut units, &mut list);
         }
-        let hashes: BTreeMap<String, (String, String)> = crate::fmt::hashes(p, &t.fns)
-            .into_iter()
-            .map(|h| (h.path, (h.body, h.iface)))
-            .collect();
-        let status: BTreeMap<&str, (usize, usize, u64)> = outcome
-            .statuses
-            .iter()
-            .map(|s| (s.path.as_str(), (s.obligations, s.failed, s.rlimit_max)))
-            .collect();
         let mut defs = BTreeMap::new();
         let mut edges = BTreeSet::new();
-        for (path, unit, f) in list {
+        for (idx, (path, unit, f)) in list.into_iter().enumerate() {
             let (line, _) = sm.line_col(f.name.span.file, f.name.span.lo);
-            let (obligations, failed, rlimit_max) =
-                status.get(path.as_str()).copied().unwrap_or((0, 0, 0));
-            let st = if failed > 0 {
-                "failed"
-            } else if obligations > 0 {
-                "verified"
-            } else {
-                "none"
-            };
-            let (body, iface) = hashes.get(&path).cloned().unwrap_or_default();
 
             // Edges.
             let mut calls = Vec::new();
@@ -315,18 +360,13 @@ impl<'p> Model<'p> {
             }
             defs.insert(
                 path.clone(),
-                Def {
+                Entry {
                     path,
                     unit,
-                    f,
+                    idx,
                     file: sm.name(f.name.span.file).to_string(),
                     line,
-                    status: st,
-                    obligations,
-                    failed,
-                    rlimit_max,
-                    body,
-                    iface,
+                    hashes: OnceCell::new(),
                 },
             );
         }
@@ -336,12 +376,83 @@ impl<'p> Model<'p> {
             .filter(|(_, s)| s.kind == FnKind::Exec && s.effect == crate::check::Effect::Io)
             .map(|(p, _)| p.clone())
             .collect();
-        Model {
+        let mut incoming: BTreeMap<String, Vec<Edge>> = BTreeMap::new();
+        for e in &edges {
+            incoming.entry(e.to.clone()).or_default().push(e.clone());
+        }
+        Index {
             units,
             defs,
             edges,
             io,
+            incoming,
         }
+    }
+}
+
+impl<'p> Model<'p> {
+    /// Builds the index of a checked program and its maps with `outcome`.
+    pub fn build(p: &'p Program, t: &'p Tables, sm: &SourceMap, outcome: &Outcome) -> Model<'p> {
+        let ix = Index::build(p, t, sm);
+        Model::with(Cow::Owned(ix), p, t, outcome)
+    }
+
+    /// The maps of `p` with `outcome` over an index built before from the
+    /// same program (`Index::build(p, t, ..)`). Costs one walk over the
+    /// definitions; nothing is recomputed (backlog 3A-03).
+    pub fn view(ix: &'p Index, p: &'p Program, t: &'p Tables, outcome: &Outcome) -> Model<'p> {
+        Model::with(Cow::Borrowed(ix), p, t, outcome)
+    }
+
+    fn with(ix: Cow<'p, Index>, p: &'p Program, t: &'p Tables, outcome: &Outcome) -> Model<'p> {
+        let mut fns = Vec::new();
+        for m in &p.mods {
+            fn_order(m, &mut fns);
+        }
+        Model {
+            ix,
+            fns,
+            sigs: &t.fns,
+            status: status_map(outcome),
+        }
+    }
+
+    /// `e` as a query sees it.
+    pub fn view_def<'m>(&'m self, e: &'m Entry) -> Def<'m> {
+        let (obligations, failed, rlimit_max) =
+            self.status.get(&e.path).copied().unwrap_or((0, 0, 0));
+        let status = if failed > 0 {
+            "failed"
+        } else if obligations > 0 {
+            "verified"
+        } else {
+            "none"
+        };
+        Def {
+            e,
+            f: self.fns[e.idx],
+            status,
+            obligations,
+            failed,
+            rlimit_max,
+        }
+    }
+
+    /// The definition at `path`.
+    pub fn def(&self, path: &str) -> Option<Def<'_>> {
+        self.ix.defs.get(path).map(|e| self.view_def(e))
+    }
+
+    /// Every definition, by path.
+    pub fn all_defs(&self) -> impl Iterator<Item = Def<'_>> {
+        self.ix.defs.values().map(|e| self.view_def(e))
+    }
+
+    /// Body and interface hashes of `d`.
+    fn hashes<'m>(&'m self, d: &Def<'m>) -> &'m (String, String) {
+        let e: &'m Entry = d.e;
+        e.hashes
+            .get_or_init(|| crate::fmt::def_hash(d.f, &e.unit, self.sigs))
     }
 
     // ---------- rows ----------
@@ -371,7 +482,10 @@ impl<'p> Model<'p> {
             ("kind", J::S("def".into())),
             ("path", J::S(d.path.clone())),
             ("def_kind", J::S(Self::def_kind(d).into())),
-            ("hash", J::S(d.body.chars().take(7 + 12).collect())),
+            (
+                "hash",
+                J::S(self.hashes(d).0.chars().take(7 + 12).collect()),
+            ),
         ])
     }
 
@@ -392,11 +506,11 @@ impl<'p> Model<'p> {
     fn l1(&self, d: &Def) -> J {
         let (sig, req, ens, dec) = crate::fmt::surface_parts(d.f);
         let uses: Vec<String> = self
-            .edges
-            .iter()
-            .filter(|e| e.from == d.path && e.kind == "uses")
+            .out_edges(&d.path)
+            .filter(|e| e.kind == "uses")
             .map(|e| e.to.clone())
             .collect();
+        let (body, iface) = self.hashes(d);
         J::O(vec![
             ("level", J::S("L1".into())),
             ("path", J::S(d.path.clone())),
@@ -410,13 +524,31 @@ impl<'p> Model<'p> {
             ("status", J::S(d.status.into())),
             ("obligations", J::N(d.obligations as u64)),
             ("failed", J::N(d.failed as u64)),
-            ("body", J::S(d.body.clone())),
-            ("iface", J::S(d.iface.clone())),
+            ("body", J::S(body.clone())),
+            ("iface", J::S(iface.clone())),
             ("file", J::S(d.file.clone())),
             ("line", J::N(d.line as u64)),
             // Added after version 1 (backward compatible, ADR-0020 §1).
             ("rlimit_max", J::N(d.rlimit_max)),
         ])
+    }
+
+    /// The edges from `path`, in order: a range of the ordered edge set, so
+    /// the cost follows the definition's own edges, not the program's.
+    fn out_edges<'m>(&'m self, path: &str) -> impl Iterator<Item = &'m Edge> + use<'m> {
+        let from = Edge {
+            from: path.to_string(),
+            to: String::new(),
+            kind: "",
+            arg: None,
+        };
+        let path = from.from.clone();
+        self.edges.range(from..).take_while(move |e| e.from == path)
+    }
+
+    /// The edges into `path`, in edge order.
+    fn in_edges<'m>(&'m self, path: &str) -> impl Iterator<Item = &'m Edge> + use<'m> {
+        self.incoming.get(path).into_iter().flatten()
     }
 
     fn l2(e: &Edge) -> J {
@@ -448,8 +580,8 @@ impl<'p> Model<'p> {
         for u in self.units.values() {
             rows.push((u.path.clone(), self.l0_unit(u)));
         }
-        for d in self.defs.values() {
-            rows.push((d.path.clone(), self.l0_def(d)));
+        for d in self.all_defs() {
+            rows.push((d.path.clone(), self.l0_def(&d)));
         }
         rows.sort_by(|a, b| a.0.cmp(&b.0));
         rows.into_iter().map(|(_, j)| j).collect()
@@ -461,7 +593,7 @@ impl<'p> Model<'p> {
             out.push_str(&Self::lines(self.l0_rows()));
         }
         if level == "L1" || level == "all" {
-            out.push_str(&Self::lines(self.defs.values().map(|d| self.l1(d))));
+            out.push_str(&Self::lines(self.all_defs().map(|d| self.l1(&d))));
         }
         if level == "L2" || level == "all" {
             out.push_str(&Self::lines(self.edges.iter().map(Self::l2)));
@@ -473,13 +605,13 @@ impl<'p> Model<'p> {
 
     /// Runs one ADR-0020 query. `Err` is a usage error message.
     pub fn query(&self, name: &str, args: &[String]) -> Result<String, String> {
-        let def = |i: usize| -> Result<&Def, String> {
+        let def = |i: usize| -> Result<Def, String> {
             let p = args.get(i).ok_or("missing definition path")?;
-            self.defs.get(p).ok_or(format!("unknown definition `{p}`"))
+            self.def(p).ok_or(format!("unknown definition `{p}`"))
         };
         let body = match name {
             "units" => Self::lines(self.l0_rows()),
-            "surface" => Self::lines([self.l1(def(0)?)]),
+            "surface" => Self::lines([self.l1(&def(0)?)]),
             "edges" => {
                 let d = def(0)?;
                 let dir = args.get(1).map(String::as_str).unwrap_or("out");
@@ -492,21 +624,19 @@ impl<'p> Model<'p> {
                 };
                 Self::lines(self.reach(&d.path, dir, depth).iter().map(Self::l2))
             }
-            "slice" => Self::lines([self.slice(def(0)?)]),
+            "slice" => Self::lines([self.slice(&def(0)?)]),
             "find" => {
                 let n = args.first().ok_or("missing name")?;
                 Self::lines(
-                    self.defs
-                        .values()
+                    self.all_defs()
                         .filter(|d| d.path == *n || d.path.rsplit("::").next() == Some(n.as_str()))
-                        .map(|d| self.l0_def(d)),
+                        .map(|d| self.l0_def(&d)),
                 )
             }
             "contracts" => {
                 let p = args.first().ok_or("missing predicate path")?;
                 let by = |clause: fn(&FnDef) -> &Vec<Expr>| -> Vec<String> {
-                    self.defs
-                        .values()
+                    self.all_defs()
                         .filter(|d| {
                             let mut v = Vec::new();
                             for c in clause(d.f) {
@@ -520,9 +650,8 @@ impl<'p> Model<'p> {
                 let required = by(|f| &f.requires);
                 let ensured = by(|f| &f.ensures);
                 let uses: Vec<String> = self
-                    .edges
-                    .iter()
-                    .filter(|e| e.kind == "uses" && e.to == *p)
+                    .in_edges(p)
+                    .filter(|e| e.kind == "uses")
                     .map(|e| e.from.clone())
                     .collect();
                 Self::lines([J::O(vec![
@@ -534,30 +663,21 @@ impl<'p> Model<'p> {
             }
             "status" => {
                 let mut rows: Vec<J> = self
-                    .defs
-                    .values()
+                    .all_defs()
                     .map(|d| {
                         J::O(vec![
                             ("path", J::S(d.path.clone())),
                             ("status", J::S(d.status.into())),
                             ("obligations", J::N(d.obligations as u64)),
                             ("failed", J::N(d.failed as u64)),
-                            ("effects", J::S(Self::effects(d))),
+                            ("effects", J::S(Self::effects(&d))),
                             ("rlimit_max", J::N(d.rlimit_max)),
                         ])
                     })
                     .collect();
-                let verified = self
-                    .defs
-                    .values()
-                    .filter(|d| d.status == "verified")
-                    .count();
-                let failed = self.defs.values().filter(|d| d.status == "failed").count();
-                let io = self
-                    .defs
-                    .values()
-                    .filter(|d| Self::effects(d) == "io")
-                    .count();
+                let verified = self.all_defs().filter(|d| d.status == "verified").count();
+                let failed = self.all_defs().filter(|d| d.status == "failed").count();
+                let io = self.all_defs().filter(|d| Self::effects(d) == "io").count();
                 rows.push(J::O(vec![
                     ("summary", J::B(true)),
                     ("defs", J::N(self.defs.len() as u64)),
@@ -573,11 +693,11 @@ impl<'p> Model<'p> {
                 if !matches!(change, "body" | "iface") {
                     return Err(format!("change must be body or iface, not `{change}`"));
                 }
-                Self::lines(self.impact(d, change))
+                Self::lines(self.impact(&d, change))
             }
             "duplicates" => Self::lines(self.duplicates()),
             "effects" => match args.first() {
-                Some(_) => Self::lines(self.effects_of(def(0)?)),
+                Some(_) => Self::lines(self.effects_of(&def(0)?)),
                 None => Self::lines(self.effects_all()),
             },
             other => return Err(format!("unknown query `{other}`")),
@@ -604,11 +724,7 @@ impl<'p> Model<'p> {
                 path.reverse();
                 found.push((at.clone(), path));
             }
-            for e in self
-                .edges
-                .iter()
-                .filter(|e| e.from == at && e.kind == "calls")
-            {
+            for e in self.out_edges(&at).filter(|e| e.kind == "calls") {
                 if !parent.contains_key(&e.to) {
                     parent.insert(e.to.clone(), Some(at.clone()));
                     queue.push_back(e.to.clone());
@@ -681,8 +797,11 @@ impl<'p> Model<'p> {
     /// `{"hash","defs"}` per group of two or more, by hash, then a summary row.
     fn duplicates(&self) -> Vec<J> {
         let mut groups: BTreeMap<&str, Vec<String>> = BTreeMap::new();
-        for d in self.defs.values() {
-            groups.entry(&d.body).or_default().push(d.path.clone());
+        for d in self.all_defs() {
+            groups
+                .entry(self.hashes(&d).0.as_str())
+                .or_default()
+                .push(d.path.clone());
         }
         let mut rows = Vec::new();
         let mut dup_defs = 0;
@@ -724,11 +843,7 @@ impl<'p> Model<'p> {
         if !spec || d.f.decreases.is_some() || change == "iface" {
             hit.insert(d.path.clone(), "changed");
         }
-        for e in self
-            .edges
-            .iter()
-            .filter(|e| e.to == d.path && e.from != d.path)
-        {
+        for e in self.in_edges(&d.path).filter(|e| e.from != d.path) {
             let reason = match (spec, change, e.kind) {
                 (false, "iface", "calls") => "calls",
                 (true, _, "uses") => "uses",
@@ -780,13 +895,17 @@ impl<'p> Model<'p> {
             if frontier.is_empty() {
                 break;
             }
+            // Only the edges at the frontier are visited (backlog 3A-03); an
+            // edge with both ends in the frontier counts as outgoing, and its
+            // source is visited already either way.
             let mut next = BTreeSet::new();
-            for e in &self.edges {
-                let out = (dir != "in") && frontier.contains(&e.from);
-                let inn = (dir != "out") && frontier.contains(&e.to);
-                if out || inn {
+            for at in &frontier {
+                let out = self.out_edges(at).filter(|_| dir != "in");
+                let inn = self
+                    .in_edges(at)
+                    .filter(|e| dir != "out" && (dir == "in" || !frontier.contains(&e.from)));
+                for (e, other) in out.map(|e| (e, &e.to)).chain(inn.map(|e| (e, &e.from))) {
                     seen.insert(e.clone());
-                    let other = if out { &e.to } else { &e.from };
                     if visited.insert(other.clone()) {
                         next.insert(other.clone());
                     }
@@ -801,11 +920,10 @@ impl<'p> Model<'p> {
         let code = crate::fmt::def_text(d.f);
         let mut deps: BTreeMap<String, String> = BTreeMap::new();
         for e in self
-            .edges
-            .iter()
-            .filter(|e| e.from == d.path && e.to != d.path && e.kind != "writes")
+            .out_edges(&d.path)
+            .filter(|e| e.to != d.path && e.kind != "writes")
         {
-            let Some(t) = self.defs.get(&e.to) else {
+            let Some(t) = self.def(&e.to) else {
                 continue;
             };
             // A revealed spec fn contributes its definition; anything else its surface.

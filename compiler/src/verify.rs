@@ -1410,7 +1410,7 @@ pub fn verify_program_with(
     seed: u64,
     cache: Option<&mut ProofCache>,
 ) -> Outcome {
-    verify_impl(p, t, diags, seed, cache, None, None)
+    verify_impl(p, t, diags, seed, cache, None, false, None)
 }
 
 /// As `verify_program_with` (seed 0), reusing the stored result of every
@@ -1425,7 +1425,7 @@ pub fn verify_program_incremental(
     cache: Option<&mut ProofCache>,
     incr: &mut crate::incremental::Session,
 ) -> Outcome {
-    verify_impl(p, t, diags, 0, cache, None, Some(incr))
+    verify_impl(p, t, diags, 0, cache, None, false, Some(incr))
 }
 
 /// Every solver query starts with this text: options (seed 0, pinned
@@ -1467,7 +1467,25 @@ pub fn verify_defs(
     only: &BTreeSet<String>,
     cache: Option<&mut ProofCache>,
 ) -> Outcome {
-    verify_impl(p, t, diags, 0, cache, Some(only), None)
+    verify_impl(p, t, diags, 0, cache, Some(only), true, None)
+}
+
+/// Proves only the definitions in `only` (full paths), through the
+/// incremental cache when given, without stopping at a failure (backlog
+/// 3A-04). Each listed definition gets the status and proved obligations
+/// of a whole-program run (`verify_program_incremental` with the same
+/// caches): a definition's queries are built from its own text and what it
+/// sees of other definitions (contracts, `#[uses]`), never from another
+/// definition's proof, and every obligation runs on a reset solver.
+pub fn verify_only(
+    p: &Program,
+    t: &Tables,
+    diags: &mut Diags,
+    only: &BTreeSet<String>,
+    cache: Option<&mut ProofCache>,
+    incr: Option<&mut crate::incremental::Session>,
+) -> Outcome {
+    verify_impl(p, t, diags, 0, cache, Some(only), false, incr)
 }
 
 fn header(seed: u64) -> Vec<String> {
@@ -1608,6 +1626,7 @@ pub fn preconditions_satisfiable(p: &Program, t: &Tables) -> Vec<(String, Span, 
     out
 }
 
+#[allow(clippy::too_many_arguments)]
 fn verify_impl(
     p: &Program,
     t: &Tables,
@@ -1615,10 +1634,9 @@ fn verify_impl(
     seed: u64,
     mut cache: Option<&mut ProofCache>,
     only: Option<&BTreeSet<String>>,
+    stop_at_failure: bool,
     mut incr: Option<&mut crate::incremental::Session>,
 ) -> Outcome {
-    // A restricted run (`verify_defs`) stops at the first failure.
-    let stop_at_failure = only.is_some();
     let mut defs = BTreeMap::new();
     for m in &p.mods {
         collect(m, "", &mut defs);

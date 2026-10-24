@@ -147,16 +147,41 @@ fn line_digest(kind: &str, path: &str, key: &str, payload: &str) -> String {
     crate::sha256::hex(format!("{kind}\n{path}\n{key}\n{payload}").as_bytes())
 }
 
+/// A line of the cache file not checked yet: (key, digest, escaped payload).
+type RawLine = (String, String, String);
+
 /// The cache file: (kind, definition path) -> (key, payload).
 #[derive(Default)]
 struct Store {
     entries: BTreeMap<(String, String), (String, String)>,
+    /// Lazy load only (`Store::load_lazy`): lines not checked yet, by slot,
+    /// in file order. A slot's value is its last line whose digest holds,
+    /// as in an eager load; it is checked when looked up, written or saved.
+    pending: BTreeMap<(String, String), Vec<RawLine>>,
     changed: bool,
     damaged: usize,
 }
 
+/// Checks one line's digest; the payload when it holds.
+fn check_line(kind: &str, path: &str, (key, sum, payload): &RawLine) -> Option<(String, String)> {
+    let payload = unescape(payload)?;
+    (line_digest(kind, path, key, &payload) == *sum).then(|| (key.clone(), payload))
+}
+
 impl Store {
+    /// Loads and checks every line.
     fn load(dir: &Path, id: &str) -> Store {
+        let mut s = Store::load_lazy(dir, id);
+        for (slot, lines) in std::mem::take(&mut s.pending) {
+            s.settle(slot, lines);
+        }
+        s
+    }
+
+    /// Loads the lines without checking their digests (backlog 3A-04): a
+    /// session that proves a few definitions checks only the lines it
+    /// reads, and the rest when it saves.
+    fn load_lazy(dir: &Path, id: &str) -> Store {
         let mut s = Store::default();
         let Ok(text) = std::fs::read_to_string(dir.join(FILE)) else {
             return s;
@@ -169,18 +194,13 @@ impl Store {
         }
         for line in lines {
             let mut it = line.splitn(5, ' ');
-            let parsed = (|| {
-                let (kind, path, key, sum, payload) =
-                    (it.next()?, it.next()?, it.next()?, it.next()?, it.next()?);
-                let payload = unescape(payload)?;
-                (line_digest(kind, path, key, &payload) == sum)
-                    .then(|| (kind.to_string(), path.to_string(), key.to_string(), payload))
-            })();
-            match parsed {
-                Some((kind, path, key, payload)) => {
-                    s.entries.insert((kind, path), (key, payload));
-                }
-                None => {
+            match (it.next(), it.next(), it.next(), it.next(), it.next()) {
+                (Some(kind), Some(path), Some(key), Some(sum), Some(payload)) => s
+                    .pending
+                    .entry((kind.to_string(), path.to_string()))
+                    .or_default()
+                    .push((key.to_string(), sum.to_string(), payload.to_string())),
+                _ => {
                     s.damaged += 1;
                     s.changed = true;
                 }
@@ -189,22 +209,50 @@ impl Store {
         s
     }
 
-    fn get(&self, kind: &str, path: &str, key: &str) -> Option<&str> {
-        self.entries
-            .get(&(kind.to_string(), path.to_string()))
-            .filter(|(k, _)| k == key)
-            .map(|(_, p)| p.as_str())
+    /// Checks the pending lines of `slot` into `entries`.
+    fn settle(&mut self, slot: (String, String), lines: Vec<RawLine>) {
+        for raw in &lines {
+            match check_line(&slot.0, &slot.1, raw) {
+                Some(v) => {
+                    self.entries.insert(slot.clone(), v);
+                }
+                None => {
+                    self.damaged += 1;
+                    self.changed = true;
+                }
+            }
+        }
+    }
+
+    fn get(&self, kind: &str, path: &str, key: &str) -> Option<String> {
+        let slot = (kind.to_string(), path.to_string());
+        let (k, p) = match self.entries.get(&slot) {
+            Some(v) => v.clone(),
+            None => self
+                .pending
+                .get(&slot)?
+                .iter()
+                .rev()
+                .find_map(|raw| check_line(kind, path, raw))?,
+        };
+        (k == key).then_some(p)
     }
 
     fn put(&mut self, kind: &str, path: &str, key: String, payload: String) {
         let slot = (kind.to_string(), path.to_string());
+        if let Some(lines) = self.pending.remove(&slot) {
+            self.settle(slot.clone(), lines);
+        }
         if self.entries.get(&slot) != Some(&(key.clone(), payload.clone())) {
             self.entries.insert(slot, (key, payload));
             self.changed = true;
         }
     }
 
-    fn save(&self, dir: &Path, id: &str) -> std::io::Result<()> {
+    fn save(&mut self, dir: &Path, id: &str) -> std::io::Result<()> {
+        for (slot, lines) in std::mem::take(&mut self.pending) {
+            self.settle(slot, lines);
+        }
         if !self.changed {
             return Ok(());
         }
@@ -315,7 +363,23 @@ impl Session {
     pub fn new(dir: &Path, p: &Program, t: &Tables, sm: &SourceMap) -> Session {
         let id = compiler_id();
         let store = Store::load(dir, &id);
-        Session::with_store(Some(dir.to_path_buf()), id, store, p, t, sm)
+        Session::with_store(Some(dir.to_path_buf()), id, store, p, t, sm, None)
+    }
+
+    /// As `new`, computing the keys of the definitions in `only` alone
+    /// (backlog 3A-04): a session that proves just those. Each key is the
+    /// one `new` computes; the work follows what the definitions can read,
+    /// not the size of the program.
+    pub fn new_for(
+        dir: &Path,
+        p: &Program,
+        t: &Tables,
+        sm: &SourceMap,
+        only: &BTreeSet<String>,
+    ) -> Session {
+        let id = compiler_id();
+        let store = Store::load_lazy(dir, &id);
+        Session::with_store(Some(dir.to_path_buf()), id, store, p, t, sm, Some(only))
     }
 
     /// A session that starts empty and keeps its entries in memory only
@@ -323,14 +387,14 @@ impl Session {
     /// small edits (`bmb uses`, `bmb lint`) reuse the unchanged definitions
     /// between their own runs through `rekey`.
     pub fn in_memory(p: &Program, t: &Tables, sm: &SourceMap) -> Session {
-        Session::with_store(None, compiler_id(), Store::default(), p, t, sm)
+        Session::with_store(None, compiler_id(), Store::default(), p, t, sm, None)
     }
 
     /// Recomputes the keys for another version of the program, keeping the
     /// stored entries and counters. A definition whose key is unchanged is
     /// then reused as in a new session over the same cache.
     pub fn rekey(&mut self, p: &Program, t: &Tables, sm: &SourceMap) {
-        let (proof_keys, ir_keys) = Session::keys(&self.id, p, t, sm);
+        let (proof_keys, ir_keys) = Session::keys(&self.id, p, t, sm, None);
         self.proof_keys = proof_keys;
         self.ir_keys = ir_keys;
     }
@@ -342,8 +406,9 @@ impl Session {
         p: &Program,
         t: &Tables,
         sm: &SourceMap,
+        only: Option<&BTreeSet<String>>,
     ) -> Session {
-        let (proof_keys, ir_keys) = Session::keys(&id, p, t, sm);
+        let (proof_keys, ir_keys) = Session::keys(&id, p, t, sm, only);
         let stats = Stats {
             damaged: store.damaged,
             ..Stats::default()
@@ -359,22 +424,37 @@ impl Session {
         }
     }
 
-    /// Proof and IR keys of every definition (see the module comment).
+    /// Proof and IR keys of every definition, or of those in `only` (see
+    /// the module comment). What a key reads of other definitions (their
+    /// hashes, the names their texts mention) is computed on first use, so
+    /// the keys of a few definitions cost what those definitions reach.
     fn keys(
         id: &str,
         p: &Program,
         t: &Tables,
         sm: &SourceMap,
+        only: Option<&BTreeSet<String>>,
     ) -> (BTreeMap<String, String>, BTreeMap<String, String>) {
         let mut defs = Vec::new();
         for m in &p.mods {
             collect(m, "", &mut defs);
         }
         defs.sort_by(|a, b| a.0.cmp(&b.0));
-        let hashes: BTreeMap<String, (String, String)> = crate::fmt::hashes(p, &t.fns)
-            .into_iter()
-            .map(|h| (h.path, (h.body, h.iface)))
+        // By path; a later duplicate wins, as in `fmt::hashes` collected
+        // into a map (a checked program has none).
+        let by_path: BTreeMap<&str, (&str, &FnDef)> = defs
+            .iter()
+            .map(|(p, u, f)| (p.as_str(), (u.as_str(), *f)))
             .collect();
+        let hash_memo: RefCell<BTreeMap<&str, (String, String)>> = RefCell::default();
+        let hash_of = |r: &str| -> (String, String) {
+            let (unit, f) = by_path[r];
+            hash_memo
+                .borrow_mut()
+                .entry(by_path.get_key_value(r).unwrap().0)
+                .or_insert_with(|| crate::fmt::def_hash(f, unit, &t.fns))
+                .clone()
+        };
         let kinds: BTreeMap<&str, FnKind> =
             defs.iter().map(|(p, _, f)| (p.as_str(), f.kind)).collect();
         // Hashed once: it is the same for every definition.
@@ -389,16 +469,27 @@ impl Session {
         };
         // What another definition's query can read of each definition: a
         // spec fn's whole text, an executable function's contract only.
-        let mut reads: BTreeMap<&str, BTreeSet<String>> = BTreeMap::new();
-        for (path, unit, f) in &defs {
-            let with_body = f.kind == FnKind::Spec;
-            let text = crate::fmt::qualified_text(f, unit, &t.fns, with_body);
-            reads.insert(path.as_str(), names(&text));
-        }
+        let reads_memo: RefCell<BTreeMap<String, BTreeSet<String>>> = RefCell::default();
+        let reads = |r: &str| -> BTreeSet<String> {
+            let Some(&(unit, f)) = by_path.get(r) else {
+                return BTreeSet::new();
+            };
+            reads_memo
+                .borrow_mut()
+                .entry(r.to_string())
+                .or_insert_with(|| {
+                    let with_body = f.kind == FnKind::Spec;
+                    names(&crate::fmt::qualified_text(f, unit, &t.fns, with_body))
+                })
+                .clone()
+        };
         let z3 = crate::toolchain::z3_version();
         let mut proof_keys = BTreeMap::new();
         let mut ir_keys = BTreeMap::new();
         for (path, unit, f) in &defs {
+            if only.is_some_and(|o| !o.contains(path)) {
+                continue;
+            }
             let qual = crate::fmt::qualified_text(f, unit, &t.fns, true);
             let src = &sm.file(f.span.file).text;
             let slice = src
@@ -434,7 +525,7 @@ impl Session {
             let mut ik = String::from("ir\n");
             ik.push_str(&own);
             for r in refs {
-                let (body, iface) = &hashes[r];
+                let (body, iface) = &hash_of(r);
                 match kinds[r] {
                     FnKind::Exec => {
                         let line = format!("{r} {iface}");
@@ -457,9 +548,9 @@ impl Session {
             reach.insert(path.clone());
             let mut todo: Vec<String> = reach.iter().cloned().collect();
             while let Some(r) = todo.pop() {
-                for n in reads.get(r.as_str()).into_iter().flatten() {
+                for n in reads(&r) {
                     if reach.insert(n.clone()) {
-                        todo.push(n.clone());
+                        todo.push(n);
                     }
                 }
             }
@@ -573,7 +664,7 @@ impl Session {
     }
 
     /// Writes the cache back when something changed.
-    pub fn save(&self) {
+    pub fn save(&mut self) {
         let Some(dir) = &self.dir else { return };
         if let Err(e) = self.store.save(dir, &self.id) {
             eprintln!(

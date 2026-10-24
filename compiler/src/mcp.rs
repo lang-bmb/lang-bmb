@@ -22,6 +22,11 @@ pub struct Server {
     root: PathBuf,
     txs: BTreeMap<u64, Tx>,
     next_tx: u64,
+    /// Front-end results of the last call (backlog 3A-03): every call still
+    /// reads the workspace files, so a change from any writer is seen, but
+    /// unchanged files are not parsed again and an unchanged program is
+    /// neither checked nor indexed again.
+    front: crate::FrontCache,
 }
 
 fn s(x: &str) -> Value {
@@ -160,7 +165,20 @@ impl Server {
             root: root.to_path_buf(),
             txs: BTreeMap::new(),
             next_tx: 1,
+            front: crate::FrontCache::default(),
         }
+    }
+
+    /// What the front-end cache did so far.
+    pub fn front_stats(&self) -> crate::FrontStats {
+        self.front.stats.clone()
+    }
+
+    /// Reads the workspace and brings the front-end cache up to date.
+    fn load(&mut self) -> Result<&mut crate::FrontCache, String> {
+        let files = self.files()?;
+        self.front.update(files);
+        Ok(&mut self.front)
     }
 
     /// Proof cache of the workspace (backlog 2D-03): answers are the same with
@@ -197,7 +215,8 @@ impl Server {
                 if let Some(Value::Array(xs)) = a.get("args") {
                     req.extend(xs.iter().filter_map(|x| x.as_str().map(String::from)));
                 }
-                crate::map_request_cached(&self.files()?, &req, Some(&self.cache_dir()))
+                let dir = self.cache_dir();
+                self.load()?.map_request(&req, Some(&dir))
             }
             "map" => {
                 let level = a
@@ -205,14 +224,12 @@ impl Server {
                     .and_then(Value::as_str)
                     .unwrap_or("all")
                     .to_string();
-                crate::map_request_cached(
-                    &self.files()?,
-                    &["map".into(), level],
-                    Some(&self.cache_dir()),
-                )
+                let dir = self.cache_dir();
+                self.load()?.map_request(&["map".into(), level], Some(&dir))
             }
             "verify" => {
-                let out = crate::verify_sources_cached(&self.files()?, Some(&self.cache_dir()));
+                let dir = self.cache_dir();
+                let out = self.load()?.verify(Some(&dir));
                 if out.ok {
                     Ok(out.output)
                 } else {
@@ -224,7 +241,8 @@ impl Server {
                 if exe.is_empty() || exe.contains(['/', '\\', '\0']) || exe.starts_with('.') {
                     return Err("`name` must be a plain file name".into());
                 }
-                let out = crate::emit_llvm_sources_cached(&self.files()?, Some(&self.cache_dir()));
+                let dir = self.cache_dir();
+                let out = self.load()?.emit_llvm(Some(&dir));
                 if !out.verify.ok || out.checks > 0 || !out.has_main {
                     let why = if out.has_main {
                         "not fully proved"

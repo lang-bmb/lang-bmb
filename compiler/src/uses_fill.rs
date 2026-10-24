@@ -539,7 +539,7 @@ pub fn fill_uses_cached(
     }
 
     if let Some(d) = cache_dir {
-        if let Some(s) = &cache.defs {
+        if let Some(s) = &mut cache.defs {
             s.save();
         }
         if let Err(e) = cache.proofs.save(d) {

@@ -451,15 +451,21 @@ pub fn hashes(p: &Program, fns: &BTreeMap<String, FnSig>) -> Vec<DefHash> {
     defs.sort_by(|a, b| a.0.cmp(&b.0));
     defs.into_iter()
         .map(|(path, unit, f)| {
-            let body = crate::sha256::hex(qualified_text(f, &unit, fns, true).as_bytes());
-            let iface = if f.kind == FnKind::Spec {
-                body.clone()
-            } else {
-                crate::sha256::hex(qualified_text(f, &unit, fns, false).as_bytes())
-            };
+            let (body, iface) = def_hash(f, &unit, fns);
             DefHash { path, body, iface }
         })
         .collect()
+}
+
+/// Body and interface hash of one definition in `unit` (ADR-0019 §2).
+pub fn def_hash(f: &FnDef, unit: &str, fns: &BTreeMap<String, FnSig>) -> (String, String) {
+    let body = crate::sha256::hex(qualified_text(f, unit, fns, true).as_bytes());
+    let iface = if f.kind == FnKind::Spec {
+        body.clone()
+    } else {
+        crate::sha256::hex(qualified_text(f, unit, fns, false).as_bytes())
+    };
+    (body, iface)
 }
 
 fn plain() -> Printer<'static> {

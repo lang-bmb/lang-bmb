@@ -288,7 +288,14 @@ pub fn verify_sources_opts(
     cache_dir: Option<&std::path::Path>,
     reuse: bool,
 ) -> VerifyOutput {
-    let mut fe = frontend(files);
+    verify_frontend(&frontend(files), cache_dir, reuse)
+}
+
+fn verify_frontend(
+    fe: &Frontend,
+    cache_dir: Option<&std::path::Path>,
+    reuse: bool,
+) -> VerifyOutput {
     if fe.diags.has_errors() {
         return VerifyOutput {
             ok: false,
@@ -298,17 +305,18 @@ pub fn verify_sources_opts(
             incr: incremental::Stats::default(),
         };
     }
+    let mut diags = fe.diags.clone();
     let mut incr = cache_dir
         .filter(|_| reuse)
         .map(|d| incremental::Session::new(d, &fe.program, &fe.tables, &fe.sm));
-    let (outcome, cache) = prove(&mut fe, cache_dir, incr.as_mut());
-    let mut output = fe.diags.to_jsonl(&fe.sm);
+    let (outcome, cache) = prove(fe, &mut diags, cache_dir, incr.as_mut());
+    let mut output = diags.to_jsonl(&fe.sm);
     output.push_str(&status_lines(&outcome));
-    if let Some(s) = &incr {
+    if let Some(s) = &mut incr {
         s.save();
     }
     VerifyOutput {
-        ok: !fe.diags.has_errors() && outcome.statuses.iter().all(|s| s.failed == 0),
+        ok: !diags.has_errors() && outcome.statuses.iter().all(|s| s.failed == 0),
         output,
         scripts: outcome.scripts,
         cache,
@@ -410,7 +418,14 @@ fn emit_llvm(
     all_checks: bool,
     cache_dir: Option<&std::path::Path>,
 ) -> LlvmOutput {
-    let mut fe = frontend(files);
+    emit_llvm_frontend(&frontend(files), all_checks, cache_dir)
+}
+
+fn emit_llvm_frontend(
+    fe: &Frontend,
+    all_checks: bool,
+    cache_dir: Option<&std::path::Path>,
+) -> LlvmOutput {
     if fe.diags.has_errors() {
         return LlvmOutput {
             verify: VerifyOutput {
@@ -428,21 +443,22 @@ fn emit_llvm(
     let mut incr = cache_dir
         .filter(|_| !all_checks)
         .map(|d| incremental::Session::new(d, &fe.program, &fe.tables, &fe.sm));
+    let mut diags = fe.diags.clone();
     let (outcome, cache) = if all_checks {
         (verify::Outcome::default(), (0, 0))
     } else {
-        prove(&mut fe, cache_dir, incr.as_mut())
+        prove(fe, &mut diags, cache_dir, incr.as_mut())
     };
-    let usable = usable_proofs(&fe, &outcome);
+    let usable = usable_proofs(fe, &outcome);
     let module = codegen::emit_with(&fe.program, &fe.tables, &usable, incr.as_mut());
-    if let Some(s) = &incr {
+    if let Some(s) = &mut incr {
         s.save();
     }
-    let mut output = fe.diags.to_jsonl(&fe.sm);
+    let mut output = diags.to_jsonl(&fe.sm);
     output.push_str(&status_lines(&outcome));
     LlvmOutput {
         verify: VerifyOutput {
-            ok: !fe.diags.has_errors() && outcome.statuses.iter().all(|s| s.failed == 0),
+            ok: !diags.has_errors() && outcome.statuses.iter().all(|s| s.failed == 0),
             output,
             scripts: outcome.scripts,
             cache,
@@ -487,18 +503,18 @@ fn usable_proofs(
             broken.insert(root(&mut parent, i));
         }
     }
-    let mut spans: Vec<(u32, u32, u32)> = Vec::new();
+    let mut broken_spans: Vec<(u32, u32, u32)> = Vec::new();
     for (i, p) in paths.iter().enumerate() {
         if broken.contains(&root(&mut parent, i)) {
-            let sp = model.defs[*p].f.span;
-            spans.push((sp.file, sp.lo, sp.hi));
+            let sp = model.def(p).expect("indexed definition").f.span;
+            broken_spans.push((sp.file, sp.lo, sp.hi));
         }
     }
     outcome
         .proven
         .iter()
         .filter(|(_, file, lo, hi)| {
-            !spans
+            !broken_spans
                 .iter()
                 .any(|(f, a, b)| f == file && a <= lo && hi <= b)
         })
@@ -509,21 +525,34 @@ fn usable_proofs(
 /// Proves a checked program, through the proof cache in `cache_dir` when
 /// given (backlog 2D-01). Returns the outcome and the cache (hits, misses).
 fn prove(
-    fe: &mut Frontend,
+    fe: &Frontend,
+    diags: &mut Diags,
     cache_dir: Option<&std::path::Path>,
     incr: Option<&mut incremental::Session>,
 ) -> (verify::Outcome, (usize, usize)) {
+    prove_defs(fe, diags, cache_dir, incr, None)
+}
+
+/// As `prove`; with `only`, proves just those definitions (backlog 3A-04).
+/// A definition's status depends only on its own obligations, so it is the
+/// same as in a whole-program run.
+fn prove_defs(
+    fe: &Frontend,
+    diags: &mut Diags,
+    cache_dir: Option<&std::path::Path>,
+    incr: Option<&mut incremental::Session>,
+    only: Option<&std::collections::BTreeSet<String>>,
+) -> (verify::Outcome, (usize, usize)) {
     let mut cache = cache_dir.map(cache::ProofCache::load);
-    let outcome = match incr {
-        Some(s) => verify::verify_program_incremental(
-            &fe.program,
-            &fe.tables,
-            &mut fe.diags,
-            cache.as_mut(),
-            s,
-        ),
-        None => {
-            verify::verify_program_with(&fe.program, &fe.tables, &mut fe.diags, 0, cache.as_mut())
+    let outcome = match (incr, only) {
+        (incr, Some(only)) => {
+            verify::verify_only(&fe.program, &fe.tables, diags, only, cache.as_mut(), incr)
+        }
+        (Some(s), None) => {
+            verify::verify_program_incremental(&fe.program, &fe.tables, diags, cache.as_mut(), s)
+        }
+        (None, None) => {
+            verify::verify_program_with(&fe.program, &fe.tables, diags, 0, cache.as_mut())
         }
     };
     if let (Some(c), Some(dir)) = (&cache, cache_dir)
@@ -590,33 +619,78 @@ pub fn map_request_cached(
     request: &[String],
     cache_dir: Option<&std::path::Path>,
 ) -> Result<String, String> {
-    let mut fe = frontend(files);
+    let fe = frontend(files);
     if fe.diags.has_errors() {
         return Err(fe.diags.to_jsonl(&fe.sm));
     }
+    let ix = map::Index::build(&fe.program, &fe.tables, &fe.sm);
+    map_answer(&fe, &ix, request, cache_dir)
+}
+
+/// What a map request needs proved (backlog 1D-17, 3A-04).
+enum ProofNeed<'r> {
+    None,
+    /// The L1 row of one definition (`query surface DEF`).
+    One(&'r str),
+    All,
+}
+
+/// Answers a map request on a checked program and its index.
+fn map_answer(
+    fe: &Frontend,
+    ix: &map::Index,
+    request: &[String],
+    cache_dir: Option<&std::path::Path>,
+) -> Result<String, String> {
     // Proof results reach only the L1 rows (`map L1`/`all`, `query surface`)
     // and `query status` (backlog 1D-17). Every other answer is built from
     // the checked program alone, so the solver does not run for it.
-    let needs_proof = match (
+    // `surface DEF` shows the status of DEF alone, which depends only on
+    // DEF's own obligations, so only DEF is proved (backlog 3A-04).
+    let need = match (
         request.first().map(String::as_str),
         request.get(1).map(String::as_str),
     ) {
-        (Some("map"), level) => matches!(level.unwrap_or("all"), "L1" | "all"),
-        (Some("query"), name) => matches!(name, Some("surface" | "status")),
-        _ => false,
+        (Some("map"), level) if matches!(level.unwrap_or("all"), "L1" | "all") => ProofNeed::All,
+        (Some("query"), Some("status")) => ProofNeed::All,
+        (Some("query"), Some("surface")) => match request.get(2) {
+            Some(d) if ix.defs.contains_key(d) => ProofNeed::One(d),
+            // A usage error: nothing is shown, so nothing is proved.
+            _ => ProofNeed::None,
+        },
+        _ => ProofNeed::None,
     };
-    let outcome = if needs_proof {
-        let mut incr =
-            cache_dir.map(|d| incremental::Session::new(d, &fe.program, &fe.tables, &fe.sm));
-        let o = prove(&mut fe, cache_dir, incr.as_mut()).0;
-        if let Some(s) = &incr {
-            s.save();
+    let outcome = match need {
+        ProofNeed::None => verify::Outcome::default(),
+        ProofNeed::All => {
+            let mut incr =
+                cache_dir.map(|d| incremental::Session::new(d, &fe.program, &fe.tables, &fe.sm));
+            let o = prove(fe, &mut fe.diags.clone(), cache_dir, incr.as_mut()).0;
+            if let Some(s) = &mut incr {
+                s.save();
+            }
+            o
         }
-        o
-    } else {
-        verify::Outcome::default()
+        ProofNeed::One(d) => {
+            let only: std::collections::BTreeSet<String> = [d.to_string()].into();
+            let mut incr = cache_dir.map(|dir| {
+                incremental::Session::new_for(dir, &fe.program, &fe.tables, &fe.sm, &only)
+            });
+            let o = prove_defs(
+                fe,
+                &mut fe.diags.clone(),
+                cache_dir,
+                incr.as_mut(),
+                Some(&only),
+            )
+            .0;
+            if let Some(s) = &mut incr {
+                s.save();
+            }
+            o
+        }
     };
-    let model = map::Model::build(&fe.program, &fe.tables, &fe.sm, &outcome);
+    let model = map::Model::view(ix, &fe.program, &fe.tables, &outcome);
     match request.first().map(String::as_str) {
         Some("map") => {
             let level = request.get(1).map(String::as_str).unwrap_or("all");
@@ -632,5 +706,144 @@ pub fn map_request_cached(
                 .map(|body| format!("{}\n{body}", map::HEADER))
         }
         _ => Err("expected `map` or `query`".into()),
+    }
+}
+
+/// One workspace file as last read and parsed (backlog 3A-03).
+struct ParsedFile {
+    name: String,
+    text: String,
+    /// Number of top-level units it contributed to the program.
+    mods: usize,
+    /// Its lexer and parser diagnostics.
+    diags: Vec<diag::Diag>,
+}
+
+/// Front-end results kept between calls by a long-lived process, the MCP
+/// server (backlog 3A-03). `update` takes the files as just read and redoes
+/// only what they changed: a file whose name, position and text are those of
+/// the last call is not lexed or parsed again (its syntax tree and
+/// diagnostics are reused; spans carry the file's position, so a file that
+/// moved is parsed again). Any change re-runs the checker over the whole
+/// program, whose tables are global, and drops the map index, which is
+/// rebuilt on first use. When nothing changed, everything is reused. The
+/// answers are those of `map_request_cached`, `verify_sources_cached` and
+/// `emit_llvm_sources_cached` on the same files (tests/mcp.rs compares a
+/// long-lived server with a fresh one per call).
+#[derive(Default)]
+pub struct FrontCache {
+    files: Vec<ParsedFile>,
+    fe: Option<Frontend>,
+    index: Option<map::Index>,
+    /// Counters for tests and measurement.
+    pub stats: FrontStats,
+}
+
+/// What a `FrontCache` did since it was created.
+#[derive(Default, Clone, Debug, PartialEq, Eq)]
+pub struct FrontStats {
+    /// Files lexed and parsed.
+    pub parsed: usize,
+    /// Files whose syntax tree was reused.
+    pub reused: usize,
+    /// Checker runs.
+    pub checks: usize,
+    /// Map index builds.
+    pub indexes: usize,
+}
+
+impl FrontCache {
+    /// Brings the cache to `files` (name, text), in program order.
+    pub fn update(&mut self, files: Vec<(String, String)>) {
+        let same = self.fe.is_some()
+            && files.len() == self.files.len()
+            && files
+                .iter()
+                .zip(&self.files)
+                .all(|(a, b)| a.0 == b.name && a.1 == b.text);
+        if same {
+            return;
+        }
+        // Take the old syntax trees apart, file by file.
+        let mut old_mods: Vec<Vec<ast::Mod>> = Vec::new();
+        if let Some(fe) = self.fe.take() {
+            let mut it = fe.program.mods.into_iter();
+            for f in &self.files {
+                old_mods.push(it.by_ref().take(f.mods).collect());
+            }
+        }
+        self.index = None;
+        let mut old = std::mem::take(&mut self.files).into_iter().zip(old_mods);
+        let mut sm = SourceMap::default();
+        let mut diags = Diags::default();
+        let mut program = ast::Program { mods: Vec::new() };
+        for (name, text) in files {
+            let prev = old.next();
+            let id = sm.add(name.clone(), text.clone());
+            let (mods, file_diags) = match prev {
+                Some((pf, mods)) if pf.name == name && pf.text == text => {
+                    self.stats.reused += 1;
+                    (mods, pf.diags)
+                }
+                _ => {
+                    self.stats.parsed += 1;
+                    let mut d = Diags::default();
+                    let toks = lexer::lex(id, &text, &mut d);
+                    let mut p = parser::Parser::new(toks, &mut d, &text);
+                    (p.parse_program().mods, d.items)
+                }
+            };
+            diags.items.extend(file_diags.iter().cloned());
+            self.files.push(ParsedFile {
+                name,
+                text,
+                mods: mods.len(),
+                diags: file_diags,
+            });
+            program.mods.extend(mods);
+        }
+        self.stats.checks += 1;
+        let mut c = check::Checker::new(&mut diags);
+        c.check_program(&program);
+        let tables = c.into_tables();
+        self.fe = Some(Frontend {
+            sm,
+            diags,
+            program,
+            tables,
+        });
+    }
+
+    fn fe(&self) -> &Frontend {
+        self.fe.as_ref().expect("FrontCache::update runs first")
+    }
+
+    /// As `map_request_cached` on the files of the last `update`.
+    pub fn map_request(
+        &mut self,
+        request: &[String],
+        cache_dir: Option<&std::path::Path>,
+    ) -> Result<String, String> {
+        let fe = self.fe.as_ref().expect("FrontCache::update runs first");
+        if fe.diags.has_errors() {
+            return Err(fe.diags.to_jsonl(&fe.sm));
+        }
+        if self.index.is_none() {
+            self.stats.indexes += 1;
+        }
+        let ix = self
+            .index
+            .get_or_insert_with(|| map::Index::build(&fe.program, &fe.tables, &fe.sm));
+        map_answer(fe, ix, request, cache_dir)
+    }
+
+    /// As `verify_sources_cached` on the files of the last `update`.
+    pub fn verify(&self, cache_dir: Option<&std::path::Path>) -> VerifyOutput {
+        verify_frontend(self.fe(), cache_dir, true)
+    }
+
+    /// As `emit_llvm_sources_cached` on the files of the last `update`.
+    pub fn emit_llvm(&self, cache_dir: Option<&std::path::Path>) -> LlvmOutput {
+        emit_llvm_frontend(self.fe(), false, cache_dir)
     }
 }

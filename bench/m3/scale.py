@@ -17,8 +17,8 @@
 
   scale.py table F.jsonl...   print the Markdown tables of the results.
 
-Python 3 standard library only. The binary is target/release/bmb (build it
-with `cargo build --release`).
+Python 3 standard library only. The binary is $BMB or target/release/bmb
+(build it with `cargo build --release`).
 """
 
 import argparse
@@ -35,7 +35,7 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
-BMB = os.path.join(ROOT, "target", "release", "bmb")
+BMB = os.environ.get("BMB", os.path.join(ROOT, "target", "release", "bmb"))
 sys.path.insert(0, HERE)
 import gen  # noqa: E402
 
@@ -212,8 +212,47 @@ def cmd_queries(a):
             for q, args in plan:
                 rec(query=" ".join([q] + args[1:]), probe=role, path=p,
                     m=measure(lambda q=q, args=args: s.call("query", {"name": q, "args": args}), a.runs, sc))
+        after_commit(s, sc, pr, rec, a.runs, d)
         s.close()
     write(a.out, rows)
+
+
+def after_commit(s, sc, pr, rec, runs, d):
+    """Cost of a write and of the first read after it (backlog 3A-03): RUNS
+    times, commit a body change of the first `shift` leaf of m1 (its
+    branch constant, alternately +1 and back, through tx_put), then run
+    `slice` and `surface` of the chain_top probe once. The server's
+    front-end cache sees one changed file each time. Ends on the original
+    text."""
+    text = open(os.path.join(d, "src", f"m{PROBE_UNIT}.bmb"), encoding="utf-8").read()
+    m = re.search(r"fn (shift_\d+)\(x: i64\)[^{]*\{\n        if x > \d+ \{", text)
+    if not m:
+        sys.exit("scale.py: no shift leaf in m1")
+    leaf = f"m{PROBE_UNIT}::{m.group(1)}"
+    code = json.loads(s.call("query", {"name": "slice", "args": [leaf]}).splitlines()[1])["code"]
+    c = re.search(r"if x > (\d+) \{", code)
+    if not c:
+        sys.exit(f"scale.py: no branch constant in {leaf}")
+    variants = [code[:c.start(1)] + str(int(c.group(1)) + 1) + code[c.end(1):], code]
+
+    def commit(text):
+        tx = json.loads(s.call("tx_begin", {}))["tx"]
+        s.call("tx_put", {"tx": tx, "unit": f"m{PROBE_UNIT}", "code": text})
+        return s.call("tx_commit", {"tx": tx})
+
+    samples = {"tx_commit": [], "slice": [], "surface": []}
+    outs = {}
+    for k in range(runs + (runs % 2)):
+        for name, fn in [("tx_commit", lambda k=k: commit(variants[k % 2])),
+                         ("slice", lambda: s.call("query", {"name": "slice", "args": [pr["chain_top"]]})),
+                         ("surface", lambda: s.call("query", {"name": "surface", "args": [pr["chain_top"]]}))]:
+            c0, t0 = sc(), time.perf_counter()
+            outs[name] = fn()
+            samples[name].append((time.perf_counter() - t0, sc() - c0))
+    for name, xs in samples.items():
+        q = name if name == "tx_commit" else f"{name} after commit"
+        rec(query=q, probe="chain_top", path=leaf if name == "tx_commit" else pr["chain_top"],
+            m=(outs[name], [t for t, _ in xs], [c for _, c in xs]))
 
 
 def machine():
