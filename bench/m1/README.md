@@ -19,3 +19,27 @@ python3 bench/m1/harness.py run --agent anthropic:claude-opus-5-5 --out results/
 ```
 
 작성 과제의 성공 = 작업 공간 전체 증명 + 요구 시그니처 + **명세 강도 검사**(숨긴 `ref_pre ⇒ 에이전트 requires`, `에이전트 ensures ⇒ ref_post`를 판정용 정의로 증명). 탐색 과제의 정답은 맵에서 계산한다.
+
+## 실제 모델 실행(사용자 머신)
+
+실제 모델 측정(백로그 1E-10)은 유료 API를 쓰므로 사용자 머신에서 실행한다. 이 리포의 클라우드 세션은 코드와 실행 가능한 검증만 맡는다.
+
+```
+# 1. 도구: Rust(rust-toolchain.toml이 고정), Z3 4.15.4, LLVM 18
+./scripts/setup.sh                       # z3(pip)·LLVM 확인/설치. macOS면 z3·llvm@18을 직접 설치
+cargo build                              # target/debug/bmb
+cargo run -q -- doctor                   # z3·llvm 버전 확인(둘 다 "ok"여야 함)
+
+# 2. 기준 해법으로 하네스 점검(무료)
+python3 bench/m1/harness.py run --agent oracle --expect all-pass
+
+# 3. 실제 모델(유료)
+pip install anthropic
+export ANTHROPIC_API_KEY=...             # 또는 `ant auth login`
+python3 bench/m1/harness.py run --agent anthropic:claude-opus-5-5 \
+    --out bench/m1/results/$(date +%F)-claude-opus-5-5.jsonl
+```
+
+- 과제당 세션은 한 번이다. 실패해도 다시 돌리지 않는다(ADR-0021 §3).
+- `--tasks w01-clamp`로 한 과제만 먼저 돌려 비용과 동작을 확인할 수 있다. 이렇게 돌린 결과는 보고에 섞지 않는다.
+- 결과 파일을 커밋하면 요약(1E-06)은 세션에서 작성한다.
