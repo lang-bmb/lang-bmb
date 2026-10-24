@@ -1,0 +1,32 @@
+fn top_level() -> () {}
+
+mod no_summary {
+    #[effects(pure)]
+    fn f() -> () {}
+}
+
+#[summary("항목 규칙")]
+mod items {
+    use other::thing;
+
+    struct Point { x: i64 }
+
+    pub fn exposed() -> () {}
+
+    #[effects(pure)]
+    fn twice() -> () {}
+
+    #[effects(pure)]
+    fn twice() -> () {}
+
+    #[effects(pure)]
+    #[inline]
+    fn attr() -> () {}
+
+    #[effects(pure)]
+    fn generic<T>(x: i64) -> i64 { x }
+}
+
+#[summary("중복 단위")]
+mod items {
+}

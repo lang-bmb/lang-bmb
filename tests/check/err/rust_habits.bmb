@@ -1,0 +1,45 @@
+#[summary("Rust 습관")]
+mod habits {
+    fn no_effects(x: i64) -> i64 { x }
+
+    #[effects(pure)]
+    fn no_ret(x: i64) { let y = x; }
+
+    #[effects(pure)]
+    fn uses_macros() -> () {
+        let v: [i64; 2] = vec![1, 2];
+        println!("hi");
+    }
+
+    #[effects(pure)]
+    fn early(x: i64) -> i64 { return x; }
+
+    #[effects(pure)]
+    fn loops() -> () { for i in 0..3 { } }
+
+    #[effects(pure)]
+    fn cast(x: u64) -> i64 { x as i64 }
+
+    #[effects(pure)]
+    fn suffix() -> i64 { 5i64 }
+
+    #[effects(pure)]
+    fn small(x: i32) -> u8 { x }
+
+    #[effects(pure)]
+    fn chain(a: i64, b: i64, c: i64) -> bool { a < b < c }
+
+    #[effects(pure)]
+    fn muts(mut x: i64) -> i64 { x }
+
+    #[effects(pure)]
+    fn lifetimes(a: &'a [i64]) -> i64 { 0 }
+
+    #[effects(pure)]
+    fn unwraps(x: i64) -> i64 { x.unwrap() }
+
+    #[effects(pure)]
+    fn tries(x: i64) -> i64 { x? }
+
+    /* block comment */
+}

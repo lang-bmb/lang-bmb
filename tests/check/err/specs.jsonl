@@ -1,0 +1,18 @@
+{"code":"E0501","severity":"error","message":"contract clause is not a named predicate","file":"err/specs.bmb","line":12,"col":18,"end_line":12,"end_col":23,"fix":{"message":"move the condition into `spec fn name(..) -> bool { .. }` and call it here"}}
+{"code":"E0501","severity":"error","message":"contract clause is not a named predicate","file":"err/specs.bmb","line":13,"col":17,"end_line":13,"end_col":23,"fix":{"message":"move the condition into `spec fn name(..) -> bool { .. }` and call it here"}}
+{"code":"E0502","severity":"error","message":"`specs::always` is the constant `true`; it states nothing","file":"err/specs.bmb","line":20,"col":18,"end_line":20,"end_col":26}
+{"code":"E0505","severity":"error","message":"`pos` is a spec function and cannot be called from executable code","file":"err/specs.bmb","line":26,"col":37,"end_line":26,"end_col":43}
+{"code":"E0504","severity":"error","message":"`helper` is executable and cannot be called from a specification","file":"err/specs.bmb","line":28,"col":42,"end_line":28,"end_col":51}
+{"code":"E0506","severity":"error","message":"`while` has no `decreases` clause","file":"err/specs.bmb","line":33,"col":9,"end_line":33,"end_col":20,"fix":{"message":"add `decreases <expr>,` before the loop body"}}
+{"code":"E0507","severity":"error","message":"`specs::rec` is recursive and has no `decreases` clause","file":"err/specs.bmb","line":42,"col":8,"end_line":42,"end_col":11,"fix":{"message":"add `decreases <expr>,` after `ensures`"}}
+{"code":"E0507","severity":"error","message":"`specs::ping` is recursive and has no `decreases` clause","file":"err/specs.bmb","line":47,"col":8,"end_line":47,"end_col":12,"fix":{"message":"add `decreases <expr>,` after `ensures`"}}
+{"code":"E0507","severity":"error","message":"`specs::pong` is recursive and has no `decreases` clause","file":"err/specs.bmb","line":50,"col":8,"end_line":50,"end_col":12,"fix":{"message":"add `decreases <expr>,` after `ensures`"}}
+{"code":"E0508","severity":"error","message":"`old(x)` is only allowed in `ensures`, on a `&mut` parameter `x`","file":"err/specs.bmb","line":56,"col":26,"end_line":56,"end_col":32}
+{"code":"E0503","severity":"error","message":"`forall` is only allowed in specifications","file":"err/specs.bmb","line":62,"col":23,"end_line":62,"end_col":52}
+{"code":"E0503","severity":"error","message":"`==>` is only allowed in specifications","file":"err/specs.bmb","line":63,"col":9,"end_line":63,"end_col":24}
+{"code":"E0510","severity":"error","message":"`#[trigger]` outside `forall`","file":"err/specs.bmb","line":66,"col":47,"end_line":66,"end_col":62}
+{"code":"E0509","severity":"error","message":"`helper` is not a spec function","file":"err/specs.bmb","line":69,"col":12,"end_line":69,"end_col":18}
+{"code":"E0509","severity":"error","message":"`missing` is not a spec function","file":"err/specs.bmb","line":69,"col":20,"end_line":69,"end_col":27}
+{"code":"E0301","severity":"error","message":"unknown name `result`","file":"err/specs.bmb","line":74,"col":21,"end_line":74,"end_col":27,"fix":{"message":"name the result: `-> (r: T)` and use `r`"}}
+{"code":"E0103","severity":"error","message":"clauses must appear in the order `requires`, `ensures`, `decreases`","file":"err/specs.bmb","line":82,"col":9,"end_line":82,"end_col":17}
+{"code":"E0504","severity":"error","message":"`helper` is executable and cannot be called from a specification","file":"err/specs.bmb","line":89,"col":16,"end_line":89,"end_col":25}

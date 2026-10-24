@@ -1,0 +1,23 @@
+#[summary("효과 규칙")]
+mod effects {
+    #[effects(pure)]
+    fn prints() -> () { print_i64(1) }
+
+    #[effects(fast)]
+    fn unknown() -> () {}
+
+    #[effects(pure, io)]
+    fn two_effects() -> () {}
+
+    #[effects(pure)]
+    spec fn spec_with_effect() -> bool { 1 > 0 }
+
+    #[effects(pure)]
+    fn main(x: i64) -> () {}
+}
+
+#[summary("두 번째 진입점")]
+mod second {
+    #[effects(io)]
+    fn main() -> () {}
+}

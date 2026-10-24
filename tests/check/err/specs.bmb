@@ -1,0 +1,91 @@
+#[summary("명세 규칙")]
+mod specs {
+    spec fn always() -> bool { true }
+
+    spec fn pos(x: i64) -> bool { x > 0 }
+
+    #[effects(pure)]
+    fn helper(x: i64) -> i64 { x }
+
+    #[effects(pure)]
+    fn raw_contract(x: i64) -> (r: i64)
+        requires x > 0,
+        ensures r == x,
+    {
+        x
+    }
+
+    #[effects(pure)]
+    fn vacuous(x: i64) -> i64
+        requires always(),
+    {
+        x
+    }
+
+    #[effects(pure)]
+    fn calls_spec(x: i64) -> bool { pos(x) }
+
+    spec fn calls_exec(x: i64) -> bool { helper(x) > 0 }
+
+    #[effects(pure)]
+    fn no_decreases(n: u64) -> u64 {
+        let mut i: u64 = 0;
+        while i < n
+            invariant i <= n,
+        {
+            i = i + 1;
+        }
+        i
+    }
+
+    #[effects(pure)]
+    fn rec(n: u64) -> u64 {
+        if n == 0 { 0 } else { rec(n - 1) }
+    }
+
+    #[effects(pure)]
+    fn ping(n: u64) -> u64 { if n == 0 { 0 } else { pong(n - 1) } }
+
+    #[effects(pure)]
+    fn pong(n: u64) -> u64 { if n == 0 { 0 } else { ping(n - 1) } }
+
+    spec fn same(a: &[i64], b: &[i64]) -> bool { a.len() == b.len() }
+
+    #[effects(pure)]
+    fn old_on_shared(a: &[i64]) -> ()
+        requires same(a, old(a)),
+    {
+    }
+
+    #[effects(pure)]
+    fn exec_spec_syntax(x: i64) -> bool {
+        let b: bool = forall|i: u64| i < 3 ==> true;
+        x > 0 ==> x > 1
+    }
+
+    spec fn bare_trigger(a: &[i64]) -> bool { #[trigger] a[0] > 0 }
+
+    #[effects(pure)]
+    #[uses(helper, missing)]
+    fn bad_uses() -> () {}
+
+    #[effects(pure)]
+    fn result_name(x: i64) -> i64
+        ensures pos(result),
+    {
+        x
+    }
+
+    #[effects(pure)]
+    fn order(x: i64) -> (r: i64)
+        ensures pos(r),
+        requires pos(x),
+    {
+        x
+    }
+
+    #[effects(pure)]
+    fn spec_assign(x: i64) -> () {
+        assert(helper(x) > 0);
+    }
+}

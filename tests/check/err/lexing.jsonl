@@ -1,0 +1,6 @@
+{"code":"E0101","severity":"error","message":"unexpected character ```","file":"err/lexing.bmb","line":4,"col":23,"end_line":4,"end_col":24}
+{"code":"E0103","severity":"error","message":"expected `;`, found `2`","file":"err/lexing.bmb","line":4,"col":25,"end_line":4,"end_col":26}
+{"code":"E0105","severity":"error","message":"integer literal does not fit in 128 bits","file":"err/lexing.bmb","line":7,"col":21,"end_line":7,"end_col":60}
+{"code":"E0102","severity":"error","message":"unterminated string literal","file":"err/lexing.bmb","line":10,"col":33,"end_line":12,"end_col":1}
+{"code":"E0103","severity":"error","message":"expected `}`, found end of file","file":"err/lexing.bmb","line":12,"col":1,"end_line":12,"end_col":1}
+{"code":"E0103","severity":"error","message":"expected expression, found end of file","file":"err/lexing.bmb","line":12,"col":1,"end_line":12,"end_col":1}

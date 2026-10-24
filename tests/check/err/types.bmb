@@ -1,0 +1,95 @@
+#[summary("타입과 소유권")]
+mod types {
+    #[effects(pure)]
+    fn mismatch(x: u64) -> i64 { x }
+
+    #[effects(pure)]
+    fn mixed(a: i64, b: u64) -> i64 { a + b }
+
+    #[effects(pure)]
+    fn ref_local(a: &[i64]) -> usize {
+        let r: &[i64] = a;
+        0
+    }
+
+    #[effects(pure)]
+    fn ref_return(a: &[i64]) -> &[i64] { a }
+
+    #[effects(pure)]
+    fn ref_expr(a: [i64; 2]) -> () {
+        let b: [i64; 2] = &a;
+    }
+
+    #[effects(pure)]
+    fn two(a: &mut [i64], b: &[i64]) -> () {}
+
+    #[effects(pure)]
+    fn alias() -> () {
+        let mut x: [i64; 2] = [0, 0];
+        two(&mut x, &x);
+    }
+
+    #[effects(pure)]
+    fn immut(a: &[i64], n: i64) -> () {
+        let k: i64 = 0;
+        k = 1;
+        n = 2;
+        a[0] = 1;
+    }
+
+    #[effects(pure)]
+    fn not_mut_array() -> () {
+        let x: [i64; 2] = [0, 0];
+        two(&mut x, &x);
+    }
+
+    #[effects(pure)]
+    fn index_int(n: i64) -> i64 { n[0] }
+
+    #[effects(pure)]
+    fn index_type(a: &[i64], i: u64) -> i64 { a[i] }
+
+    #[effects(pure)]
+    fn neg(x: u64) -> u64 { -x }
+
+    #[effects(pure)]
+    fn big() -> i64 { 9223372036854775808 }
+
+    #[effects(pure)]
+    fn small_neg() -> i64 { -9223372036854775808 }
+
+    #[effects(pure)]
+    fn args() -> () { two([1]) }
+
+    #[effects(pure)]
+    fn unknown_fn() -> () { nowhere(1) }
+
+    #[effects(pure)]
+    fn unknown_var() -> i64 { y }
+
+    #[effects(pure)]
+    fn shadow(x: i64) -> i64 {
+        let x: i64 = 1;
+        {
+            let z: i64 = 2;
+        }
+        let z: i64 = 3;
+        x
+    }
+
+    #[effects(pure)]
+    fn need_ref() -> () {
+        let mut x: [i64; 2] = [0, 0];
+        two(x, &x);
+    }
+
+    #[effects(pure)]
+    fn unit_tail() -> i64 {
+        let x: i64 = 1;
+    }
+
+    #[effects(pure)]
+    fn cond(x: i64) -> i64 {
+        if x { 1 } else { false }
+    }
+}

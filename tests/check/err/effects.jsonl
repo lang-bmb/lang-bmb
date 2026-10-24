@@ -1,0 +1,6 @@
+{"code":"E0603","severity":"error","message":"`print_i64` has effect `io`, but `effects::prints` is `pure`","file":"err/effects.bmb","line":4,"col":25,"end_line":4,"end_col":37}
+{"code":"E0602","severity":"error","message":"unknown effect `fast`; milestone 1 has `pure` and `io`","file":"err/effects.bmb","line":6,"col":15,"end_line":6,"end_col":19}
+{"code":"E0602","severity":"error","message":"`#[effects(..)]` takes exactly one effect: `pure` or `io`","file":"err/effects.bmb","line":9,"col":5,"end_line":9,"end_col":25}
+{"code":"E0604","severity":"error","message":"spec functions are pure by definition","file":"err/effects.bmb","line":12,"col":5,"end_line":12,"end_col":21,"fix":{"message":"remove the attribute","replacement":""}}
+{"code":"E0701","severity":"error","message":"`main` must be `#[effects(io)] fn main() -> ()`","file":"err/effects.bmb","line":16,"col":8,"end_line":16,"end_col":12}
+{"code":"E0702","severity":"error","message":"the program already has a `main`","file":"err/effects.bmb","line":22,"col":8,"end_line":22,"end_col":12}

@@ -1,0 +1,11 @@
+#[summary("어휘")]
+mod lex {
+    #[effects(pure)]
+    fn f() -> i64 { 1 ` 2 }
+
+    #[effects(pure)]
+    fn g() -> i64 { 340282366920938463463374607431768211456 }
+
+    #[effects(pure)]
+    fn h() -> () { let s: i64 = "open; }
+}

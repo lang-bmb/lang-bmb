@@ -1,0 +1,13 @@
+[package]
+name = "bmb"
+version = "0.0.1"
+edition = "2024"
+description = "BMB v2 compiler"
+license = "MIT"
+publish = false
+
+[[bin]]
+name = "bmb"
+path = "src/main.rs"
+
+[dependencies]
