@@ -10,19 +10,19 @@
 
 ## 지금 할 일 (다음 3개)
 
-1. `INF-05` 단일 검증 게이트 스크립트
-2. `INF-02` Z3 설치와 버전 고정 → `INF-04` 세션 시작 훅
-3. `1B-01` 정수 의미론·SMT 인코딩 ADR
+1. `INF-02` Z3 설치와 버전 고정 → `INF-04` 세션 시작 훅
+2. `1B-01` 정수 의미론·SMT 인코딩 ADR
+3. `INF-01` CI
 
-그다음: `INF-01` CI, `INF-06` 백로그 검사, `1B-02` 검증용 중간 표현.
+그다음: `1B-02` 검증용 중간 표현.
 
 ## 0 착수
 
 | ID | 태스크 | 완료 기준 | 의존 | 상태 |
 | --- | --- | --- | --- | --- |
-| 0-01 | v0 보존과 main 리셋 | `legacy/v0` 브랜치, main 리셋 커밋 `9bb88ea` | — | ✅ |
-| 0-02 | 설계·착수 문서 | `docs/DESIGN.md`, `dev-docs/v2-genesis.md` | — | ✅ |
-| 0-03 | ADR 체계와 착수 결정 이관 | ADR-0001~0016 | 0-02 | ✅ |
+| 0-01 | v0 보존과 main 리셋 | `legacy/v0` 브랜치, main 리셋 커밋 | — | ✅ `9bb88ea` |
+| 0-02 | 설계·착수 문서 | `docs/DESIGN.md`, `dev-docs/v2-genesis.md` | — | ✅ `c7f8d5a` |
+| 0-03 | ADR 체계와 착수 결정 이관 | ADR-0001~0016 | 0-02 | ✅ `9a3adec` |
 | 0-04 | `v0.100-legacy` 태그 | GitHub에 태그 존재. 이 환경에서는 태그 푸시가 막혀 GitHub 웹에서 생성 필요 | 0-01 | 🚫 |
 | 0-05 | 작업 브랜치 정리 | 원격 브랜치 삭제가 막혀 GitHub 웹에서 삭제 필요 | — | 🚫 |
 
@@ -34,8 +34,8 @@
 | INF-02 | Z3 설치와 버전 고정 | 정해진 Z3 버전이 CI와 개발 환경에 설치됨. 버전이 다르면 빌드가 경고가 아니라 실패 | — | ⏳ |
 | INF-03 | LLVM 버전 고정 | LLVM 18 고정, CI 설치. 텍스트 IR이 고정 버전에서 검증됨 | — | ⏳ |
 | INF-04 | 세션 시작 훅 | 리포의 `.claude/settings.json` SessionStart 훅으로 새 세션에서 Z3·LLVM이 준비되어 `scripts/check.sh`가 바로 통과 | INF-02, INF-03, INF-05 | ⏳ |
-| INF-05 | 단일 검증 게이트 | `scripts/check.sh` 하나로 fmt·clippy(`-D warnings`)·test·백로그 검사를 실행. CI와 로컬이 같은 스크립트를 씀 | — | ⏳ |
-| INF-06 | 백로그 검사 | ID 중복, 존재하지 않는 의존 ID, 근거 없는 ✅, 의존이 미완료인 🔄를 찾아 실패하는 스크립트. 게이트에 포함 | INF-05 | ⏳ |
+| INF-05 | 단일 검증 게이트 | `scripts/check.sh` 하나로 fmt·clippy(`-D warnings`)·test·백로그 검사를 실행. CI와 로컬이 같은 스크립트를 씀 | — | ✅ `scripts/check.sh` |
+| INF-06 | 백로그 검사 | ID 중복, 존재하지 않는 의존 ID, 근거 없는 ✅, 의존이 미완료인 🔄를 찾아 실패하는 스크립트. 게이트에 포함 | INF-05 | ✅ `scripts/check_backlog.py` |
 
 ## 1A 프론트엔드
 
