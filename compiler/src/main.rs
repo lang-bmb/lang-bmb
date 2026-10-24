@@ -11,6 +11,10 @@ const USAGE: &str = "usage:
   bmb fmt [--check] <file.bmb>...
                             print the normal form (ADR-0019); --check fails if a file differs
   bmb hash <file.bmb>...    definition hashes (body, iface) as JSONL
+  bmb map [L0|L1|L2|all] <file.bmb>...
+                            standard maps as JSONL (ADR-0020)
+  bmb query <units|surface|edges|slice|find|contracts|status> [args] -- <file.bmb>...
+                            read queries as JSONL (ADR-0020)
   bmb codes                 list diagnostic codes as JSONL
   bmb doctor                check the pinned toolchain (z3, LLVM) as JSONL";
 
@@ -210,6 +214,31 @@ fn main() -> ExitCode {
                 }
             }
         }
+        Some("map") if args.len() > 1 => {
+            let (level, paths) = if matches!(args[1].as_str(), "L0" | "L1" | "L2" | "all") {
+                (args[1].clone(), &args[2..])
+            } else {
+                ("all".to_string(), &args[1..])
+            };
+            let files = match read_files(paths) {
+                Ok(f) => f,
+                Err(code) => return code,
+            };
+            respond(bmb::map_request(&files, &["map".into(), level]))
+        }
+        Some("query") if args.len() > 2 => {
+            let Some(sep) = args.iter().position(|a| a == "--") else {
+                eprintln!("bmb: put `--` between the query and the files");
+                return ExitCode::from(2);
+            };
+            let files = match read_files(&args[sep + 1..]) {
+                Ok(f) => f,
+                Err(code) => return code,
+            };
+            let mut req = vec!["query".to_string()];
+            req.extend(args[1..sep].iter().cloned());
+            respond(bmb::map_request(&files, &req))
+        }
         Some("codes") => {
             print!("{}", bmb::diag::codes_jsonl());
             ExitCode::SUCCESS
@@ -233,4 +262,21 @@ fn read_files(paths: &[String]) -> Result<Vec<(String, String)>, ExitCode> {
         }
     }
     Ok(files)
+}
+
+fn respond(r: Result<String, String>) -> ExitCode {
+    match r {
+        Ok(out) => {
+            print!("{out}");
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            if e.starts_with('{') {
+                print!("{e}");
+            } else {
+                eprintln!("bmb: {e}");
+            }
+            ExitCode::from(1)
+        }
+    }
 }

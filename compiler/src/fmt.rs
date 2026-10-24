@@ -461,3 +461,48 @@ pub fn hashes(p: &Program, fns: &BTreeMap<String, FnSig>) -> Vec<DefHash> {
         })
         .collect()
 }
+
+fn plain() -> Printer<'static> {
+    Printer {
+        qualify: None,
+        out: String::new(),
+    }
+}
+
+/// Normal form of one definition.
+pub fn def_text(f: &FnDef) -> String {
+    let mut pr = plain();
+    pr.function(f, 0, None, true);
+    pr.out
+}
+
+/// Normal form of a definition without its body (its surface).
+pub fn iface_text(f: &FnDef) -> String {
+    let mut pr = plain();
+    pr.function(f, 0, None, false);
+    pr.out
+}
+
+/// One-line signature and contract clauses in normal form (map L1).
+pub fn surface_parts(f: &FnDef) -> (String, Vec<String>, Vec<String>, Option<String>) {
+    let mut pr = plain();
+    let params: Vec<String> = f
+        .params
+        .iter()
+        .map(|p| format!("{}: {}", p.name.name, type_str(&p.ty)))
+        .collect();
+    let ret = match &f.ret.name {
+        Some(n) => format!("({}: {})", n.name, type_str(&f.ret.ty)),
+        None => type_str(&f.ret.ty),
+    };
+    let kw = if f.kind == FnKind::Spec {
+        "spec fn"
+    } else {
+        "fn"
+    };
+    let sig = format!("{kw} {}({}) -> {ret}", f.name.name, params.join(", "));
+    let req = f.requires.iter().map(|e| pr.expr(e, 0)).collect();
+    let ens = f.ensures.iter().map(|e| pr.expr(e, 0)).collect();
+    let dec = f.decreases.as_ref().map(|e| pr.expr(e, 0));
+    (sig, req, ens, dec)
+}

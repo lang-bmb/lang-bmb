@@ -12,6 +12,8 @@ cargo run -- codes               # 진단 코드 목록(JSONL)
 cargo run -- doctor              # 고정된 Z3·LLVM 버전 확인(scripts/toolchain.env)
 ../scripts/setup.sh              # 고정 버전 설치(새 클라우드 세션은 시작 훅이 자동 실행)
 ../scripts/check.sh              # 검증 게이트: fmt·clippy·test·백로그 검사
+cargo run -- map all a.bmb        # 표준 맵 L0~L2(JSONL, ADR-0020)
+cargo run -- query slice u::f -- a.bmb  # 읽기 질의: units surface edges slice find contracts status
 cargo test                       # 회귀 코퍼스(tests/check, tests/verify)와 게이트·보조 사실 테스트
 BMB_BLESS=1 cargo test           # 기대 진단(.jsonl) 갱신
 ```

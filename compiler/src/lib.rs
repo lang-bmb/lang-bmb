@@ -6,6 +6,7 @@ pub mod codegen;
 pub mod diag;
 pub mod fmt;
 pub mod lexer;
+pub mod map;
 pub mod parser;
 pub mod sha256;
 pub mod smt;
@@ -176,4 +177,31 @@ pub fn hash_sources(files: &[(String, String)]) -> Result<String, String> {
         ));
     }
     Ok(out)
+}
+
+/// Builds the maps and answers a request against them (ADR-0020).
+/// `request` is `["map", level]` or `["query", name, args..]`.
+pub fn map_request(files: &[(String, String)], request: &[String]) -> Result<String, String> {
+    let mut fe = frontend(files);
+    if fe.diags.has_errors() {
+        return Err(fe.diags.to_jsonl(&fe.sm));
+    }
+    let outcome = verify::verify_program(&fe.program, &fe.tables, &mut fe.diags);
+    let model = map::Model::build(&fe.program, &fe.tables, &fe.sm, &outcome);
+    match request.first().map(String::as_str) {
+        Some("map") => {
+            let level = request.get(1).map(String::as_str).unwrap_or("all");
+            if !matches!(level, "L0" | "L1" | "L2" | "all") {
+                return Err(format!("unknown map level `{level}`"));
+            }
+            Ok(model.map(level))
+        }
+        Some("query") => {
+            let name = request.get(1).ok_or("missing query name")?;
+            model
+                .query(name, &request[2..])
+                .map(|body| format!("{}\n{body}", map::HEADER))
+        }
+        _ => Err("expected `map` or `query`".into()),
+    }
 }
