@@ -106,3 +106,9 @@ mod alias_err {
         put(&mut x, if c { 0 } else { x[0] });
     }
 }
+
+#[summary("배열 반환은 M1에서 거부(코드 생성이 스칼라만 반환)")]
+mod array_return {
+    #[effects(pure)]
+    fn make() -> [i64; 2] { [1, 2] }
+}

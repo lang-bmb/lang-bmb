@@ -389,6 +389,15 @@ impl<'a> Checker<'a> {
             self.declare(&mut cx, &p.name, p.ty.kind.clone(), false, true);
         }
         self.check_value_type(&f.ret.ty, "return type");
+        if matches!(f.ret.ty.kind, TypeKind::Array(..)) {
+            // Code generation returns scalars only; arrays come back through
+            // a `&mut [T]` parameter.
+            self.err(
+                "E0402",
+                f.ret.ty.span,
+                "a function cannot return an array in milestone 1; fill a `&mut [T]` parameter instead",
+            );
+        }
 
         if f.kind == FnKind::Spec && (!f.requires.is_empty() || !f.ensures.is_empty()) {
             let sp = f.requires.first().or(f.ensures.first()).unwrap().span;

@@ -24,3 +24,4 @@
 {"code":"E0401","severity":"error","message":"expected `i64`, found `bool`","file":"err/types.bmb","line":93,"col":25,"end_line":93,"end_col":34}
 {"code":"E0410","severity":"error","message":"`x` is passed as `&mut` and also used by another argument","file":"err/types.bmb","line":105,"col":21,"end_line":105,"end_col":45}
 {"code":"E0410","severity":"error","message":"`x` is passed as `&mut` and also used by another argument","file":"err/types.bmb","line":106,"col":21,"end_line":106,"end_col":45}
+{"code":"E0402","severity":"error","message":"a function cannot return an array in milestone 1; fill a `&mut [T]` parameter instead","file":"err/types.bmb","line":113,"col":18,"end_line":113,"end_col":26}

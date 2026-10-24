@@ -1,0 +1,30 @@
+#[summary("배열 리터럴 대입: 오른쪽은 대입 전 값을 읽는다")]
+mod arr {
+    spec fn swapped(r: i64) -> bool { r == 1 }
+
+    #[effects(pure)]
+    #[uses(swapped)]
+    fn swap_back() -> (r: i64)
+        ensures swapped(r),
+    {
+        let mut a: [i64; 2] = [1, 2];
+        a = [a[1], a[0]];
+        a[1]
+    }
+
+    #[effects(pure)]
+    fn rotate() -> i64 {
+        let mut a: [i64; 3] = [1, 2, 3];
+        a = [a[2], a[0], a[1]];
+        a[0] * 100 + a[1] * 10 + a[2]
+    }
+}
+
+#[summary("진입점")]
+mod app {
+    #[effects(io)]
+    fn main() -> () {
+        print_i64(arr::swap_back());
+        print_i64(arr::rotate());
+    }
+}

@@ -436,8 +436,10 @@ impl<'p> Gen<'p> {
     fn init_array(&mut self, e: &Expr, ptr: &str, elem: &str) {
         match &e.kind {
             ExprKind::Array(items) => {
-                for (k, it) in items.iter().enumerate() {
-                    let v = self.expr(it).imm();
+                // Evaluate every element before the first store: in
+                // `a = [a[1], a[0]]` the right side reads the old `a`.
+                let vals: Vec<String> = items.iter().map(|it| self.expr(it).imm()).collect();
+                for (k, v) in vals.into_iter().enumerate() {
                     let p = self.t();
                     self.emit(format!(
                         "{p} = getelementptr inbounds {}, ptr {ptr}, i64 {k}",
