@@ -561,9 +561,42 @@ impl<'p> Model<'p> {
                 }
                 Self::lines(self.impact(d, change))
             }
+            "duplicates" => Self::lines(self.duplicates()),
             other => return Err(format!("unknown query `{other}`")),
         };
         Ok(body)
+    }
+
+    /// Groups of definitions with the same body hash (backlog 2D-06). The body
+    /// hash leaves out the definition's own name (ADR-0019 §2), so equal
+    /// hashes are the same definition under different names or units. One row
+    /// `{"hash","defs"}` per group of two or more, by hash, then a summary row.
+    fn duplicates(&self) -> Vec<J> {
+        let mut groups: BTreeMap<&str, Vec<String>> = BTreeMap::new();
+        for d in self.defs.values() {
+            groups.entry(&d.body).or_default().push(d.path.clone());
+        }
+        let mut rows = Vec::new();
+        let mut dup_defs = 0;
+        for (hash, mut defs) in groups {
+            if defs.len() < 2 {
+                continue;
+            }
+            defs.sort();
+            dup_defs += defs.len();
+            rows.push(J::O(vec![
+                ("hash", J::S(hash.into())),
+                ("defs", strs(defs)),
+            ]));
+        }
+        let groups = rows.len();
+        rows.push(J::O(vec![
+            ("summary", J::B(true)),
+            ("groups", J::N(groups as u64)),
+            ("duplicate_defs", J::N(dup_defs as u64)),
+            ("defs", J::N(self.defs.len() as u64)),
+        ]));
+        rows
     }
 
     /// Definitions whose proofs must be redone when `d` changes (backlog

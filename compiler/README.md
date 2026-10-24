@@ -9,6 +9,7 @@ cargo run -- verify a.bmb        # 검사 + 증명. 정의별 상태 줄 포함.
 cargo run -- build a.bmb -o app  # 모든 의무가 증명된 경우에만 실행 파일 생성
 cargo run -- emit-llvm a.bmb -o a.ll  # IR. 증명되지 않은 의무는 런타임 검사(trap)로 남음
 cargo run -- codes               # 진단 코드 목록(JSONL)
+cargo run -- fix a.bmb           # 기계적 수정(replacement)을 적용·재검사 반복. 기본은 보고만(JSONL), --write로 제자리 수정, --print로 고친 텍스트 출력
 cargo run -- verify --cache .bmb-cache a.bmb  # 증명 캐시: 해법기 입력이 같은 증명된 의무는 다시 풀지 않음(2D-01)
 cargo run -- stability a.bmb     # Z3 시드 0..5로 증명해 판정이 시드에 따라 바뀌는 정의를 보고(1B-19)
 cargo run -- doctor              # 고정된 Z3·LLVM 버전 확인(scripts/toolchain.env)
@@ -47,6 +48,7 @@ ADR-0016의 부분집합을 구체화한 것이다. 모두 "선택을 필수로"
 - 한 줄에 객체 하나: `code`, `severity`, `message`, `file`, `line`, `col`, `end_line`, `end_col`, 선택적 `fix`(`message`, 기계적으로 고칠 수 있으면 `replacement`).
 - 위치 순으로 정렬되고 중복이 제거된다. 같은 입력이면 같은 바이트가 나온다.
 - 코드는 `src/diag.rs`의 `CODES`가 유일한 목록이다. 번호는 바꾸거나 재사용하지 않는다.
+- `bmb fix`(백로그 2D-04)는 `replacement`가 있는 진단을 모두 적용하고 다시 검사하기를 적용할 것이 없을 때까지 반복한다(최대 16회, 같은 텍스트가 다시 나오면 멈춤). 한 회차에는 (파일, 시작, 끝, 코드, 텍스트) 순으로 보며 이미 고른 것과 겹치지 않는 것만 적용한다(같은 위치의 삽입 둘도 겹침). 출력은 적용한 수정마다 `{"round","file","line","col","code","replacement"}`(위치는 그 회차 전 텍스트 기준), 남은 진단, 요약 행 `{"summary":true,"rounds","applied","changed","remaining","ok"}`. 증명은 돌리지 않는다. 기본은 파일을 바꾸지 않고, `--write`가 바뀐 파일만 제자리에 쓴다. 공백은 정리하지 않으므로 정규형이 필요하면 `bmb fmt`를 이어 쓴다. 오류가 남으면 종료 코드 1
 - E02xx는 Rust 습관(타입 생략, 매크로, `return`, `as`, `?` 등)을 따로 묶는다. Rust 습관 오류율 측정(DESIGN.md §4.1)이 이 범주를 센다.
 
 ## 증명 게이트
@@ -61,6 +63,7 @@ ADR-0016의 부분집합을 구체화한 것이다. 모두 "선택을 필수로"
 - 증명된 의무는 검사 없이 LLVM에 사실로 전달된다: 넘침 없음 → `nsw`/`nuw`, 범위 안 → 검사 없는 `getelementptr inbounds`, 0 아닌 제수 → 검사 없는 `sdiv`/`udiv`. 각 줄에 `; proved Exxxx` 주석이 붙는다.
 - 증명되지 않은 의무는 `llvm.trap`으로 가는 검사로 남는다(`; unproved: ..`). `bmb build`는 그런 프로그램을 거부한다.
 - `&mut` 슬라이스 매개변수는 `noalias`, `&` 슬라이스는 `readonly`(ADR-0015).
+- 닫힌 세계(백로그 2D-07): 모듈 하나가 프로그램 전체이므로 모든 함수(BMB `main`, `bmb_print_i64` 포함)가 `internal`이고, C 진입점 `@main`만 외부에 보인다. LLVM이 자유롭게 인라인하고 쓰지 않는 함수를 지운다. 기준선 벤치 7개에서 실행 파일에 BMB 함수 기호가 0개가 되었고(전에는 2~4개) 크기가 100~180바이트 줄었다. 실행 시간 차이는 측정 잡음(±10%) 안이었다.
 
 ## 맵 스키마에 추가된 키
 
@@ -79,5 +82,6 @@ ADR-0020 §5의 7개 질의 외에 추가한 질의다. 기존 질의와 행 형
 | 질의 | 결과 |
 | --- | --- |
 | `impact DEF [body\|iface]` | DEF의 본문(`body`) 또는 계약·시그니처(`iface`, 기본값)를 바꾸면 다시 증명할 정의마다 `{"path","reason"}` 행, 그리고 요약 행 `{"summary":true,"changed","change","reprove","defs"}`. `reason`: `changed`(자신), `calls`(호출자: 계약이 바뀜), `uses`(`#[uses]`로 펼침), `names`(시그니처가 바뀐 `spec fn`을 이름으로 씀). 증명은 피호출자를 계약으로만, `spec fn`을 `#[uses]`로만 보므로(ADR-0017 §4) 영향은 한 단계에서 멈춘다(백로그 2D-02) |
+| `duplicates` | 본문 해시(`body`)가 같은 정의 묶음마다 `{"hash","defs"}` 행(정의가 둘 이상인 묶음만, 해시순, `defs`는 경로순), 그리고 요약 행 `{"summary":true,"groups","duplicate_defs","defs"}`. 본문 해시는 정의 자신의 이름을 빼므로(ADR-0019 §2) 같은 해시는 이름이나 단위만 다른 같은 정의다(DESIGN.md §7.2, 백로그 2D-06). 자기 재귀 호출은 전체 경로로 남아 재귀 정의의 복제는 묶이지 않는다 |
 
-MCP `query` 도구의 설명문은 바꾸지 않았다. 실제 모델 측정(1E-10)이 끝날 때까지 에이전트가 보는 문구를 그대로 둔다. 도구는 `impact`도 받는다.
+MCP `query` 도구의 설명문은 바꾸지 않았다. 실제 모델 측정(1E-10)이 끝날 때까지 에이전트가 보는 문구를 그대로 둔다. 도구는 `impact`·`duplicates`도 받는다.

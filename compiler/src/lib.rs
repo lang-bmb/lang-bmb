@@ -78,6 +78,166 @@ pub fn check_sources(files: &[(String, String)]) -> CheckOutput {
     }
 }
 
+/// One replacement applied by `fix_sources`.
+pub struct AppliedFix {
+    /// 1-based round in which it was applied.
+    pub round: usize,
+    pub file: String,
+    /// Position (1-based line, column in characters) in the text before that round.
+    pub line: u32,
+    pub col: u32,
+    pub code: &'static str,
+    pub replacement: String,
+}
+
+/// Result of `fix_sources`.
+pub struct FixOutput {
+    /// Every input file with its fixed text, in input order.
+    pub files: Vec<(String, String)>,
+    pub applied: Vec<AppliedFix>,
+    /// Rounds that applied at least one replacement.
+    pub rounds: usize,
+    /// Diagnostics of the fixed program (front end only, no proof), as JSONL.
+    pub diagnostics: String,
+    pub ok: bool,
+}
+
+impl FixOutput {
+    /// Files whose text changed, in input order.
+    pub fn changed<'a>(&'a self, original: &[(String, String)]) -> Vec<&'a str> {
+        self.files
+            .iter()
+            .zip(original)
+            .filter(|(a, b)| a.1 != b.1)
+            .map(|(a, _)| a.0.as_str())
+            .collect()
+    }
+
+    /// JSONL report: one `{"round","file","line","col","code","replacement"}`
+    /// row per applied replacement, the remaining diagnostics, then a summary
+    /// row `{"summary":true,"rounds","applied","changed","remaining","ok"}`.
+    pub fn report(&self, original: &[(String, String)]) -> String {
+        let mut out = String::new();
+        for a in &self.applied {
+            out.push_str(&format!(
+                "{{\"round\":{},\"file\":{},\"line\":{},\"col\":{},\"code\":{},\"replacement\":{}}}\n",
+                a.round,
+                diag::json_str(&a.file),
+                a.line,
+                a.col,
+                diag::json_str(a.code),
+                diag::json_str(&a.replacement)
+            ));
+        }
+        out.push_str(&self.diagnostics);
+        let changed: Vec<String> = self
+            .changed(original)
+            .into_iter()
+            .map(diag::json_str)
+            .collect();
+        out.push_str(&format!(
+            "{{\"summary\":true,\"rounds\":{},\"applied\":{},\"changed\":[{}],\"remaining\":{},\"ok\":{}}}\n",
+            self.rounds,
+            self.applied.len(),
+            changed.join(","),
+            self.diagnostics.lines().count(),
+            self.ok
+        ));
+        out
+    }
+}
+
+/// Upper bound on fix rounds; each round re-checks the program.
+pub const FIX_MAX_ROUNDS: usize = 16;
+
+/// Applies the mechanical fixes (diagnostic `replacement`s, DESIGN.md §8.2,
+/// backlog 2D-04) until none applies. Each round checks the program, takes
+/// the replacements in (file, start, end, code, text) order and keeps each
+/// one that does not overlap one already kept (two insertions at the same
+/// point overlap), applies them, and checks again. It stops when no
+/// replacement changes the text, when a text repeats, or after
+/// `FIX_MAX_ROUNDS` rounds. The result depends only on the input.
+pub fn fix_sources(files: &[(String, String)]) -> FixOutput {
+    let mut texts: Vec<(String, String)> = files.to_vec();
+    let mut applied = Vec::new();
+    let mut rounds = 0;
+    let mut seen = std::collections::BTreeSet::new();
+    seen.insert(texts.clone());
+    loop {
+        let fe = frontend(&texts);
+        if rounds == FIX_MAX_ROUNDS {
+            return fix_output(texts, applied, rounds, fe);
+        }
+        let mut cand: Vec<(usize, usize, usize, &'static str, String)> = fe
+            .diags
+            .items
+            .iter()
+            .filter_map(|d| {
+                let r = d.fix.as_ref()?.replacement.as_ref()?;
+                let (f, lo, hi) = (d.span.file as usize, d.span.lo as usize, d.span.hi as usize);
+                let text = &texts[f].1;
+                let ok = lo <= hi
+                    && hi <= text.len()
+                    && text.is_char_boundary(lo)
+                    && text.is_char_boundary(hi)
+                    && text[lo..hi] != **r;
+                ok.then(|| (f, lo, hi, d.code, r.clone()))
+            })
+            .collect();
+        cand.sort();
+        cand.dedup_by(|a, b| (a.0, a.1, a.2, &a.4) == (b.0, b.1, b.2, &b.4));
+        let mut kept: Vec<(usize, usize, usize, &'static str, String)> = Vec::new();
+        for c in cand {
+            if let Some(last) = kept.last()
+                && last.0 == c.0
+                && (c.1 < last.2 || (c.1 == c.2 && last.1 == last.2 && c.1 == last.1))
+            {
+                continue;
+            }
+            kept.push(c);
+        }
+        if kept.is_empty() {
+            return fix_output(texts, applied, rounds, fe);
+        }
+        rounds += 1;
+        let mut next = texts.clone();
+        for (f, lo, hi, _, r) in kept.iter().rev() {
+            next[*f].1.replace_range(*lo..*hi, r);
+        }
+        for (f, lo, _, code, r) in kept {
+            let (line, col) = fe.sm.line_col(f as u32, lo as u32);
+            applied.push(AppliedFix {
+                round: rounds,
+                file: texts[f].0.clone(),
+                line,
+                col,
+                code,
+                replacement: r,
+            });
+        }
+        if !seen.insert(next.clone()) {
+            let fe = frontend(&next);
+            return fix_output(next, applied, rounds, fe);
+        }
+        texts = next;
+    }
+}
+
+fn fix_output(
+    files: Vec<(String, String)>,
+    applied: Vec<AppliedFix>,
+    rounds: usize,
+    fe: Frontend,
+) -> FixOutput {
+    FixOutput {
+        files,
+        applied,
+        rounds,
+        ok: !fe.diags.has_errors(),
+        diagnostics: fe.diags.to_jsonl(&fe.sm),
+    }
+}
+
 /// Parses, checks and proves the given files. Proof runs only on a program
 /// that checks cleanly.
 pub fn verify_sources(files: &[(String, String)]) -> VerifyOutput {

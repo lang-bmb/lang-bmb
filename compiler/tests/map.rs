@@ -148,3 +148,66 @@ fn bad_queries_are_errors() {
     assert!(req(&["query", "edges", "lib::dec", "sideways"]).is_err());
     assert!(req(&["query", "teleport"]).is_err());
 }
+
+#[test]
+fn duplicates_groups_equal_bodies_across_names_and_units() {
+    // `lib2::dec2` is `lib::dec` under another name and unit; the spec fns
+    // repeat too. `lib2::other` has no twin.
+    const C: &str = r#"
+#[summary("복제")]
+mod lib2 {
+    spec fn pos(x: i64) -> bool { x > 0 }
+
+    spec fn is_dec(x: i64, r: i64) -> bool { r == x - 1 }
+
+    #[effects(pure)]
+    #[uses(lib::pos, lib::is_dec)]
+    fn dec2(x: i64) -> (r: i64)
+        requires lib::pos(x),
+        ensures lib::is_dec(x, r),
+    {
+        x - 1
+    }
+
+    #[effects(pure)]
+    fn other(x: i64) -> i64 {
+        x
+    }
+}
+"#;
+    let f = files(&[("a.bmb", A), ("b.bmb", B), ("c.bmb", C)]);
+    let out = run(&f, &["query", "duplicates"]);
+    let rows: Vec<&str> = out.lines().skip(1).collect();
+    let groups: Vec<&str> = rows
+        .iter()
+        .copied()
+        .filter(|r| r.contains("\"defs\":["))
+        .collect();
+    for want in [
+        "\"defs\":[\"lib2::dec2\",\"lib::dec\"]}",
+        "\"defs\":[\"lib2::pos\",\"lib::pos\"]}",
+        "\"defs\":[\"lib2::is_dec\",\"lib::is_dec\"]}",
+    ] {
+        assert!(groups.iter().any(|r| r.ends_with(want)), "{want}\n{out}");
+    }
+    assert!(!out.contains("lib2::other"), "{out}");
+    assert_eq!(
+        *rows.last().unwrap(),
+        "{\"summary\":true,\"groups\":3,\"duplicate_defs\":6,\"defs\":9}"
+    );
+    assert!(rows[0].starts_with("{\"hash\":\"sha256:"), "{out}");
+    let hashes: Vec<&str> = groups.iter().map(|r| &r[..80]).collect();
+    let mut sorted = hashes.clone();
+    sorted.sort();
+    assert_eq!(hashes, sorted);
+    // Same answer for another file order.
+    let g = files(&[("c.bmb", C), ("b.bmb", B), ("a.bmb", A)]);
+    assert_eq!(run(&g, &["query", "duplicates"]), out);
+    // No duplicates: only the summary row.
+    let h = files(&[("a.bmb", A), ("b.bmb", B)]);
+    let none = run(&h, &["query", "duplicates"]);
+    assert_eq!(
+        none.lines().nth(1).unwrap(),
+        "{\"summary\":true,\"groups\":0,\"duplicate_defs\":0,\"defs\":5}"
+    );
+}

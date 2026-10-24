@@ -14,10 +14,15 @@ const USAGE: &str = "usage:
                             check, prove (all obligations) and build an executable
   bmb fmt [--check] <file.bmb>...
                             print the normal form (ADR-0019); --check fails if a file differs
+  bmb fix [--write|--print] <file.bmb>...
+                            apply mechanical fixes (diagnostic replacements) and re-check until
+                            none applies; JSONL report of applied fixes, remaining diagnostics
+                            and a summary; --write rewrites changed files in place, --print
+                            prints the fixed text instead of the report; fails if errors remain
   bmb hash <file.bmb>...    definition hashes (body, iface) as JSONL
   bmb map [L0|L1|L2|all] <file.bmb>...
                             standard maps as JSONL (ADR-0020)
-  bmb query <units|surface|edges|slice|find|contracts|status|impact> [args] -- <file.bmb>...
+  bmb query <units|surface|edges|slice|find|contracts|status|impact|duplicates> [args] -- <file.bmb>...
                             read queries as JSONL (ADR-0020)
   bmb import DIR <file.bmb>...
                             create or replace workspace DIR from files, in normal form
@@ -239,6 +244,56 @@ fn main() -> ExitCode {
                         ExitCode::from(1)
                     }
                 }
+            }
+        }
+        Some("fix") if args.len() > 1 => {
+            let mut rest = &args[1..];
+            let (mut write, mut print_text) = (false, false);
+            loop {
+                match rest.first().map(String::as_str) {
+                    Some("--write") => write = true,
+                    Some("--print") => print_text = true,
+                    _ => break,
+                }
+                rest = &rest[1..];
+            }
+            if rest.is_empty() || (write && print_text) {
+                eprintln!("{USAGE}");
+                return ExitCode::from(2);
+            }
+            let files = match read_files(rest) {
+                Ok(f) => f,
+                Err(code) => return code,
+            };
+            let out = bmb::fix_sources(&files);
+            if print_text {
+                let text = out
+                    .files
+                    .iter()
+                    .map(|(_, t)| t.as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                print!("{text}");
+            } else {
+                print!("{}", out.report(&files));
+            }
+            if write {
+                for (path, text) in out
+                    .files
+                    .iter()
+                    .zip(&files)
+                    .filter_map(|(a, b)| (a.1 != b.1).then_some((&a.0, &a.1)))
+                {
+                    if let Err(e) = std::fs::write(path, text) {
+                        eprintln!("bmb: cannot write {path}: {e}");
+                        return ExitCode::from(2);
+                    }
+                }
+            }
+            if out.ok {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::from(1)
             }
         }
         Some("hash") if args.len() > 1 => {

@@ -189,3 +189,58 @@ fn word_elements_are_eight_byte_aligned() {
         "{body}"
     );
 }
+
+#[test]
+fn only_the_entry_point_is_external() {
+    // Closed world (backlog 2D-07): LLVM may inline and drop every function.
+    let text = r#"
+#[summary("연결")]
+mod m {
+    #[effects(pure)]
+    fn unused(x: i64) -> i64 { x }
+
+    #[effects(pure)]
+    fn one() -> i64 { 1 }
+
+    #[effects(io)]
+    fn main() -> () {
+        print_i64(one());
+    }
+}
+"#;
+    let out = bmb::emit_llvm_sources(&src("l.bmb", text));
+    let ir = out.ir.unwrap();
+    let defines: Vec<&str> = ir.lines().filter(|l| l.starts_with("define ")).collect();
+    assert_eq!(defines.len(), 5, "{ir}");
+    for d in &defines {
+        assert!(
+            d.starts_with("define internal ") || d.starts_with("define i32 @main()"),
+            "{d}"
+        );
+    }
+    assert_eq!(
+        defines.iter().filter(|d| !d.contains(" internal ")).count(),
+        1
+    );
+    for f in [
+        "@\"m::unused\"",
+        "@\"m::one\"",
+        "@\"m::main\"",
+        "@bmb_print_i64",
+    ] {
+        assert!(
+            defines
+                .iter()
+                .any(|d| d.starts_with("define internal ") && d.contains(f)),
+            "{f}: {ir}"
+        );
+    }
+    // The built program still runs.
+    let dir = std::env::temp_dir().join(format!("bmb-link-{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    let exe = dir.join("l");
+    bmb::toolchain::build_executable(&ir, exe.to_str().unwrap()).unwrap();
+    let run = Command::new(&exe).output().unwrap();
+    assert_eq!(String::from_utf8_lossy(&run.stdout), "1\n");
+    let _ = fs::remove_dir_all(&dir);
+}
