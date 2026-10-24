@@ -328,9 +328,22 @@ impl Server {
 
     /// Handles one JSON-RPC message; `None` for notifications.
     pub fn handle(&mut self, msg: &Value) -> Option<Value> {
+        // Anything but a request object (a string, a number, an array: MCP
+        // has no batches) is an invalid request with a null id (JSON-RPC 2.0
+        // §5); before backlog 1D-23 it got no answer and the client waited.
+        if !matches!(msg, Value::Object(_)) {
+            return Some(rpc_error(
+                Value::Null,
+                -32600,
+                "invalid request: expected a JSON-RPC request object",
+            ));
+        }
         let id = msg.get("id").cloned();
-        let method = msg.get("method").and_then(Value::as_str).unwrap_or("");
+        let method = msg.get("method").and_then(Value::as_str);
         let id = id?; // notifications get no response
+        let Some(method) = method else {
+            return Some(rpc_error(id, -32600, "invalid request: missing `method`"));
+        };
         let result = match method {
             "initialize" => Ok(obj(vec![
                 ("protocolVersion", s(PROTOCOL)),
@@ -375,19 +388,23 @@ impl Server {
         };
         Some(match result {
             Ok(r) => obj(vec![("jsonrpc", s("2.0")), ("id", id), ("result", r)]),
-            Err((code, m)) => obj(vec![
-                ("jsonrpc", s("2.0")),
-                ("id", id),
-                (
-                    "error",
-                    obj(vec![
-                        ("code", Value::Num(code.to_string())),
-                        ("message", s(&m)),
-                    ]),
-                ),
-            ]),
+            Err((code, m)) => rpc_error(id, code, &m),
         })
     }
+}
+
+fn rpc_error(id: Value, code: i64, message: &str) -> Value {
+    obj(vec![
+        ("jsonrpc", s("2.0")),
+        ("id", id),
+        (
+            "error",
+            obj(vec![
+                ("code", Value::Num(code.to_string())),
+                ("message", s(message)),
+            ]),
+        ),
+    ])
 }
 
 /// Serves stdin/stdout until end of input.
@@ -402,17 +419,7 @@ pub fn serve(root: &Path) -> std::io::Result<()> {
         }
         let reply = match json::parse(&line) {
             Ok(msg) => server.handle(&msg),
-            Err(e) => Some(obj(vec![
-                ("jsonrpc", s("2.0")),
-                ("id", Value::Null),
-                (
-                    "error",
-                    obj(vec![
-                        ("code", Value::Num("-32700".into())),
-                        ("message", s(&e)),
-                    ]),
-                ),
-            ])),
+            Err(e) => Some(rpc_error(Value::Null, -32700, &e)),
         };
         if let Some(r) = reply {
             writeln!(stdout, "{}", r.to_json())?;

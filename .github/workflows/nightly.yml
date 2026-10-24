@@ -31,6 +31,15 @@ jobs:
           BMB_FUZZ_ITERS: "100000"
           BMB_FUZZ_SEED: ${{ github.run_number }}
         run: cargo test --release --test fuzz -- --nocapture
+      - name: Normal form and MCP session fuzzing
+        env:
+          BMB_FMT_FUZZ_ITERS: "5000"
+          BMB_FMT_FUZZ_PROVE: "40"
+          BMB_FMT_FUZZ_SEED: ${{ github.run_number }}
+          BMB_MCP_FUZZ_SESSIONS: "1000"
+          BMB_MCP_FUZZ_CALLS: "200"
+          BMB_MCP_FUZZ_SEED: ${{ github.run_number }}
+        run: cargo test --release --test fmt_fuzz --test mcp_fuzz -- --nocapture
       - name: Soundness fuzzing
         env:
           BMB_SOUND_ITERS: "200"
