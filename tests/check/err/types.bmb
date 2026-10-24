@@ -93,3 +93,16 @@ mod types {
         if x { 1 } else { false }
     }
 }
+
+#[summary("별칭 검사: 블록 안에서 같은 변수를 쓰면 거부")]
+mod alias_err {
+    #[effects(pure)]
+    fn put(a: &mut [i64], v: i64) -> () {}
+
+    #[effects(pure)]
+    fn caller(c: bool) -> () {
+        let mut x: [i64; 2] = [0, 0];
+        put(&mut x, { let t: i64 = x[1]; t });
+        put(&mut x, if c { 0 } else { x[0] });
+    }
+}

@@ -26,6 +26,7 @@ fn gate_fails_without_solver_or_resources() {
     assert!(
         out.scripts
             .values()
+            .filter(|s| !s.is_empty()) // definitions without obligations send nothing
             .all(|s| s.contains(&format!("(set-option :rlimit {})", bmb::smt::rlimit())))
     );
     assert!(!out.scripts.values().any(|s| s.contains("999999999999")));

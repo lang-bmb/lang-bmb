@@ -1339,7 +1339,7 @@ impl<'a> Checker<'a> {
         }
         for (root, i) in mut_roots {
             for (j, a) in args.iter().enumerate() {
-                if j != i && mentions(a, &root) {
+                if j != i && mentions_strict(a, &root) {
                     self.err(
                         "E0410",
                         a.span,
@@ -1600,14 +1600,38 @@ fn collect_triggers<'e>(e: &'e Expr, out: &mut Vec<&'e Expr>) {
 }
 
 /// Like `mentions`, but exact for every expression kind (used for triggers).
+/// True if any statement or the tail of `b` mentions `name`.
+fn block_mentions(b: &Block, name: &str) -> bool {
+    b.stmts.iter().any(|s| match s {
+        Stmt::Let { init, .. } => mentions_strict(init, name),
+        Stmt::Assign { target, value, .. } => {
+            mentions_strict(target, name) || mentions_strict(value, name)
+        }
+        Stmt::While {
+            cond,
+            invariants,
+            decreases,
+            body,
+            ..
+        } => {
+            mentions_strict(cond, name)
+                || invariants.iter().any(|i| mentions_strict(i, name))
+                || decreases.as_ref().is_some_and(|d| mentions_strict(d, name))
+                || block_mentions(body, name)
+        }
+        Stmt::Assert { cond, .. } => mentions_strict(cond, name),
+        Stmt::Expr(e) => mentions_strict(e, name),
+    }) || b.tail.as_ref().is_some_and(|t| mentions_strict(t, name))
+}
+
 fn mentions_strict(e: &Expr, name: &str) -> bool {
     match &e.kind {
         ExprKind::If { cond, then, els } => {
             mentions_strict(cond, name)
-                || then.tail.as_ref().is_some_and(|t| mentions_strict(t, name))
+                || block_mentions(then, name)
                 || els.as_ref().is_some_and(|x| mentions_strict(x, name))
         }
-        ExprKind::Block(b) => b.tail.as_ref().is_some_and(|t| mentions_strict(t, name)),
+        ExprKind::Block(b) => block_mentions(b, name),
         ExprKind::Forall { body, .. } => mentions_strict(body, name),
         ExprKind::Call { args, .. } | ExprKind::Array(args) => {
             args.iter().any(|a| mentions_strict(a, name))

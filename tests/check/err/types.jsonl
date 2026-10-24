@@ -22,3 +22,5 @@
 {"code":"E0401","severity":"error","message":"expected `i64`, found `()`","file":"err/types.bmb","line":87,"col":27,"end_line":89,"end_col":6}
 {"code":"E0401","severity":"error","message":"expected `bool`, found `i64`","file":"err/types.bmb","line":93,"col":12,"end_line":93,"end_col":13}
 {"code":"E0401","severity":"error","message":"expected `i64`, found `bool`","file":"err/types.bmb","line":93,"col":25,"end_line":93,"end_col":34}
+{"code":"E0410","severity":"error","message":"`x` is passed as `&mut` and also used by another argument","file":"err/types.bmb","line":105,"col":21,"end_line":105,"end_col":45}
+{"code":"E0410","severity":"error","message":"`x` is passed as `&mut` and also used by another argument","file":"err/types.bmb","line":106,"col":21,"end_line":106,"end_col":45}

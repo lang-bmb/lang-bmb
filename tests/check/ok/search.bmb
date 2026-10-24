@@ -103,3 +103,17 @@ mod app {
         series::clear(&mut data);
     }
 }
+
+#[summary("별칭 검사: 다른 변수만 쓰는 블록 인자는 허용")]
+mod alias_ok {
+    #[effects(pure)]
+    fn put(a: &mut [i64], v: i64) -> () {}
+
+    #[effects(pure)]
+    fn caller(c: bool) -> () {
+        let mut x: [i64; 2] = [0, 0];
+        let y: [i64; 2] = [1, 2];
+        put(&mut x, if c { y[0] } else { y[1] });
+        put(&mut x, { let t: i64 = y[1]; t });
+    }
+}
