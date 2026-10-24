@@ -1,0 +1,23 @@
+#[summary("증명 게이트가 지원하지 않는 구성")]
+mod unsupported {
+    spec fn all_pos(a: &[i64], n: usize) -> bool
+        decreases n,
+    {
+        if n == 0 {
+            true
+        } else {
+            forall|i: usize| i < n ==> #[trigger] a[i] > 0 && all_pos(a, n - 1)
+        }
+    }
+
+    // The checker accepts `assert` in a spec fn body; the proof gate rejects
+    // it when the definition is unfolded.
+    spec fn asserts(x: i64) -> bool {
+        assert(x > 0);
+        x > 1
+    }
+
+    #[effects(pure)]
+    #[uses(asserts)]
+    fn unfolds() -> () { assert(asserts(5)); }
+}

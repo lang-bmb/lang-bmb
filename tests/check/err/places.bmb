@@ -1,0 +1,59 @@
+#[summary("타입 형태, 메서드, 대입 대상")]
+mod places {
+    spec fn mut_spec(a: &mut [i64]) -> bool { a.len() > 0 }
+
+    #[effects(pure)]
+    fn ref_scalar(a: &i64) -> () {}
+
+    #[effects(pure)]
+    fn bare_slice(a: [i64]) -> () {}
+
+    #[effects(pure)]
+    fn nested(a: [[i64; 2]; 2]) -> () {}
+
+    spec fn holds(b: bool) -> bool { b }
+
+    spec fn bool_binder() -> bool {
+        forall|b: bool| #[trigger] holds(b) ==> b
+    }
+
+    #[effects(pure)]
+    fn len_args(a: &[i64]) -> usize { a.len(1) }
+
+    #[effects(pure)]
+    fn len_scalar(x: i64) -> usize { x.len() }
+
+    #[effects(pure)]
+    fn wrap_arity(x: i64) -> i64 { x.wrapping_add() }
+
+    #[effects(pure)]
+    fn wrap_bool(b: bool) -> bool { b.wrapping_add(b) }
+
+    #[effects(pure)]
+    fn too_long() -> () {
+        let a: [i64; 4294967296] = [0; 4294967296];
+    }
+
+    #[effects(pure)]
+    fn index_scalar() -> () {
+        let mut k: i64 = 0;
+        k[0] = 1;
+    }
+
+    #[effects(pure)]
+    fn nested_target() -> () {
+        let mut x: [i64; 2] = [0, 0];
+        x[0][0] = 1;
+    }
+
+    #[effects(pure)]
+    fn call_target() -> () {
+        len_scalar(1) = 1;
+    }
+
+    #[effects(pure)]
+    fn put(a: &mut [i64]) -> () {}
+
+    #[effects(pure)]
+    fn ref_literal() -> () { put(&mut [1, 2]) }
+}

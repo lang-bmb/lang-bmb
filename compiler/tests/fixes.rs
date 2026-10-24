@@ -77,6 +77,20 @@ fn each_mechanical_fix_applies_and_clears_its_error() {
         ("E0209", "#[effects(pure)]\nfn f() { }"),
         ("E0402", "#[effects(pure)]\nfn f(x: i32) -> i64 { x }"),
         ("E0601", "#[uses()]\nfn f() -> () {}"),
+        ("E0207", "#[effects(pure)]\npub fn f() -> () {}"),
+        ("E0210", "#[effects(pure)]\nfn f(mut x: i64) -> i64 { x }"),
+        (
+            "E0604",
+            "#[effects(pure)]\nspec fn p(x: i64) -> bool { x > 0 }",
+        ),
+        (
+            "E0401",
+            "#[effects(pure)]\nfn put(a: &mut [i64]) -> () {}\n#[effects(pure)]\nfn f() -> () { let mut x: [i64; 2] = [0, 0]; put(x) }",
+        ),
+        (
+            "E0401",
+            "#[effects(pure)]\nfn get(a: &[i64]) -> () {}\n#[effects(pure)]\nfn f() -> () { let x: [i64; 2] = [0, 0]; get(x) }",
+        ),
     ];
     for (code, body) in cases {
         let text = wrap(body);
@@ -92,4 +106,25 @@ fn each_mechanical_fix_applies_and_clears_its_error() {
             after.diagnostics
         );
     }
+}
+
+/// Removing `mut` from a parameter the body assigns clears E0210 but exposes
+/// the assignment: the fix message says to copy into a `let mut` local, which
+/// is not mechanical, so only the original code is required to go.
+#[test]
+fn mut_parameter_fix_clears_e0210_and_exposes_the_assignment() {
+    let text = wrap("#[effects(pure)]\nfn f(mut x: i64) -> i64 { x = x + 1; x }");
+    let (fixed, codes) = apply(&text);
+    assert_eq!(codes, ["E0210"], "{text}");
+    let after = bmb::check_sources(&[("t.bmb".into(), fixed.clone())]);
+    assert!(
+        !after.diagnostics.contains("\"E0210\""),
+        "E0210 still reported after the fix:\n{fixed}\n{}",
+        after.diagnostics
+    );
+    assert!(
+        after.diagnostics.contains("\"E0408\""),
+        "expected the assignment to be reported as E0408:\n{fixed}\n{}",
+        after.diagnostics
+    );
 }

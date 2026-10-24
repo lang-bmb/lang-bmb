@@ -1,0 +1,11 @@
+#[summary("단위 속성")]
+#[deprecated]
+mod unit_attr {
+    #[effects(pure)]
+    #[effects(pure)]
+    fn twice() -> () {}
+}
+
+#[summary(unquoted)]
+mod bad_summary {
+}

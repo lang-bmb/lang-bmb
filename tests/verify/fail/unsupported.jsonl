@@ -1,0 +1,4 @@
+{"code":"E0814","severity":"error","message":"recursive call inside `forall` is not supported","file":"fail/unsupported.bmb","line":9,"col":63,"end_line":9,"end_col":80}
+{"code":"E0814","severity":"error","message":"statement not allowed in a specification","file":"fail/unsupported.bmb","line":16,"col":9,"end_line":16,"end_col":23}
+{"def":"unsupported::all_pos","status":"failed","obligations":0,"failed":1,"rlimit":0,"rlimit_max":0}
+{"def":"unsupported::unfolds","status":"failed","obligations":1,"failed":1,"rlimit":754,"rlimit_max":754}
