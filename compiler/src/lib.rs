@@ -4,8 +4,10 @@ pub mod ast;
 pub mod check;
 pub mod codegen;
 pub mod diag;
+pub mod fmt;
 pub mod lexer;
 pub mod parser;
+pub mod sha256;
 pub mod smt;
 pub mod source;
 pub mod toolchain;
@@ -146,4 +148,32 @@ fn status_lines(outcome: &verify::Outcome) -> String {
         ));
     }
     out
+}
+
+/// Normal form of a program (ADR-0019): top-level unit name -> its text.
+/// `Err` carries diagnostics when the program does not check.
+pub fn format_sources(files: &[(String, String)]) -> Result<BTreeMap<String, String>, String> {
+    let fe = frontend(files);
+    if fe.diags.has_errors() {
+        return Err(fe.diags.to_jsonl(&fe.sm));
+    }
+    Ok(fmt::format_units(&fe.program))
+}
+
+/// Definition hashes as JSONL (ADR-0019 §2).
+pub fn hash_sources(files: &[(String, String)]) -> Result<String, String> {
+    let fe = frontend(files);
+    if fe.diags.has_errors() {
+        return Err(fe.diags.to_jsonl(&fe.sm));
+    }
+    let mut out = String::new();
+    for h in fmt::hashes(&fe.program, &fe.tables.fns) {
+        out.push_str(&format!(
+            "{{\"def\":{},\"body\":\"{}\",\"iface\":\"{}\"}}\n",
+            diag::json_str(&h.path),
+            h.body,
+            h.iface
+        ));
+    }
+    Ok(out)
 }

@@ -1,0 +1,155 @@
+//! Normal form and definition hashes (ADR-0019, backlog 1D-02, 1D-03).
+
+use std::fs;
+use std::path::{Path, PathBuf};
+
+fn corpus() -> Vec<PathBuf> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests");
+    let mut v = Vec::new();
+    for dir in ["check/ok", "verify/pass", "verify/fail", "run"] {
+        for e in fs::read_dir(root.join(dir)).unwrap() {
+            let p = e.unwrap().path();
+            if p.extension().is_some_and(|x| x == "bmb") {
+                v.push(p);
+            }
+        }
+    }
+    v.sort();
+    v
+}
+
+fn one(name: &str, text: &str) -> Vec<(String, String)> {
+    vec![(name.to_string(), text.to_string())]
+}
+
+fn normal(text: &str) -> String {
+    bmb::format_sources(&one("x.bmb", text))
+        .unwrap()
+        .values()
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn statuses(out: &str) -> Vec<String> {
+    out.lines()
+        .filter(|l| l.starts_with("{\"def\""))
+        .map(String::from)
+        .collect()
+}
+
+#[test]
+fn formatting_is_idempotent() {
+    for p in corpus() {
+        let once = normal(&fs::read_to_string(&p).unwrap());
+        assert_eq!(normal(&once), once, "{}", p.display());
+    }
+}
+
+#[test]
+fn formatting_preserves_proof_results() {
+    for p in corpus() {
+        let text = fs::read_to_string(&p).unwrap();
+        let before = bmb::verify_sources(&one("x.bmb", &text));
+        let after = bmb::verify_sources(&one("x.bmb", &normal(&text)));
+        assert_eq!(
+            statuses(&before.output),
+            statuses(&after.output),
+            "{}",
+            p.display()
+        );
+    }
+}
+
+fn hashes(files: &[(String, String)]) -> Vec<String> {
+    let mut v: Vec<String> = bmb::hash_sources(files)
+        .unwrap()
+        .lines()
+        .map(String::from)
+        .collect();
+    v.sort();
+    v
+}
+
+const PROG: &str = r#"
+#[summary("해시 예제")]
+mod h {
+    spec fn pos(x: i64) -> bool { x > 0 }
+
+    #[effects(pure)]
+    #[uses(pos)]
+    fn dec(x: i64) -> i64
+        requires pos(x),
+    {
+        x - 1
+    }
+}
+
+#[summary("다른 단위")]
+mod g {
+    #[effects(pure)]
+    fn id(x: i64) -> i64 { x }
+}
+"#;
+
+#[test]
+fn hashes_ignore_layout_comments_and_order() {
+    let base = hashes(&one("a.bmb", PROG));
+    // Normal form, comments, blank lines.
+    assert_eq!(hashes(&one("a.bmb", &normal(PROG))), base);
+    let commented = PROG.replace("x - 1", "// note\n        x   -   1 // trailing");
+    assert_eq!(hashes(&one("a.bmb", &commented)), base);
+    // Item order inside a unit and unit order.
+    let (h_part, g_part) = PROG.split_at(PROG.find("#[summary(\"다른").unwrap());
+    let reordered = format!("{g_part}\n{h_part}");
+    assert_eq!(hashes(&one("a.bmb", &reordered)), base);
+    // Split across files.
+    let files = vec![
+        ("one.bmb".to_string(), h_part.to_string()),
+        ("two.bmb".to_string(), g_part.to_string()),
+    ];
+    assert_eq!(hashes(&files), base);
+}
+
+fn field(line: &str, key: &str) -> String {
+    let k = format!("\"{key}\":\"");
+    let i = line.find(&k).unwrap() + k.len();
+    line[i..i + line[i..].find('"').unwrap()].to_string()
+}
+
+fn def_line(files: &[(String, String)], def: &str) -> String {
+    hashes(files)
+        .into_iter()
+        .find(|l| l.contains(&format!("\"def\":\"{def}\"")))
+        .unwrap()
+}
+
+#[test]
+fn body_change_keeps_iface_contract_change_moves_both() {
+    let a = def_line(&one("a.bmb", PROG), "h::dec");
+    let body_changed = PROG.replace("x - 1", "x - 1 + 0");
+    let b = def_line(&one("a.bmb", &body_changed), "h::dec");
+    assert_ne!(field(&a, "body"), field(&b, "body"));
+    assert_eq!(field(&a, "iface"), field(&b, "iface"));
+
+    let contract_changed = PROG.replace("requires pos(x),", "requires pos(x), pos(x),");
+    let c = def_line(&one("a.bmb", &contract_changed), "h::dec");
+    assert_ne!(field(&a, "iface"), field(&c, "iface"));
+}
+
+#[test]
+fn same_text_in_another_unit_hashes_differently_when_names_resolve_differently() {
+    // `pos` resolves to `h::pos` here and to `k::pos` below: different meaning.
+    let other = PROG.replace("mod h {", "mod k {");
+    let a = def_line(&one("a.bmb", PROG), "h::dec");
+    let b = def_line(&one("a.bmb", &other), "k::dec");
+    assert_ne!(field(&a, "body"), field(&b, "body"));
+}
+
+#[test]
+fn renamed_definition_keeps_its_body_hash() {
+    let renamed = PROG.replace("fn id(", "fn ident(");
+    let a = def_line(&one("a.bmb", PROG), "g::id");
+    let b = def_line(&one("a.bmb", &renamed), "g::ident");
+    assert_eq!(field(&a, "body"), field(&b, "body"));
+}

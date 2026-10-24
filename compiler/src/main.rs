@@ -8,6 +8,9 @@ const USAGE: &str = "usage:
                             LLVM IR; unproved obligations keep runtime checks
   bmb build <file.bmb>... -o OUT
                             check, prove (all obligations) and build an executable
+  bmb fmt [--check] <file.bmb>...
+                            print the normal form (ADR-0019); --check fails if a file differs
+  bmb hash <file.bmb>...    definition hashes (body, iface) as JSONL
   bmb codes                 list diagnostic codes as JSONL
   bmb doctor                check the pinned toolchain (z3, LLVM) as JSONL";
 
@@ -159,6 +162,54 @@ fn main() -> ExitCode {
                 }
             }
         }
+        Some("fmt") if args.len() > 1 => {
+            let check = args[1] == "--check";
+            let paths = if check { &args[2..] } else { &args[1..] };
+            let files = match read_files(paths) {
+                Ok(f) => f,
+                Err(code) => return code,
+            };
+            match bmb::format_sources(&files) {
+                Err(diags) => {
+                    print!("{diags}");
+                    ExitCode::from(1)
+                }
+                Ok(units) => {
+                    let text = units.values().cloned().collect::<Vec<_>>().join("\n");
+                    if !check {
+                        print!("{text}");
+                        return ExitCode::SUCCESS;
+                    }
+                    let given = files
+                        .iter()
+                        .map(|(_, t)| t.as_str())
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    if given == text {
+                        ExitCode::SUCCESS
+                    } else {
+                        eprintln!("bmb: not in normal form");
+                        ExitCode::from(1)
+                    }
+                }
+            }
+        }
+        Some("hash") if args.len() > 1 => {
+            let files = match read_files(&args[1..]) {
+                Ok(f) => f,
+                Err(code) => return code,
+            };
+            match bmb::hash_sources(&files) {
+                Ok(out) => {
+                    print!("{out}");
+                    ExitCode::SUCCESS
+                }
+                Err(diags) => {
+                    print!("{diags}");
+                    ExitCode::from(1)
+                }
+            }
+        }
         Some("codes") => {
             print!("{}", bmb::diag::codes_jsonl());
             ExitCode::SUCCESS
@@ -168,4 +219,18 @@ fn main() -> ExitCode {
             ExitCode::from(2)
         }
     }
+}
+
+fn read_files(paths: &[String]) -> Result<Vec<(String, String)>, ExitCode> {
+    let mut files = Vec::new();
+    for path in paths {
+        match std::fs::read_to_string(path) {
+            Ok(text) => files.push((path.clone(), text)),
+            Err(e) => {
+                eprintln!("bmb: cannot read {path}: {e}");
+                return Err(ExitCode::from(2));
+            }
+        }
+    }
+    Ok(files)
 }
