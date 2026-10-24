@@ -1,0 +1,10 @@
+#[summary("리터럴만으로 된 식은 다른 쪽에서 타입을 받는다(Rust와 같음)")]
+mod lits {
+    #[effects(pure)]
+    fn pick(x: u64, y: u64) -> u64 {
+        let a: u64 = (if x < y { 18446744073709551615 } else { y }).wrapping_add(x);
+        let small: bool = (66 + 14) < y;
+        let b: u64 = if small { 7 } else { y };
+        a.wrapping_add(b)
+    }
+}

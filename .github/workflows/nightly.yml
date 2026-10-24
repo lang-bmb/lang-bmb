@@ -35,7 +35,7 @@ jobs:
         env:
           BMB_SOUND_ITERS: "200"
           BMB_SOUND_SEED: ${{ github.run_number }}000
-        run: cargo test --release --test soundness --test soundness_loops -- --nocapture
+        run: cargo test --release --test soundness --test soundness_loops --test soundness_calls --test soundness_rec --test soundness_unsigned -- --nocapture
       - name: Keep the failing input
         if: failure()
         uses: actions/upload-artifact@v4

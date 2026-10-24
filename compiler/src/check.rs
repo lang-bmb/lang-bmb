@@ -885,6 +885,21 @@ impl<'a> Checker<'a> {
             ExprKind::If { cond, then, els } => {
                 let ct = self.expr(cx, cond, Some(&TypeKind::Bool), mode);
                 self.expect_ty(&ct, &TypeKind::Bool, cond.span);
+                // `if c { 5 } else { y }`: the literal branch takes its type
+                // from the other one, as in Rust.
+                let then_lit =
+                    then.stmts.is_empty() && then.tail.as_ref().is_some_and(|t| untyped_literal(t));
+                if expected.is_none()
+                    && then_lit
+                    && let Some(el) = els
+                    && !untyped_literal(el)
+                {
+                    let et = self.expr(cx, el, None, mode);
+                    let want = Some(&et).filter(|t| is_int(t));
+                    let tt = self.block(cx, then, want, mode);
+                    self.expect_ty(&et, &tt, el.span);
+                    return tt;
+                }
                 let tt = self.block(cx, then, expected, mode);
                 match els {
                     Some(el) => {
@@ -1113,10 +1128,7 @@ impl<'a> Checker<'a> {
             }
             _ => {
                 // Literals take their type from the other operand.
-                let lit = |e: &Expr| {
-                    matches!(e.kind, ExprKind::Int(_))
-                        || matches!(&e.kind, ExprKind::Unary(UnOp::Neg, i) if matches!(i.kind, ExprKind::Int(_)))
-                };
+                let lit = untyped_literal;
                 let hint = if op.is_arith() {
                     expected.filter(|t| is_int(t))
                 } else {
@@ -1741,4 +1753,24 @@ fn sccs_with_cycles(g: &BTreeMap<String, BTreeSet<String>>) -> Vec<Vec<String>> 
     }
     t.out.sort();
     t.out
+}
+
+/// An integer expression made of literals only (`5`, `-1`, `(2 * 3)`,
+/// `{ 7 }`, `if c { 1 } else { 2 }`): it has no type of its own and takes one
+/// from its context, as unsuffixed literals do in Rust.
+fn untyped_literal(e: &Expr) -> bool {
+    match &e.kind {
+        ExprKind::Int(_) => true,
+        ExprKind::Unary(UnOp::Neg, i) => untyped_literal(i),
+        ExprKind::Binary(op, l, r) => op.is_arith() && untyped_literal(l) && untyped_literal(r),
+        ExprKind::Block(b) => {
+            b.stmts.is_empty() && b.tail.as_ref().is_some_and(|t| untyped_literal(t))
+        }
+        ExprKind::If { then, els, .. } => {
+            then.stmts.is_empty()
+                && then.tail.as_ref().is_some_and(|t| untyped_literal(t))
+                && els.as_ref().is_some_and(|e| untyped_literal(e))
+        }
+        _ => false,
+    }
 }

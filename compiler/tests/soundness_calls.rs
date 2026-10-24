@@ -242,6 +242,7 @@ fn gen_callee(rng: &mut Rng, k: usize) -> Func {
         f.hi = (w, w);
         f.extra = None;
         f.lets = Vec::new();
+        f.arr = Vec::new();
         let (body, post) = match rng.below(3) {
             0 => (
                 E::Bin(Op::Add, v("x"), v("y")),

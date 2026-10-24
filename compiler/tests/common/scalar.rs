@@ -357,6 +357,10 @@ pub struct Func {
     pub hi: (i64, i64),
     pub extra: Option<P>,
     pub lets: Vec<(String, E)>,
+    /// Whole-array assignments to a local `t: [i64; 3]` (starts `[x, y, 0]`),
+    /// optionally under a condition: `t = [..]` or `t = if c { [..] } else { t }`.
+    /// The right side reads the old `t` (backlog 1B-34).
+    pub arr: Vec<(Option<C>, Vec<E>)>,
     pub body: E,
     pub post: P,
 }
@@ -378,6 +382,15 @@ pub fn gen_func(rng: &mut Rng, k: usize) -> Func {
         lets.push((name.clone(), e));
         vars.push(name);
     }
+    let mut arr = Vec::new();
+    if rng.chance(35) {
+        vars.extend(["t[0]", "t[1]", "t[2]"].map(String::from));
+        for _ in 0..1 + rng.below(2) {
+            let cond = rng.chance(40).then(|| gen_c(rng, &vars, 1));
+            let elems = (0..3).map(|_| gen_e(rng, &vars, 1)).collect();
+            arr.push((cond, elems));
+        }
+    }
     let body = gen_e(rng, &vars, 3);
     let post = gen_p(rng, &["x", "y", "r"], 1);
     Func {
@@ -386,6 +399,7 @@ pub fn gen_func(rng: &mut Rng, k: usize) -> Func {
         hi: (hx, hy),
         extra,
         lets,
+        arr,
         body,
         post,
     }
@@ -421,6 +435,27 @@ impl Func {
             let v = e_eval(e, &env)?;
             env.push((n.clone(), v));
         }
+        if !self.arr.is_empty() {
+            for (i, v) in [x, y, 0].into_iter().enumerate() {
+                env.push((format!("t[{i}]"), v));
+            }
+        }
+        for (cond, elems) in &self.arr {
+            let take = match cond {
+                Some(c) => c_eval(c, &env)?,
+                None => true,
+            };
+            if take {
+                // Every element is computed from the old `t` before any store.
+                let vals = elems
+                    .iter()
+                    .map(|e| e_eval(e, &env))
+                    .collect::<Result<Vec<_>, _>>()?;
+                for (i, v) in vals.into_iter().enumerate() {
+                    env.push((format!("t[{i}]"), v));
+                }
+            }
+        }
         e_eval(&self.body, &env)
     }
 
@@ -448,6 +483,20 @@ impl Func {
         );
         for (v, e) in &self.lets {
             let _ = writeln!(t, "        let {v}: i64 = {};", e_text(e));
+        }
+        if !self.arr.is_empty() {
+            let _ = writeln!(t, "        let mut t: [i64; 3] = [x, y, 0];");
+        }
+        for (cond, elems) in &self.arr {
+            let lit = format!(
+                "[{}]",
+                elems.iter().map(e_text).collect::<Vec<_>>().join(", ")
+            );
+            let rhs = match cond {
+                Some(c) => format!("if {} {{ {lit} }} else {{ t }}", c_text(c)),
+                None => lit,
+            };
+            let _ = writeln!(t, "        t = {rhs};");
         }
         let _ = writeln!(t, "        {}\n    }}\n", e_text(&self.body));
         t
