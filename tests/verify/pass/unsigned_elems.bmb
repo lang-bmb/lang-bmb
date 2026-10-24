@@ -1,0 +1,27 @@
+#[summary("부호 없는 원소의 범위: 명세에서만 읽어도 0 이상")]
+mod unsigned_elems {
+    spec fn all_nonneg(a: &[u64]) -> bool { forall|i: usize| i < a.len() ==> #[trigger] a[i] >= 0 }
+
+    #[effects(pure)]
+    #[uses(all_nonneg)]
+    fn f(a: &[u64]) -> (r: bool)
+        ensures all_nonneg(a),
+    {
+        true
+    }
+
+    #[effects(pure)]
+    #[uses(all_nonneg)]
+    fn g(a: &mut [u64]) -> ()
+        ensures all_nonneg(a),
+    {
+        let mut i: usize = 0;
+        while i < a.len()
+            invariant i <= a.len(),
+            decreases a.len() - i,
+        {
+            a[i] = a[i] / 2;
+            i = i + 1;
+        }
+    }
+}

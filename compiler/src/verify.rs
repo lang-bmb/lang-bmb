@@ -233,10 +233,24 @@ impl<'p, 'q> Enc<'p, 'q> {
         name
     }
 
+    /// A fresh array of elements of type `e`. Unsigned elements are never
+    /// negative, also where only a specification reads them (backlog 1B-30).
+    fn fresh_elems(&mut self, base: &str, e: &TypeKind) -> String {
+        let elems = self.fresh(base, &format!("(Array Int {})", sort_of(e)));
+        if let (TypeKind::U64 | TypeKind::Usize, Some(r)) =
+            (e, range(e, &format!("(select {elems} k)")))
+        {
+            self.pc.push(format!(
+                "(forall ((k Int)) (! {r} :pattern ((select {elems} k))))"
+            ));
+        }
+        elems
+    }
+
     fn fresh_val(&mut self, base: &str, t: &TypeKind) -> Val {
         if is_array(t) {
             let e = elem_ty(t);
-            let elems = self.fresh(base, &format!("(Array Int {})", sort_of(&e)));
+            let elems = self.fresh_elems(base, &e);
             let len = match t {
                 TypeKind::Array(_, n) => n.to_string(),
                 _ => {
@@ -902,7 +916,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                     let ty = self.local_ty(v);
                     let e = elem_ty(&ty);
                     Val::A {
-                        elems: self.fresh(v, &format!("(Array Int {})", sort_of(&e))),
+                        elems: self.fresh_elems(v, &e),
                         len,
                     }
                 }
@@ -1008,7 +1022,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                 && let Val::A { len, .. } = &argv[i]
             {
                 let e = elem_ty(&p.ty.kind);
-                let elems = self.fresh(&root, &format!("(Array Int {})", sort_of(&e)));
+                let elems = self.fresh_elems(&root, &e);
                 let nv = Val::A {
                     elems,
                     len: len.clone(),
