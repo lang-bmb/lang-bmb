@@ -15,23 +15,23 @@ const USAGE: &str = "usage:
                             standard maps as JSONL (ADR-0020)
   bmb query <units|surface|edges|slice|find|contracts|status> [args] -- <file.bmb>...
                             read queries as JSONL (ADR-0020)
+  bmb import DIR <file.bmb>...
+                            create or replace workspace DIR from files, in normal form
+  bmb apply DIR OPS.json    commit a transaction (JSON array of unit/put/remove/remove_unit ops)
+                            to workspace DIR; rejected as a whole on any structural or type error
   bmb codes                 list diagnostic codes as JSONL
+
+Any <file.bmb> argument may also be a workspace directory (its src/*.bmb).
   bmb doctor                check the pinned toolchain (z3, LLVM) as JSONL";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
         Some("check") if args.len() > 1 => {
-            let mut files = Vec::new();
-            for path in &args[1..] {
-                match std::fs::read_to_string(path) {
-                    Ok(text) => files.push((path.clone(), text)),
-                    Err(e) => {
-                        eprintln!("bmb: cannot read {path}: {e}");
-                        return ExitCode::from(2);
-                    }
-                }
-            }
+            let files = match read_files(&args[1..]) {
+                Ok(f) => f,
+                Err(code) => return code,
+            };
             let out = bmb::check_sources(&files);
             print!("{}", out.diagnostics);
             if out.ok {
@@ -82,16 +82,10 @@ fn main() -> ExitCode {
                 emit = Some(rest[1].clone());
                 rest = &rest[2..];
             }
-            let mut files = Vec::new();
-            for path in rest {
-                match std::fs::read_to_string(path) {
-                    Ok(text) => files.push((path.clone(), text)),
-                    Err(e) => {
-                        eprintln!("bmb: cannot read {path}: {e}");
-                        return ExitCode::from(2);
-                    }
-                }
-            }
+            let files = match read_files(rest) {
+                Ok(f) => f,
+                Err(code) => return code,
+            };
             let out = bmb::verify_sources(&files);
             if let Some(dir) = emit {
                 if let Err(e) = std::fs::create_dir_all(&dir) {
@@ -122,17 +116,15 @@ fn main() -> ExitCode {
                 eprintln!("{USAGE}");
                 return ExitCode::from(2);
             };
-            let inputs: Vec<&String> = args[1..pos].iter().chain(args[pos + 2..].iter()).collect();
-            let mut files = Vec::new();
-            for path in inputs {
-                match std::fs::read_to_string(path) {
-                    Ok(text) => files.push((path.clone(), text)),
-                    Err(e) => {
-                        eprintln!("bmb: cannot read {path}: {e}");
-                        return ExitCode::from(2);
-                    }
-                }
-            }
+            let inputs: Vec<String> = args[1..pos]
+                .iter()
+                .chain(args[pos + 2..].iter())
+                .cloned()
+                .collect();
+            let files = match read_files(&inputs) {
+                Ok(f) => f,
+                Err(code) => return code,
+            };
             let out = bmb::emit_llvm_sources(&files);
             print!("{}", out.verify.output);
             let Some(ir) = out.ir else {
@@ -239,6 +231,67 @@ fn main() -> ExitCode {
             req.extend(args[1..sep].iter().cloned());
             respond(bmb::map_request(&files, &req))
         }
+        Some("import") if args.len() > 2 => {
+            let files = match read_files(&args[2..]) {
+                Ok(f) => f,
+                Err(code) => return code,
+            };
+            match bmb::format_sources(&files) {
+                Err(diags) => {
+                    print!("{diags}");
+                    ExitCode::from(1)
+                }
+                Ok(units) => {
+                    match bmb::workspace::write_units(std::path::Path::new(&args[1]), &units) {
+                        Ok(()) => ExitCode::SUCCESS,
+                        Err(e) => {
+                            eprintln!("bmb: {e}");
+                            ExitCode::from(2)
+                        }
+                    }
+                }
+            }
+        }
+        Some("apply") if args.len() == 3 => {
+            let text = if args[2] == "-" {
+                let mut s = String::new();
+                if std::io::Read::read_to_string(&mut std::io::stdin(), &mut s).is_err() {
+                    eprintln!("bmb: cannot read stdin");
+                    return ExitCode::from(2);
+                }
+                s
+            } else {
+                match std::fs::read_to_string(&args[2]) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        eprintln!("bmb: cannot read {}: {e}", args[2]);
+                        return ExitCode::from(2);
+                    }
+                }
+            };
+            let ops = match bmb::workspace::parse_ops(&text) {
+                Ok(o) => o,
+                Err(e) => {
+                    eprintln!("bmb: {e}");
+                    return ExitCode::from(2);
+                }
+            };
+            match bmb::workspace::commit(std::path::Path::new(&args[1]), &ops) {
+                Ok(c) => {
+                    print!("{}", c.diagnostics);
+                    println!("{}", commit_line(&c));
+                    if c.ok {
+                        ExitCode::SUCCESS
+                    } else {
+                        ExitCode::from(1)
+                    }
+                }
+                Err(e) => {
+                    eprintln!("bmb: {e}");
+                    ExitCode::from(2)
+                }
+            }
+        }
         Some("codes") => {
             print!("{}", bmb::diag::codes_jsonl());
             ExitCode::SUCCESS
@@ -250,9 +303,34 @@ fn main() -> ExitCode {
     }
 }
 
+fn commit_line(c: &bmb::workspace::Commit) -> String {
+    let list = |xs: &[String]| {
+        xs.iter()
+            .map(|x| bmb::diag::json_str(x))
+            .collect::<Vec<_>>()
+            .join(",")
+    };
+    format!(
+        "{{\"committed\":{},\"changed\":[{}],\"removed\":[{}]}}",
+        c.ok,
+        list(&c.changed),
+        list(&c.removed)
+    )
+}
+
 fn read_files(paths: &[String]) -> Result<Vec<(String, String)>, ExitCode> {
     let mut files = Vec::new();
     for path in paths {
+        if std::path::Path::new(path).is_dir() {
+            match bmb::workspace::read_dir_sources(std::path::Path::new(path)) {
+                Ok(fs) => files.extend(fs),
+                Err(e) => {
+                    eprintln!("bmb: {e}");
+                    return Err(ExitCode::from(2));
+                }
+            }
+            continue;
+        }
         match std::fs::read_to_string(path) {
             Ok(text) => files.push((path.clone(), text)),
             Err(e) => {

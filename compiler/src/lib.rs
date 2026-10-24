@@ -5,6 +5,7 @@ pub mod check;
 pub mod codegen;
 pub mod diag;
 pub mod fmt;
+pub mod json;
 pub mod lexer;
 pub mod map;
 pub mod parser;
@@ -13,6 +14,7 @@ pub mod smt;
 pub mod source;
 pub mod toolchain;
 pub mod verify;
+pub mod workspace;
 
 use std::collections::BTreeMap;
 
