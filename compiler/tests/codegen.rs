@@ -183,13 +183,9 @@ mod m {
 fn word_elements_are_eight_byte_aligned() {
     let ir = bmb::emit_llvm_sources(&src("p.bmb", PROVED)).ir.unwrap();
     let body = &ir[ir.find("@\"m::get\"").unwrap()..];
-    let load = body
-        .lines()
-        .find(|l| l.contains("= load i64, ptr %t") && !l.contains("ptr %t1"))
-        .unwrap_or("");
     assert!(
         body.lines()
             .any(|l| l.contains("load i64") && l.ends_with("align 8")),
-        "{body}\n{load}"
+        "{body}"
     );
 }
