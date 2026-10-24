@@ -1412,6 +1412,7 @@ pub fn verify_program(p: &Program, t: &Tables, diags: &mut Diags) -> Outcome {
             // Only definitions the obligation can reach (DESIGN.md §4.1:
             // unrelated context is the main source of solver instability).
             let relevant = relevant_axioms(&axioms, &q);
+            let relevant_text = relevant.clone();
             let hint =
                 hidden_predicates(&spec_syms, &axioms, &format!("{q}{relevant}"), &d.mod_path);
             let base = format!("{base}{relevant}{decls}");
@@ -1446,7 +1447,7 @@ pub fn verify_program(p: &Program, t: &Tables, diags: &mut Diags) -> Outcome {
                     if !cex.is_empty() {
                         msg.push_str(&format!("; counterexample: {cex}"));
                     }
-                    diags.push(with_hint(Diag::new(o.code, o.span, msg), &hint));
+                    diags.push(with_hint(Diag::new(o.code, o.span, msg), &hint, false));
                 }
                 Ok(Answer::Unknown(why)) => {
                     let why = if why.contains("canceled") || why.contains("resource") {
@@ -1460,7 +1461,11 @@ pub fn verify_program(p: &Program, t: &Tables, diags: &mut Diags) -> Outcome {
                     if !cex.is_empty() {
                         msg.push_str(&format!("; unconfirmed counterexample: {cex}"));
                     }
-                    diags.push(with_hint(Diag::new("E0811", o.span, msg), &hint));
+                    diags.push(with_hint(
+                        Diag::new("E0811", o.span, msg),
+                        &hint,
+                        has_nonlinear_product(&format!("{q}{relevant_text}")),
+                    ));
                 }
                 // The resource limit can also stop a command before `check-sat`.
                 Err(e) if e.contains("canceled") => diags.push(Diag::new(
@@ -1513,12 +1518,11 @@ fn hidden_predicates(
         .collect()
 }
 
-fn with_hint(d: Diag, hidden: &[String]) -> Diag {
-    if hidden.is_empty() {
-        return d;
-    }
-    d.fix(
-        format!(
+/// Attaches the deterministic hints that apply to a failed obligation.
+fn with_hint(d: Diag, hidden: &[String], nonlinear: bool) -> Diag {
+    let mut parts = Vec::new();
+    if !hidden.is_empty() {
+        parts.push(format!(
             "the proof sees {} only by name; if the failure depends on {}, add to #[uses({})]",
             hidden
                 .iter()
@@ -1531,9 +1535,47 @@ fn with_hint(d: Diag, hidden: &[String]) -> Diag {
                 "their definitions"
             },
             hidden.join(", ")
-        ),
-        None,
-    )
+        ));
+    }
+    if nonlinear {
+        parts.push(
+            "the obligation multiplies variables (nonlinear arithmetic), which the solver cannot \
+             always decide; state the needed fact as a precondition or as the postcondition of a \
+             helper, or bound the operands"
+                .to_string(),
+        );
+    }
+    if parts.is_empty() {
+        d
+    } else {
+        d.fix(parts.join("; also, "), None)
+    }
+}
+
+/// True if some term multiplies two non-constant factors (backlog 1B-16).
+pub fn has_nonlinear_product(text: &str) -> bool {
+    fn constant(e: &smt::Sexp) -> bool {
+        match e {
+            smt::Sexp::Atom(a) => a.chars().all(|c| c.is_ascii_digit()),
+            smt::Sexp::List(xs) => {
+                xs.len() == 2 && xs[0] == smt::Sexp::Atom("-".into()) && constant(&xs[1])
+            }
+        }
+    }
+    fn walk(e: &smt::Sexp) -> bool {
+        match e {
+            smt::Sexp::Atom(_) => false,
+            smt::Sexp::List(xs) => {
+                let product = xs.first() == Some(&smt::Sexp::Atom("*".into()))
+                    && xs[1..].iter().filter(|x| !constant(x)).count() >= 2;
+                product || xs.iter().any(walk)
+            }
+        }
+    }
+    smt::split_commands(text)
+        .iter()
+        .filter_map(|c| smt::parse(c))
+        .any(|e| walk(&e))
 }
 
 /// Axioms whose symbol occurs in `text`, closed over the axioms' own bodies.

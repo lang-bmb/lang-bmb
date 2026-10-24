@@ -132,3 +132,13 @@ mod h {
     assert!(hint.contains("add to #[uses(small)]"), "{hint}");
     assert!(run("bigger, small").ok);
 }
+
+#[test]
+fn nonlinear_detection() {
+    use bmb::verify::has_nonlinear_product;
+    assert!(has_nonlinear_product("(assert (= r (* x y)))"));
+    assert!(has_nonlinear_product("(assert (> (+ 1 (* x x x)) 0))"));
+    assert!(!has_nonlinear_product("(assert (= r (* 2 x)))"));
+    assert!(!has_nonlinear_product("(assert (= r (* x (- 3))))"));
+    assert!(!has_nonlinear_product("(assert (|f| x y))"));
+}

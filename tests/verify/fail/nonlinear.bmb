@@ -1,0 +1,12 @@
+#[summary("비선형 결정 불가")]
+mod nl {
+    spec fn pos3(x: i64, y: i64, z: i64) -> bool { 0 < x && x < 1000 && 0 < y && y < 1000 && 0 < z && z < 1000 }
+    spec fn not_fermat(x: i64, y: i64, z: i64) -> bool { x * x * x + y * y * y != z * z * z }
+
+    #[effects(pure)]
+    #[uses(pos3, not_fermat)]
+    fn f(x: i64, y: i64, z: i64) -> i64
+        requires pos3(x, y, z),
+        ensures not_fermat(x, y, z),
+    { 0 }
+}
