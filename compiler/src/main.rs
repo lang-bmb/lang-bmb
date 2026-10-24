@@ -27,12 +27,13 @@ const USAGE: &str = "usage:
                             --write rewrites changed files; fails if a definition stays unproved
   bmb lint <file.bmb>...    contract lint (warnings W09xx as JSONL, then a summary): preconditions
                             that cannot hold together, preconditions the function's proof does
-                            not need, postconditions no caller's proof uses; re-verifications are
+                            not need, postconditions no caller's proof uses, body mutations the
+                            specification does not distinguish; re-verifications and mutants are
                             capped; fails only if the program does not check or the gate cannot run
   bmb hash <file.bmb>...    definition hashes (body, iface) as JSONL
   bmb map [L0|L1|L2|all] <file.bmb>...
                             standard maps as JSONL (ADR-0020)
-  bmb query <units|surface|edges|slice|find|contracts|status|impact|duplicates> [args] -- <file.bmb>...
+  bmb query <units|surface|edges|slice|find|contracts|status|impact|duplicates|effects> [args] -- <file.bmb>...
                             read queries as JSONL (ADR-0020)
   bmb import DIR <file.bmb>...
                             create or replace workspace DIR from files, in normal form

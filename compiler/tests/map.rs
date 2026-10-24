@@ -236,3 +236,101 @@ fn edges_with_a_huge_depth_terminate() {
         "{max}"
     );
 }
+
+// Backlog 2D-11: call paths to `io` (DESIGN.md §7.2 effect view).
+const IO: &str = r#"
+#[summary("효과 경로")]
+mod app {
+    #[effects(io)]
+    fn emit(x: i64) -> () {
+        print_i64(x);
+    }
+
+    #[effects(io)]
+    fn b_log(x: i64) -> () {
+        emit(x);
+    }
+
+    #[effects(io)]
+    fn a_log(x: i64) -> () {
+        emit(x);
+    }
+
+    #[effects(io)]
+    fn quiet() -> () {
+        let x: i64 = twice(1);
+    }
+
+    #[effects(pure)]
+    fn twice(x: i64) -> i64 {
+        x * 2
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        b_log(twice(1));
+        a_log(2);
+        quiet();
+    }
+}
+"#;
+
+#[test]
+fn effects_lists_shortest_paths_to_io() {
+    let f = files(&[("io.bmb", IO)]);
+    let one = run(&f, &["query", "effects", "app::main"]);
+    let expected = [
+        "{\"schema\":\"bmb.map\",\"version\":1}",
+        "{\"def\":\"app::main\",\"effect\":\"io\",\"path\":[\"app::main\",\"app::a_log\"]}",
+        "{\"def\":\"app::main\",\"effect\":\"io\",\"path\":[\"app::main\",\"app::b_log\"]}",
+        // Both loggers reach `emit` in two steps: the smaller path wins.
+        "{\"def\":\"app::main\",\"effect\":\"io\",\"path\":[\"app::main\",\"app::a_log\",\"app::emit\"]}",
+        "{\"def\":\"app::main\",\"effect\":\"io\",\"path\":[\"app::main\"]}",
+        "{\"def\":\"app::main\",\"effect\":\"io\",\"path\":[\"app::main\",\"app::quiet\"]}",
+        "{\"def\":\"app::main\",\"effect\":\"io\",\"path\":[\"app::main\",\"app::a_log\",\"app::emit\",\"print_i64\"]}",
+        "{\"summary\":true,\"def\":\"app::main\",\"io_reached\":6,\"defs\":6}",
+    ];
+    assert_eq!(one, expected.join("\n") + "\n");
+
+    // A pure definition reaches no `io`.
+    assert_eq!(
+        run(&f, &["query", "effects", "app::twice"])
+            .lines()
+            .nth(1)
+            .unwrap(),
+        "{\"summary\":true,\"def\":\"app::twice\",\"io_reached\":0,\"defs\":6}"
+    );
+
+    // Without a definition: every definition that reaches an `io`
+    // operation, with its nearest one; `quiet` is declared `io` but
+    // reaches none.
+    let all = run(&f, &["query", "effects"]);
+    let expected = [
+        "{\"schema\":\"bmb.map\",\"version\":1}",
+        "{\"def\":\"app::a_log\",\"effect\":\"io\",\"path\":[\"app::a_log\",\"app::emit\",\"print_i64\"]}",
+        "{\"def\":\"app::b_log\",\"effect\":\"io\",\"path\":[\"app::b_log\",\"app::emit\",\"print_i64\"]}",
+        "{\"def\":\"app::emit\",\"effect\":\"io\",\"path\":[\"app::emit\",\"print_i64\"]}",
+        "{\"def\":\"app::main\",\"effect\":\"io\",\"path\":[\"app::main\",\"app::a_log\",\"app::emit\",\"print_i64\"]}",
+        "{\"summary\":true,\"io_reaching\":4,\"io_defs\":5,\"defs\":6}",
+    ];
+    assert_eq!(all, expected.join("\n") + "\n");
+
+    // Deterministic, and independent of the order of definitions and calls.
+    assert_eq!(one, run(&f, &["query", "effects", "app::main"]));
+    let swapped = IO
+        .replace("fn b_log", "fn TMP")
+        .replace("fn a_log", "fn b_log")
+        .replace("fn TMP", "fn a_log")
+        .replace(
+            "b_log(twice(1));\n        a_log(2);",
+            "a_log(twice(1));\n        b_log(2);",
+        );
+    assert_ne!(swapped, IO);
+    let g = files(&[("io.bmb", &swapped)]);
+    assert_eq!(all, run(&g, &["query", "effects"]));
+    assert_eq!(one, run(&g, &["query", "effects", "app::main"]));
+
+    let req =
+        |r: &[&str]| bmb::map_request(&f, &r.iter().map(|s| s.to_string()).collect::<Vec<_>>());
+    assert!(req(&["query", "effects", "app::nope"]).is_err());
+}

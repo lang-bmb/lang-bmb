@@ -13,12 +13,12 @@ cargo run -- fix a.bmb           # 기계적 수정(replacement)을 적용·재�
 cargo run -- verify --cache .bmb-cache a.bmb  # 증명 캐시: 해법기 입력이 같은 증명된 의무는 다시 풀지 않음(2D-01)
 cargo run -- stability a.bmb     # Z3 시드 0..5로 증명해 판정이 시드에 따라 바뀌는 정의를 보고(1B-19)
 cargo run -- uses a.bmb          # 증명되지 않는 정의마다 최소 #[uses(..)] 목록을 찾아 보고. --write면 파일 수정(2D-05)
-cargo run -- lint a.bmb          # 계약 조정 린트: 불가능한 pre, 증명에 쓰이지 않는 pre, 호출자가 쓰지 않는 post(경고 W09xx, 2D-08)
+cargo run -- lint a.bmb          # 계약 조정 린트: 불가능한 pre, 증명에 쓰이지 않는 pre, 호출자가 쓰지 않는 post, 변이가 살아남는 약한 명세(경고 W09xx, 2D-08·2D-09)
 cargo run -- doctor              # 고정된 Z3·LLVM 버전 확인(scripts/toolchain.env)
 ../scripts/setup.sh              # 고정 버전 설치(새 클라우드 세션은 시작 훅이 자동 실행)
 ../scripts/check.sh              # 검증 게이트: fmt·clippy·test·백로그 검사
 cargo run -- map all a.bmb        # 표준 맵 L0~L2(JSONL, ADR-0020)
-cargo run -- query slice u::f -- a.bmb  # 읽기 질의: units surface edges slice find contracts status impact
+cargo run -- query slice u::f -- a.bmb  # 읽기 질의: units surface edges slice find contracts status impact duplicates effects
 cargo run -- import ws a.bmb     # 작업 공간 ws/src/에 단위당 정규형 파일 하나
 cargo run -- apply ws ops.json   # 쓰기 트랜잭션(unit/put/remove/remove_unit). 구조·타입 오류면 전체 거부
 cargo run -- mcp ws              # MCP 서버(stdio): query map verify build tx_begin/put/commit 등
@@ -74,18 +74,23 @@ ADR-0016의 부분집합을 구체화한 것이다. 모두 "선택을 필수로"
 
 ## 계약 조정 린트
 
-`bmb lint <file.bmb|DIR>...`(백로그 2D-08, DESIGN.md §8.2 "계약 조정", `src/lint.rs`). 요청할 때만 돌고 `check`·`verify`의 출력은 그대로다. 출력은 경고 진단(JSONL, `"severity":"warning"`)과 요약 행 `{"summary":true,"defs","reports","verifications","skipped"}`. 프로그램이 검사를 통과하지 못하거나 증명 게이트가 돌 수 없을 때(E0812)만 종료 코드 1이다.
+`bmb lint <file.bmb|DIR>...`(백로그 2D-08, DESIGN.md §8.2 "계약 조정", `src/lint.rs`). 요청할 때만 돌고 `check`·`verify`의 출력은 그대로다. 출력은 경고 진단(JSONL, `"severity":"warning"`)과 요약 행(아래). 프로그램이 검사를 통과하지 못하거나 증명 게이트가 돌 수 없을 때(E0812)만 종료 코드 1이다.
 
 | 코드 | 보고 | 방법 |
 | --- | --- | --- |
 | W0901 | 함수의 `requires`가 함께 성립할 수 없다. 호출할 수 없는 함수이고 그에 관한 증명은 모두 공허하다 | 증명기와 같은 인코딩(매개변수 범위 사실, `#[uses]`로 펼친 정의, 절들)의 충족 가능성 질의 하나(`verify::preconditions_satisfiable`). `unsat`일 때만 보고하고 `unknown`이면 보고하지 않는다. 수량자 정의로 `unknown`이면 증명기처럼 기저 인스턴스로 다시 묻는다 |
 | W0902 | `requires` 절 하나가 함수 자신의 증명에 필요 없다 | 그 절 하나를 구문 트리에서 빼고 그 정의만 다시 증명한다(`verify::verify_defs`). 완전히 증명되면 보고한다. pre를 빼도 호출자는 증명할 것이 줄 뿐이라 깨지지 않는다. 기준 검증에서 증명된 함수만, W0901 함수는 제외 |
 | W0903 | `ensures` 절 하나를 어느 호출자의 증명도 쓰지 않는다 | 그 절 하나를 빼고 호출자(실행 본문의 `calls` 간선, 재귀면 자신 포함)만 다시 증명한다. 모두 완전히 증명되면 보고한다. 호출자가 있고 기준 검증에서 모두 증명된 함수만 |
+| W0904 | 명세가 본문의 변경 하나를 구별하지 못한다: 변이된 함수가 여전히 증명된다(백로그 2D-09). 메시지는 `` `바뀌기 전` -> `바뀐 뒤` `` | 구문 트리에서 본문 노드 하나를 바꾸고 그 정의만 다시 증명한다. 변이: `+`↔`-`, `<`↔`<=`, `>`↔`>=`, `==`↔`!=`, 정수 리터럴 `c`→`c + 1`(`c`가 `i64` 최댓값−1 이하일 때), `bool` 리터럴 뒤집기, `if` 조건 부정. 실행 코드만 바꾼다(루프 `invariant`·`decreases`, `assert`, `old`, `forall`은 제외). `ensures`가 있고 기준 검증에서 증명되었고 W0901이 아닌 함수만 |
 
 - 절마다 따로 판정한다. 따로 보고된 두 절을 함께 뺄 수 있다는 뜻은 아니다.
 - 재검증은 비싸므로 W0902·W0903 각각 32회(`MAX_PRE_TRIALS`, `MAX_POST_TRIALS`)까지만 한다. 넘는 절은 (경로, 절 순서)로 정해진 순서에서 뒤쪽부터 건너뛰고 요약의 `skipped`에 센다. 메모리 안 증명 캐시가 바뀌지 않은 의무를 다시 풀지 않게 한다.
-- 결정론: 고정 시드·`rlimit`, 경로·절 순서. 같은 입력이면 같은 바이트다.
-- 한계: "구현을 변형해도 통과하는 약한 명세"(§8.2)는 아직 보지 않는다. W0903은 현재 프로그램의 호출자만 본다(공개 API로 쓸 post도 보고될 수 있어 정보성이다). 기준 검증에서 실패한 함수나 호출자가 실패한 함수는 판정하지 않는다.
+- 변이는 실행당 64개(`MAX_MUTANTS`)까지 증명한다. 순서는 함수를 경로순으로 돌아가며 하나씩(라운드 로빈), 함수 안에서는 본문의 전위 순회 순서다. 넘는 변이는 요약의 `mutants_skipped`에 센다. 요약의 `mutants`는 증명한 변이 수, `surviving`은 살아남은 변이 수(W0904 수)이고, 변이 증명은 `verifications`에 세지 않는다.
+- W0904는 정보성이다. 변이가 모든 입력에서 원래 본문과 같은지(동치 변이)는 판정하지 않는다. 예: `if x < 0 { 0 - x } else { x }`의 `x < 0` → `x <= 0`은 `x == 0`에서 두 갈래가 모두 0이라 동치인데도 보고된다. 전제 아래 죽은 코드 안의 변이도 거르지 않는다. `ensures`가 없는 함수는 모든 변이가 살아남으므로 변이하지 않는다.
+- 측정(`tests/run/search.bmb`): 변이 33개 중 7개가 살아남았다(예: `alg::digit_sum`의 `n / 10` → `n / 11`, `alg::lower_bound_of`의 `(hi - lo) / 2` → `(hi - lo) / 3`. 뒤의 것은 이분 탐색이 계속 맞으므로 실제로 명세가 구별할 필요가 없는 변경이다). 디버그 빌드로 린트 전체가 약 13초.
+- 결정론: 고정 시드·`rlimit`, 경로·절·변이 순서. 같은 입력이면 같은 바이트다.
+- 요약 행: `{"summary":true,"defs","reports","verifications","skipped","mutants","surviving","mutants_skipped"}`(뒤 세 키는 2D-09에서 추가).
+- 한계: W0903은 현재 프로그램의 호출자만 본다(공개 API로 쓸 post도 보고될 수 있어 정보성이다). 기준 검증에서 실패한 함수나 호출자가 실패한 함수는 판정하지 않는다.
 
 ## 코드 생성
 
@@ -113,4 +118,6 @@ ADR-0020 §5의 7개 질의 외에 추가한 질의다. 기존 질의와 행 형
 | `impact DEF [body\|iface]` | DEF의 본문(`body`) 또는 계약·시그니처(`iface`, 기본값)를 바꾸면 다시 증명할 정의마다 `{"path","reason"}` 행, 그리고 요약 행 `{"summary":true,"changed","change","reprove","defs"}`. `reason`: `changed`(자신), `calls`(호출자: 계약이 바뀜), `uses`(`#[uses]`로 펼침), `names`(시그니처가 바뀐 `spec fn`을 이름으로 씀). 증명은 피호출자를 계약으로만, `spec fn`을 `#[uses]`로만 보므로(ADR-0017 §4) 영향은 한 단계에서 멈춘다(백로그 2D-02) |
 | `duplicates` | 본문 해시(`body`)가 같은 정의 묶음마다 `{"hash","defs"}` 행(정의가 둘 이상인 묶음만, 해시순, `defs`는 경로순), 그리고 요약 행 `{"summary":true,"groups","duplicate_defs","defs"}`. 본문 해시는 정의 자신의 이름을 빼므로(ADR-0019 §2) 같은 해시는 이름이나 단위만 다른 같은 정의다(DESIGN.md §7.2, 백로그 2D-06). 자기 재귀 호출은 전체 경로로 남아 재귀 정의의 복제는 묶이지 않는다 |
 
-MCP `query` 도구의 설명문은 바꾸지 않았다. 실제 모델 측정(1E-10)이 끝날 때까지 에이전트가 보는 문구를 그대로 둔다. 도구는 `impact`·`duplicates`도 받는다.
+| `effects [DEF]` | 효과 뷰(DESIGN.md §7.2, 백로그 2D-11). DEF가 있으면 DEF에서 실행 호출(`calls` 간선)로 닿는 `io` 정의(DEF 자신과 내장 `print_i64` 포함)마다 `{"def":DEF,"effect":"io","path"}` 행(`path`는 DEF에서 그 정의까지의 최단 호출 경로, 도달한 정의의 경로순), 그리고 요약 행 `{"summary":true,"def","io_reached","defs"}`. DEF가 없으면 내장 `io` 연산에 닿는 정의마다 `{"def","effect":"io","path"}` 행(가장 가까운 연산까지의 최단 경로, 정의 경로순), 그리고 요약 행 `{"summary":true,"io_reaching","io_defs","defs"}`. 최단 경로가 여럿이면 정의 경로를 차례로 비교해 가장 작은 것을 고른다(호출 순서·정의 순서와 무관). 맵 간선만 쓰고 증명하지 않는다(1D-17의 증명 불필요 집합). 효과 검사(E0603)가 `pure`의 `io` 호출을 막으므로 `io`에 닿는 정의는 모두 `io`로 선언되어 있다. `io`로 선언했지만 어떤 연산에도 닿지 않는 정의는 DEF 없는 결과에 나오지 않는다(`io_defs`와 행 수의 차이) |
+
+MCP `query` 도구의 설명문은 바꾸지 않았다. 실제 모델 측정(1E-10)이 끝날 때까지 에이전트가 보는 문구를 그대로 둔다. 도구는 `impact`·`duplicates`·`effects`도 받는다.

@@ -78,6 +78,9 @@ pub struct Model<'p> {
     pub units: BTreeMap<String, Unit>,
     pub defs: BTreeMap<String, Def<'p>>,
     pub edges: BTreeSet<Edge>,
+    /// Executable definitions with effect `io`, built-ins (`print_i64`)
+    /// included.
+    pub io: BTreeSet<String>,
 }
 
 fn resolve(path: &[Ident], unit: &str, t: &Tables) -> String {
@@ -327,7 +330,18 @@ impl<'p> Model<'p> {
                 },
             );
         }
-        Model { units, defs, edges }
+        let io = t
+            .fns
+            .iter()
+            .filter(|(_, s)| s.kind == FnKind::Exec && s.effect == crate::check::Effect::Io)
+            .map(|(p, _)| p.clone())
+            .collect();
+        Model {
+            units,
+            defs,
+            edges,
+            io,
+        }
     }
 
     // ---------- rows ----------
@@ -562,9 +576,103 @@ impl<'p> Model<'p> {
                 Self::lines(self.impact(d, change))
             }
             "duplicates" => Self::lines(self.duplicates()),
+            "effects" => match args.first() {
+                Some(_) => Self::lines(self.effects_of(def(0)?)),
+                None => Self::lines(self.effects_all()),
+            },
             other => return Err(format!("unknown query `{other}`")),
         };
         Ok(body)
+    }
+
+    /// The `io` definitions reachable from `start` over executable `calls`
+    /// edges (`start` itself included when it is `io`), each with a shortest
+    /// call path from `start`, in breadth-first order. Callees are taken in
+    /// path order, so each path is the lexicographically smallest of the
+    /// shortest ones and the first entry is the nearest `io` definition.
+    fn io_paths(&self, start: &str) -> Vec<(String, Vec<String>)> {
+        let mut parent: BTreeMap<String, Option<String>> = BTreeMap::new();
+        parent.insert(start.to_string(), None);
+        let mut queue = std::collections::VecDeque::from([start.to_string()]);
+        let mut found = Vec::new();
+        while let Some(at) = queue.pop_front() {
+            if self.io.contains(&at) {
+                let mut path = vec![at.clone()];
+                while let Some(Some(p)) = parent.get(path.last().unwrap()) {
+                    path.push(p.clone());
+                }
+                path.reverse();
+                found.push((at.clone(), path));
+            }
+            for e in self
+                .edges
+                .iter()
+                .filter(|e| e.from == at && e.kind == "calls")
+            {
+                if !parent.contains_key(&e.to) {
+                    parent.insert(e.to.clone(), Some(at.clone()));
+                    queue.push_back(e.to.clone());
+                }
+            }
+        }
+        found
+    }
+
+    fn effect_row(def: &str, path: Vec<String>) -> J {
+        J::O(vec![
+            ("def", J::S(def.into())),
+            ("effect", J::S("io".into())),
+            ("path", strs(path)),
+        ])
+    }
+
+    /// `effects DEF` (backlog 2D-11, DESIGN.md §7.2 effect view): one row
+    /// `{"def","effect":"io","path"}` per `io` definition DEF reaches
+    /// (`def` is DEF, `path` a shortest call path from DEF that ends at the
+    /// `io` definition), ordered by that definition; then a summary row.
+    fn effects_of(&self, d: &Def) -> Vec<J> {
+        let mut found = self.io_paths(&d.path);
+        found.sort();
+        let n = found.len();
+        let mut rows: Vec<J> = found
+            .into_iter()
+            .map(|(_, path)| Self::effect_row(&d.path, path))
+            .collect();
+        rows.push(J::O(vec![
+            ("summary", J::B(true)),
+            ("def", J::S(d.path.clone())),
+            ("io_reached", J::N(n as u64)),
+            ("defs", J::N(self.defs.len() as u64)),
+        ]));
+        rows
+    }
+
+    /// `effects` without a definition: one row per definition whose calls
+    /// reach a built-in `io` operation (`print_i64`), by path, where `def`
+    /// is that definition and `path` a shortest call path to the nearest
+    /// such operation; then a summary row. The effect check (E0603) already
+    /// makes every such definition `io`; a definition declared `io` that
+    /// reaches no operation has no row.
+    fn effects_all(&self) -> Vec<J> {
+        let mut rows = Vec::new();
+        for d in self.defs.values() {
+            let nearest = self
+                .io_paths(&d.path)
+                .into_iter()
+                .find(|(to, _)| !self.defs.contains_key(to));
+            if let Some((_, path)) = nearest {
+                rows.push(Self::effect_row(&d.path, path));
+            }
+        }
+        let n = rows.len();
+        let io = self.defs.keys().filter(|p| self.io.contains(*p)).count();
+        rows.push(J::O(vec![
+            ("summary", J::B(true)),
+            ("io_reaching", J::N(n as u64)),
+            ("io_defs", J::N(io as u64)),
+            ("defs", J::N(self.defs.len() as u64)),
+        ]));
+        rows
     }
 
     /// Groups of definitions with the same body hash (backlog 2D-06). The body

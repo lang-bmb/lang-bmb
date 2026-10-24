@@ -24,6 +24,8 @@ fn only_proof_status_requests_start_the_solver() {
         req(&["query", "slice", "app::main"]),
         req(&["query", "contracts", "alg::is_sorted"]),
         req(&["query", "impact", "app::main", "body"]),
+        req(&["query", "effects", "app::main"]),
+        req(&["query", "effects"]),
         req(&["query", "nosuch"]),
         req(&["map", "L9"]),
     ];
