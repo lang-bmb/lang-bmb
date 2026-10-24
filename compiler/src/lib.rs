@@ -15,6 +15,7 @@ pub mod sha256;
 pub mod smt;
 pub mod source;
 pub mod toolchain;
+pub mod uses_fill;
 pub mod verify;
 pub mod workspace;
 

@@ -12,6 +12,7 @@ cargo run -- codes               # 진단 코드 목록(JSONL)
 cargo run -- fix a.bmb           # 기계적 수정(replacement)을 적용·재검사 반복. 기본은 보고만(JSONL), --write로 제자리 수정, --print로 고친 텍스트 출력
 cargo run -- verify --cache .bmb-cache a.bmb  # 증명 캐시: 해법기 입력이 같은 증명된 의무는 다시 풀지 않음(2D-01)
 cargo run -- stability a.bmb     # Z3 시드 0..5로 증명해 판정이 시드에 따라 바뀌는 정의를 보고(1B-19)
+cargo run -- uses a.bmb          # 증명되지 않는 정의마다 최소 #[uses(..)] 목록을 찾아 보고. --write면 파일 수정(2D-05)
 cargo run -- doctor              # 고정된 Z3·LLVM 버전 확인(scripts/toolchain.env)
 ../scripts/setup.sh              # 고정 버전 설치(새 클라우드 세션은 시작 훅이 자동 실행)
 ../scripts/check.sh              # 검증 게이트: fmt·clippy·test·백로그 검사
@@ -60,6 +61,15 @@ ADR-0016의 부분집합을 구체화한 것이다. 모두 "선택을 필수로"
 - 해법기 프로세스 하나가 여러 정의를 맡는다. 의무마다 `(reset)` 후 옵션을 포함한 기반 전체를 다시 보내므로 결과는 프로세스마다 새로 띄운 것과 같다. 시작 60초가 지난 프로세스는 다음 정의에서 새로 띄워, 정의마다 벽시계 안전장치(300초)를 온전히 받는다(백로그 1D-18).
 - 맵·질의는 증명 결과를 담는 것(L1 행: `map L1`·`map all`·`surface`, 그리고 `status`)만 증명을 돌린다. 나머지는 해법기 없이 같은 결과를 낸다(백로그 1D-17, `tests/no_prove.rs`).
 - 진단 코드 E08xx. `bmb verify`의 마지막 줄들은 `{"def":..,"status":"verified"|"failed","obligations":n,"failed":k}`.
+
+## `#[uses]` 자동 채우기
+
+`bmb uses [--write] <file.bmb|DIR>...`(백로그 2D-05, `src/uses_fill.rs`). 요청할 때만 돌고 `check`·`verify`는 그대로다.
+
+- 증명되지 않는 실행 함수마다 후보 = 현재 `#[uses]` 항목 ∪ 그 정의의 진단 `fix`가 "이름으로만 본다"고 알린 술어(1D-13). 후보로 증명되지 않으면 새로 펼친 본문이 언급하는 술어를 더해 다시 시도한다(최대 8단계). 증명되면 항목을 정렬 순서로 하나씩 빼 보고 여전히 증명되면 뺀 채로 둔다. 결과는 한 항목만 빼서는 더 줄일 수 없는 목록이다(전역 최소는 보장하지 않음).
+- 시도마다 속성 텍스트를 고쳐 쓰고 프로그램 전체를 다시 검사·증명한다. 정의의 의무는 자신의 `#[uses]`에만 달려 있으므로(펼침은 전이되지 않고 피호출자는 계약으로만 본다, ADR-0017 §4) 실패한 정의들은 한 번의 검증에서 함께 한 단계씩 나아가고, 메모리 안 증명 캐시가 다른 정의의 증명된 의무를 다시 풀지 않게 한다. 정의당 검증은 최대 32회다. 끝으로 찾은 목록을 모두 넣고 한 번 더 검증해 증명되지 않는 정의는 되돌린다.
+- 출력(JSONL): 상태 줄이 있는 정의마다 `{"def","uses","status","verifications"}`. `status`는 `proved`(목록을 바꿔 증명됨), `unchanged`(이미 증명됨), `not_found`(힌트로 만든 어떤 목록으로도 증명되지 않음, 파일은 그대로). `proved` 줄에는 진단과 같은 위치 키(`file`,`line`,`col`,`end_line`,`end_col`)와 `fix.replacement`(속성 하나를 바꾸거나 `fn` 앞에 넣는 텍스트)가 붙는다. 마지막 줄은 `{"summary":true,"defs","proved","unchanged","not_found","verifications","changed"}`. `not_found`가 있으면 종료 코드 1.
+- 한계: 진단이 이름을 대지 않는 술어(어떤 의무의 질의에도 나타나지 않는 것)는 찾지 못한다. `spec fn`의 종료 의무는 `#[uses]`를 읽지 않으므로 실패하면 `not_found`다.
 
 ## 코드 생성
 

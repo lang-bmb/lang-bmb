@@ -19,6 +19,12 @@ const USAGE: &str = "usage:
                             none applies; JSONL report of applied fixes, remaining diagnostics
                             and a summary; --write rewrites changed files in place, --print
                             prints the fixed text instead of the report; fails if errors remain
+  bmb uses [--write] <file.bmb>...
+                            for each definition that fails to prove, find a minimal #[uses(..)]
+                            list from its current entries and the hidden predicates its
+                            diagnostics name; JSONL row per definition (status proved, unchanged
+                            or not_found, with the attribute replacement) and a summary;
+                            --write rewrites changed files; fails if a definition stays unproved
   bmb hash <file.bmb>...    definition hashes (body, iface) as JSONL
   bmb map [L0|L1|L2|all] <file.bmb>...
                             standard maps as JSONL (ADR-0020)
@@ -295,6 +301,44 @@ fn run() -> ExitCode {
                 }
             }
             if out.ok {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::from(1)
+            }
+        }
+        Some("uses") if args.len() > 1 => {
+            let write = args[1] == "--write";
+            let paths = if write { &args[2..] } else { &args[1..] };
+            if paths.is_empty() {
+                eprintln!("{USAGE}");
+                return ExitCode::from(2);
+            }
+            let files = match read_files(paths) {
+                Ok(f) => f,
+                Err(code) => return code,
+            };
+            let out = match bmb::uses_fill::fill_uses(&files) {
+                Ok(o) => o,
+                Err(diags) => {
+                    print!("{diags}");
+                    return ExitCode::from(1);
+                }
+            };
+            print!("{}", out.report(&files));
+            if write {
+                for (path, text) in out
+                    .files
+                    .iter()
+                    .zip(&files)
+                    .filter_map(|(a, b)| (a.1 != b.1).then_some((&a.0, &a.1)))
+                {
+                    if let Err(e) = std::fs::write(path, text) {
+                        eprintln!("bmb: cannot write {path}: {e}");
+                        return ExitCode::from(2);
+                    }
+                }
+            }
+            if out.ok() {
                 ExitCode::SUCCESS
             } else {
                 ExitCode::from(1)
