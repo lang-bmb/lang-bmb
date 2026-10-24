@@ -3,7 +3,9 @@
 //! different version is an error, never a warning: the proof gate must not run
 //! on an unknown solver.
 
+use std::ffi::OsString;
 use std::process::Command;
+use std::sync::Mutex;
 
 const ENV: &str = include_str!("../../scripts/toolchain.env");
 
@@ -45,7 +47,26 @@ fn run(cmd: &str, arg: &str) -> Result<String, String> {
 }
 
 /// Ok(version) if `z3` on PATH is exactly the pinned version.
+///
+/// A successful check is remembered for the process as long as `PATH` is
+/// unchanged (backlog 1D-18): every proof run asks, and `z3 --version` is a
+/// process start. Failures are not remembered, so a missing or wrong solver is
+/// reported on every call.
 pub fn check_z3() -> Result<String, String> {
+    static OK: Mutex<Option<(Option<OsString>, String)>> = Mutex::new(None);
+    let path = std::env::var_os("PATH");
+    let mut ok = OK.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((p, v)) = ok.as_ref()
+        && *p == path
+    {
+        return Ok(v.clone());
+    }
+    let v = check_z3_uncached()?;
+    *ok = Some((path, v.clone()));
+    Ok(v)
+}
+
+fn check_z3_uncached() -> Result<String, String> {
     let out = run("z3", "--version")?;
     let found =
         parse_z3_version(&out).ok_or_else(|| format!("cannot read z3 version from {out:?}"))?;

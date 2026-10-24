@@ -5,6 +5,8 @@
 
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::{Duration, Instant};
 
 use crate::toolchain;
 
@@ -19,11 +21,26 @@ pub struct Solver {
     child: Child,
     stdin: ChildStdin,
     stdout: BufReader<ChildStdout>,
+    started: Instant,
 }
 
 /// Wall-clock backstop in seconds. Results are governed by the deterministic
 /// `rlimit`; this only stops a runaway process.
-const BACKSTOP_SECS: u32 = 300;
+const BACKSTOP_SECS: u64 = 300;
+
+/// A process may be reused for a new definition only this long after it
+/// started (backlog 1D-18). Its `-T` limit covers this window plus the full
+/// backstop, so every definition still gets at least `BACKSTOP_SECS`, as it
+/// did when each definition started its own process.
+const REUSE_SECS: u64 = 60;
+
+static STARTS: AtomicUsize = AtomicUsize::new(0);
+
+/// Solver starts attempted by this process (successful or not). Tests use it
+/// to show that a request did not need the solver.
+pub fn starts() -> usize {
+    STARTS.load(Ordering::Relaxed)
+}
 
 /// The pinned resource limit per obligation. `BMB_Z3_RLIMIT` may lower it
 /// (for tests of the gate); it can never raise it.
@@ -40,9 +57,14 @@ pub fn rlimit() -> u64 {
 impl Solver {
     /// Starts the pinned Z3. Fails if it is missing or a different version.
     pub fn start() -> Result<Solver, String> {
+        STARTS.fetch_add(1, Ordering::Relaxed);
         toolchain::check_z3()?;
         let mut child = Command::new("z3")
-            .args(["-in", "-smt2", &format!("-T:{BACKSTOP_SECS}")])
+            .args([
+                "-in",
+                "-smt2",
+                &format!("-T:{}", BACKSTOP_SECS + REUSE_SECS),
+            ])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -54,11 +76,19 @@ impl Solver {
             child,
             stdin,
             stdout,
+            started: Instant::now(),
         };
         // Every command answers, so an error is seen at the command that caused it.
         s.send("(set-option :print-success true)")?;
         s.expect_success("(set-option :print-success true)")?;
         Ok(s)
+    }
+
+    /// Whether this process may take on another definition (see `REUSE_SECS`).
+    /// Every obligation starts with `(reset)` and its full base (ADR-0018),
+    /// so a reused process answers as a new one would.
+    pub fn reusable(&self) -> bool {
+        self.started.elapsed() < Duration::from_secs(REUSE_SECS)
     }
 
     fn expect_success(&mut self, cmd: &str) -> Result<(), String> {
