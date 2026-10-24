@@ -1,0 +1,52 @@
+#[summary("벤치: 길이가 증명된 슬라이스 덧셈(벡터화 가능성)")]
+mod vadd {
+    spec fn same3(a: &[i64], b: &[i64], c: &[i64]) -> bool { a.len() == c.len() && b.len() == c.len() }
+
+    #[effects(pure)]
+    #[uses(same3)]
+    fn add(a: &[i64], b: &[i64], c: &mut [i64]) -> ()
+        requires same3(a, b, c),
+    {
+        let mut i: usize = 0;
+        while i < c.len()
+            invariant i <= c.len(), a.len() == c.len(), b.len() == c.len(),
+            decreases c.len() - i,
+        {
+            c[i] = a[i].wrapping_add(b[i]);
+            i = i + 1;
+        }
+    }
+}
+
+#[summary("진입점")]
+mod app {
+    #[effects(io)]
+    #[uses(vadd::same3)]
+    fn main() -> () {
+        let mut a: [i64; 4096] = [0; 4096];
+        let mut b: [i64; 4096] = [0; 4096];
+        let mut c: [i64; 4096] = [0; 4096];
+        let mut i: usize = 0;
+        let mut v: i64 = 3;
+        while i < 4096
+            invariant i <= 4096,
+            decreases 4096 - i,
+        {
+            a[i] = v;
+            b[i] = v.wrapping_mul(7);
+            v = v.wrapping_mul(31).wrapping_add(11);
+            i = i + 1;
+        }
+        let mut r: usize = 0;
+        while r < 100000
+            invariant r <= 100000,
+            decreases 100000 - r,
+        {
+            vadd::add(&a, &b, &mut c);
+            vadd::add(&c, &b, &mut a);
+            r = r + 1;
+        }
+        print_i64(a[0]);
+        print_i64(a[4095]);
+    }
+}

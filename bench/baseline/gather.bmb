@@ -1,0 +1,76 @@
+#[summary("벤치: 순열 모으기(간접 인덱스 src[perm[i]])")]
+mod gather {
+    spec fn below(a: &[usize], m: usize, n: usize) -> bool {
+        forall|k: usize| k < n ==> #[trigger] a[k] < m
+    }
+
+    spec fn all_below(a: &[usize], m: usize) -> bool {
+        forall|k: usize| k < a.len() ==> #[trigger] a[k] < m
+    }
+
+    spec fn same_len(a: &[usize], b: &[i64]) -> bool { a.len() == b.len() && a.len() <= 1000000 }
+
+    #[effects(pure)]
+    #[uses(below, all_below)]
+    fn make_perm(p: &mut [usize]) -> ()
+        ensures all_below(p, p.len()),
+    {
+        let n: usize = p.len();
+        let mut i: usize = 0;
+        while i < n
+            invariant i <= n, n == p.len(), below(p, n, i),
+            decreases n - i,
+        {
+            p[i] = i.wrapping_mul(7919) % n;
+            i = i + 1;
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(all_below, same_len)]
+    fn apply(p: &[usize], src: &[i64], out: &mut [i64]) -> ()
+        requires same_len(p, src), same_len(p, out), all_below(p, p.len()),
+    {
+        let mut i: usize = 0;
+        while i < p.len()
+            invariant i <= p.len(), out.len() == p.len(),
+            decreases p.len() - i,
+        {
+            out[i] = src[p[i]];
+            i = i + 1;
+        }
+    }
+}
+
+#[summary("진입점")]
+mod app {
+    #[effects(io)]
+    #[uses(gather::same_len, gather::all_below)]
+    fn main() -> () {
+        let mut p: [usize; 200000] = [0; 200000];
+        let mut a: [i64; 200000] = [0; 200000];
+        let mut b: [i64; 200000] = [0; 200000];
+        gather::make_perm(&mut p);
+        let mut i: usize = 0;
+        let mut v: i64 = 1;
+        while i < 200000
+            invariant i <= 200000,
+            decreases 200000 - i,
+        {
+            a[i] = v;
+            v = v.wrapping_mul(31).wrapping_add(7);
+            i = i + 1;
+        }
+        let mut r: usize = 0;
+        while r < 200
+            invariant r <= 200,
+            decreases 200 - r,
+        {
+            gather::apply(&p, &a, &mut b);
+            gather::apply(&p, &b, &mut a);
+            r = r + 1;
+        }
+        print_i64(a[0]);
+        print_i64(a[199999]);
+    }
+}

@@ -24,7 +24,7 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
-BENCHES = ["sieve", "isort", "kadane", "gcdsum"]
+BENCHES = ["sieve", "isort", "kadane", "gcdsum", "hist", "gather", "vadd"]
 VARIANTS = ["bmb", "safe", "unck"]
 RUSTC = ["rustc", "-C", "opt-level=2", "-A", "warnings"]
 

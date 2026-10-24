@@ -82,6 +82,8 @@ LLVM 텍스트 IR을 만들고 LLVM 도구로 바이너리를 만든다.
 
 **종료 감사(2026-10-24):** 기준 1은 `compiler/tests/codegen.rs`의 `run_corpus_prints_expected_output`(Rust의 0 쪽 나눗셈·래핑 포함 8개 출력), 기준 2는 `proved_index_has_no_check_and_unproved_keeps_one`, 기준 3은 `mut_slices_are_noalias_and_shared_ones_readonly`(assume 미방출)와 IR의 `; proved Exxxx` 주석으로 확인한다. 증명된 사실은 현재 `nsw`/`nuw`/`inbounds`/`noalias`로 LLVM에 전달된다. assume 전달은 측정 후 결정한다(백로그 1C-07).
 
+**관찰(1E-05·1E-08):** 7개 벤치에서 안전 Rust와 `get_unchecked` Rust의 속도 차이가 잡음 수준이었다. 간접 인덱스·길이 미상 슬라이스에서도 같았다. 이 벤치들에서는 증명 기반 검사 제거의 속도 이득이 보이지 않는다(`bench/baseline/results/2026-10-24.md`). 2단계 우선순위 결정(1E-07)의 입력이다.
+
 **관찰:** M1에는 변환이 없어 `u64`·`usize` 값을 출력할 수 없다(`print_i64`만 있음). 2단계 "검사된 변환" 후보의 근거로 1E에서 빈도를 기록한다.
 
 ### 1D 맵과 도구 — 완료

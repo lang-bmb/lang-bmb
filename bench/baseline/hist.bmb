@@ -1,0 +1,66 @@
+#[summary("벤치: 히스토그램(간접 인덱스 h[a[i]])")]
+mod hist {
+    spec fn below(a: &[usize], m: usize, n: usize) -> bool {
+        forall|k: usize| k < n ==> #[trigger] a[k] < m
+    }
+
+    spec fn all_below(a: &[usize], m: usize) -> bool {
+        forall|k: usize| k < a.len() ==> #[trigger] a[k] < m
+    }
+
+    spec fn bins(h: &[i64]) -> bool { h.len() == 256 }
+
+    #[effects(pure)]
+    #[uses(below, all_below)]
+    fn fill(a: &mut [usize], seed: usize) -> ()
+        ensures all_below(a, 256),
+    {
+        let mut x: usize = seed;
+        let mut i: usize = 0;
+        while i < a.len()
+            invariant i <= a.len(), below(a, 256, i),
+            decreases a.len() - i,
+        {
+            x = x.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            a[i] = x / 65536 % 256;
+            i = i + 1;
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(all_below, bins)]
+    fn count(a: &[usize], h: &mut [i64]) -> ()
+        requires all_below(a, 256), bins(h),
+    {
+        let mut i: usize = 0;
+        while i < a.len()
+            invariant i <= a.len(), h.len() == 256,
+            decreases a.len() - i,
+        {
+            let v: usize = a[i];
+            h[v] = h[v].wrapping_add(1);
+            i = i + 1;
+        }
+    }
+}
+
+#[summary("진입점")]
+mod app {
+    #[effects(io)]
+    #[uses(hist::bins, hist::all_below)]
+    fn main() -> () {
+        let mut a: [usize; 100000] = [0; 100000];
+        let mut h: [i64; 256] = [0; 256];
+        let mut r: usize = 0;
+        while r < 300
+            invariant r <= 300,
+            decreases 300 - r,
+        {
+            hist::fill(&mut a, r);
+            hist::count(&a, &mut h);
+            r = r + 1;
+        }
+        print_i64(h[0]);
+        print_i64(h[255]);
+    }
+}
