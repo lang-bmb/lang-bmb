@@ -1,0 +1,20 @@
+{
+  "id": "n02-dependents",
+  "kind": "navigate",
+  "prompt": "If the predicate `math::is_max2` changes, which definitions directly depend on it (call it, mention it in a contract, or reveal it with #[uses])? Use the `answer` tool with the full paths (unit::name) of all such definitions.",
+  "truth": {
+    "query": [
+      "edges",
+      "math::is_max2",
+      "in",
+      "1"
+    ],
+    "kinds": [
+      "calls",
+      "contract",
+      "uses",
+      "spec_calls"
+    ],
+    "field": "from"
+  }
+}

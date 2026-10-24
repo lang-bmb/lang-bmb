@@ -1,0 +1,21 @@
+{
+  "id": "w10-add-post",
+  "kind": "write",
+  "prompt": "The library function `math::add_small` has no postcondition. Give it one stating that the result equals a + b, keeping its parameters, precondition and body.\n\nRequired signature (in unit `math`):\nfn add_small(a: i64, b: i64) -> (r: i64)",
+  "unit": "math",
+  "def": "math::add_small",
+  "signature": "fn add_small(a: i64, b: i64) -> (r: i64)",
+  "accept": {
+    "specs": "spec fn ref_pre(a: i64, b: i64) -> bool { -1000000000 <= a && a <= 1000000000 && -1000000000 <= b && b <= 1000000000 }\nspec fn ref_post(a: i64, b: i64, r: i64) -> bool { r == a + b }",
+    "pre": "ref_pre(a, b)",
+    "post": "ref_post(a, b, r)",
+    "args": "a, b"
+  },
+  "reference": [
+    {
+      "op": "put",
+      "unit": "math",
+      "code": "spec fn is_sum(a: i64, b: i64, r: i64) -> bool { r == a + b }\n\n#[effects(pure)]\n#[uses(small, is_sum)]\nfn add_small(a: i64, b: i64) -> (r: i64)\n    requires small(a), small(b),\n    ensures is_sum(a, b, r),\n{\n    a + b\n}"
+    }
+  ]
+}

@@ -1,0 +1,67 @@
+#[summary("정수 보조 함수")]
+mod math {
+    #[effects(pure)]
+    #[uses(small)]
+    fn add_small(a: i64, b: i64) -> i64
+        requires small(a), small(b),
+    {
+        a + b
+    }
+
+    #[effects(pure)]
+    #[uses(nonneg, small)]
+    fn clamp_pos(x: i64) -> (r: i64)
+        requires small(x),
+        ensures nonneg(r),
+    {
+        if x < 0 {
+            0
+        } else {
+            x
+        }
+    }
+
+    spec fn is_max2(a: i64, b: i64, r: i64) -> bool {
+        r >= a && r >= b && (r == a || r == b)
+    }
+
+    spec fn is_min2(a: i64, b: i64, r: i64) -> bool {
+        r <= a && r <= b && (r == a || r == b)
+    }
+
+    #[effects(pure)]
+    #[uses(is_max2)]
+    fn max2(a: i64, b: i64) -> (r: i64)
+        ensures is_max2(a, b, r),
+    {
+        if a >= b {
+            a
+        } else {
+            b
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(is_min2)]
+    fn min2(a: i64, b: i64) -> (r: i64)
+        ensures is_min2(a, b, r),
+    {
+        if a <= b {
+            a
+        } else {
+            b
+        }
+    }
+
+    spec fn nonneg(x: i64) -> bool {
+        x >= 0
+    }
+
+    spec fn ordered(lo: i64, hi: i64) -> bool {
+        lo <= hi
+    }
+
+    spec fn small(x: i64) -> bool {
+        -1000000000 <= x && x <= 1000000000
+    }
+}

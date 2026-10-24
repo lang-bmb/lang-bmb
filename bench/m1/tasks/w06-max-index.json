@@ -1,0 +1,26 @@
+{
+  "id": "w06-max-index",
+  "kind": "write",
+  "prompt": "Create unit `tasks` and implement `max_index`: for a non-empty array, an index of a largest element. The contract must state that the index is in bounds and no element is larger than the one at that index.\n\nRequired signature (in unit `tasks`):\nfn max_index(a: &[i64]) -> (r: usize)",
+  "unit": "tasks",
+  "def": "tasks::max_index",
+  "signature": "fn max_index(a: &[i64]) -> (r: usize)",
+  "accept": {
+    "specs": "spec fn ref_pre(a: &[i64]) -> bool { a.len() > 0 }\nspec fn ref_post(a: &[i64], r: usize) -> bool { r < a.len() && (forall|k: usize| k < a.len() ==> #[trigger] a[k] <= a[r]) }",
+    "pre": "ref_pre(a)",
+    "post": "ref_post(a, r)",
+    "args": "a"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn nonempty(a: &[i64]) -> bool { a.len() > 0 }\n\nspec fn best_below(a: &[i64], n: usize, b: usize) -> bool { b < a.len() && (forall|k: usize| k < n ==> #[trigger] a[k] <= a[b]) }\n\nspec fn is_max_index(a: &[i64], r: usize) -> bool { r < a.len() && (forall|k: usize| k < a.len() ==> #[trigger] a[k] <= a[r]) }\n\n#[effects(pure)]\n#[uses(nonempty, best_below, is_max_index)]\nfn max_index(a: &[i64]) -> (r: usize)\n    requires nonempty(a),\n    ensures is_max_index(a, r),\n{\n    let mut b: usize = 0;\n    let mut k: usize = 1;\n    while k < a.len()\n        invariant 1 <= k, k <= a.len(), best_below(a, k, b),\n        decreases a.len() - k,\n    {\n        if a[k] > a[b] {\n            b = k;\n        }\n        k = k + 1;\n    }\n    b\n}"
+    }
+  ]
+}

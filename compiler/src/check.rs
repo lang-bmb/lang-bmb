@@ -620,12 +620,13 @@ impl<'a> Checker<'a> {
                 }
                 let ct = self.expr(cx, cond, Some(&TypeKind::Bool), mode);
                 self.expect_ty(&ct, &TypeKind::Bool, cond.span);
+                // `old(a)` in an invariant or assertion is `a` on function entry.
                 for inv in invariants {
                     let t = self.expr(
                         cx,
                         inv,
                         Some(&TypeKind::Bool),
-                        Mode::Spec { allow_old: false },
+                        Mode::Spec { allow_old: true },
                     );
                     self.expect_ty(&t, &TypeKind::Bool, inv.span);
                 }
@@ -659,7 +660,7 @@ impl<'a> Checker<'a> {
                     cx,
                     cond,
                     Some(&TypeKind::Bool),
-                    Mode::Spec { allow_old: false },
+                    Mode::Spec { allow_old: true },
                 );
                 self.expect_ty(&t, &TypeKind::Bool, cond.span);
             }
@@ -929,7 +930,7 @@ impl<'a> Checker<'a> {
                         self.err(
                             code,
                             e.span,
-                            "`old(x)` is only allowed in `ensures`, on a `&mut` parameter `x`",
+                            "`old(x)` is only allowed in `ensures`, loop invariants and `assert`, on a `&mut` parameter `x`",
                         );
                         TypeKind::Error
                     }

@@ -82,7 +82,7 @@ pub const CODES: &[(&str, &str)] = &[
     ("E0507", "recursive function requires `decreases`"),
     (
         "E0508",
-        "`old(..)` is only allowed in `ensures` on a `&mut` parameter",
+        "`old(..)` is only allowed in `ensures`, loop invariants and `assert` on a `&mut` parameter",
     ),
     ("E0509", "`#[uses(..)]` entry is not a spec function"),
     ("E0510", "`#[trigger]` is only allowed inside `forall`"),

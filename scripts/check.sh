@@ -10,4 +10,7 @@ step "format";  cargo fmt --all --check
 step "lint";    cargo clippy --all-targets --quiet -- -D warnings
 step "test";    cargo test --quiet
 step "backlog"; python3 scripts/check_backlog.py
+step "bench m1"; python3 bench/m1/harness.py run --agent oracle --expect all-pass > /dev/null
+python3 bench/m1/harness.py run --agent weak --expect weak-fail > /dev/null
+python3 bench/m1/test_anthropic_agent.py 2> /dev/null
 echo "all checks passed"

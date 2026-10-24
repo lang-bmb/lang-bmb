@@ -1,0 +1,65 @@
+#[summary("배열 보조 함수")]
+mod arrays {
+    spec fn all_eq(a: &[i64], v: i64) -> bool {
+        forall|k: usize| k < a.len() ==> #[trigger] a[k] == v
+    }
+
+    spec fn eq_below(a: &[i64], v: i64, n: usize) -> bool {
+        forall|k: usize| k < n ==> #[trigger] a[k] == v
+    }
+
+    #[effects(pure)]
+    #[uses(all_eq, eq_below)]
+    fn fill(a: &mut [i64], v: i64) -> ()
+        ensures all_eq(a, v),
+    {
+        let mut k: usize = 0;
+        while k < a.len()
+            invariant k <= a.len(), eq_below(a, v, k),
+            decreases a.len() - k,
+        {
+            a[k] = v;
+            k = k + 1;
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(nonempty)]
+    fn first(a: &[i64]) -> i64
+        requires nonempty(a),
+    {
+        a[0]
+    }
+
+    spec fn idx2(a: &[i64], i: usize, j: usize) -> bool {
+        i < a.len() && j < a.len()
+    }
+
+    spec fn nonempty(a: &[i64]) -> bool {
+        a.len() > 0
+    }
+
+    #[effects(pure)]
+    #[uses(idx2, nonempty)]
+    fn reverse_ends(a: &mut [i64]) -> ()
+        requires nonempty(a),
+    {
+        let n: usize = a.len();
+        swap(a, 0, n - 1);
+    }
+
+    #[effects(pure)]
+    #[uses(idx2, swapped)]
+    fn swap(a: &mut [i64], i: usize, j: usize) -> ()
+        requires idx2(a, i, j),
+        ensures swapped(a, old(a), i, j),
+    {
+        let t: i64 = a[i];
+        a[i] = a[j];
+        a[j] = t;
+    }
+
+    spec fn swapped(a: &[i64], b: &[i64], i: usize, j: usize) -> bool {
+        a.len() == b.len() && a[i] == b[j] && a[j] == b[i]
+    }
+}

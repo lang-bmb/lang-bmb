@@ -1,0 +1,26 @@
+{
+  "id": "w05-fill-from",
+  "kind": "write",
+  "prompt": "Create unit `tasks` and implement `fill_from`: set every element at index >= start to v and leave the others unchanged, for start <= a.len(). The contract must state both parts.\n\nRequired signature (in unit `tasks`):\nfn fill_from(a: &mut [i64], start: usize, v: i64) -> ()",
+  "unit": "tasks",
+  "def": "tasks::fill_from",
+  "signature": "fn fill_from(a: &mut [i64], start: usize, v: i64) -> ()",
+  "accept": {
+    "specs": "spec fn ref_pre(a: &[i64], start: usize, v: i64) -> bool { start <= a.len() }\nspec fn ref_post(a: &[i64], b: &[i64], start: usize, v: i64) -> bool { a.len() == b.len() && (forall|k: usize| k < a.len() ==> ((k >= start ==> #[trigger] a[k] == v) && (k < start ==> a[k] == b[k]))) }",
+    "pre": "ref_pre(a, start, v)",
+    "post": "ref_post(a, old(a), start, v)",
+    "args": "a, start, v"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn start_ok(a: &[i64], start: usize) -> bool { start <= a.len() }\n\nspec fn filled(a: &[i64], b: &[i64], start: usize, n: usize, v: i64) -> bool {\n    a.len() == b.len() && (forall|k: usize| k < a.len() ==> ((k >= start && k < n ==> #[trigger] a[k] == v) && ((k < start || k >= n) ==> a[k] == b[k])))\n}\n\nspec fn filled_all(a: &[i64], b: &[i64], start: usize, v: i64) -> bool {\n    a.len() == b.len() && (forall|k: usize| k < a.len() ==> ((k >= start ==> #[trigger] a[k] == v) && (k < start ==> a[k] == b[k])))\n}\n\n#[effects(pure)]\n#[uses(start_ok, filled, filled_all)]\nfn fill_from(a: &mut [i64], start: usize, v: i64) -> ()\n    requires start_ok(a, start),\n    ensures filled_all(a, old(a), start, v),\n{\n    let mut k: usize = start;\n    while k < a.len()\n        invariant start <= k, k <= a.len(), filled(a, old(a), start, k, v),\n        decreases a.len() - k,\n    {\n        a[k] = v;\n        k = k + 1;\n    }\n}"
+    }
+  ]
+}

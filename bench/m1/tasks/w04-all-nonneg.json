@@ -1,0 +1,26 @@
+{
+  "id": "w04-all-nonneg",
+  "kind": "write",
+  "prompt": "Create unit `tasks` and implement `all_nonneg`: true exactly when every element of `a` is >= 0. The contract must state that equivalence.\n\nRequired signature (in unit `tasks`):\nfn all_nonneg(a: &[i64]) -> (r: bool)",
+  "unit": "tasks",
+  "def": "tasks::all_nonneg",
+  "signature": "fn all_nonneg(a: &[i64]) -> (r: bool)",
+  "accept": {
+    "specs": "spec fn ref_post(a: &[i64], r: bool) -> bool { r == (forall|k: usize| k < a.len() ==> #[trigger] a[k] >= 0) }",
+    "pre": null,
+    "post": "ref_post(a, r)",
+    "args": "a"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn nonneg_below(a: &[i64], n: usize) -> bool { forall|k: usize| k < n ==> #[trigger] a[k] >= 0 }\n\nspec fn all_nonneg_spec(a: &[i64], r: bool) -> bool { r == (forall|k: usize| k < a.len() ==> #[trigger] a[k] >= 0) }\n\n#[effects(pure)]\n#[uses(nonneg_below, all_nonneg_spec)]\nfn all_nonneg(a: &[i64]) -> (r: bool)\n    ensures all_nonneg_spec(a, r),\n{\n    let mut k: usize = 0;\n    while k < a.len() && a[k] >= 0\n        invariant k <= a.len(), nonneg_below(a, k),\n        decreases a.len() - k,\n    {\n        k = k + 1;\n    }\n    k == a.len()\n}"
+    }
+  ]
+}

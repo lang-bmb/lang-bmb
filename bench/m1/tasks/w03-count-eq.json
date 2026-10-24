@@ -1,0 +1,26 @@
+{
+  "id": "w03-count-eq",
+  "kind": "write",
+  "prompt": "Create unit `tasks` and implement `count_eq`: how many elements of `a` equal `v`, for arrays of at most 1_000_000 elements. The contract must state that the count lies between 0 and a.len(), and that it is 0 when no element equals v.\n\nRequired signature (in unit `tasks`):\nfn count_eq(a: &[i64], v: i64) -> (r: i64)",
+  "unit": "tasks",
+  "def": "tasks::count_eq",
+  "signature": "fn count_eq(a: &[i64], v: i64) -> (r: i64)",
+  "accept": {
+    "specs": "spec fn ref_pre(a: &[i64], v: i64) -> bool { a.len() <= 1000000 }\nspec fn ref_post(a: &[i64], v: i64, r: i64) -> bool { 0 <= r && r <= a.len() && ((forall|k: usize| k < a.len() ==> #[trigger] a[k] != v) ==> r == 0) }",
+    "pre": "ref_pre(a, v)",
+    "post": "ref_post(a, v, r)",
+    "args": "a, v"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn len_ok(a: &[i64]) -> bool { a.len() <= 1000000 }\n\nspec fn none_below(a: &[i64], v: i64, n: usize) -> bool { forall|k: usize| k < n ==> #[trigger] a[k] != v }\n\nspec fn count_ok(a: &[i64], v: i64, n: usize, c: i64) -> bool { 0 <= c && c <= n && (none_below(a, v, n) ==> c == 0) }\n\nspec fn is_count(a: &[i64], v: i64, r: i64) -> bool { 0 <= r && r <= a.len() && ((forall|k: usize| k < a.len() ==> #[trigger] a[k] != v) ==> r == 0) }\n\n#[effects(pure)]\n#[uses(len_ok, none_below, count_ok, is_count)]\nfn count_eq(a: &[i64], v: i64) -> (r: i64)\n    requires len_ok(a),\n    ensures is_count(a, v, r),\n{\n    let mut c: i64 = 0;\n    let mut k: usize = 0;\n    while k < a.len()\n        invariant k <= a.len(), count_ok(a, v, k, c),\n        decreases a.len() - k,\n    {\n        if a[k] == v {\n            c = c + 1;\n        }\n        k = k + 1;\n    }\n    c\n}"
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "id": "w08-digits",
+  "kind": "write",
+  "prompt": "Create unit `tasks` and implement `digits`: the number of decimal digits of n (digits(0) is 1). The contract must state that the result is between 1 and 20, and is 1 when n < 10.\n\nRequired signature (in unit `tasks`):\nfn digits(n: u64) -> (r: i64)",
+  "unit": "tasks",
+  "def": "tasks::digits",
+  "signature": "fn digits(n: u64) -> (r: i64)",
+  "accept": {
+    "specs": "spec fn ref_post(n: u64, r: i64) -> bool { 1 <= r && r <= 20 && (n < 10 ==> r == 1) }",
+    "pre": null,
+    "post": "ref_post(n, r)",
+    "args": "n"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn digit_count(n: u64, r: i64) -> bool { 1 <= r && r <= 20 && (n < 10 ==> r == 1) }\n\n#[effects(pure)]\n#[uses(digit_count)]\nfn digits(n: u64) -> (r: i64)\n    ensures digit_count(n, r),\n{\n    if n < 10 { 1 } else if n < 100 { 2 } else if n < 1000 { 3 } else if n < 10000 { 4 } else if n < 100000 { 5 } else if n < 1000000 { 6 } else if n < 10000000 { 7 } else if n < 100000000 { 8 } else if n < 1000000000 { 9 } else if n < 10000000000 { 10 } else if n < 100000000000 { 11 } else if n < 1000000000000 { 12 } else if n < 10000000000000 { 13 } else if n < 100000000000000 { 14 } else if n < 1000000000000000 { 15 } else if n < 10000000000000000 { 16 } else if n < 100000000000000000 { 17 } else if n < 1000000000000000000 { 18 } else if n < 10000000000000000000 { 19 } else { 20 }\n}"
+    }
+  ]
+}

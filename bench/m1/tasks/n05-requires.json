@@ -1,0 +1,12 @@
+{
+  "id": "n05-requires",
+  "kind": "navigate",
+  "prompt": "Which definitions require the predicate `arrays::nonempty` in their precondition? Use the `answer` tool with the full paths (unit::name) of all such definitions.",
+  "truth": {
+    "query": [
+      "contracts",
+      "arrays::nonempty"
+    ],
+    "list": "required_by"
+  }
+}

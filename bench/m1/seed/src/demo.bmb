@@ -1,0 +1,14 @@
+#[summary("데모 진입점")]
+mod demo {
+    #[effects(io)]
+    #[uses(arrays::idx2, arrays::nonempty, math::small)]
+    fn main() -> () {
+        let mut xs: [i64; 4] = [3, 1, 4, 1];
+        arrays::swap(&mut xs, 0, 3);
+        print_i64(arrays::first(&xs));
+        print_i64(stats::max_of(&xs));
+        arrays::fill(&mut xs, 7);
+        print_i64(math::clamp_pos(-5));
+        arrays::reverse_ends(&mut xs);
+    }
+}

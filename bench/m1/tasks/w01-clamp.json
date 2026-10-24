@@ -1,0 +1,38 @@
+{
+  "id": "w01-clamp",
+  "kind": "write",
+  "prompt": "Create unit `tasks` and implement `clamp`: for lo <= hi, return x limited to the range [lo, hi]. The contract must state that the result lies in [lo, hi] and equals x whenever x is already in range.\n\nRequired signature (in unit `tasks`):\nfn clamp(x: i64, lo: i64, hi: i64) -> (r: i64)",
+  "unit": "tasks",
+  "def": "tasks::clamp",
+  "signature": "fn clamp(x: i64, lo: i64, hi: i64) -> (r: i64)",
+  "accept": {
+    "specs": "spec fn ref_pre(x: i64, lo: i64, hi: i64) -> bool { lo <= hi }\nspec fn ref_post(x: i64, lo: i64, hi: i64, r: i64) -> bool { lo <= r && r <= hi && ((lo <= x && x <= hi) ==> r == x) }",
+    "pre": "ref_pre(x, lo, hi)",
+    "post": "ref_post(x, lo, hi, r)",
+    "args": "x, lo, hi"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn ordered(lo: i64, hi: i64) -> bool { lo <= hi }\n\nspec fn clamped(x: i64, lo: i64, hi: i64, r: i64) -> bool { lo <= r && r <= hi && ((lo <= x && x <= hi) ==> r == x) }\n\n#[effects(pure)]\n#[uses(ordered, clamped)]\nfn clamp(x: i64, lo: i64, hi: i64) -> (r: i64)\n    requires ordered(lo, hi),\n    ensures clamped(x, lo, hi, r),\n{\n    if x < lo { lo } else { if x > hi { hi } else { x } }\n}"
+    }
+  ],
+  "weak_reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn ordered(lo: i64, hi: i64) -> bool { lo <= hi }\n\nspec fn above(lo: i64, r: i64) -> bool { lo <= r }\n\n#[effects(pure)]\n#[uses(ordered, above)]\nfn clamp(x: i64, lo: i64, hi: i64) -> (r: i64)\n    requires ordered(lo, hi),\n    ensures above(lo, r),\n{\n    if x < lo { lo } else { x }\n}"
+    }
+  ]
+}

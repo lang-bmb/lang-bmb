@@ -1,0 +1,26 @@
+{
+  "id": "w02-abs-diff",
+  "kind": "write",
+  "prompt": "Create unit `tasks` and implement `abs_diff`: the absolute difference of a and b, for inputs whose absolute value is at most 1_000_000_000_000_000_000. The contract must state that the result is non-negative and equals a - b or b - a.\n\nRequired signature (in unit `tasks`):\nfn abs_diff(a: i64, b: i64) -> (r: i64)",
+  "unit": "tasks",
+  "def": "tasks::abs_diff",
+  "signature": "fn abs_diff(a: i64, b: i64) -> (r: i64)",
+  "accept": {
+    "specs": "spec fn ref_pre(a: i64, b: i64) -> bool { -1000000000000000000 <= a && a <= 1000000000000000000 && -1000000000000000000 <= b && b <= 1000000000000000000 }\nspec fn ref_post(a: i64, b: i64, r: i64) -> bool { r >= 0 && (r == a - b || r == b - a) }",
+    "pre": "ref_pre(a, b)",
+    "post": "ref_post(a, b, r)",
+    "args": "a, b"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn moderate(a: i64, b: i64) -> bool { -1000000000000000000 <= a && a <= 1000000000000000000 && -1000000000000000000 <= b && b <= 1000000000000000000 }\n\nspec fn is_abs_diff(a: i64, b: i64, r: i64) -> bool { r >= 0 && (r == a - b || r == b - a) }\n\n#[effects(pure)]\n#[uses(moderate, is_abs_diff)]\nfn abs_diff(a: i64, b: i64) -> (r: i64)\n    requires moderate(a, b),\n    ensures is_abs_diff(a, b, r),\n{\n    if a >= b { a - b } else { b - a }\n}"
+    }
+  ]
+}

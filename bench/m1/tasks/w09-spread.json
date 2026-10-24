@@ -1,0 +1,26 @@
+{
+  "id": "w09-spread",
+  "kind": "write",
+  "prompt": "Create unit `tasks` and implement `spread`: the largest element minus the smallest element, for a non-empty array whose elements are all between -1000 and 1000. The contract must state that the result is >= 0. Reuse the existing library (see `query units`) where it helps.\n\nRequired signature (in unit `tasks`):\nfn spread(a: &[i64]) -> (r: i64)",
+  "unit": "tasks",
+  "def": "tasks::spread",
+  "signature": "fn spread(a: &[i64]) -> (r: i64)",
+  "accept": {
+    "specs": "spec fn ref_pre(a: &[i64]) -> bool { a.len() > 0 && (forall|k: usize| k < a.len() ==> -1000 <= #[trigger] a[k] && a[k] <= 1000) }\nspec fn ref_post(a: &[i64], r: i64) -> bool { r >= 0 }",
+    "pre": "ref_pre(a)",
+    "post": "ref_post(a, r)",
+    "args": "a"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn small_nonempty(a: &[i64]) -> bool { a.len() > 0 && (forall|k: usize| k < a.len() ==> -1000 <= #[trigger] a[k] && a[k] <= 1000) }\n\nspec fn hi_lo(hi: i64, lo: i64) -> bool { -1000 <= lo && lo <= hi && hi <= 1000 }\n\nspec fn nonneg(r: i64) -> bool { r >= 0 }\n\n#[effects(pure)]\n#[uses(small_nonempty, hi_lo, nonneg, math::is_max2, math::is_min2)]\nfn spread(a: &[i64]) -> (r: i64)\n    requires small_nonempty(a),\n    ensures nonneg(r),\n{\n    let mut hi: i64 = a[0];\n    let mut lo: i64 = a[0];\n    let mut k: usize = 1;\n    while k < a.len()\n        invariant 1 <= k, k <= a.len(), hi_lo(hi, lo),\n        decreases a.len() - k,\n    {\n        hi = math::max2(hi, a[k]);\n        lo = math::min2(lo, a[k]);\n        k = k + 1;\n    }\n    hi - lo\n}"
+    }
+  ]
+}

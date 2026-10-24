@@ -75,3 +75,20 @@ fn queries_and_output_are_deterministic() {
         assert_eq!(a.output, b.output, "{}", p.display());
     }
 }
+
+#[test]
+fn benchmark_programs_are_proved() {
+    let bench = root().join("..").join("bench");
+    for p in bmb_files(&bench.join("baseline")) {
+        let out = verify(&p);
+        assert!(out.ok, "{} should verify:\n{}", p.display(), out.output);
+    }
+    // The M1 seed workspace is one program spread over unit files.
+    let seed = bench.join("m1").join("seed").join("src");
+    let files: Vec<(String, String)> = bmb_files(&seed)
+        .into_iter()
+        .map(|p| (name(&p), fs::read_to_string(&p).unwrap()))
+        .collect();
+    let out = bmb::verify_sources(&files);
+    assert!(out.ok, "seed workspace should verify:\n{}", out.output);
+}
