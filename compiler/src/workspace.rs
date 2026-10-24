@@ -69,7 +69,7 @@ fn parse_into(sm: &mut SourceMap, diags: &mut Diags, name: &str, text: &str) -> 
     parser::Parser::new(toks, diags).parse_program()
 }
 
-fn find_mod<'a>(mods: &'a mut Vec<Mod>, path: &[&str]) -> Option<&'a mut Mod> {
+fn find_mod<'a>(mods: &'a mut [Mod], path: &[&str]) -> Option<&'a mut Mod> {
     let (first, rest) = path.split_first()?;
     let m = mods.iter_mut().find(|m| m.name.name == *first)?;
     if rest.is_empty() {

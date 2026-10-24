@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use bmb::workspace::{Op, commit, read_dir_sources, write_units};
 
@@ -12,7 +12,7 @@ fn temp(name: &str) -> PathBuf {
     d
 }
 
-fn snapshot(root: &PathBuf) -> BTreeMap<String, String> {
+fn snapshot(root: &Path) -> BTreeMap<String, String> {
     read_dir_sources(root).unwrap().into_iter().collect()
 }
 
