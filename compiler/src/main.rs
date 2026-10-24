@@ -2,7 +2,8 @@ use std::process::ExitCode;
 
 const USAGE: &str = "usage:
   bmb check <file.bmb>...   check sources; diagnostics as JSONL on stdout
-  bmb codes                 list diagnostic codes as JSONL";
+  bmb codes                 list diagnostic codes as JSONL
+  bmb doctor                check the pinned toolchain (z3, LLVM) as JSONL";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -21,6 +22,41 @@ fn main() -> ExitCode {
             let out = bmb::check_sources(&files);
             print!("{}", out.diagnostics);
             if out.ok {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::from(1)
+            }
+        }
+        Some("doctor") => {
+            let mut ok = true;
+            for (tool, want, res) in [
+                (
+                    "z3",
+                    bmb::toolchain::z3_version(),
+                    bmb::toolchain::check_z3(),
+                ),
+                (
+                    "llvm",
+                    bmb::toolchain::llvm_major(),
+                    bmb::toolchain::check_llvm(),
+                ),
+            ] {
+                let (status, detail) = match res {
+                    Ok(v) => ("ok", v),
+                    Err(e) => {
+                        ok = false;
+                        ("error", e)
+                    }
+                };
+                println!(
+                    "{{\"tool\":{},\"required\":{},\"status\":{},\"detail\":{}}}",
+                    bmb::diag::json_str(tool),
+                    bmb::diag::json_str(want),
+                    bmb::diag::json_str(status),
+                    bmb::diag::json_str(&detail)
+                );
+            }
+            if ok {
                 ExitCode::SUCCESS
             } else {
                 ExitCode::from(1)

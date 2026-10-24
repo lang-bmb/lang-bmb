@@ -6,6 +6,9 @@ M1(ADR-0016) 최소 관통 경로의 첫 단계: 파싱 → 이름·타입·소�
 ```
 cargo run -- check a.bmb b.bmb   # 진단을 JSONL로 출력. 오류가 있으면 종료 코드 1
 cargo run -- codes               # 진단 코드 목록(JSONL)
+cargo run -- doctor              # 고정된 Z3·LLVM 버전 확인(scripts/toolchain.env)
+../scripts/setup.sh              # 고정 버전 설치(새 클라우드 세션은 시작 훅이 자동 실행)
+../scripts/check.sh              # 검증 게이트: fmt·clippy·test·백로그 검사
 cargo test                       # 회귀 코퍼스(tests/check)
 BMB_BLESS=1 cargo test           # 기대 진단(.jsonl) 갱신
 ```
