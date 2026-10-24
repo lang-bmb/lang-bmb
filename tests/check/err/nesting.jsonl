@@ -1,0 +1,1 @@
+{"code":"E0107","severity":"error","message":"nesting deeper than 256 levels","file":"err/nesting.bmb","line":4,"col":276,"end_line":4,"end_col":277,"fix":{"message":"split the expression with `let` bindings or helper functions"}}

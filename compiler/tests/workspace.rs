@@ -178,3 +178,146 @@ fn ops_parse_from_json() {
     assert!(bmb::workspace::parse_ops(r#"[{"op":"explode"}]"#).is_err());
     assert!(bmb::workspace::parse_ops(r#"{"op":"put"}"#).is_err());
 }
+
+/// Unit and definition paths become file names: anything but `::`-separated
+/// identifiers is rejected and nothing is written (backlog 1D-15).
+#[test]
+fn invalid_paths_are_rejected_and_write_nothing() {
+    let outer = temp("traversal");
+    let root = outer.join("ws");
+    let units = bmb::format_sources(&[("base.bmb".into(), BASE.into())]).unwrap();
+    write_units(&root, &units).unwrap();
+    let before = snapshot(&root);
+    let listing = |d: &Path| {
+        let mut v: Vec<String> = fs::read_dir(d)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        v.sort();
+        v
+    };
+    let outer_before = listing(&outer);
+    let src_before = listing(&root.join("src"));
+    let f = "#[effects(pure)]\nfn f() -> i64 { 1 }";
+    let bad = [
+        "../../evil",
+        "../evil",
+        "",
+        "a::",
+        "::a",
+        "a::::b",
+        "a b",
+        " a",
+        "a/b",
+        "a\\b",
+        ".a",
+        "1a",
+        "fn",
+        "mod",
+        "core::..",
+        "a { } mod evil",
+        "한글",
+    ];
+    for path in bad {
+        let attempts = [
+            vec![Op::Unit {
+                path: path.into(),
+                summary: "x".into(),
+            }],
+            vec![
+                Op::Unit {
+                    path: path.into(),
+                    summary: "x".into(),
+                },
+                put(path, f),
+            ],
+            vec![put(path, f)],
+            vec![Op::Remove {
+                def: format!("{path}::f"),
+            }],
+            vec![Op::RemoveUnit { path: path.into() }],
+        ];
+        for ops in attempts {
+            let c = commit(&root, &ops).unwrap();
+            assert!(!c.ok, "{path:?} {ops:?}");
+            assert!(
+                c.diagnostics.contains("not a valid path"),
+                "{path:?}: {}",
+                c.diagnostics
+            );
+            assert_eq!(snapshot(&root), before, "{path:?}");
+            assert_eq!(listing(&outer), outer_before, "{path:?}");
+            assert_eq!(listing(&root.join("src")), src_before, "{path:?}");
+        }
+    }
+    assert!(!outer.join("evil.bmb").exists());
+
+    // `write_units` itself refuses a name that is not an identifier.
+    let mut evil = BTreeMap::new();
+    evil.insert("../../evil".to_string(), "x".to_string());
+    assert!(write_units(&root, &evil).is_err());
+    assert_eq!(listing(&outer), outer_before);
+    assert_eq!(snapshot(&root), before);
+
+    // The same through the CLI, as reported.
+    let ops = outer.join("ops.json");
+    fs::write(&ops, r#"[{"op":"unit","path":"../../evil","summary":"x"}]"#).unwrap();
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_bmb"))
+        .args(["apply", root.to_str().unwrap(), ops.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    assert!(!outer.join("evil.bmb").exists());
+    assert_eq!(snapshot(&root), before);
+    let _ = fs::remove_dir_all(&outer);
+}
+
+/// `put` takes definitions only: nested units, code that closes the wrapper,
+/// and code without a definition are errors, not silently dropped (1D-19).
+#[test]
+fn put_rejects_units_and_empty_code() {
+    let root = init("putshape");
+    let before = snapshot(&root);
+    let cases = [
+        "#[summary(\"x\")]\nmod inner {\n#[effects(pure)]\nfn f() -> i64 { 1 }\n}",
+        "#[effects(pure)]\nfn f() -> i64 { 1 }\n}\n#[summary(\"x\")]\nmod evil {\n#[effects(pure)]\nfn g() -> i64 { 2 }",
+        "",
+        "   ",
+        "// only a comment",
+    ];
+    for code in cases {
+        let c = commit(&root, &[put("core", code)]).unwrap();
+        assert!(!c.ok, "{code:?}");
+        assert!(
+            c.diagnostics.contains("only `fn`") || c.diagnostics.contains("no definition"),
+            "{code:?}: {}",
+            c.diagnostics
+        );
+        assert_eq!(snapshot(&root), before);
+    }
+}
+
+/// No temporary files are left behind by a commit.
+#[test]
+fn commit_leaves_no_temporary_files() {
+    let root = init("tmpfiles");
+    let c = commit(
+        &root,
+        &[
+            Op::Unit {
+                path: "extra".into(),
+                summary: "추가".into(),
+            },
+            put("extra", "#[effects(pure)]\nfn one() -> i64 { 1 }"),
+            Op::RemoveUnit { path: "app".into() },
+        ],
+    )
+    .unwrap();
+    assert!(c.ok, "{}", c.diagnostics);
+    let mut names: Vec<String> = fs::read_dir(root.join("src"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    assert_eq!(names, ["core.bmb", "extra.bmb"]);
+}

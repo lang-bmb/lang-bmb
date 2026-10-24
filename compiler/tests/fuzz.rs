@@ -170,7 +170,11 @@ fn front_end_never_panics_on_mutated_programs() {
         // Silence the panic message only around the compiler call.
         let prev = panic::take_hook();
         panic::set_hook(Box::new(|_| {}));
-        let result = panic::catch_unwind(move || bmb::check_sources(&[("f.bmb".into(), input)]));
+        // On the stack the CLI and MCP server use (`bmb::with_stack`): the
+        // corpus holds programs at the nesting limit (backlog 1A-11).
+        let result = panic::catch_unwind(move || {
+            bmb::with_stack(|| bmb::check_sources(&[("f.bmb".into(), input)]))
+        });
         panic::set_hook(prev);
         // Mutants that type-check also go through proof and code generation,
         // whose internal invariants assume a checked program.
@@ -181,7 +185,7 @@ fn front_end_never_panics_on_mutated_programs() {
                 let prev = panic::take_hook();
                 panic::set_hook(Box::new(|_| {}));
                 let r = panic::catch_unwind(move || {
-                    bmb::emit_llvm_sources(&[("f.bmb".into(), input)]);
+                    bmb::with_stack(|| bmb::emit_llvm_sources(&[("f.bmb".into(), input)]));
                 });
                 panic::set_hook(prev);
                 r.map(|_| ())

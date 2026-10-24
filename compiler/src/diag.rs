@@ -16,6 +16,7 @@ pub const CODES: &[(&str, &str)] = &[
     ),
     ("E0105", "integer literal too large"),
     ("E0106", "block comments are not allowed; use `//`"),
+    ("E0107", "nesting too deep"),
     // E02xx: Rust habits rejected by BMB (each carries a fix when mechanical)
     ("E0201", "`let` requires an explicit type"),
     ("E0202", "macros are not allowed"),

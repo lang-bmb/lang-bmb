@@ -58,8 +58,10 @@ impl Value {
 
 pub fn parse(s: &str) -> Result<Value, String> {
     let mut p = P {
+        s,
         b: s.as_bytes(),
         i: 0,
+        depth: 0,
     };
     p.ws();
     let v = p.value()?;
@@ -70,9 +72,15 @@ pub fn parse(s: &str) -> Result<Value, String> {
     Ok(v)
 }
 
+/// Maximum nesting of arrays and objects. Deeper input is rejected instead of
+/// overflowing the stack (backlog 1A-11).
+pub const MAX_DEPTH: usize = 256;
+
 struct P<'a> {
+    s: &'a str,
     b: &'a [u8],
     i: usize,
+    depth: usize,
 }
 
 impl P<'_> {
@@ -96,6 +104,19 @@ impl P<'_> {
     }
 
     fn value(&mut self) -> Result<Value, String> {
+        if matches!(self.b.get(self.i), Some(b'[' | b'{')) {
+            if self.depth >= MAX_DEPTH {
+                return self.err(&format!("nesting deeper than {MAX_DEPTH}"));
+            }
+            self.depth += 1;
+            let v = self.value_inner();
+            self.depth -= 1;
+            return v;
+        }
+        self.value_inner()
+    }
+
+    fn value_inner(&mut self) -> Result<Value, String> {
         match self.b.get(self.i) {
             None => self.err("unexpected end"),
             Some(b'n') => self.lit("null", Value::Null),
@@ -229,11 +250,15 @@ impl P<'_> {
                     }
                 }
                 _ => {
-                    // Copy one UTF-8 character.
-                    let rest = std::str::from_utf8(&self.b[self.i..]).map_err(|e| e.to_string())?;
-                    let ch = rest.chars().next().unwrap();
-                    out.push(ch);
-                    self.i += ch.len_utf8();
+                    // Copy the run up to the next quote or escape. `self.i` is
+                    // always on a character boundary (only ASCII bytes are
+                    // consumed one at a time), and `"` / `\\` never occur inside
+                    // a multi-byte UTF-8 sequence, so the slice is valid.
+                    let start = self.i;
+                    while self.i < self.b.len() && !matches!(self.b[self.i], b'"' | b'\\') {
+                        self.i += 1;
+                    }
+                    out.push_str(&self.s[start..self.i]);
                 }
             }
         }
@@ -250,6 +275,33 @@ mod tests {
         let v = parse(src).unwrap();
         assert_eq!(v.get("b").unwrap().as_str().unwrap(), "x\"y\\z\né😀한");
         assert_eq!(parse(&v.to_json()).unwrap(), v);
+    }
+
+    #[test]
+    fn deep_nesting_is_an_error_not_a_crash() {
+        let deep = "[".repeat(200_000);
+        assert!(parse(&deep).unwrap_err().contains("nesting"));
+        let deep = "{\"a\":".repeat(200_000);
+        assert!(parse(&deep).unwrap_err().contains("nesting"));
+        let ok = format!("{}{}", "[".repeat(MAX_DEPTH), "]".repeat(MAX_DEPTH));
+        assert!(parse(&ok).is_ok());
+        let over = format!("{}{}", "[".repeat(MAX_DEPTH + 1), "]".repeat(MAX_DEPTH + 1));
+        assert!(parse(&over).is_err());
+    }
+
+    #[test]
+    fn long_string_is_linear() {
+        let body = "a한😀\\n".repeat(150_000); // > 1 MB
+        let src = format!("\"{body}\"");
+        assert!(src.len() > 1_000_000);
+        let t = std::time::Instant::now();
+        let v = parse(&src).unwrap();
+        assert!(
+            t.elapsed() < std::time::Duration::from_secs(1),
+            "{:?}",
+            t.elapsed()
+        );
+        assert_eq!(v.as_str().unwrap().chars().count(), 150_000 * 4);
     }
 
     #[test]

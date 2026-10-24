@@ -221,7 +221,7 @@ impl Server {
             }
             "build" => {
                 let exe = str_arg("name")?;
-                if exe.is_empty() || exe.contains(['/', '\\']) || exe.starts_with('.') {
+                if exe.is_empty() || exe.contains(['/', '\\', '\0']) || exe.starts_with('.') {
                     return Err("`name` must be a plain file name".into());
                 }
                 let out = crate::emit_llvm_sources_cached(&self.files()?, Some(&self.cache_dir()));
@@ -236,7 +236,16 @@ impl Server {
                 let dir = self.root.join("target");
                 std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
                 let path = dir.join(&exe);
-                crate::toolchain::build_executable(&out.ir.unwrap(), path.to_str().unwrap())?;
+                let Some(path_str) = path.to_str() else {
+                    return Err(format!(
+                        "build output path {} is not valid UTF-8",
+                        path.display()
+                    ));
+                };
+                let Some(ir) = out.ir else {
+                    return Err(format!("{}build refused: no IR", out.verify.output));
+                };
+                crate::toolchain::build_executable(&ir, path_str)?;
                 Ok(format!(
                     "{}{{\"built\":{}}}\n",
                     out.verify.output,

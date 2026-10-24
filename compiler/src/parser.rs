@@ -14,7 +14,14 @@ pub struct Parser<'a> {
     diags: &'a mut Diags,
     /// Source text, for fixes that copy part of it (e.g. `vec![..]` -> `[..]`).
     text: &'a str,
+    /// Current syntactic nesting (see `MAX_NESTING`).
+    depth: usize,
 }
+
+/// Maximum syntactic nesting (parenthesised and unary expressions, blocks,
+/// `else if` chains, `==>` chains, `while` loops, types, units). Deeper input
+/// is rejected with E0107 instead of overflowing the stack (backlog 1A-11).
+pub const MAX_NESTING: usize = 256;
 
 /// Rust constructs recognised only to be rejected with a precise message.
 const UNSUPPORTED_ITEMS: &[&str] = &[
@@ -80,6 +87,16 @@ const RESERVED: &[&str] = &[
     "await",
 ];
 
+/// Whether `name` is a name the parser accepts for a unit or definition: the
+/// lexer's identifier rule (`[A-Za-z_][A-Za-z0-9_]*`) minus reserved words.
+pub fn is_ident(name: &str) -> bool {
+    let mut cs = name.chars();
+    cs.next()
+        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+        && cs.all(|c| c.is_ascii_alphanumeric() || c == '_')
+        && !RESERVED.contains(&name)
+}
+
 impl<'a> Parser<'a> {
     pub fn new(toks: Vec<Token>, diags: &'a mut Diags, text: &'a str) -> Self {
         Parser {
@@ -87,7 +104,45 @@ impl<'a> Parser<'a> {
             toks,
             pos: 0,
             diags,
+            depth: 0,
         }
+    }
+
+    /// Enters one nesting level, or reports E0107 at the limit.
+    fn enter(&mut self) -> PResult<()> {
+        if self.depth >= MAX_NESTING {
+            self.diags.push(
+                Diag::new(
+                    "E0107",
+                    self.span(),
+                    format!("nesting deeper than {MAX_NESTING} levels"),
+                )
+                .fix(
+                    "split the expression with `let` bindings or helper functions",
+                    None,
+                ),
+            );
+            return Err(());
+        }
+        self.depth += 1;
+        Ok(())
+    }
+
+    /// Runs `f`, which may enter one level per link of a left-nested chain
+    /// (`a + b + c`, `x[i][j]`), and restores the depth afterwards.
+    fn chain<T>(&mut self, f: impl FnOnce(&mut Self) -> PResult<T>) -> PResult<T> {
+        let d = self.depth;
+        let r = f(self);
+        self.depth = d;
+        r
+    }
+
+    /// Runs `f` one nesting level deeper.
+    fn nested<T>(&mut self, f: impl FnOnce(&mut Self) -> PResult<T>) -> PResult<T> {
+        self.enter()?;
+        let r = f(self);
+        self.depth -= 1;
+        r
     }
 
     // ---------- token helpers ----------
@@ -368,6 +423,10 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_mod(&mut self, attrs: Vec<Attr>) -> PResult<Mod> {
+        self.nested(|p| p.parse_mod_inner(attrs))
+    }
+
+    fn parse_mod_inner(&mut self, attrs: Vec<Attr>) -> PResult<Mod> {
         let lo = self.bump().span; // `mod`
         let name = self.ident("module name")?;
         self.expect_p("{")?;
@@ -609,6 +668,18 @@ impl<'a> Parser<'a> {
     // ---------- types ----------
 
     fn parse_type(&mut self) -> Type {
+        if self.enter().is_err() {
+            return Type {
+                kind: TypeKind::Error,
+                span: self.span(),
+            };
+        }
+        let t = self.parse_type_inner();
+        self.depth -= 1;
+        t
+    }
+
+    fn parse_type_inner(&mut self) -> Type {
         let lo = self.span();
         match self.peek().clone() {
             Tok::P("&") => {
@@ -860,6 +931,10 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_while(&mut self) -> PResult<Stmt> {
+        self.nested(Self::parse_while_inner)
+    }
+
+    fn parse_while_inner(&mut self) -> PResult<Stmt> {
         let lo = self.bump().span;
         let cond = self.parse_expr()?;
         let mut invariants = Vec::new();
@@ -887,7 +962,7 @@ impl<'a> Parser<'a> {
     fn parse_expr(&mut self) -> PResult<Expr> {
         let lhs = self.parse_or()?;
         if self.eat_p("==>") {
-            let rhs = self.parse_expr()?;
+            let rhs = self.nested(Self::parse_expr)?;
             let span = lhs.span.to(rhs.span);
             return Ok(Expr {
                 kind: ExprKind::Binary(BinOp::Implies, Box::new(lhs), Box::new(rhs)),
@@ -898,8 +973,13 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_or(&mut self) -> PResult<Expr> {
+        self.chain(Self::parse_or_inner)
+    }
+
+    fn parse_or_inner(&mut self) -> PResult<Expr> {
         let mut lhs = self.parse_and()?;
         while self.eat_p("||") {
+            self.enter()?;
             let rhs = self.parse_and()?;
             lhs = bin(BinOp::Or, lhs, rhs);
         }
@@ -907,8 +987,13 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_and(&mut self) -> PResult<Expr> {
+        self.chain(Self::parse_and_inner)
+    }
+
+    fn parse_and_inner(&mut self) -> PResult<Expr> {
         let mut lhs = self.parse_cmp()?;
         while self.eat_p("&&") {
+            self.enter()?;
             let rhs = self.parse_cmp()?;
             lhs = bin(BinOp::And, lhs, rhs);
         }
@@ -948,6 +1033,10 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_add(&mut self) -> PResult<Expr> {
+        self.chain(Self::parse_add_inner)
+    }
+
+    fn parse_add_inner(&mut self) -> PResult<Expr> {
         let mut lhs = self.parse_mul()?;
         loop {
             let op = if self.is_p("+") {
@@ -958,6 +1047,7 @@ impl<'a> Parser<'a> {
                 break;
             };
             self.bump();
+            self.enter()?;
             let rhs = self.parse_mul()?;
             lhs = bin(op, lhs, rhs);
         }
@@ -965,6 +1055,10 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_mul(&mut self) -> PResult<Expr> {
+        self.chain(Self::parse_mul_inner)
+    }
+
+    fn parse_mul_inner(&mut self) -> PResult<Expr> {
         let mut lhs = self.parse_unary()?;
         loop {
             let op = if self.is_p("*") {
@@ -977,6 +1071,7 @@ impl<'a> Parser<'a> {
                 break;
             };
             self.bump();
+            self.enter()?;
             let rhs = self.parse_unary()?;
             lhs = bin(op, lhs, rhs);
         }
@@ -984,6 +1079,10 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_unary(&mut self) -> PResult<Expr> {
+        self.nested(Self::parse_unary_inner)
+    }
+
+    fn parse_unary_inner(&mut self) -> PResult<Expr> {
         let lo = self.span();
         if self.eat_p("-") {
             let e = self.parse_unary()?;
@@ -1032,8 +1131,15 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_postfix(&mut self) -> PResult<Expr> {
+        self.chain(Self::parse_postfix_inner)
+    }
+
+    fn parse_postfix_inner(&mut self) -> PResult<Expr> {
         let mut e = self.parse_primary()?;
         loop {
+            if self.is_p(".") || self.is_p("[") || self.is_kw("as") {
+                self.enter()?;
+            }
             if self.is_p(".") {
                 self.bump();
                 let name = self.ident("method name")?;
@@ -1231,7 +1337,7 @@ impl<'a> Parser<'a> {
         let mut hi = then.span;
         let els = if self.eat_kw("else") {
             let e = if self.is_kw("if") {
-                self.parse_if()?
+                self.nested(Self::parse_if)?
             } else {
                 let b = self.parse_block()?;
                 let span = b.span;
