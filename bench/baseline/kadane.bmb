@@ -1,0 +1,78 @@
+#[summary("벤치: 최대 부분 배열 합(카데인)")]
+mod kadane {
+    spec fn len_ok(a: &[i64]) -> bool { 1 <= a.len() && a.len() <= 1000000 }
+
+    spec fn sums_ok(cur: i64, best: i64, k: usize) -> bool {
+        -1000 <= cur && cur <= 1000 * k && -1000 <= best && best <= 1000 * k
+    }
+
+    spec fn result_ok(r: i64) -> bool { -1000 <= r && r <= 1000000000 }
+
+    #[effects(pure)]
+    #[uses(len_ok)]
+    fn fill(a: &mut [i64], seed: i64) -> ()
+        requires len_ok(a),
+    {
+        let mut x: i64 = seed;
+        let mut i: usize = 0;
+        while i < a.len()
+            invariant i <= a.len(),
+            decreases a.len() - i,
+        {
+            x = x.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            a[i] = x % 1000;
+            i = i + 1;
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(len_ok, sums_ok, result_ok)]
+    fn max_sub(a: &[i64]) -> (r: i64)
+        requires len_ok(a),
+        ensures result_ok(r),
+    {
+        let mut cur: i64 = 0;
+        let mut best: i64 = -1000;
+        let mut k: usize = 0;
+        while k < a.len()
+            invariant k <= a.len(), sums_ok(cur, best, k),
+            decreases a.len() - k,
+        {
+            let v: i64 = a[k];
+            if v > -1000 && v < 1000 {
+                if cur + v > v {
+                    cur = cur + v;
+                } else {
+                    cur = v;
+                }
+                if cur > best {
+                    best = cur;
+                }
+            }
+            k = k + 1;
+        }
+        best
+    }
+}
+
+#[summary("진입점")]
+mod app {
+    spec fn total_ok(t: i64, r: i64) -> bool { -1000 * r <= t && t <= 1000000000 * r }
+
+    #[effects(io)]
+    #[uses(kadane::len_ok, kadane::result_ok, total_ok)]
+    fn main() -> () {
+        let mut a: [i64; 200000] = [0; 200000];
+        let mut total: i64 = 0;
+        let mut r: i64 = 0;
+        while r < 300
+            invariant 0 <= r, r <= 300, total_ok(total, r),
+            decreases 300 - r,
+        {
+            kadane::fill(&mut a, r);
+            total = total + kadane::max_sub(&a);
+            r = r + 1;
+        }
+        print_i64(total);
+    }
+}

@@ -1302,6 +1302,8 @@ pub fn verify_program(p: &Program, t: &Tables, diags: &mut Diags) -> Outcome {
             PRELUDE.to_string(),
         ];
         header.extend(spec_decls.iter().cloned());
+        // Definitional axioms of revealed spec fns, filtered per obligation.
+        let mut axioms: Vec<(String, String)> = Vec::new();
 
         match d.f.kind {
             FnKind::Spec => {
@@ -1323,7 +1325,7 @@ pub fn verify_program(p: &Program, t: &Tables, diags: &mut Diags) -> Outcome {
             FnKind::Exec => {
                 for u in uses_of(d.f, &d.mod_path, &t.fns) {
                     let (ax, unsup) = prog.axiom(&u);
-                    header.push(ax);
+                    axioms.push((sym(&u), ax));
                     enc.unsupported.extend(unsup);
                 }
                 for prm in &d.f.params {
@@ -1368,7 +1370,7 @@ pub fn verify_program(p: &Program, t: &Tables, diags: &mut Diags) -> Outcome {
         // obligation's result never depends on another's (ADR-0017 §5).
         let mut base = header.join("\n");
         base.push('\n');
-        base.push_str(&enc.decls.join("\n"));
+        let decls = enc.decls.join("\n");
         let mut script = String::new();
         let mut failed = 0usize;
         let mut solver = None;
@@ -1395,6 +1397,10 @@ pub fn verify_program(p: &Program, t: &Tables, diags: &mut Diags) -> Outcome {
                     .join("\n"),
                 o.goal
             );
+            // Only definitions the obligation can reach (DESIGN.md §4.1:
+            // unrelated context is the main source of solver instability).
+            let relevant = relevant_axioms(&axioms, &q);
+            let base = format!("{base}{relevant}{decls}");
             script.push_str(&format!(
                 "; obligation {k}: {} {}\n(reset)\n{base}\n{q}\n(check-sat)\n",
                 o.code, o.msg
@@ -1423,7 +1429,7 @@ pub fn verify_program(p: &Program, t: &Tables, diags: &mut Diags) -> Outcome {
                     diags.push(Diag::new(o.code, o.span, msg));
                 }
                 Ok(Answer::Unknown(why)) => {
-                    let why = if why == "canceled" || why.contains("resource") {
+                    let why = if why.contains("canceled") || why.contains("resource") {
                         format!("resource limit reached, rlimit {}", smt::rlimit())
                     } else {
                         why
@@ -1465,6 +1471,33 @@ pub fn verify_program(p: &Program, t: &Tables, diags: &mut Diags) -> Outcome {
         proven,
         scripts,
     }
+}
+
+/// Axioms whose symbol occurs in `text`, closed over the axioms' own bodies.
+fn relevant_axioms(axioms: &[(String, String)], text: &str) -> String {
+    let mut chosen = vec![false; axioms.len()];
+    let mut haystack = text.to_string();
+    loop {
+        let mut grew = false;
+        for (k, (symbol, ax)) in axioms.iter().enumerate() {
+            if !chosen[k] && haystack.contains(symbol.as_str()) {
+                chosen[k] = true;
+                haystack.push_str(ax);
+                grew = true;
+            }
+        }
+        if !grew {
+            break;
+        }
+    }
+    let mut out = String::new();
+    for (k, (_, ax)) in axioms.iter().enumerate() {
+        if chosen[k] {
+            out.push_str(ax);
+            out.push('\n');
+        }
+    }
+    out
 }
 
 /// `x = 5, a = [1, 2] (len 2)` from the current model.

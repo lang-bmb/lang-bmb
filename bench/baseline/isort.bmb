@@ -1,0 +1,88 @@
+#[summary("벤치: 의사 난수 배열 삽입 정렬")]
+mod isort {
+    spec fn len_ok(a: &[i64]) -> bool { 1 <= a.len() && a.len() <= 1000000 }
+
+    spec fn small(x: i64) -> bool { -1000 < x && x < 1000 }
+
+    spec fn all_small(a: &[i64]) -> bool {
+        forall|k: usize| k < a.len() ==> small(#[trigger] a[k])
+    }
+
+    #[effects(pure)]
+    #[uses(len_ok)]
+    fn fill(a: &mut [i64], seed: i64) -> ()
+        requires len_ok(a),
+    {
+        let mut x: i64 = seed;
+        let mut i: usize = 0;
+        while i < a.len()
+            invariant i <= a.len(),
+            decreases a.len() - i,
+        {
+            x = x.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            a[i] = x % 1000;
+            i = i + 1;
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(len_ok)]
+    fn sort(a: &mut [i64]) -> ()
+        requires len_ok(a),
+    {
+        let mut i: usize = 1;
+        while i < a.len()
+            invariant 1 <= i, i <= a.len(),
+            decreases a.len() - i,
+        {
+            let x: i64 = a[i];
+            let mut j: usize = i;
+            while j > 0 && a[j - 1] > x
+                invariant j <= i, i < a.len(),
+                decreases j,
+            {
+                a[j] = a[j - 1];
+                j = j - 1;
+            }
+            a[j] = x;
+            i = i + 1;
+        }
+    }
+
+    spec fn weighted(s: i64, k: usize) -> bool { -1000 * k <= s && s <= 1000 * k }
+
+    #[effects(pure)]
+    #[uses(len_ok, weighted)]
+    fn checksum(a: &[i64]) -> i64
+        requires len_ok(a),
+    {
+        // Sum of the elements; elements come from `x % 1000`.
+        let mut s: i64 = 0;
+        let mut k: usize = 0;
+        while k < a.len()
+            invariant k <= a.len(), weighted(s, k),
+            decreases a.len() - k,
+        {
+            let v: i64 = a[k];
+            if v > -1000 && v < 1000 {
+                s = s + v;
+            }
+            k = k + 1;
+        }
+        s
+    }
+}
+
+#[summary("진입점")]
+mod app {
+    #[effects(io)]
+    #[uses(isort::len_ok)]
+    fn main() -> () {
+        let mut a: [i64; 30000] = [0; 30000];
+        isort::fill(&mut a, 42);
+        isort::sort(&mut a);
+        print_i64(a[0]);
+        print_i64(a[29999]);
+        print_i64(isort::checksum(&a));
+    }
+}

@@ -105,3 +105,29 @@ mod arith_ok {
         forall|i: usize| i < k ==> #[trigger] a[i] <= m
     }
 }
+
+#[summary("명세의 정수 타입 혼합(ADR-0022)")]
+mod mixed {
+    spec fn counted(c: i64, k: usize) -> bool { 0 <= c && c <= k }
+
+    spec fn small_len(a: &[i64]) -> bool { a.len() <= 1000000 }
+
+    #[effects(pure)]
+    #[uses(counted, small_len)]
+    fn count_pos(a: &[i64]) -> i64
+        requires small_len(a),
+    {
+        let mut c: i64 = 0;
+        let mut k: usize = 0;
+        while k < a.len()
+            invariant k <= a.len(), counted(c, k),
+            decreases a.len() - k,
+        {
+            if a[k] > 0 {
+                c = c + 1;
+            }
+            k = k + 1;
+        }
+        c
+    }
+}

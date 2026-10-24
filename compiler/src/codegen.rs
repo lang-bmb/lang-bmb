@@ -261,8 +261,7 @@ impl<'p> Gen<'p> {
                 }
             }
             ExprKind::Index { base, index } => {
-                let ptr = self.elem_ptr(e, base, index);
-                let ty = llty(&self.ty(e));
+                let (ptr, ty) = self.elem_ptr(e, base, index);
                 let r = self.t();
                 self.emit(format!("{r} = load {ty}, ptr {ptr}"));
                 CVal::Imm(r)
@@ -367,13 +366,20 @@ impl<'p> Gen<'p> {
         CVal::Imm(r)
     }
 
-    /// Address of `base[index]`, bounds-checked unless proved.
-    fn elem_ptr(&mut self, e: &Expr, base: &Expr, index: &Expr) -> String {
+    /// Address of `base[index]` (bounds-checked unless proved) and the element type.
+    fn elem_ptr(&mut self, e: &Expr, base: &Expr, index: &Expr) -> (String, &'static str) {
+        // Assignment targets have no recorded type; the variable's slot knows it.
+        let elem = match &base.kind {
+            ExprKind::Var(id) => match &self.slots[&id.name] {
+                Slot::Arr { elem, .. } => elem,
+                Slot::Scalar { .. } => unreachable!("indexing a scalar"),
+            },
+            _ => llty(&elem_of(&self.ty(base))),
+        };
         let CVal::Arr { ptr, len } = self.expr(base) else {
             unreachable!()
         };
         let i = self.expr(index).imm();
-        let elem = llty(&elem_of(&self.ty(base)));
         let note = if self.proved("E0805", e) {
             " ; proved E0805"
         } else {
@@ -386,7 +392,7 @@ impl<'p> Gen<'p> {
         self.emit(format!(
             "{p} = getelementptr inbounds {elem}, ptr {ptr}, i64 {i}{note}"
         ));
-        p
+        (p, elem)
     }
 
     fn init_array(&mut self, e: &Expr, ptr: &str, elem: &str) {
@@ -532,8 +538,7 @@ impl<'p> Gen<'p> {
                     Slot::Arr { ptr, elem, .. } => self.init_array(value, &ptr, elem),
                 },
                 ExprKind::Index { base, index } => {
-                    let ptr = self.elem_ptr(target, base, index);
-                    let ty = llty(&self.ty(target));
+                    let (ptr, ty) = self.elem_ptr(target, base, index);
                     let v = self.expr(value).imm();
                     self.emit(format!("store {ty} {v}, ptr {ptr}"));
                 }

@@ -770,7 +770,7 @@ impl<'a> Checker<'a> {
             ExprKind::Error => TypeKind::Error,
             ExprKind::Unit => TypeKind::Unit,
             ExprKind::Bool(_) => TypeKind::Bool,
-            ExprKind::Int(v) => self.int_lit(*v, false, expected, e.span),
+            ExprKind::Int(v) => self.int_lit(*v, false, expected, e.span, mode),
             ExprKind::Var(id) => match Self::lookup(cx, &id.name) {
                 Some(l) => l.ty,
                 None => {
@@ -789,7 +789,7 @@ impl<'a> Checker<'a> {
             },
             ExprKind::Unary(UnOp::Neg, inner) => {
                 if let ExprKind::Int(v) = inner.kind {
-                    return self.int_lit(v, true, expected, e.span);
+                    return self.int_lit(v, true, expected, e.span, mode);
                 }
                 let t = self.expr(cx, inner, expected, mode);
                 match t {
@@ -1001,8 +1001,13 @@ impl<'a> Checker<'a> {
         negative: bool,
         expected: Option<&TypeKind>,
         span: Span,
+        mode: Mode,
     ) -> TypeKind {
         let t = match expected {
+            // A negative literal in a specification is just an integer (ADR-0022).
+            Some(TypeKind::U64 | TypeKind::Usize) if negative && mode != Mode::Exec => {
+                TypeKind::I64
+            }
             Some(t) if is_int(t) => t.clone(),
             _ => TypeKind::I64,
         };
@@ -1081,6 +1086,15 @@ impl<'a> Checker<'a> {
                 if lt == TypeKind::Error || rt == TypeKind::Error {
                     return if op.is_arith() {
                         TypeKind::Error
+                    } else {
+                        TypeKind::Bool
+                    };
+                }
+                // Specifications compute over unbounded integers (ADR-0017 §2),
+                // so integer types may mix there (ADR-0022).
+                if lt != rt && mode != Mode::Exec && is_int(&lt) && is_int(&rt) {
+                    return if op.is_arith() {
+                        TypeKind::I64
                     } else {
                         TypeKind::Bool
                     };
@@ -1290,7 +1304,9 @@ impl<'a> Checker<'a> {
                 }
             } else {
                 let t = self.expr(cx, a, Some(pt), mode);
-                self.expect_ty(&t, pt, a.span);
+                if !(mode != Mode::Exec && is_int(&t) && is_int(pt)) {
+                    self.expect_ty(&t, pt, a.span);
+                }
             }
         }
         for (root, i) in mut_roots {

@@ -1,0 +1,63 @@
+#[summary("실행 예제: bool 배열(원소 대입 회귀 테스트)")]
+mod primes {
+    spec fn len_ok(a: &[bool]) -> bool { 2 <= a.len() && a.len() <= 1000 }
+
+    spec fn counted(c: i64, k: usize) -> bool { 0 <= c && c <= k }
+
+    #[effects(pure)]
+    #[uses(len_ok, counted)]
+    fn count(a: &mut [bool]) -> i64
+        requires len_ok(a),
+    {
+        let n: usize = a.len();
+        let mut i: usize = 0;
+        while i < n
+            invariant i <= n, n == a.len(),
+            decreases n - i,
+        {
+            a[i] = i >= 2;
+            i = i + 1;
+        }
+        let mut p: usize = 2;
+        while p < n
+            invariant 2 <= p, p <= n, n == a.len(),
+            decreases n - p,
+        {
+            if a[p] {
+                let mut j: usize = p + p;
+                while j < n
+                    invariant n == a.len(), 2 <= p, p < n, j <= n + p,
+                    decreases n + p - j,
+                {
+                    a[j] = false;
+                    j = j + p;
+                }
+            }
+            p = p + 1;
+        }
+        let mut c: i64 = 0;
+        let mut k: usize = 0;
+        while k < n
+            invariant k <= n, n == a.len(), counted(c, k),
+            decreases n - k,
+        {
+            if a[k] {
+                c = c + 1;
+            }
+            k = k + 1;
+        }
+        c
+    }
+}
+
+#[summary("진입점")]
+mod app {
+    #[effects(io)]
+    #[uses(primes::len_ok)]
+    fn main() -> () {
+        let mut a: [bool; 100] = [true; 100];
+        print_i64(primes::count(&mut a));
+        let flags: [bool; 3] = [true, false, true];
+        if flags[1] { print_i64(1) } else { print_i64(0) }
+    }
+}

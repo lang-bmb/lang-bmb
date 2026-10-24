@@ -1,0 +1,77 @@
+#[summary("벤치: 에라토스테네스의 체로 소수 개수를 500번 센다")]
+mod sieve {
+    spec fn len_ok(a: &[bool]) -> bool { 2 <= a.len() && a.len() <= 1000000 }
+
+    spec fn counted(c: i64, k: usize) -> bool { 0 <= c && c <= k }
+
+    spec fn bounded(r: i64) -> bool { 0 <= r && r <= 1000000 }
+
+    #[effects(pure)]
+    #[uses(len_ok, counted, bounded)]
+    fn count_primes(a: &mut [bool]) -> (r: i64)
+        requires len_ok(a),
+        ensures bounded(r),
+    {
+        let n: usize = a.len();
+        let mut i: usize = 0;
+        while i < n
+            invariant i <= n, n == a.len(),
+            decreases n - i,
+        {
+            a[i] = true;
+            i = i + 1;
+        }
+        a[0] = false;
+        a[1] = false;
+        let mut p: usize = 2;
+        while p < n
+            invariant 2 <= p, p <= n, n == a.len(),
+            decreases n - p,
+        {
+            if a[p] {
+                let mut j: usize = p + p;
+                while j < n
+                    invariant n == a.len(), p < n, j <= n + p,
+                    decreases n + p - j,
+                {
+                    a[j] = false;
+                    j = j + p;
+                }
+            }
+            p = p + 1;
+        }
+        let mut c: i64 = 0;
+        let mut k: usize = 0;
+        while k < n
+            invariant k <= n, n == a.len(), counted(c, k),
+            decreases n - k,
+        {
+            if a[k] {
+                c = c + 1;
+            }
+            k = k + 1;
+        }
+        c
+    }
+}
+
+#[summary("진입점")]
+mod app {
+    spec fn total_ok(t: i64, r: i64) -> bool { 0 <= t && t <= 1000000 * r }
+
+    #[effects(io)]
+    #[uses(sieve::len_ok, sieve::bounded, total_ok)]
+    fn main() -> () {
+        let mut a: [bool; 200000] = [false; 200000];
+        let mut total: i64 = 0;
+        let mut r: i64 = 0;
+        while r < 500
+            invariant 0 <= r, r <= 500, total_ok(total, r),
+            decreases 500 - r,
+        {
+            total = total + sieve::count_primes(&mut a);
+            r = r + 1;
+        }
+        print_i64(total);
+    }
+}

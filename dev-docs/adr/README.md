@@ -66,3 +66,5 @@ BMB v2의 설계 결정을 한 건에 파일 하나로 남긴다. 현재 확정�
 | [0018](0018-obligation-isolation-and-division-facts.md) | 증명 의무 격리와 나눗셈 보조 사실 | 채택(자율) | 1B 구현 |
 | [0019](0019-normal-form-and-definition-hash.md) | 정규형과 정의 해시 | 채택(자율) | 백로그 1D-01 |
 | [0020](0020-map-schema.md) | 맵 JSON 스키마 L0~L2 | 채택(자율) | 백로그 1D-04 |
+| [0021](0021-measurement-procedure.md) | M1 측정 절차 | 채택(자율) | 백로그 1E-01 |
+| [0022](0022-mixed-integer-types-in-specs.md) | 명세에서 정수 타입 혼합 허용 | 채택(자율) | 백로그 1E-05 |

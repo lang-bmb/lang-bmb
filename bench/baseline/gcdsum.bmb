@@ -1,0 +1,55 @@
+#[summary("벤치: 모든 쌍의 최대공약수 합")]
+mod gcdsum {
+    spec fn positive(a: i64, b: i64) -> bool { a > 0 && b >= 0 }
+
+    spec fn gcd_bound(a: i64, b: i64, r: i64) -> bool { 0 < r && (r <= a || r <= b) }
+
+    #[effects(pure)]
+    #[uses(positive, gcd_bound)]
+    fn gcd(a: i64, b: i64) -> (r: i64)
+        requires positive(a, b),
+        ensures gcd_bound(a, b, r),
+        decreases b,
+    {
+        if b == 0 { a } else { gcd(b, a % b) }
+    }
+
+    spec fn inner_ok(s: i64, i: i64, j: i64) -> bool { 0 <= s && s <= 4000000 * (i - 1) + 2000 * (j - 1) }
+
+    spec fn outer_ok(s: i64, i: i64) -> bool { 0 <= s && s <= 4000000 * (i - 1) }
+
+    #[effects(pure)]
+    #[uses(positive, gcd_bound, inner_ok, outer_ok, n_ok)]
+    fn all_pairs(n: i64) -> i64
+        requires n_ok(n),
+    {
+        let mut s: i64 = 0;
+        let mut i: i64 = 1;
+        while i <= n
+            invariant 1 <= i, i <= n + 1, outer_ok(s, i),
+            decreases n + 1 - i,
+        {
+            let mut j: i64 = 1;
+            while j <= n
+                invariant 1 <= j, j <= n + 1, 1 <= i, i <= n, inner_ok(s, i, j),
+                decreases n + 1 - j,
+            {
+                s = s + gcd(i, j);
+                j = j + 1;
+            }
+            i = i + 1;
+        }
+        s
+    }
+
+    spec fn n_ok(n: i64) -> bool { 1 <= n && n <= 2000 }
+}
+
+#[summary("진입점")]
+mod app {
+    #[effects(io)]
+    #[uses(gcdsum::n_ok)]
+    fn main() -> () {
+        print_i64(gcdsum::all_pairs(2000));
+    }
+}
