@@ -10,9 +10,9 @@
 
 ## 지금 할 일 (다음 3개)
 
-1. `INF-01` CI
-2. `1B-01` 정수 의미론·SMT 인코딩 ADR
-3. `1B-02` 검증용 중간 표현
+1. `1B-02` 검증용 중간 표현(기호 실행으로 SSA 항 생성)
+2. `1B-03` VC 생성
+3. `1B-09` SMT-LIB 출력과 Z3 연결
 
 ## 0 착수
 
@@ -28,7 +28,7 @@
 
 | ID | 태스크 | 완료 기준 | 의존 | 상태 |
 | --- | --- | --- | --- | --- |
-| INF-01 | CI | GitHub Actions가 push·PR마다 `scripts/check.sh` 실행 | INF-05 | ⏳ |
+| INF-01 | CI | GitHub Actions가 push·PR마다 `scripts/check.sh` 실행 | INF-05 | ✅ `.github/workflows/check.yml`, 실행 #2 성공 |
 | INF-02 | Z3 설치와 버전 고정 | 정해진 Z3 버전이 CI와 개발 환경에 설치됨. 버전이 다르면 빌드가 경고가 아니라 실패 | — | ✅ `scripts/toolchain.env`, `bmb doctor`, `tests/toolchain.rs` |
 | INF-03 | LLVM 버전 고정 | LLVM 18 고정, CI 설치. 버전이 다르면 실패. IR을 고정 버전으로 검증하는 일은 1C-01 | — | ✅ `tests/toolchain.rs` |
 | INF-04 | 세션 시작 훅 | 리포의 `.claude/settings.json` SessionStart 훅으로 새 세션에서 Z3·LLVM이 준비되어 `scripts/check.sh`가 바로 통과 | INF-02, INF-03, INF-05 | ✅ `.claude/hooks/session-start.sh`(Z3 제거 후 재설치로 확인) |
