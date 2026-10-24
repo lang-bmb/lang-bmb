@@ -102,9 +102,11 @@ LLVM 텍스트 IR을 만들고 LLVM 도구로 바이너리를 만든다.
 
 **종료 감사(2026-10-24):** 기준 1·2는 `compiler/tests/map.rs`(`maps_are_deterministic_and_layout_independent`)와 `compiler/tests/fmt.rs`(해시의 배치·주석·순서 불변), 기준 3은 `compiler/tests/workspace.rs`와 `compiler/tests/mcp.rs`, 기준 4는 `formatting_is_idempotent`로 확인한다. 결정은 ADR-0019·0020. 에이전트는 `bmb mcp DIR`로 파일 없이 읽기(질의 7개)·쓰기(트랜잭션)·증명·빌드를 할 수 있다.
 
-### 1E 측정
+### 1E 측정 — 진행 중
 
 M1의 가설을 숫자로 판정한다.
+
+**현황(2026-10-24):** 절차(ADR-0021), 동결 과제 15개, 하네스와 실제 모델 어댑터, Rust 기준선(벤치 7개)이 준비되었다. 남은 것은 실제 모델 실행(백로그 1E-10, 사용자 머신)과 그 결과의 보고서(1E-06)·2단계 우선순위 ADR(1E-07)이다.
 
 - 동결된 과제 집합(수십 개 정의 규모, 정수·배열 알고리즘)과 고정 프롬프트를 커밋한다.
 - 측정 5종: 탐색 정확도, 질의당 토큰, 1회 성공률(재시도 없음), Rust 습관 오류율, 미증명 면적.
