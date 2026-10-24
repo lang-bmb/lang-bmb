@@ -25,6 +25,10 @@ const USAGE: &str = "usage:
                             diagnostics name; JSONL row per definition (status proved, unchanged
                             or not_found, with the attribute replacement) and a summary;
                             --write rewrites changed files; fails if a definition stays unproved
+  bmb lint <file.bmb>...    contract lint (warnings W09xx as JSONL, then a summary): preconditions
+                            that cannot hold together, preconditions the function's proof does
+                            not need, postconditions no caller's proof uses; re-verifications are
+                            capped; fails only if the program does not check or the gate cannot run
   bmb hash <file.bmb>...    definition hashes (body, iface) as JSONL
   bmb map [L0|L1|L2|all] <file.bmb>...
                             standard maps as JSONL (ADR-0020)
@@ -342,6 +346,26 @@ fn run() -> ExitCode {
                 ExitCode::SUCCESS
             } else {
                 ExitCode::from(1)
+            }
+        }
+        Some("lint") if args.len() > 1 => {
+            let files = match read_files(&args[1..]) {
+                Ok(f) => f,
+                Err(code) => return code,
+            };
+            match bmb::lint::lint_sources(&files) {
+                Ok(out) => {
+                    print!("{}", out.report());
+                    if out.ok {
+                        ExitCode::SUCCESS
+                    } else {
+                        ExitCode::from(1)
+                    }
+                }
+                Err(diags) => {
+                    print!("{diags}");
+                    ExitCode::from(1)
+                }
             }
         }
         Some("hash") if args.len() > 1 => {

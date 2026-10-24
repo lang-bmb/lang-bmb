@@ -1406,7 +1406,154 @@ pub fn verify_program_with(
     t: &Tables,
     diags: &mut Diags,
     seed: u64,
+    cache: Option<&mut ProofCache>,
+) -> Outcome {
+    verify_impl(p, t, diags, seed, cache, None)
+}
+
+/// As `verify_program_with` (seed 0), proving only the definitions in
+/// `only` (full paths). Every other definition is still seen through its
+/// contract and `#[uses]`, exactly as in a whole-program run, so a listed
+/// definition gets the same verdict as there. Used by `bmb lint` to
+/// re-verify one definition or its callers after a contract change
+/// (backlog 2D-08).
+pub fn verify_defs(
+    p: &Program,
+    t: &Tables,
+    diags: &mut Diags,
+    only: &BTreeSet<String>,
+    cache: Option<&mut ProofCache>,
+) -> Outcome {
+    verify_impl(p, t, diags, 0, cache, Some(only))
+}
+
+fn header(spec_decls: &[String], seed: u64) -> Vec<String> {
+    let mut header = vec![
+        "(set-option :produce-models true)".to_string(),
+        format!("(set-option :smt.random_seed {seed})"),
+        format!("(set-option :sat.random_seed {seed})"),
+        format!("(set-option :rlimit {})", smt::rlimit()),
+        PRELUDE.to_string(),
+    ];
+    header.extend(spec_decls.iter().cloned());
+    header
+}
+
+/// Whether the `requires` clauses of every executable function that has
+/// any can hold together (backlog 2D-08). The query is the prover's own
+/// encoding of the function's entry state: parameter range facts, the
+/// definitions its `#[uses]` reveals, and the clauses, under the pinned seed
+/// and `rlimit`. Per function with clauses, in path order: its path, the
+/// span from the first to the last clause, and `Some(true)` (satisfiable),
+/// `Some(false)` (unsatisfiable: the function can never be called and every
+/// proof about it is vacuous) or `None` (undecided, unsupported construct,
+/// or the solver could not run).
+pub fn preconditions_satisfiable(p: &Program, t: &Tables) -> Vec<(String, Span, Option<bool>)> {
+    let mut defs = BTreeMap::new();
+    for m in &p.mods {
+        collect(m, "", &mut defs);
+    }
+    let prog = Prog { defs, t };
+    let spec_decls = prog.spec_decls();
+    let mut solver: Option<Solver> = None;
+    let mut solver_down = crate::toolchain::check_z3().is_err();
+    let mut out = Vec::new();
+    for (path, d) in &prog.defs {
+        if d.f.kind != FnKind::Exec || d.f.requires.is_empty() {
+            continue;
+        }
+        let span = d.f.requires[0]
+            .span
+            .to(d.f.requires[d.f.requires.len() - 1].span);
+        let mut enc = Enc::new(&prog, path, &d.mod_path);
+        let mut axioms: Vec<(String, String)> = Vec::new();
+        let mut axiom_parts: Vec<AxiomParts> = Vec::new();
+        for u in uses_of(d.f, &d.mod_path, &t.fns) {
+            let (ax, unsup, parts) = prog.axiom(&u);
+            axioms.push((sym(&u), ax));
+            axiom_parts.push(parts);
+            enc.unsupported.extend(unsup);
+        }
+        for prm in &d.f.params {
+            let v = enc.fresh_val(&prm.name.name, &prm.ty.kind);
+            enc.vars.insert(prm.name.name.clone(), v);
+        }
+        let (env, old) = enc.cur_env();
+        for r in &d.f.requires {
+            let g = enc.spec(r, &env, &old).s();
+            enc.pc.push(g);
+        }
+        if !enc.unsupported.is_empty() || solver_down {
+            out.push((path.clone(), span, None));
+            continue;
+        }
+        let q = enc
+            .pc
+            .iter()
+            .map(|a| format!("(assert {a})"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let relevant = relevant_axioms(&axioms, &q);
+        let mut base = header(&spec_decls, 0).join("\n");
+        base.push('\n');
+        let decls = enc.decls.join("\n");
+        let head = format!("{base}{decls}");
+        let full = format!("{base}{relevant}{decls}");
+        if solver.as_ref().is_some_and(|s| !s.reusable()) {
+            solver = None;
+        }
+        if solver.is_none() {
+            match Solver::start() {
+                Ok(s) => solver = Some(s),
+                Err(_) => {
+                    solver_down = true;
+                    out.push((path.clone(), span, None));
+                    continue;
+                }
+            }
+        }
+        let sol = solver.as_mut().expect("solver started");
+        let mut answer = sol
+            .run("(reset)")
+            .and_then(|_| sol.run(&full))
+            .and_then(|_| sol.run(&q))
+            .and_then(|_| sol.check_sat());
+        // Undecided with quantified definitions: ground instances follow from
+        // the definitions, so `unsat` with them is `unsat` (as in the prover).
+        if matches!(answer, Ok(Answer::Unknown(_))) && !axiom_parts.is_empty() {
+            let (inst, _) = ground_instances(&axiom_parts, &q, 3);
+            if !inst.is_empty() {
+                let retry = sol
+                    .run("(reset)")
+                    .and_then(|_| sol.run(&head))
+                    .and_then(|_| sol.run(&format!("{inst}{q}")))
+                    .and_then(|_| sol.check_sat());
+                if matches!(retry, Ok(Answer::Unsat)) {
+                    answer = retry;
+                }
+            }
+        }
+        let verdict = match answer {
+            Ok(Answer::Unsat) => Some(false),
+            Ok(Answer::Sat) => Some(true),
+            Ok(Answer::Unknown(_)) => None,
+            Err(_) => {
+                solver = None;
+                None
+            }
+        };
+        out.push((path.clone(), span, verdict));
+    }
+    out
+}
+
+fn verify_impl(
+    p: &Program,
+    t: &Tables,
+    diags: &mut Diags,
+    seed: u64,
     mut cache: Option<&mut ProofCache>,
+    only: Option<&BTreeSet<String>>,
 ) -> Outcome {
     let mut defs = BTreeMap::new();
     for m in &p.mods {
@@ -1447,15 +1594,11 @@ pub fn verify_program_with(
     // too old to take on another definition (`Solver::reusable`).
     let mut solver: Option<Solver> = None;
     for (path, d) in &prog.defs {
+        if only.is_some_and(|o| !o.contains(path)) {
+            continue;
+        }
         let mut enc = Enc::new(&prog, path, &d.mod_path);
-        let mut header = vec![
-            "(set-option :produce-models true)".to_string(),
-            format!("(set-option :smt.random_seed {seed})"),
-            format!("(set-option :sat.random_seed {seed})"),
-            format!("(set-option :rlimit {})", smt::rlimit()),
-            PRELUDE.to_string(),
-        ];
-        header.extend(spec_decls.iter().cloned());
+        let header = header(&spec_decls, seed);
         // Definitional axioms of revealed spec fns, filtered per obligation.
         let mut axioms: Vec<(String, String)> = Vec::new();
         let mut axiom_parts: Vec<AxiomParts> = Vec::new();

@@ -110,3 +110,11 @@
 | E0812 | proof gate cannot run (solver missing, wrong version or failed) |
 | E0813 | recursive spec function may not terminate |
 | E0814 | construct not supported by the proof gate |
+
+## W09xx 계약 조정 린트(경고, `bmb lint`만)
+
+| 코드 | 뜻 |
+| --- | --- |
+| W0901 | preconditions are unsatisfiable together: the function can never be called and its proofs are vacuous |
+| W0902 | precondition is not needed by this function's proof |
+| W0903 | postcondition is not used by any caller's proof |
