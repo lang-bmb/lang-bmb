@@ -1,0 +1,483 @@
+//! Contract-firewall incremental build (backlog 2D-10): with the cache,
+//! outputs are byte-identical to an uncached run, cold or warm; an unchanged
+//! definition is neither encoded nor lowered again; a body change touches only
+//! that definition; a contract change re-encodes exactly the `impact` set;
+//! damaged cache lines and another compiler identity cause rebuilds.
+
+use std::collections::BTreeSet;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::time::Instant;
+
+fn tmp(name: &str) -> PathBuf {
+    let d = std::env::temp_dir().join(format!("bmb-incr-{name}-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&d);
+    d
+}
+
+fn files(text: &str) -> Vec<(String, String)> {
+    vec![("g.bmb".to_string(), text.to_string())]
+}
+
+/// A generated program: per unit two spec fns used by every function, one
+/// spare predicate, and five functions (straight line, a call, a loop, a
+/// recursion, and a call into the previous unit).
+fn generate(units: usize) -> String {
+    let mut s = String::new();
+    for k in 0..units {
+        let (prev_uses, prev_call, combine) = if k == 0 {
+            (String::new(), "0".to_string(), "a")
+        } else {
+            (
+                format!(", m{}::small, m{}::pos", k - 1, k - 1),
+                format!("m{}::f1(x)", k - 1),
+                "if a > b { a } else { b }",
+            )
+        };
+        s.push_str(&format!(
+            r#"
+#[summary("generated unit {k}")]
+mod m{k} {{
+    spec fn small(x: i64) -> bool {{ x >= 0 && x < 1000 }}
+
+    spec fn pos(r: i64) -> bool {{ r >= 0 && r < 2000 }}
+
+    spec fn pos2(r: i64) -> bool {{ r >= 0 && r < 2000 }}
+
+    #[effects(pure)]
+    #[uses(small, pos, pos2)]
+    fn f0(x: i64) -> (r: i64)
+        requires small(x),
+        ensures pos(r),
+    {{
+        x + {k}
+    }}
+
+    #[effects(pure)]
+    #[uses(small, pos, pos2)]
+    fn f1(x: i64) -> (r: i64)
+        requires small(x),
+        ensures pos(r),
+    {{
+        let y: i64 = f0(x);
+        if y > 5 {{ y - 5 }} else {{ y }}
+    }}
+
+    #[effects(pure)]
+    #[uses(small)]
+    fn f2(n: i64) -> i64
+        requires small(n),
+    {{
+        let mut c: i64 = 0;
+        let mut i: i64 = 0;
+        while i < n
+            invariant i <= n, c == i,
+            decreases n - i,
+        {{
+            c = c + 1;
+            i = i + 1;
+        }}
+        c
+    }}
+
+    #[effects(pure)]
+    #[uses(small, pos)]
+    fn rec(n: i64) -> (r: i64)
+        requires small(n),
+        ensures pos(r),
+        decreases n,
+    {{
+        if n <= 0 {{ 0 }} else {{ rec(n - 1) }}
+    }}
+
+    #[effects(pure)]
+    #[uses(small, pos{prev_uses})]
+    fn g(x: i64) -> (r: i64)
+        requires small(x),
+        ensures pos(r),
+    {{
+        let a: i64 = f1(x);
+        let b: i64 = {prev_call};
+        {combine}
+    }}
+}}
+"#
+        ));
+    }
+    s
+}
+
+/// Everything a run outputs, uncached.
+fn plain(f: &[(String, String)]) -> (String, Option<String>, u32, String) {
+    let l = bmb::emit_llvm_sources(f);
+    let map = bmb::map_request(f, &["map".into(), "all".into()]).unwrap_or_else(|e| e);
+    (l.verify.output, l.ir, l.checks, map)
+}
+
+/// The same through the cache in `dir`; also returns the stats of the
+/// `emit-llvm` run.
+fn cached(
+    f: &[(String, String)],
+    dir: &Path,
+) -> (
+    (String, Option<String>, u32, String),
+    bmb::incremental::Stats,
+) {
+    let l = bmb::emit_llvm_sources_cached(f, Some(dir));
+    let map =
+        bmb::map_request_cached(f, &["map".into(), "all".into()], Some(dir)).unwrap_or_else(|e| e);
+    let v = bmb::verify_sources_cached(f, Some(dir));
+    assert_eq!(v.output, l.verify.output, "verify and emit-llvm agree");
+    ((l.verify.output, l.ir, l.checks, map), l.verify.incr)
+}
+
+fn set(v: &[String]) -> BTreeSet<String> {
+    v.iter().cloned().collect()
+}
+
+fn failed_defs(output: &str) -> BTreeSet<String> {
+    output
+        .lines()
+        .filter(|l| l.contains("\"status\":\"failed\""))
+        .map(|l| l.split('"').nth(3).unwrap().to_string())
+        .collect()
+}
+
+#[test]
+fn outputs_are_identical_with_and_without_the_cache() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests");
+    let mut inputs = vec![("generated".to_string(), generate(4))];
+    for sub in ["verify/pass", "verify/fail", "run"] {
+        let mut paths: Vec<PathBuf> = fs::read_dir(root.join(sub))
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .filter(|p| p.extension().is_some_and(|x| x == "bmb"))
+            .collect();
+        paths.sort();
+        for p in paths {
+            inputs.push((p.display().to_string(), fs::read_to_string(&p).unwrap()));
+        }
+    }
+    for (name, text) in inputs {
+        let dir = tmp("same");
+        let f = files(&text);
+        let expect = plain(&f);
+        let (cold, _) = cached(&f, &dir);
+        assert_eq!(expect, cold, "{name} (cold)");
+        let (warm, stats) = bmb::incremental::with_audit(|| cached(&f, &dir));
+        assert_eq!(expect, warm, "{name} (warm, audited)");
+        assert!(stats.audit_mismatches.is_empty(), "{name}: {stats:?}");
+        let (warm, stats) = cached(&f, &dir);
+        assert_eq!(expect, warm, "{name} (warm)");
+        // Warm: only failed definitions are encoded again.
+        assert_eq!(set(&stats.encoded), failed_defs(&expect.0), "{name}");
+        let _ = fs::remove_dir_all(&dir);
+    }
+}
+
+#[test]
+fn a_body_change_relowers_only_that_definition() {
+    let dir = tmp("body");
+    let base = generate(6);
+    let (_, cold) = cached(&files(&base), &dir);
+    assert!(cold.reused.is_empty() && cold.ir_reused.is_empty());
+    assert_eq!(cold.lowered.len(), 30);
+    let (_, warm) = cached(&files(&base), &dir);
+    assert!(
+        warm.encoded.is_empty() && warm.lowered.is_empty(),
+        "{warm:?}"
+    );
+    assert_eq!(warm.reused.len(), 30);
+    assert_eq!(warm.ir_reused.len(), 30);
+
+    let changed = base.replacen("        x + 3\n", "        3 + x\n", 1);
+    assert_ne!(changed, base);
+    let f = files(&changed);
+    let (out, stats) = cached(&f, &dir);
+    assert_eq!(out, plain(&f));
+    assert_eq!(stats.encoded, vec!["m3::f0".to_string()]);
+    assert_eq!(stats.lowered, vec!["m3::f0".to_string()]);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+fn impact(f: &[(String, String)], def: &str, change: &str) -> BTreeSet<String> {
+    let rows = bmb::map_request(
+        f,
+        &["query".into(), "impact".into(), def.into(), change.into()],
+    )
+    .unwrap();
+    rows.lines()
+        .filter_map(|l| l.split("\"path\":\"").nth(1))
+        .map(|r| r.split('"').next().unwrap().to_string())
+        .collect()
+}
+
+#[test]
+fn a_contract_change_reencodes_exactly_the_impact_set() {
+    let dir = tmp("contract");
+    let base = generate(6);
+    cached(&files(&base), &dir);
+
+    // Contract of an executable function: itself and its callers.
+    let ensures = base.replacen(
+        "    fn f0(x: i64) -> (r: i64)\n        requires small(x),\n        ensures pos(r),\n    {\n        x + 3\n",
+        "    fn f0(x: i64) -> (r: i64)\n        requires small(x),\n        ensures pos2(r),\n    {\n        x + 3\n",
+        1,
+    );
+    assert_ne!(ensures, base);
+    let f = files(&ensures);
+    let (out, stats) = cached(&f, &dir);
+    assert_eq!(out, plain(&f));
+    assert!(failed_defs(&out.0).is_empty(), "{}", out.0);
+    let expect = impact(&f, "m3::f0", "iface");
+    assert_eq!(
+        expect,
+        ["m3::f0", "m3::f1"].map(String::from).into_iter().collect()
+    );
+    assert_eq!(set(&stats.encoded), expect);
+    // IR: the function and the callers that call it (they read its signature).
+    assert_eq!(set(&stats.lowered), expect);
+
+    // Body of a spec fn: the definitions that reveal it.
+    let spec = ensures.replacen(
+        "spec fn pos(r: i64) -> bool { r >= 0 && r < 2000 }",
+        "spec fn pos(r: i64) -> bool { r < 2000 && r >= 0 }",
+        4,
+    );
+    let spec = spec.replacen(
+        "spec fn pos(r: i64) -> bool { r < 2000 && r >= 0 }",
+        "spec fn pos(r: i64) -> bool { r >= 0 && r < 2000 }",
+        3,
+    );
+    let f = files(&spec);
+    let (out, stats) = cached(&f, &dir);
+    assert_eq!(out, plain(&f));
+    let expect = impact(&f, "m3::pos", "body");
+    assert_eq!(expect.len(), 5, "{expect:?}");
+    assert_eq!(set(&stats.encoded), expect);
+    // No signature and no verification state changed: no IR is lowered.
+    assert!(stats.lowered.is_empty(), "{stats:?}");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_failure_in_a_component_relowers_it_with_checks() {
+    let dir = tmp("component");
+    let base = generate(3);
+    cached(&files(&base), &dir);
+    // `m1::f2` breaks its loop invariant: it fails, and its call component
+    // (only itself: nothing calls f2) keeps runtime checks.
+    let broken = base.replacen("            c = c + 1;\n", "            c = c + 2;\n", 2);
+    let broken = broken.replacen("            c = c + 2;\n", "            c = c + 1;\n", 1);
+    let f = files(&broken);
+    let (out, stats) = cached(&f, &dir);
+    assert_eq!(out, plain(&f));
+    assert_eq!(failed_defs(&out.0), ["m1::f2".to_string()].into());
+    assert_eq!(stats.lowered, vec!["m1::f2".to_string()]);
+    // `m1::f0` fails: the whole call component (m0, m1, m2 are connected
+    // through `g`) loses its proof facts, so all of it is lowered again.
+    let f0 = base.replacen("        x + 1\n", "        x + 1500\n", 1);
+    let f = files(&f0);
+    let (out, stats) = cached(&f, &dir);
+    assert_eq!(out, plain(&f));
+    assert_eq!(failed_defs(&out.0), ["m1::f0".to_string()].into());
+    // `m1::f2` is back to the text whose proof is stored.
+    assert_eq!(stats.encoded, vec!["m1::f0".to_string()]);
+    let component: BTreeSet<String> = ["m0", "m1", "m2"]
+        .iter()
+        .flat_map(|u| ["f0", "f1", "g"].map(|d| format!("{u}::{d}")))
+        .collect();
+    let mut expect = component.clone();
+    expect.insert("m1::f2".into());
+    assert_eq!(set(&stats.lowered), expect);
+    // And back: the component is proved again and lowered without checks.
+    let (out, _) = cached(&files(&base), &dir);
+    assert_eq!(out, plain(&files(&base)));
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn edits_that_shift_spans_or_change_context_keep_outputs_exact() {
+    let dir = tmp("edits");
+    let base = generate(4);
+    let edits = [
+        // A comment shifts every span after it.
+        base.replacen("mod m1 {", "mod m1 {\n    // moved\n", 1),
+        // A new spec fn changes the header of every query.
+        base.replacen(
+            "mod m2 {",
+            "mod m2 {\n    spec fn extra(x: i64) -> bool { x > 7 }\n",
+            1,
+        ),
+        // A new local definition changes what a short name resolves to.
+        base.replacen(
+            "mod m0 {",
+            "mod m0 {\n    #[summary(\"inner\")]\n    mod inner {\n        spec fn unused(x: i64) -> bool { x > 1 }\n    }\n",
+            1,
+        ),
+        // Recursion measure changes.
+        base.replacen("        decreases n,\n", "        decreases n + 1,\n", 1),
+        base.clone(),
+    ];
+    cached(&files(&base), &dir);
+    for (i, text) in edits.iter().enumerate() {
+        let f = files(text);
+        let (out, stats) = bmb::incremental::with_audit(|| cached(&f, &dir));
+        assert_eq!(out, plain(&f), "edit {i}");
+        assert!(stats.audit_mismatches.is_empty(), "edit {i}: {stats:?}");
+        let (again, _) = cached(&f, &dir);
+        assert_eq!(again, out, "edit {i} (warm)");
+    }
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn damaged_cache_lines_are_ignored() {
+    let dir = tmp("damaged");
+    let base = generate(3);
+    let f = files(&base);
+    let expect = plain(&f);
+    cached(&f, &dir);
+    let path = dir.join(bmb::incremental::FILE);
+    let text = fs::read_to_string(&path).unwrap();
+    // Flip one byte of every third entry's payload: its digest no longer matches.
+    let mut damaged = 0;
+    let lines: Vec<String> = text
+        .lines()
+        .enumerate()
+        .map(|(i, l)| {
+            if i >= 2 && i % 3 == 0 {
+                damaged += 1;
+                let mut b = l.as_bytes().to_vec();
+                let k = b.len() - 1;
+                b[k] = if b[k] == b'0' { b'1' } else { b'0' };
+                String::from_utf8(b).unwrap()
+            } else {
+                l.to_string()
+            }
+        })
+        .collect();
+    fs::write(&path, lines.join("\n") + "\n").unwrap();
+    let ((out, ir, checks, map), stats) = cached(&f, &dir);
+    assert_eq!((out, ir, checks, map), expect);
+    assert_eq!(stats.damaged, damaged);
+    assert!(!stats.encoded.is_empty() || !stats.lowered.is_empty());
+    // Truncated file, garbage, and another format version.
+    for junk in [
+        text[..text.len() / 2].to_string(),
+        "garbage\n\u{0}\u{1}".to_string(),
+        text.replace("cache v1", "cache v0"),
+    ] {
+        fs::write(&path, junk).unwrap();
+        let (out, _) = cached(&f, &dir);
+        assert_eq!(out, expect);
+    }
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn another_compiler_identity_invalidates_everything() {
+    let dir = tmp("identity");
+    let f = files(&generate(2));
+    let expect = plain(&f);
+    cached(&f, &dir);
+    let (out, stats) = bmb::incremental::with_compiler_id("other", || cached(&f, &dir));
+    assert_eq!(out, expect);
+    assert!(stats.reused.is_empty() && stats.ir_reused.is_empty());
+    assert_eq!(stats.encoded.len(), 10);
+    let (_, stats) = bmb::incremental::with_compiler_id("other", || cached(&f, &dir));
+    assert_eq!(stats.reused.len(), 10);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// Measurement (backlog 2D-10): `cargo test --release --test incremental
+/// -- --ignored --nocapture`. `BMB_INCR_UNITS` sets the size (7 definitions
+/// per unit).
+#[test]
+#[ignore]
+fn measure_large_program() {
+    let units: usize = std::env::var("BMB_INCR_UNITS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(45);
+    let base = generate(units);
+    let f = files(&base);
+    let dir = tmp("measure");
+    let time = |label: &str, f: &dyn Fn() -> bmb::LlvmOutput| {
+        let t = Instant::now();
+        let out = f();
+        let ms = t.elapsed().as_secs_f64() * 1000.0;
+        let s = &out.verify.incr;
+        println!(
+            "{label:<34} {ms:>9.1} ms  encoded {:>4} reused {:>4} lowered {:>4} ir_reused {:>4} solver-misses {:>5}",
+            s.encoded.len(),
+            s.reused.len(),
+            s.lowered.len(),
+            s.ir_reused.len(),
+            out.verify.cache.1
+        );
+        out
+    };
+    println!(
+        "{units} units, {} definitions ({} executable)",
+        units * 8,
+        units * 5
+    );
+    let t = Instant::now();
+    assert!(bmb::check_sources(&f).ok);
+    println!(
+        "{:<34} {:>9.1} ms  (parse and check only: the floor)",
+        "front end",
+        t.elapsed().as_secs_f64() * 1000.0
+    );
+    let p = time("no cache", &|| bmb::emit_llvm_sources(&f));
+    let c = time("cold cache", &|| {
+        bmb::emit_llvm_sources_cached(&f, Some(&dir))
+    });
+    assert_eq!(p.ir, c.ir);
+    let w = time("warm", &|| bmb::emit_llvm_sources_cached(&f, Some(&dir)));
+    assert_eq!(p.ir, w.ir);
+    // The proof cache alone (2D-01): every definition encoded and lowered.
+    let t = Instant::now();
+    let v = bmb::verify_sources_opts(&f, Some(&dir), false);
+    println!(
+        "{:<34} {:>9.1} ms  (verify only, solver-misses {})",
+        "warm, proof cache only",
+        t.elapsed().as_secs_f64() * 1000.0,
+        v.cache.1
+    );
+    let t = Instant::now();
+    let v = bmb::verify_sources_cached(&f, Some(&dir));
+    println!(
+        "{:<34} {:>9.1} ms  (verify only)",
+        "warm, incremental",
+        t.elapsed().as_secs_f64() * 1000.0,
+    );
+    assert!(v.ok);
+    let k = units / 2;
+    let changed = base.replacen(
+        &format!("        x + {k}\n"),
+        &format!("        {k} + x\n"),
+        1,
+    );
+    let f2 = files(&changed);
+    let b = time("one body changed", &|| {
+        bmb::emit_llvm_sources_cached(&f2, Some(&dir))
+    });
+    assert_eq!(b.ir, bmb::emit_llvm_sources(&f2).ir);
+    let changed = changed.replacen(
+        &format!("ensures pos(r),\n    {{\n        {k} + x\n"),
+        &format!("ensures pos2(r),\n    {{\n        {k} + x\n"),
+        1,
+    );
+    let f3 = files(&changed);
+    let c = time("one contract changed", &|| {
+        bmb::emit_llvm_sources_cached(&f3, Some(&dir))
+    });
+    assert!(c.verify.ok);
+    let size = fs::metadata(dir.join(bmb::incremental::FILE))
+        .unwrap()
+        .len();
+    println!("cache file {size} bytes");
+    let _ = fs::remove_dir_all(&dir);
+}

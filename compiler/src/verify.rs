@@ -1366,7 +1366,7 @@ impl<'p> Prog<'p> {
     }
 }
 
-fn uses_of(f: &FnDef, mod_path: &str, fns: &BTreeMap<String, FnSig>) -> Vec<String> {
+pub(crate) fn uses_of(f: &FnDef, mod_path: &str, fns: &BTreeMap<String, FnSig>) -> Vec<String> {
     let mut out = BTreeSet::new();
     for a in &f.attrs {
         if a.name.name == "uses" {
@@ -1408,7 +1408,33 @@ pub fn verify_program_with(
     seed: u64,
     cache: Option<&mut ProofCache>,
 ) -> Outcome {
-    verify_impl(p, t, diags, seed, cache, None)
+    verify_impl(p, t, diags, seed, cache, None, None)
+}
+
+/// As `verify_program_with` (seed 0), reusing the stored result of every
+/// definition whose incremental key is unchanged (backlog 2D-10): such a
+/// definition is not encoded at all. Its obligations count as proof cache
+/// hits. Output is the same as without it, except that `scripts` holds only
+/// the definitions that were encoded.
+pub fn verify_program_incremental(
+    p: &Program,
+    t: &Tables,
+    diags: &mut Diags,
+    cache: Option<&mut ProofCache>,
+    incr: &mut crate::incremental::Session,
+) -> Outcome {
+    verify_impl(p, t, diags, 0, cache, None, Some(incr))
+}
+
+/// Every solver query of a program starts with this text: options (seed 0,
+/// pinned `rlimit`), prelude, and the declarations of every `spec fn`.
+pub fn query_header(p: &Program, t: &Tables) -> String {
+    let mut defs = BTreeMap::new();
+    for m in &p.mods {
+        collect(m, "", &mut defs);
+    }
+    let prog = Prog { defs, t };
+    header(&prog.spec_decls(), 0).join("\n")
 }
 
 /// As `verify_program_with` (seed 0), proving only the definitions in
@@ -1424,7 +1450,7 @@ pub fn verify_defs(
     only: &BTreeSet<String>,
     cache: Option<&mut ProofCache>,
 ) -> Outcome {
-    verify_impl(p, t, diags, 0, cache, Some(only))
+    verify_impl(p, t, diags, 0, cache, Some(only), None)
 }
 
 fn header(spec_decls: &[String], seed: u64) -> Vec<String> {
@@ -1554,6 +1580,7 @@ fn verify_impl(
     seed: u64,
     mut cache: Option<&mut ProofCache>,
     only: Option<&BTreeSet<String>>,
+    mut incr: Option<&mut crate::incremental::Session>,
 ) -> Outcome {
     let mut defs = BTreeMap::new();
     for m in &p.mods {
@@ -1595,6 +1622,22 @@ fn verify_impl(
     let mut solver: Option<Solver> = None;
     for (path, d) in &prog.defs {
         if only.is_some_and(|o| !o.contains(path)) {
+            continue;
+        }
+        // Incremental build (backlog 2D-10): an unchanged, fully proved
+        // definition is not encoded again.
+        let hit = incr.as_ref().and_then(|s| s.proof_lookup(path, d.f.span));
+        if let Some(h) = &hit
+            && !incr.as_ref().is_some_and(|s| s.audit())
+        {
+            if let Some(c) = cache.as_mut() {
+                c.hits += h.status.obligations;
+            }
+            proved_keys.extend(h.proved.iter().cloned());
+            statuses.push(h.status.clone());
+            if let Some(s) = incr.as_mut() {
+                s.stats.reused.push(path.clone());
+            }
             continue;
         }
         let mut enc = Enc::new(&prog, path, &d.mod_path);
@@ -1677,6 +1720,7 @@ fn verify_impl(
             solver = None;
         }
         let mut solver_down = false;
+        let mut def_proved: Vec<ObKey> = Vec::new();
         for (k, o) in enc.obls.iter().enumerate() {
             let q = format!(
                 "{}\n(assert (not {}))",
@@ -1709,6 +1753,7 @@ fn verify_impl(
                 rlimit_total += total;
                 rlimit_max = rlimit_max.max(max);
                 proved_keys.insert(key);
+                def_proved.push(key);
                 continue;
             }
             if solver.is_none() && !solver_down {
@@ -1775,6 +1820,7 @@ fn verify_impl(
             failed += 1;
             if matches!(answer, Ok(Answer::Unsat)) {
                 proved_keys.insert(key);
+                def_proved.push(key);
                 if let (Some(c), Some(ck)) = (cache.as_mut(), cache_key) {
                     c.insert(ck, rlimit_total - total_before, first_used);
                 }
@@ -1826,13 +1872,21 @@ fn verify_impl(
                 }
             }
         }
-        statuses.push(FnStatus {
+        let status = FnStatus {
             path: path.clone(),
             obligations: enc.obls.len(),
             failed: failed + enc.unsupported.len(),
             rlimit_total,
             rlimit_max,
-        });
+        };
+        if let Some(s) = incr.as_mut() {
+            s.stats.encoded.push(path.clone());
+            if let Some(h) = &hit {
+                s.proof_audit(h, &status, &def_proved, &script);
+            }
+            s.proof_record(&status, d.f.span, &def_proved, &script);
+        }
+        statuses.push(status);
         scripts.insert(path.clone(), script);
     }
     let proven = proved_keys.difference(&failed_keys).cloned().collect();
