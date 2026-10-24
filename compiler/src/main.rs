@@ -19,6 +19,7 @@ const USAGE: &str = "usage:
                             create or replace workspace DIR from files, in normal form
   bmb apply DIR OPS.json    commit a transaction (JSON array of unit/put/remove/remove_unit ops)
                             to workspace DIR; rejected as a whole on any structural or type error
+  bmb mcp DIR               MCP server (stdio) for workspace DIR: query, map, verify, build, tx_*
   bmb codes                 list diagnostic codes as JSONL
 
 Any <file.bmb> argument may also be a workspace directory (its src/*.bmb).
@@ -292,6 +293,13 @@ fn main() -> ExitCode {
                 }
             }
         }
+        Some("mcp") if args.len() == 2 => match bmb::mcp::serve(std::path::Path::new(&args[1])) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("bmb: {e}");
+                ExitCode::from(2)
+            }
+        },
         Some("codes") => {
             print!("{}", bmb::diag::codes_jsonl());
             ExitCode::SUCCESS

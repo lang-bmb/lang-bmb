@@ -8,6 +8,7 @@ pub mod fmt;
 pub mod json;
 pub mod lexer;
 pub mod map;
+pub mod mcp;
 pub mod parser;
 pub mod sha256;
 pub mod smt;

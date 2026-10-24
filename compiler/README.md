@@ -16,6 +16,7 @@ cargo run -- map all a.bmb        # 표준 맵 L0~L2(JSONL, ADR-0020)
 cargo run -- query slice u::f -- a.bmb  # 읽기 질의: units surface edges slice find contracts status
 cargo run -- import ws a.bmb     # 작업 공간 ws/src/에 단위당 정규형 파일 하나
 cargo run -- apply ws ops.json   # 쓰기 트랜잭션(unit/put/remove/remove_unit). 구조·타입 오류면 전체 거부
+cargo run -- mcp ws              # MCP 서버(stdio): query map verify build tx_begin/put/commit 등
 cargo test                       # 회귀 코퍼스(tests/check, tests/verify)와 게이트·보조 사실 테스트
 BMB_BLESS=1 cargo test           # 기대 진단(.jsonl) 갱신
 ```
