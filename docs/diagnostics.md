@@ -1,0 +1,111 @@
+# 진단 코드
+
+> 생성 파일: `bmb codes --md`가 `compiler/src/diag.rs`의 `CODES`에서 만든다. 손으로 고치지 않는다.
+> 코드는 바꾸거나 재사용하지 않는다. 진단 형식은 `compiler/README.md`.
+
+## E01xx 어휘·구문
+
+| 코드 | 뜻 |
+| --- | --- |
+| E0101 | unexpected character |
+| E0102 | unterminated string literal |
+| E0103 | syntax error: unexpected token |
+| E0104 | integer literal suffix not allowed; the type comes from context |
+| E0105 | integer literal too large |
+| E0106 | block comments are not allowed; use `//` |
+
+## E02xx Rust 습관(수정 제안 포함)
+
+| 코드 | 뜻 |
+| --- | --- |
+| E0201 | `let` requires an explicit type |
+| E0202 | macros are not allowed |
+| E0203 | `return` is not allowed; end the block with a tail expression |
+| E0204 | `for` and `loop` are not allowed; use `while` with `invariant` and `decreases` |
+| E0205 | `as` casts are not allowed |
+| E0206 | the `?` operator is not allowed |
+| E0207 | construct not supported in milestone 1 |
+| E0208 | lifetime annotations are not allowed |
+| E0209 | function return type is required (write `-> ()` for unit) |
+| E0210 | `mut` parameters are not allowed |
+| E0211 | comparison operators cannot be chained |
+
+## E03xx 이름
+
+| 코드 | 뜻 |
+| --- | --- |
+| E0301 | unknown name |
+| E0302 | duplicate definition |
+| E0303 | name already bound in this function (shadowing is not allowed) |
+| E0304 | unknown function |
+
+## E04xx 타입·소유권
+
+| 코드 | 뜻 |
+| --- | --- |
+| E0401 | type mismatch |
+| E0402 | unsupported type |
+| E0403 | references are only allowed in parameter position |
+| E0404 | unknown method (no method lookup; only built-in methods exist) |
+| E0405 | wrong number of arguments |
+| E0406 | integer literal out of range for its type |
+| E0407 | value is not indexable |
+| E0408 | assignment to an immutable place |
+| E0409 | `&` / `&mut` may only appear directly as a call argument |
+| E0410 | a `&mut` argument aliases another argument of the same call |
+| E0411 | cannot negate an unsigned value |
+
+## E05xx 명세
+
+| 코드 | 뜻 |
+| --- | --- |
+| E0501 | contract clause must be a call to a named predicate (`spec fn ... -> bool`) |
+| E0502 | vacuous predicate used in a contract |
+| E0503 | specification-only construct used in executable code |
+| E0504 | executable function called in a specification |
+| E0505 | spec function called in executable code |
+| E0506 | `while` requires `decreases` |
+| E0507 | recursive function requires `decreases` |
+| E0508 | `old(..)` is only allowed in `ensures`, loop invariants and `assert` on a `&mut` parameter |
+| E0509 | `#[uses(..)]` entry is not a spec function |
+| E0510 | `#[trigger]` is only allowed inside `forall` |
+| E0511 | `forall` requires at least one `#[trigger]` |
+| E0512 | the triggers of a `forall` must together mention every bound variable |
+
+## E06xx 효과·속성
+
+| 코드 | 뜻 |
+| --- | --- |
+| E0601 | function requires an `#[effects(..)]` attribute |
+| E0602 | unknown effect |
+| E0603 | `pure` function calls a function with effect `io` |
+| E0604 | spec functions take no `#[effects(..)]` attribute |
+| E0605 | unknown or misplaced attribute |
+
+## E07xx 프로그램 구조
+
+| 코드 | 뜻 |
+| --- | --- |
+| E0701 | `main` must be `#[effects(io)] fn main() -> ()` |
+| E0702 | more than one `main` |
+| E0703 | items must be declared inside a `mod` |
+| E0704 | `mod` requires a `#[summary("..")]` attribute |
+
+## E08xx 증명 게이트
+
+| 코드 | 뜻 |
+| --- | --- |
+| E0801 | precondition of a call may not hold |
+| E0802 | postcondition may not hold |
+| E0803 | arithmetic may overflow |
+| E0804 | divisor may be zero |
+| E0805 | index may be out of bounds |
+| E0806 | loop invariant may not hold on entry |
+| E0807 | loop invariant may not be preserved |
+| E0808 | loop `decreases` may not decrease or may be negative |
+| E0809 | recursive call may not decrease the measure |
+| E0810 | assertion may not hold |
+| E0811 | solver could not decide (resource limit or incompleteness) |
+| E0812 | proof gate cannot run (solver missing, wrong version or failed) |
+| E0813 | recursive spec function may not terminate |
+| E0814 | construct not supported by the proof gate |

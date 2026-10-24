@@ -48,7 +48,7 @@
 | 1A-05 | Rust 습관 진단(E02xx)과 수정 제안 | 타입 생략·매크로·`return`·`for`·`as`·`?`·`unwrap` 등 | 1A-03 | ✅ `d394946` |
 | 1A-06 | 기계적 수정에 `replacement` 채우기 | E02xx 중 기계적으로 고칠 수 있는 것은 모두 `replacement` 보유. 적용 후 재검사에서 해당 오류가 사라짐을 테스트 | 1A-05 | ✅ 9종(E0104·E0201 타입 추론·E0202 `vec!`·E0206·E0208·E0209·E0402·E0601) `replacement`, `tests/fixes.rs` |
 | 1A-07 | 별칭 검사 정밀화 | `&mut` 인자 별칭 검사에서 `if`·블록 인자를 보수적으로 거부하지 않고 실제로 추적 | 1A-03 | ✅ 블록 문장까지 정확히 추적, `ok/search.bmb`의 `alias_ok`, `err/types.bmb`의 `alias_err` |
-| 1A-08 | 진단 코드 문서 자동 생성 | `bmb codes`로 `docs/diagnostics.md`를 생성하고, 어긋나면 CI 실패 | INF-01 | ⏳ |
+| 1A-08 | 진단 코드 문서 자동 생성 | `bmb codes`로 `docs/diagnostics.md`를 생성하고, 어긋나면 CI 실패 | INF-01 | ✅ `bmb codes --md` → `docs/diagnostics.md`, 게이트의 `docs` 단계 |
 | 1A-09 | 파서 퍼징 | 임의 입력에서 패닉 없음(퍼저 일정 시간 실행) | 1A-02 | ⏳ |
 
 ## 1B 증명 게이트
@@ -68,7 +68,7 @@
 | 1B-11 | `bmb verify` 명령 | 정의별 증명 상태를 JSONL로 출력 | 1B-09 | ✅ `bmb verify [--emit-smt DIR]` |
 | 1B-12 | 판정 회귀 코퍼스 | `tests/verify/pass`(전부 증명), `tests/verify/fail`(전부 거부 + 기대 진단). 틀린 코드 유형별 1개 이상 | 1B-09 | ✅ `compiler/tests/verify.rs` |
 | 1B-13 | 게이트 강건성 테스트 | Z3 부재·`rlimit` 최소·질의 결정론을 자동 테스트로 확인 | 1B-12 | ✅ `compiler/tests/gate.rs` |
-| 1B-14 | 양화 공리로 인한 `unknown`에서 반례 얻기 | 거짓 계약이 술어 정의 공리 때문에 `unknown`이 되는 경우(`fail/contracts.bmb`의 wrong_post)에도 반례를 보고. 방법은 실험으로 정함 | 1B-12 | ⏳ |
+| 1B-14 | 양화 공리로 인한 `unknown`에서 반례 얻기 | 거짓 계약이 술어 정의 공리 때문에 `unknown`이 되는 경우(`fail/contracts.bmb`의 wrong_post)에도 반례를 보고. 방법은 실험으로 정함 | 1B-12 | ✅ ADR-0023 기저 인스턴스 재시도. `wrong_post`·`forgets_write`가 확정 반례(E0802)로 |
 | 1B-15 | 증명 비용 보고 | `bmb verify`가 의무별 `rlimit` 사용량을 출력. 안정성 추이를 1E에서 측정 가능 | 1B-12 | ✅ 상태 줄 `rlimit`·`rlimit_max`, L1·`status`의 `rlimit_max`(결정론 확인) |
 | 1B-16 | 비선형 의무 진단 | `unknown`의 원인이 비선형 산술일 때 그렇다고 진단하고 우회 방법(보조 술어·계약 분할)을 제안 | 1B-12 | ✅ `unknown`이고 변수끼리 곱하면 `fix`에 원인·우회 안내, `tests/verify/fail/nonlinear.bmb`, `nonlinear_detection` |
 

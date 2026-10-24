@@ -83,8 +83,13 @@ fn output_is_deterministic() {
 #[test]
 fn every_code_is_documented_once() {
     let mut seen = std::collections::BTreeSet::new();
+    let page = bmb::diag::codes_markdown();
     for (c, d) in bmb::diag::CODES {
         assert!(seen.insert(*c), "duplicate code {c}");
         assert!(!d.is_empty());
+        assert!(
+            page.contains(&format!("| {c} |")),
+            "{c} missing from the reference page"
+        );
     }
 }

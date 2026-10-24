@@ -251,3 +251,30 @@ pub fn codes_jsonl() -> String {
     }
     out
 }
+
+/// The diagnostics reference page (`docs/diagnostics.md`), generated from
+/// `CODES` so it cannot drift (backlog 1A-08).
+pub fn codes_markdown() -> String {
+    let groups = [
+        ("E01", "어휘·구문"),
+        ("E02", "Rust 습관(수정 제안 포함)"),
+        ("E03", "이름"),
+        ("E04", "타입·소유권"),
+        ("E05", "명세"),
+        ("E06", "효과·속성"),
+        ("E07", "프로그램 구조"),
+        ("E08", "증명 게이트"),
+    ];
+    let mut out = String::from(
+        "# 진단 코드\n\n> 생성 파일: `bmb codes --md`가 `compiler/src/diag.rs`의 `CODES`에서 만든다. 손으로 고치지 않는다.\n> 코드는 바꾸거나 재사용하지 않는다. 진단 형식은 `compiler/README.md`.\n",
+    );
+    for (prefix, title) in groups {
+        out.push_str(&format!(
+            "\n## {prefix}xx {title}\n\n| 코드 | 뜻 |\n| --- | --- |\n"
+        ));
+        for (c, d) in CODES.iter().filter(|(c, _)| c.starts_with(prefix)) {
+            out.push_str(&format!("| {c} | {} |\n", d.replace('|', "\\|")));
+        }
+    }
+    out
+}

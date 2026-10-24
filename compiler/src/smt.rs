@@ -283,6 +283,14 @@ fn parse_at(toks: &[String], pos: &mut usize) -> Option<Sexp> {
     }
 }
 
+/// SMT-LIB text of an s-expression (inverse of `parse`).
+pub fn print(e: &Sexp) -> String {
+    match e {
+        Sexp::Atom(a) => a.clone(),
+        Sexp::List(xs) => format!("({})", xs.iter().map(print).collect::<Vec<_>>().join(" ")),
+    }
+}
+
 /// `5` -> `5`, `(- 5)` -> `-5`, `true` -> `true`; other terms are printed back.
 pub fn render_value(v: &Sexp) -> String {
     match v {

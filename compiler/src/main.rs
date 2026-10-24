@@ -20,7 +20,7 @@ const USAGE: &str = "usage:
   bmb apply DIR OPS.json    commit a transaction (JSON array of unit/put/remove/remove_unit ops)
                             to workspace DIR; rejected as a whole on any structural or type error
   bmb mcp DIR               MCP server (stdio) for workspace DIR: query, map, verify, build, tx_*
-  bmb codes                 list diagnostic codes as JSONL
+  bmb codes [--md]          list diagnostic codes as JSONL (or the Markdown reference page)
 
 Any <file.bmb> argument may also be a workspace directory (its src/*.bmb).
   bmb doctor                check the pinned toolchain (z3, LLVM) as JSONL";
@@ -300,6 +300,10 @@ fn main() -> ExitCode {
                 ExitCode::from(2)
             }
         },
+        Some("codes") if args.get(1).map(String::as_str) == Some("--md") => {
+            print!("{}", bmb::diag::codes_markdown());
+            ExitCode::SUCCESS
+        }
         Some("codes") => {
             print!("{}", bmb::diag::codes_jsonl());
             ExitCode::SUCCESS

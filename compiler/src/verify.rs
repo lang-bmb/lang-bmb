@@ -1196,7 +1196,7 @@ impl<'p> Prog<'p> {
     }
 
     /// Definitional axiom of a spec fn (ADR-0017 §4).
-    fn axiom(&self, path: &str) -> (String, Vec<(Span, String)>) {
+    fn axiom(&self, path: &str) -> (String, Vec<(Span, String)>, AxiomParts) {
         let d = &self.defs[path];
         let mut enc = Enc::new(self, path, &d.mod_path);
         let mut binders = Vec::new();
@@ -1236,16 +1236,22 @@ impl<'p> Prog<'p> {
         } else {
             format!("({} {})", sym(path), app_args.join(" "))
         };
+        let guard = and(&facts);
         let ax = if binders.is_empty() {
             format!("(assert (= {app} {body}))")
         } else {
             format!(
-                "(assert (forall ({}) (! (=> {} (= {app} {body})) :pattern ({app}))))",
+                "(assert (forall ({}) (! (=> {guard} (= {app} {body})) :pattern ({app}))))",
                 binders.join(" "),
-                and(&facts)
             )
         };
-        (ax, enc.unsupported)
+        let parts = AxiomParts {
+            sym: sym(path),
+            params: app_args,
+            guard,
+            body,
+        };
+        (ax, enc.unsupported, parts)
     }
 }
 
@@ -1315,6 +1321,7 @@ pub fn verify_program(p: &Program, t: &Tables, diags: &mut Diags) -> Outcome {
         header.extend(spec_decls.iter().cloned());
         // Definitional axioms of revealed spec fns, filtered per obligation.
         let mut axioms: Vec<(String, String)> = Vec::new();
+        let mut axiom_parts: Vec<AxiomParts> = Vec::new();
 
         match d.f.kind {
             FnKind::Spec => {
@@ -1335,8 +1342,9 @@ pub fn verify_program(p: &Program, t: &Tables, diags: &mut Diags) -> Outcome {
             }
             FnKind::Exec => {
                 for u in uses_of(d.f, &d.mod_path, &t.fns) {
-                    let (ax, unsup) = prog.axiom(&u);
+                    let (ax, unsup, parts) = prog.axiom(&u);
                     axioms.push((sym(&u), ax));
+                    axiom_parts.push(parts);
                     enc.unsupported.extend(unsup);
                 }
                 for prm in &d.f.params {
@@ -1415,13 +1423,14 @@ pub fn verify_program(p: &Program, t: &Tables, diags: &mut Diags) -> Outcome {
             let relevant_text = relevant.clone();
             let hint =
                 hidden_predicates(&spec_syms, &axioms, &format!("{q}{relevant}"), &d.mod_path);
+            let head = format!("{base}{decls}");
             let base = format!("{base}{relevant}{decls}");
             script.push_str(&format!(
                 "; obligation {k}: {} {}\n(reset)\n{base}\n{q}\n(check-sat)\n",
                 o.code, o.msg
             ));
             let Some(sol) = solver.as_mut() else { continue };
-            let answer = sol
+            let mut answer = sol
                 .run("(reset)")
                 .and_then(|_| sol.run(&base))
                 .and_then(|_| sol.run(&q))
@@ -1431,6 +1440,36 @@ pub fn verify_program(p: &Program, t: &Tables, diags: &mut Diags) -> Outcome {
             {
                 rlimit_total += used;
                 rlimit_max = rlimit_max.max(used);
+            }
+            // Undecided with quantified definitions: retry quantifier-free with
+            // ground instances (sound for both answers, see `ground_instances`).
+            if matches!(answer, Ok(Answer::Unknown(_))) && !axiom_parts.is_empty() {
+                let (inst, complete) = ground_instances(&axiom_parts, &q, 3);
+                if !inst.is_empty() {
+                    script.push_str(&format!(
+                        "; retry of obligation {k} with ground instances\n(reset)\n{head}\n{inst}{q}\n(check-sat)\n"
+                    ));
+                    let retry = sol
+                        .run("(reset)")
+                        .and_then(|_| sol.run(&head))
+                        .and_then(|_| sol.run(&format!("{inst}{q}")))
+                        .and_then(|_| sol.check_sat());
+                    if retry.is_ok()
+                        && let Ok(used) = sol.rlimit_used()
+                    {
+                        rlimit_total += used;
+                    }
+                    match retry {
+                        Ok(Answer::Unsat) => answer = retry,
+                        Ok(Answer::Sat) if complete => answer = retry,
+                        Ok(Answer::Sat) => {
+                            answer = Ok(Answer::Unknown(
+                                "a model exists for the instantiated definitions only".into(),
+                            ))
+                        }
+                        _ => {}
+                    }
+                }
             }
             failed += 1;
             let key = (o.code, o.span.file, o.span.lo, o.span.hi);
@@ -1497,6 +1536,95 @@ pub fn verify_program(p: &Program, t: &Tables, diags: &mut Diags) -> Outcome {
         statuses,
         proven,
         scripts,
+    }
+}
+
+/// A spec fn's definition, kept apart for ground instantiation.
+struct AxiomParts {
+    sym: String,
+    /// Bound parameter symbols, in application order.
+    params: Vec<String>,
+    guard: String,
+    body: String,
+}
+
+/// Ground instances of the definitions for the applications occurring in
+/// `text`, to `depth` levels of nesting (backlog 1B-14). Instances follow from
+/// the quantified definitions, so a proof with them is a proof. The second
+/// result is true when every application got its instance and no quantifier
+/// remains, which makes a model of the instances a model of the definitions.
+fn ground_instances(axioms: &[AxiomParts], text: &str, depth: usize) -> (String, bool) {
+    let mut seen = BTreeSet::new();
+    let mut out = String::new();
+    let mut frontier = text.to_string();
+    let mut complete = true;
+    for level in 0..=depth {
+        let mut next = String::new();
+        let mut apps = Vec::new();
+        for cmd in smt::split_commands(&frontier) {
+            if let Some(e) = smt::parse(&cmd) {
+                collect_apps(&e, axioms, &mut apps);
+            }
+        }
+        // Zero-arity definitions appear as bare symbols.
+        for a in axioms.iter().filter(|a| a.params.is_empty()) {
+            if frontier.contains(&a.sym) {
+                apps.push((a.sym.clone(), a.sym.clone(), Vec::new()));
+            }
+        }
+        for (app, symbol, args) in apps {
+            if !seen.insert(app.clone()) {
+                continue;
+            }
+            if level == depth {
+                complete = false;
+                break;
+            }
+            let ax = axioms.iter().find(|a| a.sym == symbol).unwrap();
+            let subst = |t: &str| {
+                let mut t = t.to_string();
+                for (p, a) in ax.params.iter().zip(&args) {
+                    t = t.replace(p.as_str(), a);
+                }
+                t
+            };
+            let body = subst(&ax.body);
+            if body.contains("(forall") {
+                complete = false;
+            }
+            out.push_str(&format!(
+                "(assert (=> {} (= {app} {body})))\n",
+                subst(&ax.guard)
+            ));
+            next.push_str(&body);
+            next.push(' ');
+        }
+        if next.is_empty() {
+            break;
+        }
+        frontier = format!("(assert (and {next} true))");
+    }
+    (out, complete)
+}
+
+fn collect_apps(
+    e: &smt::Sexp,
+    axioms: &[AxiomParts],
+    out: &mut Vec<(String, String, Vec<String>)>,
+) {
+    if let smt::Sexp::List(xs) = e {
+        if let Some(smt::Sexp::Atom(head)) = xs.first()
+            && axioms
+                .iter()
+                .any(|a| &a.sym == head && a.params.len() == xs.len() - 1)
+        {
+            let args: Vec<String> = xs[1..].iter().map(smt::print).collect();
+            out.push((smt::print(e), head.clone(), args));
+        }
+        // Bound variables of a quantifier cannot be instantiated from outside.
+        if xs.first() != Some(&smt::Sexp::Atom("forall".into())) {
+            xs.iter().for_each(|x| collect_apps(x, axioms, out));
+        }
     }
 }
 
