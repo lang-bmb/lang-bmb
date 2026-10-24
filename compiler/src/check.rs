@@ -920,6 +920,14 @@ impl<'a> Checker<'a> {
                 let mut elem = want_elem.clone();
                 for it in items {
                     let t = self.expr(cx, it, elem.as_ref(), mode);
+                    // Array elements are scalars in milestone 1 (backlog 1B-35).
+                    if matches!(t, TypeKind::Array(..)) {
+                        self.err(
+                            "E0402",
+                            it.span,
+                            "array elements must be scalars in milestone 1",
+                        );
+                    }
                     match &elem {
                         None => elem = Some(t),
                         Some(want) => self.expect_ty(&t, want, it.span),

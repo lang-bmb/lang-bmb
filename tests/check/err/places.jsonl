@@ -7,6 +7,7 @@
 {"code":"E0404","severity":"error","message":"`len` is not defined for `i64`","file":"err/places.bmb","line":24,"col":40,"end_line":24,"end_col":43}
 {"code":"E0405","severity":"error","message":"`wrapping_add` takes one argument","file":"err/places.bmb","line":27,"col":38,"end_line":27,"end_col":50}
 {"code":"E0404","severity":"error","message":"`wrapping_add` is not defined for `bool`","file":"err/places.bmb","line":30,"col":39,"end_line":30,"end_col":51}
+{"code":"E0406","severity":"error","message":"array length is too large","file":"err/places.bmb","line":34,"col":22,"end_line":34,"end_col":32}
 {"code":"E0406","severity":"error","message":"array length is too large","file":"err/places.bmb","line":34,"col":40,"end_line":34,"end_col":50}
 {"code":"E0407","severity":"error","message":"`k` has type `i64` and cannot be indexed","file":"err/places.bmb","line":40,"col":9,"end_line":40,"end_col":10}
 {"code":"E0408","severity":"error","message":"only `name[i]` can be assigned","file":"err/places.bmb","line":46,"col":9,"end_line":46,"end_col":16}

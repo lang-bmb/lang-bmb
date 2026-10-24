@@ -62,8 +62,8 @@
 | 1A-07 | 별칭 검사 정밀화 | `&mut` 인자 별칭 검사에서 `if`·블록 인자를 보수적으로 거부하지 않고 실제로 추적 | 1A-03 | ✅ 블록 문장까지 정확히 추적, `ok/search.bmb`의 `alias_ok`, `err/types.bmb`의 `alias_err` |
 | 1A-08 | 진단 코드 문서 자동 생성 | `bmb codes`로 `docs/diagnostics.md`를 생성하고, 어긋나면 CI 실패 | INF-01 | ✅ `bmb codes --md` → `docs/diagnostics.md`, 게이트의 `docs` 단계 |
 | 1A-09 | 파서 퍼징 | 임의 입력에서 패닉 없음(퍼저 일정 시간 실행) | 1A-02 | ✅ `tests/fuzz.rs`(기본 1,500회, 게이트), 장기 실행 200,000회 중 타입 통과 2,428개까지 증명·IR 생성, 패닉 0 |
-| 1A-10 | 배열 길이 상한 | `[T; N]`의 N이 `u128 → u64`로 잘리지 않고, ADR-0017 §3 길이 상한을 넘으면 E0406. 코드 생성의 `len * 8` 넘침 방지 | 1A-03 | ⏳ |
-| 1A-11 | 중첩 깊이 제한 | 소스 파서와 JSON 파서에 깊이 상한(초과 시 진단·오류). 50k 괄호·200k `[`로 스택 넘침이 재현됨(MCP 서버 종료) | 1A-02 | ⏳ |
+| 1A-10 | 배열 길이 상한 | `[T; N]`의 N이 `u128 → u64`로 잘리지 않고, ADR-0017 §3 길이 상한을 넘으면 E0406. 코드 생성의 `len * 8` 넘침 방지 | 1A-03 | ✅ 타입 표기의 길이도 `u32::MAX` 상한(E0406, 잘림 없음, 후속 타입 오류 없음). 1A-11 작업 중 발견된 동일 문제 포함. `tests/check/err/types.bmb`의 `array_limits` |
+| 1A-11 | 중첩 깊이 제한 | 소스 파서와 JSON 파서에 깊이 상한(초과 시 진단·오류). 50k 괄호·200k `[`로 스택 넘침이 재현됨(MCP 서버 종료) | 1A-02 | ✅ JSON `MAX_DEPTH` 256, 파서 `MAX_NESTING` 256과 새 코드 E0107, CLI·MCP를 256MiB 스택에서 실행(`bmb::with_stack`). `tests/nesting.rs`, `check/err/nesting.bmb`, MCP 200k `[` 테스트 |
 
 ## 1B 증명 게이트
 
@@ -100,9 +100,10 @@
 | 1B-29 | `&&`·`or` 오른쪽의 사실 보존 | 오른쪽 피연산자의 피호출자 `ensures`·나눗셈 보조 사실이 버려짐(불완전, 건전). `(=> guard facts)`로 보존 | 1B-03 | ✅ 오른쪽에서 얻은 사실을 `(=> guard facts)`로 보존. 수정 전에는 `after_and`·`after_or`가 거짓 확정 반례(`c = true`)와 함께 실패했다. `verify/pass/conditions.bmb` |
 | 1B-30 | 명세에서 부호 없는 원소의 범위 사실 | `&[u64]` 원소 읽기에 `0 ≤ a[i] ≤ MAX`가 명세·havoc에서 빠짐(불완전) | 1B-06 | ⏳ |
 | 1B-31 | 부분 증명 IR의 검사 제거 | `emit-llvm`에서 실패한 전제·불변식을 가정해 증명된 의무의 검사가 지워짐(`build`는 거부하므로 안전). 증명이 완전하지 않은 정의에서는 검사를 남김 | 1C-03 | ✅ `lib::usable_proofs`: 호출 그래프에서 실패한 정의와 연결된 구성 요소는 검사를 유지. `tests/codegen.rs`의 `proofs_resting_on_failed_ones_keep_their_checks` |
-| 1B-32 | 호출·재귀 건전성 퍼징 | 피호출자 계약 가정, `&mut` 인자 havoc, `old`, 재귀·상호 재귀 `decreases`를 생성기로 확인(1B-17 방식) | 1B-21 | ⏳ |
+| 1B-32 | 호출·재귀 건전성 퍼징 | 피호출자 계약 가정, `&mut` 인자 havoc, `old`, 재귀·상호 재귀 `decreases`를 생성기로 확인(1B-17 방식) | 1B-21 | 🔄 호출 부분 완료: `tests/soundness_calls.rs`(피호출자 템플릿 3종). 60배치: 호출자 300개 중 피호출자까지 증명된 51개를 입력 306개로 실행, 위반 0. 반례 271개 전제 만족. 재귀는 남음 |
 | 1B-33 | 부호 없는 산술 건전성 퍼징 | u64/usize 값(2^63 이상 포함), `-`·`/`·`%`·`wrapping_*`를 두 빌드와 해석기로 확인 | 1B-17 | ⏳ |
 | 1B-34 | 배열 대입 퍼징 | 배열 리터럴·`[v; N]`·배열 복사 대입을 루프 퍼저에 추가(1B-23 재발 방지) | 1B-21 | ⏳ |
+| 1B-35 | 중첩 배열 리터럴이 검증기에서 패닉 | `[[1]][0][0]`이 검사를 통과한 뒤 "array used as scalar" 패닉(1D-19 작업 중 발견). 배열 리터럴 원소도 스칼라만 허용(E0402) | 1A-03 | ✅ `check.rs` 배열 리터럴, `tests/check/err/types.bmb`의 `array_limits` |
 
 ## 1C 코드 생성
 
@@ -134,14 +135,14 @@
 | 1D-11 | MCP 서버 노출 | CLI와 같은 JSON. 에이전트가 파일 접근 없이 과제 수행 가능 | 1D-10 | ✅ `mcp.rs`, `bmb mcp DIR`, `tests/mcp.rs`(전체 에이전트 세션) |
 | 1D-12 | 맵·질의 결정론 테스트 | 두 번 실행 바이트 동일, 파일 배치 변경에도 동일 | 1D-06 | ✅ `tests/map.rs`(결정론·배치 독립) |
 | 1D-13 | 증명 문맥 제안 | 실패한 의무에 대해 펼치면 증명될 수 있는 `#[uses]` 후보를 결정론적으로 제안(ADR-0017의 비전이 규칙 때문에 생기는 부담 완화) | 1D-06, 1B-12 | ✅ 실패 진단의 `fix`에 펼치지 않은 술어 목록, `hidden_predicate_hint_leads_to_a_proof` |
-| 1D-14 | `edges` 깊이 조기 종료 | 경계가 비면 반복 중단. 깊이 10^11에서 멈추지 않음(재현, MCP로도 도달) | 1D-06 | ⏳ |
-| 1D-15 | 작업 공간 단위 경로 검증 | `tx_unit path="../../x"`가 작업 공간 밖에 파일을 씀(재현). 경로 각 부분을 식별자 규칙으로 검사, 빈·공백 이름 거부 | 1D-08 | ⏳ |
-| 1D-16 | JSON 문자열 파싱 선형화 | 문자마다 남은 입력 전체를 UTF-8 검사(400KB에 3.7초) | 1D-11 | ⏳ |
+| 1D-14 | `edges` 깊이 조기 종료 | 경계가 비면 반복 중단. 깊이 10^11에서 멈추지 않음(재현, MCP로도 도달) | 1D-06 | ✅ `reach`가 경계가 비면 멈춤. `tests/map.rs`의 `edges_with_a_huge_depth_terminate` |
+| 1D-15 | 작업 공간 단위 경로 검증 | `tx_unit path="../../x"`가 작업 공간 밖에 파일을 씀(재현). 경로 각 부분을 식별자 규칙으로 검사, 빈·공백 이름 거부 | 1D-08 | ✅ `parser::is_ident`로 모든 연산의 경로 각 부분 검사, `write_units`도 거부. `put`의 `mod` 주입도 막음. `tests/workspace.rs`의 `invalid_paths_are_rejected_and_write_nothing`(17가지) |
+| 1D-16 | JSON 문자열 파싱 선형화 | 문자마다 남은 입력 전체를 UTF-8 검사(400KB에 3.7초) | 1D-11 | ✅ 다음 `"`·`\\`까지 한 번에 복사. 1.5MB 문자열 디버그 1초 미만(`json::tests::long_string_is_linear`) |
 | 1D-17 | 질의마다 재증명하지 않기 | 증명 상태가 필요 없는 질의(`units`·`edges`·`find`·`slice`·`contracts`·`impact`)는 증명하지 않음 | 1D-06 | ⏳ |
 | 1D-18 | 해법기 시작 비용 | 정의마다 z3 재시작과 `z3 --version` 재실행을 없애고, 의무마다 명령 왕복을 묶음. 프로세스 전체 `-T` 한도가 큰 함수 중간에 걸리는 문제 함께 | 1B-09 | ⏳ |
-| 1D-19 | MCP·트랜잭션 견고성 | 비UTF-8 경로 `unwrap`, 중첩 `mod`를 조용히 버리는 `tx_put`, 비원자적 `write_units`, 오류 경로 테스트(`tx_remove`·`tx_abort`·없는 tx·알 수 없는 도구·`build` 거부) | 1D-11 | ⏳ |
-| 1D-20 | 진단 변형 커버리지 | 코퍼스에 없는 메시지 변형(E0101·E0204·E0207·E0402·E0408·E0503 등)과 `replacement` 적용 테스트(E0207·E0210·E0604·E0401), E0814 코퍼스 | 1A-04 | ⏳ |
-| 1D-21 | 하네스 판정 단위 테스트 | `judge_write`·`judge_navigate` 경계(빈 답, 상위 집합, `bmb_accept`·`ref_pre` 이름 충돌, 도구 한도) | 1E-03 | ⏳ |
+| 1D-19 | MCP·트랜잭션 견고성 | 비UTF-8 경로 `unwrap`, 중첩 `mod`를 조용히 버리는 `tx_put`, 비원자적 `write_units`, 오류 경로 테스트(`tx_remove`·`tx_abort`·없는 tx·알 수 없는 도구·`build` 거부) | 1D-11 | ✅ `build` 경로 `unwrap` 제거, `put`의 `mod`·빈 코드 거부, 임시 파일 후 이름 바꾸기. `tests/mcp.rs`의 `tool_errors_over_mcp`, `tests/workspace.rs` 2건 |
+| 1D-20 | 진단 변형 커버리지 | 코퍼스에 없는 메시지 변형(E0101·E0204·E0207·E0402·E0408·E0503 등)과 `replacement` 적용 테스트(E0207·E0210·E0604·E0401), E0814 코퍼스 | 1A-04 | ✅ `check/err`의 `unsupported`·`places`·`spec_mode`·`attrs`, `verify/fail/unsupported.bmb`(E0814), `fixes.rs`에 E0207·E0210·E0604·E0401. 발견: 명세 함수의 `assert` 허용 → E0503으로 수정 |
+| 1D-21 | 하네스 판정 단위 테스트 | `judge_write`·`judge_navigate` 경계(빈 답, 상위 집합, `bmb_accept`·`ref_pre` 이름 충돌, 도구 한도) | 1E-03 | ✅ `bench/m1/test_harness.py`(19개, 게이트). 발견 2건 수정: 빈 정답에 빈 답은 성공, 에이전트 단위 `bmb_accept`와 숨은 판정 단위 이름 충돌 회피 |
 
 ## 1E 측정
 
@@ -194,8 +195,8 @@ ROADMAP의 통과 기준마다 그것을 확인하는 태스크다. 빈칸이 �
 | 2D-01 | 해시 키 증명 캐시 | 정의의 본문 해시와 의존 계약 해시를 키로 증명 결과를 저장해 바뀌지 않은 정의는 Z3를 부르지 않음. 캐시 유무로 판정이 같음을 테스트 | 1D-03, 1B-11 | ✅ `cache.rs`, `bmb verify --cache DIR`, `tests/cache.rs`(코퍼스 출력 동일, 재실행 시 증명된 의무는 해법기 생략, 펼친 정의가 바뀌면 무효). `run/search.bmb` 1.0초→0.02초. MCP·`build`에는 아직 연결 안 함 |
 | 2D-02 | 사전 영향 분석 질의 | 정의의 계약을 바꾸면 다시 증명해야 하는 정의 집합을 반환하는 `impact` 질의. CLI·MCP 노출, 결정론 테스트 | 1D-06 | ✅ `query impact DEF [body or iface]`, `tests/impact.rs`(본문 변경마다 SMT 스크립트가 바뀐 정의 ⊆ 보고 집합). MCP 설명문은 1E-10까지 유지 |
 | 2D-03 | 증명 캐시를 `build`·`emit-llvm`·MCP에 연결 | CLI `--cache DIR`, MCP는 작업 공간의 `.bmb-cache/`. 캐시 유무로 출력·IR 동일 테스트 | 2D-01 | ✅ `lib::prove`, `emit_llvm_sources_cached`·`map_request_cached`, `tests/cache.rs`(IR·맵 동일), oracle 15/15 |
-| 2D-04 | 기계적 수정 적용 | `bmb fix`(CLI)가 진단의 `replacement`를 적용하고 재검사. DESIGN §4.1 대응 1, §8.2 Rust 습관 교정. MCP 노출은 1E-10 뒤 | 1A-06 | ⏳ |
+| 2D-04 | 기계적 수정 적용 | `bmb fix`(CLI)가 진단의 `replacement`를 적용하고 재검사. DESIGN §4.1 대응 1, §8.2 Rust 습관 교정. MCP 노출은 1E-10 뒤 | 1A-06 | ✅ `bmb fix [--write or --print]`, `lib::fix_sources`(라운드 반복, 겹침 없는 결정론적 적용). `tests/fix_cmd.rs`(Rust 습관 8개가 2라운드에 정리, 멱등) |
 | 2D-05 | `#[uses]` 자동 채움 | 실패 의무의 펼침 후보 조합을 결정론적으로 시도해 최소 `#[uses]`를 `replacement`로 제안(ADR-0017 결과, DESIGN §8.2) | 1D-13 | ⏳ |
-| 2D-06 | 중복 정의 질의 | 본문 해시가 같은 정의 묶음(ADR-0019 §2, DESIGN §7.2) | 1D-06 | ⏳ |
-| 2D-07 | 닫힌 세계 코드 생성 | `main` 외 함수를 `internal`로 방출(DESIGN §8.1). 벤치로 효과 확인 | 1C-01 | ⏳ |
+| 2D-06 | 중복 정의 질의 | 본문 해시가 같은 정의 묶음(ADR-0019 §2, DESIGN §7.2) | 1D-06 | ✅ `query duplicates`, `tests/map.rs`. 자기 재귀 정의는 본문 해시에 전체 경로가 남아 묶이지 않음(문서화) |
+| 2D-07 | 닫힌 세계 코드 생성 | `main` 외 함수를 `internal`로 방출(DESIGN §8.1). 벤치로 효과 확인 | 1C-01 | ✅ `main` 외 모든 함수 `internal`. 벤치 차이는 잡음 범위(±10%, 동시 실행 부하), 바이너리 104~184B 감소. `only_the_entry_point_is_external` |
 | 2D-08 | 계약 점검 | 만족 불가능한 `requires`(SMT로 공허), 어떤 증명도 쓰지 않는 사후 조건 보고(DESIGN §8.2 계약 조정). 새 진단 코드 | 1B-12 | ⏳ |

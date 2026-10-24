@@ -112,3 +112,15 @@ mod array_return {
     #[effects(pure)]
     fn make() -> [i64; 2] { [1, 2] }
 }
+
+#[summary("배열 길이 상한과 중첩 배열 리터럴")]
+mod array_limits {
+    #[effects(pure)]
+    fn nested() -> i64 {
+        let x: i64 = [[1]][0][0];
+        x
+    }
+
+    #[effects(pure)]
+    fn huge(a: [i64; 18446744073709551617]) -> () {}
+}

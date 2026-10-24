@@ -709,8 +709,18 @@ impl<'a> Parser<'a> {
                 if self.eat_p(";") {
                     let n = match self.peek().clone() {
                         Tok::Int(v) => {
-                            self.bump();
-                            v as u64
+                            let sp = self.bump().span;
+                            // Same limit as `[v; N]` literals (backlog 1A-10).
+                            if v > u32::MAX as u128 {
+                                self.diags.push(Diag::new(
+                                    "E0406",
+                                    sp,
+                                    "array length is too large",
+                                ));
+                                u64::MAX
+                            } else {
+                                v as u64
+                            }
                         }
                         _ => {
                             self.err_expected("array length");
@@ -720,7 +730,12 @@ impl<'a> Parser<'a> {
                     let hi = self.span();
                     let _ = self.expect_p("]");
                     return Type {
-                        kind: TypeKind::Array(Box::new(elem), n),
+                        // Too large (reported above): no follow-on type errors.
+                        kind: if n == u64::MAX {
+                            TypeKind::Error
+                        } else {
+                            TypeKind::Array(Box::new(elem), n)
+                        },
                         span: lo.to(hi),
                     };
                 }
