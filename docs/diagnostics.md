@@ -118,3 +118,4 @@
 | W0901 | preconditions are unsatisfiable together: the function can never be called and its proofs are vacuous |
 | W0902 | precondition is not needed by this function's proof |
 | W0903 | postcondition is not used by any caller's proof |
+| W0904 | the specification does not distinguish this change to the body (the mutant still verifies) |

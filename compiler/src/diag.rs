@@ -137,6 +137,10 @@ pub const CODES: &[(&str, &str)] = &[
         "precondition is not needed by this function's proof",
     ),
     ("W0903", "postcondition is not used by any caller's proof"),
+    (
+        "W0904",
+        "the specification does not distinguish this change to the body (the mutant still verifies)",
+    ),
 ];
 
 /// Severity of a code: `W` codes are warnings (reported only by `bmb lint`),
