@@ -1,0 +1,110 @@
+@@ id: vb-misc-reverse
+@@ benchmark: Verus-Bench
+@@ origin: Misc
+@@ origin_path: benchmarks/Verus-Bench/Misc/verified/reverse.rs
+@@ rules: T1 T2
+@@ description
+Implement `reverse`: reverse `v` in place. The contract must state that the length is unchanged and that every position i holds the element that was at position len - 1 - i on entry.
+
+@@ signature
+fn reverse(v: &mut [u64]) -> ()
+
+@@ accept.specs
+spec fn ref_post(old_v: &[u64], v: &[u64]) -> bool { v.len() == old_v.len() && (forall|i: usize| i < old_v.len() ==> #[trigger] v[i] == old_v[old_v.len() - i - 1]) }
+
+@@ accept.pre: none
+@@ accept.post: ref_post(old(v), v)
+@@ accept.args: v
+@@ reference
+spec fn swapped_upto(old_v: &[u64], v: &[u64], n: usize) -> bool { v.len() == old_v.len() && 2 * n <= v.len() && (forall|i: usize| i < v.len() ==> ((i < n ==> #[trigger] v[i] == old_v[v.len() - i - 1]) && (v.len() - n <= i ==> v[i] == old_v[v.len() - i - 1]) && (n <= i && i < v.len() - n ==> v[i] == old_v[i]))) }
+
+spec fn reversed(old_v: &[u64], v: &[u64]) -> bool { v.len() == old_v.len() && (forall|i: usize| i < old_v.len() ==> #[trigger] v[i] == old_v[old_v.len() - i - 1]) }
+
+#[effects(pure)]
+#[uses(swapped_upto, reversed)]
+fn reverse(v: &mut [u64]) -> ()
+    ensures reversed(old(v), v),
+{
+    let len: usize = v.len();
+    let mut n: usize = 0;
+    while n < len / 2
+        invariant len == v.len(), swapped_upto(old(v), v, n),
+        decreases len / 2 - n,
+    {
+        let x: u64 = v[n];
+        let y: u64 = v[len - 1 - n];
+        v[n] = y;
+        v[len - 1 - n] = x;
+        n = n + 1;
+    }
+}
+
+@@ weak
+spec fn same_len(old_v: &[u64], v: &[u64]) -> bool { v.len() == old_v.len() }
+
+#[effects(pure)]
+#[uses(same_len)]
+fn reverse(v: &mut [u64]) -> ()
+    ensures same_len(old(v), v),
+{
+    let len: usize = v.len();
+    let mut n: usize = 0;
+    while n < len / 2
+        invariant len == v.len(), same_len(old(v), v),
+        decreases len / 2 - n,
+    {
+        let x: u64 = v[n];
+        let y: u64 = v[len - 1 - n];
+        v[n] = y;
+        v[len - 1 - n] = x;
+        n = n + 1;
+    }
+}
+
+@@ verus.signature
+fn reverse(v: &mut Vec<u64>) 
+
+@@ verus.target: reverse
+@@ verus.specs
+
+
+@@ verus.pre
+none
+
+@@ verus.post
+final(v).len() == old(v).len(),
+forall|i: int| 0 <= i < old(v).len() ==> final(v)[i] == old(v)[old(v).len() - i - 1]
+
+@@ verus.args: v
+@@ verus.reference_origin: upstream-migrated
+@@ verus.reference
+use vstd::prelude::*;
+fn main() {}
+
+verus!{
+fn reverse(v: &mut Vec<u64>)
+ensures
+        final(v).len() == old(v).len(),
+        forall|i: int| 0 <= i < old(v).len() ==> final(v)[i] == old(v)[old(v).len() - i - 1],
+{
+    let length = v.len();
+    let mut n: usize = 0;
+    while n < length / 2
+        invariant
+            0 <= n <= length / 2,
+            v.len() == old(v).len(),
+            v.len() == length,
+            forall|i: int| 0 <= i < n ==> v[i] == old(v)[length - i - 1],
+            forall|i: int| 0 <= i < n ==> v[length - i - 1] == old(v)[i],
+            forall|i: int| n <= i < length - n ==> v[i] == old(v)[i],
+        decreases length / 2 - n
+    {
+        let x = v[n];
+        let y = v[length - 1 - n];
+        v.set(n, y);
+        v.set(length - 1 - n, x);
+
+        n = n + 1;
+    }
+}
+}

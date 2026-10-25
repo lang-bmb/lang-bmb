@@ -1,0 +1,64 @@
+{
+  "id": "vb-mbpp-142-count-identical",
+  "kind": "write",
+  "prompt": "Create unit `tasks` for this task.\n\nImplement `count_identical_position`: `arr1`, `arr2` and `arr3` have the same length. Return the number of positions where all three arrays hold the same value. The contract must state that the result is at most the length of `arr1` and equals the given specification function applied to the whole arrays.\n\nGiven specification functions in unit `given` (use them, do not change them):\n```\nspec fn count_identical(arr1: &[i64], arr2: &[i64], arr3: &[i64], n: usize) -> u64\n    decreases n,\n{\n    if n == 0 { 0 } else { count_identical(arr1, arr2, arr3, n - 1) + (if arr1[n - 1] == arr2[n - 1] && arr2[n - 1] == arr3[n - 1] { 1 } else { 0 }) }\n}\n```\n\nRequired signature (in unit `tasks`):\nfn count_identical_position(arr1: &[i64], arr2: &[i64], arr3: &[i64]) -> (count: usize)",
+  "unit": "tasks",
+  "def": "tasks::count_identical_position",
+  "signature": "fn count_identical_position(arr1: &[i64], arr2: &[i64], arr3: &[i64]) -> (count: usize)",
+  "accept": {
+    "specs": "spec fn ref_pre(arr1: &[i64], arr2: &[i64], arr3: &[i64]) -> bool { arr1.len() == arr2.len() && arr2.len() == arr3.len() }\nspec fn ref_post(arr1: &[i64], arr2: &[i64], arr3: &[i64], count: usize) -> bool { count <= arr1.len() && count == given::count_identical(arr1, arr2, arr3, arr1.len()) }",
+    "pre": "ref_pre(arr1, arr2, arr3)",
+    "post": "ref_post(arr1, arr2, arr3, r)",
+    "args": "arr1, arr2, arr3"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn pre_ok(arr1: &[i64], arr2: &[i64], arr3: &[i64]) -> bool { arr1.len() == arr2.len() && arr2.len() == arr3.len() }\n\nspec fn counted(count: usize, arr1: &[i64], arr2: &[i64], arr3: &[i64], n: usize) -> bool { count <= n && count == given::count_identical(arr1, arr2, arr3, n) }\n\nspec fn result_ok(arr1: &[i64], arr2: &[i64], arr3: &[i64], count: usize) -> bool { count <= arr1.len() && count == given::count_identical(arr1, arr2, arr3, arr1.len()) }\n\n#[effects(pure)]\n#[uses(pre_ok, counted, result_ok, given::count_identical)]\nfn count_identical_position(arr1: &[i64], arr2: &[i64], arr3: &[i64]) -> (count: usize)\n    requires pre_ok(arr1, arr2, arr3),\n    ensures result_ok(arr1, arr2, arr3, count),\n{\n    let mut c: usize = 0;\n    let mut idx: usize = 0;\n    while idx < arr1.len()\n        invariant idx <= arr1.len(), counted(c, arr1, arr2, arr3, idx), arr1.len() == arr2.len() && arr2.len() == arr3.len(),\n        decreases arr1.len() - idx,\n    {\n        if arr1[idx] == arr2[idx] && arr2[idx] == arr3[idx] {\n            c = c + 1;\n        }\n        idx = idx + 1;\n    }\n    c\n}"
+    }
+  ],
+  "weak_reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn pre_ok(arr1: &[i64], arr2: &[i64], arr3: &[i64]) -> bool { arr1.len() == arr2.len() && arr2.len() == arr3.len() }\n\nspec fn counted(count: usize, arr1: &[i64], arr2: &[i64], arr3: &[i64], n: usize) -> bool { count <= n && count == given::count_identical(arr1, arr2, arr3, n) }\n\nspec fn result_ok(arr1: &[i64], arr2: &[i64], arr3: &[i64], count: usize) -> bool { count <= arr1.len() }\n\n#[effects(pure)]\n#[uses(pre_ok, counted, result_ok, given::count_identical)]\nfn count_identical_position(arr1: &[i64], arr2: &[i64], arr3: &[i64]) -> (count: usize)\n    requires pre_ok(arr1, arr2, arr3),\n    ensures result_ok(arr1, arr2, arr3, count),\n{\n    let mut c: usize = 0;\n    let mut idx: usize = 0;\n    while idx < arr1.len()\n        invariant idx <= arr1.len(), counted(c, arr1, arr2, arr3, idx), arr1.len() == arr2.len() && arr2.len() == arr3.len(),\n        decreases arr1.len() - idx,\n    {\n        if arr1[idx] == arr2[idx] && arr2[idx] == arr3[idx] {\n            c = c + 1;\n        }\n        idx = idx + 1;\n    }\n    c\n}"
+    }
+  ],
+  "source": {
+    "benchmark": "Verus-Bench",
+    "origin": "MBPP",
+    "path": "benchmarks/Verus-Bench/MBPP/verified/task_id_142.rs",
+    "rules": [
+      "T1",
+      "T2",
+      "T4",
+      "G1"
+    ]
+  },
+  "verus": {
+    "prompt": "Implement `count_identical_position`: `arr1`, `arr2` and `arr3` have the same length. Return the number of positions where all three arrays hold the same value. The contract must state that the result is at most the length of `arr1` and equals the given specification function applied to the whole arrays.\n\nThe file starts with these given specification functions (use them, do not change them):\n```\nspec fn count_identical(s1: Seq<i32>, s2: Seq<i32>, s3: Seq<i32>) -> int\n    decreases s1.len(), s2.len(), s3.len(),\n{\n    if s1.len() == 0 || s2.len() == 0 || s3.len() == 0 {\n        0\n    } else {\n        count_identical(s1.drop_last(), s2.drop_last(), s3.drop_last()) + if (s1.last() == s2.last()\n            && s2.last() == s3.last()) {\n            1 as int\n        } else {\n            0 as int\n        }\n    }\n}\n```\n\nRequired signature:\nfn count_identical_position(arr1: &Vec<i32>, arr2: &Vec<i32>, arr3: &Vec<i32>) -> (count: usize)",
+    "signature": "fn count_identical_position(arr1: &Vec<i32>, arr2: &Vec<i32>, arr3: &Vec<i32>) -> (count: usize)",
+    "target": "count_identical_position",
+    "specs": "",
+    "pre": "arr1.len() == arr2.len() && arr2.len() == arr3.len()",
+    "post": "0 <= count <= arr1.len(),\ncount_identical(arr1@, arr2@, arr3@) == count",
+    "args": "arr1, arr2, arr3",
+    "reference": "use vstd::prelude::*;\n\nfn main() {\n    // Write a function in Rust to count number items that are identical in the same position of three given lists.\n\n    assert_eq!(\n        count_identical_position(\n            &vec![1, 2, 3, 4, 5, 6, 7, 8],\n            &vec![2, 2, 3, 1, 2, 6, 7, 9],\n            &vec![2, 1, 3, 1, 2, 6, 7, 9]\n        ),\n        3\n    );\n    assert_eq!(\n        count_identical_position(\n            &vec![1, 2, 3, 4, 5, 6, 7, 8],\n            &vec![2, 2, 3, 1, 2, 6, 7, 8],\n            &vec![2, 1, 3, 1, 2, 6, 7, 8]\n        ),\n        4\n    );\n    assert_eq!(\n        count_identical_position(\n            &vec![1, 2, 3, 4, 2, 6, 7, 8],\n            &vec![2, 2, 3, 1, 2, 6, 7, 8],\n            &vec![2, 1, 3, 1, 2, 6, 7, 8]\n        ),\n        5\n    );\n}\n\nverus! {\n\nspec fn count_identical(s1: Seq<i32>, s2: Seq<i32>, s3: Seq<i32>) -> int\n    decreases s1.len(), s2.len(), s3.len(),\n{\n    if s1.len() == 0 || s2.len() == 0 || s3.len() == 0 {\n        0\n    } else {\n        count_identical(s1.drop_last(), s2.drop_last(), s3.drop_last()) + if (s1.last() == s2.last()\n            && s2.last() == s3.last()) {\n            1 as int\n        } else {\n            0 as int\n        }\n    }\n}\n\nfn count_identical_position(arr1: &Vec<i32>, arr2: &Vec<i32>, arr3: &Vec<i32>) -> (count: usize)\n    requires\n        arr1.len() == arr2.len() && arr2.len() == arr3.len(),\n    ensures\n        0 <= count <= arr1.len(),\n        count_identical(arr1@, arr2@, arr3@) == count,\n{\n    let mut count = 0;\n    let mut index = 0;\n    while index < arr1.len()\n        invariant\n            0 <= index <= arr1.len(),\n            0 <= count <= index,\n            arr1.len() == arr2.len() && arr2.len() == arr3.len(),\n            count_identical(\n                arr1@.subrange(0, index as int),\n                arr2@.subrange(0, index as int),\n                arr3@.subrange(0, index as int),\n            ) == count,\n        decreases arr1@.len() - index,\n    {\n        if arr1[index] == arr2[index] && arr2[index] == arr3[index] {\n            count += 1;\n        }\n        index += 1;\n        assert(arr1@.subrange(0, index - 1 as int) == arr1@.subrange(0, index as int).drop_last());\n        assert(arr2@.subrange(0, index - 1 as int) == arr2@.subrange(0, index as int).drop_last());\n        assert(arr3@.subrange(0, index - 1 as int) == arr3@.subrange(0, index as int).drop_last());\n    }\n    assert(arr1@ == arr1@.subrange(0, index as int));\n    assert(arr2@ == arr2@.subrange(0, index as int));\n    assert(arr3@ == arr3@.subrange(0, index as int));\n    count\n}\n\n} // verus!",
+    "reference_origin": "upstream",
+    "given": "spec fn count_identical(s1: Seq<i32>, s2: Seq<i32>, s3: Seq<i32>) -> int\n    decreases s1.len(), s2.len(), s3.len(),\n{\n    if s1.len() == 0 || s2.len() == 0 || s3.len() == 0 {\n        0\n    } else {\n        count_identical(s1.drop_last(), s2.drop_last(), s3.drop_last()) + if (s1.last() == s2.last()\n            && s2.last() == s3.last()) {\n            1 as int\n        } else {\n            0 as int\n        }\n    }\n}"
+  },
+  "frozen": [
+    "given::count_identical"
+  ]
+}

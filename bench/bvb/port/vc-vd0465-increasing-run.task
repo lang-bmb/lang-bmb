@@ -1,0 +1,145 @@
+@@ id: vc-vd0465-increasing-run
+@@ benchmark: Vericoding
+@@ origin: dafnybench Software-Verification_tmp_tmpv4ueky2d_Longest_Increasing_Subsequence_longest_increasing_subsequence_longest_increasing_subsequence
+@@ origin_path: jsonl/verus_tasks.jsonl#VD0465
+@@ rules: T1 T2
+@@ description
+Implement `longest_increasing_subsequence`: `nums` has between 1 and 2500 elements, each in [-10000, 10000]. Return the length of a longest strictly increasing subsequence. The contract must state that the result is at least 1.
+
+@@ signature
+fn longest_increasing_subsequence(nums: &[i64]) -> (r: i64)
+
+@@ accept.specs
+spec fn ref_pre(nums: &[i64]) -> bool { 1 <= nums.len() && nums.len() <= 2500 && (forall|i: usize| i < nums.len() ==> -10000 <= #[trigger] nums[i] && nums[i] <= 10000) }
+spec fn ref_post(nums: &[i64], r: i64) -> bool { r >= 1 }
+
+@@ accept.pre: ref_pre(nums)
+@@ accept.post: ref_post(nums, r)
+@@ accept.args: nums
+@@ reference
+spec fn input_ok(nums: &[i64]) -> bool { 1 <= nums.len() && nums.len() <= 2500 && (forall|i: usize| i < nums.len() ==> -10000 <= #[trigger] nums[i] && nums[i] <= 10000) }
+
+spec fn result_ok(nums: &[i64], r: i64) -> bool { r >= 1 }
+
+#[effects(pure)]
+#[uses(input_ok, result_ok)]
+fn longest_increasing_subsequence(nums: &[i64]) -> (r: i64)
+    requires input_ok(nums),
+    ensures result_ok(nums, r),
+{
+    let mut best: i64 = 1;
+    let mut run: i64 = 1;
+    let mut i: usize = 1;
+    let mut c: i64 = 1;
+    while i < nums.len()
+        invariant 1 <= i, i <= nums.len(), nums.len() <= 2500, c == i, 1 <= run, run <= c, 1 <= best, best <= c,
+        decreases nums.len() - i,
+    {
+        if nums[i - 1] < nums[i] {
+            run = run + 1;
+        } else {
+            run = 1;
+        }
+        if run > best {
+            best = run;
+        }
+        i = i + 1;
+        c = c + 1;
+    }
+    best
+}
+
+@@ weak
+spec fn input_ok(nums: &[i64]) -> bool { 1 <= nums.len() && nums.len() <= 2500 && (forall|i: usize| i < nums.len() ==> -10000 <= #[trigger] nums[i] && nums[i] <= 10000) }
+
+spec fn result_ok(nums: &[i64], r: i64) -> bool { r >= 0 }
+
+#[effects(pure)]
+#[uses(input_ok, result_ok)]
+fn longest_increasing_subsequence(nums: &[i64]) -> (r: i64)
+    requires input_ok(nums),
+    ensures result_ok(nums, r),
+{
+    let mut best: i64 = 1;
+    let mut run: i64 = 1;
+    let mut i: usize = 1;
+    let mut c: i64 = 1;
+    while i < nums.len()
+        invariant 1 <= i, i <= nums.len(), nums.len() <= 2500, c == i, 1 <= run, run <= c, 1 <= best, best <= c,
+        decreases nums.len() - i,
+    {
+        if nums[i - 1] < nums[i] {
+            run = run + 1;
+        } else {
+            run = 1;
+        }
+        if run > best {
+            best = run;
+        }
+        i = i + 1;
+        c = c + 1;
+    }
+    best
+}
+
+@@ verus.signature
+fn longest_increasing_subsequence(nums: &Vec<i32>) -> (max: i32)
+
+@@ verus.target: longest_increasing_subsequence
+@@ verus.specs
+spec fn bvb_ref_find_max(x: int, y: int) -> int {
+    if x > y { x } else { y }
+}
+
+@@ verus.pre
+1 <= nums.len() <= 2500,
+        forall|i: int| 0 <= i < nums.len() ==> #[trigger] nums[i] >= -10000 && #[trigger] nums[i] <= 10000
+
+@@ verus.post
+max >= 1
+
+@@ verus.args: nums
+@@ verus.reference_origin: bvb
+@@ verus.reference
+use vstd::prelude::*;
+
+verus! {
+
+spec fn find_max(x: int, y: int) -> int {
+    if x > y { x } else { y }
+}
+
+fn longest_increasing_subsequence(nums: &Vec<i32>) -> (max: i32)
+    requires
+        1 <= nums.len() <= 2500,
+        forall|i: int| 0 <= i < nums.len() ==> #[trigger] nums[i] >= -10000 && #[trigger] nums[i] <= 10000,
+
+    ensures
+        max >= 1,
+{
+    // Length of the longest strictly increasing run of adjacent elements.
+    let mut best: i32 = 1;
+    let mut run: i32 = 1;
+    let mut i: usize = 1;
+    while i < nums.len()
+        invariant
+            1 <= i <= nums.len(),
+            nums.len() <= 2500,
+            1 <= run <= i,
+            1 <= best <= i,
+        decreases nums.len() - i,
+    {
+        if nums[i - 1] < nums[i] {
+            run = run + 1;
+        } else {
+            run = 1;
+        }
+        if run > best {
+            best = run;
+        }
+        i = i + 1;
+    }
+    best
+}
+}
+fn main() {}

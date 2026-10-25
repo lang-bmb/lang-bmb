@@ -1,0 +1,59 @@
+{
+  "id": "vb-mbpp-808-contains-k",
+  "kind": "write",
+  "prompt": "Create unit `tasks` for this task.\n\nImplement `contains_k`: return whether `k` occurs in `arr`. The contract must state the result exactly.\n\nRequired signature (in unit `tasks`):\nfn contains_k(arr: &[i64], k: i64) -> (r: bool)",
+  "unit": "tasks",
+  "def": "tasks::contains_k",
+  "signature": "fn contains_k(arr: &[i64], k: i64) -> (r: bool)",
+  "accept": {
+    "specs": "spec fn ref_post(arr: &[i64], k: i64, r: bool) -> bool { r == !(forall|i: usize| i < arr.len() ==> !(#[trigger] arr[i] == k)) }",
+    "pre": null,
+    "post": "ref_post(arr, k, r)",
+    "args": "arr, k"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn holds_below(arr: &[i64], k: i64, n: usize) -> bool { forall|i: usize| i < n && i < arr.len() ==> !(#[trigger] arr[i] == k) }\n\nspec fn exact(arr: &[i64], k: i64, r: bool) -> bool { r == !holds_below(arr, k, arr.len()) }\n\n#[effects(pure)]\n#[uses(holds_below, exact)]\nfn contains_k(arr: &[i64], k: i64) -> (r: bool)\n    ensures exact(arr, k, r),\n{\n    let mut idx: usize = 0;\n    while idx < arr.len() && !(arr[idx] == k)\n        invariant idx <= arr.len(), holds_below(arr, k, idx),\n        decreases arr.len() - idx,\n    {\n        idx = idx + 1;\n    }\n    idx < arr.len()\n}"
+    }
+  ],
+  "weak_reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn holds_below(arr: &[i64], k: i64, n: usize) -> bool { forall|i: usize| i < n && i < arr.len() ==> !(#[trigger] arr[i] == k) }\n\nspec fn one_way(arr: &[i64], k: i64, r: bool) -> bool { r ==> !holds_below(arr, k, arr.len()) }\n\n#[effects(pure)]\n#[uses(holds_below, one_way)]\nfn contains_k(arr: &[i64], k: i64) -> (r: bool)\n    ensures one_way(arr, k, r),\n{\n    let mut idx: usize = 0;\n    while idx < arr.len() && !(arr[idx] == k)\n        invariant idx <= arr.len(), holds_below(arr, k, idx),\n        decreases arr.len() - idx,\n    {\n        idx = idx + 1;\n    }\n    idx < arr.len()\n}"
+    }
+  ],
+  "source": {
+    "benchmark": "Verus-Bench",
+    "origin": "MBPP",
+    "path": "benchmarks/Verus-Bench/MBPP/verified/task_id_808.rs",
+    "rules": [
+      "T1",
+      "T2",
+      "T3"
+    ]
+  },
+  "verus": {
+    "prompt": "Implement `contains_k`: return whether `k` occurs in `arr`. The contract must state the result exactly.\n\nRequired signature:\nfn contains_k(arr: &Vec<i32>, k: i32) -> (result: bool)",
+    "signature": "fn contains_k(arr: &Vec<i32>, k: i32) -> (result: bool)",
+    "target": "contains_k",
+    "specs": "",
+    "pre": null,
+    "post": "result == (exists|i: int| 0 <= i < arr.len() && (arr[i] == k))",
+    "args": "arr, k",
+    "reference": "use vstd::prelude::*;\n\nfn main() {\n    // Write a function in Rust to check if the given sequence contain the k or not.\n\n    assert!(contains_k(&vec![10, 4, 5, 6, 8], 6));\n    assert!(!contains_k(&vec![1, 2, 3, 4, 5, 6], 7));\n    assert!(contains_k(&vec![7, 8, 9, 44, 11, 12], 11));\n}\n\nverus! {\n\nfn contains_k(arr: &Vec<i32>, k: i32) -> (result: bool)\n    ensures\n        result == (exists|i: int| 0 <= i < arr.len() && (arr[i] == k)),\n{\n    let mut index = 0;\n    while index < arr.len()\n        invariant\n            0 <= index <= arr.len(),\n            forall|m: int| 0 <= m < index ==> (arr[m] != k),\n        decreases arr@.len() - index,\n    {\n        if (arr[index] == k) {\n            return true;\n        }\n        index += 1;\n    }\n    false\n}\n\n} // verus!",
+    "reference_origin": "upstream"
+  }
+}

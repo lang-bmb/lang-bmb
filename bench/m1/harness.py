@@ -274,8 +274,26 @@ def judge_write(task, workspace):
     for target in [task] + task.get("also_check", []):
         s, a = judge_target(target, workspace, verified)
         sig_ok, accepted = sig_ok and s, accepted and a
-    return {"verified": verified, "signature_ok": sig_ok, "spec_accepted": accepted,
-            "success": verified and sig_ok and accepted}
+    verdict = {"verified": verified, "signature_ok": sig_ok, "spec_accepted": accepted,
+               "success": verified and sig_ok and accepted}
+    if "frozen" in task:
+        # Given definitions the hidden contract refers to (BVB): the agent may
+        # use them but not change them, or the spec check would read its version.
+        intact = frozen_intact(task["frozen"], workspace)
+        verdict["given_intact"] = intact
+        verdict["success"] = verdict["success"] and intact
+    return verdict
+
+
+def def_hashes(workspace, cache=True):
+    _, l0 = bmb("map", *(cache_args(workspace) if cache else []), "L0", workspace)
+    return {r["path"]: r.get("hash") for r in rows(l0) if r.get("kind") == "def"}
+
+
+def frozen_intact(paths, workspace):
+    """Every path in `paths` has the same definition hash as in the seed."""
+    seed, now = def_hashes(os.path.join(SET, "seed"), cache=False), def_hashes(workspace)
+    return all(p in seed and now.get(p) == seed[p] for p in paths)
 
 
 def judge_target(task, workspace, verified):
@@ -289,7 +307,13 @@ def judge_target(task, workspace, verified):
         specs = sorted(r["path"] for r in rows(l0) if r.get("def_kind") == "spec fn")
         a = task["accept"]
         _, params, ret_ty = parse_signature(task["signature"])
-        uses = ", ".join(["ref_post"] + (["ref_pre"] if a["pre"] else []) + specs)
+        # Every predicate of the hidden contract is unfolded: `ref_pre`,
+        # `ref_post` and, for ported specs (BVB), their helpers.
+        hidden_specs = re.findall(r"spec fn (\w+)", a["specs"])
+        if not a["pre"]:
+            hidden_specs = [n for n in hidden_specs if n != "ref_pre"]
+        uses = ", ".join(sorted(set(hidden_specs) | {"ref_post"}, key=lambda n: (n != "ref_post", n != "ref_pre", n))
+                         + specs)
         req = f"    requires {a['pre']},\n" if a["pre"] else ""
         ret = f"(r: {ret_ty})" if ret_ty != "()" else "()"
         # The hidden unit takes a name the agent's workspace does not use.
@@ -502,7 +526,7 @@ def summarize(paths):
             elif r["success"]:
                 cells.append("성공")
             elif r["kind"] == "write":
-                why = [k for k in ("verified", "signature_ok", "spec_accepted") if not r[k]]
+                why = [k for k in ("verified", "signature_ok", "spec_accepted", "given_intact") if not r.get(k, True)]
                 cells.append("실패: " + ", ".join(why))
             else:
                 cells.append(f"실패: P {r['precision']}, R {r['recall']}")

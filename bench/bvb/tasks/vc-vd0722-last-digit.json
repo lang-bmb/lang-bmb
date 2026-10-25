@@ -1,0 +1,57 @@
+{
+  "id": "vc-vd0722-last-digit",
+  "kind": "write",
+  "prompt": "Create unit `tasks` for this task.\n\nImplement `last_digit`: `n` is a 32-bit integer (in [-2147483648, 2147483647]) and n >= 0. Return its last decimal digit. The contract must state that the result is in [0, 10) and equals n % 10.\n\nRequired signature (in unit `tasks`):\nfn last_digit(n: i64) -> (r: i64)",
+  "unit": "tasks",
+  "def": "tasks::last_digit",
+  "signature": "fn last_digit(n: i64) -> (r: i64)",
+  "accept": {
+    "specs": "spec fn ref_pre(n: i64) -> bool { -2147483648 <= n && n <= 2147483647 && n >= 0 }\nspec fn ref_post(n: i64, r: i64) -> bool { 0 <= r && r < 10 && n % 10 == r }",
+    "pre": "ref_pre(n)",
+    "post": "ref_post(n, r)",
+    "args": "n"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn input_ok(n: i64) -> bool { -2147483648 <= n && n <= 2147483647 && n >= 0 }\n\nspec fn result_ok(n: i64, r: i64) -> bool { 0 <= r && r < 10 && n % 10 == r }\n\n#[effects(pure)]\n#[uses(input_ok, result_ok)]\nfn last_digit(n: i64) -> (r: i64)\n    requires input_ok(n),\n    ensures result_ok(n, r),\n{\n    n % 10\n}"
+    }
+  ],
+  "weak_reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn input_ok(n: i64) -> bool { -2147483648 <= n && n <= 2147483647 && n >= 0 }\n\nspec fn result_ok(n: i64, r: i64) -> bool { 0 <= r && r < 10 }\n\n#[effects(pure)]\n#[uses(input_ok, result_ok)]\nfn last_digit(n: i64) -> (r: i64)\n    requires input_ok(n),\n    ensures result_ok(n, r),\n{\n    n % 10\n}"
+    }
+  ],
+  "source": {
+    "benchmark": "Vericoding",
+    "origin": "dafnybench dafny-synthesis_task_id_435_LastDigit",
+    "path": "jsonl/verus_tasks.jsonl#VD0722",
+    "rules": [
+      "T2"
+    ]
+  },
+  "verus": {
+    "prompt": "Implement `last_digit`: `n` is a 32-bit integer (in [-2147483648, 2147483647]) and n >= 0. Return its last decimal digit. The contract must state that the result is in [0, 10) and equals n % 10.\n\nRequired signature:\nfn last_digit(n: i32) -> (result: i32)",
+    "signature": "fn last_digit(n: i32) -> (result: i32)",
+    "target": "last_digit",
+    "specs": "",
+    "pre": "n >= 0",
+    "post": "0 <= result < 10,\n        n % 10 == result",
+    "args": "n",
+    "reference": "// <vc-preamble>\nuse vstd::prelude::*;\n\nverus! {\n// </vc-preamble>\n\n// <vc-helpers>\n\n// </vc-helpers>\n\n// <vc-spec>\n#[verifier::exec_allows_no_decreases_clause]\nfn last_digit(n: i32) -> (result: i32)\n    requires n >= 0\n    ensures \n        0 <= result < 10,\n        n % 10 == result\n// </vc-spec>\n// <vc-code>\n{\n    n % 10\n}\n// </vc-code>\n\n}\nfn main() {}",
+    "reference_origin": "upstream"
+  }
+}

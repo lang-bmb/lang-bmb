@@ -1,0 +1,224 @@
+@@ id: vc-va0053-aspect-pairs
+@@ benchmark: Vericoding
+@@ origin: apps apps_test_204
+@@ origin_path: jsonl/verus_tasks.jsonl#VA0053
+@@ rules: T2 G1
+@@ description
+Implement `solve`: `a`, `b`, `x` and `y` are positive 8-bit integers (in [1, 127]). Count the pairs (w, h) with 1 <= w <= a, 1 <= h <= b and w / h = x / y. With g the greatest common divisor of x and y (the given specification function), this is the smaller of a / (x / g) and b / (y / g). The contract must state that the result is non-negative and equals that value.
+
+@@ frozen: given::gcd
+@@ given
+spec fn gcd(a: u64, b: u64) -> u64
+    decreases b,
+{
+    if b == 0 { a } else { gcd(b, a % b) }
+}
+
+@@ signature
+fn solve(a: i64, b: i64, x: i64, y: i64) -> (r: i64)
+
+@@ accept.specs
+spec fn ref_expected(a: i64, b: i64, x: i64, y: i64) -> i64 { if a / (x / given::gcd(x, y)) <= b / (y / given::gcd(x, y)) { a / (x / given::gcd(x, y)) } else { b / (y / given::gcd(x, y)) } }
+spec fn ref_pre(a: i64, b: i64, x: i64, y: i64) -> bool { 1 <= a && a <= 127 && 1 <= b && b <= 127 && 1 <= x && x <= 127 && 1 <= y && y <= 127 }
+spec fn ref_post(a: i64, b: i64, x: i64, y: i64, r: i64) -> bool { r >= 0 && r == ref_expected(a, b, x, y) }
+
+@@ accept.pre: ref_pre(a, b, x, y)
+@@ accept.post: ref_post(a, b, x, y, r)
+@@ accept.args: a, b, x, y
+@@ reference
+spec fn both_nonneg(a: i64, b: i64) -> bool { a >= 0 && b >= 0 && a <= 127 && b <= 127 }
+
+spec fn gcd_ok(a: i64, b: i64, r: i64) -> bool { r == given::gcd(a, b) && (a > 0 ==> r <= a) && (b > 0 ==> r <= b) && ((a > 0 || b > 0) ==> r >= 1) }
+
+spec fn expected(a: i64, b: i64, x: i64, y: i64) -> i64 { if a / (x / given::gcd(x, y)) <= b / (y / given::gcd(x, y)) { a / (x / given::gcd(x, y)) } else { b / (y / given::gcd(x, y)) } }
+
+#[effects(pure)]
+#[uses(both_nonneg, gcd_ok, given::gcd)]
+fn gcd_exec(a: i64, b: i64) -> (r: i64)
+    requires both_nonneg(a, b),
+    ensures gcd_ok(a, b, r),
+    decreases b,
+{
+    if b == 0 {
+        a
+    } else {
+        gcd_exec(b, a % b)
+    }
+}
+
+spec fn input_ok(a: i64, b: i64, x: i64, y: i64) -> bool { 1 <= a && a <= 127 && 1 <= b && b <= 127 && 1 <= x && x <= 127 && 1 <= y && y <= 127 }
+
+spec fn result_ok(a: i64, b: i64, x: i64, y: i64, r: i64) -> bool { r >= 0 && r == expected(a, b, x, y) }
+
+#[effects(pure)]
+#[uses(input_ok, result_ok, both_nonneg, gcd_ok, expected, given::gcd)]
+fn solve(a: i64, b: i64, x: i64, y: i64) -> (r: i64)
+    requires input_ok(a, b, x, y),
+    ensures result_ok(a, b, x, y, r),
+{
+    let g: i64 = gcd_exec(x, y);
+    let p: i64 = a / (x / g);
+    let q: i64 = b / (y / g);
+    if p <= q {
+        p
+    } else {
+        q
+    }
+}
+
+@@ weak
+spec fn both_nonneg(a: i64, b: i64) -> bool { a >= 0 && b >= 0 && a <= 127 && b <= 127 }
+
+spec fn gcd_ok(a: i64, b: i64, r: i64) -> bool { r == given::gcd(a, b) && (a > 0 ==> r <= a) && (b > 0 ==> r <= b) && ((a > 0 || b > 0) ==> r >= 1) }
+
+spec fn expected(a: i64, b: i64, x: i64, y: i64) -> i64 { if a / (x / given::gcd(x, y)) <= b / (y / given::gcd(x, y)) { a / (x / given::gcd(x, y)) } else { b / (y / given::gcd(x, y)) } }
+
+#[effects(pure)]
+#[uses(both_nonneg, gcd_ok, given::gcd)]
+fn gcd_exec(a: i64, b: i64) -> (r: i64)
+    requires both_nonneg(a, b),
+    ensures gcd_ok(a, b, r),
+    decreases b,
+{
+    if b == 0 {
+        a
+    } else {
+        gcd_exec(b, a % b)
+    }
+}
+
+spec fn input_ok(a: i64, b: i64, x: i64, y: i64) -> bool { 1 <= a && a <= 127 && 1 <= b && b <= 127 && 1 <= x && x <= 127 && 1 <= y && y <= 127 }
+
+spec fn result_ok(a: i64, b: i64, x: i64, y: i64, r: i64) -> bool { r >= 0 }
+
+#[effects(pure)]
+#[uses(input_ok, result_ok, both_nonneg, gcd_ok, expected, given::gcd)]
+fn solve(a: i64, b: i64, x: i64, y: i64) -> (r: i64)
+    requires input_ok(a, b, x, y),
+    ensures result_ok(a, b, x, y, r),
+{
+    let g: i64 = gcd_exec(x, y);
+    let p: i64 = a / (x / g);
+    let q: i64 = b / (y / g);
+    if p <= q {
+        p
+    } else {
+        q
+    }
+}
+
+@@ verus.signature
+fn solve(a: i8, b: i8, x: i8, y: i8) -> (result: i8)
+
+@@ verus.target: solve
+@@ verus.given
+spec fn gcd(a: int, b: int) -> int
+  recommends a >= 0 && b >= 0
+  decreases b when b >= 0
+{
+  if b == 0 { a } else { gcd(b, a % b) }
+}
+
+@@ verus.specs
+spec fn bvb_ref_valid_input(a: int, b: int, x: int, y: int) -> bool {
+  a > 0 && b > 0 && x > 0 && y > 0
+}
+
+spec fn bvb_ref_min(a: int, b: int) -> int {
+  if a <= b { a } else { b }
+}
+
+spec fn bvb_ref_expected_result(a: int, b: int, x: int, y: int) -> int
+  recommends bvb_ref_valid_input(a, b, x, y)
+{
+  let g = gcd(x, y);
+  let x_reduced = x / g;
+  let y_reduced = y / g;
+  bvb_ref_min(a / x_reduced, b / y_reduced)
+}
+
+@@ verus.pre
+bvb_ref_valid_input(a as int, b as int, x as int, y as int)
+
+@@ verus.post
+result as int >= 0,
+  result as int == bvb_ref_expected_result(a as int, b as int, x as int, y as int)
+
+@@ verus.args: a, b, x, y
+@@ verus.reference_origin: bvb
+@@ verus.reference
+use vstd::prelude::*;
+
+verus! {
+
+spec fn valid_input(a: int, b: int, x: int, y: int) -> bool {
+  a > 0 && b > 0 && x > 0 && y > 0
+}
+
+spec fn gcd(a: int, b: int) -> int
+  recommends a >= 0 && b >= 0
+  decreases b when b >= 0
+{
+  if b == 0 { a } else { gcd(b, a % b) }
+}
+
+spec fn min(a: int, b: int) -> int {
+  if a <= b { a } else { b }
+}
+
+spec fn expected_result(a: int, b: int, x: int, y: int) -> int
+  recommends valid_input(a, b, x, y)
+{
+  let g = gcd(x, y);
+  let x_reduced = x / g;
+  let y_reduced = y / g;
+  min(a / x_reduced, b / y_reduced)
+}
+
+fn gcd_exec(a: i8, b: i8) -> (r: i8)
+    requires
+        a >= 0,
+        b >= 0,
+    ensures
+        r as int == gcd(a as int, b as int),
+        a > 0 ==> r <= a,
+        b > 0 ==> r <= b,
+        (a > 0 || b > 0) ==> r >= 1,
+    decreases b,
+{
+    if b == 0 {
+        a
+    } else {
+        let m = ((a as u8) % (b as u8)) as i8;
+        assert(m as int == (a as int) % (b as int));
+        assert(gcd(a as int, b as int) == gcd(b as int, (a as int) % (b as int)));
+        if a < b {
+            assert((a as int) % (b as int) == a as int) by (nonlinear_arith)
+                requires 0 <= a < b;
+        }
+        gcd_exec(b, m)
+    }
+}
+
+fn solve(a: i8, b: i8, x: i8, y: i8) -> (result: i8)
+requires
+  valid_input(a as int, b as int, x as int, y as int)
+ensures
+  result as int >= 0,
+  result as int == expected_result(a as int, b as int, x as int, y as int)
+{
+    let g = gcd_exec(x, y);
+    let xr = x / g;
+    let yr = y / g;
+    assert(xr >= 1) by (nonlinear_arith)
+        requires 1 <= g <= x, xr == x / g;
+    assert(yr >= 1) by (nonlinear_arith)
+        requires 1 <= g <= y, yr == y / g;
+    let p = a / xr;
+    let q = b / yr;
+    if p <= q { p } else { q }
+}
+
+}
+
+fn main() {}

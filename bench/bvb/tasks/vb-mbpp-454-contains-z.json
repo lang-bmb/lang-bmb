@@ -1,0 +1,59 @@
+{
+  "id": "vb-mbpp-454-contains-z",
+  "kind": "write",
+  "prompt": "Create unit `tasks` for this task.\n\nImplement `contains_z`: `text` holds the bytes of a string (each element is a byte value). Return whether some byte is the letter z, upper case (90) or lower case (122). The contract must state the result exactly.\n\nRequired signature (in unit `tasks`):\nfn contains_z(text: &[u64]) -> (r: bool)",
+  "unit": "tasks",
+  "def": "tasks::contains_z",
+  "signature": "fn contains_z(text: &[u64]) -> (r: bool)",
+  "accept": {
+    "specs": "spec fn ref_post(text: &[u64], r: bool) -> bool { r == !(forall|i: usize| i < text.len() ==> !(#[trigger] text[i] == 90 || text[i] == 122)) }",
+    "pre": null,
+    "post": "ref_post(text, r)",
+    "args": "text"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn holds_below(text: &[u64], n: usize) -> bool { forall|i: usize| i < n && i < text.len() ==> !(#[trigger] text[i] == 90 || text[i] == 122) }\n\nspec fn exact(text: &[u64], r: bool) -> bool { r == !holds_below(text, text.len()) }\n\n#[effects(pure)]\n#[uses(holds_below, exact)]\nfn contains_z(text: &[u64]) -> (r: bool)\n    ensures exact(text, r),\n{\n    let mut idx: usize = 0;\n    while idx < text.len() && !(text[idx] == 90 || text[idx] == 122)\n        invariant idx <= text.len(), holds_below(text, idx),\n        decreases text.len() - idx,\n    {\n        idx = idx + 1;\n    }\n    idx < text.len()\n}"
+    }
+  ],
+  "weak_reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn holds_below(text: &[u64], n: usize) -> bool { forall|i: usize| i < n && i < text.len() ==> !(#[trigger] text[i] == 90 || text[i] == 122) }\n\nspec fn one_way(text: &[u64], r: bool) -> bool { r ==> !holds_below(text, text.len()) }\n\n#[effects(pure)]\n#[uses(holds_below, one_way)]\nfn contains_z(text: &[u64]) -> (r: bool)\n    ensures one_way(text, r),\n{\n    let mut idx: usize = 0;\n    while idx < text.len() && !(text[idx] == 90 || text[idx] == 122)\n        invariant idx <= text.len(), holds_below(text, idx),\n        decreases text.len() - idx,\n    {\n        idx = idx + 1;\n    }\n    idx < text.len()\n}"
+    }
+  ],
+  "source": {
+    "benchmark": "Verus-Bench",
+    "origin": "MBPP",
+    "path": "benchmarks/Verus-Bench/MBPP/verified/task_id_454.rs",
+    "rules": [
+      "T1",
+      "T2",
+      "T3"
+    ]
+  },
+  "verus": {
+    "prompt": "Implement `contains_z`: `text` holds the bytes of a string (each element is a byte value). Return whether some byte is the letter z, upper case (90) or lower case (122). The contract must state the result exactly.\n\nRequired signature:\nfn contains_z(text: &[u8]) -> (result: bool)",
+    "signature": "fn contains_z(text: &[u8]) -> (result: bool)",
+    "target": "contains_z",
+    "specs": "",
+    "pre": null,
+    "post": "result == (exists|i: int| 0 <= i < text.len() && (text[i] == 90 || text[i] == 122))",
+    "args": "text",
+    "reference": "use vstd::prelude::*;\n\nfn main() {\n    // Write a function in Rust that matches a word containing 'z'.\n\n    assert!(contains_z(b\"pythonz.\"));\n    assert!(contains_z(b\"xyz.\"));\n    assert!(!contains_z(b\"  lang  .\"));\n}\n\nverus! {\n\nfn contains_z(text: &[u8]) -> (result: bool)\n    ensures\n        result == (exists|i: int| 0 <= i < text.len() && (text[i] == 90 || text[i] == 122)),\n{\n    let mut index = 0;\n    while index < text.len()\n        invariant\n            0 <= index <= text.len(),\n            forall|k: int| 0 <= k < index ==> (text[k] != 90 && text[k] != 122),\n        decreases text@.len() - index,\n    {\n        if text[index] == 90 || text[index] == 122 {\n            return true;\n        }\n        index += 1;\n    }\n    false\n}\n\n} // verus!",
+    "reference_origin": "upstream"
+  }
+}

@@ -1,0 +1,182 @@
+@@ id: vc-va0219-pyramid-height
+@@ benchmark: Vericoding
+@@ origin: apps apps_test_1045
+@@ origin_path: jsonl/verus_tasks.jsonl#VA0219
+@@ rules: T2
+@@ description
+Implement `solve`: `n` is an 8-bit integer (in [-128, 127]) with n >= 1. A pyramid of height h uses h * (h + 1) * (h + 2) / 6 cubes (level i needs i * (i + 1) / 2). Return the largest height h >= 1 that can be built with n cubes. The contract must state that the result is at least 1, that its pyramid fits into n cubes and that the pyramid one level higher does not.
+
+@@ signature
+fn solve(n: i64) -> (r: i64)
+
+@@ accept.specs
+spec fn ref_total(h: i64) -> i64 { h * (h + 1) * (h + 2) / 6 }
+spec fn ref_valid(n: i64, h: i64) -> bool { n >= 1 && h >= 1 && ref_total(h) <= n && ref_total(h + 1) > n }
+spec fn ref_pre(n: i64) -> bool { -128 <= n && n <= 127 && n >= 1 }
+spec fn ref_post(n: i64, r: i64) -> bool { r >= 1 && ref_valid(n, r) }
+
+@@ accept.pre: ref_pre(n)
+@@ accept.post: ref_post(n, r)
+@@ accept.args: n
+@@ reference
+spec fn fits(n: i64, h: i64) -> bool { h * (h + 1) * (h + 2) / 6 <= n }
+
+spec fn valid_height(n: i64, h: i64) -> bool { n >= 1 && h >= 1 && h * (h + 1) * (h + 2) / 6 <= n && (h + 1) * (h + 2) * (h + 3) / 6 > n }
+
+spec fn input_ok(n: i64) -> bool { -128 <= n && n <= 127 && n >= 1 }
+
+spec fn result_ok(n: i64, r: i64) -> bool { r >= 1 && valid_height(n, r) }
+
+#[effects(pure)]
+#[uses(input_ok, result_ok, fits, valid_height)]
+fn solve(n: i64) -> (r: i64)
+    requires input_ok(n),
+    ensures result_ok(n, r),
+{
+    let mut h: i64 = 1;
+    let mut done: bool = false;
+    while !done && h < 10
+        invariant 1 <= h, h <= 10, fits(n, h), done ==> !fits(n, h + 1),
+        decreases 2 * (10 - h) + (if done { 0 } else { 1 }),
+    {
+        let hp: i64 = h + 1;
+        let t: i64 = hp * (hp + 1) * (hp + 2) / 6;
+        if t <= n {
+            h = hp;
+        } else {
+            done = true;
+        }
+    }
+    h
+}
+
+@@ weak
+spec fn fits(n: i64, h: i64) -> bool { h * (h + 1) * (h + 2) / 6 <= n }
+
+spec fn valid_height(n: i64, h: i64) -> bool { n >= 1 && h >= 1 && h * (h + 1) * (h + 2) / 6 <= n && (h + 1) * (h + 2) * (h + 3) / 6 > n }
+
+spec fn input_ok(n: i64) -> bool { -128 <= n && n <= 127 && n >= 1 }
+
+spec fn result_ok(n: i64, r: i64) -> bool { r >= 1 }
+
+#[effects(pure)]
+#[uses(input_ok, result_ok, fits, valid_height)]
+fn solve(n: i64) -> (r: i64)
+    requires input_ok(n),
+    ensures result_ok(n, r),
+{
+    let mut h: i64 = 1;
+    let mut done: bool = false;
+    while !done && h < 10
+        invariant 1 <= h, h <= 10, fits(n, h), done ==> !fits(n, h + 1),
+        decreases 2 * (10 - h) + (if done { 0 } else { 1 }),
+    {
+        let hp: i64 = h + 1;
+        let t: i64 = hp * (hp + 1) * (hp + 2) / 6;
+        if t <= n {
+            h = hp;
+        } else {
+            done = true;
+        }
+    }
+    h
+}
+
+@@ verus.signature
+fn solve(n: i8) -> (result: i8)
+
+@@ verus.target: solve
+@@ verus.specs
+spec fn bvb_ref_valid_input(n: int) -> bool {
+    n >= 1
+}
+
+spec fn bvb_ref_cubes_for_level(level: int) -> int
+    recommends level >= 1
+{
+    level * (level + 1) / 2
+}
+
+spec fn bvb_ref_total_cubes_for_height(h: int) -> int
+    recommends h >= 1
+{
+    h * (h + 1) * (h + 2) / 6
+}
+
+spec fn bvb_ref_valid_pyramid_height(n: int, h: int) -> bool {
+    bvb_ref_valid_input(n) && h >= 1 && 
+    bvb_ref_total_cubes_for_height(h) <= n &&
+    bvb_ref_total_cubes_for_height(h + 1) > n
+}
+
+@@ verus.pre
+bvb_ref_valid_input(n as int)
+
+@@ verus.post
+result >= 1 &&
+        bvb_ref_valid_pyramid_height(n as int, result as int)
+
+@@ verus.args: n
+@@ verus.reference_origin: bvb
+@@ verus.reference
+use vstd::prelude::*;
+
+verus! {
+spec fn valid_input(n: int) -> bool {
+    n >= 1
+}
+
+spec fn cubes_for_level(level: int) -> int
+    recommends level >= 1
+{
+    level * (level + 1) / 2
+}
+
+spec fn total_cubes_for_height(h: int) -> int
+    recommends h >= 1
+{
+    h * (h + 1) * (h + 2) / 6
+}
+
+spec fn valid_pyramid_height(n: int, h: int) -> bool {
+    valid_input(n) && h >= 1 &&
+    total_cubes_for_height(h) <= n &&
+    total_cubes_for_height(h + 1) > n
+}
+
+fn solve(n: i8) -> (result: i8)
+    requires valid_input(n as int)
+    ensures
+        result >= 1 &&
+        valid_pyramid_height(n as int, result as int)
+{
+    let mut h: i32 = 1;
+    let mut done: bool = false;
+    while !done && h < 10
+        invariant
+            1 <= h <= 10,
+            valid_input(n as int),
+            total_cubes_for_height(h as int) <= n as int,
+            done ==> total_cubes_for_height(h + 1) > n as int,
+        decreases 2 * (10 - h) + (if done { 0int } else { 1int }),
+    {
+        let hp: i32 = h + 1;
+        assert(hp * (hp + 1) * (hp + 2) <= 1320) by (nonlinear_arith)
+            requires 2 <= hp <= 10;
+        assert(hp * (hp + 1) <= 110) by (nonlinear_arith)
+            requires 2 <= hp <= 10;
+        let p: i32 = hp * (hp + 1);
+        let t: i32 = p * (hp + 2) / 6;
+        if t <= n as i32 {
+            h = hp;
+        } else {
+            done = true;
+        }
+    }
+    assert(total_cubes_for_height(11) == 286);
+    h as i8
+}
+
+}
+
+fn main() {}

@@ -25,3 +25,21 @@ jobs:
           key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
       - name: Gate
         run: ./scripts/check.sh
+
+  # BVB original-Verus side (backlog 2A-09): the pinned Verus release must
+  # verify every task's Verus reference against the hidden original spec, and
+  # reject every weak control (reference with the target's `ensures` removed).
+  bvb-verus:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/bmb/verus
+          key: verus-${{ runner.os }}-${{ hashFiles('bench/bvb/verus/verus.env') }}
+      - name: Pinned Verus
+        run: bench/bvb/verus/install.sh
+      - name: Oracle passes, weak controls are rejected
+        run: |
+          python3 bench/bvb/verus/harness.py run --agent oracle --expect all-pass --jobs 4 > /dev/null
+          python3 bench/bvb/verus/harness.py run --agent weak --expect weak-fail --jobs 4 > /dev/null

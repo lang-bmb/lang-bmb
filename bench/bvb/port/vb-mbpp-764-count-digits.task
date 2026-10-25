@@ -1,0 +1,166 @@
+@@ id: vb-mbpp-764-count-digits
+@@ benchmark: Verus-Bench
+@@ origin: MBPP
+@@ origin_path: benchmarks/Verus-Bench/MBPP/verified/task_id_764.rs
+@@ rules: T1 T2 T4 G1
+@@ description
+Implement `count_digits`: `text` holds the bytes of a string. Return the number of ASCII decimal digits (bytes 48 to 57). The contract must state that the result is at most the length of `text` and equals the given specification function applied to the whole text.
+
+@@ frozen: given::count_digits
+@@ given
+spec fn count_digits(text: &[u64], n: usize) -> u64
+    decreases n,
+{
+    if n == 0 { 0 } else { count_digits(text, n - 1) + (if text[n - 1] >= 48 && text[n - 1] <= 57 { 1 } else { 0 }) }
+}
+
+@@ signature
+fn count_digits(text: &[u64]) -> (count: usize)
+
+@@ accept.specs
+spec fn ref_post(text: &[u64], count: usize) -> bool { count <= text.len() && count == given::count_digits(text, text.len()) }
+
+@@ accept.pre: none
+@@ accept.post: ref_post(text, r)
+@@ accept.args: text
+@@ reference
+spec fn counted(count: usize, text: &[u64], n: usize) -> bool { count <= n && count == given::count_digits(text, n) }
+
+spec fn result_ok(text: &[u64], count: usize) -> bool { count <= text.len() && count == given::count_digits(text, text.len()) }
+
+#[effects(pure)]
+#[uses(counted, result_ok, given::count_digits)]
+fn count_digits(text: &[u64]) -> (count: usize)
+    ensures result_ok(text, count),
+{
+    let mut c: usize = 0;
+    let mut idx: usize = 0;
+    while idx < text.len()
+        invariant idx <= text.len(), counted(c, text, idx),
+        decreases text.len() - idx,
+    {
+        if text[idx] >= 48 && text[idx] <= 57 {
+            c = c + 1;
+        }
+        idx = idx + 1;
+    }
+    c
+}
+
+@@ weak
+spec fn counted(count: usize, text: &[u64], n: usize) -> bool { count <= n && count == given::count_digits(text, n) }
+
+spec fn result_ok(text: &[u64], count: usize) -> bool { count <= text.len() }
+
+#[effects(pure)]
+#[uses(counted, result_ok, given::count_digits)]
+fn count_digits(text: &[u64]) -> (count: usize)
+    ensures result_ok(text, count),
+{
+    let mut c: usize = 0;
+    let mut idx: usize = 0;
+    while idx < text.len()
+        invariant idx <= text.len(), counted(c, text, idx),
+        decreases text.len() - idx,
+    {
+        if text[idx] >= 48 && text[idx] <= 57 {
+            c = c + 1;
+        }
+        idx = idx + 1;
+    }
+    c
+}
+
+@@ verus.signature
+fn count_digits(text: &[u8]) -> (count: usize)
+
+@@ verus.target: count_digits
+@@ verus.given
+spec fn is_digit(c: u8) -> bool {
+    (c >= 48 && c <= 57)
+}
+
+spec fn count_digits_recursively(seq: Seq<u8>) -> int
+    decreases seq.len(),
+{
+    if seq.len() == 0 {
+        0
+    } else {
+        count_digits_recursively(seq.drop_last()) + if is_digit(seq.last()) {
+            1 as int
+        } else {
+            0 as int
+        }
+    }
+}
+
+@@ verus.specs
+
+
+@@ verus.pre
+none
+
+@@ verus.post
+0 <= count <= text.len(),
+count_digits_recursively(text@) == count
+
+@@ verus.args: text
+@@ verus.reference_origin: upstream
+@@ verus.reference
+use vstd::prelude::*;
+
+fn main() {
+    // Write a function in Rust to count number of digits in a given string.
+
+    assert_eq!(count_digits(b"program2bedone"), 1);
+    assert_eq!(count_digits(b"3wonders"), 1);
+    assert_eq!(count_digits(b"123"), 3);
+    assert_eq!(count_digits(b"3wond-1ers2"), 3);
+}
+
+verus! {
+
+spec fn is_digit(c: u8) -> bool {
+    (c >= 48 && c <= 57)
+}
+
+spec fn count_digits_recursively(seq: Seq<u8>) -> int
+    decreases seq.len(),
+{
+    if seq.len() == 0 {
+        0
+    } else {
+        count_digits_recursively(seq.drop_last()) + if is_digit(seq.last()) {
+            1 as int
+        } else {
+            0 as int
+        }
+    }
+}
+
+fn count_digits(text: &[u8]) -> (count: usize)
+    ensures
+        0 <= count <= text.len(),
+        count_digits_recursively(text@) == count,
+{
+    let mut count = 0;
+    let mut index = 0;
+
+    while index < text.len()
+        invariant
+            0 <= index <= text.len(),
+            0 <= count <= index,
+            count == count_digits_recursively(text@.subrange(0, index as int)),
+        decreases text@.len() - index,
+    {
+        if (text[index] >= 48 && text[index] <= 57) {
+            count += 1;
+        }
+        index += 1;
+        assert(text@.subrange(0, index - 1 as int) == text@.subrange(0, index as int).drop_last());
+    }
+    assert(text@ == text@.subrange(0, index as int));
+    count
+}
+
+} // verus!

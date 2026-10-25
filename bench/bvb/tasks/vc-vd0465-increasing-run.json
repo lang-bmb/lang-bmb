@@ -1,0 +1,58 @@
+{
+  "id": "vc-vd0465-increasing-run",
+  "kind": "write",
+  "prompt": "Create unit `tasks` for this task.\n\nImplement `longest_increasing_subsequence`: `nums` has between 1 and 2500 elements, each in [-10000, 10000]. Return the length of a longest strictly increasing subsequence. The contract must state that the result is at least 1.\n\nRequired signature (in unit `tasks`):\nfn longest_increasing_subsequence(nums: &[i64]) -> (r: i64)",
+  "unit": "tasks",
+  "def": "tasks::longest_increasing_subsequence",
+  "signature": "fn longest_increasing_subsequence(nums: &[i64]) -> (r: i64)",
+  "accept": {
+    "specs": "spec fn ref_pre(nums: &[i64]) -> bool { 1 <= nums.len() && nums.len() <= 2500 && (forall|i: usize| i < nums.len() ==> -10000 <= #[trigger] nums[i] && nums[i] <= 10000) }\nspec fn ref_post(nums: &[i64], r: i64) -> bool { r >= 1 }",
+    "pre": "ref_pre(nums)",
+    "post": "ref_post(nums, r)",
+    "args": "nums"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn input_ok(nums: &[i64]) -> bool { 1 <= nums.len() && nums.len() <= 2500 && (forall|i: usize| i < nums.len() ==> -10000 <= #[trigger] nums[i] && nums[i] <= 10000) }\n\nspec fn result_ok(nums: &[i64], r: i64) -> bool { r >= 1 }\n\n#[effects(pure)]\n#[uses(input_ok, result_ok)]\nfn longest_increasing_subsequence(nums: &[i64]) -> (r: i64)\n    requires input_ok(nums),\n    ensures result_ok(nums, r),\n{\n    let mut best: i64 = 1;\n    let mut run: i64 = 1;\n    let mut i: usize = 1;\n    let mut c: i64 = 1;\n    while i < nums.len()\n        invariant 1 <= i, i <= nums.len(), nums.len() <= 2500, c == i, 1 <= run, run <= c, 1 <= best, best <= c,\n        decreases nums.len() - i,\n    {\n        if nums[i - 1] < nums[i] {\n            run = run + 1;\n        } else {\n            run = 1;\n        }\n        if run > best {\n            best = run;\n        }\n        i = i + 1;\n        c = c + 1;\n    }\n    best\n}"
+    }
+  ],
+  "weak_reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn input_ok(nums: &[i64]) -> bool { 1 <= nums.len() && nums.len() <= 2500 && (forall|i: usize| i < nums.len() ==> -10000 <= #[trigger] nums[i] && nums[i] <= 10000) }\n\nspec fn result_ok(nums: &[i64], r: i64) -> bool { r >= 0 }\n\n#[effects(pure)]\n#[uses(input_ok, result_ok)]\nfn longest_increasing_subsequence(nums: &[i64]) -> (r: i64)\n    requires input_ok(nums),\n    ensures result_ok(nums, r),\n{\n    let mut best: i64 = 1;\n    let mut run: i64 = 1;\n    let mut i: usize = 1;\n    let mut c: i64 = 1;\n    while i < nums.len()\n        invariant 1 <= i, i <= nums.len(), nums.len() <= 2500, c == i, 1 <= run, run <= c, 1 <= best, best <= c,\n        decreases nums.len() - i,\n    {\n        if nums[i - 1] < nums[i] {\n            run = run + 1;\n        } else {\n            run = 1;\n        }\n        if run > best {\n            best = run;\n        }\n        i = i + 1;\n        c = c + 1;\n    }\n    best\n}"
+    }
+  ],
+  "source": {
+    "benchmark": "Vericoding",
+    "origin": "dafnybench Software-Verification_tmp_tmpv4ueky2d_Longest_Increasing_Subsequence_longest_increasing_subsequence_longest_increasing_subsequence",
+    "path": "jsonl/verus_tasks.jsonl#VD0465",
+    "rules": [
+      "T1",
+      "T2"
+    ]
+  },
+  "verus": {
+    "prompt": "Implement `longest_increasing_subsequence`: `nums` has between 1 and 2500 elements, each in [-10000, 10000]. Return the length of a longest strictly increasing subsequence. The contract must state that the result is at least 1.\n\nRequired signature:\nfn longest_increasing_subsequence(nums: &Vec<i32>) -> (max: i32)",
+    "signature": "fn longest_increasing_subsequence(nums: &Vec<i32>) -> (max: i32)",
+    "target": "longest_increasing_subsequence",
+    "specs": "spec fn bvb_ref_find_max(x: int, y: int) -> int {\n    if x > y { x } else { y }\n}",
+    "pre": "1 <= nums.len() <= 2500,\n        forall|i: int| 0 <= i < nums.len() ==> #[trigger] nums[i] >= -10000 && #[trigger] nums[i] <= 10000",
+    "post": "max >= 1",
+    "args": "nums",
+    "reference": "use vstd::prelude::*;\n\nverus! {\n\nspec fn find_max(x: int, y: int) -> int {\n    if x > y { x } else { y }\n}\n\nfn longest_increasing_subsequence(nums: &Vec<i32>) -> (max: i32)\n    requires\n        1 <= nums.len() <= 2500,\n        forall|i: int| 0 <= i < nums.len() ==> #[trigger] nums[i] >= -10000 && #[trigger] nums[i] <= 10000,\n\n    ensures\n        max >= 1,\n{\n    // Length of the longest strictly increasing run of adjacent elements.\n    let mut best: i32 = 1;\n    let mut run: i32 = 1;\n    let mut i: usize = 1;\n    while i < nums.len()\n        invariant\n            1 <= i <= nums.len(),\n            nums.len() <= 2500,\n            1 <= run <= i,\n            1 <= best <= i,\n        decreases nums.len() - i,\n    {\n        if nums[i - 1] < nums[i] {\n            run = run + 1;\n        } else {\n            run = 1;\n        }\n        if run > best {\n            best = run;\n        }\n        i = i + 1;\n    }\n    best\n}\n}\nfn main() {}",
+    "reference_origin": "bvb"
+  }
+}

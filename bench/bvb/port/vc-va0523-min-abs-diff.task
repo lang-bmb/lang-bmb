@@ -1,0 +1,152 @@
+@@ id: vc-va0523-min-abs-diff
+@@ benchmark: Vericoding
+@@ origin: apps apps_test_4295
+@@ origin_path: jsonl/verus_tasks.jsonl#VA0523
+@@ rules: T2
+@@ description
+Implement `solve`: `n` and `k` are 8-bit integers (in [-128, 127]) with n >= 0 and k >= 1. Repeatedly replacing n by |n - k| can reach any value; return the minimum, which is the smaller of n % k and k - n % k. The contract must state that the result equals that minimum and lies in [0, k).
+
+@@ signature
+fn solve(n: i64, k: i64) -> (r: i64)
+
+@@ accept.specs
+spec fn ref_pre(n: i64, k: i64) -> bool { -128 <= n && n <= 127 && -128 <= k && k <= 127 && n >= 0 && k >= 1 }
+spec fn ref_post(n: i64, k: i64, r: i64) -> bool { r == (if n % k <= k - n % k { n % k } else { k - n % k }) && r >= 0 && r < k }
+
+@@ accept.pre: ref_pre(n, k)
+@@ accept.post: ref_post(n, k, r)
+@@ accept.args: n, k
+@@ reference
+spec fn input_ok(n: i64, k: i64) -> bool { -128 <= n && n <= 127 && -128 <= k && k <= 127 && n >= 0 && k >= 1 }
+
+spec fn result_ok(n: i64, k: i64, r: i64) -> bool { r == (if n % k <= k - n % k { n % k } else { k - n % k }) && r >= 0 && r < k }
+
+#[effects(pure)]
+#[uses(input_ok, result_ok)]
+fn solve(n: i64, k: i64) -> (r: i64)
+    requires input_ok(n, k),
+    ensures result_ok(n, k, r),
+{
+    let m: i64 = n % k;
+    if m <= k - m {
+        m
+    } else {
+        k - m
+    }
+}
+
+@@ weak
+spec fn input_ok(n: i64, k: i64) -> bool { -128 <= n && n <= 127 && -128 <= k && k <= 127 && n >= 0 && k >= 1 }
+
+spec fn result_ok(n: i64, k: i64, r: i64) -> bool { r >= 0 && r < k }
+
+#[effects(pure)]
+#[uses(input_ok, result_ok)]
+fn solve(n: i64, k: i64) -> (r: i64)
+    requires input_ok(n, k),
+    ensures result_ok(n, k, r),
+{
+    let m: i64 = n % k;
+    if m <= k - m {
+        m
+    } else {
+        k - m
+    }
+}
+
+@@ verus.signature
+fn solve(n: i8, k: i8) -> (result: i8)
+
+@@ verus.target: solve
+@@ verus.specs
+spec fn bvb_ref_valid_input(n: int, k: int) -> bool {
+    n >= 0 && k >= 1
+}
+
+spec fn bvb_ref_min_value(n: int, k: int) -> int
+    recommends bvb_ref_valid_input(n, k)
+{
+    let remainder = n % k;
+    let complement = k - remainder;
+    if remainder <= complement { remainder } else { complement }
+}
+
+spec fn bvb_ref_is_correct_result(n: int, k: int, result: int) -> bool
+    recommends bvb_ref_valid_input(n, k)
+{
+    result == bvb_ref_min_value(n, k) &&
+    result >= 0 &&
+    result < k
+}
+
+@@ verus.pre
+bvb_ref_valid_input(n as int, k as int)
+
+@@ verus.post
+bvb_ref_is_correct_result(n as int, k as int, result as int)
+
+@@ verus.args: n, k
+@@ verus.reference_origin: upstream
+@@ verus.reference
+// <vc-preamble>
+use vstd::prelude::*;
+
+verus! {
+
+spec fn valid_input(n: int, k: int) -> bool {
+    n >= 0 && k >= 1
+}
+
+spec fn min_value(n: int, k: int) -> int
+    recommends valid_input(n, k)
+{
+    let remainder = n % k;
+    let complement = k - remainder;
+    if remainder <= complement { remainder } else { complement }
+}
+
+spec fn is_correct_result(n: int, k: int, result: int) -> bool
+    recommends valid_input(n, k)
+{
+    result == min_value(n, k) &&
+    result >= 0 &&
+    result < k
+}
+// </vc-preamble>
+
+// <vc-helpers>
+/* helper modified by LLM (iteration 2): identity on int for proofs */
+spec fn id_int(a: int) -> int { a }
+// </vc-helpers>
+
+// <vc-spec>
+fn solve(n: i8, k: i8) -> (result: i8)
+    requires valid_input(n as int, k as int)
+    ensures is_correct_result(n as int, k as int, result as int)
+// </vc-spec>
+// <vc-code>
+{
+    /* code modified by LLM (iteration 2): compute using i8 and prove correspondence to spec using a proof block */
+    let rem_i8: i8 = n % k;
+    let complement_i8: i8 = k - rem_i8;
+    let result: i8 = if rem_i8 <= complement_i8 { rem_i8 } else { complement_i8 };
+    proof {
+        let n_i: int = n as int;
+        let k_i: int = k as int;
+        let remainder = n_i % k_i;
+        let complement = k_i - remainder;
+        reveal(min_value);
+        assert(remainder == (rem_i8 as int));
+        assert(complement == (complement_i8 as int));
+        assert(min_value(n_i, k_i) == if remainder <= complement { remainder } else { complement });
+        assert((result as int) == min_value(n_i, k_i));
+        assert((result as int) >= 0 && (result as int) < k_i);
+    }
+    result
+}
+// </vc-code>
+
+
+}
+
+fn main() {}

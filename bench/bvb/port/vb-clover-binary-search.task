@@ -1,0 +1,130 @@
+@@ id: vb-clover-binary-search
+@@ benchmark: Verus-Bench
+@@ origin: CloverBench
+@@ origin_path: benchmarks/Verus-Bench/CloverBench/verified/binary_search.rs
+@@ rules: T1 T2 T3
+@@ description
+Implement `binary_search`: `v` is sorted in non-decreasing order (v[i] <= v[j] for all positions i <= j) and `k` occurs in `v`. Return a position of `k` in `v` using binary search. The contract must state that the result is a valid position holding `k`.
+
+@@ signature
+fn binary_search(v: &[u64], k: u64) -> (r: usize)
+
+@@ accept.specs
+spec fn ref_pre(v: &[u64], k: u64) -> bool { (forall|i: usize, j: usize| i <= j && j < v.len() ==> #[trigger] v[i] <= #[trigger] v[j]) && !(forall|q: usize| q < v.len() ==> k != #[trigger] v[q]) }
+spec fn ref_post(v: &[u64], k: u64, r: usize) -> bool { r < v.len() && k == v[r] }
+
+@@ accept.pre: ref_pre(v, k)
+@@ accept.post: ref_post(v, k, r)
+@@ accept.args: v, k
+@@ reference
+spec fn sorted_with(v: &[u64], k: u64) -> bool { (forall|i: usize, j: usize| i <= j && j < v.len() ==> #[trigger] v[i] <= #[trigger] v[j]) && !(forall|q: usize| q < v.len() ==> k != #[trigger] v[q]) }
+
+spec fn in_window(v: &[u64], k: u64, lo: usize, hi: usize) -> bool { lo <= hi && hi < v.len() && !(forall|i: usize| lo <= i && i <= hi ==> k != #[trigger] v[i]) }
+
+spec fn found(v: &[u64], k: u64, r: usize) -> bool { r < v.len() && k == v[r] }
+
+#[effects(pure)]
+#[uses(sorted_with, in_window, found)]
+fn binary_search(v: &[u64], k: u64) -> (r: usize)
+    requires sorted_with(v, k),
+    ensures found(v, k, r),
+{
+    let mut lo: usize = 0;
+    let mut hi: usize = v.len() - 1;
+    while lo != hi
+        invariant sorted_with(v, k), in_window(v, k, lo, hi),
+        decreases hi - lo,
+    {
+        let mid: usize = lo + (hi - lo) / 2;
+        if v[mid] < k {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    lo
+}
+
+@@ weak
+spec fn sorted_with(v: &[u64], k: u64) -> bool { (forall|i: usize, j: usize| i <= j && j < v.len() ==> #[trigger] v[i] <= #[trigger] v[j]) && !(forall|q: usize| q < v.len() ==> k != #[trigger] v[q]) }
+
+spec fn in_window(v: &[u64], k: u64, lo: usize, hi: usize) -> bool { lo <= hi && hi < v.len() && !(forall|i: usize| lo <= i && i <= hi ==> k != #[trigger] v[i]) }
+
+spec fn in_bounds(v: &[u64], r: usize) -> bool { r < v.len() }
+
+#[effects(pure)]
+#[uses(sorted_with, in_window, in_bounds)]
+fn binary_search(v: &[u64], k: u64) -> (r: usize)
+    requires sorted_with(v, k),
+    ensures in_bounds(v, r),
+{
+    let mut lo: usize = 0;
+    let mut hi: usize = v.len() - 1;
+    while lo != hi
+        invariant sorted_with(v, k), in_window(v, k, lo, hi),
+        decreases hi - lo,
+    {
+        let mid: usize = lo + (hi - lo) / 2;
+        if v[mid] < k {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    lo
+}
+
+@@ verus.signature
+fn binary_search(v: &Vec<u64>, k: u64) -> (r: usize)
+
+@@ verus.target: binary_search
+@@ verus.specs
+
+
+@@ verus.pre
+forall|i: int, j: int| 0 <= i <= j < v.len() ==> v[i] <= v[j],
+exists|i: int| 0 <= i < v.len() && k == v[i]
+
+@@ verus.post
+r < v.len(),
+k == v[r as int]
+
+@@ verus.args: v, k
+@@ verus.reference_origin: upstream
+@@ verus.reference
+use vstd::prelude::*;
+
+fn main() {}
+verus! {
+
+fn binary_search(v: &Vec<u64>, k: u64) -> (r: usize)
+    requires
+        forall|i: int, j: int| 0 <= i <= j < v.len() ==> v[i] <= v[j],
+        exists|i: int| 0 <= i < v.len() && k == v[i],
+    ensures
+        r < v.len(),
+        k == v[r as int],
+{
+    let mut i1: usize = 0;
+    let mut i2: usize = v.len() - 1;
+    while i1 != i2
+        invariant
+            i2 < v.len(),
+            exists|i: int| i1 <= i <= i2 && k == v[i],
+            forall|i: int, j: int| 0 <= i <= j < v.len() ==> v[i] <= v[j],
+        decreases i2 - i1,
+    {
+        let ghost d = i2 - i1;
+
+        let ix = i1 + (i2 - i1) / 2;
+        if v[ix] < k {
+            i1 = ix + 1;
+        } else {
+            i2 = ix;
+        }
+        assert(i2 - i1 < d);
+    }
+    i1
+}
+
+} // verus!

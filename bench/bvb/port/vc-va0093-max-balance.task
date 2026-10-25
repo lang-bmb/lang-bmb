@@ -1,0 +1,169 @@
+@@ id: vc-va0093-max-balance
+@@ benchmark: Vericoding
+@@ origin: apps apps_test_491
+@@ origin_path: jsonl/verus_tasks.jsonl#VA0093
+@@ rules: T2 T7
+@@ description
+Implement `solve`: `n` is an 8-bit integer (in [-128, 127]) with n >= 10 or n <= -10. For n >= 0 return n. For negative n return the larger of floor(n / 10) and floor(n / 100) * 10 + (n mod 10), where floor division rounds toward negative infinity and n mod 10 is the remainder in [0, 10) (deleting the last digit, or the digit before it). The contract must state the result exactly.
+
+@@ signature
+fn solve(n: i64) -> (r: i64)
+
+@@ accept.specs
+spec fn ref_fmod(n: i64, d: i64) -> i64 { (n % d + d) % d }
+spec fn ref_fdiv(n: i64, d: i64) -> i64 { (n - ref_fmod(n, d)) / d }
+spec fn ref_balance(n: i64) -> i64 { if n >= 0 { n } else { if ref_fdiv(n, 10) > ref_fdiv(n, 100) * 10 + ref_fmod(n, 10) { ref_fdiv(n, 10) } else { ref_fdiv(n, 100) * 10 + ref_fmod(n, 10) } } }
+spec fn ref_pre(n: i64) -> bool { -128 <= n && n <= 127 && (n >= 10 || n <= -10) }
+spec fn ref_post(n: i64, r: i64) -> bool { r == ref_balance(n) }
+
+@@ accept.pre: ref_pre(n)
+@@ accept.post: ref_post(n, r)
+@@ accept.args: n
+@@ reference
+spec fn fmod(n: i64, d: i64) -> i64 { (n % d + d) % d }
+
+spec fn fdiv(n: i64, d: i64) -> i64 { (n - fmod(n, d)) / d }
+
+spec fn balance(n: i64) -> i64 { if n >= 0 { n } else { if fdiv(n, 10) > fdiv(n, 100) * 10 + fmod(n, 10) { fdiv(n, 10) } else { fdiv(n, 100) * 10 + fmod(n, 10) } } }
+
+spec fn input_ok(n: i64) -> bool { -128 <= n && n <= 127 && (n >= 10 || n <= -10) }
+
+spec fn result_ok(n: i64, r: i64) -> bool { r == balance(n) }
+
+#[effects(pure)]
+#[uses(input_ok, result_ok, fmod, fdiv, balance)]
+fn solve(n: i64) -> (r: i64)
+    requires input_ok(n),
+    ensures result_ok(n, r),
+{
+    if n >= 0 {
+        n
+    } else {
+        let m10: i64 = (n % 10 + 10) % 10;
+        let m100: i64 = (n % 100 + 100) % 100;
+        let o1: i64 = (n - m10) / 10;
+        let o2: i64 = (n - m100) / 100 * 10 + m10;
+        if o1 > o2 {
+            o1
+        } else {
+            o2
+        }
+    }
+}
+
+@@ weak
+spec fn fmod(n: i64, d: i64) -> i64 { (n % d + d) % d }
+
+spec fn fdiv(n: i64, d: i64) -> i64 { (n - fmod(n, d)) / d }
+
+spec fn balance(n: i64) -> i64 { if n >= 0 { n } else { if fdiv(n, 10) > fdiv(n, 100) * 10 + fmod(n, 10) { fdiv(n, 10) } else { fdiv(n, 100) * 10 + fmod(n, 10) } } }
+
+spec fn input_ok(n: i64) -> bool { -128 <= n && n <= 127 && (n >= 10 || n <= -10) }
+
+spec fn result_ok(n: i64, r: i64) -> bool { r >= n }
+
+#[effects(pure)]
+#[uses(input_ok, result_ok, fmod, fdiv, balance)]
+fn solve(n: i64) -> (r: i64)
+    requires input_ok(n),
+    ensures result_ok(n, r),
+{
+    if n >= 0 {
+        n
+    } else {
+        let m10: i64 = (n % 10 + 10) % 10;
+        let m100: i64 = (n % 100 + 100) % 100;
+        let o1: i64 = (n - m10) / 10;
+        let o2: i64 = (n - m100) / 100 * 10 + m10;
+        if o1 > o2 {
+            o1
+        } else {
+            o2
+        }
+    }
+}
+
+@@ verus.signature
+fn solve(n: i8) -> (result: i8)
+
+@@ verus.target: solve
+@@ verus.specs
+spec fn bvb_ref_valid_input(n: int) -> bool {
+    n >= 10 || n <= -10
+}
+
+spec fn bvb_ref_max_balance_after_operation(n: int) -> int
+    recommends bvb_ref_valid_input(n)
+{
+    if n >= 0 {
+        n
+    } else {
+        /* For negative numbers, we need to delete either the last digit
+           or the digit before the last digit to maximize the balance.
+           Since this involves string operations that are not easily
+           expressible in pure logic, we use a simplified specification. */
+        let option1 = n / 10;
+        let option2 = (n / 100) * 10 + (n % 10);
+        if option1 > option2 { option1 } else { option2 }
+    }
+}
+
+@@ verus.pre
+bvb_ref_valid_input(n as int)
+
+@@ verus.post
+result as int == bvb_ref_max_balance_after_operation(n as int)
+
+@@ verus.args: n
+@@ verus.reference_origin: bvb
+@@ verus.reference
+use vstd::prelude::*;
+
+verus! {
+spec fn valid_input(n: int) -> bool {
+    n >= 10 || n <= -10
+}
+
+spec fn max_balance_after_operation(n: int) -> int
+    recommends valid_input(n)
+{
+    if n >= 0 {
+        n
+    } else {
+        /* For negative numbers, we need to delete either the last digit
+           or the digit before the last digit to maximize the balance.
+           Since this involves string operations that are not easily
+           expressible in pure logic, we use a simplified specification. */
+        let option1 = n / 10;
+        let option2 = (n / 100) * 10 + (n % 10);
+        if option1 > option2 { option1 } else { option2 }
+    }
+}
+
+fn solve(n: i8) -> (result: i8)
+    requires valid_input(n as int)
+    ensures result as int == max_balance_after_operation(n as int)
+{
+    if n >= 0 {
+        n
+    } else {
+        let m: i16 = n as i16;
+        let r10: i16 = ((m % 10) + 10) % 10;
+        let q10: i16 = (m - r10) / 10;
+        let r100: i16 = ((m % 100) + 100) % 100;
+        let q100: i16 = (m - r100) / 100;
+        assert(r10 as int == (n as int) % 10);
+        assert(q10 as int == (n as int) / 10);
+        assert(q100 as int == (n as int) / 100);
+        let o2: i16 = q100 * 10 + r10;
+        if q10 > o2 {
+            q10 as i8
+        } else {
+            o2 as i8
+        }
+    }
+}
+
+}
+
+fn main() {}

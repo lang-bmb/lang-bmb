@@ -1,0 +1,110 @@
+@@ id: vb-mbpp-775-odd-at-odd
+@@ benchmark: Verus-Bench
+@@ origin: MBPP
+@@ origin_path: benchmarks/Verus-Bench/MBPP/verified/task_id_775.rs
+@@ rules: T1 T2
+@@ description
+Implement `is_odd_at_odd_index`: return whether every element of `arr` has the same parity as its index (even elements at even indices, odd elements at odd indices; true for an empty array). The contract must state the result exactly.
+
+@@ signature
+fn is_odd_at_odd_index(arr: &[u64]) -> (r: bool)
+
+@@ accept.specs
+spec fn ref_post(arr: &[u64], r: bool) -> bool { r == (forall|i: usize| i < arr.len() ==> i % 2 == #[trigger] arr[i] % 2) }
+
+@@ accept.pre: none
+@@ accept.post: ref_post(arr, r)
+@@ accept.args: arr
+@@ reference
+spec fn parity_below(arr: &[u64], n: usize) -> bool { forall|i: usize| i < n ==> i % 2 == #[trigger] arr[i] % 2 }
+
+spec fn parity_ok(arr: &[u64], r: bool) -> bool { r == parity_below(arr, arr.len()) }
+
+#[effects(pure)]
+#[uses(parity_below, parity_ok)]
+fn is_odd_at_odd_index(arr: &[u64]) -> (r: bool)
+    ensures parity_ok(arr, r),
+{
+    let mut idx: usize = 0;
+    let mut p: u64 = 0;
+    while idx < arr.len() && p % 2 == arr[idx] % 2
+        invariant idx <= arr.len(), p == idx, parity_below(arr, idx),
+        decreases arr.len() - idx,
+    {
+        idx = idx + 1;
+        p = p + 1;
+    }
+    idx >= arr.len()
+}
+
+@@ weak
+spec fn parity_below(arr: &[u64], n: usize) -> bool { forall|i: usize| i < n ==> i % 2 == #[trigger] arr[i] % 2 }
+
+spec fn parity_if(arr: &[u64], r: bool) -> bool { r ==> parity_below(arr, arr.len()) }
+
+#[effects(pure)]
+#[uses(parity_below, parity_if)]
+fn is_odd_at_odd_index(arr: &[u64]) -> (r: bool)
+    ensures parity_if(arr, r),
+{
+    let mut idx: usize = 0;
+    let mut p: u64 = 0;
+    while idx < arr.len() && p % 2 == arr[idx] % 2
+        invariant idx <= arr.len(), p == idx, parity_below(arr, idx),
+        decreases arr.len() - idx,
+    {
+        idx = idx + 1;
+        p = p + 1;
+    }
+    idx >= arr.len()
+}
+
+@@ verus.signature
+fn is_odd_at_odd_index(arr: &Vec<usize>) -> (result: bool)
+
+@@ verus.target: is_odd_at_odd_index
+@@ verus.specs
+
+
+@@ verus.pre
+none
+
+@@ verus.post
+result == forall|i: int| 0 <= i < arr.len() ==> ((i % 2) == (arr[i] % 2))
+
+@@ verus.args: arr
+@@ verus.reference_origin: upstream
+@@ verus.reference
+use vstd::prelude::*;
+
+fn main() {
+    // Write a function in Rust to check whether every odd index contains odd numbers of a given list.
+
+    assert!(is_odd_at_odd_index(&vec![2, 1, 4, 3, 6, 7, 6, 3]));
+    assert!(is_odd_at_odd_index(&vec![4, 1, 2]));
+    assert!(!is_odd_at_odd_index(&vec![1, 2, 3]));
+}
+
+verus! {
+
+fn is_odd_at_odd_index(arr: &Vec<usize>) -> (result: bool)
+    ensures
+        result == forall|i: int| 0 <= i < arr.len() ==> ((i % 2) == (arr[i] % 2)),
+{
+    let mut index = 0;
+    while index < arr.len()
+        invariant
+            0 <= index <= arr.len(),
+            forall|i: int| 0 <= i < index ==> ((i % 2) == (arr[i] % 2)),
+        decreases arr@.len() - index,
+    {
+        if ((index % 2) != (arr[index] % 2)) {
+            assert(((index as int) % 2) != (arr[index as int] % 2));
+            return false;
+        }
+        index += 1;
+    }
+    true
+}
+
+} // verus!

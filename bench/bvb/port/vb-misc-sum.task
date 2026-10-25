@@ -1,0 +1,175 @@
+@@ id: vb-misc-sum
+@@ benchmark: Verus-Bench
+@@ origin: Misc
+@@ origin_path: benchmarks/Verus-Bench/Misc/verified/sum.rs
+@@ rules: T2 G1
+@@ description
+Implement `compute_arith_sum`: the sum 0 + 1 + ... + n, given by the given specification function, is below 10000. Return that sum. The contract must state the result exactly using the given specification function.
+
+@@ frozen: given::arith_sum
+@@ given
+spec fn arith_sum(i: u64) -> u64
+    decreases i,
+{
+    if i == 0 { 0 } else { i + arith_sum(i - 1) }
+}
+
+@@ signature
+fn compute_arith_sum(n: u64) -> (r: u64)
+
+@@ accept.specs
+spec fn ref_pre(n: u64) -> bool { given::arith_sum(n) < 10000 }
+spec fn ref_post(n: u64, r: u64) -> bool { given::arith_sum(n) == r }
+
+@@ accept.pre: ref_pre(n)
+@@ accept.post: ref_post(n, r)
+@@ accept.args: n
+@@ reference
+spec fn small_sum(n: u64) -> bool { given::arith_sum(n) < 10000 }
+
+spec fn sum_nonneg(i: u64) -> bool { given::arith_sum(i) >= 0 }
+
+spec fn sum_is(n: u64, r: u64) -> bool { given::arith_sum(n) == r }
+
+#[effects(pure)]
+#[uses(sum_nonneg, given::arith_sum)]
+fn nonneg(i: u64) -> ()
+    ensures sum_nonneg(i),
+    decreases i,
+{
+    if i > 0 {
+        nonneg(i - 1);
+    }
+}
+
+#[effects(pure)]
+#[uses(small_sum, sum_nonneg, sum_is, given::arith_sum)]
+fn compute_arith_sum(n: u64) -> (r: u64)
+    requires small_sum(n),
+    ensures sum_is(n, r),
+{
+    let mut i: u64 = n;
+    let mut s: u64 = 0;
+    while i > 0
+        invariant i <= n, small_sum(n), s + given::arith_sum(i) == given::arith_sum(n),
+        decreases i,
+    {
+        nonneg(i - 1);
+        s = s + i;
+        i = i - 1;
+    }
+    s
+}
+
+@@ weak
+spec fn small_sum(n: u64) -> bool { given::arith_sum(n) < 10000 }
+
+spec fn sum_nonneg(i: u64) -> bool { given::arith_sum(i) >= 0 }
+
+spec fn below_limit(n: u64, r: u64) -> bool { r < 10000 }
+
+#[effects(pure)]
+#[uses(sum_nonneg, given::arith_sum)]
+fn nonneg(i: u64) -> ()
+    ensures sum_nonneg(i),
+    decreases i,
+{
+    if i > 0 {
+        nonneg(i - 1);
+    }
+}
+
+#[effects(pure)]
+#[uses(small_sum, sum_nonneg, below_limit, given::arith_sum)]
+fn compute_arith_sum(n: u64) -> (r: u64)
+    requires small_sum(n),
+    ensures below_limit(n, r),
+{
+    let mut i: u64 = n;
+    let mut s: u64 = 0;
+    while i > 0
+        invariant i <= n, small_sum(n), s + given::arith_sum(i) == given::arith_sum(n),
+        decreases i,
+    {
+        nonneg(i - 1);
+        s = s + i;
+        i = i - 1;
+    }
+    s
+}
+
+@@ verus.signature
+fn compute_arith_sum(n: u64) -> (sum: u64)
+
+@@ verus.target: compute_arith_sum
+@@ verus.given
+spec fn arith_sum_int(i: nat) -> nat
+    decreases i
+{
+    if i == 0 { 0 } else { i + arith_sum_int( (i - 1) as nat) }
+}
+
+@@ verus.specs
+
+
+@@ verus.pre
+arith_sum_int(n as nat) < 10000
+
+@@ verus.post
+arith_sum_int(n as nat) == sum
+
+@@ verus.args: n
+@@ verus.reference_origin: upstream
+@@ verus.reference
+#[allow(unused_imports)]
+use vstd::prelude::*;
+
+fn main() {}
+
+verus! {
+
+spec fn arith_sum_int(i: nat) -> nat
+    decreases i
+{
+    if i == 0 { 0 } else { i + arith_sum_int( (i - 1) as nat) }
+}
+
+proof fn lemma_arith_sum_monotonic(i: nat, j:nat)
+    requires
+        i <= j,
+    ensures
+        arith_sum_int(i as nat) <= arith_sum_int(j as nat),
+    decreases j
+{
+    if i<j {
+        lemma_arith_sum_monotonic(i, (j-1) as nat);
+    }
+}
+
+fn compute_arith_sum(n: u64) -> (sum: u64)
+    requires
+        arith_sum_int(n as nat) < 10000,
+    ensures
+        arith_sum_int(n as nat) == sum,
+{
+    let mut i: u64 = 0;
+    let mut sum: u64 = 0;
+    while i < n
+        invariant 
+            i <= n,
+            sum == arith_sum_int(i as nat),
+            arith_sum_int(n as nat) < 10000,
+        decreases n - i,
+    {
+        i = i + 1;
+
+        assert( sum + i <= arith_sum_int(n as nat)) by {
+            lemma_arith_sum_monotonic(i as nat, n as nat);
+        }
+        sum = sum + i;
+    }
+    sum
+}
+
+
+} // verus!

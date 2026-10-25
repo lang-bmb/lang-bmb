@@ -1,0 +1,59 @@
+{
+  "id": "vb-clover-linear-search",
+  "kind": "write",
+  "prompt": "Create unit `tasks` for this task.\n\nImplement `linear_search`: `e` occurs in `a`. Return the first position of `e` in `a`. The contract must state that the result is a valid position holding `e` and that no earlier position holds `e`.\n\nRequired signature (in unit `tasks`):\nfn linear_search(a: &[i64], e: i64) -> (r: usize)",
+  "unit": "tasks",
+  "def": "tasks::linear_search",
+  "signature": "fn linear_search(a: &[i64], e: i64) -> (r: usize)",
+  "accept": {
+    "specs": "spec fn ref_pre(a: &[i64], e: i64) -> bool { !(forall|i: usize| i < a.len() ==> #[trigger] a[i] != e) }\nspec fn ref_post(a: &[i64], e: i64, r: usize) -> bool { r < a.len() && a[r] == e && (forall|k: usize| k < r ==> #[trigger] a[k] != e) }",
+    "pre": "ref_pre(a, e)",
+    "post": "ref_post(a, e, r)",
+    "args": "a, e"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn occurs(a: &[i64], e: i64) -> bool { !(forall|i: usize| i < a.len() ==> #[trigger] a[i] != e) }\n\nspec fn absent_below(a: &[i64], e: i64, n: usize) -> bool { forall|k: usize| k < n ==> #[trigger] a[k] != e }\n\nspec fn first_at(a: &[i64], e: i64, r: usize) -> bool { r < a.len() && a[r] == e && (forall|k: usize| k < r ==> #[trigger] a[k] != e) }\n\n#[effects(pure)]\n#[uses(occurs, absent_below, first_at)]\nfn linear_search(a: &[i64], e: i64) -> (r: usize)\n    requires occurs(a, e),\n    ensures first_at(a, e, r),\n{\n    let mut n: usize = 0;\n    while n < a.len() && a[n] != e\n        invariant n <= a.len(), occurs(a, e), absent_below(a, e, n),\n        decreases a.len() - n,\n    {\n        n = n + 1;\n    }\n    n\n}"
+    }
+  ],
+  "weak_reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn occurs(a: &[i64], e: i64) -> bool { !(forall|i: usize| i < a.len() ==> #[trigger] a[i] != e) }\n\nspec fn absent_below(a: &[i64], e: i64, n: usize) -> bool { forall|k: usize| k < n ==> #[trigger] a[k] != e }\n\nspec fn found_at(a: &[i64], e: i64, r: usize) -> bool { r < a.len() && a[r] == e }\n\n#[effects(pure)]\n#[uses(occurs, absent_below, found_at)]\nfn linear_search(a: &[i64], e: i64) -> (r: usize)\n    requires occurs(a, e),\n    ensures found_at(a, e, r),\n{\n    let mut n: usize = 0;\n    while n < a.len() && a[n] != e\n        invariant n <= a.len(), occurs(a, e), absent_below(a, e, n),\n        decreases a.len() - n,\n    {\n        n = n + 1;\n    }\n    n\n}"
+    }
+  ],
+  "source": {
+    "benchmark": "Verus-Bench",
+    "origin": "CloverBench",
+    "path": "benchmarks/Verus-Bench/CloverBench/verified/linear_search2.rs",
+    "rules": [
+      "T1",
+      "T2",
+      "T3"
+    ]
+  },
+  "verus": {
+    "prompt": "Implement `linear_search`: `e` occurs in `a`. Return the first position of `e` in `a`. The contract must state that the result is a valid position holding `e` and that no earlier position holds `e`.\n\nRequired signature:\nfn linear_search(a: &Vec<i32>, e: i32) -> (n: usize)",
+    "signature": "fn linear_search(a: &Vec<i32>, e: i32) -> (n: usize)",
+    "target": "linear_search",
+    "specs": "",
+    "pre": "exists|i: int| (0 <= i < a.len() as int) && a[i] == e",
+    "post": "0 <= n < a.len(),\na[n as int] == e,\nforall|k: int| (0 <= k < n as int) ==> a[k] != e",
+    "args": "a, e",
+    "reference": "use vstd::prelude::*;\n\nfn main() {}\n\nverus! {\n\npub fn linear_search(a: &Vec<i32>, e: i32) -> (n: usize)\n    requires\n        exists|i: int| (0 <= i < a.len() as int) && a[i] == e,\n    ensures\n        0 <= n < a.len(),\n        a[n as int] == e,\n        forall|k: int| (0 <= k < n as int) ==> a[k] != e,\n{\n    let mut n: usize = 0;\n    while n != a.len()\n        invariant\n            n <= a.len(),\n            forall|i: int| (0 <= i < n as int) ==> e != a[i],\n        decreases a.len() - n,\n    {\n        if a[n] == e {\n            return n;\n        }\n        n = n + 1;\n    }\n    n\n}\n\n} // verus!",
+    "reference_origin": "upstream"
+  }
+}

@@ -1,0 +1,106 @@
+@@ id: vb-misc-map
+@@ benchmark: Verus-Bench
+@@ origin: Misc
+@@ origin_path: benchmarks/Verus-Bench/Misc/verified/map.rs
+@@ rules: T1 T2
+@@ description
+Implement `myfun2`: every element of `x` is at most 2147483643. Add 4 to every element of `x` in place. The contract must state that the length is unchanged and every element equals its value on entry plus 4.
+
+@@ signature
+fn myfun2(x: &mut [i64]) -> ()
+
+@@ accept.specs
+spec fn ref_pre(x: &[i64]) -> bool { forall|k: usize| k < x.len() ==> #[trigger] x[k] <= 2147483643 }
+spec fn ref_post(old_x: &[i64], x: &[i64]) -> bool { x.len() == old_x.len() && (forall|k: usize| k < x.len() ==> #[trigger] x[k] == old_x[k] + 4) }
+
+@@ accept.pre: ref_pre(x)
+@@ accept.post: ref_post(old(x), x)
+@@ accept.args: x
+@@ reference
+spec fn small(x: &[i64]) -> bool { forall|k: usize| k < x.len() ==> #[trigger] x[k] <= 2147483643 }
+
+spec fn added_upto(old_x: &[i64], x: &[i64], n: usize) -> bool { x.len() == old_x.len() && (forall|k: usize| k < x.len() ==> ((k < n ==> #[trigger] x[k] == old_x[k] + 4) && (n <= k ==> x[k] == old_x[k]))) }
+
+spec fn added(old_x: &[i64], x: &[i64]) -> bool { x.len() == old_x.len() && (forall|k: usize| k < x.len() ==> #[trigger] x[k] == old_x[k] + 4) }
+
+#[effects(pure)]
+#[uses(small, added_upto, added)]
+fn myfun2(x: &mut [i64]) -> ()
+    requires small(x),
+    ensures added(old(x), x),
+{
+    let mut i: usize = 0;
+    while i < x.len()
+        invariant i <= x.len(), small(old(x)), added_upto(old(x), x, i),
+        decreases x.len() - i,
+    {
+        x[i] = x[i] + 4;
+        i = i + 1;
+    }
+}
+
+@@ weak
+spec fn small(x: &[i64]) -> bool { forall|k: usize| k < x.len() ==> #[trigger] x[k] <= 2147483643 }
+
+spec fn added_upto(old_x: &[i64], x: &[i64], n: usize) -> bool { x.len() == old_x.len() && (forall|k: usize| k < x.len() ==> ((k < n ==> #[trigger] x[k] == old_x[k] + 4) && (n <= k ==> x[k] == old_x[k]))) }
+
+spec fn grew(old_x: &[i64], x: &[i64]) -> bool { x.len() == old_x.len() && (forall|k: usize| k < x.len() ==> #[trigger] x[k] > old_x[k]) }
+
+#[effects(pure)]
+#[uses(small, added_upto, grew)]
+fn myfun2(x: &mut [i64]) -> ()
+    requires small(x),
+    ensures grew(old(x), x),
+{
+    let mut i: usize = 0;
+    while i < x.len()
+        invariant i <= x.len(), small(old(x)), added_upto(old(x), x, i),
+        decreases x.len() - i,
+    {
+        x[i] = x[i] + 4;
+        i = i + 1;
+    }
+}
+
+@@ verus.signature
+fn myfun2(x: &mut Vec<i32>) 
+
+@@ verus.target: myfun2
+@@ verus.specs
+
+
+@@ verus.pre
+forall |k:int| 0 <= k < old(x).len() ==> old(x)[k] <= 0x7FFF_FFFB
+
+@@ verus.post
+final(x)@.len() == old(x)@.len(),
+forall |k:int| 0 <= k < final(x).len() ==> #[trigger] final(x)@[k] == old(x)@[k] + 4
+
+@@ verus.args: x
+@@ verus.reference_origin: upstream-migrated
+@@ verus.reference
+use vstd::prelude::*;
+fn main() {}
+verus!{
+pub fn myfun2(x: &mut Vec<i32>) 
+requires 
+    forall |k:int| 0 <= k < old(x).len() ==> old(x)[k] <= 0x7FFF_FFFB,
+ensures
+    final(x)@.len() == old(x)@.len(),
+    forall |k:int| 0 <= k < final(x).len() ==> #[trigger] final(x)@[k] == old(x)@[k] + 4,
+{
+    let mut i: usize = 0;
+    let xlen: usize = x.len();
+    while (i < xlen) 
+        invariant 
+            xlen == x.len(),  // always specify the length of vectors used in the loop
+            forall |k:int| 0 <= k < i ==> #[trigger] x[k] == old(x)[k] + 4,
+            forall |k:int| i <= k < xlen ==> x[k] == old(x)[k],
+            forall |k:int| 0 <= k < xlen ==> old(x)[k] <= 0x7FFF_FFFB,
+        decreases xlen - i,
+    { 
+        x.set(i, x[i] + 4);  
+        i = i + 1;
+    }  
+}
+}

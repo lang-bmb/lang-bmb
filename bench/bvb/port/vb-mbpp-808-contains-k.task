@@ -1,0 +1,105 @@
+@@ id: vb-mbpp-808-contains-k
+@@ benchmark: Verus-Bench
+@@ origin: MBPP
+@@ origin_path: benchmarks/Verus-Bench/MBPP/verified/task_id_808.rs
+@@ rules: T1 T2 T3
+@@ description
+Implement `contains_k`: return whether `k` occurs in `arr`. The contract must state the result exactly.
+
+@@ signature
+fn contains_k(arr: &[i64], k: i64) -> (r: bool)
+
+@@ accept.specs
+spec fn ref_post(arr: &[i64], k: i64, r: bool) -> bool { r == !(forall|i: usize| i < arr.len() ==> !(#[trigger] arr[i] == k)) }
+
+@@ accept.pre: none
+@@ accept.post: ref_post(arr, k, r)
+@@ accept.args: arr, k
+@@ reference
+spec fn holds_below(arr: &[i64], k: i64, n: usize) -> bool { forall|i: usize| i < n && i < arr.len() ==> !(#[trigger] arr[i] == k) }
+
+spec fn exact(arr: &[i64], k: i64, r: bool) -> bool { r == !holds_below(arr, k, arr.len()) }
+
+#[effects(pure)]
+#[uses(holds_below, exact)]
+fn contains_k(arr: &[i64], k: i64) -> (r: bool)
+    ensures exact(arr, k, r),
+{
+    let mut idx: usize = 0;
+    while idx < arr.len() && !(arr[idx] == k)
+        invariant idx <= arr.len(), holds_below(arr, k, idx),
+        decreases arr.len() - idx,
+    {
+        idx = idx + 1;
+    }
+    idx < arr.len()
+}
+
+@@ weak
+spec fn holds_below(arr: &[i64], k: i64, n: usize) -> bool { forall|i: usize| i < n && i < arr.len() ==> !(#[trigger] arr[i] == k) }
+
+spec fn one_way(arr: &[i64], k: i64, r: bool) -> bool { r ==> !holds_below(arr, k, arr.len()) }
+
+#[effects(pure)]
+#[uses(holds_below, one_way)]
+fn contains_k(arr: &[i64], k: i64) -> (r: bool)
+    ensures one_way(arr, k, r),
+{
+    let mut idx: usize = 0;
+    while idx < arr.len() && !(arr[idx] == k)
+        invariant idx <= arr.len(), holds_below(arr, k, idx),
+        decreases arr.len() - idx,
+    {
+        idx = idx + 1;
+    }
+    idx < arr.len()
+}
+
+@@ verus.signature
+fn contains_k(arr: &Vec<i32>, k: i32) -> (result: bool)
+
+@@ verus.target: contains_k
+@@ verus.specs
+
+
+@@ verus.pre
+none
+
+@@ verus.post
+result == (exists|i: int| 0 <= i < arr.len() && (arr[i] == k))
+
+@@ verus.args: arr, k
+@@ verus.reference_origin: upstream
+@@ verus.reference
+use vstd::prelude::*;
+
+fn main() {
+    // Write a function in Rust to check if the given sequence contain the k or not.
+
+    assert!(contains_k(&vec![10, 4, 5, 6, 8], 6));
+    assert!(!contains_k(&vec![1, 2, 3, 4, 5, 6], 7));
+    assert!(contains_k(&vec![7, 8, 9, 44, 11, 12], 11));
+}
+
+verus! {
+
+fn contains_k(arr: &Vec<i32>, k: i32) -> (result: bool)
+    ensures
+        result == (exists|i: int| 0 <= i < arr.len() && (arr[i] == k)),
+{
+    let mut index = 0;
+    while index < arr.len()
+        invariant
+            0 <= index <= arr.len(),
+            forall|m: int| 0 <= m < index ==> (arr[m] != k),
+        decreases arr@.len() - index,
+    {
+        if (arr[index] == k) {
+            return true;
+        }
+        index += 1;
+    }
+    false
+}
+
+} // verus!

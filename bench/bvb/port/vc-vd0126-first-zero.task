@@ -1,0 +1,99 @@
+@@ id: vc-vd0126-first-zero
+@@ benchmark: Vericoding
+@@ origin: dafnybench Dafny-Exercises_tmp_tmpjm75muf__Session4Exercises_ExercisefirstZero_mfirstCero
+@@ origin_path: jsonl/verus_tasks.jsonl#VD0126
+@@ rules: T1 T2
+@@ description
+Implement `mfirst_cero`: return the position of the first zero in `v`, or the length of `v` if it has no zero. The contract must state that the result is at most the length, no earlier element is zero, and the element at the result is zero unless the result is the length.
+
+@@ signature
+fn mfirst_cero(v: &[i64]) -> (r: usize)
+
+@@ accept.specs
+spec fn ref_post(v: &[i64], r: usize) -> bool { r <= v.len() && (forall|j: usize| j < r ==> #[trigger] v[j] != 0) && (r != v.len() ==> v[r] == 0) }
+
+@@ accept.pre: none
+@@ accept.post: ref_post(v, r)
+@@ accept.args: v
+@@ reference
+spec fn nonzero_below(v: &[i64], n: usize) -> bool { forall|j: usize| j < n ==> #[trigger] v[j] != 0 }
+
+spec fn result_ok(v: &[i64], r: usize) -> bool { r <= v.len() && (forall|j: usize| j < r ==> #[trigger] v[j] != 0) && (r != v.len() ==> v[r] == 0) }
+
+#[effects(pure)]
+#[uses(result_ok, nonzero_below)]
+fn mfirst_cero(v: &[i64]) -> (r: usize)
+    ensures result_ok(v, r),
+{
+    let mut i: usize = 0;
+    while i < v.len() && v[i] != 0
+        invariant i <= v.len(), nonzero_below(v, i),
+        decreases v.len() - i,
+    {
+        i = i + 1;
+    }
+    i
+}
+
+@@ weak
+spec fn nonzero_below(v: &[i64], n: usize) -> bool { forall|j: usize| j < n ==> #[trigger] v[j] != 0 }
+
+spec fn result_ok(v: &[i64], r: usize) -> bool { r <= v.len() && (r != v.len() ==> v[r] == 0) }
+
+#[effects(pure)]
+#[uses(result_ok, nonzero_below)]
+fn mfirst_cero(v: &[i64]) -> (r: usize)
+    ensures result_ok(v, r),
+{
+    let mut i: usize = 0;
+    while i < v.len() && v[i] != 0
+        invariant i <= v.len(), nonzero_below(v, i),
+        decreases v.len() - i,
+    {
+        i = i + 1;
+    }
+    i
+}
+
+@@ verus.signature
+fn mfirst_cero(v: &[i32]) -> (i: usize)
+
+@@ verus.target: mfirst_cero
+@@ verus.specs
+
+
+@@ verus.pre
+none
+
+@@ verus.post
+i <= v.len(),
+        forall|j: int| 0 <= j < i as int ==> v@[j] != 0,
+        i != v.len() ==> v@[i as int] == 0
+
+@@ verus.args: v
+@@ verus.reference_origin: bvb
+@@ verus.reference
+use vstd::prelude::*;
+
+verus! {
+
+fn mfirst_cero(v: &[i32]) -> (i: usize)
+    ensures
+        i <= v.len(),
+        forall|j: int| 0 <= j < i as int ==> v@[j] != 0,
+        i != v.len() ==> v@[i as int] == 0,
+{
+    let mut i: usize = 0;
+    while i < v.len() && v[i] != 0
+        invariant
+            i <= v.len(),
+            forall|j: int| 0 <= j < i as int ==> v@[j] != 0,
+        decreases v.len() - i,
+    {
+        i = i + 1;
+    }
+    i
+}
+
+}
+fn main() {}

@@ -1,0 +1,112 @@
+@@ id: vb-clover-linear-search
+@@ benchmark: Verus-Bench
+@@ origin: CloverBench
+@@ origin_path: benchmarks/Verus-Bench/CloverBench/verified/linear_search2.rs
+@@ rules: T1 T2 T3
+@@ description
+Implement `linear_search`: `e` occurs in `a`. Return the first position of `e` in `a`. The contract must state that the result is a valid position holding `e` and that no earlier position holds `e`.
+
+@@ signature
+fn linear_search(a: &[i64], e: i64) -> (r: usize)
+
+@@ accept.specs
+spec fn ref_pre(a: &[i64], e: i64) -> bool { !(forall|i: usize| i < a.len() ==> #[trigger] a[i] != e) }
+spec fn ref_post(a: &[i64], e: i64, r: usize) -> bool { r < a.len() && a[r] == e && (forall|k: usize| k < r ==> #[trigger] a[k] != e) }
+
+@@ accept.pre: ref_pre(a, e)
+@@ accept.post: ref_post(a, e, r)
+@@ accept.args: a, e
+@@ reference
+spec fn occurs(a: &[i64], e: i64) -> bool { !(forall|i: usize| i < a.len() ==> #[trigger] a[i] != e) }
+
+spec fn absent_below(a: &[i64], e: i64, n: usize) -> bool { forall|k: usize| k < n ==> #[trigger] a[k] != e }
+
+spec fn first_at(a: &[i64], e: i64, r: usize) -> bool { r < a.len() && a[r] == e && (forall|k: usize| k < r ==> #[trigger] a[k] != e) }
+
+#[effects(pure)]
+#[uses(occurs, absent_below, first_at)]
+fn linear_search(a: &[i64], e: i64) -> (r: usize)
+    requires occurs(a, e),
+    ensures first_at(a, e, r),
+{
+    let mut n: usize = 0;
+    while n < a.len() && a[n] != e
+        invariant n <= a.len(), occurs(a, e), absent_below(a, e, n),
+        decreases a.len() - n,
+    {
+        n = n + 1;
+    }
+    n
+}
+
+@@ weak
+spec fn occurs(a: &[i64], e: i64) -> bool { !(forall|i: usize| i < a.len() ==> #[trigger] a[i] != e) }
+
+spec fn absent_below(a: &[i64], e: i64, n: usize) -> bool { forall|k: usize| k < n ==> #[trigger] a[k] != e }
+
+spec fn found_at(a: &[i64], e: i64, r: usize) -> bool { r < a.len() && a[r] == e }
+
+#[effects(pure)]
+#[uses(occurs, absent_below, found_at)]
+fn linear_search(a: &[i64], e: i64) -> (r: usize)
+    requires occurs(a, e),
+    ensures found_at(a, e, r),
+{
+    let mut n: usize = 0;
+    while n < a.len() && a[n] != e
+        invariant n <= a.len(), occurs(a, e), absent_below(a, e, n),
+        decreases a.len() - n,
+    {
+        n = n + 1;
+    }
+    n
+}
+
+@@ verus.signature
+fn linear_search(a: &Vec<i32>, e: i32) -> (n: usize)
+
+@@ verus.target: linear_search
+@@ verus.specs
+
+
+@@ verus.pre
+exists|i: int| (0 <= i < a.len() as int) && a[i] == e
+
+@@ verus.post
+0 <= n < a.len(),
+a[n as int] == e,
+forall|k: int| (0 <= k < n as int) ==> a[k] != e
+
+@@ verus.args: a, e
+@@ verus.reference_origin: upstream
+@@ verus.reference
+use vstd::prelude::*;
+
+fn main() {}
+
+verus! {
+
+pub fn linear_search(a: &Vec<i32>, e: i32) -> (n: usize)
+    requires
+        exists|i: int| (0 <= i < a.len() as int) && a[i] == e,
+    ensures
+        0 <= n < a.len(),
+        a[n as int] == e,
+        forall|k: int| (0 <= k < n as int) ==> a[k] != e,
+{
+    let mut n: usize = 0;
+    while n != a.len()
+        invariant
+            n <= a.len(),
+            forall|i: int| (0 <= i < n as int) ==> e != a[i],
+        decreases a.len() - n,
+    {
+        if a[n] == e {
+            return n;
+        }
+        n = n + 1;
+    }
+    n
+}
+
+} // verus!

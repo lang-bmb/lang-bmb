@@ -1,0 +1,140 @@
+@@ id: vb-mbpp-145-max-difference
+@@ benchmark: Verus-Bench
+@@ origin: MBPP
+@@ origin_path: benchmarks/Verus-Bench/MBPP/verified/task_id_145.rs
+@@ rules: T1 T2
+@@ description
+Implement `max_difference`: `arr` is non-empty and every element x satisfies -1073741824 < x < 1073741823. Return the largest difference arr[i] - arr[j] over all pairs of positions. The contract must state that the result is at least arr[i] - arr[j] for every pair of positions i, j.
+
+@@ signature
+fn max_difference(arr: &[i64]) -> (r: i64)
+
+@@ accept.specs
+spec fn ref_pre(arr: &[i64]) -> bool { arr.len() > 0 && (forall|i: usize| i < arr.len() ==> -1073741824 < #[trigger] arr[i] && arr[i] < 1073741823) }
+spec fn ref_post(arr: &[i64], r: i64) -> bool { forall|i: usize, j: usize| i < arr.len() && j < arr.len() ==> #[trigger] arr[i] - #[trigger] arr[j] <= r }
+
+@@ accept.pre: ref_pre(arr)
+@@ accept.post: ref_post(arr, r)
+@@ accept.args: arr
+@@ reference
+spec fn half_range(arr: &[i64]) -> bool { arr.len() > 0 && (forall|i: usize| i < arr.len() ==> -1073741824 < #[trigger] arr[i] && arr[i] < 1073741823) }
+
+spec fn between(arr: &[i64], lo: i64, hi: i64, n: usize) -> bool { -1073741824 < lo && hi < 1073741823 && (forall|k: usize| k < n ==> lo <= #[trigger] arr[k] && arr[k] <= hi) }
+
+spec fn bounds_all_differences(arr: &[i64], r: i64) -> bool { forall|i: usize, j: usize| i < arr.len() && j < arr.len() ==> #[trigger] arr[i] - #[trigger] arr[j] <= r }
+
+#[effects(pure)]
+#[uses(half_range, between, bounds_all_differences)]
+fn max_difference(arr: &[i64]) -> (r: i64)
+    requires half_range(arr),
+    ensures bounds_all_differences(arr, r),
+{
+    let mut lo: i64 = arr[0];
+    let mut hi: i64 = arr[0];
+    let mut idx: usize = 1;
+    while idx < arr.len()
+        invariant 1 <= idx, idx <= arr.len(), half_range(arr), between(arr, lo, hi, idx),
+        decreases arr.len() - idx,
+    {
+        if arr[idx] < lo {
+            lo = arr[idx];
+        }
+        if arr[idx] > hi {
+            hi = arr[idx];
+        }
+        idx = idx + 1;
+    }
+    hi - lo
+}
+
+@@ weak
+spec fn half_range(arr: &[i64]) -> bool { arr.len() > 0 && (forall|i: usize| i < arr.len() ==> -1073741824 < #[trigger] arr[i] && arr[i] < 1073741823) }
+
+spec fn between(arr: &[i64], lo: i64, hi: i64, n: usize) -> bool { -1073741824 < lo && hi < 1073741823 && (forall|k: usize| k < n ==> lo <= #[trigger] arr[k] && arr[k] <= hi) }
+
+spec fn bounds_from_first(arr: &[i64], r: i64) -> bool { forall|j: usize| j < arr.len() ==> arr[0] - #[trigger] arr[j] <= r }
+
+#[effects(pure)]
+#[uses(half_range, between, bounds_from_first)]
+fn max_difference(arr: &[i64]) -> (r: i64)
+    requires half_range(arr),
+    ensures bounds_from_first(arr, r),
+{
+    let mut lo: i64 = arr[0];
+    let mut hi: i64 = arr[0];
+    let mut idx: usize = 1;
+    while idx < arr.len()
+        invariant 1 <= idx, idx <= arr.len(), half_range(arr), between(arr, lo, hi, idx),
+        decreases arr.len() - idx,
+    {
+        if arr[idx] < lo {
+            lo = arr[idx];
+        }
+        if arr[idx] > hi {
+            hi = arr[idx];
+        }
+        idx = idx + 1;
+    }
+    hi - lo
+}
+
+@@ verus.signature
+fn max_difference(arr: &Vec<i32>) -> (diff: i32)
+
+@@ verus.target: max_difference
+@@ verus.specs
+
+
+@@ verus.pre
+arr.len() > 0,
+forall|i: int| 0 <= i < arr.len() ==> i32::MIN / 2 < #[trigger] arr[i] < i32::MAX / 2
+
+@@ verus.post
+forall|i: int, j: int| 0 <= i < arr.len() && 0 <= j < arr.len() ==> arr[i] - arr[j] <= diff
+
+@@ verus.args: arr
+@@ verus.reference_origin: upstream
+@@ verus.reference
+use vstd::prelude::*;
+
+fn main() {
+    // Write a function in Rust to find the maximum difference between any two elements in a given array.
+
+    assert_eq!(max_difference(&vec![2, 1, 5, 3]), 4);
+    assert_eq!(max_difference(&vec![9, 3, 2, 5, 1]), 8);
+    assert_eq!(max_difference(&vec![3, 2, 1]), 2);
+}
+
+verus! {
+
+fn max_difference(arr: &Vec<i32>) -> (diff: i32)
+    requires
+        arr.len() > 0,
+        forall|i: int| 0 <= i < arr.len() ==> i32::MIN / 2 < #[trigger] arr[i] < i32::MAX / 2,
+    ensures
+        forall|i: int, j: int| 0 <= i < arr.len() && 0 <= j < arr.len() ==> arr[i] - arr[j] <= diff,
+{
+    let mut min_val = arr[0];
+    let mut max_val = arr[0];
+
+    let mut index = 1;
+    while index < arr.len()
+        invariant
+            i32::MIN / 2 < min_val < i32::MAX / 2,
+            i32::MIN / 2 < max_val < i32::MAX / 2,
+            min_val <= max_val,
+            forall|i: int| 0 <= i < arr.len() ==> i32::MIN / 2 < #[trigger] arr[i] < i32::MAX / 2,
+            forall|k: int| 0 <= k < index ==> min_val <= arr[k] && arr[k] <= max_val,
+        decreases arr@.len() - index,
+    {
+        if (arr[index] < min_val) {
+            min_val = arr[index];
+        } else if (arr[index] > max_val) {
+            max_val = arr[index];
+        }
+        index += 1;
+    }
+    max_val - min_val
+}
+
+} // verus!
