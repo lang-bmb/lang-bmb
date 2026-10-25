@@ -1,0 +1,57 @@
+#[summary("checked, saturating and wrapping arithmetic at the type bounds (ADR-0028 §3, backlog 2C-03)")]
+mod am {
+    #[effects(io)]
+    fn show(o: Option<i64>) -> () {
+        match o {
+            None => print_i64(-424242),
+            Some(v) => print_i64(v),
+        }
+    }
+
+    #[effects(io)]
+    fn show_u(o: Option<u64>) -> () {
+        match o {
+            None => print_i64(-424242),
+            Some(v) => print_u64(v),
+        }
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        let max: i64 = 9223372036854775807;
+        let min: i64 = -9223372036854775807 - 1;
+        let umax: u64 = 18446744073709551615;
+        let three: u64 = 3;
+        let six: u64 = 6;
+        let zero: u64 = 0;
+        let m7: i64 = -7;
+        print_i64(max.saturating_add(1));
+        print_i64(min.saturating_sub(1));
+        print_i64(min.saturating_mul(2));
+        print_i64(min.saturating_mul(-2));
+        print_i64(max.saturating_mul(-3));
+        print_i64(7.saturating_mul(-6));
+        print_u64(umax.saturating_add(1));
+        print_u64(three.saturating_sub(5));
+        print_u64(umax.saturating_mul(2));
+        print_u64(six.saturating_mul(7));
+        show(max.checked_add(1));
+        show(min.checked_sub(1));
+        show(max.checked_mul(-1));
+        show(min.checked_mul(-1));
+        show(min.checked_div(-1));
+        show(min.checked_rem(-1));
+        show(min.checked_div(1));
+        show(m7.checked_div(2));
+        show(m7.checked_rem(2));
+        show(5.checked_div(0));
+        show(5.checked_rem(0));
+        show_u(umax.checked_add(1));
+        show_u(zero.checked_sub(1));
+        show_u(umax.checked_div(2));
+        show_u(umax.checked_rem(10));
+        show_u(umax.checked_mul(1));
+        print_i64(max.wrapping_add(1));
+        print_u64(zero.wrapping_sub(1));
+    }
+}

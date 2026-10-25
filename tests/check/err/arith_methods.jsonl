@@ -1,0 +1,6 @@
+{"code":"E0404","severity":"error","message":"`saturating_add` is not defined for `bool`","file":"err/arith_methods.bmb","line":4,"col":37,"end_line":4,"end_col":51}
+{"code":"E0401","severity":"error","message":"expected `i64`, found `u64`","file":"err/arith_methods.bmb","line":7,"col":56,"end_line":7,"end_col":57}
+{"code":"E0405","severity":"error","message":"`saturating_mul` takes one argument","file":"err/arith_methods.bmb","line":10,"col":33,"end_line":10,"end_col":47}
+{"code":"E0401","severity":"error","message":"expected `i64`, found `Option<i64>`","file":"err/arith_methods.bmb","line":13,"col":37,"end_line":13,"end_col":53}
+{"code":"E0404","severity":"error","message":"unknown method `pow`","file":"err/arith_methods.bmb","line":16,"col":33,"end_line":16,"end_col":36,"fix":{"message":"not available; use `checked_*`, `saturating_*` or `wrapping_*` (ADR-0028 §3)"}}
+{"code":"E0404","severity":"error","message":"unknown method `overflowing_add`","file":"err/arith_methods.bmb","line":19,"col":39,"end_line":19,"end_col":54,"fix":{"message":"not available; use `checked_*`, `saturating_*` or `wrapping_*` (ADR-0028 §3)"}}

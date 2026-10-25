@@ -1,0 +1,26 @@
+#[summary("checked and saturating arithmetic misused (ADR-0028 §3, backlog 2C-03)")]
+mod am {
+    #[effects(pure)]
+    fn on_bool(b: bool) -> bool { b.saturating_add(true) }
+
+    #[effects(pure)]
+    fn mixed(x: i64, y: u64) -> i64 { x.saturating_sub(y) }
+
+    #[effects(pure)]
+    fn arity(x: i64) -> i64 { x.saturating_mul() }
+
+    #[effects(pure)]
+    fn not_a_value(x: i64) -> i64 { x.checked_add(1) }
+
+    #[effects(pure)]
+    fn power(x: i64) -> i64 { x.pow(2) }
+
+    #[effects(pure)]
+    fn overflowing(x: i64) -> i64 { x.overflowing_add(1) }
+
+    #[effects(pure)]
+    fn fine(x: i64, y: u64) -> Option<u64> {
+        let s: i64 = x.saturating_mul(3);
+        y.checked_rem(2)
+    }
+}

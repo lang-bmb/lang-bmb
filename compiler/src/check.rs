@@ -2875,7 +2875,9 @@ impl<'a> Checker<'a> {
                 }
                 TypeKind::Usize
             }
-            "wrapping_add" | "wrapping_sub" | "wrapping_mul" => {
+            "wrapping_add" | "wrapping_sub" | "wrapping_mul" | "saturating_add"
+            | "saturating_sub" | "saturating_mul" | "checked_add" | "checked_sub"
+            | "checked_mul" | "checked_div" | "checked_rem" => {
                 if args.len() != 1 {
                     self.err(
                         "E0405",
@@ -2894,6 +2896,11 @@ impl<'a> Checker<'a> {
                     return TypeKind::Error;
                 }
                 self.expect_ty(&at, &rt, args[0].span);
+                // `checked_*` is `Some` exactly when the result is in range
+                // (ADR-0028 §3).
+                if name.name.starts_with("checked_") && rt != TypeKind::Error {
+                    return option_of(rt);
+                }
                 rt
             }
             "into" | "try_into" if is_int(&rt) => {
@@ -2925,8 +2932,10 @@ impl<'a> Checker<'a> {
                         Some("use `while` with an index")
                     }
                     "clone" => Some("arrays and scalars are copied by value; remove `.clone()`"),
-                    "checked_add" | "saturating_add" | "pow" | "abs" => {
-                        Some("not available in milestone 1")
+                    "pow" | "abs" | "overflowing_add" | "overflowing_sub" | "overflowing_mul" => {
+                        Some(
+                            "not available; use `checked_*`, `saturating_*` or `wrapping_*` (ADR-0028 §3)",
+                        )
                     }
                     _ => None,
                 };
@@ -3126,13 +3135,7 @@ impl<'a> Checker<'a> {
         }
         match name.name.as_str() {
             "unwrap" if margs.is_empty() => target,
-            "ok" if margs.is_empty() => TypeKind::Named {
-                path: vec!["Option".into()],
-                args: vec![Type {
-                    kind: target,
-                    span: Span::default(),
-                }],
-            },
+            "ok" if margs.is_empty() => option_of(target),
             "expect" => {
                 self.diags
                     .push(Diag::new("E0213", span, "write `.unwrap()`").fix(
@@ -3770,4 +3773,15 @@ fn int_type(name: &str) -> Option<TypeKind> {
 pub(crate) fn conv_obligation(source: &TypeKind, target: &TypeKind) -> bool {
     let wide = |t: &TypeKind| matches!(t, TypeKind::U64 | TypeKind::Usize);
     source != target && !(wide(source) && wide(target))
+}
+
+/// `Option<t>`.
+fn option_of(t: TypeKind) -> TypeKind {
+    TypeKind::Named {
+        path: vec!["Option".into()],
+        args: vec![Type {
+            kind: t,
+            span: Span::default(),
+        }],
+    }
 }

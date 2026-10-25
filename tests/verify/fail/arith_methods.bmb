@@ -1,0 +1,41 @@
+#[summary("checked and saturating arithmetic: wrong claims fail (ADR-0028 §3, backlog 2C-03)")]
+mod am {
+    spec fn exact(r: u64, x: u64, y: u64) -> bool { r == x + y }
+
+    // Saturation cuts: the mathematical sum is not always the result.
+    #[effects(pure)]
+    #[uses(exact)]
+    fn sat_add(x: u64, y: u64) -> (r: u64)
+        ensures exact(r, x, y),
+    {
+        x.saturating_add(y)
+    }
+
+    spec fn is_some(r: Option<i64>) -> bool {
+        match r {
+            None => false,
+            Some(v) => true,
+        }
+    }
+
+    // `checked_mul` may be `None`.
+    #[effects(pure)]
+    #[uses(is_some)]
+    fn mul(a: i64, b: i64) -> (r: Option<i64>)
+        ensures is_some(r),
+    {
+        a.checked_mul(b)
+    }
+
+    // A nonzero divisor is not enough for `i64`: `i64::MIN % -1` is `None`.
+    spec fn nonzero(b: i64) -> bool { b != 0 }
+
+    #[effects(pure)]
+    #[uses(nonzero, is_some)]
+    fn rem(a: i64, b: i64) -> (r: Option<i64>)
+        requires nonzero(b),
+        ensures is_some(r),
+    {
+        a.checked_rem(b)
+    }
+}

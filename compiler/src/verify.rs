@@ -603,11 +603,84 @@ fn wrap(t: &TypeKind, x: &str) -> String {
     }
 }
 
+/// A built-in integer method `a.op(b)` on type `t` (ADR-0028 §3, §5).
+enum IntMethod {
+    /// `wrapping_*`, `saturating_*`: a value of `t`.
+    Value(String),
+    /// `checked_*`: `Some(v)` exactly when `ok`; `lemmas` are the division
+    /// facts of `v` (true for every divisor).
+    Checked {
+        ok: String,
+        v: String,
+        lemmas: Vec<String>,
+    },
+}
+
+fn int_method(op: &str, t: &TypeKind, a: &str, b: &str) -> IntMethod {
+    let signed = *t == TypeKind::I64;
+    let (kind, base) = op.split_once('_').expect("integer method");
+    let (v, lemmas) = match base {
+        "add" => (format!("(+ {a} {b})"), Vec::new()),
+        "sub" => (format!("(- {a} {b})"), Vec::new()),
+        "mul" => (format!("(* {a} {b})"), Vec::new()),
+        "div" | "rem" => {
+            let (q, r, ls) = if signed {
+                (
+                    format!("(bmb_tdiv {a} {b})"),
+                    format!("(bmb_trem {a} {b})"),
+                    SIGNED_DIV_LEMMAS,
+                )
+            } else {
+                (
+                    format!("(div {a} {b})"),
+                    format!("(mod {a} {b})"),
+                    UNSIGNED_DIV_LEMMAS,
+                )
+            };
+            let lemmas = ls.iter().map(|l| instantiate(l, a, b, &q, &r)).collect();
+            (if base == "div" { q } else { r }, lemmas)
+        }
+        _ => unreachable!("integer method {op}"),
+    };
+    let (min, max) = if signed {
+        (I64_MIN, I64_MAX)
+    } else {
+        ("0", U64_MAX)
+    };
+    match kind {
+        "wrapping" => IntMethod::Value(wrap(t, &v)),
+        "saturating" => IntMethod::Value(format!(
+            "(ite (> {v} {max}) {max} (ite (< {v} {min}) {min} {v}))"
+        )),
+        _ => {
+            let in_range = range(t, &v).expect("integer type");
+            let ok = match base {
+                "div" => format!("(and (not (= {b} 0)) {in_range})"),
+                // `i64::MIN % -1` is 0 in mathematics but overflows in Rust.
+                "rem" if signed => {
+                    format!("(and (not (= {b} 0)) (not (and (= {a} {I64_MIN}) (= {b} (- 1)))))")
+                }
+                "rem" => format!("(not (= {b} 0))"),
+                _ => in_range,
+            };
+            IntMethod::Checked { ok, v, lemmas }
+        }
+    }
+}
+
 fn sym(name: &str) -> String {
     format!("|{name}|")
 }
 
 impl<'p, 'q> Enc<'p, 'q> {
+    /// `Some(v)` when `ok`, else `None`, of `e`'s `Option` type.
+    fn checked(&mut self, e: &Expr, ok: &str, v: String) -> Val {
+        let opt = self.ty(e);
+        let some = self.variant_value(&opt, "Some", &[Val::S(v)]).s();
+        let none = self.variant_value(&opt, "None", &[]).s();
+        Val::S(ite(ok, &some, &none))
+    }
+
     fn new(prog: &'q Prog<'p>, path: &str, mod_path: &str) -> Self {
         Enc {
             prog,
@@ -873,13 +946,11 @@ impl<'p, 'q> Enc<'p, 'q> {
                         _ => panic!("len of scalar"),
                     },
                     op => {
-                        let a = self.spec(&args[0], env, old).s();
-                        let sym = match op {
-                            "wrapping_add" => "+",
-                            "wrapping_sub" => "-",
-                            _ => "*",
-                        };
-                        Val::S(wrap(&self.ty(recv), &format!("({sym} {} {a})", rv.s())))
+                        let b = self.spec(&args[0], env, old).s();
+                        match int_method(op, &self.ty(recv), &rv.s(), &b) {
+                            IntMethod::Value(v) => Val::S(v),
+                            IntMethod::Checked { ok, v, .. } => self.checked(e, &ok, v),
+                        }
                     }
                 }
             }
@@ -1257,10 +1328,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                     }
                     return Val::S(v);
                 }
-                let opt = self.ty(e);
-                let some = self.variant_value(&opt, "Some", &[Val::S(v)]).s();
-                let none = self.variant_value(&opt, "None", &[]).s();
-                Val::S(ite(&r, &some, &none))
+                self.checked(e, &r, v)
             }
             ExprKind::Method { recv, name, args } => {
                 let rv = self.eval(recv);
@@ -1270,13 +1338,14 @@ impl<'p, 'q> Enc<'p, 'q> {
                         _ => panic!("len of scalar"),
                     },
                     op => {
-                        let a = self.eval(&args[0]).s();
-                        let s = match op {
-                            "wrapping_add" => "+",
-                            "wrapping_sub" => "-",
-                            _ => "*",
-                        };
-                        Val::S(wrap(&self.ty(recv), &format!("({s} {} {a})", rv.s())))
+                        let b = self.eval(&args[0]).s();
+                        match int_method(op, &self.ty(recv), &rv.s(), &b) {
+                            IntMethod::Value(v) => Val::S(v),
+                            IntMethod::Checked { ok, v, lemmas } => {
+                                self.pc.extend(lemmas);
+                                self.checked(e, &ok, v)
+                            }
+                        }
                     }
                 }
             }

@@ -753,14 +753,15 @@ impl<'p> Gen<'p> {
                 let v = self.expr(&args[0]).imm();
                 let needs = crate::check::conv_obligation(&st, &target);
                 if name.name == "unwrap" {
-                    if needs && !self.proved("E0815", e) {
+                    if needs && self.proved("E0815", e) {
+                        self.emit("; proved E0815");
+                    } else if needs {
                         let c = self.t();
                         self.emit(format!("{c} = icmp sge i64 {v}, 0"));
                         self.check(&c, "conversion may be out of range");
                     }
                     return CVal::Imm(v);
                 }
-                let t = self.ty(e);
                 let ok = if needs {
                     let c = self.t();
                     self.emit(format!("{c} = icmp sge i64 {v}, 0"));
@@ -768,18 +769,7 @@ impl<'p> Gen<'p> {
                 } else {
                     "true".to_string()
                 };
-                let tmp = self.temp(&t);
-                let tag = self.field_ptr(&tmp, &t, 0);
-                let k = self.t();
-                self.emit(format!("{k} = zext i1 {ok} to i64"));
-                self.emit(format!("store i64 {k}, ptr {tag}"));
-                let p = self.t();
-                self.emit(format!(
-                    "{p} = getelementptr inbounds {}, ptr {tmp}, i32 0, i32 1",
-                    view_ty(&t, "Some")
-                ));
-                self.emit(format!("store i64 {v}, ptr {p}"));
-                CVal::Ptr { ptr: tmp, ty: t }
+                self.option(e, &ok, &v)
             }
             ExprKind::Method { recv, name, args } => {
                 let rv = self.expr(recv);
@@ -790,14 +780,8 @@ impl<'p> Gen<'p> {
                     },
                     op => {
                         let b = self.expr(&args[0]).imm();
-                        let inst = match op {
-                            "wrapping_add" => "add",
-                            "wrapping_sub" => "sub",
-                            _ => "mul",
-                        };
-                        let r = self.t();
-                        self.emit(format!("{r} = {inst} i64 {}, {b}", rv.imm()));
-                        CVal::Imm(r)
+                        let signed = self.ty(recv) == TypeKind::I64;
+                        self.int_method(e, op, &rv.imm(), &b, signed)
                     }
                 }
             }
@@ -907,6 +891,102 @@ impl<'p> Gen<'p> {
             }
             ExprKind::Match { scrut, arms } => self.match_expr(e, scrut, arms),
         }
+    }
+
+    /// `Some(v)` when `ok` (an `i1`), else `None`, of `e`'s `Option` type.
+    fn option(&mut self, e: &Expr, ok: &str, v: &str) -> CVal {
+        let t = self.ty(e);
+        let tmp = self.temp(&t);
+        let tag = self.field_ptr(&tmp, &t, 0);
+        let k = self.t();
+        self.emit(format!("{k} = zext i1 {ok} to i64"));
+        self.emit(format!("store i64 {k}, ptr {tag}"));
+        let p = self.t();
+        self.emit(format!(
+            "{p} = getelementptr inbounds {}, ptr {tmp}, i32 0, i32 1",
+            view_ty(&t, "Some")
+        ));
+        self.emit(format!("store i64 {v}, ptr {p}"));
+        CVal::Ptr { ptr: tmp, ty: t }
+    }
+
+    /// A built-in integer method `a.op(b)` (ADR-0028 §6): `wrapping_*` is the
+    /// plain instruction, `saturating_*` LLVM's saturating intrinsics (`mul`:
+    /// the overflow flag selects the bound), `checked_*` the overflow flag or
+    /// the divisor test as the `Option` tag. A division whose divisor fails
+    /// the test divides by 1 instead, so it never traps.
+    fn int_method(&mut self, e: &Expr, op: &str, a: &str, b: &str, signed: bool) -> CVal {
+        let (kind, base) = op.split_once('_').expect("integer method");
+        let s = if signed { "s" } else { "u" };
+        let r = self.t();
+        match (kind, base) {
+            ("wrapping", _) => {
+                self.emit(format!("{r} = {base} i64 {a}, {b}"));
+                CVal::Imm(r)
+            }
+            ("saturating", "add" | "sub") => {
+                self.emit(format!(
+                    "{r} = call i64 @llvm.{s}{base}.sat.i64(i64 {a}, i64 {b})"
+                ));
+                CVal::Imm(r)
+            }
+            ("saturating", _) => {
+                let (v, ovf) = self.with_overflow(s, base, a, b);
+                let bound = if signed {
+                    // The product is negative exactly when the signs differ.
+                    let x = self.t();
+                    let neg = self.t();
+                    let m = self.t();
+                    self.emit(format!("{x} = xor i64 {a}, {b}"));
+                    self.emit(format!("{neg} = icmp slt i64 {x}, 0"));
+                    self.emit(format!(
+                        "{m} = select i1 {neg}, i64 -9223372036854775808, i64 9223372036854775807"
+                    ));
+                    m
+                } else {
+                    "-1".to_string()
+                };
+                self.emit(format!("{r} = select i1 {ovf}, i64 {bound}, i64 {v}"));
+                CVal::Imm(r)
+            }
+            (_, "add" | "sub" | "mul") => {
+                let (v, ovf) = self.with_overflow(s, base, a, b);
+                self.emit(format!("{r} = xor i1 {ovf}, true"));
+                self.option(e, &r, &v)
+            }
+            _ => {
+                self.emit(format!("{r} = icmp ne i64 {b}, 0"));
+                let ok = if signed {
+                    // `i64::MIN / -1` overflows; `i64::MIN % -1` too, in Rust.
+                    let (m, n, both, fine, ok) = (self.t(), self.t(), self.t(), self.t(), self.t());
+                    self.emit(format!("{m} = icmp eq i64 {a}, -9223372036854775808"));
+                    self.emit(format!("{n} = icmp eq i64 {b}, -1"));
+                    self.emit(format!("{both} = and i1 {m}, {n}"));
+                    self.emit(format!("{fine} = xor i1 {both}, true"));
+                    self.emit(format!("{ok} = and i1 {r}, {fine}"));
+                    ok
+                } else {
+                    r
+                };
+                let d = self.t();
+                let q = self.t();
+                let inst = if base == "div" { "div" } else { "rem" };
+                self.emit(format!("{d} = select i1 {ok}, i64 {b}, i64 1"));
+                self.emit(format!("{q} = {s}{inst} i64 {a}, {d}"));
+                self.option(e, &ok, &q)
+            }
+        }
+    }
+
+    /// LLVM's `{s,u}op.with.overflow`: (result, overflow flag).
+    fn with_overflow(&mut self, s: &str, op: &str, a: &str, b: &str) -> (String, String) {
+        let (pair, v, ovf) = (self.t(), self.t(), self.t());
+        self.emit(format!(
+            "{pair} = call {{i64, i1}} @llvm.{s}{op}.with.overflow.i64(i64 {a}, i64 {b})"
+        ));
+        self.emit(format!("{v} = extractvalue {{i64, i1}} {pair}, 0"));
+        self.emit(format!("{ovf} = extractvalue {{i64, i1}} {pair}, 1"));
+        (v, ovf)
     }
 
     /// `add`/`sub`/`mul` with `nsw`/`nuw` when proved, else overflow-checked.
@@ -1251,6 +1331,9 @@ pub fn emit_with(
                 ir,
                 "declare {{i64, i1}} @llvm.{s}{op}.with.overflow.i64(i64, i64)"
             );
+        }
+        for op in ["add", "sub"] {
+            let _ = writeln!(ir, "declare i64 @llvm.{s}{op}.sat.i64(i64, i64)");
         }
     }
     ir.push_str(

@@ -1,0 +1,96 @@
+#[summary("checked and saturating arithmetic proved (ADR-0028 §3, §5, backlog 2C-03)")]
+mod am {
+    spec fn in_bounds(r: i64, x: i64, y: i64) -> bool { x + y > 9223372036854775807 || x + y < -9223372036854775808 || r == x + y }
+
+    // No obligation: the sum is cut to the type's range.
+    #[effects(pure)]
+    #[uses(in_bounds)]
+    fn sat_add(x: i64, y: i64) -> (r: i64)
+        ensures in_bounds(r, x, y),
+    {
+        x.saturating_add(y)
+    }
+
+    spec fn floor_zero(r: u64, a: u64, b: u64) -> bool { (a < b && r == 0) || (a >= b && r == a - b) }
+
+    #[effects(pure)]
+    #[uses(floor_zero)]
+    fn sat_sub(a: u64, b: u64) -> (r: u64)
+        ensures floor_zero(r, a, b),
+    {
+        a.saturating_sub(b)
+    }
+
+    spec fn some_sum(r: Option<u64>, a: u64, b: u64) -> bool {
+        match r {
+            None => a + b > 18446744073709551615,
+            Some(v) => v == a + b,
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(some_sum)]
+    fn add(a: u64, b: u64) -> (r: Option<u64>)
+        ensures some_sum(r, a, b),
+    {
+        a.checked_add(b)
+    }
+
+    spec fn quotient(r: Option<i64>, b: i64) -> bool {
+        match r {
+            None => b == 0 || b == -1,
+            Some(v) => b != 0,
+        }
+    }
+
+    // `None` only for a zero divisor and for `i64::MIN / -1`.
+    #[effects(pure)]
+    #[uses(quotient)]
+    fn div(a: i64, b: i64) -> (r: Option<i64>)
+        ensures quotient(r, b),
+    {
+        a.checked_div(b)
+    }
+
+    spec fn small_rem(r: u64, b: u64) -> bool { r < b }
+
+    spec fn pos(b: u64) -> bool { b > 0 }
+
+    // The value of `checked_rem` carries the division facts.
+    #[effects(pure)]
+    #[uses(small_rem, pos)]
+    fn rem_or_zero(a: u64, b: u64) -> (r: u64)
+        requires pos(b),
+        ensures small_rem(r, b),
+    {
+        match a.checked_rem(b) {
+            None => 0,
+            Some(v) => v,
+        }
+    }
+
+    spec fn is(r: i64, v: i64) -> bool { r == v }
+
+    // Exact values at the bounds.
+    #[effects(pure)]
+    #[uses(is)]
+    fn bounds() -> (r: i64)
+        ensures is(r, 0),
+    {
+        let max: i64 = 9223372036854775807;
+        let min: i64 = -9223372036854775807 - 1;
+        assert(is(max.saturating_add(1), 9223372036854775807));
+        assert(is(min.saturating_mul(-2), 9223372036854775807));
+        assert(is(max.saturating_mul(-3), -9223372036854775807 - 1));
+        assert(is(max.wrapping_add(1), -9223372036854775807 - 1));
+        let a: i64 = match min.checked_rem(-1) {
+            None => 0,
+            Some(w) => 1,
+        };
+        let b: i64 = match min.checked_div(1) {
+            None => 1,
+            Some(q) => q - min,
+        };
+        a + b
+    }
+}

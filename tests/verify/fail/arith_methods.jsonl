@@ -1,0 +1,6 @@
+{"code":"E0802","severity":"error","message":"postcondition `exact` may not hold in `am::sat_add`; counterexample: x = 18446744073709551334, y = 282","file":"fail/arith_methods.bmb","line":9,"col":17,"end_line":9,"end_col":31}
+{"code":"E0802","severity":"error","message":"postcondition `is_some` may not hold in `am::mul`; counterexample: a = -9223372036854775808, b = -1","file":"fail/arith_methods.bmb","line":25,"col":17,"end_line":25,"end_col":27}
+{"code":"E0802","severity":"error","message":"postcondition `is_some` may not hold in `am::rem`; counterexample: a = -9223372036854775808, b = -1","file":"fail/arith_methods.bmb","line":37,"col":17,"end_line":37,"end_col":27}
+{"def":"am::mul","status":"failed","obligations":1,"failed":1,"rlimit":2147,"rlimit_max":2147}
+{"def":"am::rem","status":"failed","obligations":1,"failed":1,"rlimit":12078,"rlimit_max":12078}
+{"def":"am::sat_add","status":"failed","obligations":1,"failed":1,"rlimit":5001191,"rlimit_max":5000217}
