@@ -76,5 +76,5 @@ python3 bench/brb/harness.py run --arm rust --agent weak --proptest off --expect
   --job "bench brb adequacy=python3 bench/brb/harness.py adequacy --jobs 2 > /dev/null" \
   --job "bench brb tests=python3 bench/brb/test_brb.py" \
   --job "health=python3 scripts/health.py" \
-  --job "health rules=python3 scripts/test_health.py"
+  --job "health rules=python3 scripts/test_health.py && python3 scripts/test_solver_stability.py"
 echo "all checks passed"

@@ -5,13 +5,14 @@
     "V4_rlimit_total": 2172366,
     "V5_rlimit_headroom": 0.0049,
     "V6_deterministic_verify": true,
+    "V7_unstable_queries": 0.0,
     "S1_external_crates": 0,
     "S2_external_processes": [
       "clang",
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 12296,
+    "S4_stage0_rust_lines": 12465,
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
     "P1_runnable_programs": 6,
@@ -102,6 +103,20 @@
         "B1_baseline_binary_bytes": [
           null,
           101408
+        ]
+      }
+    },
+    {
+      "date": "2026-10-25",
+      "reason": "V7 추가(1B-40): 코퍼스·시드 718개 의무, 변형 4종에서 불안정 0",
+      "changed": {
+        "V7_unstable_queries": [
+          null,
+          0.0
+        ],
+        "S4_stage0_rust_lines": [
+          12296,
+          12465
         ]
       }
     }

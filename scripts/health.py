@@ -9,7 +9,8 @@ committed baseline `dev-docs/health/baseline.json`:
     python3 scripts/health.py table      # current values as a Markdown table
     python3 scripts/health.py accept --reason "why"   # record current values
 
-A rule either holds always (`fixed`: e.g. no external crates) or compares with
+A rule either holds always (`fixed`: e.g. no external crates; `fixed_max`,
+`fixed_below`: a bound) or compares with
 the baseline (`no_worse`: may only improve; `budget`: may grow by at most the
 given fraction). A metric that got worse can only be moved by `accept`, which
 writes the reason into the baseline's history (reviewed like any commit).
@@ -74,6 +75,15 @@ def proof_metrics():
         "_proved_defs": len(rows),
         "_worst_obligation": worst["def"],
     }
+
+
+def solver_stability():
+    """V7: the share of obligations whose verdict changes under meaning-
+    preserving query changes (backlog 1B-40, scripts/solver_stability.py)."""
+    sys.path.insert(0, str(ROOT / "scripts"))
+    import solver_stability
+    r = solver_stability.measure(solver_stability.default_paths(), 1, str(BMB))
+    return {"V7_unstable_queries": r["ratio"], "_stability_obligations": r["obligations"]}
 
 
 def diag_coverage():
@@ -183,6 +193,8 @@ RULES = {
     "V4_rlimit_total": ("budget", 0.10),
     "V5_rlimit_headroom": ("fixed_max", 0.20),
     "V6_deterministic_verify": ("fixed", True),
+    # Mariposa's measured rate for Dafny and F* projects (H-STABLE, ADR-0040 §4).
+    "V7_unstable_queries": ("fixed_below", 0.026),
     "S1_external_crates": ("fixed", 0),
     "S2_external_processes": ("same", None),
     "S3_runtime_libs_outside_libc": ("fixed", []),
@@ -200,7 +212,8 @@ RULES = {
 
 def compute():
     m = {}
-    for f in (diag_coverage, proof_metrics, helpful_errors, self_containment, practicality, binary_size, process):
+    for f in (diag_coverage, proof_metrics, solver_stability, helpful_errors, self_containment, practicality,
+              binary_size, process):
         m.update(f())
     return m
 
@@ -213,6 +226,8 @@ def judge(m, base):
             bad.append(f"{k} = {v!r}, must be {p!r}")
         elif rule == "fixed_max" and v > p:
             bad.append(f"{k} = {v}, must be <= {p}")
+        elif rule == "fixed_below" and v >= p:
+            bad.append(f"{k} = {v}, must be < {p}")
         elif b is None:
             continue
         elif rule == "same" and v != b:

@@ -1,0 +1,70 @@
+#!/usr/bin/env python3
+"""Tests of scripts/solver_stability.py (backlog 1B-40)."""
+import os
+import random
+import sys
+import unittest
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import solver_stability as st  # noqa: E402
+
+SCRIPT = """; obligation 0: E0803 `+` may overflow `i64`
+(reset)
+(set-option :smt.random_seed 0)
+(set-option :sat.random_seed 0)
+(set-option :rlimit 5000000)
+(define-fun bmb_abs ((x Int)) Int (ite (>= x 0) x (- x)))
+(declare-const |x@0| Int)
+(assert (and (<= 0 |x@0|) (<= |x@0| 10)))
+(declare-const |unit::f.result@0| Int)
+(assert (= |unit::f.result@0| (+ (bmb_abs |x@0|) 1)))
+(assert (not (<= |unit::f.result@0| 11)))
+(check-sat)
+; obligation 1: E0805 index may be out of bounds
+(reset)
+(set-option :smt.random_seed 0)
+(set-option :sat.random_seed 0)
+(declare-const |i@0| Int)
+(assert (< |i@0| 3))
+(assert (not (< |i@0| 2)))
+(check-sat)
+"""
+
+
+class Variants(unittest.TestCase):
+    def setUp(self):
+        self.obs = [st.commands(body) for _, body in st.blocks(SCRIPT)]
+
+    def test_blocks_and_commands(self):
+        self.assertEqual([h for h, _ in st.blocks(SCRIPT)],
+                         ["0: E0803 `+` may overflow `i64`", "1: E0805 index may be out of bounds"])
+        self.assertEqual(self.obs[0][0], "(reset)")
+        self.assertEqual(self.obs[0][-1], "(check-sat)")
+
+    def test_variants_change_the_text_and_keep_the_answer(self):
+        base = st.solve(["\n".join(c) for c in self.obs])
+        self.assertEqual(base, ["unsat", "sat"])
+        for kind in st.KINDS:
+            for k in range(3):
+                rng = random.Random(f"{kind}{k}")
+                vs = [st.variant(c, kind, rng) for c in self.obs]
+                if kind != "shuffle":
+                    self.assertNotEqual(vs[0], self.obs[0], kind)
+                self.assertEqual(st.solve(["\n".join(v) for v in vs]), base, kind)
+
+    def test_shuffle_declares_before_use(self):
+        v = st.variant(self.obs[0], "shuffle", random.Random(1))
+        first_assert = next(i for i, c in enumerate(v) if c.startswith("(assert"))
+        self.assertTrue(all(not c.startswith(("(declare", "(define")) for c in v[first_assert:]))
+        self.assertEqual(sorted(v), sorted(self.obs[0]))
+
+    def test_rename_is_a_bijection(self):
+        v = st.variant(self.obs[0], "rename", random.Random(2))
+        text = "\n".join(v)
+        self.assertNotIn("|x@0|", text)
+        self.assertNotIn("bmb_abs", text)
+        self.assertEqual(len(set(st.SYM.findall(text))), len(set(st.SYM.findall("\n".join(self.obs[0])))))
+
+
+if __name__ == "__main__":
+    unittest.main()
