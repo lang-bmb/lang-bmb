@@ -46,6 +46,13 @@ pub const CODES: &[(&str, &str)] = &[
         "name already bound in this function (shadowing is not allowed)",
     ),
     ("E0304", "unknown function"),
+    ("E0305", "unknown type"),
+    (
+        "E0308",
+        "`impl` block not in the unit of its type, or a second one",
+    ),
+    ("E0309", "a built-in name cannot be defined"),
+    ("E0310", "`self` names exactly the receiver"),
     // E04xx: types and ownership
     ("E0401", "type mismatch"),
     ("E0402", "unsupported type"),
@@ -67,6 +74,11 @@ pub const CODES: &[(&str, &str)] = &[
         "a `&mut` argument aliases another argument of the same call",
     ),
     ("E0411", "cannot negate an unsigned value"),
+    (
+        "E0420",
+        "malformed data type: wrong type arguments, or no field or variant",
+    ),
+    ("E0421", "a type contains itself"),
     // E05xx: specifications
     (
         "E0501",

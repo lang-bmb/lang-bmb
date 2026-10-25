@@ -1272,6 +1272,127 @@ fn collect<'p>(m: &'p Mod, prefix: &str, out: &mut BTreeMap<String, Def<'p>>) {
             mod_path: mp.clone(),
         });
     }
+    for i in &m.impls {
+        for f in &i.fns {
+            out.entry(format!("{mp}::{}::{}", i.ty.name, f.name.name))
+                .or_insert(Def {
+                    f,
+                    mod_path: mp.clone(),
+                });
+        }
+    }
+}
+
+/// The first place a program's definitions touch a data type (backlog 2B-04:
+/// checked, but neither encoded nor compiled yet).
+pub(crate) fn program_data_type_use(p: &Program, t: &Tables) -> Option<Span> {
+    let mut defs = BTreeMap::new();
+    for m in &p.mods {
+        collect(m, "", &mut defs);
+    }
+    defs.values().find_map(|d| data_type_use(d.f, t))
+}
+
+fn has_named(t: &TypeKind) -> bool {
+    match t {
+        TypeKind::Named { .. } => true,
+        TypeKind::Array(e, _) | TypeKind::Slice(e) => has_named(&e.kind),
+        TypeKind::Ref { inner, .. } => has_named(&inner.kind),
+        _ => false,
+    }
+}
+
+/// Where a definition touches a data type: a parameter, the result, a local,
+/// or a call to a function with one in its signature. The checker accepts
+/// data types (backlog 2B-04); their encoding comes with 2B-05, so until
+/// then such definitions are E0814.
+fn data_type_use(f: &FnDef, t: &Tables) -> Option<Span> {
+    fn in_block(b: &Block, t: &Tables) -> Option<Span> {
+        for s in &b.stmts {
+            let found = match s {
+                Stmt::Let { ty, init, .. } => {
+                    if has_named(&ty.kind) {
+                        return Some(ty.span);
+                    }
+                    in_expr(init, t)
+                }
+                Stmt::Assign { target, value, .. } => {
+                    in_expr(target, t).or_else(|| in_expr(value, t))
+                }
+                Stmt::While { cond, body, .. } => in_expr(cond, t).or_else(|| in_block(body, t)),
+                Stmt::Assert { cond, .. } => in_expr(cond, t),
+                Stmt::Expr(e) => in_expr(e, t),
+            };
+            if found.is_some() {
+                return found;
+            }
+        }
+        b.tail.as_deref().and_then(|e| in_expr(e, t))
+    }
+    fn in_expr(e: &Expr, t: &Tables) -> Option<Span> {
+        match &e.kind {
+            ExprKind::Call { path, args } => {
+                let name = path
+                    .iter()
+                    .map(|i| i.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join("::");
+                let named = t.fns.iter().any(|(p, s)| {
+                    (p == &name || p.ends_with(&format!("::{name}")))
+                        && (s.params.iter().any(has_named) || has_named(&s.ret))
+                });
+                if named {
+                    return Some(e.span);
+                }
+                args.iter().find_map(|a| in_expr(a, t))
+            }
+            ExprKind::Method { recv, args, .. } => {
+                in_expr(recv, t).or_else(|| args.iter().find_map(|a| in_expr(a, t)))
+            }
+            ExprKind::Index { base, index } => in_expr(base, t).or_else(|| in_expr(index, t)),
+            ExprKind::Unary(_, x)
+            | ExprKind::Ref { expr: x, .. }
+            | ExprKind::Old(x)
+            | ExprKind::Trigger(x) => in_expr(x, t),
+            ExprKind::Binary(_, l, r) => in_expr(l, t).or_else(|| in_expr(r, t)),
+            ExprKind::If { cond, then, els } => in_expr(cond, t)
+                .or_else(|| in_block(then, t))
+                .or_else(|| els.as_deref().and_then(|x| in_expr(x, t))),
+            ExprKind::Block(b) => in_block(b, t),
+            ExprKind::Array(xs) => xs.iter().find_map(|x| in_expr(x, t)),
+            ExprKind::Repeat { value, .. } => in_expr(value, t),
+            ExprKind::Forall { body, .. } => in_expr(body, t),
+            ExprKind::StructLit { .. }
+            | ExprKind::Path(_)
+            | ExprKind::Field { .. }
+            | ExprKind::Deref(_)
+            | ExprKind::Match { .. } => Some(e.span),
+            ExprKind::Int(_)
+            | ExprKind::Bool(_)
+            | ExprKind::Unit
+            | ExprKind::Var(_)
+            | ExprKind::Error => None,
+        }
+    }
+    for p in &f.params {
+        if has_named(&p.ty.kind) {
+            return Some(p.ty.span);
+        }
+    }
+    if has_named(&f.ret.ty.kind) {
+        return Some(f.ret.ty.span);
+    }
+    let clauses = f
+        .requires
+        .iter()
+        .chain(&f.ensures)
+        .chain(f.decreases.iter());
+    for c in clauses {
+        if let Some(sp) = in_expr(c, t) {
+            return Some(sp);
+        }
+    }
+    in_block(&f.body, t)
 }
 
 fn param_sorts(f: &FnDef) -> Vec<String> {
@@ -1727,6 +1848,12 @@ fn verify_impl(
             continue;
         }
         let mut enc = Enc::new(&prog, path, &d.mod_path);
+        if let Some(sp) = data_type_use(d.f, t) {
+            enc.unsupported.push((
+                sp,
+                "data types are not supported by the proof gate yet (backlog 2B-05)".into(),
+            ));
+        }
         let header = header(seed);
         // Definitional axioms of revealed spec fns, filtered per obligation.
         let mut axioms: Vec<(String, String)> = Vec::new();

@@ -1,0 +1,15 @@
+{"code":"E0420","severity":"error","message":"a struct needs at least one field","file":"err/data_types.bmb","line":5,"col":12,"end_line":5,"end_col":17}
+{"code":"E0420","severity":"error","message":"an enum needs at least one variant","file":"err/data_types.bmb","line":7,"col":10,"end_line":7,"end_col":17}
+{"code":"E0403","severity":"error","message":"a field cannot hold a reference or a slice","file":"err/data_types.bmb","line":9,"col":24,"end_line":9,"end_col":30,"fix":{"message":"references are second-class: pass them as arguments only (ADR-0015)"}}
+{"code":"E0302","severity":"error","message":"field `a` is defined more than once in `shapes::Twice`","file":"err/data_types.bmb","line":11,"col":28,"end_line":11,"end_col":29}
+{"code":"E0421","severity":"error","message":"`shapes::Loop` contains itself; recursive types need the heap (backlog 2G)","file":"err/data_types.bmb","line":13,"col":12,"end_line":13,"end_col":16}
+{"code":"E0309","severity":"error","message":"`Some` is a built-in name (ADR-0026)","file":"err/data_types.bmb","line":15,"col":12,"end_line":15,"end_col":16}
+{"code":"E0420","severity":"error","message":"`Point` takes no type arguments (generics are not supported)","file":"err/data_types.bmb","line":17,"col":25,"end_line":17,"end_col":35}
+{"code":"E0420","severity":"error","message":"`Option` takes 1 type argument(s), found 2","file":"err/data_types.bmb","line":19,"col":21,"end_line":19,"end_col":38}
+{"code":"E0305","severity":"error","message":"unknown type `Pointt`","file":"err/data_types.bmb","line":21,"col":22,"end_line":21,"end_col":28,"fix":{"message":"did you mean `Point`?","replacement":"Point"}}
+{"code":"E0310","severity":"error","message":"the receiver of `norm` is named `self`","file":"err/data_types.bmb","line":25,"col":17,"end_line":25,"end_col":18,"fix":{"message":"rename `p` to `self` in the signature and the body"}}
+{"code":"E0310","severity":"error","message":"`self` names only the receiver: the first parameter of an `impl T` function, typed `T`, `&T` or `&mut T`","file":"err/data_types.bmb","line":30,"col":25,"end_line":30,"end_col":29,"fix":{"message":"choose another name"}}
+{"code":"E0308","severity":"error","message":"`Point` already has an `impl` block; one per type","file":"err/data_types.bmb","line":35,"col":10,"end_line":35,"end_col":15}
+{"code":"E0308","severity":"error","message":"`impl Missing` needs the type declared in the same unit `shapes`","file":"err/data_types.bmb","line":42,"col":10,"end_line":42,"end_col":17}
+{"code":"E0310","severity":"error","message":"`self` names only the receiver: the first parameter of an `impl T` function, typed `T`, `&T` or `&mut T`","file":"err/data_types.bmb","line":50,"col":13,"end_line":50,"end_col":17,"fix":{"message":"choose another name"}}
+{"code":"E0309","severity":"error","message":"`Ok` is a built-in name (ADR-0026)","file":"err/data_types.bmb","line":55,"col":8,"end_line":55,"end_col":10}

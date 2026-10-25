@@ -1,7 +1,6 @@
 {"code":"E0703","severity":"error","message":"items must be declared inside a `mod`","file":"err/items.bmb","line":1,"col":1,"end_line":1,"end_col":3,"fix":{"message":"wrap the item in `#[summary(\"..\")] mod name { .. }`"}}
 {"code":"E0704","severity":"error","message":"unit `no_summary` has no summary","file":"err/items.bmb","line":3,"col":5,"end_line":3,"end_col":15,"fix":{"message":"add `#[summary(\"one line\")]` above `mod`"}}
 {"code":"E0207","severity":"error","message":"`use` items are not supported in milestone 1","file":"err/items.bmb","line":10,"col":5,"end_line":10,"end_col":8,"fix":{"message":"refer to other units by full path, e.g. `unit::f(..)`"}}
-{"code":"E0207","severity":"error","message":"`struct` declarations are not supported yet (ADR-0026 is being implemented, backlog 2B-04)","file":"err/items.bmb","line":12,"col":5,"end_line":12,"end_col":28}
 {"code":"E0207","severity":"error","message":"`pub` is not used; every definition of a unit is part of its surface","file":"err/items.bmb","line":14,"col":5,"end_line":14,"end_col":8,"fix":{"message":"remove `pub`","replacement":""}}
 {"code":"E0601","severity":"error","message":"`exposed` has no `#[effects(..)]` attribute","file":"err/items.bmb","line":14,"col":9,"end_line":14,"end_col":11,"fix":{"message":"add `#[effects(pure)]` above the function","replacement":"#[effects(pure)] fn"}}
 {"code":"E0302","severity":"error","message":"`twice` is defined more than once in `items`","file":"err/items.bmb","line":20,"col":8,"end_line":20,"end_col":13}

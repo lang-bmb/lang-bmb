@@ -23,7 +23,7 @@ pub mod workspace;
 
 use std::collections::BTreeMap;
 
-use diag::Diags;
+use diag::{Diag, Diags};
 use source::SourceMap;
 
 /// Stack size for compiler work. Every recursive pass is bounded by the
@@ -431,6 +431,27 @@ fn emit_llvm_frontend(
             verify: VerifyOutput {
                 ok: false,
                 output: fe.diags.to_jsonl(&fe.sm),
+                scripts: BTreeMap::new(),
+                cache: (0, 0),
+                incr: incremental::Stats::default(),
+            },
+            ir: None,
+            checks: 0,
+            has_main: false,
+        };
+    }
+    // Data types are checked but not lowered before backlog 2B-06.
+    if let Some(sp) = verify::program_data_type_use(&fe.program, &fe.tables) {
+        let mut diags = fe.diags.clone();
+        diags.push(Diag::new(
+            "E0814",
+            sp,
+            "data types are not compiled yet (backlog 2B-06)",
+        ));
+        return LlvmOutput {
+            verify: VerifyOutput {
+                ok: false,
+                output: diags.to_jsonl(&fe.sm),
                 scripts: BTreeMap::new(),
                 cache: (0, 0),
                 incr: incremental::Stats::default(),

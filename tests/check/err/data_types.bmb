@@ -1,0 +1,58 @@
+#[summary("data type declarations and names (ADR-0026, backlog 2B-04)")]
+mod shapes {
+    struct Point { x: i64, y: i64 }
+
+    struct Empty {}
+
+    enum Nothing {}
+
+    struct Holder { p: &Point }
+
+    struct Twice { a: i64, a: bool }
+
+    struct Loop { next: Option<Loop> }
+
+    struct Some { v: i64 }
+
+    struct Generic { g: Point<i64> }
+
+    struct Bad { o: Option<i64, bool> }
+
+    struct Lost { q: Pointt }
+
+    impl Point {
+        #[effects(pure)]
+        fn norm(p: &Point) -> i64 {
+            0
+        }
+
+        #[effects(pure)]
+        fn swap(a: i64, self: &Point) -> i64 {
+            a
+        }
+    }
+
+    impl Point {
+        #[effects(pure)]
+        fn again(self: &Point) -> i64 {
+            1
+        }
+    }
+
+    impl Missing {
+        #[effects(pure)]
+        fn f(self: &Missing) -> i64 {
+            2
+        }
+    }
+
+    #[effects(pure)]
+    fn free(self: i64) -> i64 {
+        self
+    }
+
+    #[effects(pure)]
+    fn Ok(x: i64) -> i64 {
+        x
+    }
+}

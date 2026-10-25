@@ -158,6 +158,10 @@ impl<'a> Printer<'a> {
     /// `struct T { f: U, .. }` / `enum T { A, B(U), .. }` on one line; fields and
     /// variants keep their declaration order (ADR-0026 §6).
     pub(crate) fn type_def(&mut self, t: &TypeDef, depth: usize) {
+        self.type_def_as(t, depth, &t.name.name);
+    }
+
+    fn type_def_as(&mut self, t: &TypeDef, depth: usize, name: &str) {
         for a in &t.attrs {
             self.attr_line(a, depth);
         }
@@ -183,12 +187,9 @@ impl<'a> Printer<'a> {
             ),
         };
         if items.is_empty() {
-            self.line(depth, &format!("{kw} {} {{}}", t.name.name));
+            self.line(depth, &format!("{kw} {name} {{}}"));
         } else {
-            self.line(
-                depth,
-                &format!("{kw} {} {{ {} }}", t.name.name, items.join(", ")),
-            );
+            self.line(depth, &format!("{kw} {name} {{ {} }}", items.join(", ")));
         }
     }
 
@@ -561,6 +562,15 @@ fn collect<'p>(m: &'p Mod, prefix: &str, out: &mut Vec<(String, String, &'p FnDe
     for f in &m.fns {
         out.push((format!("{mp}::{}", f.name.name), mp.clone(), f));
     }
+    for i in &m.impls {
+        for f in &i.fns {
+            out.push((
+                format!("{mp}::{}::{}", i.ty.name, f.name.name),
+                mp.clone(),
+                f,
+            ));
+        }
+    }
 }
 
 /// Qualified normal form of one definition, as hashed.
@@ -584,12 +594,73 @@ pub fn hashes(p: &Program, fns: &BTreeMap<String, FnSig>) -> Vec<DefHash> {
         collect(m, "", &mut defs);
     }
     defs.sort_by(|a, b| a.0.cmp(&b.0));
-    defs.into_iter()
+    let mut out: Vec<DefHash> = defs
+        .into_iter()
         .map(|(path, unit, f)| {
             let (body, iface) = def_hash(f, &unit, fns);
             DefHash { path, body, iface }
         })
-        .collect()
+        .collect();
+    // A type declaration is its own surface: body hash = interface hash, its
+    // name written `_` (ADR-0026 §6, as for definitions, ADR-0019 §2).
+    fn types(m: &Mod, prefix: &str, out: &mut Vec<DefHash>) {
+        let mp = format!("{prefix}{}", m.name.name);
+        for s in &m.mods {
+            types(s, &format!("{mp}::"), out);
+        }
+        let local: BTreeSet<&str> = m.types.iter().map(|t| t.name.name.as_str()).collect();
+        // Unit-local type names written in full (the qualified normal form).
+        fn qualify(t: &Type, mp: &str, local: &BTreeSet<&str>) -> Type {
+            let q = |x: &Type| Box::new(qualify(x, mp, local));
+            let kind = match &t.kind {
+                TypeKind::Named { path, args }
+                    if path.len() == 1 && local.contains(path[0].as_str()) =>
+                {
+                    TypeKind::Named {
+                        path: vec![mp.to_string(), path[0].clone()],
+                        args: args.iter().map(|a| qualify(a, mp, local)).collect(),
+                    }
+                }
+                TypeKind::Named { path, args } => TypeKind::Named {
+                    path: path.clone(),
+                    args: args.iter().map(|a| qualify(a, mp, local)).collect(),
+                },
+                TypeKind::Array(e, n) => TypeKind::Array(q(e), *n),
+                TypeKind::Slice(e) => TypeKind::Slice(q(e)),
+                TypeKind::Ref { mutable, inner } => TypeKind::Ref {
+                    mutable: *mutable,
+                    inner: q(inner),
+                },
+                k => k.clone(),
+            };
+            Type { kind, span: t.span }
+        }
+        for t in &m.types {
+            let mut q = t.clone();
+            match &mut q.kind {
+                TypeDefKind::Struct(fs) => fs
+                    .iter_mut()
+                    .for_each(|f| f.ty = qualify(&f.ty, &mp, &local)),
+                TypeDefKind::Enum(vs) => vs
+                    .iter_mut()
+                    .flat_map(|v| v.payload.iter_mut())
+                    .for_each(|ty| *ty = qualify(ty, &mp, &local)),
+            }
+            let mut pr = plain();
+            pr.type_def_as(&q, 0, "_");
+            let h = crate::sha256::hex(pr.out.as_bytes());
+            out.push(DefHash {
+                path: format!("{mp}::{}", t.name.name),
+                body: h.clone(),
+                iface: h,
+            });
+        }
+    }
+    for m in &p.mods {
+        types(m, "", &mut out);
+    }
+    out.sort_by(|a, b| a.path.cmp(&b.path));
+    out
 }
 
 /// Body and interface hash of one definition in `unit` (ADR-0019 §2).

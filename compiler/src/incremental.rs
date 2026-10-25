@@ -353,6 +353,15 @@ fn collect<'p>(m: &'p Mod, prefix: &str, out: &mut Vec<(String, String, &'p FnDe
     for f in &m.fns {
         out.push((format!("{mp}::{}", f.name.name), mp.clone(), f));
     }
+    for i in &m.impls {
+        for f in &i.fns {
+            out.push((
+                format!("{mp}::{}::{}", i.ty.name, f.name.name),
+                mp.clone(),
+                f,
+            ));
+        }
+    }
 }
 
 fn section(out: &mut String, tag: &str, text: &str) {

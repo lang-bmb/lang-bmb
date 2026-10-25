@@ -231,12 +231,8 @@ mod geo {
     assert_eq!(once.values().cloned().collect::<String>(), NORMAL);
     let twice = bmb::format_parsed(&one("x.bmb", NORMAL)).unwrap();
     assert_eq!(twice.values().cloned().collect::<String>(), NORMAL);
-    // The checker still rejects the surface until 2B-04, with E0207.
-    let err = bmb::format_sources(&one("x.bmb", SRC)).unwrap_err();
-    assert!(
-        err.lines().all(|l| l.contains("\"code\":\"E0207\"")),
-        "{err}"
-    );
+    // The checker rejects this sample (unknown `Shape`, values not checked yet).
+    assert!(bmb::format_sources(&one("x.bmb", SRC)).is_err());
     // A wildcard arm is a syntax error with a fix (ADR-0026: one arm per variant).
     let wild = "#[summary(\"w\")]\nmod w {\n    #[effects(pure)]\n    fn f(o: Option<i64>) -> i64 { match o { Some(v) => v, _ => 0 } }\n}\n";
     let err = bmb::format_parsed(&one("w.bmb", wild)).unwrap_err();

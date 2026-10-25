@@ -25,9 +25,29 @@ pub struct FnSig {
     pub builtin: bool,
 }
 
+/// A declared data type (ADR-0026), its field and payload types resolved
+/// (`TypeKind::Named` paths are full paths).
+#[derive(Debug, Clone)]
+pub enum AdtKind {
+    Struct(Vec<(String, TypeKind)>),
+    Enum(Vec<(String, Vec<TypeKind>)>),
+}
+
+#[derive(Debug, Clone)]
+pub struct Adt {
+    pub path: String,
+    pub kind: AdtKind,
+    pub span: Span,
+}
+
+/// Names the language defines (ADR-0026): user definitions cannot take them.
+const BUILTIN_NAMES: &[&str] = &["Option", "Result", "Some", "None", "Ok", "Err"];
+
 pub struct Checker<'a> {
     diags: &'a mut Diags,
     pub fns: BTreeMap<String, FnSig>,
+    /// Declared structs and enums by full path (backlog 2B-04).
+    pub adts: BTreeMap<String, Adt>,
     /// Exec-to-exec and spec-to-spec call edges, by path.
     calls: BTreeMap<String, BTreeSet<String>>,
     /// Type of every checked expression, keyed by its span `(file, lo, hi)`.
@@ -129,6 +149,7 @@ impl<'a> Checker<'a> {
         Checker {
             diags,
             fns,
+            adts: BTreeMap::new(),
             calls: BTreeMap::new(),
             types: BTreeMap::new(),
             recursive: BTreeMap::new(),
@@ -160,6 +181,16 @@ impl<'a> Checker<'a> {
                     format!("unit `{}` is defined more than once", m.name.name),
                 );
             }
+        }
+        // Types first: signatures and fields may name any unit's types.
+        for m in &p.mods {
+            self.collect_types(m, "");
+        }
+        for m in &p.mods {
+            self.resolve_types(m, "");
+        }
+        self.check_type_cycles();
+        for m in &p.mods {
             self.collect_mod(m, "");
         }
         // Pass 2: check bodies.
@@ -170,9 +201,286 @@ impl<'a> Checker<'a> {
         self.check_main(p);
     }
 
+    /// Registers the unit's struct and enum names (their fields come next).
+    fn collect_types(&mut self, m: &Mod, prefix: &str) {
+        let mp = format!("{prefix}{}", m.name.name);
+        for sub in &m.mods {
+            self.collect_types(sub, &format!("{mp}::"));
+        }
+        for t in &m.types {
+            let path = format!("{mp}::{}", t.name.name);
+            if self.adts.contains_key(&path) {
+                continue; // reported as a duplicate name by `collect_mod`
+            }
+            let kind = match t.kind {
+                TypeDefKind::Struct(_) => AdtKind::Struct(Vec::new()),
+                TypeDefKind::Enum(_) => AdtKind::Enum(Vec::new()),
+            };
+            self.adts.insert(
+                path.clone(),
+                Adt {
+                    path,
+                    kind,
+                    span: t.name.span,
+                },
+            );
+        }
+    }
+
+    /// Resolves field and payload types and checks what a field may hold.
+    fn resolve_types(&mut self, m: &Mod, prefix: &str) {
+        let mp = format!("{prefix}{}", m.name.name);
+        for sub in &m.mods {
+            self.resolve_types(sub, &format!("{mp}::"));
+        }
+        let mut done = BTreeSet::new();
+        for t in &m.types {
+            let path = format!("{mp}::{}", t.name.name);
+            if !done.insert(path.clone()) {
+                continue;
+            }
+            let kind = match &t.kind {
+                TypeDefKind::Struct(fields) => {
+                    if fields.is_empty() {
+                        self.err("E0420", t.name.span, "a struct needs at least one field");
+                    }
+                    let mut seen = BTreeSet::new();
+                    let mut out = Vec::new();
+                    for f in fields {
+                        if !seen.insert(f.name.name.clone()) {
+                            self.err(
+                                "E0302",
+                                f.name.span,
+                                format!(
+                                    "field `{}` is defined more than once in `{path}`",
+                                    f.name.name
+                                ),
+                            );
+                        }
+                        let ty = self.field_type(&f.ty, &mp);
+                        out.push((f.name.name.clone(), ty));
+                    }
+                    AdtKind::Struct(out)
+                }
+                TypeDefKind::Enum(variants) => {
+                    if variants.is_empty() {
+                        self.err("E0420", t.name.span, "an enum needs at least one variant");
+                    }
+                    let mut seen = BTreeSet::new();
+                    let mut out = Vec::new();
+                    for v in variants {
+                        if !seen.insert(v.name.name.clone()) {
+                            self.err(
+                                "E0302",
+                                v.name.span,
+                                format!(
+                                    "variant `{}` is defined more than once in `{path}`",
+                                    v.name.name
+                                ),
+                            );
+                        }
+                        let tys = v
+                            .payload
+                            .iter()
+                            .map(|ty| self.field_type(ty, &mp))
+                            .collect();
+                        out.push((v.name.name.clone(), tys));
+                    }
+                    AdtKind::Enum(out)
+                }
+            };
+            if let Some(a) = self.adts.get_mut(&path) {
+                a.kind = kind;
+            }
+        }
+    }
+
+    /// A field or payload type: a value type without references (ADR-0015).
+    fn field_type(&mut self, t: &Type, mp: &str) -> TypeKind {
+        match &t.kind {
+            TypeKind::Ref { .. } | TypeKind::Slice(_) => {
+                self.diags.push(
+                    Diag::new(
+                        "E0403",
+                        t.span,
+                        "a field cannot hold a reference or a slice",
+                    )
+                    .fix(
+                        "references are second-class: pass them as arguments only (ADR-0015)",
+                        None,
+                    ),
+                );
+                TypeKind::Error
+            }
+            TypeKind::Array(e, _) if !is_scalar(&e.kind) && e.kind != TypeKind::Error => {
+                self.err("E0402", t.span, "array elements must be scalars");
+                TypeKind::Error
+            }
+            TypeKind::Unit => {
+                self.err("E0402", t.span, "a field cannot have type `()`");
+                TypeKind::Error
+            }
+            _ => self.canon(t, mp, true),
+        }
+    }
+
+    /// A type that contains itself by value has no finite size (heap types
+    /// come with backlog 2G).
+    fn check_type_cycles(&mut self) {
+        fn contained(t: &TypeKind, out: &mut Vec<String>) {
+            match t {
+                TypeKind::Named { path, args } => {
+                    if !(path.len() == 1 && matches!(path[0].as_str(), "Option" | "Result")) {
+                        out.push(path.join("::"));
+                    }
+                    for a in args {
+                        contained(&a.kind, out);
+                    }
+                }
+                TypeKind::Array(e, _) => contained(&e.kind, out),
+                _ => {}
+            }
+        }
+        let mut edges: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        for (p, a) in &self.adts {
+            let mut out = Vec::new();
+            match &a.kind {
+                AdtKind::Struct(fs) => fs.iter().for_each(|(_, t)| contained(t, &mut out)),
+                AdtKind::Enum(vs) => vs
+                    .iter()
+                    .flat_map(|(_, ts)| ts)
+                    .for_each(|t| contained(t, &mut out)),
+            }
+            edges.insert(p.clone(), out);
+        }
+        for (p, a) in &self.adts.clone() {
+            // Depth-first search from `p` for a path back to `p`.
+            let mut stack: Vec<String> = edges[p].clone();
+            let mut seen = BTreeSet::new();
+            while let Some(q) = stack.pop() {
+                if q == *p {
+                    self.err(
+                        "E0421",
+                        a.span,
+                        format!(
+                            "`{p}` contains itself; recursive types need the heap (backlog 2G)"
+                        ),
+                    );
+                    break;
+                }
+                if seen.insert(q.clone())
+                    && let Some(next) = edges.get(&q)
+                {
+                    stack.extend(next.iter().cloned());
+                }
+            }
+        }
+    }
+
+    /// The type with every named type resolved to its full path (ADR-0026).
+    /// `report`: emit the diagnostics (once, where the type is checked).
+    fn canon(&mut self, t: &Type, mp: &str, report: bool) -> TypeKind {
+        let sub = |c: &mut Self, x: &Type| Type {
+            kind: c.canon(x, mp, report),
+            span: x.span,
+        };
+        match &t.kind {
+            TypeKind::Named { path, args } => {
+                let name = path.join("::");
+                if path.len() == 1 && (name == "Option" || name == "Result") {
+                    let want = if name == "Option" { 1 } else { 2 };
+                    if args.len() != want {
+                        if report {
+                            self.err(
+                                "E0420",
+                                t.span,
+                                format!(
+                                    "`{name}` takes {want} type argument(s), found {}",
+                                    args.len()
+                                ),
+                            );
+                        }
+                        return TypeKind::Error;
+                    }
+                    let args = args.iter().map(|a| sub(self, a)).collect();
+                    return TypeKind::Named {
+                        path: path.clone(),
+                        args,
+                    };
+                }
+                if !args.is_empty() {
+                    if report {
+                        self.err(
+                            "E0420",
+                            t.span,
+                            format!(
+                                "`{name}` takes no type arguments (generics are not supported)"
+                            ),
+                        );
+                    }
+                    return TypeKind::Error;
+                }
+                let full = if path.len() == 1 {
+                    format!("{mp}::{name}")
+                } else {
+                    name.clone()
+                };
+                if self.adts.contains_key(&full) {
+                    TypeKind::Named {
+                        path: full.split("::").map(String::from).collect(),
+                        args: Vec::new(),
+                    }
+                } else {
+                    if report {
+                        let mut d = Diag::new("E0305", t.span, format!("unknown type `{name}`"));
+                        let local: Vec<String> = self
+                            .adts
+                            .keys()
+                            .filter_map(|k| k.strip_prefix(&format!("{mp}::")).map(String::from))
+                            .filter(|k| !k.contains("::"))
+                            .collect();
+                        if let Some(near) = closest(&name, local.iter()) {
+                            d = d.fix(format!("did you mean `{near}`?"), Some(near));
+                        } else if path.len() == 1 {
+                            d = d.fix(
+                                "types of other units are named by full path, e.g. `unit::Point`",
+                                None,
+                            );
+                        }
+                        self.diags.push(d);
+                    }
+                    TypeKind::Error
+                }
+            }
+            TypeKind::Array(e, n) => TypeKind::Array(Box::new(sub(self, e)), *n),
+            TypeKind::Slice(e) => TypeKind::Slice(Box::new(sub(self, e))),
+            TypeKind::Ref { mutable, inner } => TypeKind::Ref {
+                mutable: *mutable,
+                inner: Box::new(sub(self, inner)),
+            },
+            other => other.clone(),
+        }
+    }
+
     fn collect_mod(&mut self, m: &Mod, prefix: &str) {
         let mp = format!("{prefix}{}", m.name.name);
         let mut names = BTreeSet::new();
+        for t in &m.types {
+            if BUILTIN_NAMES.contains(&t.name.name.as_str()) {
+                self.err(
+                    "E0309",
+                    t.name.span,
+                    format!("`{}` is a built-in name (ADR-0026)", t.name.name),
+                );
+            }
+            if !names.insert(t.name.name.clone()) {
+                self.err(
+                    "E0302",
+                    t.name.span,
+                    format!("`{}` is defined more than once in `{mp}`", t.name.name),
+                );
+            }
+        }
         for sub in &m.mods {
             if !names.insert(sub.name.name.clone()) {
                 self.err(
@@ -184,6 +492,13 @@ impl<'a> Checker<'a> {
             self.collect_mod(sub, &format!("{mp}::"));
         }
         for f in &m.fns {
+            if BUILTIN_NAMES.contains(&f.name.name.as_str()) {
+                self.err(
+                    "E0309",
+                    f.name.span,
+                    format!("`{}` is a built-in name (ADR-0026)", f.name.name),
+                );
+            }
             if !names.insert(f.name.name.clone()) {
                 self.err(
                     "E0302",
@@ -193,6 +508,103 @@ impl<'a> Checker<'a> {
                 continue;
             }
             let path = format!("{mp}::{}", f.name.name);
+            self.collect_fn(f, path, &mp);
+        }
+        let mut with_impl = BTreeSet::new();
+        for i in &m.impls {
+            let ty = format!("{mp}::{}", i.ty.name);
+            if !m.types.iter().any(|t| t.name.name == i.ty.name) {
+                self.err(
+                    "E0308",
+                    i.ty.span,
+                    format!(
+                        "`impl {}` needs the type declared in the same unit `{mp}`",
+                        i.ty.name
+                    ),
+                );
+                continue;
+            }
+            if !with_impl.insert(ty.clone()) {
+                self.err(
+                    "E0308",
+                    i.ty.span,
+                    format!("`{}` already has an `impl` block; one per type", i.ty.name),
+                );
+                continue;
+            }
+            let mut fnames = BTreeSet::new();
+            for f in &i.fns {
+                if !fnames.insert(f.name.name.clone()) {
+                    self.err(
+                        "E0302",
+                        f.name.span,
+                        format!(
+                            "`{}` is defined more than once in `impl {}`",
+                            f.name.name, i.ty.name
+                        ),
+                    );
+                    continue;
+                }
+                self.receiver_rule(f, Some(&ty), &mp);
+                self.collect_fn(f, format!("{ty}::{}", f.name.name), &mp);
+            }
+        }
+        for f in &m.fns {
+            self.receiver_rule(f, None, &mp);
+        }
+    }
+
+    /// `self` names the receiver: the first parameter of an `impl T` function
+    /// whose type is `T`, `&T` or `&mut T`; that parameter is named `self`
+    /// (ADR-0026 §3).
+    fn receiver_rule(&mut self, f: &FnDef, impl_ty: Option<&str>, mp: &str) {
+        for (k, p) in f.params.iter().enumerate() {
+            let ty = self.canon(&p.ty, mp, false);
+            let own = |t: &TypeKind| match t {
+                TypeKind::Named { path, .. } => Some(path.join("::")) == impl_ty.map(String::from),
+                _ => false,
+            };
+            let receiver_type = match &ty {
+                TypeKind::Ref { inner, .. } => own(&inner.kind),
+                t => own(t),
+            };
+            let is_self = p.name.name == "self";
+            if k == 0 && receiver_type && !is_self {
+                self.diags.push(
+                    Diag::new(
+                        "E0310",
+                        p.name.span,
+                        format!("the receiver of `{}` is named `self`", f.name.name),
+                    )
+                    .fix(
+                        format!(
+                            "rename `{}` to `self` in the signature and the body",
+                            p.name.name
+                        ),
+                        None,
+                    ),
+                );
+            } else if is_self && (k != 0 || !receiver_type) && ty != TypeKind::Error {
+                self.diags.push(
+                    Diag::new(
+                        "E0310",
+                        p.name.span,
+                        "`self` names only the receiver: the first parameter of an `impl T` function, typed `T`, `&T` or `&mut T`",
+                    )
+                    .fix("choose another name", None),
+                );
+            }
+        }
+    }
+
+    fn collect_fn(&mut self, f: &FnDef, path: String, mp: &str) {
+        let params = f
+            .params
+            .iter()
+            .map(|p| self.canon(&p.ty, mp, false))
+            .collect();
+        let ret = self.canon(&f.ret.ty, mp, false);
+        {
             let effect = self.fn_effect(f);
             let vacuous = f.kind == FnKind::Spec
                 && f.body.stmts.is_empty()
@@ -208,8 +620,8 @@ impl<'a> Checker<'a> {
                 FnSig {
                     path,
                     kind: f.kind,
-                    params: f.params.iter().map(|p| p.ty.kind.clone()).collect(),
-                    ret: f.ret.ty.kind.clone(),
+                    params,
+                    ret,
                     effect,
                     vacuous,
                     builtin: false,
@@ -342,21 +754,27 @@ impl<'a> Checker<'a> {
             self.check_mod(sub, &format!("{mp}::"));
         }
         for f in &m.fns {
-            self.check_fn(f, &mp);
-        }
-        for t in &m.types {
-            let what = match t.kind {
-                TypeDefKind::Struct(_) => "`struct` declarations",
-                TypeDefKind::Enum(_) => "`enum` declarations",
-            };
-            self.not_checked_yet(t.span, what);
+            self.check_fn(f, &mp, &format!("{mp}::{}", f.name.name));
         }
         for i in &m.impls {
-            self.not_checked_yet(i.span, "`impl` blocks");
+            for f in &i.fns {
+                self.check_fn(f, &mp, &format!("{mp}::{}::{}", i.ty.name, f.name.name));
+            }
         }
     }
 
     fn resolve(&self, path: &[Ident], mod_path: &str) -> Option<String> {
+        // `T::f(..)` on a type of this unit (ADR-0026 §3).
+        if path.len() == 2
+            && self
+                .adts
+                .contains_key(&format!("{mod_path}::{}", path[0].name))
+        {
+            let full = format!("{mod_path}::{}::{}", path[0].name, path[1].name);
+            if self.fns.contains_key(&full) {
+                return Some(full);
+            }
+        }
         if path.len() == 1 {
             let local = format!("{mod_path}::{}", path[0].name);
             if self.fns.contains_key(&local) {
@@ -377,8 +795,8 @@ impl<'a> Checker<'a> {
 
     // ---------- functions ----------
 
-    fn check_fn(&mut self, f: &FnDef, mod_path: &str) {
-        let path = format!("{mod_path}::{}", f.name.name);
+    fn check_fn(&mut self, f: &FnDef, mod_path: &str, path: &str) {
+        let path = path.to_string();
         let Some(sig) = self.fns.get(&path).cloned() else {
             return;
         };
@@ -431,9 +849,11 @@ impl<'a> Checker<'a> {
 
         for p in &f.params {
             self.check_param_type(&p.ty, f.kind);
-            self.declare(&mut cx, &p.name, p.ty.kind.clone(), false, true);
+            let ty = self.canon(&p.ty, mod_path, true);
+            self.declare(&mut cx, &p.name, ty, false, true);
         }
         self.check_value_type(&f.ret.ty, "return type");
+        let ret_ty = self.canon(&f.ret.ty, mod_path, true);
         if matches!(f.ret.ty.kind, TypeKind::Array(..)) {
             // Code generation returns scalars only; arrays come back through
             // a `&mut [T]` parameter.
@@ -459,7 +879,7 @@ impl<'a> Checker<'a> {
         if !f.ensures.is_empty() {
             cx.scopes.push(BTreeMap::new());
             if let Some(n) = &f.ret.name {
-                self.declare(&mut cx, n, f.ret.ty.kind.clone(), false, false);
+                self.declare(&mut cx, n, ret_ty.clone(), false, false);
             }
             for e in &f.ensures {
                 self.check_contract(&mut cx, e, true);
@@ -485,10 +905,10 @@ impl<'a> Checker<'a> {
         } else {
             Mode::Exec
         };
-        let t = self.block(&mut cx, &f.body, Some(&f.ret.ty.kind), mode);
+        let t = self.block(&mut cx, &f.body, Some(&ret_ty), mode);
         self.expect_ty(
             &t,
-            &f.ret.ty.kind,
+            &ret_ty,
             f.body.tail.as_ref().map_or(f.body.span, |e| e.span),
         );
     }
@@ -496,7 +916,15 @@ impl<'a> Checker<'a> {
     fn check_param_type(&mut self, t: &Type, kind: FnKind) {
         match &t.kind {
             TypeKind::Ref { mutable, inner } => match &inner.kind {
-                TypeKind::Slice(e) if is_scalar(&e.kind) => {
+                // `&[T]`, `&Point`, `&[Point]` (ADR-0026 §2).
+                TypeKind::Slice(e)
+                    if is_scalar(&e.kind) || matches!(e.kind, TypeKind::Named { .. }) =>
+                {
+                    if *mutable && kind == FnKind::Spec {
+                        self.err("E0402", t.span, "spec function parameters cannot be `&mut`");
+                    }
+                }
+                TypeKind::Named { .. } => {
                     if *mutable && kind == FnKind::Spec {
                         self.err("E0402", t.span, "spec function parameters cannot be `&mut`");
                     }
@@ -504,7 +932,7 @@ impl<'a> Checker<'a> {
                 _ => self.err(
                     "E0402",
                     t.span,
-                    "milestone 1 references are `&[T]` or `&mut [T]` with a scalar `T`",
+                    "references are `&[T]`, `&mut [T]`, `&T` or `&mut T` with `T` a scalar, struct or enum",
                 ),
             },
             _ => self.check_value_type(t, "parameter type"),
@@ -532,7 +960,6 @@ impl<'a> Checker<'a> {
                     "array elements must be scalars in milestone 1",
                 );
             }
-            TypeKind::Named { .. } => self.not_checked_yet(t.span, "data types"),
             _ => {}
         }
     }
@@ -689,9 +1116,10 @@ impl<'a> Checker<'a> {
                         "`let mut` is not allowed in a specification",
                     );
                 }
-                let t = self.expr(cx, init, Some(&ty.kind), mode);
-                self.expect_ty(&t, &ty.kind, init.span);
-                self.declare(cx, name, ty.kind.clone(), *mutable, false);
+                let lty = self.canon(ty, &cx.mod_path.clone(), true);
+                let t = self.expr(cx, init, Some(&lty), mode);
+                self.expect_ty(&t, &lty, init.span);
+                self.declare(cx, name, lty, *mutable, false);
             }
             Stmt::Assign {
                 target,
