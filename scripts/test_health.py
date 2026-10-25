@@ -12,7 +12,7 @@ GOOD = {
     "S2_external_processes": ["clang", "z3"], "S3_runtime_libs_outside_libc": [],
     "S4_stage0_rust_lines": 100, "S5_tests_bound_to_rust_api": 30, "S6_selfhost_bmb_lines": 0,
     "P1_runnable_programs": 6, "P2_bmb_lines": 3000, "P3_errors_with_help": 0.5,
-    "O1_adr_index_mismatch": 0, "O2_soundness_fuzzers": 6,
+    "B1_baseline_binary_bytes": 100000, "O1_adr_index_mismatch": 0, "O2_soundness_fuzzers": 6,
 }
 
 
@@ -39,6 +39,9 @@ def main():
     assert bad({"P3_errors_with_help": 0.4})[0]
     assert bad({"S5_tests_bound_to_rust_api": 31})[0]
     assert bad({"S5_tests_bound_to_rust_api": 29}) == ([], ["S5_tests_bound_to_rust_api: 30 -> 29"])
+    # binary size: 5% budget
+    assert bad({"B1_baseline_binary_bytes": 105001})[0]
+    assert bad({"B1_baseline_binary_bytes": 105000}) == ([], [])
     # report-only metrics never fail
     assert bad({"S4_stage0_rust_lines": 10**6}) == ([], [])
     print("health rules: ok")

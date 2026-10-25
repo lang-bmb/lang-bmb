@@ -148,6 +148,19 @@ def practicality():
     return {"P1_runnable_programs": len(runnable), "P2_bmb_lines": bmb_lines}
 
 
+def binary_size():
+    """Stripped size of the baseline benchmark programs (ADR-0041: binary size lowest)."""
+    total = 0
+    with tempfile.TemporaryDirectory() as t:
+        for src in sorted((ROOT / "bench" / "baseline").glob("*.bmb")):
+            exe = os.path.join(t, src.stem)
+            if run([str(BMB), "build", str(src.relative_to(ROOT)), "-o", exe]).returncode != 0:
+                return {"B1_baseline_binary_bytes": -1}
+            run(["strip", exe])
+            total += os.path.getsize(exe)
+    return {"B1_baseline_binary_bytes": total}
+
+
 def process():
     text = (ROOT / "dev-docs" / "BACKLOG.md").read_text()
     rows = [l for l in text.splitlines() if re.match(r"^\| ~?(?:\d|INF)[A-Z]?-\d{2}[a-z]? ", l)]
@@ -179,6 +192,7 @@ RULES = {
     "P1_runnable_programs": ("no_worse_up", None),
     "P2_bmb_lines": ("no_worse_up", None),
     "P3_errors_with_help": ("no_worse_up", None),
+    "B1_baseline_binary_bytes": ("budget", 0.05),
     "O1_adr_index_mismatch": ("fixed", 0),
     "O2_soundness_fuzzers": ("no_worse_up", None),
 }
@@ -186,7 +200,7 @@ RULES = {
 
 def compute():
     m = {}
-    for f in (diag_coverage, proof_metrics, helpful_errors, self_containment, practicality, process):
+    for f in (diag_coverage, proof_metrics, helpful_errors, self_containment, practicality, binary_size, process):
         m.update(f())
     return m
 

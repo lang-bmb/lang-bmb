@@ -17,6 +17,7 @@
     "P1_runnable_programs": 6,
     "P2_bmb_lines": 3578,
     "P3_errors_with_help": 0.4641,
+    "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 6
   },
@@ -91,6 +92,16 @@
         "O2_soundness_fuzzers": [
           null,
           6
+        ]
+      }
+    },
+    {
+      "date": "2026-10-25",
+      "reason": "ADR-0041: B1 바이너리 크기 지표 추가",
+      "changed": {
+        "B1_baseline_binary_bytes": [
+          null,
+          101408
         ]
       }
     }
