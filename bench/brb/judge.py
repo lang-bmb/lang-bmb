@@ -34,6 +34,7 @@ hangs is restarted after the case it stopped at (`run_cases`).
 Standard library only.
 """
 import copy
+import errno
 import importlib.util
 import json
 import os
@@ -41,6 +42,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -127,6 +129,21 @@ def write_case_file(task, cs, path):
             f.write(encode(task, args) + "\n")
 
 
+def spawn_retrying(argv, timeout):
+    """subprocess.run, retried while the executable is "busy" (ETXTBSY). The
+    judge executable was just written; with sessions judged in parallel
+    threads, another thread's child can still hold the write descriptor for
+    the instant between its fork and exec, and exec of a file open for writing
+    fails. The window is tiny, so a short retry closes it."""
+    for attempt in range(100):
+        try:
+            return subprocess.run(argv, capture_output=True, timeout=timeout)
+        except OSError as e:
+            if e.errno != errno.ETXTBSY or attempt == 99:
+                raise
+            time.sleep(0.02)
+
+
 def run_cases(argv_for, n, timeout=PROCESS_TIMEOUT):
     """Runs a driver over cases 0..n, restarting after a case that kills or
     hangs the process. Returns {k: ("ok", tokens) | ("panic"|"crash"|"timeout"|"not run",)}."""
@@ -136,7 +153,7 @@ def run_cases(argv_for, n, timeout=PROCESS_TIMEOUT):
     while start < n:
         timed = False
         try:
-            p = subprocess.run(argv_for(start), capture_output=True, timeout=timeout)
+            p = spawn_retrying(argv_for(start), timeout)
             out = p.stdout
         except subprocess.TimeoutExpired as e:
             out, timed = e.stdout or b"", True
