@@ -92,14 +92,52 @@ pub fn lex(file: u32, text: &str, diags: &mut Diags) -> Vec<Token> {
                 while i < b.len() && (b[i].is_ascii_alphanumeric() || b[i] == b'_') {
                     i += 1;
                 }
-                diags.push(
+                let suffix = &text[slo..i];
+                let digits = &text[lo..digits_end];
+                // `0x10`, `0o17`, `0b101`: only decimal literals exist; the fix
+                // writes the same value in decimal (a mechanical fix must
+                // never change a value).
+                let radix = match (digits, suffix.as_bytes().first()) {
+                    ("0", Some(b'x')) => Some(16),
+                    ("0", Some(b'o')) => Some(8),
+                    ("0", Some(b'b')) => Some(2),
+                    _ => None,
+                };
+                let based = radix.and_then(|r| {
+                    let body: String = suffix[1..].chars().filter(|c| *c != '_').collect();
+                    (!body.is_empty())
+                        .then(|| u128::from_str_radix(&body, r).ok())
+                        .flatten()
+                });
+                const TYPES: [&str; 12] = [
+                    "i8", "i16", "i32", "i64", "i128", "isize", "u8", "u16", "u32", "u64", "u128",
+                    "usize",
+                ];
+                let d = if let Some(value) = based {
+                    v = value;
+                    overflow = false;
                     Diag::new(
                         "E0104",
                         sp(lo, i),
-                        format!("literal suffix `{}` is not allowed", &text[slo..i]),
+                        format!("only decimal literals are allowed: `{digits}{suffix}` is {value}"),
                     )
-                    .fix("remove the suffix", Some(text[lo..digits_end].to_string())),
-                );
+                    .fix("write the value in decimal", Some(value.to_string()))
+                } else if TYPES.contains(&suffix) {
+                    Diag::new(
+                        "E0104",
+                        sp(lo, i),
+                        format!("literal suffix `{suffix}` is not allowed"),
+                    )
+                    .fix("remove the suffix", Some(digits.to_string()))
+                } else {
+                    Diag::new(
+                        "E0104",
+                        sp(lo, i),
+                        format!("literal suffix `{suffix}` is not allowed"),
+                    )
+                    .fix("integer literals are plain decimal digits", None)
+                };
+                diags.push(d);
             }
             if overflow {
                 diags.push(Diag::new(

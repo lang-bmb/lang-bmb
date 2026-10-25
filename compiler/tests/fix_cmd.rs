@@ -167,3 +167,21 @@ fn cli_reports_by_default_and_writes_only_with_write() {
     assert_eq!(failed.status.code(), Some(1));
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn literal_fixes_keep_the_value() {
+    // `0x10` once lost its `x10` and became `0` (2R-02 finding).
+    let text = "#[summary(\"t\")]\nmod m {\n    #[effects(pure)]\n    fn f() -> i64 { 0x10 + 0o17 + 0b101 + 5i64 }\n}\n";
+    let out = bmb::fix_sources(&one(text));
+    assert!(out.ok, "{}", out.diagnostics);
+    assert!(
+        out.files[0].1.contains("{ 16 + 15 + 5 + 5 }"),
+        "{}",
+        out.files[0].1
+    );
+    // An unknown suffix gets no mechanical fix.
+    let odd = text.replace("5i64", "7abc");
+    let out = bmb::fix_sources(&one(&odd));
+    assert!(!out.ok);
+    assert!(out.files[0].1.contains("7abc"));
+}
