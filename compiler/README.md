@@ -107,13 +107,13 @@ ADR-0016의 부분집합을 구체화한 것이다. 모두 "선택을 필수로"
 `--cache DIR`(MCP는 `.bmb-cache/`)은 증명 캐시(`DIR/proofs`) 옆에 정의별 결과(`DIR/defs`)를 둔다(백로그 2D-10, ADR-0032, `src/incremental.rs`). 키가 그대로인 정의는 기호 실행 인코딩도 IR 생성도 하지 않는다. 출력(진단, 상태 줄, IR, 맵)은 캐시 유무·콜드·웜과 무관하게 같은 바이트다(`tests/incremental.rs`).
 
 - 증명 키: 컴파일러 정체성(`build.rs`가 `src/**`·`toolchain.env`로 만든 SHA-256), Z3 버전, 질의 머리(옵션·`rlimit`·전주곡), 정의의 원문과 한정 정규형, 부르는 실행 함수의 계약 해시, 펼치거나 같은 재귀 성분인 `spec fn`의 본문 해시, 재귀 성분 구성원, 그리고 정의의 텍스트에서 피호출자 계약과 `spec fn` 텍스트를 따라 닿는 `spec fn`마다 그 SMT 선언(2D-14, ADR-0033). `impact` 질의의 간선(`calls`·`uses`·`names`)을 모두 포함하고, 선언은 그보다 넓게(피호출자 계약이 부르는 `spec fn`까지) 잡는다.
-- IR 키: 정의의 원문·한정 정규형, 부르는 실행 함수의 계약 해시, 그 정의 안에서 쓸 수 있는 증명된 의무(1B-31: 실패가 있는 호출 성분은 검사를 유지하므로 그 성분의 IR은 다시 만든다).
+- IR 키: 정의의 원문·한정 정규형, 부르는 실행 함수의 호출자 해시, 그 정의 안에서 쓸 수 있는 증명된 의무(1B-31: 실패가 있는 호출 성분은 검사를 유지하므로 그 성분의 IR은 다시 만든다).
 - 완전히 증명된 정의만 증명 결과를 저장한다. 실패는 늘 다시 돈다. 재사용된 정의의 의무는 증명 캐시 적중으로 센다.
 - 파일 줄마다 SHA-256이 붙고, 맞지 않는 줄·다른 형식 버전·다른 컴파일러의 파일은 무시하고 다시 만든다.
 - `bmb verify --emit-smt`는 모든 스크립트가 필요하므로 재사용을 끈다(증명 캐시는 쓴다).
 - `spec fn`을 더하거나 빼도, 그것에 닿지 않는 정의는 다시 인코딩하지 않는다(`tests/incremental.rs`의 `adding_an_unrelated_spec_fn_reencodes_nothing`: 스크립트도 바이트 단위로 같다). 시그니처 변경은 그 선언에 닿는 정의만 다시 인코딩한다.
 - 한계: 정의 안의 공백·주석 변경도 그 정의를 다시 인코딩한다(증명은 증명 캐시가 받는다).
-- 한계: 계약 해시가 속성을 담으므로(ADR-0019) 피호출자의 `#[uses]`만 바뀌어도 호출자를 다시 인코딩한다. 호출자의 질의는 바뀌지 않는다(`verify_stats_name_the_reencoded_definitions`, 백로그 2D-22).
+- 부르는 실행 함수는 호출자 해시로 키에 들어간다: 계약 해시에서 `#[uses]`를 뺀 것(`fmt::caller_text`, ADR-0043). `#[uses]`는 그 함수 자신의 질의에서만 본문을 펼치므로, 피호출자의 `#[uses]`만 바뀌면 그 함수만 다시 인코딩한다(`verify_stats_name_the_reencoded_definitions`, 감사 모드는 `edits_that_shift_spans_or_change_context_keep_outputs_exact`). `bmb hash`·맵의 `iface`는 그대로다.
 - `--stats FILE`(`verify`·`emit-llvm`·`build`)은 캐시가 한 일을 JSON 한 줄로 쓴다: `{"encoded":[..],"reused":[..],"lowered":[..],"ir_reused":[..],"proof_cache_hits","proof_cache_misses"}`(정의 경로는 정렬, `verify`는 IR 목록이 빈다). 표준 출력은 그대로다. BCB(2A-14)가 커밋당 재증명 집합을 잰다.
 
 ## MCP 서버의 전단 캐시

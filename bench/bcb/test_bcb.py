@@ -93,7 +93,7 @@ def check_profile(t, profile):
             ops = {e["op"] for e in commits[k - 1]["edits"]}
             if ops == {"body"}:
                 # Signature and contract stay; the interface hash changes only with `#[uses]`
-                # (ADR-0019 puts attributes in it; backlog 2D-22).
+                # (ADR-0019 puts attributes in it; the incremental keys leave it out, ADR-0043).
                 for d in now:
                     assert heads[d][0] == before_heads[d][0], f"commit {k}: a body edit changed {d}'s header"
                     if heads[d][1] == before_heads[d][1]:

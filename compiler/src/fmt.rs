@@ -468,6 +468,16 @@ pub fn def_hash(f: &FnDef, unit: &str, fns: &BTreeMap<String, FnSig>) -> (String
     (body, iface)
 }
 
+/// What a caller's query reads of an executable function (backlog 2D-22):
+/// its qualified surface without `#[uses]`. A definition's `#[uses]` only
+/// reveals spec fn bodies in its own queries (`verify::uses_of`), so the
+/// incremental keys of its callers leave it out.
+pub fn caller_text(f: &FnDef, unit: &str, fns: &BTreeMap<String, FnSig>) -> String {
+    let mut g = f.clone();
+    g.attrs.retain(|a| a.name.name != "uses");
+    qualified_text(&g, unit, fns, false)
+}
+
 fn plain() -> Printer<'static> {
     Printer {
         qualify: None,

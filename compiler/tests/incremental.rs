@@ -324,6 +324,10 @@ fn edits_that_shift_spans_or_change_context_keep_outputs_exact() {
         ),
         // Recursion measure changes.
         base.replacen("        decreases n,\n", "        decreases n + 1,\n", 1),
+        // A callee's `#[uses]` loses an entry it does not need, then the ones
+        // its proof needs: its callers keep their keys (backlog 2D-22).
+        base.replacen("#[uses(small, pos, pos2)]", "#[uses(small, pos)]", 1),
+        base.replacen("#[uses(small, pos, pos2)]", "#[uses(pos2)]", 1),
         base.clone(),
     ];
     cached(&files(&base), &dir);
@@ -566,9 +570,9 @@ fn verify_stats_name_the_reencoded_definitions() {
     run(true);
     assert_eq!(field("encoded"), vec!["m3::f0".to_string()]);
 
-    // `#[uses]` is part of the interface hash (ADR-0019), so dropping an
-    // entry the function does not need re-encodes its callers too, although
-    // their queries do not change (backlog 2D-22).
+    // `#[uses]` reveals bodies only in the function's own queries, so
+    // dropping an entry it does not need re-encodes it alone, not its
+    // callers (backlog 2D-22; before, `#[uses]` was in the callers' keys).
     let f0 = "    #[effects(pure)]\n    #[uses(small, pos, pos2)]\n    fn f0(x: i64) -> (r: i64)\n        requires small(x),\n        ensures pos(r),\n    {\n        x + 4\n";
     assert!(body.contains(f0));
     fs::write(
@@ -577,10 +581,7 @@ fn verify_stats_name_the_reencoded_definitions() {
     )
     .unwrap();
     run(true);
-    assert_eq!(
-        field("encoded"),
-        vec!["m4::f0".to_string(), "m4::f1".to_string()]
-    );
+    assert_eq!(field("encoded"), vec!["m4::f0".to_string()]);
 
     // `emit-llvm` (and `build`) take it too: the first run lowers, the next reuses.
     let emit = || {

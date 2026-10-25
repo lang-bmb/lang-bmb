@@ -24,7 +24,9 @@
 //!   with the body (ADR-0019 §2: names resolved to full paths, so a new
 //!   definition that changes what a short name means changes the key);
 //! - each definition `D`'s qualified text names: an executable callee through
-//!   its contract and signature (iface hash), a `spec fn` revealed by
+//!   its contract, signature and effects (`fmt::caller_text`: the iface
+//!   without `#[uses]`, which reveals bodies only in the callee's own
+//!   queries, backlog 2D-22), a `spec fn` revealed by
 //!   `#[uses]` or in `D`'s recursive component through its whole text (body
 //!   hash), any other `spec fn` only through its declaration (above);
 //! - `D`'s recursive component (`decreases` obligations at calls inside it);
@@ -446,13 +448,22 @@ impl Session {
             .iter()
             .map(|(p, u, f)| (p.as_str(), (u.as_str(), *f)))
             .collect();
+        // (body hash, caller hash): what another definition's keys take of
+        // a spec fn (its whole text) and of an executable function.
         let hash_memo: RefCell<BTreeMap<&str, (String, String)>> = RefCell::default();
         let hash_of = |r: &str| -> (String, String) {
             let (unit, f) = by_path[r];
             hash_memo
                 .borrow_mut()
                 .entry(by_path.get_key_value(r).unwrap().0)
-                .or_insert_with(|| crate::fmt::def_hash(f, unit, &t.fns))
+                .or_insert_with(|| {
+                    let body = crate::sha256::hex(
+                        crate::fmt::qualified_text(f, unit, &t.fns, true).as_bytes(),
+                    );
+                    let caller =
+                        crate::sha256::hex(crate::fmt::caller_text(f, unit, &t.fns).as_bytes());
+                    (body, caller)
+                })
                 .clone()
         };
         let kinds: BTreeMap<&str, FnKind> =
@@ -468,7 +479,8 @@ impl Session {
                 .collect()
         };
         // What another definition's query can read of each definition: a
-        // spec fn's whole text, an executable function's contract only.
+        // spec fn's whole text, an executable function's surface without
+        // `#[uses]` (`fmt::caller_text`).
         let reads_memo: RefCell<BTreeMap<String, BTreeSet<String>>> = RefCell::default();
         let reads = |r: &str| -> BTreeSet<String> {
             let Some(&(unit, f)) = by_path.get(r) else {
@@ -478,8 +490,11 @@ impl Session {
                 .borrow_mut()
                 .entry(r.to_string())
                 .or_insert_with(|| {
-                    let with_body = f.kind == FnKind::Spec;
-                    names(&crate::fmt::qualified_text(f, unit, &t.fns, with_body))
+                    names(&if f.kind == FnKind::Spec {
+                        crate::fmt::qualified_text(f, unit, &t.fns, true)
+                    } else {
+                        crate::fmt::caller_text(f, unit, &t.fns)
+                    })
                 })
                 .clone()
         };
@@ -525,10 +540,10 @@ impl Session {
             let mut ik = String::from("ir\n");
             ik.push_str(&own);
             for r in refs {
-                let (body, iface) = &hash_of(r);
+                let (body, caller) = &hash_of(r);
                 match kinds[r] {
                     FnKind::Exec => {
-                        let line = format!("{r} {iface}");
+                        let line = format!("{r} {caller}");
                         section(&mut pk, "callee", &line);
                         section(&mut ik, "callee", &line);
                     }
