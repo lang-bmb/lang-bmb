@@ -234,14 +234,17 @@ impl<'p, 'q> Enc<'p, 'q> {
     }
 
     /// A fresh array of elements of type `e`. Every element is within its
-    /// type's range, also where only a specification reads it (backlog 1B-30;
-    /// `i64` elements 1B-37: a spec fn over an element unfolds only when its
-    /// argument is known to be in range, ADR-0017 §4).
-    fn fresh_elems(&mut self, base: &str, e: &TypeKind) -> String {
+    /// type's range, also where only a specification reads it (backlog 1B-30).
+    /// `i64` elements get the fact only when `signed` is set: for parameters
+    /// and declared locals, where a spec fn over an element unfolds only when
+    /// its argument is known to be in range (1B-37, ADR-0017 §4). After a call
+    /// or loop havoc the callee's contract or the invariant states the range
+    /// it needs; the extra quantifier there cost proofs their rlimit (1B-37).
+    fn fresh_elems(&mut self, base: &str, e: &TypeKind, signed: bool) -> String {
         let elems = self.fresh(base, &format!("(Array Int {})", sort_of(e)));
-        if let (TypeKind::I64 | TypeKind::U64 | TypeKind::Usize, Some(r)) =
-            (e, range(e, &format!("(select {elems} k)")))
-        {
+        let wanted =
+            matches!(e, TypeKind::U64 | TypeKind::Usize) || (signed && matches!(e, TypeKind::I64));
+        if wanted && let Some(r) = range(e, &format!("(select {elems} k)")) {
             self.pc.push(format!(
                 "(forall ((k Int)) (! {r} :pattern ((select {elems} k))))"
             ));
@@ -252,7 +255,7 @@ impl<'p, 'q> Enc<'p, 'q> {
     fn fresh_val(&mut self, base: &str, t: &TypeKind) -> Val {
         if is_array(t) {
             let e = elem_ty(t);
-            let elems = self.fresh_elems(base, &e);
+            let elems = self.fresh_elems(base, &e, true);
             let len = match t {
                 TypeKind::Array(_, n) => n.to_string(),
                 _ => {
@@ -918,7 +921,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                     let ty = self.local_ty(v);
                     let e = elem_ty(&ty);
                     Val::A {
-                        elems: self.fresh_elems(v, &e),
+                        elems: self.fresh_elems(v, &e, false),
                         len,
                     }
                 }
@@ -1024,7 +1027,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                 && let Val::A { len, .. } = &argv[i]
             {
                 let e = elem_ty(&p.ty.kind);
-                let elems = self.fresh_elems(&root, &e);
+                let elems = self.fresh_elems(&root, &e, false);
                 let nv = Val::A {
                     elems,
                     len: len.clone(),
