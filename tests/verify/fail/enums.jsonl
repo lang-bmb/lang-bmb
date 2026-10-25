@@ -9,5 +9,5 @@
 {"def":"geo::loop_forgets","status":"failed","obligations":7,"failed":1,"rlimit":3735,"rlimit_max":1147}
 {"def":"geo::overflow","status":"failed","obligations":1,"failed":1,"rlimit":607,"rlimit_max":607}
 {"def":"geo::payload_sign","status":"failed","obligations":1,"failed":1,"rlimit":3481,"rlimit_max":3481}
-{"def":"geo::struct_payload","status":"failed","obligations":3,"failed":1,"rlimit":3321,"rlimit_max":2053}
+{"def":"geo::struct_payload","status":"failed","obligations":3,"failed":1,"rlimit":4007,"rlimit_max":2739}
 {"def":"geo::touch","status":"verified","obligations":0,"failed":0,"rlimit":0,"rlimit_max":0}

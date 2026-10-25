@@ -2741,6 +2741,12 @@ pub const SIGNED_DIV_LEMMAS: &[&str] = &[
     "(=> (> (bmb_abs {b}) 1) (<= (* 2 (bmb_abs {q})) (bmb_abs {a})))",
     "(=> (not (= {b} 0)) (< (bmb_abs {r}) (bmb_abs {b})))",
     "(=> (not (= {b} 0)) (or (= {r} 0) (= (>= {r} 0) (>= {a} 0))))",
+    // The quotient's sign (backlog 1B-42): without it, `a / (x / g) >= 0`
+    // for positive operands took the solver past its limit.
+    "(=> (not (= {b} 0)) (or (= {q} 0) (= (> {q} 0) (= (> {a} 0) (> {b} 0)))))",
+    // Nonnegative operands divide as SMT `div` and `mod` do, which `u64`
+    // specifications use (1B-42: `a % b` against `gcd(b, a % b)`).
+    "(=> (and (>= {a} 0) (> {b} 0)) (and (= {q} (div {a} {b})) (= {r} (mod {a} {b}))))",
 ];
 
 /// The same for unsigned operands, where `/` and `%` are SMT `div` and `mod`.
