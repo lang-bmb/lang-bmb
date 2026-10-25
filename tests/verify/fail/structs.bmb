@@ -77,4 +77,29 @@ mod geo {
     {
         if c { p } else { q }
     }
+
+    struct Box2 { w: [i64; 2], tag: bool }
+
+    spec fn same_box(p: Box2, q: Box2) -> bool { p == q }
+
+    spec fn diag(a: i64) -> Point { Point { x: a, y: a } }
+
+    spec fn on_diag(p: Point) -> bool { p == diag(p.x) }
+
+    // One element differs.
+    #[effects(pure)]
+    #[uses(same_box)]
+    fn element_differs(p: Box2) -> (r: Box2)
+        ensures same_box(p, r),
+    {
+        Box2 { w: [p.w[0], 0], tag: p.tag }
+    }
+
+    #[effects(pure)]
+    #[uses(on_diag, diag)]
+    fn off_diag(a: i64) -> (r: Point)
+        ensures on_diag(r),
+    {
+        Point { x: a, y: 0 }
+    }
 }

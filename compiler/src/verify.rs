@@ -247,6 +247,15 @@ fn has_array(t: &TypeKind, tb: &Tables) -> bool {
     })
 }
 
+/// Whether a struct holds an enum whose payload holds an array (SMT
+/// equality of that enum would compare elements past the length).
+fn enum_with_array(t: &TypeKind, tb: &Tables) -> bool {
+    match struct_fields(t, tb) {
+        Some(fs) => fs.iter().any(|(_, ft)| enum_with_array(ft, tb)),
+        None => enum_variants(t, tb).is_some() && has_array(t, tb),
+    }
+}
+
 /// Every enum instance a program uses, as (constructor prefix, sort,
 /// `declare-datatypes`), dependencies first (types are not recursive,
 /// E0421).
@@ -307,6 +316,28 @@ fn datatypes(tb: &Tables) -> Vec<(String, String, String)> {
         visit(t, tb, &mut seen, &mut out);
     }
     out
+}
+
+/// The SMT functions of spec fn `path`: one, or one per leaf of a struct
+/// result (`|geo::mid.x|`), with their result sorts.
+fn spec_funs(path: &str, tb: &Tables) -> Vec<(String, String)> {
+    let ret = &tb.fns[path].ret;
+    if struct_fields(ret, tb).is_none() {
+        return vec![(sym(path), sort_of(ret))];
+    }
+    let mut ls = Vec::new();
+    leaves(ret, tb, path, &mut ls);
+    ls.iter().map(|(n, l)| (sym(n), l.sort())).collect()
+}
+
+/// What marks spec fn `path` in a query text: its symbol, or the prefix of
+/// its leaf symbols.
+fn spec_key(path: &str, tb: &Tables) -> String {
+    if struct_fields(&tb.fns[path].ret, tb).is_some() {
+        format!("|{path}.")
+    } else {
+        sym(path)
+    }
 }
 
 fn field_index(t: &TypeKind, tb: &Tables, name: &str) -> usize {
@@ -420,6 +451,11 @@ fn eq_val(a: &Val, b: &Val) -> Option<String> {
             parts.map(|p| and(&p))
         }
         (Val::Unit, Val::Unit) => Some("true".into()),
+        // Arrays are equal on their elements below the length (a struct
+        // field's array has a fixed one).
+        (Val::A { elems: e1, len: l1 }, Val::A { elems: e2, len: l2 }) => Some(format!(
+            "(and (= {l1} {l2}) (forall ((|eq!k| Int)) (! (=> (and (<= 0 |eq!k|) (< |eq!k| {l1})) (= (select {e1} |eq!k|) (select {e2} |eq!k|))) :pattern ((select {e1} |eq!k|)) :pattern ((select {e2} |eq!k|)))))"
+        )),
         _ => None,
     }
 }
@@ -767,13 +803,18 @@ impl<'p, 'q> Enc<'p, 'q> {
             {
                 let a = self.spec(l, env, old);
                 let b = self.spec(r, env, old);
-                match eq_val(&a, &b) {
+                let q = if enum_with_array(&self.ty(l), self.prog.t) {
+                    None
+                } else {
+                    eq_val(&a, &b)
+                };
+                match q {
                     Some(q) if *op == BinOp::Eq => Val::S(q),
                     Some(q) => Val::S(format!("(not {q})")),
                     None => {
                         self.unsupported.push((
                             e.span,
-                            "`==` on a struct with an array field is not supported yet".into(),
+                            "`==` on a struct holding an enum with an array payload is not supported yet".into(),
                         ));
                         Val::S("true".into())
                     }
@@ -858,11 +899,18 @@ impl<'p, 'q> Enc<'p, 'q> {
                     argv.push(v);
                 }
                 self.check_spec_recursion(&target, &argv, e.span);
-                Val::S(if flat.is_empty() {
-                    sym(&target)
-                } else {
-                    format!("({} {})", sym(&target), flat.join(" "))
-                })
+                let apps: Vec<String> = spec_funs(&target, self.prog.t)
+                    .into_iter()
+                    .map(|(f, _)| {
+                        if flat.is_empty() {
+                            f
+                        } else {
+                            format!("({f} {})", flat.join(" "))
+                        }
+                    })
+                    .collect();
+                let ret = self.prog.t.fns[&target].ret.clone();
+                build(&ret, self.prog.t, &mut apps.into_iter())
             }
             ExprKind::Old(x) => {
                 let ExprKind::Var(id) = &x.kind else {
@@ -2208,12 +2256,10 @@ fn data_type_use(
             return Some(p.ty.span);
         }
     }
-    if let Some(sig) = t.fns.get(path) {
-        // A spec fn has one SMT result: a struct cannot be it (yet).
-        let spec_struct = f.kind == FnKind::Spec && struct_fields(&sig.ret, t).is_some();
-        if gate.rejects(&sig.ret, t) || (gate == Gate::Prover && spec_struct) {
-            return Some(f.ret.ty.span);
-        }
+    if let Some(sig) = t.fns.get(path)
+        && gate.rejects(&sig.ret, t)
+    {
+        return Some(f.ret.ty.span);
     }
     let clauses = f
         .requires
@@ -2273,14 +2319,14 @@ impl<'p> Prog<'p> {
             .iter()
             .filter(|(_, d)| d.f.kind == FnKind::Spec)
             .map(|(path, _)| {
-                let s = sym(path);
                 let sig = &self.t.fns[path];
-                let decl = format!(
-                    "(declare-fun {s} ({}) {})",
-                    param_sorts(&sig.params, self.t).join(" "),
-                    sort_of(&sig.ret)
-                );
-                (path.clone(), s, decl)
+                let params = param_sorts(&sig.params, self.t).join(" ");
+                let decl = spec_funs(path, self.t)
+                    .iter()
+                    .map(|(f, sort)| format!("(declare-fun {f} ({params}) {sort})"))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                (path.clone(), spec_key(path, self.t), decl)
             })
             .collect()
     }
@@ -2312,28 +2358,35 @@ impl<'p> Prog<'p> {
                 build(t, self.t, &mut names.into_iter()),
             );
         }
-        let body = enc.spec_block(&d.f.body, &env, &BTreeMap::new()).s();
-        let app = if app_args.is_empty() {
-            sym(path)
-        } else {
-            format!("({} {})", sym(path), app_args.join(" "))
-        };
+        let value = enc.spec_block(&d.f.body, &env, &BTreeMap::new());
+        let mut bodies = Vec::new();
+        flatten(&value, &mut bodies);
         let guard = and(&facts);
-        let ax = if binders.is_empty() {
-            format!("(assert (= {app} {body}))")
-        } else {
-            format!(
-                "(assert (forall ({}) (! (=> {guard} (= {app} {body})) :pattern ({app}))))",
-                binders.join(" "),
-            )
-        };
+        // One definition per SMT function: a struct result has one per leaf.
+        let mut ax = Vec::new();
+        for ((f, _), body) in spec_funs(path, self.t).iter().zip(&bodies) {
+            let app = if app_args.is_empty() {
+                f.clone()
+            } else {
+                format!("({f} {})", app_args.join(" "))
+            };
+            ax.push(if binders.is_empty() {
+                format!("(assert (= {app} {body}))")
+            } else {
+                format!(
+                    "(assert (forall ({}) (! (=> {guard} (= {app} {body})) :pattern ({app}))))",
+                    binders.join(" "),
+                )
+            });
+        }
+        // Ground instances (ADR-0023) cover single-result spec fns.
         let parts = AxiomParts {
-            sym: sym(path),
+            sym: spec_key(path, self.t),
             params: app_args,
             guard,
-            body,
+            body: bodies.first().cloned().unwrap_or_default(),
         };
-        (ax, enc.unsupported, parts)
+        (ax.join("\n"), enc.unsupported, parts)
     }
 }
 
@@ -2548,7 +2601,7 @@ pub fn preconditions_satisfiable(p: &Program, t: &Tables) -> Vec<(String, Span, 
         let mut axiom_parts: Vec<AxiomParts> = Vec::new();
         for u in uses_of(d.f, &d.mod_path, &t.fns) {
             let (ax, unsup, parts) = prog.axiom(&u);
-            axioms.push((sym(&u), ax));
+            axioms.push((spec_key(&u, t), ax));
             axiom_parts.push(parts);
             enc.unsupported.extend(unsup);
         }
@@ -2740,7 +2793,7 @@ fn verify_impl(
             FnKind::Exec => {
                 for u in uses_of(d.f, &d.mod_path, &t.fns) {
                     let (ax, unsup, parts) = prog.axiom(&u);
-                    axioms.push((sym(&u), ax));
+                    axioms.push((spec_key(&u, t), ax));
                     axiom_parts.push(parts);
                     enc.unsupported.extend(unsup);
                 }
@@ -3350,5 +3403,29 @@ fn show(v: &Val, t: &TypeKind, tb: &Tables, it: &mut impl Iterator<Item = String
             format!("[{}{more}] (len {len})", elems.join(", "))
         }
         Val::Unit => String::new(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Ground instances (ADR-0023) take datatype terms as arguments: the
+    /// applications are found and substituted whole (backlog 2B-05d).
+    #[test]
+    fn ground_instances_take_datatype_arguments() {
+        let ax = AxiomParts {
+            sym: "|m::is_some|".into(),
+            params: vec!["|o!p|".into()],
+            guard: "true".into(),
+            body: "((_ is |Option<i64>::Some|) |o!p|)".into(),
+        };
+        let text = "(assert (not (|m::is_some| (|Option<i64>::Some| (- 5)))))";
+        let (inst, complete) = ground_instances(&[ax], text, 3);
+        assert!(complete, "{inst}");
+        assert_eq!(
+            inst,
+            "(assert (=> true (= (|m::is_some| (|Option<i64>::Some| (- 5))) ((_ is |Option<i64>::Some|) (|Option<i64>::Some| (- 5))))))\n"
+        );
     }
 }

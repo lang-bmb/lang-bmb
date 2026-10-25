@@ -16,6 +16,14 @@ mod geo {
 
     spec fn ends(s: Seg, p: Point, q: Point) -> bool { s.a == p && s.b == q }
 
+    // A struct result is one SMT function per field (backlog 2B-05d).
+    spec fn diag(a: i64) -> Point { Point { x: a, y: a } }
+
+    spec fn on_diag(p: Point) -> bool { p == diag(p.x) }
+
+    // `==` on an array field compares the elements below its length.
+    spec fn same_seg(s: Seg, t: Seg) -> bool { s == t }
+
     impl Point {
         #[effects(pure)]
         #[uses(small)]
@@ -86,6 +94,22 @@ mod geo {
             i = i + 1;
         }
         p
+    }
+
+    #[effects(pure)]
+    #[uses(on_diag, diag)]
+    fn square(a: i64) -> (r: Point)
+        ensures on_diag(r),
+    {
+        Point { x: a, y: a }
+    }
+
+    #[effects(pure)]
+    #[uses(same_seg)]
+    fn rebuild(s: Seg) -> (r: Seg)
+        ensures same_seg(s, r),
+    {
+        Seg { a: s.a, b: s.b, w: [s.w[0], s.w[1]] }
     }
 
     #[effects(pure)]

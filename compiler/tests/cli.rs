@@ -137,10 +137,10 @@ mod user {
 }
 
 #[test]
-fn a_spec_reaching_an_unencoded_data_type_is_not_sent_to_the_solver() {
-    // Integer signatures, but the revealed spec fn reaches one returning a
-    // struct (no single SMT result yet, backlog 2B-05d): the caller is E0814,
-    // not a solver error.
+fn a_spec_reaching_a_struct_result_proves() {
+    // Integer signatures, and the revealed spec fn reaches one returning a
+    // struct: one SMT function per field (backlog 2B-05d); before that this
+    // was E0814 (and, before 2B-05a, a solver error E0812).
     const SRC: &str = r#"#[summary("a spec reaching a struct result")]
 mod p {
     struct Point { x: i64, y: i64 }
@@ -152,7 +152,7 @@ mod p {
     spec fn also(a: i64, b: i64) -> bool { same(a, b) }
 
     #[effects(pure)]
-    #[uses(also)]
+    #[uses(also, same, mid)]
     fn id(a: i64) -> (r: i64)
         ensures also(a, r),
     {
@@ -173,10 +173,7 @@ mod p {
     );
     let verify = Command::new(bmb).arg("verify").arg(&f).output().unwrap();
     let out = String::from_utf8_lossy(&verify.stdout);
-    assert!(
-        !verify.status.success() && out.contains("\"code\":\"E0814\""),
-        "{out}"
-    );
+    assert!(verify.status.success(), "{out}");
     assert!(!out.contains("E0812"), "{out}");
     let _ = std::fs::remove_dir_all(&dir);
 }
