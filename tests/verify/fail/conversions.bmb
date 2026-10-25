@@ -1,0 +1,25 @@
+#[summary("integer conversions that may be out of range (ADR-0028, backlog 2C-02)")]
+mod conv {
+    #[effects(pure)]
+    fn negative(x: i64) -> u64 { u64::try_from(x).unwrap() }
+
+    #[effects(pure)]
+    fn too_big(n: u64) -> i64 { i64::try_from(n).unwrap() }
+
+    #[effects(pure)]
+    fn size(n: usize) -> i64 { i64::try_from(n).unwrap() }
+
+    spec fn holds(r: bool) -> bool { r }
+
+    // `.ok()` carries no obligation, but `None` is possible.
+    #[effects(pure)]
+    #[uses(holds)]
+    fn always_some(k: i64) -> (r: bool)
+        ensures holds(r),
+    {
+        match usize::try_from(k).ok() {
+            None => false,
+            Some(i) => i <= 18446744073709551615,
+        }
+    }
+}

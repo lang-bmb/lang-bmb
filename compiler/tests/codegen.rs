@@ -127,6 +127,51 @@ fn an_unproved_index_traps_exactly_from_the_length() {
 }
 
 #[test]
+fn an_unproved_conversion_traps_exactly_outside_the_range() {
+    // No precondition: the range checks of ADR-0028 §1 stay. Each pair is
+    // the last value in range and the first one outside it (backlog 2C-02).
+    let dir = std::env::temp_dir().join(format!("bmb-conv-{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    let cases = [
+        ("u64", "i64", "0", Some("0\n")),
+        ("u64", "i64", "-1", None),
+        (
+            "i64",
+            "u64",
+            "9223372036854775807",
+            Some("9223372036854775807\n"),
+        ),
+        ("i64", "u64", "9223372036854775808", None),
+    ];
+    for (k, (to, from, v, want)) in cases.into_iter().enumerate() {
+        let print = if to == "u64" {
+            "print_u64"
+        } else {
+            "print_i64"
+        };
+        let text = format!(
+            "#[summary(\"trap\")]\nmod m {{\n    #[effects(pure)]\n    fn conv(x: {from}) -> {to} {{\n        {to}::try_from(x).unwrap()\n    }}\n\n    #[effects(io)]\n    fn main() -> () {{\n        {print}(conv({v}));\n    }}\n}}\n"
+        );
+        let out = bmb::emit_llvm_sources(&src("t.bmb", &text));
+        assert!(!out.verify.ok);
+        let exe = dir.join(format!("c{k}"));
+        bmb::toolchain::build_executable(&out.ir.unwrap(), exe.to_str().unwrap()).unwrap();
+        let run = Command::new(&exe).output().unwrap();
+        match want {
+            Some(o) => {
+                assert!(run.status.success(), "{from} {v} -> {to}: {}", run.status);
+                assert_eq!(String::from_utf8_lossy(&run.stdout), o);
+            }
+            None => {
+                assert!(!run.status.success(), "{from} {v} -> {to} must trap");
+                assert!(run.stdout.is_empty());
+            }
+        }
+    }
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn proved_arithmetic_carries_no_wrap_flags() {
     let text = r#"
 #[summary("산술")]
@@ -291,7 +336,7 @@ mod m {
     let out = bmb::emit_llvm_sources(&src("l.bmb", text));
     let ir = out.ir.unwrap();
     let defines: Vec<&str> = ir.lines().filter(|l| l.starts_with("define ")).collect();
-    assert_eq!(defines.len(), 5, "{ir}");
+    assert_eq!(defines.len(), 6, "{ir}");
     for d in &defines {
         assert!(
             d.starts_with("define internal ") || d.starts_with("define i32 @main()"),

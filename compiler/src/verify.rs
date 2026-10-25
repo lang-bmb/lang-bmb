@@ -1237,6 +1237,31 @@ impl<'p, 'q> Enc<'p, 'q> {
                 }
                 Val::S(t)
             }
+            // `T::try_from(x).unwrap()` / `.ok()` (ADR-0028 §1, §5).
+            ExprKind::Method { recv, name, .. } if crate::check::conv_call(recv).is_some() => {
+                let (target, args) = crate::check::conv_call(recv).unwrap();
+                let v = self.eval(&args[0]).s();
+                let st = self.ty(&args[0]);
+                let r = range(&target, &v).expect("integer target");
+                if name.name == "unwrap" {
+                    if crate::check::conv_obligation(&st, &target) {
+                        self.oblige(
+                            "E0815",
+                            e.span,
+                            format!(
+                                "conversion to `{}` may be out of range",
+                                crate::check::ty_str(&target)
+                            ),
+                            r,
+                        );
+                    }
+                    return Val::S(v);
+                }
+                let opt = self.ty(e);
+                let some = self.variant_value(&opt, "Some", &[Val::S(v)]).s();
+                let none = self.variant_value(&opt, "None", &[]).s();
+                Val::S(ite(&r, &some, &none))
+            }
             ExprKind::Method { recv, name, args } => {
                 let rv = self.eval(recv);
                 match name.name.as_str() {
@@ -1772,7 +1797,11 @@ impl<'p, 'q> Enc<'p, 'q> {
         let Some(def) = self.prog.defs.get(&target) else {
             // The one built-in function has no contract; anything else
             // unresolved would drop a callee's effects.
-            assert_eq!(target, "print_i64", "unresolved call in {}", self.path);
+            assert!(
+                matches!(target.as_str(), "print_i64" | "print_u64"),
+                "unresolved call in {}",
+                self.path
+            );
             return Val::Unit;
         };
         let f = def.f;

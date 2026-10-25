@@ -1,0 +1,44 @@
+#[summary("integer conversions and the Rust habits around them (ADR-0028, backlog 2C-02)")]
+mod conv {
+    #[effects(pure)]
+    fn cast(x: u64) -> i64 { x as i64 }
+
+    #[effects(pure)]
+    fn cast_sum(x: usize, y: usize) -> u64 { (x + y) as u64 }
+
+    #[effects(pure)]
+    fn cast_bool(b: bool) -> i64 { b as i64 }
+
+    #[effects(pure)]
+    fn bare(x: u64) -> i64 {
+        let r: i64 = 0;
+        i64::try_from(x)
+    }
+
+    #[effects(pure)]
+    fn from(x: u64) -> i64 { i64::from(x) }
+
+    #[effects(pure)]
+    fn into(x: u64) -> i64 { x.into() }
+
+    #[effects(pure)]
+    fn try_into(x: u64) -> i64 { x.try_into() }
+
+    #[effects(pure)]
+    fn expects(x: u64) -> i64 { i64::try_from(x).expect("fits") }
+
+    #[effects(pure)]
+    fn other_method(x: u64) -> i64 { i64::try_from(x).is_ok() }
+
+    #[effects(pure)]
+    fn from_bool(b: bool) -> i64 { i64::try_from(b).unwrap() }
+
+    spec fn in_spec(x: u64) -> bool { i64::try_from(x).unwrap() > 0 }
+
+    #[effects(pure)]
+    fn fine(x: u64, k: i64) -> u64 {
+        let a: i64 = i64::try_from(x).unwrap();
+        let b: Option<usize> = usize::try_from(k).ok();
+        u64::try_from(a).unwrap()
+    }
+}

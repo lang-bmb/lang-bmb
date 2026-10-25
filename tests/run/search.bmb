@@ -131,54 +131,27 @@ mod alg {
 
 #[summary("진입점")]
 mod app {
-    spec fn printable(n: u64) -> bool { n <= 1000000 }
-
-    // M1 has no integer conversions (E0205): count up to print a size.
-    #[effects(pure)]
-    #[uses(printable)]
-    fn show(n: u64) -> i64
-        requires printable(n),
-    {
-        let mut c: i64 = 0;
-        let mut i: u64 = 0;
-        while i < n
-            invariant i <= n, c == i,
-            decreases n - i,
-        {
-            c = c + 1;
-            i = i + 1;
-        }
-        c
-    }
-
     spec fn printable_size(n: usize) -> bool { n <= 1000000 }
 
+    // A size printed as `i64`: the conversion's range follows from the
+    // precondition (ADR-0028 §1, E0815).
     #[effects(pure)]
     #[uses(printable_size)]
     fn show_size(n: usize) -> i64
         requires printable_size(n),
     {
-        let mut c: i64 = 0;
-        let mut i: usize = 0;
-        while i < n
-            invariant i <= n, c == i,
-            decreases n - i,
-        {
-            c = c + 1;
-            i = i + 1;
-        }
-        c
+        i64::try_from(n).unwrap()
     }
 
     #[effects(io)]
-    #[uses(alg::is_sorted, alg::pos, alg::nonempty, alg::all_small, alg::lower_bound, alg::is_max_index, alg::bounded_by_input, alg::digit_sum_bound, printable, printable_size)]
+    #[uses(alg::is_sorted, alg::pos, alg::nonempty, alg::all_small, alg::lower_bound, alg::is_max_index, alg::bounded_by_input, alg::digit_sum_bound, printable_size)]
     fn main() -> () {
         let mut xs: [i64; 6] = [-5, -1, 0, 3, 3, 9];
         print_i64(show_size(alg::lower_bound_of(&xs, 3)));
         print_i64(show_size(alg::lower_bound_of(&xs, 10)));
         print_i64(show_size(alg::lower_bound_of(&xs, -100)));
-        print_i64(show(alg::gcd(84, 36)));
-        print_i64(show(alg::digit_sum(98765)));
+        print_u64(alg::gcd(84, 36));
+        print_u64(alg::digit_sum(98765));
         print_i64(show_size(alg::max_index(&xs)));
         alg::increment_all(&mut xs);
         print_i64(xs[0]);

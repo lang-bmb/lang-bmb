@@ -38,6 +38,14 @@ pub const CODES: &[(&str, &str)] = &[
     ),
     ("E0210", "`mut` parameters are not allowed"),
     ("E0211", "comparison operators cannot be chained"),
+    (
+        "E0212",
+        "`T::from(x)` / `x.into()` / `x.try_into()`: convert with `T::try_from(x).unwrap()`",
+    ),
+    (
+        "E0213",
+        "`T::try_from(x).expect(..)` is written `.unwrap()`",
+    ),
     // E0220-E0233: Rust habits around data types (ADR-0026 §5)
     ("E0220", "`#[derive(..)]` is not used"),
     (
@@ -110,6 +118,10 @@ pub const CODES: &[(&str, &str)] = &[
     ),
     ("E0411", "cannot negate an unsigned value"),
     (
+        "E0412",
+        "`T::try_from(x)` takes an integer and is used as `.unwrap()` or `.ok()`",
+    ),
+    (
         "E0420",
         "malformed data type: wrong type arguments, or no field or variant",
     ),
@@ -149,6 +161,10 @@ pub const CODES: &[(&str, &str)] = &[
     ("E0505", "spec function called in executable code"),
     ("E0506", "`while` requires `decreases`"),
     ("E0507", "recursive function requires `decreases`"),
+    (
+        "E0513",
+        "conversions are not used in specifications (integer types mix there)",
+    ),
     (
         "E0508",
         "`old(..)` is only allowed in `ensures`, loop invariants and `assert` on a `&mut` parameter",
@@ -195,6 +211,7 @@ pub const CODES: &[(&str, &str)] = &[
     ),
     ("E0813", "recursive spec function may not terminate"),
     ("E0814", "construct not supported by the proof gate"),
+    ("E0815", "integer conversion may be out of range"),
     // W09xx: contract lint (`bmb lint` only; severity "warning", never from `check`/`verify`)
     (
         "W0901",

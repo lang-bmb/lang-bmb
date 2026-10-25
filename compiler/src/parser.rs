@@ -1504,6 +1504,27 @@ impl<'a> Parser<'a> {
             if self.is_p(".") {
                 self.bump();
                 let name = self.ident("field or method name")?;
+                // `.expect("..")`: the message is dropped; the checker
+                // rejects or rewrites `expect` (E0213, E0229).
+                if name.name == "expect"
+                    && self.is_p("(")
+                    && matches!(self.peek_at(1), Tok::Str(_))
+                    && matches!(self.peek_at(2), Tok::P(")"))
+                {
+                    self.bump();
+                    self.bump();
+                    let hi = self.bump().span;
+                    let span = e.span.to(hi);
+                    e = Expr {
+                        kind: ExprKind::Method {
+                            recv: Box::new(e),
+                            name,
+                            args: Vec::new(),
+                        },
+                        span,
+                    };
+                    continue;
+                }
                 if !self.is_p("(") {
                     let span = e.span.to(name.span);
                     e = Expr {
@@ -1546,16 +1567,58 @@ impl<'a> Parser<'a> {
                     ),
                 );
             } else if self.is_kw("as") {
-                let sp = self.bump().span;
+                self.bump();
                 let ty = self.parse_type();
-                self.diags.push(
-                    Diag::new("E0205", sp.to(ty.span), "`as` casts are not allowed")
-                        .fix("keep values in one integer type; checked conversions come after milestone 1", None),
-                );
-                e = Expr {
-                    kind: ExprKind::Error,
-                    span: e.span.to(ty.span),
+                let span = e.span.to(ty.span);
+                let target = match ty.kind {
+                    TypeKind::I64 => Some("i64"),
+                    TypeKind::U64 => Some("u64"),
+                    TypeKind::Usize => Some("usize"),
+                    _ => None,
                 };
+                let d = Diag::new("E0205", span, "`as` casts are not allowed");
+                match target {
+                    // An integer cast is a checked conversion (ADR-0028 §8):
+                    // the value is kept, its range is a proof obligation.
+                    Some(t) => {
+                        let x = self
+                            .text
+                            .get(e.span.lo as usize..e.span.hi as usize)
+                            .unwrap_or_default()
+                            .to_string();
+                        let r = format!("{t}::try_from({}).unwrap()", unparen(&x));
+                        self.diags
+                            .push(d.fix("convert with a range obligation (ADR-0028)", Some(r)));
+                        let ident = |name: &str| Ident {
+                            name: name.into(),
+                            span,
+                        };
+                        e = Expr {
+                            kind: ExprKind::Method {
+                                recv: Box::new(Expr {
+                                    kind: ExprKind::Call {
+                                        path: vec![ident(t), ident("try_from")],
+                                        args: vec![e],
+                                    },
+                                    span,
+                                }),
+                                name: ident("unwrap"),
+                                args: Vec::new(),
+                            },
+                            span,
+                        };
+                    }
+                    None => {
+                        self.diags.push(d.fix(
+                            "only integer types convert, with `T::try_from(x).unwrap()`",
+                            None,
+                        ));
+                        e = Expr {
+                            kind: ExprKind::Error,
+                            span,
+                        };
+                    }
+                }
             } else {
                 break;
             }
@@ -2115,4 +2178,24 @@ fn bin(op: BinOp, l: Expr, r: Expr) -> Expr {
         kind: ExprKind::Binary(op, Box::new(l), Box::new(r)),
         span,
     }
+}
+
+/// `(e)` without its outer parentheses when they enclose the whole text: the
+/// argument of a call needs none.
+fn unparen(x: &str) -> &str {
+    let Some(inner) = x.strip_prefix('(').and_then(|r| r.strip_suffix(')')) else {
+        return x;
+    };
+    let mut depth = 0i32;
+    for c in inner.chars() {
+        match c {
+            '(' => depth += 1,
+            ')' => depth -= 1,
+            _ => {}
+        }
+        if depth < 0 {
+            return x;
+        }
+    }
+    inner
 }

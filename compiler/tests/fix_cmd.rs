@@ -279,3 +279,50 @@ fn data_type_habits_are_fixed_into_a_checked_program() {
         assert!(fixed.contains(want), "{want}\n{fixed}");
     }
 }
+
+/// The conversion habits with a mechanical fix (ADR-0028 §8, backlog 2C-02):
+/// each becomes `T::try_from(x).unwrap()`, which checks; the range is the
+/// prover's (E0815), not the fix's.
+const CONV_HABITS: &str = r#"#[summary("conversion habits")]
+mod conv {
+    #[effects(pure)]
+    fn cast(x: u64, a: &[i64], k: i64) -> i64 {
+        x as i64 + a.len() as i64 + a[k as usize] + (k + 1) as i64
+    }
+
+    #[effects(pure)]
+    fn from(x: u64) -> i64 { i64::from(x) }
+
+    #[effects(pure)]
+    fn expects(x: u64) -> i64 { i64::try_from(x).expect("fits") }
+
+    #[effects(pure)]
+    fn bare(x: u64) -> i64 { i64::try_from(x) }
+
+    #[effects(pure)]
+    fn flag(b: bool) -> i64 { b as i64 }
+}
+"#;
+
+#[test]
+fn conversion_habits_are_fixed_into_a_checked_program() {
+    let input = one(CONV_HABITS);
+    assert!(!bmb::check_sources(&input).ok);
+    let out = bmb::fix_sources(&input);
+    assert!(out.ok, "{}", out.diagnostics);
+    assert!(bmb::check_sources(&out.files).ok);
+    let mut codes: Vec<&str> = out.applied.iter().map(|a| a.code).collect();
+    codes.sort();
+    codes.dedup();
+    assert_eq!(codes, ["E0205", "E0212", "E0213", "E0412"]);
+    let fixed = &out.files[0].1;
+    for want in [
+        "i64::try_from(x).unwrap() + i64::try_from(a.len()).unwrap() + a[usize::try_from(k).unwrap()] + i64::try_from(k + 1).unwrap()",
+        "fn from(x: u64) -> i64 { i64::try_from(x).unwrap() }",
+        "fn expects(x: u64) -> i64 { i64::try_from(x).unwrap() }",
+        "fn bare(x: u64) -> i64 { i64::try_from(x).unwrap() }",
+        "fn flag(b: bool) -> i64 { if b { 1 } else { 0 } }",
+    ] {
+        assert!(fixed.contains(want), "{want}\n{fixed}");
+    }
+}

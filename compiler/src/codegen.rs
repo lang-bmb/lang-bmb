@@ -344,7 +344,7 @@ impl<'p> Gen<'p> {
     /// function.
     fn is_variant(&self, path: &[Ident]) -> bool {
         let target = self.resolve(path);
-        target != "print_i64" && !self.t.fns.contains_key(&target)
+        !self.t.fns.contains_key(&target)
     }
 
     // ---------- data values in memory ----------
@@ -745,6 +745,42 @@ impl<'p> Gen<'p> {
                 let (ptr, ty) = self.elem_ptr(e, base, index);
                 CVal::Imm(self.load_elem(ty, &ptr))
             }
+            // A conversion keeps the 64-bit value: the range check is the
+            // sign bit (`i64` -> `u64`/`usize` and back), dropped when proved.
+            ExprKind::Method { recv, name, .. } if crate::check::conv_call(recv).is_some() => {
+                let (target, args) = crate::check::conv_call(recv).unwrap();
+                let st = self.ty(&args[0]);
+                let v = self.expr(&args[0]).imm();
+                let needs = crate::check::conv_obligation(&st, &target);
+                if name.name == "unwrap" {
+                    if needs && !self.proved("E0815", e) {
+                        let c = self.t();
+                        self.emit(format!("{c} = icmp sge i64 {v}, 0"));
+                        self.check(&c, "conversion may be out of range");
+                    }
+                    return CVal::Imm(v);
+                }
+                let t = self.ty(e);
+                let ok = if needs {
+                    let c = self.t();
+                    self.emit(format!("{c} = icmp sge i64 {v}, 0"));
+                    c
+                } else {
+                    "true".to_string()
+                };
+                let tmp = self.temp(&t);
+                let tag = self.field_ptr(&tmp, &t, 0);
+                let k = self.t();
+                self.emit(format!("{k} = zext i1 {ok} to i64"));
+                self.emit(format!("store i64 {k}, ptr {tag}"));
+                let p = self.t();
+                self.emit(format!(
+                    "{p} = getelementptr inbounds {}, ptr {tmp}, i32 0, i32 1",
+                    view_ty(&t, "Some")
+                ));
+                self.emit(format!("store i64 {v}, ptr {p}"));
+                CVal::Ptr { ptr: tmp, ty: t }
+            }
             ExprKind::Method { recv, name, args } => {
                 let rv = self.expr(recv);
                 match name.name.as_str() {
@@ -1016,8 +1052,8 @@ impl<'p> Gen<'p> {
                 CVal::Unit => {}
             }
         }
-        let (callee, ret) = if target == "print_i64" {
-            ("@bmb_print_i64".to_string(), TypeKind::Unit)
+        let (callee, ret) = if target == "print_i64" || target == "print_u64" {
+            (format!("@bmb_{target}"), TypeKind::Unit)
         } else {
             (fn_sym(&target), self.t.fns[&target].ret.clone())
         };
@@ -1218,7 +1254,9 @@ pub fn emit_with(
         }
     }
     ir.push_str(
-        "define internal void @bmb_print_i64(i64 %x) {\n  call i32 (ptr, ...) @printf(ptr @bmb.fmt, i64 %x)\n  ret void\n}\n",
+        "define internal void @bmb_print_i64(i64 %x) {\n  call i32 (ptr, ...) @printf(ptr @bmb.fmt, i64 %x)\n  ret void\n}\n\
+         @bmb.fmtu = private unnamed_addr constant [6 x i8] c\"%llu\\0A\\00\"\n\
+         define internal void @bmb_print_u64(i64 %x) {\n  call i32 (ptr, ...) @printf(ptr @bmb.fmtu, i64 %x)\n  ret void\n}\n",
     );
     let mut checks = 0;
     let mut main = None;

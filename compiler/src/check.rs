@@ -154,6 +154,19 @@ impl<'a> Checker<'a> {
                 in_impl: false,
             },
         );
+        fns.insert(
+            "print_u64".to_string(),
+            FnSig {
+                path: "print_u64".into(),
+                kind: FnKind::Exec,
+                params: vec![TypeKind::U64],
+                ret: TypeKind::Unit,
+                effect: Effect::Io,
+                vacuous: false,
+                builtin: true,
+                in_impl: false,
+            },
+        );
         Checker {
             diags,
             fns,
@@ -2376,8 +2389,44 @@ impl<'a> Checker<'a> {
                     }
                 }
             }
+            ExprKind::Method { recv, name, args } if conv_call(recv).is_some() => {
+                self.conversion(cx, recv, name, args, e.span, mode)
+            }
             ExprKind::Method { recv, name, args } => {
                 self.method(cx, recv, name, args, e.span, mode)
+            }
+            // A conversion without `.unwrap()` / `.ok()` (ADR-0028 §1), and
+            // `T::from(x)` (E0212).
+            ExprKind::Call { path, args }
+                if conv_call(e).is_some() || from_call(path).is_some() =>
+            {
+                for a in args {
+                    self.expr(cx, a, None, mode);
+                }
+                let x = args.first().map(crate::fmt::expr_text).unwrap_or_default();
+                if let Some(t) = from_call(path) {
+                    let r = format!("{}::try_from({x}).unwrap()", ty_str(&t));
+                    self.diags
+                        .push(Diag::new("E0212", e.span, format!("write `{r}`")).fix(
+                            "an integer conversion has a range obligation (ADR-0028)",
+                            Some(r),
+                        ));
+                    return t;
+                }
+                let (t, _) = conv_call(e).unwrap();
+                let r = format!("{}::try_from({x}).unwrap()", ty_str(&t));
+                self.diags.push(
+                    Diag::new(
+                        "E0412",
+                        e.span,
+                        "`T::try_from(x)` is used as `.unwrap()` or `.ok()`",
+                    )
+                    .fix(
+                        "`.unwrap()`: the value, with a range obligation; `.ok()`: an `Option`",
+                        Some(r),
+                    ),
+                );
+                TypeKind::Error
             }
             // Rust habit: `Option::Some(x)`, `Result::Err(e)`, `Option::None`.
             ExprKind::Call { path, args } if Self::builtin_path(path) => {
@@ -2847,6 +2896,26 @@ impl<'a> Checker<'a> {
                 self.expect_ty(&at, &rt, args[0].span);
                 rt
             }
+            "into" | "try_into" if is_int(&rt) => {
+                for a in args {
+                    self.expr(cx, a, None, mode);
+                }
+                self.diags.push(
+                    Diag::new(
+                        "E0212",
+                        name.span,
+                        format!("`.{}()` is not used", name.name),
+                    )
+                    .fix(
+                        format!(
+                            "write `T::try_from({}).unwrap()` with the target type `T`",
+                            crate::fmt::expr_text(recv)
+                        ),
+                        None,
+                    ),
+                );
+                TypeKind::Error
+            }
             other => {
                 let fix = match other {
                     "unwrap" | "expect" => {
@@ -3002,6 +3071,91 @@ impl<'a> Checker<'a> {
             }
         }
         sig.ret
+    }
+
+    /// `T::try_from(x).unwrap()` / `.ok()` (ADR-0028 §1): the value of `x`
+    /// in integer type `T` (a range obligation, E0815, for the prover), or
+    /// an `Option<T>`.
+    fn conversion(
+        &mut self,
+        cx: &mut FnCtx,
+        recv: &Expr,
+        name: &Ident,
+        margs: &[Expr],
+        span: Span,
+        mode: Mode,
+    ) -> TypeKind {
+        let (target, args) = conv_call(recv).unwrap();
+        if args.len() != 1 {
+            self.err("E0405", recv.span, "`try_from` takes one value");
+            return TypeKind::Error;
+        }
+        let st = self.expr(cx, &args[0], None, mode);
+        for a in margs {
+            self.expr(cx, a, None, mode);
+        }
+        let x = crate::fmt::expr_text(&args[0]);
+        let unwrapped = format!("{}::try_from({x}).unwrap()", ty_str(&target));
+        if mode != Mode::Exec {
+            self.diags.push(
+                Diag::new("E0513", span, "conversions are not used in specifications").fix(
+                    "integer types mix in specifications (ADR-0022): write the value",
+                    Some(x),
+                ),
+            );
+            return st;
+        }
+        if !is_int(&st) {
+            if st != TypeKind::Error {
+                let msg = format!(
+                    "`try_from` converts between integer types, found `{}`",
+                    ty_str(&st)
+                );
+                // A `bool` becomes an integer by choosing the values.
+                self.diags
+                    .push(if st == TypeKind::Bool && name.name == "unwrap" {
+                        Diag::new("E0412", span, msg).fix(
+                            "choose the values",
+                            Some(format!("if {x} {{ 1 }} else {{ 0 }}")),
+                        )
+                    } else {
+                        Diag::new("E0412", args[0].span, msg)
+                    });
+            }
+            return TypeKind::Error;
+        }
+        match name.name.as_str() {
+            "unwrap" if margs.is_empty() => target,
+            "ok" if margs.is_empty() => TypeKind::Named {
+                path: vec!["Option".into()],
+                args: vec![Type {
+                    kind: target,
+                    span: Span::default(),
+                }],
+            },
+            "expect" => {
+                self.diags
+                    .push(Diag::new("E0213", span, "write `.unwrap()`").fix(
+                        "a conversion has one form (its range is proved)",
+                        Some(unwrapped),
+                    ));
+                target
+            }
+            _ => {
+                self.diags.push(
+                    Diag::new(
+                        "E0412",
+                        span,
+                        "`T::try_from(x)` is used as `.unwrap()` or `.ok()`",
+                    )
+                    .fix(
+                        "`.unwrap()`: the value, with a range obligation",
+                        Some(unwrapped),
+                    ),
+                );
+                TypeKind::Error
+            }
+        }
     }
 
     /// Checks an argument for a reference parameter; returns the root variable name.
@@ -3580,4 +3734,40 @@ fn root_name(e: &Expr) -> Option<String> {
         }
         _ => None,
     }
+}
+
+/// `T::try_from(x)` with `T` an integer type: `T` and the arguments.
+pub(crate) fn conv_call(e: &Expr) -> Option<(TypeKind, &[Expr])> {
+    let ExprKind::Call { path, args } = &e.kind else {
+        return None;
+    };
+    if path.len() != 2 || path[1].name != "try_from" {
+        return None;
+    }
+    Some((int_type(&path[0].name)?, args))
+}
+
+/// `T::from` with `T` an integer type (a Rust habit, E0212).
+fn from_call(path: &[Ident]) -> Option<TypeKind> {
+    if path.len() == 2 && path[1].name == "from" {
+        int_type(&path[0].name)
+    } else {
+        None
+    }
+}
+
+fn int_type(name: &str) -> Option<TypeKind> {
+    match name {
+        "i64" => Some(TypeKind::I64),
+        "u64" => Some(TypeKind::U64),
+        "usize" => Some(TypeKind::Usize),
+        _ => None,
+    }
+}
+
+/// Whether converting a `source` value to `target` has a range obligation
+/// (ADR-0028 §1): every pair but `u64` <-> `usize` and a type to itself.
+pub(crate) fn conv_obligation(source: &TypeKind, target: &TypeKind) -> bool {
+    let wide = |t: &TypeKind| matches!(t, TypeKind::U64 | TypeKind::Usize);
+    source != target && !(wide(source) && wide(target))
 }

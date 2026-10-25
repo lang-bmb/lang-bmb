@@ -1,0 +1,62 @@
+#[summary("integer conversions with proved ranges (ADR-0028, backlog 2C-02)")]
+mod conv {
+    spec fn small(n: usize) -> bool { n <= 1000000 }
+
+    spec fn small_i(r: i64) -> bool { r <= 1000000 }
+
+    #[effects(pure)]
+    #[uses(small, small_i)]
+    fn size_as_i64(n: usize) -> (r: i64)
+        requires small(n),
+        ensures small_i(r),
+    {
+        i64::try_from(n).unwrap()
+    }
+
+    // `u64` and `usize` are both 64-bit: no obligation either way.
+    #[effects(pure)]
+    fn widen(n: usize) -> u64 { u64::try_from(n).unwrap() }
+
+    #[effects(pure)]
+    fn narrow(n: u64) -> usize { usize::try_from(n).unwrap() }
+
+    #[effects(pure)]
+    fn clamp(x: i64) -> u64 {
+        if x < 0 { 0 } else { u64::try_from(x).unwrap() }
+    }
+
+    spec fn same(r: i64, x: i64) -> bool { r == x }
+
+    // The value is kept: converting back gives it.
+    #[effects(pure)]
+    #[uses(same)]
+    fn round_trip(x: i64) -> (r: i64)
+        ensures same(r, x),
+    {
+        if x < 0 { x } else { i64::try_from(u64::try_from(x).unwrap()).unwrap() }
+    }
+
+    spec fn index_or_zero(r: usize, k: i64) -> bool { (k < 0 && r == 0) || (k >= 0 && r == k) }
+
+    // `.ok()` is `Some` exactly when the value is in range.
+    #[effects(pure)]
+    #[uses(index_or_zero)]
+    fn index_of(k: i64) -> (r: usize)
+        ensures index_or_zero(r, k),
+    {
+        match usize::try_from(k).ok() {
+            None => 0,
+            Some(i) => i,
+        }
+    }
+
+    spec fn nonneg(a: &[i64]) -> bool { a.len() > 0 && forall|k: usize| k < a.len() ==> 0 <= #[trigger] a[k] }
+
+    #[effects(pure)]
+    #[uses(nonneg)]
+    fn first_as_index(a: &[i64]) -> usize
+        requires nonneg(a),
+    {
+        usize::try_from(a[0]).unwrap()
+    }
+}

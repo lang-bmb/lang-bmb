@@ -328,7 +328,7 @@ ROADMAP의 통과 기준마다 그것을 확인하는 태스크다. 빈칸이 �
 | ID | 태스크 | 완료 기준 | 의존 | 상태 |
 | --- | --- | --- | --- | --- |
 | 2C-01 | ADR 초안: 정수 변환의 의미 | 범위 의무가 붙는 변환 대 `Option` 반환(2B 의존 여부), `checked_*`·`saturating_*`. 상태 "제안" | 1E-01 | ✅ 제안 ADR-0028(`try_from(..).unwrap()` + 범위 의무 E0815, `print_u64`) |
-| 2C-02 | 변환 구현 | 검사·증명 의무·코드 생성(증명되면 검사 없음), 코퍼스 | 2C-05 | ⏳ |
+| 2C-02 | 변환 구현 | 검사·증명 의무·코드 생성(증명되면 검사 없음), 코퍼스 | 2C-05 | ✅ 검사(`check::conversion`: `.unwrap()`→`T`, `.ok()`→`Option<T>`, E0205 교체·E0212·E0213·E0412·E0513), 증명(E0815 = 대상 범위, `.ok()`는 범위로 `Some`/`None`), 코드 생성(증명되면 명령 없음, 아니면 `icmp sge`+트랩), 내장 `print_u64`. 코퍼스 `tests/check/err/conversions`, `tests/verify/{pass,fail}/conversions`(통과 7정의, 반례 4), 실행 `tests/run/conversions`·`search`(`show`·`show_size` 세는 루프 제거, 출력 동일). 테스트 `an_unproved_conversion_traps_exactly_outside_the_range`(경계값 4개), `conversion_habits_are_fixed_into_a_checked_program`. `--all-checks`와 증명 빌드 출력 같음(검사 4 대 2) |
 | 2C-03 | `checked_*`·`saturating_*` | 구현과 코퍼스 | 2C-02 | ⏳ |
 | 2C-04 | 퍼저 확장 | 부호 없는 산술 퍼저(1B-33)에 변환 추가, 위반 0 | 2C-02 | ⏳ |
 | 2C-05 | ADR-0028 채택 | 2B 표면(2B-11)에 맞춰 제안 ADR-0028(`Option` 반환 여부 포함)을 갱신·채택(채택 계획: 2C 착수 때) | 2C-01, 2B-11 | ✅ ADR-0028 채택(2026-10-25): `checked_*`는 `Option<T>`, 값 경로는 융합형 `T::try_from(x).ok()`(`Option<T>`, 의무 없음, 유효 Rust), 단독 `try_from`은 E0412(BMB에 오류 타입 없음), 진단 번호 E0212·E0213·E0412·E0513·E0815 확정(빈 번호 확인). 표면(`as` 대 `try_from().unwrap()`)은 2R-04c 결과와 함께 2R-06(승인)으로 |

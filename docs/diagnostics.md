@@ -30,6 +30,8 @@
 | E0209 | function return type is required (write `-> ()` for unit) |
 | E0210 | `mut` parameters are not allowed |
 | E0211 | comparison operators cannot be chained |
+| E0212 | `T::from(x)` / `x.into()` / `x.try_into()`: convert with `T::try_from(x).unwrap()` |
+| E0213 | `T::try_from(x).expect(..)` is written `.unwrap()` |
 | E0220 | `#[derive(..)]` is not used |
 | E0221 | built-in variants are written bare (`Some`, not `Option::Some`) |
 | E0222 | field shorthand is not allowed (`x: x`) |
@@ -75,6 +77,7 @@
 | E0409 | `&` / `&mut` may only appear directly as a call argument |
 | E0410 | a `&mut` argument aliases another argument of the same call |
 | E0411 | cannot negate an unsigned value |
+| E0412 | `T::try_from(x)` takes an integer and is used as `.unwrap()` or `.ok()` |
 | E0420 | malformed data type: wrong type arguments, or no field or variant |
 | E0421 | a type contains itself |
 | E0422 | struct literal fields: not a struct, a field given twice, or a field missing |
@@ -95,6 +98,7 @@
 | E0505 | spec function called in executable code |
 | E0506 | `while` requires `decreases` |
 | E0507 | recursive function requires `decreases` |
+| E0513 | conversions are not used in specifications (integer types mix there) |
 | E0508 | `old(..)` is only allowed in `ensures`, loop invariants and `assert` on a `&mut` parameter |
 | E0509 | `#[uses(..)]` entry is not a spec function |
 | E0510 | `#[trigger]` is only allowed inside `forall` |
@@ -138,6 +142,7 @@
 | E0812 | proof gate cannot run (solver missing, wrong version or failed) |
 | E0813 | recursive spec function may not terminate |
 | E0814 | construct not supported by the proof gate |
+| E0815 | integer conversion may be out of range |
 
 ## W09xx 계약 조정 린트(경고, `bmb lint`만)
 
