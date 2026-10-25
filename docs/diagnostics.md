@@ -148,6 +148,7 @@
 | E0813 | recursive spec function may not terminate |
 | E0814 | construct not supported by the proof gate |
 | E0815 | integer conversion may be out of range |
+| E0816 | a `Vec` may exceed its maximum length |
 
 ## W09xx 계약 조정 린트(경고, `bmb lint`만)
 

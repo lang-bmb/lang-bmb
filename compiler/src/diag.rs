@@ -224,6 +224,7 @@ pub const CODES: &[(&str, &str)] = &[
     ("E0813", "recursive spec function may not terminate"),
     ("E0814", "construct not supported by the proof gate"),
     ("E0815", "integer conversion may be out of range"),
+    ("E0816", "a `Vec` may exceed its maximum length"),
     // W09xx: contract lint (`bmb lint` only; severity "warning", never from `check`/`verify`)
     (
         "W0901",

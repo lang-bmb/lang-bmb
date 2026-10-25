@@ -35,6 +35,63 @@ pub struct Tables {
     pub locals: BTreeMap<String, BTreeMap<String, TypeKind>>,
 }
 
+impl Tables {
+    /// The tables as the encoder sees them (ADR-0031 §3): a `Vec<T>` is a
+    /// slice value, the pair of its element array and length, and
+    /// `&Vec<T>` / `&mut Vec<T>` are slice references. The operations that
+    /// change a length (`push`, `pop`, `truncate`, `Vec::new`) and a callee
+    /// taking `&mut Vec<T>` are told apart by the program text.
+    fn slice_view(&self) -> Tables {
+        fn view(t: &TypeKind) -> TypeKind {
+            let sub = |x: &Type| Type {
+                kind: view(&x.kind),
+                span: x.span,
+            };
+            match t {
+                TypeKind::Vec(e) => TypeKind::Ref {
+                    mutable: false,
+                    inner: Box::new(Type {
+                        kind: TypeKind::Slice(Box::new(sub(e))),
+                        span: e.span,
+                    }),
+                },
+                TypeKind::Ref { mutable, inner } => match &inner.kind {
+                    TypeKind::Vec(e) => TypeKind::Ref {
+                        mutable: *mutable,
+                        inner: Box::new(Type {
+                            kind: TypeKind::Slice(Box::new(sub(e))),
+                            span: e.span,
+                        }),
+                    },
+                    _ => t.clone(),
+                },
+                _ => t.clone(),
+            }
+        }
+        let mut fns = self.fns.clone();
+        for s in fns.values_mut() {
+            s.params = s.params.iter().map(view).collect();
+            s.ret = view(&s.ret);
+        }
+        Tables {
+            fns,
+            types: self.types.iter().map(|(k, t)| (*k, view(t))).collect(),
+            recursive: self.recursive.clone(),
+            adts: self.adts.clone(),
+            locals: self
+                .locals
+                .iter()
+                .map(|(p, m)| {
+                    (
+                        p.clone(),
+                        m.iter().map(|(n, t)| (n.clone(), view(t))).collect(),
+                    )
+                })
+                .collect(),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct FnStatus {
     pub path: String,
@@ -945,6 +1002,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                         Val::A { len, .. } | Val::Arr { len, .. } => Val::S(len),
                         _ => panic!("len of scalar"),
                     },
+                    "as_slice" | "as_mut_slice" => rv,
                     op => {
                         let b = self.spec(&args[0], env, old).s();
                         match int_method(op, &self.ty(recv), &rv.s(), &b) {
@@ -1337,6 +1395,8 @@ impl<'p, 'q> Enc<'p, 'q> {
                         Val::A { len, .. } | Val::Arr { len, .. } => Val::S(len),
                         _ => panic!("len of scalar"),
                     },
+                    "as_slice" | "as_mut_slice" | "clone" => rv,
+                    m @ ("push" | "pop" | "truncate") => self.vec_change(e, recv, rv, m, args),
                     op => {
                         let b = self.eval(&args[0]).s();
                         match int_method(op, &self.ty(recv), &rv.s(), &b) {
@@ -1348,6 +1408,13 @@ impl<'p, 'q> Enc<'p, 'q> {
                         }
                     }
                 }
+            }
+            ExprKind::Call { path, args }
+                if path.len() == 2
+                    && path[0].name == "Vec"
+                    && matches!(path[1].name.as_str(), "new" | "with_capacity") =>
+            {
+                self.vec_new(e, path, args)
             }
             ExprKind::Call { path, args } if self.is_variant(path) => {
                 let vals: Vec<Val> = args.iter().map(|a| self.eval(a)).collect();
@@ -1676,6 +1743,88 @@ impl<'p, 'q> Enc<'p, 'q> {
 
     /// Whether a checked call builds a variant: `Some(x)`, `Ok(x)`, `Err(e)`
     /// or `E::V(..)` (a path that names no function).
+    /// `push`, `pop` and `truncate` on a `Vec` (ADR-0031 §3): the new pair
+    /// is written back to the receiver's place; `push` may not pass the
+    /// maximum length (E0816); `pop` is `None` exactly on an empty `Vec`.
+    fn vec_change(&mut self, e: &Expr, recv: &Expr, rv: Val, m: &str, args: &[Expr]) -> Val {
+        let el = elem_ty(&self.ty(recv));
+        let (len, elems) = match rv {
+            Val::A { elems, len } => (len, Val::S(elems)),
+            Val::Arr { elem, len } => (len, *elem),
+            v => panic!("{m} of {v:?}"),
+        };
+        let (result, new_len, new_elems) = match m {
+            "push" => {
+                let x = self.eval(&args[0]);
+                self.oblige(
+                    "E0816",
+                    e.span,
+                    "`push` may exceed the maximum length of a `Vec`",
+                    format!("(< {len} {})", len_max(&el)),
+                );
+                let stored = store_val(&elems, &len, &x);
+                (Val::Unit, format!("(+ {len} 1)"), stored)
+            }
+            "pop" => {
+                let empty = format!("(= {len} 0)");
+                let last = select_val(&elems, &format!("(- {len} 1)"));
+                let opt = self.ty(e);
+                let some = self.variant_value(&opt, "Some", &[last]).s();
+                let none = self.variant_value(&opt, "None", &[]).s();
+                (
+                    Val::S(ite(&empty, &none, &some)),
+                    ite(&empty, "0", &format!("(- {len} 1)")),
+                    elems,
+                )
+            }
+            _ => {
+                let n = self.eval(&args[0]).s();
+                (Val::Unit, ite(&format!("(< {n} {len})"), &n, &len), elems)
+            }
+        };
+        let new = match new_elems {
+            Val::S(a) => Val::A {
+                elems: a,
+                len: new_len,
+            },
+            other => Val::Arr {
+                elem: Box::new(other),
+                len: new_len,
+            },
+        };
+        let mut steps = Vec::new();
+        let root = self.place(recv, &mut steps, false);
+        let cur = self.vars[&root].clone();
+        self.vars.insert(root, set_at(cur, &steps, new));
+        result
+    }
+
+    /// `Vec::new()` / `Vec::with_capacity(n)`: length 0, elements unknown;
+    /// a capacity above the maximum length is E0816 (Rust panics).
+    fn vec_new(&mut self, e: &Expr, path: &[Ident], args: &[Expr]) -> Val {
+        let el = elem_ty(&self.ty(e));
+        if path[1].name == "with_capacity" {
+            let n = self.eval(&args[0]).s();
+            self.oblige(
+                "E0816",
+                e.span,
+                "the capacity may exceed the maximum length of a `Vec`",
+                format!("(<= {n} {})", len_max(&el)),
+            );
+        }
+        if struct_fields(&el, self.prog.t).is_some() {
+            Val::Arr {
+                elem: Box::new(self.fresh_struct_elems("vec", &el)),
+                len: "0".into(),
+            }
+        } else {
+            Val::A {
+                elems: self.fresh_elems("vec", &el, false),
+                len: "0".into(),
+            }
+        }
+    }
+
     fn is_variant(&self, path: &[Ident]) -> bool {
         if path.len() == 1 {
             return matches!(path[0].name.as_str(), "Some" | "Ok" | "Err")
@@ -1791,6 +1940,7 @@ impl<'p, 'q> Enc<'p, 'q> {
         match &e.kind {
             ExprKind::Var(id) => id.name.clone(),
             ExprKind::Deref(x) | ExprKind::Ref { expr: x, .. } => self.place(x, steps, check),
+            ExprKind::Method { recv, .. } => self.place(recv, steps, check),
             ExprKind::Field { base, name } => {
                 let root = self.place(base, steps, check);
                 let bt = self.place_ty(base);
@@ -1898,7 +2048,7 @@ impl<'p, 'q> Enc<'p, 'q> {
             );
         }
         // `&mut` arguments: the callee may change the place, the elements
-        // of a slice but never its length.
+        // of a slice but never its length; a `&mut Vec<T>` also its length.
         let mut post_args = argv.clone();
         let mut old_env = BTreeMap::new();
         let param_tys = self.prog.t.fns[&target].params.clone();
@@ -1908,21 +2058,26 @@ impl<'p, 'q> Enc<'p, 'q> {
             {
                 let mut steps = Vec::new();
                 let root = self.place(&args[i], &mut steps, false);
+                let grows = matches!(&p.ty.kind, TypeKind::Ref { inner, .. }
+                    if matches!(&inner.kind, TypeKind::Named { path, .. } if path.len() == 1 && path[0] == "Vec"));
+                let e = elem_ty(&param_tys[i]);
+                let new_len = |s: &mut Self, len: &String| {
+                    if !grows {
+                        return len.clone();
+                    }
+                    let l = s.fresh(&format!("{root}.len"), "Int");
+                    s.pc.push(format!("(and (<= 0 {l}) (<= {l} {}))", len_max(&e)));
+                    l
+                };
                 let nv = match &argv[i] {
-                    Val::A { len, .. } => {
-                        let e = elem_ty(&param_tys[i]);
-                        Val::A {
-                            elems: self.fresh_elems(&root, &e, false),
-                            len: len.clone(),
-                        }
-                    }
-                    Val::Arr { len, .. } => {
-                        let e = elem_ty(&param_tys[i]);
-                        Val::Arr {
-                            elem: Box::new(self.fresh_struct_elems(&root, &e)),
-                            len: len.clone(),
-                        }
-                    }
+                    Val::A { len, .. } => Val::A {
+                        elems: self.fresh_elems(&root, &e, false),
+                        len: new_len(self, len),
+                    },
+                    Val::Arr { len, .. } => Val::Arr {
+                        elem: Box::new(self.fresh_struct_elems(&root, &e)),
+                        len: new_len(self, len),
+                    },
                     _ => self.fresh_val(&root, &param_tys[i]),
                 };
                 old_env.insert(p.name.name.clone(), argv[i].clone());
@@ -1971,6 +2126,12 @@ fn pred_name(e: &Expr) -> String {
 fn root_var(e: &Expr) -> Option<String> {
     match &e.kind {
         ExprKind::Var(id) => Some(id.name.clone()),
+        // `v.as_mut_slice()` / `v.as_slice()` as an argument.
+        ExprKind::Method { recv, name, .. }
+            if matches!(name.name.as_str(), "as_mut_slice" | "as_slice") =>
+        {
+            root_var(recv)
+        }
         ExprKind::Ref { expr: x, .. }
         | ExprKind::Deref(x)
         | ExprKind::Field { base: x, .. }
@@ -2137,7 +2298,14 @@ fn assigned_in_expr(e: &Expr, out: &mut BTreeSet<String>) {
             assigned_in_expr(base, out);
             assigned_in_expr(index, out);
         }
-        ExprKind::Method { recv, args, .. } => {
+        ExprKind::Method { recv, name, args } => {
+            if matches!(
+                name.name.as_str(),
+                "push" | "pop" | "truncate" | "as_mut_slice"
+            ) && let Some(r) = root_var(recv)
+            {
+                out.insert(r);
+            }
             assigned_in_expr(recv, out);
             args.iter().for_each(|a| assigned_in_expr(a, out));
         }
@@ -2194,8 +2362,9 @@ enum Gate {
 impl Gate {
     fn rejects(self, t: &TypeKind, tb: &Tables) -> bool {
         match self {
-            // The code generator lowers what the prover encodes (2B-06).
-            Gate::Codegen => Gate::Prover.rejects(t, tb),
+            // The code generator lowers what the prover encodes (2B-06),
+            // but not `Vec` yet (2G-04).
+            Gate::Codegen => Gate::Prover.rejects(t, tb) || holds_vec(t),
             Gate::Prover => match t {
                 TypeKind::Named { .. } => match (struct_fields(t, tb), enum_variants(t, tb)) {
                     (Some(fs), _) => fs.iter().any(|(_, ft)| self.rejects(ft, tb)),
@@ -2209,8 +2378,6 @@ impl Gate {
                     self.rejects(&e.kind, tb) || (has_named(&e.kind) && has_array(&e.kind, tb))
                 }
                 TypeKind::Ref { inner, .. } => self.rejects(&inner.kind, tb),
-                // `Vec` comes with backlog 2G-03 (prover) and 2G-04 (code).
-                TypeKind::Vec(_) => true,
                 _ => false,
             },
         }
@@ -2237,24 +2404,12 @@ fn data_spec_fns(defs: &BTreeMap<String, Def>, t: &Tables, gate: Gate) -> BTreeS
     }
 }
 
-/// Whether a definition has a `Vec` parameter, local or expression (the
-/// encoding of backlog 2G-03 is not there yet).
-fn touches_vec(f: &FnDef, path: &str, t: &Tables) -> bool {
-    fn holds(t: &TypeKind) -> bool {
-        match t {
-            // The surface type of the result is not canonical.
-            TypeKind::Vec(_) => true,
-            TypeKind::Named { path, .. } => path.len() == 1 && path[0] == "Vec",
-            TypeKind::Ref { inner, .. } => holds(&inner.kind),
-            _ => false,
-        }
+fn holds_vec(t: &TypeKind) -> bool {
+    match t {
+        TypeKind::Vec(_) => true,
+        TypeKind::Ref { inner, .. } => holds_vec(&inner.kind),
+        _ => false,
     }
-    let s = f.span;
-    t.locals.get(path).is_some_and(|m| m.values().any(holds))
-        || holds(&f.ret.ty.kind)
-        || t.types
-            .range((s.file, s.lo, 0)..(s.file, s.hi, u32::MAX))
-            .any(|(_, ty)| holds(ty))
 }
 
 fn has_named(t: &TypeKind) -> bool {
@@ -2723,6 +2878,8 @@ fn needed_decls(
 /// proof about it is vacuous) or `None` (undecided, unsupported construct,
 /// or the solver could not run).
 pub fn preconditions_satisfiable(p: &Program, t: &Tables) -> Vec<(String, Span, Option<bool>)> {
+    let view = t.slice_view();
+    let t = &view;
     let mut defs = BTreeMap::new();
     for m in &p.mods {
         collect(m, "", &mut defs);
@@ -2840,6 +2997,8 @@ fn verify_impl(
     stop_at_failure: bool,
     mut incr: Option<&mut crate::incremental::Session>,
 ) -> Outcome {
+    let view = t.slice_view();
+    let t = &view;
     let mut defs = BTreeMap::new();
     for m in &p.mods {
         collect(m, "", &mut defs);
@@ -2907,12 +3066,10 @@ fn verify_impl(
         let mut enc = Enc::new(&prog, path, &d.mod_path);
         let data = data_type_use(d.f, path, t, &tainted, Gate::Prover);
         if let Some(sp) = data {
-            let msg = if touches_vec(d.f, path, t) {
-                "`Vec` is not supported by the proof gate yet (backlog 2G-03)"
-            } else {
-                "this data type is not supported by the proof gate yet (backlog 2B-05d)"
-            };
-            enc.unsupported.push((sp, msg.into()));
+            enc.unsupported.push((
+                sp,
+                "this data type is not supported by the proof gate yet (backlog 2B-05d)".into(),
+            ));
         }
         let header = header(seed);
         // Definitional axioms of revealed spec fns, filtered per obligation.
@@ -2937,8 +3094,6 @@ fn verify_impl(
                 enc.spec_block(&d.f.body, &env, &BTreeMap::new());
                 enc.term_check = None;
             }
-            // Nothing in a definition touching a `Vec` is encoded yet.
-            FnKind::Exec if touches_vec(d.f, path, t) => {}
             FnKind::Exec => {
                 for u in uses_of(d.f, &d.mod_path, &t.fns) {
                     let (ax, unsup, parts) = prog.axiom(&u);

@@ -1,0 +1,13 @@
+{"code":"E0816","severity":"error","message":"`push` may exceed the maximum length of a `Vec` in `vf::unbounded`; counterexample: v = [0, 0, 0, 0, ..] (len 1152921504606846975)","file":"fail/vecs.bmb","line":6,"col":9,"end_line":6,"end_col":18}
+{"code":"E0816","severity":"error","message":"the capacity may exceed the maximum length of a `Vec` in `vf::capacity`; counterexample: n = 1152921504606846976","file":"fail/vecs.bmb","line":11,"col":27,"end_line":11,"end_col":48}
+{"code":"E0805","severity":"error","message":"index may be out of bounds in `vf::after_pop`; counterexample: v = [-9223372036854768089] (len 1)","file":"fail/vecs.bmb","line":20,"col":24,"end_line":20,"end_col":28}
+{"code":"E0805","severity":"error","message":"index may be out of bounds in `vf::after_call`","file":"fail/vecs.bmb","line":33,"col":9,"end_line":33,"end_col":13}
+{"code":"E0802","severity":"error","message":"postcondition `nonempty` may not hold in `vf::truncated`; counterexample: v = [0] (len 1)","file":"fail/vecs.bmb","line":42,"col":17,"end_line":42,"end_col":39}
+{"code":"E0802","severity":"error","message":"postcondition `is_some` may not hold in `vf::pop_some`; counterexample: v = [] (len 0)","file":"fail/vecs.bmb","line":57,"col":17,"end_line":57,"end_col":27}
+{"def":"vf::after_call","status":"failed","obligations":2,"failed":1,"rlimit":428,"rlimit_max":266}
+{"def":"vf::after_pop","status":"failed","obligations":3,"failed":1,"rlimit":2203,"rlimit_max":1488}
+{"def":"vf::capacity","status":"failed","obligations":1,"failed":1,"rlimit":1494,"rlimit_max":1494}
+{"def":"vf::pop_some","status":"failed","obligations":1,"failed":1,"rlimit":1482,"rlimit_max":1482}
+{"def":"vf::touch","status":"verified","obligations":0,"failed":0,"rlimit":0,"rlimit_max":0}
+{"def":"vf::truncated","status":"failed","obligations":1,"failed":1,"rlimit":3127,"rlimit_max":3127}
+{"def":"vf::unbounded","status":"failed","obligations":1,"failed":1,"rlimit":662,"rlimit_max":662}

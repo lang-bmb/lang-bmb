@@ -1,0 +1,61 @@
+#[summary("Vec: what does not follow (ADR-0031 §3, backlog 2G-03)")]
+mod vf {
+    // No bound on the length: `push` may pass the maximum (E0816).
+    #[effects(pure)]
+    fn unbounded(v: &mut Vec<i64>) -> () {
+        v.push(1);
+    }
+
+    #[effects(pure)]
+    fn capacity(n: usize) -> usize {
+        let v: Vec<u64> = Vec::with_capacity(n);
+        v.len()
+    }
+
+    // `pop` may have emptied it.
+    #[effects(pure)]
+    fn after_pop(v: &mut Vec<i64>) -> i64 {
+        match v.pop() {
+            None => 0,
+            Some(x) => v[0] + 0 * x,
+        }
+    }
+
+    #[effects(pure)]
+    fn touch(v: &mut Vec<i64>) -> () {}
+
+    // Without an `ensures`, a `&mut Vec` callee may change the length.
+    #[effects(pure)]
+    fn after_call() -> i64 {
+        let mut v: Vec<i64> = Vec::new();
+        v.push(5);
+        touch(&mut v);
+        v[0]
+    }
+
+    spec fn nonempty(a: &[i64]) -> bool { a.len() > 0 }
+
+    // `truncate(0)` empties it.
+    #[effects(pure)]
+    #[uses(nonempty)]
+    fn truncated(v: &mut Vec<i64>) -> ()
+        ensures nonempty(v.as_slice()),
+    {
+        v.truncate(0);
+    }
+
+    spec fn is_some(o: Option<i64>) -> bool {
+        match o {
+            None => false,
+            Some(x) => true,
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(is_some)]
+    fn pop_some(v: &mut Vec<i64>) -> (r: Option<i64>)
+        ensures is_some(r),
+    {
+        v.pop()
+    }
+}
