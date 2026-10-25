@@ -369,3 +369,19 @@ mod m {
     assert_eq!(String::from_utf8_lossy(&run.stdout), "1\n");
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn vec_is_gated_until_its_encoding_and_lowering_exist() {
+    // Backlog 2G-02: the checker accepts `Vec`; the prover (2G-03) and the
+    // code generator (2G-04) refuse it with E0814 instead of guessing.
+    let text = "#[summary(\"g\")]\nmod m {\n    #[effects(pure)]\n    fn n() -> usize {\n        let mut v: Vec<i64> = Vec::new();\n        v.push(1);\n        v.len()\n    }\n\n    #[effects(io)]\n    fn main() -> () {\n        print_u64(u64::try_from(n()).unwrap());\n    }\n}\n";
+    assert!(bmb::check_sources(&src("g.bmb", text)).ok);
+    let out = bmb::emit_llvm_sources(&src("g.bmb", text));
+    assert!(out.ir.is_none());
+    assert!(!out.verify.ok);
+    assert!(
+        out.verify.output.contains("\"code\":\"E0814\""),
+        "{}",
+        out.verify.output
+    );
+}

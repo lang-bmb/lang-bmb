@@ -1,0 +1,104 @@
+#[summary("the Vec surface and the Rust habits around it (ADR-0031 §1, §7, backlog 2G-02)")]
+mod vs {
+    struct Grid { w: [i64; 2] }
+
+    struct Holder { v: Vec<i64> }
+
+    #[effects(pure)]
+    fn read(a: &[i64]) -> usize { a.len() }
+
+    #[effects(pure)]
+    fn write(a: &mut [i64]) -> () {}
+
+    #[effects(pure)]
+    fn deref_coercion(v: Vec<i64>, r: &Vec<i64>) -> usize {
+        read(&v) + read(r)
+    }
+
+    #[effects(pure)]
+    fn mut_coercion() -> () {
+        let mut v: Vec<i64> = Vec::new();
+        write(&mut v);
+    }
+
+    #[effects(pure)]
+    fn wrong_slice() -> () {
+        let mut v: Vec<i64> = Vec::new();
+        write(v.as_slice());
+    }
+
+    #[effects(pure)]
+    fn drops() -> () {
+        let v: Vec<i64> = Vec::new();
+        drop(v);
+    }
+
+    #[effects(pure)]
+    fn takes(v: &mut Vec<i64>) -> () {
+        let w: Vec<i64> = std::mem::take(v);
+    }
+
+    #[effects(pure)]
+    fn not_mutable() -> () {
+        let v: Vec<i64> = Vec::new();
+        v.push(1);
+    }
+
+    #[effects(pure)]
+    fn shared_ref(v: &Vec<i64>) -> () {
+        v.push(1);
+    }
+
+    #[effects(pure)]
+    fn no_element_type() -> usize {
+        Vec::new().len()
+    }
+
+    #[effects(pure)]
+    fn wrong_element(v: &mut Vec<i64>, x: u64) -> () {
+        v.push(x);
+    }
+
+    #[effects(pure)]
+    fn habits(v: &Vec<i64>) -> i64 {
+        let a: bool = v.is_empty();
+        let b: i64 = v.first();
+        0
+    }
+
+    #[effects(pure)]
+    fn slice_value(v: &Vec<i64>) -> usize {
+        v.as_slice().len()
+    }
+
+    #[effects(pure)]
+    fn nested(v: Vec<Vec<i64>>) -> () {}
+
+    #[effects(pure)]
+    fn arrays_inside(v: Vec<Grid>) -> () {}
+
+    #[effects(pure)]
+    fn option_of_vec(o: Option<Vec<i64>>) -> () {}
+
+    #[effects(pure)]
+    fn compare(a: &Vec<i64>, b: &Vec<i64>) -> bool { *a == *b }
+
+    spec fn takes_vec(v: &Vec<i64>) -> bool { true }
+
+    spec fn pushes(a: &[i64]) -> bool { a.len() > 0 }
+
+    #[effects(pure)]
+    #[uses(pushes)]
+    fn in_spec(v: &mut Vec<i64>) -> ()
+        ensures pushes(v.as_slice()),
+    {
+        v.push(1);
+    }
+
+    #[effects(pure)]
+    fn fine(n: usize) -> Vec<u64> {
+        let mut v: Vec<u64> = Vec::with_capacity(n);
+        v.push(3);
+        v
+    }
+}

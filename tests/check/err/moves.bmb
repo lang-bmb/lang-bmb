@@ -1,0 +1,120 @@
+#[summary("moves of Vec values (ADR-0031 §2, backlog 2G-02)")]
+mod mv {
+    #[effects(pure)]
+    fn take(v: Vec<i64>) -> usize { v.len() }
+
+    #[effects(pure)]
+    fn read(a: &[i64]) -> usize { a.len() }
+
+    #[effects(pure)]
+    fn fill(a: &mut [i64], n: usize) -> () {}
+
+    #[effects(pure)]
+    fn keep(v: &mut Vec<i64>, w: Vec<i64>) -> () {}
+
+    #[effects(pure)]
+    fn after_move() -> usize {
+        let v: Vec<i64> = Vec::new();
+        let n: usize = take(v);
+        n + v.len()
+    }
+
+    #[effects(pure)]
+    fn moved_twice() -> usize {
+        let v: Vec<i64> = Vec::new();
+        let w: Vec<i64> = v;
+        take(v)
+    }
+
+    // Assigning again makes it owned again.
+    #[effects(pure)]
+    fn reassigned() -> usize {
+        let mut v: Vec<i64> = Vec::new();
+        let n: usize = take(v);
+        v = Vec::new();
+        n + v.len()
+    }
+
+    #[effects(pure)]
+    fn one_branch(c: bool) -> usize {
+        let v: Vec<i64> = Vec::new();
+        let n: usize = if c { take(v) } else { 0 };
+        n
+    }
+
+    #[effects(pure)]
+    fn both_branches(c: bool) -> usize {
+        let v: Vec<i64> = Vec::new();
+        if c { take(v) } else { take(v) + 1 }
+    }
+
+    #[effects(pure)]
+    fn in_match(o: Option<i64>) -> usize {
+        let v: Vec<i64> = Vec::new();
+        match o {
+            None => take(v),
+            Some(x) => 0,
+        }
+    }
+
+    #[effects(pure)]
+    fn short_circuit(c: bool) -> bool {
+        let v: Vec<i64> = Vec::new();
+        c && take(v) > 0
+    }
+
+    #[effects(pure)]
+    fn in_loop(n: usize) -> usize {
+        let v: Vec<i64> = Vec::new();
+        let mut i: usize = 0;
+        let mut s: usize = 0;
+        while i < n
+            decreases n - i,
+        {
+            s = take(v);
+            i = i + 1;
+        }
+        s
+    }
+
+    // Moved and assigned again in the same iteration: allowed.
+    #[effects(pure)]
+    fn loop_reassign(n: usize) -> usize {
+        let mut v: Vec<i64> = Vec::new();
+        let mut i: usize = 0;
+        while i < n
+            decreases n - i,
+        {
+            let w: Vec<i64> = v;
+            v = w;
+            i = i + 1;
+        }
+        v.len()
+    }
+
+    #[effects(pure)]
+    fn out_of_ref(v: &mut Vec<i64>) -> usize {
+        let w: Vec<i64> = *v;
+        w.len()
+    }
+
+    // Reads are not moves: `len`, index, `as_slice`, `&`.
+    #[effects(pure)]
+    fn reads(v: Vec<i64>) -> usize {
+        let mut w: Vec<i64> = v.clone();
+        fill(w.as_mut_slice(), w.len());
+        read(v.as_slice()) + v.len() + w.len()
+    }
+
+    #[effects(pure)]
+    fn alias(v: &mut Vec<i64>) -> () {
+        let mut w: Vec<i64> = Vec::new();
+        keep(&mut w, w);
+    }
+
+    #[effects(pure)]
+    fn alias_slice() -> () {
+        let mut w: Vec<i64> = Vec::new();
+        fill(w.as_mut_slice(), read(w.as_slice()));
+    }
+}

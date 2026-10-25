@@ -2209,6 +2209,8 @@ impl Gate {
                     self.rejects(&e.kind, tb) || (has_named(&e.kind) && has_array(&e.kind, tb))
                 }
                 TypeKind::Ref { inner, .. } => self.rejects(&inner.kind, tb),
+                // `Vec` comes with backlog 2G-03 (prover) and 2G-04 (code).
+                TypeKind::Vec(_) => true,
                 _ => false,
             },
         }
@@ -2233,6 +2235,26 @@ fn data_spec_fns(defs: &BTreeMap<String, Def>, t: &Tables, gate: Gate) -> BTreeS
         }
         tainted = next;
     }
+}
+
+/// Whether a definition has a `Vec` parameter, local or expression (the
+/// encoding of backlog 2G-03 is not there yet).
+fn touches_vec(f: &FnDef, path: &str, t: &Tables) -> bool {
+    fn holds(t: &TypeKind) -> bool {
+        match t {
+            // The surface type of the result is not canonical.
+            TypeKind::Vec(_) => true,
+            TypeKind::Named { path, .. } => path.len() == 1 && path[0] == "Vec",
+            TypeKind::Ref { inner, .. } => holds(&inner.kind),
+            _ => false,
+        }
+    }
+    let s = f.span;
+    t.locals.get(path).is_some_and(|m| m.values().any(holds))
+        || holds(&f.ret.ty.kind)
+        || t.types
+            .range((s.file, s.lo, 0)..(s.file, s.hi, u32::MAX))
+            .any(|(_, ty)| holds(ty))
 }
 
 fn has_named(t: &TypeKind) -> bool {
@@ -2885,10 +2907,12 @@ fn verify_impl(
         let mut enc = Enc::new(&prog, path, &d.mod_path);
         let data = data_type_use(d.f, path, t, &tainted, Gate::Prover);
         if let Some(sp) = data {
-            enc.unsupported.push((
-                sp,
-                "this data type is not supported by the proof gate yet (backlog 2B-05d)".into(),
-            ));
+            let msg = if touches_vec(d.f, path, t) {
+                "`Vec` is not supported by the proof gate yet (backlog 2G-03)"
+            } else {
+                "this data type is not supported by the proof gate yet (backlog 2B-05d)"
+            };
+            enc.unsupported.push((sp, msg.into()));
         }
         let header = header(seed);
         // Definitional axioms of revealed spec fns, filtered per obligation.
@@ -2913,6 +2937,8 @@ fn verify_impl(
                 enc.spec_block(&d.f.body, &env, &BTreeMap::new());
                 enc.term_check = None;
             }
+            // Nothing in a definition touching a `Vec` is encoded yet.
+            FnKind::Exec if touches_vec(d.f, path, t) => {}
             FnKind::Exec => {
                 for u in uses_of(d.f, &d.mod_path, &t.fns) {
                     let (ax, unsup, parts) = prog.axiom(&u);

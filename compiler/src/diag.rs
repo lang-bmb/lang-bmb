@@ -46,6 +46,15 @@ pub const CODES: &[(&str, &str)] = &[
         "E0213",
         "`T::try_from(x).expect(..)` is written `.unwrap()`",
     ),
+    // E0218-E0219: Rust habits around `Vec` (ADR-0031 §7)
+    (
+        "E0218",
+        "a `Vec` is passed where a slice is expected: write `v.as_slice()`",
+    ),
+    (
+        "E0219",
+        "`drop(v)` and `mem::take` / `replace` / `swap` are not used",
+    ),
     // E0220-E0233: Rust habits around data types (ADR-0026 §5)
     ("E0220", "`#[derive(..)]` is not used"),
     (
@@ -121,6 +130,8 @@ pub const CODES: &[(&str, &str)] = &[
         "E0412",
         "`T::try_from(x)` takes an integer and is used as `.unwrap()` or `.ok()`",
     ),
+    ("E0413", "use of a moved `Vec`"),
+    ("E0414", "a `Vec` is moved on some paths and not on others"),
     (
         "E0420",
         "malformed data type: wrong type arguments, or no field or variant",
@@ -165,6 +176,7 @@ pub const CODES: &[(&str, &str)] = &[
         "E0513",
         "conversions are not used in specifications (integer types mix there)",
     ),
+    ("E0514", "`==` is not defined for `Vec`"),
     (
         "E0508",
         "`old(..)` is only allowed in `ensures`, loop invariants and `assert` on a `&mut` parameter",

@@ -46,7 +46,7 @@ pub struct Adt {
 }
 
 /// Names the language defines (ADR-0026): user definitions cannot take them.
-const BUILTIN_NAMES: &[&str] = &["Option", "Result", "Some", "None", "Ok", "Err"];
+const BUILTIN_NAMES: &[&str] = &["Option", "Result", "Some", "None", "Ok", "Err", "Vec"];
 
 pub struct Checker<'a> {
     diags: &'a mut Diags,
@@ -61,6 +61,8 @@ pub struct Checker<'a> {
     pub recursive: BTreeMap<String, usize>,
     /// Canonical type of every parameter and local, by definition path.
     pub locals: BTreeMap<String, BTreeMap<String, TypeKind>>,
+    /// Where each executable function frees its `Vec` values (ADR-0031 §2).
+    pub moves: BTreeMap<String, crate::moves::MoveInfo>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -111,6 +113,7 @@ pub fn ty_str(t: &TypeKind) -> String {
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
+        TypeKind::Vec(e) => format!("Vec<{}>", ty_str(&e.kind)),
         TypeKind::Error => "{error}".into(),
     }
 }
@@ -123,9 +126,21 @@ fn is_scalar(t: &TypeKind) -> bool {
 }
 fn elem_of(t: &TypeKind) -> Option<&TypeKind> {
     match t {
-        TypeKind::Array(e, _) => Some(&e.kind),
+        TypeKind::Array(e, _) | TypeKind::Vec(e) => Some(&e.kind),
         TypeKind::Ref { inner, .. } => match &inner.kind {
-            TypeKind::Slice(e) => Some(&e.kind),
+            TypeKind::Slice(e) | TypeKind::Vec(e) => Some(&e.kind),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// The element type of a `Vec<T>`, `&Vec<T>` or `&mut Vec<T>`.
+fn vec_elem(t: &TypeKind) -> Option<&TypeKind> {
+    match t {
+        TypeKind::Vec(e) => Some(&e.kind),
+        TypeKind::Ref { inner, .. } => match &inner.kind {
+            TypeKind::Vec(e) => Some(&e.kind),
             _ => None,
         },
         _ => None,
@@ -175,6 +190,7 @@ impl<'a> Checker<'a> {
             types: BTreeMap::new(),
             recursive: BTreeMap::new(),
             locals: BTreeMap::new(),
+            moves: BTreeMap::new(),
         }
     }
 
@@ -361,6 +377,14 @@ impl<'a> Checker<'a> {
                 self.err("E0402", t.span, "a field cannot have type `()`");
                 TypeKind::Error
             }
+            TypeKind::Named { path, .. } if path.len() == 1 && path[0] == "Vec" => {
+                self.err(
+                    "E0402",
+                    t.span,
+                    "a struct or enum cannot hold a `Vec` (ADR-0031 §1)",
+                );
+                TypeKind::Error
+            }
             _ => self.canon(t, mp, true),
         }
     }
@@ -428,6 +452,9 @@ impl<'a> Checker<'a> {
         match &t.kind {
             TypeKind::Named { path, args } => {
                 let name = path.join("::");
+                if path.len() == 1 && name == "Vec" {
+                    return self.vec_type(t, args, mp, report);
+                }
                 if path.len() == 1 && (name == "Option" || name == "Result") {
                     let want = if name == "Option" { 1 } else { 2 };
                     if args.len() != want {
@@ -443,7 +470,17 @@ impl<'a> Checker<'a> {
                         }
                         return TypeKind::Error;
                     }
-                    let args = args.iter().map(|a| sub(self, a)).collect();
+                    let args: Vec<Type> = args.iter().map(|a| sub(self, a)).collect();
+                    if let Some(v) = args.iter().find(|a| matches!(a.kind, TypeKind::Vec(_))) {
+                        if report {
+                            self.err(
+                                "E0402",
+                                v.span,
+                                format!("`{name}` cannot hold a `Vec` (ADR-0031 §1)"),
+                            );
+                        }
+                        return TypeKind::Error;
+                    }
                     return TypeKind::Named {
                         path: path.clone(),
                         args,
@@ -486,6 +523,70 @@ impl<'a> Checker<'a> {
                 inner: Box::new(sub(self, inner)),
             },
             other => other.clone(),
+        }
+    }
+
+    /// `Vec<T>` (ADR-0031 §1): `T` a scalar, or a struct or enum without
+    /// arrays (the boundary of data type slices in the proof gate).
+    fn vec_type(&mut self, t: &Type, args: &[Type], mp: &str, report: bool) -> TypeKind {
+        if args.len() != 1 {
+            if report {
+                self.err(
+                    "E0420",
+                    t.span,
+                    format!("`Vec` takes 1 type argument, found {}", args.len()),
+                );
+            }
+            return TypeKind::Error;
+        }
+        let e = self.canon(&args[0], mp, report);
+        let ok = match &e {
+            TypeKind::Named { .. } => !self.holds_array(&e, &mut BTreeSet::new()),
+            TypeKind::Error => return TypeKind::Error,
+            other => is_scalar(other),
+        };
+        if !ok {
+            if report {
+                self.err(
+                    "E0402",
+                    args[0].span,
+                    format!(
+                        "`Vec` elements are scalars, or structs and enums without arrays (ADR-0031), found `{}`",
+                        ty_str(&e)
+                    ),
+                );
+            }
+            return TypeKind::Error;
+        }
+        TypeKind::Vec(Box::new(Type {
+            kind: e,
+            span: args[0].span,
+        }))
+    }
+
+    /// Whether a value of type `t` holds an array (through fields and payloads).
+    fn holds_array(&self, t: &TypeKind, seen: &mut BTreeSet<String>) -> bool {
+        match t {
+            TypeKind::Array(..) => true,
+            TypeKind::Named { path, args } => {
+                if args.iter().any(|a| self.holds_array(&a.kind, seen)) {
+                    return true;
+                }
+                let p = path.join("::");
+                if !seen.insert(p.clone()) {
+                    return false;
+                }
+                match self.adts.get(&p).map(|a| &a.kind) {
+                    Some(AdtKind::Struct(fs)) => {
+                        fs.iter().any(|(_, ft)| self.holds_array(ft, seen))
+                    }
+                    Some(AdtKind::Enum(vs)) => vs
+                        .iter()
+                        .any(|(_, ps)| ps.iter().any(|pt| self.holds_array(pt, seen))),
+                    None => false,
+                }
+            }
+            _ => false,
         }
     }
 
@@ -881,6 +982,11 @@ impl<'a> Checker<'a> {
             self.declare(&mut cx, &p.name, ty, false, true);
         }
         self.check_value_type(&f.ret.ty, "return type");
+        if f.kind == FnKind::Spec
+            && matches!(&f.ret.ty.kind, TypeKind::Named { path, .. } if path.len() == 1 && path[0] == "Vec")
+        {
+            self.spec_vec(f.ret.ty.span);
+        }
         let ret_ty = self.canon(&f.ret.ty, mod_path, true);
         if matches!(f.ret.ty.kind, TypeKind::Array(..)) {
             // Code generation returns scalars only; arrays come back through
@@ -939,6 +1045,15 @@ impl<'a> Checker<'a> {
             &ret_ty,
             f.body.tail.as_ref().map_or(f.body.span, |e| e.span),
         );
+        if f.kind == FnKind::Exec {
+            let none = BTreeMap::new();
+            let locals = self.locals.get(&path).unwrap_or(&none);
+            let (diags, info) = crate::moves::check(f, locals, &self.types);
+            for d in diags {
+                self.diags.push(d);
+            }
+            self.moves.insert(path, info);
+        }
     }
 
     fn check_param_type(&mut self, t: &Type, kind: FnKind) {
@@ -952,6 +1067,11 @@ impl<'a> Checker<'a> {
                         self.err("E0402", t.span, "spec function parameters cannot be `&mut`");
                     }
                 }
+                TypeKind::Named { path, .. } if path.len() == 1 && path[0] == "Vec" => {
+                    if kind == FnKind::Spec {
+                        self.spec_vec(t.span);
+                    }
+                }
                 TypeKind::Named { .. } => {
                     if *mutable && kind == FnKind::Spec {
                         self.err("E0402", t.span, "spec function parameters cannot be `&mut`");
@@ -963,8 +1083,25 @@ impl<'a> Checker<'a> {
                     "references are `&[T]`, `&mut [T]`, `&T` or `&mut T` with `T` a scalar, struct or enum",
                 ),
             },
+            TypeKind::Named { path, .. }
+                if kind == FnKind::Spec && path.len() == 1 && path[0] == "Vec" =>
+            {
+                self.spec_vec(t.span)
+            }
             _ => self.check_value_type(t, "parameter type"),
         }
+    }
+
+    /// E0402: specifications see a `Vec` as a slice (ADR-0031 §3).
+    fn spec_vec(&mut self, span: Span) {
+        self.diags.push(
+            Diag::new(
+                "E0402",
+                span,
+                "a spec function cannot take or return a `Vec`",
+            )
+            .fix("take `&[T]` and pass `v.as_slice()`", None),
+        );
     }
 
     /// Types for locals and results: no references, no bare slices.
@@ -1299,7 +1436,7 @@ impl<'a> Checker<'a> {
                     return TypeKind::Error;
                 };
                 let writable = match &l.ty {
-                    TypeKind::Array(..) => l.mutable,
+                    TypeKind::Array(..) | TypeKind::Vec(_) => l.mutable,
                     TypeKind::Ref { mutable, .. } => *mutable,
                     _ => false,
                 };
@@ -2448,6 +2585,11 @@ impl<'a> Checker<'a> {
             {
                 self.variant_value(cx, path, args, e.span, mode)
             }
+            ExprKind::Call { path, args }
+                if self.resolve(path, &cx.mod_path).is_none() && vec_builtin(path) =>
+            {
+                self.vec_call(cx, path, args, expected, e.span, mode)
+            }
             ExprKind::Call { path, args } => self.call(cx, path, args, e.span, mode),
             ExprKind::Ref { .. } => {
                 self.diags.push(Diag::new(
@@ -2757,6 +2899,22 @@ impl<'a> Checker<'a> {
                         TypeKind::Bool
                     };
                 }
+                // A `Vec`'s array goes on past its length, so array equality
+                // is not `Vec` equality (ADR-0031 §3).
+                if matches!(op, BinOp::Eq | BinOp::Ne) && matches!(lt, TypeKind::Vec(_)) {
+                    self.diags.push(
+                        Diag::new(
+                            "E0514",
+                            span,
+                            format!("`{}` is not defined for `{}`", op.symbol(), ty_str(&lt)),
+                        )
+                        .fix(
+                            "compare the lengths and the elements with a spec predicate over `v.as_slice()`",
+                            None,
+                        ),
+                    );
+                    return TypeKind::Bool;
+                }
                 // Structural `==` on data types is a specification term only
                 // (SMT equality, ADR-0026 §2).
                 if matches!(op, BinOp::Eq | BinOp::Ne) && matches!(lt, TypeKind::Named { .. }) {
@@ -2807,6 +2965,9 @@ impl<'a> Checker<'a> {
         mode: Mode,
     ) -> TypeKind {
         let rt = self.expr(cx, recv, None, mode);
+        if let Some(et) = vec_elem(&rt).cloned() {
+            return self.vec_method(cx, recv, &rt, et, name, args, span, mode);
+        }
         let value = match &rt {
             TypeKind::Ref { inner, .. } => &inner.kind,
             t => t,
@@ -2952,6 +3113,183 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// A built-in method of `Vec<T>` (ADR-0031 §1): `push`, `pop`, `len`,
+    /// `truncate`, `clone`; `as_slice` / `as_mut_slice` only as arguments.
+    #[allow(clippy::too_many_arguments)]
+    fn vec_method(
+        &mut self,
+        cx: &mut FnCtx,
+        recv: &Expr,
+        rt: &TypeKind,
+        et: TypeKind,
+        name: &Ident,
+        args: &[Expr],
+        span: Span,
+        mode: Mode,
+    ) -> TypeKind {
+        let m = name.name.as_str();
+        let (arity, mutates, ret) = match m {
+            "push" => (1, true, TypeKind::Unit),
+            "pop" => (0, true, option_of(et.clone())),
+            "truncate" => (1, true, TypeKind::Unit),
+            "len" => (0, false, TypeKind::Usize),
+            "clone" => (0, false, TypeKind::Vec(mk(et.clone()))),
+            "as_slice" | "as_mut_slice" => {
+                for a in args {
+                    self.expr(cx, a, None, mode);
+                }
+                self.diags.push(
+                    Diag::new(
+                        "E0409",
+                        span,
+                        format!("`.{m}()` may only appear directly as a call argument"),
+                    )
+                    .fix("pass it to a `&[T]` / `&mut [T]` parameter", None),
+                );
+                return TypeKind::Error;
+            }
+            _ => {
+                for a in args {
+                    self.expr(cx, a, None, mode);
+                }
+                let fix = match m {
+                    "get" | "first" | "last" => Some("index with `v[i]`: its bound is proved"),
+                    "is_empty" => Some("compare `v.len() == 0`"),
+                    "iter" | "iter_mut" | "into_iter" => Some("use `while` with an index"),
+                    "extend_from_slice" | "resize" | "insert" | "remove" | "swap_remove"
+                    | "sort" | "reverse" | "contains" => {
+                        Some("not available; write the loop (ADR-0031 §1)")
+                    }
+                    _ => None,
+                };
+                let mut d = Diag::new("E0404", name.span, format!("unknown method `{m}`"));
+                if let Some(f) = fix {
+                    d = d.fix(f, None);
+                }
+                self.diags.push(d);
+                return TypeKind::Error;
+            }
+        };
+        if mode != Mode::Exec && m != "len" {
+            self.err(
+                "E0503",
+                span,
+                format!("`.{m}()` is not allowed in a specification"),
+            );
+        }
+        if args.len() != arity {
+            self.err(
+                "E0405",
+                name.span,
+                format!("`{m}` takes {arity} argument(s), found {}", args.len()),
+            );
+        }
+        let want = if m == "push" { et } else { TypeKind::Usize };
+        for a in args {
+            let at = self.expr(cx, a, Some(&want), mode);
+            self.expect_ty(&at, &want, a.span);
+        }
+        if mutates && mode == Mode::Exec {
+            let writable = match &recv.kind {
+                ExprKind::Var(id) => Self::lookup(cx, &id.name).is_some_and(|l| match &l.ty {
+                    TypeKind::Ref { mutable, .. } => *mutable,
+                    _ => l.mutable,
+                }),
+                _ => false,
+            };
+            if !writable && *rt != TypeKind::Error {
+                let fix = if matches!(rt, TypeKind::Ref { .. }) {
+                    "take the parameter as `&mut Vec<T>`"
+                } else {
+                    "declare it with `let mut`"
+                };
+                self.diags.push(
+                    Diag::new(
+                        "E0408",
+                        recv.span,
+                        format!("`.{m}()` needs a mutable `Vec`"),
+                    )
+                    .fix(fix, None),
+                );
+            }
+        }
+        ret
+    }
+
+    /// `Vec::new()`, `Vec::with_capacity(n)` (the element type is the
+    /// expected one), and the Rust habits `drop(v)`, `mem::take` (E0219).
+    fn vec_call(
+        &mut self,
+        cx: &mut FnCtx,
+        path: &[Ident],
+        args: &[Expr],
+        expected: Option<&TypeKind>,
+        span: Span,
+        mode: Mode,
+    ) -> TypeKind {
+        let last = path.last().unwrap().name.as_str();
+        if path[0].name != "Vec" {
+            for a in args {
+                self.expr(cx, a, None, mode);
+            }
+            self.diags.push(
+                Diag::new(
+                    "E0219",
+                    span,
+                    format!("`{}` is not used", Self::path_text(path)),
+                )
+                .fix(
+                    "a `Vec` is freed at the end of its block; assign a new value to replace it",
+                    None,
+                ),
+            );
+            return TypeKind::Error;
+        }
+        if mode != Mode::Exec {
+            self.err(
+                "E0503",
+                span,
+                format!("`Vec::{last}` is not allowed in a specification"),
+            );
+        }
+        let arity = usize::from(last == "with_capacity");
+        if args.len() != arity {
+            self.err(
+                "E0405",
+                span,
+                format!(
+                    "`Vec::{last}` takes {arity} argument(s), found {}",
+                    args.len()
+                ),
+            );
+        }
+        for a in args {
+            let t = self.expr(cx, a, Some(&TypeKind::Usize), mode);
+            self.expect_ty(&t, &TypeKind::Usize, a.span);
+        }
+        match expected {
+            Some(t @ TypeKind::Vec(_)) => t.clone(),
+            _ => {
+                self.diags.push(
+                    Diag::new(
+                        "E0401",
+                        span,
+                        format!("the element type of `Vec::{last}()` comes from the expected type"),
+                    )
+                    .fix("write it: `let v: Vec<T> = Vec::new();`", None),
+                );
+                TypeKind::Error
+            }
+        }
+    }
+
+    fn path_text(path: &[Ident]) -> String {
+        path.iter()
+            .map(|i| i.name.as_str())
+            .collect::<Vec<_>>()
+            .join("::")
+    }
+
     fn call(
         &mut self,
         cx: &mut FnCtx,
@@ -3066,7 +3404,10 @@ impl<'a> Checker<'a> {
                 // A scalar argument that only reads the array is a value
                 // computed before the call, so it cannot alias (ADR-0024):
                 // `fill(&mut a, a.len())`, `put(&mut a, a[0])`.
-                let by_value = !matches!(sig.params.get(j), Some(TypeKind::Ref { .. }));
+                let by_value = !matches!(
+                    sig.params.get(j),
+                    Some(TypeKind::Ref { .. } | TypeKind::Vec(_))
+                );
                 if j != i && by_value && reads_only(a) {
                     continue;
                 }
@@ -3174,6 +3515,9 @@ impl<'a> Checker<'a> {
         let TypeKind::Slice(pe) = &inner.kind else {
             return self.data_ref_arg(cx, a, pm, &inner.kind, &want, mode);
         };
+        if let Some(r) = self.slice_of_vec(cx, a, pm, &pe.kind, &want, mode) {
+            return r;
+        }
         let (var, explicit_ref, am) = match &a.kind {
             ExprKind::Ref { mutable, expr } => match &expr.kind {
                 ExprKind::Var(id) => (id, true, *mutable),
@@ -3260,6 +3604,111 @@ impl<'a> Checker<'a> {
             return None;
         }
         Some(var.name.clone())
+    }
+
+    /// A `&[T]` / `&mut [T]` argument made from a `Vec` (ADR-0031 §1):
+    /// `v.as_slice()`, `v.as_mut_slice()`, and the Rust habits `&v`, `&mut v`
+    /// and a `&Vec<T>` parameter passed on (E0218). `None` when the
+    /// argument is not about a `Vec`; else the result for `ref_arg`.
+    fn slice_of_vec(
+        &mut self,
+        cx: &mut FnCtx,
+        a: &Expr,
+        pm: bool,
+        pe: &TypeKind,
+        want: &str,
+        mode: Mode,
+    ) -> Option<Option<String>> {
+        let want_m = if pm { "as_mut_slice" } else { "as_slice" };
+        let vec_var = |cx: &FnCtx, x: &Expr| match &x.kind {
+            ExprKind::Var(id) => Self::lookup(cx, &id.name).filter(|l| vec_elem(&l.ty).is_some()),
+            _ => None,
+        };
+        match &a.kind {
+            ExprKind::Method { recv, name, args }
+                if matches!(name.name.as_str(), "as_slice" | "as_mut_slice") =>
+            {
+                let rt = self.expr(cx, recv, None, mode);
+                let Some(et) = vec_elem(&rt).cloned() else {
+                    if rt != TypeKind::Error {
+                        self.err(
+                            "E0404",
+                            name.span,
+                            format!("`{}` is not defined for `{}`", name.name, ty_str(&rt)),
+                        );
+                    }
+                    return Some(None);
+                };
+                if !args.is_empty() {
+                    self.err(
+                        "E0405",
+                        name.span,
+                        format!("`{}` takes no arguments", name.name),
+                    );
+                }
+                let st = TypeKind::Ref {
+                    mutable: name.name == "as_mut_slice",
+                    inner: mk(TypeKind::Slice(mk(et.clone()))),
+                };
+                let found = ty_str(&st);
+                self.types.insert((a.span.file, a.span.lo, a.span.hi), st);
+                if et != *pe || (name.name == "as_mut_slice") != pm {
+                    let r = format!("{}.{want_m}()", crate::fmt::expr_text(recv));
+                    let mut d = Diag::new(
+                        "E0401",
+                        a.span,
+                        format!("expected `{want}`, found `{found}`"),
+                    );
+                    if et == *pe {
+                        d = d.fix(format!("pass `{r}`"), Some(r));
+                    }
+                    self.diags.push(d);
+                    return Some(None);
+                }
+                if !pm || mode != Mode::Exec {
+                    return Some(None);
+                }
+                let writable = vec_var(cx, recv).is_some_and(|l| match &l.ty {
+                    TypeKind::Ref { mutable, .. } => *mutable,
+                    _ => l.mutable,
+                });
+                if !writable {
+                    self.diags.push(
+                        Diag::new(
+                            "E0408",
+                            recv.span,
+                            "`.as_mut_slice()` needs a mutable `Vec`",
+                        )
+                        .fix("declare it with `let mut` or take `&mut Vec<T>`", None),
+                    );
+                    return Some(None);
+                }
+                Some(root_name(recv))
+            }
+            ExprKind::Ref { expr, .. } | ExprKind::Old(expr) if vec_var(cx, expr).is_some() => {
+                self.e0218(cx, a, expr, want_m, mode)
+            }
+            ExprKind::Var(_) if vec_var(cx, a).is_some() => self.e0218(cx, a, a, want_m, mode),
+            _ => None,
+        }
+    }
+
+    /// E0218: a `Vec` given where a slice is expected (Rust's Deref coercion).
+    fn e0218(
+        &mut self,
+        cx: &mut FnCtx,
+        a: &Expr,
+        v: &Expr,
+        want_m: &str,
+        mode: Mode,
+    ) -> Option<Option<String>> {
+        self.expr(cx, v, None, mode);
+        let r = format!("{}.{want_m}()", crate::fmt::expr_text(v));
+        self.diags.push(
+            Diag::new("E0218", a.span, "a `Vec` is not a slice")
+                .fix(format!("pass `{r}`"), Some(r)),
+        );
+        Some(None)
     }
 
     /// Checks an argument for a `&T` / `&mut T` parameter of a struct or
@@ -3784,4 +4233,17 @@ fn option_of(t: TypeKind) -> TypeKind {
             span: Span::default(),
         }],
     }
+}
+
+/// `Vec::new` / `Vec::with_capacity`, and `drop`, `mem::take` and its
+/// kin (a Rust habit, E0219).
+fn vec_builtin(path: &[Ident]) -> bool {
+    let p: Vec<&str> = path.iter().map(|i| i.name.as_str()).collect();
+    matches!(
+        p.as_slice(),
+        ["Vec", "new" | "with_capacity"]
+            | ["drop"]
+            | ["mem" | "std::mem", "take" | "replace" | "swap"]
+            | ["std", "mem", "take" | "replace" | "swap"]
+    )
 }

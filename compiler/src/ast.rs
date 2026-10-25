@@ -128,6 +128,8 @@ pub enum TypeKind {
         path: Vec<String>,
         args: Vec<Type>,
     },
+    /// The built-in heap vector `Vec<T>` (ADR-0031).
+    Vec(Box<Type>),
     Error,
 }
 

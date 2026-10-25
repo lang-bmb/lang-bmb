@@ -12,6 +12,7 @@ pub mod lexer;
 pub mod lint;
 pub mod map;
 pub mod mcp;
+pub mod moves;
 pub mod parser;
 pub mod sha256;
 pub mod smt;
@@ -449,13 +450,13 @@ fn emit_llvm_frontend(
     } else {
         prove(fe, &mut diags, cache_dir, incr.as_mut())
     };
-    // Data types are proved but not lowered before backlog 2B-06.
+    // What the proof gate does not encode is not lowered either.
     let module = match verify::program_data_type_use(&fe.program, &fe.tables) {
         Some(sp) => {
             diags.push(Diag::new(
                 "E0814",
                 sp,
-                "data types are not compiled yet (backlog 2B-06)",
+                "not compiled yet: `Vec` (backlog 2G-04), or elements holding an array",
             ));
             None
         }
