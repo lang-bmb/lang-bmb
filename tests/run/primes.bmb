@@ -1,0 +1,131 @@
+#[summary("실행: 체로 소수 모으기와 정렬된 두 Vec 합치기 (ADR-0031, backlog 2G-07 실용성)")]
+mod pr {
+    spec fn small(n: usize) -> bool { 2 <= n && n <= 100000 }
+
+    spec fn len_is(a: &[bool], n: usize) -> bool { a.len() == n }
+
+    spec fn primes_below(p: &[u64], n: usize) -> bool { p.len() <= n }
+
+    // Sieve of Eratosthenes: `composite[k]` for k < n, then the primes in order.
+    #[effects(pure)]
+    #[uses(small, len_is, primes_below)]
+    fn primes(n: usize) -> (r: Vec<u64>)
+        requires small(n),
+        ensures primes_below(r.as_slice(), n),
+    {
+        let mut composite: Vec<bool> = Vec::with_capacity(n);
+        let mut k: usize = 0;
+        while k < n
+            invariant k <= n, len_is(composite.as_slice(), k),
+            decreases n - k,
+        {
+            composite.push(false);
+            k = k + 1;
+        }
+        // Multiples from `2i` on: no products, so every obligation is linear.
+        let mut i: usize = 2;
+        while i < n
+            invariant 2 <= i, i <= n, len_is(composite.as_slice(), n),
+            decreases n - i,
+        {
+            if !composite[i] {
+                let mut j: usize = i + i;
+                while j < n
+                    invariant j <= n + i, len_is(composite.as_slice(), n),
+                    decreases n + i - j,
+                {
+                    composite[j] = true;
+                    j = j + i;
+                }
+            }
+            i = i + 1;
+        }
+        let mut out: Vec<u64> = Vec::new();
+        let mut m: usize = 2;
+        while m < n
+            invariant 2 <= m, m <= n, len_is(composite.as_slice(), n), primes_below(out.as_slice(), m),
+            decreases n - m,
+        {
+            if !composite[m] {
+                out.push(u64::try_from(m).unwrap());
+            }
+            m = m + 1;
+        }
+        out
+    }
+
+    spec fn room(a: &[i64]) -> bool { a.len() <= 1000 }
+
+    spec fn merged(r: &[i64], a: &[i64], b: &[i64]) -> bool { r.len() == a.len() + b.len() }
+
+    // Two sorted runs into one; equal keys from `a` first.
+    #[effects(pure)]
+    #[uses(room, merged)]
+    fn merge(a: &[i64], b: &[i64]) -> (r: Vec<i64>)
+        requires room(a), room(b),
+        ensures merged(r.as_slice(), a, b),
+    {
+        let mut out: Vec<i64> = Vec::with_capacity(a.len() + b.len());
+        let mut i: usize = 0;
+        let mut j: usize = 0;
+        while i < a.len() || j < b.len()
+            invariant i <= a.len(), j <= b.len(), out.len() == i + j,
+            decreases a.len() + b.len() - i - j,
+        {
+            if j == b.len() || (i < a.len() && a[i] <= b[j]) {
+                out.push(a[i]);
+                i = i + 1;
+            } else {
+                out.push(b[j]);
+                j = j + 1;
+            }
+        }
+        out
+    }
+
+    spec fn sorted_build(v: &[i64], n: usize) -> bool { v.len() == n }
+
+    spec fn few(n: usize) -> bool { n <= 100 }
+
+    #[effects(pure)]
+    #[uses(sorted_build, few)]
+    fn evens(n: usize) -> (r: Vec<i64>)
+        requires few(n),
+        ensures sorted_build(r.as_slice(), n),
+    {
+        let mut v: Vec<i64> = Vec::new();
+        let mut k: usize = 0;
+        while k < n
+            invariant k <= n, sorted_build(v.as_slice(), k),
+            decreases n - k,
+        {
+            v.push(2 * i64::try_from(k).unwrap());
+            k = k + 1;
+        }
+        v
+    }
+
+    #[effects(io)]
+    #[uses(small, len_is, primes_below, room, merged, sorted_build, few)]
+    fn main() -> () {
+        let p: Vec<u64> = primes(1000);
+        print_u64(u64::try_from(p.len()).unwrap());
+        if p.len() >= 3 {
+            print_u64(p[0]);
+            print_u64(p[p.len() - 1]);
+        }
+        let a: Vec<i64> = evens(4);
+        let mut b: Vec<i64> = Vec::new();
+        b.push(-1);
+        b.push(3);
+        b.push(4);
+        let m: Vec<i64> = merge(a.as_slice(), b.as_slice());
+        let mut k: usize = 0;
+        while k < m.len()
+            decreases m.len() - k,
+        {
+            print_i64(m[k]);
+            k = k + 1;
+        }
+    }
+}

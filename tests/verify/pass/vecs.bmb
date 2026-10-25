@@ -18,24 +18,24 @@ mod vp {
 
     spec fn small(n: usize) -> bool { n <= 1000 }
 
-    spec fn squares(a: &[i64], n: usize) -> bool {
-        a.len() == n && forall|k: usize| k < n ==> #[trigger] a[k] == k * k
+    spec fn triples(a: &[i64], n: usize) -> bool {
+        a.len() == n && forall|k: usize| k < n ==> #[trigger] a[k] == 3 * k
     }
 
     #[effects(pure)]
-    #[uses(small, squares)]
-    fn first_squares(n: usize) -> (r: Vec<i64>)
+    #[uses(small, triples)]
+    fn first_triples(n: usize) -> (r: Vec<i64>)
         requires small(n),
-        ensures squares(r.as_slice(), n),
+        ensures triples(r.as_slice(), n),
     {
         let mut v: Vec<i64> = Vec::with_capacity(n);
         let mut i: usize = 0;
         while i < n
-            invariant i <= n, squares(v.as_slice(), i),
+            invariant i <= n, v.len() == i, triples(v.as_slice(), i),
             decreases n - i,
         {
             let k: i64 = i64::try_from(i).unwrap();
-            v.push(k * k);
+            v.push(3 * k);
             i = i + 1;
         }
         v
@@ -43,9 +43,9 @@ mod vp {
 
     // A result's contract gives its length: the index is proved.
     #[effects(pure)]
-    #[uses(small, squares, room, grew)]
+    #[uses(small, triples, room, grew)]
     fn use_result() -> i64 {
-        let mut v: Vec<i64> = first_squares(5);
+        let mut v: Vec<i64> = first_triples(5);
         push_one(&mut v, 7);
         v[4] + v[5]
     }

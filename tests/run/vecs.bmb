@@ -4,21 +4,22 @@ mod vr {
 
     spec fn len_is(a: &[u64], n: usize) -> bool { a.len() == n }
 
-    // Grows past the first capacity (4) several times: 4, 8, 16, 32.
+    // Multiples of 3 (linear, so cheap to prove); grows past the first
+    // capacity (4) several times: 4, 8, 16, 32.
     #[effects(pure)]
     #[uses(small, len_is)]
-    fn squares(n: usize) -> (r: Vec<u64>)
+    fn triples(n: usize) -> (r: Vec<u64>)
         requires small(n),
         ensures len_is(r.as_slice(), n),
     {
         let mut v: Vec<u64> = Vec::new();
         let mut i: usize = 0;
         while i < n
-            invariant i <= n, len_is(v.as_slice(), i),
+            invariant i <= n, v.len() == i, len_is(v.as_slice(), i),
             decreases n - i,
         {
             let k: u64 = u64::try_from(i).unwrap();
-            v.push(k * k);
+            v.push(3 * k);
             i = i + 1;
         }
         v
@@ -90,7 +91,7 @@ mod vr {
     #[effects(io)]
     #[uses(small, len_is, room, grew, store_room, added)]
     fn main() -> () {
-        let v: Vec<u64> = squares(20);
+        let v: Vec<u64> = triples(20);
         show(v.len());
         print_u64(v[19]);
         // A clone is independent of its original.
@@ -117,11 +118,11 @@ mod vr {
             Some(x3) => print_u64(x3),
         }
         // Replacing an owned Vec frees the old one.
-        u = squares(3);
+        u = triples(3);
         show(u.len());
         // A temporary read in a loop condition is freed each time.
         let mut k: usize = 0;
-        while k < squares(3).len()
+        while k < triples(3).len()
             decreases 3 - k,
         {
             k = k + 1;
@@ -139,6 +140,6 @@ mod vr {
         s[a.i] = Point { x: s[b.i].y, y: s[a.i].x };
         print_i64(s[a.i].x);
         print_i64(s[a.i].y);
-        print_u64(sum(squares(10).as_slice()));
+        print_u64(sum(triples(10).as_slice()));
     }
 }
