@@ -86,7 +86,7 @@ impl ProofCache {
             out.push_str(&format!("{k} {t} {m}\n"));
         }
         let tmp = dir.join(format!("{FILE}.tmp"));
-        std::fs::write(&tmp, out)?;
+        crate::workspace::write_new(&tmp, &out)?;
         std::fs::rename(tmp, Self::path(dir))
     }
 }

@@ -18,6 +18,9 @@ struct Tx {
     base: Vec<(String, String)>,
 }
 
+/// Open transactions at once (backlog 2D-20: each holds a copy of the files).
+pub const MAX_OPEN_TXS: usize = 64;
+
 pub struct Server {
     root: PathBuf,
     txs: BTreeMap<u64, Tx>,
@@ -197,6 +200,11 @@ impl Server {
 
     /// Runs one tool. `Ok(text)` is a normal result, `Err(text)` a tool error.
     fn call(&mut self, name: &str, a: &Value) -> Result<String, String> {
+        // The directories the tools read and write must not lead outside the
+        // workspace (backlog 2D-20, docs/mcp-threat-model.md).
+        for d in ["src", ".bmb-cache", "target"] {
+            workspace::refuse_symlink(&self.root.join(d))?;
+        }
         let str_arg = |k: &str| {
             a.get(k)
                 .and_then(Value::as_str)
@@ -271,6 +279,12 @@ impl Server {
                 ))
             }
             "tx_begin" => {
+                // Each open transaction holds a copy of the workspace files.
+                if self.txs.len() >= MAX_OPEN_TXS {
+                    return Err(format!(
+                        "too many open transactions ({MAX_OPEN_TXS}); commit or abort one first"
+                    ));
+                }
                 let id = self.next_tx;
                 self.next_tx += 1;
                 self.txs.insert(

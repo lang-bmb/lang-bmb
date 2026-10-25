@@ -188,6 +188,7 @@ def check_suite(t):
                       "--profile", "body-heavy"])
     saved = bcb.SUITE, bcb.manifest, bcb.measure, bcb.bmb_measure, bcb.tests_fail
     bcb.manifest = lambda args: 0
+    os.environ["BCB_ALLOW_DIRTY"] = "1"  # the gate's tree may be a working copy
     one, two = os.path.join(t, "suite", "one"), os.path.join(t, "suite", "two")
     try:
         bcb.SUITE = [("mini", "rust", 0), ("mini", "b1", 0), ("mini", "defects", 0)]
@@ -231,6 +232,7 @@ def check_suite(t):
         assert bcb.resume_point(os.path.join(two, "mini.rust.jsonl"), "rust", {1, 2, 3, 4}, 6) is None
     finally:
         bcb.SUITE, bcb.manifest, bcb.measure, bcb.bmb_measure, bcb.tests_fail = saved
+        bcb.BMB = BMB
 
 
 def main():

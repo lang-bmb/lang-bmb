@@ -460,3 +460,129 @@ fn invalid_requests_get_an_error_response() {
     assert!(c.child.wait().unwrap().success());
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// Threat model of the MCP surface (backlog 2D-20, docs/mcp-threat-model.md):
+/// a workspace made by someone else cannot make the tools read or write
+/// outside it through symbolic links, transactions are capped, and text from
+/// the workspace stays data inside one response line.
+#[cfg(unix)]
+#[test]
+fn untrusted_workspace_cannot_reach_outside() {
+    use std::os::unix::fs::symlink;
+    let base = temp_root("threats");
+    let outside = base.join("outside");
+    std::fs::create_dir_all(&outside).unwrap();
+    std::fs::write(outside.join("victim.txt"), "secret\n").unwrap();
+    std::fs::write(outside.join("keep.bmb"), "precious\n").unwrap();
+    let unit = "#[summary(\"a\")]\nmod a {\n    #[effects(pure)]\n    fn f(x: i64) -> i64 {\n        x\n    }\n}\n";
+    let put = (
+        "tx_put",
+        format!(
+            "\"unit\":\"a\",\"code\":{}",
+            q("#[effects(pure)]\nfn g(x: i64) -> i64 {\n    x\n}")
+        ),
+    );
+    let untouched = |what: &str| {
+        assert_eq!(
+            std::fs::read_to_string(outside.join("victim.txt")).unwrap(),
+            "secret\n",
+            "{what}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(outside.join("keep.bmb")).unwrap(),
+            "precious\n",
+            "{what}"
+        );
+    };
+
+    // A planted temporary file is replaced, not followed (it overwrote the
+    // target before the fix).
+    let ws = base.join("planted");
+    std::fs::create_dir_all(ws.join("src")).unwrap();
+    std::fs::write(ws.join("src/a.bmb"), unit).unwrap();
+    symlink(outside.join("victim.txt"), ws.join("src/.a.bmb.tmp")).unwrap();
+    let mut c = Client::start(&ws);
+    commit_ok(&mut c, std::slice::from_ref(&put));
+    untouched("planted temporary file");
+    assert!(
+        !std::fs::symlink_metadata(ws.join("src/a.bmb"))
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+    assert!(
+        std::fs::read_to_string(ws.join("src/a.bmb"))
+            .unwrap()
+            .contains("fn g(")
+    );
+
+    // At most MAX_OPEN_TXS open transactions (each holds a copy of the files).
+    for _ in 0..bmb::mcp::MAX_OPEN_TXS {
+        assert!(!c.tool("tx_begin", "{}").1);
+    }
+    let (t, err) = c.tool("tx_begin", "{}");
+    assert!(err && t.contains("too many open transactions"), "{t}");
+    assert!(!c.tool("tx_abort", "{\"tx\":2}").1);
+    assert!(!c.tool("tx_begin", "{}").1);
+
+    // Workspace text is data: a summary that looks like a protocol message
+    // stays inside one response line.
+    let (t, err) = c.tool("query", "{\"name\":\"units\"}");
+    assert!(!err, "{t}");
+    let tricky = "x\\\"}\\n{\\\"jsonrpc\\\":\\\"2.0\\\",\\\"id\\\":99}";
+    let (t, _) = c.tool(
+        "tx_unit",
+        &format!("{{\"tx\":3,\"path\":\"b\",\"summary\":\"{tricky}\"}}"),
+    );
+    assert!(t.contains("\"ops\""), "{t}");
+    let _ = c.tool("tx_commit", "{\"tx\":3}");
+    let (t, _) = c.tool("query", "{\"name\":\"units\"}");
+    assert!(!t.contains("\"id\":99}\n"), "{t}");
+
+    // A commit after another writer changed the files is refused (T10).
+    let (t, err) = c.tool("tx_begin", "{}");
+    assert!(!err, "{t}");
+    let id = json::parse(&t)
+        .unwrap()
+        .get("tx")
+        .unwrap()
+        .as_i64()
+        .unwrap();
+    let before = std::fs::read_to_string(ws.join("src/a.bmb")).unwrap();
+    std::fs::write(ws.join("src/a.bmb"), before.replace("fn g(", "fn h(")).unwrap();
+    let (t, err) = c.tool("tx_commit", &format!("{{\"tx\":{id}}}"));
+    assert!(err && t.contains("workspace changed since tx_begin"), "{t}");
+    drop(c);
+
+    // Links in place of the directories and files the tools use.
+    let cases: [(&str, &str, &str, &str); 4] = [
+        ("src-link", "src", "query", "{\"name\":\"units\"}"),
+        ("cache-link", ".bmb-cache", "verify", "{}"),
+        ("target-link", "target", "build", "{\"name\":\"x\"}"),
+        ("unit-link", "src/b.bmb", "query", "{\"name\":\"units\"}"),
+    ];
+    for (name, link, tool, args) in cases {
+        let ws = base.join(name);
+        std::fs::create_dir_all(ws.join("src")).unwrap();
+        if link == "src" {
+            std::fs::remove_dir(ws.join("src")).unwrap();
+            symlink(&outside, ws.join("src")).unwrap();
+        } else {
+            std::fs::write(ws.join("src/a.bmb"), unit).unwrap();
+            let target = if link.ends_with(".bmb") {
+                outside.join("keep.bmb")
+            } else {
+                outside.clone()
+            };
+            symlink(target, ws.join(link)).unwrap();
+        }
+        let mut c = Client::start(&ws);
+        let (t, err) = c.tool(tool, args);
+        assert!(err && t.contains("symbolic link"), "{name}: {t}");
+        let (t, err) = c.tool("tx_begin", "{}");
+        assert!(err && t.contains("symbolic link"), "{name}: {t}");
+        drop(c);
+        untouched(name);
+    }
+    let _ = std::fs::remove_dir_all(&base);
+}

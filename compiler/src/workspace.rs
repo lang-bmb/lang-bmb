@@ -40,8 +40,38 @@ pub fn src_dir(root: &Path) -> PathBuf {
     root.join("src")
 }
 
+/// Fails when `p` exists and is a symbolic link (backlog 2D-20). A workspace's
+/// files are laid out by the tools (ADR-0011), and its contents may come from
+/// someone else: a link would make reads and writes reach outside it.
+pub fn refuse_symlink(p: &Path) -> Result<(), String> {
+    match std::fs::symlink_metadata(p) {
+        Ok(m) if m.file_type().is_symlink() => Err(format!(
+            "{} is a symbolic link; workspace files must be plain files and directories",
+            p.display()
+        )),
+        _ => Ok(()),
+    }
+}
+
+/// Writes `text` to a new file at `path`, removing whatever was there first
+/// (a planted link is removed, not followed; backlog 2D-20).
+pub fn write_new(path: &Path, text: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    match std::fs::remove_file(path) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e),
+    }
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)?
+        .write_all(text.as_bytes())
+}
+
 /// Reads the `.bmb` files of a workspace (or of any directory), sorted by name.
 pub fn read_dir_sources(dir: &Path) -> Result<Vec<(String, String)>, String> {
+    refuse_symlink(&src_dir(dir))?;
     let dir = if src_dir(dir).is_dir() {
         src_dir(dir)
     } else {
@@ -56,6 +86,7 @@ pub fn read_dir_sources(dir: &Path) -> Result<Vec<(String, String)>, String> {
     paths
         .into_iter()
         .map(|p| {
+            refuse_symlink(&p)?;
             std::fs::read_to_string(&p)
                 .map(|t| (p.display().to_string(), t))
                 .map_err(|e| format!("cannot read {}: {e}", p.display()))
@@ -315,12 +346,13 @@ pub fn write_units(root: &Path, units: &BTreeMap<String, String>) -> Result<(), 
         return Err(format!("unit name `{bad}` is not an identifier"));
     }
     let dir = src_dir(root);
+    refuse_symlink(&dir)?;
     std::fs::create_dir_all(&dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
     let tmp = |unit: &str| dir.join(format!(".{unit}.bmb.tmp"));
     let mut written = Vec::new();
     for (unit, text) in units {
         let t = tmp(unit);
-        if let Err(e) = std::fs::write(&t, text) {
+        if let Err(e) = write_new(&t, text) {
             let _ = std::fs::remove_file(&t);
             for w in &written {
                 let _ = std::fs::remove_file(w);

@@ -581,6 +581,7 @@ def machine():
             "z3": out(["z3", "--version"]), "commit": out(["git", "rev-parse", "HEAD"]),
             "dirty": bool(out(["git", "status", "--porcelain", "--untracked-files=no"])),
             "manifest": sha(os.path.join(HERE, "MANIFEST")) if os.path.exists(os.path.join(HERE, "MANIFEST")) else None,
+            "bmb": BMB, "bmb_sha": sha(BMB) if os.path.exists(BMB) else None,
             "history_sha": None}
 
 
@@ -703,9 +704,19 @@ def resume_point(path, arm, four, last):
 
 def suite(args):
     """Runs (or continues) SUITE: results in RESULTS/<history>.<arm>.jsonl,
-    work directories in WORK/<history>-<arm>."""
+    work directories in WORK/<history>-<arm>. The compiler is copied to
+    WORK/bin/bmb on the first run and every later run uses that copy, so
+    rebuilding the repository's compiler cannot change a measurement halfway."""
+    global BMB
     if manifest(argparse.Namespace(write=False, histories=os.path.join(args.work, "histories"))):
         sys.exit("bcb suite: refusing to run")
+    if machine()["dirty"] and not os.environ.get("BCB_ALLOW_DIRTY"):
+        sys.exit("bcb suite: the repository has uncommitted changes; measure a committed tree")
+    pin = os.path.join(args.work, "bin", "bmb")
+    if not os.path.exists(pin):
+        os.makedirs(os.path.dirname(pin), exist_ok=True)
+        shutil.copy2(BMB, pin)
+    BMB = pin
     os.makedirs(args.results, exist_ok=True)
     for name, arm, every in SUITE:
         hist = os.path.join(args.work, "histories", name + ".jsonl")
