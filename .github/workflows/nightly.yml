@@ -52,3 +52,37 @@ jobs:
           name: fuzz-crash
           path: /tmp/bmb-fuzz-crash.bmb
           if-no-files-found: ignore
+
+  # Performance regression (backlog INF-12): BMB against safe Rust on the
+  # baseline benches; fails when a ratio exceeds G6's +5%. Build times
+  # (INF-13, ADR-0041 accepted costs) are only recorded. Both results are kept
+  # as artifacts.
+  perf:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust toolchain (pinned by rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - name: Pinned tools (z3, LLVM)
+        run: sudo ./scripts/setup.sh
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            target
+          key: cargo-release-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+      - name: Build times (recorded, never a failure)
+        run: |
+          cargo build --release --quiet
+          mkdir -p perf
+          python3 scripts/build_time.py --defs 1000 --out perf/build-time.jsonl
+      - name: BMB against safe Rust (fails above 1.05)
+        run: python3 bench/baseline/run.py --runs 15 --out perf/baseline.md --max-ratio 1.05
+      - name: Keep the results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-${{ github.run_number }}
+          path: perf/
+          if-no-files-found: ignore

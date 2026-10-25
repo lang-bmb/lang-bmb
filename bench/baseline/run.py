@@ -8,7 +8,11 @@ Builds each benchmark three ways from the same algorithm:
 Outputs must agree before any timing is reported. Runs are interleaved
 round-robin; the reported time is the median wall-clock of RUNS runs.
 
-Usage: run.py [--runs N] [--out results/DATE.md]
+Usage: run.py [--runs N] [--out results/DATE.md] [--max-ratio R]
+
+--max-ratio R exits 1 when some benchmark's BMB/safe-Rust ratio exceeds R
+(the nightly performance check, backlog INF-12: G6 is +-5%, so R = 1.05;
+being faster is not a regression).
 """
 import argparse
 import datetime
@@ -70,6 +74,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--runs", type=int, default=9)
     ap.add_argument("--out")
+    ap.add_argument("--max-ratio", type=float)
     args = ap.parse_args()
     tmp = tempfile.mkdtemp(prefix="bmb-bench-")
     try:
@@ -128,6 +133,10 @@ def main():
             f.write(json.dumps({"env": env, "runs": args.runs}, ensure_ascii=False) + "\n")
             for r in rows:
                 f.write(json.dumps(r, ensure_ascii=False) + "\n")
+    if args.max_ratio is not None:
+        slow = [f"{r['bench']} {r['bmb_vs_safe']}" for r in rows if r["bmb_vs_safe"] > args.max_ratio]
+        if slow:
+            sys.exit(f"BMB/safe Rust above {args.max_ratio}: {', '.join(slow)}")
 
 
 if __name__ == "__main__":
