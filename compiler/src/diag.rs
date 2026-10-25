@@ -47,6 +47,8 @@ pub const CODES: &[(&str, &str)] = &[
     ),
     ("E0304", "unknown function"),
     ("E0305", "unknown type"),
+    ("E0306", "unknown field"),
+    ("E0307", "unknown variant"),
     (
         "E0308",
         "`impl` block not in the unit of its type, or a second one",
@@ -79,6 +81,18 @@ pub const CODES: &[(&str, &str)] = &[
         "malformed data type: wrong type arguments, or no field or variant",
     ),
     ("E0421", "a type contains itself"),
+    (
+        "E0422",
+        "struct literal fields: not a struct, a field given twice, or a field missing",
+    ),
+    (
+        "E0424",
+        "the type of `None` / `Ok` / `Err` is not known here",
+    ),
+    (
+        "E0425",
+        "`==` on data types is not executable (compare the fields)",
+    ),
     // E05xx: specifications
     (
         "E0501",

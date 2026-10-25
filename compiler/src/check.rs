@@ -432,21 +432,7 @@ impl<'a> Checker<'a> {
                     }
                 } else {
                     if report {
-                        let mut d = Diag::new("E0305", t.span, format!("unknown type `{name}`"));
-                        let local: Vec<String> = self
-                            .adts
-                            .keys()
-                            .filter_map(|k| k.strip_prefix(&format!("{mp}::")).map(String::from))
-                            .filter(|k| !k.contains("::"))
-                            .collect();
-                        if let Some(near) = closest(&name, local.iter()) {
-                            d = d.fix(format!("did you mean `{near}`?"), Some(near));
-                        } else if path.len() == 1 {
-                            d = d.fix(
-                                "types of other units are named by full path, e.g. `unit::Point`",
-                                None,
-                            );
-                        }
+                        let d = self.unknown_type(&name, t.span, mp);
                         self.diags.push(d);
                     }
                     TypeKind::Error
@@ -1270,10 +1256,451 @@ impl<'a> Checker<'a> {
                 }
                 elem
             }
+            ExprKind::Field { .. } | ExprKind::Deref(_) => {
+                let (t, writable) = self.place_of(cx, target);
+                if !writable && t != TypeKind::Error {
+                    self.diags.push(
+                        Diag::new("E0408", target.span, "this place cannot be assigned").fix(
+                            "assign through a `let mut` local or a `&mut` parameter",
+                            None,
+                        ),
+                    );
+                }
+                t
+            }
             _ => {
                 self.err("E0408", target.span, "invalid assignment target");
                 TypeKind::Error
             }
+        }
+    }
+
+    /// The type of a place under a field or `*` target, and whether it can be
+    /// written: a `let mut` local, a `&mut` parameter, a writable element.
+    fn place_of(&mut self, cx: &mut FnCtx, e: &Expr) -> (TypeKind, bool) {
+        match &e.kind {
+            ExprKind::Var(id) => match Self::lookup(cx, &id.name) {
+                Some(l) => {
+                    let w = match &l.ty {
+                        TypeKind::Ref { mutable, .. } => *mutable,
+                        _ => l.mutable,
+                    };
+                    (l.ty, w)
+                }
+                None => {
+                    self.unknown_local(cx, &id.name, id.span);
+                    (TypeKind::Error, false)
+                }
+            },
+            ExprKind::Field { base, name } => {
+                let (bt, w) = self.place_of(cx, base);
+                (self.field_type_of(&bt, name), w)
+            }
+            ExprKind::Deref(x) => {
+                let (t, w) = self.place_of(cx, x);
+                match t {
+                    TypeKind::Ref { inner, .. } if !matches!(inner.kind, TypeKind::Slice(_)) => {
+                        (inner.kind, w)
+                    }
+                    TypeKind::Error => (TypeKind::Error, false),
+                    other => {
+                        self.err(
+                            "E0401",
+                            e.span,
+                            format!(
+                                "`*` needs a reference `&T` or `&mut T`, found `{}`",
+                                ty_str(&other)
+                            ),
+                        );
+                        (TypeKind::Error, false)
+                    }
+                }
+            }
+            ExprKind::Index { base, index } => {
+                let (bt, w) = self.place_of(cx, base);
+                let it = self.expr(cx, index, Some(&TypeKind::Usize), Mode::Exec);
+                self.expect_ty(&it, &TypeKind::Usize, index.span);
+                match elem_of(&bt) {
+                    Some(t) => (t.clone(), w),
+                    None => {
+                        if bt != TypeKind::Error {
+                            self.err(
+                                "E0407",
+                                base.span,
+                                format!("type `{}` cannot be indexed", ty_str(&bt)),
+                            );
+                        }
+                        (TypeKind::Error, false)
+                    }
+                }
+            }
+            _ => {
+                self.err("E0408", e.span, "invalid assignment target");
+                (TypeKind::Error, false)
+            }
+        }
+    }
+
+    /// The struct a type denotes (through one reference: `p.x` on `p: &Point`).
+    fn struct_fields(&self, t: &TypeKind) -> Option<(String, Vec<(String, TypeKind)>)> {
+        let t = match t {
+            TypeKind::Ref { inner, .. } => &inner.kind,
+            t => t,
+        };
+        let TypeKind::Named { path, .. } = t else {
+            return None;
+        };
+        match self.adts.get(&path.join("::")) {
+            Some(Adt {
+                kind: AdtKind::Struct(fs),
+                path,
+                ..
+            }) => Some((path.clone(), fs.clone())),
+            _ => None,
+        }
+    }
+
+    /// `base.name` for a struct (or a reference to one).
+    fn field_type_of(&mut self, bt: &TypeKind, name: &Ident) -> TypeKind {
+        if *bt == TypeKind::Error {
+            return TypeKind::Error;
+        }
+        match self.struct_fields(bt) {
+            Some((path, fs)) => match fs.iter().find(|(n, _)| *n == name.name) {
+                Some((_, t)) => t.clone(),
+                None => {
+                    let mut d = Diag::new(
+                        "E0306",
+                        name.span,
+                        format!("`{path}` has no field `{}`", name.name),
+                    );
+                    let names: Vec<String> = fs.iter().map(|(n, _)| n.clone()).collect();
+                    if let Some(near) = closest(&name.name, names.iter()) {
+                        d = d.fix(format!("did you mean `{near}`?"), Some(near));
+                    } else {
+                        d = d.fix(format!("fields of `{path}`: {}", names.join(", ")), None);
+                    }
+                    self.diags.push(d);
+                    TypeKind::Error
+                }
+            },
+            None => {
+                let fix = if matches!(bt, TypeKind::Named { .. }) {
+                    "enum values have no fields: `match` the variants"
+                } else {
+                    "only structs have fields"
+                };
+                self.diags.push(
+                    Diag::new(
+                        "E0306",
+                        name.span,
+                        format!("`{}` has no field `{}`", ty_str(bt), name.name),
+                    )
+                    .fix(fix, None),
+                );
+                TypeKind::Error
+            }
+        }
+    }
+
+    /// E0305 for a type name, with the nearest type of unit `mp` as the fix.
+    fn unknown_type(&self, name: &str, span: Span, mp: &str) -> Diag {
+        let mut d = Diag::new("E0305", span, format!("unknown type `{name}`"));
+        let local: Vec<String> = self
+            .adts
+            .keys()
+            .filter_map(|k| k.strip_prefix(&format!("{mp}::")).map(String::from))
+            .filter(|k| !k.contains("::"))
+            .collect();
+        if let Some(near) = closest(name, local.iter()) {
+            d = d.fix(format!("did you mean `{near}`?"), Some(near));
+        } else if !name.contains("::") {
+            d = d.fix(
+                "types of other units are named by full path, e.g. `unit::Point`",
+                None,
+            );
+        }
+        d
+    }
+
+    /// The full path of a type named by `segs` from unit `mp`.
+    fn type_path(&self, segs: &[Ident], mp: &str) -> Option<String> {
+        let name = segs
+            .iter()
+            .map(|i| i.name.as_str())
+            .collect::<Vec<_>>()
+            .join("::");
+        let local = format!("{mp}::{name}");
+        if segs.len() == 1 && self.adts.contains_key(&local) {
+            return Some(local);
+        }
+        self.adts.contains_key(&name).then_some(name)
+    }
+
+    /// `T::V` / `unit::T::V`: (enum path, variant index, payload types).
+    fn variant(&self, segs: &[Ident], mp: &str) -> Option<(String, usize, Vec<TypeKind>)> {
+        let (v, ty) = segs.split_last()?;
+        if ty.is_empty() {
+            return None;
+        }
+        let tp = self.type_path(ty, mp)?;
+        let AdtKind::Enum(vs) = &self.adts[&tp].kind else {
+            return None;
+        };
+        let k = vs.iter().position(|(n, _)| *n == v.name)?;
+        Some((tp, k, vs[k].1.clone()))
+    }
+
+    /// Whether `segs` without its last segment names an enum.
+    fn enum_prefix(&self, segs: &[Ident], mp: &str) -> bool {
+        segs.len() > 1
+            && self
+                .type_path(&segs[..segs.len() - 1], mp)
+                .is_some_and(|tp| matches!(self.adts[&tp].kind, AdtKind::Enum(_)))
+    }
+
+    /// A variant value: `T::V` (no payload) or `T::V(a, ..)`.
+    fn variant_value(
+        &mut self,
+        cx: &mut FnCtx,
+        segs: &[Ident],
+        args: &[Expr],
+        span: Span,
+        mode: Mode,
+    ) -> TypeKind {
+        let Some((tp, _, payload)) = self.variant(segs, &cx.mod_path) else {
+            // Not a variant: an enum with no such variant, or an unknown type.
+            let (v, ty) = segs.split_last().unwrap();
+            match self.type_path(ty, &cx.mod_path) {
+                Some(tp) => {
+                    let names: Vec<String> = match &self.adts[&tp].kind {
+                        AdtKind::Enum(vs) => vs.iter().map(|(n, _)| n.clone()).collect(),
+                        AdtKind::Struct(_) => Vec::new(),
+                    };
+                    let mut d = Diag::new(
+                        "E0307",
+                        v.span,
+                        format!("`{tp}` has no variant `{}`", v.name),
+                    );
+                    if let Some(near) = closest(&v.name, names.iter()) {
+                        d = d.fix(format!("did you mean `{near}`?"), Some(near));
+                    } else if names.is_empty() {
+                        d = d.fix(
+                            format!(
+                                "`{tp}` is a struct: build it with `{} {{ .. }}`",
+                                ty.last().unwrap().name
+                            ),
+                            None,
+                        );
+                    } else {
+                        d = d.fix(format!("variants of `{tp}`: {}", names.join(", ")), None);
+                    }
+                    self.diags.push(d);
+                }
+                None => {
+                    let name = ty
+                        .iter()
+                        .map(|i| i.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join("::");
+                    let d = self.unknown_type(
+                        &name,
+                        ty[0].span.to(ty[ty.len() - 1].span),
+                        &cx.mod_path,
+                    );
+                    self.diags.push(d);
+                }
+            }
+            for a in args {
+                self.expr(cx, a, None, mode);
+            }
+            return TypeKind::Error;
+        };
+        if args.len() != payload.len() {
+            let tys: Vec<String> = payload.iter().map(ty_str).collect();
+            self.diags.push(
+                Diag::new(
+                    "E0405",
+                    span,
+                    format!(
+                        "`{}` takes {} value(s), found {}",
+                        segs.last().unwrap().name,
+                        payload.len(),
+                        args.len()
+                    ),
+                )
+                .fix(format!("the payload is `({})`", tys.join(", ")), None),
+            );
+        }
+        for (a, t) in args.iter().zip(&payload) {
+            let at = self.expr(cx, a, Some(t), mode);
+            self.expect_ty(&at, t, a.span);
+        }
+        TypeKind::Named {
+            path: tp.split("::").map(String::from).collect(),
+            args: Vec::new(),
+        }
+    }
+
+    /// `Some(x)`, `None`, `Ok(x)`, `Err(e)`: the type comes from the expected
+    /// one (`Some(x)` alone is `Option<type of x>`).
+    fn builtin_variant(
+        &mut self,
+        cx: &mut FnCtx,
+        name: &str,
+        args: &[Expr],
+        expected: Option<&TypeKind>,
+        span: Span,
+        mode: Mode,
+    ) -> TypeKind {
+        let arity = usize::from(name != "None");
+        if args.len() != arity {
+            self.err(
+                "E0405",
+                span,
+                format!("`{name}` takes {arity} value(s), found {}", args.len()),
+            );
+        }
+        let want = match (name, expected) {
+            ("Some" | "None", Some(TypeKind::Named { path, args: ta })) if path == &["Option"] => {
+                Some((
+                    expected.unwrap().clone(),
+                    ta.first().map(|t| t.kind.clone()),
+                ))
+            }
+            ("Ok" | "Err", Some(TypeKind::Named { path, args: ta })) if path == &["Result"] => {
+                let k = usize::from(name == "Err");
+                Some((expected.unwrap().clone(), ta.get(k).map(|t| t.kind.clone())))
+            }
+            _ => None,
+        };
+        match want {
+            Some((whole, Some(inner))) => {
+                for a in args {
+                    let at = self.expr(cx, a, Some(&inner), mode);
+                    self.expect_ty(&at, &inner, a.span);
+                }
+                whole
+            }
+            _ if name == "Some" && args.len() == 1 => {
+                let at = self.expr(cx, &args[0], None, mode);
+                if at == TypeKind::Error {
+                    return TypeKind::Error;
+                }
+                TypeKind::Named {
+                    path: vec!["Option".into()],
+                    args: vec![Type {
+                        kind: at,
+                        span: Span::default(),
+                    }],
+                }
+            }
+            _ => {
+                for a in args {
+                    self.expr(cx, a, None, mode);
+                }
+                self.diags.push(
+                    Diag::new("E0424", span, format!("the type of `{name}` is not known here"))
+                        .fix("give it a type: `let o: Option<i64> = None;`, or pass it where the type is written", None),
+                );
+                TypeKind::Error
+            }
+        }
+    }
+
+    /// `T { f: e, .. }`: every field once.
+    fn struct_lit(
+        &mut self,
+        cx: &mut FnCtx,
+        path: &[Ident],
+        fields: &[(Ident, Expr)],
+        span: Span,
+        mode: Mode,
+    ) -> TypeKind {
+        let name = path
+            .iter()
+            .map(|i| i.name.as_str())
+            .collect::<Vec<_>>()
+            .join("::");
+        let decl = match self.type_path(path, &cx.mod_path) {
+            Some(tp) => match &self.adts[&tp].kind {
+                AdtKind::Struct(fs) => Some((tp.clone(), fs.clone())),
+                AdtKind::Enum(_) => {
+                    self.diags.push(
+                        Diag::new("E0422", span, format!("`{name}` is an enum, not a struct"))
+                            .fix(format!("build a variant: `{name}::V(..)`"), None),
+                    );
+                    None
+                }
+            },
+            None => {
+                let d = self.unknown_type(
+                    &name,
+                    path[0].span.to(path[path.len() - 1].span),
+                    &cx.mod_path,
+                );
+                self.diags.push(d);
+                None
+            }
+        };
+        let Some((tp, fs)) = decl else {
+            for (_, x) in fields {
+                self.expr(cx, x, None, mode);
+            }
+            return TypeKind::Error;
+        };
+        let mut given = BTreeSet::new();
+        for (f, x) in fields {
+            if !given.insert(f.name.clone()) {
+                self.diags.push(
+                    Diag::new(
+                        "E0422",
+                        f.span,
+                        format!("field `{}` is given more than once", f.name),
+                    )
+                    .fix("give each field once", None),
+                );
+            }
+            match fs.iter().find(|(n, _)| *n == f.name) {
+                Some((_, t)) => {
+                    let xt = self.expr(cx, x, Some(t), mode);
+                    self.expect_ty(&xt, t, x.span);
+                }
+                None => {
+                    let names: Vec<String> = fs.iter().map(|(n, _)| n.clone()).collect();
+                    let mut d =
+                        Diag::new("E0306", f.span, format!("`{tp}` has no field `{}`", f.name));
+                    if let Some(near) = closest(&f.name, names.iter()) {
+                        d = d.fix(format!("did you mean `{near}`?"), Some(near));
+                    } else {
+                        d = d.fix(format!("fields of `{tp}`: {}", names.join(", ")), None);
+                    }
+                    self.diags.push(d);
+                    self.expr(cx, x, None, mode);
+                }
+            }
+        }
+        let missing: Vec<&str> = fs
+            .iter()
+            .map(|(n, _)| n.as_str())
+            .filter(|n| !given.contains(*n))
+            .collect();
+        if !missing.is_empty() {
+            self.diags.push(
+                Diag::new(
+                    "E0422",
+                    span,
+                    format!("missing field(s) `{}` of `{tp}`", missing.join("`, `")),
+                )
+                .fix(
+                    "give every field a value (ADR-0026: no `..` update syntax)",
+                    None,
+                ),
+            );
+        }
+        TypeKind::Named {
+            path: tp.split("::").map(String::from).collect(),
+            args: Vec::new(),
         }
     }
 
@@ -1312,17 +1739,31 @@ impl<'a> Checker<'a> {
                 self.err("E0301", e.span, "a path must be followed by call arguments");
                 TypeKind::Error
             }
-            ExprKind::StructLit { .. } | ExprKind::Path(_) => {
-                self.not_checked_yet(e.span, "struct and enum values");
-                TypeKind::Error
+            ExprKind::StructLit { path, fields } => self.struct_lit(cx, path, fields, e.span, mode),
+            ExprKind::Path(path) => self.variant_value(cx, path, &[], e.span, mode),
+            ExprKind::Field { base, name } => {
+                let bt = self.expr(cx, base, None, mode);
+                self.field_type_of(&bt, name)
             }
-            ExprKind::Field { .. } => {
-                self.not_checked_yet(e.span, "field accesses");
-                TypeKind::Error
-            }
-            ExprKind::Deref(_) => {
-                self.not_checked_yet(e.span, "dereferences");
-                TypeKind::Error
+            ExprKind::Deref(x) => {
+                let t = self.expr(cx, x, None, mode);
+                match t {
+                    TypeKind::Ref { inner, .. } if !matches!(inner.kind, TypeKind::Slice(_)) => {
+                        inner.kind
+                    }
+                    TypeKind::Error => TypeKind::Error,
+                    other => {
+                        self.err(
+                            "E0401",
+                            e.span,
+                            format!(
+                                "`*` needs a reference `&T` or `&mut T`, found `{}`",
+                                ty_str(&other)
+                            ),
+                        );
+                        TypeKind::Error
+                    }
+                }
             }
             ExprKind::Match { .. } => {
                 self.not_checked_yet(e.span, "`match` expressions");
@@ -1332,8 +1773,7 @@ impl<'a> Checker<'a> {
             ExprKind::Bool(_) => TypeKind::Bool,
             ExprKind::Int(v) => self.int_lit(*v, false, expected, e.span, mode),
             ExprKind::Var(id) if id.name == "None" && Self::lookup(cx, "None").is_none() => {
-                self.not_checked_yet(e.span, "struct and enum values");
-                TypeKind::Error
+                self.builtin_variant(cx, "None", &[], expected, e.span, mode)
             }
             ExprKind::Var(id) => match Self::lookup(cx, &id.name) {
                 Some(l) => l.ty,
@@ -1399,11 +1839,18 @@ impl<'a> Checker<'a> {
             }
             ExprKind::Method { recv, name, args } => self.method(cx, recv, name, args, mode),
             // The built-in variants of `Option` and `Result` (ADR-0026).
-            ExprKind::Call { path, .. }
+            ExprKind::Call { path, args }
                 if path.len() == 1 && matches!(path[0].name.as_str(), "Some" | "Ok" | "Err") =>
             {
-                self.not_checked_yet(e.span, "struct and enum values");
-                TypeKind::Error
+                self.builtin_variant(cx, &path[0].name, args, expected, e.span, mode)
+            }
+            // `E::V(..)`: a variant constructor (no function of that name
+            // and `E` an enum; a missing one is an unknown variant).
+            ExprKind::Call { path, args }
+                if self.resolve(path, &cx.mod_path).is_none()
+                    && self.enum_prefix(path, &cx.mod_path) =>
+            {
+                self.variant_value(cx, path, args, e.span, mode)
             }
             ExprKind::Call { path, args } => self.call(cx, path, args, e.span, mode),
             ExprKind::Ref { .. } => {
@@ -1713,6 +2160,25 @@ impl<'a> Checker<'a> {
                     } else {
                         TypeKind::Bool
                     };
+                }
+                // Structural `==` on data types is a specification term only
+                // (SMT equality, ADR-0026 §2).
+                if matches!(op, BinOp::Eq | BinOp::Ne) && matches!(lt, TypeKind::Named { .. }) {
+                    if mode == Mode::Exec {
+                        self.diags.push(
+                            Diag::new(
+                                "E0425",
+                                span,
+                                format!(
+                                    "`{}` on `{}` is only defined in specifications",
+                                    op.symbol(),
+                                    ty_str(&lt)
+                                ),
+                            )
+                            .fix("compare the fields (or `match` the variants) in code", None),
+                        );
+                    }
+                    return TypeKind::Bool;
                 }
                 let ok = match op {
                     BinOp::Eq | BinOp::Ne => is_scalar(&lt),

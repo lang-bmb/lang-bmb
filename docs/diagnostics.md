@@ -39,6 +39,12 @@
 | E0302 | duplicate definition |
 | E0303 | name already bound in this function (shadowing is not allowed) |
 | E0304 | unknown function |
+| E0305 | unknown type |
+| E0306 | unknown field |
+| E0307 | unknown variant |
+| E0308 | `impl` block not in the unit of its type, or a second one |
+| E0309 | a built-in name cannot be defined |
+| E0310 | `self` names exactly the receiver |
 
 ## E04xx 타입·소유권
 
@@ -55,6 +61,11 @@
 | E0409 | `&` / `&mut` may only appear directly as a call argument |
 | E0410 | a `&mut` argument aliases another argument of the same call |
 | E0411 | cannot negate an unsigned value |
+| E0420 | malformed data type: wrong type arguments, or no field or variant |
+| E0421 | a type contains itself |
+| E0422 | struct literal fields: not a struct, a field given twice, or a field missing |
+| E0424 | the type of `None` / `Ok` / `Err` is not known here |
+| E0425 | `==` on data types is not executable (compare the fields) |
 
 ## E05xx 명세
 

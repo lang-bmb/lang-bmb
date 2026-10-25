@@ -106,10 +106,96 @@ mod user {
     std::fs::write(&f, SRC).unwrap();
     let bmb = env!("CARGO_BIN_EXE_bmb");
     let check = Command::new(bmb).arg("check").arg(&f).output().unwrap();
-    assert!(check.status.success(), "{}", String::from_utf8_lossy(&check.stdout));
-    assert!(check.stdout.is_empty(), "{}", String::from_utf8_lossy(&check.stdout));
+    assert!(
+        check.status.success(),
+        "{}",
+        String::from_utf8_lossy(&check.stdout)
+    );
+    assert!(
+        check.stdout.is_empty(),
+        "{}",
+        String::from_utf8_lossy(&check.stdout)
+    );
     let verify = Command::new(bmb).arg("verify").arg(&f).output().unwrap();
     let out = String::from_utf8_lossy(&verify.stdout);
-    assert!(!verify.status.success() && out.contains("\"code\":\"E0814\""), "{out}");
+    assert!(
+        !verify.status.success() && out.contains("\"code\":\"E0814\""),
+        "{out}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn data_values_fields_and_variants_check() {
+    const SRC: &str = r#"#[summary("data type values (ADR-0026, backlog 2B-04b)")]
+mod geo {
+    enum Shape { Dot, Square(i64), Rect(Point, Point) }
+
+    struct Point { x: i64, y: i64 }
+
+    spec fn same(a: Point, b: Point) -> bool { a == b && a.x == b.x }
+
+    #[effects(pure)]
+    fn make(x: i64) -> Point {
+        Point { y: 0, x: x }
+    }
+
+    #[effects(pure)]
+    fn sum(p: &Point) -> i64 {
+        p.x + (*p).y
+    }
+
+    #[effects(pure)]
+    fn shapes(p: Point, q: Point) -> Shape {
+        let d: Shape = Shape::Dot;
+        let s: Shape = Shape::Square(p.x);
+        Shape::Rect(p, q)
+    }
+
+    #[effects(pure)]
+    fn first(a: i64) -> Option<i64> {
+        let n: Option<i64> = None;
+        Some(a)
+    }
+
+    #[effects(pure)]
+    fn checked(a: i64) -> Result<Point, Shape> {
+        let e: Result<Point, Shape> = Err(Shape::Dot);
+        Ok(Point { x: a, y: a })
+    }
+
+    #[effects(pure)]
+    fn shift(p: &mut Point, d: i64) -> () {
+        p.x = d;
+        (*p).y = d;
+    }
+
+    #[effects(pure)]
+    fn local() -> i64 {
+        let mut p: Point = make(1);
+        p.y = 2;
+        p.y
+    }
+}
+"#;
+    let dir = std::env::temp_dir().join(format!("bmb-cli-values-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let f = dir.join("t.bmb");
+    std::fs::write(&f, SRC).unwrap();
+    let check = Command::new(env!("CARGO_BIN_EXE_bmb"))
+        .arg("check")
+        .arg(&f)
+        .output()
+        .unwrap();
+    assert!(
+        check.status.success(),
+        "{}",
+        String::from_utf8_lossy(&check.stdout)
+    );
+    assert!(
+        check.stdout.is_empty(),
+        "{}",
+        String::from_utf8_lossy(&check.stdout)
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }

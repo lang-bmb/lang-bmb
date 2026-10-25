@@ -1,0 +1,78 @@
+#[summary("data type values, fields and variants (ADR-0026, backlog 2B-04b)")]
+mod shapes {
+    struct Point { x: i64, y: i64 }
+
+    enum Shape { Dot, Square(i64), Rect(Point, Point) }
+
+    #[effects(pure)]
+    fn fields(p: &Point) -> i64 {
+        p.z
+    }
+
+    #[effects(pure)]
+    fn near(p: Point) -> i64 {
+        p.xx
+    }
+
+    #[effects(pure)]
+    fn no_fields(s: Shape) -> i64 {
+        s.x
+    }
+
+    #[effects(pure)]
+    fn variants() -> Shape {
+        Shape::Circle(1)
+    }
+
+    #[effects(pure)]
+    fn arity() -> Shape {
+        Shape::Square(1, 2)
+    }
+
+    #[effects(pure)]
+    fn enum_lit() -> Shape {
+        Shape { x: 1 }
+    }
+
+    #[effects(pure)]
+    fn twice() -> Point {
+        Point { x: 1, x: 2, y: 3 }
+    }
+
+    #[effects(pure)]
+    fn missing() -> Point {
+        Point { x: 1 }
+    }
+
+    #[effects(pure)]
+    fn unknown_field() -> Point {
+        Point { x: 1, y: 2, w: 3 }
+    }
+
+    #[effects(pure)]
+    fn unknown_type() -> i64 {
+        let q: i64 = Pt { x: 1 };
+        q
+    }
+
+    #[effects(pure)]
+    fn untyped() -> i64 {
+        let n = None;
+        0
+    }
+
+    #[effects(pure)]
+    fn wrong_payload() -> Option<i64> {
+        Some(true)
+    }
+
+    #[effects(pure)]
+    fn same(a: Point, b: Point) -> bool {
+        a == b
+    }
+
+    #[effects(pure)]
+    fn assign_ref(p: &Point) -> () {
+        p.x = 1;
+    }
+}
