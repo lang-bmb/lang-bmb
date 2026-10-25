@@ -1,0 +1,57 @@
+{
+  "id": "vc-vd0791-month-30-days",
+  "kind": "write",
+  "prompt": "Create unit `tasks` for this task.\n\nImplement `is_month_with_30_days`: `month` is between 1 and 12. Return whether that month has 30 days (April, June, September or November). The contract must state the result exactly.\n\nRequired signature (in unit `tasks`):\nfn is_month_with_30_days(month: i64) -> (r: bool)",
+  "unit": "tasks",
+  "def": "tasks::is_month_with_30_days",
+  "signature": "fn is_month_with_30_days(month: i64) -> (r: bool)",
+  "accept": {
+    "specs": "spec fn ref_pre(month: i64) -> bool { 1 <= month && month <= 12 }\nspec fn ref_post(month: i64, r: bool) -> bool { r == (month == 4 || month == 6 || month == 9 || month == 11) }",
+    "pre": "ref_pre(month)",
+    "post": "ref_post(month, r)",
+    "args": "month"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn input_ok(month: i64) -> bool { 1 <= month && month <= 12 }\n\nspec fn result_ok(month: i64, r: bool) -> bool { r == (month == 4 || month == 6 || month == 9 || month == 11) }\n\n#[effects(pure)]\n#[uses(input_ok, result_ok)]\nfn is_month_with_30_days(month: i64) -> (r: bool)\n    requires input_ok(month),\n    ensures result_ok(month, r),\n{\n    month == 4 || month == 6 || month == 9 || month == 11\n}"
+    }
+  ],
+  "weak_reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn input_ok(month: i64) -> bool { 1 <= month && month <= 12 }\n\nspec fn result_ok(month: i64, r: bool) -> bool { r ==> (month == 4 || month == 6 || month == 9 || month == 11) }\n\n#[effects(pure)]\n#[uses(input_ok, result_ok)]\nfn is_month_with_30_days(month: i64) -> (r: bool)\n    requires input_ok(month),\n    ensures result_ok(month, r),\n{\n    month == 4 || month == 6 || month == 9 || month == 11\n}"
+    }
+  ],
+  "source": {
+    "benchmark": "Vericoding",
+    "origin": "dafnybench dafny-synthesis_task_id_762_IsMonthWith30Days",
+    "path": "jsonl/verus_tasks.jsonl#VD0791",
+    "rules": [
+      "T2"
+    ]
+  },
+  "verus": {
+    "prompt": "Implement `is_month_with_30_days`: `month` is between 1 and 12. Return whether that month has 30 days (April, June, September or November). The contract must state the result exactly.\n\nRequired signature:\nfn is_month_with_30_days(month: i32) -> (result: bool)",
+    "signature": "fn is_month_with_30_days(month: i32) -> (result: bool)",
+    "target": "is_month_with_30_days",
+    "specs": "",
+    "pre": "1 <= month <= 12",
+    "post": "result <==> (month == 4 || month == 6 || month == 9 || month == 11)",
+    "args": "month",
+    "reference": "use vstd::prelude::*;\n\nverus! {\n\n// <vc-helpers>\n// <vc-helpers>\n// </vc-helpers>\n// </vc-helpers>\n\n// <vc-spec>\nfn is_month_with_30_days(month: i32) -> (result: bool)\n    requires 1 <= month <= 12\n    ensures result <==> (month == 4 || month == 6 || month == 9 || month == 11)\n// </vc-spec>\n// <vc-code>\n{\n    month == 4 || month == 6 || month == 9 || month == 11\n}\n// </vc-code>\n\nfn main() {\n}\n\n}",
+    "reference_origin": "upstream"
+  }
+}

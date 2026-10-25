@@ -1,0 +1,197 @@
+@@ id: vb-mbpp-142-count-identical
+@@ benchmark: Verus-Bench
+@@ origin: MBPP
+@@ origin_path: benchmarks/Verus-Bench/MBPP/verified/task_id_142.rs
+@@ rules: T1 T2 T4 G1
+@@ description
+Implement `count_identical_position`: `arr1`, `arr2` and `arr3` have the same length. Return the number of positions where all three arrays hold the same value. The contract must state that the result is at most the length of `arr1` and equals the given specification function applied to the whole arrays.
+
+@@ frozen: given::count_identical
+@@ given
+spec fn count_identical(arr1: &[i64], arr2: &[i64], arr3: &[i64], n: usize) -> u64
+    decreases n,
+{
+    if n == 0 { 0 } else { count_identical(arr1, arr2, arr3, n - 1) + (if arr1[n - 1] == arr2[n - 1] && arr2[n - 1] == arr3[n - 1] { 1 } else { 0 }) }
+}
+
+@@ signature
+fn count_identical_position(arr1: &[i64], arr2: &[i64], arr3: &[i64]) -> (count: usize)
+
+@@ accept.specs
+spec fn ref_pre(arr1: &[i64], arr2: &[i64], arr3: &[i64]) -> bool { arr1.len() == arr2.len() && arr2.len() == arr3.len() }
+spec fn ref_post(arr1: &[i64], arr2: &[i64], arr3: &[i64], count: usize) -> bool { count <= arr1.len() && count == given::count_identical(arr1, arr2, arr3, arr1.len()) }
+
+@@ accept.pre: ref_pre(arr1, arr2, arr3)
+@@ accept.post: ref_post(arr1, arr2, arr3, r)
+@@ accept.args: arr1, arr2, arr3
+@@ reference
+spec fn pre_ok(arr1: &[i64], arr2: &[i64], arr3: &[i64]) -> bool { arr1.len() == arr2.len() && arr2.len() == arr3.len() }
+
+spec fn counted(count: usize, arr1: &[i64], arr2: &[i64], arr3: &[i64], n: usize) -> bool { count <= n && count == given::count_identical(arr1, arr2, arr3, n) }
+
+spec fn result_ok(arr1: &[i64], arr2: &[i64], arr3: &[i64], count: usize) -> bool { count <= arr1.len() && count == given::count_identical(arr1, arr2, arr3, arr1.len()) }
+
+#[effects(pure)]
+#[uses(pre_ok, counted, result_ok, given::count_identical)]
+fn count_identical_position(arr1: &[i64], arr2: &[i64], arr3: &[i64]) -> (count: usize)
+    requires pre_ok(arr1, arr2, arr3),
+    ensures result_ok(arr1, arr2, arr3, count),
+{
+    let mut c: usize = 0;
+    let mut idx: usize = 0;
+    while idx < arr1.len()
+        invariant idx <= arr1.len(), counted(c, arr1, arr2, arr3, idx), arr1.len() == arr2.len() && arr2.len() == arr3.len(),
+        decreases arr1.len() - idx,
+    {
+        if arr1[idx] == arr2[idx] && arr2[idx] == arr3[idx] {
+            c = c + 1;
+        }
+        idx = idx + 1;
+    }
+    c
+}
+
+@@ weak
+spec fn pre_ok(arr1: &[i64], arr2: &[i64], arr3: &[i64]) -> bool { arr1.len() == arr2.len() && arr2.len() == arr3.len() }
+
+spec fn counted(count: usize, arr1: &[i64], arr2: &[i64], arr3: &[i64], n: usize) -> bool { count <= n && count == given::count_identical(arr1, arr2, arr3, n) }
+
+spec fn result_ok(arr1: &[i64], arr2: &[i64], arr3: &[i64], count: usize) -> bool { count <= arr1.len() }
+
+#[effects(pure)]
+#[uses(pre_ok, counted, result_ok, given::count_identical)]
+fn count_identical_position(arr1: &[i64], arr2: &[i64], arr3: &[i64]) -> (count: usize)
+    requires pre_ok(arr1, arr2, arr3),
+    ensures result_ok(arr1, arr2, arr3, count),
+{
+    let mut c: usize = 0;
+    let mut idx: usize = 0;
+    while idx < arr1.len()
+        invariant idx <= arr1.len(), counted(c, arr1, arr2, arr3, idx), arr1.len() == arr2.len() && arr2.len() == arr3.len(),
+        decreases arr1.len() - idx,
+    {
+        if arr1[idx] == arr2[idx] && arr2[idx] == arr3[idx] {
+            c = c + 1;
+        }
+        idx = idx + 1;
+    }
+    c
+}
+
+@@ verus.signature
+fn count_identical_position(arr1: &Vec<i32>, arr2: &Vec<i32>, arr3: &Vec<i32>) -> (count: usize)
+
+@@ verus.target: count_identical_position
+@@ verus.given
+spec fn count_identical(s1: Seq<i32>, s2: Seq<i32>, s3: Seq<i32>) -> int
+    decreases s1.len(), s2.len(), s3.len(),
+{
+    if s1.len() == 0 || s2.len() == 0 || s3.len() == 0 {
+        0
+    } else {
+        count_identical(s1.drop_last(), s2.drop_last(), s3.drop_last()) + if (s1.last() == s2.last()
+            && s2.last() == s3.last()) {
+            1 as int
+        } else {
+            0 as int
+        }
+    }
+}
+
+@@ verus.specs
+
+
+@@ verus.pre
+arr1.len() == arr2.len() && arr2.len() == arr3.len()
+
+@@ verus.post
+0 <= count <= arr1.len(),
+count_identical(arr1@, arr2@, arr3@) == count
+
+@@ verus.args: arr1, arr2, arr3
+@@ verus.reference_origin: upstream
+@@ verus.reference
+use vstd::prelude::*;
+
+fn main() {
+    // Write a function in Rust to count number items that are identical in the same position of three given lists.
+
+    assert_eq!(
+        count_identical_position(
+            &vec![1, 2, 3, 4, 5, 6, 7, 8],
+            &vec![2, 2, 3, 1, 2, 6, 7, 9],
+            &vec![2, 1, 3, 1, 2, 6, 7, 9]
+        ),
+        3
+    );
+    assert_eq!(
+        count_identical_position(
+            &vec![1, 2, 3, 4, 5, 6, 7, 8],
+            &vec![2, 2, 3, 1, 2, 6, 7, 8],
+            &vec![2, 1, 3, 1, 2, 6, 7, 8]
+        ),
+        4
+    );
+    assert_eq!(
+        count_identical_position(
+            &vec![1, 2, 3, 4, 2, 6, 7, 8],
+            &vec![2, 2, 3, 1, 2, 6, 7, 8],
+            &vec![2, 1, 3, 1, 2, 6, 7, 8]
+        ),
+        5
+    );
+}
+
+verus! {
+
+spec fn count_identical(s1: Seq<i32>, s2: Seq<i32>, s3: Seq<i32>) -> int
+    decreases s1.len(), s2.len(), s3.len(),
+{
+    if s1.len() == 0 || s2.len() == 0 || s3.len() == 0 {
+        0
+    } else {
+        count_identical(s1.drop_last(), s2.drop_last(), s3.drop_last()) + if (s1.last() == s2.last()
+            && s2.last() == s3.last()) {
+            1 as int
+        } else {
+            0 as int
+        }
+    }
+}
+
+fn count_identical_position(arr1: &Vec<i32>, arr2: &Vec<i32>, arr3: &Vec<i32>) -> (count: usize)
+    requires
+        arr1.len() == arr2.len() && arr2.len() == arr3.len(),
+    ensures
+        0 <= count <= arr1.len(),
+        count_identical(arr1@, arr2@, arr3@) == count,
+{
+    let mut count = 0;
+    let mut index = 0;
+    while index < arr1.len()
+        invariant
+            0 <= index <= arr1.len(),
+            0 <= count <= index,
+            arr1.len() == arr2.len() && arr2.len() == arr3.len(),
+            count_identical(
+                arr1@.subrange(0, index as int),
+                arr2@.subrange(0, index as int),
+                arr3@.subrange(0, index as int),
+            ) == count,
+        decreases arr1@.len() - index,
+    {
+        if arr1[index] == arr2[index] && arr2[index] == arr3[index] {
+            count += 1;
+        }
+        index += 1;
+        assert(arr1@.subrange(0, index - 1 as int) == arr1@.subrange(0, index as int).drop_last());
+        assert(arr2@.subrange(0, index - 1 as int) == arr2@.subrange(0, index as int).drop_last());
+        assert(arr3@.subrange(0, index - 1 as int) == arr3@.subrange(0, index as int).drop_last());
+    }
+    assert(arr1@ == arr1@.subrange(0, index as int));
+    assert(arr2@ == arr2@.subrange(0, index as int));
+    assert(arr3@ == arr3@.subrange(0, index as int));
+    count
+}
+
+} // verus!

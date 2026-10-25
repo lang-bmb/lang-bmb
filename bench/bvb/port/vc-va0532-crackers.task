@@ -1,0 +1,145 @@
+@@ id: vc-va0532-crackers
+@@ benchmark: Vericoding
+@@ origin: apps apps_test_4308
+@@ origin_path: jsonl/verus_tasks.jsonl#VA0532
+@@ rules: T2
+@@ description
+Implement `solve`: `n` and `k` are between 1 and 100. N crackers are shared among K users as evenly as possible; return the smallest possible difference between the largest and the smallest share (0 if k divides n, else 1). The contract must state the result exactly, including that it is 0 exactly when n % k == 0 and 1 exactly when n % k != 0.
+
+@@ signature
+fn solve(n: i64, k: i64) -> (r: i64)
+
+@@ accept.specs
+spec fn ref_pre(n: i64, k: i64) -> bool { n >= 1 && k >= 1 && n <= 100 && k <= 100 }
+spec fn ref_post(n: i64, k: i64, r: i64) -> bool { r == (if n % k == 0 { 0 } else { 1 }) && ((r == 0) == (n % k == 0)) && ((r == 1) == (n % k != 0)) }
+
+@@ accept.pre: ref_pre(n, k)
+@@ accept.post: ref_post(n, k, r)
+@@ accept.args: n, k
+@@ reference
+spec fn input_ok(n: i64, k: i64) -> bool { n >= 1 && k >= 1 && n <= 100 && k <= 100 }
+
+spec fn result_ok(n: i64, k: i64, r: i64) -> bool { r == (if n % k == 0 { 0 } else { 1 }) && ((r == 0) == (n % k == 0)) && ((r == 1) == (n % k != 0)) }
+
+#[effects(pure)]
+#[uses(input_ok, result_ok)]
+fn solve(n: i64, k: i64) -> (r: i64)
+    requires input_ok(n, k),
+    ensures result_ok(n, k, r),
+{
+    if n % k == 0 {
+        0
+    } else {
+        1
+    }
+}
+
+@@ weak
+spec fn input_ok(n: i64, k: i64) -> bool { n >= 1 && k >= 1 && n <= 100 && k <= 100 }
+
+spec fn result_ok(n: i64, k: i64, r: i64) -> bool { r >= 0 && r <= 1 }
+
+#[effects(pure)]
+#[uses(input_ok, result_ok)]
+fn solve(n: i64, k: i64) -> (r: i64)
+    requires input_ok(n, k),
+    ensures result_ok(n, k, r),
+{
+    if n % k == 0 {
+        0
+    } else {
+        1
+    }
+}
+
+@@ verus.signature
+fn solve(n: i8, k: i8) -> (result: i8)
+
+@@ verus.target: solve
+@@ verus.specs
+spec fn bvb_ref_valid_input(n: int, k: int) -> bool {
+    n >= 1 && k >= 1 && n <= 100 && k <= 100
+}
+
+spec fn bvb_ref_min_cracker_difference(n: int, k: int) -> int
+    recommends k > 0
+{
+    if n % k == 0 { 0 } else { 1 }
+}
+
+@@ verus.pre
+bvb_ref_valid_input(n as int, k as int)
+
+@@ verus.post
+result as int == bvb_ref_min_cracker_difference(n as int, k as int),
+        result as int == 0 <==> (n as int) % (k as int) == 0,
+        result as int == 1 <==> (n as int) % (k as int) != 0
+
+@@ verus.args: n, k
+@@ verus.reference_origin: upstream
+@@ verus.reference
+// <vc-preamble>
+use vstd::prelude::*;
+
+verus! {
+spec fn valid_input(n: int, k: int) -> bool {
+    n >= 1 && k >= 1 && n <= 100 && k <= 100
+}
+
+spec fn min_cracker_difference(n: int, k: int) -> int
+    recommends k > 0
+{
+    if n % k == 0 { 0 } else { 1 }
+}
+// </vc-preamble>
+
+// <vc-helpers>
+proof fn lemma_i8_mod_zero_equiv(n: i8, k: i8)
+    requires
+        valid_input(n as int, k as int),
+    ensures
+        (n % k == 0i8) == ((n as int) % (k as int) == 0),
+        (n % k != 0i8) == ((n as int) % (k as int) != 0),
+{
+}
+
+// </vc-helpers>
+
+// <vc-spec>
+fn solve(n: i8, k: i8) -> (result: i8)
+    requires 
+        valid_input(n as int, k as int)
+    ensures 
+        result as int == min_cracker_difference(n as int, k as int),
+        result as int == 0 <==> (n as int) % (k as int) == 0,
+        result as int == 1 <==> (n as int) % (k as int) != 0
+// </vc-spec>
+// <vc-code>
+{
+    let res: i8;
+    if n % k == 0i8 {
+        res = 0i8;
+    } else {
+        res = 1i8;
+    }
+    proof {
+        lemma_i8_mod_zero_equiv(n, k);
+        if n % k == 0i8 {
+            assert((n as int) % (k as int) == 0);
+            assert(res as int == 0);
+            assert(res as int == min_cracker_difference(n as int, k as int));
+        } else {
+            assert((n as int) % (k as int) != 0);
+            assert(res as int == 1);
+            assert(res as int == min_cracker_difference(n as int, k as int));
+        }
+    }
+    res
+}
+
+// </vc-code>
+
+
+}
+
+fn main() {}

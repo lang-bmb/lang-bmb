@@ -1,0 +1,114 @@
+@@ id: vb-misc-findmax
+@@ benchmark: Verus-Bench
+@@ origin: Misc
+@@ origin_path: benchmarks/Verus-Bench/Misc/verified/findmax.rs
+@@ rules: T1 T2 T6
+@@ description
+Implement `find_max`: `nums` is non-empty. Return its largest element. The contract must state that the result is at least every element.
+
+@@ signature
+fn find_max(nums: &[i64]) -> (r: i64)
+
+@@ accept.specs
+spec fn ref_pre(nums: &[i64]) -> bool { nums.len() > 0 }
+spec fn ref_post(nums: &[i64], r: i64) -> bool { forall|i: usize| i < nums.len() ==> #[trigger] nums[i] <= r }
+
+@@ accept.pre: ref_pre(nums)
+@@ accept.post: ref_post(nums, r)
+@@ accept.args: nums
+@@ reference
+spec fn nonempty(nums: &[i64]) -> bool { nums.len() > 0 }
+
+spec fn max_upto(nums: &[i64], m: i64, n: usize) -> bool { forall|i: usize| i < n ==> #[trigger] nums[i] <= m }
+
+spec fn upper_bound(nums: &[i64], r: i64) -> bool { forall|i: usize| i < nums.len() ==> #[trigger] nums[i] <= r }
+
+#[effects(pure)]
+#[uses(nonempty, max_upto, upper_bound)]
+fn find_max(nums: &[i64]) -> (r: i64)
+    requires nonempty(nums),
+    ensures upper_bound(nums, r),
+{
+    let mut m: i64 = nums[0];
+    let mut idx: usize = 1;
+    while idx < nums.len()
+        invariant 1 <= idx, idx <= nums.len(), max_upto(nums, m, idx),
+        decreases nums.len() - idx,
+    {
+        if nums[idx] > m {
+            m = nums[idx];
+        }
+        idx = idx + 1;
+    }
+    m
+}
+
+@@ weak
+spec fn nonempty(nums: &[i64]) -> bool { nums.len() > 0 }
+
+spec fn at_least_first(nums: &[i64], r: i64) -> bool { nums[0] <= r }
+
+#[effects(pure)]
+#[uses(nonempty, at_least_first)]
+fn find_max(nums: &[i64]) -> (r: i64)
+    requires nonempty(nums),
+    ensures at_least_first(nums, r),
+{
+    let mut m: i64 = nums[0];
+    let mut idx: usize = 1;
+    while idx < nums.len()
+        invariant 1 <= idx, idx <= nums.len(), nums[0] <= m,
+        decreases nums.len() - idx,
+    {
+        if nums[idx] > m {
+            m = nums[idx];
+        }
+        idx = idx + 1;
+    }
+    m
+}
+
+@@ verus.signature
+fn find_max(nums: Vec<i32>) -> (ret:i32)
+
+@@ verus.target: find_max
+@@ verus.specs
+
+
+@@ verus.pre
+nums.len() > 0
+
+@@ verus.post
+forall |i: int| 0 <= i < nums@.len() ==> nums@[i] <= ret
+
+@@ verus.args: nums
+@@ verus.reference_origin: upstream
+@@ verus.reference
+#[allow(unused_imports)]
+use vstd::prelude::*;
+fn main() {}
+
+verus! {
+fn find_max(nums: Vec<i32>) -> (ret:i32)
+requires
+    nums.len() > 0,
+ensures
+    forall |i: int| 0 <= i < nums@.len() ==> nums@[i] <= ret,
+    exists |i: int| 0 <= i < nums@.len() ==> nums@[i] == ret,
+{
+    let mut max = nums[0];
+    let mut i = 1;
+    while i < nums.len()
+    invariant
+        forall |k: int| 0 <= k < i ==> nums@[k] <= max,
+        exists |k: int| 0 <= k < i && nums@[k] == max,
+    decreases nums@.len() - i,
+    {
+        if nums[i] > max {
+            max = nums[i];
+        }
+        i += 1;
+    }
+    max
+}
+}

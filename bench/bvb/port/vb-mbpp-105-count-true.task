@@ -1,0 +1,158 @@
+@@ id: vb-mbpp-105-count-true
+@@ benchmark: Verus-Bench
+@@ origin: MBPP
+@@ origin_path: benchmarks/Verus-Bench/MBPP/verified/task_id_105.rs
+@@ rules: T1 T2 T4 G1
+@@ description
+Implement `count_true`: return the number of `true` elements of `arr`. The contract must state that the result is at most the length of `arr` and equals the given specification function applied to the whole array.
+
+@@ frozen: given::count_true
+@@ given
+spec fn count_true(arr: &[bool], n: usize) -> u64
+    decreases n,
+{
+    if n == 0 { 0 } else { count_true(arr, n - 1) + (if arr[n - 1] { 1 } else { 0 }) }
+}
+
+@@ signature
+fn count_true(arr: &[bool]) -> (count: u64)
+
+@@ accept.specs
+spec fn ref_post(arr: &[bool], count: u64) -> bool { count <= arr.len() && count == given::count_true(arr, arr.len()) }
+
+@@ accept.pre: none
+@@ accept.post: ref_post(arr, r)
+@@ accept.args: arr
+@@ reference
+spec fn counted(count: u64, arr: &[bool], n: usize) -> bool { count <= n && count == given::count_true(arr, n) }
+
+spec fn result_ok(arr: &[bool], count: u64) -> bool { count <= arr.len() && count == given::count_true(arr, arr.len()) }
+
+#[effects(pure)]
+#[uses(counted, result_ok, given::count_true)]
+fn count_true(arr: &[bool]) -> (count: u64)
+    ensures result_ok(arr, count),
+{
+    let mut c: u64 = 0;
+    let mut idx: usize = 0;
+    while idx < arr.len()
+        invariant idx <= arr.len(), counted(c, arr, idx),
+        decreases arr.len() - idx,
+    {
+        if arr[idx] {
+            c = c + 1;
+        }
+        idx = idx + 1;
+    }
+    c
+}
+
+@@ weak
+spec fn counted(count: u64, arr: &[bool], n: usize) -> bool { count <= n && count == given::count_true(arr, n) }
+
+spec fn result_ok(arr: &[bool], count: u64) -> bool { count <= arr.len() }
+
+#[effects(pure)]
+#[uses(counted, result_ok, given::count_true)]
+fn count_true(arr: &[bool]) -> (count: u64)
+    ensures result_ok(arr, count),
+{
+    let mut c: u64 = 0;
+    let mut idx: usize = 0;
+    while idx < arr.len()
+        invariant idx <= arr.len(), counted(c, arr, idx),
+        decreases arr.len() - idx,
+    {
+        if arr[idx] {
+            c = c + 1;
+        }
+        idx = idx + 1;
+    }
+    c
+}
+
+@@ verus.signature
+fn count_true(arr: &Vec<bool>) -> (count: u64)
+
+@@ verus.target: count_true
+@@ verus.given
+spec fn count_boolean(seq: Seq<bool>) -> int
+    decreases seq.len(),
+{
+    if seq.len() == 0 {
+        0
+    } else {
+        count_boolean(seq.drop_last()) + if (seq.last()) {
+            1 as int
+        } else {
+            0 as int
+        }
+    }
+}
+
+@@ verus.specs
+
+
+@@ verus.pre
+none
+
+@@ verus.post
+0 <= count <= arr.len(),
+count_boolean(arr@) == count
+
+@@ verus.args: arr
+@@ verus.reference_origin: upstream
+@@ verus.reference
+use vstd::prelude::*;
+
+fn main() {
+    // Write a function in Rust to count true booleans in the given boolean list.
+
+    assert_eq!(count_true(&vec![true, false, true]), 2);
+    assert_eq!(count_true(&vec![false, false]), 0);
+    assert_eq!(count_true(&vec![true, true, true]), 3);
+}
+
+verus! {
+
+spec fn count_boolean(seq: Seq<bool>) -> int
+    decreases seq.len(),
+{
+    if seq.len() == 0 {
+        0
+    } else {
+        count_boolean(seq.drop_last()) + if (seq.last()) {
+            1 as int
+        } else {
+            0 as int
+        }
+    }
+}
+
+fn count_true(arr: &Vec<bool>) -> (count: u64)
+    ensures
+        0 <= count <= arr.len(),
+        count_boolean(arr@) == count,
+{
+    let mut index = 0;
+    let mut counter = 0;
+
+    while index < arr.len()
+        invariant
+            0 <= index <= arr.len(),
+            0 <= counter <= index,
+            count_boolean(arr@.subrange(0, index as int)) == counter,
+        decreases arr@.len() - index,
+    {
+        if (arr[index]) {
+            counter += 1;
+        }
+        index += 1;
+        assert(arr@.subrange(0, index - 1 as int) == arr@.subrange(0, index as int).drop_last());
+
+    }
+    assert(arr@ == arr@.subrange(0, index as int));
+    counter
+}
+
+} // verus!

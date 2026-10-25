@@ -1,0 +1,89 @@
+@@ id: vc-vd0722-last-digit
+@@ benchmark: Vericoding
+@@ origin: dafnybench dafny-synthesis_task_id_435_LastDigit
+@@ origin_path: jsonl/verus_tasks.jsonl#VD0722
+@@ rules: T2
+@@ description
+Implement `last_digit`: `n` is a 32-bit integer (in [-2147483648, 2147483647]) and n >= 0. Return its last decimal digit. The contract must state that the result is in [0, 10) and equals n % 10.
+
+@@ signature
+fn last_digit(n: i64) -> (r: i64)
+
+@@ accept.specs
+spec fn ref_pre(n: i64) -> bool { -2147483648 <= n && n <= 2147483647 && n >= 0 }
+spec fn ref_post(n: i64, r: i64) -> bool { 0 <= r && r < 10 && n % 10 == r }
+
+@@ accept.pre: ref_pre(n)
+@@ accept.post: ref_post(n, r)
+@@ accept.args: n
+@@ reference
+spec fn input_ok(n: i64) -> bool { -2147483648 <= n && n <= 2147483647 && n >= 0 }
+
+spec fn result_ok(n: i64, r: i64) -> bool { 0 <= r && r < 10 && n % 10 == r }
+
+#[effects(pure)]
+#[uses(input_ok, result_ok)]
+fn last_digit(n: i64) -> (r: i64)
+    requires input_ok(n),
+    ensures result_ok(n, r),
+{
+    n % 10
+}
+
+@@ weak
+spec fn input_ok(n: i64) -> bool { -2147483648 <= n && n <= 2147483647 && n >= 0 }
+
+spec fn result_ok(n: i64, r: i64) -> bool { 0 <= r && r < 10 }
+
+#[effects(pure)]
+#[uses(input_ok, result_ok)]
+fn last_digit(n: i64) -> (r: i64)
+    requires input_ok(n),
+    ensures result_ok(n, r),
+{
+    n % 10
+}
+
+@@ verus.signature
+fn last_digit(n: i32) -> (result: i32)
+
+@@ verus.target: last_digit
+@@ verus.specs
+
+
+@@ verus.pre
+n >= 0
+
+@@ verus.post
+0 <= result < 10,
+        n % 10 == result
+
+@@ verus.args: n
+@@ verus.reference_origin: upstream
+@@ verus.reference
+// <vc-preamble>
+use vstd::prelude::*;
+
+verus! {
+// </vc-preamble>
+
+// <vc-helpers>
+
+// </vc-helpers>
+
+// <vc-spec>
+#[verifier::exec_allows_no_decreases_clause]
+fn last_digit(n: i32) -> (result: i32)
+    requires n >= 0
+    ensures 
+        0 <= result < 10,
+        n % 10 == result
+// </vc-spec>
+// <vc-code>
+{
+    n % 10
+}
+// </vc-code>
+
+}
+fn main() {}

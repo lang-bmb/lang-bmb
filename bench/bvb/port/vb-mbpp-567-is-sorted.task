@@ -1,0 +1,114 @@
+@@ id: vb-mbpp-567-is-sorted
+@@ benchmark: Verus-Bench
+@@ origin: MBPP
+@@ origin_path: benchmarks/Verus-Bench/MBPP/verified/task_id_567.rs
+@@ rules: T1 T2
+@@ description
+Implement `is_sorted`: `arr` is non-empty. Return whether `arr` is sorted in non-decreasing order, that is, arr[i] <= arr[j] for all positions i < j. The contract must state the result exactly in terms of all pairs of positions.
+
+@@ signature
+fn is_sorted(arr: &[i64]) -> (r: bool)
+
+@@ accept.specs
+spec fn ref_pre(arr: &[i64]) -> bool { arr.len() > 0 }
+spec fn ref_post(arr: &[i64], r: bool) -> bool { r == (forall|i: usize, j: usize| i < j && j < arr.len() ==> #[trigger] arr[i] <= #[trigger] arr[j]) }
+
+@@ accept.pre: ref_pre(arr)
+@@ accept.post: ref_post(arr, r)
+@@ accept.args: arr
+@@ reference
+spec fn nonempty(arr: &[i64]) -> bool { arr.len() > 0 }
+
+spec fn sorted_upto(arr: &[i64], n: usize) -> bool { forall|i: usize, j: usize| i < j && j <= n ==> #[trigger] arr[i] <= #[trigger] arr[j] }
+
+spec fn sorted_ok(arr: &[i64], r: bool) -> bool { r == (forall|i: usize, j: usize| i < j && j < arr.len() ==> #[trigger] arr[i] <= #[trigger] arr[j]) }
+
+#[effects(pure)]
+#[uses(nonempty, sorted_upto, sorted_ok)]
+fn is_sorted(arr: &[i64]) -> (r: bool)
+    requires nonempty(arr),
+    ensures sorted_ok(arr, r),
+{
+    let mut idx: usize = 0;
+    while idx + 1 < arr.len() && arr[idx] <= arr[idx + 1]
+        invariant idx < arr.len(), sorted_upto(arr, idx),
+        decreases arr.len() - idx,
+    {
+        idx = idx + 1;
+    }
+    idx + 1 >= arr.len()
+}
+
+@@ weak
+spec fn nonempty(arr: &[i64]) -> bool { arr.len() > 0 }
+
+spec fn adjacent_ok(arr: &[i64], r: bool) -> bool { r ==> (forall|i: usize| i + 1 < arr.len() ==> #[trigger] arr[i] <= arr[i + 1]) }
+
+spec fn adjacent_upto(arr: &[i64], n: usize) -> bool { forall|i: usize| i < n ==> #[trigger] arr[i] <= arr[i + 1] }
+
+#[effects(pure)]
+#[uses(nonempty, adjacent_upto, adjacent_ok)]
+fn is_sorted(arr: &[i64]) -> (r: bool)
+    requires nonempty(arr),
+    ensures adjacent_ok(arr, r),
+{
+    let mut idx: usize = 0;
+    while idx + 1 < arr.len() && arr[idx] <= arr[idx + 1]
+        invariant idx < arr.len(), adjacent_upto(arr, idx),
+        decreases arr.len() - idx,
+    {
+        idx = idx + 1;
+    }
+    idx + 1 >= arr.len()
+}
+
+@@ verus.signature
+fn is_sorted(arr: &Vec<i32>) -> (ret: bool)
+
+@@ verus.target: is_sorted
+@@ verus.specs
+
+
+@@ verus.pre
+arr.len() > 0
+
+@@ verus.post
+ret == (forall|i: int, j: int| 0 <= i < j < arr.len() ==> (arr[i] <= arr[j]))
+
+@@ verus.args: arr
+@@ verus.reference_origin: upstream
+@@ verus.reference
+use vstd::prelude::*;
+
+fn main() {
+    // Write a function in Rust to check whether a specified list is sorted or not.
+
+    assert!(is_sorted(&vec![1, 2, 4, 6, 8, 10, 12, 14, 16, 17]));
+    assert!(!is_sorted(&vec![1, 2, 4, 6, 8, 10, 12, 14, 20, 17]));
+    assert!(!is_sorted(&vec![1, 2, 4, 6, 8, 10, 15, 14, 20]));
+}
+
+verus! {
+
+fn is_sorted(arr: &Vec<i32>) -> (ret: bool)
+    requires
+        arr.len() > 0,
+    ensures
+        ret == (forall|i: int, j: int| 0 <= i < j < arr.len() ==> (arr[i] <= arr[j])),
+{
+    let mut index = 0;
+    while index < arr.len() - 1
+        invariant
+            0 <= index <= arr.len() - 1,
+            forall|k: int, l: int| 0 <= k < l <= index ==> arr[k] <= arr[l],
+        decreases arr@.len() - index - 1,
+    {
+        if arr[index] > arr[index + 1] {
+            return false;
+        }
+        index += 1;
+    }
+    true
+}
+
+} // verus!

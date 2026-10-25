@@ -1,0 +1,58 @@
+{
+  "id": "vc-vd0126-first-zero",
+  "kind": "write",
+  "prompt": "Create unit `tasks` for this task.\n\nImplement `mfirst_cero`: return the position of the first zero in `v`, or the length of `v` if it has no zero. The contract must state that the result is at most the length, no earlier element is zero, and the element at the result is zero unless the result is the length.\n\nRequired signature (in unit `tasks`):\nfn mfirst_cero(v: &[i64]) -> (r: usize)",
+  "unit": "tasks",
+  "def": "tasks::mfirst_cero",
+  "signature": "fn mfirst_cero(v: &[i64]) -> (r: usize)",
+  "accept": {
+    "specs": "spec fn ref_post(v: &[i64], r: usize) -> bool { r <= v.len() && (forall|j: usize| j < r ==> #[trigger] v[j] != 0) && (r != v.len() ==> v[r] == 0) }",
+    "pre": null,
+    "post": "ref_post(v, r)",
+    "args": "v"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn nonzero_below(v: &[i64], n: usize) -> bool { forall|j: usize| j < n ==> #[trigger] v[j] != 0 }\n\nspec fn result_ok(v: &[i64], r: usize) -> bool { r <= v.len() && (forall|j: usize| j < r ==> #[trigger] v[j] != 0) && (r != v.len() ==> v[r] == 0) }\n\n#[effects(pure)]\n#[uses(result_ok, nonzero_below)]\nfn mfirst_cero(v: &[i64]) -> (r: usize)\n    ensures result_ok(v, r),\n{\n    let mut i: usize = 0;\n    while i < v.len() && v[i] != 0\n        invariant i <= v.len(), nonzero_below(v, i),\n        decreases v.len() - i,\n    {\n        i = i + 1;\n    }\n    i\n}"
+    }
+  ],
+  "weak_reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn nonzero_below(v: &[i64], n: usize) -> bool { forall|j: usize| j < n ==> #[trigger] v[j] != 0 }\n\nspec fn result_ok(v: &[i64], r: usize) -> bool { r <= v.len() && (r != v.len() ==> v[r] == 0) }\n\n#[effects(pure)]\n#[uses(result_ok, nonzero_below)]\nfn mfirst_cero(v: &[i64]) -> (r: usize)\n    ensures result_ok(v, r),\n{\n    let mut i: usize = 0;\n    while i < v.len() && v[i] != 0\n        invariant i <= v.len(), nonzero_below(v, i),\n        decreases v.len() - i,\n    {\n        i = i + 1;\n    }\n    i\n}"
+    }
+  ],
+  "source": {
+    "benchmark": "Vericoding",
+    "origin": "dafnybench Dafny-Exercises_tmp_tmpjm75muf__Session4Exercises_ExercisefirstZero_mfirstCero",
+    "path": "jsonl/verus_tasks.jsonl#VD0126",
+    "rules": [
+      "T1",
+      "T2"
+    ]
+  },
+  "verus": {
+    "prompt": "Implement `mfirst_cero`: return the position of the first zero in `v`, or the length of `v` if it has no zero. The contract must state that the result is at most the length, no earlier element is zero, and the element at the result is zero unless the result is the length.\n\nRequired signature:\nfn mfirst_cero(v: &[i32]) -> (i: usize)",
+    "signature": "fn mfirst_cero(v: &[i32]) -> (i: usize)",
+    "target": "mfirst_cero",
+    "specs": "",
+    "pre": null,
+    "post": "i <= v.len(),\n        forall|j: int| 0 <= j < i as int ==> v@[j] != 0,\n        i != v.len() ==> v@[i as int] == 0",
+    "args": "v",
+    "reference": "use vstd::prelude::*;\n\nverus! {\n\nfn mfirst_cero(v: &[i32]) -> (i: usize)\n    ensures\n        i <= v.len(),\n        forall|j: int| 0 <= j < i as int ==> v@[j] != 0,\n        i != v.len() ==> v@[i as int] == 0,\n{\n    let mut i: usize = 0;\n    while i < v.len() && v[i] != 0\n        invariant\n            i <= v.len(),\n            forall|j: int| 0 <= j < i as int ==> v@[j] != 0,\n        decreases v.len() - i,\n    {\n        i = i + 1;\n    }\n    i\n}\n\n}\nfn main() {}",
+    "reference_origin": "bvb"
+  }
+}

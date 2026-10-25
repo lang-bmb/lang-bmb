@@ -1,0 +1,89 @@
+@@ id: vc-vv0135-compare
+@@ benchmark: Vericoding
+@@ origin: verina verina_basic_55_task
+@@ origin_path: jsonl/verus_tasks.jsonl#VV0135
+@@ rules: T2
+@@ description
+Implement `compare`: return whether `a` equals `b`. The contract must state the result in both cases (equal and not equal).
+
+@@ signature
+fn compare(a: i64, b: i64) -> (r: bool)
+
+@@ accept.specs
+spec fn ref_post(a: i64, b: i64, r: bool) -> bool { (a == b ==> r == true) && (a != b ==> r == false) }
+
+@@ accept.pre: none
+@@ accept.post: ref_post(a, b, r)
+@@ accept.args: a, b
+@@ reference
+spec fn result_ok(a: i64, b: i64, r: bool) -> bool { (a == b ==> r == true) && (a != b ==> r == false) }
+
+#[effects(pure)]
+#[uses(result_ok)]
+fn compare(a: i64, b: i64) -> (r: bool)
+    ensures result_ok(a, b, r),
+{
+    a == b
+}
+
+@@ weak
+spec fn result_ok(a: i64, b: i64, r: bool) -> bool { a == b ==> r == true }
+
+#[effects(pure)]
+#[uses(result_ok)]
+fn compare(a: i64, b: i64) -> (r: bool)
+    ensures result_ok(a, b, r),
+{
+    a == b
+}
+
+@@ verus.signature
+fn compare(a: i32, b: i32) -> (result: bool)
+
+@@ verus.target: compare
+@@ verus.specs
+
+
+@@ verus.pre
+none
+
+@@ verus.post
+(a == b ==> result == true) && (a != b ==> result == false)
+
+@@ verus.args: a, b
+@@ verus.reference_origin: upstream
+@@ verus.reference
+// <vc-preamble>
+use vstd::prelude::*;
+
+verus! {
+// </vc-preamble>
+
+// <vc-helpers>
+spec fn is_equal_i32(a: i32, b: i32) -> bool { a == b }
+
+proof fn equal_true_iff(a: i32, b: i32)
+    ensures
+        a == b ==> is_equal_i32(a, b) == true,
+        a != b ==> is_equal_i32(a, b) == false
+{}
+
+// </vc-helpers>
+
+// <vc-spec>
+fn compare(a: i32, b: i32) -> (result: bool)
+    ensures
+        (a == b ==> result == true) && (a != b ==> result == false),
+// </vc-spec>
+// <vc-code>
+{
+    if a == b {
+        true
+    } else {
+        false
+    }
+}
+// </vc-code>
+
+}
+fn main() {}

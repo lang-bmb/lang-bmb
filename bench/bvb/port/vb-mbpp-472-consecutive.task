@@ -1,0 +1,119 @@
+@@ id: vb-mbpp-472-consecutive
+@@ benchmark: Verus-Bench
+@@ origin: MBPP
+@@ origin_path: benchmarks/Verus-Bench/MBPP/verified/task_id_472.rs
+@@ rules: T1 T2
+@@ description
+Implement `contains_consecutive_numbers`: `arr` is non-empty and every element x satisfies 0 <= x + 1 < 2147483647. Return whether every element is exactly one more than the element before it. The contract must state the result exactly in terms of adjacent positions.
+
+@@ signature
+fn contains_consecutive_numbers(arr: &[i64]) -> (r: bool)
+
+@@ accept.specs
+spec fn ref_pre(arr: &[i64]) -> bool { arr.len() > 0 && (forall|i: usize| i < arr.len() ==> 0 <= #[trigger] arr[i] + 1 && arr[i] + 1 < 2147483647) }
+spec fn ref_post(arr: &[i64], r: bool) -> bool { r == (forall|i: usize, j: usize| i < j && j < arr.len() && j == i + 1 ==> #[trigger] arr[i] + 1 == #[trigger] arr[j]) }
+
+@@ accept.pre: ref_pre(arr)
+@@ accept.post: ref_post(arr, r)
+@@ accept.args: arr
+@@ reference
+spec fn small_elems(arr: &[i64]) -> bool { arr.len() > 0 && (forall|i: usize| i < arr.len() ==> 0 <= #[trigger] arr[i] + 1 && arr[i] + 1 < 2147483647) }
+
+spec fn steps_upto(arr: &[i64], n: usize) -> bool { forall|i: usize, j: usize| i < j && j <= n && j == i + 1 ==> #[trigger] arr[i] + 1 == #[trigger] arr[j] }
+
+spec fn consecutive_ok(arr: &[i64], r: bool) -> bool { r == (forall|i: usize, j: usize| i < j && j < arr.len() && j == i + 1 ==> #[trigger] arr[i] + 1 == #[trigger] arr[j]) }
+
+#[effects(pure)]
+#[uses(small_elems, steps_upto, consecutive_ok)]
+fn contains_consecutive_numbers(arr: &[i64]) -> (r: bool)
+    requires small_elems(arr),
+    ensures consecutive_ok(arr, r),
+{
+    let mut idx: usize = 0;
+    while idx + 1 < arr.len() && arr[idx] + 1 == arr[idx + 1]
+        invariant idx < arr.len(), small_elems(arr), steps_upto(arr, idx),
+        decreases arr.len() - idx,
+    {
+        idx = idx + 1;
+    }
+    idx + 1 >= arr.len()
+}
+
+@@ weak
+spec fn small_elems(arr: &[i64]) -> bool { arr.len() > 0 && (forall|i: usize| i < arr.len() ==> 0 <= #[trigger] arr[i] + 1 && arr[i] + 1 < 2147483647) }
+
+spec fn steps_upto(arr: &[i64], n: usize) -> bool { forall|i: usize, j: usize| i < j && j <= n && j == i + 1 ==> #[trigger] arr[i] + 1 == #[trigger] arr[j] }
+
+spec fn consecutive_if(arr: &[i64], r: bool) -> bool { r ==> (forall|i: usize, j: usize| i < j && j < arr.len() && j == i + 1 ==> #[trigger] arr[i] + 1 == #[trigger] arr[j]) }
+
+#[effects(pure)]
+#[uses(small_elems, steps_upto, consecutive_if)]
+fn contains_consecutive_numbers(arr: &[i64]) -> (r: bool)
+    requires small_elems(arr),
+    ensures consecutive_if(arr, r),
+{
+    let mut idx: usize = 0;
+    while idx + 1 < arr.len() && arr[idx] + 1 == arr[idx + 1]
+        invariant idx < arr.len(), small_elems(arr), steps_upto(arr, idx),
+        decreases arr.len() - idx,
+    {
+        idx = idx + 1;
+    }
+    idx + 1 >= arr.len()
+}
+
+@@ verus.signature
+fn contains_consecutive_numbers(arr: &Vec<i32>) -> (is_consecutive: bool)
+
+@@ verus.target: contains_consecutive_numbers
+@@ verus.specs
+
+
+@@ verus.pre
+arr.len() > 0,
+forall|i: int| 0 <= i < arr.len() ==> (0 <= #[trigger] arr[i] + 1 < i32::MAX)
+
+@@ verus.post
+is_consecutive == (forall|i: int, j: int|
+    0 <= i < j < arr.len() && j == i + 1 ==> (arr[i] + 1 == arr[j]))
+
+@@ verus.args: arr
+@@ verus.reference_origin: upstream
+@@ verus.reference
+use vstd::prelude::*;
+
+fn main() {
+    // Write a function in Rust to check whether the given list contains consecutive numbers or not.
+
+    assert!(contains_consecutive_numbers(&vec![1, 2, 3, 4, 5]));
+    assert!(!contains_consecutive_numbers(&vec![1, 2, 3, 5, 6]));
+    assert!(!contains_consecutive_numbers(&vec![1, 2, 1]));
+}
+
+verus! {
+
+fn contains_consecutive_numbers(arr: &Vec<i32>) -> (is_consecutive: bool)
+    requires
+        arr.len() > 0,
+        forall|i: int| 0 <= i < arr.len() ==> (0 <= #[trigger] arr[i] + 1 < i32::MAX),
+    ensures
+        is_consecutive == (forall|i: int, j: int|
+            0 <= i < j < arr.len() && j == i + 1 ==> (arr[i] + 1 == arr[j])),
+{
+    let mut index = 0;
+    while (index < arr.len() - 1)
+        invariant
+            0 <= index <= arr.len() - 1,
+            forall|k: int| 0 <= k < arr.len() ==> (0 <= #[trigger] arr[k] + 1 < i32::MAX),
+            forall|k: int, l: int| (0 <= k < l <= index && l == k + 1) ==> (arr[k] + 1 == arr[l]),
+        decreases arr.len() - index - 1,
+    {
+        if (arr[index] + 1 != arr[index + 1]) {
+            return false;
+        }
+        index += 1;
+    }
+    true
+}
+
+} // verus!

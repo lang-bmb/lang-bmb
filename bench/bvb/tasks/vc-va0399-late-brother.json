@@ -1,0 +1,57 @@
+{
+  "id": "vc-va0399-late-brother",
+  "kind": "write",
+  "prompt": "Create unit `tasks` for this task.\n\nImplement `solve`: three brothers are numbered 1, 2 and 3; `a` and `b` are the two different brothers who arrived on time. Return the number of the brother who was late. The contract must state that the result is in [1, 3], differs from a and b, and equals 6 - a - b.\n\nRequired signature (in unit `tasks`):\nfn solve(a: i64, b: i64) -> (r: i64)",
+  "unit": "tasks",
+  "def": "tasks::solve",
+  "signature": "fn solve(a: i64, b: i64) -> (r: i64)",
+  "accept": {
+    "specs": "spec fn ref_pre(a: i64, b: i64) -> bool { 1 <= a && a <= 3 && 1 <= b && b <= 3 && a != b }\nspec fn ref_post(a: i64, b: i64, r: i64) -> bool { (1 <= r && r <= 3 && r != a && r != b) && r == 6 - a - b }",
+    "pre": "ref_pre(a, b)",
+    "post": "ref_post(a, b, r)",
+    "args": "a, b"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn input_ok(a: i64, b: i64) -> bool { 1 <= a && a <= 3 && 1 <= b && b <= 3 && a != b }\n\nspec fn result_ok(a: i64, b: i64, r: i64) -> bool { (1 <= r && r <= 3 && r != a && r != b) && r == 6 - a - b }\n\n#[effects(pure)]\n#[uses(input_ok, result_ok)]\nfn solve(a: i64, b: i64) -> (r: i64)\n    requires input_ok(a, b),\n    ensures result_ok(a, b, r),\n{\n    6 - a - b\n}"
+    }
+  ],
+  "weak_reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn input_ok(a: i64, b: i64) -> bool { 1 <= a && a <= 3 && 1 <= b && b <= 3 && a != b }\n\nspec fn result_ok(a: i64, b: i64, r: i64) -> bool { 1 <= r && r <= 3 }\n\n#[effects(pure)]\n#[uses(input_ok, result_ok)]\nfn solve(a: i64, b: i64) -> (r: i64)\n    requires input_ok(a, b),\n    ensures result_ok(a, b, r),\n{\n    6 - a - b\n}"
+    }
+  ],
+  "source": {
+    "benchmark": "Vericoding",
+    "origin": "apps apps_test_2183",
+    "path": "jsonl/verus_tasks.jsonl#VA0399",
+    "rules": [
+      "T2"
+    ]
+  },
+  "verus": {
+    "prompt": "Implement `solve`: three brothers are numbered 1, 2 and 3; `a` and `b` are the two different brothers who arrived on time. Return the number of the brother who was late. The contract must state that the result is in [1, 3], differs from a and b, and equals 6 - a - b.\n\nRequired signature:\nfn solve(a: i8, b: i8) -> (result: i8)",
+    "signature": "fn solve(a: i8, b: i8) -> (result: i8)",
+    "target": "solve",
+    "specs": "spec fn bvb_ref_valid_brother_numbers(a: int, b: int) -> bool {\n    1 <= a <= 3 && 1 <= b <= 3 && a != b\n}\n\nspec fn bvb_ref_late_brother(a: int, b: int) -> int\n    recommends bvb_ref_valid_brother_numbers(a, b)\n{\n    6 - a - b\n}\n\nspec fn bvb_ref_is_valid_result(a: int, b: int, result: int) -> bool {\n    bvb_ref_valid_brother_numbers(a, b) ==> \n        (1 <= result <= 3 && result != a && result != b)\n}",
+    "pre": "bvb_ref_valid_brother_numbers(a as int, b as int)",
+    "post": "bvb_ref_is_valid_result(a as int, b as int, result as int) &&\n        result as int == bvb_ref_late_brother(a as int, b as int)",
+    "args": "a, b",
+    "reference": "// <vc-preamble>\nuse vstd::prelude::*;\n\nverus! {\nspec fn valid_brother_numbers(a: int, b: int) -> bool {\n    1 <= a <= 3 && 1 <= b <= 3 && a != b\n}\n\nspec fn late_brother(a: int, b: int) -> int\n    recommends valid_brother_numbers(a, b)\n{\n    6 - a - b\n}\n\nspec fn is_valid_result(a: int, b: int, result: int) -> bool {\n    valid_brother_numbers(a, b) ==> \n        (1 <= result <= 3 && result != a && result != b)\n}\n// </vc-preamble>\n\n// <vc-helpers>\n\n// </vc-helpers>\n\n// <vc-spec>\nfn solve(a: i8, b: i8) -> (result: i8)\n    requires \n        valid_brother_numbers(a as int, b as int)\n    ensures \n        is_valid_result(a as int, b as int, result as int) &&\n        result as int == late_brother(a as int, b as int)\n// </vc-spec>\n// <vc-code>\n{\n    let res: i8 = 6i8 - a - b;\n\n    if a == 1i8 {\n        if b == 2i8 {\n            assert(res as int == 6 - a as int - b as int);\n            assert(1 <= res as int && res as int <= 3);\n            assert(res as int != a as int);\n            assert(res as int != b as int);\n        } else if b == 3i8 {\n            assert(res as int == 6 - a as int - b as int);\n            assert(1 <= res as int && res as int <= 3);\n            assert(res as int != a as int);\n            assert(res as int != b as int);\n        } else {\n            // unreachable given precondition\n        }\n    } else if a == 2i8 {\n        if b == 1i8 {\n            assert(res as int == 6 - a as int - b as int);\n            assert(1 <= res as int && res as int <= 3);\n            assert(res as int != a as int);\n            assert(res as int != b as int);\n        } else if b == 3i8 {\n            assert(res as int == 6 - a as int - b as int);\n            assert(1 <= res as int && res as int <= 3);\n            assert(res as int != a as int);\n            assert(res as int != b as int);\n        } else {\n            // unreachable given precondition\n        }\n    } else {\n        if b == 1i8 {\n            assert(res as int == 6 - a as int - b as int);\n            assert(1 <= res as int && res as int <= 3);\n            assert(res as int != a as int);\n            assert(res as int != b as int);\n        } else if b == 2i8 {\n            assert(res as int == 6 - a as int - b as int);\n            assert(1 <= res as int && res as int <= 3);\n            assert(res as int != a as int);\n            assert(res as int != b as int);\n        } else {\n            // unreachable given precondition\n        }\n    }\n\n    assert(late_brother(a as int, b as int) == 6 - a as int - b as int);\n    res\n}\n// </vc-code>\n\n\n}\n\nfn main() {}",
+    "reference_origin": "upstream"
+  }
+}

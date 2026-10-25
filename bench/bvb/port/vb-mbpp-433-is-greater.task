@@ -1,0 +1,105 @@
+@@ id: vb-mbpp-433-is-greater
+@@ benchmark: Verus-Bench
+@@ origin: MBPP
+@@ origin_path: benchmarks/Verus-Bench/MBPP/verified/task_id_433.rs
+@@ rules: T1 T2
+@@ description
+Implement `is_greater`: return whether `number` is strictly greater than every element of `arr` (true for an empty array). The contract must state the result exactly.
+
+@@ signature
+fn is_greater(arr: &[i64], number: i64) -> (r: bool)
+
+@@ accept.specs
+spec fn ref_post(arr: &[i64], number: i64, r: bool) -> bool { r == (forall|i: usize| i < arr.len() ==> number > #[trigger] arr[i]) }
+
+@@ accept.pre: none
+@@ accept.post: ref_post(arr, number, r)
+@@ accept.args: arr, number
+@@ reference
+spec fn holds_below(arr: &[i64], number: i64, n: usize) -> bool { forall|i: usize| i < n && i < arr.len() ==> number > #[trigger] arr[i] }
+
+spec fn exact(arr: &[i64], number: i64, r: bool) -> bool { r == holds_below(arr, number, arr.len()) }
+
+#[effects(pure)]
+#[uses(holds_below, exact)]
+fn is_greater(arr: &[i64], number: i64) -> (r: bool)
+    ensures exact(arr, number, r),
+{
+    let mut idx: usize = 0;
+    while idx < arr.len() && (number > arr[idx])
+        invariant idx <= arr.len(), holds_below(arr, number, idx),
+        decreases arr.len() - idx,
+    {
+        idx = idx + 1;
+    }
+    idx >= arr.len()
+}
+
+@@ weak
+spec fn holds_below(arr: &[i64], number: i64, n: usize) -> bool { forall|i: usize| i < n && i < arr.len() ==> number > #[trigger] arr[i] }
+
+spec fn one_way(arr: &[i64], number: i64, r: bool) -> bool { holds_below(arr, number, arr.len()) ==> r }
+
+#[effects(pure)]
+#[uses(holds_below, one_way)]
+fn is_greater(arr: &[i64], number: i64) -> (r: bool)
+    ensures one_way(arr, number, r),
+{
+    let mut idx: usize = 0;
+    while idx < arr.len() && (number > arr[idx])
+        invariant idx <= arr.len(), holds_below(arr, number, idx),
+        decreases arr.len() - idx,
+    {
+        idx = idx + 1;
+    }
+    idx >= arr.len()
+}
+
+@@ verus.signature
+fn is_greater(arr: &Vec<i32>, number: i32) -> (result: bool)
+
+@@ verus.target: is_greater
+@@ verus.specs
+
+
+@@ verus.pre
+none
+
+@@ verus.post
+result == (forall|i: int| 0 <= i < arr.len() ==> number > arr[i])
+
+@@ verus.args: arr, number
+@@ verus.reference_origin: upstream
+@@ verus.reference
+use vstd::prelude::*;
+
+fn main() {
+    // Write a function in Rust to check whether the given integer is greater than the elements of the given integer array.
+
+    assert!(!is_greater(&vec![1, 2, 3, 4, 5], 4));
+    assert!(is_greater(&vec![2, 3, 4, 5, 6], 8));
+    assert!(is_greater(&vec![9, 7, 4, 8, 6, 1], 11));
+}
+
+verus! {
+
+fn is_greater(arr: &Vec<i32>, number: i32) -> (result: bool)
+    ensures
+        result == (forall|i: int| 0 <= i < arr.len() ==> number > arr[i]),
+{
+    let mut i = 0;
+    while i < arr.len()
+        invariant
+            0 <= i <= arr.len(),
+            forall|k: int| 0 <= k < i ==> number > arr[k],
+        decreases arr@.len() - i,
+    {
+        if number <= arr[i] {
+            return false;
+        }
+        i += 1;
+    }
+    true
+}
+
+} // verus!

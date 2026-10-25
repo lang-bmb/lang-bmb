@@ -1,0 +1,138 @@
+@@ id: vc-vv0039-max-of-list
+@@ benchmark: Vericoding
+@@ origin: verina verina_advanced_40_task
+@@ origin_path: jsonl/verus_tasks.jsonl#VV0039
+@@ rules: T1 T2 T3
+@@ description
+Implement `max_of_list`: `lst` is non-empty. Return its largest element. The contract must state that the result equals some element and is at least every element.
+
+@@ signature
+fn max_of_list(lst: &[i64]) -> (r: i64)
+
+@@ accept.specs
+spec fn ref_pre(lst: &[i64]) -> bool { lst.len() > 0 }
+spec fn ref_post(lst: &[i64], r: i64) -> bool { !(forall|i: usize| i < lst.len() ==> #[trigger] lst[i] != r) && (forall|j: usize| j < lst.len() ==> #[trigger] lst[j] <= r) }
+
+@@ accept.pre: ref_pre(lst)
+@@ accept.post: ref_post(lst, r)
+@@ accept.args: lst
+@@ reference
+spec fn max_upto(lst: &[i64], m: i64, p: usize, n: usize) -> bool { p < n && lst[p] == m && (forall|i: usize| i < n ==> #[trigger] lst[i] <= m) }
+
+spec fn input_ok(lst: &[i64]) -> bool { lst.len() > 0 }
+
+spec fn result_ok(lst: &[i64], r: i64) -> bool { !(forall|i: usize| i < lst.len() ==> #[trigger] lst[i] != r) && (forall|j: usize| j < lst.len() ==> #[trigger] lst[j] <= r) }
+
+#[effects(pure)]
+#[uses(input_ok, result_ok, max_upto)]
+fn max_of_list(lst: &[i64]) -> (r: i64)
+    requires input_ok(lst),
+    ensures result_ok(lst, r),
+{
+    let mut m: i64 = lst[0];
+    let mut p: usize = 0;
+    let mut idx: usize = 1;
+    while idx < lst.len()
+        invariant 1 <= idx, idx <= lst.len(), max_upto(lst, m, p, idx),
+        decreases lst.len() - idx,
+    {
+        if lst[idx] > m {
+            m = lst[idx];
+            p = idx;
+        }
+        idx = idx + 1;
+    }
+    m
+}
+
+@@ weak
+spec fn max_upto(lst: &[i64], m: i64, p: usize, n: usize) -> bool { p < n && lst[p] == m && (forall|i: usize| i < n ==> #[trigger] lst[i] <= m) }
+
+spec fn input_ok(lst: &[i64]) -> bool { lst.len() > 0 }
+
+spec fn result_ok(lst: &[i64], r: i64) -> bool { forall|j: usize| j < lst.len() ==> #[trigger] lst[j] <= r }
+
+#[effects(pure)]
+#[uses(input_ok, result_ok, max_upto)]
+fn max_of_list(lst: &[i64]) -> (r: i64)
+    requires input_ok(lst),
+    ensures result_ok(lst, r),
+{
+    let mut m: i64 = lst[0];
+    let mut p: usize = 0;
+    let mut idx: usize = 1;
+    while idx < lst.len()
+        invariant 1 <= idx, idx <= lst.len(), max_upto(lst, m, p, idx),
+        decreases lst.len() - idx,
+    {
+        if lst[idx] > m {
+            m = lst[idx];
+            p = idx;
+        }
+        idx = idx + 1;
+    }
+    m
+}
+
+@@ verus.signature
+fn max_of_list(lst: Vec<i32>) -> (result: i32)
+
+@@ verus.target: max_of_list
+@@ verus.specs
+
+
+@@ verus.pre
+lst.len() > 0
+
+@@ verus.post
+exists|i: int| 0 <= i < lst.len() && lst[i] == result,
+        forall|i: int| 0 <= i < lst.len() ==> lst[i] <= result
+
+@@ verus.args: lst
+@@ verus.reference_origin: upstream
+@@ verus.reference
+// <vc-preamble>
+use vstd::prelude::*;
+
+verus! {
+// </vc-preamble>
+
+// <vc-helpers>
+/* helper modified by LLM (iteration 3): max2 returns the larger of two i32 values */
+fn max2(a: i32, b: i32) -> i32 {
+    if a >= b { a } else { b }
+}
+// </vc-helpers>
+
+// <vc-spec>
+fn max_of_list(lst: Vec<i32>) -> (result: i32)
+    requires lst.len() > 0,
+    ensures
+        exists|i: int| 0 <= i < lst.len() && lst[i] == result,
+        forall|i: int| 0 <= i < lst.len() ==> lst[i] <= result,
+// </vc-spec>
+// <vc-code>
+{
+    /* code modified by LLM (iteration 3): implemented max search using usize loop and spec-level invariants */
+    let mut i: usize = 1;
+    let mut cur: i32 = lst[0];
+    while i < lst.len()
+        invariant
+            0 <= (i as int),
+            (i as int) <= lst.len() as int,
+            forall |k: int| 0 <= k && k < (i as int) ==> lst@[k] <= cur,
+            exists |j: int| 0 <= j && j < (i as int) && lst@[j] == cur,
+        decreases (lst.len() as int) - (i as int)
+    {
+        let v = lst[i];
+        if v > cur {
+            cur = v;
+        }
+        i = i + 1;
+    }
+    cur
+}
+// </vc-code>
+
+}
+fn main() {}

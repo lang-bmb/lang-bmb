@@ -1,0 +1,98 @@
+@@ id: vc-vd0727-calculate-loss
+@@ benchmark: Vericoding
+@@ origin: dafnybench dafny-synthesis_task_id_452_CalculateLoss
+@@ origin_path: jsonl/verus_tasks.jsonl#VD0727
+@@ rules: T2
+@@ description
+Implement `calculate_loss`: `cost_price` and `selling_price` are non-negative 32-bit integers. Return the loss: cost_price - selling_price when the cost exceeds the selling price, otherwise 0. The contract must state the result exactly in both cases.
+
+@@ signature
+fn calculate_loss(cost_price: i64, selling_price: i64) -> (r: i64)
+
+@@ accept.specs
+spec fn ref_pre(cost_price: i64, selling_price: i64) -> bool { -2147483648 <= cost_price && cost_price <= 2147483647 && -2147483648 <= selling_price && selling_price <= 2147483647 && cost_price >= 0 && selling_price >= 0 }
+spec fn ref_post(cost_price: i64, selling_price: i64, r: i64) -> bool { (cost_price > selling_price ==> r == cost_price - selling_price) && (cost_price <= selling_price ==> r == 0) }
+
+@@ accept.pre: ref_pre(cost_price, selling_price)
+@@ accept.post: ref_post(cost_price, selling_price, r)
+@@ accept.args: cost_price, selling_price
+@@ reference
+spec fn input_ok(cost_price: i64, selling_price: i64) -> bool { -2147483648 <= cost_price && cost_price <= 2147483647 && -2147483648 <= selling_price && selling_price <= 2147483647 && cost_price >= 0 && selling_price >= 0 }
+
+spec fn result_ok(cost_price: i64, selling_price: i64, r: i64) -> bool { (cost_price > selling_price ==> r == cost_price - selling_price) && (cost_price <= selling_price ==> r == 0) }
+
+#[effects(pure)]
+#[uses(input_ok, result_ok)]
+fn calculate_loss(cost_price: i64, selling_price: i64) -> (r: i64)
+    requires input_ok(cost_price, selling_price),
+    ensures result_ok(cost_price, selling_price, r),
+{
+    if cost_price > selling_price {
+        cost_price - selling_price
+    } else {
+        0
+    }
+}
+
+@@ weak
+spec fn input_ok(cost_price: i64, selling_price: i64) -> bool { -2147483648 <= cost_price && cost_price <= 2147483647 && -2147483648 <= selling_price && selling_price <= 2147483647 && cost_price >= 0 && selling_price >= 0 }
+
+spec fn result_ok(cost_price: i64, selling_price: i64, r: i64) -> bool { r >= 0 }
+
+#[effects(pure)]
+#[uses(input_ok, result_ok)]
+fn calculate_loss(cost_price: i64, selling_price: i64) -> (r: i64)
+    requires input_ok(cost_price, selling_price),
+    ensures result_ok(cost_price, selling_price, r),
+{
+    if cost_price > selling_price {
+        cost_price - selling_price
+    } else {
+        0
+    }
+}
+
+@@ verus.signature
+fn calculate_loss(cost_price: i32, selling_price: i32) -> (loss: i32)
+
+@@ verus.target: calculate_loss
+@@ verus.specs
+
+
+@@ verus.pre
+cost_price >= 0 && selling_price >= 0
+
+@@ verus.post
+(cost_price > selling_price ==> loss == cost_price - selling_price) && (cost_price <= selling_price ==> loss == 0)
+
+@@ verus.args: cost_price, selling_price
+@@ verus.reference_origin: upstream
+@@ verus.reference
+use vstd::prelude::*;
+
+verus! {
+
+// <vc-helpers>
+
+// </vc-helpers>
+
+// <vc-spec>
+fn calculate_loss(cost_price: i32, selling_price: i32) -> (loss: i32)
+    requires cost_price >= 0 && selling_price >= 0,
+    ensures (cost_price > selling_price ==> loss == cost_price - selling_price) && (cost_price <= selling_price ==> loss == 0),
+// </vc-spec>
+// <vc-code>
+{
+  if cost_price > selling_price {
+    let d = cost_price - selling_price;
+    d
+  } else {
+    0
+  }
+}
+// </vc-code>
+
+fn main() {
+}
+
+}

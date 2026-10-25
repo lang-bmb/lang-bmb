@@ -1,0 +1,106 @@
+@@ id: vb-misc-choose-odd
+@@ benchmark: Verus-Bench
+@@ origin: Misc
+@@ origin_path: benchmarks/Verus-Bench/Misc/verified/choose_odd.rs
+@@ rules: T1 T2 T3
+@@ description
+Implement `choose_odd`: some element of `v` is odd. Return a position in `v` (the search for an odd element). The contract must state that the result is a valid position of `v`.
+
+@@ signature
+fn choose_odd(v: &[u64]) -> (r: usize)
+
+@@ accept.specs
+spec fn ref_pre(v: &[u64]) -> bool { !(forall|q: usize| q < v.len() ==> #[trigger] v[q] % 2 != 1) }
+spec fn ref_post(v: &[u64], r: usize) -> bool { r < v.len() }
+
+@@ accept.pre: ref_pre(v)
+@@ accept.post: ref_post(v, r)
+@@ accept.args: v
+@@ reference
+spec fn has_odd(v: &[u64]) -> bool { !(forall|q: usize| q < v.len() ==> #[trigger] v[q] % 2 != 1) }
+
+spec fn even_below(v: &[u64], n: usize) -> bool { forall|q: usize| q < n ==> #[trigger] v[q] % 2 != 1 }
+
+spec fn valid_index(v: &[u64], r: usize) -> bool { r < v.len() }
+
+#[effects(pure)]
+#[uses(has_odd, even_below, valid_index)]
+fn choose_odd(v: &[u64]) -> (r: usize)
+    requires has_odd(v),
+    ensures valid_index(v, r),
+{
+    let mut j: usize = 0;
+    while j < v.len() && v[j] % 2 != 1
+        invariant j <= v.len(), has_odd(v), even_below(v, j),
+        decreases v.len() - j,
+    {
+        j = j + 1;
+    }
+    j
+}
+
+@@ weak
+spec fn has_odd(v: &[u64]) -> bool { !(forall|q: usize| q < v.len() ==> #[trigger] v[q] % 2 != 1) }
+
+spec fn even_below(v: &[u64], n: usize) -> bool { forall|q: usize| q < n ==> #[trigger] v[q] % 2 != 1 }
+
+spec fn at_most_len(v: &[u64], r: usize) -> bool { r <= v.len() }
+
+#[effects(pure)]
+#[uses(has_odd, even_below, at_most_len)]
+fn choose_odd(v: &[u64]) -> (r: usize)
+    requires has_odd(v),
+    ensures at_most_len(v, r),
+{
+    let mut j: usize = 0;
+    while j < v.len() && v[j] % 2 != 1
+        invariant j <= v.len(), has_odd(v), even_below(v, j),
+        decreases v.len() - j,
+    {
+        j = j + 1;
+    }
+    j
+}
+
+@@ verus.signature
+fn choose_odd(v: &Vec<u64>) -> (odd_index: usize)
+
+@@ verus.target: choose_odd
+@@ verus.specs
+
+
+@@ verus.pre
+exists |q:int| 0 <= q < v.len() && v[q] % 2 == 1
+
+@@ verus.post
+odd_index < v.len()
+
+@@ verus.args: v
+@@ verus.reference_origin: upstream
+@@ verus.reference
+use vstd::prelude::*;
+fn main() {}
+
+verus!{
+fn choose_odd(v: &Vec<u64>) -> (odd_index: usize)
+    requires    
+        exists |q:int| 0 <= q < v.len() && v[q] % 2 == 1
+    ensures
+        odd_index < v.len()
+{
+    let mut j: usize = 0;
+    
+    while (j < v.len())
+    invariant 
+        forall |q:int| 0<=q<j ==> #[trigger] v[q]%2!=1,
+    decreases v@.len() - j,
+    {
+        if (v[j] % 2 == 1) {
+            return j;
+        }
+        j = j + 1;
+        
+    }
+    j
+}
+}

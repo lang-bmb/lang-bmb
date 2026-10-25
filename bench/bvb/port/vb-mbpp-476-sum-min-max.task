@@ -1,0 +1,199 @@
+@@ id: vb-mbpp-476-sum-min-max
+@@ benchmark: Verus-Bench
+@@ origin: MBPP
+@@ origin_path: benchmarks/Verus-Bench/MBPP/verified/task_id_476.rs
+@@ rules: T1 T2 T4 G1
+@@ description
+Implement `sum_min_max`: `arr` is non-empty and every element x satisfies -1073741824 < x < 1073741823. Return the sum of the largest and the smallest element. The contract must state the result exactly using the given specification functions.
+
+@@ frozen: given::max_prefix given::min_prefix
+@@ given
+spec fn max_prefix(arr: &[i64], n: usize) -> i64
+    decreases n,
+{
+    if n <= 1 { arr[0] } else { if arr[n - 1] >= max_prefix(arr, n - 1) { arr[n - 1] } else { max_prefix(arr, n - 1) } }
+}
+
+spec fn min_prefix(arr: &[i64], n: usize) -> i64
+    decreases n,
+{
+    if n <= 1 { arr[0] } else { if arr[n - 1] <= min_prefix(arr, n - 1) { arr[n - 1] } else { min_prefix(arr, n - 1) } }
+}
+
+@@ signature
+fn sum_min_max(arr: &[i64]) -> (r: i64)
+
+@@ accept.specs
+spec fn ref_pre(arr: &[i64]) -> bool { arr.len() > 0 && (forall|i: usize| i < arr.len() ==> -1073741824 < #[trigger] arr[i] && arr[i] < 1073741823) }
+spec fn ref_post(arr: &[i64], r: i64) -> bool { r == given::max_prefix(arr, arr.len()) + given::min_prefix(arr, arr.len()) }
+
+@@ accept.pre: ref_pre(arr)
+@@ accept.post: ref_post(arr, r)
+@@ accept.args: arr
+@@ reference
+spec fn half_range(arr: &[i64]) -> bool { arr.len() > 0 && (forall|i: usize| i < arr.len() ==> -1073741824 < #[trigger] arr[i] && arr[i] < 1073741823) }
+
+spec fn extremes(arr: &[i64], hi: i64, lo: i64, n: usize) -> bool { hi == given::max_prefix(arr, n) && lo == given::min_prefix(arr, n) && -1073741824 < lo && lo <= hi && hi < 1073741823 }
+
+spec fn result_ok(arr: &[i64], r: i64) -> bool { r == given::max_prefix(arr, arr.len()) + given::min_prefix(arr, arr.len()) }
+
+#[effects(pure)]
+#[uses(half_range, extremes, result_ok, given::max_prefix, given::min_prefix)]
+fn sum_min_max(arr: &[i64]) -> (r: i64)
+    requires half_range(arr),
+    ensures result_ok(arr, r),
+{
+    let mut hi: i64 = arr[0];
+    let mut lo: i64 = arr[0];
+    let mut idx: usize = 1;
+    while idx < arr.len()
+        invariant 1 <= idx, idx <= arr.len(), half_range(arr), extremes(arr, hi, lo, idx),
+        decreases arr.len() - idx,
+    {
+        if arr[idx] >= hi {
+            hi = arr[idx];
+        }
+        if arr[idx] <= lo {
+            lo = arr[idx];
+        }
+        idx = idx + 1;
+    }
+    hi + lo
+}
+
+@@ weak
+spec fn half_range(arr: &[i64]) -> bool { arr.len() > 0 && (forall|i: usize| i < arr.len() ==> -1073741824 < #[trigger] arr[i] && arr[i] < 1073741823) }
+
+spec fn extremes(arr: &[i64], hi: i64, lo: i64, n: usize) -> bool { hi == given::max_prefix(arr, n) && lo == given::min_prefix(arr, n) && -1073741824 < lo && lo <= hi && hi < 1073741823 }
+
+spec fn result_ok(arr: &[i64], r: i64) -> bool { -2147483648 < r && r < 2147483646 }
+
+#[effects(pure)]
+#[uses(half_range, extremes, result_ok, given::max_prefix, given::min_prefix)]
+fn sum_min_max(arr: &[i64]) -> (r: i64)
+    requires half_range(arr),
+    ensures result_ok(arr, r),
+{
+    let mut hi: i64 = arr[0];
+    let mut lo: i64 = arr[0];
+    let mut idx: usize = 1;
+    while idx < arr.len()
+        invariant 1 <= idx, idx <= arr.len(), half_range(arr), extremes(arr, hi, lo, idx),
+        decreases arr.len() - idx,
+    {
+        if arr[idx] >= hi {
+            hi = arr[idx];
+        }
+        if arr[idx] <= lo {
+            lo = arr[idx];
+        }
+        idx = idx + 1;
+    }
+    hi + lo
+}
+
+@@ verus.signature
+fn sum_min_max(arr: &Vec<i32>) -> (sum: i32)
+
+@@ verus.target: sum_min_max
+@@ verus.given
+spec fn max_rcur(seq: Seq<i32>) -> int
+    decreases seq.len(),
+{
+    if seq.len() <= 1 {
+        seq.first() as int
+    } else {
+        max(seq.last() as int, max_rcur(seq.drop_last()))
+    }
+}
+
+spec fn min_rcur(seq: Seq<i32>) -> int
+    decreases seq.len(),
+{
+    if seq.len() <= 1 {
+        seq.first() as int
+    } else {
+        min(seq.last() as int, min_rcur(seq.drop_last()))
+    }
+}
+
+@@ verus.specs
+
+
+@@ verus.pre
+arr.len() > 0,
+forall|i: int| 0 <= i < arr.len() ==> i32::MIN / 2 < #[trigger] arr[i] < i32::MAX / 2
+
+@@ verus.post
+sum == max_rcur(arr@) + min_rcur(arr@)
+
+@@ verus.args: arr
+@@ verus.reference_origin: upstream
+@@ verus.reference
+#![verifier::loop_isolation(false)]
+use vstd::math::*;
+use vstd::prelude::*;
+
+fn main() {
+    // Write a function in Rust to find the sum of the largest and smallest value in a given array.
+
+    assert_eq!(sum_min_max(&vec![1, 2, 3]), 4);
+    assert_eq!(sum_min_max(&vec![-1, 2, 3, 4]), 3);
+    assert_eq!(sum_min_max(&vec![2, 3, 6]), 8);
+}
+
+verus! {
+
+spec fn max_rcur(seq: Seq<i32>) -> int
+    decreases seq.len(),
+{
+    if seq.len() <= 1 {
+        seq.first() as int
+    } else {
+        max(seq.last() as int, max_rcur(seq.drop_last()))
+    }
+}
+
+spec fn min_rcur(seq: Seq<i32>) -> int
+    decreases seq.len(),
+{
+    if seq.len() <= 1 {
+        seq.first() as int
+    } else {
+        min(seq.last() as int, min_rcur(seq.drop_last()))
+    }
+}
+
+fn sum_min_max(arr: &Vec<i32>) -> (sum: i32)
+    requires
+        arr.len() > 0,
+        forall|i: int| 0 <= i < arr.len() ==> i32::MIN / 2 < #[trigger] arr[i] < i32::MAX / 2,
+    ensures
+        sum == max_rcur(arr@) + min_rcur(arr@),
+{
+    let mut min_val = arr[0];
+    let mut max_val = arr[0];
+    let mut index = 1;
+
+    while index < arr.len()
+        invariant
+            1 <= index <= arr.len(),
+            i32::MIN / 2 < min_val < i32::MAX / 2,
+            i32::MIN / 2 < max_val < i32::MAX / 2,
+            max_val == max_rcur(arr@.subrange(0, index as int)),
+            min_val == min_rcur(arr@.subrange(0, index as int)),
+        decreases arr@.len() - index,
+    {
+        if (arr[index] <= min_val) {
+            min_val = arr[index];
+        } else if (arr[index] > max_val) {
+            max_val = arr[index];
+        }
+        index += 1;
+        assert(arr@.subrange(0, index - 1 as int) == arr@.subrange(0, index as int).drop_last());
+    }
+    assert(arr@ == arr@.subrange(0, index as int));
+    max_val + min_val
+}
+
+} // verus!

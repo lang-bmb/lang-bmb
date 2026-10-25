@@ -1,0 +1,144 @@
+@@ id: vb-mbpp-3-is-non-prime
+@@ benchmark: Verus-Bench
+@@ origin: MBPP
+@@ origin_path: benchmarks/Verus-Bench/MBPP/verified/task_id_3.rs
+@@ rules: T2 T3 G1
+@@ description
+Implement `is_non_prime`: `n` is at least 2. Return whether `n` has a divisor k with 2 <= k < n. The contract must state the result exactly using the given specification function.
+
+@@ frozen: given::is_divisible
+@@ given
+spec fn is_divisible(n: u64, divisor: u64) -> bool {
+    n % divisor == 0
+}
+
+@@ signature
+fn is_non_prime(n: u64) -> (r: bool)
+
+@@ accept.specs
+spec fn ref_pre(n: u64) -> bool { n >= 2 }
+spec fn ref_post(n: u64, r: bool) -> bool { r == !(forall|k: u64| 2 <= k && k < n ==> !(#[trigger] given::is_divisible(n, k))) }
+
+@@ accept.pre: ref_pre(n)
+@@ accept.post: ref_post(n, r)
+@@ accept.args: n
+@@ reference
+spec fn at_least_two(n: u64) -> bool { n >= 2 }
+
+spec fn stopped(n: u64, d: u64) -> bool { d >= n || given::is_divisible(n, d) }
+
+spec fn no_divisor_below(n: u64, m: u64) -> bool { forall|k: u64| 2 <= k && k < m ==> !(#[trigger] given::is_divisible(n, k)) }
+
+spec fn non_prime_ok(n: u64, r: bool) -> bool { r == !no_divisor_below(n, n) }
+
+#[effects(pure)]
+#[uses(at_least_two, stopped, no_divisor_below, non_prime_ok, given::is_divisible)]
+fn is_non_prime(n: u64) -> (r: bool)
+    requires at_least_two(n),
+    ensures non_prime_ok(n, r),
+{
+    let mut d: u64 = 2;
+    while d < n && n % d != 0
+        invariant 2 <= d, d <= n, no_divisor_below(n, d),
+        decreases n - d,
+    {
+        d = d + 1;
+    }
+    assert(stopped(n, d));
+    d < n
+}
+
+@@ weak
+spec fn at_least_two(n: u64) -> bool { n >= 2 }
+
+spec fn stopped(n: u64, d: u64) -> bool { d >= n || given::is_divisible(n, d) }
+
+spec fn no_divisor_below(n: u64, m: u64) -> bool { forall|k: u64| 2 <= k && k < m ==> !(#[trigger] given::is_divisible(n, k)) }
+
+spec fn non_prime_if(n: u64, r: bool) -> bool { !r ==> no_divisor_below(n, n) }
+
+#[effects(pure)]
+#[uses(at_least_two, stopped, no_divisor_below, non_prime_if, given::is_divisible)]
+fn is_non_prime(n: u64) -> (r: bool)
+    requires at_least_two(n),
+    ensures non_prime_if(n, r),
+{
+    let mut d: u64 = 2;
+    while d < n && n % d != 0
+        invariant 2 <= d, d <= n, no_divisor_below(n, d),
+        decreases n - d,
+    {
+        d = d + 1;
+    }
+    assert(stopped(n, d));
+    d < n
+}
+
+@@ verus.signature
+fn is_non_prime(n: u64) -> (result: bool)
+
+@@ verus.target: is_non_prime
+@@ verus.given
+spec fn is_divisible(n: int, divisor: int) -> bool {
+    (n % divisor) == 0
+}
+
+@@ verus.specs
+
+
+@@ verus.pre
+n >= 2
+
+@@ verus.post
+result == (exists|k: int| 2 <= k < n && is_divisible(n as int, k))
+
+@@ verus.args: n
+@@ verus.reference_origin: upstream
+@@ verus.reference
+use vstd::prelude::*;
+
+fn main() {
+    // verus does not support mod(%) operation on signed integers
+    // so input should be unsigned integers
+
+    //Write a function in Rust to identify non-prime numbers.
+    assert!(is_non_prime(0));
+    assert!(is_non_prime(1));
+    assert!(!is_non_prime(2));
+    assert!(is_non_prime(10));
+    assert!(is_non_prime(35));
+    assert!(!is_non_prime(37));
+}
+
+verus! {
+
+spec fn is_divisible(n: int, divisor: int) -> bool {
+    (n % divisor) == 0
+}
+
+fn is_non_prime(n: u64) -> (result: bool)
+    requires
+        n >= 2,
+    ensures
+        result == (exists|k: int| 2 <= k < n && is_divisible(n as int, k)),
+{
+    if n <= 1 {
+        return true;
+    }
+    let mut index = 2;
+    while index < n
+        invariant
+            2 <= index,
+            forall|k: int| 2 <= k < index ==> !is_divisible(n as int, k),
+        decreases n - index,
+    {
+        if ((n % index) == 0) {
+            assert(is_divisible(n as int, index as int));
+            return true;
+        }
+        index += 1;
+    }
+    false
+}
+
+} // verus!

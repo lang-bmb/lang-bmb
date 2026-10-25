@@ -1,0 +1,59 @@
+{
+  "id": "vc-vv0039-max-of-list",
+  "kind": "write",
+  "prompt": "Create unit `tasks` for this task.\n\nImplement `max_of_list`: `lst` is non-empty. Return its largest element. The contract must state that the result equals some element and is at least every element.\n\nRequired signature (in unit `tasks`):\nfn max_of_list(lst: &[i64]) -> (r: i64)",
+  "unit": "tasks",
+  "def": "tasks::max_of_list",
+  "signature": "fn max_of_list(lst: &[i64]) -> (r: i64)",
+  "accept": {
+    "specs": "spec fn ref_pre(lst: &[i64]) -> bool { lst.len() > 0 }\nspec fn ref_post(lst: &[i64], r: i64) -> bool { !(forall|i: usize| i < lst.len() ==> #[trigger] lst[i] != r) && (forall|j: usize| j < lst.len() ==> #[trigger] lst[j] <= r) }",
+    "pre": "ref_pre(lst)",
+    "post": "ref_post(lst, r)",
+    "args": "lst"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn max_upto(lst: &[i64], m: i64, p: usize, n: usize) -> bool { p < n && lst[p] == m && (forall|i: usize| i < n ==> #[trigger] lst[i] <= m) }\n\nspec fn input_ok(lst: &[i64]) -> bool { lst.len() > 0 }\n\nspec fn result_ok(lst: &[i64], r: i64) -> bool { !(forall|i: usize| i < lst.len() ==> #[trigger] lst[i] != r) && (forall|j: usize| j < lst.len() ==> #[trigger] lst[j] <= r) }\n\n#[effects(pure)]\n#[uses(input_ok, result_ok, max_upto)]\nfn max_of_list(lst: &[i64]) -> (r: i64)\n    requires input_ok(lst),\n    ensures result_ok(lst, r),\n{\n    let mut m: i64 = lst[0];\n    let mut p: usize = 0;\n    let mut idx: usize = 1;\n    while idx < lst.len()\n        invariant 1 <= idx, idx <= lst.len(), max_upto(lst, m, p, idx),\n        decreases lst.len() - idx,\n    {\n        if lst[idx] > m {\n            m = lst[idx];\n            p = idx;\n        }\n        idx = idx + 1;\n    }\n    m\n}"
+    }
+  ],
+  "weak_reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn max_upto(lst: &[i64], m: i64, p: usize, n: usize) -> bool { p < n && lst[p] == m && (forall|i: usize| i < n ==> #[trigger] lst[i] <= m) }\n\nspec fn input_ok(lst: &[i64]) -> bool { lst.len() > 0 }\n\nspec fn result_ok(lst: &[i64], r: i64) -> bool { forall|j: usize| j < lst.len() ==> #[trigger] lst[j] <= r }\n\n#[effects(pure)]\n#[uses(input_ok, result_ok, max_upto)]\nfn max_of_list(lst: &[i64]) -> (r: i64)\n    requires input_ok(lst),\n    ensures result_ok(lst, r),\n{\n    let mut m: i64 = lst[0];\n    let mut p: usize = 0;\n    let mut idx: usize = 1;\n    while idx < lst.len()\n        invariant 1 <= idx, idx <= lst.len(), max_upto(lst, m, p, idx),\n        decreases lst.len() - idx,\n    {\n        if lst[idx] > m {\n            m = lst[idx];\n            p = idx;\n        }\n        idx = idx + 1;\n    }\n    m\n}"
+    }
+  ],
+  "source": {
+    "benchmark": "Vericoding",
+    "origin": "verina verina_advanced_40_task",
+    "path": "jsonl/verus_tasks.jsonl#VV0039",
+    "rules": [
+      "T1",
+      "T2",
+      "T3"
+    ]
+  },
+  "verus": {
+    "prompt": "Implement `max_of_list`: `lst` is non-empty. Return its largest element. The contract must state that the result equals some element and is at least every element.\n\nRequired signature:\nfn max_of_list(lst: Vec<i32>) -> (result: i32)",
+    "signature": "fn max_of_list(lst: Vec<i32>) -> (result: i32)",
+    "target": "max_of_list",
+    "specs": "",
+    "pre": "lst.len() > 0",
+    "post": "exists|i: int| 0 <= i < lst.len() && lst[i] == result,\n        forall|i: int| 0 <= i < lst.len() ==> lst[i] <= result",
+    "args": "lst",
+    "reference": "// <vc-preamble>\nuse vstd::prelude::*;\n\nverus! {\n// </vc-preamble>\n\n// <vc-helpers>\n/* helper modified by LLM (iteration 3): max2 returns the larger of two i32 values */\nfn max2(a: i32, b: i32) -> i32 {\n    if a >= b { a } else { b }\n}\n// </vc-helpers>\n\n// <vc-spec>\nfn max_of_list(lst: Vec<i32>) -> (result: i32)\n    requires lst.len() > 0,\n    ensures\n        exists|i: int| 0 <= i < lst.len() && lst[i] == result,\n        forall|i: int| 0 <= i < lst.len() ==> lst[i] <= result,\n// </vc-spec>\n// <vc-code>\n{\n    /* code modified by LLM (iteration 3): implemented max search using usize loop and spec-level invariants */\n    let mut i: usize = 1;\n    let mut cur: i32 = lst[0];\n    while i < lst.len()\n        invariant\n            0 <= (i as int),\n            (i as int) <= lst.len() as int,\n            forall |k: int| 0 <= k && k < (i as int) ==> lst@[k] <= cur,\n            exists |j: int| 0 <= j && j < (i as int) && lst@[j] == cur,\n        decreases (lst.len() as int) - (i as int)\n    {\n        let v = lst[i];\n        if v > cur {\n            cur = v;\n        }\n        i = i + 1;\n    }\n    cur\n}\n// </vc-code>\n\n}\nfn main() {}",
+    "reference_origin": "upstream"
+  }
+}

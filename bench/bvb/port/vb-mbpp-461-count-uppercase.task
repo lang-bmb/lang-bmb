@@ -1,0 +1,170 @@
+@@ id: vb-mbpp-461-count-uppercase
+@@ benchmark: Verus-Bench
+@@ origin: MBPP
+@@ origin_path: benchmarks/Verus-Bench/MBPP/verified/task_id_461.rs
+@@ rules: T1 T2 T4 G1
+@@ description
+Implement `count_uppercase`: `text` holds the bytes of a string. Return the number of ASCII upper-case letters (bytes 65 to 90). The contract must state that the result is at most the length of `text` and equals the given specification function applied to the whole text.
+
+@@ frozen: given::count_upper
+@@ given
+spec fn count_upper(text: &[u64], n: usize) -> u64
+    decreases n,
+{
+    if n == 0 { 0 } else { count_upper(text, n - 1) + (if text[n - 1] >= 65 && text[n - 1] <= 90 { 1 } else { 0 }) }
+}
+
+@@ signature
+fn count_uppercase(text: &[u64]) -> (count: u64)
+
+@@ accept.specs
+spec fn ref_post(text: &[u64], count: u64) -> bool { count <= text.len() && count == given::count_upper(text, text.len()) }
+
+@@ accept.pre: none
+@@ accept.post: ref_post(text, r)
+@@ accept.args: text
+@@ reference
+spec fn counted(count: u64, text: &[u64], n: usize) -> bool { count <= n && count == given::count_upper(text, n) }
+
+spec fn result_ok(text: &[u64], count: u64) -> bool { count <= text.len() && count == given::count_upper(text, text.len()) }
+
+#[effects(pure)]
+#[uses(counted, result_ok, given::count_upper)]
+fn count_uppercase(text: &[u64]) -> (count: u64)
+    ensures result_ok(text, count),
+{
+    let mut c: u64 = 0;
+    let mut idx: usize = 0;
+    while idx < text.len()
+        invariant idx <= text.len(), counted(c, text, idx),
+        decreases text.len() - idx,
+    {
+        if text[idx] >= 65 && text[idx] <= 90 {
+            c = c + 1;
+        }
+        idx = idx + 1;
+    }
+    c
+}
+
+@@ weak
+spec fn counted(count: u64, text: &[u64], n: usize) -> bool { count <= n && count == given::count_upper(text, n) }
+
+spec fn result_ok(text: &[u64], count: u64) -> bool { count <= text.len() }
+
+#[effects(pure)]
+#[uses(counted, result_ok, given::count_upper)]
+fn count_uppercase(text: &[u64]) -> (count: u64)
+    ensures result_ok(text, count),
+{
+    let mut c: u64 = 0;
+    let mut idx: usize = 0;
+    while idx < text.len()
+        invariant idx <= text.len(), counted(c, text, idx),
+        decreases text.len() - idx,
+    {
+        if text[idx] >= 65 && text[idx] <= 90 {
+            c = c + 1;
+        }
+        idx = idx + 1;
+    }
+    c
+}
+
+@@ verus.signature
+fn count_uppercase(text: &[u8]) -> (count: u64)
+
+@@ verus.target: count_uppercase
+@@ verus.given
+spec fn is_upper_case(c: u8) -> bool {
+    c >= 65 && c <= 90
+}
+
+spec fn count_uppercase_recursively(seq: Seq<u8>) -> int
+    decreases seq.len(),
+{
+    if seq.len() == 0 {
+        0
+    } else {
+        count_uppercase_recursively(seq.drop_last()) + if is_upper_case(seq.last()) {
+            1 as int
+        } else {
+            0 as int
+        }
+    }
+}
+
+@@ verus.specs
+
+
+@@ verus.pre
+none
+
+@@ verus.post
+0 <= count <= text.len(),
+count_uppercase_recursively(text@) == count
+
+@@ verus.args: text
+@@ verus.reference_origin: upstream
+@@ verus.reference
+use vstd::prelude::*;
+
+fn main() {
+    // Write a function in Rust to count the upper case characters in a given string.
+
+    assert_eq!(count_uppercase(b"PYthon"), 2);
+    assert_eq!(count_uppercase(b"BigData"), 2);
+    assert_eq!(count_uppercase(b"program"), 0);
+}
+
+verus! {
+
+spec fn is_lower_case(c: u8) -> bool {
+    c >= 97 && c <= 122
+}
+
+spec fn is_upper_case(c: u8) -> bool {
+    c >= 65 && c <= 90
+}
+
+spec fn count_uppercase_recursively(seq: Seq<u8>) -> int
+    decreases seq.len(),
+{
+    if seq.len() == 0 {
+        0
+    } else {
+        count_uppercase_recursively(seq.drop_last()) + if is_upper_case(seq.last()) {
+            1 as int
+        } else {
+            0 as int
+        }
+    }
+}
+
+fn count_uppercase(text: &[u8]) -> (count: u64)
+    ensures
+        0 <= count <= text.len(),
+        count_uppercase_recursively(text@) == count,
+{
+    let mut index = 0;
+    let mut count = 0;
+
+    while index < text.len()
+        invariant
+            0 <= index <= text.len(),
+            0 <= count <= index,
+            count_uppercase_recursively(text@.subrange(0, index as int)) == count,
+        decreases text@.len() - index,
+    {
+        if (text[index] >= 65 && text[index] <= 90) {
+            count += 1;
+        }
+        index += 1;
+        assert(text@.subrange(0, index - 1 as int) == text@.subrange(0, index as int).drop_last());
+
+    }
+    assert(text@ == text@.subrange(0, index as int));
+    count
+}
+
+} // verus!
