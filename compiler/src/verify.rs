@@ -71,6 +71,12 @@ enum Val {
     Unit,
     /// A struct, field by field in declaration order (ADR-0027 §1).
     Struct(Vec<Val>),
+    /// A slice of structs, one SMT array per leaf (ADR-0027 §2): `elem` has
+    /// the element's shape with an array term at each leaf.
+    Arr {
+        elem: Box<Val>,
+        len: String,
+    },
 }
 
 impl Val {
@@ -79,8 +85,28 @@ impl Val {
             Val::S(t) => t.clone(),
             Val::Unit => "true".into(),
             Val::A { .. } => panic!("array used as scalar"),
-            Val::Struct(_) => panic!("struct used as scalar"),
+            Val::Struct(_) | Val::Arr { .. } => panic!("data value used as scalar"),
         }
+    }
+}
+
+/// Element `i` of a slice of structs.
+fn select_val(elem: &Val, i: &str) -> Val {
+    match elem {
+        Val::S(a) => Val::S(format!("(select {a} {i})")),
+        Val::Struct(fs) => Val::Struct(fs.iter().map(|f| select_val(f, i)).collect()),
+        v => panic!("not an element template {v:?}"),
+    }
+}
+
+/// The element arrays of a slice of structs with element `i` set to `v`.
+fn store_val(elem: &Val, i: &str, v: &Val) -> Val {
+    match (elem, v) {
+        (Val::S(a), Val::S(x)) => Val::S(format!("(store {a} {i} {x})")),
+        (Val::Struct(fs), Val::Struct(xs)) => {
+            Val::Struct(fs.iter().zip(xs).map(|(f, x)| store_val(f, i, x)).collect())
+        }
+        (e, v) => panic!("element {v:?} does not match {e:?}"),
     }
 }
 
@@ -94,6 +120,10 @@ fn flatten(v: &Val, out: &mut Vec<String>) {
             out.push(len.clone());
         }
         Val::Struct(fs) => fs.iter().for_each(|f| flatten(f, out)),
+        Val::Arr { elem, len } => {
+            flatten(elem, out);
+            out.push(len.clone());
+        }
         Val::Unit => {}
     }
 }
@@ -302,7 +332,19 @@ fn leaves(t: &TypeKind, tb: &Tables, base: &str, out: &mut Vec<(String, Leaf)>) 
                 TypeKind::Array(_, n) => Some(*n),
                 _ => None,
             };
-            out.push((format!("{base}.e"), Leaf::Elems(e.clone())));
+            // A struct element: one array per scalar leaf (ADR-0027 §2).
+            let mut el = Vec::new();
+            leaves(&e, tb, "", &mut el);
+            if struct_fields(&e, tb).is_some() {
+                for (suf, leaf) in el {
+                    let Leaf::Scalar(lt) = leaf else {
+                        panic!("array inside an array element")
+                    };
+                    out.push((format!("{base}.e{suf}"), Leaf::Elems(lt)));
+                }
+            } else {
+                out.push((format!("{base}.e"), Leaf::Elems(e.clone())));
+            }
             out.push((format!("{base}.len"), Leaf::Len(e, n)));
         }
         TypeKind::Ref { inner, .. } => leaves(&inner.kind, tb, base, out),
@@ -318,6 +360,12 @@ fn build(t: &TypeKind, tb: &Tables, terms: &mut impl Iterator<Item = String>) ->
     match t {
         TypeKind::Unit => Val::Unit,
         _ if is_array(t) => {
+            let e = elem_ty(t);
+            if struct_fields(&e, tb).is_some() {
+                let elem = Box::new(build(&e, tb, terms));
+                let len = terms.next().expect("length leaf");
+                return Val::Arr { elem, len };
+            }
             let elems = terms.next().expect("array leaf");
             let len = terms.next().expect("length leaf");
             Val::A { elems, len }
@@ -341,6 +389,14 @@ fn set_at(v: Val, steps: &[Step], new: Val) -> Val {
             let f = std::mem::replace(&mut fs[*k], Val::Unit);
             fs[*k] = set_at(f, rest, new);
             Val::Struct(fs)
+        }
+        (Some((Step::Index(i), rest)), Val::Arr { elem, len }) => {
+            let cur = select_val(&elem, i);
+            let new = set_at(cur, rest, new);
+            Val::Arr {
+                elem: Box::new(store_val(&elem, i, &new)),
+                len,
+            }
         }
         (Some((Step::Index(i), rest)), Val::A { elems, len }) => {
             assert!(rest.is_empty(), "array elements are scalars");
@@ -379,6 +435,10 @@ fn ite_val(c: &str, a: &Val, b: &Val) -> Val {
         (Val::Struct(xs), Val::Struct(ys)) => {
             Val::Struct(xs.iter().zip(ys).map(|(x, y)| ite_val(c, x, y)).collect())
         }
+        (Val::Arr { elem: e1, len: l1 }, Val::Arr { elem: e2, len: l2 }) => Val::Arr {
+            elem: Box::new(ite_val(c, e1, e2)),
+            len: ite(c, l1, l2),
+        },
         _ => Val::Unit,
     }
 }
@@ -473,7 +533,9 @@ fn range(t: &TypeKind, x: &str) -> Option<String> {
 }
 
 fn len_max(elem: &TypeKind) -> &'static str {
-    if *elem == TypeKind::Bool {
+    // A data type may be one byte (a fieldless enum, a struct of a bool):
+    // only `isize::MAX` is known without its layout.
+    if matches!(elem, TypeKind::Bool | TypeKind::Named { .. }) {
         LEN_MAX_BYTE
     } else {
         LEN_MAX_WORD
@@ -567,6 +629,18 @@ impl<'p, 'q> Enc<'p, 'q> {
         elems
     }
 
+    /// Fresh element arrays of a slice of structs: one per leaf (element
+    /// ranges are assumed where an element is read).
+    fn fresh_struct_elems(&mut self, base: &str, e: &TypeKind) -> Val {
+        let mut ls = Vec::new();
+        leaves(e, self.prog.t, &format!("{base}.e"), &mut ls);
+        let terms: Vec<String> = ls
+            .iter()
+            .map(|(name, leaf)| self.fresh(name, &format!("(Array Int {})", leaf.sort())))
+            .collect();
+        build(e, self.prog.t, &mut terms.into_iter())
+    }
+
     fn fresh_val(&mut self, base: &str, t: &TypeKind) -> Val {
         if let Some(fs) = struct_fields(t, self.prog.t) {
             let fs = fs.to_vec();
@@ -580,6 +654,14 @@ impl<'p, 'q> Enc<'p, 'q> {
             && !is_array(t)
         {
             return self.fresh_val(base, &inner.kind);
+        }
+        if is_array(t) && struct_fields(&elem_ty(t), self.prog.t).is_some() {
+            let e = elem_ty(t);
+            let elem = Box::new(self.fresh_struct_elems(base, &e));
+            let l = self.fresh(&format!("{base}.len"), "Int");
+            self.pc
+                .push(format!("(and (<= 0 {l}) (<= {l} {}))", len_max(&e)));
+            return Val::Arr { elem, len: l };
         }
         if is_array(t) {
             let e = elem_ty(t);
@@ -732,17 +814,19 @@ impl<'p, 'q> Enc<'p, 'q> {
                 })
             }
             ExprKind::Index { base, index } => {
-                let Val::A { elems, .. } = self.spec(base, env, old) else {
-                    panic!("index of non-array")
-                };
+                let bv = self.spec(base, env, old);
                 let i = self.spec(index, env, old).s();
-                Val::S(format!("(select {elems} {i})"))
+                match bv {
+                    Val::A { elems, .. } => Val::S(format!("(select {elems} {i})")),
+                    Val::Arr { elem, .. } => select_val(&elem, &i),
+                    _ => panic!("index of non-array"),
+                }
             }
             ExprKind::Method { recv, name, args } => {
                 let rv = self.spec(recv, env, old);
                 match name.name.as_str() {
                     "len" => match rv {
-                        Val::A { len, .. } => Val::S(len),
+                        Val::A { len, .. } | Val::Arr { len, .. } => Val::S(len),
                         _ => panic!("len of scalar"),
                     },
                     op => {
@@ -1044,16 +1128,37 @@ impl<'p, 'q> Enc<'p, 'q> {
                 Val::S(t)
             }
             ExprKind::Index { base, index } => {
-                let Val::A { elems, len } = self.eval(base) else {
-                    panic!("index of non-array")
-                };
+                let bv = self.eval(base);
                 let i = self.eval(index).s();
+                let len = match &bv {
+                    Val::A { len, .. } | Val::Arr { len, .. } => len.clone(),
+                    _ => panic!("index of non-array"),
+                };
                 self.oblige(
                     "E0805",
                     e.span,
                     "index may be out of bounds",
                     format!("(and (<= 0 {i}) (< {i} {len}))"),
                 );
+                let elems = match bv {
+                    Val::Arr { elem, .. } => {
+                        // Element ranges hold where an element is read.
+                        let v = select_val(&elem, &i);
+                        let et = self.ty(e);
+                        let mut ls = Vec::new();
+                        leaves(&et, self.prog.t, "", &mut ls);
+                        let mut terms = Vec::new();
+                        flatten(&v, &mut terms);
+                        for ((_, leaf), x) in ls.iter().zip(&terms) {
+                            if let Some(f) = leaf.fact(x) {
+                                self.pc.push(f);
+                            }
+                        }
+                        return v;
+                    }
+                    Val::A { elems, .. } => elems,
+                    _ => unreachable!(),
+                };
                 let t = format!("(select {elems} {i})");
                 if let Some(r) = range(&self.ty(e), &t) {
                     self.pc.push(r);
@@ -1064,7 +1169,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                 let rv = self.eval(recv);
                 match name.name.as_str() {
                     "len" => match rv {
-                        Val::A { len, .. } => Val::S(len),
+                        Val::A { len, .. } | Val::Arr { len, .. } => Val::S(len),
                         _ => panic!("len of scalar"),
                     },
                     op => {
@@ -1239,6 +1344,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                         .collect(),
                 )
             }
+            (Val::Arr { .. }, Val::Arr { .. }) => ite_val(c, a, b),
             (Val::A { elems: e1, len: l1 }, Val::A { elems: e2, len: l2 }) => {
                 let mut elems = ite(c, e1, e2);
                 if elems.len() > BIND_ABOVE && is_array(t) {
@@ -1352,6 +1458,14 @@ impl<'p, 'q> Enc<'p, 'q> {
                 Val::Struct(_) => {
                     let ty = self.local_ty(v);
                     self.fresh_val(v, &ty)
+                }
+                // The elements may change, never the length.
+                Val::Arr { len, .. } => {
+                    let e = elem_ty(&self.local_ty(v));
+                    Val::Arr {
+                        elem: Box::new(self.fresh_struct_elems(v, &e)),
+                        len,
+                    }
                 }
                 Val::Unit => Val::Unit,
             };
@@ -1519,7 +1633,7 @@ impl<'p, 'q> Enc<'p, 'q> {
             }
             ExprKind::Index { base, index } => {
                 let root = self.place(base, steps, check);
-                let Val::A { len, .. } = self.eval(base) else {
+                let (Val::A { len, .. } | Val::Arr { len, .. }) = self.eval(base) else {
                     panic!("index of non-array")
                 };
                 let i = self.eval(index).s();
@@ -1629,6 +1743,13 @@ impl<'p, 'q> Enc<'p, 'q> {
                         let e = elem_ty(&param_tys[i]);
                         Val::A {
                             elems: self.fresh_elems(&root, &e, false),
+                            len: len.clone(),
+                        }
+                    }
+                    Val::Arr { len, .. } => {
+                        let e = elem_ty(&param_tys[i]);
+                        Val::Arr {
+                            elem: Box::new(self.fresh_struct_elems(&root, &e)),
                             len: len.clone(),
                         }
                     }
@@ -1893,8 +2014,8 @@ pub(crate) fn program_data_type_use(p: &Program, t: &Tables) -> Option<Span> {
 /// Which data types a back end cannot handle yet.
 #[derive(Clone, Copy, PartialEq)]
 enum Gate {
-    /// The proof gate encodes structs and enums (backlog 2B-05a, 2B-05b),
-    /// not yet arrays of data types.
+    /// The proof gate encodes structs, enums and slices of them (backlog
+    /// 2B-05a..c), not yet array elements holding an array.
     Prover,
     /// The code generator handles no data type before backlog 2B-06.
     Codegen,
@@ -1912,7 +2033,10 @@ impl Gate {
                         .any(|(_, ps)| ps.iter().any(|pt| self.rejects(pt, tb))),
                     _ => true,
                 },
-                TypeKind::Array(e, _) | TypeKind::Slice(e) => has_named(&e.kind),
+                // Elements with an array inside are not encoded yet.
+                TypeKind::Array(e, _) | TypeKind::Slice(e) => {
+                    self.rejects(&e.kind, tb) || (has_named(&e.kind) && has_array(&e.kind, tb))
+                }
                 TypeKind::Ref { inner, .. } => self.rejects(&inner.kind, tb),
                 _ => false,
             },
@@ -2587,8 +2711,7 @@ fn verify_impl(
         if let Some(sp) = data {
             enc.unsupported.push((
                 sp,
-                "arrays of data types are not supported by the proof gate yet (backlog 2B-05c)"
-                    .into(),
+                "this data type is not supported by the proof gate yet (backlog 2B-05d)".into(),
             ));
         }
         let header = header(seed);
@@ -3153,6 +3276,12 @@ fn model_terms(v: &Val, terms: &mut Vec<String>) {
             }
         }
         Val::Struct(fs) => fs.iter().for_each(|f| model_terms(f, terms)),
+        Val::Arr { elem, len } => {
+            terms.push(len.clone());
+            for k in 0..SHOW {
+                model_terms(&select_val(elem, &k.to_string()), terms);
+            }
+        }
         Val::Unit => {}
     }
 }
@@ -3174,7 +3303,15 @@ fn show(v: &Val, t: &TypeKind, tb: &Tables, it: &mut impl Iterator<Item = String
             // Consume all SHOW values even when fewer are shown: the ones
             // after belong to the next input.
             let shown: Vec<String> = (0..SHOW).filter_map(|_| it.next()).collect();
-            let elems: Vec<String> = shown.into_iter().take(n).collect();
+            let e = elem_ty(t);
+            let elems: Vec<String> = shown
+                .into_iter()
+                .take(n)
+                .map(|x| match smt::parse(&x) {
+                    Some(v) if enum_variants(&e, tb).is_some() => show_variant(&v, &e, tb),
+                    _ => x,
+                })
+                .collect();
             let more = if len.parse::<usize>().map(|l| l > SHOW).unwrap_or(false) {
                 ", .."
             } else {
@@ -3195,6 +3332,22 @@ fn show(v: &Val, t: &TypeKind, tb: &Tables, it: &mut impl Iterator<Item = String
                 .map(|(f, (n, ft))| format!("{n}: {}", show(f, ft, tb, it)))
                 .collect();
             format!("{short} {{ {} }}", shown.join(", "))
+        }
+        Val::Arr { elem, .. } => {
+            let len = it.next().unwrap_or_default();
+            let n: usize = len.parse().unwrap_or(SHOW).min(SHOW);
+            let e = elem_ty(t);
+            let shown: Vec<String> = (0..SHOW)
+                .map(|k| show(&select_val(elem, &k.to_string()), &e, tb, it))
+                .take(SHOW)
+                .collect();
+            let more = if len.parse::<usize>().map(|l| l > SHOW).unwrap_or(false) {
+                ", .."
+            } else {
+                ""
+            };
+            let elems: Vec<String> = shown.into_iter().take(n).collect();
+            format!("[{}{more}] (len {len})", elems.join(", "))
         }
         Val::Unit => String::new(),
     }

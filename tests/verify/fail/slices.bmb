@@ -1,0 +1,63 @@
+#[summary("데이터 타입 슬라이스: 거짓 주장은 증명되지 않는다 (backlog 2B-05c)")]
+mod geo {
+    struct Point { x: i64, y: i64 }
+
+    enum Shape { Dot, Square(i64) }
+
+    spec fn idx(a: &[Point], i: usize) -> bool { i < a.len() }
+
+    spec fn at_y(a: &[Point], i: usize, v: i64) -> bool { a[i].y == v }
+
+    spec fn is_dot(s: &[Shape], i: usize) -> bool { s[i] == Shape::Dot }
+
+    #[effects(pure)]
+    fn unchecked(a: &[Point], i: usize) -> i64 {
+        a[i].x
+    }
+
+    #[effects(pure)]
+    #[uses(idx)]
+    fn overflow(a: &[Point], i: usize) -> i64
+        requires idx(a, i),
+    {
+        a[i].x + a[i].y
+    }
+
+    // Writing `x` says nothing about `y` being `v`.
+    #[effects(pure)]
+    #[uses(idx, at_y)]
+    fn wrong_field(a: &mut [Point], i: usize, v: i64) -> ()
+        requires idx(a, i),
+        ensures at_y(a, i, v),
+    {
+        a[i].x = v;
+    }
+
+    #[effects(pure)]
+    #[uses(idx)]
+    fn touch(a: &mut [Point], i: usize) -> ()
+        requires idx(a, i),
+    {
+        a[i].y = 0;
+    }
+
+    // The callee may change any element.
+    #[effects(pure)]
+    #[uses(idx, at_y)]
+    fn after_call(a: &mut [Point], i: usize) -> ()
+        requires idx(a, i), at_y(a, i, 7),
+        ensures at_y(a, i, 7),
+    {
+        touch(a, i);
+    }
+
+    #[effects(pure)]
+    #[uses(is_dot)]
+    fn enum_elem(s: &mut [Shape]) -> ()
+    {
+        if s.len() > 0 {
+            s[0] = Shape::Square(1);
+            assert(is_dot(s, 0));
+        }
+    }
+}

@@ -1,0 +1,71 @@
+#[summary("데이터 타입 슬라이스: 잎마다 배열 (ADR-0027 §2, backlog 2B-05c)")]
+mod geo {
+    struct Point { x: i64, y: i64 }
+
+    enum Shape { Dot, Square(i64) }
+
+    spec fn idx(a: &[Point], i: usize) -> bool { i < a.len() }
+
+    spec fn at_x(a: &[Point], i: usize, v: i64) -> bool { a[i].x == v }
+
+    spec fn kept_y(a: &[Point], b: &[Point], i: usize) -> bool { a.len() == b.len() && a[i].y == b[i].y }
+
+    spec fn all_dots(s: &[Shape], n: usize) -> bool {
+        forall|k: usize| k < n ==> #[trigger] s[k] == Shape::Dot
+    }
+
+    spec fn sidx(s: &[Shape], n: usize) -> bool { n <= s.len() }
+
+    // Element ranges hold where an element is read.
+    #[effects(pure)]
+    #[uses(idx)]
+    fn halves(a: &[Point], i: usize) -> i64
+        requires idx(a, i),
+    {
+        a[i].x / 2 + a[i].y / 2
+    }
+
+    // Writing one field of one element keeps the other field.
+    #[effects(pure)]
+    #[uses(idx, at_x, kept_y)]
+    fn set_x(a: &mut [Point], i: usize, v: i64) -> ()
+        requires idx(a, i),
+        ensures at_x(a, i, v), kept_y(old(a), a, i),
+    {
+        a[i].x = v;
+    }
+
+    #[effects(pure)]
+    #[uses(idx, at_x)]
+    fn put(a: &mut [Point], i: usize, p: Point) -> ()
+        requires idx(a, i),
+        ensures at_x(a, i, p.x),
+    {
+        a[i] = p;
+    }
+
+    // An enum slice is one array of datatype values.
+    #[effects(pure)]
+    #[uses(sidx, all_dots)]
+    fn clear(s: &mut [Shape]) -> ()
+        ensures all_dots(s, s.len()),
+    {
+        let mut i: usize = 0;
+        while i < s.len()
+            invariant sidx(s, i), all_dots(s, i),
+            decreases s.len() - i,
+        {
+            s[i] = Shape::Dot;
+            i = i + 1;
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(idx)]
+    fn caller(a: &mut [Point], i: usize) -> i64
+        requires idx(a, i),
+    {
+        set_x(a, i, 3);
+        a[i].x
+    }
+}

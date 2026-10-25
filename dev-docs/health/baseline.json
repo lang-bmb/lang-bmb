@@ -2,8 +2,8 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 2172366,
-    "V5_rlimit_headroom": 0.0049,
+    "V4_rlimit_total": 2393408,
+    "V5_rlimit_headroom": 0.0097,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0,
     "V8_bench_rlimit_total": 50821776,
@@ -14,12 +14,12 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 12557,
+    "S4_stage0_rust_lines": 16172,
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
     "P1_runnable_programs": 6,
-    "P2_bmb_lines": 3578,
-    "P3_errors_with_help": 0.5359,
+    "P2_bmb_lines": 4530,
+    "P3_errors_with_help": 0.6639,
     "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 6
@@ -147,6 +147,32 @@
         "V9_bench_defs_at_limit": [
           null,
           2
+        ]
+      }
+    },
+    {
+      "date": "2026-10-25",
+      "reason": "2B-05a..c: new verify/pass corpora (structs 41258, enums 106991, slices 61751) and 1B-38 element_after_loop (11042); existing programs unchanged. P2/P3 improved with 2B-04.",
+      "changed": {
+        "V4_rlimit_total": [
+          2172366,
+          2393408
+        ],
+        "V5_rlimit_headroom": [
+          0.0049,
+          0.0097
+        ],
+        "S4_stage0_rust_lines": [
+          12557,
+          16172
+        ],
+        "P2_bmb_lines": [
+          3578,
+          4530
+        ],
+        "P3_errors_with_help": [
+          0.5359,
+          0.6639
         ]
       }
     }
