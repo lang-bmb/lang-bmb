@@ -6,6 +6,7 @@
 //! and explicit proof obligation is checked separately by Z3. Only `unsat`
 //! proves an obligation.
 
+use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::ast::*;
@@ -119,6 +120,31 @@ pub struct Outcome {
     pub proven: BTreeSet<ObKey>,
     /// SMT-LIB script per definition, as sent to the solver (without model queries).
     pub scripts: BTreeMap<String, String>,
+    /// Under `vacuous_ends` only: the points of each definition whose path
+    /// condition the solver refutes (backlog 1B-44).
+    pub vacuous: Vec<(String, Span, &'static str)>,
+}
+
+thread_local! {
+    /// Set by `vacuous_ends`: record reach points, check them instead of the
+    /// obligations.
+    static REACH: Cell<bool> = const { Cell::new(false) };
+}
+
+/// The points of a definition that its own encoding makes unreachable
+/// (backlog 1B-44): each loop exit and the end of each executable body,
+/// with the path condition there (contracts, revealed definitions, loop
+/// invariants, callee postconditions) refuted by the solver. In a verified
+/// function with satisfiable preconditions this cannot happen honestly:
+/// proved obligations never trap, every loop has a decreasing measure, so
+/// the end is reached. A refuted point means its proofs hold vacuously:
+/// contradictory contracts, or a fault in the encoding (2G-05 found one).
+/// An undecided point is not reported.
+pub fn vacuous_ends(p: &Program, t: &Tables) -> Vec<(String, Span, &'static str)> {
+    let prev = REACH.with(|r| r.replace(true));
+    let o = verify_impl(p, t, &mut Diags::default(), 0, None, None, false, None);
+    REACH.with(|r| r.set(prev));
+    o.vacuous
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -583,6 +609,8 @@ struct Enc<'p, 'q> {
     triggers: Vec<Vec<Vec<String>>>,
     bound: u32,
     unsupported: Vec<(Span, String)>,
+    /// Under `vacuous_ends`: each reach point and its path condition.
+    reach: Vec<(Span, &'static str, Vec<String>)>,
 }
 
 fn num(v: i128) -> String {
@@ -761,6 +789,7 @@ impl<'p, 'q> Enc<'p, 'q> {
             triggers: Vec::new(),
             bound: 0,
             unsupported: Vec::new(),
+            reach: Vec::new(),
         }
     }
 
@@ -855,6 +884,15 @@ impl<'p, 'q> Enc<'p, 'q> {
                 self.pc.push(r);
             }
             Val::S(c)
+        }
+    }
+
+    /// Records the path condition here as a reach point (`vacuous_ends`).
+    fn mark_reach(&mut self, span: Span, what: &'static str) {
+        if REACH.with(|r| r.get()) {
+            let mut pc = self.pc.clone();
+            pc.extend(self.spec_pc.iter().cloned());
+            self.reach.push((span, what, pc));
         }
     }
 
@@ -1742,10 +1780,9 @@ impl<'p, 'q> Enc<'p, 'q> {
         self.pc.truncate(n);
         self.vars = after_cond_vars;
         self.pc.push(format!("(not {c})"));
+        self.mark_reach(cond.span, "exit of the loop");
     }
 
-    /// Whether a checked call builds a variant: `Some(x)`, `Ok(x)`, `Err(e)`
-    /// or `E::V(..)` (a path that names no function).
     /// The length of `v` after a loop that changes it: an array's or a
     /// slice's stays, a `Vec`'s is any value in its range (backlog 2G-05:
     /// keeping it made the code after a `push` loop unreachable).
@@ -1860,6 +1897,8 @@ impl<'p, 'q> Enc<'p, 'q> {
         }
     }
 
+    /// Whether a checked call builds a variant: `Some(x)`, `Ok(x)`, `Err(e)`
+    /// or `E::V(..)` (a path that names no function).
     fn is_variant(&self, path: &[Ident]) -> bool {
         if path.len() == 1 {
             return matches!(path[0].name.as_str(), "Some" | "Ok" | "Err")
@@ -3042,6 +3081,7 @@ fn verify_impl(
     let mut scripts = BTreeMap::new();
     let mut proved_keys: BTreeSet<ObKey> = BTreeSet::new();
     let mut failed_keys: BTreeSet<ObKey> = BTreeSet::new();
+    let mut vacuous = Vec::new();
     let spec_decls = prog.spec_decls();
     let dts = datatypes(t);
     let first_span = prog
@@ -3153,6 +3193,7 @@ fn verify_impl(
                     enc.entry_measure = Some(enc.spec(dec, &env, &old).s());
                 }
                 let result = enc.block(&d.f.body);
+                enc.mark_reach(d.f.name.span, "end of the body");
                 let (mut env, old) = enc.cur_env();
                 if let Some(n) = &d.f.ret.name {
                     env.insert(n.name.clone(), result);
@@ -3175,6 +3216,42 @@ fn verify_impl(
         // Data type terms have no encoding yet (2B-05): nothing to solve.
         if data.is_some() {
             enc.obls.clear();
+        }
+
+        if REACH.with(|r| r.get()) {
+            let mut prefix = header.join("\n");
+            prefix.push('\n');
+            let decls = enc.decls.join("\n");
+            for (span, what, pc) in &enc.reach {
+                // A refutation comes fast; a model may take long: a small
+                // budget, and undecided is not reported.
+                let q = format!(
+                    "(set-option :rlimit 1000000)\n{}",
+                    pc.iter()
+                        .map(|a| format!("(assert {a})"))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                );
+                let relevant = relevant_axioms(&axioms, &q);
+                let used = needed_decls(&spec_decls, &dts, &format!("{relevant}{decls}\n{q}"));
+                let base = format!("{prefix}{used}{relevant}{decls}");
+                if solver.as_ref().is_some_and(|s| !s.reusable()) {
+                    solver = None;
+                }
+                if solver.is_none() {
+                    solver = Solver::start().ok();
+                }
+                let Some(sol) = solver.as_mut() else { break };
+                let answer = sol
+                    .run("(reset)")
+                    .and_then(|_| sol.run(&base))
+                    .and_then(|_| sol.run(&q))
+                    .and_then(|_| sol.check_sat());
+                if matches!(answer, Ok(Answer::Unsat)) {
+                    vacuous.push((path.clone(), *span, *what));
+                }
+            }
+            continue;
         }
 
         // Assemble and solve. Every obligation runs on a reset solver holding only
@@ -3372,6 +3449,7 @@ fn verify_impl(
         statuses,
         proven,
         scripts,
+        vacuous,
     }
 }
 

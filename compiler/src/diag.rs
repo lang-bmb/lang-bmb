@@ -239,6 +239,10 @@ pub const CODES: &[(&str, &str)] = &[
         "W0904",
         "the specification does not distinguish this change to the body (the mutant still verifies)",
     ),
+    (
+        "W0905",
+        "a point of a verified function is unreachable in its proof: what follows is proved vacuously",
+    ),
 ];
 
 /// Severity of a code: `W` codes are warnings (reported only by `bmb lint`),

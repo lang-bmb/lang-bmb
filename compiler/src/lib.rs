@@ -94,6 +94,21 @@ fn frontend(files: &[(String, String)]) -> Frontend {
     }
 }
 
+/// The reach points the program's own proofs refute (backlog 1B-44,
+/// `verify::vacuous_ends`), as `path: what`, for every definition; empty
+/// when the program does not check. `bmb lint` reports the ones of verified
+/// functions as W0905.
+pub fn vacuous_points(files: &[(String, String)]) -> Vec<String> {
+    let fe = frontend(files);
+    if fe.diags.has_errors() {
+        return Vec::new();
+    }
+    verify::vacuous_ends(&fe.program, &fe.tables)
+        .into_iter()
+        .map(|(path, _, what)| format!("{path}: {what}"))
+        .collect()
+}
+
 /// Parses and checks the given files as one program.
 pub fn check_sources(files: &[(String, String)]) -> CheckOutput {
     let fe = frontend(files);

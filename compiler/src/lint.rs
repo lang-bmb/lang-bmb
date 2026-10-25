@@ -1,6 +1,6 @@
 //! Contract lint (DESIGN.md §8.2 "계약 조정", backlog 2D-08).
 //!
-//! Four deterministic reports, as warning diagnostics (`W09xx`):
+//! Five deterministic reports, as warning diagnostics (`W09xx`):
 //!
 //! - `W0901` the `requires` clauses of a function cannot hold together
 //!   (with the definitions its `#[uses]` reveals, in the prover's own
@@ -28,6 +28,9 @@
 //!   equivalent change (informational). At most `MAX_MUTANTS` mutants per
 //!   run, taken round-robin over functions in path order (site order within
 //!   a function); the rest are counted as `mutants_skipped`.
+//! - `W0905` a loop exit or the end of the body of a verified function that
+//!   its own proof cannot reach (`verify::vacuous_ends`, backlog 1B-44):
+//!   what follows holds vacuously. No honest program yields one.
 //!
 //! Clauses are removed from the checked program itself (the syntax tree;
 //! nothing else changes, so the type tables still apply) and only the
@@ -235,6 +238,14 @@ pub fn lint_sources_cached(
         let one: BTreeSet<String> = [p.clone()].into();
         clean(&base, &fe.diags, &spans, &one)
     };
+
+    // W0905: points of verified functions their own proof cannot reach.
+    for (path, span, what) in crate::verify::vacuous_ends(&fe.program, &fe.tables) {
+        if unsat.contains(&path) || !verified(&path) {
+            continue;
+        }
+        out.push(w0905(&path, span, what));
+    }
     let mut verifications = 0;
     let mut skipped = 0;
 
@@ -759,4 +770,36 @@ pub fn mutate_sources(files: &[(String, String)], defs: &[String]) -> Result<Vec
         }
     }
     Ok(out)
+}
+
+/// W0905 for reach point `what` (backlog 1B-44). No honest program yields
+/// one: in a verified function every point is reached, so a report means
+/// contradictory contracts or a fault in the encoding.
+fn w0905(path: &str, span: Span, what: &str) -> Diag {
+    Diag::new(
+        "W0905",
+        span,
+        format!(
+            "the {what} of `{path}` is unreachable in its proof: every obligation after it holds vacuously"
+        ),
+    )
+    .fix(
+        "look for a contradiction in the loop invariants, the callees' postconditions and the revealed definitions",
+        None,
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Detection is tested in `tests/verify.rs` (`proofs_are_not_vacuous`,
+    // which fails when the 2G-05 loop fault is put back).
+    #[test]
+    fn w0905_names_the_point_and_the_function() {
+        let d = w0905("m::f", Span::default(), "exit of the loop");
+        assert_eq!(d.code, "W0905");
+        assert!(d.message.starts_with("the exit of the loop of `m::f`"));
+        assert!(d.fix.is_some());
+    }
 }

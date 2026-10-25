@@ -41,6 +41,34 @@ fn pass_corpus_is_proved() {
     }
 }
 
+/// No reach point of the proved corpora, the run programs or the bench
+/// seed and baseline programs is refuted by its own proof (backlog 1B-44:
+/// a loop that kept a `Vec`'s length made two corpus proofs vacuous and
+/// nothing said so). One program per file; a bench `seed/src` directory is
+/// one program.
+#[test]
+fn proofs_are_not_vacuous() {
+    let mut programs: Vec<(String, Vec<(String, String)>)> = Vec::new();
+    let one = |p: &Path| (name(p), vec![(name(p), fs::read_to_string(p).unwrap())]);
+    for dir in [root().join("verify").join("pass"), root().join("run")] {
+        programs.extend(bmb_files(&dir).iter().map(|p| one(p)));
+    }
+    let bench = root().join("..").join("bench");
+    programs.extend(bmb_files(&bench.join("baseline")).iter().map(|p| one(p)));
+    for set in ["m1", "m1b", "bvb"] {
+        let src = bench.join(set).join("seed").join("src");
+        let files = bmb_files(&src)
+            .iter()
+            .map(|p| (name(p), fs::read_to_string(p).unwrap()))
+            .collect();
+        programs.push((format!("{set}/seed"), files));
+    }
+    for (label, files) in programs {
+        let points = bmb::vacuous_points(&files);
+        assert!(points.is_empty(), "{label}: {points:?}");
+    }
+}
+
 #[test]
 fn fail_corpus_matches_expected() {
     let bless = std::env::var("BMB_BLESS").is_ok();
