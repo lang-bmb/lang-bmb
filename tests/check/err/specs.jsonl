@@ -10,9 +10,9 @@
 {"code":"E0508","severity":"error","message":"`old(x)` is only allowed in `ensures`, loop invariants and `assert`, on a `&mut` parameter `x`","file":"err/specs.bmb","line":56,"col":26,"end_line":56,"end_col":32}
 {"code":"E0503","severity":"error","message":"`forall` is only allowed in specifications","file":"err/specs.bmb","line":62,"col":23,"end_line":62,"end_col":52}
 {"code":"E0503","severity":"error","message":"`==>` is only allowed in specifications","file":"err/specs.bmb","line":63,"col":9,"end_line":63,"end_col":24}
-{"code":"E0510","severity":"error","message":"`#[trigger]` outside `forall`","file":"err/specs.bmb","line":66,"col":47,"end_line":66,"end_col":62}
-{"code":"E0509","severity":"error","message":"`helper` is not a spec function","file":"err/specs.bmb","line":69,"col":12,"end_line":69,"end_col":18}
-{"code":"E0509","severity":"error","message":"`missing` is not a spec function","file":"err/specs.bmb","line":69,"col":20,"end_line":69,"end_col":27}
+{"code":"E0510","severity":"error","message":"`#[trigger]` outside `forall`","file":"err/specs.bmb","line":66,"col":47,"end_line":66,"end_col":62,"fix":{"message":"remove `#[trigger]`, or move the term into a `forall` body"}}
+{"code":"E0509","severity":"error","message":"`helper` is not a spec function","file":"err/specs.bmb","line":69,"col":12,"end_line":69,"end_col":18,"fix":{"message":"remove it from `#[uses(..)]`: only spec function bodies are revealed; executable functions are seen through their contracts"}}
+{"code":"E0509","severity":"error","message":"`missing` is not a spec function","file":"err/specs.bmb","line":69,"col":20,"end_line":69,"end_col":27,"fix":{"message":"remove it from `#[uses(..)]`, or define the spec function (another unit's as `unit::name`)"}}
 {"code":"E0301","severity":"error","message":"unknown name `result`","file":"err/specs.bmb","line":74,"col":21,"end_line":74,"end_col":27,"fix":{"message":"name the result: `-> (r: T)` and use `r`"}}
 {"code":"E0103","severity":"error","message":"clauses must appear in the order `requires`, `ensures`, `decreases`","file":"err/specs.bmb","line":82,"col":9,"end_line":82,"end_col":17}
 {"code":"E0504","severity":"error","message":"`helper` is executable and cannot be called from a specification","file":"err/specs.bmb","line":89,"col":16,"end_line":89,"end_col":25}

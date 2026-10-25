@@ -223,7 +223,10 @@ impl<'a> Checker<'a> {
                         continue;
                     }
                     if effect.is_some() {
-                        self.err("E0605", a.span, "duplicate `#[effects(..)]` attribute");
+                        self.diags.push(
+                            Diag::new("E0605", a.span, "duplicate `#[effects(..)]` attribute")
+                                .fix("remove the attribute", Some(String::new())),
+                        );
                         continue;
                     }
                     let mut e = Effect::Pure;
@@ -238,13 +241,16 @@ impl<'a> Checker<'a> {
                         match arg {
                             AttrArg::Ident(i) if i.name == "pure" => e = Effect::Pure,
                             AttrArg::Ident(i) if i.name == "io" => e = Effect::Io,
-                            AttrArg::Ident(i) => self.err(
-                                "E0602",
-                                i.span,
-                                format!(
-                                    "unknown effect `{}`; milestone 1 has `pure` and `io`",
-                                    i.name
-                                ),
+                            AttrArg::Ident(i) => self.diags.push(
+                                Diag::new(
+                                    "E0602",
+                                    i.span,
+                                    format!(
+                                        "unknown effect `{}`; milestone 1 has `pure` and `io`",
+                                        i.name
+                                    ),
+                                )
+                                .fix("write `pure`, or `io` if the function prints", None),
                             ),
                             AttrArg::Str(_, sp) => {
                                 self.err("E0602", *sp, "effect must be an identifier")
@@ -254,10 +260,16 @@ impl<'a> Checker<'a> {
                     effect = Some(e);
                 }
                 "uses" => {}
-                other => self.err(
-                    "E0605",
-                    a.span,
-                    format!("unknown attribute `{other}` on a function"),
+                other => self.diags.push(
+                    Diag::new(
+                        "E0605",
+                        a.span,
+                        format!("unknown attribute `{other}` on a function"),
+                    )
+                    .fix(
+                        "remove it: functions take `#[effects(..)]` and `#[uses(..)]`",
+                        Some(String::new()),
+                    ),
                 ),
             }
         }
@@ -294,10 +306,16 @@ impl<'a> Checker<'a> {
                 self.err("E0704", a.span, "`#[summary(..)]` takes exactly one string");
                 has_summary = true;
             } else {
-                self.err(
-                    "E0605",
-                    a.span,
-                    format!("unknown attribute `{}` on a unit", a.name.name),
+                self.diags.push(
+                    Diag::new(
+                        "E0605",
+                        a.span,
+                        format!("unknown attribute `{}` on a unit", a.name.name),
+                    )
+                    .fix(
+                        "remove it: units take `#[summary(\"..\")]`",
+                        Some(String::new()),
+                    ),
                 );
             }
         }
@@ -365,14 +383,22 @@ impl<'a> Checker<'a> {
                             } else {
                                 self.resolve(std::slice::from_ref(i), mod_path)
                             };
-                            let ok = target
-                                .and_then(|p| self.fns.get(&p))
-                                .is_some_and(|s| s.kind == FnKind::Spec);
-                            if !ok {
-                                self.err(
-                                    "E0509",
-                                    i.span,
-                                    format!("`{}` is not a spec function", i.name),
+                            let kind = target.and_then(|p| self.fns.get(&p)).map(|s| s.kind);
+                            if kind != Some(FnKind::Spec) {
+                                let fix = if kind.is_some() {
+                                    "remove it from `#[uses(..)]`: only spec function bodies are \
+                                     revealed; executable functions are seen through their contracts"
+                                } else {
+                                    "remove it from `#[uses(..)]`, or define the spec function \
+                                     (another unit's as `unit::name`)"
+                                };
+                                self.diags.push(
+                                    Diag::new(
+                                        "E0509",
+                                        i.span,
+                                        format!("`{}` is not a spec function", i.name),
+                                    )
+                                    .fix(fix, None),
                                 );
                             }
                         }
@@ -551,6 +577,16 @@ impl<'a> Checker<'a> {
 
     fn lookup(cx: &FnCtx, name: &str) -> Option<Local> {
         cx.scopes.iter().rev().find_map(|s| s.get(name).cloned())
+    }
+
+    /// E0301 for a local that is not in scope, with the one visible local
+    /// closest to it (edit distance at most 2) as the fix (backlog 2D-18).
+    fn unknown_local(&mut self, cx: &FnCtx, name: &str, span: Span) {
+        let mut d = Diag::new("E0301", span, format!("unknown name `{name}`"));
+        if let Some(near) = closest(name, cx.scopes.iter().flat_map(|s| s.keys())) {
+            d = d.fix(format!("did you mean `{near}`?"), Some(near));
+        }
+        self.diags.push(d);
     }
 
     fn expect_ty(&mut self, found: &TypeKind, want: &TypeKind, span: Span) {
@@ -732,7 +768,7 @@ impl<'a> Checker<'a> {
                     l.ty
                 }
                 None => {
-                    self.err("E0301", id.span, format!("unknown name `{}`", id.name));
+                    self.unknown_local(cx, &id.name, id.span);
                     TypeKind::Error
                 }
             },
@@ -742,7 +778,7 @@ impl<'a> Checker<'a> {
                     return TypeKind::Error;
                 };
                 let Some(l) = Self::lookup(cx, &id.name) else {
-                    self.err("E0301", id.span, format!("unknown name `{}`", id.name));
+                    self.unknown_local(cx, &id.name, id.span);
                     return TypeKind::Error;
                 };
                 let writable = match &l.ty {
@@ -814,16 +850,14 @@ impl<'a> Checker<'a> {
             ExprKind::Var(id) => match Self::lookup(cx, &id.name) {
                 Some(l) => l.ty,
                 None => {
-                    let fix = if id.name == "result" {
-                        Some("name the result: `-> (r: T)` and use `r`")
+                    if id.name == "result" {
+                        self.diags.push(
+                            Diag::new("E0301", id.span, "unknown name `result`")
+                                .fix("name the result: `-> (r: T)` and use `r`", None),
+                        );
                     } else {
-                        None
-                    };
-                    let mut d = Diag::new("E0301", id.span, format!("unknown name `{}`", id.name));
-                    if let Some(f) = fix {
-                        d = d.fix(f, None);
+                        self.unknown_local(cx, &id.name, id.span);
                     }
-                    self.diags.push(d);
                     TypeKind::Error
                 }
             },
@@ -1054,7 +1088,12 @@ impl<'a> Checker<'a> {
                         "`#[trigger]` is only allowed in specifications",
                     );
                 } else if cx.forall_depth == 0 {
-                    self.err("E0510", e.span, "`#[trigger]` outside `forall`");
+                    self.diags.push(
+                        Diag::new("E0510", e.span, "`#[trigger]` outside `forall`").fix(
+                            "remove `#[trigger]`, or move the term into a `forall` body",
+                            None,
+                        ),
+                    );
                 }
                 self.expr(cx, inner, expected, mode)
             }
@@ -1325,10 +1364,19 @@ impl<'a> Checker<'a> {
             }
             (Mode::Exec, FnKind::Exec) => {
                 if cx.effect == Effect::Pure && sig.effect == Effect::Io {
-                    self.err(
-                        "E0603",
-                        span,
-                        format!("`{name}` has effect `io`, but `{}` is `pure`", cx.path),
+                    self.diags.push(
+                        Diag::new(
+                            "E0603",
+                            span,
+                            format!("`{name}` has effect `io`, but `{}` is `pure`", cx.path),
+                        )
+                        .fix(
+                            format!(
+                                "declare `#[effects(io)]` on `{}`, or move the call out of it",
+                                cx.path
+                            ),
+                            None,
+                        ),
                     );
                 }
                 self.calls
@@ -1446,7 +1494,7 @@ impl<'a> Checker<'a> {
             }
         };
         let Some(l) = Self::lookup(cx, &var.name) else {
-            self.err("E0301", var.span, format!("unknown name `{}`", var.name));
+            self.unknown_local(cx, &var.name, var.span);
             return None;
         };
         let ok = match (&l.ty, explicit_ref) {
@@ -1560,10 +1608,16 @@ impl<'a> Checker<'a> {
                         .any(|x| matches!(x, AttrArg::Ident(i) if i.name == "io"))
             });
             if !f.params.is_empty() || f.ret.ty.kind != TypeKind::Unit || !io {
-                self.err(
-                    "E0701",
-                    f.name.span,
-                    "`main` must be `#[effects(io)] fn main() -> ()`",
+                self.diags.push(
+                    Diag::new(
+                        "E0701",
+                        f.name.span,
+                        "`main` must be `#[effects(io)] fn main() -> ()`",
+                    )
+                    .fix(
+                        "write `#[effects(io)] fn main() -> ()`: no parameters, no result",
+                        None,
+                    ),
                 );
             }
         }
@@ -1801,5 +1855,47 @@ fn reads_only(e: &Expr) -> bool {
         ExprKind::Binary(_, l, r) => reads_only(l) && reads_only(r),
         ExprKind::Int(_) | ExprKind::Bool(_) | ExprKind::Unit | ExprKind::Var(_) => true,
         _ => false,
+    }
+}
+
+/// Levenshtein distance between two names (characters).
+fn edit_distance(a: &str, b: &str) -> usize {
+    let b: Vec<char> = b.chars().collect();
+    let mut row: Vec<usize> = (0..=b.len()).collect();
+    for (i, ca) in a.chars().enumerate() {
+        let mut prev = row[0];
+        row[0] = i + 1;
+        for (j, cb) in b.iter().enumerate() {
+            let cur = row[j + 1];
+            row[j + 1] = (prev + usize::from(ca != *cb)).min(row[j] + 1).min(cur + 1);
+            prev = cur;
+        }
+    }
+    row[b.len()]
+}
+
+/// The one candidate nearest to `name` within edit distance 2 (and shorter
+/// than the name), or None when there is none or two are equally near.
+fn closest<'a>(name: &str, candidates: impl Iterator<Item = &'a String>) -> Option<String> {
+    let mut best: Option<(usize, &str)> = None;
+    let mut tie = false;
+    for c in candidates {
+        let d = edit_distance(name, c);
+        if d == 0 || d > 2 || d >= name.chars().count() {
+            continue;
+        }
+        match best {
+            Some((bd, bc)) if d == bd && c != bc => tie = true,
+            Some((bd, _)) if d >= bd => {}
+            _ => {
+                best = Some((d, c));
+                tie = false;
+            }
+        }
+    }
+    if tie {
+        None
+    } else {
+        best.map(|(_, c)| c.to_string())
     }
 }

@@ -200,11 +200,16 @@ impl<'a> Parser<'a> {
     }
     fn err_expected(&mut self, what: &str) {
         let found = Self::describe(self.peek());
-        self.diags.push(Diag::new(
+        let mut d = Diag::new(
             "E0103",
             self.span(),
             format!("expected {what}, found {found}"),
-        ));
+        );
+        // A single expected token (`;`, `)`, ..) can be inserted (backlog 2D-18).
+        if what.starts_with('`') && what.ends_with('`') && !what.contains(' ') {
+            d = d.fix(format!("insert {what} before {found}"), None);
+        }
+        self.diags.push(d);
     }
     fn expect_p(&mut self, p: &str) -> PResult<Span> {
         if self.is_p(p) {

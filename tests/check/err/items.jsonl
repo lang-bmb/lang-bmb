@@ -5,6 +5,6 @@
 {"code":"E0207","severity":"error","message":"`pub` is not used; every definition of a unit is part of its surface","file":"err/items.bmb","line":14,"col":5,"end_line":14,"end_col":8,"fix":{"message":"remove `pub`","replacement":""}}
 {"code":"E0601","severity":"error","message":"`exposed` has no `#[effects(..)]` attribute","file":"err/items.bmb","line":14,"col":9,"end_line":14,"end_col":11,"fix":{"message":"add `#[effects(pure)]` above the function","replacement":"#[effects(pure)] fn"}}
 {"code":"E0302","severity":"error","message":"`twice` is defined more than once in `items`","file":"err/items.bmb","line":20,"col":8,"end_line":20,"end_col":13}
-{"code":"E0605","severity":"error","message":"unknown attribute `inline` on a function","file":"err/items.bmb","line":23,"col":5,"end_line":23,"end_col":14}
+{"code":"E0605","severity":"error","message":"unknown attribute `inline` on a function","file":"err/items.bmb","line":23,"col":5,"end_line":23,"end_col":14,"fix":{"message":"remove it: functions take `#[effects(..)]` and `#[uses(..)]`","replacement":""}}
 {"code":"E0207","severity":"error","message":"generic parameters are not supported in milestone 1","file":"err/items.bmb","line":27,"col":15,"end_line":27,"end_col":16}
 {"code":"E0302","severity":"error","message":"unit `items` is defined more than once","file":"err/items.bmb","line":31,"col":5,"end_line":31,"end_col":10}
