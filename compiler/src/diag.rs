@@ -55,6 +55,7 @@ pub const CODES: &[(&str, &str)] = &[
         "E0219",
         "`drop(v)` and `mem::take` / `replace` / `swap` are not used",
     ),
+    ("E0234", "a string literal: text is bytes, write `b\"...\"`"),
     // E0220-E0233: Rust habits around data types (ADR-0026 §5)
     ("E0220", "`#[derive(..)]` is not used"),
     (

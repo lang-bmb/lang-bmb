@@ -1,0 +1,48 @@
+#[summary("bytes and the text habits around them (ADR-0044, backlog 2S-02)")]
+mod by {
+    #[effects(pure)]
+    fn read(s: &[u8]) -> usize { s.len() }
+
+    #[effects(pure)]
+    fn write(s: &mut [u8]) -> () {}
+
+    #[effects(io)]
+    fn str_literal() -> () {
+        print_bytes("hi");
+    }
+
+    #[effects(pure)]
+    fn char_literal() -> u8 { '\n' }
+
+    #[effects(pure)]
+    fn not_an_argument() -> usize {
+        let n: usize = read(b"ok");
+        b"no".len() + n
+    }
+
+    #[effects(pure)]
+    fn read_only() -> () {
+        write(b"ab");
+    }
+
+    #[effects(pure)]
+    fn wrong_element(a: &[i64]) -> usize { 0 }
+
+    #[effects(pure)]
+    fn not_i64() -> usize { wrong_element(b"x") }
+
+    #[effects(pure)]
+    fn two_bytes() -> u8 { b'ab' }
+
+    #[effects(pure)]
+    fn too_big() -> u8 { 256 }
+
+    #[effects(pure)]
+    fn types(s: String, t: &str, c: char) -> () {}
+
+    #[effects(pure)]
+    fn fine(x: u8) -> u64 {
+        let n: usize = read(b"caf\xc3\xa9\n");
+        u64::try_from(x).unwrap() + u64::try_from(n).unwrap()
+    }
+}

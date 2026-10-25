@@ -113,6 +113,8 @@ pub struct FnDef {
 pub enum TypeKind {
     I64,
     U64,
+    /// A byte (ADR-0044 §1).
+    U8,
     Usize,
     Bool,
     Unit,
@@ -257,6 +259,10 @@ pub struct Expr {
 #[derive(Debug, Clone)]
 pub enum ExprKind {
     Int(u128),
+    /// `b'a'`: a `u8` (ADR-0044 §2).
+    ByteLit(u8),
+    /// `b"..."`: a `&[u8]`, only as a call argument (ADR-0044 §2).
+    ByteStr(Vec<u8>),
     Bool(bool),
     Unit,
     /// A local name (single segment).

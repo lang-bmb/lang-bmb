@@ -346,3 +346,23 @@ fn vec_coercions_are_fixed_into_a_checked_program() {
         "{fixed}"
     );
 }
+
+/// Text habits (ADR-0044 §5): `"..."` becomes `b"..."` (non-ASCII as
+/// `\xHH`), `'a'` becomes `b'a'`, `char` becomes `u8`.
+#[test]
+fn text_habits_are_fixed_into_a_checked_program() {
+    let text = "#[summary(\"t\")]\nmod m {\n    #[effects(io)]\n    fn f(c: char) -> () {\n        print_bytes(\"caf\u{e9} \\\"x\\\"\\n\");\n        let n: u8 = 'a';\n    }\n}\n";
+    let input = one(text);
+    assert!(!bmb::check_sources(&input).ok);
+    let out = bmb::fix_sources(&input);
+    assert!(out.ok, "{}", out.diagnostics);
+    assert!(bmb::check_sources(&out.files).ok);
+    let fixed = &out.files[0].1;
+    for want in [
+        "fn f(c: u8) -> ()",
+        "print_bytes(b\"caf\\xc3\\xa9 \\\"x\\\"\\n\");",
+        "let n: u8 = b'a';",
+    ] {
+        assert!(fixed.contains(want), "{want}\n{fixed}");
+    }
+}

@@ -1,0 +1,69 @@
+#[summary("실행: u8 산술·변환, 바이트 리터럴, 바이트 출력 (ADR-0044, backlog 2S-02)")]
+mod by {
+    spec fn starts_h(s: &[u8]) -> bool { s.len() > 0 && s[0] == 104 }
+
+    #[effects(pure)]
+    #[uses(starts_h)]
+    fn first(s: &[u8]) -> u8
+        requires starts_h(s),
+    {
+        s[0]
+    }
+
+    spec fn fresh(out: &[u8], s: &[u8]) -> bool { out.len() == 0 && s.len() <= 1000 }
+
+    // Upper-case ASCII letters, other bytes as they are.
+    #[effects(pure)]
+    #[uses(fresh)]
+    fn shout(s: &[u8], out: &mut Vec<u8>) -> ()
+        requires fresh(out.as_slice(), s),
+    {
+        let mut i: usize = 0;
+        while i < s.len()
+            invariant i <= s.len(), out.len() == i, s.len() <= 1000,
+            decreases s.len() - i,
+        {
+            let c: u8 = s[i];
+            if b'a' <= c && c <= b'z' {
+                out.push(c - 32);
+            } else {
+                out.push(c);
+            }
+            i = i + 1;
+        }
+    }
+
+    #[effects(io)]
+    fn show(c: u8) -> () {
+        print_u64(u64::try_from(c).unwrap());
+    }
+
+    #[effects(io)]
+    #[uses(starts_h, fresh)]
+    fn main() -> () {
+        print_bytes(b"hello, \"bytes\"\n");
+        show(first(b"hi\x21"));
+        show(b'\n');
+        let x: u8 = 200;
+        let y: u8 = 100;
+        show(x.wrapping_add(y));
+        show(y.wrapping_sub(x));
+        show(x.saturating_add(y));
+        show(y.saturating_sub(x));
+        match x.checked_add(55) {
+            None => print_i64(-1),
+            Some(w) => show(w),
+        }
+        let k: i64 = 300;
+        match u8::try_from(k).ok() {
+            None => print_i64(-2),
+            Some(z) => show(z),
+        }
+        let mut a: [u8; 3] = [1, 2, 255];
+        a[0] = a[2];
+        print_u64(u64::try_from(a[0]).unwrap() + u64::try_from(a[1]).unwrap());
+        let mut v: Vec<u8> = Vec::new();
+        shout(b"ok, Bytes!\n", &mut v);
+        print_bytes(v.as_slice());
+    }
+}

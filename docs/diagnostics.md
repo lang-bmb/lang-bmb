@@ -34,6 +34,7 @@
 | E0213 | `T::try_from(x).expect(..)` is written `.unwrap()` |
 | E0218 | a `Vec` is passed where a slice is expected: write `v.as_slice()` |
 | E0219 | `drop(v)` and `mem::take` / `replace` / `swap` are not used |
+| E0234 | a string literal: text is bytes, write `b"..."` |
 | E0220 | `#[derive(..)]` is not used |
 | E0221 | built-in variants are written bare (`Some`, not `Option::Some`) |
 | E0222 | field shorthand is not allowed (`x: x`) |

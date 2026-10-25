@@ -1,0 +1,15 @@
+{"code":"E0803","severity":"error","message":"`+` may overflow `u8` in `bf::add`; counterexample: a = 1, b = 255","file":"fail/bytes.bmb","line":4,"col":34,"end_line":4,"end_col":39}
+{"code":"E0803","severity":"error","message":"`-` may overflow `u8` in `bf::below_zero`; counterexample: c = 0","file":"fail/bytes.bmb","line":7,"col":34,"end_line":7,"end_col":42}
+{"code":"E0815","severity":"error","message":"conversion to `u8` may be out of range in `bf::narrow`; counterexample: x = 256","file":"fail/bytes.bmb","line":10,"col":31,"end_line":10,"end_col":55}
+{"code":"E0815","severity":"error","message":"conversion to `u8` may be out of range in `bf::from_signed`; counterexample: x = -377088","file":"fail/bytes.bmb","line":13,"col":36,"end_line":13,"end_col":60}
+{"code":"E0805","severity":"error","message":"index may be out of bounds in `bf::first`; counterexample: s = [] (len 0)","file":"fail/bytes.bmb","line":16,"col":32,"end_line":16,"end_col":36}
+{"code":"E0805","severity":"error","message":"index may be out of bounds in `bf::third`; counterexample: s = [] (len 0)","file":"fail/bytes.bmb","line":20,"col":32,"end_line":20,"end_col":36}
+{"code":"E0802","severity":"error","message":"postcondition `is_h` may not hold in `bf::claims_h`","file":"fail/bytes.bmb","line":38,"col":17,"end_line":38,"end_col":24}
+{"def":"bf::add","status":"failed","obligations":1,"failed":1,"rlimit":632,"rlimit_max":632}
+{"def":"bf::below_zero","status":"failed","obligations":1,"failed":1,"rlimit":546,"rlimit_max":546}
+{"def":"bf::claims_h","status":"failed","obligations":2,"failed":1,"rlimit":5788,"rlimit_max":4946}
+{"def":"bf::first","status":"failed","obligations":1,"failed":1,"rlimit":666,"rlimit_max":666}
+{"def":"bf::from_signed","status":"failed","obligations":1,"failed":1,"rlimit":24250,"rlimit_max":24250}
+{"def":"bf::narrow","status":"failed","obligations":1,"failed":1,"rlimit":1776,"rlimit_max":1776}
+{"def":"bf::second","status":"verified","obligations":1,"failed":0,"rlimit":1178,"rlimit_max":1178}
+{"def":"bf::third","status":"failed","obligations":1,"failed":1,"rlimit":778,"rlimit_max":778}

@@ -361,6 +361,8 @@ impl Mv<'_> {
                 self.state = joined.unwrap_or(before);
             }
             ExprKind::Int(_)
+            | ExprKind::ByteLit(_)
+            | ExprKind::ByteStr(_)
             | ExprKind::Bool(_)
             | ExprKind::Unit
             | ExprKind::Path(_)

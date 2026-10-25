@@ -223,6 +223,8 @@ fn calls_in_expr<'e>(e: &'e Expr, spec: bool, out: &mut Vec<(&'e [Ident], &'e [E
             arms.iter().for_each(|a| calls_in_expr(&a.body, spec, out));
         }
         ExprKind::Int(_)
+        | ExprKind::ByteLit(_)
+        | ExprKind::ByteStr(_)
         | ExprKind::Bool(_)
         | ExprKind::Unit
         | ExprKind::Var(_)
@@ -423,6 +425,8 @@ fn exprs_of(f: &FnDef) -> Vec<&Expr> {
             }
             ExprKind::Path(_)
             | ExprKind::Int(_)
+            | ExprKind::ByteLit(_)
+            | ExprKind::ByteStr(_)
             | ExprKind::Bool(_)
             | ExprKind::Unit
             | ExprKind::Var(_)

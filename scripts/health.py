@@ -173,7 +173,13 @@ def self_containment():
 
 
 def practicality():
-    runnable = [p for p in (ROOT / "tests" / "run").glob("*.bmb") if p.with_suffix(".out").exists()]
+    # `tests/lib_run` programs run with `lib/bytes.bmb` (ADR-0044 §4).
+    runnable = [
+        p
+        for d in ("run", "lib_run")
+        for p in (ROOT / "tests" / d).glob("*.bmb")
+        if p.with_suffix(".out").exists()
+    ]
     bmb_lines = 0
     for p in ROOT.rglob("*.bmb"):
         rel = p.relative_to(ROOT).parts

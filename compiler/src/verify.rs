@@ -654,6 +654,7 @@ fn range(t: &TypeKind, x: &str) -> Option<String> {
     match t {
         TypeKind::I64 => Some(format!("(and (<= {I64_MIN} {x}) (<= {x} {I64_MAX}))")),
         TypeKind::U64 | TypeKind::Usize => Some(format!("(and (<= 0 {x}) (<= {x} {U64_MAX}))")),
+        TypeKind::U8 => Some(format!("(and (<= 0 {x}) (<= {x} 255))")),
         _ => None,
     }
 }
@@ -661,7 +662,7 @@ fn range(t: &TypeKind, x: &str) -> Option<String> {
 fn len_max(elem: &TypeKind) -> &'static str {
     // A data type may be one byte (a fieldless enum, a struct of a bool):
     // only `isize::MAX` is known without its layout.
-    if matches!(elem, TypeKind::Bool | TypeKind::Named { .. }) {
+    if matches!(elem, TypeKind::Bool | TypeKind::U8 | TypeKind::Named { .. }) {
         LEN_MAX_BYTE
     } else {
         LEN_MAX_WORD
@@ -687,6 +688,7 @@ fn ite(c: &str, a: &str, b: &str) -> String {
 fn wrap(t: &TypeKind, x: &str) -> String {
     match t {
         TypeKind::I64 => format!("(- (mod (+ {x} {TWO_63}) {TWO_64}) {TWO_63})"),
+        TypeKind::U8 => format!("(mod {x} 256)"),
         _ => format!("(mod {x} {TWO_64})"),
     }
 }
@@ -730,10 +732,10 @@ fn int_method(op: &str, t: &TypeKind, a: &str, b: &str) -> IntMethod {
         }
         _ => unreachable!("integer method {op}"),
     };
-    let (min, max) = if signed {
-        (I64_MIN, I64_MAX)
-    } else {
-        ("0", U64_MAX)
+    let (min, max) = match t {
+        TypeKind::I64 => (I64_MIN, I64_MAX),
+        TypeKind::U8 => ("0", "255"),
+        _ => ("0", U64_MAX),
     };
     match kind {
         "wrapping" => IntMethod::Value(wrap(t, &v)),
@@ -754,6 +756,16 @@ fn int_method(op: &str, t: &TypeKind, a: &str, b: &str) -> IntMethod {
             IntMethod::Checked { ok, v, lemmas }
         }
     }
+}
+
+/// The SMT array of a byte string (ADR-0044 §2): elements past the end
+/// are 0, as the encoding of any array's tail is unconstrained by use.
+fn byte_array(v: &[u8]) -> String {
+    let mut a = "((as const (Array Int Int)) 0)".to_string();
+    for (k, b) in v.iter().enumerate() {
+        a = format!("(store {a} {k} {b})");
+    }
+    a
 }
 
 fn sym(name: &str) -> String {
@@ -819,8 +831,8 @@ impl<'p, 'q> Enc<'p, 'q> {
     /// it needs; the extra quantifier there cost proofs their rlimit (1B-37).
     fn fresh_elems(&mut self, base: &str, e: &TypeKind, signed: bool) -> String {
         let elems = self.fresh(base, &format!("(Array Int {})", sort_of(e)));
-        let wanted =
-            matches!(e, TypeKind::U64 | TypeKind::Usize) || (signed && matches!(e, TypeKind::I64));
+        let wanted = matches!(e, TypeKind::U64 | TypeKind::Usize | TypeKind::U8)
+            || (signed && matches!(e, TypeKind::I64));
         if wanted && let Some(r) = range(e, &format!("(select {elems} k)")) {
             self.pc.push(format!(
                 "(forall ((k Int)) (! {r} :pattern ((select {elems} k))))"
@@ -940,6 +952,12 @@ impl<'p, 'q> Enc<'p, 'q> {
     fn spec(&mut self, e: &Expr, env: &BTreeMap<String, Val>, old: &BTreeMap<String, Val>) -> Val {
         match &e.kind {
             ExprKind::Int(v) => Val::S(num(*v as i128)),
+            ExprKind::ByteLit(v) => Val::S(v.to_string()),
+            // A byte string: its length and every element are known.
+            ExprKind::ByteStr(v) => Val::A {
+                elems: byte_array(v),
+                len: v.len().to_string(),
+            },
             ExprKind::Bool(b) => Val::S(b.to_string()),
             ExprKind::Unit => Val::Unit,
             ExprKind::Var(id) if id.name == "None" && !env.contains_key("None") => {
@@ -1267,6 +1285,12 @@ impl<'p, 'q> Enc<'p, 'q> {
     fn eval(&mut self, e: &Expr) -> Val {
         match &e.kind {
             ExprKind::Int(v) => Val::S(num(*v as i128)),
+            ExprKind::ByteLit(v) => Val::S(v.to_string()),
+            // A byte string: its length and every element are known.
+            ExprKind::ByteStr(v) => Val::A {
+                elems: byte_array(v),
+                len: v.len().to_string(),
+            },
             ExprKind::Bool(b) => Val::S(b.to_string()),
             ExprKind::Unit => Val::Unit,
             ExprKind::Var(id) if id.name == "None" && !self.vars.contains_key("None") => {
@@ -2091,7 +2115,7 @@ impl<'p, 'q> Enc<'p, 'q> {
             // The one built-in function has no contract; anything else
             // unresolved would drop a callee's effects.
             assert!(
-                matches!(target.as_str(), "print_i64" | "print_u64"),
+                matches!(target.as_str(), "print_i64" | "print_u64" | "print_bytes"),
                 "unresolved call in {}",
                 self.path
             );
@@ -2301,6 +2325,8 @@ fn find_let_expr(e: &Expr, name: &str, out: &mut Option<TypeKind>) {
             arms.iter().for_each(|a| find_let_expr(&a.body, name, out));
         }
         ExprKind::Int(_)
+        | ExprKind::ByteLit(_)
+        | ExprKind::ByteStr(_)
         | ExprKind::Bool(_)
         | ExprKind::Unit
         | ExprKind::Var(_)
@@ -2610,6 +2636,8 @@ fn data_type_use(
                     .collect(),
                 ExprKind::Path(_)
                 | ExprKind::Int(_)
+                | ExprKind::ByteLit(_)
+                | ExprKind::ByteStr(_)
                 | ExprKind::Bool(_)
                 | ExprKind::Unit
                 | ExprKind::Var(_)

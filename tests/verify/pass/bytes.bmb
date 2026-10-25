@@ -1,0 +1,80 @@
+#[summary("bytes proved: u8 arithmetic and conversions, byte strings as known arrays (ADR-0044, backlog 2S-02)")]
+mod bp {
+    spec fn digit(c: u8) -> bool { 48 <= c && c <= 57 }
+
+    spec fn below10(r: u8) -> bool { r <= 9 }
+
+    // `c - 48` cannot underflow under `digit`.
+    #[effects(pure)]
+    #[uses(digit, below10)]
+    fn digit_value(c: u8) -> (r: u8)
+        requires digit(c),
+        ensures below10(r),
+    {
+        c - b'0'
+    }
+
+    spec fn lower(c: u8) -> bool { 97 <= c && c <= 122 }
+
+    spec fn upper(r: u8) -> bool { 65 <= r && r <= 90 }
+
+    #[effects(pure)]
+    #[uses(lower, upper)]
+    fn to_upper(c: u8) -> (r: u8)
+        requires lower(c),
+        ensures upper(r),
+    {
+        c - 32
+    }
+
+    // Widening never needs an obligation; narrowing does.
+    #[effects(pure)]
+    fn widen(c: u8) -> u64 { u64::try_from(c).unwrap() + 1 }
+
+    #[effects(pure)]
+    fn narrow(x: u64) -> u8 {
+        if x < 256 { u8::try_from(x).unwrap() } else { 0 }
+    }
+
+    #[effects(pure)]
+    fn low_byte(x: u64) -> u8 { u8::try_from(x % 256).unwrap() }
+
+    spec fn hello(s: &[u8]) -> bool { s.len() == 5 && s[0] == 104 && s[4] == 111 }
+
+    #[effects(pure)]
+    #[uses(hello)]
+    fn last(s: &[u8]) -> u8
+        requires hello(s),
+    {
+        s[4]
+    }
+
+    // The byte string's length and elements are known to the caller.
+    #[effects(pure)]
+    #[uses(hello)]
+    fn use_literal() -> u8 { last(b"hello") }
+
+    #[effects(pure)]
+    fn wraps(c: u8) -> u8 { c.wrapping_add(200).wrapping_mul(3) }
+
+    spec fn at_most(r: usize, a: &[u8]) -> bool { r <= a.len() }
+
+    #[effects(pure)]
+    #[uses(at_most)]
+    fn count_ascii(a: &[u8]) -> (r: usize)
+        ensures at_most(r, a),
+    {
+        let mut n: usize = 0;
+        let mut i: usize = 0;
+        while i < a.len()
+            invariant i <= a.len(), n <= i,
+            decreases a.len() - i,
+        {
+            if a[i] < 128 {
+                n = n + 1;
+            }
+            i = i + 1;
+        }
+        n
+    }
+}

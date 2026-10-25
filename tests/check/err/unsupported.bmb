@@ -5,7 +5,7 @@ mod unsupported {
     static COUNT: i64 = 0;
 
     #[effects(pure)]
-    fn chars() -> i64 { 'a' 97 }
+    fn chars() -> u8 { 'a' }
 
     #[effects(pure)]
     fn infinite() -> () { loop { } }

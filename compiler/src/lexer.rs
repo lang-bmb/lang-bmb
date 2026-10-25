@@ -8,6 +8,10 @@ pub enum Tok {
     Ident(String),
     Int(u128),
     Str(String),
+    /// `b'a'` (ADR-0044 §2).
+    Byte(u8),
+    /// `b"..."` (ADR-0044 §2).
+    Bytes(Vec<u8>),
     P(&'static str),
     Eof,
 }
@@ -57,6 +61,73 @@ pub fn lex(file: u32, text: &str, diags: &mut Diags) -> Vec<Token> {
                 Diag::new("E0106", sp(lo, i), "block comments are not allowed")
                     .fix("use `//` line comments", None),
             );
+            continue;
+        }
+        if c == b'b' && matches!(b.get(i + 1), Some(b'\'' | b'"')) {
+            let lo = i;
+            let quote = b[i + 1];
+            i += 2;
+            let mut bytes = Vec::new();
+            let mut non_ascii = false;
+            while i < b.len() && b[i] != quote && !(quote == b'\'' && b[i] == b'\n') {
+                if b[i] == b'\\' {
+                    match escape(b, i) {
+                        Some((v, n)) => {
+                            bytes.push(v);
+                            i += n;
+                        }
+                        None => {
+                            let n = 1 + text[i + 1..].chars().next().map_or(0, char::len_utf8);
+                            diags.push(Diag::new(
+                                "E0101",
+                                sp(i, i + n),
+                                "unknown escape: byte literals take \\n \\r \\t \\\\ \\' \\\" \\0 \\xHH",
+                            ));
+                            i += n;
+                        }
+                    }
+                    continue;
+                }
+                non_ascii |= b[i] >= 0x80;
+                bytes.push(b[i]);
+                i += 1;
+            }
+            if i >= b.len() || b[i] != quote {
+                diags.push(Diag::new("E0102", sp(lo, i), "unterminated byte literal"));
+                continue;
+            }
+            i += 1;
+            let q = if quote == b'"' { '"' } else { '\'' };
+            if non_ascii {
+                // As in Rust: other bytes are written as escapes.
+                diags.push(
+                    Diag::new(
+                        "E0101",
+                        sp(lo, i),
+                        "a byte literal holds ASCII characters and escapes",
+                    )
+                    .fix(
+                        "write the other bytes as `\\xHH`",
+                        Some(byte_text(&bytes, q)),
+                    ),
+                );
+            }
+            let tok = if quote == b'"' {
+                Tok::Bytes(bytes)
+            } else {
+                if bytes.len() != 1 {
+                    diags.push(Diag::new(
+                        "E0101",
+                        sp(lo, i),
+                        "a byte literal holds one byte; use `b\"...\"` for several",
+                    ));
+                }
+                Tok::Byte(bytes.first().copied().unwrap_or(0))
+            };
+            out.push(Token {
+                tok,
+                span: sp(lo, i),
+            });
             continue;
         }
         if c.is_ascii_alphabetic() || c == b'_' {
@@ -183,6 +254,44 @@ pub fn lex(file: u32, text: &str, diags: &mut Diags) -> Vec<Token> {
             });
             continue;
         }
+        // `'a'`, `'\n'`: a character literal (Rust `char`). A byte is `b'a'`.
+        if c == b'\'' {
+            let mut j = i + 1;
+            if b.get(j) == Some(&b'\\') {
+                j += escape(b, j).map_or(2, |(_, n)| n);
+            } else if let Some(ch) = text.get(j..).and_then(|t| t.chars().next()) {
+                j += ch.len_utf8();
+            }
+            if b.get(j) == Some(&b'\'') && j > i + 1 {
+                let lit = &text[i..=j];
+                let mut d = Diag::new(
+                    "E0101",
+                    sp(i, j + 1),
+                    "character literals are not supported",
+                );
+                d = if lit.is_ascii() {
+                    d.fix("a byte is `b'..'` (`u8`)", Some(format!("b{lit}")))
+                } else {
+                    d.fix(
+                        "bytes are `u8`; write the UTF-8 bytes with `b\"\\xHH..\"`",
+                        None,
+                    )
+                };
+                diags.push(d);
+                // Recovery: the byte it stands for, so parsing goes on.
+                let v = if b[i + 1] == b'\\' {
+                    escape(b, i + 1).map_or(0, |(v, _)| v)
+                } else {
+                    b[i + 1]
+                };
+                out.push(Token {
+                    tok: Tok::Byte(v),
+                    span: sp(i, j + 1),
+                });
+                i = j + 1;
+                continue;
+            }
+        }
         if c == b'\'' {
             let lo = i;
             i += 1;
@@ -231,4 +340,47 @@ pub fn lex(file: u32, text: &str, diags: &mut Diags) -> Vec<Token> {
         span: sp(b.len(), b.len()),
     });
     out
+}
+
+/// The escape at `b[i]` (a backslash) in a byte literal: its value and its
+/// length in the source (ADR-0044 §2, as Rust).
+fn escape(b: &[u8], i: usize) -> Option<(u8, usize)> {
+    let v = match *b.get(i + 1)? {
+        b'n' => b'\n',
+        b'r' => b'\r',
+        b't' => b'\t',
+        b'\\' => b'\\',
+        b'\'' => b'\'',
+        b'"' => b'"',
+        b'0' => 0,
+        b'x' => {
+            let h = std::str::from_utf8(b.get(i + 2..i + 4)?).ok()?;
+            return Some((u8::from_str_radix(h, 16).ok()?, 4));
+        }
+        _ => return None,
+    };
+    Some((v, 2))
+}
+
+/// `bytes` written as a byte literal with quote `q` (`'` or `"`): printable
+/// ASCII as itself, the rest as escapes. The normal form and fixes use it.
+pub fn byte_text(bytes: &[u8], q: char) -> String {
+    let mut s = format!("b{q}");
+    for &c in bytes {
+        match c {
+            b'\n' => s.push_str("\\n"),
+            b'\r' => s.push_str("\\r"),
+            b'\t' => s.push_str("\\t"),
+            b'\\' => s.push_str("\\\\"),
+            0 => s.push_str("\\0"),
+            c if c as char == q => {
+                s.push('\\');
+                s.push(q);
+            }
+            0x20..=0x7e => s.push(c as char),
+            c => s.push_str(&format!("\\x{c:02x}")),
+        }
+    }
+    s.push(q);
+    s
 }

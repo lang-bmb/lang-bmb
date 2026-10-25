@@ -471,6 +471,8 @@ impl<'a> Printer<'a> {
     fn expr_raw(&mut self, e: &Expr) -> String {
         match &e.kind {
             ExprKind::Int(v) => v.to_string(),
+            ExprKind::ByteLit(v) => crate::lexer::byte_text(&[*v], '\''),
+            ExprKind::ByteStr(v) => crate::lexer::byte_text(v, '"'),
             ExprKind::Bool(b) => b.to_string(),
             ExprKind::Unit => "()".into(),
             ExprKind::Var(id) => id.name.clone(),

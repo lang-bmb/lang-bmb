@@ -207,7 +207,7 @@ fn view_ty(t: &TypeKind, v: &str) -> String {
 fn mem_ty(t: &TypeKind) -> String {
     match value_ty(t) {
         TypeKind::Vec(_) => "%bmb.vec".into(),
-        TypeKind::Bool => "i8".into(),
+        TypeKind::Bool | TypeKind::U8 => "i8".into(),
         TypeKind::Named { .. } => data_ty(t),
         TypeKind::Array(e, n) => format!("[{n} x {}]", mem_ty(&e.kind)),
         _ => "i64".into(),
@@ -334,15 +334,30 @@ fn elem_of(t: &TypeKind) -> TypeKind {
     }
 }
 
-/// In-memory type of an array element: `bool` is a byte, as in Rust and C,
-/// so LLVM recognizes fills and vectorizes loads (backlog 1E-09).
+/// The element kind of an array, slice or `Vec` of `t`: its register type,
+/// or `"u8"` for a byte (an `i64` in registers, a byte in memory, ADR-0044).
+fn elem_kind(t: &TypeKind) -> &'static str {
+    if *t == TypeKind::U8 { "u8" } else { llty(t) }
+}
+
+/// In-memory type of an array element: `bool` and `u8` are bytes, as in
+/// Rust and C, so LLVM recognizes fills and vectorizes loads (backlog 1E-09).
 fn mem(elem: &str) -> &str {
-    if elem == "i1" { "i8" } else { elem }
+    if elem == "i1" || elem == "u8" {
+        "i8"
+    } else {
+        elem
+    }
 }
 
 /// ABI alignment of an array element in memory (`&[i64]` is 8-aligned, as in Rust).
 fn align(elem: &str) -> u32 {
-    if elem == "i1" { 1 } else { 8 }
+    if elem == "i1" || elem == "u8" { 1 } else { 8 }
+}
+
+/// Bytes of one element in memory.
+fn width(elem: &str) -> u64 {
+    u64::from(align(elem))
 }
 
 fn fn_sym(path: &str) -> String {
@@ -365,6 +380,9 @@ struct Gen<'p> {
     /// Temporary `Vec` headers read but not moved, freed when their
     /// region (statement, block value, arm, operand, loop condition) ends.
     pending: Vec<String>,
+    /// The byte strings of this function as private constants, emitted with
+    /// its IR (so a cached fragment carries them).
+    globals: String,
 }
 
 impl<'p> Gen<'p> {
@@ -414,18 +432,20 @@ impl<'p> Gen<'p> {
             mem(elem),
             align(elem)
         ));
-        if elem != "i1" {
-            return r;
-        }
         let b = self.t();
-        self.emit(format!("{b} = trunc i8 {r} to i1"));
+        match elem {
+            "i1" => self.emit(format!("{b} = trunc i8 {r} to i1")),
+            "u8" => self.emit(format!("{b} = zext i8 {r} to i64")),
+            _ => return r,
+        }
         b
     }
 
     fn store_elem(&mut self, elem: &str, v: &str, ptr: &str) {
-        if elem == "i1" {
+        if elem == "i1" || elem == "u8" {
             let z = self.t();
-            self.emit(format!("{z} = zext i1 {v} to i8"));
+            let op = if elem == "i1" { "zext i1" } else { "trunc i64" };
+            self.emit(format!("{z} = {op} {v} to i8"));
             self.emit(format!("store i8 {z}, ptr {ptr}, align 1"));
         } else {
             self.emit(format!(
@@ -480,10 +500,16 @@ impl<'p> Gen<'p> {
     /// Loads a scalar of type `t` from data memory.
     fn load_mem(&mut self, ptr: &str, t: &TypeKind) -> String {
         let r = self.t();
-        if *t == TypeKind::Bool {
+        if *t == TypeKind::Bool || *t == TypeKind::U8 {
             self.emit(format!("{r} = load i8, ptr {ptr}"));
             let b = self.t();
-            self.emit(format!("{b} = trunc i8 {r} to i1"));
+            let op = if *t == TypeKind::Bool {
+                "trunc i8"
+            } else {
+                "zext i8"
+            };
+            let to = if *t == TypeKind::Bool { "i1" } else { "i64" };
+            self.emit(format!("{b} = {op} {r} to {to}"));
             return b;
         }
         self.emit(format!("{r} = load i64, ptr {ptr}"));
@@ -501,9 +527,14 @@ impl<'p> Gen<'p> {
     /// Stores value `v` of type `t` into memory at `ptr`.
     fn put(&mut self, v: CVal, ptr: &str, t: &TypeKind) {
         match v {
-            CVal::Imm(x) if *value_ty(t) == TypeKind::Bool => {
+            CVal::Imm(x) if matches!(value_ty(t), TypeKind::Bool | TypeKind::U8) => {
                 let z = self.t();
-                self.emit(format!("{z} = zext i1 {x} to i8"));
+                let op = if *value_ty(t) == TypeKind::Bool {
+                    "zext i1"
+                } else {
+                    "trunc i64"
+                };
+                self.emit(format!("{z} = {op} {x} to i8"));
                 self.emit(format!("store i8 {z}, ptr {ptr}"));
             }
             CVal::Imm(x) => self.emit(format!("store i64 {x}, ptr {ptr}")),
@@ -695,7 +726,7 @@ impl<'p> Gen<'p> {
                 Slot::Arr {
                     ptr,
                     len: n.to_string(),
-                    elem: llty(&e.kind),
+                    elem: elem_kind(&e.kind),
                     ety: e.kind.clone(),
                 }
             }
@@ -748,6 +779,20 @@ impl<'p> Gen<'p> {
     fn expr(&mut self, e: &Expr) -> CVal {
         match &e.kind {
             ExprKind::Int(v) => CVal::Imm(v.to_string()),
+            ExprKind::ByteLit(v) => CVal::Imm(v.to_string()),
+            ExprKind::ByteStr(v) => {
+                let name = format!("@\"{}.bytes.{}\"", self.path, self.globals.lines().count());
+                let body: String = v.iter().map(|b| format!("\\{b:02X}")).collect();
+                let _ = writeln!(
+                    self.globals,
+                    "{name} = private unnamed_addr constant [{} x i8] c\"{body}\", align 1",
+                    v.len()
+                );
+                CVal::Arr {
+                    ptr: name,
+                    len: v.len().to_string(),
+                }
+            }
             ExprKind::Bool(b) => CVal::Imm(b.to_string()),
             ExprKind::Unit => CVal::Unit,
             ExprKind::Var(id) if id.name == "None" && !self.slots.contains_key("None") => {
@@ -823,6 +868,21 @@ impl<'p> Gen<'p> {
                     return CVal::Imm(res);
                 }
                 match op {
+                    // A byte's sum or product fits in 64 bits: compute it
+                    // there, then the byte range is the obligation.
+                    BinOp::Add | BinOp::Mul if lt == TypeKind::U8 => {
+                        let inst = if *op == BinOp::Add { "add" } else { "mul" };
+                        let r = self.t();
+                        self.emit(format!("{r} = {inst} nuw i64 {a}, {b}"));
+                        if self.proved("E0803", e) {
+                            self.emit("; proved E0803");
+                        } else {
+                            let c = self.t();
+                            self.emit(format!("{c} = icmp ule i64 {r}, 255"));
+                            self.check(&c, &format!("`{inst}` may overflow"));
+                        }
+                        CVal::Imm(r)
+                    }
                     BinOp::Add => self.arith(e, "add", &a, &b, signed),
                     BinOp::Sub => self.arith(e, "sub", &a, &b, signed),
                     BinOp::Mul => self.arith(e, "mul", &a, &b, signed),
@@ -881,20 +941,27 @@ impl<'p> Gen<'p> {
                 let st = self.ty(&args[0]);
                 let v = self.expr(&args[0]).imm();
                 let needs = crate::check::conv_obligation(&st, &target);
+                // To `u8`: `0 <= v <= 255` is one unsigned comparison.
+                let in_range = |g: &mut Self| {
+                    let c = g.t();
+                    if target == TypeKind::U8 {
+                        g.emit(format!("{c} = icmp ule i64 {v}, 255"));
+                    } else {
+                        g.emit(format!("{c} = icmp sge i64 {v}, 0"));
+                    }
+                    c
+                };
                 if name.name == "unwrap" {
                     if needs && self.proved("E0815", e) {
                         self.emit("; proved E0815");
                     } else if needs {
-                        let c = self.t();
-                        self.emit(format!("{c} = icmp sge i64 {v}, 0"));
+                        let c = in_range(self);
                         self.check(&c, "conversion may be out of range");
                     }
                     return CVal::Imm(v);
                 }
                 let ok = if needs {
-                    let c = self.t();
-                    self.emit(format!("{c} = icmp sge i64 {v}, 0"));
-                    c
+                    in_range(self)
                 } else {
                     "true".to_string()
                 };
@@ -912,8 +979,13 @@ impl<'p> Gen<'p> {
                     },
                     op => {
                         let b = self.expr(&args[0]).imm();
-                        let signed = self.ty(recv) == TypeKind::I64;
-                        self.int_method(e, op, &rv.imm(), &b, signed)
+                        let rt = self.ty(recv);
+                        let r = self.int_method(e, op, &rv.imm(), &b, rt == TypeKind::I64);
+                        if rt == TypeKind::U8 {
+                            self.byte_method(e, op, r)
+                        } else {
+                            r
+                        }
                     }
                 }
             }
@@ -935,9 +1007,9 @@ impl<'p> Gen<'p> {
                 let TypeKind::Array(el, n) = self.ty(e) else {
                     unreachable!()
                 };
-                let elem = llty(&el.kind);
+                let elem = elem_kind(&el.kind);
                 let buf = self.alloca(&format!("[{n} x {}]", mem(elem)));
-                let bytes = if elem == "i1" { n } else { n * 8 };
+                let bytes = n * width(elem);
                 let c = self.expr(cond).imm();
                 let lt = self.l("then");
                 let le = self.l("else");
@@ -991,7 +1063,7 @@ impl<'p> Gen<'p> {
                 let TypeKind::Array(el, n) = &ty else {
                     unreachable!()
                 };
-                let elem = llty(&el.kind);
+                let elem = elem_kind(&el.kind);
                 let ptr = self.alloca(&format!("[{n} x {}]", mem(elem)));
                 self.init_array(e, &ptr, elem);
                 CVal::Arr {
@@ -1370,6 +1442,59 @@ impl<'p> Gen<'p> {
         }
     }
 
+    /// A `u8` method: the 64-bit result of `int_method` brought into the
+    /// byte range (ADR-0044 §1). Operands are bytes, so a sum or product
+    /// never leaves 64 bits, and a saturating or checked `sub` already
+    /// stops at zero; wrapping keeps the low byte.
+    fn byte_method(&mut self, e: &Expr, op: &str, r: CVal) -> CVal {
+        let (kind, base) = op.split_once('_').expect("integer method");
+        if kind != "wrapping" && matches!(base, "sub" | "div" | "rem") {
+            return r;
+        }
+        match kind {
+            "wrapping" => {
+                let w = self.t();
+                self.emit(format!("{w} = and i64 {}, 255", r.imm()));
+                CVal::Imm(w)
+            }
+            "saturating" => {
+                let w = self.t();
+                self.emit(format!(
+                    "{w} = call i64 @llvm.umin.i64(i64 {}, i64 255)",
+                    r.imm()
+                ));
+                CVal::Imm(w)
+            }
+            // `checked_add`/`checked_mul`: `Some` exactly when the value is a byte.
+            _ => {
+                let CVal::Ptr { ptr, ty } = r else {
+                    unreachable!("checked_* is an Option")
+                };
+                let p = self.t();
+                self.emit(format!(
+                    "{p} = getelementptr inbounds {}, ptr {ptr}, i32 0, i32 1",
+                    view_ty(&ty, "Some")
+                ));
+                let (v, fits, tagp, tag, ok, k) =
+                    (self.t(), self.t(), self.t(), self.t(), self.t(), self.t());
+                self.emit(format!("{v} = load i64, ptr {p}"));
+                self.emit(format!("{fits} = icmp ule i64 {v}, 255"));
+                self.emit(format!(
+                    "{tagp} = getelementptr inbounds {}, ptr {ptr}, i32 0, i32 0",
+                    data_ty(&ty)
+                ));
+                self.emit(format!("{tag} = load i64, ptr {tagp}"));
+                self.emit(format!("{ok} = icmp ne i64 {tag}, 0"));
+                let both = self.t();
+                self.emit(format!("{both} = and i1 {ok}, {fits}"));
+                self.emit(format!("{k} = zext i1 {both} to i64"));
+                self.emit(format!("store i64 {k}, ptr {tagp}"));
+                let _ = e;
+                CVal::Ptr { ptr, ty }
+            }
+        }
+    }
+
     /// LLVM's `{s,u}op.with.overflow`: (result, overflow flag).
     fn with_overflow(&mut self, s: &str, op: &str, a: &str, b: &str) -> (String, String) {
         let (pair, v, ovf) = (self.t(), self.t(), self.t());
@@ -1409,10 +1534,10 @@ impl<'p> Gen<'p> {
         let elem = match &base.kind {
             ExprKind::Var(id) => match &self.slots[&id.name] {
                 Slot::Arr { elem, .. } => elem,
-                Slot::Data { ty, .. } => llty(&vec_elem(ty)),
+                Slot::Data { ty, .. } => elem_kind(&vec_elem(ty)),
                 Slot::Scalar { .. } => unreachable!("indexing a scalar"),
             },
-            _ => llty(&elem_of(&self.ty(base))),
+            _ => elem_kind(&elem_of(&self.ty(base))),
         };
         let CVal::Arr { ptr, len } = self.array_of(base) else {
             unreachable!()
@@ -1481,11 +1606,7 @@ impl<'p> Gen<'p> {
                 let CVal::Arr { ptr: src, len } = self.expr(e) else {
                     unreachable!()
                 };
-                let bytes = if elem == "i1" {
-                    len
-                } else {
-                    format!("{}", len.parse::<u64>().unwrap_or(0) * 8)
-                };
+                let bytes = len.parse::<u64>().unwrap_or(0) * width(elem);
                 self.emit(format!(
                     "call void @llvm.memcpy.p0.p0.i64(ptr {ptr}, ptr {src}, i64 {bytes}, i1 false)"
                 ));
@@ -1528,7 +1649,8 @@ impl<'p> Gen<'p> {
                 CVal::Unit => {}
             }
         }
-        let (callee, ret) = if target == "print_i64" || target == "print_u64" {
+        let (callee, ret) = if matches!(target.as_str(), "print_i64" | "print_u64" | "print_bytes")
+        {
             (format!("@bmb_{target}"), TypeKind::Unit)
         } else {
             (fn_sym(&target), self.t.fns[&target].ret.clone())
@@ -1601,7 +1723,7 @@ impl<'p> Gen<'p> {
             }
             Stmt::Let { name, ty, init, .. } => match &ty.kind {
                 TypeKind::Array(el, n) => {
-                    let elem = llty(&el.kind);
+                    let elem = elem_kind(&el.kind);
                     let ptr = self.alloca(&format!("[{n} x {}]", mem(elem)));
                     self.init_array(init, &ptr, elem);
                     self.slots.insert(
@@ -1760,8 +1882,8 @@ pub fn emit_with(
             .any(|m| m.values().any(crate::verify::holds_vec));
     if uses_vec {
         ir.push_str(VEC_RUNTIME);
-        ir.push_str("declare i64 @llvm.umin.i64(i64, i64)\n");
     }
+    ir.push_str("declare i64 @llvm.umin.i64(i64, i64)\n");
     for s in ["s", "u"] {
         for op in ["add", "sub", "mul"] {
             let _ = writeln!(
@@ -1776,7 +1898,10 @@ pub fn emit_with(
     ir.push_str(
         "define internal void @bmb_print_i64(i64 %x) {\n  call i32 (ptr, ...) @printf(ptr @bmb.fmt, i64 %x)\n  ret void\n}\n\
          @bmb.fmtu = private unnamed_addr constant [6 x i8] c\"%llu\\0A\\00\"\n\
-         define internal void @bmb_print_u64(i64 %x) {\n  call i32 (ptr, ...) @printf(ptr @bmb.fmtu, i64 %x)\n  ret void\n}\n",
+         define internal void @bmb_print_u64(i64 %x) {\n  call i32 (ptr, ...) @printf(ptr @bmb.fmtu, i64 %x)\n  ret void\n}\n\
+         @stdout = external global ptr\n\
+         declare i64 @fwrite(ptr, i64, i64, ptr)\n\
+         define internal void @bmb_print_bytes(ptr %p, i64 %n) {\n  %f = load ptr, ptr @stdout\n  call i64 @fwrite(ptr %p, i64 1, i64 %n, ptr %f)\n  ret void\n}\n",
     );
     let mut checks = 0;
     let mut main = None;
@@ -1824,6 +1949,7 @@ pub fn emit_with(
             slots: BTreeMap::new(),
             checks: 0,
             pending: Vec::new(),
+            globals: String::new(),
         };
         let sig = t.fns[&path].clone();
         let mut params = Vec::new();
@@ -1846,7 +1972,7 @@ pub fn emit_with(
                     let attr = if *mutable { "noalias " } else { "readonly " };
                     params.push(format!("ptr {attr}%\"{n}.ptr\""));
                     params.push(format!("i64 %\"{n}.len\""));
-                    let elem = llty(&elem_of(&prm.ty.kind));
+                    let elem = elem_kind(&elem_of(pty));
                     g.slots.insert(
                         n.clone(),
                         Slot::Arr {
@@ -1871,10 +1997,10 @@ pub fn emit_with(
                 }
                 TypeKind::Array(el, len) => {
                     // Arrays by value: copied into a local.
-                    let elem = llty(&el.kind);
+                    let elem = elem_kind(&el.kind);
                     params.push(format!("ptr %\"{n}.in\""));
                     let ptr = g.alloca(&format!("[{len} x {}]", mem(elem)));
-                    let bytes = if elem == "i1" { *len } else { len * 8 };
+                    let bytes = len * width(elem);
                     g.emit(format!(
                         "call void @llvm.memcpy.p0.p0.i64(ptr {ptr}, ptr %\"{n}.in\", i64 {bytes}, i1 false)"
                     ));
@@ -1915,7 +2041,8 @@ pub fn emit_with(
         };
         checks += g.checks;
         let frag = format!(
-            "\ndefine internal {ret} {}({}) {{\nentry:\n{}{}}}\n",
+            "\n{}define internal {ret} {}({}) {{\nentry:\n{}{}}}\n",
+            g.globals,
             fn_sym(&path),
             params.join(", "),
             g.allocas,

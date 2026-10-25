@@ -1,0 +1,42 @@
+#[summary("bytes: what does not follow (ADR-0044, backlog 2S-02)")]
+mod bf {
+    #[effects(pure)]
+    fn add(a: u8, b: u8) -> u8 { a + b }
+
+    #[effects(pure)]
+    fn below_zero(c: u8) -> u8 { c - b'0' }
+
+    #[effects(pure)]
+    fn narrow(x: u64) -> u8 { u8::try_from(x).unwrap() }
+
+    #[effects(pure)]
+    fn from_signed(x: i64) -> u8 { u8::try_from(x).unwrap() }
+
+    #[effects(pure)]
+    fn first(s: &[u8]) -> u8 { s[0] }
+
+    // The literal has two bytes: index 2 is out of bounds.
+    #[effects(pure)]
+    fn third(s: &[u8]) -> u8 { s[2] }
+
+    spec fn two(s: &[u8]) -> bool { s.len() == 2 }
+
+    spec fn is_h(r: u8) -> bool { r == 104 }
+
+    #[effects(pure)]
+    #[uses(two)]
+    fn second(s: &[u8]) -> u8
+        requires two(s),
+    {
+        s[1]
+    }
+
+    // `b"hi"[1]` is `i` (105), not `h`.
+    #[effects(pure)]
+    #[uses(two, is_h)]
+    fn claims_h() -> (r: u8)
+        ensures is_h(r),
+    {
+        second(b"hi")
+    }
+}

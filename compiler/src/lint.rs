@@ -658,6 +658,8 @@ fn walk_expr(e: &mut Expr, parent: Option<Span>, f: &mut dyn FnMut(&mut Expr, Op
         | ExprKind::Forall { .. }
         | ExprKind::Trigger(_)
         | ExprKind::Int(_)
+        | ExprKind::ByteLit(_)
+        | ExprKind::ByteStr(_)
         | ExprKind::Bool(_)
         | ExprKind::Unit
         | ExprKind::Var(_)

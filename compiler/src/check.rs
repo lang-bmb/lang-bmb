@@ -94,6 +94,7 @@ pub fn ty_str(t: &TypeKind) -> String {
     match t {
         TypeKind::I64 => "i64".into(),
         TypeKind::U64 => "u64".into(),
+        TypeKind::U8 => "u8".into(),
         TypeKind::Usize => "usize".into(),
         TypeKind::Bool => "bool".into(),
         TypeKind::Unit => "()".into(),
@@ -119,7 +120,10 @@ pub fn ty_str(t: &TypeKind) -> String {
 }
 
 fn is_int(t: &TypeKind) -> bool {
-    matches!(t, TypeKind::I64 | TypeKind::U64 | TypeKind::Usize)
+    matches!(
+        t,
+        TypeKind::I64 | TypeKind::U64 | TypeKind::Usize | TypeKind::U8
+    )
 }
 fn is_scalar(t: &TypeKind) -> bool {
     is_int(t) || matches!(t, TypeKind::Bool)
@@ -162,6 +166,22 @@ impl<'a> Checker<'a> {
                 path: "print_i64".into(),
                 kind: FnKind::Exec,
                 params: vec![TypeKind::I64],
+                ret: TypeKind::Unit,
+                effect: Effect::Io,
+                vacuous: false,
+                builtin: true,
+                in_impl: false,
+            },
+        );
+        fns.insert(
+            "print_bytes".to_string(),
+            FnSig {
+                path: "print_bytes".into(),
+                kind: FnKind::Exec,
+                params: vec![TypeKind::Ref {
+                    mutable: false,
+                    inner: mk(TypeKind::Slice(mk(TypeKind::U8))),
+                }],
                 ret: TypeKind::Unit,
                 effect: Effect::Io,
                 vacuous: false,
@@ -455,6 +475,22 @@ impl<'a> Checker<'a> {
                 let name = path.join("::");
                 if path.len() == 1 && name == "Vec" {
                     return self.vec_type(t, args, mp, report);
+                }
+                if path.len() == 1
+                    && name == "String"
+                    && !self.adts.contains_key(&format!("{mp}::String"))
+                {
+                    if report {
+                        self.diags.push(
+                            Diag::new(
+                                "E0402",
+                                t.span,
+                                "there is no `String`: text is bytes (ADR-0044)",
+                            )
+                            .fix("use `Vec<u8>`", Some("Vec<u8>".into())),
+                        );
+                    }
+                    return TypeKind::Error;
                 }
                 if path.len() == 1 && (name == "Option" || name == "Result") {
                     let want = if name == "Option" { 1 } else { 2 };
@@ -2462,6 +2498,22 @@ impl<'a> Checker<'a> {
             ExprKind::Unit => TypeKind::Unit,
             ExprKind::Bool(_) => TypeKind::Bool,
             ExprKind::Int(v) => self.int_lit(*v, false, expected, e.span, mode),
+            ExprKind::ByteLit(_) => TypeKind::U8,
+            // A `&[u8]` is a reference: second-class (ADR-0015, ADR-0044 §2).
+            ExprKind::ByteStr(_) => {
+                self.diags.push(
+                    Diag::new(
+                        "E0409",
+                        e.span,
+                        "a byte string may only appear directly as a call argument",
+                    )
+                    .fix(
+                        "pass it to a `&[u8]` parameter, e.g. `bytes::extend(&mut v, b\"..\")`",
+                        None,
+                    ),
+                );
+                TypeKind::Error
+            }
             ExprKind::Var(id) if id.name == "None" && Self::lookup(cx, "None").is_none() => {
                 self.builtin_variant(cx, "None", &[], expected, e.span, mode)
             }
@@ -2488,8 +2540,10 @@ impl<'a> Checker<'a> {
                     TypeKind::I64 | TypeKind::Error => t,
                     // Specification integers are mathematical: `-x` of an
                     // unsigned value is just an integer (ADR-0024).
-                    TypeKind::U64 | TypeKind::Usize if mode != Mode::Exec => TypeKind::I64,
-                    TypeKind::U64 | TypeKind::Usize => {
+                    TypeKind::U64 | TypeKind::Usize | TypeKind::U8 if mode != Mode::Exec => {
+                        TypeKind::I64
+                    }
+                    TypeKind::U64 | TypeKind::Usize | TypeKind::U8 => {
                         self.err(
                             "E0411",
                             e.span,
@@ -2791,7 +2845,9 @@ impl<'a> Checker<'a> {
     ) -> TypeKind {
         let t = match expected {
             // A negative literal in a specification is just an integer (ADR-0022).
-            Some(TypeKind::U64 | TypeKind::Usize) if negative && mode != Mode::Exec => {
+            Some(TypeKind::U64 | TypeKind::Usize | TypeKind::U8)
+                if negative && mode != Mode::Exec =>
+            {
                 TypeKind::I64
             }
             Some(t) if is_int(t) => t.clone(),
@@ -2814,7 +2870,12 @@ impl<'a> Checker<'a> {
                     );
                     return TypeKind::Error;
                 }
-                v <= u64::MAX as u128
+                let max = if t == TypeKind::U8 {
+                    255
+                } else {
+                    u64::MAX as u128
+                };
+                v <= max
             }
         };
         // Specification integers are unbounded (ADR-0017, ADR-0024).
@@ -3519,6 +3580,21 @@ impl<'a> Checker<'a> {
         if let Some(r) = self.slice_of_vec(cx, a, pm, &pe.kind, &want, mode) {
             return r;
         }
+        if let ExprKind::ByteStr(_) = &a.kind {
+            let st = TypeKind::Ref {
+                mutable: false,
+                inner: mk(TypeKind::Slice(mk(TypeKind::U8))),
+            };
+            self.types.insert((a.span.file, a.span.lo, a.span.hi), st);
+            if pm || pe.kind != TypeKind::U8 {
+                self.err(
+                    "E0401",
+                    a.span,
+                    format!("expected `{want}`, found a byte string (`&[u8]`, read-only)"),
+                );
+            }
+            return None;
+        }
         let (var, explicit_ref, am) = match &a.kind {
             ExprKind::Ref { mutable, expr } => match &expr.kind {
                 ExprKind::Var(id) => (id, true, *mutable),
@@ -3908,6 +3984,8 @@ fn mentions(e: &Expr, name: &str) -> bool {
         | ExprKind::Forall { .. }
         | ExprKind::Match { .. } => true,
         ExprKind::Int(_)
+        | ExprKind::ByteLit(_)
+        | ExprKind::ByteStr(_)
         | ExprKind::Bool(_)
         | ExprKind::Unit
         | ExprKind::Path(_)
@@ -3968,6 +4046,8 @@ fn collect_triggers<'e>(e: &'e Expr, out: &mut Vec<&'e Expr>) {
         ExprKind::Var(_)
         | ExprKind::Path(_)
         | ExprKind::Int(_)
+        | ExprKind::ByteLit(_)
+        | ExprKind::ByteStr(_)
         | ExprKind::Bool(_)
         | ExprKind::Unit
         | ExprKind::Error => {}
@@ -4214,15 +4294,17 @@ fn int_type(name: &str) -> Option<TypeKind> {
         "i64" => Some(TypeKind::I64),
         "u64" => Some(TypeKind::U64),
         "usize" => Some(TypeKind::Usize),
+        "u8" => Some(TypeKind::U8),
         _ => None,
     }
 }
 
 /// Whether converting a `source` value to `target` has a range obligation
-/// (ADR-0028 §1): every pair but `u64` <-> `usize` and a type to itself.
+/// (ADR-0028 §1, ADR-0044 §1): every pair but `u64` <-> `usize`, a type to
+/// itself, and a `u8` to any other type (every type holds 0..=255).
 pub(crate) fn conv_obligation(source: &TypeKind, target: &TypeKind) -> bool {
     let wide = |t: &TypeKind| matches!(t, TypeKind::U64 | TypeKind::Usize);
-    source != target && !(wide(source) && wide(target))
+    source != target && !(wide(source) && wide(target)) && *source != TypeKind::U8
 }
 
 /// `Option<t>`.

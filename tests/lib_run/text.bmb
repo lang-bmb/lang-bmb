@@ -1,0 +1,80 @@
+#[summary("실행: 바이트 라이브러리로 텍스트 만들기와 읽기 (ADR-0044, backlog 2S-02)")]
+mod app {
+    spec fn short(v: &[u8], n: u64) -> bool { v.len() <= 50 * n }
+
+    // `n=<i> sq=<i*i>` lines, built in one buffer and written once.
+    #[effects(io)]
+    #[uses(short, bytes::room, bytes::grew_by, bytes::kept, bytes::fits, bytes::appended, bytes::copied)]
+    fn squares() -> () {
+        let mut out: Vec<u8> = Vec::new();
+        let mut i: u64 = 0;
+        while i < 5
+            invariant i <= 5, short(out.as_slice(), i),
+            decreases 5 - i,
+        {
+            bytes::extend(&mut out, b"n=");
+            bytes::push_u64(&mut out, i);
+            bytes::extend(&mut out, b" sq=");
+            bytes::push_u64(&mut out, i * i);
+            bytes::extend(&mut out, b"\n");
+            i = i + 1;
+        }
+        print_bytes(out.as_slice());
+    }
+
+    // A parsed value, or `none`, on its own line.
+    #[effects(io)]
+    #[uses(bytes::room, bytes::grew_by, bytes::kept)]
+    fn show(r: Option<u64>) -> () {
+        let mut out: Vec<u8> = Vec::new();
+        match r {
+            None => print_bytes(b"none\n"),
+            Some(v) => {
+                bytes::push_u64(&mut out, v);
+                out.push(b'\n');
+                print_bytes(out.as_slice());
+            }
+        }
+    }
+
+    #[effects(io)]
+    #[uses(bytes::room, bytes::grew_by, bytes::kept)]
+    fn show_at(r: Option<usize>) -> () {
+        match r {
+            None => show(None),
+            Some(i) => show(Some(u64::try_from(i).unwrap())),
+        }
+    }
+
+    #[effects(io)]
+    #[uses(bytes::room, bytes::grew_by, bytes::kept)]
+    fn signed() -> () {
+        let mut out: Vec<u8> = Vec::new();
+        bytes::push_i64(&mut out, -9223372036854775807 - 1);
+        out.push(b' ');
+        bytes::push_i64(&mut out, -42);
+        out.push(b' ');
+        bytes::push_i64(&mut out, 0);
+        out.push(b'\n');
+        print_bytes(out.as_slice());
+    }
+
+    #[effects(io)]
+    #[uses(short, bytes::room, bytes::grew_by, bytes::kept, bytes::fits, bytes::appended, bytes::copied)]
+    fn main() -> () {
+        squares();
+        show(bytes::parse_u64(b"1234"));
+        show(bytes::parse_u64(b"12x"));
+        show(bytes::parse_u64(b"18446744073709551616"));
+        show(bytes::parse_u64(b"18446744073709551615"));
+        show_at(bytes::find(b"hello world", b"wor"));
+        show_at(bytes::find(b"hello", b"xyz"));
+        if bytes::eq(b"abc", b"abc") && !bytes::eq(b"abc", b"abd") {
+            print_bytes(b"eq\n");
+        }
+        if bytes::starts_with(b"bytes", b"by") && !bytes::starts_with(b"by", b"bytes") {
+            print_bytes(b"prefix\n");
+        }
+        signed();
+    }
+}

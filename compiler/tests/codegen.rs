@@ -336,7 +336,7 @@ mod m {
     let out = bmb::emit_llvm_sources(&src("l.bmb", text));
     let ir = out.ir.unwrap();
     let defines: Vec<&str> = ir.lines().filter(|l| l.starts_with("define ")).collect();
-    assert_eq!(defines.len(), 6, "{ir}");
+    assert_eq!(defines.len(), 7, "{ir}");
     for d in &defines {
         assert!(
             d.starts_with("define internal ") || d.starts_with("define i32 @main()"),
@@ -404,6 +404,50 @@ fn an_unproved_vec_index_traps_exactly_from_the_length() {
                 assert!(run.stdout.is_empty());
             }
         }
+    }
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// `tests/lib_run`: programs that use the byte library (ADR-0044 §4) are
+/// built with `lib/bytes.bmb`, fully proved, without runtime checks, and
+/// print their `.out`.
+#[test]
+fn library_programs_print_expected_output() {
+    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+    let lib = fs::read_to_string(repo.join("lib").join("bytes.bmb")).unwrap();
+    let dir = std::env::temp_dir().join(format!("bmb-lib-run-{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    let mut files: Vec<PathBuf> = fs::read_dir(repo.join("tests").join("lib_run"))
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.extension().is_some_and(|x| x == "bmb"))
+        .collect();
+    files.sort();
+    assert!(!files.is_empty());
+    for p in files {
+        let program = vec![
+            ("run.bmb".to_string(), fs::read_to_string(&p).unwrap()),
+            ("lib/bytes.bmb".to_string(), lib.clone()),
+        ];
+        let out = bmb::emit_llvm_sources(&program);
+        assert!(out.verify.ok, "{}:\n{}", p.display(), out.verify.output);
+        assert_eq!(out.checks, 0, "{}", p.display());
+        let exe = dir.join(p.file_stem().unwrap());
+        bmb::toolchain::build_executable(&out.ir.unwrap(), exe.to_str().unwrap()).unwrap();
+        let run = Command::new(&exe).output().unwrap();
+        assert!(
+            run.status.success(),
+            "{} exited with {}",
+            p.display(),
+            run.status
+        );
+        let expected = fs::read_to_string(p.with_extension("out")).unwrap();
+        assert_eq!(
+            String::from_utf8_lossy(&run.stdout),
+            expected,
+            "{}",
+            p.display()
+        );
     }
     let _ = fs::remove_dir_all(&dir);
 }

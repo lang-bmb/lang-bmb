@@ -198,6 +198,8 @@ impl<'a> Parser<'a> {
             Tok::Ident(s) => format!("`{s}`"),
             Tok::Int(v) => format!("`{v}`"),
             Tok::Str(_) => "string literal".into(),
+            Tok::Byte(_) => "byte literal".into(),
+            Tok::Bytes(_) => "byte string literal".into(),
             Tok::P(p) => format!("`{p}`"),
             Tok::Eof => "end of file".into(),
         }
@@ -1022,12 +1024,16 @@ impl<'a> Parser<'a> {
                 let kind = match s.as_str() {
                     "i64" => TypeKind::I64,
                     "u64" => TypeKind::U64,
+                    "u8" => TypeKind::U8,
                     "usize" => TypeKind::Usize,
                     "bool" => TypeKind::Bool,
                     _ => {
                         let fix = match s.as_str() {
                             "i8" | "i16" | "i32" | "i128" | "isize" => Some("i64"),
-                            "u8" | "u16" | "u32" | "u128" => Some("u64"),
+                            "u16" | "u32" | "u128" => Some("u64"),
+                            // Text is bytes (ADR-0044 §5): `&str` is `&[u8]`.
+                            "char" => Some("u8"),
+                            "str" => Some("[u8]"),
                             _ => None,
                         };
                         let mut d = Diag::new(
@@ -1573,6 +1579,7 @@ impl<'a> Parser<'a> {
                 let target = match ty.kind {
                     TypeKind::I64 => Some("i64"),
                     TypeKind::U64 => Some("u64"),
+                    TypeKind::U8 => Some("u8"),
                     TypeKind::Usize => Some("usize"),
                     _ => None,
                 };
@@ -1646,6 +1653,33 @@ impl<'a> Parser<'a> {
                 self.bump();
                 Ok(Expr {
                     kind: ExprKind::Int(v),
+                    span: lo,
+                })
+            }
+            Tok::Byte(v) => {
+                self.bump();
+                Ok(Expr {
+                    kind: ExprKind::ByteLit(v),
+                    span: lo,
+                })
+            }
+            Tok::Bytes(v) => {
+                self.bump();
+                Ok(Expr {
+                    kind: ExprKind::ByteStr(v),
+                    span: lo,
+                })
+            }
+            // Rust habit: a `&str`. Text is bytes (ADR-0044 §5).
+            Tok::Str(s) => {
+                self.bump();
+                let r = crate::lexer::byte_text(s.as_bytes(), '"');
+                self.diags.push(
+                    Diag::new("E0234", lo, "string literals are byte strings")
+                        .fix("write `b\"...\"` (`&[u8]`)", Some(r)),
+                );
+                Ok(Expr {
+                    kind: ExprKind::ByteStr(s.into_bytes()),
                     span: lo,
                 })
             }
@@ -1914,8 +1948,10 @@ impl<'a> Parser<'a> {
     /// (a wildcard arm, which the checker rejects with the arms it stands for).
     fn parse_pat(&mut self) -> PResult<Pat> {
         let lo = self.span();
-        let literal = matches!(self.peek(), Tok::Int(_) | Tok::Str(_) | Tok::P("-"))
-            || self.is_kw("true")
+        let literal = matches!(
+            self.peek(),
+            Tok::Int(_) | Tok::Str(_) | Tok::Byte(_) | Tok::Bytes(_) | Tok::P("-")
+        ) || self.is_kw("true")
             || self.is_kw("false");
         if literal || self.is_p("(") || self.is_p("[") || self.is_p("&") {
             return Ok(self.rejected_pat(
