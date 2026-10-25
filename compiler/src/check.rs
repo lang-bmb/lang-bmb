@@ -1242,6 +1242,28 @@ impl<'a> Checker<'a> {
         self.diags.push(d);
     }
 
+    /// E0401 with the fix `*e` when `e` is a `&T` / `&mut T` given where a
+    /// struct or enum `T` is expected (backlog 2B-16: `moved(old(self), ..)`).
+    /// Whether it reported.
+    fn deref_fix(&mut self, found: &TypeKind, want: &TypeKind, e: &Expr) -> bool {
+        let TypeKind::Ref { inner, .. } = found else {
+            return false;
+        };
+        if inner.kind != *want || !matches!(want, TypeKind::Named { .. }) {
+            return false;
+        }
+        let r = format!("*{}", crate::fmt::expr_text(e));
+        self.diags.push(
+            Diag::new(
+                "E0401",
+                e.span,
+                format!("expected `{}`, found `{}`", ty_str(want), ty_str(found)),
+            )
+            .fix(format!("pass the value: `{r}`"), Some(r)),
+        );
+        true
+    }
+
     fn expect_ty(&mut self, found: &TypeKind, want: &TypeKind, span: Span) {
         if found != want && *found != TypeKind::Error && *want != TypeKind::Error {
             self.err(
@@ -1352,7 +1374,9 @@ impl<'a> Checker<'a> {
                 }
                 let lty = self.canon(ty, &cx.mod_path.clone(), true);
                 let t = self.expr(cx, init, Some(&lty), mode);
-                self.expect_ty(&t, &lty, init.span);
+                if !self.deref_fix(&t, &lty, init) {
+                    self.expect_ty(&t, &lty, init.span);
+                }
                 self.declare(cx, name, lty, *mutable, false);
             }
             Stmt::Assign {
@@ -1463,9 +1487,42 @@ impl<'a> Checker<'a> {
                     TypeKind::Error
                 }
             },
+            // An element of an array field: `s.w[i] = v`, `p.q.w[i] = v`
+            // (backlog 2B-15). The base's type is recorded for the back ends
+            // (assignment targets have none otherwise).
+            ExprKind::Index { base, index } if matches!(base.kind, ExprKind::Field { .. }) => {
+                let (bt, writable) = self.place_of(cx, base);
+                self.types
+                    .insert((base.span.file, base.span.lo, base.span.hi), bt.clone());
+                let it = self.expr(cx, index, Some(&TypeKind::Usize), Mode::Exec);
+                self.expect_ty(&it, &TypeKind::Usize, index.span);
+                let Some(elem) = elem_of(&bt).cloned() else {
+                    if bt != TypeKind::Error {
+                        self.err(
+                            "E0407",
+                            base.span,
+                            format!("type `{}` cannot be indexed", ty_str(&bt)),
+                        );
+                    }
+                    return TypeKind::Error;
+                };
+                if !writable && bt != TypeKind::Error {
+                    self.diags.push(
+                        Diag::new("E0408", target.span, "this place cannot be assigned").fix(
+                            "assign through a `let mut` local or a `&mut` parameter",
+                            None,
+                        ),
+                    );
+                }
+                elem
+            }
             ExprKind::Index { base, index } => {
                 let ExprKind::Var(id) = &base.kind else {
-                    self.err("E0408", target.span, "only `name[i]` can be assigned");
+                    self.err(
+                        "E0408",
+                        target.span,
+                        "only `name[i]` and `s.f[i]` can be assigned",
+                    );
                     return TypeKind::Error;
                 };
                 let Some(l) = Self::lookup(cx, &id.name) else {
@@ -3456,7 +3513,7 @@ impl<'a> Checker<'a> {
                 }
             } else {
                 let t = self.expr(cx, a, Some(pt), mode);
-                if !(mode != Mode::Exec && is_int(&t) && is_int(pt)) {
+                if !(mode != Mode::Exec && is_int(&t) && is_int(pt)) && !self.deref_fix(&t, pt, a) {
                     self.expect_ty(&t, pt, a.span);
                 }
             }

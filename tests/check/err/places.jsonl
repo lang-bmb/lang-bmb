@@ -10,6 +10,6 @@
 {"code":"E0406","severity":"error","message":"array length is too large","file":"err/places.bmb","line":34,"col":22,"end_line":34,"end_col":32}
 {"code":"E0406","severity":"error","message":"array length is too large","file":"err/places.bmb","line":34,"col":40,"end_line":34,"end_col":50}
 {"code":"E0407","severity":"error","message":"`k` has type `i64` and cannot be indexed","file":"err/places.bmb","line":40,"col":9,"end_line":40,"end_col":10}
-{"code":"E0408","severity":"error","message":"only `name[i]` can be assigned","file":"err/places.bmb","line":46,"col":9,"end_line":46,"end_col":16}
+{"code":"E0408","severity":"error","message":"only `name[i]` and `s.f[i]` can be assigned","file":"err/places.bmb","line":46,"col":9,"end_line":46,"end_col":16}
 {"code":"E0408","severity":"error","message":"invalid assignment target","file":"err/places.bmb","line":51,"col":9,"end_line":51,"end_col":22}
 {"code":"E0409","severity":"error","message":"expected `&mut [i64]` of a variable","file":"err/places.bmb","line":58,"col":34,"end_line":58,"end_col":45}

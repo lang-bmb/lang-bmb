@@ -366,3 +366,21 @@ fn text_habits_are_fixed_into_a_checked_program() {
         assert!(fixed.contains(want), "{want}\n{fixed}");
     }
 }
+
+/// A `&T` given where a struct `T` is expected gets `*e` (backlog 2B-16):
+/// `moved(old(self), self)` in an `ensures`, a `let` from a reference.
+#[test]
+fn reference_where_a_value_is_expected_is_fixed() {
+    let text = "#[summary(\"t\")]\nmod d {\n    struct P { x: i64 }\n\n    spec fn small(p: P) -> bool { p.x < 100 }\n\n    spec fn moved(p: P, q: P) -> bool { p.x <= q.x }\n\n    impl P {\n        #[effects(pure)]\n        #[uses(small, moved)]\n        fn bump(self: &mut P) -> ()\n            requires small(*self),\n            ensures moved(old(self), self),\n        {\n            self.x = self.x + 1;\n        }\n    }\n\n    #[effects(pure)]\n    fn copy(r: &P) -> i64 {\n        let p: P = r;\n        p.x\n    }\n}\n";
+    let input = one(text);
+    assert!(!bmb::check_sources(&input).ok);
+    let out = bmb::fix_sources(&input);
+    assert!(out.ok, "{}", out.diagnostics);
+    assert!(bmb::verify_sources(&out.files).ok);
+    let fixed = &out.files[0].1;
+    assert!(
+        fixed.contains("ensures moved(*old(self), *self),"),
+        "{fixed}"
+    );
+    assert!(fixed.contains("let p: P = *r;"), "{fixed}");
+}

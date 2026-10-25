@@ -102,4 +102,12 @@ mod geo {
     {
         Point { x: a, y: 0 }
     }
+
+    struct Grid { w: [i64; 3] }
+
+    // An element of an array field, out of bounds (backlog 2B-15).
+    #[effects(pure)]
+    fn set_cell(g: &mut Grid, i: usize) -> () {
+        g.w[i] = 1;
+    }
 }

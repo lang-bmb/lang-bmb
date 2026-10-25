@@ -1,0 +1,30 @@
+#[summary("실행: 구조체 배열 필드의 원소 대입 (backlog 2B-15)")]
+mod fa {
+    struct G { w: [i64; 3], n: i64 }
+
+    struct H { g: G }
+
+    spec fn first_is(s: G, v: i64) -> bool { s.w[0] == v && s.w[2] == 3 }
+
+    #[effects(pure)]
+    #[uses(first_is)]
+    fn set(s: &mut G, v: i64) -> ()
+        ensures first_is(*s, v),
+    {
+        s.w[0] = v;
+        s.w[2] = 3;
+    }
+
+    #[effects(io)]
+    #[uses(first_is)]
+    fn main() -> () {
+        let mut h: H = H { g: G { w: [1, 2, 0], n: 5 } };
+        h.g.w[1] = 20;
+        set(&mut h.g, 7);
+        print_i64(h.g.w[0] + h.g.w[2]);
+        print_i64(h.g.w[1]);
+        let mut g: G = G { w: [0, 0, 0], n: 0 };
+        g.w[2] = 9;
+        print_i64(g.w[2]);
+    }
+}

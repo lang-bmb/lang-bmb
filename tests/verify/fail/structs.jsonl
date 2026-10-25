@@ -6,6 +6,7 @@
 {"code":"E0802","severity":"error","message":"postcondition `same` may not hold in `geo::branch`; counterexample: c = false, p = Point { x: 1, y: 11798 }, q = Point { x: 0, y: 0 }","file":"fail/structs.bmb","line":76,"col":17,"end_line":76,"end_col":27}
 {"code":"E0811","severity":"error","message":"postcondition `same_box` may not hold in `geo::element_differs`: solver could not decide (a model exists for the instantiated definitions only); unconfirmed counterexample: p = Box2 { w: [39, -1] (len 2), tag: false }","file":"fail/structs.bmb","line":93,"col":17,"end_line":93,"end_col":31}
 {"code":"E0802","severity":"error","message":"postcondition `on_diag` may not hold in `geo::off_diag`; counterexample: a = -9223372036854775770","file":"fail/structs.bmb","line":101,"col":17,"end_line":101,"end_col":27}
+{"code":"E0805","severity":"error","message":"index may be out of bounds in `geo::set_cell`; counterexample: g = Grid { w: [3, 3, 3] (len 3) }, i = 3","file":"fail/structs.bmb","line":111,"col":9,"end_line":111,"end_col":15}
 {"def":"geo::Point::bump","status":"verified","obligations":0,"failed":0,"rlimit":0,"rlimit_max":0}
 {"def":"geo::after_call","status":"failed","obligations":1,"failed":1,"rlimit":5001058,"rlimit_max":5000225}
 {"def":"geo::after_loop","status":"failed","obligations":7,"failed":1,"rlimit":5004621,"rlimit_max":5000249}
@@ -15,3 +16,4 @@
 {"def":"geo::off_diag","status":"failed","obligations":1,"failed":1,"rlimit":5000785,"rlimit_max":5000236}
 {"def":"geo::overflow","status":"failed","obligations":1,"failed":1,"rlimit":596,"rlimit_max":596}
 {"def":"geo::param","status":"failed","obligations":1,"failed":1,"rlimit":4785,"rlimit_max":4785}
+{"def":"geo::set_cell","status":"failed","obligations":1,"failed":1,"rlimit":793,"rlimit_max":793}
