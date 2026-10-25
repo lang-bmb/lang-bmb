@@ -126,6 +126,48 @@ mod user {
 }
 
 #[test]
+fn a_spec_building_variants_is_not_sent_to_the_solver() {
+    // Integer signatures, but the revealed spec fn builds variants: its axiom
+    // has no encoding yet, so the caller is E0814, not a solver error.
+    const SRC: &str = r#"#[summary("variants inside a spec")]
+mod p {
+    enum Shape { Dot, Square(i64) }
+
+    spec fn same(a: i64, b: i64) -> bool { Some(a) == Some(b) && Shape::Square(a) == Shape::Square(b) }
+
+    spec fn also(a: i64, b: i64) -> bool { same(a, b) }
+
+    #[effects(pure)]
+    #[uses(also)]
+    fn id(a: i64) -> (r: i64)
+        ensures also(a, r)
+    {
+        a
+    }
+}
+"#;
+    let dir = std::env::temp_dir().join(format!("bmb-cli-spec-variants-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let f = dir.join("t.bmb");
+    std::fs::write(&f, SRC).unwrap();
+    let bmb = env!("CARGO_BIN_EXE_bmb");
+    let check = Command::new(bmb).arg("check").arg(&f).output().unwrap();
+    assert!(
+        check.status.success(),
+        "{}",
+        String::from_utf8_lossy(&check.stdout)
+    );
+    let verify = Command::new(bmb).arg("verify").arg(&f).output().unwrap();
+    let out = String::from_utf8_lossy(&verify.stdout);
+    assert!(
+        !verify.status.success() && out.contains("\"code\":\"E0814\""),
+        "{out}"
+    );
+    assert!(!out.contains("E0812"), "{out}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn data_values_fields_and_variants_check() {
     const SRC: &str = r#"#[summary("data type values (ADR-0026, backlog 2B-04b)")]
 mod geo {
@@ -175,6 +217,43 @@ mod geo {
         let mut p: Point = make(1);
         p.y = 2;
         p.y
+    }
+
+    spec fn is_some(o: Option<i64>) -> bool { match o { None => false, Some(_) => true } }
+
+    #[effects(pure)]
+    fn area(s: &Shape) -> i64 {
+        match *s {
+            Shape::Dot => 0,
+            Shape::Square(n) => n,
+            Shape::Rect(a, b) => {
+                let w: i64 = b.x;
+                w
+            }
+        }
+    }
+
+    #[effects(pure)]
+    fn literal_first(o: Option<u64>) -> bool {
+        match o {
+            None => 0,
+            Some(v) => v,
+        } == 3
+    }
+
+    #[effects(io)]
+    fn report(r: Result<i64, Shape>) -> () {
+        match r {
+            Ok(v) => print_i64(v),
+            Err(e) => {
+                match e {
+                    Shape::Dot => print_i64(0),
+                    Shape::Square(_) => print_i64(1),
+                    Shape::Rect(_, _) => print_i64(2),
+                }
+            }
+        }
+        print_i64(9);
     }
 }
 "#;

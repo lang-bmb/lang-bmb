@@ -85,6 +85,7 @@ pub const CODES: &[(&str, &str)] = &[
         "E0422",
         "struct literal fields: not a struct, a field given twice, or a field missing",
     ),
+    ("E0423", "`match` needs an enum value"),
     (
         "E0424",
         "the type of `None` / `Ok` / `Err` is not known here",
@@ -92,6 +93,14 @@ pub const CODES: &[(&str, &str)] = &[
     (
         "E0425",
         "`==` on data types is not executable (compare the fields)",
+    ),
+    (
+        "E0426",
+        "`match` arms: one per variant, in declaration order",
+    ),
+    (
+        "E0427",
+        "a pattern names the wrong number of payload values",
     ),
     // E05xx: specifications
     (

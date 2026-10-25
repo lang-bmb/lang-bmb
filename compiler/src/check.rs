@@ -30,8 +30,11 @@ pub struct FnSig {
 #[derive(Debug, Clone)]
 pub enum AdtKind {
     Struct(Vec<(String, TypeKind)>),
-    Enum(Vec<(String, Vec<TypeKind>)>),
+    Enum(Vec<VariantSig>),
 }
+
+/// An enum variant: its name and payload types.
+pub type VariantSig = (String, Vec<TypeKind>);
 
 #[derive(Debug, Clone)]
 pub struct Adt {
@@ -950,15 +953,6 @@ impl<'a> Checker<'a> {
         }
     }
 
-    /// Data types are parsed (ADR-0026) but not checked before backlog 2B-04.
-    fn not_checked_yet(&mut self, span: Span, what: &str) {
-        self.err(
-            "E0207",
-            span,
-            format!("{what} are not supported yet (ADR-0026 is being implemented, backlog 2B-04)"),
-        );
-    }
-
     fn check_contract(&mut self, cx: &mut FnCtx, e: &Expr, ensures: bool) {
         let mode = Mode::Spec { allow_old: ensures };
         let t = self.expr(cx, e, Some(&TypeKind::Bool), mode);
@@ -1608,6 +1602,338 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// The variants a `match` on a `t` value covers, in declaration order:
+    /// (type path, variants). `Option` is `None, Some`, `Result` is `Ok, Err`.
+    fn match_variants(&self, t: &TypeKind) -> Option<(String, Vec<VariantSig>)> {
+        let TypeKind::Named { path, args } = t else {
+            return None;
+        };
+        match (path.as_slice(), args.as_slice()) {
+            ([o], [a]) if o == "Option" => Some((
+                "Option".into(),
+                vec![
+                    ("None".into(), Vec::new()),
+                    ("Some".into(), vec![a.kind.clone()]),
+                ],
+            )),
+            ([r], [a, b]) if r == "Result" => Some((
+                "Result".into(),
+                vec![
+                    ("Ok".into(), vec![a.kind.clone()]),
+                    ("Err".into(), vec![b.kind.clone()]),
+                ],
+            )),
+            _ => match self.adts.get(&path.join("::")) {
+                Some(Adt {
+                    kind: AdtKind::Enum(vs),
+                    path,
+                    ..
+                }) => Some((path.clone(), vs.clone())),
+                _ => None,
+            },
+        }
+    }
+
+    /// How a variant is written from unit `mp`: `Some`, `Shape::Dot`,
+    /// `geo::Shape::Dot`.
+    fn variant_text(tp: &str, v: &str, mp: &str) -> String {
+        if tp == "Option" || tp == "Result" {
+            return v.to_string();
+        }
+        match tp.strip_prefix(mp).and_then(|r| r.strip_prefix("::")) {
+            Some(short) if !short.contains("::") => format!("{short}::{v}"),
+            _ => format!("{tp}::{v}"),
+        }
+    }
+
+    /// The variant index an arm pattern names, for a value of enum `tp`.
+    fn arm_variant(
+        &mut self,
+        cx: &FnCtx,
+        p: &Pat,
+        tp: &str,
+        vs: &[VariantSig],
+        st: &TypeKind,
+    ) -> Option<usize> {
+        let names: Vec<String> = vs.iter().map(|(n, _)| n.clone()).collect();
+        let (v, ty) = p.path.split_last().unwrap();
+        let pt = if ty.is_empty() {
+            match v.name.as_str() {
+                "Some" | "None" => "Option".to_string(),
+                "Ok" | "Err" => "Result".to_string(),
+                _ => {
+                    // `Dot` alone would bind everything in Rust.
+                    let mut d = Diag::new(
+                        "E0307",
+                        v.span,
+                        format!("`{}` is not a variant path", v.name),
+                    );
+                    if names.contains(&v.name) {
+                        d = d.fix(
+                            "a user enum variant is written with its type",
+                            Some(Self::variant_text(tp, &v.name, &cx.mod_path)),
+                        );
+                    } else if let Some(near) = closest(&v.name, names.iter()) {
+                        d = d.fix(
+                            format!(
+                                "did you mean `{}`?",
+                                Self::variant_text(tp, &near, &cx.mod_path)
+                            ),
+                            Some(Self::variant_text(tp, &near, &cx.mod_path)),
+                        );
+                    } else {
+                        d = d.fix("a variant pattern is `Type::Variant`", None);
+                    }
+                    self.diags.push(d);
+                    return None;
+                }
+            }
+        } else {
+            match self.type_path(ty, &cx.mod_path) {
+                Some(pt) => pt,
+                None => {
+                    let name = ty
+                        .iter()
+                        .map(|i| i.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join("::");
+                    let d = self.unknown_type(
+                        &name,
+                        ty[0].span.to(ty[ty.len() - 1].span),
+                        &cx.mod_path,
+                    );
+                    self.diags.push(d);
+                    return None;
+                }
+            }
+        };
+        if pt != tp {
+            let arms: Vec<String> = vs
+                .iter()
+                .map(|(n, _)| Self::variant_text(tp, n, &cx.mod_path))
+                .collect();
+            self.diags.push(
+                Diag::new(
+                    "E0401",
+                    p.span,
+                    format!(
+                        "this pattern is a `{pt}` variant; the value is `{}`",
+                        ty_str(st)
+                    ),
+                )
+                .fix(
+                    format!("the variants of `{}`: {}", ty_str(st), arms.join(", ")),
+                    None,
+                ),
+            );
+            return None;
+        }
+        match names.iter().position(|n| *n == v.name) {
+            Some(k) => Some(k),
+            None => {
+                let mut d = Diag::new(
+                    "E0307",
+                    v.span,
+                    format!("`{tp}` has no variant `{}`", v.name),
+                );
+                if let Some(near) = closest(&v.name, names.iter()) {
+                    d = d.fix(format!("did you mean `{near}`?"), Some(near));
+                } else {
+                    d = d.fix(format!("variants of `{tp}`: {}", names.join(", ")), None);
+                }
+                self.diags.push(d);
+                None
+            }
+        }
+    }
+
+    /// `match s { E::A => e0, E::B(x, _) => e1 }`: one arm per variant in
+    /// declaration order, each payload position a new name or `_`, arms of
+    /// one type (ADR-0026 §3).
+    fn match_expr(
+        &mut self,
+        cx: &mut FnCtx,
+        scrut: &Expr,
+        arms: &[Arm],
+        expected: Option<&TypeKind>,
+        span: Span,
+        mode: Mode,
+    ) -> TypeKind {
+        let st = self.expr(cx, scrut, None, mode);
+        let vs = self.match_variants(&st);
+        if vs.is_none() && st != TypeKind::Error {
+            let mut d = Diag::new(
+                "E0423",
+                scrut.span,
+                format!("`match` needs an enum value, found `{}`", ty_str(&st)),
+            );
+            d = match (&st, &scrut.kind) {
+                (TypeKind::Ref { inner, .. }, ExprKind::Var(v))
+                    if self.match_variants(&inner.kind).is_some() =>
+                {
+                    d.fix(
+                        "match the value the reference points to",
+                        Some(format!("*{}", v.name)),
+                    )
+                }
+                _ => d.fix("branch with `if` on a condition", None),
+            };
+            self.diags.push(d);
+        }
+        // The variant of each arm (None: wildcard or unresolved) and the
+        // types its bindings get.
+        let mut kinds: Vec<Option<usize>> = Vec::new();
+        let mut bind_tys: Vec<Vec<TypeKind>> = Vec::new();
+        let mut wildcard = false;
+        let mut unresolved = false;
+        for a in arms {
+            let p = &a.pat;
+            if p.path.len() == 1 && p.path[0].name == "_" {
+                // Reported by the parser (E0207).
+                wildcard = true;
+                kinds.push(None);
+                bind_tys.push(Vec::new());
+                continue;
+            }
+            let Some((tp, vs)) = &vs else {
+                kinds.push(None);
+                bind_tys.push(Vec::new());
+                continue;
+            };
+            let k = self.arm_variant(cx, p, tp, vs, &st);
+            let mut tys = Vec::new();
+            match k {
+                Some(k) => {
+                    let payload = &vs[k].1;
+                    let vt = Self::variant_text(tp, &vs[k].0, &cx.mod_path);
+                    if payload.is_empty() && p.parens {
+                        self.diags.push(
+                            Diag::new("E0427", p.span, format!("`{vt}` has no payload"))
+                                .fix(format!("write `{vt}`"), Some(vt.clone())),
+                        );
+                    } else if p.binds.len() != payload.len() {
+                        let holes = vec!["_"; payload.len()].join(", ");
+                        self.diags.push(
+                            Diag::new(
+                                "E0427",
+                                p.span,
+                                format!(
+                                    "`{vt}` holds {} value(s), the pattern names {}",
+                                    payload.len(),
+                                    p.binds.len()
+                                ),
+                            )
+                            .fix(
+                                "one new name or `_` per payload position",
+                                Some(format!("{vt}({holes})")),
+                            ),
+                        );
+                    }
+                    tys = payload.clone();
+                }
+                None => unresolved = true,
+            }
+            kinds.push(k);
+            bind_tys.push(tys);
+        }
+        if let Some((tp, vs)) = &vs {
+            let mut seen = BTreeSet::new();
+            let mut dup = false;
+            for (a, k) in arms.iter().zip(&kinds) {
+                if let Some(k) = k
+                    && !seen.insert(*k)
+                {
+                    dup = true;
+                    let vt = Self::variant_text(tp, &vs[*k].0, &cx.mod_path);
+                    self.diags.push(
+                        Diag::new("E0426", a.pat.span, format!("a second arm for `{vt}`"))
+                            .fix("one arm per variant: merge the two", None),
+                    );
+                }
+            }
+            let missing: Vec<String> = (0..vs.len())
+                .filter(|k| !seen.contains(k))
+                .map(|k| {
+                    let vt = Self::variant_text(tp, &vs[k].0, &cx.mod_path);
+                    if vs[k].1.is_empty() {
+                        vt
+                    } else {
+                        format!("{vt}({})", vec!["_"; vs[k].1.len()].join(", "))
+                    }
+                })
+                .collect();
+            if !wildcard && !unresolved && !missing.is_empty() {
+                self.diags.push(
+                    Diag::new(
+                        "E0426",
+                        span,
+                        format!("`match` misses `{}`", missing.join("`, `")),
+                    )
+                    .fix(
+                        format!("add an arm for each: `{} => ..`", missing.join(" => .., ")),
+                        None,
+                    ),
+                );
+            }
+            let ks: Vec<usize> = kinds.iter().flatten().copied().collect();
+            if !dup && ks.windows(2).any(|w| w[0] > w[1]) {
+                let at = kinds
+                    .iter()
+                    .zip(arms)
+                    .scan(None, |prev: &mut Option<usize>, (k, a)| {
+                        let out = matches!((*prev, k), (Some(p), Some(k)) if p > *k)
+                            .then_some(a.pat.span);
+                        if k.is_some() {
+                            *prev = *k;
+                        }
+                        Some(out)
+                    })
+                    .flatten()
+                    .next()
+                    .unwrap_or(span);
+                let order: Vec<String> = vs
+                    .iter()
+                    .map(|(n, _)| Self::variant_text(tp, n, &cx.mod_path))
+                    .collect();
+                self.diags.push(
+                    Diag::new("E0426", at, "`match` arms are not in declaration order").fix(
+                        format!("order the arms as declared: {}", order.join(", ")),
+                        None,
+                    ),
+                );
+            }
+        }
+        // A literal arm takes its type from the others, as in `if`.
+        let first = if expected.is_none() {
+            arms.iter()
+                .position(|a| !untyped_literal(&a.body))
+                .unwrap_or(0)
+        } else {
+            0
+        };
+        let order = std::iter::once(first).chain((0..arms.len()).filter(|&i| i != first));
+        // A known expected type is the type of every arm.
+        let mut ty: Option<TypeKind> = expected.filter(|t| **t != TypeKind::Error).cloned();
+        for i in order.take(arms.len()) {
+            let a = &arms[i];
+            cx.scopes.push(BTreeMap::new());
+            for (pos, b) in a.pat.binds.iter().enumerate() {
+                if let Some(id) = b {
+                    let t = bind_tys[i].get(pos).cloned().unwrap_or(TypeKind::Error);
+                    self.declare(cx, id, t, false, false);
+                }
+            }
+            let hint = ty.as_ref().filter(|t| **t != TypeKind::Error).or(expected);
+            let bt = self.expr(cx, &a.body, hint, mode);
+            match &ty {
+                Some(t) => self.expect_ty(&bt, t, a.body.span),
+                None => ty = Some(bt),
+            }
+            cx.scopes.pop();
+        }
+        ty.unwrap_or(TypeKind::Error)
+    }
+
     /// `T { f: e, .. }`: every field once.
     fn struct_lit(
         &mut self,
@@ -1765,9 +2091,8 @@ impl<'a> Checker<'a> {
                     }
                 }
             }
-            ExprKind::Match { .. } => {
-                self.not_checked_yet(e.span, "`match` expressions");
-                TypeKind::Error
+            ExprKind::Match { scrut, arms } => {
+                self.match_expr(cx, scrut, arms, expected, e.span, mode)
             }
             ExprKind::Unit => TypeKind::Unit,
             ExprKind::Bool(_) => TypeKind::Bool,

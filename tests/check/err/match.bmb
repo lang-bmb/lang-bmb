@@ -1,0 +1,107 @@
+#[summary("`match` arms and exhaustiveness (ADR-0026, backlog 2B-04c)")]
+mod shapes {
+    struct Point { x: i64, y: i64 }
+
+    enum Shape { Dot, Square(i64), Rect(Point, Point) }
+
+    #[effects(pure)]
+    fn not_enum(p: Point) -> i64 {
+        match p {
+            Shape::Dot => 0,
+        }
+    }
+
+    #[effects(pure)]
+    fn by_ref(s: &Shape) -> i64 {
+        match s {
+            Shape::Dot => 0,
+            Shape::Square(n) => n,
+            Shape::Rect(a, b) => 1,
+        }
+    }
+
+    #[effects(pure)]
+    fn missing(s: Shape) -> i64 {
+        match s {
+            Shape::Dot => 0,
+        }
+    }
+
+    #[effects(pure)]
+    fn twice(s: Shape) -> i64 {
+        match s {
+            Shape::Dot => 0,
+            Shape::Dot => 1,
+            Shape::Square(n) => n,
+            Shape::Rect(a, b) => 2,
+        }
+    }
+
+    #[effects(pure)]
+    fn order(s: Shape) -> i64 {
+        match s {
+            Shape::Square(n) => n,
+            Shape::Dot => 0,
+            Shape::Rect(a, b) => 2,
+        }
+    }
+
+    #[effects(pure)]
+    fn bare(s: Shape) -> i64 {
+        match s {
+            Dot => 0,
+            Shape::Square(n) => n,
+            Shape::Rect(a, b) => 2,
+        }
+    }
+
+    #[effects(pure)]
+    fn typo(s: Shape) -> i64 {
+        match s {
+            Shape::Dott => 0,
+            Shape::Square(n) => n,
+            Shape::Rect(a, b) => 2,
+        }
+    }
+
+    #[effects(pure)]
+    fn payload(s: Shape) -> i64 {
+        match s {
+            Shape::Dot() => 0,
+            Shape::Square => 1,
+            Shape::Rect(a) => 2,
+        }
+    }
+
+    #[effects(pure)]
+    fn other_enum(o: Option<i64>) -> i64 {
+        match o {
+            None => 0,
+            Ok(v) => v,
+        }
+    }
+
+    #[effects(pure)]
+    fn arm_types(o: Option<i64>) -> i64 {
+        match o {
+            None => 0,
+            Some(v) => true,
+        }
+    }
+
+    #[effects(pure)]
+    fn shadow(o: Option<i64>, v: i64) -> i64 {
+        match o {
+            None => 0,
+            Some(v) => v,
+        }
+    }
+
+    #[effects(pure)]
+    fn payload_type(r: Result<bool, i64>) -> i64 {
+        match r {
+            Ok(b) => b,
+            Err(e) => e,
+        }
+    }
+}

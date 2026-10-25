@@ -1290,7 +1290,25 @@ pub(crate) fn program_data_type_use(p: &Program, t: &Tables) -> Option<Span> {
     for m in &p.mods {
         collect(m, "", &mut defs);
     }
-    defs.values().find_map(|d| data_type_use(d.f, t))
+    let tainted = data_spec_fns(&defs, t);
+    defs.values().find_map(|d| data_type_use(d.f, t, &tainted))
+}
+
+/// The spec fns whose definition touches a data type, closed over calls:
+/// their axioms would carry it into any obligation that reveals them.
+fn data_spec_fns(defs: &BTreeMap<String, Def>, t: &Tables) -> BTreeSet<String> {
+    let mut tainted = BTreeSet::new();
+    loop {
+        let next: BTreeSet<String> = defs
+            .iter()
+            .filter(|(_, d)| d.f.kind == FnKind::Spec && data_type_use(d.f, t, &tainted).is_some())
+            .map(|(p, _)| p.clone())
+            .collect();
+        if next == tainted {
+            return tainted;
+        }
+        tainted = next;
+    }
 }
 
 fn has_named(t: &TypeKind) -> bool {
@@ -1306,30 +1324,32 @@ fn has_named(t: &TypeKind) -> bool {
 /// or a call to a function with one in its signature. The checker accepts
 /// data types (backlog 2B-04); their encoding comes with 2B-05, so until
 /// then such definitions are E0814.
-fn data_type_use(f: &FnDef, t: &Tables) -> Option<Span> {
-    fn in_block(b: &Block, t: &Tables) -> Option<Span> {
+fn data_type_use(f: &FnDef, t: &Tables, tainted: &BTreeSet<String>) -> Option<Span> {
+    fn in_block(b: &Block, t: &Tables, tainted: &BTreeSet<String>) -> Option<Span> {
         for s in &b.stmts {
             let found = match s {
                 Stmt::Let { ty, init, .. } => {
                     if has_named(&ty.kind) {
                         return Some(ty.span);
                     }
-                    in_expr(init, t)
+                    in_expr(init, t, tainted)
                 }
                 Stmt::Assign { target, value, .. } => {
-                    in_expr(target, t).or_else(|| in_expr(value, t))
+                    in_expr(target, t, tainted).or_else(|| in_expr(value, t, tainted))
                 }
-                Stmt::While { cond, body, .. } => in_expr(cond, t).or_else(|| in_block(body, t)),
-                Stmt::Assert { cond, .. } => in_expr(cond, t),
-                Stmt::Expr(e) => in_expr(e, t),
+                Stmt::While { cond, body, .. } => {
+                    in_expr(cond, t, tainted).or_else(|| in_block(body, t, tainted))
+                }
+                Stmt::Assert { cond, .. } => in_expr(cond, t, tainted),
+                Stmt::Expr(e) => in_expr(e, t, tainted),
             };
             if found.is_some() {
                 return found;
             }
         }
-        b.tail.as_deref().and_then(|e| in_expr(e, t))
+        b.tail.as_deref().and_then(|e| in_expr(e, t, tainted))
     }
-    fn in_expr(e: &Expr, t: &Tables) -> Option<Span> {
+    fn in_expr(e: &Expr, t: &Tables, tainted: &BTreeSet<String>) -> Option<Span> {
         match &e.kind {
             ExprKind::Call { path, args } => {
                 let name = path
@@ -1341,27 +1361,39 @@ fn data_type_use(f: &FnDef, t: &Tables) -> Option<Span> {
                     (p == &name || p.ends_with(&format!("::{name}")))
                         && (s.params.iter().any(has_named) || has_named(&s.ret))
                 });
-                if named {
+                // A checked call that names no function builds a variant:
+                // `Some(x)`, `Ok(x)`, `Err(e)`, `E::V(..)`.
+                let variant = matches!(name.as_str(), "Some" | "Ok" | "Err")
+                    || (path.len() > 1
+                        && !t
+                            .fns
+                            .iter()
+                            .any(|(p, _)| p == &name || p.ends_with(&format!("::{name}"))));
+                let spec = tainted
+                    .iter()
+                    .any(|p| p == &name || p.ends_with(&format!("::{name}")));
+                if named || variant || spec {
                     return Some(e.span);
                 }
-                args.iter().find_map(|a| in_expr(a, t))
+                args.iter().find_map(|a| in_expr(a, t, tainted))
             }
-            ExprKind::Method { recv, args, .. } => {
-                in_expr(recv, t).or_else(|| args.iter().find_map(|a| in_expr(a, t)))
+            ExprKind::Method { recv, args, .. } => in_expr(recv, t, tainted)
+                .or_else(|| args.iter().find_map(|a| in_expr(a, t, tainted))),
+            ExprKind::Index { base, index } => {
+                in_expr(base, t, tainted).or_else(|| in_expr(index, t, tainted))
             }
-            ExprKind::Index { base, index } => in_expr(base, t).or_else(|| in_expr(index, t)),
             ExprKind::Unary(_, x)
             | ExprKind::Ref { expr: x, .. }
             | ExprKind::Old(x)
-            | ExprKind::Trigger(x) => in_expr(x, t),
-            ExprKind::Binary(_, l, r) => in_expr(l, t).or_else(|| in_expr(r, t)),
-            ExprKind::If { cond, then, els } => in_expr(cond, t)
-                .or_else(|| in_block(then, t))
-                .or_else(|| els.as_deref().and_then(|x| in_expr(x, t))),
-            ExprKind::Block(b) => in_block(b, t),
-            ExprKind::Array(xs) => xs.iter().find_map(|x| in_expr(x, t)),
-            ExprKind::Repeat { value, .. } => in_expr(value, t),
-            ExprKind::Forall { body, .. } => in_expr(body, t),
+            | ExprKind::Trigger(x) => in_expr(x, t, tainted),
+            ExprKind::Binary(_, l, r) => in_expr(l, t, tainted).or_else(|| in_expr(r, t, tainted)),
+            ExprKind::If { cond, then, els } => in_expr(cond, t, tainted)
+                .or_else(|| in_block(then, t, tainted))
+                .or_else(|| els.as_deref().and_then(|x| in_expr(x, t, tainted))),
+            ExprKind::Block(b) => in_block(b, t, tainted),
+            ExprKind::Array(xs) => xs.iter().find_map(|x| in_expr(x, t, tainted)),
+            ExprKind::Repeat { value, .. } => in_expr(value, t, tainted),
+            ExprKind::Forall { body, .. } => in_expr(body, t, tainted),
             ExprKind::StructLit { .. }
             | ExprKind::Path(_)
             | ExprKind::Field { .. }
@@ -1388,11 +1420,11 @@ fn data_type_use(f: &FnDef, t: &Tables) -> Option<Span> {
         .chain(&f.ensures)
         .chain(f.decreases.iter());
     for c in clauses {
-        if let Some(sp) = in_expr(c, t) {
+        if let Some(sp) = in_expr(c, t, tainted) {
             return Some(sp);
         }
     }
-    in_block(&f.body, t)
+    in_block(&f.body, t, tainted)
 }
 
 fn param_sorts(f: &FnDef) -> Vec<String> {
@@ -1680,6 +1712,7 @@ pub fn preconditions_satisfiable(p: &Program, t: &Tables) -> Vec<(String, Span, 
     }
     let prog = Prog { defs, t };
     let spec_decls = prog.spec_decls();
+    let tainted = data_spec_fns(&prog.defs, t);
     let mut solver: Option<Solver> = None;
     let mut solver_down = crate::toolchain::check_z3().is_err();
     let mut out = Vec::new();
@@ -1708,7 +1741,7 @@ pub fn preconditions_satisfiable(p: &Program, t: &Tables) -> Vec<(String, Span, 
             let g = enc.spec(r, &env, &old).s();
             enc.pc.push(g);
         }
-        if !enc.unsupported.is_empty() || solver_down {
+        if !enc.unsupported.is_empty() || solver_down || data_type_use(d.f, t, &tainted).is_some() {
             out.push((path.clone(), span, None));
             continue;
         }
@@ -1822,6 +1855,7 @@ fn verify_impl(
     // included (ADR-0018 §1), so nothing carries over between obligations.
     // Started on the first obligation the cache does not hold, replaced when
     // too old to take on another definition (`Solver::reusable`).
+    let tainted = data_spec_fns(&prog.defs, t);
     let mut solver: Option<Solver> = None;
     let mut stopped = false;
     for (path, d) in &prog.defs {
@@ -1848,7 +1882,8 @@ fn verify_impl(
             continue;
         }
         let mut enc = Enc::new(&prog, path, &d.mod_path);
-        if let Some(sp) = data_type_use(d.f, t) {
+        let data = data_type_use(d.f, t, &tainted);
+        if let Some(sp) = data {
             enc.unsupported.push((
                 sp,
                 "data types are not supported by the proof gate yet (backlog 2B-05)".into(),
@@ -1918,6 +1953,10 @@ fn verify_impl(
 
         for (sp, msg) in &enc.unsupported {
             diags.push(Diag::new("E0814", *sp, msg.clone()));
+        }
+        // Data type terms have no encoding yet (2B-05): nothing to solve.
+        if data.is_some() {
+            enc.obls.clear();
         }
 
         // Assemble and solve. Every obligation runs on a reset solver holding only
