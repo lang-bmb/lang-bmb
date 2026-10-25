@@ -24,8 +24,9 @@ sys.path.insert(0, HERE)
 import history  # noqa: E402
 import kills  # noqa: E402
 import bcb  # noqa: E402
+import localize  # noqa: E402
 
-bcb.BMB = kills.BMB = BMB
+bcb.BMB = kills.BMB = localize.BMB = BMB
 
 COMMITS = 40
 
@@ -235,6 +236,23 @@ def check_suite(t):
         bcb.BMB = BMB
 
 
+def check_localization(t):
+    """Edit localization (1B-41, H-MAINT): in every commit of the three
+    histories the incremental build re-proves only definitions inside the
+    impact set of the edits; and the check does fail when that set is empty."""
+    for profile in sorted(history.PROFILES):
+        localize.main([os.path.join(t, f"{profile}.jsonl"), "--work", os.path.join(t, f"loc-{profile}")])
+    real = localize.impact
+    localize.impact = lambda ws, d, change: set()
+    try:
+        localize.main([os.path.join(t, "body-heavy.jsonl"), "--work", os.path.join(t, "loc-empty"), "--upto", "3"])
+        raise AssertionError("localize accepted re-proofs outside an empty impact set")
+    except SystemExit as e:
+        assert "outside the impact set" in str(e), e
+    finally:
+        localize.impact = real
+
+
 def main():
     with tempfile.TemporaryDirectory() as t:
         out = {}
@@ -244,6 +262,7 @@ def main():
             out[profile + " body edits changing #[uses]"] = f"{uses}/{body}"
         assert out["body-only"]["body"] > 0 and sum(out["body-only"].values()) == out["body-only"]["body"], out
         assert all(out["contract-heavy"][k] > 0 for k in history.KINDS), out
+        check_localization(t)
         # A tampered history is refused.
         path = os.path.join(t, "body-heavy.jsonl")
         lines = open(path, encoding="utf-8").read().splitlines()
