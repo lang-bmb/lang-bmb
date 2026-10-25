@@ -21,7 +21,7 @@ cargo test --no-run --quiet --message-format=json-render-diagnostics > "$built"
 step "backlog"; python3 scripts/check_backlog.py
 step "docs";    target/debug/bmb codes --md | diff -u docs/diagnostics.md - > /dev/null || { echo "docs/diagnostics.md is stale: run cargo run -q -- codes --md > docs/diagnostics.md"; exit 1; }
 
-step "test, bench m1, bench m1b, bench bvb, bench m3, bench bnb, bench brb (concurrent)"
+step "test, bench m1, bench m1b, bench bvb, bench m3, bench bnb, bench brb, health (concurrent)"
 # Bench sessions are independent (ADR-0025, backlog 2A-04): m1b and bvb run two at a time per agent.
 # The original-Verus side of bvb (2A-09) needs the Verus toolchain: here only its harness logic
 # runs (stub verifier); the real oracle/weak runs are the `bvb-verus` CI job.
@@ -63,5 +63,7 @@ grep -qF "판정 불가(Rust 결함 0)" <<< "$table" || { echo "brb summarize: u
   --job 'bench brb weak=python3 bench/brb/harness.py run --arm bmb --agent weak --expect weak-fail --jobs 2 > /dev/null
 python3 bench/brb/harness.py run --arm rust --agent weak --proptest off --expect weak-fail --jobs 2 > /dev/null' \
   --job "bench brb adequacy=python3 bench/brb/harness.py adequacy --jobs 2 > /dev/null" \
-  --job "bench brb tests=python3 bench/brb/test_brb.py"
+  --job "bench brb tests=python3 bench/brb/test_brb.py" \
+  --job "health=python3 scripts/health.py" \
+  --job "health rules=python3 scripts/test_health.py"
 echo "all checks passed"

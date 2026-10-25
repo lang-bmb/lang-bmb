@@ -84,5 +84,6 @@ BMB v2의 설계 결정을 한 건에 파일 하나로 남긴다. 현재 확정�
 | [0036](0036-syntax-evaluation-scale.md) | 문법 평가 저울(기준 C1~C6, 제약 K1~K4·목적 O1~O5, 차용·확장·변형·기각 판정 규칙, 증거 기준) | 채택(자율) | 백로그 2R-01 |
 | [0037](0037-bootstrap-and-language-maturity.md) | 셀프호스팅 부트스트랩 필수(stage2=stage3 고정점, stage0 기능 동결)와 언어 성숙 단계 | 채택(사람 지시) | ADR-0012 일부 대체 |
 | [0038](0038-bvb-porting-rules.md) | BVB(공개 Verus 과제 이식) 규칙 | 채택(자율) | 백로그 2A-08·2A-09 |
+| [0039](0039-continuous-health-management.md) | 지속 관리 체계(다섯 축 M·V·S·P·O, `health.py` 래칫, 자립 사다리 L0~L4, 실용성 규칙, `ship.sh`) | 채택(사람 지시) | 운영 문서 `dev-docs/HEALTH.md` |
 
 채택 계획(2026-10-24 승인): 0026은 2B 착수 때, 0028은 2C 착수 때 채택한다. 0029·0030·0031은 2단계 측정(2H) 뒤로 미룬다. "제안" ADR의 진단 코드 번호는 잠정이다. 제안끼리 겹치는 번호가 있으며(예: E0212·E0412), 채택 후 구현할 때 `compiler/src/diag.rs`에서 확정한다.

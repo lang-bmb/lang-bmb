@@ -1,0 +1,98 @@
+{
+  "metrics": {
+    "V1_untested_diag_codes": 0,
+    "V3_unproved_defs": 0,
+    "V4_rlimit_total": 2172366,
+    "V5_rlimit_headroom": 0.0049,
+    "V6_deterministic_verify": true,
+    "S1_external_crates": 0,
+    "S2_external_processes": [
+      "clang",
+      "z3"
+    ],
+    "S3_runtime_libs_outside_libc": [],
+    "S4_stage0_rust_lines": 12296,
+    "S5_tests_bound_to_rust_api": 30,
+    "S6_selfhost_bmb_lines": 0,
+    "P1_runnable_programs": 6,
+    "P2_bmb_lines": 3578,
+    "P3_errors_with_help": 0.4641,
+    "O1_adr_index_mismatch": 0,
+    "O2_soundness_fuzzers": 6
+  },
+  "history": [
+    {
+      "date": "2026-10-25",
+      "reason": "기준선 수립(ADR-0039)",
+      "changed": {
+        "V1_untested_diag_codes": [
+          null,
+          0
+        ],
+        "V3_unproved_defs": [
+          null,
+          0
+        ],
+        "V4_rlimit_total": [
+          null,
+          2172366
+        ],
+        "V5_rlimit_headroom": [
+          null,
+          0.0049
+        ],
+        "V6_deterministic_verify": [
+          null,
+          true
+        ],
+        "S1_external_crates": [
+          null,
+          0
+        ],
+        "S2_external_processes": [
+          null,
+          [
+            "clang",
+            "z3"
+          ]
+        ],
+        "S3_runtime_libs_outside_libc": [
+          null,
+          []
+        ],
+        "S4_stage0_rust_lines": [
+          null,
+          12296
+        ],
+        "S5_tests_bound_to_rust_api": [
+          null,
+          30
+        ],
+        "S6_selfhost_bmb_lines": [
+          null,
+          0
+        ],
+        "P1_runnable_programs": [
+          null,
+          6
+        ],
+        "P2_bmb_lines": [
+          null,
+          3578
+        ],
+        "P3_errors_with_help": [
+          null,
+          0.4641
+        ],
+        "O1_adr_index_mismatch": [
+          null,
+          0
+        ],
+        "O2_soundness_fuzzers": [
+          null,
+          6
+        ]
+      }
+    }
+  ]
+}

@@ -10,6 +10,7 @@ BMB v2: AI 에이전트가 쓰고 결정론적 도구로 다루는 Rust 방언. 
 - `docs/ROADMAP.md`: 단계와 통과 기준. 단계는 측정 결과를 커밋해야 닫힌다.
 - `dev-docs/BACKLOG.md`: 태스크 목록과 상태. 작업을 시작·완료하면 갱신한다(완료에는 커밋·테스트 근거).
 - `dev-docs/AUTONOMY.md`: 자율 진행 규칙(작업 루프, 태스크 선택·도출, 결정 권한, 보고 조건). 작업은 이 루프를 따른다.
+- `dev-docs/HEALTH.md`: 지속 관리 지침(다섯 축 지표, 래칫 기준선 `dev-docs/health/baseline.json`, 신뢰 기반, 자립 사다리, 실용성 점검). 푸시는 `scripts/ship.sh`로 한다.
 - `compiler/`: 컴파일러(Rust). 사용법과 표면 규칙은 `compiler/README.md`. 변경 후 `cargo fmt`, `cargo clippy --all-targets`, `cargo test` 통과.
 - v0(v0.100) 코드는 `legacy/v0` 브랜치에만 있다. v0 코드는 가져오지 않는다. 설계와 측정 자산만 참고한다.
 
