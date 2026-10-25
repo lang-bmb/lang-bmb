@@ -233,8 +233,10 @@ mod geo {
     assert_eq!(twice.values().cloned().collect::<String>(), NORMAL);
     // The checker rejects this sample (unknown `Shape`, values not checked yet).
     assert!(bmb::format_sources(&one("x.bmb", SRC)).is_err());
-    // A wildcard arm is a syntax error with a fix (ADR-0026: one arm per variant).
+    // A wildcard arm parses; the checker rejects it with the arms it stands
+    // for (ADR-0026: one arm per variant).
     let wild = "#[summary(\"w\")]\nmod w {\n    #[effects(pure)]\n    fn f(o: Option<i64>) -> i64 { match o { Some(v) => v, _ => 0 } }\n}\n";
-    let err = bmb::format_parsed(&one("w.bmb", wild)).unwrap_err();
-    assert!(err.contains("a wildcard arm is not allowed"), "{err}");
+    assert!(bmb::format_parsed(&one("w.bmb", wild)).is_ok());
+    let err = bmb::format_sources(&one("w.bmb", wild)).unwrap_err();
+    assert!(err.contains("E0224") && err.contains("None => 0"), "{err}");
 }

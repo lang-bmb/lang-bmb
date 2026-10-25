@@ -3,10 +3,9 @@
 {"code":"E0101","severity":"error","message":"character literals are not supported","file":"err/unsupported.bmb","line":8,"col":25,"end_line":8,"end_col":28}
 {"code":"E0204","severity":"error","message":"`loop` is not allowed","file":"err/unsupported.bmb","line":11,"col":27,"end_line":11,"end_col":31,"fix":{"message":"use `while cond invariant .., decreases .., { .. }`"}}
 {"code":"E0423","severity":"error","message":"`match` needs an enum value, found `i64`","file":"err/unsupported.bmb","line":14,"col":39,"end_line":14,"end_col":40,"fix":{"message":"branch with `if` on a condition"}}
-{"code":"E0207","severity":"error","message":"a wildcard arm is not allowed; write one arm per variant","file":"err/unsupported.bmb","line":14,"col":43,"end_line":14,"end_col":44,"fix":{"message":"replace `_` with the missing variants (same body)"}}
 {"code":"E0207","severity":"error","message":"`break` is not supported in milestone 1","file":"err/unsupported.bmb","line":23,"col":13,"end_line":23,"end_col":18,"fix":{"message":"move the exit condition into the `while` condition"}}
 {"code":"E0207","severity":"error","message":"`continue` is not supported in milestone 1","file":"err/unsupported.bmb","line":34,"col":13,"end_line":34,"end_col":21,"fix":{"message":"move the exit condition into the `while` condition"}}
 {"code":"E0306","severity":"error","message":"`i64` has no field `x`","file":"err/unsupported.bmb","line":39,"col":34,"end_line":39,"end_col":35,"fix":{"message":"only structs have fields"}}
-{"code":"E0207","severity":"error","message":"tuples are not supported in milestone 1","file":"err/unsupported.bmb","line":42,"col":28,"end_line":42,"end_col":29}
+{"code":"E0233","severity":"error","message":"tuples are not allowed","file":"err/unsupported.bmb","line":42,"col":28,"end_line":42,"end_col":29,"fix":{"message":"use a struct with named fields"}}
 {"code":"E0207","severity":"error","message":"closures are not supported in milestone 1","file":"err/unsupported.bmb","line":45,"col":28,"end_line":45,"end_col":29}
 {"code":"E0301","severity":"error","message":"a path must be followed by call arguments","file":"err/unsupported.bmb","line":48,"col":25,"end_line":48,"end_col":37}

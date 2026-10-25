@@ -1,0 +1,140 @@
+#[summary("Rust habits around data types (ADR-0026 §5, backlog 2B-04d)")]
+mod shapes {
+    #[derive(Clone, Copy, PartialEq)]
+    struct Point { x: i64, y: i64 }
+
+    #[repr(C)]
+    enum Shape { Dot, Square(i64), Named { side: i64 } }
+
+    struct Pair(i64, i64);
+
+    impl Point {
+        #[effects(pure)]
+        fn norm(&self) -> i64 {
+            self.x
+        }
+
+        #[effects(pure)]
+        fn shift(&mut self) -> () {
+            self.x = 0;
+        }
+
+        #[effects(pure)]
+        fn sum(self: &Point, k: i64) -> i64 {
+            self.x + k
+        }
+    }
+
+    #[effects(pure)]
+    fn full_path(a: i64) -> Option<i64> {
+        Option::Some(a)
+    }
+
+    #[effects(pure)]
+    fn full_none() -> Option<i64> {
+        Option::None
+    }
+
+    #[effects(pure)]
+    fn full_pattern(o: Result<i64, bool>) -> i64 {
+        match o {
+            Result::Ok(v) => v,
+            Result::Err(_) => 0,
+        }
+    }
+
+    #[effects(pure)]
+    fn shorthand(x: i64, y: i64) -> Point {
+        Point { x, y }
+    }
+
+    #[effects(pure)]
+    fn update(p: Point) -> Point {
+        Point { x: 1, ..p }
+    }
+
+    #[effects(pure)]
+    fn wildcard(s: Shape) -> i64 {
+        match s {
+            Shape::Dot => 0,
+            _ => 1,
+        }
+    }
+
+    #[effects(pure)]
+    fn if_let(o: Option<i64>) -> i64 {
+        if let Some(v) = o { v } else { 0 }
+    }
+
+    #[effects(pure)]
+    fn while_let(o: Option<i64>) -> i64 {
+        while let Some(v) = o {
+            assert(v > 0);
+        }
+        0
+    }
+
+    #[effects(pure)]
+    fn let_else(o: Option<i64>) -> i64 {
+        let Some(v) = o else { 0 };
+        1
+    }
+
+    #[effects(pure)]
+    fn method(p: Point, q: &Point) -> i64 {
+        p.sum(1) + q.sum(2)
+    }
+
+    #[effects(pure)]
+    fn unwrap(o: Option<i64>, r: Result<i64, bool>) -> i64 {
+        o.unwrap() + r.unwrap()
+    }
+
+    #[effects(pure)]
+    fn destructure(p: Point) -> i64 {
+        let Point { x, y } = p;
+        x + y
+    }
+
+    #[effects(pure)]
+    fn deref_field(p: &mut Point) -> i64 {
+        (*p).x = 1;
+        (*p).y
+    }
+
+    #[effects(pure)]
+    fn guard(o: Option<i64>) -> i64 {
+        match o {
+            None => 0,
+            Some(v) if v > 0 => v,
+        }
+    }
+
+    #[effects(pure)]
+    fn or_pattern(s: Shape) -> i64 {
+        match s {
+            Shape::Dot | Shape::Square(_) => 0,
+        }
+    }
+
+    #[effects(pure)]
+    fn literal(n: i64) -> i64 {
+        match n {
+            0 => 1,
+        }
+    }
+
+    #[effects(pure)]
+    fn nested(o: Option<Shape>) -> i64 {
+        match o {
+            None => 0,
+            Some(Shape::Dot) => 1,
+        }
+    }
+
+    #[effects(pure)]
+    fn tuple() -> i64 {
+        let t: i64 = (1, 2);
+        t
+    }
+}

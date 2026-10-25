@@ -590,6 +590,7 @@ impl<'p> Gen<'p> {
 
     fn stmt(&mut self, s: &Stmt) {
         match s {
+            Stmt::LetFields { .. } => unreachable!("rejected by the checker (E0230)"),
             Stmt::Let { name, ty, init, .. } => match &ty.kind {
                 TypeKind::Array(el, n) => {
                     let elem = llty(&el.kind);

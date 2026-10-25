@@ -185,3 +185,97 @@ fn literal_fixes_keep_the_value() {
     assert!(!out.ok);
     assert!(out.files[0].1.contains("7abc"));
 }
+
+/// The data type habits with a mechanical fix (ADR-0026 §5, backlog 2B-04d):
+/// `bmb fix` turns them into a program that checks, in one round.
+const DATA_HABITS: &str = r#"#[summary("habits with mechanical fixes")]
+mod shapes {
+    #[derive(Clone, Copy)]
+    struct Point { x: i64, y: i64 }
+
+    enum Shape { Dot, Square(i64), Rect(Point, Point) }
+
+    impl Point {
+        #[effects(pure)]
+        fn sum(&self, k: i64) -> i64 {
+            self.x + k
+        }
+    }
+
+    #[effects(pure)]
+    fn full_path(a: i64) -> Option<i64> {
+        Option::Some(a)
+    }
+
+    #[effects(pure)]
+    fn shorthand(x: i64, y: i64) -> Point {
+        Point { x, y }
+    }
+
+    #[effects(pure)]
+    fn update(p: Point) -> Point {
+        Point { x: 1, ..p }
+    }
+
+    #[effects(pure)]
+    fn wildcard(s: Shape) -> i64 {
+        match s {
+            Shape::Dot => 0,
+            _ => 1,
+        }
+    }
+
+    #[effects(pure)]
+    fn if_let(o: Option<i64>) -> i64 {
+        if let Some(v) = o { v } else { 0 }
+    }
+
+    #[effects(pure)]
+    fn method(p: Point, q: &Point) -> i64 {
+        p.sum(1) + q.sum(2)
+    }
+
+    #[effects(pure)]
+    fn destructure(p: Point) -> i64 {
+        let Point { x, y } = p;
+        x + y
+    }
+
+    #[effects(pure)]
+    fn deref_field(p: &mut Point) -> i64 {
+        (*p).x = 1;
+        (*p).y
+    }
+}
+"#;
+
+#[test]
+fn data_type_habits_are_fixed_into_a_checked_program() {
+    let input = one(DATA_HABITS);
+    assert!(!bmb::check_sources(&input).ok);
+    let out = bmb::fix_sources(&input);
+    assert!(out.ok, "{}", out.diagnostics);
+    assert!(bmb::check_sources(&out.files).ok);
+    assert_eq!(out.rounds, 1);
+    let mut codes: Vec<&str> = out.applied.iter().map(|a| a.code).collect();
+    codes.sort();
+    codes.dedup();
+    assert_eq!(
+        codes,
+        [
+            "E0220", "E0221", "E0222", "E0223", "E0224", "E0225", "E0227", "E0228", "E0230",
+            "E0231"
+        ]
+    );
+    let fixed = &out.files[0].1;
+    for want in [
+        "match o { None => { 0 }, Some(v) => { v } }",
+        "match s { Shape::Dot => 0, Shape::Square(_) => 1, Shape::Rect(_, _) => 1 }",
+        "Point::sum(&p, 1) + Point::sum(q, 2)",
+        "let x: i64 = p.x; let y: i64 = p.y;",
+        "Point { x: 1, y: p.y }",
+        "fn sum(self: &Point, k: i64)",
+    ] {
+        assert!(fixed.contains(want), "{want}\n{fixed}");
+    }
+}

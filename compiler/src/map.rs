@@ -215,7 +215,7 @@ fn calls_in_expr<'e>(e: &'e Expr, spec: bool, out: &mut Vec<(&'e [Ident], &'e [E
 fn calls_in_block<'e>(b: &'e Block, spec: bool, out: &mut Vec<(&'e [Ident], &'e [Expr], bool)>) {
     for s in &b.stmts {
         match s {
-            Stmt::Let { init, .. } => calls_in_expr(init, spec, out),
+            Stmt::Let { init, .. } | Stmt::LetFields { init, .. } => calls_in_expr(init, spec, out),
             Stmt::Assign { target, value, .. } => {
                 calls_in_expr(target, spec, out);
                 calls_in_expr(value, spec, out);

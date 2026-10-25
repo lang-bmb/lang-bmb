@@ -423,6 +423,13 @@ impl<'a> Printer<'a> {
                 let c = self.expr(cond, 0);
                 self.line(depth, &format!("assert({c});"));
             }
+            Stmt::LetFields {
+                path, fields, init, ..
+            } => {
+                let fs: Vec<&str> = fields.iter().map(|f| f.name.as_str()).collect();
+                let head = format!("let {} {{ {} }} = ", self.path(path), fs.join(", "));
+                self.multiline_value(init, depth, &head, ";");
+            }
             Stmt::Expr(e) => match &e.kind {
                 ExprKind::If { .. } | ExprKind::Block(_) | ExprKind::Match { .. } => {
                     self.expr_stmt(e, depth, "")
@@ -512,11 +519,14 @@ impl<'a> Printer<'a> {
                 format!("forall|{}| {}", bs.join(", "), self.expr(body, 0))
             }
             ExprKind::Trigger(x) => format!("#[trigger] {}", self.expr(x, 7)),
-            ExprKind::StructLit { path, fields } => {
-                let fs: Vec<String> = fields
+            ExprKind::StructLit { path, fields, rest } => {
+                let mut fs: Vec<String> = fields
                     .iter()
                     .map(|(n, x)| format!("{}: {}", n.name, self.expr(x, 0)))
                     .collect();
+                if let Some(r) = rest {
+                    fs.push(format!("..{}", self.expr(r, 0)));
+                }
                 format!("{} {{ {} }}", self.path(path), fs.join(", "))
             }
             ExprKind::Path(path) => self.path(path),
@@ -696,6 +706,16 @@ pub fn def_text(f: &FnDef) -> String {
     let mut pr = plain();
     pr.function(f, 0, None, true);
     pr.out
+}
+
+/// An expression in normal form on one line (the text of a fix).
+pub fn expr_text(e: &Expr) -> String {
+    plain().expr(e, 0)
+}
+
+/// A pattern in normal form.
+pub fn pat_text(p: &Pat) -> String {
+    pat_str(p)
 }
 
 /// Normal form of a definition without its body (its surface).

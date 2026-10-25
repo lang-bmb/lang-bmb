@@ -839,6 +839,7 @@ impl<'p, 'q> Enc<'p, 'q> {
 
     fn stmt(&mut self, s: &Stmt) {
         match s {
+            Stmt::LetFields { .. } => unreachable!("rejected by the checker (E0230)"),
             Stmt::Let { name, init, .. } => {
                 let v = self.eval(init);
                 self.vars.insert(name.name.clone(), v);
@@ -1130,6 +1131,7 @@ fn find_let(b: &Block, name: &str, out: &mut Option<TypeKind>) {
                 find_let(body, name, out);
             }
             Stmt::Assert { cond, .. } => find_let_expr(cond, name, out),
+            Stmt::LetFields { init, .. } => find_let_expr(init, name, out),
             Stmt::Expr(e) => find_let_expr(e, name, out),
         }
     }
@@ -1200,7 +1202,7 @@ fn assigned_in_block(b: &Block, out: &mut BTreeSet<String>) {
                 }
                 assigned_in_expr(value, out);
             }
-            Stmt::Let { init, .. } => assigned_in_expr(init, out),
+            Stmt::Let { init, .. } | Stmt::LetFields { init, .. } => assigned_in_expr(init, out),
             Stmt::While { cond, body, .. } => {
                 assigned_in_expr(cond, out);
                 assigned_in_block(body, out);
@@ -1328,6 +1330,7 @@ fn data_type_use(f: &FnDef, t: &Tables, tainted: &BTreeSet<String>) -> Option<Sp
     fn in_block(b: &Block, t: &Tables, tainted: &BTreeSet<String>) -> Option<Span> {
         for s in &b.stmts {
             let found = match s {
+                Stmt::LetFields { span, .. } => Some(*span),
                 Stmt::Let { ty, init, .. } => {
                     if has_named(&ty.kind) {
                         return Some(ty.span);

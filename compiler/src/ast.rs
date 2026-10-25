@@ -178,6 +178,14 @@ pub enum Stmt {
         cond: Expr,
         span: Span,
     },
+    /// `let Point { x, y } = p;` (Rust destructuring, E0230): kept so the
+    /// checker can write the field reads with their types.
+    LetFields {
+        path: Vec<Ident>,
+        fields: Vec<Ident>,
+        init: Expr,
+        span: Span,
+    },
     Expr(Expr),
 }
 
@@ -294,6 +302,9 @@ pub enum ExprKind {
     StructLit {
         path: Vec<Ident>,
         fields: Vec<(Ident, Expr)>,
+        /// `..base` (Rust update syntax, E0223): kept so the checker can
+        /// write out the missing fields.
+        rest: Option<Box<Expr>>,
     },
     /// A unit variant written as a path: `Shape::Dot` (`None` is a `Var`).
     Path(Vec<Ident>),
@@ -328,5 +339,18 @@ pub struct Pat {
     pub binds: Vec<Option<Ident>>,
     /// Written with parentheses (`V()` and `V` differ only in diagnostics).
     pub parens: bool,
+    pub origin: PatOrigin,
     pub span: Span,
+}
+
+/// Where a pattern came from. Only `Written` patterns are what the source
+/// says; the others stand in for arms the parser rebuilt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PatOrigin {
+    Written,
+    /// The `else` of `if let P = e { .. } else { .. }` (E0225).
+    IfLetElse,
+    /// A pattern form BMB has no place for (E0232), already reported: it
+    /// covers the remaining variants so no second error follows.
+    Rejected,
 }

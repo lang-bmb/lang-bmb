@@ -16,6 +16,11 @@ pub struct Parser<'a> {
     text: &'a str,
     /// Current syntactic nesting (see `MAX_NESTING`).
     depth: usize,
+    /// Inside an `if`/`while` condition or a `match` scrutinee, where `T {`
+    /// opens the body, not a struct literal (as in Rust).
+    no_struct: bool,
+    /// The type of the `impl` block being read (for the receiver fix).
+    impl_ty: Option<String>,
 }
 
 /// Maximum syntactic nesting (parenthesised and unary expressions, blocks,
@@ -102,6 +107,8 @@ impl<'a> Parser<'a> {
             pos: 0,
             diags,
             depth: 0,
+            no_struct: false,
+            impl_ty: None,
         }
     }
 
@@ -533,6 +540,20 @@ impl<'a> Parser<'a> {
         let is_struct = matches!(self.bump().tok, Tok::Ident(ref k) if k == "struct");
         let name = self.ident("type name")?;
         self.reject_generics();
+        if is_struct && self.is_p("(") {
+            let sp = self.span();
+            self.skip_group();
+            self.eat_p(";");
+            self.diags.push(
+                Diag::new(
+                    "E0233",
+                    sp.to(self.prev_span()),
+                    "tuple structs are not allowed",
+                )
+                .fix("name the fields: `struct P { a: T, b: U }`", None),
+            );
+            return Err(());
+        }
         self.expect_p("{")?;
         let kind = if is_struct {
             let mut fields = Vec::new();
@@ -552,11 +573,10 @@ impl<'a> Parser<'a> {
                 let vname = self.ident("variant name")?;
                 let mut payload = Vec::new();
                 if self.is_p("{") {
-                    self.diags.push(Diag::new(
-                        "E0207",
-                        self.span(),
-                        "struct-like variants are not supported; wrap a struct: `V(Data)`",
-                    ));
+                    self.diags.push(
+                        Diag::new("E0233", self.span(), "struct-like variants are not allowed")
+                            .fix("wrap a struct with named fields: `V(Data)`", None),
+                    );
                     self.skip_group();
                 } else if self.eat_p("(") {
                     while !self.is_p(")") {
@@ -603,6 +623,7 @@ impl<'a> Parser<'a> {
         }
         self.expect_p("{")?;
         let mut fns = Vec::new();
+        let outer = self.impl_ty.replace(ty.name.clone());
         while !self.is_p("}") && !matches!(self.peek(), Tok::Eof) {
             let start = self.pos;
             let attrs = self.attrs();
@@ -633,6 +654,7 @@ impl<'a> Parser<'a> {
                 self.bump();
             }
         }
+        self.impl_ty = outer;
         let hi = self.expect_p("}")?;
         Ok(Impl {
             ty,
@@ -673,24 +695,48 @@ impl<'a> Parser<'a> {
             };
             if short {
                 let lo = self.span();
+                let form = match (self.peek(), self.peek_at(1)) {
+                    (Tok::P("&"), Tok::Ident(m)) if m == "mut" => "&mut ",
+                    (Tok::P("&"), _) => "&",
+                    _ => "",
+                };
                 while !self.is_kw("self") {
                     self.bump();
                 }
                 let sp = lo.to(self.bump().span);
-                self.diags
-                    .push(Diag::new("E0207", sp, "the receiver needs its type").fix(
+                let mut d = Diag::new("E0228", sp, "the receiver needs its type");
+                let mut kind = TypeKind::Error;
+                d = match &self.impl_ty {
+                    Some(t) => {
+                        let named = Type {
+                            kind: TypeKind::Named {
+                                path: vec![t.clone()],
+                                args: Vec::new(),
+                            },
+                            span: sp,
+                        };
+                        kind = match form {
+                            "" => named.kind,
+                            f => TypeKind::Ref {
+                                mutable: f == "&mut ",
+                                inner: Box::new(named),
+                            },
+                        };
+                        let r = format!("self: {form}{t}");
+                        d.fix(format!("write `{r}`"), Some(r))
+                    }
+                    None => d.fix(
                         "write `self: &T`, `self: &mut T` or `self: T` with the `impl` type",
                         None,
-                    ));
+                    ),
+                };
+                self.diags.push(d);
                 params.push(Param {
                     name: Ident {
                         name: "self".into(),
                         span: sp,
                     },
-                    ty: Type {
-                        kind: TypeKind::Error,
-                        span: sp,
-                    },
+                    ty: Type { kind, span: sp },
                 });
                 if !self.eat_p(",") {
                     break;
@@ -1143,6 +1189,54 @@ impl<'a> Parser<'a> {
     fn parse_let(&mut self) -> PResult<Stmt> {
         let lo = self.bump().span;
         let mutable = self.eat_kw("mut");
+        // Rust habit: `let Point { x, y } = p;` (the checker writes the fix).
+        if matches!(self.peek(), Tok::Ident(_))
+            && matches!(self.peek_at(1), Tok::P("{") | Tok::P("::"))
+        {
+            let mut path = vec![self.ident("type name")?];
+            while self.eat_p("::") {
+                path.push(self.ident("type name")?);
+            }
+            self.expect_p("{")?;
+            let mut fields = Vec::new();
+            while !self.is_p("}") && !self.is_p("..") {
+                fields.push(self.ident("field name")?);
+                if !self.eat_p(",") {
+                    break;
+                }
+            }
+            self.eat_p("..");
+            self.expect_p("}")?;
+            self.expect_p("=")?;
+            let init = self.parse_expr()?;
+            let hi = self.expect_p(";")?;
+            return Ok(Stmt::LetFields {
+                path,
+                fields,
+                init,
+                span: lo.to(hi),
+            });
+        }
+        // Rust habit: a refutable pattern (`let Some(x) = o else { .. };`).
+        if matches!(self.peek(), Tok::Ident(_)) && matches!(self.peek_at(1), Tok::P("(")) {
+            while !self.is_p(";") && !self.is_p("}") && !matches!(self.peek(), Tok::Eof) {
+                if self.is_p("{") || self.is_p("(") || self.is_p("[") {
+                    self.skip_group();
+                } else {
+                    self.bump();
+                }
+            }
+            self.diags.push(
+                Diag::new(
+                    "E0226",
+                    lo.to(self.prev_span()),
+                    "a pattern `let` is not allowed",
+                )
+                .fix("`match` the value, one arm per variant", None),
+            );
+            self.eat_p(";");
+            return Err(());
+        }
         let name = self.ident("variable name")?;
         // A missing type is reported by the checker, which can infer it for the fix.
         let ty_missing = !self.is_p(":");
@@ -1156,6 +1250,18 @@ impl<'a> Parser<'a> {
         };
         self.expect_p("=")?;
         let init = self.parse_expr()?;
+        if self.is_kw("else") {
+            let sp = self.bump().span;
+            self.skip_group();
+            self.diags.push(
+                Diag::new(
+                    "E0226",
+                    sp.to(self.prev_span()),
+                    "`let .. else` is not allowed",
+                )
+                .fix("`match` the value, one arm per variant", None),
+            );
+        }
         let hi = self.expect_p(";")?;
         Ok(Stmt::Let {
             mutable,
@@ -1173,7 +1279,17 @@ impl<'a> Parser<'a> {
 
     fn parse_while_inner(&mut self) -> PResult<Stmt> {
         let lo = self.bump().span;
-        let cond = self.parse_expr()?;
+        if self.is_kw("let") {
+            self.diags.push(
+                Diag::new("E0226", lo.to(self.span()), "`while let` is not allowed").fix(
+                    "loop with `while` on a condition and `match` the value inside",
+                    None,
+                ),
+            );
+            self.recover_loop_body();
+            return Err(());
+        }
+        let cond = self.cond_expr()?;
         let mut invariants = Vec::new();
         let mut decreases = None;
         if self.eat_kw("invariant") {
@@ -1480,12 +1596,23 @@ impl<'a> Parser<'a> {
                 }
                 let e = self.parse_expr()?;
                 if self.is_p(",") {
-                    self.diags.push(Diag::new(
-                        "E0207",
-                        self.span(),
-                        "tuples are not supported in milestone 1",
-                    ));
-                    return Err(());
+                    self.diags.push(
+                        Diag::new("E0233", self.span(), "tuples are not allowed")
+                            .fix("use a struct with named fields", None),
+                    );
+                    // Skip to the closing `)`: the tuple stands for an error value.
+                    while !self.is_p(")") && !matches!(self.peek(), Tok::Eof) {
+                        if self.is_p("(") || self.is_p("[") || self.is_p("{") {
+                            self.skip_group();
+                        } else {
+                            self.bump();
+                        }
+                    }
+                    let hi = self.expect_p(")")?;
+                    return Ok(Expr {
+                        kind: ExprKind::Error,
+                        span: lo.to(hi),
+                    });
                 }
                 let hi = self.expect_p(")")?;
                 Ok(Expr {
@@ -1589,9 +1716,20 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// An `if`/`while` condition or `match` scrutinee: `T {` opens the body.
+    fn cond_expr(&mut self) -> PResult<Expr> {
+        let outer = std::mem::replace(&mut self.no_struct, true);
+        let r = self.parse_expr();
+        self.no_struct = outer;
+        r
+    }
+
     fn parse_if(&mut self) -> PResult<Expr> {
         let lo = self.bump().span;
-        let cond = self.parse_expr()?;
+        if self.is_kw("let") {
+            return self.parse_if_let(lo);
+        }
+        let cond = self.cond_expr()?;
         let then = self.parse_block()?;
         let mut hi = then.span;
         let els = if self.eat_kw("else") {
@@ -1620,10 +1758,72 @@ impl<'a> Parser<'a> {
         })
     }
 
+    /// Rust habit: `if let P = e { a } else { b }`, read as the `match` it
+    /// stands for (`P => a`, the rest `=> b`); the checker reports E0225 with
+    /// that `match` as the fix.
+    fn parse_if_let(&mut self, lo: Span) -> PResult<Expr> {
+        self.bump(); // `let`
+        let pat = self.parse_pat()?;
+        self.expect_p("=")?;
+        let scrut = self.cond_expr()?;
+        let then = self.parse_block()?;
+        let then_span = then.span;
+        let els = if self.eat_kw("else") {
+            if self.is_kw("if") {
+                self.nested(Self::parse_if)?
+            } else {
+                let b = self.parse_block()?;
+                let span = b.span;
+                Expr {
+                    kind: ExprKind::Block(b),
+                    span,
+                }
+            }
+        } else {
+            Expr {
+                kind: ExprKind::Unit,
+                span: then_span,
+            }
+        };
+        let else_pat = Pat {
+            path: vec![Ident {
+                name: "_".into(),
+                span: els.span,
+            }],
+            binds: Vec::new(),
+            parens: false,
+            origin: PatOrigin::IfLetElse,
+            span: els.span,
+        };
+        let span = lo.to(els.span);
+        let arms = vec![
+            Arm {
+                span: pat.span.to(then_span),
+                pat,
+                body: Expr {
+                    kind: ExprKind::Block(then),
+                    span: then_span,
+                },
+            },
+            Arm {
+                span: els.span,
+                pat: else_pat,
+                body: els,
+            },
+        ];
+        Ok(Expr {
+            kind: ExprKind::Match {
+                scrut: Box::new(scrut),
+                arms,
+            },
+            span,
+        })
+    }
+
     /// `match e { P => e, .. }` (ADR-0026 §3).
     fn parse_match(&mut self) -> PResult<Expr> {
         let lo = self.bump().span; // `match`
-        let scrut = self.parse_expr()?;
+        let scrut = self.cond_expr()?;
         self.expect_p("{")?;
         let mut arms = Vec::new();
         while !self.is_p("}") && !matches!(self.peek(), Tok::Eof) {
@@ -1647,38 +1847,44 @@ impl<'a> Parser<'a> {
         })
     }
 
-    /// A variant pattern: `T::V`, `T::V(a, _)`, `Some(x)`, `None`.
+    /// A variant pattern: `T::V`, `T::V(a, _)`, `Some(x)`, `None`, or `_`
+    /// (a wildcard arm, which the checker rejects with the arms it stands for).
     fn parse_pat(&mut self) -> PResult<Pat> {
         let lo = self.span();
-        if matches!(self.peek(), Tok::Ident(s) if s == "_") {
-            self.diags.push(
-                Diag::new(
-                    "E0207",
-                    lo,
-                    "a wildcard arm is not allowed; write one arm per variant",
-                )
-                .fix("replace `_` with the missing variants (same body)", None),
-            );
-            // Keep parsing the arm, so the rest of the unit is read normally.
-            let w = self.bump();
-            return Ok(Pat {
-                path: vec![Ident {
-                    name: "_".into(),
-                    span: w.span,
-                }],
-                binds: Vec::new(),
-                parens: false,
-                span: w.span,
-            });
+        let literal = matches!(self.peek(), Tok::Int(_) | Tok::Str(_) | Tok::P("-"))
+            || self.is_kw("true")
+            || self.is_kw("false");
+        if literal || self.is_p("(") || self.is_p("[") || self.is_p("&") {
+            return Ok(self.rejected_pat(
+                lo,
+                "literal, tuple and reference patterns are not allowed",
+                "`match` an enum value; compare other values with `if`",
+            ));
         }
         let mut path = vec![self.ident("variant")?];
         while self.eat_p("::") {
             path.push(self.ident("variant")?);
         }
+        if self.is_p("{") {
+            return Ok(self.rejected_pat(
+                lo,
+                "struct patterns are not allowed",
+                "bind the value and read its fields: `p.x`",
+            ));
+        }
         let mut binds = Vec::new();
         let parens = self.eat_p("(");
         if parens {
             while !self.is_p(")") {
+                let nested = !matches!(self.peek(), Tok::Ident(_))
+                    || matches!(self.peek_at(1), Tok::P("::") | Tok::P("(") | Tok::P("{"));
+                if nested {
+                    return Ok(self.rejected_pat(
+                        lo,
+                        "nested patterns are not allowed",
+                        "bind a name and `match` it in the arm body",
+                    ));
+                }
                 let b = self.ident("binding or `_`")?;
                 binds.push((b.name != "_").then_some(b));
                 if !self.eat_p(",") {
@@ -1687,12 +1893,66 @@ impl<'a> Parser<'a> {
             }
             self.expect_p(")")?;
         }
-        Ok(Pat {
+        let mut pat = Pat {
             path,
             binds,
             parens,
+            origin: PatOrigin::Written,
             span: lo.to(self.prev_span()),
-        })
+        };
+        // An or-pattern or a guard: the arm keeps its first pattern's
+        // bindings, and covers the rest so no second error follows.
+        let extra = if self.is_p("|") {
+            Some((
+                "or-patterns are not allowed",
+                "one arm per variant, with the same body",
+            ))
+        } else if self.is_kw("if") {
+            Some((
+                "guards are not allowed",
+                "test the condition in the arm body: `V(x) => if c { .. } else { .. }`",
+            ))
+        } else {
+            None
+        };
+        if let Some((msg, fix)) = extra {
+            let sp = self.span();
+            self.skip_to_arrow();
+            self.diags
+                .push(Diag::new("E0232", sp.to(self.prev_span()), msg).fix(fix, None));
+            pat.origin = PatOrigin::Rejected;
+        }
+        Ok(pat)
+    }
+
+    /// Skips the rest of a pattern, up to the arm's `=>`.
+    fn skip_to_arrow(&mut self) {
+        while !self.is_p("=>") && !self.is_p("}") && !matches!(self.peek(), Tok::Eof) {
+            if self.is_p("(") || self.is_p("[") || self.is_p("{") {
+                self.skip_group();
+            } else {
+                self.bump();
+            }
+        }
+    }
+
+    /// E0232 for a pattern form BMB has no place for; the arm covers the
+    /// remaining variants so the `match` reports nothing else.
+    fn rejected_pat(&mut self, lo: Span, msg: &str, fix: &str) -> Pat {
+        self.skip_to_arrow();
+        let span = lo.to(self.prev_span());
+        self.diags
+            .push(Diag::new("E0232", span, msg).fix(fix, None));
+        Pat {
+            path: vec![Ident {
+                name: "_".into(),
+                span,
+            }],
+            binds: Vec::new(),
+            parens: false,
+            origin: PatOrigin::Rejected,
+            span,
+        }
     }
 
     fn parse_forall(&mut self) -> PResult<Expr> {
@@ -1773,17 +2033,49 @@ impl<'a> Parser<'a> {
             });
         }
         // `T { f: e, .. }`: a struct literal starts with `{ name :`, which a
-        // block (`while k < n { x = 1; }`) never does.
+        // block (`while k < n { x = 1; }`) never does. Outside conditions a
+        // capitalized `T {` also opens one for the Rust habits `T { x, y }`
+        // (field shorthand) and `T { x: 1, ..p }` (update syntax).
+        let capital = path
+            .last()
+            .is_some_and(|i| i.name.starts_with(|c: char| c.is_ascii_uppercase()));
+        let habit = !self.no_struct
+            && capital
+            && (matches!(self.peek_at(1), Tok::P(".."))
+                || (matches!(self.peek_at(1), Tok::Ident(_))
+                    && matches!(self.peek_at(2), Tok::P(",") | Tok::P("}"))));
         if self.is_p("{")
-            && matches!(self.peek_at(1), Tok::Ident(_))
-            && matches!(self.peek_at(2), Tok::P(":"))
+            && (habit
+                || (matches!(self.peek_at(1), Tok::Ident(_))
+                    && matches!(self.peek_at(2), Tok::P(":"))))
         {
             self.bump();
             let mut fields = Vec::new();
+            let mut rest = None;
             while !self.is_p("}") {
+                if self.eat_p("..") {
+                    rest = Some(Box::new(self.parse_expr()?));
+                    break;
+                }
                 let fname = self.ident("field name")?;
-                self.expect_p(":")?;
-                let value = self.parse_expr()?;
+                let value = if self.eat_p(":") {
+                    self.parse_expr()?
+                } else {
+                    // Rust habit: field shorthand.
+                    let r = format!("{0}: {0}", fname.name);
+                    self.diags.push(
+                        Diag::new(
+                            "E0222",
+                            fname.span,
+                            format!("field shorthand `{}` is not allowed", fname.name),
+                        )
+                        .fix(format!("write `{r}`"), Some(r)),
+                    );
+                    Expr {
+                        kind: ExprKind::Var(fname.clone()),
+                        span: fname.span,
+                    }
+                };
                 fields.push((fname, value));
                 if !self.eat_p(",") {
                     break;
@@ -1791,7 +2083,7 @@ impl<'a> Parser<'a> {
             }
             let hi = self.expect_p("}")?;
             return Ok(Expr {
-                kind: ExprKind::StructLit { path, fields },
+                kind: ExprKind::StructLit { path, fields, rest },
                 span: lo.to(hi),
             });
         }

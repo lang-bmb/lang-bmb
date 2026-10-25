@@ -227,6 +227,23 @@ impl<'a> Checker<'a> {
                     span: t.name.span,
                 },
             );
+            for a in &t.attrs {
+                let d = if a.name.name == "derive" {
+                    // Rust habit: copying and specification `==` are built in.
+                    Diag::new("E0220", a.span, "`#[derive(..)]` is not used").fix(
+                        "remove it: data types copy by value and `==` is built in for specifications",
+                        Some(String::new()),
+                    )
+                } else {
+                    Diag::new(
+                        "E0605",
+                        a.span,
+                        format!("unknown attribute `{}` on a type", a.name.name),
+                    )
+                    .fix("types take no attributes", Some(String::new()))
+                };
+                self.diags.push(d);
+            }
         }
     }
 
@@ -1058,6 +1075,43 @@ impl<'a> Checker<'a> {
 
     fn stmt(&mut self, cx: &mut FnCtx, s: &Stmt, mode: Mode) {
         match s {
+            // Rust habit: destructuring. The field types make the fix.
+            Stmt::LetFields {
+                path: _,
+                fields,
+                init,
+                span,
+            } => {
+                let it = self.expr(cx, init, None, mode);
+                let decl = self.struct_fields(&it);
+                let mut lets = Vec::new();
+                for f in fields {
+                    let t = decl
+                        .as_ref()
+                        .and_then(|(_, fs)| fs.iter().find(|(n, _)| *n == f.name))
+                        .map(|(_, t)| t.clone());
+                    if let (Some(t), ExprKind::Var(v)) = (&t, &init.kind) {
+                        lets.push(format!(
+                            "let {}: {} = {}.{};",
+                            f.name,
+                            ty_str(t),
+                            v.name,
+                            f.name
+                        ));
+                    }
+                    self.declare(cx, f, t.unwrap_or(TypeKind::Error), false, false);
+                }
+                let mut d = Diag::new("E0230", *span, "destructuring `let` is not allowed");
+                d = if lets.len() == fields.len() {
+                    d.fix("read each field into its own `let`", Some(lets.join(" ")))
+                } else {
+                    d.fix(
+                        "read each field into its own `let`: `let x: T = p.x;`",
+                        None,
+                    )
+                };
+                self.diags.push(d);
+            }
             Stmt::Let {
                 mutable,
                 name,
@@ -1287,6 +1341,7 @@ impl<'a> Checker<'a> {
                 }
             },
             ExprKind::Field { base, name } => {
+                self.deref_field(e, base, name);
                 let (bt, w) = self.place_of(cx, base);
                 (self.field_type_of(&bt, name), w)
             }
@@ -1332,6 +1387,17 @@ impl<'a> Checker<'a> {
                 self.err("E0408", e.span, "invalid assignment target");
                 (TypeKind::Error, false)
             }
+        }
+    }
+
+    /// E0231: `(*p).x` is written `p.x` (fields project through references).
+    fn deref_field(&mut self, e: &Expr, base: &Expr, name: &Ident) {
+        if let ExprKind::Deref(x) = &base.kind {
+            let r = format!("{}.{}", crate::fmt::expr_text(x), name.name);
+            self.diags.push(
+                Diag::new("E0231", e.span, format!("write `{r}`"))
+                    .fix("fields are read through a reference directly", Some(r)),
+            );
         }
     }
 
@@ -1443,6 +1509,28 @@ impl<'a> Checker<'a> {
         };
         let k = vs.iter().position(|(n, _)| *n == v.name)?;
         Some((tp, k, vs[k].1.clone()))
+    }
+
+    /// `Option::V` / `Result::V` for a built-in variant `V` of that type.
+    fn builtin_path(segs: &[Ident]) -> bool {
+        segs.len() == 2
+            && matches!(
+                (segs[0].name.as_str(), segs[1].name.as_str()),
+                ("Option", "Some" | "None") | ("Result", "Ok" | "Err")
+            )
+    }
+
+    /// E0221: the built-in variants are written bare (ADR-0026 §3).
+    fn builtin_by_path(&mut self, segs: &[Ident]) {
+        let v = &segs[1].name;
+        self.diags.push(
+            Diag::new(
+                "E0221",
+                segs[0].span.to(segs[1].span),
+                format!("write `{v}`, not `{}::{v}`", segs[0].name),
+            )
+            .fix(format!("`{v}` is a built-in name"), Some(v.clone())),
+        );
     }
 
     /// Whether `segs` without its last segment names an enum.
@@ -1656,7 +1744,11 @@ impl<'a> Checker<'a> {
         st: &TypeKind,
     ) -> Option<usize> {
         let names: Vec<String> = vs.iter().map(|(n, _)| n.clone()).collect();
-        let (v, ty) = p.path.split_last().unwrap();
+        let (v, mut ty) = p.path.split_last().unwrap();
+        if Self::builtin_path(&p.path) {
+            self.builtin_by_path(&p.path);
+            ty = &[];
+        }
         let pt = if ty.is_empty() {
             match v.name.as_str() {
                 "Some" | "None" => "Option".to_string(),
@@ -1747,6 +1839,77 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// E0224 for a `_ =>` arm and E0225 for `if let`: the fix is the whole
+    /// `match`, one arm per variant in declaration order, the wildcard's
+    /// body on each variant it stood for.
+    #[allow(clippy::too_many_arguments)]
+    fn wildcard_arms(
+        &mut self,
+        cx: &FnCtx,
+        scrut: &Expr,
+        arms: &[Arm],
+        kinds: &[Option<usize>],
+        tp: &str,
+        vs: &[VariantSig],
+        span: Span,
+    ) {
+        let wild = arms.iter().position(|a| {
+            a.pat.origin == PatOrigin::IfLetElse
+                || (a.pat.origin == PatOrigin::Written
+                    && a.pat.path.len() == 1
+                    && a.pat.path[0].name == "_")
+        });
+        let Some(w) = wild else {
+            return;
+        };
+        let if_let = arms[w].pat.origin == PatOrigin::IfLetElse;
+        // Mechanical only when every other arm names its variant.
+        let exact = arms
+            .iter()
+            .zip(kinds)
+            .enumerate()
+            .all(|(i, (a, k))| i == w || (k.is_some() && a.pat.origin == PatOrigin::Written));
+        let text = exact.then(|| {
+            let wild_body = crate::fmt::expr_text(&arms[w].body);
+            let lines: Vec<String> = (0..vs.len())
+                .map(|k| match kinds.iter().position(|x| *x == Some(k)) {
+                    Some(i) => format!(
+                        "{} => {}",
+                        crate::fmt::pat_text(&arms[i].pat),
+                        crate::fmt::expr_text(&arms[i].body)
+                    ),
+                    None => {
+                        let vt = Self::variant_text(tp, &vs[k].0, &cx.mod_path);
+                        let pat = if vs[k].1.is_empty() {
+                            vt
+                        } else {
+                            format!("{vt}({})", vec!["_"; vs[k].1.len()].join(", "))
+                        };
+                        format!("{pat} => {wild_body}")
+                    }
+                })
+                .collect();
+            format!(
+                "match {} {{ {} }}",
+                crate::fmt::expr_text(scrut),
+                lines.join(", ")
+            )
+        });
+        let d = if if_let {
+            Diag::new("E0225", span, "`if let` is not allowed")
+        } else {
+            Diag::new("E0224", span, "a wildcard arm is not allowed")
+        };
+        self.diags.push(d.fix(
+            if if_let {
+                "`match` with one arm per variant"
+            } else {
+                "one arm per variant, the wildcard's body on each it stood for"
+            },
+            text,
+        ));
+    }
+
     /// `match s { E::A => e0, E::B(x, _) => e1 }`: one arm per variant in
     /// declaration order, each payload position a new name or `_`, arms of
     /// one type (ADR-0026 §3).
@@ -1788,8 +1951,9 @@ impl<'a> Checker<'a> {
         let mut unresolved = false;
         for a in arms {
             let p = &a.pat;
-            if p.path.len() == 1 && p.path[0].name == "_" {
-                // Reported by the parser (E0207).
+            // A wildcard (E0224), the `else` of an `if let` (E0225) or a
+            // pattern the parser rejected (E0232): covers the rest.
+            if p.origin != PatOrigin::Written || (p.path.len() == 1 && p.path[0].name == "_") {
                 wildcard = true;
                 kinds.push(None);
                 bind_tys.push(Vec::new());
@@ -1862,6 +2026,7 @@ impl<'a> Checker<'a> {
                     }
                 })
                 .collect();
+            self.wildcard_arms(cx, scrut, arms, &kinds, tp, vs, span);
             if !wildcard && !unresolved && !missing.is_empty() {
                 self.diags.push(
                     Diag::new(
@@ -1940,6 +2105,7 @@ impl<'a> Checker<'a> {
         cx: &mut FnCtx,
         path: &[Ident],
         fields: &[(Ident, Expr)],
+        rest: Option<&Expr>,
         span: Span,
         mode: Mode,
     ) -> TypeKind {
@@ -2011,7 +2177,34 @@ impl<'a> Checker<'a> {
             .map(|(n, _)| n.as_str())
             .filter(|n| !given.contains(*n))
             .collect();
-        if !missing.is_empty() {
+        if let Some(r) = rest {
+            // Rust habit: `..base`. Every field is written out instead.
+            let want = TypeKind::Named {
+                path: tp.split("::").map(String::from).collect(),
+                args: Vec::new(),
+            };
+            let rt = self.expr(cx, r, Some(&want), mode);
+            self.expect_ty(&rt, &want, r.span);
+            // The replacement is the whole literal, so the span is too.
+            let mut d = Diag::new("E0223", span, "struct update syntax `..` is not allowed");
+            d = if matches!(r.kind, ExprKind::Var(_) | ExprKind::Field { .. }) {
+                let base = crate::fmt::expr_text(r);
+                let all: Vec<String> = fs
+                    .iter()
+                    .map(|(n, _)| match fields.iter().find(|(f, _)| f.name == *n) {
+                        Some((_, x)) => format!("{n}: {}", crate::fmt::expr_text(x)),
+                        None => format!("{n}: {base}.{n}"),
+                    })
+                    .collect();
+                d.fix(
+                    "write every field",
+                    Some(format!("{name} {{ {} }}", all.join(", "))),
+                )
+            } else {
+                d.fix("write every field: `f: base.f`", None)
+            };
+            self.diags.push(d);
+        } else if !missing.is_empty() {
             self.diags.push(
                 Diag::new(
                     "E0422",
@@ -2065,9 +2258,17 @@ impl<'a> Checker<'a> {
                 self.err("E0301", e.span, "a path must be followed by call arguments");
                 TypeKind::Error
             }
-            ExprKind::StructLit { path, fields } => self.struct_lit(cx, path, fields, e.span, mode),
+            ExprKind::StructLit { path, fields, rest } => {
+                self.struct_lit(cx, path, fields, rest.as_deref(), e.span, mode)
+            }
+            ExprKind::Path(path) if Self::builtin_path(path) => {
+                self.builtin_by_path(path);
+                let v = &path[1].name;
+                self.builtin_variant(cx, v, &[], expected, e.span, mode)
+            }
             ExprKind::Path(path) => self.variant_value(cx, path, &[], e.span, mode),
             ExprKind::Field { base, name } => {
+                self.deref_field(e, base, name);
                 let bt = self.expr(cx, base, None, mode);
                 self.field_type_of(&bt, name)
             }
@@ -2162,7 +2363,15 @@ impl<'a> Checker<'a> {
                     }
                 }
             }
-            ExprKind::Method { recv, name, args } => self.method(cx, recv, name, args, mode),
+            ExprKind::Method { recv, name, args } => {
+                self.method(cx, recv, name, args, e.span, mode)
+            }
+            // Rust habit: `Option::Some(x)`, `Result::Err(e)`, `Option::None`.
+            ExprKind::Call { path, args } if Self::builtin_path(path) => {
+                self.builtin_by_path(path);
+                let v = &path[1].name;
+                self.builtin_variant(cx, v, args, expected, e.span, mode)
+            }
             // The built-in variants of `Option` and `Result` (ADR-0026).
             ExprKind::Call { path, args }
                 if path.len() == 1 && matches!(path[0].name.as_str(), "Some" | "Ok" | "Err") =>
@@ -2532,9 +2741,63 @@ impl<'a> Checker<'a> {
         recv: &Expr,
         name: &Ident,
         args: &[Expr],
+        span: Span,
         mode: Mode,
     ) -> TypeKind {
         let rt = self.expr(cx, recv, None, mode);
+        let value = match &rt {
+            TypeKind::Ref { inner, .. } => &inner.kind,
+            t => t,
+        };
+        if let TypeKind::Named { path, .. } = value {
+            let tp = path.join("::");
+            if (tp == "Option" || tp == "Result")
+                && matches!(name.name.as_str(), "unwrap" | "expect")
+            {
+                for a in args {
+                    self.expr(cx, a, None, mode);
+                }
+                let arms = if tp == "Option" {
+                    "None => .., Some(v) => v"
+                } else {
+                    "Ok(v) => v, Err(e) => .."
+                };
+                self.diags.push(
+                    Diag::new("E0229", span, format!("`.{}()` is not allowed", name.name))
+                        .fix(format!("`match` both cases: `match x {{ {arms} }}`"), None),
+                );
+                return TypeKind::Error;
+            }
+            if let Some(sig) = self.fns.get(&format!("{tp}::{}", name.name)).cloned() {
+                // Rust habit: a method call. The call is by path (ADR-0026 §3).
+                let amp = match sig.params.first() {
+                    Some(TypeKind::Ref { mutable: true, .. }) => "&mut ",
+                    Some(TypeKind::Ref { .. }) => "&",
+                    _ => "",
+                };
+                let r = crate::fmt::expr_text(recv);
+                let first = if matches!(rt, TypeKind::Ref { .. }) || amp.is_empty() {
+                    r
+                } else {
+                    format!("{amp}{r}")
+                };
+                let all: Vec<String> = std::iter::once(first)
+                    .chain(args.iter().map(crate::fmt::expr_text))
+                    .collect();
+                let callee = Self::variant_text(&tp, &name.name, &cx.mod_path);
+                self.diags.push(
+                    Diag::new("E0227", span, "method calls are not allowed").fix(
+                        "call by path",
+                        Some(format!("{callee}({})", all.join(", "))),
+                    ),
+                );
+                for (a, t) in args.iter().zip(sig.params.iter().skip(1)) {
+                    let at = self.expr(cx, a, Some(t), mode);
+                    self.expect_ty(&at, t, a.span);
+                }
+                return sig.ret.clone();
+            }
+        }
         match name.name.as_str() {
             "len" => {
                 if !args.is_empty() {
@@ -3006,7 +3269,7 @@ fn collect_triggers<'e>(e: &'e Expr, out: &mut Vec<&'e Expr>) {
 /// True if any statement or the tail of `b` mentions `name`.
 fn block_mentions(b: &Block, name: &str) -> bool {
     b.stmts.iter().any(|s| match s {
-        Stmt::Let { init, .. } => mentions_strict(init, name),
+        Stmt::Let { init, .. } | Stmt::LetFields { init, .. } => mentions_strict(init, name),
         Stmt::Assign { target, value, .. } => {
             mentions_strict(target, name) || mentions_strict(value, name)
         }

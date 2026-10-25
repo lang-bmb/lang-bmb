@@ -38,6 +38,39 @@ pub const CODES: &[(&str, &str)] = &[
     ),
     ("E0210", "`mut` parameters are not allowed"),
     ("E0211", "comparison operators cannot be chained"),
+    // E0220-E0233: Rust habits around data types (ADR-0026 §5)
+    ("E0220", "`#[derive(..)]` is not used"),
+    (
+        "E0221",
+        "built-in variants are written bare (`Some`, not `Option::Some`)",
+    ),
+    ("E0222", "field shorthand is not allowed (`x: x`)"),
+    ("E0223", "struct update syntax `..` is not allowed"),
+    ("E0224", "a wildcard arm is not allowed"),
+    ("E0225", "`if let` is not allowed; use `match`"),
+    (
+        "E0226",
+        "`while let`, `let .. else` and pattern `let` are not allowed",
+    ),
+    (
+        "E0227",
+        "method calls are not allowed; call by path (`T::f(&x)`)",
+    ),
+    ("E0228", "the receiver needs its type (`self: &T`)"),
+    (
+        "E0229",
+        "`.unwrap()` / `.expect()` are not allowed; `match` both cases",
+    ),
+    ("E0230", "destructuring `let` is not allowed"),
+    ("E0231", "`(*p).x` is written `p.x`"),
+    (
+        "E0232",
+        "pattern form not allowed (guard, or, literal, nested, struct)",
+    ),
+    (
+        "E0233",
+        "tuples, tuple structs and struct-like variants are not allowed",
+    ),
     // E03xx: names
     ("E0301", "unknown name"),
     ("E0302", "duplicate definition"),

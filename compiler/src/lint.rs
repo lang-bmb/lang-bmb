@@ -586,7 +586,7 @@ fn mutate(e: &mut Expr, variant: usize) {
 fn walk_block(b: &mut Block, f: &mut dyn FnMut(&mut Expr, Option<Span>)) {
     for s in &mut b.stmts {
         match s {
-            Stmt::Let { init, .. } => walk_expr(init, None, f),
+            Stmt::Let { init, .. } | Stmt::LetFields { init, .. } => walk_expr(init, None, f),
             Stmt::Assign { target, value, .. } => {
                 walk_expr(target, None, f);
                 walk_expr(value, None, f);

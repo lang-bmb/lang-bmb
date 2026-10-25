@@ -184,7 +184,7 @@ mod geo {
 
     #[effects(pure)]
     fn sum(p: &Point) -> i64 {
-        p.x + (*p).y
+        p.x + p.y
     }
 
     #[effects(pure)]
@@ -209,7 +209,7 @@ mod geo {
     #[effects(pure)]
     fn shift(p: &mut Point, d: i64) -> () {
         p.x = d;
-        (*p).y = d;
+        p.y = d;
     }
 
     #[effects(pure)]
