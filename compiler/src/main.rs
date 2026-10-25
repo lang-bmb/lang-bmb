@@ -9,8 +9,9 @@ const USAGE: &str = "usage:
   bmb stability [--seeds N] <file.bmb>...
                             prove under solver seeds 0..N (default 5); per-definition verdicts
                             and rlimit as JSONL; fails if a verdict depends on the seed
-  bmb emit-llvm [--cache DIR] <file.bmb>... -o OUT.ll
-                            LLVM IR; unproved obligations keep runtime checks
+  bmb emit-llvm [--cache DIR] [--all-checks] <file.bmb>... -o OUT.ll
+                            LLVM IR; unproved obligations keep runtime checks;
+                            --all-checks skips the proof and keeps every check
   bmb build [--cache DIR] <file.bmb>... -o OUT
                             check, prove (all obligations) and build an executable
   bmb fmt [--check] <file.bmb>...
@@ -34,6 +35,9 @@ const USAGE: &str = "usage:
                             specification does not distinguish; re-verifications and mutants are
                             capped; fails only if the program does not check or the gate cannot run;
                             --cache uses and updates the caches in DIR as `verify --cache` does
+  bmb mutate --def PATH [--def PATH].. <file.bmb>...
+                            every W0904 body mutation of the named functions, unproved, as
+                            JSONL rows with the changed unit's normal form, then a summary
   bmb hash <file.bmb>...    definition hashes (body, iface) as JSONL
   bmb map [--cache DIR] [L0|L1|L2|all] <file.bmb>...
                             standard maps as JSONL (ADR-0020)
@@ -210,12 +214,24 @@ fn run() -> ExitCode {
                 cache = Some(inputs.remove(c + 1));
                 inputs.remove(c);
             }
+            // emit-llvm --all-checks: no proof, every obligation keeps its
+            // runtime check (runs unproved programs such as mutants, 2A-10).
+            let mut all_checks = false;
+            if cmd == "emit-llvm"
+                && let Some(c) = inputs.iter().position(|a| a == "--all-checks")
+            {
+                inputs.remove(c);
+                all_checks = true;
+            }
             let files = match read_files(&inputs) {
                 Ok(f) => f,
                 Err(code) => return code,
             };
-            let out =
-                bmb::emit_llvm_sources_cached(&files, cache.as_deref().map(std::path::Path::new));
+            let out = if all_checks {
+                bmb::emit_llvm_sources_with(&files, true)
+            } else {
+                bmb::emit_llvm_sources_cached(&files, cache.as_deref().map(std::path::Path::new))
+            };
             print!("{}", out.verify.output);
             let Some(ir) = out.ir else {
                 return ExitCode::from(1);
@@ -406,6 +422,37 @@ fn run() -> ExitCode {
                 }
                 Err(diags) => {
                     print!("{diags}");
+                    ExitCode::from(1)
+                }
+            }
+        }
+        Some("mutate") if args.len() > 1 => {
+            let mut defs = Vec::new();
+            let mut rest = &args[1..];
+            while let [flag, def, tail @ ..] = rest
+                && flag == "--def"
+            {
+                defs.push(def.clone());
+                rest = tail;
+            }
+            if defs.is_empty() || rest.is_empty() {
+                eprintln!("{USAGE}");
+                return ExitCode::from(2);
+            }
+            let files = match read_files(rest) {
+                Ok(f) => f,
+                Err(code) => return code,
+            };
+            match bmb::lint::mutate_sources(&files, &defs) {
+                Ok(ms) => {
+                    for m in &ms {
+                        print!("{}", m.row());
+                    }
+                    println!("{{\"summary\":true,\"mutants\":{}}}", ms.len());
+                    ExitCode::SUCCESS
+                }
+                Err(e) => {
+                    print!("{e}");
                     ExitCode::from(1)
                 }
             }

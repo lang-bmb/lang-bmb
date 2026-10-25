@@ -1,0 +1,711 @@
+{
+ "task": "w02-find-last",
+ "generator": "bench/m1/bsb_gen.py",
+ "max_witnesses": 2,
+ "targets": [
+  {
+   "def": "tasks::find_last",
+   "signature": "fn find_last(a: &[i64], v: i64) -> (r: usize)",
+   "mutated": [
+    "tasks::find_last"
+   ],
+   "inputs": [
+    {
+     "a": [],
+     "v": 0
+    },
+    {
+     "a": [
+      1
+     ],
+     "v": 1
+    },
+    {
+     "a": [
+      1
+     ],
+     "v": 2
+    },
+    {
+     "a": [
+      1,
+      1
+     ],
+     "v": 1
+    },
+    {
+     "a": [
+      1,
+      2,
+      1
+     ],
+     "v": 1
+    },
+    {
+     "a": [
+      2,
+      1,
+      1
+     ],
+     "v": 2
+    },
+    {
+     "a": [
+      0,
+      1,
+      2
+     ],
+     "v": 2
+    },
+    {
+     "a": [
+      2,
+      1,
+      0,
+      2
+     ],
+     "v": 1
+    },
+    {
+     "a": [
+      1,
+      2,
+      2,
+      2
+     ],
+     "v": 2
+    },
+    {
+     "a": [
+      1,
+      2,
+      2
+     ],
+     "v": 1
+    },
+    {
+     "a": [
+      2,
+      1,
+      2,
+      2
+     ],
+     "v": 2
+    },
+    {
+     "a": [
+      0,
+      1,
+      0,
+      0,
+      0
+     ],
+     "v": 1
+    },
+    {
+     "a": [
+      1,
+      0
+     ],
+     "v": 2
+    },
+    {
+     "a": [
+      2,
+      0,
+      1,
+      0
+     ],
+     "v": 2
+    },
+    {
+     "a": [
+      2,
+      2
+     ],
+     "v": 1
+    },
+    {
+     "a": [],
+     "v": 1
+    },
+    {
+     "a": [
+      0,
+      1,
+      1,
+      1,
+      1
+     ],
+     "v": 1
+    },
+    {
+     "a": [
+      1,
+      2
+     ],
+     "v": 0
+    },
+    {
+     "a": [
+      2,
+      2,
+      1,
+      1,
+      0
+     ],
+     "v": 0
+    },
+    {
+     "a": [
+      2,
+      1
+     ],
+     "v": 0
+    },
+    {
+     "a": [
+      2,
+      2,
+      0,
+      2
+     ],
+     "v": 1
+    },
+    {
+     "a": [],
+     "v": 2
+    },
+    {
+     "a": [
+      1,
+      0
+     ],
+     "v": 0
+    },
+    {
+     "a": [
+      2,
+      0,
+      2,
+      2,
+      2
+     ],
+     "v": 0
+    },
+    {
+     "a": [
+      1,
+      1,
+      0,
+      1
+     ],
+     "v": 0
+    },
+    {
+     "a": [
+      1
+     ],
+     "v": 0
+    },
+    {
+     "a": [
+      2,
+      2,
+      0
+     ],
+     "v": 1
+    },
+    {
+     "a": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "v": 1
+    },
+    {
+     "a": [
+      0,
+      2,
+      2,
+      2,
+      1
+     ],
+     "v": 2
+    }
+   ],
+   "counts": {
+    "generated": 15,
+    "kept": 10,
+    "equivalent": 0,
+    "trap_only": 5,
+    "allowed": 0,
+    "no_check": 0
+   },
+   "mutants": [
+    {
+     "def": "tasks::find_last",
+     "site": 2,
+     "line": 13,
+     "col": 19,
+     "before": "k > 0",
+     "after": "k > 1",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1
+        ],
+        "v": 2
+       },
+       "expected": {
+        "r": 1
+       },
+       "output": {
+        "r": 0
+       }
+      },
+      {
+       "input": {
+        "a": [
+         1,
+         0
+        ],
+        "v": 2
+       },
+       "expected": {
+        "r": 2
+       },
+       "output": {
+        "r": 0
+       }
+      }
+     ],
+     "id": "m00"
+    },
+    {
+     "def": "tasks::find_last",
+     "site": 3,
+     "line": 13,
+     "col": 24,
+     "before": "a[k - 1] != v",
+     "after": "a[k - 1] == v",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1
+        ],
+        "v": 1
+       },
+       "expected": {
+        "r": 0
+       },
+       "output": {
+        "r": 1
+       }
+      },
+      {
+       "input": {
+        "a": [
+         1
+        ],
+        "v": 2
+       },
+       "expected": {
+        "r": 1
+       },
+       "output": {
+        "r": 0
+       }
+      }
+     ],
+     "id": "m01"
+    },
+    {
+     "def": "tasks::find_last",
+     "site": 5,
+     "line": 13,
+     "col": 24,
+     "before": "a[k - 1]",
+     "after": "a[k - 1 - 1]",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1,
+         2,
+         1
+        ],
+        "v": 1
+       },
+       "expected": {
+        "r": 2
+       },
+       "output": {
+        "r": 1
+       }
+      },
+      {
+       "input": {
+        "a": [
+         2,
+         1,
+         1
+        ],
+        "v": 2
+       },
+       "expected": {
+        "r": 0
+       },
+       "output": {
+        "r": 1
+       }
+      }
+     ],
+     "id": "m02"
+    },
+    {
+     "def": "tasks::find_last",
+     "site": 7,
+     "line": 13,
+     "col": 30,
+     "before": "k - 1",
+     "after": "k - 2",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1,
+         2,
+         1
+        ],
+        "v": 1
+       },
+       "expected": {
+        "r": 2
+       },
+       "output": {
+        "r": 1
+       }
+      },
+      {
+       "input": {
+        "a": [
+         2,
+         1,
+         1
+        ],
+        "v": 2
+       },
+       "expected": {
+        "r": 0
+       },
+       "output": {
+        "r": 1
+       }
+      }
+     ],
+     "id": "m03"
+    },
+    {
+     "def": "tasks::find_last",
+     "site": 9,
+     "line": 17,
+     "col": 21,
+     "before": "k - 1",
+     "after": "k - 2",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         2,
+         0,
+         1,
+         0
+        ],
+        "v": 2
+       },
+       "expected": {
+        "r": 0
+       },
+       "output": {
+        "r": 4
+       }
+      },
+      {
+       "input": {
+        "a": [
+         1,
+         1,
+         0,
+         1
+        ],
+        "v": 0
+       },
+       "expected": {
+        "r": 2
+       },
+       "output": {
+        "r": 4
+       }
+      }
+     ],
+     "id": "m04"
+    },
+    {
+     "def": "tasks::find_last",
+     "site": 10,
+     "line": 19,
+     "col": 9,
+     "before": "k == 0",
+     "after": "!(k == 0)",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1
+        ],
+        "v": 1
+       },
+       "expected": {
+        "r": 0
+       },
+       "output": {
+        "r": 1
+       }
+      },
+      {
+       "input": {
+        "a": [
+         1,
+         1
+        ],
+        "v": 1
+       },
+       "expected": {
+        "r": 1
+       },
+       "output": {
+        "r": 2
+       }
+      }
+     ],
+     "id": "m05"
+    },
+    {
+     "def": "tasks::find_last",
+     "site": 11,
+     "line": 19,
+     "col": 12,
+     "before": "k == 0",
+     "after": "k != 0",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1
+        ],
+        "v": 1
+       },
+       "expected": {
+        "r": 0
+       },
+       "output": {
+        "r": 1
+       }
+      },
+      {
+       "input": {
+        "a": [
+         1,
+         1
+        ],
+        "v": 1
+       },
+       "expected": {
+        "r": 1
+       },
+       "output": {
+        "r": 2
+       }
+      }
+     ],
+     "id": "m06"
+    },
+    {
+     "def": "tasks::find_last",
+     "site": 12,
+     "line": 19,
+     "col": 17,
+     "before": "k == 0",
+     "after": "k == 1",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1
+        ],
+        "v": 1
+       },
+       "expected": {
+        "r": 0
+       },
+       "output": {
+        "r": 1
+       }
+      },
+      {
+       "input": {
+        "a": [
+         2,
+         1,
+         1
+        ],
+        "v": 2
+       },
+       "expected": {
+        "r": 0
+       },
+       "output": {
+        "r": 3
+       }
+      }
+     ],
+     "id": "m07"
+    },
+    {
+     "def": "tasks::find_last",
+     "site": 13,
+     "line": 22,
+     "col": 13,
+     "before": "k - 1",
+     "after": "k + 1",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1
+        ],
+        "v": 1
+       },
+       "expected": {
+        "r": 0
+       },
+       "output": {
+        "r": 2
+       }
+      },
+      {
+       "input": {
+        "a": [
+         1,
+         1
+        ],
+        "v": 1
+       },
+       "expected": {
+        "r": 1
+       },
+       "output": {
+        "r": 3
+       }
+      }
+     ],
+     "id": "m08"
+    },
+    {
+     "def": "tasks::find_last",
+     "site": 14,
+     "line": 22,
+     "col": 17,
+     "before": "k - 1",
+     "after": "k - 2",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1,
+         1
+        ],
+        "v": 1
+       },
+       "expected": {
+        "r": 1
+       },
+       "output": {
+        "r": 0
+       }
+      },
+      {
+       "input": {
+        "a": [
+         1,
+         2,
+         1
+        ],
+        "v": 1
+       },
+       "expected": {
+        "r": 2
+       },
+       "output": {
+        "r": 1
+       }
+      }
+     ],
+     "id": "m09"
+    }
+   ],
+   "discarded": [
+    {
+     "def": "tasks::find_last",
+     "site": 0,
+     "line": 13,
+     "col": 15,
+     "before": "k > 0 && a[k - 1] != v",
+     "after": "k > 0 || a[k - 1] != v",
+     "reason": "trap_only"
+    },
+    {
+     "def": "tasks::find_last",
+     "site": 1,
+     "line": 13,
+     "col": 15,
+     "before": "k > 0",
+     "after": "k >= 0",
+     "reason": "trap_only"
+    },
+    {
+     "def": "tasks::find_last",
+     "site": 4,
+     "line": 13,
+     "col": 24,
+     "before": "a[k - 1]",
+     "after": "a[k - 1 + 1]",
+     "reason": "trap_only"
+    },
+    {
+     "def": "tasks::find_last",
+     "site": 6,
+     "line": 13,
+     "col": 26,
+     "before": "k - 1",
+     "after": "k + 1",
+     "reason": "trap_only"
+    },
+    {
+     "def": "tasks::find_last",
+     "site": 8,
+     "line": 17,
+     "col": 17,
+     "before": "k - 1",
+     "after": "k + 1",
+     "reason": "trap_only"
+    }
+   ]
+  }
+ ]
+}

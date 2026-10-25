@@ -7,6 +7,7 @@ import copy
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -269,6 +270,94 @@ class AlsoCheck(unittest.TestCase):
         self.assertEqual((v["signature_ok"], v["success"]), (False, False))
 
 
+def m1b_task(name):
+    with open(os.path.join(M1B, "tasks", name + ".json")) as f:
+        return json.load(f)
+
+
+class SpecKill(OtherSet):
+    """BSB (backlog 2A-10): hidden mutants of m1b write tasks and the kill rate."""
+
+    def test_mutant_files_match_their_manifest(self):
+        self.assertTrue(harness.bsb.check_manifest(M1B))
+        self.assertFalse(harness.bsb.check_manifest(HERE))  # m1 has no mutant sets
+
+    def test_every_write_task_has_a_mutant_set(self):
+        tdir = os.path.join(M1B, "tasks")
+        for f in sorted(os.listdir(tdir)):
+            t = json.load(open(os.path.join(tdir, f)))
+            if t["kind"] != "write":
+                continue
+            data = harness.bsb.load(M1B, t["id"])
+            self.assertEqual([x["def"] for x in data["targets"]],
+                             [t["def"]] + [x["def"] for x in t.get("also_check", [])])
+            for target in data["targets"]:
+                c = target["counts"]
+                self.assertEqual(c["generated"], len(target["mutants"]) + len(target["discarded"]))
+                self.assertEqual(c["kept"], len(target["mutants"]))
+                self.assertEqual(c["generated"], c["kept"] + sum(c[k] for k in (
+                    "equivalent", "trap_only", "allowed", "no_check")))
+                for m in target["mutants"]:
+                    self.assertTrue(1 <= len(m["witnesses"]) <= data["max_witnesses"])
+                    for w in m["witnesses"]:
+                        # A witness distinguishes the mutant from the reference.
+                        self.assertNotEqual(w["expected"], w["output"])
+                        self.assertIn(w["input"], target["inputs"])
+            self.assertGreater(sum(len(x["mutants"]) for x in data["targets"]), 0, t["id"])
+
+    def test_generator_reproduces_the_files(self):
+        r = subprocess.run([sys.executable, os.path.join(HERE, "bsb_gen.py"), "--check",
+                            "--tasks", "w03-max3,w23-div-floor"], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    def test_reference_contract_kills_every_mutant_and_weak_fewer(self):
+        t = m1b_task("w04-argmin")
+        strong = run_with_ops(t, t["reference"])
+        self.assertTrue(strong["success"])
+        self.assertEqual(strong["bsb_killed"], strong["bsb_mutants"])
+        self.assertGreater(strong["bsb_mutants"], 0)
+        self.assertEqual(strong["bsb_survivors"], [])
+        weak = run_with_ops(t, t["weak_reference"])
+        self.assertTrue(weak["verified"] and weak["signature_ok"])
+        self.assertLess(weak["bsb_killed"], strong["bsb_killed"])
+        self.assertEqual(len(weak["bsb_survivors"]), weak["bsb_mutants"] - weak["bsb_killed"])
+
+    def test_no_postcondition_kills_nothing(self):
+        # The kill check needs the contract: a verified body alone kills nothing.
+        t = m1b_task("w03-max3")
+        ops = [{"op": "unit", "path": "tasks", "summary": "과제 구현"},
+               {"op": "put", "unit": "tasks", "code":
+                "#[effects(pure)]\nfn max3(a: i64, b: i64, c: i64) -> (r: i64) {\n"
+                "    num::max2(num::max2(a, b), c)\n}"}]
+        r = run_with_ops(t, ops)
+        self.assertEqual((r["verified"], r["signature_ok"], r["success"]), (True, True, False))
+        self.assertEqual((r["bsb_killed"], r["bsb_mutants"]), (0, 1))
+
+    def test_unverified_workspace_kills_nothing(self):
+        t = m1b_task("w04-argmin")
+        v = harness.spec_kill(t, "no-such-workspace", {"verified": False, "signature_ok": True})
+        self.assertEqual(v["bsb_killed"], 0)
+        self.assertEqual(len(v["bsb_survivors"]), v["bsb_mutants"])
+
+    def test_kill_function_text(self):
+        w = {"input": {"a": [3, -1], "x": 5, "f": True}, "output": {"r": False, "a": [-1, 3]}}
+        sig = "fn f(a: &mut [i64], x: i64, f: bool) -> (r: bool)"
+        text = harness.bsb.kill_fn("k0_1", ["p", "u::q"], "u::f", sig, [w])
+        self.assertEqual(text, "#[effects(pure)]\n#[uses(p, u::q)]\nfn k0_1() -> () {\n"
+                               "    let mut a: [i64; 2] = [3, -1];\n"
+                               "    let bsb_r: bool = u::f(&mut a, 5, true);\n"
+                               "    assert(!(!bsb_r && a[0] == -1 && a[1] == 3));\n}\n")
+        # Two witnesses: independent calls; the outputs cannot all occur.
+        w2 = {"input": {"a": [], "x": 0, "f": False}, "output": {"r": True, "a": []}}
+        text = harness.bsb.kill_fn("k0_1", [], "u::f", sig, [w, w2])
+        self.assertEqual(text, "#[effects(pure)]\nfn k0_1() -> () {\n"
+                               "    let mut a_0: [i64; 2] = [3, -1];\n"
+                               "    let bsb_r0: bool = u::f(&mut a_0, 5, true);\n"
+                               "    let mut a_1: [i64; 0] = [];\n"
+                               "    let bsb_r1: bool = u::f(&mut a_1, 0, false);\n"
+                               "    assert(!((!bsb_r0 && a_0[0] == -1 && a_0[1] == 3) && (bsb_r1)));\n}\n")
+
+
 class Summarize(unittest.TestCase):
     def write(self, d, name, task_set):
         head = {"summary": True, "agent": "oracle"}
@@ -296,6 +385,18 @@ class Summarize(unittest.TestCase):
             out = harness.summarize([a, b])
             self.assertIn("| 과제 집합 | m1b | m1b |", out)
             self.assertIn("| 작성 1회 성공률 | 1/1 | 1/1 |", out)
+            # No BSB fields (m1, or results from before 2A-10): no rate.
+            self.assertIn("| 명세 변이체 판별률 | — | — |", out)
+
+    def test_kill_rate_row(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = self.write(d, "a.jsonl", "m1b")
+            recs = [json.loads(l) for l in open(p)]
+            extra = dict(recs[0], id="w02", bsb_mutants=3, bsb_killed=1)
+            recs[0].update(bsb_mutants=5, bsb_killed=5)
+            with open(p, "w") as f:
+                f.write("".join(json.dumps(r) + "\n" for r in [recs[0], extra, recs[1]]))
+            self.assertIn("| 명세 변이체 판별률 | 6/8 (75.0%) |", harness.summarize([p]))
 
 
 if __name__ == "__main__":
