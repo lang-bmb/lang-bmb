@@ -5,11 +5,19 @@
 //! counterexamples break the function, both builds print what the
 //! interpreter computes.
 //!
+//! Backlog 2C-04 (ADR-0028 §9) adds `saturating_*`, `checked_*` (a `match`
+//! with a default for `None`) and conversions through `i64` and `usize`: a
+//! value converted to `i64` (out of range above `i64::MAX`), a signed
+//! difference converted back to `u64` (out of range when negative) and the
+//! same through `.ok()`. The interpreter computes them with Rust's own
+//! methods; an out-of-range `.unwrap()` is a fault.
+//!
 //! `BMB_SOUND_ITERS` / `BMB_SOUND_SEED` as in `soundness.rs`.
 
 use std::fmt::Write as _;
 use std::fs;
 use std::process::Command;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 mod common;
 
@@ -33,6 +41,26 @@ enum U {
     Bin(Op, Box<U>, Box<U>),
     /// `if a < b { t } else { e }`
     IfLt(Box<U>, Box<U>, Box<U>, Box<U>),
+    /// `a.saturating_op(b)` (`Add`, `Sub` or `Mul`).
+    Sat(Op, Box<U>, Box<U>),
+    /// `match a.checked_op(b) { None => d, Some(v) => v }` (`v` is the
+    /// binding's name).
+    Checked(Op, Box<U>, Box<U>, Box<U>, String),
+    /// `u64::try_from(i64::try_from(a).unwrap()).unwrap()`
+    ViaI64(Box<U>),
+    /// `u64::try_from(usize::try_from(a).unwrap()).unwrap()`
+    ViaUsize(Box<U>),
+    /// `u64::try_from(i64::try_from(a).unwrap() - i64::try_from(b).unwrap()).unwrap()`
+    Diff(Box<U>, Box<U>),
+    /// The same difference through `.ok()`, `d` for `None`.
+    DiffOk(Box<U>, Box<U>, Box<U>, String),
+}
+
+/// Binding names are unique in the program, so in each function (E0303).
+static BINDINGS: AtomicUsize = AtomicUsize::new(0);
+
+fn binding() -> String {
+    format!("v{}", BINDINGS.fetch_add(1, Ordering::Relaxed))
 }
 
 struct Fault;
@@ -83,6 +111,9 @@ fn gen_u(rng: &mut Rng, depth: usize) -> U {
             Box::new(gen_u(rng, depth - 1)),
         );
     }
+    if rng.chance(30) {
+        return gen_adr28(rng, depth);
+    }
     let op = [
         Op::Add,
         Op::Sub,
@@ -102,6 +133,47 @@ fn gen_u(rng: &mut Rng, depth: usize) -> U {
     U::Bin(op, Box::new(lhs), Box::new(gen_u(rng, depth - 1)))
 }
 
+/// An operand with a type of its own: a method receiver or a conversion
+/// source (a literal alone would be `i64`).
+fn typed(rng: &mut Rng, depth: usize) -> U {
+    let u = gen_u(rng, depth);
+    if has_var(&u) {
+        u
+    } else {
+        U::Var(["x", "y"][rng.below(2)])
+    }
+}
+
+/// The ADR-0028 forms (backlog 2C-04).
+fn gen_adr28(rng: &mut Rng, depth: usize) -> U {
+    let b = |rng: &mut Rng| Box::new(gen_u(rng, depth - 1));
+    let t = |rng: &mut Rng| Box::new(typed(rng, depth - 1));
+    match rng.below(6) {
+        0 => {
+            let op = [Op::Add, Op::Sub, Op::Mul][rng.below(3)];
+            U::Sat(op, t(rng), b(rng))
+        }
+        1 => {
+            let op = [Op::Add, Op::Sub, Op::Mul, Op::Div, Op::Rem][rng.below(5)];
+            U::Checked(op, t(rng), b(rng), b(rng), binding())
+        }
+        2 => U::ViaI64(t(rng)),
+        3 => U::ViaUsize(t(rng)),
+        4 => U::Diff(t(rng), t(rng)),
+        _ => U::DiffOk(t(rng), t(rng), b(rng), binding()),
+    }
+}
+
+/// Whether an ADR-0028 form occurs in the value.
+fn adr28(u: &U) -> bool {
+    match u {
+        U::Var(_) | U::Lit(_) => false,
+        U::Bin(_, a, b) => adr28(a) || adr28(b),
+        U::IfLt(a, b, t, e) => adr28(a) || adr28(b) || adr28(t) || adr28(e),
+        _ => true,
+    }
+}
+
 /// Whether the value has a type of its own (some typed variable reaches it).
 fn has_var(u: &U) -> bool {
     match u {
@@ -110,6 +182,9 @@ fn has_var(u: &U) -> bool {
         U::Bin(_, a, b) => has_var(a) || has_var(b),
         // The value's type comes from the branches, not the condition.
         U::IfLt(_, _, t, e) => has_var(t) || has_var(e),
+        // `u64` by the method or the conversion.
+        U::Sat(..) | U::Checked(..) | U::ViaI64(_) | U::ViaUsize(_) | U::Diff(..) => true,
+        U::DiffOk(..) => true,
     }
 }
 
@@ -137,7 +212,56 @@ fn text(u: &U) -> String {
             text(t),
             text(e)
         ),
+        U::Sat(op, a, b) => format!("{}.saturating_{}({})", text(a), op_name(*op), text(b)),
+        U::Checked(op, a, b, d, v) => format!(
+            "(match {}.checked_{}({}) {{ None => {}, Some({v}) => {v} }})",
+            text(a),
+            op_name(*op),
+            text(b),
+            text(d)
+        ),
+        U::ViaI64(a) => format!(
+            "u64::try_from(i64::try_from({}).unwrap()).unwrap()",
+            text(a)
+        ),
+        U::ViaUsize(a) => format!(
+            "u64::try_from(usize::try_from({}).unwrap()).unwrap()",
+            text(a)
+        ),
+        U::Diff(a, b) => format!("u64::try_from({}).unwrap()", diff_text(a, b)),
+        U::DiffOk(a, b, d, v) => format!(
+            "(match u64::try_from({}).ok() {{ None => {}, Some({v}) => {v} }})",
+            diff_text(a, b),
+            text(d)
+        ),
     }
+}
+
+fn op_name(op: Op) -> &'static str {
+    match op {
+        Op::Add => "add",
+        Op::Sub => "sub",
+        Op::Mul => "mul",
+        Op::Div => "div",
+        Op::Rem => "rem",
+        _ => unreachable!("not a checked or saturating operation"),
+    }
+}
+
+fn diff_text(a: &U, b: &U) -> String {
+    format!(
+        "i64::try_from({}).unwrap() - i64::try_from({}).unwrap()",
+        text(a),
+        text(b)
+    )
+}
+
+/// `a - b` as `i64`: a fault when either is above `i64::MAX` (the
+/// difference of two non-negative `i64` cannot overflow).
+fn diff(a: u64, b: u64) -> Result<i64, Fault> {
+    let a = i64::try_from(a).map_err(|_| Fault)?;
+    let b = i64::try_from(b).map_err(|_| Fault)?;
+    Ok(a - b)
 }
 
 fn eval(u: &U, x: u64, y: u64) -> Result<u64, Fault> {
@@ -165,6 +289,41 @@ fn eval(u: &U, x: u64, y: u64) -> Result<u64, Fault> {
                 eval(e, x, y)?
             }
         }
+        U::Sat(op, a, b) => {
+            let (a, b) = (eval(a, x, y)?, eval(b, x, y)?);
+            match op {
+                Op::Add => a.saturating_add(b),
+                Op::Sub => a.saturating_sub(b),
+                _ => a.saturating_mul(b),
+            }
+        }
+        U::Checked(op, a, b, d, _) => {
+            let (a, b) = (eval(a, x, y)?, eval(b, x, y)?);
+            let r = match op {
+                Op::Add => a.checked_add(b),
+                Op::Sub => a.checked_sub(b),
+                Op::Mul => a.checked_mul(b),
+                Op::Div => a.checked_div(b),
+                _ => a.checked_rem(b),
+            };
+            match r {
+                Some(v) => v,
+                None => eval(d, x, y)?,
+            }
+        }
+        U::ViaI64(a) => {
+            let v = i64::try_from(eval(a, x, y)?).map_err(|_| Fault)?;
+            u64::try_from(v).map_err(|_| Fault)?
+        }
+        U::ViaUsize(a) => eval(a, x, y)?,
+        U::Diff(a, b) => {
+            let d = diff(eval(a, x, y)?, eval(b, x, y)?)?;
+            u64::try_from(d).map_err(|_| Fault)?
+        }
+        U::DiffOk(a, b, d, _) => match u64::try_from(diff(eval(a, x, y)?, eval(b, x, y)?)?) {
+            Ok(v) => v,
+            Err(_) => eval(d, x, y)?,
+        },
     })
 }
 
@@ -295,6 +454,8 @@ fn parse_cex(msg: &str) -> Option<(u64, u64)> {
 struct Stats {
     funcs: usize,
     verified: usize,
+    /// Verified functions with an ADR-0028 form.
+    verified_adr28: usize,
     runs: usize,
     cexes: usize,
     compiled_runs: usize,
@@ -307,8 +468,7 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
     for f in &funcs {
         src.push_str(&f.text());
     }
-    // M1 has no integer conversions, so `main` cannot print a u64: it compares
-    // each result with the interpreter's and prints 1 when they agree.
+    // `main` prints each result (`print_u64`, ADR-0028 §4).
     src.push_str(
         "}\n\n#[summary(\"실행\")]\nmod app {\n    #[effects(io)]\n    fn main() -> () {\n",
     );
@@ -316,12 +476,8 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
     for f in &funcs {
         for (x, y) in f.inputs(&mut rng) {
             if let Ok(r) = eval(&f.body, x, y) {
-                let _ = writeln!(
-                    src,
-                    "        if m::{}({x}, {y}) == {r} {{ print_i64(1); }} else {{ print_i64(0); }}",
-                    f.name
-                );
-                expected.push_str("1\n");
+                let _ = writeln!(src, "        print_u64(m::{}({x}, {y}));", f.name);
+                let _ = writeln!(expected, "{r}");
             }
         }
     }
@@ -348,6 +504,7 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
             continue;
         }
         stats.verified += 1;
+        stats.verified_adr28 += usize::from(adr28(&f.body));
         for (x, y) in f.inputs(&mut rng) {
             stats.runs += 1;
             match eval(&f.body, x, y) {
@@ -451,8 +608,13 @@ fn unsigned_proofs_counterexamples_and_builds_agree_with_the_interpreter() {
         batch(seed, &mut stats, &dir);
     }
     eprintln!(
-        "soundness (unsigned): {} functions, {} verified ({} runs), {} counterexamples replayed, {} compiled runs",
-        stats.funcs, stats.verified, stats.runs, stats.cexes, stats.compiled_runs
+        "soundness (unsigned): {} functions, {} verified ({} with ADR-0028 forms, {} runs), {} counterexamples replayed, {} compiled runs",
+        stats.funcs,
+        stats.verified,
+        stats.verified_adr28,
+        stats.runs,
+        stats.cexes,
+        stats.compiled_runs
     );
     assert!(stats.verified > 0 && stats.cexes > 0);
 }
