@@ -1,5 +1,30 @@
 use std::process::ExitCode;
 
+// `print!` and `println!` that end the process quietly when standard output
+// is closed (`bmb hash DIR | head`, backlog 1D-24) instead of panicking with
+// a backtrace: exit status 141, as a process killed by SIGPIPE. SIGPIPE
+// itself stays ignored so that a solver that dies is an error, not a signal.
+macro_rules! print {
+    ($($t:tt)*) => { write_stdout(format_args!($($t)*)) };
+}
+macro_rules! println {
+    () => { print!("\n") };
+    ($($t:tt)*) => { write_stdout(format_args!("{}\n", format_args!($($t)*))) };
+}
+
+const CLOSED_STDOUT: u8 = 141;
+
+fn write_stdout(args: std::fmt::Arguments) {
+    use std::io::Write;
+    match std::io::stdout().lock().write_fmt(args) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {
+            std::process::exit(CLOSED_STDOUT.into())
+        }
+        Err(e) => panic!("failed printing to stdout: {e}"),
+    }
+}
+
 const USAGE: &str = "usage:
   bmb check <file.bmb>...   check sources; diagnostics as JSONL on stdout
   bmb verify [--emit-smt DIR] [--cache DIR] [--stats FILE] <file.bmb>...
@@ -599,6 +624,7 @@ fn run() -> ExitCode {
         }
         Some("mcp") if args.len() == 2 => match bmb::mcp::serve(std::path::Path::new(&args[1])) {
             Ok(()) => ExitCode::SUCCESS,
+            Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => ExitCode::from(CLOSED_STDOUT),
             Err(e) => {
                 eprintln!("bmb: {e}");
                 ExitCode::from(2)

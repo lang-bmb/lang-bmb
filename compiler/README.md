@@ -32,6 +32,9 @@ cargo test                       # 회귀 코퍼스(tests/check, tests/verify)�
 BMB_BLESS=1 cargo test           # 기대 진단(.jsonl) 갱신
 ```
 
+표준 출력이 닫히면(`bmb hash ws | head -1`) 모든 명령은 패닉 없이 종료 코드 141로 끝난다(SIGPIPE로 끝난 프로세스와 같음, 백로그 1D-24, `tests/cli.rs`).
+
+
 ## 구현하며 정한 표면 규칙
 
 ADR-0016의 부분집합을 구체화한 것이다. 모두 "선택을 필수로"(ADR-0013)와 정규형 하나(원칙 8)에서 나왔다.
