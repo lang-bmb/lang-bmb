@@ -23,6 +23,11 @@
 //!   or leak. Without either the test fails: the free points are the point
 //!   of this fuzzer (ADR-0031 adoption note 9).
 //!
+//! Backlog 2S-02 (ADR-0044 §6) adds a byte buffer `w: Vec<u8>` (pushes of
+//! byte literals, reads of its elements) and byte strings passed to
+//! `first_or`, whose contract fixes its result (escapes included: quote,
+//! backslash, NUL, newline and bytes above 127 as `\xHH`).
+//!
 //! It drives the `bmb` command line (HEALTH.md S5). `BMB_SOUND_ITERS` and
 //! `BMB_SOUND_SEED` as in the other fuzzers.
 
@@ -55,6 +60,51 @@ enum Op {
     TempLen,
     /// `let c: i64 = count(v.clone());` (a move into a by-value callee)
     Count,
+    /// `w.push(b'..');` on the byte buffer.
+    WPush(u8),
+    /// `let b: i64 = i64::try_from(w[i]).unwrap();`
+    WRead(usize),
+    /// `let l: i64 = first_or(b"..", d);`
+    Lit(Vec<u8>, u8),
+}
+
+/// A byte as a `b'..'` literal.
+fn byte_lit(c: u8) -> String {
+    match c {
+        b'\'' => "b'\\''".into(),
+        b'\\' => "b'\\\\'".into(),
+        b'\n' => "b'\\n'".into(),
+        0 => "b'\\0'".into(),
+        0x20..=0x7e => format!("b'{}'", c as char),
+        c => format!("b'\\x{c:02x}'"),
+    }
+}
+
+/// Bytes as a `b"..."` literal.
+fn bytes_lit(v: &[u8]) -> String {
+    let mut s = String::from("b\"");
+    for &c in v {
+        match c {
+            b'"' => s.push_str("\\\""),
+            b'\\' => s.push_str("\\\\"),
+            b'\n' => s.push_str("\\n"),
+            0 => s.push_str("\\0"),
+            0x20..=0x7e => s.push(c as char),
+            c => s.push_str(&format!("\\x{c:02x}")),
+        }
+    }
+    s.push('"');
+    s
+}
+
+fn gen_byte(rng: &mut Rng) -> u8 {
+    const SOME: &[u8] = b"az09 \"\\\n";
+    match rng.below(4) {
+        0 => 0,
+        1 => 255,
+        2 => SOME[rng.below(SOME.len())],
+        _ => rng.below(256) as u8,
+    }
 }
 
 struct VFunc {
@@ -70,9 +120,23 @@ fn gen_vfunc(rng: &mut Rng, k: usize) -> VFunc {
     let base = gen_func(rng, k);
     let mut vars: Vec<String> = vec!["x".into(), "y".into(), "acc".into()];
     let mut len = 0usize;
+    let mut wlen = 0usize;
     let mut ops = Vec::new();
     for j in 0..2 + rng.below(6) {
-        let op = match rng.below(11) {
+        let op = match rng.below(14) {
+            11 => {
+                wlen += 1;
+                Op::WPush(gen_byte(rng))
+            }
+            12 => {
+                vars.push(format!("b{j}"));
+                Op::WRead(rng.below(wlen + 2))
+            }
+            13 => {
+                vars.push(format!("l{j}"));
+                let n = rng.below(5);
+                Op::Lit((0..n).map(|_| gen_byte(rng)).collect(), gen_byte(rng))
+            }
             0 | 1 => {
                 len += 1;
                 Op::Push(gen_e(rng, &vars, 2))
@@ -150,7 +214,7 @@ impl VFunc {
         );
         let _ = writeln!(
             t,
-            "    #[effects(pure)]\n    #[uses({n}_pre, {n}_post, room, pushed)]\n    fn {n}(x: i64, y: i64) -> (r: i64)\n        requires {n}_pre(x, y),\n        ensures {n}_post(x, y, r),\n    {{"
+            "    #[effects(pure)]\n    #[uses({n}_pre, {n}_post, room, pushed, is_first)]\n    fn {n}(x: i64, y: i64) -> (r: i64)\n        requires {n}_pre(x, y),\n        ensures {n}_post(x, y, r),\n    {{"
         );
         let new = match self.cap {
             Some(c) => format!("Vec::with_capacity({c})"),
@@ -158,6 +222,7 @@ impl VFunc {
         };
         let _ = writeln!(t, "        let mut v: Vec<i64> = {new};");
         let _ = writeln!(t, "        let mut acc: i64 = 0;");
+        let _ = writeln!(t, "        let mut w: Vec<u8> = Vec::new();");
         let mut len = 0usize;
         for (j, op) in self.ops.iter().enumerate() {
             let line = match op {
@@ -193,6 +258,13 @@ impl VFunc {
                 }
                 Op::TempLen => format!("let s{j}: i64 = i64::try_from(v.clone().len()).unwrap();"),
                 Op::Count => format!("let c{j}: i64 = count(v.clone());"),
+                Op::WPush(c) => format!("w.push({});", byte_lit(*c)),
+                Op::WRead(i) => format!("let b{j}: i64 = i64::try_from(w[{i}]).unwrap();"),
+                Op::Lit(s, d) => format!(
+                    "let l{j}: i64 = first_or({}, {});",
+                    bytes_lit(s),
+                    byte_lit(*d)
+                ),
             };
             let _ = writeln!(t, "        {line}");
         }
@@ -203,6 +275,7 @@ impl VFunc {
     fn run(&self, x: i64, y: i64) -> Result<i64, Fault> {
         let mut env: Env = vec![("x".into(), x), ("y".into(), y), ("acc".into(), 0)];
         let mut v: Vec<i64> = Vec::new();
+        let mut w: Vec<u8> = Vec::new();
         for (j, op) in self.ops.iter().enumerate() {
             match op {
                 Op::Push(e) | Op::Bump(e) => v.push(e_eval(e, &env)?),
@@ -227,6 +300,9 @@ impl VFunc {
                 }
                 Op::TempLen => env.push((format!("s{j}"), v.len() as i64)),
                 Op::Count => env.push((format!("c{j}"), v.len() as i64)),
+                Op::WPush(c) => w.push(*c),
+                Op::WRead(i) => env.push((format!("b{j}"), i64::from(*w.get(*i).ok_or(Fault)?))),
+                Op::Lit(s, d) => env.push((format!("l{j}"), i64::from(*s.first().unwrap_or(d)))),
             }
         }
         e_eval(&self.tail, &env)
@@ -260,6 +336,16 @@ const HELPERS: &str = "    spec fn room(a: &[i64]) -> bool { a.len() < 1000 }
     #[effects(pure)]
     fn count(w: Vec<i64>) -> i64 {
         i64::try_from(w.len()).unwrap()
+    }
+
+    spec fn is_first(r: i64, s: &[u8], d: u8) -> bool { (s.len() > 0 && r == s[0]) || (s.len() == 0 && r == d) }
+
+    #[effects(pure)]
+    #[uses(is_first)]
+    fn first_or(s: &[u8], d: u8) -> (r: i64)
+        ensures is_first(r, s, d),
+    {
+        if s.len() > 0 { i64::try_from(s[0]).unwrap() } else { i64::try_from(d).unwrap() }
     }
 
 ";

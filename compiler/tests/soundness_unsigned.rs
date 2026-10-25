@@ -12,6 +12,10 @@
 //! same through `.ok()`. The interpreter computes them with Rust's own
 //! methods; an out-of-range `.unwrap()` is a fault.
 //!
+//! Backlog 2S-02 (ADR-0044 §6) adds `u8`: a value through `u8` (out of
+//! range above 255), the sum of two low bytes in `u8` (overflows above
+//! 255), and their wrapping and saturating products.
+//!
 //! `BMB_SOUND_ITERS` / `BMB_SOUND_SEED` as in `soundness.rs`.
 
 use std::fmt::Write as _;
@@ -54,6 +58,11 @@ enum U {
     Diff(Box<U>, Box<U>),
     /// The same difference through `.ok()`, `d` for `None`.
     DiffOk(Box<U>, Box<U>, Box<U>, String),
+    /// `u64::try_from(u8::try_from(a).unwrap()).unwrap()`
+    ViaU8(Box<U>),
+    /// The low bytes of `a` and `b` (`% 256`) combined in `u8`: `+` (may
+    /// overflow), `wrapping_mul` or `saturating_mul`, back as `u64`.
+    Byte(Op, Box<U>, Box<U>),
 }
 
 /// Binding names are unique in the program, so in each function (E0303).
@@ -148,7 +157,12 @@ fn typed(rng: &mut Rng, depth: usize) -> U {
 fn gen_adr28(rng: &mut Rng, depth: usize) -> U {
     let b = |rng: &mut Rng| Box::new(gen_u(rng, depth - 1));
     let t = |rng: &mut Rng| Box::new(typed(rng, depth - 1));
-    match rng.below(6) {
+    match rng.below(8) {
+        6 => U::ViaU8(t(rng)),
+        7 => {
+            let op = [Op::Add, Op::WrapMul, Op::Mul][rng.below(3)];
+            U::Byte(op, t(rng), t(rng))
+        }
         0 => {
             let op = [Op::Add, Op::Sub, Op::Mul][rng.below(3)];
             U::Sat(op, t(rng), b(rng))
@@ -164,7 +178,19 @@ fn gen_adr28(rng: &mut Rng, depth: usize) -> U {
     }
 }
 
-/// Whether an ADR-0028 form occurs in the value.
+/// Whether a `u8` form (ADR-0044) occurs in the value.
+fn bytes(u: &U) -> bool {
+    match u {
+        U::ViaU8(_) | U::Byte(..) => true,
+        U::Var(_) | U::Lit(_) => false,
+        U::Bin(_, a, b) | U::Sat(_, a, b) | U::Diff(a, b) => bytes(a) || bytes(b),
+        U::IfLt(a, b, t, e) => bytes(a) || bytes(b) || bytes(t) || bytes(e),
+        U::Checked(_, a, b, d, _) | U::DiffOk(a, b, d, _) => bytes(a) || bytes(b) || bytes(d),
+        U::ViaI64(a) | U::ViaUsize(a) => bytes(a),
+    }
+}
+
+/// Whether an ADR-0028 or ADR-0044 form occurs in the value.
 fn adr28(u: &U) -> bool {
     match u {
         U::Var(_) | U::Lit(_) => false,
@@ -184,6 +210,7 @@ fn has_var(u: &U) -> bool {
         U::IfLt(_, _, t, e) => has_var(t) || has_var(e),
         // `u64` by the method or the conversion.
         U::Sat(..) | U::Checked(..) | U::ViaI64(_) | U::ViaUsize(_) | U::Diff(..) => true,
+        U::ViaU8(_) | U::Byte(..) => true,
         U::DiffOk(..) => true,
     }
 }
@@ -234,6 +261,17 @@ fn text(u: &U) -> String {
             diff_text(a, b),
             text(d)
         ),
+        U::ViaU8(a) => format!("u64::try_from(u8::try_from({}).unwrap()).unwrap()", text(a)),
+        U::Byte(op, a, b) => {
+            let low = |x: &U| format!("u8::try_from({} % 256).unwrap()", text(x));
+            let (a, b) = (low(a), low(b));
+            let e = match op {
+                Op::Add => format!("({a} + {b})"),
+                Op::WrapMul => format!("{a}.wrapping_mul({b})"),
+                _ => format!("{a}.saturating_mul({b})"),
+            };
+            format!("u64::try_from({e}).unwrap()")
+        }
     }
 }
 
@@ -324,6 +362,15 @@ fn eval(u: &U, x: u64, y: u64) -> Result<u64, Fault> {
             Ok(v) => v,
             Err(_) => eval(d, x, y)?,
         },
+        U::ViaU8(a) => u64::from(u8::try_from(eval(a, x, y)?).map_err(|_| Fault)?),
+        U::Byte(op, a, b) => {
+            let (a, b) = ((eval(a, x, y)? % 256) as u8, (eval(b, x, y)? % 256) as u8);
+            u64::from(match op {
+                Op::Add => a.checked_add(b).ok_or(Fault)?,
+                Op::WrapMul => a.wrapping_mul(b),
+                _ => a.saturating_mul(b),
+            })
+        }
     })
 }
 
@@ -454,8 +501,9 @@ fn parse_cex(msg: &str) -> Option<(u64, u64)> {
 struct Stats {
     funcs: usize,
     verified: usize,
-    /// Verified functions with an ADR-0028 form.
+    /// Verified functions with an ADR-0028 or ADR-0044 form, and with a `u8` one.
     verified_adr28: usize,
+    verified_u8: usize,
     runs: usize,
     cexes: usize,
     compiled_runs: usize,
@@ -463,7 +511,14 @@ struct Stats {
 
 fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
     let mut rng = Rng(seed.wrapping_mul(0x9E3779B97F4A7C15) | 1);
-    let funcs: Vec<Func> = (0..8).map(|k| gen_func(&mut rng, k)).collect();
+    let mut funcs: Vec<Func> = (0..8).map(|k| gen_func(&mut rng, k)).collect();
+    // One function per batch is a bare byte operation on `x` and `y` with a
+    // postcondition that always holds, so the `u8` range rule is checked
+    // directly (ADR-0044 §1).
+    let op = [Op::Add, Op::WrapMul, Op::Mul][rng.below(3)];
+    funcs[0].body = U::Byte(op, Box::new(U::Var("x")), Box::new(U::Var("y")));
+    // Its verdict rests on the obligations alone.
+    funcs[0].post = vec![Post::In(0, u64::MAX)];
     let mut src = String::from("#[summary(\"부호 없는 산술 건전성 퍼징\")]\nmod m {\n");
     for f in &funcs {
         src.push_str(&f.text());
@@ -505,6 +560,7 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
         }
         stats.verified += 1;
         stats.verified_adr28 += usize::from(adr28(&f.body));
+        stats.verified_u8 += usize::from(bytes(&f.body));
         for (x, y) in f.inputs(&mut rng) {
             stats.runs += 1;
             match eval(&f.body, x, y) {
@@ -608,10 +664,11 @@ fn unsigned_proofs_counterexamples_and_builds_agree_with_the_interpreter() {
         batch(seed, &mut stats, &dir);
     }
     eprintln!(
-        "soundness (unsigned): {} functions, {} verified ({} with ADR-0028 forms, {} runs), {} counterexamples replayed, {} compiled runs",
+        "soundness (unsigned): {} functions, {} verified ({} with ADR-0028/0044 forms, {} with u8, {} runs), {} counterexamples replayed, {} compiled runs",
         stats.funcs,
         stats.verified,
         stats.verified_adr28,
+        stats.verified_u8,
         stats.runs,
         stats.cexes,
         stats.compiled_runs
