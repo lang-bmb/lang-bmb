@@ -524,3 +524,62 @@ fn measure_large_program() {
     println!("cache file {size} bytes");
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// `bmb verify --stats FILE` (backlog 2A-14, BCB) names the definitions that
+/// were encoded and reused; stdout is the same as without it.
+#[test]
+fn verify_stats_name_the_reencoded_definitions() {
+    let dir = tmp("stats");
+    fs::create_dir_all(&dir).unwrap();
+    let src = dir.join("g.bmb");
+    let cache = dir.join("cache");
+    let stats = dir.join("stats.json");
+    let run = |with_stats: bool| {
+        let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_bmb"));
+        cmd.arg("verify").arg("--cache").arg(&cache);
+        if with_stats {
+            cmd.arg("--stats").arg(&stats);
+        }
+        let out = cmd.arg(&src).output().unwrap();
+        assert!(out.status.success());
+        String::from_utf8(out.stdout).unwrap()
+    };
+    let field = |name: &str| -> Vec<String> {
+        let v = bmb::json::parse(&fs::read_to_string(&stats).unwrap()).unwrap();
+        match v.get(name) {
+            Some(bmb::json::Value::Array(xs)) => {
+                xs.iter().map(|x| x.as_str().unwrap().to_string()).collect()
+            }
+            other => panic!("{name}: {other:?}"),
+        }
+    };
+    let base = generate(6);
+    fs::write(&src, &base).unwrap();
+    run(true);
+    assert_eq!(field("encoded").len(), 30);
+    assert_eq!(run(true), run(false));
+    assert!(field("encoded").is_empty());
+    assert_eq!(field("reused").len(), 30);
+
+    let body = base.replacen("        x + 3\n", "        3 + x\n", 1);
+    fs::write(&src, &body).unwrap();
+    run(true);
+    assert_eq!(field("encoded"), vec!["m3::f0".to_string()]);
+
+    // `#[uses]` is part of the interface hash (ADR-0019), so dropping an
+    // entry the function does not need re-encodes its callers too, although
+    // their queries do not change (backlog 2D-22).
+    let f0 = "    #[effects(pure)]\n    #[uses(small, pos, pos2)]\n    fn f0(x: i64) -> (r: i64)\n        requires small(x),\n        ensures pos(r),\n    {\n        x + 4\n";
+    assert!(body.contains(f0));
+    fs::write(
+        &src,
+        body.replacen(f0, &f0.replace("small, pos, pos2", "small, pos"), 1),
+    )
+    .unwrap();
+    run(true);
+    assert_eq!(
+        field("encoded"),
+        vec!["m4::f0".to_string(), "m4::f1".to_string()]
+    );
+    let _ = fs::remove_dir_all(&dir);
+}

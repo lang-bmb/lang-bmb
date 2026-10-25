@@ -21,7 +21,7 @@ cargo test --no-run --quiet --message-format=json-render-diagnostics > "$built"
 step "backlog"; python3 scripts/check_backlog.py
 step "docs";    target/debug/bmb codes --md | diff -u docs/diagnostics.md - > /dev/null || { echo "docs/diagnostics.md is stale: run cargo run -q -- codes --md > docs/diagnostics.md"; exit 1; }
 
-step "test, bench m1, bench m1b, bench bvb, bench m3, bench bnb, bench brb, health (concurrent)"
+step "test, bench m1, bench m1b, bench bvb, bench m3, bench bnb, bench bcb, bench brb, health (concurrent)"
 # Bench sessions are independent (ADR-0025, backlog 2A-04): m1b and bvb run two at a time per agent.
 # The original-Verus side of bvb (2A-09) needs the Verus toolchain: here only its harness logic
 # runs (stub verifier); the real oracle/weak runs are the `bvb-verus` CI job.
@@ -54,6 +54,7 @@ grep -qF "| 작성 1회 성공률 | 45/45 |" <<< "$table" || { echo "bvb summari
   --job "bench bvb verus harness (stub verifier)=python3 bench/bvb/verus/test_harness.py" \
   --job "bench m3 generator=python3 bench/m3/test_gen.py > /dev/null" \
   --job "bench bnb=python3 bench/bnb/test_bnb.py > /dev/null" \
+  --job "bench bcb=python3 bench/bcb/test_bcb.py > /dev/null" \
   --job 'bench brb oracle=b=$(mktemp); r=$(mktemp); trap "rm -f $b $r" EXIT
 python3 bench/brb/harness.py run --arm bmb --agent oracle --expect all-pass --jobs 2 --out "$b" > /dev/null
 python3 bench/brb/harness.py run --arm rust --agent oracle --proptest off --expect all-pass --jobs 2 --out "$r" > /dev/null

@@ -2,10 +2,12 @@ use std::process::ExitCode;
 
 const USAGE: &str = "usage:
   bmb check <file.bmb>...   check sources; diagnostics as JSONL on stdout
-  bmb verify [--emit-smt DIR] [--cache DIR] <file.bmb>...
+  bmb verify [--emit-smt DIR] [--cache DIR] [--stats FILE] <file.bmb>...
                             check and prove; diagnostics and per-definition status as JSONL;
                             --cache keeps proved obligations in DIR and skips them next time,
-                            and reuses unchanged definitions without encoding them
+                            and reuses unchanged definitions without encoding them;
+                            --stats writes what the caches did as one JSON line to FILE
+                            (definitions encoded, reused, proof cache hits and misses)
   bmb stability [--seeds N] <file.bmb>...
                             prove under solver seeds 0..N (default 5); per-definition verdicts
                             and rlimit as JSONL; fails if a verdict depends on the seed
@@ -154,10 +156,12 @@ fn run() -> ExitCode {
             let mut rest = &args[1..];
             let mut emit = None;
             let mut cache = None;
+            let mut stats = None;
             loop {
                 match rest.first().map(String::as_str) {
                     Some("--emit-smt") if rest.len() > 2 => emit = Some(rest[1].clone()),
                     Some("--cache") if rest.len() > 2 => cache = Some(rest[1].clone()),
+                    Some("--stats") if rest.len() > 2 => stats = Some(rest[1].clone()),
                     _ => break,
                 }
                 rest = &rest[2..];
@@ -185,6 +189,12 @@ fn run() -> ExitCode {
                         return ExitCode::from(2);
                     }
                 }
+            }
+            if let Some(file) = stats
+                && let Err(e) = std::fs::write(&file, verify_stats(&out))
+            {
+                eprintln!("bmb: cannot write {file}: {e}");
+                return ExitCode::from(2);
             }
             print!("{}", out.output);
             if out.ok {
@@ -649,4 +659,21 @@ fn respond(r: Result<String, String>) -> ExitCode {
             ExitCode::from(1)
         }
     }
+}
+
+/// `verify --stats` (backlog 2A-14, BCB): which definitions were encoded and
+/// which were reused by the incremental cache, and the proof cache counts.
+fn verify_stats(out: &bmb::VerifyOutput) -> String {
+    let names = |xs: &[String]| {
+        let mut xs: Vec<String> = xs.iter().map(|x| bmb::diag::json_str(x)).collect();
+        xs.sort();
+        format!("[{}]", xs.join(","))
+    };
+    format!(
+        "{{\"encoded\":{},\"reused\":{},\"proof_cache_hits\":{},\"proof_cache_misses\":{}}}\n",
+        names(&out.incr.encoded),
+        names(&out.incr.reused),
+        out.cache.0,
+        out.cache.1
+    )
 }
