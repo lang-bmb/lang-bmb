@@ -76,7 +76,7 @@ BMB v2의 설계 결정을 한 건에 파일 하나로 남긴다. 현재 확정�
 | [0028](0028-integer-conversions.md) | 정수 변환과 검사·포화 산술 | 채택 | 백로그 2C-01, 2C-05 |
 | [0029](0029-escape-hatches-and-rationale.md) | 탈출구(`assume`·`external_body`)와 구조화 근거 | 제안 | 백로그 2E-01 |
 | [0030](0030-effects-alloc-panic-nondet.md) | 효과 확장(`alloc`·`panic`·`nondet`)과 테스트 필요 면적 | 제안 | 백로그 2F-01 |
-| [0031](0031-vec-and-ownership.md) | 힙 `Vec<T>`과 소유·이동 검사 | 제안 | 백로그 2G-01 |
+| [0031](0031-vec-and-ownership.md) | 힙 `Vec<T>`과 소유·이동 검사 | 채택 | 백로그 2G-01, 2G-07 |
 | [0032](0032-incremental-build-key.md) | 계약 방화벽 증분 빌드의 키 | 채택(자율) | 백로그 2D-10 |
 | [0033](0033-per-query-spec-declarations.md) | 의무별 `spec fn` 선언(질의 머리말 축소), ADR-0032 키 갱신 | 채택(자율) | 백로그 2D-14 |
 | [0034](0034-mission-goals-and-benchmarks.md) | 미션 목표와 벤치마크 체계(북극성, 목표 G1~G6, 만들 벤치마크 BVB·BRB·BNB·BSB) | 채택(승인, 목표값 잠정) | 조사 2026-10-24 |
