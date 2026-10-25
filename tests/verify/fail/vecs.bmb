@@ -58,4 +58,21 @@ mod vf {
     {
         v.pop()
     }
+
+    // A loop that pushes changes the length: the code after it is reachable
+    // (backlog 2G-05 found the loop havoc keeping the length, which made
+    // this verify).
+    #[effects(pure)]
+    fn after_push_loop(x: i64, y: i64) -> i64 {
+        let mut v: Vec<i64> = Vec::new();
+        let mut i: usize = 0;
+        while i < 2
+            invariant i <= 2, v.len() == i,
+            decreases 2 - i,
+        {
+            v.push(x.wrapping_add(7));
+            i = i + 1;
+        }
+        y - x
+    }
 }

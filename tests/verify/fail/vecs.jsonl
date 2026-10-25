@@ -4,8 +4,10 @@
 {"code":"E0805","severity":"error","message":"index may be out of bounds in `vf::after_call`","file":"fail/vecs.bmb","line":33,"col":9,"end_line":33,"end_col":13}
 {"code":"E0802","severity":"error","message":"postcondition `nonempty` may not hold in `vf::truncated`; counterexample: v = [0] (len 1)","file":"fail/vecs.bmb","line":42,"col":17,"end_line":42,"end_col":39}
 {"code":"E0802","severity":"error","message":"postcondition `is_some` may not hold in `vf::pop_some`; counterexample: v = [] (len 0)","file":"fail/vecs.bmb","line":57,"col":17,"end_line":57,"end_col":27}
+{"code":"E0803","severity":"error","message":"`-` may overflow `i64` in `vf::after_push_loop`; counterexample: x = -1, y = 9223372036854775807","file":"fail/vecs.bmb","line":76,"col":9,"end_line":76,"end_col":14}
 {"def":"vf::after_call","status":"failed","obligations":2,"failed":1,"rlimit":428,"rlimit_max":266}
 {"def":"vf::after_pop","status":"failed","obligations":3,"failed":1,"rlimit":2203,"rlimit_max":1488}
+{"def":"vf::after_push_loop","status":"failed","obligations":8,"failed":1,"rlimit":3678,"rlimit_max":964}
 {"def":"vf::capacity","status":"failed","obligations":1,"failed":1,"rlimit":1494,"rlimit_max":1494}
 {"def":"vf::pop_some","status":"failed","obligations":1,"failed":1,"rlimit":1482,"rlimit_max":1482}
 {"def":"vf::touch","status":"verified","obligations":0,"failed":0,"rlimit":0,"rlimit_max":0}

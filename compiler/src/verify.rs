@@ -1688,19 +1688,19 @@ impl<'p, 'q> Enc<'p, 'q> {
                     let e = elem_ty(&ty);
                     Val::A {
                         elems: self.fresh_elems(v, &e, false),
-                        len,
+                        len: self.loop_len(v, len, &e),
                     }
                 }
                 Val::Struct(_) => {
                     let ty = self.local_ty(v);
                     self.fresh_val(v, &ty)
                 }
-                // The elements may change, never the length.
+                // The elements may change; the length only of a `Vec`.
                 Val::Arr { len, .. } => {
                     let e = elem_ty(&self.local_ty(v));
                     Val::Arr {
                         elem: Box::new(self.fresh_struct_elems(v, &e)),
-                        len,
+                        len: self.loop_len(v, len, &e),
                     }
                 }
                 Val::Unit => Val::Unit,
@@ -1746,6 +1746,38 @@ impl<'p, 'q> Enc<'p, 'q> {
 
     /// Whether a checked call builds a variant: `Some(x)`, `Ok(x)`, `Err(e)`
     /// or `E::V(..)` (a path that names no function).
+    /// The length of `v` after a loop that changes it: an array's or a
+    /// slice's stays, a `Vec`'s is any value in its range (backlog 2G-05:
+    /// keeping it made the code after a `push` loop unreachable).
+    fn loop_len(&mut self, v: &str, len: String, e: &TypeKind) -> String {
+        if !self.is_vec_local(v) {
+            return len;
+        }
+        let l = self.fresh(&format!("{v}.len"), "Int");
+        self.pc
+            .push(format!("(and (<= 0 {l}) (<= {l} {}))", len_max(e)));
+        l
+    }
+
+    /// Whether local or parameter `name` is a `Vec`, `&Vec` or `&mut Vec`
+    /// (the encoder's tables show them as slices; the program text does not).
+    fn is_vec_local(&self, name: &str) -> bool {
+        fn surface(t: &TypeKind) -> bool {
+            match t {
+                TypeKind::Named { path, .. } => path.len() == 1 && path[0] == "Vec",
+                TypeKind::Ref { inner, .. } => surface(&inner.kind),
+                _ => false,
+            }
+        }
+        let def = &self.prog.defs[&self.path];
+        if let Some(p) = def.f.params.iter().find(|p| p.name.name == name) {
+            return surface(&p.ty.kind);
+        }
+        let mut found = None;
+        find_let(&def.f.body, name, &mut found);
+        found.is_some_and(|t| surface(&t))
+    }
+
     /// `push`, `pop` and `truncate` on a `Vec` (ADR-0031 §3): the new pair
     /// is written back to the receiver's place; `push` may not pass the
     /// maximum length (E0816); `pop` is `None` exactly on an empty `Vec`.

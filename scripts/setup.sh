@@ -27,5 +27,22 @@ if ! llvm_ok; then
   llvm_ok || { echo "LLVM ${LLVM_MAJOR} is required (llc, opt, clang)" >&2; exit 1; }
 fi
 
+# The Vec soundness fuzzer's free check needs valgrind or clang's
+# AddressSanitizer runtime (ADR-0031 adoption note 9).
+asan_ok() {
+  local d
+  d="$(mktemp -d)"
+  printf 'int main(void) { return 0; }\n' > "$d/p.c"
+  clang -fsanitize=address -o "$d/p" "$d/p.c" >/dev/null 2>&1 && "$d/p"
+  local r=$?
+  rm -rf "$d"
+  return $r
+}
+if ! command -v valgrind >/dev/null && ! asan_ok && command -v apt-get >/dev/null; then
+  echo "installing valgrind"
+  apt-get install -y -qq valgrind >/dev/null || { apt-get update -qq && apt-get install -y -qq valgrind >/dev/null; }
+fi
+command -v valgrind >/dev/null || asan_ok || { echo "valgrind or AddressSanitizer is required" >&2; exit 1; }
+
 z3 --version
 llc --version | grep "LLVM version"
