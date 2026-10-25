@@ -127,7 +127,15 @@ fn cached(
     let map =
         bmb::map_request_cached(f, &["map".into(), "all".into()], Some(dir)).unwrap_or_else(|e| e);
     let v = bmb::verify_sources_cached(f, Some(dir));
-    assert_eq!(v.output, l.verify.output, "verify and emit-llvm agree");
+    // `emit-llvm` adds only that it cannot lower data types yet (2B-06).
+    let emitted: String = l
+        .verify
+        .output
+        .lines()
+        .filter(|x| !x.contains("not compiled yet"))
+        .map(|x| format!("{x}\n"))
+        .collect();
+    assert_eq!(v.output, emitted, "verify and emit-llvm agree");
     ((l.verify.output, l.ir, l.checks, map), l.verify.incr)
 }
 
@@ -603,5 +611,80 @@ fn verify_stats_name_the_reencoded_definitions() {
     emit();
     assert!(field("lowered").is_empty() && field("encoded").is_empty());
     assert_eq!(field("ir_reused").len(), 30);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// What a proof reads of data types (backlog 2B-05a): the contract of a
+/// `T::f` callee and the field types of the structs it names. Changing
+/// either re-encodes the reader; an unrelated type does not.
+#[test]
+fn data_type_changes_reencode_their_readers() {
+    const BASE: &str = r#"#[summary("types")]
+mod geo {
+    struct Point { x: i64, y: i64 }
+
+    struct Other { z: i64 }
+
+    spec fn kept(p: Point, q: Point) -> bool { p.y == q.y }
+
+    impl Point {
+        #[effects(pure)]
+        #[uses(kept)]
+        fn reset(self: &mut Point) -> ()
+            ensures kept(*old(self), *self),
+        {
+            self.x = 0;
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(kept)]
+    fn caller(p: Point) -> (r: Point)
+        ensures kept(p, r),
+    {
+        let mut q: Point = p;
+        Point::reset(&mut q);
+        q
+    }
+
+    #[effects(pure)]
+    fn reader(p: Point) -> i64 {
+        p.x
+    }
+
+    #[effects(pure)]
+    fn other(o: Other) -> i64 {
+        o.z
+    }
+}
+"#;
+    let dir = tmp("types");
+    let run = |text: &str| bmb::verify_sources_cached(&files(text), Some(&dir));
+    let first = run(BASE);
+    assert!(first.ok, "{}", first.output);
+    assert!(run(BASE).incr.encoded.is_empty());
+    // The callee's contract: `caller` reads it through `Point::reset`.
+    let weaker = BASE.replace("            ensures kept(*old(self), *self),\n", "");
+    let out = run(&weaker);
+    assert!(!out.ok, "the caller no longer proves:\n{}", out.output);
+    assert!(
+        set(&out.incr.encoded).contains("geo::caller"),
+        "{:?}",
+        out.incr.encoded
+    );
+    run(BASE);
+    // A field type: `reader` names `Point`, `other` does not.
+    let retyped = BASE.replace(
+        "struct Point { x: i64, y: i64 }",
+        "struct Point { x: i64, y: u64 }",
+    );
+    let out = run(&retyped);
+    assert!(out.ok, "{}", out.output);
+    let enc = set(&out.incr.encoded);
+    assert!(
+        enc.contains("geo::reader") && enc.contains("geo::caller"),
+        "{enc:?}"
+    );
+    assert!(!enc.contains("geo::other"), "{enc:?}");
     let _ = fs::remove_dir_all(&dir);
 }

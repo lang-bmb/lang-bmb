@@ -583,6 +583,47 @@ impl Session {
                     section(&mut pk, "decl", decl);
                 }
             }
+            // Data types the queries read (fields, payloads: ADR-0027):
+            // named in `D`'s text or a text it reaches, closed over their
+            // field and payload types.
+            let mut texts = vec![(qual.clone(), unit.as_str())];
+            for r in &reach {
+                if let Some(&(u, g)) = by_path.get(r.as_str()) {
+                    texts.push((
+                        if g.kind == FnKind::Spec {
+                            crate::fmt::qualified_text(g, u, &t.fns, true)
+                        } else {
+                            crate::fmt::caller_text(g, u, &t.fns)
+                        },
+                        u,
+                    ));
+                }
+            }
+            // A type is written by full path or, in its own unit, by name.
+            let mut tys: BTreeSet<String> = BTreeSet::new();
+            for (x, u) in &texts {
+                for w in x.split(|c: char| !(c.is_alphanumeric() || c == '_' || c == ':')) {
+                    let local = format!("{u}::{w}");
+                    if t.adts.contains_key(&local) {
+                        tys.insert(local);
+                    } else if t.adts.contains_key(w) {
+                        tys.insert(w.to_string());
+                    }
+                }
+            }
+            let mut todo: Vec<String> = tys.iter().cloned().collect();
+            while let Some(ty) = todo.pop() {
+                for n in adt_refs(&t.adts[&ty]) {
+                    if t.adts.contains_key(&n) && tys.insert(n.clone()) {
+                        todo.push(n);
+                    }
+                }
+            }
+            for ty in &tys {
+                let line = adt_line(&t.adts[ty]);
+                section(&mut pk, "type", &line);
+                section(&mut ik, "type", &line);
+            }
             proof_keys.insert(path.clone(), crate::sha256::hex(pk.as_bytes()));
             ir_keys.insert(path.clone(), crate::sha256::hex(ik.as_bytes()));
         }
@@ -697,4 +738,49 @@ impl Session {
             );
         }
     }
+}
+
+/// The data types a type declaration's fields and payloads name.
+fn adt_refs(a: &crate::check::Adt) -> Vec<String> {
+    fn walk(t: &crate::ast::TypeKind, out: &mut Vec<String>) {
+        use crate::ast::TypeKind;
+        match t {
+            TypeKind::Named { path, args } => {
+                out.push(path.join("::"));
+                args.iter().for_each(|a| walk(&a.kind, out));
+            }
+            TypeKind::Array(e, _) | TypeKind::Slice(e) => walk(&e.kind, out),
+            TypeKind::Ref { inner, .. } => walk(&inner.kind, out),
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    match &a.kind {
+        crate::check::AdtKind::Struct(fs) => fs.iter().for_each(|(_, t)| walk(t, &mut out)),
+        crate::check::AdtKind::Enum(vs) => vs
+            .iter()
+            .flat_map(|(_, ps)| ps.iter())
+            .for_each(|t| walk(t, &mut out)),
+    }
+    out
+}
+
+/// A type declaration as a key line: its path, fields or variants, and
+/// their resolved types.
+fn adt_line(a: &crate::check::Adt) -> String {
+    use crate::check::ty_str;
+    let body: Vec<String> = match &a.kind {
+        crate::check::AdtKind::Struct(fs) => fs
+            .iter()
+            .map(|(n, t)| format!("{n}: {}", ty_str(t)))
+            .collect(),
+        crate::check::AdtKind::Enum(vs) => vs
+            .iter()
+            .map(|(n, ps)| {
+                let ps: Vec<String> = ps.iter().map(ty_str).collect();
+                format!("{n}({})", ps.join(", "))
+            })
+            .collect(),
+    };
+    format!("{} {{ {} }}", a.path, body.join(", "))
 }

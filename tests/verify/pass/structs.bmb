@@ -1,0 +1,109 @@
+#[summary("구조체: 필드 분해 인코딩 (ADR-0027 §1, backlog 2B-05a)")]
+mod geo {
+    struct Point { x: i64, y: i64 }
+
+    struct Seg { a: Point, b: Point, w: [i64; 2] }
+
+    spec fn small(p: Point) -> bool { -1000 <= p.x && p.x <= 1000 && -1000 <= p.y && p.y <= 1000 }
+
+    spec fn small_d(d: i64) -> bool { -1000 <= d && d <= 1000 }
+
+    spec fn moved(p: Point, q: Point, d: i64) -> bool { q.x == p.x + d && q.y == p.y }
+
+    spec fn same(p: Point, q: Point) -> bool { p == q }
+
+    spec fn either(r: Point, p: Point, q: Point) -> bool { r == p || r == q }
+
+    spec fn ends(s: Seg, p: Point, q: Point) -> bool { s.a == p && s.b == q }
+
+    impl Point {
+        #[effects(pure)]
+        #[uses(small)]
+        fn sum(self: &Point) -> i64
+            requires small(*self),
+        {
+            self.x + self.y
+        }
+
+        #[effects(pure)]
+        #[uses(small, small_d, moved)]
+        fn shift(self: &mut Point, d: i64) -> ()
+            requires small(*self), small_d(d),
+            ensures moved(*old(self), *self, d),
+        {
+            self.x = self.x + d;
+        }
+    }
+
+    // A callee's `&mut` effect is its `ensures`, nothing more.
+    #[effects(pure)]
+    #[uses(small, small_d, moved)]
+    fn twice(p: Point, d: i64) -> (r: Point)
+        requires small(p), small_d(d),
+        ensures moved(p, r, d + d),
+    {
+        let mut q: Point = p;
+        Point::shift(&mut q, d);
+        let mut z: Point = Point { y: q.y, x: q.x };
+        z.x = z.x + d;
+        z
+    }
+
+    // Nested fields: writing one leaves the others.
+    #[effects(pure)]
+    #[uses(ends)]
+    fn reshape(p: Point, q: Point) -> (r: Seg)
+        ensures ends(r, p, q),
+    {
+        let mut s: Seg = Seg { a: p, b: p, w: [1, 2] };
+        s.b = q;
+        s.a.y = s.a.y;
+        s
+    }
+
+    #[effects(pure)]
+    #[uses(either)]
+    fn pick(c: bool, p: Point, q: Point) -> (r: Point)
+        ensures either(r, p, q),
+    {
+        let m: Point = if c { p } else { q };
+        m
+    }
+
+    // A loop that writes a field keeps only what its invariant says.
+    #[effects(pure)]
+    #[uses(small)]
+    fn count(n: i64) -> (r: Point)
+        ensures small(r),
+    {
+        let mut p: Point = Point { x: 0, y: 0 };
+        let mut i: i64 = 0;
+        while i < 10
+            invariant 0 <= i, i <= 10, small(p), p.x == i, p.y == 0,
+            decreases 10 - i,
+        {
+            p.x = p.x + 1;
+            i = i + 1;
+        }
+        p
+    }
+
+    #[effects(pure)]
+    #[uses(small)]
+    fn replace(p: &mut Point) -> ()
+        ensures small(*p),
+    {
+        *p = Point { x: 1, y: -1 };
+    }
+}
+
+#[summary("다른 단위에서 전체 경로로")]
+mod user {
+    #[effects(pure)]
+    #[uses(geo::small)]
+    fn far(p: geo::Point) -> i64
+        requires geo::small(p),
+    {
+        geo::Point::sum(&p)
+    }
+}

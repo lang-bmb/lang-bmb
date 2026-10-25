@@ -1,0 +1,80 @@
+#[summary("구조체: 거짓 주장은 증명되지 않는다 (backlog 2B-05a)")]
+mod geo {
+    struct Point { x: i64, y: i64 }
+
+    struct Seg { a: Point, b: Point }
+
+    spec fn same(p: Point, q: Point) -> bool { p == q }
+
+    spec fn y_kept(p: Point, q: Point) -> bool { q.y == p.y }
+
+    spec fn origin(p: Point) -> bool { p.x == 0 && p.y == 0 }
+
+    impl Point {
+        #[effects(pure)]
+        fn bump(self: &mut Point) -> () {
+            self.y = 0;
+        }
+    }
+
+    // The callee may change every field: nothing is known after the call.
+    #[effects(pure)]
+    #[uses(same)]
+    fn after_call(p: Point) -> (r: Point)
+        ensures same(p, r),
+    {
+        let mut q: Point = p;
+        Point::bump(&mut q);
+        q
+    }
+
+    // Writing `a.x` changes `a`.
+    #[effects(pure)]
+    #[uses(same)]
+    fn after_write(s: Seg) -> (r: Point)
+        ensures same(s.a, r),
+    {
+        let mut t: Seg = s;
+        t.a.x = 1;
+        t.a
+    }
+
+    // The loop havocs `p`; its invariant does not keep `y`.
+    #[effects(pure)]
+    #[uses(y_kept)]
+    fn after_loop(p: Point) -> (r: Point)
+        ensures y_kept(p, r),
+    {
+        let mut q: Point = p;
+        let mut i: i64 = 0;
+        while i < 3
+            invariant 0 <= i, i <= 3,
+            decreases 3 - i,
+        {
+            q.y = i;
+            i = i + 1;
+        }
+        q
+    }
+
+    #[effects(pure)]
+    #[uses(origin)]
+    fn param(p: &Point) -> ()
+        requires origin(*p),
+    {
+        assert(p.y == 1);
+    }
+
+    #[effects(pure)]
+    fn overflow(p: Point) -> i64 {
+        p.x * 2
+    }
+
+    #[effects(pure)]
+    #[uses(same)]
+    fn branch(c: bool, p: Point, q: Point) -> (r: Point)
+        ensures same(r, p),
+    {
+        if c { p } else { q }
+    }
+}

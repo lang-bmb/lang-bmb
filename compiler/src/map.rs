@@ -152,13 +152,13 @@ fn resolve(path: &[Ident], unit: &str, t: &Tables) -> String {
         .map(|i| i.name.as_str())
         .collect::<Vec<_>>()
         .join("::");
-    if path.len() == 1 {
-        let local = format!("{unit}::{plain}");
-        if t.fns.contains_key(&local) {
-            return local;
-        }
+    // `f` and `T::f` (an `impl` function of the unit's type) are local, as
+    // the checker resolves them.
+    let local = format!("{unit}::{plain}");
+    match t.fns.get(&local) {
+        Some(sig) if path.len() == 1 || (path.len() == 2 && sig.in_impl) => local,
+        _ => plain,
     }
-    plain
 }
 
 /// Calls in an expression, with whether they occur in specification context.
@@ -956,13 +956,16 @@ impl<'p> Model<'p> {
             .map(|i| i.name.as_str())
             .collect::<Vec<_>>()
             .join("::");
-        if path.len() == 1 {
-            let local = format!("{unit}::{plain}");
-            if self.defs.contains_key(&local) {
-                return local == target;
+        let local = format!("{unit}::{plain}");
+        match self.sigs.get(&local) {
+            Some(sig)
+                if self.defs.contains_key(&local)
+                    && (path.len() == 1 || (path.len() == 2 && sig.in_impl)) =>
+            {
+                local == target
             }
+            _ => plain == target,
         }
-        plain == target
     }
 
     /// Edges reachable from `start` within `depth` steps.

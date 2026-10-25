@@ -50,12 +50,13 @@ impl<'a> Printer<'a> {
             .collect::<Vec<_>>()
             .join("::");
         match &self.qualify {
-            Some((fns, unit)) if path.len() == 1 => {
+            // `f` and `T::f` (an `impl` function of the unit's type) are
+            // local, as the checker resolves them.
+            Some((fns, unit)) if path.len() <= 2 => {
                 let local = format!("{unit}::{plain}");
-                if fns.contains_key(&local) {
-                    local
-                } else {
-                    plain
+                match fns.get(&local) {
+                    Some(sig) if path.len() == 1 || sig.in_impl => local,
+                    _ => plain,
                 }
             }
             _ => plain,

@@ -440,27 +440,6 @@ fn emit_llvm_frontend(
             has_main: false,
         };
     }
-    // Data types are checked but not lowered before backlog 2B-06.
-    if let Some(sp) = verify::program_data_type_use(&fe.program, &fe.tables) {
-        let mut diags = fe.diags.clone();
-        diags.push(Diag::new(
-            "E0814",
-            sp,
-            "data types are not compiled yet (backlog 2B-06)",
-        ));
-        return LlvmOutput {
-            verify: VerifyOutput {
-                ok: false,
-                output: diags.to_jsonl(&fe.sm),
-                scripts: BTreeMap::new(),
-                cache: (0, 0),
-                incr: incremental::Stats::default(),
-            },
-            ir: None,
-            checks: 0,
-            has_main: false,
-        };
-    }
     let mut incr = cache_dir
         .filter(|_| !all_checks)
         .map(|d| incremental::Session::new(d, &fe.program, &fe.tables, &fe.sm));
@@ -470,8 +449,26 @@ fn emit_llvm_frontend(
     } else {
         prove(fe, &mut diags, cache_dir, incr.as_mut())
     };
-    let usable = usable_proofs(fe, &outcome);
-    let module = codegen::emit_with(&fe.program, &fe.tables, &usable, incr.as_mut());
+    // Data types are proved but not lowered before backlog 2B-06.
+    let module = match verify::program_data_type_use(&fe.program, &fe.tables) {
+        Some(sp) => {
+            diags.push(Diag::new(
+                "E0814",
+                sp,
+                "data types are not compiled yet (backlog 2B-06)",
+            ));
+            None
+        }
+        None => {
+            let usable = usable_proofs(fe, &outcome);
+            Some(codegen::emit_with(
+                &fe.program,
+                &fe.tables,
+                &usable,
+                incr.as_mut(),
+            ))
+        }
+    };
     if let Some(s) = &mut incr {
         s.save();
     }
@@ -485,9 +482,9 @@ fn emit_llvm_frontend(
             cache,
             incr: incr.map(|s| s.stats).unwrap_or_default(),
         },
-        ir: Some(module.ir),
-        checks: module.checks,
-        has_main: module.main.is_some(),
+        checks: module.as_ref().map_or(0, |m| m.checks),
+        has_main: module.as_ref().is_some_and(|m| m.main.is_some()),
+        ir: module.map(|m| m.ir),
     }
 }
 

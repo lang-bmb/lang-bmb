@@ -23,6 +23,8 @@ pub struct FnSig {
     /// A spec fn whose body is the literal `true`.
     pub vacuous: bool,
     pub builtin: bool,
+    /// Defined in an `impl T` block: named `T::f` in its unit (ADR-0026).
+    pub in_impl: bool,
 }
 
 /// A declared data type (ADR-0026), its field and payload types resolved
@@ -57,6 +59,8 @@ pub struct Checker<'a> {
     pub types: BTreeMap<(u32, u32, u32), TypeKind>,
     /// Recursive definitions: path -> id of its strongly connected component.
     pub recursive: BTreeMap<String, usize>,
+    /// Canonical type of every parameter and local, by definition path.
+    pub locals: BTreeMap<String, BTreeMap<String, TypeKind>>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -147,6 +151,7 @@ impl<'a> Checker<'a> {
                 effect: Effect::Io,
                 vacuous: false,
                 builtin: true,
+                in_impl: false,
             },
         );
         Checker {
@@ -156,6 +161,7 @@ impl<'a> Checker<'a> {
             calls: BTreeMap::new(),
             types: BTreeMap::new(),
             recursive: BTreeMap::new(),
+            locals: BTreeMap::new(),
         }
     }
 
@@ -165,6 +171,8 @@ impl<'a> Checker<'a> {
             fns: self.fns,
             types: self.types,
             recursive: self.recursive,
+            adts: self.adts,
+            locals: self.locals,
         }
     }
 
@@ -514,7 +522,7 @@ impl<'a> Checker<'a> {
                 continue;
             }
             let path = format!("{mp}::{}", f.name.name);
-            self.collect_fn(f, path, &mp);
+            self.collect_fn(f, path, &mp, false);
         }
         let mut with_impl = BTreeSet::new();
         for i in &m.impls {
@@ -552,7 +560,7 @@ impl<'a> Checker<'a> {
                     continue;
                 }
                 self.receiver_rule(f, Some(&ty), &mp);
-                self.collect_fn(f, format!("{ty}::{}", f.name.name), &mp);
+                self.collect_fn(f, format!("{ty}::{}", f.name.name), &mp, true);
             }
         }
         for f in &m.fns {
@@ -603,7 +611,7 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn collect_fn(&mut self, f: &FnDef, path: String, mp: &str) {
+    fn collect_fn(&mut self, f: &FnDef, path: String, mp: &str, in_impl: bool) {
         let params = f
             .params
             .iter()
@@ -631,6 +639,7 @@ impl<'a> Checker<'a> {
                     effect,
                     vacuous,
                     builtin: false,
+                    in_impl,
                 },
             );
         }
@@ -1018,6 +1027,10 @@ impl<'a> Checker<'a> {
                 .fix("choose a new name", None),
             );
         }
+        self.locals
+            .entry(cx.path.clone())
+            .or_default()
+            .insert(name.name.clone(), ty.clone());
         cx.scopes.last_mut().unwrap().insert(
             name.name.clone(),
             Local {

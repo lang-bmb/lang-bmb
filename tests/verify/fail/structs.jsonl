@@ -1,0 +1,13 @@
+{"code":"E0802","severity":"error","message":"postcondition `same` may not hold in `geo::after_call`; counterexample: p = Point { x: -9223372036854774572, y: -9223372036854773370 }","file":"fail/structs.bmb","line":24,"col":17,"end_line":24,"end_col":27}
+{"code":"E0802","severity":"error","message":"postcondition `same` may not hold in `geo::after_write`; counterexample: s = Seg { a: Point { x: 2, y: 0 }, b: Point { x: 0, y: 0 } }","file":"fail/structs.bmb","line":35,"col":17,"end_line":35,"end_col":29}
+{"code":"E0802","severity":"error","message":"postcondition `y_kept` may not hold in `geo::after_loop`; counterexample: p = Point { x: 0, y: -9223372036854768089 }","file":"fail/structs.bmb","line":46,"col":17,"end_line":46,"end_col":29}
+{"code":"E0810","severity":"error","message":"assertion may not hold in `geo::param`; counterexample: p = Point { x: 0, y: 0 }","file":"fail/structs.bmb","line":65,"col":9,"end_line":65,"end_col":26}
+{"code":"E0803","severity":"error","message":"`*` may overflow `i64` in `geo::overflow`; counterexample: p = Point { x: 4611686018427387904, y: 0 }","file":"fail/structs.bmb","line":70,"col":9,"end_line":70,"end_col":16}
+{"code":"E0802","severity":"error","message":"postcondition `same` may not hold in `geo::branch`; counterexample: c = false, p = Point { x: 1, y: 11798 }, q = Point { x: 0, y: 0 }","file":"fail/structs.bmb","line":76,"col":17,"end_line":76,"end_col":27}
+{"def":"geo::Point::bump","status":"verified","obligations":0,"failed":0,"rlimit":0,"rlimit_max":0}
+{"def":"geo::after_call","status":"failed","obligations":1,"failed":1,"rlimit":5001058,"rlimit_max":5000225}
+{"def":"geo::after_loop","status":"failed","obligations":7,"failed":1,"rlimit":5004621,"rlimit_max":5000249}
+{"def":"geo::after_write","status":"failed","obligations":1,"failed":1,"rlimit":5000919,"rlimit_max":5000225}
+{"def":"geo::branch","status":"failed","obligations":1,"failed":1,"rlimit":5001337,"rlimit_max":5000229}
+{"def":"geo::overflow","status":"failed","obligations":1,"failed":1,"rlimit":596,"rlimit_max":596}
+{"def":"geo::param","status":"failed","obligations":1,"failed":1,"rlimit":4785,"rlimit_max":4785}
