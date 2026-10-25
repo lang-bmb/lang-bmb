@@ -658,6 +658,8 @@ mod geo {
     }
 }
 "#;
+    // `Point::reset` is a call edge of `caller` (map and impact, 2B-07).
+    assert!(impact(&files(BASE), "geo::Point::reset", "iface").contains("geo::caller"));
     let dir = tmp("types");
     let run = |text: &str| bmb::verify_sources_cached(&files(text), Some(&dir));
     let first = run(BASE);
@@ -686,5 +688,9 @@ mod geo {
         "{enc:?}"
     );
     assert!(!enc.contains("geo::other"), "{enc:?}");
+    // What was re-proved lies inside the type's impact set (H-MAINT).
+    let hit = impact(&files(BASE), "geo::Point", "iface");
+    assert!(enc.is_subset(&hit), "{enc:?} not in {hit:?}");
+    assert!(!hit.contains("geo::other"), "{hit:?}");
     let _ = fs::remove_dir_all(&dir);
 }

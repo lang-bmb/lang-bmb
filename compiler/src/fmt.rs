@@ -612,8 +612,23 @@ pub fn hashes(p: &Program, fns: &BTreeMap<String, FnSig>) -> Vec<DefHash> {
             DefHash { path, body, iface }
         })
         .collect();
-    // A type declaration is its own surface: body hash = interface hash, its
-    // name written `_` (ADR-0026 §6, as for definitions, ADR-0019 §2).
+    out.extend(type_hashes(p));
+    out.sort_by(|a, b| a.path.cmp(&b.path));
+    out
+}
+
+/// A type declaration in normal form on one line (map L1 `signature`).
+pub fn type_text(t: &TypeDef) -> String {
+    let mut pr = plain();
+    pr.type_def(t, 0);
+    pr.out.trim_end().to_string()
+}
+
+/// Hashes of the type declarations. A type declaration is its own surface:
+/// body hash = interface hash, its name written `_` (ADR-0026 §6, as for
+/// definitions, ADR-0019 §2).
+pub fn type_hashes(p: &Program) -> Vec<DefHash> {
+    let mut out = Vec::new();
     fn types(m: &Mod, prefix: &str, out: &mut Vec<DefHash>) {
         let mp = format!("{prefix}{}", m.name.name);
         for s in &m.mods {
@@ -670,7 +685,6 @@ pub fn hashes(p: &Program, fns: &BTreeMap<String, FnSig>) -> Vec<DefHash> {
     for m in &p.mods {
         types(m, "", &mut out);
     }
-    out.sort_by(|a, b| a.path.cmp(&b.path));
     out
 }
 

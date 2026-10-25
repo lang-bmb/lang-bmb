@@ -80,6 +80,22 @@ impl std::ops::Deref for Def<'_> {
     }
 }
 
+/// A type declaration of an `Index` (ADR-0026 §6).
+#[derive(Clone)]
+pub struct TypeEntry {
+    pub path: String,
+    pub unit: String,
+    /// `"struct"` or `"enum"`.
+    pub kind: &'static str,
+    /// The declaration in normal form on one line.
+    pub text: String,
+    pub hash: String,
+    pub file: String,
+    pub line: u32,
+    /// Types its fields or payloads name.
+    pub names: BTreeSet<String>,
+}
+
 #[derive(Clone)]
 pub struct Unit {
     pub path: String,
@@ -104,6 +120,8 @@ pub struct Edge {
 pub struct Index {
     pub units: BTreeMap<String, Unit>,
     pub defs: BTreeMap<String, Entry>,
+    /// Struct and enum declarations by path.
+    pub types: BTreeMap<String, TypeEntry>,
     pub edges: BTreeSet<Edge>,
     /// Executable definitions with effect `io`, built-ins (`print_i64`)
     /// included.
@@ -136,6 +154,7 @@ fn fn_order<'p>(m: &'p Mod, out: &mut Vec<&'p FnDef>) {
         fn_order(s, out);
     }
     out.extend(m.fns.iter());
+    out.extend(m.impls.iter().flat_map(|i| i.fns.iter()));
 }
 
 fn status_map(outcome: &Outcome) -> BTreeMap<String, (usize, usize, u64)> {
@@ -264,10 +283,18 @@ fn walk<'p>(
         .map(|s| format!("{mp}::{}", s.name.name))
         .collect();
     sub.sort();
+    // Functions, `impl` functions (`unit::T::f`) and types (ADR-0026 §6).
     let mut defs: Vec<String> = m
         .fns
         .iter()
         .map(|f| format!("{mp}::{}", f.name.name))
+        .chain(
+            m.impls
+                .iter()
+                .flat_map(|i| i.fns.iter().map(move |f| (i, f)))
+                .map(|(i, f)| format!("{mp}::{}::{}", i.ty.name, f.name.name)),
+        )
+        .chain(m.types.iter().map(|t| format!("{mp}::{}", t.name.name)))
         .collect();
     defs.sort();
     units.insert(
@@ -285,6 +312,134 @@ fn walk<'p>(
     for f in &m.fns {
         out.push((format!("{mp}::{}", f.name.name), mp.clone(), f));
     }
+    for i in &m.impls {
+        for f in &i.fns {
+            out.push((
+                format!("{mp}::{}::{}", i.ty.name, f.name.name),
+                mp.clone(),
+                f,
+            ));
+        }
+    }
+}
+
+/// The type declarations of a unit and its sub-units: (path, unit, decl).
+fn walk_types<'p>(m: &'p Mod, prefix: &str, out: &mut Vec<(String, String, &'p TypeDef)>) {
+    let mp = format!("{prefix}{}", m.name.name);
+    for s in &m.mods {
+        walk_types(s, &format!("{mp}::"), out);
+    }
+    for t in &m.types {
+        out.push((format!("{mp}::{}", t.name.name), mp.clone(), t));
+    }
+}
+
+/// The data types a type names (full paths, declared ones only).
+fn named_types(t: &TypeKind, tb: &Tables, out: &mut BTreeSet<String>) {
+    match t {
+        TypeKind::Named { path, args } => {
+            let p = path.join("::");
+            if tb.adts.contains_key(&p) {
+                out.insert(p);
+            }
+            args.iter().for_each(|a| named_types(&a.kind, tb, out));
+        }
+        TypeKind::Array(e, _) | TypeKind::Slice(e) => named_types(&e.kind, tb, out),
+        TypeKind::Ref { inner, .. } => named_types(&inner.kind, tb, out),
+        _ => {}
+    }
+}
+
+/// Every expression of a definition (contracts and body), for the types
+/// their values have.
+fn exprs_of(f: &FnDef) -> Vec<&Expr> {
+    fn block<'e>(b: &'e Block, out: &mut Vec<&'e Expr>) {
+        for s in &b.stmts {
+            match s {
+                Stmt::Let { init, .. } | Stmt::LetFields { init, .. } => expr(init, out),
+                Stmt::Assign { target, value, .. } => {
+                    expr(target, out);
+                    expr(value, out);
+                }
+                Stmt::While {
+                    cond,
+                    invariants,
+                    decreases,
+                    body,
+                    ..
+                } => {
+                    expr(cond, out);
+                    invariants.iter().for_each(|x| expr(x, out));
+                    decreases.iter().for_each(|x| expr(x, out));
+                    block(body, out);
+                }
+                Stmt::Assert { cond, .. } => expr(cond, out),
+                Stmt::Expr(e) => expr(e, out),
+            }
+        }
+        if let Some(t) = &b.tail {
+            expr(t, out);
+        }
+    }
+    fn expr<'e>(e: &'e Expr, out: &mut Vec<&'e Expr>) {
+        out.push(e);
+        match &e.kind {
+            ExprKind::Call { args, .. } | ExprKind::Array(args) => {
+                args.iter().for_each(|a| expr(a, out))
+            }
+            ExprKind::Method { recv, args, .. } => {
+                expr(recv, out);
+                args.iter().for_each(|a| expr(a, out));
+            }
+            ExprKind::Index { base, index } => {
+                expr(base, out);
+                expr(index, out);
+            }
+            ExprKind::Unary(_, x)
+            | ExprKind::Ref { expr: x, .. }
+            | ExprKind::Old(x)
+            | ExprKind::Trigger(x)
+            | ExprKind::Deref(x)
+            | ExprKind::Field { base: x, .. }
+            | ExprKind::Repeat { value: x, .. }
+            | ExprKind::Forall { body: x, .. } => expr(x, out),
+            ExprKind::Binary(_, l, r) => {
+                expr(l, out);
+                expr(r, out);
+            }
+            ExprKind::If { cond, then, els } => {
+                expr(cond, out);
+                block(then, out);
+                els.iter().for_each(|x| expr(x, out));
+            }
+            ExprKind::Block(b) => block(b, out),
+            ExprKind::StructLit { fields, rest, .. } => {
+                fields.iter().for_each(|(_, x)| expr(x, out));
+                rest.iter().for_each(|x| expr(x, out));
+            }
+            ExprKind::Match { scrut, arms } => {
+                expr(scrut, out);
+                arms.iter().for_each(|a| expr(&a.body, out));
+            }
+            ExprKind::Path(_)
+            | ExprKind::Int(_)
+            | ExprKind::Bool(_)
+            | ExprKind::Unit
+            | ExprKind::Var(_)
+            | ExprKind::Error => {}
+        }
+    }
+    let mut out = Vec::new();
+    for c in f
+        .requires
+        .iter()
+        .chain(&f.ensures)
+        .chain(f.decreases.iter())
+    {
+        expr(c, &mut out);
+    }
+    block(&f.body, &mut out);
+    out
 }
 
 impl Index {
@@ -322,6 +477,10 @@ impl Index {
             }
             for (cp, args, spec) in &calls {
                 let to = resolve(cp, &unit, t);
+                // A variant constructor (`Some(x)`, `E::V(..)`) is no call.
+                if !t.fns.contains_key(&to) {
+                    continue;
+                }
                 let kind = if f.kind == FnKind::Spec {
                     "spec_calls"
                 } else if *spec {
@@ -347,6 +506,31 @@ impl Index {
                     from: path.clone(),
                     to,
                     kind,
+                    arg: None,
+                });
+            }
+            // The data types the definition names: its signature, locals
+            // and the values of its expressions (ADR-0026 §6).
+            let mut named = BTreeSet::new();
+            if let Some(sig) = t.fns.get(&path) {
+                sig.params
+                    .iter()
+                    .chain([&sig.ret])
+                    .for_each(|x| named_types(x, t, &mut named));
+            }
+            if let Some(ls) = t.locals.get(&path) {
+                ls.values().for_each(|x| named_types(x, t, &mut named));
+            }
+            for e in exprs_of(f) {
+                if let Some(x) = t.types.get(&(e.span.file, e.span.lo, e.span.hi)) {
+                    named_types(x, t, &mut named);
+                }
+            }
+            for ty in named {
+                edges.insert(Edge {
+                    from: path.clone(),
+                    to: ty,
+                    kind: "types",
                     arg: None,
                 });
             }
@@ -379,6 +563,46 @@ impl Index {
                 },
             );
         }
+        let hashes: BTreeMap<String, String> = crate::fmt::type_hashes(p)
+            .into_iter()
+            .map(|h| (h.path, h.body))
+            .collect();
+        let mut list = Vec::new();
+        for m in &p.mods {
+            walk_types(m, "", &mut list);
+        }
+        let mut types = BTreeMap::new();
+        for (path, unit, td) in list {
+            let (line, _) = sm.line_col(td.name.span.file, td.name.span.lo);
+            let mut names = BTreeSet::new();
+            if let Some(a) = t.adts.get(&path) {
+                match &a.kind {
+                    crate::check::AdtKind::Struct(fs) => {
+                        fs.iter().for_each(|(_, x)| named_types(x, t, &mut names))
+                    }
+                    crate::check::AdtKind::Enum(vs) => vs
+                        .iter()
+                        .flat_map(|(_, ps)| ps.iter())
+                        .for_each(|x| named_types(x, t, &mut names)),
+                }
+            }
+            types.insert(
+                path.clone(),
+                TypeEntry {
+                    kind: match td.kind {
+                        TypeDefKind::Struct(_) => "struct",
+                        TypeDefKind::Enum(_) => "enum",
+                    },
+                    text: crate::fmt::type_text(td),
+                    hash: hashes.get(&path).cloned().unwrap_or_default(),
+                    file: sm.name(td.name.span.file).to_string(),
+                    line,
+                    names,
+                    unit,
+                    path,
+                },
+            );
+        }
         let io = t
             .fns
             .iter()
@@ -392,6 +616,7 @@ impl Index {
         Index {
             units,
             defs,
+            types,
             edges,
             io,
             incoming,
@@ -498,6 +723,30 @@ impl<'p> Model<'p> {
         ])
     }
 
+    fn l0_type(ty: &TypeEntry) -> J {
+        J::O(vec![
+            ("level", J::S("L0".into())),
+            ("kind", J::S("def".into())),
+            ("path", J::S(ty.path.clone())),
+            ("def_kind", J::S(ty.kind.into())),
+            ("hash", J::S(ty.hash.chars().take(7 + 12).collect())),
+        ])
+    }
+
+    /// A type's L1 row: its declaration is its surface (ADR-0026 §6).
+    fn l1_type(ty: &TypeEntry) -> J {
+        J::O(vec![
+            ("level", J::S("L1".into())),
+            ("path", J::S(ty.path.clone())),
+            ("def_kind", J::S(ty.kind.into())),
+            ("signature", J::S(ty.text.clone())),
+            ("body", J::S(ty.hash.clone())),
+            ("iface", J::S(ty.hash.clone())),
+            ("file", J::S(ty.file.clone())),
+            ("line", J::N(ty.line as u64)),
+        ])
+    }
+
     fn effects(d: &Def) -> String {
         if d.f.kind == FnKind::Spec {
             return "spec".into();
@@ -592,6 +841,9 @@ impl<'p> Model<'p> {
         for d in self.all_defs() {
             rows.push((d.path.clone(), self.l0_def(&d)));
         }
+        for ty in self.types.values() {
+            rows.push((ty.path.clone(), Self::l0_type(ty)));
+        }
         rows.sort_by(|a, b| a.0.cmp(&b.0));
         rows.into_iter().map(|(_, j)| j).collect()
     }
@@ -602,7 +854,17 @@ impl<'p> Model<'p> {
             out.push_str(&Self::lines(self.l0_rows()));
         }
         if level == "L1" || level == "all" {
-            out.push_str(&Self::lines(self.all_defs().map(|d| self.l1(&d))));
+            let mut rows: Vec<(String, J)> = self
+                .all_defs()
+                .map(|d| (d.path.clone(), self.l1(&d)))
+                .collect();
+            rows.extend(
+                self.types
+                    .values()
+                    .map(|ty| (ty.path.clone(), Self::l1_type(ty))),
+            );
+            rows.sort_by(|a, b| a.0.cmp(&b.0));
+            out.push_str(&Self::lines(rows.into_iter().map(|(_, j)| j)));
         }
         if level == "L2" || level == "all" {
             out.push_str(&Self::lines(self.edges.iter().map(Self::l2)));
@@ -618,8 +880,32 @@ impl<'p> Model<'p> {
             let p = args.get(i).ok_or("missing definition path")?;
             self.def(p).ok_or(format!("unknown definition `{p}`"))
         };
+        let ty = args.first().and_then(|p| self.types.get(p));
         let body = match name {
             "units" => Self::lines(self.l0_rows()),
+            "surface" if ty.is_some() => Self::lines([Self::l1_type(ty.unwrap())]),
+            "impact" if ty.is_some() => {
+                let change = args.get(1).map(String::as_str).unwrap_or("iface");
+                if !matches!(change, "body" | "iface") {
+                    return Err(format!("change must be body or iface, not `{change}`"));
+                }
+                Self::lines(self.type_impact(ty.unwrap(), change))
+            }
+            "edges" if ty.is_some() => {
+                let dir = args.get(1).map(String::as_str).unwrap_or("out");
+                if !matches!(dir, "out" | "in" | "both") {
+                    return Err(format!("direction must be out, in or both, not `{dir}`"));
+                }
+                let depth: usize = match args.get(2) {
+                    Some(x) => x.parse().map_err(|_| format!("bad depth `{x}`"))?,
+                    None => 1,
+                };
+                Self::lines(
+                    self.reach(&ty.unwrap().path, dir, depth)
+                        .iter()
+                        .map(Self::l2),
+                )
+            }
             "surface" => Self::lines([self.l1(&def(0)?)]),
             "edges" => {
                 let d = def(0)?;
@@ -636,11 +922,20 @@ impl<'p> Model<'p> {
             "slice" => Self::lines([self.slice(&def(0)?)]),
             "find" => {
                 let n = args.first().ok_or("missing name")?;
-                Self::lines(
-                    self.all_defs()
-                        .filter(|d| d.path == *n || d.path.rsplit("::").next() == Some(n.as_str()))
-                        .map(|d| self.l0_def(&d)),
-                )
+                let hit = |p: &str| p == n || p.rsplit("::").next() == Some(n.as_str());
+                let mut rows: Vec<(String, J)> = self
+                    .all_defs()
+                    .filter(|d| hit(&d.path))
+                    .map(|d| (d.path.clone(), self.l0_def(&d)))
+                    .collect();
+                rows.extend(
+                    self.types
+                        .values()
+                        .filter(|ty| hit(&ty.path))
+                        .map(|ty| (ty.path.clone(), Self::l0_type(ty))),
+                );
+                rows.sort_by(|a, b| a.0.cmp(&b.0));
+                Self::lines(rows.into_iter().map(|(_, j)| j))
             }
             "contracts" => {
                 let p = args.first().ok_or("missing predicate path")?;
@@ -950,6 +1245,80 @@ impl<'p> Model<'p> {
         rows
     }
 
+    /// What changing a type re-proves (ADR-0026 §6): the definitions that
+    /// name it or a type holding it (`types`), then, as for a change of
+    /// their surface, the callers of an executable one that names it in its
+    /// surface and what reveals or names a spec fn that does.
+    fn type_impact(&self, ty: &TypeEntry, change: &str) -> Vec<J> {
+        // The type and every type holding it.
+        let mut affected: BTreeSet<String> = [ty.path.clone()].into();
+        loop {
+            let more: Vec<String> = self
+                .types
+                .values()
+                .filter(|t| {
+                    !affected.contains(&t.path) && t.names.iter().any(|n| affected.contains(n))
+                })
+                .map(|t| t.path.clone())
+                .collect();
+            if more.is_empty() {
+                break;
+            }
+            affected.extend(more);
+        }
+        let mut hit: BTreeMap<String, &'static str> = BTreeMap::new();
+        let mut direct = Vec::new();
+        for a in &affected {
+            for e in self.in_edges(a).filter(|e| e.kind == "types") {
+                hit.insert(e.from.clone(), "types");
+                direct.push(e.from.clone());
+            }
+        }
+        for p in direct {
+            let Some(d) = self.def(&p) else { continue };
+            let surface = if d.f.kind == FnKind::Spec {
+                crate::fmt::def_text(d.f)
+            } else {
+                crate::fmt::iface_text(d.f)
+            };
+            let names_it = affected.iter().any(|a| {
+                surface.contains(a.as_str()) || surface.contains(a.rsplit("::").next().unwrap_or(a))
+            });
+            if !names_it {
+                continue;
+            }
+            for row in self.impact(&d, "iface") {
+                if let J::O(kv) = &row
+                    && let (Some((_, J::S(path))), Some((_, J::S(reason)))) = (
+                        kv.iter().find(|(k, _)| *k == "path"),
+                        kv.iter().find(|(k, _)| *k == "reason"),
+                    )
+                    && reason != "changed"
+                {
+                    let r: &'static str = match reason.as_str() {
+                        "calls" => "calls",
+                        "uses" => "uses",
+                        _ => "names",
+                    };
+                    hit.entry(path.clone()).or_insert(r);
+                }
+            }
+        }
+        let n = hit.len();
+        let mut rows: Vec<J> = hit
+            .into_iter()
+            .map(|(path, reason)| J::O(vec![("path", J::S(path)), ("reason", J::S(reason.into()))]))
+            .collect();
+        rows.push(J::O(vec![
+            ("summary", J::B(true)),
+            ("changed", J::S(ty.path.clone())),
+            ("change", J::S(change.into())),
+            ("reprove", J::N(n as u64)),
+            ("defs", J::N(self.defs.len() as u64)),
+        ]));
+        rows
+    }
+
     fn resolves_to(&self, path: &[Ident], unit: &str, target: &str) -> bool {
         let plain = path
             .iter()
@@ -1006,6 +1375,12 @@ impl<'p> Model<'p> {
             .out_edges(&d.path)
             .filter(|e| e.to != d.path && e.kind != "writes")
         {
+            if e.kind == "types" {
+                if let Some(ty) = self.types.get(&e.to) {
+                    deps.insert(e.to.clone(), ty.text.clone());
+                }
+                continue;
+            }
             let Some(t) = self.def(&e.to) else {
                 continue;
             };

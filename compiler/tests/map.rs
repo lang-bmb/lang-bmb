@@ -370,3 +370,84 @@ fn effects_lists_shortest_paths_to_io() {
         |r: &[&str]| bmb::map_request(&f, &r.iter().map(|s| s.to_string()).collect::<Vec<_>>());
     assert!(req(&["query", "effects", "app::nope"]).is_err());
 }
+
+/// Data types in the maps (ADR-0026 §6, backlog 2B-07): types are L0 `def`
+/// rows with `def_kind` `struct`/`enum`, `impl` functions are `unit::T::f`,
+/// L2 `types` edges, type impact, and variant constructors are no calls.
+#[test]
+fn data_types_are_mapped() {
+    const SRC: &str = r#"#[summary("types")]
+mod geo {
+    struct Point { x: i64, y: i64 }
+
+    enum Shape { Dot, At(Point) }
+
+    struct Other { z: i64 }
+
+    impl Point {
+        #[effects(pure)]
+        fn norm(self: &Point) -> i64 {
+            0
+        }
+    }
+
+    #[effects(pure)]
+    fn make(p: Point) -> Shape {
+        let n: i64 = Point::norm(&p);
+        Shape::At(p)
+    }
+
+    #[effects(pure)]
+    fn other(o: Other) -> i64 {
+        o.z
+    }
+
+    #[effects(pure)]
+    fn wrap(a: i64) -> i64 {
+        let o: Option<i64> = Some(a);
+        a
+    }
+}
+"#;
+    let f = files(&[("t.bmb", SRC)]);
+    let l0 = run(&f, &["map", "L0"]);
+    assert!(
+        l0.contains(r#""path":"geo::Point","def_kind":"struct""#),
+        "{l0}"
+    );
+    assert!(
+        l0.contains(r#""path":"geo::Shape","def_kind":"enum""#),
+        "{l0}"
+    );
+    assert!(
+        l0.contains(r#""path":"geo::Point::norm","def_kind":"fn""#),
+        "{l0}"
+    );
+    let l1 = run(&f, &["query", "surface", "geo::Shape"]);
+    assert!(
+        l1.contains(r#""signature":"enum Shape { Dot, At(Point) }""#),
+        "{l1}"
+    );
+    let l2 = run(&f, &["map", "L2"]);
+    assert!(
+        l2.contains(r#""from":"geo::make","to":"geo::Point::norm","kind":"calls""#),
+        "{l2}"
+    );
+    assert!(
+        l2.contains(r#""from":"geo::make","to":"geo::Shape","kind":"types""#),
+        "{l2}"
+    );
+    // `Some(a)` and `Shape::At(p)` build values: no `calls` edge.
+    assert!(
+        !l2.contains(r#""to":"Some""#) && !l2.contains("Shape::At"),
+        "{l2}"
+    );
+    let hit = run(&f, &["query", "impact", "geo::Point", "iface"]);
+    for d in ["geo::make", "geo::Point::norm"] {
+        assert!(hit.contains(&format!(r#""path":"{d}""#)), "{hit}");
+    }
+    assert!(
+        !hit.contains("geo::other") && !hit.contains("geo::wrap"),
+        "{hit}"
+    );
+}

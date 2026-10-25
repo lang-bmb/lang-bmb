@@ -19,7 +19,7 @@ cargo run -- mutate --def u::f a.bmb  # W0904 변이 전부(상한 없음, 증�
 cargo run -- doctor              # 고정된 Z3·LLVM 버전 확인(scripts/toolchain.env)
 ../scripts/setup.sh              # 고정 버전 설치(새 클라우드 세션은 시작 훅이 자동 실행)
 ../scripts/check.sh              # 검증 게이트: fmt·clippy·빌드·백로그·문서, 그다음 테스트 실행 파일과 벤치 검사를 동시에(INF-08, scripts/gate_jobs.py). 종료 코드로 판단
-cargo run -- map all a.bmb        # 표준 맵 L0~L2(JSONL, ADR-0020)
+cargo run -- map all a.bmb        # 표준 맵 L0~L2(JSONL, ADR-0020; 타입·`impl` 함수·`types` 간선은 ADR-0026 §6)
 cargo run -- query slice u::f -- a.bmb  # 읽기 질의: units surface edges slice find contracts status impact duplicates effects tests
 cargo run -- query --cache .bmb-cache status -- ws  # map·query도 --cache DIR을 받는다(증명하는 L1·surface·status만 영향, 출력은 같은 바이트, INF-08)
 cargo run -- import ws a.bmb     # 작업 공간 ws/src/에 단위당 정규형 파일 하나
@@ -111,7 +111,7 @@ ADR-0016의 부분집합을 구체화한 것이다. 모두 "선택을 필수로"
 
 `--cache DIR`(MCP는 `.bmb-cache/`)은 증명 캐시(`DIR/proofs`) 옆에 정의별 결과(`DIR/defs`)를 둔다(백로그 2D-10, ADR-0032, `src/incremental.rs`). 키가 그대로인 정의는 기호 실행 인코딩도 IR 생성도 하지 않는다. 출력(진단, 상태 줄, IR, 맵)은 캐시 유무·콜드·웜과 무관하게 같은 바이트다(`tests/incremental.rs`).
 
-- 증명 키: 컴파일러 정체성(`build.rs`가 `src/**`·`toolchain.env`로 만든 SHA-256), Z3 버전, 질의 머리(옵션·`rlimit`·전주곡), 정의의 원문과 한정 정규형, 부르는 실행 함수의 계약 해시, 펼치거나 같은 재귀 성분인 `spec fn`의 본문 해시, 재귀 성분 구성원, 그리고 정의의 텍스트에서 피호출자 계약과 `spec fn` 텍스트를 따라 닿는 `spec fn`마다 그 SMT 선언(2D-14, ADR-0033). `impact` 질의의 간선(`calls`·`uses`·`names`)을 모두 포함하고, 선언은 그보다 넓게(피호출자 계약이 부르는 `spec fn`까지) 잡는다.
+- 증명 키: 컴파일러 정체성(`build.rs`가 `src/**`·`toolchain.env`로 만든 SHA-256), Z3 버전, 질의 머리(옵션·`rlimit`·전주곡), 정의의 원문과 한정 정규형(`T::f` 호출은 전체 경로로), 부르는 실행 함수의 계약 해시, 펼치거나 같은 재귀 성분인 `spec fn`의 본문 해시, 재귀 성분 구성원, 그리고 정의의 텍스트에서 피호출자 계약과 `spec fn` 텍스트를 따라 닿는 `spec fn`마다 그 SMT 선언(2D-14, ADR-0033), 그 텍스트들이 이름으로 쓰는 데이터 타입과 그 필드·페이로드 타입의 선언(2B-05a). `impact` 질의의 간선(`calls`·`uses`·`names`)을 모두 포함하고, 선언은 그보다 넓게(피호출자 계약이 부르는 `spec fn`까지) 잡는다.
 - IR 키: 정의의 원문·한정 정규형, 부르는 실행 함수의 호출자 해시, 그 정의 안에서 쓸 수 있는 증명된 의무(1B-31: 실패가 있는 호출 성분은 검사를 유지하므로 그 성분의 IR은 다시 만든다).
 - 완전히 증명된 정의만 증명 결과를 저장한다. 실패는 늘 다시 돈다. 재사용된 정의의 의무는 증명 캐시 적중으로 센다.
 - 파일 줄마다 SHA-256이 붙고, 맞지 않는 줄·다른 형식 버전·다른 컴파일러의 파일은 무시하고 다시 만든다.
@@ -148,7 +148,7 @@ ADR-0020 §5의 7개 질의 외에 추가한 질의다. 기존 질의와 행 형
 
 | 질의 | 결과 |
 | --- | --- |
-| `impact DEF [body\|iface]` | DEF의 본문(`body`) 또는 계약·시그니처(`iface`, 기본값)를 바꾸면 다시 증명할 정의마다 `{"path","reason"}` 행, 그리고 요약 행 `{"summary":true,"changed","change","reprove","defs"}`. `reason`: `changed`(자신), `calls`(호출자: 계약이 바뀜), `uses`(`#[uses]`로 펼침), `names`(시그니처가 바뀐 `spec fn`을 이름으로 씀). 증명은 피호출자를 계약으로만, `spec fn`을 `#[uses]`로만 보므로(ADR-0017 §4) 영향은 한 단계에서 멈춘다(백로그 2D-02) |
+| `impact DEF [body\|iface]` | DEF의 본문(`body`) 또는 계약·시그니처(`iface`, 기본값)를 바꾸면 다시 증명할 정의마다 `{"path","reason"}` 행, 그리고 요약 행 `{"summary":true,"changed","change","reprove","defs"}`. `reason`: `changed`(자신), `calls`(호출자: 계약이 바뀜), `uses`(`#[uses]`로 펼침), `names`(시그니처가 바뀐 `spec fn`을 이름으로 씀). 증명은 피호출자를 계약으로만, `spec fn`을 `#[uses]`로만 보므로(ADR-0017 §4) 영향은 한 단계에서 멈춘다(백로그 2D-02). DEF가 구조체·열거형이면(2B-07, ADR-0026 §6) 그 타입이나 그것을 담은 타입을 이름으로 쓰는 정의가 `types`이고, 그중 표면(실행 함수의 시그니처·계약, `spec fn` 전체)에 쓰는 정의에서 한 단계 더 `calls`·`uses`·`names`로 퍼진다 |
 | `duplicates` | 본문 해시(`body`)가 같은 정의 묶음마다 `{"hash","defs"}` 행(정의가 둘 이상인 묶음만, 해시순, `defs`는 경로순), 그리고 요약 행 `{"summary":true,"groups","duplicate_defs","defs"}`. 본문 해시는 정의 자신의 이름을 빼므로(ADR-0019 §2) 같은 해시는 이름이나 단위만 다른 같은 정의다(DESIGN.md §7.2, 백로그 2D-06). 자기 재귀 호출은 전체 경로로 남아 재귀 정의의 복제는 묶이지 않는다 |
 
 | `effects [DEF]` | 효과 뷰(DESIGN.md §7.2, 백로그 2D-11). DEF가 있으면 DEF에서 실행 호출(`calls` 간선)로 닿는 `io` 정의(DEF 자신과 내장 `print_i64` 포함)마다 `{"def":DEF,"effect":"io","path"}` 행(`path`는 DEF에서 그 정의까지의 최단 호출 경로, 도달한 정의의 경로순), 그리고 요약 행 `{"summary":true,"def","io_reached","defs"}`. DEF가 없으면 내장 `io` 연산에 닿는 정의마다 `{"def","effect":"io","path"}` 행(가장 가까운 연산까지의 최단 경로, 정의 경로순), 그리고 요약 행 `{"summary":true,"io_reaching","io_defs","defs"}`. 최단 경로가 여럿이면 정의 경로를 차례로 비교해 가장 작은 것을 고른다(호출 순서·정의 순서와 무관). 맵 간선만 쓰고 증명하지 않는다(1D-17의 증명 불필요 집합). 효과 검사(E0603)가 `pure`의 `io` 호출을 막으므로 `io`에 닿는 정의는 모두 `io`로 선언되어 있다. `io`로 선언했지만 어떤 연산에도 닿지 않는 정의는 DEF 없는 결과에 나오지 않는다(`io_defs`와 행 수의 차이) |
