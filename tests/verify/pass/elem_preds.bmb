@@ -1,0 +1,17 @@
+#[summary("i64 원소에 쓴 명세 함수가 수량자 안에서 펼쳐진다(백로그 1B-37)")]
+mod elem_preds {
+    spec fn small(v: i64) -> bool { v < 5 }
+
+    spec fn all_small(a: &[i64]) -> bool { forall|i: usize| i < a.len() ==> small(#[trigger] a[i]) }
+
+    spec fn below_five(a: &[i64]) -> bool { forall|i: usize| i < a.len() ==> #[trigger] a[i] < 5 }
+
+    #[effects(pure)]
+    #[uses(all_small, small, below_five)]
+    fn unfold(a: &[i64]) -> (r: bool)
+        requires all_small(a),
+        ensures below_five(a),
+    {
+        true
+    }
+}

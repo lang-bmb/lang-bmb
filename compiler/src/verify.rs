@@ -233,11 +233,13 @@ impl<'p, 'q> Enc<'p, 'q> {
         name
     }
 
-    /// A fresh array of elements of type `e`. Unsigned elements are never
-    /// negative, also where only a specification reads them (backlog 1B-30).
+    /// A fresh array of elements of type `e`. Every element is within its
+    /// type's range, also where only a specification reads it (backlog 1B-30;
+    /// `i64` elements 1B-37: a spec fn over an element unfolds only when its
+    /// argument is known to be in range, ADR-0017 §4).
     fn fresh_elems(&mut self, base: &str, e: &TypeKind) -> String {
         let elems = self.fresh(base, &format!("(Array Int {})", sort_of(e)));
-        if let (TypeKind::U64 | TypeKind::Usize, Some(r)) =
+        if let (TypeKind::I64 | TypeKind::U64 | TypeKind::Usize, Some(r)) =
             (e, range(e, &format!("(select {elems} k)")))
         {
             self.pc.push(format!(
