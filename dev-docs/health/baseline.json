@@ -22,7 +22,7 @@
     "P3_errors_with_help": 0.6653,
     "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
-    "O2_soundness_fuzzers": 6
+    "O2_soundness_fuzzers": 7
   },
   "history": [
     {
@@ -199,6 +199,16 @@
         "P3_errors_with_help": [
           0.6639,
           0.6653
+        ]
+      }
+    },
+    {
+      "date": "2026-10-25",
+      "reason": "2B-09: soundness fuzzer over data types (tests/soundness_data.rs, CLI-driven).",
+      "changed": {
+        "O2_soundness_fuzzers": [
+          6,
+          7
         ]
       }
     }
