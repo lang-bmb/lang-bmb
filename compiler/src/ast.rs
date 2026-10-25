@@ -32,6 +32,48 @@ pub struct Mod {
     pub attrs: Vec<Attr>,
     pub fns: Vec<FnDef>,
     pub mods: Vec<Mod>,
+    /// `struct` and `enum` declarations (ADR-0026).
+    pub types: Vec<TypeDef>,
+    /// `impl T { .. }` blocks (ADR-0026: one per type, same unit).
+    pub impls: Vec<Impl>,
+    pub span: Span,
+}
+
+/// A data type declaration (ADR-0026 §1).
+#[derive(Debug, Clone)]
+pub struct TypeDef {
+    pub name: Ident,
+    pub attrs: Vec<Attr>,
+    pub kind: TypeDefKind,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub enum TypeDefKind {
+    /// Named fields, in declaration order.
+    Struct(Vec<Field>),
+    /// Unit variants `A` and tuple variants `B(T, U)`, in declaration order.
+    Enum(Vec<Variant>),
+}
+
+#[derive(Debug, Clone)]
+pub struct Field {
+    pub name: Ident,
+    pub ty: Type,
+}
+
+#[derive(Debug, Clone)]
+pub struct Variant {
+    pub name: Ident,
+    pub payload: Vec<Type>,
+    pub span: Span,
+}
+
+/// `impl T { fn .. }`: associated functions of `T` (paths `unit::T::f`).
+#[derive(Debug, Clone)]
+pub struct Impl {
+    pub ty: Ident,
+    pub fns: Vec<FnDef>,
     pub span: Span,
 }
 
@@ -76,7 +118,16 @@ pub enum TypeKind {
     Unit,
     Array(Box<Type>, u64),
     Slice(Box<Type>),
-    Ref { mutable: bool, inner: Box<Type> },
+    Ref {
+        mutable: bool,
+        inner: Box<Type>,
+    },
+    /// A named type: a struct or enum (`Point`, `geo::Point`) or a built-in
+    /// `Option<T>` / `Result<T, E>` with its arguments (ADR-0026).
+    Named {
+        path: Vec<String>,
+        args: Vec<Type>,
+    },
     Error,
 }
 
@@ -239,5 +290,43 @@ pub enum ExprKind {
         body: Box<Expr>,
     },
     Trigger(Box<Expr>),
+    /// `Point { x: e, y: e }` (ADR-0026 §3).
+    StructLit {
+        path: Vec<Ident>,
+        fields: Vec<(Ident, Expr)>,
+    },
+    /// A unit variant written as a path: `Shape::Dot` (`None` is a `Var`).
+    Path(Vec<Ident>),
+    /// `*p`: the value behind a reference (ADR-0026: `small(*p)`, `*p = ..`).
+    Deref(Box<Expr>),
+    /// `p.x`
+    Field {
+        base: Box<Expr>,
+        name: Ident,
+    },
+    /// `match e { P => e, .. }`
+    Match {
+        scrut: Box<Expr>,
+        arms: Vec<Arm>,
+    },
     Error,
+}
+
+/// One `match` arm (ADR-0026: one per variant, in declaration order).
+#[derive(Debug, Clone)]
+pub struct Arm {
+    pub pat: Pat,
+    pub body: Expr,
+    pub span: Span,
+}
+
+/// A variant pattern: `Shape::Rect(a, _)`, `Some(x)`, `None`. Each payload
+/// position binds a new name or is `_` (`None`).
+#[derive(Debug, Clone)]
+pub struct Pat {
+    pub path: Vec<Ident>,
+    pub binds: Vec<Option<Ident>>,
+    /// Written with parentheses (`V()` and `V` differ only in diagnostics).
+    pub parens: bool,
+    pub span: Span,
 }

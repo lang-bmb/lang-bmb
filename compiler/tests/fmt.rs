@@ -153,3 +153,92 @@ fn renamed_definition_keeps_its_body_hash() {
     let b = def_line(&one("a.bmb", &renamed), "g::ident");
     assert_eq!(field(&a, "body"), field(&b, "body"));
 }
+
+/// The data type surface (ADR-0026, backlog 2B-03) parses and prints in
+/// normal form before the checker accepts it: types by name, each followed by
+/// its `impl` (functions by name), then functions; multi-line `match`; a
+/// condition holding a struct literal in parentheses (as Rust requires).
+#[test]
+fn data_types_have_a_normal_form() {
+    const SRC: &str = r#"#[summary("2B surface")]
+mod geo {
+    impl Point {
+        #[effects(pure)]
+        fn norm1(self: &Point) -> i64 {
+            let s: Shape = Shape::Dot;
+            match s {
+                Shape::Dot => 0,
+                Shape::Rect(w, _) => w,
+            }
+        }
+
+        #[effects(pure)]
+        fn at(self: &mut Point, x: i64) -> () {
+            self.x = x;
+            *self = Point { x: x, y: self.y };
+            if *self == Point { x: 0, y: 0 } { self.y = 1; }
+        }
+    }
+
+    #[effects(pure)]
+    fn main_like(o: Option<i64>) -> Result<i64, Why> {
+        let r: i64 = match o { Some(v) => v, None => 0 };
+        Ok(r)
+    }
+
+    enum Why { Bad, Worse(i64, bool) }
+
+    struct Point { x: i64, y: i64 }
+}
+"#;
+    const NORMAL: &str = r#"#[summary("2B surface")]
+mod geo {
+    struct Point { x: i64, y: i64 }
+
+    impl Point {
+        #[effects(pure)]
+        fn at(self: &mut Point, x: i64) -> () {
+            self.x = x;
+            *self = Point { x: x, y: self.y };
+            if (*self == Point { x: 0, y: 0 }) {
+                self.y = 1;
+            }
+        }
+
+        #[effects(pure)]
+        fn norm1(self: &Point) -> i64 {
+            let s: Shape = Shape::Dot;
+            match s {
+                Shape::Dot => 0,
+                Shape::Rect(w, _) => w,
+            }
+        }
+    }
+
+    enum Why { Bad, Worse(i64, bool) }
+
+    #[effects(pure)]
+    fn main_like(o: Option<i64>) -> Result<i64, Why> {
+        let r: i64 = match o {
+            Some(v) => v,
+            None => 0,
+        };
+        Ok(r)
+    }
+}
+"#;
+    let once = bmb::format_parsed(&one("x.bmb", SRC)).unwrap();
+    assert_eq!(once.values().cloned().collect::<String>(), NORMAL);
+    let twice = bmb::format_parsed(&one("x.bmb", NORMAL)).unwrap();
+    assert_eq!(twice.values().cloned().collect::<String>(), NORMAL);
+    // The checker still rejects the surface until 2B-04, with E0207.
+    let err = bmb::format_sources(&one("x.bmb", SRC)).unwrap_err();
+    assert!(
+        err.lines().all(|l| l.contains("\"code\":\"E0207\"")),
+        "{err}"
+    );
+    // A wildcard arm is a syntax error with a fix (ADR-0026: one arm per variant).
+    let wild = "#[summary(\"w\")]\nmod w {\n    #[effects(pure)]\n    fn f(o: Option<i64>) -> i64 { match o { Some(v) => v, _ => 0 } }\n}\n";
+    let err = bmb::format_parsed(&one("w.bmb", wild)).unwrap_err();
+    assert!(err.contains("a wildcard arm is not allowed"), "{err}");
+}

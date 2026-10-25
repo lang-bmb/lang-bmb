@@ -589,6 +589,25 @@ pub fn format_sources(files: &[(String, String)]) -> Result<BTreeMap<String, Str
     Ok(fmt::format_units(&fe.program))
 }
 
+/// Normal form of parsed sources without checking them (backlog 2B-03: the
+/// data type surface is parsed before the checker accepts it). Err holds the
+/// syntax errors.
+pub fn format_parsed(files: &[(String, String)]) -> Result<BTreeMap<String, String>, String> {
+    let mut sm = SourceMap::default();
+    let mut diags = Diags::default();
+    let mut program = ast::Program { mods: Vec::new() };
+    for (name, text) in files {
+        let id = sm.add(name.clone(), text.clone());
+        let toks = lexer::lex(id, text, &mut diags);
+        let mut p = parser::Parser::new(toks, &mut diags, text);
+        program.mods.extend(p.parse_program().mods);
+    }
+    if diags.has_errors() {
+        return Err(diags.to_jsonl(&sm));
+    }
+    Ok(fmt::format_units(&program))
+}
+
 /// Definition hashes as JSONL (ADR-0019 §2).
 pub fn hash_sources(files: &[(String, String)]) -> Result<String, String> {
     let fe = frontend(files);

@@ -125,6 +125,8 @@ fn summary_attr(summary: &str) -> Attr {
 fn new_mod(name: &str, summary: &str) -> Mod {
     let sp = crate::source::Span::default();
     Mod {
+        types: Vec::new(),
+        impls: Vec::new(),
         name: Ident {
             name: name.to_string(),
             span: sp,

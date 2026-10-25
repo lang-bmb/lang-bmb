@@ -412,6 +412,14 @@ impl<'p> Gen<'p> {
             ExprKind::Old(_) | ExprKind::Forall { .. } | ExprKind::Trigger(_) | ExprKind::Error => {
                 unreachable!("specification construct in executable code")
             }
+            // The checker rejects data types until their code generation (2B-06).
+            ExprKind::StructLit { .. }
+            | ExprKind::Path(_)
+            | ExprKind::Field { .. }
+            | ExprKind::Deref(_)
+            | ExprKind::Match { .. } => {
+                unreachable!("data type expression reached code generation")
+            }
         }
     }
 

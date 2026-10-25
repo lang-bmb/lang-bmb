@@ -75,6 +75,15 @@ pub fn ty_str(t: &TypeKind) -> String {
             if *mutable { "mut " } else { "" },
             ty_str(&inner.kind)
         ),
+        TypeKind::Named { path, args } if args.is_empty() => path.join("::"),
+        TypeKind::Named { path, args } => format!(
+            "{}<{}>",
+            path.join("::"),
+            args.iter()
+                .map(|a| ty_str(&a.kind))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
         TypeKind::Error => "{error}".into(),
     }
 }
@@ -335,6 +344,16 @@ impl<'a> Checker<'a> {
         for f in &m.fns {
             self.check_fn(f, &mp);
         }
+        for t in &m.types {
+            let what = match t.kind {
+                TypeDefKind::Struct(_) => "`struct` declarations",
+                TypeDefKind::Enum(_) => "`enum` declarations",
+            };
+            self.not_checked_yet(t.span, what);
+        }
+        for i in &m.impls {
+            self.not_checked_yet(i.span, "`impl` blocks");
+        }
     }
 
     fn resolve(&self, path: &[Ident], mod_path: &str) -> Option<String> {
@@ -513,8 +532,18 @@ impl<'a> Checker<'a> {
                     "array elements must be scalars in milestone 1",
                 );
             }
+            TypeKind::Named { .. } => self.not_checked_yet(t.span, "data types"),
             _ => {}
         }
+    }
+
+    /// Data types are parsed (ADR-0026) but not checked before backlog 2B-04.
+    fn not_checked_yet(&mut self, span: Span, what: &str) {
+        self.err(
+            "E0207",
+            span,
+            format!("{what} are not supported yet (ADR-0026 is being implemented, backlog 2B-04)"),
+        );
     }
 
     fn check_contract(&mut self, cx: &mut FnCtx, e: &Expr, ensures: bool) {
@@ -844,9 +873,40 @@ impl<'a> Checker<'a> {
     ) -> TypeKind {
         match &e.kind {
             ExprKind::Error => TypeKind::Error,
+            // A function named without arguments, not a variant (variants are
+            // capitalised, ADR-0026).
+            ExprKind::Path(path)
+                if self.resolve(path, &cx.mod_path).is_some()
+                    || path
+                        .last()
+                        .is_some_and(|i| i.name.starts_with(|c: char| c.is_ascii_lowercase())) =>
+            {
+                self.err("E0301", e.span, "a path must be followed by call arguments");
+                TypeKind::Error
+            }
+            ExprKind::StructLit { .. } | ExprKind::Path(_) => {
+                self.not_checked_yet(e.span, "struct and enum values");
+                TypeKind::Error
+            }
+            ExprKind::Field { .. } => {
+                self.not_checked_yet(e.span, "field accesses");
+                TypeKind::Error
+            }
+            ExprKind::Deref(_) => {
+                self.not_checked_yet(e.span, "dereferences");
+                TypeKind::Error
+            }
+            ExprKind::Match { .. } => {
+                self.not_checked_yet(e.span, "`match` expressions");
+                TypeKind::Error
+            }
             ExprKind::Unit => TypeKind::Unit,
             ExprKind::Bool(_) => TypeKind::Bool,
             ExprKind::Int(v) => self.int_lit(*v, false, expected, e.span, mode),
+            ExprKind::Var(id) if id.name == "None" && Self::lookup(cx, "None").is_none() => {
+                self.not_checked_yet(e.span, "struct and enum values");
+                TypeKind::Error
+            }
             ExprKind::Var(id) => match Self::lookup(cx, &id.name) {
                 Some(l) => l.ty,
                 None => {
@@ -910,6 +970,13 @@ impl<'a> Checker<'a> {
                 }
             }
             ExprKind::Method { recv, name, args } => self.method(cx, recv, name, args, mode),
+            // The built-in variants of `Option` and `Result` (ADR-0026).
+            ExprKind::Call { path, .. }
+                if path.len() == 1 && matches!(path[0].name.as_str(), "Some" | "Ok" | "Err") =>
+            {
+                self.not_checked_yet(e.span, "struct and enum values");
+                TypeKind::Error
+            }
             ExprKind::Call { path, args } => self.call(cx, path, args, e.span, mode),
             ExprKind::Ref { .. } => {
                 self.diags.push(Diag::new(
@@ -1638,12 +1705,22 @@ fn mentions(e: &Expr, name: &str) -> bool {
         ExprKind::Unary(_, x)
         | ExprKind::Ref { expr: x, .. }
         | ExprKind::Old(x)
+        | ExprKind::Deref(x)
         | ExprKind::Trigger(x) => mentions(x, name),
         ExprKind::Repeat { value, .. } => mentions(value, name),
         ExprKind::Binary(_, l, r) => mentions(l, name) || mentions(r, name),
+        ExprKind::Field { base, .. } => mentions(base, name),
+        ExprKind::StructLit { fields, .. } => fields.iter().any(|(_, x)| mentions(x, name)),
         // Blocks and conditionals as call arguments are rare; be conservative.
-        ExprKind::If { .. } | ExprKind::Block(_) | ExprKind::Forall { .. } => true,
-        ExprKind::Int(_) | ExprKind::Bool(_) | ExprKind::Unit | ExprKind::Error => false,
+        ExprKind::If { .. }
+        | ExprKind::Block(_)
+        | ExprKind::Forall { .. }
+        | ExprKind::Match { .. } => true,
+        ExprKind::Int(_)
+        | ExprKind::Bool(_)
+        | ExprKind::Unit
+        | ExprKind::Path(_)
+        | ExprKind::Error => false,
     }
 }
 
@@ -1666,9 +1743,10 @@ fn collect_triggers<'e>(e: &'e Expr, out: &mut Vec<&'e Expr>) {
             collect_triggers(base, out);
             collect_triggers(index, out);
         }
-        ExprKind::Unary(_, x) | ExprKind::Ref { expr: x, .. } | ExprKind::Old(x) => {
-            collect_triggers(x, out)
-        }
+        ExprKind::Unary(_, x)
+        | ExprKind::Ref { expr: x, .. }
+        | ExprKind::Old(x)
+        | ExprKind::Deref(x) => collect_triggers(x, out),
         ExprKind::Repeat { value, .. } => collect_triggers(value, out),
         ExprKind::Binary(_, l, r) => {
             collect_triggers(l, out);
@@ -1688,7 +1766,16 @@ fn collect_triggers<'e>(e: &'e Expr, out: &mut Vec<&'e Expr>) {
                 collect_triggers(t, out);
             }
         }
+        ExprKind::Field { base, .. } => collect_triggers(base, out),
+        ExprKind::StructLit { fields, .. } => {
+            fields.iter().for_each(|(_, x)| collect_triggers(x, out))
+        }
+        ExprKind::Match { scrut, arms } => {
+            collect_triggers(scrut, out);
+            arms.iter().for_each(|a| collect_triggers(&a.body, out));
+        }
         ExprKind::Var(_)
+        | ExprKind::Path(_)
         | ExprKind::Int(_)
         | ExprKind::Bool(_)
         | ExprKind::Unit

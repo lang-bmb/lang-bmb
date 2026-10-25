@@ -25,9 +25,6 @@ pub const MAX_NESTING: usize = 256;
 
 /// Rust constructs recognised only to be rejected with a precise message.
 const UNSUPPORTED_ITEMS: &[&str] = &[
-    "struct",
-    "enum",
-    "impl",
     "trait",
     "use",
     "const",
@@ -313,8 +310,10 @@ impl<'a> Parser<'a> {
         match self.peek() {
             Tok::P("#") => true,
             Tok::Ident(s) => {
-                matches!(s.as_str(), "fn" | "spec" | "mod" | "pub")
-                    || UNSUPPORTED_ITEMS.contains(&s.as_str())
+                matches!(
+                    s.as_str(),
+                    "fn" | "spec" | "mod" | "pub" | "struct" | "enum" | "impl"
+                ) || UNSUPPORTED_ITEMS.contains(&s.as_str())
             }
             _ => false,
         }
@@ -437,6 +436,8 @@ impl<'a> Parser<'a> {
         self.expect_p("{")?;
         let mut fns = Vec::new();
         let mut mods = Vec::new();
+        let mut types = Vec::new();
+        let mut impls = Vec::new();
         while !self.is_p("}") && !matches!(self.peek(), Tok::Eof) {
             let start = self.pos;
             let attrs = self.attrs();
@@ -464,6 +465,16 @@ impl<'a> Parser<'a> {
                     Ok(f) => fns.push(f),
                     Err(_) => self.recover_item(),
                 }
+            } else if self.is_kw("struct") || self.is_kw("enum") {
+                match self.parse_type_def(attrs) {
+                    Ok(t) => types.push(t),
+                    Err(_) => self.recover_item(),
+                }
+            } else if self.is_kw("impl") {
+                match self.parse_impl() {
+                    Ok(i) => impls.push(i),
+                    Err(_) => self.recover_item(),
+                }
             } else if let Tok::Ident(s) = self.peek().clone()
                 && UNSUPPORTED_ITEMS.contains(&s.as_str())
             {
@@ -471,7 +482,7 @@ impl<'a> Parser<'a> {
                 let fix = match s.as_str() {
                     "use" => "refer to other units by full path, e.g. `unit::f(..)`",
                     "const" | "static" => "use a `spec fn` returning the value, or a literal",
-                    _ => "milestone 1 supports `fn` and `spec fn` over integers, bool and arrays",
+                    _ => "units hold `fn`, `spec fn`, `struct`, `enum` and `impl T { .. }`",
                 };
                 self.diags.push(
                     Diag::new(
@@ -498,6 +509,134 @@ impl<'a> Parser<'a> {
             attrs,
             fns,
             mods,
+            types,
+            impls,
+            span: lo.to(hi),
+        })
+    }
+
+    /// Generic parameters are outside the language (ADR-0026 §1).
+    fn reject_generics(&mut self) {
+        if self.is_p("<") {
+            self.diags.push(Diag::new(
+                "E0207",
+                self.span(),
+                "generic parameters are not supported in milestone 1",
+            ));
+            self.skip_angle();
+        }
+    }
+
+    /// `struct T { f: U, .. }` or `enum T { A, B(U, V), .. }` (ADR-0026 §1).
+    fn parse_type_def(&mut self, attrs: Vec<Attr>) -> PResult<TypeDef> {
+        let lo = self.span();
+        let is_struct = matches!(self.bump().tok, Tok::Ident(ref k) if k == "struct");
+        let name = self.ident("type name")?;
+        self.reject_generics();
+        self.expect_p("{")?;
+        let kind = if is_struct {
+            let mut fields = Vec::new();
+            while !self.is_p("}") {
+                let fname = self.ident("field name")?;
+                self.expect_p(":")?;
+                let ty = self.parse_type();
+                fields.push(Field { name: fname, ty });
+                if !self.eat_p(",") {
+                    break;
+                }
+            }
+            TypeDefKind::Struct(fields)
+        } else {
+            let mut variants = Vec::new();
+            while !self.is_p("}") {
+                let vname = self.ident("variant name")?;
+                let mut payload = Vec::new();
+                if self.is_p("{") {
+                    self.diags.push(Diag::new(
+                        "E0207",
+                        self.span(),
+                        "struct-like variants are not supported; wrap a struct: `V(Data)`",
+                    ));
+                    self.skip_group();
+                } else if self.eat_p("(") {
+                    while !self.is_p(")") {
+                        payload.push(self.parse_type());
+                        if !self.eat_p(",") {
+                            break;
+                        }
+                    }
+                    self.expect_p(")")?;
+                }
+                let span = vname.span.to(self.prev_span());
+                variants.push(Variant {
+                    name: vname,
+                    payload,
+                    span,
+                });
+                if !self.eat_p(",") {
+                    break;
+                }
+            }
+            TypeDefKind::Enum(variants)
+        };
+        let hi = self.expect_p("}")?;
+        Ok(TypeDef {
+            name,
+            attrs,
+            kind,
+            span: lo.to(hi),
+        })
+    }
+
+    /// `impl T { fn .. }` (ADR-0026 §3).
+    fn parse_impl(&mut self) -> PResult<Impl> {
+        let lo = self.bump().span; // `impl`
+        self.reject_generics();
+        let ty = self.ident("type name")?;
+        if self.is_kw("for") {
+            self.diags.push(Diag::new(
+                "E0207",
+                self.span(),
+                "`impl Trait for T` is not supported; use `impl T { .. }`",
+            ));
+            return Err(());
+        }
+        self.expect_p("{")?;
+        let mut fns = Vec::new();
+        while !self.is_p("}") && !matches!(self.peek(), Tok::Eof) {
+            let start = self.pos;
+            let attrs = self.attrs();
+            if self.is_kw("pub") {
+                let sp = self.bump().span;
+                self.diags.push(
+                    Diag::new(
+                        "E0207",
+                        sp,
+                        "`pub` is not used; every definition of a unit is part of its surface",
+                    )
+                    .fix("remove `pub`", Some(String::new())),
+                );
+            }
+            if self.is_kw("fn")
+                || (self.is_kw("spec") && matches!(self.peek_at(1), Tok::Ident(s) if s == "fn"))
+            {
+                match self.parse_fn(attrs) {
+                    Ok(f) => fns.push(f),
+                    Err(_) => self.recover_item(),
+                }
+            } else {
+                self.err_expected("`fn` or `spec fn`");
+                self.bump();
+                self.recover_item();
+            }
+            if self.pos == start {
+                self.bump();
+            }
+        }
+        let hi = self.expect_p("}")?;
+        Ok(Impl {
+            ty,
+            fns,
             span: lo.to(hi),
         })
     }
@@ -511,14 +650,7 @@ impl<'a> Parser<'a> {
         };
         self.bump(); // `fn`
         let name = self.ident("function name")?;
-        if self.is_p("<") {
-            self.diags.push(Diag::new(
-                "E0207",
-                self.span(),
-                "generic parameters are not supported in milestone 1",
-            ));
-            self.skip_angle();
-        }
+        self.reject_generics();
         self.expect_p("(")?;
         let mut params = Vec::new();
         while !self.is_p(")") {
@@ -531,7 +663,49 @@ impl<'a> Parser<'a> {
                     ),
                 );
             }
-            let pname = self.ident("parameter name")?;
+            // `self: &T` names the receiver (ADR-0026); `&self`, `&mut self` and
+            // a bare `self` leave the type out.
+            let short = match (self.peek(), self.peek_at(1), self.peek_at(2)) {
+                (Tok::P("&"), Tok::Ident(s), _) if s == "self" => true,
+                (Tok::P("&"), Tok::Ident(m), Tok::Ident(s)) if m == "mut" && s == "self" => true,
+                (Tok::Ident(s), next, _) => s == "self" && !matches!(next, Tok::P(":")),
+                _ => false,
+            };
+            if short {
+                let lo = self.span();
+                while !self.is_kw("self") {
+                    self.bump();
+                }
+                let sp = lo.to(self.bump().span);
+                self.diags
+                    .push(Diag::new("E0207", sp, "the receiver needs its type").fix(
+                        "write `self: &T`, `self: &mut T` or `self: T` with the `impl` type",
+                        None,
+                    ));
+                params.push(Param {
+                    name: Ident {
+                        name: "self".into(),
+                        span: sp,
+                    },
+                    ty: Type {
+                        kind: TypeKind::Error,
+                        span: sp,
+                    },
+                });
+                if !self.eat_p(",") {
+                    break;
+                }
+                continue;
+            }
+            let pname = if self.is_kw("self") {
+                let span = self.bump().span;
+                Ident {
+                    name: "self".into(),
+                    span,
+                }
+            } else {
+                self.ident("parameter name")?
+            };
             self.expect_p(":")?;
             let ty = self.parse_type();
             params.push(Param { name: pname, ty });
@@ -751,6 +925,52 @@ impl<'a> Parser<'a> {
                     span: lo.to(hi),
                 }
             }
+            Tok::Ident(s)
+                if !matches!(
+                    s.as_str(),
+                    "i64"
+                        | "u64"
+                        | "usize"
+                        | "bool"
+                        | "i8"
+                        | "i16"
+                        | "i32"
+                        | "i128"
+                        | "isize"
+                        | "u8"
+                        | "u16"
+                        | "u32"
+                        | "u128"
+                        | "f32"
+                        | "f64"
+                        | "char"
+                        | "str"
+                ) && !RESERVED.contains(&s.as_str()) =>
+            {
+                // A named type (ADR-0026): `Point`, `geo::Point`, `Option<T>`.
+                let mut path = vec![s];
+                self.bump();
+                while self.is_p("::") && matches!(self.peek_at(1), Tok::Ident(_)) {
+                    self.bump();
+                    if let Tok::Ident(seg) = self.bump().tok {
+                        path.push(seg);
+                    }
+                }
+                let mut args = Vec::new();
+                if self.eat_p("<") {
+                    while !self.is_p(">") {
+                        args.push(self.parse_type());
+                        if !self.eat_p(",") {
+                            break;
+                        }
+                    }
+                    let _ = self.expect_p(">");
+                }
+                Type {
+                    kind: TypeKind::Named { path, args },
+                    span: lo.to(self.prev_span()),
+                }
+            }
             Tok::Ident(s) => {
                 self.bump();
                 let kind = match s.as_str() {
@@ -870,24 +1090,16 @@ impl<'a> Parser<'a> {
                     self.recover_loop_body();
                     return Err(());
                 }
-                "match" | "break" | "continue" => {
+                "break" | "continue" => {
                     self.bump();
-                    let fix = if s == "match" {
-                        "use `if` / `else`"
-                    } else {
-                        "move the exit condition into the `while` condition"
-                    };
                     self.diags.push(
                         Diag::new(
                             "E0207",
                             lo,
                             format!("`{s}` is not supported in milestone 1"),
                         )
-                        .fix(fix, None),
+                        .fix("move the exit condition into the `while` condition", None),
                     );
-                    if s == "match" {
-                        self.recover_loop_body();
-                    }
                     return Err(());
                 }
                 _ => {}
@@ -906,7 +1118,12 @@ impl<'a> Parser<'a> {
         if self.eat_p(";") {
             return Ok(StmtOrTail::Stmt(Stmt::Expr(e)));
         }
-        if self.is_p("}") || matches!(e.kind, ExprKind::If { .. } | ExprKind::Block(_)) {
+        if self.is_p("}")
+            || matches!(
+                e.kind,
+                ExprKind::If { .. } | ExprKind::Block(_) | ExprKind::Match { .. }
+            )
+        {
             return Ok(StmtOrTail::Tail(e));
         }
         self.err_expected("`;`");
@@ -1120,6 +1337,14 @@ impl<'a> Parser<'a> {
                 span,
             });
         }
+        if self.eat_p("*") {
+            let e = self.parse_unary()?;
+            let span = lo.to(e.span);
+            return Ok(Expr {
+                kind: ExprKind::Deref(Box::new(e)),
+                span,
+            });
+        }
         if self.eat_p("&") {
             let mutable = self.eat_kw("mut");
             let e = self.parse_unary()?;
@@ -1162,14 +1387,17 @@ impl<'a> Parser<'a> {
             }
             if self.is_p(".") {
                 self.bump();
-                let name = self.ident("method name")?;
+                let name = self.ident("field or method name")?;
                 if !self.is_p("(") {
-                    self.diags.push(Diag::new(
-                        "E0207",
-                        name.span,
-                        "field access is not supported in milestone 1",
-                    ));
-                    return Err(());
+                    let span = e.span.to(name.span);
+                    e = Expr {
+                        kind: ExprKind::Field {
+                            base: Box::new(e),
+                            name,
+                        },
+                        span,
+                    };
+                    continue;
                 }
                 let args = self.parse_args()?;
                 let span = e.span.to(self.prev_span());
@@ -1341,6 +1569,17 @@ impl<'a> Parser<'a> {
                     })
                 }
                 "forall" => self.parse_forall(),
+                "match" => self.parse_match(),
+                "self" => {
+                    let span = self.bump().span;
+                    Ok(Expr {
+                        kind: ExprKind::Var(Ident {
+                            name: "self".into(),
+                            span,
+                        }),
+                        span,
+                    })
+                }
                 _ => self.parse_path_expr(),
             },
             _ => {
@@ -1378,6 +1617,81 @@ impl<'a> Parser<'a> {
                 els,
             },
             span: lo.to(hi),
+        })
+    }
+
+    /// `match e { P => e, .. }` (ADR-0026 §3).
+    fn parse_match(&mut self) -> PResult<Expr> {
+        let lo = self.bump().span; // `match`
+        let scrut = self.parse_expr()?;
+        self.expect_p("{")?;
+        let mut arms = Vec::new();
+        while !self.is_p("}") && !matches!(self.peek(), Tok::Eof) {
+            let pat = self.parse_pat()?;
+            self.expect_p("=>")?;
+            let body = self.parse_expr()?;
+            let span = pat.span.to(body.span);
+            let block = matches!(body.kind, ExprKind::Block(_));
+            arms.push(Arm { pat, body, span });
+            if !self.eat_p(",") && !block {
+                break;
+            }
+        }
+        let hi = self.expect_p("}")?;
+        Ok(Expr {
+            kind: ExprKind::Match {
+                scrut: Box::new(scrut),
+                arms,
+            },
+            span: lo.to(hi),
+        })
+    }
+
+    /// A variant pattern: `T::V`, `T::V(a, _)`, `Some(x)`, `None`.
+    fn parse_pat(&mut self) -> PResult<Pat> {
+        let lo = self.span();
+        if matches!(self.peek(), Tok::Ident(s) if s == "_") {
+            self.diags.push(
+                Diag::new(
+                    "E0207",
+                    lo,
+                    "a wildcard arm is not allowed; write one arm per variant",
+                )
+                .fix("replace `_` with the missing variants (same body)", None),
+            );
+            // Keep parsing the arm, so the rest of the unit is read normally.
+            let w = self.bump();
+            return Ok(Pat {
+                path: vec![Ident {
+                    name: "_".into(),
+                    span: w.span,
+                }],
+                binds: Vec::new(),
+                parens: false,
+                span: w.span,
+            });
+        }
+        let mut path = vec![self.ident("variant")?];
+        while self.eat_p("::") {
+            path.push(self.ident("variant")?);
+        }
+        let mut binds = Vec::new();
+        let parens = self.eat_p("(");
+        if parens {
+            while !self.is_p(")") {
+                let b = self.ident("binding or `_`")?;
+                binds.push((b.name != "_").then_some(b));
+                if !self.eat_p(",") {
+                    break;
+                }
+            }
+            self.expect_p(")")?;
+        }
+        Ok(Pat {
+            path,
+            binds,
+            parens,
+            span: lo.to(self.prev_span()),
         })
     }
 
@@ -1458,14 +1772,36 @@ impl<'a> Parser<'a> {
                 span: lo.to(self.prev_span()),
             });
         }
+        // `T { f: e, .. }`: a struct literal starts with `{ name :`, which a
+        // block (`while k < n { x = 1; }`) never does.
+        if self.is_p("{")
+            && matches!(self.peek_at(1), Tok::Ident(_))
+            && matches!(self.peek_at(2), Tok::P(":"))
+        {
+            self.bump();
+            let mut fields = Vec::new();
+            while !self.is_p("}") {
+                let fname = self.ident("field name")?;
+                self.expect_p(":")?;
+                let value = self.parse_expr()?;
+                fields.push((fname, value));
+                if !self.eat_p(",") {
+                    break;
+                }
+            }
+            let hi = self.expect_p("}")?;
+            return Ok(Expr {
+                kind: ExprKind::StructLit { path, fields },
+                span: lo.to(hi),
+            });
+        }
         if path.len() > 1 {
+            // A unit variant (`Shape::Dot`); the checker rejects other paths.
             let span = lo.to(self.prev_span());
-            self.diags.push(Diag::new(
-                "E0301",
+            return Ok(Expr {
+                kind: ExprKind::Path(path),
                 span,
-                "a path must be followed by call arguments",
-            ));
-            return Err(());
+            });
         }
         let id = path.pop().unwrap();
         let span = id.span;

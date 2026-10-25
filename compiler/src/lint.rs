@@ -633,7 +633,17 @@ fn walk_expr(e: &mut Expr, parent: Option<Span>, f: &mut dyn FnMut(&mut Expr, Op
         ExprKind::Block(b) => walk_block(b, f),
         ExprKind::Array(xs) => xs.iter_mut().for_each(|x| walk_expr(x, None, f)),
         ExprKind::Repeat { value, .. } => walk_expr(value, None, f),
-        ExprKind::Old(_)
+        ExprKind::Field { base, .. } | ExprKind::Deref(base) => walk_expr(base, None, f),
+        ExprKind::StructLit { fields, .. } => {
+            fields.iter_mut().for_each(|(_, x)| walk_expr(x, None, f))
+        }
+        ExprKind::Match { scrut, arms } => {
+            walk_expr(scrut, None, f);
+            arms.iter_mut()
+                .for_each(|a| walk_expr(&mut a.body, None, f));
+        }
+        ExprKind::Path(_)
+        | ExprKind::Old(_)
         | ExprKind::Forall { .. }
         | ExprKind::Trigger(_)
         | ExprKind::Int(_)

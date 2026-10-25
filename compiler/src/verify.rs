@@ -475,7 +475,14 @@ impl<'p, 'q> Enc<'p, 'q> {
             ExprKind::Block(b) => self.spec_block(b, env, old),
             // `p(&a)` on a local array: the reference denotes the array.
             ExprKind::Ref { expr, .. } => self.spec(expr, env, old),
-            ExprKind::Array(_) | ExprKind::Repeat { .. } | ExprKind::Error => {
+            ExprKind::Array(_)
+            | ExprKind::Repeat { .. }
+            | ExprKind::StructLit { .. }
+            | ExprKind::Path(_)
+            | ExprKind::Field { .. }
+            | ExprKind::Match { .. }
+            | ExprKind::Deref(_)
+            | ExprKind::Error => {
                 self.unsupported.push((
                     e.span,
                     "this expression is not supported in specifications".into(),
@@ -731,6 +738,12 @@ impl<'p, 'q> Enc<'p, 'q> {
             ExprKind::Old(_) | ExprKind::Forall { .. } | ExprKind::Trigger(_) | ExprKind::Error => {
                 panic!("specification construct in executable code")
             }
+            // The checker rejects data types until their encoding (backlog 2B-05).
+            ExprKind::StructLit { .. }
+            | ExprKind::Path(_)
+            | ExprKind::Field { .. }
+            | ExprKind::Deref(_)
+            | ExprKind::Match { .. } => panic!("data type expression reached the prover"),
         }
     }
 
@@ -1158,10 +1171,19 @@ fn find_let_expr(e: &Expr, name: &str, out: &mut Option<TypeKind>) {
         ExprKind::Repeat { value, .. } => find_let_expr(value, name, out),
         ExprKind::Array(items) => items.iter().for_each(|a| find_let_expr(a, name, out)),
         ExprKind::Forall { body, .. } => find_let_expr(body, name, out),
+        ExprKind::Field { base, .. } | ExprKind::Deref(base) => find_let_expr(base, name, out),
+        ExprKind::StructLit { fields, .. } => {
+            fields.iter().for_each(|(_, x)| find_let_expr(x, name, out))
+        }
+        ExprKind::Match { scrut, arms } => {
+            find_let_expr(scrut, name, out);
+            arms.iter().for_each(|a| find_let_expr(&a.body, name, out));
+        }
         ExprKind::Int(_)
         | ExprKind::Bool(_)
         | ExprKind::Unit
         | ExprKind::Var(_)
+        | ExprKind::Path(_)
         | ExprKind::Error => {}
     }
 }

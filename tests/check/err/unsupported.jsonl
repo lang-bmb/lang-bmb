@@ -2,10 +2,11 @@
 {"code":"E0207","severity":"error","message":"`static` items are not supported in milestone 1","file":"err/unsupported.bmb","line":5,"col":5,"end_line":5,"end_col":11,"fix":{"message":"use a `spec fn` returning the value, or a literal"}}
 {"code":"E0101","severity":"error","message":"character literals are not supported","file":"err/unsupported.bmb","line":8,"col":25,"end_line":8,"end_col":28}
 {"code":"E0204","severity":"error","message":"`loop` is not allowed","file":"err/unsupported.bmb","line":11,"col":27,"end_line":11,"end_col":31,"fix":{"message":"use `while cond invariant .., decreases .., { .. }`"}}
-{"code":"E0207","severity":"error","message":"`match` is not supported in milestone 1","file":"err/unsupported.bmb","line":14,"col":33,"end_line":14,"end_col":38,"fix":{"message":"use `if` / `else`"}}
+{"code":"E0207","severity":"error","message":"`match` expressions are not supported yet (ADR-0026 is being implemented, backlog 2B-04)","file":"err/unsupported.bmb","line":14,"col":33,"end_line":14,"end_col":51}
+{"code":"E0207","severity":"error","message":"a wildcard arm is not allowed; write one arm per variant","file":"err/unsupported.bmb","line":14,"col":43,"end_line":14,"end_col":44,"fix":{"message":"replace `_` with the missing variants (same body)"}}
 {"code":"E0207","severity":"error","message":"`break` is not supported in milestone 1","file":"err/unsupported.bmb","line":23,"col":13,"end_line":23,"end_col":18,"fix":{"message":"move the exit condition into the `while` condition"}}
 {"code":"E0207","severity":"error","message":"`continue` is not supported in milestone 1","file":"err/unsupported.bmb","line":34,"col":13,"end_line":34,"end_col":21,"fix":{"message":"move the exit condition into the `while` condition"}}
-{"code":"E0207","severity":"error","message":"field access is not supported in milestone 1","file":"err/unsupported.bmb","line":39,"col":34,"end_line":39,"end_col":35}
+{"code":"E0207","severity":"error","message":"field accesses are not supported yet (ADR-0026 is being implemented, backlog 2B-04)","file":"err/unsupported.bmb","line":39,"col":32,"end_line":39,"end_col":35}
 {"code":"E0207","severity":"error","message":"tuples are not supported in milestone 1","file":"err/unsupported.bmb","line":42,"col":28,"end_line":42,"end_col":29}
 {"code":"E0207","severity":"error","message":"closures are not supported in milestone 1","file":"err/unsupported.bmb","line":45,"col":28,"end_line":45,"end_col":29}
 {"code":"E0301","severity":"error","message":"a path must be followed by call arguments","file":"err/unsupported.bmb","line":48,"col":25,"end_line":48,"end_col":37}

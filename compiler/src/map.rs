@@ -195,10 +195,19 @@ fn calls_in_expr<'e>(e: &'e Expr, spec: bool, out: &mut Vec<(&'e [Ident], &'e [E
         ExprKind::Array(xs) => xs.iter().for_each(|x| calls_in_expr(x, spec, out)),
         ExprKind::Repeat { value, .. } => calls_in_expr(value, spec, out),
         ExprKind::Forall { body, .. } => calls_in_expr(body, true, out),
+        ExprKind::Field { base, .. } | ExprKind::Deref(base) => calls_in_expr(base, spec, out),
+        ExprKind::StructLit { fields, .. } => {
+            fields.iter().for_each(|(_, x)| calls_in_expr(x, spec, out))
+        }
+        ExprKind::Match { scrut, arms } => {
+            calls_in_expr(scrut, spec, out);
+            arms.iter().for_each(|a| calls_in_expr(&a.body, spec, out));
+        }
         ExprKind::Int(_)
         | ExprKind::Bool(_)
         | ExprKind::Unit
         | ExprKind::Var(_)
+        | ExprKind::Path(_)
         | ExprKind::Error => {}
     }
 }

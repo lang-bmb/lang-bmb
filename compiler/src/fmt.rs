@@ -24,9 +24,12 @@ fn prec(e: &Expr) -> u8 {
             BinOp::Add | BinOp::Sub => 5,
             _ => 6,
         },
-        ExprKind::Unary(..) | ExprKind::Ref { .. } | ExprKind::Trigger(_) => 7,
+        ExprKind::Unary(..) | ExprKind::Ref { .. } | ExprKind::Trigger(_) | ExprKind::Deref(_) => 7,
         // Always parenthesized when nested (ADR-0019 §1).
-        ExprKind::If { .. } | ExprKind::Block(_) | ExprKind::Forall { .. } => 0,
+        ExprKind::If { .. }
+        | ExprKind::Block(_)
+        | ExprKind::Forall { .. }
+        | ExprKind::Match { .. } => 0,
         _ => 8,
     }
 }
@@ -96,6 +99,11 @@ impl<'a> Printer<'a> {
         subs.sort_by(|a, b| a.name.name.cmp(&b.name.name));
         let mut fns: Vec<&FnDef> = m.fns.iter().collect();
         fns.sort_by(|a, b| a.name.name.cmp(&b.name.name));
+        // Types by name, each followed by its `impl` block (ADR-0026 §6).
+        let mut types: Vec<&TypeDef> = m.types.iter().collect();
+        types.sort_by(|a, b| a.name.name.cmp(&b.name.name));
+        let mut impls: Vec<&Impl> = m.impls.iter().collect();
+        impls.sort_by(|a, b| a.ty.name.cmp(&b.ty.name));
         let mut first = true;
         for s in subs {
             if !first {
@@ -104,11 +112,98 @@ impl<'a> Printer<'a> {
             first = false;
             self.module(s, depth + 1);
         }
+        let mut printed = BTreeSet::new();
+        for t in &types {
+            if !first {
+                self.out.push('\n');
+            }
+            first = false;
+            self.type_def(t, depth + 1);
+            for i in impls.iter().filter(|i| i.ty.name == t.name.name) {
+                self.out.push('\n');
+                self.impl_block(i, depth + 1);
+                printed.insert(i.ty.name.clone());
+            }
+        }
+        // An `impl` without its type in the unit (the checker reports it).
+        for i in impls.iter().filter(|i| !printed.contains(&i.ty.name)) {
+            if !first {
+                self.out.push('\n');
+            }
+            first = false;
+            self.impl_block(i, depth + 1);
+        }
         for f in fns {
             if !first {
                 self.out.push('\n');
             }
             first = false;
+            self.function(f, depth + 1, None, true);
+        }
+        self.line(depth, "}");
+    }
+
+    fn attr_line(&mut self, a: &Attr, depth: usize) {
+        let args: Vec<String> = a
+            .args
+            .iter()
+            .map(|x| match x {
+                AttrArg::Ident(i) => i.name.clone(),
+                AttrArg::Str(s, _) => format!("\"{}\"", escape(s)),
+            })
+            .collect();
+        self.line(depth, &format!("#[{}({})]", a.name.name, args.join(", ")));
+    }
+
+    /// `struct T { f: U, .. }` / `enum T { A, B(U), .. }` on one line; fields and
+    /// variants keep their declaration order (ADR-0026 §6).
+    pub(crate) fn type_def(&mut self, t: &TypeDef, depth: usize) {
+        for a in &t.attrs {
+            self.attr_line(a, depth);
+        }
+        let (kw, items): (&str, Vec<String>) = match &t.kind {
+            TypeDefKind::Struct(fs) => (
+                "struct",
+                fs.iter()
+                    .map(|f| format!("{}: {}", f.name.name, type_str(&f.ty)))
+                    .collect(),
+            ),
+            TypeDefKind::Enum(vs) => (
+                "enum",
+                vs.iter()
+                    .map(|v| {
+                        if v.payload.is_empty() {
+                            v.name.name.clone()
+                        } else {
+                            let ps: Vec<String> = v.payload.iter().map(type_str).collect();
+                            format!("{}({})", v.name.name, ps.join(", "))
+                        }
+                    })
+                    .collect(),
+            ),
+        };
+        if items.is_empty() {
+            self.line(depth, &format!("{kw} {} {{}}", t.name.name));
+        } else {
+            self.line(
+                depth,
+                &format!("{kw} {} {{ {} }}", t.name.name, items.join(", ")),
+            );
+        }
+    }
+
+    fn impl_block(&mut self, i: &Impl, depth: usize) {
+        let mut fns: Vec<&FnDef> = i.fns.iter().collect();
+        fns.sort_by(|a, b| a.name.name.cmp(&b.name.name));
+        if fns.is_empty() {
+            self.line(depth, &format!("impl {} {{}}", i.ty.name));
+            return;
+        }
+        self.line(depth, &format!("impl {} {{", i.ty.name));
+        for (k, f) in fns.iter().enumerate() {
+            if k > 0 {
+                self.out.push('\n');
+            }
             self.function(f, depth + 1, None, true);
         }
         self.line(depth, "}");
@@ -219,6 +314,7 @@ impl<'a> Printer<'a> {
         match &e.kind {
             ExprKind::If { .. } => self.if_lines(e, depth, "", suffix),
             ExprKind::Block(b) => self.block_open(b, depth, "", suffix),
+            ExprKind::Match { .. } => self.match_lines(e, depth, "", suffix),
             _ => {
                 let s = self.expr(e, 0);
                 self.line(depth, &format!("{s}{suffix}"));
@@ -226,11 +322,37 @@ impl<'a> Printer<'a> {
         }
     }
 
+    /// `match` with one arm per line (each arm's body on one line).
+    fn match_lines(&mut self, e: &Expr, depth: usize, prefix: &str, suffix: &str) {
+        let ExprKind::Match { scrut, arms } = &e.kind else {
+            unreachable!()
+        };
+        let s = self.cond(scrut);
+        self.line(depth, &format!("{prefix}match {s} {{"));
+        for a in arms {
+            let body = self.expr(&a.body, 0);
+            let pat = pat_str(&a.pat);
+            self.line(depth + 1, &format!("{pat} => {body},"));
+        }
+        self.line(depth, &format!("}}{suffix}"));
+    }
+
+    /// A condition or scrutinee: parenthesized when it holds a struct literal,
+    /// which Rust does not accept there unparenthesized.
+    fn cond(&mut self, e: &Expr) -> String {
+        let s = self.expr(e, 0);
+        if has_struct_lit(e) {
+            format!("({s})")
+        } else {
+            s
+        }
+    }
+
     fn if_lines(&mut self, e: &Expr, depth: usize, prefix: &str, suffix: &str) {
         let ExprKind::If { cond, then, els } = &e.kind else {
             unreachable!()
         };
-        let c = self.expr(cond, 0);
+        let c = self.cond(cond);
         match els {
             None => self.block_open(then, depth, &format!("{prefix}if {c} "), suffix),
             Some(x) => {
@@ -284,7 +406,7 @@ impl<'a> Printer<'a> {
                 body,
                 ..
             } => {
-                let c = self.expr(cond, 0);
+                let c = self.cond(cond);
                 self.line(depth, &format!("while {c}"));
                 if !invariants.is_empty() {
                     let xs: Vec<String> = invariants.iter().map(|e| self.expr(e, 0)).collect();
@@ -301,7 +423,9 @@ impl<'a> Printer<'a> {
                 self.line(depth, &format!("assert({c});"));
             }
             Stmt::Expr(e) => match &e.kind {
-                ExprKind::If { .. } | ExprKind::Block(_) => self.expr_stmt(e, depth, ""),
+                ExprKind::If { .. } | ExprKind::Block(_) | ExprKind::Match { .. } => {
+                    self.expr_stmt(e, depth, "")
+                }
                 _ => {
                     let x = self.expr(e, 0);
                     self.line(depth, &format!("{x};"));
@@ -315,6 +439,7 @@ impl<'a> Printer<'a> {
         match &v.kind {
             ExprKind::If { .. } => self.if_lines(v, depth, head, suffix),
             ExprKind::Block(b) => self.block_open(b, depth, head, suffix),
+            ExprKind::Match { .. } => self.match_lines(v, depth, head, suffix),
             _ => {
                 let x = self.expr(v, 0);
                 self.line(depth, &format!("{head}{x}{suffix}"));
@@ -386,8 +511,18 @@ impl<'a> Printer<'a> {
                 format!("forall|{}| {}", bs.join(", "), self.expr(body, 0))
             }
             ExprKind::Trigger(x) => format!("#[trigger] {}", self.expr(x, 7)),
+            ExprKind::StructLit { path, fields } => {
+                let fs: Vec<String> = fields
+                    .iter()
+                    .map(|(n, x)| format!("{}: {}", n.name, self.expr(x, 0)))
+                    .collect();
+                format!("{} {{ {} }}", self.path(path), fs.join(", "))
+            }
+            ExprKind::Path(path) => self.path(path),
+            ExprKind::Deref(x) => format!("*{}", self.expr(x, 7)),
+            ExprKind::Field { base, name } => format!("{}.{}", self.expr(base, 8), name.name),
             // Nested multi-line forms are printed on one line inside expressions.
-            ExprKind::If { .. } | ExprKind::Block(_) => {
+            ExprKind::If { .. } | ExprKind::Block(_) | ExprKind::Match { .. } => {
                 let text = self.capture(|p| p.expr_stmt(e, 0, ""));
                 text.lines().map(str::trim).collect::<Vec<_>>().join(" ")
             }
@@ -521,4 +656,37 @@ pub fn surface_parts(f: &FnDef) -> (String, Vec<String>, Vec<String>, Option<Str
     let ens = f.ensures.iter().map(|e| pr.expr(e, 0)).collect();
     let dec = f.decreases.as_ref().map(|e| pr.expr(e, 0));
     (sig, req, ens, dec)
+}
+
+fn pat_str(p: &Pat) -> String {
+    let path = p
+        .path
+        .iter()
+        .map(|i| i.name.as_str())
+        .collect::<Vec<_>>()
+        .join("::");
+    if !p.parens {
+        return path;
+    }
+    let bs: Vec<&str> = p
+        .binds
+        .iter()
+        .map(|b| b.as_ref().map_or("_", |i| i.name.as_str()))
+        .collect();
+    format!("{path}({})", bs.join(", "))
+}
+
+/// Whether a struct literal occurs in `e` outside a delimited argument list.
+fn has_struct_lit(e: &Expr) -> bool {
+    match &e.kind {
+        ExprKind::StructLit { .. } => true,
+        ExprKind::Binary(_, l, r) => has_struct_lit(l) || has_struct_lit(r),
+        ExprKind::Unary(_, x) | ExprKind::Ref { expr: x, .. } | ExprKind::Deref(x) => {
+            has_struct_lit(x)
+        }
+        ExprKind::Field { base, .. } => has_struct_lit(base),
+        ExprKind::Method { recv, .. } => has_struct_lit(recv),
+        ExprKind::Index { base, .. } => has_struct_lit(base),
+        _ => false,
+    }
 }
