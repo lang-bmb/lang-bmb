@@ -29,7 +29,9 @@ cache (BMB cache directory; `cargo clean`); those rows carry "cold": true.
 
   bcb.py run HISTORY --arms rust,b1,b0 --work DIR --out R.jsonl [--upto K]
              [--b0-every S]
-  bcb.py table R.jsonl [R.jsonl ...]   (cumulative costs and the ADR-0042 §5 checks)
+  bcb.py defects HISTORY --work DIR --out D.jsonl [--upto K]
+                                      (one planted mutant per commit; which arms catch it)
+  bcb.py table R.jsonl [D.jsonl ...]   (cumulative costs, detection, the ADR-0042 §5 checks)
 
 Uses $BMB or target/release/bmb, and cargo.
 """
@@ -185,54 +187,68 @@ def run_tests(exe, names, all_names):
     return {**cost(cpu, wall), "tests": len(names)}
 
 
-def rust_arm(header, commits, args, out):
-    rs = os.path.join(args.work, "rust")
-    bmb_unused = os.path.join(args.work, "rust-bmb-unused")
-    env = dict(os.environ, CARGO_TARGET_DIR=os.path.join(rs, "target"))
-    graph = tests_now = None
-    four = set(header["events"]["four"])
-    for k, tree, changed in history.replay(header, commits, args.upto):
-        if k == 0:
-            history.write_tree(tree, bmb_unused, rs)
-            graph = Graph(tree, "rust")
-            tests_now = {u: rust_tests(tree, u) for u in range(tree.n_units)}
-            changed_d, changed_t, changed_u = set(graph.text), None, set(range(tree.n_units))
+class RustSelect:
+    """The Rust arms' test selections, kept across commits."""
+
+    def __init__(self, tree):
+        self.graph = Graph(tree, "rust")
+        self.tests = {u: rust_tests(tree, u) for u in range(tree.n_units)}
+        self.first = True
+
+    def step(self, tree, changed):
+        """Selections after the commit that changed `changed` units (all at first)."""
+        graph = self.graph
+        first, self.first = self.first, False
+        if first:
+            changed_d, changed_t, changed_u = set(graph.text), set(), set(range(tree.n_units))
         else:
-            history.write_tree(tree, bmb_unused, rs, changed)
             old_text = dict(graph.text)
             for u in changed:
                 graph.update(tree, u)
             changed_d = changed_defs(old_text, graph.text)
             changed_t = set()
             for u in changed:
-                new = rust_tests(tree, u)
-                old = tests_now[u]
-                changed_t |= {(u, n) for n in set(new) | set(old) if new.get(n) != old.get(n) and n in new}
-                tests_now[u] = new
+                new, old = rust_tests(tree, u), self.tests[u]
+                changed_t |= {(u, n) for n in new if new.get(n) != old.get(n)}
+                self.tests[u] = new
             changed_u = set(changed)
-        all_tests = [(u, n) for u in range(tree.n_units) for n in tests_now[u]]
+        all_tests = [(u, n) for u in range(tree.n_units) for n in self.tests[u]]
         names = {t: f"m{t[0]}::tests::t_{t[1]}" for t in all_tests}
-        all_names = list(names.values())
-        deps = unit_deps(graph, tree.n_units)
-        r1_units = rdeps_closure(deps, changed_u)
+        r1_units = rdeps_closure(unit_deps(graph, tree.n_units), changed_u)
         r1 = [t for t in all_tests if t[0] in r1_units]
-        if k == 0:
-            r2 = list(all_tests)
-        else:
-            r2 = [t for t in all_tests if t in changed_t or graph.closure(t) & changed_d]
+        r2 = list(all_tests) if first else [t for t in all_tests if t in changed_t or graph.closure(t) & changed_d]
         covered = set()
         for t in r2:
             covered |= graph.closure(t)
+        return {"names": names, "all": [names[t] for t in all_tests], "R0": all_tests, "R1": r1, "R2": r2,
+                "covered": covered, "changed_defs": changed_d, "changed_units": changed_u}
+
+
+def rust_arm(header, commits, args, out):
+    rs = os.path.join(args.work, "rust")
+    bmb_unused = os.path.join(args.work, "rust-bmb-unused")
+    env = dict(os.environ, CARGO_TARGET_DIR=os.path.join(rs, "target"))
+    four = set(header["events"]["four"])
+    sel = None
+    for k, tree, changed in history.replay(header, commits, args.upto):
+        if k == 0:
+            history.write_tree(tree, bmb_unused, rs)
+            sel = RustSelect(tree)
+        else:
+            history.write_tree(tree, bmb_unused, rs, changed)
+        st = sel.step(tree, changed)
+        names, all_names = st["names"], st["all"]
         for cold in ([False, True] if k in four else [False]):
             if cold:
                 measure(["cargo", "clean", "--offline"], cwd=rs, env=env)
             b = cost(*measure(["cargo", "build", "--offline"], cwd=rs, env=env)[:2])
             c_cpu, c_wall, exe = test_exe(rs, env)
             row = {"arm": "rust", "k": k, "cold": cold, "build": b, "test_build": cost(c_cpu, c_wall),
-                   "changed_defs": len(changed_d), "changed_units": len(changed_u),
+                   "changed_defs": len(st["changed_defs"]), "changed_units": len(st["changed_units"]),
                    "R0": run_tests(exe, all_names, all_names),
-                   "R1": run_tests(exe, [names[t] for t in r1], all_names),
-                   "R2": {**run_tests(exe, [names[t] for t in r2], all_names), "covered_defs": len(covered)}}
+                   "R1": run_tests(exe, [names[t] for t in st["R1"]], all_names),
+                   "R2": {**run_tests(exe, [names[t] for t in st["R2"]], all_names),
+                          "covered_defs": len(st["covered"])}}
             out.write(json.dumps(row) + "\n")
             out.flush()
 
@@ -333,13 +349,49 @@ def bmb_measure(tree, ws, cache, selected, k, arm, cold, out, n_tests):
     out.flush()
 
 
+def write_tests(ws, tree):
+    """tests/tU.bmb as bmb_test_units says (stale files removed)."""
+    tunits = bmb_test_units(tree)
+    tdir = os.path.join(ws, "tests")
+    if os.path.isdir(tdir):
+        for f in os.listdir(tdir):
+            if int(f[1:].split(".")[0]) not in tunits:
+                os.unlink(os.path.join(tdir, f))
+    for u, text in tunits.items():
+        write_if_changed(os.path.join(tdir, f"t{u}.bmb"), text)
+
+
+class BmbSelect:
+    """The remaining tests (io definitions) and the B1 selection (R2 rule on
+    the BMB text: calls only, contracts are not executed)."""
+
+    def __init__(self):
+        self.graph = self.cases = None
+
+    def step(self, tree, changed, fresh):
+        """(all tests, selected tests); `fresh` selects all (first commit, B0)."""
+        tests = {(u, n) for u in range(tree.n_units) for n, kind, _ in rtests.exec_defs(tree.units[u]) if kind == "show"}
+        cases = {t: rtests.cases(t[1], "show", tree.find(t[0], t[1])[2]) for t in tests}
+        if fresh or self.graph is None:
+            self.graph = Graph(tree, "bmb")
+            selected = set(tests)
+        else:
+            old_text = dict(self.graph.text)
+            for u in changed:
+                self.graph.update(tree, u)
+            changed_d = changed_defs(old_text, self.graph.text)
+            selected = {t for t in tests if self.cases.get(t) != cases[t] or self.graph.closure(t) & changed_d}
+        self.cases = cases
+        return tests, selected
+
+
 def bmb_arm(header, commits, args, out, arm):
     ws = os.path.join(args.work, arm)
     cache = os.path.join(args.work, arm + "-cache")
     rust_unused = os.path.join(args.work, arm + "-rust-unused")
-    graph = tests_now = None
     four = set(header["events"]["four"])
     last_k = commits[-1]["k"] if args.upto is None else min(args.upto, commits[-1]["k"])
+    sel = BmbSelect()
     for k, tree, changed in history.replay(header, commits, args.upto):
         if arm == "b0" and k % args.b0_every and k != last_k:
             continue
@@ -348,32 +400,128 @@ def bmb_arm(header, commits, args, out, arm):
             history.write_tree(tree, ws, rust_unused)
         else:
             history.write_tree(tree, ws, rust_unused, changed)
-        tunits = bmb_test_units(tree)
-        tdir = os.path.join(ws, "tests")
-        if os.path.isdir(tdir):
-            for f in os.listdir(tdir):
-                if int(f[1:].split(".")[0]) not in tunits:
-                    os.unlink(os.path.join(tdir, f))
-        for u, text in tunits.items():
-            write_if_changed(os.path.join(tdir, f"t{u}.bmb"), text)
-        tests = {(u, n) for u in range(tree.n_units) for n, kind, _ in rtests.exec_defs(tree.units[u]) if kind == "show"}
-        if k == 0 or sample:
-            graph = Graph(tree, "bmb")
-            selected = set(tests)
-        else:
-            old_text = dict(graph.text)
-            for u in changed:
-                graph.update(tree, u)
-            changed_d = changed_defs(old_text, graph.text)
-            new_tests = {t for t in tests if t not in tests_now or tests_now[t] != rtests.cases(t[1], "show", tree.find(t[0], t[1])[2])}
-            selected = {t for t in tests if t in new_tests or graph.closure(t) & changed_d}
-        tests_now = {t: rtests.cases(t[1], "show", tree.find(t[0], t[1])[2]) for t in tests}
+        write_tests(ws, tree)
+        tests, selected = sel.step(tree, changed, k == 0 or sample)
         if sample:
             shutil.rmtree(cache, ignore_errors=True)
         for cold in ([False, True] if (k in four and not sample) else [False]):
             if cold:
                 shutil.rmtree(cache, ignore_errors=True)
             bmb_measure(tree, ws, cache, selected, k, arm, cold or sample, out, len(tests))
+
+
+# ------------------------------------------------------------------ defects
+
+def defect_targets(tree, commit):
+    """Executable definitions the commit edited that still exist, sorted."""
+    out = set()
+    for e in commit["edits"]:
+        u = e["unit"]
+        if e["op"] == "remove":
+            continue
+        name = e["def"]
+        if e["op"] == "spec":
+            try:
+                name = tree.find(u, name)[2]["of"]
+            except KeyError:
+                continue
+        try:
+            _, kind, _ = tree.find(u, name)
+        except KeyError:
+            continue
+        if kind in rtests.EXEC:
+            out.add((u, name))
+    return sorted(out)
+
+
+def tests_fail(exe, names, all_names):
+    """Whether any of the named tests fails (no names: nothing runs)."""
+    if not names:
+        return False
+    args = [exe, "--test-threads", "1", "-q"]
+    if set(names) != set(all_names):
+        args += ["--exact"] + sorted(names)
+    _, _, out = measure(args, check=False)
+    if re.search(r"test result: ok\. (\d+) passed", out):
+        return False
+    assert "test result: FAILED" in out, out[-2000:]
+    return True
+
+
+def defects(args):
+    """Plants one mutant per commit in an edited executable definition (ADR-0042
+    §4) and records which arm's checks fail on it. The planted tree is a side
+    branch: it is reverted before the next commit."""
+    header, commits = history.load(args.history)
+    ws, rs = os.path.join(args.work, "defect-bmb"), os.path.join(args.work, "defect-rust")
+    cache = os.path.join(args.work, "defect-cache")
+    env = dict(os.environ, CARGO_TARGET_DIR=os.path.join(rs, "target"))
+    rng = __import__("random").Random(f"bcb-defect:{header['history_seed']}:{header['profile']}")
+    rsel, bsel = None, BmbSelect()
+    with open(args.out, "a", encoding="utf-8") as out:
+        out.write(json.dumps({"header": True, "defects": True, "history": os.path.basename(args.history),
+                              "profile": header["profile"], "defs": header["defs"], "upto": args.upto}) + "\n")
+        for k, tree, changed in history.replay(header, commits, args.upto):
+            if k == 0:
+                history.write_tree(tree, ws, rs)
+                rsel = RustSelect(tree)
+            else:
+                history.write_tree(tree, ws, rs, changed)
+            write_tests(ws, tree)
+            st = rsel.step(tree, changed)
+            tests, b1_sel = bsel.step(tree, changed, k == 0)
+            base = subprocess.run([BMB, "verify", "--cache", cache, os.path.join(ws, "src")], capture_output=True, text=True)
+            assert base.returncode == 0, f"commit {k} does not prove"
+            if k == 0:
+                continue
+            row = {"k": k}
+            planted = None
+            targets = defect_targets(tree, commits[k - 1])
+            for u, name in rng.sample(targets, len(targets)):
+                r = subprocess.run([BMB, "mutate", "--def", f"m{u}::{name}", os.path.join(ws, "src")],
+                                   capture_output=True, text=True, check=True)
+                rows = [json.loads(x) for x in r.stdout.splitlines()]
+                rows = [x for x in rows if not x.get("summary")]
+                if rows:
+                    i = rng.randrange(len(rows))
+                    planted = (u, name, i, len(rows), rows[i])
+                    break
+            if planted is None:
+                row["skipped"] = "no edited executable definition with a mutant"
+                out.write(json.dumps(row) + "\n")
+                continue
+            u, name, i, n, m = planted
+            row.update({"def": f"m{u}::{name}", "mutant": i, "mutants": n, "site": f"{m['before']} -> {m['after']}"})
+            block = [b for b in rustify.blocks(m["text"]) if rustify.def_name(b) == name][0]
+            # BMB: the gate (proof), then the remaining tests whose output could change.
+            bpath = os.path.join(ws, "src", f"m{u}.bmb")
+            open(bpath, "w", encoding="utf-8").write(m["text"])
+            v = subprocess.run([BMB, "verify", "--cache", cache, os.path.join(ws, "src")], capture_output=True, text=True)
+            proof = any(x.startswith('{"def"') and '"status":"failed"' in x for x in v.stdout.splitlines())
+            row["proof"] = proof
+            for arm, chosen in (("B1", b1_sel), ("B0", tests)):
+                reach = {t for t in chosen if (u, name) in bsel.graph.closure(t)}
+                caught = False
+                if not proof and reach:
+                    exe = os.path.join(ws, "defect_tests")
+                    write_if_changed(os.path.join(ws, "driver", "bcb_main.bmb"), driver(reach))
+                    measure([BMB, "build", "--cache", cache, os.path.join(ws, "src"), os.path.join(ws, "tests"),
+                             os.path.join(ws, "driver"), "-o", exe])
+                    caught = measure([exe], check=False)[2] != expected_output(tree, reach)
+                row[arm] = proof or caught
+                row[arm + "_tests"] = caught
+            open(bpath, "w", encoding="utf-8").write(tree.text[("bmb", u)])
+            # Rust: the arms' selected tests on the planted crate.
+            rpath = os.path.join(rs, "src", f"m{u}.rs")
+            open(rpath, "w", encoding="utf-8").write(
+                rustify.replace_rust(tree.text[("rust", u)], name, rustify.translate(block)))
+            _, _, exe = test_exe(rs, env)
+            names = st["names"]
+            for arm in ("R0", "R1", "R2"):
+                row[arm] = tests_fail(exe, [names[t] for t in st[arm]], st["all"])
+            open(rpath, "w", encoding="utf-8").write(tree.text[("rust", u)])
+            out.write(json.dumps(row) + "\n")
+            out.flush()
 
 
 def run(args):
@@ -437,12 +585,22 @@ def cumulative(head, rows):
     return out
 
 
+def detection(rows):
+    """Arm -> (caught, planted) over the planted commits."""
+    planted = [r for r in rows if "def" in r]
+    return {a: (sum(r[a] for r in planted), len(planted)) for a in ("R0", "R1", "R2", "B0", "B1")}
+
+
 def table(paths):
+    dets = []
     lines = ["| 이력 | 정의 | 커밋 | 팔 | 누적 CPU(사건 0) | 사건 1 | 사건 4 | 커밋당 재검증 평균 |",
              "| --- | --- | --- | --- | --- | --- | --- | --- |"]
     verdicts = []
     for p in paths:
         head, rows = load_rows(p)
+        if head.get("defects"):
+            dets.append((head, detection(rows), sum(r.get("proof", False) for r in rows)))
+            continue
         cum = cumulative(head, rows)
         warm = [r for r in rows if not r["cold"]]
         inv = {}
@@ -471,6 +629,20 @@ def table(paths):
                             f" (사건 4: {cum['B1']['4'] / cum['R1']['4']:.3f})")
         if "B1" in mean and "R2 covered" in mean:
             verdicts.append(f"- {head['profile']} N={head['defs']}: 커밋당 B1 재증명 {mean['B1']:.2f} 대 R2가 덮는 정의 {mean['R2 covered']:.2f}")
+    if len(lines) == 2:
+        lines = []  # defect files only
+    if dets:
+        lines += ["", "| 이력 | 정의 | 심은 결함 | R0 | R1 | R2 | B0 | B1 |", "| --- | --- | --- | --- | --- | --- | --- | --- |"]
+        total = {a: [0, 0] for a in ("R0", "R1", "R2", "B0", "B1")}
+        for head, d, _ in dets:
+            n = d["R0"][1]
+            lines.append(f"| {head['profile']} | {head['defs']} | {n} | " + " | ".join(
+                f"{d[a][0]} ({100 * d[a][0] / max(n, 1):.0f}%)" for a in ("R0", "R1", "R2", "B0", "B1")) + " |")
+            for a in total:
+                total[a][0] += d[a][0]
+                total[a][1] += d[a][1]
+        verdicts.append(f"- 결함 검출(전체): B1 {total['B1'][0]}/{total['B1'][1]}, R2 {total['R2'][0]}/{total['R2'][1]}"
+                        f" — 조건 4(B1 < R2) {'성립: 반증' if total['B1'][0] < total['R2'][0] else '불성립'}")
     return "\n".join(lines + [""] + verdicts) + "\n"
 
 
@@ -484,11 +656,18 @@ def main(argv=None):
     r.add_argument("--out", required=True)
     r.add_argument("--upto", type=int)
     r.add_argument("--b0-every", type=int, default=1)
+    d = sub.add_parser("defects")
+    d.add_argument("history")
+    d.add_argument("--work", required=True)
+    d.add_argument("--out", required=True)
+    d.add_argument("--upto", type=int)
     t = sub.add_parser("table")
     t.add_argument("results", nargs="+")
     args = p.parse_args(argv)
     if args.cmd == "run":
         run(args)
+    elif args.cmd == "defects":
+        defects(args)
     else:
         sys.stdout.write(table(args.results))
 

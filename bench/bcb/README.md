@@ -13,7 +13,8 @@
 
 ```
 python3 bench/bcb/bcb.py run H.jsonl --work W --out R.jsonl [--b0-every 50]   # 측정(팔 rust,b1,b0)
-python3 bench/bcb/bcb.py table R.jsonl                                     # 누적 CPU 표와 비율
+python3 bench/bcb/bcb.py defects H.jsonl --work W --out D.jsonl           # 결함 심기
+python3 bench/bcb/bcb.py table R.jsonl D.jsonl                             # 누적 CPU·검출률 표와 판정
 python3 bench/bcb/kills.py --defs 1000                                     # 판별 동등성(초기 트리)
 python3 bench/bcb/kills.py --history H.jsonl --at 500                      # 이력의 커밋 500에서
 python3 bench/bcb/history.py gen H.jsonl --defs 1000 --commits 1000 --profile body-heavy
@@ -40,6 +41,17 @@ python3 bench/bcb/history.py replay H.jsonl --bmb W/bmb --rust W/rust --upto 500
 | B1 | `bmb build --cache C --stats S src tests driver -o exe`(증명 게이트와 빌드가 한 명령), `exe` 실행과 출력 비교. 남은 테스트는 `show` 정의마다 `tests/tU.bmb`의 테스트 함수(Rust 테스트와 같은 입력)이고, `driver/bcb_main.bmb`의 `main`이 R2 규칙으로 고른 것을 부른다. 기대 출력은 계획에서 계산한다 |
 | B0 | 같은 명령을 새 캐시로, 남은 테스트 전부. `--b0-every S` 커밋마다(마지막 커밋 포함) |
 
+## 결함 심기(ADR-0042 §4)
+
+`bcb.py defects`는 커밋마다 그 커밋이 편집한 실행 정의 하나를 고르고(고정 시드), 그 정의의 W0904 변이체 하나(생존 변이체 포함)를 두 언어에 심은 곁가지를 만든다. 각 팔은 그 커밋의 선택 규칙대로 돈다.
+
+| 팔 | 잡는 조건 |
+| --- | --- |
+| R0·R1·R2 | 선택된 Rust 테스트 중 하나가 실패 |
+| B1·B0 | 증명 게이트 실패(`proof`), 또는 선택된(B0는 전부) 남은 테스트 중 심은 정의에 닿는 것의 출력이 계획 값과 다름(`B1_tests`) |
+
+곁가지는 다음 커밋 전에 되돌린다. 편집이 삭제뿐이거나 변이체가 없는 커밋은 `skipped`. 게이트는 Rust가 잡은 결함은 언제나 증명도 실패함(Rust 테스트는 계약만 본다)과 선택의 포함 관계를 확인한다.
+
 ## 테스트 동등성(ADR-0042 §4)
 
 변이체 하나는 BMB에서 정의가 더는 증명되지 않으면, Rust에서 그 정의의 테스트가 실패하면 죽는다. 오라클(입력 수백 개)이 계약 위반 입력을 찾으면 그 변이체는 계약을 실제로 어긴다.
@@ -58,4 +70,5 @@ python3 bench/bcb/history.py replay H.jsonl --bmb W/bmb --rust W/rust --upto 500
 - 2A-14a: 설계(ADR-0042), 이력 생성기, 게이트, `bmb verify --stats`(재증명 집합).
 - 2A-14b: Rust 테스트와 판별 동등성(`rtests.py`, `rustify.py`, `kills.py`).
 - 2A-14c: 재생 하네스(`bcb.py`), `build --stats`.
-- 다음: 결함 심기(2A-14d), 동결·측정(2A-14e).
+- 2A-14d: 결함 심기(`bcb.py defects`, 표의 검출률과 조건 4).
+- 다음: 동결·측정(2A-14e).

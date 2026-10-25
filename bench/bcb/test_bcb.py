@@ -142,8 +142,19 @@ def check_harness(t):
     assert all(r["encoded"] > warm[r["k"]]["encoded"] for r in cold), "a cold build re-proves everything"
     b0 = [r for r in rows if r["arm"] == "b0"]
     assert b0[0]["encoded"] == [r for r in rows if r["arm"] == "b1" and r["k"] == 0][0]["encoded"], b0
-    text = bcb.table([out])
-    assert "C_B1/C_R1" in text and "| body-heavy | 100 | 5 | B1 |" in text, text
+    # Planted defects (2A-14d): a Rust catch is always a proof failure too (Rust
+    # tests check only the contract), the selections nest, B0 sees what B1 sees.
+    dpath = os.path.join(t, "defects.jsonl")
+    bcb.main(["defects", path, "--work", os.path.join(t, "defects"), "--out", dpath])
+    _, drows = bcb.load_rows(dpath)
+    planted = [r for r in drows if "def" in r]
+    assert len(drows) == 5 and planted, drows
+    for r in planted:
+        assert r["R2"] <= r["R1"] <= r["R0"], r
+        assert not r["R0"] or r["proof"], f"Rust caught what BMB proved: {r}"
+        assert r["B1"] == (r["proof"] or r["B1_tests"]) and r["B1"] <= r["B0"], r
+    text = bcb.table([out, dpath])
+    assert "C_B1/C_R1" in text and "| body-heavy | 100 | 5 | B1 |" in text and "결함 검출(전체)" in text, text
 
 
 def main():
