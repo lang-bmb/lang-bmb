@@ -136,7 +136,7 @@ fn index_of(arr: &[i64], target: i64) -> (result: Option<usize>)
         let mid: usize = lo + (hi - lo) / 2;
         // ...
     }
-    Option::None
+    None
 }
 ```
 

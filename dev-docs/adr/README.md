@@ -71,7 +71,7 @@ BMB v2의 설계 결정을 한 건에 파일 하나로 남긴다. 현재 확정�
 | [0023](0023-ground-instance-retry.md) | 결정 불가 의무의 기저 인스턴스 재시도 | 채택(자율) | 백로그 1B-14 |
 | [0024](0024-checker-relaxations.md) | 검사기 완화 세 가지(읽기 전용 스칼라 인자, 명세의 부호 없는 부정·큰 리터럴) | 채택(승인) | 백로그 1A-13 |
 | [0025](0025-task-set-m1b.md) | 두 번째 동결 과제 집합 `m1b` | 채택(자율) | 백로그 2A-01 |
-| [0026](0026-data-types-surface.md) | 데이터 타입 표면: 구조체·열거형·`match`·`impl` | 제안 | 백로그 2B-01 |
+| [0026](0026-data-types-surface.md) | 데이터 타입 표면: 구조체·열거형·`match`·`impl`(내장 변형 맨이름, 수신자 `self: &T`) | 채택(승인된 계획) | 백로그 2B-01·2B-11 |
 | [0027](0027-data-types-encoding.md) | 데이터 타입의 증명 인코딩(구조체는 필드 분해, 열거형은 SMT 데이터타입) | 채택(승인) | 백로그 2B-02, `dev-docs/experiments/2B-02` |
 | [0028](0028-integer-conversions.md) | 정수 변환과 검사·포화 산술 | 제안 | 백로그 2C-01 |
 | [0029](0029-escape-hatches-and-rationale.md) | 탈출구(`assume`·`external_body`)와 구조화 근거 | 제안 | 백로그 2E-01 |
