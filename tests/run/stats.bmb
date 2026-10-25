@@ -1,0 +1,92 @@
+#[summary("통계: 넘침을 값으로 받는 합, 길이로 나눈 평균, 변환한 값으로 고른 히스토그램 칸 (ADR-0028)")]
+mod stats {
+    // The sum, or `None` when it leaves `i64` at some step.
+    #[effects(pure)]
+    fn sum(a: &[i64]) -> Option<i64> {
+        let mut s: i64 = 0;
+        let mut ok: bool = true;
+        let mut i: usize = 0;
+        while i < a.len()
+            invariant i <= a.len(),
+            decreases a.len() - i,
+        {
+            if ok {
+                match s.checked_add(a[i]) {
+                    None => {
+                        ok = false;
+                    }
+                    Some(t) => {
+                        s = t;
+                    }
+                }
+            }
+            i = i + 1;
+        }
+        if ok { Some(s) } else { None }
+    }
+
+    // The length is an `i64` divisor: its range follows from the slice
+    // length bound, its sign from `a.len() > 0`.
+    #[effects(pure)]
+    fn mean(a: &[i64]) -> Option<i64> {
+        if a.len() == 0 {
+            None
+        } else {
+            match sum(a) {
+                None => None,
+                Some(s) => Some(s / i64::try_from(a.len()).unwrap()),
+            }
+        }
+    }
+
+    spec fn scores(a: &[i64]) -> bool { forall|k: usize| k < a.len() ==> 0 <= #[trigger] a[k] && a[k] < 100 }
+
+    spec fn ten(h: &[u64]) -> bool { h.len() == 10 }
+
+    // Bucket `v / 10` of each score; a count stops at `u64::MAX`.
+    #[effects(pure)]
+    #[uses(scores, ten)]
+    fn histogram(a: &[i64], h: &mut [u64]) -> ()
+        requires scores(a), ten(h),
+    {
+        let mut i: usize = 0;
+        while i < a.len()
+            invariant i <= a.len(), ten(h),
+            decreases a.len() - i,
+        {
+            let b: usize = usize::try_from(a[i] / 10).unwrap();
+            h[b] = h[b].saturating_add(1);
+            i = i + 1;
+        }
+    }
+
+    #[effects(io)]
+    fn show(o: Option<i64>) -> () {
+        match o {
+            None => print_i64(-1),
+            Some(v) => print_i64(v),
+        }
+    }
+}
+
+#[summary("진입점")]
+mod app {
+    #[effects(io)]
+    #[uses(stats::scores, stats::ten)]
+    fn main() -> () {
+        let a: [i64; 8] = [91, 35, 78, 35, 4, 99, 60, 67];
+        let big: [i64; 3] = [9223372036854775807, 1, -5];
+        let empty: [i64; 0] = [];
+        stats::show(stats::sum(&a));
+        stats::show(stats::mean(&a));
+        stats::show(stats::sum(&big));
+        stats::show(stats::mean(&big));
+        stats::show(stats::mean(&empty));
+        let mut h: [u64; 10] = [0; 10];
+        stats::histogram(&a, &mut h);
+        print_u64(h[0]);
+        print_u64(h[3]);
+        print_u64(h[9]);
+        print_u64(u64::try_from(a.len()).unwrap());
+    }
+}

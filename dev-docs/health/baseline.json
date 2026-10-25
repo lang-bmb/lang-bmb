@@ -2,7 +2,7 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 2487744,
+    "V4_rlimit_total": 2576344,
     "V5_rlimit_headroom": 0.0097,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0,
@@ -14,12 +14,12 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 17158,
+    "S4_stage0_rust_lines": 17631,
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
-    "P1_runnable_programs": 8,
-    "P2_bmb_lines": 4816,
-    "P3_errors_with_help": 0.6653,
+    "P1_runnable_programs": 11,
+    "P2_bmb_lines": 5268,
+    "P3_errors_with_help": 0.6812,
     "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 7
@@ -209,6 +209,32 @@
         "O2_soundness_fuzzers": [
           6,
           7
+        ]
+      }
+    },
+    {
+      "date": "2026-10-25",
+      "reason": "2C: conversions, checked/saturating arithmetic and three run programs (P1 8->11, P2, P3 from fixes of E0212/E0213/E0412/E0513)",
+      "changed": {
+        "V4_rlimit_total": [
+          2487744,
+          2576344
+        ],
+        "S4_stage0_rust_lines": [
+          17158,
+          17631
+        ],
+        "P1_runnable_programs": [
+          8,
+          11
+        ],
+        "P2_bmb_lines": [
+          4816,
+          5268
+        ],
+        "P3_errors_with_help": [
+          0.6653,
+          0.6812
         ]
       }
     }
