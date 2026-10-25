@@ -2,7 +2,7 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 3152273,
+    "V4_rlimit_total": 3300531,
     "V5_rlimit_headroom": 0.0097,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0,
@@ -14,12 +14,12 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 19473,
+    "S4_stage0_rust_lines": 19743,
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
-    "P1_runnable_programs": 15,
-    "P2_bmb_lines": 6557,
-    "P3_errors_with_help": 0.6921,
+    "P1_runnable_programs": 17,
+    "P2_bmb_lines": 6853,
+    "P3_errors_with_help": 0.7059,
     "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 8
@@ -317,6 +317,32 @@
         "P3_errors_with_help": [
           0.6913,
           0.6921
+        ]
+      }
+    },
+    {
+      "date": "2026-10-25",
+      "reason": "2B-14: 실행 tests/run/points(구조체·열거형 배열)와 2B-15 fields로 P1 15->17, P2 6853, 배열 원소 E0402에 안내를 붙여 P3 0.7059",
+      "changed": {
+        "V4_rlimit_total": [
+          3152273,
+          3300531
+        ],
+        "S4_stage0_rust_lines": [
+          19473,
+          19743
+        ],
+        "P1_runnable_programs": [
+          15,
+          17
+        ],
+        "P2_bmb_lines": [
+          6557,
+          6853
+        ],
+        "P3_errors_with_help": [
+          0.6921,
+          0.7059
         ]
       }
     }

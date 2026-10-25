@@ -870,10 +870,16 @@ impl<'p, 'q> Enc<'p, 'q> {
         if is_array(t) && struct_fields(&elem_ty(t), self.prog.t).is_some() {
             let e = elem_ty(t);
             let elem = Box::new(self.fresh_struct_elems(base, &e));
-            let l = self.fresh(&format!("{base}.len"), "Int");
-            self.pc
-                .push(format!("(and (<= 0 {l}) (<= {l} {}))", len_max(&e)));
-            return Val::Arr { elem, len: l };
+            let len = match t {
+                TypeKind::Array(_, n) => n.to_string(),
+                _ => {
+                    let l = self.fresh(&format!("{base}.len"), "Int");
+                    self.pc
+                        .push(format!("(and (<= 0 {l}) (<= {l} {}))", len_max(&e)));
+                    l
+                }
+            };
+            return Val::Arr { elem, len };
         }
         if is_array(t) {
             let e = elem_ty(t);
@@ -1500,6 +1506,28 @@ impl<'p, 'q> Enc<'p, 'q> {
                 )
             }
             ExprKind::Block(b) => self.block(b),
+            // An array of structs or enums (2B-14): fresh element arrays
+            // with each item stored, so no default value is needed.
+            ExprKind::Array(items) if matches!(elem_ty(&self.ty(e)), TypeKind::Named { .. }) => {
+                let elem = elem_ty(&self.ty(e));
+                let vals: Vec<Val> = items.iter().map(|it| self.eval(it)).collect();
+                let mut arr = if struct_fields(&elem, self.prog.t).is_some() {
+                    self.fresh_struct_elems("arr", &elem)
+                } else {
+                    Val::S(self.fresh("arr.e", &format!("(Array Int {})", sort_of(&elem))))
+                };
+                for (k, v) in vals.iter().enumerate() {
+                    arr = store_val(&arr, &k.to_string(), v);
+                }
+                let len = items.len().to_string();
+                match arr {
+                    Val::S(elems) => Val::A { elems, len },
+                    elem => Val::Arr {
+                        elem: Box::new(elem),
+                        len,
+                    },
+                }
+            }
             ExprKind::Array(items) => {
                 let elem = elem_ty(&self.ty(e));
                 let mut arr = format!(
@@ -1514,6 +1542,26 @@ impl<'p, 'q> Enc<'p, 'q> {
                 Val::A {
                     elems: arr,
                     len: items.len().to_string(),
+                }
+            }
+            ExprKind::Repeat { value, count, .. }
+                if struct_fields(&elem_ty(&self.ty(e)), self.prog.t).is_some() =>
+            {
+                // One constant array per leaf of the struct value (2B-14).
+                let elem = elem_ty(&self.ty(e));
+                let v = self.eval(value);
+                let mut ls = Vec::new();
+                leaves(&elem, self.prog.t, "", &mut ls);
+                let mut terms = Vec::new();
+                flatten(&v, &mut terms);
+                let consts: Vec<String> = ls
+                    .iter()
+                    .zip(terms)
+                    .map(|((_, leaf), x)| format!("((as const (Array Int {})) {x})", leaf.sort()))
+                    .collect();
+                Val::Arr {
+                    elem: Box::new(build(&elem, self.prog.t, &mut consts.into_iter())),
+                    len: count.to_string(),
                 }
             }
             ExprKind::Repeat { value, count, .. } => {

@@ -1,0 +1,39 @@
+#[summary("구조체와 열거형 배열의 경계 (backlog 2B-14)")]
+mod da {
+    struct Point { x: i64, y: i64 }
+
+    struct Path { p: [Point; 2] }
+
+    struct Deep { ps: [Path; 2] }
+
+    struct Grid { g: [[Point; 2]; 2] }
+
+    #[effects(pure)]
+    fn by_value(a: [Point; 2]) -> i64 {
+        a[0].x
+    }
+
+    #[effects(pure)]
+    fn paths() -> i64 {
+        let q: [Path; 1] = [Path { p: [Point { x: 1, y: 2 }; 2] }];
+        0
+    }
+
+    #[effects(pure)]
+    fn ok(a: &[Point]) -> usize {
+        let b: [Point; 2] = [Point { x: 1, y: 2 }; 2];
+        a.len() + b.len()
+    }
+
+    #[effects(pure)]
+    fn in_literal() -> i64 {
+        let p: Path = Path { p: [Point { x: 1, y: 2 }; 2] };
+        [p][0].p[0].x + [p; 2][1].p[1].y
+    }
+
+    #[effects(pure)]
+    fn vecs() -> usize {
+        let v: Vec<i64> = Vec::new();
+        [v][0].len()
+    }
+}

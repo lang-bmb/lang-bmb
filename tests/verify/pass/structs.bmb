@@ -131,3 +131,72 @@ mod user {
         geo::Point::sum(&p)
     }
 }
+
+#[summary("구조체와 열거형의 배열: 지역, 필드, 반복, 복사 (backlog 2B-14)")]
+mod arrs {
+    struct Point { x: i64, y: i64 }
+
+    enum Cell { Empty, Coin(i64) }
+
+    struct Path { p: [Point; 3], n: usize }
+
+    spec fn is(v: i64, w: i64) -> bool { v == w }
+
+    spec fn below(i: usize, n: usize) -> bool { i < n }
+
+    // A copy is not changed by a later write to the original.
+    #[effects(pure)]
+    #[uses(is)]
+    fn copied() -> (r: i64)
+        ensures is(r, 514),
+    {
+        let mut a: [Point; 2] = [Point { x: 1, y: 2 }, Point { x: 3, y: 4 }];
+        let b: [Point; 2] = a;
+        a[0].x = 5;
+        a[1] = Point { x: 0, y: 0 };
+        b[0].x * 10 + b[1].y + a[0].x * 100 + a[1].y
+    }
+
+    // A repeat gives every element the value; the length is fixed.
+    #[effects(pure)]
+    #[uses(is, below)]
+    fn repeated(i: usize) -> (r: i64)
+        requires below(i, 4),
+        ensures is(r, 7),
+    {
+        let z: [Point; 4] = [Point { x: 7, y: 0 }; 4];
+        z[i].x + i64::try_from(z.len()).unwrap() - 4
+    }
+
+    // Elements of an enum array literal are known.
+    #[effects(pure)]
+    #[uses(is)]
+    fn cells() -> (r: i64)
+        ensures is(r, 9),
+    {
+        let c: [Cell; 3] = [Cell::Empty, Cell::Coin(9), Cell::Empty];
+        match c[1] {
+            Cell::Empty => 0,
+            Cell::Coin(v) => v,
+        }
+    }
+
+    // A parameter's array field has its declared length.
+    #[effects(pure)]
+    fn last(q: &Path) -> i64 {
+        q.p[2].x
+    }
+
+    // An array field has its declared length; a whole-array assignment
+    // swaps elements as read before the first write.
+    #[effects(pure)]
+    #[uses(is)]
+    fn field(q: Path) -> (r: i64)
+        ensures is(r, 3),
+    {
+        let mut t: Path = q;
+        t.p = [Point { x: 1, y: 0 }, Point { x: 2, y: 0 }, Point { x: 3, y: 0 }];
+        t.p = [t.p[2], t.p[1], t.p[0]];
+        t.p[0].x + i64::try_from(t.p.len()).unwrap() - 3
+    }
+}

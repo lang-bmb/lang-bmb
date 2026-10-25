@@ -1,0 +1,121 @@
+#[summary("실행: 구조체와 열거형의 배열 (backlog 2B-14)")]
+mod pts {
+    enum Cell { Empty, Wall, Coin(i64) }
+
+    enum Pair { Two([Point; 2]), None }
+
+    struct Path { p: [Point; 3], n: usize }
+
+    struct Point { x: i64, y: i64 }
+
+    spec fn all_small(a: &[Point]) -> bool {
+        forall|k: usize| k < a.len() ==> small_p(#[trigger] a[k])
+    }
+
+    spec fn cells_small(a: &[Cell]) -> bool {
+        forall|k: usize| k < a.len() ==> coin_small(#[trigger] a[k])
+    }
+
+    spec fn coin_small(c: Cell) -> bool {
+        match c {
+            Cell::Empty => true,
+            Cell::Wall => true,
+            Cell::Coin(v) => small(v),
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(cells_small, coin_small, short, small, within)]
+    fn coins(a: &[Cell]) -> i64
+        requires cells_small(a), short(a.len()),
+    {
+        let mut s: i64 = 0;
+        let mut i: usize = 0;
+        while i < a.len()
+            invariant within(s, i, a.len()),
+            decreases a.len() - i,
+        {
+            let v: i64 = match a[i] {
+                Cell::Empty => 0,
+                Cell::Wall => 0,
+                Cell::Coin(c) => c,
+            };
+            s = s + v;
+            i = i + 1;
+        }
+        s
+    }
+
+    #[effects(io)]
+    #[uses(all_small, cells_small, coin_small, short, small, small_p)]
+    fn main() -> () {
+        let mut a: [Point; 3] = [Point { x: 1, y: 2 }, Point { x: 3, y: 4 }, Point { x: 5, y: 6 }];
+        let b: [Point; 3] = a;
+        a[0] = Point { x: 10, y: 20 };
+        a[1].y = 40;
+        print_i64(a[0].x + a[1].y);
+        print_i64(b[0].x + b[1].y);
+        print_i64(sum_x(&a));
+        a = [a[2], a[1], a[0]];
+        print_i64(a[0].x * 100 + a[2].x);
+        let z: [Point; 4] = [Point { x: 7, y: 0 }; 4];
+        print_i64(sum_x(&z));
+        let mut q: Path = Path { p: b, n: 2 };
+        q.p[2] = Point { x: -9, y: 0 };
+        print_i64(q.p[2].x + q.p[0].x);
+        let c: [Cell; 4] = [Cell::Coin(5), Cell::Wall, Cell::Empty, Cell::Coin(7)];
+        print_i64(coins(&c));
+        let e: [Cell; 2] = [Cell::Coin(3); 2];
+        print_i64(coins(&e));
+        let mut ps: [Point; 2] = [Point { x: 1, y: 2 }, Point { x: 3, y: 4 }];
+        let w: Pair = Pair::Two(ps);
+        ps[1].y = 9;
+        print_i64(second_y(&w));
+        let o: Option<[Point; 2]> = Some(ps);
+        match o {
+            None => print_i64(0),
+            Some(t) => print_i64(t[1].y + t[0].x),
+        }
+    }
+
+    #[effects(pure)]
+    fn second_y(w: &Pair) -> i64 {
+        match *w {
+            Pair::Two(a) => a[1].y,
+            Pair::None => 0,
+        }
+    }
+
+    spec fn short(n: usize) -> bool {
+        n <= 4
+    }
+
+    spec fn small(n: i64) -> bool {
+        -1000 <= n && n <= 1000
+    }
+
+    spec fn small_p(p: Point) -> bool {
+        small(p.x) && small(p.y)
+    }
+
+    #[effects(pure)]
+    #[uses(all_small, short, small, small_p, within)]
+    fn sum_x(a: &[Point]) -> i64
+        requires all_small(a), short(a.len()),
+    {
+        let mut s: i64 = 0;
+        let mut i: usize = 0;
+        while i < a.len()
+            invariant within(s, i, a.len()),
+            decreases a.len() - i,
+        {
+            s = s + a[i].x;
+            i = i + 1;
+        }
+        s
+    }
+
+    spec fn within(s: i64, i: usize, n: usize) -> bool {
+        i <= n && -1000 * i <= s && s <= 1000 * i
+    }
+}

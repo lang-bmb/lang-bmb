@@ -620,6 +620,16 @@ impl<'p> Gen<'p> {
                 let (k, ft) = self.field_of(&bt, &name.name);
                 (self.field_ptr(&bp, &bt, k), ft)
             }
+            ExprKind::Index { base, index } if !matches!(base.kind, ExprKind::Var(_)) => {
+                // An element of an array field.
+                let (bp, bt) = self.place(base);
+                let TypeKind::Array(el, n) = value_ty(&bt).clone() else {
+                    unreachable!("indexing an array field")
+                };
+                let i = self.expr(index).imm();
+                let p = self.data_elem(e, &bp, &n.to_string(), &i, &el.kind);
+                (p, el.kind.clone())
+            }
             ExprKind::Index { base, index } => {
                 let ExprKind::Var(id) = &base.kind else {
                     unreachable!("indexing a named slice")
@@ -1058,6 +1068,19 @@ impl<'p> Gen<'p> {
             }
             ExprKind::Block(b) => self.block_expr(b),
             ExprKind::Ref { expr, .. } => self.expr(expr),
+            ExprKind::Array(_) | ExprKind::Repeat { .. } if matches!(&self.ty(e), TypeKind::Array(el, _) if is_data(&el.kind)) =>
+            {
+                let ty = self.ty(e);
+                let ptr = self.temp(&ty);
+                self.init_data_array(e, &ptr, &ty);
+                let TypeKind::Array(_, n) = ty else {
+                    unreachable!()
+                };
+                CVal::Arr {
+                    ptr,
+                    len: n.to_string(),
+                }
+            }
             ExprKind::Array(_) | ExprKind::Repeat { .. } => {
                 let ty = self.ty(e);
                 let TypeKind::Array(el, n) = &ty else {
@@ -1559,6 +1582,68 @@ impl<'p> Gen<'p> {
         (p, elem)
     }
 
+    /// Fills the array of structs or enums of type `t` at `ptr` from an
+    /// array literal or a repeat (2B-14). Every element is evaluated and
+    /// copied out before the first store, as for scalar elements.
+    fn init_data_array(&mut self, e: &Expr, ptr: &str, t: &TypeKind) {
+        let TypeKind::Array(el, _) = t else {
+            unreachable!("an array type")
+        };
+        let et = el.kind.clone();
+        let at = |g: &mut Self, k: &str| {
+            let p = g.t();
+            g.emit(format!(
+                "{p} = getelementptr inbounds {}, ptr {ptr}, i64 {k}",
+                data_ty(&et)
+            ));
+            p
+        };
+        match &e.kind {
+            ExprKind::Array(items) => {
+                let vals: Vec<CVal> = items
+                    .iter()
+                    .map(|it| {
+                        let v = self.expr(it);
+                        self.detach(v)
+                    })
+                    .collect();
+                for (k, v) in vals.into_iter().enumerate() {
+                    let p = at(self, &k.to_string());
+                    self.put(v, &p, &et);
+                }
+            }
+            ExprKind::Repeat { value, count, .. } => {
+                let v = self.expr(value);
+                let v = self.detach(v);
+                let i = self.alloca("i64");
+                self.emit(format!("store i64 0, ptr {i}"));
+                let head = self.l("fill");
+                let body = self.l("fillb");
+                let end = self.l("filled");
+                self.emit(format!("br label %{head}"));
+                self.block(&head);
+                let k = self.t();
+                let c = self.t();
+                self.emit(format!("{k} = load i64, ptr {i}"));
+                self.emit(format!("{c} = icmp ult i64 {k}, {count}"));
+                self.emit(format!("br i1 {c}, label %{body}, label %{end}"));
+                self.block(&body);
+                let p = at(self, &k);
+                self.put(v, &p, &et);
+                let k2 = self.t();
+                self.emit(format!("{k2} = add nuw i64 {k}, 1"));
+                self.emit(format!("store i64 {k2}, ptr {i}"));
+                self.emit(format!("br label %{head}"));
+                self.block(&end);
+            }
+            // Any other array value is copied whole.
+            _ => {
+                let v = self.expr(e);
+                self.put(v, ptr, t);
+            }
+        }
+    }
+
     fn init_array(&mut self, e: &Expr, ptr: &str, elem: &str) {
         match &e.kind {
             ExprKind::Array(items) => {
@@ -1721,6 +1806,26 @@ impl<'p> Gen<'p> {
                 self.slots
                     .insert(name.name.clone(), Slot::Data { ptr, ty: t });
             }
+            Stmt::Let { name, init, .. }
+                if matches!(self.t.locals.get(&self.path).and_then(|m| m.get(&name.name)),
+                    Some(TypeKind::Array(el, _)) if is_data(&el.kind)) =>
+            {
+                let t = self.t.locals[&self.path][&name.name].clone();
+                let TypeKind::Array(el, n) = &t else {
+                    unreachable!()
+                };
+                let ptr = self.temp(&t);
+                self.init_data_array(init, &ptr, &t);
+                self.slots.insert(
+                    name.name.clone(),
+                    Slot::Arr {
+                        ptr,
+                        len: n.to_string(),
+                        elem: elem_kind(&el.kind),
+                        ety: el.kind.clone(),
+                    },
+                );
+            }
             Stmt::Let { name, ty, init, .. } => match &ty.kind {
                 TypeKind::Array(el, n) => {
                     let elem = elem_kind(&el.kind);
@@ -1755,6 +1860,10 @@ impl<'p> Gen<'p> {
                         let v = self.expr(value).imm();
                         self.emit(format!("store {ty} {v}, ptr {ptr}"));
                     }
+                    Slot::Arr { ptr, ety, .. } if is_data(&ety) => {
+                        let t = self.t.locals[&self.path][&id.name].clone();
+                        self.init_data_array(value, &ptr, &t);
+                    }
                     Slot::Arr { ptr, elem, .. } => self.init_array(value, &ptr, elem),
                     Slot::Data { ptr, ty } => {
                         let v = self.expr(value);
@@ -1765,12 +1874,15 @@ impl<'p> Gen<'p> {
                     }
                 },
                 ExprKind::Index { base, .. }
-                    if matches!(&base.kind, ExprKind::Var(id)
-                    if match &self.slots[&id.name] {
-                        Slot::Arr { ety, .. } => is_data(ety),
-                        Slot::Data { ty, .. } => is_vec(ty) && is_data(&vec_elem(ty)),
-                        Slot::Scalar { .. } => false,
-                    }) =>
+                    if match &base.kind {
+                        ExprKind::Var(id) => match &self.slots[&id.name] {
+                            Slot::Arr { ety, .. } => is_data(ety),
+                            Slot::Data { ty, .. } => is_vec(ty) && is_data(&vec_elem(ty)),
+                            Slot::Scalar { .. } => false,
+                        },
+                        // An array field (2B-14, 2B-15).
+                        _ => matches!(self.ty(base), TypeKind::Array(el, _) if is_data(&el.kind)),
+                    } =>
                 {
                     // Rust evaluates the value, then the place.
                     let v = self.expr(value);

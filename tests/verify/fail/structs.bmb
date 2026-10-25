@@ -110,4 +110,33 @@ mod geo {
     fn set_cell(g: &mut Grid, i: usize) -> () {
         g.w[i] = 1;
     }
+
+    struct Route { p: [Point; 2] }
+
+    spec fn first_x(a: i64) -> bool { a == 5 }
+
+    // An element of a local array of structs, out of bounds (backlog 2B-14).
+    #[effects(pure)]
+    fn local_elem(i: usize) -> i64 {
+        let a: [Point; 2] = [Point { x: 1, y: 2 }; 2];
+        a[i].x
+    }
+
+    // An element of an array field of structs, out of bounds.
+    #[effects(pure)]
+    fn route_elem(r: &mut Route, i: usize) -> () {
+        r.p[i] = Point { x: 0, y: 0 };
+    }
+
+    // The copy keeps the old element.
+    #[effects(pure)]
+    #[uses(first_x)]
+    fn stale_copy() -> (r: i64)
+        ensures first_x(r),
+    {
+        let mut a: [Point; 2] = [Point { x: 1, y: 2 }, Point { x: 3, y: 4 }];
+        let b: [Point; 2] = a;
+        a[0].x = 5;
+        b[0].x
+    }
 }

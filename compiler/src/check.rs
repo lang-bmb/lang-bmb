@@ -157,6 +157,9 @@ fn mk(kind: TypeKind) -> Box<Type> {
     })
 }
 
+/// The help of E0402 for an array inside an array element (backlog 2B-14).
+const ARRAY_IN_ELEMENT: &str = "flatten the inner array: one array of length `N * M` indexed by `i * M + j`, or one array per field";
+
 impl<'a> Checker<'a> {
     pub fn new(diags: &'a mut Diags) -> Self {
         let mut fns = BTreeMap::new();
@@ -390,9 +393,24 @@ impl<'a> Checker<'a> {
                 );
                 TypeKind::Error
             }
-            TypeKind::Array(e, _) if !is_scalar(&e.kind) && e.kind != TypeKind::Error => {
-                self.err("E0402", t.span, "array elements must be scalars");
+            TypeKind::Array(e, _)
+                if !is_scalar(&e.kind)
+                    && !matches!(e.kind, TypeKind::Named { .. })
+                    && e.kind != TypeKind::Error =>
+            {
+                self.diags.push(
+                    Diag::new(
+                        "E0402",
+                        t.span,
+                        "array elements must be scalars, structs or enums",
+                    )
+                    .fix(ARRAY_IN_ELEMENT, None),
+                );
                 TypeKind::Error
+            }
+            TypeKind::Array(..) => {
+                let c = self.canon(t, mp, true);
+                self.data_array(&c, t.span)
             }
             TypeKind::Unit => {
                 self.err("E0402", t.span, "a field cannot have type `()`");
@@ -1125,6 +1143,20 @@ impl<'a> Checker<'a> {
             {
                 self.spec_vec(t.span)
             }
+            TypeKind::Array(e, _) if matches!(e.kind, TypeKind::Named { .. }) => {
+                let el = ty_str(&e.kind);
+                self.diags.push(
+                    Diag::new(
+                        "E0402",
+                        t.span,
+                        "an array of structs or enums is passed as `&[T]` or `&mut [T]`",
+                    )
+                    .fix(
+                        format!("take `&[{el}]` and pass `&a`; the length is `a.len()`"),
+                        None,
+                    ),
+                );
+            }
             _ => self.check_value_type(t, "parameter type"),
         }
     }
@@ -1155,14 +1187,64 @@ impl<'a> Checker<'a> {
                 t.span,
                 "a bare slice is unsized; use `&[T]` as a parameter or `[T; N]`",
             ),
-            TypeKind::Array(e, _) if !is_scalar(&e.kind) && e.kind != TypeKind::Error => {
-                self.err(
-                    "E0402",
-                    t.span,
-                    "array elements must be scalars in milestone 1",
+            TypeKind::Array(e, _)
+                if !is_scalar(&e.kind)
+                    && !matches!(&e.kind, TypeKind::Named { path, .. } if !(path.len() == 1 && path[0] == "Vec"))
+                    && e.kind != TypeKind::Error =>
+            {
+                self.diags.push(
+                    Diag::new(
+                        "E0402",
+                        t.span,
+                        "array elements must be scalars, structs or enums",
+                    )
+                    .fix(ARRAY_IN_ELEMENT, None),
                 );
             }
             _ => {}
+        }
+    }
+
+    /// An array of structs or enums (backlog 2B-14) whose elements hold no
+    /// array: the proof gate's boundary for data elements (E0814 otherwise).
+    fn data_array(&mut self, t: &TypeKind, span: Span) -> TypeKind {
+        if let TypeKind::Array(e, _) = t
+            && matches!(e.kind, TypeKind::Named { .. })
+            && self.holds_array(&e.kind, &mut BTreeSet::new())
+        {
+            self.diags.push(
+                Diag::new(
+                    "E0402",
+                    span,
+                    format!("array elements cannot hold arrays (`{}`)", ty_str(&e.kind)),
+                )
+                .fix(ARRAY_IN_ELEMENT, None),
+            );
+            return TypeKind::Error;
+        }
+        t.clone()
+    }
+
+    /// An element of an array literal or repeat: a scalar, or a struct or
+    /// enum without arrays (backlog 1B-35, 2B-14).
+    fn literal_elem(&mut self, t: &TypeKind, span: Span) {
+        let bad = match t {
+            TypeKind::Array(..) | TypeKind::Vec(_) => true,
+            TypeKind::Named { .. } => self.holds_array(t, &mut BTreeSet::new()),
+            _ => false,
+        };
+        if bad {
+            self.diags.push(
+                Diag::new(
+                    "E0402",
+                    span,
+                    format!(
+                        "array elements are scalars, or structs and enums without arrays, found `{}`",
+                        ty_str(t)
+                    ),
+                )
+                .fix(ARRAY_IN_ELEMENT, None),
+            );
         }
     }
 
@@ -1373,6 +1455,7 @@ impl<'a> Checker<'a> {
                     );
                 }
                 let lty = self.canon(ty, &cx.mod_path.clone(), true);
+                let lty = self.data_array(&lty, ty.span);
                 let t = self.expr(cx, init, Some(&lty), mode);
                 if !self.deref_fix(&t, &lty, init) {
                     self.expect_ty(&t, &lty, init.span);
@@ -2764,14 +2847,7 @@ impl<'a> Checker<'a> {
                 let mut elem = want_elem.clone();
                 for it in items {
                     let t = self.expr(cx, it, elem.as_ref(), mode);
-                    // Array elements are scalars in milestone 1 (backlog 1B-35).
-                    if matches!(t, TypeKind::Array(..)) {
-                        self.err(
-                            "E0402",
-                            it.span,
-                            "array elements must be scalars in milestone 1",
-                        );
-                    }
+                    self.literal_elem(&t, it.span);
                     match &elem {
                         None => elem = Some(t),
                         Some(want) => self.expect_ty(&t, want, it.span),
@@ -2799,6 +2875,7 @@ impl<'a> Checker<'a> {
                     _ => None,
                 };
                 let t = self.expr(cx, value, want_elem.as_ref(), mode);
+                self.literal_elem(&t, value.span);
                 if *count > u32::MAX as u128 {
                     self.err("E0406", *count_span, "array length is too large");
                 }

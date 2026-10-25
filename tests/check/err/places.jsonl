@@ -1,7 +1,7 @@
 {"code":"E0402","severity":"error","message":"spec function parameters cannot be `&mut`","file":"err/places.bmb","line":3,"col":25,"end_line":3,"end_col":35}
 {"code":"E0402","severity":"error","message":"references are `&[T]`, `&mut [T]`, `&T` or `&mut T` with `T` a scalar, struct or enum","file":"err/places.bmb","line":6,"col":22,"end_line":6,"end_col":26}
 {"code":"E0402","severity":"error","message":"a bare slice is unsized; use `&[T]` as a parameter or `[T; N]`","file":"err/places.bmb","line":9,"col":22,"end_line":9,"end_col":27}
-{"code":"E0402","severity":"error","message":"array elements must be scalars in milestone 1","file":"err/places.bmb","line":12,"col":18,"end_line":12,"end_col":31}
+{"code":"E0402","severity":"error","message":"array elements must be scalars, structs or enums","file":"err/places.bmb","line":12,"col":18,"end_line":12,"end_col":31,"fix":{"message":"flatten the inner array: one array of length `N * M` indexed by `i * M + j`, or one array per field"}}
 {"code":"E0402","severity":"error","message":"`forall` binders must be integers","file":"err/places.bmb","line":17,"col":19,"end_line":17,"end_col":23}
 {"code":"E0405","severity":"error","message":"`len` takes no arguments","file":"err/places.bmb","line":21,"col":41,"end_line":21,"end_col":44}
 {"code":"E0404","severity":"error","message":"`len` is not defined for `i64`","file":"err/places.bmb","line":24,"col":40,"end_line":24,"end_col":43}
