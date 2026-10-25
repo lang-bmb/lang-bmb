@@ -272,6 +272,14 @@ class Compare(unittest.TestCase):
         table = harness.compare(b, v)
         self.assertIn("| 1회 성공률 | 1/2 | 0/2 |", table)
         self.assertIn("| a | 성공 | 실패: spec_accepted |", table)
+        self.assertIn("| 명세 강도(검증·시그니처 통과 중 원본 계약 함의) | 1/2 | 0/2 |", table)
+        self.assertIn("| 총 모델 토큰(입력+출력) | 24 | 24 |", table)
+
+    def test_strength_ignores_implementation_failures(self):
+        rows = [self.row("a", True), self.row("b", False), {**self.row("c", False), "verified": False},
+                {**self.row("d", False), "signature_ok": False}]
+        self.assertEqual(harness.spec_strength(rows), (1, 2))
+        self.assertEqual(harness.total_tokens(rows), 48)
 
     def test_refuses_other_sets_and_manifests(self):
         b = self.write([{"summary": True, "task_set": "m1b", "manifest": "m"}])

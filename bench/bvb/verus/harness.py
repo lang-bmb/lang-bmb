@@ -3,6 +3,7 @@
 
   harness.py run --agent AGENT [--tasks ID,..] [--out FILE] [--expect all-pass|weak-fail] [--jobs N]
   harness.py compare BMB.jsonl VERUS.jsonl     paired table: one row per task, BMB and Verus side by side
+  harness.py strength RESULTS.jsonl            spec strength and total tokens of one run (either side)
   harness.py check-env                         is the pinned Verus installed? (exit 1 if not)
 
 Each BVB task (bench/bvb/tasks, frozen by bench/bvb/MANIFEST) carries, next to
@@ -332,15 +333,33 @@ def run(args, verifier):
     return results
 
 
+def spec_strength(recs):
+    """(accepted, eligible): among tasks whose final code verifies with the
+    required signature, those whose spec implies the hidden original contract
+    (backlog 2A-12, H-SPEC). Implementation failures do not count against the
+    spec, so this reads the spec apart from the 1-shot success rate."""
+    eligible = [r for r in recs if r.get("verified") and r.get("signature_ok")]
+    return sum(1 for r in eligible if r.get("spec_accepted")), len(eligible)
+
+
+def total_tokens(recs):
+    return sum((r.get("model_usage") or {}).get("input_tokens", 0) + (r.get("model_usage") or {}).get("output_tokens", 0)
+               for r in recs)
+
+
+def load_results(p):
+    with open(p) as f:
+        recs = [json.loads(line) for line in f if line.strip()]
+    return next((r for r in recs if r.get("summary")), {}), [r for r in recs if not r.get("summary")]
+
+
 def compare(bmb_path, verus_path):
     """Markdown table pairing a BMB run (`--set bench/bvb`) with a Verus run."""
     def load(p, want_set):
-        with open(p) as f:
-            recs = [json.loads(line) for line in f if line.strip()]
-        head = next((r for r in recs if r.get("summary")), {})
+        head, recs = load_results(p)
         if head.get("task_set") != want_set:
             sys.exit(f"{p}: task_set {head.get('task_set')!r}, expected {want_set!r}")
-        return head, {r["id"]: r for r in recs if not r.get("summary")}
+        return head, {r["id"]: r for r in recs}
 
     bh, b = load(bmb_path, "bvb")
     vh, v = load(verus_path, "bvb-verus")
@@ -367,6 +386,9 @@ def compare(bmb_path, verus_path):
             + " | ".join(str(sum((x[i].get('model_usage') or {}).get('input_tokens', 0) for i in both)) for x in (b, v)) + " |",
             "| 모델 출력 토큰(합) | "
             + " | ".join(str(sum((x[i].get('model_usage') or {}).get('output_tokens', 0) for i in both)) for x in (b, v)) + " |",
+            "| 총 모델 토큰(입력+출력) | " + " | ".join(str(total_tokens([x[i] for i in both])) for x in (b, v)) + " |",
+            "| 명세 강도(검증·시그니처 통과 중 원본 계약 함의) | "
+            + " | ".join("{}/{}".format(*spec_strength([x[i] for i in both])) for x in (b, v)) + " |",
             "", "| 과제 | BMB | Verus |", "| --- | --- | --- |"]
     rows += [f"| {i} | {cell(b.get(i))} | {cell(v.get(i))} |" for i in ids]
     return "\n".join(rows) + "\n"
@@ -384,10 +406,18 @@ def main():
     cp = sub.add_parser("compare")
     cp.add_argument("bmb")
     cp.add_argument("verus")
+    st = sub.add_parser("strength")
+    st.add_argument("results")
     sub.add_parser("check-env")
     args = ap.parse_args()
     if args.cmd == "compare":
         sys.stdout.write(compare(args.bmb, args.verus))
+        return
+    if args.cmd == "strength":
+        head, recs = load_results(args.results)
+        a, n = spec_strength(recs)
+        print(json.dumps({"task_set": head.get("task_set"), "tasks": len(recs), "spec_accepted": a, "eligible": n,
+                          "total_tokens": total_tokens(recs)}))
         return
     verifier = VerusVerifier()
     if args.cmd == "check-env":

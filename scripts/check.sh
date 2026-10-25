@@ -48,8 +48,13 @@ grep -qE "\| [0-9]+/[0-9]+ \(" <<< "$row" && ! grep -qE "\| ([0-9]+)/\1 \(" <<< 
   --job 'bench bvb oracle=tmp=$(mktemp); trap "rm -f $tmp" EXIT
 python3 bench/m1/harness.py --set bench/bvb run --agent oracle --expect all-pass --jobs 2 --out "$tmp" > /dev/null
 table=$(python3 bench/m1/harness.py summarize "$tmp")
-grep -qF "| 작성 1회 성공률 | 45/45 |" <<< "$table" || { echo "bvb summarize: unexpected table"; exit 1; }' \
-  --job "bench bvb weak=python3 bench/m1/harness.py --set bench/bvb run --agent weak --expect weak-fail --jobs 2 > /dev/null" \
+grep -qF "| 작성 1회 성공률 | 45/45 |" <<< "$table" || { echo "bvb summarize: unexpected table"; exit 1; }
+st=$(python3 bench/bvb/verus/harness.py strength "$tmp")
+grep -qF "\"spec_accepted\": 45, \"eligible\": 45" <<< "$st" || { echo "bvb oracle: spec strength not 45/45"; exit 1; }' \
+  --job 'bench bvb weak=tmp=$(mktemp); trap "rm -f $tmp" EXIT
+python3 bench/m1/harness.py --set bench/bvb run --agent weak --expect weak-fail --jobs 2 --out "$tmp" > /dev/null
+st=$(python3 bench/bvb/verus/harness.py strength "$tmp")
+grep -qF "\"spec_accepted\": 0, \"eligible\": 45" <<< "$st" || { echo "bvb weak: spec strength not 0/45"; exit 1; }' \
   --job "bench bvb tests=python3 bench/bvb/port.py check && python3 bench/bvb/test_bvb.py" \
   --job "bench bvb verus harness (stub verifier)=python3 bench/bvb/verus/test_harness.py" \
   --job "bench m3 generator=python3 bench/m3/test_gen.py > /dev/null" \
@@ -60,7 +65,9 @@ python3 bench/brb/harness.py run --arm bmb --agent oracle --expect all-pass --jo
 python3 bench/brb/harness.py run --arm rust --agent oracle --proptest off --expect all-pass --jobs 2 --out "$r" > /dev/null
 table=$(python3 bench/brb/harness.py summarize "$b" "$r")
 grep -qF "| 성공(숨은 테스트 전부 통과) | 24/24 | 24/24 |" <<< "$table" || { echo "brb summarize: unexpected table"; exit 1; }
-grep -qF "판정 불가(Rust 결함 0)" <<< "$table" || { echo "brb summarize: unexpected G5 line"; exit 1; }' \
+grep -qF "판정 불가(Rust 결함 0)" <<< "$table" || { echo "brb summarize: unexpected G5 line"; exit 1; }
+grep -qF "| 자기 검사 통과(최종 상태, 증명 게이트 / 에이전트 테스트) | 24/24 | 24/24 |" <<< "$table" || { echo "brb summarize: unexpected self-check row"; exit 1; }
+grep -qF "판정 불가(Rust 통과 & 숨은 실패 0)" <<< "$table" || { echo "brb summarize: unexpected H-ORACLE line"; exit 1; }' \
   --job 'bench brb weak=python3 bench/brb/harness.py run --arm bmb --agent weak --expect weak-fail --jobs 2 > /dev/null
 python3 bench/brb/harness.py run --arm rust --agent weak --proptest off --expect weak-fail --jobs 2 > /dev/null' \
   --job "bench brb adequacy=python3 bench/brb/harness.py adequacy --jobs 2 > /dev/null" \

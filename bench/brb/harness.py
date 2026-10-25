@@ -5,7 +5,7 @@
   harness.py run --arm bmb|rust --agent AGENT [--tasks ID,..] [--jobs N]
                  [--out FILE] [--expect all-pass|weak-fail] [--proptest on|off]
   harness.py adequacy [--jobs N]          every Rust mutant is killed by the hidden cases
-  harness.py summarize RESULTS.jsonl..   metric table (one column per file) and the G5 line
+  harness.py summarize RESULTS.jsonl..   metric table (one column per file), the G5 and H-ORACLE lines
 
 Both arms get the same task statement, the same agent adapter, the same
 limits (tool calls, model output tokens per session) and a checker (BMB:
@@ -201,8 +201,16 @@ def run_session(task, arm, agent_kind, rust_target, proptest):
                 if agent.usage.get("output_tokens", 0) >= SESSION_OUTPUT_TOKENS:
                     m["limit_hit"] = "output_tokens"
                     break
+            # The arm's own checker once more on the delivered state (backlog
+            # 2H-04, H-ORACLE): did the gate or the agent's tests pass at the
+            # end? Not counted as an agent call.
+            text, err = server.call(check_tool, {})
+            final_check_ok = check_ok(arm, text, err)
         finally:
             server.close()
+        # The delivered sources, so that later metrics (G8 test code, H-REUSE)
+        # are computed from this run instead of a new paid one.
+        final_sources = delivered_sources(ws, arm)
         session_s = time.monotonic() - t0
         t1 = time.monotonic()
         jdir = os.path.join(tmp, "judge")
@@ -216,7 +224,7 @@ def run_session(task, arm, agent_kind, rust_target, proptest):
         usage = agent.usage
         return {
             "id": task.ID, "arm": arm, "agent": agent_kind, "success": success, "defect": not success,
-            **verdict, **m,
+            **verdict, **m, "final_check_ok": final_check_ok, "final_sources": final_sources,
             "session_seconds": round(session_s, 2), "tool_seconds": round(m["tool_seconds"], 2),
             "judge_seconds": round(judge_s, 2),
             "model_usage": usage,
@@ -226,6 +234,19 @@ def run_session(task, arm, agent_kind, rust_target, proptest):
         }
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+def delivered_sources(ws, arm):
+    """{relative path: text} of the files the agent could write: BMB `src/*.bmb`,
+    Rust `src/**.rs` and `tests/**.rs`."""
+    out = {}
+    for top in ("src",) if arm == "bmb" else ("src", "tests"):
+        for d, _, fs in os.walk(os.path.join(ws, top)):
+            for f in sorted(fs):
+                if f.endswith(".bmb" if arm == "bmb" else ".rs"):
+                    path = os.path.join(d, f)
+                    out[os.path.relpath(path, ws)] = read_bytes(path).decode("utf-8", "replace")
+    return dict(sorted(out.items()))
 
 
 def check_ok(arm, text, err):
@@ -277,6 +298,30 @@ def g5_verdict(bmb, rust):
     return f"G5 (잠정 기준: 결함률 비 ≤ 1/2, 총 토큰 비 ≤ 2): 결함률 비 {dr}, 총 토큰 비 {tr} → {verdict}"
 
 
+def oracle_verdict(bmb, rust):
+    """The H-ORACLE line (ADR-0040 §4, pre-registered before any model run):
+    among tasks whose own checker passes on the delivered state (BMB: the proof
+    gate; Rust: the agent's tests), the share with a hidden defect. Falsified
+    when the BMB share is at least the Rust share. `bmb` and `rust` are
+    (passed and defective, passed); undecided when no task passed its checker
+    in one arm, or when no Rust task passed with a defect (nothing to beat)."""
+    (bd, bp), (rd, rp) = bmb, rust
+    if not bp or not rp:
+        return "H-ORACLE: 판정 불가(자기 검사를 통과한 과제가 없는 비교군)"
+    shares = f"BMB {bd}/{bp} = {bd / bp:.3f}, Rust {rd}/{rp} = {rd / rp:.3f}"
+    if rd == 0:
+        return f"H-ORACLE (통과 & 숨은 실패 비율): {shares} → 판정 불가(Rust 통과 & 숨은 실패 0)"
+    verdict = "반증" if bd / bp >= rd / rp else "지지"
+    return f"H-ORACLE (통과 & 숨은 실패 비율, 반증: BMB ≥ Rust): {shares} → {verdict}"
+
+
+def passed_defective(t):
+    """(tasks whose final self-check passed with a hidden defect, tasks whose
+    final self-check passed); results without the field count as not passed."""
+    passed = [r for r in t if r.get("final_check_ok") is True]
+    return sum(r["defect"] for r in passed), len(passed)
+
+
 def summarize(paths):
     runs = []
     for p in paths:
@@ -298,6 +343,9 @@ def summarize(paths):
             ("미제출(빌드·검증·시그니처 실패)", str(sum(1 for r in t if not r["delivered"]))),
             ("정의역 위반(BMB: requires가 정의역보다 강함)", str(sum(1 for r in t if r.get("domain_ok") is False))),
             ("실패 케이스 / 케이스", f"{sum(r['failed'] for r in t)}/{cases}"),
+            ("자기 검사 통과(최종 상태, 증명 게이트 / 에이전트 테스트)",
+             f"{sum(1 for r in t if r.get('final_check_ok') is True)}/{n}"),
+            ("자기 검사 통과 & 숨은 실패 / 자기 검사 통과", "{}/{}".format(*passed_defective(t))),
             ("총 모델 토큰(입력+출력)", str(sum(r["total_tokens"] for r in t))),
             ("모델 입력 토큰", str(sum(u.get("input_tokens", 0) for u in usage))),
             ("모델 출력 토큰", str(sum(u.get("output_tokens", 0) for u in usage))),
@@ -328,6 +376,14 @@ def summarize(paths):
                                     for t in (b, r)]))
     else:
         out.append("G5: 판정 불가(BMB 결과 하나와 Rust 결과 하나를 함께 주어야 함)")
+    if sorted(by_arm) == ["bmb", "rust"] and all(len(v) == 1 for v in by_arm.values()):
+        b, r = by_arm["bmb"][0], by_arm["rust"][0]
+        if sorted(x["id"] for x in b) == sorted(x["id"] for x in r):
+            out.append(oracle_verdict(passed_defective(b), passed_defective(r)))
+        else:
+            out.append("H-ORACLE: 판정 불가(두 비교군의 과제 집합이 다름)")
+    else:
+        out.append("H-ORACLE: 판정 불가(BMB 결과 하나와 Rust 결과 하나를 함께 주어야 함)")
     ids = sorted({r["id"] for _, _, t in runs for r in t})
     out += ["", "| 과제 | " + " | ".join(n for n, _, _ in runs) + " |", "| --- |" + " --- |" * len(runs)]
     for tid in ids:
@@ -434,12 +490,12 @@ def main():
         with open(args.out, "w") as f:
             for r in results + [summary]:
                 f.write(json.dumps(r, ensure_ascii=False) + "\n")
-    if args.expect == "all-pass" and not all(r["success"] for r in results):
-        sys.exit("expected every task to pass the hidden judge")
+    if args.expect == "all-pass" and not all(r["success"] and r["final_check_ok"] for r in results):
+        sys.exit("expected every task to pass the hidden judge and its own checker")
     if args.expect == "weak-fail":
         if not results or any(r["success"] for r in results):
             sys.exit("expected the hidden judge to find a defect in every weak solution")
-        if any(r["last_check_ok"] is not True for r in results):
+        if any(r["last_check_ok"] is not True or r["final_check_ok"] is not True for r in results):
             sys.exit("expected every weak solution to pass its own checker (verify / cargo test)")
 
 

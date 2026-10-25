@@ -69,6 +69,13 @@ class TaskSet(unittest.TestCase):
 
 
 class Verdict(unittest.TestCase):
+    def test_oracle_line(self):
+        self.assertIn("→ 지지", harness.oracle_verdict((1, 20), (5, 20)))
+        self.assertIn("→ 반증", harness.oracle_verdict((5, 20), (5, 20)))  # equal shares falsify
+        self.assertIn("→ 반증", harness.oracle_verdict((3, 10), (5, 20)))
+        self.assertIn("판정 불가(Rust 통과 & 숨은 실패 0)", harness.oracle_verdict((0, 20), (0, 20)))
+        self.assertIn("판정 불가(자기 검사를 통과한 과제가 없는 비교군)", harness.oracle_verdict((0, 0), (3, 20)))
+
     def test_g5_line(self):
         self.assertIn("→ 통과", harness.g5_verdict((2, 24, 150), (6, 24, 100)))
         self.assertIn("결함률 비 0.333, 총 토큰 비 1.500", harness.g5_verdict((2, 24, 150), (6, 24, 100)))
@@ -80,8 +87,10 @@ class Verdict(unittest.TestCase):
     def _results(self, d, name, arm, rows, manifest="m"):
         path = os.path.join(d, name)
         with open(path, "w") as f:
-            for i, (defect, tokens) in enumerate(rows):
+            for i, row in enumerate(rows):
+                defect, tokens, final_ok = (*row, True)[:3]
                 f.write(json.dumps({"id": f"t{i}", "arm": arm, "success": not defect, "defect": defect,
+                                    "final_check_ok": final_ok,
                                     "delivered": True, "cases": 10, "failed": int(defect), "fail_kinds": {},
                                     "total_tokens": tokens, "model_usage": {}, "tool_calls": 3, "checks": 1,
                                     "limit_hit": None, "session_seconds": 1.0, "tool_seconds": 0.5}) + "\n")
@@ -97,6 +106,11 @@ class Verdict(unittest.TestCase):
             self.assertIn("| 성공(숨은 테스트 전부 통과) | 3/4 | 2/4 |", out)
             self.assertIn("| 결함률(결함 과제 / 과제) | 0.250 | 0.500 |", out)
             self.assertIn("결함률 비 0.500, 총 토큰 비 1.500 → 통과", out)
+            self.assertIn("| 자기 검사 통과 & 숨은 실패 / 자기 검사 통과 | 1/4 | 2/4 |", out)
+            self.assertIn("BMB 1/4 = 0.250, Rust 2/4 = 0.500 → 지지", out)
+            # A task whose checker fails at the end is not a "passed" task.
+            b2 = self._results(d, "b2.jsonl", "bmb", [(True, 30, False), (False, 30), (True, 30), (False, 30)])
+            self.assertIn("BMB 1/3 = 0.333, Rust 2/4 = 0.500 → 지지", harness.summarize([b2, r]))
             self.assertIn("G5: 판정 불가(BMB 결과 하나와 Rust 결과 하나를 함께 주어야 함)", harness.summarize([b]))
             other = self._results(d, "o.jsonl", "rust", [(True, 20)], manifest="other")
             with self.assertRaises(SystemExit):

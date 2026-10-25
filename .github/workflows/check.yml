@@ -41,5 +41,7 @@ jobs:
         run: bench/bvb/verus/install.sh
       - name: Oracle passes, weak controls are rejected
         run: |
-          python3 bench/bvb/verus/harness.py run --agent oracle --expect all-pass --jobs 4 > /dev/null
-          python3 bench/bvb/verus/harness.py run --agent weak --expect weak-fail --jobs 4 > /dev/null
+          python3 bench/bvb/verus/harness.py run --agent oracle --expect all-pass --jobs 4 --out oracle.jsonl > /dev/null
+          python3 bench/bvb/verus/harness.py run --agent weak --expect weak-fail --jobs 4 --out weak.jsonl > /dev/null
+          python3 bench/bvb/verus/harness.py strength oracle.jsonl | grep -qF '"spec_accepted": 45, "eligible": 45'
+          python3 bench/bvb/verus/harness.py strength weak.jsonl | grep -qF '"spec_accepted": 0, "eligible": 45'

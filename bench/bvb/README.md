@@ -20,6 +20,7 @@ bench/bvb/verus/install.sh [--dry-run]                                     # 고
 python3 bench/bvb/verus/harness.py run --agent oracle --jobs 4             # Verus 원본 해법: 전부 성공(CI bvb-verus)
 python3 bench/bvb/verus/harness.py run --agent weak --jobs 4               # Verus 약한 대조군: 전부 실패(CI bvb-verus)
 python3 bench/bvb/verus/harness.py compare BMB.jsonl VERUS.jsonl           # 과제별 BMB·Verus 나란히
+python3 bench/bvb/verus/harness.py strength RESULTS.jsonl                  # 한 실행의 명세 강도와 총 토큰(양쪽 모두)
 ```
 
 ## 과제 형식
@@ -56,6 +57,15 @@ python3 bench/bvb/verus/harness.py compare BMB.jsonl VERUS.jsonl           # 과
 - **Verus(`verus/harness.py`):** 같은 생각을 Verus로 옮겼다. (1) 마지막 파일이 `verus --no-cheating`으로 검증된다(`assume`·`admit`·`external_body`·`assume_specification` 거부, BMB M1에 탈출구가 없는 것과 맞춘다). (2) 대상 함수의 시그니처가 같다(`pub`, 공백, 결과 이름 무시). (3) 파일 끝에 `fn bvb_check(..) requires 원본 pre ensures 원본 post { target(..) }`를 붙여 다시 검증된다. G1 과제는 주어진 함수가 그대로 있어야 한다.
 - **약한 대조군:** BMB는 과제마다 쓴 약한 명세, Verus는 원본 해법에서 대상 함수의 `ensures`를 지운 것(자동). 둘 다 검증은 되고 명세 검사에서 떨어져야 한다.
 - **세션 규칙(공정성):** 과제당 한 세션, 재시도 없음, 도구 호출 40회, 같은 모델 설정(`bench/m1/anthropic_agent.py`의 effort·`max_tokens`). Verus 에이전트의 도구는 `read_file`·`write_file`·`verify` 셋이고 BMB는 MCP 도구다. 둘 다 파일 시스템·셸이 없다. 결과 파일의 `task_set`은 BMB `bvb`, Verus `bvb-verus`이고 `compare`는 두 파일의 MANIFEST가 같을 때만 표를 만든다.
+
+## 비교 표의 지표(백로그 2A-12, H-SPEC·H-FAMILIAR)
+
+`compare`는 1회 성공률 옆에 두 열을 더 낸다. 둘 다 실제 모델 실행 전에 정했다.
+
+- **명세 강도:** 최종 코드가 검증되고 시그니처가 맞는 과제 중, 에이전트의 계약이 숨긴 원본 계약을 함의하는 과제의 비율(`spec_accepted`). 구현 실패는 분모에서 빠지므로 1회 성공률과 따로 명세만 읽는다. 기준 해법은 양쪽 45/45, 약한 대조군은 0/45여야 한다(게이트 `bench bvb oracle`·`weak`, CI `bvb-verus`).
+- **총 모델 토큰:** 입력+출력 합(프롬프트 포함).
+
+H-FAMILIAR(ADR-0040 §4)는 BMB 1회 성공률 ≤ Verus면 반증이다. H-SPEC은 BSB가 주 판정이고 BVB 명세 강도는 보조 열이다.
 
 ## 실제 모델 비교(사용자 머신, 유료)
 
