@@ -581,5 +581,26 @@ fn verify_stats_name_the_reencoded_definitions() {
         field("encoded"),
         vec!["m4::f0".to_string(), "m4::f1".to_string()]
     );
+
+    // `emit-llvm` (and `build`) take it too: the first run lowers, the next reuses.
+    let emit = || {
+        let out = std::process::Command::new(env!("CARGO_BIN_EXE_bmb"))
+            .arg("emit-llvm")
+            .arg("--cache")
+            .arg(&cache)
+            .arg("--stats")
+            .arg(&stats)
+            .arg(&src)
+            .arg("-o")
+            .arg(dir.join("out.ll"))
+            .output()
+            .unwrap();
+        assert!(out.status.success());
+    };
+    emit();
+    assert_eq!(field("lowered").len(), 30);
+    emit();
+    assert!(field("lowered").is_empty() && field("encoded").is_empty());
+    assert_eq!(field("ir_reused").len(), 30);
     let _ = fs::remove_dir_all(&dir);
 }

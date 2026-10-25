@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Gate test for BCB (backlog 2A-14, ADR-0042): histories are deterministic,
 replay reproduces every recorded digest, every commit of every profile keeps
-the BMB workspace fully proved and the Rust twin compiling (`cargo check`,
-warnings as errors), and each edit kind changes what it claims to (a body edit
-keeps every interface hash, a contract edit changes one).
+the BMB workspace fully proved and the Rust twin with its tests compiling
+(`cargo check --tests`, warnings as errors), each edit kind changes what it
+claims to (a body edit keeps signature and contract, a contract edit changes an
+interface), and the Rust tests kill every mutant whose contract violation the
+BMB gate rejects (kills.py).
 
 Small sizes (N=100, K=COMMITS); uses $BMB or target/debug/bmb.
 """
@@ -19,6 +21,10 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 BMB = os.environ.get("BMB", os.path.join(ROOT, "target", "debug", "bmb"))
 sys.path.insert(0, HERE)
 import history  # noqa: E402
+import kills  # noqa: E402
+import bcb  # noqa: E402
+
+bcb.BMB = kills.BMB = BMB
 
 COMMITS = 40
 
@@ -76,7 +82,8 @@ def check_profile(t, profile):
     for k, tree, changed in history.replay(header, commits):
         history.write_tree(tree, ws, rs, None if k == 0 else changed)
         verify(ws, cache)
-        r = subprocess.run(["cargo", "check", "--quiet", "--offline"], cwd=rs, env=env, capture_output=True, text=True)
+        r = subprocess.run(["cargo", "check", "--quiet", "--offline", "--tests"], cwd=rs, env=env,
+                           capture_output=True, text=True)
         assert r.returncode == 0, f"{profile} commit {k}: cargo check\n{r.stderr[-3000:]}"
         now = hashes(ws)
         heads = headers(tree)
@@ -108,6 +115,37 @@ def check_profile(t, profile):
     return history.stats(header, commits), body_edits, uses_changed
 
 
+def check_harness(t):
+    """Replay harness (2A-14c): every arm measures every commit it should, the
+    selections nest (R2 within R1 within R0), events add cold rows, B0 proves
+    everything, and the table reads the result."""
+    path = os.path.join(t, "harness.jsonl")
+    history.main(["gen", path, "--defs", "100", "--commits", "5", "--profile", "body-heavy"])
+    out = os.path.join(t, "harness-results.jsonl")
+    bcb.main(["run", path, "--work", os.path.join(t, "harness"), "--out", out, "--b0-every", "5"])
+    head, rows = bcb.load_rows(out)
+    assert head["events"]["four"] == [1, 2, 3, 4], head
+    by = {}
+    for r in rows:
+        by.setdefault((r["arm"], r["cold"]), []).append(r["k"])
+    assert by[("rust", False)] == list(range(6)) and by[("b1", False)] == list(range(6)), by
+    assert by[("rust", True)] == [1, 2, 3, 4] and by[("b1", True)] == [1, 2, 3, 4], by
+    assert by[("b0", True)] == [0, 5], by
+    for r in rows:
+        if r["arm"] == "rust":
+            assert r["R2"]["tests"] <= r["R1"]["tests"] <= r["R0"]["tests"], r
+            assert r["R2"]["covered_defs"] >= r["R2"]["tests"], r
+        if r["arm"] == "b1" and r["k"] > 0 and not r["cold"]:
+            assert len(r["encoded_defs"]) < 20, r  # a few definitions, not the program
+    cold = [r for r in rows if r["arm"] == "b1" and r["cold"]]
+    warm = {r["k"]: r for r in rows if r["arm"] == "b1" and not r["cold"]}
+    assert all(r["encoded"] > warm[r["k"]]["encoded"] for r in cold), "a cold build re-proves everything"
+    b0 = [r for r in rows if r["arm"] == "b0"]
+    assert b0[0]["encoded"] == [r for r in rows if r["arm"] == "b1" and r["k"] == 0][0]["encoded"], b0
+    text = bcb.table([out])
+    assert "C_B1/C_R1" in text and "| body-heavy | 100 | 5 | B1 |" in text, text
+
+
 def main():
     with tempfile.TemporaryDirectory() as t:
         out = {}
@@ -127,6 +165,12 @@ def main():
         r = subprocess.run([sys.executable, os.path.join(HERE, "history.py"), "replay", path, "--bmb",
                             os.path.join(t, "x"), "--rust", os.path.join(t, "y")], capture_output=True, text=True)
         assert r.returncode != 0 and "differs from the recorded digest" in r.stderr, r.stderr
+        # Test equality (2A-14b): after the contract-heavy history, the Rust tests kill
+        # every mutant whose contract violation the BMB gate rejects, and nothing it proves.
+        code = kills.main(["--history", os.path.join(t, "contract-heavy.jsonl"), "--at", str(COMMITS),
+                           "--work", os.path.join(t, "kills")])
+        assert code == 0, "kills: gaps, unsound or extra mutants"
+        check_harness(t)
     print("bench/bcb: ok " + json.dumps(out))
 
 

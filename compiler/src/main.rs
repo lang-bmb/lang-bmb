@@ -7,14 +7,15 @@ const USAGE: &str = "usage:
                             --cache keeps proved obligations in DIR and skips them next time,
                             and reuses unchanged definitions without encoding them;
                             --stats writes what the caches did as one JSON line to FILE
-                            (definitions encoded, reused, proof cache hits and misses)
+                            (definitions encoded, reused, lowered, IR reused, proof cache
+                            hits and misses; emit-llvm and build take it too)
   bmb stability [--seeds N] <file.bmb>...
                             prove under solver seeds 0..N (default 5); per-definition verdicts
                             and rlimit as JSONL; fails if a verdict depends on the seed
-  bmb emit-llvm [--cache DIR] [--all-checks] <file.bmb>... -o OUT.ll
+  bmb emit-llvm [--cache DIR] [--stats FILE] [--all-checks] <file.bmb>... -o OUT.ll
                             LLVM IR; unproved obligations keep runtime checks;
                             --all-checks skips the proof and keeps every check
-  bmb build [--cache DIR] <file.bmb>... -o OUT
+  bmb build [--cache DIR] [--stats FILE] <file.bmb>... -o OUT
                             check, prove (all obligations) and build an executable
   bmb fmt [--check] <file.bmb>...
                             print the normal form (ADR-0019); --check fails if a file differs
@@ -224,6 +225,13 @@ fn run() -> ExitCode {
                 cache = Some(inputs.remove(c + 1));
                 inputs.remove(c);
             }
+            let mut stats = None;
+            if let Some(c) = inputs.iter().position(|a| a == "--stats")
+                && c + 1 < inputs.len()
+            {
+                stats = Some(inputs.remove(c + 1));
+                inputs.remove(c);
+            }
             // emit-llvm --all-checks: no proof, every obligation keeps its
             // runtime check (runs unproved programs such as mutants, 2A-10).
             let mut all_checks = false;
@@ -242,6 +250,12 @@ fn run() -> ExitCode {
             } else {
                 bmb::emit_llvm_sources_cached(&files, cache.as_deref().map(std::path::Path::new))
             };
+            if let Some(file) = stats
+                && let Err(e) = std::fs::write(&file, verify_stats(&out.verify))
+            {
+                eprintln!("bmb: cannot write {file}: {e}");
+                return ExitCode::from(2);
+            }
             print!("{}", out.verify.output);
             let Some(ir) = out.ir else {
                 return ExitCode::from(1);
@@ -661,8 +675,9 @@ fn respond(r: Result<String, String>) -> ExitCode {
     }
 }
 
-/// `verify --stats` (backlog 2A-14, BCB): which definitions were encoded and
-/// which were reused by the incremental cache, and the proof cache counts.
+/// `--stats` of `verify`, `emit-llvm` and `build` (backlog 2A-14, BCB): which
+/// definitions were encoded and lowered, which were reused by the incremental
+/// cache, and the proof cache counts.
 fn verify_stats(out: &bmb::VerifyOutput) -> String {
     let names = |xs: &[String]| {
         let mut xs: Vec<String> = xs.iter().map(|x| bmb::diag::json_str(x)).collect();
@@ -670,9 +685,11 @@ fn verify_stats(out: &bmb::VerifyOutput) -> String {
         format!("[{}]", xs.join(","))
     };
     format!(
-        "{{\"encoded\":{},\"reused\":{},\"proof_cache_hits\":{},\"proof_cache_misses\":{}}}\n",
+        "{{\"encoded\":{},\"reused\":{},\"lowered\":{},\"ir_reused\":{},\"proof_cache_hits\":{},\"proof_cache_misses\":{}}}\n",
         names(&out.incr.encoded),
         names(&out.incr.reused),
+        names(&out.incr.lowered),
+        names(&out.incr.ir_reused),
         out.cache.0,
         out.cache.1
     )

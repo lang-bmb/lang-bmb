@@ -114,7 +114,7 @@ ADR-0016의 부분집합을 구체화한 것이다. 모두 "선택을 필수로"
 - `spec fn`을 더하거나 빼도, 그것에 닿지 않는 정의는 다시 인코딩하지 않는다(`tests/incremental.rs`의 `adding_an_unrelated_spec_fn_reencodes_nothing`: 스크립트도 바이트 단위로 같다). 시그니처 변경은 그 선언에 닿는 정의만 다시 인코딩한다.
 - 한계: 정의 안의 공백·주석 변경도 그 정의를 다시 인코딩한다(증명은 증명 캐시가 받는다).
 - 한계: 계약 해시가 속성을 담으므로(ADR-0019) 피호출자의 `#[uses]`만 바뀌어도 호출자를 다시 인코딩한다. 호출자의 질의는 바뀌지 않는다(`verify_stats_name_the_reencoded_definitions`, 백로그 2D-22).
-- `bmb verify --stats FILE`은 캐시가 한 일을 JSON 한 줄로 쓴다: `{"encoded":[..],"reused":[..],"proof_cache_hits","proof_cache_misses"}`(정의 경로는 정렬). 표준 출력은 그대로다. BCB(2A-14)가 커밋당 재증명 집합을 잰다.
+- `--stats FILE`(`verify`·`emit-llvm`·`build`)은 캐시가 한 일을 JSON 한 줄로 쓴다: `{"encoded":[..],"reused":[..],"lowered":[..],"ir_reused":[..],"proof_cache_hits","proof_cache_misses"}`(정의 경로는 정렬, `verify`는 IR 목록이 빈다). 표준 출력은 그대로다. BCB(2A-14)가 커밋당 재증명 집합을 잰다.
 
 ## MCP 서버의 전단 캐시
 

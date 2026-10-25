@@ -3,7 +3,8 @@
 (backlog 2A-14, ADR-0042).
 
 A history is a fixed-seed list of K commits over a bench/m3 workspace (gen.py)
-and its Rust twin (bench/bnb/twin.py). Commits edit the shared plan (gen.Unit
+and its Rust twin (bench/bnb/twin.py, plus one test per executable definition
+from rtests.py). Commits edit the shared plan (gen.Unit
 definitions and gen.choose choices), so both languages change in lockstep and
 the same renderers write them. Every commit keeps the BMB workspace fully
 proved; the gate checks it.
@@ -53,6 +54,9 @@ sys.path.insert(0, os.path.join(BENCH, "bnb"))
 import gen  # noqa: E402
 import twin  # noqa: E402
 
+sys.path.insert(0, HERE)
+import rtests  # noqa: E402
+
 FORMAT = 1
 KINDS = ("body", "contract", "spec", "add", "remove")
 PROFILES = {
@@ -84,7 +88,14 @@ class Tree:
 
     def render(self, u):
         self.text[("bmb", u)] = gen.render_unit(self.units, u, self.args)
-        self.text[("rust", u)] = twin.render_unit(self.units, u, self.args)
+        self.text[("rust", u)] = self.rust(u)
+
+    def rust(self, u, extra_fns=(), extra_tests=()):
+        """The twin's unit file with its test module (rtests.py); mutant copies
+        and their tests are added by kills.py."""
+        text = twin.render_unit(self.units, u, self.args)
+        text += "".join("\n" + f for f in extra_fns)
+        return text + "\n" + rtests.tests_block(self.units[u], extra_tests)
 
     def digest(self):
         h = hashlib.sha256()
