@@ -11,8 +11,10 @@ Each mutant is one plausible defect in `compiler/src/verify.rs` or
 obligation that is never sent, a havoc that forgets a variable, a code
 generator that emits the wrong instruction or drops a check it may not drop.
 `run` applies them one at a time to a detached worktree of HEAD (DIR) and runs
-the whole gate there (`scripts/check.sh`); the gate catches a mutant when it
-exits non-zero. Classes: `unsound` (a false program could be proved),
+the whole gate there (`scripts/check.sh`) after `cargo fmt` (formatting
+must not be what catches a defect); the gate catches a mutant when it exits
+non-zero, and `detected_by` names the gate jobs that failed (empty when an
+earlier step such as clippy or the build failed; `tail` shows which). Classes: `unsound` (a false program could be proved),
 `incomplete` (a true program could fail), `miscompile` (a proved program could
 run wrongly). A mutant the gate misses is either a gap (a test is added for
 it) or equivalent (no program can tell, reasoned in `note`).
@@ -132,7 +134,7 @@ MUTANTS = [
      "variables a loop assigns keep their entry values"),
     ("v-mut-param-havoc-skipped", "unsound", V,
      '''Some(n) => mut_params.contains(n).then(|| n.to_string()),''',
-     '''Some(_) => None,''',
+     '''Some(n) => mut_params.contains(n).then(|| n.to_string()).filter(|_| false),''',
      "a loop that writes through a &mut parameter keeps its entry contents"),
     ("v-call-requires-dropped", "unsound", V,
      '''            self.oblige(
@@ -187,12 +189,12 @@ MUTANTS = [
     ("c-overflow-check-removed", "miscompile", C,
      '''        if self.proved("E0803", e) {
             let flag = if signed { "nsw" } else { "nuw" };''',
-     '''        if true {
+     '''        if self.proved("E0803", e) || !self.proved("E0803", e) {
             let flag = if signed { "nsw" } else { "nuw" };''',
      "overflow checks are dropped without a proof (nsw/nuw on unproved arithmetic)"),
     ("c-bounds-check-removed", "miscompile", C,
      '''let note = if self.proved("E0805", e) {''',
-     '''let note = if true {''',
+     '''let note = if self.proved("E0805", e) || !self.proved("E0805", e) {''',
      "bounds checks are dropped without a proof"),
 ]
 
@@ -228,7 +230,8 @@ def run(args):
     if not os.path.isdir(args.work):
         git("worktree", "add", "--detach", args.work, head)
     else:
-        git("checkout", "--detach", head, cwd=args.work)
+        # A stopped run may leave a mutant applied: discard it.
+        git("checkout", "--force", "--detach", head, cwd=args.work)
     only = set(args.only.split(",")) if args.only else None
     done = set()
     if os.path.exists(args.out):
@@ -239,11 +242,15 @@ def run(args):
                 continue
             git("checkout", "--", "compiler/src", cwd=args.work)
             apply(args.work, m)
+            subprocess.run(["cargo", "fmt"], cwd=args.work, capture_output=True)
             t0 = time.monotonic()
             r = subprocess.run(["timeout", "3600", "scripts/check.sh"], cwd=args.work, capture_output=True, text=True)
-            tail = (r.stdout + r.stderr).strip().splitlines()[-12:]
+            lines = (r.stdout + r.stderr).strip().splitlines()
+            tail = lines[-12:]
+            failed = next((x for x in reversed(lines) if x.startswith("failed: ")), "")
+            detected_by = [j.strip() for j in failed[len("failed: "):].split(",") if j.strip()]
             row = {"id": m[0], "class": m[1], "file": m[2], "what": m[5], "commit": head,
-                   "caught": r.returncode != 0, "exit": r.returncode,
+                   "caught": r.returncode != 0, "exit": r.returncode, "detected_by": detected_by,
                    "seconds": round(time.monotonic() - t0, 1), "tail": tail}
             out.write(json.dumps(row, ensure_ascii=False) + "\n")
             out.flush()
@@ -255,7 +262,8 @@ def table(args):
     rows = [json.loads(line) for line in open(args.results) if line.strip()]
     out = ["| 변이체 | 종류 | 결함 | 게이트 |", "| --- | --- | --- | --- |"]
     for r in rows:
-        out.append(f"| `{r['id']}` | {r['class']} | {r['what']} | {'잡음' if r['caught'] else '**놓침**'} |")
+        by = ", ".join(r.get("detected_by") or []) or "앞 단계"
+        out.append(f"| `{r['id']}` | {r['class']} | {r['what']} | {('잡음: ' + by) if r['caught'] else '**놓침**'} |")
     caught = sum(r["caught"] for r in rows)
     out.append("")
     out.append(f"검출: {caught}/{len(rows)}")

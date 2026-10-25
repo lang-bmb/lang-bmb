@@ -98,6 +98,35 @@ fn proved_index_has_no_check_and_unproved_keeps_one() {
 }
 
 #[test]
+fn an_unproved_index_traps_exactly_from_the_length() {
+    // `get` has no precondition: its bounds check stays. Index 2 of three
+    // elements reads; index 3 (the length) must trap (backlog 1B-38).
+    let dir = std::env::temp_dir().join(format!("bmb-trap-{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    for (i, want) in [(2, Some("3\n")), (3, None)] {
+        let text = format!(
+            "#[summary(\"trap\")]\nmod m {{\n    #[effects(pure)]\n    fn get(a: &[i64], i: usize) -> i64 {{\n        a[i]\n    }}\n\n    #[effects(io)]\n    fn main() -> () {{\n        let a: [i64; 3] = [1, 2, 3];\n        print_i64(get(&a, {i}));\n    }}\n}}\n"
+        );
+        let out = bmb::emit_llvm_sources(&src("t.bmb", &text));
+        assert!(!out.verify.ok);
+        let exe = dir.join(format!("t{i}"));
+        bmb::toolchain::build_executable(&out.ir.unwrap(), exe.to_str().unwrap()).unwrap();
+        let run = Command::new(&exe).output().unwrap();
+        match want {
+            Some(o) => {
+                assert!(run.status.success(), "index {i}: {}", run.status);
+                assert_eq!(String::from_utf8_lossy(&run.stdout), o);
+            }
+            None => {
+                assert!(!run.status.success(), "index {i} must trap");
+                assert!(run.stdout.is_empty());
+            }
+        }
+    }
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn proved_arithmetic_carries_no_wrap_flags() {
     let text = r#"
 #[summary("산술")]

@@ -131,4 +131,21 @@ mod loops {
             i = i + 1;
         }
     }
+
+    // After the loop the array is havocked: only the type range of the
+    // element read keeps `v / 2 + v / 2` in `i64` (backlog 1B-38).
+    #[effects(pure)]
+    fn element_after_loop(n: i64) -> i64 {
+        let mut a: [i64; 4] = [0; 4];
+        let mut i: usize = 0;
+        while i < 4
+            invariant i <= 4,
+            decreases 4 - i,
+        {
+            a[i] = n;
+            i = i + 1;
+        }
+        let v: i64 = a[0];
+        v / 2 + v / 2
+    }
 }
