@@ -8,7 +8,8 @@ import health  # noqa: E402
 
 GOOD = {
     "V1_untested_diag_codes": 0, "V3_unproved_defs": 0, "V4_rlimit_total": 1000,
-    "V5_rlimit_headroom": 0.01, "V6_deterministic_verify": True, "V7_unstable_queries": 0.0, "S1_external_crates": 0,
+    "V5_rlimit_headroom": 0.01, "V6_deterministic_verify": True, "V7_unstable_queries": 0.0,
+    "V8_bench_rlimit_total": 5000, "V9_bench_defs_at_limit": 1, "S1_external_crates": 0,
     "S2_external_processes": ["clang", "z3"], "S3_runtime_libs_outside_libc": [],
     "S4_stage0_rust_lines": 100, "S5_tests_bound_to_rust_api": 30, "S6_selfhost_bmb_lines": 0,
     "P1_runnable_programs": 6, "P2_bmb_lines": 3000, "P3_errors_with_help": 0.5,
@@ -29,6 +30,9 @@ def main():
     assert bad({"V5_rlimit_headroom": 0.5})[0]
     assert bad({"V7_unstable_queries": 0.026})[0]  # strictly below Mariposa's 2.6%
     assert bad({"V7_unstable_queries": 0.025}) == ([], [])
+    assert bad({"V8_bench_rlimit_total": 5501})[0]  # budget +10%
+    assert bad({"V9_bench_defs_at_limit": 2})[0]  # may only go down
+    assert bad({"V9_bench_defs_at_limit": 0}) == ([], ["V9_bench_defs_at_limit: 1 -> 0"])
     assert bad({"S3_runtime_libs_outside_libc": ["libm.so.6"]})[0]
     # a new external process needs an accepted baseline (and an ADR)
     assert bad({"S2_external_processes": ["clang", "cvc5", "z3"]})[0]

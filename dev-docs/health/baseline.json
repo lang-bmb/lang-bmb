@@ -6,6 +6,8 @@
     "V5_rlimit_headroom": 0.0049,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0,
+    "V8_bench_rlimit_total": 50821776,
+    "V9_bench_defs_at_limit": 2,
     "S1_external_crates": 0,
     "S2_external_processes": [
       "clang",
@@ -131,6 +133,20 @@
         "P3_errors_with_help": [
           0.4641,
           0.5359
+        ]
+      }
+    },
+    {
+      "date": "2026-10-25",
+      "reason": "INF-11: V8 벤치 부하 증명 비용 50,821,776, V9 한도 도달 정의 2(m1b w22 킬 검사, BVB vc-va0053 기준 해법, 1B-42)",
+      "changed": {
+        "V8_bench_rlimit_total": [
+          null,
+          50821776
+        ],
+        "V9_bench_defs_at_limit": [
+          null,
+          2
         ]
       }
     }

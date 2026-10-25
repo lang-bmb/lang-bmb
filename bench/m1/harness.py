@@ -268,14 +268,16 @@ def parse_signature(sig):
 def judge_write(task, workspace):
     """Whole-workspace proof, then signature and spec strength of every target:
     `def` and, for multi-unit tasks (m1b), each entry of `also_check`."""
-    code, _ = bmb("verify", *cache_args(workspace), workspace)
+    code, out = bmb("verify", *cache_args(workspace), workspace)
     verified = code == 0
+    cost = proof_cost(out)
     sig_ok = accepted = True
     for target in [task] + task.get("also_check", []):
         s, a = judge_target(target, workspace, verified)
         sig_ok, accepted = sig_ok and s, accepted and a
     verdict = {"verified": verified, "signature_ok": sig_ok, "spec_accepted": accepted,
-               "success": verified and sig_ok and accepted}
+               "success": verified and sig_ok and accepted,
+               "rlimit_total": cost[0], "rlimit_max": cost[1]}
     if "frozen" in task:
         # Given definitions the hidden contract refers to (BVB): the agent may
         # use them but not change them, or the spec check would read its version.
@@ -294,6 +296,14 @@ def frozen_intact(paths, workspace):
     """Every path in `paths` has the same definition hash as in the seed."""
     seed, now = def_hashes(os.path.join(SET, "seed"), cache=False), def_hashes(workspace)
     return all(p in seed and now.get(p) == seed[p] for p in paths)
+
+
+def proof_cost(verify_out, prefix=None):
+    """(sum of `rlimit`, largest single-obligation `rlimit_max`) over the
+    definitions of a `bmb verify` output, or of those whose path starts with
+    `prefix` (backlog INF-11: the proof cost of the bench load)."""
+    rs = [r for r in rows(verify_out) if "rlimit" in r and (prefix is None or r["def"].startswith(prefix))]
+    return sum(r["rlimit"] for r in rs), max((r.get("rlimit_max", 0) for r in rs), default=0)
 
 
 def judge_target(task, workspace, verified):
@@ -366,15 +376,23 @@ def spec_kill(task, workspace, verdict):
         _, l0 = bmb("map", *cache_args(workspace), "L0", workspace)
         specs = sorted(r["path"] for r in rows(l0) if r.get("def_kind") == "spec fn")
         units = {r["path"] for r in rows(l0) if r.get("kind") == "unit"}
-        killed = bsb.kill_check(targets, specs, units,
-                                lambda f: bmb("verify", *cache_args(workspace), workspace, f)[1])
+        outs = []
+
+        def verify(f):
+            outs.append(bmb("verify", *cache_args(workspace), workspace, f)[1])
+            return outs[-1]
+        killed = bsb.kill_check(targets, specs, units, verify)
+        hidden = bsb.hidden_unit_name(units)
+        cost = proof_cost(outs[0], hidden + "::") if outs else (0, 0)
     else:
         killed = [[False] * len(m) for _, _, m in targets]
+        cost = (0, 0)
     survivors = [f"{d}:{m['id']}" for (d, _, ms), ks in zip(targets, killed)
                  for m, k in zip(ms, ks) if not k]
     n = sum(sum(ks) for ks in killed)
     return {"bsb_mutants": total, "bsb_killed": n,
-            "bsb_kill_rate": round(n / total, 3) if total else None, "bsb_survivors": survivors}
+            "bsb_kill_rate": round(n / total, 3) if total else None, "bsb_survivors": survivors,
+            "bsb_rlimit_total": cost[0], "bsb_rlimit_max": cost[1]}
 
 
 def judge_navigate(task, workspace, answer):

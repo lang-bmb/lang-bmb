@@ -77,6 +77,31 @@ def proof_metrics():
     }
 
 
+def bench_load():
+    """V8, V9 (backlog INF-11): the proof cost of the bench load, which V4 and
+    V5 do not see. The m1b and BVB reference solutions run through their
+    harness (`--agent oracle`), whose results carry the `rlimit` of the judged
+    workspace and of the BSB kill checks. V8 sums it; V9 counts definitions
+    whose costliest obligation reached the solver limit (they are proved only
+    by the ground-instance retry, or fail; 1B-37's first version made two BSB
+    kill checks do that)."""
+    limit = toolchain_rlimit()
+    total = at_limit = 0
+    for s in ("bench/m1b", "bench/bvb"):
+        with tempfile.NamedTemporaryFile(suffix=".jsonl") as f:
+            r = run([sys.executable, "bench/m1/harness.py", "--set", s, "run", "--agent", "oracle", "--jobs", "2",
+                     "--out", f.name], env=dict(os.environ, BMB=str(BMB)))
+            if r.returncode != 0:
+                raise SystemExit(f"health: {s} oracle run failed\n{r.stderr[-1000:]}")
+            for line in open(f.name):
+                row = json.loads(line)
+                if row.get("kind") != "write":
+                    continue
+                total += row.get("rlimit_total", 0) + row.get("bsb_rlimit_total", 0)
+                at_limit += (row.get("rlimit_max", 0) >= limit) + (row.get("bsb_rlimit_max", 0) >= limit)
+    return {"V8_bench_rlimit_total": total, "V9_bench_defs_at_limit": at_limit}
+
+
 def solver_stability():
     """V7: the share of obligations whose verdict changes under meaning-
     preserving query changes (backlog 1B-40, scripts/solver_stability.py)."""
@@ -195,6 +220,8 @@ RULES = {
     "V6_deterministic_verify": ("fixed", True),
     # Mariposa's measured rate for Dafny and F* projects (H-STABLE, ADR-0040 §4).
     "V7_unstable_queries": ("fixed_below", 0.026),
+    "V8_bench_rlimit_total": ("budget", 0.10),
+    "V9_bench_defs_at_limit": ("no_worse_down", None),
     "S1_external_crates": ("fixed", 0),
     "S2_external_processes": ("same", None),
     "S3_runtime_libs_outside_libc": ("fixed", []),
@@ -212,8 +239,8 @@ RULES = {
 
 def compute():
     m = {}
-    for f in (diag_coverage, proof_metrics, solver_stability, helpful_errors, self_containment, practicality,
-              binary_size, process):
+    for f in (diag_coverage, proof_metrics, solver_stability, bench_load, helpful_errors, self_containment,
+              practicality, binary_size, process):
         m.update(f())
     return m
 
