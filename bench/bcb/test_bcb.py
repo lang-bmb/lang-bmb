@@ -10,6 +10,7 @@ BMB gate rejects (kills.py).
 Small sizes (N=100, K=COMMITS); uses $BMB or target/debug/bmb.
 """
 
+import argparse
 import json
 import os
 import subprocess
@@ -157,6 +158,81 @@ def check_harness(t):
     assert "C_B1/C_R1" in text and "| body-heavy | 100 | 5 | B1 |" in text and "결함 검출(전체)" in text, text
 
 
+def selections(path):
+    out = []
+    for line in open(path):
+        r = json.loads(line)
+        if r.get("header"):
+            continue
+        if r.get("arm") == "rust":
+            out.append((r["k"], r["cold"], r["R1"]["tests"], r["R2"]["tests"], r["R2"]["covered_defs"]))
+        elif r.get("arm") == "b1":
+            out.append((r["k"], r["cold"], tuple(r["encoded_defs"]), r["tests"]["tests"]))
+        else:
+            out.append(tuple(sorted((k, str(v)) for k, v in r.items())))
+    return out
+
+
+class Stop(Exception):
+    pass
+
+
+def check_suite(t):
+    """`suite` continues runs that were killed: rust between an event commit's
+    warm and cold rows, b1 the same, defects mid-history, each with a line cut
+    off; the result rows equal one uninterrupted run."""
+    for w in ("w1", "w2"):
+        hdir = os.path.join(t, "suite", w, "histories")
+        os.makedirs(hdir)
+        history.main(["gen", os.path.join(hdir, "mini.jsonl"), "--defs", "100", "--commits", "6",
+                      "--profile", "body-heavy"])
+    saved = bcb.SUITE, bcb.manifest, bcb.measure, bcb.bmb_measure, bcb.tests_fail
+    bcb.manifest = lambda args: 0
+    one, two = os.path.join(t, "suite", "one"), os.path.join(t, "suite", "two")
+    try:
+        bcb.SUITE = [("mini", "rust", 0), ("mini", "b1", 0), ("mini", "defects", 0)]
+        bcb.suite(argparse.Namespace(work=os.path.join(t, "suite", "w1"), results=one))
+        cleans, fails = [0], [0]
+
+        def measure(cmd, *a, **kw):
+            if cmd[:2] == ["cargo", "clean"]:
+                cleans[0] += 1
+                if cleans[0] == 2:  # the cold half of event commit 2
+                    raise Stop()
+            return saved[2](cmd, *a, **kw)
+
+        def bmb_measure(tree, ws, cache, selected, k, arm, cold, out, n):
+            if k == 3 and cold:
+                raise Stop()
+            return saved[3](tree, ws, cache, selected, k, arm, cold, out, n)
+
+        def tests_fail(*a):
+            fails[0] += 1
+            if fails[0] == 7:  # third planted commit
+                raise Stop()
+            return saved[4](*a)
+
+        bcb.measure, bcb.bmb_measure, bcb.tests_fail = measure, bmb_measure, tests_fail
+        for arm in ("rust", "b1", "defects"):
+            bcb.SUITE = [("mini", arm, 0)]
+            try:
+                bcb.suite(argparse.Namespace(work=os.path.join(t, "suite", "w2"), results=two))
+                raise AssertionError(f"{arm}: the stop did not happen")
+            except Stop:
+                pass
+            with open(os.path.join(two, f"mini.{arm}.jsonl"), "a") as f:
+                f.write('{"arm": "cut off')
+        bcb.measure, bcb.bmb_measure, bcb.tests_fail = saved[2:]
+        bcb.SUITE = [("mini", "rust", 0), ("mini", "b1", 0), ("mini", "defects", 0)]
+        bcb.suite(argparse.Namespace(work=os.path.join(t, "suite", "w2"), results=two))
+        for arm in ("rust", "b1", "defects"):
+            a, b = (selections(os.path.join(d, f"mini.{arm}.jsonl")) for d in (one, two))
+            assert a == b, f"suite resume differs for {arm}:\n{a}\n{b}"
+        assert bcb.resume_point(os.path.join(two, "mini.rust.jsonl"), "rust", {1, 2, 3, 4}, 6) is None
+    finally:
+        bcb.SUITE, bcb.manifest, bcb.measure, bcb.bmb_measure, bcb.tests_fail = saved
+
+
 def main():
     with tempfile.TemporaryDirectory() as t:
         out = {}
@@ -182,6 +258,8 @@ def main():
                            "--work", os.path.join(t, "kills")])
         assert code == 0, "kills: gaps, unsound or extra mutants"
         check_harness(t)
+        check_suite(t)
+        assert bcb.manifest(argparse.Namespace(write=False, histories=None)) == 0, "bench/bcb/MANIFEST is stale"
     print("bench/bcb: ok " + json.dumps(out))
 
 

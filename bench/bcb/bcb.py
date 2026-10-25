@@ -28,9 +28,13 @@ header (`events.four`) each arm is measured a second time after dropping its
 cache (BMB cache directory; `cargo clean`); those rows carry "cold": true.
 
   bcb.py run HISTORY --arms rust,b1,b0 --work DIR --out R.jsonl [--upto K]
-             [--b0-every S]
+             [--b0-every S] [--from K]   (--from continues a stopped run in the same DIR
+                                          and appends to the same R.jsonl)
   bcb.py defects HISTORY --work DIR --out D.jsonl [--upto K]
                                       (one planted mutant per commit; which arms catch it)
+  bcb.py suite --work DIR --results DIR  (the whole plan, SUITE; continues where it stopped)
+  bcb.py manifest [--write] [--histories DIR]
+                                      (frozen harness files and histories, FROZEN)
   bcb.py table R.jsonl [D.jsonl ...]   (cumulative costs, detection, the ADR-0042 §5 checks)
 
 Uses $BMB or target/release/bmb, and cargo.
@@ -39,6 +43,7 @@ Uses $BMB or target/release/bmb, and cargo.
 import argparse
 import json
 import os
+import random
 import re
 import shutil
 import subprocess
@@ -232,13 +237,21 @@ def rust_arm(header, commits, args, out):
     sel = None
     for k, tree, changed in history.replay(header, commits, args.upto):
         if k == 0:
-            history.write_tree(tree, bmb_unused, rs)
             sel = RustSelect(tree)
+        if k < args.start:
+            sel.step(tree, changed)
+            if k == args.start - 1:
+                sync_tree(tree, bmb_unused, rs)
+            continue
+        if k == 0:
+            history.write_tree(tree, bmb_unused, rs)
         else:
             history.write_tree(tree, bmb_unused, rs, changed)
         st = sel.step(tree, changed)
         names, all_names = st["names"], st["all"]
         for cold in ([False, True] if k in four else [False]):
+            if not cold and k == args.start and getattr(args, "cold_only", False):
+                continue  # measured warm before the run stopped
             if cold:
                 measure(["cargo", "clean", "--offline"], cwd=rs, env=env)
             b = cost(*measure(["cargo", "build", "--offline"], cwd=rs, env=env)[:2])
@@ -349,6 +362,15 @@ def bmb_measure(tree, ws, cache, selected, k, arm, cold, out, n_tests):
     out.flush()
 
 
+def sync_tree(tree, bmb, rust):
+    """Brings a work directory left by an earlier run to `tree` touching only the
+    files that differ (so the caches stay warm); a missing one is written whole."""
+    if not os.path.exists(os.path.join(rust, "Cargo.toml")) or not os.path.isdir(os.path.join(bmb, "src")):
+        history.write_tree(tree, bmb, rust)
+    else:
+        history.write_tree(tree, bmb, rust, range(tree.n_units))
+
+
 def write_tests(ws, tree):
     """tests/tU.bmb as bmb_test_units says (stale files removed)."""
     tunits = bmb_test_units(tree)
@@ -396,6 +418,13 @@ def bmb_arm(header, commits, args, out, arm):
         if arm == "b0" and k % args.b0_every and k != last_k:
             continue
         sample = arm == "b0"
+        if k < args.start:
+            if not sample:
+                sel.step(tree, changed, k == 0)
+                if k == args.start - 1:
+                    sync_tree(tree, ws, rust_unused)
+                    write_tests(ws, tree)
+            continue
         if k == 0 or sample:
             history.write_tree(tree, ws, rust_unused)
         else:
@@ -405,6 +434,8 @@ def bmb_arm(header, commits, args, out, arm):
         if sample:
             shutil.rmtree(cache, ignore_errors=True)
         for cold in ([False, True] if (k in four and not sample) else [False]):
+            if not cold and k == args.start and getattr(args, "cold_only", False):
+                continue  # measured warm before the run stopped
             if cold:
                 shutil.rmtree(cache, ignore_errors=True)
             bmb_measure(tree, ws, cache, selected, k, arm, cold or sample, out, len(tests))
@@ -456,20 +487,30 @@ def defects(args):
     ws, rs = os.path.join(args.work, "defect-bmb"), os.path.join(args.work, "defect-rust")
     cache = os.path.join(args.work, "defect-cache")
     env = dict(os.environ, CARGO_TARGET_DIR=os.path.join(rs, "target"))
-    rng = __import__("random").Random(f"bcb-defect:{header['history_seed']}:{header['profile']}")
     rsel, bsel = None, BmbSelect()
     with open(args.out, "a", encoding="utf-8") as out:
         out.write(json.dumps({"header": True, "defects": True, "history": os.path.basename(args.history),
-                              "profile": header["profile"], "defs": header["defs"], "upto": args.upto}) + "\n")
+                              "profile": header["profile"], "defs": header["defs"], "upto": args.upto,
+                              "from": args.start, "machine": {**machine(), "history_sha": sha(args.history)}}) + "\n")
         for k, tree, changed in history.replay(header, commits, args.upto):
             if k == 0:
-                history.write_tree(tree, ws, rs)
                 rsel = RustSelect(tree)
+            if k < args.start:
+                rsel.step(tree, changed)
+                bsel.step(tree, changed, k == 0)
+                if k == args.start - 1:
+                    sync_tree(tree, ws, rs)
+                    write_tests(ws, tree)
+                continue
+            if k == 0:
+                history.write_tree(tree, ws, rs)
             else:
                 history.write_tree(tree, ws, rs, changed)
             write_tests(ws, tree)
             st = rsel.step(tree, changed)
             tests, b1_sel = bsel.step(tree, changed, k == 0)
+            # One generator per commit, so a resumed run plants the same defects.
+            rng = random.Random(f"bcb-defect:{header['history_seed']}:{header['profile']}:{k}")
             base = subprocess.run([BMB, "verify", "--cache", cache, os.path.join(ws, "src")], capture_output=True, text=True)
             assert base.returncode == 0, f"commit {k} does not prove"
             if k == 0:
@@ -524,13 +565,33 @@ def defects(args):
             out.flush()
 
 
+def machine():
+    """Where the numbers come from (recorded in every result header)."""
+    def out(cmd):
+        try:
+            return subprocess.run(cmd, capture_output=True, text=True, cwd=ROOT).stdout.strip()
+        except OSError:
+            return None
+    model = None
+    try:
+        model = next(x.split(":", 1)[1].strip() for x in open("/proc/cpuinfo") if x.startswith("model name"))
+    except (OSError, StopIteration):
+        pass
+    return {"cpus": os.cpu_count(), "cpu": model, "rustc": out(["rustc", "-V"]), "cargo": out(["cargo", "-V"]),
+            "z3": out(["z3", "--version"]), "commit": out(["git", "rev-parse", "HEAD"]),
+            "dirty": bool(out(["git", "status", "--porcelain", "--untracked-files=no"])),
+            "manifest": sha(os.path.join(HERE, "MANIFEST")) if os.path.exists(os.path.join(HERE, "MANIFEST")) else None,
+            "history_sha": None}
+
+
 def run(args):
     header, commits = history.load(args.history)
     os.makedirs(args.work, exist_ok=True)
     with open(args.out, "a", encoding="utf-8") as out:
         out.write(json.dumps({"header": True, "history": os.path.basename(args.history), "profile": header["profile"],
-                              "defs": header["defs"], "commits": header["commits"], "upto": args.upto,
+                              "defs": header["defs"], "commits": header["commits"], "upto": args.upto, "from": args.start,
                               "events": header["events"], "b0_every": args.b0_every,
+                              "machine": {**machine(), "history_sha": sha(args.history)},
                               "digest": commits[-1]["digest"] if commits else header["digest0"]}) + "\n")
         for arm in args.arms.split(","):
             if arm == "rust":
@@ -539,6 +600,129 @@ def run(args):
                 bmb_arm(header, commits, args, out, arm)
             else:
                 sys.exit(f"bcb: unknown arm {arm}")
+
+
+# ------------------------------------------------------------------ freezing
+
+# The measured histories (ADR-0042 §1): K = 1,000, history seed 1, gen.py defaults
+# unless noted. Regenerating one must give the bytes MANIFEST records.
+FROZEN = [
+    ("body-heavy-1k", 1000, "body-heavy", []),
+    ("contract-heavy-1k", 1000, "contract-heavy", []),
+    ("body-only-1k", 1000, "body-only", []),
+    ("body-heavy-1k-depth2", 1000, "body-heavy", ["--depth", "2"]),
+    ("body-heavy-1k-depth6", 1000, "body-heavy", ["--depth", "6"]),
+    ("body-heavy-10k", 10000, "body-heavy", []),
+    ("contract-heavy-10k", 10000, "contract-heavy", []),
+    ("body-only-10k", 10000, "body-only", []),
+]
+HARNESS = ("bcb.py", "history.py", "rtests.py", "rustify.py", "kills.py")
+
+
+def sha(path):
+    import hashlib
+    return hashlib.sha256(open(path, "rb").read()).hexdigest()
+
+
+def gen_frozen(outdir):
+    os.makedirs(outdir, exist_ok=True)
+    out = {}
+    for name, n, profile, extra in FROZEN:
+        path = os.path.join(outdir, name + ".jsonl")
+        if not os.path.exists(path):
+            history.main(["gen", path, "--defs", str(n), "--commits", "1000", "--profile", profile] + extra)
+        out[name] = sha(path)
+    return out
+
+
+def manifest_text(hist):
+    lines = [f"{sha(os.path.join(HERE, f))}  {f}" for f in HARNESS]
+    lines += [f"{h}  histories/{name}.jsonl" for name, h in sorted(hist.items())]
+    return "\n".join(lines) + "\n"
+
+
+def manifest(args):
+    path = os.path.join(HERE, "MANIFEST")
+    if args.write:
+        open(path, "w").write(manifest_text(gen_frozen(args.histories)))
+        print("MANIFEST written")
+        return 0
+    recorded = dict(reversed(x.split("  ", 1)) for x in open(path).read().splitlines()) if os.path.exists(path) else {}
+    bad = [f for f in HARNESS if recorded.get(f) != sha(os.path.join(HERE, f))]
+    if args.histories:
+        got = gen_frozen(args.histories)
+        bad += [n for n, h in got.items() if recorded.get(f"histories/{n}.jsonl") != h]
+    if bad:
+        print("bcb: frozen inputs differ from MANIFEST: " + ", ".join(bad), file=sys.stderr)
+        return 1
+    print("MANIFEST ok")
+    return 0
+
+
+# --------------------------------------------------------------------- suite
+
+# The measurement plan of ADR-0042 in order: (history, arm, B0 sampling).
+SUITE = [
+    ("body-only-1k", "rust", 0), ("body-only-1k", "b1", 0),
+    ("body-heavy-1k", "rust", 0), ("body-heavy-1k", "b1", 0), ("body-heavy-1k", "b0", 50),
+    ("body-heavy-1k", "defects", 0),
+    ("contract-heavy-1k", "rust", 0), ("contract-heavy-1k", "b1", 0), ("contract-heavy-1k", "b0", 50),
+    ("contract-heavy-1k", "defects", 0), ("body-only-1k", "defects", 0),
+    ("body-heavy-1k-depth2", "rust", 0), ("body-heavy-1k-depth2", "b1", 0),
+    ("body-heavy-1k-depth6", "rust", 0), ("body-heavy-1k-depth6", "b1", 0),
+    ("body-heavy-10k", "rust", 0), ("body-heavy-10k", "b1", 0), ("body-heavy-10k", "b0", 250),
+    ("contract-heavy-10k", "rust", 0), ("contract-heavy-10k", "b1", 0), ("contract-heavy-10k", "b0", 250),
+    ("body-only-10k", "rust", 0), ("body-only-10k", "b1", 0),
+]
+
+
+def resume_point(path, arm, four, last):
+    """(first commit still to measure, whether only its cold measurement is
+    missing) for `path`, or None when the file is complete. A line cut off by a
+    kill is dropped. An event commit with its warm row but not its cold one
+    resumes with the cold measurement only: measuring it warm again would find
+    its work already in the caches."""
+    if not os.path.exists(path):
+        return 0, False
+    lines = []
+    for x in open(path, encoding="utf-8").read().splitlines():
+        try:
+            lines.append(json.loads(x))
+        except ValueError:
+            break  # cut off mid-write: drop it and what follows
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("".join(json.dumps(r) + "\n" for r in lines))
+    rows = [r for r in lines if not r.get("header")]
+    done = max((r["k"] for r in rows), default=-1)
+    if arm not in ("defects", "b0") and done in four and not any(r["k"] == done and r["cold"] for r in rows):
+        return done, True
+    if done >= last:
+        return None
+    return done + 1, False
+
+
+def suite(args):
+    """Runs (or continues) SUITE: results in RESULTS/<history>.<arm>.jsonl,
+    work directories in WORK/<history>-<arm>."""
+    if manifest(argparse.Namespace(write=False, histories=os.path.join(args.work, "histories"))):
+        sys.exit("bcb suite: refusing to run")
+    os.makedirs(args.results, exist_ok=True)
+    for name, arm, every in SUITE:
+        hist = os.path.join(args.work, "histories", name + ".jsonl")
+        header, _ = history.load(hist)
+        out = os.path.join(args.results, f"{name}.{arm}.jsonl")
+        point = resume_point(out, arm, set(header["events"]["four"]), header["commits"])
+        if point is None:
+            continue
+        start, cold_only = point
+        print(f"bcb suite: {name} {arm} from commit {start}{' (cold only)' if cold_only else ''}", flush=True)
+        ns = argparse.Namespace(history=hist, work=os.path.join(args.work, f"{name}-{arm}"), out=out,
+                                upto=None, start=start, arms=arm, b0_every=every or 1, cold_only=cold_only)
+        if arm == "defects":
+            defects(ns)
+        else:
+            run(ns)
+    print("bcb suite: complete")
 
 
 # ------------------------------------------------------------------- table
@@ -558,7 +742,12 @@ def cumulative(head, rows):
     """Arm -> {events e: cumulative CPU}, plus per-commit invalidation means."""
     warm = {}
     cold = {}
+    seen = set()
     for r in rows:
+        key = (r["arm"], r["k"], r["cold"])
+        if key in seen:
+            sys.exit(f"bcb: commit {r['k']} of arm {r['arm']} measured twice (overlapping --from runs?)")
+        seen.add(key)
         if r["arm"] == "rust":
             base = r["build"]["cpu"] + r["test_build"]["cpu"]
             vals = {a: base + r[a]["cpu"] for a in ("R0", "R1", "R2")}
@@ -575,7 +764,7 @@ def cumulative(head, rows):
         if a == "B0":
             ks = sorted(per)
             mean = sum(per.values()) / len(per)
-            n = (head["upto"] if head["upto"] is not None else head["commits"]) + 1
+            n = max((r["k"] for r in rows if r["arm"] != "b0"), default=head["commits"]) + 1
             # Always cold: toolchain events change nothing.
             out[a] = {"0": mean * n, "1": mean * n, "4": mean * n, "estimated": True, "samples": len(ks)}
             continue
@@ -596,9 +785,16 @@ def table(paths):
     lines = ["| 이력 | 정의 | 커밋 | 팔 | 누적 CPU(사건 0) | 사건 1 | 사건 4 | 커밋당 재검증 평균 |",
              "| --- | --- | --- | --- | --- | --- | --- | --- |"]
     verdicts = []
+    groups = {}
     for p in paths:
         head, rows = load_rows(p)
         if head.get("defects"):
+            g = groups.setdefault(("defects", head["history"]), [head, []])
+        else:
+            g = groups.setdefault(("run", head["history"]), [head, []])
+        g[1] += rows
+    for (kind, _), (head, rows) in sorted(groups.items()):
+        if kind == "defects":
             dets.append((head, detection(rows), sum(r.get("proof", False) for r in rows)))
             continue
         cum = cumulative(head, rows)
@@ -614,7 +810,7 @@ def table(paths):
             elif r["arm"] == "b1":
                 inv.setdefault("B1", []).append(len(r["encoded_defs"]))
         mean = {a: sum(v) / len(v) for a, v in inv.items() if v}
-        n = (head["upto"] if head["upto"] is not None else head["commits"])
+        n = max((r["k"] for r in rows if r["arm"] != "b0"), default=head["commits"])
         for a in ("R0", "R1", "R2", "B0", "B1"):
             if a not in cum:
                 continue
@@ -656,11 +852,20 @@ def main(argv=None):
     r.add_argument("--out", required=True)
     r.add_argument("--upto", type=int)
     r.add_argument("--b0-every", type=int, default=1)
+    r.add_argument("--from", dest="start", type=int, default=0,
+                   help="measure from commit K on; the work directory holds the run that stopped before K")
     d = sub.add_parser("defects")
     d.add_argument("history")
     d.add_argument("--work", required=True)
     d.add_argument("--out", required=True)
     d.add_argument("--upto", type=int)
+    d.add_argument("--from", dest="start", type=int, default=0)
+    m = sub.add_parser("manifest", help="check (or --write) the frozen harness and histories")
+    m.add_argument("--write", action="store_true")
+    m.add_argument("--histories", help="directory to (re)generate the frozen histories in and check them")
+    su = sub.add_parser("suite", help="run or continue the whole measurement plan (SUITE)")
+    su.add_argument("--work", required=True)
+    su.add_argument("--results", required=True)
     t = sub.add_parser("table")
     t.add_argument("results", nargs="+")
     args = p.parse_args(argv)
@@ -668,6 +873,10 @@ def main(argv=None):
         run(args)
     elif args.cmd == "defects":
         defects(args)
+    elif args.cmd == "suite":
+        suite(args)
+    elif args.cmd == "manifest":
+        sys.exit(manifest(args))
     else:
         sys.stdout.write(table(args.results))
 

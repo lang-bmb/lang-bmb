@@ -33,6 +33,14 @@ python3 bench/bcb/history.py replay H.jsonl --bmb W/bmb --rust W/rust --upto 500
 
 프로필(`history.py`의 `PROFILES`): `body-heavy`, `contract-heavy`, `body-only`. 툴체인 사건 커밋은 머리 줄의 `events`(K·j/5)이고 재생 하네스가 적용한다.
 
+## 동결과 측정 계획
+
+`MANIFEST`는 하네스 파일(`bcb.py`, `history.py`, `rtests.py`, `rustify.py`, `kills.py`)과 측정 이력 8개(`bcb.py`의 `FROZEN`: 프로필 3 × N=1,000·10,000, N=1,000 깊이 2·6, 모두 K=1,000)의 SHA-256이다. 이력 파일은 커밋하지 않고 결정론적으로 다시 만든다(`manifest --histories DIR`이 만들고 대조한다). 게이트는 하네스 해시를 확인한다.
+
+`bcb.py suite --work W --results R`는 `SUITE`(측정 계획)를 순서대로 돌리고, 결과를 `R/<이력>.<팔>.jsonl`에 쓴다. 중단되면 같은 명령이 멈춘 곳에서 잇는다. 잘린 줄은 버린다. 사건 커밋이 따뜻한 행만 있으면 차가운 측정만 한다(따뜻한 측정을 다시 하면 그 일이 이미 캐시에 있다). 재개한 첫 커밋은 중단 시점의 부분 작업(부분 컴파일 등)이 남아 있을 수 있다. 결과 머리 줄의 `from`이 재개 지점이다. 머리 줄에는 머신·툴체인·커밋·MANIFEST 해시도 기록한다.
+
+N=10,000 탐침(2026-10-25, K=5, 예비): Rust 따뜻한 커밋 CPU 약 19.5초(빌드 5.3 + 테스트 빌드 14), 차가운 커밋 41초. B1 따뜻한 커밋 약 3.5초, 차가운 커밋 약 205초. 계획 전체는 약 28시간(대부분 N=10,000 Rust 팔)이다.
+
 ## 팔의 실제 명령
 
 | 팔 | 커밋마다 |
