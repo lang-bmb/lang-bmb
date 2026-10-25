@@ -371,17 +371,39 @@ mod m {
 }
 
 #[test]
-fn vec_is_gated_until_its_encoding_and_lowering_exist() {
-    // Backlog 2G-02/03: the checker and the prover accept `Vec`; the code
-    // generator (2G-04) refuses it with E0814 instead of guessing.
-    let text = "#[summary(\"g\")]\nmod m {\n    #[effects(pure)]\n    fn n() -> usize {\n        let mut v: Vec<i64> = Vec::new();\n        v.push(1);\n        v.len()\n    }\n\n    #[effects(io)]\n    fn main() -> () {\n        print_u64(u64::try_from(n()).unwrap());\n    }\n}\n";
-    assert!(bmb::check_sources(&src("g.bmb", text)).ok);
+fn a_proved_push_has_no_check_and_an_unproved_one_keeps_it() {
+    // Backlog 2G-04: E0816 like every obligation (ADR-0031 §4).
+    let text = "#[summary(\"g\")]\nmod m {\n    #[effects(pure)]\n    fn grow(v: &mut Vec<i64>) -> () {\n        v.push(2);\n    }\n\n    #[effects(pure)]\n    fn n() -> usize {\n        let mut v: Vec<i64> = Vec::new();\n        v.push(1);\n        v.len()\n    }\n}\n";
     let out = bmb::emit_llvm_sources(&src("g.bmb", text));
-    assert!(out.ir.is_none());
-    assert!(!out.verify.ok);
-    assert!(
-        out.verify.output.contains("\"code\":\"E0814\""),
-        "{}",
-        out.verify.output
-    );
+    let ir = out.ir.unwrap();
+    assert_eq!(ir.matches("; proved E0816").count(), 1, "{ir}");
+    assert_eq!(ir.matches("unproved: `push` may exceed").count(), 1, "{ir}");
+}
+
+#[test]
+fn an_unproved_vec_index_traps_exactly_from_the_length() {
+    // As for slices (1B-38): index 2 of three elements reads, 3 traps.
+    let dir = std::env::temp_dir().join(format!("bmb-vtrap-{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    for (i, want) in [(2, Some("3\n")), (3, None)] {
+        let text = format!(
+            "#[summary(\"trap\")]\nmod m {{\n    #[effects(pure)]\n    fn get(v: &Vec<i64>, i: usize) -> i64 {{\n        v[i]\n    }}\n\n    #[effects(io)]\n    fn main() -> () {{\n        let mut v: Vec<i64> = Vec::new();\n        v.push(1);\n        v.push(2);\n        v.push(3);\n        print_i64(get(&v, {i}));\n    }}\n}}\n"
+        );
+        let out = bmb::emit_llvm_sources(&src("t.bmb", &text));
+        assert!(!out.verify.ok);
+        let exe = dir.join(format!("v{i}"));
+        bmb::toolchain::build_executable(&out.ir.unwrap(), exe.to_str().unwrap()).unwrap();
+        let run = Command::new(&exe).output().unwrap();
+        match want {
+            Some(o) => {
+                assert!(run.status.success(), "index {i}: {}", run.status);
+                assert_eq!(String::from_utf8_lossy(&run.stdout), o);
+            }
+            None => {
+                assert!(!run.status.success(), "index {i} must trap");
+                assert!(run.stdout.is_empty());
+            }
+        }
+    }
+    let _ = fs::remove_dir_all(&dir);
 }

@@ -2,7 +2,7 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 2576344,
+    "V4_rlimit_total": 2847499,
     "V5_rlimit_headroom": 0.0097,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0,
@@ -14,12 +14,12 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 17631,
+    "S4_stage0_rust_lines": 18959,
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
-    "P1_runnable_programs": 11,
-    "P2_bmb_lines": 5268,
-    "P3_errors_with_help": 0.6812,
+    "P1_runnable_programs": 12,
+    "P2_bmb_lines": 5823,
+    "P3_errors_with_help": 0.6903,
     "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 7
@@ -235,6 +235,32 @@
         "P3_errors_with_help": [
           0.6653,
           0.6812
+        ]
+      }
+    },
+    {
+      "date": "2026-10-25",
+      "reason": "2G: Vec corpora (verify pass/fail vecs, run vecs) add 271k rlimit, largest definition vr::main 121k over 23 obligations; P1 11->12, P2, P3 from Vec diagnostics with fixes",
+      "changed": {
+        "V4_rlimit_total": [
+          2576344,
+          2847499
+        ],
+        "S4_stage0_rust_lines": [
+          17631,
+          18959
+        ],
+        "P1_runnable_programs": [
+          11,
+          12
+        ],
+        "P2_bmb_lines": [
+          5268,
+          5823
+        ],
+        "P3_errors_with_help": [
+          0.6812,
+          0.6903
         ]
       }
     }

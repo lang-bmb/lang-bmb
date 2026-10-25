@@ -5,7 +5,11 @@
 //! arithmetic carries `nsw`/`nuw`, proved indexing uses `inbounds` without a
 //! check, and every `&mut` parameter is `noalias` (ADR-0015). Structs and
 //! enums (ADR-0026) live in memory as named LLVM types and are copied where
-//! Rust copies them (backlog 2B-06). Unproved
+//! Rust copies them (backlog 2B-06). A `Vec` (ADR-0031 §4) is a header
+//! `{ptr, len, cap}` in memory that moves like a data value (copying the
+//! header is the move); its buffer is freed where `moves.rs` says, and a
+//! temporary `Vec` read but not moved at the end of its statement (backlog
+//! 2G-04). Unproved
 //! obligations keep a check that traps; `bmb build` refuses such programs
 //! anyway, so this matters only for `bmb emit-llvm` on partial proofs.
 
@@ -14,6 +18,7 @@ use std::fmt::Write;
 
 use crate::ast::*;
 use crate::check::ty_str;
+use crate::source::Span;
 use crate::verify::{ObKey, Tables, enum_variants, struct_fields, value_ty};
 
 #[derive(Clone)]
@@ -73,6 +78,121 @@ fn is_data(t: &TypeKind) -> bool {
     matches!(value_ty(t), TypeKind::Named { .. })
 }
 
+/// Whether `t` is a `Vec` (through a reference).
+fn is_vec(t: &TypeKind) -> bool {
+    matches!(value_ty(t), TypeKind::Vec(_))
+}
+
+/// Whether a value of type `t` lives in memory and is passed by address:
+/// a struct, an enum or a `Vec` header.
+fn is_mem(t: &TypeKind) -> bool {
+    is_data(t) || is_vec(t)
+}
+
+/// The element type of a `Vec`.
+fn vec_elem(t: &TypeKind) -> TypeKind {
+    match value_ty(t) {
+        TypeKind::Vec(e) => e.kind.clone(),
+        other => unreachable!("not a Vec: {other:?}"),
+    }
+}
+
+/// The maximum length of a `Vec<T>` (ADR-0017 §3, as the prover's).
+fn vec_len_max(e: &TypeKind) -> &'static str {
+    if matches!(e, TypeKind::Bool | TypeKind::Named { .. }) {
+        "9223372036854775807"
+    } else {
+        "1152921504606846975"
+    }
+}
+
+/// The run-time support of `Vec` (ADR-0031 §4): allocation through libc,
+/// growth to twice the capacity (at least 4), and `abort` when a size does
+/// not fit in `isize` or the allocator fails.
+const VEC_RUNTIME: &str = "%bmb.vec = type { ptr, i64, i64 }
+declare ptr @malloc(i64)
+declare ptr @realloc(ptr, i64)
+declare void @free(ptr)
+declare void @abort() noreturn nounwind
+define internal i64 @bmb_vec_bytes(i64 %n, i64 %size) {
+entry:
+  %p = call {i64, i1} @llvm.umul.with.overflow.i64(i64 %n, i64 %size)
+  %b = extractvalue {i64, i1} %p, 0
+  %o = extractvalue {i64, i1} %p, 1
+  %big = icmp ugt i64 %b, 9223372036854775807
+  %bad = or i1 %o, %big
+  br i1 %bad, label %fail, label %ok
+fail:
+  call void @abort()
+  unreachable
+ok:
+  ret i64 %b
+}
+define internal void @bmb_vec_alloc(ptr %h, i64 %n, i64 %size) {
+entry:
+  %lp = getelementptr inbounds %bmb.vec, ptr %h, i32 0, i32 1
+  %cp = getelementptr inbounds %bmb.vec, ptr %h, i32 0, i32 2
+  store i64 0, ptr %lp
+  %z = icmp eq i64 %n, 0
+  br i1 %z, label %empty, label %some
+empty:
+  store ptr null, ptr %h
+  store i64 0, ptr %cp
+  ret void
+some:
+  %b = call i64 @bmb_vec_bytes(i64 %n, i64 %size)
+  %p = call ptr @malloc(i64 %b)
+  %null = icmp eq ptr %p, null
+  br i1 %null, label %fail, label %ok
+fail:
+  call void @abort()
+  unreachable
+ok:
+  store ptr %p, ptr %h
+  store i64 %n, ptr %cp
+  ret void
+}
+define internal void @bmb_vec_grow(ptr %h, i64 %size) {
+entry:
+  %cp = getelementptr inbounds %bmb.vec, ptr %h, i32 0, i32 2
+  %cap = load i64, ptr %cp
+  %z = icmp eq i64 %cap, 0
+  %d = shl i64 %cap, 1
+  %new = select i1 %z, i64 4, i64 %d
+  %b = call i64 @bmb_vec_bytes(i64 %new, i64 %size)
+  %buf = load ptr, ptr %h
+  %p = call ptr @realloc(ptr %buf, i64 %b)
+  %null = icmp eq ptr %p, null
+  br i1 %null, label %fail, label %ok
+fail:
+  call void @abort()
+  unreachable
+ok:
+  store ptr %p, ptr %h
+  store i64 %new, ptr %cp
+  ret void
+}
+define internal void @bmb_vec_clone(ptr %dst, ptr %src, i64 %size) {
+entry:
+  %slp = getelementptr inbounds %bmb.vec, ptr %src, i32 0, i32 1
+  %len = load i64, ptr %slp
+  call void @bmb_vec_alloc(ptr %dst, i64 %len, i64 %size)
+  %db = load ptr, ptr %dst
+  %sb = load ptr, ptr %src
+  %bytes = mul nuw i64 %len, %size
+  call void @llvm.memcpy.p0.p0.i64(ptr %db, ptr %sb, i64 %bytes, i1 false)
+  %dlp = getelementptr inbounds %bmb.vec, ptr %dst, i32 0, i32 1
+  store i64 %len, ptr %dlp
+  ret void
+}
+define internal void @bmb_vec_free(ptr %h) {
+entry:
+  %buf = load ptr, ptr %h
+  call void @free(ptr %buf)
+  ret void
+}
+";
+
 /// The LLVM type of a struct or enum: `%"geo::Point"` (ADR-0026 §6 paths).
 fn data_ty(t: &TypeKind) -> String {
     format!("%\"{}\"", ty_str(value_ty(t)))
@@ -86,6 +206,7 @@ fn view_ty(t: &TypeKind, v: &str) -> String {
 /// The in-memory LLVM type of a value of type `t` (`bool` is a byte).
 fn mem_ty(t: &TypeKind) -> String {
     match value_ty(t) {
+        TypeKind::Vec(_) => "%bmb.vec".into(),
         TypeKind::Bool => "i8".into(),
         TypeKind::Named { .. } => data_ty(t),
         TypeKind::Array(e, n) => format!("[{n} x {}]", mem_ty(&e.kind)),
@@ -241,6 +362,9 @@ struct Gen<'p> {
     slots: BTreeMap<String, Slot>,
     /// Runtime checks emitted (unproved obligations), for reporting.
     checks: u32,
+    /// Temporary `Vec` headers read but not moved, freed when their
+    /// region (statement, block value, arm, operand, loop condition) ends.
+    pending: Vec<String>,
 }
 
 impl<'p> Gen<'p> {
@@ -392,7 +516,7 @@ impl<'p> Gen<'p> {
     /// data value is its address.
     fn read(&mut self, ptr: &str, t: &TypeKind) -> CVal {
         match value_ty(t) {
-            TypeKind::Named { .. } => CVal::Ptr {
+            TypeKind::Named { .. } | TypeKind::Vec(_) => CVal::Ptr {
                 ptr: ptr.to_string(),
                 ty: value_ty(t).clone(),
             },
@@ -469,8 +593,13 @@ impl<'p> Gen<'p> {
                 let ExprKind::Var(id) = &base.kind else {
                     unreachable!("indexing a named slice")
                 };
-                let Slot::Arr { ptr, len, ety, .. } = self.slots[&id.name].clone() else {
-                    unreachable!()
+                let (ptr, len, ety) = match self.slots[&id.name].clone() {
+                    Slot::Arr { ptr, len, ety, .. } => (ptr, len, ety),
+                    Slot::Data { ptr, ty } => {
+                        let (b, l) = self.vec_view(&ptr);
+                        (b, l, vec_elem(&ty))
+                    }
+                    Slot::Scalar { .. } => unreachable!(),
                 };
                 let i = self.expr(index).imm();
                 let p = self.data_elem(e, &ptr, &len, &i, &ety);
@@ -541,7 +670,7 @@ impl<'p> Gen<'p> {
                 ));
                 self.bind(&id.name, &fp, pt);
             }
-            let v = self.expr(&a.body);
+            let v = self.region(|g| g.expr(&a.body));
             self.store_result(&slot, v, &rt);
             self.emit(format!("br label %{end}"));
         }
@@ -586,14 +715,14 @@ impl<'p> Gen<'p> {
     fn result_slot(&mut self, t: &TypeKind) -> Option<String> {
         match t {
             TypeKind::Unit | TypeKind::Error => None,
-            t if is_data(t) => Some(self.temp(t)),
+            t if is_mem(t) => Some(self.temp(t)),
             t => Some(self.alloca(llty(t))),
         }
     }
 
     fn store_result(&mut self, slot: &Option<String>, v: CVal, t: &TypeKind) {
         match slot {
-            Some(s) if is_data(t) => self.put(v, s, t),
+            Some(s) if is_mem(t) => self.put(v, s, t),
             Some(s) => self.emit(format!("store {} {}, ptr {s}", llty(t), v.imm())),
             None => {}
         }
@@ -601,7 +730,7 @@ impl<'p> Gen<'p> {
 
     fn load_result(&mut self, slot: Option<String>, t: &TypeKind) -> CVal {
         match slot {
-            Some(s) if is_data(t) => CVal::Ptr {
+            Some(s) if is_mem(t) => CVal::Ptr {
                 ptr: s,
                 ty: value_ty(t).clone(),
             },
@@ -659,7 +788,7 @@ impl<'p> Gen<'p> {
                     self.emit(format!("br i1 {lv}, label %{end}, label %{rhs}"));
                 }
                 self.block(&rhs);
-                let rv = self.expr(r).imm();
+                let rv = self.region(|g| g.expr(r)).imm();
                 self.emit(format!("store i1 {rv}, ptr {slot}"));
                 self.emit(format!("br label %{end}"));
                 self.block(&end);
@@ -734,7 +863,7 @@ impl<'p> Gen<'p> {
             }
             ExprKind::Index { base, index } if is_data(&self.ty(e)) => {
                 let ety = self.ty(e);
-                let CVal::Arr { ptr, len } = self.expr(base) else {
+                let CVal::Arr { ptr, len } = self.array_of(base) else {
                     unreachable!()
                 };
                 let i = self.expr(index).imm();
@@ -771,6 +900,9 @@ impl<'p> Gen<'p> {
                 };
                 self.option(e, &ok, &v)
             }
+            ExprKind::Method { recv, name, args } if is_vec(&self.ty(recv)) => {
+                self.vec_method(e, recv, &name.name, args)
+            }
             ExprKind::Method { recv, name, args } => {
                 let rv = self.expr(recv);
                 match name.name.as_str() {
@@ -784,6 +916,13 @@ impl<'p> Gen<'p> {
                         self.int_method(e, op, &rv.imm(), &b, signed)
                     }
                 }
+            }
+            ExprKind::Call { path, args }
+                if path.len() == 2
+                    && path[0].name == "Vec"
+                    && matches!(path[1].name.as_str(), "new" | "with_capacity") =>
+            {
+                self.vec_new(e, args)
             }
             ExprKind::Call { path, args } if self.is_variant(path) => {
                 let t = self.ty(e);
@@ -891,6 +1030,259 @@ impl<'p> Gen<'p> {
             }
             ExprKind::Match { scrut, arms } => self.match_expr(e, scrut, arms),
         }
+    }
+
+    // ---------- Vec (ADR-0031 §4, backlog 2G-04) ----------
+
+    /// The buffer and length of the `Vec` header at `hdr`, read now (a
+    /// `push` may move the buffer).
+    fn vec_view(&mut self, hdr: &str) -> (String, String) {
+        let buf = self.t();
+        self.emit(format!("{buf} = load ptr, ptr {hdr}"));
+        let lp = self.vec_field(hdr, 1);
+        let len = self.t();
+        self.emit(format!("{len} = load i64, ptr {lp}"));
+        (buf, len)
+    }
+
+    fn vec_field(&mut self, hdr: &str, k: u32) -> String {
+        let p = self.t();
+        self.emit(format!(
+            "{p} = getelementptr inbounds %bmb.vec, ptr {hdr}, i32 0, i32 {k}"
+        ));
+        p
+    }
+
+    /// An array or slice value, or the elements of a `Vec` (a temporary
+    /// `Vec` is freed when the region ends).
+    fn array_of(&mut self, base: &Expr) -> CVal {
+        if !is_vec(&self.ty(base)) && !self.vec_var(base) {
+            return self.expr(base);
+        }
+        let hdr = self.vec_hdr(base);
+        let (ptr, len) = self.vec_view(&hdr);
+        CVal::Arr { ptr, len }
+    }
+
+    /// Whether `e` names a `Vec` local or parameter (assignment targets have
+    /// no recorded type).
+    fn vec_var(&self, e: &Expr) -> bool {
+        matches!(&e.kind, ExprKind::Var(id)
+            if matches!(self.slots.get(&id.name), Some(Slot::Data { ty, .. }) if is_vec(ty)))
+    }
+
+    /// The header of a `Vec` expression that is read, not moved: a place's
+    /// own header, or a temporary freed when the region ends.
+    fn vec_hdr(&mut self, e: &Expr) -> String {
+        let CVal::Ptr { ptr, .. } = self.expr(e) else {
+            unreachable!("a Vec value")
+        };
+        if !Self::is_place(e) {
+            self.pending.push(ptr.clone());
+        }
+        ptr
+    }
+
+    fn is_place(e: &Expr) -> bool {
+        match &e.kind {
+            ExprKind::Var(_) => true,
+            ExprKind::Deref(x) | ExprKind::Ref { expr: x, .. } => Self::is_place(x),
+            _ => false,
+        }
+    }
+
+    /// Runs `f` as a region: temporaries it leaves are freed at its end. A
+    /// data value pointing into a freed buffer is copied out first.
+    fn region(&mut self, f: impl FnOnce(&mut Self) -> CVal) -> CVal {
+        let mark = self.pending.len();
+        let v = f(self);
+        self.release(mark, v)
+    }
+
+    fn release(&mut self, mark: usize, v: CVal) -> CVal {
+        if self.pending.len() == mark {
+            return v;
+        }
+        let v = self.detach(v);
+        for h in self.pending.split_off(mark) {
+            self.emit(format!("call void @bmb_vec_free(ptr {h})"));
+        }
+        v
+    }
+
+    /// A struct or enum value copied into its own memory.
+    fn detach(&mut self, v: CVal) -> CVal {
+        match v {
+            CVal::Ptr { ptr, ty } if is_data(&ty) => {
+                let tmp = self.temp(&ty);
+                self.copy(&tmp, &ptr, &ty);
+                CVal::Ptr { ptr: tmp, ty }
+            }
+            v => v,
+        }
+    }
+
+    fn vec_new(&mut self, e: &Expr, args: &[Expr]) -> CVal {
+        let t = self.ty(e);
+        let el = vec_elem(&t);
+        let hdr = self.temp(&t);
+        let n = match args.first() {
+            Some(a) => {
+                let n = self.expr(a).imm();
+                if self.proved("E0816", e) {
+                    self.emit("; proved E0816");
+                } else {
+                    let c = self.t();
+                    self.emit(format!("{c} = icmp ule i64 {n}, {}", vec_len_max(&el)));
+                    self.check(&c, "the capacity may exceed the maximum length");
+                }
+                n
+            }
+            None => "0".to_string(),
+        };
+        self.emit(format!(
+            "call void @bmb_vec_alloc(ptr {hdr}, i64 {n}, i64 {})",
+            size_of(&el)
+        ));
+        CVal::Ptr { ptr: hdr, ty: t }
+    }
+
+    fn vec_method(&mut self, e: &Expr, recv: &Expr, m: &str, args: &[Expr]) -> CVal {
+        let vt = self.ty(recv);
+        let el = vec_elem(&vt);
+        let hdr = self.vec_hdr(recv);
+        match m {
+            "len" => {
+                let lp = self.vec_field(&hdr, 1);
+                let r = self.t();
+                self.emit(format!("{r} = load i64, ptr {lp}"));
+                CVal::Imm(r)
+            }
+            "as_slice" | "as_mut_slice" => {
+                let (ptr, len) = self.vec_view(&hdr);
+                CVal::Arr { ptr, len }
+            }
+            "clone" => {
+                let t = value_ty(&vt).clone();
+                let dst = self.temp(&t);
+                self.emit(format!(
+                    "call void @bmb_vec_clone(ptr {dst}, ptr {hdr}, i64 {})",
+                    size_of(&el)
+                ));
+                CVal::Ptr { ptr: dst, ty: t }
+            }
+            "truncate" => {
+                let n = self.expr(&args[0]).imm();
+                let lp = self.vec_field(&hdr, 1);
+                let (len, r) = (self.t(), self.t());
+                self.emit(format!("{len} = load i64, ptr {lp}"));
+                self.emit(format!("{r} = call i64 @llvm.umin.i64(i64 {len}, i64 {n})"));
+                self.emit(format!("store i64 {r}, ptr {lp}"));
+                CVal::Unit
+            }
+            "push" => {
+                // The value first: it may be an element of this `Vec`,
+                // whose buffer the growth may move.
+                let x = self.expr(&args[0]);
+                let x = self.detach(x);
+                let lp = self.vec_field(&hdr, 1);
+                let cp = self.vec_field(&hdr, 2);
+                let (len, cap, full) = (self.t(), self.t(), self.t());
+                self.emit(format!("{len} = load i64, ptr {lp}"));
+                if self.proved("E0816", e) {
+                    self.emit("; proved E0816");
+                } else {
+                    let c = self.t();
+                    self.emit(format!("{c} = icmp ult i64 {len}, {}", vec_len_max(&el)));
+                    self.check(&c, "`push` may exceed the maximum length");
+                }
+                self.emit(format!("{cap} = load i64, ptr {cp}"));
+                self.emit(format!("{full} = icmp eq i64 {len}, {cap}"));
+                let grow = self.l("grow");
+                let put = self.l("put");
+                self.emit(format!("br i1 {full}, label %{grow}, label %{put}"));
+                self.block(&grow);
+                self.emit(format!(
+                    "call void @bmb_vec_grow(ptr {hdr}, i64 {})",
+                    size_of(&el)
+                ));
+                self.emit(format!("br label %{put}"));
+                self.block(&put);
+                let buf = self.t();
+                self.emit(format!("{buf} = load ptr, ptr {hdr}"));
+                let p = self.t();
+                self.emit(format!(
+                    "{p} = getelementptr inbounds {}, ptr {buf}, i64 {len}",
+                    mem_ty(&el)
+                ));
+                self.put(x, &p, &el);
+                let n = self.t();
+                self.emit(format!("{n} = add nuw i64 {len}, 1"));
+                self.emit(format!("store i64 {n}, ptr {lp}"));
+                CVal::Unit
+            }
+            "pop" => {
+                let ot = self.ty(e);
+                let out = self.temp(&ot);
+                let lp = self.vec_field(&hdr, 1);
+                let (len, some) = (self.t(), self.t());
+                self.emit(format!("{len} = load i64, ptr {lp}"));
+                self.emit(format!("{some} = icmp ne i64 {len}, 0"));
+                let tag = self.field_ptr(&out, &ot, 0);
+                let k = self.t();
+                self.emit(format!("{k} = zext i1 {some} to i64"));
+                self.emit(format!("store i64 {k}, ptr {tag}"));
+                let take = self.l("pop");
+                let done = self.l("popped");
+                self.emit(format!("br i1 {some}, label %{take}, label %{done}"));
+                self.block(&take);
+                let last = self.t();
+                self.emit(format!("{last} = sub nuw i64 {len}, 1"));
+                self.emit(format!("store i64 {last}, ptr {lp}"));
+                let buf = self.t();
+                self.emit(format!("{buf} = load ptr, ptr {hdr}"));
+                let src = self.t();
+                self.emit(format!(
+                    "{src} = getelementptr inbounds {}, ptr {buf}, i64 {last}",
+                    mem_ty(&el)
+                ));
+                let dst = self.t();
+                self.emit(format!(
+                    "{dst} = getelementptr inbounds {}, ptr {out}, i32 0, i32 1",
+                    view_ty(&ot, "Some")
+                ));
+                self.copy(&dst, &src, &el);
+                self.emit(format!("br label %{done}"));
+                self.block(&done);
+                CVal::Ptr { ptr: out, ty: ot }
+            }
+            _ => unreachable!("checked Vec method {m}"),
+        }
+    }
+
+    /// Frees the `Vec` locals the move check left owned at the end of `b`.
+    fn drop_block(&mut self, b: &Block) {
+        let Some(names) = self
+            .t
+            .moves
+            .get(&self.path)
+            .and_then(|m| m.drops.get(&(b.span.file, b.span.lo, b.span.hi)))
+            .cloned()
+        else {
+            return;
+        };
+        for n in names {
+            if let Some(Slot::Data { ptr, .. }) = self.slots.get(&n).cloned() {
+                self.emit(format!("call void @bmb_vec_free(ptr {ptr})"));
+            }
+        }
+    }
+
+    fn replaces(&self, span: Span) -> bool {
+        self.t
+            .moves
+            .get(&self.path)
+            .is_some_and(|m| m.replaces.contains(&(span.file, span.lo, span.hi)))
     }
 
     /// `Some(v)` when `ok` (an `i1`), else `None`, of `e`'s `Option` type.
@@ -1017,11 +1409,12 @@ impl<'p> Gen<'p> {
         let elem = match &base.kind {
             ExprKind::Var(id) => match &self.slots[&id.name] {
                 Slot::Arr { elem, .. } => elem,
-                Slot::Scalar { .. } | Slot::Data { .. } => unreachable!("indexing a scalar"),
+                Slot::Data { ty, .. } => llty(&vec_elem(ty)),
+                Slot::Scalar { .. } => unreachable!("indexing a scalar"),
             },
             _ => llty(&elem_of(&self.ty(base))),
         };
-        let CVal::Arr { ptr, len } = self.expr(base) else {
+        let CVal::Arr { ptr, len } = self.array_of(base) else {
             unreachable!()
         };
         let i = self.expr(index).imm();
@@ -1116,7 +1509,10 @@ impl<'p> Gen<'p> {
                 // A data value is passed as a private copy; a reference as
                 // the address of its place.
                 CVal::Ptr { ptr, ty }
-                    if matches!(param_tys.get(k), Some(TypeKind::Named { .. })) =>
+                    if matches!(
+                        param_tys.get(k),
+                        Some(TypeKind::Named { .. } | TypeKind::Vec(_))
+                    ) =>
                 {
                     let tmp = self.temp(&ty);
                     self.copy(&tmp, &ptr, &ty);
@@ -1138,7 +1534,7 @@ impl<'p> Gen<'p> {
             (fn_sym(&target), self.t.fns[&target].ret.clone())
         };
         let _ = e;
-        if is_data(&ret) {
+        if is_mem(&ret) {
             // A data result comes back through the caller's memory.
             let out = self.temp(&ret);
             flat.insert(0, format!("ptr {out}"));
@@ -1163,12 +1559,26 @@ impl<'p> Gen<'p> {
 
     fn block_expr(&mut self, b: &Block) -> CVal {
         for s in &b.stmts {
+            let mark = self.pending.len();
             self.stmt(s);
+            self.release(mark, CVal::Unit);
         }
-        match &b.tail {
-            Some(t) => self.expr(t),
+        let v = match &b.tail {
+            Some(t) => self.region(|g| g.expr(t)),
             None => CVal::Unit,
+        };
+        let freed = self
+            .t
+            .moves
+            .get(&self.path)
+            .is_some_and(|m| m.drops.contains_key(&(b.span.file, b.span.lo, b.span.hi)));
+        if !freed {
+            return v;
         }
+        // The value may point into a buffer freed here.
+        let v = self.detach(v);
+        self.drop_block(b);
+        v
     }
 
     fn stmt(&mut self, s: &Stmt) {
@@ -1180,7 +1590,7 @@ impl<'p> Gen<'p> {
                     .locals
                     .get(&self.path)
                     .and_then(|m| m.get(&name.name))
-                    .is_some_and(is_data) =>
+                    .is_some_and(is_mem) =>
             {
                 let t = self.t.locals[&self.path][&name.name].clone();
                 let ptr = self.temp(&t);
@@ -1213,7 +1623,11 @@ impl<'p> Gen<'p> {
                         .insert(name.name.clone(), Slot::Scalar { ptr, ty: lt });
                 }
             },
-            Stmt::Assign { target, value, .. } => match &target.kind {
+            Stmt::Assign {
+                target,
+                value,
+                span,
+            } => match &target.kind {
                 ExprKind::Var(id) => match self.slots[&id.name].clone() {
                     Slot::Scalar { ptr, ty } => {
                         let v = self.expr(value).imm();
@@ -1222,12 +1636,19 @@ impl<'p> Gen<'p> {
                     Slot::Arr { ptr, elem, .. } => self.init_array(value, &ptr, elem),
                     Slot::Data { ptr, ty } => {
                         let v = self.expr(value);
+                        if self.replaces(*span) {
+                            self.emit(format!("call void @bmb_vec_free(ptr {ptr})"));
+                        }
                         self.put(v, &ptr, &ty);
                     }
                 },
                 ExprKind::Index { base, .. }
                     if matches!(&base.kind, ExprKind::Var(id)
-                        if matches!(&self.slots[&id.name], Slot::Arr { ety, .. } if is_data(ety))) =>
+                    if match &self.slots[&id.name] {
+                        Slot::Arr { ety, .. } => is_data(ety),
+                        Slot::Data { ty, .. } => is_vec(ty) && is_data(&vec_elem(ty)),
+                        Slot::Scalar { .. } => false,
+                    }) =>
                 {
                     // Rust evaluates the value, then the place.
                     let v = self.expr(value);
@@ -1242,6 +1663,9 @@ impl<'p> Gen<'p> {
                 _ => {
                     let v = self.expr(value);
                     let (p, t) = self.place(target);
+                    if self.replaces(*span) {
+                        self.emit(format!("call void @bmb_vec_free(ptr {p})"));
+                    }
                     self.put(v, &p, &t);
                 }
             },
@@ -1251,7 +1675,7 @@ impl<'p> Gen<'p> {
                 let end = self.l("endwhile");
                 self.emit(format!("br label %{head}"));
                 self.block(&head);
-                let c = self.expr(cond).imm();
+                let c = self.region(|g| g.expr(cond)).imm();
                 self.emit(format!("br i1 {c}, label %{lb}, label %{end}"));
                 self.block(&lb);
                 self.block_expr(body);
@@ -1261,7 +1685,12 @@ impl<'p> Gen<'p> {
             // Proof-only statement: no code.
             Stmt::Assert { .. } => {}
             Stmt::Expr(e) => {
-                self.expr(e);
+                let v = self.expr(e);
+                if is_vec(&self.ty(e))
+                    && let CVal::Ptr { ptr, .. } = v
+                {
+                    self.emit(format!("call void @bmb_vec_free(ptr {ptr})"));
+                }
             }
         }
     }
@@ -1325,6 +1754,14 @@ pub fn emit_with(
          declare void @llvm.memmove.p0.p0.i64(ptr, ptr, i64, i1)\n",
     );
     ir.push_str(&type_defs(t));
+    let uses_vec = t.types.values().any(crate::verify::holds_vec)
+        || t.locals
+            .values()
+            .any(|m| m.values().any(crate::verify::holds_vec));
+    if uses_vec {
+        ir.push_str(VEC_RUNTIME);
+        ir.push_str("declare i64 @llvm.umin.i64(i64, i64)\n");
+    }
     for s in ["s", "u"] {
         for op in ["add", "sub", "mul"] {
             let _ = writeln!(
@@ -1386,14 +1823,15 @@ pub fn emit_with(
             label: 0,
             slots: BTreeMap::new(),
             checks: 0,
+            pending: Vec::new(),
         };
         let sig = t.fns[&path].clone();
         let mut params = Vec::new();
         for (prm, pty) in f.params.iter().zip(&sig.params) {
             let n = &prm.name.name;
             match &prm.ty.kind {
-                // `&T` / `&mut T` of a struct or enum: its address.
-                TypeKind::Ref { mutable, .. } if is_data(pty) && !is_array(pty) => {
+                // `&T` / `&mut T` of a struct, an enum or a `Vec`: its address.
+                TypeKind::Ref { mutable, .. } if is_mem(pty) && !is_array(pty) => {
                     let attr = if *mutable { "noalias " } else { "readonly " };
                     params.push(format!("ptr {attr}%\"{n}.ptr\""));
                     g.slots.insert(
@@ -1419,8 +1857,9 @@ pub fn emit_with(
                         },
                     );
                 }
-                // A data value: the caller passes a private copy.
-                _ if is_data(pty) => {
+                // A data value: the caller passes a private copy (of a
+                // `Vec`, its header: the callee owns the buffer).
+                _ if is_mem(pty) => {
                     params.push(format!("ptr readonly %\"{n}.in\""));
                     g.slots.insert(
                         n.clone(),
@@ -1459,7 +1898,7 @@ pub fn emit_with(
             }
         }
         let rv = g.block_expr(&f.body);
-        let ret = if is_data(&sig.ret) {
+        let ret = if is_mem(&sig.ret) {
             // A data result is written to the caller's memory.
             params.insert(0, "ptr noalias %\"ret.out\"".into());
             g.put(rv, "%\"ret.out\"", &sig.ret);

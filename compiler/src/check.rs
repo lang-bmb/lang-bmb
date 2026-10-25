@@ -202,6 +202,7 @@ impl<'a> Checker<'a> {
             recursive: self.recursive,
             adts: self.adts,
             locals: self.locals,
+            moves: self.moves,
         }
     }
 

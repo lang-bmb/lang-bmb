@@ -1,0 +1,144 @@
+#[summary("실행: Vec 성장·축소·복제·이동·반환·슬라이스·핸들 (ADR-0031, backlog 2G-04)")]
+mod vr {
+    spec fn small(n: usize) -> bool { n <= 1000 }
+
+    spec fn len_is(a: &[u64], n: usize) -> bool { a.len() == n }
+
+    // Grows past the first capacity (4) several times: 4, 8, 16, 32.
+    #[effects(pure)]
+    #[uses(small, len_is)]
+    fn squares(n: usize) -> (r: Vec<u64>)
+        requires small(n),
+        ensures len_is(r.as_slice(), n),
+    {
+        let mut v: Vec<u64> = Vec::new();
+        let mut i: usize = 0;
+        while i < n
+            invariant i <= n, len_is(v.as_slice(), i),
+            decreases n - i,
+        {
+            let k: u64 = u64::try_from(i).unwrap();
+            v.push(k * k);
+            i = i + 1;
+        }
+        v
+    }
+
+    #[effects(pure)]
+    fn sum(a: &[u64]) -> u64 {
+        let mut s: u64 = 0;
+        let mut i: usize = 0;
+        while i < a.len()
+            invariant i <= a.len(),
+            decreases a.len() - i,
+        {
+            s = s.saturating_add(a[i]);
+            i = i + 1;
+        }
+        s
+    }
+
+    spec fn room(a: &[u64]) -> bool { a.len() < 1000 }
+
+    spec fn grew(a: &[u64], b: &[u64]) -> bool { a.len() == b.len() + 1 }
+
+    #[effects(pure)]
+    #[uses(room, grew)]
+    fn append(v: &mut Vec<u64>, x: u64) -> ()
+        requires room(v.as_slice()),
+        ensures grew(v.as_slice(), old(v).as_slice()),
+    {
+        v.push(x);
+    }
+
+    #[effects(pure)]
+    fn double_all(a: &mut [u64]) -> () {
+        let mut i: usize = 0;
+        while i < a.len()
+            invariant i <= a.len(),
+            decreases a.len() - i,
+        {
+            a[i] = a[i].saturating_mul(2);
+            i = i + 1;
+        }
+    }
+
+    struct Point { x: i64, y: i64 }
+
+    struct Id { i: usize }
+
+    spec fn store_room(s: &[Point]) -> bool { s.len() < 1000 }
+
+    spec fn added(h: Id, s: &[Point], t: &[Point]) -> bool { h.i == t.len() && s.len() == t.len() + 1 }
+
+    #[effects(pure)]
+    #[uses(store_room, added)]
+    fn add(s: &mut Vec<Point>, p: Point) -> (h: Id)
+        requires store_room(s.as_slice()),
+        ensures added(h, s.as_slice(), old(s).as_slice()),
+    {
+        let i: usize = s.len();
+        s.push(p);
+        Id { i: i }
+    }
+
+    #[effects(io)]
+    fn show(n: usize) -> () {
+        print_u64(u64::try_from(n).unwrap());
+    }
+
+    #[effects(io)]
+    #[uses(small, len_is, room, grew, store_room, added)]
+    fn main() -> () {
+        let v: Vec<u64> = squares(20);
+        show(v.len());
+        print_u64(v[19]);
+        // A clone is independent of its original.
+        let mut w: Vec<u64> = v.clone();
+        double_all(w.as_mut_slice());
+        print_u64(w[3]);
+        print_u64(v[3]);
+        append(&mut w, 5);
+        show(w.len());
+        show(v.len());
+        // Moved, popped to empty, truncated.
+        let mut u: Vec<u64> = w;
+        u.truncate(2);
+        match u.pop() {
+            None => print_u64(99),
+            Some(x1) => print_u64(x1),
+        }
+        match u.pop() {
+            None => print_u64(99),
+            Some(x2) => print_u64(x2),
+        }
+        match u.pop() {
+            None => print_u64(99),
+            Some(x3) => print_u64(x3),
+        }
+        // Replacing an owned Vec frees the old one.
+        u = squares(3);
+        show(u.len());
+        // A temporary read in a loop condition is freed each time.
+        let mut k: usize = 0;
+        while k < squares(3).len()
+            decreases 3 - k,
+        {
+            k = k + 1;
+        }
+        show(k);
+        // Bytes and structs as elements.
+        let mut flags: Vec<bool> = Vec::with_capacity(2);
+        flags.push(true);
+        flags.push(false);
+        flags.push(true);
+        if flags[2] && !flags[1] { print_u64(1) } else { print_u64(0) }
+        let mut s: Vec<Point> = Vec::new();
+        let a: Id = add(&mut s, Point { x: 3, y: 4 });
+        let b: Id = add(&mut s, Point { x: -1, y: 7 });
+        s[a.i] = Point { x: s[b.i].y, y: s[a.i].x };
+        print_i64(s[a.i].x);
+        print_i64(s[a.i].y);
+        print_u64(sum(squares(10).as_slice()));
+    }
+}

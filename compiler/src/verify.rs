@@ -33,6 +33,8 @@ pub struct Tables {
     pub adts: BTreeMap<String, crate::check::Adt>,
     /// Canonical type of every parameter and local, by definition path.
     pub locals: BTreeMap<String, BTreeMap<String, TypeKind>>,
+    /// Where each executable function frees its `Vec` values (ADR-0031 §2).
+    pub moves: BTreeMap<String, crate::moves::MoveInfo>,
 }
 
 impl Tables {
@@ -88,6 +90,7 @@ impl Tables {
                     )
                 })
                 .collect(),
+            moves: BTreeMap::new(),
         }
     }
 }
@@ -2362,9 +2365,8 @@ enum Gate {
 impl Gate {
     fn rejects(self, t: &TypeKind, tb: &Tables) -> bool {
         match self {
-            // The code generator lowers what the prover encodes (2B-06),
-            // but not `Vec` yet (2G-04).
-            Gate::Codegen => Gate::Prover.rejects(t, tb) || holds_vec(t),
+            // The code generator lowers what the prover encodes (2B-06, 2G-04).
+            Gate::Codegen => Gate::Prover.rejects(t, tb),
             Gate::Prover => match t {
                 TypeKind::Named { .. } => match (struct_fields(t, tb), enum_variants(t, tb)) {
                     (Some(fs), _) => fs.iter().any(|(_, ft)| self.rejects(ft, tb)),
@@ -2404,7 +2406,7 @@ fn data_spec_fns(defs: &BTreeMap<String, Def>, t: &Tables, gate: Gate) -> BTreeS
     }
 }
 
-fn holds_vec(t: &TypeKind) -> bool {
+pub(crate) fn holds_vec(t: &TypeKind) -> bool {
     match t {
         TypeKind::Vec(_) => true,
         TypeKind::Ref { inner, .. } => holds_vec(&inner.kind),
