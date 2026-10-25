@@ -374,6 +374,91 @@ fn mutants_are_capped() {
     );
 }
 
+/// Backlog 2A-10: `bmb mutate` makes the W0904 mutants as programs.
+#[test]
+fn mutate_makes_every_lint_mutant_as_a_program() {
+    let input = one("w.bmb", MUT);
+    let defs = ["w::abs".to_string(), "w::sign".to_string()];
+    let ms = bmb::lint::mutate_sources(&input, &defs).unwrap();
+    // The same sites W0904 proves (16, see above), uncapped and in order.
+    assert_eq!(ms.len(), 16);
+    assert_eq!(ms.iter().filter(|m| m.def == "w::abs").count(), 5);
+    assert_eq!((ms[0].def.as_str(), ms[0].site), ("w::abs", 0));
+    assert_eq!((ms[5].def.as_str(), ms[5].site), ("w::sign", 0));
+    let original = bmb::format_sources(&input).unwrap()["w"].clone();
+    for m in &ms {
+        assert_eq!(m.unit, "w");
+        assert_ne!(m.text, original, "{} {}", m.before, m.after);
+        // Each mutant is a program that passes the front end.
+        let out = bmb::check_sources(&[("m.bmb".to_string(), m.text.clone())]);
+        assert!(out.ok, "{}: {}", m.after, out.diagnostics);
+    }
+    // The surviving W0904 changes are among them, at the reported place.
+    let survivor = ms.iter().find(|m| m.after == "1 - x").unwrap();
+    assert_eq!(
+        (survivor.line, survivor.col, survivor.before.as_str()),
+        (14, 20, "0 - x")
+    );
+    assert!(survivor.text.contains("1 - x"));
+    // Rows are JSON, and the result is deterministic.
+    let again = bmb::lint::mutate_sources(&input, &defs).unwrap();
+    let rows_of = |ms: &[bmb::lint::Mutant]| ms.iter().map(|m| m.row()).collect::<String>();
+    assert_eq!(rows_of(&ms), rows_of(&again));
+    assert_eq!(rows(&rows_of(&ms)).len(), 16);
+    // Only executable functions are mutated.
+    assert!(bmb::lint::mutate_sources(&input, &["w::nonneg".to_string()]).is_err());
+    assert!(bmb::lint::mutate_sources(&input, &["w::missing".to_string()]).is_err());
+}
+
+#[test]
+fn mutate_and_all_checks_cli() {
+    let dir = std::env::temp_dir().join(format!("bmb-mutate-cli-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("w.bmb");
+    std::fs::write(&file, MUT).unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
+        .args(["mutate", "--def", "w::abs"])
+        .arg(&file)
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let text = String::from_utf8(out.stdout).unwrap();
+    let rs = rows(&text);
+    assert_eq!(rs.len(), 6);
+    assert_eq!(
+        text.lines().last().unwrap(),
+        "{\"summary\":true,\"mutants\":5}"
+    );
+    assert_eq!(s(&rs[0], "def"), "w::abs");
+    // No `--def`: usage error.
+    let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
+        .arg("mutate")
+        .arg(&file)
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    // emit-llvm --all-checks: IR without running the prover; every
+    // obligation keeps its runtime check.
+    let ll = dir.join("w.ll");
+    let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
+        .args(["emit-llvm", "--all-checks"])
+        .arg(&file)
+        .arg("-o")
+        .arg(&ll)
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    assert!(
+        !String::from_utf8(out.stdout)
+            .unwrap()
+            .contains("\"status\"")
+    );
+    let ir = std::fs::read_to_string(&ll).unwrap();
+    assert!(ir.contains("unproved"), "{ir}");
+    assert!(!ir.contains("; proved"), "{ir}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn codes_are_warnings_on_the_reference_page() {
     for c in ["W0901", "W0902", "W0903", "W0904"] {

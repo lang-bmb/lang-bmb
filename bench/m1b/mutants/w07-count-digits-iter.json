@@ -1,0 +1,237 @@
+{
+ "task": "w07-count-digits-iter",
+ "generator": "bench/m1/bsb_gen.py",
+ "max_witnesses": 2,
+ "targets": [
+  {
+   "def": "tasks::count_digits_iter",
+   "signature": "fn count_digits_iter(n: u64) -> (r: u64)",
+   "mutated": [
+    "tasks::count_digits_iter"
+   ],
+   "inputs": [
+    {
+     "n": 0
+    },
+    {
+     "n": 1
+    },
+    {
+     "n": 5
+    },
+    {
+     "n": 9
+    },
+    {
+     "n": 10
+    },
+    {
+     "n": 11
+    },
+    {
+     "n": 19
+    },
+    {
+     "n": 20
+    },
+    {
+     "n": 50
+    },
+    {
+     "n": 99
+    },
+    {
+     "n": 100
+    },
+    {
+     "n": 101
+    },
+    {
+     "n": 999
+    },
+    {
+     "n": 1000
+    },
+    {
+     "n": 1001
+    },
+    {
+     "n": 9999
+    },
+    {
+     "n": 10000
+    },
+    {
+     "n": 12345
+    },
+    {
+     "n": 99999
+    },
+    {
+     "n": 100000
+    },
+    {
+     "n": 999999
+    },
+    {
+     "n": 1000000
+    },
+    {
+     "n": 1000000000
+    },
+    {
+     "n": 1000000000000
+    }
+   ],
+   "counts": {
+    "generated": 7,
+    "kept": 4,
+    "equivalent": 0,
+    "trap_only": 0,
+    "allowed": 3,
+    "no_check": 0
+   },
+   "mutants": [
+    {
+     "def": "tasks::count_digits_iter",
+     "site": 0,
+     "line": 9,
+     "col": 26,
+     "before": "1",
+     "after": "2",
+     "witnesses": [
+      {
+       "input": {
+        "n": 0
+       },
+       "expected": {
+        "r": 1
+       },
+       "output": {
+        "r": 2
+       }
+      },
+      {
+       "input": {
+        "n": 1
+       },
+       "expected": {
+        "r": 1
+       },
+       "output": {
+        "r": 2
+       }
+      }
+     ],
+     "id": "m00"
+    },
+    {
+     "def": "tasks::count_digits_iter",
+     "site": 1,
+     "line": 10,
+     "col": 15,
+     "before": "m >= 10",
+     "after": "m > 10",
+     "witnesses": [
+      {
+       "input": {
+        "n": 10
+       },
+       "expected": {
+        "r": 2
+       },
+       "output": {
+        "r": 1
+       }
+      }
+     ],
+     "id": "m01"
+    },
+    {
+     "def": "tasks::count_digits_iter",
+     "site": 2,
+     "line": 10,
+     "col": 20,
+     "before": "m >= 10",
+     "after": "m >= 11",
+     "witnesses": [
+      {
+       "input": {
+        "n": 10
+       },
+       "expected": {
+        "r": 2
+       },
+       "output": {
+        "r": 1
+       }
+      }
+     ],
+     "id": "m02"
+    },
+    {
+     "def": "tasks::count_digits_iter",
+     "site": 5,
+     "line": 15,
+     "col": 17,
+     "before": "c + 1",
+     "after": "c - 1",
+     "witnesses": [
+      {
+       "input": {
+        "n": 10
+       },
+       "expected": {
+        "r": 2
+       },
+       "output": {
+        "r": 0
+       }
+      },
+      {
+       "input": {
+        "n": 11
+       },
+       "expected": {
+        "r": 2
+       },
+       "output": {
+        "r": 0
+       }
+      }
+     ],
+     "id": "m03"
+    }
+   ],
+   "discarded": [
+    {
+     "def": "tasks::count_digits_iter",
+     "site": 3,
+     "line": 14,
+     "col": 17,
+     "before": "m / 10",
+     "after": "m % 10",
+     "reason": "allowed"
+    },
+    {
+     "def": "tasks::count_digits_iter",
+     "site": 4,
+     "line": 14,
+     "col": 21,
+     "before": "m / 10",
+     "after": "m / 11",
+     "reason": "allowed"
+    },
+    {
+     "def": "tasks::count_digits_iter",
+     "site": 6,
+     "line": 15,
+     "col": 21,
+     "before": "c + 1",
+     "after": "c + 2",
+     "reason": "allowed"
+    }
+   ]
+  }
+ ]
+}

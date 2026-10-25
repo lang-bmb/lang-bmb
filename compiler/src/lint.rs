@@ -665,3 +665,88 @@ fn apply_site(f: &mut FnDef, text: &str, k: usize) {
         i += n;
     });
 }
+
+// ---------- mutants as programs (`bmb mutate`, backlog 2A-10) ----------
+
+/// One W0904 change applied to one function, as program text (the hidden
+/// mutant sets of the spec-strength benchmark BSB are made from these).
+pub struct Mutant {
+    /// The changed function.
+    pub def: String,
+    /// The site number within `def`, in the order W0904 visits them.
+    pub site: usize,
+    /// Position of the changed node in its input file (1-based).
+    pub line: u32,
+    pub col: u32,
+    /// The text shown before and after the change, as in W0904.
+    pub before: String,
+    pub after: String,
+    /// The top-level unit holding `def`, and that unit's normal form
+    /// (ADR-0019) with the change applied. Every other unit is unchanged.
+    pub unit: String,
+    pub text: String,
+}
+
+impl Mutant {
+    /// One JSONL row: `{"def","site","line","col","before","after","unit","text"}`.
+    pub fn row(&self) -> String {
+        use crate::diag::json_str;
+        format!(
+            "{{\"def\":{},\"site\":{},\"line\":{},\"col\":{},\"before\":{},\"after\":{},\"unit\":{},\"text\":{}}}\n",
+            json_str(&self.def),
+            self.site,
+            self.line,
+            self.col,
+            json_str(&self.before),
+            json_str(&self.after),
+            json_str(&self.unit),
+            json_str(&self.text)
+        )
+    }
+}
+
+/// Every W0904 mutant of the executable functions `defs` (in the given
+/// order, sites in visiting order), uncapped and unproved: equivalence and
+/// verdicts are left to the caller. `Err` carries the diagnostics when the
+/// program does not check, or names a path that is not an executable
+/// function. Deterministic: the result depends only on the input.
+pub fn mutate_sources(files: &[(String, String)], defs: &[String]) -> Result<Vec<Mutant>, String> {
+    let fe = crate::frontend(files);
+    if fe.diags.has_errors() {
+        return Err(fe.diags.to_jsonl(&fe.sm));
+    }
+    let mut table: BTreeMap<String, &FnDef> = BTreeMap::new();
+    for m in &fe.program.mods {
+        collect(m, "", &mut table);
+    }
+    let mut out = Vec::new();
+    for path in defs {
+        let f = match table.get(path) {
+            Some(f) if f.kind == FnKind::Exec => *f,
+            _ => return Err(format!("`{path}` is not an executable function\n")),
+        };
+        let text = &files[f.span.file as usize].1;
+        let unit = path.split("::").next().unwrap_or_default().to_string();
+        for (k, s) in sites(f, text).into_iter().enumerate() {
+            let mut prog = fe.program.clone();
+            apply_site(
+                find_mut(&mut prog, path).expect("definition exists"),
+                text,
+                k,
+            );
+            let mut units = crate::fmt::format_units(&prog);
+            let (line, col) = fe.sm.line_col(s.span.file, s.span.lo);
+            out.push(Mutant {
+                def: path.clone(),
+                site: k,
+                line,
+                col,
+                before: s.before,
+                after: s.after,
+                text: units.remove(&unit).unwrap_or_default(),
+                unit: unit.clone(),
+            });
+        }
+    }
+    Ok(out)
+}

@@ -35,8 +35,14 @@ grep -qF "| 작성 1회 성공률 | 10/10 |" <<< "$table" || { echo "harness sum
   --job 'bench m1b oracle=tmp=$(mktemp); trap "rm -f $tmp" EXIT
 python3 bench/m1/harness.py --set bench/m1b run --agent oracle --expect all-pass --jobs 2 --out "$tmp" > /dev/null
 table=$(python3 bench/m1/harness.py summarize "$tmp")
-grep -qF "| 작성 1회 성공률 | 25/25 |" <<< "$table" || { echo "m1b summarize: unexpected table"; exit 1; }' \
-  --job "bench m1b weak=python3 bench/m1/harness.py --set bench/m1b run --agent weak --expect weak-fail --jobs 2 > /dev/null" \
+grep -qF "| 작성 1회 성공률 | 25/25 |" <<< "$table" || { echo "m1b summarize: unexpected table"; exit 1; }
+# BSB (backlog 2A-10): the reference contracts kill every hidden mutant.
+grep -qE "\| 명세 변이체 판별률 \| ([0-9]+)/\1 \(100\.0%\) \|" <<< "$table" || { echo "m1b: reference contracts must kill every mutant"; grep "변이체" <<< "$table"; exit 1; }' \
+  --job 'bench m1b weak=tmp=$(mktemp); trap "rm -f $tmp" EXIT
+python3 bench/m1/harness.py --set bench/m1b run --agent weak --expect weak-fail --jobs 2 --out "$tmp" > /dev/null
+# The weak contracts kill fewer (BSB, backlog 2A-10).
+row=$(python3 bench/m1/harness.py summarize "$tmp" | grep "명세 변이체 판별률")
+grep -qE "\| [0-9]+/[0-9]+ \(" <<< "$row" && ! grep -qE "\| ([0-9]+)/\1 \(" <<< "$row" || { echo "m1b weak: unexpected kill rate: $row"; exit 1; }' \
   --job "bench m3 generator=python3 bench/m3/test_gen.py > /dev/null" \
   --job "bench bnb=python3 bench/bnb/test_bnb.py > /dev/null" \
   --job 'bench brb oracle=b=$(mktemp); r=$(mktemp); trap "rm -f $b $r" EXIT

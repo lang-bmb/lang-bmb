@@ -1,0 +1,437 @@
+{
+ "task": "w06-add-all",
+ "generator": "bench/m1/bsb_gen.py",
+ "max_witnesses": 2,
+ "targets": [
+  {
+   "def": "tasks::add_all",
+   "signature": "fn add_all(a: &mut [i64], d: i64) -> ()",
+   "mutated": [
+    "tasks::add_all"
+   ],
+   "inputs": [
+    {
+     "a": [],
+     "d": 0
+    },
+    {
+     "a": [
+      1
+     ],
+     "d": 1
+    },
+    {
+     "a": [
+      1,
+      2
+     ],
+     "d": -1
+    },
+    {
+     "a": [
+      1000
+     ],
+     "d": 1000
+    },
+    {
+     "a": [
+      -1000
+     ],
+     "d": -1000
+    },
+    {
+     "a": [
+      1000,
+      -1000
+     ],
+     "d": 0
+    },
+    {
+     "a": [
+      5,
+      6,
+      7
+     ],
+     "d": 3
+    },
+    {
+     "a": [
+      -600,
+      604,
+      0,
+      -726
+     ],
+     "d": 0
+    },
+    {
+     "a": [
+      -160
+     ],
+     "d": -1000
+    },
+    {
+     "a": [
+      -528,
+      121
+     ],
+     "d": -7
+    },
+    {
+     "a": [
+      1,
+      -1000
+     ],
+     "d": 2
+    },
+    {
+     "a": [
+      252
+     ],
+     "d": -7
+    },
+    {
+     "a": [
+      0,
+      410
+     ],
+     "d": -1000
+    },
+    {
+     "a": [],
+     "d": -1000
+    },
+    {
+     "a": [],
+     "d": -7
+    },
+    {
+     "a": [
+      -816,
+      -348,
+      673,
+      -718
+     ],
+     "d": 1000
+    },
+    {
+     "a": [
+      428,
+      770,
+      -22,
+      1
+     ],
+     "d": -7
+    },
+    {
+     "a": [
+      0,
+      -1000,
+      -1
+     ],
+     "d": 0
+    },
+    {
+     "a": [
+      468,
+      562,
+      372,
+      17
+     ],
+     "d": -1000
+    },
+    {
+     "a": [
+      837,
+      -450,
+      0,
+      -125
+     ],
+     "d": -7
+    },
+    {
+     "a": [
+      382,
+      -1
+     ],
+     "d": 1000
+    },
+    {
+     "a": [
+      -1000,
+      -469,
+      1
+     ],
+     "d": 0
+    },
+    {
+     "a": [
+      0
+     ],
+     "d": -1000
+    },
+    {
+     "a": [
+      -171,
+      0
+     ],
+     "d": 2
+    },
+    {
+     "a": [
+      -1
+     ],
+     "d": -1000
+    },
+    {
+     "a": [
+      202,
+      0
+     ],
+     "d": 7
+    },
+    {
+     "a": [
+      19
+     ],
+     "d": -1
+    },
+    {
+     "a": [
+      -856
+     ],
+     "d": 1
+    },
+    {
+     "a": [
+      1000,
+      1000,
+      -1000
+     ],
+     "d": 1000
+    }
+   ],
+   "counts": {
+    "generated": 9,
+    "kept": 3,
+    "equivalent": 0,
+    "trap_only": 6,
+    "allowed": 0,
+    "no_check": 0
+   },
+   "mutants": [
+    {
+     "def": "tasks::add_all",
+     "site": 0,
+     "line": 9,
+     "col": 28,
+     "before": "0",
+     "after": "1",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1
+        ],
+        "d": 1
+       },
+       "expected": {
+        "a": [
+         2
+        ]
+       },
+       "output": {
+        "a": [
+         1
+        ]
+       }
+      },
+      {
+       "input": {
+        "a": [
+         1,
+         2
+        ],
+        "d": -1
+       },
+       "expected": {
+        "a": [
+         0,
+         1
+        ]
+       },
+       "output": {
+        "a": [
+         1,
+         1
+        ]
+       }
+      }
+     ],
+     "id": "m00"
+    },
+    {
+     "def": "tasks::add_all",
+     "site": 4,
+     "line": 14,
+     "col": 20,
+     "before": "a[k] + d",
+     "after": "a[k] - d",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1
+        ],
+        "d": 1
+       },
+       "expected": {
+        "a": [
+         2
+        ]
+       },
+       "output": {
+        "a": [
+         0
+        ]
+       }
+      },
+      {
+       "input": {
+        "a": [
+         1,
+         2
+        ],
+        "d": -1
+       },
+       "expected": {
+        "a": [
+         0,
+         1
+        ]
+       },
+       "output": {
+        "a": [
+         2,
+         3
+        ]
+       }
+      }
+     ],
+     "id": "m01"
+    },
+    {
+     "def": "tasks::add_all",
+     "site": 8,
+     "line": 15,
+     "col": 21,
+     "before": "k + 1",
+     "after": "k + 2",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1,
+         2
+        ],
+        "d": -1
+       },
+       "expected": {
+        "a": [
+         0,
+         1
+        ]
+       },
+       "output": {
+        "a": [
+         0,
+         2
+        ]
+       }
+      },
+      {
+       "input": {
+        "a": [
+         5,
+         6,
+         7
+        ],
+        "d": 3
+       },
+       "expected": {
+        "a": [
+         8,
+         9,
+         10
+        ]
+       },
+       "output": {
+        "a": [
+         8,
+         6,
+         10
+        ]
+       }
+      }
+     ],
+     "id": "m02"
+    }
+   ],
+   "discarded": [
+    {
+     "def": "tasks::add_all",
+     "site": 1,
+     "line": 10,
+     "col": 15,
+     "before": "k < a.len()",
+     "after": "k <= a.len()",
+     "reason": "trap_only"
+    },
+    {
+     "def": "tasks::add_all",
+     "site": 2,
+     "line": 14,
+     "col": 13,
+     "before": "a[k]",
+     "after": "a[k + 1]",
+     "reason": "trap_only"
+    },
+    {
+     "def": "tasks::add_all",
+     "site": 3,
+     "line": 14,
+     "col": 13,
+     "before": "a[k]",
+     "after": "a[k - 1]",
+     "reason": "trap_only"
+    },
+    {
+     "def": "tasks::add_all",
+     "site": 5,
+     "line": 14,
+     "col": 20,
+     "before": "a[k]",
+     "after": "a[k + 1]",
+     "reason": "trap_only"
+    },
+    {
+     "def": "tasks::add_all",
+     "site": 6,
+     "line": 14,
+     "col": 20,
+     "before": "a[k]",
+     "after": "a[k - 1]",
+     "reason": "trap_only"
+    },
+    {
+     "def": "tasks::add_all",
+     "site": 7,
+     "line": 15,
+     "col": 17,
+     "before": "k + 1",
+     "after": "k - 1",
+     "reason": "trap_only"
+    }
+   ]
+  }
+ ]
+}

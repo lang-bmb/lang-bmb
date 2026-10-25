@@ -1,0 +1,408 @@
+{
+ "task": "w16-step-terminal",
+ "generator": "bench/m1/bsb_gen.py",
+ "max_witnesses": 2,
+ "targets": [
+  {
+   "def": "fsm::step",
+   "signature": "fn step(s: i64, ev: i64) -> (r: i64)",
+   "mutated": [
+    "fsm::step"
+   ],
+   "inputs": [
+    {
+     "s": 0,
+     "ev": -2
+    },
+    {
+     "s": 0,
+     "ev": -1
+    },
+    {
+     "s": 0,
+     "ev": 0
+    },
+    {
+     "s": 0,
+     "ev": 1
+    },
+    {
+     "s": 0,
+     "ev": 2
+    },
+    {
+     "s": 0,
+     "ev": 3
+    },
+    {
+     "s": 1,
+     "ev": -2
+    },
+    {
+     "s": 1,
+     "ev": -1
+    },
+    {
+     "s": 1,
+     "ev": 0
+    },
+    {
+     "s": 1,
+     "ev": 1
+    },
+    {
+     "s": 1,
+     "ev": 2
+    },
+    {
+     "s": 1,
+     "ev": 3
+    },
+    {
+     "s": 2,
+     "ev": -2
+    },
+    {
+     "s": 2,
+     "ev": -1
+    },
+    {
+     "s": 2,
+     "ev": 0
+    },
+    {
+     "s": 2,
+     "ev": 1
+    },
+    {
+     "s": 2,
+     "ev": 2
+    },
+    {
+     "s": 2,
+     "ev": 3
+    },
+    {
+     "s": 3,
+     "ev": -2
+    },
+    {
+     "s": 3,
+     "ev": -1
+    },
+    {
+     "s": 3,
+     "ev": 0
+    },
+    {
+     "s": 3,
+     "ev": 1
+    },
+    {
+     "s": 3,
+     "ev": 2
+    },
+    {
+     "s": 3,
+     "ev": 3
+    }
+   ],
+   "counts": {
+    "generated": 20,
+    "kept": 4,
+    "equivalent": 0,
+    "trap_only": 0,
+    "allowed": 16,
+    "no_check": 0
+   },
+   "mutants": [
+    {
+     "def": "fsm::step",
+     "site": 8,
+     "line": 108,
+     "col": 13,
+     "before": "s == 1",
+     "after": "!(s == 1)",
+     "witnesses": [
+      {
+       "input": {
+        "s": 2,
+        "ev": -2
+       },
+       "expected": {
+        "r": 2
+       },
+       "output": {
+        "r": 3
+       }
+      },
+      {
+       "input": {
+        "s": 2,
+        "ev": -1
+       },
+       "expected": {
+        "r": 2
+       },
+       "output": {
+        "r": 3
+       }
+      }
+     ],
+     "id": "m00"
+    },
+    {
+     "def": "fsm::step",
+     "site": 9,
+     "line": 108,
+     "col": 16,
+     "before": "s == 1",
+     "after": "s != 1",
+     "witnesses": [
+      {
+       "input": {
+        "s": 2,
+        "ev": -2
+       },
+       "expected": {
+        "r": 2
+       },
+       "output": {
+        "r": 3
+       }
+      },
+      {
+       "input": {
+        "s": 2,
+        "ev": -1
+       },
+       "expected": {
+        "r": 2
+       },
+       "output": {
+        "r": 3
+       }
+      }
+     ],
+     "id": "m01"
+    },
+    {
+     "def": "fsm::step",
+     "site": 10,
+     "line": 108,
+     "col": 21,
+     "before": "s == 1",
+     "after": "s == 2",
+     "witnesses": [
+      {
+       "input": {
+        "s": 2,
+        "ev": -2
+       },
+       "expected": {
+        "r": 2
+       },
+       "output": {
+        "r": 3
+       }
+      },
+      {
+       "input": {
+        "s": 2,
+        "ev": -1
+       },
+       "expected": {
+        "r": 2
+       },
+       "output": {
+        "r": 3
+       }
+      }
+     ],
+     "id": "m02"
+    },
+    {
+     "def": "fsm::step",
+     "site": 18,
+     "line": 113,
+     "col": 25,
+     "before": "3",
+     "after": "4",
+     "witnesses": [
+      {
+       "input": {
+        "s": 1,
+        "ev": -2
+       },
+       "expected": {
+        "r": 3
+       },
+       "output": {
+        "r": 4
+       }
+      },
+      {
+       "input": {
+        "s": 1,
+        "ev": -1
+       },
+       "expected": {
+        "r": 3
+       },
+       "output": {
+        "r": 4
+       }
+      }
+     ],
+     "id": "m03"
+    }
+   ],
+   "discarded": [
+    {
+     "def": "fsm::step",
+     "site": 0,
+     "line": 101,
+     "col": 9,
+     "before": "s == 0",
+     "after": "!(s == 0)",
+     "reason": "allowed"
+    },
+    {
+     "def": "fsm::step",
+     "site": 1,
+     "line": 101,
+     "col": 12,
+     "before": "s == 0",
+     "after": "s != 0",
+     "reason": "allowed"
+    },
+    {
+     "def": "fsm::step",
+     "site": 2,
+     "line": 101,
+     "col": 17,
+     "before": "s == 0",
+     "after": "s == 1",
+     "reason": "allowed"
+    },
+    {
+     "def": "fsm::step",
+     "site": 3,
+     "line": 102,
+     "col": 13,
+     "before": "ev == 1",
+     "after": "!(ev == 1)",
+     "reason": "allowed"
+    },
+    {
+     "def": "fsm::step",
+     "site": 4,
+     "line": 102,
+     "col": 16,
+     "before": "ev == 1",
+     "after": "ev != 1",
+     "reason": "allowed"
+    },
+    {
+     "def": "fsm::step",
+     "site": 5,
+     "line": 102,
+     "col": 22,
+     "before": "ev == 1",
+     "after": "ev == 2",
+     "reason": "allowed"
+    },
+    {
+     "def": "fsm::step",
+     "site": 6,
+     "line": 103,
+     "col": 17,
+     "before": "1",
+     "after": "2",
+     "reason": "allowed"
+    },
+    {
+     "def": "fsm::step",
+     "site": 7,
+     "line": 105,
+     "col": 17,
+     "before": "0",
+     "after": "1",
+     "reason": "allowed"
+    },
+    {
+     "def": "fsm::step",
+     "site": 11,
+     "line": 109,
+     "col": 17,
+     "before": "ev == 2",
+     "after": "!(ev == 2)",
+     "reason": "allowed"
+    },
+    {
+     "def": "fsm::step",
+     "site": 12,
+     "line": 109,
+     "col": 20,
+     "before": "ev == 2",
+     "after": "ev != 2",
+     "reason": "allowed"
+    },
+    {
+     "def": "fsm::step",
+     "site": 13,
+     "line": 109,
+     "col": 26,
+     "before": "ev == 2",
+     "after": "ev == 3",
+     "reason": "allowed"
+    },
+    {
+     "def": "fsm::step",
+     "site": 14,
+     "line": 110,
+     "col": 21,
+     "before": "2",
+     "after": "3",
+     "reason": "allowed"
+    },
+    {
+     "def": "fsm::step",
+     "site": 15,
+     "line": 112,
+     "col": 21,
+     "before": "ev < 0",
+     "after": "!(ev < 0)",
+     "reason": "allowed"
+    },
+    {
+     "def": "fsm::step",
+     "site": 16,
+     "line": 112,
+     "col": 24,
+     "before": "ev < 0",
+     "after": "ev <= 0",
+     "reason": "allowed"
+    },
+    {
+     "def": "fsm::step",
+     "site": 17,
+     "line": 112,
+     "col": 29,
+     "before": "ev < 0",
+     "after": "ev < 1",
+     "reason": "allowed"
+    },
+    {
+     "def": "fsm::step",
+     "site": 19,
+     "line": 115,
+     "col": 25,
+     "before": "1",
+     "after": "2",
+     "reason": "allowed"
+    }
+   ]
+  }
+ ]
+}

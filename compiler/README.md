@@ -8,12 +8,14 @@ cargo run -- check a.bmb b.bmb   # 진단을 JSONL로 출력. 오류가 있으�
 cargo run -- verify a.bmb        # 검사 + 증명. 정의별 상태 줄 포함. --emit-smt DIR로 질의 저장
 cargo run -- build a.bmb -o app  # 모든 의무가 증명된 경우에만 실행 파일 생성
 cargo run -- emit-llvm a.bmb -o a.ll  # IR. 증명되지 않은 의무는 런타임 검사(trap)로 남음
+cargo run -- emit-llvm --all-checks a.bmb -o a.ll  # 증명 없이 IR. 모든 의무가 런타임 검사로 남음(계약을 믿지 않으므로 증명되지 않는 변이체도 정직하게 실행, 2A-10)
 cargo run -- codes               # 진단 코드 목록(JSONL)
 cargo run -- fix a.bmb           # 기계적 수정(replacement)을 적용·재검사 반복. 기본은 보고만(JSONL), --write로 제자리 수정, --print로 고친 텍스트 출력
 cargo run -- verify --cache .bmb-cache a.bmb  # 증명 캐시: 해법기 입력이 같은 증명된 의무는 다시 풀지 않음(2D-01). 바뀌지 않은 정의는 인코딩·IR 생성도 건너뜀(2D-10)
 cargo run -- stability a.bmb     # Z3 시드 0..5로 증명해 판정이 시드에 따라 바뀌는 정의를 보고(1B-19)
 cargo run -- uses a.bmb          # 증명되지 않는 정의마다 최소 #[uses(..)] 목록을 찾아 보고. --write면 파일 수정(2D-05). --cache DIR은 verify와 같은 캐시(2D-15)
 cargo run -- lint a.bmb          # 계약 조정 린트: 불가능한 pre, 증명에 쓰이지 않는 pre, 호출자가 쓰지 않는 post, 변이가 살아남는 약한 명세(경고 W09xx, 2D-08·2D-09). --cache DIR은 verify와 같은 캐시(2D-15)
+cargo run -- mutate --def u::f a.bmb  # W0904 변이 전부(상한 없음, 증명 안 함)를 프로그램으로: 행마다 바뀐 단위의 정규형(BSB 생성기용, 2A-10)
 cargo run -- doctor              # 고정된 Z3·LLVM 버전 확인(scripts/toolchain.env)
 ../scripts/setup.sh              # 고정 버전 설치(새 클라우드 세션은 시작 훅이 자동 실행)
 ../scripts/check.sh              # 검증 게이트: fmt·clippy·빌드·백로그·문서, 그다음 테스트 실행 파일과 벤치 검사를 동시에(INF-08, scripts/gate_jobs.py). 종료 코드로 판단
@@ -98,6 +100,7 @@ ADR-0016의 부분집합을 구체화한 것이다. 모두 "선택을 필수로"
 - 결정론: 고정 시드·`rlimit`, 경로·절·변이 순서. 같은 입력이면 같은 바이트다.
 - 요약 행: `{"summary":true,"defs","reports","verifications","skipped","mutants","surviving","mutants_skipped"}`(뒤 세 키는 2D-09에서 추가).
 - 한계: W0903은 현재 프로그램의 호출자만 본다(공개 API로 쓸 post도 보고될 수 있어 정보성이다). 기준 검증에서 실패한 함수나 호출자가 실패한 함수는 판정하지 않는다.
+- `bmb mutate --def PATH [--def PATH].. <file.bmb>..`(백로그 2A-10, `lint::mutate_sources`): W0904와 같은 변이 지점(같은 순서)마다 변이를 하나 적용한 프로그램을 만든다. 상한도 증명도 없다. 행은 `{"def","site","line","col","before","after","unit","text"}`(`text`는 바뀐 최상위 단위의 정규형, 다른 단위는 그대로)이고 마지막 줄은 `{"summary":true,"mutants"}`. 실행 함수가 아닌 경로나 검사 오류면 종료 코드 1. BSB 변이체 생성기(`bench/m1/bsb_gen.py`)가 쓴다.
 
 ## 증분 빌드
 

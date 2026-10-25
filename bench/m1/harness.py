@@ -38,6 +38,9 @@ SET = HERE
 MAX_TOOL_CALLS = 40
 READ_TOOLS = {"query", "map"}
 
+sys.path.insert(0, HERE)
+import bsb  # noqa: E402
+
 
 def bmb_bin():
     return os.environ.get("BMB", os.path.join(ROOT, "target", "debug", "bmb"))
@@ -310,6 +313,46 @@ def judge_target(task, workspace, verified):
     return sig_ok, accepted
 
 
+# ---------- BSB: specification mutant kill rate (backlog 2A-10) ----------
+
+_bsb_sets = {}
+_bsb_lock = threading.Lock()
+
+
+def bsb_ready():
+    """Whether this task set has hidden mutant sets (checked once per set
+    against `mutants/MANIFEST`; a mismatch stops the run)."""
+    with _bsb_lock:
+        if SET not in _bsb_sets:
+            _bsb_sets[SET] = bsb.check_manifest(SET)
+        return _bsb_sets[SET]
+
+
+def spec_kill(task, workspace, verdict):
+    """Mutant kill rate of the workspace's contracts (`bsb.py`): `bsb_mutants`,
+    `bsb_killed`, `bsb_kill_rate` and the surviving mutants. Without a
+    verified workspace and the required signatures the contracts are not
+    judged and kill nothing. Empty when the set has no mutants for the task."""
+    data = bsb.load(SET, task["id"]) if bsb_ready() else None
+    if data is None:
+        return {}
+    targets = [(t["def"], t["signature"], t["mutants"]) for t in data["targets"]]
+    total = sum(len(m) for _, _, m in targets)
+    if verdict["verified"] and verdict["signature_ok"]:
+        _, l0 = bmb("map", *cache_args(workspace), "L0", workspace)
+        specs = sorted(r["path"] for r in rows(l0) if r.get("def_kind") == "spec fn")
+        units = {r["path"] for r in rows(l0) if r.get("kind") == "unit"}
+        killed = bsb.kill_check(targets, specs, units,
+                                lambda f: bmb("verify", *cache_args(workspace), workspace, f)[1])
+    else:
+        killed = [[False] * len(m) for _, _, m in targets]
+    survivors = [f"{d}:{m['id']}" for (d, _, ms), ks in zip(targets, killed)
+                 for m, k in zip(ms, ks) if not k]
+    n = sum(sum(ks) for ks in killed)
+    return {"bsb_mutants": total, "bsb_killed": n,
+            "bsb_kill_rate": round(n / total, 3) if total else None, "bsb_survivors": survivors}
+
+
 def judge_navigate(task, workspace, answer):
     want = truth(task, workspace)
     got = set(answer or [])
@@ -372,6 +415,7 @@ def run_task(task, agent_kind):
     _, st = bmb("query", *cache_args(ws), "status", "--", ws)
     if task["kind"] == "write":
         verdict = judge_write(task, ws)
+        verdict.update(spec_kill(task, ws, verdict))
     else:
         verdict = judge_navigate(task, ws, answer)
     summary = [r for r in rows(st) if r.get("summary")]
@@ -432,6 +476,9 @@ def summarize(paths):
             ("한도 도달 과제", str(sum(1 for r in tasks if r["limit_hit"]))),
             ("모델 입력 토큰(합)", str(sum(u.get("input_tokens", 0) for u in usage))),
             ("모델 출력 토큰(합)", str(sum(u.get("output_tokens", 0) for u in usage))),
+            # BSB (ADR-0034 G3): killed / hidden mutants, over the write tasks that have them.
+            ("명세 변이체 판별률", bsb.rate_text(sum(r["bsb_killed"] for r in w if "bsb_mutants" in r),
+                                         sum(r["bsb_mutants"] for r in w if "bsb_mutants" in r))),
         ]
 
     out = ["| 지표 | " + " | ".join(name for name, _, _ in runs) + " |",
@@ -496,6 +543,7 @@ def main():
         return
 
     check_manifest()
+    bsb_ready()
     tdir = os.path.join(SET, "tasks")
     tasks = [json.load(open(os.path.join(tdir, f))) for f in sorted(os.listdir(tdir))]
     if args.tasks:
@@ -521,6 +569,11 @@ def main():
         "navigate_precision": round(sum(r["precision"] for r in nav) / len(nav), 3) if nav else None,
         "navigate_recall": round(sum(r["recall"] for r in nav) / len(nav), 3) if nav else None,
     }
+    if any("bsb_mutants" in r for r in write):
+        summary["bsb_kill"] = bsb.rate_text(sum(r.get("bsb_killed", 0) for r in write),
+                                            sum(r.get("bsb_mutants", 0) for r in write))
+        with open(os.path.join(bsb.mutants_dir(SET), "MANIFEST"), "rb") as f:
+            summary["bsb_manifest"] = hashlib.sha256(f.read()).hexdigest()
     print(json.dumps(summary, ensure_ascii=False))
     if args.out:
         with open(args.out, "w") as f:
