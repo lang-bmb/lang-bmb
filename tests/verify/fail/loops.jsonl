@@ -2,7 +2,10 @@
 {"code":"E0807","severity":"error","message":"loop invariant may not be preserved in `loops::preserve`; counterexample: n = 2","file":"fail/loops.bmb","line":19,"col":23,"end_line":19,"end_col":29}
 {"code":"E0808","severity":"error","message":"`decreases` may not decrease or may be negative in `loops::no_progress`; counterexample: n = 1","file":"fail/loops.bmb","line":33,"col":23,"end_line":33,"end_col":28}
 {"code":"E0808","severity":"error","message":"`decreases` may not decrease or may be negative in `loops::negative_measure`; counterexample: n = -2","file":"fail/loops.bmb","line":45,"col":23,"end_line":45,"end_col":24}
+{"code":"E0810","severity":"error","message":"assertion may not hold in `loops::passed_on_in_loop`; counterexample: a = [-9223372036854774012] (len 1)","file":"fail/loops.bmb","line":78,"col":9,"end_line":78,"end_col":27}
 {"def":"loops::entry","status":"failed","obligations":4,"failed":1,"rlimit":1241,"rlimit_max":743}
 {"def":"loops::negative_measure","status":"failed","obligations":1,"failed":1,"rlimit":829,"rlimit_max":829}
 {"def":"loops::no_progress","status":"failed","obligations":3,"failed":1,"rlimit":889,"rlimit_max":525}
+{"def":"loops::passed_on_in_loop","status":"failed","obligations":11,"failed":1,"rlimit":17878,"rlimit_max":7831}
 {"def":"loops::preserve","status":"failed","obligations":4,"failed":1,"rlimit":3526,"rlimit_max":2367}
+{"def":"loops::zero_first","status":"verified","obligations":1,"failed":0,"rlimit":1194,"rlimit_max":1194}

@@ -48,4 +48,33 @@ mod loops {
         }
         i
     }
+
+    spec fn first_len(a: &[i64]) -> bool { a.len() > 0 }
+
+    #[effects(pure)]
+    #[uses(first_len)]
+    fn zero_first(a: &mut [i64]) -> ()
+        requires first_len(a),
+    {
+        a[0] = 0;
+    }
+
+    // A `&mut` parameter passed on inside a loop is havocked at the loop
+    // head: what was written before the loop is gone (backlog 1B-38).
+    #[effects(pure)]
+    #[uses(first_len)]
+    fn passed_on_in_loop(a: &mut [i64]) -> ()
+        requires first_len(a),
+    {
+        a[0] = 5;
+        let mut i: i64 = 0;
+        while i < 3
+            invariant 0 <= i, i <= 3, first_len(a),
+            decreases 3 - i,
+        {
+            zero_first(a);
+            i = i + 1;
+        }
+        assert(a[0] == 5);
+    }
 }
