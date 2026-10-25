@@ -642,8 +642,8 @@ fn map_answer(
     request: &[String],
     cache_dir: Option<&std::path::Path>,
 ) -> Result<String, String> {
-    // Proof results reach only the L1 rows (`map L1`/`all`, `query surface`)
-    // and `query status` (backlog 1D-17). Every other answer is built from
+    // Proof results reach only the L1 rows (`map L1`/`all`, `query surface`),
+    // `query status` (backlog 1D-17) and `query tests` (2D-21). Every other answer is built from
     // the checked program alone, so the solver does not run for it.
     // `surface DEF` shows the status of DEF alone, which depends only on
     // DEF's own obligations, so only DEF is proved (backlog 3A-04).
@@ -652,7 +652,7 @@ fn map_answer(
         request.get(1).map(String::as_str),
     ) {
         (Some("map"), level) if matches!(level.unwrap_or("all"), "L1" | "all") => ProofNeed::All,
-        (Some("query"), Some("status")) => ProofNeed::All,
+        (Some("query"), Some("status" | "tests")) => ProofNeed::All,
         (Some("query"), Some("surface")) => match request.get(2) {
             Some(d) if ix.defs.contains_key(d) => ProofNeed::One(d),
             // A usage error: nothing is shown, so nothing is proved.

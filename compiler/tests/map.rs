@@ -275,6 +275,42 @@ mod app {
 }
 "#;
 
+/// The remaining test surface (backlog 2D-21): definitions whose calls reach
+/// a built-in `io` operation, and definitions with a failed obligation
+/// (`twice` can overflow); `quiet` is declared `io` but reaches none, and
+/// spec fns never count.
+#[test]
+fn tests_lists_the_definitions_that_still_need_tests() {
+    let f = files(&[("io.bmb", IO)]);
+    let out = run(&f, &["query", "tests"]);
+    let expected = [
+        "{\"schema\":\"bmb.map\",\"version\":1}",
+        "{\"path\":\"app::a_log\",\"test_reasons\":[\"io\"],\"sites\":0,\"lines\":4}",
+        "{\"path\":\"app::b_log\",\"test_reasons\":[\"io\"],\"sites\":0,\"lines\":4}",
+        "{\"path\":\"app::emit\",\"test_reasons\":[\"io\"],\"sites\":1,\"lines\":4}",
+        "{\"path\":\"app::main\",\"test_reasons\":[\"io\"],\"sites\":0,\"lines\":6}",
+        "{\"path\":\"app::twice\",\"test_reasons\":[\"unproved\"],\"sites\":0,\"lines\":4}",
+        "{\"summary\":true,\"exec_defs\":6,\"test_needed_defs\":5,\"io_defs\":4,\"unproved_defs\":1,\"test_sites\":1,\"test_lines\":22}",
+    ];
+    assert_eq!(out, expected.join("\n") + "\n");
+    assert_eq!(out, run(&f, &["query", "tests"]));
+
+    // Proved pure code needs no test: only `main`, with its one `print_i64`.
+    let g = files(&[("a.bmb", A), ("b.bmb", B)]);
+    let rows: Vec<String> = run(&g, &["query", "tests"])
+        .lines()
+        .skip(1)
+        .map(str::to_string)
+        .collect();
+    assert_eq!(
+        rows,
+        [
+            "{\"path\":\"app::main\",\"test_reasons\":[\"io\"],\"sites\":1,\"lines\":7}",
+            "{\"summary\":true,\"exec_defs\":3,\"test_needed_defs\":1,\"io_defs\":1,\"unproved_defs\":0,\"test_sites\":1,\"test_lines\":7}",
+        ]
+    );
+}
+
 #[test]
 fn effects_lists_shortest_paths_to_io() {
     let f = files(&[("io.bmb", IO)]);

@@ -696,6 +696,7 @@ impl<'p> Model<'p> {
                 Self::lines(self.impact(&d, change))
             }
             "duplicates" => Self::lines(self.duplicates()),
+            "tests" => Self::lines(self.tests_needed()),
             "effects" => match args.first() {
                 Some(_) => Self::lines(self.effects_of(&def(0)?)),
                 None => Self::lines(self.effects_all()),
@@ -787,6 +788,76 @@ impl<'p> Model<'p> {
             ("io_reaching", J::N(n as u64)),
             ("io_defs", J::N(io as u64)),
             ("defs", J::N(self.defs.len() as u64)),
+        ]));
+        rows
+    }
+
+    /// `tests` (backlog 2D-21, ADR-0003, DESIGN.md principle 4): the
+    /// executable definitions that still need tests, with why. M1 has two
+    /// reasons: `io` (its calls reach a built-in `io` operation, whose order
+    /// and content no contract states) and `unproved` (an obligation failed,
+    /// so the contract itself is not established). One row
+    /// `{"path","test_reasons","sites","lines"}` per such definition, by
+    /// path: `sites` counts its own calls of built-in `io` operations (where
+    /// a test aims), `lines` its normal-form lines. Then a summary row with
+    /// the area in definitions, sites and lines.
+    fn tests_needed(&self) -> Vec<J> {
+        let builtins: Vec<&String> = self
+            .io
+            .iter()
+            .filter(|p| !self.defs.contains_key(*p))
+            .collect();
+        let mut rows = Vec::new();
+        let (mut exec, mut sites_total, mut lines_total) = (0, 0, 0);
+        let (mut io_n, mut unproved_n) = (0, 0);
+        for d in self.all_defs() {
+            if d.f.kind == FnKind::Spec {
+                continue;
+            }
+            exec += 1;
+            let mut reasons = Vec::new();
+            let io = self
+                .io_paths(&d.path)
+                .iter()
+                .any(|(to, _)| !self.defs.contains_key(to));
+            if io {
+                reasons.push("io".to_string());
+                io_n += 1;
+            }
+            if d.status == "failed" {
+                reasons.push("unproved".to_string());
+                unproved_n += 1;
+            }
+            if reasons.is_empty() {
+                continue;
+            }
+            let mut calls = Vec::new();
+            calls_in_block(&d.f.body, false, &mut calls);
+            let sites = calls
+                .iter()
+                .filter(|(cp, _, spec)| {
+                    !spec && builtins.iter().any(|b| self.resolves_to(cp, &d.unit, b))
+                })
+                .count();
+            let lines = crate::fmt::def_text(d.f).lines().count();
+            sites_total += sites;
+            lines_total += lines;
+            rows.push(J::O(vec![
+                ("path", J::S(d.path.clone())),
+                ("test_reasons", strs(reasons)),
+                ("sites", J::N(sites as u64)),
+                ("lines", J::N(lines as u64)),
+            ]));
+        }
+        let n = rows.len();
+        rows.push(J::O(vec![
+            ("summary", J::B(true)),
+            ("exec_defs", J::N(exec as u64)),
+            ("test_needed_defs", J::N(n as u64)),
+            ("io_defs", J::N(io_n as u64)),
+            ("unproved_defs", J::N(unproved_n as u64)),
+            ("test_sites", J::N(sites_total as u64)),
+            ("test_lines", J::N(lines_total as u64)),
         ]));
         rows
     }

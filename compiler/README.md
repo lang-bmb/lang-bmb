@@ -20,7 +20,7 @@ cargo run -- doctor              # 고정된 Z3·LLVM 버전 확인(scripts/tool
 ../scripts/setup.sh              # 고정 버전 설치(새 클라우드 세션은 시작 훅이 자동 실행)
 ../scripts/check.sh              # 검증 게이트: fmt·clippy·빌드·백로그·문서, 그다음 테스트 실행 파일과 벤치 검사를 동시에(INF-08, scripts/gate_jobs.py). 종료 코드로 판단
 cargo run -- map all a.bmb        # 표준 맵 L0~L2(JSONL, ADR-0020)
-cargo run -- query slice u::f -- a.bmb  # 읽기 질의: units surface edges slice find contracts status impact duplicates effects
+cargo run -- query slice u::f -- a.bmb  # 읽기 질의: units surface edges slice find contracts status impact duplicates effects tests
 cargo run -- query --cache .bmb-cache status -- ws  # map·query도 --cache DIR을 받는다(증명하는 L1·surface·status만 영향, 출력은 같은 바이트, INF-08)
 cargo run -- import ws a.bmb     # 작업 공간 ws/src/에 단위당 정규형 파일 하나
 cargo run -- apply ws ops.json   # 쓰기 트랜잭션(unit/put/remove/remove_unit). 구조·타입 오류면 전체 거부
@@ -150,5 +150,6 @@ ADR-0020 §5의 7개 질의 외에 추가한 질의다. 기존 질의와 행 형
 | `duplicates` | 본문 해시(`body`)가 같은 정의 묶음마다 `{"hash","defs"}` 행(정의가 둘 이상인 묶음만, 해시순, `defs`는 경로순), 그리고 요약 행 `{"summary":true,"groups","duplicate_defs","defs"}`. 본문 해시는 정의 자신의 이름을 빼므로(ADR-0019 §2) 같은 해시는 이름이나 단위만 다른 같은 정의다(DESIGN.md §7.2, 백로그 2D-06). 자기 재귀 호출은 전체 경로로 남아 재귀 정의의 복제는 묶이지 않는다 |
 
 | `effects [DEF]` | 효과 뷰(DESIGN.md §7.2, 백로그 2D-11). DEF가 있으면 DEF에서 실행 호출(`calls` 간선)로 닿는 `io` 정의(DEF 자신과 내장 `print_i64` 포함)마다 `{"def":DEF,"effect":"io","path"}` 행(`path`는 DEF에서 그 정의까지의 최단 호출 경로, 도달한 정의의 경로순), 그리고 요약 행 `{"summary":true,"def","io_reached","defs"}`. DEF가 없으면 내장 `io` 연산에 닿는 정의마다 `{"def","effect":"io","path"}` 행(가장 가까운 연산까지의 최단 경로, 정의 경로순), 그리고 요약 행 `{"summary":true,"io_reaching","io_defs","defs"}`. 최단 경로가 여럿이면 정의 경로를 차례로 비교해 가장 작은 것을 고른다(호출 순서·정의 순서와 무관). 맵 간선만 쓰고 증명하지 않는다(1D-17의 증명 불필요 집합). 효과 검사(E0603)가 `pure`의 `io` 호출을 막으므로 `io`에 닿는 정의는 모두 `io`로 선언되어 있다. `io`로 선언했지만 어떤 연산에도 닿지 않는 정의는 DEF 없는 결과에 나오지 않는다(`io_defs`와 행 수의 차이) |
+| `tests` | 남은 테스트 면적(백로그 2D-21, ADR-0003, DESIGN.md 원칙 4). 테스트가 여전히 필요한 실행 정의마다 `{"path","test_reasons","sites","lines"}` 행(경로순), 그리고 요약 행 `{"summary":true,"exec_defs","test_needed_defs","io_defs","unproved_defs","test_sites","test_lines"}`. M1의 이유는 둘이다: `io`(실행 호출이 내장 `io` 연산에 닿음: 출력의 순서·내용은 계약이 말하지 않는다), `unproved`(실패한 의무가 있어 계약 자체가 서지 않음). `sites`는 그 정의가 직접 부르는 내장 `io` 연산 수(테스트가 겨냥할 곳), `lines`는 정규형 줄 수다. `spec fn`과 `io`로 선언만 하고 어떤 연산에도 닿지 않는 정의는 세지 않는다. 증명 상태를 쓰므로 증명한다(`status`와 같다). G8(2H-06)의 BMB 쪽 값이다. 효과가 늘면(ADR-0030 제안: `panic`·`nondet`·신뢰 등급) 이유가 는다 |
 
 MCP `query` 도구의 설명문은 바꾸지 않았다. 실제 모델 측정(1E-10)이 끝날 때까지 에이전트가 보는 문구를 그대로 둔다. 도구는 `impact`·`duplicates`·`effects`도 받는다.

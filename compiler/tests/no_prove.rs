@@ -34,6 +34,7 @@ fn only_proof_status_requests_start_the_solver() {
         req(&["map", "all"]),
         req(&["query", "surface", "app::main"]),
         req(&["query", "status"]),
+        req(&["query", "tests"]),
     ];
 
     // Reference answers with the solver available.
