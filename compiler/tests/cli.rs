@@ -62,7 +62,7 @@ fn an_unknown_local_suggests_the_nearest_one() {
 /// checker (backlog 2B-04); the proof gate reports them as E0814 until they
 /// are encoded (2B-05).
 #[test]
-fn data_types_in_signatures_check_but_do_not_prove_yet() {
+fn data_types_in_signatures_prove_but_do_not_compile_yet() {
     const SRC: &str = r#"#[summary("data types in signatures (ADR-0026, backlog 2B-04)")]
 mod geo {
     enum Shape { Dot, Square(i64), Rect(Point, Point) }
@@ -118,29 +118,43 @@ mod user {
     );
     let verify = Command::new(bmb).arg("verify").arg(&f).output().unwrap();
     let out = String::from_utf8_lossy(&verify.stdout);
+    assert!(verify.status.success(), "{out}");
+    // Code generation waits for backlog 2B-06.
+    let ll = dir.join("t.ll");
+    let emit = Command::new(bmb)
+        .arg("emit-llvm")
+        .arg(&f)
+        .arg("-o")
+        .arg(&ll)
+        .output()
+        .unwrap();
+    let out = String::from_utf8_lossy(&emit.stdout);
     assert!(
-        !verify.status.success() && out.contains("\"code\":\"E0814\""),
+        !emit.status.success() && out.contains("not compiled yet"),
         "{out}"
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
-fn a_spec_building_variants_is_not_sent_to_the_solver() {
-    // Integer signatures, but the revealed spec fn builds variants: its axiom
-    // has no encoding yet, so the caller is E0814, not a solver error.
-    const SRC: &str = r#"#[summary("variants inside a spec")]
+fn a_spec_reaching_an_unencoded_data_type_is_not_sent_to_the_solver() {
+    // Integer signatures, but the revealed spec fn reaches one returning a
+    // struct (no single SMT result yet, backlog 2B-05d): the caller is E0814,
+    // not a solver error.
+    const SRC: &str = r#"#[summary("a spec reaching a struct result")]
 mod p {
-    enum Shape { Dot, Square(i64) }
+    struct Point { x: i64, y: i64 }
 
-    spec fn same(a: i64, b: i64) -> bool { Some(a) == Some(b) && Shape::Square(a) == Shape::Square(b) }
+    spec fn mid(a: i64) -> Point { Point { x: a, y: a } }
+
+    spec fn same(a: i64, b: i64) -> bool { mid(a).x == b }
 
     spec fn also(a: i64, b: i64) -> bool { same(a, b) }
 
     #[effects(pure)]
     #[uses(also)]
     fn id(a: i64) -> (r: i64)
-        ensures also(a, r)
+        ensures also(a, r),
     {
         a
     }

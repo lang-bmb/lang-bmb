@@ -1,0 +1,84 @@
+#[summary("열거형: 거짓 주장은 증명되지 않는다 (backlog 2B-05b)")]
+mod geo {
+    struct Point { x: i64, y: i64 }
+
+    enum Shape { Dot, Square(i64), Rect(Point, Point) }
+
+    spec fn nonneg(r: i64) -> bool { r >= 0 }
+
+    spec fn is_dot(s: Shape) -> bool { match s { Shape::Dot => true, Shape::Square(_) => false, Shape::Rect(_, _) => false } }
+
+    spec fn same(a: Shape, b: Shape) -> bool { a == b }
+
+    #[effects(pure)]
+    #[uses(nonneg)]
+    fn payload_sign(o: Option<i64>) -> (r: i64)
+        ensures nonneg(r),
+    {
+        match o {
+            None => 0,
+            Some(v) => v,
+        }
+    }
+
+    #[effects(pure)]
+    fn overflow(s: Shape) -> i64 {
+        match s {
+            Shape::Dot => 0,
+            Shape::Square(n) => n + 1,
+            Shape::Rect(a, _) => a.y,
+        }
+    }
+
+    // The wrong arm: `Square(n)` holds `n`, the struct payload holds points.
+    #[effects(pure)]
+    fn struct_payload(s: Shape) -> i64 {
+        match s {
+            Shape::Dot => 0,
+            Shape::Square(n) => n / 2,
+            Shape::Rect(a, b) => a.x + b.x,
+        }
+    }
+
+    // After the call the callee's `ensures` is all that is known.
+    #[effects(pure)]
+    fn touch(s: &mut Shape) -> () {
+        *s = Shape::Square(1);
+    }
+
+    #[effects(pure)]
+    #[uses(is_dot)]
+    fn after_call(s: Shape) -> (r: Shape)
+        requires is_dot(s),
+        ensures is_dot(r),
+    {
+        let mut t: Shape = s;
+        touch(&mut t);
+        t
+    }
+
+    // Two different variants are never equal.
+    #[effects(pure)]
+    #[uses(same)]
+    fn distinct(n: i64) -> ()
+    {
+        assert(same(Shape::Square(n), Shape::Dot));
+    }
+
+    #[effects(pure)]
+    #[uses(is_dot)]
+    fn loop_forgets(n: i64) -> (r: Shape)
+        ensures is_dot(r),
+    {
+        let mut s: Shape = Shape::Dot;
+        let mut i: i64 = 0;
+        while i < 3
+            invariant 0 <= i, i <= 3,
+            decreases 3 - i,
+        {
+            s = Shape::Dot;
+            i = i + 1;
+        }
+        s
+    }
+}

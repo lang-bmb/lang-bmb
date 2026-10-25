@@ -1,0 +1,116 @@
+#[summary("열거형과 match: 데이터타입 인코딩 (ADR-0027 §3~6, backlog 2B-05b)")]
+mod geo {
+    struct Point { x: i64, y: i64 }
+
+    enum Shape { Dot, Square(i64), Rect(Point, Point) }
+
+    struct Tagged { s: Shape, n: u64 }
+
+    spec fn is_some(o: Option<i64>) -> bool { match o { None => false, Some(_) => true } }
+
+    spec fn nonneg(r: i64) -> bool { r >= 0 }
+
+    spec fn some_of(o: Option<i64>, a: i64) -> bool { o == Some(a) }
+
+    spec fn is_dot(s: Shape) -> bool { match s { Shape::Dot => true, Shape::Square(_) => false, Shape::Rect(_, _) => false } }
+
+    spec fn side(s: Shape, n: i64) -> bool { s == Shape::Square(n) }
+
+    // Payload ranges hold under the arm (ADR-0027 §5).
+    #[effects(pure)]
+    fn halves(s: Shape) -> i64 {
+        match s {
+            Shape::Dot => 0,
+            Shape::Square(n) => n / 2 + n / 2,
+            Shape::Rect(a, b) => a.x / 2 + b.y / 2,
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(nonneg)]
+    fn area(s: &Shape) -> (r: i64)
+        ensures nonneg(r),
+    {
+        match *s {
+            Shape::Dot => 0,
+            Shape::Square(n) => if n < 0 { 0 } else { n / 2 },
+            Shape::Rect(a, _) => if a.x < 0 { 0 } else { a.x / 2 },
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(is_some, some_of)]
+    fn wrap(a: i64) -> (r: Option<i64>)
+        ensures is_some(r), some_of(r, a),
+    {
+        Some(a)
+    }
+
+    #[effects(pure)]
+    #[uses(side)]
+    fn square(n: i64) -> (r: Shape)
+        ensures side(r, n),
+    {
+        let t: Tagged = Tagged { s: Shape::Square(n), n: 3 };
+        t.s
+    }
+
+    // Nested: an enum in a payload, matched in turn.
+    #[effects(pure)]
+    #[uses(nonneg)]
+    fn nested(o: Option<Shape>) -> (r: i64)
+        ensures nonneg(r),
+    {
+        match o {
+            None => 0,
+            Some(s) => {
+                match s {
+                    Shape::Dot => 1,
+                    Shape::Square(_) => 2,
+                    Shape::Rect(_, _) => 3,
+                }
+            }
+        }
+    }
+
+    // A loop keeps only what its invariant says of the enum it writes.
+    #[effects(pure)]
+    #[uses(is_dot)]
+    fn settle(n: i64) -> (r: Shape)
+        ensures is_dot(r),
+    {
+        let mut s: Shape = Shape::Square(n);
+        let mut i: i64 = 0;
+        while i < 3
+            invariant 0 <= i, i <= 3, i == 0 || is_dot(s),
+            decreases 3 - i,
+        {
+            s = Shape::Dot;
+            i = i + 1;
+        }
+        s
+    }
+
+    #[effects(pure)]
+    #[uses(is_dot)]
+    fn clear(s: &mut Shape) -> ()
+        ensures is_dot(*s),
+    {
+        *s = Shape::Dot;
+    }
+
+    #[effects(pure)]
+    #[uses(is_dot)]
+    fn caller(t: Tagged) -> (r: Shape)
+        ensures is_dot(r),
+    {
+        let mut u: Tagged = t;
+        clear(&mut u.s);
+        u.s
+    }
+
+    #[effects(pure)]
+    fn checked(a: i64, b: i64) -> Result<i64, Shape> {
+        if b == 0 || b == -1 { Err(Shape::Dot) } else { Ok(a / b) }
+    }
+}

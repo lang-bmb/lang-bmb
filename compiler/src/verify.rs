@@ -145,6 +145,140 @@ fn struct_fields<'t>(t: &TypeKind, tb: &'t Tables) -> Option<&'t [(String, TypeK
     }
 }
 
+/// The variants of the enum `t` denotes (through a reference), in
+/// declaration order, with their payload types. `Option` is `None, Some`,
+/// `Result` is `Ok, Err` (ADR-0026).
+fn enum_variants(t: &TypeKind, tb: &Tables) -> Option<Vec<(String, Vec<TypeKind>)>> {
+    let t = match t {
+        TypeKind::Ref { inner, .. } => &inner.kind,
+        t => t,
+    };
+    let TypeKind::Named { path, args } = t else {
+        return None;
+    };
+    match (path.join("::").as_str(), args.as_slice()) {
+        ("Option", [a]) => Some(vec![
+            ("None".into(), Vec::new()),
+            ("Some".into(), vec![a.kind.clone()]),
+        ]),
+        ("Result", [a, b]) => Some(vec![
+            ("Ok".into(), vec![a.kind.clone()]),
+            ("Err".into(), vec![b.kind.clone()]),
+        ]),
+        (p, _) => match tb.adts.get(p) {
+            Some(crate::check::Adt {
+                kind: crate::check::AdtKind::Enum(vs),
+                ..
+            }) => Some(vs.clone()),
+            _ => None,
+        },
+    }
+}
+
+/// The type without a reference around it.
+fn value_ty(t: &TypeKind) -> &TypeKind {
+    match t {
+        TypeKind::Ref { inner, .. } if !matches!(inner.kind, TypeKind::Slice(_)) => &inner.kind,
+        t => t,
+    }
+}
+
+/// The constructor symbol of variant `v` of enum `t` (ADR-0027 §3).
+fn ctor(t: &TypeKind, v: &str) -> String {
+    sym(&format!("{}::{v}", crate::check::ty_str(value_ty(t))))
+}
+
+/// The selector leaves of payload position `k` of variant `v`.
+fn payload_leaves(
+    t: &TypeKind,
+    v: &str,
+    k: usize,
+    pt: &TypeKind,
+    tb: &Tables,
+) -> Vec<(String, Leaf)> {
+    let mut ls = Vec::new();
+    let base = format!("{}::{v}.{k}", crate::check::ty_str(value_ty(t)));
+    leaves(pt, tb, &base, &mut ls);
+    ls
+}
+
+/// Whether a value of type `t` holds an array anywhere (its SMT equality
+/// would compare elements past the length).
+fn has_array(t: &TypeKind, tb: &Tables) -> bool {
+    if is_array(t) {
+        return true;
+    }
+    if let Some(fs) = struct_fields(t, tb) {
+        return fs.iter().any(|(_, ft)| has_array(ft, tb));
+    }
+    enum_variants(t, tb).is_some_and(|vs| {
+        vs.iter()
+            .any(|(_, ps)| ps.iter().any(|pt| has_array(pt, tb)))
+    })
+}
+
+/// Every enum instance a program uses, as (constructor prefix, sort,
+/// `declare-datatypes`), dependencies first (types are not recursive,
+/// E0421).
+fn datatypes(tb: &Tables) -> Vec<(String, String, String)> {
+    fn visit(
+        t: &TypeKind,
+        tb: &Tables,
+        seen: &mut BTreeSet<String>,
+        out: &mut Vec<(String, String, String)>,
+    ) {
+        match t {
+            TypeKind::Array(e, _) | TypeKind::Slice(e) => return visit(&e.kind, tb, seen, out),
+            TypeKind::Ref { inner, .. } => return visit(&inner.kind, tb, seen, out),
+            TypeKind::Named { .. } => {}
+            _ => return,
+        }
+        if let Some(fs) = struct_fields(t, tb) {
+            for (_, ft) in fs {
+                visit(ft, tb, seen, out);
+            }
+            return;
+        }
+        let Some(vs) = enum_variants(t, tb) else {
+            return;
+        };
+        let ts = crate::check::ty_str(t);
+        if !seen.insert(ts.clone()) {
+            return;
+        }
+        let mut ctors = Vec::new();
+        for (v, ps) in &vs {
+            let mut fields = Vec::new();
+            for (k, pt) in ps.iter().enumerate() {
+                visit(pt, tb, seen, out);
+                for (name, leaf) in payload_leaves(t, v, k, pt, tb) {
+                    fields.push(format!("({} {})", sym(&name), leaf.sort()));
+                }
+            }
+            ctors.push(if fields.is_empty() {
+                format!("({})", ctor(t, v))
+            } else {
+                format!("({} {})", ctor(t, v), fields.join(" "))
+            });
+        }
+        let sort = sym(&ts);
+        let decl = format!("(declare-datatypes (({sort} 0)) (({})))", ctors.join(" "));
+        out.push((format!("|{ts}::"), sort, decl));
+    }
+    let mut all: Vec<&TypeKind> = tb.types.values().collect();
+    all.extend(tb.locals.values().flat_map(|m| m.values()));
+    for sig in tb.fns.values() {
+        all.extend(sig.params.iter());
+        all.push(&sig.ret);
+    }
+    let mut seen = BTreeSet::new();
+    let mut out = Vec::new();
+    for t in all {
+        visit(t, tb, &mut seen, &mut out);
+    }
+    out
+}
+
 fn field_index(t: &TypeKind, tb: &Tables, name: &str) -> usize {
     struct_fields(t, tb)
         .and_then(|fs| fs.iter().position(|(n, _)| n == name))
@@ -517,6 +651,9 @@ impl<'p, 'q> Enc<'p, 'q> {
             ExprKind::Int(v) => Val::S(num(*v as i128)),
             ExprKind::Bool(b) => Val::S(b.to_string()),
             ExprKind::Unit => Val::Unit,
+            ExprKind::Var(id) if id.name == "None" && !env.contains_key("None") => {
+                self.variant_value(&self.ty(e), "None", &[])
+            }
             ExprKind::Var(id) => env
                 .get(&id.name)
                 .cloned()
@@ -529,6 +666,18 @@ impl<'p, 'q> Enc<'p, 'q> {
             }
             ExprKind::Unary(UnOp::Not, x) => {
                 Val::S(format!("(not {})", self.spec(x, env, old).s()))
+            }
+            // `==` on an enum is SMT equality, unless a payload holds an
+            // array (its elements past the length would count).
+            ExprKind::Binary(BinOp::Eq | BinOp::Ne, l, _)
+                if enum_variants(&self.ty(l), self.prog.t).is_some()
+                    && has_array(&self.ty(l), self.prog.t) =>
+            {
+                self.unsupported.push((
+                    e.span,
+                    "`==` on an enum with an array in a payload is not supported yet".into(),
+                ));
+                Val::S("true".into())
             }
             // Structural `==` on structs (ADR-0026 §2): field by field.
             ExprKind::Binary(op @ (BinOp::Eq | BinOp::Ne), l, r)
@@ -607,6 +756,14 @@ impl<'p, 'q> Enc<'p, 'q> {
                     }
                 }
             }
+            ExprKind::Call { path, args } if self.is_variant(path) => {
+                let vals: Vec<Val> = args.iter().map(|a| self.spec(a, env, old)).collect();
+                self.variant_value(&self.ty(e), &path.last().unwrap().name, &vals)
+            }
+            ExprKind::Path(segs) => {
+                self.variant_value(&self.ty(e), &segs.last().unwrap().name, &[])
+            }
+            ExprKind::Match { scrut, arms } => self.spec_match(scrut, arms, env, old),
             ExprKind::Call { path, args } => {
                 let target = self.resolve(path, &self.spec_mod.clone());
                 let mut flat = Vec::new();
@@ -705,11 +862,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                 }
             }
             ExprKind::Deref(x) => self.spec(x, env, old),
-            ExprKind::Array(_)
-            | ExprKind::Repeat { .. }
-            | ExprKind::Path(_)
-            | ExprKind::Match { .. }
-            | ExprKind::Error => {
+            ExprKind::Array(_) | ExprKind::Repeat { .. } | ExprKind::Error => {
                 self.unsupported.push((
                     e.span,
                     "this expression is not supported in specifications".into(),
@@ -790,6 +943,9 @@ impl<'p, 'q> Enc<'p, 'q> {
             ExprKind::Int(v) => Val::S(num(*v as i128)),
             ExprKind::Bool(b) => Val::S(b.to_string()),
             ExprKind::Unit => Val::Unit,
+            ExprKind::Var(id) if id.name == "None" && !self.vars.contains_key("None") => {
+                self.variant_value(&self.ty(e), "None", &[])
+            }
             ExprKind::Var(id) => self.vars[&id.name].clone(),
             ExprKind::Unary(UnOp::Neg, x) => {
                 if let ExprKind::Int(v) = x.kind {
@@ -922,6 +1078,10 @@ impl<'p, 'q> Enc<'p, 'q> {
                     }
                 }
             }
+            ExprKind::Call { path, args } if self.is_variant(path) => {
+                let vals: Vec<Val> = args.iter().map(|a| self.eval(a)).collect();
+                self.variant_value(&self.ty(e), &path.last().unwrap().name, &vals)
+            }
             ExprKind::Call { path, args } => self.call(path, args, e.span),
             ExprKind::If { cond, then, els } => {
                 let c = self.eval(cond).s();
@@ -977,7 +1137,11 @@ impl<'p, 'q> Enc<'p, 'q> {
                 Val::Struct(vals.into_iter().map(|(_, v)| v).collect())
             }
             ExprKind::Field { base, name } => {
-                let bt = self.ty(base);
+                // A place under `&`/`&mut` has no recorded type.
+                let bt = match self.ty(base) {
+                    TypeKind::Error => self.place_ty(base),
+                    t => t,
+                };
                 match self.eval(base) {
                     Val::Struct(mut fs) => {
                         fs.swap_remove(field_index(&bt, self.prog.t, &name.name))
@@ -987,9 +1151,14 @@ impl<'p, 'q> Enc<'p, 'q> {
             }
             // A reference denotes its value (references are second-class).
             ExprKind::Deref(x) => self.eval(x),
-            // Enums are encoded by backlog 2B-05b; until then they are E0814.
-            ExprKind::Path(_) | ExprKind::Match { .. } => {
-                panic!("enum expression reached the prover")
+            ExprKind::Path(segs) => {
+                self.variant_value(&self.ty(e), &segs.last().unwrap().name, &[])
+            }
+            ExprKind::Match { scrut, arms } => {
+                let sv = self.eval(scrut).s();
+                let st = self.ty(scrut);
+                let t = self.ty(e);
+                self.match_arms(&sv, &st, arms, 0, &t)
             }
         }
     }
@@ -1223,6 +1392,116 @@ impl<'p, 'q> Enc<'p, 'q> {
         self.pc.truncate(n);
         self.vars = after_cond_vars;
         self.pc.push(format!("(not {c})"));
+    }
+
+    /// Whether a checked call builds a variant: `Some(x)`, `Ok(x)`, `Err(e)`
+    /// or `E::V(..)` (a path that names no function).
+    fn is_variant(&self, path: &[Ident]) -> bool {
+        if path.len() == 1 {
+            return matches!(path[0].name.as_str(), "Some" | "Ok" | "Err")
+                && !self
+                    .prog
+                    .t
+                    .fns
+                    .contains_key(&format!("{}::{}", self.spec_mod, path[0].name));
+        }
+        !self
+            .prog
+            .t
+            .fns
+            .contains_key(&self.resolve(path, &self.spec_mod.clone()))
+    }
+
+    /// Variant `v` of enum `t` holding `payload`.
+    fn variant_value(&self, t: &TypeKind, v: &str, payload: &[Val]) -> Val {
+        let mut leaves = Vec::new();
+        for p in payload {
+            flatten(p, &mut leaves);
+        }
+        let c = ctor(t, v);
+        Val::S(if leaves.is_empty() {
+            c
+        } else {
+            format!("({c} {})", leaves.join(" "))
+        })
+    }
+
+    /// The payload of `sv`, read as variant `v` of enum `t`: one value per
+    /// position, and the range facts of its leaves (true when `sv` is a `v`,
+    /// ADR-0027 §5).
+    fn payload(&self, t: &TypeKind, v: &str, sv: &str) -> (Vec<Val>, Vec<String>) {
+        let vs = enum_variants(t, self.prog.t).expect("match on an enum");
+        let ps = &vs.iter().find(|(n, _)| n == v).expect("checked variant").1;
+        let mut vals = Vec::new();
+        let mut facts = Vec::new();
+        for (k, pt) in ps.iter().enumerate() {
+            let ls = payload_leaves(t, v, k, pt, self.prog.t);
+            let terms: Vec<String> = ls
+                .iter()
+                .map(|(n, _)| format!("({} {sv})", sym(n)))
+                .collect();
+            for ((_, leaf), x) in ls.iter().zip(&terms) {
+                facts.extend(leaf.fact(x));
+            }
+            vals.push(build(pt, self.prog.t, &mut terms.into_iter()));
+        }
+        (vals, facts)
+    }
+
+    /// Arms `i..` of an executable `match` on `sv`: each arm runs under its
+    /// tester (the last one under the others' negations: arms are
+    /// exhaustive), with its bindings and their range facts.
+    fn match_arms(&mut self, sv: &str, st: &TypeKind, arms: &[Arm], i: usize, t: &TypeKind) -> Val {
+        let arm = &arms[i];
+        let v = arm.pat.path.last().unwrap().name.clone();
+        let run = |s: &mut Self| {
+            let (vals, facts) = s.payload(st, &v, sv);
+            s.pc.extend(facts);
+            for (b, val) in arm.pat.binds.iter().zip(vals) {
+                if let Some(id) = b {
+                    s.vars.insert(id.name.clone(), val);
+                }
+            }
+            s.eval(&arm.body)
+        };
+        if i + 1 == arms.len() {
+            return run(self);
+        }
+        let c = format!("((_ is {}) {sv})", ctor(st, &v));
+        self.branch(&c, t, run, |s| s.match_arms(sv, st, arms, i + 1, t))
+    }
+
+    /// A `match` in a specification: an `ite` over the testers.
+    fn spec_match(
+        &mut self,
+        scrut: &Expr,
+        arms: &[Arm],
+        env: &BTreeMap<String, Val>,
+        old: &BTreeMap<String, Val>,
+    ) -> Val {
+        let sv = self.spec(scrut, env, old).s();
+        let st = self.ty(scrut);
+        let mut parts = Vec::new();
+        for arm in arms {
+            let v = arm.pat.path.last().unwrap().name.clone();
+            let c = format!("((_ is {}) {sv})", ctor(&st, &v));
+            let (vals, _) = self.payload(&st, &v, &sv);
+            let mut env2 = env.clone();
+            for (b, val) in arm.pat.binds.iter().zip(vals) {
+                if let Some(id) = b {
+                    env2.insert(id.name.clone(), val);
+                }
+            }
+            self.spec_pc.push(c.clone());
+            let x = self.spec(&arm.body, &env2, old);
+            self.spec_pc.pop();
+            parts.push((c, x));
+        }
+        let (_, mut out) = parts.pop().expect("a match has arms");
+        while let Some((c, x)) = parts.pop() {
+            out = ite_val(&c, &x, &out);
+        }
+        out
     }
 
     /// The variable a place expression writes, and the steps from it to the
@@ -1614,8 +1893,8 @@ pub(crate) fn program_data_type_use(p: &Program, t: &Tables) -> Option<Span> {
 /// Which data types a back end cannot handle yet.
 #[derive(Clone, Copy, PartialEq)]
 enum Gate {
-    /// The proof gate encodes structs (backlog 2B-05a), not yet enums nor
-    /// arrays of data types.
+    /// The proof gate encodes structs and enums (backlog 2B-05a, 2B-05b),
+    /// not yet arrays of data types.
     Prover,
     /// The code generator handles no data type before backlog 2B-06.
     Codegen,
@@ -1626,9 +1905,12 @@ impl Gate {
         match self {
             Gate::Codegen => has_named(t),
             Gate::Prover => match t {
-                TypeKind::Named { .. } => match struct_fields(t, tb) {
-                    Some(fs) => fs.iter().any(|(_, ft)| self.rejects(ft, tb)),
-                    None => true,
+                TypeKind::Named { .. } => match (struct_fields(t, tb), enum_variants(t, tb)) {
+                    (Some(fs), _) => fs.iter().any(|(_, ft)| self.rejects(ft, tb)),
+                    (_, Some(vs)) => vs
+                        .iter()
+                        .any(|(_, ps)| ps.iter().any(|pt| self.rejects(pt, tb))),
+                    _ => true,
                 },
                 TypeKind::Array(e, _) | TypeKind::Slice(e) => has_named(&e.kind),
                 TypeKind::Ref { inner, .. } => self.rejects(&inner.kind, tb),
@@ -1746,7 +2028,8 @@ fn data_type_use(
                                 .fns
                                 .iter()
                                 .any(|(p, _)| p == &name || p.ends_with(&format!("::{name}"))));
-                    if spec || (variant && self.gate == Gate::Prover) {
+                    let _ = variant;
+                    if spec {
                         return Some(e.span);
                     }
                     args.iter().collect()
@@ -1777,9 +2060,6 @@ fn data_type_use(
                     .map(|(_, x)| x)
                     .chain(rest.as_deref())
                     .collect(),
-                ExprKind::Path(_) | ExprKind::Match { .. } if self.gate == Gate::Prover => {
-                    return Some(e.span);
-                }
                 ExprKind::Match { scrut, arms } => std::iter::once(&**scrut)
                     .chain(arms.iter().map(|a| &a.body))
                     .collect(),
@@ -2070,7 +2350,11 @@ fn header(seed: u64) -> Vec<String> {
 /// over the spec fns their bodies name (`relevant_axioms`), so no symbol of
 /// the query is left undeclared. Symbols are `|path|`, delimited, so a
 /// substring test cannot confuse two of them.
-fn needed_decls(spec_decls: &[(String, String, String)], text: &str) -> String {
+fn needed_decls(
+    spec_decls: &[(String, String, String)],
+    dts: &[(String, String, String)],
+    text: &str,
+) -> String {
     let mut out = String::new();
     for (_, s, decl) in spec_decls {
         if text.contains(s.as_str()) {
@@ -2078,7 +2362,33 @@ fn needed_decls(spec_decls: &[(String, String, String)], text: &str) -> String {
             out.push('\n');
         }
     }
-    out
+    // The datatypes the query or those declarations name, with the ones
+    // their constructors name; `dts` lists dependencies first.
+    let mut wanted: Vec<bool> = dts
+        .iter()
+        .map(|(pre, sort, _)| {
+            text.contains(sort.as_str())
+                || text.contains(pre.as_str())
+                || out.contains(sort.as_str())
+        })
+        .collect();
+    for i in (0..dts.len()).rev() {
+        if wanted[i] {
+            for j in 0..i {
+                if dts[i].2.contains(dts[j].1.as_str()) {
+                    wanted[j] = true;
+                }
+            }
+        }
+    }
+    let mut head = String::new();
+    for ((_, _, decl), w) in dts.iter().zip(wanted) {
+        if w {
+            head.push_str(decl);
+            head.push('\n');
+        }
+    }
+    head + &out
 }
 
 /// Whether the `requires` clauses of every executable function that has
@@ -2097,6 +2407,7 @@ pub fn preconditions_satisfiable(p: &Program, t: &Tables) -> Vec<(String, Span, 
     }
     let prog = Prog { defs, t };
     let spec_decls = prog.spec_decls();
+    let dts = datatypes(t);
     let tainted = data_spec_fns(&prog.defs, t, Gate::Prover);
     let mut solver: Option<Solver> = None;
     let mut solver_down = crate::toolchain::check_z3().is_err();
@@ -2144,7 +2455,7 @@ pub fn preconditions_satisfiable(p: &Program, t: &Tables) -> Vec<(String, Span, 
         let mut base = header(0).join("\n");
         base.push('\n');
         let decls = enc.decls.join("\n");
-        let used = needed_decls(&spec_decls, &format!("{relevant}{decls}\n{q}"));
+        let used = needed_decls(&spec_decls, &dts, &format!("{relevant}{decls}\n{q}"));
         let full = format!("{base}{used}{relevant}{decls}");
         if solver.as_ref().is_some_and(|s| !s.reusable()) {
             solver = None;
@@ -2170,7 +2481,7 @@ pub fn preconditions_satisfiable(p: &Program, t: &Tables) -> Vec<(String, Span, 
         if matches!(answer, Ok(Answer::Unknown(_))) && !axiom_parts.is_empty() {
             let (inst, _) = ground_instances(&axiom_parts, &q, 3);
             if !inst.is_empty() {
-                let used = needed_decls(&spec_decls, &format!("{decls}\n{inst}{q}"));
+                let used = needed_decls(&spec_decls, &dts, &format!("{decls}\n{inst}{q}"));
                 let head = format!("{base}{used}{decls}");
                 let retry = sol
                     .run("(reset)")
@@ -2217,6 +2528,7 @@ fn verify_impl(
     let mut proved_keys: BTreeSet<ObKey> = BTreeSet::new();
     let mut failed_keys: BTreeSet<ObKey> = BTreeSet::new();
     let spec_decls = prog.spec_decls();
+    let dts = datatypes(t);
     let first_span = prog
         .defs
         .values()
@@ -2275,7 +2587,8 @@ fn verify_impl(
         if let Some(sp) = data {
             enc.unsupported.push((
                 sp,
-                "enums and arrays of data types are not supported by the proof gate yet (backlog 2B-05b, 2B-05c)".into(),
+                "arrays of data types are not supported by the proof gate yet (backlog 2B-05c)"
+                    .into(),
             ));
         }
         let header = header(seed);
@@ -2385,7 +2698,7 @@ fn verify_impl(
                 hidden_predicates(&spec_syms, &axioms, &format!("{q}{relevant}"), &d.mod_path);
             // Only the spec fns the query mentions are declared (backlog
             // 2D-14): an unrelated spec fn does not change the query text.
-            let used = needed_decls(&spec_decls, &format!("{relevant}{decls}\n{q}"));
+            let used = needed_decls(&spec_decls, &dts, &format!("{relevant}{decls}\n{q}"));
             let base = format!("{prefix}{used}{relevant}{decls}");
             script.push_str(&format!(
                 "; obligation {k}: {} {}\n(reset)\n{base}\n{q}\n(check-sat)\n",
@@ -2440,7 +2753,7 @@ fn verify_impl(
             if matches!(answer, Ok(Answer::Unknown(_))) && !axiom_parts.is_empty() {
                 let (inst, complete) = ground_instances(&axiom_parts, &q, 3);
                 if !inst.is_empty() {
-                    let used = needed_decls(&spec_decls, &format!("{decls}\n{inst}{q}"));
+                    let used = needed_decls(&spec_decls, &dts, &format!("{decls}\n{inst}{q}"));
                     let head = format!("{prefix}{used}{decls}");
                     script.push_str(&format!(
                         "; retry of obligation {k} with ground instances\n(reset)\n{head}\n{inst}{q}\n(check-sat)\n"
@@ -2765,6 +3078,70 @@ fn counterexample(sol: &mut Solver, inputs: &[(String, Val, TypeKind)], tb: &Tab
 /// Elements of an array shown in a counterexample.
 const SHOW: usize = 4;
 
+/// A datatype value from the model in Rust notation: `Some(992)`,
+/// `Shape::Rect(Point { x: 1, y: 2 }, ..)` (ADR-0026 §4).
+fn show_variant(x: &smt::Sexp, t: &TypeKind, tb: &Tables) -> String {
+    let (head, args) = match x {
+        smt::Sexp::Atom(a) => (a.clone(), &[][..]),
+        smt::Sexp::List(xs) if !xs.is_empty() => match &xs[0] {
+            smt::Sexp::Atom(a) => (a.clone(), &xs[1..]),
+            _ => return smt::render_value(x),
+        },
+        _ => return smt::render_value(x),
+    };
+    let ts = crate::check::ty_str(value_ty(t));
+    let Some(v) = head
+        .strip_prefix(&format!("|{ts}::"))
+        .and_then(|r| r.strip_suffix('|'))
+    else {
+        return smt::render_value(x);
+    };
+    let vs = enum_variants(t, tb).unwrap_or_default();
+    let ps = vs
+        .iter()
+        .find(|(n, _)| n == v)
+        .map(|(_, ps)| ps.clone())
+        .unwrap_or_default();
+    let name = if matches!(ts.split('<').next(), Some("Option" | "Result")) {
+        v.to_string()
+    } else {
+        format!("{}::{v}", ts.rsplit("::").next().unwrap_or(&ts))
+    };
+    if ps.is_empty() {
+        return name;
+    }
+    let mut it = args.iter();
+    let shown: Vec<String> = ps.iter().map(|pt| show_leaves(pt, tb, &mut it)).collect();
+    format!("{name}({})", shown.join(", "))
+}
+
+/// A value of type `t` from its model leaves (constructor arguments).
+fn show_leaves<'a>(
+    t: &TypeKind,
+    tb: &Tables,
+    it: &mut impl Iterator<Item = &'a smt::Sexp>,
+) -> String {
+    if let Some(fs) = struct_fields(t, tb) {
+        let short = crate::check::ty_str(value_ty(t));
+        let short = short.rsplit("::").next().unwrap_or(&short).to_string();
+        let shown: Vec<String> = fs
+            .iter()
+            .map(|(n, ft)| format!("{n}: {}", show_leaves(ft, tb, it)))
+            .collect();
+        return format!("{short} {{ {} }}", shown.join(", "));
+    }
+    if is_array(t) {
+        it.next();
+        it.next();
+        return "[..]".into();
+    }
+    match it.next() {
+        Some(x) if enum_variants(t, tb).is_some() => show_variant(x, t, tb),
+        Some(x) => smt::render_value(x),
+        None => String::new(),
+    }
+}
+
 /// The terms whose model values show `v`, in the order `show` reads them.
 fn model_terms(v: &Val, terms: &mut Vec<String>) {
     match v {
@@ -2783,6 +3160,13 @@ fn model_terms(v: &Val, terms: &mut Vec<String>) {
 /// `v` in Rust notation from its model values.
 fn show(v: &Val, t: &TypeKind, tb: &Tables, it: &mut impl Iterator<Item = String>) -> String {
     match v {
+        Val::S(_) if enum_variants(t, tb).is_some() => {
+            let raw = it.next().unwrap_or_default();
+            match smt::parse(&raw) {
+                Some(x) => show_variant(&x, t, tb),
+                None => raw,
+            }
+        }
         Val::S(_) => it.next().unwrap_or_default(),
         Val::A { .. } => {
             let len = it.next().unwrap_or_default();

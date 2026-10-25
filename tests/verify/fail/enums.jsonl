@@ -1,0 +1,13 @@
+{"code":"E0802","severity":"error","message":"postcondition `nonneg` may not hold in `geo::payload_sign`; counterexample: o = Some(-1)","file":"fail/enums.bmb","line":16,"col":17,"end_line":16,"end_col":26}
+{"code":"E0803","severity":"error","message":"`+` may overflow `i64` in `geo::overflow`; counterexample: s = Shape::Square(9223372036854775807)","file":"fail/enums.bmb","line":28,"col":33,"end_line":28,"end_col":38}
+{"code":"E0803","severity":"error","message":"`+` may overflow `i64` in `geo::struct_payload`; counterexample: s = Shape::Rect(Point { x: 9223372036854775807, y: 0 }, Point { x: 1, y: -9223372036854773371 })","file":"fail/enums.bmb","line":39,"col":34,"end_line":39,"end_col":43}
+{"code":"E0802","severity":"error","message":"postcondition `is_dot` may not hold in `geo::after_call`; counterexample: s = Shape::Dot","file":"fail/enums.bmb","line":53,"col":17,"end_line":53,"end_col":26}
+{"code":"E0810","severity":"error","message":"assertion may not hold in `geo::distinct`; counterexample: n = 0","file":"fail/enums.bmb","line":65,"col":9,"end_line":65,"end_col":52}
+{"code":"E0802","severity":"error","message":"postcondition `is_dot` may not hold in `geo::loop_forgets`; counterexample: n = 0","file":"fail/enums.bmb","line":71,"col":17,"end_line":71,"end_col":26}
+{"def":"geo::after_call","status":"failed","obligations":1,"failed":1,"rlimit":953,"rlimit_max":953}
+{"def":"geo::distinct","status":"failed","obligations":1,"failed":1,"rlimit":991,"rlimit_max":991}
+{"def":"geo::loop_forgets","status":"failed","obligations":7,"failed":1,"rlimit":3735,"rlimit_max":1147}
+{"def":"geo::overflow","status":"failed","obligations":1,"failed":1,"rlimit":607,"rlimit_max":607}
+{"def":"geo::payload_sign","status":"failed","obligations":1,"failed":1,"rlimit":3481,"rlimit_max":3481}
+{"def":"geo::struct_payload","status":"failed","obligations":3,"failed":1,"rlimit":3321,"rlimit_max":2053}
+{"def":"geo::touch","status":"verified","obligations":0,"failed":0,"rlimit":0,"rlimit_max":0}
