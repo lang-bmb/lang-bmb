@@ -76,6 +76,22 @@ class Verdict(unittest.TestCase):
         self.assertIn("판정 불가(Rust 통과 & 숨은 실패 0)", harness.oracle_verdict((0, 20), (0, 20)))
         self.assertIn("판정 불가(자기 검사를 통과한 과제가 없는 비교군)", harness.oracle_verdict((0, 0), (3, 20)))
 
+    def test_g8_line(self):
+        self.assertIn("→ 비 0.050(잠정 M3 기준 ≤ 1/10: 충족)", harness.g8_verdict((5, 10), (100, 10)))
+        self.assertIn("미달", harness.g8_verdict((20, 10), (100, 10)))
+        self.assertIn("판정 불가(Rust 테스트 0줄)", harness.g8_verdict((0, 24), (0, 24)))
+        self.assertIn("판정 불가(통과 과제가 없는 비교군)", harness.g8_verdict((0, 0), (5, 3)))
+
+    def test_rust_test_lines(self):
+        src = ('pub fn f() -> i64 { 1 }\n#[cfg(test)]\nmod t {\n    // only a comment\n\n    #[test]\n'
+               '    fn a() { let s = "}"; let c = \'{\'; assert_eq!(super::f(), 1); }\n}\npub fn g() {}\n')
+        self.assertEqual(harness.rust_test_lines({"src/lib.rs": src}), 5)
+        self.assertEqual(harness.rust_test_lines({"tests/x.rs": "use solution::*;\n\n#[test]\nfn b() {}\n"}), 3)
+        # Every weak Rust solution carries its own tests; no reference does.
+        for t in harness.tasks():
+            self.assertGreater(harness.rust_test_lines({"src/lib.rs": t.RUST_WEAK}), 0, t.ID)
+            self.assertEqual(harness.rust_test_lines({"src/lib.rs": t.RUST_REF}), 0, t.ID)
+
     def test_g5_line(self):
         self.assertIn("→ 통과", harness.g5_verdict((2, 24, 150), (6, 24, 100)))
         self.assertIn("결함률 비 0.333, 총 토큰 비 1.500", harness.g5_verdict((2, 24, 150), (6, 24, 100)))
@@ -88,9 +104,9 @@ class Verdict(unittest.TestCase):
         path = os.path.join(d, name)
         with open(path, "w") as f:
             for i, row in enumerate(rows):
-                defect, tokens, final_ok = (*row, True)[:3]
+                defect, tokens, final_ok, lines = (*row, True, 0)[:4] if len(row) == 2 else (*row, 0)[:4]
                 f.write(json.dumps({"id": f"t{i}", "arm": arm, "success": not defect, "defect": defect,
-                                    "final_check_ok": final_ok,
+                                    "final_check_ok": final_ok, "test_code": {"test_lines": lines},
                                     "delivered": True, "cases": 10, "failed": int(defect), "fail_kinds": {},
                                     "total_tokens": tokens, "model_usage": {}, "tool_calls": 3, "checks": 1,
                                     "limit_hit": None, "session_seconds": 1.0, "tool_seconds": 0.5}) + "\n")
@@ -111,6 +127,13 @@ class Verdict(unittest.TestCase):
             # A task whose checker fails at the end is not a "passed" task.
             b2 = self._results(d, "b2.jsonl", "bmb", [(True, 30, False), (False, 30), (True, 30), (False, 30)])
             self.assertIn("BMB 1/3 = 0.333, Rust 2/4 = 0.500 → 지지", harness.summarize([b2, r]))
+            self.assertIn("Rust 0줄/2과제 → 판정 불가(Rust 테스트 0줄)", out)
+            # G8 counts the test code of the tasks that pass the hidden judge only.
+            b3 = self._results(d, "b3.jsonl", "bmb", [(False, 30, True, 0), (True, 30, True, 7)])
+            r3 = self._results(d, "r3.jsonl", "rust", [(False, 20, True, 40), (True, 20, True, 99)])
+            out3 = harness.summarize([b3, r3])
+            self.assertIn("| 테스트 코드 줄(숨은 판정 통과 과제) | 0 | 40 |", out3)
+            self.assertIn("BMB 0줄/1과제, Rust 40줄/1과제 → 비 0.000", out3)
             self.assertIn("G5: 판정 불가(BMB 결과 하나와 Rust 결과 하나를 함께 주어야 함)", harness.summarize([b]))
             other = self._results(d, "o.jsonl", "rust", [(True, 20)], manifest="other")
             with self.assertRaises(SystemExit):

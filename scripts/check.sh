@@ -67,7 +67,9 @@ table=$(python3 bench/brb/harness.py summarize "$b" "$r")
 grep -qF "| 성공(숨은 테스트 전부 통과) | 24/24 | 24/24 |" <<< "$table" || { echo "brb summarize: unexpected table"; exit 1; }
 grep -qF "판정 불가(Rust 결함 0)" <<< "$table" || { echo "brb summarize: unexpected G5 line"; exit 1; }
 grep -qF "| 자기 검사 통과(최종 상태, 증명 게이트 / 에이전트 테스트) | 24/24 | 24/24 |" <<< "$table" || { echo "brb summarize: unexpected self-check row"; exit 1; }
-grep -qF "판정 불가(Rust 통과 & 숨은 실패 0)" <<< "$table" || { echo "brb summarize: unexpected H-ORACLE line"; exit 1; }' \
+grep -qF "판정 불가(Rust 통과 & 숨은 실패 0)" <<< "$table" || { echo "brb summarize: unexpected H-ORACLE line"; exit 1; }
+grep -qF "| 테스트 코드 줄(BMB 남은 테스트 면적 / Rust 에이전트 테스트, 전체) | 0 | 0 |" <<< "$table" || { echo "brb summarize: unexpected test code row"; exit 1; }
+grep -qF "BMB 0줄/24과제, Rust 0줄/24과제 → 판정 불가(Rust 테스트 0줄)" <<< "$table" || { echo "brb summarize: unexpected G8 line"; exit 1; }' \
   --job 'bench brb weak=python3 bench/brb/harness.py run --arm bmb --agent weak --expect weak-fail --jobs 2 > /dev/null
 python3 bench/brb/harness.py run --arm rust --agent weak --proptest off --expect weak-fail --jobs 2 > /dev/null' \
   --job "bench brb adequacy=python3 bench/brb/harness.py adequacy --jobs 2 > /dev/null" \

@@ -5,7 +5,7 @@
   harness.py run --arm bmb|rust --agent AGENT [--tasks ID,..] [--jobs N]
                  [--out FILE] [--expect all-pass|weak-fail] [--proptest on|off]
   harness.py adequacy [--jobs N]          every Rust mutant is killed by the hidden cases
-  harness.py summarize RESULTS.jsonl..   metric table (one column per file), the G5 and H-ORACLE lines
+  harness.py summarize RESULTS.jsonl..   metric table (one column per file), the G5, H-ORACLE and G8 lines
 
 Both arms get the same task statement, the same agent adapter, the same
 limits (tool calls, model output tokens per session) and a checker (BMB:
@@ -30,6 +30,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -211,6 +212,7 @@ def run_session(task, arm, agent_kind, rust_target, proptest):
         # The delivered sources, so that later metrics (G8 test code, H-REUSE)
         # are computed from this run instead of a new paid one.
         final_sources = delivered_sources(ws, arm)
+        test_code = bmb_test_surface(ws) if arm == "bmb" else {"test_lines": rust_test_lines(final_sources)}
         session_s = time.monotonic() - t0
         t1 = time.monotonic()
         jdir = os.path.join(tmp, "judge")
@@ -225,6 +227,7 @@ def run_session(task, arm, agent_kind, rust_target, proptest):
         return {
             "id": task.ID, "arm": arm, "agent": agent_kind, "success": success, "defect": not success,
             **verdict, **m, "final_check_ok": final_check_ok, "final_sources": final_sources,
+            "test_code": test_code,
             "session_seconds": round(session_s, 2), "tool_seconds": round(m["tool_seconds"], 2),
             "judge_seconds": round(judge_s, 2),
             "model_usage": usage,
@@ -247,6 +250,72 @@ def delivered_sources(ws, arm):
                     path = os.path.join(d, f)
                     out[os.path.relpath(path, ws)] = read_bytes(path).decode("utf-8", "replace")
     return dict(sorted(out.items()))
+
+
+def bmb_test_surface(ws):
+    """The remaining test surface of the delivered workspace (`bmb query tests`,
+    backlog 2D-21): its summary row, or None when the query fails."""
+    r = subprocess.run([bmb_bin(), "query", "--cache", m1.cache_dir(ws), "tests", "--", ws],
+                       capture_output=True, text=True)
+    rows = [json.loads(line) for line in r.stdout.splitlines() if line.startswith("{")]
+    summary = next((x for x in rows if x.get("summary")), None)
+    if r.returncode != 0 or summary is None:
+        return None
+    return {k: summary[k] for k in ("test_needed_defs", "test_sites", "test_lines")}
+
+
+def code_lines(text):
+    """Lines with code: neither blank nor only a `//` comment (block comments
+    count as code; agents rarely write them in tests)."""
+    return sum(1 for line in text.splitlines() if line.strip() and not line.strip().startswith("//"))
+
+
+def cfg_test_items(text):
+    """The text of every item under `#[cfg(test)]` (module or function), up
+    to its matching brace. Braces inside string, char and comment text are
+    skipped."""
+    out = []
+    for m in re.finditer(r"#\[cfg\(test\)\]", text):
+        i, depth = m.end(), 0
+        while i < len(text):
+            c = text[i]
+            if text.startswith("//", i):
+                i = text.find("\n", i)
+                i = len(text) if i < 0 else i
+                continue
+            if text.startswith("/*", i):
+                j = text.find("*/", i + 2)
+                i = len(text) if j < 0 else j + 2
+                continue
+            if c == '"':
+                i += 1
+                while i < len(text) and text[i] != '"':
+                    i += 2 if text[i] == "\\" else 1
+            elif c == "'" and re.match(r"'(\\.|[^\\'])'", text[i:i + 4]):
+                i += text[i + 1:].index("'") + 1
+            elif c == "{":
+                depth += 1
+            elif c == "}":
+                depth -= 1
+                if depth == 0:
+                    out.append(text[m.start():i + 1])
+                    break
+            elif c == ";" and depth == 0:
+                break
+            i += 1
+    return out
+
+
+def rust_test_lines(sources):
+    """Test code lines of a delivered Rust crate (G8, backlog 2H-06): every
+    file under `tests/` and every `#[cfg(test)]` item under `src/`."""
+    n = 0
+    for path, text in sources.items():
+        if path.startswith("tests" + os.sep) or path.startswith("tests/"):
+            n += code_lines(text)
+        else:
+            n += sum(code_lines(item) for item in cfg_test_items(text))
+    return n
 
 
 def check_ok(arm, text, err):
@@ -315,6 +384,33 @@ def oracle_verdict(bmb, rust):
     return f"H-ORACLE (통과 & 숨은 실패 비율, 반증: BMB ≥ Rust): {shares} → {verdict}"
 
 
+def g8_verdict(bmb, rust):
+    """The G8 line (ADR-0041, backlog 2H-06): test code over the tasks that pass
+    the hidden judge. BMB counts the remaining test surface the compiler
+    reports (`query tests` lines), Rust the agent's test code lines. The M3
+    target is provisional (1/10); M2 only reports. `bmb` and `rust` are
+    (lines, passed tasks)."""
+    (bl, bn), (rl, rn) = bmb, rust
+    head = f"G8 (테스트 코드 줄, 숨은 판정 통과 과제): BMB {bl}줄/{bn}과제, Rust {rl}줄/{rn}과제"
+    if not bn or not rn:
+        return head + " → 판정 불가(통과 과제가 없는 비교군)"
+    if rl == 0:
+        return head + " → 판정 불가(Rust 테스트 0줄)"
+    return head + f" → 비 {bl / rl:.3f}(잠정 M3 기준 ≤ 1/10: {'충족' if bl / rl <= 0.1 else '미달'})"
+
+
+def test_lines_of(r):
+    """A result's test code lines, None when unknown (older results, a failed
+    query)."""
+    tc = r.get("test_code") or {}
+    return tc.get("test_lines")
+
+
+def passed_lines(t):
+    passed = [r for r in t if r["success"]]
+    return sum(test_lines_of(r) or 0 for r in passed), len(passed)
+
+
 def passed_defective(t):
     """(tasks whose final self-check passed with a hidden defect, tasks whose
     final self-check passed); results without the field count as not passed."""
@@ -346,6 +442,9 @@ def summarize(paths):
             ("자기 검사 통과(최종 상태, 증명 게이트 / 에이전트 테스트)",
              f"{sum(1 for r in t if r.get('final_check_ok') is True)}/{n}"),
             ("자기 검사 통과 & 숨은 실패 / 자기 검사 통과", "{}/{}".format(*passed_defective(t))),
+            ("테스트 코드 줄(BMB 남은 테스트 면적 / Rust 에이전트 테스트, 전체)",
+             str(sum(test_lines_of(r) or 0 for r in t))),
+            ("테스트 코드 줄(숨은 판정 통과 과제)", "{}".format(passed_lines(t)[0])),
             ("총 모델 토큰(입력+출력)", str(sum(r["total_tokens"] for r in t))),
             ("모델 입력 토큰", str(sum(u.get("input_tokens", 0) for u in usage))),
             ("모델 출력 토큰", str(sum(u.get("output_tokens", 0) for u in usage))),
@@ -384,6 +483,14 @@ def summarize(paths):
             out.append("H-ORACLE: 판정 불가(두 비교군의 과제 집합이 다름)")
     else:
         out.append("H-ORACLE: 판정 불가(BMB 결과 하나와 Rust 결과 하나를 함께 주어야 함)")
+    if sorted(by_arm) == ["bmb", "rust"] and all(len(v) == 1 for v in by_arm.values()):
+        b, r = by_arm["bmb"][0], by_arm["rust"][0]
+        if sorted(x["id"] for x in b) == sorted(x["id"] for x in r):
+            out.append(g8_verdict(passed_lines(b), passed_lines(r)))
+        else:
+            out.append("G8: 판정 불가(두 비교군의 과제 집합이 다름)")
+    else:
+        out.append("G8: 판정 불가(BMB 결과 하나와 Rust 결과 하나를 함께 주어야 함)")
     ids = sorted({r["id"] for _, _, t in runs for r in t})
     out += ["", "| 과제 | " + " | ".join(n for n, _, _ in runs) + " |", "| --- |" + " --- |" * len(runs)]
     for tid in ids:
