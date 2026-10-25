@@ -1,0 +1,6 @@
+{
+  "id": "n25-io-all",
+  "kind": "navigate",
+  "op": "io_all",
+  "prompt": "Which functions produce output (print), directly or through the functions they call? Use the `answer` tool with the full paths (module::name) of all such definitions."
+}

@@ -1,0 +1,7 @@
+{
+  "id": "n12-m1-io-callers",
+  "kind": "navigate",
+  "op": "io_callers",
+  "def": "m1::clamp_1",
+  "prompt": "Which functions that produce output (print, directly or through the functions they call) call `m1::clamp_1` directly or transitively? Use the `answer` tool with the full paths (module::name) of all such definitions."
+}

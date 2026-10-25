@@ -1,0 +1,7 @@
+{
+  "id": "n07-m1-impact-mid",
+  "kind": "navigate",
+  "op": "impact",
+  "def": "m1::mix_7",
+  "prompt": "Suppose the contract (precondition or postcondition) of `m1::mix_7` changes. Which functions must be checked again, including `m1::mix_7` itself? A function relies on the contracts of the functions it calls directly; nothing further up is affected. Use the `answer` tool with the full paths (module::name) of all such definitions."
+}

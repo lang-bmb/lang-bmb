@@ -1,0 +1,8 @@
+{
+  "id": "n05-m1-callees-show",
+  "kind": "navigate",
+  "op": "callees",
+  "def": "m1::show_14",
+  "closure": true,
+  "prompt": "Which functions does `m1::show_14` call, directly or transitively? Count only calls in function bodies, not contract predicates and not built-in output. Use the `answer` tool with the full paths (module::name) of all such definitions."
+}

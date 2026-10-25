@@ -1,0 +1,7 @@
+{
+  "id": "n08-m1-requires",
+  "kind": "navigate",
+  "op": "requires",
+  "def": "m1::inb",
+  "prompt": "Which functions have the predicate `m1::inb` in their precondition? Use the `answer` tool with the full paths (module::name) of all such definitions."
+}

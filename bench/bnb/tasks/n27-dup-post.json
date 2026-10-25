@@ -1,0 +1,7 @@
+{
+  "id": "n27-dup-post",
+  "kind": "navigate",
+  "op": "duplicates",
+  "def": "m3::abs_5_ok",
+  "prompt": "Which other definitions are exact duplicates of `m3::abs_5_ok` (same parameters, types and body; only the name or module differs)? Use the `answer` tool with the full paths (module::name) of all such definitions."
+}

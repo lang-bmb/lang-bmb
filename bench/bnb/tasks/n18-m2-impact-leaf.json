@@ -1,0 +1,7 @@
+{
+  "id": "n18-m2-impact-leaf",
+  "kind": "navigate",
+  "op": "impact",
+  "def": "m2::clamp_5",
+  "prompt": "Suppose the contract (precondition or postcondition) of `m2::clamp_5` changes. Which functions must be checked again, including `m2::clamp_5` itself? A function relies on the contracts of the functions it calls directly; nothing further up is affected. Use the `answer` tool with the full paths (module::name) of all such definitions."
+}

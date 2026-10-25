@@ -21,7 +21,7 @@ cargo test --no-run --quiet --message-format=json-render-diagnostics > "$built"
 step "backlog"; python3 scripts/check_backlog.py
 step "docs";    target/debug/bmb codes --md | diff -u docs/diagnostics.md - > /dev/null || { echo "docs/diagnostics.md is stale: run cargo run -q -- codes --md > docs/diagnostics.md"; exit 1; }
 
-step "test, bench m1, bench m1b, bench m3 (concurrent)"
+step "test, bench m1, bench m1b, bench m3, bench bnb (concurrent)"
 # Bench sessions are independent (ADR-0025, backlog 2A-04): m1b runs two at a time per agent.
 python3 scripts/gate_jobs.py --cargo-json "$built" \
   --job "test doc=cargo test --doc --quiet" \
@@ -37,5 +37,6 @@ python3 bench/m1/harness.py --set bench/m1b run --agent oracle --expect all-pass
 table=$(python3 bench/m1/harness.py summarize "$tmp")
 grep -qF "| 작성 1회 성공률 | 25/25 |" <<< "$table" || { echo "m1b summarize: unexpected table"; exit 1; }' \
   --job "bench m1b weak=python3 bench/m1/harness.py --set bench/m1b run --agent weak --expect weak-fail --jobs 2 > /dev/null" \
-  --job "bench m3 generator=python3 bench/m3/test_gen.py > /dev/null"
+  --job "bench m3 generator=python3 bench/m3/test_gen.py > /dev/null" \
+  --job "bench bnb=python3 bench/bnb/test_bnb.py > /dev/null"
 echo "all checks passed"

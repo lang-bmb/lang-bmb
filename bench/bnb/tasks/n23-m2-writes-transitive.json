@@ -1,0 +1,7 @@
+{
+  "id": "n23-m2-writes-transitive",
+  "kind": "navigate",
+  "op": "writes_closure",
+  "def": "m2::reset_14",
+  "prompt": "Which functions receive the mutable reference (`&mut`) argument of `m2::reset_14`, directly or transitively (passed on from function to function)? Do not count `m2::reset_14` itself. Use the `answer` tool with the full paths (module::name) of all such definitions."
+}

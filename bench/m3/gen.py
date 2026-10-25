@@ -14,6 +14,10 @@ in every workspace that contains unit U+window. Growing N appends units; it
 does not change existing ones. scripts that compare sizes (scale.py) rely on
 this.
 
+Bodies are rendered from a plan: `Unit` (names, kinds, constants) and
+`choose` (callees and result forms, drawn once per unit). The Rust twin
+(bench/bnb/twin.py, backlog 3A-05) renders the same plan.
+
 Usage: gen.py OUT --defs N [--defs-per-unit 20 | --units U] [--seed 1]
                [--depth 4] [--fanout 2] [--window 3] [--contract-share 0.5]
                [--mut-share 0.15] [--scan-share 0.10] [--io-share 0.05]
@@ -123,8 +127,14 @@ class Unit:
         ]
 
 
-def render_unit(units, u, args):
+def choose(units, u, args):
+    """Random choices of unit `u`'s bodies (callees, result form), drawn once
+    from the unit's generator in plan order and kept on the unit. Both
+    renderers (BMB here, the Rust twin in bench/bnb/twin.py) read them, so the
+    two languages get the same call graph."""
     unit = units[u]
+    if hasattr(unit, "choices"):
+        return unit.choices
     rng = unit.rng
     lo = max(0, u - args.window)
 
@@ -139,6 +149,26 @@ def render_unit(units, u, args):
         for L in range(1, args.depth):
             out += pool("chain", layer=L)
         return out
+
+    ch = {}
+    for n, kind, info in unit.defs:
+        if kind == "chain":
+            cands = pool("leaf" if info["layer"] == 1 else "chain", layer=info["layer"] - 1)
+            callees = [rng.choice(cands) for _ in range(args.fanout)]
+            ch[n] = {"callees": callees, "avg": rng.random() < 0.5}
+        elif kind in ("scan_peak", "remap", "show"):
+            ch[n] = {"callees": [rng.choice(arith_any())]}
+        elif kind == "reset":
+            fills = [x for x in pool("fill") if x != (u, n)]
+            remaps = [x for x in pool("remap") if x != (u, n)]
+            ch[n] = {"callees": [rng.choice(fills), rng.choice(remaps)]}
+    unit.choices = ch
+    return ch
+
+
+def render_unit(units, u, args):
+    unit = units[u]
+    ch = choose(units, u, args)
 
     def inb_uses(callees):
         return ["inb"] + [q(v, u, "inb") for v, _ in callees]
@@ -177,14 +207,13 @@ def render_unit(units, u, args):
     }}
 """
         elif kind == "chain":
-            cands = pool("leaf" if info["layer"] == 1 else "chain", layer=info["layer"] - 1)
-            callees = [rng.choice(cands) for _ in range(args.fanout)]
+            callees = ch[n]["callees"]
             lines = []
             prev = "x"
             for j, (v, cn) in enumerate(callees):
                 lines.append(f"        let v{j}: i64 = {q(v, u, cn)}({prev});")
                 prev = f"v{j}"
-            res = f"(x + v{args.fanout - 1}) / 2" if rng.random() < 0.5 else f"v{args.fanout - 1}"
+            res = f"(x + v{args.fanout - 1}) / 2" if ch[n]["avg"] else f"v{args.fanout - 1}"
             defs[n] = attrs("pure", inb_uses(callees)) + f"""    fn {n}(x: i64) -> (r: i64)
         requires inb(x),
         ensures inb(r),
@@ -213,7 +242,7 @@ def render_unit(units, u, args):
     }}
 """
         elif kind == "scan_peak":
-            callee = rng.choice(arith_any())
+            callee = ch[n]["callees"][0]
             defs[n] = attrs("pure", ["all_inb"] + inb_uses([callee])) + f"""    fn {n}(a: &[i64]) -> (r: i64)
         requires all_inb(a),
         ensures inb(r),
@@ -249,7 +278,7 @@ def render_unit(units, u, args):
     }}
 """
         elif kind == "remap":
-            callee = rng.choice(arith_any())
+            callee = ch[n]["callees"][0]
             defs[n] = attrs("pure", ["all_inb"] + inb_uses([callee])) + f"""    fn {n}(a: &mut [i64]) -> ()
         requires all_inb(a),
         ensures all_inb(a),
@@ -265,9 +294,7 @@ def render_unit(units, u, args):
     }}
 """
         elif kind == "reset":
-            fills = [x for x in pool("fill") if x != (u, n)]
-            remaps = [x for x in pool("remap") if x != (u, n)]
-            f, m = rng.choice(fills), rng.choice(remaps)
+            f, m = ch[n]["callees"]
             uses = ["all_inb", "inb", q(f[0], u, "inb"), q(f[0], u, "all_inb"), q(m[0], u, "all_inb")]
             defs[n] = attrs("pure", uses) + f"""    fn {n}(a: &mut [i64], v: i64) -> ()
         requires inb(v),
@@ -278,7 +305,7 @@ def render_unit(units, u, args):
     }}
 """
         elif kind == "show":
-            callee = rng.choice(arith_any())
+            callee = ch[n]["callees"][0]
             defs[n] = attrs("io", inb_uses([callee])) + f"""    fn {n}(x: i64) -> ()
         requires inb(x),
     {{

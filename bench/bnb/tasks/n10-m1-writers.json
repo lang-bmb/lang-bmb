@@ -1,0 +1,7 @@
+{
+  "id": "n10-m1-writers",
+  "kind": "navigate",
+  "op": "writers",
+  "def": "m1::fill_11",
+  "prompt": "Which functions pass a mutable reference (`&mut`) argument to `m1::fill_11`? Use the `answer` tool with the full paths (module::name) of all such definitions."
+}

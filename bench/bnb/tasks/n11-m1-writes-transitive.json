@@ -1,0 +1,7 @@
+{
+  "id": "n11-m1-writes-transitive",
+  "kind": "navigate",
+  "op": "writes_closure",
+  "def": "m1::reset_13",
+  "prompt": "Which functions receive the mutable reference (`&mut`) argument of `m1::reset_13`, directly or transitively (passed on from function to function)? Do not count `m1::reset_13` itself. Use the `answer` tool with the full paths (module::name) of all such definitions."
+}
