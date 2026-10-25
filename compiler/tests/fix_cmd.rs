@@ -13,7 +13,7 @@ mod m {
 
     #[effects(pure)]
     fn first(a: &'a [i64]) -> i64 {
-        let v: [i64; 2] = vec![1, 2];
+        let v: [i64; 2] = [1, 2];
         v[0]
     }
 
@@ -67,13 +67,13 @@ fn rust_habits_are_fixed_over_rounds() {
     assert_eq!(
         codes,
         [
-            "E0104", "E0201", "E0201", "E0202", "E0207", "E0208", "E0209", "E0402"
+            "E0104", "E0201", "E0201", "E0207", "E0208", "E0209", "E0402"
         ]
     );
     let report = out.report(&input);
     assert!(
         report.ends_with(
-            "{\"summary\":true,\"rounds\":2,\"applied\":8,\"changed\":[\"t.bmb\"],\"remaining\":0,\"ok\":true}\n"
+            "{\"summary\":true,\"rounds\":2,\"applied\":7,\"changed\":[\"t.bmb\"],\"remaining\":0,\"ok\":true}\n"
         ),
         "{report}"
     );
@@ -138,7 +138,7 @@ fn cli_reports_by_default_and_writes_only_with_write() {
     let report = Command::new(bmb).arg("fix").arg(&path).output().unwrap();
     assert!(report.status.success());
     let stdout = String::from_utf8(report.stdout).unwrap();
-    assert!(stdout.lines().last().unwrap().contains("\"applied\":8"));
+    assert!(stdout.lines().last().unwrap().contains("\"applied\":7"));
     assert_eq!(std::fs::read_to_string(&path).unwrap(), HABITS);
 
     let printed = Command::new(bmb)

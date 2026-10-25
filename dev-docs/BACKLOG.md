@@ -390,7 +390,7 @@ ROADMAP의 통과 기준마다 그것을 확인하는 태스크다. 빈칸이 �
 | 2G-03 | `Vec` 증명 인코딩 | 길이·원소 모델, `push`·`pop`·인덱스 의무 | 2G-02 | ✅ `Tables::slice_view`(`Vec`은 슬라이스 값, 참조는 슬라이스 참조)로 기존 배열·길이·인덱스·반례 경로를 그대로 씀. `Enc::vec_change`(`push` E0816·`pop`의 `Option`·`truncate`), `vec_new`(`with_capacity` E0816), `&mut Vec` 호출 뒤 길이 새로 정함, 루프의 변경 메서드 수신자 havoc. 코퍼스 `tests/verify/pass/vecs`(8정의: 루프로 채운 결과의 계약, `pop`·`truncate` 계약, 복제·이동, 핸들 패턴 `struct Id`와 늘기만 하는 저장소), `fail/vecs`(반례 6). `bmb stability --seeds 8` 불안정 0(rlimit 퍼짐 1.01) |
 | 2G-04 | 런타임과 코드 생성 | 할당·해제, `alloc` 효과와 연결 | 2G-03 | ✅ `codegen.rs`: 머리 `%bmb.vec`, IR 런타임 `VEC_RUNTIME`(`bmb_vec_alloc`·`grow`·`clone`·`free`, 크기 넘침·할당 실패는 `abort`), `vec_method`·`vec_new`, 해제는 `MoveInfo`(블록 끝, 대입 교체)와 영역 끝 임시값(`region`·`release`). `alloc` 효과 연결은 ADR-0031 채택 갱신 7에 따라 ADR-0030(2F) 때. 실행 `tests/run/vecs`(15값 손 대조: 32까지 성장, 복제 독립, `pop`으로 비움, 교체, 루프 조건 임시값, `bool`·구조체 원소, 핸들): 증명 빌드 검사 0·`proved E0816` 7, 증명·전체 검사 빌드 × -O0~-O3 8조합 출력 같음, valgrind `--leak-check=full` 오류·누수 0. 테스트 `a_proved_push_has_no_check_and_an_unproved_one_keeps_it`, `an_unproved_vec_index_traps_exactly_from_the_length` |
 | 2G-05 | 퍼저 확장 | 힙 값을 다루는 건전성 퍼저, 위반 0 | 2G-04 | ⏳ 승인됨(2026-10-25) |
-| 2G-06 | `vec!` 수정 재검토 | E0202의 `vec![a, b]` → `[a, b]` 수정은 `Vec` 도입 뒤 의미를 바꾼다(2R-02 발견). 2G에서 `Vec::from` 류로 바꾸거나 수정 제거 | 2G-03 | ⏳ 승인됨(2026-10-25) |
+| 2G-06 | `vec!` 수정 재검토 | E0202의 `vec![a, b]` → `[a, b]` 수정은 `Vec` 도입 뒤 의미를 바꾼다(2R-02 발견). 2G에서 `Vec::from` 류로 바꾸거나 수정 제거 | 2G-03 | ✅ 교체 제거(ADR-0031 채택 갱신 8): E0202 `vec!`는 안내만("고정 배열은 `[a, b]`·`[v; N]`, `Vec`은 `Vec::with_capacity(n)`과 `push`"). `fix_cmd` 습관 시험에서 `vec!` 줄을 빼고(적용 8 → 7), `rust_habits.jsonl` 갱신 |
 
 ### 2S 바이트·문자열 (셀프호스팅 격차, 4A-01)
 

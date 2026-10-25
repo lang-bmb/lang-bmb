@@ -12,7 +12,7 @@ pub struct Parser<'a> {
     toks: Vec<Token>,
     pos: usize,
     diags: &'a mut Diags,
-    /// Source text, for fixes that copy part of it (e.g. `vec![..]` -> `[..]`).
+    /// Source text, for fixes that copy part of it (e.g. `x as T` -> `T::try_from(x).unwrap()`).
     text: &'a str,
     /// Current syntactic nesting (see `MAX_NESTING`).
     depth: usize,
@@ -2049,19 +2049,16 @@ impl<'a> Parser<'a> {
         if let (Tok::Ident(name), Tok::P("!")) = (self.peek().clone(), self.peek_at(1).clone()) {
             self.bump();
             self.bump();
-            let group_lo = self.span().lo as usize;
-            let bracket = self.is_p("[");
             self.skip_group();
-            let group_hi = self.prev_span().hi as usize;
-            // `vec![a, b]` is mechanically the fixed array `[a, b]`.
-            let replacement = (name == "vec" && bracket)
-                .then(|| self.text.get(group_lo..group_hi).map(String::from))
-                .flatten();
+            // `vec![..]` has no mechanical fix: `[..]` is a fixed array, a
+            // `Vec` is built with `push` (ADR-0031 §7, backlog 2G-06).
             let fix = match name.as_str() {
                 "println" | "print" | "eprintln" => {
                     "call `print_i64(x)` from an `#[effects(io)]` function"
                 }
-                "vec" => "use a fixed array: `[a, b, c]` or `[v; N]`",
+                "vec" => {
+                    "a fixed array is `[a, b]` or `[v; N]`; a `Vec` is `Vec::with_capacity(n)` and `push`"
+                }
                 "assert" | "assert_eq" | "debug_assert" => {
                     "use `assert(cond);` (a proof obligation, not a runtime check)"
                 }
@@ -2076,7 +2073,7 @@ impl<'a> Parser<'a> {
                     lo.to(self.prev_span()),
                     format!("macro `{name}!` is not allowed"),
                 )
-                .fix(fix, replacement),
+                .fix(fix, None),
             );
             return Ok(Expr {
                 kind: ExprKind::Error,
