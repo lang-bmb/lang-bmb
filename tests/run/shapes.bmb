@@ -1,0 +1,134 @@
+#[summary("실행 예제: 구조체, 열거형, match, 슬라이스 (backlog 2B-06)")]
+mod shapes {
+    struct Point { x: i64, y: i64 }
+
+    enum Shape { Dot(Point), Rect(Point, Point), Empty }
+
+    struct Tagged { s: Shape, on: bool, w: [i64; 2] }
+
+    spec fn small(n: i64) -> bool { -1000 <= n && n <= 1000 }
+
+    spec fn small_p(p: Point) -> bool { small(p.x) && small(p.y) }
+
+    spec fn small_s(s: Shape) -> bool {
+        match s {
+            Shape::Dot(p) => small_p(p),
+            Shape::Rect(a, b) => small_p(a) && small_p(b),
+            Shape::Empty => true,
+        }
+    }
+
+    spec fn idx(a: &[Point], i: usize) -> bool { i < a.len() }
+
+    spec fn all_small(a: &[Point]) -> bool {
+        forall|k: usize| k < a.len() ==> small_p(#[trigger] a[k])
+    }
+
+    impl Point {
+        #[effects(pure)]
+        #[uses(small_p, small)]
+        fn sum(self: &Point) -> i64
+            requires small_p(*self),
+        {
+            self.x + self.y
+        }
+
+        #[effects(pure)]
+        #[uses(small_p, small)]
+        fn mirror(self: Point) -> (r: Point)
+            requires small_p(self),
+            ensures small_p(r),
+        {
+            Point { x: self.y, y: self.x }
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(small_s, small_p, small)]
+    fn area(s: &Shape) -> i64
+        requires small_s(*s),
+    {
+        match *s {
+            Shape::Dot(_) => 0,
+            Shape::Rect(a, b) => (b.x - a.x) * (b.y - a.y),
+            Shape::Empty => -1,
+        }
+    }
+
+    #[effects(pure)]
+    fn first_x(o: Option<Point>) -> Option<i64> {
+        match o {
+            None => None,
+            Some(p) => Some(p.x),
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(small)]
+    fn checked_div(a: i64, b: i64) -> Result<i64, bool>
+        requires small(a), small(b),
+    {
+        if b == 0 { Err(false) } else { Ok(a / b) }
+    }
+
+    #[effects(pure)]
+    #[uses(idx, all_small, small_p, small)]
+    fn shift_all(a: &mut [Point], d: i64) -> ()
+        requires all_small(a), small(d),
+    {
+        let mut i: usize = 0;
+        while i < a.len()
+            invariant i <= a.len(),
+            decreases a.len() - i,
+        {
+            a[i].x = 7;
+            i = i + 1;
+        }
+    }
+
+    #[effects(io)]
+    fn show(o: Option<i64>) -> () {
+        match o {
+            None => print_i64(-99),
+            Some(v) => print_i64(v),
+        }
+    }
+
+    #[effects(io)]
+    #[uses(small_p, small_s, small)]
+    fn main() -> () {
+        let p: Point = Point { y: 2, x: 1 };
+        let mut q: Point = p;
+        q.x = 10;
+        print_i64(p.x);
+        print_i64(q.x);
+        print_i64(Point::sum(&q));
+        let m: Point = Point::mirror(q);
+        print_i64(m.x);
+        print_i64(m.y);
+        let r: Shape = Shape::Rect(Point { x: 1, y: 1 }, Point { x: 4, y: 6 });
+        print_i64(area(&r));
+        print_i64(area(&Shape::Empty));
+        let d: Shape = Shape::Dot(m);
+        print_i64(area(&d));
+        let mut t: Tagged = Tagged { s: r, on: true, w: [5, 6] };
+        t.s = Shape::Empty;
+        print_i64(area(&t.s));
+        if t.on {
+            print_i64(t.w[1]);
+        }
+        show(first_x(Some(m)));
+        show(first_x(None));
+        match checked_div(9, 0) {
+            Ok(v) => print_i64(v),
+            Err(_) => print_i64(-1),
+        }
+        match checked_div(9, 3) {
+            Ok(w) => print_i64(w),
+            Err(_) => print_i64(-1),
+        }
+        let mut pts: [i64; 1] = [0];
+        pts[0] = 3;
+        print_i64(pts[0]);
+    }
+}

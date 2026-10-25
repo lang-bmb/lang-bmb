@@ -158,7 +158,7 @@ impl Leaf {
 
 /// The fields of the struct `t` denotes (through a reference), in
 /// declaration order.
-fn struct_fields<'t>(t: &TypeKind, tb: &'t Tables) -> Option<&'t [(String, TypeKind)]> {
+pub(crate) fn struct_fields<'t>(t: &TypeKind, tb: &'t Tables) -> Option<&'t [(String, TypeKind)]> {
     let t = match t {
         TypeKind::Ref { inner, .. } => &inner.kind,
         t => t,
@@ -178,7 +178,7 @@ fn struct_fields<'t>(t: &TypeKind, tb: &'t Tables) -> Option<&'t [(String, TypeK
 /// The variants of the enum `t` denotes (through a reference), in
 /// declaration order, with their payload types. `Option` is `None, Some`,
 /// `Result` is `Ok, Err` (ADR-0026).
-fn enum_variants(t: &TypeKind, tb: &Tables) -> Option<Vec<(String, Vec<TypeKind>)>> {
+pub(crate) fn enum_variants(t: &TypeKind, tb: &Tables) -> Option<Vec<(String, Vec<TypeKind>)>> {
     let t = match t {
         TypeKind::Ref { inner, .. } => &inner.kind,
         t => t,
@@ -206,7 +206,7 @@ fn enum_variants(t: &TypeKind, tb: &Tables) -> Option<Vec<(String, Vec<TypeKind>
 }
 
 /// The type without a reference around it.
-fn value_ty(t: &TypeKind) -> &TypeKind {
+pub(crate) fn value_ty(t: &TypeKind) -> &TypeKind {
     match t {
         TypeKind::Ref { inner, .. } if !matches!(inner.kind, TypeKind::Slice(_)) => &inner.kind,
         t => t,
@@ -518,7 +518,9 @@ struct Enc<'p, 'q> {
     spec_pc: Vec<String>,
     term_check: Option<(usize, String)>,
     forall_depth: u32,
-    triggers: Vec<Vec<String>>,
+    /// Per enclosing `forall`, its `#[trigger]` terms: each one a list of
+    /// alternatives (a struct-valued trigger has one per leaf).
+    triggers: Vec<Vec<Vec<String>>>,
     bound: u32,
     unsupported: Vec<(Span, String)>,
 }
@@ -941,16 +943,38 @@ impl<'p, 'q> Enc<'p, 'q> {
                 } else {
                     format!("(=> {} {bt})", and(&facts))
                 };
+                // One multi-pattern per choice of an alternative from each
+                // trigger (a struct trigger offers each of its leaves).
+                let mut combos: Vec<Vec<String>> = vec![Vec::new()];
+                for alts in &pats {
+                    combos = combos
+                        .iter()
+                        .flat_map(|c| {
+                            alts.iter().map(move |a| {
+                                let mut c = c.clone();
+                                c.push(a.clone());
+                                c
+                            })
+                        })
+                        .take(16)
+                        .collect();
+                }
+                let patterns: Vec<String> = combos
+                    .iter()
+                    .map(|c| format!(":pattern ({})", c.join(" ")))
+                    .collect();
                 Val::S(format!(
-                    "(forall ({}) (! {inner} :pattern ({})))",
+                    "(forall ({}) (! {inner} {}))",
                     decl.join(" "),
-                    pats.join(" ")
+                    patterns.join(" ")
                 ))
             }
             ExprKind::Trigger(x) => {
                 let v = self.spec(x, env, old);
                 if let Some(top) = self.triggers.last_mut() {
-                    top.push(v.s());
+                    let mut leaves = Vec::new();
+                    flatten(&v, &mut leaves);
+                    top.push(leaves);
                 }
                 v
             }
@@ -2065,14 +2089,15 @@ enum Gate {
     /// The proof gate encodes structs, enums and slices of them (backlog
     /// 2B-05a..c), not yet array elements holding an array.
     Prover,
-    /// The code generator handles no data type before backlog 2B-06.
+    /// The code generator, the same shapes (backlog 2B-06).
     Codegen,
 }
 
 impl Gate {
     fn rejects(self, t: &TypeKind, tb: &Tables) -> bool {
         match self {
-            Gate::Codegen => has_named(t),
+            // The code generator lowers what the prover encodes (2B-06).
+            Gate::Codegen => Gate::Prover.rejects(t, tb),
             Gate::Prover => match t {
                 TypeKind::Named { .. } => match (struct_fields(t, tb), enum_variants(t, tb)) {
                     (Some(fs), _) => fs.iter().any(|(_, ft)| self.rejects(ft, tb)),

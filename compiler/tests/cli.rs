@@ -62,7 +62,7 @@ fn an_unknown_local_suggests_the_nearest_one() {
 /// checker (backlog 2B-04); the proof gate reports them as E0814 until they
 /// are encoded (2B-05).
 #[test]
-fn data_types_in_signatures_prove_but_do_not_compile_yet() {
+fn data_types_in_signatures_prove_and_compile() {
     const SRC: &str = r#"#[summary("data types in signatures (ADR-0026, backlog 2B-04)")]
 mod geo {
     enum Shape { Dot, Square(i64), Rect(Point, Point) }
@@ -119,7 +119,7 @@ mod user {
     let verify = Command::new(bmb).arg("verify").arg(&f).output().unwrap();
     let out = String::from_utf8_lossy(&verify.stdout);
     assert!(verify.status.success(), "{out}");
-    // Code generation waits for backlog 2B-06.
+    // Code generation lowers them (backlog 2B-06).
     let ll = dir.join("t.ll");
     let emit = Command::new(bmb)
         .arg("emit-llvm")
@@ -129,9 +129,11 @@ mod user {
         .output()
         .unwrap();
     let out = String::from_utf8_lossy(&emit.stdout);
+    assert!(emit.status.success(), "{out}");
     assert!(
-        !emit.status.success() && out.contains("not compiled yet"),
-        "{out}"
+        std::fs::read_to_string(&ll)
+            .unwrap()
+            .contains("%\"geo::Point\" = type { i64, i64 }")
     );
     let _ = std::fs::remove_dir_all(&dir);
 }

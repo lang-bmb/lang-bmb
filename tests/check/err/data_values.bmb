@@ -75,4 +75,25 @@ mod shapes {
     fn assign_ref(p: &Point) -> () {
         p.x = 1;
     }
+
+    #[effects(pure)]
+    fn read(p: &Point) -> i64 {
+        p.x
+    }
+
+    #[effects(pure)]
+    fn write(p: &mut Point, q: &Point) -> () {
+        p.x = q.x;
+    }
+
+    #[effects(pure)]
+    fn ref_args(s: Shape) -> i64 {
+        let p: Point = Point { x: 1, y: 2 };
+        let mut q: Point = p;
+        write(&mut p, &q);
+        write(&q, &p);
+        write(&mut q, &q);
+        read(&s);
+        read(p)
+    }
 }

@@ -3015,7 +3015,7 @@ impl<'a> Checker<'a> {
     ) -> Option<String> {
         let want = format!("&{}{}", if pm { "mut " } else { "" }, ty_str(&inner.kind));
         let TypeKind::Slice(pe) = &inner.kind else {
-            return None;
+            return self.data_ref_arg(cx, a, pm, &inner.kind, &want, mode);
         };
         let (var, explicit_ref, am) = match &a.kind {
             ExprKind::Ref { mutable, expr } => match &expr.kind {
@@ -3103,6 +3103,95 @@ impl<'a> Checker<'a> {
             return None;
         }
         Some(var.name.clone())
+    }
+
+    /// Checks an argument for a `&T` / `&mut T` parameter of a struct or
+    /// enum `T` (ADR-0026 §2): `&e` of a `T` value, `&mut p` of a mutable
+    /// place, or a reference parameter passed on. Returns the root variable
+    /// of a `&mut` argument (for the aliasing check, E0410).
+    fn data_ref_arg(
+        &mut self,
+        cx: &mut FnCtx,
+        a: &Expr,
+        pm: bool,
+        want_ty: &TypeKind,
+        want: &str,
+        mode: Mode,
+    ) -> Option<String> {
+        match &a.kind {
+            ExprKind::Ref { mutable: am, expr } => {
+                if *am != pm {
+                    let r = format!(
+                        "&{}{}",
+                        if pm { "mut " } else { "" },
+                        crate::fmt::expr_text(expr)
+                    );
+                    self.diags.push(
+                        Diag::new("E0401", a.span, format!("expected `{want}`"))
+                            .fix(format!("pass `{r}`"), Some(r)),
+                    );
+                }
+                if !pm {
+                    let t = self.expr(cx, expr, Some(want_ty), mode);
+                    self.expect_ty(&t, want_ty, expr.span);
+                    return None;
+                }
+                let (t, writable) = self.place_of(cx, expr);
+                self.expect_ty(&t, want_ty, expr.span);
+                let root = root_name(expr);
+                if !writable && t != TypeKind::Error {
+                    self.diags.push(
+                        Diag::new(
+                            "E0408",
+                            expr.span,
+                            format!("`{}` is not mutable", crate::fmt::expr_text(expr)),
+                        )
+                        .fix("declare the variable with `let mut`", None),
+                    );
+                    return None;
+                }
+                root
+            }
+            // Passing a reference parameter on: `f(p)`.
+            ExprKind::Var(id) => {
+                let t = self.expr(cx, a, None, mode);
+                let ok = match &t {
+                    TypeKind::Ref { mutable: lm, inner } => inner.kind == *want_ty && (*lm || !pm),
+                    TypeKind::Error => true,
+                    _ => false,
+                };
+                if !ok {
+                    let mut d = Diag::new(
+                        "E0401",
+                        a.span,
+                        format!("expected `{want}`, found `{}`", ty_str(&t)),
+                    );
+                    if t == *want_ty {
+                        let r = format!("&{}{}", if pm { "mut " } else { "" }, id.name);
+                        d = d.fix(format!("pass `{r}`"), Some(r));
+                    }
+                    self.diags.push(d);
+                    return None;
+                }
+                pm.then(|| id.name.clone())
+            }
+            _ => {
+                let t = self.expr(cx, a, None, mode);
+                if t != TypeKind::Error {
+                    let mut d = Diag::new(
+                        "E0401",
+                        a.span,
+                        format!("expected `{want}`, found `{}`", ty_str(&t)),
+                    );
+                    if t == *want_ty && !pm {
+                        let r = format!("&{}", crate::fmt::expr_text(a));
+                        d = d.fix(format!("pass `{r}`"), Some(r));
+                    }
+                    self.diags.push(d);
+                }
+                None
+            }
+        }
     }
 
     // ---------- whole-program checks ----------
@@ -3479,5 +3568,16 @@ fn closest<'a>(name: &str, candidates: impl Iterator<Item = &'a String>) -> Opti
         None
     } else {
         best.map(|(_, c)| c.to_string())
+    }
+}
+
+/// The variable a place expression starts from: `p` of `p.a.x`, `*p`, `a[i]`.
+fn root_name(e: &Expr) -> Option<String> {
+    match &e.kind {
+        ExprKind::Var(id) => Some(id.name.clone()),
+        ExprKind::Deref(x) | ExprKind::Field { base: x, .. } | ExprKind::Index { base: x, .. } => {
+            root_name(x)
+        }
+        _ => None,
     }
 }

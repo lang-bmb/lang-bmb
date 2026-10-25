@@ -1,0 +1,82 @@
+#[summary("실행 예제: 값 의미 — 복사, &mut, 페이로드, 분기 결과 (backlog 2B-06)")]
+mod values {
+    struct Point { x: i64, y: i64 }
+
+    struct Flags { on: bool, w: [i64; 3], p: Point }
+
+    enum Shape { Dot(Point), Empty }
+
+    spec fn small(n: i64) -> bool { -1000 <= n && n <= 1000 }
+
+    spec fn small_p(p: Point) -> bool { small(p.x) && small(p.y) }
+
+    #[effects(pure)]
+    #[uses(small_p, small)]
+    fn bump(p: &mut Point) -> ()
+        requires small_p(*p),
+        ensures small_p(*p),
+    {
+        p.x = if p.x < 1000 { p.x + 1 } else { p.x };
+    }
+
+    #[effects(pure)]
+    fn pick(c: bool, a: Point, b: Point) -> Point {
+        if c { a } else { b }
+    }
+
+    #[effects(pure)]
+    fn flip(f: Flags) -> Flags {
+        let mut g: Flags = f;
+        g.on = !g.on;
+        g.w = [9, g.w[1], g.w[2]];
+        g
+    }
+
+    #[effects(io)]
+    #[uses(small_p, small)]
+    fn main() -> () {
+        // A payload is a copy: changing the source later does not reach it.
+        let mut p: Point = Point { x: 1, y: 2 };
+        let s: Shape = Shape::Dot(p);
+        p.x = 99;
+        match s {
+            Shape::Dot(z) => print_i64(z.x),
+            Shape::Empty => print_i64(0),
+        }
+        // A binding is a copy: the arm may overwrite the scrutinee.
+        let mut t: Shape = Shape::Dot(Point { x: 5, y: 6 });
+        match t {
+            Shape::Dot(u) => {
+                t = Shape::Empty;
+                print_i64(u.y);
+            }
+            Shape::Empty => print_i64(0),
+        }
+        match t {
+            Shape::Dot(_) => print_i64(1),
+            Shape::Empty => print_i64(2),
+        }
+        // `&mut` writes reach the caller's place, also a field.
+        let mut q: Point = Point { x: 10, y: 0 };
+        bump(&mut q);
+        bump(&mut q);
+        print_i64(q.x);
+        let mut f: Flags = Flags { on: true, w: [1, 2, 3], p: q };
+        bump(&mut f.p);
+        print_i64(f.p.x);
+        print_i64(q.x);
+        // A by-value argument is a copy; so is the result.
+        let g: Flags = flip(f);
+        print_i64(f.w[0]);
+        print_i64(g.w[0]);
+        if f.on { print_i64(1); } else { print_i64(0); }
+        if g.on { print_i64(1); } else { print_i64(0); }
+        let r: Point = pick(false, p, q);
+        print_i64(r.x);
+        // Field-to-field assignment.
+        let mut h: Flags = g;
+        h.p = Point { x: h.p.y, y: h.p.x };
+        print_i64(h.p.x);
+        print_i64(h.p.y);
+    }
+}
