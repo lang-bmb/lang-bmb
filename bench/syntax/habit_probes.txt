@@ -1,0 +1,69 @@
+#[effects(pure)] fn f(x: i64) -> i64 { let mut y: i64 = x; y += 1; y }
+#[effects(pure)] fn f(x: i64) -> i64 { let y = x; y }
+#[effects(pure)] fn f(x: i64) -> i64 { 0x10 }
+#[effects(pure)] fn f(x: u64) -> u64 { x & 1 }
+#[effects(pure)] fn f(x: u64) -> u64 { x << 1 }
+#[effects(pure)] fn f(x: i64) -> i64 { let y: i64 = x; let y: i64 = y + 0; y }
+spec fn p(a: &[i64]) -> bool { exists|i: usize| i < a.len() && #[trigger] a[i] == 0 }
+#[effects(pure)] fn f(x: i64) -> i64 { if x < 0 { 0 } else if x > 10 { 10 } else { x } }
+#[effects(pure)] fn f(x: i64) -> i64 requires x > 0, { x }
+fn f(x: i64) -> i64 { x }
+#[effects(pure)] fn f(x: i64) -> i64 { x.abs() }
+#[effects(pure)] fn f(x: i64) { }
+#[effects(pure)] fn f(x: i64) -> i64 { /* c */ x }
+#[effects(pure)] fn f(x: i64) -> i64 ensures x >= 0, { x }
+#[effects(pure)] fn f(x: i64) -> (r: i64) ensures r == x, { x }
+#[effects(pure)] fn f(x: i64) -> i64 { let a: [i64; 3] = [0; 3]; a[0] }
+#[effects(pure)] fn f(x: i64) -> i64 { assert(x == x); x }
+#[effects(pure)] fn f(x: i64) -> i64 { x.wrapping_add(1) }
+#[effects(pure)] fn f(x: i64) -> i64 { i64::MAX }
+#[effects(pure)] fn f(x: i64) -> i64 { 1_000 }
+#[effects(pure)] fn f(x: i64) -> i64 { let y: i64 = x; return y; }
+#[effects(pure)] fn f(x: i64) -> i64 { 5i64 }
+#[effects(pure)] fn f(x: i64) -> i64 { let z: i64 = x as i64; z }
+#[effects(pure)] fn f(x: i64) -> i64 decreases x, requires x > 0, { x }
+spec fn p(x: i64) -> bool { x > 0 }
+#[effects(pure)] #[uses(p)] fn f(x: i64) -> i64 requires p(x) { x }
+#[effects(pure)] fn f(x: i64) -> i64 { let mut i: i64 = 0; while i < x { i = i + 1; } i }
+#[effects(pure)] fn f(x: i64) -> i64 { let t: (i64, i64) = (x, x); x }
+#[effects(pure)] fn f(mut x: i64) -> i64 { x }
+#[effects(pure)] fn f(x: &i64) -> i64 { *x }
+pub fn f(x: i64) -> i64 { x }
+#[effects(pure)] fn f(x: i64) -> i64 { let y: i64 = -x; y }
+#[effects(pure)] fn f(x: i64) -> i64 { x.max(0) }
+#[effects(pure)] fn f(x: i64) -> i64 { std::cmp::max(x, 0) }
+#[effects(pure)] fn f(a: &[i64]) -> usize { a.len() }
+#[effects(pure)] fn f(a: &[i64]) -> bool { a.is_empty() }
+#[effects(pure)] fn f(x: i64) -> i64 { if x > 0 { x } }
+#[effects(pure)] fn f(x: i64) -> () { let y: i64 = x; }
+#[effects(pure)] fn f(x: i64) -> i64 { { x } }
+#[effects(pure)] fn f(x: i64) -> i64 { let b: bool = true; if b { x } else { 0 } }
+#[effects(pure)] fn f(x: i64) -> i64 { let y: i64 = g(x)?; y }
+#[effects(pure)] fn f<'a>(a: &'a [i64]) -> i64 { 0 }
+#[effects(pure)] fn f(x: i64) -> bool { 0 < x < 5 }
+spec fn p(a: &[i64]) -> bool { forall|i: usize| i < a.len() ==> a[i] > 0 }
+#[effects(pure)] fn f(x: i64) -> i64 { println!("{}", x); x }
+#[effects(pure)] fn f(x: i64) -> i64 { assert!(x == x); x }
+#[effects(pure)] fn f(a: &[i64]) -> i64 { let mut s: i64 = 0; for v in a { s = s + v; } s }
+#[effects(pure)] fn f(x: i64) -> i64 { let y: i64 = x.wrapping_add(1).wrapping_mul(2); y }
+#[effects(pure)] fn f(x: i64) -> i64 { if x > 0 { return 1; } 0 }
+#[effects(pure)] fn f(x: i64) -> i64 { let v: Vec<i64> = Vec::new(); x }
+#[effects(pure)] fn f(x: i64) -> Option<i64> { Some(x) }
+#[effects(pure)] fn f(x: i64) -> i64 { -4.wrapping_mul(x) }
+spec fn p(x: i64) -> bool { x > 0 } #[effects(pure)] #[uses(p)] fn f(x: i64) -> i64 requires p(x) { x }
+spec fn p(x: int) -> bool { x > 0 }
+spec fn p(x: i64) -> bool { x > i64::MAX - 1 }
+#[effects(pure)] fn f(x: i64) -> i64 { let a: [i64; 2] = [1, 2]; let b: i64 = a.len(); b }
+#[effects(io)] fn main() -> () { print_i64(1); }
+#[effects(pure)] fn f(x: i64) -> i64 { let t: i64 = 0; t }
+#[effects(pure)] fn f(x: i64) -> i64 { while x > 0 invariant x > 0, decreases x, { } x }
+open spec fn p(x: i64) -> bool { x > 0 }
+spec fn p(a: &[i64]) -> bool { forall|i: usize| 0 <= i < a.len() ==> #[trigger] a[i] > 0 }
+spec fn p(a: &[i64]) -> bool { forall|i: usize| i < a@.len() ==> #[trigger] a[i] > 0 }
+spec fn p(a: &[i64]) -> bool { forall|i: usize| #![auto] i < a.len() ==> a[i] > 0 }
+proof fn l(x: i64) ensures x == x, { }
+#[effects(pure)] fn f(x: i64) -> i64 { assert(x == x) by(nonlinear_arith); x }
+#[effects(pure)] fn f(x: i64) -> (result: i64) ensures result == x, { x }
+#[effects(pure)] fn f(x: i64) -> i64 { let mut k: usize = 0; while k < 10 invariant k <= 10, decreases 10 - k, { k = k + 1; } x }
+#[verifier::external_body] #[effects(pure)] fn f(x: i64) -> i64 { x }
+spec fn p(x: i64) -> bool { x > 0 && x != 3 || x == 9 }
