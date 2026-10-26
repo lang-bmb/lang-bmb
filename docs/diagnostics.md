@@ -32,6 +32,7 @@
 | E0211 | comparison operators cannot be chained |
 | E0212 | `T::from(x)` / `x.into()` / `x.try_into()`: convert with `T::try_from(x).unwrap()` |
 | E0213 | `T::try_from(x).expect(..)` is written `.unwrap()` |
+| E0214 | `use` is not used: names are written in full |
 | E0218 | a `Vec` is passed where a slice is expected: write `v.as_slice()` |
 | E0219 | `drop(v)` and `mem::take` / `replace` / `swap` are not used |
 | E0234 | a string literal: text is bytes, write `b"..."` |

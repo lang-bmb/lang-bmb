@@ -53,6 +53,9 @@ pub struct Checker<'a> {
     pub fns: BTreeMap<String, FnSig>,
     /// Declared structs and enums by full path (backlog 2B-04).
     pub adts: BTreeMap<String, Adt>,
+    /// Per unit, the names its `use` items import and their full paths
+    /// (backlog 2V-15: rewritten by E0214).
+    imports: BTreeMap<String, BTreeMap<String, String>>,
     /// Exec-to-exec and spec-to-spec call edges, by path.
     calls: BTreeMap<String, BTreeSet<String>>,
     /// Type of every checked expression, keyed by its span `(file, lo, hi)`.
@@ -220,6 +223,7 @@ impl<'a> Checker<'a> {
             diags,
             fns,
             adts: BTreeMap::new(),
+            imports: BTreeMap::new(),
             calls: BTreeMap::new(),
             types: BTreeMap::new(),
             recursive: BTreeMap::new(),
@@ -651,6 +655,32 @@ impl<'a> Checker<'a> {
 
     fn collect_mod(&mut self, m: &Mod, prefix: &str) {
         let mp = format!("{prefix}{}", m.name.name);
+        // `use` is not part of the language: the item goes, and every name
+        // it imports is written in full where it is used (backlog 2V-15).
+        for u in &m.uses {
+            let full = u
+                .path
+                .iter()
+                .map(|i| i.name.as_str())
+                .collect::<Vec<_>>()
+                .join("::");
+            let last = u.path.last().expect("a path").name.clone();
+            self.imports
+                .entry(mp.clone())
+                .or_default()
+                .insert(last, full.clone());
+            self.diags.push(
+                Diag::new(
+                    "E0214",
+                    u.del,
+                    format!("`use {full};` is not used: write `{full}` where it is used"),
+                )
+                .fix(
+                    "delete the `use`; its names are rewritten to full paths",
+                    Some(String::new()),
+                ),
+            );
+        }
         let mut names = BTreeSet::new();
         for t in &m.types {
             if BUILTIN_NAMES.contains(&t.name.name.as_str()) {
@@ -1758,8 +1788,41 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// E0214 for a path whose first segment a `use` of unit `mp` imports:
+    /// the fix writes the imported full path in its place.
+    fn imported(&mut self, path: &[&str], span: Span, mp: &str) -> bool {
+        let Some(text) = self.import_text(path, mp) else {
+            return false;
+        };
+        self.diags.push(
+            Diag::new(
+                "E0214",
+                span,
+                format!("`{}` comes from a `use`", path.join("::")),
+            )
+            .fix(format!("write `{text}`"), Some(text)),
+        );
+        true
+    }
+
+    /// The full path for `path` when its first segment comes from a `use`
+    /// of unit `mp`.
+    fn import_text(&self, path: &[&str], mp: &str) -> Option<String> {
+        let mut text = self.imports.get(mp)?.get(path[0])?.clone();
+        for seg in &path[1..] {
+            text.push_str("::");
+            text.push_str(seg);
+        }
+        Some(text)
+    }
+
     /// E0305 for a type name, with the nearest type of unit `mp` as the fix.
     fn unknown_type(&self, name: &str, span: Span, mp: &str) -> Diag {
+        let segs: Vec<&str> = name.split("::").collect();
+        if let Some(text) = self.import_text(&segs, mp) {
+            return Diag::new("E0214", span, format!("`{name}` comes from a `use`"))
+                .fix(format!("write `{text}`"), Some(text));
+        }
         let mut d = Diag::new("E0305", span, format!("unknown type `{name}`"));
         let local: Vec<String> = self
             .adts
@@ -3451,6 +3514,16 @@ impl<'a> Checker<'a> {
             .collect::<Vec<_>>()
             .join("::");
         let Some(target) = self.resolve(path, &cx.mod_path) else {
+            let segs: Vec<&str> = path.iter().map(|i| i.name.as_str()).collect();
+            let pspan = path[0].span.to(path[path.len() - 1].span);
+            if self.imported(&segs, pspan, &cx.mod_path.clone()) {
+                for a in args {
+                    if !matches!(a.kind, ExprKind::Ref { .. }) {
+                        self.expr(cx, a, None, mode);
+                    }
+                }
+                return TypeKind::Error;
+            }
             let hint = if path.len() == 1 {
                 format!(
                     "no `{name}` in unit `{}`; other units are reached by full path `unit::{name}`",

@@ -8,6 +8,8 @@ mod no_summary {
 #[summary("항목 규칙")]
 mod items {
     use other::thing;
+    use other::*;
+    use other::{a, b};
 
     struct Point { x: i64 }
 

@@ -36,7 +36,21 @@ pub struct Mod {
     pub types: Vec<TypeDef>,
     /// `impl T { .. }` blocks (ADR-0026: one per type, same unit).
     pub impls: Vec<Impl>,
+    /// `use a::b::c;` items. Not part of the language: the checker rewrites
+    /// each name they import to its full path and deletes them (E0214,
+    /// backlog 2V-15).
+    pub uses: Vec<UseItem>,
     pub span: Span,
+}
+
+/// A single-name `use` item.
+#[derive(Debug, Clone)]
+pub struct UseItem {
+    pub path: Vec<Ident>,
+    pub span: Span,
+    /// The item with the line break and indentation before it: what the
+    /// fix deletes, so no blank line is left.
+    pub del: Span,
 }
 
 /// A data type declaration (ADR-0026 §1).

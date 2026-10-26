@@ -46,6 +46,7 @@ pub const CODES: &[(&str, &str)] = &[
         "E0213",
         "`T::try_from(x).expect(..)` is written `.unwrap()`",
     ),
+    ("E0214", "`use` is not used: names are written in full"),
     // E0218-E0219: Rust habits around `Vec` (ADR-0031 §7)
     (
         "E0218",

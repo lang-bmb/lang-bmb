@@ -384,3 +384,26 @@ fn reference_where_a_value_is_expected_is_fixed() {
     );
     assert!(fixed.contains("let p: P = *r;"), "{fixed}");
 }
+
+#[test]
+fn use_items_are_rewritten_to_full_paths() {
+    // Backlog 2V-15: `use` is deleted and every name it imports is written
+    // in full; the result checks and proves.
+    let text = "#[summary(\"g\")]\nmod geo {\n    struct Point { x: i64, y: i64 }\n\n    #[effects(pure)]\n    fn origin() -> Point {\n        Point { x: 0, y: 0 }\n    }\n}\n\n#[summary(\"a\")]\nmod app {\n    use geo::Point;\n    use geo::origin;\n\n    #[effects(pure)]\n    fn x_of(p: Point) -> i64 {\n        p.x\n    }\n\n    #[effects(pure)]\n    fn go() -> i64 {\n        let p: Point = origin();\n        x_of(p)\n    }\n}\n";
+    let input = one(text);
+    assert!(!bmb::check_sources(&input).ok);
+    let out = bmb::fix_sources(&input);
+    assert!(out.ok, "{}", out.diagnostics);
+    assert!(bmb::verify_sources(&out.files).ok);
+    let fixed = &out.files[0].1;
+    assert!(!fixed.contains("use "), "{fixed}");
+    assert!(fixed.contains("fn x_of(p: geo::Point) -> i64 {"), "{fixed}");
+    assert!(
+        fixed.contains("let p: geo::Point = geo::origin();"),
+        "{fixed}"
+    );
+    assert!(
+        fixed.contains("mod app {\n\n    #[effects(pure)]"),
+        "{fixed}"
+    );
+}

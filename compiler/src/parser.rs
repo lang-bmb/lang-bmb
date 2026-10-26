@@ -31,7 +31,6 @@ pub const MAX_NESTING: usize = 256;
 /// Rust constructs recognised only to be rejected with a precise message.
 const UNSUPPORTED_ITEMS: &[&str] = &[
     "trait",
-    "use",
     "const",
     "static",
     "type",
@@ -289,6 +288,72 @@ impl<'a> Parser<'a> {
     }
 
     /// Recover inside a mod: stop before the next item start or the closing `}`.
+    /// `use a::b::c;` (backlog 2V-15): a single name is kept for the
+    /// checker to rewrite; a glob, a group or a rename is E0214 without a
+    /// fix (the ledger has one name per definition).
+    fn parse_use(&mut self) -> Option<UseItem> {
+        let lo = self.span();
+        let before = if self.pos > 0 {
+            self.prev_span().hi
+        } else {
+            lo.lo
+        };
+        self.bump();
+        let mut path = Vec::new();
+        while let Tok::Ident(n) = self.peek().clone() {
+            path.push(Ident {
+                name: n,
+                span: self.span(),
+            });
+            self.bump();
+            if self.peek() == &Tok::P("::") {
+                self.bump();
+            } else {
+                break;
+            }
+        }
+        if self.peek() == &Tok::P(";") && path.len() >= 2 {
+            let hi = self.span();
+            self.bump();
+            return Some(UseItem {
+                path,
+                span: lo.to(hi),
+                del: Span {
+                    file: lo.file,
+                    lo: before,
+                    hi: hi.hi,
+                },
+            });
+        }
+        self.diags.push(
+            Diag::new(
+                "E0214",
+                lo,
+                "only a single name can be imported, and names are written in full",
+            )
+            .fix(
+                "write every name of another unit by its full path, e.g. `unit::f(..)`",
+                None,
+            ),
+        );
+        // Skip to the item's `;` (a group `{a, b}` included).
+        let mut depth = 0i32;
+        loop {
+            match self.peek() {
+                Tok::Eof => return None,
+                Tok::P("{") => depth += 1,
+                Tok::P("}") if depth == 0 => return None,
+                Tok::P("}") => depth -= 1,
+                Tok::P(";") if depth == 0 => {
+                    self.bump();
+                    return None;
+                }
+                _ => {}
+            }
+            self.bump();
+        }
+    }
+
     fn recover_item(&mut self) {
         let mut depth = 0i32;
         loop {
@@ -447,6 +512,7 @@ impl<'a> Parser<'a> {
         let mut mods = Vec::new();
         let mut types = Vec::new();
         let mut impls = Vec::new();
+        let mut uses = Vec::new();
         while !self.is_p("}") && !matches!(self.peek(), Tok::Eof) {
             let start = self.pos;
             let attrs = self.attrs();
@@ -484,12 +550,15 @@ impl<'a> Parser<'a> {
                     Ok(i) => impls.push(i),
                     Err(_) => self.recover_item(),
                 }
+            } else if self.is_kw("use") {
+                if let Some(u) = self.parse_use() {
+                    uses.push(u);
+                }
             } else if let Tok::Ident(s) = self.peek().clone()
                 && UNSUPPORTED_ITEMS.contains(&s.as_str())
             {
                 let sp = self.span();
                 let fix = match s.as_str() {
-                    "use" => "refer to other units by full path, e.g. `unit::f(..)`",
                     "const" | "static" => "use a `spec fn` returning the value, or a literal",
                     _ => "units hold `fn`, `spec fn`, `struct`, `enum` and `impl T { .. }`",
                 };
@@ -520,6 +589,7 @@ impl<'a> Parser<'a> {
             mods,
             types,
             impls,
+            uses,
             span: lo.to(hi),
         })
     }

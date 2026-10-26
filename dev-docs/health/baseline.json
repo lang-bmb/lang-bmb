@@ -14,12 +14,12 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 19796,
+    "S4_stage0_rust_lines": 19933,
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
     "P1_runnable_programs": 19,
-    "P2_bmb_lines": 7159,
-    "P3_errors_with_help": 0.7071,
+    "P2_bmb_lines": 7161,
+    "P3_errors_with_help": 0.7088,
     "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 8
@@ -461,6 +461,24 @@
         "P3_errors_with_help": [
           0.7062,
           0.7071
+        ]
+      }
+    },
+    {
+      "date": "2026-10-26",
+      "reason": "2V-15: E0214 use-to-full-path fix; corpus gains two use cases",
+      "changed": {
+        "S4_stage0_rust_lines": [
+          19796,
+          19933
+        ],
+        "P2_bmb_lines": [
+          7159,
+          7161
+        ],
+        "P3_errors_with_help": [
+          0.7071,
+          0.7088
         ]
       }
     }
