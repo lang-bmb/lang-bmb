@@ -341,18 +341,63 @@ fn prog_of<'p>(p: &'p Program, t: &'p Tables) -> Prog<'p> {
 }
 
 /// The sorts of a generic definition's type parameters (ADR-0046 §4) and a
-/// value of each (the base of an empty array).
+/// value of each (the base of an empty array). A parameter bounded by
+/// `Ord` has an uninterpreted total order `le` (reflexive, antisymmetric,
+/// transitive, total: the contract of the built-in `Ord`).
 fn sort_decls(sig: &FnSig) -> String {
     sig.generics
         .iter()
         .map(|g| {
             let s = sort_of(&TypeKind::Param(g.name.clone()));
-            format!(
+            let mut d = format!(
                 "(declare-sort {s} 0)\n(declare-const {} {s})\n",
                 sym(&format!("'{}.default", g.name))
-            )
+            );
+            if g.bounds.iter().any(|b| b == "Ord") {
+                let le = sym(&format!("'{}.le", g.name));
+                d.push_str(&format!(
+                    "(declare-fun {le} ({s} {s}) Bool)\n\
+                     (assert (forall ((a {s})) (! ({le} a a) :pattern (({le} a a)))))\n\
+                     (assert (forall ((a {s}) (b {s})) (! (=> (and ({le} a b) ({le} b a)) (= a b)) :pattern (({le} a b) ({le} b a)))))\n\
+                     (assert (forall ((a {s}) (b {s}) (c {s})) (! (=> (and ({le} a b) ({le} b c)) ({le} a c)) :pattern (({le} a b) ({le} b c)))))\n\
+                     (assert (forall ((a {s}) (b {s})) (! (or ({le} a b) ({le} b a)) :pattern (({le} a b)))))\n"
+                ));
+            }
+            d
         })
         .collect()
+}
+
+/// An ordering comparison of `a` and `b` of type `t` (Rust `Ord`): the
+/// sort's total order for a type parameter, `false < true` for `bool`,
+/// integer order otherwise.
+fn ord_term(op: BinOp, t: &TypeKind, a: &str, b: &str) -> String {
+    match t {
+        TypeKind::Param(n) => {
+            let le = sym(&format!("'{n}.le"));
+            match op {
+                BinOp::Le => format!("({le} {a} {b})"),
+                BinOp::Ge => format!("({le} {b} {a})"),
+                BinOp::Lt => format!("(and ({le} {a} {b}) (not (= {a} {b})))"),
+                _ => format!("(and ({le} {b} {a}) (not (= {a} {b})))"),
+            }
+        }
+        TypeKind::Bool => match op {
+            BinOp::Le => format!("(=> {a} {b})"),
+            BinOp::Ge => format!("(=> {b} {a})"),
+            BinOp::Lt => format!("(and (not {a}) {b})"),
+            _ => format!("(and {a} (not {b}))"),
+        },
+        _ => {
+            let o = match op {
+                BinOp::Lt => "<",
+                BinOp::Le => "<=",
+                BinOp::Gt => ">",
+                _ => ">=",
+            };
+            format!("({o} {a} {b})")
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -1495,10 +1540,9 @@ impl<'p, 'q> Enc<'p, 'q> {
                     BinOp::Rem => format!("(mod {lt} {rt})"),
                     BinOp::Eq => format!("(= {lt} {rt})"),
                     BinOp::Ne => format!("(not (= {lt} {rt}))"),
-                    BinOp::Lt => format!("(< {lt} {rt})"),
-                    BinOp::Le => format!("(<= {lt} {rt})"),
-                    BinOp::Gt => format!("(> {lt} {rt})"),
-                    BinOp::Ge => format!("(>= {lt} {rt})"),
+                    BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => {
+                        ord_term(*op, &self.ty(l), &lt, &rt)
+                    }
                     BinOp::And => format!("(and {lt} {rt})"),
                     BinOp::Or => format!("(or {lt} {rt})"),
                     BinOp::Implies => format!("(=> {lt} {rt})"),
@@ -1882,10 +1926,9 @@ impl<'p, 'q> Enc<'p, 'q> {
                     }
                     BinOp::Eq => return Val::S(format!("(= {lt} {rt})")),
                     BinOp::Ne => return Val::S(format!("(not (= {lt} {rt}))")),
-                    BinOp::Lt => return Val::S(format!("(< {lt} {rt})")),
-                    BinOp::Le => return Val::S(format!("(<= {lt} {rt})")),
-                    BinOp::Gt => return Val::S(format!("(> {lt} {rt})")),
-                    BinOp::Ge => return Val::S(format!("(>= {lt} {rt})")),
+                    BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => {
+                        return Val::S(ord_term(*op, &self.ty(l), &lt, &rt));
+                    }
                     BinOp::And | BinOp::Or | BinOp::Implies => unreachable!(),
                 };
                 if let Some(rg) = range(&ty, &t) {

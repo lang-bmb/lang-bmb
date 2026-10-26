@@ -3,9 +3,11 @@
 {"code":"E0811","severity":"error","message":"postcondition `all_are` may not hold in `gen::fill_short`: solver could not decide (a model exists for the instantiated definitions only); unconfirmed counterexample: a = [T#0] (len 1), v = T#1","file":"fail/generics.bmb","line":43,"col":17,"end_line":43,"end_col":44}
 {"code":"E0801","severity":"error","message":"precondition `idx` of `gen::get` may not hold in `gen::past_end`","file":"fail/generics.bmb","line":68,"col":9,"end_line":68,"end_col":26}
 {"code":"E0810","severity":"error","message":"assertion may not hold in `gen::wrong_value`","file":"fail/generics.bmb","line":76,"col":9,"end_line":76,"end_col":24}
+{"code":"E0802","severity":"error","message":"postcondition `first` may not hold in `gen::max_first`; counterexample: a = T#1, b = T#0","file":"fail/generics.bmb","line":86,"col":17,"end_line":86,"end_col":33}
 {"def":"gen::empty","status":"failed","obligations":1,"failed":1,"rlimit":759,"rlimit_max":759}
 {"def":"gen::fill_short","status":"failed","obligations":6,"failed":1,"rlimit":21416,"rlimit_max":17413}
 {"def":"gen::get","status":"verified","obligations":1,"failed":0,"rlimit":1430,"rlimit_max":1430}
+{"def":"gen::max_first","status":"failed","obligations":1,"failed":1,"rlimit":3968,"rlimit_max":3968}
 {"def":"gen::other","status":"failed","obligations":1,"failed":1,"rlimit":845,"rlimit_max":845}
 {"def":"gen::past_end","status":"failed","obligations":1,"failed":1,"rlimit":26810,"rlimit_max":26369}
 {"def":"gen::wrong_value","status":"failed","obligations":1,"failed":1,"rlimit":5000671,"rlimit_max":5000214}

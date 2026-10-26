@@ -1,0 +1,67 @@
+#[summary("제네릭 정렬: `T: Ord`의 전순서 (ADR-0046 §4)")]
+mod s {
+    spec fn sorted_to<T: Ord + Copy>(a: &[T], n: usize) -> bool {
+        n <= a.len() && (forall|i: usize, j: usize| i < j && j < n ==> #[trigger] a[i] <= #[trigger] a[j])
+    }
+
+    spec fn sorted<T: Ord + Copy>(a: &[T]) -> bool { sorted_to::<T>(a, a.len()) }
+
+    spec fn idx<T: Copy>(a: &[T], i: usize) -> bool { i < a.len() }
+
+    #[effects(pure)]
+    #[uses(sorted_to, sorted)]
+    fn insertion_sort<T: Ord + Copy>(a: &mut [T]) -> ()
+        ensures sorted::<T>(a),
+    {
+        let mut i: usize = 1;
+        if a.len() == 0 {
+            i = 0;
+        }
+        while i < a.len()
+            invariant i <= a.len(), sorted_to::<T>(a, i),
+            decreases a.len() - i,
+        {
+            let mut j: usize = i;
+            while j > 0 && a[j - 1] > a[j]
+                invariant j <= i, i < a.len(),
+                    forall|p: usize, q: usize| p < q && q <= i && q != j ==> #[trigger] a[p] <= #[trigger] a[q],
+                    forall|u: usize, v: usize| j < v && v <= i && u < j ==> #[trigger] a[u] <= #[trigger] a[v],
+                decreases j,
+            {
+                let t: T = a[j];
+                a[j] = a[j - 1];
+                a[j - 1] = t;
+                j = j - 1;
+            }
+            i = i + 1;
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(idx)]
+    fn max_of<T: Ord + Copy>(a: T, b: T) -> T {
+        if a < b { b } else { a }
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        let mut xs: [i64; 6] = [5, -3, 9, 0, 9, -7];
+        insertion_sort::<i64>(&mut xs);
+        let mut k: usize = 0;
+        while k < 6
+            invariant k <= 6,
+            decreases 6 - k,
+        {
+            print_i64(xs[k]);
+            k = k + 1;
+        }
+        let mut bs: [bool; 3] = [true, false, true];
+        insertion_sort::<bool>(&mut bs);
+        if bs[0] { print_i64(1); } else { print_i64(0); }
+        let mut us: [u8; 3] = [200, 7, 100];
+        insertion_sort::<u8>(&mut us);
+        print_u64(u64::try_from(us[2]).unwrap());
+        print_i64(max_of::<i64>(-2, 4));
+        if max_of::<bool>(false, true) { print_i64(1); } else { print_i64(0); }
+    }
+}

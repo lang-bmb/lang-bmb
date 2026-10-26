@@ -76,4 +76,15 @@ mod gen {
         assert(is6(x));
         x
     }
+
+    spec fn first<T: Copy>(r: T, a: T) -> bool { r == a }
+
+    // `max` of an order is not always its first argument.
+    #[effects(pure)]
+    #[uses(first)]
+    fn max_first<T: Ord + Copy>(a: T, b: T) -> (r: T)
+        ensures first::<T>(r, a),
+    {
+        if a < b { b } else { a }
+    }
 }

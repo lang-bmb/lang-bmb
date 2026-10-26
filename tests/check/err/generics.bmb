@@ -90,4 +90,22 @@ mod generics {
         id(7);
         fst(Pair { first: 1, second: 2 });
     }
+
+    struct Pt { x: i64 }
+
+    #[effects(pure)]
+    fn less<T: Copy>(a: T, b: T) -> bool {
+        a < b
+    }
+
+    #[effects(pure)]
+    fn least<T: Ord + Copy>(a: T, b: T) -> T {
+        if a <= b { a } else { b }
+    }
+
+    #[effects(pure)]
+    fn ord_args(p: Pt) -> () {
+        let q: Pt = least::<Pt>(p, p);
+        let b: bool = least::<bool>(true, false);
+    }
 }

@@ -554,13 +554,13 @@ impl<'a> Checker<'a> {
                     .map(|i| i.name.as_str())
                     .collect::<Vec<_>>()
                     .join("::");
-                if name == "Copy" {
+                if matches!(name.as_str(), "Copy" | "Eq" | "Ord") {
                     bounds.push(name);
                 } else if report {
                     let span = b[0].span.to(b[b.len() - 1].span);
                     self.diags.push(
                         Diag::new("E0305", span, format!("unknown trait `{name}`"))
-                            .fix("the bounds known so far: `Copy`", None),
+                            .fix("the built-in bounds are `Copy`, `Eq` and `Ord`", None),
                     );
                 }
             }
@@ -605,6 +605,18 @@ impl<'a> Checker<'a> {
         out
     }
 
+    /// Whether `t` has the built-in trait `b` (`Eq` or `Ord`): the integer
+    /// types, `bool`, and a type parameter in scope bounded by it (`Ord`
+    /// includes `Eq`).
+    fn has_builtin(&self, t: &TypeKind, b: &str) -> bool {
+        match t {
+            TypeKind::Param(n) => self.tparams.iter().any(|p| {
+                p.name == *n && p.bounds.iter().any(|x| x == b || (b == "Eq" && x == "Ord"))
+            }),
+            t => is_scalar(t),
+        }
+    }
+
     /// E0428/E0403 for a type argument `t` (at `span`) of parameter `p`:
     /// a value type that satisfies the bounds. False when reported.
     fn targ_ok(&mut self, t: &TypeKind, p: &TParam, of: &str, span: Span, report: bool) -> bool {
@@ -624,6 +636,37 @@ impl<'a> Checker<'a> {
                         )
                         .fix(
                             "type arguments are value types: references are second-class (ADR-0015)",
+                            None,
+                        ),
+                    );
+                }
+                false
+            }
+            _ if p
+                .bounds
+                .iter()
+                .find(|b| matches!(b.as_str(), "Eq" | "Ord") && !self.has_builtin(t, b))
+                .is_some() =>
+            {
+                let b = p
+                    .bounds
+                    .iter()
+                    .find(|b| matches!(b.as_str(), "Eq" | "Ord") && !self.has_builtin(t, b))
+                    .unwrap()
+                    .clone();
+                if report {
+                    self.diags.push(
+                        Diag::new(
+                            "E0428",
+                            span,
+                            format!(
+                                "`{}` is not `{b}`, a bound of `{}` in `{of}`",
+                                ty_str(t),
+                                p.name
+                            ),
+                        )
+                        .fix(
+                            format!("`{b}` holds for the integer types, `bool` and type parameters bounded by it; for data types it is ADR-0046 open question 4"),
                             None,
                         ),
                     );
@@ -3620,8 +3663,24 @@ impl<'a> Checker<'a> {
                 let slice = matches!(&lt, TypeKind::Ref { inner, .. } if matches!(inner.kind, TypeKind::Slice(_)));
                 // A type parameter: equality in specifications (ADR-0046 §4);
                 // in code it needs the bound `Eq` (traits, backlog 2T).
+                if let TypeKind::Param(n) = &lt
+                    && op.is_cmp()
+                    && !matches!(op, BinOp::Eq | BinOp::Ne)
+                {
+                    if !self.has_builtin(&lt, "Ord") {
+                        self.diags.push(
+                            Diag::new(
+                                "E0428",
+                                span,
+                                format!("`{}` on `{n}` needs the bound `{n}: Ord`", op.symbol()),
+                            )
+                            .fix(format!("add `Ord` to the bounds of `{n}`"), None),
+                        );
+                    }
+                    return TypeKind::Bool;
+                }
                 if matches!(op, BinOp::Eq | BinOp::Ne) && matches!(lt, TypeKind::Param(_)) {
-                    if mode == Mode::Exec {
+                    if mode == Mode::Exec && !self.has_builtin(&lt, "Eq") {
                         self.diags.push(
                             Diag::new(
                                 "E0428",
@@ -3634,7 +3693,7 @@ impl<'a> Checker<'a> {
                                 ),
                             )
                             .fix(
-                                "compare in a specification, or take the comparison as a value from the caller (trait bounds: backlog 2T-02)",
+                                format!("add `Eq` (or `Ord`) to the bounds of `{}`", ty_str(&lt)),
                                 None,
                             ),
                         );

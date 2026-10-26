@@ -2,7 +2,7 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 3671682,
+    "V4_rlimit_total": 3801980,
     "V5_rlimit_headroom": 0.014,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0,
@@ -14,12 +14,12 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 21569,
+    "S4_stage0_rust_lines": 21661,
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
-    "P1_runnable_programs": 20,
-    "P2_bmb_lines": 7551,
-    "P3_errors_with_help": 0.728,
+    "P1_runnable_programs": 21,
+    "P2_bmb_lines": 7647,
+    "P3_errors_with_help": 0.7295,
     "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 8
@@ -505,6 +505,32 @@
         "P3_errors_with_help": [
           0.7088,
           0.728
+        ]
+      }
+    },
+    {
+      "date": "2026-10-26",
+      "reason": "2T-02: built-in Eq/Ord bounds; generic sort run program",
+      "changed": {
+        "V4_rlimit_total": [
+          3671682,
+          3801980
+        ],
+        "S4_stage0_rust_lines": [
+          21569,
+          21661
+        ],
+        "P1_runnable_programs": [
+          20,
+          21
+        ],
+        "P2_bmb_lines": [
+          7551,
+          7647
+        ],
+        "P3_errors_with_help": [
+          0.728,
+          0.7295
         ]
       }
     }
