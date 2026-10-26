@@ -3477,11 +3477,26 @@ fn verify_impl(
             let cache_key = cache
                 .as_ref()
                 .map(|_| ProofCache::key(&format!("{base}\n{q}")));
+            // The ground-instance retry of an obligation: the same text
+            // whether it runs or comes from the proof cache (2V-03).
+            let retry_script = |q: &str| {
+                let (inst, complete) = ground_instances(&axiom_parts, q, 3);
+                if inst.is_empty() {
+                    return None;
+                }
+                let used = needed_decls(&spec_decls, &dts, &format!("{decls}\n{inst}{q}"));
+                Some((format!("{prefix}{used}{decls}"), inst, complete))
+            };
             if let (Some(c), Some(ck)) = (cache.as_mut(), cache_key.as_ref())
-                && let Some((total, max)) = c.get(ck)
+                && let Some((total, max, retried)) = c.get(ck)
             {
                 rlimit_total += total;
                 rlimit_max = rlimit_max.max(max);
+                if retried && let Some((head, inst, _)) = retry_script(&q) {
+                    script.push_str(&format!(
+                        "; retry of obligation {k} with ground instances\n(reset)\n{head}\n{inst}{q}\n(check-sat)\n"
+                    ));
+                }
                 proved_keys.insert(key);
                 def_proved.push(key);
                 continue;
@@ -3505,6 +3520,7 @@ fn verify_impl(
             };
             let total_before = rlimit_total;
             let mut first_used = 0;
+            let mut retried = false;
             let mut answer = sol
                 .run("(reset)")
                 .and_then(|_| sol.run(&base))
@@ -3519,34 +3535,35 @@ fn verify_impl(
             }
             // Undecided with quantified definitions: retry quantifier-free with
             // ground instances (sound for both answers, see `ground_instances`).
-            if matches!(answer, Ok(Answer::Unknown(_))) && !axiom_parts.is_empty() {
-                let (inst, complete) = ground_instances(&axiom_parts, &q, 3);
-                if !inst.is_empty() {
-                    let used = needed_decls(&spec_decls, &dts, &format!("{decls}\n{inst}{q}"));
-                    let head = format!("{prefix}{used}{decls}");
-                    script.push_str(&format!(
+            if matches!(answer, Ok(Answer::Unknown(_)))
+                && !axiom_parts.is_empty()
+                && let Some((head, inst, complete)) = retry_script(&q)
+            {
+                script.push_str(&format!(
                         "; retry of obligation {k} with ground instances\n(reset)\n{head}\n{inst}{q}\n(check-sat)\n"
                     ));
-                    let retry = sol
-                        .run("(reset)")
-                        .and_then(|_| sol.run(&head))
-                        .and_then(|_| sol.run(&format!("{inst}{q}")))
-                        .and_then(|_| sol.check_sat());
-                    if retry.is_ok()
-                        && let Ok(used) = sol.rlimit_used()
-                    {
-                        rlimit_total += used;
+                let retry = sol
+                    .run("(reset)")
+                    .and_then(|_| sol.run(&head))
+                    .and_then(|_| sol.run(&format!("{inst}{q}")))
+                    .and_then(|_| sol.check_sat());
+                if retry.is_ok()
+                    && let Ok(used) = sol.rlimit_used()
+                {
+                    rlimit_total += used;
+                }
+                match retry {
+                    Ok(Answer::Unsat) => {
+                        answer = retry;
+                        retried = true;
                     }
-                    match retry {
-                        Ok(Answer::Unsat) => answer = retry,
-                        Ok(Answer::Sat) if complete => answer = retry,
-                        Ok(Answer::Sat) => {
-                            answer = Ok(Answer::Unknown(
-                                "a model exists for the instantiated definitions only".into(),
-                            ))
-                        }
-                        _ => {}
+                    Ok(Answer::Sat) if complete => answer = retry,
+                    Ok(Answer::Sat) => {
+                        answer = Ok(Answer::Unknown(
+                            "a model exists for the instantiated definitions only".into(),
+                        ))
                     }
+                    _ => {}
                 }
             }
             failed += 1;
@@ -3554,7 +3571,7 @@ fn verify_impl(
                 proved_keys.insert(key);
                 def_proved.push(key);
                 if let (Some(c), Some(ck)) = (cache.as_mut(), cache_key) {
-                    c.insert(ck, rlimit_total - total_before, first_used);
+                    c.insert(ck, rlimit_total - total_before, first_used, retried);
                 }
             } else {
                 failed_keys.insert(key);

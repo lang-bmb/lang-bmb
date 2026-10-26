@@ -13,12 +13,14 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 pub const FILE: &str = "proofs";
-const MAGIC: &str = "bmb proof cache v1";
+const MAGIC: &str = "bmb proof cache v2";
 
 #[derive(Default)]
 pub struct ProofCache {
-    /// key -> (contribution to the definition's `rlimit` total, to its max).
-    known: BTreeMap<String, (u64, u64)>,
+    /// key -> (contribution to the definition's `rlimit` total, to its max,
+    /// whether the ground-instance retry proved it). The retry flag lets a
+    /// hit print the same script as the run that stored it (backlog 2V-03).
+    known: BTreeMap<String, (u64, u64, bool)>,
     added: usize,
     pub hits: usize,
     pub misses: usize,
@@ -32,7 +34,7 @@ impl ProofCache {
         crate::sha256::hex(text.as_bytes())
     }
 
-    pub fn get(&mut self, key: &str) -> Option<(u64, u64)> {
+    pub fn get(&mut self, key: &str) -> Option<(u64, u64, bool)> {
         let hit = self.known.get(key).copied();
         if hit.is_some() {
             self.hits += 1;
@@ -42,8 +44,8 @@ impl ProofCache {
         hit
     }
 
-    pub fn insert(&mut self, key: String, total: u64, max: u64) {
-        if self.known.insert(key, (total, max)).is_none() {
+    pub fn insert(&mut self, key: String, total: u64, max: u64, retried: bool) {
+        if self.known.insert(key, (total, max, retried)).is_none() {
             self.added += 1;
         }
     }
@@ -64,11 +66,13 @@ impl ProofCache {
         }
         for line in lines {
             let mut it = line.split(' ');
-            if let (Some(k), Some(t), Some(m)) = (it.next(), it.next(), it.next())
+            if let (Some(k), Some(t), Some(m), Some(r)) =
+                (it.next(), it.next(), it.next(), it.next())
                 && let (Ok(t), Ok(m)) = (t.parse(), m.parse())
                 && k.starts_with("sha256:")
+                && (r == "0" || r == "1")
             {
-                c.known.insert(k.to_string(), (t, m));
+                c.known.insert(k.to_string(), (t, m, r == "1"));
             }
         }
         c
@@ -82,8 +86,8 @@ impl ProofCache {
         }
         std::fs::create_dir_all(dir)?;
         let mut out = format!("{MAGIC}\n");
-        for (k, (t, m)) in &self.known {
-            out.push_str(&format!("{k} {t} {m}\n"));
+        for (k, (t, m, r)) in &self.known {
+            out.push_str(&format!("{k} {t} {m} {}\n", u8::from(*r)));
         }
         let tmp = dir.join(format!("{FILE}.tmp"));
         crate::workspace::write_new(&tmp, &out)?;

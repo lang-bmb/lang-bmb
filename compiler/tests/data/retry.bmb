@@ -1,0 +1,47 @@
+#[summary("기저 인스턴스 재시도로만 증명되는 정의 (backlog 2V-03)")]
+mod rt {
+    spec fn bounded_elems(a: &[i64]) -> bool {
+        a.len() <= 1000000 && (forall|k: usize| k < a.len() ==> -1000 <= #[trigger] a[k] && a[k] <= 1000)
+    }
+
+    spec fn shapes(a: &[i64], out: &[i64]) -> bool { out.len() == a.len() }
+
+    spec fn runs_below(a: &[i64], out: &[i64], n: usize) -> bool { forall|k: usize| k + 1 < n ==> #[trigger] out[k + 1] == out[k] + a[k + 1] }
+
+    spec fn sums_small(out: &[i64], n: usize) -> bool { forall|k: usize| k < n ==> -1000 * (k + 1) <= #[trigger] out[k] && out[k] <= 1000 * (k + 1) }
+
+    // The trigger `out[k + 1]` matches the body's `out[k]` again (a matching
+    // loop, backlog 1B-45): callers' proofs need the ground-instance retry.
+    spec fn prefix_ok(a: &[i64], out: &[i64]) -> bool { out.len() == a.len() && (a.len() > 0 ==> out[0] == a[0]) && (forall|k: usize| k + 1 < a.len() ==> #[trigger] out[k + 1] == out[k] + a[k + 1]) }
+
+    #[effects(pure)]
+    #[uses(shapes, bounded_elems, runs_below, sums_small, prefix_ok)]
+    fn prefix_sums(a: &[i64], out: &mut [i64]) -> ()
+        requires shapes(a, out), bounded_elems(a),
+        ensures prefix_ok(a, out),
+    {
+        if a.len() > 0 {
+            out[0] = a[0];
+            let mut k: usize = 1;
+            while k < a.len()
+                invariant 1 <= k, k <= a.len(), out.len() == a.len(), out[0] == a[0], runs_below(a, out, k), sums_small(out, k),
+                decreases a.len() - k,
+            {
+                out[k] = out[k - 1] + a[k];
+                k = k + 1;
+            }
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(shapes, bounded_elems, prefix_ok)]
+    fn wrong_outputs() -> () {
+        let a_0: [i64; 2] = [1, 2];
+        let mut out_0: [i64; 2] = [-4, 7];
+        prefix_sums(&a_0, &mut out_0);
+        let a_1: [i64; 3] = [1, 2, 3];
+        let mut out_1: [i64; 3] = [4, -2, 0];
+        prefix_sums(&a_1, &mut out_1);
+        assert(!((out_0[0] == 1 && out_0[1] == 7) && (out_1[0] == 1 && out_1[1] == -2 && out_1[2] == 1)));
+    }
+}

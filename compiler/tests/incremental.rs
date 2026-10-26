@@ -694,3 +694,18 @@ mod geo {
     assert!(!hit.contains("geo::other"), "{hit:?}");
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// A definition proved only by the ground-instance retry (backlog 2V-03):
+/// its stored verdict must match the recomputed one.
+#[test]
+fn retried_proofs_are_reused_exactly() {
+    let text = include_str!("data/retry.bmb");
+    let dir = tmp("retry");
+    let f = files(text);
+    let expect = plain(&f);
+    let (cold, _) = cached(&f, &dir);
+    assert_eq!(expect, cold, "cold");
+    let (warm, stats) = bmb::incremental::with_audit(|| cached(&f, &dir));
+    assert_eq!(expect, warm, "warm, audited");
+    assert!(stats.audit_mismatches.is_empty(), "{stats:?}");
+}
