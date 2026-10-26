@@ -2,7 +2,7 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 3434871,
+    "V4_rlimit_total": 3482738,
     "V5_rlimit_headroom": 0.014,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0,
@@ -14,12 +14,12 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 19822,
+    "S4_stage0_rust_lines": 19821,
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
-    "P1_runnable_programs": 17,
-    "P2_bmb_lines": 6853,
-    "P3_errors_with_help": 0.7059,
+    "P1_runnable_programs": 18,
+    "P2_bmb_lines": 6962,
+    "P3_errors_with_help": 0.708,
     "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 8
@@ -387,6 +387,32 @@
         "S4_stage0_rust_lines": [
           19745,
           19822
+        ]
+      }
+    },
+    {
+      "date": "2026-10-26",
+      "reason": "2V-04a: tests/run/arrays(배열 결과, 값 데이터 배열)로 P1 17->18, P2, P3",
+      "changed": {
+        "V4_rlimit_total": [
+          3434871,
+          3482738
+        ],
+        "S4_stage0_rust_lines": [
+          19822,
+          19821
+        ],
+        "P1_runnable_programs": [
+          17,
+          18
+        ],
+        "P2_bmb_lines": [
+          6853,
+          6962
+        ],
+        "P3_errors_with_help": [
+          0.7059,
+          0.708
         ]
       }
     }

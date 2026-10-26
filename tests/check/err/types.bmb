@@ -107,12 +107,6 @@ mod alias_err {
     }
 }
 
-#[summary("배열 반환은 M1에서 거부(코드 생성이 스칼라만 반환)")]
-mod array_return {
-    #[effects(pure)]
-    fn make() -> [i64; 2] { [1, 2] }
-}
-
 #[summary("배열 길이 상한과 중첩 배열 리터럴")]
 mod array_limits {
     #[effects(pure)]

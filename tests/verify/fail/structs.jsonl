@@ -10,6 +10,7 @@
 {"code":"E0805","severity":"error","message":"index may be out of bounds in `geo::local_elem`; counterexample: i = 2","file":"fail/structs.bmb","line":122,"col":9,"end_line":122,"end_col":13}
 {"code":"E0805","severity":"error","message":"index may be out of bounds in `geo::route_elem`; counterexample: r = Route { p: [Point { x: 0, y: 0 }, Point { x: 0, y: 0 }] (len 2) }, i = 2","file":"fail/structs.bmb","line":128,"col":9,"end_line":128,"end_col":15}
 {"code":"E0802","severity":"error","message":"postcondition `first_x` may not hold in `geo::stale_copy`","file":"fail/structs.bmb","line":135,"col":17,"end_line":135,"end_col":27}
+{"code":"E0802","severity":"error","message":"postcondition `first_is` may not hold in `geo::wrong_first`; counterexample: a = [Point { x: -9223372036854764009, y: -9223372036854764010 }, Point { x: -9223372036854773371, y: -9223372036854764011 }] (len 2)","file":"fail/structs.bmb","line":149,"col":17,"end_line":149,"end_col":34}
 {"def":"geo::Point::bump","status":"verified","obligations":0,"failed":0,"rlimit":0,"rlimit_max":0}
 {"def":"geo::after_call","status":"failed","obligations":1,"failed":1,"rlimit":5001058,"rlimit_max":5000225}
 {"def":"geo::after_loop","status":"failed","obligations":7,"failed":1,"rlimit":5004621,"rlimit_max":5000249}
@@ -23,3 +24,4 @@
 {"def":"geo::route_elem","status":"failed","obligations":1,"failed":1,"rlimit":2172,"rlimit_max":2172}
 {"def":"geo::set_cell","status":"failed","obligations":1,"failed":1,"rlimit":793,"rlimit_max":793}
 {"def":"geo::stale_copy","status":"failed","obligations":3,"failed":1,"rlimit":1858,"rlimit_max":1507}
+{"def":"geo::wrong_first","status":"failed","obligations":3,"failed":1,"rlimit":6139,"rlimit_max":4245}

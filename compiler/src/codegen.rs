@@ -1741,12 +1741,12 @@ impl<'p> Gen<'p> {
             (fn_sym(&target), self.t.fns[&target].ret.clone())
         };
         let _ = e;
-        if is_mem(&ret) {
-            // A data result comes back through the caller's memory.
+        if is_mem(&ret) || matches!(ret, TypeKind::Array(..)) {
+            // A data or array result comes back through the caller's memory.
             let out = self.temp(&ret);
             flat.insert(0, format!("ptr {out}"));
             self.emit(format!("call void {callee}({})", flat.join(", ")));
-            return CVal::Ptr { ptr: out, ty: ret };
+            return self.read(&out, &ret);
         }
         if ret == TypeKind::Unit {
             self.emit(format!("call void {callee}({})", flat.join(", ")));
@@ -2111,11 +2111,8 @@ pub fn emit_with(
                     // Arrays by value: copied into a local.
                     let elem = elem_kind(&el.kind);
                     params.push(format!("ptr %\"{n}.in\""));
-                    let ptr = g.alloca(&format!("[{len} x {}]", mem(elem)));
-                    let bytes = len * width(elem);
-                    g.emit(format!(
-                        "call void @llvm.memcpy.p0.p0.i64(ptr {ptr}, ptr %\"{n}.in\", i64 {bytes}, i1 false)"
-                    ));
+                    let ptr = g.temp(pty);
+                    g.copy(&ptr, &format!("%\"{n}.in\""), pty);
                     g.slots.insert(
                         n.clone(),
                         Slot::Arr {
@@ -2136,8 +2133,8 @@ pub fn emit_with(
             }
         }
         let rv = g.block_expr(&f.body);
-        let ret = if is_mem(&sig.ret) {
-            // A data result is written to the caller's memory.
+        let ret = if is_mem(&sig.ret) || matches!(sig.ret, TypeKind::Array(..)) {
+            // A data or array result is written to the caller's memory.
             params.insert(0, "ptr noalias %\"ret.out\"".into());
             g.put(rv, "%\"ret.out\"", &sig.ret);
             g.emit("ret void");

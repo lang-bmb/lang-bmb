@@ -1034,6 +1034,7 @@ impl<'a> Checker<'a> {
         for p in &f.params {
             self.check_param_type(&p.ty, f.kind);
             let ty = self.canon(&p.ty, mod_path, true);
+            let ty = self.data_array(&ty, p.ty.span);
             self.declare(&mut cx, &p.name, ty, false, true);
         }
         self.check_value_type(&f.ret.ty, "return type");
@@ -1043,14 +1044,10 @@ impl<'a> Checker<'a> {
             self.spec_vec(f.ret.ty.span);
         }
         let ret_ty = self.canon(&f.ret.ty, mod_path, true);
-        if matches!(f.ret.ty.kind, TypeKind::Array(..)) {
-            // Code generation returns scalars only; arrays come back through
-            // a `&mut [T]` parameter.
-            self.err(
-                "E0402",
-                f.ret.ty.span,
-                "a function cannot return an array in milestone 1; fill a `&mut [T]` parameter instead",
-            );
+        if let TypeKind::Array(..) = &f.ret.ty.kind {
+            // An array result is a value like a struct's (backlog 2V-04).
+            let c = self.canon(&f.ret.ty, mod_path, true);
+            self.data_array(&c, f.ret.ty.span);
         }
 
         if f.kind == FnKind::Spec && (!f.requires.is_empty() || !f.ensures.is_empty()) {
@@ -1143,20 +1140,8 @@ impl<'a> Checker<'a> {
             {
                 self.spec_vec(t.span)
             }
-            TypeKind::Array(e, _) if matches!(e.kind, TypeKind::Named { .. }) => {
-                let el = ty_str(&e.kind);
-                self.diags.push(
-                    Diag::new(
-                        "E0402",
-                        t.span,
-                        "an array of structs or enums is passed as `&[T]` or `&mut [T]`",
-                    )
-                    .fix(
-                        format!("take `&[{el}]` and pass `&a`; the length is `a.len()`"),
-                        None,
-                    ),
-                );
-            }
+            // Checked after canonicalization (`data_array`).
+            TypeKind::Array(e, _) if matches!(e.kind, TypeKind::Named { .. }) => {}
             _ => self.check_value_type(t, "parameter type"),
         }
     }

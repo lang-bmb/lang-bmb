@@ -9,11 +9,6 @@ mod da {
     struct Grid { g: [[Point; 2]; 2] }
 
     #[effects(pure)]
-    fn by_value(a: [Point; 2]) -> i64 {
-        a[0].x
-    }
-
-    #[effects(pure)]
     fn paths() -> i64 {
         let q: [Path; 1] = [Path { p: [Point { x: 1, y: 2 }; 2] }];
         0

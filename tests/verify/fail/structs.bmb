@@ -139,4 +139,15 @@ mod geo {
         a[0].x = 5;
         b[0].x
     }
+
+    spec fn first_is(r: [Point; 2], p: Point) -> bool { r[0] == p }
+
+    // An array result: the claim names the wrong element (backlog 2V-04).
+    #[effects(pure)]
+    #[uses(first_is)]
+    fn wrong_first(a: [Point; 2]) -> (r: [Point; 2])
+        ensures first_is(r, a[0]),
+    {
+        [a[1], a[0]]
+    }
 }

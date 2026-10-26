@@ -1,0 +1,62 @@
+#[summary("실행: 배열 반환과 값으로 받는 구조체 배열 (backlog 2V-04a)")]
+mod av {
+    struct Point { x: i64, y: i64 }
+
+    #[effects(pure)]
+    #[uses(first_small, small)]
+    fn clobber(a: [Point; 2]) -> i64
+        requires first_small(a),
+    {
+        let mut b: [Point; 2] = a;
+        b[0].x = 99;
+        b[0].x + a[0].x
+    }
+
+    spec fn first_small(a: [Point; 2]) -> bool {
+        small(a[0].x)
+    }
+
+    #[effects(io)]
+    #[uses(first_small, rising, small, swapped)]
+    fn main() -> () {
+        let r: [i64; 3] = run_from(5);
+        print_i64(r[0] + r[1] * 10 + r[2] * 100);
+        let p: [Point; 2] = [Point { x: 1, y: 2 }, Point { x: 3, y: 4 }];
+        let q: [Point; 2] = swap(p);
+        print_i64(q[0].x * 10 + q[1].x);
+        print_i64(clobber(p));
+        print_i64(p[0].x);
+    }
+
+    spec fn rising(a: [i64; 3], b: i64) -> bool {
+        a[0] == b && a[1] == b + 1 && a[2] == b + 2
+    }
+
+    #[effects(pure)]
+    #[uses(rising, small)]
+    fn run_from(b: i64) -> (r: [i64; 3])
+        requires small(b),
+        ensures rising(r, b),
+    {
+        [b, b + 1, b + 2]
+    }
+
+    spec fn small(n: i64) -> bool {
+        -1000 <= n && n <= 1000
+    }
+
+    #[effects(pure)]
+    #[uses(swapped)]
+    fn swap(a: [Point; 2]) -> (r: [Point; 2])
+        ensures swapped(r, a),
+    {
+        let mut t: [Point; 2] = a;
+        t[0] = a[1];
+        t[1] = a[0];
+        t
+    }
+
+    spec fn swapped(r: [Point; 2], a: [Point; 2]) -> bool {
+        r[0] == a[1] && r[1] == a[0]
+    }
+}
