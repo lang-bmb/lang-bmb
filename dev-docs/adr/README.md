@@ -91,11 +91,11 @@ BMB v2의 설계 결정을 한 건에 파일 하나로 남긴다. 현재 확정�
 | [0043](0043-caller-key-without-uses.md) | 증분 키의 피호출자 행은 `#[uses]`를 뺀 호출자 해시(호출자 질의는 피호출자의 `#[uses]`를 읽지 않는다) | 채택(승인) | ADR-0032 피호출자 행·ADR-0019 §2 일부 대체, 백로그 2D-22 |
 | [0044](0044-bytes-and-byte-strings.md) | 바이트 `u8`, 바이트 문자열 리터럴, 바이트 출력과 바이트 라이브러리 | 채택 | 백로그 2S-01, 2S-03 |
 | [0045](0045-judgment-criteria.md) | 판단 기준: 원인 층에서 고치고 정석을 택한다, 비용은 기준이 아니다(`dev-docs/JUDGMENT.md`) | 채택(사람 지시) | ADR-0041 "표현력 제한" 해석 |
-| [0046](0046-generics-and-traits.md) | 제네릭과 trait: 정의마다 한 번 증명(정렬 매개변수), 단형화 코드, 겹치지 않는 명시적 impl | 제안 | 2V-06, ADR-0026 일부 대체 예정 |
-| [0047](0047-owned-types.md) | 소유 타입 일반화: `Box<T>`, 재귀 타입, `Vec`을 담는 타입, drop glue, 구조적 `decreases` | 제안 | 2V-07, ADR-0026·0031 일부 대체 예정 |
-| [0048](0048-integer-types-and-bit-operations.md) | 정수 타입 완비, 비트 연산, 리터럴 진법, 혼합 bitvector 인코딩과 `by (bit_vector)` | 제안 | 2V-08, ADR-0017 보완 |
-| [0049](0049-early-exit-and-for.md) | 조기 탈출(`return`·`break`·`continue`·`?`)과 범위 `for`·`loop` | 제안 | 2V-09, 2R-04f 입력 |
-| [0050](0050-strings.md) | `String`·`&str`·`char`: UTF-8 불변식, 바이트 보기 | 제안 | 2V-10, ADR-0044 일부 대체 예정 |
-| [0051](0051-method-call-syntax.md) | 메서드 호출 구문을 정본으로, 수신자 한 단계 조정 | 제안 | 2V-11, ADR-0026 일부 대체 예정, 2R-06과 함께 |
+| [0046](0046-generics-and-traits.md) | 제네릭과 trait: 정의마다 한 번 증명(정렬 매개변수), 단형화 코드, 겹치지 않는 명시적 impl | 채택(승인) | 2V-06·2V-12, ADR-0026 §1 일부 대체 |
+| [0047](0047-owned-types.md) | 소유 타입 일반화: `Box<T>`, 재귀 타입, `Vec`을 담는 타입, drop glue, 구조적 `decreases` | 채택(승인) | 2V-07·2V-12, ADR-0026·0031 일부 대체 |
+| [0048](0048-integer-types-and-bit-operations.md) | 정수 타입 완비, 비트 연산, 리터럴 진법, 혼합 bitvector 인코딩과 `by (bit_vector)` | 채택(승인) | 2V-08·2V-12, ADR-0017 보완 |
+| [0049](0049-early-exit-and-for.md) | 조기 탈출(`return`·`break`·`continue`·`?`)과 범위 `for`·`loop` | 채택(승인) | 2V-09·2V-12 |
+| [0050](0050-strings.md) | `String`·`&str`·`char`: UTF-8 불변식, 바이트 보기 | 채택(승인) | 2V-10·2V-12, ADR-0044 §5 일부 대체 |
+| [0051](0051-method-call-syntax.md) | 메서드 호출 구문을 정본으로, 수신자 한 단계 조정 | 채택(승인) | 2V-11·2V-12, ADR-0026 일부 대체 |
 
 채택 계획(2026-10-24 승인): 0026은 2B 착수 때, 0028은 2C 착수 때 채택한다. 0029·0030·0031은 2단계 측정(2H) 뒤로 미룬다. "제안" ADR의 진단 코드 번호는 잠정이다. 제안끼리 겹치는 번호가 있으며(예: E0212·E0412), 채택 후 구현할 때 `compiler/src/diag.rs`에서 확정한다.
