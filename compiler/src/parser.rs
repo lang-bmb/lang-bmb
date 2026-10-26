@@ -594,16 +594,106 @@ impl<'a> Parser<'a> {
         })
     }
 
-    /// Generic parameters are outside the language (ADR-0026 §1).
-    fn reject_generics(&mut self) {
-        if self.is_p("<") {
-            self.diags.push(Diag::new(
-                "E0207",
-                self.span(),
-                "generic parameters are not supported in milestone 1",
-            ));
-            self.skip_angle();
+    /// `<T, U: Copy + geo::Shape>` (ADR-0046 §1), or nothing. Const
+    /// parameters are outside the language.
+    fn parse_generics(&mut self) -> Vec<TypeParam> {
+        let mut out = Vec::new();
+        if !self.is_p("<") {
+            return out;
         }
+        self.bump();
+        while !self.is_p(">") && !matches!(self.peek(), Tok::Eof) {
+            // A lifetime is reported by the lexer (E0208) and leaves its comma.
+            if self.eat_p(",") {
+                continue;
+            }
+            if self.is_kw("const") {
+                self.diags.push(
+                    Diag::new(
+                        "E0207",
+                        self.span(),
+                        "const generic parameters are not supported (ADR-0046 open question 1)",
+                    )
+                    .fix(
+                        "take the length as a value: a slice `&[T]` and its `len()`",
+                        None,
+                    ),
+                );
+                self.skip_angle_from();
+                return out;
+            }
+            let Ok(name) = self.ident("type parameter") else {
+                self.skip_angle_from();
+                return out;
+            };
+            let mut bounds = Vec::new();
+            if self.eat_p(":") {
+                loop {
+                    let mut path = Vec::new();
+                    while let Tok::Ident(n) = self.peek().clone() {
+                        path.push(Ident {
+                            name: n,
+                            span: self.span(),
+                        });
+                        self.bump();
+                        if !(self.is_p("::") && matches!(self.peek_at(1), Tok::Ident(_))) {
+                            break;
+                        }
+                        self.bump();
+                    }
+                    if path.is_empty() {
+                        self.err_expected("trait bound");
+                        self.skip_angle_from();
+                        return out;
+                    }
+                    bounds.push(path);
+                    if !self.eat_p("+") {
+                        break;
+                    }
+                }
+            }
+            let span = name.span.to(self.prev_span());
+            out.push(TypeParam { name, bounds, span });
+            if !self.eat_p(",") {
+                break;
+            }
+        }
+        let _ = self.expect_p(">");
+        out
+    }
+
+    /// Skips to the `>` closing a parameter list already opened.
+    fn skip_angle_from(&mut self) {
+        let mut depth = 1;
+        loop {
+            match self.peek() {
+                Tok::P("<") => depth += 1,
+                Tok::P(">") => {
+                    depth -= 1;
+                    if depth == 0 {
+                        self.bump();
+                        return;
+                    }
+                }
+                Tok::Eof | Tok::P("{") | Tok::P(";") | Tok::P("(") => return,
+                _ => {}
+            }
+            self.bump();
+        }
+    }
+
+    /// `<A, B>` after `::` in an expression path.
+    fn parse_type_args(&mut self) -> Vec<Type> {
+        let mut args = Vec::new();
+        self.bump(); // `<`
+        while !self.is_p(">") && !matches!(self.peek(), Tok::Eof) {
+            args.push(self.parse_type());
+            if !self.eat_p(",") {
+                break;
+            }
+        }
+        let _ = self.expect_p(">");
+        args
     }
 
     /// `struct T { f: U, .. }` or `enum T { A, B(U, V), .. }` (ADR-0026 §1).
@@ -611,7 +701,7 @@ impl<'a> Parser<'a> {
         let lo = self.span();
         let is_struct = matches!(self.bump().tok, Tok::Ident(ref k) if k == "struct");
         let name = self.ident("type name")?;
-        self.reject_generics();
+        let generics = self.parse_generics();
         if is_struct && self.is_p("(") {
             let sp = self.span();
             self.skip_group();
@@ -674,6 +764,7 @@ impl<'a> Parser<'a> {
         let hi = self.expect_p("}")?;
         Ok(TypeDef {
             name,
+            generics,
             attrs,
             kind,
             span: lo.to(hi),
@@ -683,8 +774,18 @@ impl<'a> Parser<'a> {
     /// `impl T { fn .. }` (ADR-0026 §3).
     fn parse_impl(&mut self) -> PResult<Impl> {
         let lo = self.bump().span; // `impl`
-        self.reject_generics();
+        let generics = self.parse_generics();
         let ty = self.ident("type name")?;
+        let mut ty_args = Vec::new();
+        if self.eat_p("<") {
+            while !self.is_p(">") && !matches!(self.peek(), Tok::Eof) {
+                ty_args.push(self.parse_type());
+                if !self.eat_p(",") {
+                    break;
+                }
+            }
+            self.expect_p(">")?;
+        }
         if self.is_kw("for") {
             self.diags.push(Diag::new(
                 "E0207",
@@ -729,7 +830,9 @@ impl<'a> Parser<'a> {
         self.impl_ty = outer;
         let hi = self.expect_p("}")?;
         Ok(Impl {
+            generics,
             ty,
+            ty_args,
             fns,
             span: lo.to(hi),
         })
@@ -744,7 +847,7 @@ impl<'a> Parser<'a> {
         };
         self.bump(); // `fn`
         let name = self.ident("function name")?;
-        self.reject_generics();
+        let generics = self.parse_generics();
         self.expect_p("(")?;
         let mut params = Vec::new();
         while !self.is_p(")") {
@@ -854,6 +957,7 @@ impl<'a> Parser<'a> {
         Ok(FnDef {
             kind,
             name,
+            generics,
             attrs,
             params,
             ret,
@@ -1675,6 +1779,7 @@ impl<'a> Parser<'a> {
                                 recv: Box::new(Expr {
                                     kind: ExprKind::Call {
                                         path: vec![ident(t), ident("try_from")],
+                                        targs: Vec::new(),
                                         args: vec![e],
                                     },
                                     span,
@@ -2187,14 +2292,34 @@ impl<'a> Parser<'a> {
             });
         }
         let mut path = vec![self.ident("name")?];
+        let mut targs = Vec::new();
         while self.is_p("::") {
-            self.bump();
+            let colons = self.bump().span;
+            if self.is_p("<") {
+                let args = self.parse_type_args();
+                targs.push(TArgs {
+                    seg: path.len() - 1,
+                    args,
+                    span: colons.to(self.prev_span()),
+                });
+                if !self.is_p("::") {
+                    break;
+                }
+                continue;
+            }
             path.push(self.ident("path segment")?);
+        }
+        if !targs.is_empty() && !self.is_p("(") {
+            self.diags.push(Diag::new(
+                "E0301",
+                targs[0].span,
+                "type arguments are written only on calls: `f::<T>(..)`",
+            ));
         }
         if self.is_p("(") {
             let args = self.parse_args()?;
             return Ok(Expr {
-                kind: ExprKind::Call { path, args },
+                kind: ExprKind::Call { path, targs, args },
                 span: lo.to(self.prev_span()),
             });
         }

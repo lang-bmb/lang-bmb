@@ -1,0 +1,93 @@
+#[summary("제네릭 (ADR-0046)")]
+mod generics {
+    struct Pair<A: Copy, B: Copy> { first: A, second: B }
+
+    struct Bare<T> { x: T }
+
+    struct Odd<T: Copy + Ord> { x: T }
+
+    #[effects(pure)]
+    fn id<T: Copy>(x: T) -> T {
+        x
+    }
+
+    #[effects(pure)]
+    fn two<T: Copy, T: Copy>(x: T) -> T {
+        x
+    }
+
+    #[effects(pure)]
+    fn sized<const N: usize>(x: i64) -> i64 {
+        x
+    }
+
+    #[effects(pure)]
+    fn plain(x: i64) -> i64 {
+        x
+    }
+
+    #[effects(pure)]
+    fn arity(p: Pair<i64>) -> i64 {
+        p.first
+    }
+
+    #[effects(pure)]
+    fn eq_in_code<T: Copy>(a: T, b: T) -> bool {
+        a == b
+    }
+
+    #[effects(pure)]
+    fn grow<T: Copy>(x: T, n: u64) -> u64
+        decreases n,
+    {
+        if n == 0 { 0 } else { grow::<[T; 2]>([x, x], n - 1) }
+    }
+
+    struct Stack<T: Copy> { top: T }
+
+    impl<T: Copy> Stack<i64> {
+        #[effects(pure)]
+        fn peek(self: &Stack<i64>) -> i64 {
+            self.top
+        }
+    }
+
+    struct Node { v: i64 }
+
+    impl Node {
+        #[effects(pure)]
+        fn down(self: Node) -> i64 {
+            Node::down(self)
+        }
+    }
+
+    #[effects(pure)]
+    fn calls() -> i64 {
+        let a: i64 = id(5);
+        let b: u64 = id(7);
+        let c: i64 = plain::<i64>(1);
+        let d: i64 = id::<i64, u64>(2);
+        let v: Vec<i64> = Vec::with_capacity(1);
+        let e: i64 = id::<i64>(3);
+        let f: bool = id::<bool>(true);
+        a + c + d + e
+    }
+
+    #[effects(pure)]
+    fn targ_bounds(v: Vec<i64>) -> () {
+        let w: Vec<i64> = id::<Vec<i64>>(v);
+    }
+
+    #[effects(pure)]
+    fn fst<A: Copy, B: Copy>(p: Pair<A, B>) -> A {
+        p.first
+    }
+
+    #[effects(pure)]
+    fn unknown(x: i64) -> () {
+        let w: i64 = id(x);
+        let q: i64 = id::<&i64>(x);
+        id(7);
+        fst(Pair { first: 1, second: 2 });
+    }
+}

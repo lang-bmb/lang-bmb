@@ -268,8 +268,12 @@ fn layout(t: &TypeKind, tb: &Tables) -> (u64, u64) {
 /// LLVM type definitions of every struct and enum (instance) the program
 /// uses: a struct's fields in declaration order; an enum as its tag and a
 /// payload area, with one view type per variant that has a payload.
-fn type_defs(tb: &Tables) -> String {
+fn type_defs(tb: &Tables, extra: &[TypeKind]) -> String {
     fn visit(t: &TypeKind, tb: &Tables, seen: &mut BTreeSet<String>, out: &mut String) {
+        // A generic definition's own types: only instances are lowered.
+        if crate::check::has_param(t) {
+            return;
+        }
         match t {
             TypeKind::Array(e, _) | TypeKind::Slice(e) => return visit(&e.kind, tb, seen, out),
             TypeKind::Ref { inner, .. } => return visit(&inner.kind, tb, seen, out),
@@ -282,7 +286,7 @@ fn type_defs(tb: &Tables) -> String {
         if let Some(fs) = struct_fields(t, tb) {
             let parts: Vec<String> = fs.iter().map(|(_, ft)| mem_ty(ft)).collect();
             let _ = writeln!(out, "{} = type {{ {} }}", data_ty(t), parts.join(", "));
-            for (_, ft) in fs {
+            for (_, ft) in &fs {
                 visit(ft, tb, seen, out);
             }
             return;
@@ -313,6 +317,7 @@ fn type_defs(tb: &Tables) -> String {
         all.extend(sig.params.iter());
         all.push(&sig.ret);
     }
+    all.extend(extra);
     let mut seen = BTreeSet::new();
     let mut out = String::new();
     for t in all {
@@ -373,8 +378,19 @@ fn fn_sym(path: &str) -> String {
 struct Gen<'p> {
     t: &'p Tables,
     proven: &'p BTreeSet<ObKey>,
-    /// The definition being lowered (its canonical local types).
+    /// The function being lowered: a definition, or an instance of a
+    /// generic one (`path<A, B>`, ADR-0046 §5).
     path: String,
+    /// The definition whose tables (local types, drops) it reads.
+    base: String,
+    /// The instance's type arguments, by parameter name.
+    tsub: BTreeMap<String, TypeKind>,
+    /// Instances of generic functions it calls: (key, definition, type
+    /// arguments by parameter name).
+    wants: Vec<(String, String, BTreeMap<String, TypeKind>)>,
+    /// The instance types it computes (their LLVM type definitions), by
+    /// their text.
+    used: BTreeMap<String, TypeKind>,
     mod_path: String,
     out: String,
     allocas: String,
@@ -392,12 +408,30 @@ struct Gen<'p> {
 }
 
 impl<'p> Gen<'p> {
-    fn ty(&self, e: &Expr) -> TypeKind {
-        self.t
+    fn ty(&mut self, e: &Expr) -> TypeKind {
+        let t = self
+            .t
             .types
             .get(&(e.span.file, e.span.lo, e.span.hi))
             .cloned()
-            .unwrap_or(TypeKind::Error)
+            .unwrap_or(TypeKind::Error);
+        self.inst(&t)
+    }
+
+    /// `t` in the instance being lowered.
+    fn inst(&mut self, t: &TypeKind) -> TypeKind {
+        if self.tsub.is_empty() {
+            return t.clone();
+        }
+        let t = crate::check::subst(t, &self.tsub);
+        self.used.insert(ty_str(&t), t.clone());
+        t
+    }
+
+    /// The type of local `name`, in the instance being lowered.
+    fn local_ty(&mut self, name: &str) -> Option<TypeKind> {
+        let t = self.t.locals.get(&self.base)?.get(name)?.clone();
+        Some(self.inst(&t))
     }
 
     fn proved(&self, code: &'static str, e: &Expr) -> bool {
@@ -1005,18 +1039,18 @@ impl<'p> Gen<'p> {
                     }
                 }
             }
-            ExprKind::Call { path, args }
+            ExprKind::Call { path, args, .. }
                 if path.len() == 2
                     && path[0].name == "Vec"
                     && matches!(path[1].name.as_str(), "new" | "with_capacity") =>
             {
                 self.vec_new(e, args)
             }
-            ExprKind::Call { path, args } if self.is_variant(path) => {
+            ExprKind::Call { path, args, .. } if self.is_variant(path) => {
                 let t = self.ty(e);
                 self.variant(&t, &path.last().unwrap().name, args)
             }
-            ExprKind::Call { path, args } => self.call(path, args, e),
+            ExprKind::Call { path, args, .. } => self.call(path, args, e),
             ExprKind::If { cond, then, els } if matches!(self.ty(e), TypeKind::Array(..)) => {
                 // An array-valued `if`: each branch copies its array into
                 // one buffer (backlog 1B-25).
@@ -1366,7 +1400,7 @@ impl<'p> Gen<'p> {
         let Some(names) = self
             .t
             .moves
-            .get(&self.path)
+            .get(&self.base)
             .and_then(|m| m.drops.get(&(b.span.file, b.span.lo, b.span.hi)))
             .cloned()
         else {
@@ -1382,7 +1416,7 @@ impl<'p> Gen<'p> {
     fn replaces(&self, span: Span) -> bool {
         self.t
             .moves
-            .get(&self.path)
+            .get(&self.base)
             .is_some_and(|m| m.replaces.contains(&(span.file, span.lo, span.hi)))
     }
 
@@ -1707,11 +1741,29 @@ impl<'p> Gen<'p> {
 
     fn call(&mut self, path: &[Ident], args: &[Expr], e: &Expr) -> CVal {
         let target = self.resolve(path);
-        let param_tys = self
+        // A generic callee: the instance for the call's type arguments.
+        let csub: BTreeMap<String, TypeKind> = match (
+            self.t.fns.get(&target),
+            self.t.targs.get(&(e.span.file, e.span.lo, e.span.hi)),
+        ) {
+            (Some(sig), Some(targs)) => sig
+                .generics
+                .iter()
+                .map(|g| g.name.clone())
+                .zip(targs.iter().map(|a| crate::check::subst(a, &self.tsub)))
+                .collect(),
+            _ => BTreeMap::new(),
+        };
+        let param_tys: Vec<TypeKind> = self
             .t
             .fns
             .get(&target)
-            .map(|f| f.params.clone())
+            .map(|f| {
+                f.params
+                    .iter()
+                    .map(|p| crate::check::subst(p, &csub))
+                    .collect()
+            })
             .unwrap_or_default();
         let mut flat = Vec::new();
         for (k, a) in args.iter().enumerate() {
@@ -1743,10 +1795,17 @@ impl<'p> Gen<'p> {
         let (callee, ret) = if matches!(target.as_str(), "print_i64" | "print_u64" | "print_bytes")
         {
             (format!("@bmb_{target}"), TypeKind::Unit)
-        } else {
+        } else if csub.is_empty() {
             (fn_sym(&target), self.t.fns[&target].ret.clone())
+        } else {
+            let sig = &self.t.fns[&target];
+            let args: Vec<TypeKind> = sig.generics.iter().map(|g| csub[&g.name].clone()).collect();
+            let key = crate::verify::inst_key(&target, &args);
+            let ret = crate::check::subst(&sig.ret, &csub);
+            self.used.insert(ty_str(&ret), ret.clone());
+            self.wants.push((key.clone(), target.clone(), csub));
+            (fn_sym(&key), ret)
         };
-        let _ = e;
         if is_mem(&ret) || matches!(ret, TypeKind::Array(..)) {
             // A data or array result comes back through the caller's memory.
             let out = self.temp(&ret);
@@ -1783,7 +1842,7 @@ impl<'p> Gen<'p> {
         let freed = self
             .t
             .moves
-            .get(&self.path)
+            .get(&self.base)
             .is_some_and(|m| m.drops.contains_key(&(b.span.file, b.span.lo, b.span.hi)));
         if !freed {
             return v;
@@ -1798,14 +1857,9 @@ impl<'p> Gen<'p> {
         match s {
             Stmt::LetFields { .. } => unreachable!("rejected by the checker (E0230)"),
             Stmt::Let { name, init, .. }
-                if self
-                    .t
-                    .locals
-                    .get(&self.path)
-                    .and_then(|m| m.get(&name.name))
-                    .is_some_and(is_mem) =>
+                if self.local_ty(&name.name).is_some_and(|t| is_mem(&t)) =>
             {
-                let t = self.t.locals[&self.path][&name.name].clone();
+                let t = self.local_ty(&name.name).unwrap();
                 let ptr = self.temp(&t);
                 let v = self.expr(init);
                 self.put(v, &ptr, &t);
@@ -1813,10 +1867,10 @@ impl<'p> Gen<'p> {
                     .insert(name.name.clone(), Slot::Data { ptr, ty: t });
             }
             Stmt::Let { name, init, .. }
-                if matches!(self.t.locals.get(&self.path).and_then(|m| m.get(&name.name)),
+                if matches!(self.local_ty(&name.name),
                     Some(TypeKind::Array(el, _)) if is_mem_elem(&el.kind)) =>
             {
-                let t = self.t.locals[&self.path][&name.name].clone();
+                let t = self.local_ty(&name.name).unwrap();
                 let TypeKind::Array(el, n) = &t else {
                     unreachable!()
                 };
@@ -1832,30 +1886,32 @@ impl<'p> Gen<'p> {
                     },
                 );
             }
-            Stmt::Let { name, ty, init, .. } => match &ty.kind {
-                TypeKind::Array(el, n) => {
-                    let elem = elem_kind(&el.kind);
-                    let ptr = self.alloca(&format!("[{n} x {}]", mem(elem)));
-                    self.init_array(init, &ptr, elem);
-                    self.slots.insert(
-                        name.name.clone(),
-                        Slot::Arr {
-                            ptr,
-                            len: n.to_string(),
-                            elem,
-                            ety: el.kind.clone(),
-                        },
-                    );
+            Stmt::Let { name, ty, init, .. } => {
+                match &self.local_ty(&name.name).unwrap_or(ty.kind.clone()) {
+                    TypeKind::Array(el, n) => {
+                        let elem = elem_kind(&el.kind);
+                        let ptr = self.alloca(&format!("[{n} x {}]", mem(elem)));
+                        self.init_array(init, &ptr, elem);
+                        self.slots.insert(
+                            name.name.clone(),
+                            Slot::Arr {
+                                ptr,
+                                len: n.to_string(),
+                                elem,
+                                ety: el.kind.clone(),
+                            },
+                        );
+                    }
+                    t => {
+                        let lt = llty(t);
+                        let ptr = self.alloca(lt);
+                        let v = self.expr(init).imm();
+                        self.emit(format!("store {lt} {v}, ptr {ptr}"));
+                        self.slots
+                            .insert(name.name.clone(), Slot::Scalar { ptr, ty: lt });
+                    }
                 }
-                t => {
-                    let lt = llty(t);
-                    let ptr = self.alloca(lt);
-                    let v = self.expr(init).imm();
-                    self.emit(format!("store {lt} {v}, ptr {ptr}"));
-                    self.slots
-                        .insert(name.name.clone(), Slot::Scalar { ptr, ty: lt });
-                }
-            },
+            }
             Stmt::Assign {
                 target,
                 value,
@@ -1867,7 +1923,7 @@ impl<'p> Gen<'p> {
                         self.emit(format!("store {ty} {v}, ptr {ptr}"));
                     }
                     Slot::Arr { ptr, ety, .. } if is_mem_elem(&ety) => {
-                        let t = self.t.locals[&self.path][&id.name].clone();
+                        let t = self.local_ty(&id.name).unwrap();
                         self.init_data_array(value, &ptr, &t);
                     }
                     Slot::Arr { ptr, elem, .. } => self.init_array(value, &ptr, elem),
@@ -1956,6 +2012,16 @@ fn collect<'p>(m: &'p Mod, prefix: &str, out: &mut Vec<(String, String, &'p FnDe
     }
 }
 
+/// A function to lower: its symbol path, the definition, its unit, its
+/// syntax, and the type arguments of an instance (ADR-0046 §5).
+type Lowering<'p> = (
+    String,
+    String,
+    String,
+    &'p FnDef,
+    BTreeMap<String, TypeKind>,
+);
+
 pub struct Module {
     pub ir: String,
     /// Runtime checks left in the IR because their obligation is unproved.
@@ -1994,7 +2060,7 @@ pub fn emit_with(
          declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)\n\
          declare void @llvm.memmove.p0.p0.i64(ptr, ptr, i64, i1)\n",
     );
-    ir.push_str(&type_defs(t));
+    let types_at = ir.len();
     let uses_vec = t.types.values().any(crate::verify::holds_vec)
         || t.locals
             .values()
@@ -2024,10 +2090,21 @@ pub fn emit_with(
     );
     let mut checks = 0;
     let mut main = None;
-    for (path, mod_path, f) in defs {
-        if f.kind != FnKind::Exec {
-            continue;
-        }
+    // Generic functions are lowered per instance a lowered function calls
+    // (ADR-0046 §5), after the definitions, in the order they are reached.
+    let by_path: BTreeMap<String, (String, &FnDef)> = defs
+        .iter()
+        .map(|(p, m, f)| (p.clone(), (m.clone(), *f)))
+        .collect();
+    let mut queue: std::collections::VecDeque<Lowering> = defs
+        .iter()
+        .filter(|(p, _, f)| f.kind == FnKind::Exec && t.fns[p].generics.is_empty())
+        .map(|(p, m, f)| (p.clone(), p.clone(), m.clone(), *f, BTreeMap::new()))
+        .collect();
+    let mut lowered: BTreeSet<String> = queue.iter().map(|q| q.0.clone()).collect();
+    let mut used_types: BTreeMap<String, TypeKind> = BTreeMap::new();
+    while let Some((path, base, mod_path, f, tsub)) = queue.pop_front() {
+        let instance = !tsub.is_empty();
         // The entry point is a unit's `main`, not an `impl` function.
         if f.name.name == "main" && path == format!("{mod_path}::main") {
             main = Some(path.clone());
@@ -2043,9 +2120,18 @@ pub fn emit_with(
         } else {
             Vec::new()
         };
-        let hit = incr
-            .as_ref()
-            .and_then(|s| s.ir_lookup(&path, f.span, &usable));
+        // A reused fragment does not say which instances it calls, so a
+        // function with generic calls is lowered again.
+        let calls_generic = t
+            .targs
+            .keys()
+            .any(|(file, lo, hi)| *file == f.span.file && f.span.lo <= *lo && *hi <= f.span.hi);
+        let hit = if instance || calls_generic {
+            None
+        } else {
+            incr.as_ref()
+                .and_then(|s| s.ir_lookup(&path, f.span, &usable))
+        };
         if let Some((frag, c)) = &hit
             && !incr.as_ref().is_some_and(|s| s.audit())
         {
@@ -2060,6 +2146,10 @@ pub fn emit_with(
             t,
             proven,
             path: path.clone(),
+            base: base.clone(),
+            tsub,
+            wants: Vec::new(),
+            used: BTreeMap::new(),
             mod_path,
             out: String::new(),
             allocas: String::new(),
@@ -2070,11 +2160,13 @@ pub fn emit_with(
             pending: Vec::new(),
             globals: String::new(),
         };
-        let sig = t.fns[&path].clone();
+        let mut sig = t.fns[&base].clone();
+        sig.params = sig.params.iter().map(|p| g.inst(p)).collect();
+        sig.ret = g.inst(&sig.ret);
         let mut params = Vec::new();
         for (prm, pty) in f.params.iter().zip(&sig.params) {
             let n = &prm.name.name;
-            match &prm.ty.kind {
+            match pty {
                 // `&T` / `&mut T` of a struct, an enum or a `Vec`: its address.
                 TypeKind::Ref { mutable, .. } if is_mem(pty) && !is_array(pty) => {
                     let attr = if *mutable { "noalias " } else { "readonly " };
@@ -2147,7 +2239,7 @@ pub fn emit_with(
             g.emit("ret void");
             "void"
         } else {
-            let ret = llty(&f.ret.ty.kind);
+            let ret = llty(&sig.ret);
             if ret == "void" {
                 g.emit("ret void");
             } else {
@@ -2164,7 +2256,9 @@ pub fn emit_with(
             g.allocas,
             g.out
         );
-        if let Some(s) = incr.as_mut() {
+        if let Some(s) = incr.as_mut()
+            && !instance
+        {
             s.stats.lowered.push(path.clone());
             if let Some((old, c)) = &hit
                 && (old != &frag || *c != g.checks)
@@ -2174,7 +2268,16 @@ pub fn emit_with(
             s.ir_record(&path, f.span, &usable, &frag, g.checks);
         }
         ir.push_str(&frag);
+        used_types.extend(g.used);
+        for (key, callee, csub) in g.wants {
+            if lowered.insert(key.clone()) {
+                let (m, cf) = &by_path[&callee];
+                queue.push_back((key, callee, m.clone(), *cf, csub));
+            }
+        }
     }
+    let extra: Vec<TypeKind> = used_types.into_values().collect();
+    ir.insert_str(types_at, &type_defs(t, &extra));
     if let Some(m) = &main {
         let _ = write!(
             ir,

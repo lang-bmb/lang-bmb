@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::ast::*;
 use crate::diag::json_str;
-use crate::source::SourceMap;
+use crate::source::{SourceMap, Span};
 use crate::verify::{Outcome, Tables};
 
 pub const HEADER: &str = "{\"schema\":\"bmb.map\",\"version\":1}";
@@ -110,6 +110,8 @@ pub struct Edge {
     pub to: String,
     pub kind: &'static str,
     pub arg: Option<usize>,
+    /// The type arguments of a call of a generic definition (ADR-0046 §3).
+    pub targs: Option<String>,
 }
 
 /// Everything the maps need from a checked program except proof results.
@@ -181,10 +183,14 @@ fn resolve(path: &[Ident], unit: &str, t: &Tables) -> String {
 }
 
 /// Calls in an expression, with whether they occur in specification context.
-fn calls_in_expr<'e>(e: &'e Expr, spec: bool, out: &mut Vec<(&'e [Ident], &'e [Expr], bool)>) {
+fn calls_in_expr<'e>(
+    e: &'e Expr,
+    spec: bool,
+    out: &mut Vec<(&'e [Ident], &'e [Expr], bool, Span)>,
+) {
     match &e.kind {
-        ExprKind::Call { path, args } => {
-            out.push((path, args, spec));
+        ExprKind::Call { path, args, .. } => {
+            out.push((path, args, spec, e.span));
             args.iter().for_each(|a| calls_in_expr(a, spec, out));
         }
         ExprKind::Method { recv, args, .. } => {
@@ -233,7 +239,11 @@ fn calls_in_expr<'e>(e: &'e Expr, spec: bool, out: &mut Vec<(&'e [Ident], &'e [E
     }
 }
 
-fn calls_in_block<'e>(b: &'e Block, spec: bool, out: &mut Vec<(&'e [Ident], &'e [Expr], bool)>) {
+fn calls_in_block<'e>(
+    b: &'e Block,
+    spec: bool,
+    out: &mut Vec<(&'e [Ident], &'e [Expr], bool, Span)>,
+) {
     for s in &b.stmts {
         match s {
             Stmt::Let { init, .. } | Stmt::LetFields { init, .. } => calls_in_expr(init, spec, out),
@@ -471,15 +481,24 @@ impl Index {
                 calls_in_expr(c, true, &mut contract);
             }
             calls_in_block(&f.body, f.kind == FnKind::Spec, &mut calls);
-            for (cp, _, _) in &contract {
+            let targs_of = |sp: &Span| {
+                t.targs.get(&(sp.file, sp.lo, sp.hi)).map(|ts| {
+                    ts.iter()
+                        .map(crate::check::ty_str)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                })
+            };
+            for (cp, _, _, sp) in &contract {
                 edges.insert(Edge {
                     from: path.clone(),
                     to: resolve(cp, &unit, t),
                     kind: "contract",
                     arg: None,
+                    targs: targs_of(sp),
                 });
             }
-            for (cp, args, spec) in &calls {
+            for (cp, args, spec, sp) in &calls {
                 let to = resolve(cp, &unit, t);
                 // A variant constructor (`Some(x)`, `E::V(..)`) is no call.
                 if !t.fns.contains_key(&to) {
@@ -502,6 +521,7 @@ impl Index {
                                 to: to.clone(),
                                 kind: "writes",
                                 arg: Some(k),
+                                targs: None,
                             });
                         }
                     }
@@ -511,6 +531,7 @@ impl Index {
                     to,
                     kind,
                     arg: None,
+                    targs: targs_of(sp),
                 });
             }
             // The data types the definition names: its signature, locals
@@ -536,6 +557,7 @@ impl Index {
                     to: ty,
                     kind: "types",
                     arg: None,
+                    targs: None,
                 });
             }
             for a in f.attrs.iter().filter(|a| a.name.name == "uses") {
@@ -551,6 +573,7 @@ impl Index {
                             to,
                             kind: "uses",
                             arg: None,
+                            targs: None,
                         });
                     }
                 }
@@ -803,6 +826,7 @@ impl<'p> Model<'p> {
             to: String::new(),
             kind: "",
             arg: None,
+            targs: None,
         };
         let path = from.from.clone();
         self.edges.range(from..).take_while(move |e| e.from == path)
@@ -822,6 +846,9 @@ impl<'p> Model<'p> {
         ];
         if let Some(a) = e.arg {
             kv.push(("arg", J::N(a as u64)));
+        }
+        if let Some(ts) = &e.targs {
+            kv.push(("type_args", J::S(ts.clone())));
         }
         J::O(kv)
     }
@@ -950,7 +977,8 @@ impl<'p> Model<'p> {
                             for c in clause(d.f) {
                                 calls_in_expr(c, true, &mut v);
                             }
-                            v.iter().any(|(cp, _, _)| self.resolves_to(cp, &d.unit, p))
+                            v.iter()
+                                .any(|(cp, _, _, _)| self.resolves_to(cp, &d.unit, p))
                         })
                         .map(|d| d.path.clone())
                         .collect()
@@ -1143,7 +1171,7 @@ impl<'p> Model<'p> {
             calls_in_block(&d.f.body, false, &mut calls);
             let sites = calls
                 .iter()
-                .filter(|(cp, _, spec)| {
+                .filter(|(cp, _, spec, _)| {
                     !spec && builtins.iter().any(|b| self.resolves_to(cp, &d.unit, b))
                 })
                 .count();

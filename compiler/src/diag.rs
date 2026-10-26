@@ -57,6 +57,10 @@ pub const CODES: &[(&str, &str)] = &[
         "`drop(v)` and `mem::take` / `replace` / `swap` are not used",
     ),
     ("E0234", "a string literal: text is bytes, write `b\"...\"`"),
+    (
+        "E0237",
+        "a call of a generic function names its type arguments: `f::<T>(..)`",
+    ),
     // E0220-E0233: Rust habits around data types (ADR-0026 §5)
     ("E0220", "`#[derive(..)]` is not used"),
     (
@@ -98,7 +102,7 @@ pub const CODES: &[(&str, &str)] = &[
         "name already bound in this function (shadowing is not allowed)",
     ),
     ("E0304", "unknown function"),
-    ("E0305", "unknown type"),
+    ("E0305", "unknown type or trait"),
     ("E0306", "unknown field"),
     ("E0307", "unknown variant"),
     (
@@ -159,6 +163,15 @@ pub const CODES: &[(&str, &str)] = &[
     (
         "E0427",
         "a pattern names the wrong number of payload values",
+    ),
+    (
+        "E0428",
+        "a type argument does not satisfy a bound of its parameter",
+    ),
+    ("E0429", "wrong number of type arguments in a call"),
+    (
+        "E0430",
+        "a recursive generic call wraps a type parameter in a larger type",
     ),
     // E05xx: specifications
     (

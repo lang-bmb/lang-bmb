@@ -38,6 +38,42 @@ pub fn type_str(t: &Type) -> String {
     crate::check::ty_str(&t.kind)
 }
 
+/// `<T: Copy, U: Copy + geo::Shape>`, or nothing (ADR-0046).
+pub fn generics_str(gs: &[TypeParam]) -> String {
+    if gs.is_empty() {
+        return String::new();
+    }
+    let ps: Vec<String> = gs
+        .iter()
+        .map(|g| {
+            if g.bounds.is_empty() {
+                return g.name.name.clone();
+            }
+            let bs: Vec<String> = g
+                .bounds
+                .iter()
+                .map(|b| {
+                    b.iter()
+                        .map(|i| i.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join("::")
+                })
+                .collect();
+            format!("{}: {}", g.name.name, bs.join(" + "))
+        })
+        .collect();
+    format!("<{}>", ps.join(", "))
+}
+
+/// `T<A, B>`, or `T`.
+fn applied(name: &str, args: &[Type]) -> String {
+    if args.is_empty() {
+        return name.to_string();
+    }
+    let a: Vec<String> = args.iter().map(type_str).collect();
+    format!("{name}<{}>", a.join(", "))
+}
+
 fn escape(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
 }
@@ -187,6 +223,7 @@ impl<'a> Printer<'a> {
                     .collect(),
             ),
         };
+        let name = format!("{name}{}", generics_str(&t.generics));
         if items.is_empty() {
             self.line(depth, &format!("{kw} {name} {{}}"));
         } else {
@@ -197,11 +234,16 @@ impl<'a> Printer<'a> {
     fn impl_block(&mut self, i: &Impl, depth: usize) {
         let mut fns: Vec<&FnDef> = i.fns.iter().collect();
         fns.sort_by(|a, b| a.name.name.cmp(&b.name.name));
+        let head = format!(
+            "impl{} {}",
+            generics_str(&i.generics),
+            applied(&i.ty.name, &i.ty_args)
+        );
         if fns.is_empty() {
-            self.line(depth, &format!("impl {} {{}}", i.ty.name));
+            self.line(depth, &format!("{head} {{}}"));
             return;
         }
-        self.line(depth, &format!("impl {} {{", i.ty.name));
+        self.line(depth, &format!("{head} {{"));
         for (k, f) in fns.iter().enumerate() {
             if k > 0 {
                 self.out.push('\n');
@@ -259,7 +301,11 @@ impl<'a> Printer<'a> {
             "fn"
         };
         let name = rename.unwrap_or(&f.name.name);
-        let sig = format!("{kw} {name}({}) -> {ret}", params.join(", "));
+        let sig = format!(
+            "{kw} {name}{}({}) -> {ret}",
+            generics_str(&f.generics),
+            params.join(", ")
+        );
         let has_clauses = !f.requires.is_empty() || !f.ensures.is_empty() || f.decreases.is_some();
         if !with_body {
             self.line(depth, &sig);
@@ -476,9 +522,16 @@ impl<'a> Printer<'a> {
             ExprKind::Bool(b) => b.to_string(),
             ExprKind::Unit => "()".into(),
             ExprKind::Var(id) => id.name.clone(),
-            ExprKind::Call { path, args } => {
+            ExprKind::Call { path, targs, args } => {
                 let a: Vec<String> = args.iter().map(|x| self.expr(x, 0)).collect();
-                format!("{}({})", self.path(path), a.join(", "))
+                let mut segs: Vec<String> = self.path(path).split("::").map(String::from).collect();
+                // A qualified path gains its unit's segments in front.
+                let off = segs.len() - path.len();
+                for t in targs {
+                    let ts: Vec<String> = t.args.iter().map(type_str).collect();
+                    segs[t.seg + off] = format!("{}::<{}>", segs[t.seg + off], ts.join(", "));
+                }
+                format!("{}({})", segs.join("::"), a.join(", "))
             }
             ExprKind::Method { recv, name, args } => {
                 let r = self.expr(recv, 8);
@@ -759,7 +812,12 @@ pub fn surface_parts(f: &FnDef) -> (String, Vec<String>, Vec<String>, Option<Str
     } else {
         "fn"
     };
-    let sig = format!("{kw} {}({}) -> {ret}", f.name.name, params.join(", "));
+    let sig = format!(
+        "{kw} {}{}({}) -> {ret}",
+        f.name.name,
+        generics_str(&f.generics),
+        params.join(", ")
+    );
     let req = f.requires.iter().map(|e| pr.expr(e, 0)).collect();
     let ens = f.ensures.iter().map(|e| pr.expr(e, 0)).collect();
     let dec = f.decreases.as_ref().map(|e| pr.expr(e, 0));

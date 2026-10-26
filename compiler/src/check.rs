@@ -13,10 +13,104 @@ pub enum Effect {
     Io,
 }
 
+/// A type parameter of a generic definition (ADR-0046): its name and its
+/// bounds (`Copy` is built in).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TParam {
+    pub name: String,
+    pub bounds: Vec<String>,
+}
+
+/// `t` with each type parameter in `m` replaced by its type (simultaneous:
+/// a replacement is not substituted again).
+pub fn subst(t: &TypeKind, m: &BTreeMap<String, TypeKind>) -> TypeKind {
+    if m.is_empty() {
+        return t.clone();
+    }
+    let sub = |x: &Type| Type {
+        kind: subst(&x.kind, m),
+        span: x.span,
+    };
+    match t {
+        TypeKind::Param(n) => m.get(n).cloned().unwrap_or_else(|| t.clone()),
+        TypeKind::Array(e, n) => TypeKind::Array(Box::new(sub(e)), *n),
+        TypeKind::Slice(e) => TypeKind::Slice(Box::new(sub(e))),
+        TypeKind::Vec(e) => TypeKind::Vec(Box::new(sub(e))),
+        TypeKind::Ref { mutable, inner } => TypeKind::Ref {
+            mutable: *mutable,
+            inner: Box::new(sub(inner)),
+        },
+        TypeKind::Named { path, args } => TypeKind::Named {
+            path: path.clone(),
+            args: args.iter().map(sub).collect(),
+        },
+        other => other.clone(),
+    }
+}
+
+/// Whether `t` mentions a type parameter.
+pub fn has_param(t: &TypeKind) -> bool {
+    match t {
+        TypeKind::Param(_) => true,
+        TypeKind::Array(e, _) | TypeKind::Slice(e) | TypeKind::Vec(e) => has_param(&e.kind),
+        TypeKind::Ref { inner, .. } => has_param(&inner.kind),
+        TypeKind::Named { args, .. } => args.iter().any(|a| has_param(&a.kind)),
+        _ => false,
+    }
+}
+
+/// Binds the parameters `ps` occurring in `pat` by matching it against `t`
+/// (first binding wins; a mismatch binds nothing there).
+fn unify(pat: &TypeKind, t: &TypeKind, ps: &[TParam], out: &mut BTreeMap<String, TypeKind>) {
+    match (pat, t) {
+        (TypeKind::Param(n), _) if ps.iter().any(|p| p.name == *n) => {
+            if *t != TypeKind::Error {
+                out.entry(n.clone()).or_insert_with(|| t.clone());
+            }
+        }
+        (TypeKind::Array(a, _), TypeKind::Array(b, _))
+        | (TypeKind::Slice(a), TypeKind::Slice(b))
+        | (TypeKind::Vec(a), TypeKind::Vec(b)) => unify(&a.kind, &b.kind, ps, out),
+        (TypeKind::Ref { inner: a, .. }, TypeKind::Ref { inner: b, .. }) => {
+            unify(&a.kind, &b.kind, ps, out)
+        }
+        // `&[T]` from `&[i64; 4]` or a `Vec<i64>` viewed as a slice.
+        (TypeKind::Slice(a), TypeKind::Array(b, _) | TypeKind::Vec(b)) => {
+            unify(&a.kind, &b.kind, ps, out)
+        }
+        (TypeKind::Named { path: p, args: a }, TypeKind::Named { path: q, args: b })
+            if p == q && a.len() == b.len() =>
+        {
+            for (x, y) in a.iter().zip(b) {
+                unify(&x.kind, &y.kind, ps, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// The substitution of a generic data type's parameters by the arguments
+/// of its instance `t` (empty for a non-generic type).
+pub fn adt_subst(adt: &Adt, t: &TypeKind) -> BTreeMap<String, TypeKind> {
+    match t {
+        TypeKind::Named { args, .. } => adt
+            .generics
+            .iter()
+            .zip(args)
+            .map(|(p, a)| (p.name.clone(), a.kind.clone()))
+            .collect(),
+        _ => BTreeMap::new(),
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct FnSig {
     pub path: String,
     pub kind: FnKind,
+    /// Type parameters (ADR-0046): an `impl`'s first, then the function's.
+    pub generics: Vec<TParam>,
+    /// How many of `generics` are the `impl`'s.
+    pub impl_generics: usize,
     pub params: Vec<TypeKind>,
     pub ret: TypeKind,
     pub effect: Effect,
@@ -41,6 +135,9 @@ pub type VariantSig = (String, Vec<TypeKind>);
 #[derive(Debug, Clone)]
 pub struct Adt {
     pub path: String,
+    /// Type parameters (ADR-0046); field and payload types name them as
+    /// `TypeKind::Param`.
+    pub generics: Vec<TParam>,
     pub kind: AdtKind,
     pub span: Span,
 }
@@ -66,6 +163,14 @@ pub struct Checker<'a> {
     pub locals: BTreeMap<String, BTreeMap<String, TypeKind>>,
     /// Where each executable function frees its `Vec` values (ADR-0031 §2).
     pub moves: BTreeMap<String, crate::moves::MoveInfo>,
+    /// The type arguments of every call of a generic function, by the
+    /// call's span: the `impl`'s, then the function's (ADR-0046).
+    pub targs: BTreeMap<(u32, u32, u32), Vec<TypeKind>>,
+    /// The type parameters in scope where types are resolved.
+    tparams: Vec<TParam>,
+    /// Calls of generic functions: caller, callee, span, type arguments
+    /// (E0430 needs the recursive ones).
+    gcalls: Vec<(String, String, Span, Vec<TypeKind>)>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -118,6 +223,7 @@ pub fn ty_str(t: &TypeKind) -> String {
                 .join(", ")
         ),
         TypeKind::Vec(e) => format!("Vec<{}>", ty_str(&e.kind)),
+        TypeKind::Param(n) => n.clone(),
         TypeKind::Error => "{error}".into(),
     }
 }
@@ -130,6 +236,33 @@ fn is_int(t: &TypeKind) -> bool {
 }
 fn is_scalar(t: &TypeKind) -> bool {
     is_int(t) || matches!(t, TypeKind::Bool)
+}
+
+/// Whether values of `t` copy (Rust `Copy`): everything but a `Vec`, a
+/// `&mut`, and what holds them (type parameters carry `Copy` until
+/// ADR-0047, phase 2O).
+fn is_copy(t: &TypeKind) -> bool {
+    match t {
+        TypeKind::Vec(_) | TypeKind::Ref { mutable: true, .. } => false,
+        TypeKind::Array(e, _) => is_copy(&e.kind),
+        TypeKind::Named { args, .. } => args.iter().all(|a| is_copy(&a.kind)),
+        _ => true,
+    }
+}
+
+/// The text of a type parameter with its bounds as written.
+fn self_text_of(g: &TypeParam) -> String {
+    let bounds: Vec<String> = g
+        .bounds
+        .iter()
+        .map(|b| {
+            b.iter()
+                .map(|i| i.name.as_str())
+                .collect::<Vec<_>>()
+                .join("::")
+        })
+        .collect();
+    format!("{}: {}", g.name.name, bounds.join(" + "))
 }
 fn elem_of(t: &TypeKind) -> Option<&TypeKind> {
     match t {
@@ -188,6 +321,8 @@ impl<'a> Checker<'a> {
                 vacuous: false,
                 builtin: true,
                 in_impl: false,
+                generics: Vec::new(),
+                impl_generics: 0,
             },
         );
         fns.insert(
@@ -204,6 +339,8 @@ impl<'a> Checker<'a> {
                 vacuous: false,
                 builtin: true,
                 in_impl: false,
+                generics: Vec::new(),
+                impl_generics: 0,
             },
         );
         fns.insert(
@@ -217,6 +354,8 @@ impl<'a> Checker<'a> {
                 vacuous: false,
                 builtin: true,
                 in_impl: false,
+                generics: Vec::new(),
+                impl_generics: 0,
             },
         );
         Checker {
@@ -229,6 +368,9 @@ impl<'a> Checker<'a> {
             recursive: BTreeMap::new(),
             locals: BTreeMap::new(),
             moves: BTreeMap::new(),
+            targs: BTreeMap::new(),
+            tparams: Vec::new(),
+            gcalls: Vec::new(),
         }
     }
 
@@ -241,6 +383,9 @@ impl<'a> Checker<'a> {
             adts: self.adts,
             locals: self.locals,
             moves: self.moves,
+            targs: self.targs,
+            insts: BTreeMap::new(),
+            inst_types: Vec::new(),
         }
     }
 
@@ -295,10 +440,12 @@ impl<'a> Checker<'a> {
                 TypeDefKind::Struct(_) => AdtKind::Struct(Vec::new()),
                 TypeDefKind::Enum(_) => AdtKind::Enum(Vec::new()),
             };
+            let generics = self.tparams_of(&t.generics, false);
             self.adts.insert(
                 path.clone(),
                 Adt {
                     path,
+                    generics,
                     kind,
                     span: t.name.span,
                 },
@@ -335,6 +482,7 @@ impl<'a> Checker<'a> {
             if !done.insert(path.clone()) {
                 continue;
             }
+            self.tparams = self.tparams_of(&t.generics, true);
             let kind = match &t.kind {
                 TypeDefKind::Struct(fields) => {
                     if fields.is_empty() {
@@ -385,9 +533,124 @@ impl<'a> Checker<'a> {
                     AdtKind::Enum(out)
                 }
             };
+            self.tparams.clear();
             if let Some(a) = self.adts.get_mut(&path) {
                 a.kind = kind;
             }
+        }
+    }
+
+    /// The type parameters `gs` (ADR-0046). With `report`, their problems
+    /// are diagnosed (once per definition): an unknown bound, a duplicate
+    /// name, and a parameter without `Copy` (a parameter that may be an
+    /// owned type comes with ADR-0047, phase 2O).
+    fn tparams_of(&mut self, gs: &[TypeParam], report: bool) -> Vec<TParam> {
+        let mut out: Vec<TParam> = Vec::new();
+        for g in gs {
+            let mut bounds = Vec::new();
+            for b in &g.bounds {
+                let name = b
+                    .iter()
+                    .map(|i| i.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join("::");
+                if name == "Copy" {
+                    bounds.push(name);
+                } else if report {
+                    let span = b[0].span.to(b[b.len() - 1].span);
+                    self.diags.push(
+                        Diag::new("E0305", span, format!("unknown trait `{name}`"))
+                            .fix("the bounds known so far: `Copy`", None),
+                    );
+                }
+            }
+            if report {
+                if out.iter().any(|p| p.name == g.name.name) {
+                    self.diags.push(
+                        Diag::new(
+                            "E0302",
+                            g.name.span,
+                            format!("type parameter `{}` is declared twice", g.name.name),
+                        )
+                        .fix("give each type parameter its own name", None),
+                    );
+                }
+                if !bounds.iter().any(|b| b == "Copy") {
+                    let r = if g.bounds.is_empty() {
+                        format!("{}: Copy", g.name.name)
+                    } else {
+                        format!("{} + Copy", self_text_of(g))
+                    };
+                    self.diags.push(
+                        Diag::new(
+                            "E0402",
+                            g.span,
+                            format!(
+                                "type parameter `{}` needs `Copy`: a parameter that may be an owned type comes with ADR-0047 (phase 2O)",
+                                g.name.name
+                            ),
+                        )
+                        .fix(format!("write `{r}`"), Some(r)),
+                    );
+                }
+            }
+            if !bounds.iter().any(|b| b == "Copy") {
+                bounds.push("Copy".into());
+            }
+            out.push(TParam {
+                name: g.name.name.clone(),
+                bounds,
+            });
+        }
+        out
+    }
+
+    /// E0428/E0403 for a type argument `t` (at `span`) of parameter `p`:
+    /// a value type that satisfies the bounds. False when reported.
+    fn targ_ok(&mut self, t: &TypeKind, p: &TParam, of: &str, span: Span, report: bool) -> bool {
+        match t {
+            TypeKind::Error => false,
+            TypeKind::Ref { .. } | TypeKind::Slice(_) | TypeKind::Unit => {
+                if report {
+                    self.diags.push(
+                        Diag::new(
+                            "E0403",
+                            span,
+                            format!(
+                                "type argument `{}` for `{}` of `{of}` is not a value type",
+                                ty_str(t),
+                                p.name
+                            ),
+                        )
+                        .fix(
+                            "type arguments are value types: references are second-class (ADR-0015)",
+                            None,
+                        ),
+                    );
+                }
+                false
+            }
+            _ if p.bounds.iter().any(|b| b == "Copy") && !is_copy(t) => {
+                if report {
+                    self.diags.push(
+                        Diag::new(
+                            "E0428",
+                            span,
+                            format!(
+                                "`{}` is not `Copy`, a bound of `{}` in `{of}`",
+                                ty_str(t),
+                                p.name
+                            ),
+                        )
+                        .fix(
+                            "pass a `Copy` type (a scalar, a struct or enum, an array of them); a `Vec` is an owned type (ADR-0047)",
+                            None,
+                        ),
+                    );
+                }
+                false
+            }
+            _ => true,
         }
     }
 
@@ -497,6 +760,21 @@ impl<'a> Checker<'a> {
             span: x.span,
         };
         match &t.kind {
+            TypeKind::Named { path, args }
+                if path.len() == 1 && self.tparams.iter().any(|p| p.name == path[0]) =>
+            {
+                if !args.is_empty() && report {
+                    self.diags.push(
+                        Diag::new(
+                            "E0420",
+                            t.span,
+                            format!("type parameter `{}` takes no type arguments", path[0]),
+                        )
+                        .fix(format!("write `{}`", path[0]), Some(path[0].clone())),
+                    );
+                }
+                TypeKind::Param(path[0].clone())
+            }
             TypeKind::Named { path, args } => {
                 let name = path.join("::");
                 if path.len() == 1 && name == "Vec" {
@@ -549,27 +827,52 @@ impl<'a> Checker<'a> {
                         args,
                     };
                 }
-                if !args.is_empty() {
-                    if report {
-                        self.err(
-                            "E0420",
-                            t.span,
-                            format!(
-                                "`{name}` takes no type arguments (generics are not supported)"
-                            ),
-                        );
-                    }
-                    return TypeKind::Error;
-                }
                 let full = if path.len() == 1 {
                     format!("{mp}::{name}")
                 } else {
                     name.clone()
                 };
-                if self.adts.contains_key(&full) {
+                if let Some(adt) = self.adts.get(&full) {
+                    let ps = adt.generics.clone();
+                    if args.len() != ps.len() {
+                        if report {
+                            let want = if ps.is_empty() {
+                                format!("`{name}` has no type parameters: write `{name}`")
+                            } else {
+                                format!(
+                                    "write one type for each parameter: `{name}<{}>`",
+                                    ps.iter()
+                                        .map(|p| p.name.as_str())
+                                        .collect::<Vec<_>>()
+                                        .join(", ")
+                                )
+                            };
+                            self.diags.push(
+                                Diag::new(
+                                    "E0420",
+                                    t.span,
+                                    format!(
+                                        "`{name}` takes {} type argument(s), found {}",
+                                        ps.len(),
+                                        args.len()
+                                    ),
+                                )
+                                .fix(want, None),
+                            );
+                        }
+                        return TypeKind::Error;
+                    }
+                    let args: Vec<Type> = args.iter().map(|a| sub(self, a)).collect();
+                    let mut ok = true;
+                    for (a, p) in args.iter().zip(&ps) {
+                        ok &= self.targ_ok(&a.kind, p, &name, a.span, report);
+                    }
+                    if !ok {
+                        return TypeKind::Error;
+                    }
                     TypeKind::Named {
                         path: full.split("::").map(String::from).collect(),
-                        args: Vec::new(),
+                        args,
                     }
                 } else {
                     if report {
@@ -725,7 +1028,7 @@ impl<'a> Checker<'a> {
                 continue;
             }
             let path = format!("{mp}::{}", f.name.name);
-            self.collect_fn(f, path, &mp, false);
+            self.collect_fn(f, path, &mp, false, &[]);
         }
         let mut with_impl = BTreeSet::new();
         for i in &m.impls {
@@ -749,6 +1052,51 @@ impl<'a> Checker<'a> {
                 );
                 continue;
             }
+            let ig = self.tparams_of(&i.generics, true);
+            let arity = self.adts.get(&ty).map_or(0, |a| a.generics.len());
+            let written: Vec<Option<&str>> = i
+                .ty_args
+                .iter()
+                .map(|a| match &a.kind {
+                    TypeKind::Named { path, args } if path.len() == 1 && args.is_empty() => {
+                        Some(path[0].as_str())
+                    }
+                    _ => None,
+                })
+                .collect();
+            let own: Vec<Option<&str>> = ig.iter().map(|p| Some(p.name.as_str())).collect();
+            if ig.len() != arity || written != own {
+                let ps: Vec<String> = self.adts[&ty]
+                    .generics
+                    .iter()
+                    .map(|p| p.name.clone())
+                    .collect();
+                let r = if ps.is_empty() {
+                    format!("impl {}", i.ty.name)
+                } else {
+                    format!(
+                        "impl<{}> {}<{}>",
+                        ps.iter()
+                            .map(|p| format!("{p}: Copy"))
+                            .collect::<Vec<_>>()
+                            .join(", "),
+                        i.ty.name,
+                        ps.join(", ")
+                    )
+                };
+                self.diags.push(
+                    Diag::new(
+                        "E0420",
+                        i.ty.span,
+                        format!(
+                            "the `impl` of `{}` takes its type parameters in order",
+                            i.ty.name
+                        ),
+                    )
+                    .fix(format!("write `{r}`"), None),
+                );
+                continue;
+            }
             let mut fnames = BTreeSet::new();
             for f in &i.fns {
                 if !fnames.insert(f.name.name.clone()) {
@@ -762,12 +1110,18 @@ impl<'a> Checker<'a> {
                     );
                     continue;
                 }
+                let fg = self.tparams_of(&f.generics, false);
+                self.tparams = ig.clone();
+                self.tparams.extend(fg);
                 self.receiver_rule(f, Some(&ty), &mp);
-                self.collect_fn(f, format!("{ty}::{}", f.name.name), &mp, true);
+                self.tparams.clear();
+                self.collect_fn(f, format!("{ty}::{}", f.name.name), &mp, true, &ig);
             }
         }
         for f in &m.fns {
+            self.tparams = self.tparams_of(&f.generics, false);
             self.receiver_rule(f, None, &mp);
+            self.tparams.clear();
         }
     }
 
@@ -814,13 +1168,27 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn collect_fn(&mut self, f: &FnDef, path: String, mp: &str, in_impl: bool) {
+    fn collect_fn(&mut self, f: &FnDef, path: String, mp: &str, in_impl: bool, ig: &[TParam]) {
+        let own = self.tparams_of(&f.generics, true);
+        for (g, p) in f.generics.iter().zip(&own) {
+            if ig.iter().any(|q| q.name == p.name) {
+                self.err(
+                    "E0302",
+                    g.name.span,
+                    format!("type parameter `{}` is already the `impl`'s", p.name),
+                );
+            }
+        }
+        let mut generics = ig.to_vec();
+        generics.extend(own);
+        self.tparams = generics.clone();
         let params = f
             .params
             .iter()
             .map(|p| self.canon(&p.ty, mp, false))
             .collect();
         let ret = self.canon(&f.ret.ty, mp, false);
+        self.tparams.clear();
         {
             let effect = self.fn_effect(f);
             let vacuous = f.kind == FnKind::Spec
@@ -837,6 +1205,8 @@ impl<'a> Checker<'a> {
                 FnSig {
                     path,
                     kind: f.kind,
+                    generics,
+                    impl_generics: ig.len(),
                     params,
                     ret,
                     effect,
@@ -1018,6 +1388,7 @@ impl<'a> Checker<'a> {
         let Some(sig) = self.fns.get(&path).cloned() else {
             return;
         };
+        self.tparams = sig.generics.clone();
         let mut cx = FnCtx {
             path: path.clone(),
             mod_path: mod_path.to_string(),
@@ -1134,6 +1505,7 @@ impl<'a> Checker<'a> {
             }
             self.moves.insert(path, info);
         }
+        self.tparams.clear();
     }
 
     fn check_param_type(&mut self, t: &Type, kind: FnKind) {
@@ -1736,11 +2108,21 @@ impl<'a> Checker<'a> {
             return None;
         };
         match self.adts.get(&path.join("::")) {
-            Some(Adt {
-                kind: AdtKind::Struct(fs),
-                path,
-                ..
-            }) => Some((path.clone(), fs.clone())),
+            Some(
+                a @ Adt {
+                    kind: AdtKind::Struct(fs),
+                    path,
+                    ..
+                },
+            ) => {
+                let m = adt_subst(a, t);
+                Some((
+                    path.clone(),
+                    fs.iter()
+                        .map(|(n, ft)| (n.clone(), subst(ft, &m)))
+                        .collect(),
+                ))
+            }
             _ => None,
         }
     }
@@ -1905,6 +2287,7 @@ impl<'a> Checker<'a> {
         cx: &mut FnCtx,
         segs: &[Ident],
         args: &[Expr],
+        expected: Option<&TypeKind>,
         span: Span,
         mode: Mode,
     ) -> TypeKind {
@@ -1972,14 +2355,18 @@ impl<'a> Checker<'a> {
                 .fix(format!("the payload is `({})`", tys.join(", ")), None),
             );
         }
-        for (a, t) in args.iter().zip(&payload) {
-            let at = self.expr(cx, a, Some(t), mode);
-            self.expect_ty(&at, t, a.span);
+        let ps = self.adts[&tp].generics.clone();
+        let mut tm = self.expected_args(&tp, expected);
+        let slots: Vec<(&Expr, TypeKind)> = args.iter().zip(payload).collect();
+        self.check_slots(cx, &ps, &mut tm, &slots, mode);
+        if ps.is_empty() {
+            return TypeKind::Named {
+                path: tp.split("::").map(String::from).collect(),
+                args: Vec::new(),
+            };
         }
-        TypeKind::Named {
-            path: tp.split("::").map(String::from).collect(),
-            args: Vec::new(),
-        }
+        let v = Self::path_text(segs);
+        self.instance(&tp, &tm, &format!("`{v}`"), span)
     }
 
     /// `Some(x)`, `None`, `Ok(x)`, `Err(e)`: the type comes from the expected
@@ -2070,11 +2457,21 @@ impl<'a> Checker<'a> {
                 ],
             )),
             _ => match self.adts.get(&path.join("::")) {
-                Some(Adt {
-                    kind: AdtKind::Enum(vs),
-                    path,
-                    ..
-                }) => Some((path.clone(), vs.clone())),
+                Some(
+                    a @ Adt {
+                        kind: AdtKind::Enum(vs),
+                        path,
+                        ..
+                    },
+                ) => {
+                    let m = adt_subst(a, t);
+                    Some((
+                        path.clone(),
+                        vs.iter()
+                            .map(|(n, ps)| (n.clone(), ps.iter().map(|p| subst(p, &m)).collect()))
+                            .collect(),
+                    ))
+                }
                 _ => None,
             },
         }
@@ -2458,12 +2855,102 @@ impl<'a> Checker<'a> {
     }
 
     /// `T { f: e, .. }`: every field once.
+    /// The bindings of a generic data type's parameters from the expected
+    /// type, when it is an instance of that type.
+    fn expected_args(&self, tp: &str, expected: Option<&TypeKind>) -> BTreeMap<String, TypeKind> {
+        match expected {
+            Some(t @ TypeKind::Named { path, .. }) if path.join("::") == tp => {
+                adt_subst(&self.adts[tp], t)
+            }
+            _ => BTreeMap::new(),
+        }
+    }
+
+    /// Checks the field or payload values `xs` against their declared types,
+    /// which may name the parameters `ps` of a generic data type: a
+    /// parameter `tm` does not bind yet is bound from the value (integer
+    /// literals last, so another value fixes their type).
+    fn check_slots(
+        &mut self,
+        cx: &mut FnCtx,
+        ps: &[TParam],
+        tm: &mut BTreeMap<String, TypeKind>,
+        xs: &[(&Expr, TypeKind)],
+        mode: Mode,
+    ) {
+        let mut deferred = Vec::new();
+        for (x, t) in xs {
+            if has_param_of(t, ps, tm) {
+                if untyped_literal(x) {
+                    deferred.push((*x, t));
+                    continue;
+                }
+                let xt = self.expr(cx, x, None, mode);
+                unify(t, &xt, ps, tm);
+                let want = subst(t, tm);
+                if !has_param_of(t, ps, tm) {
+                    self.expect_ty(&xt, &want, x.span);
+                }
+            } else {
+                let want = subst(t, tm);
+                let xt = self.expr(cx, x, Some(&want), mode);
+                self.expect_ty(&xt, &want, x.span);
+            }
+        }
+        for (x, t) in deferred {
+            if has_param_of(t, ps, tm) {
+                self.expr(cx, x, None, mode);
+                continue;
+            }
+            let want = subst(t, tm);
+            let xt = self.expr(cx, x, Some(&want), mode);
+            self.expect_ty(&xt, &want, x.span);
+        }
+    }
+
+    /// The instance of generic data type `tp` the bindings `tm` give, or
+    /// E0424 when a parameter is still unknown.
+    fn instance(
+        &mut self,
+        tp: &str,
+        tm: &BTreeMap<String, TypeKind>,
+        what: &str,
+        span: Span,
+    ) -> TypeKind {
+        let ps = self.adts[tp].generics.clone();
+        let path: Vec<String> = tp.split("::").map(String::from).collect();
+        if ps.iter().any(|p| !tm.contains_key(&p.name)) {
+            self.diags.push(
+                Diag::new("E0424", span, format!("the type of {what} is not known here")).fix(
+                    format!(
+                        "give it a type: `let x: {}<..> = ..;`, or pass it where the type is written",
+                        path.last().unwrap()
+                    ),
+                    None,
+                ),
+            );
+            return TypeKind::Error;
+        }
+        TypeKind::Named {
+            path,
+            args: ps
+                .iter()
+                .map(|p| Type {
+                    kind: tm[&p.name].clone(),
+                    span: Span::default(),
+                })
+                .collect(),
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn struct_lit(
         &mut self,
         cx: &mut FnCtx,
         path: &[Ident],
         fields: &[(Ident, Expr)],
         rest: Option<&Expr>,
+        expected: Option<&TypeKind>,
         span: Span,
         mode: Mode,
     ) -> TypeKind {
@@ -2499,6 +2986,9 @@ impl<'a> Checker<'a> {
             }
             return TypeKind::Error;
         };
+        let ps = self.adts[&tp].generics.clone();
+        let mut tm = self.expected_args(&tp, expected);
+        let mut slots = Vec::new();
         let mut given = BTreeSet::new();
         for (f, x) in fields {
             if !given.insert(f.name.clone()) {
@@ -2512,10 +3002,7 @@ impl<'a> Checker<'a> {
                 );
             }
             match fs.iter().find(|(n, _)| *n == f.name) {
-                Some((_, t)) => {
-                    let xt = self.expr(cx, x, Some(t), mode);
-                    self.expect_ty(&xt, t, x.span);
-                }
+                Some((_, t)) => slots.push((x, t.clone())),
                 None => {
                     let names: Vec<String> = fs.iter().map(|(n, _)| n.clone()).collect();
                     let mut d =
@@ -2530,6 +3017,16 @@ impl<'a> Checker<'a> {
                 }
             }
         }
+        self.check_slots(cx, &ps, &mut tm, &slots, mode);
+        let whole = if ps.is_empty() {
+            TypeKind::Named {
+                path: tp.split("::").map(String::from).collect(),
+                args: Vec::new(),
+            }
+        } else {
+            let name = path.last().unwrap().name.clone();
+            self.instance(&tp, &tm, &format!("`{name} {{ .. }}`"), span)
+        };
         let missing: Vec<&str> = fs
             .iter()
             .map(|(n, _)| n.as_str())
@@ -2537,10 +3034,7 @@ impl<'a> Checker<'a> {
             .collect();
         if let Some(r) = rest {
             // Rust habit: `..base`. Every field is written out instead.
-            let want = TypeKind::Named {
-                path: tp.split("::").map(String::from).collect(),
-                args: Vec::new(),
-            };
+            let want = whole.clone();
             let rt = self.expr(cx, r, Some(&want), mode);
             self.expect_ty(&rt, &want, r.span);
             // The replacement is the whole literal, so the span is too.
@@ -2575,10 +3069,7 @@ impl<'a> Checker<'a> {
                 ),
             );
         }
-        TypeKind::Named {
-            path: tp.split("::").map(String::from).collect(),
-            args: Vec::new(),
-        }
+        whole
     }
 
     // ---------- expressions ----------
@@ -2617,14 +3108,14 @@ impl<'a> Checker<'a> {
                 TypeKind::Error
             }
             ExprKind::StructLit { path, fields, rest } => {
-                self.struct_lit(cx, path, fields, rest.as_deref(), e.span, mode)
+                self.struct_lit(cx, path, fields, rest.as_deref(), expected, e.span, mode)
             }
             ExprKind::Path(path) if Self::builtin_path(path) => {
                 self.builtin_by_path(path);
                 let v = &path[1].name;
                 self.builtin_variant(cx, v, &[], expected, e.span, mode)
             }
-            ExprKind::Path(path) => self.variant_value(cx, path, &[], e.span, mode),
+            ExprKind::Path(path) => self.variant_value(cx, path, &[], expected, e.span, mode),
             ExprKind::Field { base, name } => {
                 self.deref_field(e, base, name);
                 let bt = self.expr(cx, base, None, mode);
@@ -2747,7 +3238,7 @@ impl<'a> Checker<'a> {
             }
             // A conversion without `.unwrap()` / `.ok()` (ADR-0028 §1), and
             // `T::from(x)` (E0212).
-            ExprKind::Call { path, args }
+            ExprKind::Call { path, args, .. }
                 if conv_call(e).is_some() || from_call(path).is_some() =>
             {
                 for a in args {
@@ -2779,31 +3270,33 @@ impl<'a> Checker<'a> {
                 TypeKind::Error
             }
             // Rust habit: `Option::Some(x)`, `Result::Err(e)`, `Option::None`.
-            ExprKind::Call { path, args } if Self::builtin_path(path) => {
+            ExprKind::Call { path, args, .. } if Self::builtin_path(path) => {
                 self.builtin_by_path(path);
                 let v = &path[1].name;
                 self.builtin_variant(cx, v, args, expected, e.span, mode)
             }
             // The built-in variants of `Option` and `Result` (ADR-0026).
-            ExprKind::Call { path, args }
+            ExprKind::Call { path, args, .. }
                 if path.len() == 1 && matches!(path[0].name.as_str(), "Some" | "Ok" | "Err") =>
             {
                 self.builtin_variant(cx, &path[0].name, args, expected, e.span, mode)
             }
             // `E::V(..)`: a variant constructor (no function of that name
             // and `E` an enum; a missing one is an unknown variant).
-            ExprKind::Call { path, args }
+            ExprKind::Call { path, args, .. }
                 if self.resolve(path, &cx.mod_path).is_none()
                     && self.enum_prefix(path, &cx.mod_path) =>
             {
-                self.variant_value(cx, path, args, e.span, mode)
+                self.variant_value(cx, path, args, expected, e.span, mode)
             }
-            ExprKind::Call { path, args }
+            ExprKind::Call { path, args, .. }
                 if self.resolve(path, &cx.mod_path).is_none() && vec_builtin(path) =>
             {
                 self.vec_call(cx, path, args, expected, e.span, mode)
             }
-            ExprKind::Call { path, args } => self.call(cx, path, args, e.span, mode),
+            ExprKind::Call { path, targs, args } => {
+                self.call(cx, path, targs, args, expected, e.span, mode)
+            }
             ExprKind::Ref { .. } => {
                 self.diags.push(Diag::new(
                     "E0409",
@@ -3125,6 +3618,29 @@ impl<'a> Checker<'a> {
                 // specification term only (ADR-0026 §2; elements below the
                 // length, backlog 2V-05).
                 let slice = matches!(&lt, TypeKind::Ref { inner, .. } if matches!(inner.kind, TypeKind::Slice(_)));
+                // A type parameter: equality in specifications (ADR-0046 §4);
+                // in code it needs the bound `Eq` (traits, backlog 2T).
+                if matches!(op, BinOp::Eq | BinOp::Ne) && matches!(lt, TypeKind::Param(_)) {
+                    if mode == Mode::Exec {
+                        self.diags.push(
+                            Diag::new(
+                                "E0428",
+                                span,
+                                format!(
+                                    "`{}` on `{}` in code needs the bound `{}: Eq`",
+                                    op.symbol(),
+                                    ty_str(&lt),
+                                    ty_str(&lt)
+                                ),
+                            )
+                            .fix(
+                                "compare in a specification, or take the comparison as a value from the caller (trait bounds: backlog 2T-02)",
+                                None,
+                            ),
+                        );
+                    }
+                    return TypeKind::Bool;
+                }
                 if matches!(op, BinOp::Eq | BinOp::Ne)
                     && (matches!(lt, TypeKind::Named { .. } | TypeKind::Array(..)) || slice)
                 {
@@ -3500,11 +4016,182 @@ impl<'a> Checker<'a> {
             .join("::")
     }
 
+    /// The type of argument `a` from its syntax, before it is checked: a
+    /// local, a reference to one, or a `Vec` viewed as a slice. Used to
+    /// infer type arguments (E0237).
+    fn arg_peek(cx: &FnCtx, a: &Expr) -> Option<TypeKind> {
+        match &a.kind {
+            ExprKind::Var(id) => Self::lookup(cx, &id.name).map(|l| l.ty),
+            ExprKind::Ref { mutable, expr } => match &expr.kind {
+                ExprKind::Var(id) => Self::lookup(cx, &id.name).map(|l| TypeKind::Ref {
+                    mutable: *mutable,
+                    inner: mk(l.ty),
+                }),
+                _ => None,
+            },
+            ExprKind::Method { recv, name, args }
+                if args.is_empty() && matches!(name.name.as_str(), "as_slice" | "as_mut_slice") =>
+            {
+                let ExprKind::Var(id) = &recv.kind else {
+                    return None;
+                };
+                let e = vec_elem(&Self::lookup(cx, &id.name)?.ty)?.clone();
+                Some(TypeKind::Ref {
+                    mutable: name.name == "as_mut_slice",
+                    inner: mk(TypeKind::Slice(mk(e))),
+                })
+            }
+            _ => None,
+        }
+    }
+
+    /// The type arguments written in a call of `sig` (ADR-0046 §3): the
+    /// `impl`'s after the type segment, the function's after its own name.
+    /// Returns the bindings and whether a level was left out.
+    fn written_targs(
+        &mut self,
+        cx: &FnCtx,
+        path: &[Ident],
+        targs: &[TArgs],
+        sig: &FnSig,
+    ) -> (BTreeMap<String, TypeKind>, bool) {
+        let mut m = BTreeMap::new();
+        let ig = sig.impl_generics;
+        let levels = [
+            (path.len().wrapping_sub(2), &sig.generics[..ig], "the type"),
+            (path.len() - 1, &sig.generics[ig..], "the function"),
+        ];
+        let mut missing = false;
+        for (seg, ps, what) in levels {
+            let written: Vec<&TArgs> = targs.iter().filter(|t| t.seg == seg).collect();
+            match written.as_slice() {
+                [] => missing |= !ps.is_empty(),
+                [t] if t.args.len() == ps.len() => {
+                    for (a, p) in t.args.iter().zip(ps) {
+                        let k = self.canon(a, &cx.mod_path, true);
+                        let name = Self::path_text(path);
+                        if self.targ_ok(&k, p, &name, a.span, true) {
+                            m.insert(p.name.clone(), k);
+                        } else {
+                            m.insert(p.name.clone(), TypeKind::Error);
+                        }
+                    }
+                }
+                [t, ..] => {
+                    self.diags.push(
+                        Diag::new(
+                            "E0429",
+                            t.span,
+                            format!(
+                                "{what} `{}` takes {} type argument(s), found {}",
+                                Self::path_text(path),
+                                ps.len(),
+                                t.args.len()
+                            ),
+                        )
+                        .fix(
+                            format!(
+                                "write one type for each of `{}`",
+                                ps.iter()
+                                    .map(|p| p.name.as_str())
+                                    .collect::<Vec<_>>()
+                                    .join("`, `")
+                            ),
+                            None,
+                        ),
+                    );
+                    for p in ps {
+                        m.insert(p.name.clone(), TypeKind::Error);
+                    }
+                }
+            }
+        }
+        for t in targs {
+            if t.seg != path.len() - 1 && t.seg != path.len().wrapping_sub(2) {
+                self.err(
+                    "E0429",
+                    t.span,
+                    "type arguments follow the type or the function name",
+                );
+            }
+        }
+        (m, missing)
+    }
+
+    /// E0237: the call with its type arguments written out, for the
+    /// inferred `m` (`None` when one could not be inferred).
+    fn targs_fix(
+        &mut self,
+        path: &[Ident],
+        targs: &[TArgs],
+        sig: &FnSig,
+        m: &BTreeMap<String, TypeKind>,
+        mp: &str,
+    ) -> bool {
+        let lo = path[0].span;
+        let hi = targs
+            .iter()
+            .map(|t| t.span)
+            .chain([path[path.len() - 1].span])
+            .max_by_key(|s| s.hi)
+            .unwrap();
+        let span = lo.to(hi);
+        let unbound: Vec<&str> = sig
+            .generics
+            .iter()
+            .filter(|p| !m.contains_key(&p.name))
+            .map(|p| p.name.as_str())
+            .collect();
+        let name = Self::path_text(path);
+        if !unbound.is_empty() {
+            self.diags.push(
+                Diag::new(
+                    "E0237",
+                    span,
+                    format!(
+                        "the type arguments of `{name}` are not written, and `{}` cannot be inferred from the arguments",
+                        unbound.join("`, `")
+                    ),
+                )
+                .fix(format!("write them: `{name}::<..>(..)`"), None),
+            );
+            return false;
+        }
+        let ig = sig.impl_generics;
+        let text = |ps: &[TParam]| {
+            ps.iter()
+                .map(|p| ty_str_in(&m[&p.name], mp))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        let mut segs: Vec<String> = path.iter().map(|i| i.name.clone()).collect();
+        let n = segs.len();
+        if ig > 0 {
+            segs[n - 2] = format!("{}::<{}>", segs[n - 2], text(&sig.generics[..ig]));
+        }
+        if sig.generics.len() > ig {
+            segs[n - 1] = format!("{}::<{}>", segs[n - 1], text(&sig.generics[ig..]));
+        }
+        let r = segs.join("::");
+        self.diags.push(
+            Diag::new(
+                "E0237",
+                span,
+                format!("the type arguments of `{name}` are written out: `{r}`"),
+            )
+            .fix("write the inferred type arguments (ADR-0046 §3)", Some(r)),
+        );
+        true
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn call(
         &mut self,
         cx: &mut FnCtx,
         path: &[Ident],
+        targs: &[TArgs],
         args: &[Expr],
+        expected: Option<&TypeKind>,
         span: Span,
         mode: Mode,
     ) -> TypeKind {
@@ -3600,24 +4287,126 @@ impl<'a> Checker<'a> {
                 ),
             );
         }
+        // Type arguments (ADR-0046 §3): written, or inferred from the
+        // arguments with E0237 writing them out.
+        if sig.generics.is_empty() && !targs.is_empty() {
+            self.diags.push(
+                Diag::new(
+                    "E0429",
+                    targs[0].span,
+                    format!("`{name}` takes no type arguments"),
+                )
+                .fix("remove them", Some(String::new())),
+            );
+        }
+        let (mut tm, missing) = if sig.generics.is_empty() {
+            (BTreeMap::new(), false)
+        } else {
+            self.written_targs(cx, path, targs, &sig)
+        };
+        // Rust infers from the expected result type too.
+        if missing && let Some(want) = expected {
+            unify(&sig.ret, want, &sig.generics, &mut tm);
+        }
+        let unbound = |tm: &BTreeMap<String, TypeKind>, t: &TypeKind| {
+            has_param(&subst(t, tm))
+                && sig
+                    .generics
+                    .iter()
+                    .any(|p| mentions_param(t, &p.name) && !tm.contains_key(&p.name))
+        };
+        let mut deferred = Vec::new();
         let mut mut_roots: Vec<(String, usize)> = Vec::new();
         for (i, a) in args.iter().enumerate() {
-            let Some(pt) = sig.params.get(i) else {
+            let Some(pt0) = sig.params.get(i) else {
                 self.expr(cx, a, None, mode);
                 continue;
             };
-            if let TypeKind::Ref { mutable: pm, inner } = pt {
+            if missing && unbound(&tm, pt0) {
+                if untyped_literal(a) {
+                    deferred.push(i);
+                    continue;
+                }
+                let at = if matches!(pt0, TypeKind::Ref { .. }) {
+                    Self::arg_peek(cx, a)
+                } else {
+                    Some(self.expr(cx, a, None, mode))
+                };
+                if let Some(at) = &at {
+                    unify(pt0, at, &sig.generics, &mut tm);
+                }
+                if !matches!(pt0, TypeKind::Ref { .. }) {
+                    let pt = subst(pt0, &tm);
+                    if let Some(t) = at
+                        && !has_param_of(&pt, &sig.generics, &tm)
+                        && !(mode != Mode::Exec && is_int(&t) && is_int(&pt))
+                    {
+                        self.expect_ty(&t, &pt, a.span);
+                    }
+                    continue;
+                }
+            }
+            let pt = subst(pt0, &tm);
+            if let TypeKind::Ref { mutable: pm, inner } = &pt {
                 if let Some(root) = self.ref_arg(cx, a, *pm, inner, mode)
                     && *pm
                 {
                     mut_roots.push((root, i));
                 }
             } else {
-                let t = self.expr(cx, a, Some(pt), mode);
-                if !(mode != Mode::Exec && is_int(&t) && is_int(pt)) && !self.deref_fix(&t, pt, a) {
-                    self.expect_ty(&t, pt, a.span);
+                let t = self.expr(cx, a, Some(&pt), mode);
+                if !(mode != Mode::Exec && is_int(&t) && is_int(&pt)) && !self.deref_fix(&t, &pt, a)
+                {
+                    self.expect_ty(&t, &pt, a.span);
                 }
             }
+        }
+        for i in deferred {
+            let pt = subst(&sig.params[i], &tm);
+            let a = &args[i];
+            if has_param_of(&pt, &sig.generics, &tm) {
+                self.expr(cx, a, None, mode);
+                continue;
+            }
+            let t = self.expr(cx, a, Some(&pt), mode);
+            if !(mode != Mode::Exec && is_int(&t) && is_int(&pt)) {
+                self.expect_ty(&t, &pt, a.span);
+            }
+        }
+        if missing {
+            let inferred = sig
+                .generics
+                .iter()
+                .all(|p| tm.get(&p.name).is_some_and(|t| *t != TypeKind::Error));
+            if inferred {
+                for p in &sig.generics {
+                    let t = tm[&p.name].clone();
+                    if !self.targ_ok(&t, p, &name, span, true) {
+                        tm.insert(p.name.clone(), TypeKind::Error);
+                    }
+                }
+            }
+            let known: BTreeMap<String, TypeKind> = tm
+                .iter()
+                .filter(|(_, t)| **t != TypeKind::Error)
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
+            if !self.targs_fix(path, targs, &sig, &known, &cx.mod_path.clone()) {
+                return TypeKind::Error;
+            }
+        }
+        if !sig.generics.is_empty() {
+            if sig
+                .generics
+                .iter()
+                .any(|p| tm.get(&p.name).is_none_or(|t| *t == TypeKind::Error))
+            {
+                return TypeKind::Error;
+            }
+            let args: Vec<TypeKind> = sig.generics.iter().map(|p| tm[&p.name].clone()).collect();
+            self.gcalls
+                .push((cx.path.clone(), target.clone(), span, args.clone()));
+            self.targs.insert((span.file, span.lo, span.hi), args);
         }
         for (root, i) in mut_roots {
             for (j, a) in args.iter().enumerate() {
@@ -3640,7 +4429,7 @@ impl<'a> Checker<'a> {
                 }
             }
         }
-        sig.ret
+        subst(&sig.ret, &tm)
     }
 
     /// `T::try_from(x).unwrap()` / `.ok()` (ADR-0028 §1): the value of `x`
@@ -4048,6 +4837,12 @@ impl<'a> Checker<'a> {
                 out.entry(format!("{mp}::{}", f.name.name))
                     .or_insert((f.name.span, f.decreases.is_some()));
             }
+            for i in &m.impls {
+                for f in &i.fns {
+                    out.entry(format!("{mp}::{}::{}", i.ty.name, f.name.name))
+                        .or_insert((f.name.span, f.decreases.is_some()));
+                }
+            }
         }
         for m in &p.mods {
             walk(m, "", &mut defs);
@@ -4069,6 +4864,33 @@ impl<'a> Checker<'a> {
                         format!("`{path}` is recursive and has no `decreases` clause"),
                     )
                     .fix("add `decreases <expr>,` after `ensures`", None),
+                );
+            }
+        }
+        // A recursive call that wraps a type parameter in a larger type
+        // (`f::<Option<T>>` inside `f<T>`) has no last instance.
+        for (caller, callee, span, args) in std::mem::take(&mut self.gcalls) {
+            let same = self.recursive.get(&caller);
+            if same.is_none() || same != self.recursive.get(&callee) {
+                continue;
+            }
+            if let Some(a) = args
+                .iter()
+                .find(|a| has_param(a) && !matches!(a, TypeKind::Param(_)))
+            {
+                self.diags.push(
+                    Diag::new(
+                        "E0430",
+                        span,
+                        format!(
+                            "the recursive call of `{callee}` wraps a type parameter in `{}`: its instances would never end",
+                            ty_str(a)
+                        ),
+                    )
+                    .fix(
+                        "pass a type parameter itself or a type without parameters",
+                        None,
+                    ),
                 );
             }
         }
@@ -4339,6 +5161,53 @@ fn sccs_with_cycles(g: &BTreeMap<String, BTreeSet<String>>) -> Vec<Vec<String>> 
 /// An integer expression made of literals only (`5`, `-1`, `(2 * 3)`,
 /// `{ 7 }`, `if c { 1 } else { 2 }`): it has no type of its own and takes one
 /// from its context, as unsuffixed literals do in Rust.
+/// Whether `t` names type parameter `n`.
+fn mentions_param(t: &TypeKind, n: &str) -> bool {
+    match t {
+        TypeKind::Param(x) => x == n,
+        TypeKind::Array(e, _) | TypeKind::Slice(e) | TypeKind::Vec(e) => mentions_param(&e.kind, n),
+        TypeKind::Ref { inner, .. } => mentions_param(&inner.kind, n),
+        TypeKind::Named { args, .. } => args.iter().any(|a| mentions_param(&a.kind, n)),
+        _ => false,
+    }
+}
+
+/// Whether `t` still names a parameter of `ps` that `tm` does not bind.
+fn has_param_of(t: &TypeKind, ps: &[TParam], tm: &BTreeMap<String, TypeKind>) -> bool {
+    ps.iter()
+        .any(|p| !tm.contains_key(&p.name) && mentions_param(t, &p.name))
+}
+
+/// `ty_str` with the types of unit `mp` written by their own name.
+pub fn ty_str_in(t: &TypeKind, mp: &str) -> String {
+    let local = |path: &[String]| {
+        let full = path.join("::");
+        full.strip_prefix(&format!("{mp}::"))
+            .filter(|r| !r.contains("::"))
+            .map_or(full.clone(), String::from)
+    };
+    match t {
+        TypeKind::Array(e, n) => format!("[{}; {n}]", ty_str_in(&e.kind, mp)),
+        TypeKind::Slice(e) => format!("[{}]", ty_str_in(&e.kind, mp)),
+        TypeKind::Ref { mutable, inner } => format!(
+            "&{}{}",
+            if *mutable { "mut " } else { "" },
+            ty_str_in(&inner.kind, mp)
+        ),
+        TypeKind::Named { path, args } if args.is_empty() => local(path),
+        TypeKind::Named { path, args } => format!(
+            "{}<{}>",
+            local(path),
+            args.iter()
+                .map(|a| ty_str_in(&a.kind, mp))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        TypeKind::Vec(e) => format!("Vec<{}>", ty_str_in(&e.kind, mp)),
+        other => ty_str(other),
+    }
+}
+
 fn untyped_literal(e: &Expr) -> bool {
     match &e.kind {
         ExprKind::Int(_) => true,
@@ -4429,7 +5298,7 @@ fn root_name(e: &Expr) -> Option<String> {
 
 /// `T::try_from(x)` with `T` an integer type: `T` and the arguments.
 pub(crate) fn conv_call(e: &Expr) -> Option<(TypeKind, &[Expr])> {
-    let ExprKind::Call { path, args } = &e.kind else {
+    let ExprKind::Call { path, args, .. } = &e.kind else {
         return None;
     };
     if path.len() != 2 || path[1].name != "try_from" {

@@ -922,7 +922,7 @@ fn term_key(e: &Expr, text: &str) -> Option<(String, String)> {
     let t = |sp: Span| squash(&text[sp.lo as usize..sp.hi as usize]);
     match &e.kind {
         ExprKind::Index { base, index } => Some((format!("{}[]", t(base.span)), t(index.span))),
-        ExprKind::Call { path, args } => Some((
+        ExprKind::Call { path, args, .. } => Some((
             path.iter()
                 .map(|i| i.name.as_str())
                 .collect::<Vec<_>>()

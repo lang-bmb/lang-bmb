@@ -53,10 +53,30 @@ pub struct UseItem {
     pub del: Span,
 }
 
+/// A type parameter `T`, `T: Copy` (ADR-0046 §1).
+#[derive(Debug, Clone)]
+pub struct TypeParam {
+    pub name: Ident,
+    /// Trait bounds, each a path (`Copy`, `geo::Shape`).
+    pub bounds: Vec<Vec<Ident>>,
+    pub span: Span,
+}
+
+/// Type arguments written after segment `seg` of a call path:
+/// `f::<i64>(..)`, `Stack::<i64>::new(..)` (ADR-0046 §3).
+#[derive(Debug, Clone)]
+pub struct TArgs {
+    pub seg: usize,
+    pub args: Vec<Type>,
+    /// From `::` to `>`.
+    pub span: Span,
+}
+
 /// A data type declaration (ADR-0026 §1).
 #[derive(Debug, Clone)]
 pub struct TypeDef {
     pub name: Ident,
+    pub generics: Vec<TypeParam>,
     pub attrs: Vec<Attr>,
     pub kind: TypeDefKind,
     pub span: Span,
@@ -86,7 +106,11 @@ pub struct Variant {
 /// `impl T { fn .. }`: associated functions of `T` (paths `unit::T::f`).
 #[derive(Debug, Clone)]
 pub struct Impl {
+    /// `impl<T> Stack<T> { .. }`: the impl's parameters, and the type's
+    /// arguments as written.
+    pub generics: Vec<TypeParam>,
     pub ty: Ident,
+    pub ty_args: Vec<Type>,
     pub fns: Vec<FnDef>,
     pub span: Span,
 }
@@ -113,6 +137,7 @@ pub struct Ret {
 pub struct FnDef {
     pub kind: FnKind,
     pub name: Ident,
+    pub generics: Vec<TypeParam>,
     pub attrs: Vec<Attr>,
     pub params: Vec<Param>,
     pub ret: Ret,
@@ -146,6 +171,9 @@ pub enum TypeKind {
     },
     /// The built-in heap vector `Vec<T>` (ADR-0031).
     Vec(Box<Type>),
+    /// A type parameter in scope (ADR-0046), resolved by the checker from a
+    /// one-segment `Named`.
+    Param(String),
     Error,
 }
 
@@ -284,6 +312,8 @@ pub enum ExprKind {
     /// Direct call by path: `f(..)` or `a::b::f(..)`.
     Call {
         path: Vec<Ident>,
+        /// Type arguments written in the path (ADR-0046 §3).
+        targs: Vec<TArgs>,
         args: Vec<Expr>,
     },
     /// Built-in method: `a.len()`, `x.wrapping_add(y)`.

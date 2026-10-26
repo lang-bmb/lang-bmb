@@ -1,0 +1,123 @@
+#[summary("제네릭: 정의마다 한 번, 매개변수는 정렬 (ADR-0046 §4)")]
+mod gen {
+    struct Pair<A: Copy, B: Copy> { first: A, second: B }
+
+    enum Maybe<T: Copy> { Nothing, Just(T) }
+
+    spec fn same<T: Copy>(a: T, b: T) -> bool { a == b }
+
+    spec fn swapped<A: Copy, B: Copy>(p: Pair<A, B>, q: Pair<B, A>) -> bool { q.first == p.second && q.second == p.first }
+
+    spec fn holds<T: Copy>(m: Maybe<T>, x: T) -> bool { m == Maybe::Just(x) }
+
+    spec fn idx<T: Copy>(a: &[T], i: usize) -> bool { i < a.len() }
+
+    spec fn at<T: Copy>(a: &[T], i: usize, r: T) -> bool { a[i] == r }
+
+    spec fn all_are<T: Copy>(a: &[T], v: T, n: usize) -> bool {
+        n <= a.len() && (forall|k: usize| k < n ==> #[trigger] a[k] == v)
+    }
+
+    spec fn filled<T: Copy>(a: &[T], v: T) -> bool { all_are::<T>(a, v, a.len()) }
+
+    spec fn is12(r: i64) -> bool { r == 12 }
+
+    spec fn is5(r: u64) -> bool { r == 5 }
+
+    #[effects(pure)]
+    #[uses(same)]
+    fn id<T: Copy>(x: T) -> (r: T)
+        ensures same::<T>(r, x),
+    {
+        x
+    }
+
+    #[effects(pure)]
+    #[uses(swapped)]
+    fn swap<A: Copy, B: Copy>(p: Pair<A, B>) -> (r: Pair<B, A>)
+        ensures swapped::<A, B>(p, r),
+    {
+        Pair { first: p.second, second: p.first }
+    }
+
+    #[effects(pure)]
+    #[uses(holds)]
+    fn wrap<T: Copy>(x: T) -> (r: Maybe<T>)
+        ensures holds::<T>(r, x),
+    {
+        Maybe::Just(x)
+    }
+
+    #[effects(pure)]
+    #[uses(same)]
+    fn unwrap_or<T: Copy>(m: Maybe<T>, d: T) -> T {
+        match m {
+            Maybe::Nothing => d,
+            Maybe::Just(x) => x,
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(idx, at)]
+    fn get<T: Copy>(a: &[T], i: usize) -> (r: T)
+        requires idx::<T>(a, i),
+        ensures at::<T>(a, i, r),
+    {
+        a[i]
+    }
+
+    // A loop over elements of an uninterpreted sort.
+    #[effects(pure)]
+    #[uses(all_are, filled)]
+    fn fill<T: Copy>(a: &mut [T], v: T) -> ()
+        ensures filled::<T>(a, v),
+    {
+        let mut i: usize = 0;
+        while i < a.len()
+            invariant i <= a.len(), all_are::<T>(a, v, i),
+            decreases a.len() - i,
+        {
+            a[i] = v;
+            i = i + 1;
+        }
+    }
+
+    // Recursion over a generic definition.
+    #[effects(pure)]
+    #[uses(same)]
+    fn after<T: Copy>(x: T, n: u64) -> (r: T)
+        ensures same::<T>(r, x),
+        decreases n,
+    {
+        if n == 0 { x } else { after::<T>(x, n - 1) }
+    }
+
+    // A generic caller of a generic callee: the contract under `U`.
+    #[effects(pure)]
+    #[uses(same)]
+    fn twice<U: Copy>(x: U) -> (r: U)
+        ensures same::<U>(r, x),
+    {
+        id::<U>(id::<U>(x))
+    }
+
+    // Callers see the contracts under their own types.
+    #[effects(pure)]
+    #[uses(same, swapped, holds, idx, at, is12, is5, all_are, filled)]
+    fn concrete() -> (r: i64)
+        ensures is12(r),
+    {
+        let x: i64 = id::<i64>(5);
+        let p: Pair<i64, bool> = Pair { first: 7, second: true };
+        let q: Pair<bool, i64> = swap::<i64, bool>(p);
+        let m: Maybe<u64> = wrap::<u64>(5);
+        let y: u64 = unwrap_or::<u64>(m, 0);
+        let z: u64 = after::<u64>(5, 3);
+        assert(is5(z));
+        let mut a: [bool; 3] = [false, false, false];
+        fill::<bool>(&mut a, true);
+        let g: bool = get::<bool>(&a, 2);
+        assert(g);
+        x + q.second
+    }
+}

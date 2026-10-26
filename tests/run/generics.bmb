@@ -1,0 +1,95 @@
+#[summary("제네릭 실행: 인스턴스마다 단형화 (ADR-0046 §5)")]
+mod gen {
+    struct Pair<A: Copy, B: Copy> { first: A, second: B }
+
+    enum Maybe<T: Copy> { Nothing, Just(T) }
+
+    struct Cell<T: Copy> { value: T, writes: u64 }
+
+    impl<T: Copy> Cell<T> {
+        #[effects(pure)]
+        fn new(v: T) -> Cell<T> {
+            Cell { value: v, writes: 0 }
+        }
+
+        #[effects(pure)]
+        fn get(self: &Cell<T>) -> T {
+            self.value
+        }
+
+        #[effects(pure)]
+        fn set(self: &mut Cell<T>, v: T) -> () {
+            self.value = v;
+            self.writes = self.writes.saturating_add(1);
+        }
+    }
+
+    spec fn idx<T: Copy>(a: &[T], i: usize) -> bool { i < a.len() }
+
+    #[effects(pure)]
+    fn swap<A: Copy, B: Copy>(p: Pair<A, B>) -> Pair<B, A> {
+        Pair { first: p.second, second: p.first }
+    }
+
+    #[effects(pure)]
+    fn unwrap_or<T: Copy>(m: Maybe<T>, d: T) -> T {
+        match m {
+            Maybe::Nothing => d,
+            Maybe::Just(x) => x,
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(idx)]
+    fn get<T: Copy>(a: &[T], i: usize) -> T
+        requires idx::<T>(a, i),
+    {
+        a[i]
+    }
+
+    // Reverses in place: a loop over elements of any `Copy` type.
+    #[effects(pure)]
+    fn reverse<T: Copy>(a: &mut [T]) -> () {
+        let mut i: usize = 0;
+        while i < a.len() / 2
+            invariant i <= a.len() / 2,
+            decreases a.len() / 2 - i,
+        {
+            let j: usize = a.len() - 1 - i;
+            let t: T = a[i];
+            a[i] = a[j];
+            a[j] = t;
+            i = i + 1;
+        }
+    }
+
+    #[effects(pure)]
+    fn pairs<T: Copy>(x: T, y: T) -> [Pair<T, T>; 2] {
+        [Pair { first: x, second: y }, Pair { first: y, second: x }]
+    }
+
+    #[effects(io)]
+    #[uses(idx)]
+    fn main() -> () {
+        let p: Pair<i64, bool> = Pair { first: 21, second: true };
+        let q: Pair<bool, i64> = swap::<i64, bool>(p);
+        print_i64(q.second);
+        let m: Maybe<u64> = Maybe::Just(137);
+        let n: Maybe<u64> = Maybe::Nothing;
+        print_u64(unwrap_or::<u64>(m, 0));
+        print_u64(unwrap_or::<u64>(n, 40));
+        let mut a: [i64; 5] = [1, 2, 3, 4, 17];
+        reverse::<i64>(&mut a);
+        print_i64(get::<i64>(&a, 0));
+        let mut bs: [bool; 3] = [true, false, false];
+        reverse::<bool>(&mut bs);
+        if get::<bool>(&bs, 2) { print_i64(93); } else { print_i64(0); }
+        let mut c: Cell<u64> = Cell::<u64>::new(5);
+        Cell::<u64>::set(&mut c, 8);
+        Cell::<u64>::set(&mut c, 13);
+        print_u64(Cell::<u64>::get(&c));
+        print_u64(c.writes);
+        let ps: [Pair<i64, i64>; 2] = pairs::<i64>(-4, 9);
+        print_i64(ps[1].first);
+    }
+}

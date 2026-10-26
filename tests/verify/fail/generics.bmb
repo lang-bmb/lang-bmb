@@ -1,0 +1,79 @@
+#[summary("제네릭 실패: 정렬 값의 반례 (ADR-0046 §4)")]
+mod gen {
+    enum Maybe<T: Copy> { Nothing, Just(T) }
+
+    spec fn same<T: Copy>(a: T, b: T) -> bool { a == b }
+
+    spec fn is_just<T: Copy>(m: Maybe<T>) -> bool {
+        match m {
+            Maybe::Nothing => false,
+            Maybe::Just(_) => true,
+        }
+    }
+
+    spec fn idx<T: Copy>(a: &[T], i: usize) -> bool { i < a.len() }
+
+    spec fn all_are<T: Copy>(a: &[T], v: T, n: usize) -> bool {
+        n <= a.len() && (forall|k: usize| k < n ==> #[trigger] a[k] == v)
+    }
+
+    spec fn is6(x: i64) -> bool { x == 6 }
+
+    // Returns the other value: two values of `T` may differ.
+    #[effects(pure)]
+    #[uses(same)]
+    fn other<T: Copy>(x: T, y: T) -> (r: T)
+        ensures same::<T>(r, x),
+    {
+        y
+    }
+
+    #[effects(pure)]
+    #[uses(is_just)]
+    fn empty<T: Copy>(x: T) -> (r: Maybe<T>)
+        ensures is_just::<T>(r),
+    {
+        Maybe::Nothing
+    }
+
+    // The invariant forgets the element just written.
+    #[effects(pure)]
+    #[uses(all_are)]
+    fn fill_short<T: Copy>(a: &mut [T], v: T) -> ()
+        ensures all_are::<T>(a, v, a.len()),
+    {
+        let mut i: usize = 0;
+        while i < a.len()
+            invariant i <= a.len(),
+            decreases a.len() - i,
+        {
+            a[i] = v;
+            i = i + 1;
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(idx)]
+    fn get<T: Copy>(a: &[T], i: usize) -> T
+        requires idx::<T>(a, i),
+    {
+        a[i]
+    }
+
+    // The instance's precondition at `u64`.
+    #[effects(pure)]
+    #[uses(idx)]
+    fn past_end() -> u64 {
+        let a: [u64; 2] = [1, 2];
+        get::<u64>(&a, 2)
+    }
+
+    // The contract at `i64` says `r == x`, not `r == 6`.
+    #[effects(pure)]
+    #[uses(same, is6)]
+    fn wrong_value() -> i64 {
+        let x: i64 = other::<i64>(5, 6);
+        assert(is6(x));
+        x
+    }
+}

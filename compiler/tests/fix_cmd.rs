@@ -407,3 +407,20 @@ fn use_items_are_rewritten_to_full_paths() {
         "{fixed}"
     );
 }
+
+#[test]
+fn omitted_type_arguments_are_written_out() {
+    // ADR-0046 §3: a generic call names its type arguments; E0237 infers
+    // them from the arguments and the expected result and writes them, for
+    // the function's and for an `impl`'s parameters.
+    let text = "#[summary(\"g\")]\nmod g {\n    struct Cell<T: Copy> { v: T }\n\n    impl<T: Copy> Cell<T> {\n        #[effects(pure)]\n        fn new(v: T) -> Cell<T> {\n            Cell { v: v }\n        }\n    }\n\n    #[effects(pure)]\n    fn pick<A: Copy, B: Copy>(a: A, b: B) -> B {\n        b\n    }\n\n    #[effects(pure)]\n    fn go(x: u64) -> bool {\n        let c: Cell<bool> = Cell::new(true);\n        let y: u64 = pick(c, x);\n        pick(y, c.v)\n    }\n}\n";
+    let input = one(text);
+    assert!(!bmb::check_sources(&input).ok);
+    let out = bmb::fix_sources(&input);
+    assert!(out.ok, "{}", out.diagnostics);
+    assert!(bmb::verify_sources(&out.files).ok);
+    let fixed = &out.files[0].1;
+    assert!(fixed.contains("Cell::<bool>::new(true)"), "{fixed}");
+    assert!(fixed.contains("pick::<Cell<bool>, u64>(c, x)"), "{fixed}");
+    assert!(fixed.contains("pick::<u64, bool>(y, c.v)"), "{fixed}");
+}

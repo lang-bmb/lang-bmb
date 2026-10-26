@@ -321,10 +321,19 @@ pub fn print(e: &Sexp) -> String {
     }
 }
 
-/// `5` -> `5`, `(- 5)` -> `-5`, `true` -> `true`; other terms are printed back.
+/// `5` -> `5`, `(- 5)` -> `-5`, `true` -> `true`, a value of type
+/// parameter `T` (an element of its sort, ADR-0046 §4) `T#1`; other terms
+/// are printed back.
 pub fn render_value(v: &Sexp) -> String {
     match v {
-        Sexp::Atom(a) => a.clone(),
+        Sexp::Atom(a) => match a
+            .strip_prefix("|'")
+            .and_then(|r| r.strip_suffix('|'))
+            .and_then(|r| r.split_once("!val!"))
+        {
+            Some((t, k)) => format!("{t}#{k}"),
+            None => a.clone(),
+        },
         Sexp::List(xs) if xs.len() == 2 && xs[0] == Sexp::Atom("-".into()) => {
             format!("-{}", render_value(&xs[1]))
         }
@@ -341,7 +350,7 @@ mod tests {
 
     #[test]
     fn renders_values() {
-        let t = parse("((x 5) (y (- 3)) (b true))").unwrap();
+        let t = parse("((x 5) (y (- 3)) (b true) (v |'T!val!1|))").unwrap();
         let Sexp::List(pairs) = t else { panic!() };
         let vals: Vec<String> = pairs
             .iter()
@@ -350,7 +359,7 @@ mod tests {
                 _ => panic!(),
             })
             .collect();
-        assert_eq!(vals, ["5", "-3", "true"]);
+        assert_eq!(vals, ["5", "-3", "true", "T#1"]);
     }
 
     #[test]

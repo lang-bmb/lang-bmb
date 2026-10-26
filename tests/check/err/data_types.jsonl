@@ -4,7 +4,7 @@
 {"code":"E0302","severity":"error","message":"field `a` is defined more than once in `shapes::Twice`","file":"err/data_types.bmb","line":11,"col":28,"end_line":11,"end_col":29}
 {"code":"E0421","severity":"error","message":"`shapes::Loop` contains itself; recursive types need the heap (backlog 2G)","file":"err/data_types.bmb","line":13,"col":12,"end_line":13,"end_col":16}
 {"code":"E0309","severity":"error","message":"`Some` is a built-in name (ADR-0026)","file":"err/data_types.bmb","line":15,"col":12,"end_line":15,"end_col":16}
-{"code":"E0420","severity":"error","message":"`Point` takes no type arguments (generics are not supported)","file":"err/data_types.bmb","line":17,"col":25,"end_line":17,"end_col":35}
+{"code":"E0420","severity":"error","message":"`Point` takes 0 type argument(s), found 1","file":"err/data_types.bmb","line":17,"col":25,"end_line":17,"end_col":35,"fix":{"message":"`Point` has no type parameters: write `Point`"}}
 {"code":"E0420","severity":"error","message":"`Option` takes 1 type argument(s), found 2","file":"err/data_types.bmb","line":19,"col":21,"end_line":19,"end_col":38}
 {"code":"E0305","severity":"error","message":"unknown type `Pointt`","file":"err/data_types.bmb","line":21,"col":22,"end_line":21,"end_col":28,"fix":{"message":"did you mean `Point`?","replacement":"Point"}}
 {"code":"E0310","severity":"error","message":"the receiver of `norm` is named `self`","file":"err/data_types.bmb","line":25,"col":17,"end_line":25,"end_col":18,"fix":{"message":"rename `p` to `self` in the signature and the body"}}

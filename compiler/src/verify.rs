@@ -36,6 +36,15 @@ pub struct Tables {
     pub locals: BTreeMap<String, BTreeMap<String, TypeKind>>,
     /// Where each executable function frees its `Vec` values (ADR-0031 §2).
     pub moves: BTreeMap<String, crate::moves::MoveInfo>,
+    /// The type arguments of every generic call, by the call's span.
+    pub targs: BTreeMap<(u32, u32, u32), Vec<TypeKind>>,
+    /// The instances of generic spec fns the program reaches (ADR-0046 §4),
+    /// by key `path<A, B>`: the generic path and the substitution of its
+    /// parameters. Filled for the encoder (`prepare`).
+    pub insts: BTreeMap<String, (String, BTreeMap<String, TypeKind>)>,
+    /// The types instances and substituted contracts mention, for the
+    /// datatype declarations.
+    pub inst_types: Vec<TypeKind>,
 }
 
 impl Tables {
@@ -92,8 +101,258 @@ impl Tables {
                 })
                 .collect(),
             moves: BTreeMap::new(),
+            targs: self.targs.clone(),
+            insts: BTreeMap::new(),
+            inst_types: Vec::new(),
         }
     }
+}
+
+/// The key of an instance of generic definition `path`.
+pub(crate) fn inst_key(path: &str, args: &[TypeKind]) -> String {
+    format!(
+        "{path}<{}>",
+        args.iter()
+            .map(crate::check::ty_str)
+            .collect::<Vec<_>>()
+            .join(", ")
+    )
+}
+
+/// The definition a call `path` from unit `mod_path` names.
+fn resolve_in(t: &Tables, path: &[Ident], mod_path: &str) -> String {
+    let name = path
+        .iter()
+        .map(|i| i.name.as_str())
+        .collect::<Vec<_>>()
+        .join("::");
+    let local = format!("{mod_path}::{name}");
+    let local_type = path.len() == 2
+        && t.adts
+            .contains_key(&format!("{mod_path}::{}", path[0].name));
+    if (path.len() == 1 || local_type) && t.fns.contains_key(&local) {
+        return local;
+    }
+    name
+}
+
+/// Every expression node of `e`, specification parts included.
+fn each_expr<'e>(e: &'e Expr, f: &mut dyn FnMut(&'e Expr)) {
+    f(e);
+    let mut sub = |x: &'e Expr| each_expr(x, f);
+    match &e.kind {
+        ExprKind::Call { args, .. } | ExprKind::Array(args) => args.iter().for_each(&mut sub),
+        ExprKind::Method { recv, args, .. } => {
+            sub(recv);
+            args.iter().for_each(sub);
+        }
+        ExprKind::Index { base, index } => {
+            sub(base);
+            sub(index);
+        }
+        ExprKind::Binary(_, l, r) => {
+            sub(l);
+            sub(r);
+        }
+        ExprKind::Unary(_, x)
+        | ExprKind::Ref { expr: x, .. }
+        | ExprKind::Old(x)
+        | ExprKind::Deref(x)
+        | ExprKind::Trigger(x)
+        | ExprKind::Repeat { value: x, .. }
+        | ExprKind::Field { base: x, .. }
+        | ExprKind::Forall { body: x, .. } => sub(x),
+        ExprKind::If { cond, then, els } => {
+            sub(cond);
+            each_block_expr(then, f);
+            if let Some(x) = els {
+                each_expr(x, f);
+            }
+        }
+        ExprKind::Block(b) => each_block_expr(b, f),
+        ExprKind::StructLit { fields, rest, .. } => {
+            fields.iter().for_each(|(_, x)| each_expr(x, f));
+            if let Some(r) = rest {
+                each_expr(r, f);
+            }
+        }
+        ExprKind::Match { scrut, arms } => {
+            each_expr(scrut, f);
+            arms.iter().for_each(|a| each_expr(&a.body, f));
+        }
+        _ => {}
+    }
+}
+
+fn each_block_expr<'e>(b: &'e Block, f: &mut dyn FnMut(&'e Expr)) {
+    for s in &b.stmts {
+        match s {
+            Stmt::Let { init, .. } | Stmt::LetFields { init, .. } => each_expr(init, f),
+            Stmt::Assign { target, value, .. } => {
+                each_expr(target, f);
+                each_expr(value, f);
+            }
+            Stmt::While {
+                cond,
+                invariants,
+                decreases,
+                body,
+                ..
+            } => {
+                each_expr(cond, f);
+                invariants.iter().for_each(|x| each_expr(x, f));
+                if let Some(d) = decreases {
+                    each_expr(d, f);
+                }
+                each_block_expr(body, f);
+            }
+            Stmt::Assert { cond, .. } => each_expr(cond, f),
+            Stmt::Expr(e) => each_expr(e, f),
+        }
+    }
+    if let Some(t) = &b.tail {
+        each_expr(t, f);
+    }
+}
+
+/// How deep type arguments may nest before instantiation stops (a generic
+/// call that wraps its own parameter would never end; the checker reports
+/// it).
+const MAX_INST_DEPTH: usize = 8;
+
+fn type_depth(t: &TypeKind) -> usize {
+    match t {
+        TypeKind::Array(e, _) | TypeKind::Slice(e) | TypeKind::Vec(e) => 1 + type_depth(&e.kind),
+        TypeKind::Ref { inner, .. } => 1 + type_depth(&inner.kind),
+        TypeKind::Named { args, .. } => {
+            1 + args.iter().map(|a| type_depth(&a.kind)).max().unwrap_or(0)
+        }
+        _ => 0,
+    }
+}
+
+/// The encoder's tables (ADR-0031 §3 slice view) with the instances of
+/// generic spec fns the program reaches (ADR-0046 §4): each definition's
+/// generic calls, with type arguments in its own terms (a generic
+/// definition is proved once over its parameters as sorts), then each
+/// instance's body and each generic exec callee's contract under the
+/// substitution of the call. Instances get signatures of their own.
+fn prepare(p: &Program, t: &Tables) -> Tables {
+    let mut view = t.slice_view();
+    let mut defs = BTreeMap::new();
+    for m in &p.mods {
+        collect(m, "", &mut defs);
+    }
+    let mut insts: BTreeMap<String, (String, BTreeMap<String, TypeKind>)> = BTreeMap::new();
+    let mut seen_exec: BTreeSet<String> = BTreeSet::new();
+    let mut types: Vec<TypeKind> = Vec::new();
+    let mut work: Vec<(String, BTreeMap<String, TypeKind>, bool)> = defs
+        .keys()
+        .map(|k| (k.clone(), BTreeMap::new(), true))
+        .collect();
+    while let Some((path, sub, whole)) = work.pop() {
+        let d = &defs[&path];
+        let mut roots: Vec<&Expr> = d.f.requires.iter().chain(&d.f.ensures).collect();
+        if whole {
+            roots.extend(&d.f.decreases);
+        }
+        let mut nodes: Vec<&Expr> = Vec::new();
+        for r in roots {
+            each_expr(r, &mut |e| nodes.push(e));
+        }
+        if whole {
+            each_block_expr(&d.f.body, &mut |e| nodes.push(e));
+        }
+        for e in nodes {
+            let k = (e.span.file, e.span.lo, e.span.hi);
+            if !sub.is_empty()
+                && let Some(ty) = view.types.get(&k)
+            {
+                types.push(crate::check::subst(ty, &sub));
+            }
+            let ExprKind::Call { path: cp, .. } = &e.kind else {
+                continue;
+            };
+            let Some(targs) = view.targs.get(&k) else {
+                continue;
+            };
+            let args: Vec<TypeKind> = targs.iter().map(|a| crate::check::subst(a, &sub)).collect();
+            if args.iter().any(|a| type_depth(a) > MAX_INST_DEPTH) {
+                continue;
+            }
+            let target = resolve_in(&view, cp, &d.mod_path);
+            let Some(sig) = view.fns.get(&target) else {
+                continue;
+            };
+            let csub: BTreeMap<String, TypeKind> = sig
+                .generics
+                .iter()
+                .map(|g| g.name.clone())
+                .zip(args.iter().cloned())
+                .collect();
+            let key = inst_key(&target, &args);
+            if sig.kind == FnKind::Spec {
+                if let std::collections::btree_map::Entry::Vacant(v) = insts.entry(key) {
+                    v.insert((target.clone(), csub.clone()));
+                    work.push((target, csub, true));
+                }
+            } else if seen_exec.insert(key) {
+                work.push((target, csub, false));
+            }
+        }
+    }
+    for (key, (base, sub)) in &insts {
+        let mut sig = view.fns[base].clone();
+        sig.path = key.clone();
+        sig.params = sig
+            .params
+            .iter()
+            .map(|x| crate::check::subst(x, sub))
+            .collect();
+        sig.ret = crate::check::subst(&sig.ret, sub);
+        sig.generics = Vec::new();
+        sig.impl_generics = 0;
+        types.extend(sig.params.iter().cloned());
+        types.push(sig.ret.clone());
+        view.fns.insert(key.clone(), sig);
+    }
+    view.insts = insts;
+    view.inst_types = types;
+    view
+}
+
+/// The definitions of `p` and the spec fn instances of `t` (`prepare`).
+fn prog_of<'p>(p: &'p Program, t: &'p Tables) -> Prog<'p> {
+    let mut defs = BTreeMap::new();
+    for m in &p.mods {
+        collect(m, "", &mut defs);
+    }
+    for (key, (base, sub)) in &t.insts {
+        let d = &defs[base];
+        let inst = Def {
+            f: d.f,
+            mod_path: d.mod_path.clone(),
+            tsub: sub.clone(),
+            inst: true,
+        };
+        defs.insert(key.clone(), inst);
+    }
+    Prog { defs, t }
+}
+
+/// The sorts of a generic definition's type parameters (ADR-0046 §4) and a
+/// value of each (the base of an empty array).
+fn sort_decls(sig: &FnSig) -> String {
+    sig.generics
+        .iter()
+        .map(|g| {
+            let s = sort_of(&TypeKind::Param(g.name.clone()));
+            format!(
+                "(declare-sort {s} 0)\n(declare-const {} {s})\n",
+                sym(&format!("'{}.default", g.name))
+            )
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone)]
@@ -252,6 +511,7 @@ fn default_val(t: &TypeKind, tb: &Tables) -> Val {
         });
     }
     match t {
+        TypeKind::Param(n) => Val::S(sym(&format!("'{n}.default"))),
         TypeKind::Array(e, n) => match const_elems(&e.kind, &default_val(&e.kind, tb), tb) {
             Val::S(elems) => Val::A {
                 elems,
@@ -311,7 +571,7 @@ fn agg_elem(e: &TypeKind, tb: &Tables) -> bool {
 /// one array level deeper (its fixed length is a constant).
 fn elem_leaves(e: &TypeKind, tb: &Tables, suffix: &str, out: &mut Vec<(String, String)>) {
     if let Some(fs) = struct_fields(e, tb) {
-        for (n, ft) in fs {
+        for (n, ft) in &fs {
             elem_leaves(ft, tb, &format!("{suffix}.{n}"), out);
         }
         return;
@@ -384,7 +644,8 @@ impl Leaf {
 
 /// The fields of the struct `t` denotes (through a reference), in
 /// declaration order.
-pub(crate) fn struct_fields<'t>(t: &TypeKind, tb: &'t Tables) -> Option<&'t [(String, TypeKind)]> {
+/// A generic struct's field types are those of the instance `t`.
+pub(crate) fn struct_fields(t: &TypeKind, tb: &Tables) -> Option<Vec<(String, TypeKind)>> {
     let t = match t {
         TypeKind::Ref { inner, .. } => &inner.kind,
         t => t,
@@ -393,10 +654,19 @@ pub(crate) fn struct_fields<'t>(t: &TypeKind, tb: &'t Tables) -> Option<&'t [(St
         return None;
     };
     match tb.adts.get(&path.join("::")) {
-        Some(crate::check::Adt {
-            kind: crate::check::AdtKind::Struct(fs),
-            ..
-        }) => Some(fs),
+        Some(
+            a @ crate::check::Adt {
+                kind: crate::check::AdtKind::Struct(fs),
+                ..
+            },
+        ) => {
+            let m = crate::check::adt_subst(a, t);
+            Some(
+                fs.iter()
+                    .map(|(n, ft)| (n.clone(), crate::check::subst(ft, &m)))
+                    .collect(),
+            )
+        }
         _ => None,
     }
 }
@@ -422,10 +692,24 @@ pub(crate) fn enum_variants(t: &TypeKind, tb: &Tables) -> Option<Vec<(String, Ve
             ("Err".into(), vec![b.kind.clone()]),
         ]),
         (p, _) => match tb.adts.get(p) {
-            Some(crate::check::Adt {
-                kind: crate::check::AdtKind::Enum(vs),
-                ..
-            }) => Some(vs.clone()),
+            Some(
+                a @ crate::check::Adt {
+                    kind: crate::check::AdtKind::Enum(vs),
+                    ..
+                },
+            ) => {
+                let m = crate::check::adt_subst(a, t);
+                Some(
+                    vs.iter()
+                        .map(|(n, ps)| {
+                            (
+                                n.clone(),
+                                ps.iter().map(|p| crate::check::subst(p, &m)).collect(),
+                            )
+                        })
+                        .collect(),
+                )
+            }
             _ => None,
         },
     }
@@ -490,7 +774,7 @@ fn datatypes(tb: &Tables) -> Vec<(String, String, String)> {
             _ => return,
         }
         if let Some(fs) = struct_fields(t, tb) {
-            for (_, ft) in fs {
+            for (_, ft) in &fs {
                 visit(ft, tb, seen, out);
             }
             return;
@@ -522,6 +806,7 @@ fn datatypes(tb: &Tables) -> Vec<(String, String, String)> {
         out.push((format!("|{ts}::"), sort, decl));
     }
     let mut all: Vec<&TypeKind> = tb.types.values().collect();
+    all.extend(tb.inst_types.iter());
     all.extend(tb.locals.values().flat_map(|m| m.values()));
     for sig in tb.fns.values() {
         all.extend(sig.params.iter());
@@ -567,7 +852,7 @@ fn field_index(t: &TypeKind, tb: &Tables, name: &str) -> usize {
 /// `flatten` writes them.
 fn leaves(t: &TypeKind, tb: &Tables, base: &str, out: &mut Vec<(String, Leaf)>) {
     if let Some(fs) = struct_fields(t, tb) {
-        for (n, ft) in fs {
+        for (n, ft) in &fs {
             leaves(ft, tb, &format!("{base}.{n}"), out);
         }
         return;
@@ -684,6 +969,12 @@ struct Obl {
 struct Def<'p> {
     f: &'p FnDef,
     mod_path: String,
+    /// An instance of a generic spec fn: the substitution of its type
+    /// parameters (empty otherwise: a generic definition is proved over its
+    /// parameters as sorts).
+    tsub: BTreeMap<String, TypeKind>,
+    /// An instance (`Tables::insts`): declared and revealed, not proved.
+    inst: bool,
 }
 
 struct Prog<'p> {
@@ -696,6 +987,10 @@ struct Enc<'p, 'q> {
     prog: &'q Prog<'p>,
     path: String,
     mod_path: String,
+    /// The substitution of the type parameters of the definition whose text
+    /// is being translated (a callee's contract, an instance's body) into
+    /// the query's types.
+    tsub: BTreeMap<String, TypeKind>,
     /// Unit whose names the specification being translated refers to.
     spec_mod: String,
     decls: Vec<String>,
@@ -733,6 +1028,8 @@ fn num(v: i128) -> String {
 fn sort_of(t: &TypeKind) -> String {
     match t {
         TypeKind::Bool => "Bool".into(),
+        // A type parameter is an uninterpreted sort (ADR-0046 §4).
+        TypeKind::Param(n) => sym(&format!("'{n}")),
         // An enum is a datatype named after its type (ADR-0027 §3).
         TypeKind::Named { .. } => sym(&crate::check::ty_str(t)),
         TypeKind::Ref { inner, .. } if !matches!(inner.kind, TypeKind::Slice(_)) => {
@@ -771,7 +1068,10 @@ fn range(t: &TypeKind, x: &str) -> Option<String> {
 fn len_max(elem: &TypeKind) -> &'static str {
     // A data type may be one byte (a fieldless enum, a struct of a bool):
     // only `isize::MAX` is known without its layout.
-    if matches!(elem, TypeKind::Bool | TypeKind::U8 | TypeKind::Named { .. }) {
+    if matches!(
+        elem,
+        TypeKind::Bool | TypeKind::U8 | TypeKind::Named { .. } | TypeKind::Param(_)
+    ) {
         LEN_MAX_BYTE
     } else {
         LEN_MAX_WORD
@@ -895,6 +1195,11 @@ impl<'p, 'q> Enc<'p, 'q> {
             prog,
             path: path.to_string(),
             mod_path: mod_path.to_string(),
+            tsub: prog
+                .defs
+                .get(path)
+                .map(|d| d.tsub.clone())
+                .unwrap_or_default(),
             spec_mod: mod_path.to_string(),
             decls: Vec::new(),
             counters: BTreeMap::new(),
@@ -914,12 +1219,42 @@ impl<'p, 'q> Enc<'p, 'q> {
     }
 
     fn ty(&self, e: &Expr) -> TypeKind {
-        self.prog
+        let t = self
+            .prog
             .t
             .types
             .get(&(e.span.file, e.span.lo, e.span.hi))
             .cloned()
-            .unwrap_or(TypeKind::Error)
+            .unwrap_or(TypeKind::Error);
+        crate::check::subst(&t, &self.tsub)
+    }
+
+    /// The type arguments of the generic call at `span`, in the query's
+    /// types, and the substitution of the callee's parameters by them.
+    fn call_subst(&self, target: &str, span: Span) -> BTreeMap<String, TypeKind> {
+        let Some(targs) = self.prog.t.targs.get(&(span.file, span.lo, span.hi)) else {
+            return BTreeMap::new();
+        };
+        self.prog.t.fns[target]
+            .generics
+            .iter()
+            .map(|g| g.name.clone())
+            .zip(targs.iter().map(|a| crate::check::subst(a, &self.tsub)))
+            .collect()
+    }
+
+    /// The spec fn a call names: an instance for a generic one.
+    fn spec_target(&self, target: String, span: Span) -> String {
+        let sub = self.call_subst(&target, span);
+        if sub.is_empty() {
+            return target;
+        }
+        let args: Vec<TypeKind> = self.prog.t.fns[&target]
+            .generics
+            .iter()
+            .map(|g| sub[&g.name].clone())
+            .collect();
+        inst_key(&target, &args)
     }
 
     fn fresh(&mut self, base: &str, sort: &str) -> String {
@@ -1195,7 +1530,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                     }
                 }
             }
-            ExprKind::Call { path, args } if self.is_variant(path) => {
+            ExprKind::Call { path, args, .. } if self.is_variant(path) => {
                 let vals: Vec<Val> = args.iter().map(|a| self.spec(a, env, old)).collect();
                 self.variant_value(&self.ty(e), &path.last().unwrap().name, &vals)
             }
@@ -1203,8 +1538,9 @@ impl<'p, 'q> Enc<'p, 'q> {
                 self.variant_value(&self.ty(e), &segs.last().unwrap().name, &[])
             }
             ExprKind::Match { scrut, arms } => self.spec_match(scrut, arms, env, old),
-            ExprKind::Call { path, args } => {
+            ExprKind::Call { path, args, .. } => {
                 let target = self.resolve(path, &self.spec_mod.clone());
+                let target = self.spec_target(target, e.span);
                 let mut flat = Vec::new();
                 let mut argv = Vec::new();
                 for a in args {
@@ -1239,7 +1575,13 @@ impl<'p, 'q> Enc<'p, 'q> {
                 for b in binders {
                     let s = sym(&format!("{}!{}", b.name.name, self.bound));
                     self.bound += 1;
-                    decl.push(format!("({s} Int)"));
+                    let bt = self.local_ty(&b.name.name);
+                    let sort = if matches!(bt, TypeKind::Param(_)) {
+                        sort_of(&bt)
+                    } else {
+                        "Int".to_string()
+                    };
+                    decl.push(format!("({s} {sort})"));
                     if let Some(r) = range(&b.ty.kind, &s) {
                         facts.push(r);
                     }
@@ -1404,14 +1746,20 @@ impl<'p, 'q> Enc<'p, 'q> {
         let Some((comp, caller_measure)) = self.term_check.clone() else {
             return;
         };
-        if self.prog.t.recursive.get(target) != Some(&comp) {
+        let base = self
+            .prog
+            .t
+            .insts
+            .get(target)
+            .map_or(target, |(b, _)| b.as_str());
+        if self.prog.t.recursive.get(base) != Some(&comp) {
             return;
         }
         let def = &self.prog.defs[target];
         let Some(d) = &def.f.decreases else { return };
         let env = bind_params(def.f, args);
         let saved = self.term_check.take();
-        let callee_measure = self.in_unit(&def.mod_path.clone(), |s| {
+        let callee_measure = self.in_def(&def.mod_path.clone(), def.tsub.clone(), |s| {
             s.spec(d, &env, &BTreeMap::new()).s()
         });
         self.term_check = saved;
@@ -1638,18 +1986,18 @@ impl<'p, 'q> Enc<'p, 'q> {
                     }
                 }
             }
-            ExprKind::Call { path, args }
+            ExprKind::Call { path, args, .. }
                 if path.len() == 2
                     && path[0].name == "Vec"
                     && matches!(path[1].name.as_str(), "new" | "with_capacity") =>
             {
                 self.vec_new(e, path, args)
             }
-            ExprKind::Call { path, args } if self.is_variant(path) => {
+            ExprKind::Call { path, args, .. } if self.is_variant(path) => {
                 let vals: Vec<Val> = args.iter().map(|a| self.eval(a)).collect();
                 self.variant_value(&self.ty(e), &path.last().unwrap().name, &vals)
             }
-            ExprKind::Call { path, args } => self.call(path, args, e.span),
+            ExprKind::Call { path, args, .. } => self.call(path, args, e.span),
             ExprKind::If { cond, then, els } => {
                 let c = self.eval(cond).s();
                 let t = self.ty(e);
@@ -2386,8 +2734,14 @@ impl<'p, 'q> Enc<'p, 'q> {
     }
 
     fn local_ty(&self, name: &str) -> TypeKind {
-        if let Some(t) = self.prog.t.locals.get(&self.path).and_then(|m| m.get(name)) {
-            return t.clone();
+        let base = self
+            .prog
+            .t
+            .insts
+            .get(&self.path)
+            .map_or(&self.path, |(b, _)| b);
+        if let Some(t) = self.prog.t.locals.get(base).and_then(|m| m.get(name)) {
+            return crate::check::subst(t, &self.tsub);
         }
         let def = &self.prog.defs[&self.path];
         if let Some(p) = def.f.params.iter().find(|p| p.name.name == name) {
@@ -2403,6 +2757,20 @@ impl<'p, 'q> Enc<'p, 'q> {
         let saved = std::mem::replace(&mut self.spec_mod, unit.to_string());
         let r = f(self);
         self.spec_mod = saved;
+        r
+    }
+
+    /// Translates a specification of another definition: its unit, and its
+    /// type parameters substituted by `tsub`.
+    fn in_def<T>(
+        &mut self,
+        unit: &str,
+        tsub: BTreeMap<String, TypeKind>,
+        f: impl FnOnce(&mut Self) -> T,
+    ) -> T {
+        let saved = std::mem::replace(&mut self.tsub, tsub);
+        let r = self.in_unit(unit, f);
+        self.tsub = saved;
         r
     }
 
@@ -2425,8 +2793,12 @@ impl<'p, 'q> Enc<'p, 'q> {
         let f = def.f;
         let pre_env = bind_params(f, &argv);
         let unit = def.mod_path.clone();
+        // A generic callee's contract under the call's type arguments.
+        let csub = self.call_subst(&target, span);
         for r in &f.requires {
-            let g = self.in_unit(&unit, |s| s.spec(r, &pre_env, &BTreeMap::new()).s());
+            let g = self.in_def(&unit, csub.clone(), |s| {
+                s.spec(r, &pre_env, &BTreeMap::new()).s()
+            });
             self.oblige(
                 "E0801",
                 span,
@@ -2438,7 +2810,9 @@ impl<'p, 'q> Enc<'p, 'q> {
             && self.prog.t.recursive.get(&self.path) == Some(cc)
             && let Some(m0) = self.entry_measure.clone()
         {
-            let m1 = self.in_unit(&unit, |s| s.spec(d, &pre_env, &BTreeMap::new()).s());
+            let m1 = self.in_def(&unit, csub.clone(), |s| {
+                s.spec(d, &pre_env, &BTreeMap::new()).s()
+            });
             self.oblige(
                 "E0809",
                 span,
@@ -2450,7 +2824,11 @@ impl<'p, 'q> Enc<'p, 'q> {
         // of a slice but never its length; a `&mut Vec<T>` also its length.
         let mut post_args = argv.clone();
         let mut old_env = BTreeMap::new();
-        let param_tys = self.prog.t.fns[&target].params.clone();
+        let param_tys: Vec<TypeKind> = self.prog.t.fns[&target]
+            .params
+            .iter()
+            .map(|t| crate::check::subst(t, &csub))
+            .collect();
         for (i, p) in f.params.iter().enumerate() {
             if let TypeKind::Ref { mutable: true, .. } = p.ty.kind
                 && root_var(&args[i]).is_some()
@@ -2486,13 +2864,13 @@ impl<'p, 'q> Enc<'p, 'q> {
             }
         }
         let mut post_env = bind_params(f, &post_args);
-        let ret_ty = self.prog.t.fns[&target].ret.clone();
+        let ret_ty = crate::check::subst(&self.prog.t.fns[&target].ret, &csub);
         let result = self.fresh_val(&format!("{target}.result"), &ret_ty);
         if let Some(n) = &f.ret.name {
             post_env.insert(n.name.clone(), result.clone());
         }
         for en in &f.ensures {
-            let g = self.in_unit(&unit, |s| s.spec(en, &post_env, &old_env).s());
+            let g = self.in_def(&unit, csub.clone(), |s| s.spec(en, &post_env, &old_env).s());
             self.pc.push(g);
         }
         result
@@ -2725,6 +3103,8 @@ fn collect<'p>(m: &'p Mod, prefix: &str, out: &mut BTreeMap<String, Def<'p>>) {
         out.entry(format!("{mp}::{}", f.name.name)).or_insert(Def {
             f,
             mod_path: mp.clone(),
+            tsub: BTreeMap::new(),
+            inst: false,
         });
     }
     for i in &m.impls {
@@ -2733,6 +3113,8 @@ fn collect<'p>(m: &'p Mod, prefix: &str, out: &mut BTreeMap<String, Def<'p>>) {
                 .or_insert(Def {
                     f,
                     mod_path: mp.clone(),
+                    tsub: BTreeMap::new(),
+                    inst: false,
                 });
         }
     }
@@ -2857,7 +3239,7 @@ impl<'p> Prog<'p> {
     fn spec_decls(&self) -> Vec<(String, String, String)> {
         self.defs
             .iter()
-            .filter(|(_, d)| d.f.kind == FnKind::Spec)
+            .filter(|(p, d)| d.f.kind == FnKind::Spec && self.t.fns[*p].generics.is_empty())
             .map(|(path, _)| {
                 let sig = &self.t.fns[path];
                 let params = param_sorts(&sig.params, self.t).join(" ");
@@ -2869,6 +3251,26 @@ impl<'p> Prog<'p> {
                 (path.clone(), spec_key(path, self.t), decl)
             })
             .collect()
+    }
+
+    /// The spec fns `f`'s `#[uses]` reveals: a generic one by each of its
+    /// instances.
+    fn revealed(&self, f: &FnDef, mod_path: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        for u in uses_of(f, mod_path, &self.t.fns) {
+            if self.t.fns[&u].generics.is_empty() {
+                out.push(u);
+            } else {
+                out.extend(
+                    self.t
+                        .insts
+                        .iter()
+                        .filter(|(_, (b, _))| *b == u)
+                        .map(|(k, _)| k.clone()),
+                );
+            }
+        }
+        out
     }
 
     /// Definitional axiom of a spec fn (ADR-0017 §4).
@@ -3002,11 +3404,8 @@ pub fn query_header() -> String {
 /// 2D-14), so the incremental key takes these for the spec fns a definition
 /// can reach.
 pub fn spec_decl_map(p: &Program, t: &Tables) -> BTreeMap<String, String> {
-    let mut defs = BTreeMap::new();
-    for m in &p.mods {
-        collect(m, "", &mut defs);
-    }
-    let prog = Prog { defs, t };
+    let view = prepare(p, t);
+    let prog = prog_of(p, &view);
     prog.spec_decls()
         .into_iter()
         .map(|(path, _, decl)| (path, decl))
@@ -3118,20 +3517,16 @@ fn needed_decls(
 /// proof about it is vacuous) or `None` (undecided, unsupported construct,
 /// or the solver could not run).
 pub fn preconditions_satisfiable(p: &Program, t: &Tables) -> Vec<(String, Span, Option<bool>)> {
-    let view = t.slice_view();
+    let view = prepare(p, t);
     let t = &view;
-    let mut defs = BTreeMap::new();
-    for m in &p.mods {
-        collect(m, "", &mut defs);
-    }
-    let prog = Prog { defs, t };
+    let prog = prog_of(p, t);
     let spec_decls = prog.spec_decls();
     let dts = datatypes(t);
     let mut solver: Option<Solver> = None;
     let mut solver_down = crate::toolchain::check_z3().is_err();
     let mut out = Vec::new();
     for (path, d) in &prog.defs {
-        if d.f.kind != FnKind::Exec || d.f.requires.is_empty() {
+        if d.inst || d.f.kind != FnKind::Exec || d.f.requires.is_empty() {
             continue;
         }
         let span = d.f.requires[0]
@@ -3140,7 +3535,7 @@ pub fn preconditions_satisfiable(p: &Program, t: &Tables) -> Vec<(String, Span, 
         let mut enc = Enc::new(&prog, path, &d.mod_path);
         let mut axioms: Vec<(String, String)> = Vec::new();
         let mut axiom_parts: Vec<AxiomParts> = Vec::new();
-        for u in uses_of(d.f, &d.mod_path, &t.fns) {
+        for u in prog.revealed(d.f, &d.mod_path) {
             let (ax, parts) = prog.axiom(&u);
             axioms.push((spec_key(&u, t), ax));
             axiom_parts.push(parts);
@@ -3168,6 +3563,7 @@ pub fn preconditions_satisfiable(p: &Program, t: &Tables) -> Vec<(String, Span, 
         let relevant = relevant_axioms(&axioms, &q);
         let mut base = header(0).join("\n");
         base.push('\n');
+        base.push_str(&sort_decls(&t.fns[path]));
         let decls = enc.decls.join("\n");
         let used = needed_decls(&spec_decls, &dts, &format!("{relevant}{decls}\n{q}"));
         let full = format!("{base}{used}{relevant}{decls}");
@@ -3232,13 +3628,9 @@ fn verify_impl(
     stop_at_failure: bool,
     mut incr: Option<&mut crate::incremental::Session>,
 ) -> Outcome {
-    let view = t.slice_view();
+    let view = prepare(p, t);
     let t = &view;
-    let mut defs = BTreeMap::new();
-    for m in &p.mods {
-        collect(m, "", &mut defs);
-    }
-    let prog = Prog { defs, t };
+    let prog = prog_of(p, t);
     let mut statuses = Vec::new();
     let mut scripts = BTreeMap::new();
     let mut proved_keys: BTreeSet<ObKey> = BTreeSet::new();
@@ -3265,7 +3657,7 @@ fn verify_impl(
     let spec_syms: Vec<(String, String)> = prog
         .defs
         .iter()
-        .filter(|(_, d)| d.f.kind == FnKind::Spec)
+        .filter(|(_, d)| d.f.kind == FnKind::Spec && !d.inst)
         .map(|(p, _)| (p.clone(), sym(p)))
         .collect();
     // One solver process serves every definition (backlog 1D-18): each
@@ -3278,6 +3670,9 @@ fn verify_impl(
     for (path, d) in &prog.defs {
         if stopped {
             break;
+        }
+        if d.inst {
+            continue;
         }
         if only.is_some_and(|o| !o.contains(path)) {
             continue;
@@ -3323,7 +3718,7 @@ fn verify_impl(
                 enc.term_check = None;
             }
             FnKind::Exec => {
-                for u in uses_of(d.f, &d.mod_path, &t.fns) {
+                for u in prog.revealed(d.f, &d.mod_path) {
                     let (ax, parts) = prog.axiom(&u);
                     axioms.push((spec_key(&u, t), ax));
                     axiom_parts.push(parts);
@@ -3366,6 +3761,7 @@ fn verify_impl(
         if REACH.with(|r| r.get()) {
             let mut prefix = header.join("\n");
             prefix.push('\n');
+            prefix.push_str(&sort_decls(&t.fns[path]));
             let decls = enc.decls.join("\n");
             for (span, what, pc) in &enc.reach {
                 // A refutation comes fast; a model may take long: a small
@@ -3404,6 +3800,7 @@ fn verify_impl(
         // obligation's result never depends on another's (ADR-0017 §5).
         let mut prefix = header.join("\n");
         prefix.push('\n');
+        prefix.push_str(&sort_decls(&t.fns[path]));
         let decls = enc.decls.join("\n");
         let mut script = String::new();
         let mut failed = 0usize;

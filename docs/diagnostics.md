@@ -36,6 +36,7 @@
 | E0218 | a `Vec` is passed where a slice is expected: write `v.as_slice()` |
 | E0219 | `drop(v)` and `mem::take` / `replace` / `swap` are not used |
 | E0234 | a string literal: text is bytes, write `b"..."` |
+| E0237 | a call of a generic function names its type arguments: `f::<T>(..)` |
 | E0220 | `#[derive(..)]` is not used |
 | E0221 | built-in variants are written bare (`Some`, not `Option::Some`) |
 | E0222 | field shorthand is not allowed (`x: x`) |
@@ -59,7 +60,7 @@
 | E0302 | duplicate definition |
 | E0303 | name already bound in this function (shadowing is not allowed) |
 | E0304 | unknown function |
-| E0305 | unknown type |
+| E0305 | unknown type or trait |
 | E0306 | unknown field |
 | E0307 | unknown variant |
 | E0308 | `impl` block not in the unit of its type, or a second one |
@@ -92,6 +93,9 @@
 | E0425 | `==` on data types is not executable (compare the fields) |
 | E0426 | `match` arms: one per variant, in declaration order |
 | E0427 | a pattern names the wrong number of payload values |
+| E0428 | a type argument does not satisfy a bound of its parameter |
+| E0429 | wrong number of type arguments in a call |
+| E0430 | a recursive generic call wraps a type parameter in a larger type |
 
 ## E05xx 명세
 
