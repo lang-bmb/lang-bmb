@@ -114,3 +114,40 @@ mod geo {
         if b == 0 || b == -1 { Err(Shape::Dot) } else { Ok(a / b) }
     }
 }
+
+#[summary("배열 페이로드의 `==`: 길이 안의 원소만 비교 (backlog 2V-05)")]
+mod cells {
+    enum Cell { Empty, Full([i64; 2]) }
+
+    struct Slot { c: Cell, n: i64 }
+
+    spec fn same(a: Cell, b: Cell) -> bool { a == b }
+
+    spec fn same_slot(a: Slot, b: Slot) -> bool { a == b }
+
+    // The rebuilt payload equals the parameter's on its two elements; the
+    // parameter's array past the length is unknown, so SMT equality of the
+    // datatype would not prove this.
+    #[effects(pure)]
+    #[uses(same)]
+    fn rebuild(c: Cell) -> (r: Cell)
+        ensures same(r, c),
+    {
+        match c {
+            Cell::Empty => Cell::Empty,
+            Cell::Full(w) => Cell::Full([w[0], w[1]]),
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(same, same_slot)]
+    fn rebuild_slot(s: Slot) -> (r: Slot)
+        ensures same_slot(r, s),
+    {
+        let c: Cell = match s.c {
+            Cell::Empty => Cell::Empty,
+            Cell::Full(w) => Cell::Full([w[0], w[1]]),
+        };
+        Slot { c: c, n: s.n }
+    }
+}

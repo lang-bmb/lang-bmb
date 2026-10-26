@@ -1,2 +1,0 @@
-{"code":"E0814","severity":"error","message":"recursive call inside `forall` is not supported","file":"fail/unsupported.bmb","line":9,"col":63,"end_line":9,"end_col":80}
-{"def":"unsupported::all_pos","status":"failed","obligations":0,"failed":1,"rlimit":0,"rlimit_max":0}

@@ -2786,14 +2786,6 @@ impl<'a> Checker<'a> {
                 }
             }
             ExprKind::Block(b) => self.block(cx, b, expected, mode),
-            ExprKind::Array(_) | ExprKind::Repeat { .. } if mode != Mode::Exec => {
-                self.err(
-                    "E0503",
-                    e.span,
-                    "array literals are only allowed in executable code",
-                );
-                TypeKind::Error
-            }
             ExprKind::Array(items) => {
                 let want_elem = match expected {
                     Some(TypeKind::Array(el, _)) => Some(el.kind.clone()),
@@ -3066,9 +3058,13 @@ impl<'a> Checker<'a> {
                     );
                     return TypeKind::Bool;
                 }
-                // Structural `==` on data types is a specification term only
-                // (SMT equality, ADR-0026 §2).
-                if matches!(op, BinOp::Eq | BinOp::Ne) && matches!(lt, TypeKind::Named { .. }) {
+                // Structural `==` on data types, arrays and slices is a
+                // specification term only (ADR-0026 §2; elements below the
+                // length, backlog 2V-05).
+                let slice = matches!(&lt, TypeKind::Ref { inner, .. } if matches!(inner.kind, TypeKind::Slice(_)));
+                if matches!(op, BinOp::Eq | BinOp::Ne)
+                    && (matches!(lt, TypeKind::Named { .. } | TypeKind::Array(..)) || slice)
+                {
                     if mode == Mode::Exec {
                         self.diags.push(
                             Diag::new(

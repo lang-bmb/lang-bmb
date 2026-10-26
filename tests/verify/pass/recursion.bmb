@@ -28,3 +28,33 @@ mod rec {
         if n < 2 { n } else { fib_spec(n - 1) + fib_spec(n - 2) }
     }
 }
+
+#[summary("forall 안의 재귀 호출: 묶인 변수마다 측도가 준다 (backlog 2V-05)")]
+mod frec {
+    spec fn below(n: usize) -> bool
+        decreases n,
+    {
+        n == 0 || (forall|k: usize| k < n ==> #[trigger] below(k))
+    }
+
+    #[effects(pure)]
+    #[uses(below)]
+    fn base() -> bool
+        ensures below(0),
+    {
+        true
+    }
+}
+
+#[summary("forall 안의 재귀 호출과 다른 항 (backlog 2V-05, 이전 fail/unsupported)")]
+mod allpos {
+    spec fn all_pos(a: &[i64], n: usize) -> bool
+        decreases n,
+    {
+        if n == 0 {
+            true
+        } else {
+            forall|i: usize| i < n ==> #[trigger] a[i] > 0 && all_pos(a, n - 1)
+        }
+    }
+}

@@ -24,7 +24,7 @@ pub mod workspace;
 
 use std::collections::BTreeMap;
 
-use diag::{Diag, Diags};
+use diag::Diags;
 use source::SourceMap;
 
 /// Stack size for compiler work. Every recursive pass is bounded by the
@@ -465,26 +465,8 @@ fn emit_llvm_frontend(
     } else {
         prove(fe, &mut diags, cache_dir, incr.as_mut())
     };
-    // What the proof gate does not encode is not lowered either.
-    let module = match verify::program_data_type_use(&fe.program, &fe.tables) {
-        Some(sp) => {
-            diags.push(Diag::new(
-                "E0814",
-                sp,
-                "not compiled yet: `Vec` (backlog 2G-04), or elements holding an array",
-            ));
-            None
-        }
-        None => {
-            let usable = usable_proofs(fe, &outcome);
-            Some(codegen::emit_with(
-                &fe.program,
-                &fe.tables,
-                &usable,
-                incr.as_mut(),
-            ))
-        }
-    };
+    let usable = usable_proofs(fe, &outcome);
+    let module = codegen::emit_with(&fe.program, &fe.tables, &usable, incr.as_mut());
     if let Some(s) = &mut incr {
         s.save();
     }
@@ -498,9 +480,9 @@ fn emit_llvm_frontend(
             cache,
             incr: incr.map(|s| s.stats).unwrap_or_default(),
         },
-        checks: module.as_ref().map_or(0, |m| m.checks),
-        has_main: module.as_ref().is_some_and(|m| m.main.is_some()),
-        ir: module.map(|m| m.ir),
+        checks: module.checks,
+        has_main: module.main.is_some(),
+        ir: Some(module.ir),
     }
 }
 

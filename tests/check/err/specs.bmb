@@ -101,7 +101,3 @@ mod triggers {
     }
 }
 
-#[summary("명세 안의 배열 리터럴")]
-mod spec_arrays {
-    spec fn lit(x: i64) -> bool { [x, 1][0] == 1 }
-}

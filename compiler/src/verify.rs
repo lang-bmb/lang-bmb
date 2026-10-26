@@ -232,6 +232,62 @@ fn flatten(v: &Val, out: &mut Vec<String>) {
     }
 }
 
+/// Some value of type `t` (backlog 2V-05: the base of an empty array): the
+/// default scalar, each field's, the first variant with default payloads.
+fn default_val(t: &TypeKind, tb: &Tables) -> Val {
+    if let Some(fs) = struct_fields(t, tb) {
+        return Val::Struct(fs.iter().map(|(_, ft)| default_val(ft, tb)).collect());
+    }
+    if let Some(vs) = enum_variants(t, tb) {
+        let (v, ps) = &vs[0];
+        let mut leaves = Vec::new();
+        for pt in ps {
+            flatten(&default_val(pt, tb), &mut leaves);
+        }
+        let c = ctor(t, v);
+        return Val::S(if leaves.is_empty() {
+            c
+        } else {
+            format!("({c} {})", leaves.join(" "))
+        });
+    }
+    match t {
+        TypeKind::Array(e, n) => match const_elems(&e.kind, &default_val(&e.kind, tb), tb) {
+            Val::S(elems) => Val::A {
+                elems,
+                len: n.to_string(),
+            },
+            elem => Val::Arr {
+                elem: Box::new(elem),
+                len: n.to_string(),
+            },
+        },
+        TypeKind::Unit => Val::Unit,
+        _ => Val::S(default_of(t).to_string()),
+    }
+}
+
+/// The element arrays of an array whose every element is `v` (of type
+/// `e`): one constant array, or one per leaf for an aggregate element.
+fn const_elems(e: &TypeKind, v: &Val, tb: &Tables) -> Val {
+    if !agg_elem(e, tb) {
+        return Val::S(format!("((as const (Array Int {})) {})", sort_of(e), v.s()));
+    }
+    let mut ls = Vec::new();
+    elem_leaves(e, tb, "", &mut ls);
+    let mut terms = Vec::new();
+    flatten_elem(v, &mut terms);
+    let consts: Vec<String> = ls
+        .iter()
+        .zip(terms)
+        .map(|((_, sort), x)| format!("((as const (Array Int {sort})) {x})"))
+        .collect();
+    elem_template(e, tb, &mut consts.into_iter())
+}
+
+/// The longest fixed array whose `==` is written element by element.
+const UNROLL_EQ: usize = 16;
+
 /// The leaf arrays of an element template (`elem_leaves` order): inner
 /// fixed lengths are constants, not terms.
 fn flatten_elem(v: &Val, out: &mut Vec<String>) {
@@ -417,15 +473,6 @@ fn has_array(t: &TypeKind, tb: &Tables) -> bool {
     })
 }
 
-/// Whether a struct holds an enum whose payload holds an array (SMT
-/// equality of that enum would compare elements past the length).
-fn enum_with_array(t: &TypeKind, tb: &Tables) -> bool {
-    match struct_fields(t, tb) {
-        Some(fs) => fs.iter().any(|(_, ft)| enum_with_array(ft, tb)),
-        None => enum_variants(t, tb).is_some() && has_array(t, tb),
-    }
-}
-
 /// Every enum instance a program uses, as (constructor prefix, sort,
 /// `declare-datatypes`), dependencies first (types are not recursive,
 /// E0421).
@@ -607,26 +654,6 @@ fn set_at(v: Val, steps: &[Step], new: Val) -> Val {
     }
 }
 
-/// `a == b` for values of one type: fieldwise for structs, SMT equality for
-/// scalars. `None` when a field is an array (its elements past the length
-/// are not part of the value).
-fn eq_val(a: &Val, b: &Val) -> Option<String> {
-    match (a, b) {
-        (Val::S(x), Val::S(y)) => Some(format!("(= {x} {y})")),
-        (Val::Struct(xs), Val::Struct(ys)) => {
-            let parts: Option<Vec<String>> = xs.iter().zip(ys).map(|(x, y)| eq_val(x, y)).collect();
-            parts.map(|p| and(&p))
-        }
-        (Val::Unit, Val::Unit) => Some("true".into()),
-        // Arrays are equal on their elements below the length (a struct
-        // field's array has a fixed one).
-        (Val::A { elems: e1, len: l1 }, Val::A { elems: e2, len: l2 }) => Some(format!(
-            "(and (= {l1} {l2}) (forall ((|eq!k| Int)) (! (=> (and (<= 0 |eq!k|) (< |eq!k| {l1})) (= (select {e1} |eq!k|) (select {e2} |eq!k|))) :pattern ((select {e1} |eq!k|)) :pattern ((select {e2} |eq!k|)))))"
-        )),
-        _ => None,
-    }
-}
-
 /// `ite(c, a, b)` on values of one type, leaf by leaf.
 fn ite_val(c: &str, a: &Val, b: &Val) -> Val {
     match (a, b) {
@@ -684,12 +711,13 @@ struct Enc<'p, 'q> {
     /// Spec translation: enclosing conditions, and the recursion check context.
     spec_pc: Vec<String>,
     term_check: Option<(usize, String)>,
-    forall_depth: u32,
+    /// The `forall`s around the specification being translated: bound
+    /// declarations, their range facts, and `spec_pc`'s length on entry.
+    foralls: Vec<(Vec<String>, Vec<String>, usize)>,
     /// Per enclosing `forall`, its `#[trigger]` terms: each one a list of
     /// alternatives (a struct-valued trigger has one per leaf).
     triggers: Vec<Vec<Vec<String>>>,
     bound: u32,
-    unsupported: Vec<(Span, String)>,
     /// Under `vacuous_ends`: each reach point and its path condition.
     reach: Vec<(Span, &'static str, Vec<String>)>,
 }
@@ -878,10 +906,9 @@ impl<'p, 'q> Enc<'p, 'q> {
             inputs: Vec::new(),
             spec_pc: Vec::new(),
             term_check: None,
-            forall_depth: 0,
+            foralls: Vec::new(),
             triggers: Vec::new(),
             bound: 0,
-            unsupported: Vec::new(),
             reach: Vec::new(),
         }
     }
@@ -1091,39 +1118,21 @@ impl<'p, 'q> Enc<'p, 'q> {
             ExprKind::Unary(UnOp::Not, x) => {
                 Val::S(format!("(not {})", self.spec(x, env, old).s()))
             }
-            // `==` on an enum is SMT equality, unless a payload holds an
-            // array (its elements past the length would count).
-            ExprKind::Binary(BinOp::Eq | BinOp::Ne, l, _)
-                if enum_variants(&self.ty(l), self.prog.t).is_some()
-                    && has_array(&self.ty(l), self.prog.t) =>
-            {
-                self.unsupported.push((
-                    e.span,
-                    "`==` on an enum with an array in a payload is not supported yet".into(),
-                ));
-                Val::S("true".into())
-            }
-            // Structural `==` on structs (ADR-0026 §2): field by field.
+            // Structural `==` (ADR-0026 §2): field by field; a value that
+            // holds an array compares its elements below the length only,
+            // also inside enum payloads (backlog 2V-05).
             ExprKind::Binary(op @ (BinOp::Eq | BinOp::Ne), l, r)
-                if struct_fields(&self.ty(l), self.prog.t).is_some() =>
+                if struct_fields(&self.ty(l), self.prog.t).is_some()
+                    || has_array(&self.ty(l), self.prog.t) =>
             {
+                let t = self.ty(l);
                 let a = self.spec(l, env, old);
                 let b = self.spec(r, env, old);
-                let q = if enum_with_array(&self.ty(l), self.prog.t) {
-                    None
+                let q = self.ext_eq(&a, &b, &t);
+                if *op == BinOp::Eq {
+                    Val::S(q)
                 } else {
-                    eq_val(&a, &b)
-                };
-                match q {
-                    Some(q) if *op == BinOp::Eq => Val::S(q),
-                    Some(q) => Val::S(format!("(not {q})")),
-                    None => {
-                        self.unsupported.push((
-                            e.span,
-                            "`==` on a struct holding an enum with an array payload is not supported yet".into(),
-                        ));
-                        Val::S("true".into())
-                    }
+                    Val::S(format!("(not {q})"))
                 }
             }
             ExprKind::Binary(op, l, r) => {
@@ -1236,11 +1245,12 @@ impl<'p, 'q> Enc<'p, 'q> {
                     }
                     env2.insert(b.name.name.clone(), Val::S(s));
                 }
-                self.forall_depth += 1;
+                self.foralls
+                    .push((decl.clone(), facts.clone(), self.spec_pc.len()));
                 self.triggers.push(Vec::new());
                 let bt = self.spec(body, &env2, old).s();
                 let pats = self.triggers.pop().unwrap();
-                self.forall_depth -= 1;
+                self.foralls.pop();
                 let inner = if facts.is_empty() {
                     bt
                 } else {
@@ -1321,13 +1331,45 @@ impl<'p, 'q> Enc<'p, 'q> {
                 }
             }
             ExprKind::Deref(x) => self.spec(x, env, old),
-            ExprKind::Array(_) | ExprKind::Repeat { .. } | ExprKind::Error => {
-                self.unsupported.push((
-                    e.span,
-                    "this expression is not supported in specifications".into(),
-                ));
-                Val::S("true".into())
+            // Array values in specifications (backlog 2V-05): a constant
+            // array of the first element (or the default scalar) with every
+            // element stored; a repeat is a constant array per leaf.
+            ExprKind::Array(items) => {
+                let elem = elem_ty(&self.ty(e));
+                let vals: Vec<Val> = items.iter().map(|it| self.spec(it, env, old)).collect();
+                let base = match vals.first() {
+                    Some(v) => const_elems(&elem, v, self.prog.t),
+                    // No element: any value of the element type will do.
+                    None => const_elems(&elem, &default_val(&elem, self.prog.t), self.prog.t),
+                };
+                let mut arr = base;
+                for (k, v) in vals.iter().enumerate() {
+                    arr = store_val(&arr, &k.to_string(), v);
+                }
+                let len = items.len().to_string();
+                match arr {
+                    Val::S(elems) => Val::A { elems, len },
+                    elem => Val::Arr {
+                        elem: Box::new(elem),
+                        len,
+                    },
+                }
             }
+            ExprKind::Repeat { value, count, .. } => {
+                let elem = elem_ty(&self.ty(e));
+                let v = self.spec(value, env, old);
+                match const_elems(&elem, &v, self.prog.t) {
+                    Val::S(elems) => Val::A {
+                        elems,
+                        len: count.to_string(),
+                    },
+                    t => Val::Arr {
+                        elem: Box::new(t),
+                        len: count.to_string(),
+                    },
+                }
+            }
+            ExprKind::Error => unreachable!("rejected by the checker"),
         }
     }
 
@@ -1345,15 +1387,8 @@ impl<'p, 'q> Enc<'p, 'q> {
                     env2.insert(name.name.clone(), v);
                 }
                 Stmt::Expr(_) => {}
-                other => {
-                    let sp = match other {
-                        Stmt::Assign { span, .. }
-                        | Stmt::While { span, .. }
-                        | Stmt::Assert { span, .. } => *span,
-                        _ => b.span,
-                    };
-                    self.unsupported
-                        .push((sp, "statement not allowed in a specification".into()));
+                _ => {
+                    unreachable!("other statements in a specification are rejected by the checker")
                 }
             }
         }
@@ -1372,13 +1407,6 @@ impl<'p, 'q> Enc<'p, 'q> {
         if self.prog.t.recursive.get(target) != Some(&comp) {
             return;
         }
-        if self.forall_depth > 0 {
-            self.unsupported.push((
-                span,
-                "recursive call inside `forall` is not supported".into(),
-            ));
-            return;
-        }
         let def = &self.prog.defs[target];
         let Some(d) = &def.f.decreases else { return };
         let env = bind_params(def.f, args);
@@ -1387,12 +1415,27 @@ impl<'p, 'q> Enc<'p, 'q> {
             s.spec(d, &env, &BTreeMap::new()).s()
         });
         self.term_check = saved;
-        self.oblige(
-            "E0813",
-            span,
-            format!("recursive call to `{target}` may not decrease its `decreases` measure"),
-            format!("(and (<= 0 {caller_measure}) (< {callee_measure} {caller_measure}))"),
-        );
+        let goal = format!("(and (<= 0 {caller_measure}) (< {callee_measure} {caller_measure}))");
+        let msg = format!("recursive call to `{target}` may not decrease its `decreases` measure");
+        // Inside `forall`: for every value of the bound variables that
+        // reaches the call (backlog 2V-05), as Dafny checks it.
+        if let Some((_, _, start)) = self.foralls.first() {
+            let start = *start;
+            let decls: Vec<String> = self.foralls.iter().flat_map(|f| f.0.clone()).collect();
+            let mut inner: Vec<String> = self.foralls.iter().flat_map(|f| f.1.clone()).collect();
+            inner.extend(self.spec_pc[start..].iter().cloned());
+            let mut assumptions = self.pc.clone();
+            assumptions.extend(self.spec_pc[..start].iter().cloned());
+            self.obls.push(Obl {
+                code: "E0813",
+                span,
+                msg,
+                assumptions,
+                goal: format!("(forall ({}) (=> {} {goal}))", decls.join(" "), and(&inner)),
+            });
+            return;
+        }
+        self.oblige("E0813", span, msg, goal);
     }
 
     // ---------- executable code ----------
@@ -1669,17 +1712,8 @@ impl<'p, 'q> Enc<'p, 'q> {
                 // 2V-04b).
                 let elem = elem_ty(&self.ty(e));
                 let v = self.eval(value);
-                let mut ls = Vec::new();
-                elem_leaves(&elem, self.prog.t, "", &mut ls);
-                let mut terms = Vec::new();
-                flatten_elem(&v, &mut terms);
-                let consts: Vec<String> = ls
-                    .iter()
-                    .zip(terms)
-                    .map(|((_, sort), x)| format!("((as const (Array Int {sort})) {x})"))
-                    .collect();
                 Val::Arr {
-                    elem: Box::new(elem_template(&elem, self.prog.t, &mut consts.into_iter())),
+                    elem: Box::new(const_elems(&elem, &v, self.prog.t)),
                     len: count.to_string(),
                 }
             }
@@ -2140,6 +2174,106 @@ impl<'p, 'q> Enc<'p, 'q> {
             vals.push(build(pt, self.prog.t, &mut terms.into_iter()));
         }
         (vals, facts)
+    }
+
+    /// Rust `==` on values `a`, `b` of type `t` (backlog 2V-05): SMT
+    /// equality for scalars and enums without arrays; field by field for
+    /// structs; equal lengths and elements below the length for arrays;
+    /// for an enum with an array in a payload, the same variant with equal
+    /// payloads (the SMT equality of its datatype would compare the array
+    /// elements past the length).
+    fn ext_eq(&mut self, a: &Val, b: &Val, t: &TypeKind) -> String {
+        let tb = self.prog.t;
+        if let TypeKind::Ref { inner, .. } = t
+            && !is_array(t)
+        {
+            return self.ext_eq(a, b, &inner.kind.clone());
+        }
+        if let Some(fs) = struct_fields(t, tb) {
+            let fs = fs.to_vec();
+            let (Val::Struct(xs), Val::Struct(ys)) = (a, b) else {
+                panic!("struct values expected")
+            };
+            let parts: Vec<String> = fs
+                .iter()
+                .zip(xs.iter().zip(ys))
+                .map(|((_, ft), (x, y))| self.ext_eq(x, y, ft))
+                .collect();
+            return and(&parts);
+        }
+        if let Some(vs) = enum_variants(t, tb)
+            && has_array(t, tb)
+        {
+            let (sa, sb) = (a.s(), b.s());
+            let mut alts = Vec::new();
+            for (v, ps) in &vs {
+                let c = ctor(t, v);
+                let (pa, _) = self.payload(t, v, &sa);
+                let (pb, _) = self.payload(t, v, &sb);
+                let mut parts = vec![format!("((_ is {c}) {sa})"), format!("((_ is {c}) {sb})")];
+                for ((x, y), pt) in pa.iter().zip(&pb).zip(ps) {
+                    parts.push(self.ext_eq(x, y, pt));
+                }
+                alts.push(and(&parts));
+            }
+            return format!("(or {})", alts.join(" "));
+        }
+        if is_array(t) {
+            let e = elem_ty(t);
+            // A fixed length up to UNROLL_EQ: element by element, without a
+            // quantifier (the solver decides it, and a counterexample shows it).
+            let fixed = match value_ty(t) {
+                TypeKind::Array(_, n) => usize::try_from(*n).ok(),
+                _ => None,
+            };
+            if let Some(n) = fixed.filter(|n| *n <= UNROLL_EQ) {
+                let mut parts = Vec::new();
+                for k in 0..n {
+                    let (x, y) = match (a, b) {
+                        (Val::A { elems: e1, .. }, Val::A { elems: e2, .. }) => (
+                            Val::S(format!("(select {e1} {k})")),
+                            Val::S(format!("(select {e2} {k})")),
+                        ),
+                        (Val::Arr { elem: e1, .. }, Val::Arr { elem: e2, .. }) => (
+                            select_val(e1, &k.to_string()),
+                            select_val(e2, &k.to_string()),
+                        ),
+                        _ => panic!("array values expected"),
+                    };
+                    parts.push(self.ext_eq(&x, &y, &e));
+                }
+                // Both lengths are the type's `n`.
+                return and(&parts);
+            }
+            let k = sym(&format!("eq!{}", self.bound));
+            self.bound += 1;
+            let (len_a, len_b, body, pat) = match (a, b) {
+                (Val::A { elems: e1, len: l1 }, Val::A { elems: e2, len: l2 }) => {
+                    let x = Val::S(format!("(select {e1} {k})"));
+                    let y = Val::S(format!("(select {e2} {k})"));
+                    let body = self.ext_eq(&x, &y, &e);
+                    (l1, l2, body, format!("({}) :pattern ({})", x.s(), y.s()))
+                }
+                (Val::Arr { elem: e1, len: l1 }, Val::Arr { elem: e2, len: l2 }) => {
+                    let x = select_val(e1, &k);
+                    let y = select_val(e2, &k);
+                    let body = self.ext_eq(&x, &y, &e);
+                    let (mut ts, mut us) = (Vec::new(), Vec::new());
+                    flatten_elem(&x, &mut ts);
+                    flatten_elem(&y, &mut us);
+                    let pat = format!("({}) :pattern ({})", ts[0], us[0]);
+                    (l1, l2, body, pat)
+                }
+                _ => panic!("array values expected"),
+            };
+            return format!(
+                "(and (= {len_a} {len_b}) (forall (({k} Int)) (! (=> (and (<= 0 {k}) (< {k} {len_a})) {body}) :pattern {pat})))"
+            );
+        }
+        if *t == TypeKind::Unit {
+            return "true".into();
+        }
+        format!("(= {} {})", a.s(), b.s())
     }
 
     /// Arms `i..` of an executable `match` on `sv`: each arm runs under its
@@ -2604,230 +2738,12 @@ fn collect<'p>(m: &'p Mod, prefix: &str, out: &mut BTreeMap<String, Def<'p>>) {
     }
 }
 
-/// The first place a program's definitions touch a data type (backlog 2B-04:
-/// checked, but neither encoded nor compiled yet).
-pub(crate) fn program_data_type_use(p: &Program, t: &Tables) -> Option<Span> {
-    let mut defs = BTreeMap::new();
-    for m in &p.mods {
-        collect(m, "", &mut defs);
-    }
-    let tainted = data_spec_fns(&defs, t, Gate::Codegen);
-    defs.iter()
-        .find_map(|(path, d)| data_type_use(d.f, path, t, &tainted, Gate::Codegen))
-}
-
-/// Which data types a back end cannot handle yet.
-#[derive(Clone, Copy, PartialEq)]
-enum Gate {
-    /// The proof gate encodes structs, enums and slices of them (backlog
-    /// 2B-05a..c), not yet array elements holding an array.
-    Prover,
-    /// The code generator, the same shapes (backlog 2B-06).
-    Codegen,
-}
-
-impl Gate {
-    fn rejects(self, t: &TypeKind, tb: &Tables) -> bool {
-        match self {
-            // The code generator lowers what the prover encodes (2B-06, 2G-04).
-            Gate::Codegen => Gate::Prover.rejects(t, tb),
-            Gate::Prover => match t {
-                TypeKind::Named { .. } => match (struct_fields(t, tb), enum_variants(t, tb)) {
-                    (Some(fs), _) => fs.iter().any(|(_, ft)| self.rejects(ft, tb)),
-                    (_, Some(vs)) => vs
-                        .iter()
-                        .any(|(_, ps)| ps.iter().any(|pt| self.rejects(pt, tb))),
-                    _ => true,
-                },
-                TypeKind::Array(e, _) | TypeKind::Slice(e) => self.rejects(&e.kind, tb),
-                TypeKind::Ref { inner, .. } => self.rejects(&inner.kind, tb),
-                _ => false,
-            },
-        }
-    }
-}
-
-/// The spec fns whose definition touches a data type the gate rejects,
-/// closed over calls: their axioms would carry it into any obligation that
-/// reveals them.
-fn data_spec_fns(defs: &BTreeMap<String, Def>, t: &Tables, gate: Gate) -> BTreeSet<String> {
-    let mut tainted = BTreeSet::new();
-    loop {
-        let next: BTreeSet<String> = defs
-            .iter()
-            .filter(|(path, d)| {
-                d.f.kind == FnKind::Spec && data_type_use(d.f, path, t, &tainted, gate).is_some()
-            })
-            .map(|(p, _)| p.clone())
-            .collect();
-        if next == tainted {
-            return tainted;
-        }
-        tainted = next;
-    }
-}
-
 pub(crate) fn holds_vec(t: &TypeKind) -> bool {
     match t {
         TypeKind::Vec(_) => true,
         TypeKind::Ref { inner, .. } => holds_vec(&inner.kind),
         _ => false,
     }
-}
-
-/// Where a definition touches a data type `gate` rejects: a parameter, the
-/// result, a local, any expression's type, or a call to a spec fn that does.
-/// Such definitions are E0814 until their back end handles them.
-fn data_type_use(
-    f: &FnDef,
-    path: &str,
-    t: &Tables,
-    tainted: &BTreeSet<String>,
-    gate: Gate,
-) -> Option<Span> {
-    struct W<'a> {
-        t: &'a Tables,
-        tainted: &'a BTreeSet<String>,
-        gate: Gate,
-        locals: Option<&'a BTreeMap<String, TypeKind>>,
-    }
-    impl W<'_> {
-        fn local_rejected(&self, name: &str) -> bool {
-            self.locals
-                .and_then(|m| m.get(name))
-                .is_some_and(|ty| self.gate.rejects(ty, self.t))
-        }
-        fn block(&self, b: &Block) -> Option<Span> {
-            for s in &b.stmts {
-                let found = match s {
-                    Stmt::LetFields { span, .. } => Some(*span),
-                    Stmt::Let { name, ty, init, .. } => {
-                        if self.local_rejected(&name.name) {
-                            return Some(ty.span);
-                        }
-                        self.expr(init)
-                    }
-                    Stmt::Assign { target, value, .. } => {
-                        self.expr(target).or_else(|| self.expr(value))
-                    }
-                    Stmt::While {
-                        cond,
-                        invariants,
-                        decreases,
-                        body,
-                        ..
-                    } => self
-                        .expr(cond)
-                        .or_else(|| invariants.iter().find_map(|x| self.expr(x)))
-                        .or_else(|| decreases.as_ref().and_then(|x| self.expr(x)))
-                        .or_else(|| self.block(body)),
-                    Stmt::Assert { cond, .. } => self.expr(cond),
-                    Stmt::Expr(e) => self.expr(e),
-                };
-                if found.is_some() {
-                    return found;
-                }
-            }
-            b.tail.as_deref().and_then(|e| self.expr(e))
-        }
-        fn expr(&self, e: &Expr) -> Option<Span> {
-            let ty = self.t.types.get(&(e.span.file, e.span.lo, e.span.hi));
-            if ty.is_some_and(|ty| self.gate.rejects(ty, self.t)) {
-                return Some(e.span);
-            }
-            let sub: Vec<&Expr> = match &e.kind {
-                ExprKind::Call { path, args } => {
-                    let name = path
-                        .iter()
-                        .map(|i| i.name.as_str())
-                        .collect::<Vec<_>>()
-                        .join("::");
-                    let spec = self
-                        .tainted
-                        .iter()
-                        .any(|p| p == &name || p.ends_with(&format!("::{name}")));
-                    // A checked call that names no function builds a variant.
-                    let variant = matches!(name.as_str(), "Some" | "Ok" | "Err")
-                        || (path.len() > 1
-                            && !self
-                                .t
-                                .fns
-                                .iter()
-                                .any(|(p, _)| p == &name || p.ends_with(&format!("::{name}"))));
-                    let _ = variant;
-                    if spec {
-                        return Some(e.span);
-                    }
-                    args.iter().collect()
-                }
-                ExprKind::Method { recv, args, .. } => {
-                    std::iter::once(&**recv).chain(args.iter()).collect()
-                }
-                ExprKind::Index { base, index } => vec![base, index],
-                ExprKind::Unary(_, x)
-                | ExprKind::Ref { expr: x, .. }
-                | ExprKind::Old(x)
-                | ExprKind::Trigger(x)
-                | ExprKind::Deref(x) => vec![x],
-                ExprKind::Field { base, .. } => vec![base],
-                ExprKind::Binary(_, l, r) => vec![l, r],
-                ExprKind::If { cond, then, els } => {
-                    if let Some(sp) = self.block(then) {
-                        return Some(sp);
-                    }
-                    std::iter::once(&**cond).chain(els.as_deref()).collect()
-                }
-                ExprKind::Block(b) => return self.block(b),
-                ExprKind::Array(xs) => xs.iter().collect(),
-                ExprKind::Repeat { value, .. } => vec![value],
-                ExprKind::Forall { body, .. } => vec![body],
-                ExprKind::StructLit { fields, rest, .. } => fields
-                    .iter()
-                    .map(|(_, x)| x)
-                    .chain(rest.as_deref())
-                    .collect(),
-                ExprKind::Match { scrut, arms } => std::iter::once(&**scrut)
-                    .chain(arms.iter().map(|a| &a.body))
-                    .collect(),
-                ExprKind::Path(_)
-                | ExprKind::Int(_)
-                | ExprKind::ByteLit(_)
-                | ExprKind::ByteStr(_)
-                | ExprKind::Bool(_)
-                | ExprKind::Unit
-                | ExprKind::Var(_)
-                | ExprKind::Error => Vec::new(),
-            };
-            sub.into_iter().find_map(|x| self.expr(x))
-        }
-    }
-    let w = W {
-        t,
-        tainted,
-        gate,
-        locals: t.locals.get(path),
-    };
-    for p in &f.params {
-        if w.local_rejected(&p.name.name) {
-            return Some(p.ty.span);
-        }
-    }
-    if let Some(sig) = t.fns.get(path)
-        && gate.rejects(&sig.ret, t)
-    {
-        return Some(f.ret.ty.span);
-    }
-    let clauses = f
-        .requires
-        .iter()
-        .chain(&f.ensures)
-        .chain(f.decreases.iter());
-    for c in clauses {
-        if let Some(sp) = w.expr(c) {
-            return Some(sp);
-        }
-    }
-    w.block(&f.body)
 }
 
 fn param_sorts(params: &[TypeKind], tb: &Tables) -> Vec<String> {
@@ -2956,7 +2872,7 @@ impl<'p> Prog<'p> {
     }
 
     /// Definitional axiom of a spec fn (ADR-0017 §4).
-    fn axiom(&self, path: &str) -> (String, Vec<(Span, String)>, AxiomParts) {
+    fn axiom(&self, path: &str) -> (String, AxiomParts) {
         let d = &self.defs[path];
         let mut enc = Enc::new(self, path, &d.mod_path);
         let mut binders = Vec::new();
@@ -3010,7 +2926,7 @@ impl<'p> Prog<'p> {
             guard,
             body: bodies.first().cloned().unwrap_or_default(),
         };
-        (ax.join("\n"), enc.unsupported, parts)
+        (ax.join("\n"), parts)
     }
 }
 
@@ -3211,7 +3127,6 @@ pub fn preconditions_satisfiable(p: &Program, t: &Tables) -> Vec<(String, Span, 
     let prog = Prog { defs, t };
     let spec_decls = prog.spec_decls();
     let dts = datatypes(t);
-    let tainted = data_spec_fns(&prog.defs, t, Gate::Prover);
     let mut solver: Option<Solver> = None;
     let mut solver_down = crate::toolchain::check_z3().is_err();
     let mut out = Vec::new();
@@ -3226,10 +3141,9 @@ pub fn preconditions_satisfiable(p: &Program, t: &Tables) -> Vec<(String, Span, 
         let mut axioms: Vec<(String, String)> = Vec::new();
         let mut axiom_parts: Vec<AxiomParts> = Vec::new();
         for u in uses_of(d.f, &d.mod_path, &t.fns) {
-            let (ax, unsup, parts) = prog.axiom(&u);
+            let (ax, parts) = prog.axiom(&u);
             axioms.push((spec_key(&u, t), ax));
             axiom_parts.push(parts);
-            enc.unsupported.extend(unsup);
         }
         for prm in &d.f.params {
             let ty = enc.local_ty(&prm.name.name);
@@ -3241,10 +3155,7 @@ pub fn preconditions_satisfiable(p: &Program, t: &Tables) -> Vec<(String, Span, 
             let g = enc.spec(r, &env, &old).s();
             enc.pc.push(g);
         }
-        if !enc.unsupported.is_empty()
-            || solver_down
-            || data_type_use(d.f, path, t, &tainted, Gate::Prover).is_some()
-        {
+        if solver_down {
             out.push((path.clone(), span, None));
             continue;
         }
@@ -3362,7 +3273,6 @@ fn verify_impl(
     // included (ADR-0018 §1), so nothing carries over between obligations.
     // Started on the first obligation the cache does not hold, replaced when
     // too old to take on another definition (`Solver::reusable`).
-    let tainted = data_spec_fns(&prog.defs, t, Gate::Prover);
     let mut solver: Option<Solver> = None;
     let mut stopped = false;
     for (path, d) in &prog.defs {
@@ -3389,13 +3299,6 @@ fn verify_impl(
             continue;
         }
         let mut enc = Enc::new(&prog, path, &d.mod_path);
-        let data = data_type_use(d.f, path, t, &tainted, Gate::Prover);
-        if let Some(sp) = data {
-            enc.unsupported.push((
-                sp,
-                "this data type is not supported by the proof gate yet (backlog 2B-05d)".into(),
-            ));
-        }
         let header = header(seed);
         // Definitional axioms of revealed spec fns, filtered per obligation.
         let mut axioms: Vec<(String, String)> = Vec::new();
@@ -3421,10 +3324,9 @@ fn verify_impl(
             }
             FnKind::Exec => {
                 for u in uses_of(d.f, &d.mod_path, &t.fns) {
-                    let (ax, unsup, parts) = prog.axiom(&u);
+                    let (ax, parts) = prog.axiom(&u);
                     axioms.push((spec_key(&u, t), ax));
                     axiom_parts.push(parts);
-                    enc.unsupported.extend(unsup);
                 }
                 for prm in &d.f.params {
                     let ty = enc.local_ty(&prm.name.name);
@@ -3459,14 +3361,6 @@ fn verify_impl(
                     );
                 }
             }
-        }
-
-        for (sp, msg) in &enc.unsupported {
-            diags.push(Diag::new("E0814", *sp, msg.clone()));
-        }
-        // Data type terms have no encoding yet (2B-05): nothing to solve.
-        if data.is_some() {
-            enc.obls.clear();
         }
 
         if REACH.with(|r| r.get()) {
@@ -3520,7 +3414,7 @@ fn verify_impl(
         let mut solver_down = false;
         let mut def_proved: Vec<ObKey> = Vec::new();
         for (k, o) in enc.obls.iter().enumerate() {
-            if stop_at_failure && (failed > 0 || !enc.unsupported.is_empty()) {
+            if stop_at_failure && failed > 0 {
                 break;
             }
             let q = format!(
@@ -3694,11 +3588,11 @@ fn verify_impl(
                 }
             }
         }
-        stopped = stop_at_failure && (failed > 0 || !enc.unsupported.is_empty());
+        stopped = stop_at_failure && failed > 0;
         let status = FnStatus {
             path: path.clone(),
             obligations: enc.obls.len(),
-            failed: failed + enc.unsupported.len(),
+            failed,
             rlimit_total,
             rlimit_max,
         };
@@ -3991,14 +3885,83 @@ fn show_leaves<'a>(
         return format!("{short} {{ {} }}", shown.join(", "));
     }
     if is_array(t) {
-        it.next();
-        it.next();
+        // A payload array of scalars: its elements read from the model's
+        // array value (2V-05); anything else is elided.
+        let (elems, len) = (it.next(), it.next());
+        let e = elem_ty(t);
+        let n = len
+            .map(smt::render_value)
+            .and_then(|l| l.parse::<i64>().ok());
+        if let (Some(a), Some(n)) = (elems, n)
+            && (is_scalar_ty(&e) || enum_variants(&e, tb).is_some())
+        {
+            let shown: Option<Vec<String>> = (0..n.min(SHOW as i64))
+                .map(|k| {
+                    model_select(a, k).map(|x| match enum_variants(&e, tb) {
+                        Some(_) => show_variant(&x, &e, tb),
+                        None => smt::render_value(&x),
+                    })
+                })
+                .collect();
+            if let Some(xs) = shown {
+                let more = if n > SHOW as i64 { ", .." } else { "" };
+                return format!("[{}{more}]", xs.join(", "));
+            }
+        }
         return "[..]".into();
     }
     match it.next() {
         Some(x) if enum_variants(t, tb).is_some() => show_variant(x, t, tb),
         Some(x) => smt::render_value(x),
         None => String::new(),
+    }
+}
+
+fn is_scalar_ty(t: &TypeKind) -> bool {
+    matches!(
+        t,
+        TypeKind::I64 | TypeKind::U64 | TypeKind::Usize | TypeKind::U8 | TypeKind::Bool
+    )
+}
+
+/// Element `k` of an array value as Z3 prints it in a model: a constant
+/// array, `store`s over one, or a `lambda` whose body is an `ite` chain on
+/// the index. `None` for any other form.
+fn model_select(a: &smt::Sexp, k: i64) -> Option<smt::Sexp> {
+    use smt::Sexp::{Atom, List};
+    let num = |x: &smt::Sexp| smt::render_value(x).parse::<i64>().ok();
+    let List(xs) = a else { return None };
+    match xs.as_slice() {
+        // ((as const (Array Int T)) v)
+        [List(h), v] if matches!(h.first(), Some(Atom(x)) if x == "as") => Some(v.clone()),
+        [Atom(s), arr, i, v] if s == "store" => {
+            if num(i)? == k {
+                Some(v.clone())
+            } else {
+                model_select(arr, k)
+            }
+        }
+        [Atom(l), List(params), body] if l == "lambda" => {
+            let List(p) = params.first()? else {
+                return None;
+            };
+            let Atom(x) = p.first()? else { return None };
+            let mut e = body.clone();
+            loop {
+                match &e {
+                    List(ys) if ys.len() == 4 && ys[0] == Atom("ite".into()) => {
+                        let List(c) = &ys[1] else { return None };
+                        let hit = c.len() == 3
+                            && c[0] == Atom("=".into())
+                            && ((c[1] == Atom(x.clone()) && num(&c[2]) == Some(k))
+                                || (c[2] == Atom(x.clone()) && num(&c[1]) == Some(k)));
+                        e = if hit { ys[2].clone() } else { ys[3].clone() };
+                    }
+                    other => return Some(other.clone()),
+                }
+            }
+        }
+        _ => None,
     }
 }
 

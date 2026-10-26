@@ -82,3 +82,21 @@ mod geo {
         s
     }
 }
+
+#[summary("배열 페이로드의 `==`: 바뀐 원소는 같지 않다 (backlog 2V-05)")]
+mod cells {
+    enum Cell { Empty, Full([i64; 2]) }
+
+    spec fn same(a: Cell, b: Cell) -> bool { a == b }
+
+    #[effects(pure)]
+    #[uses(same)]
+    fn swapped(c: Cell) -> (r: Cell)
+        ensures same(r, c),
+    {
+        match c {
+            Cell::Empty => Cell::Empty,
+            Cell::Full(w) => Cell::Full([w[1], w[0]]),
+        }
+    }
+}

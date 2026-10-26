@@ -200,3 +200,49 @@ mod arrs {
         t.p[0].x + i64::try_from(t.p.len()).unwrap() - 3
     }
 }
+
+#[summary("명세의 배열 값과 배열 `==` (backlog 2V-05)")]
+mod speclit {
+    struct P { x: i64, y: i64 }
+
+    spec fn is_123(a: [i64; 3]) -> bool { a == [1, 2, 3] }
+
+    spec fn zeros(a: [i64; 4]) -> bool { a == [0; 4] }
+
+    spec fn zeros_below(a: [i64; 4], i: usize) -> bool { forall|k: usize| k < i ==> #[trigger] a[k] == 0 }
+
+    spec fn points(a: [P; 2], v: i64) -> bool { a == [P { x: v, y: 0 }, P { x: 0, y: v }] }
+
+    #[effects(pure)]
+    #[uses(is_123)]
+    fn make() -> (r: [i64; 3])
+        ensures is_123(r),
+    {
+        [1, 2, 3]
+    }
+
+    #[effects(pure)]
+    #[uses(zeros, zeros_below)]
+    fn clear() -> (r: [i64; 4])
+        ensures zeros(r),
+    {
+        let mut a: [i64; 4] = [5; 4];
+        let mut i: usize = 0;
+        while i < 4
+            invariant i <= 4, zeros_below(a, i),
+            decreases 4 - i,
+        {
+            a[i] = 0;
+            i = i + 1;
+        }
+        a
+    }
+
+    #[effects(pure)]
+    #[uses(points)]
+    fn pts(v: i64) -> (r: [P; 2])
+        ensures points(r, v),
+    {
+        [P { x: v, y: 0 }, P { x: 0, y: v }]
+    }
+}

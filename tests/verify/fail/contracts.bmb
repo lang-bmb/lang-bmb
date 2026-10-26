@@ -70,3 +70,12 @@ mod mutual {
         if n == 0 { 0 } else { ping(n - 1) }
     }
 }
+
+#[summary("forall 안의 재귀 호출: k = n이면 측도가 줄지 않는다 (backlog 2V-05)")]
+mod frec {
+    spec fn loops(n: usize) -> bool
+        decreases n,
+    {
+        n == 0 || (forall|k: usize| k <= n ==> #[trigger] loops(k))
+    }
+}

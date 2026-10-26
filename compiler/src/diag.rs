@@ -223,7 +223,6 @@ pub const CODES: &[(&str, &str)] = &[
         "proof gate cannot run (solver missing, wrong version or failed)",
     ),
     ("E0813", "recursive spec function may not terminate"),
-    ("E0814", "construct not supported by the proof gate"),
     ("E0815", "integer conversion may be out of range"),
     ("E0816", "a `Vec` may exceed its maximum length"),
     // W09xx: contract lint (`bmb lint` only; severity "warning", never from `check`/`verify`)
@@ -368,6 +367,12 @@ pub fn json_str(s: &str) -> String {
     o
 }
 
+/// Codes no longer emitted. They are listed so they are never reused.
+pub const RETIRED: &[(&str, &str)] = &[(
+    "E0814",
+    "construct not supported by the proof gate (retired by backlog 2V-05: every construct is encoded)",
+)];
+
 pub fn codes_jsonl() -> String {
     let mut out = String::new();
     for (c, d) in CODES {
@@ -404,6 +409,10 @@ pub fn codes_markdown() -> String {
         for (c, d) in CODES.iter().filter(|(c, _)| c.starts_with(prefix)) {
             out.push_str(&format!("| {c} | {} |\n", d.replace('|', "\\|")));
         }
+    }
+    out.push_str("\n## 은퇴한 코드(다시 쓰지 않는다)\n\n| 코드 | 뜻 |\n| --- | --- |\n");
+    for (c, d) in RETIRED {
+        out.push_str(&format!("| {c} | {} |\n", d.replace('|', "\\|")));
     }
     out
 }

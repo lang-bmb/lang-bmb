@@ -18,4 +18,3 @@
 {"code":"E0504","severity":"error","message":"`helper` is executable and cannot be called from a specification","file":"err/specs.bmb","line":89,"col":16,"end_line":89,"end_col":25}
 {"code":"E0511","severity":"error","message":"`forall` has no `#[trigger]`","file":"err/specs.bmb","line":96,"col":9,"end_line":96,"end_col":50,"fix":{"message":"mark a term that mentions every bound variable, e.g. `#[trigger] a[i]`"}}
 {"code":"E0512","severity":"error","message":"no trigger mentions bound variable `j`","file":"err/specs.bmb","line":100,"col":26,"end_line":100,"end_col":27}
-{"code":"E0503","severity":"error","message":"array literals are only allowed in executable code","file":"err/specs.bmb","line":106,"col":35,"end_line":106,"end_col":41}

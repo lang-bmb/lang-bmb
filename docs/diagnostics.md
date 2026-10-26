@@ -147,7 +147,6 @@
 | E0811 | solver could not decide (resource limit or incompleteness) |
 | E0812 | proof gate cannot run (solver missing, wrong version or failed) |
 | E0813 | recursive spec function may not terminate |
-| E0814 | construct not supported by the proof gate |
 | E0815 | integer conversion may be out of range |
 | E0816 | a `Vec` may exceed its maximum length |
 
@@ -160,3 +159,9 @@
 | W0903 | postcondition is not used by any caller's proof |
 | W0904 | the specification does not distinguish this change to the body (the mutant still verifies) |
 | W0905 | a point of a verified function is unreachable in its proof: what follows is proved vacuously |
+
+## 은퇴한 코드(다시 쓰지 않는다)
+
+| 코드 | 뜻 |
+| --- | --- |
+| E0814 | construct not supported by the proof gate (retired by backlog 2V-05: every construct is encoded) |

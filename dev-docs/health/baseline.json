@@ -2,7 +2,7 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 3565616,
+    "V4_rlimit_total": 3587810,
     "V5_rlimit_headroom": 0.014,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0,
@@ -14,12 +14,12 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 19852,
+    "S4_stage0_rust_lines": 19796,
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
     "P1_runnable_programs": 19,
-    "P2_bmb_lines": 7024,
-    "P3_errors_with_help": 0.7062,
+    "P2_bmb_lines": 7159,
+    "P3_errors_with_help": 0.7071,
     "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 8
@@ -439,6 +439,28 @@
         "P3_errors_with_help": [
           0.708,
           0.7062
+        ]
+      }
+    },
+    {
+      "date": "2026-10-26",
+      "reason": "2V-05: 명세 코퍼스 증가(P2), 오류 안내 비율 P3 0.7071",
+      "changed": {
+        "V4_rlimit_total": [
+          3565616,
+          3587810
+        ],
+        "S4_stage0_rust_lines": [
+          19852,
+          19796
+        ],
+        "P2_bmb_lines": [
+          7024,
+          7159
+        ],
+        "P3_errors_with_help": [
+          0.7062,
+          0.7071
         ]
       }
     }

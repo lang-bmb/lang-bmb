@@ -59,8 +59,7 @@ fn an_unknown_local_suggests_the_nearest_one() {
 }
 
 /// Data types in signatures, impl functions and type-qualified calls pass the
-/// checker (backlog 2B-04); the proof gate reports them as E0814 until they
-/// are encoded (2B-05).
+/// checker (backlog 2B-04), are proved (2B-05) and compiled (2B-06).
 #[test]
 fn data_types_in_signatures_prove_and_compile() {
     const SRC: &str = r#"#[summary("data types in signatures (ADR-0026, backlog 2B-04)")]
