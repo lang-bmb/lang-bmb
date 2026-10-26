@@ -158,7 +158,18 @@ fn mk(kind: TypeKind) -> Box<Type> {
 }
 
 /// The help of E0402 for an array inside an array element (backlog 2B-14).
-const ARRAY_IN_ELEMENT: &str = "flatten the inner array: one array of length `N * M` indexed by `i * M + j`, or one array per field";
+const ARRAY_ELEMENT_HELP: &str = "an array element is a scalar, a struct or enum, or a fixed-size array; a growable element (`Vec`) is ADR-0047 (proposed)";
+
+/// Whether `e` may be the element of a fixed-size array (backlog 2V-04b):
+/// a scalar, a struct or enum, or such an array again; not a `Vec`.
+fn array_elem_ok(e: &TypeKind) -> bool {
+    match e {
+        TypeKind::Named { path, .. } => !(path.len() == 1 && path[0] == "Vec"),
+        TypeKind::Array(inner, _) => array_elem_ok(&inner.kind),
+        TypeKind::Error => true,
+        t => is_scalar(t),
+    }
+}
 
 impl<'a> Checker<'a> {
     pub fn new(diags: &'a mut Diags) -> Self {
@@ -393,25 +404,18 @@ impl<'a> Checker<'a> {
                 );
                 TypeKind::Error
             }
-            TypeKind::Array(e, _)
-                if !is_scalar(&e.kind)
-                    && !matches!(e.kind, TypeKind::Named { .. })
-                    && e.kind != TypeKind::Error =>
-            {
+            TypeKind::Array(e, _) if !array_elem_ok(&e.kind) => {
                 self.diags.push(
                     Diag::new(
                         "E0402",
                         t.span,
-                        "array elements must be scalars, structs or enums",
+                        "array elements must be scalars, structs, enums or arrays",
                     )
-                    .fix(ARRAY_IN_ELEMENT, None),
+                    .fix(ARRAY_ELEMENT_HELP, None),
                 );
                 TypeKind::Error
             }
-            TypeKind::Array(..) => {
-                let c = self.canon(t, mp, true);
-                self.data_array(&c, t.span)
-            }
+            TypeKind::Array(..) => self.canon(t, mp, true),
             TypeKind::Unit => {
                 self.err("E0402", t.span, "a field cannot have type `()`");
                 TypeKind::Error
@@ -1034,7 +1038,6 @@ impl<'a> Checker<'a> {
         for p in &f.params {
             self.check_param_type(&p.ty, f.kind);
             let ty = self.canon(&p.ty, mod_path, true);
-            let ty = self.data_array(&ty, p.ty.span);
             self.declare(&mut cx, &p.name, ty, false, true);
         }
         self.check_value_type(&f.ret.ty, "return type");
@@ -1044,11 +1047,6 @@ impl<'a> Checker<'a> {
             self.spec_vec(f.ret.ty.span);
         }
         let ret_ty = self.canon(&f.ret.ty, mod_path, true);
-        if let TypeKind::Array(..) = &f.ret.ty.kind {
-            // An array result is a value like a struct's (backlog 2V-04).
-            let c = self.canon(&f.ret.ty, mod_path, true);
-            self.data_array(&c, f.ret.ty.span);
-        }
 
         if f.kind == FnKind::Spec && (!f.requires.is_empty() || !f.ensures.is_empty()) {
             let sp = f.requires.first().or(f.ensures.first()).unwrap().span;
@@ -1112,9 +1110,7 @@ impl<'a> Checker<'a> {
         match &t.kind {
             TypeKind::Ref { mutable, inner } => match &inner.kind {
                 // `&[T]`, `&Point`, `&[Point]` (ADR-0026 §2).
-                TypeKind::Slice(e)
-                    if is_scalar(&e.kind) || matches!(e.kind, TypeKind::Named { .. }) =>
-                {
+                TypeKind::Slice(e) if array_elem_ok(&e.kind) => {
                     if *mutable && kind == FnKind::Spec {
                         self.err("E0402", t.span, "spec function parameters cannot be `&mut`");
                     }
@@ -1172,63 +1168,35 @@ impl<'a> Checker<'a> {
                 t.span,
                 "a bare slice is unsized; use `&[T]` as a parameter or `[T; N]`",
             ),
-            TypeKind::Array(e, _)
-                if !is_scalar(&e.kind)
-                    && !matches!(&e.kind, TypeKind::Named { path, .. } if !(path.len() == 1 && path[0] == "Vec"))
-                    && e.kind != TypeKind::Error =>
-            {
+            TypeKind::Array(e, _) if !array_elem_ok(&e.kind) => {
                 self.diags.push(
                     Diag::new(
                         "E0402",
                         t.span,
-                        "array elements must be scalars, structs or enums",
+                        "array elements must be scalars, structs, enums or arrays",
                     )
-                    .fix(ARRAY_IN_ELEMENT, None),
+                    .fix(ARRAY_ELEMENT_HELP, None),
                 );
             }
             _ => {}
         }
     }
 
-    /// An array of structs or enums (backlog 2B-14) whose elements hold no
-    /// array: the proof gate's boundary for data elements (E0814 otherwise).
-    fn data_array(&mut self, t: &TypeKind, span: Span) -> TypeKind {
-        if let TypeKind::Array(e, _) = t
-            && matches!(e.kind, TypeKind::Named { .. })
-            && self.holds_array(&e.kind, &mut BTreeSet::new())
-        {
-            self.diags.push(
-                Diag::new(
-                    "E0402",
-                    span,
-                    format!("array elements cannot hold arrays (`{}`)", ty_str(&e.kind)),
-                )
-                .fix(ARRAY_IN_ELEMENT, None),
-            );
-            return TypeKind::Error;
-        }
-        t.clone()
-    }
-
-    /// An element of an array literal or repeat: a scalar, or a struct or
-    /// enum without arrays (backlog 1B-35, 2B-14).
+    /// An element of an array literal or repeat: not a `Vec` (backlog
+    /// 1B-35, 2B-14, 2V-04b).
     fn literal_elem(&mut self, t: &TypeKind, span: Span) {
-        let bad = match t {
-            TypeKind::Array(..) | TypeKind::Vec(_) => true,
-            TypeKind::Named { .. } => self.holds_array(t, &mut BTreeSet::new()),
-            _ => false,
-        };
+        let bad = matches!(t, TypeKind::Vec(_));
         if bad {
             self.diags.push(
                 Diag::new(
                     "E0402",
                     span,
                     format!(
-                        "array elements are scalars, or structs and enums without arrays, found `{}`",
+                        "array elements are scalars, structs, enums or arrays, found `{}`",
                         ty_str(t)
                     ),
                 )
-                .fix(ARRAY_IN_ELEMENT, None),
+                .fix(ARRAY_ELEMENT_HELP, None),
             );
         }
     }
@@ -1440,7 +1408,6 @@ impl<'a> Checker<'a> {
                     );
                 }
                 let lty = self.canon(ty, &cx.mod_path.clone(), true);
-                let lty = self.data_array(&lty, ty.span);
                 let t = self.expr(cx, init, Some(&lty), mode);
                 if !self.deref_fix(&t, &lty, init) {
                     self.expect_ty(&t, &lty, init.span);
@@ -1555,10 +1522,13 @@ impl<'a> Checker<'a> {
                     TypeKind::Error
                 }
             },
-            // An element of an array field: `s.w[i] = v`, `p.q.w[i] = v`
-            // (backlog 2B-15). The base's type is recorded for the back ends
+            // An element of an array field or of an inner array: `s.w[i] = v`,
+            // `p.q.w[i] = v` (backlog 2B-15), `g[i][j] = v`, `b.r[i].c[j] = v`
+            // (2V-04b). The base's type is recorded for the back ends
             // (assignment targets have none otherwise).
-            ExprKind::Index { base, index } if matches!(base.kind, ExprKind::Field { .. }) => {
+            ExprKind::Index { base, index }
+                if matches!(base.kind, ExprKind::Field { .. } | ExprKind::Index { .. }) =>
+            {
                 let (bt, writable) = self.place_of(cx, base);
                 self.types
                     .insert((base.span.file, base.span.lo, base.span.hi), bt.clone());
@@ -1589,7 +1559,7 @@ impl<'a> Checker<'a> {
                     self.err(
                         "E0408",
                         target.span,
-                        "only `name[i]` and `s.f[i]` can be assigned",
+                        "only elements of a variable, a field or an element can be assigned",
                     );
                     return TypeKind::Error;
                 };

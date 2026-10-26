@@ -1,0 +1,56 @@
+#[summary("실행: 중첩 배열과 배열을 담은 원소 (backlog 2V-04b)")]
+mod gr {
+    struct Board { rows: [Row; 2] }
+
+    struct Row { cells: [i64; 3], n: usize }
+
+    spec fn bounded(g: &[[i64; 3]]) -> bool {
+        g.len() == 3 && (forall|i: usize, j: usize| i < 3 && j < 3 ==> small(#[trigger] g[i][j]))
+    }
+
+    #[effects(pure)]
+    #[uses(scaled, small)]
+    fn identity(v: i64) -> (r: [[i64; 3]; 3])
+        requires small(v),
+        ensures scaled(r, v),
+    {
+        let mut g: [[i64; 3]; 3] = [[0; 3]; 3];
+        g[0][0] = v;
+        g[1][1] = v;
+        g[2][2] = v;
+        g
+    }
+
+    #[effects(io)]
+    #[uses(bounded, scaled, small)]
+    fn main() -> () {
+        let g: [[i64; 3]; 3] = identity(7);
+        print_i64(g[0][0] + g[1][1] + g[2][2] + g[0][1]);
+        let mut h: [[i64; 3]; 3] = g;
+        h[2] = [1, 2, 3];
+        h[0][2] = 40;
+        print_i64(h[2][0] * 100 + h[2][2] * 10 + g[2][2]);
+        print_i64(h[0][2]);
+        print_i64(trace(&h));
+        let mut b: Board = Board { rows: [Row { cells: [1, 2, 3], n: 3 }, Row { cells: [4, 5, 6], n: 3 }] };
+        b.rows[1].cells[0] = 9;
+        let rs: [Row; 2] = b.rows;
+        print_i64(rs[1].cells[0] * 10 + rs[0].cells[2]);
+    }
+
+    spec fn scaled(g: [[i64; 3]; 3], v: i64) -> bool {
+        forall|i: usize, j: usize| i < 3 && j < 3 ==> #[trigger] g[i][j] == (if i == j { v } else { 0 })
+    }
+
+    spec fn small(n: i64) -> bool {
+        -1000 <= n && n <= 1000
+    }
+
+    #[effects(pure)]
+    #[uses(bounded, small)]
+    fn trace(g: &[[i64; 3]]) -> i64
+        requires bounded(g),
+    {
+        g[0][0] + g[1][1] + g[2][2]
+    }
+}

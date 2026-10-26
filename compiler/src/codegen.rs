@@ -78,6 +78,12 @@ fn is_data(t: &TypeKind) -> bool {
     matches!(value_ty(t), TypeKind::Named { .. })
 }
 
+/// Whether an array element of type `t` lives in memory as an aggregate:
+/// a struct, an enum or a fixed-size array (backlog 2V-04b).
+fn is_mem_elem(t: &TypeKind) -> bool {
+    is_data(t) || matches!(value_ty(t), TypeKind::Array(..))
+}
+
 /// Whether `t` is a `Vec` (through a reference).
 fn is_vec(t: &TypeKind) -> bool {
     matches!(value_ty(t), TypeKind::Vec(_))
@@ -664,7 +670,7 @@ impl<'p> Gen<'p> {
         let p = self.t();
         self.emit(format!(
             "{p} = getelementptr inbounds {}, ptr {ptr}, i64 {i}{note}",
-            data_ty(ety)
+            mem_ty(ety)
         ));
         p
     }
@@ -931,14 +937,14 @@ impl<'p> Gen<'p> {
                     _ => unreachable!(),
                 }
             }
-            ExprKind::Index { base, index } if is_data(&self.ty(e)) => {
+            ExprKind::Index { base, index } if is_mem_elem(&self.ty(e)) => {
                 let ety = self.ty(e);
                 let CVal::Arr { ptr, len } = self.array_of(base) else {
                     unreachable!()
                 };
                 let i = self.expr(index).imm();
                 let p = self.data_elem(e, &ptr, &len, &i, &ety);
-                CVal::Ptr { ptr: p, ty: ety }
+                self.read(&p, &ety)
             }
             ExprKind::Index { base, index } => {
                 let (ptr, ty) = self.elem_ptr(e, base, index);
@@ -1068,7 +1074,7 @@ impl<'p> Gen<'p> {
             }
             ExprKind::Block(b) => self.block_expr(b),
             ExprKind::Ref { expr, .. } => self.expr(expr),
-            ExprKind::Array(_) | ExprKind::Repeat { .. } if matches!(&self.ty(e), TypeKind::Array(el, _) if is_data(&el.kind)) =>
+            ExprKind::Array(_) | ExprKind::Repeat { .. } if matches!(&self.ty(e), TypeKind::Array(el, _) if is_mem_elem(&el.kind)) =>
             {
                 let ty = self.ty(e);
                 let ptr = self.temp(&ty);
@@ -1594,7 +1600,7 @@ impl<'p> Gen<'p> {
             let p = g.t();
             g.emit(format!(
                 "{p} = getelementptr inbounds {}, ptr {ptr}, i64 {k}",
-                data_ty(&et)
+                mem_ty(&et)
             ));
             p
         };
@@ -1808,7 +1814,7 @@ impl<'p> Gen<'p> {
             }
             Stmt::Let { name, init, .. }
                 if matches!(self.t.locals.get(&self.path).and_then(|m| m.get(&name.name)),
-                    Some(TypeKind::Array(el, _)) if is_data(&el.kind)) =>
+                    Some(TypeKind::Array(el, _)) if is_mem_elem(&el.kind)) =>
             {
                 let t = self.t.locals[&self.path][&name.name].clone();
                 let TypeKind::Array(el, n) = &t else {
@@ -1860,7 +1866,7 @@ impl<'p> Gen<'p> {
                         let v = self.expr(value).imm();
                         self.emit(format!("store {ty} {v}, ptr {ptr}"));
                     }
-                    Slot::Arr { ptr, ety, .. } if is_data(&ety) => {
+                    Slot::Arr { ptr, ety, .. } if is_mem_elem(&ety) => {
                         let t = self.t.locals[&self.path][&id.name].clone();
                         self.init_data_array(value, &ptr, &t);
                     }
@@ -1876,12 +1882,13 @@ impl<'p> Gen<'p> {
                 ExprKind::Index { base, .. }
                     if match &base.kind {
                         ExprKind::Var(id) => match &self.slots[&id.name] {
-                            Slot::Arr { ety, .. } => is_data(ety),
+                            Slot::Arr { ety, .. } => is_mem_elem(ety),
                             Slot::Data { ty, .. } => is_vec(ty) && is_data(&vec_elem(ty)),
                             Slot::Scalar { .. } => false,
                         },
                         // An array field (2B-14, 2B-15).
-                        _ => matches!(self.ty(base), TypeKind::Array(el, _) if is_data(&el.kind)),
+                        // An element of an array field or of an inner array.
+                        _ => true,
                     } =>
                 {
                     // Rust evaluates the value, then the place.

@@ -3,9 +3,13 @@
 {"code":"E0802","severity":"error","message":"postcondition `at_y` may not hold in `geo::wrong_field`; counterexample: a = [Point { x: 10, y: 3 }] (len 1), i = 0, v = -9223372036854768089","file":"fail/slices.bmb","line":31,"col":17,"end_line":31,"end_col":30}
 {"code":"E0802","severity":"error","message":"postcondition `at_y` may not hold in `geo::after_call`; counterexample: a = [Point { x: 13, y: 7 }] (len 1), i = 0","file":"fail/slices.bmb","line":49,"col":17,"end_line":49,"end_col":30}
 {"code":"E0810","severity":"error","message":"assertion may not hold in `geo::enum_elem`; counterexample: s = [Shape::Dot, Shape::Dot, Shape::Dot, Shape::Dot, ..] (len 7720)","file":"fail/slices.bmb","line":60,"col":13,"end_line":60,"end_col":34}
+{"code":"E0805","severity":"error","message":"index may be out of bounds in `geo::inner_index`; counterexample: g = [[-1, -1, -1] (len 3)] (len 1), i = 0, j = 3","file":"fail/slices.bmb","line":72,"col":9,"end_line":72,"end_col":16}
+{"code":"E0802","severity":"error","message":"postcondition `corner` may not hold in `geo::set_corner`; counterexample: v = -1","file":"fail/slices.bmb","line":81,"col":17,"end_line":81,"end_col":29}
 {"def":"geo::after_call","status":"failed","obligations":2,"failed":1,"rlimit":69614,"rlimit_max":68094}
 {"def":"geo::enum_elem","status":"failed","obligations":2,"failed":1,"rlimit":3879,"rlimit_max":3063}
+{"def":"geo::inner_index","status":"failed","obligations":2,"failed":1,"rlimit":118578,"rlimit_max":116214}
 {"def":"geo::overflow","status":"failed","obligations":3,"failed":1,"rlimit":53329,"rlimit_max":50247}
+{"def":"geo::set_corner","status":"failed","obligations":4,"failed":1,"rlimit":3546,"rlimit_max":2163}
 {"def":"geo::touch","status":"verified","obligations":1,"failed":0,"rlimit":1448,"rlimit_max":1448}
 {"def":"geo::unchecked","status":"failed","obligations":1,"failed":1,"rlimit":517,"rlimit_max":517}
 {"def":"geo::wrong_field","status":"failed","obligations":2,"failed":1,"rlimit":7590,"rlimit_max":4885}

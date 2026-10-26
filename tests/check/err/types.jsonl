@@ -24,5 +24,4 @@
 {"code":"E0401","severity":"error","message":"expected `i64`, found `bool`","file":"err/types.bmb","line":93,"col":25,"end_line":93,"end_col":34}
 {"code":"E0410","severity":"error","message":"`x` is passed as `&mut` and also used by another argument","file":"err/types.bmb","line":105,"col":21,"end_line":105,"end_col":45}
 {"code":"E0410","severity":"error","message":"`x` is passed as `&mut` and also used by another argument","file":"err/types.bmb","line":106,"col":21,"end_line":106,"end_col":45}
-{"code":"E0402","severity":"error","message":"array elements are scalars, or structs and enums without arrays, found `[i64; 1]`","file":"err/types.bmb","line":114,"col":23,"end_line":114,"end_col":26,"fix":{"message":"flatten the inner array: one array of length `N * M` indexed by `i * M + j`, or one array per field"}}
 {"code":"E0406","severity":"error","message":"array length is too large","file":"err/types.bmb","line":119,"col":22,"end_line":119,"end_col":42}

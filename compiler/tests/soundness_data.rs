@@ -1,8 +1,10 @@
 //! Soundness fuzzing of the proof gate over data types (backlog 2B-09).
 //!
 //! Random functions build a struct (fields written in a random order), may
-//! update a field, pick an enum variant under a random condition, `match` it
-//! and return an integer or a struct. As in `soundness.rs`, an independent
+//! update a field, may route it through a nested array (backlog 2V-04b: a
+//! 2x2 grid of the values, one cell written, one cell read back), pick an
+//! enum variant under a random condition, `match` it and return an integer
+//! or a struct. As in `soundness.rs`, an independent
 //! interpreter checks every claim:
 //!
 //! - a verified function, on any input that satisfies its precondition, never
@@ -40,6 +42,9 @@ struct DFunc {
     b_first: bool,
     /// `p.a = ..` after the literal, over `x`, `y`, `p.a`, `p.b`.
     upd: Option<E>,
+    /// `let mut g: [[i64; 2]; 2] = [[x, y], [p.a, p.b]]; g[w] = val;
+    /// p.b = g[r];` with `w`, `r` cells (row, column).
+    grid: Option<Grid>,
     /// `let e: E = if cond { first } else { second };` (no `if` without cond).
     cond: Option<C>,
     first: Ctor,
@@ -51,6 +56,12 @@ struct DFunc {
     /// Returns `P { a: <match>, b: p.b }` (else the match value).
     returns_p: bool,
     post: P,
+}
+
+struct Grid {
+    w: (usize, usize),
+    val: E,
+    r: (usize, usize),
 }
 
 fn gen_ctor(rng: &mut Rng, vars: &[String]) -> Ctor {
@@ -76,6 +87,11 @@ fn gen_dfunc(rng: &mut Rng, k: usize) -> DFunc {
         pb: gen_e(rng, &xy, 2),
         b_first: rng.chance(50),
         upd: rng.chance(50).then(|| gen_e(rng, &pv, 2)),
+        grid: rng.chance(50).then(|| Grid {
+            w: (rng.below(2), rng.below(2)),
+            val: gen_e(rng, &pv, 2),
+            r: (rng.below(2), rng.below(2)),
+        }),
         cond: rng.chance(60).then(|| gen_c(rng, &pv, 1)),
         first: gen_ctor(rng, &pv),
         second: gen_ctor(rng, &pv),
@@ -131,6 +147,17 @@ impl DFunc {
         if let Some(u) = &self.upd {
             let _ = writeln!(t, "        p.a = {};", e_text(u));
         }
+        if let Some(g) = &self.grid {
+            let _ = writeln!(
+                t,
+                "        let mut g: [[i64; 2]; 2] = [[x, y], [p.a, p.b]];\n        g[{}][{}] = {};\n        p.b = g[{}][{}];",
+                g.w.0,
+                g.w.1,
+                e_text(&g.val),
+                g.r.0,
+                g.r.1
+            );
+        }
         let pick = match &self.cond {
             Some(c) => format!(
                 "if {} {{ {} }} else {{ {} }}",
@@ -173,6 +200,11 @@ impl DFunc {
         if let Some(u) = &self.upd {
             let v = e_eval(u, &env)?;
             env.push(("p.a".into(), v));
+        }
+        if let Some(g) = &self.grid {
+            let mut cells = [[x, y], [lookup(&env, "p.a"), lookup(&env, "p.b")]];
+            cells[g.w.0][g.w.1] = e_eval(&g.val, &env)?;
+            env.push(("p.b".into(), cells[g.r.0][g.r.1]));
         }
         let chosen = match &self.cond {
             Some(c) if !c_eval(c, &env)? => &self.second,

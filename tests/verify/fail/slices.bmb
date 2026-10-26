@@ -60,4 +60,28 @@ mod geo {
             assert(is_dot(s, 0));
         }
     }
+
+    // An element of an inner array, out of bounds (backlog 2V-04b).
+    spec fn row_idx(g: &[[i64; 3]], i: usize) -> bool { i < g.len() }
+
+    #[effects(pure)]
+    #[uses(row_idx)]
+    fn inner_index(g: &[[i64; 3]], i: usize, j: usize) -> i64
+        requires row_idx(g, i),
+    {
+        g[i][j]
+    }
+
+    spec fn corner(g: [[i64; 2]; 2], v: i64) -> bool { g[1][1] == v }
+
+    // The write goes to `g[1][0]`, not the corner.
+    #[effects(pure)]
+    #[uses(corner)]
+    fn set_corner(v: i64) -> (r: [[i64; 2]; 2])
+        ensures corner(r, v),
+    {
+        let mut g: [[i64; 2]; 2] = [[0; 2]; 2];
+        g[1][0] = v;
+        g
+    }
 }

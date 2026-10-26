@@ -181,6 +181,16 @@ fn select_val(elem: &Val, i: &str) -> Val {
     match elem {
         Val::S(a) => Val::S(format!("(select {a} {i})")),
         Val::Struct(fs) => Val::Struct(fs.iter().map(|f| select_val(f, i)).collect()),
+        // A fixed-size array inside the element (backlog 2V-04b): its leaves
+        // are arrays over the outer index; the length is a constant.
+        Val::A { elems, len } => Val::A {
+            elems: format!("(select {elems} {i})"),
+            len: len.clone(),
+        },
+        Val::Arr { elem, len } => Val::Arr {
+            elem: Box::new(select_val(elem, i)),
+            len: len.clone(),
+        },
         v => panic!("not an element template {v:?}"),
     }
 }
@@ -192,6 +202,14 @@ fn store_val(elem: &Val, i: &str, v: &Val) -> Val {
         (Val::Struct(fs), Val::Struct(xs)) => {
             Val::Struct(fs.iter().zip(xs).map(|(f, x)| store_val(f, i, x)).collect())
         }
+        (Val::A { elems, len }, Val::A { elems: x, .. }) => Val::A {
+            elems: format!("(store {elems} {i} {x})"),
+            len: len.clone(),
+        },
+        (Val::Arr { elem, len }, Val::Arr { elem: x, .. }) => Val::Arr {
+            elem: Box::new(store_val(elem, i, x)),
+            len: len.clone(),
+        },
         (e, v) => panic!("element {v:?} does not match {e:?}"),
     }
 }
@@ -207,10 +225,73 @@ fn flatten(v: &Val, out: &mut Vec<String>) {
         }
         Val::Struct(fs) => fs.iter().for_each(|f| flatten(f, out)),
         Val::Arr { elem, len } => {
-            flatten(elem, out);
+            flatten_elem(elem, out);
             out.push(len.clone());
         }
         Val::Unit => {}
+    }
+}
+
+/// The leaf arrays of an element template (`elem_leaves` order): inner
+/// fixed lengths are constants, not terms.
+fn flatten_elem(v: &Val, out: &mut Vec<String>) {
+    match v {
+        Val::S(t) => out.push(t.clone()),
+        Val::A { elems, .. } => out.push(elems.clone()),
+        Val::Arr { elem, .. } => flatten_elem(elem, out),
+        Val::Struct(fs) => fs.iter().for_each(|f| flatten_elem(f, out)),
+        Val::Unit => {}
+    }
+}
+
+/// Whether an array of `e` holds its elements as one array per leaf
+/// (ADR-0027 §2): structs and fixed-size arrays (backlog 2V-04b).
+fn agg_elem(e: &TypeKind, tb: &Tables) -> bool {
+    struct_fields(e, tb).is_some() || matches!(e, TypeKind::Array(..))
+}
+
+/// The leaves of an element of type `e`, each with the sort of its value
+/// for one element: a struct's fields in order, an inner array's leaves
+/// one array level deeper (its fixed length is a constant).
+fn elem_leaves(e: &TypeKind, tb: &Tables, suffix: &str, out: &mut Vec<(String, String)>) {
+    if let Some(fs) = struct_fields(e, tb) {
+        for (n, ft) in fs {
+            elem_leaves(ft, tb, &format!("{suffix}.{n}"), out);
+        }
+        return;
+    }
+    match e {
+        TypeKind::Unit => {}
+        TypeKind::Array(inner, _) => {
+            let mut el = Vec::new();
+            elem_leaves(&inner.kind, tb, &format!("{suffix}.e"), &mut el);
+            out.extend(el.into_iter().map(|(n, s)| (n, format!("(Array Int {s})"))));
+        }
+        t => out.push((suffix.to_string(), sort_of(t))),
+    }
+}
+
+/// The element template of type `e` whose leaf arrays are `terms` (the
+/// inverse of `flatten_elem`).
+fn elem_template(e: &TypeKind, tb: &Tables, terms: &mut impl Iterator<Item = String>) -> Val {
+    if let Some(fs) = struct_fields(e, tb) {
+        return Val::Struct(
+            fs.iter()
+                .map(|(_, ft)| elem_template(ft, tb, terms))
+                .collect(),
+        );
+    }
+    match e {
+        TypeKind::Unit => Val::Unit,
+        TypeKind::Array(inner, n) if agg_elem(&inner.kind, tb) => Val::Arr {
+            elem: Box::new(elem_template(&inner.kind, tb, terms)),
+            len: n.to_string(),
+        },
+        TypeKind::Array(_, n) => Val::A {
+            elems: terms.next().expect("array leaf"),
+            len: n.to_string(),
+        },
+        _ => Val::S(terms.next().expect("scalar leaf")),
     }
 }
 
@@ -219,6 +300,8 @@ fn flatten(v: &Val, out: &mut Vec<String>) {
 enum Leaf {
     Scalar(TypeKind),
     Elems(TypeKind),
+    /// One leaf array of an array of aggregates: the sort of one element's leaf.
+    Leaves(String),
     Len(TypeKind, Option<u64>),
 }
 
@@ -227,6 +310,7 @@ impl Leaf {
         match self {
             Leaf::Scalar(t) => sort_of(t),
             Leaf::Elems(e) => format!("(Array Int {})", sort_of(e)),
+            Leaf::Leaves(s) => format!("(Array Int {s})"),
             Leaf::Len(..) => "Int".into(),
         }
     }
@@ -235,7 +319,7 @@ impl Leaf {
     fn fact(&self, x: &str) -> Option<String> {
         match self {
             Leaf::Scalar(t) => range(t, x),
-            Leaf::Elems(_) => None,
+            Leaf::Elems(_) | Leaf::Leaves(_) => None,
             Leaf::Len(_, Some(n)) => Some(format!("(= {x} {n})")),
             Leaf::Len(e, None) => Some(format!("(and (<= 0 {x}) (<= {x} {}))", len_max(e))),
         }
@@ -449,15 +533,12 @@ fn leaves(t: &TypeKind, tb: &Tables, base: &str, out: &mut Vec<(String, Leaf)>) 
                 TypeKind::Array(_, n) => Some(*n),
                 _ => None,
             };
-            // A struct element: one array per scalar leaf (ADR-0027 §2).
-            let mut el = Vec::new();
-            leaves(&e, tb, "", &mut el);
-            if struct_fields(&e, tb).is_some() {
-                for (suf, leaf) in el {
-                    let Leaf::Scalar(lt) = leaf else {
-                        panic!("array inside an array element")
-                    };
-                    out.push((format!("{base}.e{suf}"), Leaf::Elems(lt)));
+            // A struct or array element: one array per leaf (ADR-0027 §2).
+            if agg_elem(&e, tb) {
+                let mut el = Vec::new();
+                elem_leaves(&e, tb, "", &mut el);
+                for (suf, sort) in el {
+                    out.push((format!("{base}.e{suf}"), Leaf::Leaves(sort)));
                 }
             } else {
                 out.push((format!("{base}.e"), Leaf::Elems(e.clone())));
@@ -478,8 +559,8 @@ fn build(t: &TypeKind, tb: &Tables, terms: &mut impl Iterator<Item = String>) ->
         TypeKind::Unit => Val::Unit,
         _ if is_array(t) => {
             let e = elem_ty(t);
-            if struct_fields(&e, tb).is_some() {
-                let elem = Box::new(build(&e, tb, terms));
+            if agg_elem(&e, tb) {
+                let elem = Box::new(elem_template(&e, tb, terms));
                 let len = terms.next().expect("length leaf");
                 return Val::Arr { elem, len };
             }
@@ -845,12 +926,12 @@ impl<'p, 'q> Enc<'p, 'q> {
     /// ranges are assumed where an element is read).
     fn fresh_struct_elems(&mut self, base: &str, e: &TypeKind) -> Val {
         let mut ls = Vec::new();
-        leaves(e, self.prog.t, &format!("{base}.e"), &mut ls);
+        elem_leaves(e, self.prog.t, &format!("{base}.e"), &mut ls);
         let terms: Vec<String> = ls
             .iter()
-            .map(|(name, leaf)| self.fresh(name, &format!("(Array Int {})", leaf.sort())))
+            .map(|(name, sort)| self.fresh(name, &format!("(Array Int {sort})")))
             .collect();
-        build(e, self.prog.t, &mut terms.into_iter())
+        elem_template(e, self.prog.t, &mut terms.into_iter())
     }
 
     fn fresh_val(&mut self, base: &str, t: &TypeKind) -> Val {
@@ -867,7 +948,7 @@ impl<'p, 'q> Enc<'p, 'q> {
         {
             return self.fresh_val(base, &inner.kind);
         }
-        if is_array(t) && struct_fields(&elem_ty(t), self.prog.t).is_some() {
+        if is_array(t) && agg_elem(&elem_ty(t), self.prog.t) {
             let e = elem_ty(t);
             let elem = Box::new(self.fresh_struct_elems(base, &e));
             let len = match t {
@@ -1542,10 +1623,13 @@ impl<'p, 'q> Enc<'p, 'q> {
             ExprKind::Block(b) => self.block(b),
             // An array of structs or enums (2B-14): fresh element arrays
             // with each item stored, so no default value is needed.
-            ExprKind::Array(items) if matches!(elem_ty(&self.ty(e)), TypeKind::Named { .. }) => {
+            ExprKind::Array(items)
+                if matches!(elem_ty(&self.ty(e)), TypeKind::Named { .. })
+                    || agg_elem(&elem_ty(&self.ty(e)), self.prog.t) =>
+            {
                 let elem = elem_ty(&self.ty(e));
                 let vals: Vec<Val> = items.iter().map(|it| self.eval(it)).collect();
-                let mut arr = if struct_fields(&elem, self.prog.t).is_some() {
+                let mut arr = if agg_elem(&elem, self.prog.t) {
                     self.fresh_struct_elems("arr", &elem)
                 } else {
                     Val::S(self.fresh("arr.e", &format!("(Array Int {})", sort_of(&elem))))
@@ -1579,22 +1663,23 @@ impl<'p, 'q> Enc<'p, 'q> {
                 }
             }
             ExprKind::Repeat { value, count, .. }
-                if struct_fields(&elem_ty(&self.ty(e)), self.prog.t).is_some() =>
+                if agg_elem(&elem_ty(&self.ty(e)), self.prog.t) =>
             {
-                // One constant array per leaf of the struct value (2B-14).
+                // One constant array per leaf of the element value (2B-14,
+                // 2V-04b).
                 let elem = elem_ty(&self.ty(e));
                 let v = self.eval(value);
                 let mut ls = Vec::new();
-                leaves(&elem, self.prog.t, "", &mut ls);
+                elem_leaves(&elem, self.prog.t, "", &mut ls);
                 let mut terms = Vec::new();
-                flatten(&v, &mut terms);
+                flatten_elem(&v, &mut terms);
                 let consts: Vec<String> = ls
                     .iter()
                     .zip(terms)
-                    .map(|((_, leaf), x)| format!("((as const (Array Int {})) {x})", leaf.sort()))
+                    .map(|((_, sort), x)| format!("((as const (Array Int {sort})) {x})"))
                     .collect();
                 Val::Arr {
-                    elem: Box::new(build(&elem, self.prog.t, &mut consts.into_iter())),
+                    elem: Box::new(elem_template(&elem, self.prog.t, &mut consts.into_iter())),
                     len: count.to_string(),
                 }
             }
@@ -2554,10 +2639,7 @@ impl Gate {
                         .any(|(_, ps)| ps.iter().any(|pt| self.rejects(pt, tb))),
                     _ => true,
                 },
-                // Elements with an array inside are not encoded yet.
-                TypeKind::Array(e, _) | TypeKind::Slice(e) => {
-                    self.rejects(&e.kind, tb) || (has_named(&e.kind) && has_array(&e.kind, tb))
-                }
+                TypeKind::Array(e, _) | TypeKind::Slice(e) => self.rejects(&e.kind, tb),
                 TypeKind::Ref { inner, .. } => self.rejects(&inner.kind, tb),
                 _ => false,
             },
@@ -2589,15 +2671,6 @@ pub(crate) fn holds_vec(t: &TypeKind) -> bool {
     match t {
         TypeKind::Vec(_) => true,
         TypeKind::Ref { inner, .. } => holds_vec(&inner.kind),
-        _ => false,
-    }
-}
-
-fn has_named(t: &TypeKind) -> bool {
-    match t {
-        TypeKind::Named { .. } => true,
-        TypeKind::Array(e, _) | TypeKind::Slice(e) => has_named(&e.kind),
-        TypeKind::Ref { inner, .. } => has_named(&inner.kind),
         _ => false,
     }
 }

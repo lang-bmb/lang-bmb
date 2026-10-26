@@ -2,7 +2,7 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 3482738,
+    "V4_rlimit_total": 3565616,
     "V5_rlimit_headroom": 0.014,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0,
@@ -14,12 +14,12 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 19821,
+    "S4_stage0_rust_lines": 19852,
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
-    "P1_runnable_programs": 18,
-    "P2_bmb_lines": 6962,
-    "P3_errors_with_help": 0.708,
+    "P1_runnable_programs": 19,
+    "P2_bmb_lines": 7024,
+    "P3_errors_with_help": 0.7062,
     "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 8
@@ -413,6 +413,32 @@
         "P3_errors_with_help": [
           0.7059,
           0.708
+        ]
+      }
+    },
+    {
+      "date": "2026-10-26",
+      "reason": "2V-04b: 중첩 배열·배열을 담은 원소가 이제 유효해 안내가 붙은 E0402 사례 7건이 오류 코퍼스에서 빠짐(P3 0.708->0.7062, 의도된 변화). tests/run/grid로 P1 18->19, P2",
+      "changed": {
+        "V4_rlimit_total": [
+          3482738,
+          3565616
+        ],
+        "S4_stage0_rust_lines": [
+          19821,
+          19852
+        ],
+        "P1_runnable_programs": [
+          18,
+          19
+        ],
+        "P2_bmb_lines": [
+          6962,
+          7024
+        ],
+        "P3_errors_with_help": [
+          0.708,
+          0.7062
         ]
       }
     }
