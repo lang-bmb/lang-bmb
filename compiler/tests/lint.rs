@@ -461,7 +461,7 @@ fn mutate_and_all_checks_cli() {
 
 #[test]
 fn codes_are_warnings_on_the_reference_page() {
-    for c in ["W0901", "W0902", "W0903", "W0904"] {
+    for c in ["W0901", "W0902", "W0903", "W0904", "W0905", "W0906"] {
         assert_eq!(bmb::diag::severity(c), "warning");
         assert!(bmb::diag::codes_markdown().contains(&format!("| {c} |")));
     }
@@ -578,4 +578,123 @@ fn operator_and_index_mutants() {
         out.report(),
         lint_sources(&one("o.bmb", OPS)).unwrap().report()
     );
+}
+
+/// Backlog 1B-45: a `forall` whose only trigger matches another term of its
+/// body at other arguments (a matching loop) is W0906; a multi-pattern, a
+/// term without bound variables or another array is not.
+#[test]
+fn self_matching_triggers() {
+    let text = r#"#[summary("triggers")]
+mod t {
+    spec fn up(a: &[i64]) -> bool { forall|k: usize| k + 1 < a.len() ==> #[trigger] a[k] <= a[k + 1] }
+
+    spec fn down(a: &[i64]) -> bool { forall|k: usize| 0 < k && k < a.len() ==> #[trigger] a[k] == a[k - 1] }
+
+    spec fn both(a: &[i64]) -> bool { forall|k: usize| k + 1 < a.len() ==> #[trigger] a[k] <= #[trigger] a[k + 1] }
+
+    spec fn ground(a: &[i64]) -> bool { a.len() > 0 && (forall|k: usize| k < a.len() ==> #[trigger] a[k] >= a[0]) }
+
+    spec fn other(a: &[i64], b: &[i64]) -> bool { a.len() == b.len() && (forall|k: usize| k + 1 < a.len() ==> #[trigger] a[k] == b[k + 1]) }
+
+    spec fn sq(i: u64) -> u64 { i * i }
+
+    spec fn grows(n: u64) -> bool { forall|k: u64| k < n ==> #[trigger] sq(k) <= sq(k + 1) }
+
+    spec fn inner(a: &[i64], b: &[i64]) -> bool {
+        forall|i: usize| i < a.len() ==> #[trigger] a[i] >= 0 && (forall|j: usize| j < i ==> #[trigger] b[j] <= b[j + 1])
+    }
+}
+"#;
+    let out = lint_sources(&one("t.bmb", text)).unwrap();
+    assert!(out.ok, "{}", out.diagnostics);
+    let got: Vec<(i64, String, String)> = rows(&out.diagnostics)
+        .iter()
+        .filter(|d| s(d, "code") == "W0906")
+        .map(|d| {
+            assert_eq!(s(d, "severity"), "warning");
+            let fix = d.get("fix").unwrap();
+            (
+                n(d, "line"),
+                s(d, "message").to_string(),
+                s(fix, "replacement").to_string(),
+            )
+        })
+        .collect();
+    let lines: Vec<i64> = got.iter().map(|g| g.0).collect();
+    assert_eq!(lines, [3, 5, 15, 18], "{}", out.diagnostics);
+    assert!(got[0].1.starts_with("`a[k + 1]` matches"), "{}", got[0].1);
+    assert!(got[0].1.contains("only trigger `a[k]`"), "{}", got[0].1);
+    assert_eq!(got[0].2, "#[trigger] a[k + 1]");
+    assert_eq!(got[1].2, "#[trigger] a[k - 1]");
+    assert_eq!(got[2].2, "#[trigger] sq(k + 1)");
+    assert_eq!(got[3].2, "#[trigger] b[j + 1]");
+
+    // The replacement turns the loop into a multi-pattern: no report.
+    let mut fixed = text.to_string();
+    for (from, to) in [
+        ("<= a[k + 1] }", "<= #[trigger] a[k + 1] }"),
+        ("== a[k - 1] }", "== #[trigger] a[k - 1] }"),
+        ("<= sq(k + 1) }", "<= #[trigger] sq(k + 1) }"),
+        ("<= b[j + 1])", "<= #[trigger] b[j + 1])"),
+    ] {
+        assert_eq!(fixed.matches(from).count(), 1, "{from}");
+        fixed = fixed.replace(from, to);
+    }
+    let out = lint_sources(&one("t.bmb", &fixed)).unwrap();
+    assert!(!out.diagnostics.contains("W0906"), "{}", out.diagnostics);
+}
+
+/// The prefix-sum specification of bench m1b `w22` (the loop 1B-42 met) is
+/// reported in each spec function that states the step; with both reads as
+/// triggers the program still verifies.
+#[test]
+fn prefix_sum_specification_is_reported() {
+    let text = r#"#[summary("prefix sums")]
+mod tasks {
+    spec fn shapes(a: &[i64], out: &[i64]) -> bool { out.len() == a.len() }
+
+    spec fn bounded_elems(a: &[i64]) -> bool { a.len() <= 1000000 && (forall|k: usize| k < a.len() ==> -1000 <= #[trigger] a[k] && a[k] <= 1000) }
+
+    spec fn runs_below(a: &[i64], out: &[i64], n: usize) -> bool { forall|k: usize| k + 1 < n ==> #[trigger] out[k + 1] == out[k] + a[k + 1] }
+
+    spec fn sums_small(out: &[i64], n: usize) -> bool { forall|k: usize| k < n ==> -1000 * (k + 1) <= #[trigger] out[k] && out[k] <= 1000 * (k + 1) }
+
+    spec fn prefix_ok(a: &[i64], out: &[i64]) -> bool { out.len() == a.len() && (a.len() > 0 ==> out[0] == a[0]) && (forall|k: usize| k + 1 < a.len() ==> #[trigger] out[k + 1] == out[k] + a[k + 1]) }
+
+    #[effects(pure)]
+    #[uses(shapes, bounded_elems, runs_below, sums_small, prefix_ok)]
+    fn prefix_sums(a: &[i64], out: &mut [i64]) -> ()
+        requires shapes(a, out), bounded_elems(a),
+        ensures prefix_ok(a, out),
+    {
+        if a.len() > 0 {
+            out[0] = a[0];
+            let mut k: usize = 1;
+            while k < a.len()
+                invariant 1 <= k, k <= a.len(), out.len() == a.len(), out[0] == a[0], runs_below(a, out, k), sums_small(out, k),
+                decreases a.len() - k,
+            {
+                out[k] = out[k - 1] + a[k];
+                k = k + 1;
+            }
+        }
+    }
+}
+"#;
+    let out = lint_sources(&one("w.bmb", text)).unwrap();
+    let lines: Vec<i64> = rows(&out.diagnostics)
+        .iter()
+        .filter(|d| s(d, "code") == "W0906")
+        .map(|d| n(d, "line"))
+        .collect();
+    assert_eq!(lines, [7, 11], "{}", out.diagnostics);
+    let multi = text.replace(
+        "#[trigger] out[k + 1] == out[k] +",
+        "#[trigger] out[k + 1] == #[trigger] out[k] +",
+    );
+    assert!(bmb::verify_sources(&one("w.bmb", text)).ok);
+    assert!(bmb::verify_sources(&one("w.bmb", &multi)).ok);
+    let out = lint_sources(&one("w.bmb", &multi)).unwrap();
+    assert!(!out.diagnostics.contains("W0906"), "{}", out.diagnostics);
 }

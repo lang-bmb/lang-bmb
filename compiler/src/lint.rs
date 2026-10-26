@@ -1,6 +1,6 @@
 //! Contract lint (DESIGN.md §8.2 "계약 조정", backlog 2D-08).
 //!
-//! Five deterministic reports, as warning diagnostics (`W09xx`):
+//! Six deterministic reports, as warning diagnostics (`W09xx`):
 //!
 //! - `W0901` the `requires` clauses of a function cannot hold together
 //!   (with the definitions its `#[uses]` reveals, in the prover's own
@@ -31,6 +31,13 @@
 //! - `W0905` a loop exit or the end of the body of a verified function that
 //!   its own proof cannot reach (`verify::vacuous_ends`, backlog 1B-44):
 //!   what follows holds vacuously. No honest program yields one.
+//! - `W0906` a `forall` whose one trigger term and another term of its body
+//!   read the same array (or call the same function) at different arguments
+//!   that mention the bound variables, as `#[trigger] out[k + 1] == out[k] +
+//!   a[k + 1]` (backlog 1B-45): each instance yields a term the trigger
+//!   matches again, a matching loop that can run the solver to its limit.
+//!   Syntactic, no proof involved. A `forall` with several trigger terms
+//!   (one multi-pattern) is not reported.
 //!
 //! Clauses are removed from the checked program itself (the syntax tree;
 //! nothing else changes, so the type tables still apply) and only the
@@ -407,6 +414,14 @@ pub fn lint_sources_cached(
                     None,
                 ),
             );
+        }
+    }
+
+    // W0906: self-matching triggers (syntactic).
+    for f in defs.values() {
+        let text = &files[f.span.file as usize].1;
+        for d in self_matching(f, text) {
+            out.push(d);
         }
     }
 
@@ -789,6 +804,189 @@ fn w0905(path: &str, span: Span, what: &str) -> Diag {
         "look for a contradiction in the loop invariants, the callees' postconditions and the revealed definitions",
         None,
     )
+}
+
+// ---------- self-matching triggers (W0906, backlog 1B-45) ----------
+
+/// The subexpressions of `e`, specification parts included.
+fn children(e: &Expr) -> Vec<&Expr> {
+    match &e.kind {
+        ExprKind::Call { args, .. } | ExprKind::Array(args) => args.iter().collect(),
+        ExprKind::Method { recv, args, .. } => std::iter::once(&**recv).chain(args).collect(),
+        ExprKind::Index { base, index } => vec![base, index],
+        ExprKind::Binary(_, l, r) => vec![l, r],
+        ExprKind::Unary(_, x)
+        | ExprKind::Ref { expr: x, .. }
+        | ExprKind::Old(x)
+        | ExprKind::Deref(x)
+        | ExprKind::Trigger(x)
+        | ExprKind::Repeat { value: x, .. }
+        | ExprKind::Field { base: x, .. }
+        | ExprKind::Forall { body: x, .. } => vec![x],
+        ExprKind::If { cond, then, els } => {
+            let mut v = vec![&**cond];
+            v.extend(block_exprs(then));
+            v.extend(els.as_deref());
+            v
+        }
+        ExprKind::Block(b) => block_exprs(b),
+        ExprKind::StructLit { fields, rest, .. } => fields
+            .iter()
+            .map(|(_, x)| x)
+            .chain(rest.as_deref())
+            .collect(),
+        ExprKind::Match { scrut, arms } => std::iter::once(&**scrut)
+            .chain(arms.iter().map(|a| &a.body))
+            .collect(),
+        ExprKind::Path(_)
+        | ExprKind::Int(_)
+        | ExprKind::ByteLit(_)
+        | ExprKind::ByteStr(_)
+        | ExprKind::Bool(_)
+        | ExprKind::Unit
+        | ExprKind::Var(_)
+        | ExprKind::Error => Vec::new(),
+    }
+}
+
+/// The expressions of a block, loop invariants, measures and `assert`
+/// conditions included.
+fn block_exprs(b: &Block) -> Vec<&Expr> {
+    let mut v = Vec::new();
+    for s in &b.stmts {
+        match s {
+            Stmt::Let { init, .. } | Stmt::LetFields { init, .. } => v.push(init),
+            Stmt::Assign { target, value, .. } => v.extend([target, value]),
+            Stmt::While {
+                cond,
+                invariants,
+                decreases,
+                body,
+                ..
+            } => {
+                v.push(cond);
+                v.extend(invariants);
+                v.extend(decreases);
+                v.extend(block_exprs(body));
+            }
+            Stmt::Assert { cond, .. } => v.push(cond),
+            Stmt::Expr(e) => v.push(e),
+        }
+    }
+    v.extend(b.tail.as_deref());
+    v
+}
+
+/// Every `forall` in `e`, nested ones included.
+fn foralls<'e>(e: &'e Expr, out: &mut Vec<&'e Expr>) {
+    if matches!(e.kind, ExprKind::Forall { .. }) {
+        out.push(e);
+    }
+    for c in children(e) {
+        foralls(c, out);
+    }
+}
+
+/// The terms of a `forall` body, outside nested `forall`s: with `in_trigger`
+/// false, those outside `#[trigger]` (`out` gets every node); with it true,
+/// the trigger terms themselves.
+fn body_terms<'e>(e: &'e Expr, in_trigger: bool, out: &mut Vec<&'e Expr>) {
+    match &e.kind {
+        ExprKind::Forall { .. } => {}
+        ExprKind::Trigger(x) => {
+            if in_trigger {
+                out.push(x);
+            }
+        }
+        _ => {
+            if !in_trigger {
+                out.push(e);
+            }
+            for c in children(e) {
+                body_terms(c, in_trigger, out);
+            }
+        }
+    }
+}
+
+fn mentions(e: &Expr, names: &BTreeSet<&str>) -> bool {
+    match &e.kind {
+        ExprKind::Var(v) => names.contains(v.name.as_str()),
+        _ => children(e).into_iter().any(|c| mentions(c, names)),
+    }
+}
+
+/// What a trigger term matches on, and its arguments as text: an index
+/// `a[i]` (the array) or a call `f(x, y)` (the function).
+fn term_key(e: &Expr, text: &str) -> Option<(String, String)> {
+    let t = |sp: Span| squash(&text[sp.lo as usize..sp.hi as usize]);
+    match &e.kind {
+        ExprKind::Index { base, index } => Some((format!("{}[]", t(base.span)), t(index.span))),
+        ExprKind::Call { path, args } => Some((
+            path.iter()
+                .map(|i| i.name.as_str())
+                .collect::<Vec<_>>()
+                .join("::")
+                + "()",
+            args.iter()
+                .map(|a| t(a.span))
+                .collect::<Vec<_>>()
+                .join(", "),
+        )),
+        _ => None,
+    }
+}
+
+/// W0906 for every `forall` of `f` (contracts, body, invariants, `assert`).
+fn self_matching(f: &FnDef, text: &str) -> Vec<Diag> {
+    let mut roots: Vec<&Expr> = f.requires.iter().chain(&f.ensures).collect();
+    roots.extend(&f.decreases);
+    roots.extend(block_exprs(&f.body));
+    let mut all = Vec::new();
+    for r in roots {
+        foralls(r, &mut all);
+    }
+    let mut out = Vec::new();
+    for q in all {
+        let ExprKind::Forall { binders, body } = &q.kind else {
+            continue;
+        };
+        let mut trig = Vec::new();
+        body_terms(body, true, &mut trig);
+        let [t] = trig[..] else { continue };
+        let Some((head, targs)) = term_key(t, text) else {
+            continue;
+        };
+        let bound: BTreeSet<&str> = binders.iter().map(|b| b.name.name.as_str()).collect();
+        let mut terms = Vec::new();
+        body_terms(body, false, &mut terms);
+        for e in terms {
+            let Some((h, args)) = term_key(e, text) else {
+                continue;
+            };
+            if h != head || args == targs || !mentions(e, &bound) {
+                continue;
+            }
+            let raw = &text[e.span.lo as usize..e.span.hi as usize];
+            let shown = |sp: Span| squash(&text[sp.lo as usize..sp.hi as usize]);
+            out.push(
+                Diag::new(
+                    "W0906",
+                    e.span,
+                    format!(
+                        "`{}` matches the same pattern as this `forall`'s only trigger `{}` at other arguments: each instance yields a term the trigger matches again (a matching loop), which can run the solver to its limit",
+                        shown(e.span),
+                        shown(t.span)
+                    ),
+                )
+                .fix(
+                    "mark it as a trigger too: the two terms then form one multi-pattern, which an instance does not feed",
+                    Some(format!("#[trigger] {raw}")),
+                ),
+            );
+        }
+    }
+    out
 }
 
 #[cfg(test)]

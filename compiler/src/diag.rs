@@ -244,6 +244,10 @@ pub const CODES: &[(&str, &str)] = &[
         "W0905",
         "a point of a verified function is unreachable in its proof: what follows is proved vacuously",
     ),
+    (
+        "W0906",
+        "a `forall`'s only trigger matches a term of its own body: instances feed each other (matching loop)",
+    ),
 ];
 
 /// Severity of a code: `W` codes are warnings (reported only by `bmb lint`),
