@@ -2,11 +2,11 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 3367468,
+    "V4_rlimit_total": 3434871,
     "V5_rlimit_headroom": 0.014,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0,
-    "V8_bench_rlimit_total": 39910940,
+    "V8_bench_rlimit_total": 39913235,
     "V9_bench_defs_at_limit": 1,
     "S1_external_crates": 0,
     "S2_external_processes": [
@@ -14,7 +14,7 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 19745,
+    "S4_stage0_rust_lines": 19822,
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
     "P1_runnable_programs": 17,
@@ -369,6 +369,24 @@
         "S4_stage0_rust_lines": [
           19743,
           19745
+        ]
+      }
+    },
+    {
+      "date": "2026-10-26",
+      "reason": "2V-02: 되돌린 코퍼스 first_squares(k*k)와 primes(i*i)가 곱셈 사실로 증명됨, V4 +2.0%",
+      "changed": {
+        "V4_rlimit_total": [
+          3367468,
+          3434871
+        ],
+        "V8_bench_rlimit_total": [
+          39910940,
+          39913235
+        ],
+        "S4_stage0_rust_lines": [
+          19745,
+          19822
         ]
       }
     }

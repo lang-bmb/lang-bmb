@@ -914,6 +914,34 @@ impl<'p, 'q> Enc<'p, 'q> {
         }
     }
 
+    /// Facts about the product of `a` and `b` when neither is a constant
+    /// (backlog 2V-02): its zero and sign, and for each pair of upper bounds
+    /// the path condition states for the operands, the bound of a nonnegative
+    /// product. Without them the solver's nonlinear search took a bounded
+    /// `i * i` past three million steps.
+    fn mul_facts(&mut self, a: &str, b: &str) {
+        if is_numeral(a) || is_numeral(b) {
+            return;
+        }
+        let p = format!("(* {a} {b})");
+        let mut facts: Vec<String> = MUL_LEMMAS
+            .iter()
+            .map(|l| instantiate_mul(l, a, b, &p, "", ""))
+            .collect();
+        let xs = upper_bounds(&self.pc, a);
+        let ys = if a == b {
+            xs.clone()
+        } else {
+            upper_bounds(&self.pc, b)
+        };
+        for x in &xs {
+            for y in &ys {
+                facts.push(instantiate_mul(MUL_BOUND_LEMMA, a, b, &p, x, y));
+            }
+        }
+        self.pc.extend(facts);
+    }
+
     fn oblige(&mut self, code: &'static str, span: Span, msg: impl Into<String>, goal: String) {
         if goal != "true" {
             let mut assumptions = self.pc.clone();
@@ -1343,7 +1371,10 @@ impl<'p, 'q> Enc<'p, 'q> {
                 let t = match op {
                     BinOp::Add => format!("(+ {lt} {rt})"),
                     BinOp::Sub => format!("(- {lt} {rt})"),
-                    BinOp::Mul => format!("(* {lt} {rt})"),
+                    BinOp::Mul => {
+                        self.mul_facts(&lt, &rt);
+                        format!("(* {lt} {rt})")
+                    }
                     BinOp::Div | BinOp::Rem => {
                         self.oblige(
                             "E0804",
@@ -1470,6 +1501,9 @@ impl<'p, 'q> Enc<'p, 'q> {
                     m @ ("push" | "pop" | "truncate") => self.vec_change(e, recv, rv, m, args),
                     op => {
                         let b = self.eval(&args[0]).s();
+                        if op.ends_with("_mul") {
+                            self.mul_facts(&rv.s(), &b);
+                        }
                         match int_method(op, &self.ty(recv), &rv.s(), &b) {
                             IntMethod::Value(v) => Val::S(v),
                             IntMethod::Checked { ok, v, lemmas } => {
@@ -2754,6 +2788,68 @@ pub const UNSIGNED_DIV_LEMMAS: &[&str] = &[
     "(=> (and (>= {a} 0) (> {b} 0)) (and (<= 0 {q}) (<= {q} {a})))",
     "(=> (> {b} 0) (and (<= 0 {r}) (< {r} {b})))",
 ];
+
+/// Facts about a product `{p}` of `{a}` and `{b}` (backlog 2V-02), proved by
+/// `tests/lemmas.rs`.
+pub const MUL_LEMMAS: &[&str] = &[
+    "(= (= {p} 0) (or (= {a} 0) (= {b} 0)))",
+    "(=> (and (not (= {a} 0)) (not (= {b} 0))) (= (> {p} 0) (= (> {a} 0) (> {b} 0))))",
+];
+
+/// A nonnegative product is at most the product of upper bounds `{x}` of
+/// `{a}` and `{y}` of `{b}` (monotonicity).
+pub const MUL_BOUND_LEMMA: &str =
+    "(=> (and (<= 0 {a}) (<= {a} {x}) (<= 0 {b}) (<= {b} {y})) (<= {p} (* {x} {y})))";
+
+pub fn instantiate_mul(template: &str, a: &str, b: &str, p: &str, x: &str, y: &str) -> String {
+    template
+        .replace("{a}", a)
+        .replace("{b}", b)
+        .replace("{p}", p)
+        .replace("{x}", x)
+        .replace("{y}", y)
+}
+
+/// The most upper bounds of one term `mul_facts` takes from the path condition.
+const MAX_BOUNDS: usize = 2;
+
+/// Upper bounds of `term` that top-level conjuncts of the path condition
+/// state (`term < t`, `term <= t`, `t > term`, `t >= term`), newest first.
+fn upper_bounds(pc: &[String], term: &str) -> Vec<String> {
+    fn walk(e: &smt::Sexp, term: &str, out: &mut Vec<String>) {
+        let smt::Sexp::List(xs) = e else { return };
+        let head = match xs.first() {
+            Some(smt::Sexp::Atom(h)) => h.as_str(),
+            _ => return,
+        };
+        match (head, xs.len()) {
+            ("and", _) => xs[1..].iter().for_each(|x| walk(x, term, out)),
+            ("<" | "<=", 3) if smt::print(&xs[1]) == term => out.push(smt::print(&xs[2])),
+            (">" | ">=", 3) if smt::print(&xs[2]) == term => out.push(smt::print(&xs[1])),
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    for f in pc.iter().rev() {
+        if let Some(e) = smt::parse(f) {
+            walk(&e, term, &mut out);
+        }
+        if out.len() >= MAX_BOUNDS {
+            break;
+        }
+    }
+    out.truncate(MAX_BOUNDS);
+    out.dedup();
+    out
+}
+
+fn is_numeral(t: &str) -> bool {
+    let t = t
+        .strip_prefix("(- ")
+        .and_then(|x| x.strip_suffix(')'))
+        .unwrap_or(t);
+    !t.is_empty() && t.bytes().all(|c| c.is_ascii_digit())
+}
 
 pub fn instantiate(template: &str, a: &str, b: &str, q: &str, r: &str) -> String {
     template

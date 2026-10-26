@@ -22,14 +22,14 @@ mod pr {
             composite.push(false);
             k = k + 1;
         }
-        // Multiples from `2i` on: no products, so every obligation is linear.
+        // Multiples from `i * i` on: smaller ones were marked by smaller primes.
         let mut i: usize = 2;
-        while i < n
+        while i * i < n
             invariant 2 <= i, i <= n, len_is(composite.as_slice(), n),
             decreases n - i,
         {
             if !composite[i] {
-                let mut j: usize = i + i;
+                let mut j: usize = i * i;
                 while j < n
                     invariant j <= n + i, len_is(composite.as_slice(), n),
                     decreases n + i - j,

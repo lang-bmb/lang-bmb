@@ -1,16 +1,26 @@
-//! The division facts the verifier assumes are theorems of its own SMT
+//! The division and multiplication facts the verifier assumes are theorems of its own SMT
 //! definitions (ADR-0017 §3). If this test fails, the gate is unsound.
 
 use std::io::Write;
 use std::process::{Command, Stdio};
 
-use bmb::verify::{PRELUDE, SIGNED_DIV_LEMMAS, UNSIGNED_DIV_LEMMAS, instantiate};
+use bmb::verify::{
+    MUL_BOUND_LEMMA, MUL_LEMMAS, PRELUDE, SIGNED_DIV_LEMMAS, UNSIGNED_DIV_LEMMAS, instantiate,
+    instantiate_mul,
+};
 
 fn prove_all(header: &str, lemmas: &[&str], q: &str, r: &str) {
-    for l in lemmas {
-        let goal = instantiate(l, "a", "b", q, r);
+    let goals: Vec<String> = lemmas
+        .iter()
+        .map(|l| instantiate(l, "a", "b", q, r))
+        .collect();
+    prove(header, &goals);
+}
+
+fn prove(header: &str, goals: &[String]) {
+    for goal in goals {
         let script = format!(
-            "{PRELUDE}\n(declare-const a Int)\n(declare-const b Int)\n{header}\n(assert (not {goal}))\n(check-sat)\n"
+            "{PRELUDE}\n(declare-const a Int)\n(declare-const b Int)\n(declare-const x Int)\n(declare-const y Int)\n{header}\n(assert (not {goal}))\n(check-sat)\n"
         );
         let mut child = Command::new("z3")
             .args(["-in", "-T:120"])
@@ -26,7 +36,7 @@ fn prove_all(header: &str, lemmas: &[&str], q: &str, r: &str) {
             .unwrap();
         let out = child.wait_with_output().unwrap();
         let answer = String::from_utf8_lossy(&out.stdout);
-        assert_eq!(answer.trim(), "unsat", "lemma not proved: {l}");
+        assert_eq!(answer.trim(), "unsat", "lemma not proved: {goal}");
     }
 }
 
@@ -43,4 +53,21 @@ fn unsigned_division_lemmas_hold() {
         "(div a b)",
         "(mod a b)",
     );
+}
+
+#[test]
+fn multiplication_lemmas_hold() {
+    let mut goals: Vec<String> = MUL_LEMMAS
+        .iter()
+        .map(|l| instantiate_mul(l, "a", "b", "(* a b)", "", ""))
+        .collect();
+    goals.push(instantiate_mul(
+        MUL_BOUND_LEMMA,
+        "a",
+        "b",
+        "(* a b)",
+        "x",
+        "y",
+    ));
+    prove("", &goals);
 }
