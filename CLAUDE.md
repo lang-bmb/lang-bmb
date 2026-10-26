@@ -9,6 +9,7 @@ BMB v2: AI 에이전트가 쓰고 결정론적 도구로 다루는 Rust 방언. 
 - `dev-docs/adr/`: 결정 기록. 형식과 규칙은 `dev-docs/adr/README.md`.
 - `docs/ROADMAP.md`: 단계와 통과 기준. 단계는 측정 결과를 커밋해야 닫힌다.
 - `dev-docs/BACKLOG.md`: 태스크 목록과 상태. 작업을 시작·완료하면 갱신한다(완료에는 커밋·테스트 근거).
+- `dev-docs/JUDGMENT.md`: 판단 기준(ADR-0045). 원인이 있는 층(언어·컴파일러·도구·프로세스)에서 고치고, 정석을 택하고, 작업량·영향 범위는 기준이 아니다. 0.x 동안 리팩터링은 언제나 허용. 권장안은 §10 형식으로 쓴다.
 - `dev-docs/AUTONOMY.md`: 자율 진행 규칙(작업 루프, 태스크 선택·도출, 결정 권한, 보고 조건). 작업은 이 루프를 따른다.
 - `dev-docs/HEALTH.md`: 지속 관리 지침(다섯 축 지표, 래칫 기준선 `dev-docs/health/baseline.json`, 신뢰 기반, 자립 사다리, 실용성 점검). 푸시는 `scripts/ship.sh`로 한다.
 - `compiler/`: 컴파일러(Rust). 사용법과 표면 규칙은 `compiler/README.md`. 변경 후 `cargo fmt`, `cargo clippy --all-targets`, `cargo test` 통과.
