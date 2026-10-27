@@ -1,0 +1,67 @@
+#[summary("소유 필드 실행: Vec 필드, Option<Vec>, Box<Vec>, 부분 이동과 남은 필드의 해제 (backlog 2O-03)")]
+mod of {
+    struct Buf { data: Vec<i64>, n: i64 }
+
+    struct Ctx { a: Buf, b: Vec<u8>, name: Option<Vec<u8>> }
+
+    enum Msg { Empty, Data(Vec<i64>), Pair(Buf, Box<Vec<i64>>) }
+
+    #[effects(pure)]
+    fn total(v: &Vec<i64>) -> i64 {
+        let mut i: usize = 0;
+        let mut s: i64 = 0;
+        while i < v.len()
+            invariant i <= v.len(),
+            decreases v.len() - i,
+        {
+            s = s.wrapping_add(v[i]);
+            i = i + 1;
+        }
+        s
+    }
+
+    #[effects(pure)]
+    fn take(v: Vec<i64>) -> usize { v.len() }
+
+    #[effects(pure)]
+    fn msg_len(m: &Msg) -> usize {
+        match m {
+            Msg::Empty => 0,
+            Msg::Data(d) => d.len(),
+            Msg::Pair(p, q) => p.data.len() + 0,
+        }
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        let mut b: Buf = Buf { data: Vec::new(), n: 0 };
+        b.data.push(5);
+        b.data.push(6);
+        b.data[0] = 7;
+        print_i64(total(&b.data));
+        print_i64(b.data[1]);
+        let mut c: Ctx = Ctx { a: b, b: Vec::new(), name: None };
+        c.b.push(1);
+        c.a.data.push(1);
+        print_i64(total(&c.a.data));
+        let moved: Vec<i64> = c.a.data;
+        print_u64(u64::try_from(take(moved)).unwrap());
+        c.a.data = Vec::new();
+        c.a.data.push(100);
+        print_i64(total(&c.a.data));
+        let gone: Vec<u8> = c.b;
+        c.name = Some(gone);
+        let m: Msg = Msg::Data(Vec::new());
+        print_u64(u64::try_from(msg_len(&m)).unwrap());
+        let mut w: Vec<i64> = Vec::new();
+        w.push(3);
+        let mut x: Vec<i64> = Vec::new();
+        x.push(4);
+        let p: Msg = Msg::Pair(Buf { data: w, n: 1 }, Box::new(x));
+        print_u64(u64::try_from(msg_len(&p)).unwrap());
+        let bv: Box<Vec<i64>> = Box::new(Vec::new());
+        print_i64(c.a.n);
+        c = Ctx { a: Buf { data: Vec::new(), n: 9 }, b: Vec::new(), name: None };
+        print_i64(c.a.n);
+    }
+}

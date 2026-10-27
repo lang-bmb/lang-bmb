@@ -1540,14 +1540,6 @@ impl<'a> Checker<'a> {
                 self.err("E0402", t.span, "a field cannot have type `()`");
                 TypeKind::Error
             }
-            TypeKind::Named { path, .. } if path.len() == 1 && path[0] == "Vec" => {
-                self.err(
-                    "E0402",
-                    t.span,
-                    "a struct or enum cannot hold a `Vec` (ADR-0031 §1)",
-                );
-                TypeKind::Error
-            }
             _ => self.canon(t, mp, true),
         }
     }
@@ -1916,16 +1908,6 @@ impl<'a> Checker<'a> {
                         return TypeKind::Error;
                     }
                     let args: Vec<Type> = args.iter().map(|a| sub(self, a)).collect();
-                    if let Some(v) = args.iter().find(|a| matches!(a.kind, TypeKind::Vec(_))) {
-                        if report {
-                            self.err(
-                                "E0402",
-                                v.span,
-                                format!("`{name}` cannot hold a `Vec` (ADR-0031 §1)"),
-                            );
-                        }
-                        return TypeKind::Error;
-                    }
                     return TypeKind::Named {
                         path: path.clone(),
                         args,
@@ -2028,8 +2010,7 @@ impl<'a> Checker<'a> {
         );
     }
 
-    /// `Box<T>` (ADR-0047 §1): `T` a value type; a `Box` holding a `Vec`
-    /// comes with nested containers (backlog 2O-03).
+    /// `Box<T>` (ADR-0047 §1): `T` a value type.
     fn box_type(&mut self, t: &Type, args: &[Type], mp: &str, report: bool) -> TypeKind {
         if args.len() != 1 {
             if report {
@@ -2056,16 +2037,6 @@ impl<'a> Checker<'a> {
                             "box a scalar, a struct or enum, an array or another `Box`",
                             None,
                         ),
-                    );
-                }
-                return TypeKind::Error;
-            }
-            TypeKind::Vec(_) => {
-                if report {
-                    self.err(
-                        "E0402",
-                        args[0].span,
-                        "a `Box` holding a `Vec` comes with backlog 2O-03 (ADR-0047 §1)",
                     );
                 }
                 return TypeKind::Error;
@@ -5392,13 +5363,7 @@ impl<'a> Checker<'a> {
             self.expect_ty(&at, &want, a.span);
         }
         if mutates && mode == Mode::Exec {
-            let writable = match &recv.kind {
-                ExprKind::Var(id) => Self::lookup(cx, &id.name).is_some_and(|l| match &l.ty {
-                    TypeKind::Ref { mutable, .. } => *mutable,
-                    _ => l.mutable,
-                }),
-                _ => false,
-            };
+            let writable = Self::writable(cx, recv);
             if !writable && *rt != TypeKind::Error {
                 let fix = if matches!(rt, TypeKind::Ref { .. }) {
                     "take the parameter as `&mut Vec<T>`"
@@ -5416,6 +5381,22 @@ impl<'a> Checker<'a> {
             }
         }
         ret
+    }
+
+    /// Whether place `e` can be written: under a `let mut` local or a
+    /// `&mut` parameter, through fields, `Box`es and elements (`s.buf`,
+    /// `b.v`, `(*b).w`).
+    fn writable(cx: &FnCtx, e: &Expr) -> bool {
+        match &e.kind {
+            ExprKind::Var(id) => Self::lookup(cx, &id.name).is_some_and(|l| match &l.ty {
+                TypeKind::Ref { mutable, .. } => *mutable,
+                _ => l.mutable,
+            }),
+            ExprKind::Field { base, .. } | ExprKind::Index { base, .. } | ExprKind::Deref(base) => {
+                Self::writable(cx, base)
+            }
+            _ => false,
+        }
     }
 
     /// `Vec::new()`, `Vec::with_capacity(n)` (the element type is the
@@ -5524,11 +5505,11 @@ impl<'a> Checker<'a> {
         }
         match t {
             TypeKind::Error => TypeKind::Error,
-            TypeKind::Vec(_) | TypeKind::Unit => {
+            TypeKind::Unit => {
                 self.err(
                     "E0402",
                     args[0].span,
-                    format!("a `Box<{}>` is not supported (ADR-0047 §1)", ty_str(&t)),
+                    "a `Box<()>` is not supported (ADR-0047 §1)",
                 );
                 TypeKind::Error
             }

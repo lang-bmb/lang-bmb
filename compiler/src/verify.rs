@@ -3576,14 +3576,6 @@ fn collect<'p>(p: &'p Program, t: &Tables) -> BTreeMap<String, Def<'p>> {
     out
 }
 
-pub(crate) fn holds_vec(t: &TypeKind) -> bool {
-    match t {
-        TypeKind::Vec(_) => true,
-        TypeKind::Ref { inner, .. } => holds_vec(&inner.kind),
-        _ => false,
-    }
-}
-
 fn param_sorts(params: &[TypeKind], tb: &Tables) -> Vec<String> {
     let mut ls = Vec::new();
     for t in params {

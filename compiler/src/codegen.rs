@@ -133,8 +133,7 @@ fn vec_len_max(e: &TypeKind) -> &'static str {
 /// The run-time support of `Vec` (ADR-0031 §4): allocation through libc,
 /// growth to twice the capacity (at least 4), and `abort` when a size does
 /// not fit in `isize` or the allocator fails.
-const VEC_RUNTIME: &str = "%bmb.vec = type { ptr, i64, i64 }
-declare ptr @realloc(ptr, i64)
+const VEC_RUNTIME: &str = "declare ptr @realloc(ptr, i64)
 define internal i64 @bmb_vec_bytes(i64 %n, i64 %size) {
 entry:
   %p = call {i64, i1} @llvm.umul.with.overflow.i64(i64 %n, i64 %size)
@@ -272,6 +271,8 @@ fn layout(t: &TypeKind, tb: &Tables) -> (u64, u64) {
     match value_ty(t) {
         TypeKind::Bool => (1, 1),
         TypeKind::Unit => (0, 1),
+        // `{ptr, len, cap}`.
+        TypeKind::Vec(_) => (24, 8),
         TypeKind::Array(e, n) => {
             let (s, a) = layout(&e.kind, tb);
             (s * n, a)
@@ -361,6 +362,35 @@ fn all_types<'a>(tb: &'a Tables, extra: &'a [TypeKind]) -> Vec<&'a TypeKind> {
     }
     all.extend(extra);
     all
+}
+
+/// Whether a value of type `t` holds a `Vec` anywhere (through references,
+/// fields, payloads, `Box`es, arrays and type arguments).
+fn holds_vec(t: &TypeKind, tb: &Tables) -> bool {
+    fn go(t: &TypeKind, tb: &Tables, seen: &mut BTreeSet<String>) -> bool {
+        match t {
+            TypeKind::Vec(_) => true,
+            TypeKind::Ref { inner: e, .. }
+            | TypeKind::Box(e)
+            | TypeKind::Array(e, _)
+            | TypeKind::Slice(e) => go(&e.kind, tb, seen),
+            TypeKind::Named { args, .. } => {
+                if args.iter().any(|a| go(&a.kind, tb, seen)) {
+                    return true;
+                }
+                if !seen.insert(ty_str(t)) {
+                    return false;
+                }
+                if let Some(fs) = struct_fields(t, tb) {
+                    return fs.iter().any(|(_, ft)| go(ft, tb, seen));
+                }
+                enum_variants(t, tb)
+                    .is_some_and(|vs| vs.iter().any(|(_, ps)| ps.iter().any(|p| go(p, tb, seen))))
+            }
+            _ => false,
+        }
+    }
+    go(t, tb, &mut BTreeSet::new())
 }
 
 /// The drop glue of every type that owns heap memory (ADR-0047 §4):
@@ -823,14 +853,19 @@ impl<'p> Gen<'p> {
                 (self.field_ptr(&bp, &bt, k), ft)
             }
             ExprKind::Index { base, index } if !matches!(base.kind, ExprKind::Var(_)) => {
-                // An element of an array field.
+                // An element of an array or `Vec` field.
                 let (bp, bt) = self.place(base);
-                let TypeKind::Array(el, n) = value_ty(&bt).clone() else {
-                    unreachable!("indexing an array field")
+                let (buf, len, el) = match value_ty(&bt).clone() {
+                    TypeKind::Array(el, n) => (bp, n.to_string(), el.kind),
+                    TypeKind::Vec(el) => {
+                        let (b, l) = self.vec_view(&bp);
+                        (b, l, el.kind)
+                    }
+                    _ => unreachable!("indexing an array or Vec field"),
                 };
                 let i = self.expr(index).imm();
-                let p = self.data_elem(e, &bp, &n.to_string(), &i, &el.kind);
-                (p, el.kind.clone())
+                let p = self.data_elem(e, &buf, &len, &i, &el);
+                (p, el)
             }
             ExprKind::Index { base, index } => {
                 let ExprKind::Var(id) = &base.kind else {
@@ -1442,7 +1477,7 @@ impl<'p> Gen<'p> {
         let CVal::Ptr { ptr, .. } = self.expr(e) else {
             unreachable!("a Vec value")
         };
-        if !Self::is_place(e) {
+        if Self::fresh(e) {
             let t = self.ty(e);
             self.pending.push((ptr.clone(), value_ty(&t).clone()));
         }
@@ -1522,14 +1557,6 @@ impl<'p> Gen<'p> {
         let cell = self.temp(&t);
         self.emit(format!("store ptr {h}, ptr {cell}"));
         CVal::Ptr { ptr: cell, ty: t }
-    }
-
-    fn is_place(e: &Expr) -> bool {
-        match &e.kind {
-            ExprKind::Var(_) => true,
-            ExprKind::Deref(x) | ExprKind::Ref { expr: x, .. } => Self::is_place(x),
-            _ => false,
-        }
     }
 
     /// Runs `f` as a region: temporaries it leaves are freed at its end. A
@@ -1713,10 +1740,35 @@ impl<'p> Gen<'p> {
             return;
         };
         for n in names {
-            if let Some(Slot::Data { ptr, ty }) = self.slots.get(&n).cloned() {
-                self.drop_at(&ptr, &ty);
-            }
+            self.drop_path(&n);
         }
+    }
+
+    /// Drops the local or field path `p` (`s`, `s.buf`, backlog 2O-03).
+    fn drop_path(&mut self, p: &str) {
+        let mut parts = p.split('.');
+        let Some(Slot::Data { mut ptr, mut ty }) =
+            parts.next().and_then(|r| self.slots.get(r).cloned())
+        else {
+            return;
+        };
+        for f in parts {
+            let (k, ft) = self.field_of(&ty, f);
+            ptr = self.field_ptr(&ptr, &ty, k);
+            ty = ft;
+        }
+        self.drop_at(&ptr, &ty);
+    }
+
+    /// The field paths still owned that an assignment at `span` drops
+    /// (a partially moved place, backlog 2O-03).
+    fn partial_replaces(&self, span: Span) -> Vec<String> {
+        self.t
+            .moves
+            .get(&self.base)
+            .and_then(|m| m.partial_replaces.get(&(span.file, span.lo, span.hi)))
+            .cloned()
+            .unwrap_or_default()
     }
 
     fn replaces(&self, span: Span) -> bool {
@@ -2325,6 +2377,9 @@ impl<'p> Gen<'p> {
                         if self.replaces(*span) {
                             self.drop_at(&ptr, &ty);
                         }
+                        for q in self.partial_replaces(*span) {
+                            self.drop_path(&q);
+                        }
                         self.put(v, &ptr, &ty);
                     }
                 },
@@ -2355,6 +2410,9 @@ impl<'p> Gen<'p> {
                     let (p, t) = self.place(target);
                     if self.replaces(*span) {
                         self.drop_at(&p, &t);
+                    }
+                    for q in self.partial_replaces(*span) {
+                        self.drop_path(&q);
                     }
                     self.put(v, &p, &t);
                 }
@@ -2431,10 +2489,7 @@ pub fn emit_with(
          declare void @llvm.memmove.p0.p0.i64(ptr, ptr, i64, i1)\n",
     );
     let types_at = ir.len();
-    let uses_vec = t.types.values().any(crate::verify::holds_vec)
-        || t.locals
-            .values()
-            .any(|m| m.values().any(crate::verify::holds_vec));
+    let uses_vec = all_types(t, &[]).into_iter().any(|x| holds_vec(x, t));
     let owns = |x: &TypeKind| crate::check::is_move(value_ty(x), &t.adts);
     let uses_heap =
         uses_vec || t.types.values().any(owns) || t.locals.values().any(|m| m.values().any(owns));
@@ -2678,7 +2733,13 @@ pub fn emit_with(
     }
     let extra: Vec<TypeKind> = used_types.into_values().collect();
     let glue = drop_glue(t, &extra);
-    ir.insert_str(types_at, &format!("{}{glue}", type_defs(t, &extra)));
+    // The `Vec` header first: data types and glue use it.
+    let header = if uses_vec {
+        "%bmb.vec = type { ptr, i64, i64 }\n"
+    } else {
+        ""
+    };
+    ir.insert_str(types_at, &format!("{header}{}{glue}", type_defs(t, &extra)));
     if let Some(m) = &main {
         let _ = write!(
             ir,

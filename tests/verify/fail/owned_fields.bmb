@@ -1,0 +1,38 @@
+#[summary("소유 필드: 따르지 않는 것 (ADR-0047 §3, backlog 2O-03)")]
+mod of {
+    struct Buf { data: Vec<i64>, cap: usize }
+
+    spec fn same_len(a: Buf, b: Buf) -> bool { b.data.len() == a.data.len() }
+
+    spec fn first_is(b: &Buf, x: i64) -> bool { b.data.len() > 0 && b.data[0] == x }
+
+    // `push` on a field changes its length.
+    #[effects(pure)]
+    #[uses(same_len)]
+    fn add(b: &mut Buf, x: i64) -> ()
+        ensures same_len(*old(b), *b),
+    {
+        b.data.push(x);
+    }
+
+    // The field may be empty.
+    #[effects(pure)]
+    fn head(b: &Buf) -> i64 {
+        b.data[0]
+    }
+
+    #[effects(pure)]
+    fn touch(b: &mut Buf) -> () {}
+
+    // A `&mut` callee may change a field's length.
+    #[effects(pure)]
+    #[uses(first_is)]
+    fn after_call(x: i64) -> (r: Buf)
+        ensures first_is(&r, x),
+    {
+        let mut b: Buf = Buf { data: Vec::new(), cap: 1 };
+        b.data.push(x);
+        touch(&mut b);
+        b
+    }
+}

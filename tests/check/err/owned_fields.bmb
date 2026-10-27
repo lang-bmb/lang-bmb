@@ -1,0 +1,64 @@
+#[summary("소유 필드와 부분 이동 (ADR-0047 §2, backlog 2O-03)")]
+mod ow {
+    struct Buf { data: Vec<i64>, n: i64 }
+
+    struct Ctx { a: Buf, b: Vec<u8> }
+
+    #[effects(pure)]
+    fn take(v: Vec<i64>) -> usize { v.len() }
+
+    #[effects(pure)]
+    fn whole(c: Ctx) -> usize { c.b.len() }
+
+    // The struct is used whole after a field was moved.
+    #[effects(pure)]
+    fn after_part(c: Ctx) -> usize {
+        let v: Vec<i64> = c.a.data;
+        whole(c)
+    }
+
+    // The moved field itself.
+    #[effects(pure)]
+    fn field_twice(b: Buf) -> usize {
+        let v: Vec<i64> = b.data;
+        take(b.data)
+    }
+
+    // Moved on one path only.
+    #[effects(pure)]
+    fn maybe(b: Buf, k: bool) -> usize {
+        if k { take(b.data) } else { 0 }
+    }
+
+    // Out of a field behind a reference.
+    #[effects(pure)]
+    fn behind(b: &Buf) -> usize {
+        take(b.data)
+    }
+
+    // A field of a moved struct.
+    #[effects(pure)]
+    fn field_of_moved(b: Buf) -> usize {
+        let mut m: Buf = b;
+        let c: Buf = m;
+        m.data = Vec::new();
+        c.data.len()
+    }
+
+    // `push` needs a mutable place.
+    #[effects(pure)]
+    fn immutable(b: Buf) -> usize {
+        b.data.push(1);
+        b.data.len()
+    }
+
+    // Reading the other fields is fine, and so is assigning the field again.
+    #[effects(pure)]
+    fn fine(c: Ctx) -> usize {
+        let mut d: Ctx = c;
+        let v: Vec<i64> = d.a.data;
+        let n: i64 = d.a.n;
+        d.a.data = v;
+        whole(d)
+    }
+}

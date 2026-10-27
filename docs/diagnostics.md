@@ -104,6 +104,7 @@
 | E0428 | a type argument does not satisfy a bound of its parameter |
 | E0429 | wrong number of type arguments in a call |
 | E0430 | a recursive generic call wraps a type parameter in a larger type |
+| E0433 | a value is used whole after one of its fields was moved |
 
 ## E05xx 명세
 

@@ -6,8 +6,14 @@
 //! side of an assignment, a call argument, a block's value, the scrutinee
 //! of a `match` that binds an owned payload. Reading through it (`v.len()`,
 //! `v[i]`, `&v`, `*b`, `b.f`) is not a move. A use of a moved local is
-//! E0413; assigning it again makes it owned again. Moving out of a field
-//! or out of `*b` is E0413 until partial moves (backlog 2O-03).
+//! E0413; assigning it again makes it owned again.
+//!
+//! A field of a local struct can be moved out on its own (a partial move,
+//! backlog 2O-03): the state is kept per field path (`s.buf`), the moved
+//! field cannot be used until it is assigned again, the whole local cannot
+//! be used meanwhile (E0433), and at the end of the block only the fields
+//! still owned are dropped. Moving out of a place behind a reference or in
+//! a `Box` (`*b`, `r.f`) is E0413.
 //!
 //! At every join (the branches of `if` and `match`, the right side of `&&`,
 //! `||` and `==>`, and a loop head against the end of its body) a local is
@@ -62,6 +68,9 @@ pub struct MoveInfo {
     /// The `match`es (by span) that move their scrutinee: some arm binds an
     /// owned payload. Each arm drops the owned payloads it does not bind.
     pub consumed: BTreeSet<Key>,
+    /// Assignments (by statement span) to a partially moved place: the
+    /// field paths still owned, dropped after the right side is evaluated.
+    pub partial_replaces: BTreeMap<Key, Vec<String>>,
 }
 
 struct Mv<'a> {
@@ -97,12 +106,13 @@ pub fn check(
         }
     }
     m.block(&f.body);
-    let params: Vec<String> = m
+    let roots: Vec<String> = m
         .state
-        .iter()
-        .filter(|(_, s)| matches!(s, St::Owned))
-        .map(|(n, _)| n.clone())
+        .keys()
+        .filter(|n| !n.contains('.'))
+        .cloned()
         .collect();
+    let params: Vec<String> = roots.iter().flat_map(|n| m.drop_paths(n)).collect();
     if !params.is_empty() {
         m.info
             .drops
@@ -111,6 +121,40 @@ pub fn check(
             .extend(params);
     }
     (m.diags, m.info)
+}
+
+/// The state of field path `p` in `state`: moved when it or a prefix is.
+fn status_in(state: &BTreeMap<String, St>, p: &str) -> Option<St> {
+    let mut cur = String::new();
+    let mut found = None;
+    for (i, part) in p.split('.').enumerate() {
+        if i > 0 {
+            cur.push('.');
+        }
+        cur.push_str(part);
+        match state.get(&cur) {
+            Some(St::Moved) => return Some(St::Moved),
+            Some(St::Owned) => found = Some(St::Owned),
+            None if i == 0 => return None,
+            None => {}
+        }
+    }
+    found
+}
+
+/// The type of field `f` of struct type `t`.
+fn field_ty(t: &TypeKind, f: &str, adts: &BTreeMap<String, Adt>) -> Option<TypeKind> {
+    let TypeKind::Named { path, .. } = t else {
+        return None;
+    };
+    let a = adts.get(&path.join("::"))?;
+    let crate::check::AdtKind::Struct(fs) = &a.kind else {
+        return None;
+    };
+    let m = crate::check::adt_subst(a, t);
+    fs.iter()
+        .find(|(n, _)| n == f)
+        .map(|(_, ft)| crate::check::subst(ft, &m))
 }
 
 impl Mv<'_> {
@@ -132,7 +176,123 @@ impl Mv<'_> {
             .push(Diag::new("E0413", e.span, msg).fix(fix, replacement));
     }
 
+    /// The state of field path `p` (a local, or `s.f.g`): moved when it or
+    /// a prefix is; `None` for an untracked local.
+    fn status(&self, p: &str) -> Option<St> {
+        status_in(&self.state, p)
+    }
+
+    /// A moved field path under `p` (`p.f..`), if any.
+    fn moved_part(&self, p: &str) -> Option<String> {
+        let pre = format!("{p}.");
+        self.state
+            .iter()
+            .find(|(k, s)| k.starts_with(&pre) && matches!(s, St::Moved))
+            .map(|(k, _)| k.clone())
+    }
+
+    /// The field path of `e` when it names a part of a local struct by
+    /// value: `s`, `s.f`, `s.f.g` (not through a reference or a `Box`).
+    fn path_of(&self, e: &Expr) -> Option<String> {
+        match &e.kind {
+            ExprKind::Var(id) => self.locals.contains_key(&id.name).then(|| id.name.clone()),
+            ExprKind::Field { base, name } => {
+                let bp = self.path_of(base)?;
+                matches!(self.path_ty(&bp)?, TypeKind::Named { .. })
+                    .then(|| format!("{bp}.{}", name.name))
+            }
+            _ => None,
+        }
+    }
+
+    /// The type of field path `p`.
+    fn path_ty(&self, p: &str) -> Option<TypeKind> {
+        let mut parts = p.split('.');
+        let mut t = self.locals.get(parts.next()?)?.clone();
+        for f in parts {
+            t = field_ty(&t, f, self.adts)?;
+        }
+        Some(t)
+    }
+
+    /// The paths to drop for the owned local or field `p`: itself, or, when
+    /// parts of it were moved, its fields still owned that own memory.
+    fn drop_paths(&self, p: &str) -> Vec<String> {
+        match self.status(p) {
+            Some(St::Owned) => {}
+            _ => return Vec::new(),
+        }
+        if self.moved_part(p).is_none() {
+            return vec![p.to_string()];
+        }
+        let Some(TypeKind::Named { path, .. }) = self.path_ty(p) else {
+            return Vec::new();
+        };
+        let names: Vec<String> = match self.adts.get(&path.join("::")).map(|a| &a.kind) {
+            Some(crate::check::AdtKind::Struct(fs)) => fs.iter().map(|(n, _)| n.clone()).collect(),
+            _ => Vec::new(),
+        };
+        names
+            .iter()
+            .map(|n| format!("{p}.{n}"))
+            .filter(|q| self.path_ty(q).is_some_and(|t| is_move(&t, self.adts)))
+            .flat_map(|q| self.drop_paths(&q))
+            .collect()
+    }
+
+    /// Forgets the field states under `p` (it is assigned whole).
+    fn clear(&mut self, p: &str) {
+        let pre = format!("{p}.");
+        self.state.retain(|k, _| !k.starts_with(&pre));
+    }
+
+    /// E0433: `p` is used whole after its field `part` was moved.
+    fn partly_moved(&mut self, p: &str, part: &str, span: Span) {
+        self.diags.push(
+            Diag::new(
+                "E0433",
+                span,
+                format!("`{p}` is used after its field `{part}` was moved"),
+            )
+            .fix(
+                format!("assign `{part}` again before this use, or use the other fields"),
+                None,
+            ),
+        );
+        // One report: the use counts as whole from here.
+        self.clear(p);
+    }
+
+    /// A use of field path `p` (a local or a field of one), moving it when
+    /// `moves`.
+    fn use_path(&mut self, p: &str, span: Span, moves: bool) {
+        match self.status(p) {
+            Some(St::Owned) => {
+                if let Some(part) = self.moved_part(p) {
+                    self.partly_moved(p, &part, span);
+                }
+                if moves {
+                    self.state.insert(p.to_string(), St::Moved);
+                }
+            }
+            Some(St::Moved) => {
+                self.diags.push(
+                    Diag::new("E0413", span, format!("`{p}` is used after it was moved"))
+                        .fix(format!("assign `{p}` again before this use"), None),
+                );
+                let st = if moves { St::Moved } else { St::Owned };
+                self.state.insert(p.to_string(), st);
+            }
+            None => {}
+        }
+    }
+
     fn use_var(&mut self, id: &Ident, span: Span, moves: bool) {
+        if let Some(part) = self.moved_part(&id.name)
+            && matches!(self.status(&id.name), Some(St::Owned))
+        {
+            self.partly_moved(&id.name, &part, span);
+        }
         match self.state.get(&id.name) {
             Some(St::Owned) => {
                 if moves {
@@ -166,16 +326,43 @@ impl Mv<'_> {
     /// other is E0414 (and moved from here on).
     fn merge(&mut self, a: BTreeMap<String, St>, b: BTreeMap<String, St>, span: Span) {
         let mut out = BTreeMap::new();
-        for (n, sa) in &a {
-            let Some(sb) = b.get(n) else { continue };
-            if sa.same(*sb) {
-                out.insert(n.clone(), *sa);
+        let keys: BTreeSet<&String> = a.keys().chain(b.keys()).collect();
+        for n in keys {
+            let root = n.split('.').next().unwrap_or(n);
+            if !(a.contains_key(root) && b.contains_key(root)) {
+                continue;
+            }
+            let (Some(sa), Some(sb)) = (status_in(&a, n), status_in(&b, n)) else {
+                continue;
+            };
+            let st = if sa.same(sb) {
+                sa
             } else {
                 self.maybe_moved(n, span, "on one path and not on another");
-                out.insert(n.clone(), St::Moved);
+                St::Moved
+            };
+            // A field is kept only when moved (owned is inherited).
+            if !n.contains('.') || matches!(st, St::Moved) {
+                out.insert(n.clone(), st);
             }
         }
         self.state = out;
+    }
+
+    /// The drop of an assignment to owned place `p` at `span`: the old
+    /// value whole, or its fields still owned when parts were moved.
+    fn replace_at(&mut self, p: &str, span: Span) {
+        if !matches!(self.status(p), Some(St::Owned)) {
+            return;
+        }
+        if self.moved_part(p).is_none() {
+            self.info.replaces.insert(key(span));
+        } else {
+            let rest = self.drop_paths(p);
+            if !rest.is_empty() {
+                self.info.partial_replaces.insert(key(span), rest);
+            }
+        }
     }
 
     fn maybe_moved(&mut self, name: &str, span: Span, how: &str) {
@@ -202,14 +389,14 @@ impl Mv<'_> {
         let inner: Vec<String> = self
             .state
             .keys()
-            .filter(|n| !outer.contains(*n))
+            .filter(|n| !n.contains('.') && !outer.contains(*n))
             .cloned()
             .collect();
         let mut owned = Vec::new();
         for n in inner {
-            if let Some(St::Owned) = self.state.remove(&n) {
-                owned.push(n);
-            }
+            owned.extend(self.drop_paths(&n));
+            self.clear(&n);
+            self.state.remove(&n);
         }
         if !owned.is_empty() {
             self.info.drops.insert(key(b.span), owned);
@@ -233,9 +420,8 @@ impl Mv<'_> {
                 self.expr(value, true);
                 match &target.kind {
                     ExprKind::Var(id) if self.owns(&id.name) => {
-                        if let Some(St::Owned) = self.state.get(&id.name) {
-                            self.info.replaces.insert(key(*span));
-                        }
+                        self.replace_at(&id.name, *span);
+                        self.clear(&id.name);
                         self.state.insert(id.name.clone(), St::Owned);
                     }
                     // `*v = w` for `v: &mut Vec<T>` or `v: Box<T>`, `s.f = w`:
@@ -250,6 +436,31 @@ impl Mv<'_> {
                     ExprKind::Index { base, index } => {
                         self.expr(base, false);
                         self.expr(index, true);
+                    }
+                    // A field of a local: its own state (it may have been
+                    // moved out, and the struct may not be).
+                    ExprKind::Field { .. }
+                        if self.path_of(target).is_some_and(|p| {
+                            let root = p.split('.').next().unwrap_or(&p).to_string();
+                            self.status(&root).is_some()
+                        }) =>
+                    {
+                        let p = self.path_of(target).expect("checked");
+                        let parent = &p[..p.rfind('.').expect("a field path")];
+                        if let Some(St::Moved) = self.status(parent) {
+                            self.diags.push(
+                                Diag::new(
+                                    "E0413",
+                                    target.span,
+                                    format!("`{parent}` is moved: its field cannot be assigned"),
+                                )
+                                .fix(format!("assign `{parent}` whole"), None),
+                            );
+                        } else if self.moves_ty(target) {
+                            self.replace_at(&p, *span);
+                            self.clear(&p);
+                            self.state.remove(&p);
+                        }
                     }
                     ExprKind::Field { base, .. } => {
                         if self.moves_ty(target) {
@@ -275,9 +486,15 @@ impl Mv<'_> {
                 let exit = self.state.clone();
                 self.block(body);
                 let mut out = exit;
-                for (n, s0) in &head {
-                    if let Some(s1) = self.state.get(n)
-                        && !s0.same(*s1)
+                let keys: BTreeSet<String> =
+                    head.keys().chain(self.state.keys()).cloned().collect();
+                for n in &keys {
+                    let root = n.split('.').next().unwrap_or(n);
+                    if !head.contains_key(root) {
+                        continue;
+                    }
+                    if let (Some(s0), Some(s1)) = (status_in(&head, n), self.status(n))
+                        && !s0.same(s1)
                     {
                         let how = if matches!(s0, St::Owned) {
                             "in the loop and not assigned again before the next iteration"
@@ -363,7 +580,7 @@ impl Mv<'_> {
                     let fix = if matches!(self.types.get(&key(e.span)), Some(TypeKind::Vec(_))) {
                         format!("move `{}.clone()` instead", crate::fmt::expr_text(x))
                     } else {
-                        "read through it (`*b` of a copyable value, `b.f`) or move the whole value; moving out comes with backlog 2O-03".into()
+                        "read through it (`*b` of a copyable value, `b.f`) or move the whole value; replacing it with `std::mem::replace` comes with backlog 2O-04".into()
                     };
                     self.move_out(
                         e,
@@ -374,15 +591,26 @@ impl Mv<'_> {
                 }
                 self.expr(x, false);
             }
+            // A field of a local struct: moved on its own, or read.
+            ExprKind::Field { .. }
+                if self.path_of(e).is_some_and(|p| {
+                    let root = p.split('.').next().unwrap_or(&p).to_string();
+                    self.status(&root).is_some()
+                }) =>
+            {
+                let p = self.path_of(e).expect("checked");
+                let owned = self.moves_ty(e);
+                self.use_path(&p, e.span, moves && owned);
+            }
             ExprKind::Field { base, .. } => {
                 if moves && self.moves_ty(e) {
                     self.move_out(
                         e,
                         format!(
-                            "cannot move the field `{}` out of its struct",
+                            "cannot move the field `{}` out of a place behind a reference or in a `Box`",
                             crate::fmt::expr_text(e)
                         ),
-                        "move the whole struct; moving a field out comes with backlog 2O-03".into(),
+                        "read through it; replacing it with `std::mem::replace` comes with backlog 2O-04".into(),
                         None,
                     );
                 }

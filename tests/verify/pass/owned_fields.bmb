@@ -1,0 +1,38 @@
+#[summary("소유 필드: 필드의 Vec은 슬라이스 값 (ADR-0047 §3, backlog 2O-03)")]
+mod ov {
+    struct Buf { data: Vec<i64>, cap: usize }
+
+    spec fn fits(b: &Buf) -> bool { b.data.len() < b.cap && b.cap <= 1000 }
+
+    spec fn grew(a: Buf, b: Buf) -> bool { b.data.len() == a.data.len() + 1 && b.cap == a.cap }
+
+    spec fn first_is(b: &Buf, x: i64) -> bool { b.data.len() > 0 && b.data[0] == x }
+
+    #[effects(pure)]
+    #[uses(fits, grew)]
+    fn add(b: &mut Buf, x: i64) -> ()
+        requires fits(b),
+        ensures grew(*old(b), *b),
+    {
+        b.data.push(x);
+    }
+
+    #[effects(pure)]
+    #[uses(first_is)]
+    fn mk(x: i64) -> (r: Buf)
+        ensures first_is(&r, x),
+    {
+        let mut b: Buf = Buf { data: Vec::new(), cap: 10 };
+        b.data.push(x);
+        b
+    }
+
+    #[effects(pure)]
+    #[uses(first_is)]
+    fn set0(b: &mut Buf, x: i64) -> ()
+        requires first_is(b, 0),
+        ensures first_is(b, x),
+    {
+        b.data[0] = x;
+    }
+}
