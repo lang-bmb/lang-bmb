@@ -1287,6 +1287,9 @@ impl<'p> Gen<'p> {
             ExprKind::Call { path, args, .. } if crate::check::is_box_new(path) => {
                 self.box_new(e, args)
             }
+            ExprKind::Call { path, args, .. } if crate::check::mem_op(path).is_some() => {
+                self.mem_call(crate::check::mem_op(path).expect("checked"), args)
+            }
             ExprKind::Call { path, args, .. } if self.is_variant(path) => {
                 let t = self.ty(e);
                 self.variant(&t, &path.last().unwrap().name, args)
@@ -1547,6 +1550,85 @@ impl<'p> Gen<'p> {
             }
             v => v,
         }
+    }
+
+    /// A place of any type: its address, its type, and the register type
+    /// when it is a scalar slot (a scalar local or reference parameter,
+    /// held in register form; other scalars are in memory form).
+    fn any_place(&mut self, e: &Expr) -> (String, TypeKind, Option<&'static str>) {
+        let var = match &e.kind {
+            ExprKind::Var(id) => Some(id),
+            ExprKind::Deref(x) => match &x.kind {
+                ExprKind::Var(id) if matches!(self.slots[&id.name], Slot::Scalar { .. }) => {
+                    Some(id)
+                }
+                _ => None,
+            },
+            _ => None,
+        };
+        if let Some(id) = var {
+            let t = self
+                .local_ty(&id.name)
+                .map(|t| value_ty(&t).clone())
+                .unwrap_or(TypeKind::Error);
+            match self.slots[&id.name].clone() {
+                Slot::Scalar { ptr, ty } => return (ptr, t, Some(ty)),
+                Slot::Arr { ptr, .. } => return (ptr, t, None),
+                Slot::Data { ptr, ty } => return (ptr, ty, None),
+            }
+        }
+        let (p, t) = self.place(e);
+        (p, t, None)
+    }
+
+    /// The value at a place from `any_place`.
+    fn read_any(&mut self, p: &str, t: &TypeKind, reg: Option<&'static str>) -> CVal {
+        match reg {
+            Some(lt) => {
+                let r = self.t();
+                self.emit(format!("{r} = load {lt}, ptr {p}"));
+                CVal::Imm(r)
+            }
+            None => self.read(p, t),
+        }
+    }
+
+    /// Stores `v` at a place from `any_place` (an aggregate is copied).
+    fn write_any(&mut self, p: &str, t: &TypeKind, reg: Option<&'static str>, v: CVal) {
+        match reg {
+            Some(lt) => self.emit(format!("store {lt} {}, ptr {p}", v.imm())),
+            None => self.put(v, p, t),
+        }
+    }
+
+    /// `std::mem::replace(&mut p, v)` and `std::mem::swap(&mut a, &mut b)`
+    /// (ADR-0047 §2): values move between the places, so nothing is dropped.
+    fn mem_call(&mut self, op: &str, args: &[Expr]) -> CVal {
+        let inner = |a: &Expr| match &a.kind {
+            ExprKind::Ref { expr, .. } => (**expr).clone(),
+            _ => a.clone(),
+        };
+        let (p0, t, r0) = self.any_place(&inner(&args[0]));
+        // The old value, in its own memory when it is an aggregate.
+        let old = match r0 {
+            Some(_) => self.read_any(&p0, &t, r0),
+            None if is_scalar_ty(value_ty(&t)) => self.read(&p0, &t),
+            None => {
+                let tmp = self.temp(&t);
+                self.copy(&tmp, &p0, &t);
+                self.read(&tmp, &t)
+            }
+        };
+        if op == "replace" {
+            let v = self.expr(&args[1]);
+            self.write_any(&p0, &t, r0, v);
+            return old;
+        }
+        let (p1, t1, r1) = self.any_place(&inner(&args[1]));
+        let v1 = self.read_any(&p1, &t1, r1);
+        self.write_any(&p0, &t, r0, v1);
+        self.write_any(&p1, &t1, r1, old);
+        CVal::Unit
     }
 
     /// `Box::new(v)` (ADR-0047 §4): `v` is evaluated, then copied into

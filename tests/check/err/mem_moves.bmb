@@ -1,0 +1,72 @@
+#[summary("mem::replace·swap, E0239, Copy 없는 타입 매개변수 (ADR-0047 §2, backlog 2O-04)")]
+mod mv {
+    struct Buf { data: Vec<i64>, name: Option<Box<i64>>, b: Box<i64> }
+
+    // A field moved out from behind `&mut` (E0239, fix: `std::mem::replace`).
+    #[effects(pure)]
+    fn take_vec(r: &mut Buf) -> Vec<i64> {
+        r.data
+    }
+
+    #[effects(pure)]
+    fn take_opt(r: &mut Buf) -> Option<Box<i64>> {
+        r.name
+    }
+
+    #[effects(pure)]
+    fn take_box(r: &mut Buf) -> Box<i64> {
+        r.b
+    }
+
+    // Behind a shared reference nothing can be taken.
+    #[effects(pure)]
+    fn shared(r: &Buf) -> Vec<i64> {
+        r.data
+    }
+
+    // `mem::replace` names the module through a `use`.
+    #[effects(pure)]
+    fn short(v: &mut Vec<i64>) -> Vec<i64> {
+        mem::replace(v, Vec::new())
+    }
+
+    // `take` needs `Default` (ADR-0046 §6).
+    #[effects(pure)]
+    fn taken(v: &mut Vec<i64>) -> Vec<i64> {
+        std::mem::take(v)
+    }
+
+    // A place, as `&mut place`.
+    #[effects(pure)]
+    fn by_value(v: Vec<i64>) -> Vec<i64> {
+        std::mem::replace(v, Vec::new())
+    }
+
+    // Two places of one variable.
+    #[effects(pure)]
+    fn same(r: &mut Buf) -> () {
+        std::mem::swap(&mut r.data, &mut r.data);
+    }
+
+    // A type parameter without `Copy` moves.
+    #[effects(pure)]
+    fn twice<T>(x: T) -> T {
+        let y: T = x;
+        x
+    }
+
+    #[effects(pure)]
+    fn first<T>(a: &[T]) -> T {
+        a[0]
+    }
+
+    // No arrays of it yet (backlog 2O-03c).
+    struct Pair<T> { items: [T; 2] }
+
+    // A `Copy` bound still copies.
+    #[effects(pure)]
+    fn dup<T: Copy>(x: T) -> T {
+        let y: T = x;
+        x
+    }
+}

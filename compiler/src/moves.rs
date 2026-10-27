@@ -28,7 +28,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::ast::*;
-use crate::check::{Adt, is_move};
+use crate::check::{Adt, is_move_in};
 use crate::diag::Diag;
 use crate::source::Span;
 
@@ -79,6 +79,8 @@ struct Mv<'a> {
     locals: &'a BTreeMap<String, TypeKind>,
     types: &'a BTreeMap<Key, TypeKind>,
     adts: &'a BTreeMap<String, Adt>,
+    /// The type parameters without `Copy` (their values move).
+    moving: &'a BTreeSet<String>,
     state: BTreeMap<String, St>,
     diags: Vec<Diag>,
     info: MoveInfo,
@@ -91,11 +93,13 @@ pub fn check(
     locals: &BTreeMap<String, TypeKind>,
     types: &BTreeMap<Key, TypeKind>,
     adts: &BTreeMap<String, Adt>,
+    moving: &BTreeSet<String>,
 ) -> (Vec<Diag>, MoveInfo) {
     let mut m = Mv {
         locals,
         types,
         adts,
+        moving,
         state: BTreeMap::new(),
         diags: Vec::new(),
         info: MoveInfo::default(),
@@ -160,14 +164,16 @@ fn field_ty(t: &TypeKind, f: &str, adts: &BTreeMap<String, Adt>) -> Option<TypeK
 impl Mv<'_> {
     /// Whether local `name` holds a value that moves.
     fn owns(&self, name: &str) -> bool {
-        self.locals.get(name).is_some_and(|t| is_move(t, self.adts))
+        self.locals
+            .get(name)
+            .is_some_and(|t| is_move_in(t, self.adts, self.moving))
     }
 
     /// Whether the value of expression `e` moves.
     fn moves_ty(&self, e: &Expr) -> bool {
         self.types
             .get(&key(e.span))
-            .is_some_and(|t| is_move(t, self.adts))
+            .is_some_and(|t| is_move_in(t, self.adts, self.moving))
     }
 
     /// E0413 for a move out of a place that is not a whole local.
@@ -235,7 +241,10 @@ impl Mv<'_> {
         names
             .iter()
             .map(|n| format!("{p}.{n}"))
-            .filter(|q| self.path_ty(q).is_some_and(|t| is_move(&t, self.adts)))
+            .filter(|q| {
+                self.path_ty(q)
+                    .is_some_and(|t| is_move_in(&t, self.adts, self.moving))
+            })
             .flat_map(|q| self.drop_paths(&q))
             .collect()
     }
@@ -347,6 +356,50 @@ impl Mv<'_> {
             }
         }
         self.state = out;
+    }
+
+    /// Whether place `e` is reached through a `&mut` parameter (not
+    /// through a `Box` of a local, which can be moved whole).
+    fn behind_mut(&self, e: &Expr) -> bool {
+        match &e.kind {
+            ExprKind::Var(id) => matches!(
+                self.locals.get(&id.name),
+                Some(TypeKind::Ref { mutable: true, .. })
+            ),
+            ExprKind::Field { base, .. } | ExprKind::Deref(base) | ExprKind::Index { base, .. } => {
+                self.behind_mut(base)
+            }
+            _ => false,
+        }
+    }
+
+    /// E0239: an owned value moved out from behind a `&mut`; the fix puts
+    /// a new value in its place with `std::mem::replace` (ADR-0047 §2).
+    fn out_of_mut(&mut self, e: &Expr) {
+        let place = crate::fmt::expr_text(e);
+        let fresh = match self.types.get(&key(e.span)) {
+            Some(TypeKind::Vec(_)) => Some("Vec::new()"),
+            Some(TypeKind::Named { path, .. }) if path.len() == 1 && path[0] == "Option" => {
+                Some("None")
+            }
+            _ => None,
+        };
+        let d = Diag::new(
+            "E0239",
+            e.span,
+            format!("cannot move `{place}` out from behind a `&mut`"),
+        );
+        let d = match fresh {
+            Some(v) => d.fix(
+                format!("take it and leave `{v}` in its place"),
+                Some(format!("std::mem::replace(&mut {place}, {v})")),
+            ),
+            None => d.fix(
+                format!("take it with `std::mem::replace(&mut {place}, new)`, or exchange it with `std::mem::swap`"),
+                None,
+            ),
+        };
+        self.diags.push(d);
     }
 
     /// The drop of an assignment to owned place `p` at `span`: the old
@@ -539,7 +592,7 @@ impl Mv<'_> {
                     self.move_out(
                         e,
                         format!("cannot move out of `{}`", crate::fmt::expr_text(e)),
-                        "read through it (`v[i].len()`, `&v[i]`) or take it with `pop`; replacing it with `std::mem::replace` comes with backlog 2O-04".into(),
+                        "read through it (`v[i].len()`, `&v[i]`), take it with `pop`, or exchange it with `std::mem::replace(&mut v[i], new)`".into(),
                         None,
                     );
                 }
@@ -588,11 +641,14 @@ impl Mv<'_> {
                 }
             }
             ExprKind::Deref(x) => {
-                if moves && self.moves_ty(e) {
+                if moves && self.moves_ty(e) && self.behind_mut(e) {
+                    self.out_of_mut(e);
+                } else if moves && self.moves_ty(e) {
                     let fix = if matches!(self.types.get(&key(e.span)), Some(TypeKind::Vec(_))) {
                         format!("move `{}.clone()` instead", crate::fmt::expr_text(x))
                     } else {
-                        "read through it (`*b` of a copyable value, `b.f`) or move the whole value; replacing it with `std::mem::replace` comes with backlog 2O-04".into()
+                        "read through it (`*b` of a copyable value, `b.f`) or move the whole value"
+                            .into()
                     };
                     self.move_out(
                         e,
@@ -615,14 +671,16 @@ impl Mv<'_> {
                 self.use_path(&p, e.span, moves && owned);
             }
             ExprKind::Field { base, .. } => {
-                if moves && self.moves_ty(e) {
+                if moves && self.moves_ty(e) && self.behind_mut(e) {
+                    self.out_of_mut(e);
+                } else if moves && self.moves_ty(e) {
                     self.move_out(
                         e,
                         format!(
-                            "cannot move the field `{}` out of a place behind a reference or in a `Box`",
+                            "cannot move the field `{}` out of a place behind a shared reference or in a `Box`",
                             crate::fmt::expr_text(e)
                         ),
-                        "read through it; replacing it with `std::mem::replace` comes with backlog 2O-04".into(),
+                        "read through it, or move the whole value".into(),
                         None,
                     );
                 }

@@ -1,0 +1,58 @@
+#[summary("mem::replace·swap 실행: 필드·스칼라·Box·&mut 매개변수 (backlog 2O-04)")]
+mod mr {
+    struct Buf { data: Vec<i64>, n: i64 }
+
+    spec fn emptied(b: &Buf) -> bool { b.data.len() == 0 }
+
+    
+
+    #[effects(pure)]
+    #[uses(emptied)]
+    fn take(b: &mut Buf) -> (r: Vec<i64>)
+        ensures emptied(b),
+    {
+        std::mem::replace(&mut b.data, Vec::new())
+    }
+
+    #[effects(pure)]
+    fn swap_bufs(a: &mut Buf, b: &mut Buf) -> () {
+        std::mem::swap(&mut a.data, &mut b.data);
+    }
+
+    #[effects(pure)]
+    fn reset(v: &mut Vec<i64>) -> Vec<i64> {
+        std::mem::replace(v, Vec::new())
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        let mut b: Buf = Buf { data: Vec::new(), n: 0 };
+        b.data.push(1);
+        b.data.push(2);
+        let mut c: Buf = Buf { data: Vec::new(), n: 1 };
+        c.data.push(9);
+        swap_bufs(&mut b, &mut c);
+        print_u64(u64::try_from(b.data.len()).unwrap());
+        let prev: Vec<i64> = take(&mut c);
+        print_u64(u64::try_from(prev.len()).unwrap());
+        print_u64(u64::try_from(c.data.len()).unwrap());
+        let mut x: i64 = 3;
+        let mut y: i64 = 4;
+        std::mem::swap(&mut x, &mut y);
+        print_i64(x);
+        let z: i64 = std::mem::replace(&mut x, 10);
+        print_i64(z);
+        print_i64(x);
+        let mut bx: Box<i64> = Box::new(5);
+        let ob: Box<i64> = std::mem::replace(&mut bx, Box::new(6));
+        print_i64(*ob);
+        print_i64(*bx);
+        let mut f: bool = true;
+        let g: bool = std::mem::replace(&mut f, false);
+        if g { print_i64(1); } else { print_i64(0); }
+        let mut w: Vec<i64> = Vec::new();
+        w.push(7);
+        let w2: Vec<i64> = reset(&mut w);
+        print_u64(u64::try_from(w2.len()).unwrap());
+    }
+}

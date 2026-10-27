@@ -1,0 +1,56 @@
+#[summary("mem::replace·swap과 이동하는 T: 증명 (ADR-0047 §2, backlog 2O-04)")]
+mod mp {
+    struct Buf { data: Vec<i64>, n: i64 }
+
+    struct Wrap<T> { v: T, n: i64 }
+
+    spec fn emptied(b: &Buf) -> bool { b.data.len() == 0 }
+
+    spec fn len_is(v: &[i64], n: usize) -> bool { v.len() == n }
+
+    spec fn lens(a: &Buf, b: &Buf, x: usize, y: usize) -> bool { a.data.len() == x && b.data.len() == y }
+
+    spec fn is<T>(a: T, b: T) -> bool { a == b }
+
+    spec fn swapped(a: i64, b: i64, x: i64, y: i64) -> bool { a == y && b == x }
+
+    #[effects(pure)]
+    #[uses(emptied, len_is)]
+    fn take(b: &mut Buf) -> (r: Vec<i64>)
+        ensures emptied(b), len_is(r.as_slice(), old(b).data.len()),
+    {
+        std::mem::replace(&mut b.data, Vec::new())
+    }
+
+    #[effects(pure)]
+    #[uses(lens)]
+    fn exchange(a: &mut Buf, b: &mut Buf) -> ()
+        ensures lens(a, b, old(b).data.len(), old(a).data.len()),
+    {
+        std::mem::swap(&mut a.data, &mut b.data);
+    }
+
+    #[effects(pure)]
+    #[uses(swapped)]
+    fn ints(a: &mut i64, b: &mut i64) -> ()
+        ensures swapped(*a, *b, *old(a), *old(b)),
+    {
+        std::mem::swap(a, b);
+    }
+
+    #[effects(pure)]
+    #[uses(is)]
+    fn id<T>(x: T) -> (r: T)
+        ensures is::<T>(r, x),
+    {
+        x
+    }
+
+    #[effects(pure)]
+    #[uses(is)]
+    fn unwrap<T>(w: Wrap<T>) -> (r: T)
+        ensures is::<T>(r, w.v),
+    {
+        w.v
+    }
+}

@@ -7,5 +7,4 @@
 {"code":"E0601","severity":"error","message":"`exposed` has no `#[effects(..)]` attribute","file":"err/items.bmb","line":16,"col":9,"end_line":16,"end_col":11,"fix":{"message":"add `#[effects(pure)]` above the function","replacement":"#[effects(pure)] fn"}}
 {"code":"E0302","severity":"error","message":"`twice` is defined more than once in `items`","file":"err/items.bmb","line":22,"col":8,"end_line":22,"end_col":13}
 {"code":"E0605","severity":"error","message":"unknown attribute `inline` on a function","file":"err/items.bmb","line":25,"col":5,"end_line":25,"end_col":14,"fix":{"message":"remove it: functions take `#[effects(..)]` and `#[uses(..)]`","replacement":""}}
-{"code":"E0402","severity":"error","message":"type parameter `T` needs `Copy`: a parameter that may be an owned type comes with ADR-0047 (phase 2O)","file":"err/items.bmb","line":29,"col":16,"end_line":29,"end_col":17,"fix":{"message":"write `T: Copy`","replacement":"T: Copy"}}
 {"code":"E0302","severity":"error","message":"unit `items` is defined more than once","file":"err/items.bmb","line":33,"col":5,"end_line":33,"end_col":10}

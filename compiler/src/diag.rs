@@ -52,10 +52,7 @@ pub const CODES: &[(&str, &str)] = &[
         "E0218",
         "a `Vec` is passed where a slice is expected: write `v.as_slice()`",
     ),
-    (
-        "E0219",
-        "`drop(v)` and `mem::take` / `replace` / `swap` are not used",
-    ),
+    ("E0219", "`drop(v)` and `mem::take` are not used"),
     ("E0234", "a string literal: text is bytes, write `b\"...\"`"),
     ("E0235", "a blanket impl `impl<T> Trait for T` is not used"),
     (
@@ -70,6 +67,10 @@ pub const CODES: &[(&str, &str)] = &[
     (
         "E0238",
         "`Rc`, `RefCell`, `Cell` and `Arc` are not used: values have one owner",
+    ),
+    (
+        "E0239",
+        "an owned value is moved out from behind a `&mut`: use `std::mem::replace`",
     ),
     // E0220-E0233: Rust habits around data types (ADR-0026 §5)
     ("E0220", "`#[derive(..)]` is not used"),

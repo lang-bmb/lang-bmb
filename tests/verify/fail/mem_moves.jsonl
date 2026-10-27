@@ -1,0 +1,6 @@
+{"code":"E0802","severity":"error","message":"postcondition `kept` may not hold in `mf::take`; counterexample: b = Buf { data: [-9223372036854775770] (len 1), n: -9223372036854775770 }","file":"fail/mem_moves.bmb","line":13,"col":17,"end_line":13,"end_col":34}
+{"code":"E0802","severity":"error","message":"postcondition `same` may not hold in `mf::exchange`; counterexample: a = -1, b = 0","file":"fail/mem_moves.bmb","line":22,"col":17,"end_line":22,"end_col":34}
+{"code":"E0802","severity":"error","message":"postcondition `same` may not hold in `mf::returned`; counterexample: a = 1","file":"fail/mem_moves.bmb","line":31,"col":17,"end_line":31,"end_col":27}
+{"def":"mf::exchange","status":"failed","obligations":1,"failed":1,"rlimit":5000718,"rlimit_max":5000195}
+{"def":"mf::returned","status":"failed","obligations":1,"failed":1,"rlimit":5000621,"rlimit_max":5000188}
+{"def":"mf::take","status":"failed","obligations":1,"failed":1,"rlimit":5001652,"rlimit_max":5000222}

@@ -1,0 +1,35 @@
+#[summary("mem::replace·swap: 따르지 않는 것 (ADR-0047 §2, backlog 2O-04)")]
+mod mf {
+    struct Buf { data: Vec<i64>, n: i64 }
+
+    spec fn kept(a: Buf, b: Buf) -> bool { b.data.len() == a.data.len() }
+
+    spec fn same(a: i64, b: i64) -> bool { a == b }
+
+    // `replace` changes the place.
+    #[effects(pure)]
+    #[uses(kept)]
+    fn take(b: &mut Buf) -> Vec<i64>
+        ensures kept(*old(b), *b),
+    {
+        std::mem::replace(&mut b.data, Vec::new())
+    }
+
+    // `swap` exchanges the values.
+    #[effects(pure)]
+    #[uses(same)]
+    fn exchange(a: &mut i64, b: &mut i64) -> ()
+        ensures same(*a, *old(a)),
+    {
+        std::mem::swap(a, b);
+    }
+
+    // The old value is returned, not the new one.
+    #[effects(pure)]
+    #[uses(same)]
+    fn returned(a: &mut i64) -> (r: i64)
+        ensures same(r, 0),
+    {
+        std::mem::replace(a, 0)
+    }
+}

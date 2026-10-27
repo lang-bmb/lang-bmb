@@ -2,7 +2,7 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 4761970,
+    "V4_rlimit_total": 4774032,
     "V5_rlimit_headroom": 0.0152,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0,
@@ -14,12 +14,12 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 25041,
+    "S4_stage0_rust_lines": 25297,
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
-    "P1_runnable_programs": 33,
-    "P2_bmb_lines": 10149,
-    "P3_errors_with_help": 0.7894,
+    "P1_runnable_programs": 35,
+    "P2_bmb_lines": 10406,
+    "P3_errors_with_help": 0.7948,
     "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 9
@@ -809,6 +809,32 @@
         "P3_errors_with_help": [
           0.7856,
           0.7894
+        ]
+      }
+    },
+    {
+      "date": "2026-10-27",
+      "reason": "2O-04: mem::replace/swap and generic moves run programs, corpus",
+      "changed": {
+        "V4_rlimit_total": [
+          4761970,
+          4774032
+        ],
+        "S4_stage0_rust_lines": [
+          25041,
+          25297
+        ],
+        "P1_runnable_programs": [
+          33,
+          35
+        ],
+        "P2_bmb_lines": [
+          10149,
+          10406
+        ],
+        "P3_errors_with_help": [
+          0.7894,
+          0.7948
         ]
       }
     }

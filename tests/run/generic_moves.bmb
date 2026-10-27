@@ -1,0 +1,36 @@
+#[summary("Copy 없는 타입 매개변수: 이동하는 T의 인스턴스와 해제 (backlog 2O-04)")]
+mod mg {
+    struct Wrap<T> { v: T, n: i64 }
+
+    #[effects(pure)]
+    fn id<T>(x: T) -> T { x }
+
+    #[effects(pure)]
+    fn wrap<T>(x: T) -> Wrap<T> { Wrap { v: x, n: 1 } }
+
+    #[effects(pure)]
+    fn unwrap<T>(w: Wrap<T>) -> T { w.v }
+
+    #[effects(pure)]
+    fn discard<T>(x: T) -> i64 { 0 }
+
+    #[effects(pure)]
+    fn swap_in<T>(a: &mut T, b: T) -> T {
+        std::mem::replace(a, b)
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        let mut v: Vec<i64> = Vec::new();
+        v.push(3);
+        let w: Wrap<Vec<i64>> = wrap::<Vec<i64>>(id::<Vec<i64>>(v));
+        let back: Vec<i64> = unwrap::<Vec<i64>>(w);
+        print_u64(u64::try_from(back.len()).unwrap());
+        print_i64(discard::<Box<i64>>(Box::new(1)));
+        print_i64(id::<i64>(5));
+        let mut b: Box<i64> = Box::new(7);
+        let o: Box<i64> = swap_in::<Box<i64>>(&mut b, Box::new(8));
+        print_i64(*o);
+        print_i64(*b);
+    }
+}

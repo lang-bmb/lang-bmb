@@ -525,48 +525,49 @@ fn is_scalar(t: &TypeKind) -> bool {
 /// Whether values of `t` move (ADR-0047 §1): a `Vec`, a `Box`, and the
 /// structs, enums and arrays that hold one through fields, payloads,
 /// elements or type arguments. The classification is structural (no
-/// `Copy` derive); type parameters carry `Copy` until backlog 2O-04.
+/// `Copy` derive). A type parameter is copied here: in generic code,
+/// `is_move_in` names the parameters without `Copy`.
 pub fn is_move(t: &TypeKind, adts: &BTreeMap<String, Adt>) -> bool {
-    fn go(t: &TypeKind, adts: &BTreeMap<String, Adt>, seen: &mut BTreeSet<String>) -> bool {
+    is_move_in(t, adts, &BTreeSet::new())
+}
+
+/// `is_move` where the type parameters `moving` (those without a `Copy`
+/// bound, backlog 2O-04) move too.
+pub fn is_move_in(t: &TypeKind, adts: &BTreeMap<String, Adt>, moving: &BTreeSet<String>) -> bool {
+    fn go(
+        t: &TypeKind,
+        adts: &BTreeMap<String, Adt>,
+        moving: &BTreeSet<String>,
+        seen: &mut BTreeSet<String>,
+    ) -> bool {
         match t {
             TypeKind::Vec(_) | TypeKind::Box(_) => true,
-            TypeKind::Array(e, _) => go(&e.kind, adts, seen),
+            TypeKind::Param(n) => moving.contains(n),
+            TypeKind::Array(e, _) => go(&e.kind, adts, moving, seen),
             TypeKind::Named { path, args } => {
-                if args.iter().any(|a| go(&a.kind, adts, seen)) {
+                if args.iter().any(|a| go(&a.kind, adts, moving, seen)) {
                     return true;
                 }
                 let p = path.join("::");
                 if !seen.insert(p.clone()) {
                     return false;
                 }
+                // The type's own parameters are bound to the arguments.
+                let none = BTreeSet::new();
                 match adts.get(&p).map(|a| &a.kind) {
-                    Some(AdtKind::Struct(fs)) => fs.iter().any(|(_, ft)| go(ft, adts, seen)),
+                    Some(AdtKind::Struct(fs)) => fs.iter().any(|(_, ft)| go(ft, adts, &none, seen)),
                     Some(AdtKind::Enum(vs)) => vs
                         .iter()
-                        .any(|(_, ps)| ps.iter().any(|pt| go(pt, adts, seen))),
+                        .any(|(_, ps)| ps.iter().any(|pt| go(pt, adts, &none, seen))),
                     None => false,
                 }
             }
             _ => false,
         }
     }
-    go(t, adts, &mut BTreeSet::new())
+    go(t, adts, moving, &mut BTreeSet::new())
 }
 
-/// The text of a type parameter with its bounds as written.
-fn self_text_of(g: &TypeParam) -> String {
-    let bounds: Vec<String> = g
-        .bounds
-        .iter()
-        .map(|b| {
-            b.iter()
-                .map(|i| i.name.as_str())
-                .collect::<Vec<_>>()
-                .join("::")
-        })
-        .collect();
-    format!("{}: {}", g.name.name, bounds.join(" + "))
-}
 fn elem_of(t: &TypeKind) -> Option<&TypeKind> {
     match t {
         TypeKind::Array(e, _) | TypeKind::Vec(e) => Some(&e.kind),
@@ -1259,8 +1260,7 @@ impl<'a> Checker<'a> {
 
     /// The type parameters `gs` (ADR-0046). With `report`, their problems
     /// are diagnosed (once per definition): an unknown bound, a duplicate
-    /// name, and a parameter without `Copy` (a parameter that may be an
-    /// owned type comes with ADR-0047, phase 2O).
+    /// name. A parameter without `Copy` moves (backlog 2O-04).
     fn tparams_of(&mut self, gs: &[TypeParam], report: bool, mp: &str) -> Vec<TParam> {
         let mut out: Vec<TParam> = Vec::new();
         for g in gs {
@@ -1281,38 +1281,15 @@ impl<'a> Checker<'a> {
                     self.diags.push(d);
                 }
             }
-            if report {
-                if out.iter().any(|p| p.name == g.name.name) {
-                    self.diags.push(
-                        Diag::new(
-                            "E0302",
-                            g.name.span,
-                            format!("type parameter `{}` is declared twice", g.name.name),
-                        )
-                        .fix("give each type parameter its own name", None),
-                    );
-                }
-                if !bounds.iter().any(|b| b == "Copy") {
-                    let r = if g.bounds.is_empty() {
-                        format!("{}: Copy", g.name.name)
-                    } else {
-                        format!("{} + Copy", self_text_of(g))
-                    };
-                    self.diags.push(
-                        Diag::new(
-                            "E0402",
-                            g.span,
-                            format!(
-                                "type parameter `{}` needs `Copy`: a parameter that may be an owned type comes with ADR-0047 (phase 2O)",
-                                g.name.name
-                            ),
-                        )
-                        .fix(format!("write `{r}`"), Some(r)),
-                    );
-                }
-            }
-            if !bounds.iter().any(|b| b == "Copy") {
-                bounds.push("Copy".into());
+            if report && out.iter().any(|p| p.name == g.name.name) {
+                self.diags.push(
+                    Diag::new(
+                        "E0302",
+                        g.name.span,
+                        format!("type parameter `{}` is declared twice", g.name.name),
+                    )
+                    .fix("give each type parameter its own name", None),
+                );
             }
             out.push(TParam {
                 name: g.name.name.clone(),
@@ -1381,7 +1358,14 @@ impl<'a> Checker<'a> {
     /// Whether values of `t` copy (Rust `Copy`): everything but a `&mut`
     /// and a type that moves (`is_move`).
     fn is_copy(&self, t: &TypeKind) -> bool {
-        !matches!(t, TypeKind::Ref { mutable: true, .. }) && !is_move(t, &self.adts)
+        !matches!(t, TypeKind::Ref { mutable: true, .. })
+            && !is_move_in(t, &self.adts, &self.moving_params())
+    }
+
+    /// The type parameters in scope without a `Copy` bound: their values
+    /// move (backlog 2O-04).
+    fn moving_params(&self) -> BTreeSet<String> {
+        moving_of(&self.tparams)
     }
 
     /// Whether `t` has the built-in trait `b` (`Eq` or `Ord`): the integer
@@ -2007,7 +1991,7 @@ impl<'a> Checker<'a> {
                 // A `Vec` element is reported where the type is written
                 // (`array_elem_ok`).
                 if self.owned_ready
-                    && is_move(&el.kind, &self.adts)
+                    && is_move_in(&el.kind, &self.adts, &self.moving_params())
                     && !matches!(el.kind, TypeKind::Vec(_))
                 {
                     if report {
@@ -2104,22 +2088,23 @@ impl<'a> Checker<'a> {
                 AdtKind::Struct(fs) => fs.iter().map(|(_, ft)| ft.clone()).collect(),
                 AdtKind::Enum(vs) => vs.iter().flat_map(|(_, ps)| ps.iter().cloned()).collect(),
             };
+            let moving = moving_of(&adt.generics);
             for (w, r) in written.into_iter().zip(resolved) {
-                self.owned_field(&r, w.span);
+                self.owned_field(&r, w.span, &moving);
             }
         }
     }
 
-    fn owned_field(&mut self, t: &TypeKind, span: Span) {
+    fn owned_field(&mut self, t: &TypeKind, span: Span, moving: &BTreeSet<String>) {
         match t {
-            TypeKind::Array(e, _) if is_move(&e.kind, &self.adts) => {
+            TypeKind::Array(e, _) if is_move_in(&e.kind, &self.adts, moving) => {
                 let el = Type {
                     kind: e.kind.clone(),
                     span,
                 };
                 self.owned_elem("array", &el);
             }
-            TypeKind::Array(e, _) | TypeKind::Box(e) => self.owned_field(&e.kind, span),
+            TypeKind::Array(e, _) | TypeKind::Box(e) => self.owned_field(&e.kind, span, moving),
             TypeKind::Named { path, args } => {
                 let ps = self
                     .adts
@@ -2132,7 +2117,7 @@ impl<'a> Checker<'a> {
                     }
                 }
                 for a in args {
-                    self.owned_field(&a.kind, span);
+                    self.owned_field(&a.kind, span, moving);
                 }
             }
             _ => {}
@@ -2818,7 +2803,8 @@ impl<'a> Checker<'a> {
         if f.kind == FnKind::Exec {
             let none = BTreeMap::new();
             let locals = self.locals.get(&path).unwrap_or(&none);
-            let (diags, info) = crate::moves::check(f, locals, &self.types, &self.adts);
+            let moving = self.moving_params();
+            let (diags, info) = crate::moves::check(f, locals, &self.types, &self.adts, &moving);
             for d in diags {
                 self.diags.push(d);
             }
@@ -4083,7 +4069,7 @@ impl<'a> Checker<'a> {
                         Diag::new(
                             "E0207",
                             scrut.span,
-                            "a `match` through `&mut` is not supported yet (backlog 2O-04)",
+                            "a `match` through `&mut` is not supported yet (backlog 2O-04b)",
                         )
                         .fix(
                             "match a shared reference (`match &*r`) and write through the `&mut` parameter",
@@ -4736,6 +4722,11 @@ impl<'a> Checker<'a> {
                     && self.enum_prefix(path, &cx.mod_path) =>
             {
                 self.variant_value(cx, path, args, expected, e.span, mode)
+            }
+            ExprKind::Call { path, args, .. }
+                if self.resolve(path, &cx.mod_path).is_none() && mem_op(path).is_some() =>
+            {
+                self.mem_call(cx, path, args, e.span, mode)
             }
             ExprKind::Call { path, args, .. }
                 if self.resolve(path, &cx.mod_path).is_none() && is_box_new(path) =>
@@ -5432,6 +5423,111 @@ impl<'a> Checker<'a> {
         ret
     }
 
+    /// `std::mem::replace(&mut p, v)` (the old value of `p`, which now
+    /// holds `v`) and `std::mem::swap(&mut a, &mut b)` (ADR-0047 §2): the
+    /// ways to take an owned value out of a place that stays usable.
+    fn mem_call(
+        &mut self,
+        cx: &mut FnCtx,
+        path: &[Ident],
+        args: &[Expr],
+        span: Span,
+        mode: Mode,
+    ) -> TypeKind {
+        let op = mem_op(path).expect("checked");
+        if mode != Mode::Exec {
+            self.err(
+                "E0503",
+                span,
+                format!("`std::mem::{op}` is not allowed in a specification"),
+            );
+        }
+        if args.len() != 2 {
+            self.err(
+                "E0405",
+                span,
+                format!("`std::mem::{op}` takes 2 arguments, found {}", args.len()),
+            );
+            return TypeKind::Error;
+        }
+        let mut place_ty = |c: &mut Self, a: &Expr| -> TypeKind {
+            // A `&mut T` parameter passed on (`std::mem::replace(r, v)`).
+            if let ExprKind::Var(id) = &a.kind
+                && let Some(Local {
+                    ty:
+                        TypeKind::Ref {
+                            mutable: true,
+                            inner,
+                        },
+                    ..
+                }) = Self::lookup(cx, &id.name)
+            {
+                c.types.insert(
+                    (a.span.file, a.span.lo, a.span.hi),
+                    TypeKind::Ref {
+                        mutable: true,
+                        inner: inner.clone(),
+                    },
+                );
+                return inner.kind;
+            }
+            let ExprKind::Ref {
+                mutable: true,
+                expr: x,
+            } = &a.kind
+            else {
+                c.diags.push(
+                    Diag::new(
+                        "E0401",
+                        a.span,
+                        format!("`std::mem::{op}` takes a place as `&mut place`"),
+                    )
+                    .fix(format!("write `&mut {}`", crate::fmt::expr_text(a)), None),
+                );
+                c.expr(cx, a, None, mode);
+                return TypeKind::Error;
+            };
+            let t = c.place(cx, x);
+            c.types
+                .insert((x.span.file, x.span.lo, x.span.hi), t.clone());
+            let rt = TypeKind::Ref {
+                mutable: true,
+                inner: mk(t.clone()),
+            };
+            c.types.insert((a.span.file, a.span.lo, a.span.hi), rt);
+            t
+        };
+        let t = place_ty(self, &args[0]);
+        if op == "replace" {
+            let vt = self.expr(cx, &args[1], Some(&t), mode);
+            self.expect_ty(&vt, &t, args[1].span);
+            return t;
+        }
+        let u = place_ty(self, &args[1]);
+        self.expect_ty(&u, &t, args[1].span);
+        // The two places may not overlap (Rust: two `&mut` borrows).
+        let root = |a: &Expr| match &a.kind {
+            ExprKind::Ref { expr, .. } => root_name(expr),
+            _ => None,
+        };
+        if let (Some(r0), Some(r1)) = (root(&args[0]), root(&args[1]))
+            && r0 == r1
+        {
+            self.diags.push(
+                Diag::new(
+                    "E0410",
+                    args[1].span,
+                    format!("both places of `std::mem::swap` are in `{r0}`"),
+                )
+                .fix(
+                    "swap two different variables; for two elements of one `Vec` write a loop or two `std::mem::replace`s through a temporary",
+                    None,
+                ),
+            );
+        }
+        TypeKind::Unit
+    }
+
     /// Whether place `e` can be written: under a `let mut` local or a
     /// `&mut` parameter, through fields, `Box`es and elements (`s.buf`,
     /// `b.v`, `(*b).w`).
@@ -5460,6 +5556,18 @@ impl<'a> Checker<'a> {
         mode: Mode,
     ) -> TypeKind {
         let last = path.last().unwrap().name.as_str();
+        if path.len() == 2 && path[0].name == "mem" && matches!(last, "replace" | "swap") {
+            let full = format!("std::mem::{last}");
+            self.diags.push(
+                Diag::new(
+                    "E0214",
+                    path[0].span.to(path[1].span),
+                    format!("`mem::{last}` comes from a `use`"),
+                )
+                .fix(format!("write `{full}`"), Some(full)),
+            );
+            return TypeKind::Error;
+        }
         if path[0].name != "Vec" {
             for a in args {
                 self.expr(cx, a, None, mode);
@@ -7146,6 +7254,24 @@ fn option_of(t: TypeKind) -> TypeKind {
     }
 }
 
+/// The parameters of `ps` without a `Copy` bound.
+pub fn moving_of(ps: &[TParam]) -> BTreeSet<String> {
+    ps.iter()
+        .filter(|p| !p.bounds.iter().any(|b| b == "Copy"))
+        .map(|p| p.name.clone())
+        .collect()
+}
+
+/// `std::mem::replace` / `std::mem::swap` (ADR-0047 §2): the operation.
+pub fn mem_op(path: &[Ident]) -> Option<&'static str> {
+    let p: Vec<&str> = path.iter().map(|i| i.name.as_str()).collect();
+    match p.as_slice() {
+        ["std", "mem", "replace"] => Some("replace"),
+        ["std", "mem", "swap"] => Some("swap"),
+        _ => None,
+    }
+}
+
 /// `Box::new` (ADR-0047 §1).
 pub fn is_box_new(path: &[Ident]) -> bool {
     path.len() == 2 && path[0].name == "Box" && path[1].name == "new"
@@ -7160,7 +7286,7 @@ fn vec_builtin(path: &[Ident]) -> bool {
         ["Vec", "new" | "with_capacity"]
             | ["drop"]
             | ["mem" | "std::mem", "take" | "replace" | "swap"]
-            | ["std", "mem", "take" | "replace" | "swap"]
+            | ["std", "mem", "take"]
     )
 }
 

@@ -34,13 +34,14 @@
 | E0213 | `T::try_from(x).expect(..)` is written `.unwrap()` |
 | E0214 | `use` is not used: names are written in full |
 | E0218 | a `Vec` is passed where a slice is expected: write `v.as_slice()` |
-| E0219 | `drop(v)` and `mem::take` / `replace` / `swap` are not used |
+| E0219 | `drop(v)` and `mem::take` are not used |
 | E0234 | a string literal: text is bytes, write `b"..."` |
 | E0235 | a blanket impl `impl<T> Trait for T` is not used |
 | E0240 | a `where` clause is not used: bounds go next to the type parameter |
 | E0236 | trait objects `dyn Trait` are not used |
 | E0237 | a call of a generic function names its type arguments: `f::<T>(..)` |
 | E0238 | `Rc`, `RefCell`, `Cell` and `Arc` are not used: values have one owner |
+| E0239 | an owned value is moved out from behind a `&mut`: use `std::mem::replace` |
 | E0220 | `#[derive(..)]` is not used |
 | E0221 | built-in variants are written bare (`Some`, not `Option::Some`) |
 | E0222 | field shorthand is not allowed (`x: x`) |

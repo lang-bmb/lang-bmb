@@ -2477,6 +2477,9 @@ impl<'p, 'q> Enc<'p, 'q> {
             ExprKind::Call { path, args, .. } if crate::check::is_box_new(path) => {
                 self.eval(&args[0])
             }
+            ExprKind::Call { path, args, .. } if crate::check::mem_op(path).is_some() => {
+                self.mem_call(crate::check::mem_op(path).expect("checked"), args)
+            }
             ExprKind::Call { path, args, .. } if self.is_variant(path) => {
                 let vals: Vec<Val> = args.iter().map(|a| self.eval(a)).collect();
                 self.variant_value(&self.ty(e), &path.last().unwrap().name, &vals)
@@ -2929,6 +2932,31 @@ impl<'p, 'q> Enc<'p, 'q> {
         let cur = self.vars[&root].clone();
         self.vars.insert(root, set_at(cur, &steps, new));
         result
+    }
+
+    /// `std::mem::replace(&mut p, v)`: the old value of `p`, which now
+    /// holds `v`; `std::mem::swap(&mut a, &mut b)` exchanges the values of
+    /// two places of different variables (ADR-0047 §2).
+    fn mem_call(&mut self, op: &str, args: &[Expr]) -> Val {
+        let inner = |a: &Expr| match &a.kind {
+            ExprKind::Ref { expr, .. } => (**expr).clone(),
+            _ => a.clone(),
+        };
+        let (p0, p1) = (inner(&args[0]), inner(&args[1]));
+        let old = self.eval(&p0);
+        let new = self.eval(if op == "replace" { &args[1] } else { &p1 });
+        let mut steps = Vec::new();
+        let root = self.place(&p0, &mut steps, true);
+        let cur = self.vars[&root].clone();
+        self.vars.insert(root, set_at(cur, &steps, new));
+        if op == "replace" {
+            return old;
+        }
+        let mut steps = Vec::new();
+        let root = self.place(&p1, &mut steps, true);
+        let cur = self.vars[&root].clone();
+        self.vars.insert(root, set_at(cur, &steps, old));
+        Val::Unit
     }
 
     /// `Vec::new()` / `Vec::with_capacity(n)`: length 0, elements unknown;
