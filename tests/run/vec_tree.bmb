@@ -1,0 +1,38 @@
+#[summary("Vec을 거친 재귀: 자식 목록을 가진 트리의 합 (ADR-0047, backlog 2O-03c)")]
+mod rt {
+    enum Tree { Leaf(i64), Many(Vec<Tree>) }
+
+
+    #[effects(pure)]
+    fn total(t: &Tree) -> i64
+        decreases t,
+    {
+        match t {
+            Tree::Leaf(v) => *v,
+            Tree::Many(ks) => {
+                let mut i: usize = 0;
+                let mut s: i64 = 0;
+                while i < ks.len()
+                    invariant i <= ks.len(),
+                    decreases ks.len() - i,
+                {
+                    s = s.wrapping_add(total(&ks[i]));
+                    i = i + 1;
+                }
+                s
+            }
+        }
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        let mut kids: Vec<Tree> = Vec::new();
+        kids.push(Tree::Leaf(3));
+        let mut inner: Vec<Tree> = Vec::new();
+        inner.push(Tree::Leaf(4));
+        inner.push(Tree::Leaf(5));
+        kids.push(Tree::Many(inner));
+        let t: Tree = Tree::Many(kids);
+        print_i64(total(&t));
+    }
+}

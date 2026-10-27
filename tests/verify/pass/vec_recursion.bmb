@@ -1,0 +1,57 @@
+#[summary("Vec을 거친 재귀: 원소의 구조적 감소 (ADR-0047 §3, backlog 2O-03c)")]
+mod vp {
+    enum Tree { Leaf(i64), Many(Vec<Tree>) }
+
+    spec fn leaves(t: &Tree) -> i64
+        decreases t,
+    {
+        match t {
+            Tree::Leaf(v) => 1,
+            Tree::Many(ks) => if ks.len() > 0 { leaves(&ks[0]) } else { 0 },
+        }
+    }
+
+    spec fn small(v: i64) -> bool { -1000 <= v && v <= 1000 }
+
+    spec fn pair(a: &[Box<i64>]) -> bool { a.len() == 2 && small(*a[0]) && small(*a[1]) }
+
+    #[effects(pure)]
+    fn total(t: &Tree) -> i64
+        decreases t,
+    {
+        match t {
+            Tree::Leaf(v) => *v,
+            Tree::Many(ks) => {
+                let mut i: usize = 0;
+                let mut s: i64 = 0;
+                while i < ks.len()
+                    invariant i <= ks.len(),
+                    decreases ks.len() - i,
+                {
+                    s = s.wrapping_add(total(&ks[i]));
+                    i = i + 1;
+                }
+                s
+            }
+        }
+    }
+
+    // The first leaf, if any.
+    #[effects(pure)]
+    fn first(t: &Tree) -> Option<i64>
+        decreases t,
+    {
+        match t {
+            Tree::Leaf(v) => Some(*v),
+            Tree::Many(ks) => if ks.len() == 0 { None } else { first(&ks[0]) },
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(pair, small)]
+    fn boxes(a: &[Box<i64>]) -> i64
+        requires pair(a),
+    {
+        *a[0] + *a[1]
+    }
+}

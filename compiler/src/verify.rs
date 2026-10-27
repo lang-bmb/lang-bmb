@@ -1429,6 +1429,22 @@ struct Enc<'p, 'q> {
     reach: Vec<(Span, &'static str, Vec<String>)>,
 }
 
+/// `(select a i)` as (`a`, `i`).
+fn select_app(t: &str) -> Option<(&str, &str)> {
+    let inner = t.strip_prefix("(select ")?.strip_suffix(')')?;
+    let (mut depth, mut quoted) = (0i32, false);
+    for (k, c) in inner.char_indices() {
+        match c {
+            '|' => quoted = !quoted,
+            '(' if !quoted => depth += 1,
+            ')' if !quoted => depth -= 1,
+            ' ' if !quoted && depth == 0 => return Some((&inner[..k], &inner[k + 1..])),
+            _ => {}
+        }
+    }
+    None
+}
+
 /// `(f a)` as (`f`, `a`): an application of a symbol to one argument (a
 /// selector application in a measure term).
 fn sel_app(t: &str) -> Option<(&str, &str)> {
@@ -1681,7 +1697,21 @@ impl<'p, 'q> Enc<'p, 'q> {
             ((a, true), (b, true)) => {
                 let mut testers = Vec::new();
                 let mut cur = b.as_str();
-                while let Some((head, arg)) = sel_app(cur) {
+                loop {
+                    // An element of a `Vec` payload (backlog 2O-03c): an
+                    // index below that `Vec`'s length.
+                    let (head, arg) = if let Some((arr, i)) = select_app(cur)
+                        && let Some((sel, x)) = sel_app(arr)
+                        && let Some(len) = sel.strip_suffix(".e|").map(|p| format!("{p}.len|"))
+                        && self.prog.selectors.contains_key(&len)
+                    {
+                        testers.push(format!("(and (<= 0 {i}) (< {i} ({len} {x})))"));
+                        (sel, x)
+                    } else if let Some(p) = sel_app(cur) {
+                        p
+                    } else {
+                        break;
+                    };
                     let Some(c) = self.prog.selectors.get(head) else {
                         break;
                     };
@@ -4066,10 +4096,10 @@ pub fn verify_program_incremental(
 }
 
 /// Every solver query starts with this text: options (seed 0, pinned
-/// `rlimit`) and the prelude. The declarations of the spec fns the query
-/// mentions follow it (`needed_decls`).
+/// `rlimit`); the datatypes the query names, the prelude and the
+/// declarations of the spec fns it mentions follow (`needed_decls`).
 pub fn query_header() -> String {
-    header(0).join("\n")
+    format!("{}\n{PRELUDE}", header(0).join("\n"))
 }
 
 /// The SMT declaration of every spec fn of a program, by full path. A query
@@ -4128,7 +4158,6 @@ fn header(seed: u64) -> Vec<String> {
         format!("(set-option :smt.random_seed {seed})"),
         format!("(set-option :sat.random_seed {seed})"),
         format!("(set-option :rlimit {})", smt::rlimit()),
-        PRELUDE.to_string(),
     ]
 }
 
@@ -4177,7 +4206,11 @@ fn needed_decls(
             head.push('\n');
         }
     }
-    head + &out
+    // The prelude after the datatypes: Z3 4.15.4 does not end a satisfiable
+    // query (and ignores `rlimit`) when a datatype nested in an array is
+    // declared after the prelude's `div` macros (backlog 2O-03c,
+    // `dev-docs/measurements/z3-nested-datatypes`).
+    format!("{head}{PRELUDE}\n{out}")
 }
 
 /// Whether the `requires` clauses of every executable function that has
@@ -4908,6 +4941,7 @@ const SHOW: usize = 4;
 /// A datatype value from the model in Rust notation: `Some(992)`,
 /// `Shape::Rect(Point { x: 1, y: 2 }, ..)` (ADR-0026 §4).
 fn show_variant(x: &smt::Sexp, t: &TypeKind, tb: &Tables) -> String {
+    let x = &unlet(x, &BTreeMap::new());
     let (head, args) = match x {
         smt::Sexp::Atom(a) => (a.clone(), &[][..]),
         smt::Sexp::List(xs) if !xs.is_empty() => match &xs[0] {
@@ -4940,6 +4974,32 @@ fn show_variant(x: &smt::Sexp, t: &TypeKind, tb: &Tables) -> String {
     let mut it = args.iter();
     let shown: Vec<String> = ps.iter().map(|pt| show_leaves(pt, tb, &mut it)).collect();
     format!("{name}({})", shown.join(", "))
+}
+
+/// `x` with Z3's `let` bindings substituted (a model value may share
+/// subterms, as with a datatype nested in an array).
+fn unlet(x: &smt::Sexp, env: &BTreeMap<String, smt::Sexp>) -> smt::Sexp {
+    use smt::Sexp::{Atom, List};
+    match x {
+        Atom(a) => env.get(a).cloned().unwrap_or_else(|| x.clone()),
+        List(xs) => {
+            if let [Atom(l), List(binds), body] = xs.as_slice()
+                && l == "let"
+            {
+                let mut inner = env.clone();
+                for b in binds {
+                    if let List(p) = b
+                        && let [Atom(n), v] = p.as_slice()
+                    {
+                        let v = unlet(v, env);
+                        inner.insert(n.clone(), v);
+                    }
+                }
+                return unlet(body, &inner);
+            }
+            List(xs.iter().map(|y| unlet(y, env)).collect())
+        }
+    }
 }
 
 /// A value of type `t` from its model leaves (constructor arguments).

@@ -598,7 +598,7 @@ fn mk(kind: TypeKind) -> Box<Type> {
 }
 
 /// The help of E0402 for an array inside an array element (backlog 2B-14).
-const ARRAY_ELEMENT_HELP: &str = "an array element is a scalar, a struct or enum, or a fixed-size array; a growable element (`Vec`) is ADR-0047 (proposed)";
+const ARRAY_ELEMENT_HELP: &str = "an array element is a scalar, a struct or enum, a `Box` or a fixed-size array; for growable elements use `Vec<Vec<T>>`";
 
 /// Whether `e` may be the element of a fixed-size array (backlog 2V-04b):
 /// a scalar, a struct or enum, or such an array again; not a `Vec`.
@@ -1650,23 +1650,39 @@ impl<'a> Checker<'a> {
                 );
             }
         }
-        // Recursion through a `Vec` (backlog 2O-03c): the user types named
-        // under a `Vec` in each type's fields.
-        fn under_vec(t: &TypeKind, inside: bool, out: &mut Vec<String>) {
+        // A struct is a tuple of leaves in the prover (ADR-0027 §1), so a
+        // cycle of structs alone (through `Vec`s; through `Box`es only it
+        // has no finite value, above) has no encoding: an enum must be on
+        // it (ADR-0047 §3, backlog 2O-03c). The user types a struct holds
+        // outside any enum.
+        fn struct_parts(t: &TypeKind, adts: &BTreeMap<String, Adt>, out: &mut Vec<String>) {
             match t {
                 TypeKind::Named { path, args } => {
-                    if inside {
-                        out.push(path.join("::"));
-                    }
-                    for a in args {
-                        under_vec(&a.kind, inside, out);
+                    let p = path.join("::");
+                    if matches!(adts.get(&p).map(|a| &a.kind), Some(AdtKind::Struct(_))) {
+                        out.push(p);
+                        for a in args {
+                            struct_parts(&a.kind, adts, out);
+                        }
                     }
                 }
-                TypeKind::Vec(e) => under_vec(&e.kind, true, out),
-                TypeKind::Array(e, _) | TypeKind::Box(e) => under_vec(&e.kind, inside, out),
+                TypeKind::Vec(e) | TypeKind::Array(e, _) | TypeKind::Box(e) => {
+                    struct_parts(&e.kind, adts, out)
+                }
                 _ => {}
             }
         }
+        let struct_edges: BTreeMap<String, Vec<String>> = adts
+            .iter()
+            .filter(|(_, a)| matches!(a.kind, AdtKind::Struct(_)))
+            .map(|(p, a)| {
+                let mut out = Vec::new();
+                for t in parts(a) {
+                    struct_parts(&t, &adts, &mut out);
+                }
+                (p.clone(), out)
+            })
+            .collect();
         // Recursion through anything.
         let all_edges: BTreeMap<String, Vec<String>> = uses
             .iter()
@@ -1680,20 +1696,17 @@ impl<'a> Checker<'a> {
             if !r.contains(p) {
                 continue;
             }
-            let mut via = Vec::new();
-            for t in parts(a) {
-                under_vec(&t, false, &mut via);
-            }
-            if via
-                .iter()
-                .any(|q| q == p || reach(&all_edges, q).contains(p))
-            {
+            if reach(&struct_edges, p).contains(p) {
                 self.diags.push(
-                    Diag::new("E0421", a.span, format!("`{p}` contains itself through a `Vec`"))
-                        .fix(
-                            "recursion through a `Vec` is not supported yet (backlog 2O-03c): use `Option<Box<..>>` links",
-                            None,
-                        ),
+                    Diag::new(
+                        "E0421",
+                        a.span,
+                        format!("`{p}` contains itself through a `Vec` with no enum in between"),
+                    )
+                    .fix(
+                        "make the recursive part an enum, e.g. `enum Tree { Node(i64, Vec<Tree>) }` (a recursive struct of structs alone is not supported yet, ADR-0047 §3)",
+                        None,
+                    ),
                 );
                 continue;
             }
@@ -1988,17 +2001,6 @@ impl<'a> Checker<'a> {
             }
             TypeKind::Array(e, n) => {
                 let el = sub(self, e);
-                // A `Vec` element is reported where the type is written
-                // (`array_elem_ok`).
-                if self.owned_ready
-                    && is_move_in(&el.kind, &self.adts, &self.moving_params())
-                    && !matches!(el.kind, TypeKind::Vec(_))
-                {
-                    if report {
-                        self.owned_elem("array", &el);
-                    }
-                    return TypeKind::Error;
-                }
                 TypeKind::Array(Box::new(el), *n)
             }
             TypeKind::Slice(e) => TypeKind::Slice(Box::new(sub(self, e))),
@@ -2008,24 +2010,6 @@ impl<'a> Checker<'a> {
             },
             other => other.clone(),
         }
-    }
-
-    /// E0402 for an array or `Vec` element `el` that moves (backlog 2O-03).
-    fn owned_elem(&mut self, what: &str, el: &Type) {
-        self.diags.push(
-            Diag::new(
-                "E0402",
-                el.span,
-                format!(
-                    "{what} elements that own heap values (`{}`) come with backlog 2O-03c (ADR-0047 §1)",
-                    ty_str(&el.kind)
-                ),
-            )
-            .fix(
-                "keep the owned values in separate locals or fields for now",
-                None,
-            ),
-        );
     }
 
     /// `Box<T>` (ADR-0047 §1): `T` a value type.
@@ -2068,8 +2052,7 @@ impl<'a> Checker<'a> {
     }
 
     /// Fields that hold owned values (ADR-0047 §1), once every field type
-    /// is known: no array or `Vec` of them yet (backlog 2O-03), and none
-    /// as the argument of a `Copy` type parameter.
+    /// is known: none as the argument of a `Copy` type parameter.
     fn check_owned_fields(&mut self, m: &Mod, prefix: &str) {
         let mp = format!("{prefix}{}", m.name.name);
         for sub in &m.mods {
@@ -2088,23 +2071,15 @@ impl<'a> Checker<'a> {
                 AdtKind::Struct(fs) => fs.iter().map(|(_, ft)| ft.clone()).collect(),
                 AdtKind::Enum(vs) => vs.iter().flat_map(|(_, ps)| ps.iter().cloned()).collect(),
             };
-            let moving = moving_of(&adt.generics);
             for (w, r) in written.into_iter().zip(resolved) {
-                self.owned_field(&r, w.span, &moving);
+                self.owned_field(&r, w.span);
             }
         }
     }
 
-    fn owned_field(&mut self, t: &TypeKind, span: Span, moving: &BTreeSet<String>) {
+    fn owned_field(&mut self, t: &TypeKind, span: Span) {
         match t {
-            TypeKind::Array(e, _) if is_move_in(&e.kind, &self.adts, moving) => {
-                let el = Type {
-                    kind: e.kind.clone(),
-                    span,
-                };
-                self.owned_elem("array", &el);
-            }
-            TypeKind::Array(e, _) | TypeKind::Box(e) => self.owned_field(&e.kind, span, moving),
+            TypeKind::Array(e, _) | TypeKind::Box(e) => self.owned_field(&e.kind, span),
             TypeKind::Named { path, args } => {
                 let ps = self
                     .adts
@@ -2117,7 +2092,7 @@ impl<'a> Checker<'a> {
                     }
                 }
                 for a in args {
-                    self.owned_field(&a.kind, span, moving);
+                    self.owned_field(&a.kind, span);
                 }
             }
             _ => {}
@@ -2909,14 +2884,19 @@ impl<'a> Checker<'a> {
 
     /// An element of an array literal or repeat: not a `Vec` (backlog
     /// 1B-35, 2B-14, 2V-04b).
-    fn literal_elem(&mut self, t: &TypeKind, span: Span) {
-        if is_move(t, &self.adts) && !matches!(t, TypeKind::Vec(_)) {
-            self.owned_elem(
-                "array",
-                &Type {
-                    kind: t.clone(),
+    fn literal_elem(&mut self, t: &TypeKind, span: Span, repeat: bool) {
+        // `[v; N]` copies `v` (Rust: `Copy`); a literal moves each element.
+        if repeat
+            && is_move_in(t, &self.adts, &self.moving_params())
+            && !matches!(t, TypeKind::Vec(_))
+        {
+            self.diags.push(
+                Diag::new(
+                    "E0402",
                     span,
-                },
+                    format!("`[v; N]` copies `v`, and `{}` moves", ty_str(t)),
+                )
+                .fix("write the elements one by one: `[a, b, ..]`", None),
             );
             return;
         }
@@ -4812,7 +4792,7 @@ impl<'a> Checker<'a> {
                 let mut elem = want_elem.clone();
                 for it in items {
                     let t = self.expr(cx, it, elem.as_ref(), mode);
-                    self.literal_elem(&t, it.span);
+                    self.literal_elem(&t, it.span, false);
                     match &elem {
                         None => elem = Some(t),
                         Some(want) => self.expect_ty(&t, want, it.span),
@@ -4840,7 +4820,7 @@ impl<'a> Checker<'a> {
                     _ => None,
                 };
                 let t = self.expr(cx, value, want_elem.as_ref(), mode);
-                self.literal_elem(&t, value.span);
+                self.literal_elem(&t, value.span, true);
                 if *count > u32::MAX as u128 {
                     self.err("E0406", *count_span, "array length is too large");
                 }

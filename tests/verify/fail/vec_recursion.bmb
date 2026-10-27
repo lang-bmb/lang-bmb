@@ -1,0 +1,49 @@
+#[summary("Vec을 거친 재귀: 따르지 않는 것 (ADR-0047 §3, backlog 2O-03c)")]
+mod vf {
+    enum Tree { Leaf(i64), Many(Vec<Tree>) }
+
+    // An element past the length is no part of the value.
+    #[effects(pure)]
+    fn past(t: &Tree) -> i64
+        decreases t,
+    {
+        match t {
+            Tree::Leaf(v) => *v,
+            Tree::Many(ks) => past(&ks[ks.len()]),
+        }
+    }
+
+    // A tree built here is not part of the argument.
+    #[effects(pure)]
+    fn built(t: &Tree) -> i64
+        decreases t,
+    {
+        match t {
+            Tree::Leaf(v) => *v,
+            Tree::Many(ks) => {
+                let mut w: Vec<Tree> = Vec::new();
+                w.push(Tree::Leaf(1));
+                built(&Tree::Many(w))
+            }
+        }
+    }
+
+    // The sum of two leaves may overflow.
+    #[effects(pure)]
+    fn two(t: &Tree) -> i64 {
+        match t {
+            Tree::Leaf(v) => *v,
+            Tree::Many(ks) => if ks.len() == 2 {
+                match &ks[0] {
+                    Tree::Leaf(a) => match &ks[1] {
+                        Tree::Leaf(b) => *a + *b,
+                        Tree::Many(c) => 0,
+                    },
+                    Tree::Many(d) => 0,
+                }
+            } else {
+                0
+            },
+        }
+    }
+}

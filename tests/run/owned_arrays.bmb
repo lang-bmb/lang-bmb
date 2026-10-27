@@ -1,0 +1,33 @@
+#[summary("이동 원소의 고정 배열: Box 배열, Box 필드 구조체 배열, 원소 교체 (backlog 2O-03c)")]
+mod ar {
+    struct Cell { b: Box<i64>, n: i64 }
+
+    #[effects(pure)]
+    fn mk(v: i64) -> [Box<i64>; 3] {
+        [Box::new(v), Box::new(v.wrapping_add(1)), Box::new(v.wrapping_add(2))]
+    }
+
+    #[effects(pure)]
+    fn total(a: &[Box<i64>]) -> i64 {
+        if a.len() == 3 { (*a[0]).wrapping_add(*a[1]).wrapping_add(*a[2]) } else { 0 }
+    }
+
+    #[effects(pure)]
+    fn take(a: [Box<i64>; 3]) -> i64 {
+        *a[1]
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        let mut a: [Box<i64>; 3] = mk(10);
+        print_i64(total(&a));
+        a[1] = Box::new(100);
+        print_i64(total(&a));
+        print_i64(*mk(5)[2]);
+        print_i64(take(mk(7)));
+        let cs: [Cell; 2] = [Cell { b: Box::new(1), n: 2 }, Cell { b: Box::new(3), n: 4 }];
+        print_i64(*cs[1].b);
+        let prev: Box<i64> = std::mem::replace(&mut a[0], Box::new(0));
+        print_i64(*prev);
+    }
+}

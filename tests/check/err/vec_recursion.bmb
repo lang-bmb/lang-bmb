@@ -1,0 +1,25 @@
+#[summary("Vec을 거친 재귀와 이동 원소 배열의 경계 (ADR-0047, backlog 2O-03c)")]
+mod vr {
+    // Through an enum: fine.
+    enum Tree { Leaf(i64), Many(Vec<Tree>) }
+
+    // Structs alone: not yet.
+    struct Node { v: i64, kids: Vec<Node> }
+
+    struct A { bs: Vec<B> }
+
+    struct B { a: Box<A> }
+
+    // A repeat copies its value.
+    #[effects(pure)]
+    fn repeated() -> i64 {
+        let a: [Box<i64>; 2] = [Box::new(1); 2];
+        0
+    }
+
+    // An element cannot be moved out.
+    #[effects(pure)]
+    fn out_of(a: [Box<i64>; 2]) -> Box<i64> {
+        a[0]
+    }
+}

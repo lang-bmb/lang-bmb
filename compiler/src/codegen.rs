@@ -404,9 +404,9 @@ fn drop_glue(tb: &Tables, extra: &[TypeKind]) -> String {
             return;
         }
         match t {
-            TypeKind::Array(e, _) | TypeKind::Slice(e) => return visit(&e.kind, tb, seen, out),
+            TypeKind::Slice(e) => return visit(&e.kind, tb, seen, out),
             TypeKind::Ref { inner, .. } => return visit(&inner.kind, tb, seen, out),
-            TypeKind::Vec(_) | TypeKind::Box(_) | TypeKind::Named { .. } => {}
+            TypeKind::Vec(_) | TypeKind::Box(_) | TypeKind::Named { .. } | TypeKind::Array(..) => {}
             _ => return,
         }
         if !crate::check::is_move(t, &tb.adts) || !seen.insert(ty_str(t)) {
@@ -416,6 +416,16 @@ fn drop_glue(tb: &Tables, extra: &[TypeKind]) -> String {
         let mut body = String::new();
         let mut inner: Vec<TypeKind> = Vec::new();
         match t {
+            // Each element, in order (backlog 2O-03c).
+            TypeKind::Array(e, n) => {
+                let _ = write!(
+                    body,
+                    "  br label %head\nhead:\n  %i = phi i64 [ 0, %entry ], [ %j, %body ]\n  %more = icmp ult i64 %i, {n}\n  br i1 %more, label %body, label %done\nbody:\n  %ep = getelementptr inbounds {}, ptr %p, i64 0, i64 %i\n  call void {}(ptr %ep)\n  %j = add nuw i64 %i, 1\n  br label %head\ndone:\n",
+                    mem_ty(t),
+                    glue(&e.kind)
+                );
+                inner.push(e.kind.clone());
+            }
             TypeKind::Vec(e) => {
                 // Each element, in order, then the buffer (ADR-0047 §4).
                 if owns(&e.kind) {
@@ -1248,6 +1258,14 @@ impl<'p> Gen<'p> {
                 let CVal::Arr { ptr, len } = self.array_of(base) else {
                     unreachable!()
                 };
+                // A temporary array of owned elements, read here.
+                let bt = self.ty(base);
+                if matches!(bt, TypeKind::Array(..))
+                    && Self::fresh(base)
+                    && crate::check::is_move(&bt, &self.t.adts)
+                {
+                    self.pending.push((ptr.clone(), bt));
+                }
                 let i = self.expr(index).imm();
                 let p = self.data_elem(e, &ptr, &len, &i, &ety);
                 self.read(&p, &ety)
@@ -1899,10 +1917,15 @@ impl<'p> Gen<'p> {
     /// Drops the local or field path `p` (`s`, `s.buf`, backlog 2O-03).
     fn drop_path(&mut self, p: &str) {
         let mut parts = p.split('.');
-        let Some(Slot::Data { mut ptr, mut ty }) =
-            parts.next().and_then(|r| self.slots.get(r).cloned())
-        else {
-            return;
+        let root = parts.next().unwrap_or(p);
+        let (mut ptr, mut ty) = match self.slots.get(root).cloned() {
+            Some(Slot::Data { ptr, ty }) => (ptr, ty),
+            // An array of owned elements (backlog 2O-03c).
+            Some(Slot::Arr { ptr, .. }) => match self.local_ty(root) {
+                Some(t) => (ptr, value_ty(&t).clone()),
+                None => return,
+            },
+            _ => return,
         };
         for f in parts {
             let (k, ft) = self.field_of(&ty, f);
