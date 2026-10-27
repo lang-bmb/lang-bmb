@@ -236,6 +236,31 @@ MUTANTS = [
                 target = t;
             }''',
      "a trait call with a known `Self` is not lowered to its impl's function"),
+    # Owned types (ADR-0047, phase 2O, backlog 2O-05).
+    ("c-box-free-dropped", "miscompile", C,
+     r'''                body.push_str("  call void @free(ptr %h)\n");''',
+     r'''                body.push_str("");''',
+     "a dropped `Box` is never freed (a leak at every drop)"),
+    ("v-replace-returns-new", "unsound", V,
+     '''            return old;''',
+     '''            return self.eval(&p0);''',
+     "`std::mem::replace` is taken to return the new value"),
+    ("v-decrease-any-term", "unsound", V,
+     '''                    if cur == a {
+                        return and(&testers);
+                    }
+                }
+                "false".into()''',
+     '''                    if cur == a {
+                        return and(&testers);
+                    }
+                }
+                "true".into()''',
+     "a structural `decreases` holds for any argument, not only a part of the caller's value"),
+    ("c-mut-match-write-back-dropped", "miscompile", C,
+     '''            for (tmp, fp, t) in write_back {''',
+     '''            for (tmp, fp, t) in write_back.into_iter().take(0) {''',
+     "a scalar written through a `&mut` match binding is not stored back to the payload"),
 ]
 
 

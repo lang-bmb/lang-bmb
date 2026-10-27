@@ -262,7 +262,7 @@ ROADMAP의 통과 기준마다 그것을 확인하는 태스크다. 빈칸이 �
 | 2T | 1. 검사·인코딩·코드 생성·코퍼스 | 2T-01, 2T-02, 2T-03, 2T-04, 2T-07 |
 | 2T | 2. 퍼저 | 2T-05 |
 | 2T | 3. 실행 프로그램 2개 이상, 종료 감사 | 2T-06 |
-| 2O | 1. 검사·인코딩·코드 생성·코퍼스 | 2O-01, 2O-02, 2O-03, 2O-04 |
+| 2O | 1. 검사·인코딩·코드 생성·코퍼스 | 2O-01, 2O-02, 2O-03, 2O-03b, 2O-03c, 2O-04, 2O-04b |
 | 2O | 2. 퍼저 | 2O-05 |
 | 2O | 3. 실행 프로그램 2개 이상, 종료 감사 | 2O-06 |
 | 2K | 1. 검사·인코딩·코드 생성·코퍼스 | 2K-01, 2K-02, 2K-03, 2K-04 |
@@ -476,7 +476,7 @@ ROADMAP의 통과 기준마다 그것을 확인하는 태스크다. 빈칸이 �
 | 2O-03c | `Vec`을 거친 재귀와 이동 원소 배열 | `struct Node { kids: Vec<Node> }`·`enum Tree { Many(Vec<Tree>) }`: 재귀 구조체의 단일 생성자 데이터타입과 배열 필드 데이터타입(ADR-0047 §3 열린 질문 1), `Vec` 원소를 거친 구조적 `decreases`, 이동 원소의 고정 배열(배열 glue, 원소 이동) | 2O-03b | ⏳ |
 | 2O-04 | `mem::replace`·`swap`, 습관, `Copy` 없는 타입 매개변수 | 착수 시 재분해(2026-10-27): `&mut` 참조 `match`는 증명 쓰기 되돌림과 코드 생성의 포인터 바인딩이 필요해 2O-04b로. `std::mem::replace(&mut x.f, v)`·`std::mem::swap`, `&mut` 뒤 필드 이동 E0239(기계 수정), `Copy` 경계 없는 타입 매개변수(E0402 해제, ADR-0046 §2: 이동하는 `T`, 인스턴스의 drop) | 2O-03b | ✅ 검사: `mem_op`·`mem_call`(`&mut 자리`나 `&mut T` 매개변수, 명세 E0503, 같은 변수 E0410), `mem::replace` E0214(기계 수정), `mem::take` E0219 유지, E0239(신규, `Vec`·`Option`은 기계 수정), 공유 참조 뒤는 E0413, `Copy` 없는 매개변수(`is_move_in`·`moving_of`, `Copy` 경계 검사, 그 배열 E0402). 증명: `Enc::mem_call`(자리 쓰기). 코드 생성: `Gen::mem_call`·`any_place`(스칼라 슬롯·배열 지역·데이터 자리). 코퍼스: `tests/check/err/mem_moves`, `tests/verify/pass/mem_moves`(5), `tests/verify/fail/mem_moves`(반례 3), `tests/run/mem_moves`·`generic_moves`(valgrind 깨끗) |
 | 2O-04b | `&mut` 참조 `match` | ADR-0055의 `&mut` 기본 바인딩(`&mut P`): 증명은 갈래 끝에 바인딩의 새 값으로 피검사 자리를 다시 쓰고, 코드 생성은 페이로드 자리를 가리키는 바인딩(스칼라는 메모리 표현의 임시와 되쓰기), 제자리 트리 수정 코퍼스 | 2O-04 | ✅ 검사: `&mut` 참조 `match`의 바인딩 `&mut P`, 갈래의 피검사 변수 사용 E0410, `place_of`가 `&mut` 인자 자리의 하위 식 타입을 기록(`&mut **a`에서 상자를 풀지 않던 코드 생성 결함 수정). 증명: 갈래 끝 되쓰기(`match_arms`의 `back`). 코드 생성: 페이로드 주소 바인딩, 스칼라는 레지스터 슬롯과 갈래 끝 되쓰기. ADR-0055 결정 갱신. 코퍼스: `tests/check/err/mut_match`, `tests/verify/pass/mut_match`(제자리 재귀 `set_leaf` 포함 3), `tests/verify/fail/mut_match`(반례 2), `tests/run/mut_match`(트리 숫자 두 배, valgrind 깨끗) |
-| 2O-05 | 퍼저 | 소유 트리(삽입·제거·교체·`mem::replace`) 퍼저, valgrind로 누수·이중 해제 | 2O-04 | ⏳ |
+| 2O-05 | 퍼저 | 소유 트리(삽입·제거·교체·`mem::replace`) 퍼저, valgrind로 누수·이중 해제 | 2O-04 | ✅ `compiler/tests/soundness_owned.rs`: 무작위 함수가 소유 연결 리스트(`Option<Box<Node>>`, 앞에 넣기·`mem::replace`로 머리 빼기·`&mut`/공유 참조 `match`로 머리 쓰기·읽기·`mem::swap`), `Box` 교체, `Vec` 필드의 부분 이동과 재대입, 구조적 재귀 합을 돈다. 해석기(`VecDeque`)와 증명된 함수의 실행·반례 재현·두 빌드 출력·valgrind(누수·이중 해제·해제 뒤 접근)를 대조. 40배치(씨앗 100~139, release): 240 함수, 57 증명(180 실행), 반례 268(157 재현), 컴파일 실행 1542, valgrind 771, 불일치 0. 변이: `c-box-free-dropped`(valgrind)와 `v-replace-returns-new`(반례 재현)를 이 퍼저가 잡음(수동 적용 확인, `scripts/gate_power.py`에 소유 타입 변이 4개 추가, 측정은 2O-06) |
 | 2O-06 | 실용 프로그램과 종료 감사 | 재귀 자료를 쓰는 실행 프로그램 2개 이상(예: 식 트리 평가기, `Vec` 필드를 가진 문맥 구조체), `dev-docs/health/2O.md` | 2O-05 | ⏳ |
 
 ### 2K 제어 흐름 (ADR-0049, 승인 2026-10-26)
