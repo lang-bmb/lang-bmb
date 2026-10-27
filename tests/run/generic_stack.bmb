@@ -1,0 +1,130 @@
+#[summary("제네릭 스택: 고정 용량 배열 위의 Stack<T>와 괄호 검사 (2T-06)")]
+mod st {
+    struct Pt { x: i64, y: i64 }
+
+    struct Stack<T: Copy> { items: [T; 8], len: usize }
+
+    impl<T: Copy> Stack<T> {
+        #[effects(pure)]
+        #[uses(empty)]
+        fn new(fill: T) -> (r: Stack<T>)
+            ensures empty::<T>(&r),
+        {
+            Stack { items: [fill; 8], len: 0 }
+        }
+
+        #[effects(pure)]
+        #[uses(popped, some)]
+        fn pop(self: &mut Stack<T>) -> (r: T)
+            requires some::<T>(self),
+            ensures popped::<T>(*old(self), *self, r),
+        {
+            self.len = self.len - 1;
+            self.items[self.len]
+        }
+
+        #[effects(pure)]
+        #[uses(pushed, room)]
+        fn push(self: &mut Stack<T>, x: T) -> ()
+            requires room::<T>(self),
+            ensures pushed::<T>(*old(self), *self, x),
+        {
+            self.items[self.len] = x;
+            self.len = self.len + 1;
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(empty, fits, popped, pushed, room, some)]
+    fn balanced(s: &[u8]) -> bool {
+        let mut st: Stack<u8> = Stack::<u8>::new(0);
+        let mut i: usize = 0;
+        let mut ok: bool = true;
+        while i < s.len() && ok
+            invariant i <= s.len(), fits::<u8>(&st),
+            decreases s.len() - i,
+        {
+            let c: u8 = s[i];
+            if c == b'(' || c == b'[' {
+                if st.len < 8 {
+                    Stack::<u8>::push(&mut st, c);
+                } else {
+                    ok = false;
+                }
+            } else if c == b')' || c == b']' {
+                if st.len == 0 {
+                    ok = false;
+                } else {
+                    let open: u8 = Stack::<u8>::pop(&mut st);
+                    let want: u8 = if c == b')' {
+                        b'('
+                    } else {
+                        b'['
+                    };
+                    if open != want {
+                        ok = false;
+                    }
+                }
+            }
+            i = i + 1;
+        }
+        ok && st.len == 0
+    }
+
+    spec fn empty<T: Copy>(s: &Stack<T>) -> bool {
+        s.len == 0
+    }
+
+    spec fn fits<T: Copy>(s: &Stack<T>) -> bool {
+        s.len <= 8
+    }
+
+    #[effects(io)]
+    #[uses(empty, popped, pushed, room, some)]
+    fn main() -> () {
+        let mut s: Stack<i64> = Stack::<i64>::new(0);
+        Stack::<i64>::push(&mut s, 3);
+        Stack::<i64>::push(&mut s, 5);
+        Stack::<i64>::push(&mut s, 9);
+        print_i64(Stack::<i64>::pop(&mut s));
+        print_i64(Stack::<i64>::pop(&mut s));
+        print_u64(u64::try_from(s.len).unwrap());
+        let mut ps: Stack<Pt> = Stack::<Pt>::new(Pt { x: 0, y: 0 });
+        Stack::<Pt>::push(&mut ps, Pt { x: 1, y: 2 });
+        Stack::<Pt>::push(&mut ps, Pt { x: 3, y: 4 });
+        let top: Pt = Stack::<Pt>::pop(&mut ps);
+        print_i64(top.x * 10 + top.y);
+        let b: bool = balanced(b"([()][])");
+        if b {
+            print_i64(1);
+        } else {
+            print_i64(0);
+        }
+        if balanced(b"([)]") {
+            print_i64(1);
+        } else {
+            print_i64(0);
+        }
+        if balanced(b"((((((((((") {
+            print_i64(1);
+        } else {
+            print_i64(0);
+        }
+    }
+
+    spec fn popped<T: Copy>(a: Stack<T>, b: Stack<T>, r: T) -> bool {
+        b.len + 1 == a.len && r == a.items[b.len] && (forall|i: usize| i < b.len ==> #[trigger] b.items[i] == a.items[i])
+    }
+
+    spec fn pushed<T: Copy>(a: Stack<T>, b: Stack<T>, x: T) -> bool {
+        b.len == a.len + 1 && b.items[a.len] == x && (forall|i: usize| i < a.len ==> #[trigger] b.items[i] == a.items[i])
+    }
+
+    spec fn room<T: Copy>(s: &Stack<T>) -> bool {
+        s.len < 8
+    }
+
+    spec fn some<T: Copy>(s: &Stack<T>) -> bool {
+        0 < s.len && s.len <= 8
+    }
+}

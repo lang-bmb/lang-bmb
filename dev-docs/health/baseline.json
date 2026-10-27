@@ -14,15 +14,15 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 23259,
+    "S4_stage0_rust_lines": 23466,
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
-    "P1_runnable_programs": 25,
-    "P2_bmb_lines": 8636,
+    "P1_runnable_programs": 26,
+    "P2_bmb_lines": 8766,
     "P3_errors_with_help": 0.7569,
     "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
-    "O2_soundness_fuzzers": 8
+    "O2_soundness_fuzzers": 9
   },
   "history": [
     {
@@ -653,6 +653,28 @@
         "P3_errors_with_help": [
           0.7557,
           0.7569
+        ]
+      }
+    },
+    {
+      "date": "2026-10-27",
+      "reason": "2T-05: tests/soundness_traits.rs",
+      "changed": {
+        "S4_stage0_rust_lines": [
+          23259,
+          23466
+        ],
+        "P1_runnable_programs": [
+          25,
+          26
+        ],
+        "P2_bmb_lines": [
+          8636,
+          8766
+        ],
+        "O2_soundness_fuzzers": [
+          8,
+          9
         ]
       }
     }

@@ -41,10 +41,10 @@ MUTANTS = [
                     format!("(and (<= 0 {i}) (<= {i} {len}))"),''',
      "reading a[len] is allowed"),
     ("v-store-index-le", "unsound", V,
-     '''                        target.span,
+     '''                        e.span,
                         "index may be out of bounds",
                         format!("(and (<= 0 {i}) (< {i} {len}))"),''',
-     '''                        target.span,
+     '''                        e.span,
                         "index may be out of bounds",
                         format!("(and (<= 0 {i}) (<= {i} {len}))"),''',
      "writing a[len] is allowed"),
@@ -71,26 +71,28 @@ MUTANTS = [
                     BinOp::Sub => format!("(- {rt} {lt})"),''',
      "a - b is encoded as b - a"),
     ("v-mul-as-add", "unsound", V,
-     '''                    BinOp::Sub => format!("(- {lt} {rt})"),
-                    BinOp::Mul => format!("(* {lt} {rt})"),
-                    BinOp::Div | BinOp::Rem => {''',
-     '''                    BinOp::Sub => format!("(- {lt} {rt})"),
-                    BinOp::Mul => format!("(+ {lt} {rt})"),
-                    BinOp::Div | BinOp::Rem => {''',
+     '''                    BinOp::Mul => {
+                        self.mul_facts(&lt, &rt);
+                        format!("(* {lt} {rt})")''',
+     '''                    BinOp::Mul => {
+                        self.mul_facts(&lt, &rt);
+                        format!("(+ {lt} {rt})")''',
      "a * b is encoded as a + b"),
     ("v-spec-lt-as-le", "unsound", V,
-     '''                    BinOp::Lt => format!("(< {lt} {rt})"),
-                    BinOp::Le => format!("(<= {lt} {rt})"),''',
-     '''                    BinOp::Lt => format!("(<= {lt} {rt})"),
-                    BinOp::Le => format!("(<= {lt} {rt})"),''',
-     "in contracts, a < b means a <= b"),
+     '''                BinOp::Lt => format!("(and ({le} {a} {b}) (not (= {a} {b})))"),''',
+     '''                BinOp::Lt => format!("({le} {a} {b})"),''',
+     "for a type parameter bounded by Ord, a < b means a <= b (contracts and code share `ord_term` since 2T-02)"),
     ("v-lt-as-le", "unsound", V,
-     '''BinOp::Lt => return Val::S(format!("(< {lt} {rt})")),''',
-     '''BinOp::Lt => return Val::S(format!("(<= {lt} {rt})")),''',
+     '''                BinOp::Lt => "<",
+                BinOp::Le => "<=",''',
+     '''                BinOp::Lt => "<=",
+                BinOp::Le => "<=",''',
      "a < b is encoded as a <= b"),
     ("v-ge-as-gt", "unsound", V,
-     '''BinOp::Ge => return Val::S(format!("(>= {lt} {rt})")),''',
-     '''BinOp::Ge => return Val::S(format!("(> {lt} {rt})")),''',
+     '''                BinOp::Gt => ">",
+                _ => ">=",''',
+     '''                BinOp::Gt => ">",
+                _ => ">",''',
      "a >= b is encoded as a > b"),
     ("v-or-guard", "unsound", V,
      '''(format!("(not {lt})"), "or")''',
@@ -181,10 +183,18 @@ MUTANTS = [
      '''(BinOp::Div, true) => "udiv",''',
      "signed / is compiled as unsigned"),
     ("c-bounds-check-ule", "miscompile", C,
-     '''            self.emit(format!("{c} = icmp ult i64 {i}, {len}"));
-            self.check(&c, "index may be out of bounds");''',
-     '''            self.emit(format!("{c} = icmp ule i64 {i}, {len}"));
-            self.check(&c, "index may be out of bounds");''',
+     '''        let i = self.expr(index).imm();
+        let note = if self.proved("E0805", e) {
+            " ; proved E0805"
+        } else {
+            let c = self.t();
+            self.emit(format!("{c} = icmp ult i64 {i}, {len}"));''',
+     '''        let i = self.expr(index).imm();
+        let note = if self.proved("E0805", e) {
+            " ; proved E0805"
+        } else {
+            let c = self.t();
+            self.emit(format!("{c} = icmp ule i64 {i}, {len}"));''',
      "the runtime bounds check (unproved indexing) lets a[len] through"),
     ("c-overflow-check-removed", "miscompile", C,
      '''        if self.proved("E0803", e) {
@@ -193,9 +203,37 @@ MUTANTS = [
             let flag = if signed { "nsw" } else { "nuw" };''',
      "overflow checks are dropped without a proof (nsw/nuw on unproved arithmetic)"),
     ("c-bounds-check-removed", "miscompile", C,
-     '''let note = if self.proved("E0805", e) {''',
-     '''let note = if self.proved("E0805", e) || !self.proved("E0805", e) {''',
+     '''        let i = self.expr(index).imm();
+        let note = if self.proved("E0805", e) {''',
+     '''        let i = self.expr(index).imm();
+        let note = if self.proved("E0805", e) || !self.proved("E0805", e) {''',
      "bounds checks are dropped without a proof"),
+    ("v-refine-post-dropped", "unsound", V,
+     '''                    format!("postcondition `{}` of `{decl}` may not hold", pred_name(en)),
+                    format!("(=> {hyp} {g})"),''',
+     '''                    format!("postcondition `{}` of `{decl}` may not hold", pred_name(en)),
+                    "true".to_string(),''',
+     "a trait impl's postconditions need not imply the trait's (E0817)"),
+    ("v-refine-pre-dropped", "unsound", V,
+     '''                    pred_name(r)
+                ),
+                format!("(=> {pre} {g})"),''',
+     '''                    pred_name(r)
+                ),
+                "true".to_string(),''',
+     "a trait impl may require more than the trait (E0817)"),
+    ("v-default-spec-leaks", "unsound", V,
+     '''                                !crate::check::has_param(&args[0])''',
+     '''                                !args.is_empty()''',
+     "a default spec body is revealed for a bounded `Self`, whose impl may override it"),
+    ("c-trait-call-undispatched", "miscompile", C,
+     '''                .zip(a)
+                .collect();
+            target = t;''',
+     '''                .zip(a)
+                .collect();
+            let _ = t;''',
+     "a trait call with a known `Self` is not lowered to its impl's function"),
 ]
 
 
