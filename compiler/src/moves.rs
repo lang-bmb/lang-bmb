@@ -698,10 +698,15 @@ impl Mv<'_> {
                 }
                 // Binding owned payloads out of a place behind a reference or
                 // out of a field moves out of it: match a reference instead
-                // (Rust's default binding mode, ADR-0055).
+                // (Rust's default binding mode, ADR-0055). A field of a local
+                // struct moves on its own (a partial move).
+                let local_field = self.path_of(scrut).is_some_and(|p| {
+                    let root = p.split('.').next().unwrap_or(&p).to_string();
+                    self.status(&root).is_some()
+                });
                 match &scrut.kind {
                     ExprKind::Deref(x) | ExprKind::Field { base: x, .. }
-                        if binds_owned && self.moves_ty(scrut) =>
+                        if binds_owned && self.moves_ty(scrut) && !local_field =>
                     {
                         let by_ref = matches!(&scrut.kind, ExprKind::Deref(_))
                             && matches!(self.types.get(&key(x.span)), Some(TypeKind::Ref { .. }));

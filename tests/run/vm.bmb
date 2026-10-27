@@ -1,0 +1,79 @@
+#[summary("스택 기계: Vec 필드 둘을 가진 문맥 구조체, 바이트 코드 실행, 결과 Vec을 필드에서 꺼내 반환 (backlog 2O-06)")]
+mod vm {
+    struct Vm { stack: Vec<i64>, out: Vec<i64>, steps: u64 }
+
+    spec fn bounded(m: &Vm) -> bool { m.stack.len() <= 1000 && m.out.len() <= 1000 }
+
+    // A digit pushes it, `+` and `*` combine the top two (wrapping), `d`
+    // duplicates the top, `p` moves the top to the output; anything else
+    // or a missing operand is skipped.
+    #[effects(pure)]
+    #[uses(bounded)]
+    fn step(m: &mut Vm, op: u8) -> ()
+        requires bounded(m),
+        ensures bounded(m),
+    {
+        if op >= b'0' && op <= b'9' {
+            if m.stack.len() < 1000 {
+                m.stack.push(i64::try_from(op - b'0').unwrap());
+            }
+        } else if op == b'+' || op == b'*' {
+            if m.stack.len() >= 2 {
+                let n: usize = m.stack.len();
+                let a: i64 = m.stack[n - 2];
+                let b: i64 = m.stack[n - 1];
+                m.stack.truncate(n - 2);
+                if op == b'+' {
+                    m.stack.push(a.wrapping_add(b));
+                } else {
+                    m.stack.push(a.wrapping_mul(b));
+                }
+            }
+        } else if op == b'd' {
+            let k: usize = m.stack.len();
+            if k > 0 && k < 1000 {
+                let t: i64 = m.stack[k - 1];
+                m.stack.push(t);
+            }
+        } else if op == b'p' {
+            match m.stack.pop() {
+                None => {}
+                Some(x) => {
+                    if m.out.len() < 1000 {
+                        m.out.push(x);
+                    }
+                }
+            }
+        }
+        m.steps = m.steps.wrapping_add(1);
+    }
+
+    #[effects(pure)]
+    #[uses(bounded)]
+    fn run(code: &[u8]) -> Vec<i64> {
+        let mut m: Vm = Vm { stack: Vec::new(), out: Vec::new(), steps: 0 };
+        let mut pc: usize = 0;
+        while pc < code.len()
+            invariant pc <= code.len() && bounded(&m),
+            decreases code.len() - pc,
+        {
+            step(&mut m, code[pc]);
+            pc = pc + 1;
+        }
+        m.out
+    }
+
+    #[effects(io)]
+    #[uses(bounded)]
+    fn main() -> () {
+        let out: Vec<i64> = run(b"23*p45+d*p78*9+p5d+d*p+p");
+        let mut i: usize = 0;
+        while i < out.len()
+            invariant i <= out.len(),
+            decreases out.len() - i,
+        {
+            print_i64(out[i]);
+            i = i + 1;
+        }
+    }
+}

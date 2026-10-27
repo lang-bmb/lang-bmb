@@ -4,7 +4,7 @@
 
 ## 방법
 
-- `scripts/gate_power.py`: 변이체 35개(건전성을 깨는 것 26, 완전성을 깨는 것 1, 오컴파일 8). 31개는 1B-38, 4개(trait)는 2T-05. 각각 HEAD의 분리된 작업 트리에 하나만 적용하고 `cargo fmt` 뒤 게이트를 끝까지 돌린다. 게이트가 0이 아닌 값으로 끝나면 잡은 것이고, `detected_by`에 실패한 작업 이름을 남긴다.
+- `scripts/gate_power.py`: 변이체 39개(건전성을 깨는 것 28, 완전성을 깨는 것 1, 오컴파일 10). 31개는 1B-38, 4개(trait)는 2T-05, 4개(소유 타입)는 2O-05. 각각 HEAD의 분리된 작업 트리에 하나만 적용하고 `cargo fmt` 뒤 게이트를 끝까지 돌린다. 게이트가 0이 아닌 값으로 끝나면 잡은 것이고, `detected_by`에 실패한 작업 이름을 남긴다.
 - 서식(`cargo fmt --check`)이나 컴파일 경고(clippy `-D warnings`)로만 실패하는 것은 시험이 잡은 것이 아니다. 첫 실행에서 이렇게 "잡힌" 변이체 3개(`v-mut-param-havoc-skipped`, `c-overflow-check-removed`, `c-bounds-check-removed`: 쓰이지 않는 변수)는 경고 없이 컴파일되게 고쳐 다시 돌렸다.
 - 원자료: `results.jsonl`(변이체마다 마지막 실행, `commit`이 그 실행의 HEAD). 한 번에 약 5분이라 전체가 여러 커밋(5a50b57 → 10a8b4f)에 걸쳤다. 다시 돌린 행은 시험을 더한 커밋이다.
 
@@ -23,6 +23,8 @@
 시험을 더한 뒤 31/31.
 
 **2T-05 (2026-10-27, 커밋 39b91295·61105a21).** 변이체 여섯(`v-mul-as-add`, `v-spec-lt-as-le`, `v-lt-as-le`, `v-ge-as-gt`, `c-bounds-check-ule`, `c-bounds-check-removed`)이 2T-02 뒤 소스에 더는 적용되지 않았다(비교가 `ord_term` 하나로 모였고, 스칼라·데이터 경계 검사가 두 벌이 됨). 아무도 몰랐으므로 게이트에 `power` 단계(`gate_power.py check`)를 더하고 여섯을 현재 코드로 다시 겨눴다. `v-spec-lt-as-le`는 명세와 코드가 같은 인코딩을 쓰게 되어 타입 매개변수 순서(`Ord` 경계)의 `<`를 겨눈다. trait 변이체 넷(`v-refine-post-dropped`, `v-refine-pre-dropped`, `v-default-spec-leaks`, `c-trait-call-undispatched`)을 더했다. 첫 실행에서 `v-default-spec-leaks`를 놓쳤는데 동치였다: 바꾼 `has_param` 검사 뒤의 `dispatch` 검사가 같은 경우를 막았다. 그 검사는 오히려 지나치게 보수적이어서(`Self = Wrap<T>`의 기본 본문도 막음) 빼고(`tests/run/trait_defaults`의 `wrapped`), 변이체는 `dispatch` 조건을 겨누게 고쳐 다시 돌렸다. 열 개 모두 잡음. 새 trait 퍼저(`test soundness_traits`)가 `v-refine-post-dropped`·`c-trait-call-undispatched`를 잡는다.
+
+**2O-05·2O-06 (2026-10-27, 커밋 0b6cd9ad).** 소유 타입 변이체 넷을 더했다: `c-box-free-dropped`(해제되는 `Box`를 풀지 않음: 누수), `v-replace-returns-new`(`mem::replace`가 새 값을 돌려준다고 봄), `v-decrease-any-term`(구조적 `decreases`가 호출자 값의 부분이 아닌 인자에도 성립), `c-mut-match-write-back-dropped`(`&mut` `match` 바인딩으로 쓴 스칼라를 페이로드에 되쓰지 않음). 넷 모두 잡음. 소유 퍼저(`test soundness_owned`)가 `c-box-free-dropped`(valgrind)와 `v-replace-returns-new`(반례 재현)를 잡는다. `v-decrease-any-term`은 `test verify`만, `c-mut-match-write-back-dropped`는 `test codegen`만 잡는다(한 작업만 잡는 결함 10개).
 
 | 변이체 | 종류 | 결함 | 게이트 |
 | --- | --- | --- | --- |
@@ -61,14 +63,18 @@
 | `v-refine-pre-dropped` | unsound | a trait impl may require more than the trait (E0817) | 잡음: test verify |
 | `v-default-spec-leaks` | unsound | a default spec body is revealed for a bounded `Self`, whose impl may override it | 잡음: test verify |
 | `c-trait-call-undispatched` | miscompile | a trait call with a known `Self` is not lowered to its impl's function | 잡음: test incremental, test soundness_traits, test codegen |
+| `c-box-free-dropped` | miscompile | a dropped `Box` is never freed (a leak at every drop) | 잡음: test codegen, test soundness_owned |
+| `v-replace-returns-new` | unsound | `std::mem::replace` is taken to return the new value | 잡음: bench bcb, test verify, health, test stability, test soundness_owned |
+| `v-decrease-any-term` | unsound | a structural `decreases` holds for any argument, not only a part of the caller's value | 잡음: test verify |
+| `c-mut-match-write-back-dropped` | miscompile | a scalar written through a `&mut` match binding is not stored back to the payload | 잡음: test codegen |
 
-검출: 35/35
-- unsound: 26/26
+검출: 39/39
+- unsound: 28/28
 - incomplete: 1/1
-- miscompile: 8/8
+- miscompile: 10/10
 
 ## 관찰
 
-- **한 작업만 잡는 결함 8개.** `v-min-rem-dropped`, `v-neg-overflow-dropped`, `v-decreases-unbounded`, `v-havoc-skipped`, `v-mut-param-havoc-skipped`, `v-recursion-measure-dropped`는 `test verify`(손으로 쓴 코퍼스)만, `c-bounds-check-*`는 `test codegen`만 잡는다. 건전성 퍼저(`soundness*`)는 이 여섯을 못 잡는다: 퍼저가 `%`의 `i64::MIN % -1`, 부정 오버플로, 루프 측도의 하한, 루프 havoc을 만들지 않는다는 뜻이다. 코퍼스 한 줄이 지워지면 결함이 들어와도 게이트가 통과한다.
+- **한 작업만 잡는 결함 8개(2O 뒤 10개).** `v-min-rem-dropped`, `v-neg-overflow-dropped`, `v-decreases-unbounded`, `v-havoc-skipped`, `v-mut-param-havoc-skipped`, `v-recursion-measure-dropped`는 `test verify`(손으로 쓴 코퍼스)만, `c-bounds-check-*`는 `test codegen`만 잡는다. 건전성 퍼저(`soundness*`)는 이 여섯을 못 잡는다: 퍼저가 `%`의 `i64::MIN % -1`, 부정 오버플로, 루프 측도의 하한, 루프 havoc을 만들지 않는다는 뜻이다. 코퍼스 한 줄이 지워지면 결함이 들어와도 게이트가 통과한다.
 - **변이체는 손으로 쓴 31개다.** 실제 결함 분포를 대표한다는 근거는 없다. 2B(데이터 타입) 인코딩이 들어오면 같은 방식으로 변이체를 더한다.
 - 비용: 31개 한 바퀴 약 2.9시간(게이트 한 번 약 5분). CI에는 넣지 않는다.

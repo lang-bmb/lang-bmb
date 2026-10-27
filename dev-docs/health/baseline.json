@@ -2,7 +2,7 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 4802531,
+    "V4_rlimit_total": 4955010,
     "V5_rlimit_headroom": 0.0152,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0,
@@ -17,9 +17,9 @@
     "S4_stage0_rust_lines": 25429,
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
-    "P1_runnable_programs": 38,
-    "P2_bmb_lines": 10834,
-    "P3_errors_with_help": 0.7983,
+    "P1_runnable_programs": 40,
+    "P2_bmb_lines": 11038,
+    "P3_errors_with_help": 0.7987,
     "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 10
@@ -891,6 +891,28 @@
         "O2_soundness_fuzzers": [
           9,
           10
+        ]
+      }
+    },
+    {
+      "date": "2026-10-27",
+      "reason": "2O-06: calc and vm run programs",
+      "changed": {
+        "V4_rlimit_total": [
+          4802531,
+          4955010
+        ],
+        "P1_runnable_programs": [
+          38,
+          40
+        ],
+        "P2_bmb_lines": [
+          10834,
+          11038
+        ],
+        "P3_errors_with_help": [
+          0.7983,
+          0.7987
         ]
       }
     }

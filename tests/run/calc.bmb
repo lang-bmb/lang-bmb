@@ -1,0 +1,99 @@
+#[summary("전위 표기 계산기: 바이트열을 식 트리로 읽고 넘침 없이 평가 (backlog 2O-06)")]
+mod calc {
+    enum Expr { Num(i64), Add(Box<Expr>, Box<Expr>), Mul(Box<Expr>, Box<Expr>) }
+
+    struct Parsed { e: Option<Box<Expr>>, next: usize }
+
+    spec fn within(s: &[u8], i: usize) -> bool { i <= s.len() }
+
+    spec fn ends_within(s: &[u8], r: &Parsed) -> bool { r.next <= s.len() }
+
+    // `+ab`, `*ab` and one digit; `None` on anything else or when `fuel`
+    // runs out.
+    #[effects(pure)]
+    #[uses(ends_within, within)]
+    fn parse(s: &[u8], i: usize, fuel: u64) -> (r: Parsed)
+        requires within(s, i),
+        ensures ends_within(s, &r),
+        decreases fuel,
+    {
+        if fuel == 0 || i >= s.len() {
+            Parsed { e: None, next: i }
+        } else {
+            let c: u8 = s[i];
+            if c >= b'0' && c <= b'9' {
+                let d: i64 = i64::try_from(c - b'0').unwrap();
+                Parsed { e: Some(Box::new(Expr::Num(d))), next: i + 1 }
+            } else if c == b'+' || c == b'*' {
+                let l: Parsed = parse(s, i + 1, fuel - 1);
+                match l.e {
+                    None => Parsed { e: None, next: l.next },
+                    Some(a) => {
+                        let r2: Parsed = parse(s, l.next, fuel - 1);
+                        match r2.e {
+                            // `a` moves on the other path (E0414): hand it
+                            // to a local that ends here.
+                            None => {
+                                let unused: Box<Expr> = a;
+                                Parsed { e: None, next: r2.next }
+                            }
+                            Some(b) => {
+                                let node: Expr = if c == b'+' { Expr::Add(a, b) } else { Expr::Mul(a, b) };
+                                Parsed { e: Some(Box::new(node)), next: r2.next }
+                            }
+                        }
+                    }
+                }
+            } else {
+                Parsed { e: None, next: i }
+            }
+        }
+    }
+
+    #[effects(pure)]
+    fn eval(e: &Expr) -> Option<i64>
+        decreases e,
+    {
+        match e {
+            Expr::Num(n) => Some(*n),
+            Expr::Add(a, b) => match eval(&**a) {
+                None => None,
+                Some(x) => match eval(&**b) {
+                    None => None,
+                    Some(y) => x.checked_add(y),
+                },
+            },
+            Expr::Mul(p, q) => match eval(&**p) {
+                None => None,
+                Some(u) => match eval(&**q) {
+                    None => None,
+                    Some(w) => u.checked_mul(w),
+                },
+            },
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(ends_within, within)]
+    fn calc(s: &[u8]) -> i64 {
+        let p: Parsed = parse(s, 0, 64);
+        match &p.e {
+            None => -1,
+            Some(e) => match eval(&**e) {
+                None => -2,
+                Some(v) => v,
+            },
+        }
+    }
+
+    #[effects(io)]
+    #[uses(ends_within, within)]
+    fn main() -> () {
+        print_i64(calc(b"7"));
+        print_i64(calc(b"+12"));
+        print_i64(calc(b"*+12+34"));
+        print_i64(calc(b"+*99*99"));
+        print_i64(calc(b"+1"));
+        print_i64(calc(b"x"));
+    }
+}

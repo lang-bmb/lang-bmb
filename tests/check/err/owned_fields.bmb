@@ -4,6 +4,8 @@ mod ow {
 
     struct Ctx { a: Buf, b: Vec<u8> }
 
+    struct Slot { v: Option<Vec<i64>>, n: i64 }
+
     #[effects(pure)]
     fn take(v: Vec<i64>) -> usize { v.len() }
 
@@ -50,6 +52,30 @@ mod ow {
     fn immutable(b: Buf) -> usize {
         b.data.push(1);
         b.data.len()
+    }
+
+    // A `match` on a field of a local moves that field alone: the struct is
+    // used whole after it.
+    #[effects(pure)]
+    fn matched_then_whole(s: Slot) -> i64 {
+        let t: Slot = s;
+        let k: usize = match t.v {
+            None => 0,
+            Some(w) => w.len(),
+        };
+        let u: Slot = t;
+        u.n
+    }
+
+    // ... and its other fields stay readable.
+    #[effects(pure)]
+    fn matched_then_rest(s: Slot) -> i64 {
+        let t: Slot = s;
+        let k: usize = match t.v {
+            None => 0,
+            Some(w) => w.len(),
+        };
+        t.n
     }
 
     // Reading the other fields is fine, and so is assigning the field again.
