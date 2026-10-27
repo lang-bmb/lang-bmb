@@ -201,7 +201,8 @@ pub fn defs_of<'p>(
 ) -> Vec<(String, String, &'p FnDef)> {
     let by_span: BTreeMap<(u32, u32, u32), &str> = fns
         .values()
-        .filter(|s| s.in_impl && s.path.starts_with('<'))
+        // Not an instance (`<..>::f<i64>`, the encoder's tables).
+        .filter(|s| s.in_impl && s.path.starts_with('<') && !s.path.ends_with('>'))
         .map(|s| ((s.span.file, s.span.lo, s.span.hi), s.path.as_str()))
         .collect();
     fn walk<'p>(
@@ -239,6 +240,19 @@ pub fn defs_of<'p>(
         walk(m, "", &by_span, &mut out);
     }
     out
+}
+
+/// The definition `#[uses(name)]` names from unit `mp`: `f` or `Trait::f`
+/// of the unit, else a full path (ADR-0046 §4: a trait's `spec fn` method
+/// stands for its impls' definitions).
+pub fn uses_target(name: &str, mp: &str, fns: &BTreeMap<String, FnSig>) -> Option<String> {
+    let local = format!("{mp}::{name}");
+    if fns.get(&local).is_some_and(|s| !s.builtin) {
+        return Some(local);
+    }
+    fns.get(name)
+        .filter(|s| !s.builtin)
+        .map(|_| name.to_string())
 }
 
 /// The method declarations of every trait: (path `unit::Trait::f`, unit,
@@ -769,8 +783,9 @@ impl<'a> Checker<'a> {
     }
 
     /// The method signatures of the unit's traits (ADR-0046 §2): generic in
-    /// `Self` (bounded by the trait), then their own parameters. Contracts,
-    /// `spec fn` methods and default bodies come with backlog 2T-07b·c.
+    /// `Self` (bounded by the trait), then their own parameters. Their
+    /// contracts are checked with the bodies (`check_fn`); a `decreases` is
+    /// E0207, and so is a default body until backlog 2T-07c.
     fn collect_trait_sigs(&mut self, m: &Mod, prefix: &str) {
         let mp = format!("{prefix}{}", m.name.name);
         for sub in &m.mods {
@@ -813,47 +828,22 @@ impl<'a> Checker<'a> {
                         ),
                     );
                 }
-                if f.kind == FnKind::Spec {
+                // A call through a bound carries no measure (ADR-0046 §4):
+                // recursion through it is rejected (`trait_cycles`).
+                if let Some(d) = &f.decreases {
                     self.diags.push(
                         Diag::new(
                             "E0207",
-                            f.name.span,
-                            "`spec fn` methods of a trait are not supported yet (backlog 2T-07b)",
+                            d.span,
+                            "a trait method takes no `decreases`: recursion through a bound is not supported",
                         )
-                        .fix(
-                            "declare the spec function in the unit, outside the trait",
-                            None,
-                        ),
-                    );
-                }
-                if let Some(c) = f
-                    .requires
-                    .first()
-                    .or(f.ensures.first())
-                    .or(f.decreases.as_ref())
-                {
-                    self.diags.push(
-                        Diag::new(
-                            "E0207",
-                            c.span,
-                            "contracts of trait methods are not supported yet (backlog 2T-07b)",
-                        )
-                        .fix(
-                            "state the `ensures` on each impl's function; callers through a bound see only the signature",
-                            None,
-                        ),
+                        .fix("remove it; an impl's function may recurse on its own type with its own `decreases`", None),
                     );
                 }
                 let own = self.tparams_of(&f.generics, false, &mp);
                 self.tparams = vec![selfp.clone()];
                 self.tparams.extend(own);
                 self.receiver_rule(f, Some("Self"), &mp);
-                for p in &f.params {
-                    self.check_param_type(&p.ty, f.kind);
-                    self.canon(&p.ty, &mp, true);
-                }
-                self.check_value_type(&f.ret.ty, "return type");
-                self.canon(&f.ret.ty, &mp, true);
                 self.tparams.clear();
                 self.collect_fn(
                     f,
@@ -874,8 +864,8 @@ impl<'a> Checker<'a> {
 
     /// The functions of an `impl Trait for T` block against the trait's
     /// methods (ADR-0046 §2): each one defined (E0315), with the trait's
-    /// signature for `Self = T` (E0316), and no `requires` the trait does
-    /// not have (E0817: a caller through a bound does not check it).
+    /// signature for `Self = T` (E0316). That its contract refines the
+    /// trait's (E0817) is a proof obligation (`verify`).
     fn conform(&mut self, info: &TraitImplInfo, ti: &TraitImpl, mp: &str) {
         let tr = &info.trait_path;
         let name = Self::path_text(&ti.trait_path);
@@ -1006,22 +996,6 @@ impl<'a> Checker<'a> {
                     )
                     .fix(
                         "make the function pure, or declare the trait method `#[effects(io)]`",
-                        None,
-                    ),
-                );
-            }
-            if let Some(r) = f.requires.first() {
-                self.diags.push(
-                    Diag::new(
-                        "E0817",
-                        r.span,
-                        format!(
-                            "`{}` requires more than `{name}` declares: a caller through a bound does not check it (ADR-0046 §4)",
-                            f.name.name
-                        ),
-                    )
-                    .fix(
-                        "remove the `requires`; handle the other inputs in the body",
                         None,
                     ),
                 );
@@ -2133,6 +2107,15 @@ impl<'a> Checker<'a> {
                 self.check_fn(f, &mp, &format!("{mp}::{}::{}", i.ty.name, f.name.name));
             }
         }
+        // Trait method declarations: their signatures and contracts.
+        for t in &m.traits {
+            for tf in &t.fns {
+                let path = format!("{mp}::{}::{}", t.name.name, tf.f.name.name);
+                if self.fns.get(&path).is_some_and(|s| s.span == tf.f.span) {
+                    self.check_fn(&tf.f, &mp, &path);
+                }
+            }
+        }
         for ti in &m.trait_impls {
             let Some(info) = self.trait_impls.iter().find(|x| x.span == ti.span).cloned() else {
                 continue;
@@ -2205,11 +2188,7 @@ impl<'a> Checker<'a> {
                 for arg in &a.args {
                     match arg {
                         AttrArg::Ident(i) => {
-                            let target = if i.name.contains("::") {
-                                Some(i.name.clone())
-                            } else {
-                                self.resolve(std::slice::from_ref(i), mod_path)
-                            };
+                            let target = uses_target(&i.name, mod_path, &self.fns);
                             let kind = target.and_then(|p| self.fns.get(&p)).map(|s| s.kind);
                             if kind != Some(FnKind::Spec) {
                                 let fix = if kind.is_some() {
@@ -2286,6 +2265,11 @@ impl<'a> Checker<'a> {
             }
         }
 
+        // A trait method declaration has no body (ADR-0046 §1).
+        if sig.trait_of.is_some() {
+            self.tparams.clear();
+            return;
+        }
         let mode = if f.kind == FnKind::Spec {
             Mode::Spec { allow_old: false }
         } else {
@@ -4868,6 +4852,8 @@ impl<'a> Checker<'a> {
                 mutable: *mutable,
                 inner: mk(self.place_peek(cx, expr)?),
             }),
+            // `old(p)` in a contract: the parameter's type.
+            ExprKind::Old(x) => self.arg_peek(cx, x),
             ExprKind::Method { recv, name, args }
                 if args.is_empty() && matches!(name.name.as_str(), "as_slice" | "as_mut_slice") =>
             {
@@ -4899,6 +4885,7 @@ impl<'a> Checker<'a> {
                 _ => None,
             },
             ExprKind::Index { base, .. } => elem_of(&self.place_peek(cx, base)?).cloned(),
+            ExprKind::Trigger(x) => self.place_peek(cx, x),
             _ => None,
         }
     }
@@ -5716,6 +5703,23 @@ impl<'a> Checker<'a> {
                 }
                 pm.then(|| id.name.clone())
             }
+            // `old(p)` of a reference parameter, passed on in a contract.
+            ExprKind::Old(_) if !pm => {
+                let t = self.expr(cx, a, None, mode);
+                let ok = match &t {
+                    TypeKind::Ref { inner, .. } => inner.kind == *want_ty,
+                    TypeKind::Error => true,
+                    _ => false,
+                };
+                if !ok {
+                    self.diags.push(Diag::new(
+                        "E0401",
+                        a.span,
+                        format!("expected `{want}`, found `{}`", ty_str(&t)),
+                    ));
+                }
+                None
+            }
             _ => {
                 let t = self.expr(cx, a, None, mode);
                 if t != TypeKind::Error {
@@ -5798,8 +5802,9 @@ impl<'a> Checker<'a> {
     /// on the graph of the instances the program reaches from its
     /// definitions without type parameters, that takes such a call. A
     /// generic definition is proved once, where that call names only the
-    /// trait's signature, so no measure is checked along it (until trait
-    /// contracts, backlog 2T-07b). Reports E0207 on the definitions of such
+    /// trait's contract, which carries no measure (a trait method takes no
+    /// `decreases`), so none is checked along it. Reports E0207 on the
+    /// definitions of such
     /// a cycle and returns them. Structural delegation (`impl<T: Shape>
     /// Shape for Wrap<T>` calling `T`'s) makes no cycle.
     fn trait_cycles(&mut self, defs: &BTreeMap<String, (Span, bool)>) -> BTreeSet<String> {
@@ -5893,7 +5898,7 @@ impl<'a> Checker<'a> {
                             "E0207",
                             *span,
                             format!(
-                                "`{b}` is recursive through a call on a bounded `Self` (reaching `{to}`), which cannot carry a measure yet (backlog 2T-07b)"
+                                "`{b}` is recursive through a call on a bounded `Self` (reaching `{to}`), which carries no measure (ADR-0046 §4)"
                             ),
                         )
                         .fix(

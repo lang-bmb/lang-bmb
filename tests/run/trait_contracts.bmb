@@ -1,0 +1,79 @@
+#[summary("trait 계약: 경계로 증명한 최댓값을 두 타입으로 실행 (ADR-0046 §4)")]
+mod sc {
+    trait Score {
+        #[effects(pure)]
+        fn score(self: &Self) -> (r: i64)
+            ensures scored::<Self>(self, r);
+
+        spec fn value(self: &Self) -> i64;
+    }
+
+    struct Card { rank: i64 }
+
+    impl Score for Card {
+        #[effects(pure)]
+        #[uses(Score::value, scored)]
+        fn score(self: &Card) -> (r: i64)
+            ensures scored::<Card>(self, r),
+        {
+            self.rank
+        }
+
+        spec fn value(self: &Card) -> i64 {
+            self.rank
+        }
+    }
+
+    struct Hand { a: i64, b: i64 }
+
+    impl Score for Hand {
+        #[effects(pure)]
+        #[uses(Score::value, scored)]
+        fn score(self: &Hand) -> (r: i64)
+            ensures scored::<Hand>(self, r),
+        {
+            self.a.saturating_add(self.b)
+        }
+
+        spec fn value(self: &Hand) -> i64 {
+            self.a.saturating_add(self.b)
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(bounds_to, scored)]
+    fn best<T: Copy + Score>(xs: &[T]) -> (r: i64)
+        ensures bounds_to::<T>(xs, xs.len(), r),
+    {
+        let mut m: i64 = 0;
+        let mut i: usize = 0;
+        while i < xs.len()
+            invariant i <= xs.len(), bounds_to::<T>(xs, i, m),
+            decreases xs.len() - i,
+        {
+            let s: i64 = Score::score(&xs[i]);
+            if s > m {
+                m = s;
+            }
+            i = i + 1;
+        }
+        m
+    }
+
+    spec fn bounds_to<T: Copy + Score>(xs: &[T], n: usize, r: i64) -> bool {
+        n <= xs.len() && (forall|k: usize| k < n ==> #[trigger] Score::value(&xs[k]) <= r)
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        let cs: [Card; 4] = [Card { rank: 3 }, Card { rank: 11 }, Card { rank: 7 }, Card { rank: -2 }];
+        print_i64(best::<Card>(&cs));
+        let hs: [Hand; 3] = [Hand { a: 1, b: 2 }, Hand { a: 10, b: -4 }, Hand { a: 5, b: 5 }];
+        print_i64(best::<Hand>(&hs));
+        print_i64(Score::score(&hs[1]));
+    }
+
+    spec fn scored<T: Copy + Score>(x: &T, r: i64) -> bool {
+        r == Score::value(x)
+    }
+}

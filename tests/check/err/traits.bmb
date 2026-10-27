@@ -8,7 +8,7 @@ mod geo {
     trait Named {
         #[effects(pure)]
         fn id(self: &Self) -> i64
-            ensures true;
+            decreases 1;
 
         #[effects(pure)]
         fn dflt(self: &Self) -> i64 {

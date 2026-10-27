@@ -109,13 +109,8 @@ impl<'a> Printer<'a> {
 
     fn uses_name(&self, name: &str) -> String {
         match &self.qualify {
-            Some((fns, unit)) if !name.contains("::") => {
-                let local = format!("{unit}::{name}");
-                if fns.contains_key(&local) {
-                    local
-                } else {
-                    name.to_string()
-                }
+            Some((fns, unit)) => {
+                crate::check::uses_target(name, unit, fns).unwrap_or_else(|| name.to_string())
             }
             _ => name.to_string(),
         }

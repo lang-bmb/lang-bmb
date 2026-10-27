@@ -529,14 +529,27 @@ impl Session {
                 .get(f.span.lo as usize..f.span.hi as usize)
                 .unwrap_or_default();
             // Every definition the qualified text names (full paths).
+            // A trait impl's function is proved against the trait method's
+            // contract too (its refinement obligations).
+            let refines = crate::verify::refinement_of(t, path).map(|(decl, _)| decl);
             let refs: BTreeSet<String> = qual
                 .split(|c: char| !(c.is_alphanumeric() || c == '_' || c == ':'))
                 .filter(|w| w.contains("::") && *w != path && kinds.contains_key(w))
-                .flat_map(|w| std::iter::once(w.to_string()).chain(impls_of(w)))
+                .map(str::to_string)
+                .chain(refines.clone())
+                .flat_map(|w| {
+                    let impls = impls_of(&w);
+                    std::iter::once(w).chain(impls)
+                })
                 .filter(|w| w != path)
                 .collect();
+            // `#[uses(Trait::m)]` reveals every impl's definition of it.
             let uses: BTreeSet<String> = crate::verify::uses_of(f, unit, &t.fns)
                 .into_iter()
+                .flat_map(|u| {
+                    let impls = impls_of(&u);
+                    std::iter::once(u).chain(impls)
+                })
                 .collect();
             let comp: Vec<&str> = match t.recursive.get(path) {
                 Some(c) => defs
@@ -582,6 +595,7 @@ impl Session {
             // the spec fns reachable along those texts cover it.
             let mut reach: BTreeSet<String> = names(&qual);
             reach.insert(path.clone());
+            reach.extend(refines);
             let mut todo: Vec<String> = reach.iter().cloned().collect();
             while let Some(r) = todo.pop() {
                 for n in reads(&r) {

@@ -1,0 +1,65 @@
+#[summary("trait 계약 실패: 더 강한 전제, 더 약한 결과, 경계 호출의 전제 (E0817·E0801)")]
+mod tr {
+    trait Area {
+        #[effects(pure)]
+        fn area(self: &Self) -> (r: i64)
+            requires nonneg(Area::model(self)),
+            ensures is_model(r, Area::model(self));
+
+        spec fn model(self: &Self) -> i64;
+    }
+
+    struct Off { s: i64 }
+
+    impl Area for Off {
+        #[effects(pure)]
+        #[uses(nonneg)]
+        fn area(self: &Off) -> (r: i64)
+            ensures nonneg(r),
+        {
+            if self.s > 0 {
+                self.s
+            } else {
+                0
+            }
+        }
+
+        spec fn model(self: &Off) -> i64 {
+            self.s
+        }
+    }
+
+    struct Sq { s: i64 }
+
+    impl Area for Sq {
+        #[effects(pure)]
+        #[uses(Area::model, is_model, nonneg, pos)]
+        fn area(self: &Sq) -> (r: i64)
+            requires pos(self.s),
+            ensures is_model(r, self.s),
+        {
+            self.s
+        }
+
+        spec fn model(self: &Sq) -> i64 {
+            self.s
+        }
+    }
+
+    spec fn is_model(r: i64, m: i64) -> bool {
+        r == m
+    }
+
+    spec fn nonneg(x: i64) -> bool {
+        x >= 0
+    }
+
+    spec fn pos(x: i64) -> bool {
+        x > 0
+    }
+
+    #[effects(pure)]
+    fn unchecked<T: Copy + Area>(x: T) -> i64 {
+        Area::area(&x)
+    }
+}

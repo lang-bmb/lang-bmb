@@ -591,11 +591,8 @@ impl Index {
             for a in f.attrs.iter().filter(|a| a.name.name == "uses") {
                 for x in &a.args {
                     if let AttrArg::Ident(i) = x {
-                        let to = if i.name.contains("::") {
-                            i.name.clone()
-                        } else {
-                            format!("{unit}::{}", i.name)
-                        };
+                        let to = crate::check::uses_target(&i.name, &unit, &t.fns)
+                            .unwrap_or_else(|| i.name.clone());
                         edges.insert(Edge {
                             from: path.clone(),
                             to,

@@ -141,6 +141,32 @@ fn resolve_in(t: &Tables, path: &[Ident], mod_path: &str) -> String {
     name
 }
 
+/// For a trait impl's function `path`: the trait method it implements and
+/// the substitution that states the trait's contract for it (`Self` by the
+/// implementing type, the method's own type parameters by the impl
+/// function's), ADR-0046 §4.
+pub(crate) fn refinement_of(
+    t: &Tables,
+    path: &str,
+) -> Option<(String, BTreeMap<String, TypeKind>)> {
+    let sig = t.fns.get(path)?;
+    if !(sig.in_impl && path.starts_with('<')) {
+        return None;
+    }
+    let name = path.rsplit("::").next()?;
+    let i = t.trait_impls.iter().find(|i| i.fn_path(name) == path)?;
+    let decl = format!("{}::{name}", i.trait_path);
+    let dsig = t.fns.get(&decl)?;
+    let mut sub = BTreeMap::from([("Self".to_string(), i.head.clone())]);
+    for (a, b) in dsig.generics[dsig.impl_generics..]
+        .iter()
+        .zip(&sig.generics[sig.impl_generics..])
+    {
+        sub.insert(a.name.clone(), TypeKind::Param(b.name.clone()));
+    }
+    Some((decl, sub))
+}
+
 /// The definition a call of `target` with type arguments `args` runs, and
 /// its type arguments: for a trait method with a known `Self`, its impl's
 /// function (ADR-0046 §2).
@@ -260,6 +286,15 @@ fn prepare(p: &Program, t: &Tables) -> Tables {
         .map(|k| (k.clone(), BTreeMap::new(), true))
         .collect();
     while let Some((path, sub, whole)) = work.pop() {
+        // A trait impl's function is also checked against the trait's
+        // contract, stated for it (its refinement obligations).
+        if whole
+            && sub.is_empty()
+            && let Some((decl, rsub)) = refinement_of(&view, &path)
+            && defs.contains_key(&decl)
+        {
+            work.push((decl, rsub, false));
+        }
         let d = &defs[&path];
         let mut roots: Vec<&Expr> = d.f.requires.iter().chain(&d.f.ensures).collect();
         if whole {
@@ -290,6 +325,10 @@ fn prepare(p: &Program, t: &Tables) -> Tables {
                 continue;
             }
             let (target, args) = dispatched(&view, resolve_in(&view, cp, &d.mod_path), args);
+            // A trait call that runs a non-generic impl function.
+            if args.is_empty() {
+                continue;
+            }
             let Some(sig) = view.fns.get(&target) else {
                 continue;
             };
@@ -1305,7 +1344,13 @@ impl<'p, 'q> Enc<'p, 'q> {
             .iter()
             .map(|g| sub[&g.name].clone())
             .collect();
-        inst_key(&target, &args)
+        // A trait's spec method with a known `Self` is its impl's.
+        let (target, args) = dispatched(self.prog.t, target, args);
+        if args.is_empty() {
+            target
+        } else {
+            inst_key(&target, &args)
+        }
     }
 
     fn fresh(&mut self, base: &str, sort: &str) -> String {
@@ -2809,6 +2854,96 @@ impl<'p, 'q> Enc<'p, 'q> {
         r
     }
 
+    /// The refinement obligations of trait impl function `f` (ADR-0046
+    /// §4, E0817), on its entry values: the trait method `decl`'s
+    /// `requires` imply each of `f`'s, and the trait's `requires` with
+    /// `f`'s `ensures` imply each of the trait's `ensures` (on a new
+    /// result and new values behind `&mut` parameters). Parameters match
+    /// by position; `tsub` states the trait's contract for `f`. Nothing
+    /// is assumed afterwards.
+    fn refines(&mut self, f: &FnDef, decl: &str, tsub: BTreeMap<String, TypeKind>) {
+        let Some(td) = self.prog.defs.get(decl) else {
+            return;
+        };
+        let (tf, tunit) = (td.f, td.mod_path.clone());
+        if tf.requires.is_empty() && tf.ensures.is_empty() && f.requires.is_empty() {
+            return;
+        }
+        let saved = self.pc.clone();
+        let (env, old) = self.cur_env();
+        let by_trait = |m: &BTreeMap<String, Val>| -> BTreeMap<String, Val> {
+            tf.params
+                .iter()
+                .zip(&f.params)
+                .filter_map(|(tp, ip)| {
+                    m.get(&ip.name.name)
+                        .map(|v| (tp.name.name.clone(), v.clone()))
+                })
+                .collect()
+        };
+        let (tenv, told) = (by_trait(&env), by_trait(&old));
+        let treq: Vec<String> = tf
+            .requires
+            .iter()
+            .map(|r| self.in_def(&tunit, tsub.clone(), |s| s.spec(r, &tenv, &told).s()))
+            .collect();
+        let pre = and(&treq);
+        for r in &f.requires {
+            let g = self.spec(r, &env, &old).s();
+            self.oblige(
+                "E0817",
+                r.span,
+                format!(
+                    "precondition `{}` is not implied by the preconditions of `{decl}`",
+                    pred_name(r)
+                ),
+                format!("(=> {pre} {g})"),
+            );
+            self.pc = saved.clone();
+        }
+        if !tf.ensures.is_empty() {
+            // The state after the call: a new result, new values behind
+            // `&mut` parameters (their entry values are `old`).
+            let mut post = env.clone();
+            for p in &f.params {
+                if let TypeKind::Ref { mutable: true, .. } = p.ty.kind {
+                    let ty = self.local_ty(&p.name.name);
+                    let v = self.fresh_val(&format!("{}.post", p.name.name), &ty);
+                    post.insert(p.name.name.clone(), v);
+                }
+            }
+            let ret = self.prog.t.fns[&self.path].ret.clone();
+            let ret = crate::check::subst(&ret, &self.tsub);
+            let result = self.fresh_val("result.post", &ret);
+            let mut ipost = post.clone();
+            if let Some(n) = &f.ret.name {
+                ipost.insert(n.name.clone(), result.clone());
+            }
+            let mut assumed = treq.clone();
+            for en in &f.ensures {
+                assumed.push(self.spec(en, &ipost, &old).s());
+            }
+            let mut tpost = by_trait(&post);
+            if let Some(n) = &tf.ret.name {
+                tpost.insert(n.name.clone(), result.clone());
+            }
+            let hyp = and(&assumed);
+            // With the range facts of the new values.
+            let base = self.pc.clone();
+            for en in &tf.ensures {
+                let g = self.in_def(&tunit, tsub.clone(), |s| s.spec(en, &tpost, &told).s());
+                self.oblige(
+                    "E0817",
+                    f.name.span,
+                    format!("postcondition `{}` of `{decl}` may not hold", pred_name(en)),
+                    format!("(=> {hyp} {g})"),
+                );
+                self.pc = base.clone();
+            }
+        }
+        self.pc = saved;
+    }
+
     fn call(&mut self, path: &[Ident], args: &[Expr], span: Span) -> Val {
         let mut target = self.resolve(path, &self.mod_path.clone());
         // A generic callee's contract under the call's type arguments; a
@@ -3303,7 +3438,25 @@ impl<'p> Prog<'p> {
     /// instances.
     fn revealed(&self, f: &FnDef, mod_path: &str) -> Vec<String> {
         let mut out = Vec::new();
+        let mut named = Vec::new();
         for u in uses_of(f, mod_path, &self.t.fns) {
+            // A trait's spec method: every impl's definition of it.
+            match &self.t.fns[&u].trait_of {
+                Some(tr) => {
+                    let m = u.rsplit("::").next().unwrap_or_default();
+                    named.extend(
+                        self.t
+                            .trait_impls
+                            .iter()
+                            .filter(|i| &i.trait_path == tr)
+                            .map(|i| i.fn_path(m))
+                            .filter(|p| self.t.fns.contains_key(p)),
+                    );
+                }
+                None => named.push(u),
+            }
+        }
+        for u in named {
             if self.t.fns[&u].generics.is_empty() {
                 out.push(u);
             } else {
@@ -3383,15 +3536,10 @@ pub(crate) fn uses_of(f: &FnDef, mod_path: &str, fns: &BTreeMap<String, FnSig>) 
     for a in &f.attrs {
         if a.name.name == "uses" {
             for arg in &a.args {
-                if let AttrArg::Ident(i) = arg {
-                    let full = if i.name.contains("::") {
-                        i.name.clone()
-                    } else {
-                        format!("{mod_path}::{}", i.name)
-                    };
-                    if fns.contains_key(&full) {
-                        out.insert(full);
-                    }
+                if let AttrArg::Ident(i) = arg
+                    && let Some(full) = crate::check::uses_target(&i.name, mod_path, fns)
+                {
+                    out.insert(full);
                 }
             }
         }
@@ -3777,6 +3925,9 @@ fn verify_impl(
                     }
                     enc.inputs.push((prm.name.name.clone(), v.clone(), ty));
                     enc.vars.insert(prm.name.name.clone(), v);
+                }
+                if let Some((decl, rsub)) = refinement_of(t, path) {
+                    enc.refines(d.f, &decl, rsub);
                 }
                 let (env, old) = enc.cur_env();
                 for r in &d.f.requires {

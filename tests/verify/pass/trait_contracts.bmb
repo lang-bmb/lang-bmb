@@ -1,0 +1,71 @@
+#[summary("trait 계약: spec 메서드, 경계 호출, `&mut` 수신자의 정제 (ADR-0046 §4)")]
+mod tr {
+    trait Area {
+        #[effects(pure)]
+        fn area(self: &Self) -> (r: i64)
+            requires nonneg(Area::model(self)),
+            ensures is_model(r, Area::model(self));
+
+        #[effects(pure)]
+        fn grow(self: &mut Self) -> ()
+            ensures not_less(Area::model(old(self)), Area::model(self));
+
+        spec fn model(self: &Self) -> i64;
+    }
+
+    struct Sq { s: i64 }
+
+    impl Area for Sq {
+        #[effects(pure)]
+        #[uses(Area::model, is_model)]
+        fn area(self: &Sq) -> (r: i64)
+            ensures is_model(r, Area::model(self)),
+        {
+            self.s
+        }
+
+        #[effects(pure)]
+        #[uses(Area::model, not_less)]
+        fn grow(self: &mut Sq) -> ()
+            ensures not_less(Area::model(old(self)), Area::model(self)),
+        {
+            if self.s < 1000 {
+                self.s = self.s + 1;
+            }
+        }
+
+        spec fn model(self: &Sq) -> i64 {
+            self.s
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(is_model, nonneg)]
+    fn get<T: Copy + Area>(x: T) -> (r: i64)
+        requires nonneg(Area::model(&x)),
+        ensures is_model(r, Area::model(&x)),
+    {
+        Area::area(&x)
+    }
+
+    spec fn is_model(r: i64, m: i64) -> bool {
+        r == m
+    }
+
+    #[effects(pure)]
+    #[uses(Area::model, is_model, nonneg)]
+    fn known(q: Sq) -> (r: i64)
+        requires nonneg(q.s),
+        ensures is_model(r, q.s),
+    {
+        get::<Sq>(q)
+    }
+
+    spec fn nonneg(x: i64) -> bool {
+        x >= 0
+    }
+
+    spec fn not_less(a: i64, b: i64) -> bool {
+        a <= b
+    }
+}
