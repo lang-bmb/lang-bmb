@@ -958,6 +958,7 @@ impl<'p> Gen<'p> {
             self.block(l);
             let v = a.pat.path.last().unwrap().name.clone();
             let ps = vs.iter().find(|(n, _)| *n == v).unwrap().1.clone();
+            let mut write_back: Vec<(String, String, TypeKind)> = Vec::new();
             for (j, (b, pt)) in a.pat.binds.iter().zip(&ps).enumerate() {
                 let bound = b.is_some();
                 if !bound && !(consumed && crate::check::is_move(pt, &self.t.adts)) {
@@ -970,11 +971,44 @@ impl<'p> Gen<'p> {
                     j + 1
                 ));
                 match b {
+                    // A binding of a `&mut` match (ADR-0055) is the payload's
+                    // place; a scalar is read into a register slot and
+                    // written back at the end of the arm.
+                    Some(id)
+                        if matches!(
+                            self.local_ty(&id.name),
+                            Some(TypeKind::Ref { mutable: true, .. })
+                        ) =>
+                    {
+                        let slot = match value_ty(pt).clone() {
+                            t if is_mem(&t) => Slot::Data { ptr: fp, ty: t },
+                            TypeKind::Array(e, n) => Slot::Arr {
+                                ptr: fp,
+                                len: n.to_string(),
+                                elem: elem_kind(&e.kind),
+                                ety: e.kind.clone(),
+                            },
+                            t => {
+                                let lt = llty(&t);
+                                let tmp = self.alloca(lt);
+                                let x = self.load_mem(&fp, &t);
+                                self.emit(format!("store {lt} {x}, ptr {tmp}"));
+                                write_back.push((tmp.clone(), fp, t));
+                                Slot::Scalar { ptr: tmp, ty: lt }
+                            }
+                        };
+                        self.slots.insert(id.name.clone(), slot);
+                    }
                     Some(id) => self.bind(&id.name, &fp, pt),
                     None => self.drop_at(&fp, pt),
                 }
             }
             let v = self.region(|g| g.expr(&a.body));
+            for (tmp, fp, t) in write_back {
+                let x = self.t();
+                self.emit(format!("{x} = load {}, ptr {tmp}", llty(&t)));
+                self.put(CVal::Imm(x), &fp, &t);
+            }
             self.store_result(&slot, v, &rt);
             let owned = self
                 .t

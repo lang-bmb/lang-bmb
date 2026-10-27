@@ -3372,6 +3372,15 @@ impl<'a> Checker<'a> {
     /// The type of a place under a field or `*` target, and whether it can be
     /// written: a `let mut` local, a `&mut` parameter, a writable element.
     fn place_of(&mut self, cx: &mut FnCtx, e: &Expr) -> (TypeKind, bool) {
+        let (t, w) = self.place_of_inner(cx, e);
+        // The back ends read the types of places too (`&mut **a`).
+        self.types
+            .entry((e.span.file, e.span.lo, e.span.hi))
+            .or_insert_with(|| t.clone());
+        (t, w)
+    }
+
+    fn place_of_inner(&mut self, cx: &mut FnCtx, e: &Expr) -> (TypeKind, bool) {
         match &e.kind {
             ExprKind::Var(id) => match Self::lookup(cx, &id.name) {
                 Some(l) => {
@@ -4062,25 +4071,34 @@ impl<'a> Checker<'a> {
             }
             _ => self.expr(cx, scrut, None, mode),
         };
-        let (st, by_ref) = match &st {
+        let (st, by_ref, by_mut) = match &st {
             TypeKind::Ref { mutable, inner } if self.match_variants(&inner.kind).is_some() => {
-                if *mutable {
-                    self.diags.push(
-                        Diag::new(
-                            "E0207",
-                            scrut.span,
-                            "a `match` through `&mut` is not supported yet (backlog 2O-04b)",
-                        )
-                        .fix(
-                            "match a shared reference (`match &*r`) and write through the `&mut` parameter",
-                            None,
-                        ),
-                    );
-                }
-                (inner.kind.clone(), true)
+                (inner.kind.clone(), true, *mutable)
             }
-            _ => (st, false),
+            _ => (st, false, false),
         };
+        // The bindings of a `&mut` match borrow the scrutinee's place: the
+        // arms may not name its variable (Rust: a second borrow).
+        if by_mut {
+            let place = match &scrut.kind {
+                ExprKind::Ref { expr, .. } => root_name(expr),
+                _ => root_name(scrut),
+            };
+            if let Some(root) = place {
+                for a in arms {
+                    if mentions_strict(&a.body, &root) {
+                        self.diags.push(
+                            Diag::new(
+                                "E0410",
+                                a.body.span,
+                                format!("`{root}` is used while the `match` borrows it"),
+                            )
+                            .fix("use the bindings of the arm instead", None),
+                        );
+                    }
+                }
+            }
+        }
         let vs = self.match_variants(&st);
         if vs.is_none() && st != TypeKind::Error {
             let mut d = Diag::new(
@@ -4155,7 +4173,7 @@ impl<'a> Checker<'a> {
                         payload
                             .iter()
                             .map(|t| TypeKind::Ref {
-                                mutable: false,
+                                mutable: by_mut,
                                 inner: mk(t.clone()),
                             })
                             .collect()

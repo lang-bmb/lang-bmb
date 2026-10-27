@@ -1,0 +1,46 @@
+#[summary("&mut 참조 match: 따르지 않는 것 (ADR-0055, backlog 2O-04b)")]
+mod mf {
+    enum Slot { Empty, Full(i64, bool) }
+
+    spec fn holds(s: &Slot, v: i64) -> bool {
+        match s {
+            Slot::Empty => true,
+            Slot::Full(x, used) => *x == v && *used,
+        }
+    }
+
+    spec fn full(s: &Slot) -> bool {
+        match s {
+            Slot::Empty => false,
+            Slot::Full(x, used) => true,
+        }
+    }
+
+    // The flag is not written.
+    #[effects(pure)]
+    #[uses(holds)]
+    fn half(s: &mut Slot, v: i64) -> ()
+        ensures holds(s, v),
+    {
+        match s {
+            Slot::Empty => {}
+            Slot::Full(x, used) => {
+                *x = v;
+            }
+        }
+    }
+
+    // A write through a binding does not change the variant.
+    #[effects(pure)]
+    #[uses(full)]
+    fn still_empty(s: &mut Slot) -> ()
+        ensures full(s),
+    {
+        match s {
+            Slot::Empty => {}
+            Slot::Full(x, used) => {
+                *used = true;
+            }
+        }
+    }
+}

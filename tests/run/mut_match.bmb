@@ -1,0 +1,79 @@
+#[summary("&mut 참조 match: 제자리 트리 수정 (ADR-0055, backlog 2O-04b)")]
+mod mr {
+    enum Expr { Num(i64), Add(Box<Expr>, Box<Expr>), Neg(Box<Expr>) }
+
+    enum Slot { Empty, Full(i64, bool) }
+
+    struct Bag { items: Vec<i64>, label: Option<Box<i64>> }
+
+    #[effects(pure)]
+    fn eval(e: &Expr) -> i64
+        decreases e,
+    {
+        match e {
+            Expr::Num(n) => *n,
+            Expr::Add(a, b) => eval(&**a).wrapping_add(eval(&**b)),
+            Expr::Neg(c) => 0.wrapping_sub(eval(&**c)),
+        }
+    }
+
+    // Every number doubled, in place.
+    #[effects(pure)]
+    fn double(e: &mut Expr) -> ()
+        decreases e,
+    {
+        match e {
+            Expr::Num(n) => {
+                *n = (*n).wrapping_mul(2);
+            }
+            Expr::Add(a, b) => {
+                double(&mut **a);
+                double(&mut **b);
+            }
+            Expr::Neg(c) => double(&mut **c),
+        }
+    }
+
+    #[effects(pure)]
+    fn fill(s: &mut Slot, v: i64) -> () {
+        match s {
+            Slot::Empty => {}
+            Slot::Full(x, used) => {
+                *x = v;
+                *used = true;
+            }
+        }
+    }
+
+    #[effects(pure)]
+    fn relabel(b: &mut Bag) -> () {
+        match &mut b.label {
+            None => {}
+            Some(l) => {
+                **l = 42;
+            }
+        }
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        let mut e: Expr = Expr::Add(Box::new(Expr::Num(2)), Box::new(Expr::Neg(Box::new(Expr::Num(5)))));
+        double(&mut e);
+        print_i64(eval(&e));
+        let mut s: Slot = Slot::Full(1, false);
+        fill(&mut s, 9);
+        match s {
+            Slot::Empty => print_i64(0),
+            Slot::Full(x, u) => {
+                print_i64(x);
+                if u { print_i64(1); } else { print_i64(0); }
+            }
+        }
+        let mut b: Bag = Bag { items: Vec::new(), label: Some(Box::new(1)) };
+        relabel(&mut b);
+        match &b.label {
+            None => print_i64(0),
+            Some(l) => print_i64(**l),
+        }
+    }
+}

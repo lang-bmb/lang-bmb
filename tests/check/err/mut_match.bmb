@@ -1,0 +1,27 @@
+#[summary("&mut 참조 match의 경계 (ADR-0055, backlog 2O-04b)")]
+mod mc {
+    enum Slot { Empty, Full(i64, bool) }
+
+    // The arms may not use the borrowed scrutinee.
+    #[effects(pure)]
+    fn again(s: &mut Slot) -> i64 {
+        match s {
+            Slot::Empty => 0,
+            Slot::Full(x, used) => {
+                *s = Slot::Empty;
+                *x
+            }
+        }
+    }
+
+    // A binding of a shared match cannot be written.
+    #[effects(pure)]
+    fn shared(s: &Slot) -> () {
+        match s {
+            Slot::Empty => {}
+            Slot::Full(x, used) => {
+                *x = 1;
+            }
+        }
+    }
+}

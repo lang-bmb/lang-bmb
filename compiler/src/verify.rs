@@ -2600,7 +2600,16 @@ impl<'p, 'q> Enc<'p, 'q> {
                 let sv = self.eval(scrut).s();
                 let st = self.ty(scrut);
                 let t = self.ty(e);
-                self.match_arms(&sv, &st, arms, 0, &t)
+                // A `&mut` match (ADR-0055): the arm's bindings are written
+                // back to the scrutinee's place at its end.
+                let back = match (&st, &scrut.kind) {
+                    (TypeKind::Ref { mutable: true, .. }, ExprKind::Ref { expr, .. }) => {
+                        Some((**expr).clone())
+                    }
+                    (TypeKind::Ref { mutable: true, .. }, _) => Some((**scrut).clone()),
+                    _ => None,
+                };
+                self.match_arms(&sv, &st, arms, 0, &t, back.as_ref())
             }
         }
     }
@@ -3142,24 +3151,50 @@ impl<'p, 'q> Enc<'p, 'q> {
     /// Arms `i..` of an executable `match` on `sv`: each arm runs under its
     /// tester (the last one under the others' negations: arms are
     /// exhaustive), with its bindings and their range facts.
-    fn match_arms(&mut self, sv: &str, st: &TypeKind, arms: &[Arm], i: usize, t: &TypeKind) -> Val {
+    fn match_arms(
+        &mut self,
+        sv: &str,
+        st: &TypeKind,
+        arms: &[Arm],
+        i: usize,
+        t: &TypeKind,
+        back: Option<&Expr>,
+    ) -> Val {
         let arm = &arms[i];
         let v = arm.pat.path.last().unwrap().name.clone();
         let run = |s: &mut Self| {
             let (vals, facts) = s.payload(st, &v, sv);
             s.pc.extend(facts);
-            for (b, val) in arm.pat.binds.iter().zip(vals) {
+            for (b, val) in arm.pat.binds.iter().zip(&vals) {
                 if let Some(id) = b {
-                    s.vars.insert(id.name.clone(), val);
+                    s.vars.insert(id.name.clone(), val.clone());
                 }
             }
-            s.eval(&arm.body)
+            let r = s.eval(&arm.body);
+            if let Some(place) = back {
+                let now: Vec<Val> = arm
+                    .pat
+                    .binds
+                    .iter()
+                    .zip(vals)
+                    .map(|(b, val)| match b {
+                        Some(id) => s.vars[&id.name].clone(),
+                        None => val,
+                    })
+                    .collect();
+                let new = s.variant_value(st, &v, &now);
+                let mut steps = Vec::new();
+                let root = s.place(place, &mut steps, false);
+                let cur = s.vars[&root].clone();
+                s.vars.insert(root, set_at(cur, &steps, new));
+            }
+            r
         };
         if i + 1 == arms.len() {
             return run(self);
         }
         let c = format!("((_ is {}) {sv})", ctor(st, &v));
-        self.branch(&c, t, run, |s| s.match_arms(sv, st, arms, i + 1, t))
+        self.branch(&c, t, run, |s| s.match_arms(sv, st, arms, i + 1, t, back))
     }
 
     /// A `match` in a specification: an `ite` over the testers.

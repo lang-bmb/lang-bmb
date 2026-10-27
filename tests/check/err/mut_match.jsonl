@@ -1,0 +1,2 @@
+{"code":"E0410","severity":"error","message":"`s` is used while the `match` borrows it","file":"err/mut_match.bmb","line":10,"col":36,"end_line":13,"end_col":14,"fix":{"message":"use the bindings of the arm instead"}}
+{"code":"E0408","severity":"error","message":"this place cannot be assigned","file":"err/mut_match.bmb","line":23,"col":17,"end_line":23,"end_col":19,"fix":{"message":"assign through a `let mut` local or a `&mut` parameter"}}

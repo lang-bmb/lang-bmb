@@ -1,0 +1,74 @@
+#[summary("&mut 참조 match: 바인딩의 쓰기가 피검사 자리로 (ADR-0055, backlog 2O-04b)")]
+mod mm {
+    enum Slot { Empty, Full(i64, bool) }
+
+    enum Expr { Num(i64), Neg(Box<Expr>) }
+
+    struct Bag { label: Option<Box<i64>>, n: i64 }
+
+    spec fn holds(s: &Slot, v: i64) -> bool {
+        match s {
+            Slot::Empty => true,
+            Slot::Full(x, used) => *x == v && *used,
+        }
+    }
+
+    spec fn leaf(e: &Expr) -> i64
+        decreases e,
+    {
+        match e {
+            Expr::Num(n) => *n,
+            Expr::Neg(c) => leaf(&**c),
+        }
+    }
+
+    spec fn leaf_is(e: &Expr, v: i64) -> bool { leaf(e) == v }
+
+    spec fn labelled(b: &Bag, v: i64) -> bool {
+        match &b.label {
+            None => true,
+            Some(l) => **l == v,
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(holds)]
+    fn fill(s: &mut Slot, v: i64) -> ()
+        ensures holds(s, v),
+    {
+        match s {
+            Slot::Empty => {}
+            Slot::Full(x, used) => {
+                *x = v;
+                *used = true;
+            }
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(leaf, leaf_is)]
+    fn set_leaf(e: &mut Expr, v: i64) -> ()
+        ensures leaf_is(e, v),
+        decreases e,
+    {
+        match e {
+            Expr::Num(n) => {
+                *n = v;
+            }
+            Expr::Neg(c) => set_leaf(&mut **c, v),
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(labelled)]
+    fn relabel(b: &mut Bag) -> ()
+        ensures labelled(b, 42),
+    {
+        match &mut b.label {
+            None => {}
+            Some(l) => {
+                **l = 42;
+            }
+        }
+    }
+}
