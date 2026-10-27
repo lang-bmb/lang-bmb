@@ -413,6 +413,92 @@ pub fn ty_str(t: &TypeKind) -> String {
     }
 }
 
+/// The type `ty_str` printed (`ty_str(&parse_ty(&ty_str(t))?) ==
+/// ty_str(t)`), for stored results (the incremental IR cache, backlog
+/// 2T-04). A one-segment name other than `Option` and `Result` is a type
+/// parameter.
+pub fn parse_ty(s: &str) -> Option<TypeKind> {
+    fn ty(s: &str) -> Option<TypeKind> {
+        let s = s.trim();
+        let t = |k: TypeKind| Type {
+            kind: k,
+            span: Span::default(),
+        };
+        Some(match s {
+            "i64" => TypeKind::I64,
+            "u64" => TypeKind::U64,
+            "u8" => TypeKind::U8,
+            "usize" => TypeKind::Usize,
+            "bool" => TypeKind::Bool,
+            "()" => TypeKind::Unit,
+            _ if s.starts_with("&mut ") => TypeKind::Ref {
+                mutable: true,
+                inner: Box::new(t(ty(&s[5..])?)),
+            },
+            _ if s.starts_with('&') => TypeKind::Ref {
+                mutable: false,
+                inner: Box::new(t(ty(&s[1..])?)),
+            },
+            _ if s.starts_with('[') && s.ends_with(']') => {
+                let inner = &s[1..s.len() - 1];
+                let parts = split_top(inner, ';');
+                match parts.as_slice() {
+                    [e] => TypeKind::Slice(Box::new(t(ty(e)?))),
+                    [e, n] => TypeKind::Array(Box::new(t(ty(e)?)), n.trim().parse().ok()?),
+                    _ => return None,
+                }
+            }
+            _ => {
+                let (head, args) = match s.find('<') {
+                    Some(i) if s.ends_with('>') => (&s[..i], &s[i + 1..s.len() - 1]),
+                    Some(_) => return None,
+                    None => (s, ""),
+                };
+                let args: Vec<Type> = if args.is_empty() {
+                    Vec::new()
+                } else {
+                    split_top(args, ',')
+                        .iter()
+                        .map(|a| ty(a).map(t))
+                        .collect::<Option<_>>()?
+                };
+                let path: Vec<String> = head.split("::").map(String::from).collect();
+                if path
+                    .iter()
+                    .any(|p| !crate::parser::is_ident(p) && p != "Self")
+                {
+                    return None;
+                }
+                match (path.as_slice(), args.len()) {
+                    ([v], 1) if v == "Vec" => {
+                        TypeKind::Vec(Box::new(args.into_iter().next().expect("one")))
+                    }
+                    ([n], 0) if n != "Option" && n != "Result" => TypeKind::Param(n.clone()),
+                    _ => TypeKind::Named { path, args },
+                }
+            }
+        })
+    }
+    /// `s` split at `sep` outside brackets.
+    fn split_top(s: &str, sep: char) -> Vec<&str> {
+        let (mut depth, mut start, mut out) = (0i32, 0usize, Vec::new());
+        for (i, c) in s.char_indices() {
+            match c {
+                '<' | '[' | '(' => depth += 1,
+                '>' | ']' | ')' => depth -= 1,
+                c if c == sep && depth == 0 => {
+                    out.push(&s[start..i]);
+                    start = i + 1;
+                }
+                _ => {}
+            }
+        }
+        out.push(&s[start..]);
+        out
+    }
+    ty(s)
+}
+
 fn is_int(t: &TypeKind) -> bool {
     matches!(
         t,
@@ -6415,4 +6501,32 @@ fn vec_builtin(path: &[Ident]) -> bool {
             | ["mem" | "std::mem", "take" | "replace" | "swap"]
             | ["std", "mem", "take" | "replace" | "swap"]
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_ty_reads_what_ty_str_prints() {
+        for s in [
+            "i64",
+            "u8",
+            "bool",
+            "()",
+            "[i64; 4]",
+            "[[u8; 2]; 3]",
+            "&[geo::Pt]",
+            "&mut u64",
+            "Vec<geo::Cell<i64>>",
+            "Option<Result<i64, bool>>",
+            "geo::Pair<geo::Cell<[bool; 2]>, usize>",
+            "T",
+        ] {
+            let t = parse_ty(s).unwrap_or_else(|| panic!("{s}"));
+            assert_eq!(ty_str(&t), s);
+        }
+        assert!(matches!(parse_ty("T"), Some(TypeKind::Param(_))));
+        assert!(parse_ty("geo::<").is_none());
+    }
 }

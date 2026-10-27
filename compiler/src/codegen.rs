@@ -2206,25 +2206,31 @@ pub fn emit_with(
         } else {
             Vec::new()
         };
-        // A reused fragment does not say which instances it calls, so a
-        // function with generic calls is lowered again.
-        let calls_generic = t
-            .targs
-            .keys()
-            .any(|(file, lo, hi)| *file == f.span.file && f.span.lo <= *lo && *hi <= f.span.hi);
-        let hit = if instance || calls_generic {
-            None
-        } else {
-            incr.as_ref()
-                .and_then(|s| s.ir_lookup(&path, f.span, &usable))
-        };
-        if let Some((frag, c)) = &hit
+        // An instance is stored under its own key (backlog 2T-04), with
+        // the instances it calls and the types it uses.
+        let targs: Vec<TypeKind> = t.fns[&base]
+            .generics
+            .iter()
+            .map(|g| tsub.get(&g.name).cloned().unwrap_or(TypeKind::Error))
+            .collect();
+        let inst: crate::incremental::Instance = instance.then_some((path.as_str(), &targs[..]));
+        let hit = incr
+            .as_ref()
+            .and_then(|s| s.ir_lookup(&base, inst, f.span, &usable));
+        if let Some(h) = &hit
             && !incr.as_ref().is_some_and(|s| s.audit())
         {
-            checks += c;
-            ir.push_str(frag);
+            checks += h.checks;
+            ir.push_str(&h.ir);
             if let Some(s) = incr.as_mut() {
                 s.stats.ir_reused.push(path.clone());
+            }
+            used_types.extend(h.deps.used.iter().map(|t| (ty_str(t), t.clone())));
+            for (key, callee, csub) in h.deps.wants.clone() {
+                if lowered.insert(key.clone()) {
+                    let (m, cf) = &by_path[&callee];
+                    queue.push_back((key, callee, m.clone(), *cf, csub));
+                }
             }
             continue;
         }
@@ -2355,16 +2361,21 @@ pub fn emit_with(
             g.allocas,
             g.out
         );
-        if let Some(s) = incr.as_mut()
-            && !instance
-        {
+        let deps = crate::incremental::IrDeps {
+            wants: g.wants.clone(),
+            used: g.used.values().cloned().collect(),
+        };
+        if let Some(s) = incr.as_mut() {
             s.stats.lowered.push(path.clone());
-            if let Some((old, c)) = &hit
-                && (old != &frag || *c != g.checks)
+            if let Some(h) = &hit
+                && (h.ir != frag
+                    || h.checks != g.checks
+                    || h.deps.wants != deps.wants
+                    || h.deps.used != deps.used)
             {
                 s.stats.audit_mismatches.push(path.clone());
             }
-            s.ir_record(&path, f.span, &usable, &frag, g.checks);
+            s.ir_record(&base, inst, f.span, &usable, &frag, g.checks, &deps);
         }
         ir.push_str(&frag);
         used_types.extend(g.used);

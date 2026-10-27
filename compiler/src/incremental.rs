@@ -49,6 +49,10 @@
 //! **IR key.** `D`'s source text and qualified text, the signature and
 //! contract of each executable callee (call types and return types), the
 //! usable proved obligations inside `D`, and the compiler identity.
+//! An instance of a generic definition (backlog 2T-04) is stored under its
+//! own key: the definition's IR key, the instance's text and the data types
+//! its type arguments name. A stored fragment carries the instances it calls
+//! and the instance types it uses, so a hit still lowers those.
 //!
 //! **File.** `DIR/defs` next to the proof cache, one entry per (kind,
 //! definition): the newest. Every line carries a SHA-256 of its fields; a
@@ -61,7 +65,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use crate::ast::{FnDef, FnKind, Program};
+use crate::ast::{FnDef, FnKind, Program, TypeKind};
 use crate::source::{SourceMap, Span};
 use crate::verify::{FnStatus, ObKey, Tables};
 
@@ -353,7 +357,74 @@ pub struct Session {
     audit: bool,
     proof_keys: BTreeMap<String, String>,
     ir_keys: BTreeMap<String, String>,
+    /// Each data type's key line and the types it names, for the keys of
+    /// instances (backlog 2T-04).
+    adts: BTreeMap<String, (String, Vec<String>)>,
     pub stats: Stats,
+}
+
+/// What a lowered fragment needs besides its text (backlog 2T-04): the
+/// instances it calls (key, generic definition, substitution of its type
+/// parameters) and the instance types it uses (their LLVM declarations).
+#[derive(Default, Clone)]
+pub struct IrDeps {
+    pub wants: Vec<(String, String, BTreeMap<String, TypeKind>)>,
+    pub used: Vec<TypeKind>,
+}
+
+/// A stored fragment: its IR, its run-time checks and its dependencies.
+pub struct IrHit {
+    pub ir: String,
+    pub checks: u32,
+    pub deps: IrDeps,
+}
+
+/// The instance a fragment is: its key and its type arguments.
+pub type Instance<'a> = Option<(&'a str, &'a [TypeKind])>;
+
+/// `deps` as payload lines (fields split by `\x1f`, types as `ty_str`).
+fn deps_text(deps: &IrDeps) -> String {
+    let mut out = format!("{}\n", deps.wants.len());
+    for (key, callee, sub) in &deps.wants {
+        out.push_str(&format!("{key}\x1f{callee}"));
+        for (n, t) in sub {
+            out.push_str(&format!("\x1f{n}\x1f{}", crate::check::ty_str(t)));
+        }
+        out.push('\n');
+    }
+    out.push_str(&format!("{}\n", deps.used.len()));
+    for t in &deps.used {
+        out.push_str(&format!("{}\n", crate::check::ty_str(t)));
+    }
+    out
+}
+
+/// The dependencies at the start of `text` and the rest.
+fn parse_deps(text: &str) -> Option<(IrDeps, &str)> {
+    let mut rest = text;
+    let mut line = || -> Option<&str> {
+        let (l, r) = rest.split_once('\n')?;
+        rest = r;
+        Some(l)
+    };
+    let mut deps = IrDeps::default();
+    let w: usize = line()?.parse().ok()?;
+    for _ in 0..w {
+        let l = line()?;
+        let mut it = l.split('\x1f');
+        let key = it.next()?.to_string();
+        let callee = it.next()?.to_string();
+        let mut sub = BTreeMap::new();
+        while let Some(n) = it.next() {
+            sub.insert(n.to_string(), crate::check::parse_ty(it.next()?)?);
+        }
+        deps.wants.push((key, callee, sub));
+    }
+    let u: usize = line()?.parse().ok()?;
+    for _ in 0..u {
+        deps.used.push(crate::check::parse_ty(line()?)?);
+    }
+    Some((deps, rest))
 }
 
 fn section(out: &mut String, tag: &str, text: &str) {
@@ -416,6 +487,11 @@ impl Session {
             damaged: store.damaged,
             ..Stats::default()
         };
+        let adts = t
+            .adts
+            .iter()
+            .map(|(p, a)| (p.clone(), (adt_line(a), adt_refs(a))))
+            .collect();
         Session {
             dir,
             id,
@@ -423,6 +499,7 @@ impl Session {
             audit: AUDIT.with(|a| a.get()),
             proof_keys,
             ir_keys,
+            adts,
             stats,
         }
     }
@@ -731,27 +808,89 @@ impl Session {
         }
     }
 
-    fn ir_key(&self, path: &str, rel: &[(&'static str, u32, u32)]) -> Option<String> {
+    /// The IR key of definition `path` (or of its instance `inst`) lowered
+    /// with the proved obligations `rel`. An instance's key adds its text
+    /// and the data types its type arguments name (closed over their
+    /// fields): its definition's key covers the rest, since the callees it
+    /// reaches through bounds are named there (`impls_of`).
+    fn ir_key(
+        &self,
+        path: &str,
+        inst: Instance,
+        rel: &[(&'static str, u32, u32)],
+    ) -> Option<String> {
         let base = self.ir_keys.get(path)?;
-        Some(crate::sha256::hex(
-            format!("{base}\n{}", rel_text(rel)).as_bytes(),
-        ))
+        let mut text = format!("{base}\n{}", rel_text(rel));
+        if let Some((key, args)) = inst {
+            text.push_str(&format!("\ninstance {key}"));
+            let mut tys: BTreeSet<String> = BTreeSet::new();
+            let mut todo: Vec<String> = Vec::new();
+            fn named(t: &TypeKind, out: &mut Vec<String>) {
+                match t {
+                    TypeKind::Named { path, args } => {
+                        out.push(path.join("::"));
+                        args.iter().for_each(|a| named(&a.kind, out));
+                    }
+                    TypeKind::Array(e, _) | TypeKind::Slice(e) | TypeKind::Vec(e) => {
+                        named(&e.kind, out)
+                    }
+                    TypeKind::Ref { inner, .. } => named(&inner.kind, out),
+                    _ => {}
+                }
+            }
+            args.iter().for_each(|a| named(a, &mut todo));
+            while let Some(ty) = todo.pop() {
+                if let Some((_, refs)) = self.adts.get(&ty)
+                    && tys.insert(ty)
+                {
+                    todo.extend(refs.iter().cloned());
+                }
+            }
+            for ty in &tys {
+                text.push_str(&format!("\ntype {}", self.adts[ty].0));
+            }
+        }
+        Some(crate::sha256::hex(text.as_bytes()))
     }
 
-    /// The stored IR of `path`, lowered with the usable proved obligations
-    /// `usable` (those inside `span`).
-    pub fn ir_lookup(&self, path: &str, span: Span, usable: &[ObKey]) -> Option<(String, u32)> {
-        let key = self.ir_key(path, &relative(usable, span)?)?;
-        let payload = self.store.get("I", path, &key)?;
-        let (checks, ir) = payload.split_once('\n')?;
-        Some((ir.to_string(), checks.parse().ok()?))
+    /// The stored IR of `path` (or of its instance `inst`), lowered with
+    /// the usable proved obligations `usable` (those inside `span`).
+    pub fn ir_lookup(
+        &self,
+        path: &str,
+        inst: Instance,
+        span: Span,
+        usable: &[ObKey],
+    ) -> Option<IrHit> {
+        let key = self.ir_key(path, inst, &relative(usable, span)?)?;
+        let slot = inst.map_or(path, |(k, _)| k);
+        let payload = self.store.get("I", slot, &key)?;
+        let (checks, rest) = payload.split_once('\n')?;
+        let (deps, ir) = parse_deps(rest)?;
+        Some(IrHit {
+            ir: ir.to_string(),
+            checks: checks.parse().ok()?,
+            deps,
+        })
     }
 
-    pub fn ir_record(&mut self, path: &str, span: Span, usable: &[ObKey], ir: &str, checks: u32) {
-        let Some(key) = relative(usable, span).and_then(|rel| self.ir_key(path, &rel)) else {
+    #[allow(clippy::too_many_arguments)]
+    pub fn ir_record(
+        &mut self,
+        path: &str,
+        inst: Instance,
+        span: Span,
+        usable: &[ObKey],
+        ir: &str,
+        checks: u32,
+        deps: &IrDeps,
+    ) {
+        let Some(key) = relative(usable, span).and_then(|rel| self.ir_key(path, inst, &rel)) else {
             return;
         };
-        self.store.put("I", path, key, format!("{checks}\n{ir}"));
+        let slot = inst.map_or(path, |(k, _)| k);
+        self.store
+            .put("I", slot, key, format!("{checks}\n{}{ir}", deps_text(deps)));
     }
 
     /// Writes the cache back when something changed.

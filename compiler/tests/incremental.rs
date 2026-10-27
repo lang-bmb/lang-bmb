@@ -709,3 +709,64 @@ fn retried_proofs_are_reused_exactly() {
     assert_eq!(expect, warm, "warm, audited");
     assert!(stats.audit_mismatches.is_empty(), "{stats:?}");
 }
+
+/// Instances are stored under their own keys (backlog 2T-04): a warm build
+/// lowers none of them, a hit still brings the instances it calls, and a
+/// change to a type argument's declaration relowers only the instances it
+/// names.
+#[test]
+fn instances_are_reused_and_follow_their_type_arguments() {
+    const BASE: &str = r#"#[summary("instances")]
+mod g {
+    struct Pt { x: i64, y: i64 }
+
+    struct Cell<T: Copy> { v: T }
+
+    #[effects(pure)]
+    fn id<T: Copy>(x: T) -> T {
+        x
+    }
+
+    #[effects(pure)]
+    fn wrap<T: Copy>(x: T) -> Cell<T> {
+        Cell { v: id::<T>(x) }
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        let p: Pt = Pt { x: 1, y: 2 };
+        let c: Cell<Pt> = wrap::<Pt>(p);
+        print_i64(c.v.y);
+        print_i64(id::<i64>(7));
+    }
+}
+"#;
+    let dir = tmp("instances");
+    let f = files(BASE);
+    let (out, cold) = cached(&f, &dir);
+    assert_eq!(out, plain(&f));
+    let lowered = set(&cold.lowered);
+    for k in ["g::wrap<g::Pt>", "g::id<g::Pt>", "g::id<i64>", "g::main"] {
+        assert!(lowered.contains(k), "{lowered:?}");
+    }
+    let (out, warm) = cached(&f, &dir);
+    assert_eq!(out, plain(&f));
+    assert!(warm.lowered.is_empty(), "{warm:?}");
+    assert!(set(&warm.ir_reused).contains("g::id<g::Pt>"), "{warm:?}");
+    // A field type of `Pt`: the instances that take it, and the function
+    // that reads it, are lowered again; `id<i64>` is not.
+    let retyped = BASE.replace(
+        "struct Pt { x: i64, y: i64 }",
+        "struct Pt { x: u64, y: i64 }",
+    );
+    let f = files(&retyped);
+    let (out, stats) = cached(&f, &dir);
+    assert_eq!(out, plain(&f));
+    let lowered = set(&stats.lowered);
+    assert!(
+        lowered.contains("g::wrap<g::Pt>") && lowered.contains("g::id<g::Pt>"),
+        "{lowered:?}"
+    );
+    assert!(!lowered.contains("g::id<i64>"), "{lowered:?}");
+    let _ = fs::remove_dir_all(&dir);
+}
