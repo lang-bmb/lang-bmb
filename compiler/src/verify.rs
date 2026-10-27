@@ -3458,8 +3458,9 @@ impl<'p> Prog<'p> {
                             .map(|i| i.fn_path(m))
                             .filter(|p| self.t.fns.contains_key(p)),
                     );
-                    // The default body, for each known `Self` that runs it
-                    // (never for a type parameter: its impl may define it).
+                    // The default body, for each `Self` whose impl leaves it
+                    // out (`Wrap<T>` too; never a bare type parameter: no
+                    // impl is known for it, and its impl may define it).
                     let sig = &self.t.fns[&u];
                     out.extend(
                         self.t
@@ -3469,13 +3470,7 @@ impl<'p> Prog<'p> {
                             .filter(|(_, (_, sub))| {
                                 let args: Vec<TypeKind> =
                                     sig.generics.iter().map(|g| sub[&g.name].clone()).collect();
-                                !crate::check::has_param(&args[0])
-                                    && crate::check::dispatch(
-                                        &self.t.fns,
-                                        &self.t.trait_impls,
-                                        &u,
-                                        &args,
-                                    )
+                                crate::check::dispatch(&self.t.fns, &self.t.trait_impls, &u, &args)
                                     .is_some_and(|(p, _)| p == u)
                             })
                             .map(|(k, _)| k.clone()),

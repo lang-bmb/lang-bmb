@@ -223,8 +223,8 @@ MUTANTS = [
                 format!("(or (=> {pre} {g}) true)"),''',
      "a trait impl may require more than the trait (E0817)"),
     ("v-default-spec-leaks", "unsound", V,
-     '''                                !crate::check::has_param(&args[0])''',
-     '''                                !args.is_empty()''',
+     '''                                    .is_some_and(|(p, _)| p == u)''',
+     '''                                    .is_none_or(|(p, _)| p == u)''',
      "a default spec body is revealed for a bounded `Self`, whose impl may override it"),
     ("c-trait-call-undispatched", "miscompile", C,
      '''                .zip(a)

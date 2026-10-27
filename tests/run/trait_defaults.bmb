@@ -68,6 +68,29 @@ mod df {
         r == Shape::model(x).saturating_mul(2)
     }
 
+    struct Wrap<T: Copy> { inner: T }
+
+    impl<T: Copy + Shape> Shape for Wrap<T> {
+        #[effects(pure)]
+        #[uses(scored, Shape::model)]
+        fn area(self: &Wrap<T>) -> (r: i64)
+            ensures scored::<Wrap<T>>(self, r),
+        {
+            Shape::area(&self.inner)
+        }
+
+        spec fn model(self: &Wrap<T>) -> i64 {
+            Shape::model(&self.inner)
+        }
+    }
+
+    // `Wrap<T>` keeps the default `label`, whatever `T` is.
+    #[effects(pure)]
+    #[uses(Shape::label)]
+    fn wrapped<T: Copy + Shape>(w: Wrap<T>) -> () {
+        assert(Shape::label(&w) == 7);
+    }
+
     #[effects(pure)]
     #[uses(Shape::label)]
     fn labels(q: Sq, b: Big) -> () {
