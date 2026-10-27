@@ -22,7 +22,10 @@ step "backlog"; python3 scripts/check_backlog.py
 step "docs";    target/debug/bmb codes --md | diff -u docs/diagnostics.md - > /dev/null || { echo "docs/diagnostics.md is stale: run cargo run -q -- codes --md > docs/diagnostics.md"; exit 1; }
 # Every gate-power mutant still applies to the sources (backlog 2T-05: six
 # had drifted unnoticed since 2T-02).
-step "power";   python3 scripts/gate_power.py check > /dev/null
+# A gate-power run applies one mutant, so it skips this step.
+if [ -z "${BMB_GATE_POWER_RUN:-}" ]; then
+  step "power"; python3 scripts/gate_power.py check > /dev/null
+fi
 
 step "test, bench m1, bench m1b, bench bvb, bench m3, bench bnb, bench bcb, bench brb, bench run_models, health (concurrent)"
 # Bench sessions are independent (ADR-0025, backlog 2A-04): m1b and bvb run two at a time per agent.

@@ -25,3 +25,4 @@
 {"code":"E0410","severity":"error","message":"`x` is passed as `&mut` and also used by another argument","file":"err/types.bmb","line":105,"col":21,"end_line":105,"end_col":45}
 {"code":"E0410","severity":"error","message":"`x` is passed as `&mut` and also used by another argument","file":"err/types.bmb","line":106,"col":21,"end_line":106,"end_col":45}
 {"code":"E0406","severity":"error","message":"array length is too large","file":"err/types.bmb","line":119,"col":22,"end_line":119,"end_col":42}
+{"code":"E0305","severity":"error","message":"`i64` has no constant `MID`","file":"err/types.bmb","line":124,"col":9,"end_line":124,"end_col":17,"fix":{"message":"the integer constants are `i64::MIN` and `i64::MAX`"}}

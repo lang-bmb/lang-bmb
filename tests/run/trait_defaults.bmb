@@ -82,8 +82,7 @@ mod df {
         let t: i64 = Shape::twice(&q);
         assert(t == 42);
         print_i64(t);
-        let b: Big = Big { s: 5 };
-        print_i64(Shape::twice(&b));
+        print_i64(Shape::twice(&Big { s: 5 }));
     }
 
     spec fn scored<T: Copy + Shape>(x: &T, r: i64) -> bool {

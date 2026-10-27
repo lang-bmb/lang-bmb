@@ -1615,6 +1615,9 @@ impl<'p, 'q> Enc<'p, 'q> {
                 let vals: Vec<Val> = args.iter().map(|a| self.spec(a, env, old)).collect();
                 self.variant_value(&self.ty(e), &path.last().unwrap().name, &vals)
             }
+            ExprKind::Path(segs) if crate::check::int_const(segs).is_some() => {
+                Val::S(num(crate::check::int_const(segs).expect("checked").1))
+            }
             ExprKind::Path(segs) => {
                 self.variant_value(&self.ty(e), &segs.last().unwrap().name, &[])
             }
@@ -2183,6 +2186,9 @@ impl<'p, 'q> Enc<'p, 'q> {
             }
             // A reference denotes its value (references are second-class).
             ExprKind::Deref(x) => self.eval(x),
+            ExprKind::Path(segs) if crate::check::int_const(segs).is_some() => {
+                Val::S(num(crate::check::int_const(segs).expect("checked").1))
+            }
             ExprKind::Path(segs) => {
                 self.variant_value(&self.ty(e), &segs.last().unwrap().name, &[])
             }

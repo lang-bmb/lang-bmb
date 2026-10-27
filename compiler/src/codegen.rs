@@ -1180,6 +1180,12 @@ impl<'p> Gen<'p> {
             }
             // A reference denotes its value (references are second-class).
             ExprKind::Deref(x) => self.expr(x),
+            ExprKind::Path(segs) if crate::check::int_const(segs).is_some() => CVal::Imm(
+                crate::check::int_const(segs)
+                    .expect("checked")
+                    .1
+                    .to_string(),
+            ),
             ExprKind::Path(segs) => {
                 let t = self.ty(e);
                 self.variant(&t, &segs.last().unwrap().name, &[])

@@ -1,0 +1,19 @@
+#[summary("정수 상수 실패: 상한 근처의 넘침 (2N-06)")]
+mod ic {
+    spec fn pos(x: i64) -> bool { x > 0 }
+
+    // `i64::MAX - 1 + x` overflows from `x = 2`.
+    #[effects(pure)]
+    #[uses(pos)]
+    fn near_top(x: i64) -> i64
+        requires pos(x),
+    {
+        i64::MAX - 1 + x
+    }
+
+    // `u8::MAX` is 255: one more does not fit.
+    #[effects(pure)]
+    fn byte_over(b: u8) -> u8 {
+        if b == u8::MAX { b } else { b + 2 }
+    }
+}

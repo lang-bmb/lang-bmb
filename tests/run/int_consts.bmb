@@ -1,0 +1,50 @@
+#[summary("정수 상수 `T::MIN`·`T::MAX` (2N-06)")]
+mod ic {
+    spec fn at_least_min(x: i64) -> bool {
+        i64::MIN <= x
+    }
+
+    spec fn below(x: u64) -> bool {
+        x < u64::MAX
+    }
+
+    #[effects(pure)]
+    fn largest(a: &[i64]) -> (r: i64) {
+        let mut m: i64 = i64::MIN;
+        let mut i: usize = 0;
+        while i < a.len()
+            invariant i <= a.len(),
+            decreases a.len() - i,
+        {
+            if a[i] > m {
+                m = a[i];
+            }
+            i = i + 1;
+        }
+        m
+    }
+
+    #[effects(io)]
+    #[uses(below)]
+    fn main() -> () {
+        print_i64(i64::MIN);
+        print_i64(i64::MAX);
+        print_u64(u64::MAX);
+        print_u64(u64::try_from(usize::MAX).unwrap());
+        print_u64(u64::try_from(u8::MAX).unwrap());
+        print_u64(u64::MIN);
+        let a: [i64; 3] = [-4, 17, 3];
+        print_i64(largest(&a));
+        let e: [i64; 0] = [];
+        print_i64(largest(&e));
+        print_u64(next(u64::MAX - 1));
+    }
+
+    #[effects(pure)]
+    #[uses(below)]
+    fn next(x: u64) -> u64
+        requires below(x),
+    {
+        x + 1
+    }
+}

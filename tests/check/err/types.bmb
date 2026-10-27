@@ -117,4 +117,10 @@ mod array_limits {
 
     #[effects(pure)]
     fn huge(a: [i64; 18446744073709551617]) -> () {}
+
+    // Integer constants are `MIN` and `MAX` (backlog 2N-06).
+    #[effects(pure)]
+    fn no_mid() -> i64 {
+        i64::MID
+    }
 }

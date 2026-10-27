@@ -506,6 +506,7 @@ ROADMAP의 통과 기준마다 그것을 확인하는 태스크다. 빈칸이 �
 | 2N-03 | `by (bit_vector)` 하위 증명 | Verus 형태의 비트 수준 단언(E0818), 회전·`count_ones` 등 메서드 | 2N-02 | ⏳ |
 | 2N-04 | 퍼저 | 부호 없는 산술 퍼저에 새 폭과 비트 연산 | 2N-03 | ⏳ |
 | 2N-05 | 실용 프로그램과 종료 감사 | 비트 연산을 쓰는 실행 프로그램 2개 이상(예: BMB로 쓰고 증명한 SHA-256), `dev-docs/health/2N.md` | 2N-04 | ⏳ |
+| 2N-06 | 정수 상수 `T::MIN`·`T::MAX` | 2T-06 발견(마찰): `i64::MIN`이 "unknown type `i64`"(E0305, 잘못된 안내)였다. Rust의 연관 상수 `i64`·`u64`·`usize`·`u8`의 `MIN`·`MAX`를 검사(그 타입)·증명(정수 값)·코드 생성(즉치값)에 넣고, 없는 상수는 정확한 안내(E0305). 실행·실패 코퍼스 | 2V-12 | ✅ `check::int_const`, 검사·`Enc::spec`·`Enc::eval`·`Gen::expr`의 `Path` 갈래, 없는 상수 E0305(`i64::MID`, `tests/check/err/types`). `tests/run/int_consts`(MIN·MAX 출력, `i64::MIN`에서 시작하는 최댓값, `u64::MAX - 1`의 다음 값), `tests/verify/fail/int_consts`(상한 근처 넘침 반례 `x = 2`, `b = 254`) |
 
 ### 2M 메서드 구문 (ADR-0051, 승인 2026-10-26)
 

@@ -4009,6 +4009,26 @@ impl<'a> Checker<'a> {
     ) -> TypeKind {
         match &e.kind {
             ExprKind::Error => TypeKind::Error,
+            ExprKind::Path(path) if int_const(path).is_some() => {
+                int_const(path).expect("checked").0
+            }
+            ExprKind::Path(path) if path.len() == 2 && int_type(&path[0].name).is_some() => {
+                self.diags.push(
+                    Diag::new(
+                        "E0305",
+                        e.span,
+                        format!("`{}` has no constant `{}`", path[0].name, path[1].name),
+                    )
+                    .fix(
+                        format!(
+                            "the integer constants are `{0}::MIN` and `{0}::MAX`",
+                            path[0].name
+                        ),
+                        None,
+                    ),
+                );
+                TypeKind::Error
+            }
             // A function named without arguments, not a variant (variants are
             // capitalised, ADR-0026).
             ExprKind::Path(path)
@@ -4989,6 +5009,14 @@ impl<'a> Checker<'a> {
             },
             ExprKind::Index { base, .. } => elem_of(&self.place_peek(cx, base)?).cloned(),
             ExprKind::Trigger(x) => self.place_peek(cx, x),
+            // `&Point { .. }`: a struct without type parameters names itself.
+            ExprKind::StructLit { path, .. } => {
+                let tp = self.type_path(path, &cx.mod_path)?;
+                self.adts[&tp].generics.is_empty().then(|| TypeKind::Named {
+                    path: tp.split("::").map(String::from).collect(),
+                    args: Vec::new(),
+                })
+            }
             _ => None,
         }
     }
@@ -6458,6 +6486,23 @@ fn from_call(path: &[Ident]) -> Option<TypeKind> {
         int_type(&path[0].name)
     } else {
         None
+    }
+}
+
+/// `T::MIN` / `T::MAX` of an integer type (Rust's associated constants,
+/// backlog 2N-06): its type and value.
+pub fn int_const(path: &[Ident]) -> Option<(TypeKind, i128)> {
+    let [ty, c] = path else { return None };
+    let t = int_type(&ty.name)?;
+    let (min, max): (i128, i128) = match t {
+        TypeKind::I64 => (i64::MIN as i128, i64::MAX as i128),
+        TypeKind::U8 => (0, 255),
+        _ => (0, u64::MAX as i128),
+    };
+    match c.name.as_str() {
+        "MIN" => Some((t, min)),
+        "MAX" => Some((t, max)),
+        _ => None,
     }
 }
 

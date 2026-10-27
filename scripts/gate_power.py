@@ -212,7 +212,7 @@ MUTANTS = [
      '''                    format!("postcondition `{}` of `{decl}` may not hold", pred_name(en)),
                     format!("(=> {hyp} {g})"),''',
      '''                    format!("postcondition `{}` of `{decl}` may not hold", pred_name(en)),
-                    "true".to_string(),''',
+                    format!("(or (=> {hyp} {g}) true)"),''',
      "a trait impl's postconditions need not imply the trait's (E0817)"),
     ("v-refine-pre-dropped", "unsound", V,
      '''                    pred_name(r)
@@ -220,7 +220,7 @@ MUTANTS = [
                 format!("(=> {pre} {g})"),''',
      '''                    pred_name(r)
                 ),
-                "true".to_string(),''',
+                format!("(or (=> {pre} {g}) true)"),''',
      "a trait impl may require more than the trait (E0817)"),
     ("v-default-spec-leaks", "unsound", V,
      '''                                !crate::check::has_param(&args[0])''',
@@ -232,7 +232,9 @@ MUTANTS = [
             target = t;''',
      '''                .zip(a)
                 .collect();
-            let _ = t;''',
+            if t.is_empty() {
+                target = t;
+            }''',
      "a trait call with a known `Self` is not lowered to its impl's function"),
 ]
 
@@ -282,7 +284,8 @@ def run(args):
             apply(args.work, m)
             subprocess.run(["cargo", "fmt"], cwd=args.work, capture_output=True)
             t0 = time.monotonic()
-            r = subprocess.run(["timeout", "3600", "scripts/check.sh"], cwd=args.work, capture_output=True, text=True)
+            env = dict(os.environ, BMB_GATE_POWER_RUN="1")
+            r = subprocess.run(["timeout", "3600", "scripts/check.sh"], cwd=args.work, capture_output=True, text=True, env=env)
             lines = (r.stdout + r.stderr).strip().splitlines()
             tail = lines[-12:]
             failed = next((x for x in reversed(lines) if x.startswith("failed: ")), "")
