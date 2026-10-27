@@ -1,0 +1,9 @@
+{"code":"E0805","severity":"error","message":"index may be out of bounds in `nf::corner`; counterexample: g = [[] (len 0)] (len 1)","file":"fail/nested_vecs.bmb","line":10,"col":26,"end_line":10,"end_col":33}
+{"code":"E0816","severity":"error","message":"`push` may exceed the maximum length of a `Vec` in `nf::second`; counterexample: g = [[0, 0, 0, 0, ..] (len 1152921504606846975), [0, 0, 0, 0, ..] (len 1152921504606846975)] (len 2)","file":"fail/nested_vecs.bmb","line":18,"col":13,"end_line":18,"end_col":25}
+{"code":"E0805","severity":"error","message":"index may be out of bounds in `nf::second`; counterexample: g = [[] (len 0), [0, 0, 0, 0, ..] (len 38)] (len 2)","file":"fail/nested_vecs.bmb","line":19,"col":13,"end_line":19,"end_col":20}
+{"code":"E0802","severity":"error","message":"postcondition `first_is` may not hold in `nf::replaced`; counterexample: g = [[1, 5, 5, 5, ..] (len 7720), [12, 12] (len 2), [12, 12] (len 2), [12, 12] (len 2), ..] (len 39)","file":"fail/nested_vecs.bmb","line":30,"col":17,"end_line":30,"end_col":42}
+{"code":"E0805","severity":"error","message":"index may be out of bounds in `nf::cell`; counterexample: rows = [Row { cells: [] (len 0), tag: 0 }] (len 1)","file":"fail/nested_vecs.bmb","line":38,"col":29,"end_line":38,"end_col":45}
+{"def":"nf::cell","status":"failed","obligations":2,"failed":1,"rlimit":1498,"rlimit_max":1289}
+{"def":"nf::corner","status":"failed","obligations":2,"failed":1,"rlimit":1310,"rlimit_max":1101}
+{"def":"nf::replaced","status":"failed","obligations":2,"failed":1,"rlimit":12413,"rlimit_max":7641}
+{"def":"nf::second","status":"failed","obligations":4,"failed":2,"rlimit":4036,"rlimit_max":1669}

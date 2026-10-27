@@ -1666,6 +1666,23 @@ impl<'a> Checker<'a> {
                 );
             }
         }
+        // Recursion through a `Vec` (backlog 2O-03c): the user types named
+        // under a `Vec` in each type's fields.
+        fn under_vec(t: &TypeKind, inside: bool, out: &mut Vec<String>) {
+            match t {
+                TypeKind::Named { path, args } => {
+                    if inside {
+                        out.push(path.join("::"));
+                    }
+                    for a in args {
+                        under_vec(&a.kind, inside, out);
+                    }
+                }
+                TypeKind::Vec(e) => under_vec(&e.kind, true, out),
+                TypeKind::Array(e, _) | TypeKind::Box(e) => under_vec(&e.kind, inside, out),
+                _ => {}
+            }
+        }
         // Recursion through anything.
         let all_edges: BTreeMap<String, Vec<String>> = uses
             .iter()
@@ -1677,6 +1694,23 @@ impl<'a> Checker<'a> {
             }
             let r = reach(&all_edges, p);
             if !r.contains(p) {
+                continue;
+            }
+            let mut via = Vec::new();
+            for t in parts(a) {
+                under_vec(&t, false, &mut via);
+            }
+            if via
+                .iter()
+                .any(|q| q == p || reach(&all_edges, q).contains(p))
+            {
+                self.diags.push(
+                    Diag::new("E0421", a.span, format!("`{p}` contains itself through a `Vec`"))
+                        .fix(
+                            "recursion through a `Vec` is not supported yet (backlog 2O-03c): use `Option<Box<..>>` links",
+                            None,
+                        ),
+                );
                 continue;
             }
             if !a.generics.is_empty() {
@@ -1999,7 +2033,7 @@ impl<'a> Checker<'a> {
                 "E0402",
                 el.span,
                 format!(
-                    "{what} elements that own heap values (`{}`) come with backlog 2O-03 (ADR-0047 §1)",
+                    "{what} elements that own heap values (`{}`) come with backlog 2O-03c (ADR-0047 §1)",
                     ty_str(&el.kind)
                 ),
             )
@@ -2119,30 +2153,17 @@ impl<'a> Checker<'a> {
             return TypeKind::Error;
         }
         let e = self.canon(&args[0], mp, report);
-        if self.owned_ready && is_move(&e, &self.adts) {
-            if report {
-                self.owned_elem(
-                    "`Vec`",
-                    &Type {
-                        kind: e,
-                        span: args[0].span,
-                    },
-                );
-            }
+        if e == TypeKind::Error {
             return TypeKind::Error;
         }
-        let ok = match &e {
-            TypeKind::Named { .. } => !self.holds_array(&e, &mut BTreeSet::new()),
-            TypeKind::Error => return TypeKind::Error,
-            other => is_scalar(other),
-        };
+        let ok = self.vec_elem_ok(&e);
         if !ok {
             if report {
                 self.err(
                     "E0402",
                     args[0].span,
                     format!(
-                        "`Vec` elements are scalars, or structs and enums without arrays (ADR-0031), found `{}`",
+                        "`Vec` elements are scalars, structs and enums without arrays, or `Vec`s and `Box`es of them, found `{}`",
                         ty_str(&e)
                     ),
                 );
@@ -2153,6 +2174,16 @@ impl<'a> Checker<'a> {
             kind: e,
             span: args[0].span,
         }))
+    }
+
+    /// Whether `e` may be a `Vec` element: a scalar, a struct or enum
+    /// without arrays, another `Vec` or a `Box` of one (backlog 2O-03b).
+    fn vec_elem_ok(&self, e: &TypeKind) -> bool {
+        match e {
+            TypeKind::Named { .. } => !self.holds_array(e, &mut BTreeSet::new()),
+            TypeKind::Vec(inner) | TypeKind::Box(inner) => self.vec_elem_ok(&inner.kind),
+            other => is_scalar(other),
+        }
     }
 
     /// Whether a value of type `t` holds an array (through fields and payloads).
@@ -2799,8 +2830,12 @@ impl<'a> Checker<'a> {
     fn check_param_type(&mut self, t: &Type, kind: FnKind) {
         match &t.kind {
             TypeKind::Ref { mutable, inner } => match &inner.kind {
-                // `&[T]`, `&Point`, `&[Point]` (ADR-0026 §2).
-                TypeKind::Slice(e) if array_elem_ok(&e.kind) => {
+                // `&[T]`, `&Point`, `&[Point]` (ADR-0026 §2), `&[Vec<T>]`
+                // (backlog 2O-03b).
+                TypeKind::Slice(e)
+                    if array_elem_ok(&e.kind)
+                        || matches!(&e.kind, TypeKind::Named { path, .. } if path.len() == 1 && path[0] == "Vec") =>
+                {
                     if *mutable && kind == FnKind::Spec {
                         self.err("E0402", t.span, "spec function parameters cannot be `&mut`");
                     }
@@ -5306,6 +5341,20 @@ impl<'a> Checker<'a> {
             "pop" => (0, true, option_of(et.clone())),
             "truncate" => (1, true, TypeKind::Unit),
             "len" => (0, false, TypeKind::Usize),
+            "clone" if is_move(&et, &self.adts) => {
+                self.diags.push(
+                    Diag::new(
+                        "E0404",
+                        name.span,
+                        format!("`clone` of a `Vec<{}>` is not supported yet", ty_str(&et)),
+                    )
+                    .fix(
+                        "its elements own memory: build the copy with a loop that pushes new values",
+                        None,
+                    ),
+                );
+                return TypeKind::Error;
+            }
             "clone" => (0, false, TypeKind::Vec(mk(et.clone()))),
             "as_slice" | "as_mut_slice" => {
                 for a in args {

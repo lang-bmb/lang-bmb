@@ -89,7 +89,7 @@ fn is_data(t: &TypeKind) -> bool {
 /// Whether an array element of type `t` lives in memory as an aggregate:
 /// a struct, an enum or a fixed-size array (backlog 2V-04b).
 fn is_mem_elem(t: &TypeKind) -> bool {
-    is_data(t) || matches!(value_ty(t), TypeKind::Array(..))
+    is_mem(t) || matches!(value_ty(t), TypeKind::Array(..))
 }
 
 /// Whether `t` is a `Vec` (through a reference).
@@ -416,7 +416,17 @@ fn drop_glue(tb: &Tables, extra: &[TypeKind]) -> String {
         let mut body = String::new();
         let mut inner: Vec<TypeKind> = Vec::new();
         match t {
-            TypeKind::Vec(_) => {
+            TypeKind::Vec(e) => {
+                // Each element, in order, then the buffer (ADR-0047 §4).
+                if owns(&e.kind) {
+                    let _ = write!(
+                        body,
+                        "  %b0 = load ptr, ptr %p\n  %lp = getelementptr inbounds %bmb.vec, ptr %p, i32 0, i32 1\n  %n = load i64, ptr %lp\n  br label %head\nhead:\n  %i = phi i64 [ 0, %entry ], [ %j, %body ]\n  %more = icmp ult i64 %i, %n\n  br i1 %more, label %body, label %done\nbody:\n  %ep = getelementptr inbounds {}, ptr %b0, i64 %i\n  call void {}(ptr %ep)\n  %j = add nuw i64 %i, 1\n  br label %head\ndone:\n",
+                        mem_ty(&e.kind),
+                        glue(&e.kind)
+                    );
+                    inner.push(e.kind.clone());
+                }
                 body.push_str("  %b = load ptr, ptr %p\n  call void @free(ptr %b)\n");
             }
             TypeKind::Box(e) => {
@@ -1645,6 +1655,32 @@ impl<'p> Gen<'p> {
                 let (len, r) = (self.t(), self.t());
                 self.emit(format!("{len} = load i64, ptr {lp}"));
                 self.emit(format!("{r} = call i64 @llvm.umin.i64(i64 {len}, i64 {n})"));
+                if crate::check::is_move(&el, &self.t.adts) {
+                    // The elements cut off are dropped, in order.
+                    let buf = self.t();
+                    self.emit(format!("{buf} = load ptr, ptr {hdr}"));
+                    let i = self.alloca("i64");
+                    self.emit(format!("store i64 {r}, ptr {i}"));
+                    let (head, body, end) = (self.l("cut"), self.l("cutb"), self.l("cutd"));
+                    self.emit(format!("br label %{head}"));
+                    self.block(&head);
+                    let (k, c) = (self.t(), self.t());
+                    self.emit(format!("{k} = load i64, ptr {i}"));
+                    self.emit(format!("{c} = icmp ult i64 {k}, {len}"));
+                    self.emit(format!("br i1 {c}, label %{body}, label %{end}"));
+                    self.block(&body);
+                    let ep = self.t();
+                    self.emit(format!(
+                        "{ep} = getelementptr inbounds {}, ptr {buf}, i64 {k}",
+                        mem_ty(&el)
+                    ));
+                    self.drop_at(&ep, &el);
+                    let k2 = self.t();
+                    self.emit(format!("{k2} = add nuw i64 {k}, 1"));
+                    self.emit(format!("store i64 {k2}, ptr {i}"));
+                    self.emit(format!("br label %{head}"));
+                    self.block(&end);
+                }
                 self.emit(format!("store i64 {r}, ptr {lp}"));
                 CVal::Unit
             }
@@ -2387,7 +2423,7 @@ impl<'p> Gen<'p> {
                     if match &base.kind {
                         ExprKind::Var(id) => match &self.slots[&id.name] {
                             Slot::Arr { ety, .. } => is_mem_elem(ety),
-                            Slot::Data { ty, .. } => is_vec(ty) && is_data(&vec_elem(ty)),
+                            Slot::Data { ty, .. } => is_vec(ty) && is_mem_elem(&vec_elem(ty)),
                             Slot::Scalar { .. } => false,
                         },
                         // An array field (2B-14, 2B-15).
@@ -2395,9 +2431,13 @@ impl<'p> Gen<'p> {
                         _ => true,
                     } =>
                 {
-                    // Rust evaluates the value, then the place.
+                    // Rust evaluates the value, then the place; an owned
+                    // element replaced is dropped.
                     let v = self.expr(value);
                     let (p, t) = self.place(target);
+                    if self.replaces(*span) {
+                        self.drop_at(&p, &t);
+                    }
                     self.put(v, &p, &t);
                 }
                 ExprKind::Index { base, index } => {

@@ -1,0 +1,81 @@
+#[summary("중첩 Vec: 안쪽 길이는 원소마다의 길이 배열 (ADR-0047 §3, backlog 2O-03b)")]
+mod np {
+    struct Row { cells: Vec<i64>, tag: u8 }
+
+    spec fn pairs(g: &[Vec<i64>], n: usize) -> bool {
+        g.len() == n && forall|i: usize| i < g.len() ==> #[trigger] g[i].len() == 2
+    }
+
+    spec fn small(n: usize) -> bool { n <= 100 }
+
+    spec fn at(g: &[Vec<i64>], i: usize, j: usize, x: i64) -> bool {
+        i < g.len() && j < g[i].len() && g[i][j] == x
+    }
+
+    spec fn len_is(g: &[Vec<i64>], i: usize, n: usize) -> bool { i < g.len() && g[i].len() == n }
+
+    spec fn tagged(rows: &[Row], n: usize) -> bool {
+        rows.len() == n && forall|i: usize| i < rows.len() ==> #[trigger] rows[i].cells.len() == 1
+    }
+
+    #[effects(pure)]
+    #[uses(pairs, small)]
+    fn grid(n: usize) -> (out: Vec<Vec<i64>>)
+        requires small(n),
+        ensures pairs(out.as_slice(), n),
+    {
+        let mut g: Vec<Vec<i64>> = Vec::new();
+        let mut k: usize = 0;
+        while k < n
+            invariant k <= n && n <= 100 && pairs(g.as_slice(), k),
+            decreases n - k,
+        {
+            let mut r: Vec<i64> = Vec::new();
+            r.push(0);
+            r.push(1);
+            g.push(r);
+            k = k + 1;
+        }
+        g
+    }
+
+    // Writing an element keeps every length.
+    #[effects(pure)]
+    #[uses(at, pairs)]
+    fn set(g: &mut Vec<Vec<i64>>, x: i64) -> ()
+        requires pairs(g.as_slice(), 3),
+        ensures pairs(g.as_slice(), 3), at(g.as_slice(), 2, 1, x),
+    {
+        g[2][1] = x;
+    }
+
+    // `push` on one element changes that element's length only.
+    #[effects(pure)]
+    #[uses(at, len_is, pairs)]
+    fn grow(g: &mut Vec<Vec<i64>>) -> ()
+        requires pairs(g.as_slice(), 3),
+        ensures at(g.as_slice(), 1, 2, 7), len_is(g.as_slice(), 0, 2),
+    {
+        g[1].push(7);
+    }
+
+    #[effects(pure)]
+    #[uses(small, tagged)]
+    fn row_cells(n: usize) -> (out: Vec<Row>)
+        requires small(n),
+        ensures tagged(out.as_slice(), n),
+    {
+        let mut rows: Vec<Row> = Vec::new();
+        let mut k: usize = 0;
+        while k < n
+            invariant k <= n && n <= 100 && tagged(rows.as_slice(), k),
+            decreases n - k,
+        {
+            let mut c: Vec<i64> = Vec::new();
+            c.push(1);
+            rows.push(Row { cells: c, tag: 0 });
+            k = k + 1;
+        }
+        rows
+    }
+}

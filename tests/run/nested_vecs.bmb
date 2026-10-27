@@ -1,0 +1,79 @@
+#[summary("중첩 Vec과 이동 원소: 행렬, 행 구조체, Box 원소 (ADR-0047, backlog 2O-03b)")]
+mod nv {
+    struct Row { cells: Vec<i64>, tag: u8 }
+
+    spec fn rows(g: &[Vec<i64>], n: usize) -> bool {
+        g.len() == n && forall|i: usize| i < g.len() ==> #[trigger] g[i].len() == 2
+    }
+
+    spec fn small(n: usize) -> bool { n <= 100 }
+
+    #[effects(pure)]
+    fn total(g: &Vec<Vec<i64>>) -> i64 {
+        let mut i: usize = 0;
+        let mut s: i64 = 0;
+        while i < g.len()
+            invariant i <= g.len(),
+            decreases g.len() - i,
+        {
+            let mut j: usize = 0;
+            while j < g[i].len()
+                invariant j <= g[i].len(),
+                decreases g[i].len() - j,
+            {
+                s = s.wrapping_add(g[i][j]);
+                j = j + 1;
+            }
+            i = i + 1;
+        }
+        s
+    }
+
+    #[effects(pure)]
+    #[uses(rows, small)]
+    fn grid(n: usize) -> (out: Vec<Vec<i64>>)
+        requires small(n),
+        ensures rows(out.as_slice(), n),
+    {
+        let mut g: Vec<Vec<i64>> = Vec::new();
+        let mut k: usize = 0;
+        while k < n
+            invariant k <= n && n <= 100 && rows(g.as_slice(), k),
+            decreases n - k,
+        {
+            let mut r: Vec<i64> = Vec::new();
+            let v: i64 = i64::try_from(k).unwrap();
+            r.push(v);
+            r.push(v * 10);
+            g.push(r);
+            k = k + 1;
+        }
+        g
+    }
+
+    #[effects(io)]
+    #[uses(rows, small)]
+    fn main() -> () {
+        let mut g: Vec<Vec<i64>> = grid(3);
+        print_i64(total(&g));
+        g[1].push(100);
+        g[0][1] = 7;
+        print_i64(total(&g));
+        g[2] = Vec::new();
+        print_i64(total(&g));
+        g.truncate(1);
+        print_i64(total(&g));
+        let mut rows: Vec<Row> = Vec::new();
+        rows.push(Row { cells: Vec::new(), tag: 1 });
+        rows[0].cells.push(5);
+        print_i64(rows[0].cells[0]);
+        let mut bs: Vec<Box<i64>> = Vec::new();
+        bs.push(Box::new(4));
+        bs.push(Box::new(6));
+        print_i64(*bs[0]);
+        match bs.pop() {
+            None => print_i64(0),
+            Some(b) => print_i64(*b),
+        }
+    }
+}

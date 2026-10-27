@@ -1,0 +1,40 @@
+#[summary("중첩 Vec: 따르지 않는 것 (ADR-0047 §3, backlog 2O-03b)")]
+mod nf {
+    struct Row { cells: Vec<i64>, tag: u8 }
+
+    spec fn first_is(g: &[Vec<i64>], x: i64) -> bool { g.len() > 0 && g[0].len() > 0 && g[0][0] == x }
+
+    // An inner `Vec` may be empty.
+    #[effects(pure)]
+    fn corner(g: &Vec<Vec<i64>>) -> i64 {
+        if g.len() > 0 { g[0][0] } else { 0 }
+    }
+
+    // `push` on an element changes that element only; the others keep
+    // their lengths, but nothing says the first is not empty.
+    #[effects(pure)]
+    fn second(g: &mut Vec<Vec<i64>>) -> i64 {
+        if g.len() > 1 {
+            g[1].push(5);
+            g[0][0]
+        } else {
+            0
+        }
+    }
+
+    // Replacing an element replaces its contents.
+    #[effects(pure)]
+    #[uses(first_is)]
+    fn replaced(g: &mut Vec<Vec<i64>>) -> ()
+        requires first_is(g.as_slice(), 1),
+        ensures first_is(g.as_slice(), 1),
+    {
+        g[0] = Vec::new();
+    }
+
+    // A row's cells may be empty.
+    #[effects(pure)]
+    fn cell(rows: &Vec<Row>) -> i64 {
+        if rows.len() > 0 { rows[0].cells[0] } else { 0 }
+    }
+}

@@ -578,17 +578,60 @@ fn select_val(elem: &Val, i: &str) -> Val {
     match elem {
         Val::S(a) => Val::S(format!("(select {a} {i})")),
         Val::Struct(fs) => Val::Struct(fs.iter().map(|f| select_val(f, i)).collect()),
-        // A fixed-size array inside the element (backlog 2V-04b): its leaves
-        // are arrays over the outer index; the length is a constant.
+        // An array inside the element (backlog 2V-04b): its leaves are
+        // arrays over the outer index; a fixed length is a constant, an
+        // inner `Vec`'s is one more array (backlog 2O-03b).
         Val::A { elems, len } => Val::A {
             elems: format!("(select {elems} {i})"),
-            len: len.clone(),
+            len: select_len(len, i),
         },
         Val::Arr { elem, len } => Val::Arr {
             elem: Box::new(select_val(elem, i)),
-            len: len.clone(),
+            len: select_len(len, i),
         },
         v => panic!("not an element template {v:?}"),
+    }
+}
+
+/// The range of every inner `Vec` length in element template `v` of type
+/// `e` (its lengths are arrays over the outer index), at the first level.
+fn inner_len_facts(v: &Val, e: &TypeKind, tb: &Tables, out: &mut Vec<String>) {
+    if let (Some(fs), Val::Struct(xs)) = (struct_fields(e, tb), v) {
+        for ((_, ft), x) in fs.iter().zip(xs) {
+            inner_len_facts(x, ft, tb, out);
+        }
+        return;
+    }
+    if let (TypeKind::Ref { .. }, Val::A { len, .. } | Val::Arr { len, .. }) = (e, v)
+        && !fixed_len(len)
+    {
+        let x = format!("(select {len} k)");
+        out.push(format!(
+            "(forall ((k Int)) (! (and (<= 0 {x}) (<= {x} {})) :pattern ({x})))",
+            len_max(&elem_ty(e))
+        ));
+    }
+}
+
+/// Whether an element template's length is a fixed constant (a numeral),
+/// not the array of an inner `Vec`'s lengths.
+fn fixed_len(len: &str) -> bool {
+    len.parse::<u64>().is_ok()
+}
+
+fn select_len(len: &str, i: &str) -> String {
+    if fixed_len(len) {
+        len.to_string()
+    } else {
+        format!("(select {len} {i})")
+    }
+}
+
+fn store_len(len: &str, i: &str, x: &str) -> String {
+    if fixed_len(len) {
+        len.to_string()
+    } else {
+        format!("(store {len} {i} {x})")
     }
 }
 
@@ -599,13 +642,13 @@ fn store_val(elem: &Val, i: &str, v: &Val) -> Val {
         (Val::Struct(fs), Val::Struct(xs)) => {
             Val::Struct(fs.iter().zip(xs).map(|(f, x)| store_val(f, i, x)).collect())
         }
-        (Val::A { elems, len }, Val::A { elems: x, .. }) => Val::A {
+        (Val::A { elems, len }, Val::A { elems: x, len: xl }) => Val::A {
             elems: format!("(store {elems} {i} {x})"),
-            len: len.clone(),
+            len: store_len(len, i, xl),
         },
-        (Val::Arr { elem, len }, Val::Arr { elem: x, .. }) => Val::Arr {
+        (Val::Arr { elem, len }, Val::Arr { elem: x, len: xl }) => Val::Arr {
             elem: Box::new(store_val(elem, i, x)),
-            len: len.clone(),
+            len: store_len(len, i, xl),
         },
         (e, v) => panic!("element {v:?} does not match {e:?}"),
     }
@@ -679,6 +722,20 @@ fn default_in(t: &TypeKind, tb: &Tables, building: &mut Vec<String>) -> Option<V
             },
         },
         TypeKind::Unit => Val::Unit,
+        // An empty `Vec` (backlog 2O-03b: an inner one's default).
+        _ if is_array(t) => {
+            let e = elem_ty(t);
+            match const_elems(&e, &default_val(&e, tb), tb) {
+                Val::S(elems) => Val::A {
+                    elems,
+                    len: "0".into(),
+                },
+                elem => Val::Arr {
+                    elem: Box::new(elem),
+                    len: "0".into(),
+                },
+            }
+        }
         _ => Val::S(default_of(t).to_string()),
     })
 }
@@ -692,7 +749,7 @@ fn const_elems(e: &TypeKind, v: &Val, tb: &Tables) -> Val {
     let mut ls = Vec::new();
     elem_leaves(e, tb, "", &mut ls);
     let mut terms = Vec::new();
-    flatten_elem(v, &mut terms);
+    flatten_elem_of(v, e, tb, &mut terms);
     let consts: Vec<String> = ls
         .iter()
         .zip(terms)
@@ -709,17 +766,62 @@ const UNROLL_EQ: usize = 16;
 fn flatten_elem(v: &Val, out: &mut Vec<String>) {
     match v {
         Val::S(t) => out.push(t.clone()),
-        Val::A { elems, .. } => out.push(elems.clone()),
-        Val::Arr { elem, .. } => flatten_elem(elem, out),
+        Val::A { elems, len } => {
+            out.push(elems.clone());
+            if !fixed_len(len) {
+                out.push(len.clone());
+            }
+        }
+        Val::Arr { elem, len } => {
+            flatten_elem(elem, out);
+            if !fixed_len(len) {
+                out.push(len.clone());
+            }
+        }
         Val::Struct(fs) => fs.iter().for_each(|f| flatten_elem(f, out)),
         Val::Unit => {}
+    }
+}
+
+/// The leaf terms of one element value `v` of type `e`, in
+/// `elem_leaves` order (an inner `Vec`'s length is a leaf even when it is
+/// a numeral).
+fn flatten_elem_of(v: &Val, e: &TypeKind, tb: &Tables, out: &mut Vec<String>) {
+    if let Some(fs) = struct_fields(e, tb) {
+        if let Val::Struct(xs) = v {
+            for ((_, ft), x) in fs.iter().zip(xs) {
+                flatten_elem_of(x, ft, tb, out);
+            }
+        }
+        return;
+    }
+    match (e, v) {
+        (TypeKind::Array(inner, _), Val::A { elems, .. }) if !agg_elem(&inner.kind, tb) => {
+            out.push(elems.clone())
+        }
+        (TypeKind::Array(inner, _), Val::Arr { elem, .. }) => {
+            flatten_elem_of(elem, &inner.kind, tb, out)
+        }
+        (TypeKind::Ref { inner, .. }, Val::A { elems, len }) => {
+            let _ = inner;
+            out.push(elems.clone());
+            out.push(len.clone());
+        }
+        (TypeKind::Ref { inner, .. }, Val::Arr { elem, len }) => {
+            if let TypeKind::Slice(el) = &inner.kind {
+                flatten_elem_of(elem, &el.kind, tb, out);
+            }
+            out.push(len.clone());
+        }
+        (_, Val::Unit) => {}
+        (_, v) => flatten_elem(v, out),
     }
 }
 
 /// Whether an array of `e` holds its elements as one array per leaf
 /// (ADR-0027 §2): structs and fixed-size arrays (backlog 2V-04b).
 fn agg_elem(e: &TypeKind, tb: &Tables) -> bool {
-    struct_fields(e, tb).is_some() || matches!(e, TypeKind::Array(..))
+    struct_fields(e, tb).is_some() || is_array(e)
 }
 
 /// The leaves of an element of type `e`, each with the sort of its value
@@ -738,6 +840,15 @@ fn elem_leaves(e: &TypeKind, tb: &Tables, suffix: &str, out: &mut Vec<(String, S
             let mut el = Vec::new();
             elem_leaves(&inner.kind, tb, &format!("{suffix}.e"), &mut el);
             out.extend(el.into_iter().map(|(n, s)| (n, format!("(Array Int {s})"))));
+        }
+        // An inner `Vec` (backlog 2O-03b): its leaves one level deeper and
+        // its length.
+        TypeKind::Ref { inner, .. } if matches!(inner.kind, TypeKind::Slice(_)) => {
+            let el = elem_ty(e);
+            let mut l = Vec::new();
+            elem_leaves(&el, tb, &format!("{suffix}.e"), &mut l);
+            out.extend(l.into_iter().map(|(n, s)| (n, format!("(Array Int {s})"))));
+            out.push((format!("{suffix}.len"), "Int".into()));
         }
         t => out.push((suffix.to_string(), sort_of(t))),
     }
@@ -763,6 +874,22 @@ fn elem_template(e: &TypeKind, tb: &Tables, terms: &mut impl Iterator<Item = Str
             elems: terms.next().expect("array leaf"),
             len: n.to_string(),
         },
+        TypeKind::Ref { inner, .. } if matches!(inner.kind, TypeKind::Slice(_)) => {
+            let el = elem_ty(e);
+            if agg_elem(&el, tb) {
+                let elem = Box::new(elem_template(&el, tb, terms));
+                Val::Arr {
+                    elem,
+                    len: terms.next().expect("length leaf"),
+                }
+            } else {
+                let elems = terms.next().expect("array leaf");
+                Val::A {
+                    elems,
+                    len: terms.next().expect("length leaf"),
+                }
+            }
+        }
         _ => Val::S(terms.next().expect("scalar leaf")),
     }
 }
@@ -1651,7 +1778,12 @@ impl<'p, 'q> Enc<'p, 'q> {
             .iter()
             .map(|(name, sort)| self.fresh(name, &format!("(Array Int {sort})")))
             .collect();
-        elem_template(e, self.prog.t, &mut terms.into_iter())
+        let v = elem_template(e, self.prog.t, &mut terms.into_iter());
+        // Every inner `Vec`'s length is a length (backlog 2O-03b).
+        let mut facts = Vec::new();
+        inner_len_facts(&v, e, self.prog.t, &mut facts);
+        self.pc.extend(facts);
+        v
     }
 
     fn fresh_val(&mut self, base: &str, t: &TypeKind) -> Val {
@@ -2812,7 +2944,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                 format!("(<= {n} {})", len_max(&el)),
             );
         }
-        if struct_fields(&el, self.prog.t).is_some() {
+        if agg_elem(&el, self.prog.t) {
             Val::Arr {
                 elem: Box::new(self.fresh_struct_elems("vec", &el)),
                 len: "0".into(),

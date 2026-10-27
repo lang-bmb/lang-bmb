@@ -433,7 +433,11 @@ impl Mv<'_> {
                         }
                         self.expr(x, false);
                     }
+                    // An owned element: the old one is dropped.
                     ExprKind::Index { base, index } => {
+                        if self.moves_ty(target) {
+                            self.info.replaces.insert(key(*span));
+                        }
                         self.expr(base, false);
                         self.expr(index, true);
                     }
@@ -531,6 +535,14 @@ impl Mv<'_> {
                 }
             }
             ExprKind::Index { base, index } => {
+                if moves && self.moves_ty(e) {
+                    self.move_out(
+                        e,
+                        format!("cannot move out of `{}`", crate::fmt::expr_text(e)),
+                        "read through it (`v[i].len()`, `&v[i]`) or take it with `pop`; replacing it with `std::mem::replace` comes with backlog 2O-04".into(),
+                        None,
+                    );
+                }
                 self.expr(base, false);
                 self.expr(index, true);
             }

@@ -1,0 +1,30 @@
+#[summary("중첩 Vec과 이동 원소의 경계 (ADR-0047, backlog 2O-03b)")]
+mod ne {
+    // Recursion through a `Vec` is backlog 2O-03c.
+    struct Node { v: i64, kids: Vec<Node> }
+
+    enum Tree { Leaf(i64), Many(Vec<Tree>) }
+
+    #[effects(pure)]
+    fn take(v: Vec<i64>) -> usize { v.len() }
+
+    // An element cannot be moved out.
+    #[effects(pure)]
+    fn out_of(g: Vec<Vec<i64>>) -> usize {
+        take(g[0])
+    }
+
+    // Cloning a `Vec` of owned elements is not supported yet.
+    #[effects(pure)]
+    fn copy(g: &Vec<Vec<i64>>) -> usize {
+        let h: Vec<Vec<i64>> = g.clone();
+        h.len()
+    }
+
+    // Writing an element needs a mutable place.
+    #[effects(pure)]
+    fn immutable(g: Vec<Vec<i64>>) -> usize {
+        g[0].push(1);
+        g.len()
+    }
+}
