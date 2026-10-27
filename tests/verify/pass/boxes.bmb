@@ -1,0 +1,91 @@
+#[summary("Box<T>: 증명은 값 그대로 (ADR-0047 §3, backlog 2O-01)")]
+mod bx {
+    struct Pt { x: i64, y: i64 }
+
+    struct Holder { p: Box<Pt>, n: i64 }
+
+    spec fn at(p: Pt, x: i64) -> bool { p.x == x }
+
+    spec fn small(v: i64) -> bool { 0 <= v && v < 1000 }
+
+    spec fn doubled(v: i64, r: i64) -> bool { r == v + v }
+
+    spec fn same(a: Box<i64>, b: Box<i64>) -> bool { a == b }
+
+    spec fn held(h: &Holder, x: i64) -> bool { h.p.x == x && h.n == x }
+
+    spec fn some_small(o: Option<Box<i64>>) -> bool {
+        match o {
+            None => false,
+            Some(b) => small(*b),
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(at)]
+    fn mk(x: i64) -> (r: Box<Pt>)
+        ensures at(*r, x),
+    {
+        Box::new(Pt { x: x, y: 0 })
+    }
+
+    #[effects(pure)]
+    #[uses(doubled, small)]
+    fn double(b: &Box<i64>) -> (r: i64)
+        requires small(**b),
+        ensures doubled(**b, r),
+    {
+        **b + **b
+    }
+
+    #[effects(pure)]
+    #[uses(doubled, small)]
+    fn double_in_place(b: &mut Box<i64>) -> ()
+        requires small(**b),
+        ensures doubled(**old(b), **b),
+    {
+        **b = **b + **b;
+    }
+
+    #[effects(pure)]
+    #[uses(at, held)]
+    fn hold(x: i64) -> (r: Holder)
+        ensures held(&r, x),
+    {
+        let p: Box<Pt> = Box::new(Pt { x: 0, y: 1 });
+        let mut h: Holder = Holder { p: p, n: x };
+        h.p.x = x;
+        h
+    }
+
+    #[effects(pure)]
+    #[uses(same)]
+    fn copy_out(b: &Box<i64>) -> (r: Box<i64>)
+        ensures same(*b, r),
+    {
+        Box::new(**b)
+    }
+
+    #[effects(pure)]
+    #[uses(small, some_small)]
+    fn unwrap_or_zero(o: Option<Box<i64>>) -> (r: i64)
+        requires some_small(o),
+        ensures small(r),
+    {
+        match o {
+            None => 0,
+            Some(b) => *b,
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(doubled, small)]
+    fn nested(v: i64) -> (r: i64)
+        requires small(v),
+        ensures doubled(v, r),
+    {
+        let mut bb: Box<Box<i64>> = Box::new(Box::new(v));
+        **bb = **bb + v;
+        **bb
+    }
+}

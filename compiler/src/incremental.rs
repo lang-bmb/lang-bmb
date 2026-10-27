@@ -831,9 +831,10 @@ impl Session {
                         out.push(path.join("::"));
                         args.iter().for_each(|a| named(&a.kind, out));
                     }
-                    TypeKind::Array(e, _) | TypeKind::Slice(e) | TypeKind::Vec(e) => {
-                        named(&e.kind, out)
-                    }
+                    TypeKind::Array(e, _)
+                    | TypeKind::Slice(e)
+                    | TypeKind::Vec(e)
+                    | TypeKind::Box(e) => named(&e.kind, out),
                     TypeKind::Ref { inner, .. } => named(&inner.kind, out),
                     _ => {}
                 }
@@ -914,7 +915,9 @@ fn adt_refs(a: &crate::check::Adt) -> Vec<String> {
                 out.push(path.join("::"));
                 args.iter().for_each(|a| walk(&a.kind, out));
             }
-            TypeKind::Array(e, _) | TypeKind::Slice(e) => walk(&e.kind, out),
+            TypeKind::Array(e, _) | TypeKind::Slice(e) | TypeKind::Vec(e) | TypeKind::Box(e) => {
+                walk(&e.kind, out)
+            }
             TypeKind::Ref { inner, .. } => walk(&inner.kind, out),
             _ => {}
         }

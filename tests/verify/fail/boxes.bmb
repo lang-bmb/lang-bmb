@@ -1,0 +1,59 @@
+#[summary("Box<T>: 따르지 않는 것 (ADR-0047 §3, backlog 2O-01)")]
+mod bf {
+    struct Pt { x: i64, y: i64 }
+
+    struct Holder { p: Box<Pt>, n: i64 }
+
+    spec fn at(p: Pt, x: i64) -> bool { p.x == x }
+
+    spec fn small(v: i64) -> bool { 0 <= v && v < 1000 }
+
+    spec fn held(h: &Holder, x: i64) -> bool { h.p.x == x && h.n == x }
+
+    // The value in the box is the one built.
+    #[effects(pure)]
+    #[uses(at)]
+    fn wrong_x(x: i64) -> (r: Box<Pt>)
+        ensures at(*r, x),
+    {
+        Box::new(Pt { x: x.wrapping_add(1), y: 0 })
+    }
+
+    // Nothing bounds the boxed value.
+    #[effects(pure)]
+    fn overflow(b: &Box<i64>) -> i64 {
+        **b + 1
+    }
+
+    // A write through `&mut Box<T>` is seen by the caller.
+    #[effects(pure)]
+    #[uses(small)]
+    fn reset(b: &mut Box<i64>) -> ()
+        ensures small(**b),
+    {
+        **b = -1;
+    }
+
+    // The field written is the one in the box, not a copy.
+    #[effects(pure)]
+    #[uses(held)]
+    fn forgot(x: i64) -> (r: Holder)
+        ensures held(&r, x),
+    {
+        let p: Box<Pt> = Box::new(Pt { x: 0, y: 1 });
+        let h: Holder = Holder { p: p, n: x };
+        h
+    }
+
+    // `None` carries no box.
+    #[effects(pure)]
+    #[uses(small)]
+    fn payload(o: Option<Box<i64>>) -> (r: i64)
+        ensures small(r),
+    {
+        match o {
+            None => 0,
+            Some(b) => *b,
+        }
+    }
+}

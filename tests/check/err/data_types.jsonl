@@ -2,7 +2,7 @@
 {"code":"E0420","severity":"error","message":"an enum needs at least one variant","file":"err/data_types.bmb","line":7,"col":10,"end_line":7,"end_col":17}
 {"code":"E0403","severity":"error","message":"a field cannot hold a reference or a slice","file":"err/data_types.bmb","line":9,"col":24,"end_line":9,"end_col":30,"fix":{"message":"references are second-class: pass them as arguments only (ADR-0015)"}}
 {"code":"E0302","severity":"error","message":"field `a` is defined more than once in `shapes::Twice`","file":"err/data_types.bmb","line":11,"col":28,"end_line":11,"end_col":29}
-{"code":"E0421","severity":"error","message":"`shapes::Loop` contains itself; recursive types need the heap (backlog 2G)","file":"err/data_types.bmb","line":13,"col":12,"end_line":13,"end_col":16}
+{"code":"E0421","severity":"error","message":"`shapes::Loop` contains itself","file":"err/data_types.bmb","line":13,"col":12,"end_line":13,"end_col":16,"fix":{"message":"a recursive type, also through `Box` or `Vec`, comes with backlog 2O-02 (ADR-0047 §1)"}}
 {"code":"E0309","severity":"error","message":"`Some` is a built-in name (ADR-0026)","file":"err/data_types.bmb","line":15,"col":12,"end_line":15,"end_col":16}
 {"code":"E0420","severity":"error","message":"`Point` takes 0 type argument(s), found 1","file":"err/data_types.bmb","line":17,"col":25,"end_line":17,"end_col":35,"fix":{"message":"`Point` has no type parameters: write `Point`"}}
 {"code":"E0420","severity":"error","message":"`Option` takes 1 type argument(s), found 2","file":"err/data_types.bmb","line":19,"col":21,"end_line":19,"end_col":38}

@@ -1,16 +1,20 @@
-//! Ownership of `Vec` values (ADR-0031 §2, backlog 2G-02).
+//! Ownership of values that move (ADR-0031 §2, ADR-0047 §2, backlogs
+//! 2G-02 and 2O-01): a `Vec`, a `Box`, and the data types that hold one
+//! (`check::is_move`).
 //!
-//! A `Vec` local is moved by a value use: a `let` initializer, the right
-//! side of an assignment, a call argument, a block's value. Reading through
-//! it (`v.len()`, `v[i]`, `&v`, `v.as_slice()`) is not a move. A use of a
-//! moved local is E0413; assigning it again makes it owned again.
+//! Such a local is moved by a value use: a `let` initializer, the right
+//! side of an assignment, a call argument, a block's value, the scrutinee
+//! of a `match` that binds an owned payload. Reading through it (`v.len()`,
+//! `v[i]`, `&v`, `*b`, `b.f`) is not a move. A use of a moved local is
+//! E0413; assigning it again makes it owned again. Moving out of a field
+//! or out of `*b` is E0413 until partial moves (backlog 2O-03).
 //!
 //! At every join (the branches of `if` and `match`, the right side of `&&`,
 //! `||` and `==>`, and a loop head against the end of its body) a local is
 //! owned on all paths or moved on all paths; "maybe moved" is E0414. So the
-//! place where each `Vec` is freed is fixed by the program text, and the
+//! place where each value is dropped is fixed by the program text, and the
 //! pass records it for code generation: the locals still owned at the end
-//! of each block, and the assignments that replace an owned value.
+//! of each block and arm, and the assignments that replace an owned value.
 //!
 //! The language has no `return`, `break` or `continue`, so blocks, branches
 //! and loops are the whole control flow.
@@ -18,6 +22,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::ast::*;
+use crate::check::{Adt, is_move};
 use crate::diag::Diag;
 use crate::source::Span;
 
@@ -42,15 +47,21 @@ impl St {
     }
 }
 
-/// Where the `Vec` values of one function are freed.
+/// Where the owned values of one function are dropped.
 #[derive(Debug, Clone, Default)]
 pub struct MoveInfo {
-    /// Per block (by span): the `Vec` locals declared in it, or the `Vec`
+    /// Per block (by span): the owned locals declared in it, or the owned
     /// parameters for the function body, still owned at its end.
     pub drops: BTreeMap<Key, Vec<String>>,
-    /// Assignments (by statement span) that replace an owned `Vec`: the old
-    /// value is freed after the right side is evaluated.
+    /// Assignments (by statement span) that replace an owned value: the old
+    /// value is dropped after the right side is evaluated.
     pub replaces: BTreeSet<Key>,
+    /// Per `match` arm (by its body's span): the bindings still owned at
+    /// its end.
+    pub arm_drops: BTreeMap<Key, Vec<String>>,
+    /// The `match`es (by span) that move their scrutinee: some arm binds an
+    /// owned payload. Each arm drops the owned payloads it does not bind.
+    pub consumed: BTreeSet<Key>,
 }
 
 struct Mv<'a> {
@@ -58,6 +69,7 @@ struct Mv<'a> {
     /// unique in a function, E0303).
     locals: &'a BTreeMap<String, TypeKind>,
     types: &'a BTreeMap<Key, TypeKind>,
+    adts: &'a BTreeMap<String, Adt>,
     state: BTreeMap<String, St>,
     diags: Vec<Diag>,
     info: MoveInfo,
@@ -69,20 +81,22 @@ pub fn check(
     f: &FnDef,
     locals: &BTreeMap<String, TypeKind>,
     types: &BTreeMap<Key, TypeKind>,
+    adts: &BTreeMap<String, Adt>,
 ) -> (Vec<Diag>, MoveInfo) {
     let mut m = Mv {
         locals,
         types,
+        adts,
         state: BTreeMap::new(),
         diags: Vec::new(),
         info: MoveInfo::default(),
     };
     for p in &f.params {
-        if m.is_vec(&p.name.name) {
+        if m.owns(&p.name.name) {
             m.state.insert(p.name.name.clone(), St::Owned);
         }
     }
-    m.block(&f.body, true);
+    m.block(&f.body);
     let params: Vec<String> = m
         .state
         .iter()
@@ -100,8 +114,22 @@ pub fn check(
 }
 
 impl Mv<'_> {
-    fn is_vec(&self, name: &str) -> bool {
-        matches!(self.locals.get(name), Some(TypeKind::Vec(_)))
+    /// Whether local `name` holds a value that moves.
+    fn owns(&self, name: &str) -> bool {
+        self.locals.get(name).is_some_and(|t| is_move(t, self.adts))
+    }
+
+    /// Whether the value of expression `e` moves.
+    fn moves_ty(&self, e: &Expr) -> bool {
+        self.types
+            .get(&key(e.span))
+            .is_some_and(|t| is_move(t, self.adts))
+    }
+
+    /// E0413 for a move out of a place that is not a whole local.
+    fn move_out(&mut self, e: &Expr, msg: String, fix: String) {
+        self.diags
+            .push(Diag::new("E0413", e.span, msg).fix(fix, None));
     }
 
     fn use_var(&mut self, id: &Ident, span: Span, moves: bool) {
@@ -154,20 +182,22 @@ impl Mv<'_> {
         self.diags.push(
             Diag::new("E0414", span, format!("`{name}` is moved {how}")).fix(
                 format!(
-                    "move or assign `{name}` on every path: a `Vec` is freed at a point fixed by the program text (ADR-0031 §2)"
+                    "move or assign `{name}` on every path: an owned value is dropped at a point fixed by the program text (ADR-0031 §2)"
                 ),
                 None,
             ),
         );
     }
 
-    fn block(&mut self, b: &Block, moves: bool) {
+    /// A block: its value (the tail) is moved out, as in Rust, also where
+    /// the block is only read (`{ v }.len()`).
+    fn block(&mut self, b: &Block) {
         let outer: BTreeSet<String> = self.state.keys().cloned().collect();
         for s in &b.stmts {
             self.stmt(s);
         }
         if let Some(t) = &b.tail {
-            self.expr(t, moves);
+            self.expr(t, true);
         }
         let inner: Vec<String> = self
             .state
@@ -190,7 +220,7 @@ impl Mv<'_> {
         match s {
             Stmt::Let { name, init, .. } => {
                 self.expr(init, true);
-                if self.is_vec(&name.name) {
+                if self.owns(&name.name) {
                     self.state.insert(name.name.clone(), St::Owned);
                 }
             }
@@ -202,16 +232,17 @@ impl Mv<'_> {
             } => {
                 self.expr(value, true);
                 match &target.kind {
-                    ExprKind::Var(id) if self.is_vec(&id.name) => {
+                    ExprKind::Var(id) if self.owns(&id.name) => {
                         if let Some(St::Owned) = self.state.get(&id.name) {
                             self.info.replaces.insert(key(*span));
                         }
                         self.state.insert(id.name.clone(), St::Owned);
                     }
-                    // `*v = w` for `v: &mut Vec<T>`: the value behind the
-                    // reference is always owned.
+                    // `*v = w` for `v: &mut Vec<T>` or `v: Box<T>`, `s.f = w`:
+                    // the value behind a reference, in a `Box` or in a field
+                    // of a usable local is owned.
                     ExprKind::Deref(x) => {
-                        if matches!(self.types.get(&key(target.span)), Some(TypeKind::Vec(_))) {
+                        if self.moves_ty(target) {
                             self.info.replaces.insert(key(*span));
                         }
                         self.expr(x, false);
@@ -220,7 +251,12 @@ impl Mv<'_> {
                         self.expr(base, false);
                         self.expr(index, true);
                     }
-                    ExprKind::Field { base, .. } => self.expr(base, false),
+                    ExprKind::Field { base, .. } => {
+                        if self.moves_ty(target) {
+                            self.info.replaces.insert(key(*span));
+                        }
+                        self.expr(base, false);
+                    }
                     _ => {}
                 }
             }
@@ -237,7 +273,7 @@ impl Mv<'_> {
                 }
                 self.expr(cond, true);
                 let exit = self.state.clone();
-                self.block(body, false);
+                self.block(body);
                 let mut out = exit;
                 for (n, s0) in &head {
                     if let Some(s1) = self.state.get(n)
@@ -262,7 +298,7 @@ impl Mv<'_> {
     fn expr(&mut self, e: &Expr, moves: bool) {
         match &e.kind {
             ExprKind::Var(id) => {
-                if self.is_vec(&id.name) {
+                if self.owns(&id.name) {
                     self.use_var(id, e.span, moves);
                 }
             }
@@ -297,15 +333,15 @@ impl Mv<'_> {
             ExprKind::If { cond, then, els } => {
                 self.expr(cond, true);
                 let before = self.state.clone();
-                self.block(then, moves);
+                self.block(then);
                 let after_then = std::mem::replace(&mut self.state, before);
                 if let Some(el) = els {
-                    self.expr(el, moves);
+                    self.expr(el, true);
                 }
                 let after_else = std::mem::take(&mut self.state);
                 self.merge(after_then, after_else, e.span);
             }
-            ExprKind::Block(b) => self.block(b, moves),
+            ExprKind::Block(b) => self.block(b),
             ExprKind::Array(items) => {
                 for it in items {
                     self.expr(it, true);
@@ -323,32 +359,69 @@ impl Mv<'_> {
                 }
             }
             ExprKind::Deref(x) => {
-                if moves && matches!(self.types.get(&key(e.span)), Some(TypeKind::Vec(_))) {
-                    self.diags.push(
-                        Diag::new(
-                            "E0413",
-                            e.span,
-                            format!(
-                                "cannot move the `Vec` out of `{}`",
-                                crate::fmt::expr_text(e)
-                            ),
-                        )
-                        .fix(
-                            format!("move `{}.clone()` instead", crate::fmt::expr_text(x)),
-                            None,
-                        ),
+                if moves && self.moves_ty(e) {
+                    let fix = if matches!(self.types.get(&key(e.span)), Some(TypeKind::Vec(_))) {
+                        format!("move `{}.clone()` instead", crate::fmt::expr_text(x))
+                    } else {
+                        "read through it (`*b` of a copyable value, `b.f`) or move the whole value; moving out comes with backlog 2O-03".into()
+                    };
+                    self.move_out(
+                        e,
+                        format!("cannot move out of `{}`", crate::fmt::expr_text(e)),
+                        fix,
                     );
                 }
                 self.expr(x, false);
             }
-            ExprKind::Field { base, .. } => self.expr(base, false),
+            ExprKind::Field { base, .. } => {
+                if moves && self.moves_ty(e) {
+                    self.move_out(
+                        e,
+                        format!(
+                            "cannot move the field `{}` out of its struct",
+                            crate::fmt::expr_text(e)
+                        ),
+                        "move the whole struct; moving a field out comes with backlog 2O-03".into(),
+                    );
+                }
+                self.expr(base, false)
+            }
             ExprKind::Match { scrut, arms } => {
-                self.expr(scrut, true);
+                // The scrutinee moves when an arm binds an owned payload
+                // (Rust moves what the pattern binds; the rest of the value
+                // is dropped with it, here at the start of the arm).
+                let binds_owned = arms
+                    .iter()
+                    .any(|a| a.pat.binds.iter().flatten().any(|id| self.owns(&id.name)));
+                if binds_owned {
+                    self.info.consumed.insert(key(e.span));
+                }
+                self.expr(scrut, binds_owned);
                 let before = self.state.clone();
                 let mut joined: Option<BTreeMap<String, St>> = None;
                 for arm in arms {
                     self.state = before.clone();
-                    self.expr(&arm.body, moves);
+                    let binds: Vec<String> = arm
+                        .pat
+                        .binds
+                        .iter()
+                        .flatten()
+                        .filter(|id| self.owns(&id.name))
+                        .map(|id| id.name.clone())
+                        .collect();
+                    for b in &binds {
+                        self.state.insert(b.clone(), St::Owned);
+                    }
+                    self.expr(&arm.body, true);
+                    let mut owned = Vec::new();
+                    for b in binds {
+                        if let Some(St::Owned) = self.state.remove(&b) {
+                            owned.push(b);
+                        }
+                    }
+                    if !owned.is_empty() {
+                        self.info.arm_drops.insert(key(arm.body.span), owned);
+                    }
                     let after = std::mem::take(&mut self.state);
                     joined = Some(match joined {
                         None => after,

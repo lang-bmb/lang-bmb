@@ -1,0 +1,113 @@
+#[summary("Box<T> 실행: 할당, 읽기·쓰기, 이동, 해제 지점 (ADR-0047, backlog 2O-01)")]
+mod bx {
+    struct Pt { x: i64, y: i64 }
+
+    struct Holder { p: Box<Pt>, n: i64 }
+
+    enum Two { Neither, One(Box<i64>), Both(Box<i64>, Box<Pt>) }
+
+    #[effects(pure)]
+    fn mk(x: i64) -> Box<Pt> {
+        Box::new(Pt { x: x, y: x.wrapping_mul(10) })
+    }
+
+    #[effects(pure)]
+    fn boxed(v: i64) -> Box<i64> {
+        Box::new(v)
+    }
+
+    #[effects(pure)]
+    fn sum(b: &Box<Pt>) -> i64 {
+        b.x.wrapping_add(b.y)
+    }
+
+    #[effects(pure)]
+    fn take(h: Holder) -> i64 {
+        h.p.x.wrapping_add(h.n)
+    }
+
+    #[effects(pure)]
+    fn hold(x: i64) -> Holder {
+        Holder { p: mk(x), n: 100 }
+    }
+
+    #[effects(pure)]
+    fn reset(b: &mut Box<i64>, v: i64) -> () {
+        *b = Box::new(v);
+    }
+
+    #[effects(pure)]
+    fn first(t: Two) -> i64 {
+        match t {
+            Two::Neither => 0,
+            Two::One(a) => *a,
+            Two::Both(a2, _) => *a2,
+        }
+    }
+
+    #[effects(pure)]
+    fn second_x(t: &Two) -> i64 {
+        match *t {
+            Two::Neither => -1,
+            Two::One(_) => -2,
+            Two::Both(_, _) => -3,
+        }
+    }
+
+    #[effects(pure)]
+    fn opt(o: Option<Box<i64>>) -> i64 {
+        match o {
+            None => 0,
+            Some(b) => *b,
+        }
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        let mut b: Box<Pt> = mk(5);
+        print_i64(sum(&b));
+        b.x = 7;
+        print_i64(b.x);
+        b = mk(1);
+        print_i64(sum(&b));
+        let mut c: Box<i64> = boxed(3);
+        *c = (*c).wrapping_add(1);
+        print_i64(*c);
+        reset(&mut c, 9);
+        print_i64(*c);
+        let mut h: Holder = hold(2);
+        h.p = mk(4);
+        h.p.y = 1;
+        print_i64(h.p.y);
+        print_i64(take(h));
+        print_i64(mk(6).x);
+        print_i64(*boxed(8));
+        print_i64(opt(Some(boxed(11))));
+        print_i64(opt(None));
+        print_i64(first(Two::Both(boxed(12), mk(0))));
+        print_i64(first(Two::One(boxed(13))));
+        let t: Two = Two::Both(boxed(1), mk(2));
+        print_i64(second_x(&t));
+        print_i64(match Two::One(boxed(14)) {
+            Two::Neither => 0,
+            Two::One(_) => 1,
+            Two::Both(_, _) => 2,
+        });
+        boxed(15);
+        let mut bb: Box<Box<i64>> = Box::new(boxed(16));
+        **bb = (**bb).wrapping_add(1);
+        print_i64(**bb);
+        let mut i: i64 = 0;
+        let mut acc: Box<i64> = boxed(0);
+        while i < 5
+            invariant 0 <= i && i <= 5,
+            decreases 5 - i,
+        {
+            acc = boxed((*acc).wrapping_add(i));
+            i = i + 1;
+        }
+        print_i64(*acc);
+        let k: i64 = { let q: Box<i64> = boxed(20); *q }.wrapping_add(1);
+        print_i64(k);
+    }
+}

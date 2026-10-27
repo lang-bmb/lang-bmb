@@ -370,7 +370,9 @@ fn named_types(t: &TypeKind, tb: &Tables, out: &mut BTreeSet<String>) {
             }
             args.iter().for_each(|a| named_types(&a.kind, tb, out));
         }
-        TypeKind::Array(e, _) | TypeKind::Slice(e) => named_types(&e.kind, tb, out),
+        TypeKind::Array(e, _) | TypeKind::Slice(e) | TypeKind::Vec(e) | TypeKind::Box(e) => {
+            named_types(&e.kind, tb, out)
+        }
         TypeKind::Ref { inner, .. } => named_types(&inner.kind, tb, out),
         _ => {}
     }

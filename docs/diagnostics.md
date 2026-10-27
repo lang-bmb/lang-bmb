@@ -40,6 +40,7 @@
 | E0240 | a `where` clause is not used: bounds go next to the type parameter |
 | E0236 | trait objects `dyn Trait` are not used |
 | E0237 | a call of a generic function names its type arguments: `f::<T>(..)` |
+| E0238 | `Rc`, `RefCell`, `Cell` and `Arc` are not used: values have one owner |
 | E0220 | `#[derive(..)]` is not used |
 | E0221 | built-in variants are written bare (`Some`, not `Option::Some`) |
 | E0222 | field shorthand is not allowed (`x: x`) |
@@ -90,8 +91,8 @@
 | E0410 | a `&mut` argument aliases another argument of the same call |
 | E0411 | cannot negate an unsigned value |
 | E0412 | `T::try_from(x)` takes an integer and is used as `.unwrap()` or `.ok()` |
-| E0413 | use of a moved `Vec` |
-| E0414 | a `Vec` is moved on some paths and not on others |
+| E0413 | use of a moved value, or a move out of a place |
+| E0414 | a value that moves is moved on some paths and not on others |
 | E0420 | malformed data type: wrong type arguments, or no field or variant |
 | E0421 | a type contains itself |
 | E0422 | struct literal fields: not a struct, a field given twice, or a field missing |

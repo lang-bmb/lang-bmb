@@ -1,0 +1,58 @@
+#[summary("Box 자리: 임시값 참조, 상자 속 배열, 제네릭 Box<T>, &mut *b, 루프 속 교체 (backlog 2O-01)")]
+mod bp {
+    struct Pt { x: i64, y: i64 }
+
+    #[effects(pure)]
+    fn mk(x: i64) -> Box<Pt> { Box::new(Pt { x: x, y: 1 }) }
+
+    #[effects(pure)]
+    fn boxed(v: i64) -> Box<i64> { Box::new(v) }
+
+    #[effects(pure)]
+    fn sum(b: &Box<Pt>) -> i64 { b.x.wrapping_add(b.y) }
+
+    #[effects(pure)]
+    fn sum_pt(p: &Pt) -> i64 { p.x.wrapping_add(p.y) }
+
+    #[effects(pure)]
+    fn inc(x: &mut i64) -> () { *x = (*x).wrapping_add(1); }
+
+    #[effects(pure)]
+    fn ignore(b: Box<Pt>) -> i64 { 0 }
+
+    #[effects(pure)]
+    fn wrap<T: Copy>(v: T) -> Box<T> { Box::new(v) }
+
+    #[effects(pure)]
+    fn unwrap<T: Copy>(b: Box<T>) -> T { *b }
+
+    #[effects(io)]
+    fn main() -> () {
+        print_i64(sum(&mk(3)));
+        let c: bool = true;
+        let n: i64 = if c { *boxed(1) } else { 2 };
+        print_i64(n);
+        let mut a: Box<[i64; 3]> = Box::new([1, 2, 3]);
+        (*a)[1] = 20;
+        print_i64((*a)[1]);
+        let mut b: Box<Pt> = mk(5);
+        print_i64(sum_pt(&*b));
+        let mut q: Box<i64> = boxed(41);
+        inc(&mut *q);
+        print_i64(*q);
+        print_i64(ignore(mk(9)));
+        print_i64(unwrap::<i64>(wrap::<i64>(77)));
+        let w: Box<Pt> = wrap::<Pt>(Pt { x: 3, y: 4 });
+        print_i64(w.y);
+        let mut i: i64 = 0;
+        while i < 3
+            invariant 0 <= i && i <= 3,
+            decreases 3 - i,
+        {
+            let t: Box<Pt> = mk(i);
+            b = t;
+            i = i + 1;
+        }
+        print_i64(b.x);
+    }
+}

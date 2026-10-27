@@ -53,6 +53,81 @@ fn run_corpus_prints_expected_output() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// Every run program that owns heap memory (`Vec`, `Box`) frees each
+/// allocation exactly once and touches no freed memory (ADR-0047 §4,
+/// backlog 2O-01): built at -O0 (optimization may delete an allocation
+/// that does not escape, and with it a missing free) and run under
+/// valgrind memcheck, or AddressSanitizer where valgrind is missing.
+#[test]
+fn run_corpus_frees_every_allocation_once() {
+    let dir = std::env::temp_dir().join(format!("bmb-free-{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    let ok = |c: &mut Command| c.output().is_ok_and(|o| o.status.success());
+    let valgrind = ok(Command::new("valgrind").arg("--version"));
+    let mut files: Vec<PathBuf> = fs::read_dir(root())
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.extension().is_some_and(|x| x == "bmb"))
+        .collect();
+    files.sort();
+    let mut checked = 0;
+    for p in files {
+        let text = fs::read_to_string(&p).unwrap();
+        if !text.contains("Box<") && !text.contains("Vec<") {
+            continue;
+        }
+        let out = bmb::emit_llvm_sources(&src("run.bmb", &text));
+        let ll = dir.join(p.file_stem().unwrap()).with_extension("ll");
+        fs::write(&ll, out.ir.unwrap()).unwrap();
+        let exe = dir.join(p.file_stem().unwrap());
+        let mut cc = Command::new("clang");
+        cc.args(["-O0", "-Wno-override-module"]);
+        if !valgrind {
+            cc.arg("-fsanitize=address");
+        }
+        let built = cc.arg("-o").arg(&exe).arg(&ll).output().unwrap();
+        assert!(
+            built.status.success(),
+            "{}: {}",
+            p.display(),
+            String::from_utf8_lossy(&built.stderr)
+        );
+        let run = if valgrind {
+            Command::new("valgrind")
+                .args([
+                    "-q",
+                    "--leak-check=full",
+                    "--show-leak-kinds=definite,indirect,possible",
+                    "--errors-for-leak-kinds=definite,indirect,possible",
+                    "--error-exitcode=99",
+                ])
+                .arg(&exe)
+                .output()
+                .unwrap()
+        } else {
+            Command::new(&exe)
+                .env("ASAN_OPTIONS", "detect_leaks=1:exitcode=99")
+                .output()
+                .unwrap()
+        };
+        assert!(
+            run.status.success(),
+            "{} reports a memory error:\n{}",
+            p.display(),
+            String::from_utf8_lossy(&run.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&run.stdout),
+            fs::read_to_string(p.with_extension("out")).unwrap(),
+            "{}",
+            p.display()
+        );
+        checked += 1;
+    }
+    assert!(checked > 0);
+    let _ = fs::remove_dir_all(&dir);
+}
+
 const PROVED: &str = r#"
 #[summary("범위가 증명된 인덱스")]
 mod m {

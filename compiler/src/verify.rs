@@ -54,7 +54,9 @@ impl Tables {
     /// slice value, the pair of its element array and length, and
     /// `&Vec<T>` / `&mut Vec<T>` are slice references. The operations that
     /// change a length (`push`, `pop`, `truncate`, `Vec::new`) and a callee
-    /// taking `&mut Vec<T>` are told apart by the program text.
+    /// taking `&mut Vec<T>` are told apart by the program text. A `Box<T>`
+    /// is its value `T` everywhere (ADR-0047 §3), also in fields, payloads
+    /// and type arguments.
     fn slice_view(&self) -> Tables {
         fn view(t: &TypeKind) -> TypeKind {
             let sub = |x: &Type| Type {
@@ -62,6 +64,12 @@ impl Tables {
                 span: x.span,
             };
             match t {
+                TypeKind::Box(e) => view(&e.kind),
+                TypeKind::Named { path, args } => TypeKind::Named {
+                    path: path.clone(),
+                    args: args.iter().map(sub).collect(),
+                },
+                TypeKind::Array(e, n) => TypeKind::Array(Box::new(sub(e)), *n),
                 TypeKind::Vec(e) => TypeKind::Ref {
                     mutable: false,
                     inner: Box::new(Type {
@@ -77,10 +85,35 @@ impl Tables {
                             span: e.span,
                         }),
                     },
-                    _ => t.clone(),
+                    _ => TypeKind::Ref {
+                        mutable: *mutable,
+                        inner: Box::new(sub(inner)),
+                    },
                 },
+                TypeKind::Slice(e) => TypeKind::Slice(Box::new(sub(e))),
                 _ => t.clone(),
             }
+        }
+        let mut adts = self.adts.clone();
+        for a in adts.values_mut() {
+            match &mut a.kind {
+                crate::check::AdtKind::Struct(fs) => {
+                    for (_, ft) in fs.iter_mut() {
+                        *ft = view(ft);
+                    }
+                }
+                crate::check::AdtKind::Enum(vs) => {
+                    for (_, ps) in vs.iter_mut() {
+                        for pt in ps.iter_mut() {
+                            *pt = view(pt);
+                        }
+                    }
+                }
+            }
+        }
+        let mut trait_impls = self.trait_impls.clone();
+        for i in &mut trait_impls {
+            i.head = view(&i.head);
         }
         let mut fns = self.fns.clone();
         for s in fns.values_mut() {
@@ -91,7 +124,7 @@ impl Tables {
             fns,
             types: self.types.iter().map(|(k, t)| (*k, view(t))).collect(),
             recursive: self.recursive.clone(),
-            adts: self.adts.clone(),
+            adts,
             locals: self
                 .locals
                 .iter()
@@ -103,8 +136,12 @@ impl Tables {
                 })
                 .collect(),
             moves: BTreeMap::new(),
-            targs: self.targs.clone(),
-            trait_impls: self.trait_impls.clone(),
+            targs: self
+                .targs
+                .iter()
+                .map(|(k, ts)| (*k, ts.iter().map(view).collect()))
+                .collect(),
+            trait_impls,
             insts: BTreeMap::new(),
             inst_types: Vec::new(),
         }
@@ -260,7 +297,9 @@ pub(crate) const MAX_INST_DEPTH: usize = 8;
 
 pub(crate) fn type_depth(t: &TypeKind) -> usize {
     match t {
-        TypeKind::Array(e, _) | TypeKind::Slice(e) | TypeKind::Vec(e) => 1 + type_depth(&e.kind),
+        TypeKind::Array(e, _) | TypeKind::Slice(e) | TypeKind::Vec(e) | TypeKind::Box(e) => {
+            1 + type_depth(&e.kind)
+        }
         TypeKind::Ref { inner, .. } => 1 + type_depth(&inner.kind),
         TypeKind::Named { args, .. } => {
             1 + args.iter().map(|a| type_depth(&a.kind)).max().unwrap_or(0)
@@ -1611,6 +1650,10 @@ impl<'p, 'q> Enc<'p, 'q> {
                     }
                 }
             }
+            // `Box::new(v)` is `v` (ADR-0047 §3).
+            ExprKind::Call { path, args, .. } if crate::check::is_box_new(path) => {
+                self.spec(&args[0], env, old)
+            }
             ExprKind::Call { path, args, .. } if self.is_variant(path) => {
                 let vals: Vec<Val> = args.iter().map(|a| self.spec(a, env, old)).collect();
                 self.variant_value(&self.ty(e), &path.last().unwrap().name, &vals)
@@ -2075,6 +2118,9 @@ impl<'p, 'q> Enc<'p, 'q> {
                     && matches!(path[1].name.as_str(), "new" | "with_capacity") =>
             {
                 self.vec_new(e, path, args)
+            }
+            ExprKind::Call { path, args, .. } if crate::check::is_box_new(path) => {
+                self.eval(&args[0])
             }
             ExprKind::Call { path, args, .. } if self.is_variant(path) => {
                 let vals: Vec<Val> = args.iter().map(|a| self.eval(a)).collect();

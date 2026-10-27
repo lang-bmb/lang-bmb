@@ -2,7 +2,7 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 4109363,
+    "V4_rlimit_total": 4144262,
     "V5_rlimit_headroom": 0.014,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0,
@@ -14,12 +14,12 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 23519,
+    "S4_stage0_rust_lines": 24154,
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
-    "P1_runnable_programs": 27,
-    "P2_bmb_lines": 8840,
-    "P3_errors_with_help": 0.7587,
+    "P1_runnable_programs": 29,
+    "P2_bmb_lines": 9262,
+    "P3_errors_with_help": 0.7696,
     "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 9
@@ -701,6 +701,32 @@
         "P3_errors_with_help": [
           0.7569,
           0.7587
+        ]
+      }
+    },
+    {
+      "date": "2026-10-27",
+      "reason": "2O-01: Box<T> run programs, corpus and diagnostics help",
+      "changed": {
+        "V4_rlimit_total": [
+          4109363,
+          4144262
+        ],
+        "S4_stage0_rust_lines": [
+          23519,
+          24154
+        ],
+        "P1_runnable_programs": [
+          27,
+          29
+        ],
+        "P2_bmb_lines": [
+          8840,
+          9262
+        ],
+        "P3_errors_with_help": [
+          0.7587,
+          0.7696
         ]
       }
     }

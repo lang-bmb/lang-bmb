@@ -204,6 +204,8 @@ pub enum TypeKind {
     },
     /// The built-in heap vector `Vec<T>` (ADR-0031).
     Vec(Box<Type>),
+    /// The built-in owned heap cell `Box<T>` (ADR-0047 §1).
+    Box(Box<Type>),
     /// A type parameter in scope (ADR-0046), resolved by the checker from a
     /// one-segment `Named`.
     Param(String),

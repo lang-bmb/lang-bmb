@@ -1,0 +1,78 @@
+#[summary("Box<T>와 소유 타입의 경계 (ADR-0047, backlog 2O-01)")]
+mod bx {
+    struct Pt { x: i64, y: i64 }
+
+    struct Holder { p: Box<Pt>, n: i64 }
+
+    struct Cell2<T: Copy> { v: T }
+
+    // A `Copy` parameter cannot take a type that moves.
+    struct Wrapped { c: Cell2<Holder> }
+
+    // No arrays of owned values yet (backlog 2O-03).
+    struct Many { ps: [Box<i64>; 2] }
+
+    // Recursion through `Box` comes with backlog 2O-02.
+    enum List { Nil, Cons(i64, Box<List>) }
+
+    // Shared ownership is not used.
+    struct Shared { r: Rc<Pt> }
+
+    #[effects(pure)]
+    fn take(b: Box<Pt>) -> i64 { b.x }
+
+    #[effects(pure)]
+    fn after_move() -> i64 {
+        let b: Box<Pt> = Box::new(Pt { x: 1, y: 2 });
+        let n: i64 = take(b);
+        n.wrapping_add(b.y)
+    }
+
+    #[effects(pure)]
+    fn field_move(h: Holder) -> i64 {
+        let p: Box<Pt> = h.p;
+        p.x
+    }
+
+    #[effects(pure)]
+    fn maybe_moved(c: bool) -> i64 {
+        let b: Box<Pt> = Box::new(Pt { x: 1, y: 2 });
+        if c { take(b) } else { 0 }
+    }
+
+    #[effects(pure)]
+    fn deref_move(b: &Box<Box<Pt>>) -> i64 {
+        let inner: Box<Pt> = **b;
+        inner.x
+    }
+
+    #[effects(pure)]
+    fn immutable() -> i64 {
+        let b: Box<i64> = Box::new(1);
+        *b = 2;
+        *b
+    }
+
+    #[effects(pure)]
+    fn code_eq(a: Box<i64>, b: Box<i64>) -> bool {
+        a == b
+    }
+
+    #[effects(pure)]
+    fn bad_boxes() -> i64 {
+        let u: Box<()> = Box::new(());
+        let v: Box<Vec<i64>> = Box::new(Vec::new());
+        let w: Vec<Box<i64>> = Vec::new();
+        0
+    }
+
+    #[effects(pure)]
+    fn deref_int(x: i64) -> i64 {
+        *x
+    }
+
+    #[effects(pure)]
+    fn boxed_field(b: &Box<Holder>) -> i64 {
+        b.p.x
+    }
+}

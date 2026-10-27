@@ -36,6 +36,7 @@ pub fn subst(t: &TypeKind, m: &BTreeMap<String, TypeKind>) -> TypeKind {
         TypeKind::Array(e, n) => TypeKind::Array(Box::new(sub(e)), *n),
         TypeKind::Slice(e) => TypeKind::Slice(Box::new(sub(e))),
         TypeKind::Vec(e) => TypeKind::Vec(Box::new(sub(e))),
+        TypeKind::Box(e) => TypeKind::Box(Box::new(sub(e))),
         TypeKind::Ref { mutable, inner } => TypeKind::Ref {
             mutable: *mutable,
             inner: Box::new(sub(inner)),
@@ -52,7 +53,9 @@ pub fn subst(t: &TypeKind, m: &BTreeMap<String, TypeKind>) -> TypeKind {
 pub fn has_param(t: &TypeKind) -> bool {
     match t {
         TypeKind::Param(_) => true,
-        TypeKind::Array(e, _) | TypeKind::Slice(e) | TypeKind::Vec(e) => has_param(&e.kind),
+        TypeKind::Array(e, _) | TypeKind::Slice(e) | TypeKind::Vec(e) | TypeKind::Box(e) => {
+            has_param(&e.kind)
+        }
         TypeKind::Ref { inner, .. } => has_param(&inner.kind),
         TypeKind::Named { args, .. } => args.iter().any(|a| has_param(&a.kind)),
         _ => false,
@@ -70,7 +73,8 @@ fn unify(pat: &TypeKind, t: &TypeKind, ps: &[TParam], out: &mut BTreeMap<String,
         }
         (TypeKind::Array(a, _), TypeKind::Array(b, _))
         | (TypeKind::Slice(a), TypeKind::Slice(b))
-        | (TypeKind::Vec(a), TypeKind::Vec(b)) => unify(&a.kind, &b.kind, ps, out),
+        | (TypeKind::Vec(a), TypeKind::Vec(b))
+        | (TypeKind::Box(a), TypeKind::Box(b)) => unify(&a.kind, &b.kind, ps, out),
         (TypeKind::Ref { inner: a, .. }, TypeKind::Ref { inner: b, .. }) => {
             unify(&a.kind, &b.kind, ps, out)
         }
@@ -321,7 +325,9 @@ pub struct Adt {
 }
 
 /// Names the language defines (ADR-0026): user definitions cannot take them.
-const BUILTIN_NAMES: &[&str] = &["Option", "Result", "Some", "None", "Ok", "Err", "Vec"];
+const BUILTIN_NAMES: &[&str] = &[
+    "Option", "Result", "Some", "None", "Ok", "Err", "Vec", "Box",
+];
 
 pub struct Checker<'a> {
     diags: &'a mut Diags,
@@ -356,6 +362,9 @@ pub struct Checker<'a> {
     /// Calls of generic functions: caller, callee, span, type arguments
     /// (E0430 needs the recursive ones).
     gcalls: Vec<(String, String, Span, Vec<TypeKind>)>,
+    /// Every field type is resolved, so which types move is known
+    /// (`is_move`); fields themselves are checked by `check_owned_fields`.
+    owned_ready: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -408,6 +417,7 @@ pub fn ty_str(t: &TypeKind) -> String {
                 .join(", ")
         ),
         TypeKind::Vec(e) => format!("Vec<{}>", ty_str(&e.kind)),
+        TypeKind::Box(e) => format!("Box<{}>", ty_str(&e.kind)),
         TypeKind::Param(n) => n.clone(),
         TypeKind::Error => "{error}".into(),
     }
@@ -473,6 +483,9 @@ pub fn parse_ty(s: &str) -> Option<TypeKind> {
                     ([v], 1) if v == "Vec" => {
                         TypeKind::Vec(Box::new(args.into_iter().next().expect("one")))
                     }
+                    ([v], 1) if v == "Box" => {
+                        TypeKind::Box(Box::new(args.into_iter().next().expect("one")))
+                    }
                     ([n], 0) if n != "Option" && n != "Result" => TypeKind::Param(n.clone()),
                     _ => TypeKind::Named { path, args },
                 }
@@ -509,16 +522,35 @@ fn is_scalar(t: &TypeKind) -> bool {
     is_int(t) || matches!(t, TypeKind::Bool)
 }
 
-/// Whether values of `t` copy (Rust `Copy`): everything but a `Vec`, a
-/// `&mut`, and what holds them (type parameters carry `Copy` until
-/// ADR-0047, phase 2O).
-fn is_copy(t: &TypeKind) -> bool {
-    match t {
-        TypeKind::Vec(_) | TypeKind::Ref { mutable: true, .. } => false,
-        TypeKind::Array(e, _) => is_copy(&e.kind),
-        TypeKind::Named { args, .. } => args.iter().all(|a| is_copy(&a.kind)),
-        _ => true,
+/// Whether values of `t` move (ADR-0047 §1): a `Vec`, a `Box`, and the
+/// structs, enums and arrays that hold one through fields, payloads,
+/// elements or type arguments. The classification is structural (no
+/// `Copy` derive); type parameters carry `Copy` until backlog 2O-04.
+pub fn is_move(t: &TypeKind, adts: &BTreeMap<String, Adt>) -> bool {
+    fn go(t: &TypeKind, adts: &BTreeMap<String, Adt>, seen: &mut BTreeSet<String>) -> bool {
+        match t {
+            TypeKind::Vec(_) | TypeKind::Box(_) => true,
+            TypeKind::Array(e, _) => go(&e.kind, adts, seen),
+            TypeKind::Named { path, args } => {
+                if args.iter().any(|a| go(&a.kind, adts, seen)) {
+                    return true;
+                }
+                let p = path.join("::");
+                if !seen.insert(p.clone()) {
+                    return false;
+                }
+                match adts.get(&p).map(|a| &a.kind) {
+                    Some(AdtKind::Struct(fs)) => fs.iter().any(|(_, ft)| go(ft, adts, seen)),
+                    Some(AdtKind::Enum(vs)) => vs
+                        .iter()
+                        .any(|(_, ps)| ps.iter().any(|pt| go(pt, adts, seen))),
+                    None => false,
+                }
+            }
+            _ => false,
+        }
     }
+    go(t, adts, &mut BTreeSet::new())
 }
 
 /// The text of a type parameter with its bounds as written.
@@ -654,6 +686,7 @@ impl<'a> Checker<'a> {
             self_head: None,
             tparams: Vec::new(),
             gcalls: Vec::new(),
+            owned_ready: false,
         }
     }
 
@@ -704,6 +737,10 @@ impl<'a> Checker<'a> {
         }
         for m in &p.mods {
             self.resolve_types(m, "");
+        }
+        self.owned_ready = true;
+        for m in &p.mods {
+            self.check_owned_fields(m, "");
         }
         self.check_type_cycles();
         for m in &p.mods {
@@ -1335,10 +1372,16 @@ impl<'a> Checker<'a> {
     /// Whether `t` meets every bound in `bounds` (no diagnostics).
     fn meets(&self, t: &TypeKind, bounds: &[String]) -> bool {
         bounds.iter().all(|b| match b.as_str() {
-            "Copy" => is_copy(t),
+            "Copy" => self.is_copy(t),
             "Eq" | "Ord" => self.has_builtin(t, b),
             tr => self.has_trait(t, tr),
         })
+    }
+
+    /// Whether values of `t` copy (Rust `Copy`): everything but a `&mut`
+    /// and a type that moves (`is_move`).
+    fn is_copy(&self, t: &TypeKind) -> bool {
+        !matches!(t, TypeKind::Ref { mutable: true, .. }) && !is_move(t, &self.adts)
     }
 
     /// Whether `t` has the built-in trait `b` (`Eq` or `Ord`): the integer
@@ -1440,7 +1483,7 @@ impl<'a> Checker<'a> {
                 }
                 false
             }
-            _ if p.bounds.iter().any(|b| b == "Copy") && !is_copy(t) => {
+            _ if p.bounds.iter().any(|b| b == "Copy") && !self.is_copy(t) => {
                 if report {
                     self.diags.push(
                         Diag::new(
@@ -1453,7 +1496,7 @@ impl<'a> Checker<'a> {
                             ),
                         )
                         .fix(
-                            "pass a `Copy` type (a scalar, a struct or enum, an array of them); a `Vec` is an owned type (ADR-0047)",
+                            "pass a `Copy` type (a scalar, a struct or enum, an array of them); a `Vec`, a `Box` and what holds them move (ADR-0047)",
                             None,
                         ),
                     );
@@ -1522,7 +1565,7 @@ impl<'a> Checker<'a> {
                         contained(&a.kind, out);
                     }
                 }
-                TypeKind::Array(e, _) => contained(&e.kind, out),
+                TypeKind::Array(e, _) | TypeKind::Box(e) => contained(&e.kind, out),
                 _ => {}
             }
         }
@@ -1544,11 +1587,10 @@ impl<'a> Checker<'a> {
             let mut seen = BTreeSet::new();
             while let Some(q) = stack.pop() {
                 if q == *p {
-                    self.err(
-                        "E0421",
-                        a.span,
-                        format!(
-                            "`{p}` contains itself; recursive types need the heap (backlog 2G)"
+                    self.diags.push(
+                        Diag::new("E0421", a.span, format!("`{p}` contains itself")).fix(
+                            "a recursive type, also through `Box` or `Vec`, comes with backlog 2O-02 (ADR-0047 §1)",
+                            None,
                         ),
                     );
                     break;
@@ -1598,6 +1640,29 @@ impl<'a> Checker<'a> {
                 }
                 if path.len() == 1 && name == "Vec" {
                     return self.vec_type(t, args, mp, report);
+                }
+                if path.len() == 1 && name == "Box" {
+                    return self.box_type(t, args, mp, report);
+                }
+                let last = path.last().map_or("", String::as_str);
+                if (path.len() == 1 || path[0] == "std")
+                    && matches!(last, "Rc" | "RefCell" | "Cell" | "Arc")
+                    && !self.adts.contains_key(&format!("{mp}::{name}"))
+                {
+                    if report {
+                        self.diags.push(
+                            Diag::new(
+                                "E0238",
+                                t.span,
+                                format!("`{last}` is not used: values have one owner"),
+                            )
+                            .fix(
+                                "hold the value in an owned tree (`Box`, `Vec`) or refer to it by an index into a `Vec` (ADR-0047 §5)",
+                                None,
+                            ),
+                        );
+                    }
+                    return TypeKind::Error;
                 }
                 if path.len() == 1
                     && name == "String"
@@ -1701,13 +1766,151 @@ impl<'a> Checker<'a> {
                     TypeKind::Error
                 }
             }
-            TypeKind::Array(e, n) => TypeKind::Array(Box::new(sub(self, e)), *n),
+            TypeKind::Array(e, n) => {
+                let el = sub(self, e);
+                // A `Vec` element is reported where the type is written
+                // (`array_elem_ok`).
+                if self.owned_ready
+                    && is_move(&el.kind, &self.adts)
+                    && !matches!(el.kind, TypeKind::Vec(_))
+                {
+                    if report {
+                        self.owned_elem("array", &el);
+                    }
+                    return TypeKind::Error;
+                }
+                TypeKind::Array(Box::new(el), *n)
+            }
             TypeKind::Slice(e) => TypeKind::Slice(Box::new(sub(self, e))),
             TypeKind::Ref { mutable, inner } => TypeKind::Ref {
                 mutable: *mutable,
                 inner: Box::new(sub(self, inner)),
             },
             other => other.clone(),
+        }
+    }
+
+    /// E0402 for an array or `Vec` element `el` that moves (backlog 2O-03).
+    fn owned_elem(&mut self, what: &str, el: &Type) {
+        self.diags.push(
+            Diag::new(
+                "E0402",
+                el.span,
+                format!(
+                    "{what} elements that own heap values (`{}`) come with backlog 2O-03 (ADR-0047 §1)",
+                    ty_str(&el.kind)
+                ),
+            )
+            .fix(
+                "keep the owned values in separate locals or fields for now",
+                None,
+            ),
+        );
+    }
+
+    /// `Box<T>` (ADR-0047 §1): `T` a value type; a `Box` holding a `Vec`
+    /// comes with nested containers (backlog 2O-03).
+    fn box_type(&mut self, t: &Type, args: &[Type], mp: &str, report: bool) -> TypeKind {
+        if args.len() != 1 {
+            if report {
+                self.err(
+                    "E0420",
+                    t.span,
+                    format!("`Box` takes 1 type argument, found {}", args.len()),
+                );
+            }
+            return TypeKind::Error;
+        }
+        let e = self.canon(&args[0], mp, report);
+        match &e {
+            TypeKind::Error => return TypeKind::Error,
+            TypeKind::Ref { .. } | TypeKind::Slice(_) | TypeKind::Unit => {
+                if report {
+                    self.diags.push(
+                        Diag::new(
+                            "E0402",
+                            args[0].span,
+                            format!("a `Box` holds a value, found `{}`", ty_str(&e)),
+                        )
+                        .fix(
+                            "box a scalar, a struct or enum, an array or another `Box`",
+                            None,
+                        ),
+                    );
+                }
+                return TypeKind::Error;
+            }
+            TypeKind::Vec(_) => {
+                if report {
+                    self.err(
+                        "E0402",
+                        args[0].span,
+                        "a `Box` holding a `Vec` comes with backlog 2O-03 (ADR-0047 §1)",
+                    );
+                }
+                return TypeKind::Error;
+            }
+            _ => {}
+        }
+        TypeKind::Box(Box::new(Type {
+            kind: e,
+            span: args[0].span,
+        }))
+    }
+
+    /// Fields that hold owned values (ADR-0047 §1), once every field type
+    /// is known: no array or `Vec` of them yet (backlog 2O-03), and none
+    /// as the argument of a `Copy` type parameter.
+    fn check_owned_fields(&mut self, m: &Mod, prefix: &str) {
+        let mp = format!("{prefix}{}", m.name.name);
+        for sub in &m.mods {
+            self.check_owned_fields(sub, &format!("{mp}::"));
+        }
+        for t in &m.types {
+            let path = format!("{mp}::{}", t.name.name);
+            let Some(adt) = self.adts.get(&path) else {
+                continue;
+            };
+            let written: Vec<&Type> = match &t.kind {
+                TypeDefKind::Struct(fs) => fs.iter().map(|f| &f.ty).collect(),
+                TypeDefKind::Enum(vs) => vs.iter().flat_map(|v| v.payload.iter()).collect(),
+            };
+            let resolved: Vec<TypeKind> = match &adt.kind {
+                AdtKind::Struct(fs) => fs.iter().map(|(_, ft)| ft.clone()).collect(),
+                AdtKind::Enum(vs) => vs.iter().flat_map(|(_, ps)| ps.iter().cloned()).collect(),
+            };
+            for (w, r) in written.into_iter().zip(resolved) {
+                self.owned_field(&r, w.span);
+            }
+        }
+    }
+
+    fn owned_field(&mut self, t: &TypeKind, span: Span) {
+        match t {
+            TypeKind::Array(e, _) if is_move(&e.kind, &self.adts) => {
+                let el = Type {
+                    kind: e.kind.clone(),
+                    span,
+                };
+                self.owned_elem("array", &el);
+            }
+            TypeKind::Array(e, _) | TypeKind::Box(e) => self.owned_field(&e.kind, span),
+            TypeKind::Named { path, args } => {
+                let ps = self
+                    .adts
+                    .get(&path.join("::"))
+                    .map(|a| a.generics.clone())
+                    .unwrap_or_default();
+                for (a, p) in args.iter().zip(&ps) {
+                    if p.bounds.iter().any(|b| b == "Copy") && !self.is_copy(&a.kind) {
+                        self.targ_ok(&a.kind, p, &path.join("::"), span, true);
+                    }
+                }
+                for a in args {
+                    self.owned_field(&a.kind, span);
+                }
+            }
+            _ => {}
         }
     }
 
@@ -1725,6 +1928,18 @@ impl<'a> Checker<'a> {
             return TypeKind::Error;
         }
         let e = self.canon(&args[0], mp, report);
+        if self.owned_ready && is_move(&e, &self.adts) {
+            if report {
+                self.owned_elem(
+                    "`Vec`",
+                    &Type {
+                        kind: e,
+                        span: args[0].span,
+                    },
+                );
+            }
+            return TypeKind::Error;
+        }
         let ok = match &e {
             TypeKind::Named { .. } => !self.holds_array(&e, &mut BTreeSet::new()),
             TypeKind::Error => return TypeKind::Error,
@@ -2387,7 +2602,7 @@ impl<'a> Checker<'a> {
         if f.kind == FnKind::Exec {
             let none = BTreeMap::new();
             let locals = self.locals.get(&path).unwrap_or(&none);
-            let (diags, info) = crate::moves::check(f, locals, &self.types);
+            let (diags, info) = crate::moves::check(f, locals, &self.types, &self.adts);
             for d in diags {
                 self.diags.push(d);
             }
@@ -2489,6 +2704,16 @@ impl<'a> Checker<'a> {
     /// An element of an array literal or repeat: not a `Vec` (backlog
     /// 1B-35, 2B-14, 2V-04b).
     fn literal_elem(&mut self, t: &TypeKind, span: Span) {
+        if is_move(t, &self.adts) && !matches!(t, TypeKind::Vec(_)) {
+            self.owned_elem(
+                "array",
+                &Type {
+                    kind: t.clone(),
+                    span,
+                },
+            );
+            return;
+        }
         let bad = matches!(t, TypeKind::Vec(_));
         if bad {
             self.diags.push(
@@ -2731,6 +2956,11 @@ impl<'a> Checker<'a> {
                     );
                 }
                 let tt = self.place(cx, target);
+                // The target's type, for the move check (`moves.rs`).
+                self.types.insert(
+                    (target.span.file, target.span.lo, target.span.hi),
+                    tt.clone(),
+                );
                 let vt = self.expr(cx, value, Some(&tt), mode);
                 self.expect_ty(&vt, &tt, value.span);
             }
@@ -2828,10 +3058,13 @@ impl<'a> Checker<'a> {
             },
             // An element of an array field or of an inner array: `s.w[i] = v`,
             // `p.q.w[i] = v` (backlog 2B-15), `g[i][j] = v`, `b.r[i].c[j] = v`
-            // (2V-04b). The base's type is recorded for the back ends
+            // (2V-04b), or of a boxed array: `(*b)[i] = v` (2O-01). The base's type is recorded for the back ends
             // (assignment targets have none otherwise).
             ExprKind::Index { base, index }
-                if matches!(base.kind, ExprKind::Field { .. } | ExprKind::Index { .. }) =>
+                if matches!(
+                    base.kind,
+                    ExprKind::Field { .. } | ExprKind::Index { .. } | ExprKind::Deref(_)
+                ) =>
             {
                 let (bt, writable) = self.place_of(cx, base);
                 self.types
@@ -2950,13 +3183,14 @@ impl<'a> Checker<'a> {
                     TypeKind::Ref { inner, .. } if !matches!(inner.kind, TypeKind::Slice(_)) => {
                         (inner.kind, w)
                     }
+                    TypeKind::Box(inner) => (inner.kind, w),
                     TypeKind::Error => (TypeKind::Error, false),
                     other => {
                         self.err(
                             "E0401",
                             e.span,
                             format!(
-                                "`*` needs a reference `&T` or `&mut T`, found `{}`",
+                                "`*` needs a reference `&T` or `&mut T` or a `Box<T>`, found `{}`",
                                 ty_str(&other)
                             ),
                         );
@@ -3000,12 +3234,16 @@ impl<'a> Checker<'a> {
         }
     }
 
-    /// The struct a type denotes (through one reference: `p.x` on `p: &Point`).
+    /// The struct a type denotes (through one reference and any `Box`es:
+    /// `p.x` on `p: &Point` or `p: &Box<Point>`).
     fn struct_fields(&self, t: &TypeKind) -> Option<(String, Vec<(String, TypeKind)>)> {
-        let t = match t {
+        let mut t = match t {
             TypeKind::Ref { inner, .. } => &inner.kind,
             t => t,
         };
+        while let TypeKind::Box(inner) = t {
+            t = &inner.kind;
+        }
         let TypeKind::Named { path, .. } = t else {
             return None;
         };
@@ -4060,13 +4298,14 @@ impl<'a> Checker<'a> {
                     TypeKind::Ref { inner, .. } if !matches!(inner.kind, TypeKind::Slice(_)) => {
                         inner.kind
                     }
+                    TypeKind::Box(inner) => inner.kind,
                     TypeKind::Error => TypeKind::Error,
                     other => {
                         self.err(
                             "E0401",
                             e.span,
                             format!(
-                                "`*` needs a reference `&T` or `&mut T`, found `{}`",
+                                "`*` needs a reference `&T` or `&mut T` or a `Box<T>`, found `{}`",
                                 ty_str(&other)
                             ),
                         );
@@ -4221,6 +4460,11 @@ impl<'a> Checker<'a> {
                     && self.enum_prefix(path, &cx.mod_path) =>
             {
                 self.variant_value(cx, path, args, expected, e.span, mode)
+            }
+            ExprKind::Call { path, args, .. }
+                if self.resolve(path, &cx.mod_path).is_none() && is_box_new(path) =>
+            {
+                self.box_new(cx, args, expected, e.span, mode)
             }
             ExprKind::Call { path, args, .. }
                 if self.resolve(path, &cx.mod_path).is_none() && vec_builtin(path) =>
@@ -4591,9 +4835,22 @@ impl<'a> Checker<'a> {
                     return TypeKind::Bool;
                 }
                 if matches!(op, BinOp::Eq | BinOp::Ne)
-                    && (matches!(lt, TypeKind::Named { .. } | TypeKind::Array(..)) || slice)
+                    && (matches!(
+                        lt,
+                        TypeKind::Named { .. } | TypeKind::Array(..) | TypeKind::Box(_)
+                    ) || slice)
                 {
                     if mode == Mode::Exec {
+                        let fix = if matches!(lt, TypeKind::Box(_)) {
+                            format!(
+                                "compare the values: `*{} {} *{}`",
+                                crate::fmt::expr_text(l),
+                                op.symbol(),
+                                crate::fmt::expr_text(r)
+                            )
+                        } else {
+                            "compare the fields (or `match` the variants) in code".into()
+                        };
                         self.diags.push(
                             Diag::new(
                                 "E0425",
@@ -4604,7 +4861,7 @@ impl<'a> Checker<'a> {
                                     ty_str(&lt)
                                 ),
                             )
-                            .fix("compare the fields (or `match` the variants) in code", None),
+                            .fix(fix, None),
                         );
                     }
                     return TypeKind::Bool;
@@ -4944,6 +5201,8 @@ impl<'a> Checker<'a> {
         }
         match expected {
             Some(t @ TypeKind::Vec(_)) => t.clone(),
+            // The written type is wrong and reported.
+            Some(TypeKind::Error) => TypeKind::Error,
             _ => {
                 self.diags.push(
                     Diag::new(
@@ -4955,6 +5214,55 @@ impl<'a> Checker<'a> {
                 );
                 TypeKind::Error
             }
+        }
+    }
+
+    /// `Box::new(v)` (ADR-0047 §1): the boxed type is the expected
+    /// type's, else `v`'s.
+    fn box_new(
+        &mut self,
+        cx: &mut FnCtx,
+        args: &[Expr],
+        expected: Option<&TypeKind>,
+        span: Span,
+        mode: Mode,
+    ) -> TypeKind {
+        if args.len() != 1 {
+            self.err(
+                "E0405",
+                span,
+                format!("`Box::new` takes 1 argument, found {}", args.len()),
+            );
+            for a in args {
+                self.expr(cx, a, None, mode);
+            }
+            return TypeKind::Error;
+        }
+        let want = match expected {
+            Some(TypeKind::Box(e)) => Some(e.kind.clone()),
+            // The written type is wrong and reported.
+            Some(TypeKind::Error) => {
+                self.expr(cx, &args[0], Some(&TypeKind::Error), mode);
+                return TypeKind::Error;
+            }
+            _ => None,
+        };
+        let t = self.expr(cx, &args[0], want.as_ref(), mode);
+        if let Some(w) = want {
+            self.expect_ty(&t, &w, args[0].span);
+            return TypeKind::Box(mk(w));
+        }
+        match t {
+            TypeKind::Error => TypeKind::Error,
+            TypeKind::Vec(_) | TypeKind::Unit => {
+                self.err(
+                    "E0402",
+                    args[0].span,
+                    format!("a `Box<{}>` is not supported (ADR-0047 §1)", ty_str(&t)),
+                );
+                TypeKind::Error
+            }
+            t => TypeKind::Box(mk(t)),
         }
     }
 
@@ -5004,7 +5312,7 @@ impl<'a> Checker<'a> {
                     .map(|(_, t)| t)
             }
             ExprKind::Deref(x) => match self.place_peek(cx, x)? {
-                TypeKind::Ref { inner, .. } => Some(inner.kind),
+                TypeKind::Ref { inner, .. } | TypeKind::Box(inner) => Some(inner.kind),
                 _ => None,
             },
             ExprKind::Index { base, .. } => elem_of(&self.place_peek(cx, base)?).cloned(),
@@ -6315,9 +6623,9 @@ fn overlaps(a: &TypeKind, b: &TypeKind) -> bool {
     match (a, b) {
         (TypeKind::Param(_), _) | (_, TypeKind::Param(_)) => true,
         (TypeKind::Array(x, n), TypeKind::Array(y, k)) => n == k && overlaps(&x.kind, &y.kind),
-        (TypeKind::Slice(x), TypeKind::Slice(y)) | (TypeKind::Vec(x), TypeKind::Vec(y)) => {
-            overlaps(&x.kind, &y.kind)
-        }
+        (TypeKind::Slice(x), TypeKind::Slice(y))
+        | (TypeKind::Vec(x), TypeKind::Vec(y))
+        | (TypeKind::Box(x), TypeKind::Box(y)) => overlaps(&x.kind, &y.kind),
         (
             TypeKind::Ref {
                 mutable: p,
@@ -6338,7 +6646,9 @@ fn overlaps(a: &TypeKind, b: &TypeKind) -> bool {
 fn mentions_param(t: &TypeKind, n: &str) -> bool {
     match t {
         TypeKind::Param(x) => x == n,
-        TypeKind::Array(e, _) | TypeKind::Slice(e) | TypeKind::Vec(e) => mentions_param(&e.kind, n),
+        TypeKind::Array(e, _) | TypeKind::Slice(e) | TypeKind::Vec(e) | TypeKind::Box(e) => {
+            mentions_param(&e.kind, n)
+        }
         TypeKind::Ref { inner, .. } => mentions_param(&inner.kind, n),
         TypeKind::Named { args, .. } => args.iter().any(|a| mentions_param(&a.kind, n)),
         _ => false,
@@ -6377,6 +6687,7 @@ pub fn ty_str_in(t: &TypeKind, mp: &str) -> String {
                 .join(", ")
         ),
         TypeKind::Vec(e) => format!("Vec<{}>", ty_str_in(&e.kind, mp)),
+        TypeKind::Box(e) => format!("Box<{}>", ty_str_in(&e.kind, mp)),
         other => ty_str(other),
     }
 }
@@ -6535,6 +6846,11 @@ fn option_of(t: TypeKind) -> TypeKind {
     }
 }
 
+/// `Box::new` (ADR-0047 §1).
+pub fn is_box_new(path: &[Ident]) -> bool {
+    path.len() == 2 && path[0].name == "Box" && path[1].name == "new"
+}
+
 /// `Vec::new` / `Vec::with_capacity`, and `drop`, `mem::take` and its
 /// kin (a Rust habit, E0219).
 fn vec_builtin(path: &[Ident]) -> bool {
@@ -6564,6 +6880,7 @@ mod tests {
             "&[geo::Pt]",
             "&mut u64",
             "Vec<geo::Cell<i64>>",
+            "Box<Option<Box<u8>>>",
             "Option<Result<i64, bool>>",
             "geo::Pair<geo::Cell<[bool; 2]>, usize>",
             "T",

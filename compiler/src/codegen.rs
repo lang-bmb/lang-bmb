@@ -97,10 +97,20 @@ fn is_vec(t: &TypeKind) -> bool {
     matches!(value_ty(t), TypeKind::Vec(_))
 }
 
+/// Whether `t` is a `Box` (through a reference).
+fn is_box(t: &TypeKind) -> bool {
+    matches!(value_ty(t), TypeKind::Box(_))
+}
+
 /// Whether a value of type `t` lives in memory and is passed by address:
-/// a struct, an enum or a `Vec` header.
+/// a struct, an enum, a `Vec` header or a `Box` (its heap address).
 fn is_mem(t: &TypeKind) -> bool {
-    is_data(t) || is_vec(t)
+    is_data(t) || is_vec(t) || is_box(t)
+}
+
+/// The drop glue of type `t` (ADR-0047 §4).
+fn glue(t: &TypeKind) -> String {
+    format!("@\"bmb_drop.{}\"", ty_str(t))
 }
 
 /// The element type of a `Vec`.
@@ -124,10 +134,7 @@ fn vec_len_max(e: &TypeKind) -> &'static str {
 /// growth to twice the capacity (at least 4), and `abort` when a size does
 /// not fit in `isize` or the allocator fails.
 const VEC_RUNTIME: &str = "%bmb.vec = type { ptr, i64, i64 }
-declare ptr @malloc(i64)
 declare ptr @realloc(ptr, i64)
-declare void @free(ptr)
-declare void @abort() noreturn nounwind
 define internal i64 @bmb_vec_bytes(i64 %n, i64 %size) {
 entry:
   %p = call {i64, i1} @llvm.umul.with.overflow.i64(i64 %n, i64 %size)
@@ -199,11 +206,24 @@ entry:
   store i64 %len, ptr %dlp
   ret void
 }
-define internal void @bmb_vec_free(ptr %h) {
+";
+
+/// The allocator, for `Vec` and `Box` (ADR-0047 §4): `bmb_box_alloc`
+/// aborts when `malloc` fails (a zero size never occurs: `Box<()>` is not
+/// a type).
+const HEAP_RUNTIME: &str = "declare ptr @malloc(i64)
+declare void @free(ptr)
+declare void @abort() noreturn nounwind
+define internal ptr @bmb_box_alloc(i64 %size) {
 entry:
-  %buf = load ptr, ptr %h
-  call void @free(ptr %buf)
-  ret void
+  %p = call ptr @malloc(i64 %size)
+  %null = icmp eq ptr %p, null
+  br i1 %null, label %fail, label %ok
+fail:
+  call void @abort()
+  unreachable
+ok:
+  ret ptr %p
 }
 ";
 
@@ -221,6 +241,7 @@ fn view_ty(t: &TypeKind, v: &str) -> String {
 fn mem_ty(t: &TypeKind) -> String {
     match value_ty(t) {
         TypeKind::Vec(_) => "%bmb.vec".into(),
+        TypeKind::Box(_) => "ptr".into(),
         TypeKind::Bool | TypeKind::U8 => "i8".into(),
         TypeKind::Named { .. } => data_ty(t),
         TypeKind::Array(e, n) => format!("[{n} x {}]", mem_ty(&e.kind)),
@@ -283,7 +304,9 @@ fn type_defs(tb: &Tables, extra: &[TypeKind]) -> String {
             return;
         }
         match t {
-            TypeKind::Array(e, _) | TypeKind::Slice(e) => return visit(&e.kind, tb, seen, out),
+            TypeKind::Array(e, _) | TypeKind::Slice(e) | TypeKind::Vec(e) | TypeKind::Box(e) => {
+                return visit(&e.kind, tb, seen, out);
+            }
             TypeKind::Ref { inner, .. } => return visit(&inner.kind, tb, seen, out),
             TypeKind::Named { .. } => {}
             _ => return,
@@ -319,6 +342,17 @@ fn type_defs(tb: &Tables, extra: &[TypeKind]) -> String {
             }
         }
     }
+    let mut seen = BTreeSet::new();
+    let mut out = String::new();
+    for t in all_types(tb, extra) {
+        visit(t, tb, &mut seen, &mut out);
+    }
+    out
+}
+
+/// The types of the program's values: its expressions, locals and
+/// signatures, and the instance types `extra`.
+fn all_types<'a>(tb: &'a Tables, extra: &'a [TypeKind]) -> Vec<&'a TypeKind> {
     let mut all: Vec<&TypeKind> = tb.types.values().collect();
     all.extend(tb.locals.values().flat_map(|m| m.values()));
     for sig in tb.fns.values() {
@@ -326,9 +360,100 @@ fn type_defs(tb: &Tables, extra: &[TypeKind]) -> String {
         all.push(&sig.ret);
     }
     all.extend(extra);
+    all
+}
+
+/// The drop glue of every type that owns heap memory (ADR-0047 §4):
+/// `@"bmb_drop.<type>"(ptr %p)` drops the value at `%p`. A `Vec` frees
+/// its buffer (its elements own nothing yet, backlog 2O-03), a `Box`
+/// drops its value and frees it, a struct drops its fields in
+/// declaration order, an enum the payloads of its variant in order.
+fn drop_glue(tb: &Tables, extra: &[TypeKind]) -> String {
+    fn visit(t: &TypeKind, tb: &Tables, seen: &mut BTreeSet<String>, out: &mut String) {
+        if crate::check::has_param(t) {
+            return;
+        }
+        match t {
+            TypeKind::Array(e, _) | TypeKind::Slice(e) => return visit(&e.kind, tb, seen, out),
+            TypeKind::Ref { inner, .. } => return visit(&inner.kind, tb, seen, out),
+            TypeKind::Vec(_) | TypeKind::Box(_) | TypeKind::Named { .. } => {}
+            _ => return,
+        }
+        if !crate::check::is_move(t, &tb.adts) || !seen.insert(ty_str(t)) {
+            return;
+        }
+        let owns = |x: &TypeKind| crate::check::is_move(x, &tb.adts);
+        let mut body = String::new();
+        let mut inner: Vec<TypeKind> = Vec::new();
+        match t {
+            TypeKind::Vec(_) => {
+                body.push_str("  %b = load ptr, ptr %p\n  call void @free(ptr %b)\n");
+            }
+            TypeKind::Box(e) => {
+                body.push_str("  %h = load ptr, ptr %p\n");
+                if owns(&e.kind) {
+                    let _ = writeln!(body, "  call void {}(ptr %h)", glue(&e.kind));
+                    inner.push(e.kind.clone());
+                }
+                body.push_str("  call void @free(ptr %h)\n");
+            }
+            _ => {
+                if let Some(fs) = struct_fields(t, tb) {
+                    for (k, (_, ft)) in fs.iter().enumerate() {
+                        if owns(ft) {
+                            let _ = writeln!(
+                                body,
+                                "  %f{k} = getelementptr inbounds {}, ptr %p, i32 0, i32 {k}\n  call void {}(ptr %f{k})",
+                                data_ty(t),
+                                glue(ft)
+                            );
+                            inner.push(ft.clone());
+                        }
+                    }
+                } else {
+                    let vs = enum_variants(t, tb).unwrap_or_default();
+                    let _ = writeln!(body, "  %tag = load i64, ptr %p");
+                    let mut cases = String::new();
+                    let mut arms = String::new();
+                    for (k, (v, ps)) in vs.iter().enumerate() {
+                        if !ps.iter().any(owns) {
+                            continue;
+                        }
+                        let _ = write!(cases, " i64 {k}, label %v{k}");
+                        let _ = writeln!(arms, "v{k}:");
+                        for (j, pt) in ps.iter().enumerate() {
+                            if owns(pt) {
+                                let _ = writeln!(
+                                    arms,
+                                    "  %v{k}.{j} = getelementptr inbounds {}, ptr %p, i32 0, i32 {}\n  call void {}(ptr %v{k}.{j})",
+                                    view_ty(t, v),
+                                    j + 1,
+                                    glue(pt)
+                                );
+                                inner.push(pt.clone());
+                            }
+                        }
+                        let _ = writeln!(arms, "  br label %done");
+                    }
+                    let _ = write!(
+                        body,
+                        "  switch i64 %tag, label %done [{cases} ]\n{arms}done:\n"
+                    );
+                }
+            }
+        }
+        let _ = writeln!(
+            out,
+            "define internal void {}(ptr %p) {{\nentry:\n{body}  ret void\n}}",
+            glue(t)
+        );
+        for x in &inner {
+            visit(x, tb, seen, out);
+        }
+    }
     let mut seen = BTreeSet::new();
     let mut out = String::new();
-    for t in all {
+    for t in all_types(tb, extra) {
         visit(t, tb, &mut seen, &mut out);
     }
     out
@@ -415,9 +540,10 @@ struct Gen<'p> {
     slots: BTreeMap<String, Slot>,
     /// Runtime checks emitted (unproved obligations), for reporting.
     checks: u32,
-    /// Temporary `Vec` headers read but not moved, freed when their
-    /// region (statement, block value, arm, operand, loop condition) ends.
-    pending: Vec<String>,
+    /// Temporaries that own heap memory (a `Vec` header, a `Box`, a data
+    /// value holding one) read but not moved, dropped when their region
+    /// (statement, block value, arm, operand, loop condition) ends.
+    pending: Vec<(String, TypeKind)>,
     /// The byte strings of this function as private constants, emitted with
     /// its IR (so a cached fragment carries them).
     globals: String,
@@ -608,7 +734,7 @@ impl<'p> Gen<'p> {
     /// data value is its address.
     fn read(&mut self, ptr: &str, t: &TypeKind) -> CVal {
         match value_ty(t) {
-            TypeKind::Named { .. } | TypeKind::Vec(_) => CVal::Ptr {
+            TypeKind::Named { .. } | TypeKind::Vec(_) | TypeKind::Box(_) => CVal::Ptr {
                 ptr: ptr.to_string(),
                 ty: value_ty(t).clone(),
             },
@@ -675,9 +801,24 @@ impl<'p> Gen<'p> {
                 Slot::Data { ptr, ty } => (ptr, ty),
                 _ => unreachable!("a scalar place has its own path"),
             },
-            ExprKind::Deref(x) | ExprKind::Ref { expr: x, .. } => self.place(x),
+            // `*b` of a `Box` is the place at its address; `*r` of a
+            // reference (only a parameter is one) is the place it names.
+            ExprKind::Deref(x) => {
+                let (p, t) = self.place(x);
+                let reference = matches!(&x.kind, ExprKind::Var(id)
+                    if matches!(self.local_ty(&id.name), Some(TypeKind::Ref { .. })));
+                match t {
+                    TypeKind::Box(inner) if !reference => (self.unbox(&p), inner.kind),
+                    t => (p, t),
+                }
+            }
+            ExprKind::Ref { expr: x, .. } => self.place(x),
             ExprKind::Field { base, name } => {
-                let (bp, bt) = self.place(base);
+                let (mut bp, mut bt) = self.place(base);
+                while let TypeKind::Box(inner) = bt {
+                    bp = self.unbox(&bp);
+                    bt = inner.kind;
+                }
                 let (k, ft) = self.field_of(&bt, &name.name);
                 (self.field_ptr(&bp, &bt, k), ft)
             }
@@ -731,13 +872,23 @@ impl<'p> Gen<'p> {
     }
 
     /// A `match`: the tag selects the arm; each binding is a copy of its
-    /// payload position; the arms' values meet in one slot.
+    /// payload position; the arms' values meet in one slot. A `match` that
+    /// moves its scrutinee (`MoveInfo::consumed`) drops the owned payloads
+    /// an arm does not bind at its start, and the bindings still owned at
+    /// its end; one that only reads a temporary drops it afterwards.
     fn match_expr(&mut self, e: &Expr, scrut: &Expr, arms: &[Arm]) -> CVal {
         let rt = self.ty(e);
         let slot = self.result_slot(&rt);
-        let CVal::Ptr { ptr: sp, ty: st } = self.expr(scrut) else {
+        let sv = self.expr(scrut);
+        let CVal::Ptr { ptr: sp, ty: st } = sv.clone() else {
             unreachable!("match on an enum value")
         };
+        let info = self.t.moves.get(&self.base);
+        let consumed =
+            info.is_some_and(|m| m.consumed.contains(&(e.span.file, e.span.lo, e.span.hi)));
+        if !consumed {
+            self.read_temp(scrut, &sv, &st);
+        }
         let vs = enum_variants(&st, self.t).expect("match on an enum");
         let tagp = self.field_ptr(&sp, &st, 0);
         let tag = self.t();
@@ -763,17 +914,38 @@ impl<'p> Gen<'p> {
             let v = a.pat.path.last().unwrap().name.clone();
             let ps = vs.iter().find(|(n, _)| *n == v).unwrap().1.clone();
             for (j, (b, pt)) in a.pat.binds.iter().zip(&ps).enumerate() {
-                let Some(id) = b else { continue };
+                let bound = b.is_some();
+                if !bound && !(consumed && crate::check::is_move(pt, &self.t.adts)) {
+                    continue;
+                }
                 let fp = self.t();
                 self.emit(format!(
                     "{fp} = getelementptr inbounds {}, ptr {sp}, i32 0, i32 {}",
                     view_ty(&st, &v),
                     j + 1
                 ));
-                self.bind(&id.name, &fp, pt);
+                match b {
+                    Some(id) => self.bind(&id.name, &fp, pt),
+                    None => self.drop_at(&fp, pt),
+                }
             }
             let v = self.region(|g| g.expr(&a.body));
             self.store_result(&slot, v, &rt);
+            let owned = self
+                .t
+                .moves
+                .get(&self.base)
+                .and_then(|m| {
+                    m.arm_drops
+                        .get(&(a.body.span.file, a.body.span.lo, a.body.span.hi))
+                })
+                .cloned()
+                .unwrap_or_default();
+            for n in owned {
+                if let Some(Slot::Data { ptr, ty }) = self.slots.get(&n).cloned() {
+                    self.drop_at(&ptr, &ty);
+                }
+            }
             self.emit(format!("br label %{end}"));
         }
         self.block(&end);
@@ -783,7 +955,7 @@ impl<'p> Gen<'p> {
     /// A new local `name` holding a copy of the value of type `t` at `src`.
     fn bind(&mut self, name: &str, src: &str, t: &TypeKind) {
         let slot = match value_ty(t) {
-            TypeKind::Named { .. } => {
+            t if is_mem(t) => {
                 let ptr = self.temp(t);
                 self.copy(&ptr, src, t);
                 Slot::Data {
@@ -1067,6 +1239,9 @@ impl<'p> Gen<'p> {
             {
                 self.vec_new(e, args)
             }
+            ExprKind::Call { path, args, .. } if crate::check::is_box_new(path) => {
+                self.box_new(e, args)
+            }
             ExprKind::Call { path, args, .. } if self.is_variant(path) => {
                 let t = self.ty(e);
                 self.variant(&t, &path.last().unwrap().name, args)
@@ -1128,7 +1303,13 @@ impl<'p> Gen<'p> {
                 self.load_result(slot, &ty)
             }
             ExprKind::Block(b) => self.block_expr(b),
-            ExprKind::Ref { expr, .. } => self.expr(expr),
+            // `&f()`: the temporary lives to the end of the region.
+            ExprKind::Ref { expr, .. } => {
+                let v = self.expr(expr);
+                let t = self.ty(expr);
+                self.read_temp(expr, &v, value_ty(&t));
+                v
+            }
             ExprKind::Array(_) | ExprKind::Repeat { .. } if matches!(&self.ty(e), TypeKind::Array(el, _) if is_mem_elem(&el.kind)) =>
             {
                 let ty = self.ty(e);
@@ -1170,13 +1351,35 @@ impl<'p> Gen<'p> {
                 }
                 CVal::Ptr { ptr: tmp, ty: t }
             }
+            // Fields project through `Box`es (ADR-0047 §1).
             ExprKind::Field { base, name } => {
-                let CVal::Ptr { ptr, ty } = self.expr(base) else {
+                let bv = self.expr(base);
+                let CVal::Ptr { mut ptr, mut ty } = bv.clone() else {
                     unreachable!("field of a struct value")
                 };
+                let temp = self.read_temp(base, &bv, &ty);
+                while let TypeKind::Box(inner) = ty {
+                    ptr = self.unbox(&ptr);
+                    ty = inner.kind;
+                }
                 let (k, ft) = self.field_of(&ty, &name.name);
                 let p = self.field_ptr(&ptr, &ty, k);
-                self.read(&p, &ft)
+                let v = self.read(&p, &ft);
+                if temp { self.keep(v, &ft) } else { v }
+            }
+            // `*b` of a `Box`: the value at its address.
+            ExprKind::Deref(x) if matches!(self.ty(x), TypeKind::Box(_)) => {
+                let bv = self.expr(x);
+                let CVal::Ptr { ptr, ty } = bv.clone() else {
+                    unreachable!("a Box value")
+                };
+                let temp = self.read_temp(x, &bv, &ty);
+                let TypeKind::Box(inner) = ty else {
+                    unreachable!("a Box value")
+                };
+                let h = self.unbox(&ptr);
+                let v = self.read(&h, &inner.kind);
+                if temp { self.keep(v, &inner.kind) } else { v }
             }
             // A reference denotes its value (references are second-class).
             ExprKind::Deref(x) => self.expr(x),
@@ -1240,9 +1443,85 @@ impl<'p> Gen<'p> {
             unreachable!("a Vec value")
         };
         if !Self::is_place(e) {
-            self.pending.push(ptr.clone());
+            let t = self.ty(e);
+            self.pending.push((ptr.clone(), value_ty(&t).clone()));
         }
         ptr
+    }
+
+    /// Whether `e` produces a value of its own (a call, a literal, a block,
+    /// `Box::new(..)`), not a place or a part of one.
+    fn fresh(e: &Expr) -> bool {
+        !matches!(
+            e.kind,
+            ExprKind::Var(_)
+                | ExprKind::Field { .. }
+                | ExprKind::Deref(_)
+                | ExprKind::Index { .. }
+                | ExprKind::Ref { .. }
+        )
+    }
+
+    /// A temporary `v` of type `t` from expression `e` that is read, not
+    /// moved: dropped when the region ends, if it owns heap memory.
+    fn read_temp(&mut self, e: &Expr, v: &CVal, t: &TypeKind) -> bool {
+        if let CVal::Ptr { ptr, .. } = v
+            && Self::fresh(e)
+            && crate::check::is_move(t, &self.t.adts)
+        {
+            self.pending.push((ptr.clone(), t.clone()));
+            return true;
+        }
+        false
+    }
+
+    /// Drops the value of type `t` at `ptr` if it owns heap memory.
+    fn drop_at(&mut self, ptr: &str, t: &TypeKind) {
+        let t = value_ty(t);
+        if crate::check::is_move(t, &self.t.adts) {
+            self.emit(format!("call void {}(ptr {ptr})", glue(t)));
+        }
+    }
+
+    /// The address of the value in the `Box` whose cell is at `cell`.
+    fn unbox(&mut self, cell: &str) -> String {
+        let h = self.t();
+        self.emit(format!("{h} = load ptr, ptr {cell}"));
+        h
+    }
+
+    /// `v` read from memory that may be dropped before it is used: an
+    /// array is copied out now (data values are copied by `detach`).
+    fn keep(&mut self, v: CVal, t: &TypeKind) -> CVal {
+        match v {
+            CVal::Arr { ptr, len } => {
+                let tmp = self.temp(t);
+                self.copy(&tmp, &ptr, t);
+                let _ = ptr;
+                CVal::Arr { ptr: tmp, len }
+            }
+            v => v,
+        }
+    }
+
+    /// `Box::new(v)` (ADR-0047 §4): `v` is evaluated, then copied into
+    /// memory from `malloc`; the value is the cell holding its address.
+    fn box_new(&mut self, e: &Expr, args: &[Expr]) -> CVal {
+        let t = self.ty(e);
+        let TypeKind::Box(inner) = &t else {
+            unreachable!("Box::new has a Box type")
+        };
+        let inner = inner.kind.clone();
+        let v = self.expr(&args[0]);
+        let h = self.t();
+        self.emit(format!(
+            "{h} = call ptr @bmb_box_alloc(i64 {})",
+            size_of(&inner)
+        ));
+        self.put(v, &h, &inner);
+        let cell = self.temp(&t);
+        self.emit(format!("store ptr {h}, ptr {cell}"));
+        CVal::Ptr { ptr: cell, ty: t }
     }
 
     fn is_place(e: &Expr) -> bool {
@@ -1266,8 +1545,8 @@ impl<'p> Gen<'p> {
             return v;
         }
         let v = self.detach(v);
-        for h in self.pending.split_off(mark) {
-            self.emit(format!("call void @bmb_vec_free(ptr {h})"));
+        for (h, t) in self.pending.split_off(mark) {
+            self.drop_at(&h, &t);
         }
         v
     }
@@ -1434,8 +1713,8 @@ impl<'p> Gen<'p> {
             return;
         };
         for n in names {
-            if let Some(Slot::Data { ptr, .. }) = self.slots.get(&n).cloned() {
-                self.emit(format!("call void @bmb_vec_free(ptr {ptr})"));
+            if let Some(Slot::Data { ptr, ty }) = self.slots.get(&n).cloned() {
+                self.drop_at(&ptr, &ty);
             }
         }
     }
@@ -1825,7 +2104,7 @@ impl<'p> Gen<'p> {
                 CVal::Ptr { ptr, ty }
                     if matches!(
                         param_tys.get(k),
-                        Some(TypeKind::Named { .. } | TypeKind::Vec(_))
+                        Some(TypeKind::Named { .. } | TypeKind::Vec(_) | TypeKind::Box(_))
                     ) =>
                 {
                     let tmp = self.temp(&ty);
@@ -2044,7 +2323,7 @@ impl<'p> Gen<'p> {
                     Slot::Data { ptr, ty } => {
                         let v = self.expr(value);
                         if self.replaces(*span) {
-                            self.emit(format!("call void @bmb_vec_free(ptr {ptr})"));
+                            self.drop_at(&ptr, &ty);
                         }
                         self.put(v, &ptr, &ty);
                     }
@@ -2075,7 +2354,7 @@ impl<'p> Gen<'p> {
                     let v = self.expr(value);
                     let (p, t) = self.place(target);
                     if self.replaces(*span) {
-                        self.emit(format!("call void @bmb_vec_free(ptr {p})"));
+                        self.drop_at(&p, &t);
                     }
                     self.put(v, &p, &t);
                 }
@@ -2095,12 +2374,11 @@ impl<'p> Gen<'p> {
             }
             // Proof-only statement: no code.
             Stmt::Assert { .. } => {}
+            // A discarded value is dropped (a local named here is moved).
             Stmt::Expr(e) => {
                 let v = self.expr(e);
-                if is_vec(&self.ty(e))
-                    && let CVal::Ptr { ptr, .. } = v
-                {
-                    self.emit(format!("call void @bmb_vec_free(ptr {ptr})"));
+                if let CVal::Ptr { ptr, ty } = v {
+                    self.drop_at(&ptr, &ty);
                 }
             }
         }
@@ -2157,6 +2435,12 @@ pub fn emit_with(
         || t.locals
             .values()
             .any(|m| m.values().any(crate::verify::holds_vec));
+    let owns = |x: &TypeKind| crate::check::is_move(value_ty(x), &t.adts);
+    let uses_heap =
+        uses_vec || t.types.values().any(owns) || t.locals.values().any(|m| m.values().any(owns));
+    if uses_heap {
+        ir.push_str(HEAP_RUNTIME);
+    }
     if uses_vec {
         ir.push_str(VEC_RUNTIME);
     }
@@ -2393,7 +2677,8 @@ pub fn emit_with(
         }
     }
     let extra: Vec<TypeKind> = used_types.into_values().collect();
-    ir.insert_str(types_at, &type_defs(t, &extra));
+    let glue = drop_glue(t, &extra);
+    ir.insert_str(types_at, &format!("{}{glue}", type_defs(t, &extra)));
     if let Some(m) = &main {
         let _ = write!(
             ir,

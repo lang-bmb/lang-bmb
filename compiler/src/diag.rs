@@ -67,6 +67,10 @@ pub const CODES: &[(&str, &str)] = &[
         "E0237",
         "a call of a generic function names its type arguments: `f::<T>(..)`",
     ),
+    (
+        "E0238",
+        "`Rc`, `RefCell`, `Cell` and `Arc` are not used: values have one owner",
+    ),
     // E0220-E0233: Rust habits around data types (ADR-0026 §5)
     ("E0220", "`#[derive(..)]` is not used"),
     (
@@ -158,8 +162,11 @@ pub const CODES: &[(&str, &str)] = &[
         "E0412",
         "`T::try_from(x)` takes an integer and is used as `.unwrap()` or `.ok()`",
     ),
-    ("E0413", "use of a moved `Vec`"),
-    ("E0414", "a `Vec` is moved on some paths and not on others"),
+    ("E0413", "use of a moved value, or a move out of a place"),
+    (
+        "E0414",
+        "a value that moves is moved on some paths and not on others",
+    ),
     (
         "E0420",
         "malformed data type: wrong type arguments, or no field or variant",
