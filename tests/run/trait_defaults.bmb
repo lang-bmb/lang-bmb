@@ -1,0 +1,92 @@
+#[summary("trait 기본 본문: 한 번 증명, 빠진 impl은 기본으로, 재정의는 정제 (2T-07c)")]
+mod df {
+    trait Shape {
+        #[effects(pure)]
+        fn area(self: &Self) -> (r: i64)
+            ensures scored::<Self>(self, r);
+
+        spec fn label(self: &Self) -> i64 {
+            7
+        }
+
+        spec fn model(self: &Self) -> i64;
+
+        #[effects(pure)]
+        #[uses(doubled, scored)]
+        fn twice(self: &Self) -> (r: i64)
+            ensures doubled::<Self>(self, r),
+        {
+            Shape::area(self).saturating_mul(2)
+        }
+    }
+
+    struct Big { s: i64 }
+
+    impl Shape for Big {
+        #[effects(pure)]
+        #[uses(Shape::model, scored)]
+        fn area(self: &Big) -> (r: i64)
+            ensures scored::<Big>(self, r),
+        {
+            self.s
+        }
+
+        spec fn label(self: &Big) -> i64 {
+            9
+        }
+
+        spec fn model(self: &Big) -> i64 {
+            self.s
+        }
+
+        #[effects(pure)]
+        #[uses(Shape::model, doubled)]
+        fn twice(self: &Big) -> (r: i64)
+            ensures doubled::<Big>(self, r),
+        {
+            self.s.saturating_add(self.s)
+        }
+    }
+
+    struct Sq { s: i64 }
+
+    impl Shape for Sq {
+        #[effects(pure)]
+        #[uses(Shape::model, scored)]
+        fn area(self: &Sq) -> (r: i64)
+            ensures scored::<Sq>(self, r),
+        {
+            self.s
+        }
+
+        spec fn model(self: &Sq) -> i64 {
+            self.s
+        }
+    }
+
+    spec fn doubled<T: Copy + Shape>(x: &T, r: i64) -> bool {
+        r == Shape::model(x).saturating_mul(2)
+    }
+
+    #[effects(pure)]
+    #[uses(Shape::label)]
+    fn labels(q: Sq, b: Big) -> () {
+        assert(Shape::label(&q) == 7);
+        assert(Shape::label(&b) == 9);
+    }
+
+    #[effects(io)]
+    #[uses(Shape::model, doubled)]
+    fn main() -> () {
+        let q: Sq = Sq { s: 21 };
+        let t: i64 = Shape::twice(&q);
+        assert(t == 42);
+        print_i64(t);
+        let b: Big = Big { s: 5 };
+        print_i64(Shape::twice(&b));
+    }
+
+    spec fn scored<T: Copy + Shape>(x: &T, r: i64) -> bool {
+        r == Shape::model(x)
+    }
+}

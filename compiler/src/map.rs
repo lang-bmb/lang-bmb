@@ -297,6 +297,13 @@ fn walk(m: &Mod, prefix: &str, t: &Tables, units: &mut BTreeMap<String, Unit>) {
         )
         .chain(m.types.iter().map(|t| format!("{mp}::{}", t.name.name)))
         .chain(m.traits.iter().map(|t| format!("{mp}::{}", t.name.name)))
+        .chain(m.traits.iter().flat_map(|t| {
+            let mp = &mp;
+            t.fns
+                .iter()
+                .filter(|tf| tf.has_body)
+                .map(move |tf| format!("{mp}::{}::{}", t.name.name, tf.f.name.name))
+        }))
         .chain(
             m.trait_impls
                 .iter()

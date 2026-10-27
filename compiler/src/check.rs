@@ -123,6 +123,9 @@ pub struct FnSig {
     /// A method of a trait declaration (`unit::Trait::f`): its first type
     /// parameter is `Self` (ADR-0046 §2).
     pub trait_of: Option<String>,
+    /// A trait method with a default body (ADR-0046 §2, backlog 2T-07c):
+    /// an impl that does not define it runs this one.
+    pub default: bool,
     /// The definition's span (`defs` finds trait `impl` functions by it).
     pub span: Span,
 }
@@ -181,7 +184,13 @@ pub fn dispatch(
         .filter(|i| &i.trait_path == tr)
         .find_map(|i| i.matches(self_ty).map(|m| (i, m)))?;
     let path = i.fn_path(name);
-    fns.get(&path)?;
+    if !fns.contains_key(&path) {
+        // The impl leaves it out: the trait's default body runs, for the
+        // impl's type (backlog 2T-07c).
+        return fns[target]
+            .default
+            .then(|| (target.to_string(), args.to_vec()));
+    }
     let mut out: Vec<TypeKind> = i
         .generics
         .iter()
@@ -192,8 +201,8 @@ pub fn dispatch(
 }
 
 /// Every definition with a body, in walk order (in each unit, its
-/// sub-units first, then its functions, `impl T` functions and trait `impl`
-/// functions): (path, unit, syntax). A trait `impl` function has the path
+/// sub-units first, then its functions, `impl T` functions, trait `impl`
+/// functions and default method bodies): (path, unit, syntax). A trait `impl` function has the path
 /// the checker gave it (`<T as Trait>::f`); one it rejected is left out.
 pub fn defs_of<'p>(
     p: &'p Program,
@@ -232,6 +241,16 @@ pub fn defs_of<'p>(
                 if let Some(path) = by_span.get(&(f.span.file, f.span.lo, f.span.hi)) {
                     out.push((path.to_string(), mp.clone(), f));
                 }
+            }
+        }
+        // Default method bodies (backlog 2T-07c), generic in `Self`.
+        for t in &m.traits {
+            for tf in t.fns.iter().filter(|tf| tf.has_body) {
+                out.push((
+                    format!("{mp}::{}::{}", t.name.name, tf.f.name.name),
+                    mp.clone(),
+                    &tf.f,
+                ));
             }
         }
     }
@@ -488,6 +507,7 @@ impl<'a> Checker<'a> {
                 builtin: true,
                 in_impl: false,
                 trait_of: None,
+                default: false,
                 span: Span::default(),
                 generics: Vec::new(),
                 impl_generics: 0,
@@ -508,6 +528,7 @@ impl<'a> Checker<'a> {
                 builtin: true,
                 in_impl: false,
                 trait_of: None,
+                default: false,
                 span: Span::default(),
                 generics: Vec::new(),
                 impl_generics: 0,
@@ -525,6 +546,7 @@ impl<'a> Checker<'a> {
                 builtin: true,
                 in_impl: false,
                 trait_of: None,
+                default: false,
                 span: Span::default(),
                 generics: Vec::new(),
                 impl_generics: 0,
@@ -784,8 +806,8 @@ impl<'a> Checker<'a> {
 
     /// The method signatures of the unit's traits (ADR-0046 §2): generic in
     /// `Self` (bounded by the trait), then their own parameters. Their
-    /// contracts are checked with the bodies (`check_fn`); a `decreases` is
-    /// E0207, and so is a default body until backlog 2T-07c.
+    /// contracts and default bodies are checked with the other bodies
+    /// (`check_fn`); a `decreases` is E0207.
     fn collect_trait_sigs(&mut self, m: &Mod, prefix: &str) {
         let mp = format!("{prefix}{}", m.name.name);
         for sub in &m.mods {
@@ -815,19 +837,6 @@ impl<'a> Checker<'a> {
                     continue;
                 }
                 names.push(f.name.name.clone());
-                if tf.has_body {
-                    self.diags.push(
-                        Diag::new(
-                            "E0207",
-                            f.body.span,
-                            "default method bodies are not supported yet (backlog 2T-07c)",
-                        )
-                        .fix(
-                            "end the signature with `;` and define the method in each `impl`",
-                            None,
-                        ),
-                    );
-                }
                 // A call through a bound carries no measure (ADR-0046 §4):
                 // recursion through it is rejected (`trait_cycles`).
                 if let Some(d) = &f.decreases {
@@ -854,6 +863,7 @@ impl<'a> Checker<'a> {
                 );
                 if let Some(sig) = self.fns.get_mut(&format!("{path}::{}", f.name.name)) {
                     sig.trait_of = Some(path.clone());
+                    sig.default = tf.has_body;
                 }
             }
             if let Some(x) = self.traits.get_mut(&path) {
@@ -874,6 +884,12 @@ impl<'a> Checker<'a> {
         let missing: Vec<&str> = methods
             .iter()
             .filter(|m| !ti.fns.iter().any(|f| f.name.name == **m))
+            .filter(|m| {
+                !self
+                    .fns
+                    .get(&format!("{tr}::{m}"))
+                    .is_some_and(|s| s.default)
+            })
             .map(|m| m.as_str())
             .collect();
         if !missing.is_empty() {
@@ -1970,6 +1986,7 @@ impl<'a> Checker<'a> {
                     builtin: false,
                     in_impl,
                     trait_of: None,
+                    default: false,
                     span: f.span,
                 },
             );
@@ -2265,8 +2282,8 @@ impl<'a> Checker<'a> {
             }
         }
 
-        // A trait method declaration has no body (ADR-0046 §1).
-        if sig.trait_of.is_some() {
+        // A trait method declaration without a default body (ADR-0046 §1).
+        if sig.trait_of.is_some() && !sig.default {
             self.tparams.clear();
             return;
         }
