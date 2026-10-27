@@ -1,0 +1,137 @@
+#[summary("스칼라 참조 매개변수: 지역·필드·원소·제네릭 인스턴스 (ADR-0054)")]
+mod g {
+    struct Acc { total: i64, flag: bool, b: u8 }
+
+    #[effects(pure)]
+    #[uses(grew, small)]
+    fn bump(x: &mut i64) -> ()
+        requires small(*x),
+        ensures grew(*old(x), *x),
+    {
+        *x = *x + 1;
+    }
+
+    #[effects(pure)]
+    fn flip(b: &mut bool) -> () {
+        *b = !*b;
+    }
+
+    #[effects(pure)]
+    fn get<T: Copy>(x: &T) -> T {
+        *x
+    }
+
+    spec fn grew(old_x: i64, x: i64) -> bool {
+        x == old_x + 1
+    }
+
+    #[effects(pure)]
+    fn inc8(b: &mut u8) -> () {
+        if *b < 255 {
+            *b = *b + 1;
+        }
+    }
+
+    #[effects(io)]
+    #[uses(grew, small)]
+    fn main() -> () {
+        let mut a: i64 = 5;
+        print_i64(get::<i64>(&a));
+        bump(&mut a);
+        print_i64(a);
+        print_i64(twice(&a));
+        let mut f: bool = false;
+        flip(&mut f);
+        if get::<bool>(&f) {
+            print_i64(1);
+        } else {
+            print_i64(0);
+        }
+        let mut acc: Acc = Acc { total: 7, flag: true, b: 254 };
+        bump(&mut acc.total);
+        flip(&mut acc.flag);
+        inc8(&mut acc.b);
+        inc8(&mut acc.b);
+        print_i64(acc.total);
+        if acc.flag {
+            print_i64(1);
+        } else {
+            print_i64(0);
+        }
+        print_u64(u64::try_from(acc.b).unwrap());
+        let mut xs: [u8; 3] = [1, 2, 255];
+        inc8(&mut xs[0]);
+        inc8(&mut xs[2]);
+        print_u64(u64::try_from(xs[0]).unwrap());
+        print_u64(u64::try_from(get::<u8>(&xs[2])).unwrap());
+        sz::run();
+    }
+
+    spec fn small(x: i64) -> bool {
+        x < 1000
+    }
+
+    #[effects(pure)]
+    fn twice(x: &i64) -> i64 {
+        get::<i64>(x).saturating_mul(2)
+    }
+}
+
+#[summary("정수 타입과 bool의 trait impl: `self: &i64` 수신자 (ADR-0054)")]
+mod sz {
+    trait Size {
+        #[effects(pure)]
+        fn reset(self: &mut Self) -> ();
+
+        #[effects(pure)]
+        fn size(self: &Self) -> u64;
+    }
+
+    impl Size for bool {
+        #[effects(pure)]
+        fn reset(self: &mut bool) -> () {
+            *self = false;
+        }
+
+        #[effects(pure)]
+        fn size(self: &bool) -> u64 {
+            1
+        }
+    }
+
+    impl Size for i64 {
+        #[effects(pure)]
+        fn reset(self: &mut i64) -> () {
+            *self = 0;
+        }
+
+        #[effects(pure)]
+        fn size(self: &i64) -> u64 {
+            8
+        }
+    }
+
+    #[effects(pure)]
+    fn both<T: Copy + Size>(a: T, b: T) -> u64 {
+        let mut x: T = a;
+        Size::reset(&mut x);
+        Size::size(&x).saturating_add(Size::size(&b))
+    }
+
+    #[effects(io)]
+    fn run() -> () {
+        let mut n: i64 = 41;
+        print_u64(Size::size(&n));
+        Size::reset(&mut n);
+        print_i64(n);
+        print_u64(both::<i64>(1, 2));
+        print_u64(both::<bool>(true, false));
+        let mut t: bool = true;
+        Size::reset(&mut t);
+        if t {
+            print_i64(1);
+        } else {
+            print_i64(0);
+        }
+    }
+}

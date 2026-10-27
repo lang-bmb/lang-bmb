@@ -1,0 +1,9 @@
+{"code":"E0810","severity":"error","message":"assertion may not hold in `g::bad_elem`; counterexample: v = 0","file":"fail/scalar_refs.bmb","line":14,"col":9,"end_line":14,"end_col":28}
+{"code":"E0810","severity":"error","message":"assertion may not hold in `g::bad_field`; counterexample: acc0 = Acc { total: 0, other: 0 }","file":"fail/scalar_refs.bmb","line":21,"col":9,"end_line":21,"end_col":41}
+{"code":"E0810","severity":"error","message":"assertion may not hold in `g::bad_local`; counterexample: a0 = 0","file":"fail/scalar_refs.bmb","line":28,"col":9,"end_line":28,"end_col":25}
+{"def":"g::any","status":"verified","obligations":0,"failed":0,"rlimit":0,"rlimit_max":0}
+{"def":"g::bad_elem","status":"failed","obligations":2,"failed":1,"rlimit":774,"rlimit_max":589}
+{"def":"g::bad_field","status":"failed","obligations":1,"failed":1,"rlimit":647,"rlimit_max":647}
+{"def":"g::bad_local","status":"failed","obligations":1,"failed":1,"rlimit":542,"rlimit_max":542}
+{"def":"g::bump","status":"verified","obligations":2,"failed":0,"rlimit":2834,"rlimit_max":1771}
+{"def":"g::good","status":"verified","obligations":7,"failed":0,"rlimit":7611,"rlimit_max":2278}

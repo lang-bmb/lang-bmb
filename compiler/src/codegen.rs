@@ -48,6 +48,14 @@ impl CVal {
     }
 }
 
+/// Where a scalar reference argument's temporary is copied back after the
+/// call (backlog 2T-08): a place in memory form, or an element of a scalar
+/// slice (its element kind and address).
+enum Back {
+    Mem(String),
+    Elem(&'static str, String),
+}
+
 #[derive(Clone)]
 enum Slot {
     Scalar {
@@ -324,6 +332,14 @@ fn type_defs(tb: &Tables, extra: &[TypeKind]) -> String {
         visit(t, tb, &mut seen, &mut out);
     }
     out
+}
+
+/// Whether `t` is an integer type or `bool`.
+fn is_scalar_ty(t: &TypeKind) -> bool {
+    matches!(
+        t,
+        TypeKind::I64 | TypeKind::U64 | TypeKind::U8 | TypeKind::Usize | TypeKind::Bool
+    )
 }
 
 fn llty(t: &TypeKind) -> &'static str {
@@ -1786,9 +1802,17 @@ impl<'p> Gen<'p> {
             })
             .unwrap_or_default();
         let mut flat = Vec::new();
+        let mut write_back = Vec::new();
         for (k, a) in args.iter().enumerate() {
             let ty = self.ty(a);
             let by_value = matches!(param_tys.get(k), Some(TypeKind::Array(..)));
+            if let Some(TypeKind::Ref { mutable, inner }) = param_tys.get(k)
+                && is_scalar_ty(&inner.kind)
+            {
+                let ptr = self.scalar_ref(a, &inner.kind, *mutable, &mut write_back);
+                flat.push(format!("ptr {ptr}"));
+                continue;
+            }
             match self.expr(a) {
                 // A data value is passed as a private copy; a reference as
                 // the address of its place.
@@ -1826,14 +1850,13 @@ impl<'p> Gen<'p> {
             self.wants.push((key.clone(), target.clone(), csub));
             (fn_sym(&key), ret)
         };
-        if is_mem(&ret) || matches!(ret, TypeKind::Array(..)) {
+        let v = if is_mem(&ret) || matches!(ret, TypeKind::Array(..)) {
             // A data or array result comes back through the caller's memory.
             let out = self.temp(&ret);
             flat.insert(0, format!("ptr {out}"));
             self.emit(format!("call void {callee}({})", flat.join(", ")));
-            return self.read(&out, &ret);
-        }
-        if ret == TypeKind::Unit {
+            self.read(&out, &ret)
+        } else if ret == TypeKind::Unit {
             self.emit(format!("call void {callee}({})", flat.join(", ")));
             CVal::Unit
         } else {
@@ -1844,7 +1867,60 @@ impl<'p> Gen<'p> {
                 flat.join(", ")
             ));
             CVal::Imm(r)
+        };
+        for (tmp, back, t) in write_back {
+            let x = self.t();
+            self.emit(format!("{x} = load {}, ptr {tmp}", llty(&t)));
+            match back {
+                Back::Mem(place) => self.put(CVal::Imm(x), &place, &t),
+                Back::Elem(elem, p) => self.store_elem(elem, &x, &p),
+            }
         }
+        v
+    }
+
+    /// The address passed for a scalar reference argument `a` (backlog
+    /// 2T-08): a local's or a reference parameter's slot itself; for a
+    /// field or an element (stored in memory form), a temporary holding
+    /// its value, copied back after the call when `mutable` (references
+    /// are second-class, so nothing else sees the place meanwhile).
+    fn scalar_ref(
+        &mut self,
+        a: &Expr,
+        t: &TypeKind,
+        mutable: bool,
+        write_back: &mut Vec<(String, Back, TypeKind)>,
+    ) -> String {
+        let inner = match &a.kind {
+            ExprKind::Ref { expr, .. } => expr.as_ref(),
+            _ => a,
+        };
+        if let ExprKind::Var(id) = &inner.kind
+            && let Slot::Scalar { ptr, .. } = self.slots[&id.name].clone()
+        {
+            return ptr;
+        }
+        let tmp = self.alloca(llty(t));
+        let place = match &inner.kind {
+            ExprKind::Index { base, index }
+                if matches!(base.kind, ExprKind::Var(_)) && !is_mem_elem(t) =>
+            {
+                let (p, ety) = self.elem_ptr(inner, base, index);
+                let v = self.load_elem(ety, &p);
+                self.emit(format!("store {} {v}, ptr {tmp}", llty(t)));
+                if mutable {
+                    write_back.push((tmp.clone(), Back::Elem(ety, p), t.clone()));
+                }
+                return tmp;
+            }
+            _ => self.place(inner).0,
+        };
+        let v = self.read(&place, t).imm();
+        self.emit(format!("store {} {v}, ptr {tmp}", llty(t)));
+        if mutable {
+            write_back.push((tmp.clone(), Back::Mem(place), t.clone()));
+        }
+        tmp
     }
 
     // ---------- statements ----------
@@ -1937,6 +2013,18 @@ impl<'p> Gen<'p> {
                 value,
                 span,
             } => match &target.kind {
+                // `*x = v` through a scalar reference parameter (2T-08).
+                ExprKind::Deref(x) if matches!(&x.kind, ExprKind::Var(id) if matches!(self.slots[&id.name], Slot::Scalar { .. })) =>
+                {
+                    let ExprKind::Var(id) = &x.kind else {
+                        unreachable!()
+                    };
+                    let Slot::Scalar { ptr, ty } = self.slots[&id.name].clone() else {
+                        unreachable!()
+                    };
+                    let v = self.expr(value).imm();
+                    self.emit(format!("store {ty} {v}, ptr {ptr}"));
+                }
                 ExprKind::Var(id) => match self.slots[&id.name].clone() {
                     Slot::Scalar { ptr, ty } => {
                         let v = self.expr(value).imm();
@@ -2174,6 +2262,19 @@ pub fn emit_with(
                         Slot::Data {
                             ptr: format!("%\"{n}.ptr\""),
                             ty: value_ty(pty).clone(),
+                        },
+                    );
+                }
+                // `&T` / `&mut T` of a scalar (backlog 2T-08): the
+                // caller's slot, read and written through as the local's.
+                TypeKind::Ref { mutable, inner } if is_scalar_ty(&inner.kind) => {
+                    let attr = if *mutable { "noalias " } else { "readonly " };
+                    params.push(format!("ptr {attr}%\"{n}.ptr\""));
+                    g.slots.insert(
+                        n.clone(),
+                        Slot::Scalar {
+                            ptr: format!("%\"{n}.ptr\""),
+                            ty: llty(&inner.kind),
                         },
                     );
                 }

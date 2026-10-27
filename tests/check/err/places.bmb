@@ -3,7 +3,7 @@ mod places {
     spec fn mut_spec(a: &mut [i64]) -> bool { a.len() > 0 }
 
     #[effects(pure)]
-    fn ref_scalar(a: &i64) -> () {}
+    fn ref_unit(a: &()) -> () {}
 
     #[effects(pure)]
     fn bare_slice(a: [i64]) -> () {}

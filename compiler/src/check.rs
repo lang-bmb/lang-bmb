@@ -2328,11 +2328,24 @@ impl<'a> Checker<'a> {
                         self.err("E0402", t.span, "spec function parameters cannot be `&mut`");
                     }
                 }
+                // `&i64`, `&mut bool` (backlog 2T-08): a receiver of a
+                // trait impl for a scalar, an out-parameter.
+                k if is_scalar(k) => {
+                    if *mutable && kind == FnKind::Spec {
+                        self.err("E0402", t.span, "spec function parameters cannot be `&mut`");
+                    }
+                }
                 TypeKind::Error => {}
-                _ => self.err(
-                    "E0402",
-                    t.span,
-                    "references are `&[T]`, `&mut [T]`, `&T` or `&mut T` with `T` a scalar, struct or enum",
+                _ => self.diags.push(
+                    Diag::new(
+                        "E0402",
+                        t.span,
+                        "references are `&[T]`, `&mut [T]`, `&T` or `&mut T` with `T` a scalar, struct or enum",
+                    )
+                    .fix(
+                        "pass the value itself, or a reference to the scalar, struct, enum or slice that holds it",
+                        None,
+                    ),
                 ),
             },
             TypeKind::Named { path, .. }

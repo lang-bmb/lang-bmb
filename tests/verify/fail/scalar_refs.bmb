@@ -1,0 +1,60 @@
+#[summary("스칼라 참조 실패: 호출 뒤 바뀐 자리 (ADR-0054)")]
+mod g {
+    struct Acc { total: i64, other: i64 }
+
+    #[effects(pure)]
+    fn any(x: &mut i64) -> () {
+        *x = 0;
+    }
+
+    #[effects(pure)]
+    fn bad_elem(v: i64) -> () {
+        let mut xs: [i64; 2] = [v, 2];
+        any(&mut xs[0]);
+        assert(xs[0] == v);
+    }
+
+    #[effects(pure)]
+    fn bad_field(acc0: Acc) -> () {
+        let mut acc: Acc = acc0;
+        any(&mut acc.total);
+        assert(acc.total == acc0.total);
+    }
+
+    #[effects(pure)]
+    fn bad_local(a0: i64) -> () {
+        let mut a: i64 = a0;
+        any(&mut a);
+        assert(a == a0);
+    }
+
+    #[effects(pure)]
+    #[uses(grew, small)]
+    fn bump(x: &mut i64) -> ()
+        requires small(*x),
+        ensures grew(*old(x), *x),
+    {
+        *x = *x + 1;
+    }
+
+    #[effects(pure)]
+    #[uses(grew, small)]
+    fn good() -> () {
+        let mut acc: Acc = Acc { total: 7, other: 3 };
+        bump(&mut acc.total);
+        assert(acc.total == 8);
+        assert(acc.other == 3);
+        let mut xs: [i64; 2] = [1, 2];
+        bump(&mut xs[1]);
+        assert(xs[1] == 3);
+        assert(xs[0] == 1);
+    }
+
+    spec fn grew(old_x: i64, x: i64) -> bool {
+        x == old_x + 1
+    }
+
+    spec fn small(x: i64) -> bool {
+        x < 1000
+    }
+}
