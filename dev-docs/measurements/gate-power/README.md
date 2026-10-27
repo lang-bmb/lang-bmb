@@ -4,7 +4,7 @@
 
 ## 방법
 
-- `scripts/gate_power.py`: 변이체 31개(건전성을 깨는 것 23, 완전성을 깨는 것 1, 오컴파일 7). 각각 HEAD의 분리된 작업 트리에 하나만 적용하고 `cargo fmt` 뒤 게이트를 끝까지 돌린다. 게이트가 0이 아닌 값으로 끝나면 잡은 것이고, `detected_by`에 실패한 작업 이름을 남긴다.
+- `scripts/gate_power.py`: 변이체 35개(건전성을 깨는 것 26, 완전성을 깨는 것 1, 오컴파일 8). 31개는 1B-38, 4개(trait)는 2T-05. 각각 HEAD의 분리된 작업 트리에 하나만 적용하고 `cargo fmt` 뒤 게이트를 끝까지 돌린다. 게이트가 0이 아닌 값으로 끝나면 잡은 것이고, `detected_by`에 실패한 작업 이름을 남긴다.
 - 서식(`cargo fmt --check`)이나 컴파일 경고(clippy `-D warnings`)로만 실패하는 것은 시험이 잡은 것이 아니다. 첫 실행에서 이렇게 "잡힌" 변이체 3개(`v-mut-param-havoc-skipped`, `c-overflow-check-removed`, `c-bounds-check-removed`: 쓰이지 않는 변수)는 경고 없이 컴파일되게 고쳐 다시 돌렸다.
 - 원자료: `results.jsonl`(변이체마다 마지막 실행, `commit`이 그 실행의 HEAD). 한 번에 약 5분이라 전체가 여러 커밋(5a50b57 → 10a8b4f)에 걸쳤다. 다시 돌린 행은 시험을 더한 커밋이다.
 
@@ -22,6 +22,8 @@
 
 시험을 더한 뒤 31/31.
 
+**2T-05 (2026-10-27, 커밋 39b91295·61105a21).** 변이체 여섯(`v-mul-as-add`, `v-spec-lt-as-le`, `v-lt-as-le`, `v-ge-as-gt`, `c-bounds-check-ule`, `c-bounds-check-removed`)이 2T-02 뒤 소스에 더는 적용되지 않았다(비교가 `ord_term` 하나로 모였고, 스칼라·데이터 경계 검사가 두 벌이 됨). 아무도 몰랐으므로 게이트에 `power` 단계(`gate_power.py check`)를 더하고 여섯을 현재 코드로 다시 겨눴다. `v-spec-lt-as-le`는 명세와 코드가 같은 인코딩을 쓰게 되어 타입 매개변수 순서(`Ord` 경계)의 `<`를 겨눈다. trait 변이체 넷(`v-refine-post-dropped`, `v-refine-pre-dropped`, `v-default-spec-leaks`, `c-trait-call-undispatched`)을 더했다. 첫 실행에서 `v-default-spec-leaks`를 놓쳤는데 동치였다: 바꾼 `has_param` 검사 뒤의 `dispatch` 검사가 같은 경우를 막았다. 그 검사는 오히려 지나치게 보수적이어서(`Self = Wrap<T>`의 기본 본문도 막음) 빼고(`tests/run/trait_defaults`의 `wrapped`), 변이체는 `dispatch` 조건을 겨누게 고쳐 다시 돌렸다. 열 개 모두 잡음. 새 trait 퍼저(`test soundness_traits`)가 `v-refine-post-dropped`·`c-trait-call-undispatched`를 잡는다.
+
 | 변이체 | 종류 | 결함 | 게이트 |
 | --- | --- | --- | --- |
 | `v-read-index-le` | unsound | reading a[len] is allowed | 잡음: bench bcb, test verify |
@@ -30,10 +32,10 @@
 | `v-min-rem-dropped` | unsound | i64::MIN % -1 is never an obligation | 잡음: test verify |
 | `v-neg-overflow-dropped` | unsound | -i64::MIN is never an obligation | 잡음: test verify |
 | `v-sub-swapped` | unsound | a - b is encoded as b - a | 잡음: bench bcb, test soundness, bench brb weak, bench brb oracle, test incremental, bench m1b oracle, health, bench bvb weak, bench m1 harness tests, test lint, test stability, bench bvb oracle, test impact, test soundness_rec, test verify, bench m1 oracle, test codegen, bench m3 generator, bench bvb tests, test gate, test map |
-| `v-mul-as-add` | unsound | a * b is encoded as a + b | 잡음: test soundness_unsigned, bench bvb oracle, bench bvb weak, bench bvb tests, test soundness, test lint, test verify |
-| `v-spec-lt-as-le` | unsound | in contracts, a < b means a <= b | 잡음: bench bcb, test soundness_loops, bench brb oracle, health, bench m1b oracle, bench bvb weak, bench m1 harness tests, bench bvb oracle, test stability, test lint, test impact, test verify, bench bvb tests, test soundness_specs, bench m1 oracle, test codegen, bench m3 generator, test soundness, test gate |
-| `v-lt-as-le` | unsound | a < b is encoded as a <= b | 잡음: bench m1b oracle, test incremental, bench m1 harness tests, bench m1 oracle, bench bvb weak, bench bvb oracle, test soundness, bench brb weak, bench brb oracle, health, test soundness_loops, test lint, test soundness_rec, test verify, test codegen, bench bvb tests, bench m3 generator, test impact, bench bcb, test stability, test gate, test map |
-| `v-ge-as-gt` | unsound | a >= b is encoded as a > b | 잡음: bench m1b oracle, bench brb oracle, bench bvb weak, bench bvb oracle, bench m1 harness tests, bench brb weak, health, bench m1 oracle, test lint, bench bvb tests |
+| `v-mul-as-add` | unsound | a * b is encoded as a + b | 잡음: test verify, test lint, test stability, test soundness_data, test soundness_traits, test soundness, bench bvb oracle, bench bvb weak, bench bvb tests, health |
+| `v-spec-lt-as-le` | unsound | for a type parameter bounded by Ord, a < b means a <= b (contracts and code share `ord_term` since 2T-02) | 잡음: test verify |
+| `v-lt-as-le` | unsound | a < b is encoded as a <= b | 잡음: bench bcb, test incremental, health, test stability, test verify, test soundness_loops, test lint, bench brb weak, bench m1b oracle, bench brb oracle, bench bvb weak, test soundness, bench m1 harness tests, test impact, test soundness_data, test codegen, bench bvb oracle, test soundness_rec, test soundness_specs, bench m1 oracle, bench m3 generator, bench bvb tests, test gate, test map, test cli |
+| `v-ge-as-gt` | unsound | a >= b is encoded as a > b | 잡음: test incremental, bench m1b oracle, bench m1 harness tests, bench brb oracle, bench bvb weak, bench m1 oracle, bench bvb oracle, health, test verify, bench brb weak, test lint, test stability, test codegen, test soundness_unsigned, test impact, bench bcb, bench m3 generator, bench bvb tests, test soundness_specs |
 | `v-or-guard` | unsound | the right operand of || is assumed to run when the left is true | 잡음: bench brb oracle, health, test stability, test verify |
 | `v-element-range-dropped` | incomplete | array elements read lose their type range | 잡음: health, test stability, test verify |
 | `v-i64-range-plus-one` | unsound | i64 overflow by one is allowed | 잡음: test lint, test verify |
@@ -55,11 +57,15 @@
 | `c-bounds-check-ule` | miscompile | the runtime bounds check (unproved indexing) lets a[len] through | 잡음: test codegen |
 | `c-overflow-check-removed` | miscompile | overflow checks are dropped without a proof (nsw/nuw on unproved arithmetic) | 잡음: test lint, test codegen |
 | `c-bounds-check-removed` | miscompile | bounds checks are dropped without a proof | 잡음: test codegen |
+| `v-refine-post-dropped` | unsound | a trait impl's postconditions need not imply the trait's (E0817) | 잡음: test verify, test soundness_traits |
+| `v-refine-pre-dropped` | unsound | a trait impl may require more than the trait (E0817) | 잡음: test verify |
+| `v-default-spec-leaks` | unsound | a default spec body is revealed for a bounded `Self`, whose impl may override it | 잡음: test verify |
+| `c-trait-call-undispatched` | miscompile | a trait call with a known `Self` is not lowered to its impl's function | 잡음: test incremental, test soundness_traits, test codegen |
 
-검출: 31/31
-- unsound: 23/23
+검출: 35/35
+- unsound: 26/26
 - incomplete: 1/1
-- miscompile: 7/7
+- miscompile: 8/8
 
 ## 관찰
 
