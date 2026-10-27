@@ -1552,9 +1552,15 @@ impl<'a> Checker<'a> {
         }
     }
 
-    /// A type that contains itself by value has no finite size (heap types
-    /// come with backlog 2G).
+    /// Recursive types (ADR-0047 §1, backlog 2O-02). A type that contains
+    /// itself by value has no finite size (E0421: put the recursion in a
+    /// `Box`); one whose every value would be infinite has no value at all
+    /// (E0421: end the recursion in a variant). A generic type may contain
+    /// itself only with its own parameters, and not through another type
+    /// (instances would never end). A recursive type holds no array yet
+    /// (E0402: its specification equality would recurse without end).
     fn check_type_cycles(&mut self) {
+        /// The types `t` holds by value (`Box` and `Vec` break it).
         fn contained(t: &TypeKind, out: &mut Vec<String>) {
             match t {
                 TypeKind::Named { path, args } => {
@@ -1565,42 +1571,256 @@ impl<'a> Checker<'a> {
                         contained(&a.kind, out);
                     }
                 }
-                TypeKind::Array(e, _) | TypeKind::Box(e) => contained(&e.kind, out),
+                TypeKind::Array(e, _) => contained(&e.kind, out),
                 _ => {}
             }
         }
-        let mut edges: BTreeMap<String, Vec<String>> = BTreeMap::new();
-        for (p, a) in &self.adts {
-            let mut out = Vec::new();
+        /// Every user type `t` names, through anything.
+        fn named(t: &TypeKind, out: &mut Vec<(String, Vec<TypeKind>)>) {
+            match t {
+                TypeKind::Named { path, args } => {
+                    out.push((
+                        path.join("::"),
+                        args.iter().map(|a| a.kind.clone()).collect(),
+                    ));
+                    for a in args {
+                        named(&a.kind, out);
+                    }
+                }
+                TypeKind::Array(e, _) | TypeKind::Box(e) | TypeKind::Vec(e) => named(&e.kind, out),
+                _ => {}
+            }
+        }
+        let parts = |a: &Adt| -> Vec<TypeKind> {
             match &a.kind {
-                AdtKind::Struct(fs) => fs.iter().for_each(|(_, t)| contained(t, &mut out)),
-                AdtKind::Enum(vs) => vs
-                    .iter()
-                    .flat_map(|(_, ts)| ts)
-                    .for_each(|t| contained(t, &mut out)),
+                AdtKind::Struct(fs) => fs.iter().map(|(_, t)| t.clone()).collect(),
+                AdtKind::Enum(vs) => vs.iter().flat_map(|(_, ts)| ts.iter().cloned()).collect(),
+            }
+        };
+        let adts = self.adts.clone();
+        let mut edges: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        let mut uses: BTreeMap<String, Vec<(String, Vec<TypeKind>)>> = BTreeMap::new();
+        for (p, a) in &adts {
+            let mut out = Vec::new();
+            let mut all = Vec::new();
+            for t in parts(a) {
+                contained(&t, &mut out);
+                named(&t, &mut all);
             }
             edges.insert(p.clone(), out);
+            uses.insert(p.clone(), all);
         }
-        for (p, a) in &self.adts.clone() {
-            // Depth-first search from `p` for a path back to `p`.
-            let mut stack: Vec<String> = edges[p].clone();
+        let reach = |edges: &BTreeMap<String, Vec<String>>, p: &str| -> BTreeSet<String> {
+            let mut stack: Vec<String> = edges.get(p).cloned().unwrap_or_default();
             let mut seen = BTreeSet::new();
             while let Some(q) = stack.pop() {
-                if q == *p {
-                    self.diags.push(
-                        Diag::new("E0421", a.span, format!("`{p}` contains itself")).fix(
-                            "a recursive type, also through `Box` or `Vec`, comes with backlog 2O-02 (ADR-0047 §1)",
-                            None,
-                        ),
-                    );
-                    break;
-                }
                 if seen.insert(q.clone())
                     && let Some(next) = edges.get(&q)
                 {
                     stack.extend(next.iter().cloned());
                 }
             }
+            seen
+        };
+        let mut reported = BTreeSet::new();
+        for (p, a) in &adts {
+            if reach(&edges, p).contains(p) {
+                reported.insert(p.clone());
+                self.diags.push(
+                    Diag::new("E0421", a.span, format!("`{p}` contains itself"))
+                        .fix("hold the recursive part in a `Box<..>` (ADR-0047 §1)", None),
+                );
+            }
+        }
+        // Types with a finite value: the least fixpoint.
+        fn finite(t: &TypeKind, ok: &BTreeSet<String>) -> bool {
+            match t {
+                TypeKind::Named { path, .. } if path.len() == 1 && path[0] == "Option" => true,
+                TypeKind::Named { path, args } if path.len() == 1 && path[0] == "Result" => {
+                    args.iter().any(|a| finite(&a.kind, ok))
+                }
+                TypeKind::Named { path, .. } => ok.contains(&path.join("::")),
+                TypeKind::Array(_, 0) | TypeKind::Vec(_) => true,
+                TypeKind::Array(e, _) | TypeKind::Box(e) => finite(&e.kind, ok),
+                _ => true,
+            }
+        }
+        let mut ok: BTreeSet<String> = BTreeSet::new();
+        loop {
+            let before = ok.len();
+            for (p, a) in &adts {
+                let fin = match &a.kind {
+                    AdtKind::Struct(fs) => fs.iter().all(|(_, t)| finite(t, &ok)),
+                    AdtKind::Enum(vs) => vs.iter().any(|(_, ts)| ts.iter().all(|t| finite(t, &ok))),
+                };
+                if fin {
+                    ok.insert(p.clone());
+                }
+            }
+            if ok.len() == before {
+                break;
+            }
+        }
+        for (p, a) in &adts {
+            // An enum without variants is reported where it is declared.
+            let empty = matches!(&a.kind, AdtKind::Enum(vs) if vs.is_empty());
+            if !ok.contains(p) && !reported.contains(p) && !empty {
+                reported.insert(p.clone());
+                self.diags.push(
+                    Diag::new("E0421", a.span, format!("`{p}` has no finite value")).fix(
+                        "end the recursion: an enum variant without it, or `Option<Box<..>>` (ADR-0047 §1)",
+                        None,
+                    ),
+                );
+            }
+        }
+        // Recursion through anything.
+        let all_edges: BTreeMap<String, Vec<String>> = uses
+            .iter()
+            .map(|(p, us)| (p.clone(), us.iter().map(|(q, _)| q.clone()).collect()))
+            .collect();
+        for (p, a) in &adts {
+            if reported.contains(p) {
+                continue;
+            }
+            let r = reach(&all_edges, p);
+            if !r.contains(p) {
+                continue;
+            }
+            if !a.generics.is_empty() {
+                let mutual = r
+                    .iter()
+                    .any(|q| q != p && adts.contains_key(q) && reach(&all_edges, q).contains(p));
+                let own: Vec<TypeKind> = a
+                    .generics
+                    .iter()
+                    .map(|g| TypeKind::Param(g.name.clone()))
+                    .collect();
+                let changed = uses[p].iter().any(|(q, args)| q == p && *args != own);
+                if mutual || changed {
+                    self.diags.push(
+                        Diag::new(
+                            "E0421",
+                            a.span,
+                            format!("`{p}` contains itself with other type arguments or through another type"),
+                        )
+                        .fix(
+                            "a generic type may contain itself only as itself (`List<T>` in `List<T>`): its instances must be finitely many",
+                            None,
+                        ),
+                    );
+                    continue;
+                }
+            }
+            if self.holds_array(
+                &TypeKind::Named {
+                    path: p.split("::").map(String::from).collect(),
+                    args: Vec::new(),
+                },
+                &mut BTreeSet::new(),
+            ) {
+                self.diags.push(
+                    Diag::new(
+                        "E0402",
+                        a.span,
+                        format!("the recursive type `{p}` holds an array"),
+                    )
+                    .fix(
+                        "hold the elements in a `Vec` or in separate fields: a recursive type with arrays is not supported yet (ADR-0047)",
+                        None,
+                    ),
+                );
+            }
+        }
+    }
+
+    /// E0401 unless `t` is a measure: an integer, or the value of a
+    /// recursive enum (its structural size, ADR-0047 §3).
+    fn measure_type(&mut self, t: &TypeKind, span: Span) {
+        let v = match t {
+            TypeKind::Ref { inner, .. } => &inner.kind,
+            t => t,
+        };
+        let v = match v {
+            TypeKind::Box(inner) => &inner.kind,
+            v => v,
+        };
+        if is_int(t) || *t == TypeKind::Error {
+            return;
+        }
+        let is_enum = match v {
+            TypeKind::Named { path, .. } => {
+                (path.len() == 1 && matches!(path[0].as_str(), "Option" | "Result"))
+                    || matches!(
+                        self.adts.get(&path.join("::")).map(|a| &a.kind),
+                        Some(AdtKind::Enum(_))
+                    )
+            }
+            _ => false,
+        };
+        if is_enum && self.reaches_itself(v) {
+            return;
+        }
+        let fix = if matches!(v, TypeKind::Named { .. }) && self.reaches_itself(v) {
+            "decrease the enum-valued part that holds the recursion (a field such as `n.next`)"
+        } else {
+            "an integer, or a value of a recursive enum (its structural size)"
+        };
+        self.diags.push(
+            Diag::new(
+                "E0401",
+                span,
+                format!(
+                    "`decreases` must be an integer or a recursive enum, found `{}`",
+                    ty_str(t)
+                ),
+            )
+            .fix(fix, None),
+        );
+    }
+
+    /// Whether values of `t` can hold a value of type `t` again (a
+    /// recursive type, ADR-0047 §1): through fields, payloads, type
+    /// arguments of `Option` and `Result`, `Box`es and arrays.
+    fn reaches_itself(&self, t: &TypeKind) -> bool {
+        let target = ty_str(t);
+        let mut seen = BTreeSet::new();
+        let mut todo = self.components(t);
+        while let Some(c) = todo.pop() {
+            let k = ty_str(&c);
+            if k == target {
+                return true;
+            }
+            if seen.insert(k) {
+                todo.extend(self.components(&c));
+            }
+        }
+        false
+    }
+
+    /// The types a value of type `t` holds directly.
+    fn components(&self, t: &TypeKind) -> Vec<TypeKind> {
+        match t {
+            TypeKind::Array(e, _) | TypeKind::Box(e) | TypeKind::Vec(e) => vec![e.kind.clone()],
+            TypeKind::Named { path, args }
+                if path.len() == 1 && matches!(path[0].as_str(), "Option" | "Result") =>
+            {
+                args.iter().map(|a| a.kind.clone()).collect()
+            }
+            TypeKind::Named { path, .. } => match self.adts.get(&path.join("::")) {
+                Some(a) => {
+                    let m = adt_subst(a, t);
+                    match &a.kind {
+                        AdtKind::Struct(fs) => fs.iter().map(|(_, ft)| subst(ft, &m)).collect(),
+                        AdtKind::Enum(vs) => vs
+                            .iter()
+                            .flat_map(|(_, ps)| ps.iter().map(|pt| subst(pt, &m)))
+                            .collect(),
+                    }
+                }
+                None => Vec::new(),
+            },
+            _ => Vec::new(),
         }
     }
 
@@ -2574,13 +2794,7 @@ impl<'a> Checker<'a> {
         }
         if let Some(d) = &f.decreases {
             let t = self.expr(&mut cx, d, None, Mode::Spec { allow_old: false });
-            if !is_int(&t) && t != TypeKind::Error {
-                self.err(
-                    "E0401",
-                    d.span,
-                    format!("`decreases` must be an integer, found `{}`", ty_str(&t)),
-                );
-            }
+            self.measure_type(&t, d.span);
         }
 
         // A trait method declaration without a default body (ADR-0046 §1).
@@ -2830,11 +3044,19 @@ impl<'a> Checker<'a> {
 
     fn expect_ty(&mut self, found: &TypeKind, want: &TypeKind, span: Span) {
         if found != want && *found != TypeKind::Error && *want != TypeKind::Error {
-            self.err(
+            let d = Diag::new(
                 "E0401",
                 span,
                 format!("expected `{}`, found `{}`", ty_str(want), ty_str(found)),
             );
+            // A binding of a `match` on a reference refers to its payload.
+            let d = match found {
+                TypeKind::Ref { inner, .. } if inner.kind == *want => {
+                    d.fix("read the value it refers to: `*x`", None)
+                }
+                _ => d,
+            };
+            self.diags.push(d);
         }
     }
 
@@ -3828,7 +4050,45 @@ impl<'a> Checker<'a> {
         span: Span,
         mode: Mode,
     ) -> TypeKind {
-        let st = self.expr(cx, scrut, None, mode);
+        // A reference matched (Rust's default binding mode, ADR-0055):
+        // `match r` for `r: &E`, `match &place`; each binding is a
+        // reference to its payload.
+        let st = match &scrut.kind {
+            ExprKind::Ref { mutable, expr: x } => {
+                let t = self.expr(cx, x, None, mode);
+                let rt = if t == TypeKind::Error {
+                    t
+                } else {
+                    TypeKind::Ref {
+                        mutable: *mutable,
+                        inner: mk(t),
+                    }
+                };
+                self.types
+                    .insert((scrut.span.file, scrut.span.lo, scrut.span.hi), rt.clone());
+                rt
+            }
+            _ => self.expr(cx, scrut, None, mode),
+        };
+        let (st, by_ref) = match &st {
+            TypeKind::Ref { mutable, inner } if self.match_variants(&inner.kind).is_some() => {
+                if *mutable {
+                    self.diags.push(
+                        Diag::new(
+                            "E0207",
+                            scrut.span,
+                            "a `match` through `&mut` is not supported yet (backlog 2O-04)",
+                        )
+                        .fix(
+                            "match a shared reference (`match &*r`) and write through the `&mut` parameter",
+                            None,
+                        ),
+                    );
+                }
+                (inner.kind.clone(), true)
+            }
+            _ => (st, false),
+        };
         let vs = self.match_variants(&st);
         if vs.is_none() && st != TypeKind::Error {
             let mut d = Diag::new(
@@ -3899,7 +4159,17 @@ impl<'a> Checker<'a> {
                             ),
                         );
                     }
-                    tys = payload.clone();
+                    tys = if by_ref {
+                        payload
+                            .iter()
+                            .map(|t| TypeKind::Ref {
+                                mutable: false,
+                                inner: mk(t.clone()),
+                            })
+                            .collect()
+                    } else {
+                        payload.clone()
+                    };
                 }
                 None => unresolved = true,
             }

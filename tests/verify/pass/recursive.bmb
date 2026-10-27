@@ -1,0 +1,127 @@
+#[summary("재귀 타입: 데이터타입과 구조적 decreases (ADR-0047 §3, backlog 2O-02)")]
+mod rv {
+    enum Expr { Num(i64), Add(Box<Expr>, Box<Expr>), Neg(Box<Expr>) }
+
+    enum List<T: Copy> { Nil, Cons(T, Box<List<T>>) }
+
+    struct Node { v: i64, next: Option<Box<Node>> }
+
+    // Mutual recursion: a forest of trees.
+    enum Tree { Leaf(i64), Branch(Box<Forest>) }
+
+    enum Forest { Empty, More(Box<Tree>, Box<Forest>) }
+
+    spec fn value(e: &Expr) -> i64
+        decreases e,
+    {
+        match e {
+            Expr::Num(n) => *n,
+            Expr::Add(a, b) => value(&**a) + value(&**b),
+            Expr::Neg(c) => 0 - value(&**c),
+        }
+    }
+
+    spec fn bounded(e: &Expr) -> bool
+        decreases e,
+    {
+        match e {
+            Expr::Num(n) => -1000 <= *n && *n <= 1000,
+            Expr::Add(a, b) => false,
+            Expr::Neg(c) => bounded(&**c),
+        }
+    }
+
+    spec fn is_value(e: &Expr, r: i64) -> bool { value(e) == r }
+
+    spec fn small(r: i64) -> bool { -1000 <= r && r <= 1000 }
+
+    spec fn length<T: Copy>(l: &List<T>) -> i64
+        decreases l,
+    {
+        match l {
+            List::Nil => 0,
+            List::Cons(x, rest) => 1 + length::<T>(&**rest),
+        }
+    }
+
+    spec fn len_is<T: Copy>(l: &List<T>, n: usize) -> bool { length::<T>(l) == n }
+
+    spec fn short<T: Copy>(l: &List<T>) -> bool { length::<T>(l) < 1000000 }
+
+    spec fn leaves(t: &Tree) -> i64
+        decreases t,
+    {
+        match t {
+            Tree::Leaf(v) => 1,
+            Tree::Branch(f) => leaves_in(&**f),
+        }
+    }
+
+    spec fn leaves_in(f: &Forest) -> i64
+        decreases f,
+    {
+        match f {
+            Forest::Empty => 0,
+            Forest::More(t, rest) => leaves(&**t) + leaves_in(&**rest),
+        }
+    }
+
+    // Only negations of a small number: by induction (the recursive call's
+    // `ensures`) the value stays small, so no overflow.
+    #[effects(pure)]
+    #[uses(bounded, is_value, small, value)]
+    fn eval_neg(e: &Expr) -> (r: i64)
+        requires bounded(e),
+        ensures is_value(e, r), small(r),
+        decreases e,
+    {
+        match e {
+            Expr::Num(n) => *n,
+            Expr::Add(a, b) => 0,
+            Expr::Neg(c) => 0 - eval_neg(&**c),
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(len_is, length, short)]
+    fn count<T: Copy>(l: &List<T>) -> (r: usize)
+        requires short::<T>(l),
+        ensures len_is::<T>(l, r),
+        decreases l,
+    {
+        match l {
+            List::Nil => 0,
+            List::Cons(x, rest) => count::<T>(&**rest) + 1,
+        }
+    }
+
+    #[effects(pure)]
+    fn last(n: &Node) -> i64
+        decreases n.next,
+    {
+        match &n.next {
+            None => n.v,
+            Some(m) => last(&**m),
+        }
+    }
+
+    #[effects(pure)]
+    fn trees(t: &Tree) -> u64
+        decreases t,
+    {
+        match t {
+            Tree::Leaf(v) => 1,
+            Tree::Branch(f) => in_forest(&**f).wrapping_add(1),
+        }
+    }
+
+    #[effects(pure)]
+    fn in_forest(f: &Forest) -> u64
+        decreases f,
+    {
+        match f {
+            Forest::Empty => 0,
+            Forest::More(t, rest) => trees(&**t).wrapping_add(in_forest(&**rest)),
+        }
+    }
+}

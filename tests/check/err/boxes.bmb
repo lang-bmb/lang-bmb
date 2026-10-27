@@ -12,7 +12,7 @@ mod bx {
     // No arrays of owned values yet (backlog 2O-03).
     struct Many { ps: [Box<i64>; 2] }
 
-    // Recursion through `Box` comes with backlog 2O-02.
+    // Recursion through `Box` (backlog 2O-02).
     enum List { Nil, Cons(i64, Box<List>) }
 
     // Shared ownership is not used.

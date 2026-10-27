@@ -1,0 +1,67 @@
+#[summary("재귀 타입의 경계 (ADR-0047 §1, backlog 2O-02)")]
+mod rc {
+    enum Expr { Num(i64), Add(Box<Expr>, Box<Expr>) }
+
+    struct Node { v: i64, next: Option<Box<Node>> }
+
+    // Every value would be infinite.
+    struct Endless { v: i64, next: Box<Endless> }
+
+    enum Spiral { Turn(Box<Spiral>) }
+
+    // A generic type contains itself only as itself.
+    enum Grow<T: Copy> { Leaf(T), More(Box<Grow<[T; 2]>>) }
+
+    enum Ping<T: Copy> { Stop, Next(Box<Pong<T>>) }
+
+    enum Pong<T: Copy> { Stop, Next(Box<Ping<T>>) }
+
+    // No arrays in a recursive type yet.
+    enum Grid { Cell([i64; 2]), Split(Box<Grid>, Box<Grid>) }
+
+    #[effects(pure)]
+    fn by_struct(n: &Node) -> i64
+        decreases n,
+    {
+        n.v
+    }
+
+    #[effects(pure)]
+    fn by_flat(o: Option<i64>) -> i64
+        decreases o,
+    {
+        0
+    }
+
+    #[effects(pure)]
+    fn moved_out(e: &Expr) -> i64 {
+        match *e {
+            Expr::Num(n) => n,
+            Expr::Add(a, b) => 0,
+        }
+    }
+
+    #[effects(pure)]
+    fn field_out(n: &Node) -> i64 {
+        match n.next {
+            None => 0,
+            Some(m) => m.v,
+        }
+    }
+
+    #[effects(pure)]
+    fn through_mut(e: &mut Expr) -> i64 {
+        match e {
+            Expr::Num(n) => *n,
+            Expr::Add(x, y) => 0,
+        }
+    }
+
+    #[effects(pure)]
+    fn ref_binding(e: &Expr) -> i64 {
+        match e {
+            Expr::Num(k) => k,
+            Expr::Add(p, q) => 0,
+        }
+    }
+}

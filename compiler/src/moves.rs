@@ -127,9 +127,9 @@ impl Mv<'_> {
     }
 
     /// E0413 for a move out of a place that is not a whole local.
-    fn move_out(&mut self, e: &Expr, msg: String, fix: String) {
+    fn move_out(&mut self, e: &Expr, msg: String, fix: String, replacement: Option<String>) {
         self.diags
-            .push(Diag::new("E0413", e.span, msg).fix(fix, None));
+            .push(Diag::new("E0413", e.span, msg).fix(fix, replacement));
     }
 
     fn use_var(&mut self, id: &Ident, span: Span, moves: bool) {
@@ -369,6 +369,7 @@ impl Mv<'_> {
                         e,
                         format!("cannot move out of `{}`", crate::fmt::expr_text(e)),
                         fix,
+                        None,
                     );
                 }
                 self.expr(x, false);
@@ -382,6 +383,7 @@ impl Mv<'_> {
                             crate::fmt::expr_text(e)
                         ),
                         "move the whole struct; moving a field out comes with backlog 2O-03".into(),
+                        None,
                     );
                 }
                 self.expr(base, false)
@@ -396,7 +398,33 @@ impl Mv<'_> {
                 if binds_owned {
                     self.info.consumed.insert(key(e.span));
                 }
-                self.expr(scrut, binds_owned);
+                // Binding owned payloads out of a place behind a reference or
+                // out of a field moves out of it: match a reference instead
+                // (Rust's default binding mode, ADR-0055).
+                match &scrut.kind {
+                    ExprKind::Deref(x) | ExprKind::Field { base: x, .. }
+                        if binds_owned && self.moves_ty(scrut) =>
+                    {
+                        let by_ref = matches!(&scrut.kind, ExprKind::Deref(_))
+                            && matches!(self.types.get(&key(x.span)), Some(TypeKind::Ref { .. }));
+                        let fix = if by_ref {
+                            crate::fmt::expr_text(x)
+                        } else {
+                            format!("&{}", crate::fmt::expr_text(scrut))
+                        };
+                        self.move_out(
+                            scrut,
+                            format!(
+                                "the patterns move owned payloads out of `{}`",
+                                crate::fmt::expr_text(scrut)
+                            ),
+                            format!("match a reference, `match {fix}`: each binding refers to its payload"),
+                            Some(fix.clone()),
+                        );
+                        self.expr(scrut, false);
+                    }
+                    _ => self.expr(scrut, binds_owned),
+                }
                 let before = self.state.clone();
                 let mut joined: Option<BTreeMap<String, St>> = None;
                 for arm in arms {

@@ -1,0 +1,74 @@
+#[summary("상호 재귀 타입과 제네릭 리스트의 실행 (ADR-0047, backlog 2O-02)")]
+mod fo {
+    enum Tree { Leaf(i64), Branch(Box<Forest>) }
+
+    enum Forest { Empty, More(Box<Tree>, Box<Forest>) }
+
+    enum List<T: Copy> { Nil, Cons(T, Box<List<T>>) }
+
+    #[effects(pure)]
+    fn total(t: &Tree) -> i64
+        decreases t,
+    {
+        match t {
+            Tree::Leaf(v) => *v,
+            Tree::Branch(f) => total_in(&**f),
+        }
+    }
+
+    #[effects(pure)]
+    fn total_in(f: &Forest) -> i64
+        decreases f,
+    {
+        match f {
+            Forest::Empty => 0,
+            Forest::More(t, rest) => total(&**t).wrapping_add(total_in(&**rest)),
+        }
+    }
+
+    #[effects(pure)]
+    fn leaf(v: i64) -> Box<Tree> {
+        Box::new(Tree::Leaf(v))
+    }
+
+    #[effects(pure)]
+    fn more(t: Box<Tree>, rest: Forest) -> Forest {
+        Forest::More(t, Box::new(rest))
+    }
+
+    #[effects(pure)]
+    fn count<T: Copy>(l: &List<T>) -> u64
+        decreases l,
+    {
+        match l {
+            List::Nil => 0,
+            List::Cons(x, rest) => count::<T>(&**rest).wrapping_add(1),
+        }
+    }
+
+    #[effects(pure)]
+    fn first<T: Copy>(l: &List<T>, d: T) -> T {
+        match l {
+            List::Nil => d,
+            List::Cons(y, more) => *y,
+        }
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        let inner: Forest = more(leaf(3), more(leaf(4), Forest::Empty));
+        let f: Forest = more(leaf(1), more(Box::new(Tree::Branch(Box::new(inner))), more(leaf(10), Forest::Empty)));
+        print_i64(total_in(&f));
+        let t: Tree = Tree::Branch(Box::new(f));
+        print_i64(total(&t));
+        let l: List<bool> = List::Cons(true, Box::new(List::Cons(false, Box::new(List::Nil))));
+        print_u64(count::<bool>(&l));
+        if first::<bool>(&l, false) {
+            print_i64(1);
+        } else {
+            print_i64(0);
+        }
+        let n: List<i64> = List::Nil;
+        print_i64(first::<i64>(&n, -5));
+    }
+}

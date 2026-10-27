@@ -421,7 +421,16 @@ fn prog_of<'p>(p: &'p Program, t: &'p Tables) -> Prog<'p> {
         };
         defs.insert(key.clone(), inst);
     }
-    Prog { defs, t }
+    let (_, dts) = enum_dts(t);
+    let selectors = dts
+        .values()
+        .flat_map(|d| {
+            d.ctors
+                .iter()
+                .flat_map(|(c, fs)| fs.iter().map(move |(sel, _)| (sel.clone(), c.clone())))
+        })
+        .collect();
+    Prog { defs, t, selectors }
 }
 
 /// The sorts of a generic definition's type parameters (ADR-0046 §4) and a
@@ -621,25 +630,43 @@ fn flatten(v: &Val, out: &mut Vec<String>) {
 }
 
 /// Some value of type `t` (backlog 2V-05: the base of an empty array): the
-/// default scalar, each field's, the first variant with default payloads.
+/// default scalar, each field's, the first variant with default payloads
+/// that does not need a value of an enum being built (a recursive type,
+/// ADR-0047: the checker ensures one exists, E0421).
 fn default_val(t: &TypeKind, tb: &Tables) -> Val {
+    default_in(t, tb, &mut Vec::new()).expect("a type with a finite value")
+}
+
+fn default_in(t: &TypeKind, tb: &Tables, building: &mut Vec<String>) -> Option<Val> {
     if let Some(fs) = struct_fields(t, tb) {
-        return Val::Struct(fs.iter().map(|(_, ft)| default_val(ft, tb)).collect());
+        let mut out = Vec::new();
+        for (_, ft) in &fs {
+            out.push(default_in(ft, tb, building)?);
+        }
+        return Some(Val::Struct(out));
     }
     if let Some(vs) = enum_variants(t, tb) {
-        let (v, ps) = &vs[0];
-        let mut leaves = Vec::new();
-        for pt in ps {
-            flatten(&default_val(pt, tb), &mut leaves);
+        let ts = crate::check::ty_str(t);
+        if building.contains(&ts) {
+            return None;
         }
-        let c = ctor(t, v);
-        return Val::S(if leaves.is_empty() {
-            c
-        } else {
-            format!("({c} {})", leaves.join(" "))
+        building.push(ts);
+        let found = vs.iter().find_map(|(v, ps)| {
+            let mut leaves = Vec::new();
+            for pt in ps {
+                flatten(&default_in(pt, tb, building)?, &mut leaves);
+            }
+            let c = ctor(t, v);
+            Some(Val::S(if leaves.is_empty() {
+                c
+            } else {
+                format!("({c} {})", leaves.join(" "))
+            }))
         });
+        building.pop();
+        return found;
     }
-    match t {
+    Some(match t {
         TypeKind::Param(n) => Val::S(sym(&format!("'{n}.default"))),
         TypeKind::Array(e, n) => match const_elems(&e.kind, &default_val(&e.kind, tb), tb) {
             Val::S(elems) => Val::A {
@@ -653,7 +680,7 @@ fn default_val(t: &TypeKind, tb: &Tables) -> Val {
         },
         TypeKind::Unit => Val::Unit,
         _ => Val::S(default_of(t).to_string()),
-    }
+    })
 }
 
 /// The element arrays of an array whose every element is `v` (of type
@@ -874,37 +901,44 @@ fn payload_leaves(
 /// Whether a value of type `t` holds an array anywhere (its SMT equality
 /// would compare elements past the length).
 fn has_array(t: &TypeKind, tb: &Tables) -> bool {
-    if is_array(t) {
-        return true;
+    fn go(t: &TypeKind, tb: &Tables, seen: &mut BTreeSet<String>) -> bool {
+        if is_array(t) {
+            return true;
+        }
+        // A recursive type is visited once.
+        if !seen.insert(crate::check::ty_str(t)) {
+            return false;
+        }
+        if let Some(fs) = struct_fields(t, tb) {
+            return fs.iter().any(|(_, ft)| go(ft, tb, seen));
+        }
+        enum_variants(t, tb).is_some_and(|vs| {
+            vs.iter()
+                .any(|(_, ps)| ps.iter().any(|pt| go(pt, tb, seen)))
+        })
     }
-    if let Some(fs) = struct_fields(t, tb) {
-        return fs.iter().any(|(_, ft)| has_array(ft, tb));
-    }
-    enum_variants(t, tb).is_some_and(|vs| {
-        vs.iter()
-            .any(|(_, ps)| ps.iter().any(|pt| has_array(pt, tb)))
-    })
+    go(t, tb, &mut BTreeSet::new())
 }
 
-/// Every enum instance a program uses, as (constructor prefix, sort,
-/// `declare-datatypes`), dependencies first (types are not recursive,
-/// E0421).
-fn datatypes(tb: &Tables) -> Vec<(String, String, String)> {
-    fn visit(
-        t: &TypeKind,
-        tb: &Tables,
-        seen: &mut BTreeSet<String>,
-        out: &mut Vec<(String, String, String)>,
-    ) {
+/// An enum instance as the encoder declares it: constructor symbols and
+/// their fields (selector symbol, sort).
+struct Dt {
+    ctors: Vec<(String, Vec<(String, String)>)>,
+}
+
+/// Every enum instance a program uses, by type text, and the order that
+/// lists each one after the enums its payloads name.
+fn enum_dts(tb: &Tables) -> (Vec<String>, BTreeMap<String, Dt>) {
+    fn visit(t: &TypeKind, tb: &Tables, order: &mut Vec<String>, dts: &mut BTreeMap<String, Dt>) {
         match t {
-            TypeKind::Array(e, _) | TypeKind::Slice(e) => return visit(&e.kind, tb, seen, out),
-            TypeKind::Ref { inner, .. } => return visit(&inner.kind, tb, seen, out),
+            TypeKind::Array(e, _) | TypeKind::Slice(e) => return visit(&e.kind, tb, order, dts),
+            TypeKind::Ref { inner, .. } => return visit(&inner.kind, tb, order, dts),
             TypeKind::Named { .. } => {}
             _ => return,
         }
         if let Some(fs) = struct_fields(t, tb) {
             for (_, ft) in &fs {
-                visit(ft, tb, seen, out);
+                visit(ft, tb, order, dts);
             }
             return;
         }
@@ -912,27 +946,23 @@ fn datatypes(tb: &Tables) -> Vec<(String, String, String)> {
             return;
         };
         let ts = crate::check::ty_str(t);
-        if !seen.insert(ts.clone()) {
+        if dts.contains_key(&ts) {
             return;
         }
+        dts.insert(ts.clone(), Dt { ctors: Vec::new() });
         let mut ctors = Vec::new();
         for (v, ps) in &vs {
             let mut fields = Vec::new();
             for (k, pt) in ps.iter().enumerate() {
-                visit(pt, tb, seen, out);
+                visit(pt, tb, order, dts);
                 for (name, leaf) in payload_leaves(t, v, k, pt, tb) {
-                    fields.push(format!("({} {})", sym(&name), leaf.sort()));
+                    fields.push((sym(&name), leaf.sort()));
                 }
             }
-            ctors.push(if fields.is_empty() {
-                format!("({})", ctor(t, v))
-            } else {
-                format!("({} {})", ctor(t, v), fields.join(" "))
-            });
+            ctors.push((ctor(t, v), fields));
         }
-        let sort = sym(&ts);
-        let decl = format!("(declare-datatypes (({sort} 0)) (({})))", ctors.join(" "));
-        out.push((format!("|{ts}::"), sort, decl));
+        dts.get_mut(&ts).expect("inserted").ctors = ctors;
+        order.push(ts);
     }
     let mut all: Vec<&TypeKind> = tb.types.values().collect();
     all.extend(tb.inst_types.iter());
@@ -941,10 +971,133 @@ fn datatypes(tb: &Tables) -> Vec<(String, String, String)> {
         all.extend(sig.params.iter());
         all.push(&sig.ret);
     }
-    let mut seen = BTreeSet::new();
-    let mut out = Vec::new();
+    let mut order = Vec::new();
+    let mut dts: BTreeMap<String, Dt> = BTreeMap::new();
     for t in all {
-        visit(t, tb, &mut seen, &mut out);
+        visit(t, tb, &mut order, &mut dts);
+    }
+    (order, dts)
+}
+
+/// Every enum instance a program uses, as (constructor prefix, sort,
+/// `declare-datatypes`), dependencies first. Recursive enums (ADR-0047 §3,
+/// through a `Box`, which the encoder does not see) are declared together
+/// with the enums of their cycle, under the first one's entry (the others'
+/// entries name it).
+fn datatypes(tb: &Tables) -> Vec<(String, String, String)> {
+    let (order, dts) = enum_dts(tb);
+    // The enums each one's fields name (by sort symbol).
+    let deps: BTreeMap<String, Vec<String>> = dts
+        .iter()
+        .map(|(ts, d)| {
+            let sorts: Vec<&String> = d
+                .ctors
+                .iter()
+                .flat_map(|(_, fs)| fs.iter().map(|(_, s)| s))
+                .collect();
+            let named = order
+                .iter()
+                .filter(|o| {
+                    let s = sym(o);
+                    sorts.iter().any(|x| x.contains(s.as_str()))
+                })
+                .cloned()
+                .collect();
+            (ts.clone(), named)
+        })
+        .collect();
+    // Tarjan's components, dependencies first.
+    struct Tarjan<'a> {
+        deps: &'a BTreeMap<String, Vec<String>>,
+        index: BTreeMap<String, usize>,
+        low: BTreeMap<String, usize>,
+        stack: Vec<String>,
+        on: BTreeSet<String>,
+        out: Vec<Vec<String>>,
+    }
+    impl Tarjan<'_> {
+        fn go(&mut self, v: &str) {
+            let i = self.index.len();
+            self.index.insert(v.to_string(), i);
+            self.low.insert(v.to_string(), i);
+            self.stack.push(v.to_string());
+            self.on.insert(v.to_string());
+            for w in self.deps[v].clone() {
+                if !self.index.contains_key(&w) {
+                    self.go(&w);
+                    let lw = self.low[&w];
+                    let lv = self.low.get_mut(v).expect("visited");
+                    *lv = (*lv).min(lw);
+                } else if self.on.contains(&w) {
+                    let iw = self.index[&w];
+                    let lv = self.low.get_mut(v).expect("visited");
+                    *lv = (*lv).min(iw);
+                }
+            }
+            if self.low[v] == self.index[v] {
+                let mut comp = Vec::new();
+                while let Some(w) = self.stack.pop() {
+                    self.on.remove(&w);
+                    let done = w == v;
+                    comp.push(w);
+                    if done {
+                        break;
+                    }
+                }
+                comp.reverse();
+                self.out.push(comp);
+            }
+        }
+    }
+    let mut tj = Tarjan {
+        deps: &deps,
+        index: BTreeMap::new(),
+        low: BTreeMap::new(),
+        stack: Vec::new(),
+        on: BTreeSet::new(),
+        out: Vec::new(),
+    };
+    for ts in &order {
+        if !tj.index.contains_key(ts) {
+            tj.go(ts);
+        }
+    }
+    let ctor_text = |c: &String, fs: &Vec<(String, String)>| {
+        if fs.is_empty() {
+            format!("({c})")
+        } else {
+            let f: Vec<String> = fs.iter().map(|(n, s)| format!("({n} {s})")).collect();
+            format!("({c} {})", f.join(" "))
+        }
+    };
+    let mut out = Vec::new();
+    for comp in tj.out {
+        let heads: Vec<String> = comp.iter().map(|ts| format!("({} 0)", sym(ts))).collect();
+        let bodies: Vec<String> = comp
+            .iter()
+            .map(|ts| {
+                let cs: Vec<String> = dts[ts]
+                    .ctors
+                    .iter()
+                    .map(|(c, fs)| ctor_text(c, fs))
+                    .collect();
+                format!("({})", cs.join(" "))
+            })
+            .collect();
+        let decl = format!(
+            "(declare-datatypes ({}) ({}))",
+            heads.join(" "),
+            bodies.join(" ")
+        );
+        let first = sym(&comp[0]);
+        out.push((format!("|{}::", comp[0]), first.clone(), decl));
+        for ts in &comp[1..] {
+            out.push((
+                format!("|{ts}::"),
+                sym(ts),
+                format!("; {} is declared with {first}", sym(ts)),
+            ));
+        }
     }
     out
 }
@@ -1109,6 +1262,9 @@ struct Def<'p> {
 struct Prog<'p> {
     defs: BTreeMap<String, Def<'p>>,
     t: &'p Tables,
+    /// The constructor of every enum selector symbol (structural
+    /// `decreases`, ADR-0047 §3).
+    selectors: BTreeMap<String, String>,
 }
 
 /// Symbolic state of one definition.
@@ -1127,14 +1283,14 @@ struct Enc<'p, 'q> {
     pc: Vec<String>,
     vars: BTreeMap<String, Val>,
     old: BTreeMap<String, Val>,
-    entry_measure: Option<String>,
+    entry_measure: Option<(String, bool)>,
     obls: Vec<Obl>,
     /// Entry constants of the parameters, for counterexamples: (name, terms,
     /// type).
     inputs: Vec<(String, Val, TypeKind)>,
     /// Spec translation: enclosing conditions, and the recursion check context.
     spec_pc: Vec<String>,
-    term_check: Option<(usize, String)>,
+    term_check: Option<(usize, String, bool)>,
     /// The `forall`s around the specification being translated: bound
     /// declarations, their range facts, and `spec_pc`'s length on entry.
     foralls: Vec<(Vec<String>, Vec<String>, usize)>,
@@ -1144,6 +1300,32 @@ struct Enc<'p, 'q> {
     bound: u32,
     /// Under `vacuous_ends`: each reach point and its path condition.
     reach: Vec<(Span, &'static str, Vec<String>)>,
+}
+
+/// `(f a)` as (`f`, `a`): an application of a symbol to one argument (a
+/// selector application in a measure term).
+fn sel_app(t: &str) -> Option<(&str, &str)> {
+    let inner = t.strip_prefix('(')?.strip_suffix(')')?;
+    let head_end = if let Some(q) = inner.strip_prefix('|') {
+        q.find('|')? + 2
+    } else {
+        inner.find(' ')?
+    };
+    let (head, rest) = inner.split_at(head_end);
+    let arg = rest.strip_prefix(' ')?;
+    // One balanced argument.
+    let mut depth = 0i32;
+    let mut quoted = false;
+    for (i, c) in arg.char_indices() {
+        match c {
+            '|' => quoted = !quoted,
+            '(' if !quoted => depth += 1,
+            ')' if !quoted => depth -= 1,
+            ' ' if !quoted && depth == 0 && i + 1 < arg.len() => return None,
+            _ => {}
+        }
+    }
+    Some((head, arg))
 }
 
 fn num(v: i128) -> String {
@@ -1344,6 +1526,47 @@ impl<'p, 'q> Enc<'p, 'q> {
             triggers: Vec::new(),
             bound: 0,
             reach: Vec::new(),
+        }
+    }
+
+    /// A function's `decreases` measure `d`: its term, and whether it is
+    /// the value of a recursive enum (structural, ADR-0047 §3) rather than
+    /// an integer.
+    fn measure(
+        &mut self,
+        d: &Expr,
+        env: &BTreeMap<String, Val>,
+        old: &BTreeMap<String, Val>,
+    ) -> (String, bool) {
+        let v = self.spec(d, env, old).s();
+        let t = self.ty(d);
+        (v, enum_variants(value_ty(&t), self.prog.t).is_some())
+    }
+
+    /// The goal that measure `m1` of a call is below the caller's `m0`. An
+    /// integer measure is non-negative and smaller. A structural one is a
+    /// part of the caller's value: a chain of selectors from `m0`, each
+    /// applied to a value of its constructor (so a strict subterm of a
+    /// finite datatype value); any other term fails (it may not be smaller).
+    fn decrease_goal(&self, m0: &(String, bool), m1: &(String, bool)) -> String {
+        match (m0, m1) {
+            ((a, false), (b, false)) => format!("(and (<= 0 {a}) (< {b} {a}))"),
+            ((a, true), (b, true)) => {
+                let mut testers = Vec::new();
+                let mut cur = b.as_str();
+                while let Some((head, arg)) = sel_app(cur) {
+                    let Some(c) = self.prog.selectors.get(head) else {
+                        break;
+                    };
+                    testers.push(format!("((_ is {c}) {arg})"));
+                    cur = arg;
+                    if cur == a {
+                        return and(&testers);
+                    }
+                }
+                "false".into()
+            }
+            _ => "false".into(),
         }
     }
 
@@ -1870,7 +2093,7 @@ impl<'p, 'q> Enc<'p, 'q> {
     /// When checking a recursive spec fn's termination, every call into the
     /// same component must decrease the measure.
     fn check_spec_recursion(&mut self, target: &str, args: &[Val], span: Span) {
-        let Some((comp, caller_measure)) = self.term_check.clone() else {
+        let Some((comp, caller_measure, data)) = self.term_check.clone() else {
             return;
         };
         let base = self
@@ -1887,10 +2110,10 @@ impl<'p, 'q> Enc<'p, 'q> {
         let env = bind_params(def.f, args);
         let saved = self.term_check.take();
         let callee_measure = self.in_def(&def.mod_path.clone(), def.tsub.clone(), |s| {
-            s.spec(d, &env, &BTreeMap::new()).s()
+            s.measure(d, &env, &BTreeMap::new())
         });
         self.term_check = saved;
-        let goal = format!("(and (<= 0 {caller_measure}) (< {callee_measure} {caller_measure}))");
+        let goal = self.decrease_goal(&(caller_measure, data), &callee_measure);
         let msg = format!("recursive call to `{target}` may not decrease its `decreases` measure");
         // Inside `forall`: for every value of the bound variables that
         // reaches the call (backlog 2V-05), as Dafny checks it.
@@ -3047,13 +3270,13 @@ impl<'p, 'q> Enc<'p, 'q> {
             && let Some(m0) = self.entry_measure.clone()
         {
             let m1 = self.in_def(&unit, csub.clone(), |s| {
-                s.spec(d, &pre_env, &BTreeMap::new()).s()
+                s.measure(d, &pre_env, &BTreeMap::new())
             });
             self.oblige(
                 "E0809",
                 span,
                 format!("recursive call to `{target}` may not decrease its measure"),
-                format!("(and (<= 0 {m0}) (< {m1} {m0}))"),
+                self.decrease_goal(&m0, &m1),
             );
         }
         // `&mut` arguments: the callee may change the place, the elements
@@ -3975,8 +4198,8 @@ fn verify_impl(
                     let v = enc.fresh_val(&prm.name.name, &ty);
                     env.insert(prm.name.name.clone(), v);
                 }
-                let m = enc.spec(dec, &env, &BTreeMap::new()).s();
-                enc.term_check = Some((comp, m));
+                let (m, data) = enc.measure(dec, &env, &BTreeMap::new());
+                enc.term_check = Some((comp, m, data));
                 enc.spec_block(&d.f.body, &env, &BTreeMap::new());
                 enc.term_check = None;
             }
@@ -4004,7 +4227,7 @@ fn verify_impl(
                     enc.pc.push(g);
                 }
                 if let Some(dec) = &d.f.decreases {
-                    enc.entry_measure = Some(enc.spec(dec, &env, &old).s());
+                    enc.entry_measure = Some(enc.measure(dec, &env, &old));
                 }
                 let result = enc.block(&d.f.body);
                 enc.mark_reach(d.f.name.span, "end of the body");

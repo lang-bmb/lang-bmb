@@ -1,0 +1,73 @@
+#[summary("재귀 타입: 따르지 않는 것 (ADR-0047 §3, backlog 2O-02)")]
+mod rf {
+    enum Expr { Num(i64), Add(Box<Expr>, Box<Expr>) }
+
+    struct Node { v: i64, next: Option<Box<Node>> }
+
+    spec fn value(e: &Expr) -> i64
+        decreases e,
+    {
+        match e {
+            Expr::Num(n) => *n,
+            Expr::Add(a, b) => value(&**a) + value(&**b),
+        }
+    }
+
+    spec fn positive(r: i64) -> bool { r > 0 }
+
+    // The same value again does not decrease.
+    #[effects(pure)]
+    fn again(e: &Expr) -> i64
+        decreases e,
+    {
+        match e {
+            Expr::Num(n) => *n,
+            Expr::Add(a, b) => again(e),
+        }
+    }
+
+    // A value built here is not smaller than the parameter.
+    #[effects(pure)]
+    fn rebuilt(e: &Expr) -> i64
+        decreases e,
+    {
+        match e {
+            Expr::Num(n) => *n,
+            Expr::Add(a, b) => rebuilt(&Expr::Add(Box::new(Expr::Num(1)), Box::new(Expr::Num(2)))),
+        }
+    }
+
+    // A spec fn recursing on its own argument.
+    spec fn loops(e: &Expr) -> i64
+        decreases e,
+    {
+        match e {
+            Expr::Num(n) => *n,
+            Expr::Add(a, b) => loops(e),
+        }
+    }
+
+    // The sum of two numbers may overflow.
+    #[effects(pure)]
+    fn eval(e: &Expr) -> i64
+        decreases e,
+    {
+        match e {
+            Expr::Num(n) => *n,
+            Expr::Add(a, b) => eval(&**a) + eval(&**b),
+        }
+    }
+
+    // A list's last value need not be positive.
+    #[effects(pure)]
+    #[uses(positive)]
+    fn last(n: &Node) -> (r: i64)
+        ensures positive(r),
+        decreases n.next,
+    {
+        match &n.next {
+            None => n.v,
+            Some(m) => last(&**m),
+        }
+    }
+}

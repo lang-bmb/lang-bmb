@@ -1,0 +1,108 @@
+#[summary("식 트리 평가기와 연결 리스트: 재귀 타입의 실행 (ADR-0047, backlog 2O-02)")]
+mod et {
+    enum Expr { Num(i64), Add(Box<Expr>, Box<Expr>), Mul(Box<Expr>, Box<Expr>), Neg(Box<Expr>) }
+
+    struct Node { v: i64, next: Option<Box<Node>> }
+
+    #[effects(pure)]
+    fn num(v: i64) -> Box<Expr> {
+        Box::new(Expr::Num(v))
+    }
+
+    #[effects(pure)]
+    fn add(a: Box<Expr>, b: Box<Expr>) -> Box<Expr> {
+        Box::new(Expr::Add(a, b))
+    }
+
+    #[effects(pure)]
+    fn mul(a: Box<Expr>, b: Box<Expr>) -> Box<Expr> {
+        Box::new(Expr::Mul(a, b))
+    }
+
+    #[effects(pure)]
+    fn eval(e: &Expr) -> i64
+        decreases e,
+    {
+        match e {
+            Expr::Num(n) => *n,
+            Expr::Add(a, b) => eval(&**a).wrapping_add(eval(&**b)),
+            Expr::Mul(c, d) => eval(&**c).wrapping_mul(eval(&**d)),
+            Expr::Neg(x) => 0.wrapping_sub(eval(&**x)),
+        }
+    }
+
+    #[effects(pure)]
+    fn size(e: &Expr) -> u64
+        decreases e,
+    {
+        match e {
+            Expr::Num(k) => 1,
+            Expr::Add(p, q) => size(&**p).wrapping_add(size(&**q)).wrapping_add(1),
+            Expr::Mul(r, s) => size(&**r).wrapping_add(size(&**s)).wrapping_add(1),
+            Expr::Neg(y) => size(&**y).wrapping_add(1),
+        }
+    }
+
+    // A new tree with every negation of a number folded into the number.
+    #[effects(pure)]
+    fn fold(e: &Expr) -> Box<Expr>
+        decreases e,
+    {
+        match e {
+            Expr::Num(m) => num(*m),
+            Expr::Add(f, g) => add(fold(&**f), fold(&**g)),
+            Expr::Mul(h, i) => mul(fold(&**h), fold(&**i)),
+            Expr::Neg(z) => match &**z {
+                Expr::Num(w) => num(0.wrapping_sub(*w)),
+                Expr::Add(f2, g2) => Box::new(Expr::Neg(fold(&**z))),
+                Expr::Mul(h2, i2) => Box::new(Expr::Neg(fold(&**z))),
+                Expr::Neg(z2) => fold(&**z2),
+            },
+        }
+    }
+
+    #[effects(pure)]
+    fn sum(n: &Node) -> i64
+        decreases n.next,
+    {
+        match &n.next {
+            None => n.v,
+            Some(m) => n.v.wrapping_add(sum(&**m)),
+        }
+    }
+
+    #[effects(pure)]
+    fn len(n: &Node) -> u64
+        decreases n.next,
+    {
+        match &n.next {
+            None => 1,
+            Some(m) => len(&**m).wrapping_add(1),
+        }
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        // (2 + 3) * -(4) + --7
+        let e: Box<Expr> = add(
+            mul(add(num(2), num(3)), Box::new(Expr::Neg(num(4)))),
+            Box::new(Expr::Neg(Box::new(Expr::Neg(num(7))))),
+        );
+        print_i64(eval(&*e));
+        print_u64(size(&*e));
+        let f: Box<Expr> = fold(&*e);
+        print_i64(eval(&*f));
+        print_u64(size(&*f));
+        let mut head: Node = Node { v: 0, next: None };
+        let mut i: i64 = 1;
+        while i <= 10
+            invariant 1 <= i && i <= 11,
+            decreases 11 - i,
+        {
+            head = Node { v: i, next: Some(Box::new(head)) };
+            i = i + 1;
+        }
+        print_i64(sum(&head));
+        print_u64(len(&head));
+    }
+}

@@ -11,6 +11,7 @@ mod shapes {
         }
     }
 
+    // A match on a reference binds references (ADR-0055): `n` is `&i64`.
     #[effects(pure)]
     fn by_ref(s: &Shape) -> i64 {
         match s {
