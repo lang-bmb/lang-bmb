@@ -24,6 +24,8 @@ pub struct Parser<'a> {
     /// Reading a trait method: its signature may end with `;`. Cleared when
     /// a body is read instead.
     decl_ok: bool,
+    /// The span of the last type parameter list read, `<` to `>`.
+    generics_span: Option<Span>,
 }
 
 /// An `impl` block: inherent or of a trait.
@@ -117,6 +119,7 @@ impl<'a> Parser<'a> {
             no_struct: false,
             impl_ty: None,
             decl_ok: false,
+            generics_span: None,
         }
     }
 
@@ -607,10 +610,11 @@ impl<'a> Parser<'a> {
     /// parameters are outside the language.
     fn parse_generics(&mut self) -> Vec<TypeParam> {
         let mut out = Vec::new();
+        self.generics_span = None;
         if !self.is_p("<") {
             return out;
         }
-        self.bump();
+        let lo = self.bump().span;
         while !self.is_p(">") && !matches!(self.peek(), Tok::Eof) {
             // A lifetime is reported by the lexer (E0208) and leaves its comma.
             if self.eat_p(",") {
@@ -667,8 +671,110 @@ impl<'a> Parser<'a> {
                 break;
             }
         }
-        let _ = self.expect_p(">");
+        if let Ok(hi) = self.expect_p(">") {
+            self.generics_span = Some(lo.to(hi));
+        }
         out
+    }
+
+    /// A `where` clause (Rust habit, E0240): its bounds join the type
+    /// parameters they name, and the fix writes them there (the normal
+    /// form, backlog 2T-03). `gs` are the parameters read before; the fix
+    /// rewrites the text from their `<` to the clause's end.
+    fn parse_where(&mut self, gs: &mut [TypeParam], gspan: Option<Span>) {
+        if !self.is_kw("where") {
+            return;
+        }
+        let lo = self.bump().span;
+        let mut ok = true;
+        loop {
+            if self.is_p("{")
+                || self.is_p(";")
+                || ["requires", "ensures", "decreases"]
+                    .iter()
+                    .any(|k| self.is_kw(k))
+            {
+                break;
+            }
+            let ty = self.parse_type();
+            let name = match &ty.kind {
+                TypeKind::Named { path, args } if path.len() == 1 && args.is_empty() => {
+                    Some(path[0].clone())
+                }
+                _ => None,
+            };
+            let mut bounds = Vec::new();
+            if self.expect_p(":").is_err() {
+                return;
+            }
+            loop {
+                let mut path = Vec::new();
+                while let Tok::Ident(n) = self.peek().clone() {
+                    path.push(Ident {
+                        name: n,
+                        span: self.span(),
+                    });
+                    self.bump();
+                    if !(self.is_p("::") && matches!(self.peek_at(1), Tok::Ident(_))) {
+                        break;
+                    }
+                    self.bump();
+                }
+                if path.is_empty() {
+                    self.err_expected("trait bound");
+                    return;
+                }
+                bounds.push(path);
+                if !self.eat_p("+") {
+                    break;
+                }
+            }
+            match name.and_then(|n| gs.iter_mut().find(|g| g.name.name == n)) {
+                Some(g) => {
+                    for b in bounds {
+                        let text = |p: &[Ident]| {
+                            p.iter()
+                                .map(|i| i.name.as_str())
+                                .collect::<Vec<_>>()
+                                .join("::")
+                        };
+                        if !g.bounds.iter().any(|x| text(x) == text(&b)) {
+                            g.bounds.push(b);
+                        }
+                    }
+                }
+                None => ok = false,
+            }
+            if !self.eat_p(",") {
+                break;
+            }
+        }
+        let span = lo.to(self.prev_span());
+        let d = Diag::new(
+            "E0240",
+            span,
+            "a `where` clause is not used: bounds are written next to the type parameter",
+        );
+        // The parameters with their bounds, then the text up to `where`.
+        let fix = gspan.filter(|_| ok).map(|g| {
+            let between = self
+                .text
+                .get(g.hi as usize..lo.lo as usize)
+                .unwrap_or_default()
+                .trim_end();
+            let r = format!("{}{between}", crate::fmt::generics_str(gs));
+            (g.to(span), r)
+        });
+        self.diags.push(match fix {
+            Some((sp, r)) => Diag {
+                span: sp,
+                ..d.fix("write each bound next to its type parameter", Some(r))
+            },
+            None => d.fix(
+                "write each bound next to its type parameter: `<T: Copy + Ord>`; bounds on other types are not supported",
+                None,
+            ),
+        });
     }
 
     /// Skips to the `>` closing a parameter list already opened.
@@ -710,7 +816,9 @@ impl<'a> Parser<'a> {
         let lo = self.span();
         let is_struct = matches!(self.bump().tok, Tok::Ident(ref k) if k == "struct");
         let name = self.ident("type name")?;
-        let generics = self.parse_generics();
+        let mut generics = self.parse_generics();
+        let gspan = self.generics_span;
+        self.parse_where(&mut generics, gspan);
         if is_struct && self.is_p("(") {
             let sp = self.span();
             self.skip_group();
@@ -784,7 +892,8 @@ impl<'a> Parser<'a> {
     /// `impl T { .. }` (ADR-0026), or `impl Trait for T { .. }` (ADR-0046 §2).
     fn parse_impl(&mut self) -> PResult<ImplItem> {
         let lo = self.bump().span; // `impl`
-        let generics = self.parse_generics();
+        let mut generics = self.parse_generics();
+        let gspan = self.generics_span;
         let first = self.parse_type();
         if self.eat_kw("for") {
             let trait_path = match &first.kind {
@@ -811,6 +920,7 @@ impl<'a> Parser<'a> {
                 }
             };
             let self_ty = self.parse_type();
+            self.parse_where(&mut generics, gspan);
             let (fns, hi) = self.impl_body(Self::type_text(&self_ty))?;
             return Ok(ImplItem::Trait(TraitImpl {
                 generics,
@@ -846,6 +956,7 @@ impl<'a> Parser<'a> {
                 return Err(());
             }
         };
+        self.parse_where(&mut generics, gspan);
         let (fns, hi) = self.impl_body(Some(ty.name.clone()))?;
         Ok(ImplItem::Inherent(Impl {
             generics,
@@ -1078,6 +1189,8 @@ impl<'a> Parser<'a> {
             }
         }
         self.expect_p(")")?;
+        let gspan = self.generics_span;
+        let mut generics = generics;
         let ret = if self.eat_p("->") {
             self.parse_ret()?
         } else {
@@ -1094,6 +1207,7 @@ impl<'a> Parser<'a> {
                 },
             }
         };
+        self.parse_where(&mut generics, gspan);
         let (requires, ensures, decreases) = self.parse_clauses()?;
         // A trait method without a default body ends with `;`.
         let body = if self.decl_ok && self.is_p(";") {

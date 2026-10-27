@@ -722,6 +722,22 @@ pub fn qualified_text(
         qualify: Some((fns, unit.to_string())),
         out: String::new(),
     };
+    // The `impl` a function is checked and proved in (backlog 2T-03): its
+    // type parameters with their bounds, and for a trait's method or a
+    // trait impl's function the trait and the type, which its contract and
+    // refinement obligations depend on.
+    if let Some(sig) = fns
+        .values()
+        .find(|s| s.span == f.span && !s.builtin && !s.path.ends_with('>'))
+        && (sig.impl_generics > 0 || sig.path.starts_with('<'))
+        && let Some((head, _)) = sig.path.rsplit_once("::")
+    {
+        let gs: Vec<String> = sig.generics[..sig.impl_generics]
+            .iter()
+            .map(|g| format!("{}: {}", g.name, g.bounds.join(" + ")))
+            .collect();
+        pr.out = format!("impl<{}> {head}\n", gs.join(", "));
+    }
     pr.function(f, 0, Some("_"), with_body);
     pr.out
 }

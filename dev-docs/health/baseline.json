@@ -14,12 +14,12 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 23136,
+    "S4_stage0_rust_lines": 23259,
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
     "P1_runnable_programs": 25,
-    "P2_bmb_lines": 8620,
-    "P3_errors_with_help": 0.7557,
+    "P2_bmb_lines": 8636,
+    "P3_errors_with_help": 0.7569,
     "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 8
@@ -635,6 +635,24 @@
         "P3_errors_with_help": [
           0.7551,
           0.7557
+        ]
+      }
+    },
+    {
+      "date": "2026-10-27",
+      "reason": "2T-03: where clauses (E0240 with fix) in the generics corpus",
+      "changed": {
+        "S4_stage0_rust_lines": [
+          23136,
+          23259
+        ],
+        "P2_bmb_lines": [
+          8620,
+          8636
+        ],
+        "P3_errors_with_help": [
+          0.7557,
+          0.7569
         ]
       }
     }

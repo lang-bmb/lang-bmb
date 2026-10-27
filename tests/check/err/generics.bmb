@@ -108,4 +108,20 @@ mod generics {
         let q: Pt = least::<Pt>(p, p);
         let b: bool = least::<bool>(true, false);
     }
+
+    // Rust habit: a `where` clause (E0240, the fix moves the bounds).
+    #[effects(pure)]
+    fn wh<T>(x: T) -> T
+        where T: Copy
+    {
+        x
+    }
+
+    // Bounds on a type that is not a parameter have no place.
+    #[effects(pure)]
+    fn wh_other(x: i64) -> i64
+        where Vec<i64>: Copy
+    {
+        x
+    }
 }

@@ -424,3 +424,26 @@ fn omitted_type_arguments_are_written_out() {
     assert!(fixed.contains("pick::<Cell<bool>, u64>(c, x)"), "{fixed}");
     assert!(fixed.contains("pick::<u64, bool>(y, c.v)"), "{fixed}");
 }
+
+#[test]
+fn where_clauses_move_to_the_parameters() {
+    // Backlog 2T-03: a `where` clause (E0240) is rewritten to bounds next
+    // to the type parameters, on a function, an `impl` and a type.
+    let text = "#[summary(\"w\")]\nmod w {\n    trait Shape {\n        #[effects(pure)]\n        fn area(self: &Self) -> i64;\n    }\n\n    struct Cell<T> where T: Copy { v: T }\n\n    impl<T> Shape for Cell<T>\n    where\n        T: Copy + Shape,\n    {\n        #[effects(pure)]\n        fn area(self: &Cell<T>) -> i64 {\n            Shape::area(&self.v)\n        }\n    }\n\n    #[effects(pure)]\n    fn least<T: Copy, U>(a: T, b: T, u: U) -> T\n        where T: Ord, U: Copy\n    {\n        if a <= b { a } else { b }\n    }\n}\n";
+    let input = one(text);
+    assert!(!bmb::check_sources(&input).ok);
+    let out = bmb::fix_sources(&input);
+    assert!(out.ok, "{}", out.diagnostics);
+    assert!(bmb::verify_sources(&out.files).ok);
+    let fixed = &out.files[0].1;
+    assert!(!fixed.contains("where"), "{fixed}");
+    assert!(fixed.contains("struct Cell<T: Copy>"), "{fixed}");
+    assert!(
+        fixed.contains("impl<T: Copy + Shape> Shape for Cell<T>"),
+        "{fixed}"
+    );
+    assert!(
+        fixed.contains("fn least<T: Copy + Ord, U: Copy>(a: T, b: T, u: U) -> T"),
+        "{fixed}"
+    );
+}

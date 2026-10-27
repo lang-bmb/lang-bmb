@@ -37,6 +37,7 @@
 | E0219 | `drop(v)` and `mem::take` / `replace` / `swap` are not used |
 | E0234 | a string literal: text is bytes, write `b"..."` |
 | E0235 | a blanket impl `impl<T> Trait for T` is not used |
+| E0240 | a `where` clause is not used: bounds go next to the type parameter |
 | E0236 | trait objects `dyn Trait` are not used |
 | E0237 | a call of a generic function names its type arguments: `f::<T>(..)` |
 | E0220 | `#[derive(..)]` is not used |
