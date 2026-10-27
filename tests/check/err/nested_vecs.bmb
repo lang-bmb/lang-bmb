@@ -1,6 +1,6 @@
 #[summary("중첩 Vec과 이동 원소의 경계 (ADR-0047, backlog 2O-03b)")]
 mod ne {
-    // Recursion through a `Vec` is backlog 2O-03c.
+    // Recursion through a `Vec` is fine (backlog 2O-03c, 2O-03d).
     struct Node { v: i64, kids: Vec<Node> }
 
     enum Tree { Leaf(i64), Many(Vec<Tree>) }

@@ -1,0 +1,15 @@
+{"code":"E0809","severity":"error","message":"recursive call to `rf::same` may not decrease its measure in `rf::same`; counterexample: n = Node { v: 0, kids: [Node { .. }] (len 1) }","file":"fail/rec_structs.bmb","line":16,"col":45,"end_line":16,"end_col":52}
+{"code":"E0809","severity":"error","message":"recursive call to `rf::fresh` may not decrease its measure in `rf::fresh`; counterexample: n = Node { v: 0, kids: [Node { .. }] (len 1) }","file":"fail/rec_structs.bmb","line":24,"col":45,"end_line":24,"end_col":84}
+{"code":"E0805","severity":"error","message":"index may be out of bounds in `rf::first`; counterexample: n = Node { v: 0, kids: [] (len 0) }","file":"fail/rec_structs.bmb","line":30,"col":9,"end_line":30,"end_col":18}
+{"code":"E0803","severity":"error","message":"`*` may overflow `i64` in `rf::built`; counterexample: x = 3074457345618258603","file":"fail/rec_structs.bmb","line":38,"col":33,"end_line":38,"end_col":38}
+{"code":"E0803","severity":"error","message":"`+` may overflow `i64` in `rf::bump`; counterexample: n = Node { v: 9223372036854775807, kids: [] (len 0) }","file":"fail/rec_structs.bmb","line":44,"col":9,"end_line":44,"end_col":16}
+{"code":"E0802","severity":"error","message":"postcondition `grew` may not hold in `rf::misplaced`; counterexample: n = Node { v: 9, kids: [Node { .. }] (len 1) }, c = Node { v: 5, kids: [Node { .. }] (len 1) }","file":"fail/rec_structs.bmb","line":52,"col":17,"end_line":52,"end_col":32}
+{"code":"E0816","severity":"error","message":"`push` may exceed the maximum length of a `Vec` in `rf::misplaced`; counterexample: n = Node { v: 9, kids: [Node { .. }] (len 1) }, c = Node { v: 5, kids: [Node { .. }] (len 1) }","file":"fail/rec_structs.bmb","line":54,"col":9,"end_line":54,"end_col":31}
+{"code":"E0802","severity":"error","message":"postcondition `labeled` may not hold in `rf::relabel`; counterexample: n = Node { v: -9223372036854775809, kids: [] (len 0) }, x = -2","file":"fail/rec_structs.bmb","line":60,"col":17,"end_line":60,"end_col":30}
+{"def":"rf::built","status":"failed","obligations":1,"failed":1,"rlimit":646,"rlimit_max":646}
+{"def":"rf::bump","status":"failed","obligations":1,"failed":1,"rlimit":418,"rlimit_max":418}
+{"def":"rf::first","status":"failed","obligations":1,"failed":1,"rlimit":335,"rlimit_max":335}
+{"def":"rf::fresh","status":"failed","obligations":1,"failed":1,"rlimit":574,"rlimit_max":574}
+{"def":"rf::misplaced","status":"failed","obligations":3,"failed":2,"rlimit":8251,"rlimit_max":3821}
+{"def":"rf::relabel","status":"failed","obligations":2,"failed":1,"rlimit":18045,"rlimit_max":17754}
+{"def":"rf::same","status":"failed","obligations":1,"failed":1,"rlimit":353,"rlimit_max":353}

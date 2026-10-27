@@ -1,0 +1,68 @@
+#[summary("구조체만으로 된 재귀: 자식 Vec을 가진 노드 (backlog 2O-03d)")]
+mod rose {
+    struct Node { v: i64, kids: Vec<Node> }
+
+    spec fn bare(n: &Node, x: i64) -> bool { n.v == x && n.kids.len() == 0 }
+
+    spec fn small(n: &Node) -> bool { n.kids.len() < 100 }
+
+    spec fn relabeled(a: &Node, b: &Node, x: i64) -> bool { b.v == x && b.kids.len() == a.kids.len() }
+
+    spec fn adopted(a: &Node, b: &Node) -> bool { b.kids.len() == a.kids.len() + 1 && b.v == a.v }
+
+    #[effects(pure)]
+    #[uses(bare)]
+    fn leaf(x: i64) -> (r: Node)
+        ensures bare(&r, x),
+    {
+        Node { v: x, kids: Vec::new() }
+    }
+
+    #[effects(pure)]
+    fn total(n: &Node) -> i64
+        decreases n,
+    {
+        let mut i: usize = 0;
+        let mut s: i64 = n.v;
+        while i < n.kids.len()
+            invariant i <= n.kids.len(),
+            decreases n.kids.len() - i,
+        {
+            s = s.wrapping_add(total(&n.kids[i]));
+            i = i + 1;
+        }
+        s
+    }
+
+    #[effects(pure)]
+    #[uses(relabeled)]
+    fn set_v(n: &mut Node, x: i64) -> ()
+        ensures relabeled(old(n), n, x),
+    {
+        n.v = x;
+    }
+
+    #[effects(pure)]
+    #[uses(small, adopted)]
+    fn adopt(n: &mut Node, c: Node) -> ()
+        requires small(n),
+        ensures adopted(old(n), n),
+    {
+        n.kids.push(c);
+    }
+
+    #[effects(io)]
+    #[uses(bare, small, adopted, relabeled)]
+    fn main() -> () {
+        let mut root: Node = leaf(1);
+        let mut mid: Node = leaf(2);
+        adopt(&mut mid, leaf(3));
+        adopt(&mut mid, leaf(4));
+        adopt(&mut root, mid);
+        adopt(&mut root, leaf(5));
+        set_v(&mut root, 10);
+        root.kids[0].v = 20;
+        print_i64(total(&root));
+        print_i64(root.kids[0].v);
+    }
+}

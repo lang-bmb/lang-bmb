@@ -1,0 +1,66 @@
+#[summary("구조체만으로 된 재귀의 틀린 프로그램: 감소·경계·넘침·사후 조건 (backlog 2O-03d)")]
+mod rf {
+    struct Node { v: i64, kids: Vec<Node> }
+
+    spec fn grew(a: &Node, b: &Node) -> bool { b.kids.len() == a.kids.len() + 1 }
+
+    spec fn labeled(n: &Node, x: i64) -> bool { n.v == x }
+
+    spec fn parent(n: &Node) -> bool { n.kids.len() > 0 }
+
+    // Recursion on the same value.
+    #[effects(pure)]
+    fn same(n: &Node) -> i64
+        decreases n,
+    {
+        if n.kids.len() == 0 { n.v } else { same(n) }
+    }
+
+    // Recursion on a new value is not on a part of the old one.
+    #[effects(pure)]
+    fn fresh(n: &Node) -> i64
+        decreases n,
+    {
+        if n.kids.len() == 0 { n.v } else { fresh(&Node { v: 0, kids: Vec::new() }) }
+    }
+
+    // A child that may not exist.
+    #[effects(pure)]
+    fn first(n: &Node) -> i64 {
+        n.kids[0].v
+    }
+
+    // A field of a new value is checked where it is computed, not taken
+    // from the facts of the value it goes into (a fault the owned-data
+    // fuzzer found while 2O-03d was written).
+    #[effects(pure)]
+    fn built(x: i64) -> i64 {
+        let r: Node = Node { v: 3 * x, kids: Vec::new() };
+        r.v
+    }
+
+    #[effects(pure)]
+    fn bump(n: &Node) -> i64 {
+        n.v + 1
+    }
+
+    // The push goes to the child, not to `n`.
+    #[effects(pure)]
+    #[uses(grew, parent)]
+    fn misplaced(n: &mut Node, c: Node) -> ()
+        requires parent(n),
+        ensures grew(old(n), n),
+    {
+        n.kids[0].kids.push(c);
+    }
+
+    #[effects(pure)]
+    #[uses(labeled)]
+    fn relabel(n: &mut Node, x: i64) -> ()
+        ensures labeled(n, x),
+    {
+        if n.kids.len() > 0 {
+            n.kids[0].v = x;
+        }
+    }
+}

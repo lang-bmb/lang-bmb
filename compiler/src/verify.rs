@@ -430,7 +430,19 @@ fn prog_of<'p>(p: &'p Program, t: &'p Tables) -> Prog<'p> {
                 .flat_map(|(c, fs)| fs.iter().map(move |(sel, _)| (sel.clone(), c.clone())))
         })
         .collect();
-    Prog { defs, t, selectors }
+    let struct_ctors = dts
+        .values()
+        .filter(|d| d.arb.is_some())
+        .filter_map(|d| d.ctors.first().map(|(c, _)| c.clone()))
+        .collect();
+    let struct_sels = dts.into_values().flat_map(|d| d.leaves).collect();
+    Prog {
+        defs,
+        t,
+        selectors,
+        struct_ctors,
+        struct_sels,
+    }
 }
 
 /// The sorts of a generic definition's type parameters (ADR-0046 §4) and a
@@ -596,7 +608,7 @@ fn select_val(elem: &Val, i: &str) -> Val {
 /// The range of every inner `Vec` length in element template `v` of type
 /// `e` (its lengths are arrays over the outer index), at the first level.
 fn inner_len_facts(v: &Val, e: &TypeKind, tb: &Tables, out: &mut Vec<String>) {
-    if let (Some(fs), Val::Struct(xs)) = (struct_fields(e, tb), v) {
+    if let (Some(fs), Val::Struct(xs)) = (flat_fields(e, tb), v) {
         for ((_, ft), x) in fs.iter().zip(xs) {
             inner_len_facts(x, ft, tb, out);
         }
@@ -681,14 +693,17 @@ fn default_val(t: &TypeKind, tb: &Tables) -> Val {
 }
 
 fn default_in(t: &TypeKind, tb: &Tables, building: &mut Vec<String>) -> Option<Val> {
-    if let Some(fs) = struct_fields(t, tb) {
+    if dt_struct(t, tb) {
+        return Some(Val::S(arb(t)));
+    }
+    if let Some(fs) = flat_fields(t, tb) {
         let mut out = Vec::new();
         for (_, ft) in &fs {
             out.push(default_in(ft, tb, building)?);
         }
         return Some(Val::Struct(out));
     }
-    if let Some(vs) = enum_variants(t, tb) {
+    if let Some(vs) = variants(t, tb) {
         let ts = crate::check::ty_str(t);
         if building.contains(&ts) {
             return None;
@@ -711,7 +726,7 @@ fn default_in(t: &TypeKind, tb: &Tables, building: &mut Vec<String>) -> Option<V
     }
     Some(match t {
         TypeKind::Param(n) => Val::S(sym(&format!("'{n}.default"))),
-        TypeKind::Array(e, n) => match const_elems(&e.kind, &default_val(&e.kind, tb), tb) {
+        TypeKind::Array(e, n) => match const_elems(&e.kind, &elem_default(&e.kind, tb), tb) {
             Val::S(elems) => Val::A {
                 elems,
                 len: n.to_string(),
@@ -725,7 +740,7 @@ fn default_in(t: &TypeKind, tb: &Tables, building: &mut Vec<String>) -> Option<V
         // An empty `Vec` (backlog 2O-03b: an inner one's default).
         _ if is_array(t) => {
             let e = elem_ty(t);
-            match const_elems(&e, &default_val(&e, tb), tb) {
+            match const_elems(&e, &elem_default(&e, tb), tb) {
                 Val::S(elems) => Val::A {
                     elems,
                     len: "0".into(),
@@ -738,6 +753,22 @@ fn default_in(t: &TypeKind, tb: &Tables, building: &mut Vec<String>) -> Option<V
         }
         _ => Val::S(default_of(t).to_string()),
     })
+}
+
+/// The value an array of `e` holds at every element by default: the
+/// default value, or for a recursive struct (whose default holds such an
+/// array) an arbitrary one, `arb` (backlog 2O-03d).
+fn elem_default(e: &TypeKind, tb: &Tables) -> Val {
+    if dt_struct(e, tb) {
+        Val::S(arb(e))
+    } else {
+        default_val(e, tb)
+    }
+}
+
+/// The arbitrary constant of a recursive struct's datatype.
+fn arb(t: &TypeKind) -> String {
+    sym(&format!("{}::'arb", crate::check::ty_str(value_ty(t))))
 }
 
 /// The element arrays of an array whose every element is `v` (of type
@@ -787,7 +818,7 @@ fn flatten_elem(v: &Val, out: &mut Vec<String>) {
 /// `elem_leaves` order (an inner `Vec`'s length is a leaf even when it is
 /// a numeral).
 fn flatten_elem_of(v: &Val, e: &TypeKind, tb: &Tables, out: &mut Vec<String>) {
-    if let Some(fs) = struct_fields(e, tb) {
+    if let Some(fs) = flat_fields(e, tb) {
         if let Val::Struct(xs) = v {
             for ((_, ft), x) in fs.iter().zip(xs) {
                 flatten_elem_of(x, ft, tb, out);
@@ -821,14 +852,14 @@ fn flatten_elem_of(v: &Val, e: &TypeKind, tb: &Tables, out: &mut Vec<String>) {
 /// Whether an array of `e` holds its elements as one array per leaf
 /// (ADR-0027 §2): structs and fixed-size arrays (backlog 2V-04b).
 fn agg_elem(e: &TypeKind, tb: &Tables) -> bool {
-    struct_fields(e, tb).is_some() || is_array(e)
+    flat_fields(e, tb).is_some() || is_array(e)
 }
 
 /// The leaves of an element of type `e`, each with the sort of its value
 /// for one element: a struct's fields in order, an inner array's leaves
 /// one array level deeper (its fixed length is a constant).
 fn elem_leaves(e: &TypeKind, tb: &Tables, suffix: &str, out: &mut Vec<(String, String)>) {
-    if let Some(fs) = struct_fields(e, tb) {
+    if let Some(fs) = flat_fields(e, tb) {
         for (n, ft) in &fs {
             elem_leaves(ft, tb, &format!("{suffix}.{n}"), out);
         }
@@ -857,7 +888,7 @@ fn elem_leaves(e: &TypeKind, tb: &Tables, suffix: &str, out: &mut Vec<(String, S
 /// The element template of type `e` whose leaf arrays are `terms` (the
 /// inverse of `flatten_elem`).
 fn elem_template(e: &TypeKind, tb: &Tables, terms: &mut impl Iterator<Item = String>) -> Val {
-    if let Some(fs) = struct_fields(e, tb) {
+    if let Some(fs) = flat_fields(e, tb) {
         return Val::Struct(
             fs.iter()
                 .map(|(_, ft)| elem_template(ft, tb, terms))
@@ -898,6 +929,8 @@ fn elem_template(e: &TypeKind, tb: &Tables, terms: &mut impl Iterator<Item = Str
 /// (`Some(n)` for a fixed-size array).
 enum Leaf {
     Scalar(TypeKind),
+    /// A recursive struct (`dt_struct`): a value of its sort.
+    Dt(TypeKind),
     Elems(TypeKind),
     /// One leaf array of an array of aggregates: the sort of one element's leaf.
     Leaves(String),
@@ -907,7 +940,7 @@ enum Leaf {
 impl Leaf {
     fn sort(&self) -> String {
         match self {
-            Leaf::Scalar(t) => sort_of(t),
+            Leaf::Scalar(t) | Leaf::Dt(t) => sort_of(t),
             Leaf::Elems(e) => format!("(Array Int {})", sort_of(e)),
             Leaf::Leaves(s) => format!("(Array Int {s})"),
             Leaf::Len(..) => "Int".into(),
@@ -918,6 +951,7 @@ impl Leaf {
     fn fact(&self, x: &str) -> Option<String> {
         match self {
             Leaf::Scalar(t) => range(t, x),
+            Leaf::Dt(_) => None,
             Leaf::Elems(_) | Leaf::Leaves(_) => None,
             Leaf::Len(_, Some(n)) => Some(format!("(= {x} {n})")),
             Leaf::Len(e, None) => Some(format!("(and (<= 0 {x}) (<= {x} {}))", len_max(e))),
@@ -998,6 +1032,43 @@ pub(crate) fn enum_variants(t: &TypeKind, tb: &Tables) -> Option<Vec<(String, Ve
     }
 }
 
+/// Whether `t` (through a reference) is a struct that contains itself
+/// through structs alone: a datatype of one constructor, not a tuple of
+/// leaves (ADR-0047 §3, backlog 2O-03d).
+fn dt_struct(t: &TypeKind, tb: &Tables) -> bool {
+    struct_fields(t, tb).is_some() && crate::check::struct_cycle(t, &tb.adts)
+}
+
+/// The fields of a struct the encoder holds as a tuple of leaves: every
+/// struct but a recursive one (`dt_struct`).
+fn flat_fields(t: &TypeKind, tb: &Tables) -> Option<Vec<(String, TypeKind)>> {
+    if dt_struct(t, tb) {
+        return None;
+    }
+    struct_fields(t, tb)
+}
+
+/// The constructor name of a recursive struct's datatype: the struct's.
+fn dt_ctor_name(t: &TypeKind) -> String {
+    match value_ty(t) {
+        TypeKind::Named { path, .. } => path.last().cloned().unwrap_or_default(),
+        _ => String::new(),
+    }
+}
+
+/// The variants of the datatype of `t`: an enum's, or the one constructor
+/// of a recursive struct with its fields as the payload.
+fn variants(t: &TypeKind, tb: &Tables) -> Option<Vec<(String, Vec<TypeKind>)>> {
+    if dt_struct(t, tb) {
+        let fs = struct_fields(t, tb)?;
+        return Some(vec![(
+            dt_ctor_name(t),
+            fs.into_iter().map(|(_, ft)| ft).collect(),
+        )]);
+    }
+    enum_variants(t, tb)
+}
+
 /// The type without a reference around it.
 pub(crate) fn value_ty(t: &TypeKind) -> &TypeKind {
     match t {
@@ -1036,10 +1107,10 @@ fn has_array(t: &TypeKind, tb: &Tables) -> bool {
         if !seen.insert(crate::check::ty_str(t)) {
             return false;
         }
-        if let Some(fs) = struct_fields(t, tb) {
+        if let Some(fs) = flat_fields(t, tb) {
             return fs.iter().any(|(_, ft)| go(ft, tb, seen));
         }
-        enum_variants(t, tb).is_some_and(|vs| {
+        variants(t, tb).is_some_and(|vs| {
             vs.iter()
                 .any(|(_, ps)| ps.iter().any(|pt| go(pt, tb, seen)))
         })
@@ -1051,6 +1122,10 @@ fn has_array(t: &TypeKind, tb: &Tables) -> bool {
 /// their fields (selector symbol, sort).
 struct Dt {
     ctors: Vec<(String, Vec<(String, String)>)>,
+    /// A recursive struct's arbitrary constant (`arb`).
+    arb: Option<String>,
+    /// A recursive struct's selectors with their leaves.
+    leaves: Vec<(String, Leaf)>,
 }
 
 /// Every enum instance a program uses, by type text, and the order that
@@ -1063,32 +1138,46 @@ fn enum_dts(tb: &Tables) -> (Vec<String>, BTreeMap<String, Dt>) {
             TypeKind::Named { .. } => {}
             _ => return,
         }
-        if let Some(fs) = struct_fields(t, tb) {
+        if let Some(fs) = flat_fields(t, tb) {
             for (_, ft) in &fs {
                 visit(ft, tb, order, dts);
             }
             return;
         }
-        let Some(vs) = enum_variants(t, tb) else {
+        let Some(vs) = variants(t, tb) else {
             return;
         };
         let ts = crate::check::ty_str(t);
         if dts.contains_key(&ts) {
             return;
         }
-        dts.insert(ts.clone(), Dt { ctors: Vec::new() });
+        dts.insert(
+            ts.clone(),
+            Dt {
+                ctors: Vec::new(),
+                arb: dt_struct(t, tb).then(|| arb(t)),
+                leaves: Vec::new(),
+            },
+        );
         let mut ctors = Vec::new();
+        let mut kept = Vec::new();
+        let is_struct = dt_struct(t, tb);
         for (v, ps) in &vs {
             let mut fields = Vec::new();
             for (k, pt) in ps.iter().enumerate() {
                 visit(pt, tb, order, dts);
                 for (name, leaf) in payload_leaves(t, v, k, pt, tb) {
                     fields.push((sym(&name), leaf.sort()));
+                    if is_struct {
+                        kept.push((sym(&name), leaf));
+                    }
                 }
             }
             ctors.push((ctor(t, v), fields));
         }
-        dts.get_mut(&ts).expect("inserted").ctors = ctors;
+        let d = dts.get_mut(&ts).expect("inserted");
+        d.ctors = ctors;
+        d.leaves = kept;
         order.push(ts);
     }
     let mut all: Vec<&TypeKind> = tb.types.values().collect();
@@ -1112,7 +1201,24 @@ fn enum_dts(tb: &Tables) -> (Vec<String>, BTreeMap<String, Dt>) {
 /// with the enums of their cycle, under the first one's entry (the others'
 /// entries name it).
 fn datatypes(tb: &Tables) -> Vec<(String, String, String)> {
-    let (order, dts) = enum_dts(tb);
+    let (all, dts) = enum_dts(tb);
+    // Recursive structs (backlog 2O-03d) are handles, `Int` under the
+    // struct's sort name, declared before every datatype, with their
+    // selector functions after them. Not datatypes: Z3 4.15.4 does not end
+    // satisfiable queries over a datatype nested in an array whose every
+    // constructor holds it, and not uninterpreted sorts: with a quantified
+    // spec fn its model search ran to the resource limit where `Int`
+    // handles answer at once (`dev-docs/measurements/z3-nested-datatypes`).
+    let structs: Vec<String> = all
+        .iter()
+        .filter(|ts| dts[*ts].arb.is_some())
+        .cloned()
+        .collect();
+    let order: Vec<String> = all
+        .iter()
+        .filter(|ts| dts[*ts].arb.is_none())
+        .cloned()
+        .collect();
     // The enums each one's fields name (by sort symbol).
     let deps: BTreeMap<String, Vec<String>> = dts
         .iter()
@@ -1197,7 +1303,16 @@ fn datatypes(tb: &Tables) -> Vec<(String, String, String)> {
             format!("({c} {})", f.join(" "))
         }
     };
-    let mut out = Vec::new();
+    let mut out: Vec<(String, String, String)> = structs
+        .iter()
+        .map(|ts| {
+            (
+                format!("|{ts}::"),
+                sym(ts),
+                format!("(define-sort {} () Int)", sym(ts)),
+            )
+        })
+        .collect();
     for comp in tj.out {
         let heads: Vec<String> = comp.iter().map(|ts| format!("({} 0)", sym(ts))).collect();
         let bodies: Vec<String> = comp
@@ -1226,6 +1341,21 @@ fn datatypes(tb: &Tables) -> Vec<(String, String, String)> {
             ));
         }
     }
+    for ts in &structs {
+        let d = &dts[ts];
+        let mut decl = String::new();
+        for (_, fs) in &d.ctors {
+            for (sel, sort) in fs {
+                decl.push_str(&format!("(declare-fun {sel} ({}) {sort})\n", sym(ts)));
+            }
+        }
+        decl.push_str(&format!(
+            "(declare-const {} {})",
+            d.arb.as_ref().expect("a recursive struct"),
+            sym(ts)
+        ));
+        out.push((format!("|{ts}::"), sym(ts), decl));
+    }
     out
 }
 
@@ -1233,7 +1363,7 @@ fn datatypes(tb: &Tables) -> Vec<(String, String, String)> {
 /// result (`|geo::mid.x|`), with their result sorts.
 fn spec_funs(path: &str, tb: &Tables) -> Vec<(String, String)> {
     let ret = &tb.fns[path].ret;
-    if struct_fields(ret, tb).is_none() {
+    if flat_fields(ret, tb).is_none() {
         return vec![(sym(path), sort_of(ret))];
     }
     let mut ls = Vec::new();
@@ -1244,7 +1374,7 @@ fn spec_funs(path: &str, tb: &Tables) -> Vec<(String, String)> {
 /// What marks spec fn `path` in a query text: its symbol, or the prefix of
 /// its leaf symbols.
 fn spec_key(path: &str, tb: &Tables) -> String {
-    if struct_fields(&tb.fns[path].ret, tb).is_some() {
+    if flat_fields(&tb.fns[path].ret, tb).is_some() {
         format!("|{path}.")
     } else {
         sym(path)
@@ -1260,7 +1390,7 @@ fn field_index(t: &TypeKind, tb: &Tables, name: &str) -> usize {
 /// The leaves of a value of type `t`, named `base` + a suffix, in the order
 /// `flatten` writes them.
 fn leaves(t: &TypeKind, tb: &Tables, base: &str, out: &mut Vec<(String, Leaf)>) {
-    if let Some(fs) = struct_fields(t, tb) {
+    if let Some(fs) = flat_fields(t, tb) {
         for (n, ft) in &fs {
             leaves(ft, tb, &format!("{base}.{n}"), out);
         }
@@ -1287,13 +1417,14 @@ fn leaves(t: &TypeKind, tb: &Tables, base: &str, out: &mut Vec<(String, Leaf)>) 
             out.push((format!("{base}.len"), Leaf::Len(e, n)));
         }
         TypeKind::Ref { inner, .. } => leaves(&inner.kind, tb, base, out),
+        _ if dt_struct(t, tb) => out.push((base.to_string(), Leaf::Dt(t.clone()))),
         _ => out.push((base.to_string(), Leaf::Scalar(t.clone()))),
     }
 }
 
 /// The value of type `t` whose leaves are `terms` (the inverse of `flatten`).
 fn build(t: &TypeKind, tb: &Tables, terms: &mut impl Iterator<Item = String>) -> Val {
-    if let Some(fs) = struct_fields(t, tb) {
+    if let Some(fs) = flat_fields(t, tb) {
         return Val::Struct(fs.iter().map(|(_, ft)| build(ft, tb, terms)).collect());
     }
     match t {
@@ -1317,28 +1448,62 @@ fn build(t: &TypeKind, tb: &Tables, terms: &mut impl Iterator<Item = String>) ->
 /// A step from a variable to the place an assignment writes.
 enum Step {
     Field(usize),
+    /// Field `k` of a recursive struct of type `t` (`dt_struct`).
+    DtField(usize, TypeKind),
     Index(String),
 }
 
-/// `v` with the place at `steps` replaced by `new`.
-fn set_at(v: Val, steps: &[Step], new: Val) -> Val {
+/// The fields of the recursive struct value `x` of type `t`, one value per
+/// field (its selectors applied to `x`).
+fn dt_fields(t: &TypeKind, x: &str, tb: &Tables) -> Vec<Val> {
+    let name = dt_ctor_name(t);
+    let fs = struct_fields(t, tb).expect("a struct");
+    fs.iter()
+        .enumerate()
+        .map(|(k, (_, ft))| {
+            let terms: Vec<String> = payload_leaves(t, &name, k, ft, tb)
+                .iter()
+                .map(|(n, _)| format!("({} {x})", sym(n)))
+                .collect();
+            build(ft, tb, &mut terms.into_iter())
+        })
+        .collect()
+}
+
+/// `v` with the place at `steps` replaced by `new`; `mk` builds a
+/// recursive struct value from its fields (`Enc::mk_struct`).
+fn set_at(
+    v: Val,
+    steps: &[Step],
+    new: Val,
+    tb: &Tables,
+    mk: &mut dyn FnMut(&TypeKind, Vec<Val>) -> Val,
+) -> Val {
     match (steps.split_first(), v) {
         (None, _) => new,
         (Some((Step::Field(k), rest)), Val::Struct(mut fs)) => {
             let f = std::mem::replace(&mut fs[*k], Val::Unit);
-            fs[*k] = set_at(f, rest, new);
+            fs[*k] = set_at(f, rest, new, tb, mk);
             Val::Struct(fs)
+        }
+        (Some((Step::DtField(k, t), rest)), Val::S(x)) => {
+            let mut fs = dt_fields(t, &x, tb);
+            let f = std::mem::replace(&mut fs[*k], Val::Unit);
+            fs[*k] = set_at(f, rest, new, tb, mk);
+            mk(t, fs)
         }
         (Some((Step::Index(i), rest)), Val::Arr { elem, len }) => {
             let cur = select_val(&elem, i);
-            let new = set_at(cur, rest, new);
+            let new = set_at(cur, rest, new, tb, mk);
             Val::Arr {
                 elem: Box::new(store_val(&elem, i, &new)),
                 len,
             }
         }
+        // A scalar element, or a recursive struct one (backlog 2O-03d).
         (Some((Step::Index(i), rest)), Val::A { elems, len }) => {
-            assert!(rest.is_empty(), "array elements are scalars");
+            let cur = Val::S(format!("(select {elems} {i})"));
+            let new = set_at(cur, rest, new, tb, mk);
             Val::A {
                 elems: format!("(store {elems} {i} {})", new.s()),
                 len,
@@ -1392,6 +1557,11 @@ struct Prog<'p> {
     /// The constructor of every enum selector symbol (structural
     /// `decreases`, ADR-0047 §3).
     selectors: BTreeMap<String, String>,
+    /// The constructors of recursive structs (`dt_struct`): every program
+    /// value of such a type is one.
+    struct_ctors: BTreeSet<String>,
+    /// The leaf of every recursive struct selector (`Prog::struct_facts`).
+    struct_sels: BTreeMap<String, Leaf>,
 }
 
 /// Symbolic state of one definition.
@@ -1683,7 +1853,7 @@ impl<'p, 'q> Enc<'p, 'q> {
     ) -> (String, bool) {
         let v = self.spec(d, env, old).s();
         let t = self.ty(d);
-        (v, enum_variants(value_ty(&t), self.prog.t).is_some())
+        (v, variants(value_ty(&t), self.prog.t).is_some())
     }
 
     /// The goal that measure `m1` of a call is below the caller's `m0`. An
@@ -1715,7 +1885,11 @@ impl<'p, 'q> Enc<'p, 'q> {
                     let Some(c) = self.prog.selectors.get(head) else {
                         break;
                     };
-                    testers.push(format!("((_ is {c}) {arg})"));
+                    // A recursive struct's value is its one constructor
+                    // (the placeholder is no program value).
+                    if !self.prog.struct_ctors.contains(c) {
+                        testers.push(format!("((_ is {c}) {arg})"));
+                    }
                     cur = arg;
                     if cur == a {
                         return and(&testers);
@@ -1772,6 +1946,35 @@ impl<'p, 'q> Enc<'p, 'q> {
         }
     }
 
+    /// A value of the recursive struct `t` with `fields` (backlog 2O-03d):
+    /// a fresh constant of its sort whose selectors are the field leaves,
+    /// as ground facts (no constructor function: the queries stay free of
+    /// quantifiers).
+    fn mk_struct(&mut self, t: &TypeKind, fields: Vec<Val>) -> Val {
+        let t = value_ty(t).clone();
+        let x = self.fresh(&format!("{}!new", dt_ctor_name(&t)), &sort_of(&t));
+        let name = dt_ctor_name(&t);
+        let fs = struct_fields(&t, self.prog.t).expect("a struct");
+        for ((k, (_, ft)), v) in fs.iter().enumerate().zip(&fields) {
+            let mut terms = Vec::new();
+            flatten(v, &mut terms);
+            for ((sel, _), term) in payload_leaves(&t, &name, k, ft, self.prog.t)
+                .iter()
+                .zip(terms)
+            {
+                self.decls
+                    .push(format!("(assert (= ({} {x}) {term}))", sym(sel)));
+            }
+        }
+        Val::S(x)
+    }
+
+    /// `v` with the place at `steps` replaced by `new`.
+    fn set_at(&mut self, v: Val, steps: &[Step], new: Val) -> Val {
+        let tb = self.prog.t;
+        set_at(v, steps, new, tb, &mut |t, fs| self.mk_struct(t, fs))
+    }
+
     fn fresh(&mut self, base: &str, sort: &str) -> String {
         let n = self.counters.entry(base.to_string()).or_insert(0);
         let name = sym(&format!("{base}@{n}"));
@@ -1817,7 +2020,7 @@ impl<'p, 'q> Enc<'p, 'q> {
     }
 
     fn fresh_val(&mut self, base: &str, t: &TypeKind) -> Val {
-        if let Some(fs) = struct_fields(t, self.prog.t) {
+        if let Some(fs) = flat_fields(t, self.prog.t) {
             let fs = fs.to_vec();
             return Val::Struct(
                 fs.iter()
@@ -1963,7 +2166,7 @@ impl<'p, 'q> Enc<'p, 'q> {
             // holds an array compares its elements below the length only,
             // also inside enum payloads (backlog 2V-05).
             ExprKind::Binary(op @ (BinOp::Eq | BinOp::Ne), l, r)
-                if struct_fields(&self.ty(l), self.prog.t).is_some()
+                if flat_fields(&self.ty(l), self.prog.t).is_some()
                     || has_array(&self.ty(l), self.prog.t) =>
             {
                 let t = self.ty(l);
@@ -2173,13 +2376,21 @@ impl<'p, 'q> Enc<'p, 'q> {
                     })
                     .collect();
                 vals.sort_by_key(|(k, _)| *k);
-                Val::Struct(vals.into_iter().map(|(_, v)| v).collect())
+                let vals: Vec<Val> = vals.into_iter().map(|(_, v)| v).collect();
+                // The checker rejects a recursive struct built here (E0432).
+                assert!(
+                    !dt_struct(&t, self.prog.t),
+                    "recursive struct literal in a specification"
+                );
+                Val::Struct(vals)
             }
             ExprKind::Field { base, name } => {
                 let bt = self.ty(base);
+                let k = field_index(&bt, self.prog.t, &name.name);
                 match self.spec(base, env, old) {
-                    Val::Struct(mut fs) => {
-                        fs.swap_remove(field_index(&bt, self.prog.t, &name.name))
+                    Val::Struct(mut fs) => fs.swap_remove(k),
+                    Val::S(x) if dt_struct(&bt, self.prog.t) => {
+                        dt_fields(value_ty(&bt), &x, self.prog.t).swap_remove(k)
                     }
                     v => panic!("field of non-struct {v:?}"),
                 }
@@ -2603,7 +2814,11 @@ impl<'p, 'q> Enc<'p, 'q> {
                     vals.push((field_index(&t, self.prog.t, &n.name), v));
                 }
                 vals.sort_by_key(|(k, _)| *k);
-                Val::Struct(vals.into_iter().map(|(_, v)| v).collect())
+                let vals: Vec<Val> = vals.into_iter().map(|(_, v)| v).collect();
+                if dt_struct(&t, self.prog.t) {
+                    return self.mk_struct(&t, vals);
+                }
+                Val::Struct(vals)
             }
             ExprKind::Field { base, name } => {
                 // A place under `&`/`&mut` has no recorded type.
@@ -2611,9 +2826,13 @@ impl<'p, 'q> Enc<'p, 'q> {
                     TypeKind::Error => self.place_ty(base),
                     t => t,
                 };
+                let k = field_index(&bt, self.prog.t, &name.name);
                 match self.eval(base) {
-                    Val::Struct(mut fs) => {
-                        fs.swap_remove(field_index(&bt, self.prog.t, &name.name))
+                    Val::Struct(mut fs) => fs.swap_remove(k),
+                    // A recursive struct (backlog 2O-03d): its selectors
+                    // (their facts are added to each query, `struct_facts`).
+                    Val::S(x) if dt_struct(&bt, self.prog.t) => {
+                        dt_fields(value_ty(&bt), &x, self.prog.t).swap_remove(k)
                     }
                     v => panic!("field of non-struct {v:?}"),
                 }
@@ -2705,7 +2924,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                 }
             }
             (Val::Struct(xs), Val::Struct(ys)) => {
-                let tys: Vec<TypeKind> = match struct_fields(t, self.prog.t) {
+                let tys: Vec<TypeKind> = match flat_fields(t, self.prog.t) {
                     Some(fs) => fs.iter().map(|(_, ft)| ft.clone()).collect(),
                     None => vec![TypeKind::Error; xs.len()],
                 };
@@ -2764,7 +2983,8 @@ impl<'p, 'q> Enc<'p, 'q> {
                 let mut steps = Vec::new();
                 let root = self.place(target, &mut steps, true);
                 let cur = self.vars[&root].clone();
-                self.vars.insert(root, set_at(cur, &steps, v));
+                let nv = self.set_at(cur, &steps, v);
+                self.vars.insert(root, nv);
             }
             Stmt::Assert { cond, span } => {
                 let (env, old) = self.cur_env();
@@ -2969,7 +3189,8 @@ impl<'p, 'q> Enc<'p, 'q> {
         let mut steps = Vec::new();
         let root = self.place(recv, &mut steps, false);
         let cur = self.vars[&root].clone();
-        self.vars.insert(root, set_at(cur, &steps, new));
+        let nv = self.set_at(cur, &steps, new);
+        self.vars.insert(root, nv);
         result
     }
 
@@ -2987,14 +3208,16 @@ impl<'p, 'q> Enc<'p, 'q> {
         let mut steps = Vec::new();
         let root = self.place(&p0, &mut steps, true);
         let cur = self.vars[&root].clone();
-        self.vars.insert(root, set_at(cur, &steps, new));
+        let nv = self.set_at(cur, &steps, new);
+        self.vars.insert(root, nv);
         if op == "replace" {
             return old;
         }
         let mut steps = Vec::new();
         let root = self.place(&p1, &mut steps, true);
         let cur = self.vars[&root].clone();
-        self.vars.insert(root, set_at(cur, &steps, old));
+        let nv = self.set_at(cur, &steps, old);
+        self.vars.insert(root, nv);
         Val::Unit
     }
 
@@ -3060,7 +3283,7 @@ impl<'p, 'q> Enc<'p, 'q> {
     /// position, and the range facts of its leaves (true when `sv` is a `v`,
     /// ADR-0027 §5).
     fn payload(&self, t: &TypeKind, v: &str, sv: &str) -> (Vec<Val>, Vec<String>) {
-        let vs = enum_variants(t, self.prog.t).expect("match on an enum");
+        let vs = variants(t, self.prog.t).expect("match on an enum");
         let ps = &vs.iter().find(|(n, _)| n == v).expect("checked variant").1;
         let mut vals = Vec::new();
         let mut facts = Vec::new();
@@ -3091,7 +3314,7 @@ impl<'p, 'q> Enc<'p, 'q> {
         {
             return self.ext_eq(a, b, &inner.kind.clone());
         }
-        if let Some(fs) = struct_fields(t, tb) {
+        if let Some(fs) = flat_fields(t, tb) {
             let fs = fs.to_vec();
             let (Val::Struct(xs), Val::Struct(ys)) = (a, b) else {
                 panic!("struct values expected")
@@ -3103,7 +3326,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                 .collect();
             return and(&parts);
         }
-        if let Some(vs) = enum_variants(t, tb)
+        if let Some(vs) = variants(t, tb)
             && has_array(t, tb)
         {
             let (sa, sb) = (a.s(), b.s());
@@ -3216,7 +3439,8 @@ impl<'p, 'q> Enc<'p, 'q> {
                 let mut steps = Vec::new();
                 let root = s.place(place, &mut steps, false);
                 let cur = s.vars[&root].clone();
-                s.vars.insert(root, set_at(cur, &steps, new));
+                let nv = s.set_at(cur, &steps, new);
+                s.vars.insert(root, nv);
             }
             r
         };
@@ -3271,7 +3495,12 @@ impl<'p, 'q> Enc<'p, 'q> {
             ExprKind::Field { base, name } => {
                 let root = self.place(base, steps, check);
                 let bt = self.place_ty(base);
-                steps.push(Step::Field(field_index(&bt, self.prog.t, &name.name)));
+                let k = field_index(&bt, self.prog.t, &name.name);
+                steps.push(if dt_struct(&bt, self.prog.t) {
+                    Step::DtField(k, value_ty(&bt).clone())
+                } else {
+                    Step::Field(k)
+                });
                 root
             }
             ExprKind::Index { base, index } => {
@@ -3543,7 +3772,8 @@ impl<'p, 'q> Enc<'p, 'q> {
                 };
                 old_env.insert(p.name.name.clone(), argv[i].clone());
                 let cur = self.vars[&root].clone();
-                self.vars.insert(root, set_at(cur, &steps, nv.clone()));
+                let whole = self.set_at(cur, &steps, nv.clone());
+                self.vars.insert(root, whole);
                 post_args[i] = nv;
             }
         }
@@ -3908,6 +4138,43 @@ pub const PRELUDE: &str = "(define-fun bmb_abs ((x Int)) Int (ite (>= x 0) x (- 
 (define-fun bmb_trem ((a Int) (b Int)) Int (- a (* b (bmb_tdiv a b))))";
 
 impl<'p> Prog<'p> {
+    /// The facts of the recursive struct fields `text` reads outside a
+    /// quantifier (backlog 2O-03d): each selector application's range or
+    /// length bounds, which every program value meets. Ground, so the
+    /// queries stay quantifier-free. `text` is an obligation's path
+    /// condition and goal, never the definitions of the values `mk_struct`
+    /// made (`decls`): those include values made later or on another path,
+    /// and the facts of their fields would assume what the obligations on
+    /// those fields prove (a soundness fault the owned-data fuzzer found).
+    /// A term of the path condition denotes a value that exists on the path,
+    /// whose fields the obligations before it checked.
+    fn struct_facts(&self, text: &str) -> String {
+        fn walk(e: &smt::Sexp, sels: &BTreeMap<String, Leaf>, out: &mut BTreeSet<String>) {
+            if let smt::Sexp::List(xs) = e {
+                if let [smt::Sexp::Atom(h), _] = xs.as_slice()
+                    && let Some(leaf) = sels.get(h)
+                    && let Some(f) = leaf.fact(&smt::print(e))
+                {
+                    out.insert(f);
+                }
+                if !matches!(xs.first(), Some(smt::Sexp::Atom(q)) if q == "forall" || q == "exists")
+                {
+                    xs.iter().for_each(|x| walk(x, sels, out));
+                }
+            }
+        }
+        if self.struct_sels.is_empty() {
+            return String::new();
+        }
+        let mut facts = BTreeSet::new();
+        for cmd in smt::split_commands(text) {
+            if let Some(e) = smt::parse(&cmd) {
+                walk(&e, &self.struct_sels, &mut facts);
+            }
+        }
+        facts.iter().map(|f| format!("(assert {f})\n")).collect()
+    }
+
     /// Declarations of every spec fn, as (path, SMT symbol, declaration).
     fn spec_decls(&self) -> Vec<(String, String, String)> {
         self.defs
@@ -4260,17 +4527,18 @@ pub fn preconditions_satisfiable(p: &Program, t: &Tables) -> Vec<(String, Span, 
             out.push((path.clone(), span, None));
             continue;
         }
+        let decls = enc.decls.join("\n");
         let q = enc
             .pc
             .iter()
             .map(|a| format!("(assert {a})"))
             .collect::<Vec<_>>()
             .join("\n");
+        let q = format!("{q}\n{}", prog.struct_facts(&q));
         let relevant = relevant_axioms(&axioms, &q);
         let mut base = header(0).join("\n");
         base.push('\n');
         base.push_str(&sort_decls(&t.fns[path]));
-        let decls = enc.decls.join("\n");
         let used = needed_decls(&spec_decls, &dts, &format!("{relevant}{decls}\n{q}"));
         let full = format!("{base}{used}{relevant}{decls}");
         if solver.as_ref().is_some_and(|s| !s.reusable()) {
@@ -4296,6 +4564,7 @@ pub fn preconditions_satisfiable(p: &Program, t: &Tables) -> Vec<(String, Span, 
         // the definitions, so `unsat` with them is `unsat` (as in the prover).
         if matches!(answer, Ok(Answer::Unknown(_))) && !axiom_parts.is_empty() {
             let (inst, _) = ground_instances(&axiom_parts, &q, 3);
+            let inst = format!("{inst}{}", prog.struct_facts(&inst));
             if !inst.is_empty() {
                 let used = needed_decls(&spec_decls, &dts, &format!("{decls}\n{inst}{q}"));
                 let head = format!("{base}{used}{decls}");
@@ -4482,6 +4751,7 @@ fn verify_impl(
                         .collect::<Vec<_>>()
                         .join("\n")
                 );
+                let q = format!("{q}\n{}", prog.struct_facts(&q));
                 let relevant = relevant_axioms(&axioms, &q);
                 let used = needed_decls(&spec_decls, &dts, &format!("{relevant}{decls}\n{q}"));
                 let base = format!("{prefix}{used}{relevant}{decls}");
@@ -4532,6 +4802,7 @@ fn verify_impl(
                     .join("\n"),
                 o.goal
             );
+            let q = format!("{q}\n{}", prog.struct_facts(&q));
             // Only definitions the obligation can reach (DESIGN.md §4.1:
             // unrelated context is the main source of solver instability).
             let relevant = relevant_axioms(&axioms, &q);
@@ -4554,6 +4825,7 @@ fn verify_impl(
             // whether it runs or comes from the proof cache (2V-03).
             let retry_script = |q: &str| {
                 let (inst, complete) = ground_instances(&axiom_parts, q, 3);
+                let inst = format!("{inst}{}", prog.struct_facts(&inst));
                 if inst.is_empty() {
                     return None;
                 }
@@ -4918,6 +5190,20 @@ fn relevant_axioms(axioms: &[(String, String)], text: &str) -> String {
 /// `x = 5, a = [1, 2] (len 2), p = Point { x: 1, y: 2 }` from the current
 /// model.
 fn counterexample(sol: &mut Solver, inputs: &[(String, Val, TypeKind)], tb: &Tables) -> String {
+    // A recursive struct is shown by its fields, one level deep (backlog
+    // 2O-03d): its own model value is an element of an uninterpreted sort.
+    let inputs: Vec<(String, Val, TypeKind)> = inputs
+        .iter()
+        .map(|(n, v, t)| match v {
+            Val::S(x) if dt_struct(t, tb) => (
+                n.clone(),
+                Val::Struct(dt_fields(value_ty(t), x, tb)),
+                t.clone(),
+            ),
+            _ => (n.clone(), v.clone(), t.clone()),
+        })
+        .collect();
+    let inputs = &inputs;
     let mut terms = Vec::new();
     for (_, v, _) in inputs {
         model_terms(v, &mut terms);
@@ -4957,7 +5243,7 @@ fn show_variant(x: &smt::Sexp, t: &TypeKind, tb: &Tables) -> String {
     else {
         return smt::render_value(x);
     };
-    let vs = enum_variants(t, tb).unwrap_or_default();
+    let vs = variants(t, tb).unwrap_or_default();
     let ps = vs
         .iter()
         .find(|(n, _)| n == v)
@@ -5008,7 +5294,7 @@ fn show_leaves<'a>(
     tb: &Tables,
     it: &mut impl Iterator<Item = &'a smt::Sexp>,
 ) -> String {
-    if let Some(fs) = struct_fields(t, tb) {
+    if let Some(fs) = flat_fields(t, tb) {
         let short = crate::check::ty_str(value_ty(t));
         let short = short.rsplit("::").next().unwrap_or(&short).to_string();
         let shown: Vec<String> = fs
@@ -5026,11 +5312,11 @@ fn show_leaves<'a>(
             .map(smt::render_value)
             .and_then(|l| l.parse::<i64>().ok());
         if let (Some(a), Some(n)) = (elems, n)
-            && (is_scalar_ty(&e) || enum_variants(&e, tb).is_some())
+            && (is_scalar_ty(&e) || variants(&e, tb).is_some())
         {
             let shown: Option<Vec<String>> = (0..n.min(SHOW as i64))
                 .map(|k| {
-                    model_select(a, k).map(|x| match enum_variants(&e, tb) {
+                    model_select(a, k).map(|x| match variants(&e, tb) {
                         Some(_) => show_variant(&x, &e, tb),
                         None => smt::render_value(&x),
                     })
@@ -5044,7 +5330,8 @@ fn show_leaves<'a>(
         return "[..]".into();
     }
     match it.next() {
-        Some(x) if enum_variants(t, tb).is_some() => show_variant(x, t, tb),
+        Some(_) if dt_struct(t, tb) => format!("{} {{ .. }}", dt_ctor_name(t)),
+        Some(x) if variants(t, tb).is_some() => show_variant(x, t, tb),
         Some(x) => smt::render_value(x),
         None => String::new(),
     }
@@ -5122,7 +5409,11 @@ fn model_terms(v: &Val, terms: &mut Vec<String>) {
 /// `v` in Rust notation from its model values.
 fn show(v: &Val, t: &TypeKind, tb: &Tables, it: &mut impl Iterator<Item = String>) -> String {
     match v {
-        Val::S(_) if enum_variants(t, tb).is_some() => {
+        Val::S(_) if dt_struct(t, tb) => {
+            it.next();
+            format!("{} {{ .. }}", dt_ctor_name(t))
+        }
+        Val::S(_) if variants(t, tb).is_some() => {
             let raw = it.next().unwrap_or_default();
             match smt::parse(&raw) {
                 Some(x) => show_variant(&x, t, tb),
@@ -5141,7 +5432,8 @@ fn show(v: &Val, t: &TypeKind, tb: &Tables, it: &mut impl Iterator<Item = String
                 .into_iter()
                 .take(n)
                 .map(|x| match smt::parse(&x) {
-                    Some(v) if enum_variants(&e, tb).is_some() => show_variant(&v, &e, tb),
+                    _ if dt_struct(&e, tb) => format!("{} {{ .. }}", dt_ctor_name(&e)),
+                    Some(v) if variants(&e, tb).is_some() => show_variant(&v, &e, tb),
                     _ => x,
                 })
                 .collect();

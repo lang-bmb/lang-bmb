@@ -8,7 +8,13 @@
 //! popped node's `next`), write and read the head through a `&mut` and a
 //! shared reference `match`, swap the two lists, replace the box, a
 //! partial move of the bag's `Vec` and its reassignment, and the sum of a
-//! list by structural recursion. The generator knows every list's length,
+//! list by structural recursion. A rose tree `t: Rose` (`struct Rose { v:
+//! i64, kids: Vec<Rose> }`, a struct holding itself, backlog 2O-03d) gets
+//! children and grandchildren, a write two levels down and reads of its
+//! first child; a tree `tr: Tree` (`enum Tree { Leaf(i64), Many(Vec<Tree>)
+//! }`, backlog 2O-03c) is wrapped in a new node with a leaf beside it; both
+//! are summed by structural recursion through their `Vec`s. The generator
+//! knows every list's length,
 //! so the head reads it writes are those an interpreter (a Rust `VecDeque`)
 //! can replay. As in the other fuzzers it checks every claim:
 //!
@@ -55,6 +61,47 @@ enum Op {
     BagPush(E),
     /// `let c: i64 = sum(&l);` (no contract)
     Sum,
+    /// `if t.kids.len() < 50 { t.kids.push(Rose { v: e, kids: Vec::new() }); }`
+    RoseAdopt(E),
+    /// The same under the first child, if any.
+    RoseNest(E),
+    /// `if t.kids.len() > 0 { t.kids[0].v = e; }`
+    RoseSetKid(E),
+    /// `let k: i64 = if t.kids.len() > 0 { t.kids[0].v } else { d };`
+    RoseRead(E),
+    /// `let c: i64 = rose_total(&t);` (no contract)
+    RoseTotal,
+    /// `tr = Tree::Many([tr, Tree::Leaf(e)])`, through a `Vec`
+    TreeWrap(E),
+    /// `let f: i64 = match &tr { Tree::Leaf(v) => *v, Tree::Many(_) => d };`
+    TreeFirst(E),
+    /// `let c: i64 = tree_total(&tr);` (no contract)
+    TreeTotal,
+}
+
+/// The interpreter's rose tree.
+struct Rose {
+    v: i64,
+    kids: Vec<Rose>,
+}
+
+fn rose_total(t: &Rose) -> i64 {
+    t.kids
+        .iter()
+        .fold(t.v, |a, k| a.wrapping_add(rose_total(k)))
+}
+
+/// The interpreter's tree.
+enum Tree {
+    Leaf(i64),
+    Many(Vec<Tree>),
+}
+
+fn tree_total(t: &Tree) -> i64 {
+    match t {
+        Tree::Leaf(v) => *v,
+        Tree::Many(ks) => ks.iter().fold(0, |a, k| a.wrapping_add(tree_total(k))),
+    }
 }
 
 struct OFunc {
@@ -69,7 +116,7 @@ fn gen_ofunc(rng: &mut Rng, k: usize) -> OFunc {
     let mut vars: Vec<String> = vec!["x".into(), "y".into(), "acc".into()];
     let mut ops = Vec::new();
     for j in 0..2 + rng.below(7) {
-        let op = match rng.below(10) {
+        let op = match rng.below(18) {
             0..=2 => Op::Prepend(gen_e(rng, &vars, 2)),
             3 => Op::Pop,
             4 => Op::SetHead(gen_e(rng, &vars, 1)),
@@ -81,9 +128,31 @@ fn gen_ofunc(rng: &mut Rng, k: usize) -> OFunc {
             6 => Op::Swap,
             7 => Op::ReplaceBox(gen_e(rng, &vars, 1)),
             8 => Op::BagPush(gen_e(rng, &vars, 1)),
-            _ => {
+            9 => {
                 vars.push(format!("c{j}"));
                 Op::Sum
+            }
+            10 | 11 => Op::RoseAdopt(gen_e(rng, &vars, 1)),
+            12 => Op::RoseNest(gen_e(rng, &vars, 1)),
+            13 => Op::RoseSetKid(gen_e(rng, &vars, 1)),
+            14 => {
+                let d = gen_e(rng, &vars, 1);
+                vars.push(format!("k{j}"));
+                Op::RoseRead(d)
+            }
+            15 => Op::TreeWrap(gen_e(rng, &vars, 1)),
+            16 => {
+                let d = gen_e(rng, &vars, 1);
+                vars.push(format!("f{j}"));
+                Op::TreeFirst(d)
+            }
+            _ => {
+                vars.push(format!("c{j}"));
+                if rng.below(2) == 0 {
+                    Op::RoseTotal
+                } else {
+                    Op::TreeTotal
+                }
             }
         };
         ops.push(op);
@@ -102,7 +171,10 @@ impl OFunc {
     }
 
     fn replayable(&self) -> bool {
-        !self.ops.iter().any(|o| matches!(o, Op::Sum))
+        !self
+            .ops
+            .iter()
+            .any(|o| matches!(o, Op::Sum | Op::RoseTotal | Op::TreeTotal))
     }
 
     fn text(&self) -> String {
@@ -124,6 +196,11 @@ impl OFunc {
             "        let mut s: Bag = Bag {{ items: Vec::new(), n: 0 }};"
         );
         let _ = writeln!(t, "        let mut acc: i64 = 0;");
+        let _ = writeln!(
+            t,
+            "        let mut t: Rose = Rose {{ v: 0, kids: Vec::new() }};"
+        );
+        let _ = writeln!(t, "        let mut tr: Tree = Tree::Leaf(0);");
         for (j, op) in self.ops.iter().enumerate() {
             let line = match op {
                 Op::Prepend(e) => {
@@ -150,6 +227,32 @@ impl OFunc {
                     e_text(e)
                 ),
                 Op::Sum => format!("let c{j}: i64 = sum(&l);"),
+                Op::RoseAdopt(e) => format!(
+                    "if t.kids.len() < 50 {{\n            t.kids.push(Rose {{ v: {}, kids: Vec::new() }});\n        }}",
+                    e_text(e)
+                ),
+                Op::RoseNest(e) => format!(
+                    "if t.kids.len() > 0 {{\n            if t.kids[0].kids.len() < 50 {{\n                t.kids[0].kids.push(Rose {{ v: {}, kids: Vec::new() }});\n            }}\n        }}",
+                    e_text(e)
+                ),
+                Op::RoseSetKid(e) => format!(
+                    "if t.kids.len() > 0 {{\n            t.kids[0].v = {};\n        }}",
+                    e_text(e)
+                ),
+                Op::RoseRead(d) => format!(
+                    "let k{j}: i64 = if t.kids.len() > 0 {{ t.kids[0].v }} else {{ {} }};",
+                    e_text(d)
+                ),
+                Op::RoseTotal => format!("let c{j}: i64 = rose_total(&t);"),
+                Op::TreeWrap(e) => format!(
+                    "let mut ks{j}: Vec<Tree> = Vec::new();\n        ks{j}.push(tr);\n        ks{j}.push(Tree::Leaf({}));\n        tr = Tree::Many(ks{j});",
+                    e_text(e)
+                ),
+                Op::TreeFirst(d) => format!(
+                    "let f{j}: i64 = match &tr {{\n            Tree::Leaf(lv{j}) => *lv{j},\n            Tree::Many(_) => {},\n        }};",
+                    e_text(d)
+                ),
+                Op::TreeTotal => format!("let c{j}: i64 = tree_total(&tr);"),
             };
             let _ = writeln!(t, "        {line}");
         }
@@ -162,6 +265,11 @@ impl OFunc {
         let mut l: VecDeque<i64> = VecDeque::new();
         let mut m: VecDeque<i64> = VecDeque::new();
         let mut b: i64 = 0;
+        let mut t = Rose {
+            v: 0,
+            kids: Vec::new(),
+        };
+        let mut tr = Tree::Leaf(0);
         let add = |env: &mut Env, t: i64| -> Result<(), Fault> {
             let acc = lookup(env, "acc").checked_add(t).ok_or(Fault)?;
             env.push(("acc".into(), acc));
@@ -202,6 +310,51 @@ impl OFunc {
                     let s = l.iter().fold(0i64, |a, v| a.wrapping_add(*v));
                     env.push((format!("c{j}"), s));
                 }
+                // The value is computed in the guarded branch only.
+                Op::RoseAdopt(e) => {
+                    if t.kids.len() < 50 {
+                        let v = e_eval(e, &env)?;
+                        t.kids.push(Rose {
+                            v,
+                            kids: Vec::new(),
+                        });
+                    }
+                }
+                Op::RoseNest(e) => {
+                    if !t.kids.is_empty() && t.kids[0].kids.len() < 50 {
+                        let v = e_eval(e, &env)?;
+                        t.kids[0].kids.push(Rose {
+                            v,
+                            kids: Vec::new(),
+                        });
+                    }
+                }
+                Op::RoseSetKid(e) => {
+                    if !t.kids.is_empty() {
+                        t.kids[0].v = e_eval(e, &env)?;
+                    }
+                }
+                Op::RoseRead(d) => {
+                    let v = match t.kids.first() {
+                        Some(k) => k.v,
+                        None => e_eval(d, &env)?,
+                    };
+                    env.push((format!("k{j}"), v));
+                }
+                Op::RoseTotal => env.push((format!("c{j}"), rose_total(&t))),
+                Op::TreeWrap(e) => {
+                    let v = e_eval(e, &env)?;
+                    let old = std::mem::replace(&mut tr, Tree::Leaf(0));
+                    tr = Tree::Many(vec![old, Tree::Leaf(v)]);
+                }
+                Op::TreeFirst(d) => {
+                    let v = match &tr {
+                        Tree::Leaf(v) => *v,
+                        Tree::Many(_) => e_eval(d, &env)?,
+                    };
+                    env.push((format!("f{j}"), v));
+                }
+                Op::TreeTotal => env.push((format!("c{j}"), tree_total(&tr))),
             }
         }
         e_eval(&self.tail, &env)
@@ -218,6 +371,47 @@ impl OFunc {
 const HELPERS: &str = "    struct Node { v: i64, next: Option<Box<Node>> }
 
     struct Bag { items: Vec<i64>, n: i64 }
+
+    struct Rose { v: i64, kids: Vec<Rose> }
+
+    enum Tree { Leaf(i64), Many(Vec<Tree>) }
+
+    #[effects(pure)]
+    fn rose_total(t: &Rose) -> i64
+        decreases t,
+    {
+        let mut s: i64 = t.v;
+        let mut i: usize = 0;
+        while i < t.kids.len()
+            invariant i <= t.kids.len(),
+            decreases t.kids.len() - i,
+        {
+            s = s.wrapping_add(rose_total(&t.kids[i]));
+            i = i + 1;
+        }
+        s
+    }
+
+    #[effects(pure)]
+    fn tree_total(t: &Tree) -> i64
+        decreases t,
+    {
+        match t {
+            Tree::Leaf(v) => *v,
+            Tree::Many(ks) => {
+                let mut s: i64 = 0;
+                let mut i: usize = 0;
+                while i < ks.len()
+                    invariant i <= ks.len(),
+                    decreases ks.len() - i,
+                {
+                    s = s.wrapping_add(tree_total(&ks[i]));
+                    i = i + 1;
+                }
+                s
+            }
+        }
+    }
 
     #[effects(pure)]
     fn sum(l: &Option<Box<Node>>) -> i64

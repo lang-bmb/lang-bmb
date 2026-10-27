@@ -3,7 +3,7 @@ mod vr {
     // Through an enum: fine.
     enum Tree { Leaf(i64), Many(Vec<Tree>) }
 
-    // Structs alone: not yet.
+    // Structs alone: fine too (backlog 2O-03d).
     struct Node { v: i64, kids: Vec<Node> }
 
     struct A { bs: Vec<B> }

@@ -107,6 +107,64 @@ pub fn adt_subst(adt: &Adt, t: &TypeKind) -> BTreeMap<String, TypeKind> {
     }
 }
 
+/// Whether the struct instance `t` contains itself through structs alone
+/// (fields, `Vec`s, arrays, `Box`es, no enum in between): the prover
+/// declares it as a datatype of one constructor instead of a tuple of
+/// leaves (ADR-0047 §3, backlog 2O-03d).
+pub fn struct_cycle(t: &TypeKind, adts: &BTreeMap<String, Adt>) -> bool {
+    fn parts(t: &TypeKind, adts: &BTreeMap<String, Adt>, out: &mut Vec<TypeKind>) {
+        match t {
+            TypeKind::Named { path, .. }
+                if matches!(
+                    adts.get(&path.join("::")).map(|a| &a.kind),
+                    Some(AdtKind::Struct(_))
+                ) =>
+            {
+                out.push(t.clone())
+            }
+            TypeKind::Vec(e) | TypeKind::Array(e, _) | TypeKind::Box(e) | TypeKind::Slice(e) => {
+                parts(&e.kind, adts, out)
+            }
+            TypeKind::Ref { inner, .. } => parts(&inner.kind, adts, out),
+            _ => {}
+        }
+    }
+    fn fields(t: &TypeKind, adts: &BTreeMap<String, Adt>) -> Vec<TypeKind> {
+        let mut out = Vec::new();
+        if let TypeKind::Named { path, .. } = t
+            && let Some(
+                a @ Adt {
+                    kind: AdtKind::Struct(fs),
+                    ..
+                },
+            ) = adts.get(&path.join("::"))
+        {
+            let m = adt_subst(a, t);
+            for (_, ft) in fs {
+                parts(&subst(ft, &m), adts, &mut out);
+            }
+        }
+        out
+    }
+    let t = match t {
+        TypeKind::Ref { inner, .. } => &inner.kind,
+        t => t,
+    };
+    let target = ty_str(t);
+    let mut seen = BTreeSet::new();
+    let mut todo = fields(t, adts);
+    while let Some(c) = todo.pop() {
+        let k = ty_str(&c);
+        if k == target {
+            return true;
+        }
+        if seen.insert(k) {
+            todo.extend(fields(&c, adts));
+        }
+    }
+    false
+}
+
 #[derive(Debug, Clone)]
 pub struct FnSig {
     pub path: String,
@@ -1650,39 +1708,6 @@ impl<'a> Checker<'a> {
                 );
             }
         }
-        // A struct is a tuple of leaves in the prover (ADR-0027 §1), so a
-        // cycle of structs alone (through `Vec`s; through `Box`es only it
-        // has no finite value, above) has no encoding: an enum must be on
-        // it (ADR-0047 §3, backlog 2O-03c). The user types a struct holds
-        // outside any enum.
-        fn struct_parts(t: &TypeKind, adts: &BTreeMap<String, Adt>, out: &mut Vec<String>) {
-            match t {
-                TypeKind::Named { path, args } => {
-                    let p = path.join("::");
-                    if matches!(adts.get(&p).map(|a| &a.kind), Some(AdtKind::Struct(_))) {
-                        out.push(p);
-                        for a in args {
-                            struct_parts(&a.kind, adts, out);
-                        }
-                    }
-                }
-                TypeKind::Vec(e) | TypeKind::Array(e, _) | TypeKind::Box(e) => {
-                    struct_parts(&e.kind, adts, out)
-                }
-                _ => {}
-            }
-        }
-        let struct_edges: BTreeMap<String, Vec<String>> = adts
-            .iter()
-            .filter(|(_, a)| matches!(a.kind, AdtKind::Struct(_)))
-            .map(|(p, a)| {
-                let mut out = Vec::new();
-                for t in parts(a) {
-                    struct_parts(&t, &adts, &mut out);
-                }
-                (p.clone(), out)
-            })
-            .collect();
         // Recursion through anything.
         let all_edges: BTreeMap<String, Vec<String>> = uses
             .iter()
@@ -1694,20 +1719,6 @@ impl<'a> Checker<'a> {
             }
             let r = reach(&all_edges, p);
             if !r.contains(p) {
-                continue;
-            }
-            if reach(&struct_edges, p).contains(p) {
-                self.diags.push(
-                    Diag::new(
-                        "E0421",
-                        a.span,
-                        format!("`{p}` contains itself through a `Vec` with no enum in between"),
-                    )
-                    .fix(
-                        "make the recursive part an enum, e.g. `enum Tree { Node(i64, Vec<Tree>) }` (a recursive struct of structs alone is not supported yet, ADR-0047 §3)",
-                        None,
-                    ),
-                );
                 continue;
             }
             if !a.generics.is_empty() {
@@ -1781,20 +1792,20 @@ impl<'a> Checker<'a> {
             }
             _ => false,
         };
-        if is_enum && self.reaches_itself(v) {
+        if (is_enum && self.reaches_itself(v)) || struct_cycle(v, &self.adts) {
             return;
         }
         let fix = if matches!(v, TypeKind::Named { .. }) && self.reaches_itself(v) {
             "decrease the enum-valued part that holds the recursion (a field such as `n.next`)"
         } else {
-            "an integer, or a value of a recursive enum (its structural size)"
+            "an integer, or a value of a recursive enum or of a struct that holds itself in a `Vec` (its structural size)"
         };
         self.diags.push(
             Diag::new(
                 "E0401",
                 span,
                 format!(
-                    "`decreases` must be an integer or a recursive enum, found `{}`",
+                    "`decreases` must be an integer, a recursive enum or a recursive struct, found `{}`",
                     ty_str(t)
                 ),
             )
@@ -1822,6 +1833,32 @@ impl<'a> Checker<'a> {
     }
 
     /// The types a value of type `t` holds directly.
+    /// A type reachable from `t` (`t` included) that contains itself and
+    /// holds a `Vec` or an array: its specification `==` would compare
+    /// values of unbounded depth element by element, which the prover's
+    /// `==` (field by field, element by element) cannot unfold.
+    fn recursive_with_vec(&self, t: &TypeKind) -> Option<TypeKind> {
+        let reachable = |from: &TypeKind| {
+            let mut seen = BTreeSet::new();
+            let mut out = Vec::new();
+            let mut todo = vec![from.clone()];
+            while let Some(c) = todo.pop() {
+                if seen.insert(ty_str(&c)) {
+                    todo.extend(self.components(&c));
+                    out.push(c);
+                }
+            }
+            out
+        };
+        reachable(t).into_iter().find(|c| {
+            matches!(c, TypeKind::Named { .. })
+                && self.reaches_itself(c)
+                && reachable(c)
+                    .iter()
+                    .any(|x| matches!(x, TypeKind::Vec(_) | TypeKind::Array(..)))
+        })
+    }
+
     fn components(&self, t: &TypeKind) -> Vec<TypeKind> {
         match t {
             TypeKind::Array(e, _) | TypeKind::Box(e) | TypeKind::Vec(e) => vec![e.kind.clone()],
@@ -4539,7 +4576,28 @@ impl<'a> Checker<'a> {
                 TypeKind::Error
             }
             ExprKind::StructLit { path, fields, rest } => {
-                self.struct_lit(cx, path, fields, rest.as_deref(), expected, e.span, mode)
+                let t = self.struct_lit(cx, path, fields, rest.as_deref(), expected, e.span, mode);
+                // The prover holds a recursive struct as an uninterpreted
+                // value whose fields are facts of the function's query
+                // (ADR-0047 §3, backlog 2O-03d): there is no term for one in
+                // a definition's axiom.
+                if mode != Mode::Exec && struct_cycle(&t, &self.adts) {
+                    self.diags.push(
+                        Diag::new(
+                            "E0432",
+                            e.span,
+                            format!(
+                                "a value of the recursive struct `{}` is built in a specification",
+                                ty_str(&t)
+                            ),
+                        )
+                        .fix(
+                            "state its fields instead (`r.v == x && r.kids.len() == 0`)",
+                            None,
+                        ),
+                    );
+                }
+                t
             }
             ExprKind::Path(path) if Self::builtin_path(path) => {
                 self.builtin_by_path(path);
@@ -5105,6 +5163,26 @@ impl<'a> Checker<'a> {
                         TypeKind::Named { .. } | TypeKind::Array(..) | TypeKind::Box(_)
                     ) || slice)
                 {
+                    if mode != Mode::Exec
+                        && let Some(c) = self.recursive_with_vec(&lt)
+                    {
+                        self.diags.push(
+                            Diag::new(
+                                "E0431",
+                                span,
+                                format!(
+                                    "`{}` on `{}` is not defined: `{}` is recursive and holds a `Vec`",
+                                    op.symbol(),
+                                    ty_str(&lt),
+                                    ty_str(&c)
+                                ),
+                            )
+                            .fix(
+                                "compare the parts that matter, or write a recursive spec fn over them",
+                                None,
+                            ),
+                        );
+                    }
                     if mode == Mode::Exec {
                         let fix = if matches!(lt, TypeKind::Box(_)) {
                             format!(

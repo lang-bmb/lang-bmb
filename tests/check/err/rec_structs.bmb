@@ -1,0 +1,28 @@
+#[summary("구조체만으로 된 재귀의 경계: 명세의 값 만들기와 ==, 측도 (backlog 2O-03d)")]
+mod rc {
+    struct Node { v: i64, kids: Vec<Node> }
+
+    enum Tree { Leaf(i64), Many(Vec<Tree>) }
+
+    struct Forest { trees: Vec<Node> }
+
+    struct Pair { a: i64, b: i64 }
+
+    // A value of a recursive struct has no term in a definition.
+    spec fn is_leaf(n: &Node) -> bool { n.kids.len() == 0 && n.v == Node { v: 0, kids: n.kids }.v }
+
+    // `==` would compare values of unbounded depth.
+    spec fn same(a: &Node, b: &Node) -> bool { *a == *b }
+
+    spec fn same_tree(a: &Tree, b: &Tree) -> bool { *a == *b }
+
+    spec fn same_forest(a: &Forest, b: &Forest) -> bool { *a == *b }
+
+    // A struct that is not recursive is no measure.
+    #[effects(pure)]
+    fn flat(p: &Pair) -> i64
+        decreases p,
+    {
+        p.a
+    }
+}

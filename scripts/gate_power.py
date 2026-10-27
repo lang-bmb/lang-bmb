@@ -261,6 +261,18 @@ MUTANTS = [
      '''            for (tmp, fp, t) in write_back {''',
      '''            for (tmp, fp, t) in write_back.into_iter().take(0) {''',
      "a scalar written through a `&mut` match binding is not stored back to the payload"),
+    ("v-struct-field-write-dropped", "unsound", V,
+     '''            fs[*k] = set_at(f, rest, new, tb, mk);
+            mk(t, fs)''',
+     '''            fs[*k] = set_at(f, rest, new, tb, mk);
+            mk(t, dt_fields(t, &x, tb))''',
+     "a field write in a recursive struct leaves the value unchanged"),
+    ("v-struct-facts-from-definitions", "unsound", V,
+     '''            let q = format!("{q}\\n{}", prog.struct_facts(&q));
+            // Only definitions the obligation can reach''',
+     '''            let q = format!("{q}\\n{}", prog.struct_facts(&format!("{decls}\\n{q}")));
+            // Only definitions the obligation can reach''',
+     "the field facts of recursive struct values also cover values made later or on another path"),
 ]
 
 
