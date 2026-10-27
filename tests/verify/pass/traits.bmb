@@ -1,0 +1,80 @@
+#[summary("trait: 경계 호출과 구체 `Self` 호출 (ADR-0046 §2·§4)")]
+mod tr {
+    trait Area {
+        #[effects(pure)]
+        fn area(self: &Self) -> i64;
+
+        #[effects(pure)]
+        fn pick<U: Copy>(self: &Self, a: U, b: U) -> U;
+    }
+
+    struct Sq { s: i64 }
+
+    struct Wrap<T: Copy> { inner: T, k: i64 }
+
+    spec fn small(r: i64) -> bool { 0 <= r && r <= 100 }
+
+    spec fn same<U: Copy>(a: U, b: U) -> bool { a == b }
+
+    impl Area for Sq {
+        // A known `Self` sees this contract: callers prove `small` from it.
+        #[effects(pure)]
+        #[uses(small)]
+        fn area(self: &Sq) -> (r: i64)
+            ensures small(r),
+        {
+            if self.s >= 0 && self.s <= 10 { self.s * self.s } else { 0 }
+        }
+
+        #[effects(pure)]
+        #[uses(same)]
+        fn pick<V: Copy>(self: &Sq, a: V, b: V) -> (r: V)
+            ensures same::<V>(r, a),
+        {
+            a
+        }
+    }
+
+    // Delegates to the inner value's impl: structural, no recursion.
+    impl<T: Copy + Area> Area for Wrap<T> {
+        #[effects(pure)]
+        fn area(self: &Wrap<T>) -> i64 {
+            Area::area(&self.inner).saturating_add(self.k)
+        }
+
+        #[effects(pure)]
+        fn pick<V: Copy>(self: &Wrap<T>, a: V, b: V) -> V {
+            Area::pick::<V>(&self.inner, b, a)
+        }
+    }
+
+    // Through a bound only the signature is known: the sum saturates.
+    #[effects(pure)]
+    fn total<T: Copy + Area>(a: T, b: T) -> i64 {
+        Area::area(&a).saturating_add(Area::area(&b))
+    }
+
+    #[effects(pure)]
+    #[uses(small)]
+    fn known(q: Sq) -> (r: i64)
+        ensures small(r),
+    {
+        Area::area(&q)
+    }
+
+    #[effects(pure)]
+    #[uses(same)]
+    fn first(q: Sq, a: bool, b: bool) -> (r: bool)
+        ensures same::<bool>(r, a),
+    {
+        Area::pick::<bool>(&q, a, b)
+    }
+
+    #[effects(pure)]
+    #[uses(small)]
+    fn wrapped(w: Wrap<Sq>) -> i64 {
+        let n: i64 = Area::area(&w.inner);
+        assert(small(n));
+        total::<Wrap<Sq>>(w, w)
+    }
+}

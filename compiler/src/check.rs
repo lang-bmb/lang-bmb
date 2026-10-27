@@ -117,8 +117,153 @@ pub struct FnSig {
     /// A spec fn whose body is the literal `true`.
     pub vacuous: bool,
     pub builtin: bool,
-    /// Defined in an `impl T` block: named `T::f` in its unit (ADR-0026).
+    /// Defined in an `impl T` block: named `T::f` in its unit (ADR-0026),
+    /// or in an `impl Trait for T` block: named `<T as Trait>::f`.
     pub in_impl: bool,
+    /// A method of a trait declaration (`unit::Trait::f`): its first type
+    /// parameter is `Self` (ADR-0046 §2).
+    pub trait_of: Option<String>,
+    /// The definition's span (`defs` finds trait `impl` functions by it).
+    pub span: Span,
+}
+
+/// A trait declaration (ADR-0046 §1): its methods by name, in declaration
+/// order (each is the function `path::name`).
+#[derive(Debug, Clone)]
+pub struct TraitInfo {
+    pub path: String,
+    pub methods: Vec<String>,
+    pub span: Span,
+}
+
+/// An `impl Trait for T` block (ADR-0046 §2): the trait, the impl's type
+/// parameters, the implementing type `head` (naming them), and its unit.
+#[derive(Debug, Clone)]
+pub struct TraitImplInfo {
+    pub trait_path: String,
+    pub generics: Vec<TParam>,
+    pub head: TypeKind,
+    pub unit: String,
+    /// The `impl` block's span.
+    pub span: Span,
+}
+
+impl TraitImplInfo {
+    /// The path of the impl's function `name`: `<geo::Sq as geo::Shape>::area`.
+    pub fn fn_path(&self, name: &str) -> String {
+        format!("<{} as {}>::{name}", ty_str(&self.head), self.trait_path)
+    }
+
+    /// The substitution of the impl's parameters that makes `head` the type
+    /// `t`, if it matches.
+    pub fn matches(&self, t: &TypeKind) -> Option<BTreeMap<String, TypeKind>> {
+        let mut m = BTreeMap::new();
+        unify(&self.head, t, &self.generics, &mut m);
+        (subst(&self.head, &m) == *t).then_some(m)
+    }
+}
+
+/// The function a call of trait method `target` with type arguments `args`
+/// (`Self` first) runs: the impl's function and its type arguments (the
+/// impl's, then the method's own). `None` when `target` is no trait method
+/// or `Self` is a type parameter (the trait's signature stands for it).
+pub fn dispatch(
+    fns: &BTreeMap<String, FnSig>,
+    impls: &[TraitImplInfo],
+    target: &str,
+    args: &[TypeKind],
+) -> Option<(String, Vec<TypeKind>)> {
+    let tr = fns.get(target)?.trait_of.as_ref()?;
+    let self_ty = args.first()?;
+    let name = target.rsplit("::").next()?;
+    let (i, m) = impls
+        .iter()
+        .filter(|i| &i.trait_path == tr)
+        .find_map(|i| i.matches(self_ty).map(|m| (i, m)))?;
+    let path = i.fn_path(name);
+    fns.get(&path)?;
+    let mut out: Vec<TypeKind> = i
+        .generics
+        .iter()
+        .map(|g| m.get(&g.name).cloned().unwrap_or(TypeKind::Error))
+        .collect();
+    out.extend(args[1..].iter().cloned());
+    Some((path, out))
+}
+
+/// Every definition with a body, in walk order (in each unit, its
+/// sub-units first, then its functions, `impl T` functions and trait `impl`
+/// functions): (path, unit, syntax). A trait `impl` function has the path
+/// the checker gave it (`<T as Trait>::f`); one it rejected is left out.
+pub fn defs_of<'p>(
+    p: &'p Program,
+    fns: &BTreeMap<String, FnSig>,
+) -> Vec<(String, String, &'p FnDef)> {
+    let by_span: BTreeMap<(u32, u32, u32), &str> = fns
+        .values()
+        .filter(|s| s.in_impl && s.path.starts_with('<'))
+        .map(|s| ((s.span.file, s.span.lo, s.span.hi), s.path.as_str()))
+        .collect();
+    fn walk<'p>(
+        m: &'p Mod,
+        prefix: &str,
+        by_span: &BTreeMap<(u32, u32, u32), &str>,
+        out: &mut Vec<(String, String, &'p FnDef)>,
+    ) {
+        let mp = format!("{prefix}{}", m.name.name);
+        for s in &m.mods {
+            walk(s, &format!("{mp}::"), by_span, out);
+        }
+        for f in &m.fns {
+            out.push((format!("{mp}::{}", f.name.name), mp.clone(), f));
+        }
+        for i in &m.impls {
+            for f in &i.fns {
+                out.push((
+                    format!("{mp}::{}::{}", i.ty.name, f.name.name),
+                    mp.clone(),
+                    f,
+                ));
+            }
+        }
+        for i in &m.trait_impls {
+            for f in &i.fns {
+                if let Some(path) = by_span.get(&(f.span.file, f.span.lo, f.span.hi)) {
+                    out.push((path.to_string(), mp.clone(), f));
+                }
+            }
+        }
+    }
+    let mut out = Vec::new();
+    for m in &p.mods {
+        walk(m, "", &by_span, &mut out);
+    }
+    out
+}
+
+/// The method declarations of every trait: (path `unit::Trait::f`, unit,
+/// syntax).
+pub fn trait_decls(p: &Program) -> Vec<(String, String, &FnDef)> {
+    fn walk<'p>(m: &'p Mod, prefix: &str, out: &mut Vec<(String, String, &'p FnDef)>) {
+        let mp = format!("{prefix}{}", m.name.name);
+        for s in &m.mods {
+            walk(s, &format!("{mp}::"), out);
+        }
+        for t in &m.traits {
+            for tf in &t.fns {
+                out.push((
+                    format!("{mp}::{}::{}", t.name.name, tf.f.name.name),
+                    mp.clone(),
+                    &tf.f,
+                ));
+            }
+        }
+    }
+    let mut out = Vec::new();
+    for m in &p.mods {
+        walk(m, "", &mut out);
+    }
+    out
 }
 
 /// A declared data type (ADR-0026), its field and payload types resolved
@@ -166,6 +311,13 @@ pub struct Checker<'a> {
     /// The type arguments of every call of a generic function, by the
     /// call's span: the `impl`'s, then the function's (ADR-0046).
     pub targs: BTreeMap<(u32, u32, u32), Vec<TypeKind>>,
+    /// Trait declarations by full path (ADR-0046 §1).
+    pub traits: BTreeMap<String, TraitInfo>,
+    /// `impl Trait for T` blocks the checker accepted (ADR-0046 §2).
+    pub trait_impls: Vec<TraitImplInfo>,
+    /// The type `Self` stands for in the trait `impl` being read, and its
+    /// text (E0305 on `Self` writes it, and checking goes on with it).
+    self_head: Option<(TypeKind, String)>,
     /// The type parameters in scope where types are resolved.
     tparams: Vec<TParam>,
     /// Calls of generic functions: caller, callee, span, type arguments
@@ -321,6 +473,8 @@ impl<'a> Checker<'a> {
                 vacuous: false,
                 builtin: true,
                 in_impl: false,
+                trait_of: None,
+                span: Span::default(),
                 generics: Vec::new(),
                 impl_generics: 0,
             },
@@ -339,6 +493,8 @@ impl<'a> Checker<'a> {
                 vacuous: false,
                 builtin: true,
                 in_impl: false,
+                trait_of: None,
+                span: Span::default(),
                 generics: Vec::new(),
                 impl_generics: 0,
             },
@@ -354,6 +510,8 @@ impl<'a> Checker<'a> {
                 vacuous: false,
                 builtin: true,
                 in_impl: false,
+                trait_of: None,
+                span: Span::default(),
                 generics: Vec::new(),
                 impl_generics: 0,
             },
@@ -369,6 +527,9 @@ impl<'a> Checker<'a> {
             locals: BTreeMap::new(),
             moves: BTreeMap::new(),
             targs: BTreeMap::new(),
+            traits: BTreeMap::new(),
+            trait_impls: Vec::new(),
+            self_head: None,
             tparams: Vec::new(),
             gcalls: Vec::new(),
         }
@@ -384,6 +545,7 @@ impl<'a> Checker<'a> {
             locals: self.locals,
             moves: self.moves,
             targs: self.targs,
+            trait_impls: self.trait_impls,
             insts: BTreeMap::new(),
             inst_types: Vec::new(),
         }
@@ -406,14 +568,25 @@ impl<'a> Checker<'a> {
                 );
             }
         }
-        // Types first: signatures and fields may name any unit's types.
+        // Trait names, then types: bounds, signatures and fields may name
+        // any unit's traits and types.
+        for m in &p.mods {
+            self.collect_trait_names(m, "");
+        }
         for m in &p.mods {
             self.collect_types(m, "");
+        }
+        // Which types implement which traits, before any bound is checked.
+        for m in &p.mods {
+            self.collect_impl_heads(m, "");
         }
         for m in &p.mods {
             self.resolve_types(m, "");
         }
         self.check_type_cycles();
+        for m in &p.mods {
+            self.collect_trait_sigs(m, "");
+        }
         for m in &p.mods {
             self.collect_mod(m, "");
         }
@@ -423,6 +596,437 @@ impl<'a> Checker<'a> {
         }
         self.check_recursion(p);
         self.check_main(p);
+    }
+
+    /// Registers the unit's trait names (ADR-0046 §1; their methods come
+    /// after the types).
+    fn collect_trait_names(&mut self, m: &Mod, prefix: &str) {
+        let mp = format!("{prefix}{}", m.name.name);
+        for sub in &m.mods {
+            self.collect_trait_names(sub, &format!("{mp}::"));
+        }
+        for t in &m.traits {
+            if matches!(t.name.name.as_str(), "Copy" | "Eq" | "Ord") {
+                self.diags.push(
+                    Diag::new(
+                        "E0309",
+                        t.name.span,
+                        format!("`{}` is a built-in trait (ADR-0046 §1)", t.name.name),
+                    )
+                    .fix("choose another name", None),
+                );
+            }
+            for a in &t.attrs {
+                self.diags.push(
+                    Diag::new(
+                        "E0605",
+                        a.span,
+                        format!("unknown attribute `{}` on a trait", a.name.name),
+                    )
+                    .fix("traits take no attributes", Some(String::new())),
+                );
+            }
+            let path = format!("{mp}::{}", t.name.name);
+            // A second declaration is reported by `collect_mod`.
+            self.traits.entry(path.clone()).or_insert(TraitInfo {
+                path,
+                methods: Vec::new(),
+                span: t.name.span,
+            });
+        }
+    }
+
+    /// The implementing types of the unit's `impl Trait for T` blocks
+    /// (ADR-0046 §2): no blanket impl (E0235), every impl parameter in the
+    /// type, the impl in the unit of the trait or of the type (E0312), no
+    /// two impls of a trait for types that can be the same (E0311,
+    /// conservatively: a type parameter matches anything).
+    fn collect_impl_heads(&mut self, m: &Mod, prefix: &str) {
+        let mp = format!("{prefix}{}", m.name.name);
+        for sub in &m.mods {
+            self.collect_impl_heads(sub, &format!("{mp}::"));
+        }
+        for i in &m.trait_impls {
+            let name = Self::path_text(&i.trait_path);
+            let tspan = i.trait_path[0]
+                .span
+                .to(i.trait_path[i.trait_path.len() - 1].span);
+            let Some(tr) = self.trait_path(&i.trait_path, &mp) else {
+                let help = if self.type_path(&i.trait_path, &mp).is_some() {
+                    format!("`{name}` is a type; its own functions go in `impl {name} {{ .. }}`")
+                } else {
+                    "a trait of another unit is named by full path, e.g. `unit::Shape`".into()
+                };
+                let d = self.unknown_trait(&name, tspan, &mp, help);
+                self.diags.push(d);
+                continue;
+            };
+            let gens = self.tparams_of(&i.generics, true, &mp);
+            self.tparams = gens.clone();
+            let head = self.canon(&i.self_ty, &mp, true);
+            self.tparams.clear();
+            let span = i.self_ty.span;
+            if let TypeKind::Param(n) = &head {
+                self.diags.push(
+                    Diag::new(
+                        "E0235",
+                        span,
+                        format!(
+                            "`impl<{n}> {name} for {n}` implements `{name}` for every type (a blanket impl)"
+                        ),
+                    )
+                    .fix(
+                        format!("implement it for each type: `impl {name} for Point {{ .. }}`, or bound a type parameter `T: {name}` where it is used"),
+                        None,
+                    ),
+                );
+                continue;
+            }
+            if head == TypeKind::Error {
+                continue;
+            }
+            let copy = TParam {
+                name: "Self".into(),
+                bounds: vec!["Copy".into()],
+            };
+            if !self.targ_ok(&head, &copy, &tr, span, true) {
+                continue;
+            }
+            if let Some((g, p)) = i
+                .generics
+                .iter()
+                .zip(&gens)
+                .find(|(_, p)| !mentions_param(&head, &p.name))
+            {
+                self.diags.push(
+                    Diag::new(
+                        "E0420",
+                        g.span,
+                        format!(
+                            "type parameter `{}` of the impl does not appear in `{}`",
+                            p.name,
+                            ty_str_in(&head, &mp)
+                        ),
+                    )
+                    .fix("remove it, or use it in the implemented type", None),
+                );
+                continue;
+            }
+            let trait_unit = tr.rsplit_once("::").map_or("", |x| x.0).to_string();
+            let type_unit = match &head {
+                TypeKind::Named { path, .. } if self.adts.contains_key(&path.join("::")) => {
+                    Some(path[..path.len() - 1].join("::"))
+                }
+                _ => None,
+            };
+            let ty = ty_str_in(&head, &mp);
+            if mp != trait_unit && type_unit.as_deref() != Some(mp.as_str()) {
+                let help = match &type_unit {
+                    Some(u) if *u != trait_unit => {
+                        format!("move it to unit `{trait_unit}` or unit `{u}`")
+                    }
+                    _ => format!("move it to unit `{trait_unit}`"),
+                };
+                self.diags.push(
+                    Diag::new(
+                        "E0312",
+                        span,
+                        format!(
+                            "`impl {name} for {ty}` is in neither the unit of the trait nor the unit of the type"
+                        ),
+                    )
+                    .fix(help, None),
+                );
+                continue;
+            }
+            if let Some(prev) = self
+                .trait_impls
+                .iter()
+                .find(|p| p.trait_path == tr && overlaps(&p.head, &head))
+            {
+                let prev_ty = ty_str_in(&prev.head, &mp);
+                self.diags.push(
+                    Diag::new(
+                        "E0311",
+                        span,
+                        format!("`impl {name} for {ty}` overlaps `impl {name} for {prev_ty}`"),
+                    )
+                    .fix(
+                        "a trait has one impl for a type: remove one of them, or make their types differ",
+                        None,
+                    ),
+                );
+                continue;
+            }
+            self.trait_impls.push(TraitImplInfo {
+                trait_path: tr,
+                generics: gens,
+                head,
+                unit: mp.clone(),
+                span: i.span,
+            });
+        }
+    }
+
+    /// The method signatures of the unit's traits (ADR-0046 §2): generic in
+    /// `Self` (bounded by the trait), then their own parameters. Contracts,
+    /// `spec fn` methods and default bodies come with backlog 2T-07b·c.
+    fn collect_trait_sigs(&mut self, m: &Mod, prefix: &str) {
+        let mp = format!("{prefix}{}", m.name.name);
+        for sub in &m.mods {
+            self.collect_trait_sigs(sub, &format!("{mp}::"));
+        }
+        for t in &m.traits {
+            let path = format!("{mp}::{}", t.name.name);
+            if self.traits.get(&path).is_none_or(|x| x.span != t.name.span) {
+                continue;
+            }
+            let selfp = TParam {
+                name: "Self".into(),
+                bounds: vec!["Copy".into(), path.clone()],
+            };
+            let mut names: Vec<String> = Vec::new();
+            for tf in &t.fns {
+                let f = &tf.f;
+                if names.contains(&f.name.name) {
+                    self.err(
+                        "E0302",
+                        f.name.span,
+                        format!(
+                            "`{}` is defined more than once in trait `{}`",
+                            f.name.name, t.name.name
+                        ),
+                    );
+                    continue;
+                }
+                names.push(f.name.name.clone());
+                if tf.has_body {
+                    self.diags.push(
+                        Diag::new(
+                            "E0207",
+                            f.body.span,
+                            "default method bodies are not supported yet (backlog 2T-07c)",
+                        )
+                        .fix(
+                            "end the signature with `;` and define the method in each `impl`",
+                            None,
+                        ),
+                    );
+                }
+                if f.kind == FnKind::Spec {
+                    self.diags.push(
+                        Diag::new(
+                            "E0207",
+                            f.name.span,
+                            "`spec fn` methods of a trait are not supported yet (backlog 2T-07b)",
+                        )
+                        .fix(
+                            "declare the spec function in the unit, outside the trait",
+                            None,
+                        ),
+                    );
+                }
+                if let Some(c) = f
+                    .requires
+                    .first()
+                    .or(f.ensures.first())
+                    .or(f.decreases.as_ref())
+                {
+                    self.diags.push(
+                        Diag::new(
+                            "E0207",
+                            c.span,
+                            "contracts of trait methods are not supported yet (backlog 2T-07b)",
+                        )
+                        .fix(
+                            "state the `ensures` on each impl's function; callers through a bound see only the signature",
+                            None,
+                        ),
+                    );
+                }
+                let own = self.tparams_of(&f.generics, false, &mp);
+                self.tparams = vec![selfp.clone()];
+                self.tparams.extend(own);
+                self.receiver_rule(f, Some("Self"), &mp);
+                for p in &f.params {
+                    self.check_param_type(&p.ty, f.kind);
+                    self.canon(&p.ty, &mp, true);
+                }
+                self.check_value_type(&f.ret.ty, "return type");
+                self.canon(&f.ret.ty, &mp, true);
+                self.tparams.clear();
+                self.collect_fn(
+                    f,
+                    format!("{path}::{}", f.name.name),
+                    &mp,
+                    false,
+                    std::slice::from_ref(&selfp),
+                );
+                if let Some(sig) = self.fns.get_mut(&format!("{path}::{}", f.name.name)) {
+                    sig.trait_of = Some(path.clone());
+                }
+            }
+            if let Some(x) = self.traits.get_mut(&path) {
+                x.methods = names;
+            }
+        }
+    }
+
+    /// The functions of an `impl Trait for T` block against the trait's
+    /// methods (ADR-0046 §2): each one defined (E0315), with the trait's
+    /// signature for `Self = T` (E0316), and no `requires` the trait does
+    /// not have (E0817: a caller through a bound does not check it).
+    fn conform(&mut self, info: &TraitImplInfo, ti: &TraitImpl, mp: &str) {
+        let tr = &info.trait_path;
+        let name = Self::path_text(&ti.trait_path);
+        let head = ty_str_in(&info.head, mp);
+        let methods = self.traits[tr].methods.clone();
+        let missing: Vec<&str> = methods
+            .iter()
+            .filter(|m| !ti.fns.iter().any(|f| f.name.name == **m))
+            .map(|m| m.as_str())
+            .collect();
+        if !missing.is_empty() {
+            self.diags.push(
+                Diag::new(
+                    "E0315",
+                    ti.self_ty.span,
+                    format!(
+                        "`impl {name} for {head}` does not define `{}`",
+                        missing.join("`, `")
+                    ),
+                )
+                .fix(
+                    "define every method of the trait, with the trait's signature for `Self`",
+                    None,
+                ),
+            );
+        }
+        for f in &ti.fns {
+            if !methods.contains(&f.name.name) {
+                self.diags.push(
+                    Diag::new(
+                        "E0315",
+                        f.name.span,
+                        format!("`{}` is not a method of `{name}`", f.name.name),
+                    )
+                    .fix(
+                        format!("remove it, or declare it in `{name}`; a function of the type alone goes in `impl {head} {{ .. }}`"),
+                        None,
+                    ),
+                );
+                continue;
+            }
+            let Some(tsig) = self.fns.get(&format!("{tr}::{}", f.name.name)).cloned() else {
+                continue;
+            };
+            let Some(isig) = self.fns.get(&info.fn_path(&f.name.name)).cloned() else {
+                continue;
+            };
+            let town = &tsig.generics[tsig.impl_generics..];
+            let iown = &isig.generics[isig.impl_generics..];
+            let mut m = BTreeMap::from([("Self".to_string(), info.head.clone())]);
+            for (a, b) in town.iter().zip(iown) {
+                m.insert(a.name.clone(), TypeKind::Param(b.name.clone()));
+            }
+            let want: Vec<TypeKind> = tsig.params.iter().map(|t| subst(t, &m)).collect();
+            let want_ret = subst(&tsig.ret, &m);
+            let same_bounds = town.len() == iown.len()
+                && town.iter().zip(iown).all(|(a, b)| {
+                    let x: BTreeSet<&String> = a.bounds.iter().collect();
+                    let y: BTreeSet<&String> = b.bounds.iter().collect();
+                    x == y
+                });
+            let error = |t: &TypeKind| *t == TypeKind::Error;
+            let known = !want.iter().chain(&isig.params).any(error)
+                && !error(&want_ret)
+                && !error(&isig.ret);
+            if known
+                && (tsig.kind != isig.kind
+                    || !same_bounds
+                    || want != isig.params
+                    || want_ret != isig.ret)
+            {
+                let gs = if town.is_empty() {
+                    String::new()
+                } else {
+                    format!(
+                        "<{}>",
+                        town.iter()
+                            .map(|g| format!("{}: {}", g.name, g.bounds.join(" + ")))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
+                };
+                let kw = if tsig.kind == FnKind::Spec {
+                    "spec fn"
+                } else {
+                    "fn"
+                };
+                let ps: Vec<String> = want
+                    .iter()
+                    .enumerate()
+                    .map(|(k, t)| {
+                        let n = match f.params.get(k) {
+                            Some(p) if f.params.len() == want.len() => p.name.name.as_str(),
+                            _ => "_",
+                        };
+                        format!("{n}: {}", ty_str_in(t, mp))
+                    })
+                    .collect();
+                self.diags.push(
+                    Diag::new(
+                        "E0316",
+                        f.name.span,
+                        format!(
+                            "`{}` does not match its declaration in `{name}`",
+                            f.name.name
+                        ),
+                    )
+                    .fix(
+                        format!(
+                            "for `Self = {head}` the signature is `{kw} {}{gs}({}) -> {}`",
+                            f.name.name,
+                            ps.join(", "),
+                            ty_str_in(&want_ret, mp)
+                        ),
+                        None,
+                    ),
+                );
+            }
+            if tsig.effect == Effect::Pure && isig.effect == Effect::Io {
+                self.diags.push(
+                    Diag::new(
+                        "E0316",
+                        f.name.span,
+                        format!(
+                            "`{}` has effect `io`, but `{name}` declares it `pure`",
+                            f.name.name
+                        ),
+                    )
+                    .fix(
+                        "make the function pure, or declare the trait method `#[effects(io)]`",
+                        None,
+                    ),
+                );
+            }
+            if let Some(r) = f.requires.first() {
+                self.diags.push(
+                    Diag::new(
+                        "E0817",
+                        r.span,
+                        format!(
+                            "`{}` requires more than `{name}` declares: a caller through a bound does not check it (ADR-0046 §4)",
+                            f.name.name
+                        ),
+                    )
+                    .fix(
+                        "remove the `requires`; handle the other inputs in the body",
+                        None,
+                    ),
+                );
+            }
+        }
     }
 
     /// Registers the unit's struct and enum names (their fields come next).
@@ -440,7 +1044,7 @@ impl<'a> Checker<'a> {
                 TypeDefKind::Struct(_) => AdtKind::Struct(Vec::new()),
                 TypeDefKind::Enum(_) => AdtKind::Enum(Vec::new()),
             };
-            let generics = self.tparams_of(&t.generics, false);
+            let generics = self.tparams_of(&t.generics, false, &mp);
             self.adts.insert(
                 path.clone(),
                 Adt {
@@ -482,7 +1086,7 @@ impl<'a> Checker<'a> {
             if !done.insert(path.clone()) {
                 continue;
             }
-            self.tparams = self.tparams_of(&t.generics, true);
+            self.tparams = self.tparams_of(&t.generics, true, &mp);
             let kind = match &t.kind {
                 TypeDefKind::Struct(fields) => {
                     if fields.is_empty() {
@@ -544,7 +1148,7 @@ impl<'a> Checker<'a> {
     /// are diagnosed (once per definition): an unknown bound, a duplicate
     /// name, and a parameter without `Copy` (a parameter that may be an
     /// owned type comes with ADR-0047, phase 2O).
-    fn tparams_of(&mut self, gs: &[TypeParam], report: bool) -> Vec<TParam> {
+    fn tparams_of(&mut self, gs: &[TypeParam], report: bool, mp: &str) -> Vec<TParam> {
         let mut out: Vec<TParam> = Vec::new();
         for g in gs {
             let mut bounds = Vec::new();
@@ -556,12 +1160,12 @@ impl<'a> Checker<'a> {
                     .join("::");
                 if matches!(name.as_str(), "Copy" | "Eq" | "Ord") {
                     bounds.push(name);
+                } else if let Some(tr) = self.trait_path(b, mp) {
+                    bounds.push(tr);
                 } else if report {
                     let span = b[0].span.to(b[b.len() - 1].span);
-                    self.diags.push(
-                        Diag::new("E0305", span, format!("unknown trait `{name}`"))
-                            .fix("the built-in bounds are `Copy`, `Eq` and `Ord`", None),
-                    );
+                    let d = self.unknown_trait(&name, span, mp, "the built-in bounds are `Copy`, `Eq` and `Ord`; a trait of another unit is named by full path, e.g. `unit::Shape`".into());
+                    self.diags.push(d);
                 }
             }
             if report {
@@ -603,6 +1207,62 @@ impl<'a> Checker<'a> {
             });
         }
         out
+    }
+
+    /// E0305 for trait `name`: the nearest trait of the unit, else `help`.
+    fn unknown_trait(&self, name: &str, span: Span, mp: &str, help: String) -> Diag {
+        let local: Vec<String> = self
+            .traits
+            .keys()
+            .filter_map(|k| k.strip_prefix(&format!("{mp}::")).map(String::from))
+            .filter(|k| !k.contains("::"))
+            .collect();
+        let d = Diag::new("E0305", span, format!("unknown trait `{name}`"));
+        match closest(name, local.iter()) {
+            Some(near) => d.fix(format!("did you mean `{near}`?"), Some(near)),
+            None => d.fix(help, None),
+        }
+    }
+
+    /// The full path of the trait named by `segs` from unit `mp`.
+    fn trait_path(&self, segs: &[Ident], mp: &str) -> Option<String> {
+        let name = Self::path_text(segs);
+        let local = format!("{mp}::{name}");
+        if segs.len() == 1 && self.traits.contains_key(&local) {
+            return Some(local);
+        }
+        self.traits.contains_key(&name).then_some(name)
+    }
+
+    /// Whether `t` implements the user trait `tr` (ADR-0046 §2): a type
+    /// parameter bounded by it, or a type an `impl` of it matches (with the
+    /// impl's own bounds met).
+    fn has_trait(&self, t: &TypeKind, tr: &str) -> bool {
+        if let TypeKind::Param(n) = t {
+            return self
+                .tparams
+                .iter()
+                .any(|p| p.name == *n && p.bounds.iter().any(|b| b == tr));
+        }
+        self.trait_impls
+            .iter()
+            .filter(|i| i.trait_path == tr)
+            .any(|i| {
+                i.matches(t).is_some_and(|m| {
+                    i.generics
+                        .iter()
+                        .all(|g| m.get(&g.name).is_some_and(|a| self.meets(a, &g.bounds)))
+                })
+            })
+    }
+
+    /// Whether `t` meets every bound in `bounds` (no diagnostics).
+    fn meets(&self, t: &TypeKind, bounds: &[String]) -> bool {
+        bounds.iter().all(|b| match b.as_str() {
+            "Copy" => is_copy(t),
+            "Eq" | "Ord" => self.has_builtin(t, b),
+            tr => self.has_trait(t, tr),
+        })
     }
 
     /// Whether `t` has the built-in trait `b` (`Eq` or `Ord`): the integer
@@ -670,6 +1330,37 @@ impl<'a> Checker<'a> {
                             None,
                         ),
                     );
+                }
+                false
+            }
+            _ if p
+                .bounds
+                .iter()
+                .any(|b| b.contains("::") && !self.has_trait(t, b)) =>
+            {
+                let b = p
+                    .bounds
+                    .iter()
+                    .find(|b| b.contains("::") && !self.has_trait(t, b))
+                    .unwrap()
+                    .clone();
+                if report {
+                    let what = if p.name == "Self" {
+                        format!("`{}` does not implement `{b}`", ty_str(t))
+                    } else {
+                        format!(
+                            "`{}` does not implement `{b}`, a bound of `{}` in `{of}`",
+                            ty_str(t),
+                            p.name
+                        )
+                    };
+                    let help = if matches!(t, TypeKind::Param(_)) {
+                        format!("bound the type parameter: `{}: {b}`", ty_str(t))
+                    } else {
+                        format!("write `impl {b} for {} {{ .. }}`", ty_str(t))
+                    };
+                    self.diags
+                        .push(Diag::new("E0428", span, what).fix(help, None));
                 }
                 false
             }
@@ -820,6 +1511,15 @@ impl<'a> Checker<'a> {
             }
             TypeKind::Named { path, args } => {
                 let name = path.join("::");
+                if name == "Self"
+                    && let Some((head, _)) = self.self_head.clone()
+                {
+                    if report {
+                        let d = self.unknown_type(&name, t.span, mp);
+                        self.diags.push(d);
+                    }
+                    return head;
+                }
                 if path.len() == 1 && name == "Vec" {
                     return self.vec_type(t, args, mp, report);
                 }
@@ -1044,6 +1744,15 @@ impl<'a> Checker<'a> {
                 );
             }
         }
+        for t in &m.traits {
+            if !names.insert(t.name.name.clone()) {
+                self.err(
+                    "E0302",
+                    t.name.span,
+                    format!("`{}` is defined more than once in `{mp}`", t.name.name),
+                );
+            }
+        }
         for sub in &m.mods {
             if !names.insert(sub.name.name.clone()) {
                 self.err(
@@ -1095,7 +1804,7 @@ impl<'a> Checker<'a> {
                 );
                 continue;
             }
-            let ig = self.tparams_of(&i.generics, true);
+            let ig = self.tparams_of(&i.generics, true, &mp);
             let arity = self.adts.get(&ty).map_or(0, |a| a.generics.len());
             let written: Vec<Option<&str>> = i
                 .ty_args
@@ -1153,7 +1862,7 @@ impl<'a> Checker<'a> {
                     );
                     continue;
                 }
-                let fg = self.tparams_of(&f.generics, false);
+                let fg = self.tparams_of(&f.generics, false, &mp);
                 self.tparams = ig.clone();
                 self.tparams.extend(fg);
                 self.receiver_rule(f, Some(&ty), &mp);
@@ -1162,9 +1871,38 @@ impl<'a> Checker<'a> {
             }
         }
         for f in &m.fns {
-            self.tparams = self.tparams_of(&f.generics, false);
+            self.tparams = self.tparams_of(&f.generics, false, &mp);
             self.receiver_rule(f, None, &mp);
             self.tparams.clear();
+        }
+        for ti in &m.trait_impls {
+            let Some(info) = self.trait_impls.iter().find(|x| x.span == ti.span).cloned() else {
+                continue;
+            };
+            let recv = match &info.head {
+                TypeKind::Named { path, .. } => path.join("::"),
+                t => ty_str(t),
+            };
+            self.self_head = Some((info.head.clone(), ty_str_in(&info.head, &mp)));
+            let mut fnames = BTreeSet::new();
+            for f in &ti.fns {
+                if !fnames.insert(f.name.name.clone()) {
+                    self.err(
+                        "E0302",
+                        f.name.span,
+                        format!("`{}` is defined more than once in this `impl`", f.name.name),
+                    );
+                    continue;
+                }
+                let fg = self.tparams_of(&f.generics, false, &mp);
+                self.tparams = info.generics.clone();
+                self.tparams.extend(fg);
+                self.receiver_rule(f, Some(&recv), &mp);
+                self.tparams.clear();
+                self.collect_fn(f, info.fn_path(&f.name.name), &mp, true, &info.generics);
+            }
+            self.conform(&info, ti, &mp);
+            self.self_head = None;
         }
     }
 
@@ -1176,7 +1914,8 @@ impl<'a> Checker<'a> {
             let ty = self.canon(&p.ty, mp, false);
             let own = |t: &TypeKind| match t {
                 TypeKind::Named { path, .. } => Some(path.join("::")) == impl_ty.map(String::from),
-                _ => false,
+                TypeKind::Error => false,
+                t => impl_ty.is_some_and(|i| ty_str(t) == i),
             };
             let receiver_type = match &ty {
                 TypeKind::Ref { inner, .. } => own(&inner.kind),
@@ -1212,7 +1951,7 @@ impl<'a> Checker<'a> {
     }
 
     fn collect_fn(&mut self, f: &FnDef, path: String, mp: &str, in_impl: bool, ig: &[TParam]) {
-        let own = self.tparams_of(&f.generics, true);
+        let own = self.tparams_of(&f.generics, true, mp);
         for (g, p) in f.generics.iter().zip(&own) {
             if ig.iter().any(|q| q.name == p.name) {
                 self.err(
@@ -1256,6 +1995,8 @@ impl<'a> Checker<'a> {
                     vacuous,
                     builtin: false,
                     in_impl,
+                    trait_of: None,
+                    span: f.span,
                 },
             );
         }
@@ -1392,14 +2133,31 @@ impl<'a> Checker<'a> {
                 self.check_fn(f, &mp, &format!("{mp}::{}::{}", i.ty.name, f.name.name));
             }
         }
+        for ti in &m.trait_impls {
+            let Some(info) = self.trait_impls.iter().find(|x| x.span == ti.span).cloned() else {
+                continue;
+            };
+            self.self_head = Some((info.head.clone(), ty_str_in(&info.head, &mp)));
+            for f in &ti.fns {
+                let path = info.fn_path(&f.name.name);
+                if self.fns.get(&path).is_some_and(|s| s.span == f.span) {
+                    self.check_fn(f, &mp, &path);
+                }
+            }
+            self.self_head = None;
+        }
     }
 
     fn resolve(&self, path: &[Ident], mod_path: &str) -> Option<String> {
-        // `T::f(..)` on a type of this unit (ADR-0026 §3).
+        // `T::f(..)` on a type of this unit (ADR-0026 §3), `Trait::f(..)`
+        // on a trait of this unit (ADR-0046 §2).
         if path.len() == 2
-            && self
+            && (self
                 .adts
                 .contains_key(&format!("{mod_path}::{}", path[0].name))
+                || self
+                    .traits
+                    .contains_key(&format!("{mod_path}::{}", path[0].name)))
         {
             let full = format!("{mod_path}::{}::{}", path[0].name, path[1].name);
             if self.fns.contains_key(&full) {
@@ -1570,6 +2328,7 @@ impl<'a> Checker<'a> {
                         self.err("E0402", t.span, "spec function parameters cannot be `&mut`");
                     }
                 }
+                TypeKind::Error => {}
                 _ => self.err(
                     "E0402",
                     t.span,
@@ -2243,6 +3002,17 @@ impl<'a> Checker<'a> {
 
     /// E0305 for a type name, with the nearest type of unit `mp` as the fix.
     fn unknown_type(&self, name: &str, span: Span, mp: &str) -> Diag {
+        if name == "Self" {
+            let d = Diag::new(
+                "E0305",
+                span,
+                "`Self` names the implementing type only in a trait declaration",
+            );
+            return match &self.self_head {
+                Some((_, t)) => d.fix(format!("write `{t}`"), Some(t.clone())),
+                None => d.fix("write the type", None),
+            };
+        }
         let segs: Vec<&str> = name.split("::").collect();
         if let Some(text) = self.import_text(&segs, mp) {
             return Diag::new("E0214", span, format!("`{name}` comes from a `use`"))
@@ -4078,16 +4848,13 @@ impl<'a> Checker<'a> {
     /// The type of argument `a` from its syntax, before it is checked: a
     /// local, a reference to one, or a `Vec` viewed as a slice. Used to
     /// infer type arguments (E0237).
-    fn arg_peek(cx: &FnCtx, a: &Expr) -> Option<TypeKind> {
+    fn arg_peek(&self, cx: &FnCtx, a: &Expr) -> Option<TypeKind> {
         match &a.kind {
             ExprKind::Var(id) => Self::lookup(cx, &id.name).map(|l| l.ty),
-            ExprKind::Ref { mutable, expr } => match &expr.kind {
-                ExprKind::Var(id) => Self::lookup(cx, &id.name).map(|l| TypeKind::Ref {
-                    mutable: *mutable,
-                    inner: mk(l.ty),
-                }),
-                _ => None,
-            },
+            ExprKind::Ref { mutable, expr } => Some(TypeKind::Ref {
+                mutable: *mutable,
+                inner: mk(self.place_peek(cx, expr)?),
+            }),
             ExprKind::Method { recv, name, args }
                 if args.is_empty() && matches!(name.name.as_str(), "as_slice" | "as_mut_slice") =>
             {
@@ -4104,6 +4871,25 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// The type of a place `x`, `x.f.g`, `*p`, from the locals' types.
+    fn place_peek(&self, cx: &FnCtx, e: &Expr) -> Option<TypeKind> {
+        match &e.kind {
+            ExprKind::Var(id) => Self::lookup(cx, &id.name).map(|l| l.ty),
+            ExprKind::Field { base, name } => {
+                let (_, fs) = self.struct_fields(&self.place_peek(cx, base)?)?;
+                fs.into_iter()
+                    .find(|(n, _)| *n == name.name)
+                    .map(|(_, t)| t)
+            }
+            ExprKind::Deref(x) => match self.place_peek(cx, x)? {
+                TypeKind::Ref { inner, .. } => Some(inner.kind),
+                _ => None,
+            },
+            ExprKind::Index { base, .. } => elem_of(&self.place_peek(cx, base)?).cloned(),
+            _ => None,
+        }
+    }
+
     /// The type arguments written in a call of `sig` (ADR-0046 §3): the
     /// `impl`'s after the type segment, the function's after its own name.
     /// Returns the bindings and whether a level was left out.
@@ -4116,8 +4902,15 @@ impl<'a> Checker<'a> {
     ) -> (BTreeMap<String, TypeKind>, bool) {
         let mut m = BTreeMap::new();
         let ig = sig.impl_generics;
+        // A trait method's `Self` is never written: it comes from the
+        // arguments (ADR-0046 §2).
+        let own_ty = if sig.trait_of.is_some() {
+            &sig.generics[..0]
+        } else {
+            &sig.generics[..ig]
+        };
         let levels = [
-            (path.len().wrapping_sub(2), &sig.generics[..ig], "the type"),
+            (path.len().wrapping_sub(2), own_ty, "the type"),
             (path.len() - 1, &sig.generics[ig..], "the function"),
         ];
         let mut missing = false;
@@ -4125,6 +4918,19 @@ impl<'a> Checker<'a> {
             let written: Vec<&TArgs> = targs.iter().filter(|t| t.seg == seg).collect();
             match written.as_slice() {
                 [] => missing |= !ps.is_empty(),
+                [t] if sig.trait_of.is_some() && what == "the type" => {
+                    self.diags.push(
+                        Diag::new(
+                            "E0429",
+                            t.span,
+                            format!(
+                                "the trait of `{}` takes no type arguments: `Self` comes from the arguments",
+                                Self::path_text(path)
+                            ),
+                        )
+                        .fix("remove them", Some(String::new())),
+                    );
+                }
                 [t] if t.args.len() == ps.len() => {
                     for (a, p) in t.args.iter().zip(ps) {
                         let k = self.canon(a, &cx.mod_path, true);
@@ -4225,7 +5031,7 @@ impl<'a> Checker<'a> {
         };
         let mut segs: Vec<String> = path.iter().map(|i| i.name.clone()).collect();
         let n = segs.len();
-        if ig > 0 {
+        if ig > 0 && sig.trait_of.is_none() {
             segs[n - 2] = format!("{}::<{}>", segs[n - 2], text(&sig.generics[..ig]));
         }
         if sig.generics.len() > ig {
@@ -4363,8 +5169,11 @@ impl<'a> Checker<'a> {
         } else {
             self.written_targs(cx, path, targs, &sig)
         };
+        // A trait method's `Self` is always inferred (ADR-0046 §2).
+        let is_trait = sig.trait_of.is_some();
+        let infer = missing || is_trait;
         // Rust infers from the expected result type too.
-        if missing && let Some(want) = expected {
+        if infer && let Some(want) = expected {
             unify(&sig.ret, want, &sig.generics, &mut tm);
         }
         let unbound = |tm: &BTreeMap<String, TypeKind>, t: &TypeKind| {
@@ -4381,13 +5190,13 @@ impl<'a> Checker<'a> {
                 self.expr(cx, a, None, mode);
                 continue;
             };
-            if missing && unbound(&tm, pt0) {
+            if infer && unbound(&tm, pt0) {
                 if untyped_literal(a) {
                     deferred.push(i);
                     continue;
                 }
                 let at = if matches!(pt0, TypeKind::Ref { .. }) {
-                    Self::arg_peek(cx, a)
+                    self.arg_peek(cx, a)
                 } else {
                     Some(self.expr(cx, a, None, mode))
                 };
@@ -4406,6 +5215,10 @@ impl<'a> Checker<'a> {
                 }
             }
             let pt = subst(pt0, &tm);
+            // A reference whose type parameters stay unknown: reported below.
+            if is_trait && matches!(pt, TypeKind::Ref { .. }) && unbound(&tm, pt0) {
+                continue;
+            }
             if let TypeKind::Ref { mutable: pm, inner } = &pt {
                 if let Some(root) = self.ref_arg(cx, a, *pm, inner, mode)
                     && *pm
@@ -4432,13 +5245,35 @@ impl<'a> Checker<'a> {
                 self.expect_ty(&t, &pt, a.span);
             }
         }
+        if is_trait {
+            let Some(t) = tm.get("Self").filter(|t| **t != TypeKind::Error).cloned() else {
+                let tr = sig.trait_of.clone().unwrap_or_default();
+                self.diags.push(
+                    Diag::new(
+                        "E0237",
+                        span,
+                        format!(
+                            "the implementing type of `{name}` cannot be inferred: no argument or expected result gives `Self`"
+                        ),
+                    )
+                    .fix(
+                        format!("give an argument or the result a type that implements `{tr}`"),
+                        None,
+                    ),
+                );
+                return TypeKind::Error;
+            };
+            if !self.targ_ok(&t, &sig.generics[0], &name, span, true) {
+                return TypeKind::Error;
+            }
+        }
         if missing {
             let inferred = sig
                 .generics
                 .iter()
                 .all(|p| tm.get(&p.name).is_some_and(|t| *t != TypeKind::Error));
             if inferred {
-                for p in &sig.generics {
+                for p in &sig.generics[usize::from(is_trait)..] {
                     let t = tm[&p.name].clone();
                     if !self.targ_ok(&t, p, &name, span, true) {
                         tm.insert(p.name.clone(), TypeKind::Error);
@@ -4463,6 +5298,10 @@ impl<'a> Checker<'a> {
                 return TypeKind::Error;
             }
             let args: Vec<TypeKind> = sig.generics.iter().map(|p| tm[&p.name].clone()).collect();
+            // A trait call with a known `Self` runs its impl's function.
+            if let Some((imp, _)) = dispatch(&self.fns, &self.trait_impls, &target, &args) {
+                self.calls.entry(cx.path.clone()).or_default().insert(imp);
+            }
             self.gcalls
                 .push((cx.path.clone(), target.clone(), span, args.clone()));
             self.targs.insert((span.file, span.lo, span.hi), args);
@@ -4887,24 +5726,9 @@ impl<'a> Checker<'a> {
 
     fn check_recursion(&mut self, p: &Program) {
         let mut defs: BTreeMap<String, (Span, bool)> = BTreeMap::new();
-        fn walk(m: &Mod, prefix: &str, out: &mut BTreeMap<String, (Span, bool)>) {
-            let mp = format!("{prefix}{}", m.name.name);
-            for s in &m.mods {
-                walk(s, &format!("{mp}::"), out);
-            }
-            for f in &m.fns {
-                out.entry(format!("{mp}::{}", f.name.name))
-                    .or_insert((f.name.span, f.decreases.is_some()));
-            }
-            for i in &m.impls {
-                for f in &i.fns {
-                    out.entry(format!("{mp}::{}::{}", i.ty.name, f.name.name))
-                        .or_insert((f.name.span, f.decreases.is_some()));
-                }
-            }
-        }
-        for m in &p.mods {
-            walk(m, "", &mut defs);
+        for (path, _, f) in defs_of(p, &self.fns) {
+            defs.entry(path)
+                .or_insert((f.name.span, f.decreases.is_some()));
         }
         let comps = sccs_with_cycles(&self.calls);
         for (id, comp) in comps.iter().enumerate() {
@@ -4912,9 +5736,11 @@ impl<'a> Checker<'a> {
                 self.recursive.insert(path.clone(), id);
             }
         }
+        let through_trait = self.trait_cycles(&defs);
         for path in comps.into_iter().flatten() {
             if let Some((span, has_dec)) = defs.get(&path)
                 && !has_dec
+                && !through_trait.contains(&path)
             {
                 self.diags.push(
                     Diag::new(
@@ -4953,6 +5779,119 @@ impl<'a> Checker<'a> {
                 );
             }
         }
+    }
+
+    /// Recursion through a call on a bounded `Self` (ADR-0046 §2): a cycle,
+    /// on the graph of the instances the program reaches from its
+    /// definitions without type parameters, that takes such a call. A
+    /// generic definition is proved once, where that call names only the
+    /// trait's signature, so no measure is checked along it (until trait
+    /// contracts, backlog 2T-07b). Reports E0207 on the definitions of such
+    /// a cycle and returns them. Structural delegation (`impl<T: Shape>
+    /// Shape for Wrap<T>` calling `T`'s) makes no cycle.
+    fn trait_cycles(&mut self, defs: &BTreeMap<String, (Span, bool)>) -> BTreeSet<String> {
+        let mut edges: BTreeMap<&str, Vec<(&str, Vec<TypeKind>)>> = BTreeMap::new();
+        for (caller, callee, _, args) in &self.gcalls {
+            edges
+                .entry(caller.as_str())
+                .or_default()
+                .push((callee.as_str(), args.clone()));
+        }
+        for (caller, cs) in &self.calls {
+            for c in cs {
+                if self.fns.get(c).is_some_and(|s| s.generics.is_empty()) {
+                    edges
+                        .entry(caller.as_str())
+                        .or_default()
+                        .push((c.as_str(), Vec::new()));
+                }
+            }
+        }
+        let key = |p: &str, a: &[TypeKind]| {
+            if a.is_empty() {
+                p.to_string()
+            } else {
+                crate::verify::inst_key(p, a)
+            }
+        };
+        let mut graph: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        let mut bound_edges: BTreeSet<(String, String)> = BTreeSet::new();
+        let mut base_of: BTreeMap<String, String> = BTreeMap::new();
+        let mut work: Vec<(String, Vec<TypeKind>)> = defs
+            .keys()
+            .filter(|p| self.fns.get(*p).is_some_and(|s| s.generics.is_empty()))
+            .map(|p| (p.clone(), Vec::new()))
+            .collect();
+        while let Some((p, args)) = work.pop() {
+            let k = key(&p, &args);
+            if graph.contains_key(&k) {
+                continue;
+            }
+            graph.insert(k.clone(), BTreeSet::new());
+            base_of.insert(k.clone(), p.clone());
+            let sub: BTreeMap<String, TypeKind> = self.fns[&p]
+                .generics
+                .iter()
+                .map(|g| g.name.clone())
+                .zip(args.iter().cloned())
+                .collect();
+            for (c, cargs) in edges.get(p.as_str()).cloned().unwrap_or_default() {
+                let a: Vec<TypeKind> = cargs.iter().map(|t| subst(t, &sub)).collect();
+                if a.iter()
+                    .any(|t| crate::verify::type_depth(t) > crate::verify::MAX_INST_DEPTH)
+                {
+                    continue;
+                }
+                let (tp, ta, bound) = if self.fns[c].trait_of.is_some() {
+                    match dispatch(&self.fns, &self.trait_impls, c, &a) {
+                        Some((ip, ia)) => {
+                            (ip, ia, matches!(cargs.first(), Some(TypeKind::Param(_))))
+                        }
+                        None => continue,
+                    }
+                } else {
+                    (c.to_string(), a, false)
+                };
+                let ck = key(&tp, &ta);
+                if bound {
+                    bound_edges.insert((k.clone(), ck.clone()));
+                }
+                graph.get_mut(&k).expect("inserted").insert(ck);
+                work.push((tp, ta));
+            }
+        }
+        let mut out = BTreeSet::new();
+        for comp in sccs_with_cycles(&graph) {
+            let set: BTreeSet<&String> = comp.iter().collect();
+            let Some((_, to)) = bound_edges
+                .iter()
+                .find(|(a, b)| set.contains(a) && set.contains(b))
+            else {
+                continue;
+            };
+            let to = to.clone();
+            for k in &comp {
+                let b = base_of[k].clone();
+                if out.insert(b.clone())
+                    && let Some((span, _)) = defs.get(&b)
+                {
+                    self.diags.push(
+                        Diag::new(
+                            "E0207",
+                            *span,
+                            format!(
+                                "`{b}` is recursive through a call on a bounded `Self` (reaching `{to}`), which cannot carry a measure yet (backlog 2T-07b)"
+                            ),
+                        )
+                        .fix(
+                            "call with a known `Self` type, or break the cycle",
+                            None,
+                        ),
+                    );
+                }
+            }
+        }
+        out
     }
 
     fn check_main(&mut self, p: &Program) {
@@ -5221,6 +6160,32 @@ fn sccs_with_cycles(g: &BTreeMap<String, BTreeSet<String>>) -> Vec<Vec<String>> 
 /// `{ 7 }`, `if c { 1 } else { 2 }`): it has no type of its own and takes one
 /// from its context, as unsuffixed literals do in Rust.
 /// Whether `t` names type parameter `n`.
+/// Whether two implementing types can be the same type (a type parameter
+/// matches anything; conservative for a parameter written twice).
+fn overlaps(a: &TypeKind, b: &TypeKind) -> bool {
+    match (a, b) {
+        (TypeKind::Param(_), _) | (_, TypeKind::Param(_)) => true,
+        (TypeKind::Array(x, n), TypeKind::Array(y, k)) => n == k && overlaps(&x.kind, &y.kind),
+        (TypeKind::Slice(x), TypeKind::Slice(y)) | (TypeKind::Vec(x), TypeKind::Vec(y)) => {
+            overlaps(&x.kind, &y.kind)
+        }
+        (
+            TypeKind::Ref {
+                mutable: p,
+                inner: x,
+            },
+            TypeKind::Ref {
+                mutable: q,
+                inner: y,
+            },
+        ) => p == q && overlaps(&x.kind, &y.kind),
+        (TypeKind::Named { path: p, args: x }, TypeKind::Named { path: q, args: y }) => {
+            p == q && x.len() == y.len() && x.iter().zip(y).all(|(a, b)| overlaps(&a.kind, &b.kind))
+        }
+        _ => a == b,
+    }
+}
+
 fn mentions_param(t: &TypeKind, n: &str) -> bool {
     match t {
         TypeKind::Param(x) => x == n,

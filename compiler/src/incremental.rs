@@ -61,7 +61,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use crate::ast::{FnDef, FnKind, Mod, Program};
+use crate::ast::{FnDef, FnKind, Program};
 use crate::source::{SourceMap, Span};
 use crate::verify::{FnStatus, ObKey, Tables};
 
@@ -128,6 +128,12 @@ fn escape(s: &str) -> String {
     s.replace('\\', "\\\\").replace('\n', "\\n")
 }
 
+/// A path field of a line: escaped, and a space (a trait impl function,
+/// `<unit::Sq as unit::Shape>::area`) as `\s` so fields stay separated.
+fn escape_path(s: &str) -> String {
+    escape(s).replace(' ', "\\s")
+}
+
 fn unescape(s: &str) -> Option<String> {
     let mut out = String::with_capacity(s.len());
     let mut it = s.chars();
@@ -136,6 +142,7 @@ fn unescape(s: &str) -> Option<String> {
             match it.next()? {
                 '\\' => out.push('\\'),
                 'n' => out.push('\n'),
+                's' => out.push(' '),
                 _ => return None,
             }
         } else {
@@ -197,11 +204,14 @@ impl Store {
         for line in lines {
             let mut it = line.splitn(5, ' ');
             match (it.next(), it.next(), it.next(), it.next(), it.next()) {
-                (Some(kind), Some(path), Some(key), Some(sum), Some(payload)) => s
-                    .pending
-                    .entry((kind.to_string(), path.to_string()))
-                    .or_default()
-                    .push((key.to_string(), sum.to_string(), payload.to_string())),
+                (Some(kind), Some(path), Some(key), Some(sum), Some(payload))
+                    if let Some(path) = unescape(path) =>
+                {
+                    s.pending
+                        .entry((kind.to_string(), path))
+                        .or_default()
+                        .push((key.to_string(), sum.to_string(), payload.to_string()))
+                }
                 _ => {
                     s.damaged += 1;
                     s.changed = true;
@@ -262,7 +272,8 @@ impl Store {
         let mut out = format!("{MAGIC}\nid {id}\n");
         for ((kind, path), (key, payload)) in &self.entries {
             out.push_str(&format!(
-                "{kind} {path} {key} {} {}\n",
+                "{kind} {} {key} {} {}\n",
+                escape_path(path),
                 line_digest(kind, path, key, payload),
                 escape(payload)
             ));
@@ -343,25 +354,6 @@ pub struct Session {
     proof_keys: BTreeMap<String, String>,
     ir_keys: BTreeMap<String, String>,
     pub stats: Stats,
-}
-
-fn collect<'p>(m: &'p Mod, prefix: &str, out: &mut Vec<(String, String, &'p FnDef)>) {
-    let mp = format!("{prefix}{}", m.name.name);
-    for s in &m.mods {
-        collect(s, &format!("{mp}::"), out);
-    }
-    for f in &m.fns {
-        out.push((format!("{mp}::{}", f.name.name), mp.clone(), f));
-    }
-    for i in &m.impls {
-        for f in &i.fns {
-            out.push((
-                format!("{mp}::{}::{}", i.ty.name, f.name.name),
-                mp.clone(),
-                f,
-            ));
-        }
-    }
 }
 
 fn section(out: &mut String, tag: &str, text: &str) {
@@ -446,17 +438,31 @@ impl Session {
         sm: &SourceMap,
         only: Option<&BTreeSet<String>>,
     ) -> (BTreeMap<String, String>, BTreeMap<String, String>) {
-        let mut defs = Vec::new();
-        for m in &p.mods {
-            collect(m, "", &mut defs);
-        }
+        let mut defs = crate::check::defs_of(p, &t.fns);
         defs.sort_by(|a, b| a.0.cmp(&b.0));
+        let decls_of_traits = crate::check::trait_decls(p);
         // By path; a later duplicate wins, as in `fmt::hashes` collected
-        // into a map (a checked program has none).
+        // into a map (a checked program has none). Trait method
+        // declarations are read like executable callees (their signature).
         let by_path: BTreeMap<&str, (&str, &FnDef)> = defs
             .iter()
+            .chain(&decls_of_traits)
             .map(|(p, u, f)| (p.as_str(), (u.as_str(), *f)))
             .collect();
+        // A trait method names every impl's function too: a call with a
+        // known `Self` reads that impl's contract (ADR-0046 §4).
+        let impls_of = |w: &str| -> Vec<String> {
+            let Some(tr) = t.fns.get(w).and_then(|s| s.trait_of.as_ref()) else {
+                return Vec::new();
+            };
+            let m = w.rsplit("::").next().unwrap_or_default();
+            t.trait_impls
+                .iter()
+                .filter(|i| &i.trait_path == tr)
+                .map(|i| i.fn_path(m))
+                .filter(|q| by_path.contains_key(q.as_str()))
+                .collect()
+        };
         // (body hash, caller hash): what another definition's keys take of
         // a spec fn (its whole text) and of an executable function.
         let hash_memo: RefCell<BTreeMap<&str, (String, String)>> = RefCell::default();
@@ -475,8 +481,11 @@ impl Session {
                 })
                 .clone()
         };
-        let kinds: BTreeMap<&str, FnKind> =
-            defs.iter().map(|(p, _, f)| (p.as_str(), f.kind)).collect();
+        let kinds: BTreeMap<&str, FnKind> = defs
+            .iter()
+            .chain(&decls_of_traits)
+            .map(|(p, _, f)| (p.as_str(), f.kind))
+            .collect();
         // Hashed once: it is the same for every definition.
         let header = crate::sha256::hex(crate::verify::query_header().as_bytes());
         let decls = crate::verify::spec_decl_map(p, t);
@@ -484,7 +493,7 @@ impl Session {
         let names = |text: &str| -> BTreeSet<String> {
             text.split(|c: char| !(c.is_alphanumeric() || c == '_' || c == ':'))
                 .filter(|w| w.contains("::") && kinds.contains_key(w))
-                .map(str::to_string)
+                .flat_map(|w| std::iter::once(w.to_string()).chain(impls_of(w)))
                 .collect()
         };
         // What another definition's query can read of each definition: a
@@ -520,9 +529,11 @@ impl Session {
                 .get(f.span.lo as usize..f.span.hi as usize)
                 .unwrap_or_default();
             // Every definition the qualified text names (full paths).
-            let refs: BTreeSet<&str> = qual
+            let refs: BTreeSet<String> = qual
                 .split(|c: char| !(c.is_alphanumeric() || c == '_' || c == ':'))
                 .filter(|w| w.contains("::") && *w != path && kinds.contains_key(w))
+                .flat_map(|w| std::iter::once(w.to_string()).chain(impls_of(w)))
+                .filter(|w| w != path)
                 .collect();
             let uses: BTreeSet<String> = crate::verify::uses_of(f, unit, &t.fns)
                 .into_iter()
@@ -548,7 +559,8 @@ impl Session {
             section(&mut pk, "component", &comp.join(" "));
             let mut ik = String::from("ir\n");
             ik.push_str(&own);
-            for r in refs {
+            for r in &refs {
+                let r = r.as_str();
                 let (body, caller) = &hash_of(r);
                 match kinds[r] {
                     FnKind::Exec => {

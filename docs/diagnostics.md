@@ -36,6 +36,8 @@
 | E0218 | a `Vec` is passed where a slice is expected: write `v.as_slice()` |
 | E0219 | `drop(v)` and `mem::take` / `replace` / `swap` are not used |
 | E0234 | a string literal: text is bytes, write `b"..."` |
+| E0235 | a blanket impl `impl<T> Trait for T` is not used |
+| E0236 | trait objects `dyn Trait` are not used |
 | E0237 | a call of a generic function names its type arguments: `f::<T>(..)` |
 | E0220 | `#[derive(..)]` is not used |
 | E0221 | built-in variants are written bare (`Some`, not `Option::Some`) |
@@ -66,6 +68,10 @@
 | E0308 | `impl` block not in the unit of its type, or a second one |
 | E0309 | a built-in name cannot be defined |
 | E0310 | `self` names exactly the receiver |
+| E0311 | two impls of a trait for types that can be the same |
+| E0312 | a trait impl in neither the unit of the trait nor the unit of the type |
+| E0315 | a trait impl misses a method of the trait, or has one the trait lacks |
+| E0316 | a trait impl's function does not match the trait's signature |
 
 ## E04xx 타입·소유권
 
@@ -154,6 +160,7 @@
 | E0813 | recursive spec function may not terminate |
 | E0815 | integer conversion may be out of range |
 | E0816 | a `Vec` may exceed its maximum length |
+| E0817 | a trait impl's function does not refine the trait's contract |
 
 ## W09xx 계약 조정 린트(경고, `bmb lint`만)
 

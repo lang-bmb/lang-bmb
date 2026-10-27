@@ -38,6 +38,13 @@ pub fn type_str(t: &Type) -> String {
     crate::check::ty_str(&t.kind)
 }
 
+fn path_str(p: &[Ident]) -> String {
+    p.iter()
+        .map(|i| i.name.as_str())
+        .collect::<Vec<_>>()
+        .join("::")
+}
+
 /// `<T: Copy, U: Copy + geo::Shape>`, or nothing (ADR-0046).
 pub fn generics_str(gs: &[TypeParam]) -> String {
     if gs.is_empty() {
@@ -86,12 +93,13 @@ impl<'a> Printer<'a> {
             .collect::<Vec<_>>()
             .join("::");
         match &self.qualify {
-            // `f` and `T::f` (an `impl` function of the unit's type) are
-            // local, as the checker resolves them.
+            // `f`, `T::f` (an `impl` function of the unit's type) and
+            // `Trait::f` (a method of the unit's trait) are local, as the
+            // checker resolves them.
             Some((fns, unit)) if path.len() <= 2 => {
                 let local = format!("{unit}::{plain}");
                 match fns.get(&local) {
-                    Some(sig) if path.len() == 1 || sig.in_impl => local,
+                    Some(sig) if path.len() == 1 || sig.in_impl || sig.trait_of.is_some() => local,
                     _ => plain,
                 }
             }
@@ -141,6 +149,18 @@ impl<'a> Printer<'a> {
         types.sort_by(|a, b| a.name.name.cmp(&b.name.name));
         let mut impls: Vec<&Impl> = m.impls.iter().collect();
         impls.sort_by(|a, b| a.ty.name.cmp(&b.ty.name));
+        // Traits by name, then the trait `impl`s for types of other units;
+        // an `impl` for a type of this unit follows that type (ADR-0046).
+        let mut traits: Vec<&TraitDef> = m.traits.iter().collect();
+        traits.sort_by(|a, b| a.name.name.cmp(&b.name.name));
+        let local_type = |i: &TraitImpl| match &i.self_ty.kind {
+            TypeKind::Named { path, .. } if path.len() == 1 => {
+                m.types.iter().any(|t| t.name.name == path[0])
+            }
+            _ => false,
+        };
+        let mut timpls: Vec<&TraitImpl> = m.trait_impls.iter().collect();
+        timpls.sort_by_key(|i| (path_str(&i.trait_path), type_str(&i.self_ty)));
         let mut first = true;
         for s in subs {
             if !first {
@@ -148,6 +168,20 @@ impl<'a> Printer<'a> {
             }
             first = false;
             self.module(s, depth + 1);
+        }
+        for t in &traits {
+            if !first {
+                self.out.push('\n');
+            }
+            first = false;
+            self.trait_def(t, depth + 1);
+        }
+        for i in timpls.iter().filter(|i| !local_type(i)) {
+            if !first {
+                self.out.push('\n');
+            }
+            first = false;
+            self.trait_impl(i, depth + 1);
         }
         let mut printed = BTreeSet::new();
         for t in &types {
@@ -160,6 +194,12 @@ impl<'a> Printer<'a> {
                 self.out.push('\n');
                 self.impl_block(i, depth + 1);
                 printed.insert(i.ty.name.clone());
+            }
+            for i in timpls.iter().filter(|i| {
+                matches!(&i.self_ty.kind, TypeKind::Named { path, .. } if path.len() == 1 && path[0] == t.name.name)
+            }) {
+                self.out.push('\n');
+                self.trait_impl(i, depth + 1);
             }
         }
         // An `impl` without its type in the unit (the checker reports it).
@@ -238,6 +278,62 @@ impl<'a> Printer<'a> {
             "impl{} {}",
             generics_str(&i.generics),
             applied(&i.ty.name, &i.ty_args)
+        );
+        if fns.is_empty() {
+            self.line(depth, &format!("{head} {{}}"));
+            return;
+        }
+        self.line(depth, &format!("{head} {{"));
+        for (k, f) in fns.iter().enumerate() {
+            if k > 0 {
+                self.out.push('\n');
+            }
+            self.function(f, depth + 1, None, true);
+        }
+        self.line(depth, "}");
+    }
+
+    /// `trait T { fn m(..) -> R; .. }`, methods by name (ADR-0046 §1).
+    fn trait_def(&mut self, t: &TraitDef, depth: usize) {
+        for a in &t.attrs {
+            self.attr_line(a, depth);
+        }
+        let mut fns: Vec<&TraitFn> = t.fns.iter().collect();
+        fns.sort_by(|a, b| a.f.name.name.cmp(&b.f.name.name));
+        if fns.is_empty() {
+            self.line(depth, &format!("trait {} {{}}", t.name.name));
+            return;
+        }
+        self.line(depth, &format!("trait {} {{", t.name.name));
+        for (k, tf) in fns.iter().enumerate() {
+            if k > 0 {
+                self.out.push('\n');
+            }
+            if tf.has_body {
+                self.function(&tf.f, depth + 1, None, true);
+            } else {
+                self.function(&tf.f, depth + 1, None, false);
+                // The signature ends with `;` (after its last clause).
+                if self.out.ends_with(",\n") {
+                    self.out.truncate(self.out.len() - 2);
+                } else {
+                    self.out.pop();
+                }
+                self.out.push_str(";\n");
+            }
+        }
+        self.line(depth, "}");
+    }
+
+    /// `impl<..> Trait for T { .. }`, functions by name (ADR-0046 §2).
+    fn trait_impl(&mut self, i: &TraitImpl, depth: usize) {
+        let mut fns: Vec<&FnDef> = i.fns.iter().collect();
+        fns.sort_by(|a, b| a.name.name.cmp(&b.name.name));
+        let head = format!(
+            "impl{} {} for {}",
+            generics_str(&i.generics),
+            path_str(&i.trait_path),
+            type_str(&i.self_ty)
         );
         if fns.is_empty() {
             self.line(depth, &format!("{head} {{}}"));
@@ -620,25 +716,6 @@ pub struct DefHash {
     pub iface: String,
 }
 
-fn collect<'p>(m: &'p Mod, prefix: &str, out: &mut Vec<(String, String, &'p FnDef)>) {
-    let mp = format!("{prefix}{}", m.name.name);
-    for s in &m.mods {
-        collect(s, &format!("{mp}::"), out);
-    }
-    for f in &m.fns {
-        out.push((format!("{mp}::{}", f.name.name), mp.clone(), f));
-    }
-    for i in &m.impls {
-        for f in &i.fns {
-            out.push((
-                format!("{mp}::{}::{}", i.ty.name, f.name.name),
-                mp.clone(),
-                f,
-            ));
-        }
-    }
-}
-
 /// Qualified normal form of one definition, as hashed.
 pub fn qualified_text(
     f: &FnDef,
@@ -655,10 +732,7 @@ pub fn qualified_text(
 }
 
 pub fn hashes(p: &Program, fns: &BTreeMap<String, FnSig>) -> Vec<DefHash> {
-    let mut defs = Vec::new();
-    for m in &p.mods {
-        collect(m, "", &mut defs);
-    }
+    let mut defs = crate::check::defs_of(p, fns);
     defs.sort_by(|a, b| a.0.cmp(&b.0));
     let mut out: Vec<DefHash> = defs
         .into_iter()
@@ -670,6 +744,26 @@ pub fn hashes(p: &Program, fns: &BTreeMap<String, FnSig>) -> Vec<DefHash> {
     out.extend(type_hashes(p));
     out.sort_by(|a, b| a.path.cmp(&b.path));
     out
+}
+
+/// A trait declaration in normal form on one line (map L1 `signature`).
+pub fn trait_text(t: &TraitDef) -> String {
+    trait_text_as(t, &t.name.name)
+}
+
+/// `trait_text` with the trait's own name written as `name` (hashing
+/// uses `_`).
+pub fn trait_text_as(t: &TraitDef, name: &str) -> String {
+    let mut q = t.clone();
+    q.name.name = name.to_string();
+    let mut pr = plain();
+    pr.trait_def(&q, 0);
+    pr.out
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// A type declaration in normal form on one line (map L1 `signature`).

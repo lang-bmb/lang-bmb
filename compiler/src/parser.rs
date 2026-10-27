@@ -21,6 +21,15 @@ pub struct Parser<'a> {
     no_struct: bool,
     /// The type of the `impl` block being read (for the receiver fix).
     impl_ty: Option<String>,
+    /// Reading a trait method: its signature may end with `;`. Cleared when
+    /// a body is read instead.
+    decl_ok: bool,
+}
+
+/// An `impl` block: inherent or of a trait.
+enum ImplItem {
+    Inherent(Impl),
+    Trait(TraitImpl),
 }
 
 /// Maximum syntactic nesting (parenthesised and unary expressions, blocks,
@@ -30,7 +39,6 @@ pub const MAX_NESTING: usize = 256;
 
 /// Rust constructs recognised only to be rejected with a precise message.
 const UNSUPPORTED_ITEMS: &[&str] = &[
-    "trait",
     "const",
     "static",
     "type",
@@ -108,6 +116,7 @@ impl<'a> Parser<'a> {
             depth: 0,
             no_struct: false,
             impl_ty: None,
+            decl_ok: false,
         }
     }
 
@@ -386,7 +395,7 @@ impl<'a> Parser<'a> {
             Tok::Ident(s) => {
                 matches!(
                     s.as_str(),
-                    "fn" | "spec" | "mod" | "pub" | "struct" | "enum" | "impl"
+                    "fn" | "spec" | "mod" | "pub" | "struct" | "enum" | "impl" | "trait"
                 ) || UNSUPPORTED_ITEMS.contains(&s.as_str())
             }
             _ => false,
@@ -512,21 +521,13 @@ impl<'a> Parser<'a> {
         let mut mods = Vec::new();
         let mut types = Vec::new();
         let mut impls = Vec::new();
+        let mut traits = Vec::new();
+        let mut trait_impls = Vec::new();
         let mut uses = Vec::new();
         while !self.is_p("}") && !matches!(self.peek(), Tok::Eof) {
             let start = self.pos;
             let attrs = self.attrs();
-            if self.is_kw("pub") {
-                let sp = self.bump().span;
-                self.diags.push(
-                    Diag::new(
-                        "E0207",
-                        sp,
-                        "`pub` is not used; every definition of a unit is part of its surface",
-                    )
-                    .fix("remove `pub`", Some(String::new())),
-                );
-            }
+            self.no_pub();
             if self.is_kw("mod") {
                 if let Ok(m) = self.parse_mod(attrs) {
                     mods.push(m);
@@ -547,7 +548,13 @@ impl<'a> Parser<'a> {
                 }
             } else if self.is_kw("impl") {
                 match self.parse_impl() {
-                    Ok(i) => impls.push(i),
+                    Ok(ImplItem::Inherent(i)) => impls.push(i),
+                    Ok(ImplItem::Trait(i)) => trait_impls.push(i),
+                    Err(_) => self.recover_item(),
+                }
+            } else if self.is_kw("trait") {
+                match self.parse_trait(attrs) {
+                    Ok(t) => traits.push(t),
                     Err(_) => self.recover_item(),
                 }
             } else if self.is_kw("use") {
@@ -560,7 +567,7 @@ impl<'a> Parser<'a> {
                 let sp = self.span();
                 let fix = match s.as_str() {
                     "const" | "static" => "use a `spec fn` returning the value, or a literal",
-                    _ => "units hold `fn`, `spec fn`, `struct`, `enum` and `impl T { .. }`",
+                    _ => "units hold `fn`, `spec fn`, `struct`, `enum`, `trait` and `impl`",
                 };
                 self.diags.push(
                     Diag::new(
@@ -589,6 +596,8 @@ impl<'a> Parser<'a> {
             mods,
             types,
             impls,
+            traits,
+            trait_impls,
             uses,
             span: lo.to(hi),
         })
@@ -772,45 +781,107 @@ impl<'a> Parser<'a> {
     }
 
     /// `impl T { fn .. }` (ADR-0026 §3).
-    fn parse_impl(&mut self) -> PResult<Impl> {
+    /// `impl T { .. }` (ADR-0026), or `impl Trait for T { .. }` (ADR-0046 §2).
+    fn parse_impl(&mut self) -> PResult<ImplItem> {
         let lo = self.bump().span; // `impl`
         let generics = self.parse_generics();
-        let ty = self.ident("type name")?;
-        let mut ty_args = Vec::new();
-        if self.eat_p("<") {
-            while !self.is_p(">") && !matches!(self.peek(), Tok::Eof) {
-                ty_args.push(self.parse_type());
-                if !self.eat_p(",") {
-                    break;
+        let first = self.parse_type();
+        if self.eat_kw("for") {
+            let trait_path = match &first.kind {
+                TypeKind::Named { path, args } if args.is_empty() => {
+                    let mut out = Vec::new();
+                    let mut sp = first.span;
+                    // Segment spans: the path is written without spaces.
+                    for seg in path {
+                        let hi = sp.lo + seg.len() as u32;
+                        out.push(Ident {
+                            name: seg.clone(),
+                            span: Span { hi, ..sp },
+                        });
+                        sp.lo = hi + 2;
+                    }
+                    out
                 }
+                _ => {
+                    self.diags.push(
+                        Diag::new("E0103", first.span, "expected a trait name before `for`")
+                            .fix("write `impl Trait for T { .. }`", None),
+                    );
+                    return Err(());
+                }
+            };
+            let self_ty = self.parse_type();
+            let (fns, hi) = self.impl_body(Self::type_text(&self_ty))?;
+            return Ok(ImplItem::Trait(TraitImpl {
+                generics,
+                trait_path,
+                self_ty,
+                fns,
+                span: lo.to(hi),
+            }));
+        }
+        let (ty, ty_args) = match first.kind {
+            TypeKind::Named { path, args } if path.len() == 1 => (
+                Ident {
+                    name: path[0].clone(),
+                    span: Span {
+                        hi: first.span.lo + path[0].len() as u32,
+                        ..first.span
+                    },
+                },
+                args,
+            ),
+            _ => {
+                self.diags.push(
+                    Diag::new(
+                        "E0308",
+                        first.span,
+                        "`impl T { .. }` names a struct or enum of this unit",
+                    )
+                    .fix(
+                        "declare the functions in the unit of the type, or implement a trait: `impl Trait for T { .. }`",
+                        None,
+                    ),
+                );
+                return Err(());
             }
-            self.expect_p(">")?;
-        }
-        if self.is_kw("for") {
-            self.diags.push(Diag::new(
-                "E0207",
-                self.span(),
-                "`impl Trait for T` is not supported; use `impl T { .. }`",
-            ));
-            return Err(());
-        }
+        };
+        let (fns, hi) = self.impl_body(Some(ty.name.clone()))?;
+        Ok(ImplItem::Inherent(Impl {
+            generics,
+            ty,
+            ty_args,
+            fns,
+            span: lo.to(hi),
+        }))
+    }
+
+    /// The text of a written type for the receiver fix, when simple.
+    fn type_text(t: &Type) -> Option<String> {
+        Some(match &t.kind {
+            TypeKind::Named { path, args } if args.is_empty() => path.join("::"),
+            TypeKind::Named { path, args } => {
+                let a: Option<Vec<String>> = args.iter().map(Self::type_text).collect();
+                format!("{}<{}>", path.join("::"), a?.join(", "))
+            }
+            TypeKind::I64 => "i64".into(),
+            TypeKind::U64 => "u64".into(),
+            TypeKind::U8 => "u8".into(),
+            TypeKind::Usize => "usize".into(),
+            TypeKind::Bool => "bool".into(),
+            _ => return None,
+        })
+    }
+
+    /// The functions of an `impl` block from its `{`, and the span of `}`.
+    fn impl_body(&mut self, impl_ty: Option<String>) -> PResult<(Vec<FnDef>, Span)> {
         self.expect_p("{")?;
         let mut fns = Vec::new();
-        let outer = self.impl_ty.replace(ty.name.clone());
+        let outer = std::mem::replace(&mut self.impl_ty, impl_ty);
         while !self.is_p("}") && !matches!(self.peek(), Tok::Eof) {
             let start = self.pos;
             let attrs = self.attrs();
-            if self.is_kw("pub") {
-                let sp = self.bump().span;
-                self.diags.push(
-                    Diag::new(
-                        "E0207",
-                        sp,
-                        "`pub` is not used; every definition of a unit is part of its surface",
-                    )
-                    .fix("remove `pub`", Some(String::new())),
-                );
-            }
+            self.no_pub();
             if self.is_kw("fn")
                 || (self.is_kw("spec") && matches!(self.peek_at(1), Tok::Ident(s) if s == "fn"))
             {
@@ -829,10 +900,82 @@ impl<'a> Parser<'a> {
         }
         self.impl_ty = outer;
         let hi = self.expect_p("}")?;
-        Ok(Impl {
-            generics,
-            ty,
-            ty_args,
+        Ok((fns, hi))
+    }
+
+    /// E0207 for a `pub` before an item.
+    fn no_pub(&mut self) {
+        if self.is_kw("pub") {
+            let sp = self.bump().span;
+            self.diags.push(
+                Diag::new(
+                    "E0207",
+                    sp,
+                    "`pub` is not used; every definition of a unit is part of its surface",
+                )
+                .fix("remove `pub`", Some(String::new())),
+            );
+        }
+    }
+
+    /// `trait Name { fn m(self: &Self) -> T; .. }` (ADR-0046 §1). A method
+    /// ends with `;`, or with a body (a default body).
+    fn parse_trait(&mut self, attrs: Vec<Attr>) -> PResult<TraitDef> {
+        let lo = self.bump().span; // `trait`
+        let name = self.ident("trait name")?;
+        if self.is_p("<") {
+            let sp = self.span();
+            self.diags.push(
+                Diag::new(
+                    "E0207",
+                    sp,
+                    "generic traits are not supported (ADR-0046 §1)",
+                )
+                .fix("put the type parameters on the methods", None),
+            );
+            self.skip_angle();
+        }
+        if self.is_p(":") {
+            let sp = self.span();
+            self.diags.push(
+                Diag::new("E0207", sp, "supertraits are not supported (ADR-0046 §1)")
+                    .fix("bound the type parameters by each trait: `T: A + B`", None),
+            );
+            while !self.is_p("{") && !matches!(self.peek(), Tok::Eof) {
+                self.bump();
+            }
+        }
+        self.expect_p("{")?;
+        let mut fns = Vec::new();
+        let outer = self.impl_ty.replace("Self".into());
+        while !self.is_p("}") && !matches!(self.peek(), Tok::Eof) {
+            let start = self.pos;
+            let attrs = self.attrs();
+            self.no_pub();
+            if self.is_kw("fn")
+                || (self.is_kw("spec") && matches!(self.peek_at(1), Tok::Ident(s) if s == "fn"))
+            {
+                self.decl_ok = true;
+                let r = self.parse_fn(attrs);
+                let has_body = !std::mem::take(&mut self.decl_ok);
+                match r {
+                    Ok(f) => fns.push(TraitFn { f, has_body }),
+                    Err(_) => self.recover_item(),
+                }
+            } else {
+                self.err_expected("`fn` or `spec fn`");
+                self.bump();
+                self.recover_item();
+            }
+            if self.pos == start {
+                self.bump();
+            }
+        }
+        self.impl_ty = outer;
+        let hi = self.expect_p("}")?;
+        Ok(TraitDef {
+            name,
+            attrs,
             fns,
             span: lo.to(hi),
         })
@@ -952,7 +1095,18 @@ impl<'a> Parser<'a> {
             }
         };
         let (requires, ensures, decreases) = self.parse_clauses()?;
-        let body = self.parse_block()?;
+        // A trait method without a default body ends with `;`.
+        let body = if self.decl_ok && self.is_p(";") {
+            let sp = self.bump().span;
+            Block {
+                stmts: Vec::new(),
+                tail: None,
+                span: sp,
+            }
+        } else {
+            self.decl_ok = false;
+            self.parse_block()?
+        };
         let span = lo.to(body.span);
         Ok(FnDef {
             kind,
@@ -1056,6 +1210,7 @@ impl<'a> Parser<'a> {
                 break;
             }
             if self.is_p("{")
+                || self.is_p(";")
                 || ["requires", "ensures", "decreases", "invariant"]
                     .iter()
                     .any(|k| self.is_kw(k))
@@ -1083,6 +1238,32 @@ impl<'a> Parser<'a> {
     fn parse_type_inner(&mut self) -> Type {
         let lo = self.span();
         match self.peek().clone() {
+            Tok::Ident(s) if s == "Self" => {
+                self.bump();
+                Type {
+                    kind: TypeKind::Named {
+                        path: vec![s],
+                        args: Vec::new(),
+                    },
+                    span: lo,
+                }
+            }
+            Tok::Ident(s) if s == "dyn" => {
+                self.bump();
+                let inner = self.parse_type();
+                let span = lo.to(inner.span);
+                self.diags.push(
+                    Diag::new("E0236", span, "trait objects (`dyn Trait`) are not used")
+                        .fix(
+                            "calls are static: take a type parameter bounded by the trait, or an enum of the closed set of variants",
+                            None,
+                        ),
+                );
+                Type {
+                    kind: TypeKind::Error,
+                    span,
+                }
+            }
             Tok::P("&") => {
                 self.bump();
                 let mutable = self.eat_kw("mut");

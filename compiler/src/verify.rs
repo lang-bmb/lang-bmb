@@ -38,6 +38,8 @@ pub struct Tables {
     pub moves: BTreeMap<String, crate::moves::MoveInfo>,
     /// The type arguments of every generic call, by the call's span.
     pub targs: BTreeMap<(u32, u32, u32), Vec<TypeKind>>,
+    /// The `impl Trait for T` blocks (ADR-0046 §2), for `check::dispatch`.
+    pub trait_impls: Vec<crate::check::TraitImplInfo>,
     /// The instances of generic spec fns the program reaches (ADR-0046 §4),
     /// by key `path<A, B>`: the generic path and the substitution of its
     /// parameters. Filled for the encoder (`prepare`).
@@ -102,6 +104,7 @@ impl Tables {
                 .collect(),
             moves: BTreeMap::new(),
             targs: self.targs.clone(),
+            trait_impls: self.trait_impls.clone(),
             insts: BTreeMap::new(),
             inst_types: Vec::new(),
         }
@@ -128,12 +131,21 @@ fn resolve_in(t: &Tables, path: &[Ident], mod_path: &str) -> String {
         .join("::");
     let local = format!("{mod_path}::{name}");
     let local_type = path.len() == 2
-        && t.adts
-            .contains_key(&format!("{mod_path}::{}", path[0].name));
+        && (t
+            .adts
+            .contains_key(&format!("{mod_path}::{}", path[0].name))
+            || t.fns.get(&local).is_some_and(|s| s.trait_of.is_some()));
     if (path.len() == 1 || local_type) && t.fns.contains_key(&local) {
         return local;
     }
     name
+}
+
+/// The definition a call of `target` with type arguments `args` runs, and
+/// its type arguments: for a trait method with a known `Self`, its impl's
+/// function (ADR-0046 §2).
+fn dispatched(t: &Tables, target: String, args: Vec<TypeKind>) -> (String, Vec<TypeKind>) {
+    crate::check::dispatch(&t.fns, &t.trait_impls, &target, &args).unwrap_or((target, args))
 }
 
 /// Every expression node of `e`, specification parts included.
@@ -218,9 +230,9 @@ fn each_block_expr<'e>(b: &'e Block, f: &mut dyn FnMut(&'e Expr)) {
 /// How deep type arguments may nest before instantiation stops (a generic
 /// call that wraps its own parameter would never end; the checker reports
 /// it).
-const MAX_INST_DEPTH: usize = 8;
+pub(crate) const MAX_INST_DEPTH: usize = 8;
 
-fn type_depth(t: &TypeKind) -> usize {
+pub(crate) fn type_depth(t: &TypeKind) -> usize {
     match t {
         TypeKind::Array(e, _) | TypeKind::Slice(e) | TypeKind::Vec(e) => 1 + type_depth(&e.kind),
         TypeKind::Ref { inner, .. } => 1 + type_depth(&inner.kind),
@@ -239,10 +251,7 @@ fn type_depth(t: &TypeKind) -> usize {
 /// substitution of the call. Instances get signatures of their own.
 fn prepare(p: &Program, t: &Tables) -> Tables {
     let mut view = t.slice_view();
-    let mut defs = BTreeMap::new();
-    for m in &p.mods {
-        collect(m, "", &mut defs);
-    }
+    let defs = collect(p, t);
     let mut insts: BTreeMap<String, (String, BTreeMap<String, TypeKind>)> = BTreeMap::new();
     let mut seen_exec: BTreeSet<String> = BTreeSet::new();
     let mut types: Vec<TypeKind> = Vec::new();
@@ -280,7 +289,7 @@ fn prepare(p: &Program, t: &Tables) -> Tables {
             if args.iter().any(|a| type_depth(a) > MAX_INST_DEPTH) {
                 continue;
             }
-            let target = resolve_in(&view, cp, &d.mod_path);
+            let (target, args) = dispatched(&view, resolve_in(&view, cp, &d.mod_path), args);
             let Some(sig) = view.fns.get(&target) else {
                 continue;
             };
@@ -323,10 +332,7 @@ fn prepare(p: &Program, t: &Tables) -> Tables {
 
 /// The definitions of `p` and the spec fn instances of `t` (`prepare`).
 fn prog_of<'p>(p: &'p Program, t: &'p Tables) -> Prog<'p> {
-    let mut defs = BTreeMap::new();
-    for m in &p.mods {
-        collect(m, "", &mut defs);
-    }
+    let mut defs = collect(p, t);
     for (key, (base, sub)) in &t.insts {
         let d = &defs[base];
         let inst = Def {
@@ -1448,25 +1454,11 @@ impl<'p, 'q> Enc<'p, 'q> {
     }
 
     /// The full path of a function named from unit `mod_path`, as the
-    /// checker resolves it: `f` and `T::f` (a type of the unit) are local,
-    /// anything else is a full path.
+    /// checker resolves it: `f`, `T::f` (a type of the unit) and
+    /// `Trait::f` (a trait of the unit) are local, anything else is a full
+    /// path.
     fn resolve(&self, path: &[Ident], mod_path: &str) -> String {
-        let name = path
-            .iter()
-            .map(|i| i.name.as_str())
-            .collect::<Vec<_>>()
-            .join("::");
-        let local = format!("{mod_path}::{name}");
-        let local_type = path.len() == 2
-            && self
-                .prog
-                .t
-                .adts
-                .contains_key(&format!("{mod_path}::{}", path[0].name));
-        if (path.len() == 1 || local_type) && self.prog.t.fns.contains_key(&local) {
-            return local;
-        }
-        name
+        resolve_in(self.prog.t, path, mod_path)
     }
 
     // ---------- specification terms ----------
@@ -2818,7 +2810,23 @@ impl<'p, 'q> Enc<'p, 'q> {
     }
 
     fn call(&mut self, path: &[Ident], args: &[Expr], span: Span) -> Val {
-        let target = self.resolve(path, &self.mod_path.clone());
+        let mut target = self.resolve(path, &self.mod_path.clone());
+        // A generic callee's contract under the call's type arguments; a
+        // trait method's is its impl's when `Self` is known.
+        let mut csub = self.call_subst(&target, span);
+        if let Some(sig) = self.prog.t.fns.get(&target)
+            && sig.trait_of.is_some()
+        {
+            let targs: Vec<TypeKind> = sig.generics.iter().map(|g| csub[&g.name].clone()).collect();
+            let (t, a) = dispatched(self.prog.t, target, targs);
+            csub = self.prog.t.fns[&t]
+                .generics
+                .iter()
+                .map(|g| g.name.clone())
+                .zip(a)
+                .collect();
+            target = t;
+        }
         let mut argv = Vec::new();
         for a in args {
             argv.push(self.eval(a));
@@ -2836,8 +2844,6 @@ impl<'p, 'q> Enc<'p, 'q> {
         let f = def.f;
         let pre_env = bind_params(f, &argv);
         let unit = def.mod_path.clone();
-        // A generic callee's contract under the call's type arguments.
-        let csub = self.call_subst(&target, span);
         for r in &f.requires {
             let g = self.in_def(&unit, csub.clone(), |s| {
                 s.spec(r, &pre_env, &BTreeMap::new()).s()
@@ -3137,30 +3143,27 @@ fn assigned_in_expr(e: &Expr, out: &mut BTreeSet<String>) {
 
 // ---------- program-level driver ----------
 
-fn collect<'p>(m: &'p Mod, prefix: &str, out: &mut BTreeMap<String, Def<'p>>) {
-    let mp = format!("{prefix}{}", m.name.name);
-    for s in &m.mods {
-        collect(s, &format!("{mp}::"), out);
-    }
-    for f in &m.fns {
-        out.entry(format!("{mp}::{}", f.name.name)).or_insert(Def {
+/// The definitions of `p` by path (a later duplicate is dropped), and the
+/// trait method declarations, which are declared, not proved (ADR-0046 §4).
+fn collect<'p>(p: &'p Program, t: &Tables) -> BTreeMap<String, Def<'p>> {
+    let mut out = BTreeMap::new();
+    for (path, mod_path, f) in crate::check::defs_of(p, &t.fns) {
+        out.entry(path).or_insert(Def {
             f,
-            mod_path: mp.clone(),
+            mod_path,
             tsub: BTreeMap::new(),
             inst: false,
         });
     }
-    for i in &m.impls {
-        for f in &i.fns {
-            out.entry(format!("{mp}::{}::{}", i.ty.name, f.name.name))
-                .or_insert(Def {
-                    f,
-                    mod_path: mp.clone(),
-                    tsub: BTreeMap::new(),
-                    inst: false,
-                });
-        }
+    for (path, mod_path, f) in crate::check::trait_decls(p) {
+        out.entry(path).or_insert(Def {
+            f,
+            mod_path,
+            tsub: BTreeMap::new(),
+            inst: true,
+        });
     }
+    out
 }
 
 pub(crate) fn holds_vec(t: &TypeKind) -> bool {

@@ -85,7 +85,7 @@ impl std::ops::Deref for Def<'_> {
 pub struct TypeEntry {
     pub path: String,
     pub unit: String,
-    /// `"struct"` or `"enum"`.
+    /// `"struct"`, `"enum"` or `"trait"`.
     pub kind: &'static str,
     /// The declaration in normal form on one line.
     pub text: String,
@@ -149,16 +149,6 @@ impl std::ops::Deref for Model<'_> {
     }
 }
 
-/// The definitions of a program in walk order: in each unit, its sub-units'
-/// first, then its own (the order of `walk`).
-fn fn_order<'p>(m: &'p Mod, out: &mut Vec<&'p FnDef>) {
-    for s in &m.mods {
-        fn_order(s, out);
-    }
-    out.extend(m.fns.iter());
-    out.extend(m.impls.iter().flat_map(|i| i.fns.iter()));
-}
-
 fn status_map(outcome: &Outcome) -> BTreeMap<String, (usize, usize, u64)> {
     outcome
         .statuses
@@ -173,11 +163,15 @@ fn resolve(path: &[Ident], unit: &str, t: &Tables) -> String {
         .map(|i| i.name.as_str())
         .collect::<Vec<_>>()
         .join("::");
-    // `f` and `T::f` (an `impl` function of the unit's type) are local, as
-    // the checker resolves them.
+    // `f`, `T::f` (an `impl` function of the unit's type) and `Trait::f` (a
+    // method of the unit's trait) are local, as the checker resolves them.
     let local = format!("{unit}::{plain}");
     match t.fns.get(&local) {
-        Some(sig) if path.len() == 1 || (path.len() == 2 && sig.in_impl) => local,
+        Some(sig)
+            if path.len() == 1 || (path.len() == 2 && (sig.in_impl || sig.trait_of.is_some())) =>
+        {
+            local
+        }
         _ => plain,
     }
 }
@@ -274,12 +268,7 @@ fn calls_in_block<'e>(
     }
 }
 
-fn walk<'p>(
-    m: &'p Mod,
-    prefix: &str,
-    units: &mut BTreeMap<String, Unit>,
-    out: &mut Vec<(String, String, &'p FnDef)>,
-) {
+fn walk(m: &Mod, prefix: &str, t: &Tables, units: &mut BTreeMap<String, Unit>) {
     let mp = format!("{prefix}{}", m.name.name);
     let summary = m
         .attrs
@@ -307,6 +296,18 @@ fn walk<'p>(
                 .map(|(i, f)| format!("{mp}::{}::{}", i.ty.name, f.name.name)),
         )
         .chain(m.types.iter().map(|t| format!("{mp}::{}", t.name.name)))
+        .chain(m.traits.iter().map(|t| format!("{mp}::{}", t.name.name)))
+        .chain(
+            m.trait_impls
+                .iter()
+                .flat_map(|i| i.fns.iter())
+                .filter_map(|f| {
+                    t.fns
+                        .values()
+                        .find(|s| s.in_impl && s.span == f.span && s.path.starts_with('<'))
+                        .map(|s| s.path.clone())
+                }),
+        )
         .collect();
     defs.sort();
     units.insert(
@@ -319,19 +320,7 @@ fn walk<'p>(
         },
     );
     for s in &m.mods {
-        walk(s, &format!("{mp}::"), units, out);
-    }
-    for f in &m.fns {
-        out.push((format!("{mp}::{}", f.name.name), mp.clone(), f));
-    }
-    for i in &m.impls {
-        for f in &i.fns {
-            out.push((
-                format!("{mp}::{}::{}", i.ty.name, f.name.name),
-                mp.clone(),
-                f,
-            ));
-        }
+        walk(s, &format!("{mp}::"), t, units);
     }
 }
 
@@ -344,6 +333,24 @@ fn walk_types<'p>(m: &'p Mod, prefix: &str, out: &mut Vec<(String, String, &'p T
     for t in &m.types {
         out.push((format!("{mp}::{}", t.name.name), mp.clone(), t));
     }
+}
+
+/// The trait declarations of a program: (path, unit, decl).
+fn walk_traits(p: &Program) -> Vec<(String, String, &TraitDef)> {
+    fn walk<'p>(m: &'p Mod, prefix: &str, out: &mut Vec<(String, String, &'p TraitDef)>) {
+        let mp = format!("{prefix}{}", m.name.name);
+        for s in &m.mods {
+            walk(s, &format!("{mp}::"), out);
+        }
+        for t in &m.traits {
+            out.push((format!("{mp}::{}", t.name.name), mp.clone(), t));
+        }
+    }
+    let mut out = Vec::new();
+    for m in &p.mods {
+        walk(m, "", &mut out);
+    }
+    out
 }
 
 /// The data types a type names (full paths, declared ones only).
@@ -460,10 +467,10 @@ impl Index {
     /// Builds the index of a checked program.
     pub fn build(p: &Program, t: &Tables, sm: &SourceMap) -> Index {
         let mut units = BTreeMap::new();
-        let mut list = Vec::new();
         for m in &p.mods {
-            walk(m, "", &mut units, &mut list);
+            walk(m, "", t, &mut units);
         }
+        let list = crate::check::defs_of(p, &t.fns);
         let mut defs = BTreeMap::new();
         let mut edges = BTreeSet::new();
         for (idx, (path, unit, f)) in list.into_iter().enumerate() {
@@ -499,7 +506,14 @@ impl Index {
                 });
             }
             for (cp, args, spec, sp) in &calls {
-                let to = resolve(cp, &unit, t);
+                let mut to = resolve(cp, &unit, t);
+                // A trait call with a known `Self` names its impl's
+                // function (ADR-0051: the resolved target).
+                if let Some(ts) = t.targs.get(&(sp.file, sp.lo, sp.hi))
+                    && let Some((imp, _)) = crate::check::dispatch(&t.fns, &t.trait_impls, &to, ts)
+                {
+                    to = imp;
+                }
                 // A variant constructor (`Some(x)`, `E::V(..)`) is no call.
                 if !t.fns.contains_key(&to) {
                     continue;
@@ -542,6 +556,20 @@ impl Index {
                     .iter()
                     .chain([&sig.ret])
                     .for_each(|x| named_types(x, t, &mut named));
+                // The traits its type parameters are bounded by (ADR-0046):
+                // a slice holds their declarations (principle 5).
+                for g in &sig.generics {
+                    named.extend(g.bounds.iter().filter(|b| b.contains("::")).cloned());
+                }
+            }
+            for (cp, _, _, _) in calls.iter().chain(&contract) {
+                if let Some(tr) = t
+                    .fns
+                    .get(&resolve(cp, &unit, t))
+                    .and_then(|s| s.trait_of.clone())
+                {
+                    named.insert(tr);
+                }
             }
             if let Some(ls) = t.locals.get(&path) {
                 ls.values().for_each(|x| named_types(x, t, &mut named));
@@ -599,6 +627,23 @@ impl Index {
             walk_types(m, "", &mut list);
         }
         let mut types = BTreeMap::new();
+        for (path, unit, tr) in walk_traits(p) {
+            let (line, _) = sm.line_col(tr.name.span.file, tr.name.span.lo);
+            let text = crate::fmt::trait_text(tr);
+            types.insert(
+                path.clone(),
+                TypeEntry {
+                    kind: "trait",
+                    hash: crate::sha256::hex(crate::fmt::trait_text_as(tr, "_").as_bytes()),
+                    text,
+                    file: sm.name(tr.name.span.file).to_string(),
+                    line,
+                    names: BTreeSet::new(),
+                    unit,
+                    path,
+                },
+            );
+        }
         for (path, unit, td) in list {
             let (line, _) = sm.line_col(td.name.span.file, td.name.span.lo);
             let mut names = BTreeSet::new();
@@ -666,10 +711,11 @@ impl<'p> Model<'p> {
     }
 
     fn with(ix: Cow<'p, Index>, p: &'p Program, t: &'p Tables, outcome: &Outcome) -> Model<'p> {
-        let mut fns = Vec::new();
-        for m in &p.mods {
-            fn_order(m, &mut fns);
-        }
+        // Walk order, as `Index::build`'s entries count it.
+        let fns = crate::check::defs_of(p, &t.fns)
+            .into_iter()
+            .map(|(_, _, f)| f)
+            .collect();
         Model {
             ix,
             fns,

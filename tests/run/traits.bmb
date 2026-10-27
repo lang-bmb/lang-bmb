@@ -1,0 +1,87 @@
+#[summary("trait: 도형 넓이의 정적 호출 (ADR-0046 §5)")]
+mod tr {
+    trait Shape {
+        #[effects(pure)]
+        fn area(self: &Self) -> i64;
+
+        #[effects(pure)]
+        fn sides(self: &Self) -> u64;
+    }
+
+    struct Sq { s: i64 }
+
+    struct Tri { b: i64, h: i64 }
+
+    struct Pair<A: Copy, B: Copy> { a: A, b: B }
+
+    impl Shape for Sq {
+        #[effects(pure)]
+        fn area(self: &Sq) -> i64 {
+            self.s.saturating_mul(self.s)
+        }
+
+        #[effects(pure)]
+        fn sides(self: &Sq) -> u64 {
+            4
+        }
+    }
+
+    impl Shape for Tri {
+        #[effects(pure)]
+        fn area(self: &Tri) -> i64 {
+            self.b.saturating_mul(self.h) / 2
+        }
+
+        #[effects(pure)]
+        fn sides(self: &Tri) -> u64 {
+            3
+        }
+    }
+
+    impl<A: Copy + Shape, B: Copy + Shape> Shape for Pair<A, B> {
+        #[effects(pure)]
+        fn area(self: &Pair<A, B>) -> i64 {
+            Shape::area(&self.a).saturating_add(Shape::area(&self.b))
+        }
+
+        #[effects(pure)]
+        fn sides(self: &Pair<A, B>) -> u64 {
+            Shape::sides(&self.a).saturating_add(Shape::sides(&self.b))
+        }
+    }
+
+    #[effects(pure)]
+    fn largest<T: Copy + Shape>(xs: &[T]) -> i64 {
+        let mut best: i64 = 0;
+        let mut i: usize = 0;
+        while i < xs.len()
+            invariant i <= xs.len(),
+            decreases xs.len() - i,
+        {
+            let a: i64 = Shape::area(&xs[i]);
+            if a > best {
+                best = a;
+            }
+            i = i + 1;
+        }
+        best
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        let q: Sq = Sq { s: 3 };
+        let t: Tri = Tri { b: 4, h: 5 };
+        print_i64(Shape::area(&q));
+        print_i64(Shape::area(&t));
+        print_u64(Shape::sides(&t));
+        let p: Pair<Sq, Tri> = Pair { a: q, b: t };
+        print_i64(Shape::area(&p));
+        print_u64(Shape::sides(&p));
+        let pp: Pair<Pair<Sq, Tri>, Sq> = Pair { a: p, b: Sq { s: 1 } };
+        print_i64(Shape::area(&pp));
+        let qs: [Sq; 3] = [Sq { s: 2 }, Sq { s: 7 }, Sq { s: 5 }];
+        print_i64(largest::<Sq>(&qs));
+        let ts: [Tri; 2] = [Tri { b: 10, h: 1 }, Tri { b: 2, h: 2 }];
+        print_i64(largest::<Tri>(&ts));
+    }
+}

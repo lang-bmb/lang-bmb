@@ -36,6 +36,10 @@ pub struct Mod {
     pub types: Vec<TypeDef>,
     /// `impl T { .. }` blocks (ADR-0026: one per type, same unit).
     pub impls: Vec<Impl>,
+    /// `trait` declarations (ADR-0046 §1).
+    pub traits: Vec<TraitDef>,
+    /// `impl Trait for T { .. }` blocks (ADR-0046 §2).
+    pub trait_impls: Vec<TraitImpl>,
     /// `use a::b::c;` items. Not part of the language: the checker rewrites
     /// each name they import to its full path and deletes them (E0214,
     /// backlog 2V-15).
@@ -111,6 +115,35 @@ pub struct Impl {
     pub generics: Vec<TypeParam>,
     pub ty: Ident,
     pub ty_args: Vec<Type>,
+    pub fns: Vec<FnDef>,
+    pub span: Span,
+}
+
+/// `trait Shape { fn area(self: &Self) -> i64; }` (ADR-0046 §1). Its
+/// methods name the implementing type `Self`.
+#[derive(Debug, Clone)]
+pub struct TraitDef {
+    pub name: Ident,
+    pub attrs: Vec<Attr>,
+    pub fns: Vec<TraitFn>,
+    pub span: Span,
+}
+
+/// A trait method: its signature, and whether a default body was written
+/// (otherwise the body is empty and the signature ends with `;`).
+#[derive(Debug, Clone)]
+pub struct TraitFn {
+    pub f: FnDef,
+    pub has_body: bool,
+}
+
+/// `impl<T: Copy> geo::Shape for Wrap<T> { .. }` (ADR-0046 §2).
+#[derive(Debug, Clone)]
+pub struct TraitImpl {
+    pub generics: Vec<TypeParam>,
+    pub trait_path: Vec<Ident>,
+    /// The implementing type as written.
+    pub self_ty: Type,
     pub fns: Vec<FnDef>,
     pub span: Span,
 }

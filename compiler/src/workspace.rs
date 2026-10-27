@@ -127,6 +127,8 @@ fn new_mod(name: &str, summary: &str) -> Mod {
     Mod {
         types: Vec::new(),
         impls: Vec::new(),
+        traits: Vec::new(),
+        trait_impls: Vec::new(),
         uses: Vec::new(),
         name: Ident {
             name: name.to_string(),

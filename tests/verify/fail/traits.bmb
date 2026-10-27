@@ -1,0 +1,45 @@
+#[summary("trait 실패: 경계 호출은 서명만, 구체 호출은 impl 계약만 (ADR-0046 §4)")]
+mod tr {
+    trait Area {
+        #[effects(pure)]
+        fn area(self: &Self) -> i64;
+    }
+
+    struct Sq { s: i64 }
+
+    spec fn pos(r: i64) -> bool { r > 0 }
+
+    impl Area for Sq {
+        // The body breaks the contract when `s` is 0.
+        #[effects(pure)]
+        #[uses(pos)]
+        fn area(self: &Sq) -> (r: i64)
+            ensures pos(r),
+        {
+            if self.s > 0 { 1 } else { 0 }
+        }
+    }
+
+    // Through a bound the result is any `i64`: the sum may overflow.
+    #[effects(pure)]
+    fn total<T: Copy + Area>(a: T, b: T) -> i64 {
+        Area::area(&a) + Area::area(&b)
+    }
+
+    // `pos` holds for `Sq` but is not part of the trait.
+    #[effects(pure)]
+    #[uses(pos)]
+    fn bounded<T: Copy + Area>(a: T) -> (r: i64)
+        ensures pos(r),
+    {
+        Area::area(&a)
+    }
+
+    // A known `Self` gives `pos`, not more.
+    #[effects(pure)]
+    fn exact(q: Sq) -> i64 {
+        let n: i64 = Area::area(&q);
+        assert(n > 1);
+        n
+    }
+}

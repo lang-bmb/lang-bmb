@@ -1,0 +1,159 @@
+#[summary("trait (ADR-0046 §1·§2): 거부하는 형태와 impl 규칙")]
+mod geo {
+    trait Shape {
+        #[effects(pure)]
+        fn area(self: &Self) -> i64;
+    }
+
+    trait Named {
+        #[effects(pure)]
+        fn id(self: &Self) -> i64
+            ensures true;
+
+        #[effects(pure)]
+        fn dflt(self: &Self) -> i64 {
+            0
+        }
+
+        spec fn sp(self: &Self) -> i64;
+    }
+
+    struct Sq { s: i64 }
+
+    struct Wrap<T: Copy> { inner: T }
+
+    struct Circle { r: i64 }
+
+    impl<T: Copy> Shape for T {
+        #[effects(pure)]
+        fn area(self: &T) -> i64 {
+            0
+        }
+    }
+
+    impl Shape for Sq {
+        #[effects(pure)]
+        fn area(self: &Sq) -> u64 {
+            0
+        }
+
+        #[effects(pure)]
+        fn extra(self: &Sq) -> i64 {
+            0
+        }
+    }
+
+    impl<T: Copy + Shape> Shape for Wrap<T> {
+        #[effects(pure)]
+        fn area(self: &Wrap<T>) -> i64 {
+            Shape::area(&self.inner)
+        }
+    }
+
+    impl Shape for Wrap<Sq> {}
+
+    impl Shape for Circle {
+        #[effects(pure)]
+        fn area(self: &Self) -> i64
+            requires self.r > 0,
+        {
+            0
+        }
+    }
+
+    #[effects(pure)]
+    fn obj(x: &dyn Shape) -> i64 {
+        0
+    }
+
+    #[effects(pure)]
+    fn nobound<T: Copy>(x: T) -> i64 {
+        Shape::area(&x)
+    }
+
+    #[effects(pure)]
+    fn unk<T: Copy + Shap>(x: T) -> i64 {
+        0
+    }
+
+    #[effects(pure)]
+    fn total<T: Copy + Shape>(a: T) -> i64 {
+        Shape::area(&a)
+    }
+
+    #[effects(pure)]
+    fn uses_total(c: bool) -> i64 {
+        total::<bool>(c)
+    }
+
+    trait Maker {
+        #[effects(pure)]
+        fn make() -> Self;
+    }
+
+    // `Self` comes from the arguments or the expected result: nothing
+    // gives it here.
+    #[effects(pure)]
+    fn no_self(x: i64) -> i64 {
+        if Maker::make() == x { 1 } else { 0 }
+    }
+
+    struct Hex { n: i64 }
+
+    impl Shape for Hex {}
+
+    impl Shap for Hex {}
+
+    trait Quiet {
+        #[effects(pure)]
+        fn run(self: &Self) -> i64;
+    }
+
+    impl Quiet for Hex {
+        #[effects(io)]
+        fn run(self: &Hex) -> i64 {
+            print_i64(self.n);
+            0
+        }
+    }
+
+    #[effects(pure)]
+    fn written_self(q: Sq) -> i64 {
+        Shape::<Sq>::area(&q)
+    }
+
+    trait Copy {
+        #[effects(pure)]
+        fn dup(self: &Self) -> i64;
+    }
+
+    trait Twice {
+        #[effects(pure)]
+        fn twice(self: &Self) -> i64;
+    }
+
+    struct Cyc { n: i64 }
+
+    // Recursion through a call on a bounded `Self`: no measure is checked.
+    impl Twice for Cyc {
+        #[effects(pure)]
+        fn twice(self: &Cyc) -> i64 {
+            via::<Cyc>(*self)
+        }
+    }
+
+    #[effects(pure)]
+    fn via<T: Copy + Twice>(x: T) -> i64 {
+        Twice::twice(&x)
+    }
+}
+
+#[summary("trait도 타입도 아닌 단위의 impl")]
+mod other {
+    impl geo::Shape for geo::Wrap<i64> {
+        #[effects(pure)]
+        fn area(self: &geo::Wrap<i64>) -> i64 {
+            0
+        }
+    }
+}
