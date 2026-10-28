@@ -6,10 +6,11 @@
   gate_power.py run --work DIR --out FILE.jsonl [--only ID,..]
   gate_power.py table FILE.jsonl       Markdown table and the catch rate
 
-Each mutant is one plausible defect in `compiler/src/verify.rs` or
-`compiler/src/codegen.rs`: an encoding with the wrong sign or bound, an
+Each mutant is one plausible defect in `compiler/src/verify.rs`,
+`compiler/src/codegen.rs` or `compiler/src/check.rs`: an encoding with the wrong sign or bound, an
 obligation that is never sent, a havoc that forgets a variable, a code
-generator that emits the wrong instruction or drops a check it may not drop.
+generator that emits the wrong instruction or drops a check it may not drop,
+a checker that lets ghost code run executable code.
 `run` applies them one at a time to a detached worktree of HEAD (DIR) and runs
 the whole gate there (`scripts/check.sh`) after `cargo fmt` (formatting
 must not be what catches a defect); the gate catches a mutant when it exits
@@ -28,7 +29,7 @@ import sys
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-V, C = "compiler/src/verify.rs", "compiler/src/codegen.rs"
+V, C, K = "compiler/src/verify.rs", "compiler/src/codegen.rs", "compiler/src/check.rs"
 
 # (id, class, file, old, new, what)
 MUTANTS = [
@@ -396,6 +397,36 @@ MUTANTS = [
      '''        num(i.min_value()),
         num(i.max_value().max(i64::MAX as i128))''',
      "the range fact of a type narrower than 64 bits reaches i64::MAX (its overflow obligations hold too often)"),
+    # Proof functions (ADR-0062, backlog T1-18).
+    ("v-lemma-requires-dropped", "unsound", V,
+     '''        for r in &f.requires {
+            let g = self.in_def(&unit, csub.clone(), |s| {''',
+     '''        for r in f.requires.iter().filter(|_| f.kind != FnKind::Proof) {
+            let g = self.in_def(&unit, csub.clone(), |s| {''',
+     "a lemma's conclusion is assumed at a call without proving its precondition"),
+    ("v-lemma-decrease-dropped", "unsound", V,
+     '''        if let (Some(cc), Some(d)) = (self.prog.t.recursive.get(&target), &f.decreases)
+            && self.prog.t.recursive.get(&self.path) == Some(cc)''',
+     '''        if let (Some(cc), Some(d)) = (self.prog.t.recursive.get(&target), &f.decreases)
+            && f.kind != FnKind::Proof
+            && self.prog.t.recursive.get(&self.path) == Some(cc)''',
+     "a recursive lemma call need not decrease the measure (an induction without a base)"),
+    ("v-lemma-post-dropped", "unsound", V,
+     '''                enc.mark_reach(d.f.name.span, "end of the body");
+                enc.post_check(Val::Unit);''',
+     '''                enc.mark_reach(d.f.name.span, "end of the body");
+                let _unchecked = Val::Unit;''',
+     "a lemma's conclusion is never an obligation of its own proof"),
+    ("v-lemma-arg-range-dropped", "unsound", V,
+     '''        if f.kind == FnKind::Proof {
+            let tys: Vec<TypeKind> = self.prog.t.fns[&target]''',
+     '''        if f.kind == FnKind::Proof && args.is_empty() {
+            let tys: Vec<TypeKind> = self.prog.t.fns[&target]''',
+     "a lemma argument computed in ghost arithmetic may lie outside its parameter's type (E0819 never sent)"),
+    ("k-proof-block-is-exec", "unsound", K,
+     '''                let t = self.block(cx, body, Some(&TypeKind::Unit), Mode::Ghost);''',
+     '''                let t = self.block(cx, body, Some(&TypeKind::Unit), Mode::Exec);''',
+     "a `proof` block is checked as executable code: it may assign, call executable functions and loop (E0257 never sent)"),
 ]
 
 

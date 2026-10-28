@@ -66,6 +66,19 @@ pub const CODES: &[(&str, &str)] = &[
         "E0253",
         "`decreases` on a `for` loop (its measure is automatic)",
     ),
+    // E0256-E0258: proof functions and ghost code (ADR-0062 §4)
+    (
+        "E0256",
+        "a `proof fn` takes no effect attribute and no return type",
+    ),
+    (
+        "E0257",
+        "ghost code (a `proof fn` body or a `proof { .. }` block) cannot run executable code: no executable call, assignment, `&mut` or loop",
+    ),
+    (
+        "E0258",
+        "a `proof fn` is called only from ghost code: a `proof { .. }` block or another `proof fn`",
+    ),
     (
         "E0237",
         "a call of a generic function names its type arguments: `f::<T>(..)`",
@@ -294,6 +307,10 @@ pub const CODES: &[(&str, &str)] = &[
     (
         "E0817",
         "a trait impl's function does not refine the trait's contract",
+    ),
+    (
+        "E0819",
+        "an argument of a `proof fn` call may be outside its parameter's type (ghost arithmetic is mathematical, ADR-0062 §2)",
     ),
     // W09xx: contract lint (`bmb lint` only; severity "warning", never from `check`/`verify`)
     (

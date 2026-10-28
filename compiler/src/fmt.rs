@@ -401,16 +401,13 @@ impl<'a> Printer<'a> {
             Some(n) => format!("({}: {})", n.name, type_str(&f.ret.ty)),
             None => type_str(&f.ret.ty),
         };
-        let kw = if f.kind == FnKind::Spec {
-            "spec fn"
-        } else {
-            "fn"
-        };
         let name = rename.unwrap_or(&f.name.name);
         let sig = format!(
-            "{kw} {name}{}({}) -> {ret}",
+            "{} {name}{}({}){}",
+            fn_keyword(f),
             generics_str(&f.generics),
-            params.join(", ")
+            params.join(", "),
+            ret_text(f, &ret)
         );
         let has_clauses = !f.requires.is_empty() || !f.ensures.is_empty() || f.decreases.is_some();
         if !with_body {
@@ -637,6 +634,9 @@ impl<'a> Printer<'a> {
                 let c = self.expr(cond, 0);
                 self.line(depth, &format!("assert({c});"));
             }
+            // A statement where it is written: what it proves holds from
+            // there on (ADR-0062, open question 3).
+            Stmt::Proof { body, .. } => self.block_open(body, depth, "proof ", ""),
             Stmt::LetFields {
                 path, fields, init, ..
             } => {
@@ -944,6 +944,24 @@ pub fn type_hashes(p: &Program) -> Vec<DefHash> {
     out
 }
 
+/// The keyword of a definition: `fn`, `spec fn` or `proof fn`.
+fn fn_keyword(f: &FnDef) -> &'static str {
+    match f.kind {
+        FnKind::Exec => "fn",
+        FnKind::Spec => "spec fn",
+        FnKind::Proof => "proof fn",
+    }
+}
+
+/// ` -> T` after the parameters; a `proof fn` writes none (ADR-0062 §1).
+fn ret_text(f: &FnDef, ret: &str) -> String {
+    if f.kind == FnKind::Proof {
+        String::new()
+    } else {
+        format!(" -> {ret}")
+    }
+}
+
 /// Body and interface hash of one definition in `unit` (ADR-0019 §2).
 pub fn def_hash(f: &FnDef, unit: &str, fns: &BTreeMap<String, FnSig>) -> (String, String) {
     let body = crate::sha256::hex(qualified_text(f, unit, fns, true).as_bytes());
@@ -1008,16 +1026,13 @@ pub fn surface_parts(f: &FnDef) -> (String, Vec<String>, Vec<String>, Option<Str
         Some(n) => format!("({}: {})", n.name, type_str(&f.ret.ty)),
         None => type_str(&f.ret.ty),
     };
-    let kw = if f.kind == FnKind::Spec {
-        "spec fn"
-    } else {
-        "fn"
-    };
     let sig = format!(
-        "{kw} {}{}({}) -> {ret}",
+        "{} {}{}({}){}",
+        fn_keyword(f),
         f.name.name,
         generics_str(&f.generics),
-        params.join(", ")
+        params.join(", "),
+        ret_text(f, &ret)
     );
     let req = f.requires.iter().map(|e| pr.expr(e, 0)).collect();
     let ens = f.ensures.iter().map(|e| pr.expr(e, 0)).collect();

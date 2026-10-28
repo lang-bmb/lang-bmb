@@ -79,6 +79,40 @@ fn gen_program(rng: &mut Rng) -> Vec<Unit> {
             );
             items.push(t);
         }
+        // A lemma and a function that calls it in a `proof` block
+        // (ADR-0062): ghost code in the normal form and the hashes.
+        if rng.chance(40) {
+            items.push(
+                "    spec fn q(x: i64, y: i64) -> bool {
+        x - y <= x + y || y < 0
+    }
+"
+                .into(),
+            );
+            items.push(
+                "    #[uses(q)]
+    proof fn l(x: i64, y: i64)
+        ensures q(x, y),
+    {
+        if y < 0 {
+            assert(y < 0);
+        }
+    }
+"
+                .into(),
+            );
+            items.push(
+                "    #[effects(pure)]
+    fn p(x: i64, y: i64) -> i64 {
+        proof {
+            l(x, y);
+        }
+        x
+    }
+"
+                .into(),
+            );
+        }
         units.push(Unit {
             name: format!("u{u}"),
             items,

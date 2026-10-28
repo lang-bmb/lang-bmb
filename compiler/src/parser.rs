@@ -53,6 +53,7 @@ const UNSUPPORTED_ITEMS: &[&str] = &[
 const RESERVED: &[&str] = &[
     "fn",
     "spec",
+    "proof",
     "mod",
     "let",
     "mut",
@@ -399,7 +400,7 @@ impl<'a> Parser<'a> {
             Tok::Ident(s) => {
                 matches!(
                     s.as_str(),
-                    "fn" | "spec" | "mod" | "pub" | "struct" | "enum" | "impl" | "trait"
+                    "fn" | "spec" | "proof" | "mod" | "pub" | "struct" | "enum" | "impl" | "trait"
                 ) || UNSUPPORTED_ITEMS.contains(&s.as_str())
             }
             _ => false,
@@ -418,7 +419,7 @@ impl<'a> Parser<'a> {
                     mods.push(m);
                 }
             } else {
-                if self.is_kw("fn") || self.is_kw("spec") {
+                if self.is_kw("fn") || self.is_kw("spec") || self.is_kw("proof") {
                     self.diags.push(
                         Diag::new(
                             "E0703",
@@ -539,7 +540,8 @@ impl<'a> Parser<'a> {
                     self.recover_item();
                 }
             } else if self.is_kw("fn")
-                || (self.is_kw("spec") && matches!(self.peek_at(1), Tok::Ident(s) if s == "fn"))
+                || ((self.is_kw("spec") || self.is_kw("proof"))
+                    && matches!(self.peek_at(1), Tok::Ident(s) if s == "fn"))
             {
                 match self.parse_fn(attrs) {
                     Ok(f) => fns.push(f),
@@ -1094,6 +1096,8 @@ impl<'a> Parser<'a> {
         let lo = self.span();
         let kind = if self.eat_kw("spec") {
             FnKind::Spec
+        } else if self.eat_kw("proof") {
+            FnKind::Proof
         } else {
             FnKind::Exec
         };
@@ -1189,7 +1193,32 @@ impl<'a> Parser<'a> {
         self.expect_p(")")?;
         let gspan = self.generics_span;
         let mut generics = generics;
-        let ret = if self.eat_p("->") {
+        let ret = if kind == FnKind::Proof {
+            // A proof fn returns nothing and writes no return type (ADR-0062
+            // §1, E0256).
+            let unit = Ret {
+                name: None,
+                ty: Type {
+                    kind: TypeKind::Unit,
+                    span: self.prev_span(),
+                },
+            };
+            if self.is_p("->") {
+                let lo = self.span();
+                self.bump();
+                self.parse_ret()?;
+                let sp = lo.to(self.prev_span());
+                self.diags.push(
+                    Diag::new(
+                        "E0256",
+                        sp,
+                        "a `proof fn` has no return type: what it proves is its `ensures`",
+                    )
+                    .fix("remove the return type", Some(String::new())),
+                );
+            }
+            unit
+        } else if self.eat_p("->") {
             self.parse_ret()?
         } else {
             let sp = self.prev_span();
@@ -1592,6 +1621,16 @@ impl<'a> Parser<'a> {
                     }));
                 }
                 "for" => return self.nested(|p| p.parse_for(None)).map(stmt),
+                // `proof { .. }` (ADR-0062 §1): a statement, never a value. A
+                // `;` after it is read and dropped (the normal form has none;
+                // the E0258 fix wraps a call statement in a block).
+                "proof" if matches!(self.peek_at(1), Tok::P("{")) => {
+                    self.bump();
+                    let body = self.nested(Self::parse_block)?;
+                    let span = lo.to(body.span);
+                    self.eat_p(";");
+                    return Ok(stmt(Stmt::Proof { body, span }));
+                }
                 _ => {}
             }
         }

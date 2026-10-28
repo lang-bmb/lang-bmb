@@ -1,0 +1,131 @@
+#[summary("증명 함수: 증명되지 않는 것 (ADR-0062 §2, backlog T1-18)")]
+mod pff {
+    spec fn sum_to(a: &[u64], n: usize) -> u64
+        decreases n,
+    {
+        if n == 0 { 0 } else { sum_to(a, n - 1) + a[n - 1] }
+    }
+
+    spec fn within(a: &[u64], i: usize, j: usize) -> bool {
+        i <= j && j <= a.len()
+    }
+
+    spec fn sum_le(a: &[u64], i: usize, j: usize) -> bool {
+        sum_to(a, i) <= sum_to(a, j)
+    }
+
+    spec fn tri(n: u64) -> u64
+        decreases n,
+    {
+        if n == 0 { 0 } else { tri(n - 1) + n }
+    }
+
+    spec fn tri_small(n: u64) -> bool {
+        tri(n) <= n
+    }
+
+    // A false conclusion: an induction step that does not follow (a
+    // counterexample).
+    #[uses(tri, tri_small)]
+    proof fn tri_le(n: u64)
+        ensures tri_small(n),
+        decreases n,
+    {
+        if n > 0 {
+            tri_le(n - 1);
+        }
+    }
+
+    // The recursive call does not decrease the measure: an induction on
+    // nothing proves anything.
+    #[uses(sum_le, sum_to, within)]
+    proof fn circular(a: &[u64], i: usize, j: usize)
+        requires within(a, i, j),
+        ensures sum_le(a, i, j),
+        decreases j,
+    {
+        circular(a, i, j);
+    }
+
+    // The lemma's precondition is not established at the call.
+    #[uses(sum_le, sum_to, within)]
+    proof fn grows(a: &[u64], i: usize, j: usize)
+        requires within(a, i, j),
+        ensures sum_le(a, i, j),
+        decreases j,
+    {
+        if i < j {
+            grows(a, i, j - 1);
+        }
+    }
+
+    spec fn first_le_all(a: &[u64]) -> bool {
+        sum_to(a, 1) <= sum_to(a, a.len())
+    }
+
+    #[uses(first_le_all, sum_le)]
+    proof fn unestablished(a: &[u64])
+        ensures first_le_all(a),
+    {
+        grows(a, 1, a.len());
+    }
+
+    spec fn nonneg(x: i64) -> bool {
+        x >= 0
+    }
+
+    spec fn pos(x: i64) -> bool {
+        x > 0
+    }
+
+    #[uses(nonneg)]
+    proof fn natural(x: u32)
+        ensures nonneg(x),
+    {
+    }
+
+    // A parameter's type is part of what the lemma assumes: ghost
+    // arithmetic is mathematical, so `x - 1` may be below `u32` (E0819).
+    #[uses(nonneg)]
+    proof fn below_zero(x: u32)
+        ensures nonneg(x - 1),
+    {
+        natural(x - 1);
+    }
+
+    spec fn big(x: i64) -> bool {
+        x > 10
+    }
+
+    // A false conclusion of a lemma without recursion: a confirmed
+    // counterexample.
+    #[uses(big, pos)]
+    proof fn wrong(x: i64)
+        requires pos(x),
+        ensures big(x),
+    {
+    }
+
+    // An `assert` in ghost code is an obligation.
+    #[uses(pos)]
+    proof fn asserts(x: i64)
+        requires pos(x),
+    {
+        assert(x > 1);
+    }
+
+    spec fn is_sum(a: &[u64], s: u64) -> bool {
+        s == sum_to(a, a.len())
+    }
+
+    // Executable code: a lemma's precondition is an obligation at the call
+    // in a `proof` block too.
+    #[effects(pure)]
+    #[uses(sum_le, sum_to, within)]
+    fn first(a: &[u64]) -> u64 {
+        proof {
+            grows(a, 2, 1);
+        }
+        0
+    }
+}

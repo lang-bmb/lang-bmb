@@ -283,3 +283,143 @@ fn try_queries_are_the_match_expansion() {
         assert_eq!(script(try_body), script(match_body), "{try_body}");
     }
 }
+
+/// An agent's answer to BVB `vc-vv0039-max-of-list` (backlog T1-14): the
+/// contract states membership with a recursive predicate, the hidden one
+/// with a quantifier. `{ENSURES}` and `{PROOF}` are filled per case.
+const VV0039: &str = r#"#[summary("과제 구현")]
+mod tasks {
+    spec fn non_empty(a: &[i64]) -> bool {
+        a.len() > 0
+    }
+
+    spec fn contains_prefix(a: &[i64], n: usize, r: i64) -> bool
+        decreases n,
+    {
+        if n == 0 { false } else { a[n - 1] == r || contains_prefix(a, n - 1, r) }
+    }
+
+    spec fn contains(a: &[i64], r: i64) -> bool {
+        contains_prefix(a, a.len(), r)
+    }
+
+    spec fn ge_all(a: &[i64], r: i64) -> bool {
+        forall|j: usize| j < a.len() ==> #[trigger] a[j] <= r
+    }
+
+    spec fn max_upto(a: &[i64], k: usize, m: i64) -> bool {
+        1 <= k && k <= a.len() && contains_prefix(a, k, m) && (forall|j: usize| j < k ==> #[trigger] a[j] <= m)
+    }
+
+    spec fn prefix_ok(a: &[i64], n: usize, r: i64) -> bool {
+        n <= a.len() && contains_prefix(a, n, r)
+    }
+
+    spec fn has_index_below(a: &[i64], n: usize, r: i64) -> bool {
+        !(forall|i: usize| i < n ==> #[trigger] a[i] != r)
+    }
+
+    #[uses(contains_prefix, has_index_below, prefix_ok)]
+    proof fn contains_has_index(a: &[i64], n: usize, r: i64)
+        requires prefix_ok(a, n, r),
+        ensures has_index_below(a, n, r),
+        decreases n,
+    {
+        if a[n - 1] != r {
+            contains_has_index(a, n - 1, r);
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(contains, contains_prefix, ge_all, has_index_below, max_upto, non_empty, prefix_ok)]
+    fn max_of_list(lst: &[i64]) -> (r: i64)
+        requires non_empty(lst),
+        ensures {ENSURES},
+    {
+        let mut m: i64 = lst[0];
+        for k in 1..lst.len()
+            invariant max_upto(lst, k, m),
+        {
+            if lst[k] > m {
+                m = lst[k];
+            }
+        }
+        {PROOF}
+        m
+    }
+}
+"#;
+
+/// The hidden contract check of the BVB judge for `vc-vv0039` (the text
+/// `bench/m1/harness.py` `judge_target` writes), with `body` as the
+/// check's body.
+fn vv0039_judge(body: &str) -> String {
+    let task =
+        fs::read_to_string(root().join("../bench/bvb/tasks/vc-vv0039-max-of-list.json")).unwrap();
+    let task = bmb::json::parse(&task).unwrap();
+    let accept = task.get("accept").unwrap();
+    let field = |k: &str| accept.get(k).unwrap().as_str().unwrap().to_string();
+    let specs = [
+        "contains",
+        "contains_prefix",
+        "ge_all",
+        "has_index_below",
+        "max_upto",
+        "non_empty",
+        "prefix_ok",
+    ]
+    .map(|s| format!("tasks::{s}"))
+    .join(", ");
+    format!(
+        "#[summary(\"hidden acceptance check\")]\nmod bmb_accept {{\n{}\n\n#[effects(pure)]\n#[uses(ref_post, ref_pre, {specs})]\nfn check(lst: &[i64]) -> (r: i64)\n    requires {},\n    ensures {},\n{{\n{body}\n}}\n}}\n",
+        field("specs"),
+        field("pre"),
+        field("post")
+    )
+}
+
+/// ADR-0062 P5: the same-meaning contract the judge could not decide
+/// (T1-14) is proved with a lemma, both where the agent states the
+/// recursive form and where it proves the quantifier form itself.
+#[test]
+fn the_vv0039_equivalent_contract_is_proved_with_a_lemma() {
+    let recursive = VV0039
+        .replace("{ENSURES}", "contains(lst, r), ge_all(lst, r)")
+        .replace("{PROOF}\n", "");
+    let quantified = VV0039
+        .replace(
+            "{ENSURES}",
+            "has_index_below(lst, lst.len(), r), ge_all(lst, r)",
+        )
+        .replace(
+            "{PROOF}",
+            "proof {\n            contains_has_index(lst, lst.len(), m);\n        }",
+        );
+    let run = |agent: &str, body: &str| {
+        bmb::verify_sources(&[
+            ("ws.bmb".to_string(), agent.to_string()),
+            ("accept.bmb".to_string(), vv0039_judge(body)),
+        ])
+    };
+    let call = "    tasks::max_of_list(lst)";
+    // The judge as it is: the implication from the recursive contract
+    // needs an induction (the pilot's failure).
+    let out = run(&recursive, call);
+    assert!(!out.ok, "{}", out.output);
+    assert!(
+        out.output.contains("solver could not decide")
+            && out.output.contains("in `bmb_accept::check`"),
+        "{}",
+        out.output
+    );
+    // The agent's lemma closes it at the check...
+    let out = run(
+        &recursive,
+        "    let x: i64 = tasks::max_of_list(lst);\n    proof {\n        tasks::contains_has_index(lst, lst.len(), x);\n    }\n    x",
+    );
+    assert!(out.ok, "{}", out.output);
+    // ... or in the agent's own proof, which then states the quantifier
+    // form: the judge as it is accepts that.
+    let out = run(&quantified, call);
+    assert!(out.ok, "{}", out.output);
+}

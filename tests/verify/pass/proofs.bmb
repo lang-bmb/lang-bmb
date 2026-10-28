@@ -1,0 +1,253 @@
+#[summary("증명 함수: 재귀로 쓴 귀납 (ADR-0062 §2, backlog T1-18)")]
+mod pf {
+    // ---- a recursive predicate and a quantifier say the same thing ----
+
+    spec fn contains_prefix(a: &[i64], n: usize, r: i64) -> bool
+        decreases n,
+    {
+        if n == 0 { false } else { a[n - 1] == r || contains_prefix(a, n - 1, r) }
+    }
+
+    spec fn has_index_below(a: &[i64], n: usize, r: i64) -> bool {
+        !(forall|i: usize| i < n ==> #[trigger] a[i] != r)
+    }
+
+    spec fn prefix_ok(a: &[i64], n: usize, r: i64) -> bool {
+        n <= a.len() && contains_prefix(a, n, r)
+    }
+
+    spec fn index_ok(a: &[i64], n: usize, r: i64) -> bool {
+        n <= a.len() && has_index_below(a, n, r)
+    }
+
+    // Recursion to quantifier: induction on `n`.
+    #[uses(contains_prefix, has_index_below, prefix_ok)]
+    proof fn contains_has_index(a: &[i64], n: usize, r: i64)
+        requires prefix_ok(a, n, r),
+        ensures has_index_below(a, n, r),
+        decreases n,
+    {
+        if a[n - 1] != r {
+            contains_has_index(a, n - 1, r);
+        }
+    }
+
+    // Quantifier to recursion: the other direction, with a ghost `let`
+    // and an `assert` that splits the cases.
+    #[uses(contains_prefix, has_index_below, index_ok)]
+    proof fn index_has_contains(a: &[i64], n: usize, r: i64)
+        requires index_ok(a, n, r),
+        ensures contains_prefix(a, n, r),
+        decreases n,
+    {
+        let last: i64 = a[n - 1];
+        if last != r {
+            assert(has_index_below(a, n - 1, r));
+            index_has_contains(a, n - 1, r);
+        }
+    }
+
+    // ---- extending a prefix: a sum only grows ----
+
+    spec fn sum_to(a: &[u64], n: usize) -> u64
+        decreases n,
+    {
+        if n == 0 { 0 } else { sum_to(a, n - 1) + a[n - 1] }
+    }
+
+    spec fn within(a: &[u64], i: usize, j: usize) -> bool {
+        i <= j && j <= a.len()
+    }
+
+    spec fn sum_le(a: &[u64], i: usize, j: usize) -> bool {
+        sum_to(a, i) <= sum_to(a, j)
+    }
+
+    #[uses(sum_le, sum_to, within)]
+    proof fn sum_grows(a: &[u64], i: usize, j: usize)
+        requires within(a, i, j),
+        ensures sum_le(a, i, j),
+        decreases j,
+    {
+        if i < j {
+            sum_grows(a, i, j - 1);
+        }
+    }
+
+    spec fn total_small(a: &[u64]) -> bool {
+        sum_to(a, a.len()) <= 1000000
+    }
+
+    spec fn is_sum(a: &[u64], s: u64) -> bool {
+        s == sum_to(a, a.len())
+    }
+
+    // The lemma, called in the loop body, keeps the running sum below
+    // the total: no overflow.
+    #[effects(pure)]
+    #[uses(is_sum, sum_le, sum_to, total_small, within)]
+    fn total(a: &[u64]) -> (r: u64)
+        requires total_small(a),
+        ensures is_sum(a, r),
+    {
+        let mut s: u64 = 0;
+        for i in 0..a.len()
+            invariant s == sum_to(a, i),
+        {
+            proof {
+                sum_grows(a, i + 1, a.len());
+            }
+            s = s + a[i];
+        }
+        s
+    }
+
+    // ---- joining two pieces ----
+
+    spec fn count_pos(a: &[i64], lo: usize, hi: usize) -> i64
+        decreases hi,
+    {
+        if hi <= lo { 0 } else { count_pos(a, lo, hi - 1) + (if a[hi - 1] > 0 { 1 } else { 0 }) }
+    }
+
+    spec fn ordered(a: &[i64], lo: usize, mid: usize, hi: usize) -> bool {
+        lo <= mid && mid <= hi && hi <= a.len()
+    }
+
+    spec fn joined(a: &[i64], lo: usize, mid: usize, hi: usize) -> bool {
+        count_pos(a, lo, hi) == count_pos(a, lo, mid) + count_pos(a, mid, hi)
+    }
+
+    #[uses(count_pos, joined, ordered)]
+    proof fn count_join(a: &[i64], lo: usize, mid: usize, hi: usize)
+        requires ordered(a, lo, mid, hi),
+        ensures joined(a, lo, mid, hi),
+        decreases hi,
+    {
+        if mid < hi {
+            count_join(a, lo, mid, hi - 1);
+        }
+    }
+
+    spec fn counted(a: &[i64], lo: usize, hi: usize, c: i64) -> bool {
+        c == count_pos(a, lo, hi) && 0 <= c && c <= hi - lo
+    }
+
+    #[effects(pure)]
+    #[uses(count_pos, counted, ordered)]
+    fn count_range(a: &[i64], lo: usize, hi: usize) -> (r: i64)
+        requires ordered(a, lo, lo, hi),
+        ensures counted(a, lo, hi, r),
+    {
+        let mut c: i64 = 0;
+        for i in lo..hi
+            invariant c == count_pos(a, lo, i), 0 <= c, c <= i - lo,
+        {
+            if a[i] > 0 {
+                c = c + 1;
+            }
+        }
+        c
+    }
+
+    // Two halves counted apart are the whole count.
+    #[effects(pure)]
+    #[uses(count_pos, counted, joined, ordered)]
+    fn split_count(a: &[i64]) -> (r: i64)
+        ensures counted(a, 0, a.len(), r),
+    {
+        let mid: usize = a.len() / 2;
+        let x: i64 = count_range(a, 0, mid);
+        let y: i64 = count_range(a, mid, a.len());
+        proof {
+            count_join(a, 0, mid, a.len());
+        }
+        x + y
+    }
+
+    // ---- structural induction on a recursive enum ----
+
+    enum List {
+        Nil,
+        Cons(i64, Box<List>),
+    }
+
+    spec fn size(l: &List) -> i64
+        decreases l,
+    {
+        match l {
+            List::Nil => 0,
+            List::Cons(_, t) => 1 + size(&**t),
+        }
+    }
+
+    spec fn nonneg_size(l: &List) -> bool {
+        size(l) >= 0
+    }
+
+    #[uses(nonneg_size, size)]
+    proof fn size_nonneg(l: &List)
+        ensures nonneg_size(l),
+        decreases l,
+    {
+        match l {
+            List::Nil => {}
+            List::Cons(_, t) => size_nonneg(&**t),
+        }
+    }
+
+    // ---- a case split on a nonlinear fact ----
+
+    spec fn nonneg_square(x: i64) -> bool {
+        x * x >= 0
+    }
+
+    #[uses(nonneg_square)]
+    proof fn square_nonneg(x: i64)
+        ensures nonneg_square(x),
+    {
+        if x < 0 {
+            assert(x * x > 0);
+        }
+    }
+}
+
+#[summary("증명 함수: 제네릭 보조 정리와 다른 단위의 보조 정리 (ADR-0062, backlog T1-18)")]
+mod pg {
+    spec fn same<T: Copy>(a: T, b: T) -> bool {
+        a == b
+    }
+
+    // A generic lemma is proved once over its type parameter as a sort.
+    #[uses(same)]
+    proof fn refl<T: Copy>(x: T)
+        ensures same::<T>(x, x),
+    {
+    }
+
+    spec fn is_copy(r: i64, x: i64) -> bool {
+        r == x
+    }
+
+    spec fn sq_nonneg(x: i64) -> bool {
+        pf::nonneg_square(x)
+    }
+
+    // Lemmas of this unit and of another, by full path, in one block; the
+    // case split is ghost code too.
+    #[effects(pure)]
+    #[uses(is_copy, pf::nonneg_square, same, sq_nonneg)]
+    fn copy(x: i64) -> (r: i64)
+        ensures is_copy(r, x), sq_nonneg(x),
+    {
+        proof {
+            refl::<i64>(x);
+            if x < 0 {
+                pf::square_nonneg(x);
+            } else {
+                pf::square_nonneg(x);
+            }
+        }
+        x
+    }
+}

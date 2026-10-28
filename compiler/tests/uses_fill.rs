@@ -306,3 +306,50 @@ fn caches_do_not_change_the_result() {
     assert!(dir.join(bmb::cache::FILE).exists());
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// A lemma's proof reads its `#[uses]` like an executable function's
+/// (ADR-0062 §2), so it is filled the same way, before `proof fn`.
+#[test]
+fn a_lemma_gets_the_predicates_its_proof_needs() {
+    let src = r#"#[summary("lemma")]
+mod l {
+    spec fn upto(a: &[i64], n: usize, r: i64) -> bool
+        decreases n,
+    {
+        if n == 0 { false } else { a[n - 1] == r || upto(a, n - 1, r) }
+    }
+
+    spec fn ok(a: &[i64], n: usize, r: i64) -> bool {
+        n <= a.len() && upto(a, n, r)
+    }
+
+    spec fn found(a: &[i64], n: usize, r: i64) -> bool {
+        !(forall|i: usize| i < n ==> #[trigger] a[i] != r)
+    }
+
+    proof fn index(a: &[i64], n: usize, r: i64)
+        requires ok(a, n, r),
+        ensures found(a, n, r),
+        decreases n,
+    {
+        if a[n - 1] != r {
+            index(a, n - 1, r);
+        }
+    }
+}
+"#;
+    let input = one(src);
+    assert!(!verified(&input, "l::index"));
+    let out = fill_uses(&input).unwrap();
+    let r = row(&out, "l::index");
+    assert_eq!(r.status, UsesStatus::Proved);
+    assert_eq!(r.uses, ["found", "ok", "upto"]);
+    assert!(
+        out.files[0]
+            .1
+            .contains("    #[uses(found, ok, upto)]\n    proof fn index("),
+        "{}",
+        out.files[0].1
+    );
+    assert!(verified(&out.files, "l::index"));
+}

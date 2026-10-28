@@ -397,7 +397,7 @@ pub fn fill_uses_cached(
         let t = &targets[path];
         let st = if s.proved {
             State::Done(UsesStatus::Unchanged, t.original.clone())
-        } else if t.kind != FnKind::Exec {
+        } else if t.kind == FnKind::Spec {
             // A spec fn's proof (termination) does not read `#[uses]`.
             State::Done(UsesStatus::NotFound, t.original.clone())
         } else {

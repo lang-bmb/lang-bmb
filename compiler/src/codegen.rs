@@ -3078,8 +3078,8 @@ impl<'p> Gen<'p> {
                 self.emit(format!("br label %{head}"));
                 self.block(&end);
             }
-            // Proof-only statement: no code.
-            Stmt::Assert { .. } => {}
+            // Proof-only statements: no code (ghost code is erased, ADR-0062 §2).
+            Stmt::Assert { .. } | Stmt::Proof { .. } => {}
             // A discarded value is dropped (a local named here is moved).
             Stmt::Expr(e) => {
                 let v = self.expr(e);

@@ -770,3 +770,49 @@ mod g {
     assert!(!lowered.contains("g::id<i64>"), "{lowered:?}");
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// A lemma is behind the contract firewall like an executable callee
+/// (ADR-0062 §3): a change to its proof re-encodes it alone, a change to
+/// its contract re-encodes it and every definition that calls it. Outputs
+/// stay exact, and the audit finds no stale entry.
+#[test]
+fn lemma_edits_follow_the_contract_firewall() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/run");
+    let base = fs::read_to_string(root.join("max_list.bmb")).unwrap();
+    let body = base.replacen(
+        "        if a[n - 1] != r {\n",
+        "        if r != a[n - 1] {\n",
+        1,
+    );
+    assert_ne!(body, base);
+    let contract = base.replacen(
+        "        ensures sum_le(a, i, j),\n",
+        "        ensures sum_le(a, i, j), sum_le(a, i, j),\n",
+        1,
+    );
+    assert_ne!(contract, base);
+    let dir = tmp("lemmas");
+    cached(&files(&base), &dir);
+    for text in [&body, &base, &contract, &base] {
+        let f = files(text);
+        let (out, stats) = bmb::incremental::with_audit(|| cached(&f, &dir));
+        assert_eq!(out, plain(&f));
+        assert!(stats.audit_mismatches.is_empty(), "{stats:?}");
+    }
+    let _ = fs::remove_dir_all(&dir);
+    // From a warm cache of `base`, exactly what each edit reaches.
+    for (i, (text, want)) in [
+        (&body, vec!["ml::contains_has_index"]),
+        (&contract, vec!["ml::sum_grows", "ml::total"]),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let dir = tmp(&format!("lemmas{i}"));
+        cached(&files(&base), &dir);
+        let (_, stats) = cached(&files(text), &dir);
+        let want: BTreeSet<String> = want.iter().map(|s| s.to_string()).collect();
+        assert_eq!(set(&stats.encoded), want, "edit {i}");
+        let _ = fs::remove_dir_all(&dir);
+    }
+}

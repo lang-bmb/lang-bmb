@@ -2,7 +2,7 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 6619905,
+    "V4_rlimit_total": 7034750,
     "V5_rlimit_headroom": 0.0153,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0,
@@ -14,12 +14,12 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 28967,
+    "S4_stage0_rust_lines": 29402,
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
-    "P1_runnable_programs": 52,
-    "P2_bmb_lines": 15905,
-    "P3_errors_with_help": 0.8464,
+    "P1_runnable_programs": 53,
+    "P2_bmb_lines": 16606,
+    "P3_errors_with_help": 0.8522,
     "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 10
@@ -1196,6 +1196,32 @@
         "P2_bmb_lines": [
           14224,
           15905
+        ]
+      }
+    },
+    {
+      "date": "2026-10-28",
+      "reason": "T1-18: proof fns (ADR-0062): tests/run/max_list (P1 52 -> 53), proof corpora and lemma programs (P2 +701), E0256-E0258/E0819 all carry help (P3 0.846 -> 0.852); V4 +414,845 (+6.3%, within budget) is the new proof corpora (tests/verify/pass|fail/proofs), max_list and numlist's lemmas",
+      "changed": {
+        "V4_rlimit_total": [
+          6619905,
+          7034750
+        ],
+        "S4_stage0_rust_lines": [
+          28967,
+          29402
+        ],
+        "P1_runnable_programs": [
+          52,
+          53
+        ],
+        "P2_bmb_lines": [
+          15905,
+          16606
+        ],
+        "P3_errors_with_help": [
+          0.8464,
+          0.8522
         ]
       }
     }

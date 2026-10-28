@@ -1,4 +1,4 @@
-#[summary("수 목록 읽기: 쉼표로 나눈 부호 없는 수를 읽어 합과 최댓값을 낸다. for·?·continue·break·return을 함께 쓴다 (backlog 2K-06)")]
+#[summary("수 목록 읽기: 쉼표로 나눈 부호 없는 수를 읽어 합과 최댓값을 낸다. for·?·continue·break·return을 함께 쓰고, 자릿수 한도는 귀납 보조 정리로 보인다 (backlog 2K-06, T1-18)")]
 mod nl {
     spec fn short(s: &[u8]) -> bool {
         s.len() <= 64
@@ -31,16 +31,60 @@ mod nl {
         }
     }
 
+    // `10^d`.
+    spec fn pow10(d: u64) -> u64
+        decreases d,
+    {
+        if d == 0 { 1 } else { 10 * pow10(d - 1) }
+    }
+
+    spec fn le(a: u64, b: u64) -> bool {
+        a <= b
+    }
+
+    spec fn pow10_le(a: u64, b: u64) -> bool {
+        pow10(a) <= pow10(b)
+    }
+
+    spec fn pow10_pos(d: u64) -> bool {
+        pow10(d) >= 1
+    }
+
+    #[uses(pow10, pow10_pos)]
+    proof fn pow10_positive(d: u64)
+        ensures pow10_pos(d),
+        decreases d,
+    {
+        if d > 0 {
+            pow10_positive(d - 1);
+        }
+    }
+
+    // A power of ten grows with its exponent: induction on `b`
+    // (ADR-0062, backlog T1-18; it replaces a predicate unfolded case by
+    // case, `dev-docs/measurements/m1.md` §6).
+    #[uses(le, pow10, pow10_le, pow10_pos)]
+    proof fn pow10_grows(a: u64, b: u64)
+        requires le(a, b),
+        ensures pow10_le(a, b),
+        decreases b,
+    {
+        if a < b {
+            pow10_grows(a, b - 1);
+            pow10_positive(b - 1);
+        }
+    }
+
     // `cur` has `digits` digits, at most five.
     spec fn fits(cur: u64, digits: u64) -> bool {
-        digits == 0 && cur == 0 || digits == 1 && cur <= 9 || digits == 2 && cur <= 99 || digits == 3 && cur <= 999 || digits == 4 && cur <= 9999 || digits == 5 && cur <= 99999
+        digits <= 5 && cur < pow10(digits)
     }
 
     // Spaces are skipped, `;` ends the list, a number has at most five
     // digits; the first other byte is an error at its position (an empty
     // list, at the end).
     #[effects(pure)]
-    #[uses(digit_ok, fits, parsed, short, small_nums)]
+    #[uses(digit_ok, fits, le, parsed, pow10, pow10_le, short, small_nums)]
     fn parse(s: &[u8]) -> (r: Result<Vec<u64>, usize>)
         requires short(s),
         ensures parsed(r, s.len()),
@@ -62,6 +106,9 @@ mod nl {
                 if digits == 0 {
                     return Err(i);
                 }
+                proof {
+                    pow10_grows(digits, 5);
+                }
                 out.push(cur);
                 cur = 0;
                 digits = 0;
@@ -74,11 +121,17 @@ mod nl {
             if digits == 5 {
                 return Err(i);
             }
+            proof {
+                pow10_grows(digits, 4);
+            }
             cur = cur * 10 + d;
             digits = digits + 1;
         }
         if digits == 0 {
             return Err(s.len());
+        }
+        proof {
+            pow10_grows(digits, 5);
         }
         out.push(cur);
         Ok(out)

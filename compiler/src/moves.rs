@@ -105,6 +105,9 @@ struct Mv<'a> {
     loops: Vec<MvLoop>,
     diags: Vec<Diag>,
     info: MoveInfo,
+    /// Inside a `proof { .. }` block (ADR-0062): ghost code reads values
+    /// and moves none (it is erased).
+    ghost: bool,
 }
 
 /// Checks the moves of an executable function and returns its diagnostics
@@ -126,6 +129,7 @@ pub fn check(
         loops: Vec::new(),
         diags: Vec::new(),
         info: MoveInfo::default(),
+        ghost: false,
     };
     for p in &f.params {
         if m.owns(&p.name.name) {
@@ -323,6 +327,7 @@ impl Mv<'_> {
     }
 
     fn use_var(&mut self, id: &Ident, span: Span, moves: bool) {
+        let moves = moves && !self.ghost;
         if let Some(part) = self.moved_part(&id.name)
             && matches!(self.status(&id.name), Some(St::Owned))
         {
@@ -738,6 +743,11 @@ impl Mv<'_> {
             }
             Stmt::Assert { cond, .. } => self.expr(cond, false),
             Stmt::Expr(e) => self.expr(e, true),
+            Stmt::Proof { body, .. } => {
+                let ghost = std::mem::replace(&mut self.ghost, true);
+                self.block(body);
+                self.ghost = ghost;
+            }
         }
     }
 

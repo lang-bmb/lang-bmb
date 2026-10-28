@@ -152,6 +152,10 @@ pub struct TraitImpl {
 pub enum FnKind {
     Exec,
     Spec,
+    /// `proof fn` (ADR-0062 §1): a ghost function whose body is a proof of
+    /// its `ensures`; called only from ghost code, erased by code
+    /// generation.
+    Proof,
 }
 
 #[derive(Debug, Clone)]
@@ -354,6 +358,13 @@ pub enum Stmt {
     },
     Assert {
         cond: Expr,
+        span: Span,
+    },
+    /// `proof { .. }` (ADR-0062 §1): ghost statements in executable code.
+    /// It changes no executable state and produces no value; code
+    /// generation erases it.
+    Proof {
+        body: Block,
         span: Span,
     },
     /// `let Point { x, y } = p;` (Rust destructuring, E0230): kept so the

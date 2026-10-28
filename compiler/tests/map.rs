@@ -451,3 +451,39 @@ mod geo {
         "{hit}"
     );
 }
+
+#[test]
+fn proof_fns_and_their_callers_are_mapped() {
+    // ADR-0062 §3: a lemma is a definition of its own kind, and an L2
+    // `proof_calls` edge names every definition that relies on it (from a
+    // `proof` block or another lemma, itself when it is an induction).
+    let text = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/run/max_list.bmb"),
+    )
+    .unwrap();
+    let f = files(&[("m.bmb", &text)]);
+    let m = run(&f, &["map", "all"]);
+    for needle in [
+        "{\"level\":\"L0\",\"kind\":\"def\",\"path\":\"ml::contains_has_index\",\"def_kind\":\"proof fn\"",
+        "{\"level\":\"L1\",\"path\":\"ml::contains_has_index\",\"def_kind\":\"proof fn\",\"signature\":\"proof fn contains_has_index(a: &[i64], n: usize, r: i64)\",\"requires\":[\"prefix_ok(a, n, r)\"],\"ensures\":[\"has_index_below(a, n, r)\"],\"decreases\":\"n\",\"effects\":\"proof\"",
+        "{\"level\":\"L2\",\"from\":\"ml::max_of_list\",\"to\":\"ml::contains_has_index\",\"kind\":\"proof_calls\"}",
+        "{\"level\":\"L2\",\"from\":\"ml::contains_has_index\",\"to\":\"ml::contains_has_index\",\"kind\":\"proof_calls\"}",
+        "{\"level\":\"L2\",\"from\":\"ml::total\",\"to\":\"ml::sum_grows\",\"kind\":\"proof_calls\"}",
+        // A spec fn named in a lemma's body is read as a specification.
+        "{\"level\":\"L2\",\"from\":\"ml::contains_has_index\",\"to\":\"ml::prefix_ok\",\"kind\":\"contract\"}",
+    ] {
+        assert!(m.contains(needle), "missing {needle}\n{m}");
+    }
+    // The lemma's status is its own proof.
+    assert!(m.contains("\"path\":\"ml::sum_grows\",\"def_kind\":\"proof fn\""));
+    assert!(!m.contains("\"kind\":\"calls\",\"to\":\"ml::sum_grows\""));
+    // Changing a lemma's contract reproves the definitions that call it.
+    let hit = run(&f, &["query", "impact", "ml::contains_has_index"]);
+    assert!(
+        hit.contains("{\"path\":\"ml::max_of_list\",\"reason\":\"calls\"}"),
+        "{hit}"
+    );
+    // A lemma needs no test: it does not run.
+    let t = run(&f, &["query", "tests"]);
+    assert!(!t.contains("contains_has_index"), "{t}");
+}
