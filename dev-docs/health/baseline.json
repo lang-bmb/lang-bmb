@@ -2,7 +2,7 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 6519785,
+    "V4_rlimit_total": 6619905,
     "V5_rlimit_headroom": 0.0153,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0,
@@ -14,11 +14,11 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 28740,
+    "S4_stage0_rust_lines": 28967,
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
-    "P1_runnable_programs": 49,
-    "P2_bmb_lines": 14224,
+    "P1_runnable_programs": 52,
+    "P2_bmb_lines": 15905,
     "P3_errors_with_help": 0.8464,
     "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
@@ -1174,6 +1174,28 @@
         "P3_errors_with_help": [
           0.8413,
           0.8464
+        ]
+      }
+    },
+    {
+      "date": "2026-10-28",
+      "reason": "T4-04·T4-01·T4-03: lib/crc32·sha256·base64.bmb와 차등 시험 tests/lib_run/crc32·sha256·base64(실행 프로그램 +3), bench/lib/sha256_speed. 1B-49(비트 항 합동)·1B-50(열거형 페이로드 범위 사실). 악화 둘은 예산 안이고 의도된 것: V4 +1.5%(tests/verify/pass/bits의 새 정의 mix·mask_xor와 열거형 값의 페이로드 사실), S4 +227줄(verify.rs의 bit_congruences·시험)",
+      "changed": {
+        "V4_rlimit_total": [
+          6519785,
+          6619905
+        ],
+        "S4_stage0_rust_lines": [
+          28740,
+          28967
+        ],
+        "P1_runnable_programs": [
+          49,
+          52
+        ],
+        "P2_bmb_lines": [
+          14224,
+          15905
         ]
       }
     }

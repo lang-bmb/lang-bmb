@@ -1,0 +1,267 @@
+#[summary("실행: base64 라이브러리의 시험(T4-03). RFC 4648 §10 벡터 일곱의 인코드·디코드, 거부해야 할 입력(길이, 채우기 위치, 정규형이 아닌 남는 비트, 알파벳 밖), 의사 난수 바이트열의 길이 0~64 인코딩과 3000까지의 CRC-32 합·왕복 수, 16개 문자로 된 모든 4문자열과 8문자열(앞 그룹 고정)의 디코드 수·합. 기대 출력은 Python base64(정규형 판정은 validate=True 디코드 뒤 다시 인코드해 같은지)로 같은 입력을 계산한 base64_ref.py")]
+mod app {
+    spec fn short(v: &[u8], n: usize) -> bool { v.len() <= n }
+
+    spec fn label_ok(s: &[u8]) -> bool { s.len() <= 16 }
+
+    spec fn size_ok(n: usize) -> bool { n <= 16777216 }
+
+    spec fn line_ok(s: &[u8]) -> bool { s.len() <= 1000 }
+
+    // `<label> <value>` on one line.
+    #[effects(io)]
+    #[uses(label_ok, bytes::room, bytes::grew_by, bytes::kept, bytes::fits, bytes::appended, bytes::copied)]
+    fn show(label: &[u8], x: u64) -> ()
+        requires label_ok(label),
+    {
+        let mut out: Vec<u8> = Vec::new();
+        bytes::extend(&mut out, label);
+        out.push(b' ');
+        bytes::push_u64(&mut out, x);
+        out.push(b'\n');
+        print_bytes(out.as_slice());
+    }
+
+    // `<label> <text>` on one line.
+    #[effects(io)]
+    #[uses(label_ok, line_ok, bytes::fits, bytes::appended, bytes::kept, bytes::copied)]
+    fn say(label: &[u8], text: &[u8]) -> ()
+        requires label_ok(label), line_ok(text),
+    {
+        let mut out: Vec<u8> = Vec::new();
+        bytes::extend(&mut out, label);
+        out.push(b' ');
+        bytes::extend(&mut out, text);
+        out.push(b'\n');
+        print_bytes(out.as_slice());
+    }
+
+    // The encoding of `s`, and its decoding.
+    #[effects(io)]
+    #[uses(label_ok, line_ok, base64::fits, base64::round_trip, base64::encoded, base64::enc_len, base64::decoded, base64::decodes, base64::dec_len)]
+    fn vector(s: &[u8]) -> ()
+        requires line_ok(s),
+    {
+        let t: Vec<u8> = base64::encode(s);
+        if t.len() <= 1000 {
+            say(b"enc", t.as_slice());
+        }
+        match base64::decode(t.as_slice()) {
+            None => say(b"dec", b"none"),
+            Some(v) => {
+                if v.len() <= 1000 {
+                    say(b"dec", v.as_slice());
+                }
+            }
+        }
+    }
+
+    // The decoding of `t`: its length, or `none`.
+    #[effects(io)]
+    #[uses(label_ok)]
+    fn reject(t: &[u8]) -> () {
+        match base64::decode(t) {
+            None => print_bytes(b"bad none\n"),
+            Some(v) => show(b"bad", u64::try_from(v.len()).unwrap()),
+        }
+    }
+
+    // `n` deterministic bytes: the high bits of a 64-bit LCG, the same
+    // sequence as `base64_ref.py`.
+    #[effects(pure)]
+    #[uses(short, size_ok)]
+    fn stream(n: usize) -> (r: Vec<u8>)
+        requires size_ok(n),
+        ensures short(r.as_slice(), n),
+    {
+        let mut v: Vec<u8> = Vec::new();
+        let mut x: u64 = 2024;
+        for i in 0..n
+            invariant short(v.as_slice(), i),
+        {
+            x = x.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            v.push(u8::try_from(x >> 56).unwrap());
+        }
+        v
+    }
+
+    // The first `n` bytes of `s` (all of it when shorter).
+    #[effects(pure)]
+    #[uses(short)]
+    fn take(s: &[u8], n: usize) -> (r: Vec<u8>)
+        ensures short(r.as_slice(), n),
+    {
+        let mut v: Vec<u8> = Vec::new();
+        let mut i: usize = 0;
+        while i < n && i < s.len()
+            invariant i <= n, short(v.as_slice(), i),
+            decreases n - i,
+        {
+            v.push(s[i]);
+            i = i + 1;
+        }
+        v
+    }
+
+    spec fn same_bytes(a: &[u8], b: &[u8]) -> bool { a.len() == b.len() && forall|k: usize| k < a.len() ==> #[trigger] a[k] == b[k] }
+
+    spec fn eq_result(a: &[u8], b: &[u8], r: bool) -> bool { (r && same_bytes(a, b)) || (!r && !same_bytes(a, b)) }
+
+    #[effects(pure)]
+    #[uses(same_bytes, eq_result)]
+    fn equal(a: &[u8], b: &[u8]) -> (r: bool)
+        ensures eq_result(a, b, r),
+    {
+        if a.len() != b.len() {
+            return false;
+        }
+        let mut i: usize = 0;
+        while i < a.len()
+            invariant i <= a.len(), a.len() == b.len(), forall|k: usize| k < i ==> #[trigger] a[k] == b[k],
+            decreases a.len() - i,
+        {
+            if a[i] != b[i] {
+                return false;
+            }
+            i = i + 1;
+        }
+        true
+    }
+
+    // The 16 characters of the exhaustive decodings.
+    #[effects(pure)]
+    fn chars() -> [u8; 16] {
+        [b'A', b'B', b'Q', b'Z', b'a', b'g', b'w', b'z', b'0', b'9', b'+', b'/', b'=', b'-', b' ', 0x80]
+    }
+
+    struct Tally { count: u64, sum: u64 }
+
+    // One more decoding: counted, its bytes folded into the sum.
+    #[effects(pure)]
+    fn add(x: Tally, t: &[u8]) -> Tally {
+        match base64::decode(t) {
+            None => x,
+            Some(v) => {
+                let mut sum: u64 = x.sum;
+                for k in 0..v.len() {
+                    sum = sum.wrapping_mul(31).wrapping_add(u64::try_from(v[k]).unwrap());
+                }
+                Tally { count: x.count.wrapping_add(1), sum: sum }
+            }
+        }
+    }
+
+    // Every string of four of the 16 characters.
+    #[effects(pure)]
+    fn four() -> Tally {
+        let cs: [u8; 16] = chars();
+        let n: usize = 16;
+        let mut x: Tally = Tally { count: 0, sum: 0 };
+        let mut t: [u8; 4] = [0; 4];
+        for a in 0..n {
+            for b in 0..n {
+                for c in 0..n {
+                    for d in 0..n {
+                        t[0] = cs[a];
+                        t[1] = cs[b];
+                        t[2] = cs[c];
+                        t[3] = cs[d];
+                        x = add(x, &t);
+                    }
+                }
+            }
+        }
+        x
+    }
+
+    // The same after the group `QUJD`.
+    #[effects(pure)]
+    fn eight() -> Tally {
+        let cs: [u8; 16] = chars();
+        let n: usize = 16;
+        let mut x: Tally = Tally { count: 0, sum: 0 };
+        let mut t: [u8; 8] = [b'Q', b'U', b'J', b'D', 0, 0, 0, 0];
+        for a in 0..n {
+            for b in 0..n {
+                for c in 0..n {
+                    for d in 0..n {
+                        t[4] = cs[a];
+                        t[5] = cs[b];
+                        t[6] = cs[c];
+                        t[7] = cs[d];
+                        x = add(x, &t);
+                    }
+                }
+            }
+        }
+        x
+    }
+
+    #[effects(io)]
+    #[uses(short, size_ok, label_ok, line_ok, base64::fits, base64::round_trip, base64::decoded, base64::decodes, base64::dec_len, base64::encoded, base64::enc_len, same_bytes, eq_result)]
+    fn main() -> () {
+        // RFC 4648 §10.
+        vector(b"");
+        vector(b"f");
+        vector(b"fo");
+        vector(b"foo");
+        vector(b"foob");
+        vector(b"fooba");
+        vector(b"foobar");
+        // Not canonical encodings: length, padding place, alphabet, and the
+        // bits a padding drops (§3.5).
+        reject(b"Zg=");
+        reject(b"Zg");
+        reject(b"Z===");
+        reject(b"====");
+        reject(b"=Zm9");
+        reject(b"Zg==Zg==");
+        reject(b"Zm9v====");
+        reject(b"Zh==");
+        reject(b"Zm9=");
+        reject(b"Zm 9");
+        reject(b"Zm9v\n");
+        reject(b"Zm-v");
+        reject(b"Zm_v");
+        reject(b"Zm\x809");
+        reject(b"Zg==");
+        reject(b"Zm8=");
+        reject(b"Zm9v");
+        // Prefixes of a pseudo-random stream.
+        let s: Vec<u8> = stream(3000);
+        let shown: usize = 65;
+        for n in 0..shown {
+            let p: Vec<u8> = take(s.as_slice(), n);
+            let e: Vec<u8> = base64::encode(p.as_slice());
+            if e.len() <= 1000 {
+                say(b"len", e.as_slice());
+            }
+        }
+        let total: usize = 3001;
+        let mut sum: u64 = 0;
+        let mut back: u64 = 0;
+        for m in 0..total
+            invariant back <= m,
+        {
+            let q: Vec<u8> = take(s.as_slice(), m);
+            let f: Vec<u8> = base64::encode(q.as_slice());
+            sum = sum.wrapping_add(u64::try_from(crc32::checksum(f.as_slice())).unwrap());
+            match base64::decode(f.as_slice()) {
+                None => {}
+                Some(w) => {
+                    if equal(w.as_slice(), q.as_slice()) {
+                        back = back + 1;
+                    }
+                }
+            }
+        }
+        show(b"crc", sum);
+        show(b"back", back);
+        let f4: Tally = four();
+        show(b"four", f4.count);
+        show(b"four", f4.sum);
+        let f8: Tally = eight();
+        show(b"eight", f8.count);
+        show(b"eight", f8.sum);
+    }
+}

@@ -1,0 +1,44 @@
+#[summary("벤치(T4-01): 16MiB 의사 난수 바이트를 sha256::digest로 8번(매번 첫 바이트를 바꿈). 쌍둥이는 sha256_speed.rs(같은 알고리즘의 Rust: compiler/src/sha256.rs와 같은 코드, 표준 라이브러리만)")]
+mod app {
+    spec fn size_ok(n: usize) -> bool { 0 < n && n <= 16777216 }
+
+    spec fn exactly(v: &[u8], n: usize) -> bool { v.len() == n }
+
+    // `n` deterministic bytes: the high bits of a 64-bit LCG.
+    #[effects(pure)]
+    #[uses(size_ok, exactly)]
+    fn data(n: usize) -> (r: Vec<u8>)
+        requires size_ok(n),
+        ensures exactly(r.as_slice(), n),
+    {
+        let mut v: Vec<u8> = Vec::with_capacity(n);
+        let mut x: u64 = 12345;
+        for i in 0..n
+            invariant exactly(v.as_slice(), i),
+        {
+            x = x.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            v.push(u8::try_from(x >> 56).unwrap());
+        }
+        v
+    }
+
+    #[effects(io)]
+    #[uses(size_ok, exactly, sha256::msg_ok)]
+    fn main() -> () {
+        let n: usize = 16777216;
+        let mut v: Vec<u8> = data(n);
+        let mut acc: u64 = 0;
+        let times: usize = 8;
+        let width: usize = 32;
+        for k in 0..times
+            invariant exactly(v.as_slice(), n),
+        {
+            v[0] = u8::try_from(k).unwrap();
+            let d: [u8; 32] = sha256::digest(v.as_slice());
+            for j in 0..width {
+                acc = acc.wrapping_mul(31).wrapping_add(u64::try_from(d[j]).unwrap());
+            }
+        }
+        print_u64(acc);
+    }
+}

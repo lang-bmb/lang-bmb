@@ -1,0 +1,117 @@
+#[summary("실행: CRC-32 라이브러리의 차등 시험(T4-04). 표준 검사값 \"123456789\", 의사 난수 바이트열의 길이 0~64와 4096까지의 합, 한 바이트·두 바이트 입력 전부의 합, 이어 계산(update)의 분할. 기대 출력은 Python zlib.crc32로 같은 입력을 계산한 crc32_ref.py")]
+mod app {
+    spec fn short(v: &[u8], n: usize) -> bool { v.len() <= n }
+
+    spec fn label_ok(s: &[u8]) -> bool { s.len() <= 16 }
+
+    spec fn size_ok(n: usize) -> bool { n <= 16777216 }
+
+    // `<label> <value>` on one line.
+    #[effects(io)]
+    #[uses(label_ok, bytes::room, bytes::grew_by, bytes::kept, bytes::fits, bytes::appended, bytes::copied)]
+    fn show(label: &[u8], x: u64) -> ()
+        requires label_ok(label),
+    {
+        let mut out: Vec<u8> = Vec::new();
+        bytes::extend(&mut out, label);
+        out.push(b' ');
+        bytes::push_u64(&mut out, x);
+        out.push(b'\n');
+        print_bytes(out.as_slice());
+    }
+
+    #[effects(pure)]
+    fn wide(x: u32) -> u64 {
+        u64::try_from(x).unwrap()
+    }
+
+    // `n` deterministic bytes: the high bits of a 64-bit LCG (Knuth's MMIX
+    // constants), the same sequence as `crc32_ref.py`.
+    #[effects(pure)]
+    #[uses(short, size_ok)]
+    fn stream(n: usize) -> Vec<u8>
+        requires size_ok(n),
+    {
+        let mut v: Vec<u8> = Vec::new();
+        let mut x: u64 = 2024;
+        for i in 0..n
+            invariant short(v.as_slice(), i),
+        {
+            x = x.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            v.push(u8::try_from(x >> 56).unwrap());
+        }
+        v
+    }
+
+    // The first `k` bytes of `s` (`k <= s.len()`), and the rest.
+    #[effects(pure)]
+    #[uses(short)]
+    fn take(s: &[u8], from: usize, to: usize) -> Vec<u8> {
+        let mut v: Vec<u8> = Vec::new();
+        let mut i: usize = from;
+        while i < to && i < s.len()
+            invariant short(v.as_slice(), i),
+            decreases to - i,
+        {
+            v.push(s[i]);
+            i = i + 1;
+        }
+        v
+    }
+
+    // The checksums of every one-byte and every two-byte input, summed.
+    #[effects(pure)]
+    fn short_inputs() -> u64 {
+        let n: usize = 256;
+        let mut sum: u64 = 0;
+        let mut one: [u8; 1] = [0];
+        let mut two: [u8; 2] = [0, 0];
+        for a in 0..n {
+            one[0] = u8::try_from(a).unwrap();
+            sum = sum.wrapping_add(wide(crc32::checksum(&one)));
+            for b in 0..n {
+                two[0] = u8::try_from(a).unwrap();
+                two[1] = u8::try_from(b).unwrap();
+                sum = sum.wrapping_add(wide(crc32::checksum(&two)));
+            }
+        }
+        sum
+    }
+
+    #[effects(io)]
+    #[uses(label_ok, size_ok)]
+    fn main() -> () {
+        show(b"check", wide(crc32::checksum(b"123456789")));
+        show(b"empty", wide(crc32::checksum(b"")));
+        show(b"fox", wide(crc32::checksum(b"The quick brown fox jumps over the lazy dog")));
+        let total: usize = 4096;
+        let s: Vec<u8> = stream(total);
+        let first: usize = 65;
+        for n in 0..first {
+            let p: Vec<u8> = take(s.as_slice(), 0, n);
+            show(b"len", wide(crc32::checksum(p.as_slice())));
+        }
+        let mut sum: u64 = 0;
+        for m in 0..total + 1 {
+            let q: Vec<u8> = take(s.as_slice(), 0, m);
+            sum = sum.wrapping_add(wide(crc32::checksum(q.as_slice())));
+        }
+        show(b"sum4096", sum);
+        show(b"short", short_inputs());
+        // `update` continues a checksum: every split of the stream gives the
+        // checksum of the whole.
+        let whole: u32 = crc32::checksum(s.as_slice());
+        show(b"whole", wide(whole));
+        let mut same: u64 = 0;
+        for k in 0..total + 1
+            invariant same <= k,
+        {
+            let a: Vec<u8> = take(s.as_slice(), 0, k);
+            let b: Vec<u8> = take(s.as_slice(), k, total);
+            if crc32::update(crc32::checksum(a.as_slice()), b.as_slice()) == whole {
+                same = same + 1;
+            }
+        }
+        show(b"splits", same);
+    }
+}

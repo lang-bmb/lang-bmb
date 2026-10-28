@@ -3,9 +3,9 @@
 {"code":"E0813","severity":"error","message":"recursive call to `rf::loops` may not decrease its `decreases` measure in `rf::loops`","file":"fail/recursive.bmb","line":46,"col":32,"end_line":46,"end_col":40}
 {"code":"E0803","severity":"error","message":"`+` may overflow `i64` in `rf::eval`; counterexample: e = Expr::Add(Expr::Num(3), Expr::Num(2))","file":"fail/recursive.bmb","line":57,"col":32,"end_line":57,"end_col":55}
 {"code":"E0802","severity":"error","message":"postcondition `positive` may not hold in `rf::last`; counterexample: n = Node { v: 0, next: None }","file":"fail/recursive.bmb","line":65,"col":17,"end_line":65,"end_col":28}
-{"def":"rf::again","status":"failed","obligations":1,"failed":1,"rlimit":315,"rlimit_max":315}
-{"def":"rf::eval","status":"failed","obligations":3,"failed":1,"rlimit":1252,"rlimit_max":768}
-{"def":"rf::last","status":"failed","obligations":2,"failed":1,"rlimit":4782,"rlimit_max":4260}
-{"def":"rf::loops","status":"failed","obligations":1,"failed":1,"rlimit":281,"rlimit_max":281}
-{"def":"rf::rebuilt","status":"failed","obligations":1,"failed":1,"rlimit":315,"rlimit_max":315}
-{"def":"rf::value","status":"verified","obligations":2,"failed":0,"rlimit":318,"rlimit_max":159}
+{"def":"rf::again","status":"failed","obligations":1,"failed":1,"rlimit":360,"rlimit_max":360}
+{"def":"rf::eval","status":"failed","obligations":3,"failed":1,"rlimit":1387,"rlimit_max":829}
+{"def":"rf::last","status":"failed","obligations":2,"failed":1,"rlimit":4997,"rlimit_max":4424}
+{"def":"rf::loops","status":"failed","obligations":1,"failed":1,"rlimit":570,"rlimit_max":570}
+{"def":"rf::rebuilt","status":"failed","obligations":1,"failed":1,"rlimit":360,"rlimit_max":360}
+{"def":"rf::value","status":"verified","obligations":2,"failed":0,"rlimit":376,"rlimit_max":188}

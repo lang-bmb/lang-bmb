@@ -5,6 +5,6 @@
 {"code":"E0802","severity":"error","message":"postcondition `small` may not hold in `bf::payload`; counterexample: o = Some(-1)","file":"fail/boxes.bmb","line":52,"col":17,"end_line":52,"end_col":25}
 {"def":"bf::forgot","status":"failed","obligations":1,"failed":1,"rlimit":5000663,"rlimit_max":5000204}
 {"def":"bf::overflow","status":"failed","obligations":1,"failed":1,"rlimit":558,"rlimit_max":558}
-{"def":"bf::payload","status":"failed","obligations":1,"failed":1,"rlimit":4916,"rlimit_max":4916}
+{"def":"bf::payload","status":"failed","obligations":1,"failed":1,"rlimit":5072,"rlimit_max":5072}
 {"def":"bf::reset","status":"failed","obligations":1,"failed":1,"rlimit":4421,"rlimit_max":4421}
 {"def":"bf::wrong_x","status":"failed","obligations":1,"failed":1,"rlimit":5000887,"rlimit_max":5000208}
