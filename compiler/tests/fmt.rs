@@ -240,3 +240,30 @@ mod geo {
     let err = bmb::format_sources(&one("w.bmb", wild)).unwrap_err();
     assert!(err.contains("E0224") && err.contains("None => 0"), "{err}");
 }
+
+/// A literal keeps its base; separators, leading zeros and the case of hex
+/// digits are not part of the normal form (ADR-0048 §3, ADR-0019 §1).
+/// Bit operators print with Rust's precedence: only the parentheses it
+/// needs (backlog 2N-02).
+#[test]
+fn literal_bases_and_bit_operators_have_one_normal_form() {
+    let text = "#[summary(\"b\")]\nmod b {\n    #[effects(pure)]\n    fn f(x: u32, k: u32) -> bool {\n        let m: u32 = 0xFF_00 | 0o0_17 | 0b0000_0101 | 1_000;\n        let n: u32 = (x & m) ^ ((x << 2) | (x >> (k + 1)));\n        let p: u32 = ((x | m) & !m) << (k - 1);\n        (m & n) == p & (n | 1 ^ 2)\n    }\n}\n";
+    let out = normal(text);
+    assert!(
+        out.contains("let m: u32 = 0xff00 | 0o17 | 0b101 | 1000;"),
+        "{out}"
+    );
+    assert!(
+        out.contains("let n: u32 = x & m ^ (x << 2 | x >> k + 1);"),
+        "{out}"
+    );
+    assert!(
+        out.contains("let p: u32 = ((x | m) & !m) << k - 1;"),
+        "{out}"
+    );
+    assert!(out.contains("m & n == p & (n | 1 ^ 2)"), "{out}");
+    assert_eq!(normal(&out), out);
+    let before = bmb::verify_sources(&one("x.bmb", text));
+    let after = bmb::verify_sources(&one("x.bmb", &out));
+    assert_eq!(statuses(&before.output), statuses(&after.output));
+}

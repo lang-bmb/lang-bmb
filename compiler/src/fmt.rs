@@ -14,6 +14,12 @@ struct Printer<'a> {
 
 const INDENT: &str = "    ";
 
+/// Precedence of prefix operators (`-x`, `!x`, `&x`, `*p`).
+const PREFIX: u8 = 11;
+/// Precedence of postfix forms and atoms.
+const POSTFIX: u8 = 12;
+
+/// Rust's operator precedence (ADR-0019 §1, ADR-0048 §2).
 fn prec(e: &Expr) -> u8 {
     match &e.kind {
         ExprKind::Binary(op, ..) => match op {
@@ -21,10 +27,16 @@ fn prec(e: &Expr) -> u8 {
             BinOp::Or => 2,
             BinOp::And => 3,
             o if o.is_cmp() => 4,
-            BinOp::Add | BinOp::Sub => 5,
-            _ => 6,
+            BinOp::BitOr => 5,
+            BinOp::BitXor => 6,
+            BinOp::BitAnd => 7,
+            BinOp::Shl | BinOp::Shr => 8,
+            BinOp::Add | BinOp::Sub => 9,
+            _ => 10,
         },
-        ExprKind::Unary(..) | ExprKind::Ref { .. } | ExprKind::Trigger(_) | ExprKind::Deref(_) => 7,
+        ExprKind::Unary(..) | ExprKind::Ref { .. } | ExprKind::Trigger(_) | ExprKind::Deref(_) => {
+            PREFIX
+        }
         // Always parenthesized when nested (ADR-0019 §1).
         ExprKind::If { .. }
         | ExprKind::Block(_)
@@ -33,7 +45,7 @@ fn prec(e: &Expr) -> u8 {
         | ExprKind::Loop { .. }
         | ExprKind::Return(_)
         | ExprKind::Break { .. } => 0,
-        _ => 8,
+        _ => POSTFIX,
     }
 }
 
@@ -673,7 +685,7 @@ impl<'a> Printer<'a> {
 
     fn expr_raw(&mut self, e: &Expr) -> String {
         match &e.kind {
-            ExprKind::Int(v) => v.to_string(),
+            ExprKind::Int(v, r) => r.text(*v),
             ExprKind::ByteLit(v) => crate::lexer::byte_text(&[*v], '\''),
             ExprKind::ByteStr(v) => crate::lexer::byte_text(v, '"'),
             ExprKind::Bool(b) => b.to_string(),
@@ -705,16 +717,16 @@ impl<'a> Printer<'a> {
                 format!("{}({})", segs.join("::"), a.join(", "))
             }
             ExprKind::Method { recv, name, args } => {
-                let r = self.expr(recv, 8);
+                let r = self.expr(recv, POSTFIX);
                 let a: Vec<String> = args.iter().map(|x| self.expr(x, 0)).collect();
                 format!("{r}.{}({})", name.name, a.join(", "))
             }
             ExprKind::Index { base, index } => {
-                format!("{}[{}]", self.expr(base, 8), self.expr(index, 0))
+                format!("{}[{}]", self.expr(base, POSTFIX), self.expr(index, 0))
             }
             ExprKind::Unary(op, x) => {
                 let o = if *op == UnOp::Neg { "-" } else { "!" };
-                format!("{o}{}", self.expr(x, 7))
+                format!("{o}{}", self.expr(x, PREFIX))
             }
             ExprKind::Binary(op, l, r) => {
                 let p = prec(e);
@@ -729,7 +741,7 @@ impl<'a> Printer<'a> {
                 format!(
                     "&{}{}",
                     if *mutable { "mut " } else { "" },
-                    self.expr(expr, 7)
+                    self.expr(expr, PREFIX)
                 )
             }
             ExprKind::Array(items) => {
@@ -745,7 +757,7 @@ impl<'a> Printer<'a> {
                     .collect();
                 format!("forall|{}| {}", bs.join(", "), self.expr(body, 0))
             }
-            ExprKind::Trigger(x) => format!("#[trigger] {}", self.expr(x, 7)),
+            ExprKind::Trigger(x) => format!("#[trigger] {}", self.expr(x, PREFIX)),
             ExprKind::StructLit { path, fields, rest } => {
                 let mut fs: Vec<String> = fields
                     .iter()
@@ -757,9 +769,9 @@ impl<'a> Printer<'a> {
                 format!("{} {{ {} }}", self.path(path), fs.join(", "))
             }
             ExprKind::Path(path) => self.path(path),
-            ExprKind::Deref(x) => format!("*{}", self.expr(x, 7)),
-            ExprKind::Try(x) => format!("{}?", self.expr(x, 8)),
-            ExprKind::Field { base, name } => format!("{}.{}", self.expr(base, 8), name.name),
+            ExprKind::Deref(x) => format!("*{}", self.expr(x, PREFIX)),
+            ExprKind::Try(x) => format!("{}?", self.expr(x, POSTFIX)),
+            ExprKind::Field { base, name } => format!("{}.{}", self.expr(base, POSTFIX), name.name),
             // Nested multi-line forms are printed on one line inside expressions.
             ExprKind::If { .. }
             | ExprKind::Block(_)

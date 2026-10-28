@@ -14,6 +14,7 @@
 | E0105 | integer literal too large |
 | E0106 | block comments are not allowed; use `//` |
 | E0107 | nesting too deep |
+| E0108 | malformed integer literal: a digit outside its base, or a base prefix without digits |
 
 ## E02xx Rust 습관(수정 제안 포함)
 

@@ -1,0 +1,65 @@
+#[summary("비트 연산의 틀린 프로그램: 폭 이상이거나 음수인 시프트 양, 비트 연산 결과의 넘침, 틀린 결과 명세 (backlog 2N-02)")]
+mod bf {
+    // `x << 32` is outside a `u32`'s shift amounts.
+    #[effects(pure)]
+    fn shl(x: u32, k: u32) -> u32 {
+        x << k
+    }
+
+    spec fn below(k: i32) -> bool {
+        k < 16
+    }
+
+    // A signed amount may be negative.
+    #[effects(pure)]
+    #[uses(below)]
+    fn shr(x: i16, k: i32) -> i16
+        requires below(k),
+    {
+        x >> k
+    }
+
+    // A constant amount at the width.
+    #[effects(pure)]
+    fn wide(x: u8) -> u8 {
+        x << 8
+    }
+
+    // `!0` is `u16::MAX`.
+    #[effects(pure)]
+    fn flip(x: u16) -> u16 {
+        !x + 1
+    }
+
+    // `x | 1` is at least 1, but not below 255.
+    #[effects(pure)]
+    fn set(x: u8) -> u8 {
+        (x | 1) + 1
+    }
+
+    spec fn at_most(r: u32, a: u32) -> bool {
+        r <= a
+    }
+
+    // `|` sets bits: the result may exceed `a`.
+    #[effects(pure)]
+    #[uses(at_most)]
+    fn or(a: u32, b: u32) -> (r: u32)
+        ensures at_most(r, a),
+    {
+        a | b
+    }
+
+    spec fn nonneg(r: i32) -> bool {
+        r >= 0
+    }
+
+    // `>>` keeps the sign.
+    #[effects(pure)]
+    #[uses(nonneg)]
+    fn half(x: i32) -> (r: i32)
+        ensures nonneg(r),
+    {
+        x >> 1
+    }
+}

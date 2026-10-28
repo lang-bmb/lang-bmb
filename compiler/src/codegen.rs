@@ -1378,7 +1378,7 @@ impl<'p> Gen<'p> {
             ExprKind::Loop { label, body, .. } => self.loop_expr(e, label, body),
             ExprKind::Break { label, value } => self.jump(e, label, value.as_deref(), true),
             ExprKind::Continue { label } => self.jump(e, label, None, false),
-            ExprKind::Int(v) => CVal::Imm(v.to_string()),
+            ExprKind::Int(v, _) => CVal::Imm(v.to_string()),
             ExprKind::ByteLit(v) => CVal::Imm(v.to_string()),
             ExprKind::ByteStr(v) => {
                 let name = format!("@\"{}.bytes.{}\"", self.path, self.globals.lines().count());
@@ -1409,7 +1409,7 @@ impl<'p> Gen<'p> {
                 Slot::Data { ptr, ty } => CVal::Ptr { ptr, ty },
             },
             ExprKind::Unary(UnOp::Neg, x) => {
-                if let ExprKind::Int(v) = x.kind {
+                if let ExprKind::Int(v, _) = x.kind {
                     return CVal::Imm(format!("-{v}"));
                 }
                 let v = self.expr(x).imm();
@@ -1421,7 +1421,13 @@ impl<'p> Gen<'p> {
             ExprKind::Unary(UnOp::Not, x) => {
                 let v = self.expr(x).imm();
                 let r = self.t();
-                self.emit(format!("{r} = xor i1 {v}, true"));
+                match self.ty(x).int() {
+                    // Flipping every bit keeps a sign-extended value
+                    // sign-extended; an unsigned one flips its own width.
+                    Some(i) if i.signed() => self.emit(format!("{r} = xor i64 {v}, -1")),
+                    Some(i) => self.emit(format!("{r} = xor i64 {v}, {}", i.max_value())),
+                    None => self.emit(format!("{r} = xor i1 {v}, true")),
+                }
                 CVal::Imm(r)
             }
             ExprKind::Binary(op @ (BinOp::And | BinOp::Or), l, r) => {
@@ -1469,6 +1475,21 @@ impl<'p> Gen<'p> {
                     let res = self.t();
                     self.emit(format!("{res} = icmp {c} {ty} {a}, {b}"));
                     return CVal::Imm(res);
+                }
+                // `&`, `|`, `^` of two sign- or zero-extended values is
+                // extended the same way: no range to check (ADR-0048 §5).
+                if op.is_bit() {
+                    let inst = match op {
+                        BinOp::BitAnd => "and",
+                        BinOp::BitOr => "or",
+                        _ => "xor",
+                    };
+                    let res = self.t();
+                    self.emit(format!("{res} = {inst} {ty} {a}, {b}"));
+                    return CVal::Imm(res);
+                }
+                if op.is_shift() {
+                    return self.shift(e, *op, lt.int().expect("integer operand"), &a, r, &b);
                 }
                 match op {
                     // Operands narrower than 64 bits never leave 64 bits:
@@ -2410,6 +2431,41 @@ impl<'p> Gen<'p> {
             self.check(&c, &format!("`{inst}` may overflow `{}`", i.name()));
         }
         CVal::Imm(r)
+    }
+
+    /// `a << b`, `a >> b` on `i` (ADR-0048 §2, §5): the amount is checked
+    /// to be below the width unless proved (E0803) or a literal below it.
+    /// `>>` of an extended value is exact in 64 bits (`ashr` keeps the sign
+    /// of a signed one, `lshr` the zeros of an unsigned one); `<<` of a
+    /// narrow type drops the bits above its width and extends again.
+    fn shift(&mut self, e: &Expr, op: BinOp, i: IntTy, a: &str, r: &Expr, b: &str) -> CVal {
+        let w = i.bits();
+        let literal = matches!(r.kind, ExprKind::Int(k, _) if k < w as u128);
+        if !literal {
+            if self.proved("E0803", e) {
+                self.emit("; proved E0803");
+            } else {
+                let c = self.t();
+                self.emit(format!("{c} = icmp ult i64 {b}, {w}"));
+                self.check(&c, &format!("shift amount out of 0..{w}"));
+            }
+        }
+        let res = self.t();
+        match op {
+            BinOp::Shr => {
+                let inst = if i.signed() { "ashr" } else { "lshr" };
+                self.emit(format!("{res} = {inst} i64 {a}, {b}"));
+            }
+            _ if w == 64 => self.emit(format!("{res} = shl i64 {a}, {b}")),
+            _ => {
+                let (wide, narrow) = (self.t(), self.t());
+                self.emit(format!("{wide} = shl i64 {a}, {b}"));
+                self.emit(format!("{narrow} = trunc i64 {wide} to i{w}"));
+                let ext = if i.signed() { "sext" } else { "zext" };
+                self.emit(format!("{res} = {ext} i{w} {narrow} to i64"));
+            }
+        }
+        CVal::Imm(res)
     }
 
     /// LLVM's `{s,u}op.with.overflow`: (result, overflow flag).

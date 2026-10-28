@@ -1,0 +1,159 @@
+#[summary("비트 연산의 증명: 결과 범위 사실, 선형으로 펼친 상수 시프트와 낮은 비트 마스크, 시프트 양 의무, 명세의 비트 연산 (ADR-0048 §2·§4, backlog 2N-02)")]
+mod bp {
+    spec fn byte(r: u32) -> bool {
+        r <= 0xff
+    }
+
+    // A low-bit mask is `x mod 2^k`.
+    #[effects(pure)]
+    #[uses(byte)]
+    fn low(x: u32) -> (r: u32)
+        ensures byte(r),
+    {
+        x & 0xff
+    }
+
+    spec fn at_most(r: u32, a: u32, b: u32) -> bool {
+        r <= a && r <= b
+    }
+
+    // `&` clears bits: the result is at most either operand.
+    #[effects(pure)]
+    #[uses(at_most)]
+    fn both(a: u32, b: u32) -> (r: u32)
+        ensures at_most(r, a, b),
+    {
+        a & b
+    }
+
+    spec fn at_least(r: u64, a: u64) -> bool {
+        a <= r
+    }
+
+    // `|` sets bits: the result is at least either operand.
+    #[effects(pure)]
+    #[uses(at_least)]
+    fn set(a: u64, b: u64) -> (r: u64)
+        ensures at_least(r, a),
+    {
+        a | b
+    }
+
+    spec fn sign_of_xor(r: i32, a: i32, b: i32) -> bool {
+        (r < 0) == ((a < 0) != (b < 0))
+    }
+
+    // The sign bit of `a ^ b` is the xor of the signs.
+    #[effects(pure)]
+    #[uses(sign_of_xor)]
+    fn differ(a: i32, b: i32) -> (r: i32)
+        ensures sign_of_xor(r, a, b),
+    {
+        a ^ b
+    }
+
+    spec fn halved(r: i64, x: i64) -> bool {
+        2 * r <= x && x < 2 * r + 2
+    }
+
+    // `>>` by a constant is a floor division, also below zero.
+    #[effects(pure)]
+    #[uses(halved)]
+    fn half(x: i64) -> (r: i64)
+        ensures halved(r, x),
+    {
+        x >> 1
+    }
+
+    spec fn scaled(r: u16, x: u16) -> bool {
+        r == (x * 16) % 65536
+    }
+
+    // `<<` by a constant wraps out of the width.
+    #[effects(pure)]
+    #[uses(scaled)]
+    fn times16(x: u16) -> (r: u16)
+        ensures scaled(r, x),
+    {
+        x << 4
+    }
+
+    spec fn flipped(r: i8, x: i8) -> bool {
+        r == -x - 1
+    }
+
+    #[effects(pure)]
+    #[uses(flipped)]
+    fn not(x: i8) -> (r: i8)
+        ensures flipped(r, x),
+    {
+        !x
+    }
+
+    spec fn width(k: u32) -> bool {
+        k < 32
+    }
+
+    // The shift amount obligation comes from the precondition; the
+    // amount may have any integer type.
+    #[effects(pure)]
+    #[uses(width)]
+    fn shl(x: u32, k: u32) -> u32
+        requires width(k),
+    {
+        x << k
+    }
+
+    spec fn below(k: usize) -> bool {
+        k < 64
+    }
+
+    spec fn shrunk(r: u64, x: u64) -> bool {
+        r <= x
+    }
+
+    #[effects(pure)]
+    #[uses(below, shrunk)]
+    fn shr(x: u64, k: usize) -> (r: u64)
+        requires below(k),
+        ensures shrunk(r, x),
+    {
+        x >> k
+    }
+
+    // A field of four bits, at a position below the width.
+    #[effects(pure)]
+    #[uses(width)]
+    fn field(x: u32, k: u32) -> u32
+        requires width(k),
+    {
+        (x >> k) & 0xf
+    }
+
+    // A specification may use bit operations; mixed widths take the type
+    // that holds both.
+    spec fn low_byte(x: u32, b: u8) -> bool {
+        x & 0xff == b
+    }
+
+    #[effects(pure)]
+    #[uses(low_byte)]
+    fn byte_of(x: u32) -> (r: u8)
+        ensures low_byte(x, r),
+    {
+        u8::try_from(x & 0xff).unwrap()
+    }
+
+    // `&`, `|`, `^` on `bool`.
+    spec fn exactly_one(r: bool, a: bool, b: bool) -> bool {
+        r == (a != b)
+    }
+
+    #[effects(pure)]
+    #[uses(exactly_one)]
+    fn one_of(a: bool, b: bool) -> (r: bool)
+        ensures exactly_one(r, a, b),
+    {
+        (a | b) & !(a & b)
+    }
+}

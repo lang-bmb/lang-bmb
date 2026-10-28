@@ -5108,7 +5108,7 @@ impl<'a> Checker<'a> {
             }
             ExprKind::Unit => TypeKind::Unit,
             ExprKind::Bool(_) => TypeKind::Bool,
-            ExprKind::Int(v) => self.int_lit(*v, false, expected, e.span, mode),
+            ExprKind::Int(v, _) => self.int_lit(*v, false, expected, e.span, mode),
             ExprKind::ByteLit(_) => TypeKind::Int(IntTy::U8),
             // A `&[u8]` is a reference: second-class (ADR-0015, ADR-0044 §2).
             ExprKind::ByteStr(_) => {
@@ -5143,7 +5143,7 @@ impl<'a> Checker<'a> {
                 }
             },
             ExprKind::Unary(UnOp::Neg, inner) => {
-                if let ExprKind::Int(v) = inner.kind {
+                if let ExprKind::Int(v, _) = inner.kind {
                     return self.int_lit(v, true, expected, e.span, mode);
                 }
                 let t = self.expr(cx, inner, expected, mode);
@@ -5163,10 +5163,27 @@ impl<'a> Checker<'a> {
                     }
                 }
             }
+            // `!` is logical on `bool` and bitwise on integers (ADR-0048 §2).
             ExprKind::Unary(UnOp::Not, inner) => {
-                let t = self.expr(cx, inner, Some(&TypeKind::Bool), mode);
-                self.expect_ty(&t, &TypeKind::Bool, inner.span);
-                TypeKind::Bool
+                let hint = expected.filter(|t| is_int(t)).unwrap_or(&TypeKind::Bool);
+                let t = self.expr(cx, inner, Some(hint), mode);
+                match t {
+                    TypeKind::Bool | TypeKind::Int(_) | TypeKind::Error => t,
+                    _ => {
+                        self.diags.push(
+                            Diag::new(
+                                "E0401",
+                                e.span,
+                                format!("`!` is not defined for `{}`", ty_str(&t)),
+                            )
+                            .fix(
+                                "`!` is logical not on `bool` and bitwise not on integers",
+                                None,
+                            ),
+                        );
+                        TypeKind::Error
+                    }
+                }
             }
             ExprKind::Binary(op, l, r) => self.binary(cx, *op, l, r, expected, mode, e.span),
             ExprKind::Index { base, index } => {
@@ -5505,6 +5522,7 @@ impl<'a> Checker<'a> {
         span: Span,
     ) -> TypeKind {
         match op {
+            BinOp::Shl | BinOp::Shr => self.shift(cx, op, l, r, expected, mode, span),
             BinOp::And | BinOp::Or | BinOp::Implies => {
                 if op == BinOp::Implies && mode == Mode::Exec {
                     self.err("E0503", span, "`==>` is only allowed in specifications");
@@ -5518,8 +5536,12 @@ impl<'a> Checker<'a> {
             _ => {
                 // Literals take their type from the other operand.
                 let lit = untyped_literal;
+                // An operation whose value has its operands' type.
+                let valued = op.is_arith() || op.is_bit();
                 let hint = if op.is_arith() {
                     expected.filter(|t| is_int(t))
+                } else if op.is_bit() {
+                    expected.filter(|t| is_int(t) || **t == TypeKind::Bool)
                 } else {
                     None
                 };
@@ -5533,14 +5555,41 @@ impl<'a> Checker<'a> {
                     (lt, rt)
                 };
                 if lt == TypeKind::Error || rt == TypeKind::Error {
-                    return if op.is_arith() {
+                    return if valued {
                         TypeKind::Error
                     } else {
                         TypeKind::Bool
                     };
                 }
                 // Specifications compute over unbounded integers (ADR-0017 §2),
-                // so integer types may mix there (ADR-0022).
+                // so integer types may mix there (ADR-0022). A bit operation
+                // has a width: that of the type holding both, as if the other
+                // operand were converted to it.
+                if lt != rt && mode != Mode::Exec && is_int(&lt) && is_int(&rt) && op.is_bit() {
+                    if !conv_obligation(&rt, &lt) {
+                        return lt;
+                    }
+                    if !conv_obligation(&lt, &rt) {
+                        return rt;
+                    }
+                    self.diags.push(
+                        Diag::new(
+                            "E0401",
+                            span,
+                            format!(
+                                "`{}` needs a width, and no integer type holds both `{}` and `{}`",
+                                op.symbol(),
+                                ty_str(&lt),
+                                ty_str(&rt)
+                            ),
+                        )
+                        .fix(
+                            "give both operands one type, e.g. a spec fn parameter of that type",
+                            None,
+                        ),
+                    );
+                    return TypeKind::Error;
+                }
                 if lt != rt && mode != Mode::Exec && is_int(&lt) && is_int(&rt) {
                     return if op.is_arith() {
                         TypeKind::Int(IntTy::I64)
@@ -5575,7 +5624,7 @@ impl<'a> Checker<'a> {
                         d
                     };
                     self.diags.push(d);
-                    return if op.is_arith() {
+                    return if valued {
                         TypeKind::Error
                     } else {
                         TypeKind::Bool
@@ -5694,23 +5743,82 @@ impl<'a> Checker<'a> {
                 }
                 let ok = match op {
                     BinOp::Eq | BinOp::Ne => is_scalar(&lt),
+                    // Rust's `&`, `|`, `^` on `bool` evaluate both sides.
+                    _ if op.is_bit() => is_int(&lt) || lt == TypeKind::Bool,
                     _ => is_int(&lt),
                 };
                 if !ok {
-                    self.err(
+                    let d = Diag::new(
                         "E0401",
                         span,
                         format!("`{}` is not defined for `{}`", op.symbol(), ty_str(&lt)),
                     );
-                    return if op.is_arith() {
+                    let d = if op.is_bit() {
+                        d.fix(
+                            "`&`, `|` and `^` take two integers of one type, or two `bool`s",
+                            None,
+                        )
+                    } else {
+                        d
+                    };
+                    self.diags.push(d);
+                    return if valued {
                         TypeKind::Error
                     } else {
                         TypeKind::Bool
                     };
                 }
-                if op.is_arith() { lt } else { TypeKind::Bool }
+                if valued { lt } else { TypeKind::Bool }
             }
         }
+    }
+
+    /// `a << s`, `a >> s` (ADR-0048 §2): `a` is an integer and so is the
+    /// amount `s`, of any integer type as in Rust (a literal amount is a
+    /// `u32`, the type of Rust's `shl` methods); the value has `a`'s type.
+    /// The amount's range is a proof obligation (E0803).
+    #[allow(clippy::too_many_arguments)]
+    fn shift(
+        &mut self,
+        cx: &mut FnCtx,
+        op: BinOp,
+        l: &Expr,
+        r: &Expr,
+        expected: Option<&TypeKind>,
+        mode: Mode,
+        span: Span,
+    ) -> TypeKind {
+        let lt = self.expr(cx, l, expected.filter(|t| is_int(t)), mode);
+        let rt = self.expr(cx, r, Some(&TypeKind::Int(IntTy::U32)), mode);
+        if lt == TypeKind::Error || rt == TypeKind::Error {
+            return TypeKind::Error;
+        }
+        if !is_int(&lt) {
+            self.diags.push(
+                Diag::new(
+                    "E0401",
+                    span,
+                    format!("`{}` is not defined for `{}`", op.symbol(), ty_str(&lt)),
+                )
+                .fix("only integers shift", None),
+            );
+            return TypeKind::Error;
+        }
+        if !is_int(&rt) {
+            self.diags.push(
+                Diag::new(
+                    "E0401",
+                    r.span,
+                    format!("a shift amount is an integer, found `{}`", ty_str(&rt)),
+                )
+                .fix(
+                    "shift by an integer of any type: `x << k` with `k: u32`",
+                    None,
+                ),
+            );
+            return TypeKind::Error;
+        }
+        lt
     }
 
     fn method(
@@ -7395,7 +7503,7 @@ fn mentions(e: &Expr, name: &str) -> bool {
         | ExprKind::Block(_)
         | ExprKind::Forall { .. }
         | ExprKind::Match { .. } => true,
-        ExprKind::Int(_)
+        ExprKind::Int(..)
         | ExprKind::ByteLit(_)
         | ExprKind::ByteStr(_)
         | ExprKind::Bool(_)
@@ -7458,7 +7566,7 @@ fn collect_triggers<'e>(e: &'e Expr, out: &mut Vec<&'e Expr>) {
         }
         ExprKind::Var(_)
         | ExprKind::Path(_)
-        | ExprKind::Int(_)
+        | ExprKind::Int(..)
         | ExprKind::ByteLit(_)
         | ExprKind::ByteStr(_)
         | ExprKind::Bool(_)
@@ -7688,9 +7796,13 @@ pub fn ty_str_in(t: &TypeKind, mp: &str) -> String {
 
 fn untyped_literal(e: &Expr) -> bool {
     match &e.kind {
-        ExprKind::Int(_) => true,
-        ExprKind::Unary(UnOp::Neg, i) => untyped_literal(i),
-        ExprKind::Binary(op, l, r) => op.is_arith() && untyped_literal(l) && untyped_literal(r),
+        ExprKind::Int(..) => true,
+        ExprKind::Unary(_, i) => untyped_literal(i),
+        // A shift has the type of what it shifts (`1 << k`).
+        ExprKind::Binary(op, l, _) if op.is_shift() => untyped_literal(l),
+        ExprKind::Binary(op, l, r) => {
+            (op.is_arith() || op.is_bit()) && untyped_literal(l) && untyped_literal(r)
+        }
         ExprKind::Block(b) => {
             b.stmts.is_empty() && b.tail.as_ref().is_some_and(|t| untyped_literal(t))
         }
@@ -7716,7 +7828,7 @@ fn reads_only(e: &Expr) -> bool {
         ExprKind::Index { base, index } => reads_only(base) && reads_only(index),
         ExprKind::Unary(_, x) | ExprKind::Ref { expr: x, .. } => reads_only(x),
         ExprKind::Binary(_, l, r) => reads_only(l) && reads_only(r),
-        ExprKind::Int(_) | ExprKind::Bool(_) | ExprKind::Unit | ExprKind::Var(_) => true,
+        ExprKind::Int(..) | ExprKind::Bool(_) | ExprKind::Unit | ExprKind::Var(_) => true,
         _ => false,
     }
 }

@@ -2,7 +2,7 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 6519785,
+    "V4_rlimit_total": 6556277,
     "V5_rlimit_headroom": 0.0153,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0,
@@ -14,12 +14,12 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 28017,
+    "S4_stage0_rust_lines": 28653,
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
-    "P1_runnable_programs": 47,
-    "P2_bmb_lines": 13302,
-    "P3_errors_with_help": 0.8413,
+    "P1_runnable_programs": 48,
+    "P2_bmb_lines": 13723,
+    "P3_errors_with_help": 0.8464,
     "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 10
@@ -1138,6 +1138,32 @@
         "P3_errors_with_help": [
           0.8226,
           0.8413
+        ]
+      }
+    },
+    {
+      "date": "2026-10-28",
+      "reason": "2N-02: bit operations and literal bases; run/bits (P1, P2), every new error with a hint or counterexample (P3), new corpora proofs within the V4 budget",
+      "changed": {
+        "V4_rlimit_total": [
+          6519785,
+          6556277
+        ],
+        "S4_stage0_rust_lines": [
+          28017,
+          28653
+        ],
+        "P1_runnable_programs": [
+          47,
+          48
+        ],
+        "P2_bmb_lines": [
+          13302,
+          13723
+        ],
+        "P3_errors_with_help": [
+          0.8413,
+          0.8464
         ]
       }
     }

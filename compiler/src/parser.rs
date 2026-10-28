@@ -207,7 +207,7 @@ impl<'a> Parser<'a> {
     fn describe(t: &Tok) -> String {
         match t {
             Tok::Ident(s) => format!("`{s}`"),
-            Tok::Int(v) => format!("`{v}`"),
+            Tok::Int(v, r) => format!("`{}`", r.text(*v)),
             Tok::Str(_) => "string literal".into(),
             Tok::Byte(_) => "byte literal".into(),
             Tok::Bytes(_) => "byte string literal".into(),
@@ -1402,7 +1402,7 @@ impl<'a> Parser<'a> {
                 let elem = self.parse_type();
                 if self.eat_p(";") {
                     let n = match self.peek().clone() {
-                        Tok::Int(v) => {
+                        Tok::Int(v, _) => {
                             let sp = self.bump().span;
                             // Same limit as `[v; N]` literals (backlog 1A-10).
                             if v > u32::MAX as u128 {
@@ -2002,12 +2002,12 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_cmp(&mut self) -> PResult<Expr> {
-        let lhs = self.parse_add()?;
+        let lhs = self.parse_bitor()?;
         let Some(op) = self.cmp_op() else {
             return Ok(lhs);
         };
         self.bump();
-        let rhs = self.parse_add()?;
+        let rhs = self.parse_bitor()?;
         let e = bin(op, lhs, rhs);
         if self.cmp_op().is_some() {
             let sp = self.span();
@@ -2016,9 +2016,86 @@ impl<'a> Parser<'a> {
                     .fix("split into two comparisons joined by `&&`", None),
             );
             self.bump();
-            let _ = self.parse_add()?;
+            let _ = self.parse_bitor()?;
         }
         Ok(e)
+    }
+
+    // Bit operations bind tighter than comparisons and looser than `+`, as
+    // in Rust (ADR-0048 §2): `|` < `^` < `&` < `<<`/`>>` < `+`.
+
+    fn parse_bitor(&mut self) -> PResult<Expr> {
+        self.chain(Self::parse_bitor_inner)
+    }
+
+    fn parse_bitor_inner(&mut self) -> PResult<Expr> {
+        let mut lhs = self.parse_bitxor()?;
+        while self.eat_p("|") {
+            self.enter()?;
+            let rhs = self.parse_bitxor()?;
+            lhs = bin(BinOp::BitOr, lhs, rhs);
+        }
+        Ok(lhs)
+    }
+
+    fn parse_bitxor(&mut self) -> PResult<Expr> {
+        self.chain(Self::parse_bitxor_inner)
+    }
+
+    fn parse_bitxor_inner(&mut self) -> PResult<Expr> {
+        let mut lhs = self.parse_bitand()?;
+        while self.eat_p("^") {
+            self.enter()?;
+            let rhs = self.parse_bitand()?;
+            lhs = bin(BinOp::BitXor, lhs, rhs);
+        }
+        Ok(lhs)
+    }
+
+    fn parse_bitand(&mut self) -> PResult<Expr> {
+        self.chain(Self::parse_bitand_inner)
+    }
+
+    fn parse_bitand_inner(&mut self) -> PResult<Expr> {
+        let mut lhs = self.parse_shift()?;
+        while self.eat_p("&") {
+            self.enter()?;
+            let rhs = self.parse_shift()?;
+            lhs = bin(BinOp::BitAnd, lhs, rhs);
+        }
+        Ok(lhs)
+    }
+
+    /// `<<` or `>>` here: two adjacent `<` or `>` tokens. The lexer leaves
+    /// them apart so `Vec<Vec<i64>>` closes two type argument lists (rustc's
+    /// parser splits such tokens instead).
+    fn shift_op(&self) -> Option<BinOp> {
+        let a = &self.toks[self.pos];
+        let b = &self.toks[(self.pos + 1).min(self.toks.len() - 1)];
+        if a.span.hi != b.span.lo {
+            return None;
+        }
+        match (&a.tok, &b.tok) {
+            (Tok::P("<"), Tok::P("<")) => Some(BinOp::Shl),
+            (Tok::P(">"), Tok::P(">")) => Some(BinOp::Shr),
+            _ => None,
+        }
+    }
+
+    fn parse_shift(&mut self) -> PResult<Expr> {
+        self.chain(Self::parse_shift_inner)
+    }
+
+    fn parse_shift_inner(&mut self) -> PResult<Expr> {
+        let mut lhs = self.parse_add()?;
+        while let Some(op) = self.shift_op() {
+            self.bump();
+            self.bump();
+            self.enter()?;
+            let rhs = self.parse_add()?;
+            lhs = bin(op, lhs, rhs);
+        }
+        Ok(lhs)
     }
 
     fn parse_add(&mut self) -> PResult<Expr> {
@@ -2273,10 +2350,10 @@ impl<'a> Parser<'a> {
     fn parse_primary(&mut self) -> PResult<Expr> {
         let lo = self.span();
         match self.peek().clone() {
-            Tok::Int(v) => {
+            Tok::Int(v, r) => {
                 self.bump();
                 Ok(Expr {
-                    kind: ExprKind::Int(v),
+                    kind: ExprKind::Int(v, r),
                     span: lo,
                 })
             }
@@ -2352,7 +2429,7 @@ impl<'a> Parser<'a> {
                 let first = self.parse_expr()?;
                 if self.eat_p(";") {
                     let (count, count_span) = match self.peek().clone() {
-                        Tok::Int(v) => (v, self.bump().span),
+                        Tok::Int(v, _) => (v, self.bump().span),
                         _ => {
                             self.err_expected("array length literal");
                             return Err(());
@@ -2581,7 +2658,7 @@ impl<'a> Parser<'a> {
         let lo = self.span();
         let literal = matches!(
             self.peek(),
-            Tok::Int(_) | Tok::Str(_) | Tok::Byte(_) | Tok::Bytes(_) | Tok::P("-")
+            Tok::Int(..) | Tok::Str(_) | Tok::Byte(_) | Tok::Bytes(_) | Tok::P("-")
         ) || self.is_kw("true")
             || self.is_kw("false");
         if literal || self.is_p("(") || self.is_p("[") || self.is_p("&") {

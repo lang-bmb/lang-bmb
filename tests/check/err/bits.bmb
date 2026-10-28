@@ -1,0 +1,57 @@
+#[summary("비트 연산과 리터럴 진법의 경계: 진법 밖의 숫자, 숫자 없는 접두, 접미사, 섞인 폭, 정수가 아닌 피연산자, 정수가 아닌 시프트 양 (backlog 2N-02)")]
+mod bc {
+    struct Flags {
+        bits: u8,
+    }
+
+    #[effects(pure)]
+    fn digits() -> u32 {
+        0b102 + 0o19
+    }
+
+    #[effects(pure)]
+    fn empty() -> u32 {
+        0x
+    }
+
+    #[effects(pure)]
+    fn suffix() -> u32 {
+        0xffu32
+    }
+
+    #[effects(pure)]
+    fn wide() -> u8 {
+        0x100
+    }
+
+    #[effects(pure)]
+    fn mixed(a: u8, b: u16) -> u16 {
+        a & b
+    }
+
+    #[effects(pure)]
+    fn data(f: Flags, g: Flags) -> u8 {
+        let h: Flags = f | g;
+        h.bits
+    }
+
+    #[effects(pure)]
+    fn flip(f: Flags) -> u8 {
+        let h: Flags = !f;
+        h.bits
+    }
+
+    #[effects(pure)]
+    fn shift_bool(b: bool) -> bool {
+        b << 1
+    }
+
+    #[effects(pure)]
+    fn amount(x: u32, b: bool) -> u32 {
+        x >> b
+    }
+
+    spec fn same(a: i64, b: u64) -> bool {
+        a ^ b == 0
+    }
+}

@@ -1,12 +1,13 @@
 //! Tokenizer. Comments are `//` only and are discarded.
 
+use crate::ast::Radix;
 use crate::diag::{Diag, Diags};
 use crate::source::Span;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Tok {
     Ident(String),
-    Int(u128),
+    Int(u128, Radix),
     Str(String),
     /// `b'a'` (ADR-0044 §2).
     Byte(u8),
@@ -147,72 +148,132 @@ pub fn lex(file: u32, text: &str, diags: &mut Diags) -> Vec<Token> {
         }
         if c.is_ascii_digit() {
             let lo = i;
+            // `0x`, `0o`, `0b` and `_` separators (ADR-0048 §3), as in Rust.
+            let radix = match (c, b.get(i + 1)) {
+                (b'0', Some(b'x')) => Radix::Hex,
+                (b'0', Some(b'o')) => Radix::Oct,
+                (b'0', Some(b'b')) => Radix::Bin,
+                _ => Radix::Dec,
+            };
+            if radix != Radix::Dec {
+                i += 2;
+            }
+            let base: u32 = match radix {
+                Radix::Dec => 10,
+                Radix::Hex => 16,
+                Radix::Oct => 8,
+                Radix::Bin => 2,
+            };
+            // Digits: hexadecimal ones in a `0x` literal, decimal ones
+            // otherwise (a decimal digit outside the base is an error, as in
+            // Rust); what follows is a suffix.
+            let digit = |ch: u8| {
+                if radix == Radix::Hex {
+                    ch.is_ascii_hexdigit()
+                } else {
+                    ch.is_ascii_digit()
+                }
+            };
             let mut v: u128 = 0;
             let mut overflow = false;
-            while i < b.len() && (b[i].is_ascii_digit() || b[i] == b'_') {
+            let mut any = false;
+            let mut bad: Option<(usize, char)> = None;
+            while i < b.len() && (digit(b[i]) || b[i] == b'_') {
                 if b[i] != b'_' {
-                    match v
-                        .checked_mul(10)
-                        .and_then(|x| x.checked_add((b[i] - b'0') as u128))
-                    {
-                        Some(x) => v = x,
-                        None => overflow = true,
+                    any = true;
+                    let d = (b[i] as char).to_digit(16).expect("a digit");
+                    if d >= base {
+                        bad.get_or_insert((i, b[i] as char));
+                    } else {
+                        match v
+                            .checked_mul(base as u128)
+                            .and_then(|x| x.checked_add(d as u128))
+                        {
+                            Some(x) => v = x,
+                            None => overflow = true,
+                        }
                     }
                 }
                 i += 1;
             }
             let digits_end = i;
-            if i < b.len() && (b[i].is_ascii_alphabetic() || b[i] == b'_') {
+            let name = match radix {
+                Radix::Hex => "hexadecimal",
+                Radix::Oct => "octal",
+                Radix::Bin => "binary",
+                Radix::Dec => "decimal",
+            };
+            if let Some((at, ch)) = bad {
+                let allowed = if radix == Radix::Bin {
+                    "`0` and `1`"
+                } else {
+                    "`0` to `7`"
+                };
+                diags.push(
+                    Diag::new(
+                        "E0108",
+                        sp(at, at + 1),
+                        format!("`{ch}` is not {} {name} digit", if radix == Radix::Oct { "an" } else { "a" }),
+                    )
+                    .fix(
+                        format!(
+                            "{name} digits are {allowed}; write the value in another base (`0x` hexadecimal, or decimal)"
+                        ),
+                        None,
+                    ),
+                );
+            }
+            let no_digits = !any && radix != Radix::Dec;
+            if no_digits {
+                diags.push(
+                    Diag::new(
+                        "E0108",
+                        sp(lo, digits_end),
+                        format!("`{}` has no {name} digits", &text[lo..digits_end]),
+                    )
+                    .fix(
+                        format!("write the digits after the prefix: `{}`", radix.text(0)),
+                        None,
+                    ),
+                );
+            }
+            if i < b.len() && (b[i].is_ascii_alphanumeric() || b[i] == b'_') {
                 let slo = i;
                 while i < b.len() && (b[i].is_ascii_alphanumeric() || b[i] == b'_') {
                     i += 1;
                 }
                 let suffix = &text[slo..i];
-                let digits = &text[lo..digits_end];
-                // `0x10`, `0o17`, `0b101`: only decimal literals exist; the fix
-                // writes the same value in decimal (a mechanical fix must
-                // never change a value).
-                let radix = match (digits, suffix.as_bytes().first()) {
-                    ("0", Some(b'x')) => Some(16),
-                    ("0", Some(b'o')) => Some(8),
-                    ("0", Some(b'b')) => Some(2),
-                    _ => None,
-                };
-                let based = radix.and_then(|r| {
-                    let body: String = suffix[1..].chars().filter(|c| *c != '_').collect();
-                    (!body.is_empty())
-                        .then(|| u128::from_str_radix(&body, r).ok())
-                        .flatten()
-                });
+                let written = &text[lo..digits_end];
                 const TYPES: [&str; 12] = [
                     "i8", "i16", "i32", "i64", "i128", "isize", "u8", "u16", "u32", "u64", "u128",
                     "usize",
                 ];
-                let d = if let Some(value) = based {
-                    v = value;
-                    overflow = false;
-                    Diag::new(
-                        "E0104",
-                        sp(lo, i),
-                        format!("only decimal literals are allowed: `{digits}{suffix}` is {value}"),
-                    )
-                    .fix("write the value in decimal", Some(value.to_string()))
+                let d = if no_digits {
+                    // Reported above: the suffix is what the digits would be.
+                    None
                 } else if TYPES.contains(&suffix) {
                     Diag::new(
                         "E0104",
                         sp(lo, i),
                         format!("literal suffix `{suffix}` is not allowed"),
                     )
-                    .fix("remove the suffix", Some(digits.to_string()))
+                    .fix("remove the suffix", Some(written.to_string()))
+                    .into()
                 } else {
                     Diag::new(
                         "E0104",
                         sp(lo, i),
                         format!("literal suffix `{suffix}` is not allowed"),
                     )
-                    .fix("integer literals are plain decimal digits", None)
+                    .fix(
+                        "integer literals are digits in base 10, or after `0x`, `0o` or `0b`",
+                        None,
+                    )
+                    .into()
                 };
-                diags.push(d);
+                if let Some(d) = d {
+                    diags.push(d);
+                }
             }
             if overflow {
                 diags.push(Diag::new(
@@ -222,7 +283,7 @@ pub fn lex(file: u32, text: &str, diags: &mut Diags) -> Vec<Token> {
                 ));
             }
             out.push(Token {
-                tok: Tok::Int(v),
+                tok: Tok::Int(v, radix),
                 span: sp(lo, i),
             });
             continue;

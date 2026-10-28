@@ -389,6 +389,15 @@ pub enum BinOp {
     And,
     Or,
     Implies,
+    /// `&`, `|`, `^`: bitwise on integers, logical (both sides evaluated)
+    /// on `bool`, as in Rust (ADR-0048 §2).
+    BitAnd,
+    BitOr,
+    BitXor,
+    /// `<<`, `>>`: the amount is any integer type and must be below the
+    /// width (E0803); `>>` is arithmetic on signed types (ADR-0048 §2).
+    Shl,
+    Shr,
 }
 
 impl BinOp {
@@ -408,6 +417,11 @@ impl BinOp {
             BinOp::And => "&&",
             BinOp::Or => "||",
             BinOp::Implies => "==>",
+            BinOp::BitAnd => "&",
+            BinOp::BitOr => "|",
+            BinOp::BitXor => "^",
+            BinOp::Shl => "<<",
+            BinOp::Shr => ">>",
         }
     }
     pub fn is_arith(self) -> bool {
@@ -415,6 +429,13 @@ impl BinOp {
             self,
             BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Rem
         )
+    }
+    /// `&`, `|`, `^`: both operands and the result have one type.
+    pub fn is_bit(self) -> bool {
+        matches!(self, BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor)
+    }
+    pub fn is_shift(self) -> bool {
+        matches!(self, BinOp::Shl | BinOp::Shr)
     }
     pub fn is_cmp(self) -> bool {
         matches!(
@@ -430,9 +451,33 @@ pub struct Expr {
     pub span: Span,
 }
 
+/// The base an integer literal is written in (ADR-0048 §3). The normal form
+/// keeps it: `0xff` stays `0xff`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Radix {
+    Dec,
+    Hex,
+    Oct,
+    Bin,
+}
+
+impl Radix {
+    /// The normal form of `v` written in this base: the prefix, lowercase
+    /// digits, no `_` separators and no leading zeros (ADR-0019 §1).
+    pub fn text(self, v: u128) -> String {
+        match self {
+            Radix::Dec => v.to_string(),
+            Radix::Hex => format!("0x{v:x}"),
+            Radix::Oct => format!("0o{v:o}"),
+            Radix::Bin => format!("0b{v:b}"),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum ExprKind {
-    Int(u128),
+    /// An integer literal and the base it is written in.
+    Int(u128, Radix),
     /// `b'a'`: a `u8` (ADR-0044 §2).
     ByteLit(u8),
     /// `b"..."`: a `&[u8]`, only as a call argument (ADR-0044 §2).
