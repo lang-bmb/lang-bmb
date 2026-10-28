@@ -12,7 +12,7 @@ import re
 import sys
 from pathlib import Path
 
-ID = r"(?:\d|INF)[A-Z]?-\d{2}[a-z]?"
+ID = r"(?:\d|INF|T\d)[A-Z]?-\d{2}[a-z]?"
 ID_RE = re.compile(rf"^{ID}$")
 REF_RE = re.compile(rf"`({ID})`")
 
