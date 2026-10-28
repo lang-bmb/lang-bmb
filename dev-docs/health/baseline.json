@@ -14,12 +14,12 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 28017,
+    "S4_stage0_rust_lines": 28740,
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
-    "P1_runnable_programs": 48,
-    "P2_bmb_lines": 13803,
-    "P3_errors_with_help": 0.8413,
+    "P1_runnable_programs": 49,
+    "P2_bmb_lines": 14224,
+    "P3_errors_with_help": 0.8464,
     "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 10
@@ -1152,6 +1152,28 @@
         "P2_bmb_lines": [
           13302,
           13803
+        ]
+      }
+    },
+    {
+      "date": "2026-10-28",
+      "reason": "2N-02 병합: tests/run/bits(P1), 비트 연산 말뭉치(P2), 새 오류 전부 힌트(P3)",
+      "changed": {
+        "S4_stage0_rust_lines": [
+          28017,
+          28740
+        ],
+        "P1_runnable_programs": [
+          48,
+          49
+        ],
+        "P2_bmb_lines": [
+          13803,
+          14224
+        ],
+        "P3_errors_with_help": [
+          0.8413,
+          0.8464
         ]
       }
     }
