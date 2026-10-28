@@ -1,15 +1,200 @@
-//! Normal form printer (ADR-0019 §1) and definition hashes (§2).
+//! Normal form printer (ADR-0019 §1), the qualified text the incremental
+//! keys read (ADR-0032), and the nameless identity printer (ADR-0059 §1;
+//! `identity.rs` computes the hashes).
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::ast::*;
 use crate::check::FnSig;
+use crate::identity::Key;
+use crate::source::Span;
+use crate::verify::Tables;
 
-/// How names are written: as in the source, or fully qualified for hashing.
-struct Printer<'a> {
+/// How names are written: as in the source, fully qualified for the
+/// incremental keys, or without names for the identity hash.
+pub(crate) struct Printer<'a> {
     /// `(known definitions, unit of the definition being printed)`.
     qualify: Option<(&'a BTreeMap<String, FnSig>, String)>,
-    out: String,
+    /// The identity printer (ADR-0059 §1).
+    id: Option<IdMode<'a>>,
+    pub(crate) out: String,
+}
+
+/// How the identity printer writes a reference to another definition
+/// (ADR-0059 §1): `#<id>`, `#self.k` for a member of the recursive component
+/// being hashed, and a trait method or an enum variant as `#<id>#k`.
+pub(crate) trait Resolve {
+    fn entity(&self, key: &Key) -> String;
+    /// Method `name` of trait `trait_path`: the trait's reference and the
+    /// method's position in the trait (`identity.rs`).
+    fn method(&self, trait_path: &str, name: &str) -> String;
+}
+
+/// The identity printer's state: the checker's tables to resolve names,
+/// and the binders seen so far, each written as its position (`_0`, `_1`,
+/// ..; labels `'_0`, ..). Binder names are unique in a function (E0303), so
+/// one map serves the whole definition.
+pub(crate) struct IdMode<'a> {
+    refs: &'a dyn Resolve,
+    t: &'a Tables,
+    traits: &'a BTreeSet<String>,
+    unit: String,
+    binders: BTreeMap<String, String>,
+    labels: BTreeMap<String, String>,
+    next: usize,
+    next_label: usize,
+}
+
+/// What a call path names, for the identity printer.
+enum Callee {
+    /// A definition (function, `spec fn`, trait method) by full path.
+    Fn(String),
+    /// Variant `k` of the enum at this full path.
+    Variant(String, usize),
+    /// A built-in (`print_i64`, `Some`, `Vec::new`, `std::mem::replace`).
+    Plain,
+}
+
+/// The type without references and boxes around it (where a field or
+/// variant is read through them).
+fn peel(t: &TypeKind) -> &TypeKind {
+    match t {
+        TypeKind::Ref { inner, .. } => peel(&inner.kind),
+        TypeKind::Box(e) => peel(&e.kind),
+        t => t,
+    }
+}
+
+impl IdMode<'_> {
+    fn ty(&self, t: &TypeKind) -> String {
+        match t {
+            TypeKind::Named { path, args } => {
+                let head = self.type_ref(path);
+                if args.is_empty() {
+                    head
+                } else {
+                    let a: Vec<String> = args.iter().map(|a| self.ty(&a.kind)).collect();
+                    format!("{head}<{}>", a.join(", "))
+                }
+            }
+            TypeKind::Array(e, n) => format!("[{}; {n}]", self.ty(&e.kind)),
+            TypeKind::Slice(e) => format!("[{}]", self.ty(&e.kind)),
+            TypeKind::Ref { mutable, inner } => format!(
+                "&{}{}",
+                if *mutable { "mut " } else { "" },
+                self.ty(&inner.kind)
+            ),
+            TypeKind::Vec(e) => format!("Vec<{}>", self.ty(&e.kind)),
+            TypeKind::Box(e) => format!("Box<{}>", self.ty(&e.kind)),
+            TypeKind::Param(n) => self.binders.get(n).cloned().unwrap_or_else(|| n.clone()),
+            t => crate::check::ty_str(t),
+        }
+    }
+
+    /// A type path as written in the unit: a type parameter, a declared
+    /// type (by reference), or a built-in by name.
+    fn type_ref(&self, path: &[String]) -> String {
+        if path.len() == 1
+            && let Some(b) = self.binders.get(&path[0])
+        {
+            return b.clone();
+        }
+        let full = if path.len() == 1 {
+            format!("{}::{}", self.unit, path[0])
+        } else {
+            path.join("::")
+        };
+        if self.t.adts.contains_key(&full) {
+            self.refs.entity(&Key::Type(full))
+        } else {
+            path.join("::")
+        }
+    }
+
+    /// A trait bound: a declared trait by reference, `Copy`, `Eq` and `Ord`
+    /// by name.
+    fn bound(&self, b: &[Ident]) -> String {
+        let plain = path_str(b);
+        let local = format!("{}::{plain}", self.unit);
+        if b.len() == 1 && self.traits.contains(&local) {
+            self.refs.entity(&Key::Trait(local))
+        } else if self.traits.contains(&plain) {
+            self.refs.entity(&Key::Trait(plain))
+        } else {
+            plain
+        }
+    }
+
+    /// A reference to the function, `spec fn` or trait method at `path`.
+    fn def_ref(&self, path: &str) -> String {
+        match self.t.fns.get(path).and_then(|s| s.trait_of.as_ref()) {
+            Some(tr) => self
+                .refs
+                .method(tr, path.rsplit("::").next().unwrap_or_default()),
+            None => self.refs.entity(&Key::Def(path.to_string())),
+        }
+    }
+
+    /// What a call path names, as the checker resolves it (`map::resolve`):
+    /// `f`, `T::f` and `Trait::f` of the unit, a full path, or a variant of
+    /// the call's enum type.
+    fn callee(&self, path: &[Ident], span: Span) -> Callee {
+        let plain = path_str(path);
+        if path.len() <= 2 {
+            let local = format!("{}::{plain}", self.unit);
+            if let Some(sig) = self.t.fns.get(&local)
+                && !sig.builtin
+                && (path.len() == 1 || sig.in_impl || sig.trait_of.is_some())
+            {
+                return Callee::Fn(local);
+            }
+        }
+        if self.t.fns.get(&plain).is_some_and(|s| !s.builtin) {
+            return Callee::Fn(plain);
+        }
+        match path.last().and_then(|v| self.variant_at(span, &v.name)) {
+            Some((tp, k)) => Callee::Variant(tp, k),
+            None => Callee::Plain,
+        }
+    }
+
+    /// The declared struct or enum of the expression at `span`.
+    fn adt_at(&self, span: Span) -> Option<(String, &crate::check::Adt)> {
+        let t = self.t.types.get(&(span.file, span.lo, span.hi))?;
+        match peel(t) {
+            TypeKind::Named { path, .. } => {
+                let full = path.join("::");
+                self.t.adts.get(&full).map(|a| (full, a))
+            }
+            _ => None,
+        }
+    }
+
+    /// Variant `name` of the enum the expression at `span` has.
+    fn variant_at(&self, span: Span, name: &str) -> Option<(String, usize)> {
+        let (full, adt) = self.adt_at(span)?;
+        match &adt.kind {
+            crate::check::AdtKind::Enum(vs) => {
+                vs.iter().position(|(n, _)| n == name).map(|k| (full, k))
+            }
+            _ => None,
+        }
+    }
+
+    /// Position of field `name` of the struct the expression at `span` has.
+    fn field_at(&self, span: Span, name: &str) -> Option<(String, usize)> {
+        let (full, adt) = self.adt_at(span)?;
+        match &adt.kind {
+            crate::check::AdtKind::Struct(fs) => {
+                fs.iter().position(|(n, _)| n == name).map(|k| (full, k))
+            }
+            _ => None,
+        }
+    }
+
+    fn variant_ref(&self, tp: &str, k: usize) -> String {
+        format!("{}#{k}", self.refs.entity(&Key::Type(tp.to_string())))
+    }
 }
 
 const INDENT: &str = "    ";
@@ -123,12 +308,181 @@ impl<'a> Printer<'a> {
     }
 
     fn uses_name(&self, name: &str) -> String {
+        if let Some(m) = &self.id {
+            return match crate::check::uses_target(name, &m.unit, &m.t.fns) {
+                Some(p) => m.def_ref(&p),
+                None => name.to_string(),
+            };
+        }
         match &self.qualify {
             Some((fns, unit)) => {
                 crate::check::uses_target(name, unit, fns).unwrap_or_else(|| name.to_string())
             }
             _ => name.to_string(),
         }
+    }
+
+    // ---------- names (identity printer, ADR-0059 §1) ----------
+
+    /// The identity printer over the definitions of `unit`.
+    pub(crate) fn identity(
+        refs: &'a dyn Resolve,
+        t: &'a Tables,
+        traits: &'a BTreeSet<String>,
+        unit: &str,
+    ) -> Printer<'a> {
+        Printer {
+            qualify: None,
+            id: Some(IdMode {
+                refs,
+                t,
+                traits,
+                unit: unit.to_string(),
+                binders: BTreeMap::new(),
+                labels: BTreeMap::new(),
+                next: 0,
+                next_label: 0,
+            }),
+            out: String::new(),
+        }
+    }
+
+    /// Forgets the binders (a new definition, or the next trait method).
+    pub(crate) fn reset_binders(&mut self) {
+        if let Some(m) = &mut self.id {
+            m.binders.clear();
+            m.labels.clear();
+            m.next = 0;
+            m.next_label = 0;
+        }
+    }
+
+    /// A type as written: in the identity printer, without names.
+    pub(crate) fn ty(&self, t: &Type) -> String {
+        match &self.id {
+            Some(m) => m.ty(&t.kind),
+            None => type_str(t),
+        }
+    }
+
+    /// Binds `name` (a parameter, local, type parameter, ..): in the
+    /// identity printer, its position.
+    fn bind(&mut self, name: &str) -> String {
+        match &mut self.id {
+            Some(m) => {
+                let b = format!("_{}", m.next);
+                m.next += 1;
+                m.binders.insert(name.to_string(), b.clone());
+                b
+            }
+            None => name.to_string(),
+        }
+    }
+
+    /// A use of a bound name; any other name (`None`) as written.
+    fn local(&self, name: &str) -> String {
+        match &self.id {
+            Some(m) => m
+                .binders
+                .get(name)
+                .cloned()
+                .unwrap_or_else(|| name.to_string()),
+            None => name.to_string(),
+        }
+    }
+
+    fn bind_label(&mut self, name: &str) -> String {
+        match &mut self.id {
+            Some(m) => {
+                let b = format!("_{}", m.next_label);
+                m.next_label += 1;
+                m.labels.insert(name.to_string(), b.clone());
+                b
+            }
+            None => name.to_string(),
+        }
+    }
+
+    fn label(&self, name: &str) -> String {
+        match &self.id {
+            Some(m) => m
+                .labels
+                .get(name)
+                .cloned()
+                .unwrap_or_else(|| name.to_string()),
+            None => name.to_string(),
+        }
+    }
+
+    /// `<T: Copy, U: Copy + geo::Shape>` (binding the parameters), or
+    /// nothing.
+    pub(crate) fn generics(&mut self, gs: &[TypeParam]) -> String {
+        if self.id.is_none() {
+            return generics_str(gs);
+        }
+        if gs.is_empty() {
+            return String::new();
+        }
+        let ps: Vec<String> = gs
+            .iter()
+            .map(|g| {
+                let n = self.bind(&g.name.name);
+                let m = self.id.as_ref().unwrap();
+                if g.bounds.is_empty() {
+                    return n;
+                }
+                let bs: Vec<String> = g.bounds.iter().map(|b| m.bound(b)).collect();
+                format!("{n}: {}", bs.join(" + "))
+            })
+            .collect();
+        format!("<{}>", ps.join(", "))
+    }
+
+    /// A reference to a declared type by its name in the unit (an `impl`
+    /// head) with its arguments.
+    pub(crate) fn applied_ty(&self, name: &str, args: &[Type]) -> String {
+        match &self.id {
+            Some(m) => {
+                let head = m.type_ref(&[name.to_string()]);
+                if args.is_empty() {
+                    head
+                } else {
+                    let a: Vec<String> = args.iter().map(|a| m.ty(&a.kind)).collect();
+                    format!("{head}<{}>", a.join(", "))
+                }
+            }
+            None => applied(name, args),
+        }
+    }
+
+    /// A trait method by its trait's path (identity printer).
+    pub(crate) fn method_ref(&self, trait_path: &str, name: &str) -> String {
+        match &self.id {
+            Some(m) => m.refs.method(trait_path, name),
+            None => format!("{trait_path}::{name}"),
+        }
+    }
+
+    /// A pattern; in the identity printer the variant by its position in
+    /// the scrutinee's enum and the binders by theirs.
+    fn pat(&mut self, p: &Pat, scrut: Span) -> String {
+        if self.id.is_none() {
+            return pat_str(p);
+        }
+        let m = self.id.as_ref().unwrap();
+        let path = match p.path.last().and_then(|v| m.variant_at(scrut, &v.name)) {
+            Some((tp, k)) => m.variant_ref(&tp, k),
+            None => path_str(&p.path),
+        };
+        if !p.parens {
+            return path;
+        }
+        let bs: Vec<String> = p
+            .binds
+            .iter()
+            .map(|b| b.as_ref().map_or("_".to_string(), |i| self.bind(&i.name)))
+            .collect();
+        format!("{path}({})", bs.join(", "))
     }
 
     fn line(&mut self, depth: usize, text: &str) {
@@ -248,9 +602,30 @@ impl<'a> Printer<'a> {
         self.type_def_as(t, depth, &t.name.name);
     }
 
-    fn type_def_as(&mut self, t: &TypeDef, depth: usize, name: &str) {
+    pub(crate) fn type_def_as(&mut self, t: &TypeDef, depth: usize, name: &str) {
         for a in &t.attrs {
             self.attr_line(a, depth);
+        }
+        let gens = self.generics(&t.generics);
+        if self.id.is_some() {
+            // Fields and variants by position: their types (ADR-0059 §1).
+            let (kw, items): (&str, Vec<String>) = match &t.kind {
+                TypeDefKind::Struct(fs) => ("struct", fs.iter().map(|f| self.ty(&f.ty)).collect()),
+                TypeDefKind::Enum(vs) => (
+                    "enum",
+                    vs.iter()
+                        .map(|v| {
+                            let ps: Vec<String> = v.payload.iter().map(|p| self.ty(p)).collect();
+                            format!("({})", ps.join(", "))
+                        })
+                        .collect(),
+                ),
+            };
+            self.line(
+                depth,
+                &format!("{kw} {name}{gens} {{ {} }}", items.join(", ")),
+            );
+            return;
         }
         let (kw, items): (&str, Vec<String>) = match &t.kind {
             TypeDefKind::Struct(fs) => (
@@ -273,7 +648,7 @@ impl<'a> Printer<'a> {
                     .collect(),
             ),
         };
-        let name = format!("{name}{}", generics_str(&t.generics));
+        let name = format!("{name}{gens}");
         if items.is_empty() {
             self.line(depth, &format!("{kw} {name} {{}}"));
         } else {
@@ -319,20 +694,42 @@ impl<'a> Printer<'a> {
             if k > 0 {
                 self.out.push('\n');
             }
-            if tf.has_body {
-                self.function(&tf.f, depth + 1, None, true);
-            } else {
-                self.function(&tf.f, depth + 1, None, false);
-                // The signature ends with `;` (after its last clause).
-                if self.out.ends_with(",\n") {
-                    self.out.truncate(self.out.len() - 2);
-                } else {
-                    self.out.pop();
-                }
-                self.out.push_str(";\n");
-            }
+            self.trait_fn(tf, depth + 1, None);
         }
         self.line(depth, "}");
+    }
+
+    /// A trait method: its default body, or its signature ending with `;`.
+    pub(crate) fn trait_fn(&mut self, tf: &TraitFn, depth: usize, rename: Option<&str>) {
+        if tf.has_body {
+            self.function(&tf.f, depth, rename, true);
+        } else {
+            self.function(&tf.f, depth, rename, false);
+            // The signature ends with `;` (after its last clause).
+            if self.out.ends_with(",\n") {
+                self.out.truncate(self.out.len() - 2);
+            } else {
+                self.out.pop();
+            }
+            self.out.push_str(";\n");
+        }
+    }
+
+    /// The trait's identity text (ADR-0059 §1): its attributes and its
+    /// methods in `order` (positions in `t.fns`), each without names.
+    pub(crate) fn trait_identity(&mut self, t: &TraitDef, order: &[usize]) {
+        for a in &t.attrs {
+            self.attr_line(a, 0);
+        }
+        self.line(0, "trait _ {");
+        for (k, &i) in order.iter().enumerate() {
+            if k > 0 {
+                self.out.push('\n');
+            }
+            self.reset_binders();
+            self.trait_fn(&t.fns[i], 1, Some("_"));
+        }
+        self.line(0, "}");
     }
 
     /// `impl<..> Trait for T { .. }`, functions by name (ADR-0046 §2).
@@ -360,7 +757,13 @@ impl<'a> Printer<'a> {
     }
 
     /// `rename`: print the definition's own name as this (hashing uses `_`).
-    fn function(&mut self, f: &FnDef, depth: usize, rename: Option<&str>, with_body: bool) {
+    pub(crate) fn function(
+        &mut self,
+        f: &FnDef,
+        depth: usize,
+        rename: Option<&str>,
+        with_body: bool,
+    ) {
         let effects = f.attrs.iter().find(|a| a.name.name == "effects");
         if let Some(a) = effects {
             let args: Vec<String> = a
@@ -392,14 +795,22 @@ impl<'a> Printer<'a> {
                 ),
             );
         }
+        // Type parameters first: the parameter types name them.
+        let gens = self.generics(&f.generics);
         let params: Vec<String> = f
             .params
             .iter()
-            .map(|p| format!("{}: {}", p.name.name, type_str(&p.ty)))
+            .map(|p| {
+                let n = self.bind(&p.name.name);
+                format!("{n}: {}", self.ty(&p.ty))
+            })
             .collect();
         let ret = match &f.ret.name {
-            Some(n) => format!("({}: {})", n.name, type_str(&f.ret.ty)),
-            None => type_str(&f.ret.ty),
+            Some(n) => {
+                let n = self.bind(&n.name);
+                format!("({n}: {})", self.ty(&f.ret.ty))
+            }
+            None => self.ty(&f.ret.ty),
         };
         let kw = if f.kind == FnKind::Spec {
             "spec fn"
@@ -407,11 +818,7 @@ impl<'a> Printer<'a> {
             "fn"
         };
         let name = rename.unwrap_or(&f.name.name);
-        let sig = format!(
-            "{kw} {name}{}({}) -> {ret}",
-            generics_str(&f.generics),
-            params.join(", ")
-        );
+        let sig = format!("{kw} {name}{gens}({}) -> {ret}", params.join(", "));
         let has_clauses = !f.requires.is_empty() || !f.ensures.is_empty() || f.decreases.is_some();
         if !with_body {
             self.line(depth, &sig);
@@ -489,9 +896,9 @@ impl<'a> Printer<'a> {
         else {
             unreachable!()
         };
-        let l = label
-            .as_ref()
-            .map_or(String::new(), |l| format!("'{}: ", l.name));
+        let l = label.as_ref().map_or(String::new(), |l| {
+            format!("'{}: ", self.bind_label(&l.name))
+        });
         if invariants.is_empty() && decreases.is_none() {
             self.block_open(body, depth, &format!("{head}{l}loop "), suffix);
             return;
@@ -516,8 +923,9 @@ impl<'a> Printer<'a> {
         let s = self.cond(scrut);
         self.line(depth, &format!("{prefix}match {s} {{"));
         for a in arms {
+            // The pattern binds names the body uses.
+            let pat = self.pat(&a.pat, scrut.span);
             let body = self.expr(&a.body, 0);
-            let pat = pat_str(&a.pat);
             self.line(depth + 1, &format!("{pat} => {body},"));
         }
         self.line(depth, &format!("}}{suffix}"));
@@ -578,7 +986,8 @@ impl<'a> Printer<'a> {
                 ..
             } => {
                 let m = if *mutable { "mut " } else { "" };
-                let head = format!("let {m}{}: {} = ", name.name, type_str(ty));
+                let n = self.bind(&name.name);
+                let head = format!("let {m}{n}: {} = ", self.ty(ty));
                 self.multiline_value(init, depth, &head, ";");
             }
             Stmt::Assign { target, value, .. } => {
@@ -593,10 +1002,10 @@ impl<'a> Printer<'a> {
                 body,
                 ..
             } => {
+                let l = label.as_ref().map_or(String::new(), |l| {
+                    format!("'{}: ", self.bind_label(&l.name))
+                });
                 let c = self.cond(cond);
-                let l = label
-                    .as_ref()
-                    .map_or(String::new(), |l| format!("'{}: ", l.name));
                 self.line(depth, &format!("{l}while {c}"));
                 if !invariants.is_empty() {
                     let xs: Vec<String> = invariants.iter().map(|e| self.expr(e, 0)).collect();
@@ -618,12 +1027,13 @@ impl<'a> Printer<'a> {
                 body,
                 ..
             } => {
-                let l = label
-                    .as_ref()
-                    .map_or(String::new(), |l| format!("'{}: ", l.name));
+                let l = label.as_ref().map_or(String::new(), |l| {
+                    format!("'{}: ", self.bind_label(&l.name))
+                });
                 let (a, b) = (self.cond(lo), self.cond(hi));
                 let op = if *inclusive { "..=" } else { ".." };
-                let head = format!("{l}for {} in {a}{op}{b}", var.name);
+                let v = self.bind(&var.name);
+                let head = format!("{l}for {v} in {a}{op}{b}");
                 if invariants.is_empty() {
                     self.block_open(body, depth, &format!("{head} "), "");
                 } else {
@@ -640,8 +1050,12 @@ impl<'a> Printer<'a> {
             Stmt::LetFields {
                 path, fields, init, ..
             } => {
-                let fs: Vec<&str> = fields.iter().map(|f| f.name.as_str()).collect();
-                let head = format!("let {} {{ {} }} = ", self.path(path), fs.join(", "));
+                let ty = match &self.id {
+                    Some(m) => m.type_ref(&path.iter().map(|i| i.name.clone()).collect::<Vec<_>>()),
+                    None => self.path(path),
+                };
+                let fs: Vec<String> = fields.iter().map(|f| self.bind(&f.name)).collect();
+                let head = format!("let {ty} {{ {} }} = ", fs.join(", "));
                 self.multiline_value(init, depth, &head, ";");
             }
             Stmt::Expr(e) => match &e.kind {
@@ -695,7 +1109,7 @@ impl<'a> Printer<'a> {
             ExprKind::Break { label, value } => {
                 let mut t = "break".to_string();
                 if let Some(l) = label {
-                    t.push_str(&format!(" '{}", l.name));
+                    t.push_str(&format!(" '{}", self.label(&l.name)));
                 }
                 if let Some(v) = value {
                     t.push_str(&format!(" {}", self.expr(v, 0)));
@@ -703,8 +1117,27 @@ impl<'a> Printer<'a> {
                 t
             }
             ExprKind::Continue { label: None } => "continue".into(),
-            ExprKind::Continue { label: Some(l) } => format!("continue '{}", l.name),
-            ExprKind::Var(id) => id.name.clone(),
+            ExprKind::Continue { label: Some(l) } => format!("continue '{}", self.label(&l.name)),
+            ExprKind::Var(id) => self.local(&id.name),
+            ExprKind::Call { path, targs, args } if self.id.is_some() => {
+                let a: Vec<String> = args.iter().map(|x| self.expr(x, 0)).collect();
+                let m = self.id.as_ref().unwrap();
+                // Type arguments by their segment counted from the end
+                // (`f::<A>`: 0, `T::<A>::f`: 1), whatever the path's length.
+                let ts: String = targs
+                    .iter()
+                    .map(|t| {
+                        let xs: Vec<String> = t.args.iter().map(|a| m.ty(&a.kind)).collect();
+                        format!("::[{}]<{}>", path.len() - 1 - t.seg, xs.join(", "))
+                    })
+                    .collect();
+                let head = match m.callee(path, e.span) {
+                    Callee::Fn(p) => m.def_ref(&p),
+                    Callee::Variant(tp, k) => m.variant_ref(&tp, k),
+                    Callee::Plain => path_str(path),
+                };
+                format!("{head}{ts}({})", a.join(", "))
+            }
             ExprKind::Call { path, targs, args } => {
                 let a: Vec<String> = args.iter().map(|x| self.expr(x, 0)).collect();
                 let mut segs: Vec<String> = self.path(path).split("::").map(String::from).collect();
@@ -753,7 +1186,10 @@ impl<'a> Printer<'a> {
             ExprKind::Forall { binders, body } => {
                 let bs: Vec<String> = binders
                     .iter()
-                    .map(|b| format!("{}: {}", b.name.name, type_str(&b.ty)))
+                    .map(|b| {
+                        let n = self.bind(&b.name.name);
+                        format!("{n}: {}", self.ty(&b.ty))
+                    })
                     .collect();
                 format!("forall|{}| {}", bs.join(", "), self.expr(body, 0))
             }
@@ -761,17 +1197,47 @@ impl<'a> Printer<'a> {
             ExprKind::StructLit { path, fields, rest } => {
                 let mut fs: Vec<String> = fields
                     .iter()
-                    .map(|(n, x)| format!("{}: {}", n.name, self.expr(x, 0)))
+                    .map(|(n, x)| {
+                        // A field by its position (identity printer).
+                        let f = match self.id.as_ref().and_then(|m| m.field_at(e.span, &n.name)) {
+                            Some((_, k)) => k.to_string(),
+                            None => n.name.clone(),
+                        };
+                        format!("{f}: {}", self.expr(x, 0))
+                    })
                     .collect();
                 if let Some(r) = rest {
                     fs.push(format!("..{}", self.expr(r, 0)));
                 }
-                format!("{} {{ {} }}", self.path(path), fs.join(", "))
+                let head = match self.id.as_ref().and_then(|m| m.adt_at(e.span)) {
+                    Some((tp, _)) => self.id.as_ref().unwrap().refs.entity(&Key::Type(tp)),
+                    None => self.path(path),
+                };
+                format!("{head} {{ {} }}", fs.join(", "))
             }
-            ExprKind::Path(path) => self.path(path),
+            ExprKind::Path(path) => {
+                match self.id.as_ref().and_then(|m| {
+                    let v = path.last()?;
+                    let (tp, k) = m.variant_at(e.span, &v.name)?;
+                    Some(m.variant_ref(&tp, k))
+                }) {
+                    Some(v) => v,
+                    None => self.path(path),
+                }
+            }
             ExprKind::Deref(x) => format!("*{}", self.expr(x, PREFIX)),
             ExprKind::Try(x) => format!("{}?", self.expr(x, POSTFIX)),
-            ExprKind::Field { base, name } => format!("{}.{}", self.expr(base, POSTFIX), name.name),
+            ExprKind::Field { base, name } => {
+                let f = match self
+                    .id
+                    .as_ref()
+                    .and_then(|m| m.field_at(base.span, &name.name))
+                {
+                    Some((_, k)) => k.to_string(),
+                    None => name.name.clone(),
+                };
+                format!("{}.{f}", self.expr(base, POSTFIX))
+            }
             // Nested multi-line forms are printed on one line inside expressions.
             ExprKind::If { .. }
             | ExprKind::Block(_)
@@ -790,24 +1256,25 @@ impl<'a> Printer<'a> {
 pub fn format_units(p: &Program) -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
     for m in &p.mods {
-        let mut pr = Printer {
-            qualify: None,
-            out: String::new(),
-        };
+        let mut pr = plain();
         pr.module(m, 0);
         out.insert(m.name.name.clone(), pr.out);
     }
     out
 }
 
-/// Body and interface hashes of one definition (ADR-0019 §2).
+/// The identity and the body and interface hashes of one definition or
+/// type declaration (ADR-0059 §1, §4).
 pub struct DefHash {
     pub path: String,
+    pub id: String,
     pub body: String,
     pub iface: String,
 }
 
-/// Qualified normal form of one definition, as hashed.
+/// Qualified normal form of one definition: other definitions by full path
+/// (ADR-0019 §2). The incremental keys read it (ADR-0032); the identity
+/// hashes do not (ADR-0059).
 pub fn qualified_text(
     f: &FnDef,
     unit: &str,
@@ -816,6 +1283,7 @@ pub fn qualified_text(
 ) -> String {
     let mut pr = Printer {
         qualify: Some((fns, unit.to_string())),
+        id: None,
         out: String::new(),
     };
     // The `impl` a function is checked and proved in (backlog 2T-03): its
@@ -838,33 +1306,63 @@ pub fn qualified_text(
     pr.out
 }
 
-pub fn hashes(p: &Program, fns: &BTreeMap<String, FnSig>) -> Vec<DefHash> {
-    let mut defs = crate::check::defs_of(p, fns);
-    defs.sort_by(|a, b| a.0.cmp(&b.0));
-    let mut out: Vec<DefHash> = defs
+/// Identity hashes of every definition and type declaration, by path
+/// (ADR-0059 §1: `bmb hash`).
+pub fn hashes(p: &Program, t: &Tables) -> Vec<DefHash> {
+    let ids = crate::identity::Ids::new(p, t);
+    let mut out: Vec<DefHash> = crate::check::defs_of(p, &t.fns)
+        .into_iter()
+        .map(|(path, _, _)| crate::identity::Key::Def(path))
+        .chain(type_paths(p).into_iter().map(crate::identity::Key::Type))
+        .filter_map(|k| {
+            let h = ids.get(&k)?;
+            Some(DefHash {
+                path: k.path().to_string(),
+                id: h.id,
+                body: h.body,
+                iface: h.iface,
+            })
+        })
+        .collect();
+    out.sort_by(|a, b| a.path.cmp(&b.path));
+    out
+}
+
+/// The full paths of the type declarations.
+fn type_paths(p: &Program) -> Vec<String> {
+    fn walk(m: &Mod, prefix: &str, out: &mut Vec<String>) {
+        let mp = format!("{prefix}{}", m.name.name);
+        for s in &m.mods {
+            walk(s, &format!("{mp}::"), out);
+        }
+        out.extend(m.types.iter().map(|t| format!("{mp}::{}", t.name.name)));
+    }
+    let mut out = Vec::new();
+    for m in &p.mods {
+        walk(m, "", &mut out);
+    }
+    out
+}
+
+/// The qualified body hash of every definition and type declaration, by
+/// path: what changed in a definition's own text, other definitions named
+/// by path (ADR-0019 §2). A commit reports these (`workspace::Commit`).
+pub fn qualified_hashes(p: &Program, fns: &BTreeMap<String, FnSig>) -> BTreeMap<String, String> {
+    let mut out: BTreeMap<String, String> = crate::check::defs_of(p, fns)
         .into_iter()
         .map(|(path, unit, f)| {
-            let (body, iface) = def_hash(f, &unit, fns);
-            DefHash { path, body, iface }
+            let body = crate::sha256::hex(qualified_text(f, &unit, fns, true).as_bytes());
+            (path, body)
         })
         .collect();
     out.extend(type_hashes(p));
-    out.sort_by(|a, b| a.path.cmp(&b.path));
     out
 }
 
 /// A trait declaration in normal form on one line (map L1 `signature`).
 pub fn trait_text(t: &TraitDef) -> String {
-    trait_text_as(t, &t.name.name)
-}
-
-/// `trait_text` with the trait's own name written as `name` (hashing
-/// uses `_`).
-pub fn trait_text_as(t: &TraitDef, name: &str) -> String {
-    let mut q = t.clone();
-    q.name.name = name.to_string();
     let mut pr = plain();
-    pr.trait_def(&q, 0);
+    pr.trait_def(t, 0);
     pr.out
         .lines()
         .map(str::trim)
@@ -880,12 +1378,12 @@ pub fn type_text(t: &TypeDef) -> String {
     pr.out.trim_end().to_string()
 }
 
-/// Hashes of the type declarations. A type declaration is its own surface:
-/// body hash = interface hash, its name written `_` (ADR-0026 §6, as for
+/// Qualified hashes of the type declarations, by path. A type declaration
+/// is its own surface, its name written `_` (ADR-0026 §6, as for
 /// definitions, ADR-0019 §2).
-pub fn type_hashes(p: &Program) -> Vec<DefHash> {
+fn type_hashes(p: &Program) -> Vec<(String, String)> {
     let mut out = Vec::new();
-    fn types(m: &Mod, prefix: &str, out: &mut Vec<DefHash>) {
+    fn types(m: &Mod, prefix: &str, out: &mut Vec<(String, String)>) {
         let mp = format!("{prefix}{}", m.name.name);
         for s in &m.mods {
             types(s, &format!("{mp}::"), out);
@@ -931,28 +1429,13 @@ pub fn type_hashes(p: &Program) -> Vec<DefHash> {
             let mut pr = plain();
             pr.type_def_as(&q, 0, "_");
             let h = crate::sha256::hex(pr.out.as_bytes());
-            out.push(DefHash {
-                path: format!("{mp}::{}", t.name.name),
-                body: h.clone(),
-                iface: h,
-            });
+            out.push((format!("{mp}::{}", t.name.name), h));
         }
     }
     for m in &p.mods {
         types(m, "", &mut out);
     }
     out
-}
-
-/// Body and interface hash of one definition in `unit` (ADR-0019 §2).
-pub fn def_hash(f: &FnDef, unit: &str, fns: &BTreeMap<String, FnSig>) -> (String, String) {
-    let body = crate::sha256::hex(qualified_text(f, unit, fns, true).as_bytes());
-    let iface = if f.kind == FnKind::Spec {
-        body.clone()
-    } else {
-        crate::sha256::hex(qualified_text(f, unit, fns, false).as_bytes())
-    };
-    (body, iface)
 }
 
 /// What a caller's query reads of an executable function (backlog 2D-22):
@@ -968,6 +1451,7 @@ pub fn caller_text(f: &FnDef, unit: &str, fns: &BTreeMap<String, FnSig>) -> Stri
 fn plain() -> Printer<'static> {
     Printer {
         qualify: None,
+        id: None,
         out: String::new(),
     }
 }

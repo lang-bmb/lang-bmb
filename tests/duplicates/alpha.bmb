@@ -1,0 +1,191 @@
+// Alpha-equivalent duplicates (ADR-0059 §6, backlog T1-10): definitions
+// that differ only in names group together under `query duplicates`; the
+// lines below list every expected group (`compiler/tests/map.rs`).
+//
+// group: dupa::clamp dupb::limit
+// group: dupa::count_down dupb::tick
+// group: dupa::even dupb::ev
+// group: dupa::odd dupb::od
+// group: dupa::twice_clamp dupb::double_limit
+// group: dupa::sum_p dupb::total_q
+// group: dupa::first dupb::lead
+// group: dupa::loop_sum dupb::acc
+// group: dupa::in_range dupb::within
+
+#[summary("원본")]
+mod dupa {
+    struct P { x: i64, y: i64 }
+
+    spec fn in_range(v: i64) -> bool { -100 <= v && v <= 100 }
+
+    #[effects(pure)]
+    fn clamp(v: i64, lo: i64, hi: i64) -> i64 {
+        if v < lo {
+            lo
+        } else if v > hi {
+            hi
+        } else {
+            v
+        }
+    }
+
+    // Calls a duplicate: the caller is one too.
+    #[effects(pure)]
+    fn twice_clamp(a: i64) -> i64 {
+        clamp(a, 0, 10).saturating_mul(2)
+    }
+
+    // Self-recursive.
+    #[effects(pure)]
+    fn count_down(n: u64) -> u64
+        decreases n,
+    {
+        if n == 0 {
+            0
+        } else {
+            count_down(n - 1)
+        }
+    }
+
+    // Mutually recursive.
+    #[effects(pure)]
+    fn even(n: u64) -> bool
+        decreases n,
+    {
+        if n == 0 {
+            true
+        } else {
+            odd(n - 1)
+        }
+    }
+
+    #[effects(pure)]
+    fn odd(n: u64) -> bool
+        decreases n,
+    {
+        if n == 0 {
+            false
+        } else {
+            even(n - 1)
+        }
+    }
+
+    // Fields by position.
+    #[effects(pure)]
+    fn sum_p(p: P) -> i64 {
+        p.x.saturating_add(p.y)
+    }
+
+    #[effects(pure)]
+    fn first(p: P) -> i64 {
+        p.x
+    }
+
+    // Locals and labels.
+    #[effects(pure)]
+    fn loop_sum(n: u64) -> u64 {
+        let mut total: u64 = 0;
+        'outer: for i in 0..n {
+            if i > 10 {
+                break 'outer;
+            }
+            total = total.saturating_add(i);
+        }
+        total
+    }
+
+    // Not duplicates: another constant, another field.
+    #[effects(pure)]
+    fn plus_one(v: i64) -> i64 {
+        v.saturating_add(1)
+    }
+
+    #[effects(pure)]
+    fn second(p: P) -> i64 {
+        p.y
+    }
+}
+
+#[summary("이름만 다른 복제")]
+mod dupb {
+    // Fields renamed and reordered in name, not in position.
+    struct Q { b: i64, a: i64 }
+
+    spec fn within(w: i64) -> bool { -100 <= w && w <= 100 }
+
+    #[effects(pure)]
+    fn limit(x: i64, low: i64, high: i64) -> i64 {
+        if x < low {
+            low
+        } else if x > high {
+            high
+        } else {
+            x
+        }
+    }
+
+    #[effects(pure)]
+    fn double_limit(z: i64) -> i64 {
+        limit(z, 0, 10).saturating_mul(2)
+    }
+
+    #[effects(pure)]
+    fn tick(k: u64) -> u64
+        decreases k,
+    {
+        if k == 0 {
+            0
+        } else {
+            tick(k - 1)
+        }
+    }
+
+    #[effects(pure)]
+    fn ev(m: u64) -> bool
+        decreases m,
+    {
+        if m == 0 {
+            true
+        } else {
+            od(m - 1)
+        }
+    }
+
+    #[effects(pure)]
+    fn od(m: u64) -> bool
+        decreases m,
+    {
+        if m == 0 {
+            false
+        } else {
+            ev(m - 1)
+        }
+    }
+
+    #[effects(pure)]
+    fn total_q(q: Q) -> i64 {
+        q.b.saturating_add(q.a)
+    }
+
+    #[effects(pure)]
+    fn lead(q: Q) -> i64 {
+        q.b
+    }
+
+    #[effects(pure)]
+    fn acc(limit_n: u64) -> u64 {
+        let mut s: u64 = 0;
+        'l: for j in 0..limit_n {
+            if j > 10 {
+                break 'l;
+            }
+            s = s.saturating_add(j);
+        }
+        s
+    }
+
+    #[effects(pure)]
+    fn plus_two(v: i64) -> i64 {
+        v.saturating_add(2)
+    }
+}

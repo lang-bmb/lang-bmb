@@ -212,6 +212,63 @@ mod lib2 {
     );
 }
 
+/// The alpha-equivalence corpus (`tests/duplicates/*.bmb`, ADR-0059 §6):
+/// definitions that differ only in parameter, local, label, field or
+/// definition names, recursive and mutually recursive ones and callers of
+/// duplicates group together, exactly as each file's `// group:` lines say.
+/// Each group shares one `id` in the L1 rows.
+#[test]
+fn duplicates_groups_alpha_equivalent_definitions() {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/duplicates");
+    let mut paths: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.extension().is_some_and(|x| x == "bmb"))
+        .collect();
+    paths.sort();
+    assert!(!paths.is_empty());
+    for p in paths {
+        let text = std::fs::read_to_string(&p).unwrap();
+        let mut want: Vec<Vec<String>> = text
+            .lines()
+            .filter_map(|l| l.strip_prefix("// group: "))
+            .map(|g| {
+                let mut v: Vec<String> = g.split_whitespace().map(String::from).collect();
+                v.sort();
+                v
+            })
+            .collect();
+        want.sort();
+        let f = files(&[("x.bmb", &text)]);
+        let out = run(&f, &["query", "duplicates"]);
+        let mut got: Vec<Vec<String>> = out
+            .lines()
+            .filter(|r| r.contains("\"defs\":["))
+            .map(|r| {
+                let defs = &r[r.find("\"defs\":[").unwrap() + 8..r.rfind(']').unwrap()];
+                defs.split(',')
+                    .map(|d| d.trim_matches('"').to_string())
+                    .collect()
+            })
+            .collect();
+        got.sort();
+        assert_eq!(got, want, "{}\n{out}", p.display());
+        // The L1 `id` of a group's members is the group's.
+        let l1 = run(&f, &["map", "L1"]);
+        for g in &want {
+            let ids: std::collections::BTreeSet<&str> = l1
+                .lines()
+                .filter(|r| g.iter().any(|d| r.contains(&format!("\"path\":\"{d}\""))))
+                .map(|r| {
+                    let i = r.find("\"id\":\"").unwrap() + 6;
+                    &r[i..i + r[i..].find('"').unwrap()]
+                })
+                .collect();
+            assert_eq!(ids.len(), 1, "{g:?}\n{l1}");
+        }
+    }
+}
+
 /// A huge depth stops once nothing new is reachable (backlog 1D-14).
 #[test]
 fn edges_with_a_huge_depth_terminate() {

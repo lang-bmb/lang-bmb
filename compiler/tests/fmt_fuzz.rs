@@ -7,7 +7,10 @@
 //! indentation and line breaks between tokens added. Claims:
 //!
 //! - `fmt` is idempotent, and every variant has the same normal form;
-//! - definition hashes (body, iface) are the same for every variant;
+//! - definition hashes (id, body, iface) are the same for every variant;
+//! - renaming any one name (definition, unit, type, field, variant,
+//!   parameter, local, label) leaves every identity, and an edit of a literal
+//!   changes the edited definition's (ADR-0059 §1, T1-ID-01);
 //! - the normal form proves with the same status lines and lowers to the same
 //!   IR as the original text.
 //!
@@ -220,6 +223,179 @@ fn check_variants(rng: &mut Rng, what: &str, base: &Files, units: Option<&[Unit]
     }
 }
 
+/// The identifier tokens of `text` outside string literals, and `text` with
+/// every token `from` written `to` (a consistent rename of one name: a
+/// definition, unit, type, field, variant, parameter, local or label).
+fn tokens(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    rename_word(text, "", "", &mut out);
+    out
+}
+
+fn rename_word(text: &str, from: &str, to: &str, seen: &mut Vec<String>) -> String {
+    let mut out = String::with_capacity(text.len());
+    let cs: Vec<char> = text.chars().collect();
+    let mut i = 0;
+    while i < cs.len() {
+        let c = cs[i];
+        if c == '"' {
+            // A string literal stays as it is.
+            out.push(c);
+            i += 1;
+            while i < cs.len() && cs[i] != '"' {
+                if cs[i] == '\\' && i + 1 < cs.len() {
+                    out.push(cs[i]);
+                    i += 1;
+                }
+                out.push(cs[i]);
+                i += 1;
+            }
+            if i < cs.len() {
+                out.push(cs[i]);
+                i += 1;
+            }
+        } else if c == '/' && cs.get(i + 1) == Some(&'/') {
+            while i < cs.len() && cs[i] != '\n' {
+                out.push(cs[i]);
+                i += 1;
+            }
+        } else if c.is_alphanumeric() || c == '_' {
+            let start = i;
+            while i < cs.len() && (cs[i].is_alphanumeric() || cs[i] == '_') {
+                i += 1;
+            }
+            let w: String = cs[start..i].iter().collect();
+            // `_` is no name (a wildcard).
+            if !w.starts_with(|c: char| c.is_ascii_digit()) && w != "_" {
+                seen.push(w.clone());
+            }
+            out.push_str(if w == from { to } else { &w });
+        } else {
+            out.push(c);
+            i += 1;
+        }
+    }
+    out
+}
+
+/// `bmb hash` rows by path, the path renamed with `rn`.
+fn ids(files: &Files, rn: impl Fn(&str) -> String) -> BTreeMap<String, String> {
+    hashes(files)
+        .into_iter()
+        .map(|l| {
+            let path = l.split('"').nth(3).unwrap().to_string();
+            let rest = l[l.find(",\"id\"").unwrap()..].to_string();
+            (rn(&path), rest)
+        })
+        .collect()
+}
+
+/// Renaming any one name (ADR-0059 §1) leaves every identity, body hash and
+/// interface hash as it was; the renamed definition keeps its own under its
+/// new path. Returns how many renames were checked.
+fn check_renames(rng: &mut Rng, what: &str, base: &Files, max: usize) -> usize {
+    let want = ids(base, str::to_string);
+    let mut words: Vec<String> = base.iter().flat_map(|(_, t)| tokens(t)).collect();
+    words.sort();
+    words.dedup();
+    shuffle(rng, &mut words);
+    let mut checked = 0;
+    for (k, w) in words.iter().enumerate() {
+        if checked == max {
+            break;
+        }
+        let to = format!("{w}_rn{k}");
+        let files: Files = base
+            .iter()
+            .map(|(n, t)| (n.clone(), rename_word(t, w, &to, &mut Vec::new())))
+            .collect();
+        // Built-in names and keywords do not rename (the program stops checking).
+        if !bmb::check_sources(&files).ok {
+            continue;
+        }
+        let got = ids(&files, str::to_string);
+        let mapped = ids(base, |p| rename_word(p, w, &to, &mut Vec::new()));
+        assert_eq!(got, mapped, "{what}: renaming `{w}` moved an identity");
+        assert_eq!(got.len(), want.len(), "{what}");
+        checked += 1;
+    }
+    checked
+}
+
+/// A meaning-changing edit (an integer literal inside one top-level
+/// function of the normal form) changes that function's identity.
+fn check_edit(rng: &mut Rng, what: &str, base: &Files) -> bool {
+    let nf = normal_files(base);
+    let want = ids(&nf, str::to_string);
+    // (file, unit, function name, line range of its block)
+    let mut blocks = Vec::new();
+    for (fi, (name, text)) in nf.iter().enumerate() {
+        let unit = name.trim_end_matches(".bmb");
+        let lines: Vec<&str> = text.lines().collect();
+        let mut i = 0;
+        while i < lines.len() {
+            let l = lines[i];
+            let sig = l
+                .strip_prefix("    fn ")
+                .or_else(|| l.strip_prefix("    spec fn "));
+            if let Some(rest) = sig {
+                let fname: String = rest
+                    .chars()
+                    .take_while(|c| c.is_alphanumeric() || *c == '_')
+                    .collect();
+                let end = (i..lines.len()).find(|&j| lines[j] == "    }").unwrap_or(i);
+                blocks.push((fi, format!("{unit}::{fname}"), i, end));
+                i = end;
+            }
+            i += 1;
+        }
+    }
+    shuffle(rng, &mut blocks);
+    for (fi, path, lo, hi) in blocks {
+        let lines: Vec<String> = nf[fi].1.lines().map(String::from).collect();
+        for li in lo..=hi {
+            let line = &lines[li];
+            let Some((at, n)) = line
+                .match_indices(|c: char| c.is_ascii_digit())
+                .map(|(a, _)| a)
+                .find_map(|a| {
+                    let before = line[..a].chars().last();
+                    if before.is_some_and(|c| c.is_alphanumeric() || c == '_') {
+                        return None;
+                    }
+                    let d: String = line[a..]
+                        .chars()
+                        .take_while(|c| c.is_ascii_digit())
+                        .collect();
+                    let after = line[a + d.len()..].chars().next();
+                    if after.is_some_and(|c| c.is_alphanumeric() || c == '_') {
+                        return None;
+                    }
+                    d.parse::<u64>().ok().filter(|v| *v < 100).map(|v| (a, v))
+                })
+            else {
+                continue;
+            };
+            let digits = n.to_string().len();
+            let mut changed = lines.clone();
+            changed[li] = format!("{}{}{}", &line[..at], n + 1, &line[at + digits..]);
+            let mut files = nf.clone();
+            files[fi].1 = changed.join("\n") + "\n";
+            if !bmb::check_sources(&files).ok {
+                continue;
+            }
+            let got = ids(&files, str::to_string);
+            assert_ne!(
+                got.get(&path),
+                want.get(&path),
+                "{what}: editing a literal of {path} kept its identity"
+            );
+            return true;
+        }
+    }
+    false
+}
+
 fn statuses(out: &str) -> Vec<String> {
     out.lines()
         .filter(|l| l.starts_with("{\"def\""))
@@ -262,6 +438,54 @@ fn generated_programs_keep_normal_form_hashes_proofs_and_ir() {
             check_proof_and_ir(&what, &base);
         }
     }
+}
+
+/// Identities have no names (ADR-0059 §1, T1-ID-01): random renames of
+/// definitions, units, types, fields, variants, parameters, locals and
+/// labels in generated and corpus programs leave every identity, and a
+/// literal edit changes the edited definition's.
+#[test]
+fn renames_keep_identities_and_edits_change_them() {
+    let iters = env("BMB_FMT_FUZZ_ITERS", 24);
+    let seed = env("BMB_FMT_FUZZ_SEED", 0);
+    let (mut renames, mut edits) = (0, 0);
+    for i in 0..iters {
+        let s = seed.wrapping_mul(1_000_003).wrapping_add(i);
+        let mut rng = Rng(s.wrapping_mul(0x9E3779B97F4A7C15) | 1);
+        let units = gen_program(&mut rng);
+        let base = one(units.iter().map(|u| unit_text(u, "s")).collect());
+        let what = format!("seed {seed} program {i}");
+        renames += check_renames(&mut rng, &what, &base, 4);
+        edits += usize::from(check_edit(&mut rng, &what, &base));
+    }
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests");
+    let mut rng = Rng(seed.wrapping_mul(0xA24BAED4963EE407) ^ 0x2545F491 | 1);
+    let mut files = 0;
+    for dir in ["check/ok", "verify/pass", "run"] {
+        let mut paths: Vec<_> = fs::read_dir(root.join(dir))
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .filter(|p| p.extension().is_some_and(|x| x == "bmb"))
+            .collect();
+        paths.sort();
+        for p in paths {
+            let base = one(fs::read_to_string(&p).unwrap());
+            let what = p.display().to_string();
+            renames += check_renames(
+                &mut rng,
+                &what,
+                &base,
+                env("BMB_FMT_FUZZ_RENAMES", 3) as usize,
+            );
+            edits += usize::from(check_edit(&mut rng, &what, &base));
+            files += 1;
+        }
+    }
+    assert!(files > 10, "corpus too small: {files}");
+    assert!(
+        renames > 200 && edits > 50,
+        "renames {renames}, edits {edits}"
+    );
 }
 
 /// Corpus programs (units moved across files and relaid out; their

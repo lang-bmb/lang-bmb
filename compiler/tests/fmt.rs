@@ -138,12 +138,21 @@ fn body_change_keeps_iface_contract_change_moves_both() {
 }
 
 #[test]
-fn same_text_in_another_unit_hashes_differently_when_names_resolve_differently() {
-    // `pos` resolves to `h::pos` here and to `k::pos` below: different meaning.
+fn identity_follows_what_names_resolve_to_not_the_names() {
+    // `pos` resolves to `h::pos` here and to `k::pos` below. Both are the
+    // same definition, so `dec` is too (ADR-0059 §1: references by id).
     let other = PROG.replace("mod h {", "mod k {");
     let a = def_line(&one("a.bmb", PROG), "h::dec");
     let b = def_line(&one("a.bmb", &other), "k::dec");
-    assert_ne!(field(&a, "body"), field(&b, "body"));
+    for f in ["id", "body", "iface"] {
+        assert_eq!(field(&a, f), field(&b, f), "{f}");
+    }
+    // Another `pos` makes another `dec`, though its text is the same.
+    let changed = other.replace("x > 0", "x > 1");
+    let c = def_line(&one("a.bmb", &changed), "k::dec");
+    for f in ["id", "body", "iface"] {
+        assert_ne!(field(&a, f), field(&c, f), "{f}");
+    }
 }
 
 #[test]

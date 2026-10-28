@@ -57,9 +57,9 @@ pub struct Entry {
     idx: usize,
     pub file: String,
     pub line: u32,
-    /// Body and interface hashes (ADR-0019 §2), computed on first use: most
-    /// queries never read them (backlog 3A-03).
-    hashes: OnceCell<(String, String)>,
+    /// Identity, body and interface hashes (ADR-0059 §1), computed on
+    /// first use: most queries never read them (backlog 3A-03).
+    hashes: OnceCell<crate::identity::Hashes>,
 }
 
 /// A definition as a query sees it: its index entry, its syntax and its
@@ -89,6 +89,8 @@ pub struct TypeEntry {
     pub kind: &'static str,
     /// The declaration in normal form on one line.
     pub text: String,
+    /// Its identity (ADR-0059 §1) and the hash of its nameless text.
+    pub id: String,
     pub hash: String,
     pub file: String,
     pub line: u32,
@@ -137,7 +139,10 @@ pub struct Model<'p> {
     ix: Cow<'p, Index>,
     /// The program's definitions in walk order (`Entry::idx`).
     fns: Vec<&'p FnDef>,
-    sigs: &'p BTreeMap<String, crate::check::FnSig>,
+    p: &'p Program,
+    t: &'p Tables,
+    /// The identities (ADR-0059), made on first use.
+    ids: OnceCell<crate::identity::Ids<'p>>,
     /// Proof results by path: (obligations, failed, rlimit_max).
     status: BTreeMap<String, (usize, usize, u64)>,
 }
@@ -683,10 +688,11 @@ impl Index {
                 },
             );
         }
-        let hashes: BTreeMap<String, String> = crate::fmt::type_hashes(p)
-            .into_iter()
-            .map(|h| (h.path, h.body))
-            .collect();
+        // Type and trait identities (ADR-0059 §1): they reach only types,
+        // traits and the spec fns trait contracts name.
+        let ids = crate::identity::Ids::new(p, t);
+        let ident =
+            |k: crate::identity::Key| ids.get(&k).map(|h| (h.id, h.body)).unwrap_or_default();
         let mut list = Vec::new();
         for m in &p.mods {
             walk_types(m, "", &mut list);
@@ -695,11 +701,13 @@ impl Index {
         for (path, unit, tr) in walk_traits(p) {
             let (line, _) = sm.line_col(tr.name.span.file, tr.name.span.lo);
             let text = crate::fmt::trait_text(tr);
+            let (id, hash) = ident(crate::identity::Key::Trait(path.clone()));
             types.insert(
                 path.clone(),
                 TypeEntry {
                     kind: "trait",
-                    hash: crate::sha256::hex(crate::fmt::trait_text_as(tr, "_").as_bytes()),
+                    id,
+                    hash,
                     text,
                     file: sm.name(tr.name.span.file).to_string(),
                     line,
@@ -723,6 +731,7 @@ impl Index {
                         .for_each(|x| named_types(x, t, &mut names)),
                 }
             }
+            let (id, hash) = ident(crate::identity::Key::Type(path.clone()));
             types.insert(
                 path.clone(),
                 TypeEntry {
@@ -731,7 +740,8 @@ impl Index {
                         TypeDefKind::Enum(_) => "enum",
                     },
                     text: crate::fmt::type_text(td),
-                    hash: hashes.get(&path).cloned().unwrap_or_default(),
+                    id,
+                    hash,
                     file: sm.name(td.name.span.file).to_string(),
                     line,
                     names,
@@ -784,7 +794,9 @@ impl<'p> Model<'p> {
         Model {
             ix,
             fns,
-            sigs: &t.fns,
+            p,
+            t,
+            ids: OnceCell::new(),
             status: status_map(outcome),
         }
     }
@@ -820,11 +832,15 @@ impl<'p> Model<'p> {
         self.ix.defs.values().map(|e| self.view_def(e))
     }
 
-    /// Body and interface hashes of `d`.
-    fn hashes<'m>(&'m self, d: &Def<'m>) -> &'m (String, String) {
+    /// Identity, body and interface hashes of `d` (ADR-0059 §1).
+    fn hashes<'m>(&'m self, d: &Def<'m>) -> &'m crate::identity::Hashes {
         let e: &'m Entry = d.e;
-        e.hashes
-            .get_or_init(|| crate::fmt::def_hash(d.f, &e.unit, self.sigs))
+        e.hashes.get_or_init(|| {
+            self.ids
+                .get_or_init(|| crate::identity::Ids::new(self.p, self.t))
+                .def(&e.path)
+                .expect("an indexed definition has an identity")
+        })
     }
 
     // ---------- rows ----------
@@ -856,7 +872,7 @@ impl<'p> Model<'p> {
             ("def_kind", J::S(Self::def_kind(d).into())),
             (
                 "hash",
-                J::S(self.hashes(d).0.chars().take(7 + 12).collect()),
+                J::S(self.hashes(d).body.chars().take(7 + 12).collect()),
             ),
         ])
     }
@@ -880,6 +896,7 @@ impl<'p> Model<'p> {
             ("signature", J::S(ty.text.clone())),
             ("body", J::S(ty.hash.clone())),
             ("iface", J::S(ty.hash.clone())),
+            ("id", J::S(ty.id.clone())),
             ("file", J::S(ty.file.clone())),
             ("line", J::N(ty.line as u64)),
         ])
@@ -906,7 +923,7 @@ impl<'p> Model<'p> {
             .filter(|e| e.kind == "uses")
             .map(|e| e.to.clone())
             .collect();
-        let (body, iface) = self.hashes(d);
+        let h = self.hashes(d);
         J::O(vec![
             ("level", J::S("L1".into())),
             ("path", J::S(d.path.clone())),
@@ -920,8 +937,9 @@ impl<'p> Model<'p> {
             ("status", J::S(d.status.into())),
             ("obligations", J::N(d.obligations as u64)),
             ("failed", J::N(d.failed as u64)),
-            ("body", J::S(body.clone())),
-            ("iface", J::S(iface.clone())),
+            ("body", J::S(h.body.clone())),
+            ("iface", J::S(h.iface.clone())),
+            ("id", J::S(h.id.clone())),
             ("file", J::S(d.file.clone())),
             ("line", J::N(d.line as u64)),
             // Added after version 1 (backward compatible, ADR-0020 §1).
@@ -1309,15 +1327,17 @@ impl<'p> Model<'p> {
         rows
     }
 
-    /// Groups of definitions with the same body hash (backlog 2D-06). The body
-    /// hash leaves out the definition's own name (ADR-0019 §2), so equal
-    /// hashes are the same definition under different names or units. One row
-    /// `{"hash","defs"}` per group of two or more, by hash, then a summary row.
+    /// Groups of definitions with the same identity (backlog 2D-06,
+    /// ADR-0059 §6). The identity has no names (ADR-0059 §1), so equal
+    /// identities are the same definition under other names, in another
+    /// unit, with other parameter or local names, or calling definitions
+    /// that are themselves the same. One row `{"hash","defs"}` per group of
+    /// two or more, by identity, then a summary row.
     fn duplicates(&self) -> Vec<J> {
         let mut groups: BTreeMap<&str, Vec<String>> = BTreeMap::new();
         for d in self.all_defs() {
             groups
-                .entry(self.hashes(&d).0.as_str())
+                .entry(self.hashes(&d).id.as_str())
                 .or_default()
                 .push(d.path.clone());
         }
@@ -1469,7 +1489,7 @@ impl<'p> Model<'p> {
             .collect::<Vec<_>>()
             .join("::");
         let local = format!("{unit}::{plain}");
-        match self.sigs.get(&local) {
+        match self.t.fns.get(&local) {
             Some(sig)
                 if self.defs.contains_key(&local)
                     && (path.len() == 1 || (path.len() == 2 && sig.in_impl)) =>

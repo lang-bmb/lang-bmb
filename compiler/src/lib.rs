@@ -6,6 +6,7 @@ pub mod check;
 pub mod codegen;
 pub mod diag;
 pub mod fmt;
+pub mod identity;
 pub mod incremental;
 pub mod json;
 pub mod lexer;
@@ -632,17 +633,18 @@ pub fn format_parsed(files: &[(String, String)]) -> Result<BTreeMap<String, Stri
     Ok(fmt::format_units(&program))
 }
 
-/// Definition hashes as JSONL (ADR-0019 §2).
+/// Definition identities and hashes as JSONL (ADR-0059 §1, §4).
 pub fn hash_sources(files: &[(String, String)]) -> Result<String, String> {
     let fe = frontend(files);
     if fe.diags.has_errors() {
         return Err(fe.diags.to_jsonl(&fe.sm));
     }
     let mut out = String::new();
-    for h in fmt::hashes(&fe.program, &fe.tables.fns) {
+    for h in fmt::hashes(&fe.program, &fe.tables) {
         out.push_str(&format!(
-            "{{\"def\":{},\"body\":\"{}\",\"iface\":\"{}\"}}\n",
+            "{{\"def\":{},\"id\":\"{}\",\"body\":\"{}\",\"iface\":\"{}\"}}\n",
             diag::json_str(&h.path),
+            h.id,
             h.body,
             h.iface
         ));
