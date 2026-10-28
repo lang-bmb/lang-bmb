@@ -453,6 +453,8 @@ struct FnCtx {
     /// The loops around the expression being checked, innermost last
     /// (`break`, `continue`, ADR-0049 §1).
     loops: Vec<LoopCx>,
+    /// The `for` variables (names are unique in a function).
+    for_vars: BTreeSet<String>,
 }
 
 /// A loop a `break` or `continue` may name.
@@ -2734,6 +2736,7 @@ impl<'a> Checker<'a> {
             forall_depth: 0,
             ret: TypeKind::Error,
             loops: Vec::new(),
+            for_vars: BTreeSet::new(),
         };
         self.calls.entry(path.clone()).or_default();
 
@@ -3041,7 +3044,12 @@ impl<'a> Checker<'a> {
     /// closest to it (edit distance at most 2) as the fix (backlog 2D-18).
     fn unknown_local(&mut self, cx: &FnCtx, name: &str, span: Span) {
         let mut d = Diag::new("E0301", span, format!("unknown name `{name}`"));
-        if let Some(near) = closest(name, cx.scopes.iter().flat_map(|s| s.keys())) {
+        if cx.for_vars.contains(name) {
+            d = d.fix(
+                "a `for` variable lives only in its loop; keep what you need in a local declared before it",
+                None,
+            );
+        } else if let Some(near) = closest(name, cx.scopes.iter().flat_map(|s| s.keys())) {
             d = d.fix(format!("did you mean `{near}`?"), Some(near));
         }
         self.diags.push(d);
@@ -3252,6 +3260,64 @@ impl<'a> Checker<'a> {
                 cx.loops.pop();
                 self.expect_ty(&bt, &TypeKind::Unit, body.span);
             }
+            Stmt::For {
+                label,
+                var,
+                lo,
+                hi,
+                invariants,
+                body,
+                span,
+                ..
+            } => {
+                if mode != Mode::Exec {
+                    self.err("E0503", *span, "loops are not allowed in a specification");
+                }
+                // The bounds share one integer type (a literal takes the
+                // other's), evaluated once before the loop.
+                let (lt, ht) = if untyped_literal(lo) && !untyped_literal(hi) {
+                    let ht = self.expr(cx, hi, None, mode);
+                    let want = Some(&ht).filter(|t| is_int(t));
+                    (self.expr(cx, lo, want, mode), ht)
+                } else {
+                    let lt = self.expr(cx, lo, None, mode);
+                    let want = Some(&lt).filter(|t| is_int(t));
+                    (lt.clone(), self.expr(cx, hi, want, mode))
+                };
+                if !is_int(&lt) && lt != TypeKind::Error {
+                    self.diags.push(
+                        Diag::new(
+                            "E0401",
+                            lo.span,
+                            format!("a `for` range is of integers, found `{}`", ty_str(&lt)),
+                        )
+                        .fix("loop over integer bounds and index with them", None),
+                    );
+                }
+                self.expect_ty(&ht, &lt, hi.span);
+                // The variable is local to the loop and not assigned in it.
+                cx.scopes.push(BTreeMap::new());
+                self.declare(cx, var, lt, false, false);
+                cx.for_vars.insert(var.name.clone());
+                for inv in invariants {
+                    let t = self.expr(
+                        cx,
+                        inv,
+                        Some(&TypeKind::Bool),
+                        Mode::Spec { allow_old: true },
+                    );
+                    self.expect_ty(&t, &TypeKind::Bool, inv.span);
+                }
+                cx.loops.push(LoopCx {
+                    label: label.as_ref().map(|l| l.name.clone()),
+                    is_loop: false,
+                    value: None,
+                });
+                let bt = self.block(cx, body, Some(&TypeKind::Unit), mode);
+                cx.loops.pop();
+                cx.scopes.pop();
+                self.expect_ty(&bt, &TypeKind::Unit, body.span);
+            }
             Stmt::Assert { cond, span } => {
                 if mode != Mode::Exec {
                     self.err("E0503", *span, "`assert` is not allowed in a specification");
@@ -3326,7 +3392,7 @@ impl<'a> Checker<'a> {
         if cx.loops.is_empty() {
             self.diags.push(
                 Diag::new("E0250", span, format!("`{what}` outside a loop")).fix(
-                    "use it inside a `while` or `loop`; to leave the function, `return`",
+                    "use it inside a `while`, `for` or `loop`; to leave the function, `return`",
                     None,
                 ),
             );
@@ -3370,6 +3436,8 @@ impl<'a> Checker<'a> {
                     if !l.mutable {
                         let fix = if l.is_param {
                             "copy the parameter into a `let mut` local"
+                        } else if cx.for_vars.contains(&id.name) {
+                            "a `for` variable steps by itself; copy it into a `let mut` local to change the copy"
                         } else {
                             "declare it with `let mut`"
                         };
@@ -7243,6 +7311,18 @@ fn block_mentions(b: &Block, name: &str) -> bool {
             mentions_strict(cond, name)
                 || invariants.iter().any(|i| mentions_strict(i, name))
                 || decreases.as_ref().is_some_and(|d| mentions_strict(d, name))
+                || block_mentions(body, name)
+        }
+        Stmt::For {
+            lo,
+            hi,
+            invariants,
+            body,
+            ..
+        } => {
+            mentions_strict(lo, name)
+                || mentions_strict(hi, name)
+                || invariants.iter().any(|i| mentions_strict(i, name))
                 || block_mentions(body, name)
         }
         Stmt::Assert { cond, .. } => mentions_strict(cond, name),

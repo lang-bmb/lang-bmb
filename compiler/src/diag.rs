@@ -20,10 +20,6 @@ pub const CODES: &[(&str, &str)] = &[
     // E02xx: Rust habits rejected by BMB (each carries a fix when mechanical)
     ("E0201", "`let` requires an explicit type"),
     ("E0202", "macros are not allowed"),
-    (
-        "E0204",
-        "`for` is not allowed yet; use `while` with `invariant` and `decreases`",
-    ),
     ("E0205", "`as` casts are not allowed"),
     ("E0206", "the `?` operator is not allowed"),
     ("E0207", "construct not supported in milestone 1"),
@@ -58,6 +54,11 @@ pub const CODES: &[(&str, &str)] = &[
     ("E0236", "trait objects `dyn Trait` are not used"),
     ("E0250", "`break` or `continue` outside a loop"),
     ("E0251", "`break` with a value outside a `loop`"),
+    ("E0252", "`for` over something other than an integer range"),
+    (
+        "E0253",
+        "`decreases` on a `for` loop (its measure is automatic)",
+    ),
     (
         "E0237",
         "a call of a generic function names its type arguments: `f::<T>(..)`",
@@ -442,6 +443,10 @@ pub const RETIRED: &[(&str, &str)] = &[
     (
         "E0203",
         "`return` is not allowed (retired by backlog 2K-01a: `return` is part of the language, ADR-0049)",
+    ),
+    (
+        "E0204",
+        "`for` is not allowed (retired by backlog 2K-01d: the range `for` is part of the language, ADR-0049)",
     ),
 ];
 

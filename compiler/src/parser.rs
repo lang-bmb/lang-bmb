@@ -1594,26 +1594,21 @@ impl<'a> Parser<'a> {
                         span: lo.to(hi),
                     }));
                 }
-                "for" => {
-                    self.bump();
-                    self.diags.push(
-                        Diag::new("E0204", lo, format!("`{s}` is not allowed"))
-                            .fix("use `while cond invariant .., decreases .., { .. }`", None),
-                    );
-                    self.recover_loop_body();
-                    return Err(());
-                }
+                "for" => return self.nested(|p| p.parse_for(None)).map(stmt),
                 _ => {}
             }
         }
         // `'outer: while ..` / `'outer: loop ..` (ADR-0049 §1).
         if let Tok::Label(name) = self.peek().clone()
             && matches!(self.peek_at(1), Tok::P(":"))
-            && matches!(self.peek_at(2), Tok::Ident(k) if k == "while")
+            && matches!(self.peek_at(2), Tok::Ident(k) if k == "while" || k == "for")
         {
             let span = self.bump().span;
             self.bump();
             let label = Ident { name, span };
+            if self.is_kw("for") {
+                return self.nested(|p| p.parse_for(Some(label))).map(stmt);
+            }
             return self.nested(|p| p.parse_while_inner(Some(label))).map(stmt);
         }
         // A block-like expression statement ends at its `}` when what follows
@@ -1770,6 +1765,67 @@ impl<'a> Parser<'a> {
 
     fn parse_while(&mut self) -> PResult<Stmt> {
         self.nested(|p| p.parse_while_inner(None))
+    }
+
+    /// `for i in lo..hi [invariant ..,] { .. }` / `lo..=hi` (ADR-0049 §2).
+    /// An iterator (`for x in v.iter()`, `for x in &v`) is E0252.
+    fn parse_for(&mut self, label: Option<Ident>) -> PResult<Stmt> {
+        let lo_span = label.as_ref().map_or(self.span(), |l| l.span);
+        self.bump();
+        let var = self.ident("loop variable")?;
+        if !self.eat_kw("in") {
+            self.err_expected("`in`");
+            return Err(());
+        }
+        let start = self.span();
+        let lo = self.cond_expr()?;
+        let inclusive = if self.eat_p("..=") {
+            true
+        } else if self.eat_p("..") {
+            false
+        } else {
+            self.diags.push(
+                Diag::new(
+                    "E0252",
+                    start.to(lo.span),
+                    "`for` runs over a range of integers only",
+                )
+                .fix(
+                    "iterate over the indices: `for i in 0..v.len()` and read `v[i]`",
+                    None,
+                ),
+            );
+            self.recover_loop_body();
+            return Err(());
+        };
+        let hi = self.cond_expr()?;
+        let mut invariants = Vec::new();
+        if self.eat_kw("invariant") {
+            invariants = self.clause_list()?;
+        }
+        if self.is_kw("decreases") {
+            let sp = self.bump().span;
+            self.diags.push(
+                Diag::new("E0253", sp, "a `for` loop's measure is automatic").fix(
+                    "remove the `decreases` clause: the range bounds the loop",
+                    None,
+                ),
+            );
+            let _ = self.parse_expr();
+            self.eat_p(",");
+        }
+        let body = self.parse_block()?;
+        let span = lo_span.to(body.span);
+        Ok(Stmt::For {
+            label,
+            var,
+            lo,
+            hi,
+            inclusive,
+            invariants,
+            body,
+            span,
+        })
     }
 
     /// `['l:] loop [invariant ..,] [decreases ..,] { .. }` (ADR-0049 §1).

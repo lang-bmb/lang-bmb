@@ -1,0 +1,14 @@
+{"code":"E0804","severity":"error","message":"divisor may be zero in `rf::maybe_empty`; counterexample: lo = 0, hi = 1","file":"fail/ranges.bmb","line":13,"col":14,"end_line":13,"end_col":15}
+{"code":"E0805","severity":"error","message":"index may be out of bounds in `rf::past_end`; counterexample: a = [] (len 0)","file":"fail/ranges.bmb","line":20,"col":17,"end_line":20,"end_col":21}
+{"code":"E0803","severity":"error","message":"`-` may overflow `u64` in `rf::reverse`; counterexample: n = 0","file":"fail/ranges.bmb","line":29,"col":17,"end_line":29,"end_col":26}
+{"code":"E0807","severity":"error","message":"loop invariant may not be preserved in `rf::skip`; counterexample: n = 3","file":"fail/ranges.bmb","line":41,"col":23,"end_line":41,"end_col":29}
+{"code":"E0803","severity":"error","message":"`-` may overflow `u64` in `rf::stop_early`; counterexample: n = 2","file":"fail/ranges.bmb","line":63,"col":14,"end_line":63,"end_col":24}
+{"code":"E0804","severity":"error","message":"divisor may be zero in `rf::stop_early`; counterexample: n = 4","file":"fail/ranges.bmb","line":63,"col":14,"end_line":63,"end_col":24}
+{"code":"E0807","severity":"error","message":"loop invariant may not be preserved in `rf::twice`; counterexample: n = 2","file":"fail/ranges.bmb","line":72,"col":23,"end_line":72,"end_col":29,"fix":{"message":"the proof sees `few` only by name; if the failure depends on its definition, add to #[uses(few)]"}}
+{"code":"E0803","severity":"error","message":"`+` may overflow `u64` in `rf::twice`; counterexample: n = 18446744073709551615","file":"fail/ranges.bmb","line":74,"col":17,"end_line":74,"end_col":22,"fix":{"message":"the proof sees `few` only by name; if the failure depends on its definition, add to #[uses(few)]"}}
+{"def":"rf::maybe_empty","status":"failed","obligations":6,"failed":1,"rlimit":7081,"rlimit_max":2028}
+{"def":"rf::past_end","status":"failed","obligations":5,"failed":1,"rlimit":6091,"rlimit_max":1795}
+{"def":"rf::reverse","status":"failed","obligations":6,"failed":1,"rlimit":4667,"rlimit_max":1222}
+{"def":"rf::skip","status":"failed","obligations":13,"failed":1,"rlimit":20440,"rlimit_max":4892}
+{"def":"rf::stop_early","status":"failed","obligations":7,"failed":2,"rlimit":19313,"rlimit_max":5196}
+{"def":"rf::twice","status":"failed","obligations":7,"failed":2,"rlimit":4559,"rlimit_max":999}

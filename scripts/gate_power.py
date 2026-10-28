@@ -315,10 +315,24 @@ MUTANTS = [
      "a `while` is left only with its condition false: the `break` states are not among the exits"),
     ("v-continue-head-skipped", "unsound", V,
      '''                    let k = self.jump_target(label);
-                    self.back_to_head(k);''',
+                    self.end_iteration(k);''',
      '''                    let k = self.jump_target(label);
                     let _ = k;''',
      "a `continue` goes back to the head without its invariant or measure obligations"),
+    ("v-for-continue-no-step", "unsound", V,
+     '''                    let k = self.jump_target(label);
+                    self.end_iteration(k);''',
+     '''                    let k = self.jump_target(label);
+                    self.back_to_head(k);''',
+     "a `continue` in a `for` goes back to the head without stepping the variable"),
+    ("v-for-var-not-havocked", "unsound", V,
+     '''        if let Some(st) = &step {
+            modified.insert(st.var.clone());
+        }''',
+     '''        if let Some(st) = &step {
+            let _ = st;
+        }''',
+     "a `for` variable keeps its entry value in every iteration"),
     ("c-jump-exit-drops-skipped", "miscompile", C,
      '''        for p in exits {
             self.drop_path(&p);
@@ -329,6 +343,10 @@ MUTANTS = [
         }
         let target = if brk {''',
      "the owned locals of the loop are not freed at a `break` or `continue` (a leak)"),
+    ("c-for-range-ends-swapped", "miscompile", C,
+     '''                let op = if *inclusive { le_op } else { lt_op };''',
+     '''                let op = if *inclusive { lt_op } else { le_op };''',
+     "`lo..hi` runs its end too and `lo..=hi` skips it"),
 ]
 
 

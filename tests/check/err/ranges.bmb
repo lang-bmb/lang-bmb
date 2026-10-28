@@ -1,0 +1,58 @@
+#[summary("범위 for의 경계: 반복자, decreases, 변수 대입, 정수가 아닌 범위, 루프 밖의 변수, 명세 (backlog 2K-01d)")]
+mod rc {
+    #[effects(pure)]
+    fn iterator(v: &[i64]) -> i64 {
+        let mut s: i64 = 0;
+        for x in v.iter() {
+            s = s + x;
+        }
+        s
+    }
+
+    #[effects(pure)]
+    fn measure(n: u64) -> () {
+        for i in 0..n
+            decreases n - i,
+        {
+        }
+    }
+
+    #[effects(pure)]
+    fn assigns(n: u64) -> () {
+        for i in 0..n {
+            i = i + 1;
+        }
+    }
+
+    #[effects(pure)]
+    fn bools(b: bool) -> () {
+        for i in false..b {
+        }
+    }
+
+    #[effects(pure)]
+    fn mixed(n: u64, m: i64) -> () {
+        for i in n..m {
+        }
+    }
+
+    #[effects(pure)]
+    fn after(n: u64) -> u64 {
+        for i in 0..n {
+        }
+        i
+    }
+
+    #[effects(pure)]
+    fn unknown_label(n: u64) -> () {
+        'a: for i in 0..n {
+            continue 'b;
+        }
+    }
+
+    spec fn in_spec(n: u64) -> bool {
+        for i in 0..n {
+        }
+        true
+    }
+}

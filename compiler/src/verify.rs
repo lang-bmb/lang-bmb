@@ -294,6 +294,18 @@ fn each_block_expr<'e>(b: &'e Block, f: &mut dyn FnMut(&'e Expr)) {
                 }
                 each_block_expr(body, f);
             }
+            Stmt::For {
+                lo,
+                hi,
+                invariants,
+                body,
+                ..
+            } => {
+                each_expr(lo, f);
+                each_expr(hi, f);
+                invariants.iter().for_each(|x| each_expr(x, f));
+                each_block_expr(body, f);
+            }
             Stmt::Assert { cond, .. } => each_expr(cond, f),
             Stmt::Expr(e) => each_expr(e, f),
         }
@@ -1630,6 +1642,32 @@ struct VLoop {
     /// Each `break`: the iteration's path condition there, the state, and
     /// the value it carries.
     breaks: Vec<(Vec<String>, BTreeMap<String, Val>, Val)>,
+    /// A range `for`'s variable and bounds: the end of an iteration (the
+    /// body's or a `continue`) steps it (ADR-0049 §2).
+    step: Option<ForStep>,
+}
+
+/// A range `for`: `var` from `lo` to `hi` (excluded, or included), the
+/// bounds evaluated once on entry.
+#[derive(Clone)]
+struct ForStep {
+    var: String,
+    ty: TypeKind,
+    lo: String,
+    hi: String,
+    inclusive: bool,
+    span: Span,
+}
+
+/// A range `for`'s head invariant at `i`: `lo <= i && (i <= hi || i ==
+/// lo)` (the second part also holds on entry to an empty range).
+fn for_bounds(st: &ForStep, i: &str) -> String {
+    format!(
+        "(and {} (or {} (= {i} {})))",
+        ord_term(BinOp::Le, &st.ty, &st.lo, i),
+        ord_term(BinOp::Le, &st.ty, i, &st.hi),
+        st.lo
+    )
 }
 
 /// `(select a i)` as (`a`, `i`).
@@ -2557,7 +2595,14 @@ impl<'p, 'q> Enc<'p, 'q> {
                 invariants,
                 decreases,
                 body,
-            } => self.loop_core(label.as_ref(), None, invariants, decreases.as_deref(), body),
+            } => self.loop_core(
+                label.as_ref(),
+                None,
+                invariants,
+                decreases.as_deref(),
+                body,
+                None,
+            ),
             // The state goes to the loop's exit; the path ends.
             ExprKind::Break { label, value } => {
                 let v = match value {
@@ -2566,18 +2611,16 @@ impl<'p, 'q> Enc<'p, 'q> {
                 };
                 if !self.dead {
                     let k = self.jump_target(label);
-                    let pc = self.pc[self.loops[k].start..].to_vec();
-                    let vars = self.vars.clone();
-                    self.loops[k].breaks.push((pc, vars, v));
-                    self.dead = true;
+                    self.record_break(k, v);
                 }
                 Val::Unit
             }
-            // Back to the loop's head: its invariants and measure.
+            // Back to the loop's head: its invariants and measure (a `for`
+            // steps its variable first).
             ExprKind::Continue { label } => {
                 if !self.dead {
                     let k = self.jump_target(label);
-                    self.back_to_head(k);
+                    self.end_iteration(k);
                     self.dead = true;
                 }
                 Val::Unit
@@ -3143,13 +3186,44 @@ impl<'p, 'q> Enc<'p, 'q> {
                     invariants,
                     decreases.as_ref(),
                     body,
+                    None,
                 );
+            }
+            // `let mut i = lo; while i < hi invariant lo <= i && (i <= hi
+            // || i == lo), .. decreases hi - i { body; i = i + 1; }` with
+            // the bounds evaluated once (ADR-0049 §2, §3): the encoding is
+            // that expansion's, query for query (backlog 2K-01d).
+            Stmt::For {
+                label,
+                var,
+                lo,
+                hi,
+                inclusive,
+                invariants,
+                body,
+                span,
+            } => {
+                let lo = self.eval(lo).s();
+                let hi = self.eval(hi).s();
+                let ty = self.local_ty(&var.name);
+                self.vars.insert(var.name.clone(), Val::S(lo.clone()));
+                let step = ForStep {
+                    var: var.name.clone(),
+                    ty,
+                    lo,
+                    hi,
+                    inclusive: *inclusive,
+                    span: *span,
+                };
+                self.loop_core(label.as_ref(), None, invariants, None, body, Some(step));
+                self.vars.remove(&var.name);
             }
         }
     }
 
-    /// A `while` (with `cond`) or a `loop` (without): its value is that of
-    /// the `break e` that leaves a `loop` (ADR-0049 §3).
+    /// A `while` (with `cond`), a range `for` (with `step`) or a `loop`
+    /// (with neither): its value is that of the `break e` that leaves a
+    /// `loop` (ADR-0049 §3).
     fn loop_core(
         &mut self,
         label: Option<&Ident>,
@@ -3157,7 +3231,14 @@ impl<'p, 'q> Enc<'p, 'q> {
         invariants: &[Expr],
         decreases: Option<&Expr>,
         body: &Block,
+        step: Option<ForStep>,
     ) -> Val {
+        // A `while` and a `for` also leave when their condition is false.
+        let exits = cond.is_some() || step.is_some();
+        if let Some(st) = &step {
+            let g = for_bounds(st, &st.lo);
+            self.oblige("E0806", st.span, "loop invariant may not hold on entry", g);
+        }
         for inv in invariants {
             let (env, old) = self.cur_env();
             let g = self.spec(inv, &env, &old).s();
@@ -3168,6 +3249,9 @@ impl<'p, 'q> Enc<'p, 'q> {
         assigned_in_block(body, &mut modified);
         if let Some(cond) = cond {
             assigned_in_expr(cond, &mut modified);
+        }
+        if let Some(st) = &step {
+            modified.insert(st.var.clone());
         }
         let mut_params: BTreeSet<String> = self.prog.defs[&self.path]
             .f
@@ -3217,23 +3301,34 @@ impl<'p, 'q> Enc<'p, 'q> {
             self.vars.insert(v.clone(), fresh);
         }
         // Earlier facts mention only earlier constants, so they stay valid.
+        if let Some(st) = &step {
+            let i = self.vars[&st.var].s();
+            self.pc.push(for_bounds(st, &i));
+        }
         for inv in invariants {
             let (env, old) = self.cur_env();
             let g = self.spec(inv, &env, &old).s();
             self.pc.push(g);
         }
-        let c = match cond {
-            Some(cond) => self.eval(cond).s(),
-            None => "true".to_string(),
+        let c = match (cond, &step) {
+            (Some(cond), _) => self.eval(cond).s(),
+            (None, Some(st)) => {
+                let op = if st.inclusive { BinOp::Le } else { BinOp::Lt };
+                ord_term(op, &st.ty, &self.vars[&st.var].s(), &st.hi)
+            }
+            (None, None) => "true".to_string(),
         };
         let after_cond_vars = self.vars.clone();
         let n = self.pc.len();
         // One arbitrary iteration.
         self.pc.push(c.clone());
-        let measure = decreases.map(|d| {
-            let (env, old) = self.cur_env();
-            self.spec(d, &env, &old).s()
-        });
+        let measure = match &step {
+            Some(st) => Some(format!("(- {} {})", st.hi, self.vars[&st.var].s())),
+            None => decreases.map(|d| {
+                let (env, old) = self.cur_env();
+                self.spec(d, &env, &old).s()
+            }),
+        };
         self.loops.push(VLoop {
             label: label.map(|l| l.name.clone()),
             start: n,
@@ -3241,14 +3336,15 @@ impl<'p, 'q> Enc<'p, 'q> {
             decreases: decreases.cloned(),
             measure,
             breaks: Vec::new(),
+            step,
         });
         self.block(body);
         // A body that left (`return`, `break`, `continue`) does not come
         // back to the head from its end.
-        let left = std::mem::replace(&mut self.dead, false);
-        if !left {
-            self.back_to_head(self.loops.len() - 1);
+        if !self.dead {
+            self.end_iteration(self.loops.len() - 1);
         }
+        self.dead = false;
         let lp = self.loops.pop().expect("pushed");
         // Exit: the head with the condition false, or the state at a
         // `break` (the conditions are exclusive: a `break` runs in an
@@ -3256,7 +3352,7 @@ impl<'p, 'q> Enc<'p, 'q> {
         self.pc.truncate(n);
         let conds: Vec<String> = lp.breaks.iter().map(|(pc, _, _)| and(pc)).collect();
         let mut alts: Vec<String> = conds.clone();
-        if cond.is_some() {
+        if exits {
             alts.insert(0, format!("(not {c})"));
         }
         // A `loop` without a `break` does not finish.
@@ -3272,11 +3368,12 @@ impl<'p, 'q> Enc<'p, 'q> {
         });
         let mut vars = BTreeMap::new();
         for (k, v0) in &after_cond_vars {
-            let mut v = match cond {
-                Some(_) => v0.clone(),
-                None => lp.breaks.last().map_or(v0, |b| &b.1[k]).clone(),
+            let mut v = if exits {
+                v0.clone()
+            } else {
+                lp.breaks.last().map_or(v0, |b| &b.1[k]).clone()
             };
-            let n_breaks = lp.breaks.len() - usize::from(cond.is_none());
+            let n_breaks = lp.breaks.len() - usize::from(!exits);
             for i in (0..n_breaks).rev() {
                 let b = &lp.breaks[i].1[k];
                 if *b != v {
@@ -3290,6 +3387,9 @@ impl<'p, 'q> Enc<'p, 'q> {
         if let Some(cond) = cond {
             self.mark_reach(cond.span, "exit of the loop");
         }
+        if let Some(st) = &lp.step {
+            self.mark_reach(st.span, "exit of the loop");
+        }
         // The value of a `loop`: its `break`s'.
         let Some((_, _, last)) = lp.breaks.last() else {
             return Val::Unit;
@@ -3302,25 +3402,74 @@ impl<'p, 'q> Enc<'p, 'q> {
         v
     }
 
+    /// The state goes to loop `k`'s exit with value `v`; the path ends.
+    fn record_break(&mut self, k: usize, v: Val) {
+        let pc = self.pc[self.loops[k].start..].to_vec();
+        let vars = self.vars.clone();
+        self.loops[k].breaks.push((pc, vars, v));
+        self.dead = true;
+    }
+
+    /// The end of an iteration of loop `k` (its body's end, or a
+    /// `continue`): a `for` steps its variable as `if i == hi { break; } i
+    /// = i + 1;` (the test only for `lo..=hi`) would, then the path goes
+    /// back to the head.
+    fn end_iteration(&mut self, k: usize) {
+        if let Some(st) = self.loops[k].step.clone() {
+            let i = self.vars[&st.var].s();
+            if st.inclusive {
+                let at_end = format!("(= {i} {})", st.hi);
+                self.branch(
+                    &at_end,
+                    &TypeKind::Unit,
+                    |s| {
+                        s.record_break(k, Val::Unit);
+                        Val::Unit
+                    },
+                    |_| Val::Unit,
+                );
+                if self.dead {
+                    return;
+                }
+            }
+            let next = format!("(+ {i} 1)");
+            if let Some(rg) = range(&st.ty, &next) {
+                let msg = format!("`+` may overflow `{}`", crate::check::ty_str(&st.ty));
+                self.oblige("E0803", st.span, msg, rg);
+            }
+            self.vars.insert(st.var.clone(), Val::S(next));
+        }
+        self.back_to_head(k);
+    }
+
     /// The obligations of going back to the head of loop `k` from here (the
     /// end of its body, or a `continue`): its invariants hold, its measure
     /// decreased.
     fn back_to_head(&mut self, k: usize) {
+        if let Some(st) = self.loops[k].step.clone() {
+            let g = for_bounds(&st, &self.vars[&st.var].s());
+            self.oblige("E0807", st.span, "loop invariant may not be preserved", g);
+        }
         let invariants = self.loops[k].invariants.clone();
         for inv in &invariants {
             let (env, old) = self.cur_env();
             let g = self.spec(inv, &env, &old).s();
             self.oblige("E0807", inv.span, "loop invariant may not be preserved", g);
         }
-        if let (Some(d0), Some(d)) = (
-            self.loops[k].measure.clone(),
-            self.loops[k].decreases.clone(),
-        ) {
-            let (env, old) = self.cur_env();
-            let d1 = self.spec(&d, &env, &old).s();
+        // The measure here: a `for`'s is `hi - i` (ADR-0049 §2).
+        let (step, decreases) = (self.loops[k].step.clone(), self.loops[k].decreases.clone());
+        let d1 = match (&step, &decreases) {
+            (Some(st), _) => Some((st.span, format!("(- {} {})", st.hi, self.vars[&st.var].s()))),
+            (None, Some(d)) => {
+                let (env, old) = self.cur_env();
+                Some((d.span, self.spec(d, &env, &old).s()))
+            }
+            (None, None) => None,
+        };
+        if let (Some(d0), Some((span, d1))) = (self.loops[k].measure.clone(), d1) {
             self.oblige(
                 "E0808",
-                d.span,
+                span,
                 "`decreases` may not decrease or may be negative",
                 format!("(and (<= 0 {d0}) (< {d1} {d0}))"),
             );
@@ -4100,6 +4249,19 @@ fn find_let(b: &Block, name: &str, out: &mut Option<TypeKind>) {
                 }
                 find_let(body, name, out);
             }
+            // The variable's type is in the checker's table of locals.
+            Stmt::For {
+                lo,
+                hi,
+                invariants,
+                body,
+                ..
+            } => {
+                find_let_expr(lo, name, out);
+                find_let_expr(hi, name, out);
+                invariants.iter().for_each(|e| find_let_expr(e, name, out));
+                find_let(body, name, out);
+            }
             Stmt::Assert { cond, .. } => find_let_expr(cond, name, out),
             Stmt::LetFields { init, .. } => find_let_expr(init, name, out),
             Stmt::Expr(e) => find_let_expr(e, name, out),
@@ -4183,6 +4345,15 @@ fn assigned_in_block(b: &Block, out: &mut BTreeSet<String>) {
             Stmt::While { cond, body, .. } => {
                 assigned_in_expr(cond, out);
                 assigned_in_block(body, out);
+            }
+            // The loop variable is local to the loop (and stepped by it).
+            Stmt::For {
+                var, lo, hi, body, ..
+            } => {
+                assigned_in_expr(lo, out);
+                assigned_in_expr(hi, out);
+                assigned_in_block(body, out);
+                out.insert(var.name.clone());
             }
             Stmt::Expr(e) => assigned_in_expr(e, out),
             Stmt::Assert { .. } => {}

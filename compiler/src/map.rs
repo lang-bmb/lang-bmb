@@ -275,6 +275,18 @@ fn calls_in_block<'e>(
                 }
                 calls_in_block(body, spec, out);
             }
+            Stmt::For {
+                lo,
+                hi,
+                invariants,
+                body,
+                ..
+            } => {
+                calls_in_expr(lo, spec, out);
+                calls_in_expr(hi, spec, out);
+                invariants.iter().for_each(|i| calls_in_expr(i, true, out));
+                calls_in_block(body, spec, out);
+            }
             Stmt::Assert { cond, .. } => calls_in_expr(cond, true, out),
             Stmt::Expr(e) => calls_in_expr(e, spec, out),
         }
@@ -415,6 +427,18 @@ fn exprs_of(f: &FnDef) -> Vec<&Expr> {
                     expr(cond, out);
                     invariants.iter().for_each(|x| expr(x, out));
                     decreases.iter().for_each(|x| expr(x, out));
+                    block(body, out);
+                }
+                Stmt::For {
+                    lo,
+                    hi,
+                    invariants,
+                    body,
+                    ..
+                } => {
+                    expr(lo, out);
+                    expr(hi, out);
+                    invariants.iter().for_each(|x| expr(x, out));
                     block(body, out);
                 }
                 Stmt::Assert { cond, .. } => expr(cond, out),

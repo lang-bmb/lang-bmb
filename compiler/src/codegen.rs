@@ -2786,6 +2786,76 @@ impl<'p> Gen<'p> {
                 self.emit(format!("br label %{head}"));
                 self.block(&end);
             }
+            // The bounds once, then `i` from `lo` while `i < hi` (`<=`);
+            // `continue` goes to the step, which for `lo..=hi` leaves at
+            // `i == hi` so that `i + 1` never passes the type's maximum.
+            Stmt::For {
+                label,
+                var,
+                lo,
+                hi,
+                inclusive,
+                body,
+                ..
+            } => {
+                let t = self.local_ty(&var.name).expect("checked `for` variable");
+                let lt = llty(&t);
+                let (lt_op, le_op) = if t == TypeKind::I64 {
+                    ("slt", "sle")
+                } else {
+                    ("ult", "ule")
+                };
+                let ptr = self.alloca(lt);
+                let a = self.region(|g| g.expr(lo)).imm();
+                self.emit(format!("store {lt} {a}, ptr {ptr}"));
+                let b = self.region(|g| g.expr(hi)).imm();
+                self.slots.insert(
+                    var.name.clone(),
+                    Slot::Scalar {
+                        ptr: ptr.clone(),
+                        ty: lt,
+                    },
+                );
+                let head = self.l("for");
+                let lb = self.l("body");
+                let next = self.l("next");
+                let end = self.l("endfor");
+                self.emit(format!("br label %{head}"));
+                self.block(&head);
+                let i = self.t();
+                self.emit(format!("{i} = load {lt}, ptr {ptr}"));
+                let c = self.t();
+                let op = if *inclusive { le_op } else { lt_op };
+                self.emit(format!("{c} = icmp {op} {lt} {i}, {b}"));
+                self.emit(format!("br i1 {c}, label %{lb}, label %{end}"));
+                self.block(&lb);
+                self.loops.push(GLoop {
+                    label: label.as_ref().map(|l| l.name.clone()),
+                    head: next.clone(),
+                    end: end.clone(),
+                    mark: self.pending.len(),
+                    slot: None,
+                    ty: TypeKind::Unit,
+                });
+                self.block_expr(body);
+                self.loops.pop();
+                self.emit(format!("br label %{next}"));
+                self.block(&next);
+                let i = self.t();
+                self.emit(format!("{i} = load {lt}, ptr {ptr}"));
+                if *inclusive {
+                    let at_end = self.t();
+                    let step = self.l("step");
+                    self.emit(format!("{at_end} = icmp eq {lt} {i}, {b}"));
+                    self.emit(format!("br i1 {at_end}, label %{end}, label %{step}"));
+                    self.block(&step);
+                }
+                let n = self.t();
+                self.emit(format!("{n} = add {lt} {i}, 1"));
+                self.emit(format!("store {lt} {n}, ptr {ptr}"));
+                self.emit(format!("br label %{head}"));
+                self.block(&end);
+            }
             // Proof-only statement: no code.
             Stmt::Assert { .. } => {}
             // A discarded value is dropped (a local named here is moved).

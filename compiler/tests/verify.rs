@@ -190,3 +190,40 @@ fn nonlinear_detection() {
     assert!(!has_nonlinear_product("(assert (= r (* x (- 3))))"));
     assert!(!has_nonlinear_product("(assert (|f| x y))"));
 }
+
+/// A range `for` is encoded as its `while` expansion (ADR-0049 §2, backlog
+/// 2K-01d and 2R-04f): `let mut i = lo; while i < hi invariant lo <= i &&
+/// (i <= hi || i == lo), P decreases hi - i { body; i = i + 1; }`, with
+/// `if i == hi { break; }` before the step of `lo..=hi` and the step before
+/// each `continue`. The proof scripts are byte for byte the same.
+#[test]
+fn for_queries_are_the_while_expansion() {
+    let unit = |body: &str| {
+        format!(
+            "#[summary(\"t\")]\nmod t {{\n    spec fn few(n: u64) -> bool {{\n        n < 1000\n    }}\n\n    #[effects(pure)]\n    #[uses(few)]\n    fn f(a: &[u64], n: u64) -> u64\n        requires few(n),\n    {{\n        let mut s: u64 = 0;\n{body}        s\n    }}\n}}\n"
+        )
+    };
+    let cases = [
+        (
+            "        for i in 0..n\n            invariant s <= 1000 * i,\n        {\n            s = s + i;\n        }\n",
+            "        let mut i: u64 = 0;\n        while i < n\n            invariant 0 <= i && (i <= n || i == 0), s <= 1000 * i,\n            decreases n - i,\n        {\n            s = s + i;\n            i = i + 1;\n        }\n",
+        ),
+        (
+            "        for i in 1..=n\n            invariant s <= 1000 * i,\n        {\n            s = s + i;\n        }\n",
+            "        let mut i: u64 = 1;\n        while i <= n\n            invariant 1 <= i && (i <= n || i == 1), s <= 1000 * i,\n            decreases n - i,\n        {\n            s = s + i;\n            if i == n {\n                break;\n            }\n            i = i + 1;\n        }\n",
+        ),
+        (
+            "        for i in 0..a.len()\n            invariant s <= i,\n        {\n            if a[i] == 0 {\n                continue;\n            }\n            if a[i] == 7 {\n                break;\n            }\n            s = s + 1;\n        }\n",
+            "        let mut i: usize = 0;\n        while i < a.len()\n            invariant 0 <= i && (i <= a.len() || i == 0), s <= i,\n            decreases a.len() - i,\n        {\n            if a[i] == 0 {\n                i = i + 1;\n                continue;\n            }\n            if a[i] == 7 {\n                break;\n            }\n            s = s + 1;\n            i = i + 1;\n        }\n",
+        ),
+    ];
+    for (for_body, while_body) in cases {
+        let script = |body: &str| {
+            let files = [("t.bmb".to_string(), unit(body))];
+            let out = bmb::verify_sources_opts(&files, None, false);
+            assert!(out.ok, "{}", out.output);
+            out.scripts["t::f"].clone()
+        };
+        assert_eq!(script(for_body), script(while_body), "{for_body}");
+    }
+}

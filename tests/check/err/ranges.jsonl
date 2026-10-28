@@ -1,0 +1,8 @@
+{"code":"E0252","severity":"error","message":"`for` runs over a range of integers only","file":"err/ranges.bmb","line":6,"col":18,"end_line":6,"end_col":26,"fix":{"message":"iterate over the indices: `for i in 0..v.len()` and read `v[i]`"}}
+{"code":"E0253","severity":"error","message":"a `for` loop's measure is automatic","file":"err/ranges.bmb","line":15,"col":13,"end_line":15,"end_col":22,"fix":{"message":"remove the `decreases` clause: the range bounds the loop"}}
+{"code":"E0408","severity":"error","message":"`i` is not mutable","file":"err/ranges.bmb","line":23,"col":13,"end_line":23,"end_col":14,"fix":{"message":"a `for` variable steps by itself; copy it into a `let mut` local to change the copy"}}
+{"code":"E0401","severity":"error","message":"a `for` range is of integers, found `bool`","file":"err/ranges.bmb","line":29,"col":18,"end_line":29,"end_col":23,"fix":{"message":"loop over integer bounds and index with them"}}
+{"code":"E0401","severity":"error","message":"expected `u64`, found `i64`","file":"err/ranges.bmb","line":35,"col":21,"end_line":35,"end_col":22}
+{"code":"E0301","severity":"error","message":"unknown name `i`","file":"err/ranges.bmb","line":43,"col":9,"end_line":43,"end_col":10,"fix":{"message":"a `for` variable lives only in its loop; keep what you need in a local declared before it"}}
+{"code":"E0317","severity":"error","message":"no loop labeled `'b` around this","file":"err/ranges.bmb","line":49,"col":22,"end_line":49,"end_col":24,"fix":{"message":"the labels in scope are 'a"}}
+{"code":"E0503","severity":"error","message":"loops are not allowed in a specification","file":"err/ranges.bmb","line":54,"col":9,"end_line":55,"end_col":10}

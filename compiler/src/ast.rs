@@ -260,6 +260,19 @@ pub enum Stmt {
         body: Block,
         span: Span,
     },
+    /// `'l: for i in lo..hi invariant .., { .. }` (or `lo..=hi`, ADR-0049
+    /// §2): `i` is immutable, `lo <= i` and `i < hi` hold in the body, and
+    /// the measure is automatic.
+    For {
+        label: Option<Ident>,
+        var: Ident,
+        lo: Expr,
+        hi: Expr,
+        inclusive: bool,
+        invariants: Vec<Expr>,
+        body: Block,
+        span: Span,
+    },
     Assert {
         cond: Expr,
         span: Span,

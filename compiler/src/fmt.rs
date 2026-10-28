@@ -596,6 +596,31 @@ impl<'a> Printer<'a> {
                 }
                 self.block_lines(body, depth, "");
             }
+            Stmt::For {
+                label,
+                var,
+                lo,
+                hi,
+                inclusive,
+                invariants,
+                body,
+                ..
+            } => {
+                let l = label
+                    .as_ref()
+                    .map_or(String::new(), |l| format!("'{}: ", l.name));
+                let (a, b) = (self.cond(lo), self.cond(hi));
+                let op = if *inclusive { "..=" } else { ".." };
+                let head = format!("{l}for {} in {a}{op}{b}", var.name);
+                if invariants.is_empty() {
+                    self.block_open(body, depth, &format!("{head} "), "");
+                } else {
+                    self.line(depth, &head);
+                    let xs: Vec<String> = invariants.iter().map(|e| self.expr(e, 0)).collect();
+                    self.line(depth + 1, &format!("invariant {},", xs.join(", ")));
+                    self.block_lines(body, depth, "");
+                }
+            }
             Stmt::Assert { cond, .. } => {
                 let c = self.expr(cond, 0);
                 self.line(depth, &format!("assert({c});"));

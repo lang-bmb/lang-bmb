@@ -1,0 +1,171 @@
+#[summary("범위 for의 실행: 끝을 포함하는 범위의 최댓값, continue의 증가, break·return, 빈 범위, 한 번 읽는 끝 (backlog 2K-01d)")]
+mod rg {
+    spec fn bounded(s: i64, i: usize) -> bool {
+        0 <= s && s <= 1000 * i
+    }
+
+    #[effects(pure)]
+    #[uses(order)]
+    fn count(lo: i64, hi: i64) -> i64
+        requires order(lo, hi),
+    {
+        let mut c: i64 = 0;
+        for i in lo..hi
+            invariant c == i - lo,
+        {
+            c = c + 1;
+        }
+        c
+    }
+
+    #[effects(pure)]
+    fn empty(n: u64) -> u64 {
+        let mut s: u64 = 0;
+        for i in n..0
+            invariant s == 0,
+        {
+            s = 1;
+        }
+        s
+    }
+
+    spec fn few(n: u64) -> bool {
+        n < 1000
+    }
+
+    #[effects(pure)]
+    #[uses(few)]
+    fn first_pair(n: u64, t: u64) -> u64
+        requires few(n),
+    {
+        let mut found: u64 = 0;
+        'outer: for i in 0..n {
+            for j in i..n {
+                if i + j == t {
+                    found = i * 1000 + j;
+                    break 'outer;
+                }
+            }
+        }
+        found
+    }
+
+    #[effects(pure)]
+    #[uses(few)]
+    fn fixed_end(n: u64) -> u64
+        requires few(n),
+    {
+        let mut m: u64 = n;
+        let mut c: u64 = 0;
+        for i in 0..m
+            invariant c == i && m == n + i,
+        {
+            m = m + 1;
+            c = c + 1;
+        }
+        c
+    }
+
+    spec fn found_at(a: &[i64], x: i64, r: usize) -> bool {
+        r == a.len() || r < a.len() && a[r] == x
+    }
+
+    #[effects(pure)]
+    #[uses(found_at)]
+    fn index_of(a: &[i64], x: i64) -> (r: usize)
+        ensures found_at(a, x, r),
+    {
+        for i in 0..a.len() {
+            if a[i] == x {
+                return i;
+            }
+        }
+        a.len()
+    }
+
+    #[effects(pure)]
+    fn last_byte() -> u8 {
+        let mut n: u8 = 0;
+        for b in 0..=u8::MAX
+            invariant n <= b,
+        {
+            n = b;
+        }
+        n
+    }
+
+    #[effects(io)]
+    #[uses(bounded, few, found_at, order, small)]
+    fn main() -> () {
+        let a: [i64; 6] = [4, 7, 2, 9, 6, 5];
+        print_i64(sum(&a));
+        print_u64(u64::try_from(last_byte()).unwrap());
+        print_i64(count(-3, 4));
+        print_u64(empty(5));
+        print_i64(odd_sum_until(&a, 6));
+        print_i64(odd_sum_until(&a, 100));
+        print_u64(u64::try_from(index_of(&a, 9)).unwrap());
+        print_u64(u64::try_from(index_of(&a, 8)).unwrap());
+        print_u64(first_pair(10, 7));
+        print_u64(fixed_end(4));
+        let mut total: u64 = 0;
+        let rows: u64 = 3;
+        for i in 1..=rows
+            invariant total <= 100 * i,
+        {
+            for j in 0..i
+                invariant total <= 100 * i + 20 * j,
+            {
+                let mut v: Vec<u64> = Vec::new();
+                v.push(j);
+                if j == 1 {
+                    continue;
+                }
+                total = total + v[0] + 10;
+            }
+        }
+        print_u64(total);
+    }
+
+    #[effects(pure)]
+    #[uses(small)]
+    fn odd_sum_until(a: &[i64], stop: i64) -> i64
+        requires small(a),
+    {
+        let mut s: i64 = 0;
+        for i in 0..a.len()
+            invariant 0 <= s && s <= 1000 * i,
+        {
+            if a[i] == stop {
+                break;
+            }
+            if a[i] % 2 == 0 {
+                continue;
+            }
+            s = s + a[i];
+        }
+        s
+    }
+
+    spec fn order(lo: i64, hi: i64) -> bool {
+        -1000 <= lo && lo <= hi && hi <= 1000
+    }
+
+    spec fn small(a: &[i64]) -> bool {
+        a.len() < 1000 && (forall|k: usize| k < a.len() ==> 0 <= #[trigger] a[k] && a[k] < 1000)
+    }
+
+    #[effects(pure)]
+    #[uses(bounded, small)]
+    fn sum(a: &[i64]) -> i64
+        requires small(a),
+    {
+        let mut s: i64 = 0;
+        for i in 0..a.len()
+            invariant bounded(s, i),
+        {
+            s = s + a[i];
+        }
+        s
+    }
+}

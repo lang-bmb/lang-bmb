@@ -12,7 +12,7 @@ mod habits {
     }
 
     #[effects(pure)]
-    fn loops() -> () { for i in 0..3 { } }
+    fn loops(v: &[i64]) -> () { for x in v { } }
 
     #[effects(pure)]
     fn cast(x: u64) -> i64 { x as i64 }

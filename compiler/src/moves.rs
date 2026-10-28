@@ -704,6 +704,38 @@ impl Mv<'_> {
                     self.merge(cur, b, *span);
                 }
             }
+            // As `while` (ADR-0049 §2); the bounds are integers.
+            Stmt::For {
+                label,
+                lo,
+                hi,
+                invariants,
+                body,
+                span,
+                ..
+            } => {
+                self.expr(lo, false);
+                self.expr(hi, false);
+                let head = self.state.clone();
+                for inv in invariants {
+                    self.expr(inv, false);
+                }
+                self.loops.push(MvLoop {
+                    label: label.as_ref().map(|l| l.name.clone()),
+                    outer: head.keys().cloned().collect(),
+                    breaks: Vec::new(),
+                    continues: Vec::new(),
+                });
+                self.block(body);
+                let lp = self.loops.pop().expect("pushed");
+                let mut out = head.clone();
+                self.loop_backs(&head, lp.continues, &mut out, *span);
+                self.state = out;
+                for b in lp.breaks {
+                    let cur = std::mem::take(&mut self.state);
+                    self.merge(cur, b, *span);
+                }
+            }
             Stmt::Assert { cond, .. } => self.expr(cond, false),
             Stmt::Expr(e) => self.expr(e, true),
         }

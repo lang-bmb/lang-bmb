@@ -1,0 +1,78 @@
+#[summary("범위 for의 틀린 프로그램: 끝을 포함하는 범위의 색인, 불변식, 탈출 뒤의 사실 (backlog 2K-01d)")]
+mod rf {
+    spec fn few(n: u64) -> bool {
+        n < 1000
+    }
+
+    #[effects(pure)]
+    fn maybe_empty(lo: u64, hi: u64) -> u64 {
+        let mut s: u64 = 1;
+        for i in lo..hi {
+            s = 0;
+        }
+        10 / s
+    }
+
+    #[effects(pure)]
+    fn past_end(a: &[i64]) -> i64 {
+        let mut s: i64 = 0;
+        for i in 0..=a.len() {
+            s = a[i];
+        }
+        s
+    }
+
+    #[effects(pure)]
+    fn reverse(n: u64) -> u64 {
+        let mut s: u64 = 0;
+        for i in 0..=n {
+            s = n - i - 1;
+        }
+        s
+    }
+
+    #[effects(pure)]
+    #[uses(few)]
+    fn skip(n: u64) -> u64
+        requires few(n),
+    {
+        let mut c: u64 = 0;
+        for i in 0..n
+            invariant c == i,
+        {
+            if i % 2 == 0 {
+                continue;
+            }
+            c = c + 1;
+        }
+        c
+    }
+
+    #[effects(pure)]
+    #[uses(few)]
+    fn stop_early(n: u64) -> u64
+        requires few(n),
+    {
+        let mut last: u64 = n;
+        for i in 0..n {
+            if i == 3 {
+                last = i;
+                break;
+            }
+        }
+        10 / (last - 3)
+    }
+
+    #[effects(pure)]
+    fn twice(n: u64) -> u64
+        requires few(n),
+    {
+        let mut c: u64 = 0;
+        for i in 0..n
+            invariant c == i,
+        {
+            c = c + 2;
+        }
+        c
+    }
+}

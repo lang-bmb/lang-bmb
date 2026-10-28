@@ -1,5 +1,5 @@
-{"code":"E0250","severity":"error","message":"`break` outside a loop","file":"err/loop_exits.bmb","line":6,"col":13,"end_line":6,"end_col":18,"fix":{"message":"use it inside a `while` or `loop`; to leave the function, `return`"}}
-{"code":"E0250","severity":"error","message":"`continue` outside a loop","file":"err/loop_exits.bmb","line":13,"col":9,"end_line":13,"end_col":17,"fix":{"message":"use it inside a `while` or `loop`; to leave the function, `return`"}}
+{"code":"E0250","severity":"error","message":"`break` outside a loop","file":"err/loop_exits.bmb","line":6,"col":13,"end_line":6,"end_col":18,"fix":{"message":"use it inside a `while`, `for` or `loop`; to leave the function, `return`"}}
+{"code":"E0250","severity":"error","message":"`continue` outside a loop","file":"err/loop_exits.bmb","line":13,"col":9,"end_line":13,"end_col":17,"fix":{"message":"use it inside a `while`, `for` or `loop`; to leave the function, `return`"}}
 {"code":"E0317","severity":"error","message":"no loop labeled `'b` around this","file":"err/loop_exits.bmb","line":24,"col":23,"end_line":24,"end_col":25,"fix":{"message":"the labels in scope are 'a"}}
 {"code":"E0251","severity":"error","message":"`break` with a value leaves only a `loop`","file":"err/loop_exits.bmb","line":39,"col":13,"end_line":39,"end_col":20,"fix":{"message":"assign the value to a variable declared before the `while`, then `break`"}}
 {"code":"E0401","severity":"error","message":"expected `u64`, found `bool`","file":"err/loop_exits.bmb","line":56,"col":23,"end_line":56,"end_col":27}

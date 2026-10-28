@@ -621,6 +621,11 @@ fn walk_block(b: &mut Block, f: &mut dyn FnMut(&mut Expr, Option<Span>)) {
                 walk_expr(cond, None, f);
                 walk_block(body, f);
             }
+            Stmt::For { lo, hi, body, .. } => {
+                walk_expr(lo, None, f);
+                walk_expr(hi, None, f);
+                walk_block(body, f);
+            }
             Stmt::Assert { .. } => {}
             Stmt::Expr(e) => walk_expr(e, None, f),
         }
@@ -888,6 +893,17 @@ fn block_exprs(b: &Block) -> Vec<&Expr> {
                 v.push(cond);
                 v.extend(invariants);
                 v.extend(decreases);
+                v.extend(block_exprs(body));
+            }
+            Stmt::For {
+                lo,
+                hi,
+                invariants,
+                body,
+                ..
+            } => {
+                v.extend([lo, hi]);
+                v.extend(invariants);
                 v.extend(block_exprs(body));
             }
             Stmt::Assert { cond, .. } => v.push(cond),
