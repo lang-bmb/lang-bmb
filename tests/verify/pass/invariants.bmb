@@ -1,0 +1,255 @@
+#[summary("타입 불변식: 새 값은 가정하고 잊는 값은 증명한다 (ADR-0060)")]
+mod inv {
+    // A scalar invariant: assumed at entry, proved where a value leaves.
+    #[invariant(within)]
+    struct Span { lo: i64, hi: i64 }
+
+    spec fn within(s: &Span) -> bool {
+        0 <= s.lo && s.lo <= s.hi && s.hi <= 1000000
+    }
+
+    spec fn small(x: i64) -> bool {
+        0 <= x && x <= 1000000
+    }
+
+    spec fn nonneg(w: i64) -> bool {
+        w >= 0
+    }
+
+    // No `requires`: the parameter is valid.
+    #[effects(pure)]
+    #[uses(nonneg, within)]
+    fn width(s: Span) -> (w: i64)
+        ensures nonneg(w),
+    {
+        s.hi - s.lo
+    }
+
+    // A new value is proved valid at the return.
+    #[effects(pure)]
+    #[uses(small, within)]
+    fn make(a: i64, b: i64) -> Span
+        requires small(a), small(b),
+    {
+        if a <= b {
+            Span { lo: a, hi: b }
+        } else {
+            Span { lo: b, hi: a }
+        }
+    }
+
+    // Broken inside the body, valid again when the `&mut` parameter is
+    // given back.
+    #[effects(pure)]
+    #[uses(within)]
+    fn grow(s: &mut Span) -> () {
+        s.hi = s.hi + 1;
+        if s.hi > 1000000 {
+            s.hi = 1000000;
+        }
+    }
+
+    // A call result is valid, and so is an argument that is one: no
+    // definition is needed here.
+    #[effects(pure)]
+    #[uses(small)]
+    fn caller(a: i64) -> i64
+        requires small(a),
+    {
+        let mut s: Span = make(a, 5);
+        grow(&mut s);
+        width(s)
+    }
+
+    // A loop havocs `s`; its validity holds at the head without an
+    // invariant clause, and is proved at the end of each iteration.
+    #[effects(pure)]
+    #[uses(small, within)]
+    fn widen(s: &mut Span, n: i64) -> ()
+        requires small(n),
+    {
+        let mut i: i64 = 0;
+        while i < n
+            invariant small(i),
+            decreases n - i,
+        {
+            if s.hi < 1000000 {
+                s.hi = s.hi + 1;
+            }
+            i = i + 1;
+        }
+    }
+
+    // A loop that only passes the value on.
+    #[effects(pure)]
+    fn grow_n(s: &mut Span, n: u64) -> () {
+        for i in 0..n {
+            grow(s);
+        }
+    }
+
+    // Fields hold valid values: a struct without an invariant of its own.
+    struct Pair { a: Span, b: Span }
+
+    #[effects(pure)]
+    #[uses(nonneg, within)]
+    fn total(p: &Pair) -> (w: i64)
+        ensures nonneg(w),
+    {
+        (p.a.hi - p.a.lo) + (p.b.hi - p.b.lo)
+    }
+
+    // An enum invariant, and a payload's.
+    #[invariant(positive)]
+    enum Amount { Zero, Paid(i64), Range(Span) }
+
+    spec fn positive(a: &Amount) -> bool {
+        match a {
+            Amount::Zero => true,
+            Amount::Paid(n) => 0 < *n && *n <= 1000000,
+            Amount::Range(s) => s.lo < s.hi,
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(nonneg, positive, within)]
+    fn value(a: &Amount) -> (r: i64)
+        ensures nonneg(r),
+    {
+        match a {
+            Amount::Zero => 0,
+            Amount::Paid(n) => *n,
+            Amount::Range(s) => s.hi - s.lo,
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(positive)]
+    fn pay(n: i64) -> Amount {
+        if 0 < n && n <= 1000000 {
+            Amount::Paid(n)
+        } else {
+            Amount::Zero
+        }
+    }
+
+    // `?` lets a value go too: the `None` it returns, the `Some` at the end.
+    #[effects(pure)]
+    fn first(o: Option<Span>, d: Span) -> Option<Span> {
+        let s: Span = o?;
+        if s.lo < d.lo {
+            Some(s)
+        } else {
+            Some(d)
+        }
+    }
+
+    // `Vec` elements are valid (a quantifier over the elements).
+    #[effects(pure)]
+    #[uses(nonneg, within)]
+    fn first_width(v: &Vec<Span>) -> (w: i64)
+        ensures nonneg(w),
+    {
+        if v.len() > 0 {
+            v[0].hi - v[0].lo
+        } else {
+            0
+        }
+    }
+
+    #[effects(pure)]
+    fn keep(v: &mut Vec<Span>, s: Span) -> () {
+        if v.len() < 100 {
+            v.push(s);
+        }
+    }
+
+    // `Box` contents.
+    struct Holder { inner: Box<Span> }
+
+    #[effects(pure)]
+    #[uses(nonneg, within)]
+    fn held(h: &Holder) -> (w: i64)
+        ensures nonneg(w),
+    {
+        h.inner.hi - h.inner.lo
+    }
+
+    // A recursive type: its validity is a function unfolded at the
+    // values a query names. The predicate looks at one node only.
+    #[invariant(percent)]
+    enum List { Nil, Cons(i64, Box<List>) }
+
+    spec fn percent(l: &List) -> bool {
+        match l {
+            List::Nil => true,
+            List::Cons(x, rest) => 0 <= *x && *x <= 100,
+        }
+    }
+
+    spec fn pct(x: i64) -> bool {
+        0 <= x && x <= 100
+    }
+
+    // Every node below is valid too (deep validity, two levels here).
+    #[effects(pure)]
+    #[uses(nonneg, percent)]
+    fn two(l: &List) -> (r: i64)
+        ensures nonneg(r),
+    {
+        match l {
+            List::Nil => 0,
+            List::Cons(x, rest) => match &**rest {
+                List::Nil => *x,
+                List::Cons(y, more) => *x + *y,
+            },
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(pct, percent)]
+    fn push_front(l: List, x: i64) -> List
+        requires pct(x),
+    {
+        List::Cons(x, Box::new(l))
+    }
+
+    // A generic type: its predicate takes the same type parameters.
+    #[invariant(bounded)]
+    struct Buf<T: Copy> { items: [T; 4], len: usize }
+
+    spec fn bounded<T: Copy>(b: &Buf<T>) -> bool {
+        b.len <= 4
+    }
+
+    #[effects(pure)]
+    #[uses(bounded)]
+    fn last<T: Copy>(b: &Buf<T>, d: T) -> T {
+        if b.len > 0 {
+            b.items[b.len - 1]
+        } else {
+            d
+        }
+    }
+
+    // A type parameter's validity is opaque: moving values keeps it.
+    #[effects(pure)]
+    fn pick<T: Copy>(c: bool, a: T, b: T) -> T {
+        if c {
+            a
+        } else {
+            b
+        }
+    }
+
+    // Instances: an element of a `Buf<Span>` is a valid `Span`.
+    #[effects(pure)]
+    #[uses(nonneg, within)]
+    fn last_width(b: &Buf<Span>, d: Span) -> (w: i64)
+        ensures nonneg(w),
+    {
+        let s: Span = last::<Span>(b, d);
+        let t: Span = pick::<Span>(true, s, d);
+        t.hi - t.lo
+    }
+}

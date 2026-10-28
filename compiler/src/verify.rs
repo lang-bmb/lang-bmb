@@ -6,8 +6,11 @@
 //! and explicit proof obligation is checked separately by Z3. Only `unsat`
 //! proves an obligation.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
+
+mod invariants;
+use invariants::Boundary;
 
 use crate::ast::*;
 use crate::cache::ProofCache;
@@ -349,68 +352,103 @@ fn prepare(p: &Program, t: &Tables) -> Tables {
         .keys()
         .map(|k| (k.clone(), BTreeMap::new(), true))
         .collect();
-    while let Some((path, sub, whole)) = work.pop() {
-        // A trait impl's function is also checked against the trait's
-        // contract, stated for it (its refinement obligations).
-        if whole
-            && sub.is_empty()
-            && let Some((decl, rsub)) = refinement_of(&view, &path)
-            && defs.contains_key(&decl)
-        {
-            work.push((decl, rsub, false));
-        }
-        let d = &defs[&path];
-        let mut roots: Vec<&Expr> = d.f.requires.iter().chain(&d.f.ensures).collect();
-        if whole {
-            roots.extend(&d.f.decreases);
-        }
-        let mut nodes: Vec<&Expr> = Vec::new();
-        for r in roots {
-            each_expr(r, &mut |e| nodes.push(e));
-        }
-        if whole {
-            each_block_expr(&d.f.body, &mut |e| nodes.push(e));
-        }
-        for e in nodes {
-            let k = (e.span.file, e.span.lo, e.span.hi);
-            if !sub.is_empty()
-                && let Some(ty) = view.types.get(&k)
+    loop {
+        while let Some((path, sub, whole)) = work.pop() {
+            // A trait impl's function is also checked against the trait's
+            // contract, stated for it (its refinement obligations).
+            if whole
+                && sub.is_empty()
+                && let Some((decl, rsub)) = refinement_of(&view, &path)
+                && defs.contains_key(&decl)
             {
-                types.push(crate::check::subst(ty, &sub));
+                work.push((decl, rsub, false));
             }
-            let ExprKind::Call { path: cp, .. } = &e.kind else {
-                continue;
-            };
-            let Some(targs) = view.targs.get(&k) else {
-                continue;
-            };
-            let args: Vec<TypeKind> = targs.iter().map(|a| crate::check::subst(a, &sub)).collect();
-            if args.iter().any(|a| type_depth(a) > MAX_INST_DEPTH) {
-                continue;
-            }
-            let (target, args) = dispatched(&view, resolve_in(&view, cp, &d.mod_path), args);
-            // A trait call that runs a non-generic impl function.
-            if args.is_empty() {
-                continue;
-            }
-            let Some(sig) = view.fns.get(&target) else {
-                continue;
-            };
-            let csub: BTreeMap<String, TypeKind> = sig
-                .generics
-                .iter()
-                .map(|g| g.name.clone())
-                .zip(args.iter().cloned())
-                .collect();
-            let key = inst_key(&target, &args);
-            if sig.kind == FnKind::Spec {
-                if let std::collections::btree_map::Entry::Vacant(v) = insts.entry(key) {
-                    v.insert((target.clone(), csub.clone()));
-                    work.push((target, csub, true));
+            let d = &defs[&path];
+            // An instance's values have their types under `sub` (their
+            // invariants' instances, below).
+            if !sub.is_empty() {
+                if let Some(ls) = view.locals.get(&path) {
+                    types.extend(ls.values().map(|t| crate::check::subst(t, &sub)));
                 }
-            } else if seen_exec.insert(key) {
-                work.push((target, csub, false));
+                if let Some(sig) = view.fns.get(&path) {
+                    types.extend(sig.params.iter().map(|t| crate::check::subst(t, &sub)));
+                    types.push(crate::check::subst(&sig.ret, &sub));
+                }
             }
+            let mut roots: Vec<&Expr> = d.f.requires.iter().chain(&d.f.ensures).collect();
+            if whole {
+                roots.extend(&d.f.decreases);
+            }
+            let mut nodes: Vec<&Expr> = Vec::new();
+            for r in roots {
+                each_expr(r, &mut |e| nodes.push(e));
+            }
+            if whole {
+                each_block_expr(&d.f.body, &mut |e| nodes.push(e));
+            }
+            for e in nodes {
+                let k = (e.span.file, e.span.lo, e.span.hi);
+                if !sub.is_empty()
+                    && let Some(ty) = view.types.get(&k)
+                {
+                    types.push(crate::check::subst(ty, &sub));
+                }
+                let ExprKind::Call { path: cp, .. } = &e.kind else {
+                    continue;
+                };
+                let Some(targs) = view.targs.get(&k) else {
+                    continue;
+                };
+                let args: Vec<TypeKind> =
+                    targs.iter().map(|a| crate::check::subst(a, &sub)).collect();
+                if args.iter().any(|a| type_depth(a) > MAX_INST_DEPTH) {
+                    continue;
+                }
+                let (target, args) = dispatched(&view, resolve_in(&view, cp, &d.mod_path), args);
+                // A trait call that runs a non-generic impl function.
+                if args.is_empty() {
+                    continue;
+                }
+                let Some(sig) = view.fns.get(&target) else {
+                    continue;
+                };
+                let csub: BTreeMap<String, TypeKind> = sig
+                    .generics
+                    .iter()
+                    .map(|g| g.name.clone())
+                    .zip(args.iter().cloned())
+                    .collect();
+                let key = inst_key(&target, &args);
+                if sig.kind == FnKind::Spec {
+                    if let std::collections::btree_map::Entry::Vacant(v) = insts.entry(key) {
+                        v.insert((target.clone(), csub.clone()));
+                        work.push((target, csub, true));
+                    }
+                } else if seen_exec.insert(key) {
+                    work.push((target, csub, false));
+                }
+            }
+        }
+        // The invariant predicates of generic types (ADR-0060 §2) at every
+        // type a value of the program has: an instance's body may call further
+        // generic spec fns.
+        let mut all: Vec<TypeKind> = view.types.values().cloned().collect();
+        all.extend(view.locals.values().flat_map(|m| m.values().cloned()));
+        for s in view.fns.values() {
+            all.extend(s.params.iter().cloned());
+            all.push(s.ret.clone());
+        }
+        all.extend(types.iter().cloned());
+        let mut grew = false;
+        for (key, base, sub) in invariants::instances(&view, &all) {
+            if let std::collections::btree_map::Entry::Vacant(v) = insts.entry(key) {
+                v.insert((base.clone(), sub.clone()));
+                work.push((base, sub, true));
+                grew = true;
+            }
+        }
+        if !grew {
+            break;
         }
     }
     for (key, (base, sub)) in &insts {
@@ -467,6 +505,7 @@ fn prog_of<'p>(p: &'p Program, t: &'p Tables) -> Prog<'p> {
         selectors,
         struct_ctors,
         struct_sels,
+        valid_memo: RefCell::default(),
     }
 }
 
@@ -1563,6 +1602,9 @@ struct Obl {
     msg: String,
     assumptions: Vec<String>,
     goal: String,
+    /// A value the counterexample shows besides the inputs: the one an
+    /// invariant obligation is about (E0823, ADR-0060 §4).
+    shown: Option<(String, Val, TypeKind)>,
 }
 
 struct Def<'p> {
@@ -1587,6 +1629,8 @@ struct Prog<'p> {
     struct_ctors: BTreeSet<String>,
     /// The leaf of every recursive struct selector (`Prog::struct_facts`).
     struct_sels: BTreeMap<String, Leaf>,
+    /// Whether a type has a validity (`needs_valid`), by its text.
+    valid_memo: RefCell<BTreeMap<String, bool>>,
 }
 
 /// Symbolic state of one definition.
@@ -1631,6 +1675,13 @@ struct Enc<'p, 'q> {
     /// block. Its expressions are specifications (no overflow or index
     /// obligations); its effects are the facts it proves.
     ghost: bool,
+    /// Type invariants (ADR-0060 §2, `invariants.rs`): the validity
+    /// symbols declared, the nesting depth of element quantifiers (their
+    /// bound index: the same value gets the same text), and the definitions
+    /// of the recursive types' validity functions (ground instances).
+    valid_decl: BTreeSet<String>,
+    valid_depth: u32,
+    valid_defs: Vec<AxiomParts>,
 }
 
 /// A loop a `break` or `continue` may leave (ADR-0049 §3).
@@ -1649,6 +1700,10 @@ struct VLoop {
     /// A range `for`'s variable and bounds: the end of an iteration (the
     /// body's or a `continue`) steps it (ADR-0049 §2).
     step: Option<ForStep>,
+    /// The loop, and the locals it havocs that have a validity: valid
+    /// again when an iteration goes back to the head (ADR-0060 §2).
+    span: Span,
+    valid_vars: Vec<(String, TypeKind)>,
 }
 
 /// A range `for`: `var` from `lo` to `hi` (excluded, or included), the
@@ -2105,6 +2160,9 @@ impl<'p, 'q> Enc<'p, 'q> {
             dead: false,
             loops: Vec::new(),
             ghost: false,
+            valid_decl: BTreeSet::new(),
+            valid_depth: 0,
+            valid_defs: Vec::new(),
         }
     }
 
@@ -2480,6 +2538,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                 msg: msg.into(),
                 assumptions,
                 goal: goal.clone(),
+                shown: None,
             });
         }
         if self.term_check.is_none() {
@@ -2884,6 +2943,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                 msg,
                 assumptions,
                 goal: format!("(forall ({}) (=> {} {goal}))", decls.join(" "), and(&inner)),
+                shown: None,
             });
             return;
         }
@@ -2910,6 +2970,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                 decreases.as_deref(),
                 body,
                 None,
+                e.span,
             ),
             // The state goes to the loop's exit; the path ends.
             ExprKind::Break { label, value } => {
@@ -2941,8 +3002,9 @@ impl<'p, 'q> Enc<'p, 'q> {
                 let st = self.ty(x);
                 let (ok, bad) = crate::check::try_variants(&st).expect("checked `?`");
                 let t = self.ty(e);
-                let f = self.prog.defs[&self.path].f;
-                let rt = crate::check::subst(&f.ret.ty.kind, &self.tsub);
+                // The checked result type: its data types by full path (the
+                // written one names a unit's type by its short name).
+                let rt = crate::check::subst(&self.prog.t.fns[&self.path].ret, &self.tsub);
                 let go_on = |s: &mut Self| {
                     let (vals, facts) = s.payload(&st, ok, &sv);
                     s.pc.extend(facts);
@@ -2952,7 +3014,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                     let (vals, facts) = s.payload(&st, bad, &sv);
                     s.pc.extend(facts);
                     let r = s.variant_value(&rt, bad, &vals);
-                    s.post_check(r);
+                    s.post_check(r, e.span, "at this `?`");
                     s.dead = true;
                     Val::Unit
                 };
@@ -2971,7 +3033,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                     None => Val::Unit,
                 };
                 if !self.dead {
-                    self.post_check(v);
+                    self.post_check(v, e.span, "at this `return`");
                     self.dead = true;
                 }
                 Val::Unit
@@ -3479,11 +3541,11 @@ impl<'p, 'q> Enc<'p, 'q> {
 
     /// The postconditions of the function at a point where it returns
     /// `result` (the end of the body, or a `return`, ADR-0049 §3).
-    fn post_check(&mut self, result: Val) {
+    fn post_check(&mut self, result: Val, at: Span, how: &str) {
         let f = self.prog.defs[&self.path].f;
         let (mut env, old) = self.cur_env();
         if let Some(n) = &f.ret.name {
-            env.insert(n.name.clone(), result);
+            env.insert(n.name.clone(), result.clone());
         }
         for en in &f.ensures {
             let g = self.spec(en, &env, &old).s();
@@ -3494,6 +3556,8 @@ impl<'p, 'q> Enc<'p, 'q> {
                 g,
             );
         }
+        // What the function lets go is valid (ADR-0060 §2).
+        self.exit_valid(&result, at, how);
     }
 
     fn block(&mut self, b: &Block) -> Val {
@@ -3605,7 +3669,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                 invariants,
                 decreases,
                 body,
-                ..
+                span,
             } => {
                 self.loop_core(
                     label.as_ref(),
@@ -3614,6 +3678,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                     decreases.as_ref(),
                     body,
                     None,
+                    *span,
                 );
             }
             // `let mut i = lo; while i < hi invariant lo <= i && (i <= hi
@@ -3642,7 +3707,15 @@ impl<'p, 'q> Enc<'p, 'q> {
                     inclusive: *inclusive,
                     span: *span,
                 };
-                self.loop_core(label.as_ref(), None, invariants, None, body, Some(step));
+                self.loop_core(
+                    label.as_ref(),
+                    None,
+                    invariants,
+                    None,
+                    body,
+                    Some(step),
+                    *span,
+                );
                 self.vars.remove(&var.name);
             }
         }
@@ -3651,6 +3724,7 @@ impl<'p, 'q> Enc<'p, 'q> {
     /// A `while` (with `cond`), a range `for` (with `step`) or a `loop`
     /// (with neither): its value is that of the `break e` that leaves a
     /// `loop` (ADR-0049 §3).
+    #[allow(clippy::too_many_arguments)]
     fn loop_core(
         &mut self,
         label: Option<&Ident>,
@@ -3659,6 +3733,7 @@ impl<'p, 'q> Enc<'p, 'q> {
         decreases: Option<&Expr>,
         body: &Block,
         step: Option<ForStep>,
+        span: Span,
     ) -> Val {
         // A `while` and a `for` also leave when their condition is false.
         let exits = cond.is_some() || step.is_some();
@@ -3694,6 +3769,13 @@ impl<'p, 'q> Enc<'p, 'q> {
                 None => Some(v),
             })
             .collect();
+        // The values the loop havocs are valid on entry, and assumed valid
+        // at the head (ADR-0060 §2).
+        let valid_vars = self.loop_valid_vars(&modified);
+        for (v, ty) in &valid_vars {
+            let cur = self.vars[v].clone();
+            self.oblige_valid(span, Boundary::LoopEntry(v), &cur, ty);
+        }
         for v in &modified {
             let Some(cur) = self.vars.get(v).cloned() else {
                 continue;
@@ -3726,6 +3808,10 @@ impl<'p, 'q> Enc<'p, 'q> {
                 Val::Unit => Val::Unit,
             };
             self.vars.insert(v.clone(), fresh);
+        }
+        for (v, ty) in &valid_vars {
+            let cur = self.vars[v].clone();
+            self.assume_valid(&cur, ty);
         }
         // Earlier facts mention only earlier constants, so they stay valid.
         if let Some(st) = &step {
@@ -3764,6 +3850,8 @@ impl<'p, 'q> Enc<'p, 'q> {
             measure,
             breaks: Vec::new(),
             step,
+            span,
+            valid_vars,
         });
         self.block(body);
         // A body that left (`return`, `break`, `continue`) does not come
@@ -3873,6 +3961,12 @@ impl<'p, 'q> Enc<'p, 'q> {
     /// end of its body, or a `continue`): its invariants hold, its measure
     /// decreased.
     fn back_to_head(&mut self, k: usize) {
+        let span = self.loops[k].span;
+        for (v, ty) in self.loops[k].valid_vars.clone() {
+            if let Some(cur) = self.vars.get(&v).cloned() {
+                self.oblige_valid(span, Boundary::LoopBack(&v), &cur, &ty);
+            }
+        }
         if let Some(st) = self.loops[k].step.clone() {
             let g = for_bounds(&st, &self.vars[&st.var].s());
             self.oblige("E0807", st.span, "loop invariant may not be preserved", g);
@@ -4525,6 +4619,15 @@ impl<'p, 'q> Enc<'p, 'q> {
         let f = def.f;
         let pre_env = bind_params(f, &argv);
         let unit = def.mod_path.clone();
+        let param_tys: Vec<TypeKind> = self.prog.t.fns[&target]
+            .params
+            .iter()
+            .map(|t| crate::check::subst(t, &csub))
+            .collect();
+        // Every argument leaves the caller's hands valid (ADR-0060 §2).
+        for ((v, t), a) in argv.iter().zip(&param_tys).zip(args) {
+            self.oblige_valid(a.span, Boundary::Arg(a, &target), v, t);
+        }
         // The lemma is proved for values of its parameter types; ghost
         // arithmetic is mathematical, so an argument may lie outside
         // (E0819, ADR-0062 §2).
@@ -4581,11 +4684,6 @@ impl<'p, 'q> Enc<'p, 'q> {
         // of a slice but never its length; a `&mut Vec<T>` also its length.
         let mut post_args = argv.clone();
         let mut old_env = BTreeMap::new();
-        let param_tys: Vec<TypeKind> = self.prog.t.fns[&target]
-            .params
-            .iter()
-            .map(|t| crate::check::subst(t, &csub))
-            .collect();
         for (i, p) in f.params.iter().enumerate() {
             if let TypeKind::Ref { mutable: true, .. } = p.ty.kind
                 && root_var(&args[i]).is_some()
@@ -4615,6 +4713,8 @@ impl<'p, 'q> Enc<'p, 'q> {
                     _ => self.fresh_val(&root, &param_tys[i]),
                 };
                 old_env.insert(p.name.name.clone(), argv[i].clone());
+                // The callee left it valid.
+                self.assume_valid(&nv, &param_tys[i]);
                 let cur = self.vars[&root].clone();
                 let whole = self.set_at(cur, &steps, nv.clone());
                 self.vars.insert(root, whole);
@@ -4624,6 +4724,7 @@ impl<'p, 'q> Enc<'p, 'q> {
         let mut post_env = bind_params(f, &post_args);
         let ret_ty = crate::check::subst(&self.prog.t.fns[&target].ret, &csub);
         let result = self.fresh_val(&format!("{target}.result"), &ret_ty);
+        self.assume_valid(&result, &ret_ty);
         if let Some(n) = &f.ret.name {
             post_env.insert(n.name.clone(), result.clone());
         }
@@ -5386,8 +5487,9 @@ fn needed_decls(
 
 /// Whether the `requires` clauses of every executable function that has
 /// any can hold together (backlog 2D-08). The query is the prover's own
-/// encoding of the function's entry state: parameter range facts, the
-/// definitions its `#[uses]` reveals, and the clauses, under the pinned seed
+/// encoding of the function's entry state: parameter range facts and type
+/// invariants (ADR-0060), the definitions its `#[uses]` reveals, and the
+/// clauses, under the pinned seed
 /// and `rlimit`. Per function with clauses, in path order: its path, the
 /// span from the first to the last clause, and `Some(true)` (satisfiable),
 /// `Some(false)` (unsatisfiable: the function can never be called and every
@@ -5420,6 +5522,8 @@ pub fn preconditions_satisfiable(p: &Program, t: &Tables) -> Vec<(String, Span, 
         for prm in &d.f.params {
             let ty = enc.local_ty(&prm.name.name);
             let v = enc.fresh_val(&prm.name.name, &ty);
+            // The entry state the prover assumes: valid parameters too.
+            enc.assume_valid(&v, &ty);
             enc.vars.insert(prm.name.name.clone(), v);
         }
         let (env, old) = enc.cur_env();
@@ -5438,6 +5542,7 @@ pub fn preconditions_satisfiable(p: &Program, t: &Tables) -> Vec<(String, Span, 
             .map(|a| format!("(assert {a})"))
             .collect::<Vec<_>>()
             .join("\n");
+        let q = valid_instances(&enc.valid_defs, q);
         let q = format!("{q}\n{}", prog.struct_facts(&q));
         let relevant = relevant_axioms(&axioms, &q);
         let mut base = header(0).join("\n");
@@ -5628,7 +5733,7 @@ fn verify_impl(
                 enc.block(&d.f.body);
                 enc.ghost = false;
                 enc.mark_reach(d.f.name.span, "end of the body");
-                enc.post_check(Val::Unit);
+                enc.post_check(Val::Unit, d.f.name.span, "at the end of the body");
             }
             FnKind::Exec => {
                 for u in prog.revealed(d.f, &d.mod_path) {
@@ -5639,6 +5744,8 @@ fn verify_impl(
                 for prm in &d.f.params {
                     let ty = enc.local_ty(&prm.name.name);
                     let v = enc.fresh_val(&prm.name.name, &ty);
+                    // A parameter is valid (ADR-0060 §2): its caller proved it.
+                    enc.assume_valid(&v, &ty);
                     if let TypeKind::Ref { mutable: true, .. } = prm.ty.kind {
                         enc.old.insert(prm.name.name.clone(), v.clone());
                     }
@@ -5659,7 +5766,8 @@ fn verify_impl(
                 let result = enc.block(&d.f.body);
                 if !enc.dead {
                     enc.mark_reach(d.f.name.span, "end of the body");
-                    enc.post_check(result);
+                    let at = d.f.body.tail.as_ref().map_or(d.f.name.span, |t| t.span);
+                    enc.post_check(result, at, "at the end of the body");
                 }
             }
         }
@@ -5679,6 +5787,7 @@ fn verify_impl(
                         .collect::<Vec<_>>()
                         .join("\n")
                 );
+                let q = valid_instances(&enc.valid_defs, q);
                 let q = format!("{q}\n{}", prog.struct_facts(&q));
                 let relevant = relevant_axioms(&axioms, &q);
                 let used = needed_decls(&spec_decls, &dts, &format!("{relevant}{decls}\n{q}"));
@@ -5730,6 +5839,7 @@ fn verify_impl(
                     .join("\n"),
                 o.goal
             );
+            let q = valid_instances(&enc.valid_defs, q);
             let q = format!("{q}\n{}", prog.struct_facts(&q));
             // Only definitions the obligation can reach (DESIGN.md §4.1:
             // unrelated context is the main source of solver instability).
@@ -5900,7 +6010,7 @@ fn verify_impl(
             match answer {
                 Ok(Answer::Unsat) => failed -= 1,
                 Ok(Answer::Sat) => {
-                    let cex = counterexample(sol, &enc.inputs, t);
+                    let cex = counterexample(sol, &shown_inputs(&enc.inputs, o), t);
                     let mut msg = format!("{} in `{path}`", o.msg);
                     if !cex.is_empty() {
                         msg.push_str(&format!("; counterexample: {cex}"));
@@ -5915,7 +6025,7 @@ fn verify_impl(
                     };
                     let mut msg = format!("{} in `{path}`: solver could not decide ({why})", o.msg);
                     // Z3 often keeps a candidate model; show it, marked as unconfirmed.
-                    let cex = counterexample(sol, &enc.inputs, t);
+                    let cex = counterexample(sol, &shown_inputs(&enc.inputs, o), t);
                     if !cex.is_empty() {
                         msg.push_str(&format!("; unconfirmed counterexample: {cex}"));
                     }
@@ -6520,6 +6630,25 @@ fn relevant_axioms(axioms: &[(String, String)], text: &str) -> String {
             out.push('\n');
         }
     }
+    out
+}
+
+/// Query `q` with the ground instances of the validity functions of
+/// recursive types (ADR-0060 §2) for the applications it holds, two levels
+/// deep; `q` itself when there are none.
+fn valid_instances(defs: &[AxiomParts], q: String) -> String {
+    if defs.is_empty() {
+        return q;
+    }
+    let (inst, _) = ground_instances(defs, &q, 2);
+    format!("{q}\n{inst}")
+}
+
+/// The values a counterexample of `o` shows: the inputs, and the value an
+/// invariant obligation is about.
+fn shown_inputs(inputs: &[(String, Val, TypeKind)], o: &Obl) -> Vec<(String, Val, TypeKind)> {
+    let mut out = inputs.to_vec();
+    out.extend(o.shown.iter().cloned());
     out
 }
 

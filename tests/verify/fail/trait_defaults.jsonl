@@ -3,7 +3,7 @@
 {"def":"<df::Big as df::Shape>::area","status":"verified","obligations":2,"failed":0,"rlimit":1690,"rlimit_max":1408}
 {"def":"<df::Big as df::Shape>::twice","status":"verified","obligations":2,"failed":0,"rlimit":2612,"rlimit_max":2294}
 {"def":"<df::Sq as df::Shape>::area","status":"verified","obligations":2,"failed":0,"rlimit":1690,"rlimit_max":1408}
-{"def":"df::Shape::twice","status":"failed","obligations":1,"failed":1,"rlimit":33511,"rlimit_max":33511}
-{"def":"df::bounded","status":"failed","obligations":1,"failed":1,"rlimit":284,"rlimit_max":284}
+{"def":"df::Shape::twice","status":"failed","obligations":1,"failed":1,"rlimit":33572,"rlimit_max":33572}
+{"def":"df::bounded","status":"failed","obligations":1,"failed":1,"rlimit":313,"rlimit_max":313}
 {"def":"df::labels","status":"verified","obligations":2,"failed":0,"rlimit":2343,"rlimit_max":1396}
 {"def":"df::main","status":"verified","obligations":1,"failed":0,"rlimit":1842,"rlimit_max":1842}

@@ -860,3 +860,93 @@ fn lemma_edits_follow_the_contract_firewall() {
         let _ = fs::remove_dir_all(&dir);
     }
 }
+
+/// A type invariant (ADR-0060 §3, backlog T1-11) is assumed and proved
+/// wherever a value of the type passes, also where no text names the type
+/// (`relay` sees it only through its callees' signatures). Changing the
+/// predicate or the attribute re-encodes inside the type's `impact` set,
+/// outputs stay exact (audited), an unrelated definition is not touched,
+/// and the type's identity follows the predicate, not its name.
+#[test]
+fn invariant_edits_reencode_where_values_pass() {
+    const BASE: &str = r#"#[summary("invariants")]
+mod iv {
+    #[invariant(ordered)]
+    struct Span { lo: i64, hi: i64 }
+
+    spec fn ordered(s: &Span) -> bool { s.lo <= s.hi }
+
+    spec fn small(x: i64) -> bool { 0 <= x && x <= 1000 }
+
+    #[effects(pure)]
+    #[uses(ordered, small)]
+    fn make(a: i64) -> Span
+        requires small(a),
+    {
+        Span { lo: a, hi: a + 1 }
+    }
+
+    #[effects(pure)]
+    #[uses(ordered)]
+    fn width(s: Span) -> i64 {
+        if s.hi - s.lo > 100 { 100 } else { s.hi - s.lo }
+    }
+
+    #[effects(pure)]
+    #[uses(small)]
+    fn relay(a: i64) -> i64
+        requires small(a),
+    {
+        width(make(a))
+    }
+
+    #[effects(pure)]
+    fn other(x: i64) -> i64 {
+        x / 2
+    }
+}
+"#;
+    let stronger = BASE.replace("{ s.lo <= s.hi }", "{ s.lo < s.hi }");
+    let without = BASE.replace("    #[invariant(ordered)]\n", "");
+    for t in [&stronger, &without] {
+        assert_ne!(t, BASE);
+    }
+    let dir = tmp("invariants");
+    cached(&files(BASE), &dir);
+    for text in [&stronger, BASE, &without, BASE] {
+        let f = files(text);
+        let (out, stats) = bmb::incremental::with_audit(|| cached(&f, &dir));
+        assert_eq!(out, plain(&f));
+        assert!(stats.audit_mismatches.is_empty(), "{stats:?}");
+    }
+    let _ = fs::remove_dir_all(&dir);
+    let hit = impact(&files(BASE), "iv::Span", "iface");
+    assert!(
+        hit.contains("iv::relay") && !hit.contains("iv::other"),
+        "{hit:?}"
+    );
+    for (i, text) in [&stronger, &without].into_iter().enumerate() {
+        let dir = tmp(&format!("invariants{i}"));
+        cached(&files(BASE), &dir);
+        let (_, stats) = cached(&files(text), &dir);
+        let enc = set(&stats.encoded);
+        assert!(enc.contains("iv::relay"), "edit {i}: {enc:?}");
+        assert!(!enc.contains("iv::other"), "edit {i}: {enc:?}");
+        assert!(enc.is_subset(&hit), "edit {i}: {enc:?} not in {hit:?}");
+        let _ = fs::remove_dir_all(&dir);
+    }
+    // The type's identity holds its invariant (ADR-0059 §1): it changes
+    // with the predicate and the attribute, not with the predicate's name.
+    let id = |text: &str| -> String {
+        let h = bmb::hash_sources(&files(text)).unwrap();
+        h.lines()
+            .find(|l| l.contains("\"def\":\"iv::Span\""))
+            .and_then(|l| l.split("\"id\":\"").nth(1))
+            .map(|r| r.split('"').next().unwrap().to_string())
+            .unwrap()
+    };
+    let base_id = id(BASE);
+    assert_ne!(id(&stronger), base_id);
+    assert_ne!(id(&without), base_id);
+    assert_eq!(id(&BASE.replace("ordered", "sorted_pair")), base_id);
+}

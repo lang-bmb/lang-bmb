@@ -984,6 +984,18 @@ impl Session {
                 let line = adt_line(&t.adts[ty]);
                 section(&mut pk, "type", &line);
                 section(&mut ik, "type", &line);
+                // A type invariant is assumed and proved wherever a value
+                // of the type crosses a boundary (ADR-0060 §3): its
+                // predicate's text and declaration.
+                if let Some(inv) = &t.adts[ty].inv
+                    && by_path.contains_key(inv.as_str())
+                {
+                    let (body, _) = hash_of(inv);
+                    section(&mut pk, "invariant", &format!("{ty} {inv} {body}"));
+                    if let Some(decl) = decls.get(inv) {
+                        section(&mut pk, "decl", decl);
+                    }
+                }
             }
             proof_keys.insert(path.clone(), crate::sha256::hex(pk.as_bytes()));
             ir_keys.insert(path.clone(), crate::sha256::hex(ik.as_bytes()));
@@ -1208,5 +1220,11 @@ fn adt_line(a: &crate::check::Adt) -> String {
             })
             .collect(),
     };
-    format!("{} {{ {} }}", a.path, body.join(", "))
+    // Its invariant (ADR-0060 §3); the predicate's text goes in a section
+    // of its own.
+    let inv = a
+        .inv
+        .as_ref()
+        .map_or(String::new(), |p| format!("#[invariant({p})] "));
+    format!("{inv}{} {{ {} }}", a.path, body.join(", "))
 }

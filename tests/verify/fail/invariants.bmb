@@ -1,0 +1,124 @@
+#[summary("타입 불변식이 깨지는 경계마다 반례 하나 (ADR-0060)")]
+mod invf {
+    #[invariant(ordered)]
+    struct Span { lo: i64, hi: i64 }
+
+    spec fn ordered(s: &Span) -> bool {
+        s.lo <= s.hi
+    }
+
+    #[effects(pure)]
+    fn take(s: Span) -> i64 {
+        0
+    }
+
+    // Argument: a value built here is not known to be valid.
+    #[effects(pure)]
+    #[uses(ordered)]
+    fn argument(a: i64, b: i64) -> i64 {
+        take(Span { lo: a, hi: b })
+    }
+
+    // Result at the end of the body.
+    #[effects(pure)]
+    #[uses(ordered)]
+    fn tail(a: i64) -> Span {
+        Span { lo: a, hi: 0 }
+    }
+
+    // Result at a `return`.
+    #[effects(pure)]
+    #[uses(ordered)]
+    fn early(a: i64) -> Span {
+        if a > 10 {
+            return Span { lo: a, hi: 10 };
+        }
+        Span { lo: 0, hi: 10 }
+    }
+
+    // The `Err` a `?` returns carries a value too.
+    #[effects(pure)]
+    #[uses(ordered)]
+    fn tried(a: i64) -> Result<i64, Span> {
+        let r: Result<i64, Span> = if a > 0 {
+            Ok(a)
+        } else {
+            Err(Span { lo: 1, hi: 0 })
+        };
+        let v: i64 = r?;
+        Ok(v)
+    }
+
+    // A `&mut` parameter given back broken.
+    #[effects(pure)]
+    #[uses(ordered)]
+    fn shrink(s: &mut Span) -> () {
+        if s.hi > -100 {
+            s.hi = s.hi - 100;
+        }
+    }
+
+    // A loop entered with a broken value.
+    #[effects(pure)]
+    #[uses(ordered)]
+    fn entry(n: u64) -> i64 {
+        let mut s: Span = Span { lo: 1, hi: 0 };
+        for i in 0..n {
+            s.lo = 0;
+        }
+        s.hi
+    }
+
+    // An iteration that ends with a broken value.
+    #[effects(pure)]
+    #[uses(ordered)]
+    fn iteration(s: &mut Span, n: u64) -> () {
+        for i in 0..n {
+            if s.lo < 1000 {
+                s.lo = s.lo + 1;
+            }
+        }
+    }
+
+    // The invariant is opaque without `#[uses]`: the assumption at entry
+    // gives nothing here (hint: add `ordered`).
+    #[effects(pure)]
+    fn opaque(s: Span) -> i64 {
+        if s.lo > s.hi {
+            1 / 0
+        } else {
+            0
+        }
+    }
+
+    // A recursive type: the tail of a valid list is valid, a new node is
+    // checked.
+    #[invariant(small)]
+    enum List { Nil, Cons(i64, Box<List>) }
+
+    spec fn small(l: &List) -> bool {
+        match l {
+            List::Nil => true,
+            List::Cons(x, rest) => *x < 100,
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(small)]
+    fn cons(l: List, x: i64) -> List {
+        List::Cons(x, Box::new(l))
+    }
+
+    // A generic container whose elements are not known to be valid.
+    #[effects(pure)]
+    fn fill<T: Copy>(x: T) -> T {
+        x
+    }
+
+    #[effects(pure)]
+    #[uses(ordered)]
+    fn instance(a: i64) -> Span {
+        let s: Span = Span { lo: a, hi: 0 };
+        fill::<Span>(s)
+    }
+}

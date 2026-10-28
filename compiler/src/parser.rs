@@ -449,7 +449,16 @@ impl<'a> Parser<'a> {
         while self.is_p("#") && matches!(self.peek_at(1), Tok::P("[")) {
             let lo = self.bump().span;
             self.bump();
-            let name = match self.ident("attribute name") {
+            // Attribute names are their own namespace: `#[invariant(p)]`
+            // (ADR-0060 §1) uses the loop clause's keyword.
+            let name = match self.peek().clone() {
+                Tok::Ident(n) if n == "invariant" => {
+                    let span = self.bump().span;
+                    Ok(Ident { name: n, span })
+                }
+                _ => self.ident("attribute name"),
+            };
+            let name = match name {
                 Ok(n) => n,
                 Err(_) => {
                     self.recover_attr();
