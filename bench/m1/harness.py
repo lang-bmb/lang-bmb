@@ -272,12 +272,22 @@ def judge_write(task, workspace):
     verified = code == 0
     cost = proof_cost(out)
     sig_ok = accepted = True
+    rejected = []
     for target in [task] + task.get("also_check", []):
-        s, a = judge_target(target, workspace, verified)
+        s, a, why = judge_target(target, workspace, verified)
         sig_ok, accepted = sig_ok and s, accepted and a
+        if why:
+            rejected.append({"def": target["def"], "reason": why})
     verdict = {"verified": verified, "signature_ok": sig_ok, "spec_accepted": accepted,
                "success": verified and sig_ok and accepted,
                "rlimit_total": cost[0], "rlimit_max": cost[1]}
+    if rejected:
+        # Why the spec check failed, for analysis only (the verdict is the same):
+        # `refuted` when the solver found a counterexample to the implication,
+        # `undecided` when it could not decide (backlog T1-14: an agent contract
+        # equivalent to the hidden one was rejected because the implication
+        # needed induction over a recursive spec fn).
+        verdict["spec_rejections"] = rejected
     if "frozen" in task:
         # Given definitions the hidden contract refers to (BVB): the agent may
         # use them but not change them, or the spec check would read its version.
@@ -306,12 +316,18 @@ def proof_cost(verify_out, prefix=None):
     return sum(r["rlimit"] for r in rs), max((r.get("rlimit_max", 0) for r in rs), default=0)
 
 
+def spec_rejection(verify_out):
+    """`undecided` if the solver could not decide the hidden check, else `refuted`."""
+    return "undecided" if "solver could not decide" in verify_out else "refuted"
+
+
 def judge_target(task, workspace, verified):
-    """(signature ok, hidden reference contract proved) for one target."""
+    """(signature ok, hidden reference contract proved, why it was rejected or
+    None) for one target."""
     _, surf = bmb("query", *cache_args(workspace), "surface", task["def"], "--", workspace)
     found = [r for r in rows(surf) if r.get("level") == "L1"]
     sig_ok = bool(found) and strip_result_name(found[0]["signature"]) == strip_result_name(task["signature"])
-    accepted = False
+    accepted, why = False, None
     if verified and sig_ok:
         _, l0 = bmb("map", *cache_args(workspace), "L0", workspace)
         specs = sorted(r["path"] for r in rows(l0) if r.get("def_kind") == "spec fn")
@@ -340,11 +356,12 @@ def judge_target(task, workspace, verified):
         with tempfile.NamedTemporaryFile("w", suffix=".bmb", delete=False) as f:
             f.write(accept)
         try:
-            code, _ = bmb("verify", *cache_args(workspace), workspace, f.name)
+            code, out = bmb("verify", *cache_args(workspace), workspace, f.name)
             accepted = code == 0
+            why = None if accepted else spec_rejection(out)
         finally:
             os.unlink(f.name)
-    return sig_ok, accepted
+    return sig_ok, accepted, why
 
 
 # ---------- BSB: specification mutant kill rate (backlog 2A-10) ----------

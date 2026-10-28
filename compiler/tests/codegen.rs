@@ -483,13 +483,27 @@ fn an_unproved_vec_index_traps_exactly_from_the_length() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// `tests/lib_run`: programs that use the byte library (ADR-0044 §4) are
-/// built with `lib/bytes.bmb`, fully proved, without runtime checks, and
-/// print their `.out`.
+/// `tests/lib_run`: programs that use the libraries (`lib/`: bytes, ADR-0044
+/// §4; UTF-8, T4-02) are built with every library file, fully proved, without
+/// runtime checks, and print their `.out`.
 #[test]
 fn library_programs_print_expected_output() {
     let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
-    let lib = fs::read_to_string(repo.join("lib").join("bytes.bmb")).unwrap();
+    let mut libs: Vec<PathBuf> = fs::read_dir(repo.join("lib"))
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.extension().is_some_and(|x| x == "bmb"))
+        .collect();
+    libs.sort();
+    let libs: Vec<(String, String)> = libs
+        .iter()
+        .map(|p| {
+            (
+                format!("lib/{}", p.file_name().unwrap().to_string_lossy()),
+                fs::read_to_string(p).unwrap(),
+            )
+        })
+        .collect();
     let dir = std::env::temp_dir().join(format!("bmb-lib-run-{}", std::process::id()));
     fs::create_dir_all(&dir).unwrap();
     let mut files: Vec<PathBuf> = fs::read_dir(repo.join("tests").join("lib_run"))
@@ -500,10 +514,8 @@ fn library_programs_print_expected_output() {
     files.sort();
     assert!(!files.is_empty());
     for p in files {
-        let program = vec![
-            ("run.bmb".to_string(), fs::read_to_string(&p).unwrap()),
-            ("lib/bytes.bmb".to_string(), lib.clone()),
-        ];
+        let mut program = vec![("run.bmb".to_string(), fs::read_to_string(&p).unwrap())];
+        program.extend(libs.iter().cloned());
         let out = bmb::emit_llvm_sources(&program);
         assert!(out.verify.ok, "{}:\n{}", p.display(), out.verify.output);
         assert_eq!(out.checks, 0, "{}", p.display());

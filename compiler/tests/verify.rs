@@ -63,17 +63,18 @@ fn proofs_are_not_vacuous() {
             .collect();
         programs.push((format!("{set}/seed"), files));
     }
-    // The byte library, alone and with each program that uses it.
-    let lib = (
-        "lib/bytes.bmb".to_string(),
-        fs::read_to_string(bench.join("..").join("lib").join("bytes.bmb")).unwrap(),
-    );
-    programs.push(("lib/bytes".into(), vec![lib.clone()]));
+    // The libraries, each alone and all of them with each program that uses them.
+    let libs: Vec<(String, String)> = bmb_files(&bench.join("..").join("lib"))
+        .iter()
+        .map(|p| (name(p), fs::read_to_string(p).unwrap()))
+        .collect();
+    for lib in &libs {
+        programs.push((lib.0.clone(), vec![lib.clone()]));
+    }
     for p in bmb_files(&root().join("lib_run")) {
-        programs.push((
-            name(&p),
-            vec![(name(&p), fs::read_to_string(&p).unwrap()), lib.clone()],
-        ));
+        let mut files = vec![(name(&p), fs::read_to_string(&p).unwrap())];
+        files.extend(libs.iter().cloned());
+        programs.push((name(&p), files));
     }
     for (label, files) in programs {
         let points = bmb::vacuous_points(&files);
@@ -81,12 +82,15 @@ fn proofs_are_not_vacuous() {
     }
 }
 
-/// The byte library (ADR-0044 §4) is proved completely.
+/// Every library (`lib/`: bytes, ADR-0044 §4; UTF-8, T4-02) is proved completely.
 #[test]
-fn byte_library_is_proved() {
-    let p = root().join("..").join("lib").join("bytes.bmb");
-    let out = bmb::verify_sources(&[("lib/bytes.bmb".into(), fs::read_to_string(&p).unwrap())]);
-    assert!(out.ok, "{}", out.output);
+fn libraries_are_proved() {
+    let libs = bmb_files(&root().join("..").join("lib"));
+    assert!(libs.len() >= 2);
+    for p in libs {
+        let out = bmb::verify_sources(&[(name(&p), fs::read_to_string(&p).unwrap())]);
+        assert!(out.ok, "{}: {}", p.display(), out.output);
+    }
 }
 
 #[test]

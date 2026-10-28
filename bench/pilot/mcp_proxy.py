@@ -18,6 +18,13 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "m1"))
 import harness  # noqa: E402
 
+# The API adapter hands the model every tool result whole. The CLI moves a
+# larger result to a file and shows a 2KB preview, and a pilot agent has no tool
+# to read files: the first pilot (2026-10-28) lost `map L1` of the m1b seed
+# (59,442 bytes) that way. A tool may raise the threshold through `_meta`.
+RESULT_SIZE_META = "anthropic/maxResultSizeChars"
+RESULT_SIZE_CHARS = 2_000_000
+
 bmb, ws, metrics_path, kind = sys.argv[1:5]
 child = subprocess.Popen([bmb, "mcp", ws], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
 m = {"tool_calls": 0, "read_calls": 0, "read_bytes": 0, "commits": 0, "e02": 0, "limit_hit": False,
@@ -63,6 +70,8 @@ for line in sys.stdin:
         r = forward(msg)
         if kind == "navigate":
             r["result"]["tools"].append(harness.ANSWER_TOOL)
+        for tool in r["result"]["tools"]:
+            tool.setdefault("_meta", {})[RESULT_SIZE_META] = RESULT_SIZE_CHARS
         sys.stdout.write(json.dumps(r) + "\n")
         sys.stdout.flush()
         continue
@@ -92,7 +101,8 @@ for line in sys.stdin:
             m["read_calls"] += 1
             m["read_bytes"] += len(text.encode())
         m["e02"] += len(re.findall(r'"code":"E02\d\d"', text))
-        m["calls"].append({"name": name, "error": bool(err)})
+        m["calls"].append({"name": name, "args": {k: (v[:2000] if isinstance(v, str) else v) for k, v in args.items()},
+                           "error": bool(err), "bytes": len(text.encode())})
         save()
         continue
     r = forward(msg)

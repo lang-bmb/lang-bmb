@@ -258,16 +258,28 @@ class AlsoCheck(unittest.TestCase):
             return harness.judge_write(task, "ws")
 
     def test_all_targets_pass(self):
-        v = self.judge({"tasks::f": (True, True), "num::g": (True, True)})
+        v = self.judge({"tasks::f": (True, True, None), "num::g": (True, True, None)})
         self.assertTrue(v["success"])
+        self.assertNotIn("spec_rejections", v)
 
     def test_one_weak_target_fails(self):
-        v = self.judge({"tasks::f": (True, True), "num::g": (True, False)})
+        v = self.judge({"tasks::f": (True, True, None), "num::g": (True, False, "undecided")})
         self.assertEqual((v["spec_accepted"], v["success"]), (False, False))
+        self.assertEqual(v["spec_rejections"], [{"def": "num::g", "reason": "undecided"}])
 
     def test_one_wrong_signature_fails(self):
-        v = self.judge({"tasks::f": (False, False), "num::g": (True, True)})
+        v = self.judge({"tasks::f": (False, False, None), "num::g": (True, True, None)})
         self.assertEqual((v["signature_ok"], v["success"]), (False, False))
+
+
+class SpecRejection(unittest.TestCase):
+    def test_reason_comes_from_the_solver_verdict(self):
+        self.assertEqual(harness.spec_rejection(
+            '{"code":"E0811","message":"postcondition `ref_post` may not hold in `bmb_accept::check`: '
+            'solver could not decide (a model exists for the instantiated definitions only)"}'), "undecided")
+        self.assertEqual(harness.spec_rejection(
+            '{"code":"E0811","message":"postcondition `ref_post` may not hold in `bmb_accept::check`: '
+            'counterexample: x = 3"}'), "refuted")
 
 
 def m1b_task(name):

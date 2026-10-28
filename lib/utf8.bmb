@@ -1,0 +1,146 @@
+#[summary("UTF-8 검증(T4-02): Unicode 표 3-7의 잘 짜인 바이트 시퀀스. 결과는 Rust str::from_utf8의 valid_up_to와 같다")]
+mod utf8 {
+    spec fn cont(b: u8) -> bool { 128 <= b && b <= 191 }
+
+    // The second byte of a three-byte sequence led by `a` (table 3-7: E0 A0..BF, ED 80..9F, else 80..BF).
+    spec fn second3(a: u8, b: u8) -> bool {
+        (a == 224 && 160 <= b && b <= 191) || (a == 237 && 128 <= b && b <= 159) || (a != 224 && a != 237 && cont(b))
+    }
+
+    // The second byte of a four-byte sequence led by `a` (table 3-7: F0 90..BF, F4 80..8F, else 80..BF).
+    spec fn second4(a: u8, b: u8) -> bool {
+        (a == 240 && 144 <= b && b <= 191) || (a == 244 && 128 <= b && b <= 143) || (a != 240 && a != 244 && cont(b))
+    }
+
+    // Length of the well-formed sequence that starts at `i`, 0 when none does (ill-formed or cut off).
+    spec fn seq_len(s: &[u8], i: usize) -> usize {
+        if i >= s.len() {
+            0
+        } else if s[i] <= 127 {
+            1
+        } else if s[i] < 194 {
+            0
+        } else if s[i] <= 223 {
+            if i + 1 < s.len() && cont(s[i + 1]) { 2 } else { 0 }
+        } else if s[i] <= 239 {
+            if i + 2 < s.len() && second3(s[i], s[i + 1]) && cont(s[i + 2]) { 3 } else { 0 }
+        } else if s[i] <= 244 {
+            if i + 3 < s.len() && second4(s[i], s[i + 1]) && cont(s[i + 2]) && cont(s[i + 3]) { 4 } else { 0 }
+        } else {
+            0
+        }
+    }
+
+    // Byte `k` continues the sequence that starts at `j`.
+    spec fn covers(s: &[u8], j: usize, k: usize) -> bool { j < k && k < j + seq_len(s, j) }
+
+    spec fn covered(s: &[u8], k: usize) -> bool {
+        (k >= 1 && covers(s, k - 1, k)) || (k >= 2 && covers(s, k - 2, k)) || (k >= 3 && covers(s, k - 3, k))
+    }
+
+    // Byte `k` either starts a well-formed sequence or continues the one that covers it.
+    spec fn good(s: &[u8], k: usize) -> bool {
+        k < s.len() && ((cont(s[k]) && covered(s, k)) || (!cont(s[k]) && 0 < seq_len(s, k)))
+    }
+
+    // No sequence that starts before `n` runs past it. Only the last three bytes can start one
+    // that would (a sequence is at most four bytes, and every later byte of it is a continuation).
+    spec fn ends_by(s: &[u8], j: usize, n: usize) -> bool { cont(s[j]) || j + seq_len(s, j) <= n }
+
+    spec fn tail(s: &[u8], n: usize) -> bool {
+        (n < 1 || ends_by(s, n - 1, n)) && (n < 2 || ends_by(s, n - 2, n)) && (n < 3 || ends_by(s, n - 3, n))
+    }
+
+    // `s[0..n]` is a concatenation of well-formed sequences.
+    spec fn valid_upto(s: &[u8], n: usize) -> bool {
+        n <= s.len() && tail(s, n) && forall|k: usize| k < n ==> #[trigger] good(s, k)
+    }
+
+    // Where the scan stops: the end, or a byte that neither starts a well-formed sequence nor continues one.
+    spec fn stops(s: &[u8], r: usize) -> bool { r == s.len() || (seq_len(s, r) == 0 && !good(s, r)) }
+
+    spec fn width_result(s: &[u8], i: usize, w: usize) -> bool { w == seq_len(s, i) }
+
+    spec fn at(s: &[u8], i: usize) -> bool { i < s.len() }
+
+    // `seq_len(s, i)` computed.
+    #[effects(pure)]
+    #[uses(width_result, seq_len, cont, second3, second4, at)]
+    fn width(s: &[u8], i: usize) -> (w: usize)
+        requires at(s, i),
+        ensures width_result(s, i, w),
+    {
+        let b: u8 = s[i];
+        if b <= 127 {
+            1
+        } else if b < 194 {
+            0
+        } else if b <= 223 {
+            if i + 1 < s.len() && s[i + 1] >= 128 && s[i + 1] <= 191 { 2 } else { 0 }
+        } else if b <= 239 {
+            if i + 2 < s.len() {
+                let c: u8 = s[i + 1];
+                let ok: bool = if b == 224 {
+                    c >= 160 && c <= 191
+                } else if b == 237 {
+                    c >= 128 && c <= 159
+                } else {
+                    c >= 128 && c <= 191
+                };
+                if ok && s[i + 2] >= 128 && s[i + 2] <= 191 { 3 } else { 0 }
+            } else {
+                0
+            }
+        } else if b <= 244 {
+            if i + 3 < s.len() {
+                let d: u8 = s[i + 1];
+                let fits: bool = if b == 240 {
+                    d >= 144 && d <= 191
+                } else if b == 244 {
+                    d >= 128 && d <= 143
+                } else {
+                    d >= 128 && d <= 191
+                };
+                if fits && s[i + 2] >= 128 && s[i + 2] <= 191 && s[i + 3] >= 128 && s[i + 3] <= 191 { 4 } else { 0 }
+            } else {
+                0
+            }
+        } else {
+            0
+        }
+    }
+
+    // The length of the longest prefix of `s` that is well-formed UTF-8 (Rust: `Utf8Error::valid_up_to`,
+    // or `s.len()` when `str::from_utf8(s)` succeeds).
+    #[effects(pure)]
+    #[uses(valid_upto, stops, tail, ends_by, good, covered, covers, seq_len, cont, second3, second4, width_result, at)]
+    fn valid_up_to(s: &[u8]) -> (r: usize)
+        ensures valid_upto(s, r), stops(s, r),
+    {
+        let mut i: usize = 0;
+        while i < s.len()
+            invariant valid_upto(s, i),
+            decreases s.len() - i,
+        {
+            let w: usize = width(s, i);
+            if w == 0 {
+                break;
+            }
+            i = i + w;
+        }
+        i
+    }
+
+    spec fn valid(s: &[u8]) -> bool { valid_upto(s, s.len()) }
+
+    spec fn valid_result(s: &[u8], r: bool) -> bool { (r && valid(s)) || (!r && !valid(s)) }
+
+    // Whether all of `s` is well-formed UTF-8 (Rust: `str::from_utf8(s).is_ok()`).
+    #[effects(pure)]
+    #[uses(valid, valid_result, valid_upto, stops, seq_len, good)]
+    fn is_valid(s: &[u8]) -> (r: bool)
+        ensures valid_result(s, r),
+    {
+        valid_up_to(s) == s.len()
+    }
+}

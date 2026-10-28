@@ -173,7 +173,7 @@ def self_containment():
 
 
 def practicality():
-    # `tests/lib_run` programs run with `lib/bytes.bmb` (ADR-0044 §4).
+    # `tests/lib_run` programs run with every `lib/` file (ADR-0044 §4, T4-02).
     runnable = [
         p
         for d in ("run", "lib_run")

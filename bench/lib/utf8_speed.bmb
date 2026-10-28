@@ -1,0 +1,52 @@
+#[summary("벤치(T4-02): 16MiB의 섞인 UTF-8(1·2·3·4바이트)을 utf8::valid_up_to로 20번 검사. 쌍둥이는 utf8_speed.rs(Rust str::from_utf8)")]
+mod app {
+    spec fn size_ok(n: usize) -> bool { n <= 16777216 }
+
+    spec fn small(v: &[u8], n: usize) -> bool { v.len() <= n + 4 && size_ok(n) }
+
+    // Deterministic mixed text: each step appends one character of 1, 2, 3 or 4 bytes.
+    #[effects(pure)]
+    #[uses(small, size_ok)]
+    fn text(n: usize) -> Vec<u8>
+        requires size_ok(n),
+    {
+        let mut v: Vec<u8> = Vec::with_capacity(n + 4);
+        let mut x: u64 = 12345;
+        while v.len() < n
+            invariant small(v.as_slice(), n),
+            decreases n - v.len(),
+        {
+            x = x.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            let c: u64 = (x / 4294967296) % 8;
+            if c < 5 {
+                v.push(97);
+            } else if c == 5 {
+                v.push(195);
+                v.push(169);
+            } else if c == 6 {
+                v.push(226);
+                v.push(130);
+                v.push(172);
+            } else {
+                v.push(240);
+                v.push(159);
+                v.push(152);
+                v.push(128);
+            }
+        }
+        v
+    }
+
+    #[effects(io)]
+    #[uses(size_ok)]
+    fn main() -> () {
+        let n: usize = 16777216;
+        let v: Vec<u8> = text(n);
+        let mut sum: u64 = 0;
+        for k in 0..20 {
+            let r: usize = utf8::valid_up_to(v.as_slice());
+            sum = sum.wrapping_add(u64::try_from(r).unwrap());
+        }
+        print_i64(i64::try_from(sum % 1000000007).unwrap());
+    }
+}

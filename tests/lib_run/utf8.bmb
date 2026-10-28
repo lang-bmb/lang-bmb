@@ -1,0 +1,104 @@
+#[summary("실행: UTF-8 검증 라이브러리의 차등 시험(T4-02). 길이 1~3의 모든 바이트열과 길이 4의 경계 조합에서 유효한 개수와 valid_up_to의 합. 기대 출력은 Rust str::from_utf8로 같은 열거를 한 utf8_ref.rs")]
+mod app {
+    struct Tally { valid: u64, sum: u64 }
+
+    // One input: count it when all of it is well-formed, and add its valid prefix length.
+    #[effects(pure)]
+    fn add(t: Tally, s: &[u8]) -> Tally {
+        let r: usize = utf8::valid_up_to(s);
+        let v: u64 = if r == s.len() { 1 } else { 0 };
+        Tally { valid: t.valid.saturating_add(v), sum: t.sum.saturating_add(u64::try_from(r).unwrap()) }
+    }
+
+    // `<length> <valid> <sum>` on one line.
+    #[effects(io)]
+    #[uses(bytes::room, bytes::grew_by, bytes::kept)]
+    fn show(len: u64, t: Tally) -> () {
+        let mut out: Vec<u8> = Vec::new();
+        bytes::push_u64(&mut out, len);
+        out.push(b' ');
+        bytes::push_u64(&mut out, t.valid);
+        out.push(b' ');
+        bytes::push_u64(&mut out, t.sum);
+        out.push(b'\n');
+        print_bytes(out.as_slice());
+    }
+
+    #[effects(pure)]
+    fn len1() -> Tally {
+        let n: usize = 256;
+        let mut t: Tally = Tally { valid: 0, sum: 0 };
+        let mut a: [u8; 1] = [0];
+        for b0 in 0..n {
+            a[0] = u8::try_from(b0).unwrap();
+            t = add(t, &a);
+        }
+        t
+    }
+
+    #[effects(pure)]
+    fn len2() -> Tally {
+        let n: usize = 256;
+        let mut t: Tally = Tally { valid: 0, sum: 0 };
+        let mut a: [u8; 2] = [0, 0];
+        for b0 in 0..n {
+            for b1 in 0..n {
+                a[0] = u8::try_from(b0).unwrap();
+                a[1] = u8::try_from(b1).unwrap();
+                t = add(t, &a);
+            }
+        }
+        t
+    }
+
+    #[effects(pure)]
+    fn len3() -> Tally {
+        let n: usize = 256;
+        let mut t: Tally = Tally { valid: 0, sum: 0 };
+        let mut a: [u8; 3] = [0, 0, 0];
+        for b0 in 0..n {
+            for b1 in 0..n {
+                for b2 in 0..n {
+                    a[0] = u8::try_from(b0).unwrap();
+                    a[1] = u8::try_from(b1).unwrap();
+                    a[2] = u8::try_from(b2).unwrap();
+                    t = add(t, &a);
+                }
+            }
+        }
+        t
+    }
+
+    // Four bytes: every first byte, and the edges of table 3-7 for the other three.
+    #[effects(pure)]
+    fn len4() -> Tally {
+        let n: usize = 256;
+        let m: usize = 10;
+        let edge: [u8; 10] = [0, 127, 128, 143, 144, 159, 160, 191, 192, 255];
+        let mut t: Tally = Tally { valid: 0, sum: 0 };
+        let mut a: [u8; 4] = [0, 0, 0, 0];
+        for b0 in 0..n {
+            for i in 0..m {
+                for j in 0..m {
+                    for k in 0..m {
+                        a[0] = u8::try_from(b0).unwrap();
+                        a[1] = edge[i];
+                        a[2] = edge[j];
+                        a[3] = edge[k];
+                        t = add(t, &a);
+                    }
+                }
+            }
+        }
+        t
+    }
+
+    #[effects(io)]
+    #[uses(bytes::room, bytes::grew_by, bytes::kept)]
+    fn main() -> () {
+        show(1, len1());
+        show(2, len2());
+        show(3, len3());
+        show(4, len4());
+    }
+}

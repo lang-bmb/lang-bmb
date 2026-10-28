@@ -90,9 +90,11 @@
 | ID | 태스크 | 완료 기준 | 의존 | 상태 |
 | --- | --- | --- | --- | --- |
 | T0-01 | CLI 파일럿 실행기 | `bench/pilot/`: Claude Code CLI를 피험 에이전트로, 동결 과제·MANIFEST·`prompt.md`(시스템 프롬프트 전체)·`bmb mcp` 도구만(내장 도구 없음, 저장소 밖 빈 디렉터리)·40회 한도·과제당 한 세션·하네스 판정(`judge_write`·`spec_kill`·`judge_navigate`). 행마다 `"pilot": true` | — | ✅ `bench/pilot/cli_pilot.py`·`mcp_proxy.py`, 스모크 `w01-clamp` 성공(도구 7회, MCP만) |
-| T0-02 | 파일럿 실행: m1·m1b·BVB | 세 집합을 한 번씩 돌려 `bench/pilot/results/`에 결과와 요약을 커밋. 결과는 가설 등록부의 "파일럿" 상태에만 쓴다 | T0-01 | ✅ `bench/pilot/results/2026-10-28-*`: m1 14/15, m1b 36/37(BSB 186/186), BVB 43/45, 합계 $11.11. 작성 실패 셋은 모두 명세 강도(`bench/pilot/README.md`) |
+| T0-02 | 파일럿 실행: m1·m1b·BVB | 세 집합을 한 번씩 돌려 `bench/pilot/results/`에 결과와 요약을 커밋. 결과는 가설 등록부의 "파일럿" 상태에만 쓴다 | T0-01 | ✅ `bench/pilot/results/2026-10-28-*`. 1차는 큰 도구 결과를 보지 못하는 파일럿 결함(`T1-15`) 아래라 기록으로만 둔다. 2차(`*-r2.jsonl`): m1 15/15, m1b 37/37(BSB 186/186), BVB 42/45. 1차의 "실패는 모두 명세가 약해서"라는 해석은 틀렸다(`T1-14`, `bench/pilot/README.md` 정정) |
 | T0-03 | 정식 자동 측정 경로 | API 키를 시크릿으로 두고 `bench/run_models.py --budget`로 m1·m1b·BVB·BRB를 실행해 결과 커밋(`1E-10`·`2A-06`의 대체 경로) | T0-01 | ⏳ 승인(유료 API, 시크릿 설정은 사람) |
 | T0-04 | 2차 파일럿: 새 과제 집합 | H-NAME 난독화 쌍둥이(`T1-04`)와 H-SPLIT 분업판(`T1-13`)을 `T0-02`와 같은 조건으로 실행해 `bench/pilot/results/`에 커밋 | T1-04, T1-13 | ⏳ |
+| T0-05 | 판정 거부 이유 기록 | 명세 강도 검사가 거부할 때 `refuted`(반례)와 `undecided`(해법기 미결정)를 행에 남김. 판정은 그대로 | T1-14 | ✅ `bench/m1/harness.py` `spec_rejection`·`spec_rejections`, `test_harness.py` `SpecRejection`·`AlsoCheck` |
+| T0-06 | 판정기 미결정의 분리 보고 | 요약(`summarize`, `compare`)에 명세 강도의 "반박"과 "미결정"을 따로 세는 열. 미결정이 같은 뜻 명세일 때 측정이 언어가 아니라 판정기를 재는 문제를 드러낸다 | T0-05 | ⏳ |
 
 ### T1 가설
 
@@ -111,9 +113,11 @@
 | T1-11 | ADR-0060 채택과 구현 | ADR 결과의 여섯 태스크(검사, 인코딩, 증분 키, 코퍼스, 퍼저, BRB 확장) | T1-09 | ⏳ 승인 |
 | T1-12 | H-COMMUTE 동시 편집 재생 | BCB 이력의 같은 기준 커밋 위 편집 쌍·k개 묶음 표본마다 `git merge-file` 충돌, 깨끗한 텍스트 병합의 BMB 증명·Rust 쌍둥이 테스트(거짓 병합), 교환 판정(쓰기 집합 ∩ 상대 읽기 집합, 계약 변경은 정제 판정), 정의 단위 병합의 증명과 재증명 비용. 교환 가능 판정의 거짓 병합 0이 건전성 조건. 결과 `dev-docs/experiments/` | 2A-14d | ⏳ |
 | T1-13 | H-SPLIT 계약 우선 분업 과제 | m1b·BRB 과제를 계약 고정 + 정의 분할 판으로 만들어 동결, 기준 해법의 분할 조각을 따로 증명한 뒤 합친 결과도 증명됨을 CI로 확인. 실행은 T0 | — | ⏳ |
-| T1-14 | 파일럿 실패 원인: 명세 강도 | `w09-spread`·`vb-mbpp-62-smallest`·`vc-vv0039-max-of-list`의 에이전트 계약과 숨긴 계약의 차이를 기록하고, 지금 도구(`bmb mutate` W0904, `bmb lint`, 반례)가 커밋 전에 잡았을지 재현. 귀속 층(도구 노출·도구 결함·과제·모델)과 조치 태스크 | T0-02 | ⏳ |
-| T1-15 | 파일럿 실패 원인: 탐색 한도 | `m1b/n12-io`가 40회 한도에 닿은 질의 경로를 같은 조건으로 다시 기록(호출 인자까지)하고, 정답에 필요한 최소 질의 수와 비교. 귀속 층과 조치 태스크 | T0-02 | ⏳ |
+| T1-14 | 파일럿 실패 원인: 명세 강도 | `w09-spread`·`vb-mbpp-62-smallest`·`vc-vv0039-max-of-list`의 에이전트 계약과 숨긴 계약의 차이를 기록하고, 지금 도구(`bmb mutate` W0904, `bmb lint`, 반례)가 커밋 전에 잡았을지 재현. 귀속 층(도구 노출·도구 결함·과제·모델)과 조치 태스크 | T0-02 | ✅ `bench/pilot/README.md` "실패 분석": 분석할 수 있는 넷 모두 판정기 미결정(`spec_rejections` = `undecided`), 에이전트 계약은 숨긴 계약과 같은 뜻. 원인 둘: 재귀 술어 → 한정 기호 함의의 귀납(ADR-0062 제안), 상수 나눗셈·나머지의 비선형 산술(`1B-47`). 판정기에 거부 이유 기록(`T0-05`) |
+| T1-15 | 파일럿 실패 원인: 탐색 한도 | `m1b/n12-io`가 40회 한도에 닿은 질의 경로를 같은 조건으로 다시 기록(호출 인자까지)하고, 정답에 필요한 최소 질의 수와 비교. 귀속 층과 조치 태스크 | T0-02 | ✅ 원인은 파일럿 실행기: CLI가 큰 도구 결과(`map L1` 59,442바이트)를 파일로 옮기고 앞 2KB만 보여 주어 에이전트가 정답이 든 결과를 보지 못함(탐침으로 확인). `mcp_proxy.py`의 도구 `_meta`(`anthropic/maxResultSizeChars`)와 `MAX_MCP_OUTPUT_TOKENS`로 고침, 2차에서 `n12-io` 성공 |
 | T1-16 | 교환 관계 ADR 초안 | 쓰기 집합·읽기 집합(증분 키)·정제 판정(`2D-19`의 함의 질의)으로 정의한 교환 관계를 언어 명세 항목으로(협업 논의 Q1). 초안은 자율, 채택은 승인 | T1-08, 2D-19 | ⏳ |
+| T1-17 | ADR-0062 초안: 증명 함수와 귀납 | Verus 꼴 `proof fn`(requires·ensures·decreases, 재귀로 귀납, `proof { }`에서 호출, 코드 생성에서 지움). `T1-14`의 귀납 부류와 T4 라이브러리 명세의 수요 | T1-14 | ✅ `dev-docs/adr/0062-proof-functions-and-induction.md`(제안) |
+| T1-18 | ADR-0062 채택과 구현 | ADR 결과의 P1~P6(표면, 인코딩, 지움·맵·증분, 퍼저, 실용: `vc-vv0039`의 같은 뜻 명세 증명·`numlist` 이주, `bmb fix` 보조 정리 제안) | T1-17 | ⏳ 승인 |
 
 ### T2 언어 (수요 기반)
 
@@ -127,9 +131,9 @@
 
 | ID | 태스크 | 완료 기준 | 의존 | 상태 |
 | --- | --- | --- | --- | --- |
-| T3-01 | Benchmarks Game: 지금 쓸 수 있는 둘 | binary-trees·fannkuch-redux를 BMB로 쓰고 증명, 공식 Rust 제출과 출력 일치·시간·strip 크기 비교 하네스와 결과 | — | ⏳ |
+| T3-01 | Benchmarks Game: 지금 쓸 수 있는 둘 | binary-trees·fannkuch-redux를 BMB로 쓰고 증명, 공식 Rust 제출과 출력 일치·시간·strip 크기 비교 하네스와 결과 | — | 🚫 공식 Rust 제출의 출처(salsa.debian.org, benchmarksgame-team.pages.debian.net)가 이 환경의 네트워크 정책에 막힘. 환경 설정의 허용 도메인 추가 필요(사람). BMB 쪽 프로그램은 출처 없이도 쓸 수 있으나 비교는 출처 뒤 |
 | T3-02 | HumanEval·MBPP 이식(MultiPL-E 방식) | 현재 언어로 옮길 수 있는 과제를 선별 기록과 함께 동결, 숨은 시험이 판정, 기준 해법·약한 대조군 CI. 실행은 T0 | — | ⏳ |
-| T3-03 | BVB Verus 팔 파일럿 | 같은 BVB 과제를 원본 Verus 툴체인으로 T0-01과 같은 조건에서 실행(H-FAMILIAR 방향 판단, 파일럿). Verus 0.2026.10.04(`bench/bvb/verus/install.sh`)가 이 환경에 설치됨을 확인(2026-10-28). 필요한 것: Verus 하네스(`bench/bvb/verus/harness.py`)의 에이전트 자리에 CLI 파일럿을 끼우는 실행기 | T0-02 | ⏳ |
+| T3-03 | BVB Verus 팔 파일럿 | 같은 BVB 과제를 원본 Verus 툴체인으로 T0-01과 같은 조건에서 실행(H-FAMILIAR 방향 판단, 파일럿). Verus 0.2026.10.04(`bench/bvb/verus/install.sh`)가 이 환경에 설치됨을 확인(2026-10-28). 필요한 것: Verus 하네스(`bench/bvb/verus/harness.py`)의 에이전트 자리에 CLI 파일럿을 끼우는 실행기 | T0-02 | ✅ `bench/pilot/verus_pilot.py`·`verus_mcp.py`, `bench/pilot/results/2026-10-28-bvb-verus-claude-opus-5-5.jsonl`: Verus 44/45($2.07), BMB 2차 42/45($4.44), 출력 토큰 2.06배·도구 호출 3.7배. Verus 0.2026.10.04 설치 확인 |
 | T3-04 | Benchmarks Game: `f64` 둘 | n-body·spectral-norm을 BMB로 쓰고 증명, 공식 Rust 제출과 출력 일치·시간·크기 | T2-03 | ⏳ |
 | T3-05 | Benchmarks Game: mandelbrot·fasta | 비트 출력과 바이트 출력이 필요한 둘 | 2N-05, T2-03, 2U-05 | ⏳ |
 
@@ -138,7 +142,7 @@
 | ID | 태스크 | 완료 기준 | 의존 | 상태 |
 | --- | --- | --- | --- | --- |
 | T4-01 | SHA-256 | 전부 증명, FIPS 180-4 예제·NIST CAVP 벡터 통과, Rust `sha2` 대비 속도·크기 표. 2N-05의 실행 프로그램을 겸한다 | 2N-02 | ⏳ |
-| T4-02 | UTF-8 검증 | 전부 증명, Rust `std::str::from_utf8`와 차등 시험(경계·과잉 길이·대리 코드 포함), 속도 표 | — | ⏳ |
+| T4-02 | UTF-8 검증 | 전부 증명, Rust `std::str::from_utf8`와 차등 시험(경계·과잉 길이·대리 코드 포함), 속도 표 | — | 🔄 `lib/utf8.bmb`(전부 증명, `stability --seeds 8` 불안정 0), 차등 시험 `tests/lib_run/utf8.bmb`: 길이 1~3의 모든 바이트열과 길이 4의 경계 조합 256,000개에서 유효 개수·`valid_up_to` 합이 Rust(`tests/lib_run/utf8_ref.rs`)와 같음(`library_programs_print_expected_output`). 남은 것: 조용한 머신에서의 속도 표(`bench/lib/utf8_speed.*`) |
 | T4-03 | base64 | 인코드·디코드 왕복 증명, RFC 4648 §10 벡터 통과 | 2N-02 | ⏳ |
 | T4-04 | CRC-32 | 전부 증명, 표준 검사값(`"123456789"` → `0xCBF43926`) 통과 | 2N-02 | ⏳ |
 | T4-05 | JSON 파서 | 전부 증명, JSONTestSuite의 `y_`·`n_` 판정 통과 | 2U-03 | ⏳ |
@@ -250,6 +254,8 @@
 | 1B-41 | 편집 재생 국소화 시험 (H-MAINT) | 코퍼스·m3 작업 공간에 무작위 편집(본문·계약, BCB 동결 이력과 `build --stats` 재증명 집합을 재사용할 수 있다)을 적용하고, 증분 빌드가 다시 증명한 정의 집합이 `impact` 집합 안에 있음을 시험. 재증명 비용(rlimit 합)의 편집당 분포 보고 | 2D-10 | ✅ `bench/bcb/localize.py`: BCB 이력을 재생하며 커밋마다 `verify --cache --stats`의 재인코딩 집합 ⊆ 편집한 정의의 `impact` 합집합(본문 편집 `body`, 계약·명세 편집 `iface`, 새 정의는 자신)인지 확인하고 재증명 `rlimit` 합을 기록. 동결 이력 측정(2026-10-25, ADR-0043 컴파일러): `body-heavy-1k` 커밋 1,000개 밖으로 샌 커밋 0, 재인코딩 평균 1.71 대 영향 1.78, 커밋당 `rlimit` 중앙값 14,434·90% 36,913·최대 135,523. `contract-heavy-1k` 0, 2.10 대 2.26, 13,158·47,988·145,012. 게이트 `test_bcb.py`의 `check_localization`(N=100 세 프로필, 빈 영향 집합이면 실패하는지도). H-MAINT 반증 안 됨(이 코퍼스에서) |
 | 1B-44 | 공허 증명 검사 | 2G-05 발견: 길이를 잘못 둔 루프 처리로 루프 뒤 코드가 도달 불가가 되어 코퍼스 두 정의가 공허하게 증명되었는데 증명기가 알리지 못했다. 증명된 실행 정의마다 본문 끝(그리고 각 루프 출구)의 경로 조건이 만족 가능한지 확인하고, 아니면 경고(W 코드, `bmb lint`)나 증명 실패로 한다. 코퍼스·벤치에서 오탐 0, 2G-05 결함을 되돌리면 잡는 시험 | 1B-38 | ✅ `verify::vacuous_ends`(인코더가 루프 출구·본문 끝의 경로 조건을 기록, 해법기가 반박하면 보고, `rlimit` 100만, 결정 못 하면 무보고), `bmb lint` W0905, `bmb::vacuous_points`. 시험 `proofs_are_not_vacuous`: `tests/verify/pass`·`tests/run` 전부, 벤치 기준선 7개와 씨앗 3묶음(m1·m1b·bvb)에서 반박 0(23초). 2G-05 결함을 되돌리면 `run/primes`의 다섯 지점으로 실패하고, `bmb lint`는 재현 함수의 루프 출구와 본문 끝 둘을 보고. 벤치 과제 해법(JSON 편집)은 하네스가 적용하므로 이 시험 밖 |
 | 1B-45 | 자기 매칭 트리거 경고 | 1B-42 발견: `forall`의 트리거 항(`out[k + 1]`)과 같은 배열을 다른 첨자로 읽는 본문 항(`out[k]`)이 있으면 인스턴스가 사슬로 늘어난다(매칭 루프, 벤치 킬 검사 하나가 한도에 닿음). `bmb lint` 경고(W09 계열 새 번호)와 안내(두 항 모두 `#[trigger]`로 다중 트리거)를 더하고, 코퍼스와 m1b `w22` 기준 명세로 시험 | 1B-42 | ✅ W0906(`src/lint.rs` `self_matching`): 트리거 항이 하나인 `forall`에서 트리거 밖의 같은 배열·함수 항이 다른 인자로 묶인 변수를 쓰면 경고하고, 그 항을 `#[trigger]`로 표시하는 교체를 붙인다. 시험 `lint::self_matching_triggers`(앞·뒤 첨자, 함수 호출, 중첩 `forall`에서 보고, 다중 패턴·바닥 항·다른 배열은 보고 없음, 교체 후 보고 없음), `lint::prefix_sum_specification_is_reported`(m1b `w22` 기준 명세의 `runs_below`·`prefix_ok`에서 보고, 다중 패턴으로 바꿔도 증명되고 rlimit 142811 → 142815로 같음) |
+| 1B-47 | 상수 나눗셈·나머지의 인코딩 | `x / c`·`x % c`(상수 `c`)를 몫·나머지 새 기호와 선형 제약(`x = c*q + r`, 나머지 범위, 0 쪽 반올림)으로 인코딩해 비선형 산술을 피한다(JUDGMENT §8). 확인: `vc-va0093-max-balance`의 같은 뜻 명세 함의가 결정됨, V4·V7 유지 | T1-14 | ⏳ |
+| 1B-48 | `utf8::width` 사후조건 의무의 증명 비용 | 의무 하나가 rlimit 1,843,904(한도 5,000,000의 37%). 원인(중첩 `if`의 경로 수, `seq_len` 펼침)을 분해하고 인코딩에서 줄인다. 사용자 코드를 쪼개 우회하지 않는다(JUDGMENT §8) | T4-02 | ⏳ |
 | 1B-46 | 실패 의무의 증명 비용 | 2T-01 관찰: 거짓인 `assert` 하나(`tests/verify/fail/generics` `wrong_value`, 같은 모양의 비제네릭 프로그램도)가 rlimit 상한 5,000,000까지 쓴다. 실패 코퍼스 다섯 파일에 같은 항목. 원인(첫 질의의 `unknown`, 반례 확인, 바닥 인스턴스 재시도 중 어디인지)을 `--emit-smt`로 찾아 고치고, 실패 의무의 rlimit을 건강 지표로 잰다 | 1B-38 | ⏳ |
 | 1B-42 | 해법기 한도에 닿는 벤치 의무 원인 조사 | INF-11이 찾음: m1b `w22-prefix-sums`의 BSB 킬 검사 하나와 BVB `vc-va0053-aspect-pairs` 기준 해법의 의무 하나가 `rlimit` 5,000,000에 닿고 기저 인스턴스 재시도로만 증명된다. 원인(수량자 패턴, 펼침)을 특정하고, 인코딩으로 줄일 수 있으면 고쳐 V9를 0으로(증명 결과 불변) | INF-11 | ✅ 원인 둘을 특정. (1) BVB `vc-va0053` 기준 해법: `solve`의 사후조건이 `a / (x / g) >= 0`(피연산자 양수)을 비선형 산술로 찾다 한도에 닿았고, `gcd_exec`의 사후조건은 `i64` `%`(0 쪽 자름)와 명세 `given::gcd`의 `mod`(유클리드)가 같음을 곱 `b * (a / b)`로 찾다 닿았다(z3 통계: 수량자 인스턴스 24~56개, 비선형 단계가 비용). 인코딩 수정: `SIGNED_DIV_LEMMAS`에 몫의 부호 사실과 비음수 피연산자의 `div`·`mod` 일치 사실 추가(`tests/lemmas.rs`가 정리로 증명). `solve` 6,728,516→653,268, `gcd_exec` 5,059,400→249,577(재시도 없음). (2) m1b `w22` 킬 검사 `k0_6`: 동결된 기준 명세의 트리거 `#[trigger] out[k + 1]`이 본문의 `out[k]`와 다시 맞아 매칭 루프(인스턴스 15,562개, 세대 11). 사용자 트리거를 약하게 바꾸지 않으면 인코딩으로 없앨 수 없어 남긴다(다중 트리거 `out[k + 1]`·`out[k]`이면 21,907). 경고 진단은 1B-45. 측정: V9 2→1, V8 50,821,776→39,910,940, V4 +2.0%, 증명 결과 불변(실패 코퍼스는 rlimit 숫자만 바뀜) |
 
