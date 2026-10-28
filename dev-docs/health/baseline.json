@@ -2,7 +2,7 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 7102836,
+    "V4_rlimit_total": 7805092,
     "V5_rlimit_headroom": 0.0153,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0,
@@ -14,12 +14,12 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 32536,
+    "S4_stage0_rust_lines": 33214,
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
-    "P1_runnable_programs": 54,
-    "P2_bmb_lines": 17293,
-    "P3_errors_with_help": 0.8611,
+    "P1_runnable_programs": 56,
+    "P2_bmb_lines": 18073,
+    "P3_errors_with_help": 0.8657,
     "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 11
@@ -1266,6 +1266,32 @@
         "O2_soundness_fuzzers": [
           10,
           11
+        ]
+      }
+    },
+    {
+      "date": "2026-10-28",
+      "reason": "T1-11 병합(ADR-0060 타입 불변식): tests/run/ring·sorted_set(P1), 불변식 코퍼스(P2), E0254·E0255·E0823 모두 힌트(P3). V4 증가는 새 코퍼스·프로그램과 제네릭 T 유효성(예산 안)",
+      "changed": {
+        "V4_rlimit_total": [
+          7102836,
+          7805092
+        ],
+        "S4_stage0_rust_lines": [
+          32536,
+          33214
+        ],
+        "P1_runnable_programs": [
+          54,
+          56
+        ],
+        "P2_bmb_lines": [
+          17293,
+          18073
+        ],
+        "P3_errors_with_help": [
+          0.8611,
+          0.8657
         ]
       }
     }
