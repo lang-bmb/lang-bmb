@@ -93,8 +93,9 @@ enum S {
     SetAcc(E),
     Write(Idx, E),
     IfWrite(Cmp, E, E, Idx, E),
-    /// `if l c r { <exit> }`
-    Exit(Exit, Cmp, E, E),
+    /// `if l c r { [pre] <exit> }`: what the branch writes first makes the
+    /// exit's state differ from the fall-through's.
+    Exit(Exit, Cmp, E, E, Option<Pre>),
     /// `acc = lim(e, c)?;`: `None` when `e > c`.
     Try(E, i64),
 }
@@ -104,6 +105,14 @@ enum Exit {
     /// `continue` (a `while` steps `i` first)
     Continue,
     Return(E),
+    /// `acc = lim(e, c)?;`
+    Try(E, i64),
+}
+
+/// A write before an exit.
+enum Pre {
+    Acc(E),
+    Write(Idx, E),
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -273,15 +282,22 @@ fn gen_cmp(rng: &mut Rng) -> Cmp {
 
 /// An early exit, or a `?` when the function returns an `Option`.
 fn gen_exit(rng: &mut Rng, opt: bool) -> S {
-    if opt && rng.chance(40) {
-        return S::Try(gen_e(rng, 1), rng.pick(&[0, 10, 1000, -7]));
+    let lim_c = |rng: &mut Rng| rng.pick(&[0, 10, 1000, -7]);
+    if opt && rng.chance(25) {
+        return S::Try(gen_e(rng, 1), lim_c(rng));
     }
-    let exit = match rng.below(3) {
+    let exit = match rng.below(if opt { 4 } else { 3 }) {
         0 => Exit::Break,
         1 => Exit::Continue,
-        _ => Exit::Return(gen_e(rng, 1)),
+        2 => Exit::Return(gen_e(rng, 1)),
+        _ => Exit::Try(gen_e(rng, 1), lim_c(rng)),
     };
-    S::Exit(exit, gen_cmp(rng), gen_e(rng, 1), gen_e(rng, 1))
+    let pre = match rng.below(3) {
+        0 => Some(Pre::Acc(gen_e(rng, 1))),
+        1 => Some(Pre::Write(gen_idx(rng), gen_e(rng, 1))),
+        _ => None,
+    };
+    S::Exit(exit, gen_cmp(rng), gen_e(rng, 1), gen_e(rng, 1), pre)
 }
 
 /// The loop form, `?`s and early exits added to a generated function.
@@ -289,7 +305,7 @@ fn add_exits(rng: &mut Rng, f: &mut Func) {
     if f.cond != Cond::IPlus1LtLen && rng.chance(50) {
         f.form = Form::For;
     }
-    f.opt = rng.chance(25);
+    f.opt = f.opt || rng.chance(25);
     if f.opt || rng.chance(40) {
         let s = gen_exit(rng, f.opt);
         let at = rng.below(f.body.len() + 1);
@@ -359,33 +375,10 @@ fn bounds_pair(rng: &mut Rng) -> (i64, i64) {
 /// Correct-by-construction loops (most prove), sometimes with one mutation
 /// that may or may not break them: near misses are where a verifier errs.
 fn gen_template(rng: &mut Rng, n: usize) -> Func {
-    let mut f = match rng.below(4) {
-        // Sum of bounded elements.
-        0 => Func {
-            name: String::new(),
-            pre: vec![
-                Clause::Elems(-1000, 1000),
-                Clause::XIn(-1000, 1000),
-                Clause::LenLe(1_000_000),
-            ],
-            inv: vec![
-                Clause::LenLe(1_000_000),
-                Clause::ILeLen,
-                Clause::AccIn(1000),
-                Clause::Elems(-1000, 1000),
-                Clause::SameLen,
-            ],
-            post: vec![Clause::SameLen],
-            start: Start::Zero,
-            cond: Cond::ILtLen,
-            body: vec![S::SetAcc(E::Add(
-                Box::new(E::Acc),
-                Box::new(E::Elem(Idx::I)),
-            ))],
-            ret: Ret::Acc,
-            form: Form::While,
-            opt: false,
-        },
+    let kind = rng.below(5);
+    let mut f = match kind {
+        // Sum of bounded elements (with a near miss when `kind` is 4).
+        0 | 4 => sum_template(),
         // Fill with x; the first element afterwards is x (or the array is empty).
         1 => Func {
             name: String::new(),
@@ -461,7 +454,84 @@ fn gen_template(rng: &mut Rng, n: usize) -> Func {
             }
         }
     }
+    if kind == 4 {
+        let which = rng.below(4);
+        kick(rng, &mut f, which);
+    }
     add_exits(rng, &mut f);
+    f
+}
+
+/// A near miss on the sum: on an element of a sign the inputs often hold,
+/// push `acc` far past the invariant and the result bound, then leave.
+/// Each exit's own obligation fails; a prover that skips it is caught when
+/// the interpreter takes that branch.
+fn kick(rng: &mut Rng, f: &mut Func, which: usize) {
+    let hit = if rng.chance(50) {
+        (Cmp::Lt, E::Elem(Idx::I), E::Lit(0))
+    } else {
+        (Cmp::Le, E::Lit(0), E::Elem(Idx::I))
+    };
+    let far = || E::Add(Box::new(E::Acc), Box::new(E::Lit(1_500_000_000)));
+    let (exit, pre) = match which {
+        0 => (Exit::Continue, Some(Pre::Acc(far()))),
+        1 => (Exit::Break, Some(Pre::Acc(far()))),
+        2 => (Exit::Return(far()), None),
+        _ => {
+            // `None` after changing `a[0]`: the `None` side keeps `a[0]`
+            // (the loop keeps it otherwise, and says so).
+            f.opt = true;
+            f.post.push(Clause::FirstKept);
+            f.inv.push(Clause::FirstKept);
+            (
+                Exit::Try(E::Acc, -1_000_000_000_000),
+                Some(Pre::Write(Idx::Zero, E::Lit(99))),
+            )
+        }
+    };
+    f.post.push(Clause::RIn(-1_000_000_000, 1_000_000_000));
+    let at = rng.below(f.body.len() + 1);
+    f.body.insert(at, S::Exit(exit, hit.0, hit.1, hit.2, pre));
+}
+
+fn sum_template() -> Func {
+    Func {
+        name: String::new(),
+        pre: vec![
+            Clause::Elems(-1000, 1000),
+            Clause::XIn(-1000, 1000),
+            Clause::LenLe(1_000_000),
+        ],
+        inv: vec![
+            Clause::LenLe(1_000_000),
+            Clause::ILeLen,
+            Clause::AccIn(1000),
+            Clause::Elems(-1000, 1000),
+            Clause::SameLen,
+        ],
+        post: vec![Clause::SameLen],
+        start: Start::Zero,
+        cond: Cond::ILtLen,
+        body: vec![S::SetAcc(E::Add(
+            Box::new(E::Acc),
+            Box::new(E::Elem(Idx::I)),
+        ))],
+        ret: Ret::Acc,
+        form: Form::While,
+        opt: false,
+    }
+}
+
+/// The near miss of exit kind `seed % 4` in every batch, in a `while` for
+/// the first four seeds of each eight and a `for` for the others, so that a
+/// few seeds already cover `continue`, `break`, `return` and `?`.
+fn kicked_sum(rng: &mut Rng, seed: u64) -> Func {
+    let mut f = sum_template();
+    f.name = "g0".into();
+    if (seed / 4) % 2 == 1 {
+        f.form = Form::For;
+    }
+    kick(rng, &mut f, (seed % 4) as usize);
     f
 }
 
@@ -672,7 +742,7 @@ impl Func {
                         e_text(e)
                     );
                 }
-                S::Exit(x, c, l, r) => {
+                S::Exit(x, c, l, r, pre) => {
                     let exit = match x {
                         Exit::Break => "break;".to_string(),
                         Exit::Continue if self.form == Form::While => {
@@ -680,10 +750,18 @@ impl Func {
                         }
                         Exit::Continue => "continue;".to_string(),
                         Exit::Return(e) => format!("return {};", wrap(e_text(e))),
+                        Exit::Try(e, k) => format!("acc = lim({}, {})?;", e_text(e), lit(*k)),
+                    };
+                    let pre = match pre {
+                        Some(Pre::Acc(e)) => format!("acc = {};\n                ", e_text(e)),
+                        Some(Pre::Write(i, e)) => {
+                            format!("a[{}] = {};\n                ", idx_text(*i), e_text(e))
+                        }
+                        None => String::new(),
                     };
                     let _ = writeln!(
                         t,
-                        "            if {} {} {} {{\n                {exit}\n            }}",
+                        "            if {} {} {} {{\n                {pre}{exit}\n            }}",
                         e_text(l),
                         cmp_text(*c),
                         e_text(r)
@@ -814,8 +892,17 @@ impl St<'_> {
     fn step(&mut self) -> Result<Flow, Fault> {
         for s in &self.f.body {
             match s {
-                S::Exit(x, c, l, r) => {
+                S::Exit(x, c, l, r, pre) => {
                     if self.test(*c, l, r)? {
+                        match pre {
+                            Some(Pre::Acc(e)) => self.acc = self.e(e)?,
+                            Some(Pre::Write(i, e)) => {
+                                let v = self.e(e)?;
+                                let j = self.idx(*i)?;
+                                self.a[j] = v;
+                            }
+                            None => {}
+                        }
                         return Ok(match x {
                             Exit::Break => Flow::Break,
                             Exit::Continue => {
@@ -824,6 +911,15 @@ impl St<'_> {
                                 Flow::Next
                             }
                             Exit::Return(e) => Flow::Return(Out::Val(self.e(e)?)),
+                            Exit::Try(e, k) => {
+                                let v = self.e(e)?;
+                                if v > *k {
+                                    Flow::Return(Out::None)
+                                } else {
+                                    self.acc = v;
+                                    continue;
+                                }
+                            }
                         });
                     }
                 }
@@ -1028,7 +1124,8 @@ struct Stats {
 
 fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
     let mut rng = Rng(seed.wrapping_mul(0x9E3779B97F4A7C15) | 1);
-    let funcs: Vec<Func> = (0..6).map(|n| gen_func(&mut rng, n)).collect();
+    let mut funcs: Vec<Func> = vec![kicked_sum(&mut rng, seed)];
+    funcs.extend((1..6).map(|n| gen_func(&mut rng, n)));
     let mut src = String::from("#[summary(\"루프 건전성 퍼징\")]\nmod m {\n");
     src.push_str(LIM);
     for f in &funcs {
@@ -1093,7 +1190,11 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
         stats.verified += 1;
         stats.verified_for += usize::from(f.form == Form::For);
         stats.verified_exit += usize::from(f.body.iter().any(|s| matches!(s, S::Exit(..))));
-        stats.verified_try += usize::from(f.body.iter().any(|s| matches!(s, S::Try(..))));
+        stats.verified_try += usize::from(
+            f.body
+                .iter()
+                .any(|s| matches!(s, S::Try(..) | S::Exit(Exit::Try(..), ..))),
+        );
         for (a, k, x) in inputs(f, &mut rng) {
             stats.verified_runs += 1;
             let mut after = a.clone();

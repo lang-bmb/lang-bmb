@@ -319,12 +319,12 @@ MUTANTS = [
      '''                    let k = self.jump_target(label);
                     let _ = k;''',
      "a `continue` goes back to the head without its invariant or measure obligations"),
-    ("v-for-continue-no-step", "unsound", V,
+    ("v-for-continue-no-step", "incomplete", V,
      '''                    let k = self.jump_target(label);
                     self.end_iteration(k);''',
      '''                    let k = self.jump_target(label);
                     self.back_to_head(k);''',
-     "a `continue` in a `for` goes back to the head without stepping the variable"),
+     "a `continue` in a `for` goes back to the head without stepping the variable (its measure does not decrease, so no such loop proves)"),
     ("v-for-var-not-havocked", "unsound", V,
      '''        if let Some(st) = &step {
             modified.insert(st.var.clone());
