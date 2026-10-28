@@ -432,6 +432,25 @@ enum Mode {
     Spec {
         allow_old: bool,
     },
+    /// Ghost statements (ADR-0062 §1): a `proof fn` body or a `proof { .. }`
+    /// block. `proof fn` calls, `assert`, `if`/`match` and `let` of
+    /// specification values; every other expression is a specification.
+    Ghost,
+}
+
+/// The mode of the operands of ghost code: specifications, where `old`
+/// names a `&mut` parameter's entry value as in an `assert`.
+const GHOST_SPEC: Mode = Mode::Spec { allow_old: true };
+
+impl Mode {
+    /// The mode of a condition or scrutinee: a specification in ghost code.
+    fn operand(self) -> Mode {
+        if self == Mode::Ghost {
+            GHOST_SPEC
+        } else {
+            self
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -455,6 +474,8 @@ struct FnCtx {
     loops: Vec<LoopCx>,
     /// The `for` variables (names are unique in a function).
     for_vars: BTreeSet<String>,
+    /// Checking ghost code (ADR-0062): mutation is E0257, not E0503.
+    ghost: bool,
 }
 
 /// A loop a `break` or `continue` may name.
@@ -2543,6 +2564,17 @@ impl<'a> Checker<'a> {
         for a in &f.attrs {
             match a.name.name.as_str() {
                 "effects" => {
+                    if f.kind == FnKind::Proof {
+                        self.diags.push(
+                            Diag::new(
+                                "E0256",
+                                a.span,
+                                "a `proof fn` has no effect: it is ghost code, erased before it runs",
+                            )
+                            .fix("remove the attribute", Some(String::new())),
+                        );
+                        continue;
+                    }
                     if f.kind == FnKind::Spec {
                         self.diags.push(
                             Diag::new("E0604", a.span, "spec functions are pure by definition")
@@ -2744,6 +2776,7 @@ impl<'a> Checker<'a> {
             ret: TypeKind::Error,
             loops: Vec::new(),
             for_vars: BTreeSet::new(),
+            ghost: f.kind == FnKind::Proof,
         };
         self.calls.entry(path.clone()).or_default();
 
@@ -2829,10 +2862,10 @@ impl<'a> Checker<'a> {
             self.tparams.clear();
             return;
         }
-        let mode = if f.kind == FnKind::Spec {
-            Mode::Spec { allow_old: false }
-        } else {
-            Mode::Exec
+        let mode = match f.kind {
+            FnKind::Spec => Mode::Spec { allow_old: false },
+            FnKind::Proof => Mode::Ghost,
+            FnKind::Exec => Mode::Exec,
         };
         let t = self.block(&mut cx, &f.body, Some(&ret_ty), mode);
         self.expect_ty(
@@ -2862,25 +2895,25 @@ impl<'a> Checker<'a> {
                     if array_elem_ok(&e.kind)
                         || matches!(&e.kind, TypeKind::Named { path, .. } if path.len() == 1 && path[0] == "Vec") =>
                 {
-                    if *mutable && kind == FnKind::Spec {
-                        self.err("E0402", t.span, "spec function parameters cannot be `&mut`");
+                    if *mutable && kind != FnKind::Exec {
+                        self.ghost_mut_param(t.span, kind);
                     }
                 }
                 TypeKind::Named { path, .. } if path.len() == 1 && path[0] == "Vec" => {
-                    if kind == FnKind::Spec {
+                    if kind != FnKind::Exec {
                         self.spec_vec(t.span);
                     }
                 }
                 TypeKind::Named { .. } => {
-                    if *mutable && kind == FnKind::Spec {
-                        self.err("E0402", t.span, "spec function parameters cannot be `&mut`");
+                    if *mutable && kind != FnKind::Exec {
+                        self.ghost_mut_param(t.span, kind);
                     }
                 }
                 // `&i64`, `&mut bool` (backlog 2T-08): a receiver of a
                 // trait impl for a scalar, an out-parameter.
                 k if is_scalar(k) => {
-                    if *mutable && kind == FnKind::Spec {
-                        self.err("E0402", t.span, "spec function parameters cannot be `&mut`");
+                    if *mutable && kind != FnKind::Exec {
+                        self.ghost_mut_param(t.span, kind);
                     }
                 }
                 TypeKind::Error => {}
@@ -2897,7 +2930,7 @@ impl<'a> Checker<'a> {
                 ),
             },
             TypeKind::Named { path, .. }
-                if kind == FnKind::Spec && path.len() == 1 && path[0] == "Vec" =>
+                if kind != FnKind::Exec && path.len() == 1 && path[0] == "Vec" =>
             {
                 self.spec_vec(t.span)
             }
@@ -2905,6 +2938,36 @@ impl<'a> Checker<'a> {
             TypeKind::Array(e, _) if matches!(e.kind, TypeKind::Named { .. }) => {}
             _ => self.check_value_type(t, "parameter type"),
         }
+    }
+
+    /// A `&mut` parameter of a spec fn (E0402) or a proof fn (E0257: ghost
+    /// code changes no state, ADR-0062 §1).
+    fn ghost_mut_param(&mut self, span: Span, kind: FnKind) {
+        if kind == FnKind::Proof {
+            self.diags.push(
+                Diag::new(
+                    "E0257",
+                    span,
+                    "a `proof fn` parameter cannot be `&mut`: ghost code changes no executable state",
+                )
+                .fix("take the value or `&T`", None),
+            );
+        } else {
+            self.err("E0402", span, "spec function parameters cannot be `&mut`");
+        }
+    }
+
+    /// E0257: ghost code (ADR-0062 §1) reads executable state and never
+    /// changes it.
+    fn ghost_violation(&mut self, span: Span, what: &str, fix: &str) {
+        self.diags.push(
+            Diag::new(
+                "E0257",
+                span,
+                format!("{what} is not allowed in ghost code (a `proof fn` body or a `proof {{ .. }}` block)"),
+            )
+            .fix(fix, None),
+        );
     }
 
     /// E0402: specifications see a `Vec` as a slice (ADR-0031 §3).
@@ -3217,7 +3280,13 @@ impl<'a> Checker<'a> {
                 ..
             } => {
                 self.check_value_type(ty, "local variable type");
-                if *mutable && mode != Mode::Exec {
+                if *mutable && mode == Mode::Ghost {
+                    self.ghost_violation(
+                        name.span,
+                        "`let mut`",
+                        "bind the value with `let`: ghost values do not change",
+                    );
+                } else if *mutable && mode != Mode::Exec {
                     self.err(
                         "E0503",
                         name.span,
@@ -3225,7 +3294,7 @@ impl<'a> Checker<'a> {
                     );
                 }
                 let lty = self.canon(ty, &cx.mod_path.clone(), true);
-                let t = self.expr(cx, init, Some(&lty), mode);
+                let t = self.expr(cx, init, Some(&lty), mode.operand());
                 if !self.deref_fix(&t, &lty, init) {
                     self.expect_ty(&t, &lty, init.span);
                 }
@@ -3236,7 +3305,13 @@ impl<'a> Checker<'a> {
                 value,
                 span,
             } => {
-                if mode != Mode::Exec {
+                if mode == Mode::Ghost {
+                    self.ghost_violation(
+                        *span,
+                        "assignment",
+                        "ghost code proves facts about the state; assign outside the `proof` block",
+                    );
+                } else if mode != Mode::Exec {
                     self.err(
                         "E0503",
                         *span,
@@ -3260,10 +3335,12 @@ impl<'a> Checker<'a> {
                 body,
                 span,
             } => {
-                if mode != Mode::Exec {
+                if mode == Mode::Ghost {
+                    self.ghost_loop(*span);
+                } else if mode != Mode::Exec {
                     self.spec_loop(*span);
                 }
-                let ct = self.expr(cx, cond, Some(&TypeKind::Bool), mode);
+                let ct = self.expr(cx, cond, Some(&TypeKind::Bool), mode.operand());
                 self.expect_ty(&ct, &TypeKind::Bool, cond.span);
                 let missing = Span {
                     hi: cond.span.hi,
@@ -3289,9 +3366,13 @@ impl<'a> Checker<'a> {
                 span,
                 ..
             } => {
-                if mode != Mode::Exec {
+                if mode == Mode::Ghost {
+                    self.ghost_loop(*span);
+                } else if mode != Mode::Exec {
                     self.spec_loop(*span);
                 }
+                let mode_in = mode;
+                let mode = mode.operand();
                 // The bounds share one integer type (a literal takes the
                 // other's), evaluated once before the loop.
                 let (lt, ht) = if untyped_literal(lo) && !untyped_literal(hi) {
@@ -3350,13 +3431,13 @@ impl<'a> Checker<'a> {
                     is_loop: false,
                     value: None,
                 });
-                let bt = self.block(cx, body, Some(&TypeKind::Unit), mode);
+                let bt = self.block(cx, body, Some(&TypeKind::Unit), mode_in);
                 cx.loops.pop();
                 cx.scopes.pop();
                 self.expect_ty(&bt, &TypeKind::Unit, body.span);
             }
             Stmt::Assert { cond, span } => {
-                if mode != Mode::Exec {
+                if mode != Mode::Exec && mode != Mode::Ghost {
                     self.err("E0503", *span, "`assert` is not allowed in a specification");
                 }
                 let t = self.expr(
@@ -3370,7 +3451,44 @@ impl<'a> Checker<'a> {
             Stmt::Expr(e) => {
                 self.expr(cx, e, None, mode);
             }
+            // `proof { .. }` (ADR-0062 §1): ghost statements in executable
+            // code. Its `let`s are local to it, so no ghost value reaches
+            // executable code.
+            Stmt::Proof { body, span } => {
+                match mode {
+                    Mode::Exec => {}
+                    Mode::Ghost => self.ghost_violation(
+                        *span,
+                        "a `proof` block",
+                        "this is ghost code already: write the statements without `proof { .. }`",
+                    ),
+                    Mode::Spec { .. } => self.diags.push(
+                        Diag::new(
+                            "E0503",
+                            *span,
+                            "a `proof` block is not allowed in a specification",
+                        )
+                        .fix(
+                            "call lemmas from a `proof { .. }` block of executable code, or from a `proof fn`",
+                            None,
+                        ),
+                    ),
+                }
+                let ghost = std::mem::replace(&mut cx.ghost, true);
+                let t = self.block(cx, body, Some(&TypeKind::Unit), Mode::Ghost);
+                cx.ghost = ghost;
+                self.expect_ty(&t, &TypeKind::Unit, body.span);
+            }
         }
+    }
+
+    /// E0257 for a loop in ghost code.
+    fn ghost_loop(&mut self, span: Span) {
+        self.ghost_violation(
+            span,
+            "a loop",
+            "prove by induction: a recursive `proof fn` with `decreases`",
+        );
     }
 
     /// E0411: an unsigned value has no negation.
@@ -4384,7 +4502,14 @@ impl<'a> Checker<'a> {
         // reference to its payload.
         let st = match &scrut.kind {
             ExprKind::Ref { mutable, expr: x } => {
-                let t = self.expr(cx, x, None, mode);
+                if *mutable && mode == Mode::Ghost {
+                    self.ghost_violation(
+                        scrut.span,
+                        "`&mut`",
+                        "match the value or `&` it: ghost code does not write",
+                    );
+                }
+                let t = self.expr(cx, x, None, mode.operand());
                 let rt = if t == TypeKind::Error {
                     t
                 } else {
@@ -4397,7 +4522,7 @@ impl<'a> Checker<'a> {
                     .insert((scrut.span.file, scrut.span.lo, scrut.span.hi), rt.clone());
                 rt
             }
-            _ => self.expr(cx, scrut, None, mode),
+            _ => self.expr(cx, scrut, None, mode.operand()),
         };
         let (st, by_ref, by_mut) = match &st {
             TypeKind::Ref { mutable, inner } if self.match_variants(&inner.kind).is_some() => {
@@ -4858,6 +4983,22 @@ impl<'a> Checker<'a> {
         expected: Option<&TypeKind>,
         mode: Mode,
     ) -> TypeKind {
+        // Ghost code (ADR-0062 §1): `if`, `match` and blocks hold ghost
+        // statements, calls are checked by kind (`call`), loops are E0257;
+        // anything else is a specification.
+        if mode == Mode::Ghost {
+            match &e.kind {
+                ExprKind::If { .. }
+                | ExprKind::Match { .. }
+                | ExprKind::Block(_)
+                | ExprKind::Loop { .. } => {}
+                ExprKind::Call { path, .. }
+                    if self
+                        .resolve(path, &cx.mod_path)
+                        .is_some_and(|t| self.fns[&t].kind != FnKind::Spec) => {}
+                _ => return self.expr_inner(cx, e, expected, GHOST_SPEC),
+            }
+        }
         match &e.kind {
             ExprKind::Error => TypeKind::Error,
             ExprKind::Return(x) => {
@@ -4926,7 +5067,9 @@ impl<'a> Checker<'a> {
                 decreases,
                 body,
             } => {
-                if mode != Mode::Exec {
+                if mode == Mode::Ghost {
+                    self.ghost_loop(e.span);
+                } else if mode != Mode::Exec {
                     self.spec_loop(e.span);
                 }
                 let missing = Span {
@@ -5290,7 +5433,7 @@ impl<'a> Checker<'a> {
                 TypeKind::Error
             }
             ExprKind::If { cond, then, els } => {
-                let ct = self.expr(cx, cond, Some(&TypeKind::Bool), mode);
+                let ct = self.expr(cx, cond, Some(&TypeKind::Bool), mode.operand());
                 self.expect_ty(&ct, &TypeKind::Bool, cond.span);
                 // `if c { 5 } else { y }`: the literal branch takes its type
                 // from the other one, as in Rust.
@@ -6051,11 +6194,19 @@ impl<'a> Checker<'a> {
             }
         };
         if mode != Mode::Exec && m != "len" {
-            self.err(
-                "E0503",
-                span,
-                format!("`.{m}()` is not allowed in a specification"),
-            );
+            if cx.ghost && mutates {
+                self.ghost_violation(
+                    span,
+                    &format!("`.{m}()`"),
+                    "change the value outside the `proof` block",
+                );
+            } else {
+                self.err(
+                    "E0503",
+                    span,
+                    format!("`.{m}()` is not allowed in a specification"),
+                );
+            }
         }
         if args.len() != arity {
             self.err(
@@ -6106,7 +6257,13 @@ impl<'a> Checker<'a> {
         mode: Mode,
     ) -> TypeKind {
         let op = mem_op(path).expect("checked");
-        if mode != Mode::Exec {
+        if mode != Mode::Exec && cx.ghost {
+            self.ghost_violation(
+                span,
+                &format!("`std::mem::{op}`"),
+                "change the value outside the `proof` block",
+            );
+        } else if mode != Mode::Exec {
             self.err(
                 "E0503",
                 span,
@@ -6614,6 +6771,52 @@ impl<'a> Checker<'a> {
         };
         let sig = self.fns[&target].clone();
         match (mode, sig.kind) {
+            // ADR-0062 §1: lemmas are called from ghost code only.
+            (Mode::Exec, FnKind::Proof) => {
+                let call = Expr {
+                    kind: ExprKind::Call {
+                        path: path.to_vec(),
+                        targs: targs.to_vec(),
+                        args: args.to_vec(),
+                    },
+                    span,
+                };
+                let r = format!("proof {{ {}; }}", crate::fmt::expr_text(&call));
+                self.diags.push(
+                    Diag::new(
+                        "E0258",
+                        span,
+                        format!("`{name}` is a `proof fn`: executable code calls it in a `proof {{ .. }}` block"),
+                    )
+                    .fix(format!("wrap the call: `{r}`"), Some(r)),
+                );
+            }
+            (Mode::Spec { .. }, FnKind::Proof) => {
+                self.diags.push(
+                    Diag::new(
+                        "E0258",
+                        span,
+                        format!("`{name}` is a `proof fn` and has no value in a specification"),
+                    )
+                    .fix(
+                        "call it as a statement of a `proof { .. }` block or a `proof fn`; its `ensures` then hold after the call",
+                        None,
+                    ),
+                );
+            }
+            (Mode::Ghost, FnKind::Proof) => {
+                self.calls
+                    .entry(cx.path.clone())
+                    .or_default()
+                    .insert(target.clone());
+            }
+            (Mode::Ghost, FnKind::Exec) => {
+                self.ghost_violation(
+                    span,
+                    &format!("a call of executable function `{name}`"),
+                    "call it outside the `proof` block, or state the fact with a spec fn or a `proof fn`",
+                );
+            }
             (Mode::Exec, FnKind::Spec) => {
                 self.err(
                     "E0505",
@@ -6621,6 +6824,13 @@ impl<'a> Checker<'a> {
                     format!(
                         "`{name}` is a spec function and cannot be called from executable code"
                     ),
+                );
+            }
+            (Mode::Spec { .. }, FnKind::Exec) if cx.ghost => {
+                self.ghost_violation(
+                    span,
+                    &format!("a call of executable function `{name}`"),
+                    "call it outside the `proof` block, or state the fact with a spec fn or a `proof fn`",
                 );
             }
             (Mode::Spec { .. }, FnKind::Exec) => {
@@ -6652,11 +6862,23 @@ impl<'a> Checker<'a> {
                     .or_default()
                     .insert(target.clone());
             }
-            (Mode::Spec { .. }, FnKind::Spec) => {
+            (Mode::Spec { .. } | Mode::Ghost, FnKind::Spec) => {
                 self.calls
                     .entry(cx.path.clone())
                     .or_default()
                     .insert(target.clone());
+            }
+        }
+        // A lemma has no value in a specification (E0258 above).
+        let no_value = matches!(mode, Mode::Spec { .. }) && sig.kind == FnKind::Proof;
+        // The arguments of a call in ghost code are specifications.
+        let ghost = mode == Mode::Ghost;
+        let mode = mode.operand();
+        if ghost {
+            for a in args {
+                if matches!(a.kind, ExprKind::Ref { mutable: true, .. }) {
+                    self.ghost_violation(a.span, "`&mut`", "pass the value or `&` it");
+                }
             }
         }
         if args.len() != sig.params.len() {
@@ -6844,6 +7066,9 @@ impl<'a> Checker<'a> {
                     );
                 }
             }
+        }
+        if no_value {
+            return TypeKind::Error;
         }
         subst(&sig.ret, &tm)
     }
@@ -7613,6 +7838,7 @@ fn block_mentions(b: &Block, name: &str) -> bool {
         }
         Stmt::Assert { cond, .. } => mentions_strict(cond, name),
         Stmt::Expr(e) => mentions_strict(e, name),
+        Stmt::Proof { body, .. } => block_mentions(body, name),
     }) || b.tail.as_ref().is_some_and(|t| mentions_strict(t, name))
 }
 

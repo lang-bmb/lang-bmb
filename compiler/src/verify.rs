@@ -307,6 +307,7 @@ fn each_block_expr<'e>(b: &'e Block, f: &mut dyn FnMut(&'e Expr)) {
             }
             Stmt::Assert { cond, .. } => each_expr(cond, f),
             Stmt::Expr(e) => each_expr(e, f),
+            Stmt::Proof { body, .. } => each_block_expr(body, f),
         }
     }
     if let Some(t) = &b.tail {
@@ -1626,6 +1627,10 @@ struct Enc<'p, 'q> {
     dead: bool,
     /// The loops around the code being encoded, innermost last.
     loops: Vec<VLoop>,
+    /// Encoding ghost code (ADR-0062 §2): a `proof fn` body or a `proof`
+    /// block. Its expressions are specifications (no overflow or index
+    /// obligations); its effects are the facts it proves.
+    ghost: bool,
 }
 
 /// A loop a `break` or `continue` may leave (ADR-0049 §3).
@@ -2099,6 +2104,7 @@ impl<'p, 'q> Enc<'p, 'q> {
             reach: Vec::new(),
             dead: false,
             loops: Vec::new(),
+            ghost: false,
         }
     }
 
@@ -2344,6 +2350,51 @@ impl<'p, 'q> Enc<'p, 'q> {
             }
             Val::S(c)
         }
+    }
+
+    /// What a `proof fn` assumes of a parameter value `v` of type `t`, and
+    /// what a call proves of the argument (E0819, ADR-0062 §2): the
+    /// facts `fresh_val` states of a fresh value (the range of every
+    /// integer leaf, the length bounds, every element's range in an integer
+    /// array) except an enum value's payload ranges. Those are one level
+    /// deep, so a lemma recursing into a payload (`&**t`) could not prove
+    /// them of the payload's own payload; it states what it needs in
+    /// `requires`.
+    fn type_facts(&mut self, v: &Val, t: &TypeKind) -> Vec<String> {
+        let mut out = Vec::new();
+        if let (Some(fs), Val::Struct(vs)) = (flat_fields(t, self.prog.t), v) {
+            for ((_, ft), fv) in fs.iter().zip(vs) {
+                out.extend(self.type_facts(fv, ft));
+            }
+            return out;
+        }
+        if let TypeKind::Ref { inner, .. } = t
+            && !is_array(t)
+        {
+            return self.type_facts(v, &inner.kind);
+        }
+        let len_fact = |len: &str, e: &TypeKind| {
+            (!fixed_len(len)).then(|| format!("(and (<= 0 {len}) (<= {len} {}))", len_max(e)))
+        };
+        match v {
+            Val::A { elems, len } if is_array(t) => {
+                let e = elem_ty(t);
+                if let Some(r) = range(&e, &format!("(select {elems} k)")) {
+                    out.push(format!(
+                        "(forall ((k Int)) (! {r} :pattern ((select {elems} k))))"
+                    ));
+                }
+                out.extend(len_fact(len, &e));
+            }
+            Val::Arr { len, .. } if is_array(t) => {
+                let e = elem_ty(t);
+                inner_len_facts(v, &e, self.prog.t, &mut out);
+                out.extend(len_fact(len, &e));
+            }
+            Val::S(c) => out.extend(range(t, c)),
+            _ => {}
+        }
+        out
     }
 
     /// Records the path condition here as a reach point (`vacuous_ends`).
@@ -2842,6 +2893,10 @@ impl<'p, 'q> Enc<'p, 'q> {
     // ---------- executable code ----------
 
     fn eval(&mut self, e: &Expr) -> Val {
+        if self.ghost {
+            self.ghost_expr(e);
+            return Val::Unit;
+        }
         match &e.kind {
             ExprKind::Loop {
                 label,
@@ -3459,13 +3514,74 @@ impl<'p, 'q> Enc<'p, 'q> {
         (self.vars.clone(), self.old.clone())
     }
 
+    /// Ghost code (ADR-0062 §2): `if` and `match` branch on specifications
+    /// (the facts proved on a side hold under its condition), a `proof fn`
+    /// call proves its preconditions and assumes its `ensures`, and any
+    /// other expression is a specification with no effect.
+    fn ghost_expr(&mut self, e: &Expr) {
+        match &e.kind {
+            ExprKind::If { cond, then, els } => {
+                let (env, old) = self.cur_env();
+                let c = self.spec(cond, &env, &old).s();
+                self.branch(
+                    &c,
+                    &TypeKind::Unit,
+                    |s| s.block(then),
+                    |s| match els {
+                        Some(x) => s.eval(x),
+                        None => Val::Unit,
+                    },
+                );
+            }
+            ExprKind::Match { scrut, arms } => {
+                let (env, old) = self.cur_env();
+                let sv = self.spec(scrut, &env, &old).s();
+                let st = value_ty(&self.ty(scrut)).clone();
+                self.match_arms(&sv, &st, arms, 0, &TypeKind::Unit, None);
+            }
+            ExprKind::Block(b) => {
+                self.block(b);
+            }
+            ExprKind::Call { path, args, .. } => {
+                let target = self.resolve(path, &self.mod_path.clone());
+                if self
+                    .prog
+                    .t
+                    .fns
+                    .get(&target)
+                    .is_some_and(|s| s.kind == FnKind::Proof)
+                {
+                    self.call(path, args, e.span);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// A `proof { .. }` block in executable code: its facts hold from here
+    /// on; its `let`s end with it.
+    fn proof_block(&mut self, body: &Block) {
+        let before: BTreeSet<String> = self.vars.keys().cloned().collect();
+        let ghost = std::mem::replace(&mut self.ghost, true);
+        self.block(body);
+        self.ghost = ghost;
+        self.vars.retain(|k, _| before.contains(k));
+    }
+
     fn stmt(&mut self, s: &Stmt) {
         match s {
             Stmt::LetFields { .. } => unreachable!("rejected by the checker (E0230)"),
+            // A ghost `let` binds a specification value.
+            Stmt::Let { name, init, .. } if self.ghost => {
+                let (env, old) = self.cur_env();
+                let v = self.spec(init, &env, &old);
+                self.vars.insert(name.name.clone(), v);
+            }
             Stmt::Let { name, init, .. } => {
                 let v = self.eval(init);
                 self.vars.insert(name.name.clone(), v);
             }
+            Stmt::Proof { body, .. } => self.proof_block(body),
             Stmt::Assign { target, value, .. } => {
                 // Rust evaluates the value, then the place (and its bounds).
                 let v = self.eval(value);
@@ -4387,7 +4503,14 @@ impl<'p, 'q> Enc<'p, 'q> {
         }
         let mut argv = Vec::new();
         for a in args {
-            argv.push(self.eval(a));
+            // A lemma's arguments are specifications (ADR-0062 §2).
+            let v = if self.ghost {
+                let (env, old) = self.cur_env();
+                self.spec(a, &env, &old)
+            } else {
+                self.eval(a)
+            };
+            argv.push(v);
         }
         let Some(def) = self.prog.defs.get(&target) else {
             // The one built-in function has no contract; anything else
@@ -4402,6 +4525,33 @@ impl<'p, 'q> Enc<'p, 'q> {
         let f = def.f;
         let pre_env = bind_params(f, &argv);
         let unit = def.mod_path.clone();
+        // The lemma is proved for values of its parameter types; ghost
+        // arithmetic is mathematical, so an argument may lie outside
+        // (E0819, ADR-0062 §2).
+        if f.kind == FnKind::Proof {
+            let tys: Vec<TypeKind> = self.prog.t.fns[&target]
+                .params
+                .iter()
+                .map(|t| crate::check::subst(t, &csub))
+                .collect();
+            for ((v, t), a) in argv.iter().zip(&tys).zip(args) {
+                for g in self.type_facts(v, t) {
+                    if self.pc.contains(&g) {
+                        continue;
+                    }
+                    self.oblige(
+                        "E0819",
+                        a.span,
+                        format!(
+                            "argument `{}` of `{target}` may be outside `{}`",
+                            crate::fmt::expr_text(a),
+                            crate::check::ty_str(t)
+                        ),
+                        g,
+                    );
+                }
+            }
+        }
         for r in &f.requires {
             let g = self.in_def(&unit, csub.clone(), |s| {
                 s.spec(r, &pre_env, &BTreeMap::new()).s()
@@ -4576,6 +4726,7 @@ fn find_let(b: &Block, name: &str, out: &mut Option<TypeKind>) {
             Stmt::Assert { cond, .. } => find_let_expr(cond, name, out),
             Stmt::LetFields { init, .. } => find_let_expr(init, name, out),
             Stmt::Expr(e) => find_let_expr(e, name, out),
+            Stmt::Proof { body, .. } => find_let(body, name, out),
         }
     }
     if let Some(t) = &b.tail {
@@ -4669,7 +4820,8 @@ fn assigned_in_block(b: &Block, out: &mut BTreeSet<String>) {
                 out.insert(var.name.clone());
             }
             Stmt::Expr(e) => assigned_in_expr(e, out),
-            Stmt::Assert { .. } => {}
+            // Ghost code assigns nothing (E0257).
+            Stmt::Assert { .. } | Stmt::Proof { .. } => {}
         }
     }
     if let Some(t) = &b.tail {
@@ -5443,6 +5595,40 @@ fn verify_impl(
                 enc.term_check = Some((comp, m, data));
                 enc.spec_block(&d.f.body, &env, &BTreeMap::new());
                 enc.term_check = None;
+            }
+            // A lemma (ADR-0062 §2): its body is ghost code, proved like an
+            // executable function's against its contract.
+            FnKind::Proof => {
+                for u in prog.revealed(d.f, &d.mod_path) {
+                    let (ax, parts) = prog.axiom(&u);
+                    axioms.push((spec_key(&u, t), ax));
+                    axiom_parts.push(parts);
+                }
+                // Each parameter satisfies what every call proves of its
+                // argument (`type_facts`), and nothing more.
+                for prm in &d.f.params {
+                    let ty = enc.local_ty(&prm.name.name);
+                    let n = enc.pc.len();
+                    let v = enc.fresh_val(&prm.name.name, &ty);
+                    enc.pc.truncate(n);
+                    let facts = enc.type_facts(&v, &ty);
+                    enc.pc.extend(facts);
+                    enc.inputs.push((prm.name.name.clone(), v.clone(), ty));
+                    enc.vars.insert(prm.name.name.clone(), v);
+                }
+                let (env, old) = enc.cur_env();
+                for r in &d.f.requires {
+                    let g = enc.spec(r, &env, &old).s();
+                    enc.pc.push(g);
+                }
+                if let Some(dec) = &d.f.decreases {
+                    enc.entry_measure = Some(enc.measure(dec, &env, &old));
+                }
+                enc.ghost = true;
+                enc.block(&d.f.body);
+                enc.ghost = false;
+                enc.mark_reach(d.f.name.span, "end of the body");
+                enc.post_check(Val::Unit);
             }
             FnKind::Exec => {
                 for u in prog.revealed(d.f, &d.mod_path) {

@@ -428,6 +428,10 @@ fn node_spans(f: &FnDef) -> Vec<Span> {
                 out.push(*span);
                 expr(cond, out);
             }
+            Stmt::Proof { body, span } => {
+                out.push(*span);
+                block(body, out);
+            }
             Stmt::LetFields {
                 path,
                 fields,
@@ -907,7 +911,7 @@ impl Session {
                 let r = r.as_str();
                 let (body, caller) = &hash_of(r);
                 match kinds[r] {
-                    FnKind::Exec => {
+                    FnKind::Exec | FnKind::Proof => {
                         let line = format!("{r} {caller}");
                         section(&mut pk, "callee", &line);
                         section(&mut ik, "callee", &line);

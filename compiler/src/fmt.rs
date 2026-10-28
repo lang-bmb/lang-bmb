@@ -812,13 +812,13 @@ impl<'a> Printer<'a> {
             }
             None => self.ty(&f.ret.ty),
         };
-        let kw = if f.kind == FnKind::Spec {
-            "spec fn"
-        } else {
-            "fn"
-        };
         let name = rename.unwrap_or(&f.name.name);
-        let sig = format!("{kw} {name}{gens}({}) -> {ret}", params.join(", "));
+        let sig = format!(
+            "{} {name}{gens}({}){}",
+            fn_keyword(f),
+            params.join(", "),
+            ret_text(f, &ret)
+        );
         let has_clauses = !f.requires.is_empty() || !f.ensures.is_empty() || f.decreases.is_some();
         if !with_body {
             self.line(depth, &sig);
@@ -1047,6 +1047,9 @@ impl<'a> Printer<'a> {
                 let c = self.expr(cond, 0);
                 self.line(depth, &format!("assert({c});"));
             }
+            // A statement where it is written: what it proves holds from
+            // there on (ADR-0062, open question 3).
+            Stmt::Proof { body, .. } => self.block_open(body, depth, "proof ", ""),
             Stmt::LetFields {
                 path, fields, init, ..
             } => {
@@ -1438,6 +1441,24 @@ fn type_hashes(p: &Program) -> Vec<(String, String)> {
     out
 }
 
+/// The keyword of a definition: `fn`, `spec fn` or `proof fn`.
+fn fn_keyword(f: &FnDef) -> &'static str {
+    match f.kind {
+        FnKind::Exec => "fn",
+        FnKind::Spec => "spec fn",
+        FnKind::Proof => "proof fn",
+    }
+}
+
+/// ` -> T` after the parameters; a `proof fn` writes none (ADR-0062 §1).
+fn ret_text(f: &FnDef, ret: &str) -> String {
+    if f.kind == FnKind::Proof {
+        String::new()
+    } else {
+        format!(" -> {ret}")
+    }
+}
+
 /// What a caller's query reads of an executable function (backlog 2D-22):
 /// its qualified surface without `#[uses]`. A definition's `#[uses]` only
 /// reveals spec fn bodies in its own queries (`verify::uses_of`), so the
@@ -1492,16 +1513,13 @@ pub fn surface_parts(f: &FnDef) -> (String, Vec<String>, Vec<String>, Option<Str
         Some(n) => format!("({}: {})", n.name, type_str(&f.ret.ty)),
         None => type_str(&f.ret.ty),
     };
-    let kw = if f.kind == FnKind::Spec {
-        "spec fn"
-    } else {
-        "fn"
-    };
     let sig = format!(
-        "{kw} {}{}({}) -> {ret}",
+        "{} {}{}({}){}",
+        fn_keyword(f),
         f.name.name,
         generics_str(&f.generics),
-        params.join(", ")
+        params.join(", "),
+        ret_text(f, &ret)
     );
     let req = f.requires.iter().map(|e| pr.expr(e, 0)).collect();
     let ens = f.ensures.iter().map(|e| pr.expr(e, 0)).collect();

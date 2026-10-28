@@ -296,6 +296,7 @@ fn calls_in_block<'e>(
             }
             Stmt::Assert { cond, .. } => calls_in_expr(cond, true, out),
             Stmt::Expr(e) => calls_in_expr(e, spec, out),
+            Stmt::Proof { body, .. } => calls_in_block(body, true, out),
         }
     }
     if let Some(t) = &b.tail {
@@ -450,6 +451,7 @@ fn exprs_of(f: &FnDef) -> Vec<&Expr> {
                 }
                 Stmt::Assert { cond, .. } => expr(cond, out),
                 Stmt::Expr(e) => expr(e, out),
+                Stmt::Proof { body, .. } => block(body, out),
             }
         }
         if let Some(t) = &b.tail {
@@ -560,7 +562,7 @@ impl Index {
             {
                 calls_in_expr(c, true, &mut contract);
             }
-            calls_in_block(&f.body, f.kind == FnKind::Spec, &mut calls);
+            calls_in_block(&f.body, f.kind != FnKind::Exec, &mut calls);
             let targs_of = |sp: &Span| {
                 t.targs.get(&(sp.file, sp.lo, sp.hi)).map(|ts| {
                     ts.iter()
@@ -591,7 +593,10 @@ impl Index {
                 if !t.fns.contains_key(&to) {
                     continue;
                 }
-                let kind = if f.kind == FnKind::Spec {
+                // A lemma call (ADR-0062 §3): who relies on its `ensures`.
+                let kind = if t.fns.get(&to).is_some_and(|s| s.kind == FnKind::Proof) {
+                    "proof_calls"
+                } else if f.kind == FnKind::Spec {
                     "spec_calls"
                 } else if *spec {
                     "contract"
@@ -857,10 +862,10 @@ impl<'p> Model<'p> {
     }
 
     fn def_kind(d: &Def) -> &'static str {
-        if d.f.kind == FnKind::Spec {
-            "spec fn"
-        } else {
-            "fn"
+        match d.f.kind {
+            FnKind::Exec => "fn",
+            FnKind::Spec => "spec fn",
+            FnKind::Proof => "proof fn",
         }
     }
 
@@ -903,8 +908,10 @@ impl<'p> Model<'p> {
     }
 
     fn effects(d: &Def) -> String {
-        if d.f.kind == FnKind::Spec {
-            return "spec".into();
+        match d.f.kind {
+            FnKind::Spec => return "spec".into(),
+            FnKind::Proof => return "proof".into(),
+            FnKind::Exec => {}
         }
         d.f.attrs
             .iter()
@@ -1276,7 +1283,7 @@ impl<'p> Model<'p> {
         let (mut exec, mut sites_total, mut lines_total) = (0, 0, 0);
         let (mut io_n, mut unproved_n) = (0, 0);
         for d in self.all_defs() {
-            if d.f.kind == FnKind::Spec {
+            if d.f.kind != FnKind::Exec {
                 continue;
             }
             exec += 1;
@@ -1383,7 +1390,7 @@ impl<'p> Model<'p> {
         }
         for e in self.in_edges(&d.path).filter(|e| e.from != d.path) {
             let reason = match (spec, change, e.kind) {
-                (false, "iface", "calls") => "calls",
+                (false, "iface", "calls" | "proof_calls") => "calls",
                 (true, _, "uses") => "uses",
                 (true, "iface", "contract" | "spec_calls") => "names",
                 _ => continue,

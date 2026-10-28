@@ -594,3 +594,74 @@ fn library_programs_print_expected_output() {
     }
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// The program without its ghost code: every `proof { .. }` block and
+/// every `proof fn` item (with the attribute lines above it) removed.
+fn strip_ghost(text: &str) -> String {
+    let lines: Vec<&str> = text.lines().collect();
+    let mut keep = vec![true; lines.len()];
+    let mut i = 0;
+    while i < lines.len() {
+        let t = lines[i].trim_start();
+        let indent = lines[i].len() - t.len();
+        if t == "proof {" || t.starts_with("proof fn ") {
+            let mut start = i;
+            while t.starts_with("proof fn ")
+                && start > 0
+                && lines[start - 1].trim_start().starts_with("#[")
+            {
+                start -= 1;
+            }
+            let close = format!("{}}}", " ".repeat(indent));
+            let mut end = i;
+            while lines[end] != close {
+                end += 1;
+            }
+            keep[start..=end].iter_mut().for_each(|k| *k = false);
+            i = end;
+        }
+        i += 1;
+    }
+    let kept: Vec<&str> = lines
+        .iter()
+        .zip(&keep)
+        .filter(|(_, k)| **k)
+        .map(|(l, _)| *l)
+        .collect();
+    kept.join("\n") + "\n"
+}
+
+#[test]
+fn ghost_code_leaves_no_trace_in_the_ir() {
+    // ADR-0062 §2: code generation erases `proof fn`s and `proof` blocks.
+    let text = fs::read_to_string(root().join("max_list.bmb")).unwrap();
+    let stripped = strip_ghost(&text);
+    assert!(text.contains("proof fn ") && text.contains("proof {"));
+    assert!(
+        !stripped.contains("proof fn ") && !stripped.contains("proof {"),
+        "{stripped}"
+    );
+    // Unproved (every obligation a check), the IR is the same bytes as the
+    // program's without its ghost code.
+    let with = bmb::emit_llvm_sources_with(&src("m.bmb", &text), true);
+    let without = bmb::emit_llvm_sources_with(&src("m.bmb", &stripped), true);
+    assert_eq!(with.ir.unwrap(), without.ir.unwrap());
+    // Proved, no lemma appears and no check is left: a lemma's facts reach
+    // code generation only as proved obligations.
+    let proved = bmb::emit_llvm_sources(&src("m.bmb", &text));
+    assert!(proved.verify.ok, "{}", proved.verify.output);
+    assert_eq!(proved.checks, 0);
+    let ir = proved.ir.unwrap();
+    for name in [
+        "contains_has_index",
+        "sum_grows",
+        "contains_prefix",
+        "sum_to",
+    ] {
+        assert!(!ir.contains(name), "{name}: {ir}");
+    }
+    // Without the lemmas the running sum of `total` keeps its overflow check.
+    let unproved = bmb::emit_llvm_sources(&src("m.bmb", &stripped));
+    assert!(!unproved.verify.ok);
+    assert!(unproved.checks > 0);
+}

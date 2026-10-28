@@ -1,0 +1,94 @@
+#[summary("증명 함수와 유령 문맥: 거부되는 것 (ADR-0062 §1·§4, backlog T1-18)")]
+mod pe {
+    spec fn small(x: i64) -> bool {
+        x < 100
+    }
+
+    spec fn pos(x: i64) -> bool {
+        x > 0
+    }
+
+    #[effects(pure)]
+    fn bump(x: i64) -> i64 {
+        x
+    }
+
+    // E0256: an effect attribute.
+    #[effects(pure)]
+    #[uses(small)]
+    proof fn with_effect(x: i64)
+        requires small(x),
+        ensures small(x),
+    {
+    }
+
+    // E0256: a return type.
+    #[uses(small)]
+    proof fn with_result(x: i64) -> bool
+        requires small(x),
+        ensures small(x),
+    {
+    }
+
+    // E0257: a `&mut` parameter.
+    proof fn writes(a: &mut [i64]) {
+    }
+
+    // E0257: an executable call, an assignment, `let mut`, a loop.
+    #[uses(small)]
+    proof fn runs(x: i64)
+        requires small(x),
+    {
+        let y: i64 = bump(x);
+        let mut z: i64 = x;
+        z = 1;
+        while x < 0
+            decreases 0 - x,
+        {
+        }
+    }
+
+    // E0507: a recursive lemma needs a measure.
+    #[uses(small)]
+    proof fn forever(x: i64)
+        requires small(x),
+    {
+        forever(x);
+    }
+
+    // E0501: a contract clause is a named predicate.
+    proof fn bare(x: i64)
+        ensures x == x,
+    {
+    }
+
+    #[uses(small)]
+    proof fn fine(x: i64)
+        requires small(x),
+        ensures small(x),
+    {
+    }
+
+    // E0258: a lemma called from executable code or a specification.
+    spec fn uses_lemma(x: i64) -> bool {
+        fine(x)
+    }
+
+    #[effects(pure)]
+    #[uses(small)]
+    fn exec_calls(v: &mut Vec<i64>, x: i64) -> i64
+        requires small(x),
+    {
+        fine(x);
+        proof {
+            v.push(1);
+            bump(x);
+            proof {
+                fine(x);
+            }
+            for i in 0..3 {
+            }
+        }
+        x
+    }
+}

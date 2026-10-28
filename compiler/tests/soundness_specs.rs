@@ -26,7 +26,15 @@
 //!   not replayed, as in `soundness_loops.rs`). Arrays shown in part are
 //!   skipped;
 //! - both builds (proved checks removed, every check kept) print what the
-//!   interpreter computes, array contents included.
+//!   interpreter computes, array contents included;
+//! - lemmas (ADR-0062, backlog T1-18): two more functions per batch rest on a
+//!   `proof fn` from templates (an induction on `i` over a recursive spec fn,
+//!   or a plain proof) called in a `proof` block, with near-miss mutations of
+//!   the lemma's or the caller's precondition, the conclusion, the recursive
+//!   call (not decreasing, unguarded, missing) or a spec fn. A verified lemma's
+//!   conclusion holds on every input its precondition accepts, a definite
+//!   lemma counterexample meets the precondition and breaks the conclusion,
+//!   and a verified caller (of a verified lemma) meets its postcondition.
 //!
 //! `BMB_SOUND_ITERS` / `BMB_SOUND_SEED` as in `soundness.rs`.
 
@@ -975,7 +983,68 @@ struct Func {
     ret: Ve,
     /// Spec fns left out of `#[uses]`.
     omitted: Option<String>,
+    /// A lemma the function calls in a `proof` block (ADR-0062): then
+    /// `pre` is the caller's precondition and `post` the lemma's
+    /// conclusion, and the function returns 0.
+    lemma: Option<Lemma>,
 }
+
+/// `proof fn gN_lemma(a: &[i64], i: usize, x: i64) requires gN_lpre(..),
+/// ensures gN_post(a, i, x, 0)`, an induction on `i` or a plain proof.
+struct Lemma {
+    pre: Vec<X>,
+    /// The argument of the recursive call (`i - 1`), or no call.
+    step: Option<&'static str>,
+    /// The call is under `if i > 0`.
+    guarded: bool,
+    /// Whether the lemma is an induction (its correct form recurses).
+    recursive: bool,
+}
+
+/// Lemma templates (name, pre, post, induction on `i`), correct by
+/// construction.
+const LEMMAS: &[(&str, &[&str], &[&str], bool)] = &[
+    ("cnt_le", &["i <= a.len()"], &["$cnt(a, i, x) <= i"], true),
+    (
+        "cnt_nonneg",
+        &["a.len() <= 1000000"],
+        &["$cnt(a, i, x) >= 0"],
+        true,
+    ),
+    (
+        "sum_bound",
+        &["i <= a.len()", "$inr(a, -1000, 1000)"],
+        &["-1000 * i <= $sum(a, i) && $sum(a, i) <= 1000 * i"],
+        true,
+    ),
+    (
+        "filled_cnt",
+        &["i <= a.len()", "$filled(a, x, a.len())"],
+        &["$cnt(a, i, x) == i"],
+        true,
+    ),
+    (
+        "sum_nonneg",
+        &["i <= a.len()", "$inr(a, 0, 1000)"],
+        &["$sum(a, i) >= 0"],
+        true,
+    ),
+    (
+        "sorted_first",
+        &["i < a.len()", "$sorted(a)"],
+        &["a[0] <= a[i]"],
+        false,
+    ),
+];
+
+/// Extra lemma conclusions a mutation may add: some hold, most do not.
+const LEMMA_EXTRA: &[&str] = &[
+    "$cnt(a, i, x) < i",
+    "$sum(a, i) >= 0",
+    "$cnt(a, i, x) == i",
+    "i <= a.len()",
+    "$sum(a, i) <= 1000 * i",
+];
 
 struct Tpl {
     name: &'static str,
@@ -1167,6 +1236,83 @@ const EXTRA_POST: &[&str] = &[
     "forall|j: usize, k: usize| j < a.len() && k < a.len() ==> #[trigger] a[j] + r >= #[trigger] a[k]",
 ];
 
+/// A function whose postcondition is a lemma's conclusion, proved by a
+/// `proof` block that calls the lemma; the lemma and the call may carry a
+/// near-miss mutation (a dropped pre clause of either, a changed
+/// conclusion, a recursive call that does not decrease, is not guarded or
+/// is missing, a changed spec fn).
+fn gen_lemma_func(rng: &mut Rng, n: usize) -> Func {
+    let name = format!("g{n}");
+    let (tname, tpre, tpost, recursive) = LEMMAS[rng.below(LEMMAS.len())];
+    let p = |s: &str| parse(s, &name);
+    let mut lpre: Vec<X> = tpre.iter().map(|s| p(s)).collect();
+    let mut pre = lpre.clone();
+    let mut post: Vec<X> = tpost.iter().map(|s| p(s)).collect();
+    let mut lemma = Lemma {
+        pre: Vec::new(),
+        step: recursive.then_some("i - 1"),
+        guarded: true,
+        recursive,
+    };
+    if rng.chance(50) {
+        let short = p("a.len() <= 4");
+        pre.push(short.clone());
+        lpre.push(short);
+    }
+    let mut lib: Vec<SpecFn> = (0..LIB.len()).map(|k| lib_fn(&name, k)).collect();
+    if rng.chance(55) {
+        match rng.below(6) {
+            0 if lpre.len() > 1 => {
+                lpre.remove(rng.below(lpre.len()));
+            }
+            0 | 1 if pre.len() > 1 => {
+                pre.remove(rng.below(pre.len()));
+            }
+            2 => {
+                mutate_some(&mut post, rng);
+            }
+            3 if recursive => match rng.below(3) {
+                0 => lemma.step = Some("i"),
+                1 => lemma.guarded = false,
+                _ => lemma.step = None,
+            },
+            4 => {
+                let used = reached(&lpre, &post, &[], &lib);
+                let pool: Vec<usize> = (0..lib.len())
+                    .filter(|&k| used.contains(&lib[k].name))
+                    .collect();
+                if !pool.is_empty() {
+                    let k = pool[rng.below(pool.len())];
+                    mutate_some(std::slice::from_mut(&mut lib[k].body), rng);
+                }
+            }
+            _ => post.push(p(LEMMA_EXTRA[rng.below(LEMMA_EXTRA.len())])),
+        }
+    }
+    let used = reached(&pre, &post, &lpre, &lib);
+    lib.retain(|s| used.contains(&s.name));
+    lemma.pre = lpre;
+    let mut f = Func {
+        name,
+        template: tname,
+        mutable: false,
+        lib,
+        pre,
+        post,
+        inv: Vec::new(),
+        before: Vec::new(),
+        body: None,
+        ret: Ve::Lit(0),
+        omitted: None,
+        lemma: Some(lemma),
+    };
+    if rng.chance(25) {
+        let names = f.uses_all();
+        f.omitted = Some(names[rng.below(names.len())].clone());
+    }
+    f
+}
+
 fn gen_func(rng: &mut Rng, n: usize) -> Func {
     let name = format!("g{n}");
     let tpl = &TEMPLATES[rng.below(TEMPLATES.len())];
@@ -1249,6 +1395,7 @@ fn gen_func(rng: &mut Rng, n: usize) -> Func {
         body,
         ret,
         omitted: None,
+        lemma: None,
     };
     if rng.chance(25) {
         let names = f.uses_all();
@@ -1319,6 +1466,9 @@ impl Func {
         if self.body.is_some() {
             u.push(format!("{n}_inv"));
         }
+        if self.lemma.is_some() {
+            u.push(format!("{n}_lpre"));
+        }
         u.extend(self.lib.iter().map(|s| s.name.clone()));
         u
     }
@@ -1353,6 +1503,35 @@ impl Func {
             .into_iter()
             .filter(|u| Some(u) != self.omitted.as_ref())
             .collect();
+        if let Some(l) = &self.lemma {
+            let _ = writeln!(
+                t,
+                "    spec fn {n}_lpre(a: &[i64], i: usize, x: i64) -> bool {{ {} }}\n",
+                conj(&l.pre)
+            );
+            let dec = if l.recursive {
+                "        decreases i,\n"
+            } else {
+                ""
+            };
+            let call = l.step.map(|s| format!("{n}_lemma(a, {s}, x);"));
+            let body = match (call, l.guarded) {
+                (None, _) => String::new(),
+                (Some(c), true) => format!("        if i > 0 {{\n            {c}\n        }}\n"),
+                (Some(c), false) => format!("        {c}\n"),
+            };
+            let _ = writeln!(
+                t,
+                "    #[uses({})]\n    proof fn {n}_lemma(a: &[i64], i: usize, x: i64)\n        requires {n}_lpre(a, i, x),\n        ensures {n}_post(a, i, x, 0),\n{dec}    {{\n{body}    }}\n",
+                uses.join(", ")
+            );
+            let _ = writeln!(
+                t,
+                "    #[effects(pure)]\n    #[uses({})]\n    fn {n}(a: &[i64], i: usize, x: i64) -> (r: i64)\n        requires {n}_pre(a, i, x),\n        ensures {n}_post(a, i, x, r),\n    {{\n        proof {{\n            {n}_lemma(a, i, x);\n        }}\n        0\n    }}\n",
+                uses.join(", ")
+            );
+            return t;
+        }
         let _ = writeln!(
             t,
             "    #[effects(pure)]\n    #[uses({})]\n    fn {n}(a: {}, i: usize, x: i64) -> (r: i64)\n        requires {n}_pre(a, i, x),\n        ensures {n}_post(a, {ob}i, x, r),\n    {{",
@@ -1396,6 +1575,23 @@ impl Func {
             acc = kleene_and(acc, ev.bool(c, &mut env, 0));
         }
         acc
+    }
+
+    /// The lemma's own precondition.
+    fn lemma_pre_holds(&self, a: &[i64], i: u64, x: i64) -> Result<bool, Undef> {
+        let l = self.lemma.as_ref().expect("a lemma function");
+        self.holds(
+            &l.pre,
+            &View {
+                a,
+                b: a,
+                i,
+                x,
+                r: 0,
+                k: 0,
+                s: 0,
+            },
+        )
     }
 
     fn pre_holds(&self, a: &[i64], i: u64, x: i64) -> Result<bool, Undef> {
@@ -1574,6 +1770,11 @@ fn small(rng: &mut Rng) -> i64 {
 
 /// Inputs whose precondition the interpreter finds true.
 fn inputs(f: &Func, rng: &mut Rng) -> Vec<(Vec<i64>, u64, i64)> {
+    inputs_where(rng, |a, i, x| f.pre_holds(a, i, x) == Ok(true))
+}
+
+/// Inputs `ok` accepts.
+fn inputs_where(rng: &mut Rng, ok: impl Fn(&[i64], u64, i64) -> bool) -> Vec<(Vec<i64>, u64, i64)> {
     let mut out = Vec::new();
     for _ in 0..300 {
         let len = rng.below(6);
@@ -1595,7 +1796,7 @@ fn inputs(f: &Func, rng: &mut Rng) -> Vec<(Vec<i64>, u64, i64)> {
         } else {
             rng.below(21) as i64 - 10
         };
-        if f.pre_holds(&a, i, x) == Ok(true) {
+        if ok(&a, i, x) {
             out.push((a, i, x));
         }
         if out.len() == 6 {
@@ -1644,6 +1845,12 @@ struct Stats {
     entry_replays: usize,
     /// Counterexamples with an "only by name" hint (opaque spec fns).
     opaque_cexes: usize,
+    /// Lemmas generated and verified, the runs that checked a verified
+    /// lemma's conclusion, and the lemma counterexamples replayed.
+    lemmas: usize,
+    lemmas_verified: usize,
+    lemma_runs: usize,
+    lemma_replayed: usize,
     partial_cexes: usize,
     compiled_runs: usize,
     by_template: std::collections::BTreeMap<&'static str, (usize, usize)>,
@@ -1652,7 +1859,9 @@ struct Stats {
 
 fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
     let mut rng = Rng(seed.wrapping_mul(0x9E3779B97F4A7C15) | 1);
-    let funcs: Vec<Func> = (0..6).map(|n| gen_func(&mut rng, n)).collect();
+    // Six functions as before, then two that rest on a lemma.
+    let mut funcs: Vec<Func> = (0..6).map(|n| gen_func(&mut rng, n)).collect();
+    funcs.extend((6..8).map(|n| gen_lemma_func(&mut rng, n)));
     let mut src = String::from("#[summary(\"명세 건전성 퍼징\")]\nmod m {\n");
     for f in &funcs {
         src.push_str(&f.text());
@@ -1712,9 +1921,47 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
         let Some(name) = field(line, "def").and_then(|d| d.strip_prefix("m::")) else {
             continue;
         };
+        // A verified lemma's conclusion holds wherever its precondition
+        // does (ADR-0062 §2).
+        if let Some(f) = funcs
+            .iter()
+            .find(|f| name.strip_suffix("_lemma") == Some(f.name.as_str()))
+        {
+            stats.lemmas += 1;
+            if field(line, "status") != Some("verified") {
+                continue;
+            }
+            stats.lemmas_verified += 1;
+            for (a, i, x) in
+                inputs_where(&mut rng, |a, i, x| f.lemma_pre_holds(a, i, x) == Ok(true))
+            {
+                stats.lemma_runs += 1;
+                match f.post_holds(&a, &a, i, x, 0) {
+                    Ok(true) => {}
+                    Ok(false) => panic!(
+                        "{}",
+                        ctx(&format!(
+                            "verified lemma {name} has a false conclusion at a = {a:?}, i = {i}, x = {x}"
+                        ))
+                    ),
+                    Err(Undef) => stats.undetermined += 1,
+                }
+            }
+            continue;
+        }
         let Some(f) = funcs.iter().find(|f| f.name == name) else {
             continue;
         };
+        // A caller assumes the lemma's conclusion (ADR-0062 §2): its proof
+        // is sound when the lemma's is too, as for any callee.
+        let lemma_failed = f.lemma.is_some()
+            && !out.verify.output.lines().any(|l| {
+                field(l, "def") == Some(&format!("m::{name}_lemma"))
+                    && field(l, "status") == Some("verified")
+            });
+        if lemma_failed {
+            continue;
+        }
         stats.funcs += 1;
         let entry = stats.by_template.entry(f.template).or_default();
         entry.0 += 1;
@@ -1752,6 +1999,44 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
         let Some(msg) = field(line, "message") else {
             continue;
         };
+        // A lemma's counterexample: its precondition holds there and its
+        // conclusion does not.
+        if let Some(f) = funcs
+            .iter()
+            .find(|f| msg.contains(&format!("in `m::{}_lemma`", f.name)))
+        {
+            let code = field(line, "code").unwrap_or("");
+            let cex = if !msg.contains("; counterexample: ") {
+                ""
+            } else if line.contains("only by name") {
+                " (opaque counterexample)"
+            } else {
+                " (counterexample)"
+            };
+            *stats.codes.entry(format!("lemma {code}{cex}")).or_default() += 1;
+            if code != "E0802" || cex != " (counterexample)" {
+                continue;
+            }
+            let Some((a, i, x)) = parse_cex(msg) else {
+                continue;
+            };
+            assert_ne!(
+                f.lemma_pre_holds(&a, i, x),
+                Ok(false),
+                "{}",
+                ctx(&format!(
+                    "lemma counterexample breaks its precondition: {msg}"
+                ))
+            );
+            assert_ne!(
+                f.post_holds(&a, &a, i, x, 0),
+                Ok(true),
+                "{}",
+                ctx(&format!("lemma counterexample meets the conclusion: {msg}"))
+            );
+            stats.lemma_replayed += 1;
+            continue;
+        }
         let Some(f) = funcs
             .iter()
             .find(|f| msg.contains(&format!("in `m::{}`", f.name)))
@@ -1793,6 +2078,27 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
         );
         if f.pre_holds(&a, i, x).is_err() {
             stats.cex_undetermined += 1;
+            continue;
+        }
+        // The caller of a lemma fails where the lemma's precondition or
+        // its conclusion does.
+        if f.lemma.is_some() {
+            let broken = f.lemma_pre_holds(&a, i, x) == Ok(false)
+                || f.post_holds(&a, &a, i, x, 0) == Ok(false);
+            if !broken {
+                let undetermined =
+                    f.lemma_pre_holds(&a, i, x).is_err() || f.post_holds(&a, &a, i, x, 0).is_err();
+                assert!(
+                    undetermined,
+                    "{}",
+                    ctx(&format!(
+                        "counterexample meets the lemma's precondition and conclusion: {msg}"
+                    ))
+                );
+                stats.cex_undetermined += 1;
+                continue;
+            }
+            stats.replayed += 1;
             continue;
         }
         let r = run(f, &a, i, x);
@@ -1898,6 +2204,10 @@ fn spec_proofs_counterexamples_and_builds_agree_with_the_interpreter() {
     eprintln!(
         "verified by template (functions, verified): {:#?}",
         stats.by_template
+    );
+    eprintln!(
+        "lemmas: {} generated, {} verified ({} runs), {} counterexamples replayed",
+        stats.lemmas, stats.lemmas_verified, stats.lemma_runs, stats.lemma_replayed
     );
     eprintln!("failures by kind: {:#?}", stats.codes);
     assert!(stats.verified > 0 && stats.cexes > 0);

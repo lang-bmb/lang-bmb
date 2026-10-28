@@ -355,6 +355,7 @@ impl Renamer<'_> {
                     self.block(body);
                 }
                 Stmt::Assert { cond, .. } => self.expr(cond),
+                Stmt::Proof { body, .. } => self.block(body),
                 Stmt::LetFields { path, init, .. } => {
                     self.idents(path, Site::Struct);
                     self.expr(init);

@@ -31,33 +31,56 @@ mod utf8 {
         }
     }
 
-    // Byte `k` continues the sequence that starts at `j`.
-    spec fn covers(s: &[u8], j: usize, k: usize) -> bool { j < k && k < j + seq_len(s, j) }
-
-    spec fn covered(s: &[u8], k: usize) -> bool {
-        (k >= 1 && covers(s, k - 1, k)) || (k >= 2 && covers(s, k - 2, k)) || (k >= 3 && covers(s, k - 3, k))
-    }
-
-    // Byte `k` either starts a well-formed sequence or continues the one that covers it.
-    spec fn good(s: &[u8], k: usize) -> bool {
-        k < s.len() && ((cont(s[k]) && covered(s, k)) || (!cont(s[k]) && 0 < seq_len(s, k)))
-    }
-
-    // No sequence that starts before `n` runs past it. Only the last three bytes can start one
-    // that would (a sequence is at most four bytes, and every later byte of it is a continuation).
-    spec fn ends_by(s: &[u8], j: usize, n: usize) -> bool { cont(s[j]) || j + seq_len(s, j) <= n }
-
-    spec fn tail(s: &[u8], n: usize) -> bool {
-        (n < 1 || ends_by(s, n - 1, n)) && (n < 2 || ends_by(s, n - 2, n)) && (n < 3 || ends_by(s, n - 3, n))
+    // `s[i..n]` is a concatenation of well-formed sequences: the scan from `i` reaches `n` exactly.
+    spec fn parses(s: &[u8], i: usize, n: usize) -> bool
+        decreases n - i,
+    {
+        if i >= n { i == n } else { 0 < seq_len(s, i) && i + seq_len(s, i) <= n && parses(s, i + seq_len(s, i), n) }
     }
 
     // `s[0..n]` is a concatenation of well-formed sequences.
-    spec fn valid_upto(s: &[u8], n: usize) -> bool {
-        n <= s.len() && tail(s, n) && forall|k: usize| k < n ==> #[trigger] good(s, k)
+    spec fn valid_upto(s: &[u8], n: usize) -> bool { n <= s.len() && parses(s, 0, n) }
+
+    // Where the scan stops: the end, or a byte that starts no well-formed sequence.
+    spec fn stops(s: &[u8], r: usize) -> bool { r == s.len() || seq_len(s, r) == 0 }
+
+    spec fn step_ok(s: &[u8], a: usize, i: usize) -> bool {
+        a <= i && parses(s, a, i) && 0 < seq_len(s, i) && i + seq_len(s, i) <= s.len()
     }
 
-    // Where the scan stops: the end, or a byte that neither starts a well-formed sequence nor continues one.
-    spec fn stops(s: &[u8], r: usize) -> bool { r == s.len() || (seq_len(s, r) == 0 && !good(s, r)) }
+    spec fn extended(s: &[u8], a: usize, i: usize) -> bool { parses(s, a, i + seq_len(s, i)) }
+
+    // A concatenation followed by one more well-formed sequence is a concatenation: induction on
+    // the sequences of `s[a..i]` (ADR-0062).
+    #[uses(extended, parses, step_ok)]
+    proof fn parses_extend(s: &[u8], a: usize, i: usize)
+        requires step_ok(s, a, i),
+        ensures extended(s, a, i),
+        decreases i - a,
+    {
+        if a < i {
+            parses_extend(s, a + seq_len(s, a), i);
+        }
+    }
+
+    spec fn two_ends(s: &[u8], a: usize, r: usize, n: usize) -> bool {
+        a <= r && r < n && parses(s, a, r) && parses(s, a, n)
+    }
+
+    spec fn goes_on(s: &[u8], r: usize) -> bool { 0 < seq_len(s, r) }
+
+    // The scan is deterministic: a concatenation that reaches `r` and one that reaches past it
+    // agree up to `r`, so a sequence starts at `r`.
+    #[uses(goes_on, parses, two_ends)]
+    proof fn parse_goes_on(s: &[u8], a: usize, r: usize, n: usize)
+        requires two_ends(s, a, r, n),
+        ensures goes_on(s, r),
+        decreases r - a,
+    {
+        if a < r {
+            parse_goes_on(s, a + seq_len(s, a), r, n);
+        }
+    }
 
     spec fn width_result(s: &[u8], i: usize, w: usize) -> bool { w == seq_len(s, i) }
 
@@ -113,7 +136,7 @@ mod utf8 {
     // The length of the longest prefix of `s` that is well-formed UTF-8 (Rust: `Utf8Error::valid_up_to`,
     // or `s.len()` when `str::from_utf8(s)` succeeds).
     #[effects(pure)]
-    #[uses(valid_upto, stops, tail, ends_by, good, covered, covers, seq_len, cont, second3, second4, width_result, at)]
+    #[uses(valid_upto, stops, parses, extended, step_ok, seq_len, width_result, at)]
     fn valid_up_to(s: &[u8]) -> (r: usize)
         ensures valid_upto(s, r), stops(s, r),
     {
@@ -126,6 +149,9 @@ mod utf8 {
             if w == 0 {
                 break;
             }
+            proof {
+                parses_extend(s, 0, i);
+            }
             i = i + w;
         }
         i
@@ -137,10 +163,17 @@ mod utf8 {
 
     // Whether all of `s` is well-formed UTF-8 (Rust: `str::from_utf8(s).is_ok()`).
     #[effects(pure)]
-    #[uses(valid, valid_result, valid_upto, stops, seq_len, good)]
+    #[uses(valid, valid_result, valid_upto, stops, goes_on, two_ends)]
     fn is_valid(s: &[u8]) -> (r: bool)
         ensures valid_result(s, r),
     {
-        valid_up_to(s) == s.len()
+        let n: usize = valid_up_to(s);
+        // Stopped early: no concatenation reaches the end (it would go on at `n`).
+        proof {
+            if n < s.len() && valid(s) {
+                parse_goes_on(s, 0, n, s.len());
+            }
+        }
+        n == s.len()
     }
 }

@@ -1,0 +1,137 @@
+#[summary("목록의 최댓값과 합: 재귀 술어로 쓴 계약을 귀납 보조 정리로 한정 기호 계약에 잇는다 (BVB vc-vv0039, ADR-0062, backlog T1-18)")]
+mod ml {
+    spec fn non_empty(a: &[i64]) -> bool {
+        a.len() > 0
+    }
+
+    // The first `n` elements hold `r`: a recursive predicate.
+    spec fn contains_prefix(a: &[i64], n: usize, r: i64) -> bool
+        decreases n,
+    {
+        if n == 0 { false } else { a[n - 1] == r || contains_prefix(a, n - 1, r) }
+    }
+
+    spec fn ge_prefix(a: &[i64], n: usize, m: i64) -> bool {
+        forall|j: usize| j < n ==> #[trigger] a[j] <= m
+    }
+
+    spec fn max_upto(a: &[i64], k: usize, m: i64) -> bool {
+        1 <= k && k <= a.len() && contains_prefix(a, k, m) && ge_prefix(a, k, m)
+    }
+
+    spec fn prefix_ok(a: &[i64], n: usize, r: i64) -> bool {
+        n <= a.len() && contains_prefix(a, n, r)
+    }
+
+    // The same with a quantifier: some index below `n` holds `r`.
+    spec fn has_index_below(a: &[i64], n: usize, r: i64) -> bool {
+        !(forall|i: usize| i < n ==> #[trigger] a[i] != r)
+    }
+
+    // Recursion to quantifier, by induction on `n`. Without it the step
+    // from `contains_prefix` to the quantifier needs an induction the
+    // solver does not do (backlog T1-14: the judge was undecided).
+    #[uses(contains_prefix, has_index_below, prefix_ok)]
+    proof fn contains_has_index(a: &[i64], n: usize, r: i64)
+        requires prefix_ok(a, n, r),
+        ensures has_index_below(a, n, r),
+        decreases n,
+    {
+        if a[n - 1] != r {
+            contains_has_index(a, n - 1, r);
+        }
+    }
+
+    // The hidden contract of the task: the result is an element and at
+    // least every element.
+    spec fn is_max(a: &[i64], r: i64) -> bool {
+        has_index_below(a, a.len(), r) && ge_prefix(a, a.len(), r)
+    }
+
+    // The loop keeps the recursive invariant (each step unfolds the
+    // definition once); the lemma turns it into the hidden contract.
+    #[effects(pure)]
+    #[uses(contains_prefix, ge_prefix, has_index_below, is_max, max_upto, non_empty, prefix_ok)]
+    fn max_of_list(lst: &[i64]) -> (r: i64)
+        requires non_empty(lst),
+        ensures is_max(lst, r),
+    {
+        let mut m: i64 = lst[0];
+        for k in 1..lst.len()
+            invariant max_upto(lst, k, m),
+        {
+            if lst[k] > m {
+                m = lst[k];
+            }
+        }
+        proof {
+            contains_has_index(lst, lst.len(), m);
+        }
+        m
+    }
+
+    spec fn sum_to(a: &[u64], n: usize) -> u64
+        decreases n,
+    {
+        if n == 0 { 0 } else { sum_to(a, n - 1) + a[n - 1] }
+    }
+
+    spec fn within(a: &[u64], i: usize, j: usize) -> bool {
+        i <= j && j <= a.len()
+    }
+
+    spec fn sum_le(a: &[u64], i: usize, j: usize) -> bool {
+        sum_to(a, i) <= sum_to(a, j)
+    }
+
+    // A prefix sum is at most a longer one.
+    #[uses(sum_le, sum_to, within)]
+    proof fn sum_grows(a: &[u64], i: usize, j: usize)
+        requires within(a, i, j),
+        ensures sum_le(a, i, j),
+        decreases j,
+    {
+        if i < j {
+            sum_grows(a, i, j - 1);
+        }
+    }
+
+    spec fn total_small(a: &[u64]) -> bool {
+        sum_to(a, a.len()) <= 1000000
+    }
+
+    spec fn is_sum(a: &[u64], s: u64) -> bool {
+        s == sum_to(a, a.len())
+    }
+
+    // A bound on the whole sum bounds every running sum: the lemma, called
+    // in the loop body, shows the addition cannot overflow.
+    #[effects(pure)]
+    #[uses(is_sum, sum_le, sum_to, total_small, within)]
+    fn total(a: &[u64]) -> (r: u64)
+        requires total_small(a),
+        ensures is_sum(a, r),
+    {
+        let mut s: u64 = 0;
+        for i in 0..a.len()
+            invariant s == sum_to(a, i),
+        {
+            proof {
+                sum_grows(a, i + 1, a.len());
+            }
+            s = s + a[i];
+        }
+        s
+    }
+
+    #[effects(io)]
+    #[uses(contains_prefix, ge_prefix, has_index_below, is_max, non_empty, sum_to, total_small)]
+    fn main() -> () {
+        let xs: [i64; 5] = [3, -7, 12, 12, 0];
+        print_i64(max_of_list(&xs));
+        let ys: [i64; 3] = [-4, -9, -2];
+        print_i64(max_of_list(&ys));
+        let zs: [u64; 4] = [10, 200, 3000, 40000];
+        print_u64(total(&zs));
+    }
+}

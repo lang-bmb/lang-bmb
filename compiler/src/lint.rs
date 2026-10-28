@@ -639,7 +639,7 @@ fn walk_block(b: &mut Block, f: &mut dyn FnMut(&mut Expr, Option<Span>)) {
                 walk_expr(hi, None, f);
                 walk_block(body, f);
             }
-            Stmt::Assert { .. } => {}
+            Stmt::Assert { .. } | Stmt::Proof { .. } => {}
             Stmt::Expr(e) => walk_expr(e, None, f),
         }
     }
@@ -924,6 +924,7 @@ fn block_exprs(b: &Block) -> Vec<&Expr> {
             }
             Stmt::Assert { cond, .. } => v.push(cond),
             Stmt::Expr(e) => v.push(e),
+            Stmt::Proof { body, .. } => v.extend(block_exprs(body)),
         }
     }
     v.extend(b.tail.as_deref());
@@ -1063,7 +1064,7 @@ fn blocks_in<'b>(b: &'b Block, out: &mut Vec<&'b Block>) {
                 expr_blocks(target, out);
                 expr_blocks(value, out);
             }
-            Stmt::Assert { .. } => {}
+            Stmt::Assert { .. } | Stmt::Proof { .. } => {}
             Stmt::Expr(e) => expr_blocks(e, out),
         }
     }
@@ -1149,7 +1150,7 @@ fn continues_to(b: &Block, label: Option<&str>) -> bool {
             Stmt::Assign { target, value, .. } => {
                 in_expr(target, label, inner) || in_expr(value, label, inner)
             }
-            Stmt::Assert { .. } => false,
+            Stmt::Assert { .. } | Stmt::Proof { .. } => false,
         }) || b.tail.as_ref().is_some_and(|t| in_expr(t, label, inner))
     }
     fn in_expr(e: &Expr, label: Option<&str>, inner: bool) -> bool {

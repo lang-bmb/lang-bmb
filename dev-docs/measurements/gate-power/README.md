@@ -4,7 +4,7 @@
 
 ## 방법
 
-- `scripts/gate_power.py`: 변이체 53개(건전성을 깨는 것 37, 완전성을 깨는 것 2, 오컴파일 14). 31개는 1B-38, 4개(trait)는 2T-05, 4개(소유 타입)는 2O-05, 2개(구조체만으로 된 재귀)는 2O-03d, 12개(제어 흐름)는 2K. 각각 HEAD의 분리된 작업 트리에 하나만 적용하고 `cargo fmt` 뒤 게이트를 끝까지 돌린다. 게이트가 0이 아닌 값으로 끝나면 잡은 것이고, `detected_by`에 실패한 작업 이름을 남긴다.
+- `scripts/gate_power.py`: 변이체 63개(건전성을 깨는 것 45, 완전성을 깨는 것 2, 오컴파일 16). 31개는 1B-38, 4개(trait)는 2T-05, 4개(소유 타입)는 2O-05, 2개(구조체만으로 된 재귀)는 2O-03d, 12개(제어 흐름)는 2K, 5개(비트 연산·정수 폭)는 2N, 5개(증명 함수)는 T1-18. 각각 HEAD의 분리된 작업 트리에 하나만 적용하고 `cargo fmt` 뒤 게이트를 끝까지 돌린다. 게이트가 0이 아닌 값으로 끝나면 잡은 것이고, `detected_by`에 실패한 작업 이름을 남긴다.
 - 서식(`cargo fmt --check`)이나 컴파일 경고(clippy `-D warnings`)로만 실패하는 것은 시험이 잡은 것이 아니다. 첫 실행에서 이렇게 "잡힌" 변이체 3개(`v-mut-param-havoc-skipped`, `c-overflow-check-removed`, `c-bounds-check-removed`: 쓰이지 않는 변수)는 경고 없이 컴파일되게 고쳐 다시 돌렸다.
 - 원자료: `results.jsonl`(변이체마다 마지막 실행, `commit`이 그 실행의 HEAD). 한 번에 약 5분이라 전체가 여러 커밋(5a50b57 → 10a8b4f)에 걸쳤다. 다시 돌린 행은 시험을 더한 커밋이다.
 
@@ -29,6 +29,8 @@
 **2O-03d (2026-10-27, 커밋 e40ca564).** 변이체 둘: `v-struct-field-write-dropped`(재귀 구조체의 필드 쓰기가 값을 바꾸지 않음), `v-struct-facts-from-definitions`(필드 사실을 값 정의까지 훑음: 소유 퍼저가 구현 중 찾은 결함의 되돌림). 둘 다 잡음. 첫 실행은 `docs/diagnostics.md`가 낡아 게이트가 시험 전 `docs` 단계에서 멈췄으므로(잡은 작업 없음, 12~36초) 버리고 고친 뒤 다시 돌렸다. `v-struct-facts-from-definitions`는 `test verify`(회귀 `built`)만 잡는다: 게이트의 소유 퍼저 3배치는 그 결함을 내는 프로그램을 만들지 않는다(찾은 것은 80배치 중 씨앗 138).
 
 **2K (2026-10-28, 커밋 a843816a·6f607ada).** 제어 흐름 변이체 열둘: 반환(`v-return-post-dropped`, `v-return-rest-wrong-side`, `c-return-exit-drops-skipped`), 루프 havoc(`v-havoc-match-arms-skipped`: 2K-01a에서 고친 건전성 결함의 되돌림), 루프 탈출(`v-break-state-dropped`, `v-continue-head-skipped`, `c-jump-exit-drops-skipped`), 범위 `for`(`v-for-continue-no-step`, `v-for-var-not-havocked`, `c-for-range-ends-swapped`), `?`(`v-try-return-post-skipped`, `c-try-exit-drops-skipped`). `v-ensures-dropped`는 사후조건 검사가 `post_check` 하나로 모여 다시 겨눴다. 열셋 모두 잡음. 첫 실행(a843816a)에서 루프 퍼저는 `c-for-range-ends-swapped`만 잡았다: 탈출 갈래가 제 상태를 바꾸지 않아 이어지는 갈래와 상태가 같았으므로 건너뛴 의무가 드러나지 않았다. 생성기를 고치고(2K-05 후속, 6f607ada: 탈출 갈래의 쓰기, 배치마다 탈출 종류를 씨앗으로 돌리는 아슬아슬한 합) 여섯을 다시 돌려, 루프 퍼저가 `v-return-post-dropped`·`v-break-state-dropped`·`v-continue-head-skipped`·`v-try-return-post-skipped`를 잡는다. `v-for-continue-no-step`은 증가가 없으면 측정이 줄지 않아 그런 루프가 하나도 증명되지 않으므로 완전성 결함으로 고쳐 분류했다. `v-return-rest-wrong-side` 실행에서는 `health` 작업의 z3 질의 하나가 끝나지 않아(16분) 그 z3를 손으로 끝냈다. 다른 작업(`test verify`·`test codegen`·`test stability`)이 따로 잡았다. 한 작업만 잡는 것: `v-havoc-match-arms-skipped`·`v-for-var-not-havocked`(`test verify`), `c-return-exit-drops-skipped`·`c-jump-exit-drops-skipped`·`c-try-exit-drops-skipped`(`test codegen`의 valgrind).
+
+**T1-18 (2026-10-28).** 증명 함수(ADR-0062) 변이체 다섯: `v-lemma-requires-dropped`(보조 정리의 전제를 증명하지 않고 결론을 가정), `v-lemma-decrease-dropped`(재귀 보조 정리의 감소 의무 빠짐: 바닥 없는 귀납), `v-lemma-post-dropped`(보조 정리 자신의 결론이 의무가 아님), `v-lemma-arg-range-dropped`(유령 산술의 인자 범위 의무 E0819 빠짐), `k-proof-block-is-exec`(`proof` 블록을 실행 코드로 검사: 대입·실행 호출·루프 허용, 검사기 `check.rs`의 첫 변이체). 이 기록에서는 각 변이체를 넣고 대상 시험만 돌렸다(전체 게이트 실행은 `results.jsonl`에 아직 없다): 다섯 모두 `test verify`(`tests/verify/fail/proofs`)가 잡고, `v-lemma-requires-dropped`·`v-lemma-post-dropped`·`k-proof-block-is-exec`는 `test soundness_specs`(보조 정리 함수)도, `k-proof-block-is-exec`는 `test corpus`(`tests/check/err/proofs`)도 잡는다. 명세 퍼저가 `v-lemma-decrease-dropped`·`v-lemma-arg-range-dropped`를 기본 6배치에서 잡지 못한 것은 그 결함을 드러내는 보조 정리(감소하지 않는 재귀 호출이 거짓 결론을 닫는 꼴, 타입 밖 인자)가 생성기에서 드물기 때문이다.
 
 | 변이체 | 종류 | 결함 | 게이트 |
 | --- | --- | --- | --- |
