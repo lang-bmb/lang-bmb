@@ -1,0 +1,173 @@
+#[summary("수 목록 읽기: 쉼표로 나눈 부호 없는 수를 읽어 합과 최댓값을 낸다. for·?·continue·break·return을 함께 쓴다 (backlog 2K-06)")]
+mod nl {
+    spec fn short(s: &[u8]) -> bool {
+        s.len() <= 64
+    }
+
+    spec fn small_nums(v: &[u64]) -> bool {
+        v.len() <= 64 && (forall|j: usize| j < v.len() ==> #[trigger] v[j] <= 99999)
+    }
+
+    spec fn parsed(r: Result<Vec<u64>, usize>, n: usize) -> bool {
+        match r {
+            Ok(v) => small_nums(v.as_slice()),
+            Err(at) => at <= n,
+        }
+    }
+
+    // A digit's value, or `None` for any other byte.
+    #[effects(pure)]
+    #[uses(digit_ok)]
+    fn digit(b: u8) -> (r: Option<u64>)
+        ensures digit_ok(r),
+    {
+        if 48 <= b && b <= 57 { Some(u64::try_from(b - 48).unwrap()) } else { None }
+    }
+
+    spec fn digit_ok(r: Option<u64>) -> bool {
+        match r {
+            None => true,
+            Some(d) => d <= 9,
+        }
+    }
+
+    // `cur` has `digits` digits, at most five.
+    spec fn fits(cur: u64, digits: u64) -> bool {
+        digits == 0 && cur == 0 || digits == 1 && cur <= 9 || digits == 2 && cur <= 99 || digits == 3 && cur <= 999 || digits == 4 && cur <= 9999 || digits == 5 && cur <= 99999
+    }
+
+    // Spaces are skipped, `;` ends the list, a number has at most five
+    // digits; the first other byte is an error at its position (an empty
+    // list, at the end).
+    #[effects(pure)]
+    #[uses(digit_ok, fits, parsed, short, small_nums)]
+    fn parse(s: &[u8]) -> (r: Result<Vec<u64>, usize>)
+        requires short(s),
+        ensures parsed(r, s.len()),
+    {
+        let mut out: Vec<u64> = Vec::new();
+        let mut cur: u64 = 0;
+        let mut digits: u64 = 0;
+        for i in 0..s.len()
+            invariant fits(cur, digits) && 2 * out.len() + digits <= i && small_nums(out.as_slice()),
+        {
+            let b: u8 = s[i];
+            if b == 32 {
+                continue;
+            }
+            if b == 59 {
+                break;
+            }
+            if b == 44 {
+                if digits == 0 {
+                    return Err(i);
+                }
+                out.push(cur);
+                cur = 0;
+                digits = 0;
+                continue;
+            }
+            let d: u64 = match digit(b) {
+                None => return Err(i),
+                Some(dv) => dv,
+            };
+            if digits == 5 {
+                return Err(i);
+            }
+            cur = cur * 10 + d;
+            digits = digits + 1;
+        }
+        if digits == 0 {
+            return Err(s.len());
+        }
+        out.push(cur);
+        Ok(out)
+    }
+
+    spec fn total_ok(r: Option<u64>) -> bool {
+        match r {
+            None => true,
+            Some(t) => t <= 6399936,
+        }
+    }
+
+    // The sum and the largest value, or `None` for an empty list.
+    #[effects(pure)]
+    #[uses(small_nums, total_ok)]
+    fn total(v: &[u64]) -> (r: Option<u64>)
+        requires small_nums(v),
+        ensures total_ok(r),
+    {
+        if v.len() == 0 {
+            return None;
+        }
+        let mut t: u64 = 0;
+        for i in 0..v.len()
+            invariant t <= 99999 * i,
+        {
+            t = t + v[i];
+        }
+        Some(t)
+    }
+
+    spec fn largest_ok(r: Option<u64>) -> bool {
+        match r {
+            None => true,
+            Some(m) => m <= 99999,
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(largest_ok, small_nums)]
+    fn largest(v: &[u64]) -> (r: Option<u64>)
+        requires small_nums(v),
+        ensures largest_ok(r),
+    {
+        let mut m: u64 = 0;
+        for i in 0..v.len()
+            invariant m <= 99999,
+        {
+            if v[i] > m {
+                m = v[i];
+            }
+        }
+        if v.len() == 0 { None } else { Some(m) }
+    }
+
+    // Both summaries through `?`: no list, no summary.
+    #[effects(pure)]
+    #[uses(digit_ok, fits, largest_ok, parsed, short, small_nums, total_ok)]
+    fn summary(s: &[u8]) -> Option<u64>
+        requires short(s),
+    {
+        let v: Vec<u64> = match parse(s) {
+            Ok(list) => list,
+            Err(_) => return None,
+        };
+        let t: u64 = total(v.as_slice())?;
+        let m: u64 = largest(v.as_slice())?;
+        Some(t * 100000 + m)
+    }
+
+    #[effects(io)]
+    fn show(o: Option<u64>) -> () {
+        match o {
+            None => print_bytes(b"none\n"),
+            Some(v) => print_u64(v),
+        }
+    }
+
+    #[effects(io)]
+    #[uses(digit_ok, fits, largest_ok, parsed, short, small_nums, total_ok)]
+    fn main() -> () {
+        show(summary(b"12, 7,300"));
+        show(summary(b"5,5 ; ignored 9"));
+        show(summary(b"1,,2"));
+        show(summary(b"123456"));
+        show(summary(b"4x"));
+        match parse(b" 8 , 9x") {
+            Ok(v) => print_u64(u64::try_from(v.len()).unwrap()),
+            Err(at) => print_u64(u64::try_from(at).unwrap()),
+        }
+    }
+}
