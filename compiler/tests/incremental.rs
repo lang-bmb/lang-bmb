@@ -336,6 +336,19 @@ fn edits_that_shift_spans_or_change_context_keep_outputs_exact() {
         // its proof needs: its callers keep their keys (backlog 2D-22).
         base.replacen("#[uses(small, pos, pos2)]", "#[uses(small, pos)]", 1),
         base.replacen("#[uses(small, pos, pos2)]", "#[uses(pos2)]", 1),
+        // Layout and comments inside a definition: its proof is reused,
+        // its obligations relocated by node position (ADR-0059 §4).
+        base.replacen(
+            "        let mut c: i64 = 0;\n",
+            "        // counter\n        let   mut c :i64=0;\n\n",
+            1,
+        ),
+        // Renames: a definition (and its callers' references), a
+        // parameter, a local (backlog T1-10).
+        base.replace("f0(", "first("),
+        base.replacen("fn f2(n: i64) -> i64\n        requires small(n),", "fn f2(count: i64) -> i64\n        requires small(count),", 1)
+            .replacen("        while i < n\n            invariant i <= n, c == i,\n            decreases n - i,", "        while i < count\n            invariant i <= count, c == i,\n            decreases count - i,", 1),
+        base.replace("let y: i64 = f0(x);\n        if y > 5 { y - 5 } else { y }", "let yy: i64 = f0(x);\n        if yy > 5 { yy - 5 } else { yy }"),
         base.clone(),
     ];
     cached(&files(&base), &dir);
@@ -347,6 +360,37 @@ fn edits_that_shift_spans_or_change_context_keep_outputs_exact() {
         let (again, _) = cached(&f, &dir);
         assert_eq!(again, out, "edit {i} (warm)");
     }
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// Layout and comments inside a definition do not encode it again: the
+/// proof key holds its qualified normal form, and the stored obligations
+/// are node positions relocated to the new text (ADR-0059 §4, backlog
+/// T1-10). Its IR is lowered again (the IR key keeps the source).
+#[test]
+fn layout_inside_a_definition_reencodes_nothing() {
+    let dir = tmp("layout");
+    let base = generate(3);
+    cached(&files(&base), &dir);
+    let changed = base
+        .replacen(
+            "        let mut c: i64 = 0;\n",
+            "        // counter\n        let   mut c :i64=0;\n\n",
+            1,
+        )
+        .replacen(
+            "            c = c + 1;\n",
+            "            c = c\n                + 1; // next\n",
+            1,
+        );
+    assert_ne!(changed, base);
+    let f = files(&changed);
+    let (out, stats) = bmb::incremental::with_audit(|| cached(&f, &dir));
+    assert_eq!(out, plain(&f));
+    assert!(stats.audit_mismatches.is_empty(), "{stats:?}");
+    let (again, stats) = cached(&f, &dir);
+    assert_eq!(again, out);
+    assert!(stats.encoded.is_empty(), "{stats:?}");
     let _ = fs::remove_dir_all(&dir);
 }
 

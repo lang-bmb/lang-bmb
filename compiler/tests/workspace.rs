@@ -321,3 +321,300 @@ fn commit_leaves_no_temporary_files() {
     names.sort();
     assert_eq!(names, ["core.bmb", "extra.bmb"]);
 }
+
+// ---------- rename and expect (ADR-0059 §5, backlog T1-10) ----------
+
+/// Functions, a spec fn, a type with an `impl` and a trait impl, a trait
+/// with a bound and a default body, referred to from another unit by full
+/// path and from their own by short name.
+const RICH: &str = r#"
+#[summary("기반")]
+mod geo {
+    spec fn pos(x: i64) -> bool { x > 0 }
+
+    trait Area {
+        #[effects(pure)]
+        fn area(self: &Self) -> i64;
+
+        #[effects(pure)]
+        fn twice(self: &Self) -> i64 {
+            Area::area(self).saturating_mul(2)
+        }
+    }
+
+    struct Pt { x: i64, y: i64 }
+
+    impl Pt {
+        #[effects(pure)]
+        fn new(x: i64, y: i64) -> Pt {
+            Pt { x: x, y: y }
+        }
+    }
+
+    impl Area for Pt {
+        #[effects(pure)]
+        fn area(self: &Pt) -> i64 {
+            self.x.saturating_mul(self.y)
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(pos)]
+    fn dec(x: i64) -> i64
+        requires pos(x),
+    {
+        x - 1
+    }
+
+    #[effects(pure)]
+    fn size<T: Copy + Area>(t: T) -> i64 {
+        Area::twice(&t)
+    }
+
+    #[effects(pure)]
+    fn origin() -> Pt {
+        Pt::new(0, 0)
+    }
+}
+
+#[summary("사용처")]
+mod app {
+    #[effects(pure)]
+    #[uses(geo::pos)]
+    fn use_dec() -> i64 { geo::dec(3) }
+
+    #[effects(pure)]
+    fn corner() -> geo::Pt {
+        let p: geo::Pt = geo::Pt::new(1, 2);
+        geo::Pt { x: p.y, y: p.x }
+    }
+
+    #[effects(pure)]
+    fn big(p: geo::Pt) -> i64 {
+        geo::size::<geo::Pt>(p)
+    }
+}
+"#;
+
+fn init_rich(name: &str) -> PathBuf {
+    let root = temp(name);
+    let units = bmb::format_sources(&[("base.bmb".into(), RICH.into())]).unwrap();
+    write_units(&root, &units).unwrap();
+    root
+}
+
+/// `bmb hash` rows of the workspace: path -> its identity and hashes.
+fn ids(root: &Path) -> BTreeMap<String, String> {
+    bmb::hash_sources(&read_dir_sources(root).unwrap())
+        .unwrap()
+        .lines()
+        .map(|l| {
+            let path = l.split('"').nth(3).unwrap().to_string();
+            (path, l[l.find(",\"id\"").unwrap()..].to_string())
+        })
+        .collect()
+}
+
+fn rename(def: &str, to: &str) -> Op {
+    Op::Rename {
+        def: def.into(),
+        to: to.into(),
+    }
+}
+
+#[test]
+fn rename_rewrites_references_and_keeps_every_identity() {
+    // (target, new name, how the rows of the old paths move)
+    type Case<'a> = (&'a str, &'a str, &'a [(&'a str, &'a str)]);
+    let cases: &[Case] = &[
+        ("geo::dec", "decrement", &[("geo::dec", "geo::decrement")]),
+        ("geo::pos", "positive", &[("geo::pos", "geo::positive")]),
+        ("geo::Pt::new", "make", &[("geo::Pt::new", "geo::Pt::make")]),
+        ("geo::size", "measure", &[("geo::size", "geo::measure")]),
+        (
+            "geo::Pt",
+            "Point",
+            &[
+                ("geo::Pt::new", "geo::Point::new"),
+                ("geo::Pt", "geo::Point"),
+                (
+                    "<geo::Pt as geo::Area>::area",
+                    "<geo::Point as geo::Area>::area",
+                ),
+            ],
+        ),
+        (
+            "geo::Area",
+            "Surface",
+            &[
+                (
+                    "<geo::Pt as geo::Area>::area",
+                    "<geo::Pt as geo::Surface>::area",
+                ),
+                ("geo::Area::twice", "geo::Surface::twice"),
+            ],
+        ),
+    ];
+    for (k, (def, to, moves)) in cases.iter().enumerate() {
+        let root = init_rich(&format!("rename{k}"));
+        let before = ids(&root);
+        let c = commit(&root, &[rename(def, to)]).unwrap();
+        assert!(c.ok, "{def}: {}", c.diagnostics);
+        let after = ids(&root);
+        let mut want = before.clone();
+        for (from, into) in *moves {
+            let v = want.remove(*from).unwrap();
+            want.insert(into.to_string(), v);
+        }
+        assert_eq!(after, want, "{def} -> {to}");
+        let text: String = snapshot(&root).into_values().collect();
+        let old = def.rsplit("::").next().unwrap();
+        let word = |w: &str| {
+            text.split(|c: char| !(c.is_alphanumeric() || c == '_'))
+                .any(|x| x == w)
+        };
+        assert!(!word(old), "{def}: `{old}` is still written\n{text}");
+        assert!(word(to), "{def}\n{text}");
+        // The program still verifies (a rename changes no proof).
+        let v = bmb::verify_sources(&read_dir_sources(&root).unwrap());
+        assert!(v.ok, "{def}\n{}", v.output);
+    }
+}
+
+#[test]
+fn rename_that_would_collide_or_capture_is_rejected() {
+    let root = init_rich("rename_bad");
+    let before = snapshot(&root);
+    for (def, to) in [
+        // Collides with another definition of the unit.
+        ("geo::dec", "origin"),
+        ("geo::Pt", "Area"),
+        // Not a name, not a definition, a trait method.
+        ("geo::dec", "a::b"),
+        ("geo::nope", "x"),
+        ("geo::Area::area", "size2"),
+    ] {
+        let c = commit(&root, &[rename(def, to)]).unwrap();
+        assert!(!c.ok, "{def} -> {to} committed");
+        assert_eq!(snapshot(&root), before, "{def} -> {to}");
+    }
+    // Capture: `app` calls the built-in `print_i64` by its short name; a
+    // definition of `app` with the same signature renamed to it would take
+    // that call over (it still checks, but `show` would mean another thing).
+    let c = commit(
+        &root,
+        &[
+            put(
+                "app",
+                "#[effects(io)]\nfn show() -> () {\n    print_i64(1);\n}",
+            ),
+            put("app", "#[effects(io)]\nfn emit(v: i64) -> () {}"),
+        ],
+    )
+    .unwrap();
+    assert!(c.ok, "{}", c.diagnostics);
+    let before = snapshot(&root);
+    let c = commit(&root, &[rename("app::emit", "print_i64")]).unwrap();
+    assert!(!c.ok, "a capturing rename committed");
+    assert!(
+        c.diagnostics
+            .contains("would change what other names refer to (app::show)"),
+        "{}",
+        c.diagnostics
+    );
+    assert_eq!(snapshot(&root), before);
+    // Another unit's name is no capture: other units name `geo::dec` by
+    // full path.
+    let c = commit(
+        &root,
+        &[
+            put("app", "#[effects(pure)]\nfn dec() -> i64 { 7 }"),
+            rename("geo::Pt::new", "dec"),
+        ],
+    )
+    .unwrap();
+    assert!(c.ok, "{}", c.diagnostics);
+}
+
+#[test]
+fn expect_rejects_a_changed_definition_only() {
+    let root = init_rich("expect");
+    let id_of = |root: &Path, p: &str| {
+        let row = ids(root)[p].clone();
+        row.split('"').nth(3).unwrap().to_string()
+    };
+    let dec = id_of(&root, "geo::dec");
+    let expect = |def: &str, id: &str| Op::Expect {
+        def: def.into(),
+        id: id.into(),
+    };
+    // Another writer renames `pos` and edits `origin`: `dec` keeps its
+    // identity, so an edit made against it still commits.
+    let c = commit(
+        &root,
+        &[
+            rename("geo::pos", "positive"),
+            put(
+                "geo",
+                "#[effects(pure)]\nfn origin() -> Pt {\n    Pt::new(1, 1)\n}",
+            ),
+        ],
+    )
+    .unwrap();
+    assert!(c.ok, "{}", c.diagnostics);
+    assert_eq!(id_of(&root, "geo::dec"), dec);
+    let c = commit(
+        &root,
+        &[
+            expect("geo::dec", &dec),
+            put("app", "#[effects(pure)]\nfn two() -> i64 { geo::dec(3) }"),
+        ],
+    )
+    .unwrap();
+    assert!(c.ok, "{}", c.diagnostics);
+    // Another writer edits `dec` itself: the stale expectation is refused
+    // and nothing is written.
+    let c = commit(
+        &root,
+        &[put(
+            "geo",
+            "#[effects(pure)]\n#[uses(positive)]\nfn dec(x: i64) -> i64\n    requires positive(x),\n{\n    x - 1 + 0\n}",
+        )],
+    )
+    .unwrap();
+    assert!(c.ok, "{}", c.diagnostics);
+    let before = snapshot(&root);
+    let c = commit(
+        &root,
+        &[
+            expect("geo::dec", &dec),
+            put("app", "#[effects(pure)]\nfn three() -> i64 { geo::dec(4) }"),
+        ],
+    )
+    .unwrap();
+    assert!(!c.ok);
+    assert!(
+        c.diagnostics.contains("changed since it was read"),
+        "{}",
+        c.diagnostics
+    );
+    assert_eq!(snapshot(&root), before);
+    // No such definition.
+    let c = commit(&root, &[expect("geo::gone", &dec)]).unwrap();
+    assert!(
+        !c.ok && c.diagnostics.contains("no definition"),
+        "{}",
+        c.diagnostics
+    );
+}
+
+#[test]
+fn rename_and_expect_parse_from_json() {
+    let ops = bmb::workspace::parse_ops(
+        r#"[{"op":"rename","def":"a::f","to":"g"},{"op":"expect","def":"a::g","id":"sha256:00"}]"#,
+    )
+    .unwrap();
+    assert!(matches!(&ops[0], Op::Rename { def, to } if def == "a::f" && to == "g"));
+    assert!(matches!(&ops[1], Op::Expect { def, id } if def == "a::g" && id == "sha256:00"));
+    assert!(bmb::workspace::parse_ops(r#"[{"op":"rename","def":"a::f"}]"#).is_err());
+}

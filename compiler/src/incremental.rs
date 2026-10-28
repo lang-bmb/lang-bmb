@@ -18,11 +18,23 @@
 //!   query of `D` can contain: its assumptions and goals come from `D`, the
 //!   callee contracts and the revealed `spec fn` bodies, and those name
 //!   only what they name. An unrelated `spec fn` therefore changes no key;
-//! - `D` itself: its source text (spans of obligations are byte offsets, so
-//!   the key takes the raw text between `fn` and the closing brace and the
-//!   results are stored relative to its start) and its qualified normal form
-//!   with the body (ADR-0019 §2: names resolved to full paths, so a new
-//!   definition that changes what a short name means changes the key);
+//! - `D` itself: its qualified normal form with the body (ADR-0019 §2:
+//!   names resolved to full paths, so a new definition that changes what a
+//!   short name means changes the key). Not its source text: the proved
+//!   obligations are stored as positions of syntax nodes (`node_spans`, in
+//!   tree order) and relocated to the current text on a hit, so layout and
+//!   comments change no proof key (ADR-0059 §4);
+//!
+//! **Names in the proof key (ADR-0059 §4, backlog T1-10).** The rows above
+//! name definitions, parameters, fields and types, because the query text
+//! does: its symbols are built from them (`verify::sym`, local constants,
+//! datatype selectors), and some encodings take names in order (merges walk
+//! the locals by name). A key without names would let a renamed definition
+//! reuse a result whose script and `rlimit` counts came from other symbols,
+//! so cached and uncached outputs would differ. The named rows are therefore
+//! the legend of the names the query holds; they go when the queries name
+//! nothing (canonical symbols, backlog T1-ID-02b), and the key is then the
+//! nameless one;
 //! - each definition `D`'s qualified text names: an executable callee through
 //!   its contract, signature and effects (`fmt::caller_text`: the iface
 //!   without `#[uses]`, which reveals bodies only in the callee's own
@@ -70,7 +82,7 @@ use crate::source::{SourceMap, Span};
 use crate::verify::{FnStatus, ObKey, Tables};
 
 pub const FILE: &str = "defs";
-const MAGIC: &str = "bmb incremental cache v1";
+const MAGIC: &str = "bmb incremental cache v2";
 
 thread_local! {
     static ID_OVERRIDE: RefCell<Option<String>> = const { RefCell::new(None) };
@@ -327,22 +339,260 @@ fn code_static(code: &str) -> Option<&'static str> {
         .map(|(c, _)| *c)
 }
 
-/// Parses a relative key list and relocates it into `span`.
-fn parse_rel(text: &str, span: Span) -> Option<Vec<ObKey>> {
+/// The spans of a definition's syntax nodes in a fixed order: its name,
+/// parameters, result, contract, then its body, depth first (ADR-0059 §4).
+/// The order follows the tree, not the text: two texts with the same
+/// qualified normal form (which the proof key holds) list the same nodes,
+/// whatever their layout, comments or (with T1-ID-02b) names. Attributes are
+/// left out: their order in the source is not the normal form's, and no
+/// obligation lies on one.
+fn node_spans(f: &FnDef) -> Vec<Span> {
+    use crate::ast::*;
+    fn ty(t: &Type, out: &mut Vec<Span>) {
+        out.push(t.span);
+        match &t.kind {
+            TypeKind::Named { args, .. } => args.iter().for_each(|a| ty(a, out)),
+            TypeKind::Array(e, _) | TypeKind::Slice(e) | TypeKind::Vec(e) | TypeKind::Box(e) => {
+                ty(e, out)
+            }
+            TypeKind::Ref { inner, .. } => ty(inner, out),
+            _ => {}
+        }
+    }
+    fn block(b: &Block, out: &mut Vec<Span>) {
+        out.push(b.span);
+        for s in &b.stmts {
+            stmt(s, out);
+        }
+        if let Some(t) = &b.tail {
+            expr(t, out);
+        }
+    }
+    fn stmt(s: &Stmt, out: &mut Vec<Span>) {
+        match s {
+            Stmt::Let {
+                name,
+                ty: t,
+                init,
+                span,
+                ..
+            } => {
+                out.push(*span);
+                out.push(name.span);
+                ty(t, out);
+                expr(init, out);
+            }
+            Stmt::Assign {
+                target,
+                value,
+                span,
+            } => {
+                out.push(*span);
+                expr(target, out);
+                expr(value, out);
+            }
+            Stmt::While {
+                label,
+                cond,
+                invariants,
+                decreases,
+                body,
+                span,
+            } => {
+                out.push(*span);
+                out.extend(label.iter().map(|l| l.span));
+                expr(cond, out);
+                invariants.iter().for_each(|e| expr(e, out));
+                decreases.iter().for_each(|e| expr(e, out));
+                block(body, out);
+            }
+            Stmt::For {
+                label,
+                var,
+                lo,
+                hi,
+                invariants,
+                body,
+                span,
+                ..
+            } => {
+                out.push(*span);
+                out.extend(label.iter().map(|l| l.span));
+                out.push(var.span);
+                expr(lo, out);
+                expr(hi, out);
+                invariants.iter().for_each(|e| expr(e, out));
+                block(body, out);
+            }
+            Stmt::Assert { cond, span } => {
+                out.push(*span);
+                expr(cond, out);
+            }
+            Stmt::LetFields {
+                path,
+                fields,
+                init,
+                span,
+            } => {
+                out.push(*span);
+                out.extend(path.iter().chain(fields).map(|i| i.span));
+                expr(init, out);
+            }
+            Stmt::Expr(e) => expr(e, out),
+        }
+    }
+    fn expr(e: &Expr, out: &mut Vec<Span>) {
+        out.push(e.span);
+        match &e.kind {
+            ExprKind::Call { path, targs, args } => {
+                out.extend(path.iter().map(|i| i.span));
+                for t in targs {
+                    out.push(t.span);
+                    t.args.iter().for_each(|a| ty(a, out));
+                }
+                args.iter().for_each(|a| expr(a, out));
+            }
+            ExprKind::Method { recv, name, args } => {
+                expr(recv, out);
+                out.push(name.span);
+                args.iter().for_each(|a| expr(a, out));
+            }
+            ExprKind::Index { base, index } => {
+                expr(base, out);
+                expr(index, out);
+            }
+            ExprKind::Unary(_, x)
+            | ExprKind::Ref { expr: x, .. }
+            | ExprKind::Old(x)
+            | ExprKind::Trigger(x)
+            | ExprKind::Deref(x)
+            | ExprKind::Try(x) => expr(x, out),
+            ExprKind::Binary(_, l, r) => {
+                expr(l, out);
+                expr(r, out);
+            }
+            ExprKind::If { cond, then, els } => {
+                expr(cond, out);
+                block(then, out);
+                els.iter().for_each(|x| expr(x, out));
+            }
+            ExprKind::Block(b) => block(b, out),
+            ExprKind::Array(xs) => xs.iter().for_each(|x| expr(x, out)),
+            ExprKind::Repeat {
+                value, count_span, ..
+            } => {
+                expr(value, out);
+                out.push(*count_span);
+            }
+            ExprKind::Forall { binders, body } => {
+                for b in binders {
+                    out.push(b.name.span);
+                    ty(&b.ty, out);
+                }
+                expr(body, out);
+            }
+            ExprKind::StructLit { path, fields, rest } => {
+                out.extend(path.iter().map(|i| i.span));
+                for (n, x) in fields {
+                    out.push(n.span);
+                    expr(x, out);
+                }
+                rest.iter().for_each(|r| expr(r, out));
+            }
+            ExprKind::Path(path) => out.extend(path.iter().map(|i| i.span)),
+            ExprKind::Var(i) => out.push(i.span),
+            ExprKind::Field { base, name } => {
+                expr(base, out);
+                out.push(name.span);
+            }
+            ExprKind::Match { scrut, arms } => {
+                expr(scrut, out);
+                for a in arms {
+                    out.push(a.span);
+                    out.push(a.pat.span);
+                    out.extend(a.pat.path.iter().map(|i| i.span));
+                    out.extend(a.pat.binds.iter().flatten().map(|i| i.span));
+                    expr(&a.body, out);
+                }
+            }
+            ExprKind::Return(x) => x.iter().for_each(|x| expr(x, out)),
+            ExprKind::Loop {
+                label,
+                invariants,
+                decreases,
+                body,
+            } => {
+                out.extend(label.iter().map(|l| l.span));
+                invariants.iter().for_each(|e| expr(e, out));
+                decreases.iter().for_each(|e| expr(e, out));
+                block(body, out);
+            }
+            ExprKind::Break { label, value } => {
+                out.extend(label.iter().map(|l| l.span));
+                value.iter().for_each(|x| expr(x, out));
+            }
+            ExprKind::Continue { label } => out.extend(label.iter().map(|l| l.span)),
+            ExprKind::Int(..)
+            | ExprKind::ByteLit(_)
+            | ExprKind::ByteStr(_)
+            | ExprKind::Bool(_)
+            | ExprKind::Unit
+            | ExprKind::Error => {}
+        }
+    }
+    let mut out = vec![f.span, f.name.span];
+    for p in &f.params {
+        out.push(p.name.span);
+        ty(&p.ty, &mut out);
+    }
+    out.extend(f.ret.name.iter().map(|n| n.span));
+    ty(&f.ret.ty, &mut out);
+    for e in f.requires.iter().chain(&f.ensures).chain(&f.decreases) {
+        expr(e, &mut out);
+    }
+    block(&f.body, &mut out);
+    out
+}
+
+/// Obligation keys as node positions in `f` (`node_spans`): the code and
+/// the index of the first node with the key's span. `None` when a key is
+/// no node of `f` (then nothing is stored).
+fn to_nodes(keys: &[ObKey], f: &FnDef) -> Option<Vec<(&'static str, usize)>> {
+    let nodes = node_spans(f);
+    let mut first: BTreeMap<(u32, u32, u32), usize> = BTreeMap::new();
+    for (i, s) in nodes.iter().enumerate() {
+        first.entry((s.file, s.lo, s.hi)).or_insert(i);
+    }
+    let mut v = Vec::new();
+    for &(code, file, lo, hi) in keys {
+        v.push((code, *first.get(&(file, lo, hi))?));
+    }
+    v.sort();
+    v.dedup();
+    Some(v)
+}
+
+fn nodes_text(v: &[(&'static str, usize)]) -> String {
+    if v.is_empty() {
+        return "-".into();
+    }
+    v.iter()
+        .map(|(c, i)| format!("{c}@{i}"))
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+/// Parses a node position list and relocates it to `f`'s current spans.
+fn from_nodes(text: &str, f: &FnDef) -> Option<Vec<ObKey>> {
     if text == "-" {
         return Some(Vec::new());
     }
-    let len = span.hi - span.lo;
+    let nodes = node_spans(f);
     let mut v = Vec::new();
     for item in text.split(',') {
-        let mut it = item.split(':');
-        let code = code_static(it.next()?)?;
-        let a: u32 = it.next()?.parse().ok()?;
-        let b: u32 = it.next()?.parse().ok()?;
-        if it.next().is_some() || a > b || b > len {
-            return None;
-        }
-        v.push((code, span.file, span.lo + a, span.lo + b));
+        let (code, i) = item.split_once('@')?;
+        let s = nodes.get(i.parse::<usize>().ok()?)?;
+        v.push((code_static(code)?, s.file, s.lo, s.hi));
     }
     Some(v)
 }
@@ -636,11 +886,14 @@ impl Session {
                     .collect(),
                 None => Vec::new(),
             };
+            // The proof key holds `D`'s qualified text, not its source:
+            // stored obligations are node positions (`to_nodes`), so layout
+            // and comments change no proof key (ADR-0059 §4). The IR key
+            // keeps the source text, which places the run-time checks.
             let mut own = String::new();
             section(&mut own, "id", id);
             section(&mut own, "path", path);
             section(&mut own, "unit", unit);
-            section(&mut own, "source", slice);
             section(&mut own, "qualified", &qual);
             let mut pk = String::from("proof\n");
             section(&mut pk, "z3", z3);
@@ -649,6 +902,7 @@ impl Session {
             section(&mut pk, "component", &comp.join(" "));
             let mut ik = String::from("ir\n");
             ik.push_str(&own);
+            section(&mut ik, "source", slice);
             for r in &refs {
                 let r = r.as_str();
                 let (body, caller) = &hash_of(r);
@@ -738,7 +992,7 @@ impl Session {
     }
 
     /// The stored proof result of `path`, relocated into `span`.
-    pub fn proof_lookup(&self, path: &str, span: Span) -> Option<ProofHit> {
+    pub fn proof_lookup(&self, path: &str, f: &FnDef) -> Option<ProofHit> {
         let key = self.proof_keys.get(path)?;
         let payload = self.store.get("P", path, key)?;
         let mut it = payload.split(' ');
@@ -746,7 +1000,7 @@ impl Session {
         let rlimit_total: u64 = it.next()?.parse().ok()?;
         let rlimit_max: u64 = it.next()?.parse().ok()?;
         let script_sha = it.next()?.to_string();
-        let proved = parse_rel(it.next()?, span)?;
+        let proved = from_nodes(it.next()?, f)?;
         if it.next().is_some() {
             return None;
         }
@@ -764,11 +1018,11 @@ impl Session {
     }
 
     /// Stores the result of a fully proved definition.
-    pub fn proof_record(&mut self, status: &FnStatus, span: Span, proved: &[ObKey], script: &str) {
+    pub fn proof_record(&mut self, status: &FnStatus, f: &FnDef, proved: &[ObKey], script: &str) {
         if status.failed != 0 {
             return;
         }
-        let (Some(key), Some(rel)) = (self.proof_keys.get(&status.path), relative(proved, span))
+        let (Some(key), Some(rel)) = (self.proof_keys.get(&status.path), to_nodes(proved, f))
         else {
             return;
         };
@@ -778,7 +1032,7 @@ impl Session {
             status.rlimit_total,
             status.rlimit_max,
             crate::sha256::hex(script.as_bytes()),
-            rel_text(&rel)
+            nodes_text(&rel)
         );
         self.store.put("P", &status.path, key.clone(), payload);
     }

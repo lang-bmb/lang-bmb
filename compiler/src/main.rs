@@ -68,7 +68,7 @@ const USAGE: &str = "usage:
   bmb mutate --def PATH [--def PATH].. <file.bmb>...
                             every W0904 body mutation of the named functions, unproved, as
                             JSONL rows with the changed unit's normal form, then a summary
-  bmb hash <file.bmb>...    definition hashes (body, iface) as JSONL
+  bmb hash <file.bmb>...    nameless identities and hashes (id, body, iface) as JSONL
   bmb map [--cache DIR] [L0|L1|L2|all] <file.bmb>...
                             standard maps as JSONL (ADR-0020)
   bmb query [--cache DIR] <units|surface|edges|slice|find|contracts|status|impact|duplicates|effects|tests> [args] -- <file.bmb>...
@@ -76,7 +76,8 @@ const USAGE: &str = "usage:
                             the L1 rows, `surface` and `status` prove)
   bmb import DIR <file.bmb>...
                             create or replace workspace DIR from files, in normal form
-  bmb apply DIR OPS.json    commit a transaction (JSON array of unit/put/remove/remove_unit ops)
+  bmb apply DIR OPS.json    commit a transaction (JSON array of unit/put/remove/remove_unit/
+                            rename/expect ops)
                             to workspace DIR; rejected as a whole on any structural or type error
   bmb mcp [--write-tool] DIR
                             MCP server (stdio) for workspace DIR: query, map, verify, build, tx_*;

@@ -10,7 +10,9 @@ twin answers every BNB question the same way the BMB workspace does:
              `debug_assert!` lines and comments are contracts, not calls) and
              `writes` (a `&mut` parameter passed on, arg = its position)
   dup_groups sorted groups of >= 2 definitions whose text is equal once the
-             name is removed and every call is resolved to its full path
+             name is removed and every call is written as its target's
+             identity (ADR-0059: equal definitions in other units count as
+             the same; classes refined until they stop splitting)
 
 Python 3 standard library only.
 """
@@ -114,7 +116,8 @@ def analyze(root):
             norm = [d["header"].replace(f"pub fn {name}(", "pub fn _(", 1)]
             for line in d["body"]:
                 s = line.strip()
-                norm.append(CALL.sub(lambda m: (resolve(u, names[u], m) or m.group(0)[:-1]) + "(", line))
+                norm.append(CALL.sub(lambda m: ("\x00%s\x00" % resolve(u, names[u], m)
+                                                if resolve(u, names[u], m) else m.group(0)[:-1]) + "(", line))
                 if s.startswith("debug_assert!") or s.startswith("//"):
                     continue
                 for m in CALL.finditer(line):
@@ -127,9 +130,22 @@ def analyze(root):
                         if a in mut_params:
                             edges.add((path, to, "writes", i))
             defs[path]["norm"] = "\n".join(norm)
+    # Identity (ADR-0059 §1): a call stands for its target's class, not its
+    # path. Start with every definition alike and split until stable.
+    parts = {p: d["norm"].split("\x00") for p, d in defs.items()}
+    cls = {p: 0 for p in defs}
+    for _ in range(len(defs) + 1):
+        keys = {p: "%d|%s" % (cls[p], "".join(str(cls.get(x, x)) if i % 2 else x for i, x in enumerate(xs)))
+                for p, xs in parts.items()}
+        ids = {k: n for n, k in enumerate(sorted(set(keys.values())))}
+        new = {p: ids[keys[p]] for p in defs}
+        stable = len(set(new.values())) == len(set(cls.values()))
+        cls = new
+        if stable:
+            break
     by = {}
-    for p, d in defs.items():
-        by.setdefault(d["norm"], []).append(p)
+    for p in defs:
+        by.setdefault(cls[p], []).append(p)
     groups = sorted(sorted(g) for g in by.values() if len(g) > 1)
     return {"defs": defs, "edges": edges, "dup_groups": groups}
 
