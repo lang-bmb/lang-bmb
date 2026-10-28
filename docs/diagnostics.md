@@ -21,7 +21,6 @@
 | --- | --- |
 | E0201 | `let` requires an explicit type |
 | E0202 | macros are not allowed |
-| E0203 | `return` is not allowed; end the block with a tail expression |
 | E0204 | `for` and `loop` are not allowed; use `while` with `invariant` and `decreases` |
 | E0205 | `as` casts are not allowed |
 | E0206 | the `?` operator is not allowed |
@@ -184,3 +183,4 @@
 | 코드 | 뜻 |
 | --- | --- |
 | E0814 | construct not supported by the proof gate (retired by backlog 2V-05: every construct is encoded) |
+| E0203 | `return` is not allowed (retired by backlog 2K-01a: `return` is part of the language, ADR-0049) |

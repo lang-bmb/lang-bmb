@@ -485,7 +485,12 @@ ROADMAP의 통과 기준마다 그것을 확인하는 태스크다. 빈칸이 �
 
 | ID | 태스크 | 완료 기준 | 의존 | 상태 |
 | --- | --- | --- | --- | --- |
-| 2K-01 | 파서·검사기 | `return`·`break`·`continue`·레이블·`loop`(값 있는 `break`)·`?`(같은 오류 타입, 다르면 E0241)·`for i in lo..hi`/`lo..=hi`. E0203·E0204·E0206 은퇴(`diag::RETIRED`) | 2V-12 | ⏳ |
+| 2K-01 | 파서·검사기 | `return`·`break`·`continue`·레이블·`loop`(값 있는 `break`)·`?`(같은 오류 타입, 다르면 E0241)·`for i in lo..hi`/`lo..=hi`. E0203·E0204·E0206 은퇴(`diag::RETIRED`). 착수 시 재분해(2026-10-28): 층(검사·증명·코드 생성)으로 나누면 중간 커밋이 증명되지 않는 구성을 받게 되므로(원칙: 검증되지 않는 기능은 넣지 않는다) 구성마다 모든 층을 거치는 2K-01a~e로. 2K-02·2K-03은 각 조각의 완료 기준이 된다 | 2V-12 | 🔄 2K-01a~e |
+| 2K-01a | `return` | 문장·식 위치의 `return e`/`return`(타입 `!`), 반환 지점의 `ensures` 의무와 경로 종료, 탈출 간선의 소유 지역 해제, 코드 생성, E0203 은퇴. 코퍼스와 실행 프로그램 | 2V-12 | ✅ 검사: `TypeKind::Never`(어떤 기대 타입에도 맞음, `!`인 갈래는 다른 갈래의 타입, 끝나지 않는 문장으로 끝나는 블록은 `!`), `FnCtx::ret`, 명세의 `return` E0503(안내 포함), 문장 자리의 `if`·`match`가 `}`에서 끝남(파서). 증명: `Enc::post_check`(함수 끝과 `return`이 공유), `Enc::dead`(블록의 뒤 문장 생략, `branch`·단락 논리 연산의 오른쪽은 끝난 쪽을 빼고 남은 쪽의 조건·사실로, 루프 몸이 끝나면 유지·감소 의무 없음). 이동 검사: `MoveInfo::exits`(출구의 소유 경로), `Mv::join`. 코드 생성: `Gen::emit_return`(공유 에필로그), 둘레 임시값·출구 해제, 뒤 코드는 도달 불가 블록(`CVal::Never`). E0203 은퇴(`diag::RETIRED`). 구현 중 찾은 기존 건전성 결함 둘: 루프 havoc이 몸 안 `match` 갈래의 대입과 `&mut` 참조 `match`의 바인딩 쓰기를 빠뜨려 거짓 단언이 증명되었다(`assigned_in_expr`, 2O-04b·그 전부터, 회귀 `tests/verify/fail/loops`의 `arm_assigns`·`binding_writes`). 코퍼스: `tests/verify/pass/returns`, `tests/verify/fail/returns`(반례 5), `tests/check/err/returns`, `tests/run/returns`(valgrind 깨끗). 게이트 변이 넷(`v-return-post-dropped`·`v-return-rest-wrong-side`·`v-havoc-match-arms-skipped`·`c-return-exit-drops-skipped`), `v-ensures-dropped`를 `post_check`로 다시 겨눔 |
+| 2K-01b | `break`·`continue`·레이블 | `while` 안의 `break`·`continue`, 레이블 `'a: while`, 출구 상태의 합류(정상 출구와 `break` 지점), `continue`의 불변식·감소 의무, 간선 해제 | 2K-01a | ⏳ |
+| 2K-01c | `loop`와 값 있는 `break` | `loop`(불변식·`decreases`), `break e`의 값 합류, E0204의 `loop` 몫 은퇴 | 2K-01b | ⏳ |
+| 2K-01d | 범위 `for` | `for i in lo..hi`·`lo..=hi`, 머리 불변식(`lo <= i <= end`), 자동 감소, 범위 사실, 2R-04f의 펼친 질의 동일성, E0204 은퇴 | 2K-01c | ⏳ |
+| 2K-01e | `?` | `Option`·같은 오류 타입의 `Result`, 다르면 E0241, `match`와 같은 인코딩, E0206 은퇴 | 2K-01a | ⏳ |
 | 2K-02 | 증명 인코딩 | 탈출 경로(반환 지점의 `ensures`, `break` 상태의 합류, `continue`의 불변식 유지), `?`, `for`의 범위 사실과 자동 `decreases`. 2R-04f의 펼친 질의 동일성 | 2K-01 | ⏳ |
 | 2K-03 | 해제와 코드 생성 | 탈출 간선의 소유 지역 해제(합류점 규칙을 간선마다), 분기 코드 | 2K-02 | ⏳ |
 | 2K-04 | 정규형과 기계 수정 | 셀 수 있는 `while`을 `for`로 바꾸는 수정, 코퍼스·라이브러리 이주 | 2K-03 | ⏳ |

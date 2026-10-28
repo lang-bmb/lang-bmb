@@ -2,7 +2,7 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 5017546,
+    "V4_rlimit_total": 5160091,
     "V5_rlimit_headroom": 0.0152,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0,
@@ -14,12 +14,12 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 25736,
+    "S4_stage0_rust_lines": 26063,
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
-    "P1_runnable_programs": 41,
-    "P2_bmb_lines": 11335,
-    "P3_errors_with_help": 0.8025,
+    "P1_runnable_programs": 42,
+    "P2_bmb_lines": 11794,
+    "P3_errors_with_help": 0.8065,
     "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 10
@@ -939,6 +939,32 @@
         "P3_errors_with_help": [
           0.7987,
           0.8025
+        ]
+      }
+    },
+    {
+      "date": "2026-10-28",
+      "reason": "2K-01a: return (returns run program, corpora, help on return type errors)",
+      "changed": {
+        "V4_rlimit_total": [
+          5017546,
+          5160091
+        ],
+        "S4_stage0_rust_lines": [
+          25736,
+          26063
+        ],
+        "P1_runnable_programs": [
+          41,
+          42
+        ],
+        "P2_bmb_lines": [
+          11335,
+          11794
+        ],
+        "P3_errors_with_help": [
+          0.8025,
+          0.8065
         ]
       }
     }

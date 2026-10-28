@@ -29,7 +29,8 @@ fn prec(e: &Expr) -> u8 {
         ExprKind::If { .. }
         | ExprKind::Block(_)
         | ExprKind::Forall { .. }
-        | ExprKind::Match { .. } => 0,
+        | ExprKind::Match { .. }
+        | ExprKind::Return(_) => 0,
         _ => 8,
     }
 }
@@ -612,6 +613,8 @@ impl<'a> Printer<'a> {
             ExprKind::ByteStr(v) => crate::lexer::byte_text(v, '"'),
             ExprKind::Bool(b) => b.to_string(),
             ExprKind::Unit => "()".into(),
+            ExprKind::Return(None) => "return".into(),
+            ExprKind::Return(Some(v)) => format!("return {}", self.expr(v, 0)),
             ExprKind::Var(id) => id.name.clone(),
             ExprKind::Call { path, targs, args } => {
                 let a: Vec<String> = args.iter().map(|x| self.expr(x, 0)).collect();

@@ -98,13 +98,17 @@ fn fix_is_idempotent() {
 
 #[test]
 fn non_mechanical_errors_remain() {
-    // `return` has no mechanical fix; the suffix does.
-    let text = "#[summary(\"x\")]\nmod m {\n    #[effects(pure)]\n    fn f() -> i64 {\n        return 5i64;\n    }\n}\n";
+    // A `while` without `decreases` has no mechanical fix; the suffix does.
+    let text = "#[summary(\"x\")]\nmod m {\n    #[effects(pure)]\n    fn f() -> i64 {\n        let mut i: i64 = 5i64;\n        while i > 0 {\n            i = i - 1;\n        }\n        i\n    }\n}\n";
     let out = bmb::fix_sources(&one(text));
     assert!(!out.ok);
-    assert!(out.files[0].1.contains("return 5;"), "{}", out.files[0].1);
+    assert!(
+        out.files[0].1.contains("let mut i: i64 = 5;"),
+        "{}",
+        out.files[0].1
+    );
     assert_eq!(out.applied.len(), 1);
-    assert!(out.diagnostics.contains("\"code\":\"E0203\""));
+    assert!(out.diagnostics.contains("\"code\":\"E0506\""));
     assert!(!out.diagnostics.contains("E0104"));
 }
 
@@ -160,7 +164,7 @@ fn cli_reports_by_default_and_writes_only_with_write() {
     let bad = dir.join("r.bmb");
     std::fs::write(
         &bad,
-        "#[summary(\"x\")]\nmod m {\n    #[effects(pure)]\n    fn f() -> i64 {\n        return 5;\n    }\n}\n",
+        "#[summary(\"x\")]\nmod m {\n    #[effects(pure)]\n    fn f() -> i64 {\n        let mut i: i64 = 5;\n        while i > 0 {\n            i = i - 1;\n        }\n        i\n    }\n}\n",
     )
     .unwrap();
     let failed = Command::new(bmb).arg("fix").arg(&bad).output().unwrap();

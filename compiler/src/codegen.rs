@@ -36,6 +36,9 @@ enum CVal {
         ptr: String,
         ty: TypeKind,
     },
+    /// The value of an expression that does not finish (`return`): the
+    /// code after it is unreachable, so it stands for any value.
+    Never,
 }
 
 impl CVal {
@@ -43,6 +46,7 @@ impl CVal {
         match self {
             CVal::Imm(s) => s.clone(),
             CVal::Unit => "0".into(),
+            CVal::Never => "undef".into(),
             CVal::Arr { .. } | CVal::Ptr { .. } => panic!("aggregate used as scalar"),
         }
     }
@@ -597,6 +601,8 @@ struct Gen<'p> {
     /// The byte strings of this function as private constants, emitted with
     /// its IR (so a cached fragment carries them).
     globals: String,
+    /// The function's result type, in the instance (`return`).
+    ret: TypeKind,
 }
 
 impl<'p> Gen<'p> {
@@ -776,7 +782,7 @@ impl<'p> Gen<'p> {
             }
             CVal::Imm(x) => self.emit(format!("store i64 {x}, ptr {ptr}")),
             CVal::Ptr { ptr: src, .. } | CVal::Arr { ptr: src, .. } => self.copy(ptr, &src, t),
-            CVal::Unit => {}
+            CVal::Unit | CVal::Never => {}
         }
     }
 
@@ -1085,6 +1091,7 @@ impl<'p> Gen<'p> {
 
     fn store_result(&mut self, slot: &Option<String>, v: CVal, t: &TypeKind) {
         match slot {
+            _ if matches!(v, CVal::Never) => {}
             Some(s) if is_mem(t) => self.put(v, s, t),
             Some(s) => self.emit(format!("store {} {}, ptr {s}", llty(t), v.imm())),
             None => {}
@@ -1106,10 +1113,63 @@ impl<'p> Gen<'p> {
         }
     }
 
+    /// Whether the result is written to the caller's memory (a data or
+    /// array result).
+    fn ret_in_memory(&self) -> bool {
+        is_mem(&self.ret) || matches!(self.ret, TypeKind::Array(..))
+    }
+
+    /// Returns `rv` from the function.
+    fn emit_return(&mut self, rv: CVal) {
+        if self.ret_in_memory() {
+            let t = self.ret.clone();
+            self.put(rv, "%\"ret.out\"", &t);
+            self.emit("ret void");
+            return;
+        }
+        match llty(&self.ret) {
+            "void" => self.emit("ret void"),
+            ret => {
+                let v = rv.imm();
+                self.emit(format!("ret {ret} {v}"));
+            }
+        }
+    }
+
+    /// `return e` (ADR-0049 §4, §5): the owned temporaries of the regions
+    /// around it and the locals the move check left owned on this exit are
+    /// dropped, then the function returns; what follows is unreachable.
+    fn return_expr(&mut self, e: &Expr, x: Option<&Expr>) -> CVal {
+        let v = match x {
+            Some(x) => self.expr(x),
+            None => CVal::Unit,
+        };
+        // The value may point into a buffer dropped here.
+        let v = self.detach(v);
+        for (h, t) in self.pending.clone() {
+            self.drop_at(&h, &t);
+        }
+        let exits = self
+            .t
+            .moves
+            .get(&self.base)
+            .and_then(|m| m.exits.get(&(e.span.file, e.span.lo, e.span.hi)))
+            .cloned()
+            .unwrap_or_default();
+        for p in exits {
+            self.drop_path(&p);
+        }
+        self.emit_return(v);
+        let after = self.l("after_return");
+        self.block(&after);
+        CVal::Never
+    }
+
     // ---------- expressions ----------
 
     fn expr(&mut self, e: &Expr) -> CVal {
         match &e.kind {
+            ExprKind::Return(x) => self.return_expr(e, x.as_deref()),
             ExprKind::Int(v) => CVal::Imm(v.to_string()),
             ExprKind::ByteLit(v) => CVal::Imm(v.to_string()),
             ExprKind::ByteStr(v) => {
@@ -1367,12 +1427,11 @@ impl<'p> Gen<'p> {
                         Some(b) => self.block_expr(b),
                         None => self.expr(els.as_ref().expect("array `if` has an else")),
                     };
-                    let CVal::Arr { ptr: src, .. } = v else {
-                        unreachable!()
-                    };
-                    self.emit(format!(
-                        "call void @llvm.memcpy.p0.p0.i64(ptr {buf}, ptr {src}, i64 {bytes}, i1 false)"
-                    ));
+                    if let CVal::Arr { ptr: src, .. } = v {
+                        self.emit(format!(
+                            "call void @llvm.memcpy.p0.p0.i64(ptr {buf}, ptr {src}, i64 {bytes}, i1 false)"
+                        ));
+                    }
                     self.emit(format!("br label %{end}"));
                 }
                 self.block(&end);
@@ -2346,6 +2405,17 @@ impl<'p> Gen<'p> {
                 }
                 CVal::Imm(v) => flat.push(format!("{} {v}", llty(&ty))),
                 CVal::Unit => {}
+                // An argument that returns: the call is unreachable.
+                CVal::Never => match param_tys.get(k) {
+                    Some(t) if is_mem(t) || is_array(t) || matches!(t, TypeKind::Array(..)) => {
+                        flat.push("ptr undef".into());
+                        if is_array(t) && !by_value {
+                            flat.push("i64 undef".into());
+                        }
+                    }
+                    _ if llty(&ty) != "void" => flat.push(format!("{} undef", llty(&ty))),
+                    _ => {}
+                },
             }
         }
         let (callee, ret) = if matches!(target.as_str(), "print_i64" | "print_u64" | "print_bytes")
@@ -2775,10 +2845,12 @@ pub fn emit_with(
             checks: 0,
             pending: Vec::new(),
             globals: String::new(),
+            ret: TypeKind::Unit,
         };
         let mut sig = t.fns[&base].clone();
         sig.params = sig.params.iter().map(|p| g.inst(p)).collect();
         sig.ret = g.inst(&sig.ret);
+        g.ret = sig.ret.clone();
         let mut params = Vec::new();
         for (prm, pty) in f.params.iter().zip(&sig.params) {
             let n = &prm.name.name;
@@ -2861,20 +2933,13 @@ pub fn emit_with(
             }
         }
         let rv = g.block_expr(&f.body);
-        let ret = if is_mem(&sig.ret) || matches!(sig.ret, TypeKind::Array(..)) {
+        g.emit_return(rv);
+        let ret = if g.ret_in_memory() {
             // A data or array result is written to the caller's memory.
             params.insert(0, "ptr noalias %\"ret.out\"".into());
-            g.put(rv, "%\"ret.out\"", &sig.ret);
-            g.emit("ret void");
             "void"
         } else {
-            let ret = llty(&sig.ret);
-            if ret == "void" {
-                g.emit("ret void");
-            } else {
-                g.emit(format!("ret {ret} {}", rv.imm()));
-            }
-            ret
+            llty(&sig.ret)
         };
         checks += g.checks;
         let frag = format!(

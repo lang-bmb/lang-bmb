@@ -145,10 +145,10 @@ MUTANTS = [
                 "E0801",''',
      "callee preconditions are never obligations"),
     ("v-ensures-dropped", "unsound", V,
-     '''                    enc.oblige(
-                        "E0802",''',
-     '''                    let _ = (
-                        "E0802",''',
+     '''            self.oblige(
+                "E0802",''',
+     '''            let _ = (
+                "E0802",''',
      "postconditions are never obligations"),
     ("v-assert-dropped", "unsound", V,
      '''self.oblige("E0810", *span, "assertion may not hold", g);''',
@@ -273,6 +273,40 @@ MUTANTS = [
      '''            let q = format!("{q}\\n{}", prog.struct_facts(&format!("{decls}\\n{q}")));
             // Only definitions the obligation can reach''',
      "the field facts of recursive struct values also cover values made later or on another path"),
+    ("v-return-post-dropped", "unsound", V,
+     '''                if !self.dead {
+                    self.post_check(v);
+                    self.dead = true;
+                }''',
+     '''                if !self.dead {
+                    let _ = v;
+                    self.dead = true;
+                }''',
+     "a `return` does not check the postconditions"),
+    ("v-return-rest-wrong-side", "unsound", V,
+     '''            (true, false) => {
+                self.vars = else_vars;
+                self.pc.push(format!("(not {c})"));''',
+     '''            (true, false) => {
+                self.vars = else_vars;
+                self.pc.push(c.to_string());''',
+     "after a branch that returned, the rest runs under that branch's condition"),
+    ("v-havoc-match-arms-skipped", "unsound", V,
+     '''            assigned_in_expr(scrut, out);
+            arms.iter().for_each(|a| assigned_in_expr(&a.body, out));''',
+     '''            assigned_in_expr(scrut, out);
+            arms.iter().take(0).for_each(|a| assigned_in_expr(&a.body, out));''',
+     "a loop keeps the entry value of a local assigned in a `match` arm of its body"),
+    ("c-return-exit-drops-skipped", "miscompile", C,
+     '''        for p in exits {
+            self.drop_path(&p);
+        }
+        self.emit_return(v);''',
+     '''        for p in exits.into_iter().take(0) {
+            self.drop_path(&p);
+        }
+        self.emit_return(v);''',
+     "the owned locals still held at a `return` are not freed (a leak)"),
 ]
 
 

@@ -222,6 +222,7 @@ fn calls_in_expr<'e>(
             calls_in_expr(scrut, spec, out);
             arms.iter().for_each(|a| calls_in_expr(&a.body, spec, out));
         }
+        ExprKind::Return(x) => x.iter().for_each(|x| calls_in_expr(x, spec, out)),
         ExprKind::Int(_)
         | ExprKind::ByteLit(_)
         | ExprKind::ByteStr(_)
@@ -449,6 +450,7 @@ fn exprs_of(f: &FnDef) -> Vec<&Expr> {
                 expr(scrut, out);
                 arms.iter().for_each(|a| expr(&a.body, out));
             }
+            ExprKind::Return(x) => x.iter().for_each(|x| expr(x, out)),
             ExprKind::Path(_)
             | ExprKind::Int(_)
             | ExprKind::ByteLit(_)

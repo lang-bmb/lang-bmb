@@ -255,6 +255,7 @@ fn each_expr<'e>(e: &'e Expr, f: &mut dyn FnMut(&'e Expr)) {
             each_expr(scrut, f);
             arms.iter().for_each(|a| each_expr(&a.body, f));
         }
+        ExprKind::Return(Some(x)) => sub(x),
         _ => {}
     }
 }
@@ -1597,6 +1598,9 @@ struct Enc<'p, 'q> {
     bound: u32,
     /// Under `vacuous_ends`: each reach point and its path condition.
     reach: Vec<(Span, &'static str, Vec<String>)>,
+    /// The current path has returned (ADR-0049 §3): what follows on it
+    /// does not run, and a join takes the other paths.
+    dead: bool,
 }
 
 /// `(select a i)` as (`a`, `i`).
@@ -1839,6 +1843,7 @@ impl<'p, 'q> Enc<'p, 'q> {
             triggers: Vec::new(),
             bound: 0,
             reach: Vec::new(),
+            dead: false,
         }
     }
 
@@ -2137,6 +2142,7 @@ impl<'p, 'q> Enc<'p, 'q> {
 
     fn spec(&mut self, e: &Expr, env: &BTreeMap<String, Val>, old: &BTreeMap<String, Val>) -> Val {
         match &e.kind {
+            ExprKind::Return(_) => unreachable!("rejected by the checker (E0503)"),
             ExprKind::Int(v) => Val::S(num(*v as i128)),
             ExprKind::ByteLit(v) => Val::S(v.to_string()),
             // A byte string: its length and every element are known.
@@ -2513,6 +2519,18 @@ impl<'p, 'q> Enc<'p, 'q> {
 
     fn eval(&mut self, e: &Expr) -> Val {
         match &e.kind {
+            // The postconditions hold here, and the path ends (ADR-0049 §3).
+            ExprKind::Return(x) => {
+                let v = match x {
+                    Some(x) => self.eval(x),
+                    None => Val::Unit,
+                };
+                if !self.dead {
+                    self.post_check(v);
+                    self.dead = true;
+                }
+                Val::Unit
+            }
             ExprKind::Int(v) => Val::S(num(*v as i128)),
             ExprKind::ByteLit(v) => Val::S(v.to_string()),
             // A byte string: its length and every element are known.
@@ -2549,6 +2567,13 @@ impl<'p, 'q> Enc<'p, 'q> {
                 };
                 self.pc.push(guard.clone());
                 let rt = self.eval(r).s();
+                // A right side that returned: the path goes on where it did
+                // not run, and the value is the left one's.
+                if std::mem::replace(&mut self.dead, false) {
+                    self.pc.truncate(n);
+                    self.pc.push(format!("(not {guard})"));
+                    return Val::S(lt);
+                }
                 // Facts learned on the right (a callee's `ensures`, division
                 // lemmas, element ranges) hold whenever it ran (1B-29).
                 let facts: Vec<String> = self.pc[n + 1..].to_vec();
@@ -2877,12 +2902,36 @@ impl<'p, 'q> Enc<'p, 'q> {
         let tv = then_f(self);
         let then_vars = std::mem::replace(&mut self.vars, base_vars.clone());
         let then_facts: Vec<String> = self.pc[n + 1..].to_vec();
+        let then_dead = std::mem::replace(&mut self.dead, false);
         self.pc.truncate(n);
         self.pc.push(format!("(not {c})"));
         let ev = else_f(self);
         let else_vars = std::mem::take(&mut self.vars);
         let else_facts: Vec<String> = self.pc[n + 1..].to_vec();
+        let else_dead = std::mem::replace(&mut self.dead, false);
         self.pc.truncate(n);
+        // A side that returned does not reach the join (ADR-0049 §3): the
+        // path goes on under the other side's condition and facts.
+        match (then_dead, else_dead) {
+            (true, true) => {
+                self.dead = true;
+                self.vars = base_vars;
+                return tv;
+            }
+            (true, false) => {
+                self.vars = else_vars;
+                self.pc.push(format!("(not {c})"));
+                self.pc.extend(else_facts);
+                return ev;
+            }
+            (false, true) => {
+                self.vars = then_vars;
+                self.pc.push(c.to_string());
+                self.pc.extend(then_facts);
+                return tv;
+            }
+            (false, false) => {}
+        }
         let mut merged = BTreeMap::new();
         for k in base_vars.keys() {
             let (a, b) = (&then_vars[k], &else_vars[k]);
@@ -2956,13 +3005,36 @@ impl<'p, 'q> Enc<'p, 'q> {
         }
     }
 
+    /// The postconditions of the function at a point where it returns
+    /// `result` (the end of the body, or a `return`, ADR-0049 §3).
+    fn post_check(&mut self, result: Val) {
+        let f = self.prog.defs[&self.path].f;
+        let (mut env, old) = self.cur_env();
+        if let Some(n) = &f.ret.name {
+            env.insert(n.name.clone(), result);
+        }
+        for en in &f.ensures {
+            let g = self.spec(en, &env, &old).s();
+            self.oblige(
+                "E0802",
+                en.span,
+                format!("postcondition `{}` may not hold", pred_name(en)),
+                g,
+            );
+        }
+    }
+
     fn block(&mut self, b: &Block) -> Val {
+        // What follows a `return` on this path does not run.
         for s in &b.stmts {
+            if self.dead {
+                return Val::Unit;
+            }
             self.stmt(s);
         }
         match &b.tail {
-            Some(t) => self.eval(t),
-            None => Val::Unit,
+            Some(t) if !self.dead => self.eval(t),
+            _ => Val::Unit,
         }
     }
 
@@ -3083,12 +3155,14 @@ impl<'p, 'q> Enc<'p, 'q> {
             self.spec(d, &env, &old).s()
         });
         self.block(body);
-        for inv in invariants {
+        // A body that returned does not come back to the head.
+        let returned = std::mem::replace(&mut self.dead, false);
+        for inv in invariants.iter().filter(|_| !returned) {
             let (env, old) = self.cur_env();
             let g = self.spec(inv, &env, &old).s();
             self.oblige("E0807", inv.span, "loop invariant may not be preserved", g);
         }
-        if let (Some(d0), Some(d)) = (measure, decreases) {
+        if let (Some(d0), Some(d), false) = (measure, decreases, returned) {
             let (env, old) = self.cur_env();
             let d1 = self.spec(d, &env, &old).s();
             self.oblige(
@@ -3917,6 +3991,7 @@ fn find_let_expr(e: &Expr, name: &str, out: &mut Option<TypeKind>) {
             find_let_expr(scrut, name, out);
             arms.iter().for_each(|a| find_let_expr(&a.body, name, out));
         }
+        ExprKind::Return(x) => x.iter().for_each(|x| find_let_expr(x, name, out)),
         ExprKind::Int(_)
         | ExprKind::ByteLit(_)
         | ExprKind::ByteStr(_)
@@ -4001,6 +4076,32 @@ fn assigned_in_expr(e: &Expr, out: &mut BTreeSet<String>) {
             }
             assigned_in_expr(recv, out);
             args.iter().for_each(|a| assigned_in_expr(a, out));
+        }
+        // A `&mut` match writes its scrutinee's place through the bindings
+        // (ADR-0055); the arms may assign anything.
+        ExprKind::Match { scrut, arms } => {
+            if let ExprKind::Ref {
+                mutable: true,
+                expr,
+            } = &scrut.kind
+                && let Some(r) = root_var(expr)
+            {
+                out.insert(r);
+            }
+            // `match e` on a `&mut` parameter (`?e`: kept when it is one).
+            if let ExprKind::Var(id) = &scrut.kind {
+                out.insert(format!("?{}", id.name));
+            }
+            assigned_in_expr(scrut, out);
+            arms.iter().for_each(|a| assigned_in_expr(&a.body, out));
+        }
+        ExprKind::Return(Some(x))
+        | ExprKind::Field { base: x, .. }
+        | ExprKind::Deref(x)
+        | ExprKind::Repeat { value: x, .. } => assigned_in_expr(x, out),
+        ExprKind::Array(items) => items.iter().for_each(|a| assigned_in_expr(a, out)),
+        ExprKind::StructLit { fields, .. } => {
+            fields.iter().for_each(|(_, a)| assigned_in_expr(a, out))
         }
         _ => {}
     }
@@ -4719,19 +4820,9 @@ fn verify_impl(
                     enc.entry_measure = Some(enc.measure(dec, &env, &old));
                 }
                 let result = enc.block(&d.f.body);
-                enc.mark_reach(d.f.name.span, "end of the body");
-                let (mut env, old) = enc.cur_env();
-                if let Some(n) = &d.f.ret.name {
-                    env.insert(n.name.clone(), result);
-                }
-                for en in &d.f.ensures {
-                    let g = enc.spec(en, &env, &old).s();
-                    enc.oblige(
-                        "E0802",
-                        en.span,
-                        format!("postcondition `{}` may not hold", pred_name(en)),
-                        g,
-                    );
+                if !enc.dead {
+                    enc.mark_reach(d.f.name.span, "end of the body");
+                    enc.post_check(result);
                 }
             }
         }

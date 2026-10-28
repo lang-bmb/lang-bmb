@@ -448,6 +448,8 @@ struct FnCtx {
     scopes: Vec<BTreeMap<String, Local>>,
     all_names: BTreeSet<String>,
     forall_depth: u32,
+    /// The function's result type (`return e`, ADR-0049 §1).
+    ret: TypeKind,
 }
 
 pub fn ty_str(t: &TypeKind) -> String {
@@ -477,6 +479,7 @@ pub fn ty_str(t: &TypeKind) -> String {
         TypeKind::Vec(e) => format!("Vec<{}>", ty_str(&e.kind)),
         TypeKind::Box(e) => format!("Box<{}>", ty_str(&e.kind)),
         TypeKind::Param(n) => n.clone(),
+        TypeKind::Never => "!".into(),
         TypeKind::Error => "{error}".into(),
     }
 }
@@ -2717,6 +2720,7 @@ impl<'a> Checker<'a> {
             scopes: vec![BTreeMap::new()],
             all_names: BTreeSet::new(),
             forall_depth: 0,
+            ret: TypeKind::Error,
         };
         self.calls.entry(path.clone()).or_default();
 
@@ -2765,6 +2769,7 @@ impl<'a> Checker<'a> {
             self.spec_vec(f.ret.ty.span);
         }
         let ret_ty = self.canon(&f.ret.ty, mod_path, true);
+        cx.ret = ret_ty.clone();
 
         if f.kind == FnKind::Spec && (!f.requires.is_empty() || !f.ensures.is_empty()) {
             let sp = f.requires.first().or(f.ensures.first()).unwrap().span;
@@ -3052,7 +3057,11 @@ impl<'a> Checker<'a> {
     }
 
     fn expect_ty(&mut self, found: &TypeKind, want: &TypeKind, span: Span) {
-        if found != want && *found != TypeKind::Error && *want != TypeKind::Error {
+        if found != want
+            && *found != TypeKind::Error
+            && *want != TypeKind::Error
+            && *found != TypeKind::Never
+        {
             let d = Diag::new(
                 "E0401",
                 span,
@@ -3084,6 +3093,14 @@ impl<'a> Checker<'a> {
         }
         let t = match &b.tail {
             Some(e) => self.expr(cx, e, expected, mode),
+            // A block whose statements do not all finish has type `!`
+            // (`{ return 1; }`).
+            None if b.stmts.iter().any(|s| {
+                matches!(s, Stmt::Expr(e) if self.types.get(&(e.span.file, e.span.lo, e.span.hi)) == Some(&TypeKind::Never))
+            }) =>
+            {
+                TypeKind::Never
+            }
             None => TypeKind::Unit,
         };
         cx.scopes.pop();
@@ -4291,11 +4308,16 @@ impl<'a> Checker<'a> {
                     self.declare(cx, id, t, false, false);
                 }
             }
-            let hint = ty.as_ref().filter(|t| **t != TypeKind::Error).or(expected);
+            let hint = ty
+                .as_ref()
+                .filter(|t| !matches!(t, TypeKind::Error | TypeKind::Never))
+                .or(expected);
             let bt = self.expr(cx, &a.body, hint, mode);
+            // An arm that does not finish (`None => return 0`) takes the
+            // others' type.
             match &ty {
-                Some(t) => self.expect_ty(&bt, t, a.body.span),
-                None => ty = Some(bt),
+                Some(t) if *t != TypeKind::Never => self.expect_ty(&bt, t, a.body.span),
+                _ => ty = Some(bt),
             }
             cx.scopes.pop();
         }
@@ -4544,6 +4566,65 @@ impl<'a> Checker<'a> {
     ) -> TypeKind {
         match &e.kind {
             ExprKind::Error => TypeKind::Error,
+            ExprKind::Return(x) => {
+                if mode != Mode::Exec {
+                    self.diags.push(
+                        Diag::new(
+                            "E0503",
+                            e.span,
+                            "`return` is not allowed in a specification",
+                        )
+                        .fix(
+                            "a specification is one expression: put the value in the branch (`if c { a } else { b }`)",
+                            None,
+                        ),
+                    );
+                }
+                let want = cx.ret.clone();
+                match x {
+                    Some(v) => {
+                        let t = self.expr(cx, v, Some(&want), mode);
+                        if !self.deref_fix(&t, &want, v)
+                            && t != want
+                            && !matches!(t, TypeKind::Error | TypeKind::Never)
+                            && want != TypeKind::Error
+                        {
+                            self.diags.push(
+                                Diag::new(
+                                    "E0401",
+                                    v.span,
+                                    format!("expected `{}`, found `{}`", ty_str(&want), ty_str(&t)),
+                                )
+                                .fix(
+                                    format!(
+                                        "the function returns `{}`: return a value of that type",
+                                        ty_str(&want)
+                                    ),
+                                    None,
+                                ),
+                            );
+                        }
+                    }
+                    None if !matches!(want, TypeKind::Unit | TypeKind::Error) => {
+                        self.diags.push(
+                            Diag::new(
+                                "E0401",
+                                e.span,
+                                format!("expected `{}`, found `()`", ty_str(&want)),
+                            )
+                            .fix(
+                                format!(
+                                    "the function returns `{}`: write `return <value>`",
+                                    ty_str(&want)
+                                ),
+                                None,
+                            ),
+                        );
+                    }
+                    None => {}
+                }
+                TypeKind::Never
+            }
             ExprKind::Path(path) if int_const(path).is_some() => {
                 int_const(path).expect("checked").0
             }
@@ -4829,9 +4910,15 @@ impl<'a> Checker<'a> {
                         let et = self.expr(
                             cx,
                             el,
-                            Some(&tt).filter(|t| **t != TypeKind::Error).or(expected),
+                            Some(&tt)
+                                .filter(|t| !matches!(t, TypeKind::Error | TypeKind::Never))
+                                .or(expected),
                             mode,
                         );
+                        // A branch that does not finish takes the other's type.
+                        if tt == TypeKind::Never {
+                            return et;
+                        }
                         self.expect_ty(&et, &tt, el.span);
                         tt
                     }
@@ -6896,6 +6983,7 @@ fn mentions(e: &Expr, name: &str) -> bool {
         ExprKind::Repeat { value, .. } => mentions(value, name),
         ExprKind::Binary(_, l, r) => mentions(l, name) || mentions(r, name),
         ExprKind::Field { base, .. } => mentions(base, name),
+        ExprKind::Return(x) => x.as_ref().is_some_and(|x| mentions(x, name)),
         ExprKind::StructLit { fields, .. } => fields.iter().any(|(_, x)| mentions(x, name)),
         // Blocks and conditionals as call arguments are rare; be conservative.
         ExprKind::If { .. }
@@ -6969,6 +7057,7 @@ fn collect_triggers<'e>(e: &'e Expr, out: &mut Vec<&'e Expr>) {
         | ExprKind::ByteStr(_)
         | ExprKind::Bool(_)
         | ExprKind::Unit
+        | ExprKind::Return(_)
         | ExprKind::Error => {}
     }
 }

@@ -1593,15 +1593,6 @@ impl<'a> Parser<'a> {
                         span: lo.to(hi),
                     }));
                 }
-                "return" => {
-                    self.bump();
-                    self.diags
-                        .push(Diag::new("E0203", lo, "`return` is not allowed").fix(
-                            "restructure so the value is the block's tail expression",
-                            None,
-                        ));
-                    return Err(());
-                }
                 "for" | "loop" => {
                     self.bump();
                     self.diags.push(
@@ -1625,6 +1616,31 @@ impl<'a> Parser<'a> {
                 }
                 _ => {}
             }
+        }
+        // A block-like expression statement ends at its `}` when what follows
+        // would otherwise read as an operand (Rust): `if c { return; } *x =
+        // 1;` is two statements. A binary operator or a method call after
+        // it keeps the expression going (`match a { .. } == 3`).
+        if self.is_kw("if") || self.is_kw("match") {
+            let (pos, nd) = (self.pos, self.diags.items.len());
+            let e = if self.is_kw("if") {
+                self.nested(Self::parse_if)?
+            } else {
+                self.nested(Self::parse_match)?
+            };
+            let ends = match self.peek() {
+                Tok::P(p) => matches!(*p, "*" | "-" | "&" | "!" | "(" | "[" | ";" | "}" | "{"),
+                Tok::Ident(k) => k != "as",
+                _ => true,
+            };
+            if ends {
+                if self.eat_p(";") {
+                    return Ok(StmtOrTail::Stmt(Stmt::Expr(e)));
+                }
+                return Ok(StmtOrTail::Tail(e));
+            }
+            self.pos = pos;
+            self.diags.items.truncate(nd);
         }
         let e = self.parse_expr()?;
         if self.eat_p("=") {
@@ -1788,6 +1804,26 @@ impl<'a> Parser<'a> {
     // ---------- expressions ----------
 
     fn parse_expr(&mut self) -> PResult<Expr> {
+        // `return e` binds loosest, as in Rust (ADR-0049 §1).
+        if self.is_kw("return") {
+            let lo = self.bump().span;
+            let ends = matches!(
+                self.peek(),
+                Tok::P(";") | Tok::P("}") | Tok::P(")") | Tok::P(",") | Tok::P("]") | Tok::Eof
+            );
+            if ends {
+                return Ok(Expr {
+                    kind: ExprKind::Return(None),
+                    span: lo,
+                });
+            }
+            let v = self.nested(Self::parse_expr)?;
+            let span = lo.to(v.span);
+            return Ok(Expr {
+                kind: ExprKind::Return(Some(Box::new(v))),
+                span,
+            });
+        }
         let lhs = self.parse_or()?;
         if self.eat_p("==>") {
             let rhs = self.nested(Self::parse_expr)?;

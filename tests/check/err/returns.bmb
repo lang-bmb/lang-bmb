@@ -1,0 +1,40 @@
+#[summary("조기 반환의 경계: 타입, 명세 (backlog 2K-01a)")]
+mod rc {
+    spec fn pos(x: i64) -> bool { x > 0 }
+
+    // The value has the result's type.
+    #[effects(pure)]
+    fn wrong(x: i64) -> bool {
+        if x > 0 {
+            return 1;
+        }
+        false
+    }
+
+    // A function with a result returns a value.
+    #[effects(pure)]
+    fn bare(x: i64) -> i64 {
+        if x > 0 {
+            return;
+        }
+        x
+    }
+
+    // A specification is an expression.
+    spec fn early(x: i64) -> bool {
+        if x > 0 { return true } else { false }
+    }
+
+    #[effects(pure)]
+    #[uses(pos)]
+    fn in_invariant(n: u64) -> u64 {
+        let mut i: u64 = 0;
+        while i < n
+            invariant i <= n && { return 0 },
+            decreases n - i,
+        {
+            i = i + 1;
+        }
+        i
+    }
+}

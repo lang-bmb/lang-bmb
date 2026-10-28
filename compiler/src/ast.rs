@@ -209,6 +209,9 @@ pub enum TypeKind {
     /// A type parameter in scope (ADR-0046), resolved by the checker from a
     /// one-segment `Named`.
     Param(String),
+    /// The type of an expression that does not finish (`return`, ADR-0049
+    /// §1): it fits any expected type.
+    Never,
     Error,
 }
 
@@ -407,6 +410,8 @@ pub enum ExprKind {
         scrut: Box<Expr>,
         arms: Vec<Arm>,
     },
+    /// `return e` / `return` (ADR-0049 §1): of type `!`.
+    Return(Option<Box<Expr>>),
     Error,
 }
 

@@ -22,8 +22,9 @@
 //! pass records it for code generation: the locals still owned at the end
 //! of each block and arm, and the assignments that replace an owned value.
 //!
-//! The language has no `return`, `break` or `continue`, so blocks, branches
-//! and loops are the whole control flow.
+//! A `return` (ADR-0049 §4) ends its path: the values still owned there
+//! are dropped on that exit (`MoveInfo::exits`), and a join takes only the
+//! paths that reach it.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -71,6 +72,9 @@ pub struct MoveInfo {
     /// Assignments (by statement span) to a partially moved place: the
     /// field paths still owned, dropped after the right side is evaluated.
     pub partial_replaces: BTreeMap<Key, Vec<String>>,
+    /// Per `return` (by its span): the owned locals and parameters (or
+    /// their fields still owned) dropped on that exit.
+    pub exits: BTreeMap<Key, Vec<String>>,
 }
 
 struct Mv<'a> {
@@ -82,6 +86,9 @@ struct Mv<'a> {
     /// The type parameters without `Copy` (their values move).
     moving: &'a BTreeSet<String>,
     state: BTreeMap<String, St>,
+    /// The current path has left the function (`return`): what follows on
+    /// it does not run, and a join ignores it.
+    dead: bool,
     diags: Vec<Diag>,
     info: MoveInfo,
 }
@@ -101,6 +108,7 @@ pub fn check(
         adts,
         moving,
         state: BTreeMap::new(),
+        dead: false,
         diags: Vec::new(),
         info: MoveInfo::default(),
     };
@@ -110,6 +118,9 @@ pub fn check(
         }
     }
     m.block(&f.body);
+    if m.dead {
+        return (m.diags, m.info);
+    }
     let roots: Vec<String> = m
         .state
         .keys()
@@ -358,6 +369,45 @@ impl Mv<'_> {
         self.state = out;
     }
 
+    /// The join of two paths, each with its state and whether it left the
+    /// function: a path that left does not reach the join.
+    fn join(
+        &mut self,
+        a: (BTreeMap<String, St>, bool),
+        b: (BTreeMap<String, St>, bool),
+        span: Span,
+    ) {
+        match (a, b) {
+            ((sa, true), (_, true)) => {
+                self.state = sa;
+                self.dead = true;
+            }
+            ((_, true), (sb, false)) => {
+                self.state = sb;
+                self.dead = false;
+            }
+            ((sa, false), (_, true)) => {
+                self.state = sa;
+                self.dead = false;
+            }
+            ((sa, false), (sb, false)) => {
+                self.dead = false;
+                self.merge(sa, sb, span);
+            }
+        }
+    }
+
+    /// The owned paths of every live local and parameter (a `return`).
+    fn owned_now(&self) -> Vec<String> {
+        let roots: Vec<String> = self
+            .state
+            .keys()
+            .filter(|n| !n.contains('.'))
+            .cloned()
+            .collect();
+        roots.iter().flat_map(|n| self.drop_paths(n)).collect()
+    }
+
     /// Whether place `e` is reached through a `&mut` parameter (not
     /// through a `Box` of a local, which can be moved whole).
     fn behind_mut(&self, e: &Expr) -> bool {
@@ -433,10 +483,16 @@ impl Mv<'_> {
     /// the block is only read (`{ v }.len()`).
     fn block(&mut self, b: &Block) {
         let outer: BTreeSet<String> = self.state.keys().cloned().collect();
+        // What follows a `return` does not run.
         for s in &b.stmts {
+            if self.dead {
+                break;
+            }
             self.stmt(s);
         }
-        if let Some(t) = &b.tail {
+        if let Some(t) = &b.tail
+            && !self.dead
+        {
             self.expr(t, true);
         }
         let inner: Vec<String> = self
@@ -451,7 +507,7 @@ impl Mv<'_> {
             self.clear(&n);
             self.state.remove(&n);
         }
-        if !owned.is_empty() {
+        if !owned.is_empty() && !self.dead {
             self.info.drops.insert(key(b.span), owned);
         }
     }
@@ -542,6 +598,12 @@ impl Mv<'_> {
                 self.expr(cond, true);
                 let exit = self.state.clone();
                 self.block(body);
+                // A body that left the function does not loop back.
+                if self.dead {
+                    self.dead = false;
+                    self.state = exit;
+                    return;
+                }
                 let mut out = exit;
                 let keys: BTreeSet<String> =
                     head.keys().chain(self.state.keys()).cloned().collect();
@@ -605,7 +667,8 @@ impl Mv<'_> {
                 let skip = self.state.clone();
                 self.expr(r, true);
                 let taken = std::mem::take(&mut self.state);
-                self.merge(skip, taken, e.span);
+                let dead = std::mem::replace(&mut self.dead, false);
+                self.join((skip, false), (taken, dead), e.span);
             }
             ExprKind::Binary(_, l, r) => {
                 self.expr(l, false);
@@ -617,11 +680,13 @@ impl Mv<'_> {
                 let before = self.state.clone();
                 self.block(then);
                 let after_then = std::mem::replace(&mut self.state, before);
+                let then_dead = std::mem::replace(&mut self.dead, false);
                 if let Some(el) = els {
                     self.expr(el, true);
                 }
                 let after_else = std::mem::take(&mut self.state);
-                self.merge(after_then, after_else, e.span);
+                let else_dead = std::mem::replace(&mut self.dead, false);
+                self.join((after_then, then_dead), (after_else, else_dead), e.span);
             }
             ExprKind::Block(b) => self.block(b),
             ExprKind::Array(items) => {
@@ -729,7 +794,7 @@ impl Mv<'_> {
                     _ => self.expr(scrut, binds_owned),
                 }
                 let before = self.state.clone();
-                let mut joined: Option<BTreeMap<String, St>> = None;
+                let mut joined: Option<(BTreeMap<String, St>, bool)> = None;
                 for arm in arms {
                     self.state = before.clone();
                     let binds: Vec<String> = arm
@@ -750,19 +815,39 @@ impl Mv<'_> {
                             owned.push(b);
                         }
                     }
-                    if !owned.is_empty() {
+                    let dead = std::mem::replace(&mut self.dead, false);
+                    if !owned.is_empty() && !dead {
                         self.info.arm_drops.insert(key(arm.body.span), owned);
                     }
                     let after = std::mem::take(&mut self.state);
                     joined = Some(match joined {
-                        None => after,
+                        None => (after, dead),
                         Some(j) => {
-                            self.merge(j, after, e.span);
-                            std::mem::take(&mut self.state)
+                            self.join(j, (after, dead), e.span);
+                            let d = std::mem::replace(&mut self.dead, false);
+                            (std::mem::take(&mut self.state), d)
                         }
                     });
                 }
-                self.state = joined.unwrap_or(before);
+                match joined {
+                    Some((st, dead)) => {
+                        self.state = st;
+                        self.dead = dead;
+                    }
+                    None => self.state = before,
+                }
+            }
+            // The value moves out; everything else still owned is dropped
+            // on this exit.
+            ExprKind::Return(x) => {
+                if let Some(x) = x {
+                    self.expr(x, true);
+                }
+                let owned = self.owned_now();
+                if !owned.is_empty() {
+                    self.info.exits.insert(key(e.span), owned);
+                }
+                self.dead = true;
             }
             ExprKind::Int(_)
             | ExprKind::ByteLit(_)

@@ -77,4 +77,57 @@ mod loops {
         }
         assert(a[0] == 5);
     }
+
+    enum Cell { Empty, Full(i64) }
+
+    spec fn zero(c: &Cell) -> bool {
+        match c {
+            Cell::Empty => false,
+            Cell::Full(v) => *v == 0,
+        }
+    }
+
+    // An assignment in a `match` arm in the body is havocked at the loop
+    // head (it was not: the assertion was proved, found in 2K-01a).
+    #[effects(pure)]
+    fn arm_assigns(o: Option<i64>) -> i64 {
+        let mut x: i64 = 0;
+        let mut i: u64 = 0;
+        while i < 10
+            invariant i <= 10,
+            decreases 10 - i,
+        {
+            match o {
+                None => {}
+                Some(v) => {
+                    x = 5;
+                }
+            }
+            i = i + 1;
+        }
+        assert(x == 0);
+        x
+    }
+
+    // So is a write through a `&mut` match binding on a `&mut` parameter.
+    #[effects(pure)]
+    #[uses(zero)]
+    fn binding_writes(c: &mut Cell) -> ()
+        requires zero(c),
+    {
+        let mut i: u64 = 0;
+        while i < 3
+            invariant i <= 3,
+            decreases 3 - i,
+        {
+            match c {
+                Cell::Empty => {}
+                Cell::Full(v) => {
+                    *v = 7;
+                }
+            }
+            i = i + 1;
+        }
+        assert(zero(c));
+    }
 }

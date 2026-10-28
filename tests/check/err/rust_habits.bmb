@@ -12,9 +12,6 @@ mod habits {
     }
 
     #[effects(pure)]
-    fn early(x: i64) -> i64 { return x; }
-
-    #[effects(pure)]
     fn loops() -> () { for i in 0..3 { } }
 
     #[effects(pure)]

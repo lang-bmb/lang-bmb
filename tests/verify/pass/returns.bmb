@@ -1,0 +1,133 @@
+#[summary("조기 반환의 증명: 반환 지점의 사후 조건, 경로 끝 (ADR-0049 §3, backlog 2K-01a)")]
+mod rt {
+    spec fn at(a: &[i64], x: i64, r: Option<usize>) -> bool {
+        match r {
+            None => true,
+            Some(i) => i < a.len() && a[i] == x,
+        }
+    }
+
+    spec fn big(a: i64) -> bool {
+        a > -1000
+    }
+
+    #[effects(pure)]
+    #[uses(bumped)]
+    fn bump(x: &mut i64) -> ()
+        ensures bumped(*old(x), *x),
+    {
+        if *x > 5 {
+            return;
+        }
+        *x = *x + 1;
+    }
+
+    spec fn bumped(a: i64, b: i64) -> bool {
+        a > 5 && b == a || a <= 5 && b == a + 1
+    }
+
+    #[effects(pure)]
+    fn early_and(x: bool, y: bool) -> i64 {
+        let b: bool = x && ({ if y { return 7; } true });
+        if b {
+            1
+        } else {
+            0
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(at)]
+    fn find(a: &[i64], x: i64) -> (r: Option<usize>)
+        ensures at(a, x, r),
+    {
+        let mut i: usize = 0;
+        while i < a.len()
+            invariant i <= a.len(),
+            decreases a.len() - i,
+        {
+            if a[i] == x {
+                return Some(i);
+            }
+            i = i + 1;
+        }
+        None
+    }
+
+    #[effects(pure)]
+    fn first_big(v: Vec<i64>) -> i64 {
+        let w: Vec<i64> = v;
+        if w.len() == 0 {
+            return -1;
+        }
+        let b: Box<i64> = Box::new(w[0]);
+        if *b > 10 {
+            return *b;
+        }
+        0
+    }
+
+    #[effects(pure)]
+    fn get_or(o: Option<i64>, d: i64) -> i64 {
+        let v: i64 = match o {
+            None => return d,
+            Some(x) => x,
+        };
+        v
+    }
+
+    #[effects(pure)]
+    fn nested(a: &[i64]) -> i64 {
+        let mut i: usize = 0;
+        while i < a.len()
+            invariant i <= a.len(),
+            decreases a.len() - i,
+        {
+            let mut j: usize = 0;
+            while j < a.len()
+                invariant j <= a.len(),
+                decreases a.len() - j,
+            {
+                if i != j && a[i] == a[j] {
+                    return a[i];
+                }
+                j = j + 1;
+            }
+            i = i + 1;
+        }
+        -1
+    }
+
+    #[effects(pure)]
+    fn pick(a: Vec<i64>, b: Vec<i64>, c: bool) -> Vec<i64> {
+        if c {
+            return a;
+        }
+        b
+    }
+
+    spec fn quot(a: i64, b: i64, r: i64) -> bool {
+        b == 0 && r == 0 || b != 0 && r == a / b
+    }
+
+    #[effects(pure)]
+    #[uses(big, quot)]
+    fn safe_div(a: i64, b: i64) -> (r: i64)
+        requires big(a),
+        ensures quot(a, b, r),
+    {
+        if b == 0 {
+            return 0;
+        }
+        a / b
+    }
+
+    #[effects(pure)]
+    fn tail_return(x: i64) -> i64 {
+        if x > 0 {
+            return 1
+        } else {
+            return 2
+        }
+    }
+}
