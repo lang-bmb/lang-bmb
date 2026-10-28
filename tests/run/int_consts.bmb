@@ -11,15 +11,12 @@ mod ic {
     #[effects(pure)]
     fn largest(a: &[i64]) -> (r: i64) {
         let mut m: i64 = i64::MIN;
-        let mut i: usize = 0;
-        while i < a.len()
+        for i in 0..a.len()
             invariant i <= a.len(),
-            decreases a.len() - i,
         {
             if a[i] > m {
                 m = a[i];
             }
-            i = i + 1;
         }
         m
     }

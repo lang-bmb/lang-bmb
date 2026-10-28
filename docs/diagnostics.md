@@ -181,6 +181,7 @@
 | W0904 | the specification does not distinguish this change to the body (the mutant still verifies) |
 | W0905 | a point of a verified function is unreachable in its proof: what follows is proved vacuously |
 | W0906 | a `forall`'s only trigger matches a term of its own body: instances feed each other (matching loop) |
+| W0907 | a counting `while` whose canonical form is a range `for` (the fix rewrites it; `bmb fix` applies it) |
 
 ## 은퇴한 코드(다시 쓰지 않는다)
 

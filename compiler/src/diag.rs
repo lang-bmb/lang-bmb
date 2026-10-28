@@ -313,6 +313,10 @@ pub const CODES: &[(&str, &str)] = &[
         "W0906",
         "a `forall`'s only trigger matches a term of its own body: instances feed each other (matching loop)",
     ),
+    (
+        "W0907",
+        "a counting `while` whose canonical form is a range `for` (the fix rewrites it; `bmb fix` applies it)",
+    ),
 ];
 
 /// Severity of a code: `W` codes are warnings (reported only by `bmb lint`),

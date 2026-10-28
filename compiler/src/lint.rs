@@ -53,7 +53,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use crate::ast::{BinOp, Block, Expr, ExprKind, FnDef, FnKind, Mod, Program, Stmt, UnOp};
+use crate::ast::{
+    BinOp, Block, Expr, ExprKind, FnDef, FnKind, Ident, Mod, Program, Stmt, TypeKind, UnOp,
+};
 use crate::cache::ProofCache;
 use crate::diag::{Diag, Diags};
 use crate::incremental::Session;
@@ -423,6 +425,11 @@ pub fn lint_sources_cached(
         for d in self_matching(f, text) {
             out.push(d);
         }
+    }
+
+    // W0907: counting `while` loops with a canonical `for` (syntactic).
+    for d in canonical_loops(&fe.program, files) {
+        out.push(d);
     }
 
     if let Some(d) = cache_dir
@@ -1027,6 +1034,386 @@ fn self_matching(f: &FnDef, text: &str) -> Vec<Diag> {
         }
     }
     out
+}
+
+// ---------- canonical counting loops (W0907, backlog 2K-04) ----------
+
+/// The blocks of `b`, nested ones included.
+fn blocks_in<'b>(b: &'b Block, out: &mut Vec<&'b Block>) {
+    out.push(b);
+    for s in &b.stmts {
+        match s {
+            Stmt::While { cond, body, .. } => {
+                expr_blocks(cond, out);
+                blocks_in(body, out);
+            }
+            Stmt::For { lo, hi, body, .. } => {
+                expr_blocks(lo, out);
+                expr_blocks(hi, out);
+                blocks_in(body, out);
+            }
+            Stmt::Let { init, .. } | Stmt::LetFields { init, .. } => expr_blocks(init, out),
+            Stmt::Assign { target, value, .. } => {
+                expr_blocks(target, out);
+                expr_blocks(value, out);
+            }
+            Stmt::Assert { .. } => {}
+            Stmt::Expr(e) => expr_blocks(e, out),
+        }
+    }
+    if let Some(t) = &b.tail {
+        expr_blocks(t, out);
+    }
+}
+
+fn expr_blocks<'b>(e: &'b Expr, out: &mut Vec<&'b Block>) {
+    match &e.kind {
+        ExprKind::If { cond, then, els } => {
+            expr_blocks(cond, out);
+            blocks_in(then, out);
+            if let Some(x) = els {
+                expr_blocks(x, out);
+            }
+        }
+        ExprKind::Block(b) | ExprKind::Loop { body: b, .. } => blocks_in(b, out),
+        _ => {
+            for c in children(e) {
+                expr_blocks(c, out);
+            }
+        }
+    }
+}
+
+/// The variable a place expression is rooted at.
+fn place_root(e: &Expr) -> Option<&str> {
+    match &e.kind {
+        ExprKind::Var(v) => Some(&v.name),
+        ExprKind::Field { base: x, .. }
+        | ExprKind::Index { base: x, .. }
+        | ExprKind::Deref(x)
+        | ExprKind::Ref { expr: x, .. }
+        | ExprKind::Method { recv: x, .. } => place_root(x),
+        _ => None,
+    }
+}
+
+/// Whether `b` may change a variable of `names`: an assignment to a place
+/// rooted there, a `&mut` borrow of one, or a method other than a read
+/// called on one.
+fn writes(b: &Block, names: &BTreeSet<&str>) -> bool {
+    fn in_expr(e: &Expr, names: &BTreeSet<&str>) -> bool {
+        let here = match &e.kind {
+            ExprKind::Ref {
+                mutable: true,
+                expr,
+            } => place_root(expr).is_some_and(|r| names.contains(r)),
+            ExprKind::Method { recv, name, .. } => {
+                !matches!(name.name.as_str(), "len" | "as_slice")
+                    && place_root(recv).is_some_and(|r| names.contains(r))
+            }
+            _ => false,
+        };
+        here || children(e).into_iter().any(|c| in_expr(c, names))
+    }
+    let mut blocks = Vec::new();
+    blocks_in(b, &mut blocks);
+    let assigns = blocks.iter().flat_map(|b| &b.stmts).any(|s| {
+        matches!(s, Stmt::Assign { target, .. }
+            if place_root(target).is_some_and(|r| names.contains(r)))
+    });
+    assigns || block_exprs(b).into_iter().any(|e| in_expr(e, names))
+}
+
+/// Whether a `continue` in `b` goes to the loop labeled `label` around it
+/// (an unlabeled one outside any inner loop does).
+fn continues_to(b: &Block, label: Option<&str>) -> bool {
+    fn in_block(b: &Block, label: Option<&str>, inner: bool) -> bool {
+        b.stmts.iter().any(|s| match s {
+            Stmt::While { cond, body, .. } => {
+                in_expr(cond, label, inner) || in_block(body, label, true)
+            }
+            Stmt::For { lo, hi, body, .. } => {
+                in_expr(lo, label, inner)
+                    || in_expr(hi, label, inner)
+                    || in_block(body, label, true)
+            }
+            Stmt::Let { init: e, .. } | Stmt::LetFields { init: e, .. } | Stmt::Expr(e) => {
+                in_expr(e, label, inner)
+            }
+            Stmt::Assign { target, value, .. } => {
+                in_expr(target, label, inner) || in_expr(value, label, inner)
+            }
+            Stmt::Assert { .. } => false,
+        }) || b.tail.as_ref().is_some_and(|t| in_expr(t, label, inner))
+    }
+    fn in_expr(e: &Expr, label: Option<&str>, inner: bool) -> bool {
+        match &e.kind {
+            ExprKind::Continue { label: l } => match l {
+                Some(l) => label == Some(l.name.as_str()),
+                None => !inner,
+            },
+            ExprKind::Loop { body, .. } => in_block(body, label, true),
+            ExprKind::If { cond, then, els } => {
+                in_expr(cond, label, inner)
+                    || in_block(then, label, inner)
+                    || els.as_ref().is_some_and(|x| in_expr(x, label, inner))
+            }
+            ExprKind::Block(b) => in_block(b, label, inner),
+            _ => children(e).into_iter().any(|c| in_expr(c, label, inner)),
+        }
+    }
+    in_block(b, label, false)
+}
+
+/// A bound that names the same value at every head: variables, constants,
+/// fields, arithmetic and `len()`.
+fn plain_bound(e: &Expr) -> bool {
+    match &e.kind {
+        ExprKind::Var(_) | ExprKind::Int(_) | ExprKind::Path(_) => true,
+        ExprKind::Field { base: x, .. } | ExprKind::Deref(x) | ExprKind::Unary(_, x) => {
+            plain_bound(x)
+        }
+        ExprKind::Binary(op, l, r) => op.is_arith() && plain_bound(l) && plain_bound(r),
+        ExprKind::Method { recv, name, args } => {
+            name.name == "len" && args.is_empty() && plain_bound(recv)
+        }
+        _ => false,
+    }
+}
+
+fn int_literal(e: &Expr) -> bool {
+    match &e.kind {
+        ExprKind::Int(_) => true,
+        ExprKind::Unary(UnOp::Neg, x) => int_literal(x),
+        _ => false,
+    }
+}
+
+/// W0907 for each counting `while` of `f` (ADR-0049 §2, ADR-0057): `let mut
+/// i: T = lo;` right before `while i < hi .. { ..; i = i + 1; }`, where
+/// only that last statement changes `i`, nothing in the body changes what
+/// `hi` reads, no `continue` goes to the loop and nothing after it names
+/// `i`. That is `for i in lo..hi` with the same invariants: the range
+/// `for` is encoded as exactly this expansion plus its head invariant and
+/// measure (backlog 2K-01d), so the proof carries over. The fix splices the
+/// source, so comments stay.
+pub fn counting_whiles(f: &FnDef, text: &str) -> Vec<Diag> {
+    let mut blocks = Vec::new();
+    blocks_in(&f.body, &mut blocks);
+    let mut out = Vec::new();
+    for b in blocks {
+        for k in 0..b.stmts.len().saturating_sub(1) {
+            let Stmt::Let {
+                mutable: true,
+                name,
+                ty,
+                init: lo,
+                span: let_span,
+                ..
+            } = &b.stmts[k]
+            else {
+                continue;
+            };
+            let Stmt::While {
+                label,
+                cond,
+                invariants: _,
+                decreases: Some(dec),
+                body,
+                span: w_span,
+            } = &b.stmts[k + 1]
+            else {
+                continue;
+            };
+            let i = name.name.as_str();
+            let ExprKind::Binary(BinOp::Lt, iv, hi) = &cond.kind else {
+                continue;
+            };
+            let is_i = |e: &Expr| matches!(&e.kind, ExprKind::Var(v) if v.name == i);
+            let step_ok = |s: &Stmt| match s {
+                Stmt::Assign { target, value, .. } => {
+                    is_i(target)
+                        && matches!(&value.kind, ExprKind::Binary(BinOp::Add, a, one)
+                            if is_i(a) && matches!(one.kind, ExprKind::Int(1)))
+                }
+                _ => false,
+            };
+            let Some((step, rest)) = body.stmts.split_last() else {
+                continue;
+            };
+            let only_i: BTreeSet<&str> = [i].into();
+            let mut hi_vars = BTreeSet::new();
+            vars_in(hi, &mut hi_vars);
+            let after = Block {
+                stmts: b.stmts[k + 2..].to_vec(),
+                tail: b.tail.clone(),
+                span: b.span,
+            };
+            let body_rest = Block {
+                stmts: rest.to_vec(),
+                tail: None,
+                span: body.span,
+            };
+            let convertible = is_i(iv)
+                && matches!(
+                    ty.kind,
+                    TypeKind::I64 | TypeKind::U64 | TypeKind::U8 | TypeKind::Usize
+                )
+                // Two literal bounds would make `i` an `i64`.
+                && !(int_literal(lo) && int_literal(hi) && ty.kind != TypeKind::I64)
+                && body.tail.is_none()
+                && step_ok(step)
+                && plain_bound(hi)
+                && !hi_vars.contains(i)
+                && !writes(&body_rest, &only_i)
+                && !writes(body, &hi_vars.iter().map(String::as_str).collect())
+                && !continues_to(body, label.as_ref().map(|l| l.name.as_str()))
+                && !block_exprs(&after).into_iter().any(|e| mentions(e, &only_i));
+            if !convertible {
+                continue;
+            }
+            out.push(w0907(
+                text,
+                i,
+                lo,
+                hi,
+                label.as_ref(),
+                dec,
+                step,
+                body,
+                *let_span,
+                *w_span,
+            ));
+        }
+    }
+    out
+}
+
+/// W0907 for every function of `p` (methods and default bodies included),
+/// in source order; `files` holds the source texts by file id.
+pub fn canonical_loops(p: &Program, files: &[(String, String)]) -> Vec<Diag> {
+    fn walk(m: &Mod, files: &[(String, String)], out: &mut Vec<Diag>) {
+        let fns = m
+            .fns
+            .iter()
+            .chain(m.impls.iter().flat_map(|i| &i.fns))
+            .chain(m.trait_impls.iter().flat_map(|i| &i.fns))
+            .chain(
+                m.traits
+                    .iter()
+                    .flat_map(|t| &t.fns)
+                    .filter(|t| t.has_body)
+                    .map(|t| &t.f),
+            );
+        for f in fns {
+            out.extend(counting_whiles(f, &files[f.span.file as usize].1));
+        }
+        for s in &m.mods {
+            walk(s, files, out);
+        }
+    }
+    let mut out = Vec::new();
+    for m in &p.mods {
+        walk(m, files, &mut out);
+    }
+    out.sort_by_key(|d| (d.span.file, d.span.lo));
+    out
+}
+
+fn vars_in(e: &Expr, out: &mut BTreeSet<String>) {
+    if let ExprKind::Var(v) = &e.kind {
+        out.insert(v.name.clone());
+    }
+    for c in children(e) {
+        vars_in(c, out);
+    }
+}
+
+/// The start of the line of byte `at`, and the end of the line of byte
+/// `to` past its newline, when only blanks surround `at..to` there.
+fn whole_lines(text: &str, at: usize, to: usize) -> Option<(usize, usize)> {
+    let start = text[..at].rfind('\n').map_or(0, |n| n + 1);
+    let end = text[to..].find('\n').map_or(text.len(), |n| to + n + 1);
+    (text[start..at].trim().is_empty() && text[to..end].trim().is_empty()).then_some((start, end))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn w0907(
+    text: &str,
+    i: &str,
+    lo: &Expr,
+    hi: &Expr,
+    label: Option<&Ident>,
+    dec: &Expr,
+    step: &Stmt,
+    body: &Block,
+    let_span: Span,
+    w_span: Span,
+) -> Diag {
+    let src = |sp: Span| &text[sp.lo as usize..sp.hi as usize];
+    let Stmt::Assign {
+        span: step_span, ..
+    } = step
+    else {
+        unreachable!("checked step")
+    };
+    let head_at = label.map_or(w_span.lo, |l| l.span.lo) as usize;
+    // Comments between the `let` and the loop stay before it.
+    let between = text[let_span.hi as usize..head_at].trim_start();
+    let label_text = &text[head_at..w_span.lo as usize];
+    // The clauses without `decreases ..,`.
+    let cond_end = hi.span.hi as usize;
+    let dec_kw = text[..dec.span.lo as usize]
+        .rfind("decreases")
+        .expect("a `decreases` keyword");
+    let mut dec_end = dec.span.hi as usize;
+    if text[dec_end..].starts_with(',') {
+        dec_end += 1;
+    }
+    let (cut_lo, cut_hi) = whole_lines(text, dec_kw, dec_end).unwrap_or_else(|| {
+        let n = text[dec_end..].len() - text[dec_end..].trim_start_matches(' ').len();
+        (dec_kw, dec_end + n)
+    });
+    let mut clauses = format!(
+        "{}{}",
+        &text[cond_end..cut_lo],
+        &text[cut_hi..body.span.lo as usize]
+    );
+    if clauses.trim().is_empty() {
+        clauses = " ".into();
+    }
+    // The body without the step.
+    let (s_lo, s_hi) = whole_lines(text, step_span.lo as usize, step_span.hi as usize)
+        .unwrap_or((step_span.lo as usize, step_span.hi as usize));
+    let body_text = format!(
+        "{}{}",
+        &text[body.span.lo as usize..s_lo],
+        &text[s_hi..body.span.hi as usize]
+    );
+    let replacement = format!(
+        "{between}{label_text}for {i} in {}..{}{clauses}{body_text}",
+        src(lo.span),
+        src(hi.span)
+    );
+    Diag::new(
+        "W0907",
+        Span {
+            file: let_span.file,
+            lo: let_span.lo,
+            hi: w_span.hi,
+        },
+        format!(
+            "`{i}` counts from `{}` up to `{}` by one: the canonical form is `for {i} in {}..{}`",
+            squash(src(lo.span)),
+            squash(src(hi.span)),
+            squash(src(lo.span)),
+            squash(src(hi.span))
+        ),
+    )
+    .fix(
+        "write the range `for` (the invariants stay; its measure is automatic)",
+        Some(replacement),
+    )
 }
 
 #[cfg(test)]

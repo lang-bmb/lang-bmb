@@ -18,10 +18,8 @@ mod by {
     fn shout(s: &[u8], out: &mut Vec<u8>) -> ()
         requires fresh(out.as_slice(), s),
     {
-        let mut i: usize = 0;
-        while i < s.len()
+        for i in 0..s.len()
             invariant i <= s.len(), out.len() == i, s.len() <= 1000,
-            decreases s.len() - i,
         {
             let c: u8 = s[i];
             if b'a' <= c && c <= b'z' {
@@ -29,7 +27,6 @@ mod by {
             } else {
                 out.push(c);
             }
-            i = i + 1;
         }
     }
 

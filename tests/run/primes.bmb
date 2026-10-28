@@ -14,13 +14,10 @@ mod pr {
         ensures primes_below(r.as_slice(), n),
     {
         let mut composite: Vec<bool> = Vec::with_capacity(n);
-        let mut k: usize = 0;
-        while k < n
+        for k in 0..n
             invariant k <= n, len_is(composite.as_slice(), k),
-            decreases n - k,
         {
             composite.push(false);
-            k = k + 1;
         }
         // Multiples from `i * i` on: smaller ones were marked by smaller primes.
         let mut i: usize = 2;
@@ -41,15 +38,12 @@ mod pr {
             i = i + 1;
         }
         let mut out: Vec<u64> = Vec::new();
-        let mut m: usize = 2;
-        while m < n
+        for m in 2..n
             invariant 2 <= m, m <= n, len_is(composite.as_slice(), n), primes_below(out.as_slice(), m),
-            decreases n - m,
         {
             if !composite[m] {
                 out.push(u64::try_from(m).unwrap());
             }
-            m = m + 1;
         }
         out
     }
@@ -94,13 +88,10 @@ mod pr {
         ensures sorted_build(r.as_slice(), n),
     {
         let mut v: Vec<i64> = Vec::new();
-        let mut k: usize = 0;
-        while k < n
+        for k in 0..n
             invariant k <= n, sorted_build(v.as_slice(), k),
-            decreases n - k,
         {
             v.push(2 * i64::try_from(k).unwrap());
-            k = k + 1;
         }
         v
     }
@@ -120,12 +111,8 @@ mod pr {
         b.push(3);
         b.push(4);
         let m: Vec<i64> = merge(a.as_slice(), b.as_slice());
-        let mut k: usize = 0;
-        while k < m.len()
-            decreases m.len() - k,
-        {
+        for k in 0..m.len() {
             print_i64(m[k]);
-            k = k + 1;
         }
     }
 }

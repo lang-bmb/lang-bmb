@@ -208,10 +208,18 @@ pub fn fix_sources(files: &[(String, String)]) -> FixOutput {
         if rounds == FIX_MAX_ROUNDS {
             return fix_output(texts, applied, rounds, fe);
         }
+        // A program that checks also takes its canonical-form rewrites
+        // (W0907, ADR-0057).
+        let canon = if fe.diags.has_errors() {
+            Vec::new()
+        } else {
+            lint::canonical_loops(&fe.program, &texts)
+        };
         let mut cand: Vec<(usize, usize, usize, &'static str, String)> = fe
             .diags
             .items
             .iter()
+            .chain(&canon)
             .filter_map(|d| {
                 let r = d.fix.as_ref()?.replacement.as_ref()?;
                 let (f, lo, hi) = (d.span.file as usize, d.span.lo as usize, d.span.hi as usize);

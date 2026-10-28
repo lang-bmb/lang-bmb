@@ -33,15 +33,12 @@ mod basics {
         requires nonempty(a),
     {
         let mut best: i64 = a[0];
-        let mut i: usize = 1;
-        while i < a.len()
+        for i in 1..a.len()
             invariant i <= a.len(),
-            decreases a.len() - i,
         {
             if a[i] > best {
                 best = a[i];
             }
-            i = i + 1;
         }
         best
     }

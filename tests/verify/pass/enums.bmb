@@ -80,13 +80,10 @@ mod geo {
         ensures is_dot(r),
     {
         let mut s: Shape = Shape::Square(n);
-        let mut i: i64 = 0;
-        while i < 3
+        for i in 0..3
             invariant 0 <= i, i <= 3, i == 0 || is_dot(s),
-            decreases 3 - i,
         {
             s = Shape::Dot;
-            i = i + 1;
         }
         s
     }

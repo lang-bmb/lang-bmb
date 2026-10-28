@@ -13,14 +13,11 @@ mod vr {
         ensures len_is(r.as_slice(), n),
     {
         let mut v: Vec<u64> = Vec::new();
-        let mut i: usize = 0;
-        while i < n
+        for i in 0..n
             invariant i <= n, v.len() == i, len_is(v.as_slice(), i),
-            decreases n - i,
         {
             let k: u64 = u64::try_from(i).unwrap();
             v.push(3 * k);
-            i = i + 1;
         }
         v
     }
@@ -28,13 +25,10 @@ mod vr {
     #[effects(pure)]
     fn sum(a: &[u64]) -> u64 {
         let mut s: u64 = 0;
-        let mut i: usize = 0;
-        while i < a.len()
+        for i in 0..a.len()
             invariant i <= a.len(),
-            decreases a.len() - i,
         {
             s = s.saturating_add(a[i]);
-            i = i + 1;
         }
         s
     }

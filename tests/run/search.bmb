@@ -80,15 +80,12 @@ mod alg {
         ensures is_max_index(a, r),
     {
         let mut best: usize = 0;
-        let mut i: usize = 1;
-        while i < a.len()
+        for i in 1..a.len()
             invariant i <= a.len(), max_below(a, i, best),
-            decreases a.len() - i,
         {
             if a[i] > a[best] {
                 best = i;
             }
-            i = i + 1;
         }
         best
     }

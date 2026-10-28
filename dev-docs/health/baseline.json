@@ -2,8 +2,8 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 6009193,
-    "V5_rlimit_headroom": 0.0152,
+    "V4_rlimit_total": 6149251,
+    "V5_rlimit_headroom": 0.0153,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0,
     "V8_bench_rlimit_total": 39913235,
@@ -14,11 +14,11 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 27458,
+    "S4_stage0_rust_lines": 27816,
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
     "P1_runnable_programs": 45,
-    "P2_bmb_lines": 12977,
+    "P2_bmb_lines": 12874,
     "P3_errors_with_help": 0.8151,
     "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
@@ -1058,6 +1058,28 @@
         "P2_bmb_lines": [
           12965,
           12977
+        ]
+      }
+    },
+    {
+      "date": "2026-10-28",
+      "reason": "2K-04: 34 counting while loops migrated to the canonical range for (ADR-0057) are about 3 lines shorter each; P2 12977 -> 12874 with the same programs, proofs and outputs",
+      "changed": {
+        "V4_rlimit_total": [
+          6009193,
+          6149251
+        ],
+        "V5_rlimit_headroom": [
+          0.0152,
+          0.0153
+        ],
+        "S4_stage0_rust_lines": [
+          27458,
+          27816
+        ],
+        "P2_bmb_lines": [
+          12977,
+          12874
         ]
       }
     }

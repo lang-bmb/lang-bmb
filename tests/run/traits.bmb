@@ -53,16 +53,13 @@ mod tr {
     #[effects(pure)]
     fn largest<T: Copy + Shape>(xs: &[T]) -> i64 {
         let mut best: i64 = 0;
-        let mut i: usize = 0;
-        while i < xs.len()
+        for i in 0..xs.len()
             invariant i <= xs.len(),
-            decreases xs.len() - i,
         {
             let a: i64 = Shape::area(&xs[i]);
             if a > best {
                 best = a;
             }
-            i = i + 1;
         }
         best
     }

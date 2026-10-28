@@ -36,17 +36,14 @@ mod nv {
         ensures rows(out.as_slice(), n),
     {
         let mut g: Vec<Vec<i64>> = Vec::new();
-        let mut k: usize = 0;
-        while k < n
+        for k in 0..n
             invariant k <= n && n <= 100 && rows(g.as_slice(), k),
-            decreases n - k,
         {
             let mut r: Vec<i64> = Vec::new();
             let v: i64 = i64::try_from(k).unwrap();
             r.push(v);
             r.push(v * 10);
             g.push(r);
-            k = k + 1;
         }
         g
     }

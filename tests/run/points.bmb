@@ -30,10 +30,8 @@ mod pts {
         requires cells_small(a), short(a.len()),
     {
         let mut s: i64 = 0;
-        let mut i: usize = 0;
-        while i < a.len()
+        for i in 0..a.len()
             invariant within(s, i, a.len()),
-            decreases a.len() - i,
         {
             let v: i64 = match a[i] {
                 Cell::Empty => 0,
@@ -41,7 +39,6 @@ mod pts {
                 Cell::Coin(c) => c,
             };
             s = s + v;
-            i = i + 1;
         }
         s
     }
@@ -104,13 +101,10 @@ mod pts {
         requires all_small(a), short(a.len()),
     {
         let mut s: i64 = 0;
-        let mut i: usize = 0;
-        while i < a.len()
+        for i in 0..a.len()
             invariant within(s, i, a.len()),
-            decreases a.len() - i,
         {
             s = s + a[i].x;
-            i = i + 1;
         }
         s
     }

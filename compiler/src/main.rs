@@ -45,8 +45,10 @@ const USAGE: &str = "usage:
   bmb fmt [--check] <file.bmb>...
                             print the normal form (ADR-0019); --check fails if a file differs
   bmb fix [--write|--print] <file.bmb>...
-                            apply mechanical fixes (diagnostic replacements) and re-check until
-                            none applies; JSONL report of applied fixes, remaining diagnostics
+                            apply mechanical fixes (diagnostic replacements, and on a program
+                            that checks the canonical `for` of counting `while` loops, W0907)
+                            and re-check until none applies; JSONL report of applied fixes,
+                            remaining diagnostics
                             and a summary; --write rewrites changed files in place, --print
                             prints the fixed text instead of the report; fails if errors remain
   bmb uses [--write] [--cache DIR] <file.bmb>...

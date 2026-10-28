@@ -89,13 +89,10 @@ mod bytes {
         requires fits(v.as_slice(), s),
         ensures appended(v.as_slice(), old(v).as_slice(), s),
     {
-        let mut i: usize = 0;
-        while i < s.len()
+        for i in 0..s.len()
             invariant i <= s.len(), v.len() == old(v).len() + i, kept(v.as_slice(), old(v).as_slice()), copied(v.as_slice(), old(v).len(), s, i),
-            decreases s.len() - i,
         {
             v.push(s[i]);
-            i = i + 1;
         }
     }
 

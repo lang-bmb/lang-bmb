@@ -46,16 +46,13 @@ mod sc {
         ensures bounds_to::<T>(xs, xs.len(), r),
     {
         let mut m: i64 = 0;
-        let mut i: usize = 0;
-        while i < xs.len()
+        for i in 0..xs.len()
             invariant i <= xs.len(), bounds_to::<T>(xs, i, m),
-            decreases xs.len() - i,
         {
             let s: i64 = Score::score(&xs[i]);
             if s > m {
                 m = s;
             }
-            i = i + 1;
         }
         m
     }

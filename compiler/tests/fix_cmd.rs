@@ -451,3 +451,95 @@ fn where_clauses_move_to_the_parameters() {
         "{fixed}"
     );
 }
+
+const COUNTING: &str = r#"#[summary("counting loops")]
+mod c {
+    spec fn small(a: &[u64]) -> bool {
+        a.len() < 100 && (forall|k: usize| k < a.len() ==> #[trigger] a[k] < 100)
+    }
+
+    #[effects(pure)]
+    #[uses(small)]
+    fn sum(a: &[u64]) -> u64
+        requires small(a),
+    {
+        let mut s: u64 = 0;
+        // scan
+        let mut i: usize = 0;
+        'all: while i < a.len()
+            invariant i <= a.len(), s <= 100 * i,
+            decreases a.len() - i,
+        {
+            s = s + a[i];
+            i = i + 1;
+        }
+        s
+    }
+
+    // `i` is read after the loop, `j` steps before the end, `k` meets a
+    // `continue`, `m` runs to a bound the body assigns: none is a `for`.
+    #[effects(pure)]
+    fn others(n: u64) -> u64 {
+        let mut i: u64 = 0;
+        while i < n
+            invariant i <= n,
+            decreases n - i,
+        {
+            i = i + 1;
+        }
+        let mut j: u64 = 0;
+        while j < n
+            invariant j <= n,
+            decreases n - j,
+        {
+            j = j + 1;
+            let x: u64 = j;
+        }
+        let mut k: u64 = 0;
+        while k < n
+            invariant k <= n,
+            decreases n - k,
+        {
+            if k == 3 {
+                k = k + 1;
+                continue;
+            }
+            k = k + 1;
+        }
+        let mut hi: u64 = n;
+        let mut m: u64 = 0;
+        while m < hi
+            invariant m <= hi && hi == n,
+            decreases hi - m,
+        {
+            hi = n;
+            m = m + 1;
+        }
+        i
+    }
+}
+"#;
+
+/// W0907 (ADR-0057, backlog 2K-04): a counting `while` becomes a range
+/// `for`, comments and invariants kept; the others stay.
+#[test]
+fn counting_while_becomes_a_range_for() {
+    let input = one(COUNTING);
+    assert!(bmb::verify_sources(&input).ok);
+    let out = bmb::fix_sources(&input);
+    assert!(out.ok, "{}", out.diagnostics);
+    let codes: Vec<&str> = out.applied.iter().map(|a| a.code).collect();
+    assert_eq!(codes, ["W0907"]);
+    let text = &out.files[0].1;
+    assert!(
+        text.contains(
+            "        let mut s: u64 = 0;\n        // scan\n        'all: for i in 0..a.len()\n            invariant i <= a.len(), s <= 100 * i,\n        {\n            s = s + a[i];\n        }\n        s\n"
+        ),
+        "{text}"
+    );
+    assert_eq!(text.matches("while").count(), 4, "{text}");
+    let after = one(text);
+    assert!(bmb::verify_sources(&after).ok);
+    // A fixed program has nothing left to rewrite.
+    assert!(bmb::fix_sources(&after).applied.is_empty());
+}

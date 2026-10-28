@@ -88,15 +88,12 @@ mod arith_ok {
         ensures is_max(a, m),
     {
         let mut best: i64 = a[0];
-        let mut i: usize = 1;
-        while i < a.len()
+        for i in 1..a.len()
             invariant i <= a.len(), 0 < i, prefix_max(a, i, best),
-            decreases a.len() - i,
         {
             if a[i] > best {
                 best = a[i];
             }
-            i = i + 1;
         }
         best
     }
@@ -118,15 +115,12 @@ mod mixed {
         requires small_len(a),
     {
         let mut c: i64 = 0;
-        let mut k: usize = 0;
-        while k < a.len()
+        for k in 0..a.len()
             invariant k <= a.len(), counted(c, k),
-            decreases a.len() - k,
         {
             if a[k] > 0 {
                 c = c + 1;
             }
-            k = k + 1;
         }
         c
     }

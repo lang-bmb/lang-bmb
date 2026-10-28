@@ -52,13 +52,10 @@ mod vm {
     #[uses(bounded)]
     fn run(code: &[u8]) -> Vec<i64> {
         let mut m: Vm = Vm { stack: Vec::new(), out: Vec::new(), steps: 0 };
-        let mut pc: usize = 0;
-        while pc < code.len()
+        for pc in 0..code.len()
             invariant pc <= code.len() && bounded(&m),
-            decreases code.len() - pc,
         {
             step(&mut m, code[pc]);
-            pc = pc + 1;
         }
         m.out
     }
@@ -67,13 +64,10 @@ mod vm {
     #[uses(bounded)]
     fn main() -> () {
         let out: Vec<i64> = run(b"23*p45+d*p78*9+p5d+d*p+p");
-        let mut i: usize = 0;
-        while i < out.len()
+        for i in 0..out.len()
             invariant i <= out.len(),
-            decreases out.len() - i,
         {
             print_i64(out[i]);
-            i = i + 1;
         }
     }
 }

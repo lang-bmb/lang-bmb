@@ -10,18 +10,13 @@ mod primes {
         requires len_ok(a),
     {
         let n: usize = a.len();
-        let mut i: usize = 0;
-        while i < n
+        for i in 0..n
             invariant i <= n, n == a.len(),
-            decreases n - i,
         {
             a[i] = i >= 2;
-            i = i + 1;
         }
-        let mut p: usize = 2;
-        while p < n
+        for p in 2..n
             invariant 2 <= p, p <= n, n == a.len(),
-            decreases n - p,
         {
             if a[p] {
                 let mut j: usize = p + p;
@@ -33,18 +28,14 @@ mod primes {
                     j = j + p;
                 }
             }
-            p = p + 1;
         }
         let mut c: i64 = 0;
-        let mut k: usize = 0;
-        while k < n
+        for k in 0..n
             invariant k <= n, n == a.len(), counted(c, k),
-            decreases n - k,
         {
             if a[k] {
                 c = c + 1;
             }
-            k = k + 1;
         }
         c
     }

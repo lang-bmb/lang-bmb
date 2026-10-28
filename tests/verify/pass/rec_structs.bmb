@@ -79,13 +79,10 @@ mod rs {
         decreases d,
     {
         let mut n: u64 = 0;
-        let mut i: usize = 0;
-        while i < d.subs.len()
+        for i in 0..d.subs.len()
             invariant i <= d.subs.len(),
-            decreases d.subs.len() - i,
         {
             n = n.wrapping_add(files(&d.subs[i]));
-            i = i + 1;
         }
         n.wrapping_add(u64::try_from(d.files.len()).unwrap())
     }
@@ -95,13 +92,10 @@ mod rs {
         decreases r,
     {
         let mut n: u64 = 1;
-        let mut i: usize = 0;
-        while i < r.kids.len()
+        for i in 0..r.kids.len()
             invariant i <= r.kids.len(),
-            decreases r.kids.len() - i,
         {
             n = n.wrapping_add(size::<T>(&r.kids[i]));
-            i = i + 1;
         }
         n
     }

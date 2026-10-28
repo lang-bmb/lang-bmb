@@ -85,13 +85,10 @@ mod geo {
         ensures small(r),
     {
         let mut p: Point = Point { x: 0, y: 0 };
-        let mut i: i64 = 0;
-        while i < 10
+        for i in 0..10
             invariant 0 <= i, i <= 10, small(p), p.x == i, p.y == 0,
-            decreases 10 - i,
         {
             p.x = p.x + 1;
-            i = i + 1;
         }
         p
     }

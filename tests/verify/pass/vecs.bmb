@@ -29,14 +29,11 @@ mod vp {
         ensures squares(r.as_slice(), n),
     {
         let mut v: Vec<i64> = Vec::with_capacity(n);
-        let mut i: usize = 0;
-        while i < n
+        for i in 0..n
             invariant i <= n, squares(v.as_slice(), i),
-            decreases n - i,
         {
             let k: i64 = i64::try_from(i).unwrap();
             v.push(k * k);
-            i = i + 1;
         }
         v
     }

@@ -25,16 +25,13 @@ mod np {
         ensures pairs(out.as_slice(), n),
     {
         let mut g: Vec<Vec<i64>> = Vec::new();
-        let mut k: usize = 0;
-        while k < n
+        for k in 0..n
             invariant k <= n && n <= 100 && pairs(g.as_slice(), k),
-            decreases n - k,
         {
             let mut r: Vec<i64> = Vec::new();
             r.push(0);
             r.push(1);
             g.push(r);
-            k = k + 1;
         }
         g
     }
@@ -66,15 +63,12 @@ mod np {
         ensures tagged(out.as_slice(), n),
     {
         let mut rows: Vec<Row> = Vec::new();
-        let mut k: usize = 0;
-        while k < n
+        for k in 0..n
             invariant k <= n && n <= 100 && tagged(rows.as_slice(), k),
-            decreases n - k,
         {
             let mut c: Vec<i64> = Vec::new();
             c.push(1);
             rows.push(Row { cells: c, tag: 0 });
-            k = k + 1;
         }
         rows
     }

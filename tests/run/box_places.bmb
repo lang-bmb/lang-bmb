@@ -44,14 +44,11 @@ mod bp {
         print_i64(unwrap::<i64>(wrap::<i64>(77)));
         let w: Box<Pt> = wrap::<Pt>(Pt { x: 3, y: 4 });
         print_i64(w.y);
-        let mut i: i64 = 0;
-        while i < 3
+        for i in 0..3
             invariant 0 <= i && i <= 3,
-            decreases 3 - i,
         {
             let t: Box<Pt> = mk(i);
             b = t;
-            i = i + 1;
         }
         print_i64(b.x);
     }
