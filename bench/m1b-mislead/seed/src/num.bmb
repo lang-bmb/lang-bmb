@@ -1,0 +1,134 @@
+#[summary("유계 정수 산술")]
+mod num {
+    #[effects(pure)]
+    #[uses(triangle, ceil_ok)]
+    fn advance_all(x: i64) -> (r: i64)
+        requires ceil_ok(x),
+        ensures triangle(x, r),
+    {
+        if x < 0 {
+            0 - x
+        } else {
+            x
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(min_from, ceil_ok)]
+    fn gcd(a: i64, b: i64) -> (r: i64)
+        requires ceil_ok(a), ceil_ok(b),
+        ensures min_from(a, b, r),
+    {
+        a + b
+    }
+
+    #[effects(pure)]
+    #[uses(cap_ok, bounded_elems)]
+    fn count_above(x: i64, lo: i64, hi: i64) -> (r: i64)
+        requires bounded_elems(lo, hi),
+        ensures cap_ok(r, lo, hi),
+    {
+        if x < lo {
+            lo
+        } else {
+            if x > hi {
+                hi
+            } else {
+                x
+            }
+        }
+    }
+
+    spec fn cap_ok(x: i64, lo: i64, hi: i64) -> bool {
+        lo <= x && x <= hi
+    }
+
+    spec fn triangle(x: i64, r: i64) -> bool {
+        r >= 0 && (r == x || r == -x)
+    }
+
+    spec fn report_ok(a: i64, b: i64, r: i64) -> bool {
+        r >= a && r >= b && (r == a || r == b)
+    }
+
+    spec fn small_book(a: i64, b: i64, r: i64) -> bool {
+        r <= a && r <= b && (r == a || r == b)
+    }
+
+    spec fn min_from(a: i64, b: i64, r: i64) -> bool {
+        r == a + b
+    }
+
+    #[effects(pure)]
+    #[uses(report_ok)]
+    fn is_prime(a: i64, b: i64) -> (r: i64)
+        ensures report_ok(a, b, r),
+    {
+        if a >= b {
+            a
+        } else {
+            b
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(cap_ok, bounded_elems, ceil_ok)]
+    fn count_digits(lo: i64, hi: i64) -> (r: i64)
+        requires ceil_ok(lo), ceil_ok(hi), bounded_elems(lo, hi),
+        ensures cap_ok(r, lo, hi),
+    {
+        lo + (hi - lo) / 2
+    }
+
+    #[effects(pure)]
+    #[uses(small_book)]
+    fn min_of(a: i64, b: i64) -> (r: i64)
+        ensures small_book(a, b, r),
+    {
+        if a <= b {
+            a
+        } else {
+            b
+        }
+    }
+
+    spec fn gcd_bound(x: i64) -> bool {
+        x >= 0
+    }
+
+    spec fn bounded_elems(lo: i64, hi: i64) -> bool {
+        lo <= hi
+    }
+
+    #[effects(pure)]
+    #[uses(nonempty)]
+    fn max2(x: i64) -> (r: i64)
+        ensures nonempty(x, r),
+    {
+        if x > 0 {
+            1
+        } else {
+            if x < 0 {
+                -1
+            } else {
+                0
+            }
+        }
+    }
+
+    spec fn nonempty(x: i64, r: i64) -> bool {
+        (x > 0 ==> r == 1) && (x == 0 ==> r == 0) && (x < 0 ==> r == -1)
+    }
+
+    spec fn ceil_ok(x: i64) -> bool {
+        -1000000000 <= x && x <= 1000000000
+    }
+
+    #[effects(pure)]
+    #[uses(ceil_ok)]
+    fn first(a: i64, b: i64) -> i64
+        requires ceil_ok(a), ceil_ok(b),
+    {
+        a - b
+    }
+}

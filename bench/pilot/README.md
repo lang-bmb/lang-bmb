@@ -9,6 +9,7 @@ Claude Code CLI를 피험 에이전트로 동결 과제를 돌린다. 정식 경
 | `cli_pilot.py` | 과제마다 빈 디렉터리에서 `claude -p`를 한 번 실행하고 하네스 판정으로 채점 |
 | `mcp_proxy.py` | CLI와 `bmb mcp` 사이의 MCP 중계. 하네스의 지표(도구 호출, 읽기 바이트, 커밋, E02xx)와 40회 한도, 탐색 과제의 `answer` 도구 |
 | `verus_pilot.py`, `verus_mcp.py` | BVB의 Verus 쪽(T3-03): 같은 CLI 세션에 Verus 하네스의 도구 셋(`read_file`·`write_file`·`verify`)과 판정 |
+| `brb_pilot.py`, `rust_mcp.py` | BRB(T0-07): 동결 하네스 `bench/brb/harness.py`를 라이브러리로 써서 같은 작업 공간·크레이트·프롬프트·도구·숨은 판정, 세션만 CLI. Rust 쪽 도구는 `rust_tools.py`를 MCP로 감싼 것. 하네스의 세션당 출력 토큰 상한(64,000)은 지키지 못한다 |
 | `results/` | 결과 JSONL(마지막 줄이 요약) |
 
 ```
@@ -53,6 +54,25 @@ python3 bench/pilot/cli_pilot.py --set bench/m1 --model claude-opus-5-5 --jobs 3
 - 둘이 같은 과제에서 갈린 것은 넷이다: BMB만 실패 `vb-mbpp-454-contains-z`·`vb-misc-choose-odd`·`vc-va0093-max-balance`, Verus만 실패 `vc-va0590-boring-apartment`.
 - 도구 호출 차이의 일부는 쓰기 절차다. BMB는 한 번 쓰는 데 `tx_begin`·`tx_unit`·`tx_put`·`tx_commit`·`verify`(최소 다섯)이고, Verus는 `write_file`·`verify`(둘)다.
 - 표의 "모델 입력 토큰"은 CLI가 캐시 읽기를 빼고 보고하므로 비교에 쓰지 않는다. 비용(`total_cost_usd`)은 캐시를 포함한다.
+
+### BRB: BMB+증명 대 Rust+테스트 (T0-07, `claude-opus-5-5`)
+
+`bench/brb/harness.py summarize`로 낸 표의 요지다(원자료 `results/2026-10-28-brb-*-claude-opus-5-5.jsonl`).
+
+| 지표 | BMB | Rust(proptest 켬) |
+| --- | --- | --- |
+| 성공(숨은 케이스 9,651개 전부) | 24/24 | 24/24 |
+| 자기 검사 통과 & 숨은 실패 | 0/24 | 0/24 |
+| 테스트 코드 줄(통과 과제) | 0 | 834 |
+| 비용 | $3.56 | $1.45 |
+| 총 토큰(캐시 포함) | 1,308,034 | 361,488 |
+| 출력 토큰 | 105,571 | 35,916 |
+| 도구 호출 / 검사 호출 | 252 / 41 | 88 / 29 |
+
+- **H-ORACLE은 판정할 수 없다.** Rust 쪽에도 "테스트 통과 & 숨은 실패"가 없다. 이 모델에게 BRB 과제는 두 언어 모두에서 쉽다. 변별력은 작은 모델(ADR-0034 결정 3)이나 더 어려운 과제에서 나와야 한다.
+- **G8:** BMB 0줄 대 Rust 834줄(파일럿이라 주장 아님). 두 쪽 모두 맞았으므로, 이 834줄은 "맞는 코드에 붙은 테스트"의 양이다.
+- **G5의 비용 쪽은 미달 방향이다.** 총 토큰 비 3.6(잠정 기준 2 이내), 비용 비 2.45. 도구 호출이 2.9배이고, 그 일부는 쓰기 절차(트랜잭션 최소 다섯 호출)와 증명 반복(검사 41 대 29)이다. BVB에서도 같은 방향이었다(비용 2.1배).
+- **비용의 원인은 쓰기 절차다(BVB 호출 분해).** BMB는 쓰기 시도 69번에 `tx_begin`·`tx_unit`·`tx_put`·`tx_commit` 넷씩과 `verify` 68번, `query` 60번(합 407), Verus는 쓰기 51번에 `write_file`·`verify` 하나씩과 `read_file` 9번(합 111)이다. 쓰기 시도 수는 비슷한데 모델 차례가 452 대 156이고, 차례마다 대화 전체가 다시 들어가므로 비용이 차례 수에 붙는다. 귀속 층은 도구 표면이다(백로그 `2D-24`).
 
 ### 실패 분석(T1-14, T1-15)
 

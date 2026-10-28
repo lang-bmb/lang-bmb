@@ -1,0 +1,18 @@
+{
+ "id": "n03-callees-transitive",
+ "kind": "navigate",
+ "prompt": "Which definitions does `u7::d089` call, directly or transitively (functions called by functions it calls, and so on)? Count only calls in executable code, not predicates. Use the `answer` tool with the full paths (unit::name) of all such definitions.",
+ "truth": {
+  "query": [
+   "edges",
+   "u7::d089",
+   "out",
+   "1"
+  ],
+  "kinds": [
+   "calls"
+  ],
+  "field": "to",
+  "closure": true
+ }
+}

@@ -1,0 +1,38 @@
+{
+ "id": "w21-deposit-all",
+ "kind": "write",
+ "prompt": "Create unit `tasks` and implement `deposit_all`: for a ledger `a` (every balance in [0, 1000000000], as `u5::d051` states) and an amount x in [0, 1000000000], deposit x into every account that has room for it and return how many deposits succeeded. The contract must state that all balances stay in [0, 1000000000] and that the result is at most a.len(). Reuse the existing library (see `query units`) where it helps.\n\nRequired signature (in unit `tasks`):\nfn deposit_all(a: &mut [i64], x: i64) -> (r: usize)",
+ "unit": "tasks",
+ "def": "tasks::deposit_all",
+ "signature": "fn deposit_all(a: &mut [i64], x: i64) -> (r: usize)",
+ "accept": {
+  "specs": "spec fn ref_pre(a: &[i64], x: i64) -> bool { (forall|k: usize| k < a.len() ==> 0 <= #[trigger] a[k] && a[k] <= 1000000000) && 0 <= x && x <= 1000000000 }\nspec fn ref_post(a: &[i64], r: usize) -> bool { r <= a.len() && (forall|k: usize| k < a.len() ==> 0 <= #[trigger] a[k] && a[k] <= 1000000000) }",
+  "pre": "ref_pre(a, x)",
+  "post": "ref_post(a, r)",
+  "args": "a, x"
+ },
+ "reference": [
+  {
+   "op": "unit",
+   "path": "tasks",
+   "summary": "과제 구현"
+  },
+  {
+   "op": "put",
+   "unit": "tasks",
+   "code": "spec fn count_ok(a: &[i64], r: usize) -> bool { r <= a.len() }\n\n#[effects(pure)]\n#[uses(u5::d051, u5::d048, u5::d049, count_ok)]\nfn deposit_all(a: &mut [i64], x: i64) -> (r: usize)\n    requires u5::d051(a), u5::d049(x),\n    ensures u5::d051(a), count_ok(a, r),\n{\n    let mut c: usize = 0;\n    let mut k: usize = 0;\n    while k < a.len()\n        invariant k <= a.len(), c <= k, u5::d051(a),\n        decreases a.len() - k,\n    {\n        if u5::d054(a, k, x) {\n            c = c + 1;\n        }\n        k = k + 1;\n    }\n    c\n}"
+  }
+ ],
+ "weak_reference": [
+  {
+   "op": "unit",
+   "path": "tasks",
+   "summary": "과제 구현"
+  },
+  {
+   "op": "put",
+   "unit": "tasks",
+   "code": "spec fn count_ok(a: &[i64], r: usize) -> bool { r <= a.len() }\n\n#[effects(pure)]\n#[uses(u5::d049, count_ok)]\nfn deposit_all(a: &mut [i64], x: i64) -> (r: usize)\n    requires u5::d049(x),\n    ensures count_ok(a, r),\n{\n    let mut c: usize = 0;\n    let mut k: usize = 0;\n    while k < a.len()\n        invariant k <= a.len(), c <= k,\n        decreases a.len() - k,\n    {\n        a[k] = a[k].wrapping_add(x);\n        c = c + 1;\n        k = k + 1;\n    }\n    c\n}"
+  }
+ ]
+}

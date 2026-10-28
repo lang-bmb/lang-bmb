@@ -1,0 +1,22 @@
+{
+ "id": "w15-pay-all-count",
+ "kind": "write",
+ "prompt": "The library function `u5::d056` returns how many transfers succeeded but its contract does not bound that number. Add to its postcondition that the result is at most a.len(), keeping everything else.\n\nRequired signature (in unit `u5`):\nfn d056(a: &mut [i64], from: usize, x: i64) -> (r: usize)",
+ "unit": "u5",
+ "def": "u5::d056",
+ "signature": "fn d056(a: &mut [i64], from: usize, x: i64) -> (r: usize)",
+ "accept": {
+  "specs": "spec fn ref_pre(a: &[i64], from: usize, x: i64) -> bool { (forall|k: usize| k < a.len() ==> 0 <= #[trigger] a[k] && a[k] <= 1000000000) && from < a.len() && 0 <= x && x <= 1000000000 }\nspec fn ref_post(a: &[i64], r: usize) -> bool { r <= a.len() && (forall|k: usize| k < a.len() ==> 0 <= #[trigger] a[k] && a[k] <= 1000000000) }",
+  "pre": "ref_pre(a, from, x)",
+  "post": "ref_post(a, r)",
+  "args": "a, from, x"
+ },
+ "reference": [
+  {
+   "op": "put",
+   "unit": "u5",
+   "code": "spec fn paid_ok(a: &[i64], r: usize) -> bool { r <= a.len() }\n\n#[effects(pure)]\n#[uses(d051, d048, d049, paid_ok)]\nfn d056(a: &mut [i64], from: usize, x: i64) -> (r: usize)\n    requires d051(a), d048(a, from), d049(x),\n    ensures d051(a), paid_ok(a, r),\n{\n    let mut paid: usize = 0;\n    let mut k: usize = 0;\n    while k < a.len()\n        invariant k <= a.len(), paid <= k, from < a.len(), d051(a),\n        decreases a.len() - k,\n    {\n        if d060(a, from, k, x) {\n            paid = paid + 1;\n        }\n        k = k + 1;\n    }\n    paid\n}"
+  }
+ ],
+ "weak_reference": []
+}

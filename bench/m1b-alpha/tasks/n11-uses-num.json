@@ -1,0 +1,16 @@
+{
+ "id": "n11-uses-num",
+ "kind": "navigate",
+ "prompt": "Which definitions reveal (list in `#[uses(..)]`) the predicate `u6::d077` or `u6::d074`? Use the `answer` tool with the full paths (unit::name) of all such definitions.",
+ "truth": {
+  "query": [
+   "contracts",
+   "u6::d077"
+  ],
+  "also": [
+   "contracts",
+   "u6::d074"
+  ],
+  "list": "uses_by"
+ }
+}

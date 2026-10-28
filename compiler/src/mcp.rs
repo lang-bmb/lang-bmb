@@ -30,6 +30,8 @@ pub struct Server {
     /// unchanged files are not parsed again and an unchanged program is
     /// neither checked nor indexed again.
     front: crate::FrontCache,
+    /// Offer the one-call `write` tool (backlog 2D-24).
+    write_tool: bool,
 }
 
 fn s(x: &str) -> Value {
@@ -63,7 +65,10 @@ fn schema(props: &[(&str, &str, &str)], required: &[&str]) -> Value {
     ])
 }
 
-fn tools() -> Value {
+/// The tool list. `write` is offered only when the server is started with it
+/// (`bmb mcp --write-tool`): the frozen measurement task sets see the tools
+/// they were frozen with (ADR-0021; compiler/README.md, MCP descriptions).
+fn tools(write: bool) -> Value {
     let t = |name: &str, desc: &str, input: Value| {
         obj(vec![
             ("name", s(name)),
@@ -71,7 +76,7 @@ fn tools() -> Value {
             ("inputSchema", input),
         ])
     };
-    Value::Array(vec![
+    let mut list = vec![
         t(
             "query",
             "Read query on the standard maps (ADR-0020): units, surface DEF, edges DEF [out|in|both] [depth], slice DEF, find NAME, contracts PRED, status. Returns JSONL.",
@@ -159,7 +164,30 @@ fn tools() -> Value {
             "Discard a transaction.",
             schema(&[("tx", "integer", "transaction id")], &["tx"]),
         ),
-    ])
+    ];
+    if write {
+        list.insert(
+            4,
+            t(
+                "write",
+                "Write in one call (backlog 2D-24): when `summary` is given, create unit UNIT or replace its summary; add or replace the definitions in `code` (one or more, with attributes) in UNIT; remove the definitions in `remove` (full paths); commit; then prove the workspace. Rejected as a whole on any structural or type error (diagnostics returned, nothing written). After a commit, returns the commit line and the proof result (diagnostics with counterexamples, one status line per definition), as an error when a proof fails.",
+                schema(
+                    &[
+                        ("unit", "string", "unit path"),
+                        ("code", "string", "definitions to add or replace"),
+                        (
+                            "summary",
+                            "string",
+                            "one-line summary: creates the unit or replaces its summary",
+                        ),
+                        ("remove", "array", "definition paths to remove"),
+                    ],
+                    &["unit"],
+                ),
+            ),
+        );
+    }
+    Value::Array(list)
 }
 
 impl Server {
@@ -169,6 +197,15 @@ impl Server {
             txs: BTreeMap::new(),
             next_tx: 1,
             front: crate::FrontCache::default(),
+            write_tool: false,
+        }
+    }
+
+    /// A server that also offers the one-call `write` tool (backlog 2D-24).
+    pub fn with_write_tool(root: &Path) -> Server {
+        Server {
+            write_tool: true,
+            ..Server::new(root)
         }
     }
 
@@ -277,6 +314,54 @@ impl Server {
                     out.verify.output,
                     crate::diag::json_str(&path.display().to_string())
                 ))
+            }
+            "write" if self.write_tool => {
+                // One transaction and a proof in one tool call: in the pilot
+                // the separate calls (begin, unit, put, commit, verify) made
+                // BMB sessions take 2.9 times the model turns of Verus.
+                let unit = str_arg("unit")?;
+                let mut ops = Vec::new();
+                if let Some(summary) = a.get("summary").and_then(Value::as_str) {
+                    ops.push(Op::Unit {
+                        path: unit.clone(),
+                        summary: summary.to_string(),
+                    });
+                }
+                if let Some(code) = a.get("code").and_then(Value::as_str)
+                    && !code.trim().is_empty()
+                {
+                    ops.push(Op::Put {
+                        unit: unit.clone(),
+                        code: code.to_string(),
+                    });
+                }
+                if let Some(Value::Array(xs)) = a.get("remove") {
+                    for x in xs {
+                        let def = x.as_str().ok_or("`remove` holds definition paths")?;
+                        ops.push(Op::Remove {
+                            def: def.to_string(),
+                        });
+                    }
+                }
+                if ops.is_empty() {
+                    return Err("nothing to write: give `code`, `summary` or `remove`".into());
+                }
+                let c = workspace::commit(&self.root, &ops)?;
+                let list =
+                    |xs: &[String]| Value::Array(xs.iter().map(|x| s(x)).collect()).to_json();
+                let line = format!(
+                    "{{\"committed\":{},\"changed\":{},\"removed\":{}}}",
+                    c.ok,
+                    list(&c.changed),
+                    list(&c.removed)
+                );
+                if !c.ok {
+                    return Err(format!("{}{line}", c.diagnostics));
+                }
+                let dir = self.cache_dir();
+                let out = self.load()?.verify(Some(&dir));
+                let text = format!("{line}\n{}", out.output);
+                if out.ok { Ok(text) } else { Err(text) }
             }
             "tx_begin" => {
                 // Each open transaction holds a copy of the workspace files.
@@ -395,7 +480,7 @@ impl Server {
                 ),
             ])),
             "ping" => Ok(obj(vec![])),
-            "tools/list" => Ok(obj(vec![("tools", tools())])),
+            "tools/list" => Ok(obj(vec![("tools", tools(self.write_tool))])),
             "tools/call" => {
                 let params = msg.get("params").cloned().unwrap_or(Value::Null);
                 let name = params
@@ -439,9 +524,13 @@ fn rpc_error(id: Value, code: i64, message: &str) -> Value {
     ])
 }
 
-/// Serves stdin/stdout until end of input.
-pub fn serve(root: &Path) -> std::io::Result<()> {
-    let mut server = Server::new(root);
+/// Serves stdin/stdout until end of input; `write_tool` offers `write` too.
+pub fn serve(root: &Path, write_tool: bool) -> std::io::Result<()> {
+    let mut server = if write_tool {
+        Server::with_write_tool(root)
+    } else {
+        Server::new(root)
+    };
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout();
     for line in stdin.lock().lines() {

@@ -1,0 +1,19 @@
+{
+ "id": "n04-impact-contract",
+ "kind": "navigate",
+ "prompt": "Suppose the contract (requires/ensures) of `u3::d035` changes. Which definitions must be proved again, including `u3::d035` itself? Proofs see a called function only through its contract. Use the `answer` tool with the full paths (unit::name) of all such definitions.",
+ "truth": {
+  "query": [
+   "impact",
+   "u3::d035",
+   "iface"
+  ],
+  "reasons": [
+   "changed",
+   "calls",
+   "uses",
+   "names"
+  ],
+  "field": "path"
+ }
+}

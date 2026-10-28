@@ -78,7 +78,8 @@ def run_task(task, model, keep=None):
         shutil.copytree(harness.seed_cache(), harness.cache_dir(ws))
     metrics = os.path.join(tmp, "metrics.json")
     prompt = open(os.path.join(harness.SET, "prompt.md")).read()
-    server = [sys.executable, "-I", os.path.join(HERE, "mcp_proxy.py"), harness.bmb_bin(), ws, metrics, task["kind"]]
+    server = [sys.executable, "-I", os.path.join(HERE, "mcp_proxy.py"), harness.bmb_bin(), ws, metrics, task["kind"],
+              harness.SET]
     session = run_claude(model, prompt, task["prompt"], server, cwd)
     m = json.load(open(metrics)) if os.path.exists(metrics) else {}
     if task["kind"] == "write":

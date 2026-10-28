@@ -1,0 +1,17 @@
+{
+ "id": "n01-callers",
+ "kind": "navigate",
+ "prompt": "Which definitions directly call `u4::d046`? Use the `answer` tool with the full paths (unit::name) of all such definitions.",
+ "truth": {
+  "query": [
+   "edges",
+   "u4::d046",
+   "in",
+   "1"
+  ],
+  "kinds": [
+   "calls"
+  ],
+  "field": "from"
+ }
+}

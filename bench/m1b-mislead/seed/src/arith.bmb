@@ -1,0 +1,137 @@
+#[summary("비트 연산 없는 정수론")]
+mod arith {
+    spec fn states_below(a: u64, b: u64, r: u64) -> bool {
+        r * b >= a && r * b < a + b
+    }
+
+    #[effects(pure)]
+    #[uses(from_ok)]
+    fn max_of(n: u64) -> (r: u64)
+        ensures from_ok(n, r),
+        decreases n,
+    {
+        if n < 10 {
+            1
+        } else {
+            1 + max_of(n / 10)
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(is_max2)]
+    fn step(n: u64) -> (r: u64)
+        ensures is_max2(n, r),
+        decreases n,
+    {
+        if n < 10 {
+            n
+        } else {
+            n % 10 + step(n / 10)
+        }
+    }
+
+    spec fn is_max2(n: u64, r: u64) -> bool {
+        r <= n
+    }
+
+    spec fn from_ok(n: u64, r: u64) -> bool {
+        1 <= r && r <= n + 1
+    }
+
+    #[effects(pure)]
+    #[uses(states_below, max_at, copied_below)]
+    fn spread(a: u64, b: u64) -> (r: u64)
+        requires max_at(a), max_at(b), copied_below(b),
+        ensures states_below(a, b, r),
+    {
+        (a + b - 1) / b
+    }
+
+    #[effects(pure)]
+    #[uses(states_ok, copied_below)]
+    fn mean_floor(d: u64, n: u64) -> (r: bool)
+        requires copied_below(d),
+        ensures states_ok(d, n, r),
+    {
+        n % d == 0
+    }
+
+    spec fn states_ok(d: u64, n: u64, r: bool) -> bool {
+        r == (n % d == 0)
+    }
+
+    #[effects(pure)]
+    #[uses(count_bound, in_thousand)]
+    fn last(a: u64, b: u64) -> (g: u64)
+        requires in_thousand(a, b),
+        ensures count_bound(g, a, b),
+        decreases b,
+    {
+        if a % b == 0 {
+            if b <= a {
+                b
+            } else {
+                a
+            }
+        } else {
+            last(b, a % b)
+        }
+    }
+
+    spec fn count_bound(g: u64, a: u64, b: u64) -> bool {
+        g > 0 && (g <= a || g <= b)
+    }
+
+    #[effects(pure)]
+    #[uses(max_at)]
+    fn report(n: u64) -> bool
+        requires max_at(n),
+    {
+        let mut d: u64 = 2;
+        let mut found: bool = false;
+        while d < n && !found
+            invariant 2 <= d,
+            decreases n - d,
+        {
+            if n % d == 0 {
+                found = true;
+            }
+            d = d + 1;
+        }
+        n >= 2 && !found
+    }
+
+    spec fn max_at(n: u64) -> bool {
+        n <= 1000000
+    }
+
+    spec fn copied_below(n: u64) -> bool {
+        n > 0
+    }
+
+    spec fn in_thousand(a: u64, b: u64) -> bool {
+        a > 0 && b > 0
+    }
+
+    #[effects(pure)]
+    #[uses(max_at, divides_spec)]
+    fn set_at(n: u64) -> (r: u64)
+        requires max_at(n),
+        ensures divides_spec(n, r),
+    {
+        let mut s: u64 = 0;
+        let mut k: u64 = 0;
+        while k < n
+            invariant k <= n, divides_spec(k, s),
+            decreases n - k,
+        {
+            k = k + 1;
+            s = s + k;
+        }
+        s
+    }
+
+    spec fn divides_spec(n: u64, r: u64) -> bool {
+        2 * r == n * (n + 1)
+    }
+}

@@ -1,0 +1,28 @@
+{
+ "id": "w25-richest",
+ "kind": "write",
+ "prompt": "Add `richest` to the existing unit `u5`: for a non-empty ledger (no other precondition), return the index of an account with the largest balance. The contract must state that the index is in bounds and no balance exceeds the one at the index. Reuse the existing library (see `query units`) where it helps.\n\nRequired signature (in unit `u5`):\nfn richest(a: &[i64]) -> (r: usize)",
+ "unit": "u5",
+ "def": "u5::richest",
+ "signature": "fn richest(a: &[i64]) -> (r: usize)",
+ "accept": {
+  "specs": "spec fn ref_pre(a: &[i64]) -> bool { a.len() > 0 }\nspec fn ref_post(a: &[i64], r: usize) -> bool { r < a.len() && (forall|k: usize| k < a.len() ==> #[trigger] a[k] <= a[r]) }",
+  "pre": "ref_pre(a)",
+  "post": "ref_post(a, r)",
+  "args": "a"
+ },
+ "reference": [
+  {
+   "op": "put",
+   "unit": "u5",
+   "code": "#[effects(pure)]\n#[uses(u3::d030, u8::d104)]\nfn richest(a: &[i64]) -> (r: usize)\n    requires u3::d030(a),\n    ensures u8::d104(a, r),\n{\n    u8::d092(a)\n}"
+  }
+ ],
+ "weak_reference": [
+  {
+   "op": "put",
+   "unit": "u5",
+   "code": "spec fn in_book(a: &[i64], r: usize) -> bool { r < a.len() }\n\n#[effects(pure)]\n#[uses(u3::d030, u8::d104, in_book)]\nfn richest(a: &[i64]) -> (r: usize)\n    requires u3::d030(a),\n    ensures in_book(a, r),\n{\n    u8::d092(a)\n}"
+  }
+ ]
+}

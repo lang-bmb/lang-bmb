@@ -1,0 +1,38 @@
+{
+ "id": "w11-clamp-all",
+ "kind": "write",
+ "prompt": "Create unit `tasks` and implement `clamp_all`: for lo <= hi, limit every element of `a` to [lo, hi]. The contract must state that afterwards every element is in [lo, hi] and that elements already in range are unchanged.\n\nRequired signature (in unit `tasks`):\nfn clamp_all(a: &mut [i64], lo: i64, hi: i64) -> ()",
+ "unit": "tasks",
+ "def": "tasks::clamp_all",
+ "signature": "fn clamp_all(a: &mut [i64], lo: i64, hi: i64) -> ()",
+ "accept": {
+  "specs": "spec fn ref_pre(lo: i64, hi: i64) -> bool { lo <= hi }\nspec fn ref_post(a: &[i64], b: &[i64], lo: i64, hi: i64) -> bool { a.len() == b.len() && (forall|k: usize| k < a.len() ==> lo <= #[trigger] a[k] && a[k] <= hi && ((lo <= b[k] && b[k] <= hi) ==> a[k] == b[k])) }",
+  "pre": "ref_pre(lo, hi)",
+  "post": "ref_post(a, old(a), lo, hi)",
+  "args": "a, lo, hi"
+ },
+ "reference": [
+  {
+   "op": "unit",
+   "path": "tasks",
+   "summary": "과제 구현"
+  },
+  {
+   "op": "put",
+   "unit": "tasks",
+   "code": "spec fn clamped_below(a: &[i64], b: &[i64], lo: i64, hi: i64, n: usize) -> bool {\n    a.len() == b.len() && (forall|k: usize| k < a.len() ==> ((k < n ==> lo <= #[trigger] a[k] && a[k] <= hi && ((lo <= b[k] && b[k] <= hi) ==> a[k] == b[k])) && (k >= n ==> a[k] == b[k])))\n}\n\nspec fn clamped_all(a: &[i64], b: &[i64], lo: i64, hi: i64) -> bool {\n    a.len() == b.len() && (forall|k: usize| k < a.len() ==> lo <= #[trigger] a[k] && a[k] <= hi && ((lo <= b[k] && b[k] <= hi) ==> a[k] == b[k]))\n}\n\n#[effects(pure)]\n#[uses(u6::d074, clamped_below, clamped_all)]\nfn clamp_all(a: &mut [i64], lo: i64, hi: i64) -> ()\n    requires u6::d074(lo, hi),\n    ensures clamped_all(a, old(a), lo, hi),\n{\n    let mut k: usize = 0;\n    while k < a.len()\n        invariant k <= a.len(), lo <= hi, clamped_below(a, old(a), lo, hi, k),\n        decreases a.len() - k,\n    {\n        if a[k] < lo {\n            a[k] = lo;\n        } else {\n            if a[k] > hi {\n                a[k] = hi;\n            }\n        }\n        k = k + 1;\n    }\n}"
+  }
+ ],
+ "weak_reference": [
+  {
+   "op": "unit",
+   "path": "tasks",
+   "summary": "과제 구현"
+  },
+  {
+   "op": "put",
+   "unit": "tasks",
+   "code": "spec fn in_range_below(a: &[i64], lo: i64, hi: i64, n: usize) -> bool { forall|k: usize| k < n ==> lo <= #[trigger] a[k] && a[k] <= hi }\n\nspec fn in_range_all(a: &[i64], lo: i64, hi: i64) -> bool { forall|k: usize| k < a.len() ==> lo <= #[trigger] a[k] && a[k] <= hi }\n\n#[effects(pure)]\n#[uses(u6::d074, in_range_below, in_range_all)]\nfn clamp_all(a: &mut [i64], lo: i64, hi: i64) -> ()\n    requires u6::d074(lo, hi),\n    ensures in_range_all(a, lo, hi),\n{\n    let mut k: usize = 0;\n    while k < a.len()\n        invariant k <= a.len(), lo <= hi, in_range_below(a, lo, hi, k),\n        decreases a.len() - k,\n    {\n        a[k] = lo;\n        k = k + 1;\n    }\n}"
+  }
+ ]
+}

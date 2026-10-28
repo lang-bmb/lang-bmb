@@ -1,0 +1,19 @@
+{
+ "id": "n06-impact-predicate",
+ "kind": "navigate",
+ "prompt": "Suppose the body of the predicate `u9::d108` changes (its parameters stay the same). Which definitions must be proved again? A proof sees a predicate's body only if the definition lists the predicate in `#[uses(..)]`. Use the `answer` tool with the full paths (unit::name) of all such definitions.",
+ "truth": {
+  "query": [
+   "impact",
+   "u9::d108",
+   "body"
+  ],
+  "reasons": [
+   "changed",
+   "calls",
+   "uses",
+   "names"
+  ],
+  "field": "path"
+ }
+}

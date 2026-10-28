@@ -1,0 +1,127 @@
+#[summary("unit u4")]
+mod u4 {
+    #[effects(pure)]
+    #[uses(d043, d045)]
+    fn d037(a: &mut [i64], ev: i64) -> ()
+        requires d045(a),
+        ensures d045(a),
+    {
+        let mut k: usize = 0;
+        while k < a.len()
+            invariant k <= a.len(), d045(a),
+            decreases a.len() - k,
+        {
+            a[k] = d046(a[k], ev);
+            k = k + 1;
+        }
+    }
+
+    spec fn d038(a: &[i64], r: usize) -> bool {
+        r <= a.len()
+    }
+
+    #[effects(pure)]
+    #[uses(d038)]
+    fn d039(a: &[i64], s: i64) -> (r: usize)
+        ensures d038(a, r),
+    {
+        let mut c: usize = 0;
+        let mut k: usize = 0;
+        while k < a.len()
+            invariant k <= a.len(), c <= k,
+            decreases a.len() - k,
+        {
+            if a[k] == s {
+                c = c + 1;
+            }
+            k = k + 1;
+        }
+        c
+    }
+
+    #[effects(pure)]
+    #[uses(d047)]
+    fn d040(s: i64) -> (r: bool)
+        ensures d047(s, r),
+    {
+        s == 2 || s == 3
+    }
+
+    #[effects(pure)]
+    #[uses(d043, d044, d045)]
+    fn d041(a: &mut [i64]) -> ()
+        ensures d045(a),
+    {
+        let mut k: usize = 0;
+        while k < a.len()
+            invariant k <= a.len(), d044(a, k),
+            decreases a.len() - k,
+        {
+            a[k] = 0;
+            k = k + 1;
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(d043)]
+    fn d042(events: &[i64], s0: i64) -> (r: i64)
+        requires d043(s0),
+        ensures d043(r),
+    {
+        let mut s: i64 = s0;
+        let mut k: usize = 0;
+        while k < events.len()
+            invariant k <= events.len(), d043(s),
+            decreases events.len() - k,
+        {
+            s = d046(s, events[k]);
+            k = k + 1;
+        }
+        s
+    }
+
+    spec fn d043(s: i64) -> bool {
+        0 <= s && s <= 3
+    }
+
+    spec fn d044(a: &[i64], n: usize) -> bool {
+        forall|k: usize| k < n ==> d043(#[trigger] a[k])
+    }
+
+    spec fn d045(a: &[i64]) -> bool {
+        forall|k: usize| k < a.len() ==> d043(#[trigger] a[k])
+    }
+
+    #[effects(pure)]
+    #[uses(d043)]
+    fn d046(s: i64, ev: i64) -> (r: i64)
+        requires d043(s),
+        ensures d043(r),
+    {
+        if s == 0 {
+            if ev == 1 {
+                1
+            } else {
+                0
+            }
+        } else {
+            if s == 1 {
+                if ev == 2 {
+                    2
+                } else {
+                    if ev < 0 {
+                        3
+                    } else {
+                        1
+                    }
+                }
+            } else {
+                s
+            }
+        }
+    }
+
+    spec fn d047(s: i64, r: bool) -> bool {
+        r == (s == 2 || s == 3)
+    }
+}

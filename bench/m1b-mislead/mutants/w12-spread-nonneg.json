@@ -1,0 +1,495 @@
+{
+ "task": "w12-is_sorted-nonneg",
+ "generator": "bench/m1/bsb_gen.py",
+ "max_witnesses": 2,
+ "targets": [
+  {
+   "def": "stats::is_sorted",
+   "signature": "fn is_sorted(a: &[i64]) -> (r: i64)",
+   "mutated": [
+    "stats::is_sorted",
+    "num::is_prime",
+    "num::min_of",
+    "stats::fill",
+    "stats::transfer"
+   ],
+   "inputs": [
+    {
+     "a": [
+      0
+     ]
+    },
+    {
+     "a": [
+      5
+     ]
+    },
+    {
+     "a": [
+      1,
+      2
+     ]
+    },
+    {
+     "a": [
+      2,
+      1
+     ]
+    },
+    {
+     "a": [
+      -1000,
+      1000
+     ]
+    },
+    {
+     "a": [
+      1000,
+      -1000
+     ]
+    },
+    {
+     "a": [
+      -1000
+     ]
+    },
+    {
+     "a": [
+      1000
+     ]
+    },
+    {
+     "a": [
+      3,
+      -4,
+      7
+     ]
+    },
+    {
+     "a": [
+      423,
+      1000
+     ]
+    },
+    {
+     "a": [
+      -755,
+      -611,
+      -1,
+      72
+     ]
+    },
+    {
+     "a": [
+      557,
+      1,
+      815
+     ]
+    },
+    {
+     "a": [
+      -333,
+      1,
+      -1000,
+      1
+     ]
+    },
+    {
+     "a": [
+      -4,
+      1,
+      1000
+     ]
+    },
+    {
+     "a": [
+      426,
+      -809,
+      0,
+      87
+     ]
+    },
+    {
+     "a": [
+      1000,
+      -417
+     ]
+    },
+    {
+     "a": [
+      -495,
+      0
+     ]
+    },
+    {
+     "a": [
+      -562
+     ]
+    },
+    {
+     "a": [
+      -1,
+      42,
+      0
+     ]
+    },
+    {
+     "a": [
+      0,
+      -412,
+      -562,
+      -1
+     ]
+    },
+    {
+     "a": [
+      -1,
+      157
+     ]
+    },
+    {
+     "a": [
+      1,
+      305,
+      -194
+     ]
+    },
+    {
+     "a": [
+      1,
+      427,
+      -161
+     ]
+    },
+    {
+     "a": [
+      893,
+      1000,
+      892
+     ]
+    },
+    {
+     "a": [
+      406,
+      -973,
+      -1000,
+      -1000
+     ]
+    },
+    {
+     "a": [
+      1,
+      53,
+      -91,
+      640
+     ]
+    },
+    {
+     "a": [
+      539
+     ]
+    },
+    {
+     "a": [
+      -477,
+      878,
+      844,
+      601
+     ]
+    },
+    {
+     "a": [
+      1
+     ]
+    },
+    {
+     "a": [
+      826,
+      0
+     ]
+    },
+    {
+     "a": [
+      0,
+      0,
+      1000
+     ]
+    },
+    {
+     "a": [
+      -1000,
+      -1000
+     ]
+    },
+    {
+     "a": [
+      -179,
+      -1000,
+      876
+     ]
+    }
+   ],
+   "counts": {
+    "generated": 26,
+    "kept": 1,
+    "equivalent": 2,
+    "trap_only": 11,
+    "allowed": 12,
+    "no_check": 0
+   },
+   "mutants": [
+    {
+     "def": "stats::is_sorted",
+     "site": 3,
+     "line": 106,
+     "col": 9,
+     "before": "hi - lo",
+     "after": "hi + lo",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         -1000
+        ]
+       },
+       "expected": {
+        "r": 0
+       },
+       "output": {
+        "r": -2000
+       }
+      }
+     ],
+     "id": "m00"
+    }
+   ],
+   "discarded": [
+    {
+     "def": "stats::is_sorted",
+     "site": 0,
+     "line": 105,
+     "col": 23,
+     "before": "a[0]",
+     "after": "a[0 + 1]",
+     "reason": "trap_only"
+    },
+    {
+     "def": "stats::is_sorted",
+     "site": 1,
+     "line": 105,
+     "col": 23,
+     "before": "a[0]",
+     "after": "a[0 - 1]",
+     "reason": "trap_only"
+    },
+    {
+     "def": "stats::is_sorted",
+     "site": 2,
+     "line": 105,
+     "col": 25,
+     "before": "0",
+     "after": "1",
+     "reason": "trap_only"
+    },
+    {
+     "def": "num::is_prime",
+     "site": 0,
+     "line": 67,
+     "col": 9,
+     "before": "a >= b",
+     "after": "!(a >= b)",
+     "reason": "allowed"
+    },
+    {
+     "def": "num::is_prime",
+     "site": 1,
+     "line": 67,
+     "col": 12,
+     "before": "a >= b",
+     "after": "a > b",
+     "reason": "equivalent"
+    },
+    {
+     "def": "num::min_of",
+     "site": 0,
+     "line": 88,
+     "col": 9,
+     "before": "a <= b",
+     "after": "!(a <= b)",
+     "reason": "allowed"
+    },
+    {
+     "def": "num::min_of",
+     "site": 1,
+     "line": 88,
+     "col": 12,
+     "before": "a <= b",
+     "after": "a < b",
+     "reason": "equivalent"
+    },
+    {
+     "def": "stats::fill",
+     "site": 0,
+     "line": 48,
+     "col": 26,
+     "before": "a[0]",
+     "after": "a[0 + 1]",
+     "reason": "allowed"
+    },
+    {
+     "def": "stats::fill",
+     "site": 1,
+     "line": 48,
+     "col": 26,
+     "before": "a[0]",
+     "after": "a[0 - 1]",
+     "reason": "trap_only"
+    },
+    {
+     "def": "stats::fill",
+     "site": 2,
+     "line": 48,
+     "col": 28,
+     "before": "0",
+     "after": "1",
+     "reason": "allowed"
+    },
+    {
+     "def": "stats::fill",
+     "site": 3,
+     "line": 49,
+     "col": 28,
+     "before": "1",
+     "after": "2",
+     "reason": "allowed"
+    },
+    {
+     "def": "stats::fill",
+     "site": 4,
+     "line": 50,
+     "col": 15,
+     "before": "k < a.len()",
+     "after": "k <= a.len()",
+     "reason": "trap_only"
+    },
+    {
+     "def": "stats::fill",
+     "site": 5,
+     "line": 54,
+     "col": 30,
+     "before": "a[k]",
+     "after": "a[k + 1]",
+     "reason": "trap_only"
+    },
+    {
+     "def": "stats::fill",
+     "site": 6,
+     "line": 54,
+     "col": 30,
+     "before": "a[k]",
+     "after": "a[k - 1]",
+     "reason": "allowed"
+    },
+    {
+     "def": "stats::fill",
+     "site": 7,
+     "line": 55,
+     "col": 17,
+     "before": "k + 1",
+     "after": "k - 1",
+     "reason": "trap_only"
+    },
+    {
+     "def": "stats::fill",
+     "site": 8,
+     "line": 55,
+     "col": 21,
+     "before": "k + 1",
+     "after": "k + 2",
+     "reason": "allowed"
+    },
+    {
+     "def": "stats::transfer",
+     "site": 0,
+     "line": 85,
+     "col": 26,
+     "before": "a[0]",
+     "after": "a[0 + 1]",
+     "reason": "allowed"
+    },
+    {
+     "def": "stats::transfer",
+     "site": 1,
+     "line": 85,
+     "col": 26,
+     "before": "a[0]",
+     "after": "a[0 - 1]",
+     "reason": "trap_only"
+    },
+    {
+     "def": "stats::transfer",
+     "site": 2,
+     "line": 85,
+     "col": 28,
+     "before": "0",
+     "after": "1",
+     "reason": "allowed"
+    },
+    {
+     "def": "stats::transfer",
+     "site": 3,
+     "line": 86,
+     "col": 28,
+     "before": "1",
+     "after": "2",
+     "reason": "allowed"
+    },
+    {
+     "def": "stats::transfer",
+     "site": 4,
+     "line": 87,
+     "col": 15,
+     "before": "k < a.len()",
+     "after": "k <= a.len()",
+     "reason": "trap_only"
+    },
+    {
+     "def": "stats::transfer",
+     "site": 5,
+     "line": 91,
+     "col": 30,
+     "before": "a[k]",
+     "after": "a[k + 1]",
+     "reason": "trap_only"
+    },
+    {
+     "def": "stats::transfer",
+     "site": 6,
+     "line": 91,
+     "col": 30,
+     "before": "a[k]",
+     "after": "a[k - 1]",
+     "reason": "allowed"
+    },
+    {
+     "def": "stats::transfer",
+     "site": 7,
+     "line": 92,
+     "col": 17,
+     "before": "k + 1",
+     "after": "k - 1",
+     "reason": "trap_only"
+    },
+    {
+     "def": "stats::transfer",
+     "site": 8,
+     "line": 92,
+     "col": 21,
+     "before": "k + 1",
+     "after": "k + 2",
+     "reason": "allowed"
+    }
+   ]
+  }
+ ]
+}

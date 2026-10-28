@@ -25,6 +25,7 @@ cargo run -- query --cache .bmb-cache status -- ws  # map·query도 --cache DIR�
 cargo run -- import ws a.bmb     # 작업 공간 ws/src/에 단위당 정규형 파일 하나
 cargo run -- apply ws ops.json   # 쓰기 트랜잭션(unit/put/remove/remove_unit). 구조·타입 오류면 전체 거부
 cargo run -- mcp ws              # MCP 서버(stdio): query map verify build tx_begin/put/commit 등
+cargo run -- mcp --write-tool ws # 위에 `write`(단위·정의·삭제·커밋·증명을 한 호출로, 2D-24)를 더한다. 동결 과제 집합은 끄고 쓴다
 BMB_SOUND_ITERS=60 cargo test --release --test soundness  # 건전성 퍼징(1B-17): 증명·반례·빌드를 독립 해석기와 대조
 BMB_SOUND_ITERS=40 cargo test --release --test soundness_owned  # 소유 자료 퍼징(2O-05): 연결 리스트·Box·Vec 필드의 이동·교체·참조 match, 증명·반례·빌드·valgrind 해제를 해석기와 대조
 BMB_FMT_FUZZ_ITERS=2000 cargo test --release --test fmt_fuzz  # 정규형·해시 퍼징(1D-22): 배치·주석·파일 분할에 정규형·해시 불변, fmt 멱등, fmt 전후 상태 줄·IR 동일(앞 BMB_FMT_FUZZ_PROVE개만 증명)

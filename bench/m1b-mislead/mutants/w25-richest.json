@@ -1,0 +1,528 @@
+{
+ "task": "w25-richest",
+ "generator": "bench/m1/bsb_gen.py",
+ "max_witnesses": 2,
+ "targets": [
+  {
+   "def": "ledger::richest",
+   "signature": "fn richest(a: &[i64]) -> (r: usize)",
+   "mutated": [
+    "ledger::richest",
+    "search::deposit"
+   ],
+   "inputs": [
+    {
+     "a": [
+      5
+     ]
+    },
+    {
+     "a": [
+      3,
+      1,
+      2
+     ]
+    },
+    {
+     "a": [
+      1,
+      1
+     ]
+    },
+    {
+     "a": [
+      2,
+      1,
+      1
+     ]
+    },
+    {
+     "a": [
+      1,
+      2,
+      3
+     ]
+    },
+    {
+     "a": [
+      3,
+      2,
+      1
+     ]
+    },
+    {
+     "a": [
+      0,
+      3,
+      3,
+      0
+     ]
+    },
+    {
+     "a": [
+      3,
+      3,
+      2,
+      2
+     ]
+    },
+    {
+     "a": [
+      3,
+      0,
+      1,
+      -2
+     ]
+    },
+    {
+     "a": [
+      0,
+      3
+     ]
+    },
+    {
+     "a": [
+      0
+     ]
+    },
+    {
+     "a": [
+      -2,
+      2,
+      1,
+      -2
+     ]
+    },
+    {
+     "a": [
+      -1,
+      -2
+     ]
+    },
+    {
+     "a": [
+      1,
+      0,
+      1
+     ]
+    },
+    {
+     "a": [
+      -1
+     ]
+    },
+    {
+     "a": [
+      3,
+      2,
+      -2,
+      -2
+     ]
+    },
+    {
+     "a": [
+      -2,
+      3
+     ]
+    },
+    {
+     "a": [
+      3
+     ]
+    },
+    {
+     "a": [
+      1,
+      -1,
+      -2,
+      3
+     ]
+    },
+    {
+     "a": [
+      2,
+      3
+     ]
+    },
+    {
+     "a": [
+      1,
+      0,
+      -2,
+      -1
+     ]
+    },
+    {
+     "a": [
+      1,
+      1,
+      1
+     ]
+    },
+    {
+     "a": [
+      -1,
+      2
+     ]
+    },
+    {
+     "a": [
+      2,
+      1,
+      0
+     ]
+    },
+    {
+     "a": [
+      2,
+      -1
+     ]
+    },
+    {
+     "a": [
+      1,
+      0,
+      -2,
+      0,
+      -2
+     ]
+    },
+    {
+     "a": [
+      3,
+      2
+     ]
+    },
+    {
+     "a": [
+      1
+     ]
+    },
+    {
+     "a": [
+      3,
+      0,
+      0,
+      1
+     ]
+    },
+    {
+     "a": [
+      3,
+      -2,
+      -2
+     ]
+    },
+    {
+     "a": [
+      2,
+      1,
+      -2
+     ]
+    },
+    {
+     "a": [
+      3,
+      1,
+      2,
+      2,
+      -2
+     ]
+    },
+    {
+     "a": [
+      1,
+      3
+     ]
+    }
+   ],
+   "counts": {
+    "generated": 11,
+    "kept": 6,
+    "equivalent": 0,
+    "trap_only": 4,
+    "allowed": 1,
+    "no_check": 0
+   },
+   "mutants": [
+    {
+     "def": "search::deposit",
+     "site": 0,
+     "line": 13,
+     "col": 31,
+     "before": "0",
+     "after": "1",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         5
+        ]
+       },
+       "expected": {
+        "r": 0
+       },
+       "output": {
+        "r": 1
+       }
+      },
+      {
+       "input": {
+        "a": [
+         3,
+         1,
+         2
+        ]
+       },
+       "expected": {
+        "r": 0
+       },
+       "output": {
+        "r": 2
+       }
+      }
+     ],
+     "id": "m00"
+    },
+    {
+     "def": "search::deposit",
+     "site": 1,
+     "line": 14,
+     "col": 28,
+     "before": "1",
+     "after": "2",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         0,
+         3
+        ]
+       },
+       "expected": {
+        "r": 1
+       },
+       "output": {
+        "r": 0
+       }
+      },
+      {
+       "input": {
+        "a": [
+         -2,
+         2,
+         1,
+         -2
+        ]
+       },
+       "expected": {
+        "r": 1
+       },
+       "output": {
+        "r": 2
+       }
+      }
+     ],
+     "id": "m01"
+    },
+    {
+     "def": "search::deposit",
+     "site": 3,
+     "line": 19,
+     "col": 13,
+     "before": "a[k] > a[best]",
+     "after": "!(a[k] > a[best])",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         3,
+         1,
+         2
+        ]
+       },
+       "expected": {
+        "r": 0
+       },
+       "output": {
+        "r": 1
+       }
+      },
+      {
+       "input": {
+        "a": [
+         2,
+         1,
+         1
+        ]
+       },
+       "expected": {
+        "r": 0
+       },
+       "output": {
+        "r": 2
+       }
+      }
+     ],
+     "id": "m02"
+    },
+    {
+     "def": "search::deposit",
+     "site": 6,
+     "line": 19,
+     "col": 16,
+     "before": "a[k]",
+     "after": "a[k - 1]",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         0,
+         3
+        ]
+       },
+       "expected": {
+        "r": 1
+       },
+       "output": {
+        "r": 0
+       }
+      },
+      {
+       "input": {
+        "a": [
+         -2,
+         2,
+         1,
+         -2
+        ]
+       },
+       "expected": {
+        "r": 1
+       },
+       "output": {
+        "r": 2
+       }
+      }
+     ],
+     "id": "m03"
+    },
+    {
+     "def": "search::deposit",
+     "site": 7,
+     "line": 19,
+     "col": 23,
+     "before": "a[best]",
+     "after": "a[best + 1]",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         3,
+         1,
+         2
+        ]
+       },
+       "expected": {
+        "r": 0
+       },
+       "output": {
+        "r": 2
+       }
+      },
+      {
+       "input": {
+        "a": [
+         0,
+         3,
+         3,
+         0
+        ]
+       },
+       "expected": {
+        "r": 1
+       },
+       "output": {
+        "r": 0
+       }
+      }
+     ],
+     "id": "m04"
+    },
+    {
+     "def": "search::deposit",
+     "site": 10,
+     "line": 22,
+     "col": 21,
+     "before": "k + 1",
+     "after": "k + 2",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1,
+         2,
+         3
+        ]
+       },
+       "expected": {
+        "r": 2
+       },
+       "output": {
+        "r": 1
+       }
+      }
+     ],
+     "id": "m05"
+    }
+   ],
+   "discarded": [
+    {
+     "def": "search::deposit",
+     "site": 2,
+     "line": 15,
+     "col": 15,
+     "before": "k < a.len()",
+     "after": "k <= a.len()",
+     "reason": "trap_only"
+    },
+    {
+     "def": "search::deposit",
+     "site": 4,
+     "line": 19,
+     "col": 16,
+     "before": "a[k] > a[best]",
+     "after": "a[k] >= a[best]",
+     "reason": "allowed"
+    },
+    {
+     "def": "search::deposit",
+     "site": 5,
+     "line": 19,
+     "col": 16,
+     "before": "a[k]",
+     "after": "a[k + 1]",
+     "reason": "trap_only"
+    },
+    {
+     "def": "search::deposit",
+     "site": 8,
+     "line": 19,
+     "col": 23,
+     "before": "a[best]",
+     "after": "a[best - 1]",
+     "reason": "trap_only"
+    },
+    {
+     "def": "search::deposit",
+     "site": 9,
+     "line": 22,
+     "col": 17,
+     "before": "k + 1",
+     "after": "k - 1",
+     "reason": "trap_only"
+    }
+   ]
+  }
+ ]
+}

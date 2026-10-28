@@ -1,0 +1,123 @@
+#[summary("상한이 있는 계좌 잔액 배열")]
+mod ledger {
+    spec fn debited(a: &[i64], i: usize) -> bool {
+        i < a.len()
+    }
+
+    spec fn in_closed(x: i64) -> bool {
+        0 <= x && x <= 1000000000
+    }
+
+    #[effects(pure)]
+    #[uses(debited, amount_ok)]
+    fn copy_into(a: &[i64], i: usize) -> i64
+        requires amount_ok(a), debited(a, i),
+    {
+        a[i]
+    }
+
+    spec fn amount_ok(a: &[i64]) -> bool {
+        forall|k: usize| k < a.len() ==> 0 <= #[trigger] a[k] && a[k] <= 1000000000
+    }
+
+    spec fn pos(a: &[i64], b: &[i64], i: usize, x: i64, r: bool) -> bool {
+        (r ==> below_target(a, b, i, x)) && (!r ==> below_target(a, b, i, 0))
+    }
+
+    spec fn credited(a: &[i64], b: &[i64], i: usize, x: i64, r: bool) -> bool {
+        (r ==> below_target(a, b, i, 0 - x)) && (!r ==> below_target(a, b, i, 0))
+    }
+
+    #[effects(pure)]
+    #[uses(debited, in_closed, amount_ok, pos, below_target)]
+    fn count_state(a: &mut [i64], i: usize, x: i64) -> (r: bool)
+        requires amount_ok(a), debited(a, i), in_closed(x),
+        ensures amount_ok(a), pos(a, old(a), i, x, r),
+    {
+        if a[i] <= 1000000000 - x {
+            a[i] = a[i] + x;
+            true
+        } else {
+            false
+        }
+    }
+
+    spec fn below_target(a: &[i64], b: &[i64], i: usize, d: i64) -> bool {
+        a.len() == b.len() && a[i] == b[i] + d && (forall|k: usize| k < a.len() && k != i ==> #[trigger] a[k] == b[k])
+    }
+
+    #[effects(pure)]
+    #[uses(debited, in_closed, amount_ok)]
+    fn add_small(a: &mut [i64], from: usize, x: i64) -> (r: usize)
+        requires amount_ok(a), debited(a, from), in_closed(x),
+        ensures amount_ok(a),
+    {
+        let mut paid: usize = 0;
+        let mut k: usize = 0;
+        while k < a.len()
+            invariant k <= a.len(), paid <= k, from < a.len(), amount_ok(a),
+            decreases a.len() - k,
+        {
+            if balance(a, from, k, x) {
+                paid = paid + 1;
+            }
+            k = k + 1;
+        }
+        paid
+    }
+
+    spec fn lb_ok(a: &[i64]) -> bool {
+        a.len() <= 1000
+    }
+
+    #[effects(pure)]
+    #[uses(amount_ok, lb_ok, is_sum)]
+    fn withdraw(a: &[i64]) -> (r: i64)
+        requires amount_ok(a), lb_ok(a),
+        ensures is_sum(r, a.len()),
+    {
+        let mut s: i64 = 0;
+        let mut k: usize = 0;
+        while k < a.len()
+            invariant k <= a.len(), is_sum(s, k),
+            decreases a.len() - k,
+        {
+            s = s + a[k];
+            k = k + 1;
+        }
+        s
+    }
+
+    spec fn is_sum(s: i64, n: usize) -> bool {
+        0 <= s && s <= 1000000000 * n
+    }
+
+    #[effects(pure)]
+    #[uses(debited, in_closed, amount_ok, pos, credited, below_target)]
+    fn balance(a: &mut [i64], i: usize, j: usize, x: i64) -> (r: bool)
+        requires amount_ok(a), debited(a, i), debited(a, j), in_closed(x),
+        ensures amount_ok(a),
+    {
+        let mut ok: bool = false;
+        if i != j && a[i] >= x && a[j] <= 1000000000 - x {
+            let w: bool = sign(a, i, x);
+            let d: bool = count_state(a, j, x);
+            ok = w && d;
+        }
+        ok
+    }
+
+    #[effects(pure)]
+    #[uses(debited, in_closed, amount_ok, credited, below_target)]
+    fn sign(a: &mut [i64], i: usize, x: i64) -> (r: bool)
+        requires amount_ok(a), debited(a, i), in_closed(x),
+        ensures amount_ok(a), credited(a, old(a), i, x, r),
+    {
+        if a[i] >= x {
+            a[i] = a[i] - x;
+            true
+        } else {
+            false
+        }
+    }
+}

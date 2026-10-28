@@ -1,0 +1,18 @@
+{
+ "id": "n02-callers-transitive",
+ "kind": "navigate",
+ "prompt": "Which definitions call `u5::d054` directly or through other functions (transitively)? Use the `answer` tool with the full paths (unit::name) of all such definitions.",
+ "truth": {
+  "query": [
+   "edges",
+   "u5::d054",
+   "in",
+   "1"
+  ],
+  "kinds": [
+   "calls"
+  ],
+  "field": "from",
+  "closure": true
+ }
+}

@@ -1,0 +1,37 @@
+{
+ "id": "n10-writers",
+ "kind": "navigate",
+ "prompt": "Which definitions pass a `&mut` argument to a function of unit `u5` (`u5::d054`, `u5::d061`, `u5::d060` or `u5::d056`)? Use the `answer` tool with the full paths (unit::name) of all such definitions.",
+ "truth": {
+  "query": [
+   "edges",
+   "u5::d054",
+   "in",
+   "1"
+  ],
+  "also": [
+   [
+    "edges",
+    "u5::d061",
+    "in",
+    "1"
+   ],
+   [
+    "edges",
+    "u5::d060",
+    "in",
+    "1"
+   ],
+   [
+    "edges",
+    "u5::d056",
+    "in",
+    "1"
+   ]
+  ],
+  "kinds": [
+   "writes"
+  ],
+  "field": "from"
+ }
+}

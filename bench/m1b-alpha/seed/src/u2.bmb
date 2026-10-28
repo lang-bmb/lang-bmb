@@ -1,0 +1,137 @@
+#[summary("unit u2")]
+mod u2 {
+    spec fn d004(a: u64, b: u64, r: u64) -> bool {
+        r * b >= a && r * b < a + b
+    }
+
+    #[effects(pure)]
+    #[uses(d008)]
+    fn d005(n: u64) -> (r: u64)
+        ensures d008(n, r),
+        decreases n,
+    {
+        if n < 10 {
+            1
+        } else {
+            1 + d005(n / 10)
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(d007)]
+    fn d006(n: u64) -> (r: u64)
+        ensures d007(n, r),
+        decreases n,
+    {
+        if n < 10 {
+            n
+        } else {
+            n % 10 + d006(n / 10)
+        }
+    }
+
+    spec fn d007(n: u64, r: u64) -> bool {
+        r <= n
+    }
+
+    spec fn d008(n: u64, r: u64) -> bool {
+        1 <= r && r <= n + 1
+    }
+
+    #[effects(pure)]
+    #[uses(d004, d015, d016)]
+    fn d009(a: u64, b: u64) -> (r: u64)
+        requires d015(a), d015(b), d016(b),
+        ensures d004(a, b, r),
+    {
+        (a + b - 1) / b
+    }
+
+    #[effects(pure)]
+    #[uses(d011, d016)]
+    fn d010(d: u64, n: u64) -> (r: bool)
+        requires d016(d),
+        ensures d011(d, n, r),
+    {
+        n % d == 0
+    }
+
+    spec fn d011(d: u64, n: u64, r: bool) -> bool {
+        r == (n % d == 0)
+    }
+
+    #[effects(pure)]
+    #[uses(d013, d017)]
+    fn d012(a: u64, b: u64) -> (g: u64)
+        requires d017(a, b),
+        ensures d013(g, a, b),
+        decreases b,
+    {
+        if a % b == 0 {
+            if b <= a {
+                b
+            } else {
+                a
+            }
+        } else {
+            d012(b, a % b)
+        }
+    }
+
+    spec fn d013(g: u64, a: u64, b: u64) -> bool {
+        g > 0 && (g <= a || g <= b)
+    }
+
+    #[effects(pure)]
+    #[uses(d015)]
+    fn d014(n: u64) -> bool
+        requires d015(n),
+    {
+        let mut d: u64 = 2;
+        let mut found: bool = false;
+        while d < n && !found
+            invariant 2 <= d,
+            decreases n - d,
+        {
+            if n % d == 0 {
+                found = true;
+            }
+            d = d + 1;
+        }
+        n >= 2 && !found
+    }
+
+    spec fn d015(n: u64) -> bool {
+        n <= 1000000
+    }
+
+    spec fn d016(n: u64) -> bool {
+        n > 0
+    }
+
+    spec fn d017(a: u64, b: u64) -> bool {
+        a > 0 && b > 0
+    }
+
+    #[effects(pure)]
+    #[uses(d015, d019)]
+    fn d018(n: u64) -> (r: u64)
+        requires d015(n),
+        ensures d019(n, r),
+    {
+        let mut s: u64 = 0;
+        let mut k: u64 = 0;
+        while k < n
+            invariant k <= n, d019(k, s),
+            decreases n - k,
+        {
+            k = k + 1;
+            s = s + k;
+        }
+        s
+    }
+
+    spec fn d019(n: u64, r: u64) -> bool {
+        2 * r == n * (n + 1)
+    }
+}

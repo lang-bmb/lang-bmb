@@ -1,0 +1,38 @@
+{
+ "id": "w05-reverse-into",
+ "kind": "write",
+ "prompt": "Create unit `tasks` and implement `reverse_into`: for dst and src of equal length, write src in reverse order into dst (dst[k] == src[src.len() - 1 - k]). The contract must state this for every index.\n\nRequired signature (in unit `tasks`):\nfn reverse_into(dst: &mut [i64], src: &[i64]) -> ()",
+ "unit": "tasks",
+ "def": "tasks::reverse_into",
+ "signature": "fn reverse_into(dst: &mut [i64], src: &[i64]) -> ()",
+ "accept": {
+  "specs": "spec fn ref_pre(dst: &[i64], src: &[i64]) -> bool { dst.len() == src.len() }\nspec fn ref_post(dst: &[i64], src: &[i64]) -> bool { dst.len() == src.len() && (forall|k: usize| k < dst.len() ==> #[trigger] dst[k] == src[src.len() - 1 - k]) }",
+  "pre": "ref_pre(dst, src)",
+  "post": "ref_post(dst, src)",
+  "args": "dst, src"
+ },
+ "reference": [
+  {
+   "op": "unit",
+   "path": "tasks",
+   "summary": "과제 구현"
+  },
+  {
+   "op": "put",
+   "unit": "tasks",
+   "code": "spec fn rev_below(dst: &[i64], src: &[i64], n: usize) -> bool { forall|k: usize| k < n ==> #[trigger] dst[k] == src[src.len() - 1 - k] }\n\nspec fn reversed(dst: &[i64], src: &[i64]) -> bool { dst.len() == src.len() && (forall|k: usize| k < dst.len() ==> #[trigger] dst[k] == src[src.len() - 1 - k]) }\n\n#[effects(pure)]\n#[uses(arr::at_least_target, rev_below, reversed)]\nfn reverse_into(dst: &mut [i64], src: &[i64]) -> ()\n    requires arr::at_least_target(dst, src),\n    ensures reversed(dst, src),\n{\n    let mut k: usize = 0;\n    while k < dst.len()\n        invariant k <= dst.len(), dst.len() == src.len(), rev_below(dst, src, k),\n        decreases dst.len() - k,\n    {\n        dst[k] = src[src.len() - 1 - k];\n        k = k + 1;\n    }\n}"
+  }
+ ],
+ "weak_reference": [
+  {
+   "op": "unit",
+   "path": "tasks",
+   "summary": "과제 구현"
+  },
+  {
+   "op": "put",
+   "unit": "tasks",
+   "code": "#[effects(pure)]\n#[uses(arr::at_least_target)]\nfn reverse_into(dst: &mut [i64], src: &[i64]) -> ()\n    requires arr::at_least_target(dst, src),\n    ensures arr::at_least_target(dst, src),\n{\n    let mut k: usize = 0;\n    while k < dst.len()\n        invariant k <= dst.len(), dst.len() == src.len(),\n        decreases dst.len() - k,\n    {\n        dst[k] = src[src.len() - 1 - k];\n        k = k + 1;\n    }\n}"
+  }
+ ]
+}

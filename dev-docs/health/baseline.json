@@ -17,8 +17,8 @@
     "S4_stage0_rust_lines": 28017,
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
-    "P1_runnable_programs": 47,
-    "P2_bmb_lines": 13302,
+    "P1_runnable_programs": 48,
+    "P2_bmb_lines": 13803,
     "P3_errors_with_help": 0.8413,
     "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
@@ -1138,6 +1138,20 @@
         "P3_errors_with_help": [
           0.8226,
           0.8413
+        ]
+      }
+    },
+    {
+      "date": "2026-10-28",
+      "reason": "T4-02·T3-01: lib/utf8.bmb와 차등 시험 tests/lib_run/utf8(실행 프로그램 +1), bench/game의 binary-trees·fannkuch-redux, bench/lib/utf8_speed. 생성된 H-NAME 쌍둥이(bench/m1b-alpha·mislead)는 P2에서 뺀다",
+      "changed": {
+        "P1_runnable_programs": [
+          47,
+          48
+        ],
+        "P2_bmb_lines": [
+          13302,
+          13803
         ]
       }
     }

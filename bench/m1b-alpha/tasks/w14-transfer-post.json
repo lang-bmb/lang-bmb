@@ -1,0 +1,28 @@
+{
+ "id": "w14-transfer-post",
+ "kind": "write",
+ "prompt": "The library function `u5::d060` only promises that balances stay within the cap. Give it a postcondition that states what it does: if it returns true, account i lost x and account j gained x; if it returns false, accounts i and j are unchanged; every other account is unchanged either way. Keep its parameters, precondition and behaviour. Change other definitions if the proof needs it; the whole workspace must still verify.\n\nRequired signature (in unit `u5`):\nfn d060(a: &mut [i64], i: usize, j: usize, x: i64) -> (r: bool)",
+ "unit": "u5",
+ "def": "u5::d060",
+ "signature": "fn d060(a: &mut [i64], i: usize, j: usize, x: i64) -> (r: bool)",
+ "accept": {
+  "specs": "spec fn ref_pre(a: &[i64], i: usize, j: usize, x: i64) -> bool { (forall|k: usize| k < a.len() ==> 0 <= #[trigger] a[k] && a[k] <= 1000000000) && i < a.len() && j < a.len() && 0 <= x && x <= 1000000000 }\nspec fn ref_post(a: &[i64], b: &[i64], i: usize, j: usize, x: i64, r: bool) -> bool { a.len() == b.len() && (r ==> a[i] == b[i] - x && a[j] == b[j] + x) && (!r ==> a[i] == b[i] && a[j] == b[j]) && (forall|k: usize| k < a.len() && k != i && k != j ==> #[trigger] a[k] == b[k]) }",
+  "pre": "ref_pre(a, i, j, x)",
+  "post": "ref_post(a, old(a), i, j, x, r)",
+  "args": "a, i, j, x"
+ },
+ "reference": [
+  {
+   "op": "put",
+   "unit": "u5",
+   "code": "spec fn dep_cond(b: &[i64], i: usize, x: i64, r: bool) -> bool { r == (b[i] <= 1000000000 - x) }\n\nspec fn wd_cond(b: &[i64], i: usize, x: i64, r: bool) -> bool { r == (b[i] >= x) }\n\nspec fn transferred(a: &[i64], b: &[i64], i: usize, j: usize, x: i64, r: bool) -> bool {\n    a.len() == b.len() && (r ==> a[i] == b[i] - x && a[j] == b[j] + x) && (!r ==> a[i] == b[i] && a[j] == b[j]) && (forall|k: usize| k < a.len() && k != i && k != j ==> #[trigger] a[k] == b[k])\n}\n\n#[effects(pure)]\n#[uses(d051, d048, d049, d055, d052, dep_cond)]\nfn d054(a: &mut [i64], i: usize, x: i64) -> (r: bool)\n    requires d051(a), d048(a, i), d049(x),\n    ensures d051(a), d052(a, old(a), i, x, r), dep_cond(old(a), i, x, r),\n{\n    if a[i] <= 1000000000 - x {\n        a[i] = a[i] + x;\n        true\n    } else {\n        false\n    }\n}\n\n#[effects(pure)]\n#[uses(d051, d048, d049, d055, d053, wd_cond)]\nfn d061(a: &mut [i64], i: usize, x: i64) -> (r: bool)\n    requires d051(a), d048(a, i), d049(x),\n    ensures d051(a), d053(a, old(a), i, x, r), wd_cond(old(a), i, x, r),\n{\n    if a[i] >= x {\n        a[i] = a[i] - x;\n        true\n    } else {\n        false\n    }\n}\n\n#[effects(pure)]\n#[uses(d051, d048, d049, d055, d052, d053, dep_cond, wd_cond, transferred)]\nfn d060(a: &mut [i64], i: usize, j: usize, x: i64) -> (r: bool)\n    requires d051(a), d048(a, i), d048(a, j), d049(x),\n    ensures d051(a), transferred(a, old(a), i, j, x, r),\n{\n    let mut ok: bool = false;\n    if i != j && a[i] >= x && a[j] <= 1000000000 - x {\n        let w: bool = d061(a, i, x);\n        let d: bool = d054(a, j, x);\n        ok = w && d;\n    }\n    ok\n}"
+  }
+ ],
+ "weak_reference": [
+  {
+   "op": "put",
+   "unit": "u5",
+   "code": "spec fn same_size(a: &[i64], b: &[i64]) -> bool { a.len() == b.len() }\n\n#[effects(pure)]\n#[uses(d051, d048, d049, d055, d052, d053, same_size)]\nfn d060(a: &mut [i64], i: usize, j: usize, x: i64) -> (r: bool)\n    requires d051(a), d048(a, i), d048(a, j), d049(x),\n    ensures d051(a), same_size(a, old(a)),\n{\n    let mut ok: bool = false;\n    if i != j && a[i] >= x && a[j] <= 1000000000 - x {\n        let w: bool = d061(a, i, x);\n        let d: bool = d054(a, j, x);\n        ok = w && d;\n    }\n    ok\n}"
+  }
+ ]
+}

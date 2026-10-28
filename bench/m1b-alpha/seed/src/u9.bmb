@@ -1,0 +1,120 @@
+#[summary("unit u9")]
+mod u9 {
+    spec fn d107(a: &[i64], r: usize) -> bool {
+        r <= a.len()
+    }
+
+    spec fn d108(a: &[i64]) -> bool {
+        a.len() <= 1000000 && (forall|k: usize| k < a.len() ==> -1000 <= #[trigger] a[k] && a[k] <= 1000)
+    }
+
+    #[effects(pure)]
+    #[uses(d107)]
+    fn d109(a: &[i64], t: i64) -> (r: usize)
+        ensures d107(a, r),
+    {
+        let mut c: usize = 0;
+        let mut k: usize = 0;
+        while k < a.len()
+            invariant k <= a.len(), c <= k,
+            decreases a.len() - k,
+        {
+            if a[k] > t {
+                c = c + 1;
+            }
+            k = k + 1;
+        }
+        c
+    }
+
+    spec fn d110(x: i64) -> bool {
+        -1000 <= x && x <= 1000
+    }
+
+    #[effects(pure)]
+    #[uses(u3::d030, d108, d110, u6::d067)]
+    fn d111(a: &[i64]) -> (r: i64)
+        requires u3::d030(a), d108(a),
+        ensures d110(r),
+    {
+        let mut m: i64 = a[0];
+        let mut k: usize = 1;
+        while k < a.len()
+            invariant 1 <= k, k <= a.len(), d110(m),
+            decreases a.len() - k,
+        {
+            m = u6::d070(m, a[k]);
+            k = k + 1;
+        }
+        m
+    }
+
+    #[effects(pure)]
+    #[uses(u3::d030, d108, d116)]
+    fn d112(a: &[i64]) -> i64
+        requires u3::d030(a), d108(a),
+    {
+        let s: i64 = d115(a);
+        let n: usize = a.len();
+        let mut d: i64 = 0;
+        let mut k: usize = 0;
+        while k < n
+            invariant k <= n, n <= 1000000, d == k,
+            decreases n - k,
+        {
+            d = d + 1;
+            k = k + 1;
+        }
+        s / d
+    }
+
+    #[effects(pure)]
+    #[uses(u3::d030, d108, d110, u6::d068)]
+    fn d113(a: &[i64]) -> (r: i64)
+        requires u3::d030(a), d108(a),
+        ensures d110(r),
+    {
+        let mut m: i64 = a[0];
+        let mut k: usize = 1;
+        while k < a.len()
+            invariant 1 <= k, k <= a.len(), d110(m),
+            decreases a.len() - k,
+        {
+            m = u6::d072(m, a[k]);
+            k = k + 1;
+        }
+        m
+    }
+
+    #[effects(pure)]
+    #[uses(d110, u6::d077)]
+    fn d114(a: &[i64]) -> i64
+        requires u3::d030(a), d108(a),
+    {
+        let hi: i64 = d111(a);
+        let lo: i64 = d113(a);
+        u6::d078(hi, lo)
+    }
+
+    #[effects(pure)]
+    #[uses(d108, d116)]
+    fn d115(a: &[i64]) -> (r: i64)
+        requires d108(a),
+        ensures d116(r, a.len()),
+    {
+        let mut s: i64 = 0;
+        let mut k: usize = 0;
+        while k < a.len()
+            invariant k <= a.len(), d116(s, k),
+            decreases a.len() - k,
+        {
+            s = s + a[k];
+            k = k + 1;
+        }
+        s
+    }
+
+    spec fn d116(s: i64, n: usize) -> bool {
+        -1000 * n <= s && s <= 1000 * n
+    }
+}

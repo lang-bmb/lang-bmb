@@ -1,0 +1,28 @@
+{
+ "id": "w19-select-step-post",
+ "kind": "write",
+ "prompt": "The library function `order::run` has no postcondition. Give it one stating that the elements before index i are unchanged and that afterwards a[i] is <= every element at an index >= i, keeping its parameters, precondition and body. Change other definitions if the proof needs it; the whole workspace must still verify.\n\nRequired signature (in unit `order`):\nfn run(a: &mut [i64], i: usize) -> ()",
+ "unit": "order",
+ "def": "order::run",
+ "signature": "fn run(a: &mut [i64], i: usize) -> ()",
+ "accept": {
+  "specs": "spec fn ref_pre(a: &[i64], i: usize) -> bool { i < a.len() }\nspec fn ref_post(a: &[i64], b: &[i64], i: usize) -> bool { a.len() == b.len() && i < a.len() && (forall|k: usize| k < i ==> #[trigger] a[k] == b[k]) && (forall|j: usize| i <= j && j < a.len() ==> a[i] <= #[trigger] a[j]) }",
+  "pre": "ref_pre(a, i)",
+  "post": "ref_post(a, old(a), i)",
+  "args": "a, i"
+ },
+ "reference": [
+  {
+   "op": "put",
+   "unit": "order",
+   "code": "spec fn selected(a: &[i64], b: &[i64], i: usize) -> bool {\n    a.len() == b.len() && i < a.len() && (forall|k: usize| k < i ==> #[trigger] a[k] == b[k]) && (forall|j: usize| i <= j && j < a.len() ==> a[i] <= #[trigger] a[j])\n}\n\n#[effects(pure)]\n#[uses(ordered, idx2, selected, arr::min_ok, arr::same_len)]\nfn run(a: &mut [i64], i: usize) -> ()\n    requires ordered(a, i),\n    ensures selected(a, old(a), i),\n{\n    let j: usize = abs_small(a, i);\n    arr::min2(a, i, j);\n}"
+  }
+ ],
+ "weak_reference": [
+  {
+   "op": "put",
+   "unit": "order",
+   "code": "#[effects(pure)]\n#[uses(ordered, idx2, arr::min_ok, arr::same_len, arr::at_least_target)]\nfn run(a: &mut [i64], i: usize) -> ()\n    requires ordered(a, i),\n    ensures arr::at_least_target(a, old(a)),\n{\n    let j: usize = abs_small(a, i);\n    arr::min2(a, i, j);\n}"
+  }
+ ]
+}

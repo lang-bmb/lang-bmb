@@ -1,0 +1,118 @@
+#[summary("unit u3")]
+mod u3 {
+    spec fn d020(a: &[i64], v: i64) -> bool {
+        forall|k: usize| k < a.len() ==> #[trigger] a[k] == v
+    }
+
+    spec fn d021(dst: &[i64], src: &[i64]) -> bool {
+        dst.len() == src.len() && (forall|k: usize| k < dst.len() ==> #[trigger] dst[k] == src[k])
+    }
+
+    spec fn d022(dst: &[i64], src: &[i64], n: usize) -> bool {
+        forall|k: usize| k < n ==> #[trigger] dst[k] == src[k]
+    }
+
+    #[effects(pure)]
+    #[uses(d021, d022, d032)]
+    fn d023(dst: &mut [i64], src: &[i64]) -> ()
+        requires d032(dst, src),
+        ensures d021(dst, src),
+    {
+        let mut k: usize = 0;
+        while k < dst.len()
+            invariant k <= dst.len(), dst.len() == src.len(), d022(dst, src, k),
+            decreases dst.len() - k,
+        {
+            dst[k] = src[k];
+            k = k + 1;
+        }
+    }
+
+    spec fn d024(a: &[i64], v: i64, n: usize) -> bool {
+        forall|k: usize| k < n ==> #[trigger] a[k] == v
+    }
+
+    #[effects(pure)]
+    #[uses(d020, d024)]
+    fn d025(a: &mut [i64], v: i64) -> ()
+        ensures d020(a, v),
+    {
+        let mut k: usize = 0;
+        while k < a.len()
+            invariant k <= a.len(), d024(a, v, k),
+            decreases a.len() - k,
+        {
+            a[k] = v;
+            k = k + 1;
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(d030)]
+    fn d026(a: &[i64]) -> i64
+        requires d030(a),
+    {
+        a[0]
+    }
+
+    spec fn d027(a: &[i64], i: usize) -> bool {
+        i < a.len()
+    }
+
+    spec fn d028(a: &[i64], i: usize, j: usize) -> bool {
+        i < a.len() && j < a.len()
+    }
+
+    #[effects(pure)]
+    #[uses(d030)]
+    fn d029(a: &[i64]) -> i64
+        requires d030(a),
+    {
+        a[a.len() - 1]
+    }
+
+    spec fn d030(a: &[i64]) -> bool {
+        a.len() > 0
+    }
+
+    #[effects(pure)]
+    #[uses(d028, d030)]
+    fn d031(a: &mut [i64]) -> ()
+        requires d030(a),
+    {
+        let n: usize = a.len();
+        d035(a, 0, n - 1);
+    }
+
+    spec fn d032(a: &[i64], b: &[i64]) -> bool {
+        a.len() == b.len()
+    }
+
+    #[effects(pure)]
+    #[uses(d027, d034)]
+    fn d033(a: &mut [i64], i: usize, v: i64) -> ()
+        requires d027(a, i),
+        ensures d034(a, old(a), i, v),
+    {
+        a[i] = v;
+    }
+
+    spec fn d034(a: &[i64], b: &[i64], i: usize, v: i64) -> bool {
+        a.len() == b.len() && a[i] == v && (forall|k: usize| k < a.len() && k != i ==> #[trigger] a[k] == b[k])
+    }
+
+    #[effects(pure)]
+    #[uses(d028, d036)]
+    fn d035(a: &mut [i64], i: usize, j: usize) -> ()
+        requires d028(a, i, j),
+        ensures d036(a, old(a), i, j),
+    {
+        let t: i64 = a[i];
+        a[i] = a[j];
+        a[j] = t;
+    }
+
+    spec fn d036(a: &[i64], b: &[i64], i: usize, j: usize) -> bool {
+        a.len() == b.len() && a[i] == b[j] && a[j] == b[i] && (forall|k: usize| k < a.len() && k != i && k != j ==> #[trigger] a[k] == b[k])
+    }
+}

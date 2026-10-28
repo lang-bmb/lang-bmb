@@ -185,6 +185,9 @@ def practicality():
         rel = p.relative_to(ROOT).parts
         if rel[0] in ("target", ".git", ".claude"):
             continue
+        # Generated copies of m1b (bench/hname/gen.py T1-04, bench/edit/gen.py T1-06) are not code anyone wrote.
+        if rel[:2] in (("bench", "m1b-alpha"), ("bench", "m1b-mislead"), ("bench", "m1b-write")):
+            continue
         bmb_lines += len(p.read_text().splitlines())
     return {"P1_runnable_programs": len(runnable), "P2_bmb_lines": bmb_lines}
 

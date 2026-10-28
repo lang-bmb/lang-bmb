@@ -1,0 +1,28 @@
+{
+  "id": "w14-transfer-post",
+  "kind": "write",
+  "prompt": "The library function `ledger::transfer` only promises that balances stay within the cap. Give it a postcondition that states what it does: if it returns true, account i lost x and account j gained x; if it returns false, accounts i and j are unchanged; every other account is unchanged either way. Keep its parameters, precondition and behaviour. Change other definitions if the proof needs it; the whole workspace must still verify.\n\nRequired signature (in unit `ledger`):\nfn transfer(a: &mut [i64], i: usize, j: usize, x: i64) -> (r: bool)",
+  "unit": "ledger",
+  "def": "ledger::transfer",
+  "signature": "fn transfer(a: &mut [i64], i: usize, j: usize, x: i64) -> (r: bool)",
+  "accept": {
+    "specs": "spec fn ref_pre(a: &[i64], i: usize, j: usize, x: i64) -> bool { (forall|k: usize| k < a.len() ==> 0 <= #[trigger] a[k] && a[k] <= 1000000000) && i < a.len() && j < a.len() && 0 <= x && x <= 1000000000 }\nspec fn ref_post(a: &[i64], b: &[i64], i: usize, j: usize, x: i64, r: bool) -> bool { a.len() == b.len() && (r ==> a[i] == b[i] - x && a[j] == b[j] + x) && (!r ==> a[i] == b[i] && a[j] == b[j]) && (forall|k: usize| k < a.len() && k != i && k != j ==> #[trigger] a[k] == b[k]) }",
+    "pre": "ref_pre(a, i, j, x)",
+    "post": "ref_post(a, old(a), i, j, x, r)",
+    "args": "a, i, j, x"
+  },
+  "reference": [
+    {
+      "op": "put",
+      "unit": "ledger",
+      "code": "spec fn dep_cond(b: &[i64], i: usize, x: i64, r: bool) -> bool { r == (b[i] <= 1000000000 - x) }\n\nspec fn wd_cond(b: &[i64], i: usize, x: i64, r: bool) -> bool { r == (b[i] >= x) }\n\nspec fn transferred(a: &[i64], b: &[i64], i: usize, j: usize, x: i64, r: bool) -> bool {\n    a.len() == b.len() && (r ==> a[i] == b[i] - x && a[j] == b[j] + x) && (!r ==> a[i] == b[i] && a[j] == b[j]) && (forall|k: usize| k < a.len() && k != i && k != j ==> #[trigger] a[k] == b[k])\n}\n\n#[effects(pure)]\n#[uses(cap_ok, acct, amount_ok, moved, credited, dep_cond)]\nfn deposit(a: &mut [i64], i: usize, x: i64) -> (r: bool)\n    requires cap_ok(a), acct(a, i), amount_ok(x),\n    ensures cap_ok(a), credited(a, old(a), i, x, r), dep_cond(old(a), i, x, r),\n{\n    if a[i] <= 1000000000 - x {\n        a[i] = a[i] + x;\n        true\n    } else {\n        false\n    }\n}\n\n#[effects(pure)]\n#[uses(cap_ok, acct, amount_ok, moved, debited, wd_cond)]\nfn withdraw(a: &mut [i64], i: usize, x: i64) -> (r: bool)\n    requires cap_ok(a), acct(a, i), amount_ok(x),\n    ensures cap_ok(a), debited(a, old(a), i, x, r), wd_cond(old(a), i, x, r),\n{\n    if a[i] >= x {\n        a[i] = a[i] - x;\n        true\n    } else {\n        false\n    }\n}\n\n#[effects(pure)]\n#[uses(cap_ok, acct, amount_ok, moved, credited, debited, dep_cond, wd_cond, transferred)]\nfn transfer(a: &mut [i64], i: usize, j: usize, x: i64) -> (r: bool)\n    requires cap_ok(a), acct(a, i), acct(a, j), amount_ok(x),\n    ensures cap_ok(a), transferred(a, old(a), i, j, x, r),\n{\n    let mut ok: bool = false;\n    if i != j && a[i] >= x && a[j] <= 1000000000 - x {\n        let w: bool = withdraw(a, i, x);\n        let d: bool = deposit(a, j, x);\n        ok = w && d;\n    }\n    ok\n}"
+    }
+  ],
+  "weak_reference": [
+    {
+      "op": "put",
+      "unit": "ledger",
+      "code": "spec fn same_size(a: &[i64], b: &[i64]) -> bool { a.len() == b.len() }\n\n#[effects(pure)]\n#[uses(cap_ok, acct, amount_ok, moved, credited, debited, same_size)]\nfn transfer(a: &mut [i64], i: usize, j: usize, x: i64) -> (r: bool)\n    requires cap_ok(a), acct(a, i), acct(a, j), amount_ok(x),\n    ensures cap_ok(a), same_size(a, old(a)),\n{\n    let mut ok: bool = false;\n    if i != j && a[i] >= x && a[j] <= 1000000000 - x {\n        let w: bool = withdraw(a, i, x);\n        let d: bool = deposit(a, j, x);\n        ok = w && d;\n    }\n    ok\n}"
+    }
+  ]
+}

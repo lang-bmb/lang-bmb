@@ -13,8 +13,14 @@ struct Client {
 
 impl Client {
     fn start(root: &std::path::Path) -> Client {
+        Client::start_with(root, &[])
+    }
+
+    fn start_with(root: &std::path::Path, flags: &[&str]) -> Client {
         let mut child = Command::new(env!("CARGO_BIN_EXE_bmb"))
-            .args(["mcp", root.to_str().unwrap()])
+            .arg("mcp")
+            .args(flags)
+            .arg(root.to_str().unwrap())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()
@@ -585,4 +591,84 @@ fn untrusted_workspace_cannot_reach_outside() {
         untouched(name);
     }
     let _ = std::fs::remove_dir_all(&base);
+}
+
+/// `write` (backlog 2D-24): one call creates the unit, puts the definitions,
+/// commits and proves; a rejected write changes nothing; a proof failure is a
+/// tool error after the commit, with its counterexample.
+#[test]
+fn write_tool_commits_and_proves_in_one_call() {
+    let root = temp_root("write");
+    // Without the flag the tool list is the frozen one and `write` is unknown.
+    let mut plain = Client::start(&root);
+    let tools = plain.request("tools/list", "{}").to_json();
+    assert!(!tools.contains("\"write\""), "{tools}");
+    let (t, err) = plain.tool("write", "{\"unit\":\"calc\"}");
+    assert!(err && t.contains("unknown tool"), "{t}");
+    let mut c = Client::start_with(&root, &["--write-tool"]);
+    c.request("initialize", r#"{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"0"}}"#);
+    assert!(
+        c.request("tools/list", "{}")
+            .to_json()
+            .contains("\"write\"")
+    );
+
+    // A type error: nothing is written.
+    let bad = "#[effects(pure)]\nfn twice(x: i64) -> bool { x }";
+    let (t, err) = c.tool(
+        "write",
+        &format!(
+            "{{\"unit\":\"calc\",\"summary\":{},\"code\":{}}}",
+            q("계산"),
+            q(bad)
+        ),
+    );
+    assert!(
+        err && t.contains("E0401") && t.contains("\"committed\":false"),
+        "{t}"
+    );
+    assert!(
+        snapshot(&root).is_empty(),
+        "a rejected write must write nothing"
+    );
+
+    // Unit, definitions and proof in one call.
+    let good = "spec fn small(x: i64) -> bool { -1000 <= x && x <= 1000 }\n\n#[effects(pure)]\n#[uses(small)]\nfn twice(x: i64) -> i64\n    requires small(x),\n{\n    x + x\n}";
+    let (t, err) = c.tool(
+        "write",
+        &format!(
+            "{{\"unit\":\"calc\",\"summary\":{},\"code\":{}}}",
+            q("계산"),
+            q(good)
+        ),
+    );
+    assert!(!err, "{t}");
+    assert!(t.starts_with("{\"committed\":true"), "{t}");
+    assert!(
+        t.contains("\"def\":\"calc::twice\",\"status\":\"verified\""),
+        "{t}"
+    );
+
+    // A definition that does not prove is committed, and the call says why.
+    let weak = "#[effects(pure)]\nfn thrice(x: i64) -> i64 {\n    x + x + x\n}";
+    let (t, err) = c.tool(
+        "write",
+        &format!("{{\"unit\":\"calc\",\"code\":{}}}", q(weak)),
+    );
+    assert!(
+        err && t.contains("\"committed\":true") && t.contains("counterexample"),
+        "{t}"
+    );
+    assert!(
+        snapshot(&root)
+            .iter()
+            .any(|(_, text)| text.contains("fn thrice"))
+    );
+
+    // Removing it in the same kind of call proves the workspace again.
+    let (t, err) = c.tool("write", "{\"unit\":\"calc\",\"remove\":[\"calc::thrice\"]}");
+    assert!(!err && t.contains("\"removed\":[\"calc::thrice\"]"), "{t}");
+    let (t, err) = c.tool("write", "{\"unit\":\"calc\"}");
+    assert!(err && t.contains("nothing to write"), "{t}");
+    let _ = std::fs::remove_dir_all(&root);
 }

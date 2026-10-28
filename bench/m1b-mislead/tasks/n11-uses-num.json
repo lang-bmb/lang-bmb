@@ -1,0 +1,16 @@
+{
+ "id": "n11-uses-num",
+ "kind": "navigate",
+ "prompt": "Which definitions reveal (list in `#[uses(..)]`) the predicate `num::ceil_ok` or `num::bounded_elems`? Use the `answer` tool with the full paths (unit::name) of all such definitions.",
+ "truth": {
+  "query": [
+   "contracts",
+   "num::ceil_ok"
+  ],
+  "also": [
+   "contracts",
+   "num::bounded_elems"
+  ],
+  "list": "uses_by"
+ }
+}

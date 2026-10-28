@@ -1,0 +1,22 @@
+{
+ "id": "w18-reverse-ends-post",
+ "kind": "write",
+ "prompt": "The library function `u3::d031` has no postcondition. Give it one stating that the first and last elements are exchanged and every other element is unchanged, keeping its parameters, precondition and body.\n\nRequired signature (in unit `u3`):\nfn d031(a: &mut [i64]) -> ()",
+ "unit": "u3",
+ "def": "u3::d031",
+ "signature": "fn d031(a: &mut [i64]) -> ()",
+ "accept": {
+  "specs": "spec fn ref_pre(a: &[i64]) -> bool { a.len() > 0 }\nspec fn ref_post(a: &[i64], b: &[i64]) -> bool { a.len() == b.len() && a.len() > 0 && a[0] == b[a.len() - 1] && a[a.len() - 1] == b[0] && (forall|k: usize| 0 < k && k + 1 < a.len() ==> #[trigger] a[k] == b[k]) }",
+  "pre": "ref_pre(a)",
+  "post": "ref_post(a, old(a))",
+  "args": "a"
+ },
+ "reference": [
+  {
+   "op": "put",
+   "unit": "u3",
+   "code": "spec fn ends_swapped(a: &[i64], b: &[i64]) -> bool { a.len() > 0 && d036(a, b, 0, a.len() - 1) }\n\n#[effects(pure)]\n#[uses(d028, d030, d036, ends_swapped)]\nfn d031(a: &mut [i64]) -> ()\n    requires d030(a),\n    ensures ends_swapped(a, old(a)),\n{\n    let n: usize = a.len();\n    d035(a, 0, n - 1);\n}"
+  }
+ ],
+ "weak_reference": []
+}

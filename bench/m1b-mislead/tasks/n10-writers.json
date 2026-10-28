@@ -1,0 +1,37 @@
+{
+ "id": "n10-writers",
+ "kind": "navigate",
+ "prompt": "Which definitions pass a `&mut` argument to a function of unit `ledger` (`ledger::count_state`, `ledger::sign`, `ledger::balance` or `ledger::add_small`)? Use the `answer` tool with the full paths (unit::name) of all such definitions.",
+ "truth": {
+  "query": [
+   "edges",
+   "ledger::count_state",
+   "in",
+   "1"
+  ],
+  "also": [
+   [
+    "edges",
+    "ledger::sign",
+    "in",
+    "1"
+   ],
+   [
+    "edges",
+    "ledger::balance",
+    "in",
+    "1"
+   ],
+   [
+    "edges",
+    "ledger::add_small",
+    "in",
+    "1"
+   ]
+  ],
+  "kinds": [
+   "writes"
+  ],
+  "field": "from"
+ }
+}

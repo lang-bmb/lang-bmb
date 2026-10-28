@@ -1,0 +1,38 @@
+{
+ "id": "w24-median3",
+ "kind": "write",
+ "prompt": "Create unit `tasks` and implement `median3`: return the median of three integers. The contract must state that the result is one of the arguments and lies between the other two.\n\nRequired signature (in unit `tasks`):\nfn median3(a: i64, b: i64, c: i64) -> (r: i64)",
+ "unit": "tasks",
+ "def": "tasks::median3",
+ "signature": "fn median3(a: i64, b: i64, c: i64) -> (r: i64)",
+ "accept": {
+  "specs": "spec fn ref_post(a: i64, b: i64, c: i64, r: i64) -> bool { ((r == a && ((b <= a && a <= c) || (c <= a && a <= b))) || (r == b && ((a <= b && b <= c) || (c <= b && b <= a))) || (r == c && ((a <= c && c <= b) || (b <= c && c <= a)))) }",
+  "pre": null,
+  "post": "ref_post(a, b, c, r)",
+  "args": "a, b, c"
+ },
+ "reference": [
+  {
+   "op": "unit",
+   "path": "tasks",
+   "summary": "과제 구현"
+  },
+  {
+   "op": "put",
+   "unit": "tasks",
+   "code": "spec fn is_median(a: i64, b: i64, c: i64, r: i64) -> bool { ((r == a && ((b <= a && a <= c) || (c <= a && a <= b))) || (r == b && ((a <= b && b <= c) || (c <= b && b <= a))) || (r == c && ((a <= c && c <= b) || (b <= c && c <= a)))) }\n\n#[effects(pure)]\n#[uses(is_median)]\nfn median3(a: i64, b: i64, c: i64) -> (r: i64)\n    ensures is_median(a, b, c, r),\n{\n    if (b <= a && a <= c) || (c <= a && a <= b) {\n        a\n    } else {\n        if (a <= b && b <= c) || (c <= b && b <= a) {\n            b\n        } else {\n            c\n        }\n    }\n}"
+  }
+ ],
+ "weak_reference": [
+  {
+   "op": "unit",
+   "path": "tasks",
+   "summary": "과제 구현"
+  },
+  {
+   "op": "put",
+   "unit": "tasks",
+   "code": "spec fn one_of(a: i64, b: i64, c: i64, r: i64) -> bool { r == a || r == b || r == c }\n\n#[effects(pure)]\n#[uses(one_of)]\nfn median3(a: i64, b: i64, c: i64) -> (r: i64)\n    ensures one_of(a, b, c, r),\n{\n    a\n}"
+  }
+ ]
+}

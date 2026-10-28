@@ -1,0 +1,38 @@
+{
+ "id": "w02-find-last",
+ "kind": "write",
+ "prompt": "Create unit `tasks` and implement `find_last`: return the index of the last element equal to v, or a.len() if there is none. The contract must state both cases: at the returned index (if any) the element is v and no later element is v; if a.len() is returned, no element is v.\n\nRequired signature (in unit `tasks`):\nfn find_last(a: &[i64], v: i64) -> (r: usize)",
+ "unit": "tasks",
+ "def": "tasks::find_last",
+ "signature": "fn find_last(a: &[i64], v: i64) -> (r: usize)",
+ "accept": {
+  "specs": "spec fn ref_post(a: &[i64], v: i64, r: usize) -> bool { r <= a.len() && (r < a.len() ==> a[r] == v && (forall|k: usize| r < k && k < a.len() ==> #[trigger] a[k] != v)) && (r == a.len() ==> (forall|j: usize| j < a.len() ==> #[trigger] a[j] != v)) }",
+  "pre": null,
+  "post": "ref_post(a, v, r)",
+  "args": "a, v"
+ },
+ "reference": [
+  {
+   "op": "unit",
+   "path": "tasks",
+   "summary": "과제 구현"
+  },
+  {
+   "op": "put",
+   "unit": "tasks",
+   "code": "spec fn absent_from(a: &[i64], v: i64, n: usize) -> bool { forall|k: usize| n <= k && k < a.len() ==> #[trigger] a[k] != v }\n\nspec fn last_ok(a: &[i64], v: i64, r: usize) -> bool {\n    r <= a.len() && (r < a.len() ==> a[r] == v && (forall|k: usize| r < k && k < a.len() ==> #[trigger] a[k] != v)) && (r == a.len() ==> absent_from(a, v, 0))\n}\n\n#[effects(pure)]\n#[uses(absent_from, last_ok)]\nfn find_last(a: &[i64], v: i64) -> (r: usize)\n    ensures last_ok(a, v, r),\n{\n    let mut k: usize = a.len();\n    while k > 0 && a[k - 1] != v\n        invariant k <= a.len(), absent_from(a, v, k),\n        decreases k,\n    {\n        k = k - 1;\n    }\n    if k == 0 {\n        a.len()\n    } else {\n        k - 1\n    }\n}"
+  }
+ ],
+ "weak_reference": [
+  {
+   "op": "unit",
+   "path": "tasks",
+   "summary": "과제 구현"
+  },
+  {
+   "op": "put",
+   "unit": "tasks",
+   "code": "spec fn absent_from(a: &[i64], v: i64, n: usize) -> bool { forall|k: usize| n <= k && k < a.len() ==> #[trigger] a[k] != v }\n\nspec fn hit(a: &[i64], v: i64, r: usize) -> bool { r <= a.len() && (r < a.len() ==> a[r] == v) }\n\n#[effects(pure)]\n#[uses(absent_from, hit)]\nfn find_last(a: &[i64], v: i64) -> (r: usize)\n    ensures hit(a, v, r),\n{\n    let mut k: usize = a.len();\n    while k > 0 && a[k - 1] != v\n        invariant k <= a.len(), absent_from(a, v, k),\n        decreases k,\n    {\n        k = k - 1;\n    }\n    if k == 0 {\n        a.len()\n    } else {\n        k - 1\n    }\n}"
+  }
+ ]
+}

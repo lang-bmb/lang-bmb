@@ -1,0 +1,711 @@
+{
+ "task": "w05-reverse-into",
+ "generator": "bench/m1/bsb_gen.py",
+ "max_witnesses": 2,
+ "targets": [
+  {
+   "def": "tasks::reverse_into",
+   "signature": "fn reverse_into(dst: &mut [i64], src: &[i64]) -> ()",
+   "mutated": [
+    "tasks::reverse_into"
+   ],
+   "inputs": [
+    {
+     "dst": [],
+     "src": []
+    },
+    {
+     "dst": [
+      9
+     ],
+     "src": [
+      1
+     ]
+    },
+    {
+     "dst": [
+      -4
+     ],
+     "src": [
+      1
+     ]
+    },
+    {
+     "dst": [
+      9,
+      9
+     ],
+     "src": [
+      1,
+      2
+     ]
+    },
+    {
+     "dst": [
+      -5,
+      4
+     ],
+     "src": [
+      1,
+      2
+     ]
+    },
+    {
+     "dst": [
+      9,
+      9,
+      9
+     ],
+     "src": [
+      1,
+      2,
+      3
+     ]
+    },
+    {
+     "dst": [
+      4,
+      0,
+      5
+     ],
+     "src": [
+      1,
+      2,
+      3
+     ]
+    },
+    {
+     "dst": [
+      9,
+      9,
+      9
+     ],
+     "src": [
+      4,
+      4,
+      5
+     ]
+    },
+    {
+     "dst": [
+      -2,
+      4,
+      -5
+     ],
+     "src": [
+      4,
+      4,
+      5
+     ]
+    },
+    {
+     "dst": [
+      9,
+      9,
+      9
+     ],
+     "src": [
+      4,
+      -3,
+      4
+     ]
+    },
+    {
+     "dst": [
+      -2,
+      1,
+      1
+     ],
+     "src": [
+      4,
+      -3,
+      4
+     ]
+    },
+    {
+     "dst": [
+      9
+     ],
+     "src": [
+      -3
+     ]
+    },
+    {
+     "dst": [
+      5
+     ],
+     "src": [
+      -3
+     ]
+    },
+    {
+     "dst": [
+      9,
+      9,
+      9
+     ],
+     "src": [
+      -4,
+      4,
+      0
+     ]
+    },
+    {
+     "dst": [
+      0,
+      -4,
+      -1
+     ],
+     "src": [
+      -4,
+      4,
+      0
+     ]
+    },
+    {
+     "dst": [
+      9,
+      9,
+      9
+     ],
+     "src": [
+      -2,
+      4,
+      0
+     ]
+    },
+    {
+     "dst": [
+      0,
+      -1,
+      -5
+     ],
+     "src": [
+      -2,
+      4,
+      0
+     ]
+    },
+    {
+     "dst": [
+      4
+     ],
+     "src": [
+      -3
+     ]
+    },
+    {
+     "dst": [
+      9,
+      9
+     ],
+     "src": [
+      -4,
+      -5
+     ]
+    },
+    {
+     "dst": [
+      -4,
+      -3
+     ],
+     "src": [
+      -4,
+      -5
+     ]
+    },
+    {
+     "dst": [
+      0
+     ],
+     "src": [
+      1
+     ]
+    },
+    {
+     "dst": [
+      9,
+      9,
+      9
+     ],
+     "src": [
+      -3,
+      0,
+      4
+     ]
+    },
+    {
+     "dst": [
+      2,
+      0,
+      2
+     ],
+     "src": [
+      -3,
+      0,
+      4
+     ]
+    },
+    {
+     "dst": [
+      9
+     ],
+     "src": [
+      0
+     ]
+    },
+    {
+     "dst": [
+      -5
+     ],
+     "src": [
+      0
+     ]
+    },
+    {
+     "dst": [
+      9,
+      9,
+      9,
+      9
+     ],
+     "src": [
+      2,
+      -5,
+      3,
+      1
+     ]
+    },
+    {
+     "dst": [
+      2,
+      -3,
+      -3,
+      0
+     ],
+     "src": [
+      2,
+      -5,
+      3,
+      1
+     ]
+    },
+    {
+     "dst": [
+      9,
+      9,
+      9,
+      9
+     ],
+     "src": [
+      -4,
+      -4,
+      -1,
+      5
+     ]
+    },
+    {
+     "dst": [
+      4,
+      4,
+      1,
+      -2
+     ],
+     "src": [
+      -4,
+      -4,
+      -1,
+      5
+     ]
+    },
+    {
+     "dst": [
+      9,
+      9
+     ],
+     "src": [
+      -4,
+      0
+     ]
+    },
+    {
+     "dst": [
+      1,
+      2
+     ],
+     "src": [
+      -4,
+      0
+     ]
+    },
+    {
+     "dst": [
+      9
+     ],
+     "src": [
+      -5
+     ]
+    },
+    {
+     "dst": [
+      -4
+     ],
+     "src": [
+      -5
+     ]
+    },
+    {
+     "dst": [
+      9,
+      9,
+      9
+     ],
+     "src": [
+      -4,
+      0,
+      -1
+     ]
+    },
+    {
+     "dst": [
+      -2,
+      -3,
+      0
+     ],
+     "src": [
+      -4,
+      0,
+      -1
+     ]
+    },
+    {
+     "dst": [
+      9,
+      9
+     ],
+     "src": [
+      -3,
+      2
+     ]
+    },
+    {
+     "dst": [
+      1,
+      -4
+     ],
+     "src": [
+      -3,
+      2
+     ]
+    },
+    {
+     "dst": [
+      9,
+      9,
+      9,
+      9
+     ],
+     "src": [
+      1,
+      -2,
+      -2,
+      -5
+     ]
+    },
+    {
+     "dst": [
+      1,
+      3,
+      1,
+      3
+     ],
+     "src": [
+      1,
+      -2,
+      -2,
+      -5
+     ]
+    },
+    {
+     "dst": [
+      9,
+      9
+     ],
+     "src": [
+      -3,
+      -1
+     ]
+    },
+    {
+     "dst": [
+      0,
+      -4
+     ],
+     "src": [
+      -3,
+      -1
+     ]
+    },
+    {
+     "dst": [
+      -1
+     ],
+     "src": [
+      -5
+     ]
+    },
+    {
+     "dst": [
+      9,
+      9,
+      9
+     ],
+     "src": [
+      -1,
+      2,
+      -2
+     ]
+    },
+    {
+     "dst": [
+      2,
+      -5,
+      2
+     ],
+     "src": [
+      -1,
+      2,
+      -2
+     ]
+    },
+    {
+     "dst": [
+      9,
+      9,
+      9
+     ],
+     "src": [
+      3,
+      4,
+      1
+     ]
+    },
+    {
+     "dst": [
+      -4,
+      2,
+      -4
+     ],
+     "src": [
+      3,
+      4,
+      1
+     ]
+    }
+   ],
+   "counts": {
+    "generated": 11,
+    "kept": 2,
+    "equivalent": 0,
+    "trap_only": 9,
+    "allowed": 0,
+    "no_check": 0
+   },
+   "mutants": [
+    {
+     "def": "tasks::reverse_into",
+     "site": 0,
+     "line": 13,
+     "col": 28,
+     "before": "0",
+     "after": "1",
+     "witnesses": [
+      {
+       "input": {
+        "dst": [
+         9
+        ],
+        "src": [
+         1
+        ]
+       },
+       "expected": {
+        "dst": [
+         1
+        ]
+       },
+       "output": {
+        "dst": [
+         9
+        ]
+       }
+      },
+      {
+       "input": {
+        "dst": [
+         -4
+        ],
+        "src": [
+         1
+        ]
+       },
+       "expected": {
+        "dst": [
+         1
+        ]
+       },
+       "output": {
+        "dst": [
+         -4
+        ]
+       }
+      }
+     ],
+     "id": "m00"
+    },
+    {
+     "def": "tasks::reverse_into",
+     "site": 10,
+     "line": 19,
+     "col": 21,
+     "before": "k + 1",
+     "after": "k + 2",
+     "witnesses": [
+      {
+       "input": {
+        "dst": [
+         9,
+         9
+        ],
+        "src": [
+         1,
+         2
+        ]
+       },
+       "expected": {
+        "dst": [
+         2,
+         1
+        ]
+       },
+       "output": {
+        "dst": [
+         2,
+         9
+        ]
+       }
+      },
+      {
+       "input": {
+        "dst": [
+         -5,
+         4
+        ],
+        "src": [
+         1,
+         2
+        ]
+       },
+       "expected": {
+        "dst": [
+         2,
+         1
+        ]
+       },
+       "output": {
+        "dst": [
+         2,
+         4
+        ]
+       }
+      }
+     ],
+     "id": "m01"
+    }
+   ],
+   "discarded": [
+    {
+     "def": "tasks::reverse_into",
+     "site": 1,
+     "line": 14,
+     "col": 15,
+     "before": "k < dst.len()",
+     "after": "k <= dst.len()",
+     "reason": "trap_only"
+    },
+    {
+     "def": "tasks::reverse_into",
+     "site": 2,
+     "line": 18,
+     "col": 13,
+     "before": "dst[k]",
+     "after": "dst[k + 1]",
+     "reason": "trap_only"
+    },
+    {
+     "def": "tasks::reverse_into",
+     "site": 3,
+     "line": 18,
+     "col": 13,
+     "before": "dst[k]",
+     "after": "dst[k - 1]",
+     "reason": "trap_only"
+    },
+    {
+     "def": "tasks::reverse_into",
+     "site": 4,
+     "line": 18,
+     "col": 22,
+     "before": "src[src.len() - 1 - k]",
+     "after": "src[src.len() - 1 - k + 1]",
+     "reason": "trap_only"
+    },
+    {
+     "def": "tasks::reverse_into",
+     "site": 5,
+     "line": 18,
+     "col": 22,
+     "before": "src[src.len() - 1 - k]",
+     "after": "src[src.len() - 1 - k - 1]",
+     "reason": "trap_only"
+    },
+    {
+     "def": "tasks::reverse_into",
+     "site": 6,
+     "line": 18,
+     "col": 26,
+     "before": "src.len() - 1 - k",
+     "after": "src.len() - 1 + k",
+     "reason": "trap_only"
+    },
+    {
+     "def": "tasks::reverse_into",
+     "site": 7,
+     "line": 18,
+     "col": 26,
+     "before": "src.len() - 1",
+     "after": "src.len() + 1",
+     "reason": "trap_only"
+    },
+    {
+     "def": "tasks::reverse_into",
+     "site": 8,
+     "line": 18,
+     "col": 38,
+     "before": "src.len() - 1",
+     "after": "src.len() - 2",
+     "reason": "trap_only"
+    },
+    {
+     "def": "tasks::reverse_into",
+     "site": 9,
+     "line": 19,
+     "col": 17,
+     "before": "k + 1",
+     "after": "k - 1",
+     "reason": "trap_only"
+    }
+   ]
+  }
+ ]
+}

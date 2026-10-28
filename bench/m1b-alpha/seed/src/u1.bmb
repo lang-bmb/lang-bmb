@@ -1,0 +1,34 @@
+#[summary("unit u1")]
+mod u1 {
+    #[effects(io)]
+    #[uses(u3::d027, u3::d028, u3::d030, u4::d043, u4::d045, u5::d048, u5::d049, u5::d051, u5::d057, u6::d074, u6::d077, u7::d083, d003, u8::d104, u9::d108)]
+    fn main() -> () {
+        let mut xs: [i64; 6] = [5, -3, 8, 0, 8, 2];
+        d002(&xs);
+        u7::d089(&mut xs);
+        print_i64(u3::d026(&xs));
+        let mut book: [i64; 4] = [100, 0, 50, 7];
+        let paid: usize = u5::d056(&mut book, 0, 10);
+        print_i64(u5::d058(&book));
+        let mut jobs: [i64; 3] = [0, 1, 2];
+        u4::d037(&mut jobs, 1);
+        print_i64(u4::d042(&xs, 0));
+        print_i64(u6::d064(u3::d029(&xs), 0, 5));
+        u3::d025(&mut jobs, 0);
+        print_i64(xs[u8::d092(&xs)]);
+    }
+
+    #[effects(io)]
+    #[uses(u3::d030, d003, u9::d108)]
+    fn d002(a: &[i64]) -> ()
+        requires d003(a), u9::d108(a),
+    {
+        print_i64(u9::d115(a));
+        print_i64(u9::d114(a));
+        print_i64(u9::d112(a));
+    }
+
+    spec fn d003(a: &[i64]) -> bool {
+        a.len() > 0 && a.len() <= 1000
+    }
+}

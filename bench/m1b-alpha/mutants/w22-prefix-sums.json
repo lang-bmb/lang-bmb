@@ -1,0 +1,1128 @@
+{
+ "task": "w22-prefix-sums",
+ "generator": "bench/m1/bsb_gen.py",
+ "max_witnesses": 2,
+ "targets": [
+  {
+   "def": "tasks::prefix_sums",
+   "signature": "fn prefix_sums(a: &[i64], out: &mut [i64]) -> ()",
+   "mutated": [
+    "tasks::prefix_sums"
+   ],
+   "inputs": [
+    {
+     "a": [],
+     "out": []
+    },
+    {
+     "a": [
+      1
+     ],
+     "out": [
+      -2
+     ]
+    },
+    {
+     "a": [
+      1,
+      2
+     ],
+     "out": [
+      -4,
+      7
+     ]
+    },
+    {
+     "a": [
+      1,
+      2,
+      3
+     ],
+     "out": [
+      4,
+      -2,
+      0
+     ]
+    },
+    {
+     "a": [
+      -1000,
+      1000,
+      -1000
+     ],
+     "out": [
+      6,
+      9,
+      -4
+     ]
+    },
+    {
+     "a": [
+      1000,
+      1000
+     ],
+     "out": [
+      1,
+      -4
+     ]
+    },
+    {
+     "a": [
+      -40,
+      1000
+     ],
+     "out": [
+      4,
+      -5
+     ]
+    },
+    {
+     "a": [
+      -844,
+      -1000
+     ],
+     "out": [
+      2,
+      1
+     ]
+    },
+    {
+     "a": [
+      -304
+     ],
+     "out": [
+      -5
+     ]
+    },
+    {
+     "a": [
+      -864
+     ],
+     "out": [
+      4
+     ]
+    },
+    {
+     "a": [
+      0,
+      860
+     ],
+     "out": [
+      6,
+      -6
+     ]
+    },
+    {
+     "a": [
+      214,
+      -384,
+      630
+     ],
+     "out": [
+      0,
+      1,
+      -8
+     ]
+    },
+    {
+     "a": [
+      -1,
+      1000
+     ],
+     "out": [
+      5,
+      9
+     ]
+    },
+    {
+     "a": [
+      -792,
+      0
+     ],
+     "out": [
+      8,
+      0
+     ]
+    },
+    {
+     "a": [
+      918
+     ],
+     "out": [
+      0
+     ]
+    },
+    {
+     "a": [
+      1000
+     ],
+     "out": [
+      -2
+     ]
+    },
+    {
+     "a": [
+      -782
+     ],
+     "out": [
+      6
+     ]
+    },
+    {
+     "a": [
+      1000
+     ],
+     "out": [
+      0
+     ]
+    },
+    {
+     "a": [
+      0,
+      70,
+      -583,
+      -1
+     ],
+     "out": [
+      -5,
+      0,
+      -8,
+      -8
+     ]
+    },
+    {
+     "a": [
+      -1000,
+      1,
+      -446,
+      881
+     ],
+     "out": [
+      1,
+      7,
+      -7,
+      6
+     ]
+    },
+    {
+     "a": [
+      230,
+      1000
+     ],
+     "out": [
+      4,
+      -4
+     ]
+    },
+    {
+     "a": [
+      -1,
+      307
+     ],
+     "out": [
+      0,
+      6
+     ]
+    },
+    {
+     "a": [
+      1
+     ],
+     "out": [
+      -7
+     ]
+    },
+    {
+     "a": [
+      1,
+      -757,
+      175
+     ],
+     "out": [
+      6,
+      -9,
+      2
+     ]
+    },
+    {
+     "a": [
+      -91,
+      -864
+     ],
+     "out": [
+      -2,
+      9
+     ]
+    },
+    {
+     "a": [
+      -778
+     ],
+     "out": [
+      -3
+     ]
+    },
+    {
+     "a": [
+      738,
+      -441
+     ],
+     "out": [
+      -9,
+      5
+     ]
+    }
+   ],
+   "counts": {
+    "generated": 22,
+    "kept": 12,
+    "equivalent": 0,
+    "trap_only": 10,
+    "allowed": 0,
+    "no_check": 0
+   },
+   "mutants": [
+    {
+     "def": "tasks::prefix_sums",
+     "site": 0,
+     "line": 13,
+     "col": 9,
+     "before": "a.len() > 0",
+     "after": "!(a.len() > 0)",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1,
+         2
+        ],
+        "out": [
+         -4,
+         7
+        ]
+       },
+       "expected": {
+        "out": [
+         1,
+         3
+        ]
+       },
+       "output": {
+        "out": [
+         -4,
+         7
+        ]
+       }
+      },
+      {
+       "input": {
+        "a": [
+         1,
+         2,
+         3
+        ],
+        "out": [
+         4,
+         -2,
+         0
+        ]
+       },
+       "expected": {
+        "out": [
+         1,
+         3,
+         6
+        ]
+       },
+       "output": {
+        "out": [
+         4,
+         -2,
+         0
+        ]
+       }
+      }
+     ],
+     "id": "m00"
+    },
+    {
+     "def": "tasks::prefix_sums",
+     "site": 2,
+     "line": 13,
+     "col": 22,
+     "before": "a.len() > 0",
+     "after": "a.len() > 1",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1
+        ],
+        "out": [
+         -2
+        ]
+       },
+       "expected": {
+        "out": [
+         1
+        ]
+       },
+       "output": {
+        "out": [
+         -2
+        ]
+       }
+      },
+      {
+       "input": {
+        "a": [
+         -304
+        ],
+        "out": [
+         -5
+        ]
+       },
+       "expected": {
+        "out": [
+         -304
+        ]
+       },
+       "output": {
+        "out": [
+         -5
+        ]
+       }
+      }
+     ],
+     "id": "m01"
+    },
+    {
+     "def": "tasks::prefix_sums",
+     "site": 3,
+     "line": 14,
+     "col": 13,
+     "before": "out[0]",
+     "after": "out[0 + 1]",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1,
+         2
+        ],
+        "out": [
+         -4,
+         7
+        ]
+       },
+       "expected": {
+        "out": [
+         1,
+         3
+        ]
+       },
+       "output": {
+        "out": [
+         -4,
+         -2
+        ]
+       }
+      },
+      {
+       "input": {
+        "a": [
+         1,
+         2,
+         3
+        ],
+        "out": [
+         4,
+         -2,
+         0
+        ]
+       },
+       "expected": {
+        "out": [
+         1,
+         3,
+         6
+        ]
+       },
+       "output": {
+        "out": [
+         4,
+         6,
+         9
+        ]
+       }
+      }
+     ],
+     "id": "m02"
+    },
+    {
+     "def": "tasks::prefix_sums",
+     "site": 5,
+     "line": 14,
+     "col": 17,
+     "before": "0",
+     "after": "1",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1,
+         2
+        ],
+        "out": [
+         -4,
+         7
+        ]
+       },
+       "expected": {
+        "out": [
+         1,
+         3
+        ]
+       },
+       "output": {
+        "out": [
+         -4,
+         -2
+        ]
+       }
+      },
+      {
+       "input": {
+        "a": [
+         1,
+         2,
+         3
+        ],
+        "out": [
+         4,
+         -2,
+         0
+        ]
+       },
+       "expected": {
+        "out": [
+         1,
+         3,
+         6
+        ]
+       },
+       "output": {
+        "out": [
+         4,
+         6,
+         9
+        ]
+       }
+      }
+     ],
+     "id": "m03"
+    },
+    {
+     "def": "tasks::prefix_sums",
+     "site": 6,
+     "line": 14,
+     "col": 22,
+     "before": "a[0]",
+     "after": "a[0 + 1]",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1,
+         2
+        ],
+        "out": [
+         -4,
+         7
+        ]
+       },
+       "expected": {
+        "out": [
+         1,
+         3
+        ]
+       },
+       "output": {
+        "out": [
+         2,
+         4
+        ]
+       }
+      },
+      {
+       "input": {
+        "a": [
+         1,
+         2,
+         3
+        ],
+        "out": [
+         4,
+         -2,
+         0
+        ]
+       },
+       "expected": {
+        "out": [
+         1,
+         3,
+         6
+        ]
+       },
+       "output": {
+        "out": [
+         2,
+         4,
+         7
+        ]
+       }
+      }
+     ],
+     "id": "m04"
+    },
+    {
+     "def": "tasks::prefix_sums",
+     "site": 8,
+     "line": 14,
+     "col": 24,
+     "before": "0",
+     "after": "1",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1,
+         2
+        ],
+        "out": [
+         -4,
+         7
+        ]
+       },
+       "expected": {
+        "out": [
+         1,
+         3
+        ]
+       },
+       "output": {
+        "out": [
+         2,
+         4
+        ]
+       }
+      },
+      {
+       "input": {
+        "a": [
+         1,
+         2,
+         3
+        ],
+        "out": [
+         4,
+         -2,
+         0
+        ]
+       },
+       "expected": {
+        "out": [
+         1,
+         3,
+         6
+        ]
+       },
+       "output": {
+        "out": [
+         2,
+         4,
+         7
+        ]
+       }
+      }
+     ],
+     "id": "m05"
+    },
+    {
+     "def": "tasks::prefix_sums",
+     "site": 9,
+     "line": 15,
+     "col": 32,
+     "before": "1",
+     "after": "2",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1,
+         2
+        ],
+        "out": [
+         -4,
+         7
+        ]
+       },
+       "expected": {
+        "out": [
+         1,
+         3
+        ]
+       },
+       "output": {
+        "out": [
+         1,
+         7
+        ]
+       }
+      },
+      {
+       "input": {
+        "a": [
+         1,
+         2,
+         3
+        ],
+        "out": [
+         4,
+         -2,
+         0
+        ]
+       },
+       "expected": {
+        "out": [
+         1,
+         3,
+         6
+        ]
+       },
+       "output": {
+        "out": [
+         1,
+         -2,
+         1
+        ]
+       }
+      }
+     ],
+     "id": "m06"
+    },
+    {
+     "def": "tasks::prefix_sums",
+     "site": 12,
+     "line": 20,
+     "col": 17,
+     "before": "out[k]",
+     "after": "out[k - 1]",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1,
+         2
+        ],
+        "out": [
+         -4,
+         7
+        ]
+       },
+       "expected": {
+        "out": [
+         1,
+         3
+        ]
+       },
+       "output": {
+        "out": [
+         3,
+         7
+        ]
+       }
+      },
+      {
+       "input": {
+        "a": [
+         1,
+         2,
+         3
+        ],
+        "out": [
+         4,
+         -2,
+         0
+        ]
+       },
+       "expected": {
+        "out": [
+         1,
+         3,
+         6
+        ]
+       },
+       "output": {
+        "out": [
+         3,
+         1,
+         0
+        ]
+       }
+      }
+     ],
+     "id": "m07"
+    },
+    {
+     "def": "tasks::prefix_sums",
+     "site": 13,
+     "line": 20,
+     "col": 26,
+     "before": "out[k - 1] + a[k]",
+     "after": "out[k - 1] - a[k]",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1,
+         2
+        ],
+        "out": [
+         -4,
+         7
+        ]
+       },
+       "expected": {
+        "out": [
+         1,
+         3
+        ]
+       },
+       "output": {
+        "out": [
+         1,
+         -1
+        ]
+       }
+      },
+      {
+       "input": {
+        "a": [
+         1,
+         2,
+         3
+        ],
+        "out": [
+         4,
+         -2,
+         0
+        ]
+       },
+       "expected": {
+        "out": [
+         1,
+         3,
+         6
+        ]
+       },
+       "output": {
+        "out": [
+         1,
+         -1,
+         -4
+        ]
+       }
+      }
+     ],
+     "id": "m08"
+    },
+    {
+     "def": "tasks::prefix_sums",
+     "site": 14,
+     "line": 20,
+     "col": 26,
+     "before": "out[k - 1]",
+     "after": "out[k - 1 + 1]",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1,
+         2
+        ],
+        "out": [
+         -4,
+         7
+        ]
+       },
+       "expected": {
+        "out": [
+         1,
+         3
+        ]
+       },
+       "output": {
+        "out": [
+         1,
+         9
+        ]
+       }
+      },
+      {
+       "input": {
+        "a": [
+         1,
+         2,
+         3
+        ],
+        "out": [
+         4,
+         -2,
+         0
+        ]
+       },
+       "expected": {
+        "out": [
+         1,
+         3,
+         6
+        ]
+       },
+       "output": {
+        "out": [
+         1,
+         0,
+         3
+        ]
+       }
+      }
+     ],
+     "id": "m09"
+    },
+    {
+     "def": "tasks::prefix_sums",
+     "site": 19,
+     "line": 20,
+     "col": 39,
+     "before": "a[k]",
+     "after": "a[k - 1]",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1,
+         2
+        ],
+        "out": [
+         -4,
+         7
+        ]
+       },
+       "expected": {
+        "out": [
+         1,
+         3
+        ]
+       },
+       "output": {
+        "out": [
+         1,
+         2
+        ]
+       }
+      },
+      {
+       "input": {
+        "a": [
+         1,
+         2,
+         3
+        ],
+        "out": [
+         4,
+         -2,
+         0
+        ]
+       },
+       "expected": {
+        "out": [
+         1,
+         3,
+         6
+        ]
+       },
+       "output": {
+        "out": [
+         1,
+         2,
+         4
+        ]
+       }
+      }
+     ],
+     "id": "m10"
+    },
+    {
+     "def": "tasks::prefix_sums",
+     "site": 21,
+     "line": 21,
+     "col": 25,
+     "before": "k + 1",
+     "after": "k + 2",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1,
+         2,
+         3
+        ],
+        "out": [
+         4,
+         -2,
+         0
+        ]
+       },
+       "expected": {
+        "out": [
+         1,
+         3,
+         6
+        ]
+       },
+       "output": {
+        "out": [
+         1,
+         3,
+         0
+        ]
+       }
+      },
+      {
+       "input": {
+        "a": [
+         -1000,
+         1000,
+         -1000
+        ],
+        "out": [
+         6,
+         9,
+         -4
+        ]
+       },
+       "expected": {
+        "out": [
+         -1000,
+         0,
+         -1000
+        ]
+       },
+       "output": {
+        "out": [
+         -1000,
+         0,
+         -4
+        ]
+       }
+      }
+     ],
+     "id": "m11"
+    }
+   ],
+   "discarded": [
+    {
+     "def": "tasks::prefix_sums",
+     "site": 1,
+     "line": 13,
+     "col": 12,
+     "before": "a.len() > 0",
+     "after": "a.len() >= 0",
+     "reason": "trap_only"
+    },
+    {
+     "def": "tasks::prefix_sums",
+     "site": 4,
+     "line": 14,
+     "col": 13,
+     "before": "out[0]",
+     "after": "out[0 - 1]",
+     "reason": "trap_only"
+    },
+    {
+     "def": "tasks::prefix_sums",
+     "site": 7,
+     "line": 14,
+     "col": 22,
+     "before": "a[0]",
+     "after": "a[0 - 1]",
+     "reason": "trap_only"
+    },
+    {
+     "def": "tasks::prefix_sums",
+     "site": 10,
+     "line": 16,
+     "col": 19,
+     "before": "k < a.len()",
+     "after": "k <= a.len()",
+     "reason": "trap_only"
+    },
+    {
+     "def": "tasks::prefix_sums",
+     "site": 11,
+     "line": 20,
+     "col": 17,
+     "before": "out[k]",
+     "after": "out[k + 1]",
+     "reason": "trap_only"
+    },
+    {
+     "def": "tasks::prefix_sums",
+     "site": 15,
+     "line": 20,
+     "col": 26,
+     "before": "out[k - 1]",
+     "after": "out[k - 1 - 1]",
+     "reason": "trap_only"
+    },
+    {
+     "def": "tasks::prefix_sums",
+     "site": 16,
+     "line": 20,
+     "col": 30,
+     "before": "k - 1",
+     "after": "k + 1",
+     "reason": "trap_only"
+    },
+    {
+     "def": "tasks::prefix_sums",
+     "site": 17,
+     "line": 20,
+     "col": 34,
+     "before": "k - 1",
+     "after": "k - 2",
+     "reason": "trap_only"
+    },
+    {
+     "def": "tasks::prefix_sums",
+     "site": 18,
+     "line": 20,
+     "col": 39,
+     "before": "a[k]",
+     "after": "a[k + 1]",
+     "reason": "trap_only"
+    },
+    {
+     "def": "tasks::prefix_sums",
+     "site": 20,
+     "line": 21,
+     "col": 21,
+     "before": "k + 1",
+     "after": "k - 1",
+     "reason": "trap_only"
+    }
+   ]
+  }
+ ]
+}

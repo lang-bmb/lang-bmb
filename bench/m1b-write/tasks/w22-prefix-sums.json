@@ -1,0 +1,38 @@
+{
+  "id": "w22-prefix-sums",
+  "kind": "write",
+  "prompt": "Create unit `tasks` and implement `prefix_sums`: for `out` as long as `a`, and `a` with every element in [-1000, 1000] and a.len() <= 1000000 (as `stats::bounded_elems` states), write the running sums of `a` into `out` (out[k] = a[0] + .. + a[k]). The contract must state that out[0] == a[0] for a non-empty array and out[k + 1] == out[k] + a[k + 1] for every k + 1 < a.len().\n\nRequired signature (in unit `tasks`):\nfn prefix_sums(a: &[i64], out: &mut [i64]) -> ()",
+  "unit": "tasks",
+  "def": "tasks::prefix_sums",
+  "signature": "fn prefix_sums(a: &[i64], out: &mut [i64]) -> ()",
+  "accept": {
+    "specs": "spec fn ref_pre(a: &[i64], out: &[i64]) -> bool { out.len() == a.len() && a.len() <= 1000000 && (forall|k: usize| k < a.len() ==> -1000 <= #[trigger] a[k] && a[k] <= 1000) }\nspec fn ref_post(a: &[i64], out: &[i64]) -> bool { out.len() == a.len() && (a.len() > 0 ==> out[0] == a[0]) && (forall|k: usize| k + 1 < a.len() ==> #[trigger] out[k + 1] == out[k] + a[k + 1]) }",
+    "pre": "ref_pre(a, out)",
+    "post": "ref_post(a, out)",
+    "args": "a, out"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn shapes(a: &[i64], out: &[i64]) -> bool { out.len() == a.len() }\n\nspec fn runs_below(a: &[i64], out: &[i64], n: usize) -> bool { forall|k: usize| k + 1 < n ==> #[trigger] out[k + 1] == out[k] + a[k + 1] }\n\nspec fn sums_small(out: &[i64], n: usize) -> bool { forall|k: usize| k < n ==> -1000 * (k + 1) <= #[trigger] out[k] && out[k] <= 1000 * (k + 1) }\n\nspec fn prefix_ok(a: &[i64], out: &[i64]) -> bool { out.len() == a.len() && (a.len() > 0 ==> out[0] == a[0]) && (forall|k: usize| k + 1 < a.len() ==> #[trigger] out[k + 1] == out[k] + a[k + 1]) }\n\n#[effects(pure)]\n#[uses(shapes, stats::bounded_elems, runs_below, sums_small, prefix_ok)]\nfn prefix_sums(a: &[i64], out: &mut [i64]) -> ()\n    requires shapes(a, out), stats::bounded_elems(a),\n    ensures prefix_ok(a, out),\n{\n    if a.len() > 0 {\n        out[0] = a[0];\n        let mut k: usize = 1;\n        while k < a.len()\n            invariant 1 <= k, k <= a.len(), out.len() == a.len(), out[0] == a[0], runs_below(a, out, k), sums_small(out, k),\n            decreases a.len() - k,\n        {\n            out[k] = out[k - 1] + a[k];\n            k = k + 1;\n        }\n    }\n}"
+    }
+  ],
+  "weak_reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn shapes(a: &[i64], out: &[i64]) -> bool { out.len() == a.len() }\n\n#[effects(pure)]\n#[uses(shapes, stats::bounded_elems)]\nfn prefix_sums(a: &[i64], out: &mut [i64]) -> ()\n    requires shapes(a, out), stats::bounded_elems(a),\n    ensures shapes(a, out),\n{\n    let mut k: usize = 0;\n    while k < a.len()\n        invariant k <= a.len(), out.len() == a.len(),\n        decreases a.len() - k,\n    {\n        out[k] = a[k];\n        k = k + 1;\n    }\n}"
+    }
+  ]
+}

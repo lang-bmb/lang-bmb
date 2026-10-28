@@ -1,0 +1,38 @@
+{
+ "id": "w03-max3",
+ "kind": "write",
+ "prompt": "Create unit `tasks` and implement `max3`: return the largest of three integers. The contract must state that the result is >= each argument and equal to one of them. Reuse the existing library (see `query units`) where it helps.\n\nRequired signature (in unit `tasks`):\nfn max3(a: i64, b: i64, c: i64) -> (r: i64)",
+ "unit": "tasks",
+ "def": "tasks::max3",
+ "signature": "fn max3(a: i64, b: i64, c: i64) -> (r: i64)",
+ "accept": {
+  "specs": "spec fn ref_post(a: i64, b: i64, c: i64, r: i64) -> bool { r >= a && r >= b && r >= c && (r == a || r == b || r == c) }",
+  "pre": null,
+  "post": "ref_post(a, b, c, r)",
+  "args": "a, b, c"
+ },
+ "reference": [
+  {
+   "op": "unit",
+   "path": "tasks",
+   "summary": "과제 구현"
+  },
+  {
+   "op": "put",
+   "unit": "tasks",
+   "code": "spec fn is_max3(a: i64, b: i64, c: i64, r: i64) -> bool { r >= a && r >= b && r >= c && (r == a || r == b || r == c) }\n\n#[effects(pure)]\n#[uses(is_max3, u6::d067)]\nfn max3(a: i64, b: i64, c: i64) -> (r: i64)\n    ensures is_max3(a, b, c, r),\n{\n    u6::d070(u6::d070(a, b), c)\n}"
+  }
+ ],
+ "weak_reference": [
+  {
+   "op": "unit",
+   "path": "tasks",
+   "summary": "과제 구현"
+  },
+  {
+   "op": "put",
+   "unit": "tasks",
+   "code": "spec fn upper3(a: i64, b: i64, c: i64, r: i64) -> bool { r >= a && r >= b && r >= c }\n\n#[effects(pure)]\n#[uses(upper3, u6::d067)]\nfn max3(a: i64, b: i64, c: i64) -> (r: i64)\n    ensures upper3(a, b, c, r),\n{\n    u6::d070(u6::d070(a, b), c)\n}"
+  }
+ ]
+}

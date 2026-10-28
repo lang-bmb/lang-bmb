@@ -1,0 +1,123 @@
+#[summary("unit u5")]
+mod u5 {
+    spec fn d048(a: &[i64], i: usize) -> bool {
+        i < a.len()
+    }
+
+    spec fn d049(x: i64) -> bool {
+        0 <= x && x <= 1000000000
+    }
+
+    #[effects(pure)]
+    #[uses(d048, d051)]
+    fn d050(a: &[i64], i: usize) -> i64
+        requires d051(a), d048(a, i),
+    {
+        a[i]
+    }
+
+    spec fn d051(a: &[i64]) -> bool {
+        forall|k: usize| k < a.len() ==> 0 <= #[trigger] a[k] && a[k] <= 1000000000
+    }
+
+    spec fn d052(a: &[i64], b: &[i64], i: usize, x: i64, r: bool) -> bool {
+        (r ==> d055(a, b, i, x)) && (!r ==> d055(a, b, i, 0))
+    }
+
+    spec fn d053(a: &[i64], b: &[i64], i: usize, x: i64, r: bool) -> bool {
+        (r ==> d055(a, b, i, 0 - x)) && (!r ==> d055(a, b, i, 0))
+    }
+
+    #[effects(pure)]
+    #[uses(d048, d049, d051, d052, d055)]
+    fn d054(a: &mut [i64], i: usize, x: i64) -> (r: bool)
+        requires d051(a), d048(a, i), d049(x),
+        ensures d051(a), d052(a, old(a), i, x, r),
+    {
+        if a[i] <= 1000000000 - x {
+            a[i] = a[i] + x;
+            true
+        } else {
+            false
+        }
+    }
+
+    spec fn d055(a: &[i64], b: &[i64], i: usize, d: i64) -> bool {
+        a.len() == b.len() && a[i] == b[i] + d && (forall|k: usize| k < a.len() && k != i ==> #[trigger] a[k] == b[k])
+    }
+
+    #[effects(pure)]
+    #[uses(d048, d049, d051)]
+    fn d056(a: &mut [i64], from: usize, x: i64) -> (r: usize)
+        requires d051(a), d048(a, from), d049(x),
+        ensures d051(a),
+    {
+        let mut paid: usize = 0;
+        let mut k: usize = 0;
+        while k < a.len()
+            invariant k <= a.len(), paid <= k, from < a.len(), d051(a),
+            decreases a.len() - k,
+        {
+            if d060(a, from, k, x) {
+                paid = paid + 1;
+            }
+            k = k + 1;
+        }
+        paid
+    }
+
+    spec fn d057(a: &[i64]) -> bool {
+        a.len() <= 1000
+    }
+
+    #[effects(pure)]
+    #[uses(d051, d057, d059)]
+    fn d058(a: &[i64]) -> (r: i64)
+        requires d051(a), d057(a),
+        ensures d059(r, a.len()),
+    {
+        let mut s: i64 = 0;
+        let mut k: usize = 0;
+        while k < a.len()
+            invariant k <= a.len(), d059(s, k),
+            decreases a.len() - k,
+        {
+            s = s + a[k];
+            k = k + 1;
+        }
+        s
+    }
+
+    spec fn d059(s: i64, n: usize) -> bool {
+        0 <= s && s <= 1000000000 * n
+    }
+
+    #[effects(pure)]
+    #[uses(d048, d049, d051, d052, d053, d055)]
+    fn d060(a: &mut [i64], i: usize, j: usize, x: i64) -> (r: bool)
+        requires d051(a), d048(a, i), d048(a, j), d049(x),
+        ensures d051(a),
+    {
+        let mut ok: bool = false;
+        if i != j && a[i] >= x && a[j] <= 1000000000 - x {
+            let w: bool = d061(a, i, x);
+            let d: bool = d054(a, j, x);
+            ok = w && d;
+        }
+        ok
+    }
+
+    #[effects(pure)]
+    #[uses(d048, d049, d051, d053, d055)]
+    fn d061(a: &mut [i64], i: usize, x: i64) -> (r: bool)
+        requires d051(a), d048(a, i), d049(x),
+        ensures d051(a), d053(a, old(a), i, x, r),
+    {
+        if a[i] >= x {
+            a[i] = a[i] - x;
+            true
+        } else {
+            false
+        }
+    }
+}

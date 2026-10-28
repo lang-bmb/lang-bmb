@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """MCP stdio proxy between a CLI agent and `bmb mcp` (pilot runs, ADR-0058 T0).
 
-  mcp_proxy.py BMB WORKSPACE METRICS.json write|navigate
+  mcp_proxy.py BMB WORKSPACE METRICS.json write|navigate [SET]
 
 Forwards every JSON-RPC line to `bmb mcp WORKSPACE` and keeps the measurements
 the harness keeps in its own loop (`bench/m1/harness.py` run_task): tool calls,
@@ -26,7 +26,12 @@ RESULT_SIZE_META = "anthropic/maxResultSizeChars"
 RESULT_SIZE_CHARS = 2_000_000
 
 bmb, ws, metrics_path, kind = sys.argv[1:5]
-child = subprocess.Popen([bmb, "mcp", ws], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+# The task set (`set.json`: `bmb mcp` flags and tools the model is not shown), as the harness reads it.
+harness.SET = sys.argv[5] if len(sys.argv) > 5 else harness.SET
+cfg = harness.set_config()
+hidden = set(cfg.get("hide_tools", []))
+child = subprocess.Popen([bmb, "mcp", *cfg.get("mcp_flags", []), ws], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                         text=True)
 m = {"tool_calls": 0, "read_calls": 0, "read_bytes": 0, "commits": 0, "e02": 0, "limit_hit": False,
      "answer": None, "calls": []}
 
@@ -68,6 +73,7 @@ for line in sys.stdin:
     method = msg.get("method")
     if method == "tools/list":
         r = forward(msg)
+        r["result"]["tools"] = [x for x in r["result"]["tools"] if x["name"] not in hidden]
         if kind == "navigate":
             r["result"]["tools"].append(harness.ANSWER_TOOL)
         for tool in r["result"]["tools"]:

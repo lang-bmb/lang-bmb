@@ -52,8 +52,22 @@ def set_name():
     return os.path.basename(os.path.normpath(SET))
 
 
+def set_config():
+    """`set.json` of the task set, when it has one (backlog 2D-24, T1-06):
+    `mcp_flags` for `bmb mcp` (e.g. `--write-tool`) and `hide_tools`, tools the
+    model is not shown (still callable, so scripted agents keep their calls).
+    Frozen with the set."""
+    path = os.path.join(SET, "set.json")
+    if not os.path.exists(path):
+        return {}
+    with open(path) as f:
+        return json.load(f)
+
+
 def frozen_files():
     files = [os.path.join(SET, "prompt.md")]
+    if os.path.exists(os.path.join(SET, "set.json")):
+        files.append(os.path.join(SET, "set.json"))
     for sub in ("seed/src", "tasks"):
         d = os.path.join(SET, sub)
         files += sorted(os.path.join(d, f) for f in os.listdir(d))
@@ -133,14 +147,16 @@ class Mcp:
     """A `bmb mcp` subprocess spoken to over JSON-RPC lines."""
 
     def __init__(self, root):
-        self.p = subprocess.Popen([bmb_bin(), "mcp", root], stdin=subprocess.PIPE,
+        cfg = set_config()
+        self.p = subprocess.Popen([bmb_bin(), "mcp", *cfg.get("mcp_flags", []), root], stdin=subprocess.PIPE,
                                   stdout=subprocess.PIPE, text=True)
         self.next = 1
         self.request("initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
                                     "clientInfo": {"name": "bmb-harness", "version": "1"}})
         self.p.stdin.write(json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}) + "\n")
         self.p.stdin.flush()
-        self.tools = self.request("tools/list", {})["result"]["tools"]
+        hidden = set(cfg.get("hide_tools", []))
+        self.tools = [x for x in self.request("tools/list", {})["result"]["tools"] if x["name"] not in hidden]
 
     def request(self, method, params):
         msg = {"jsonrpc": "2.0", "id": self.next, "method": method, "params": params}

@@ -1,0 +1,34 @@
+#[summary("진입점과 보고")]
+mod app {
+    #[effects(io)]
+    #[uses(arr::terminal_spec, arr::min_ok, arr::acct, fsm::max_below, fsm::state_ok, ledger::debited, ledger::in_closed, ledger::amount_ok, ledger::lb_ok, num::bounded_elems, num::ceil_ok, order::ordered, digit_sum_bound, search::nonneg, stats::absent_below)]
+    fn main() -> () {
+        let mut xs: [i64; 6] = [5, -3, 8, 0, 8, 2];
+        sum_to(&xs);
+        order::divides(&mut xs);
+        print_i64(arr::find_first(&xs));
+        let mut book: [i64; 4] = [100, 0, 50, 7];
+        let paid: usize = ledger::add_small(&mut book, 0, 10);
+        print_i64(ledger::withdraw(&book));
+        let mut jobs: [i64; 3] = [0, 1, 2];
+        fsm::count_descents(&mut jobs, 1);
+        print_i64(fsm::is_terminal(&xs, 0));
+        print_i64(num::count_above(arr::reset_all(&xs), 0, 5));
+        arr::pay_all(&mut jobs, 0);
+        print_i64(xs[search::deposit(&xs)]);
+    }
+
+    #[effects(io)]
+    #[uses(arr::acct, digit_sum_bound, stats::absent_below)]
+    fn sum_to(a: &[i64]) -> ()
+        requires digit_sum_bound(a), stats::absent_below(a),
+    {
+        print_i64(stats::digit_sum(a));
+        print_i64(stats::is_sorted(a));
+        print_i64(stats::sum(a));
+    }
+
+    spec fn digit_sum_bound(a: &[i64]) -> bool {
+        a.len() > 0 && a.len() <= 1000
+    }
+}

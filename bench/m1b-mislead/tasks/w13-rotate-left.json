@@ -1,0 +1,28 @@
+{
+ "id": "w13-rotate-left",
+ "kind": "write",
+ "prompt": "Add `rotate_left` to the existing unit `arr`: for a non-empty array, move every element one place to the left and the first element to the end (a[k] becomes old a[k + 1], the last element becomes old a[0]). The contract must state where every element goes.\n\nRequired signature (in unit `arr`):\nfn rotate_left(a: &mut [i64]) -> ()",
+ "unit": "arr",
+ "def": "arr::rotate_left",
+ "signature": "fn rotate_left(a: &mut [i64]) -> ()",
+ "accept": {
+  "specs": "spec fn ref_pre(a: &[i64]) -> bool { a.len() > 0 }\nspec fn ref_post(a: &[i64], b: &[i64]) -> bool { a.len() == b.len() && a.len() > 0 && a[a.len() - 1] == b[0] && (forall|k: usize| k + 1 < a.len() ==> #[trigger] a[k] == b[k + 1]) }",
+  "pre": "ref_pre(a)",
+  "post": "ref_post(a, old(a))",
+  "args": "a"
+ },
+ "reference": [
+  {
+   "op": "put",
+   "unit": "arr",
+   "code": "spec fn shifted_below(a: &[i64], b: &[i64], n: usize) -> bool {\n    a.len() == b.len() && (forall|k: usize| k < a.len() ==> ((k < n ==> #[trigger] a[k] == b[k + 1]) && (k >= n ==> a[k] == b[k])))\n}\n\nspec fn rotated(a: &[i64], b: &[i64]) -> bool {\n    a.len() == b.len() && a.len() > 0 && a[a.len() - 1] == b[0] && (forall|k: usize| k + 1 < a.len() ==> #[trigger] a[k] == b[k + 1])\n}\n\n#[effects(pure)]\n#[uses(acct, shifted_below, rotated)]\nfn rotate_left(a: &mut [i64]) -> ()\n    requires acct(a),\n    ensures rotated(a, old(a)),\n{\n    let t: i64 = a[0];\n    let mut k: usize = 0;\n    while k + 1 < a.len()\n        invariant k < a.len(), t == old(a)[0], shifted_below(a, old(a), k),\n        decreases a.len() - k,\n    {\n        a[k] = a[k + 1];\n        k = k + 1;\n    }\n    a[k] = t;\n}"
+  }
+ ],
+ "weak_reference": [
+  {
+   "op": "put",
+   "unit": "arr",
+   "code": "#[effects(pure)]\n#[uses(acct, at_least_target)]\nfn rotate_left(a: &mut [i64]) -> ()\n    requires acct(a),\n    ensures at_least_target(a, old(a)),\n{\n    let t: i64 = a[0];\n    let mut k: usize = 0;\n    while k + 1 < a.len()\n        invariant k < a.len(),\n        decreases a.len() - k,\n    {\n        a[k] = a[k + 1];\n        k = k + 1;\n    }\n    a[k] = t;\n}"
+  }
+ ]
+}

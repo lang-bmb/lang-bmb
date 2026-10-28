@@ -1,0 +1,18 @@
+{
+  "id": "n03-callees-transitive",
+  "kind": "navigate",
+  "prompt": "Which definitions does `order::selection_sort` call, directly or transitively (functions called by functions it calls, and so on)? Count only calls in executable code, not predicates. Use the `answer` tool with the full paths (unit::name) of all such definitions.",
+  "truth": {
+    "query": [
+      "edges",
+      "order::selection_sort",
+      "out",
+      "1"
+    ],
+    "kinds": [
+      "calls"
+    ],
+    "field": "to",
+    "closure": true
+  }
+}

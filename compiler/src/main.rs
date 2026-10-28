@@ -78,7 +78,10 @@ const USAGE: &str = "usage:
                             create or replace workspace DIR from files, in normal form
   bmb apply DIR OPS.json    commit a transaction (JSON array of unit/put/remove/remove_unit ops)
                             to workspace DIR; rejected as a whole on any structural or type error
-  bmb mcp DIR               MCP server (stdio) for workspace DIR: query, map, verify, build, tx_*
+  bmb mcp [--write-tool] DIR
+                            MCP server (stdio) for workspace DIR: query, map, verify, build, tx_*;
+                            --write-tool also offers `write` (unit, definitions, removals,
+                            commit and proof in one call)
   bmb codes [--md]          list diagnostic codes as JSONL (or the Markdown reference page)
 
 Any <file.bmb> argument may also be a workspace directory (its src/*.bmb).
@@ -624,14 +627,18 @@ fn run() -> ExitCode {
                 }
             }
         }
-        Some("mcp") if args.len() == 2 => match bmb::mcp::serve(std::path::Path::new(&args[1])) {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => ExitCode::from(CLOSED_STDOUT),
-            Err(e) => {
-                eprintln!("bmb: {e}");
-                ExitCode::from(2)
+        Some("mcp") if args.len() == 2 || (args.len() == 3 && args[1] == "--write-tool") => {
+            match bmb::mcp::serve(std::path::Path::new(&args[args.len() - 1]), args.len() == 3) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {
+                    ExitCode::from(CLOSED_STDOUT)
+                }
+                Err(e) => {
+                    eprintln!("bmb: {e}");
+                    ExitCode::from(2)
+                }
             }
-        },
+        }
         Some("codes") if args.get(1).map(String::as_str) == Some("--md") => {
             print!("{}", bmb::diag::codes_markdown());
             ExitCode::SUCCESS

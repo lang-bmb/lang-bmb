@@ -1,0 +1,577 @@
+{
+ "task": "w04-argmin",
+ "generator": "bench/m1/bsb_gen.py",
+ "max_witnesses": 2,
+ "targets": [
+  {
+   "def": "tasks::argmin",
+   "signature": "fn argmin(a: &[i64]) -> (r: usize)",
+   "mutated": [
+    "tasks::argmin",
+    "u7::d086"
+   ],
+   "inputs": [
+    {
+     "a": [
+      5
+     ]
+    },
+    {
+     "a": [
+      3,
+      1,
+      2
+     ]
+    },
+    {
+     "a": [
+      1,
+      1
+     ]
+    },
+    {
+     "a": [
+      2,
+      1,
+      1
+     ]
+    },
+    {
+     "a": [
+      1,
+      2,
+      3
+     ]
+    },
+    {
+     "a": [
+      3,
+      2,
+      1
+     ]
+    },
+    {
+     "a": [
+      0,
+      3,
+      3,
+      0
+     ]
+    },
+    {
+     "a": [
+      3,
+      0,
+      0,
+      -1,
+      2
+     ]
+    },
+    {
+     "a": [
+      1,
+      -1,
+      -1,
+      -1,
+      0
+     ]
+    },
+    {
+     "a": [
+      1
+     ]
+    },
+    {
+     "a": [
+      3,
+      -1
+     ]
+    },
+    {
+     "a": [
+      1,
+      2
+     ]
+    },
+    {
+     "a": [
+      3,
+      2
+     ]
+    },
+    {
+     "a": [
+      3,
+      -1,
+      2,
+      -2
+     ]
+    },
+    {
+     "a": [
+      0,
+      1
+     ]
+    },
+    {
+     "a": [
+      2,
+      -1,
+      -1,
+      -2
+     ]
+    },
+    {
+     "a": [
+      -1,
+      2,
+      -1,
+      -1,
+      2
+     ]
+    },
+    {
+     "a": [
+      0,
+      2
+     ]
+    },
+    {
+     "a": [
+      -1,
+      0
+     ]
+    },
+    {
+     "a": [
+      0,
+      0,
+      0
+     ]
+    },
+    {
+     "a": [
+      -1,
+      -1
+     ]
+    },
+    {
+     "a": [
+      1,
+      -2
+     ]
+    },
+    {
+     "a": [
+      -1,
+      2,
+      0,
+      -2,
+      1
+     ]
+    },
+    {
+     "a": [
+      1,
+      3
+     ]
+    },
+    {
+     "a": [
+      3,
+      -1,
+      1,
+      1,
+      0
+     ]
+    },
+    {
+     "a": [
+      2,
+      3
+     ]
+    },
+    {
+     "a": [
+      -1
+     ]
+    },
+    {
+     "a": [
+      2,
+      3,
+      2,
+      3,
+      1
+     ]
+    },
+    {
+     "a": [
+      -2,
+      2,
+      -1,
+      -2,
+      -1
+     ]
+    },
+    {
+     "a": [
+      0
+     ]
+    },
+    {
+     "a": [
+      2,
+      -2,
+      -1,
+      -2,
+      2
+     ]
+    },
+    {
+     "a": [
+      3,
+      -2,
+      -2
+     ]
+    },
+    {
+     "a": [
+      -1,
+      -1,
+      0,
+      3
+     ]
+    },
+    {
+     "a": [
+      1,
+      -1,
+      0,
+      0
+     ]
+    },
+    {
+     "a": [
+      2,
+      1,
+      3
+     ]
+    }
+   ],
+   "counts": {
+    "generated": 12,
+    "kept": 6,
+    "equivalent": 0,
+    "trap_only": 5,
+    "allowed": 1,
+    "no_check": 0
+   },
+   "mutants": [
+    {
+     "def": "tasks::argmin",
+     "site": 0,
+     "line": 9,
+     "col": 29,
+     "before": "0",
+     "after": "1",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         5
+        ]
+       },
+       "expected": {
+        "r": 0
+       },
+       "output": {
+        "r": 1
+       }
+      },
+      {
+       "input": {
+        "a": [
+         1,
+         2,
+         3
+        ]
+       },
+       "expected": {
+        "r": 0
+       },
+       "output": {
+        "r": 1
+       }
+      }
+     ],
+     "id": "m00"
+    },
+    {
+     "def": "u7::d086",
+     "site": 1,
+     "line": 64,
+     "col": 35,
+     "before": "from + 1",
+     "after": "from + 2",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         3,
+         1,
+         2
+        ]
+       },
+       "expected": {
+        "r": 1
+       },
+       "output": {
+        "r": 2
+       }
+      },
+      {
+       "input": {
+        "a": [
+         3,
+         -1
+        ]
+       },
+       "expected": {
+        "r": 1
+       },
+       "output": {
+        "r": 0
+       }
+      }
+     ],
+     "id": "m01"
+    },
+    {
+     "def": "u7::d086",
+     "site": 3,
+     "line": 69,
+     "col": 13,
+     "before": "a[k] < a[best]",
+     "after": "!(a[k] < a[best])",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         3,
+         1,
+         2
+        ]
+       },
+       "expected": {
+        "r": 1
+       },
+       "output": {
+        "r": 0
+       }
+      },
+      {
+       "input": {
+        "a": [
+         2,
+         1,
+         1
+        ]
+       },
+       "expected": {
+        "r": 1
+       },
+       "output": {
+        "r": 0
+       }
+      }
+     ],
+     "id": "m02"
+    },
+    {
+     "def": "u7::d086",
+     "site": 6,
+     "line": 69,
+     "col": 16,
+     "before": "a[k]",
+     "after": "a[k - 1]",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         3,
+         1,
+         2
+        ]
+       },
+       "expected": {
+        "r": 1
+       },
+       "output": {
+        "r": 2
+       }
+      },
+      {
+       "input": {
+        "a": [
+         3,
+         0,
+         0,
+         -1,
+         2
+        ]
+       },
+       "expected": {
+        "r": 3
+       },
+       "output": {
+        "r": 4
+       }
+      }
+     ],
+     "id": "m03"
+    },
+    {
+     "def": "u7::d086",
+     "site": 7,
+     "line": 69,
+     "col": 23,
+     "before": "a[best]",
+     "after": "a[best + 1]",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         3,
+         1,
+         2
+        ]
+       },
+       "expected": {
+        "r": 1
+       },
+       "output": {
+        "r": 0
+       }
+      },
+      {
+       "input": {
+        "a": [
+         2,
+         1,
+         1
+        ]
+       },
+       "expected": {
+        "r": 1
+       },
+       "output": {
+        "r": 0
+       }
+      }
+     ],
+     "id": "m04"
+    },
+    {
+     "def": "u7::d086",
+     "site": 10,
+     "line": 72,
+     "col": 21,
+     "before": "k + 1",
+     "after": "k + 2",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         3,
+         2,
+         1
+        ]
+       },
+       "expected": {
+        "r": 2
+       },
+       "output": {
+        "r": 1
+       }
+      },
+      {
+       "input": {
+        "a": [
+         2,
+         3,
+         2,
+         3,
+         1
+        ]
+       },
+       "expected": {
+        "r": 4
+       },
+       "output": {
+        "r": 0
+       }
+      }
+     ],
+     "id": "m05"
+    }
+   ],
+   "discarded": [
+    {
+     "def": "u7::d086",
+     "site": 0,
+     "line": 64,
+     "col": 28,
+     "before": "from + 1",
+     "after": "from - 1",
+     "reason": "trap_only"
+    },
+    {
+     "def": "u7::d086",
+     "site": 2,
+     "line": 65,
+     "col": 15,
+     "before": "k < a.len()",
+     "after": "k <= a.len()",
+     "reason": "trap_only"
+    },
+    {
+     "def": "u7::d086",
+     "site": 4,
+     "line": 69,
+     "col": 16,
+     "before": "a[k] < a[best]",
+     "after": "a[k] <= a[best]",
+     "reason": "allowed"
+    },
+    {
+     "def": "u7::d086",
+     "site": 5,
+     "line": 69,
+     "col": 16,
+     "before": "a[k]",
+     "after": "a[k + 1]",
+     "reason": "trap_only"
+    },
+    {
+     "def": "u7::d086",
+     "site": 8,
+     "line": 69,
+     "col": 23,
+     "before": "a[best]",
+     "after": "a[best - 1]",
+     "reason": "trap_only"
+    },
+    {
+     "def": "u7::d086",
+     "site": 9,
+     "line": 72,
+     "col": 17,
+     "before": "k + 1",
+     "after": "k - 1",
+     "reason": "trap_only"
+    }
+   ]
+  }
+ ]
+}

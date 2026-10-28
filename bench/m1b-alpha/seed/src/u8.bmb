@@ -1,0 +1,137 @@
+#[summary("unit u8")]
+mod u8 {
+    spec fn d091(a: &[i64], v: i64, n: usize) -> bool {
+        forall|k: usize| k < n ==> #[trigger] a[k] != v
+    }
+
+    #[effects(pure)]
+    #[uses(u3::d030, d104, d105)]
+    fn d092(a: &[i64]) -> (r: usize)
+        requires u3::d030(a),
+        ensures d104(a, r),
+    {
+        let mut best: usize = 0;
+        let mut k: usize = 1;
+        while k < a.len()
+            invariant k <= a.len(), d105(a, k, best),
+            decreases a.len() - k,
+        {
+            if a[k] > a[best] {
+                best = k;
+            }
+            k = k + 1;
+        }
+        best
+    }
+
+    spec fn d093(a: &[i64], t: i64, n: usize) -> bool {
+        forall|k: usize| n <= k && k < a.len() ==> #[trigger] a[k] >= t
+    }
+
+    spec fn d094(a: &[i64], t: i64, n: usize) -> bool {
+        forall|k: usize| k < n ==> #[trigger] a[k] < t
+    }
+
+    #[effects(pure)]
+    #[uses(d091, d096, d099, d101)]
+    fn d095(a: &[i64], v: i64) -> (r: bool)
+        ensures d096(a, v, r),
+    {
+        let i: usize = d100(a, v);
+        i < a.len()
+    }
+
+    spec fn d096(a: &[i64], v: i64, r: bool) -> bool {
+        r == d099(a, v)
+    }
+
+    spec fn d097(a: &[i64], r: usize) -> bool {
+        r <= a.len()
+    }
+
+    #[effects(pure)]
+    #[uses(d097)]
+    fn d098(a: &[i64], v: i64) -> (r: usize)
+        ensures d097(a, r),
+    {
+        let mut c: usize = 0;
+        let mut k: usize = 0;
+        while k < a.len()
+            invariant k <= a.len(), c <= k,
+            decreases a.len() - k,
+        {
+            if a[k] == v {
+                c = c + 1;
+            }
+            k = k + 1;
+        }
+        c
+    }
+
+    spec fn d099(a: &[i64], v: i64) -> bool {
+        !d091(a, v, a.len())
+    }
+
+    #[effects(pure)]
+    #[uses(d091, d101)]
+    fn d100(a: &[i64], v: i64) -> (r: usize)
+        ensures d101(a, v, r),
+    {
+        let mut k: usize = 0;
+        while k < a.len() && a[k] != v
+            invariant k <= a.len(), d091(a, v, k),
+            decreases a.len() - k,
+        {
+            k = k + 1;
+        }
+        k
+    }
+
+    spec fn d101(a: &[i64], v: i64, r: usize) -> bool {
+        r <= a.len() && (r < a.len() ==> a[r] == v) && d091(a, v, r)
+    }
+
+    spec fn d102(a: &[i64], t: i64, r: usize) -> bool {
+        r <= a.len() && d094(a, t, r) && d093(a, t, r)
+    }
+
+    #[effects(pure)]
+    #[uses(d093, d094, d102, u7::d090)]
+    fn d103(a: &[i64], t: i64) -> (r: usize)
+        requires u7::d090(a),
+        ensures d102(a, t, r),
+    {
+        let mut lo: usize = 0;
+        let mut hi: usize = a.len();
+        while lo < hi
+            invariant lo <= hi, hi <= a.len(), d094(a, t, lo), d093(a, t, hi),
+            decreases hi - lo,
+        {
+            let m: usize = lo + (hi - lo) / 2;
+            if a[m] < t {
+                lo = m + 1;
+            } else {
+                hi = m;
+            }
+        }
+        lo
+    }
+
+    spec fn d104(a: &[i64], r: usize) -> bool {
+        r < a.len() && (forall|k: usize| k < a.len() ==> #[trigger] a[k] <= a[r])
+    }
+
+    spec fn d105(a: &[i64], n: usize, r: usize) -> bool {
+        r < n && (forall|k: usize| k < n ==> #[trigger] a[k] <= a[r])
+    }
+
+    #[effects(pure)]
+    #[uses(d091, d093, d094, d096, d099, d102, u7::d090)]
+    fn d106(a: &[i64], t: i64) -> (r: bool)
+        requires u7::d090(a),
+        ensures d096(a, t, r),
+    {
+        let i: usize = d103(a, t);
+        i < a.len() && a[i] == t
+    }
+}

@@ -1,0 +1,19 @@
+{
+ "id": "n05-impact-body",
+ "kind": "navigate",
+ "prompt": "Suppose only the body of `ledger::sign` changes (its signature and contract stay the same). Which definitions must be proved again? Proofs see a called function only through its contract. Use the `answer` tool with the full paths (unit::name) of all such definitions.",
+ "truth": {
+  "query": [
+   "impact",
+   "ledger::sign",
+   "body"
+  ],
+  "reasons": [
+   "changed",
+   "calls",
+   "uses",
+   "names"
+  ],
+  "field": "path"
+ }
+}

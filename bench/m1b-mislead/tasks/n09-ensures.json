@@ -1,0 +1,12 @@
+{
+ "id": "n09-ensures",
+ "kind": "navigate",
+ "prompt": "Which definitions guarantee the predicate `ledger::amount_ok` in their postcondition? Use the `answer` tool with the full paths (unit::name) of all such definitions.",
+ "truth": {
+  "query": [
+   "contracts",
+   "ledger::amount_ok"
+  ],
+  "list": "ensured_by"
+ }
+}

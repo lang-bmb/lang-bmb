@@ -1,0 +1,550 @@
+{
+ "task": "w10-all-done",
+ "generator": "bench/m1/bsb_gen.py",
+ "max_witnesses": 2,
+ "targets": [
+  {
+   "def": "tasks::all_done",
+   "signature": "fn all_done(a: &[i64]) -> (r: bool)",
+   "mutated": [
+    "tasks::all_done",
+    "fsm::sub_small"
+   ],
+   "inputs": [
+    {
+     "a": []
+    },
+    {
+     "a": [
+      2
+     ]
+    },
+    {
+     "a": [
+      3
+     ]
+    },
+    {
+     "a": [
+      1
+     ]
+    },
+    {
+     "a": [
+      2,
+      3
+     ]
+    },
+    {
+     "a": [
+      2,
+      1
+     ]
+    },
+    {
+     "a": [
+      3,
+      0,
+      2
+     ]
+    },
+    {
+     "a": [
+      4
+     ]
+    },
+    {
+     "a": [
+      2,
+      3,
+      2,
+      3
+     ]
+    },
+    {
+     "a": [
+      1,
+      2,
+      2
+     ]
+    },
+    {
+     "a": [
+      0
+     ]
+    },
+    {
+     "a": [
+      4,
+      1,
+      0
+     ]
+    },
+    {
+     "a": [
+      0,
+      1
+     ]
+    },
+    {
+     "a": [
+      0,
+      0,
+      3,
+      0
+     ]
+    },
+    {
+     "a": [
+      0,
+      3,
+      3,
+      0
+     ]
+    },
+    {
+     "a": [
+      4,
+      1,
+      4
+     ]
+    },
+    {
+     "a": [
+      4,
+      2
+     ]
+    },
+    {
+     "a": [
+      0,
+      3,
+      4,
+      0
+     ]
+    },
+    {
+     "a": [
+      1,
+      3,
+      2,
+      4
+     ]
+    },
+    {
+     "a": [
+      0,
+      1,
+      4
+     ]
+    },
+    {
+     "a": [
+      2,
+      0,
+      2
+     ]
+    },
+    {
+     "a": [
+      0,
+      2,
+      4
+     ]
+    },
+    {
+     "a": [
+      3,
+      4
+     ]
+    },
+    {
+     "a": [
+      0,
+      4,
+      4,
+      3
+     ]
+    },
+    {
+     "a": [
+      1,
+      1,
+      4,
+      1
+     ]
+    },
+    {
+     "a": [
+      3,
+      1,
+      4
+     ]
+    },
+    {
+     "a": [
+      0,
+      0,
+      4
+     ]
+    }
+   ],
+   "counts": {
+    "generated": 13,
+    "kept": 8,
+    "equivalent": 0,
+    "trap_only": 5,
+    "allowed": 0,
+    "no_check": 0
+   },
+   "mutants": [
+    {
+     "def": "tasks::all_done",
+     "site": 0,
+     "line": 8,
+     "col": 28,
+     "before": "0",
+     "after": "1",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1
+        ]
+       },
+       "expected": {
+        "r": false
+       },
+       "output": {
+        "r": true
+       }
+      },
+      {
+       "input": {
+        "a": [
+         4
+        ]
+       },
+       "expected": {
+        "r": false
+       },
+       "output": {
+        "r": true
+       }
+      }
+     ],
+     "id": "m00"
+    },
+    {
+     "def": "tasks::all_done",
+     "site": 6,
+     "line": 13,
+     "col": 21,
+     "before": "k + 1",
+     "after": "k + 2",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         2,
+         1
+        ]
+       },
+       "expected": {
+        "r": false
+       },
+       "output": {
+        "r": true
+       }
+      },
+      {
+       "input": {
+        "a": [
+         3,
+         0,
+         2
+        ]
+       },
+       "expected": {
+        "r": false
+       },
+       "output": {
+        "r": true
+       }
+      }
+     ],
+     "id": "m01"
+    },
+    {
+     "def": "tasks::all_done",
+     "site": 7,
+     "line": 15,
+     "col": 9,
+     "before": "k >= a.len()",
+     "after": "k > a.len()",
+     "witnesses": [
+      {
+       "input": {
+        "a": []
+       },
+       "expected": {
+        "r": true
+       },
+       "output": {
+        "r": false
+       }
+      },
+      {
+       "input": {
+        "a": [
+         2
+        ]
+       },
+       "expected": {
+        "r": true
+       },
+       "output": {
+        "r": false
+       }
+      }
+     ],
+     "id": "m02"
+    },
+    {
+     "def": "fsm::sub_small",
+     "site": 0,
+     "line": 47,
+     "col": 9,
+     "before": "s == 2 || s == 3",
+     "after": "s == 2 && s == 3",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         2
+        ]
+       },
+       "expected": {
+        "r": true
+       },
+       "output": {
+        "r": false
+       }
+      },
+      {
+       "input": {
+        "a": [
+         3
+        ]
+       },
+       "expected": {
+        "r": true
+       },
+       "output": {
+        "r": false
+       }
+      }
+     ],
+     "id": "m03"
+    },
+    {
+     "def": "fsm::sub_small",
+     "site": 1,
+     "line": 47,
+     "col": 9,
+     "before": "s == 2",
+     "after": "s != 2",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         2
+        ]
+       },
+       "expected": {
+        "r": true
+       },
+       "output": {
+        "r": false
+       }
+      },
+      {
+       "input": {
+        "a": [
+         1
+        ]
+       },
+       "expected": {
+        "r": false
+       },
+       "output": {
+        "r": true
+       }
+      }
+     ],
+     "id": "m04"
+    },
+    {
+     "def": "fsm::sub_small",
+     "site": 2,
+     "line": 47,
+     "col": 14,
+     "before": "s == 2",
+     "after": "s == 3",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         2
+        ]
+       },
+       "expected": {
+        "r": true
+       },
+       "output": {
+        "r": false
+       }
+      },
+      {
+       "input": {
+        "a": [
+         2,
+         3
+        ]
+       },
+       "expected": {
+        "r": true
+       },
+       "output": {
+        "r": false
+       }
+      }
+     ],
+     "id": "m05"
+    },
+    {
+     "def": "fsm::sub_small",
+     "site": 3,
+     "line": 47,
+     "col": 19,
+     "before": "s == 3",
+     "after": "s != 3",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         3
+        ]
+       },
+       "expected": {
+        "r": true
+       },
+       "output": {
+        "r": false
+       }
+      },
+      {
+       "input": {
+        "a": [
+         1
+        ]
+       },
+       "expected": {
+        "r": false
+       },
+       "output": {
+        "r": true
+       }
+      }
+     ],
+     "id": "m06"
+    },
+    {
+     "def": "fsm::sub_small",
+     "site": 4,
+     "line": 47,
+     "col": 24,
+     "before": "s == 3",
+     "after": "s == 4",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         3
+        ]
+       },
+       "expected": {
+        "r": true
+       },
+       "output": {
+        "r": false
+       }
+      },
+      {
+       "input": {
+        "a": [
+         2,
+         3
+        ]
+       },
+       "expected": {
+        "r": true
+       },
+       "output": {
+        "r": false
+       }
+      }
+     ],
+     "id": "m07"
+    }
+   ],
+   "discarded": [
+    {
+     "def": "tasks::all_done",
+     "site": 1,
+     "line": 9,
+     "col": 15,
+     "before": "k < a.len() && fsm::sub_small(a[k])",
+     "after": "k < a.len() || fsm::sub_small(a[k])",
+     "reason": "trap_only"
+    },
+    {
+     "def": "tasks::all_done",
+     "site": 2,
+     "line": 9,
+     "col": 15,
+     "before": "k < a.len()",
+     "after": "k <= a.len()",
+     "reason": "trap_only"
+    },
+    {
+     "def": "tasks::all_done",
+     "site": 3,
+     "line": 9,
+     "col": 47,
+     "before": "a[k]",
+     "after": "a[k + 1]",
+     "reason": "trap_only"
+    },
+    {
+     "def": "tasks::all_done",
+     "site": 4,
+     "line": 9,
+     "col": 47,
+     "before": "a[k]",
+     "after": "a[k - 1]",
+     "reason": "trap_only"
+    },
+    {
+     "def": "tasks::all_done",
+     "site": 5,
+     "line": 13,
+     "col": 17,
+     "before": "k + 1",
+     "after": "k - 1",
+     "reason": "trap_only"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,38 @@
+{
+ "id": "w09-find-sorted",
+ "kind": "write",
+ "prompt": "Create unit `tasks` and implement `find_sorted`: for a sorted array (a[i] <= a[j] whenever i < j, as `u7::d090` states), return an index holding t, or a.len() if t does not occur. The contract must state both cases. Use binary search. Reuse the existing library (see `query units`) where it helps.\n\nRequired signature (in unit `tasks`):\nfn find_sorted(a: &[i64], t: i64) -> (r: usize)",
+ "unit": "tasks",
+ "def": "tasks::find_sorted",
+ "signature": "fn find_sorted(a: &[i64], t: i64) -> (r: usize)",
+ "accept": {
+  "specs": "spec fn ref_pre(a: &[i64]) -> bool { forall|i: usize, j: usize| i < j && j < a.len() ==> #[trigger] a[i] <= #[trigger] a[j] }\nspec fn ref_post(a: &[i64], t: i64, r: usize) -> bool { r <= a.len() && (r < a.len() ==> a[r] == t) && (r == a.len() ==> (forall|k: usize| k < a.len() ==> #[trigger] a[k] != t)) }",
+  "pre": "ref_pre(a)",
+  "post": "ref_post(a, t, r)",
+  "args": "a, t"
+ },
+ "reference": [
+  {
+   "op": "unit",
+   "path": "tasks",
+   "summary": "과제 구현"
+  },
+  {
+   "op": "put",
+   "unit": "tasks",
+   "code": "spec fn found(a: &[i64], t: i64, r: usize) -> bool { r <= a.len() && (r < a.len() ==> a[r] == t) && (r == a.len() ==> (forall|k: usize| k < a.len() ==> #[trigger] a[k] != t)) }\n\n#[effects(pure)]\n#[uses(u7::d090, u8::d102, u8::d094, u8::d093, found)]\nfn find_sorted(a: &[i64], t: i64) -> (r: usize)\n    requires u7::d090(a),\n    ensures found(a, t, r),\n{\n    let i: usize = u8::d103(a, t);\n    if i < a.len() && a[i] == t {\n        i\n    } else {\n        a.len()\n    }\n}"
+  }
+ ],
+ "weak_reference": [
+  {
+   "op": "unit",
+   "path": "tasks",
+   "summary": "과제 구현"
+  },
+  {
+   "op": "put",
+   "unit": "tasks",
+   "code": "spec fn hit(a: &[i64], t: i64, r: usize) -> bool { r <= a.len() && (r < a.len() ==> a[r] == t) }\n\n#[effects(pure)]\n#[uses(u7::d090, u8::d102, hit)]\nfn find_sorted(a: &[i64], t: i64) -> (r: usize)\n    requires u7::d090(a),\n    ensures hit(a, t, r),\n{\n    let i: usize = u8::d103(a, t);\n    if i < a.len() && a[i] == t {\n        i\n    } else {\n        a.len()\n    }\n}"
+  }
+ ]
+}
