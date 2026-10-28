@@ -2,7 +2,7 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 7034750,
+    "V4_rlimit_total": 7737006,
     "V5_rlimit_headroom": 0.0153,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0,
@@ -14,12 +14,12 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 31035,
+    "S4_stage0_rust_lines": 31712,
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
-    "P1_runnable_programs": 53,
-    "P2_bmb_lines": 16797,
-    "P3_errors_with_help": 0.8522,
+    "P1_runnable_programs": 55,
+    "P2_bmb_lines": 17577,
+    "P3_errors_with_help": 0.8574,
     "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 10
@@ -1236,6 +1236,32 @@
         "P3_errors_with_help": [
           0.8464,
           0.8522
+        ]
+      }
+    },
+    {
+      "date": "2026-10-28",
+      "reason": "T1-11 (ADR-0060 type invariants): P1 53->55 (ring, sorted_set), P2 up, P3 up. V4 7,034,750 -> 7,737,006 (+10.0%): new corpus 594k (sorted_set 434k, pass/invariants 95k, ring 66k), type-parameter validity in existing generic code ~107k (1.5%). V5, V7 unchanged. S4 counts compiler/src/** now (src/verify/invariants.rs).",
+      "changed": {
+        "V4_rlimit_total": [
+          7034750,
+          7737006
+        ],
+        "S4_stage0_rust_lines": [
+          31035,
+          31712
+        ],
+        "P1_runnable_programs": [
+          53,
+          55
+        ],
+        "P2_bmb_lines": [
+          16797,
+          17577
+        ],
+        "P3_errors_with_help": [
+          0.8522,
+          0.8574
         ]
       }
     }
