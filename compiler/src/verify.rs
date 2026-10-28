@@ -1751,14 +1751,15 @@ fn is_array(t: &TypeKind) -> bool {
 }
 
 fn range(t: &TypeKind, x: &str) -> Option<String> {
-    match t {
-        TypeKind::Int(i) => Some(format!(
-            "(and (<= {} {x}) (<= {x} {}))",
-            num(i.min_value()),
-            num(i.max_value())
-        )),
-        _ => None,
-    }
+    t.int().map(|i| range_int(i, x))
+}
+
+fn range_int(i: IntTy, x: &str) -> String {
+    format!(
+        "(and (<= {} {x}) (<= {x} {}))",
+        num(i.min_value()),
+        num(i.max_value())
+    )
 }
 
 fn len_max(elem: &TypeKind) -> &'static str {
@@ -1794,13 +1795,195 @@ fn ite(c: &str, a: &str, b: &str) -> String {
 
 /// `x` reduced into the range of `t` (two's complement).
 fn wrap(t: &TypeKind, x: &str) -> String {
-    let i = t.int().expect("integer type");
+    wrap_int(t.int().expect("integer type"), x)
+}
+
+fn wrap_int(i: IntTy, x: &str) -> String {
     let size = num(1i128 << i.bits());
     if i.signed() {
         let half = num(1i128 << (i.bits() - 1));
         format!("(- (mod (+ {x} {half}) {size}) {half})")
     } else {
         format!("(mod {x} {size})")
+    }
+}
+
+/// The value of a numeral term (`5`, `(- 5)`).
+fn numeral(t: &str) -> Option<i128> {
+    if !is_numeral(t) {
+        return None;
+    }
+    match t.strip_prefix("(- ").and_then(|x| x.strip_suffix(')')) {
+        Some(x) => x.parse::<i128>().ok().map(|v| -v),
+        None => t.parse().ok(),
+    }
+}
+
+/// `x` as a bitvector of `i`'s width: its value modulo `2^w`, so a negative
+/// value is its two's complement (ADR-0048 §4).
+fn to_bv(i: IntTy, x: &str) -> String {
+    format!("((_ int2bv {}) {x})", i.bits())
+}
+
+/// The value of a bitvector `v` of `i`'s width as an integer of `i`:
+/// unsigned, or two's complement (flipping the sign bit adds `2^(w-1)`
+/// modulo `2^w`, so one `bv2nat` suffices).
+fn from_bv(i: IntTy, v: &str) -> String {
+    if i.signed() {
+        let half = 1i128 << (i.bits() - 1);
+        format!("(- (bv2nat (bvxor {v} (_ bv{half} {}))) {half})", i.bits())
+    } else {
+        format!("(bv2nat {v})")
+    }
+}
+
+/// `!a` on integer type `i`: every bit flipped, which is linear
+/// (`-a - 1`, or `MAX - a` unsigned).
+pub fn not_term(i: IntTy, a: &str) -> String {
+    if i.signed() {
+        format!("(- (- {a}) 1)")
+    } else {
+        format!("(- {} {a})", num(i.max_value()))
+    }
+}
+
+/// A bit operation `a op b` on integer type `i` (ADR-0048 §4): its term and
+/// the facts about the term that hold when the operands are in `i`'s range.
+/// Integers stay `Int`; only the term goes through a bitvector of the
+/// operand width (`int2bv`, the operation, back with `bv2nat`). Forms that
+/// are linear stay linear (`linear_bit`). The facts (checked by
+/// `tests/lemmas.rs`) bound the result by the operands, so range obligations
+/// need no bitvector reasoning. A shift amount outside `0..w` is the
+/// caller's obligation (E0803). Code names its operands' bitvectors instead
+/// (`Enc::operand_bv`): the solver finds models far sooner that way.
+pub fn bit_op(op: BinOp, i: IntTy, a: &str, b: &str) -> (String, Vec<String>) {
+    if let Some(t) = linear_bit(op, i, a, b) {
+        return (t, Vec::new());
+    }
+    let r = bv_term(op, i, &to_bv(i, a), &to_bv(i, b));
+    let facts = bit_facts(op, i, a, b, &r);
+    (r, facts)
+}
+
+/// The linear form of `a op b` on `i`, where there is one: a constant shift
+/// amount is a multiplication (wrapped into the range) or a floor division,
+/// and `a & m` with `m = 2^k - 1` is `a mod 2^k`.
+pub fn linear_bit(op: BinOp, i: IntTy, a: &str, b: &str) -> Option<String> {
+    let w = i.bits() as i128;
+    // `a & (2^k - 1)` keeps the low `k` bits.
+    let mask = |m: Option<i128>| {
+        m.filter(|m| *m >= 0 && *m <= i.max_value() && (m + 1) & m == 0)
+            .map(|m| (m + 1).trailing_zeros())
+    };
+    match op {
+        BinOp::BitAnd => match (mask(numeral(b)), mask(numeral(a))) {
+            (Some(k), _) => Some(format!("(mod {a} {})", num(1i128 << k))),
+            (_, Some(k)) => Some(format!("(mod {b} {})", num(1i128 << k))),
+            _ => None,
+        },
+        BinOp::Shl | BinOp::Shr if numeral(b) == Some(0) => Some(a.to_string()),
+        BinOp::Shl => numeral(b)
+            .filter(|k| 0 < *k && *k < w)
+            .map(|k| wrap_int(i, &format!("(* {a} {})", num(1i128 << k)))),
+        // Floor division: `>>` rounds toward negative infinity on signed
+        // values (arithmetic shift), as SMT `div` does.
+        BinOp::Shr => numeral(b)
+            .filter(|k| 0 < *k && *k < w)
+            .map(|k| format!("(div {a} {})", num(1i128 << k))),
+        _ => None,
+    }
+}
+
+/// The term of `a op b` on `i` over bitvectors `xa`, `xb` of `i`'s width.
+pub fn bv_term(op: BinOp, i: IntTy, xa: &str, xb: &str) -> String {
+    let f = match op {
+        BinOp::BitAnd => "bvand",
+        BinOp::BitOr => "bvor",
+        BinOp::BitXor => "bvxor",
+        BinOp::Shl => "bvshl",
+        BinOp::Shr if i.signed() => "bvashr",
+        BinOp::Shr => "bvlshr",
+        _ => unreachable!("not a bit operation: {op:?}"),
+    };
+    from_bv(i, &format!("({f} {xa} {xb})"))
+}
+
+/// The unsigned value of the bitvector that stands for `a`, a value of
+/// `i` in range: `a` itself, or its two's complement below zero. Code
+/// declares a bitvector with this value for each operand (`Enc::operand_bv`).
+pub fn bv_value(i: IntTy, a: &str) -> String {
+    if i.signed() {
+        format!("(ite (< {a} 0) (+ {a} {}) {a})", num(1i128 << i.bits()))
+    } else {
+        a.to_string()
+    }
+}
+
+/// `bit_facts_of`, each under the range of the operands (a shift amount's
+/// range is its own obligation).
+fn bit_facts(op: BinOp, i: IntTy, a: &str, b: &str, r: &str) -> Vec<String> {
+    let ra = range_int(i, a);
+    let pre = if op.is_shift() {
+        ra
+    } else {
+        format!("(and {ra} {})", range_int(i, b))
+    };
+    bit_facts_of(op, i, a, b, r)
+        .into_iter()
+        .map(|f| format!("(=> {pre} {f})"))
+        .collect()
+}
+
+/// What a bitvector term `r = a op b` is known to satisfy when `a` (and
+/// `b`, but for a shift amount) are in `i`'s range: the range of `i`, and
+/// its order against the operands (clearing bits makes a value smaller,
+/// setting bits larger, in two's complement as well).
+fn bit_facts_of(op: BinOp, i: IntTy, a: &str, b: &str, r: &str) -> Vec<String> {
+    let mut fs = vec![range_int(i, r)];
+    let s = i.signed();
+    match op {
+        BinOp::BitAnd if s => {
+            fs.push(format!("(=> (<= 0 {a}) (and (<= 0 {r}) (<= {r} {a})))"));
+            fs.push(format!("(=> (<= 0 {b}) (and (<= 0 {r}) (<= {r} {b})))"));
+            fs.push(format!(
+                "(=> (and (< {a} 0) (< {b} 0)) (and (< {r} 0) (<= {r} {a}) (<= {r} {b})))"
+            ));
+        }
+        BinOp::BitAnd => {
+            fs.push(format!("(<= {r} {a})"));
+            fs.push(format!("(<= {r} {b})"));
+        }
+        BinOp::BitOr if s => {
+            fs.push(format!(
+                "(=> (and (<= 0 {a}) (<= 0 {b})) (and (<= {a} {r}) (<= {b} {r})))"
+            ));
+            fs.push(format!("(=> (< {a} 0) (and (<= {a} {r}) (< {r} 0)))"));
+            fs.push(format!("(=> (< {b} 0) (and (<= {b} {r}) (< {r} 0)))"));
+        }
+        BinOp::BitOr => {
+            fs.push(format!("(<= {a} {r})"));
+            fs.push(format!("(<= {b} {r})"));
+        }
+        BinOp::BitXor if s => {
+            fs.push(format!("(= (< {r} 0) (not (= (< {a} 0) (< {b} 0))))"));
+        }
+        BinOp::Shr if s => {
+            fs.push(format!("(=> (<= 0 {a}) (and (<= 0 {r}) (<= {r} {a})))"));
+            fs.push(format!("(=> (< {a} 0) (and (<= {a} {r}) (< {r} 0)))"));
+        }
+        BinOp::Shr => fs.push(format!("(<= {r} {a})")),
+        _ => {}
+    }
+    fs
+}
+
+/// `&`, `|`, `^` on `bool`: both sides evaluated (Rust).
+fn bool_bit(op: BinOp, a: &str, b: &str) -> String {
+    match op {
+        BinOp::BitAnd => format!("(and {a} {b})"),
+        BinOp::BitOr => format!("(or {a} {b})"),
+        BinOp::BitXor => format!("(xor {a} {b})"),
+        _ => unreachable!("only `&`, `|` and `^` take `bool`"),
     }
 }
 
@@ -2184,6 +2367,42 @@ impl<'p, 'q> Enc<'p, 'q> {
         self.pc.extend(facts);
     }
 
+    /// A bitvector of `i`'s width standing for operand `x` of a bit
+    /// operation in code: a literal, or a fresh constant whose value is
+    /// stated (`bv_value`; `x` is in range there, as every value of code is,
+    /// and a shift amount is below the width by its obligation).
+    fn operand_bv(&mut self, i: IntTy, x: &str) -> String {
+        let w = i.bits();
+        if let Some(v) = numeral(x) {
+            return format!("(_ bv{} {w})", v.rem_euclid(1i128 << w));
+        }
+        let c = self.fresh("'bv", &format!("(_ BitVec {w})"));
+        self.pc.push(format!("(= (bv2nat {c}) {})", bv_value(i, x)));
+        c
+    }
+
+    /// A shift amount `s` (of any integer type) must be in `0..w`, `w` the
+    /// width of the shifted value's type `i` (ADR-0048 §2: Rust's debug
+    /// build panics there, so it is an overflow obligation, E0803).
+    fn shift_obligation(&mut self, e: &Expr, op: BinOp, i: IntTy, amount: &Expr, s: &str) {
+        let w = i.bits();
+        let goal = match numeral(s) {
+            Some(k) => (0 <= k && k < w as i128).to_string(),
+            None if !self.ty(amount).is_signed() => format!("(< {s} {w})"),
+            None => format!("(and (<= 0 {s}) (< {s} {w}))"),
+        };
+        self.oblige(
+            "E0803",
+            e.span,
+            format!(
+                "`{}` may overflow `{}`: the shift amount may be outside 0..{w}",
+                op.symbol(),
+                i.name()
+            ),
+            goal,
+        );
+    }
+
     fn oblige(&mut self, code: &'static str, span: Span, msg: impl Into<String>, goal: String) {
         if goal != "true" {
             let mut assumptions = self.pc.clone();
@@ -2218,7 +2437,7 @@ impl<'p, 'q> Enc<'p, 'q> {
             | ExprKind::Loop { .. }
             | ExprKind::Break { .. }
             | ExprKind::Continue { .. } => unreachable!("rejected by the checker (E0503)"),
-            ExprKind::Int(v) => Val::S(num(*v as i128)),
+            ExprKind::Int(v, _) => Val::S(num(*v as i128)),
             ExprKind::ByteLit(v) => Val::S(v.to_string()),
             // A byte string: its length and every element are known.
             ExprKind::ByteStr(v) => Val::A {
@@ -2235,13 +2454,17 @@ impl<'p, 'q> Enc<'p, 'q> {
                 .cloned()
                 .unwrap_or_else(|| panic!("unbound `{}` in {}", id.name, self.path)),
             ExprKind::Unary(UnOp::Neg, x) => {
-                if let ExprKind::Int(v) = x.kind {
+                if let ExprKind::Int(v, _) = x.kind {
                     return Val::S(num(-(v as i128)));
                 }
                 Val::S(format!("(- {})", self.spec(x, env, old).s()))
             }
             ExprKind::Unary(UnOp::Not, x) => {
-                Val::S(format!("(not {})", self.spec(x, env, old).s()))
+                let v = self.spec(x, env, old).s();
+                match self.ty(x).int() {
+                    Some(i) => Val::S(not_term(i, &v)),
+                    None => Val::S(format!("(not {v})")),
+                }
             }
             // Structural `==` (ADR-0026 §2): field by field; a value that
             // holds an array compares its elements below the length only,
@@ -2275,6 +2498,15 @@ impl<'p, 'q> Enc<'p, 'q> {
                     self.spec_pc.pop();
                 }
                 let signed = self.ty(l).is_signed();
+                if op.is_bit() || op.is_shift() {
+                    // In a specification a bit operation is its term alone:
+                    // the facts and the shift obligation belong to code. Its
+                    // width is its type's (operands may mix there).
+                    return Val::S(match self.ty(e).int() {
+                        Some(i) => bit_op(*op, i, &lt, &rt).0,
+                        None => bool_bit(*op, &lt, &rt),
+                    });
+                }
                 Val::S(match op {
                     BinOp::Add => format!("(+ {lt} {rt})"),
                     BinOp::Sub => format!("(- {lt} {rt})"),
@@ -2291,6 +2523,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                     BinOp::And => format!("(and {lt} {rt})"),
                     BinOp::Or => format!("(or {lt} {rt})"),
                     BinOp::Implies => format!("(=> {lt} {rt})"),
+                    _ => unreachable!("bit operations are above"),
                 })
             }
             ExprKind::Index { base, index } => {
@@ -2672,7 +2905,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                 }
                 Val::Unit
             }
-            ExprKind::Int(v) => Val::S(num(*v as i128)),
+            ExprKind::Int(v, _) => Val::S(num(*v as i128)),
             ExprKind::ByteLit(v) => Val::S(v.to_string()),
             // A byte string: its length and every element are known.
             ExprKind::ByteStr(v) => Val::A {
@@ -2686,7 +2919,7 @@ impl<'p, 'q> Enc<'p, 'q> {
             }
             ExprKind::Var(id) => self.vars[&id.name].clone(),
             ExprKind::Unary(UnOp::Neg, x) => {
-                if let ExprKind::Int(v) = x.kind {
+                if let ExprKind::Int(v, _) = x.kind {
                     return Val::S(num(-(v as i128)));
                 }
                 let t = format!("(- {})", self.eval(x).s());
@@ -2696,7 +2929,13 @@ impl<'p, 'q> Enc<'p, 'q> {
                 }
                 Val::S(t)
             }
-            ExprKind::Unary(UnOp::Not, x) => Val::S(format!("(not {})", self.eval(x).s())),
+            ExprKind::Unary(UnOp::Not, x) => {
+                let v = self.eval(x).s();
+                match self.ty(x).int() {
+                    Some(i) => Val::S(not_term(i, &v)),
+                    None => Val::S(format!("(not {v})")),
+                }
+            }
             ExprKind::Binary(op @ (BinOp::And | BinOp::Or), l, r) => {
                 // Short-circuit: the right operand runs only when it matters.
                 let lt = self.eval(l).s();
@@ -2729,6 +2968,23 @@ impl<'p, 'q> Enc<'p, 'q> {
                 let rt = self.eval(r).s();
                 let ty = self.ty(l);
                 let signed = ty.is_signed();
+                if op.is_bit() || op.is_shift() {
+                    let Some(i) = ty.int() else {
+                        return Val::S(bool_bit(*op, &lt, &rt));
+                    };
+                    if op.is_shift() {
+                        self.shift_obligation(e, *op, i, r, &rt);
+                    }
+                    if let Some(t) = linear_bit(*op, i, &lt, &rt) {
+                        return Val::S(t);
+                    }
+                    let xa = self.operand_bv(i, &lt);
+                    let xb = self.operand_bv(i, &rt);
+                    let t = bv_term(*op, i, &xa, &xb);
+                    let facts = bit_facts(*op, i, &lt, &rt, &t);
+                    self.pc.extend(facts);
+                    return Val::S(t);
+                }
                 let t = match op {
                     BinOp::Add => format!("(+ {lt} {rt})"),
                     BinOp::Sub => format!("(- {lt} {rt})"),
@@ -2778,7 +3034,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                     BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => {
                         return Val::S(ord_term(*op, &self.ty(l), &lt, &rt));
                     }
-                    BinOp::And | BinOp::Or | BinOp::Implies => unreachable!(),
+                    _ => unreachable!("handled above"),
                 };
                 if let Some(rg) = range(&ty, &t) {
                     self.oblige(
@@ -4359,7 +4615,7 @@ fn find_let_expr(e: &Expr, name: &str, out: &mut Option<TypeKind>) {
         }
         ExprKind::Loop { body, .. } => find_let(body, name, out),
         ExprKind::Continue { .. } => {}
-        ExprKind::Int(_)
+        ExprKind::Int(..)
         | ExprKind::ByteLit(_)
         | ExprKind::ByteStr(_)
         | ExprKind::Bool(_)
@@ -5283,10 +5539,6 @@ fn verify_impl(
             // 2D-14): an unrelated spec fn does not change the query text.
             let used = needed_decls(&spec_decls, &dts, &format!("{relevant}{decls}\n{q}"));
             let base = format!("{prefix}{used}{relevant}{decls}");
-            script.push_str(&format!(
-                "; obligation {k}: {} {}\n(reset)\n{base}\n{q}\n(check-sat)\n",
-                o.code, o.msg
-            ));
             let key = (o.code, o.span.file, o.span.lo, o.span.hi);
             let cache_key = cache
                 .as_ref()
@@ -5302,6 +5554,34 @@ fn verify_impl(
                 let used = needed_decls(&spec_decls, &dts, &format!("{decls}\n{inst}{q}"));
                 Some((format!("{prefix}{used}{decls}"), inst, complete))
             };
+            // Bit operations abstracted (ADR-0048 §4): their range facts
+            // decide most obligations, and the solver does not bit-blast a
+            // definition it does not need. It is tried first; proved there is
+            // proved, anything else goes on to the exact query. With
+            // quantified definitions their ground instances stand in for them
+            // (as in the retry, sound for a proof): Z3's model-based
+            // instantiation did not finish there.
+            let abstracted = if q.contains("(bv2nat ") {
+                let (head, body) = match retry_script(&q) {
+                    Some((head, inst, _)) if !axiom_parts.is_empty() => {
+                        (head, format!("{inst}{q}"))
+                    }
+                    _ => (base.clone(), q.clone()),
+                };
+                abstract_bits(&body).map(|aq| (head, aq))
+            } else {
+                None
+            };
+            match &abstracted {
+                Some((head, aq)) => script.push_str(&format!(
+                    "; obligation {k}: {} {} (bit operations abstracted)\n(reset)\n{head}\n{aq}\n(check-sat)\n; exact query of obligation {k}\n(reset)\n{base}\n{q}\n(check-sat)\n",
+                    o.code, o.msg
+                )),
+                None => script.push_str(&format!(
+                    "; obligation {k}: {} {}\n(reset)\n{base}\n{q}\n(check-sat)\n",
+                    o.code, o.msg
+                )),
+            }
             if let (Some(c), Some(ck)) = (cache.as_mut(), cache_key.as_ref())
                 && let Some((total, max, retried)) = c.get(ck)
             {
@@ -5336,18 +5616,42 @@ fn verify_impl(
             let total_before = rlimit_total;
             let mut first_used = 0;
             let mut retried = false;
-            let mut answer = sol
-                .run("(reset)")
-                .and_then(|_| sol.run(&base))
-                .and_then(|_| sol.run(&q))
-                .and_then(|_| sol.check_sat());
-            if answer.is_ok()
-                && let Ok(used) = sol.rlimit_used()
-            {
-                rlimit_total += used;
-                rlimit_max = rlimit_max.max(used);
-                first_used = used;
+            let mut proved_abstract = None;
+            if let Some((head, aq)) = &abstracted {
+                let a = sol
+                    .run("(reset)")
+                    .and_then(|_| sol.run(head))
+                    .and_then(|_| sol.run(aq))
+                    .and_then(|_| sol.check_sat());
+                if a.is_ok()
+                    && let Ok(used) = sol.rlimit_used()
+                {
+                    rlimit_total += used;
+                    rlimit_max = rlimit_max.max(used);
+                    first_used = used;
+                }
+                if matches!(a, Ok(Answer::Unsat)) {
+                    proved_abstract = Some(a);
+                }
             }
+            let mut answer = match proved_abstract {
+                Some(a) => a,
+                None => {
+                    let answer = sol
+                        .run("(reset)")
+                        .and_then(|_| sol.run(&base))
+                        .and_then(|_| sol.run(&q))
+                        .and_then(|_| sol.check_sat());
+                    if answer.is_ok()
+                        && let Ok(used) = sol.rlimit_used()
+                    {
+                        rlimit_total += used;
+                        rlimit_max = rlimit_max.max(used);
+                        first_used = used;
+                    }
+                    answer
+                }
+            };
             // Undecided with quantified definitions: retry quantifier-free with
             // ground instances (sound for both answers, see `ground_instances`).
             if matches!(answer, Ok(Answer::Unknown(_)))
@@ -5461,6 +5765,95 @@ fn verify_impl(
         scripts,
         vacuous,
     }
+}
+
+/// Query `q` (assertions) with each ground bit operation term
+/// `(bv2nat ..)` replaced by an integer constant `|bv#n|` (the same term by
+/// the same constant), declared first; `None` when `q` has none. Facts about
+/// a term stay as facts about its constant, and only its bitvector
+/// definition is dropped, so the abstracted query is weaker: unsatisfiable
+/// means the obligation holds (ADR-0048 §4). A term under a quantifier that
+/// mentions a bound variable is kept as it is (a constant cannot stand for
+/// it).
+fn abstract_bits(q: &str) -> Option<String> {
+    use smt::Sexp::{Atom, List};
+    fn mentions(e: &smt::Sexp, bound: &[String]) -> bool {
+        match e {
+            Atom(a) => bound.contains(a),
+            List(xs) => xs.iter().any(|x| mentions(x, bound)),
+        }
+    }
+    fn walk(e: &smt::Sexp, bound: &mut Vec<String>, names: &mut Vec<String>) -> smt::Sexp {
+        let List(xs) = e else { return e.clone() };
+        let head = match xs.first() {
+            Some(Atom(h)) => h.as_str(),
+            _ => "",
+        };
+        match head {
+            "bv2nat" if !mentions(e, bound) => {
+                let text = smt::print(e);
+                let k = match names.iter().position(|n| *n == text) {
+                    Some(k) => k,
+                    None => {
+                        names.push(text);
+                        names.len() - 1
+                    }
+                };
+                Atom(format!("|bv#{k}|"))
+            }
+            "forall" | "exists" | "let" if xs.len() == 3 => {
+                let List(bs) = &xs[1] else { return e.clone() };
+                let vars: Vec<String> = bs
+                    .iter()
+                    .filter_map(|b| match b {
+                        List(p) => match p.first() {
+                            Some(Atom(v)) => Some(v.clone()),
+                            _ => None,
+                        },
+                        _ => None,
+                    })
+                    .collect();
+                // `let` binds over its body only.
+                let binders = if head == "let" {
+                    List(
+                        bs.iter()
+                            .map(|b| match b {
+                                List(p) if p.len() == 2 => {
+                                    List(vec![p[0].clone(), walk(&p[1], bound, names)])
+                                }
+                                other => other.clone(),
+                            })
+                            .collect(),
+                    )
+                } else {
+                    xs[1].clone()
+                };
+                let n = bound.len();
+                bound.extend(vars);
+                let body = walk(&xs[2], bound, names);
+                bound.truncate(n);
+                List(vec![xs[0].clone(), binders, body])
+            }
+            _ => List(xs.iter().map(|x| walk(x, bound, names)).collect()),
+        }
+    }
+    if !q.contains("(bv2nat ") {
+        return None;
+    }
+    let mut names = Vec::new();
+    let mut out = String::new();
+    for c in smt::split_commands(q) {
+        let e = smt::parse(&c)?;
+        out.push_str(&smt::print(&walk(&e, &mut Vec::new(), &mut names)));
+        out.push('\n');
+    }
+    if names.is_empty() {
+        return None;
+    }
+    let decls: String = (0..names.len())
+        .map(|k| format!("(declare-const |bv#{k}| Int)\n"))
+        .collect();
+    Some(format!("{decls}{out}"))
 }
 
 /// A spec fn's definition, kept apart for ground instantiation.

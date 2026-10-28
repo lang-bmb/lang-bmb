@@ -40,11 +40,12 @@ SEED = re.compile(r"\(set-option :(smt|sat)\.random_seed \d+\)")
 def blocks(script):
     """The obligations of one emitted script: (header comment, commands).
     A retry with ground instances (after an `unknown`) is left out: the
-    measure is the first attempt's verdict."""
+    measure is the first attempt's verdict. With bit operations the first
+    attempt is the abstracted query, and the exact one follows (ADR-0048 §4)."""
     out = []
     for part in script.split("; obligation ")[1:]:
         head, _, body = part.partition("\n")
-        body = body.split("; retry of obligation ")[0]
+        body = body.split("; retry of obligation ")[0].split("; exact query of obligation ")[0]
         out.append((head.strip(), body))
     return out
 

@@ -54,7 +54,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use crate::ast::{
-    BinOp, Block, Expr, ExprKind, FnDef, FnKind, Ident, IntTy, Mod, Program, Stmt, TypeKind, UnOp,
+    BinOp, Block, Expr, ExprKind, FnDef, FnKind, Ident, IntTy, Mod, Program, Radix, Stmt, TypeKind,
+    UnOp,
 };
 use crate::cache::ProofCache;
 use crate::diag::{Diag, Diags};
@@ -481,6 +482,11 @@ fn swap_op(op: BinOp) -> Option<BinOp> {
         BinOp::Ge => BinOp::Gt,
         BinOp::Eq => BinOp::Ne,
         BinOp::Ne => BinOp::Eq,
+        BinOp::BitAnd => BinOp::BitOr,
+        BinOp::BitOr => BinOp::BitAnd,
+        BinOp::BitXor => BinOp::BitOr,
+        BinOp::Shl => BinOp::Shr,
+        BinOp::Shr => BinOp::Shl,
         _ => return None,
     })
 }
@@ -545,11 +551,11 @@ fn site_of(e: &Expr, parent: Option<Span>, text: &str) -> Option<Site> {
                 _ => (op.symbol().to_string(), new.symbol().to_string()),
             }
         }
-        ExprKind::Int(c) if *c <= MAX_LIT => {
+        ExprKind::Int(c, radix) if *c <= MAX_LIT => {
             let ctx = parent
                 .filter(|p| p.lo <= e.span.lo && e.span.hi <= p.hi)
                 .unwrap_or(e.span);
-            splice(ctx, e.span.lo, e.span.hi, &(c + 1).to_string())
+            splice(ctx, e.span.lo, e.span.hi, &radix.text(c + 1))
         }
         ExprKind::Bool(b) => (b.to_string(), (!b).to_string()),
         ExprKind::If { cond, .. } => {
@@ -584,7 +590,7 @@ fn mutate(e: &mut Expr, variant: usize) {
                     INDEX_SHIFTS[variant],
                     Box::new(inner),
                     Box::new(Expr {
-                        kind: ExprKind::Int(1),
+                        kind: ExprKind::Int(1, Radix::Dec),
                         span,
                     }),
                 ),
@@ -592,7 +598,7 @@ fn mutate(e: &mut Expr, variant: usize) {
             };
         }
         ExprKind::Binary(op, _, _) => *op = swap_op(*op).expect("a mutation site"),
-        ExprKind::Int(c) => *c += 1,
+        ExprKind::Int(c, _) => *c += 1,
         ExprKind::Bool(b) => *b = !*b,
         ExprKind::If { cond, .. } => {
             let span = cond.span;
@@ -693,7 +699,7 @@ fn walk_expr(e: &mut Expr, parent: Option<Span>, f: &mut dyn FnMut(&mut Expr, Op
         | ExprKind::Old(_)
         | ExprKind::Forall { .. }
         | ExprKind::Trigger(_)
-        | ExprKind::Int(_)
+        | ExprKind::Int(..)
         | ExprKind::ByteLit(_)
         | ExprKind::ByteStr(_)
         | ExprKind::Bool(_)
@@ -875,7 +881,7 @@ fn children(e: &Expr) -> Vec<&Expr> {
             .collect(),
         ExprKind::Continue { .. } => Vec::new(),
         ExprKind::Path(_)
-        | ExprKind::Int(_)
+        | ExprKind::Int(..)
         | ExprKind::ByteLit(_)
         | ExprKind::ByteStr(_)
         | ExprKind::Bool(_)
@@ -1169,7 +1175,7 @@ fn continues_to(b: &Block, label: Option<&str>) -> bool {
 /// fields, arithmetic and `len()`.
 fn plain_bound(e: &Expr) -> bool {
     match &e.kind {
-        ExprKind::Var(_) | ExprKind::Int(_) | ExprKind::Path(_) => true,
+        ExprKind::Var(_) | ExprKind::Int(..) | ExprKind::Path(_) => true,
         ExprKind::Field { base: x, .. } | ExprKind::Deref(x) | ExprKind::Unary(_, x) => {
             plain_bound(x)
         }
@@ -1183,7 +1189,7 @@ fn plain_bound(e: &Expr) -> bool {
 
 fn int_literal(e: &Expr) -> bool {
     match &e.kind {
-        ExprKind::Int(_) => true,
+        ExprKind::Int(..) => true,
         ExprKind::Unary(UnOp::Neg, x) => int_literal(x),
         _ => false,
     }
@@ -1234,7 +1240,7 @@ pub fn counting_whiles(f: &FnDef, text: &str) -> Vec<Diag> {
                 Stmt::Assign { target, value, .. } => {
                     is_i(target)
                         && matches!(&value.kind, ExprKind::Binary(BinOp::Add, a, one)
-                            if is_i(a) && matches!(one.kind, ExprKind::Int(1)))
+                            if is_i(a) && matches!(one.kind, ExprKind::Int(1, _)))
                 }
                 _ => false,
             };

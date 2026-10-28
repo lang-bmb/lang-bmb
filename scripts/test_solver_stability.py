@@ -52,6 +52,16 @@ class Variants(unittest.TestCase):
                     self.assertNotEqual(vs[0], self.obs[0], kind)
                 self.assertEqual(st.solve(["\n".join(v) for v in vs]), base, kind)
 
+    def test_the_abstracted_attempt_comes_first(self):
+        # ADR-0048 §4: the exact query of a bit obligation follows its
+        # abstracted attempt and is not a second obligation.
+        script = SCRIPT.replace("; obligation 1: E0805 index may be out of bounds\n",
+                                "; obligation 1: E0805 index may be out of bounds (bit operations abstracted)\n")
+        script += "; exact query of obligation 1\n(reset)\n(declare-const |i@0| Int)\n(check-sat)\n"
+        blocks = st.blocks(script)
+        self.assertEqual(len(blocks), 2)
+        self.assertEqual(st.commands(blocks[1][1]), self.obs[1])
+
     def test_shuffle_declares_before_use(self):
         v = st.variant(self.obs[0], "shuffle", random.Random(1))
         first_assert = next(i for i, c in enumerate(v) if c.startswith("(assert"))

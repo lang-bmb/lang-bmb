@@ -246,6 +246,62 @@ fn an_unproved_conversion_traps_exactly_outside_the_range() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// An unproved shift amount is checked against the width (ADR-0048 §2, as
+/// Rust's debug build panics): the last amount below it shifts, the width
+/// and a negative amount trap (backlog 2N-02). A literal amount below the
+/// width needs no check.
+#[test]
+fn an_unproved_shift_traps_exactly_from_the_width() {
+    let dir = std::env::temp_dir().join(format!("bmb-shift-{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    let cases = [
+        ("u8", "u32", "<<", "1", "7", Some("128\n")),
+        ("u8", "u32", "<<", "1", "8", None),
+        ("i32", "i64", ">>", "-8", "31", Some("-1\n")),
+        ("i32", "i64", ">>", "-8", "32", None),
+        ("i32", "i64", ">>", "-8", "-1", None),
+        (
+            "u64",
+            "usize",
+            "<<",
+            "3",
+            "63",
+            Some("9223372036854775808\n"),
+        ),
+        ("u64", "usize", "<<", "3", "64", None),
+    ];
+    for (k, (t, a, op, x, s, want)) in cases.into_iter().enumerate() {
+        let print = if t.starts_with('u') {
+            "print_u64(u64::try_from(sh(x, s)).unwrap())"
+        } else {
+            "print_i64(i64::try_from(sh(x, s)).unwrap())"
+        };
+        let text = format!(
+            "#[summary(\"trap\")]\nmod m {{\n    #[effects(pure)]\n    fn sh(x: {t}, s: {a}) -> {t} {{\n        x {op} s\n    }}\n\n    #[effects(io)]\n    fn main() -> () {{\n        let x: {t} = {x};\n        let s: {a} = {s};\n        {print};\n    }}\n}}\n"
+        );
+        let out = bmb::emit_llvm_sources(&src("t.bmb", &text));
+        assert!(!out.verify.ok);
+        let exe = dir.join(format!("s{k}"));
+        bmb::toolchain::build_executable(&out.ir.unwrap(), exe.to_str().unwrap()).unwrap();
+        let run = Command::new(&exe).output().unwrap();
+        match want {
+            Some(o) => {
+                assert!(run.status.success(), "{x} {op} {s} on {t}: {}", run.status);
+                assert_eq!(String::from_utf8_lossy(&run.stdout), o);
+            }
+            None => {
+                assert!(!run.status.success(), "{x} {op} {s} on {t} must trap");
+                assert!(run.stdout.is_empty());
+            }
+        }
+    }
+    let text = "#[summary(\"lit\")]\nmod m {\n    #[effects(pure)]\n    fn f(x: u16) -> u16 {\n        (x << 3) | (x >> 15)\n    }\n}\n";
+    let out = bmb::emit_llvm_sources(&src("t.bmb", text));
+    assert!(out.verify.ok, "{}", out.verify.output);
+    assert_eq!(out.checks, 0);
+    let _ = fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn proved_arithmetic_carries_no_wrap_flags() {
     let text = r#"

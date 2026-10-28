@@ -240,7 +240,7 @@ fn calls_in_expr<'e>(
             calls_in_block(body, spec, out);
         }
         ExprKind::Continue { .. } => {}
-        ExprKind::Int(_)
+        ExprKind::Int(..)
         | ExprKind::ByteLit(_)
         | ExprKind::ByteStr(_)
         | ExprKind::Bool(_)
@@ -509,7 +509,7 @@ fn exprs_of(f: &FnDef) -> Vec<&Expr> {
             }
             ExprKind::Continue { .. } => {}
             ExprKind::Path(_)
-            | ExprKind::Int(_)
+            | ExprKind::Int(..)
             | ExprKind::ByteLit(_)
             | ExprKind::ByteStr(_)
             | ExprKind::Bool(_)

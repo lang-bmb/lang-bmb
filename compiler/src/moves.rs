@@ -1024,7 +1024,7 @@ impl Mv<'_> {
                 }
                 self.dead = true;
             }
-            ExprKind::Int(_)
+            ExprKind::Int(..)
             | ExprKind::ByteLit(_)
             | ExprKind::ByteStr(_)
             | ExprKind::Bool(_)

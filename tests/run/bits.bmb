@@ -1,0 +1,140 @@
+#[summary("비트 연산과 리터럴 진법: &·|·^·!·<<·>>(부호 있는 타입의 산술 시프트), 0x·0o·0b·_, bool의 &·|·^ (ADR-0048 §2·§3, backlog 2N-02)")]
+mod bits {
+    spec fn amount(k: u32) -> bool {
+        0 < k && k < 32
+    }
+
+    // A rotation: two shifts whose amounts are below the width.
+    #[effects(pure)]
+    #[uses(amount)]
+    fn rotl(x: u32, k: u32) -> u32
+        requires amount(k),
+    {
+        (x << k) | (x >> (32 - k))
+    }
+
+    // SHA-256's small sigma 0: constant rotations and a shift.
+    #[effects(pure)]
+    fn sigma0(x: u32) -> u32 {
+        ((x >> 7) | (x << 25)) ^ ((x >> 18) | (x << 14)) ^ (x >> 3)
+    }
+
+    // The parity of a word by folding it with `^`.
+    #[effects(pure)]
+    fn parity(x: u32) -> u32 {
+        let a: u32 = x ^ (x >> 16);
+        let b: u32 = a ^ (a >> 8);
+        let c: u32 = b ^ (b >> 4);
+        let d: u32 = c ^ (c >> 2);
+        (d ^ (d >> 1)) & 1
+    }
+
+    // Set bits, one shift per position: the amount is the loop index.
+    #[effects(pure)]
+    fn ones(x: u64) -> u32 {
+        let mut c: u32 = 0;
+        for k in 0..64
+            invariant c <= k,
+        {
+            c = c + u32::try_from((x >> k) & 1).unwrap();
+        }
+        c
+    }
+
+    spec fn four(b: &[u8]) -> bool {
+        b.len() == 4
+    }
+
+    // Four bytes, big-endian.
+    #[effects(pure)]
+    #[uses(four)]
+    fn pack(b: &[u8]) -> u32
+        requires four(b),
+    {
+        let b0: u32 = u32::try_from(b[0]).unwrap();
+        let b1: u32 = u32::try_from(b[1]).unwrap();
+        let b2: u32 = u32::try_from(b[2]).unwrap();
+        let b3: u32 = u32::try_from(b[3]).unwrap();
+        (b0 << 24) | (b1 << 16) | (b2 << 8) | b3
+    }
+
+    // A byte read as `i8`: shifting left and back right is arithmetic.
+    #[effects(pure)]
+    fn sign_extend(b: u8) -> i32 {
+        (i32::try_from(b).unwrap() << 24) >> 24
+    }
+
+    spec fn below(k: u32, w: u32) -> bool {
+        k < w
+    }
+
+    #[effects(pure)]
+    #[uses(below)]
+    fn shr16(x: i16, k: u32) -> i16
+        requires below(k, 16),
+    {
+        x >> k
+    }
+
+    #[effects(pure)]
+    #[uses(below)]
+    fn shl8(x: u8, k: u32) -> u8
+        requires below(k, 8),
+    {
+        x << k
+    }
+
+    #[effects(io)]
+    #[uses(amount, four, below)]
+    fn main() -> () {
+        // Literals in four bases, with separators.
+        print_u64(0xff);
+        print_u64(0o777);
+        print_u64(0b1010_1010);
+        print_u64(1_000_000);
+        print_u64(0xffff_ffff_ffff_ffff);
+        print_i64(-0x80);
+        // `&`, `|`, `^`, `!` on unsigned and signed values.
+        let x: u32 = 0x12345678;
+        print_u64(u64::try_from(x & 0xff00).unwrap());
+        print_u64(u64::try_from(x | 0xf).unwrap());
+        print_u64(u64::try_from(x ^ 0xffffffff).unwrap());
+        print_u64(u64::try_from(!x).unwrap());
+        let n: i16 = -1000;
+        print_i64(i64::try_from(n & 0x7ff).unwrap());
+        print_i64(i64::try_from(n | 7).unwrap());
+        print_i64(i64::try_from(n ^ -1).unwrap());
+        print_i64(i64::try_from(!n).unwrap());
+        let s: i8 = 0;
+        print_i64(i64::try_from(!s).unwrap());
+        let m: u16 = 5;
+        print_u64(u64::try_from(!m).unwrap());
+        // Shifts: wrapping out of the width, arithmetic `>>` on signed values.
+        print_u64(u64::try_from(rotl(x, 8)).unwrap());
+        print_u64(u64::try_from(sigma0(x)).unwrap());
+        print_u64(u64::try_from(parity(x)).unwrap());
+        print_u64(u64::try_from(ones(0xf0f0_0000_0000_0001)).unwrap());
+        let word: [u8; 4] = [0xde, 0xad, 0xbe, 0xef];
+        print_u64(u64::try_from(pack(&word)).unwrap());
+        print_i64(i64::try_from(sign_extend(0xf0)).unwrap());
+        print_i64(i64::try_from(sign_extend(0x7f)).unwrap());
+        print_i64(i64::try_from(shr16(-7, 1)).unwrap());
+        print_i64(i64::try_from(shr16(-32768, 15)).unwrap());
+        print_u64(u64::try_from(shl8(0b1011_0001, 3)).unwrap());
+        let big: i64 = -100;
+        print_i64(big >> 2);
+        print_i64(big << 60);
+        // `&`, `|`, `^` on `bool` evaluate both sides.
+        let p: bool = x > 5;
+        let q: bool = n > 5;
+        if p ^ q {
+            print_i64(1);
+        }
+        if p & q {
+            print_i64(2);
+        }
+        if p | q {
+            print_i64(3);
+        }
+    }
+}
