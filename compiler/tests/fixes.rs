@@ -70,7 +70,7 @@ fn each_mechanical_fix_applies_and_clears_its_error() {
         ),
         ("E0208", "#[effects(pure)]\nfn f(a: &'a [i64]) -> () {}"),
         ("E0209", "#[effects(pure)]\nfn f() { }"),
-        ("E0402", "#[effects(pure)]\nfn f(x: i32) -> i64 { x }"),
+        ("E0402", "#[effects(pure)]\nfn f(x: i128) -> i64 { x }"),
         ("E0601", "#[uses()]\nfn f() -> () {}"),
         ("E0207", "#[effects(pure)]\npub fn f() -> () {}"),
         ("E0210", "#[effects(pure)]\nfn f(mut x: i64) -> i64 { x }"),

@@ -1,0 +1,96 @@
+#[summary("정수 폭: i8·i16·i32·isize·u16·u32의 산술, 배열·Vec·필드의 제 폭 저장, 변환, MIN/MAX, 되감기·포화·검사 메서드 (ADR-0048 §1, backlog 2N-01b)")]
+mod wd {
+    struct Pixel {
+        r: u8,
+        g: u16,
+        depth: i32,
+        delta: i8,
+    }
+
+    spec fn small16(v: &[i16]) -> bool {
+        v.len() <= 100 && (forall|k: usize| k < v.len() ==> -300 <= #[trigger] v[k] && v[k] <= 300)
+    }
+
+    // Each element stays within `i16` and the sum within `i32`.
+    #[effects(pure)]
+    #[uses(small16)]
+    fn sum16(v: &[i16]) -> i32
+        requires small16(v),
+    {
+        let mut s: i32 = 0;
+        for k in 0..v.len()
+            invariant -300 * k <= s && s <= 300 * k,
+        {
+            s = s + i32::try_from(v[k]).unwrap();
+        }
+        s
+    }
+
+    #[effects(pure)]
+    fn mix(p: &Pixel) -> i64 {
+        let a: i64 = i64::try_from(p.r).unwrap();
+        let b: i64 = i64::try_from(p.g).unwrap();
+        let c: i64 = i64::try_from(p.depth).unwrap();
+        let d: i64 = i64::try_from(p.delta).unwrap();
+        a + b + c + d
+    }
+
+    #[effects(io)]
+    #[uses(small16)]
+    fn main() -> () {
+        // Bounds and negative values of the signed types.
+        let lo: i8 = i8::MIN;
+        let hi: i8 = i8::MAX;
+        print_i64(i64::try_from(lo).unwrap());
+        print_i64(i64::try_from(hi).unwrap());
+        let x: i16 = -12345;
+        let y: i16 = x / 7;
+        let z: i16 = x % 7;
+        print_i64(i64::try_from(y).unwrap());
+        print_i64(i64::try_from(z).unwrap());
+        print_i64(i64::try_from(lo.wrapping_sub(1)).unwrap());
+        print_i64(i64::try_from(hi.saturating_add(100)).unwrap());
+        let c: Option<i8> = lo.checked_sub(1);
+        match c {
+            None => print_i64(-1),
+            Some(c1) => print_i64(i64::try_from(c1).unwrap()),
+        }
+        // Unsigned widths.
+        let m: u32 = u32::MAX;
+        print_u64(u64::try_from(m).unwrap());
+        print_u64(u64::try_from(m.wrapping_add(2)).unwrap());
+        let w: u16 = 65000;
+        print_u64(u64::try_from(w.saturating_add(1000)).unwrap());
+        // Conversions between widths, with range checks.
+        let big: i32 = 70000;
+        let fits: Option<i16> = i16::try_from(big).ok();
+        match fits {
+            None => print_i64(0),
+            Some(f1) => print_i64(i64::try_from(f1).unwrap()),
+        }
+        let neg: i32 = -5;
+        let as_u: Option<u32> = u32::try_from(neg).ok();
+        match as_u {
+            None => print_i64(0),
+            Some(u1) => print_u64(u64::try_from(u1).unwrap()),
+        }
+        let s: isize = -3;
+        print_i64(i64::try_from(s).unwrap());
+        // Narrow elements in arrays and vectors, signed comparison.
+        let a: [i16; 4] = [-300, 200, -7, 300];
+        print_i64(i64::try_from(sum16(&a)).unwrap());
+        let mut v: Vec<i8> = Vec::new();
+        v.push(-128);
+        v.push(127);
+        v.push(-1);
+        let mut least: i8 = 0;
+        for k in 0..v.len() {
+            if v[k] < least {
+                least = v[k];
+            }
+        }
+        print_i64(i64::try_from(least).unwrap());
+        let p: Pixel = Pixel { r: 200, g: 60000, depth: -100000, delta: -5 };
+        print_i64(mix(&p));
+    }
+}

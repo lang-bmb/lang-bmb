@@ -4,7 +4,7 @@
 {"code":"E0401","severity":"error","message":"expected `&mut [u8]`, found a byte string (`&[u8]`, read-only)","file":"err/bytes.bmb","line":25,"col":15,"end_line":25,"end_col":20}
 {"code":"E0401","severity":"error","message":"expected `&[i64]`, found a byte string (`&[u8]`, read-only)","file":"err/bytes.bmb","line":32,"col":43,"end_line":32,"end_col":47}
 {"code":"E0101","severity":"error","message":"a byte literal holds one byte; use `b\"...\"` for several","file":"err/bytes.bmb","line":35,"col":28,"end_line":35,"end_col":33}
-{"code":"E0406","severity":"error","message":"literal does not fit in `u8`","file":"err/bytes.bmb","line":38,"col":26,"end_line":38,"end_col":29}
+{"code":"E0406","severity":"error","message":"literal does not fit in `u8`","file":"err/bytes.bmb","line":38,"col":26,"end_line":38,"end_col":29,"fix":{"message":"`u8` holds 0..=255: use a wider type or a value in range"}}
 {"code":"E0402","severity":"error","message":"there is no `String`: text is bytes (ADR-0044)","file":"err/bytes.bmb","line":41,"col":17,"end_line":41,"end_col":23,"fix":{"message":"use `Vec<u8>`","replacement":"Vec<u8>"}}
 {"code":"E0402","severity":"error","message":"type `str` is not supported in milestone 1","file":"err/bytes.bmb","line":41,"col":29,"end_line":41,"end_col":32,"fix":{"message":"use `[u8]`","replacement":"[u8]"}}
 {"code":"E0402","severity":"error","message":"type `char` is not supported in milestone 1","file":"err/bytes.bmb","line":41,"col":37,"end_line":41,"end_col":41,"fix":{"message":"use `u8`","replacement":"u8"}}

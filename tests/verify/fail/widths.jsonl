@@ -1,0 +1,12 @@
+{"code":"E0803","severity":"error","message":"`+` may overflow `i8` in `wf::inc`; counterexample: x = 127","file":"fail/widths.bmb","line":6,"col":9,"end_line":6,"end_col":14}
+{"code":"E0803","severity":"error","message":"`-` may overflow `u16` in `wf::dec`; counterexample: x = 0","file":"fail/widths.bmb","line":12,"col":9,"end_line":12,"end_col":14}
+{"code":"E0803","severity":"error","message":"`*` may overflow `i32` in `wf::scale`; counterexample: x = 1073741824","file":"fail/widths.bmb","line":18,"col":9,"end_line":18,"end_col":18}
+{"code":"E0815","severity":"error","message":"conversion to `i16` may be out of range in `wf::narrow`; counterexample: x = 1073741824","file":"fail/widths.bmb","line":24,"col":9,"end_line":24,"end_col":34}
+{"code":"E0803","severity":"error","message":"`i16::MIN % -1` may occur in `wf::rem`; counterexample: n = -32768, d = -1","file":"fail/widths.bmb","line":33,"col":9,"end_line":33,"end_col":14}
+{"code":"E0815","severity":"error","message":"conversion to `usize` may be out of range in `wf::index`; counterexample: i = -9223372036854775808","file":"fail/widths.bmb","line":43,"col":9,"end_line":43,"end_col":36}
+{"def":"wf::dec","status":"failed","obligations":1,"failed":1,"rlimit":6619,"rlimit_max":6619}
+{"def":"wf::inc","status":"failed","obligations":1,"failed":1,"rlimit":558,"rlimit_max":558}
+{"def":"wf::index","status":"failed","obligations":1,"failed":1,"rlimit":893,"rlimit_max":893}
+{"def":"wf::narrow","status":"failed","obligations":1,"failed":1,"rlimit":6724,"rlimit_max":6724}
+{"def":"wf::rem","status":"failed","obligations":3,"failed":1,"rlimit":10095,"rlimit_max":7382}
+{"def":"wf::scale","status":"failed","obligations":1,"failed":1,"rlimit":6726,"rlimit_max":6726}

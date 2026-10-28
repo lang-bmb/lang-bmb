@@ -1,0 +1,45 @@
+#[summary("정수 폭의 틀린 프로그램: 좁은 타입의 넘침, 변환의 범위, MIN % -1 (backlog 2N-01b)")]
+mod wf {
+    // `127 + 1` leaves `i8`.
+    #[effects(pure)]
+    fn inc(x: i8) -> i8 {
+        x + 1
+    }
+
+    // `0 - 1` leaves `u16`.
+    #[effects(pure)]
+    fn dec(x: u16) -> u16 {
+        x - 1
+    }
+
+    // `x * 65536` leaves `i32` from `x = 32768` on.
+    #[effects(pure)]
+    fn scale(x: i32) -> i32 {
+        x * 65536
+    }
+
+    // Not every `i32` is an `i16`.
+    #[effects(pure)]
+    fn narrow(x: i32) -> i16 {
+        i16::try_from(x).unwrap()
+    }
+
+    // `i16::MIN % -1` overflows.
+    #[effects(pure)]
+    #[uses(nonzero)]
+    fn rem(n: i16, d: i16) -> i16
+        requires nonzero(d),
+    {
+        n % d
+    }
+
+    spec fn nonzero(d: i16) -> bool {
+        d != 0
+    }
+
+    // A negative `isize` is not a `usize`.
+    #[effects(pure)]
+    fn index(i: isize) -> usize {
+        usize::try_from(i).unwrap()
+    }
+}

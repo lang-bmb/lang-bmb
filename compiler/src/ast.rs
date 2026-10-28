@@ -258,12 +258,6 @@ impl IntTy {
         }
     }
 
-    /// The types the language accepts so far (the others come with backlog
-    /// 2N-01b).
-    pub fn enabled(self) -> bool {
-        matches!(self, IntTy::I64 | IntTy::U64 | IntTy::U8 | IntTy::Usize)
-    }
-
     pub fn from_name(s: &str) -> Option<IntTy> {
         IntTy::ALL.into_iter().find(|t| t.name() == s)
     }

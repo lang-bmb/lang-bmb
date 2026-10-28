@@ -6,7 +6,7 @@ use std::process::Command;
 const HABITS: &str = r#"#[summary("Rust habits")]
 mod m {
     #[effects(pure)]
-    pub fn add(x: i32, y: i64) -> i64 {
+    pub fn add(x: i128, y: i64) -> i64 {
         let z = x + 1i64;
         z + y
     }
@@ -117,7 +117,7 @@ fn fixes_apply_per_file_in_a_multi_file_program() {
     let files = vec![
         (
             "a.bmb".to_string(),
-            "#[summary(\"a\")]\nmod a {\n    #[effects(pure)]\n    fn f(x: i32) -> i64 { x }\n}\n".to_string(),
+            "#[summary(\"a\")]\nmod a {\n    #[effects(pure)]\n    fn f(x: i128) -> i64 { x }\n}\n".to_string(),
         ),
         (
             "b.bmb".to_string(),

@@ -1,5 +1,5 @@
-{"code":"E0401","severity":"error","message":"expected `i64`, found `u64`","file":"err/types.bmb","line":4,"col":34,"end_line":4,"end_col":35}
-{"code":"E0401","severity":"error","message":"`+` needs operands of one type, found `i64` and `u64`","file":"err/types.bmb","line":7,"col":39,"end_line":7,"end_col":44}
+{"code":"E0401","severity":"error","message":"expected `i64`, found `u64`","file":"err/types.bmb","line":4,"col":34,"end_line":4,"end_col":35,"fix":{"message":"convert: `i64::try_from(x).unwrap()` (its range is a proof obligation)"}}
+{"code":"E0401","severity":"error","message":"`+` needs operands of one type, found `i64` and `u64`","file":"err/types.bmb","line":7,"col":39,"end_line":7,"end_col":44,"fix":{"message":"convert the `u64` operand: `i64::try_from(x).unwrap()`"}}
 {"code":"E0403","severity":"error","message":"a reference cannot be a local variable type","file":"err/types.bmb","line":11,"col":16,"end_line":11,"end_col":22,"fix":{"message":"references are second-class: pass them as arguments only (ADR-0015)"}}
 {"code":"E0403","severity":"error","message":"a reference cannot be a return type","file":"err/types.bmb","line":16,"col":33,"end_line":16,"end_col":39,"fix":{"message":"references are second-class: pass them as arguments only (ADR-0015)"}}
 {"code":"E0409","severity":"error","message":"`&` / `&mut` may only appear directly as a call argument","file":"err/types.bmb","line":20,"col":27,"end_line":20,"end_col":29}
@@ -9,9 +9,9 @@
 {"code":"E0408","severity":"error","message":"elements of `a` cannot be assigned (`&[i64]`)","file":"err/types.bmb","line":37,"col":9,"end_line":37,"end_col":13}
 {"code":"E0408","severity":"error","message":"`x` is not mutable","file":"err/types.bmb","line":43,"col":13,"end_line":43,"end_col":19,"fix":{"message":"declare it with `let mut`"}}
 {"code":"E0407","severity":"error","message":"type `i64` cannot be indexed","file":"err/types.bmb","line":47,"col":35,"end_line":47,"end_col":36}
-{"code":"E0401","severity":"error","message":"expected `usize`, found `u64`","file":"err/types.bmb","line":50,"col":49,"end_line":50,"end_col":50}
-{"code":"E0411","severity":"error","message":"cannot negate a value of type `u64`","file":"err/types.bmb","line":53,"col":29,"end_line":53,"end_col":31}
-{"code":"E0406","severity":"error","message":"literal does not fit in `i64`","file":"err/types.bmb","line":56,"col":23,"end_line":56,"end_col":42}
+{"code":"E0401","severity":"error","message":"expected `usize`, found `u64`","file":"err/types.bmb","line":50,"col":49,"end_line":50,"end_col":50,"fix":{"message":"convert: `usize::try_from(x).unwrap()` (every value fits)"}}
+{"code":"E0411","severity":"error","message":"cannot negate a value of type `u64`","file":"err/types.bmb","line":53,"col":29,"end_line":53,"end_col":31,"fix":{"message":"an unsigned type has no negative values: use a signed type, or subtract from a larger value"}}
+{"code":"E0406","severity":"error","message":"literal does not fit in `i64`","file":"err/types.bmb","line":56,"col":23,"end_line":56,"end_col":42,"fix":{"message":"`i64` holds -9223372036854775808..=9223372036854775807: use a wider type or a value in range"}}
 {"code":"E0405","severity":"error","message":"`two` takes 2 argument(s), found 1","file":"err/types.bmb","line":62,"col":23,"end_line":62,"end_col":31}
 {"code":"E0401","severity":"error","message":"expected `&mut [i64]`, found `[i64; 1]`","file":"err/types.bmb","line":62,"col":27,"end_line":62,"end_col":30}
 {"code":"E0304","severity":"error","message":"unknown function `nowhere`","file":"err/types.bmb","line":65,"col":29,"end_line":65,"end_col":39,"fix":{"message":"no `nowhere` in unit `types`; other units are reached by full path `unit::nowhere`"}}

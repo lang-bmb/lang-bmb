@@ -1,0 +1,27 @@
+#[summary("정수 폭의 경계: 부호 없는 수의 부정, 범위 밖 리터럴, 섞인 폭, 128비트 (backlog 2N-01b)")]
+mod wc {
+    #[effects(pure)]
+    fn negate(x: u32) -> u32 {
+        -x
+    }
+
+    #[effects(pure)]
+    fn literal() -> i8 {
+        200
+    }
+
+    #[effects(pure)]
+    fn mixed(a: i16, b: i32) -> i32 {
+        a + b
+    }
+
+    #[effects(pure)]
+    fn wide(x: i128) -> i128 {
+        x
+    }
+
+    #[effects(pure)]
+    fn negative() -> u16 {
+        -1
+    }
+}

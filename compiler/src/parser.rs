@@ -976,10 +976,7 @@ impl<'a> Parser<'a> {
                 let a: Option<Vec<String>> = args.iter().map(Self::type_text).collect();
                 format!("{}<{}>", path.join("::"), a?.join(", "))
             }
-            TypeKind::Int(IntTy::I64) => "i64".into(),
-            TypeKind::Int(IntTy::U64) => "u64".into(),
-            TypeKind::Int(IntTy::U8) => "u8".into(),
-            TypeKind::Int(IntTy::Usize) => "usize".into(),
+            TypeKind::Int(i) => i.name().into(),
             TypeKind::Bool => "bool".into(),
             _ => return None,
         })
@@ -1492,15 +1489,15 @@ impl<'a> Parser<'a> {
             Tok::Ident(s) => {
                 self.bump();
                 let kind = match s.as_str() {
-                    "i64" => TypeKind::Int(IntTy::I64),
-                    "u64" => TypeKind::Int(IntTy::U64),
-                    "u8" => TypeKind::Int(IntTy::U8),
-                    "usize" => TypeKind::Int(IntTy::Usize),
                     "bool" => TypeKind::Bool,
+                    n if IntTy::from_name(n).is_some() => {
+                        TypeKind::Int(IntTy::from_name(n).unwrap())
+                    }
                     _ => {
                         let fix = match s.as_str() {
-                            "i8" | "i16" | "i32" | "i128" | "isize" => Some("i64"),
-                            "u16" | "u32" | "u128" => Some("u64"),
+                            // ADR-0048, open question 1.
+                            "i128" => Some("i64"),
+                            "u128" => Some("u64"),
                             // Text is bytes (ADR-0044 §5): `&str` is `&[u8]`.
                             "char" => Some("u8"),
                             "str" => Some("[u8]"),
@@ -1513,7 +1510,7 @@ impl<'a> Parser<'a> {
                         );
                         d = match fix {
                             Some(f) => d.fix(format!("use `{f}`"), Some(f.to_string())),
-                            None => d.fix("milestone 1 types: i64, u64, usize, bool, (), [T; N], &[T], &mut [T]", None),
+                            None => d.fix("types: the integers i8..i64, isize, u8..u64, usize; bool, (), [T; N], &[T], &mut [T], Vec<T>, Box<T>, Option<T>, Result<T, E>, structs and enums", None),
                         };
                         self.diags.push(d);
                         if self.is_p("<") {
@@ -2208,13 +2205,7 @@ impl<'a> Parser<'a> {
                 self.bump();
                 let ty = self.parse_type();
                 let span = e.span.to(ty.span);
-                let target = match ty.kind {
-                    TypeKind::Int(IntTy::I64) => Some("i64"),
-                    TypeKind::Int(IntTy::U64) => Some("u64"),
-                    TypeKind::Int(IntTy::U8) => Some("u8"),
-                    TypeKind::Int(IntTy::Usize) => Some("usize"),
-                    _ => None,
-                };
+                let target = ty.kind.int().map(IntTy::name);
                 let d = Diag::new("E0205", span, "`as` casts are not allowed");
                 match target {
                     // An integer cast is a checked conversion (ADR-0028 §8):

@@ -1,0 +1,87 @@
+#[summary("정수 폭의 증명: 좁은 타입의 범위 사실과 넘침 의무, 변환, MIN % -1, 되감기·포화 결과의 범위 (ADR-0048 §1, backlog 2N-01b)")]
+mod wp {
+    spec fn byte_range(x: i32) -> bool {
+        -128 <= x && x <= 127
+    }
+
+    // The precondition is the conversion's range obligation.
+    #[effects(pure)]
+    #[uses(byte_range)]
+    fn to_i8(x: i32) -> i8
+        requires byte_range(x),
+    {
+        i8::try_from(x).unwrap()
+    }
+
+    // A `u8` and a `u16` always fit a `u32`: no obligation.
+    #[effects(pure)]
+    fn widen(a: u8, b: u16) -> u32 {
+        u32::try_from(a).unwrap() + u32::try_from(b).unwrap()
+    }
+
+    spec fn not_minus_one(d: i16) -> bool {
+        d != -1 && d != 0
+    }
+
+    // `i16::MIN / -1` and `i16::MIN % -1` are excluded by the divisor.
+    #[effects(pure)]
+    #[uses(not_minus_one)]
+    fn quot(n: i16, d: i16) -> i16
+        requires not_minus_one(d),
+    {
+        n / d
+    }
+
+    #[effects(pure)]
+    #[uses(not_minus_one)]
+    fn rem(n: i16, d: i16) -> i16
+        requires not_minus_one(d),
+    {
+        n % d
+    }
+
+    spec fn in_i8(r: i8) -> bool {
+        -128 <= r && r <= 127
+    }
+
+    // Wrapping and saturating results are in the type's range.
+    #[effects(pure)]
+    #[uses(in_i8)]
+    fn bump(x: i8) -> (r: i8)
+        ensures in_i8(r),
+    {
+        x.wrapping_add(100).saturating_sub(5)
+    }
+
+    spec fn bounded(v: &[u16]) -> bool {
+        v.len() <= 1000
+    }
+
+    // Elements of a `u16` slice are at most 65535: the sum fits a `u32`.
+    #[effects(pure)]
+    #[uses(bounded)]
+    fn total(v: &[u16]) -> u32
+        requires bounded(v),
+    {
+        let mut s: u32 = 0;
+        for k in 0..v.len()
+            invariant s <= 65535 * k,
+        {
+            s = s + u32::try_from(v[k]).unwrap();
+        }
+        s
+    }
+
+    // `isize` and `usize` are 64 bits.
+    #[effects(pure)]
+    #[uses(small_offset)]
+    fn offset(base: usize, delta: isize) -> isize
+        requires small_offset(base, delta),
+    {
+        isize::try_from(base).unwrap() + delta
+    }
+
+    spec fn small_offset(base: usize, delta: isize) -> bool {
+        base <= 1000000 && -1000000 <= delta && delta <= 1000000
+    }
+}

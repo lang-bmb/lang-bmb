@@ -3100,6 +3100,18 @@ impl<'a> Checker<'a> {
                 TypeKind::Ref { inner, .. } if inner.kind == *want => {
                     d.fix("read the value it refers to: `*x`", None)
                 }
+                // Integers convert explicitly (ADR-0028): no implicit widening.
+                TypeKind::Int(_) if is_int(want) => {
+                    let w = ty_str(want);
+                    let fix = if conv_obligation(found, want) {
+                        format!(
+                            "convert: `{w}::try_from(x).unwrap()` (its range is a proof obligation)"
+                        )
+                    } else {
+                        format!("convert: `{w}::try_from(x).unwrap()` (every value fits)")
+                    };
+                    d.fix(fix, None)
+                }
                 _ => d,
             };
             self.diags.push(d);
@@ -3359,6 +3371,21 @@ impl<'a> Checker<'a> {
                 self.expr(cx, e, None, mode);
             }
         }
+    }
+
+    /// E0411: an unsigned value has no negation.
+    fn unsigned_negation(&mut self, span: Span, t: &TypeKind) {
+        self.diags.push(
+            Diag::new(
+                "E0411",
+                span,
+                format!("cannot negate a value of type `{}`", ty_str(t)),
+            )
+            .fix(
+                "an unsigned type has no negative values: use a signed type, or subtract from a larger value",
+                None,
+            ),
+        );
     }
 
     /// E0503 for a loop in a specification, which is one expression.
@@ -5127,11 +5154,7 @@ impl<'a> Checker<'a> {
                     // unsigned value is just an integer (ADR-0024).
                     TypeKind::Int(_) if mode != Mode::Exec => TypeKind::Int(IntTy::I64),
                     TypeKind::Int(_) => {
-                        self.err(
-                            "E0411",
-                            e.span,
-                            format!("cannot negate a value of type `{}`", ty_str(&t)),
-                        );
+                        self.unsigned_negation(e.span, &t);
                         TypeKind::Error
                     }
                     _ => {
@@ -5440,11 +5463,7 @@ impl<'a> Checker<'a> {
         };
         let i = t.int().expect("an integer type");
         if negative && v != 0 && !i.signed() {
-            self.err(
-                "E0411",
-                span,
-                format!("cannot negate a value of type `{}`", ty_str(&t)),
-            );
+            self.unsigned_negation(span, &t);
             return TypeKind::Error;
         }
         let fits = if negative {
@@ -5454,10 +5473,21 @@ impl<'a> Checker<'a> {
         };
         // Specification integers are unbounded (ADR-0017, ADR-0024).
         if !fits && mode == Mode::Exec {
-            self.err(
-                "E0406",
-                span,
-                format!("literal does not fit in `{}`", ty_str(&t)),
+            self.diags.push(
+                Diag::new(
+                    "E0406",
+                    span,
+                    format!("literal does not fit in `{}`", ty_str(&t)),
+                )
+                .fix(
+                    format!(
+                        "`{}` holds {}..={}: use a wider type or a value in range",
+                        ty_str(&t),
+                        i.min_value(),
+                        i.max_value()
+                    ),
+                    None,
+                ),
             );
         }
         t
@@ -5519,7 +5549,7 @@ impl<'a> Checker<'a> {
                     };
                 }
                 if lt != rt {
-                    self.err(
+                    let d = Diag::new(
                         "E0401",
                         span,
                         format!(
@@ -5529,6 +5559,22 @@ impl<'a> Checker<'a> {
                             ty_str(&rt)
                         ),
                     );
+                    // Integers convert explicitly (ADR-0028).
+                    let d = if is_int(&lt) && is_int(&rt) {
+                        let wide = if conv_obligation(&lt, &rt) { &lt } else { &rt };
+                        let narrow = if wide == &lt { &rt } else { &lt };
+                        d.fix(
+                            format!(
+                                "convert the `{}` operand: `{}::try_from(x).unwrap()`",
+                                ty_str(narrow),
+                                ty_str(wide)
+                            ),
+                            None,
+                        )
+                    } else {
+                        d
+                    };
+                    self.diags.push(d);
                     return if op.is_arith() {
                         TypeKind::Error
                     } else {
@@ -7763,9 +7809,7 @@ pub fn int_const(path: &[Ident]) -> Option<(TypeKind, i128)> {
 }
 
 fn int_type(name: &str) -> Option<TypeKind> {
-    IntTy::from_name(name)
-        .filter(|i| i.enabled())
-        .map(TypeKind::Int)
+    IntTy::from_name(name).map(TypeKind::Int)
 }
 
 /// Whether converting a `source` value to `target` has a range obligation

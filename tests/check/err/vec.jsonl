@@ -7,7 +7,7 @@
 {"code":"E0408","severity":"error","message":"`.push()` needs a mutable `Vec`","file":"err/vec.bmb","line":44,"col":9,"end_line":44,"end_col":10,"fix":{"message":"declare it with `let mut`"}}
 {"code":"E0408","severity":"error","message":"`.push()` needs a mutable `Vec`","file":"err/vec.bmb","line":49,"col":9,"end_line":49,"end_col":10,"fix":{"message":"take the parameter as `&mut Vec<T>`"}}
 {"code":"E0401","severity":"error","message":"the element type of `Vec::new()` comes from the expected type","file":"err/vec.bmb","line":54,"col":9,"end_line":54,"end_col":19,"fix":{"message":"write it: `let v: Vec<T> = Vec::new();`"}}
-{"code":"E0401","severity":"error","message":"expected `i64`, found `u64`","file":"err/vec.bmb","line":59,"col":16,"end_line":59,"end_col":17}
+{"code":"E0401","severity":"error","message":"expected `i64`, found `u64`","file":"err/vec.bmb","line":59,"col":16,"end_line":59,"end_col":17,"fix":{"message":"convert: `i64::try_from(x).unwrap()` (its range is a proof obligation)"}}
 {"code":"E0404","severity":"error","message":"unknown method `is_empty`","file":"err/vec.bmb","line":64,"col":25,"end_line":64,"end_col":33,"fix":{"message":"compare `v.len() == 0`"}}
 {"code":"E0404","severity":"error","message":"unknown method `first`","file":"err/vec.bmb","line":65,"col":24,"end_line":65,"end_col":29,"fix":{"message":"index with `v[i]`: its bound is proved"}}
 {"code":"E0409","severity":"error","message":"`.as_slice()` may only appear directly as a call argument","file":"err/vec.bmb","line":71,"col":9,"end_line":71,"end_col":21,"fix":{"message":"pass it to a `&[T]` / `&mut [T]` parameter"}}

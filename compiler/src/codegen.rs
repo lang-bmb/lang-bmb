@@ -245,7 +245,8 @@ fn mem_ty(t: &TypeKind) -> String {
     match value_ty(t) {
         TypeKind::Vec(_) => "%bmb.vec".into(),
         TypeKind::Box(_) => "ptr".into(),
-        TypeKind::Bool | TypeKind::Int(IntTy::U8) => "i8".into(),
+        TypeKind::Bool => "i8".into(),
+        TypeKind::Int(i) => format!("i{}", i.bits()),
         TypeKind::Named { .. } => data_ty(t),
         TypeKind::Array(e, n) => format!("[{n} x {}]", mem_ty(&e.kind)),
         _ => "i64".into(),
@@ -515,14 +516,7 @@ fn drop_glue(tb: &Tables, extra: &[TypeKind]) -> String {
 
 /// Whether `t` is an integer type or `bool`.
 fn is_scalar_ty(t: &TypeKind) -> bool {
-    matches!(
-        t,
-        TypeKind::Int(IntTy::I64)
-            | TypeKind::Int(IntTy::U64)
-            | TypeKind::Int(IntTy::U8)
-            | TypeKind::Int(IntTy::Usize)
-            | TypeKind::Bool
-    )
+    matches!(t, TypeKind::Int(_) | TypeKind::Bool)
 }
 
 fn llty(t: &TypeKind) -> &'static str {
@@ -545,28 +539,42 @@ fn elem_of(t: &TypeKind) -> TypeKind {
 }
 
 /// The element kind of an array, slice or `Vec` of `t`: its register type,
-/// or `"u8"` for a byte (an `i64` in registers, a byte in memory, ADR-0044).
+/// or the name of an integer narrower than 64 bits (an `i64` in registers,
+/// its own width in memory: ADR-0044 for `u8`, ADR-0048 §5).
 fn elem_kind(t: &TypeKind) -> &'static str {
-    if *t == TypeKind::Int(IntTy::U8) {
-        "u8"
-    } else {
-        llty(t)
+    match t {
+        TypeKind::Int(i) if i.bits() < 64 => i.name(),
+        _ => llty(t),
     }
 }
 
-/// In-memory type of an array element: `bool` and `u8` are bytes, as in
-/// Rust and C, so LLVM recognizes fills and vectorizes loads (backlog 1E-09).
+/// The narrow integer an element kind names: its width and signedness.
+fn narrow(elem: &str) -> Option<(u32, bool)> {
+    IntTy::from_name(elem)
+        .filter(|i| i.bits() < 64)
+        .map(|i| (i.bits(), i.signed()))
+}
+
+/// In-memory type of an array element: `bool` and the narrow integers have
+/// their own width, as in Rust and C, so LLVM recognizes fills and
+/// vectorizes loads (backlog 1E-09).
 fn mem(elem: &str) -> &str {
-    if elem == "i1" || elem == "u8" {
-        "i8"
-    } else {
-        elem
+    match narrow(elem) {
+        _ if elem == "i1" => "i8",
+        Some((8, _)) => "i8",
+        Some((16, _)) => "i16",
+        Some((32, _)) => "i32",
+        _ => elem,
     }
 }
 
 /// ABI alignment of an array element in memory (`&[i64]` is 8-aligned, as in Rust).
 fn align(elem: &str) -> u32 {
-    if elem == "i1" || elem == "u8" { 1 } else { 8 }
+    match narrow(elem) {
+        _ if elem == "i1" => 1,
+        Some((bits, _)) => bits / 8,
+        None => 8,
+    }
 }
 
 /// Bytes of one element in memory.
@@ -696,20 +704,24 @@ impl<'p> Gen<'p> {
             align(elem)
         ));
         let b = self.t();
-        match elem {
-            "i1" => self.emit(format!("{b} = trunc i8 {r} to i1")),
-            "u8" => self.emit(format!("{b} = zext i8 {r} to i64")),
-            _ => return r,
+        match narrow(elem) {
+            _ if elem == "i1" => self.emit(format!("{b} = trunc i8 {r} to i1")),
+            Some((bits, signed)) => {
+                let ext = if signed { "sext" } else { "zext" };
+                self.emit(format!("{b} = {ext} i{bits} {r} to i64"));
+            }
+            None => return r,
         }
         b
     }
 
     fn store_elem(&mut self, elem: &str, v: &str, ptr: &str) {
-        if elem == "i1" || elem == "u8" {
+        if elem == "i1" || narrow(elem).is_some() {
             let z = self.t();
+            let m = mem(elem);
             let op = if elem == "i1" { "zext i1" } else { "trunc i64" };
-            self.emit(format!("{z} = {op} {v} to i8"));
-            self.emit(format!("store i8 {z}, ptr {ptr}, align 1"));
+            self.emit(format!("{z} = {op} {v} to {m}"));
+            self.emit(format!("store {m} {z}, ptr {ptr}, align {}", align(elem)));
         } else {
             self.emit(format!(
                 "store {elem} {v}, ptr {ptr}, align {}",
@@ -768,16 +780,18 @@ impl<'p> Gen<'p> {
     /// Loads a scalar of type `t` from data memory.
     fn load_mem(&mut self, ptr: &str, t: &TypeKind) -> String {
         let r = self.t();
-        if *t == TypeKind::Bool || *t == TypeKind::Int(IntTy::U8) {
+        if *t == TypeKind::Bool {
             self.emit(format!("{r} = load i8, ptr {ptr}"));
             let b = self.t();
-            let op = if *t == TypeKind::Bool {
-                "trunc i8"
-            } else {
-                "zext i8"
-            };
-            let to = if *t == TypeKind::Bool { "i1" } else { "i64" };
-            self.emit(format!("{b} = {op} {r} to {to}"));
+            self.emit(format!("{b} = trunc i8 {r} to i1"));
+            return b;
+        }
+        if let Some(i) = t.int().filter(|i| i.bits() < 64) {
+            let w = i.bits();
+            self.emit(format!("{r} = load i{w}, ptr {ptr}"));
+            let b = self.t();
+            let ext = if i.signed() { "sext" } else { "zext" };
+            self.emit(format!("{b} = {ext} i{w} {r} to i64"));
             return b;
         }
         self.emit(format!("{r} = load i64, ptr {ptr}"));
@@ -795,15 +809,16 @@ impl<'p> Gen<'p> {
     /// Stores value `v` of type `t` into memory at `ptr`.
     fn put(&mut self, v: CVal, ptr: &str, t: &TypeKind) {
         match v {
-            CVal::Imm(x) if matches!(value_ty(t), TypeKind::Bool | TypeKind::Int(IntTy::U8)) => {
+            CVal::Imm(x) if *value_ty(t) == TypeKind::Bool => {
                 let z = self.t();
-                let op = if *value_ty(t) == TypeKind::Bool {
-                    "zext i1"
-                } else {
-                    "trunc i64"
-                };
-                self.emit(format!("{z} = {op} {x} to i8"));
+                self.emit(format!("{z} = zext i1 {x} to i8"));
                 self.emit(format!("store i8 {z}, ptr {ptr}"));
+            }
+            CVal::Imm(x) if value_ty(t).int().is_some_and(|i| i.bits() < 64) => {
+                let w = value_ty(t).int().unwrap().bits();
+                let z = self.t();
+                self.emit(format!("{z} = trunc i64 {x} to i{w}"));
+                self.emit(format!("store i{w} {z}, ptr {ptr}"));
             }
             CVal::Imm(x) => self.emit(format!("store i64 {x}, ptr {ptr}")),
             CVal::Ptr { ptr: src, .. } | CVal::Arr { ptr: src, .. } => self.copy(ptr, &src, t),
@@ -1398,7 +1413,10 @@ impl<'p> Gen<'p> {
                     return CVal::Imm(format!("-{v}"));
                 }
                 let v = self.expr(x).imm();
-                self.arith(e, "sub", "0", &v, true)
+                match self.ty(e).int().filter(|i| i.bits() < 64) {
+                    Some(i) => self.narrow_arith(e, "sub", "0", &v, i),
+                    None => self.arith(e, "sub", "0", &v, true),
+                }
             }
             ExprKind::Unary(UnOp::Not, x) => {
                 let v = self.expr(x).imm();
@@ -1453,20 +1471,17 @@ impl<'p> Gen<'p> {
                     return CVal::Imm(res);
                 }
                 match op {
-                    // A byte's sum or product fits in 64 bits: compute it
-                    // there, then the byte range is the obligation.
-                    BinOp::Add | BinOp::Mul if lt == TypeKind::Int(IntTy::U8) => {
-                        let inst = if *op == BinOp::Add { "add" } else { "mul" };
-                        let r = self.t();
-                        self.emit(format!("{r} = {inst} nuw i64 {a}, {b}"));
-                        if self.proved("E0803", e) {
-                            self.emit("; proved E0803");
-                        } else {
-                            let c = self.t();
-                            self.emit(format!("{c} = icmp ule i64 {r}, 255"));
-                            self.check(&c, &format!("`{inst}` may overflow"));
-                        }
-                        CVal::Imm(r)
+                    // Operands narrower than 64 bits never leave 64 bits:
+                    // compute there, then the type's range is the obligation.
+                    BinOp::Add | BinOp::Sub | BinOp::Mul
+                        if lt.int().is_some_and(|i| i.bits() < 64) =>
+                    {
+                        let inst = match op {
+                            BinOp::Add => "add",
+                            BinOp::Sub => "sub",
+                            _ => "mul",
+                        };
+                        self.narrow_arith(e, inst, &a, &b, lt.int().unwrap())
                     }
                     BinOp::Add => self.arith(e, "add", &a, &b, signed),
                     BinOp::Sub => self.arith(e, "sub", &a, &b, signed),
@@ -1478,15 +1493,16 @@ impl<'p> Gen<'p> {
                             self.check(&c, "divisor may be zero");
                         }
                         if signed && !self.proved("E0803", e) {
+                            let i = lt.int().expect("integer operands");
                             let m = self.t();
                             let n = self.t();
                             let both = self.t();
                             let ok = self.t();
-                            self.emit(format!("{m} = icmp eq i64 {a}, -9223372036854775808"));
+                            self.emit(format!("{m} = icmp eq i64 {a}, {}", i.min_value()));
                             self.emit(format!("{n} = icmp eq i64 {b}, -1"));
                             self.emit(format!("{both} = and i1 {m}, {n}"));
                             self.emit(format!("{ok} = xor i1 {both}, true"));
-                            self.check(&ok, "i64::MIN / -1");
+                            self.check(&ok, &format!("{}::MIN / -1", i.name()));
                         }
                         let inst = match (op, signed) {
                             (BinOp::Div, true) => "sdiv",
@@ -1534,16 +1550,9 @@ impl<'p> Gen<'p> {
                 let st = self.ty(&args[0]);
                 let v = self.expr(&args[0]).imm();
                 let needs = crate::check::conv_obligation(&st, &target);
-                // To `u8`: `0 <= v <= 255` is one unsigned comparison.
-                let in_range = |g: &mut Self| {
-                    let c = g.t();
-                    if target == TypeKind::Int(IntTy::U8) {
-                        g.emit(format!("{c} = icmp ule i64 {v}, 255"));
-                    } else {
-                        g.emit(format!("{c} = icmp sge i64 {v}, 0"));
-                    }
-                    c
-                };
+                let ti = target.int().expect("integer target");
+                let from_signed = st.is_signed();
+                let in_range = |g: &mut Self| g.in_range_of(&v, from_signed, ti);
                 if name.name == "unwrap" {
                     if needs && self.proved("E0815", e) {
                         self.emit("; proved E0815");
@@ -1573,9 +1582,10 @@ impl<'p> Gen<'p> {
                     op => {
                         let b = self.expr(&args[0]).imm();
                         let rt = self.ty(recv);
-                        let r = self.int_method(e, op, &rv.imm(), &b, rt.is_signed());
-                        if rt == TypeKind::Int(IntTy::U8) {
-                            self.byte_method(e, op, r)
+                        let i = rt.int().expect("integer method");
+                        let r = self.int_method(e, op, &rv.imm(), &b, i);
+                        if i.bits() < 64 {
+                            self.narrow_method(e, op, r, i)
                         } else {
                             r
                         }
@@ -2227,7 +2237,8 @@ impl<'p> Gen<'p> {
     /// the overflow flag selects the bound), `checked_*` the overflow flag or
     /// the divisor test as the `Option` tag. A division whose divisor fails
     /// the test divides by 1 instead, so it never traps.
-    fn int_method(&mut self, e: &Expr, op: &str, a: &str, b: &str, signed: bool) -> CVal {
+    fn int_method(&mut self, e: &Expr, op: &str, a: &str, b: &str, i: IntTy) -> CVal {
+        let signed = i.signed();
         let (kind, base) = op.split_once('_').expect("integer method");
         let s = if signed { "s" } else { "u" };
         let r = self.t();
@@ -2269,9 +2280,9 @@ impl<'p> Gen<'p> {
             _ => {
                 self.emit(format!("{r} = icmp ne i64 {b}, 0"));
                 let ok = if signed {
-                    // `i64::MIN / -1` overflows; `i64::MIN % -1` too, in Rust.
+                    // `T::MIN / -1` overflows; `T::MIN % -1` too, in Rust.
                     let (m, n, both, fine, ok) = (self.t(), self.t(), self.t(), self.t(), self.t());
-                    self.emit(format!("{m} = icmp eq i64 {a}, -9223372036854775808"));
+                    self.emit(format!("{m} = icmp eq i64 {a}, {}", i.min_value()));
                     self.emit(format!("{n} = icmp eq i64 {b}, -1"));
                     self.emit(format!("{both} = and i1 {m}, {n}"));
                     self.emit(format!("{fine} = xor i1 {both}, true"));
@@ -2290,30 +2301,44 @@ impl<'p> Gen<'p> {
         }
     }
 
-    /// A `u8` method: the 64-bit result of `int_method` brought into the
-    /// byte range (ADR-0044 §1). Operands are bytes, so a sum or product
-    /// never leaves 64 bits, and a saturating or checked `sub` already
-    /// stops at zero; wrapping keeps the low byte.
-    fn byte_method(&mut self, e: &Expr, op: &str, r: CVal) -> CVal {
-        let (kind, base) = op.split_once('_').expect("integer method");
-        if kind != "wrapping" && matches!(base, "sub" | "div" | "rem") {
-            return r;
-        }
+    /// A method of an integer narrower than 64 bits: the 64-bit result of
+    /// `int_method` brought into the range of `i` (ADR-0044 §1, ADR-0048
+    /// §1). Operands are in range, so a sum, difference or product never
+    /// leaves 64 bits; wrapping keeps the low bits, saturating clamps, and
+    /// `checked_*` is `Some` only for a value in range.
+    fn narrow_method(&mut self, e: &Expr, op: &str, r: CVal, i: IntTy) -> CVal {
+        let (kind, _) = op.split_once('_').expect("integer method");
         match kind {
             "wrapping" => {
-                let w = self.t();
-                self.emit(format!("{w} = and i64 {}, 255", r.imm()));
+                let (t, w) = (self.t(), self.t());
+                let ext = if i.signed() { "sext" } else { "zext" };
+                self.emit(format!("{t} = trunc i64 {} to i{}", r.imm(), i.bits()));
+                self.emit(format!("{w} = {ext} i{} {t} to i64", i.bits()));
                 CVal::Imm(w)
             }
             "saturating" => {
                 let w = self.t();
-                self.emit(format!(
-                    "{w} = call i64 @llvm.umin.i64(i64 {}, i64 255)",
-                    r.imm()
-                ));
+                if i.signed() {
+                    let lo = self.t();
+                    self.emit(format!(
+                        "{lo} = call i64 @llvm.smax.i64(i64 {}, i64 {})",
+                        r.imm(),
+                        i.min_value()
+                    ));
+                    self.emit(format!(
+                        "{w} = call i64 @llvm.smin.i64(i64 {lo}, i64 {})",
+                        i.max_value()
+                    ));
+                } else {
+                    self.emit(format!(
+                        "{w} = call i64 @llvm.umin.i64(i64 {}, i64 {})",
+                        r.imm(),
+                        i.max_value()
+                    ));
+                }
                 CVal::Imm(w)
             }
-            // `checked_add`/`checked_mul`: `Some` exactly when the value is a byte.
+            // `checked_*`: `Some` exactly when the value is in range.
             _ => {
                 let CVal::Ptr { ptr, ty } = r else {
                     unreachable!("checked_* is an Option")
@@ -2323,10 +2348,9 @@ impl<'p> Gen<'p> {
                     "{p} = getelementptr inbounds {}, ptr {ptr}, i32 0, i32 1",
                     view_ty(&ty, "Some")
                 ));
-                let (v, fits, tagp, tag, ok, k) =
-                    (self.t(), self.t(), self.t(), self.t(), self.t(), self.t());
+                let (v, tagp, tag, ok, k) = (self.t(), self.t(), self.t(), self.t(), self.t());
                 self.emit(format!("{v} = load i64, ptr {p}"));
-                self.emit(format!("{fits} = icmp ule i64 {v}, 255"));
+                let fits = self.fits(&v, i);
                 self.emit(format!(
                     "{tagp} = getelementptr inbounds {}, ptr {ptr}, i32 0, i32 0",
                     data_ty(&ty)
@@ -2341,6 +2365,51 @@ impl<'p> Gen<'p> {
                 CVal::Ptr { ptr, ty }
             }
         }
+    }
+
+    /// Whether the 64-bit value `v` (sign-extended for a signed source, the
+    /// bit pattern for an unsigned one: `from_signed`) is in the range of
+    /// `i`, as an `i1`.
+    fn in_range_of(&mut self, v: &str, from_signed: bool, i: IntTy) -> String {
+        let c = self.t();
+        let (min, max) = (i.min_value(), i.max_value());
+        if !from_signed || min == 0 {
+            if from_signed && max > i64::MAX as i128 {
+                // A signed value fits `u64`/`usize` when it is not negative.
+                self.emit(format!("{c} = icmp sge i64 {v}, 0"));
+            } else if !from_signed && max >= i64::MAX as i128 && min < 0 {
+                // An unsigned value fits `i64`/`isize` up to `i64::MAX`.
+                self.emit(format!("{c} = icmp sge i64 {v}, 0"));
+            } else {
+                // Unsigned comparison: a negative value is above any bound.
+                self.emit(format!("{c} = icmp ule i64 {v}, {}", max as u64));
+            }
+        } else {
+            // `min <= v <= max` as one unsigned comparison of `v - min`.
+            let d = self.t();
+            self.emit(format!("{d} = sub i64 {v}, {min}"));
+            self.emit(format!("{c} = icmp ule i64 {d}, {}", (max - min) as u64));
+        }
+        c
+    }
+
+    /// Whether a value of `i`'s own signedness is in its range.
+    fn fits(&mut self, v: &str, i: IntTy) -> String {
+        self.in_range_of(v, i.signed(), i)
+    }
+
+    /// `+`, `-`, `*` of two values of a type narrower than 64 bits: exact in
+    /// 64 bits, then the type's range is checked unless proved (E0803).
+    fn narrow_arith(&mut self, e: &Expr, inst: &str, a: &str, b: &str, i: IntTy) -> CVal {
+        let r = self.t();
+        self.emit(format!("{r} = {inst} nsw i64 {a}, {b}"));
+        if self.proved("E0803", e) {
+            self.emit("; proved E0803");
+        } else {
+            let c = self.fits(&r, i);
+            self.check(&c, &format!("`{inst}` may overflow `{}`", i.name()));
+        }
+        CVal::Imm(r)
     }
 
     /// LLVM's `{s,u}op.with.overflow`: (result, overflow flag).

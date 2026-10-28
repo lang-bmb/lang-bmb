@@ -19,6 +19,9 @@ use crate::source::Span;
 /// `isize::MAX / size_of(T)` (ADR-0017 §3).
 const LEN_MAX_WORD: &str = "1152921504606846975";
 const LEN_MAX_BYTE: &str = "9223372036854775807";
+/// `isize::MAX / 2` and `isize::MAX / 4`: elements of 16 and 32 bits.
+const LEN_MAX_HALF: &str = "4611686018427387903";
+const LEN_MAX_QUARTER: &str = "2305843009213693951";
 
 /// Tables produced by the checker that the verifier needs.
 pub struct Tables {
@@ -1761,13 +1764,15 @@ fn range(t: &TypeKind, x: &str) -> Option<String> {
 fn len_max(elem: &TypeKind) -> &'static str {
     // A data type may be one byte (a fieldless enum, a struct of a bool):
     // only `isize::MAX` is known without its layout.
-    if matches!(
-        elem,
-        TypeKind::Bool | TypeKind::Int(IntTy::U8) | TypeKind::Named { .. } | TypeKind::Param(_)
-    ) {
-        LEN_MAX_BYTE
-    } else {
-        LEN_MAX_WORD
+    match elem {
+        TypeKind::Bool | TypeKind::Named { .. } | TypeKind::Param(_) => LEN_MAX_BYTE,
+        TypeKind::Int(i) => match i.bits() {
+            8 => LEN_MAX_BYTE,
+            16 => LEN_MAX_HALF,
+            32 => LEN_MAX_QUARTER,
+            _ => LEN_MAX_WORD,
+        },
+        _ => LEN_MAX_WORD,
     }
 }
 
@@ -2064,10 +2069,7 @@ impl<'p, 'q> Enc<'p, 'q> {
     /// it needs; the extra quantifier there cost proofs their rlimit (1B-37).
     fn fresh_elems(&mut self, base: &str, e: &TypeKind, signed: bool) -> String {
         let elems = self.fresh(base, &format!("(Array Int {})", sort_of(e)));
-        let wanted = matches!(
-            e,
-            TypeKind::Int(IntTy::U64) | TypeKind::Int(IntTy::Usize) | TypeKind::Int(IntTy::U8)
-        ) || (signed && matches!(e, TypeKind::Int(IntTy::I64)));
+        let wanted = e.int().is_some_and(|i| !i.signed() || signed);
         if wanted && let Some(r) = range(e, &format!("(select {elems} k)")) {
             self.pc.push(format!(
                 "(forall ((k Int)) (! {r} :pattern ((select {elems} k))))"
@@ -5806,14 +5808,7 @@ fn show_leaves<'a>(
 }
 
 fn is_scalar_ty(t: &TypeKind) -> bool {
-    matches!(
-        t,
-        TypeKind::Int(IntTy::I64)
-            | TypeKind::Int(IntTy::U64)
-            | TypeKind::Int(IntTy::Usize)
-            | TypeKind::Int(IntTy::U8)
-            | TypeKind::Bool
-    )
+    matches!(t, TypeKind::Int(_) | TypeKind::Bool)
 }
 
 /// Element `k` of an array value as Z3 prints it in a model: a constant

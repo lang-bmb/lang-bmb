@@ -55,9 +55,12 @@ MUTANTS = [
                             "true".to_string(),''',
      "division by zero is never an obligation"),
     ("v-min-rem-dropped", "unsound", V,
-     '''format!("(not (and (= {lt} {I64_MIN}) (= {rt} (- 1))))"),''',
-     '''"true".to_string(),''',
-     "i64::MIN % -1 is never an obligation"),
+     '''                                format!(
+                                    "(not (and (= {lt} {}) (= {rt} (- 1))))",
+                                    num(i.min_value())
+                                ),''',
+     '''                                "true".to_string(),''',
+     "T::MIN % -1 is never an obligation"),
     ("v-neg-overflow-dropped", "unsound", V,
      '''self.oblige("E0803", e.span, "negation may overflow", r);''',
      '''let _ = ("E0803", e.span, "negation may overflow", r);''',
@@ -107,12 +110,16 @@ MUTANTS = [
                 }''',
      "array elements read lose their type range"),
     ("v-i64-range-plus-one", "unsound", V,
-     '''TypeKind::I64 => Some(format!("(and (<= {I64_MIN} {x}) (<= {x} {I64_MAX}))")),''',
-     '''TypeKind::I64 => Some(format!("(and (<= {I64_MIN} {x}) (<= {x} (+ {I64_MAX} 1)))")),''',
+     '''            num(i.min_value()),
+            num(i.max_value())''',
+     '''            num(i.min_value()),
+            num(i.max_value() + i128::from(i.signed() && i.bits() == 64))''',
      "i64 overflow by one is allowed"),
     ("v-u64-range-minus-one", "unsound", V,
-     '''TypeKind::U64 | TypeKind::Usize => Some(format!("(and (<= 0 {x}) (<= {x} {U64_MAX}))")),''',
-     '''TypeKind::U64 | TypeKind::Usize => Some(format!("(and (<= (- 1) {x}) (<= {x} {U64_MAX}))")),''',
+     '''            num(i.min_value()),
+            num(i.max_value())''',
+     '''            num(i.min_value() - i128::from(!i.signed() && i.bits() == 64)),
+            num(i.max_value())''',
      "unsigned underflow to -1 is allowed"),
     ("v-invariant-entry-dropped", "unsound", V,
      '''self.oblige("E0806", inv.span, "loop invariant may not hold on entry", g);''',
@@ -363,6 +370,18 @@ MUTANTS = [
         }
         self.emit_return(CVal::Ptr { ptr: out, ty: rt });''',
      "the owned locals alive at a `?` are not freed when it returns (a leak)"),
+    ("c-narrow-elem-ext-swapped", "miscompile", C,
+     '''            Some((bits, signed)) => {
+                let ext = if signed { "sext" } else { "zext" };''',
+     '''            Some((bits, signed)) => {
+                let ext = if !signed { "sext" } else { "zext" };''',
+     "a narrow array element is extended with the other signedness when read"),
+    ("v-narrow-range-widened", "unsound", V,
+     '''            num(i.min_value()),
+            num(i.max_value())''',
+     '''            num(i.min_value()),
+            num(i.max_value().max(i64::MAX as i128))''',
+     "the range fact of a type narrower than 64 bits reaches i64::MAX (its overflow obligations hold too often)"),
 ]
 
 
