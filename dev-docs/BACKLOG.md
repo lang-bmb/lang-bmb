@@ -75,7 +75,7 @@
 | ID | 태스크 | 완료 기준 | 의존 | 상태 |
 | --- | --- | --- | --- | --- |
 | T0-01 | CLI 파일럿 실행기 | `bench/pilot/`: Claude Code CLI를 피험 에이전트로, 동결 과제·MANIFEST·`prompt.md`(시스템 프롬프트 전체)·`bmb mcp` 도구만(내장 도구 없음, 저장소 밖 빈 디렉터리)·40회 한도·과제당 한 세션·하네스 판정(`judge_write`·`spec_kill`·`judge_navigate`). 행마다 `"pilot": true` | — | ✅ `bench/pilot/cli_pilot.py`·`mcp_proxy.py`, 스모크 `w01-clamp` 성공(도구 7회, MCP만) |
-| T0-02 | 파일럿 실행: m1·m1b·BVB | 세 집합을 한 번씩 돌려 `bench/pilot/results/`에 결과와 요약을 커밋. 결과는 가설 등록부의 "파일럿" 상태에만 쓴다 | T0-01 | 🔄 |
+| T0-02 | 파일럿 실행: m1·m1b·BVB | 세 집합을 한 번씩 돌려 `bench/pilot/results/`에 결과와 요약을 커밋. 결과는 가설 등록부의 "파일럿" 상태에만 쓴다 | T0-01 | ✅ `bench/pilot/results/2026-10-28-*`: m1 14/15, m1b 36/37(BSB 186/186), BVB 43/45, 합계 $11.11. 작성 실패 셋은 모두 명세 강도(`bench/pilot/README.md`) |
 | T0-03 | 정식 자동 측정 경로 | API 키를 시크릿으로 두고 `bench/run_models.py --budget`로 m1·m1b·BVB·BRB를 실행해 결과 커밋(`1E-10`·`2A-06`의 대체 경로) | T0-01 | ⏳ 승인(유료 API, 시크릿 설정은 사람) |
 
 ### T1 가설
