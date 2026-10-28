@@ -1043,9 +1043,10 @@ impl<'a> Printer<'a> {
                     self.block_lines(body, depth, "");
                 }
             }
-            Stmt::Assert { cond, .. } => {
+            Stmt::Assert { cond, by, .. } => {
                 let c = self.expr(cond, 0);
-                self.line(depth, &format!("assert({c});"));
+                let by = by.map_or_else(String::new, |p| format!(" by ({})", p.name()));
+                self.line(depth, &format!("assert({c}){by};"));
             }
             // A statement where it is written: what it proves holds from
             // there on (ADR-0062, open question 3).

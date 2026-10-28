@@ -665,3 +665,132 @@ fn ghost_code_leaves_no_trace_in_the_ir() {
     assert!(!unproved.verify.ok);
     assert!(unproved.checks > 0);
 }
+
+/// The bit methods (ADR-0048 §2, backlog 2N-03) compute what Rust's do: for
+/// every integer type, a program applies each method to edge and pattern
+/// values (and amounts below, at and past the width) and its output is
+/// compared with the same methods run by this test (compiled by rustc).
+#[test]
+fn bit_methods_compute_rusts_results() {
+    use bmb::ast::IntTy;
+    let dir = std::env::temp_dir().join(format!("bmb-bitm-{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    let amounts: [u32; 9] = [0, 1, 3, 7, 8, 31, 33, 64, u32::MAX];
+    for i in IntTy::ALL {
+        let (lo, hi) = (i.min_value(), i.max_value());
+        let size = 1i128 << i.bits();
+        let mut xs: Vec<i128> = vec![lo, lo + 1, -1, 0, 1, 2, 0x5a, 0x80, hi - 1, hi];
+        let mut seed: u64 = 0x9e37_79b9_7f4a_7c15;
+        for _ in 0..6 {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            xs.push(seed as i128);
+        }
+        // Into the type's range by its two's complement image.
+        let mut xs: Vec<i128> = xs
+            .into_iter()
+            .map(|v| {
+                let u = v.rem_euclid(size);
+                if u > hi { u - size } else { u }
+            })
+            .collect();
+        xs.dedup();
+        let mut want = String::new();
+        macro_rules! on {
+            ($t:ty) => {{
+                for &x in &xs {
+                    let x = x as $t;
+                    for &k in &amounts {
+                        for v in [
+                            x.rotate_left(k) as i128,
+                            x.rotate_right(k) as i128,
+                            x.wrapping_shl(k) as i128,
+                            x.wrapping_shr(k) as i128,
+                        ] {
+                            want.push_str(&format!("{v}\n"));
+                        }
+                    }
+                    for v in [
+                        x.count_ones() as i128,
+                        x.count_zeros() as i128,
+                        x.leading_zeros() as i128,
+                        x.trailing_zeros() as i128,
+                        x.swap_bytes() as i128,
+                    ] {
+                        want.push_str(&format!("{v}\n"));
+                    }
+                }
+            }};
+        }
+        match i {
+            IntTy::I8 => on!(i8),
+            IntTy::I16 => on!(i16),
+            IntTy::I32 => on!(i32),
+            IntTy::I64 => on!(i64),
+            IntTy::Isize => on!(isize),
+            IntTy::U8 => on!(u8),
+            IntTy::U16 => on!(u16),
+            IntTy::U32 => on!(u32),
+            IntTy::U64 => on!(u64),
+            IntTy::Usize => on!(usize),
+        }
+        let t = i.name();
+        let (print, conv) = if i.signed() {
+            ("print_i64", "i64")
+        } else {
+            ("print_u64", "u64")
+        };
+        let lits: Vec<String> = xs.iter().map(|v| v.to_string()).collect();
+        let ks: Vec<String> = amounts.iter().map(|v| v.to_string()).collect();
+        let text = format!(
+            "#[summary(\"bit methods\")]
+mod m {{
+    #[effects(io)]
+    fn show(v: {t}) -> () {{
+        {print}({conv}::try_from(v).unwrap());
+    }}
+
+    #[effects(io)]
+    fn count(v: u32) -> () {{
+        print_u64(u64::try_from(v).unwrap());
+    }}
+
+    #[effects(io)]
+    fn main() -> () {{
+        let xs: [{t}; {nx}] = [{xs}];
+        let ks: [u32; {nk}] = [{ks}];
+        for a in 0..xs.len() {{
+            let x: {t} = xs[a];
+            for b in 0..ks.len() {{
+                let k: u32 = ks[b];
+                show(x.rotate_left(k));
+                show(x.rotate_right(k));
+                show(x.wrapping_shl(k));
+                show(x.wrapping_shr(k));
+            }}
+            count(x.count_ones());
+            count(x.count_zeros());
+            count(x.leading_zeros());
+            count(x.trailing_zeros());
+            show(x.swap_bytes());
+        }}
+    }}
+}}
+",
+            nx = xs.len(),
+            xs = lits.join(", "),
+            nk = amounts.len(),
+            ks = ks.join(", "),
+        );
+        let out = bmb::emit_llvm_sources(&src("t.bmb", &text));
+        assert!(out.verify.ok, "{t}: {}", out.verify.output);
+        assert_eq!(out.checks, 0, "{t}");
+        let exe = dir.join(format!("m_{t}"));
+        bmb::toolchain::build_executable(&out.ir.unwrap(), exe.to_str().unwrap()).unwrap();
+        let run = Command::new(&exe).output().unwrap();
+        assert!(run.status.success(), "{t}: {}", run.status);
+        assert_eq!(String::from_utf8_lossy(&run.stdout), want, "{t}");
+    }
+    let _ = fs::remove_dir_all(&dir);
+}

@@ -356,8 +356,12 @@ pub enum Stmt {
         body: Block,
         span: Span,
     },
+    /// `assert(cond);`, or `assert(cond) by (bit_vector);` (ADR-0048 §4):
+    /// `by` proves the assertion in a query of its own, in an exact theory,
+    /// before the enclosing proof assumes it.
     Assert {
         cond: Expr,
+        by: Option<Prover>,
         span: Span,
     },
     /// `proof { .. }` (ADR-0062 §1): ghost statements in executable code.
@@ -376,6 +380,29 @@ pub enum Stmt {
         span: Span,
     },
     Expr(Expr),
+}
+
+/// The prover of `assert(e) by (..)` (ADR-0048 §4). `bit_vector` proves
+/// `e` with integers as bit-vectors of their widths and bit operations
+/// interpreted exactly; ADR-0061 §5 reuses it for floating point.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Prover {
+    BitVector,
+}
+
+impl Prover {
+    pub fn name(self) -> &'static str {
+        match self {
+            Prover::BitVector => "bit_vector",
+        }
+    }
+
+    pub fn from_name(s: &str) -> Option<Prover> {
+        match s {
+            "bit_vector" => Some(Prover::BitVector),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

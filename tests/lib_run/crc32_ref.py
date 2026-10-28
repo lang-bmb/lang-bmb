@@ -22,6 +22,7 @@ def main():
     for n in range(65):
         print("len", zlib.crc32(s[:n]))
     print("sum4096", sum(zlib.crc32(s[:n]) for n in range(4097)) & M64)
+    print("table4096", sum(zlib.crc32(s[:n], 0) for n in range(4097)) & M64)
     short = 0
     for a in range(256):
         short += zlib.crc32(bytes([a]))

@@ -353,3 +353,30 @@ mod l {
     );
     assert!(verified(&out.files, "l::index"));
 }
+
+/// A `by (bit_vector)` sub-proof unfolds the spec fns its assertion calls
+/// (backlog 2N-03): the ones `#[uses]` does not reveal are named in the
+/// hint (E0818), so the fill finds them, transitively.
+#[test]
+fn a_bit_vector_sub_proof_gets_the_spec_fns_it_unfolds() {
+    let src = r#"#[summary("bv")]
+mod b {
+    spec fn low(x: u32) -> u32 { x & 0xff }
+
+    spec fn twice(x: u32) -> u32 { low(low(x)) }
+
+    #[effects(pure)]
+    fn f(x: u32) -> u32 {
+        assert(twice(x) == x & 0xff) by (bit_vector);
+        x
+    }
+}
+"#;
+    let input = one(src);
+    assert!(!verified(&input, "b::f"));
+    let out = fill_uses(&input).unwrap();
+    let r = row(&out, "b::f");
+    assert_eq!(r.status, UsesStatus::Proved);
+    assert_eq!(r.uses, ["low", "twice"]);
+    assert!(verified(&out.files, "b::f"));
+}

@@ -7,7 +7,7 @@
   gate_power.py table FILE.jsonl       Markdown table and the catch rate
 
 Each mutant is one plausible defect in `compiler/src/verify.rs`,
-`compiler/src/codegen.rs` or `compiler/src/check.rs`: an encoding with the wrong sign or bound, an
+`compiler/src/codegen.rs`, `compiler/src/check.rs` or `compiler/src/subproof.rs`: an encoding with the wrong sign or bound, an
 obligation that is never sent, a havoc that forgets a variable, a code
 generator that emits the wrong instruction or drops a check it may not drop,
 a checker that lets ghost code run executable code.
@@ -30,6 +30,7 @@ import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 V, C, K = "compiler/src/verify.rs", "compiler/src/codegen.rs", "compiler/src/check.rs"
+S = "compiler/src/subproof.rs"
 
 # (id, class, file, old, new, what)
 MUTANTS = [
@@ -427,6 +428,47 @@ MUTANTS = [
      '''                let t = self.block(cx, body, Some(&TypeKind::Unit), Mode::Ghost);''',
      '''                let t = self.block(cx, body, Some(&TypeKind::Unit), Mode::Exec);''',
      "a `proof` block is checked as executable code: it may assign, call executable functions and loop (E0257 never sent)"),
+    # `by (bit_vector)` sub-proofs and bit methods (ADR-0048 §2, §4, backlog 2N-03).
+    ("v-subproof-unproved", "unsound", V,
+     '''            sub: Some(query),
+        });''',
+     '''            sub: Some(query),
+        });
+        let _ = self.obls.pop();''',
+     "a `by (bit_vector)` assertion is assumed without its sub-proof"),
+    ("v-subproof-range-dropped", "unsound", V,
+     '''                crate::subproof::Sort::Int(i) => Some(range_int(*i, &env.get(n)?.s())),''',
+     '''                crate::subproof::Sort::Int(i) => Some(range_int(*i, &env.get(n)?.s())).filter(|_| false),''',
+     "a sub-proof's fact is assumed of a variable whose value may leave its type (a ghost `let`)"),
+    ("v-subproof-guard-dropped", "unsound", V,
+     '''                    ante.push(smt::print(&subst_atoms(&g, &real)));''',
+     '''                    ante.push(smt::print(&subst_atoms(&g, &real)));
+                    ante.pop();''',
+     "a sub-proof's fact is assumed although an unfolded spec fn's argument may leave its parameter's type"),
+    ("v-rotate-direction", "unsound", V,
+     '''        let left = if m == "rotate_right" {
+            (wi - k) % wi''',
+     '''        let left = if m == "rotate_left" {
+            (wi - k) % wi''',
+     "a constant rotation turns the wrong way"),
+    ("s-rotate-direction", "unsound", S,
+     '''            let (to, back) = if op == "rotl" {''',
+     '''            let (to, back) = if op == "rotr" {''',
+     "a rotation by a variable amount turns the wrong way"),
+    ("v-count-fact-strict", "unsound", V,
+     '''        "count_ones" => vec![
+            format!("(and (<= 0 {r}) (<= {r} {w}))"),''',
+     '''        "count_ones" => vec![
+            format!("(and (<= 0 {r}) (< {r} {w}))"),''',
+     "`count_ones` is assumed below the width (it is the width for all ones)"),
+    ("s-widen-unsigned", "unsound", S,
+     '''        Greater => format!("((_ sign_extend {}) {t})", to - from),''',
+     '''        Greater => format!("((_ zero_extend {}) {t})", to - from),''',
+     "a sub-proof widens a negative value as if it were unsigned"),
+    ("c-rotate-direction", "miscompile", C,
+     '''                let f = if m == "rotate_left" { "fshl" } else { "fshr" };''',
+     '''                let f = if m == "rotate_left" { "fshr" } else { "fshl" };''',
+     "the generated code rotates the wrong way"),
 ]
 
 

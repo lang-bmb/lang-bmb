@@ -1,0 +1,122 @@
+#[summary("`by (bit_vector)` 하위 증명의 실패(E0818, 반례)와 번역할 수 없는 단언, 비트 메서드의 틀린 계약(backlog 2N-03)")]
+mod bvf {
+    // False for odd `x`.
+    #[effects(pure)]
+    fn even(x: u32) -> u32 {
+        assert(x & 1 == 0) by (bit_vector);
+        x
+    }
+
+    // The path fact `x < 16` is not seen by the sub-proof: it must be
+    // written into the assertion (`x < 16 ==> ..`).
+    #[effects(pure)]
+    fn path_fact(x: u8) -> u8 {
+        if x < 16 {
+            assert(x * x < 256) by (bit_vector);
+        }
+        x
+    }
+
+    // A ghost `let` is a variable of its type, not its definition.
+    #[effects(pure)]
+    fn ghost_value(x: u8) -> u8 {
+        proof {
+            let y: u8 = x / 2;
+            assert(y <= 127) by (bit_vector);
+        }
+        x
+    }
+
+    spec fn rotation_back(x: i8, r: i8) -> bool { r == x }
+
+    // In a lemma: rotating left twice by 4 is not the identity on `i8`
+    // for every amount it is given.
+    #[uses(rotation_back)]
+    proof fn rotations(x: i8, k: u32)
+        ensures rotation_back(x, x.rotate_left(k).rotate_left(k)),
+    {
+        assert(x.rotate_left(k).rotate_left(k) == x) by (bit_vector);
+    }
+
+    spec fn loop_back(n: u32) -> u32
+        decreases n,
+    {
+        if n == 0 { 0 } else { loop_back(n - 1) }
+    }
+
+    spec fn hidden(x: u32) -> u32 { x | 1 }
+
+    #[effects(pure)]
+    #[uses(loop_back)]
+    fn recursive(x: u32) -> u32 {
+        assert(loop_back(x) == 0) by (bit_vector);
+        x
+    }
+
+    #[effects(pure)]
+    fn unrevealed(x: u32) -> u32 {
+        assert(hidden(x) & 1 == 1) by (bit_vector);
+        x
+    }
+
+    #[effects(pure)]
+    fn signed_division(x: i32) -> i32 {
+        assert(x / 2 <= x || x < 0) by (bit_vector);
+        x
+    }
+
+    spec fn too_many(x: u8, r: u32) -> bool { r < 8 }
+
+    // `count_ones` of 255 is 8.
+    #[effects(pure)]
+    #[uses(too_many)]
+    fn ones(x: u8) -> (r: u32)
+        ensures too_many(x, r),
+    {
+        x.count_ones()
+    }
+
+    spec fn left(x: u8, r: u8) -> bool { r == x.rotate_left(1) }
+
+    // The wrong direction.
+    #[effects(pure)]
+    #[uses(left)]
+    fn rotate_wrong(x: u8) -> (r: u8)
+        ensures left(x, r),
+    {
+        x.rotate_right(1)
+    }
+
+    spec fn fits(x: u8) -> bool { x + 1 <= 255 }
+
+    // The sub-proof holds for every `u8` value of `y`, but the ghost `y`
+    // may be 256: the enclosing proof assumes it only when `y` is a `u8`
+    // value, so `fits(255)` stays unproved.
+    #[uses(fits)]
+    proof fn ghost_range(x: u8)
+        ensures fits(x),
+    {
+        let y: u8 = x + 1;
+        assert(y <= 255) by (bit_vector);
+    }
+
+    spec fn same(v: u8) -> u8 { v }
+
+    spec fn same_fits(x: u8) -> bool { same(x + 1) <= 255 }
+
+    // `same`'s definition holds for `u8` arguments: the sub-proof assumes
+    // `x + 1` is one, and the enclosing proof gets the fact under that
+    // guard, so `same_fits(255)` stays unproved.
+    #[uses(same, same_fits)]
+    proof fn spec_guard(x: u8)
+        ensures same_fits(x),
+    {
+        assert(same(x + 1) <= 255) by (bit_vector);
+    }
+
+    // `leading_zeros` of 0 is the width: `31 - 32` overflows.
+    #[effects(pure)]
+    fn top(x: u32) -> u32 {
+        31 - x.leading_zeros()
+    }
+}

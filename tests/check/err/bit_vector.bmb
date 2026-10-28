@@ -1,0 +1,69 @@
+#[summary("`assert(..) by (..)`와 비트 메서드의 검사 오류(backlog 2N-03): 비트 벡터 항이 아닌 것(E0515), 모르는 증명기(E0516), 메서드의 인자·타입")]
+mod bve {
+    struct P { x: u32 }
+
+    spec fn all_small(s: &[u32]) -> bool {
+        forall|i: usize| i < s.len() ==> #[trigger] s[i] < 10
+    }
+
+    #[effects(pure)]
+    fn element(s: &[u32]) -> u32 {
+        if s.len() > 0 {
+            assert(s[0] & 1 == s[0] % 2) by (bit_vector);
+        }
+        0
+    }
+
+    #[effects(pure)]
+    fn field(p: P) -> u32 {
+        assert(p.x | 0 == p.x) by (bit_vector);
+        p.x
+    }
+
+    #[effects(pure)]
+    fn quantified(s: &[u32]) -> u32 {
+        assert(forall|i: usize| i < 4 ==> i & 3 == i) by (bit_vector);
+        0
+    }
+
+    #[effects(pure)]
+    fn entry(x: &mut u32) -> () {
+        *x = *x ^ 1;
+        assert(*old(x) == *x ^ 1) by (bit_vector);
+    }
+
+    #[effects(pure)]
+    fn data(o: Option<u32>) -> u32 {
+        assert(o == o) by (bit_vector);
+        0
+    }
+
+    #[effects(pure)]
+    fn other_prover(x: u32) -> u32 {
+        assert(x * x >= 0) by (nonlinear_arith);
+        x
+    }
+
+    #[effects(pure)]
+    fn block_form(x: u32) -> u32 {
+        assert(x == x) by {
+            assert(x >= 0);
+        }
+        x
+    }
+
+    spec fn in_spec(x: u32) -> bool {
+        assert(x == x) by (bit_vector);
+        true
+    }
+
+    #[effects(pure)]
+    fn amounts(x: u32, k: u64, b: bool) -> u32 {
+        let a: u32 = x.rotate_left(k);
+        let c: u32 = x.count_ones(3);
+        let d: u32 = x.rotate_right();
+        let e: bool = b.count_ones();
+        let f: u8 = x.leading_zeros();
+        a
+    }
+}
