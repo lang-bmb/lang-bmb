@@ -1,0 +1,136 @@
+#[summary("고리 버퍼: 타입 불변식이 지키는 인덱스 (ADR-0060)")]
+mod ring {
+    // Every function that holds a `Ring` may rely on this, and every
+    // function that gives one back proves it: none repeats it as a
+    // contract.
+    #[invariant(in_bounds)]
+    struct Ring { buf: [i64; 8], head: usize, len: usize }
+
+    spec fn in_bounds(r: &Ring) -> bool {
+        r.head < 8 && r.len <= 8
+    }
+
+    impl Ring {
+        #[effects(pure)]
+        #[uses(in_bounds)]
+        fn new() -> Ring {
+            Ring { buf: [0; 8], head: 0, len: 0 }
+        }
+
+        // `false` when full: the value is not stored.
+        #[effects(pure)]
+        #[uses(in_bounds)]
+        fn push(self: &mut Ring, x: i64) -> bool {
+            if self.len == 8 {
+                return false;
+            }
+            self.buf[(self.head + self.len) % 8] = x;
+            self.len = self.len + 1;
+            true
+        }
+
+        #[effects(pure)]
+        #[uses(in_bounds)]
+        fn pop(self: &mut Ring) -> Option<i64> {
+            if self.len == 0 {
+                return None;
+            }
+            let x: i64 = self.buf[self.head];
+            self.head = (self.head + 1) % 8;
+            self.len = self.len - 1;
+            Some(x)
+        }
+
+        // The `i`-th value from the oldest.
+        #[effects(pure)]
+        #[uses(in_bounds)]
+        fn get(self: &Ring, i: usize) -> Option<i64> {
+            if i >= self.len {
+                return None;
+            }
+            Some(self.buf[(self.head + i) % 8])
+        }
+
+        #[effects(pure)]
+        fn size(self: &Ring) -> usize {
+            self.len
+        }
+    }
+
+    // The sum of the values, saturating.
+    #[effects(pure)]
+    fn total(r: &Ring) -> i64 {
+        let mut s: i64 = 0;
+        for i in 0..Ring::size(r) {
+            match Ring::get(r, i) {
+                None => {}
+                Some(x) => {
+                    s = s.saturating_add(x);
+                }
+            }
+        }
+        s
+    }
+
+    // Moves the values of `from` into `to` until one is empty or full. Both
+    // rings change in the loop: valid at its head without a clause.
+    #[effects(pure)]
+    fn drain(from: &mut Ring, to: &mut Ring) -> u64 {
+        let mut moved: u64 = 0;
+        while moved < 8
+            decreases 8 - moved,
+        {
+            if Ring::size(to) == 8 {
+                break;
+            }
+            match Ring::pop(from) {
+                None => break,
+                Some(x) => {
+                    let stored: bool = Ring::push(to, x);
+                    moved = moved + 1;
+                }
+            }
+        }
+        moved
+    }
+
+    #[effects(io)]
+    fn show(r: &Ring) -> () {
+        print_u64(u64::try_from(Ring::size(r)).unwrap());
+        for i in 0..Ring::size(r) {
+            match Ring::get(r, i) {
+                None => print_i64(-1),
+                Some(x) => print_i64(x),
+            }
+        }
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        let mut r: Ring = Ring::new();
+        for i in 1..11 {
+            if Ring::push(&mut r, i * 10) {
+                print_i64(1);
+            } else {
+                print_i64(0);
+            }
+        }
+        show(&r);
+        for k in 0..3 {
+            match Ring::pop(&mut r) {
+                None => print_i64(-1),
+                Some(x) => print_i64(x),
+            }
+        }
+        let a: bool = Ring::push(&mut r, 7);
+        let b: bool = Ring::push(&mut r, 8);
+        show(&r);
+        print_i64(total(&r));
+        let mut other: Ring = Ring::new();
+        let c: bool = Ring::push(&mut other, 99);
+        print_u64(drain(&mut r, &mut other));
+        show(&r);
+        show(&other);
+        print_i64(total(&other));
+    }
+}

@@ -1,0 +1,166 @@
+#[summary("정렬 집합: 고정 용량 배열 위의 엄격한 정렬 불변식 (ADR-0060)")]
+mod sset {
+    // Strictly increasing values below `len`: no function repeats it.
+    #[invariant(sorted)]
+    struct Set { items: [i64; 8], len: usize }
+
+    spec fn sorted(s: &Set) -> bool {
+        s.len <= 8 && (forall|i: usize, j: usize| i < j && j < s.len ==> #[trigger] s.items[i] < #[trigger] s.items[j])
+    }
+
+    // Loop invariants of `insert`.
+    spec fn below(a: [i64; 8], p: usize, x: i64) -> bool {
+        forall|k: usize| k < p ==> #[trigger] a[k] < x
+    }
+
+    spec fn shifted(a: [i64; 8], b: [i64; 8], j: usize, n: usize) -> bool {
+        (forall|k: usize| k <= j ==> #[trigger] b[k] == a[k]) && (forall|m: usize| j < m && m <= n ==> #[trigger] b[m] == a[m - 1])
+    }
+
+    spec fn closed(a: [i64; 8], b: [i64; 8], p: usize, j: usize, n: usize) -> bool {
+        (forall|k: usize| k < p ==> #[trigger] b[k] == a[k]) && (forall|m: usize| p <= m && m < j ==> #[trigger] b[m] == a[m + 1]) && (forall|q: usize| j <= q && q < n ==> #[trigger] b[q] == a[q])
+    }
+
+    impl Set {
+        #[effects(pure)]
+        #[uses(sorted)]
+        fn new() -> Set {
+            Set { items: [0; 8], len: 0 }
+        }
+
+        #[effects(pure)]
+        #[uses(sorted)]
+        fn size(self: &Set) -> usize {
+            self.len
+        }
+
+        #[effects(pure)]
+        #[uses(sorted)]
+        fn at(self: &Set, i: usize) -> Option<i64> {
+            if i < self.len {
+                Some(self.items[i])
+            } else {
+                None
+            }
+        }
+
+        #[effects(pure)]
+        #[uses(sorted)]
+        fn contains(self: &Set, x: i64) -> bool {
+            let mut i: usize = 0;
+            while i < self.len
+                invariant i <= self.len,
+                decreases self.len - i,
+            {
+                if self.items[i] == x {
+                    return true;
+                }
+                if self.items[i] > x {
+                    return false;
+                }
+                i = i + 1;
+            }
+            false
+        }
+
+        // `false` when `x` is there already or the set is full. The values
+        // above `x` move up one place in a copy: shifting `self.items` in
+        // place leaves two equal values between iterations, and a loop
+        // head needs the invariant (ADR-0060 open question 3).
+        #[effects(pure)]
+        #[uses(below, shifted, sorted)]
+        fn insert(self: &mut Set, x: i64) -> bool {
+            if self.len == 8 {
+                return false;
+            }
+            let mut p: usize = 0;
+            while p < self.len && self.items[p] < x
+                invariant p <= self.len, below(self.items, p, x),
+                decreases self.len - p,
+            {
+                p = p + 1;
+            }
+            if p < self.len && self.items[p] == x {
+                return false;
+            }
+            let n: usize = self.len;
+            let mut a: [i64; 8] = self.items;
+            let mut j: usize = n;
+            while j > p
+                invariant p <= j, j <= n, n < 8, shifted(self.items, a, j, n),
+                decreases j,
+            {
+                a[j] = a[j - 1];
+                j = j - 1;
+            }
+            a[p] = x;
+            self.items = a;
+            self.len = n + 1;
+            true
+        }
+
+        // `false` when `x` is not there. Removing keeps the order: the
+        // shift down never makes two values equal.
+        #[effects(pure)]
+        #[uses(closed, sorted)]
+        fn remove(self: &mut Set, x: i64) -> bool {
+            let mut p: usize = 0;
+            while p < self.len && self.items[p] != x
+                invariant p <= self.len,
+                decreases self.len - p,
+            {
+                p = p + 1;
+            }
+            if p == self.len {
+                return false;
+            }
+            let mut a: [i64; 8] = self.items;
+            let n: usize = self.len;
+            for j in p..n - 1
+                invariant n <= 8, closed(self.items, a, p, j, n),
+            {
+                a[j] = a[j + 1];
+            }
+            self.items = a;
+            self.len = n - 1;
+            true
+        }
+    }
+
+    #[effects(io)]
+    fn show(s: &Set) -> () {
+        print_u64(u64::try_from(Set::size(s)).unwrap());
+        for i in 0..Set::size(s) {
+            match Set::at(s, i) {
+                None => print_i64(-1),
+                Some(x) => print_i64(x),
+            }
+        }
+    }
+
+    #[effects(io)]
+    fn flag(b: bool) -> () {
+        if b {
+            print_i64(1);
+        } else {
+            print_i64(0);
+        }
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        let mut s: Set = Set::new();
+        let xs: [i64; 10] = [5, 3, 9, 3, 1, 7, 5, 11, 2, 8];
+        for i in 0..10 {
+            let k: usize = usize::try_from(i).unwrap();
+            flag(Set::insert(&mut s, xs[k]));
+        }
+        show(&s);
+        flag(Set::contains(&s, 7));
+        flag(Set::contains(&s, 4));
+        flag(Set::remove(&mut s, 5));
+        flag(Set::remove(&mut s, 5));
+        flag(Set::insert(&mut s, 4));
+        show(&s);
+    }
+}

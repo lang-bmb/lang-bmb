@@ -1,12 +1,13 @@
-#[summary("제네릭 스택: 고정 용량 배열 위의 Stack<T>와 괄호 검사 (2T-06)")]
+#[summary("제네릭 스택: 고정 용량 배열 위의 Stack<T>와 괄호 검사 (2T-06, 타입 불변식 ADR-0060)")]
 mod st {
     struct Pt { x: i64, y: i64 }
 
+    #[invariant(fits)]
     struct Stack<T: Copy> { items: [T; 8], len: usize }
 
     impl<T: Copy> Stack<T> {
         #[effects(pure)]
-        #[uses(empty)]
+        #[uses(empty, fits)]
         fn new(fill: T) -> (r: Stack<T>)
             ensures empty::<T>(&r),
         {
@@ -14,7 +15,7 @@ mod st {
         }
 
         #[effects(pure)]
-        #[uses(popped, some)]
+        #[uses(fits, popped, some)]
         fn pop(self: &mut Stack<T>) -> (r: T)
             requires some::<T>(self),
             ensures popped::<T>(*old(self), *self, r),
@@ -24,7 +25,7 @@ mod st {
         }
 
         #[effects(pure)]
-        #[uses(pushed, room)]
+        #[uses(fits, pushed, room)]
         fn push(self: &mut Stack<T>, x: T) -> ()
             requires room::<T>(self),
             ensures pushed::<T>(*old(self), *self, x),
@@ -35,13 +36,13 @@ mod st {
     }
 
     #[effects(pure)]
-    #[uses(empty, fits, popped, pushed, room, some)]
+    #[uses(empty, popped, pushed, room, some)]
     fn balanced(s: &[u8]) -> bool {
         let mut st: Stack<u8> = Stack::<u8>::new(0);
         let mut i: usize = 0;
         let mut ok: bool = true;
         while i < s.len() && ok
-            invariant i <= s.len(), fits::<u8>(&st),
+            invariant i <= s.len(),
             decreases s.len() - i,
         {
             let c: u8 = s[i];
@@ -125,6 +126,6 @@ mod st {
     }
 
     spec fn some<T: Copy>(s: &Stack<T>) -> bool {
-        0 < s.len && s.len <= 8
+        0 < s.len
     }
 }

@@ -585,10 +585,15 @@ impl<'a> Printer<'a> {
     }
 
     fn attr_line(&mut self, a: &Attr, depth: usize) {
+        // A type's invariant names its predicate as `#[uses]` does: by
+        // full path in the qualified text, by `id` in the identity text
+        // (ADR-0060 §3, ADR-0059 §1).
+        let inv = a.name.name == "invariant";
         let args: Vec<String> = a
             .args
             .iter()
             .map(|x| match x {
+                AttrArg::Ident(i) if inv => self.uses_name(&i.name),
                 AttrArg::Ident(i) => i.name.clone(),
                 AttrArg::Str(s, _) => format!("\"{}\"", escape(s)),
             })
@@ -1379,7 +1384,9 @@ pub fn trait_text(t: &TraitDef) -> String {
 pub fn type_text(t: &TypeDef) -> String {
     let mut pr = plain();
     pr.type_def(t, 0);
-    pr.out.trim_end().to_string()
+    // An attribute (`#[invariant(p)]`, ADR-0060 §3) goes before the
+    // declaration on the same line.
+    pr.out.trim_end().replace('\n', " ")
 }
 
 /// Qualified hashes of the type declarations, by path. A type declaration

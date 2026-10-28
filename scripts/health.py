@@ -117,7 +117,7 @@ def diag_coverage():
     rust = ""
     for p in (ROOT / "compiler" / "tests").glob("*.rs"):
         rust += p.read_text()
-    for p in (ROOT / "compiler" / "src").glob("*.rs"):
+    for p in (ROOT / "compiler" / "src").rglob("*.rs"):
         s = p.read_text()
         if "#[cfg(test)]" in s:
             rust += s[s.index("#[cfg(test)]"):]
@@ -145,7 +145,8 @@ def self_containment():
     deps = cargo.split("[dependencies]", 1)[1].split("\n[", 1)[0] if "[dependencies]" in cargo else ""
     crates = [l for l in deps.splitlines() if l.strip() and not l.strip().startswith("#")]
     procs, rust_lines = set(), 0
-    for p in sorted((ROOT / "compiler" / "src").glob("*.rs")):
+    # Every module, also those in subdirectories (`src/verify/`).
+    for p in sorted((ROOT / "compiler" / "src").rglob("*.rs")):
         s = p.read_text()
         body = s[: s.index("#[cfg(test)]")] if "#[cfg(test)]" in s else s
         rust_lines += sum(1 for l in body.splitlines() if l.strip() and not l.strip().startswith("//"))

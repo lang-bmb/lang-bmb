@@ -66,6 +66,15 @@ pub const CODES: &[(&str, &str)] = &[
         "E0253",
         "`decreases` on a `for` loop (its measure is automatic)",
     ),
+    // E0254-E0255: type invariants (ADR-0060 §4)
+    (
+        "E0254",
+        "`#[invariant(p)]`: `p` is not a spec function `(x: &T) -> bool` over the type's parameters, or states nothing",
+    ),
+    (
+        "E0255",
+        "more than one `#[invariant(..)]` on a type: join the conditions with `&&` in one predicate",
+    ),
     // E0256-E0258: proof functions and ghost code (ADR-0062 §4)
     (
         "E0256",
@@ -323,6 +332,10 @@ pub const CODES: &[(&str, &str)] = &[
     (
         "E0819",
         "an argument of a `proof fn` call may be outside its parameter's type (ghost arithmetic is mathematical, ADR-0062 §2)",
+    ),
+    (
+        "E0823",
+        "a type invariant may not hold where a value leaves the function's hands: a call argument, a return, a `&mut` parameter at exit, a loop head (ADR-0060 §2)",
     ),
     // W09xx: contract lint (`bmb lint` only; severity "warning", never from `check`/`verify`)
     (

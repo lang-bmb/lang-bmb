@@ -96,6 +96,8 @@ pub struct TypeEntry {
     pub line: u32,
     /// Types its fields or payloads name.
     pub names: BTreeSet<String>,
+    /// The predicate of its `#[invariant(p)]` (ADR-0060 §1), by full path.
+    pub inv: Option<String>,
 }
 
 #[derive(Clone)]
@@ -717,6 +719,7 @@ impl Index {
                     file: sm.name(tr.name.span.file).to_string(),
                     line,
                     names: BTreeSet::new(),
+                    inv: None,
                     unit,
                     path,
                 },
@@ -750,6 +753,7 @@ impl Index {
                     file: sm.name(td.name.span.file).to_string(),
                     line,
                     names,
+                    inv: t.adts.get(&path).and_then(|a| a.inv.clone()),
                     unit,
                     path,
                 },
@@ -1474,6 +1478,50 @@ impl<'p> Model<'p> {
                 }
             }
         }
+        // Every definition a value of the type passes through (ADR-0060
+        // §3): its invariant is assumed and proved at each boundary there
+        // (parameters, locals, results, the signatures of its callees).
+        let mentions = |t: &TypeKind| {
+            fn walk(t: &TypeKind, affected: &BTreeSet<String>) -> bool {
+                match t {
+                    TypeKind::Named { path, args } => {
+                        affected.contains(&path.join("::"))
+                            || args.iter().any(|a| walk(&a.kind, affected))
+                    }
+                    TypeKind::Array(e, _)
+                    | TypeKind::Slice(e)
+                    | TypeKind::Vec(e)
+                    | TypeKind::Box(e) => walk(&e.kind, affected),
+                    TypeKind::Ref { inner, .. } => walk(&inner.kind, affected),
+                    _ => false,
+                }
+            }
+            walk(t, &affected)
+        };
+        for path in self.defs.keys() {
+            if hit.contains_key(path) {
+                continue;
+            }
+            let mut tys: Vec<&TypeKind> = self
+                .t
+                .locals
+                .get(path)
+                .map(|m| m.values().collect())
+                .unwrap_or_default();
+            let callees = self
+                .out_edges(path)
+                .filter(|e| e.kind == "calls")
+                .map(|e| e.to.clone());
+            for c in std::iter::once(path.clone()).chain(callees) {
+                if let Some(s) = self.t.fns.get(&c) {
+                    tys.extend(&s.params);
+                    tys.push(&s.ret);
+                }
+            }
+            if tys.into_iter().any(mentions) {
+                hit.insert(path.clone(), "values");
+            }
+        }
         let n = hit.len();
         let mut rows: Vec<J> = hit
             .into_iter()
@@ -1548,6 +1596,12 @@ impl<'p> Model<'p> {
             if e.kind == "types" {
                 if let Some(ty) = self.types.get(&e.to) {
                     deps.insert(e.to.clone(), ty.text.clone());
+                    // The invariant's meaning is its predicate (ADR-0060 §1).
+                    if let Some(p) = &ty.inv
+                        && let Some(t) = self.def(p)
+                    {
+                        deps.insert(p.clone(), crate::fmt::def_text(t.f));
+                    }
                 }
                 continue;
             }

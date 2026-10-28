@@ -4,12 +4,16 @@
 //! update a field, may route it through a nested array (backlog 2V-04b: a
 //! 2x2 grid of the values, one cell written, one cell read back), pick an
 //! enum variant under a random condition, `match` it and return an integer
-//! or a struct. As in `soundness.rs`, an independent
-//! interpreter checks every claim:
+//! or a struct. Half the batches give `P` a random type invariant
+//! (ADR-0060, backlog T1-11): a function may then take a `q: P` (assumed
+//! valid) and returns a `P` it must prove valid. As in `soundness.rs`, an
+//! independent interpreter checks every claim:
 //!
-//! - a verified function, on any input that satisfies its precondition, never
-//!   overflows or divides by zero and meets its postcondition;
-//! - every definite counterexample really breaks the function;
+//! - a verified function, on any input that satisfies its precondition (and
+//!   a `q` that satisfies the invariant), never overflows or divides by zero,
+//!   meets its postcondition and returns a valid `P`;
+//! - every definite counterexample really breaks the function (an E0823 one
+//!   returns a `P` that breaks the invariant);
 //! - the compiled program, built twice (proved checks removed, and every check
 //!   kept), prints what the interpreter computes.
 //!
@@ -36,6 +40,11 @@ struct DFunc {
     /// Name, precondition bounds and `extra`; its `body`, `lets`, `arr` and
     /// `post` are unused (the data body and post are below).
     base: Func,
+    /// Takes `q: P` (only when `P` has an invariant): its fields may be read
+    /// wherever `p`'s are.
+    q: bool,
+    /// `#[uses(p_inv)]`: the invariant's definition is visible.
+    uses_inv: bool,
     /// `P { a, b }` from `x`, `y`; written `b` first when `b_first`.
     pa: E,
     pb: E,
@@ -72,10 +81,16 @@ fn gen_ctor(rng: &mut Rng, vars: &[String]) -> Ctor {
     }
 }
 
-fn gen_dfunc(rng: &mut Rng, k: usize) -> DFunc {
+fn gen_dfunc(rng: &mut Rng, k: usize, inv: bool) -> DFunc {
     let base = gen_func(rng, k);
-    let xy: Vec<String> = vec!["x".into(), "y".into()];
-    let pv: Vec<String> = ["x", "y", "p.a", "p.b"].map(String::from).to_vec();
+    let q = inv && rng.chance(50);
+    let uses_inv = inv && rng.chance(60);
+    let mut xy: Vec<String> = vec!["x".into(), "y".into()];
+    let mut pv: Vec<String> = ["x", "y", "p.a", "p.b"].map(String::from).to_vec();
+    if q {
+        xy.extend(["q.a", "q.b"].map(String::from));
+        pv.extend(["q.a", "q.b"].map(String::from));
+    }
     let returns_p = rng.chance(50);
     let post_vars: &[&'static str] = if returns_p {
         &["x", "y", "r.a", "r.b"]
@@ -83,6 +98,8 @@ fn gen_dfunc(rng: &mut Rng, k: usize) -> DFunc {
         &["x", "y", "r"]
     };
     DFunc {
+        q,
+        uses_inv,
         pa: gen_e(rng, &xy, 2),
         pb: gen_e(rng, &xy, 2),
         b_first: rng.chance(50),
@@ -97,7 +114,7 @@ fn gen_dfunc(rng: &mut Rng, k: usize) -> DFunc {
         second: gen_ctor(rng, &pv),
         arm_a: gen_e(rng, &xy, 2),
         arm_b: gen_e(rng, &["x", "y", "v"].map(String::from), 2),
-        arm_c: gen_e(rng, &["x", "q.a", "q.b"].map(String::from), 2),
+        arm_c: gen_e(rng, &["x", "c.a", "c.b"].map(String::from), 2),
         returns_p,
         post: gen_p(rng, post_vars, 1),
         base,
@@ -133,9 +150,11 @@ impl DFunc {
             "    spec fn {n}_post({post_params}) -> bool {{ {} }}\n\n",
             p_text(&self.post)
         );
+        let inv = if self.uses_inv { ", p_inv" } else { "" };
+        let q = if self.q { ", q: P" } else { "" };
         let _ = writeln!(
             t,
-            "    #[effects(pure)]\n    #[uses({n}_pre, {n}_post)]\n    fn {n}(x: i64, y: i64) -> (r: {ret})\n        requires {n}_pre(x, y),\n        ensures {n}_post(x, y, r),\n    {{"
+            "    #[effects(pure)]\n    #[uses({n}_pre, {n}_post{inv})]\n    fn {n}(x: i64, y: i64{q}) -> (r: {ret})\n        requires {n}_pre(x, y),\n        ensures {n}_post(x, y, r),\n    {{"
         );
         let (a, b) = (e_text(&self.pa), e_text(&self.pb));
         let lit = if self.b_first {
@@ -169,7 +188,7 @@ impl DFunc {
         };
         let _ = writeln!(t, "        let e: E = {pick};");
         let m = format!(
-            "match e {{ E::A => {}, E::B(v) => {}, E::C(q) => {} }}",
+            "match e {{ E::A => {}, E::B(v) => {}, E::C(c) => {} }}",
             e_text(&self.arm_a),
             e_text(&self.arm_b),
             e_text(&self.arm_c)
@@ -184,8 +203,12 @@ impl DFunc {
     }
 
     /// The result: the match value, and `p.b` when a struct is returned.
-    fn run(&self, x: i64, y: i64) -> Result<(i64, i64), Fault> {
-        let env: Env = vec![("x".into(), x), ("y".into(), y)];
+    fn run(&self, x: i64, y: i64, q: (i64, i64)) -> Result<(i64, i64), Fault> {
+        let mut env: Env = vec![("x".into(), x), ("y".into(), y)];
+        if self.q {
+            env.push(("q.a".into(), q.0));
+            env.push(("q.b".into(), q.1));
+        }
         // Both fields are evaluated; a fault in either stops the run.
         let (pa, pb) = if self.b_first {
             let pb = e_eval(&self.pb, &env)?;
@@ -194,7 +217,6 @@ impl DFunc {
             let pa = e_eval(&self.pa, &env)?;
             (pa, e_eval(&self.pb, &env)?)
         };
-        let mut env = env;
         env.push(("p.a".into(), pa));
         env.push(("p.b".into(), pb));
         if let Some(u) = &self.upd {
@@ -220,8 +242,8 @@ impl DFunc {
             Ctor::C => {
                 let arm: Env = vec![
                     ("x".into(), x),
-                    ("q.a".into(), lookup(&env, "p.a")),
-                    ("q.b".into(), lookup(&env, "p.b")),
+                    ("c.a".into(), lookup(&env, "p.a")),
+                    ("c.b".into(), lookup(&env, "p.b")),
                 ];
                 e_eval(&self.arm_c, &arm)?
             }
@@ -260,32 +282,92 @@ struct Stats {
     verified_runs: usize,
     cexes: usize,
     compiled_runs: usize,
+    /// Under a random invariant: verified functions that take a `q` or
+    /// return a `P`, and E0823 counterexamples replayed.
+    inv_verified: usize,
+    inv_cexes: usize,
+}
+
+/// `x` and `y` of a counterexample.
+fn cex_xy(msg: &str) -> Option<(i64, i64)> {
+    let rest = msg.split("; counterexample: ").nth(1)?;
+    let get = |k: &str| {
+        rest.split(", ")
+            .find_map(|kv| kv.strip_prefix(&format!("{k} = ")))
+            .and_then(|v| v.trim().parse().ok())
+    };
+    Some((get("x")?, get("y")?))
+}
+
+/// `q = P { a: .., b: .. }` of a counterexample.
+fn cex_q(msg: &str) -> Option<(i64, i64)> {
+    let rest = msg.split("; counterexample: ").nth(1)?;
+    let at = rest.find("q = P { a: ")? + "q = P { a: ".len();
+    let (a, tail) = rest[at..].split_once(", b: ")?;
+    let (b, _) = tail.split_once(" }")?;
+    Some((a.parse().ok()?, b.parse().ok()?))
 }
 
 fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
     let mut rng = Rng(seed.wrapping_mul(0x9E3779B97F4A7C15) | 1);
-    let funcs: Vec<DFunc> = (0..6).map(|k| gen_dfunc(&mut rng, k)).collect();
-    let mut src = String::from(
-        "#[summary(\"데이터 타입 건전성 퍼징\")]\nmod m {\n    struct P { a: i64, b: i64 }\n\n    enum E { A, B(i64), C(P) }\n\n",
-    );
+    // A random invariant of `P` in half the batches (ADR-0060).
+    let inv: Option<P> = rng.chance(50).then(|| gen_p(&mut rng, &["p.a", "p.b"], 1));
+    let valid = |a: i64, b: i64| {
+        inv.as_ref()
+            .is_none_or(|p| p_eval(p, &[("p.a", a as i128), ("p.b", b as i128)]))
+    };
+    let funcs: Vec<DFunc> = (0..6)
+        .map(|k| gen_dfunc(&mut rng, k, inv.is_some()))
+        .collect();
+    let mut src = String::from("#[summary(\"데이터 타입 건전성 퍼징\")]\nmod m {\n");
+    match &inv {
+        Some(p) => {
+            let _ = write!(
+                src,
+                "    #[invariant(p_inv)]\n    struct P {{ a: i64, b: i64 }}\n\n    spec fn p_inv(p: &P) -> bool {{ {} }}\n\n",
+                p_text(p)
+            );
+        }
+        None => src.push_str("    struct P { a: i64, b: i64 }\n\n"),
+    }
+    src.push_str("    enum E { A, B(i64), C(P) }\n\n");
     for f in &funcs {
         src.push_str(&f.text());
     }
     src.push_str(
         "}\n\n#[summary(\"실행\")]\nmod app {\n    #[effects(io)]\n    fn main() -> () {\n",
     );
+    // Values of `P` that keep the invariant: a function's `q`.
+    let mut qs: Vec<(i64, i64)> = Vec::new();
+    for _ in 0..80 {
+        let q = (value(&mut rng), value(&mut rng));
+        if valid(q.0, q.1) && !qs.contains(&q) {
+            qs.push(q);
+        }
+        if qs.len() == 3 {
+            break;
+        }
+    }
+    let q_inputs = |f: &DFunc| -> Vec<(i64, i64)> { if f.q { qs.clone() } else { vec![(0, 0)] } };
     let mut expected = String::new();
     for f in &funcs {
         for (x, y) in f.base.inputs(&mut rng) {
-            if let Ok(r) = f.run(x, y) {
-                let call = format!("m::{}({}, {})", f.name(), lit(x), lit(y));
-                if f.returns_p {
-                    let _ = writeln!(src, "        print_i64({call}.a);");
-                    let _ = writeln!(src, "        print_i64({call}.b);");
-                } else {
-                    let _ = writeln!(src, "        print_i64({call});");
+            for q in q_inputs(f) {
+                if let Ok(r) = f.run(x, y, q) {
+                    let qa = if f.q {
+                        format!(", m::P {{ a: {}, b: {} }}", lit(q.0), lit(q.1))
+                    } else {
+                        String::new()
+                    };
+                    let call = format!("m::{}({}, {}{qa})", f.name(), lit(x), lit(y));
+                    if f.returns_p {
+                        let _ = writeln!(src, "        print_i64({call}.a);");
+                        let _ = writeln!(src, "        print_i64({call}.b);");
+                    } else {
+                        let _ = writeln!(src, "        print_i64({call});");
+                    }
+                    expected.push_str(&f.printed(r));
                 }
-                expected.push_str(&f.printed(r));
             }
         }
     }
@@ -324,20 +406,37 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
             continue;
         }
         stats.verified += 1;
+        if inv.is_some() && (f.q || f.returns_p) {
+            stats.inv_verified += 1;
+        }
         for (x, y) in f.base.inputs(&mut rng) {
-            stats.verified_runs += 1;
-            match f.run(x, y) {
-                Ok(r) => assert!(
-                    f.post(x, y, r),
-                    "{}",
-                    ctx(&format!(
-                        "verified {name} breaks its postcondition at x = {x}, y = {y}, r = {r:?}"
-                    ))
-                ),
-                Err(Fault) => panic!(
-                    "{}",
-                    ctx(&format!("verified {name} faults at x = {x}, y = {y}"))
-                ),
+            for q in q_inputs(f) {
+                stats.verified_runs += 1;
+                match f.run(x, y, q) {
+                    Ok(r) => {
+                        assert!(
+                            f.post(x, y, r),
+                            "{}",
+                            ctx(&format!(
+                                "verified {name} breaks its postcondition at x = {x}, y = {y}, q = {q:?}, r = {r:?}"
+                            ))
+                        );
+                        // The `P` it returns keeps the invariant.
+                        assert!(
+                            !f.returns_p || valid(r.0, r.1),
+                            "{}",
+                            ctx(&format!(
+                                "verified {name} returns a `P` that breaks the invariant at x = {x}, y = {y}, q = {q:?}, r = {r:?}"
+                            ))
+                        );
+                    }
+                    Err(Fault) => panic!(
+                        "{}",
+                        ctx(&format!(
+                            "verified {name} faults at x = {x}, y = {y}, q = {q:?}"
+                        ))
+                    ),
+                }
             }
         }
     }
@@ -346,27 +445,48 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
         let Some(msg) = field(line, "message") else {
             continue;
         };
-        let Some(cex) = parse_cex(msg) else {
+        if !msg.contains("; counterexample: ") {
             continue;
-        };
+        }
         let Some(f) = funcs
             .iter()
             .find(|f| msg.contains(&format!("in `m::{}`", f.name())))
         else {
             continue;
         };
-        let get = |v: &str| cex.iter().find(|(k, _)| k == v).map(|(_, n)| *n);
-        let (Some(x), Some(y)) = (get("x"), get("y")) else {
+        let Some((x, y)) = cex_xy(msg) else {
             panic!("{}", ctx(&format!("counterexample without inputs: {msg}")));
         };
+        let q = if f.q {
+            cex_q(msg)
+                .unwrap_or_else(|| panic!("{}", ctx(&format!("counterexample without `q`: {msg}"))))
+        } else {
+            (0, 0)
+        };
+        // E0823 (ADR-0060): the result breaks the invariant. With the
+        // predicate opaque (no `#[uses(p_inv)]`) the model may give it any
+        // truth value, so only a revealed one is replayed.
+        let about_inv = msg.contains("type invariant of");
+        if (about_inv || f.q) && !f.uses_inv {
+            continue;
+        }
         stats.cexes += 1;
+        stats.inv_cexes += usize::from(about_inv);
         assert!(
             f.base.pre(x, y),
             "{}",
             ctx(&format!("counterexample breaks the precondition: {msg}"))
         );
-        let broken = match f.run(x, y) {
+        assert!(
+            !f.q || valid(q.0, q.1),
+            "{}",
+            ctx(&format!(
+                "counterexample breaks the invariant of `q`: {msg}"
+            ))
+        );
+        let broken = match f.run(x, y, q) {
             Err(Fault) => true,
+            Ok(r) if about_inv => !valid(r.0, r.1),
             Ok(r) => !f.post(x, y, r),
         };
         assert!(
@@ -446,8 +566,14 @@ fn data_type_proofs_counterexamples_and_builds_agree_with_the_interpreter() {
     }
     let _ = fs::remove_dir_all(&dir);
     eprintln!(
-        "soundness (data): {} functions, {} verified ({} runs), {} counterexamples replayed, {} compiled runs",
-        stats.funcs, stats.verified, stats.verified_runs, stats.cexes, stats.compiled_runs
+        "soundness (data): {} functions, {} verified ({} runs), {} counterexamples replayed, {} compiled runs; invariants: {} verified, {} E0823 counterexamples replayed",
+        stats.funcs,
+        stats.verified,
+        stats.verified_runs,
+        stats.cexes,
+        stats.compiled_runs,
+        stats.inv_verified,
+        stats.inv_cexes
     );
     assert!(stats.verified > 0 && stats.cexes > 0);
 }

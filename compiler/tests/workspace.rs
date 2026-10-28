@@ -618,3 +618,37 @@ fn rename_and_expect_parse_from_json() {
     assert!(matches!(&ops[1], Op::Expect { def, id } if def == "a::g" && id == "sha256:00"));
     assert!(bmb::workspace::parse_ops(r#"[{"op":"rename","def":"a::f"}]"#).is_err());
 }
+
+#[test]
+fn rename_follows_an_invariant_predicate() {
+    // `#[invariant(p)]` names its predicate as `#[uses]` does (ADR-0060 §1):
+    // renaming the predicate rewrites the attribute and keeps every identity.
+    const SRC: &str = r#"
+#[summary("불변식")]
+mod iv {
+    #[invariant(ordered)]
+    struct Span { lo: i64, hi: i64 }
+
+    spec fn ordered(s: &Span) -> bool { s.lo <= s.hi }
+
+    #[effects(pure)]
+    #[uses(ordered)]
+    fn width(s: Span) -> i64 {
+        if s.hi - s.lo > 9 { 9 } else { s.hi - s.lo }
+    }
+}
+"#;
+    let root = temp("rename_inv");
+    let units = bmb::format_sources(&[("base.bmb".into(), SRC.into())]).unwrap();
+    write_units(&root, &units).unwrap();
+    let before = ids(&root);
+    let c = commit(&root, &[rename("iv::ordered", "sorted_pair")]).unwrap();
+    assert!(c.ok, "{}", c.diagnostics);
+    let mut want = before.clone();
+    let v = want.remove("iv::ordered").unwrap();
+    want.insert("iv::sorted_pair".into(), v);
+    assert_eq!(ids(&root), want);
+    let text: String = snapshot(&root).into_values().collect();
+    assert!(text.contains("#[invariant(sorted_pair)]"), "{text}");
+    assert!(!text.contains("ordered"), "{text}");
+}

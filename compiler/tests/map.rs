@@ -544,3 +544,33 @@ fn proof_fns_and_their_callers_are_mapped() {
     let t = run(&f, &["query", "tests"]);
     assert!(!t.contains("contains_has_index"), "{t}");
 }
+
+#[test]
+fn a_type_shows_its_invariant_and_slices_carry_the_predicate() {
+    // ADR-0060 §1, §3: the invariant is on the type's L1 surface, and a
+    // slice that holds the type holds the predicate it means.
+    const SRC: &str = r#"#[summary("inv")]
+mod iv {
+    #[invariant(ordered)]
+    struct Span { lo: i64, hi: i64 }
+
+    spec fn ordered(s: &Span) -> bool { s.lo <= s.hi }
+
+    #[effects(pure)]
+    fn width(s: Span) -> i64 {
+        0
+    }
+}
+"#;
+    let f = files(&[("t.bmb", SRC)]);
+    let l1 = run(&f, &["query", "surface", "iv::Span"]);
+    assert!(
+        l1.contains(r##""signature":"#[invariant(ordered)] struct Span { lo: i64, hi: i64 }""##),
+        "{l1}"
+    );
+    let slice = run(&f, &["query", "slice", "iv::width"]);
+    assert!(
+        slice.contains(r#""path":"iv::ordered","text":"spec fn ordered(s: &Span) -> bool {"#),
+        "{slice}"
+    );
+}

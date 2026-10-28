@@ -1,0 +1,98 @@
+#[summary("타입 불변식 속성의 오류 (ADR-0060 §4)")]
+mod ie {
+    // E0254: no such spec fn.
+    #[invariant(missing)]
+    struct A { x: i64 }
+
+    // E0254: an executable function is not a predicate.
+    #[invariant(exec)]
+    struct B { x: i64 }
+
+    #[effects(pure)]
+    fn exec(b: &B) -> bool {
+        true
+    }
+
+    // E0254: the parameter is the value, not `&C`.
+    #[invariant(by_value)]
+    struct C { x: i64 }
+
+    spec fn by_value(c: C) -> bool {
+        c.x > 0
+    }
+
+    // E0254: a predicate of another type.
+    #[invariant(other_type)]
+    struct D { x: i64 }
+
+    spec fn other_type(c: &C) -> bool {
+        c.x > 0
+    }
+
+    // E0254: two parameters.
+    #[invariant(two)]
+    struct E { x: i64 }
+
+    spec fn two(e: &E, k: i64) -> bool {
+        e.x > k
+    }
+
+    // E0254: not a `bool`.
+    #[invariant(number)]
+    struct F { x: i64 }
+
+    spec fn number(f: &F) -> i64 {
+        f.x
+    }
+
+    // E0254: the type's parameters are the predicate's.
+    #[invariant(fixed)]
+    struct G<T: Copy> { x: T, n: i64 }
+
+    spec fn fixed(g: &G<i64>) -> bool {
+        g.n > 0
+    }
+
+    // E0254: a bound the type does not have.
+    #[invariant(ordered)]
+    struct H<T: Copy> { a: T, b: T }
+
+    spec fn ordered<T: Copy + Ord>(h: &H<T>) -> bool {
+        h.a <= h.b
+    }
+
+    // E0254: the constant `true` states nothing.
+    #[invariant(anything)]
+    struct I { x: i64 }
+
+    spec fn anything(i: &I) -> bool {
+        true
+    }
+
+    // E0254: one name, not a list.
+    #[invariant(pos_j, pos_j)]
+    struct J { x: i64 }
+
+    spec fn pos_j(j: &J) -> bool {
+        j.x > 0
+    }
+
+    // E0255: one invariant per type.
+    #[invariant(pos_k)]
+    #[invariant(small_k)]
+    enum K { One(i64), Two }
+
+    spec fn pos_k(k: &K) -> bool {
+        match k {
+            K::One(x) => *x > 0,
+            K::Two => true,
+        }
+    }
+
+    spec fn small_k(k: &K) -> bool {
+        match k {
+            K::One(x) => *x < 10,
+            K::Two => true,
+        }
+    }
+}

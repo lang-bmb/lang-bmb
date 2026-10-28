@@ -380,6 +380,10 @@ pub struct Adt {
     pub generics: Vec<TParam>,
     pub kind: AdtKind,
     pub span: Span,
+    /// The type invariant `#[invariant(p)]` (ADR-0060 §1): the full path
+    /// of its predicate, a `spec fn` taking `&T` (with the type's
+    /// parameters, in order) to `bool`. Set by `check_invariants`.
+    pub inv: Option<String>,
 }
 
 /// Names the language defines (ADR-0026): user definitions cannot take them.
@@ -864,6 +868,9 @@ impl<'a> Checker<'a> {
         for m in &p.mods {
             self.collect_mod(m, "");
         }
+        for m in &p.mods {
+            self.check_invariants(m, "");
+        }
         // Pass 2: check bodies.
         for m in &p.mods {
             self.check_mod(m, "");
@@ -1257,6 +1264,144 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// Resolves each type's `#[invariant(p)]` (ADR-0060 §1, after every
+    /// signature is known): `p` names a `spec fn` with the type's
+    /// parameters (same bounds) taking `&T<..>` to `bool`, and its body is
+    /// not the constant `true` (E0254). A second attribute is E0255
+    /// (`collect_types`).
+    fn check_invariants(&mut self, m: &Mod, prefix: &str) {
+        let mp = format!("{prefix}{}", m.name.name);
+        for sub in &m.mods {
+            self.check_invariants(sub, &format!("{mp}::"));
+        }
+        for t in &m.types {
+            let Some(a) = t.attrs.iter().find(|a| a.name.name == "invariant") else {
+                continue;
+            };
+            let path = format!("{mp}::{}", t.name.name);
+            let Some(adt) = self.adts.get(&path).cloned() else {
+                continue;
+            };
+            let gens: Vec<&str> = adt.generics.iter().map(|g| g.name.as_str()).collect();
+            let applied = if gens.is_empty() {
+                t.name.name.clone()
+            } else {
+                format!("{}<{}>", t.name.name, gens.join(", "))
+            };
+            let shape = |name: &str| {
+                let g = if adt.generics.is_empty() {
+                    String::new()
+                } else {
+                    let ps: Vec<String> = adt
+                        .generics
+                        .iter()
+                        .map(|g| {
+                            if g.bounds.is_empty() {
+                                g.name.clone()
+                            } else {
+                                format!("{}: {}", g.name, g.bounds.join(" + "))
+                            }
+                        })
+                        .collect();
+                    format!("<{}>", ps.join(", "))
+                };
+                format!("declare `spec fn {name}{g}(x: &{applied}) -> bool {{ .. }}`")
+            };
+            let (name, span) = match a.args.as_slice() {
+                [AttrArg::Ident(i)] => (i.name.clone(), i.span),
+                _ => {
+                    self.diags.push(
+                        Diag::new(
+                            "E0254",
+                            a.span,
+                            "`#[invariant(..)]` takes one predicate name",
+                        )
+                        .fix(format!("write `#[invariant(p)]` and {}", shape("p")), None),
+                    );
+                    continue;
+                }
+            };
+            let target = uses_target(&name, &mp, &self.fns);
+            let Some((full, sig)) = target
+                .as_ref()
+                .and_then(|p| self.fns.get(p).map(|s| (p.clone(), s.clone())))
+                .filter(|(_, s)| s.kind == FnKind::Spec && s.trait_of.is_none())
+            else {
+                let what = if target.is_some() {
+                    format!("`{name}` is not a spec function")
+                } else {
+                    format!("no spec function `{name}`")
+                };
+                self.diags.push(
+                    Diag::new(
+                        "E0254",
+                        span,
+                        format!("{what}: an invariant is a predicate of `{applied}`"),
+                    )
+                    .fix(shape(&name), None),
+                );
+                continue;
+            };
+            let want = TypeKind::Ref {
+                mutable: false,
+                inner: Box::new(Type {
+                    kind: TypeKind::Named {
+                        path: path.split("::").map(String::from).collect(),
+                        args: sig
+                            .generics
+                            .iter()
+                            .map(|g| Type {
+                                kind: TypeKind::Param(g.name.clone()),
+                                span: Span::default(),
+                            })
+                            .collect(),
+                    },
+                    span: Span::default(),
+                }),
+            };
+            let bounds_ok = sig.generics.len() == adt.generics.len()
+                && sig
+                    .generics
+                    .iter()
+                    .zip(&adt.generics)
+                    .all(|(p, g)| p.bounds.iter().all(|b| g.bounds.contains(b)));
+            if !bounds_ok
+                || sig.params.len() != 1
+                || sig.params[0] != want
+                || sig.ret != TypeKind::Bool
+            {
+                self.diags.push(
+                    Diag::new(
+                        "E0254",
+                        span,
+                        format!(
+                            "`{name}` does not have the shape of an invariant of `{applied}`: one parameter `&{applied}` (with the type's parameters, in order) and result `bool`"
+                        ),
+                    )
+                    .fix(shape(&name), None),
+                );
+                continue;
+            }
+            if sig.vacuous {
+                self.diags.push(
+                    Diag::new(
+                        "E0254",
+                        span,
+                        format!("`{name}` is the constant `true`: the invariant states nothing"),
+                    )
+                    .fix(
+                        "state the condition every value of the type keeps, or remove the attribute",
+                        None,
+                    ),
+                );
+                continue;
+            }
+            if let Some(adt) = self.adts.get_mut(&path) {
+                adt.inv = Some(full);
+            }
+        }
+    }
+
     /// Registers the unit's struct and enum names (their fields come next).
     fn collect_types(&mut self, m: &Mod, prefix: &str) {
         let mp = format!("{prefix}{}", m.name.name);
@@ -1280,9 +1425,33 @@ impl<'a> Checker<'a> {
                     generics,
                     kind,
                     span: t.name.span,
+                    inv: None,
                 },
             );
+            let mut invariants = 0;
             for a in &t.attrs {
+                if a.name.name == "invariant" {
+                    // Its predicate is resolved once every signature is
+                    // known (`check_invariants`); one per type (ADR-0060 §1).
+                    invariants += 1;
+                    if invariants > 1 {
+                        self.diags.push(
+                            Diag::new(
+                                "E0255",
+                                a.span,
+                                format!(
+                                    "`{}` has more than one `#[invariant(..)]`",
+                                    t.name.name
+                                ),
+                            )
+                            .fix(
+                                "state every condition in one predicate joined with `&&`, and keep one attribute",
+                                None,
+                            ),
+                        );
+                    }
+                    continue;
+                }
                 let d = if a.name.name == "derive" {
                     // Rust habit: copying and specification `==` are built in.
                     Diag::new("E0220", a.span, "`#[derive(..)]` is not used").fix(

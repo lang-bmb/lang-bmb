@@ -291,17 +291,22 @@ impl Renamer<'_> {
         }
     }
 
+    /// The spec fns an attribute names (`#[uses(..)]`, `#[invariant(..)]`).
+    fn attr_targets(&self, a: &mut Attr) {
+        for x in &mut a.args {
+            if let AttrArg::Ident(i) = x {
+                let mut s: Vec<String> = i.name.split("::").map(String::from).collect();
+                self.segs(&mut s, Site::Call);
+                i.name = s.join("::");
+            }
+        }
+    }
+
     fn function(&mut self, f: &mut FnDef) {
         let depth = self.tparams.len();
         self.generics(&mut f.generics);
         for a in f.attrs.iter_mut().filter(|a| a.name.name == "uses") {
-            for x in &mut a.args {
-                if let AttrArg::Ident(i) = x {
-                    let mut s: Vec<String> = i.name.split("::").map(String::from).collect();
-                    self.segs(&mut s, Site::Call);
-                    i.name = s.join("::");
-                }
-            }
+            self.attr_targets(a);
         }
         for p in &mut f.params {
             self.ty(&mut p.ty);
@@ -475,6 +480,10 @@ impl Renamer<'_> {
         for td in &mut m.types {
             if here && kind == TargetKind::Type && td.name.name == local[0] {
                 td.name.name = to.clone();
+            }
+            // `#[invariant(p)]` names its predicate as `#[uses]` does.
+            for a in td.attrs.iter_mut().filter(|a| a.name.name == "invariant") {
+                self.attr_targets(a);
             }
             let depth = self.tparams.len();
             self.generics(&mut td.generics);

@@ -31,6 +31,7 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 V, C, K = "compiler/src/verify.rs", "compiler/src/codegen.rs", "compiler/src/check.rs"
 S = "compiler/src/subproof.rs"
+VI = "compiler/src/verify/invariants.rs"
 
 # (id, class, file, old, new, what)
 MUTANTS = [
@@ -284,11 +285,11 @@ MUTANTS = [
      "the field facts of recursive struct values also cover values made later or on another path"),
     ("v-return-post-dropped", "unsound", V,
      '''                if !self.dead {
-                    self.post_check(v);
+                    self.post_check(v, e.span, "at this `return`");
                     self.dead = true;
                 }''',
      '''                if !self.dead {
-                    let _ = v;
+                    let _ = (v, e.span);
                     self.dead = true;
                 }''',
      "a `return` does not check the postconditions"),
@@ -358,9 +359,9 @@ MUTANTS = [
      "`lo..hi` runs its end too and `lo..=hi` skips it"),
     ("v-try-return-post-skipped", "unsound", V,
      '''                    let r = s.variant_value(&rt, bad, &vals);
-                    s.post_check(r);''',
+                    s.post_check(r, e.span, "at this `?`");''',
      '''                    let r = s.variant_value(&rt, bad, &vals);
-                    let _ = r;''',
+                    let _ = (r, e.span);''',
      "the `None`/`Err` a `?` returns is not checked against the postconditions"),
     ("c-try-exit-drops-skipped", "miscompile", C,
      '''        for p in exits {
@@ -414,7 +415,7 @@ MUTANTS = [
      "a recursive lemma call need not decrease the measure (an induction without a base)"),
     ("v-lemma-post-dropped", "unsound", V,
      '''                enc.mark_reach(d.f.name.span, "end of the body");
-                enc.post_check(Val::Unit);''',
+                enc.post_check(Val::Unit, d.f.name.span, "at the end of the body");''',
      '''                enc.mark_reach(d.f.name.span, "end of the body");
                 let _unchecked = Val::Unit;''',
      "a lemma's conclusion is never an obligation of its own proof"),
@@ -431,8 +432,10 @@ MUTANTS = [
     # `by (bit_vector)` sub-proofs and bit methods (ADR-0048 §2, §4, backlog 2N-03).
     ("v-subproof-unproved", "unsound", V,
      '''            sub: Some(query),
+            shown: None,
         });''',
      '''            sub: Some(query),
+            shown: None,
         });
         let _ = self.obls.pop();''',
      "a `by (bit_vector)` assertion is assumed without its sub-proof"),
@@ -469,6 +472,21 @@ MUTANTS = [
      '''                let f = if m == "rotate_left" { "fshl" } else { "fshr" };''',
      '''                let f = if m == "rotate_left" { "fshr" } else { "fshl" };''',
      "the generated code rotates the wrong way"),
+    # Type invariants (ADR-0060 §2, backlog T1-11): a boundary whose
+    # obligation is never sent lets a broken value out while every receiver
+    # assumes it valid.
+    ("v-inv-mut-exit-dropped", "unsound", VI,
+     '''                self.oblige_valid(span, Boundary::MutParam(&p.name.name, how), &v, &ty);''',
+     '''                let _ = (&v, &ty, how);''',
+     "a `&mut` parameter is given back without proving its type invariant (E0823)"),
+    ("v-inv-loop-entry-dropped", "unsound", V,
+     '''            self.oblige_valid(span, Boundary::LoopEntry(v), &cur, ty);''',
+     '''            let _ = (span, &cur, ty);''',
+     "a loop assumes the havocked locals valid at its head without proving them valid on entry (E0823)"),
+    ("v-inv-arg-dropped", "unsound", V,
+     '''            self.oblige_valid(a.span, Boundary::Arg(a, &target), v, t);''',
+     '''            let _ = (a, v, t);''',
+     "a call argument is not proved valid, while the callee assumes its parameter is (E0823)"),
 ]
 
 

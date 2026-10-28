@@ -42,6 +42,8 @@
 | E0251 | `break` with a value outside a `loop` |
 | E0252 | `for` over something other than an integer range |
 | E0253 | `decreases` on a `for` loop (its measure is automatic) |
+| E0254 | `#[invariant(p)]`: `p` is not a spec function `(x: &T) -> bool` over the type's parameters, or states nothing |
+| E0255 | more than one `#[invariant(..)]` on a type: join the conditions with `&&` in one predicate |
 | E0256 | a `proof fn` takes no effect attribute and no return type |
 | E0257 | ghost code (a `proof fn` body or a `proof { .. }` block) cannot run executable code: no executable call, assignment, `&mut` or loop |
 | E0258 | a `proof fn` is called only from ghost code: a `proof { .. }` block or another `proof fn` |
@@ -178,6 +180,7 @@
 | E0817 | a trait impl's function does not refine the trait's contract |
 | E0818 | a `by (bit_vector)` sub-proof may not hold, or its assertion has no bit-vector translation |
 | E0819 | an argument of a `proof fn` call may be outside its parameter's type (ghost arithmetic is mathematical, ADR-0062 §2) |
+| E0823 | a type invariant may not hold where a value leaves the function's hands: a call argument, a return, a `&mut` parameter at exit, a loop head (ADR-0060 §2) |
 
 ## W09xx 계약 조정 린트(경고, `bmb lint`만)
 
