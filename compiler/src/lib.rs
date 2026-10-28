@@ -18,6 +18,7 @@ pub mod parser;
 pub mod sha256;
 pub mod smt;
 pub mod source;
+pub mod subproof;
 pub mod toolchain;
 pub mod uses_fill;
 pub mod verify;

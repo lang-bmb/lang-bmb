@@ -1603,6 +1603,63 @@ impl<'a> Parser<'a> {
         })
     }
 
+    /// `by (bit_vector)` after `assert(..)` (ADR-0048 §4). Another prover
+    /// name, or Verus's `by { .. }`, is E0516; the assertion stays a plain
+    /// one (the fix drops an unknown `by (..)`).
+    fn parse_by(&mut self, close: Span) -> Option<Prover> {
+        if !self.is_kw("by") {
+            return None;
+        }
+        let by = self.bump().span;
+        if self.is_p("{") {
+            self.skip_group();
+            self.diags.push(
+                Diag::new(
+                    "E0516",
+                    by.to(self.prev_span()),
+                    "`assert(..) by { .. }` is not available",
+                )
+                .fix(
+                    "prove the steps in a `proof { .. }` block before the `assert`, or write `assert(e) by (bit_vector);`",
+                    None,
+                ),
+            );
+            return None;
+        }
+        if !self.is_p("(") {
+            self.err_expected("`(bit_vector)`");
+            return None;
+        }
+        let name = match self.peek_at(1) {
+            Tok::Ident(n) if matches!(self.peek_at(2), Tok::P(")")) => Some(n.clone()),
+            _ => None,
+        };
+        self.skip_group();
+        let after = Span {
+            file: close.file,
+            lo: close.hi,
+            hi: self.prev_span().hi,
+        };
+        match name.as_deref().and_then(Prover::from_name) {
+            Some(p) => Some(p),
+            None => {
+                let shown = name.unwrap_or_else(|| "..".to_string());
+                self.diags.push(
+                    Diag::new(
+                        "E0516",
+                        after,
+                        format!("unknown prover `{shown}` in `assert(..) by (..)`"),
+                    )
+                    .fix(
+                        "the one prover is `bit_vector` (ADR-0048 §4); any other assertion is proved by the gate itself: drop `by (..)`",
+                        Some(String::new()),
+                    ),
+                );
+                None
+            }
+        }
+    }
+
     fn parse_stmt(&mut self) -> PResult<StmtOrTail> {
         let lo = self.span();
         if let Tok::Ident(s) = self.peek().clone() {
@@ -1613,10 +1670,18 @@ impl<'a> Parser<'a> {
                     self.bump();
                     self.bump();
                     let cond = self.parse_expr()?;
-                    self.expect_p(")")?;
-                    let hi = self.expect_p(";")?;
+                    let close = self.expect_p(")")?;
+                    let block = self.is_kw("by") && matches!(self.peek_at(1), Tok::P("{"));
+                    let by = self.parse_by(close);
+                    // Verus's `by { .. }` ends without `;` (E0516 above).
+                    let hi = if block && !self.is_p(";") {
+                        self.prev_span()
+                    } else {
+                        self.expect_p(";")?
+                    };
                     return Ok(stmt(Stmt::Assert {
                         cond,
+                        by,
                         span: lo.to(hi),
                     }));
                 }

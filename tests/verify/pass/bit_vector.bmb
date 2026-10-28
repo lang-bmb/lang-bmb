@@ -1,0 +1,142 @@
+#[summary("`assert(e) by (bit_vector)` 하위 증명과 비트 메서드(ADR-0048 §2·§4, backlog 2N-03): 실행 코드·proof 블록·proof fn의 하위 증명, 펼치는 spec fn, 회전·개수·바이트 뒤집기·감싸는 시프트의 계약")]
+mod bvp {
+    spec fn low_byte(x: u32) -> u32 { x & 0xff }
+
+    spec fn is_low(x: u32, r: u32) -> bool { r == low_byte(x) }
+
+    // A sub-proof in code: masking twice is masking once. The variables
+    // range over their types; the enclosing proof assumes the fact.
+    #[effects(pure)]
+    #[uses(is_low, low_byte)]
+    fn mask_twice(x: u32) -> (r: u32)
+        ensures is_low(x, r),
+    {
+        assert((x & 0xffff) & 0xff == x & 0xff) by (bit_vector);
+        (x & 0xffff) & 0xff
+    }
+
+    spec fn parity_step(x: u32, r: u32) -> bool { r & 1 == (x ^ (x >> 16)) & 1 }
+
+    // In a `proof` block, with an antecedent written into the assertion.
+    #[effects(pure)]
+    #[uses(parity_step)]
+    fn fold(x: u32) -> (r: u32)
+        ensures parity_step(x, r),
+    {
+        let y: u32 = x ^ (x >> 16);
+        proof {
+            assert(x < 65536 ==> x ^ (x >> 16) == x) by (bit_vector);
+        }
+        y
+    }
+
+    spec fn swapped(a: u8, b: u8) -> bool { (a ^ b) ^ b == a }
+
+    // A lemma proved by a sub-proof, used by its caller.
+    #[uses(swapped)]
+    proof fn xor_twice(a: u8, b: u8)
+        ensures swapped(a, b),
+    {
+        assert((a ^ b) ^ b == a) by (bit_vector);
+    }
+
+    spec fn same(a: u8, r: u8) -> bool { r == a }
+
+    #[effects(pure)]
+    #[uses(same, swapped)]
+    fn round_trip(a: u8, b: u8) -> (r: u8)
+        ensures same(a, r),
+    {
+        proof {
+            xor_twice(a, b);
+        }
+        (a ^ b) ^ b
+    }
+
+    // A spec fn unfolded by the sub-proof; its argument may leave `u8`,
+    // so the fact holds under the guard that it does not.
+    spec fn next(x: u8) -> u8 { x + 1 }
+
+    #[effects(pure)]
+    #[uses(next)]
+    fn guarded(x: u8) -> u8 {
+        assert(x < 255 ==> next(x) & 0 == 0) by (bit_vector);
+        x
+    }
+
+    // Signed values and `bool` variables.
+    #[effects(pure)]
+    fn signs(x: i16, neg: bool) -> i16 {
+        assert(neg == (x < 0) ==> (neg == ((x >> 15) == -1))) by (bit_vector);
+        x
+    }
+
+    spec fn rotated(x: u32, k: u32, r: u32) -> bool { r == x.rotate_left(k) }
+
+    #[effects(pure)]
+    #[uses(rotated)]
+    fn rotl(x: u32, k: u32) -> (r: u32)
+        ensures rotated(x, k, r),
+    {
+        x.rotate_left(k)
+    }
+
+    spec fn counted(x: u64, r: u32) -> bool { r <= 64 && (r == 0) == (x == 0) }
+
+    #[effects(pure)]
+    #[uses(counted)]
+    fn ones(x: u64) -> (r: u32)
+        ensures counted(x, r),
+    {
+        x.count_ones()
+    }
+
+    spec fn below_width(x: u16, r: u32) -> bool { x != 0 ==> r < 16 }
+
+    #[effects(pure)]
+    #[uses(below_width)]
+    fn lowest_set(x: u16) -> (r: u32)
+        ensures below_width(x, r),
+    {
+        x.trailing_zeros()
+    }
+
+    // A count used as a shift amount: below the width when `x` is not 0.
+    #[effects(pure)]
+    fn top_bit(x: u32) -> u32 {
+        if x == 0 {
+            0
+        } else {
+            1 << (31 - x.leading_zeros())
+        }
+    }
+
+    spec fn rotation(x: u32, r: u32) -> bool { r == x.rotate_right(8) }
+
+    // Constant rotations are linear; the same rotation written as shifts
+    // is equal to it over bit-vectors.
+    #[effects(pure)]
+    #[uses(rotation)]
+    fn ror8(x: u32) -> (r: u32)
+        ensures rotation(x, r),
+    {
+        assert((x >> 8) | (x << 24) == x.rotate_right(8)) by (bit_vector);
+        (x >> 8) | (x << 24)
+    }
+
+    spec fn bswapped(x: u32, r: u32) -> bool { r == x.swap_bytes() }
+
+    #[effects(pure)]
+    #[uses(bswapped)]
+    fn big_endian(x: u32) -> (r: u32)
+        ensures bswapped(x, r),
+    {
+        x.swap_bytes()
+    }
+
+    // Wrapping shifts take the amount modulo the width: no obligation.
+    #[effects(pure)]
+    fn shifts(x: i8, k: u32) -> i8 {
+        x.wrapping_shl(k) ^ x.wrapping_shr(k)
+    }
+}

@@ -1,0 +1,94 @@
+#[summary("비트 메서드(backlog 2N-03): FxHash의 회전과 곱, 비트 집합의 원소 수(count_ones)와 가장 작은 원소(trailing_zeros), 2의 거듭제곱 올림(leading_zeros), 바이트 순서(swap_bytes), xorshift(wrapping_shl/shr). 기대 출력은 같은 프로그램을 Rust로 옮겨 rustc로 돌린 것")]
+mod bm {
+    spec fn small(n: u32) -> bool { 0 < n && n <= 1048576 }
+
+    spec fn power(x: u32, r: u32) -> bool { x <= r && r & (r - 1) == 0 }
+
+    spec fn pow2(k: u32) -> u32 { 1 << k }
+
+    // FxHash's step (rustc's hasher): rotate, xor, multiply.
+    #[effects(pure)]
+    fn fx(h: u64, word: u64) -> u64 {
+        (h.rotate_left(5) ^ word).wrapping_mul(0x517cc1b727220a95)
+    }
+
+    #[effects(pure)]
+    fn fx_bytes(s: &[u8]) -> u64 {
+        let mut h: u64 = 0;
+        for i in 0..s.len() {
+            h = fx(h, u64::try_from(s[i]).unwrap());
+        }
+        h
+    }
+
+    // The members of a set of small numbers, smallest first: the lowest set
+    // bit is the member, and clearing it moves on.
+    #[effects(io)]
+    fn members(set: u64) -> () {
+        let mut s: u64 = set;
+        let n: u32 = s.count_ones();
+        print_u64(u64::try_from(n).unwrap());
+        while s != 0
+            decreases s,
+        {
+            print_u64(u64::try_from(s.trailing_zeros()).unwrap());
+            s = s & (s - 1);
+        }
+    }
+
+    // The least power of two at or above `n`: one bit above the highest
+    // bit of `n - 1`. The sub-proof states the facts of the bits that the
+    // shift and the postcondition need.
+    #[effects(pure)]
+    #[uses(small, power, pow2)]
+    fn next_power(n: u32) -> (r: u32)
+        requires small(n),
+        ensures power(n, r),
+    {
+        if n == 1 {
+            return 1;
+        }
+        let z: u32 = (n - 1).leading_zeros();
+        proof {
+            assert((1 < n && n <= 1048576 && z == (n - 1).leading_zeros()) ==> (12 <= z && z <= 31 && n <= pow2(32 - z) && pow2(32 - z) & (pow2(32 - z) - 1) == 0)) by (bit_vector);
+        }
+        1 << (32 - z)
+    }
+
+    // xorshift64 (Marsaglia).
+    #[effects(pure)]
+    fn xorshift(x: u64) -> u64 {
+        let a: u64 = x ^ x.wrapping_shl(13);
+        let b: u64 = a ^ a.wrapping_shr(7);
+        b ^ b.wrapping_shl(17)
+    }
+
+    #[effects(io)]
+    #[uses(small)]
+    fn main() -> () {
+        print_u64(fx_bytes(b"hello"));
+        print_u64(fx_bytes(b"The quick brown fox jumps over the lazy dog"));
+        members(0x8000000000010025);
+        members(0);
+        let ns: [u32; 6] = [1, 2, 3, 17, 1000, 1048576];
+        for i in 0..ns.len() {
+            print_u64(u64::try_from(next_power(ns[i])).unwrap());
+        }
+        let w: u32 = 0x12345678;
+        print_u64(u64::try_from(w.swap_bytes()).unwrap());
+        let s: i16 = -2;
+        print_i64(i64::try_from(s.swap_bytes()).unwrap());
+        print_i64(i64::try_from(s.rotate_right(4)).unwrap());
+        print_u64(u64::try_from(s.leading_zeros()).unwrap());
+        print_u64(u64::try_from(s.count_zeros()).unwrap());
+        let mut x: u64 = 88172645463325252;
+        for _r in 0..4 {
+            x = xorshift(x);
+            print_u64(x);
+        }
+        let b: u8 = 0x96;
+        print_u64(u64::try_from(b.rotate_left(3)).unwrap());
+        print_u64(u64::try_from(b.rotate_right(11)).unwrap());
+        print_u64(u64::try_from(b.wrapping_shl(9)).unwrap());
+    }
+}

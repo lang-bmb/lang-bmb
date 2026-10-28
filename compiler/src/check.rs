@@ -608,6 +608,17 @@ pub fn parse_ty(s: &str) -> Option<TypeKind> {
 fn is_int(t: &TypeKind) -> bool {
     matches!(t, TypeKind::Int(_))
 }
+
+/// The number of arguments of a bit method of the integer types (ADR-0048
+/// §2, backlog 2N-03), as in Rust: a rotation or wrapping shift takes its
+/// `u32` amount; the counts and `swap_bytes` take none.
+pub fn bit_method_arity(m: &str) -> Option<usize> {
+    match m {
+        "rotate_left" | "rotate_right" | "wrapping_shl" | "wrapping_shr" => Some(1),
+        "count_ones" | "count_zeros" | "leading_zeros" | "trailing_zeros" | "swap_bytes" => Some(0),
+        _ => None,
+    }
+}
 fn is_scalar(t: &TypeKind) -> bool {
     is_int(t) || matches!(t, TypeKind::Bool)
 }
@@ -3436,9 +3447,18 @@ impl<'a> Checker<'a> {
                 cx.scopes.pop();
                 self.expect_ty(&bt, &TypeKind::Unit, body.span);
             }
-            Stmt::Assert { cond, span } => {
+            // `assert(e) by (bit_vector);` is a statement wherever `assert`
+            // is: executable code, a `proof` block and a `proof fn` body
+            // (ADR-0048 §4, as in Verus).
+            Stmt::Assert { cond, by, span } => {
                 if mode != Mode::Exec && mode != Mode::Ghost {
-                    self.err("E0503", *span, "`assert` is not allowed in a specification");
+                    self.diags.push(
+                        Diag::new("E0503", *span, "`assert` is not allowed in a specification")
+                            .fix(
+                                "an assertion is a statement of code, a `proof` block or a `proof fn`; a fact about a specification is a `proof fn`'s `ensures`",
+                                None,
+                            ),
+                    );
                 }
                 let t = self.expr(
                     cx,
@@ -3447,6 +3467,9 @@ impl<'a> Checker<'a> {
                     Mode::Spec { allow_old: true },
                 );
                 self.expect_ty(&t, &TypeKind::Bool, cond.span);
+                if by.is_some() && t == TypeKind::Bool {
+                    self.bit_vector_terms(cond);
+                }
             }
             Stmt::Expr(e) => {
                 self.expr(cx, e, None, mode);
@@ -5916,6 +5939,91 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// The terms of `assert(e) by (bit_vector)` (ADR-0048 §4): integer and
+    /// `bool` values built from variables, literals, integer constants,
+    /// operators, `if`, `let` blocks, integer methods with an integer value
+    /// and spec fn calls (whose bodies the prover unfolds, E0818 when it
+    /// cannot). Anything else (an index, a field, a quantifier, `old`, a
+    /// data value) is E0515.
+    fn bit_vector_terms(&mut self, e: &Expr) {
+        let ty = self
+            .types
+            .get(&(e.span.file, e.span.lo, e.span.hi))
+            .cloned()
+            .unwrap_or(TypeKind::Error);
+        let scalar = is_int(&ty) || ty == TypeKind::Bool;
+        let what = match &e.kind {
+            _ if ty == TypeKind::Error => return,
+            ExprKind::Int(..) | ExprKind::ByteLit(_) | ExprKind::Bool(_) if scalar => None,
+            ExprKind::Path(p) if int_const(p).is_some() => None,
+            ExprKind::Var(_) if scalar => None,
+            ExprKind::Var(_) => Some(format!("a value of type `{}`", ty_str(&ty))),
+            ExprKind::Unary(_, x) if scalar => {
+                self.bit_vector_terms(x);
+                None
+            }
+            ExprKind::Binary(_, a, b) if scalar => {
+                self.bit_vector_terms(a);
+                self.bit_vector_terms(b);
+                None
+            }
+            ExprKind::If { cond, then, els } if scalar => {
+                self.bit_vector_terms(cond);
+                self.bit_vector_block(then);
+                if let Some(x) = els {
+                    self.bit_vector_terms(x);
+                }
+                None
+            }
+            ExprKind::Block(b) if scalar => {
+                self.bit_vector_block(b);
+                None
+            }
+            ExprKind::Call { args, .. } if scalar => {
+                args.iter().for_each(|a| self.bit_vector_terms(a));
+                None
+            }
+            ExprKind::Method { recv, args, .. } if scalar => {
+                self.bit_vector_terms(recv);
+                args.iter().for_each(|a| self.bit_vector_terms(a));
+                None
+            }
+            ExprKind::Index { .. } => Some("an element".to_string()),
+            ExprKind::Field { .. } => Some("a field".to_string()),
+            ExprKind::Forall { .. } => Some("a quantifier".to_string()),
+            ExprKind::Old(_) => Some("an entry value (`old`)".to_string()),
+            ExprKind::Deref(_) => Some("a value behind a reference".to_string()),
+            _ if !scalar => Some(format!("a value of type `{}`", ty_str(&ty))),
+            _ => Some("not a bit-vector term".to_string()),
+        };
+        if let Some(what) = what {
+            let d = Diag::new(
+                "E0515",
+                e.span,
+                format!(
+                    "`by (bit_vector)` takes integer and `bool` terms: `{}` is {what}",
+                    crate::fmt::expr_text(e)
+                ),
+            )
+            .fix(
+                "bind the value to a `let` (a ghost `let` in a `proof` block) and assert over the variable; a quantified fact is a `proof fn` over one value",
+                None,
+            );
+            self.diags.push(d);
+        }
+    }
+
+    fn bit_vector_block(&mut self, b: &Block) {
+        for s in &b.stmts {
+            if let Stmt::Let { init, .. } = s {
+                self.bit_vector_terms(init);
+            }
+        }
+        if let Some(t) = &b.tail {
+            self.bit_vector_terms(t);
+        }
+    }
+
     /// `a << s`, `a >> s` (ADR-0048 §2): `a` is an integer and so is the
     /// amount `s`, of any integer type as in Rust (a literal amount is a
     /// `u32`, the type of Rust's `shl` methods); the value has `a`'s type.
@@ -6072,6 +6180,49 @@ impl<'a> Checker<'a> {
                     return option_of(rt);
                 }
                 rt
+            }
+            // Bit methods (ADR-0048 §2, backlog 2N-03), Rust's signatures:
+            // the amount is a `u32` and the counts are `u32`s.
+            m if bit_method_arity(m).is_some() => {
+                let arity = bit_method_arity(m).expect("a bit method");
+                if args.len() != arity {
+                    let (n, form) = if arity == 0 {
+                        ("no arguments", format!("`x.{m}()`"))
+                    } else {
+                        (
+                            "one argument",
+                            format!("`x.{m}(n)` with an amount `n: u32`"),
+                        )
+                    };
+                    self.diags.push(
+                        Diag::new("E0405", name.span, format!("`{m}` takes {n}"))
+                            .fix(format!("write {form} (Rust's signature)"), None),
+                    );
+                    return TypeKind::Error;
+                }
+                let u32t = TypeKind::Int(IntTy::U32);
+                let at = args.first().map(|a| self.expr(cx, a, Some(&u32t), mode));
+                if !is_int(&rt) {
+                    if rt != TypeKind::Error {
+                        self.diags.push(
+                            Diag::new(
+                                "E0404",
+                                name.span,
+                                format!("`{m}` is not defined for `{}`", ty_str(&rt)),
+                            )
+                            .fix("bit methods are methods of the integer types", None),
+                        );
+                    }
+                    return TypeKind::Error;
+                }
+                if let (Some(at), Some(a)) = (at, args.first()) {
+                    self.expect_ty(&at, &u32t, a.span);
+                }
+                if m.starts_with("count_") || m.ends_with("_zeros") {
+                    u32t
+                } else {
+                    rt
+                }
             }
             "into" | "try_into" if is_int(&rt) => {
                 for a in args {

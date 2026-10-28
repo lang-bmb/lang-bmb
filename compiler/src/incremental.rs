@@ -424,7 +424,7 @@ fn node_spans(f: &FnDef) -> Vec<Span> {
                 invariants.iter().for_each(|e| expr(e, out));
                 block(body, out);
             }
-            Stmt::Assert { cond, span } => {
+            Stmt::Assert { cond, span, .. } => {
                 out.push(*span);
                 expr(cond, out);
             }

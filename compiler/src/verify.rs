@@ -1563,6 +1563,10 @@ struct Obl {
     msg: String,
     assumptions: Vec<String>,
     goal: String,
+    /// A sub-proof (`assert(e) by (bit_vector)`, ADR-0048 §4): its own
+    /// query in place of the assumptions and goal, or why `e` has none
+    /// (and the spec fns it would unfold that `#[uses]` does not reveal).
+    sub: Option<Result<crate::subproof::Query, (String, Vec<String>)>>,
 }
 
 struct Def<'p> {
@@ -1992,6 +1996,110 @@ fn bool_bit(op: BinOp, a: &str, b: &str) -> String {
     }
 }
 
+/// A bit method `a.m(n)` of integer type `i` (ADR-0048 §2, backlog 2N-03)
+/// in a specification: its term and the facts about it when `a` is in
+/// range (code assumes them, as `bit_op`'s). Rust's semantics: a rotation or
+/// wrapping shift moves by `n mod w` (`n` is a `u32`); the counts are `u32`
+/// values in `0..=w`. A constant amount is linear (ADR-0048 §4): a wrapping
+/// shift has `<<`'s or `>>`'s form, a rotation is the sum of its two parts.
+/// Anything else is one bit-vector term behind `bv2nat`, through a named
+/// function (`subproof::helper_def`), so the abstracted query sees one
+/// constant with its facts and code and specification terms stay
+/// comparable (`bit_congruences`). Checked by `tests/lemmas.rs`.
+pub fn bit_method(m: &str, i: IntTy, a: &str, n: Option<&str>) -> (String, Vec<String>) {
+    let xn = n.map(|n| to_bv(i, n));
+    let t = method_term(m, i, a, &to_bv(i, a), n, xn.as_deref());
+    let facts = method_facts(m, i, a, &t);
+    (t, facts)
+}
+
+/// `bit_method`'s term over `xa`, the bit-vector of `a`, and `xn`, the
+/// amount modulo `2^w` as a bit-vector of `a`'s width `w` (which `w`
+/// divides, so the amount modulo `w` is its low bits).
+fn method_term(m: &str, i: IntTy, a: &str, xa: &str, n: Option<&str>, xn: Option<&str>) -> String {
+    let w = i.bits();
+    let wi = w as i128;
+    if let Some(k) = n.and_then(numeral) {
+        let k = k.rem_euclid(wi);
+        let left = if m == "rotate_right" {
+            (wi - k) % wi
+        } else {
+            k
+        };
+        match m {
+            "wrapping_shl" => {
+                return linear_bit(BinOp::Shl, i, a, &k.to_string()).expect("a constant shift");
+            }
+            "wrapping_shr" => {
+                return linear_bit(BinOp::Shr, i, a, &k.to_string()).expect("a constant shift");
+            }
+            "rotate_left" | "rotate_right" if left == 0 => return a.to_string(),
+            "rotate_left" | "rotate_right" => {
+                // The low `w - left` bits move up, the high `left` bits down,
+                // of the unsigned image of `a`.
+                let lo = num(1i128 << (wi - left));
+                let u = if i.signed() {
+                    format!("(mod {a} {})", num(1i128 << w))
+                } else {
+                    a.to_string()
+                };
+                let r = format!(
+                    "(+ (* (mod {a} {lo}) {}) (div {u} {lo}))",
+                    num(1i128 << left)
+                );
+                return if i.signed() { wrap_int(i, &r) } else { r };
+            }
+            _ => {}
+        }
+    }
+    let h = |op: &str| format!("bmb_{op}{w}");
+    match m {
+        "wrapping_shl" | "wrapping_shr" => {
+            let s = format!("(bvand {} (_ bv{} {w}))", xn.expect("an amount"), w - 1);
+            let op = if m == "wrapping_shl" {
+                BinOp::Shl
+            } else {
+                BinOp::Shr
+            };
+            bv_term(op, i, xa, &s)
+        }
+        "rotate_left" | "rotate_right" => {
+            let f = if m == "rotate_left" { "rotl" } else { "rotr" };
+            from_bv(i, &format!("({} {xa} {})", h(f), xn.expect("an amount")))
+        }
+        "swap_bytes" if w == 8 => a.to_string(),
+        "swap_bytes" => from_bv(i, &format!("({} {xa})", h("bswap"))),
+        "count_ones" => format!("(bv2nat ({} {xa}))", h("ctpop")),
+        "count_zeros" => format!("(- {w} (bv2nat ({} {xa})))", h("ctpop")),
+        "leading_zeros" => format!("(bv2nat ({} {xa}))", h("clz")),
+        "trailing_zeros" => format!("(bv2nat ({} {xa}))", h("ctz")),
+        _ => unreachable!("bit method {m}"),
+    }
+}
+
+/// What a bit method's bit-vector term `r` satisfies when `a` is in `i`'s
+/// range: a value of `i`, or a count in `0..=w` that is extreme exactly at
+/// zero. A linear term needs none.
+fn method_facts(m: &str, i: IntTy, a: &str, r: &str) -> Vec<String> {
+    if !r.contains("(bv2nat ") {
+        return Vec::new();
+    }
+    let w = i.bits();
+    let fs = match m {
+        "count_ones" => vec![
+            format!("(and (<= 0 {r}) (<= {r} {w}))"),
+            format!("(= (= {r} 0) (= {a} 0))"),
+        ],
+        "count_zeros" | "leading_zeros" | "trailing_zeros" => vec![
+            format!("(and (<= 0 {r}) (<= {r} {w}))"),
+            format!("(= (= {r} {w}) (= {a} 0))"),
+        ],
+        _ => vec![range_int(i, r)],
+    };
+    let ra = range_int(i, a);
+    fs.into_iter().map(|f| format!("(=> {ra} {f})")).collect()
+}
+
 /// A built-in integer method `a.op(b)` on type `t` (ADR-0028 §3, §5).
 enum IntMethod {
     /// `wrapping_*`, `saturating_*`: a value of `t`.
@@ -2066,6 +2174,14 @@ fn byte_array(v: &[u8]) -> String {
 
 fn sym(name: &str) -> String {
     format!("|{name}|")
+}
+
+/// `e` with each atom in `m` replaced by its term.
+fn subst_atoms(e: &smt::Sexp, m: &BTreeMap<String, smt::Sexp>) -> smt::Sexp {
+    match e {
+        smt::Sexp::Atom(a) => m.get(a).cloned().unwrap_or_else(|| e.clone()),
+        smt::Sexp::List(xs) => smt::Sexp::List(xs.iter().map(|x| subst_atoms(x, m)).collect()),
+    }
 }
 
 impl<'p, 'q> Enc<'p, 'q> {
@@ -2448,6 +2564,23 @@ impl<'p, 'q> Enc<'p, 'q> {
         c
     }
 
+    /// A bit method in code (`bit_method`): the operand is a named
+    /// bit-vector, and the term's facts are assumed. The amount is
+    /// converted as in a specification (`int2bv` of `a`'s width), so the two
+    /// read alike for the congruence facts. A constant amount is linear and
+    /// names nothing.
+    fn bit_method_code(&mut self, m: &str, i: IntTy, a: &str, n: Option<&str>) -> String {
+        if n.and_then(numeral).is_some() || (m == "swap_bytes" && i.bits() == 8) {
+            return method_term(m, i, a, "", n, None);
+        }
+        let xa = self.operand_bv(i, a);
+        let xn = n.map(|n| to_bv(i, n));
+        let t = method_term(m, i, a, &xa, n, xn.as_deref());
+        let facts = method_facts(m, i, a, &t);
+        self.pc.extend(facts);
+        t
+    }
+
     /// A shift amount `s` (of any integer type) must be in `0..w`, `w` the
     /// width of the shifted value's type `i` (ADR-0048 §2: Rust's debug
     /// build panics there, so it is an overflow obligation, E0803).
@@ -2480,6 +2613,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                 msg: msg.into(),
                 assumptions,
                 goal: goal.clone(),
+                sub: None,
             });
         }
         if self.term_check.is_none() {
@@ -2610,6 +2744,11 @@ impl<'p, 'q> Enc<'p, 'q> {
                         _ => panic!("len of scalar"),
                     },
                     "as_slice" | "as_mut_slice" => rv,
+                    m if crate::check::bit_method_arity(m).is_some() => {
+                        let i = self.ty(recv).int().expect("an integer method");
+                        let n = args.first().map(|x| self.spec(x, env, old).s());
+                        Val::S(bit_method(m, i, &rv.s(), n.as_deref()).0)
+                    }
                     op => {
                         let b = self.spec(&args[0], env, old).s();
                         match int_method(op, &self.ty(recv), &rv.s(), &b) {
@@ -2884,6 +3023,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                 msg,
                 assumptions,
                 goal: format!("(forall ({}) (=> {} {goal}))", decls.join(" "), and(&inner)),
+                sub: None,
             });
             return;
         }
@@ -3190,6 +3330,11 @@ impl<'p, 'q> Enc<'p, 'q> {
                     },
                     "as_slice" | "as_mut_slice" | "clone" => rv,
                     m @ ("push" | "pop" | "truncate") => self.vec_change(e, recv, rv, m, args),
+                    m if crate::check::bit_method_arity(m).is_some() => {
+                        let i = self.ty(recv).int().expect("an integer method");
+                        let n = args.first().map(|x| self.eval(x).s());
+                        Val::S(self.bit_method_code(m, i, &rv.s(), n.as_deref()))
+                    }
                     op => {
                         let b = self.eval(&args[0]).s();
                         if op.ends_with("_mul") {
@@ -3568,6 +3713,207 @@ impl<'p, 'q> Enc<'p, 'q> {
         self.vars.retain(|k, _| before.contains(k));
     }
 
+    /// `assert(e) by (bit_vector)` (ADR-0048 §4, backlog 2N-03): `e` is
+    /// proved in a query of its own (`subproof::bit_vector`) that sees its
+    /// free variables only, each over its whole type, and none of the path's
+    /// facts (Verus's rule; a needed fact is written as `p ==> q`). The
+    /// query translates the very term the enclosing query then assumes,
+    /// under the free variables' ranges and the guards of unfolded spec fns
+    /// (true of every value of code: a variable of code is in its type).
+    /// Code, a `proof` block and a `proof fn` body treat it alike.
+    fn sub_proof(&mut self, _prover: Prover, cond: &Expr, span: Span) {
+        let mut free = BTreeMap::new();
+        self.free_scalars(cond, &mut Vec::new(), &mut free);
+        let (env, old) = self.cur_env();
+        let fresh: BTreeMap<String, Val> =
+            free.keys().map(|n| (n.clone(), Val::S(sym(n)))).collect();
+        let term = self.spec(cond, &fresh, &BTreeMap::new()).s();
+        let fact = self.spec(cond, &env, &old).s();
+        let vars: Vec<(String, crate::subproof::Sort)> =
+            free.iter().map(|(n, s)| (sym(n), *s)).collect();
+        let revealed: BTreeSet<String> = self
+            .prog
+            .revealed(self.prog.defs[&self.path].f, &self.mod_path)
+            .into_iter()
+            .collect();
+        let mut hidden = Vec::new();
+        let query = match smt::parse(&term) {
+            Some(t) => crate::subproof::bit_vector(&t, &vars, &mut |f, ps| {
+                self.unfold_spec(f, ps, &revealed, &mut hidden)
+            }),
+            None => Err("the assertion has no SMT term".to_string()),
+        }
+        .map_err(|why| (why, hidden));
+        // The variables' values here, for the assumed fact.
+        let real: BTreeMap<String, smt::Sexp> = free
+            .keys()
+            .filter_map(|n| Some((sym(n), smt::parse(&env.get(n)?.s())?)))
+            .collect();
+        let mut ante: Vec<String> = free
+            .iter()
+            .filter_map(|(n, s)| match s {
+                crate::subproof::Sort::Int(i) => Some(range_int(*i, &env.get(n)?.s())),
+                crate::subproof::Sort::Bool => None,
+            })
+            .collect();
+        if let Ok(q) = &query {
+            for g in &q.guards {
+                if let Some(g) = smt::parse(g) {
+                    ante.push(smt::print(&subst_atoms(&g, &real)));
+                }
+            }
+        }
+        let goal = query
+            .as_ref()
+            .map_or("false".to_string(), |q| q.goal.clone());
+        self.obls.push(Obl {
+            code: "E0818",
+            span,
+            msg: "bit-vector assertion may not hold".into(),
+            assumptions: Vec::new(),
+            goal,
+            sub: Some(query),
+        });
+        self.pc.push(if ante.is_empty() {
+            fact
+        } else {
+            format!("(=> {} {fact})", and(&ante))
+        });
+    }
+
+    /// The free variables of a `by (bit_vector)` assertion (integers and
+    /// `bool`s, E0515) with their sorts; `bound` are the `let`s around.
+    fn free_scalars(
+        &self,
+        e: &Expr,
+        bound: &mut Vec<String>,
+        out: &mut BTreeMap<String, crate::subproof::Sort>,
+    ) {
+        match &e.kind {
+            ExprKind::Var(id) if !bound.contains(&id.name) => {
+                let sort = match self.ty(e) {
+                    TypeKind::Int(i) => crate::subproof::Sort::Int(i),
+                    _ => crate::subproof::Sort::Bool,
+                };
+                out.insert(id.name.clone(), sort);
+            }
+            ExprKind::Unary(_, x) => self.free_scalars(x, bound, out),
+            ExprKind::Binary(_, a, b) => {
+                self.free_scalars(a, bound, out);
+                self.free_scalars(b, bound, out);
+            }
+            ExprKind::If { cond, then, els } => {
+                self.free_scalars(cond, bound, out);
+                self.free_block(then, bound, out);
+                if let Some(x) = els {
+                    self.free_scalars(x, bound, out);
+                }
+            }
+            ExprKind::Block(b) => self.free_block(b, bound, out),
+            ExprKind::Call { args, .. } => {
+                args.iter().for_each(|a| self.free_scalars(a, bound, out));
+            }
+            ExprKind::Method { recv, args, .. } => {
+                self.free_scalars(recv, bound, out);
+                args.iter().for_each(|a| self.free_scalars(a, bound, out));
+            }
+            _ => {}
+        }
+    }
+
+    fn free_block(
+        &self,
+        b: &Block,
+        bound: &mut Vec<String>,
+        out: &mut BTreeMap<String, crate::subproof::Sort>,
+    ) {
+        let n = bound.len();
+        for s in &b.stmts {
+            if let Stmt::Let { name, init, .. } = s {
+                self.free_scalars(init, bound, out);
+                bound.push(name.name.clone());
+            }
+        }
+        if let Some(t) = &b.tail {
+            self.free_scalars(t, bound, out);
+        }
+        bound.truncate(n);
+    }
+
+    /// The body of the spec fn whose SMT symbol is `f`, over the
+    /// placeholders `ps` for its parameters, for a sub-proof. Only a
+    /// non-recursive, non-generic spec fn of integers and `bool`s that the
+    /// definition reveals (`#[uses]`) unfolds; its body is translated as the
+    /// encoder translates it everywhere (`spec_block`).
+    fn unfold_spec(
+        &mut self,
+        f: &str,
+        ps: &[String],
+        revealed: &BTreeSet<String>,
+        hidden: &mut Vec<String>,
+    ) -> Result<Option<crate::subproof::Unfolded>, String> {
+        use crate::subproof::Sort;
+        if f == "bmb_tdiv" || f == "bmb_trem" {
+            return Err(
+                "signed `/` and `%` have no bit-vector translation (divide by a constant of an unsigned type)"
+                    .into(),
+            );
+        }
+        let prog = self.prog;
+        let Some((path, d)) = prog
+            .defs
+            .iter()
+            .find(|(p, d)| d.f.kind == FnKind::Spec && sym(p) == f)
+        else {
+            return Ok(None);
+        };
+        let sig = &prog.t.fns[path];
+        if d.inst || !sig.generics.is_empty() {
+            return Err(format!(
+                "`{path}` is generic: a bit-vector sub-proof unfolds spec fns of integers and `bool`s"
+            ));
+        }
+        if !revealed.contains(path) {
+            // As `hidden_predicates` names it: local in its own unit.
+            let local = path
+                .strip_prefix(&format!("{}::", self.mod_path))
+                .filter(|l| !l.contains("::"));
+            hidden.push(local.unwrap_or(path).to_string());
+            return Err(format!(
+                "`{path}` is not revealed (the sub-proof unfolds the spec fns the assertion calls)"
+            ));
+        }
+        if prog.t.recursive.contains_key(path) {
+            return Err(format!(
+                "`{path}` is recursive: a bit-vector sub-proof unfolds only non-recursive spec fns"
+            ));
+        }
+        let sort = |t: &TypeKind| match t {
+            TypeKind::Int(i) => Some(Sort::Int(*i)),
+            TypeKind::Bool => Some(Sort::Bool),
+            _ => None,
+        };
+        let params: Option<Vec<Sort>> = sig.params.iter().map(sort).collect();
+        let (Some(params), Some(_)) = (params, sort(&sig.ret)) else {
+            return Err(format!(
+                "`{path}` takes or returns a value that is not an integer or `bool`"
+            ));
+        };
+        let env: BTreeMap<String, Val> =
+            d.f.params
+                .iter()
+                .zip(ps)
+                .map(|(p, s)| (p.name.name.clone(), Val::S(s.clone())))
+                .collect();
+        let body = self
+            .in_def(&d.mod_path, BTreeMap::new(), |s| {
+                s.spec_block(&d.f.body, &env, &BTreeMap::new())
+            })
+            .s();
+        let body = smt::parse(&body).ok_or_else(|| format!("`{path}` has no SMT term"))?;
+        Ok(Some(crate::subproof::Unfolded { body, params }))
+    }
+
     fn stmt(&mut self, s: &Stmt) {
         match s {
             Stmt::LetFields { .. } => unreachable!("rejected by the checker (E0230)"),
@@ -3591,7 +3937,12 @@ impl<'p, 'q> Enc<'p, 'q> {
                 let nv = self.set_at(cur, &steps, v);
                 self.vars.insert(root, nv);
             }
-            Stmt::Assert { cond, span } => {
+            Stmt::Assert {
+                cond,
+                by: Some(p),
+                span,
+            } => self.sub_proof(*p, cond, *span),
+            Stmt::Assert { cond, span, .. } => {
                 let (env, old) = self.cur_env();
                 let g = self.spec(cond, &env, &old).s();
                 self.oblige("E0810", *span, "assertion may not hold", g);
@@ -5381,7 +5732,12 @@ fn needed_decls(
     // query (and ignores `rlimit`) when a datatype nested in an array is
     // declared after the prelude's `div` macros (backlog 2O-03c,
     // `dev-docs/measurements/z3-nested-datatypes`).
-    format!("{head}{PRELUDE}\n{out}")
+    // The bit-vector functions of the bit methods the query applies (none
+    // in a query without them: its text is unchanged).
+    format!(
+        "{head}{PRELUDE}\n{}{out}",
+        crate::subproof::helper_defs(text)
+    )
 }
 
 /// Whether the `requires` clauses of every executable function that has
@@ -5720,6 +6076,131 @@ fn verify_impl(
         for (k, o) in enc.obls.iter().enumerate() {
             if stop_at_failure && failed > 0 {
                 break;
+            }
+            if let Some(sub) = &o.sub {
+                let key = (o.code, o.span.file, o.span.lo, o.span.hi);
+                let q = match sub {
+                    Ok(q) => q,
+                    Err((why, hidden)) => {
+                        failed += 1;
+                        failed_keys.insert(key);
+                        let d = Diag::new(
+                            "E0818",
+                            o.span,
+                            format!(
+                                "the assertion has no bit-vector translation in `{path}`: {why}"
+                            ),
+                        );
+                        // An unrevealed spec fn: the hint `bmb uses` reads.
+                        diags.push(if hidden.is_empty() {
+                            d.fix(
+                                "a bit-vector sub-proof takes integers and `bool`s, bit operations, `+`, `-`, `*`, division by positive constants, comparisons, and calls of non-recursive spec fns named in `#[uses(..)]`",
+                                None,
+                            )
+                        } else {
+                            with_hint(d, hidden, false)
+                        });
+                        continue;
+                    }
+                };
+                let base = format!("{}\n{}", header.join("\n"), q.base());
+                let neg = q.negated_goal();
+                script.push_str(&format!(
+                    "; obligation {k}: {} {} (sub-proof)\n(reset)\n{base}{neg}\n(check-sat)\n",
+                    o.code, o.msg
+                ));
+                let cache_key = cache
+                    .as_ref()
+                    .map(|_| ProofCache::key(&format!("{base}\n{neg}")));
+                if let (Some(c), Some(ck)) = (cache.as_mut(), cache_key.as_ref())
+                    && let Some((total, max, _)) = c.get(ck)
+                {
+                    rlimit_total += total;
+                    rlimit_max = rlimit_max.max(max);
+                    proved_keys.insert(key);
+                    def_proved.push(key);
+                    continue;
+                }
+                if solver.is_none() && !solver_down {
+                    match Solver::start() {
+                        Ok(s) => solver = Some(s),
+                        Err(e) => {
+                            diags.push(Diag::new(
+                                "E0812",
+                                d.f.name.span,
+                                format!("solver error: {e}"),
+                            ));
+                            solver_down = true;
+                        }
+                    }
+                }
+                let Some(sol) = solver.as_mut() else {
+                    failed += 1;
+                    continue;
+                };
+                let answer = sol
+                    .run("(reset)")
+                    .and_then(|_| sol.run(&base))
+                    .and_then(|_| sol.run(&neg))
+                    .and_then(|_| sol.check_sat());
+                let mut used = 0;
+                if answer.is_ok()
+                    && let Ok(u) = sol.rlimit_used()
+                {
+                    used = u;
+                    rlimit_total += u;
+                    rlimit_max = rlimit_max.max(u);
+                }
+                match answer {
+                    Ok(Answer::Unsat) => {
+                        proved_keys.insert(key);
+                        def_proved.push(key);
+                        if let (Some(c), Some(ck)) = (cache.as_mut(), cache_key) {
+                            c.insert(ck, used, used, false);
+                        }
+                        continue;
+                    }
+                    Ok(Answer::Sat) => {
+                        let cex = sub_counterexample(sol, q);
+                        let mut msg = format!("{} in `{path}`", o.msg);
+                        if !cex.is_empty() {
+                            msg.push_str(&format!("; counterexample: {cex}"));
+                        }
+                        diags.push(Diag::new("E0818", o.span, msg).fix(
+                            "the sub-proof sees only the assertion's variables, each over its whole type, and no fact of the path: write what it needs into the assertion as `p ==> e`",
+                            None,
+                        ));
+                    }
+                    Ok(Answer::Unknown(why)) => {
+                        let why = if why.contains("canceled") || why.contains("resource") {
+                            format!("resource limit reached, rlimit {}", smt::rlimit())
+                        } else {
+                            why
+                        };
+                        diags.push(Diag::new(
+                            "E0811",
+                            o.span,
+                            format!("{} in `{path}`: solver could not decide ({why})", o.msg),
+                        ));
+                    }
+                    Err(e) if e.contains("canceled") => diags.push(Diag::new(
+                        "E0811",
+                        o.span,
+                        format!(
+                            "{} in `{path}`: solver could not decide (resource limit reached, rlimit {})",
+                            o.msg,
+                            smt::rlimit()
+                        ),
+                    )),
+                    Err(e) => {
+                        diags.push(Diag::new("E0812", o.span, format!("solver error: {e}")));
+                        solver = None;
+                        solver_down = true;
+                    }
+                }
+                failed += 1;
+                failed_keys.insert(key);
+                continue;
             }
             let q = format!(
                 "{}\n(assert (not {}))",
@@ -6145,9 +6626,30 @@ fn bit_congruences(head: &str, cmds: &[smt::Sexp], terms: &[String]) -> Vec<Stri
         }
     }
     // Terms by their reading; the first of each reading is the one the
-    // others are equated with.
+    // others are equated with. The firsts of different readings of one
+    // shape (the tree with each leaf read as its width only) are related
+    // pairwise, under the equality of the leaves that differ (backlog
+    // 2N-03: a table entry `t[i]` and the spec fn value it equals,
+    // `byte(i, 0)`, are different leaves of one `^`).
     let mut first: BTreeMap<String, smt::Sexp> = BTreeMap::new();
+    let mut shapes: BTreeMap<String, Vec<smt::Sexp>> = BTreeMap::new();
     let mut facts = Vec::new();
+    let fact = |a: &smt::Sexp, b: &smt::Sexp, facts: &mut Vec<String>| {
+        let mut eqs = Vec::new();
+        if !cx.leaf_pairs(a, b, &mut eqs) {
+            return;
+        }
+        let ante = match eqs.len() {
+            0 => "true".to_string(),
+            1 => eqs[0].clone(),
+            _ => format!("(and {})", eqs.join(" ")),
+        };
+        facts.push(format!(
+            "(assert (=> {ante} (= {} {})))",
+            smt::print(a),
+            smt::print(b)
+        ));
+    };
     for e in all {
         let List(xs) = &e else { continue };
         let Some(bv) = xs.get(1) else { continue };
@@ -6155,31 +6657,30 @@ fn bit_congruences(head: &str, cmds: &[smt::Sexp], terms: &[String]) -> Vec<Stri
         if cx.leaf(bv).is_some() {
             continue;
         }
-        let Some(key) = cx.read(&e) else { continue };
+        let Some(key) = cx.read(&e, true) else {
+            continue;
+        };
         match first.get(&key) {
             None => {
+                if let Some(shape) = cx.read(&e, false) {
+                    let reps = shapes.entry(shape).or_default();
+                    if reps.len() < MAX_SHAPE_PAIRS {
+                        for r in reps.iter() {
+                            fact(r, &e, &mut facts);
+                        }
+                        reps.push(e.clone());
+                    }
+                }
                 first.insert(key, e);
             }
-            Some(f) => {
-                let mut eqs = Vec::new();
-                if !cx.leaf_pairs(f, &e, &mut eqs) {
-                    continue;
-                }
-                let ante = match eqs.len() {
-                    0 => "true".to_string(),
-                    1 => eqs[0].clone(),
-                    _ => format!("(and {})", eqs.join(" ")),
-                };
-                facts.push(format!(
-                    "(assert (=> {ante} (= {} {})))",
-                    smt::print(f),
-                    smt::print(&e)
-                ));
-            }
+            Some(f) => fact(f, &e, &mut facts),
         }
     }
     facts
 }
+
+/// The most terms of one shape `bit_congruences` relates pairwise.
+const MAX_SHAPE_PAIRS: usize = 64;
 
 /// The reading of bitvector terms behind `bit_congruences`.
 struct Congr {
@@ -6250,27 +6751,33 @@ impl Congr {
         }
     }
 
-    /// The reading of a bitvector term: leaves as width and read value,
-    /// operations as they are. `None` for a form this does not know.
-    fn read_bv(&self, e: &smt::Sexp) -> Option<String> {
+    /// The reading of a bitvector term: leaves as width and read value (as
+    /// width alone without `values`: the term's shape), operations as they
+    /// are. `None` for a form this does not know.
+    fn read_bv(&self, e: &smt::Sexp, values: bool) -> Option<String> {
         use smt::Sexp::{Atom, List};
         if let Some((_, w, v)) = self.leaf(e) {
-            return Some(format!("[{w} {}]", self.read(&v)?));
+            if !values {
+                return Some(format!("[{w}]"));
+            }
+            return Some(format!("[{w} {}]", self.read(&v, true)?));
         }
         let List(xs) = e else { return None };
         let Some(Atom(op)) = xs.first() else {
             return None;
         };
-        if !op.starts_with("bv") || xs.len() < 2 {
+        // A bit-vector operation, or a bit method's named function
+        // (`subproof::helper_def`).
+        if !(op.starts_with("bv") || op.starts_with("bmb_")) || xs.len() < 2 {
             return None;
         }
-        let args: Option<Vec<String>> = xs[1..].iter().map(|x| self.read_bv(x)).collect();
+        let args: Option<Vec<String>> = xs[1..].iter().map(|x| self.read_bv(x, values)).collect();
         Some(format!("({op} {})", args?.join(" ")))
     }
 
     /// The reading of an integer term: each `(bv2nat t)` in it by the
     /// reading of `t`, everything else as it is.
-    fn read(&self, e: &smt::Sexp) -> Option<String> {
+    fn read(&self, e: &smt::Sexp, values: bool) -> Option<String> {
         use smt::Sexp::{Atom, List};
         match e {
             Atom(a) => Some(a.clone()),
@@ -6278,9 +6785,9 @@ impl Congr {
                 if let [Atom(b), t] = xs.as_slice()
                     && b == "bv2nat"
                 {
-                    return Some(format!("(bv2nat {})", self.read_bv(t)?));
+                    return Some(format!("(bv2nat {})", self.read_bv(t, values)?));
                 }
-                let parts: Option<Vec<String>> = xs.iter().map(|x| self.read(x)).collect();
+                let parts: Option<Vec<String>> = xs.iter().map(|x| self.read(x, values)).collect();
                 Some(format!("({})", parts?.join(" ")))
             }
         }
@@ -6525,6 +7032,30 @@ fn relevant_axioms(axioms: &[(String, String)], text: &str) -> String {
 
 /// `x = 5, a = [1, 2] (len 2), p = Point { x: 1, y: 2 }` from the current
 /// model.
+/// The free variables of a failed sub-proof in its model, as values of
+/// their types (`x = 4294967295, b = -1`).
+fn sub_counterexample(sol: &mut Solver, q: &crate::subproof::Query) -> String {
+    let terms: Vec<String> = q.vars.iter().map(|(s, _)| s.clone()).collect();
+    let Ok(vals) = sol.get_values(&terms) else {
+        return String::new();
+    };
+    q.vars
+        .iter()
+        .zip(vals)
+        .map(|((s, sort), v)| {
+            let name = s.trim_matches('|');
+            let shown = match sort {
+                crate::subproof::Sort::Int(i) => {
+                    crate::subproof::model_int(&v, *i).map_or(v.clone(), |x| x.to_string())
+                }
+                crate::subproof::Sort::Bool => v,
+            };
+            format!("{name} = {shown}")
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 fn counterexample(sol: &mut Solver, inputs: &[(String, Val, TypeKind)], tb: &Tables) -> String {
     // A recursive struct is shown by its fields, one level deep (backlog
     // 2O-03d): its own model value is an element of an uninterpreted sort.

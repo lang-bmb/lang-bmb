@@ -5,13 +5,13 @@ mod sha256 {
 
     // ---------- functions (§4.1.2) ----------
 
-    spec fn bs0(x: u32) -> u32 { ((x >> 2) | (x << 30)) ^ ((x >> 13) | (x << 19)) ^ ((x >> 22) | (x << 10)) }
+    spec fn bs0(x: u32) -> u32 { x.rotate_right(2) ^ x.rotate_right(13) ^ x.rotate_right(22) }
 
-    spec fn bs1(x: u32) -> u32 { ((x >> 6) | (x << 26)) ^ ((x >> 11) | (x << 21)) ^ ((x >> 25) | (x << 7)) }
+    spec fn bs1(x: u32) -> u32 { x.rotate_right(6) ^ x.rotate_right(11) ^ x.rotate_right(25) }
 
-    spec fn ss0(x: u32) -> u32 { ((x >> 7) | (x << 25)) ^ ((x >> 18) | (x << 14)) ^ (x >> 3) }
+    spec fn ss0(x: u32) -> u32 { x.rotate_right(7) ^ x.rotate_right(18) ^ (x >> 3) }
 
-    spec fn ss1(x: u32) -> u32 { ((x >> 17) | (x << 15)) ^ ((x >> 19) | (x << 13)) ^ (x >> 10) }
+    spec fn ss1(x: u32) -> u32 { x.rotate_right(17) ^ x.rotate_right(19) ^ (x >> 10) }
 
     spec fn ch(e: u32, f: u32, g: u32) -> u32 { (e & f) ^ (!e & g) }
 
@@ -187,7 +187,7 @@ mod sha256 {
     fn big_sigma0(x: u32) -> (r: u32)
         ensures is_bs0(x, r),
     {
-        ((x >> 2) | (x << 30)) ^ ((x >> 13) | (x << 19)) ^ ((x >> 22) | (x << 10))
+        x.rotate_right(2) ^ x.rotate_right(13) ^ x.rotate_right(22)
     }
 
     #[effects(pure)]
@@ -195,7 +195,7 @@ mod sha256 {
     fn big_sigma1(x: u32) -> (r: u32)
         ensures is_bs1(x, r),
     {
-        ((x >> 6) | (x << 26)) ^ ((x >> 11) | (x << 21)) ^ ((x >> 25) | (x << 7))
+        x.rotate_right(6) ^ x.rotate_right(11) ^ x.rotate_right(25)
     }
 
     #[effects(pure)]
@@ -203,7 +203,7 @@ mod sha256 {
     fn small_sigma0(x: u32) -> (r: u32)
         ensures is_ss0(x, r),
     {
-        ((x >> 7) | (x << 25)) ^ ((x >> 18) | (x << 14)) ^ (x >> 3)
+        x.rotate_right(7) ^ x.rotate_right(18) ^ (x >> 3)
     }
 
     #[effects(pure)]
@@ -211,7 +211,7 @@ mod sha256 {
     fn small_sigma1(x: u32) -> (r: u32)
         ensures is_ss1(x, r),
     {
-        ((x >> 17) | (x << 15)) ^ ((x >> 19) | (x << 13)) ^ (x >> 10)
+        x.rotate_right(17) ^ x.rotate_right(19) ^ (x >> 10)
     }
 
     #[effects(pure)]

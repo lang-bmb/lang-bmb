@@ -1600,6 +1600,11 @@ impl<'p> Gen<'p> {
                         CVal::Arr { len, .. } => CVal::Imm(len),
                         _ => unreachable!(),
                     },
+                    m if crate::check::bit_method_arity(m).is_some() => {
+                        let i = self.ty(recv).int().expect("an integer method");
+                        let n = args.first().map(|x| self.expr(x).imm());
+                        self.bit_method(m, i, &rv.imm(), n.as_deref())
+                    }
                     op => {
                         let b = self.expr(&args[0]).imm();
                         let rt = self.ty(recv);
@@ -2450,6 +2455,13 @@ impl<'p> Gen<'p> {
                 self.check(&c, &format!("shift amount out of 0..{w}"));
             }
         }
+        self.shift_inst(op, i, a, b)
+    }
+
+    /// The instructions of `a << b` / `a >> b` on `i` for an amount `b`
+    /// in `0..w` (`shift`, and a wrapping shift's masked amount).
+    fn shift_inst(&mut self, op: BinOp, i: IntTy, a: &str, b: &str) -> CVal {
+        let w = i.bits();
         let res = self.t();
         match op {
             BinOp::Shr => {
@@ -2466,6 +2478,88 @@ impl<'p> Gen<'p> {
             }
         }
         CVal::Imm(res)
+    }
+
+    /// A bit method (ADR-0048 §2, §5, backlog 2N-03) of the register value
+    /// `a` of `i` (extended to 64 bits) and its `u32` amount `n`: the
+    /// operation at `i`'s width with LLVM's intrinsics (`fshl`/`fshr` for a
+    /// rotation, which take the amount modulo the width; `ctpop`; `ctlz`
+    /// and `cttz` defined at zero, where they give the width; `bswap`), then
+    /// extended back. A wrapping shift masks its amount to `0..w` and is
+    /// `<<`/`>>`'s instruction. Nothing is checked: none of them can fail.
+    fn bit_method(&mut self, m: &str, i: IntTy, a: &str, n: Option<&str>) -> CVal {
+        let w = i.bits();
+        let ext = if i.signed() { "sext" } else { "zext" };
+        if m == "wrapping_shl" || m == "wrapping_shr" {
+            let k = self.t();
+            self.emit(format!(
+                "{k} = and i64 {}, {}",
+                n.expect("an amount"),
+                w - 1
+            ));
+            let op = if m == "wrapping_shl" {
+                BinOp::Shl
+            } else {
+                BinOp::Shr
+            };
+            return self.shift_inst(op, i, a, &k);
+        }
+        if m == "swap_bytes" && w == 8 {
+            return CVal::Imm(a.to_string());
+        }
+        let it = format!("i{w}");
+        let narrow = |g: &mut Self, v: &str| {
+            if w == 64 {
+                v.to_string()
+            } else {
+                let t = g.t();
+                g.emit(format!("{t} = trunc i64 {v} to {it}"));
+                t
+            }
+        };
+        let x = narrow(self, a);
+        let r = self.t();
+        match m {
+            "rotate_left" | "rotate_right" => {
+                let k = narrow(self, n.expect("an amount"));
+                let f = if m == "rotate_left" { "fshl" } else { "fshr" };
+                self.emit(format!(
+                    "{r} = call {it} @llvm.{f}.{it}({it} {x}, {it} {x}, {it} {k})"
+                ));
+            }
+            "count_ones" | "count_zeros" => {
+                self.emit(format!("{r} = call {it} @llvm.ctpop.{it}({it} {x})"));
+            }
+            "leading_zeros" | "trailing_zeros" => {
+                let f = if m == "leading_zeros" { "ctlz" } else { "cttz" };
+                self.emit(format!(
+                    "{r} = call {it} @llvm.{f}.{it}({it} {x}, i1 false)"
+                ));
+            }
+            "swap_bytes" => {
+                self.emit(format!("{r} = call {it} @llvm.bswap.{it}({it} {x})"));
+            }
+            _ => unreachable!("bit method {m}"),
+        }
+        let r = if m == "count_zeros" {
+            let z = self.t();
+            self.emit(format!("{z} = sub {it} {w}, {r}"));
+            z
+        } else {
+            r
+        };
+        if w == 64 {
+            return CVal::Imm(r);
+        }
+        // A count is at most the width: its bits are its value.
+        let ext = if m.starts_with("count_") || m.ends_with("_zeros") {
+            "zext"
+        } else {
+            ext
+        };
+        let back = self.t();
+        self.emit(format!("{back} = {ext} {it} {r} to i64"));
+        CVal::Imm(back)
     }
 
     /// LLVM's `{s,u}op.with.overflow`: (result, overflow flag).

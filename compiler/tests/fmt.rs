@@ -276,3 +276,29 @@ fn literal_bases_and_bit_operators_have_one_normal_form() {
     let after = bmb::verify_sources(&one("x.bmb", &out));
     assert_eq!(statuses(&before.output), statuses(&after.output));
 }
+
+/// `assert(e) by (bit_vector);` has one normal form (backlog 2N-03), and a
+/// change of the prover clause changes the definition's hash.
+#[test]
+fn bit_vector_assertions_have_one_normal_form() {
+    let text = "#[summary(\"b\")]\nmod b {\n    #[effects(pure)]\n    fn f(x: u32) -> u32 {\n        assert((x ^ x)==0)by(bit_vector) ;\n        proof { assert(x.rotate_left(3).rotate_right(3)==x)   by  ( bit_vector ); }\n        x.count_ones()\n    }\n}\n";
+    let out = normal(text);
+    assert!(
+        out.contains("        assert(x ^ x == 0) by (bit_vector);\n"),
+        "{out}"
+    );
+    assert!(
+        out.contains("assert(x.rotate_left(3).rotate_right(3) == x) by (bit_vector);"),
+        "{out}"
+    );
+    assert_eq!(normal(&out), out);
+    let before = bmb::verify_sources(&one("x.bmb", text));
+    let after = bmb::verify_sources(&one("x.bmb", &out));
+    assert_eq!(statuses(&before.output), statuses(&after.output));
+    assert!(before.ok, "{}", before.output);
+    let plain = out.replace(" by (bit_vector);", ";");
+    assert_ne!(
+        def_line(&one("x.bmb", &out), "b::f"),
+        def_line(&one("x.bmb", &plain), "b::f")
+    );
+}

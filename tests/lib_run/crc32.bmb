@@ -97,6 +97,14 @@ mod app {
             sum = sum.wrapping_add(wide(crc32::checksum(q.as_slice())));
         }
         show(b"sum4096", sum);
+        // One table serves every checksum (`update_with`, backlog 2N-03).
+        let t: [u32; 256] = crc32::table();
+        let mut tsum: u64 = 0;
+        for j in 0..total + 1 {
+            let u: Vec<u8> = take(s.as_slice(), 0, j);
+            tsum = tsum.wrapping_add(wide(crc32::update_with(&t, 0, u.as_slice())));
+        }
+        show(b"table4096", tsum);
         show(b"short", short_inputs());
         // `update` continues a checksum: every split of the stream gives the
         // checksum of the whole.
