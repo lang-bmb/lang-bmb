@@ -1,8 +1,11 @@
 //! Soundness fuzzing of loops, arrays and `&mut` (backlog 1B-21).
 //!
 //! Random functions `g(a: &mut [i64], k: usize, x: i64) -> i64` with one
-//! `while` loop, random invariants and random contracts are proved, and the
-//! claims are checked against an independent interpreter written here:
+//! loop (`while`, or the range `for` when the loop counts), random
+//! invariants and random contracts are proved, and the claims are checked
+//! against an independent interpreter written here. The body may leave
+//! early (backlog 2K-05): `break`, `continue`, `return e`, and `?` on a
+//! callee's `Option` (the function then returns `Option<i64>`).
 //!
 //! - a verified function, on any input its precondition admits, never faults
 //!   (index out of bounds, overflow), keeps its loop invariant at every loop
@@ -90,6 +93,37 @@ enum S {
     SetAcc(E),
     Write(Idx, E),
     IfWrite(Cmp, E, E, Idx, E),
+    /// `if l c r { <exit> }`
+    Exit(Exit, Cmp, E, E),
+    /// `acc = lim(e, c)?;`: `None` when `e > c`.
+    Try(E, i64),
+}
+
+enum Exit {
+    Break,
+    /// `continue` (a `while` steps `i` first)
+    Continue,
+    Return(E),
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum Form {
+    While,
+    For,
+}
+
+/// What the body did.
+enum Flow {
+    Next,
+    Break,
+    Return(Out),
+}
+
+/// The function's result: a value, or `None` from a `?`.
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Out {
+    Val(i64),
+    None,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -228,6 +262,39 @@ struct Func {
     cond: Cond,
     body: Vec<S>,
     ret: Ret,
+    form: Form,
+    /// Returns `Option<i64>` (the body may use `?`).
+    opt: bool,
+}
+
+fn gen_cmp(rng: &mut Rng) -> Cmp {
+    rng.pick(&[Cmp::Lt, Cmp::Le, Cmp::Eq, Cmp::Ne])
+}
+
+/// An early exit, or a `?` when the function returns an `Option`.
+fn gen_exit(rng: &mut Rng, opt: bool) -> S {
+    if opt && rng.chance(40) {
+        return S::Try(gen_e(rng, 1), rng.pick(&[0, 10, 1000, -7]));
+    }
+    let exit = match rng.below(3) {
+        0 => Exit::Break,
+        1 => Exit::Continue,
+        _ => Exit::Return(gen_e(rng, 1)),
+    };
+    S::Exit(exit, gen_cmp(rng), gen_e(rng, 1), gen_e(rng, 1))
+}
+
+/// The loop form, `?`s and early exits added to a generated function.
+fn add_exits(rng: &mut Rng, f: &mut Func) {
+    if f.cond != Cond::IPlus1LtLen && rng.chance(50) {
+        f.form = Form::For;
+    }
+    f.opt = rng.chance(25);
+    if f.opt || rng.chance(40) {
+        let s = gen_exit(rng, f.opt);
+        let at = rng.below(f.body.len() + 1);
+        f.body.insert(at, s);
+    }
 }
 
 fn gen_idx(rng: &mut Rng) -> Idx {
@@ -316,6 +383,8 @@ fn gen_template(rng: &mut Rng, n: usize) -> Func {
                 Box::new(E::Elem(Idx::I)),
             ))],
             ret: Ret::Acc,
+            form: Form::While,
+            opt: false,
         },
         // Fill with x; the first element afterwards is x (or the array is empty).
         1 => Func {
@@ -327,6 +396,8 @@ fn gen_template(rng: &mut Rng, n: usize) -> Func {
             cond: Cond::ILtLen,
             body: vec![S::Write(Idx::I, E::X)],
             ret: Ret::X,
+            form: Form::While,
+            opt: false,
         },
         // Shift left by one from position 1; the first element is kept only
         // when the loop starts at 1.
@@ -339,6 +410,8 @@ fn gen_template(rng: &mut Rng, n: usize) -> Func {
             cond: Cond::IPlus1LtLen,
             body: vec![S::Write(Idx::I, E::Elem(Idx::IPlus1))],
             ret: Ret::Elem0,
+            form: Form::While,
+            opt: false,
         },
         // Clamp the first k elements to x when bigger; returns a[k].
         _ => Func {
@@ -350,6 +423,8 @@ fn gen_template(rng: &mut Rng, n: usize) -> Func {
             cond: Cond::ILtK,
             body: vec![S::IfWrite(Cmp::Lt, E::X, E::Elem(Idx::I), Idx::I, E::X)],
             ret: Ret::ElemK,
+            form: Form::While,
+            opt: false,
         },
     };
     f.name = format!("g{n}");
@@ -377,6 +452,7 @@ fn gen_template(rng: &mut Rng, n: usize) -> Func {
                     S::Write(_, e) => vec![S::Write(i, e)],
                     S::SetAcc(_) => vec![S::SetAcc(E::Add(Box::new(E::Acc), Box::new(E::Elem(i))))],
                     S::IfWrite(c, l, _, _, e) => vec![S::IfWrite(c, l, E::Elem(i), i, e)],
+                    s => vec![s],
                 }
             }
             _ => {
@@ -385,6 +461,7 @@ fn gen_template(rng: &mut Rng, n: usize) -> Func {
             }
         }
     }
+    add_exits(rng, &mut f);
     f
 }
 
@@ -460,7 +537,7 @@ fn gen_func(rng: &mut Rng, n: usize) -> Func {
         let (lo, hi) = bounds_pair(rng);
         post.push(Clause::RIn(lo, hi));
     }
-    Func {
+    let mut f = Func {
         name: format!("g{n}"),
         pre,
         inv,
@@ -469,7 +546,11 @@ fn gen_func(rng: &mut Rng, n: usize) -> Func {
         cond,
         body,
         ret,
-    }
+        form: Form::While,
+        opt: false,
+    };
+    add_exits(rng, &mut f);
+    f
 }
 
 fn idx_text(i: Idx) -> &'static str {
@@ -519,31 +600,59 @@ impl Func {
             "    spec fn {n}_inv(a: &[i64], b: &[i64], k: usize, x: i64, i: usize, acc: i64) -> bool {{ {} }}\n",
             conj(&self.inv)
         );
+        if self.opt {
+            // `None` keeps the clauses that do not name the result.
+            let rest: Vec<Clause> = self.post.iter().copied().filter(|c| !names_r(*c)).collect();
+            let none = if rest.is_empty() {
+                "true".to_string()
+            } else {
+                conj(&rest)
+            };
+            let _ = writeln!(
+                t,
+                "    spec fn {n}_post(a: &[i64], b: &[i64], k: usize, x: i64, o: Option<i64>) -> bool {{\n        match o {{\n            None => {none},\n            Some(r) => {},\n        }}\n    }}\n",
+                conj(&self.post)
+            );
+        } else {
+            let _ = writeln!(
+                t,
+                "    spec fn {n}_post(a: &[i64], b: &[i64], k: usize, x: i64, r: i64) -> bool {{ {} }}\n",
+                conj(&self.post)
+            );
+        }
+        let (rty, uses) = if self.opt {
+            ("Option<i64>", ", lim_post")
+        } else {
+            ("i64", "")
+        };
         let _ = writeln!(
             t,
-            "    spec fn {n}_post(a: &[i64], b: &[i64], k: usize, x: i64, r: i64) -> bool {{ {} }}\n",
-            conj(&self.post)
-        );
-        let _ = writeln!(
-            t,
-            "    #[effects(pure)]\n    #[uses({n}_pre, {n}_inv, {n}_post)]\n    fn {n}(a: &mut [i64], k: usize, x: i64) -> (r: i64)\n        requires {n}_pre(a, k, x),\n        ensures {n}_post(a, old(a), k, x, r),\n    {{"
+            "    #[effects(pure)]\n    #[uses({n}_pre, {n}_inv, {n}_post{uses})]\n    fn {n}(a: &mut [i64], k: usize, x: i64) -> (r: {rty})\n        requires {n}_pre(a, k, x),\n        ensures {n}_post(a, old(a), k, x, r),\n    {{"
         );
         let start = match self.start {
             Start::Zero => "0",
             Start::One => "1",
             Start::K => "k",
         };
-        let (cond, measure) = match self.cond {
-            Cond::ILtLen => ("i < a.len()", "a.len() - i"),
-            Cond::IPlus1LtLen => ("i + 1 < a.len()", "a.len() - i"),
-            Cond::ILtK => ("i < k", "k - i"),
+        let (cond, measure, end) = match self.cond {
+            Cond::ILtLen => ("i < a.len()", "a.len() - i", "a.len()"),
+            Cond::IPlus1LtLen => ("i + 1 < a.len()", "a.len() - i", ""),
+            Cond::ILtK => ("i < k", "k - i", "k"),
         };
-        let _ = writeln!(t, "        let mut i: usize = {start};");
         let _ = writeln!(t, "        let mut acc: i64 = 0;");
-        let _ = writeln!(
-            t,
-            "        while {cond}\n            invariant {n}_inv(a, old(a), k, x, i, acc),\n            decreases {measure},\n        {{"
-        );
+        if self.form == Form::For {
+            let _ = writeln!(
+                t,
+                "        for i in {start}..{end}\n            invariant {n}_inv(a, old(a), k, x, i, acc),\n        {{"
+            );
+        } else {
+            let _ = writeln!(t, "        let mut i: usize = {start};");
+            let _ = writeln!(
+                t,
+                "        while {cond}\n            invariant {n}_inv(a, old(a), k, x, i, acc),\n            decreases {measure},\n        {{"
+            );
+        }
+        let wrap = |v: String| if self.opt { format!("Some({v})") } else { v };
         for s in &self.body {
             match s {
                 S::SetAcc(e) => {
@@ -563,16 +672,39 @@ impl Func {
                         e_text(e)
                     );
                 }
+                S::Exit(x, c, l, r) => {
+                    let exit = match x {
+                        Exit::Break => "break;".to_string(),
+                        Exit::Continue if self.form == Form::While => {
+                            "i = i + 1;\n                continue;".to_string()
+                        }
+                        Exit::Continue => "continue;".to_string(),
+                        Exit::Return(e) => format!("return {};", wrap(e_text(e))),
+                    };
+                    let _ = writeln!(
+                        t,
+                        "            if {} {} {} {{\n                {exit}\n            }}",
+                        e_text(l),
+                        cmp_text(*c),
+                        e_text(r)
+                    );
+                }
+                S::Try(e, c) => {
+                    let _ = writeln!(t, "            acc = lim({}, {})?;", e_text(e), lit(*c));
+                }
             }
         }
-        let _ = writeln!(t, "            i = i + 1;\n        }}");
+        if self.form == Form::While {
+            let _ = writeln!(t, "            i = i + 1;");
+        }
+        let _ = writeln!(t, "        }}");
         let ret = match self.ret {
             Ret::Acc => "acc",
             Ret::X => "x",
             Ret::Elem0 => "a[0]",
             Ret::ElemK => "a[k]",
         };
-        let _ = writeln!(t, "        {ret}\n    }}\n");
+        let _ = writeln!(t, "        {}\n    }}\n", wrap(ret.to_string()));
         t
     }
 
@@ -595,7 +727,9 @@ impl Func {
 /// What a run did: the result, or a fault; and whether every invariant check
 /// at a loop head passed (and whether the entry check did).
 struct Run {
-    result: Result<i64, Fault>,
+    result: Result<Out, Fault>,
+    /// The body left the loop or the function early.
+    early: bool,
     inv_ok: bool,
     entry_inv_ok: Option<bool>,
 }
@@ -608,6 +742,8 @@ struct St<'f> {
     x: i64,
     i: u64,
     acc: i64,
+    /// The last iteration ended at a `continue`.
+    skipped: bool,
 }
 
 impl St<'_> {
@@ -665,9 +801,39 @@ impl St<'_> {
         })
     }
 
-    fn step(&mut self) -> Result<(), Fault> {
+    fn test(&self, c: Cmp, l: &E, r: &E) -> Result<bool, Fault> {
+        let (l, r) = (self.e(l)?, self.e(r)?);
+        Ok(match c {
+            Cmp::Lt => l < r,
+            Cmp::Le => l <= r,
+            Cmp::Eq => l == r,
+            Cmp::Ne => l != r,
+        })
+    }
+
+    fn step(&mut self) -> Result<Flow, Fault> {
         for s in &self.f.body {
             match s {
+                S::Exit(x, c, l, r) => {
+                    if self.test(*c, l, r)? {
+                        return Ok(match x {
+                            Exit::Break => Flow::Break,
+                            Exit::Continue => {
+                                self.i = self.i.checked_add(1).ok_or(Fault)?;
+                                self.skipped = true;
+                                Flow::Next
+                            }
+                            Exit::Return(e) => Flow::Return(Out::Val(self.e(e)?)),
+                        });
+                    }
+                }
+                S::Try(e, c) => {
+                    let v = self.e(e)?;
+                    if v > *c {
+                        return Ok(Flow::Return(Out::None));
+                    }
+                    self.acc = v;
+                }
                 S::SetAcc(e) => self.acc = self.e(e)?,
                 S::Write(i, e) => {
                     // Rust order: the value first, then the place.
@@ -692,7 +858,7 @@ impl St<'_> {
             }
         }
         self.i = self.i.checked_add(1).ok_or(Fault)?;
-        Ok(())
+        Ok(Flow::Next)
     }
 }
 
@@ -709,11 +875,13 @@ fn run(f: &Func, a: &mut Vec<i64>, k: u64, x: i64) -> Run {
             Start::K => k,
         },
         acc: 0,
+        skipped: false,
     };
     let mut inv_ok = true;
     let mut entry = None;
+    let mut early = false;
     let mut fuel = 64;
-    let result = (|| -> Result<i64, Fault> {
+    let result = (|| -> Result<Out, Fault> {
         loop {
             let ok = st.inv();
             entry.get_or_insert(ok);
@@ -721,31 +889,51 @@ fn run(f: &Func, a: &mut Vec<i64>, k: u64, x: i64) -> Run {
             if !st.cond()? {
                 break;
             }
-            st.step()?;
+            match st.step()? {
+                Flow::Next => early |= std::mem::take(&mut st.skipped),
+                Flow::Break => {
+                    early = true;
+                    break;
+                }
+                Flow::Return(o) => {
+                    early = true;
+                    return Ok(o);
+                }
+            }
             fuel -= 1;
             assert!(
                 fuel > 0,
                 "generated loops are bounded by the array length or k"
             );
         }
-        Ok(match f.ret {
+        Ok(Out::Val(match f.ret {
             Ret::Acc => st.acc,
             Ret::X => st.x,
             Ret::Elem0 => st.a[st.idx(Idx::Zero)?],
             Ret::ElemK => st.a[st.idx(Idx::K)?],
-        })
+        }))
     })();
     *a = st.a.clone();
     Run {
         result,
+        early,
         inv_ok,
         entry_inv_ok: entry,
     }
 }
 
-fn post_holds(f: &Func, a: &[i64], old: &[i64], k: u64, x: i64, r: i64) -> bool {
+/// Whether a postcondition clause names the result.
+fn names_r(c: Clause) -> bool {
+    matches!(c, Clause::RIn(..) | Clause::REqX)
+}
+
+fn post_holds(f: &Func, a: &[i64], old: &[i64], k: u64, x: i64, out: Out) -> bool {
+    let (cs, r): (Vec<Clause>, i64) = match out {
+        Out::Val(r) => (f.post.clone(), r),
+        Out::None => (f.post.iter().copied().filter(|c| !names_r(*c)).collect(), 0),
+    };
     all(
-        &f.post,
+        &cs,
         &View {
             a,
             b: old,
@@ -757,6 +945,10 @@ fn post_holds(f: &Func, a: &[i64], old: &[i64], k: u64, x: i64, r: i64) -> bool 
         },
     )
 }
+
+/// `lim`, the callee of every `?`, and `show`, which prints an `Option`.
+const LIM: &str = "    spec fn lim_post(v: i64, c: i64, r: Option<i64>) -> bool {\n        match r {\n            None => c < v,\n            Some(w) => w == v && v <= c,\n        }\n    }\n\n    #[effects(pure)]\n    #[uses(lim_post)]\n    fn lim(v: i64, c: i64) -> (r: Option<i64>)\n        ensures lim_post(v, c, r),\n    {\n        if v <= c { Some(v) } else { None }\n    }\n\n";
+const SHOW: &str = "    #[effects(io)]\n    fn show(o: Option<i64>) -> () {\n        match o {\n            None => print_bytes(b\"none\\n\"),\n            Some(v) => print_i64(v),\n        }\n    }\n\n";
 
 /// Inputs that satisfy the precondition.
 fn inputs(f: &Func, rng: &mut Rng) -> Vec<(Vec<i64>, u64, i64)> {
@@ -824,6 +1016,12 @@ struct Stats {
     cexes: usize,
     entry_replays: usize,
     compiled_runs: usize,
+    /// Verified functions with a range `for`, an early exit, a `?`.
+    verified_for: usize,
+    verified_exit: usize,
+    verified_try: usize,
+    /// Interpreted runs of verified functions that left early.
+    early_runs: usize,
     /// Failure codes over all functions, to see what keeps proofs from passing.
     codes: std::collections::BTreeMap<String, usize>,
 }
@@ -832,12 +1030,13 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
     let mut rng = Rng(seed.wrapping_mul(0x9E3779B97F4A7C15) | 1);
     let funcs: Vec<Func> = (0..6).map(|n| gen_func(&mut rng, n)).collect();
     let mut src = String::from("#[summary(\"루프 건전성 퍼징\")]\nmod m {\n");
+    src.push_str(LIM);
     for f in &funcs {
         src.push_str(&f.text());
     }
-    src.push_str(
-        "}\n\n#[summary(\"실행\")]\nmod app {\n    #[effects(io)]\n    fn main() -> () {\n",
-    );
+    src.push_str("}\n\n#[summary(\"실행\")]\nmod app {\n");
+    src.push_str(SHOW);
+    src.push_str("    #[effects(io)]\n    fn main() -> () {\n");
     let mut expected = String::new();
     let mut n = 0;
     for f in &funcs {
@@ -850,14 +1049,20 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
             }
             n += 1;
             let elems = a.iter().map(|&e| lit(e)).collect::<Vec<_>>().join(", ");
+            let print = if f.opt { "show" } else { "print_i64" };
             let _ = writeln!(
                 src,
-                "        let mut a{n}: [i64; {}] = [{elems}];\n        print_i64(m::{}(&mut a{n}, {k}, {}));",
+                "        let mut a{n}: [i64; {}] = [{elems}];\n        {print}(m::{}(&mut a{n}, {k}, {}));",
                 a.len(),
                 f.name,
                 lit(x)
             );
-            let _ = writeln!(expected, "{v}");
+            match v {
+                Out::Val(v) => {
+                    let _ = writeln!(expected, "{v}");
+                }
+                Out::None => expected.push_str("none\n"),
+            }
             for (j, e) in after.iter().enumerate() {
                 let _ = writeln!(src, "        print_i64(a{n}[{j}]);");
                 let _ = writeln!(expected, "{e}");
@@ -886,10 +1091,14 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
             continue;
         }
         stats.verified += 1;
+        stats.verified_for += usize::from(f.form == Form::For);
+        stats.verified_exit += usize::from(f.body.iter().any(|s| matches!(s, S::Exit(..))));
+        stats.verified_try += usize::from(f.body.iter().any(|s| matches!(s, S::Try(..))));
         for (a, k, x) in inputs(f, &mut rng) {
             stats.verified_runs += 1;
             let mut after = a.clone();
             let r = run(f, &mut after, k, x);
+            stats.early_runs += usize::from(r.early);
             let at = format!("a = {a:?}, k = {k}, x = {x}");
             match r.result {
                 Err(Fault) => panic!("{}", ctx(&format!("verified {name} faults at {at}"))),
@@ -903,7 +1112,7 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
                         post_holds(f, &after, &a, k, x, v),
                         "{}",
                         ctx(&format!(
-                            "verified {name} breaks its postcondition at {at} (r = {v}, a after = {after:?})"
+                            "verified {name} breaks its postcondition at {at} (r = {v:?}, a after = {after:?})"
                         ))
                     );
                 }
@@ -1011,6 +1220,10 @@ fn loop_proofs_counterexamples_and_builds_agree_with_the_interpreter() {
         stats.cexes,
         stats.entry_replays,
         stats.compiled_runs
+    );
+    eprintln!(
+        "early exits (2K-05): verified {} with `for`, {} with an exit, {} with `?`; {} verified runs left early",
+        stats.verified_for, stats.verified_exit, stats.verified_try, stats.early_runs
     );
     eprintln!("failures by kind: {:#?}", stats.codes);
     assert!(stats.verified > 0 && stats.cexes > 0);
