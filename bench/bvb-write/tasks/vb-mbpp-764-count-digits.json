@@ -1,0 +1,64 @@
+{
+  "id": "vb-mbpp-764-count-digits",
+  "kind": "write",
+  "prompt": "Create unit `tasks` for this task.\n\nImplement `count_digits`: `text` holds the bytes of a string. Return the number of ASCII decimal digits (bytes 48 to 57). The contract must state that the result is at most the length of `text` and equals the given specification function applied to the whole text.\n\nGiven specification functions in unit `given` (use them, do not change them):\n```\nspec fn count_digits(text: &[u64], n: usize) -> u64\n    decreases n,\n{\n    if n == 0 { 0 } else { count_digits(text, n - 1) + (if text[n - 1] >= 48 && text[n - 1] <= 57 { 1 } else { 0 }) }\n}\n```\n\nRequired signature (in unit `tasks`):\nfn count_digits(text: &[u64]) -> (count: usize)",
+  "unit": "tasks",
+  "def": "tasks::count_digits",
+  "signature": "fn count_digits(text: &[u64]) -> (count: usize)",
+  "accept": {
+    "specs": "spec fn ref_post(text: &[u64], count: usize) -> bool { count <= text.len() && count == given::count_digits(text, text.len()) }",
+    "pre": null,
+    "post": "ref_post(text, r)",
+    "args": "text"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn counted(count: usize, text: &[u64], n: usize) -> bool { count <= n && count == given::count_digits(text, n) }\n\nspec fn result_ok(text: &[u64], count: usize) -> bool { count <= text.len() && count == given::count_digits(text, text.len()) }\n\n#[effects(pure)]\n#[uses(counted, result_ok, given::count_digits)]\nfn count_digits(text: &[u64]) -> (count: usize)\n    ensures result_ok(text, count),\n{\n    let mut c: usize = 0;\n    let mut idx: usize = 0;\n    while idx < text.len()\n        invariant idx <= text.len(), counted(c, text, idx),\n        decreases text.len() - idx,\n    {\n        if text[idx] >= 48 && text[idx] <= 57 {\n            c = c + 1;\n        }\n        idx = idx + 1;\n    }\n    c\n}"
+    }
+  ],
+  "weak_reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn counted(count: usize, text: &[u64], n: usize) -> bool { count <= n && count == given::count_digits(text, n) }\n\nspec fn result_ok(text: &[u64], count: usize) -> bool { count <= text.len() }\n\n#[effects(pure)]\n#[uses(counted, result_ok, given::count_digits)]\nfn count_digits(text: &[u64]) -> (count: usize)\n    ensures result_ok(text, count),\n{\n    let mut c: usize = 0;\n    let mut idx: usize = 0;\n    while idx < text.len()\n        invariant idx <= text.len(), counted(c, text, idx),\n        decreases text.len() - idx,\n    {\n        if text[idx] >= 48 && text[idx] <= 57 {\n            c = c + 1;\n        }\n        idx = idx + 1;\n    }\n    c\n}"
+    }
+  ],
+  "source": {
+    "benchmark": "Verus-Bench",
+    "origin": "MBPP",
+    "path": "benchmarks/Verus-Bench/MBPP/verified/task_id_764.rs",
+    "rules": [
+      "T1",
+      "T2",
+      "T4",
+      "G1"
+    ]
+  },
+  "verus": {
+    "prompt": "Implement `count_digits`: `text` holds the bytes of a string. Return the number of ASCII decimal digits (bytes 48 to 57). The contract must state that the result is at most the length of `text` and equals the given specification function applied to the whole text.\n\nThe file starts with these given specification functions (use them, do not change them):\n```\nspec fn is_digit(c: u8) -> bool {\n    (c >= 48 && c <= 57)\n}\n\nspec fn count_digits_recursively(seq: Seq<u8>) -> int\n    decreases seq.len(),\n{\n    if seq.len() == 0 {\n        0\n    } else {\n        count_digits_recursively(seq.drop_last()) + if is_digit(seq.last()) {\n            1 as int\n        } else {\n            0 as int\n        }\n    }\n}\n```\n\nRequired signature:\nfn count_digits(text: &[u8]) -> (count: usize)",
+    "signature": "fn count_digits(text: &[u8]) -> (count: usize)",
+    "target": "count_digits",
+    "specs": "",
+    "pre": null,
+    "post": "0 <= count <= text.len(),\ncount_digits_recursively(text@) == count",
+    "args": "text",
+    "reference": "use vstd::prelude::*;\n\nfn main() {\n    // Write a function in Rust to count number of digits in a given string.\n\n    assert_eq!(count_digits(b\"program2bedone\"), 1);\n    assert_eq!(count_digits(b\"3wonders\"), 1);\n    assert_eq!(count_digits(b\"123\"), 3);\n    assert_eq!(count_digits(b\"3wond-1ers2\"), 3);\n}\n\nverus! {\n\nspec fn is_digit(c: u8) -> bool {\n    (c >= 48 && c <= 57)\n}\n\nspec fn count_digits_recursively(seq: Seq<u8>) -> int\n    decreases seq.len(),\n{\n    if seq.len() == 0 {\n        0\n    } else {\n        count_digits_recursively(seq.drop_last()) + if is_digit(seq.last()) {\n            1 as int\n        } else {\n            0 as int\n        }\n    }\n}\n\nfn count_digits(text: &[u8]) -> (count: usize)\n    ensures\n        0 <= count <= text.len(),\n        count_digits_recursively(text@) == count,\n{\n    let mut count = 0;\n    let mut index = 0;\n\n    while index < text.len()\n        invariant\n            0 <= index <= text.len(),\n            0 <= count <= index,\n            count == count_digits_recursively(text@.subrange(0, index as int)),\n        decreases text@.len() - index,\n    {\n        if (text[index] >= 48 && text[index] <= 57) {\n            count += 1;\n        }\n        index += 1;\n        assert(text@.subrange(0, index - 1 as int) == text@.subrange(0, index as int).drop_last());\n    }\n    assert(text@ == text@.subrange(0, index as int));\n    count\n}\n\n} // verus!",
+    "reference_origin": "upstream",
+    "given": "spec fn is_digit(c: u8) -> bool {\n    (c >= 48 && c <= 57)\n}\n\nspec fn count_digits_recursively(seq: Seq<u8>) -> int\n    decreases seq.len(),\n{\n    if seq.len() == 0 {\n        0\n    } else {\n        count_digits_recursively(seq.drop_last()) + if is_digit(seq.last()) {\n            1 as int\n        } else {\n            0 as int\n        }\n    }\n}"
+  },
+  "frozen": [
+    "given::count_digits"
+  ]
+}

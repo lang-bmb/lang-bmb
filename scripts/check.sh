@@ -53,7 +53,9 @@ row=$(python3 bench/m1/harness.py summarize "$tmp" | grep "명세 변이체 판�
 grep -qE "\| [0-9]+/[0-9]+ \(" <<< "$row" && ! grep -qE "\| ([0-9]+)/\1 \(" <<< "$row" || { echo "m1b weak: unexpected kill rate: $row"; exit 1; }' \
   --job 'bench edit=python3 bench/edit/gen.py --check > /dev/null
 python3 bench/m1/harness.py --set bench/m1b-write run --agent oracle --expect all-pass --jobs 2 > /dev/null
-python3 bench/m1/harness.py --set bench/m1b-write run --agent weak --expect weak-fail --jobs 2 > /dev/null' \
+python3 bench/m1/harness.py --set bench/m1b-write run --agent weak --expect weak-fail --jobs 2 > /dev/null
+python3 bench/m1/harness.py --set bench/bvb-write run --agent oracle --expect all-pass --jobs 2 > /dev/null
+python3 bench/m1/harness.py --set bench/bvb-write run --agent weak --expect weak-fail --jobs 2 > /dev/null' \
   --job 'bench hname=python3 bench/hname/gen.py --check > /dev/null
 for s in alpha mislead; do
   python3 bench/m1/harness.py --set bench/m1b-$s run --agent oracle --expect all-pass --jobs 2 > /dev/null

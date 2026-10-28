@@ -1,0 +1,59 @@
+{
+  "id": "vb-misc-findmax",
+  "kind": "write",
+  "prompt": "Create unit `tasks` for this task.\n\nImplement `find_max`: `nums` is non-empty. Return its largest element. The contract must state that the result is at least every element.\n\nRequired signature (in unit `tasks`):\nfn find_max(nums: &[i64]) -> (r: i64)",
+  "unit": "tasks",
+  "def": "tasks::find_max",
+  "signature": "fn find_max(nums: &[i64]) -> (r: i64)",
+  "accept": {
+    "specs": "spec fn ref_pre(nums: &[i64]) -> bool { nums.len() > 0 }\nspec fn ref_post(nums: &[i64], r: i64) -> bool { forall|i: usize| i < nums.len() ==> #[trigger] nums[i] <= r }",
+    "pre": "ref_pre(nums)",
+    "post": "ref_post(nums, r)",
+    "args": "nums"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn nonempty(nums: &[i64]) -> bool { nums.len() > 0 }\n\nspec fn max_upto(nums: &[i64], m: i64, n: usize) -> bool { forall|i: usize| i < n ==> #[trigger] nums[i] <= m }\n\nspec fn upper_bound(nums: &[i64], r: i64) -> bool { forall|i: usize| i < nums.len() ==> #[trigger] nums[i] <= r }\n\n#[effects(pure)]\n#[uses(nonempty, max_upto, upper_bound)]\nfn find_max(nums: &[i64]) -> (r: i64)\n    requires nonempty(nums),\n    ensures upper_bound(nums, r),\n{\n    let mut m: i64 = nums[0];\n    let mut idx: usize = 1;\n    while idx < nums.len()\n        invariant 1 <= idx, idx <= nums.len(), max_upto(nums, m, idx),\n        decreases nums.len() - idx,\n    {\n        if nums[idx] > m {\n            m = nums[idx];\n        }\n        idx = idx + 1;\n    }\n    m\n}"
+    }
+  ],
+  "weak_reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn nonempty(nums: &[i64]) -> bool { nums.len() > 0 }\n\nspec fn at_least_first(nums: &[i64], r: i64) -> bool { nums[0] <= r }\n\n#[effects(pure)]\n#[uses(nonempty, at_least_first)]\nfn find_max(nums: &[i64]) -> (r: i64)\n    requires nonempty(nums),\n    ensures at_least_first(nums, r),\n{\n    let mut m: i64 = nums[0];\n    let mut idx: usize = 1;\n    while idx < nums.len()\n        invariant 1 <= idx, idx <= nums.len(), nums[0] <= m,\n        decreases nums.len() - idx,\n    {\n        if nums[idx] > m {\n            m = nums[idx];\n        }\n        idx = idx + 1;\n    }\n    m\n}"
+    }
+  ],
+  "source": {
+    "benchmark": "Verus-Bench",
+    "origin": "Misc",
+    "path": "benchmarks/Verus-Bench/Misc/verified/findmax.rs",
+    "rules": [
+      "T1",
+      "T2",
+      "T6"
+    ]
+  },
+  "verus": {
+    "prompt": "Implement `find_max`: `nums` is non-empty. Return its largest element. The contract must state that the result is at least every element.\n\nRequired signature:\nfn find_max(nums: Vec<i32>) -> (ret:i32)",
+    "signature": "fn find_max(nums: Vec<i32>) -> (ret:i32)",
+    "target": "find_max",
+    "specs": "",
+    "pre": "nums.len() > 0",
+    "post": "forall |i: int| 0 <= i < nums@.len() ==> nums@[i] <= ret",
+    "args": "nums",
+    "reference": "#[allow(unused_imports)]\nuse vstd::prelude::*;\nfn main() {}\n\nverus! {\nfn find_max(nums: Vec<i32>) -> (ret:i32)\nrequires\n    nums.len() > 0,\nensures\n    forall |i: int| 0 <= i < nums@.len() ==> nums@[i] <= ret,\n    exists |i: int| 0 <= i < nums@.len() ==> nums@[i] == ret,\n{\n    let mut max = nums[0];\n    let mut i = 1;\n    while i < nums.len()\n    invariant\n        forall |k: int| 0 <= k < i ==> nums@[k] <= max,\n        exists |k: int| 0 <= k < i && nums@[k] == max,\n    decreases nums@.len() - i,\n    {\n        if nums[i] > max {\n            max = nums[i];\n        }\n        i += 1;\n    }\n    max\n}\n}",
+    "reference_origin": "upstream"
+  }
+}

@@ -2,7 +2,8 @@
 """Pilot runs of BRB, BMB+proof against Rust+tests, through the Claude Code CLI
 (H-ORACLE, G5, G8; backlog T0-07).
 
-  brb_pilot.py --arm bmb|rust --model MODEL [--tasks ID,..] [--jobs N] [--proptest on|off] --out FILE
+  brb_pilot.py --arm bmb|rust --model MODEL [--tasks ID,..] [--jobs N] [--proptest on|off]
+               [--variant bench/brb-write] --out FILE
 
 The frozen harness (`bench/brb/harness.py`) is used as a library: the same
 workspace or crate, the same prompts (`prompt-ARM.md` as the whole system
@@ -14,8 +15,15 @@ is the CLI's (`cli_pilot.run_claude`); the harness's per-session output-token
 budget (64,000) is not enforced. Rows say `"pilot": true` (ADR-0058 §2), and
 `total_tokens` counts cache reads and writes too, since the CLI reports them
 apart. `bench/brb/harness.py summarize` reads the result files.
+
+`--variant DIR` (BMB arm only) takes the BMB prompt and `set.json` (`bmb mcp`
+flags, tools the model is not shown) from a set `bench/edit/gen.py` built
+(`bench/brb-write`: the one-call `write`, backlog 2D-24). The tasks, judge and
+Rust arm are BRB's, so the rows keep BRB's MANIFEST digest and compare with the
+Rust arm; `task_set` and `variant_manifest` say which surface ran.
 """
 import argparse
+import hashlib
 import concurrent.futures
 import importlib.util
 import json
@@ -32,9 +40,12 @@ import cli_pilot  # noqa: E402
 _spec = importlib.util.spec_from_file_location("brb_harness", os.path.join(os.path.dirname(HERE), "brb", "harness.py"))
 brb = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(brb)
+_spec = importlib.util.spec_from_file_location("edit_gen", os.path.join(brb.ROOT, "bench", "edit", "gen.py"))
+edit_gen = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(edit_gen)
 
 
-def run_task(task, arm, model, target, proptest):
+def run_task(task, arm, model, target, proptest, variant=None):
     tmp = tempfile.mkdtemp(prefix=f"brb-pilot-{arm}-{task.ID}-")
     try:
         cwd = os.path.join(tmp, "cwd")
@@ -44,13 +55,15 @@ def run_task(task, arm, model, target, proptest):
             ws = os.path.join(tmp, "ws")
             os.makedirs(os.path.join(ws, "src"))
             server = [sys.executable, "-I", os.path.join(HERE, "mcp_proxy.py"), brb.bmb_bin(), ws, metrics, "write"]
+            if variant:
+                server.append(variant)
             check_tool = "verify"
         else:
             ws = os.path.join(tmp, "solution")
             brb.make_crate(ws, proptest)
             server = [sys.executable, "-I", os.path.join(HERE, "rust_mcp.py"), ws, target, metrics]
             check_tool = "cargo_test"
-        prompt = brb.read_bytes(os.path.join(brb.HERE, f"prompt-{arm}.md")).decode()
+        prompt = brb.read_bytes(os.path.join(variant or brb.HERE, f"prompt-{arm}.md")).decode()
         session = cli_pilot.run_claude(model, prompt, brb.judge.task_prompt(task, arm), server, cwd)
         m = json.load(open(metrics)) if os.path.exists(metrics) else {}
         if arm == "bmb":
@@ -99,9 +112,16 @@ def main():
     ap.add_argument("--tasks")
     ap.add_argument("--jobs", type=int, default=1)
     ap.add_argument("--proptest", choices=["on", "off"], default="on")
+    ap.add_argument("--variant", help="BMB arm only: a set from bench/edit/gen.py (bench/brb-write)")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
     brb.check_manifest()
+    variant = os.path.abspath(args.variant) if args.variant else None
+    if variant:
+        if args.arm != "bmb":
+            sys.exit("--variant changes the BMB arm only")
+        if open(os.path.join(variant, "MANIFEST")).read() != edit_gen.brb_manifest(variant):
+            sys.exit("variant inputs differ from its MANIFEST: refusing to run (ADR-0021 §1)")
     ts = brb.tasks()
     if args.tasks:
         wanted = set(args.tasks.split(","))
@@ -113,7 +133,7 @@ def main():
         if args.arm == "rust":
             brb.warm_rust(target, proptest)
         with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
-            for r in pool.map(lambda t: run_task(t, args.arm, args.model, target, proptest), ts):
+            for r in pool.map(lambda t: run_task(t, args.arm, args.model, target, proptest, variant), ts):
                 results.append(r)
                 print(json.dumps({k: r.get(k) for k in ("id", "arm", "success", "final_check_ok", "tool_calls",
                                                         "cost_usd", "wall_s")}), flush=True)
@@ -123,9 +143,11 @@ def main():
     commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=brb.ROOT, capture_output=True, text=True).stdout.strip()
     cli_version = subprocess.run(["claude", "--version"], capture_output=True, text=True).stdout.strip()
     summary = {
-        "summary": True, "pilot": True, "task_set": "brb", "arm": args.arm, "agent": f"claude-cli:{args.model}",
+        "summary": True, "pilot": True, "task_set": os.path.basename(variant) if variant else "brb", "arm": args.arm, "agent": f"claude-cli:{args.model}",
         "cli": cli_version, "tasks": n, "proptest": proptest if args.arm == "rust" else None,
         "manifest": brb.manifest_digest(), "commit": commit,
+        "variant_manifest": hashlib.sha256(open(os.path.join(variant, "MANIFEST"), "rb").read()).hexdigest()
+        if variant else None,
         "limits": {"tool_calls": brb.MAX_TOOL_CALLS, "session_output_tokens": None},
         "success": f"{sum(r['success'] for r in results)}/{n}",
         "defect_rate": round(sum(r["defect"] for r in results) / n, 3) if n else None,

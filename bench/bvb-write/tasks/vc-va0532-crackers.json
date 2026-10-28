@@ -1,0 +1,57 @@
+{
+  "id": "vc-va0532-crackers",
+  "kind": "write",
+  "prompt": "Create unit `tasks` for this task.\n\nImplement `solve`: `n` and `k` are between 1 and 100. N crackers are shared among K users as evenly as possible; return the smallest possible difference between the largest and the smallest share (0 if k divides n, else 1). The contract must state the result exactly, including that it is 0 exactly when n % k == 0 and 1 exactly when n % k != 0.\n\nRequired signature (in unit `tasks`):\nfn solve(n: i64, k: i64) -> (r: i64)",
+  "unit": "tasks",
+  "def": "tasks::solve",
+  "signature": "fn solve(n: i64, k: i64) -> (r: i64)",
+  "accept": {
+    "specs": "spec fn ref_pre(n: i64, k: i64) -> bool { n >= 1 && k >= 1 && n <= 100 && k <= 100 }\nspec fn ref_post(n: i64, k: i64, r: i64) -> bool { r == (if n % k == 0 { 0 } else { 1 }) && ((r == 0) == (n % k == 0)) && ((r == 1) == (n % k != 0)) }",
+    "pre": "ref_pre(n, k)",
+    "post": "ref_post(n, k, r)",
+    "args": "n, k"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn input_ok(n: i64, k: i64) -> bool { n >= 1 && k >= 1 && n <= 100 && k <= 100 }\n\nspec fn result_ok(n: i64, k: i64, r: i64) -> bool { r == (if n % k == 0 { 0 } else { 1 }) && ((r == 0) == (n % k == 0)) && ((r == 1) == (n % k != 0)) }\n\n#[effects(pure)]\n#[uses(input_ok, result_ok)]\nfn solve(n: i64, k: i64) -> (r: i64)\n    requires input_ok(n, k),\n    ensures result_ok(n, k, r),\n{\n    if n % k == 0 {\n        0\n    } else {\n        1\n    }\n}"
+    }
+  ],
+  "weak_reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn input_ok(n: i64, k: i64) -> bool { n >= 1 && k >= 1 && n <= 100 && k <= 100 }\n\nspec fn result_ok(n: i64, k: i64, r: i64) -> bool { r >= 0 && r <= 1 }\n\n#[effects(pure)]\n#[uses(input_ok, result_ok)]\nfn solve(n: i64, k: i64) -> (r: i64)\n    requires input_ok(n, k),\n    ensures result_ok(n, k, r),\n{\n    if n % k == 0 {\n        0\n    } else {\n        1\n    }\n}"
+    }
+  ],
+  "source": {
+    "benchmark": "Vericoding",
+    "origin": "apps apps_test_4308",
+    "path": "jsonl/verus_tasks.jsonl#VA0532",
+    "rules": [
+      "T2"
+    ]
+  },
+  "verus": {
+    "prompt": "Implement `solve`: `n` and `k` are between 1 and 100. N crackers are shared among K users as evenly as possible; return the smallest possible difference between the largest and the smallest share (0 if k divides n, else 1). The contract must state the result exactly, including that it is 0 exactly when n % k == 0 and 1 exactly when n % k != 0.\n\nRequired signature:\nfn solve(n: i8, k: i8) -> (result: i8)",
+    "signature": "fn solve(n: i8, k: i8) -> (result: i8)",
+    "target": "solve",
+    "specs": "spec fn bvb_ref_valid_input(n: int, k: int) -> bool {\n    n >= 1 && k >= 1 && n <= 100 && k <= 100\n}\n\nspec fn bvb_ref_min_cracker_difference(n: int, k: int) -> int\n    recommends k > 0\n{\n    if n % k == 0 { 0 } else { 1 }\n}",
+    "pre": "bvb_ref_valid_input(n as int, k as int)",
+    "post": "result as int == bvb_ref_min_cracker_difference(n as int, k as int),\n        result as int == 0 <==> (n as int) % (k as int) == 0,\n        result as int == 1 <==> (n as int) % (k as int) != 0",
+    "args": "n, k",
+    "reference": "// <vc-preamble>\nuse vstd::prelude::*;\n\nverus! {\nspec fn valid_input(n: int, k: int) -> bool {\n    n >= 1 && k >= 1 && n <= 100 && k <= 100\n}\n\nspec fn min_cracker_difference(n: int, k: int) -> int\n    recommends k > 0\n{\n    if n % k == 0 { 0 } else { 1 }\n}\n// </vc-preamble>\n\n// <vc-helpers>\nproof fn lemma_i8_mod_zero_equiv(n: i8, k: i8)\n    requires\n        valid_input(n as int, k as int),\n    ensures\n        (n % k == 0i8) == ((n as int) % (k as int) == 0),\n        (n % k != 0i8) == ((n as int) % (k as int) != 0),\n{\n}\n\n// </vc-helpers>\n\n// <vc-spec>\nfn solve(n: i8, k: i8) -> (result: i8)\n    requires \n        valid_input(n as int, k as int)\n    ensures \n        result as int == min_cracker_difference(n as int, k as int),\n        result as int == 0 <==> (n as int) % (k as int) == 0,\n        result as int == 1 <==> (n as int) % (k as int) != 0\n// </vc-spec>\n// <vc-code>\n{\n    let res: i8;\n    if n % k == 0i8 {\n        res = 0i8;\n    } else {\n        res = 1i8;\n    }\n    proof {\n        lemma_i8_mod_zero_equiv(n, k);\n        if n % k == 0i8 {\n            assert((n as int) % (k as int) == 0);\n            assert(res as int == 0);\n            assert(res as int == min_cracker_difference(n as int, k as int));\n        } else {\n            assert((n as int) % (k as int) != 0);\n            assert(res as int == 1);\n            assert(res as int == min_cracker_difference(n as int, k as int));\n        }\n    }\n    res\n}\n\n// </vc-code>\n\n\n}\n\nfn main() {}",
+    "reference_origin": "upstream"
+  }
+}
