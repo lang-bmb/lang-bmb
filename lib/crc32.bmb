@@ -1,0 +1,84 @@
+#[summary("CRC-32(T4-04): ISO-HDLC/zlib의 반사 CRC-32(다항식 0xedb88320, 초기값·최종 xor 0xffffffff). 결과는 비트 단위 정의 reg와 같음이 증명된다. Rust crc32fast·Python zlib.crc32와 같은 값")]
+mod crc32 {
+    // One bit of the register: shift right, and xor the reflected polynomial
+    // when the bit shifted out is set.
+    spec fn bit(c: u32) -> u32 {
+        if c & 1 == 1 { (c >> 1) ^ 0xedb88320 } else { c >> 1 }
+    }
+
+    // One byte: xor it into the low bits, then eight bit steps.
+    spec fn byte(c: u32, b: u8) -> u32 {
+        bit(bit(bit(bit(bit(bit(bit(bit(c ^ b))))))))
+    }
+
+    // The register after feeding `s[0..n]` to the register `c`.
+    spec fn run(c: u32, s: &[u8], n: usize) -> u32
+        decreases n,
+    {
+        if n == 0 || n > s.len() { c } else { byte(run(c, s, n - 1), s[n - 1]) }
+    }
+
+    spec fn bit_result(c: u32, r: u32) -> bool { r == bit(c) }
+
+    spec fn byte_result(c: u32, b: u8, r: u32) -> bool { r == byte(c, b) }
+
+    spec fn ran(c: u32, s: &[u8], n: usize, r: u32) -> bool { n <= s.len() && r == run(c, s, n) }
+
+    // zlib's `crc32(crc, s)`: the checksum `crc` of some bytes continued
+    // with `s`. The register holds the complement of the checksum.
+    spec fn continued(crc: u32, s: &[u8], r: u32) -> bool { r == !run(!crc, s, s.len()) }
+
+    spec fn checksum_of(s: &[u8], r: u32) -> bool { r == !run(0xffffffff, s, s.len()) }
+
+    #[effects(pure)]
+    #[uses(bit_result, bit)]
+    fn bit_step(c: u32) -> (r: u32)
+        ensures bit_result(c, r),
+    {
+        if c & 1 == 1 { (c >> 1) ^ 0xedb88320 } else { c >> 1 }
+    }
+
+    // The register after one byte (backlog 2N-03: a 256-entry table needs
+    // the bit-level lemma `byte(c, b) == byte((c ^ b) & 0xff, 0) ^ (c >> 8)`,
+    // which the mixed encoding does not decide).
+    #[effects(pure)]
+    #[uses(byte_result, byte, bit_result)]
+    fn byte_step(c: u32, b: u8) -> (r: u32)
+        ensures byte_result(c, b, r),
+    {
+        let x0: u32 = c ^ u32::try_from(b).unwrap();
+        let x1: u32 = bit_step(x0);
+        let x2: u32 = bit_step(x1);
+        let x3: u32 = bit_step(x2);
+        let x4: u32 = bit_step(x3);
+        let x5: u32 = bit_step(x4);
+        let x6: u32 = bit_step(x5);
+        let x7: u32 = bit_step(x6);
+        bit_step(x7)
+    }
+
+    // The checksum `crc` of some bytes, continued with `s` (zlib
+    // `crc32(crc, s)`; `update(0, s)` is the checksum of `s`).
+    #[effects(pure)]
+    #[uses(run, ran, continued, byte_result)]
+    fn update(crc: u32, s: &[u8]) -> (r: u32)
+        ensures continued(crc, s, r),
+    {
+        let mut c: u32 = !crc;
+        for i in 0..s.len()
+            invariant ran(!crc, s, i, c),
+        {
+            c = byte_step(c, s[i]);
+        }
+        !c
+    }
+
+    // The CRC-32 of `s` (`"123456789"` gives `0xcbf43926`).
+    #[effects(pure)]
+    #[uses(checksum_of, continued)]
+    fn checksum(s: &[u8]) -> (r: u32)
+        ensures checksum_of(s, r),
+    {
+        update(0, s)
+    }
+}

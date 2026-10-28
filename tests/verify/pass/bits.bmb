@@ -156,4 +156,32 @@ mod bp {
     {
         (a | b) & !(a & b)
     }
+
+    // A specification and the code computing the same bit operations
+    // (backlog 1B-49): the abstracted query relates them by congruence,
+    // also through a nested operation and in two's complement.
+    spec fn mixed(x: u32, k: u32, r: u32) -> bool {
+        r == ((x >> 1) ^ k) | 0x80000000
+    }
+
+    #[effects(pure)]
+    #[uses(mixed)]
+    fn mix(x: u32, k: u32) -> (r: u32)
+        ensures mixed(x, k, r),
+    {
+        ((x >> 1) ^ k) | 0x80000000
+    }
+
+    spec fn masked(a: i16, b: i16, r: i16) -> bool {
+        r == (a ^ b) & 0x7ff0
+    }
+
+    #[effects(pure)]
+    #[uses(masked)]
+    fn mask_xor(a: i16, b: i16) -> (r: i16)
+        ensures masked(a, b, r),
+    {
+        let t: i16 = a ^ b;
+        t & 0x7ff0
+    }
 }

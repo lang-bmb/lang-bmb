@@ -2325,6 +2325,22 @@ impl<'p, 'q> Enc<'p, 'q> {
             let c = self.fresh(base, &sort_of(t));
             if let Some(r) = range(t, &c) {
                 self.pc.push(r);
+            } else if let Some(vs) = enum_variants(t, self.prog.t) {
+                // A value of code: each variant's payload leaves are in
+                // their ranges when it is that variant (backlog 1B-50; a
+                // `match` states the same facts on its arms, ADR-0027 §5).
+                // A spec fn taking a payload slice unfolds only for an
+                // argument whose length is in range.
+                for (v, ps) in &vs {
+                    if ps.is_empty() {
+                        continue;
+                    }
+                    let (_, facts) = self.payload(t, v, &c);
+                    if !facts.is_empty() {
+                        self.pc
+                            .push(format!("(=> ((_ is {}) {c}) {})", ctor(t, v), and(&facts)));
+                    }
+                }
             }
             Val::S(c)
         }
@@ -5568,7 +5584,7 @@ fn verify_impl(
                     }
                     _ => (base.clone(), q.clone()),
                 };
-                abstract_bits(&body).map(|aq| (head, aq))
+                abstract_bits(&head, &body).map(|aq| (head, aq))
             } else {
                 None
             };
@@ -5774,8 +5790,9 @@ fn verify_impl(
 /// definition is dropped, so the abstracted query is weaker: unsatisfiable
 /// means the obligation holds (ADR-0048 §4). A term under a quantifier that
 /// mentions a bound variable is kept as it is (a constant cannot stand for
-/// it).
-fn abstract_bits(q: &str) -> Option<String> {
+/// it). Terms that compute the same thing in different notation are related
+/// by congruence facts (`bit_congruences`; `head` declares the constants).
+fn abstract_bits(head: &str, q: &str) -> Option<String> {
     use smt::Sexp::{Atom, List};
     fn mentions(e: &smt::Sexp, bound: &[String]) -> bool {
         match e {
@@ -5842,18 +5859,288 @@ fn abstract_bits(q: &str) -> Option<String> {
     }
     let mut names = Vec::new();
     let mut out = String::new();
+    let mut cmds = Vec::new();
     for c in smt::split_commands(q) {
         let e = smt::parse(&c)?;
         out.push_str(&smt::print(&walk(&e, &mut Vec::new(), &mut names)));
         out.push('\n');
+        cmds.push(e);
     }
     if names.is_empty() {
         return None;
+    }
+    // The congruences go through the same abstraction: their terms are
+    // among `names`, and their leaf values may add more.
+    let terms = names.clone();
+    for fact in bit_congruences(head, &cmds, &terms) {
+        let e = smt::parse(&fact)?;
+        out.push_str(&smt::print(&walk(&e, &mut Vec::new(), &mut names)));
+        out.push('\n');
     }
     let decls: String = (0..names.len())
         .map(|k| format!("(declare-const |bv#{k}| Int)\n"))
         .collect();
     Some(format!("{decls}{out}"))
+}
+
+/// Congruence facts (assertions) between the abstracted ground terms
+/// `terms` (each a `(bv2nat ..)`) of the query `cmds` that apply the same
+/// operations to the same values written differently (backlog 1B-49). Code
+/// names each operand of a bit operation by a bitvector constant with a
+/// stated value (`Enc::operand_bv`: `(= (bv2nat |'bv@k|) v)` on its path), a
+/// specification converts its operand (`((_ int2bv w) v)`), and a literal is
+/// a bitvector numeral. Without these facts the abstraction gives the
+/// code's `x ^ k` and a specification's `x ^ k` two unrelated constants,
+/// and only the exact query relates them, through `int2bv`, which Z3 did not
+/// finish for one 32-bit `^` (rlimit 5000000).
+///
+/// Two terms whose trees agree once each leaf is read as its width and its
+/// value (a constant's stated value; in a value, terms are read the same
+/// way) get `(=> (and (= a1 b1) ..) (= t1 t2))` over the leaves that
+/// differ. A leaf's side is `(bv2nat c)` for a constant `c`, `v` for
+/// `((_ int2bv w) v)` (`(mod v 2^w)` against a constant whose stated value
+/// is the two's complement form, `bv_value`) and `n` for a numeral. Each
+/// fact holds in every model: `bv2nat` is one-to-one on a width, a value
+/// equal to a `bv2nat` is in range, where `int2bv` inverts it, and
+/// `(mod v 2^w)` is the `bv2nat` of `((_ int2bv w) v)`. So the abstracted
+/// query with them stays weaker than the exact query (ADR-0048 §4).
+fn bit_congruences(head: &str, cmds: &[smt::Sexp], terms: &[String]) -> Vec<String> {
+    use smt::Sexp::{Atom, List};
+    let mut width: BTreeMap<String, u32> = BTreeMap::new();
+    for c in smt::split_commands(head) {
+        if let Some(List(xs)) = smt::parse(&c)
+            && let [Atom(d), Atom(name), List(sort)] = xs.as_slice()
+            && d == "declare-const"
+            && name.starts_with("|'bv@")
+            && let [Atom(u), Atom(bv), Atom(w)] = sort.as_slice()
+            && u == "_"
+            && bv == "BitVec"
+            && let Ok(w) = w.parse()
+        {
+            width.insert(name.clone(), w);
+        }
+    }
+    // The stated value of each constant (one per constant, `operand_bv`).
+    fn defs(e: &smt::Sexp, out: &mut BTreeMap<String, smt::Sexp>) {
+        let List(xs) = e else { return };
+        if let [Atom(eq), List(l), v] = xs.as_slice()
+            && eq == "="
+            && let [Atom(b), Atom(c)] = l.as_slice()
+            && b == "bv2nat"
+            && c.starts_with("|'bv@")
+        {
+            out.entry(c.clone()).or_insert_with(|| v.clone());
+        }
+        for x in xs {
+            defs(x, out);
+        }
+    }
+    let mut value: BTreeMap<String, smt::Sexp> = BTreeMap::new();
+    for c in cmds {
+        defs(c, &mut value);
+    }
+    let cx = Congr { width, value };
+    // The terms and the terms nested in them (a specification's `(a ^ b) |
+    // c` converts the inner term's value), inner ones first.
+    fn nested(e: &smt::Sexp, seen: &mut BTreeSet<String>, out: &mut Vec<smt::Sexp>) {
+        let List(xs) = e else { return };
+        for x in xs {
+            nested(x, seen, out);
+        }
+        if matches!(xs.first(), Some(Atom(h)) if h == "bv2nat") && seen.insert(smt::print(e)) {
+            out.push(e.clone());
+        }
+    }
+    let mut all = Vec::new();
+    let mut seen = BTreeSet::new();
+    for t in terms {
+        if let Some(e) = smt::parse(t) {
+            nested(&e, &mut seen, &mut all);
+        }
+    }
+    // Terms by their reading; the first of each reading is the one the
+    // others are equated with.
+    let mut first: BTreeMap<String, smt::Sexp> = BTreeMap::new();
+    let mut facts = Vec::new();
+    for e in all {
+        let List(xs) = &e else { continue };
+        let Some(bv) = xs.get(1) else { continue };
+        // A constant's own `bv2nat` is a leaf's value, not an operation.
+        if cx.leaf(bv).is_some() {
+            continue;
+        }
+        let Some(key) = cx.read(&e) else { continue };
+        match first.get(&key) {
+            None => {
+                first.insert(key, e);
+            }
+            Some(f) => {
+                let mut eqs = Vec::new();
+                if !cx.leaf_pairs(f, &e, &mut eqs) {
+                    continue;
+                }
+                let ante = match eqs.len() {
+                    0 => "true".to_string(),
+                    1 => eqs[0].clone(),
+                    _ => format!("(and {})", eqs.join(" ")),
+                };
+                facts.push(format!(
+                    "(assert (=> {ante} (= {} {})))",
+                    smt::print(f),
+                    smt::print(&e)
+                ));
+            }
+        }
+    }
+    facts
+}
+
+/// The reading of bitvector terms behind `bit_congruences`.
+struct Congr {
+    /// Width of each operand constant.
+    width: BTreeMap<String, u32>,
+    /// Stated value of each operand constant.
+    value: BTreeMap<String, smt::Sexp>,
+}
+
+/// The kind of a bitvector leaf.
+enum BvLeaf {
+    /// A code operand constant; `signed` when its stated value is the two's
+    /// complement form `(ite (< v 0) (+ v 2^w) v)` (the leaf's value is `v`).
+    Const { name: String, signed: bool },
+    /// `((_ int2bv w) v)`.
+    Conv,
+    /// `(_ bvN w)`.
+    Num,
+}
+
+impl Congr {
+    /// `e` as a leaf: its kind, width and value.
+    fn leaf(&self, e: &smt::Sexp) -> Option<(BvLeaf, u32, smt::Sexp)> {
+        use smt::Sexp::{Atom, List};
+        let is = |e: &smt::Sexp, s: &str| matches!(e, Atom(a) if a == s);
+        match e {
+            Atom(a) if a.starts_with("|'bv@") => {
+                let w = *self.width.get(a)?;
+                let v = self.value.get(a)?;
+                // `bv_value` of a signed operand.
+                if let List(xs) = v
+                    && let [ite, List(c), List(p), x] = xs.as_slice()
+                    && is(ite, "ite")
+                    && c.len() == 3
+                    && is(&c[0], "<")
+                    && c[1] == *x
+                    && is(&c[2], "0")
+                    && p.len() == 3
+                    && is(&p[0], "+")
+                    && p[1] == *x
+                    && is(&p[2], &num(1i128 << w))
+                {
+                    let name = a.clone();
+                    return Some((BvLeaf::Const { name, signed: true }, w, x.clone()));
+                }
+                let name = a.clone();
+                Some((
+                    BvLeaf::Const {
+                        name,
+                        signed: false,
+                    },
+                    w,
+                    v.clone(),
+                ))
+            }
+            List(xs) => match xs.as_slice() {
+                [List(f), v] if f.len() == 3 && is(&f[0], "_") && is(&f[1], "int2bv") => {
+                    let Atom(w) = &f[2] else { return None };
+                    Some((BvLeaf::Conv, w.parse().ok()?, v.clone()))
+                }
+                [u, Atom(n), Atom(w)] if is(u, "_") && n.starts_with("bv") => {
+                    let n: i128 = n[2..].parse().ok()?;
+                    Some((BvLeaf::Num, w.parse().ok()?, Atom(num(n))))
+                }
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    /// The reading of a bitvector term: leaves as width and read value,
+    /// operations as they are. `None` for a form this does not know.
+    fn read_bv(&self, e: &smt::Sexp) -> Option<String> {
+        use smt::Sexp::{Atom, List};
+        if let Some((_, w, v)) = self.leaf(e) {
+            return Some(format!("[{w} {}]", self.read(&v)?));
+        }
+        let List(xs) = e else { return None };
+        let Some(Atom(op)) = xs.first() else {
+            return None;
+        };
+        if !op.starts_with("bv") || xs.len() < 2 {
+            return None;
+        }
+        let args: Option<Vec<String>> = xs[1..].iter().map(|x| self.read_bv(x)).collect();
+        Some(format!("({op} {})", args?.join(" ")))
+    }
+
+    /// The reading of an integer term: each `(bv2nat t)` in it by the
+    /// reading of `t`, everything else as it is.
+    fn read(&self, e: &smt::Sexp) -> Option<String> {
+        use smt::Sexp::{Atom, List};
+        match e {
+            Atom(a) => Some(a.clone()),
+            List(xs) => {
+                if let [Atom(b), t] = xs.as_slice()
+                    && b == "bv2nat"
+                {
+                    return Some(format!("(bv2nat {})", self.read_bv(t)?));
+                }
+                let parts: Option<Vec<String>> = xs.iter().map(|x| self.read(x)).collect();
+                Some(format!("({})", parts?.join(" ")))
+            }
+        }
+    }
+
+    /// The integer side of a leaf against the leaf `other` it is paired with.
+    fn side(mine: &(BvLeaf, u32, smt::Sexp), other: &BvLeaf) -> String {
+        match (mine, other) {
+            ((BvLeaf::Const { name, .. }, _, _), _) => format!("(bv2nat {name})"),
+            ((_, w, v), BvLeaf::Const { signed: true, .. }) => {
+                format!("(mod {} {})", smt::print(v), num(1i128 << w))
+            }
+            ((_, _, v), _) => smt::print(v),
+        }
+    }
+
+    /// The equalities of the leaves where two terms of the same reading
+    /// differ; false when their shapes do not match.
+    fn leaf_pairs(&self, a: &smt::Sexp, b: &smt::Sexp, eqs: &mut Vec<String>) -> bool {
+        use smt::Sexp::List;
+        if a == b {
+            return true;
+        }
+        match (self.leaf(a), self.leaf(b)) {
+            (Some(la), Some(lb)) => {
+                let x = Self::side(&la, &lb.0);
+                let y = Self::side(&lb, &la.0);
+                if x != y {
+                    eqs.push(format!("(= {x} {y})"));
+                }
+                true
+            }
+            (None, None) => match (a, b) {
+                (List(xs), List(ys))
+                    if xs.len() == ys.len() && !xs.is_empty() && xs[0] == ys[0] =>
+                {
+                    xs[1..]
+                        .iter()
+                        .zip(&ys[1..])
+                        .all(|(x, y)| self.leaf_pairs(x, y, eqs))
+                }
+                _ => false,
+            },
+            _ => false,
+        }
+    }
 }
 
 /// A spec fn's definition, kept apart for ground instantiation.
@@ -6341,6 +6628,70 @@ fn show(v: &Val, t: &TypeKind, tb: &Tables, it: &mut impl Iterator<Item = String
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Congruence facts of the abstracted query (backlog 1B-49) relate a
+    /// code term and a specification term of the same operation, unsigned
+    /// and in two's complement, through nested terms, and every fact holds
+    /// without the path condition: Z3 refutes its negation at edge and
+    /// interior values of the operands (at symbolic values Z3 does not
+    /// decide `int2bv` at 16 bits in a minute).
+    #[test]
+    fn bit_congruences_relate_notations_and_hold() {
+        let head = "(declare-const |'bv@0| (_ BitVec 32))\n(declare-const |'bv@1| (_ BitVec 16))\n(declare-const |'bv@2| (_ BitVec 32))\n";
+        // Code: `x ^ 5`, `(x ^ 5) | 1` and `y & 7` (y: i16), on a path `p`.
+        let q = "(assert (=> p (= (bv2nat |'bv@0|) x)))
+(assert (=> p (= (bv2nat |'bv@1|) (ite (< y 0) (+ y 65536) y))))
+(assert (=> p (= (bv2nat |'bv@2|) (bv2nat (bvxor |'bv@0| (_ bv5 32))))))
+(assert (= a (bv2nat (bvor |'bv@2| (_ bv1 32)))))
+(assert (= b (bv2nat (bvor ((_ int2bv 32) (bv2nat (bvxor ((_ int2bv 32) x) ((_ int2bv 32) 5)))) ((_ int2bv 32) 1)))))
+(assert (= c (bv2nat (bvand |'bv@1| (_ bv7 16)))))
+(assert (= d (bv2nat (bvand ((_ int2bv 16) y) ((_ int2bv 16) 7)))))
+";
+        let cmds: Vec<smt::Sexp> = smt::split_commands(q)
+            .iter()
+            .map(|c| smt::parse(c).unwrap())
+            .collect();
+        let terms = [
+            "(bv2nat (bvor |'bv@2| (_ bv1 32)))",
+            "(bv2nat (bvor ((_ int2bv 32) (bv2nat (bvxor ((_ int2bv 32) x) ((_ int2bv 32) 5)))) ((_ int2bv 32) 1)))",
+            "(bv2nat (bvand |'bv@1| (_ bv7 16)))",
+            "(bv2nat (bvand ((_ int2bv 16) y) ((_ int2bv 16) 7)))",
+            "(bv2nat |'bv@2|)",
+            "(bv2nat (bvxor |'bv@0| (_ bv5 32)))",
+        ]
+        .map(String::from);
+        let facts = bit_congruences(head, &cmds, &terms);
+        assert_eq!(
+            facts,
+            [
+                "(assert (=> (= (bv2nat |'bv@2|) (bv2nat (bvxor ((_ int2bv 32) x) ((_ int2bv 32) 5)))) (= (bv2nat (bvor |'bv@2| (_ bv1 32))) (bv2nat (bvor ((_ int2bv 32) (bv2nat (bvxor ((_ int2bv 32) x) ((_ int2bv 32) 5)))) ((_ int2bv 32) 1))))))",
+                "(assert (=> (= (bv2nat |'bv@1|) (mod y 65536)) (= (bv2nat (bvand |'bv@1| (_ bv7 16))) (bv2nat (bvand ((_ int2bv 16) y) ((_ int2bv 16) 7))))))",
+                "(assert (=> (= x (bv2nat |'bv@0|)) (= (bv2nat (bvxor ((_ int2bv 32) x) ((_ int2bv 32) 5))) (bv2nat (bvxor |'bv@0| (_ bv5 32))))))",
+            ]
+        );
+        // With the facts, the abstracted query is unsatisfiable under `p`
+        // for `a = b` and `c = d`: check that each fact holds everywhere.
+        let xs = ["0", "5", "4294967295", "2147483648", "123456789"];
+        let ys = ["0", "7", "(- 1)", "(- 32768)", "32767", "(- 1000)"];
+        for fact in &facts {
+            for x in xs {
+                for y in ys {
+                    let body = fact.strip_prefix("(assert ").unwrap();
+                    let body = &body[..body.len() - 1];
+                    let script = format!(
+                        "{head}(declare-const x Int)\n(declare-const y Int)\n(assert (= x {x}))\n(assert (= y {y}))\n(assert (not {body}))\n"
+                    );
+                    let mut s = smt::Solver::start().expect("z3 must be installed");
+                    s.run(&script).unwrap();
+                    let answer = s.check_sat().unwrap();
+                    assert!(
+                        matches!(answer, smt::Answer::Unsat),
+                        "{fact} at x = {x}, y = {y}"
+                    );
+                }
+            }
+        }
+    }
 
     /// Ground instances (ADR-0023) take datatype terms as arguments: the
     /// applications are found and substituted whole (backlog 2B-05d).

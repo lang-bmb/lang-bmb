@@ -1,6 +1,6 @@
 {"code":"E0805","severity":"error","message":"index may be out of bounds in `vf::past`; counterexample: t = Tree::Many([])","file":"fail/vec_recursion.bmb","line":12,"col":37,"end_line":12,"end_col":49}
 {"code":"E0809","severity":"error","message":"recursive call to `vf::built` may not decrease its measure in `vf::built`; counterexample: t = Tree::Many([])","file":"fail/vec_recursion.bmb","line":26,"col":17,"end_line":26,"end_col":38}
 {"code":"E0803","severity":"error","message":"`+` may overflow `i64` in `vf::two`; counterexample: t = Tree::Many([Tree::Leaf(2438), Tree::Leaf(9223372036854773370)])","file":"fail/vec_recursion.bmb","line":39,"col":42,"end_line":39,"end_col":49}
-{"def":"vf::built","status":"failed","obligations":2,"failed":1,"rlimit":620,"rlimit_max":434}
-{"def":"vf::past","status":"failed","obligations":2,"failed":1,"rlimit":630,"rlimit_max":441}
-{"def":"vf::two","status":"failed","obligations":3,"failed":1,"rlimit":1805,"rlimit_max":1288}
+{"def":"vf::built","status":"failed","obligations":2,"failed":1,"rlimit":780,"rlimit_max":546}
+{"def":"vf::past","status":"failed","obligations":2,"failed":1,"rlimit":788,"rlimit_max":551}
+{"def":"vf::two","status":"failed","obligations":3,"failed":1,"rlimit":2065,"rlimit_max":1390}

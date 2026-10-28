@@ -102,11 +102,12 @@ fn game_programs_are_proved() {
     }
 }
 
-/// Every library (`lib/`: bytes, ADR-0044 §4; UTF-8, T4-02) is proved completely.
+/// Every library (`lib/`: bytes, ADR-0044 §4; UTF-8, CRC-32, SHA-256, base64,
+/// T4) is proved completely, each on its own.
 #[test]
 fn libraries_are_proved() {
     let libs = bmb_files(&root().join("..").join("lib"));
-    assert!(libs.len() >= 2);
+    assert!(libs.len() >= 5);
     for p in libs {
         let out = bmb::verify_sources(&[(name(&p), fs::read_to_string(&p).unwrap())]);
         assert!(out.ok, "{}: {}", p.display(), out.output);

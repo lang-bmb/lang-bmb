@@ -1,0 +1,457 @@
+#[summary("SHA-256(T4-01): FIPS 180-4의 SHA-256. 결과가 명세(채우기 §5.1.1, 일정 §6.2.2, 라운드 §6.2.2, 상수 §4.2.2·§5.3.3)로 정의한 다이제스트와 같음이 증명된다. Python hashlib.sha256과 같은 값")]
+mod sha256 {
+    // The working variables and the hash value (FIPS 180-4 §6.2).
+    struct State { a: u32, b: u32, c: u32, d: u32, e: u32, f: u32, g: u32, h: u32 }
+
+    // ---------- functions (§4.1.2) ----------
+
+    spec fn bs0(x: u32) -> u32 { ((x >> 2) | (x << 30)) ^ ((x >> 13) | (x << 19)) ^ ((x >> 22) | (x << 10)) }
+
+    spec fn bs1(x: u32) -> u32 { ((x >> 6) | (x << 26)) ^ ((x >> 11) | (x << 21)) ^ ((x >> 25) | (x << 7)) }
+
+    spec fn ss0(x: u32) -> u32 { ((x >> 7) | (x << 25)) ^ ((x >> 18) | (x << 14)) ^ (x >> 3) }
+
+    spec fn ss1(x: u32) -> u32 { ((x >> 17) | (x << 15)) ^ ((x >> 19) | (x << 13)) ^ (x >> 10) }
+
+    spec fn ch(e: u32, f: u32, g: u32) -> u32 { (e & f) ^ (!e & g) }
+
+    spec fn maj(a: u32, b: u32, c: u32) -> u32 { (a & b) ^ (a & c) ^ (b & c) }
+
+    // ---------- constants (§4.2.2, §5.3.3) ----------
+
+    spec fn kk(t: usize) -> u32 {
+        if t == 0 { 0x428a2f98 } else if t == 1 { 0x71374491 } else if t == 2 { 0xb5c0fbcf } else if t == 3 { 0xe9b5dba5 }
+        else if t == 4 { 0x3956c25b } else if t == 5 { 0x59f111f1 } else if t == 6 { 0x923f82a4 } else if t == 7 { 0xab1c5ed5 }
+        else if t == 8 { 0xd807aa98 } else if t == 9 { 0x12835b01 } else if t == 10 { 0x243185be } else if t == 11 { 0x550c7dc3 }
+        else if t == 12 { 0x72be5d74 } else if t == 13 { 0x80deb1fe } else if t == 14 { 0x9bdc06a7 } else if t == 15 { 0xc19bf174 }
+        else if t == 16 { 0xe49b69c1 } else if t == 17 { 0xefbe4786 } else if t == 18 { 0x0fc19dc6 } else if t == 19 { 0x240ca1cc }
+        else if t == 20 { 0x2de92c6f } else if t == 21 { 0x4a7484aa } else if t == 22 { 0x5cb0a9dc } else if t == 23 { 0x76f988da }
+        else if t == 24 { 0x983e5152 } else if t == 25 { 0xa831c66d } else if t == 26 { 0xb00327c8 } else if t == 27 { 0xbf597fc7 }
+        else if t == 28 { 0xc6e00bf3 } else if t == 29 { 0xd5a79147 } else if t == 30 { 0x06ca6351 } else if t == 31 { 0x14292967 }
+        else if t == 32 { 0x27b70a85 } else if t == 33 { 0x2e1b2138 } else if t == 34 { 0x4d2c6dfc } else if t == 35 { 0x53380d13 }
+        else if t == 36 { 0x650a7354 } else if t == 37 { 0x766a0abb } else if t == 38 { 0x81c2c92e } else if t == 39 { 0x92722c85 }
+        else if t == 40 { 0xa2bfe8a1 } else if t == 41 { 0xa81a664b } else if t == 42 { 0xc24b8b70 } else if t == 43 { 0xc76c51a3 }
+        else if t == 44 { 0xd192e819 } else if t == 45 { 0xd6990624 } else if t == 46 { 0xf40e3585 } else if t == 47 { 0x106aa070 }
+        else if t == 48 { 0x19a4c116 } else if t == 49 { 0x1e376c08 } else if t == 50 { 0x2748774c } else if t == 51 { 0x34b0bcb5 }
+        else if t == 52 { 0x391c0cb3 } else if t == 53 { 0x4ed8aa4a } else if t == 54 { 0x5b9cca4f } else if t == 55 { 0x682e6ff3 }
+        else if t == 56 { 0x748f82ee } else if t == 57 { 0x78a5636f } else if t == 58 { 0x84c87814 } else if t == 59 { 0x8cc70208 }
+        else if t == 60 { 0x90befffa } else if t == 61 { 0xa4506ceb } else if t == 62 { 0xbef9a3f7 } else { 0xc67178f2 }
+    }
+
+    spec fn h0() -> State {
+        State { a: 0x6a09e667, b: 0xbb67ae85, c: 0x3c6ef372, d: 0xa54ff53a, e: 0x510e527f, f: 0x9b05688c, g: 0x1f83d9ab, h: 0x5be0cd19 }
+    }
+
+    // ---------- padding (§5.1.1) ----------
+
+    // Messages shorter than 2^61 bytes: their length in bits fits 64 bits.
+    spec fn msg_ok(msg: &[u8]) -> bool { msg.len() < 2305843009213693952 }
+
+    // The padded length: the least multiple of 64 holding the message, the
+    // byte 0x80 and the 8-byte length.
+    spec fn padlen(n: usize) -> usize { (n + 72) / 64 * 64 }
+
+    // Byte `j` (0..8, most significant first) of the 64-bit length `l`.
+    spec fn len_byte(l: u64, j: usize) -> u64 {
+        if j == 0 { (l >> 56) & 0xff } else if j == 1 { (l >> 48) & 0xff } else if j == 2 { (l >> 40) & 0xff }
+        else if j == 3 { (l >> 32) & 0xff } else if j == 4 { (l >> 24) & 0xff } else if j == 5 { (l >> 16) & 0xff }
+        else if j == 6 { (l >> 8) & 0xff } else { l & 0xff }
+    }
+
+    // A byte as a `u64` (backlog 2N-08: a specification's `if` takes one
+    // integer type, and specifications have no conversion).
+    spec fn wide(b: u64) -> u64 { b }
+
+    // Byte `i` of the padded message.
+    spec fn pad_byte(msg: &[u8], i: usize) -> u64 {
+        if i < msg.len() { wide(msg[i]) } else if i == msg.len() { 0x80 } else if i + 8 < padlen(msg.len()) { 0 } else { len_byte(msg.len() * 8, i + 8 - padlen(msg.len())) }
+    }
+
+    spec fn padded(msg: &[u8], p: &[u8]) -> bool {
+        p.len() == padlen(msg.len()) && forall|i: usize| i < p.len() ==> #[trigger] p[i] == pad_byte(msg, i)
+    }
+
+    // ---------- message schedule (§6.2.2 step 1) ----------
+
+    spec fn be32(b0: u32, b1: u32, b2: u32, b3: u32) -> u32 { (b0 << 24) | (b1 << 16) | (b2 << 8) | b3 }
+
+    // The big-endian word at byte `i` of the padded message.
+    spec fn word(msg: &[u8], i: usize) -> u32 { be32(pad_byte(msg, i), pad_byte(msg, i + 1), pad_byte(msg, i + 2), pad_byte(msg, i + 3)) }
+
+    // `W[t]` from `W[t - 2]`, `W[t - 7]`, `W[t - 15]` and `W[t - 16]`.
+    spec fn expand(a: u32, b: u32, c: u32, d: u32) -> u32 { ss1(a).wrapping_add(b).wrapping_add(ss0(c)).wrapping_add(d) }
+
+    spec fn sched(msg: &[u8], blk: usize, t: usize) -> u32
+        decreases t,
+    {
+        if t < 16 {
+            word(msg, 64 * blk + 4 * t)
+        } else {
+            expand(sched(msg, blk, t - 2), sched(msg, blk, t - 7), sched(msg, blk, t - 15), sched(msg, blk, t - 16))
+        }
+    }
+
+    // ---------- compression (§6.2.2 steps 2-4) ----------
+
+    spec fn t1(s: State, k: u32, w: u32) -> u32 {
+        s.h.wrapping_add(bs1(s.e)).wrapping_add(ch(s.e, s.f, s.g)).wrapping_add(k).wrapping_add(w)
+    }
+
+    spec fn t2(s: State) -> u32 { bs0(s.a).wrapping_add(maj(s.a, s.b, s.c)) }
+
+    spec fn round(s: State, k: u32, w: u32) -> State {
+        State { a: t1(s, k, w).wrapping_add(t2(s)), b: s.a, c: s.b, d: s.c, e: s.d.wrapping_add(t1(s, k, w)), f: s.e, g: s.f, h: s.g }
+    }
+
+    // The working variables after `t` rounds of block `blk` from `s`.
+    spec fn rounds(msg: &[u8], blk: usize, s: State, t: usize) -> State
+        decreases t,
+    {
+        if t == 0 { s } else { round(rounds(msg, blk, s, t - 1), kk(t - 1), sched(msg, blk, t - 1)) }
+    }
+
+    spec fn add8(x: State, y: State) -> State {
+        State { a: x.a.wrapping_add(y.a), b: x.b.wrapping_add(y.b), c: x.c.wrapping_add(y.c), d: x.d.wrapping_add(y.d), e: x.e.wrapping_add(y.e), f: x.f.wrapping_add(y.f), g: x.g.wrapping_add(y.g), h: x.h.wrapping_add(y.h) }
+    }
+
+    spec fn compressed(msg: &[u8], blk: usize, h: State) -> State { add8(h, rounds(msg, blk, h, 64)) }
+
+    // The hash value after the first `n` blocks.
+    spec fn chain(msg: &[u8], n: usize) -> State
+        decreases n,
+    {
+        if n == 0 { h0() } else { compressed(msg, n - 1, chain(msg, n - 1)) }
+    }
+
+    // ---------- digest (§6.2.2 step 4) ----------
+
+    spec fn word_of(s: State, k: usize) -> u32 {
+        if k == 0 { s.a } else if k == 1 { s.b } else if k == 2 { s.c } else if k == 3 { s.d } else if k == 4 { s.e } else if k == 5 { s.f } else if k == 6 { s.g } else { s.h }
+    }
+
+    spec fn be_byte(w: u32, j: usize) -> u32 {
+        if j == 0 { w >> 24 } else if j == 1 { (w >> 16) & 0xff } else if j == 2 { (w >> 8) & 0xff } else { w & 0xff }
+    }
+
+    spec fn out_byte(s: State, i: usize) -> u32 { be_byte(word_of(s, i / 4), i % 4) }
+
+    spec fn bytes_of(s: State, r: &[u8]) -> bool {
+        r.len() == 32 && forall|i: usize| i < 32 ==> #[trigger] r[i] == out_byte(s, i)
+    }
+
+    // The SHA-256 digest of `msg`.
+    spec fn hashed(msg: &[u8], r: &[u8]) -> bool { bytes_of(chain(msg, padlen(msg.len()) / 64), r) }
+
+    // ---------- code ----------
+
+    spec fn is_bs0(x: u32, r: u32) -> bool { r == bs0(x) }
+
+    spec fn is_bs1(x: u32, r: u32) -> bool { r == bs1(x) }
+
+    spec fn is_ss0(x: u32, r: u32) -> bool { r == ss0(x) }
+
+    spec fn is_ss1(x: u32, r: u32) -> bool { r == ss1(x) }
+
+    spec fn is_ch(e: u32, f: u32, g: u32, r: u32) -> bool { r == ch(e, f, g) }
+
+    spec fn is_maj(a: u32, b: u32, c: u32, r: u32) -> bool { r == maj(a, b, c) }
+
+    spec fn is_expand(a: u32, b: u32, c: u32, d: u32, r: u32) -> bool { r == expand(a, b, c, d) }
+
+    spec fn is_round(s: State, k: u32, w: u32, r: State) -> bool { r == round(s, k, w) }
+
+    spec fn is_be32(b0: u32, b1: u32, b2: u32, b3: u32, r: u32) -> bool { r == be32(b0, b1, b2, b3) }
+
+    spec fn is_add8(x: State, y: State, r: State) -> bool { r == add8(x, y) }
+
+    spec fn is_h0(r: State) -> bool { r == h0() }
+
+    spec fn ktab(k: &[u32]) -> bool { k.len() == 64 && forall|t: usize| t < 64 ==> #[trigger] k[t] == kk(t) }
+
+    spec fn block(p: &[u8], blk: usize) -> bool { 64 * blk + 64 <= p.len() }
+
+    spec fn word_at(msg: &[u8], i: usize, r: u32) -> bool { r == word(msg, i) }
+
+    spec fn scheduled(w: &[u32], msg: &[u8], blk: usize, n: usize) -> bool {
+        w.len() == 64 && n <= 64 && forall|j: usize| j < n ==> #[trigger] w[j] == sched(msg, blk, j)
+    }
+
+    spec fn rounds_at(s: State, msg: &[u8], blk: usize, h: State, t: usize) -> bool { s == rounds(msg, blk, h, t) }
+
+    spec fn is_compressed(msg: &[u8], blk: usize, h: State, r: State) -> bool { r == compressed(msg, blk, h) }
+
+    spec fn chained(msg: &[u8], n: usize, h: State) -> bool { h == chain(msg, n) }
+
+    #[effects(pure)]
+    #[uses(is_bs0, bs0)]
+    fn big_sigma0(x: u32) -> (r: u32)
+        ensures is_bs0(x, r),
+    {
+        ((x >> 2) | (x << 30)) ^ ((x >> 13) | (x << 19)) ^ ((x >> 22) | (x << 10))
+    }
+
+    #[effects(pure)]
+    #[uses(is_bs1, bs1)]
+    fn big_sigma1(x: u32) -> (r: u32)
+        ensures is_bs1(x, r),
+    {
+        ((x >> 6) | (x << 26)) ^ ((x >> 11) | (x << 21)) ^ ((x >> 25) | (x << 7))
+    }
+
+    #[effects(pure)]
+    #[uses(is_ss0, ss0)]
+    fn small_sigma0(x: u32) -> (r: u32)
+        ensures is_ss0(x, r),
+    {
+        ((x >> 7) | (x << 25)) ^ ((x >> 18) | (x << 14)) ^ (x >> 3)
+    }
+
+    #[effects(pure)]
+    #[uses(is_ss1, ss1)]
+    fn small_sigma1(x: u32) -> (r: u32)
+        ensures is_ss1(x, r),
+    {
+        ((x >> 17) | (x << 15)) ^ ((x >> 19) | (x << 13)) ^ (x >> 10)
+    }
+
+    #[effects(pure)]
+    #[uses(is_ch, ch)]
+    fn choose(e: u32, f: u32, g: u32) -> (r: u32)
+        ensures is_ch(e, f, g, r),
+    {
+        (e & f) ^ (!e & g)
+    }
+
+    #[effects(pure)]
+    #[uses(is_maj, maj)]
+    fn majority(a: u32, b: u32, c: u32) -> (r: u32)
+        ensures is_maj(a, b, c, r),
+    {
+        (a & b) ^ (a & c) ^ (b & c)
+    }
+
+    #[effects(pure)]
+    #[uses(is_expand, expand, is_ss0, is_ss1)]
+    fn next_word(a: u32, b: u32, c: u32, d: u32) -> (r: u32)
+        ensures is_expand(a, b, c, d, r),
+    {
+        small_sigma1(a).wrapping_add(b).wrapping_add(small_sigma0(c)).wrapping_add(d)
+    }
+
+    spec fn is_t1(s: State, k: u32, w: u32, r: u32) -> bool { r == t1(s, k, w) }
+
+    spec fn is_t2(s: State, r: u32) -> bool { r == t2(s) }
+
+    // `T1` of §6.2.2 step 3.
+    #[effects(pure)]
+    #[uses(is_t1, t1, is_bs1, is_ch)]
+    fn temp1(s: State, k: u32, w: u32) -> (r: u32)
+        ensures is_t1(s, k, w, r),
+    {
+        s.h.wrapping_add(big_sigma1(s.e)).wrapping_add(choose(s.e, s.f, s.g)).wrapping_add(k).wrapping_add(w)
+    }
+
+    // `T2` of §6.2.2 step 3.
+    #[effects(pure)]
+    #[uses(is_t2, t2, is_bs0, is_maj)]
+    fn temp2(s: State) -> (r: u32)
+        ensures is_t2(s, r),
+    {
+        big_sigma0(s.a).wrapping_add(majority(s.a, s.b, s.c))
+    }
+
+    // One round (§6.2.2 step 3).
+    #[effects(pure)]
+    #[uses(is_round, round, is_t1, is_t2)]
+    fn step(s: State, k: u32, w: u32) -> (r: State)
+        ensures is_round(s, k, w, r),
+    {
+        let x: u32 = temp1(s, k, w);
+        let y: u32 = temp2(s);
+        State { a: x.wrapping_add(y), b: s.a, c: s.b, d: s.c, e: s.d.wrapping_add(x), f: s.e, g: s.f, h: s.g }
+    }
+
+    #[effects(pure)]
+    #[uses(is_be32, be32)]
+    fn join(b0: u32, b1: u32, b2: u32, b3: u32) -> (r: u32)
+        ensures is_be32(b0, b1, b2, b3, r),
+    {
+        (b0 << 24) | (b1 << 16) | (b2 << 8) | b3
+    }
+
+    spec fn word_in(p: &[u8], i: usize) -> bool { i + 4 <= p.len() }
+
+    // The word at byte `i` of the padded message `p` of `msg`.
+    #[effects(pure)]
+    #[uses(word_at, word, padded, word_in, is_be32)]
+    fn load(p: &[u8], msg: &[u8], i: usize) -> (r: u32)
+        requires padded(msg, p), word_in(p, i),
+        ensures word_at(msg, i, r),
+    {
+        join(u32::try_from(p[i]).unwrap(), u32::try_from(p[i + 1]).unwrap(), u32::try_from(p[i + 2]).unwrap(), u32::try_from(p[i + 3]).unwrap())
+    }
+
+    #[effects(pure)]
+    #[uses(is_add8, add8)]
+    fn add(x: State, y: State) -> (r: State)
+        ensures is_add8(x, y, r),
+    {
+        State { a: x.a.wrapping_add(y.a), b: x.b.wrapping_add(y.b), c: x.c.wrapping_add(y.c), d: x.d.wrapping_add(y.d), e: x.e.wrapping_add(y.e), f: x.f.wrapping_add(y.f), g: x.g.wrapping_add(y.g), h: x.h.wrapping_add(y.h) }
+    }
+
+    // The compression of block `blk` of the padded message `p` (§6.2.2).
+    #[effects(pure)]
+    #[uses(ktab, padded, block, word_in, word_at, scheduled, sched, rounds, rounds_at, is_round, is_expand, is_add8, is_compressed, compressed)]
+    fn compress(k: &[u32], p: &[u8], msg: &[u8], blk: usize, h: State) -> (r: State)
+        requires ktab(k), padded(msg, p), block(p, blk),
+        ensures is_compressed(msg, blk, h, r),
+    {
+        let words: usize = 16;
+        let total: usize = 64;
+        let mut w: [u32; 64] = [0; 64];
+        for t in 0..words
+            invariant scheduled(&w, msg, blk, t),
+        {
+            w[t] = load(p, msg, 64 * blk + 4 * t);
+        }
+        for u in words..total
+            invariant scheduled(&w, msg, blk, u),
+        {
+            w[u] = next_word(w[u - 2], w[u - 7], w[u - 15], w[u - 16]);
+        }
+        let mut s: State = h;
+        for v in 0..total
+            invariant scheduled(&w, msg, blk, 64), rounds_at(s, msg, blk, h, v),
+        {
+            s = step(s, k[v], w[v]);
+        }
+        add(h, s)
+    }
+
+    // ---------- the padded message and the tables ----------
+
+    spec fn pad_upto(msg: &[u8], p: &[u8], n: usize) -> bool {
+        p.len() == n && forall|i: usize| i < n ==> #[trigger] p[i] == pad_byte(msg, i)
+    }
+
+    // The padded message (§5.1.1): `msg`, the byte 0x80, zeros, and the
+    // length in bits as a big-endian 64-bit number.
+    #[effects(pure)]
+    #[uses(msg_ok, padlen, pad_byte, len_byte, wide, padded, pad_upto)]
+    fn pad(msg: &[u8]) -> (r: Vec<u8>)
+        requires msg_ok(msg),
+        ensures padded(msg, r.as_slice()),
+    {
+        let n: usize = msg.len();
+        let total: usize = (n + 72) / 64 * 64;
+        let mut p: Vec<u8> = Vec::with_capacity(total);
+        for i in 0..n
+            invariant pad_upto(msg, p.as_slice(), i),
+        {
+            p.push(msg[i]);
+        }
+        p.push(0x80);
+        while p.len() + 8 < total
+            invariant n < p.len(), p.len() + 8 <= total, pad_upto(msg, p.as_slice(), p.len()),
+            decreases total - p.len(),
+        {
+            p.push(0);
+        }
+        let bits: u64 = u64::try_from(n).unwrap() * 8;
+        p.push(u8::try_from(bits >> 56).unwrap());
+        p.push(u8::try_from((bits >> 48) & 0xff).unwrap());
+        p.push(u8::try_from((bits >> 40) & 0xff).unwrap());
+        p.push(u8::try_from((bits >> 32) & 0xff).unwrap());
+        p.push(u8::try_from((bits >> 24) & 0xff).unwrap());
+        p.push(u8::try_from((bits >> 16) & 0xff).unwrap());
+        p.push(u8::try_from((bits >> 8) & 0xff).unwrap());
+        p.push(u8::try_from(bits & 0xff).unwrap());
+        p
+    }
+
+    #[effects(pure)]
+    #[uses(ktab, kk)]
+    fn constants() -> (k: [u32; 64])
+        ensures ktab(&k),
+    {
+        [
+            0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+            0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+            0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+            0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+            0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+            0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+            0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+            0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+        ]
+    }
+
+    #[effects(pure)]
+    #[uses(is_h0, h0)]
+    fn initial() -> (r: State)
+        ensures is_h0(r),
+    {
+        State { a: 0x6a09e667, b: 0xbb67ae85, c: 0x3c6ef372, d: 0xa54ff53a, e: 0x510e527f, f: 0x9b05688c, g: 0x1f83d9ab, h: 0x5be0cd19 }
+    }
+
+    // The 32 bytes of the hash value, each word big-endian.
+    #[effects(pure)]
+    #[uses(bytes_of, out_byte, word_of, be_byte)]
+    fn output(s: State) -> (out: [u8; 32])
+        ensures bytes_of(s, &out),
+    {
+        let mut r: [u8; 32] = [0; 32];
+        r[0] = u8::try_from(s.a >> 24).unwrap();
+        r[1] = u8::try_from((s.a >> 16) & 0xff).unwrap();
+        r[2] = u8::try_from((s.a >> 8) & 0xff).unwrap();
+        r[3] = u8::try_from(s.a & 0xff).unwrap();
+        r[4] = u8::try_from(s.b >> 24).unwrap();
+        r[5] = u8::try_from((s.b >> 16) & 0xff).unwrap();
+        r[6] = u8::try_from((s.b >> 8) & 0xff).unwrap();
+        r[7] = u8::try_from(s.b & 0xff).unwrap();
+        r[8] = u8::try_from(s.c >> 24).unwrap();
+        r[9] = u8::try_from((s.c >> 16) & 0xff).unwrap();
+        r[10] = u8::try_from((s.c >> 8) & 0xff).unwrap();
+        r[11] = u8::try_from(s.c & 0xff).unwrap();
+        r[12] = u8::try_from(s.d >> 24).unwrap();
+        r[13] = u8::try_from((s.d >> 16) & 0xff).unwrap();
+        r[14] = u8::try_from((s.d >> 8) & 0xff).unwrap();
+        r[15] = u8::try_from(s.d & 0xff).unwrap();
+        r[16] = u8::try_from(s.e >> 24).unwrap();
+        r[17] = u8::try_from((s.e >> 16) & 0xff).unwrap();
+        r[18] = u8::try_from((s.e >> 8) & 0xff).unwrap();
+        r[19] = u8::try_from(s.e & 0xff).unwrap();
+        r[20] = u8::try_from(s.f >> 24).unwrap();
+        r[21] = u8::try_from((s.f >> 16) & 0xff).unwrap();
+        r[22] = u8::try_from((s.f >> 8) & 0xff).unwrap();
+        r[23] = u8::try_from(s.f & 0xff).unwrap();
+        r[24] = u8::try_from(s.g >> 24).unwrap();
+        r[25] = u8::try_from((s.g >> 16) & 0xff).unwrap();
+        r[26] = u8::try_from((s.g >> 8) & 0xff).unwrap();
+        r[27] = u8::try_from(s.g & 0xff).unwrap();
+        r[28] = u8::try_from(s.h >> 24).unwrap();
+        r[29] = u8::try_from((s.h >> 16) & 0xff).unwrap();
+        r[30] = u8::try_from((s.h >> 8) & 0xff).unwrap();
+        r[31] = u8::try_from(s.h & 0xff).unwrap();
+        r
+    }
+
+    // The SHA-256 digest of `msg` (FIPS 180-4 §6.2).
+    #[effects(pure)]
+    #[uses(msg_ok, hashed, padded, padlen, ktab, block, chained, chain, is_compressed, is_h0)]
+    fn digest(msg: &[u8]) -> (r: [u8; 32])
+        requires msg_ok(msg),
+        ensures hashed(msg, &r),
+    {
+        let p: Vec<u8> = pad(msg);
+        let k: [u32; 64] = constants();
+        let mut h: State = initial();
+        let blocks: usize = p.len() / 64;
+        for blk in 0..blocks
+            invariant padded(msg, p.as_slice()), ktab(&k), blocks * 64 == p.len(), chained(msg, blk, h),
+        {
+            h = compress(&k, p.as_slice(), msg, blk, h);
+        }
+        output(h)
+    }
+}

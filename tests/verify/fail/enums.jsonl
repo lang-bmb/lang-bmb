@@ -5,11 +5,11 @@
 {"code":"E0810","severity":"error","message":"assertion may not hold in `geo::distinct`; counterexample: n = 0","file":"fail/enums.bmb","line":65,"col":9,"end_line":65,"end_col":52}
 {"code":"E0802","severity":"error","message":"postcondition `is_dot` may not hold in `geo::loop_forgets`; counterexample: n = 0","file":"fail/enums.bmb","line":71,"col":17,"end_line":71,"end_col":26}
 {"code":"E0802","severity":"error","message":"postcondition `same` may not hold in `cells::swapped`; counterexample: c = Cell::Full([-9223372036854774571, -9223372036854774572])","file":"fail/enums.bmb","line":95,"col":17,"end_line":95,"end_col":27}
-{"def":"cells::swapped","status":"failed","obligations":3,"failed":1,"rlimit":4635,"rlimit_max":4165}
-{"def":"geo::after_call","status":"failed","obligations":1,"failed":1,"rlimit":953,"rlimit_max":953}
+{"def":"cells::swapped","status":"failed","obligations":3,"failed":1,"rlimit":4813,"rlimit_max":4297}
+{"def":"geo::after_call","status":"failed","obligations":1,"failed":1,"rlimit":3771,"rlimit_max":3771}
 {"def":"geo::distinct","status":"failed","obligations":1,"failed":1,"rlimit":991,"rlimit_max":991}
-{"def":"geo::loop_forgets","status":"failed","obligations":7,"failed":1,"rlimit":3735,"rlimit_max":1147}
-{"def":"geo::overflow","status":"failed","obligations":1,"failed":1,"rlimit":607,"rlimit_max":607}
-{"def":"geo::payload_sign","status":"failed","obligations":1,"failed":1,"rlimit":3481,"rlimit_max":3481}
-{"def":"geo::struct_payload","status":"failed","obligations":3,"failed":1,"rlimit":4007,"rlimit_max":2739}
+{"def":"geo::loop_forgets","status":"failed","obligations":7,"failed":1,"rlimit":7372,"rlimit_max":2619}
+{"def":"geo::overflow","status":"failed","obligations":1,"failed":1,"rlimit":1484,"rlimit_max":1484}
+{"def":"geo::payload_sign","status":"failed","obligations":1,"failed":1,"rlimit":3637,"rlimit_max":3637}
+{"def":"geo::struct_payload","status":"failed","obligations":3,"failed":1,"rlimit":5241,"rlimit_max":3629}
 {"def":"geo::touch","status":"verified","obligations":0,"failed":0,"rlimit":0,"rlimit_max":0}

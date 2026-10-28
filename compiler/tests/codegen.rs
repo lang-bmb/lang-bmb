@@ -540,7 +540,7 @@ fn an_unproved_vec_index_traps_exactly_from_the_length() {
 }
 
 /// `tests/lib_run`: programs that use the libraries (`lib/`: bytes, ADR-0044
-/// §4; UTF-8, T4-02) are built with every library file, fully proved, without
+/// §4; UTF-8, CRC-32, SHA-256, base64, T4) are built with every library file, fully proved, without
 /// runtime checks, and print their `.out`.
 #[test]
 fn library_programs_print_expected_output() {
