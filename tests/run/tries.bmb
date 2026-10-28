@@ -1,5 +1,13 @@
 #[summary("? 연산자의 실행: Option과 Result, 탈출 간선의 해제, 소유 페이로드, 오류의 이동 (ADR-0049 §1, backlog 2K-01e)")]
 mod tr {
+    spec fn one_digit(r: Result<u64, Vec<u8>>) -> bool {
+        match r {
+            Ok(d) => d <= 9,
+            Err(m) => m.len() == 1,
+        }
+    }
+
+    // A digit's value, or the byte that is not one as an owned message.
     #[effects(pure)]
     #[uses(one_digit)]
     fn digit(b: u8) -> (r: Result<u64, Vec<u8>>)
@@ -14,6 +22,12 @@ mod tr {
         }
     }
 
+    spec fn short(s: &[u8]) -> bool {
+        s.len() < 100
+    }
+
+    // The digit sum; the first bad byte returns its message, and the
+    // scratch vector alive at that `?` is freed on the way out.
     #[effects(pure)]
     #[uses(one_digit, short)]
     fn digit_sum(s: &[u8]) -> Result<u64, Vec<u8>>
@@ -33,30 +47,7 @@ mod tr {
 
     #[effects(pure)]
     fn half(x: u64) -> Option<u64> {
-        if x % 2 == 0 {
-            Some(x / 2)
-        } else {
-            None
-        }
-    }
-
-    #[effects(io)]
-    #[uses(one_digit, short)]
-    fn main() -> () {
-        show(digit_sum(b"2024"));
-        show(digit_sum(b"20x4"));
-        print_bytes(b"\n");
-        show_opt(quarter(12));
-        show_opt(quarter(6));
-        show_opt(unbox(Some(Box::new(41))));
-        show_opt(unbox(None));
-    }
-
-    spec fn one_digit(r: Result<u64, Vec<u8>>) -> bool {
-        match r {
-            Ok(d) => d <= 9,
-            Err(m) => m.len() == 1,
-        }
+        if x % 2 == 0 { Some(x / 2) } else { None }
     }
 
     #[effects(pure)]
@@ -65,8 +56,11 @@ mod tr {
         Some(half(h)?)
     }
 
-    spec fn short(s: &[u8]) -> bool {
-        s.len() < 100
+    // An owned payload moves out of the operand.
+    #[effects(pure)]
+    fn unbox(o: Option<Box<u64>>) -> Option<u64> {
+        let b: Box<u64> = o?;
+        Some(*b)
     }
 
     #[effects(io)]
@@ -85,9 +79,15 @@ mod tr {
         }
     }
 
-    #[effects(pure)]
-    fn unbox(o: Option<Box<u64>>) -> Option<u64> {
-        let b: Box<u64> = o?;
-        Some(*b)
+    #[effects(io)]
+    #[uses(one_digit, short)]
+    fn main() -> () {
+        show(digit_sum(b"2024"));
+        show(digit_sum(b"20x4"));
+        print_bytes(b"\n");
+        show_opt(quarter(12));
+        show_opt(quarter(6));
+        show_opt(unbox(Some(Box::new(41))));
+        show_opt(unbox(None));
     }
 }

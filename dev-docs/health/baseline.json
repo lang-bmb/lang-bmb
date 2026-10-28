@@ -18,7 +18,7 @@
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
     "P1_runnable_programs": 45,
-    "P2_bmb_lines": 12965,
+    "P2_bmb_lines": 12977,
     "P3_errors_with_help": 0.8151,
     "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
@@ -1050,6 +1050,16 @@
       "date": "2026-10-28",
       "reason": "2K-01e: ? operator (tests/run/tries, corpora tries, E0241 with fixes)",
       "changed": {}
+    },
+    {
+      "date": "2026-10-28",
+      "reason": "comments restored in the 2K-01d/e corpora",
+      "changed": {
+        "P2_bmb_lines": [
+          12965,
+          12977
+        ]
+      }
     }
   ]
 }

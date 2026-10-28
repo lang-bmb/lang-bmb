@@ -1,5 +1,59 @@
 #[summary("? 연산자의 증명: None·Err 갈래의 반환 지점 사후조건, 이어지는 갈래의 페이로드 사실 (ADR-0049 §3, backlog 2K-01e)")]
 mod tp {
+    spec fn below(r: Option<u64>, n: u64) -> bool {
+        match r {
+            None => true,
+            Some(v) => v <= n,
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(below)]
+    fn half(x: u64) -> (r: Option<u64>)
+        ensures below(r, x),
+    {
+        if x % 2 == 0 { Some(x / 2) } else { None }
+    }
+
+    // The payload carries the callee's postcondition into the next step.
+    #[effects(pure)]
+    #[uses(below)]
+    fn quarter(x: u64) -> (r: Option<u64>)
+        ensures below(r, x),
+    {
+        let h: u64 = half(x)?;
+        let q: u64 = half(h)?;
+        Some(q)
+    }
+
+    spec fn code_ok(r: Result<u64, u64>) -> bool {
+        match r {
+            Ok(v) => v < 100,
+            Err(c) => c >= 400,
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(code_ok)]
+    fn status(x: u64) -> (r: Result<u64, u64>)
+        ensures code_ok(r),
+    {
+        if x < 100 { Ok(x) } else { Err(404) }
+    }
+
+    // The `Err` path returns the operand's error: the postcondition holds
+    // at the `?` with that value.
+    #[effects(pure)]
+    #[uses(code_ok)]
+    fn both(a: u64, b: u64) -> (r: Result<u64, u64>)
+        ensures code_ok(r),
+    {
+        let x: u64 = status(a)?;
+        let y: u64 = status(b)?;
+        if x + y < 100 { Ok(x + y) } else { Err(413) }
+    }
+
+    // `?` inside a loop leaves the loop and the function.
     #[effects(pure)]
     #[uses(code_ok)]
     fn all(a: &[u64]) -> (r: Result<u64, u64>)
@@ -12,67 +66,5 @@ mod tp {
             last = status(a[i])?;
         }
         Ok(last)
-    }
-
-    spec fn below(r: Option<u64>, n: u64) -> bool {
-        match r {
-            None => true,
-            Some(v) => v <= n,
-        }
-    }
-
-    #[effects(pure)]
-    #[uses(code_ok)]
-    fn both(a: u64, b: u64) -> (r: Result<u64, u64>)
-        ensures code_ok(r),
-    {
-        let x: u64 = status(a)?;
-        let y: u64 = status(b)?;
-        if x + y < 100 {
-            Ok(x + y)
-        } else {
-            Err(413)
-        }
-    }
-
-    spec fn code_ok(r: Result<u64, u64>) -> bool {
-        match r {
-            Ok(v) => v < 100,
-            Err(c) => c >= 400,
-        }
-    }
-
-    #[effects(pure)]
-    #[uses(below)]
-    fn half(x: u64) -> (r: Option<u64>)
-        ensures below(r, x),
-    {
-        if x % 2 == 0 {
-            Some(x / 2)
-        } else {
-            None
-        }
-    }
-
-    #[effects(pure)]
-    #[uses(below)]
-    fn quarter(x: u64) -> (r: Option<u64>)
-        ensures below(r, x),
-    {
-        let h: u64 = half(x)?;
-        let q: u64 = half(h)?;
-        Some(q)
-    }
-
-    #[effects(pure)]
-    #[uses(code_ok)]
-    fn status(x: u64) -> (r: Result<u64, u64>)
-        ensures code_ok(r),
-    {
-        if x < 100 {
-            Ok(x)
-        } else {
-            Err(404)
-        }
     }
 }

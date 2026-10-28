@@ -1,5 +1,18 @@
 #[summary("? 연산자의 틀린 프로그램: None 갈래의 사후조건, 넘겨진 오류 값, 페이로드의 범위 (backlog 2K-01e)")]
 mod tf {
+    spec fn some(r: Option<u64>) -> bool {
+        match r {
+            None => false,
+            Some(v) => true,
+        }
+    }
+
+    #[effects(pure)]
+    fn half(x: u64) -> Option<u64> {
+        if x % 2 == 0 { Some(x / 2) } else { None }
+    }
+
+    // `?` returns `None` when `half` does.
     #[effects(pure)]
     #[uses(some)]
     fn always(x: u64) -> (r: Option<u64>)
@@ -9,6 +22,19 @@ mod tf {
         Some(h)
     }
 
+    spec fn small_err(r: Result<u64, u64>) -> bool {
+        match r {
+            Ok(v) => true,
+            Err(c) => c < 10,
+        }
+    }
+
+    #[effects(pure)]
+    fn parse(x: u64) -> Result<u64, u64> {
+        if x < 100 { Ok(x) } else { Err(x) }
+    }
+
+    // The error goes out unchanged, and nothing bounds it.
     #[effects(pure)]
     #[uses(small_err)]
     fn forward(x: u64) -> (r: Result<u64, u64>)
@@ -18,41 +44,10 @@ mod tf {
         Ok(v)
     }
 
+    // Nothing bounds the payload: the callee states no postcondition.
     #[effects(pure)]
     fn grow(x: u64) -> Option<u64> {
         let h: u64 = half(x)?;
         Some(h + 1)
-    }
-
-    #[effects(pure)]
-    fn half(x: u64) -> Option<u64> {
-        if x % 2 == 0 {
-            Some(x / 2)
-        } else {
-            None
-        }
-    }
-
-    #[effects(pure)]
-    fn parse(x: u64) -> Result<u64, u64> {
-        if x < 100 {
-            Ok(x)
-        } else {
-            Err(x)
-        }
-    }
-
-    spec fn small_err(r: Result<u64, u64>) -> bool {
-        match r {
-            Ok(v) => true,
-            Err(c) => c < 10,
-        }
-    }
-
-    spec fn some(r: Option<u64>) -> bool {
-        match r {
-            None => false,
-            Some(v) => true,
-        }
     }
 }
