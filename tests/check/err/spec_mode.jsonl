@@ -1,7 +1,7 @@
 {"code":"E0207","severity":"error","message":"spec functions take no `requires` / `ensures` in milestone 1","file":"err/spec_mode.bmb","line":6,"col":18,"end_line":6,"end_col":24}
 {"code":"E0503","severity":"error","message":"`let mut` is not allowed in a specification","file":"err/spec_mode.bmb","line":12,"col":17,"end_line":12,"end_col":18}
 {"code":"E0503","severity":"error","message":"assignment is not allowed in a specification","file":"err/spec_mode.bmb","line":13,"col":9,"end_line":13,"end_col":15}
-{"code":"E0503","severity":"error","message":"loops are not allowed in a specification","file":"err/spec_mode.bmb","line":19,"col":9,"end_line":23,"end_col":10}
+{"code":"E0503","severity":"error","message":"loops are not allowed in a specification","file":"err/spec_mode.bmb","line":19,"col":9,"end_line":23,"end_col":10,"fix":{"message":"state the property with `forall`, or with a recursive spec fn and `decreases`"}}
 {"code":"E0503","severity":"error","message":"`#[trigger]` is only allowed in specifications","file":"err/spec_mode.bmb","line":28,"col":42,"end_line":28,"end_col":57}
 {"code":"E0503","severity":"error","message":"`old(x)` is only allowed in `ensures`, loop invariants and `assert`, on a `&mut` parameter `x`","file":"err/spec_mode.bmb","line":31,"col":43,"end_line":31,"end_col":49}
 {"code":"E0509","severity":"error","message":"`#[uses(..)]` takes spec function names","file":"err/spec_mode.bmb","line":34,"col":12,"end_line":34,"end_col":17}

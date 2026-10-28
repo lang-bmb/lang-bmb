@@ -3255,7 +3255,7 @@ impl<'a> Checker<'a> {
                 span,
             } => {
                 if mode != Mode::Exec {
-                    self.err("E0503", *span, "loops are not allowed in a specification");
+                    self.spec_loop(*span);
                 }
                 let ct = self.expr(cx, cond, Some(&TypeKind::Bool), mode);
                 self.expect_ty(&ct, &TypeKind::Bool, cond.span);
@@ -3284,7 +3284,7 @@ impl<'a> Checker<'a> {
                 ..
             } => {
                 if mode != Mode::Exec {
-                    self.err("E0503", *span, "loops are not allowed in a specification");
+                    self.spec_loop(*span);
                 }
                 // The bounds share one integer type (a literal takes the
                 // other's), evaluated once before the loop.
@@ -3307,7 +3307,25 @@ impl<'a> Checker<'a> {
                         .fix("loop over integer bounds and index with them", None),
                     );
                 }
-                self.expect_ty(&ht, &lt, hi.span);
+                if is_int(&lt) && is_int(&ht) && lt != ht {
+                    self.diags.push(
+                        Diag::new(
+                            "E0401",
+                            hi.span,
+                            format!(
+                                "the ends of a `for` range have one type: `{}` and `{}`",
+                                ty_str(&lt),
+                                ty_str(&ht)
+                            ),
+                        )
+                        .fix(
+                            format!("convert one end: `{}::try_from(..).unwrap()`", ty_str(&lt)),
+                            None,
+                        ),
+                    );
+                } else {
+                    self.expect_ty(&ht, &lt, hi.span);
+                }
                 // The variable is local to the loop and not assigned in it.
                 cx.scopes.push(BTreeMap::new());
                 self.declare(cx, var, lt, false, false);
@@ -3347,6 +3365,16 @@ impl<'a> Checker<'a> {
                 self.expr(cx, e, None, mode);
             }
         }
+    }
+
+    /// E0503 for a loop in a specification, which is one expression.
+    fn spec_loop(&mut self, span: Span) {
+        self.diags.push(
+            Diag::new("E0503", span, "loops are not allowed in a specification").fix(
+                "state the property with `forall`, or with a recursive spec fn and `decreases`",
+                None,
+            ),
+        );
     }
 
     /// `x?` (ADR-0049 §1): `x` is an `Option` in a function returning an
@@ -4878,7 +4906,7 @@ impl<'a> Checker<'a> {
                 body,
             } => {
                 if mode != Mode::Exec {
-                    self.err("E0503", e.span, "loops are not allowed in a specification");
+                    self.spec_loop(e.span);
                 }
                 let missing = Span {
                     hi: e.span.lo + 4,
@@ -4901,7 +4929,13 @@ impl<'a> Checker<'a> {
             }
             ExprKind::Break { label, value } => {
                 if mode != Mode::Exec {
-                    self.err("E0503", e.span, "`break` is not allowed in a specification");
+                    self.diags.push(
+                        Diag::new("E0503", e.span, "`break` is not allowed in a specification")
+                            .fix(
+                                "a specification is one expression: it has no loop to leave",
+                                None,
+                            ),
+                    );
                 }
                 let target = self.jump_target(cx, label, e.span, "break");
                 let want = target.and_then(|k| cx.loops[k].value.clone());
@@ -4922,7 +4956,20 @@ impl<'a> Checker<'a> {
                         match &want {
                             Some(w) => {
                                 let sp = value.as_ref().map_or(e.span, |v| v.span);
+                                let mark = self.diags.items.len();
                                 self.expect_ty(&t, w, sp);
+                                if self.diags.items.len() > mark
+                                    && let Some(d) = self.diags.items.last_mut()
+                                    && d.fix.is_none()
+                                {
+                                    *d = d.clone().fix(
+                                        format!(
+                                            "every `break` of this `loop` carries its value, a `{}`",
+                                            ty_str(w)
+                                        ),
+                                        None,
+                                    );
+                                }
                             }
                             None if t != TypeKind::Never => cx.loops[k].value = Some(t),
                             None => {}
@@ -4933,10 +4980,16 @@ impl<'a> Checker<'a> {
             }
             ExprKind::Continue { label } => {
                 if mode != Mode::Exec {
-                    self.err(
-                        "E0503",
-                        e.span,
-                        "`continue` is not allowed in a specification",
+                    self.diags.push(
+                        Diag::new(
+                            "E0503",
+                            e.span,
+                            "`continue` is not allowed in a specification",
+                        )
+                        .fix(
+                            "a specification is one expression: it has no loop to go on",
+                            None,
+                        ),
                     );
                 }
                 self.jump_target(cx, label, e.span, "continue");

@@ -14,12 +14,12 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 27816,
+    "S4_stage0_rust_lines": 27867,
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
     "P1_runnable_programs": 46,
     "P2_bmb_lines": 13047,
-    "P3_errors_with_help": 0.8151,
+    "P3_errors_with_help": 0.8226,
     "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 10
@@ -1098,6 +1098,20 @@
         "P2_bmb_lines": [
           12874,
           13047
+        ]
+      }
+    },
+    {
+      "date": "2026-10-28",
+      "reason": "2K-06: fix hints for loops and jumps in specifications, for-range end types and loop break values",
+      "changed": {
+        "S4_stage0_rust_lines": [
+          27816,
+          27867
+        ],
+        "P3_errors_with_help": [
+          0.8151,
+          0.8226
         ]
       }
     }
