@@ -4,7 +4,7 @@
 
 ## 방법
 
-- `scripts/gate_power.py`: 변이체 41개(건전성을 깨는 것 30, 완전성을 깨는 것 1, 오컴파일 10). 31개는 1B-38, 4개(trait)는 2T-05, 4개(소유 타입)는 2O-05, 2개(구조체만으로 된 재귀)는 2O-03d. 각각 HEAD의 분리된 작업 트리에 하나만 적용하고 `cargo fmt` 뒤 게이트를 끝까지 돌린다. 게이트가 0이 아닌 값으로 끝나면 잡은 것이고, `detected_by`에 실패한 작업 이름을 남긴다.
+- `scripts/gate_power.py`: 변이체 53개(건전성을 깨는 것 37, 완전성을 깨는 것 2, 오컴파일 14). 31개는 1B-38, 4개(trait)는 2T-05, 4개(소유 타입)는 2O-05, 2개(구조체만으로 된 재귀)는 2O-03d, 12개(제어 흐름)는 2K. 각각 HEAD의 분리된 작업 트리에 하나만 적용하고 `cargo fmt` 뒤 게이트를 끝까지 돌린다. 게이트가 0이 아닌 값으로 끝나면 잡은 것이고, `detected_by`에 실패한 작업 이름을 남긴다.
 - 서식(`cargo fmt --check`)이나 컴파일 경고(clippy `-D warnings`)로만 실패하는 것은 시험이 잡은 것이 아니다. 첫 실행에서 이렇게 "잡힌" 변이체 3개(`v-mut-param-havoc-skipped`, `c-overflow-check-removed`, `c-bounds-check-removed`: 쓰이지 않는 변수)는 경고 없이 컴파일되게 고쳐 다시 돌렸다.
 - 원자료: `results.jsonl`(변이체마다 마지막 실행, `commit`이 그 실행의 HEAD). 한 번에 약 5분이라 전체가 여러 커밋(5a50b57 → 10a8b4f)에 걸쳤다. 다시 돌린 행은 시험을 더한 커밋이다.
 
@@ -28,6 +28,8 @@
 
 **2O-03d (2026-10-27, 커밋 e40ca564).** 변이체 둘: `v-struct-field-write-dropped`(재귀 구조체의 필드 쓰기가 값을 바꾸지 않음), `v-struct-facts-from-definitions`(필드 사실을 값 정의까지 훑음: 소유 퍼저가 구현 중 찾은 결함의 되돌림). 둘 다 잡음. 첫 실행은 `docs/diagnostics.md`가 낡아 게이트가 시험 전 `docs` 단계에서 멈췄으므로(잡은 작업 없음, 12~36초) 버리고 고친 뒤 다시 돌렸다. `v-struct-facts-from-definitions`는 `test verify`(회귀 `built`)만 잡는다: 게이트의 소유 퍼저 3배치는 그 결함을 내는 프로그램을 만들지 않는다(찾은 것은 80배치 중 씨앗 138).
 
+**2K (2026-10-28, 커밋 a843816a·6f607ada).** 제어 흐름 변이체 열둘: 반환(`v-return-post-dropped`, `v-return-rest-wrong-side`, `c-return-exit-drops-skipped`), 루프 havoc(`v-havoc-match-arms-skipped`: 2K-01a에서 고친 건전성 결함의 되돌림), 루프 탈출(`v-break-state-dropped`, `v-continue-head-skipped`, `c-jump-exit-drops-skipped`), 범위 `for`(`v-for-continue-no-step`, `v-for-var-not-havocked`, `c-for-range-ends-swapped`), `?`(`v-try-return-post-skipped`, `c-try-exit-drops-skipped`). `v-ensures-dropped`는 사후조건 검사가 `post_check` 하나로 모여 다시 겨눴다. 열셋 모두 잡음. 첫 실행(a843816a)에서 루프 퍼저는 `c-for-range-ends-swapped`만 잡았다: 탈출 갈래가 제 상태를 바꾸지 않아 이어지는 갈래와 상태가 같았으므로 건너뛴 의무가 드러나지 않았다. 생성기를 고치고(2K-05 후속, 6f607ada: 탈출 갈래의 쓰기, 배치마다 탈출 종류를 씨앗으로 돌리는 아슬아슬한 합) 여섯을 다시 돌려, 루프 퍼저가 `v-return-post-dropped`·`v-break-state-dropped`·`v-continue-head-skipped`·`v-try-return-post-skipped`를 잡는다. `v-for-continue-no-step`은 증가가 없으면 측정이 줄지 않아 그런 루프가 하나도 증명되지 않으므로 완전성 결함으로 고쳐 분류했다. `v-return-rest-wrong-side` 실행에서는 `health` 작업의 z3 질의 하나가 끝나지 않아(16분) 그 z3를 손으로 끝냈다. 다른 작업(`test verify`·`test codegen`·`test stability`)이 따로 잡았다. 한 작업만 잡는 것: `v-havoc-match-arms-skipped`·`v-for-var-not-havocked`(`test verify`), `c-return-exit-drops-skipped`·`c-jump-exit-drops-skipped`·`c-try-exit-drops-skipped`(`test codegen`의 valgrind).
+
 | 변이체 | 종류 | 결함 | 게이트 |
 | --- | --- | --- | --- |
 | `v-read-index-le` | unsound | reading a[len] is allowed | 잡음: bench bcb, test verify |
@@ -50,7 +52,7 @@
 | `v-havoc-skipped` | unsound | variables a loop assigns keep their entry values | 잡음: test verify |
 | `v-mut-param-havoc-skipped` | unsound | a loop that writes through a &mut parameter keeps its entry contents | 잡음: test verify |
 | `v-call-requires-dropped` | unsound | callee preconditions are never obligations | 잡음: test lint, test cache, test verify, test soundness_calls, test map |
-| `v-ensures-dropped` | unsound | postconditions are never obligations | 잡음: bench bcb, bench m1b weak, test lint, test soundness, test uses_fill, test soundness_unsigned, bench bvb weak, bench m1 harness tests, test incremental, test soundness_rec, test verify, test soundness_specs, test codegen, bench m1 weak, test soundness_calls |
+| `v-ensures-dropped` | unsound | postconditions are never obligations | 잡음: test incremental, bench bcb, test verify, bench m1b weak, test soundness_loops, test lint, test codegen, test soundness, bench m1 harness tests, bench bvb weak, test uses_fill, test soundness_traits, test soundness_data, test soundness_unsigned, test soundness_rec, test soundness_specs, test soundness_owned, test soundness_calls, test soundness_vec, bench m1 weak |
 | `v-assert-dropped` | unsound | assertions are never obligations | 잡음: bench m1b weak, bench m1 harness tests, bench bvb oracle, test verify |
 | `v-recursion-measure-dropped` | unsound | recursive calls need not decrease their measure | 잡음: test verify |
 | `v-signed-div-rem-swapped` | unsound | signed / and % are swapped in the encoding | 잡음: bench bcb, test soundness, bench bvb weak, bench brb weak, bench brb oracle, bench m1b oracle, bench bvb oracle, test verify, bench bvb tests |
@@ -71,14 +73,26 @@
 | `c-mut-match-write-back-dropped` | miscompile | a scalar written through a `&mut` match binding is not stored back to the payload | 잡음: test codegen |
 | `v-struct-field-write-dropped` | unsound | a field write in a recursive struct leaves the value unchanged | 잡음: health, test verify, test stability, test codegen |
 | `v-struct-facts-from-definitions` | unsound | the field facts of recursive struct values also cover values made later or on another path | 잡음: test verify |
+| `v-return-post-dropped` | unsound | a `return` does not check the postconditions | 잡음: test verify, test soundness_loops |
+| `v-return-rest-wrong-side` | unsound | after a branch that returned, the rest runs under that branch's condition | 잡음: test stability, health, test verify, test codegen |
+| `v-havoc-match-arms-skipped` | unsound | a loop keeps the entry value of a local assigned in a `match` arm of its body | 잡음: test verify |
+| `c-return-exit-drops-skipped` | miscompile | the owned locals still held at a `return` are not freed (a leak) | 잡음: test codegen |
+| `v-break-state-dropped` | unsound | a `while` is left only with its condition false: the `break` states are not among the exits | 잡음: test verify, test soundness_loops |
+| `v-continue-head-skipped` | unsound | a `continue` goes back to the head without its invariant or measure obligations | 잡음: test verify, test soundness_loops |
+| `v-for-continue-no-step` | incomplete | a `continue` in a `for` goes back to the head without stepping the variable (its measure does not decrease, so no such loop proves) | 잡음: health, test stability, test verify, test codegen |
+| `v-for-var-not-havocked` | unsound | a `for` variable keeps its entry value in every iteration | 잡음: test verify |
+| `c-jump-exit-drops-skipped` | miscompile | the owned locals of the loop are not freed at a `break` or `continue` (a leak) | 잡음: test codegen |
+| `c-for-range-ends-swapped` | miscompile | `lo..hi` runs its end too and `lo..=hi` skips it | 잡음: test soundness_loops, test codegen |
+| `v-try-return-post-skipped` | unsound | the `None`/`Err` a `?` returns is not checked against the postconditions | 잡음: test verify, test soundness_loops |
+| `c-try-exit-drops-skipped` | miscompile | the owned locals alive at a `?` are not freed when it returns (a leak) | 잡음: test codegen |
 
-검출: 41/41
-- unsound: 30/30
-- incomplete: 1/1
-- miscompile: 10/10
+검출: 53/53
+- unsound: 37/37
+- incomplete: 2/2
+- miscompile: 14/14
 
 ## 관찰
 
-- **한 작업만 잡는 결함 8개(2O 뒤 11개).** `v-min-rem-dropped`, `v-neg-overflow-dropped`, `v-decreases-unbounded`, `v-havoc-skipped`, `v-mut-param-havoc-skipped`, `v-recursion-measure-dropped`는 `test verify`(손으로 쓴 코퍼스)만, `c-bounds-check-*`는 `test codegen`만 잡는다. 건전성 퍼저(`soundness*`)는 이 여섯을 못 잡는다: 퍼저가 `%`의 `i64::MIN % -1`, 부정 오버플로, 루프 측도의 하한, 루프 havoc을 만들지 않는다는 뜻이다. 코퍼스 한 줄이 지워지면 결함이 들어와도 게이트가 통과한다.
+- **한 작업만 잡는 결함 8개(2O 뒤 11개, 2K 뒤 16개).** `v-min-rem-dropped`, `v-neg-overflow-dropped`, `v-decreases-unbounded`, `v-havoc-skipped`, `v-mut-param-havoc-skipped`, `v-recursion-measure-dropped`는 `test verify`(손으로 쓴 코퍼스)만, `c-bounds-check-*`는 `test codegen`만 잡는다. 건전성 퍼저(`soundness*`)는 이 여섯을 못 잡는다: 퍼저가 `%`의 `i64::MIN % -1`, 부정 오버플로, 루프 측도의 하한, 루프 havoc을 만들지 않는다는 뜻이다. 코퍼스 한 줄이 지워지면 결함이 들어와도 게이트가 통과한다.
 - **변이체는 손으로 쓴 31개다.** 실제 결함 분포를 대표한다는 근거는 없다. 2B(데이터 타입) 인코딩이 들어오면 같은 방식으로 변이체를 더한다.
 - 비용: 31개 한 바퀴 약 2.9시간(게이트 한 번 약 5분). CI에는 넣지 않는다.
