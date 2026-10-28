@@ -664,7 +664,9 @@ fn walk_expr(e: &mut Expr, parent: Option<Span>, f: &mut dyn FnMut(&mut Expr, Op
         ExprKind::Block(b) => walk_block(b, f),
         ExprKind::Array(xs) => xs.iter_mut().for_each(|x| walk_expr(x, None, f)),
         ExprKind::Repeat { value, .. } => walk_expr(value, None, f),
-        ExprKind::Field { base, .. } | ExprKind::Deref(base) => walk_expr(base, None, f),
+        ExprKind::Field { base, .. } | ExprKind::Deref(base) | ExprKind::Try(base) => {
+            walk_expr(base, None, f)
+        }
         ExprKind::StructLit { fields, .. } => {
             fields.iter_mut().for_each(|(_, x)| walk_expr(x, None, f))
         }
@@ -831,6 +833,7 @@ fn children(e: &Expr) -> Vec<&Expr> {
         | ExprKind::Ref { expr: x, .. }
         | ExprKind::Old(x)
         | ExprKind::Deref(x)
+        | ExprKind::Try(x)
         | ExprKind::Trigger(x)
         | ExprKind::Repeat { value: x, .. }
         | ExprKind::Field { base: x, .. }

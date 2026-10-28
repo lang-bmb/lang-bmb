@@ -233,6 +233,7 @@ fn each_expr<'e>(e: &'e Expr, f: &mut dyn FnMut(&'e Expr)) {
         | ExprKind::Ref { expr: x, .. }
         | ExprKind::Old(x)
         | ExprKind::Deref(x)
+        | ExprKind::Try(x)
         | ExprKind::Trigger(x)
         | ExprKind::Repeat { value: x, .. }
         | ExprKind::Field { base: x, .. }
@@ -2211,6 +2212,7 @@ impl<'p, 'q> Enc<'p, 'q> {
     fn spec(&mut self, e: &Expr, env: &BTreeMap<String, Val>, old: &BTreeMap<String, Val>) -> Val {
         match &e.kind {
             ExprKind::Return(_)
+            | ExprKind::Try(_)
             | ExprKind::Loop { .. }
             | ExprKind::Break { .. }
             | ExprKind::Continue { .. } => unreachable!("rejected by the checker (E0503)"),
@@ -2624,6 +2626,37 @@ impl<'p, 'q> Enc<'p, 'q> {
                     self.dead = true;
                 }
                 Val::Unit
+            }
+            // `match x { None => return None, Some(v) => v }` (`Ok(v) => v,
+            // Err(e) => return Err(e)`: the arms in declaration order),
+            // encoded as that expansion (ADR-0049 §3).
+            ExprKind::Try(x) => {
+                let sv = self.eval(x).s();
+                let st = self.ty(x);
+                let (ok, bad) = crate::check::try_variants(&st).expect("checked `?`");
+                let t = self.ty(e);
+                let f = self.prog.defs[&self.path].f;
+                let rt = crate::check::subst(&f.ret.ty.kind, &self.tsub);
+                let go_on = |s: &mut Self| {
+                    let (vals, facts) = s.payload(&st, ok, &sv);
+                    s.pc.extend(facts);
+                    vals.into_iter().next().expect("one payload")
+                };
+                let leave = |s: &mut Self| {
+                    let (vals, facts) = s.payload(&st, bad, &sv);
+                    s.pc.extend(facts);
+                    let r = s.variant_value(&rt, bad, &vals);
+                    s.post_check(r);
+                    s.dead = true;
+                    Val::Unit
+                };
+                if ok == "Some" {
+                    let c = format!("((_ is {}) {sv})", ctor(&st, bad));
+                    self.branch(&c, &t, leave, go_on)
+                } else {
+                    let c = format!("((_ is {}) {sv})", ctor(&st, ok));
+                    self.branch(&c, &t, go_on, leave)
+                }
             }
             // The postconditions hold here, and the path ends (ADR-0049 §3).
             ExprKind::Return(x) => {
@@ -4305,7 +4338,9 @@ fn find_let_expr(e: &Expr, name: &str, out: &mut Option<TypeKind>) {
         ExprKind::Repeat { value, .. } => find_let_expr(value, name, out),
         ExprKind::Array(items) => items.iter().for_each(|a| find_let_expr(a, name, out)),
         ExprKind::Forall { body, .. } => find_let_expr(body, name, out),
-        ExprKind::Field { base, .. } | ExprKind::Deref(base) => find_let_expr(base, name, out),
+        ExprKind::Field { base, .. } | ExprKind::Deref(base) | ExprKind::Try(base) => {
+            find_let_expr(base, name, out)
+        }
         ExprKind::StructLit { fields, .. } => {
             fields.iter().for_each(|(_, x)| find_let_expr(x, name, out))
         }
@@ -4435,6 +4470,7 @@ fn assigned_in_expr(e: &Expr, out: &mut BTreeSet<String>) {
         | ExprKind::Break { value: Some(x), .. }
         | ExprKind::Field { base: x, .. }
         | ExprKind::Deref(x)
+        | ExprKind::Try(x)
         | ExprKind::Repeat { value: x, .. } => assigned_in_expr(x, out),
         ExprKind::Array(items) => items.iter().for_each(|a| assigned_in_expr(a, out)),
         ExprKind::StructLit { fields, .. } => {

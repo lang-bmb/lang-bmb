@@ -427,6 +427,9 @@ pub enum ExprKind {
     },
     /// `return e` / `return` (ADR-0049 §1): of type `!`.
     Return(Option<Box<Expr>>),
+    /// `e?` (ADR-0049 §1): the payload of `Some`/`Ok`; on `None`/`Err(x)`
+    /// the function returns `None`/`Err(x)` (the same error type).
+    Try(Box<Expr>),
     /// `'l: loop invariant .., decreases .., { .. }` (ADR-0049 §1): its value
     /// is that of the `break e` that leaves it.
     Loop {

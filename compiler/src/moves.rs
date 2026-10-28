@@ -999,6 +999,19 @@ impl Mv<'_> {
                 self.jump(e, label, true);
             }
             ExprKind::Continue { label } => self.jump(e, label, false),
+            // `x?` (ADR-0049 §4): the operand moves (its payload is the
+            // value, or goes out in the returned `None`/`Err`); on the
+            // return edge everything else still owned is dropped.
+            ExprKind::Try(x) => {
+                if self.moves_ty(x) {
+                    self.info.consumed.insert(key(e.span));
+                }
+                self.expr(x, true);
+                let owned = self.owned_now();
+                if !owned.is_empty() {
+                    self.info.exits.insert(key(e.span), owned);
+                }
+            }
             // The value moves out; everything else still owned is dropped
             // on this exit.
             ExprKind::Return(x) => {

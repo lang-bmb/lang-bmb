@@ -2,7 +2,7 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 5855380,
+    "V4_rlimit_total": 6009193,
     "V5_rlimit_headroom": 0.0152,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0,
@@ -14,12 +14,12 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 27230,
+    "S4_stage0_rust_lines": 27458,
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
-    "P1_runnable_programs": 44,
-    "P2_bmb_lines": 12668,
-    "P3_errors_with_help": 0.8108,
+    "P1_runnable_programs": 45,
+    "P2_bmb_lines": 12965,
+    "P3_errors_with_help": 0.8151,
     "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 10
@@ -1019,6 +1019,37 @@
           0.8108
         ]
       }
+    },
+    {
+      "date": "2026-10-28",
+      "reason": "2K-01e: ? operator (tests/run/tries, corpora tries, E0241 with fixes)",
+      "changed": {
+        "V4_rlimit_total": [
+          5855380,
+          6009193
+        ],
+        "S4_stage0_rust_lines": [
+          27230,
+          27458
+        ],
+        "P1_runnable_programs": [
+          44,
+          45
+        ],
+        "P2_bmb_lines": [
+          12668,
+          12965
+        ],
+        "P3_errors_with_help": [
+          0.8108,
+          0.8151
+        ]
+      }
+    },
+    {
+      "date": "2026-10-28",
+      "reason": "2K-01e: ? operator (tests/run/tries, corpora tries, E0241 with fixes)",
+      "changed": {}
     }
   ]
 }

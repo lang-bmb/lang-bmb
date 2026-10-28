@@ -1,0 +1,68 @@
+#[summary("? 연산자의 경계: 다른 오류 타입, Option과 Result의 혼용, 반환 타입, 피연산자 타입, 명세 (backlog 2K-01e)")]
+mod tc {
+    #[effects(pure)]
+    fn parse(x: u64) -> Result<u64, bool> {
+        if x < 10 { Ok(x) } else { Err(false) }
+    }
+
+    #[effects(pure)]
+    fn half(x: u64) -> Option<u64> {
+        if x % 2 == 0 { Some(x / 2) } else { None }
+    }
+
+    // No implicit conversion of the error.
+    #[effects(pure)]
+    fn other_error(x: u64) -> Result<u64, u64> {
+        let v: u64 = parse(x)?;
+        Ok(v)
+    }
+
+    #[effects(pure)]
+    fn option_in_result(x: u64) -> Result<u64, bool> {
+        let v: u64 = half(x)?;
+        Ok(v)
+    }
+
+    #[effects(pure)]
+    fn result_in_option(x: u64) -> Option<u64> {
+        let v: u64 = parse(x)?;
+        Some(v)
+    }
+
+    #[effects(pure)]
+    fn plain(x: u64) -> u64 {
+        half(x)?
+    }
+
+    #[effects(pure)]
+    fn not_enum(x: u64) -> Option<u64> {
+        Some(x?)
+    }
+
+    #[effects(pure)]
+    fn by_ref(o: &Option<u64>) -> Option<u64> {
+        Some(o?)
+    }
+
+    spec fn in_spec(o: Option<u64>) -> bool {
+        o? > 0
+    }
+
+    struct Holder {
+        opt: Option<Box<u64>>,
+    }
+
+    // The operand moves.
+    #[effects(pure)]
+    fn twice(o: Option<Box<u64>>) -> Option<u64> {
+        let b: Box<u64> = o?;
+        let c: Box<u64> = o?;
+        Some(*b + *c)
+    }
+
+    #[effects(pure)]
+    fn behind(h: &Holder) -> Option<u64> {
+        let b: Box<u64> = h.opt?;
+        Some(*b)
+    }
+}

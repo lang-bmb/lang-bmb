@@ -1182,6 +1182,94 @@ impl<'p> Gen<'p> {
         CVal::Never
     }
 
+    /// `x?` (ADR-0049 §5): a tag test; on `None`/`Err` the function
+    /// returns `None`/`Err(e)` with the operand's error moved into it, after
+    /// the drops of a `return` here; otherwise the value is the payload.
+    fn try_expr(&mut self, e: &Expr, x: &Expr) -> CVal {
+        let sv = self.expr(x);
+        let CVal::Ptr { ptr: sp, ty: st } = sv.clone() else {
+            unreachable!("`?` on an enum value")
+        };
+        let consumed = self
+            .t
+            .moves
+            .get(&self.base)
+            .is_some_and(|m| m.consumed.contains(&(e.span.file, e.span.lo, e.span.hi)));
+        if !consumed {
+            self.read_temp(x, &sv, &st);
+        }
+        let (ok, bad) = crate::check::try_variants(&st).expect("checked `?`");
+        let vs = enum_variants(&st, self.t).expect("an `Option` or a `Result`");
+        let k_ok = vs.iter().position(|(n, _)| n == ok).expect("variant");
+        let tagp = self.field_ptr(&sp, &st, 0);
+        let tag = self.t();
+        self.emit(format!("{tag} = load i64, ptr {tagp}"));
+        let is_ok = self.t();
+        self.emit(format!("{is_ok} = icmp eq i64 {tag}, {k_ok}"));
+        let (ok_l, bad_l) = (self.l("try_ok"), self.l("try_out"));
+        self.emit(format!("br i1 {is_ok}, label %{ok_l}, label %{bad_l}"));
+        // The returned `None` / `Err(e)`.
+        self.block(&bad_l);
+        let rt = self.ret.clone();
+        let rvs = enum_variants(&rt, self.t).expect("an `Option` or a `Result` result");
+        let k_bad = rvs.iter().position(|(n, _)| n == bad).expect("variant");
+        let out = self.temp(&rt);
+        let out_tag = self.field_ptr(&out, &rt, 0);
+        self.emit(format!("store i64 {k_bad}, ptr {out_tag}"));
+        if let Some((_, ps)) = vs.iter().find(|(n, _)| n == bad)
+            && let [pt] = ps.as_slice()
+        {
+            let (src, dst) = (self.t(), self.t());
+            self.emit(format!(
+                "{src} = getelementptr inbounds {}, ptr {sp}, i32 0, i32 1",
+                view_ty(&st, bad)
+            ));
+            self.emit(format!(
+                "{dst} = getelementptr inbounds {}, ptr {out}, i32 0, i32 1",
+                view_ty(&rt, bad)
+            ));
+            self.copy(&dst, &src, pt);
+        }
+        for (h, t) in self.pending.clone() {
+            self.drop_at(&h, &t);
+        }
+        let exits = self
+            .t
+            .moves
+            .get(&self.base)
+            .and_then(|m| m.exits.get(&(e.span.file, e.span.lo, e.span.hi)))
+            .cloned()
+            .unwrap_or_default();
+        for p in exits {
+            self.drop_path(&p);
+        }
+        self.emit_return(CVal::Ptr { ptr: out, ty: rt });
+        // The payload.
+        self.block(&ok_l);
+        let pt = vs[k_ok].1[0].clone();
+        let fp = self.t();
+        self.emit(format!(
+            "{fp} = getelementptr inbounds {}, ptr {sp}, i32 0, i32 1",
+            view_ty(&st, ok)
+        ));
+        match value_ty(&pt).clone() {
+            t if is_mem(&t) => {
+                let tmp = self.temp(&t);
+                self.copy(&tmp, &fp, &t);
+                CVal::Ptr { ptr: tmp, ty: t }
+            }
+            TypeKind::Array(_, n) => {
+                let tmp = self.temp(&pt);
+                self.copy(&tmp, &fp, &pt);
+                CVal::Arr {
+                    ptr: tmp,
+                    len: n.to_string(),
+                }
+            }
+            t => CVal::Imm(self.load_mem(&fp, &t)),
+        }
+    }
+
     /// A `loop` (ADR-0049 §5): its value is the `break e` that leaves it.
     fn loop_expr(&mut self, e: &Expr, label: &Option<Ident>, body: &Block) -> CVal {
         let ty = self.ty(e);
@@ -1263,6 +1351,7 @@ impl<'p> Gen<'p> {
     fn expr(&mut self, e: &Expr) -> CVal {
         match &e.kind {
             ExprKind::Return(x) => self.return_expr(e, x.as_deref()),
+            ExprKind::Try(x) => self.try_expr(e, x),
             ExprKind::Loop { label, body, .. } => self.loop_expr(e, label, body),
             ExprKind::Break { label, value } => self.jump(e, label, value.as_deref(), true),
             ExprKind::Continue { label } => self.jump(e, label, None, false),

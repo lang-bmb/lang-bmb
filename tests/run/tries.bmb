@@ -1,0 +1,93 @@
+#[summary("? 연산자의 실행: Option과 Result, 탈출 간선의 해제, 소유 페이로드, 오류의 이동 (ADR-0049 §1, backlog 2K-01e)")]
+mod tr {
+    #[effects(pure)]
+    #[uses(one_digit)]
+    fn digit(b: u8) -> (r: Result<u64, Vec<u8>>)
+        ensures one_digit(r),
+    {
+        if 48 <= b && b <= 57 {
+            Ok(u64::try_from(b - 48).unwrap())
+        } else {
+            let mut m: Vec<u8> = Vec::new();
+            m.push(b);
+            Err(m)
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(one_digit, short)]
+    fn digit_sum(s: &[u8]) -> Result<u64, Vec<u8>>
+        requires short(s),
+    {
+        let mut seen: Vec<u64> = Vec::new();
+        let mut n: u64 = 0;
+        for i in 0..s.len()
+            invariant n <= 9 * i && seen.len() == i,
+        {
+            let d: u64 = digit(s[i])?;
+            seen.push(d);
+            n = n + d;
+        }
+        Ok(n)
+    }
+
+    #[effects(pure)]
+    fn half(x: u64) -> Option<u64> {
+        if x % 2 == 0 {
+            Some(x / 2)
+        } else {
+            None
+        }
+    }
+
+    #[effects(io)]
+    #[uses(one_digit, short)]
+    fn main() -> () {
+        show(digit_sum(b"2024"));
+        show(digit_sum(b"20x4"));
+        print_bytes(b"\n");
+        show_opt(quarter(12));
+        show_opt(quarter(6));
+        show_opt(unbox(Some(Box::new(41))));
+        show_opt(unbox(None));
+    }
+
+    spec fn one_digit(r: Result<u64, Vec<u8>>) -> bool {
+        match r {
+            Ok(d) => d <= 9,
+            Err(m) => m.len() == 1,
+        }
+    }
+
+    #[effects(pure)]
+    fn quarter(x: u64) -> Option<u64> {
+        let h: u64 = half(x)?;
+        Some(half(h)?)
+    }
+
+    spec fn short(s: &[u8]) -> bool {
+        s.len() < 100
+    }
+
+    #[effects(io)]
+    fn show(r: Result<u64, Vec<u8>>) -> () {
+        match r {
+            Ok(n) => print_u64(n),
+            Err(m) => print_bytes(m.as_slice()),
+        }
+    }
+
+    #[effects(io)]
+    fn show_opt(o: Option<u64>) -> () {
+        match o {
+            None => print_bytes(b"none\n"),
+            Some(v) => print_u64(v),
+        }
+    }
+
+    #[effects(pure)]
+    fn unbox(o: Option<Box<u64>>) -> Option<u64> {
+        let b: Box<u64> = o?;
+        Some(*b)
+    }
+}

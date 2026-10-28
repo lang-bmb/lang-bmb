@@ -2199,12 +2199,11 @@ impl<'a> Parser<'a> {
                 };
             } else if self.is_p("?") {
                 let sp = self.bump().span;
-                self.diags.push(
-                    Diag::new("E0206", sp, "the `?` operator is not allowed").fix(
-                        "handle the error case explicitly with `if` / `else`",
-                        Some(String::new()),
-                    ),
-                );
+                let span = e.span.to(sp);
+                e = Expr {
+                    kind: ExprKind::Try(Box::new(e)),
+                    span,
+                };
             } else if self.is_kw("as") {
                 self.bump();
                 let ty = self.parse_type();

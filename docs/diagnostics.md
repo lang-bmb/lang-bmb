@@ -22,7 +22,6 @@
 | E0201 | `let` requires an explicit type |
 | E0202 | macros are not allowed |
 | E0205 | `as` casts are not allowed |
-| E0206 | the `?` operator is not allowed |
 | E0207 | construct not supported in milestone 1 |
 | E0208 | lifetime annotations are not allowed |
 | E0209 | function return type is required (write `-> ()` for unit) |
@@ -37,6 +36,7 @@
 | E0235 | a blanket impl `impl<T> Trait for T` is not used |
 | E0240 | a `where` clause is not used: bounds go next to the type parameter |
 | E0236 | trait objects `dyn Trait` are not used |
+| E0241 | `?` whose `None`/`Err` the function cannot return (another error type, or not an `Option`/`Result` function) |
 | E0250 | `break` or `continue` outside a loop |
 | E0251 | `break` with a value outside a `loop` |
 | E0252 | `for` over something other than an integer range |
@@ -189,3 +189,4 @@
 | E0814 | construct not supported by the proof gate (retired by backlog 2V-05: every construct is encoded) |
 | E0203 | `return` is not allowed (retired by backlog 2K-01a: `return` is part of the language, ADR-0049) |
 | E0204 | `for` is not allowed (retired by backlog 2K-01d: the range `for` is part of the language, ADR-0049) |
+| E0206 | the `?` operator is not allowed (retired by backlog 2K-01e: `?` is part of the language, ADR-0049) |

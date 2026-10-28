@@ -227,3 +227,34 @@ fn for_queries_are_the_while_expansion() {
         assert_eq!(script(for_body), script(while_body), "{for_body}");
     }
 }
+
+/// `x?` is encoded as `match x { None => return None, Some(v) => v }` (and
+/// `Ok(v) => v, Err(e) => return Err(e)`, ADR-0049 §3, backlog 2K-01e): the
+/// proof scripts are byte for byte the same.
+#[test]
+fn try_queries_are_the_match_expansion() {
+    let unit = |body: &str| {
+        format!(
+            "#[summary(\"t\")]\nmod t {{\n    spec fn ok(r: Result<u64, u64>) -> bool {{\n        match r {{\n            Ok(v) => v < 100,\n            Err(c) => c > 7,\n        }}\n    }}\n\n    #[effects(pure)]\n    fn half(x: u64) -> Option<u64> {{\n        if x % 2 == 0 {{ Some(x / 2) }} else {{ None }}\n    }}\n\n    #[effects(pure)]\n    #[uses(ok)]\n    fn get(x: u64) -> (r: Result<u64, u64>)\n        ensures ok(r),\n    {{\n        if x < 100 {{ Ok(x) }} else {{ Err(x) }}\n    }}\n\n{body}}}\n"
+        )
+    };
+    let cases = [
+        (
+            "    #[effects(pure)]\n    fn f(x: u64) -> Option<u64> {\n        let h: u64 = half(x)?;\n        Some(half(h)?)\n    }\n",
+            "    #[effects(pure)]\n    fn f(x: u64) -> Option<u64> {\n        let h: u64 = match half(x) {\n            None => return None,\n            Some(v) => v,\n        };\n        Some(match half(h) {\n            None => return None,\n            Some(w) => w,\n        })\n    }\n",
+        ),
+        (
+            "    #[effects(pure)]\n    #[uses(ok)]\n    fn f(x: u64) -> (r: Result<u64, u64>)\n        ensures ok(r),\n    {\n        let a: u64 = get(x)?;\n        let b: u64 = get(a + 1)?;\n        Ok(b)\n    }\n",
+            "    #[effects(pure)]\n    #[uses(ok)]\n    fn f(x: u64) -> (r: Result<u64, u64>)\n        ensures ok(r),\n    {\n        let a: u64 = match get(x) {\n            Ok(v) => v,\n            Err(e) => return Err(e),\n        };\n        let b: u64 = match get(a + 1) {\n            Ok(w) => w,\n            Err(e2) => return Err(e2),\n        };\n        Ok(b)\n    }\n",
+        ),
+    ];
+    for (try_body, match_body) in cases {
+        let script = |body: &str| {
+            let files = [("t.bmb".to_string(), unit(body))];
+            let out = bmb::verify_sources_opts(&files, None, false);
+            assert!(out.ok, "{}", out.output);
+            out.scripts["t::f"].clone()
+        };
+        assert_eq!(script(try_body), script(match_body), "{try_body}");
+    }
+}

@@ -602,6 +602,19 @@ fn is_scalar(t: &TypeKind) -> bool {
 /// elements or type arguments. The classification is structural (no
 /// `Copy` derive). A type parameter is copied here: in generic code,
 /// `is_move_in` names the parameters without `Copy`.
+/// The variants `e?` continues with and returns on (ADR-0049 §1): `Some`
+/// and `None` of an `Option`, `Ok` and `Err` of a `Result`.
+pub fn try_variants(t: &TypeKind) -> Option<(&'static str, &'static str)> {
+    match t {
+        TypeKind::Named { path, args } if path.len() == 1 => match (path[0].as_str(), args.len()) {
+            ("Option", 1) => Some(("Some", "None")),
+            ("Result", 2) => Some(("Ok", "Err")),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
 pub fn is_move(t: &TypeKind, adts: &BTreeMap<String, Adt>) -> bool {
     is_move_in(t, adts, &BTreeSet::new())
 }
@@ -3336,6 +3349,85 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// `x?` (ADR-0049 §1): `x` is an `Option` in a function returning an
+    /// `Option`, or a `Result` in one returning a `Result` with the same
+    /// error type (no implicit conversion, E0241); its type is the payload.
+    fn try_expr(&mut self, cx: &mut FnCtx, e: &Expr, x: &Expr, mode: Mode) -> TypeKind {
+        if mode != Mode::Exec {
+            self.diags.push(
+                Diag::new("E0503", e.span, "`?` is not allowed in a specification").fix(
+                    "a specification is one expression: test the variant with `match`",
+                    None,
+                ),
+            );
+        }
+        let xt = self.expr(cx, x, None, mode);
+        let Some(kind) = try_variants(&xt) else {
+            if !matches!(xt, TypeKind::Error | TypeKind::Never) {
+                let fix = match &xt {
+                    TypeKind::Ref { inner, .. } if try_variants(&inner.kind).is_some() => {
+                        "`?` takes the value itself: `(*x)?` when it is `Copy`, otherwise `match` the reference"
+                    }
+                    _ => "test the value with `if` or `match` instead",
+                };
+                self.diags.push(
+                    Diag::new(
+                        "E0401",
+                        x.span,
+                        format!(
+                            "`?` applies to an `Option` or a `Result`, found `{}`",
+                            ty_str(&xt)
+                        ),
+                    )
+                    .fix(fix, None),
+                );
+            }
+            return TypeKind::Error;
+        };
+        let TypeKind::Named { args, .. } = &xt else {
+            unreachable!("try_variants")
+        };
+        let payload = args[0].kind.clone();
+        if mode != Mode::Exec {
+            return payload;
+        }
+        let ret = cx.ret.clone();
+        let fix = match (try_variants(&ret), &ret) {
+            (Some(k), TypeKind::Named { args: ra, .. }) if k == kind => {
+                if kind.0 == "Some" || ra[1].kind == args[1].kind {
+                    return payload;
+                }
+                let (have, want) = (ty_str(&args[1].kind), ty_str(&ra[1].kind));
+                (
+                    format!("the error type `{have}` of `?` is not the function's `{want}`"),
+                    format!(
+                        "convert it explicitly: `match` the value and `return Err(..)` with a `{want}`"
+                    ),
+                )
+            }
+            _ if ret == TypeKind::Error => return payload,
+            _ => (
+                format!(
+                    "`?` on `{}` returns its `{}` from a function returning `{}`",
+                    ty_str(&xt),
+                    kind.1,
+                    ty_str(&ret)
+                ),
+                format!(
+                    "`?` needs the function to return `{}`; otherwise `match` the value",
+                    if kind.0 == "Some" {
+                        "Option<..>"
+                    } else {
+                        "Result<.., E>"
+                    }
+                ),
+            ),
+        };
+        self.diags
+            .push(Diag::new("E0241", e.span, fix.0).fix(fix.1, None));
+        payload
+    }
+
     /// The `invariant` and `decreases` clauses of a `while` or `loop`:
     /// `old(a)` in an invariant is `a` on function entry; `decreases` is
     /// required (E0506, reported at `missing`).
@@ -4778,6 +4870,7 @@ impl<'a> Checker<'a> {
                 }
                 TypeKind::Never
             }
+            ExprKind::Try(x) => self.try_expr(cx, e, x, mode),
             ExprKind::Loop {
                 label,
                 invariants,
@@ -7203,6 +7296,7 @@ fn mentions(e: &Expr, name: &str) -> bool {
         | ExprKind::Ref { expr: x, .. }
         | ExprKind::Old(x)
         | ExprKind::Deref(x)
+        | ExprKind::Try(x)
         | ExprKind::Trigger(x) => mentions(x, name),
         ExprKind::Repeat { value, .. } => mentions(value, name),
         ExprKind::Binary(_, l, r) => mentions(l, name) || mentions(r, name),
@@ -7250,7 +7344,8 @@ fn collect_triggers<'e>(e: &'e Expr, out: &mut Vec<&'e Expr>) {
         ExprKind::Unary(_, x)
         | ExprKind::Ref { expr: x, .. }
         | ExprKind::Old(x)
-        | ExprKind::Deref(x) => collect_triggers(x, out),
+        | ExprKind::Deref(x)
+        | ExprKind::Try(x) => collect_triggers(x, out),
         ExprKind::Repeat { value, .. } => collect_triggers(value, out),
         ExprKind::Binary(_, l, r) => {
             collect_triggers(l, out);

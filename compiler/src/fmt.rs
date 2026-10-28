@@ -758,6 +758,7 @@ impl<'a> Printer<'a> {
             }
             ExprKind::Path(path) => self.path(path),
             ExprKind::Deref(x) => format!("*{}", self.expr(x, 7)),
+            ExprKind::Try(x) => format!("{}?", self.expr(x, 8)),
             ExprKind::Field { base, name } => format!("{}.{}", self.expr(base, 8), name.name),
             // Nested multi-line forms are printed on one line inside expressions.
             ExprKind::If { .. }
@@ -1038,7 +1039,7 @@ fn has_struct_lit(e: &Expr) -> bool {
         ExprKind::Unary(_, x) | ExprKind::Ref { expr: x, .. } | ExprKind::Deref(x) => {
             has_struct_lit(x)
         }
-        ExprKind::Field { base, .. } => has_struct_lit(base),
+        ExprKind::Field { base, .. } | ExprKind::Try(base) => has_struct_lit(base),
         ExprKind::Method { recv, .. } => has_struct_lit(recv),
         ExprKind::Index { base, .. } => has_struct_lit(base),
         _ => false,

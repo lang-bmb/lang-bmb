@@ -214,7 +214,9 @@ fn calls_in_expr<'e>(
         ExprKind::Array(xs) => xs.iter().for_each(|x| calls_in_expr(x, spec, out)),
         ExprKind::Repeat { value, .. } => calls_in_expr(value, spec, out),
         ExprKind::Forall { body, .. } => calls_in_expr(body, true, out),
-        ExprKind::Field { base, .. } | ExprKind::Deref(base) => calls_in_expr(base, spec, out),
+        ExprKind::Field { base, .. } | ExprKind::Deref(base) | ExprKind::Try(base) => {
+            calls_in_expr(base, spec, out)
+        }
         ExprKind::StructLit { fields, .. } => {
             fields.iter().for_each(|(_, x)| calls_in_expr(x, spec, out))
         }
@@ -468,6 +470,7 @@ fn exprs_of(f: &FnDef) -> Vec<&Expr> {
             | ExprKind::Old(x)
             | ExprKind::Trigger(x)
             | ExprKind::Deref(x)
+            | ExprKind::Try(x)
             | ExprKind::Field { base: x, .. }
             | ExprKind::Repeat { value: x, .. }
             | ExprKind::Forall { body: x, .. } => expr(x, out),

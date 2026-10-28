@@ -347,6 +347,22 @@ MUTANTS = [
      '''                let op = if *inclusive { le_op } else { lt_op };''',
      '''                let op = if *inclusive { lt_op } else { le_op };''',
      "`lo..hi` runs its end too and `lo..=hi` skips it"),
+    ("v-try-return-post-skipped", "unsound", V,
+     '''                    let r = s.variant_value(&rt, bad, &vals);
+                    s.post_check(r);''',
+     '''                    let r = s.variant_value(&rt, bad, &vals);
+                    let _ = r;''',
+     "the `None`/`Err` a `?` returns is not checked against the postconditions"),
+    ("c-try-exit-drops-skipped", "miscompile", C,
+     '''        for p in exits {
+            self.drop_path(&p);
+        }
+        self.emit_return(CVal::Ptr { ptr: out, ty: rt });''',
+     '''        for p in exits.into_iter().take(0) {
+            self.drop_path(&p);
+        }
+        self.emit_return(CVal::Ptr { ptr: out, ty: rt });''',
+     "the owned locals alive at a `?` are not freed when it returns (a leak)"),
 ]
 
 
