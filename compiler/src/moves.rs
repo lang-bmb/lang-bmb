@@ -77,6 +77,17 @@ pub struct MoveInfo {
     pub exits: BTreeMap<Key, Vec<String>>,
 }
 
+/// A loop a `break` or `continue` may leave.
+struct MvLoop {
+    label: Option<String>,
+    /// The locals and parameters live before it (the ones it keeps).
+    outer: BTreeSet<String>,
+    /// The states its `break`s leave with (joined at its exit).
+    breaks: Vec<BTreeMap<String, St>>,
+    /// The states its `continue`s go back with (checked at its head).
+    continues: Vec<BTreeMap<String, St>>,
+}
+
 struct Mv<'a> {
     /// Canonical types of the function's parameters and locals (names are
     /// unique in a function, E0303).
@@ -86,9 +97,12 @@ struct Mv<'a> {
     /// The type parameters without `Copy` (their values move).
     moving: &'a BTreeSet<String>,
     state: BTreeMap<String, St>,
-    /// The current path has left the function (`return`): what follows on
-    /// it does not run, and a join ignores it.
+    /// The current path has left the function or a loop (`return`,
+    /// `break`, `continue`): what follows on it does not run, and a join
+    /// ignores it.
     dead: bool,
+    /// The loops around the code being checked, innermost last.
+    loops: Vec<MvLoop>,
     diags: Vec<Diag>,
     info: MoveInfo,
 }
@@ -109,6 +123,7 @@ pub fn check(
         moving,
         state: BTreeMap::new(),
         dead: false,
+        loops: Vec::new(),
         diags: Vec::new(),
         info: MoveInfo::default(),
     };
@@ -397,6 +412,81 @@ impl Mv<'_> {
         }
     }
 
+    /// The states that go back to the head of a loop (the end of its body
+    /// when reached, and each `continue`) against the head: a local owned on
+    /// one and moved on the other is E0414 (and moved after the loop).
+    fn loop_backs(
+        &mut self,
+        head: &BTreeMap<String, St>,
+        mut backs: Vec<BTreeMap<String, St>>,
+        out: &mut BTreeMap<String, St>,
+        span: Span,
+    ) {
+        // A body that left the loop or the function does not loop back.
+        let end = std::mem::take(&mut self.state);
+        if !std::mem::replace(&mut self.dead, false) {
+            backs.push(end);
+        }
+        for back in backs {
+            let keys: BTreeSet<String> = head.keys().chain(back.keys()).cloned().collect();
+            for n in &keys {
+                let root = n.split('.').next().unwrap_or(n);
+                if !head.contains_key(root) {
+                    continue;
+                }
+                if let (Some(s0), Some(s1)) = (status_in(head, n), status_in(&back, n))
+                    && !s0.same(s1)
+                {
+                    let how = if matches!(s0, St::Owned) {
+                        "in the loop and not assigned again before the next iteration"
+                    } else {
+                        "before the loop and assigned only inside it"
+                    };
+                    self.maybe_moved(n, span, how);
+                    out.insert(n.clone(), St::Moved);
+                }
+            }
+        }
+    }
+
+    /// A `break` or `continue` at `e` to loop `k`: the locals declared in the
+    /// loop and still owned are dropped on that exit; the state of the rest
+    /// goes to the loop's exit or head.
+    fn jump(&mut self, e: &Expr, label: &Option<Ident>, brk: bool) {
+        let Some(k) = (match label {
+            Some(l) => self
+                .loops
+                .iter()
+                .rposition(|c| c.label.as_deref() == Some(l.name.as_str())),
+            None => self.loops.len().checked_sub(1),
+        }) else {
+            return;
+        };
+        let outer = self.loops[k].outer.clone();
+        let inner: Vec<String> = self
+            .state
+            .keys()
+            .filter(|n| !n.contains('.') && !outer.contains(*n))
+            .cloned()
+            .collect();
+        let owned: Vec<String> = inner.iter().flat_map(|n| self.drop_paths(n)).collect();
+        if !owned.is_empty() {
+            self.info.exits.insert(key(e.span), owned);
+        }
+        let kept: BTreeMap<String, St> = self
+            .state
+            .iter()
+            .filter(|(n, _)| outer.contains(n.split('.').next().unwrap_or(n)))
+            .map(|(n, s)| (n.clone(), *s))
+            .collect();
+        if brk {
+            self.loops[k].breaks.push(kept);
+        } else {
+            self.loops[k].continues.push(kept);
+        }
+        self.dead = true;
+    }
+
     /// The owned paths of every live local and parameter (a `return`).
     fn owned_now(&self) -> Vec<String> {
         let roots: Vec<String> = self
@@ -585,6 +675,7 @@ impl Mv<'_> {
                 }
             }
             Stmt::While {
+                label,
                 cond,
                 invariants,
                 body,
@@ -597,34 +688,21 @@ impl Mv<'_> {
                 }
                 self.expr(cond, true);
                 let exit = self.state.clone();
+                self.loops.push(MvLoop {
+                    label: label.as_ref().map(|l| l.name.clone()),
+                    outer: head.keys().cloned().collect(),
+                    breaks: Vec::new(),
+                    continues: Vec::new(),
+                });
                 self.block(body);
-                // A body that left the function does not loop back.
-                if self.dead {
-                    self.dead = false;
-                    self.state = exit;
-                    return;
-                }
+                let lp = self.loops.pop().expect("pushed");
                 let mut out = exit;
-                let keys: BTreeSet<String> =
-                    head.keys().chain(self.state.keys()).cloned().collect();
-                for n in &keys {
-                    let root = n.split('.').next().unwrap_or(n);
-                    if !head.contains_key(root) {
-                        continue;
-                    }
-                    if let (Some(s0), Some(s1)) = (status_in(&head, n), self.status(n))
-                        && !s0.same(s1)
-                    {
-                        let how = if matches!(s0, St::Owned) {
-                            "in the loop and not assigned again before the next iteration"
-                        } else {
-                            "before the loop and assigned only inside it"
-                        };
-                        self.maybe_moved(n, *span, how);
-                        out.insert(n.clone(), St::Moved);
-                    }
-                }
+                self.loop_backs(&head, lp.continues, &mut out, *span);
                 self.state = out;
+                for b in lp.breaks {
+                    let cur = std::mem::take(&mut self.state);
+                    self.merge(cur, b, *span);
+                }
             }
             Stmt::Assert { cond, .. } => self.expr(cond, false),
             Stmt::Expr(e) => self.expr(e, true),
@@ -837,6 +915,58 @@ impl Mv<'_> {
                     None => self.state = before,
                 }
             }
+            ExprKind::Loop {
+                label,
+                invariants,
+                body,
+                ..
+            } => {
+                let head = self.state.clone();
+                for inv in invariants {
+                    self.expr(inv, false);
+                }
+                self.loops.push(MvLoop {
+                    label: label.as_ref().map(|l| l.name.clone()),
+                    outer: head.keys().cloned().collect(),
+                    breaks: Vec::new(),
+                    continues: Vec::new(),
+                });
+                self.block(body);
+                let lp = self.loops.pop().expect("pushed");
+                let mut ignored = head.clone();
+                self.loop_backs(&head, lp.continues, &mut ignored, e.span);
+                // Only the `break`s leave a `loop`; with none it does not
+                // finish.
+                let mut breaks = lp.breaks.into_iter();
+                match breaks.next() {
+                    None => {
+                        self.state = ignored;
+                        self.dead = true;
+                    }
+                    Some(first) => {
+                        // The head's verdicts (E0414 marks) hold at the exit.
+                        self.state = first;
+                        for (n, st) in &ignored {
+                            if matches!(st, St::Moved)
+                                && self.state.contains_key(n.split('.').next().unwrap_or(n))
+                            {
+                                self.state.insert(n.clone(), St::Moved);
+                            }
+                        }
+                        for b in breaks {
+                            let cur = std::mem::take(&mut self.state);
+                            self.merge(cur, b, e.span);
+                        }
+                    }
+                }
+            }
+            ExprKind::Break { label, value } => {
+                if let Some(v) = value {
+                    self.expr(v, true);
+                }
+                self.jump(e, label, true);
+            }
+            ExprKind::Continue { label } => self.jump(e, label, false),
             // The value moves out; everything else still owned is dropped
             // on this exit.
             ExprKind::Return(x) => {

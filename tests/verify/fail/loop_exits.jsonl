@@ -1,0 +1,12 @@
+{"code":"E0803","severity":"error","message":"`-` may overflow `u64` in `lf::nested`; counterexample: n = 0","file":"fail/loop_exits.bmb","line":27,"col":14,"end_line":27,"end_col":25}
+{"code":"E0804","severity":"error","message":"divisor may be zero in `lf::nested`; counterexample: n = 4","file":"fail/loop_exits.bmb","line":27,"col":14,"end_line":27,"end_col":25}
+{"code":"E0803","severity":"error","message":"`+` may overflow `u64` in `lf::nested`; counterexample: n = 18446744073709551612","file":"fail/loop_exits.bmb","line":27,"col":15,"end_line":27,"end_col":20}
+{"code":"E0802","severity":"error","message":"postcondition `whole` may not hold in `lf::scan`; counterexample: a = [0, 0, 0, 0, ..] (len 39), x = 0","file":"fail/loop_exits.bmb","line":37,"col":17,"end_line":37,"end_col":28}
+{"code":"E0807","severity":"error","message":"loop invariant may not be preserved in `lf::skip`; counterexample: n = 3","file":"fail/loop_exits.bmb","line":60,"col":23,"end_line":60,"end_col":43}
+{"code":"E0808","severity":"error","message":"`decreases` may not decrease or may be negative in `lf::stuck`; counterexample: n = 3","file":"fail/loop_exits.bmb","line":78,"col":23,"end_line":78,"end_col":28}
+{"code":"E0802","severity":"error","message":"postcondition `pos` may not hold in `lf::zero`; counterexample: n = 0","file":"fail/loop_exits.bmb","line":95,"col":17,"end_line":95,"end_col":23}
+{"def":"lf::nested","status":"failed","obligations":12,"failed":3,"rlimit":18071,"rlimit_max":5541}
+{"def":"lf::scan","status":"failed","obligations":6,"failed":1,"rlimit":32213,"rlimit_max":25526}
+{"def":"lf::skip","status":"failed","obligations":8,"failed":1,"rlimit":13426,"rlimit_max":4818}
+{"def":"lf::stuck","status":"failed","obligations":6,"failed":1,"rlimit":4692,"rlimit_max":1988}
+{"def":"lf::zero","status":"failed","obligations":5,"failed":1,"rlimit":4801,"rlimit_max":2507}

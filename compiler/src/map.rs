@@ -222,7 +222,22 @@ fn calls_in_expr<'e>(
             calls_in_expr(scrut, spec, out);
             arms.iter().for_each(|a| calls_in_expr(&a.body, spec, out));
         }
-        ExprKind::Return(x) => x.iter().for_each(|x| calls_in_expr(x, spec, out)),
+        ExprKind::Return(x) | ExprKind::Break { value: x, .. } => {
+            x.iter().for_each(|x| calls_in_expr(x, spec, out))
+        }
+        ExprKind::Loop {
+            invariants,
+            decreases,
+            body,
+            ..
+        } => {
+            invariants
+                .iter()
+                .chain(decreases.as_deref())
+                .for_each(|x| calls_in_expr(x, true, out));
+            calls_in_block(body, spec, out);
+        }
+        ExprKind::Continue { .. } => {}
         ExprKind::Int(_)
         | ExprKind::ByteLit(_)
         | ExprKind::ByteStr(_)
@@ -450,7 +465,22 @@ fn exprs_of(f: &FnDef) -> Vec<&Expr> {
                 expr(scrut, out);
                 arms.iter().for_each(|a| expr(&a.body, out));
             }
-            ExprKind::Return(x) => x.iter().for_each(|x| expr(x, out)),
+            ExprKind::Return(x) | ExprKind::Break { value: x, .. } => {
+                x.iter().for_each(|x| expr(x, out))
+            }
+            ExprKind::Loop {
+                invariants,
+                decreases,
+                body,
+                ..
+            } => {
+                invariants
+                    .iter()
+                    .chain(decreases.as_deref())
+                    .for_each(|x| expr(x, out));
+                block(body, out);
+            }
+            ExprKind::Continue { .. } => {}
             ExprKind::Path(_)
             | ExprKind::Int(_)
             | ExprKind::ByteLit(_)

@@ -212,6 +212,7 @@ impl<'a> Parser<'a> {
             Tok::Byte(_) => "byte literal".into(),
             Tok::Bytes(_) => "byte string literal".into(),
             Tok::P(p) => format!("`{p}`"),
+            Tok::Label(l) => format!("`'{l}`"),
             Tok::Eof => "end of file".into(),
         }
     }
@@ -1550,7 +1551,7 @@ impl<'a> Parser<'a> {
             }
             let start = self.pos;
             match self.parse_stmt() {
-                Ok(StmtOrTail::Stmt(s)) => stmts.push(s),
+                Ok(StmtOrTail::Stmt(s)) => stmts.push(*s),
                 Ok(StmtOrTail::Tail(e)) => tail = Some(Box::new(e)),
                 Err(_) => {
                     had_err = true;
@@ -1580,20 +1581,20 @@ impl<'a> Parser<'a> {
         let lo = self.span();
         if let Tok::Ident(s) = self.peek().clone() {
             match s.as_str() {
-                "let" => return self.parse_let().map(StmtOrTail::Stmt),
-                "while" => return self.parse_while().map(StmtOrTail::Stmt),
+                "let" => return self.parse_let().map(stmt),
+                "while" => return self.parse_while().map(stmt),
                 "assert" if matches!(self.peek_at(1), Tok::P("(")) => {
                     self.bump();
                     self.bump();
                     let cond = self.parse_expr()?;
                     self.expect_p(")")?;
                     let hi = self.expect_p(";")?;
-                    return Ok(StmtOrTail::Stmt(Stmt::Assert {
+                    return Ok(stmt(Stmt::Assert {
                         cond,
                         span: lo.to(hi),
                     }));
                 }
-                "for" | "loop" => {
+                "for" => {
                     self.bump();
                     self.diags.push(
                         Diag::new("E0204", lo, format!("`{s}` is not allowed"))
@@ -1602,31 +1603,34 @@ impl<'a> Parser<'a> {
                     self.recover_loop_body();
                     return Err(());
                 }
-                "break" | "continue" => {
-                    self.bump();
-                    self.diags.push(
-                        Diag::new(
-                            "E0207",
-                            lo,
-                            format!("`{s}` is not supported in milestone 1"),
-                        )
-                        .fix("move the exit condition into the `while` condition", None),
-                    );
-                    return Err(());
-                }
                 _ => {}
             }
+        }
+        // `'outer: while ..` / `'outer: loop ..` (ADR-0049 §1).
+        if let Tok::Label(name) = self.peek().clone()
+            && matches!(self.peek_at(1), Tok::P(":"))
+            && matches!(self.peek_at(2), Tok::Ident(k) if k == "while")
+        {
+            let span = self.bump().span;
+            self.bump();
+            let label = Ident { name, span };
+            return self.nested(|p| p.parse_while_inner(Some(label))).map(stmt);
         }
         // A block-like expression statement ends at its `}` when what follows
         // would otherwise read as an operand (Rust): `if c { return; } *x =
         // 1;` is two statements. A binary operator or a method call after
         // it keeps the expression going (`match a { .. } == 3`).
-        if self.is_kw("if") || self.is_kw("match") {
+        let labeled_loop = matches!(self.peek(), Tok::Label(_))
+            && matches!(self.peek_at(1), Tok::P(":"))
+            && matches!(self.peek_at(2), Tok::Ident(k) if k == "loop");
+        if self.is_kw("if") || self.is_kw("match") || self.is_kw("loop") || labeled_loop {
             let (pos, nd) = (self.pos, self.diags.items.len());
             let e = if self.is_kw("if") {
                 self.nested(Self::parse_if)?
-            } else {
+            } else if self.is_kw("match") {
                 self.nested(Self::parse_match)?
+            } else {
+                self.nested(Self::parse_loop)?
             };
             let ends = match self.peek() {
                 Tok::P(p) => matches!(*p, "*" | "-" | "&" | "!" | "(" | "[" | ";" | "}" | "{"),
@@ -1635,7 +1639,7 @@ impl<'a> Parser<'a> {
             };
             if ends {
                 if self.eat_p(";") {
-                    return Ok(StmtOrTail::Stmt(Stmt::Expr(e)));
+                    return Ok(stmt(Stmt::Expr(e)));
                 }
                 return Ok(StmtOrTail::Tail(e));
             }
@@ -1646,14 +1650,14 @@ impl<'a> Parser<'a> {
         if self.eat_p("=") {
             let value = self.parse_expr()?;
             let hi = self.expect_p(";")?;
-            return Ok(StmtOrTail::Stmt(Stmt::Assign {
+            return Ok(stmt(Stmt::Assign {
                 target: e,
                 value,
                 span: lo.to(hi),
             }));
         }
         if self.eat_p(";") {
-            return Ok(StmtOrTail::Stmt(Stmt::Expr(e)));
+            return Ok(stmt(Stmt::Expr(e)));
         }
         if self.is_p("}")
             || matches!(
@@ -1765,10 +1769,42 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_while(&mut self) -> PResult<Stmt> {
-        self.nested(Self::parse_while_inner)
+        self.nested(|p| p.parse_while_inner(None))
     }
 
-    fn parse_while_inner(&mut self) -> PResult<Stmt> {
+    /// `['l:] loop [invariant ..,] [decreases ..,] { .. }` (ADR-0049 §1).
+    fn parse_loop(&mut self) -> PResult<Expr> {
+        let mut label = None;
+        let lo = self.span();
+        if let Tok::Label(name) = self.peek().clone() {
+            let span = self.bump().span;
+            self.expect_p(":")?;
+            label = Some(Ident { name, span });
+        }
+        self.bump();
+        let mut invariants = Vec::new();
+        let mut decreases = None;
+        if self.eat_kw("invariant") {
+            invariants = self.clause_list()?;
+        }
+        if self.eat_kw("decreases") {
+            decreases = Some(Box::new(self.parse_expr()?));
+            self.eat_p(",");
+        }
+        let body = self.parse_block()?;
+        let span = lo.to(body.span);
+        Ok(Expr {
+            kind: ExprKind::Loop {
+                label,
+                invariants,
+                decreases,
+                body,
+            },
+            span,
+        })
+    }
+
+    fn parse_while_inner(&mut self, label: Option<Ident>) -> PResult<Stmt> {
         let lo = self.bump().span;
         if self.is_kw("let") {
             self.diags.push(
@@ -1793,6 +1829,7 @@ impl<'a> Parser<'a> {
         let body = self.parse_block()?;
         let span = lo.to(body.span);
         Ok(Stmt::While {
+            label,
             cond,
             invariants,
             decreases,
@@ -1821,6 +1858,41 @@ impl<'a> Parser<'a> {
             let span = lo.to(v.span);
             return Ok(Expr {
                 kind: ExprKind::Return(Some(Box::new(v))),
+                span,
+            });
+        }
+        // `break ['l] [e]` and `continue ['l]` bind like `return`.
+        if self.is_kw("break") || self.is_kw("continue") {
+            let brk = self.is_kw("break");
+            let lo = self.bump().span;
+            let mut span = lo;
+            let label = match self.peek().clone() {
+                Tok::Label(name) => {
+                    let sp = self.bump().span;
+                    span = lo.to(sp);
+                    Some(Ident { name, span: sp })
+                }
+                _ => None,
+            };
+            if !brk {
+                return Ok(Expr {
+                    kind: ExprKind::Continue { label },
+                    span,
+                });
+            }
+            let ends = matches!(
+                self.peek(),
+                Tok::P(";") | Tok::P("}") | Tok::P(")") | Tok::P(",") | Tok::P("]") | Tok::Eof
+            );
+            let value = if ends {
+                None
+            } else {
+                let v = self.nested(Self::parse_expr)?;
+                span = lo.to(v.span);
+                Some(Box::new(v))
+            };
+            return Ok(Expr {
+                kind: ExprKind::Break { label, value },
                 span,
             });
         }
@@ -2279,6 +2351,12 @@ impl<'a> Parser<'a> {
                 ));
                 Err(())
             }
+            Tok::Label(_)
+                if matches!(self.peek_at(1), Tok::P(":"))
+                    && matches!(self.peek_at(2), Tok::Ident(k) if k == "loop") =>
+            {
+                self.parse_loop()
+            }
             Tok::Ident(s) => match s.as_str() {
                 "true" | "false" => {
                     self.bump();
@@ -2288,6 +2366,7 @@ impl<'a> Parser<'a> {
                     })
                 }
                 "if" => self.parse_if(),
+                "loop" => self.parse_loop(),
                 "old" if matches!(self.peek_at(1), Tok::P("(")) => {
                     self.bump();
                     self.bump();
@@ -2726,8 +2805,13 @@ impl<'a> Parser<'a> {
     }
 }
 
+/// A statement, boxed (it is much larger than an expression).
+fn stmt(s: Stmt) -> StmtOrTail {
+    StmtOrTail::Stmt(Box::new(s))
+}
+
 enum StmtOrTail {
-    Stmt(Stmt),
+    Stmt(Box<Stmt>),
     Tail(Expr),
 }
 

@@ -307,6 +307,28 @@ MUTANTS = [
         }
         self.emit_return(v);''',
      "the owned locals still held at a `return` are not freed (a leak)"),
+    ("v-break-state-dropped", "unsound", V,
+     '''        let conds: Vec<String> = lp.breaks.iter().map(|(pc, _, _)| and(pc)).collect();
+        let mut alts: Vec<String> = conds.clone();''',
+     '''        let conds: Vec<String> = lp.breaks.iter().map(|(pc, _, _)| and(pc)).collect();
+        let mut alts: Vec<String> = conds.iter().take(usize::from(cond.is_none())).cloned().collect();''',
+     "a `while` is left only with its condition false: the `break` states are not among the exits"),
+    ("v-continue-head-skipped", "unsound", V,
+     '''                    let k = self.jump_target(label);
+                    self.back_to_head(k);''',
+     '''                    let k = self.jump_target(label);
+                    let _ = k;''',
+     "a `continue` goes back to the head without its invariant or measure obligations"),
+    ("c-jump-exit-drops-skipped", "miscompile", C,
+     '''        for p in exits {
+            self.drop_path(&p);
+        }
+        let target = if brk {''',
+     '''        for p in exits.into_iter().take(0) {
+            self.drop_path(&p);
+        }
+        let target = if brk {''',
+     "the owned locals of the loop are not freed at a `break` or `continue` (a leak)"),
 ]
 
 

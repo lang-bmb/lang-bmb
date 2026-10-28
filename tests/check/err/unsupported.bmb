@@ -14,28 +14,6 @@ mod unsupported {
     fn matches(x: i64) -> i64 { match x { _ => 0 } }
 
     #[effects(pure)]
-    fn breaks(n: u64) -> () {
-        let mut i: u64 = 0;
-        while i < n
-            invariant i <= n,
-            decreases n - i,
-        {
-            break;
-        }
-    }
-
-    #[effects(pure)]
-    fn continues(n: u64) -> () {
-        let mut i: u64 = 0;
-        while i < n
-            invariant i <= n,
-            decreases n - i,
-        {
-            continue;
-        }
-    }
-
-    #[effects(pure)]
     fn fields(p: i64) -> i64 { p.x }
 
     #[effects(pure)]

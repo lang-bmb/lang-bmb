@@ -13,6 +13,10 @@ pub enum Tok {
     /// `b"..."` (ADR-0044 §2).
     Bytes(Vec<u8>),
     P(&'static str),
+    /// A loop label `'outer` (ADR-0049 §1): before `: while`/`: loop`/
+    /// `: for`, or after `break`/`continue`. Elsewhere `'a` is a lifetime
+    /// (E0208).
+    Label(String),
     Eof,
 }
 
@@ -297,6 +301,28 @@ pub fn lex(file: u32, text: &str, diags: &mut Diags) -> Vec<Token> {
             i += 1;
             while i < b.len() && (b[i].is_ascii_alphanumeric() || b[i] == b'_') {
                 i += 1;
+            }
+            // A label: after `break`/`continue`, or before a `:` (a loop
+            // label; a lifetime takes none in BMB). Comments may come between.
+            let after_jump = matches!(out.last(), Some(Token { tok: Tok::Ident(k), .. }) if k == "break" || k == "continue");
+            let mut rest = &text[i..];
+            loop {
+                let t = rest.trim_start();
+                match t.strip_prefix("//") {
+                    Some(c) => rest = c.find('\n').map_or("", |n| &c[n..]),
+                    None => {
+                        rest = t;
+                        break;
+                    }
+                }
+            }
+            let before_loop = rest.starts_with(':') && !rest.starts_with("::");
+            if i > lo + 1 && (after_jump || before_loop) && !(i < b.len() && b[i] == b'\'') {
+                out.push(Token {
+                    tok: Tok::Label(text[lo + 1..i].to_string()),
+                    span: sp(lo, i),
+                });
+                continue;
             }
             if i < b.len() && b[i] == b'\'' {
                 i += 1;

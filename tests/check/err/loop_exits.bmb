@@ -1,0 +1,74 @@
+#[summary("루프 탈출의 경계: 루프 밖, 레이블, 값 있는 break, decreases, 명세 (backlog 2K-01b, 2K-01c)")]
+mod lc {
+    #[effects(pure)]
+    fn outside(x: i64) -> i64 {
+        if x > 0 {
+            break;
+        }
+        x
+    }
+
+    #[effects(pure)]
+    fn outside_continue() -> () {
+        continue;
+    }
+
+    #[effects(pure)]
+    fn no_label(n: u64) -> u64 {
+        let mut i: u64 = 0;
+        'a: while i < n
+            invariant i <= n,
+            decreases n - i,
+        {
+            if i == 3 {
+                break 'b;
+            }
+            i = i + 1;
+        }
+        i
+    }
+
+    // Only a `loop` breaks with a value.
+    #[effects(pure)]
+    fn while_value(n: u64) -> u64 {
+        let mut i: u64 = 0;
+        while i < n
+            invariant i <= n,
+            decreases n - i,
+        {
+            break 5;
+        }
+        i
+    }
+
+    // The `break`s of one `loop` agree on the type.
+    #[effects(pure)]
+    fn two_types(n: u64) -> u64 {
+        let mut i: u64 = 0;
+        let r: u64 = loop
+            invariant i <= n,
+            decreases n - i,
+        {
+            if i == n {
+                break 1;
+            }
+            if i == 2 {
+                break true;
+            }
+            i = i + 1;
+        };
+        r
+    }
+
+    #[effects(pure)]
+    fn no_measure() -> u64 {
+        let mut i: u64 = 0;
+        loop {
+            if i == 3 {
+                break;
+            }
+            i = i + 1;
+        }
+        i
+    }
+}

@@ -21,7 +21,7 @@
 | --- | --- |
 | E0201 | `let` requires an explicit type |
 | E0202 | macros are not allowed |
-| E0204 | `for` and `loop` are not allowed; use `while` with `invariant` and `decreases` |
+| E0204 | `for` is not allowed yet; use `while` with `invariant` and `decreases` |
 | E0205 | `as` casts are not allowed |
 | E0206 | the `?` operator is not allowed |
 | E0207 | construct not supported in milestone 1 |
@@ -38,6 +38,8 @@
 | E0235 | a blanket impl `impl<T> Trait for T` is not used |
 | E0240 | a `where` clause is not used: bounds go next to the type parameter |
 | E0236 | trait objects `dyn Trait` are not used |
+| E0250 | `break` or `continue` outside a loop |
+| E0251 | `break` with a value outside a `loop` |
 | E0237 | a call of a generic function names its type arguments: `f::<T>(..)` |
 | E0238 | `Rc`, `RefCell`, `Cell` and `Arc` are not used: values have one owner |
 | E0239 | an owned value is moved out from behind a `&mut`: use `std::mem::replace` |
@@ -74,6 +76,7 @@
 | E0312 | a trait impl in neither the unit of the trait nor the unit of the type |
 | E0315 | a trait impl misses a method of the trait, or has one the trait lacks |
 | E0316 | a trait impl's function does not match the trait's signature |
+| E0317 | a `break` or `continue` names a label no loop around it has |
 
 ## E04xx 타입·소유권
 

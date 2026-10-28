@@ -1,0 +1,109 @@
+#[summary("루프 탈출의 틀린 프로그램: break 상태, continue의 불변식·감소, loop의 값 (backlog 2K-01b, 2K-01c)")]
+mod lf {
+    spec fn few(n: u64) -> bool {
+        n < 1000
+    }
+
+    #[effects(pure)]
+    fn nested(n: u64) -> u64 {
+        let mut i: u64 = 0;
+        let mut j: u64 = 0;
+        'out: while i < n
+            invariant i <= n,
+            decreases n - i,
+        {
+            j = 0;
+            while j < n
+                invariant j <= n,
+                decreases n - j,
+            {
+                if j == 5 {
+                    break 'out;
+                }
+                j = j + 1;
+            }
+            i = i + 1;
+        }
+        10 / (i + j - 5)
+    }
+
+    spec fn pos(r: u64) -> bool {
+        r > 0
+    }
+
+    #[effects(pure)]
+    #[uses(whole)]
+    fn scan(a: &[i64], x: i64) -> (r: usize)
+        ensures whole(a, r),
+    {
+        let mut i: usize = 0;
+        while i < a.len()
+            invariant i <= a.len(),
+            decreases a.len() - i,
+        {
+            if a[i] == x {
+                break;
+            }
+            i = i + 1;
+        }
+        i
+    }
+
+    #[effects(pure)]
+    #[uses(few)]
+    fn skip(n: u64) -> u64
+        requires few(n),
+    {
+        let mut s: u64 = 0;
+        let mut i: u64 = 0;
+        while i < n
+            invariant i <= n && s <= 2 * i,
+            decreases n - i,
+        {
+            i = i + 1;
+            if i == 3 {
+                s = s + 3;
+                continue;
+            }
+            s = s + 2;
+        }
+        s
+    }
+
+    #[effects(pure)]
+    fn stuck(n: u64) -> u64 {
+        let mut i: u64 = 0;
+        while i < n
+            invariant i <= n,
+            decreases n - i,
+        {
+            if i == 2 {
+                continue;
+            }
+            i = i + 1;
+        }
+        i
+    }
+
+    spec fn whole(a: &[i64], i: usize) -> bool {
+        i == a.len()
+    }
+
+    #[effects(pure)]
+    #[uses(pos)]
+    fn zero(n: u64) -> (r: u64)
+        ensures pos(r),
+    {
+        let mut k: u64 = 0;
+        let v: u64 = loop
+            invariant k <= n,
+            decreases n - k,
+        {
+            if k == n {
+                break k;
+            }
+            k = k + 1;
+        };
+        v
+    }
+}

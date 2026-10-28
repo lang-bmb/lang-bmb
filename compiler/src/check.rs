@@ -450,6 +450,18 @@ struct FnCtx {
     forall_depth: u32,
     /// The function's result type (`return e`, ADR-0049 §1).
     ret: TypeKind,
+    /// The loops around the expression being checked, innermost last
+    /// (`break`, `continue`, ADR-0049 §1).
+    loops: Vec<LoopCx>,
+}
+
+/// A loop a `break` or `continue` may name.
+struct LoopCx {
+    label: Option<String>,
+    /// A `loop` (whose `break` may carry a value), not a `while`.
+    is_loop: bool,
+    /// The type of the values its `break`s carry, once one is seen.
+    value: Option<TypeKind>,
 }
 
 pub fn ty_str(t: &TypeKind) -> String {
@@ -2721,6 +2733,7 @@ impl<'a> Checker<'a> {
             all_names: BTreeSet::new(),
             forall_depth: 0,
             ret: TypeKind::Error,
+            loops: Vec::new(),
         };
         self.calls.entry(path.clone()).or_default();
 
@@ -3213,6 +3226,7 @@ impl<'a> Checker<'a> {
                 self.expect_ty(&vt, &tt, value.span);
             }
             Stmt::While {
+                label,
                 cond,
                 invariants,
                 decreases,
@@ -3224,39 +3238,18 @@ impl<'a> Checker<'a> {
                 }
                 let ct = self.expr(cx, cond, Some(&TypeKind::Bool), mode);
                 self.expect_ty(&ct, &TypeKind::Bool, cond.span);
-                // `old(a)` in an invariant or assertion is `a` on function entry.
-                for inv in invariants {
-                    let t = self.expr(
-                        cx,
-                        inv,
-                        Some(&TypeKind::Bool),
-                        Mode::Spec { allow_old: true },
-                    );
-                    self.expect_ty(&t, &TypeKind::Bool, inv.span);
-                }
-                match decreases {
-                    Some(d) => {
-                        let t = self.expr(cx, d, None, Mode::Spec { allow_old: false });
-                        if !is_int(&t) && t != TypeKind::Error {
-                            self.err(
-                                "E0401",
-                                d.span,
-                                format!("`decreases` must be an integer, found `{}`", ty_str(&t)),
-                            );
-                        }
-                    }
-                    None => {
-                        let sp = Span {
-                            hi: cond.span.hi,
-                            ..*span
-                        };
-                        self.diags.push(
-                            Diag::new("E0506", sp, "`while` has no `decreases` clause")
-                                .fix("add `decreases <expr>,` before the loop body", None),
-                        );
-                    }
-                }
+                let missing = Span {
+                    hi: cond.span.hi,
+                    ..*span
+                };
+                self.loop_clauses(cx, invariants, decreases.as_ref(), missing, "while");
+                cx.loops.push(LoopCx {
+                    label: label.as_ref().map(|l| l.name.clone()),
+                    is_loop: false,
+                    value: None,
+                });
                 let bt = self.block(cx, body, Some(&TypeKind::Unit), mode);
+                cx.loops.pop();
                 self.expect_ty(&bt, &TypeKind::Unit, body.span);
             }
             Stmt::Assert { cond, span } => {
@@ -3275,6 +3268,98 @@ impl<'a> Checker<'a> {
                 self.expr(cx, e, None, mode);
             }
         }
+    }
+
+    /// The `invariant` and `decreases` clauses of a `while` or `loop`:
+    /// `old(a)` in an invariant is `a` on function entry; `decreases` is
+    /// required (E0506, reported at `missing`).
+    fn loop_clauses(
+        &mut self,
+        cx: &mut FnCtx,
+        invariants: &[Expr],
+        decreases: Option<&Expr>,
+        missing: Span,
+        kw: &str,
+    ) {
+        for inv in invariants {
+            let t = self.expr(
+                cx,
+                inv,
+                Some(&TypeKind::Bool),
+                Mode::Spec { allow_old: true },
+            );
+            self.expect_ty(&t, &TypeKind::Bool, inv.span);
+        }
+        match decreases {
+            Some(d) => {
+                let t = self.expr(cx, d, None, Mode::Spec { allow_old: false });
+                if !is_int(&t) && t != TypeKind::Error {
+                    self.err(
+                        "E0401",
+                        d.span,
+                        format!("`decreases` must be an integer, found `{}`", ty_str(&t)),
+                    );
+                }
+            }
+            None => {
+                self.diags.push(
+                    Diag::new(
+                        "E0506",
+                        missing,
+                        format!("`{kw}` has no `decreases` clause"),
+                    )
+                    .fix("add `decreases <expr>,` before the loop body", None),
+                );
+            }
+        }
+    }
+
+    /// The loop a `break` or `continue` at `span` leaves, by label or the
+    /// innermost: its index in `cx.loops` (E0250, E0317 when there is none).
+    fn jump_target(
+        &mut self,
+        cx: &FnCtx,
+        label: &Option<Ident>,
+        span: Span,
+        what: &str,
+    ) -> Option<usize> {
+        if cx.loops.is_empty() {
+            self.diags.push(
+                Diag::new("E0250", span, format!("`{what}` outside a loop")).fix(
+                    "use it inside a `while` or `loop`; to leave the function, `return`",
+                    None,
+                ),
+            );
+            return None;
+        }
+        let Some(l) = label else {
+            return Some(cx.loops.len() - 1);
+        };
+        let found = cx
+            .loops
+            .iter()
+            .rposition(|c| c.label.as_deref() == Some(l.name.as_str()));
+        if found.is_none() {
+            let known: Vec<String> = cx
+                .loops
+                .iter()
+                .filter_map(|c| c.label.as_ref().map(|n| format!("'{n}")))
+                .collect();
+            let help = if known.is_empty() {
+                "label the loop: `'name: while ..`".to_string()
+            } else {
+                format!("the labels in scope are {}", known.join(", "))
+            };
+            self.diags.push(
+                Diag::new(
+                    "E0317",
+                    l.span,
+                    format!("no loop labeled `'{}` around this", l.name),
+                )
+                .fix(help, None),
+            );
+        }
+        found
     }
 
     /// Checks an assignment target and returns its type.
@@ -4623,6 +4708,77 @@ impl<'a> Checker<'a> {
                     }
                     None => {}
                 }
+                TypeKind::Never
+            }
+            ExprKind::Loop {
+                label,
+                invariants,
+                decreases,
+                body,
+            } => {
+                if mode != Mode::Exec {
+                    self.err("E0503", e.span, "loops are not allowed in a specification");
+                }
+                let missing = Span {
+                    hi: e.span.lo + 4,
+                    ..e.span
+                };
+                self.loop_clauses(cx, invariants, decreases.as_deref(), missing, "loop");
+                // The expected type, when known, is every `break`'s.
+                cx.loops.push(LoopCx {
+                    label: label.as_ref().map(|l| l.name.clone()),
+                    is_loop: true,
+                    value: expected
+                        .filter(|t| !matches!(t, TypeKind::Error | TypeKind::Never))
+                        .cloned(),
+                });
+                let bt = self.block(cx, body, Some(&TypeKind::Unit), mode);
+                let lc = cx.loops.pop().expect("pushed");
+                self.expect_ty(&bt, &TypeKind::Unit, body.span);
+                // Its value is its `break`s'; with none it does not finish.
+                lc.value.unwrap_or(TypeKind::Never)
+            }
+            ExprKind::Break { label, value } => {
+                if mode != Mode::Exec {
+                    self.err("E0503", e.span, "`break` is not allowed in a specification");
+                }
+                let target = self.jump_target(cx, label, e.span, "break");
+                let want = target.and_then(|k| cx.loops[k].value.clone());
+                let t = match value {
+                    Some(v) => self.expr(cx, v, want.as_ref(), mode),
+                    None => TypeKind::Unit,
+                };
+                if let Some(k) = target {
+                    if !cx.loops[k].is_loop && value.is_some() {
+                        self.diags.push(
+                            Diag::new("E0251", e.span, "`break` with a value leaves only a `loop`")
+                                .fix(
+                                    "assign the value to a variable declared before the `while`, then `break`",
+                                    None,
+                                ),
+                        );
+                    } else if cx.loops[k].is_loop {
+                        match &want {
+                            Some(w) => {
+                                let sp = value.as_ref().map_or(e.span, |v| v.span);
+                                self.expect_ty(&t, w, sp);
+                            }
+                            None if t != TypeKind::Never => cx.loops[k].value = Some(t),
+                            None => {}
+                        }
+                    }
+                }
+                TypeKind::Never
+            }
+            ExprKind::Continue { label } => {
+                if mode != Mode::Exec {
+                    self.err(
+                        "E0503",
+                        e.span,
+                        "`continue` is not allowed in a specification",
+                    );
+                }
+                self.jump_target(cx, label, e.span, "continue");
                 TypeKind::Never
             }
             ExprKind::Path(path) if int_const(path).is_some() => {
@@ -6983,7 +7139,11 @@ fn mentions(e: &Expr, name: &str) -> bool {
         ExprKind::Repeat { value, .. } => mentions(value, name),
         ExprKind::Binary(_, l, r) => mentions(l, name) || mentions(r, name),
         ExprKind::Field { base, .. } => mentions(base, name),
-        ExprKind::Return(x) => x.as_ref().is_some_and(|x| mentions(x, name)),
+        ExprKind::Return(x) | ExprKind::Break { value: x, .. } => {
+            x.as_ref().is_some_and(|x| mentions(x, name))
+        }
+        ExprKind::Loop { .. } => true,
+        ExprKind::Continue { .. } => false,
         ExprKind::StructLit { fields, .. } => fields.iter().any(|(_, x)| mentions(x, name)),
         // Blocks and conditionals as call arguments are rare; be conservative.
         ExprKind::If { .. }
@@ -7058,6 +7218,9 @@ fn collect_triggers<'e>(e: &'e Expr, out: &mut Vec<&'e Expr>) {
         | ExprKind::Bool(_)
         | ExprKind::Unit
         | ExprKind::Return(_)
+        | ExprKind::Loop { .. }
+        | ExprKind::Break { .. }
+        | ExprKind::Continue { .. }
         | ExprKind::Error => {}
     }
 }

@@ -22,7 +22,7 @@ pub const CODES: &[(&str, &str)] = &[
     ("E0202", "macros are not allowed"),
     (
         "E0204",
-        "`for` and `loop` are not allowed; use `while` with `invariant` and `decreases`",
+        "`for` is not allowed yet; use `while` with `invariant` and `decreases`",
     ),
     ("E0205", "`as` casts are not allowed"),
     ("E0206", "the `?` operator is not allowed"),
@@ -56,6 +56,8 @@ pub const CODES: &[(&str, &str)] = &[
         "a `where` clause is not used: bounds go next to the type parameter",
     ),
     ("E0236", "trait objects `dyn Trait` are not used"),
+    ("E0250", "`break` or `continue` outside a loop"),
+    ("E0251", "`break` with a value outside a `loop`"),
     (
         "E0237",
         "a call of a generic function names its type arguments: `f::<T>(..)`",
@@ -133,6 +135,10 @@ pub const CODES: &[(&str, &str)] = &[
     (
         "E0316",
         "a trait impl's function does not match the trait's signature",
+    ),
+    (
+        "E0317",
+        "a `break` or `continue` names a label no loop around it has",
     ),
     // E04xx: types and ownership
     ("E0401", "type mismatch"),

@@ -252,6 +252,8 @@ pub enum Stmt {
         span: Span,
     },
     While {
+        /// `'outer: while ..` (ADR-0049 §1).
+        label: Option<Ident>,
         cond: Expr,
         invariants: Vec<Expr>,
         decreases: Option<Expr>,
@@ -412,6 +414,23 @@ pub enum ExprKind {
     },
     /// `return e` / `return` (ADR-0049 §1): of type `!`.
     Return(Option<Box<Expr>>),
+    /// `'l: loop invariant .., decreases .., { .. }` (ADR-0049 §1): its value
+    /// is that of the `break e` that leaves it.
+    Loop {
+        label: Option<Ident>,
+        invariants: Vec<Expr>,
+        decreases: Option<Box<Expr>>,
+        body: Block,
+    },
+    /// `break`, `break 'l`, `break e` (of a `loop`): of type `!`.
+    Break {
+        label: Option<Ident>,
+        value: Option<Box<Expr>>,
+    },
+    /// `continue`, `continue 'l`: of type `!`.
+    Continue {
+        label: Option<Ident>,
+    },
     Error,
 }
 

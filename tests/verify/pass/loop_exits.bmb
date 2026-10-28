@@ -1,0 +1,128 @@
+#[summary("루프 탈출의 증명: break 상태의 합류, continue의 의무, loop의 값 (ADR-0049 §3, backlog 2K-01b, 2K-01c)")]
+mod lx {
+    spec fn below(n: u64) -> bool {
+        n < 1000000
+    }
+
+    spec fn bounded(s: i64, i: usize) -> bool {
+        0 <= s && s <= 1000 * i
+    }
+
+    #[effects(pure)]
+    #[uses(small)]
+    fn first_pair(a: &[i64], t: i64) -> i64
+        requires small(a),
+    {
+        let mut found: i64 = -1;
+        let mut i: usize = 0;
+        'outer: while i < a.len()
+            invariant i <= a.len(),
+            decreases a.len() - i,
+        {
+            let mut j: usize = i + 1;
+            while j < a.len()
+                invariant j <= a.len(),
+                decreases a.len() - j,
+            {
+                if a[i] + a[j] == t {
+                    found = a[i];
+                    break 'outer;
+                }
+                j = j + 1;
+            }
+            i = i + 1;
+        }
+        found
+    }
+
+    #[effects(pure)]
+    #[uses(below, near)]
+    fn first_square_at_least(n: u64) -> u64
+        requires below(n),
+    {
+        let mut k: u64 = 0;
+        let r: u64 = loop
+            invariant near(k, n),
+            decreases 1001 - k,
+        {
+            if k * k >= n {
+                break k;
+            }
+            k = k + 1;
+        };
+        r
+    }
+
+    spec fn found_at(a: &[i64], x: i64, i: usize) -> bool {
+        i == a.len() || i < a.len() && a[i] == x
+    }
+
+    #[effects(pure)]
+    #[uses(found_at)]
+    fn index_of(a: &[i64], x: i64) -> (r: usize)
+        ensures found_at(a, x, r),
+    {
+        let mut i: usize = 0;
+        while i < a.len()
+            invariant i <= a.len(),
+            decreases a.len() - i,
+        {
+            if a[i] == x {
+                break;
+            }
+            i = i + 1;
+        }
+        i
+    }
+
+    spec fn near(k: u64, n: u64) -> bool {
+        k <= 1001 && k * k <= n + 2 * k + 1
+    }
+
+    #[effects(pure)]
+    fn owned(n: u64) -> u64 {
+        let mut i: u64 = 0;
+        let mut total: u64 = 0;
+        while i < n
+            invariant i <= n && total <= i,
+            decreases n - i,
+        {
+            let mut v: Vec<u64> = Vec::new();
+            v.push(i);
+            i = i + 1;
+            if i % 3 == 0 {
+                continue;
+            }
+            if i > 7 {
+                break;
+            }
+            total = total + 1;
+        }
+        total
+    }
+
+    spec fn small(a: &[i64]) -> bool {
+        a.len() < 1000 && (forall|k: usize| k < a.len() ==> 0 <= #[trigger] a[k] && a[k] < 1000)
+    }
+
+    #[effects(pure)]
+    #[uses(bounded, small)]
+    fn sum_even(a: &[i64]) -> i64
+        requires small(a),
+    {
+        let mut s: i64 = 0;
+        let mut i: usize = 0;
+        while i < a.len()
+            invariant i <= a.len() && bounded(s, i),
+            decreases a.len() - i,
+        {
+            let v: i64 = a[i];
+            i = i + 1;
+            if v % 2 != 0 {
+                continue;
+            }
+            s = s + v;
+        }
+        s
+    }
+}

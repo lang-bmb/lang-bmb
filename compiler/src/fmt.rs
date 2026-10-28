@@ -30,7 +30,9 @@ fn prec(e: &Expr) -> u8 {
         | ExprKind::Block(_)
         | ExprKind::Forall { .. }
         | ExprKind::Match { .. }
-        | ExprKind::Return(_) => 0,
+        | ExprKind::Loop { .. }
+        | ExprKind::Return(_)
+        | ExprKind::Break { .. } => 0,
         _ => 8,
     }
 }
@@ -455,11 +457,43 @@ impl<'a> Printer<'a> {
             ExprKind::If { .. } => self.if_lines(e, depth, "", suffix),
             ExprKind::Block(b) => self.block_open(b, depth, "", suffix),
             ExprKind::Match { .. } => self.match_lines(e, depth, "", suffix),
+            ExprKind::Loop { .. } => self.loop_lines(e, depth, "", suffix),
             _ => {
                 let s = self.expr(e, 0);
                 self.line(depth, &format!("{s}{suffix}"));
             }
         }
+    }
+
+    /// `head['l: ]loop`, its clauses on their own lines as `while`'s, and
+    /// the body.
+    fn loop_lines(&mut self, e: &Expr, depth: usize, head: &str, suffix: &str) {
+        let ExprKind::Loop {
+            label,
+            invariants,
+            decreases,
+            body,
+        } = &e.kind
+        else {
+            unreachable!()
+        };
+        let l = label
+            .as_ref()
+            .map_or(String::new(), |l| format!("'{}: ", l.name));
+        if invariants.is_empty() && decreases.is_none() {
+            self.block_open(body, depth, &format!("{head}{l}loop "), suffix);
+            return;
+        }
+        self.line(depth, &format!("{head}{l}loop"));
+        if !invariants.is_empty() {
+            let xs: Vec<String> = invariants.iter().map(|e| self.expr(e, 0)).collect();
+            self.line(depth + 1, &format!("invariant {},", xs.join(", ")));
+        }
+        if let Some(d) = decreases {
+            let d = self.expr(d, 0);
+            self.line(depth + 1, &format!("decreases {d},"));
+        }
+        self.block_open(body, depth, "", suffix);
     }
 
     /// `match` with one arm per line (each arm's body on one line).
@@ -540,6 +574,7 @@ impl<'a> Printer<'a> {
                 self.multiline_value(value, depth, &head, ";");
             }
             Stmt::While {
+                label,
                 cond,
                 invariants,
                 decreases,
@@ -547,7 +582,10 @@ impl<'a> Printer<'a> {
                 ..
             } => {
                 let c = self.cond(cond);
-                self.line(depth, &format!("while {c}"));
+                let l = label
+                    .as_ref()
+                    .map_or(String::new(), |l| format!("'{}: ", l.name));
+                self.line(depth, &format!("{l}while {c}"));
                 if !invariants.is_empty() {
                     let xs: Vec<String> = invariants.iter().map(|e| self.expr(e, 0)).collect();
                     self.line(depth + 1, &format!("invariant {},", xs.join(", ")));
@@ -570,9 +608,10 @@ impl<'a> Printer<'a> {
                 self.multiline_value(init, depth, &head, ";");
             }
             Stmt::Expr(e) => match &e.kind {
-                ExprKind::If { .. } | ExprKind::Block(_) | ExprKind::Match { .. } => {
-                    self.expr_stmt(e, depth, "")
-                }
+                ExprKind::If { .. }
+                | ExprKind::Block(_)
+                | ExprKind::Match { .. }
+                | ExprKind::Loop { .. } => self.expr_stmt(e, depth, ""),
                 _ => {
                     let x = self.expr(e, 0);
                     self.line(depth, &format!("{x};"));
@@ -587,6 +626,7 @@ impl<'a> Printer<'a> {
             ExprKind::If { .. } => self.if_lines(v, depth, head, suffix),
             ExprKind::Block(b) => self.block_open(b, depth, head, suffix),
             ExprKind::Match { .. } => self.match_lines(v, depth, head, suffix),
+            ExprKind::Loop { .. } => self.loop_lines(v, depth, head, suffix),
             _ => {
                 let x = self.expr(v, 0);
                 self.line(depth, &format!("{head}{x}{suffix}"));
@@ -615,6 +655,18 @@ impl<'a> Printer<'a> {
             ExprKind::Unit => "()".into(),
             ExprKind::Return(None) => "return".into(),
             ExprKind::Return(Some(v)) => format!("return {}", self.expr(v, 0)),
+            ExprKind::Break { label, value } => {
+                let mut t = "break".to_string();
+                if let Some(l) = label {
+                    t.push_str(&format!(" '{}", l.name));
+                }
+                if let Some(v) = value {
+                    t.push_str(&format!(" {}", self.expr(v, 0)));
+                }
+                t
+            }
+            ExprKind::Continue { label: None } => "continue".into(),
+            ExprKind::Continue { label: Some(l) } => format!("continue '{}", l.name),
             ExprKind::Var(id) => id.name.clone(),
             ExprKind::Call { path, targs, args } => {
                 let a: Vec<String> = args.iter().map(|x| self.expr(x, 0)).collect();
@@ -683,7 +735,10 @@ impl<'a> Printer<'a> {
             ExprKind::Deref(x) => format!("*{}", self.expr(x, 7)),
             ExprKind::Field { base, name } => format!("{}.{}", self.expr(base, 8), name.name),
             // Nested multi-line forms are printed on one line inside expressions.
-            ExprKind::If { .. } | ExprKind::Block(_) | ExprKind::Match { .. } => {
+            ExprKind::If { .. }
+            | ExprKind::Block(_)
+            | ExprKind::Match { .. }
+            | ExprKind::Loop { .. } => {
                 let text = self.capture(|p| p.expr_stmt(e, 0, ""));
                 text.lines().map(str::trim).collect::<Vec<_>>().join(" ")
             }

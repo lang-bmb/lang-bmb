@@ -603,6 +603,23 @@ struct Gen<'p> {
     globals: String,
     /// The function's result type, in the instance (`return`).
     ret: TypeKind,
+    /// The loops around the code being lowered, innermost last.
+    loops: Vec<GLoop>,
+}
+
+/// A loop a `break` or `continue` may leave.
+struct GLoop {
+    label: Option<String>,
+    /// Where `continue` goes.
+    head: String,
+    /// Where `break` goes.
+    end: String,
+    /// The length of `pending` when the loop began: the temporaries after it
+    /// belong to regions inside the loop.
+    mark: usize,
+    /// Where a `loop`'s `break e` puts its value, and its type.
+    slot: Option<String>,
+    ty: TypeKind,
 }
 
 impl<'p> Gen<'p> {
@@ -1165,11 +1182,90 @@ impl<'p> Gen<'p> {
         CVal::Never
     }
 
+    /// A `loop` (ADR-0049 §5): its value is the `break e` that leaves it.
+    fn loop_expr(&mut self, e: &Expr, label: &Option<Ident>, body: &Block) -> CVal {
+        let ty = self.ty(e);
+        let slot = if ty == TypeKind::Never {
+            None
+        } else {
+            self.result_slot(&ty)
+        };
+        let head = self.l("loop");
+        let end = self.l("endloop");
+        self.emit(format!("br label %{head}"));
+        self.block(&head);
+        self.loops.push(GLoop {
+            label: label.as_ref().map(|l| l.name.clone()),
+            head: head.clone(),
+            end: end.clone(),
+            mark: self.pending.len(),
+            slot: slot.clone(),
+            ty: ty.clone(),
+        });
+        self.block_expr(body);
+        self.loops.pop();
+        self.emit(format!("br label %{head}"));
+        self.block(&end);
+        if ty == TypeKind::Never {
+            return CVal::Never;
+        }
+        self.load_result(slot, &ty)
+    }
+
+    /// `break` / `continue` (ADR-0049 §4, §5): the temporaries of the
+    /// regions inside the loop and the locals the move check left owned on
+    /// this exit are dropped, then control goes to the loop's end or head.
+    fn jump(&mut self, e: &Expr, label: &Option<Ident>, value: Option<&Expr>, brk: bool) -> CVal {
+        let k = match label {
+            Some(l) => self
+                .loops
+                .iter()
+                .rposition(|c| c.label.as_deref() == Some(l.name.as_str()))
+                .expect("checked label"),
+            None => self.loops.len() - 1,
+        };
+        let v = match value {
+            Some(x) => self.expr(x),
+            None => CVal::Unit,
+        };
+        let v = self.detach(v);
+        if let (Some(slot), true) = (self.loops[k].slot.clone(), brk) {
+            let ty = self.loops[k].ty.clone();
+            self.store_result(&Some(slot), v, &ty);
+        }
+        let inside: Vec<(String, TypeKind)> = self.pending[self.loops[k].mark..].to_vec();
+        for (h, t) in inside {
+            self.drop_at(&h, &t);
+        }
+        let exits = self
+            .t
+            .moves
+            .get(&self.base)
+            .and_then(|m| m.exits.get(&(e.span.file, e.span.lo, e.span.hi)))
+            .cloned()
+            .unwrap_or_default();
+        for p in exits {
+            self.drop_path(&p);
+        }
+        let target = if brk {
+            self.loops[k].end.clone()
+        } else {
+            self.loops[k].head.clone()
+        };
+        self.emit(format!("br label %{target}"));
+        let after = self.l("after_jump");
+        self.block(&after);
+        CVal::Never
+    }
+
     // ---------- expressions ----------
 
     fn expr(&mut self, e: &Expr) -> CVal {
         match &e.kind {
             ExprKind::Return(x) => self.return_expr(e, x.as_deref()),
+            ExprKind::Loop { label, body, .. } => self.loop_expr(e, label, body),
+            ExprKind::Break { label, value } => self.jump(e, label, value.as_deref(), true),
+            ExprKind::Continue { label } => self.jump(e, label, None, false),
             ExprKind::Int(v) => CVal::Imm(v.to_string()),
             ExprKind::ByteLit(v) => CVal::Imm(v.to_string()),
             ExprKind::ByteStr(v) => {
@@ -2666,7 +2762,9 @@ impl<'p> Gen<'p> {
                     self.put(v, &p, &t);
                 }
             },
-            Stmt::While { cond, body, .. } => {
+            Stmt::While {
+                label, cond, body, ..
+            } => {
                 let head = self.l("while");
                 let lb = self.l("body");
                 let end = self.l("endwhile");
@@ -2675,7 +2773,16 @@ impl<'p> Gen<'p> {
                 let c = self.region(|g| g.expr(cond)).imm();
                 self.emit(format!("br i1 {c}, label %{lb}, label %{end}"));
                 self.block(&lb);
+                self.loops.push(GLoop {
+                    label: label.as_ref().map(|l| l.name.clone()),
+                    head: head.clone(),
+                    end: end.clone(),
+                    mark: self.pending.len(),
+                    slot: None,
+                    ty: TypeKind::Unit,
+                });
                 self.block_expr(body);
+                self.loops.pop();
                 self.emit(format!("br label %{head}"));
                 self.block(&end);
             }
@@ -2846,6 +2953,7 @@ pub fn emit_with(
             pending: Vec::new(),
             globals: String::new(),
             ret: TypeKind::Unit,
+            loops: Vec::new(),
         };
         let mut sig = t.fns[&base].clone();
         sig.params = sig.params.iter().map(|p| g.inst(p)).collect();

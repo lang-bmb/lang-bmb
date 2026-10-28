@@ -668,11 +668,13 @@ fn walk_expr(e: &mut Expr, parent: Option<Span>, f: &mut dyn FnMut(&mut Expr, Op
             arms.iter_mut()
                 .for_each(|a| walk_expr(&mut a.body, None, f));
         }
-        ExprKind::Return(x) => {
+        ExprKind::Return(x) | ExprKind::Break { value: x, .. } => {
             if let Some(x) = x {
                 walk_expr(x, None, f);
             }
         }
+        ExprKind::Loop { body, .. } => walk_block(body, f),
+        ExprKind::Continue { .. } => {}
         ExprKind::Path(_)
         | ExprKind::Old(_)
         | ExprKind::Forall { .. }
@@ -843,7 +845,20 @@ fn children(e: &Expr) -> Vec<&Expr> {
         ExprKind::Match { scrut, arms } => std::iter::once(&**scrut)
             .chain(arms.iter().map(|a| &a.body))
             .collect(),
-        ExprKind::Return(x) => x.as_deref().into_iter().collect(),
+        ExprKind::Return(x) | ExprKind::Break { value: x, .. } => {
+            x.as_deref().into_iter().collect()
+        }
+        ExprKind::Loop {
+            invariants,
+            decreases,
+            body,
+            ..
+        } => invariants
+            .iter()
+            .chain(decreases.as_deref())
+            .chain(block_exprs(body))
+            .collect(),
+        ExprKind::Continue { .. } => Vec::new(),
         ExprKind::Path(_)
         | ExprKind::Int(_)
         | ExprKind::ByteLit(_)

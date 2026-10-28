@@ -255,7 +255,19 @@ fn each_expr<'e>(e: &'e Expr, f: &mut dyn FnMut(&'e Expr)) {
             each_expr(scrut, f);
             arms.iter().for_each(|a| each_expr(&a.body, f));
         }
-        ExprKind::Return(Some(x)) => sub(x),
+        ExprKind::Return(Some(x)) | ExprKind::Break { value: Some(x), .. } => sub(x),
+        ExprKind::Loop {
+            invariants,
+            decreases,
+            body,
+            ..
+        } => {
+            invariants.iter().for_each(|x| each_expr(x, f));
+            if let Some(d) = decreases {
+                each_expr(d, f);
+            }
+            each_block_expr(body, f);
+        }
         _ => {}
     }
 }
@@ -1598,9 +1610,26 @@ struct Enc<'p, 'q> {
     bound: u32,
     /// Under `vacuous_ends`: each reach point and its path condition.
     reach: Vec<(Span, &'static str, Vec<String>)>,
-    /// The current path has returned (ADR-0049 §3): what follows on it
-    /// does not run, and a join takes the other paths.
+    /// The current path has returned or left a loop (ADR-0049 §3): what
+    /// follows on it does not run, and a join takes the other paths.
     dead: bool,
+    /// The loops around the code being encoded, innermost last.
+    loops: Vec<VLoop>,
+}
+
+/// A loop a `break` or `continue` may leave (ADR-0049 §3).
+struct VLoop {
+    label: Option<String>,
+    /// The path condition's length at the head of the iteration: what was
+    /// assumed in the iteration up to a `break` follows it.
+    start: usize,
+    invariants: Vec<Expr>,
+    decreases: Option<Expr>,
+    /// The measure at the head of the iteration.
+    measure: Option<String>,
+    /// Each `break`: the iteration's path condition there, the state, and
+    /// the value it carries.
+    breaks: Vec<(Vec<String>, BTreeMap<String, Val>, Val)>,
 }
 
 /// `(select a i)` as (`a`, `i`).
@@ -1844,6 +1873,7 @@ impl<'p, 'q> Enc<'p, 'q> {
             bound: 0,
             reach: Vec::new(),
             dead: false,
+            loops: Vec::new(),
         }
     }
 
@@ -2142,7 +2172,10 @@ impl<'p, 'q> Enc<'p, 'q> {
 
     fn spec(&mut self, e: &Expr, env: &BTreeMap<String, Val>, old: &BTreeMap<String, Val>) -> Val {
         match &e.kind {
-            ExprKind::Return(_) => unreachable!("rejected by the checker (E0503)"),
+            ExprKind::Return(_)
+            | ExprKind::Loop { .. }
+            | ExprKind::Break { .. }
+            | ExprKind::Continue { .. } => unreachable!("rejected by the checker (E0503)"),
             ExprKind::Int(v) => Val::S(num(*v as i128)),
             ExprKind::ByteLit(v) => Val::S(v.to_string()),
             // A byte string: its length and every element are known.
@@ -2519,6 +2552,36 @@ impl<'p, 'q> Enc<'p, 'q> {
 
     fn eval(&mut self, e: &Expr) -> Val {
         match &e.kind {
+            ExprKind::Loop {
+                label,
+                invariants,
+                decreases,
+                body,
+            } => self.loop_core(label.as_ref(), None, invariants, decreases.as_deref(), body),
+            // The state goes to the loop's exit; the path ends.
+            ExprKind::Break { label, value } => {
+                let v = match value {
+                    Some(x) => self.eval(x),
+                    None => Val::Unit,
+                };
+                if !self.dead {
+                    let k = self.jump_target(label);
+                    let pc = self.pc[self.loops[k].start..].to_vec();
+                    let vars = self.vars.clone();
+                    self.loops[k].breaks.push((pc, vars, v));
+                    self.dead = true;
+                }
+                Val::Unit
+            }
+            // Back to the loop's head: its invariants and measure.
+            ExprKind::Continue { label } => {
+                if !self.dead {
+                    let k = self.jump_target(label);
+                    self.back_to_head(k);
+                    self.dead = true;
+                }
+                Val::Unit
+            }
             // The postconditions hold here, and the path ends (ADR-0049 §3).
             ExprKind::Return(x) => {
                 let v = match x {
@@ -3067,22 +3130,34 @@ impl<'p, 'q> Enc<'p, 'q> {
                 self.eval(e);
             }
             Stmt::While {
+                label,
                 cond,
                 invariants,
                 decreases,
                 body,
                 ..
-            } => self.while_loop(cond, invariants, decreases.as_ref(), body),
+            } => {
+                self.loop_core(
+                    label.as_ref(),
+                    Some(cond),
+                    invariants,
+                    decreases.as_ref(),
+                    body,
+                );
+            }
         }
     }
 
-    fn while_loop(
+    /// A `while` (with `cond`) or a `loop` (without): its value is that of
+    /// the `break e` that leaves a `loop` (ADR-0049 §3).
+    fn loop_core(
         &mut self,
-        cond: &Expr,
+        label: Option<&Ident>,
+        cond: Option<&Expr>,
         invariants: &[Expr],
         decreases: Option<&Expr>,
         body: &Block,
-    ) {
+    ) -> Val {
         for inv in invariants {
             let (env, old) = self.cur_env();
             let g = self.spec(inv, &env, &old).s();
@@ -3091,7 +3166,9 @@ impl<'p, 'q> Enc<'p, 'q> {
         // Havoc everything the loop may change, then assume the invariants.
         let mut modified = BTreeSet::new();
         assigned_in_block(body, &mut modified);
-        assigned_in_expr(cond, &mut modified);
+        if let Some(cond) = cond {
+            assigned_in_expr(cond, &mut modified);
+        }
         let mut_params: BTreeSet<String> = self.prog.defs[&self.path]
             .f
             .params
@@ -3145,7 +3222,10 @@ impl<'p, 'q> Enc<'p, 'q> {
             let g = self.spec(inv, &env, &old).s();
             self.pc.push(g);
         }
-        let c = self.eval(cond).s();
+        let c = match cond {
+            Some(cond) => self.eval(cond).s(),
+            None => "true".to_string(),
+        };
         let after_cond_vars = self.vars.clone();
         let n = self.pc.len();
         // One arbitrary iteration.
@@ -3154,17 +3234,90 @@ impl<'p, 'q> Enc<'p, 'q> {
             let (env, old) = self.cur_env();
             self.spec(d, &env, &old).s()
         });
+        self.loops.push(VLoop {
+            label: label.map(|l| l.name.clone()),
+            start: n,
+            invariants: invariants.to_vec(),
+            decreases: decreases.cloned(),
+            measure,
+            breaks: Vec::new(),
+        });
         self.block(body);
-        // A body that returned does not come back to the head.
-        let returned = std::mem::replace(&mut self.dead, false);
-        for inv in invariants.iter().filter(|_| !returned) {
+        // A body that left (`return`, `break`, `continue`) does not come
+        // back to the head from its end.
+        let left = std::mem::replace(&mut self.dead, false);
+        if !left {
+            self.back_to_head(self.loops.len() - 1);
+        }
+        let lp = self.loops.pop().expect("pushed");
+        // Exit: the head with the condition false, or the state at a
+        // `break` (the conditions are exclusive: a `break` runs in an
+        // iteration, under the condition).
+        self.pc.truncate(n);
+        let conds: Vec<String> = lp.breaks.iter().map(|(pc, _, _)| and(pc)).collect();
+        let mut alts: Vec<String> = conds.clone();
+        if cond.is_some() {
+            alts.insert(0, format!("(not {c})"));
+        }
+        // A `loop` without a `break` does not finish.
+        if alts.is_empty() {
+            self.vars = after_cond_vars;
+            self.dead = true;
+            return Val::Unit;
+        }
+        self.pc.push(if alts.len() == 1 {
+            alts[0].clone()
+        } else {
+            format!("(or {})", alts.join(" "))
+        });
+        let mut vars = BTreeMap::new();
+        for (k, v0) in &after_cond_vars {
+            let mut v = match cond {
+                Some(_) => v0.clone(),
+                None => lp.breaks.last().map_or(v0, |b| &b.1[k]).clone(),
+            };
+            let n_breaks = lp.breaks.len() - usize::from(cond.is_none());
+            for i in (0..n_breaks).rev() {
+                let b = &lp.breaks[i].1[k];
+                if *b != v {
+                    let t = self.local_ty(k);
+                    v = self.merge(&conds[i], b, &v, &t);
+                }
+            }
+            vars.insert(k.clone(), v);
+        }
+        self.vars = vars;
+        if let Some(cond) = cond {
+            self.mark_reach(cond.span, "exit of the loop");
+        }
+        // The value of a `loop`: its `break`s'.
+        let Some((_, _, last)) = lp.breaks.last() else {
+            return Val::Unit;
+        };
+        let mut v = last.clone();
+        for i in (0..lp.breaks.len() - 1).rev() {
+            let b = lp.breaks[i].2.clone();
+            v = ite_val(&conds[i], &b, &v);
+        }
+        v
+    }
+
+    /// The obligations of going back to the head of loop `k` from here (the
+    /// end of its body, or a `continue`): its invariants hold, its measure
+    /// decreased.
+    fn back_to_head(&mut self, k: usize) {
+        let invariants = self.loops[k].invariants.clone();
+        for inv in &invariants {
             let (env, old) = self.cur_env();
             let g = self.spec(inv, &env, &old).s();
             self.oblige("E0807", inv.span, "loop invariant may not be preserved", g);
         }
-        if let (Some(d0), Some(d), false) = (measure, decreases, returned) {
+        if let (Some(d0), Some(d)) = (
+            self.loops[k].measure.clone(),
+            self.loops[k].decreases.clone(),
+        ) {
             let (env, old) = self.cur_env();
-            let d1 = self.spec(d, &env, &old).s();
+            let d1 = self.spec(&d, &env, &old).s();
             self.oblige(
                 "E0808",
                 d.span,
@@ -3172,11 +3325,18 @@ impl<'p, 'q> Enc<'p, 'q> {
                 format!("(and (<= 0 {d0}) (< {d1} {d0}))"),
             );
         }
-        // Exit.
-        self.pc.truncate(n);
-        self.vars = after_cond_vars;
-        self.pc.push(format!("(not {c})"));
-        self.mark_reach(cond.span, "exit of the loop");
+    }
+
+    /// The loop a `break`/`continue` leaves: by label, or the innermost.
+    fn jump_target(&self, label: &Option<Ident>) -> usize {
+        match label {
+            Some(l) => self
+                .loops
+                .iter()
+                .rposition(|c| c.label.as_deref() == Some(l.name.as_str()))
+                .expect("checked label"),
+            None => self.loops.len() - 1,
+        }
     }
 
     /// The length of `v` after a loop that changes it: an array's or a
@@ -3991,7 +4151,11 @@ fn find_let_expr(e: &Expr, name: &str, out: &mut Option<TypeKind>) {
             find_let_expr(scrut, name, out);
             arms.iter().for_each(|a| find_let_expr(&a.body, name, out));
         }
-        ExprKind::Return(x) => x.iter().for_each(|x| find_let_expr(x, name, out)),
+        ExprKind::Return(x) | ExprKind::Break { value: x, .. } => {
+            x.iter().for_each(|x| find_let_expr(x, name, out))
+        }
+        ExprKind::Loop { body, .. } => find_let(body, name, out),
+        ExprKind::Continue { .. } => {}
         ExprKind::Int(_)
         | ExprKind::ByteLit(_)
         | ExprKind::ByteStr(_)
@@ -4095,7 +4259,9 @@ fn assigned_in_expr(e: &Expr, out: &mut BTreeSet<String>) {
             assigned_in_expr(scrut, out);
             arms.iter().for_each(|a| assigned_in_expr(&a.body, out));
         }
+        ExprKind::Loop { body, .. } => assigned_in_block(body, out),
         ExprKind::Return(Some(x))
+        | ExprKind::Break { value: Some(x), .. }
         | ExprKind::Field { base: x, .. }
         | ExprKind::Deref(x)
         | ExprKind::Repeat { value: x, .. } => assigned_in_expr(x, out),
