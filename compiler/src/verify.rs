@@ -5406,7 +5406,7 @@ fn verify_impl(
         }
         // Incremental build (backlog 2D-10): an unchanged, fully proved
         // definition is not encoded again.
-        let hit = incr.as_ref().and_then(|s| s.proof_lookup(path, d.f.span));
+        let hit = incr.as_ref().and_then(|s| s.proof_lookup(path, d.f));
         if let Some(h) = &hit
             && !incr.as_ref().is_some_and(|s| s.audit())
         {
@@ -5769,7 +5769,7 @@ fn verify_impl(
             if let Some(h) = &hit {
                 s.proof_audit(h, &status, &def_proved, &script);
             }
-            s.proof_record(&status, d.f.span, &def_proved, &script);
+            s.proof_record(&status, d.f, &def_proved, &script);
         }
         statuses.push(status);
         scripts.insert(path.clone(), script);
