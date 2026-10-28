@@ -468,10 +468,7 @@ struct LoopCx {
 
 pub fn ty_str(t: &TypeKind) -> String {
     match t {
-        TypeKind::I64 => "i64".into(),
-        TypeKind::U64 => "u64".into(),
-        TypeKind::U8 => "u8".into(),
-        TypeKind::Usize => "usize".into(),
+        TypeKind::Int(t) => t.name().into(),
         TypeKind::Bool => "bool".into(),
         TypeKind::Unit => "()".into(),
         TypeKind::Array(e, n) => format!("[{}; {n}]", ty_str(&e.kind)),
@@ -510,10 +507,10 @@ pub fn parse_ty(s: &str) -> Option<TypeKind> {
             span: Span::default(),
         };
         Some(match s {
-            "i64" => TypeKind::I64,
-            "u64" => TypeKind::U64,
-            "u8" => TypeKind::U8,
-            "usize" => TypeKind::Usize,
+            "i64" => TypeKind::Int(IntTy::I64),
+            "u64" => TypeKind::Int(IntTy::U64),
+            "u8" => TypeKind::Int(IntTy::U8),
+            "usize" => TypeKind::Int(IntTy::Usize),
             "bool" => TypeKind::Bool,
             "()" => TypeKind::Unit,
             _ if s.starts_with("&mut ") => TypeKind::Ref {
@@ -588,10 +585,7 @@ pub fn parse_ty(s: &str) -> Option<TypeKind> {
 }
 
 fn is_int(t: &TypeKind) -> bool {
-    matches!(
-        t,
-        TypeKind::I64 | TypeKind::U64 | TypeKind::Usize | TypeKind::U8
-    )
+    matches!(t, TypeKind::Int(_))
 }
 fn is_scalar(t: &TypeKind) -> bool {
     is_int(t) || matches!(t, TypeKind::Bool)
@@ -707,7 +701,7 @@ impl<'a> Checker<'a> {
             FnSig {
                 path: "print_i64".into(),
                 kind: FnKind::Exec,
-                params: vec![TypeKind::I64],
+                params: vec![TypeKind::Int(IntTy::I64)],
                 ret: TypeKind::Unit,
                 effect: Effect::Io,
                 vacuous: false,
@@ -727,7 +721,7 @@ impl<'a> Checker<'a> {
                 kind: FnKind::Exec,
                 params: vec![TypeKind::Ref {
                     mutable: false,
-                    inner: mk(TypeKind::Slice(mk(TypeKind::U8))),
+                    inner: mk(TypeKind::Slice(mk(TypeKind::Int(IntTy::U8)))),
                 }],
                 ret: TypeKind::Unit,
                 effect: Effect::Io,
@@ -746,7 +740,7 @@ impl<'a> Checker<'a> {
             FnSig {
                 path: "print_u64".into(),
                 kind: FnKind::Exec,
-                params: vec![TypeKind::U64],
+                params: vec![TypeKind::Int(IntTy::U64)],
                 ret: TypeKind::Unit,
                 effect: Effect::Io,
                 vacuous: false,
@@ -3590,8 +3584,8 @@ impl<'a> Checker<'a> {
                 let (bt, writable) = self.place_of(cx, base);
                 self.types
                     .insert((base.span.file, base.span.lo, base.span.hi), bt.clone());
-                let it = self.expr(cx, index, Some(&TypeKind::Usize), Mode::Exec);
-                self.expect_ty(&it, &TypeKind::Usize, index.span);
+                let it = self.expr(cx, index, Some(&TypeKind::Int(IntTy::Usize)), Mode::Exec);
+                self.expect_ty(&it, &TypeKind::Int(IntTy::Usize), index.span);
                 let Some(elem) = elem_of(&bt).cloned() else {
                     if bt != TypeKind::Error {
                         self.err(
@@ -3630,8 +3624,8 @@ impl<'a> Checker<'a> {
                     TypeKind::Ref { mutable, .. } => *mutable,
                     _ => false,
                 };
-                let it = self.expr(cx, index, Some(&TypeKind::Usize), Mode::Exec);
-                self.expect_ty(&it, &TypeKind::Usize, index.span);
+                let it = self.expr(cx, index, Some(&TypeKind::Int(IntTy::Usize)), Mode::Exec);
+                self.expect_ty(&it, &TypeKind::Int(IntTy::Usize), index.span);
                 let Some(elem) = elem_of(&l.ty).cloned() else {
                     self.err(
                         "E0407",
@@ -3730,8 +3724,8 @@ impl<'a> Checker<'a> {
             }
             ExprKind::Index { base, index } => {
                 let (bt, w) = self.place_of(cx, base);
-                let it = self.expr(cx, index, Some(&TypeKind::Usize), Mode::Exec);
-                self.expect_ty(&it, &TypeKind::Usize, index.span);
+                let it = self.expr(cx, index, Some(&TypeKind::Int(IntTy::Usize)), Mode::Exec);
+                self.expect_ty(&it, &TypeKind::Int(IntTy::Usize), index.span);
                 match elem_of(&bt) {
                     Some(t) => (t.clone(), w),
                     None => {
@@ -5088,7 +5082,7 @@ impl<'a> Checker<'a> {
             ExprKind::Unit => TypeKind::Unit,
             ExprKind::Bool(_) => TypeKind::Bool,
             ExprKind::Int(v) => self.int_lit(*v, false, expected, e.span, mode),
-            ExprKind::ByteLit(_) => TypeKind::U8,
+            ExprKind::ByteLit(_) => TypeKind::Int(IntTy::U8),
             // A `&[u8]` is a reference: second-class (ADR-0015, ADR-0044 §2).
             ExprKind::ByteStr(_) => {
                 self.diags.push(
@@ -5127,13 +5121,12 @@ impl<'a> Checker<'a> {
                 }
                 let t = self.expr(cx, inner, expected, mode);
                 match t {
-                    TypeKind::I64 | TypeKind::Error => t,
+                    TypeKind::Int(i) if i.signed() => t,
+                    TypeKind::Error => t,
                     // Specification integers are mathematical: `-x` of an
                     // unsigned value is just an integer (ADR-0024).
-                    TypeKind::U64 | TypeKind::Usize | TypeKind::U8 if mode != Mode::Exec => {
-                        TypeKind::I64
-                    }
-                    TypeKind::U64 | TypeKind::Usize | TypeKind::U8 => {
+                    TypeKind::Int(_) if mode != Mode::Exec => TypeKind::Int(IntTy::I64),
+                    TypeKind::Int(_) => {
                         self.err(
                             "E0411",
                             e.span,
@@ -5155,8 +5148,8 @@ impl<'a> Checker<'a> {
             ExprKind::Binary(op, l, r) => self.binary(cx, *op, l, r, expected, mode, e.span),
             ExprKind::Index { base, index } => {
                 let bt = self.expr(cx, base, None, mode);
-                let it = self.expr(cx, index, Some(&TypeKind::Usize), mode);
-                self.expect_ty(&it, &TypeKind::Usize, index.span);
+                let it = self.expr(cx, index, Some(&TypeKind::Int(IntTy::Usize)), mode);
+                self.expect_ty(&it, &TypeKind::Int(IntTy::Usize), index.span);
                 match elem_of(&bt) {
                     Some(t) => t.clone(),
                     None => {
@@ -5439,38 +5432,25 @@ impl<'a> Checker<'a> {
     ) -> TypeKind {
         let t = match expected {
             // A negative literal in a specification is just an integer (ADR-0022).
-            Some(TypeKind::U64 | TypeKind::Usize | TypeKind::U8)
-                if negative && mode != Mode::Exec =>
-            {
-                TypeKind::I64
+            Some(t) if !t.is_signed() && negative && mode != Mode::Exec && is_int(t) => {
+                TypeKind::Int(IntTy::I64)
             }
             Some(t) if is_int(t) => t.clone(),
-            _ => TypeKind::I64,
+            _ => TypeKind::Int(IntTy::I64),
         };
-        let fits = match t {
-            TypeKind::I64 => {
-                if negative {
-                    v <= 1u128 << 63
-                } else {
-                    v <= i64::MAX as u128
-                }
-            }
-            _ => {
-                if negative && v != 0 {
-                    self.err(
-                        "E0411",
-                        span,
-                        format!("cannot negate a value of type `{}`", ty_str(&t)),
-                    );
-                    return TypeKind::Error;
-                }
-                let max = if t == TypeKind::U8 {
-                    255
-                } else {
-                    u64::MAX as u128
-                };
-                v <= max
-            }
+        let i = t.int().expect("an integer type");
+        if negative && v != 0 && !i.signed() {
+            self.err(
+                "E0411",
+                span,
+                format!("cannot negate a value of type `{}`", ty_str(&t)),
+            );
+            return TypeKind::Error;
+        }
+        let fits = if negative {
+            v <= i.min_value().unsigned_abs()
+        } else {
+            v <= i.max_value() as u128
         };
         // Specification integers are unbounded (ADR-0017, ADR-0024).
         if !fits && mode == Mode::Exec {
@@ -5533,7 +5513,7 @@ impl<'a> Checker<'a> {
                 // so integer types may mix there (ADR-0022).
                 if lt != rt && mode != Mode::Exec && is_int(&lt) && is_int(&rt) {
                     return if op.is_arith() {
-                        TypeKind::I64
+                        TypeKind::Int(IntTy::I64)
                     } else {
                         TypeKind::Bool
                     };
@@ -5766,7 +5746,7 @@ impl<'a> Checker<'a> {
                     );
                     return TypeKind::Error;
                 }
-                TypeKind::Usize
+                TypeKind::Int(IntTy::Usize)
             }
             "wrapping_add" | "wrapping_sub" | "wrapping_mul" | "saturating_add"
             | "saturating_sub" | "saturating_mul" | "checked_add" | "checked_sub"
@@ -5864,7 +5844,7 @@ impl<'a> Checker<'a> {
             "push" => (1, true, TypeKind::Unit),
             "pop" => (0, true, option_of(et.clone())),
             "truncate" => (1, true, TypeKind::Unit),
-            "len" => (0, false, TypeKind::Usize),
+            "len" => (0, false, TypeKind::Int(IntTy::Usize)),
             "clone" if is_move(&et, &self.adts) => {
                 self.diags.push(
                     Diag::new(
@@ -5930,7 +5910,11 @@ impl<'a> Checker<'a> {
                 format!("`{m}` takes {arity} argument(s), found {}", args.len()),
             );
         }
-        let want = if m == "push" { et } else { TypeKind::Usize };
+        let want = if m == "push" {
+            et
+        } else {
+            TypeKind::Int(IntTy::Usize)
+        };
         for a in args {
             let at = self.expr(cx, a, Some(&want), mode);
             self.expect_ty(&at, &want, a.span);
@@ -6137,8 +6121,8 @@ impl<'a> Checker<'a> {
             );
         }
         for a in args {
-            let t = self.expr(cx, a, Some(&TypeKind::Usize), mode);
-            self.expect_ty(&t, &TypeKind::Usize, a.span);
+            let t = self.expr(cx, a, Some(&TypeKind::Int(IntTy::Usize)), mode);
+            self.expect_ty(&t, &TypeKind::Int(IntTy::Usize), a.span);
         }
         match expected {
             Some(t @ TypeKind::Vec(_)) => t.clone(),
@@ -6808,10 +6792,10 @@ impl<'a> Checker<'a> {
         if let ExprKind::ByteStr(_) = &a.kind {
             let st = TypeKind::Ref {
                 mutable: false,
-                inner: mk(TypeKind::Slice(mk(TypeKind::U8))),
+                inner: mk(TypeKind::Slice(mk(TypeKind::Int(IntTy::U8)))),
             };
             self.types.insert((a.span.file, a.span.lo, a.span.hi), st);
-            if pm || pe.kind != TypeKind::U8 {
+            if pm || pe.kind != TypeKind::Int(IntTy::U8) {
                 self.err(
                     "E0401",
                     a.span,
@@ -7769,11 +7753,8 @@ fn from_call(path: &[Ident]) -> Option<TypeKind> {
 pub fn int_const(path: &[Ident]) -> Option<(TypeKind, i128)> {
     let [ty, c] = path else { return None };
     let t = int_type(&ty.name)?;
-    let (min, max): (i128, i128) = match t {
-        TypeKind::I64 => (i64::MIN as i128, i64::MAX as i128),
-        TypeKind::U8 => (0, 255),
-        _ => (0, u64::MAX as i128),
-    };
+    let i = t.int().expect("an integer type");
+    let (min, max) = (i.min_value(), i.max_value());
     match c.name.as_str() {
         "MIN" => Some((t, min)),
         "MAX" => Some((t, max)),
@@ -7782,21 +7763,19 @@ pub fn int_const(path: &[Ident]) -> Option<(TypeKind, i128)> {
 }
 
 fn int_type(name: &str) -> Option<TypeKind> {
-    match name {
-        "i64" => Some(TypeKind::I64),
-        "u64" => Some(TypeKind::U64),
-        "usize" => Some(TypeKind::Usize),
-        "u8" => Some(TypeKind::U8),
-        _ => None,
-    }
+    IntTy::from_name(name)
+        .filter(|i| i.enabled())
+        .map(TypeKind::Int)
 }
 
 /// Whether converting a `source` value to `target` has a range obligation
 /// (ADR-0028 §1, ADR-0044 §1): every pair but `u64` <-> `usize`, a type to
 /// itself, and a `u8` to any other type (every type holds 0..=255).
 pub(crate) fn conv_obligation(source: &TypeKind, target: &TypeKind) -> bool {
-    let wide = |t: &TypeKind| matches!(t, TypeKind::U64 | TypeKind::Usize);
-    source != target && !(wide(source) && wide(target)) && *source != TypeKind::U8
+    let (Some(s), Some(t)) = (source.int(), target.int()) else {
+        return true;
+    };
+    !(t.min_value() <= s.min_value() && s.max_value() <= t.max_value())
 }
 
 /// `Option<t>`.

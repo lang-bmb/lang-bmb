@@ -54,7 +54,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use crate::ast::{
-    BinOp, Block, Expr, ExprKind, FnDef, FnKind, Ident, Mod, Program, Stmt, TypeKind, UnOp,
+    BinOp, Block, Expr, ExprKind, FnDef, FnKind, Ident, IntTy, Mod, Program, Stmt, TypeKind, UnOp,
 };
 use crate::cache::ProofCache;
 use crate::diag::{Diag, Diags};
@@ -1257,10 +1257,10 @@ pub fn counting_whiles(f: &FnDef, text: &str) -> Vec<Diag> {
             let convertible = is_i(iv)
                 && matches!(
                     ty.kind,
-                    TypeKind::I64 | TypeKind::U64 | TypeKind::U8 | TypeKind::Usize
+                    TypeKind::Int(IntTy::I64) | TypeKind::Int(IntTy::U64) | TypeKind::Int(IntTy::U8) | TypeKind::Int(IntTy::Usize)
                 )
                 // Two literal bounds would make `i` an `i64`.
-                && !(int_literal(lo) && int_literal(hi) && ty.kind != TypeKind::I64)
+                && !(int_literal(lo) && int_literal(hi) && ty.kind != TypeKind::Int(IntTy::I64))
                 && body.tail.is_none()
                 && step_ok(step)
                 && plain_bound(hi)

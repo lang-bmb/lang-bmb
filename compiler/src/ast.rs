@@ -181,13 +181,98 @@ pub struct FnDef {
     pub span: Span,
 }
 
+/// The integer types (ADR-0048 §1): a width and a signedness. `isize` and
+/// `usize` are 64 bits (the only target). `u8` is the byte (ADR-0044 §1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum IntTy {
+    I8,
+    I16,
+    I32,
+    I64,
+    Isize,
+    U8,
+    U16,
+    U32,
+    U64,
+    Usize,
+}
+
+impl IntTy {
+    pub const ALL: [IntTy; 10] = [
+        IntTy::I8,
+        IntTy::I16,
+        IntTy::I32,
+        IntTy::I64,
+        IntTy::Isize,
+        IntTy::U8,
+        IntTy::U16,
+        IntTy::U32,
+        IntTy::U64,
+        IntTy::Usize,
+    ];
+
+    pub fn bits(self) -> u32 {
+        match self {
+            IntTy::I8 | IntTy::U8 => 8,
+            IntTy::I16 | IntTy::U16 => 16,
+            IntTy::I32 | IntTy::U32 => 32,
+            _ => 64,
+        }
+    }
+
+    pub fn signed(self) -> bool {
+        matches!(
+            self,
+            IntTy::I8 | IntTy::I16 | IntTy::I32 | IntTy::I64 | IntTy::Isize
+        )
+    }
+
+    pub fn min_value(self) -> i128 {
+        if self.signed() {
+            -(1i128 << (self.bits() - 1))
+        } else {
+            0
+        }
+    }
+
+    pub fn max_value(self) -> i128 {
+        if self.signed() {
+            (1i128 << (self.bits() - 1)) - 1
+        } else {
+            (1i128 << self.bits()) - 1
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            IntTy::I8 => "i8",
+            IntTy::I16 => "i16",
+            IntTy::I32 => "i32",
+            IntTy::I64 => "i64",
+            IntTy::Isize => "isize",
+            IntTy::U8 => "u8",
+            IntTy::U16 => "u16",
+            IntTy::U32 => "u32",
+            IntTy::U64 => "u64",
+            IntTy::Usize => "usize",
+        }
+    }
+
+    /// The types the language accepts so far (the others come with backlog
+    /// 2N-01b).
+    pub fn enabled(self) -> bool {
+        matches!(self, IntTy::I64 | IntTy::U64 | IntTy::U8 | IntTy::Usize)
+    }
+
+    pub fn from_name(s: &str) -> Option<IntTy> {
+        IntTy::ALL.into_iter().find(|t| t.name() == s)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeKind {
-    I64,
-    U64,
-    /// A byte (ADR-0044 §1).
-    U8,
-    Usize,
+    /// A fixed-width integer (ADR-0048 §1).
+    Int(IntTy),
     Bool,
     Unit,
     Array(Box<Type>, u64),
@@ -480,4 +565,19 @@ pub enum PatOrigin {
     /// A pattern form BMB has no place for (E0232), already reported: it
     /// covers the remaining variants so no second error follows.
     Rejected,
+}
+
+impl TypeKind {
+    /// The integer type, if this is one.
+    pub fn int(&self) -> Option<IntTy> {
+        match self {
+            TypeKind::Int(t) => Some(*t),
+            _ => None,
+        }
+    }
+
+    /// A signed integer type.
+    pub fn is_signed(&self) -> bool {
+        self.int().is_some_and(IntTy::signed)
+    }
 }

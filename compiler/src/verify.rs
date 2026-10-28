@@ -16,11 +16,6 @@ use crate::diag::{Diag, Diags};
 use crate::smt::{self, Answer, Solver};
 use crate::source::Span;
 
-const I64_MIN: &str = "(- 9223372036854775808)";
-const I64_MAX: &str = "9223372036854775807";
-const U64_MAX: &str = "18446744073709551615";
-const TWO_64: &str = "18446744073709551616";
-const TWO_63: &str = "9223372036854775808";
 /// `isize::MAX / size_of(T)` (ADR-0017 §3).
 const LEN_MAX_WORD: &str = "1152921504606846975";
 const LEN_MAX_BYTE: &str = "9223372036854775807";
@@ -1754,9 +1749,11 @@ fn is_array(t: &TypeKind) -> bool {
 
 fn range(t: &TypeKind, x: &str) -> Option<String> {
     match t {
-        TypeKind::I64 => Some(format!("(and (<= {I64_MIN} {x}) (<= {x} {I64_MAX}))")),
-        TypeKind::U64 | TypeKind::Usize => Some(format!("(and (<= 0 {x}) (<= {x} {U64_MAX}))")),
-        TypeKind::U8 => Some(format!("(and (<= 0 {x}) (<= {x} 255))")),
+        TypeKind::Int(i) => Some(format!(
+            "(and (<= {} {x}) (<= {x} {}))",
+            num(i.min_value()),
+            num(i.max_value())
+        )),
         _ => None,
     }
 }
@@ -1766,7 +1763,7 @@ fn len_max(elem: &TypeKind) -> &'static str {
     // only `isize::MAX` is known without its layout.
     if matches!(
         elem,
-        TypeKind::Bool | TypeKind::U8 | TypeKind::Named { .. } | TypeKind::Param(_)
+        TypeKind::Bool | TypeKind::Int(IntTy::U8) | TypeKind::Named { .. } | TypeKind::Param(_)
     ) {
         LEN_MAX_BYTE
     } else {
@@ -1790,11 +1787,15 @@ fn ite(c: &str, a: &str, b: &str) -> String {
     }
 }
 
+/// `x` reduced into the range of `t` (two's complement).
 fn wrap(t: &TypeKind, x: &str) -> String {
-    match t {
-        TypeKind::I64 => format!("(- (mod (+ {x} {TWO_63}) {TWO_64}) {TWO_63})"),
-        TypeKind::U8 => format!("(mod {x} 256)"),
-        _ => format!("(mod {x} {TWO_64})"),
+    let i = t.int().expect("integer type");
+    let size = num(1i128 << i.bits());
+    if i.signed() {
+        let half = num(1i128 << (i.bits() - 1));
+        format!("(- (mod (+ {x} {half}) {size}) {half})")
+    } else {
+        format!("(mod {x} {size})")
     }
 }
 
@@ -1812,7 +1813,7 @@ enum IntMethod {
 }
 
 fn int_method(op: &str, t: &TypeKind, a: &str, b: &str) -> IntMethod {
-    let signed = *t == TypeKind::I64;
+    let signed = t.is_signed();
     let (kind, base) = op.split_once('_').expect("integer method");
     let (v, lemmas) = match base {
         "add" => (format!("(+ {a} {b})"), Vec::new()),
@@ -1837,11 +1838,8 @@ fn int_method(op: &str, t: &TypeKind, a: &str, b: &str) -> IntMethod {
         }
         _ => unreachable!("integer method {op}"),
     };
-    let (min, max) = match t {
-        TypeKind::I64 => (I64_MIN, I64_MAX),
-        TypeKind::U8 => ("0", "255"),
-        _ => ("0", U64_MAX),
-    };
+    let i = t.int().expect("integer type");
+    let (min, max) = (num(i.min_value()), num(i.max_value()));
     match kind {
         "wrapping" => IntMethod::Value(wrap(t, &v)),
         "saturating" => IntMethod::Value(format!(
@@ -1853,7 +1851,7 @@ fn int_method(op: &str, t: &TypeKind, a: &str, b: &str) -> IntMethod {
                 "div" => format!("(and (not (= {b} 0)) {in_range})"),
                 // `i64::MIN % -1` is 0 in mathematics but overflows in Rust.
                 "rem" if signed => {
-                    format!("(and (not (= {b} 0)) (not (and (= {a} {I64_MIN}) (= {b} (- 1)))))")
+                    format!("(and (not (= {b} 0)) (not (and (= {a} {min}) (= {b} (- 1)))))")
                 }
                 "rem" => format!("(not (= {b} 0))"),
                 _ => in_range,
@@ -2066,8 +2064,10 @@ impl<'p, 'q> Enc<'p, 'q> {
     /// it needs; the extra quantifier there cost proofs their rlimit (1B-37).
     fn fresh_elems(&mut self, base: &str, e: &TypeKind, signed: bool) -> String {
         let elems = self.fresh(base, &format!("(Array Int {})", sort_of(e)));
-        let wanted = matches!(e, TypeKind::U64 | TypeKind::Usize | TypeKind::U8)
-            || (signed && matches!(e, TypeKind::I64));
+        let wanted = matches!(
+            e,
+            TypeKind::Int(IntTy::U64) | TypeKind::Int(IntTy::Usize) | TypeKind::Int(IntTy::U8)
+        ) || (signed && matches!(e, TypeKind::Int(IntTy::I64)));
         if wanted && let Some(r) = range(e, &format!("(select {elems} k)")) {
             self.pc.push(format!(
                 "(forall ((k Int)) (! {r} :pattern ((select {elems} k))))"
@@ -2272,7 +2272,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                 if guard.is_some() {
                     self.spec_pc.pop();
                 }
-                let signed = self.ty(l) == TypeKind::I64;
+                let signed = self.ty(l).is_signed();
                 Val::S(match op {
                     BinOp::Add => format!("(+ {lt} {rt})"),
                     BinOp::Sub => format!("(- {lt} {rt})"),
@@ -2726,7 +2726,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                 let lt = self.eval(l).s();
                 let rt = self.eval(r).s();
                 let ty = self.ty(l);
-                let signed = ty == TypeKind::I64;
+                let signed = ty.is_signed();
                 let t = match op {
                     BinOp::Add => format!("(+ {lt} {rt})"),
                     BinOp::Sub => format!("(- {lt} {rt})"),
@@ -2742,11 +2742,15 @@ impl<'p, 'q> Enc<'p, 'q> {
                             format!("(not (= {rt} 0))"),
                         );
                         if *op == BinOp::Rem && signed {
+                            let i = ty.int().expect("integer type");
                             self.oblige(
                                 "E0803",
                                 e.span,
-                                "`i64::MIN % -1` may occur",
-                                format!("(not (and (= {lt} {I64_MIN}) (= {rt} (- 1))))"),
+                                format!("`{}::MIN % -1` may occur", i.name()),
+                                format!(
+                                    "(not (and (= {lt} {}) (= {rt} (- 1))))",
+                                    num(i.min_value())
+                                ),
                             );
                         }
                         let (q, r, lemmas) = if signed {
@@ -5804,7 +5808,11 @@ fn show_leaves<'a>(
 fn is_scalar_ty(t: &TypeKind) -> bool {
     matches!(
         t,
-        TypeKind::I64 | TypeKind::U64 | TypeKind::Usize | TypeKind::U8 | TypeKind::Bool
+        TypeKind::Int(IntTy::I64)
+            | TypeKind::Int(IntTy::U64)
+            | TypeKind::Int(IntTy::Usize)
+            | TypeKind::Int(IntTy::U8)
+            | TypeKind::Bool
     )
 }
 

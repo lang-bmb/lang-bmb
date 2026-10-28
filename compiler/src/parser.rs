@@ -976,10 +976,10 @@ impl<'a> Parser<'a> {
                 let a: Option<Vec<String>> = args.iter().map(Self::type_text).collect();
                 format!("{}<{}>", path.join("::"), a?.join(", "))
             }
-            TypeKind::I64 => "i64".into(),
-            TypeKind::U64 => "u64".into(),
-            TypeKind::U8 => "u8".into(),
-            TypeKind::Usize => "usize".into(),
+            TypeKind::Int(IntTy::I64) => "i64".into(),
+            TypeKind::Int(IntTy::U64) => "u64".into(),
+            TypeKind::Int(IntTy::U8) => "u8".into(),
+            TypeKind::Int(IntTy::Usize) => "usize".into(),
             TypeKind::Bool => "bool".into(),
             _ => return None,
         })
@@ -1492,10 +1492,10 @@ impl<'a> Parser<'a> {
             Tok::Ident(s) => {
                 self.bump();
                 let kind = match s.as_str() {
-                    "i64" => TypeKind::I64,
-                    "u64" => TypeKind::U64,
-                    "u8" => TypeKind::U8,
-                    "usize" => TypeKind::Usize,
+                    "i64" => TypeKind::Int(IntTy::I64),
+                    "u64" => TypeKind::Int(IntTy::U64),
+                    "u8" => TypeKind::Int(IntTy::U8),
+                    "usize" => TypeKind::Int(IntTy::Usize),
                     "bool" => TypeKind::Bool,
                     _ => {
                         let fix = match s.as_str() {
@@ -2209,10 +2209,10 @@ impl<'a> Parser<'a> {
                 let ty = self.parse_type();
                 let span = e.span.to(ty.span);
                 let target = match ty.kind {
-                    TypeKind::I64 => Some("i64"),
-                    TypeKind::U64 => Some("u64"),
-                    TypeKind::U8 => Some("u8"),
-                    TypeKind::Usize => Some("usize"),
+                    TypeKind::Int(IntTy::I64) => Some("i64"),
+                    TypeKind::Int(IntTy::U64) => Some("u64"),
+                    TypeKind::Int(IntTy::U8) => Some("u8"),
+                    TypeKind::Int(IntTy::Usize) => Some("usize"),
                     _ => None,
                 };
                 let d = Diag::new("E0205", span, "`as` casts are not allowed");

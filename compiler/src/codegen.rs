@@ -245,7 +245,7 @@ fn mem_ty(t: &TypeKind) -> String {
     match value_ty(t) {
         TypeKind::Vec(_) => "%bmb.vec".into(),
         TypeKind::Box(_) => "ptr".into(),
-        TypeKind::Bool | TypeKind::U8 => "i8".into(),
+        TypeKind::Bool | TypeKind::Int(IntTy::U8) => "i8".into(),
         TypeKind::Named { .. } => data_ty(t),
         TypeKind::Array(e, n) => format!("[{n} x {}]", mem_ty(&e.kind)),
         _ => "i64".into(),
@@ -286,7 +286,7 @@ fn layout(t: &TypeKind, tb: &Tables) -> (u64, u64) {
                 return fields(fs.iter().map(|(_, ft)| ft), tb);
             }
             let vs = enum_variants(t, tb).unwrap_or_default();
-            let tag = TypeKind::I64;
+            let tag = TypeKind::Int(IntTy::I64);
             let size = vs
                 .iter()
                 .map(|(_, ps)| fields(std::iter::once(&tag).chain(ps.iter()), tb).0)
@@ -517,7 +517,11 @@ fn drop_glue(tb: &Tables, extra: &[TypeKind]) -> String {
 fn is_scalar_ty(t: &TypeKind) -> bool {
     matches!(
         t,
-        TypeKind::I64 | TypeKind::U64 | TypeKind::U8 | TypeKind::Usize | TypeKind::Bool
+        TypeKind::Int(IntTy::I64)
+            | TypeKind::Int(IntTy::U64)
+            | TypeKind::Int(IntTy::U8)
+            | TypeKind::Int(IntTy::Usize)
+            | TypeKind::Bool
     )
 }
 
@@ -543,7 +547,11 @@ fn elem_of(t: &TypeKind) -> TypeKind {
 /// The element kind of an array, slice or `Vec` of `t`: its register type,
 /// or `"u8"` for a byte (an `i64` in registers, a byte in memory, ADR-0044).
 fn elem_kind(t: &TypeKind) -> &'static str {
-    if *t == TypeKind::U8 { "u8" } else { llty(t) }
+    if *t == TypeKind::Int(IntTy::U8) {
+        "u8"
+    } else {
+        llty(t)
+    }
 }
 
 /// In-memory type of an array element: `bool` and `u8` are bytes, as in
@@ -760,7 +768,7 @@ impl<'p> Gen<'p> {
     /// Loads a scalar of type `t` from data memory.
     fn load_mem(&mut self, ptr: &str, t: &TypeKind) -> String {
         let r = self.t();
-        if *t == TypeKind::Bool || *t == TypeKind::U8 {
+        if *t == TypeKind::Bool || *t == TypeKind::Int(IntTy::U8) {
             self.emit(format!("{r} = load i8, ptr {ptr}"));
             let b = self.t();
             let op = if *t == TypeKind::Bool {
@@ -787,7 +795,7 @@ impl<'p> Gen<'p> {
     /// Stores value `v` of type `t` into memory at `ptr`.
     fn put(&mut self, v: CVal, ptr: &str, t: &TypeKind) {
         match v {
-            CVal::Imm(x) if matches!(value_ty(t), TypeKind::Bool | TypeKind::U8) => {
+            CVal::Imm(x) if matches!(value_ty(t), TypeKind::Bool | TypeKind::Int(IntTy::U8)) => {
                 let z = self.t();
                 let op = if *value_ty(t) == TypeKind::Bool {
                     "zext i1"
@@ -1420,7 +1428,7 @@ impl<'p> Gen<'p> {
             }
             ExprKind::Binary(op, l, r) => {
                 let lt = self.ty(l);
-                let signed = lt == TypeKind::I64;
+                let signed = lt.is_signed();
                 let a = self.expr(l).imm();
                 let b = self.expr(r).imm();
                 let ty = llty(&lt);
@@ -1447,7 +1455,7 @@ impl<'p> Gen<'p> {
                 match op {
                     // A byte's sum or product fits in 64 bits: compute it
                     // there, then the byte range is the obligation.
-                    BinOp::Add | BinOp::Mul if lt == TypeKind::U8 => {
+                    BinOp::Add | BinOp::Mul if lt == TypeKind::Int(IntTy::U8) => {
                         let inst = if *op == BinOp::Add { "add" } else { "mul" };
                         let r = self.t();
                         self.emit(format!("{r} = {inst} nuw i64 {a}, {b}"));
@@ -1529,7 +1537,7 @@ impl<'p> Gen<'p> {
                 // To `u8`: `0 <= v <= 255` is one unsigned comparison.
                 let in_range = |g: &mut Self| {
                     let c = g.t();
-                    if target == TypeKind::U8 {
+                    if target == TypeKind::Int(IntTy::U8) {
                         g.emit(format!("{c} = icmp ule i64 {v}, 255"));
                     } else {
                         g.emit(format!("{c} = icmp sge i64 {v}, 0"));
@@ -1565,8 +1573,8 @@ impl<'p> Gen<'p> {
                     op => {
                         let b = self.expr(&args[0]).imm();
                         let rt = self.ty(recv);
-                        let r = self.int_method(e, op, &rv.imm(), &b, rt == TypeKind::I64);
-                        if rt == TypeKind::U8 {
+                        let r = self.int_method(e, op, &rv.imm(), &b, rt.is_signed());
+                        if rt == TypeKind::Int(IntTy::U8) {
                             self.byte_method(e, op, r)
                         } else {
                             r
@@ -2889,7 +2897,7 @@ impl<'p> Gen<'p> {
             } => {
                 let t = self.local_ty(&var.name).expect("checked `for` variable");
                 let lt = llty(&t);
-                let (lt_op, le_op) = if t == TypeKind::I64 {
+                let (lt_op, le_op) = if t.is_signed() {
                     ("slt", "sle")
                 } else {
                     ("ult", "ule")
