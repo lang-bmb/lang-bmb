@@ -111,7 +111,13 @@
 | T1-07 | H-UNIT 도출 목차 | 호출 그래프 군집으로 L0를 도출하는 실험 맵, BNB 탐색 과제를 두 판(선언 단위, 도출 군집)으로 | 3A-05 | ⏳ |
 | T1-08 | ADR-0059 초안: 해시 참조 | 정체성 해시, 이름은 색인, 키와 증명 캐시를 이름 없이, `rename`·`expect` 트랜잭션 | T1-01 | ✅ `dev-docs/adr/0059-hash-references-names-as-metadata.md`(제안) |
 | T1-09 | ADR-0060 초안: 타입 불변식 | `#[invariant(p)]`, 새 값은 가정·잊는 값은 의무(E0823), 가시성 없이 | — | ✅ `dev-docs/adr/0060-type-invariants.md`(제안) |
-| T1-10 | ADR-0059 채택과 구현 | ADR 결과 표의 다섯 태스크(정체성 해시, 키·캐시, 맵, 트랜잭션, 측정). rename-ripple 참조자 수 0 | T1-08 | ⏳ |
+| T1-10 | ADR-0059 채택과 구현 | ADR 결과 표의 다섯 태스크(정체성 해시, 키·캐시, 맵, 트랜잭션, 측정). rename-ripple 참조자 수 0 | T1-08 | 🔄 하위 태스크 `T1-10a`~`T1-10f`. rename-ripple 참조자 0/424, 증분 감사 불일치 0, V7 그대로. 남은 것: `T1-10e`(질의 기호, 결정 필요), `T1-10f`의 재인코딩 0 |
+| T1-10a | T1-ID-01 정체성 해시 | 이름 없는 출력기(`fmt::Printer::identity`), 참조 그래프의 강연결 성분과 색 정제 순서(`src/identity.rs`), 명목 타입·trait(`impl`을 타입·trait 텍스트에), `bmb hash`의 `id`. 퍼저: 이름 하나를 바꿔도 모든 `id` 불변, 리터럴 편집은 그 정의의 `id`를 바꿈 | T1-08 | ✅ `tests/fmt_fuzz.rs` `renames_keep_identities_and_edits_change_them`(코퍼스의 모든 이름으로 한 번 통과, `BMB_FMT_FUZZ_RENAMES`), `tests/fmt.rs` `identity_follows_what_names_resolve_to_not_the_names`. 구현 시 확인은 ADR-0059 |
+| T1-10b | T1-ID-03 맵과 질의 | L1 `id`(타입·trait 포함), `duplicates`를 정체성으로, 알파 동치 중복 코퍼스. `id`를 빼면 맵 출력이 이전과 같음 | T1-10a | ✅ `tests/map.rs` `duplicates_groups_alpha_equivalent_definitions`, 코퍼스 `tests/duplicates/alpha.bmb`(9묶음: 매개변수·지역·레이블·필드 이름, 재귀·상호 재귀, 복제를 부르는 정의). 가독성: 코퍼스 85파일 4,783행이 `id`를 빼고 해시 값을 가리면 이전 컴파일러와 바이트 단위로 같음(`dev-docs/experiments/rename-ripple/readability.py`). 근거 묶음(2E)은 2E와 함께 |
+| T1-10c | T1-ID-04 트랜잭션 | `rename`(경로 → 새 이름, 선언과 모든 참조, `id` 불변 확인·가로채기 거부)과 `expect`(경로 → `id` 전제조건) | T1-10a | ✅ `workspace::rename`, `tests/workspace.rs` `rename_rewrites_references_and_keeps_every_identity`·`rename_that_would_collide_or_capture_is_rejected`·`expect_rejects_a_changed_definition_only`·`rename_and_expect_parse_from_json`. `bmb apply`만, MCP 노출은 `T1-20` |
+| T1-10d | T1-ID-02a 키·캐시: 노드 위치 | 저장하는 의무 위치를 구문 노드 위치로(`incremental::node_spans`), 증명 키에서 원문 행을 뺌, 파일 형식 v2. `with_audit` 불일치 0(배치·주석·이름 바꾸기 편집 포함) | T1-10a | ✅ `tests/incremental.rs` `layout_inside_a_definition_reencodes_nothing`(재인코딩 0), `edits_that_shift_spans_or_change_context_keep_outputs_exact`(배치·정의·매개변수·지역 이름 바꾸기 편집 추가, 감사 불일치 0). `verify.rs` 변경은 호출 두 줄 |
+| T1-10e | T1-ID-02b 이름 없는 질의 기호와 키 | 질의 기호를 이름 없이(질의마다 처음 나온 순서의 정준 이름, 범례는 `--emit-smt` 밖 파일), 인코더의 이름순 순회(`Enc::branch` 병합 등)를 결합 순서로, 증분 키의 이름 행(범례)을 이름 없는 행으로(참조는 키 안 위치 번호), 증명 캐시 형식 버전, V7 재측정. 완료: rename-ripple `--stats`의 재인코딩·캐시 놓침 0, 감사 불일치 0 | T1-10d | ⏳ 결정 필요: ADR-0059 §4의 "`id` 접두사 기호"는 기호를 본문에 묶어 계약 방화벽을 깬다(ADR-0059 구현 시 확인). `verify.rs` 전반을 고치므로 ADR-0062 구현(`T1-18`)과 겹치지 않게 순서를 정한다 |
+| T1-10f | T1-ID-05 측정 | rename-ripple 재실행(참조자, `--stats` 재인코딩·캐시 놓침), V7, BCB 이름 바꾸기·이동 재생(`T1-22`), H-PAR 입력 | T1-10c | 🔄 `dev-docs/experiments/rename-ripple/results.md`: 이름 바꾸기 424건, 참조자 `id`·본문·계약 해시 변화 0(이전 컴파일러로 같은 집합 367건·87%, 본문 626·계약 384). 재인코딩 847·캐시 놓침 3,560은 `T1-10e` 전까지 남음. V7 그대로(질의 텍스트 불변) |
 | T1-11 | ADR-0060 채택과 구현 | ADR 결과의 여섯 태스크(검사, 인코딩, 증분 키, 코퍼스, 퍼저, BRB 확장) | T1-09 | ⏳ |
 | T1-12 | H-COMMUTE 동시 편집 재생 | BCB 이력의 같은 기준 커밋 위 편집 쌍·k개 묶음 표본마다 `git merge-file` 충돌, 깨끗한 텍스트 병합의 BMB 증명·Rust 쌍둥이 테스트(거짓 병합), 교환 판정(쓰기 집합 ∩ 상대 읽기 집합, 계약 변경은 정제 판정), 정의 단위 병합의 증명과 재증명 비용. 교환 가능 판정의 거짓 병합 0이 건전성 조건. 결과 `dev-docs/experiments/` | 2A-14d | ✅ `dev-docs/experiments/commute/run.py`, `results.md`: 네 설정 116쌍. 독립 판정 77쌍의 병합이 모두 증명(건전성 위반 0), 정의 단위 쓰기 충돌은 텍스트 충돌과 같은 수준, git 거짓 병합 0/95(합성 이력에 의미 충돌이 없음), 충돌 판정 37쌍 중 18쌍은 보수적. 후속 `T1-19` |
 | T1-13 | H-SPLIT 계약 우선 분업 과제 | m1b·BRB 과제를 계약 고정 + 정의 분할 판으로 만들어 동결, 기준 해법의 분할 조각을 따로 증명한 뒤 합친 결과도 증명됨을 CI로 확인. 실행은 T0 | — | ⏳ |
@@ -121,6 +127,10 @@
 | T1-17 | ADR-0062 초안: 증명 함수와 귀납 | Verus 꼴 `proof fn`(requires·ensures·decreases, 재귀로 귀납, `proof { }`에서 호출, 코드 생성에서 지움). `T1-14`의 귀납 부류와 T4 라이브러리 명세의 수요 | T1-14 | ✅ `dev-docs/adr/0062-proof-functions-and-induction.md`(제안) |
 | T1-18 | ADR-0062 채택과 구현 | ADR 결과의 P1~P6(표면, 인코딩, 지움·맵·증분, 퍼저, 실용: `vc-vv0039`의 같은 뜻 명세 증명·`numlist` 이주, `bmb fix` 보조 정리 제안) | T1-17 | ⏳ |
 | T1-19 | H-COMMUTE: 의미 충돌 생성기 | 따로 적용하면 각자 증명되지만 합치면 깨지는 편집 쌍(한쪽은 `requires` 강화·`ensures` 약화·잎 제거, 다른 쪽은 옛 계약에 기대는 호출 추가)을 고정 시드로 만들고, git 깨끗한 병합의 거짓 병합률과 교환 판정의 검출률·건전성을 잰다 | T1-12 | ⏳ |
+| T1-20 | MCP의 `rename`·`expect` | 새 과제 집합 판과 함께 MCP 쓰기 도구에 두 연산을 노출(ADR-0021: 동결 판의 도구 목록은 그대로, 옵트인 플래그). `mcp_fuzz` 모형에 두 연산 | T1-10c | ⏳ |
+| T1-21 | H-PAR: `expect`가 비교할 값 | `id`는 전이적이라 피호출자 본문 편집이 호출자의 `expect`를 깬다. BCB 동시 재생(`T1-12` 설정)에서 전이적 `id`와 자기 텍스트 해시의 거짓 충돌·놓친 충돌을 재고 하나를 정한다 | T1-10c, T1-12 | ⏳ |
+| T1-22 | H-ID 이득 쪽: 이름 바꾸기·이동을 섞은 BCB 이력 | BCB 이력 생성기에 이름 바꾸기·이동 편집을 더한 판, 커밋당 재인코딩 수와 CPU를 ADR-0059 전후로 비교 | T1-10e | ⏳ |
+| T1-23 | `rename`의 남은 대상 | trait 메서드(선언·모든 `impl`·호출), 단위 사이 이동(`move`), 단위 이름 바꾸기. `id` 불변 확인은 같은 방식 | T1-10c | ⏳ |
 
 ### T2 언어 (수요 기반)
 

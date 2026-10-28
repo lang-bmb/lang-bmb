@@ -14,11 +14,11 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 28967,
+    "S4_stage0_rust_lines": 30592,
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
     "P1_runnable_programs": 52,
-    "P2_bmb_lines": 15905,
+    "P2_bmb_lines": 16096,
     "P3_errors_with_help": 0.8464,
     "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
@@ -1196,6 +1196,20 @@
         "P2_bmb_lines": [
           14224,
           15905
+        ]
+      }
+    },
+    {
+      "date": "2026-10-28",
+      "reason": "T1-10: alpha-equivalent duplicates corpus (tests/duplicates/alpha.bmb) adds BMB lines; S4 stage0 lines +1,625 (report-only) for identity printer, rename transaction and node positions",
+      "changed": {
+        "S4_stage0_rust_lines": [
+          28967,
+          30592
+        ],
+        "P2_bmb_lines": [
+          15905,
+          16096
         ]
       }
     }

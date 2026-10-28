@@ -23,12 +23,12 @@ cargo run -- map all a.bmb        # 표준 맵 L0~L2(JSONL, ADR-0020; 타입·`i
 cargo run -- query slice u::f -- a.bmb  # 읽기 질의: units surface edges slice find contracts status impact duplicates effects tests
 cargo run -- query --cache .bmb-cache status -- ws  # map·query도 --cache DIR을 받는다(증명하는 L1·surface·status만 영향, 출력은 같은 바이트, INF-08)
 cargo run -- import ws a.bmb     # 작업 공간 ws/src/에 단위당 정규형 파일 하나
-cargo run -- apply ws ops.json   # 쓰기 트랜잭션(unit/put/remove/remove_unit). 구조·타입 오류면 전체 거부
+cargo run -- apply ws ops.json   # 쓰기 트랜잭션(unit/put/remove/remove_unit/rename/expect, 아래 "정체성"). 구조·타입 오류면 전체 거부
 cargo run -- mcp ws              # MCP 서버(stdio): query map verify build tx_begin/put/commit 등
 cargo run -- mcp --write-tool ws # 위에 `write`(단위·정의·삭제·커밋·증명을 한 호출로, 2D-24)를 더한다. 동결 과제 집합은 끄고 쓴다
 BMB_SOUND_ITERS=60 cargo test --release --test soundness  # 건전성 퍼징(1B-17): 증명·반례·빌드를 독립 해석기와 대조
 BMB_SOUND_ITERS=40 cargo test --release --test soundness_owned  # 소유 자료 퍼징(2O-05): 연결 리스트·Box·Vec 필드의 이동·교체·참조 match, 증명·반례·빌드·valgrind 해제를 해석기와 대조
-BMB_FMT_FUZZ_ITERS=2000 cargo test --release --test fmt_fuzz  # 정규형·해시 퍼징(1D-22): 배치·주석·파일 분할에 정규형·해시 불변, fmt 멱등, fmt 전후 상태 줄·IR 동일(앞 BMB_FMT_FUZZ_PROVE개만 증명)
+BMB_FMT_FUZZ_ITERS=2000 cargo test --release --test fmt_fuzz  # 정규형·해시 퍼징(1D-22): 배치·주석·파일 분할에 정규형·해시 불변, fmt 멱등, fmt 전후 상태 줄·IR 동일(앞 BMB_FMT_FUZZ_PROVE개만 증명). 이름 하나(정의·단위·타입·필드·변형·매개변수·지역·레이블)를 바꿔도 모든 `id` 불변, 리터럴 편집은 그 정의의 `id`를 바꿈(T1-10, 파일당 이름 수는 BMB_FMT_FUZZ_RENAMES)
 BMB_MCP_FUZZ_SESSIONS=500 cargo test --release --test mcp_fuzz  # MCP 세션 퍼징(1D-23): 임의 도구 호출 순서에서 응답 형식·트랜잭션 모형·커밋만 작업 공간을 바꿈·커밋 뒤 검사 통과와 정규형
 cargo test                       # 회귀 코퍼스(tests/check, tests/verify)와 게이트·보조 사실 테스트
 BMB_BLESS=1 cargo test           # 기대 진단(.jsonl) 갱신
@@ -133,18 +133,33 @@ ADR-0016의 부분집합을 구체화한 것이다. 모두 "선택을 필수로"
 - 한계: W0903은 현재 프로그램의 호출자만 본다(공개 API로 쓸 post도 보고될 수 있어 정보성이다). 기준 검증에서 실패한 함수나 호출자가 실패한 함수는 판정하지 않는다.
 - `bmb mutate --def PATH [--def PATH].. <file.bmb>..`(백로그 2A-10, `lint::mutate_sources`): W0904와 같은 변이 지점(같은 순서)마다 변이를 하나 적용한 프로그램을 만든다. 상한도 증명도 없다. 행은 `{"def","site","line","col","before","after","unit","text"}`(`text`는 바뀐 최상위 단위의 정규형, 다른 단위는 그대로)이고 마지막 줄은 `{"summary":true,"mutants"}`. 실행 함수가 아닌 경로나 검사 오류면 종료 코드 1. BSB 변이체 생성기(`bench/m1/bsb_gen.py`)가 쓴다.
 
+## 정체성과 이름 (ADR-0059, 백로그 T1-10)
+
+`bmb hash`는 정의(함수, `spec fn`, `impl` 함수, trait 기본 본문)와 타입 선언마다 `{"def","id","body","iface"}` 행을 낸다. 맵 L1 행(타입·trait 포함)은 `iface` 뒤에 `id`를 더한다. 셋 다 이름 없는 정규형(`fmt::Printer::identity`, `src/identity.rs`)의 SHA-256이다.
+
+- 다른 정의는 그 `id`로(`#<hex>`), trait 메서드와 열거형 변형은 `#<id>#k`로 적는다. 묶는 이름(매개변수, 결과 이름, 지역, 레이블, 타입 매개변수, `forall` 변수, 패턴 이름)은 묶인 순서의 위치(`_0`, `_1`, ..), 필드·변형은 선언 위치다. 속성·효과·계약·`decreases`·트리거는 그대로, `#[uses]`의 대상은 `id`로 적고, 단위 요약은 들어가지 않는다. 내장(`Vec`, `Option`, `std::mem::replace`, 정수 타입)은 이름 그대로다. 타입 인자는 경로 끝에서 센 마디 위치로 적는다.
+- 명목 타입: 구조가 같은 두 타입도 trait 호출의 디스패치가 다르므로, 타입의 텍스트는 그 타입의 trait `impl`을, trait의 텍스트는 모든 `impl`을 담는다(`impl #trait for <타입> { #trait#k = #fn, .. }`). trait, 그 `impl` 함수, 구현 타입은 한 재귀 성분이 된다.
+- 재귀 성분(참조 그래프의 강연결 성분, 함수·타입·trait 함께): 구성원은 `#self.k`로 적는다. 순서는 성분을 지운 텍스트의 해시에서 시작해, 다른 구성원을 직전 해시로 적은 텍스트로 다시 해시하기를 분할이 더 쪼개지지 않을 때까지 하고(색 정제), 남는 동률만 경로로 정한다. 성분 해시는 구성원 해시를 그 순서로 이은 것의 해시이고, 구성원의 `id`는 `<성분>.k`, 하나짜리 성분은 자기 해시다. trait 메서드 순서는 메서드 텍스트와 그 메서드를 정의하는 `impl` 함수들의 해시로 정하고, 남는 동률은 이름으로 정한다(시그니처·계약·구현이 모두 같은 두 메서드).
+- `body`는 자기 텍스트(같은 성분 구성원은 `#self.k`)의 해시, `iface`는 본문을 뺀 것(`spec fn`은 `body`). 참조하는 정의의 `id`가 바뀌면 참조자의 `id`·`body`도 바뀐다(내용 주소). 계약이 부르는 `spec fn`의 본문이 바뀌면 `iface`도 바뀐다.
+- 커밋의 `changed`는 정의 자신의 텍스트가 바뀐 것이다(다른 정의를 경로로 적은 한정 해시, `fmt::qualified_hashes`). 본문 편집은 그 정의만 보고한다. 전이적인 영향은 `impact`가 답한다.
+- 트랜잭션 `rename`(`{"op":"rename","def":"a::f","to":"g"}`, `workspace::rename`): 함수·`spec fn`·`impl` 함수·타입·trait의 선언과 그것을 가리키는 모든 참조(짧은 이름과 전체 경로의 호출, 타입, 구조체 리터럴, 변형, 패턴, `#[uses]`, 경계, `impl` 머리)를 고친다. 검사를 통과하는 프로그램에만 쓴다. 바꾼 뒤 모든 `id`의 다중 집합이 그대로여야 한다: 새 이름이 다른 참조를 가로채면(같은 시그니처로 내장 `print_i64`를 덮는 경우) 그 정의를 들어 거부한다. 같은 단위의 이름과 겹치면 검사가 거부한다(E0302). trait 메서드는 아직 받지 않는다.
+- 트랜잭션 `expect`(`{"op":"expect","def":"a::g","id":"sha256:.."}`): 트랜잭션이 시작한 작업 공간에서 그 정의의 `id`가 다르면 커밋 전체를 거부한다(낙관적 동시성). 다른 정의의 이름 바꾸기는 `id`를 바꾸지 않으므로 충돌이 아니다. 피호출자의 본문 편집은 호출자의 `id`를 바꾸므로 충돌이다(`tests/workspace.rs`).
+- MCP에는 노출하지 않았다. 동결 과제 집합의 도구 목록은 그대로이고(ADR-0021), 새 판과 함께 연다(백로그 T1-20).
+- 가독성: 맵 출력은 `id`를 빼고 해시 값을 가리면 이전 컴파일러의 출력과 바이트 단위로 같다(코퍼스 85개 파일, `dev-docs/experiments/rename-ripple/readability.py`).
+
 ## 증분 빌드
 
 `--cache DIR`(MCP는 `.bmb-cache/`)은 증명 캐시(`DIR/proofs`) 옆에 정의별 결과(`DIR/defs`)를 둔다(백로그 2D-10, ADR-0032, `src/incremental.rs`). 키가 그대로인 정의는 기호 실행 인코딩도 IR 생성도 하지 않는다. 출력(진단, 상태 줄, IR, 맵)은 캐시 유무·콜드·웜과 무관하게 같은 바이트다(`tests/incremental.rs`).
 
-- 증명 키: 컴파일러 정체성(`build.rs`가 `src/**`·`toolchain.env`로 만든 SHA-256), Z3 버전, 질의 머리(옵션·`rlimit`·전주곡), 정의의 원문과 한정 정규형(`T::f` 호출은 전체 경로로), 부르는 실행 함수의 계약 해시, 펼치거나 같은 재귀 성분인 `spec fn`의 본문 해시, 재귀 성분 구성원, 그리고 정의의 텍스트에서 피호출자 계약과 `spec fn` 텍스트를 따라 닿는 `spec fn`마다 그 SMT 선언(2D-14, ADR-0033), 그 텍스트들이 이름으로 쓰는 데이터 타입과 그 필드·페이로드 타입의 선언(2B-05a). `impact` 질의의 간선(`calls`·`uses`·`names`)을 모두 포함하고, 선언은 그보다 넓게(피호출자 계약이 부르는 `spec fn`까지) 잡는다.
-- IR 키: 정의의 원문·한정 정규형, 부르는 실행 함수의 호출자 해시, 그 정의 안에서 쓸 수 있는 증명된 의무(1B-31: 실패가 있는 호출 성분은 검사를 유지하므로 그 성분의 IR은 다시 만든다).
+- 증명 키: 컴파일러 정체성(`build.rs`가 `src/**`·`toolchain.env`로 만든 SHA-256), Z3 버전, 질의 머리(옵션·`rlimit`·전주곡), 정의의 한정 정규형(`T::f` 호출은 전체 경로로. 원문은 아니다: 아래 노드 위치), 부르는 실행 함수의 계약 해시, 펼치거나 같은 재귀 성분인 `spec fn`의 본문 해시, 재귀 성분 구성원, 그리고 정의의 텍스트에서 피호출자 계약과 `spec fn` 텍스트를 따라 닿는 `spec fn`마다 그 SMT 선언(2D-14, ADR-0033), 그 텍스트들이 이름으로 쓰는 데이터 타입과 그 필드·페이로드 타입의 선언(2B-05a). `impact` 질의의 간선(`calls`·`uses`·`names`)을 모두 포함하고, 선언은 그보다 넓게(피호출자 계약이 부르는 `spec fn`까지) 잡는다.
+- IR 키: 정의의 원문(실행 시 검사의 위치)·한정 정규형, 부르는 실행 함수의 호출자 해시, 그 정의 안에서 쓸 수 있는 증명된 의무(1B-31: 실패가 있는 호출 성분은 검사를 유지하므로 그 성분의 IR은 다시 만든다).
 - 완전히 증명된 정의만 증명 결과를 저장한다. 실패는 늘 다시 돈다. 재사용된 정의의 의무는 증명 캐시 적중으로 센다.
 - 파일 줄마다 SHA-256이 붙고, 맞지 않는 줄·다른 형식 버전·다른 컴파일러의 파일은 무시하고 다시 만든다.
 - `bmb verify --emit-smt`는 모든 스크립트가 필요하므로 재사용을 끈다(증명 캐시는 쓴다).
 - `spec fn`을 더하거나 빼도, 그것에 닿지 않는 정의는 다시 인코딩하지 않는다(`tests/incremental.rs`의 `adding_an_unrelated_spec_fn_reencodes_nothing`: 스크립트도 바이트 단위로 같다). 시그니처 변경은 그 선언에 닿는 정의만 다시 인코딩한다.
-- 한계: 정의 안의 공백·주석 변경도 그 정의를 다시 인코딩한다(증명은 증명 캐시가 받는다).
-- 부르는 실행 함수는 호출자 해시로 키에 들어간다: 계약 해시에서 `#[uses]`를 뺀 것(`fmt::caller_text`, ADR-0043). `#[uses]`는 그 함수 자신의 질의에서만 본문을 펼치므로, 피호출자의 `#[uses]`만 바뀌면 그 함수만 다시 인코딩한다(`verify_stats_name_the_reencoded_definitions`, 감사 모드는 `edits_that_shift_spans_or_change_context_keep_outputs_exact`). `bmb hash`·맵의 `iface`는 그대로다.
+- 증명된 의무는 바이트 오프셋이 아니라 정의의 구문 노드 위치(`incremental::node_spans`: 이름, 매개변수, 결과, 계약, 본문을 깊이 우선으로)로 저장하고, 적중하면 지금 원문의 위치로 옮긴다(ADR-0059 §4). 그래서 정의 안의 공백·주석·배치 변경은 다시 인코딩하지 않는다(`layout_inside_a_definition_reencodes_nothing`, 감사 포함). IR은 다시 만든다(IR 키는 원문을 쥔다). 파일 형식은 `bmb incremental cache v2`다.
+- 이름: 증명 키의 행(경로, 한정 정규형, 피호출자의 한정 표면, `spec fn` 선언, 타입 행)은 이름을 담는다. 질의 텍스트가 이름을 담기 때문이다(기호 `|u::f|`·`|x@0|`·`|u::g.result@0|`·필드 선택자, 이름순으로 지역을 도는 병합). 이 행들은 질의가 담는 이름의 범례이고, 질의 기호가 이름 없이 지어질 때(백로그 T1-10e) 이름 없는 키로 바뀐다. 그때까지 이름 바꾸기는 그 이름을 쓰는 정의를 다시 인코딩한다(측정 `dev-docs/experiments/rename-ripple/`).
+- 부르는 실행 함수는 호출자 해시로 키에 들어간다: 계약 해시에서 `#[uses]`를 뺀 것(`fmt::caller_text`, ADR-0043). `#[uses]`는 그 함수 자신의 질의에서만 본문을 펼치므로, 피호출자의 `#[uses]`만 바뀌면 그 함수만 다시 인코딩한다(`verify_stats_name_the_reencoded_definitions`, 감사 모드는 `edits_that_shift_spans_or_change_context_keep_outputs_exact`). `bmb hash`·맵의 `iface`는 그대로다(`#[uses]`의 대상 `id`를 담는다).
 - `--stats FILE`(`verify`·`emit-llvm`·`build`)은 캐시가 한 일을 JSON 한 줄로 쓴다: `{"encoded":[..],"reused":[..],"lowered":[..],"ir_reused":[..],"proof_cache_hits","proof_cache_misses"}`(정의 경로는 정렬, `verify`는 IR 목록이 빈다). 표준 출력은 그대로다. BCB(2A-14)가 커밋당 재증명 집합을 잰다.
 
 ## MCP 서버의 전단 캐시
@@ -175,7 +190,7 @@ ADR-0020 §5의 7개 질의 외에 추가한 질의다. 기존 질의와 행 형
 | 질의 | 결과 |
 | --- | --- |
 | `impact DEF [body\|iface]` | DEF의 본문(`body`) 또는 계약·시그니처(`iface`, 기본값)를 바꾸면 다시 증명할 정의마다 `{"path","reason"}` 행, 그리고 요약 행 `{"summary":true,"changed","change","reprove","defs"}`. `reason`: `changed`(자신), `calls`(호출자: 계약이 바뀜), `uses`(`#[uses]`로 펼침), `names`(시그니처가 바뀐 `spec fn`을 이름으로 씀). 증명은 피호출자를 계약으로만, `spec fn`을 `#[uses]`로만 보므로(ADR-0017 §4) 영향은 한 단계에서 멈춘다(백로그 2D-02). DEF가 구조체·열거형이면(2B-07, ADR-0026 §6) 그 타입이나 그것을 담은 타입을 이름으로 쓰는 정의가 `types`이고, 그중 표면(실행 함수의 시그니처·계약, `spec fn` 전체)에 쓰는 정의에서 한 단계 더 `calls`·`uses`·`names`로 퍼진다 |
-| `duplicates` | 본문 해시(`body`)가 같은 정의 묶음마다 `{"hash","defs"}` 행(정의가 둘 이상인 묶음만, 해시순, `defs`는 경로순), 그리고 요약 행 `{"summary":true,"groups","duplicate_defs","defs"}`. 본문 해시는 정의 자신의 이름을 빼므로(ADR-0019 §2) 같은 해시는 이름이나 단위만 다른 같은 정의다(DESIGN.md §7.2, 백로그 2D-06). 자기 재귀 호출은 전체 경로로 남아 재귀 정의의 복제는 묶이지 않는다 |
+| `duplicates` | 정체성(`id`, ADR-0059 §6)이 같은 정의 묶음마다 `{"hash","defs"}` 행(`hash`는 그 `id`, 정의가 둘 이상인 묶음만, `id`순, `defs`는 경로순), 그리고 요약 행 `{"summary":true,"groups","duplicate_defs","defs"}`. 정체성에는 이름이 없으므로 이름·단위·매개변수·지역·레이블·필드 이름만 다른 알파 동치 정의, 같은 정의를 부르는 정의, 재귀·상호 재귀 정의의 복제가 묶인다(DESIGN.md §7.2, 백로그 2D-06·T1-10, 코퍼스 `tests/duplicates/`) |
 
 | `effects [DEF]` | 효과 뷰(DESIGN.md §7.2, 백로그 2D-11). DEF가 있으면 DEF에서 실행 호출(`calls` 간선)로 닿는 `io` 정의(DEF 자신과 내장 `print_i64`·`print_u64` 포함)마다 `{"def":DEF,"effect":"io","path"}` 행(`path`는 DEF에서 그 정의까지의 최단 호출 경로, 도달한 정의의 경로순), 그리고 요약 행 `{"summary":true,"def","io_reached","defs"}`. DEF가 없으면 내장 `io` 연산에 닿는 정의마다 `{"def","effect":"io","path"}` 행(가장 가까운 연산까지의 최단 경로, 정의 경로순), 그리고 요약 행 `{"summary":true,"io_reaching","io_defs","defs"}`. 최단 경로가 여럿이면 정의 경로를 차례로 비교해 가장 작은 것을 고른다(호출 순서·정의 순서와 무관). 맵 간선만 쓰고 증명하지 않는다(1D-17의 증명 불필요 집합). 효과 검사(E0603)가 `pure`의 `io` 호출을 막으므로 `io`에 닿는 정의는 모두 `io`로 선언되어 있다. `io`로 선언했지만 어떤 연산에도 닿지 않는 정의는 DEF 없는 결과에 나오지 않는다(`io_defs`와 행 수의 차이) |
 | `tests` | 남은 테스트 면적(백로그 2D-21, ADR-0003, DESIGN.md 원칙 4). 테스트가 여전히 필요한 실행 정의마다 `{"path","test_reasons","sites","lines"}` 행(경로순), 그리고 요약 행 `{"summary":true,"exec_defs","test_needed_defs","io_defs","unproved_defs","test_sites","test_lines"}`. M1의 이유는 둘이다: `io`(실행 호출이 내장 `io` 연산에 닿음: 출력의 순서·내용은 계약이 말하지 않는다), `unproved`(실패한 의무가 있어 계약 자체가 서지 않음). `sites`는 그 정의가 직접 부르는 내장 `io` 연산 수(테스트가 겨냥할 곳), `lines`는 정규형 줄 수다. `spec fn`과 `io`로 선언만 하고 어떤 연산에도 닿지 않는 정의는 세지 않는다. 증명 상태를 쓰므로 증명한다(`status`와 같다). G8(2H-06)의 BMB 쪽 값이다. 효과가 늘면(ADR-0030 제안: `panic`·`nondet`·신뢰 등급) 이유가 는다 |
