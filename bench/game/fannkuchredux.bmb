@@ -1,0 +1,117 @@
+#[summary("Benchmarks Game fannkuch-redux(T3-01): n = 12의 모든 순열에서 팬케이크 뒤집기 수의 최댓값과 체크섬. 단일 스레드")]
+mod fk {
+    // Every entry is a position below `n`.
+    spec fn below(p: &[usize], n: usize) -> bool { p.len() == 12 && forall|i: usize| i < 12 ==> #[trigger] p[i] < n }
+
+    // The counter array between permutations: unused below `r`, in 1..=i+1 at and above it.
+    spec fn counts(c: &[usize], r: usize) -> bool {
+        c.len() == 12 && r <= 12 && forall|i: usize| r <= i && i < 12 ==> 1 <= #[trigger] c[i] && c[i] <= i + 1
+    }
+
+    spec fn below_upto(p: &[usize], n: usize, m: usize) -> bool {
+        p.len() == 12 && m <= 12 && forall|i: usize| i < m ==> #[trigger] p[i] < n
+    }
+
+    // Flips of one permutation: reverse the first k+1 entries until the first entry is 0. The loop
+    // ends within F(n+1) flips (Knuth's bound for topswops, 233 for n = 12); proving that needs more
+    // than a decreasing measure, so the fuel of 1000 bounds it and the output check confirms it is
+    // never reached.
+    #[effects(pure)]
+    #[uses(below)]
+    fn flips(p0: [usize; 12]) -> u64
+        requires below(&p0, 12),
+    {
+        let mut p: [usize; 12] = p0;
+        let mut f: u64 = 0;
+        let fuel: u64 = 1000;
+        for step in 0..fuel
+            invariant f <= step, below(&p, 12),
+        {
+            let k: usize = p[0];
+            if k == 0 {
+                break;
+            }
+            let mut i: usize = 0;
+            let mut j: usize = k;
+            while i < j
+                invariant i <= 12, j < 12, below(&p, 12),
+                decreases j - i,
+            {
+                let t: usize = p[i];
+                p[i] = p[j];
+                p[j] = t;
+                i = i + 1;
+                j = j - 1;
+            }
+            f = f + 1;
+        }
+        f
+    }
+
+    #[effects(io)]
+    #[uses(below, below_upto, counts, bytes::room, bytes::grew_by, bytes::kept, bytes::fits, bytes::appended)]
+    fn main() -> () {
+        let n: usize = 12;
+        let mut perm: [usize; 12] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let mut count: [usize; 12] = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1];
+        for e in 0..n
+            invariant below_upto(&perm, 12, e),
+        {
+            perm[e] = e;
+        }
+        let mut max_flips: u64 = 0;
+        let mut checksum: i64 = 0;
+        let mut odd: bool = false;
+        let mut r: usize = n;
+        // 12! = 479001600 permutations; the last one ends the loop through `r == n`.
+        for k in 0..479001600
+            invariant 1 <= r, r <= 12, below(&perm, 12), counts(&count, r),
+        {
+            while r != 1
+                invariant 1 <= r, r <= 12, below(&perm, 12), counts(&count, r),
+                decreases r,
+            {
+                count[r - 1] = r;
+                r = r - 1;
+            }
+            let f: u64 = flips(perm);
+            if f > max_flips {
+                max_flips = f;
+            }
+            let fi: i64 = i64::try_from(f % 1000).unwrap();
+            checksum = if odd { checksum.wrapping_sub(fi) } else { checksum.wrapping_add(fi) };
+            odd = !odd;
+            let mut done: bool = false;
+            loop
+                invariant 1 <= r, r <= 12, below(&perm, 12), counts(&count, r),
+                decreases 12 - r,
+            {
+                if r == n {
+                    done = true;
+                    break;
+                }
+                let p0: usize = perm[0];
+                for i in 0..r
+                    invariant r < 12, below(&perm, 12),
+                {
+                    perm[i] = perm[i + 1];
+                }
+                perm[r] = p0;
+                count[r] = count[r] - 1;
+                if count[r] > 0 {
+                    break;
+                }
+                r = r + 1;
+            }
+            if done {
+                break;
+            }
+        }
+        let mut out: Vec<u8> = Vec::new();
+        bytes::push_i64(&mut out, checksum);
+        bytes::extend(&mut out, b"\nPfannkuchen(12) = ");
+        bytes::push_u64(&mut out, max_flips);
+        out.push(b'\n');
+        print_bytes(out.as_slice());
+    }
+}

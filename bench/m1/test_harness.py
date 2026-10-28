@@ -272,6 +272,28 @@ class AlsoCheck(unittest.TestCase):
         self.assertEqual((v["signature_ok"], v["success"]), (False, False))
 
 
+class SummarizeRejections(unittest.TestCase):
+    def test_refuted_and_undecided_are_counted_apart(self):
+        rows = [{"summary": True, "agent": "a", "task_set": "m1"}]
+        base = {"kind": "write", "read_calls": 0, "read_bytes": 0, "commits": 1, "e02": 0,
+                "unproved_obligations": 0, "io_defs": 0, "tool_calls": 1, "limit_hit": False,
+                "verified": True, "signature_ok": True}
+        rows.append(dict(base, id="w1", success=False, spec_accepted=False,
+                         spec_rejections=[{"def": "t::f", "reason": "undecided"}]))
+        rows.append(dict(base, id="w2", success=False, spec_accepted=False,
+                         spec_rejections=[{"def": "t::g", "reason": "refuted"}]))
+        rows.append(dict(base, id="w3", success=True, spec_accepted=True))
+        with tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False) as f:
+            f.write("".join(json.dumps(r) + "\n" for r in rows))
+        try:
+            text = harness.summarize([f.name])
+        finally:
+            os.unlink(f.name)
+        self.assertIn("| 명세 강도 거부: 반박(반례) | 1 |", text)
+        self.assertIn("| 명세 강도 거부: 미결정(해법기) | 1 |", text)
+        self.assertIn("| w1 | 실패: spec_accepted (undecided) |", text)
+
+
 class SpecRejection(unittest.TestCase):
     def test_reason_comes_from_the_solver_verdict(self):
         self.assertEqual(harness.spec_rejection(

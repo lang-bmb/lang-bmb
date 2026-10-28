@@ -509,6 +509,9 @@ def summarize(paths):
     if len(sets) > 1:
         sys.exit(f"results from different task sets ({', '.join(sets)}) are not compared (ADR-0025)")
 
+    def rejections(xs, reason):
+        return sum(1 for r in xs if any(j["reason"] == reason for j in r.get("spec_rejections", [])))
+
     def ratio(xs):
         return f"{sum(1 for r in xs if r['success'])}/{len(xs)}" if xs else "—"
 
@@ -538,6 +541,10 @@ def summarize(paths):
             # BSB (ADR-0034 G3): killed / hidden mutants, over the write tasks that have them.
             ("명세 변이체 판별률", bsb.rate_text(sum(r["bsb_killed"] for r in w if "bsb_mutants" in r),
                                          sum(r["bsb_mutants"] for r in w if "bsb_mutants" in r))),
+            # Why the spec-strength check rejected (backlog T0-06): `undecided` means the
+            # judge's solver could not decide, which measures the judge, not the contract.
+            ("명세 강도 거부: 반박(반례)", str(rejections(w, "refuted"))),
+            ("명세 강도 거부: 미결정(해법기)", str(rejections(w, "undecided"))),
         ]
 
     out = ["| 지표 | " + " | ".join(name for name, _, _ in runs) + " |",
@@ -562,7 +569,8 @@ def summarize(paths):
                 cells.append("성공")
             elif r["kind"] == "write":
                 why = [k for k in ("verified", "signature_ok", "spec_accepted", "given_intact") if not r.get(k, True)]
-                cells.append("실패: " + ", ".join(why))
+                reasons = sorted({j["reason"] for j in r.get("spec_rejections", [])})
+                cells.append("실패: " + ", ".join(why) + (f" ({', '.join(reasons)})" if reasons else ""))
             else:
                 cells.append(f"실패: P {r['precision']}, R {r['recall']}")
         out.append(f"| {tid} | " + " | ".join(cells) + " |")

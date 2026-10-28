@@ -94,7 +94,7 @@
 | T0-03 | 정식 자동 측정 경로 | API 키를 시크릿으로 두고 `bench/run_models.py --budget`로 m1·m1b·BVB·BRB를 실행해 결과 커밋(`1E-10`·`2A-06`의 대체 경로) | T0-01 | ⏳ 승인(유료 API, 시크릿 설정은 사람) |
 | T0-04 | 2차 파일럿: 새 과제 집합 | H-NAME 난독화 쌍둥이(`T1-04`)와 H-SPLIT 분업판(`T1-13`)을 `T0-02`와 같은 조건으로 실행해 `bench/pilot/results/`에 커밋 | T1-04, T1-13 | ⏳ |
 | T0-05 | 판정 거부 이유 기록 | 명세 강도 검사가 거부할 때 `refuted`(반례)와 `undecided`(해법기 미결정)를 행에 남김. 판정은 그대로 | T1-14 | ✅ `bench/m1/harness.py` `spec_rejection`·`spec_rejections`, `test_harness.py` `SpecRejection`·`AlsoCheck` |
-| T0-06 | 판정기 미결정의 분리 보고 | 요약(`summarize`, `compare`)에 명세 강도의 "반박"과 "미결정"을 따로 세는 열. 미결정이 같은 뜻 명세일 때 측정이 언어가 아니라 판정기를 재는 문제를 드러낸다 | T0-05 | ⏳ |
+| T0-06 | 판정기 미결정의 분리 보고 | 요약(`summarize`, `compare`)에 명세 강도의 "반박"과 "미결정"을 따로 세는 열. 미결정이 같은 뜻 명세일 때 측정이 언어가 아니라 판정기를 재는 문제를 드러낸다 | T0-05 | ✅ `bench/m1/harness.py` `summarize`: "명세 강도 거부: 반박(반례)"·"미결정(해법기)" 두 행, 과제 표의 실패 칸에 이유. 시험 `SummarizeRejections` |
 
 ### T1 가설
 
@@ -111,13 +111,14 @@
 | T1-09 | ADR-0060 초안: 타입 불변식 | `#[invariant(p)]`, 새 값은 가정·잊는 값은 의무(E0823), 가시성 없이 | — | ✅ `dev-docs/adr/0060-type-invariants.md`(제안) |
 | T1-10 | ADR-0059 채택과 구현 | ADR 결과 표의 다섯 태스크(정체성 해시, 키·캐시, 맵, 트랜잭션, 측정). rename-ripple 참조자 수 0 | T1-08 | ⏳ 승인 |
 | T1-11 | ADR-0060 채택과 구현 | ADR 결과의 여섯 태스크(검사, 인코딩, 증분 키, 코퍼스, 퍼저, BRB 확장) | T1-09 | ⏳ 승인 |
-| T1-12 | H-COMMUTE 동시 편집 재생 | BCB 이력의 같은 기준 커밋 위 편집 쌍·k개 묶음 표본마다 `git merge-file` 충돌, 깨끗한 텍스트 병합의 BMB 증명·Rust 쌍둥이 테스트(거짓 병합), 교환 판정(쓰기 집합 ∩ 상대 읽기 집합, 계약 변경은 정제 판정), 정의 단위 병합의 증명과 재증명 비용. 교환 가능 판정의 거짓 병합 0이 건전성 조건. 결과 `dev-docs/experiments/` | 2A-14d | ⏳ |
+| T1-12 | H-COMMUTE 동시 편집 재생 | BCB 이력의 같은 기준 커밋 위 편집 쌍·k개 묶음 표본마다 `git merge-file` 충돌, 깨끗한 텍스트 병합의 BMB 증명·Rust 쌍둥이 테스트(거짓 병합), 교환 판정(쓰기 집합 ∩ 상대 읽기 집합, 계약 변경은 정제 판정), 정의 단위 병합의 증명과 재증명 비용. 교환 가능 판정의 거짓 병합 0이 건전성 조건. 결과 `dev-docs/experiments/` | 2A-14d | ✅ `dev-docs/experiments/commute/run.py`, `results.md`: 네 설정 116쌍. 독립 판정 77쌍의 병합이 모두 증명(건전성 위반 0), 정의 단위 쓰기 충돌은 텍스트 충돌과 같은 수준, git 거짓 병합 0/95(합성 이력에 의미 충돌이 없음), 충돌 판정 37쌍 중 18쌍은 보수적. 후속 `T1-19` |
 | T1-13 | H-SPLIT 계약 우선 분업 과제 | m1b·BRB 과제를 계약 고정 + 정의 분할 판으로 만들어 동결, 기준 해법의 분할 조각을 따로 증명한 뒤 합친 결과도 증명됨을 CI로 확인. 실행은 T0 | — | ⏳ |
 | T1-14 | 파일럿 실패 원인: 명세 강도 | `w09-spread`·`vb-mbpp-62-smallest`·`vc-vv0039-max-of-list`의 에이전트 계약과 숨긴 계약의 차이를 기록하고, 지금 도구(`bmb mutate` W0904, `bmb lint`, 반례)가 커밋 전에 잡았을지 재현. 귀속 층(도구 노출·도구 결함·과제·모델)과 조치 태스크 | T0-02 | ✅ `bench/pilot/README.md` "실패 분석": 분석할 수 있는 넷 모두 판정기 미결정(`spec_rejections` = `undecided`), 에이전트 계약은 숨긴 계약과 같은 뜻. 원인 둘: 재귀 술어 → 한정 기호 함의의 귀납(ADR-0062 제안), 상수 나눗셈·나머지의 비선형 산술(`1B-47`). 판정기에 거부 이유 기록(`T0-05`) |
 | T1-15 | 파일럿 실패 원인: 탐색 한도 | `m1b/n12-io`가 40회 한도에 닿은 질의 경로를 같은 조건으로 다시 기록(호출 인자까지)하고, 정답에 필요한 최소 질의 수와 비교. 귀속 층과 조치 태스크 | T0-02 | ✅ 원인은 파일럿 실행기: CLI가 큰 도구 결과(`map L1` 59,442바이트)를 파일로 옮기고 앞 2KB만 보여 주어 에이전트가 정답이 든 결과를 보지 못함(탐침으로 확인). `mcp_proxy.py`의 도구 `_meta`(`anthropic/maxResultSizeChars`)와 `MAX_MCP_OUTPUT_TOKENS`로 고침, 2차에서 `n12-io` 성공 |
 | T1-16 | 교환 관계 ADR 초안 | 쓰기 집합·읽기 집합(증분 키)·정제 판정(`2D-19`의 함의 질의)으로 정의한 교환 관계를 언어 명세 항목으로(협업 논의 Q1). 초안은 자율, 채택은 승인 | T1-08, 2D-19 | ⏳ |
 | T1-17 | ADR-0062 초안: 증명 함수와 귀납 | Verus 꼴 `proof fn`(requires·ensures·decreases, 재귀로 귀납, `proof { }`에서 호출, 코드 생성에서 지움). `T1-14`의 귀납 부류와 T4 라이브러리 명세의 수요 | T1-14 | ✅ `dev-docs/adr/0062-proof-functions-and-induction.md`(제안) |
 | T1-18 | ADR-0062 채택과 구현 | ADR 결과의 P1~P6(표면, 인코딩, 지움·맵·증분, 퍼저, 실용: `vc-vv0039`의 같은 뜻 명세 증명·`numlist` 이주, `bmb fix` 보조 정리 제안) | T1-17 | ⏳ 승인 |
+| T1-19 | H-COMMUTE: 의미 충돌 생성기 | 따로 적용하면 각자 증명되지만 합치면 깨지는 편집 쌍(한쪽은 `requires` 강화·`ensures` 약화·잎 제거, 다른 쪽은 옛 계약에 기대는 호출 추가)을 고정 시드로 만들고, git 깨끗한 병합의 거짓 병합률과 교환 판정의 검출률·건전성을 잰다 | T1-12 | ⏳ |
 
 ### T2 언어 (수요 기반)
 
@@ -131,7 +132,7 @@
 
 | ID | 태스크 | 완료 기준 | 의존 | 상태 |
 | --- | --- | --- | --- | --- |
-| T3-01 | Benchmarks Game: 지금 쓸 수 있는 둘 | binary-trees·fannkuch-redux를 BMB로 쓰고 증명, 공식 Rust 제출과 출력 일치·시간·strip 크기 비교 하네스와 결과 | — | 🚫 공식 Rust 제출의 출처(salsa.debian.org, benchmarksgame-team.pages.debian.net)가 이 환경의 네트워크 정책에 막힘. 환경 설정의 허용 도메인 추가 필요(사람). BMB 쪽 프로그램은 출처 없이도 쓸 수 있으나 비교는 출처 뒤 |
+| T3-01 | Benchmarks Game: 지금 쓸 수 있는 둘 | binary-trees·fannkuch-redux를 BMB로 쓰고 증명, 공식 Rust 제출과 출력 일치·시간·strip 크기 비교 하네스와 결과 | — | 🚫 BMB 쪽 완료: `bench/game/binarytrees.bmb`(n = 21)·`fannkuchredux.bmb`(n = 12)가 `lib/`와 함께 전부 증명(`game_programs_are_proved`)되고, 출력은 알려진 결과와 같다(`bench/game/*.out`). 막힌 것: 공식 Rust 제출과 공식 기대 출력의 출처(salsa.debian.org, benchmarksgame-team.pages.debian.net)가 네트워크 정책에 막힘. 환경 설정의 허용 도메인 추가 필요(사람) |
 | T3-02 | HumanEval·MBPP 이식(MultiPL-E 방식) | 현재 언어로 옮길 수 있는 과제를 선별 기록과 함께 동결, 숨은 시험이 판정, 기준 해법·약한 대조군 CI. 실행은 T0 | — | ⏳ |
 | T3-03 | BVB Verus 팔 파일럿 | 같은 BVB 과제를 원본 Verus 툴체인으로 T0-01과 같은 조건에서 실행(H-FAMILIAR 방향 판단, 파일럿). Verus 0.2026.10.04(`bench/bvb/verus/install.sh`)가 이 환경에 설치됨을 확인(2026-10-28). 필요한 것: Verus 하네스(`bench/bvb/verus/harness.py`)의 에이전트 자리에 CLI 파일럿을 끼우는 실행기 | T0-02 | ✅ `bench/pilot/verus_pilot.py`·`verus_mcp.py`, `bench/pilot/results/2026-10-28-bvb-verus-claude-opus-5-5.jsonl`: Verus 44/45($2.07), BMB 2차 42/45($4.44), 출력 토큰 2.06배·도구 호출 3.7배. Verus 0.2026.10.04 설치 확인 |
 | T3-04 | Benchmarks Game: `f64` 둘 | n-body·spectral-norm을 BMB로 쓰고 증명, 공식 Rust 제출과 출력 일치·시간·크기 | T2-03 | ⏳ |

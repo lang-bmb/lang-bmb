@@ -82,6 +82,26 @@ fn proofs_are_not_vacuous() {
     }
 }
 
+/// The Benchmarks Game programs (`bench/game`, backlog T3-01) are proved with
+/// the libraries. Running them takes tens of seconds, so the gate proves them
+/// and `bench/game/README.md` runs them.
+#[test]
+fn game_programs_are_proved() {
+    let repo = root().join("..");
+    let libs: Vec<(String, String)> = bmb_files(&repo.join("lib"))
+        .iter()
+        .map(|p| (name(p), fs::read_to_string(p).unwrap()))
+        .collect();
+    let games = bmb_files(&repo.join("bench").join("game"));
+    assert!(games.len() >= 2);
+    for p in games {
+        let mut files = vec![(name(&p), fs::read_to_string(&p).unwrap())];
+        files.extend(libs.iter().cloned());
+        let out = bmb::verify_sources(&files);
+        assert!(out.ok, "{}: {}", p.display(), out.output);
+    }
+}
+
 /// Every library (`lib/`: bytes, ADR-0044 §4; UTF-8, T4-02) is proved completely.
 #[test]
 fn libraries_are_proved() {

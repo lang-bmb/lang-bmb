@@ -1,0 +1,82 @@
+#[summary("Benchmarks Game binary-trees(T3-01): 바닥부터 만든 완전 이진 트리의 할당·순회·해제. 깊이 인자 n = 21")]
+mod bt {
+    enum Tree { Leaf, Node(Box<Tree>, Box<Tree>) }
+
+    spec fn shallow(d: u64) -> bool { d <= 40 }
+
+    #[effects(pure)]
+    #[uses(shallow)]
+    fn bottom_up(d: u64) -> Box<Tree>
+        requires shallow(d),
+        decreases d,
+    {
+        if d == 0 {
+            Box::new(Tree::Leaf)
+        } else {
+            Box::new(Tree::Node(bottom_up(d - 1), bottom_up(d - 1)))
+        }
+    }
+
+    // The number of nodes (the benchmark's `check`). The count of a tree of depth d is 2^(d+1) - 1;
+    // stating it as a contract needs an induction lemma (ADR-0062), so the sum wraps on purpose,
+    // as the Rust programs' `+` does in a release build.
+    #[effects(pure)]
+    fn check(t: &Tree) -> u64
+        decreases t,
+    {
+        match t {
+            Tree::Leaf => 1,
+            Tree::Node(l, r) => check(&**l).wrapping_add(check(&**r)).wrapping_add(1),
+        }
+    }
+
+    spec fn label(s: &[u8]) -> bool { s.len() <= 64 }
+
+    #[effects(io)]
+    #[uses(label, bytes::room, bytes::grew_by, bytes::kept, bytes::fits, bytes::appended)]
+    fn line(a: &[u8], x: u64, b: &[u8], y: u64, c: &[u8], z: u64, three: bool) -> ()
+        requires label(a), label(b), label(c),
+    {
+        let mut out: Vec<u8> = Vec::new();
+        bytes::extend(&mut out, a);
+        bytes::push_u64(&mut out, x);
+        bytes::extend(&mut out, b);
+        bytes::push_u64(&mut out, y);
+        if three {
+            bytes::extend(&mut out, c);
+            bytes::push_u64(&mut out, z);
+        }
+        out.push(b'\n');
+        print_bytes(out.as_slice());
+    }
+
+    #[effects(io)]
+    #[uses(shallow, label)]
+    fn main() -> () {
+        let n: u64 = 21;
+        let min_depth: u64 = 4;
+        let max_depth: u64 = if min_depth + 2 > n { min_depth + 2 } else { n };
+        let stretch: u64 = max_depth + 1;
+        let s: Box<Tree> = bottom_up(stretch);
+        line(b"stretch tree of depth ", stretch, b"\t check: ", check(&*s), b"", 0, false);
+        let long_lived: Box<Tree> = bottom_up(max_depth);
+        let mut d: u64 = min_depth;
+        while d <= max_depth
+            invariant min_depth <= d, d <= max_depth + 2,
+            decreases max_depth + 2 - d,
+        {
+            let mut iterations: u64 = 1;
+            for k in 0..max_depth - d + min_depth {
+                iterations = iterations.wrapping_mul(2);
+            }
+            let mut total: u64 = 0;
+            for i in 0..iterations {
+                let t: Box<Tree> = bottom_up(d);
+                total = total.wrapping_add(check(&*t));
+            }
+            line(b"", iterations, b"\t trees of depth ", d, b"\t check: ", total, true);
+            d = d + 2;
+        }
+        line(b"long lived tree of depth ", max_depth, b"\t check: ", check(&*long_lived), b"", 0, false);
+    }
+}
