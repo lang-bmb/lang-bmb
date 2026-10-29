@@ -2,19 +2,19 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 7878533,
-    "V5_rlimit_headroom": 0.0153,
+    "V4_rlimit_total": 7879083,
+    "V5_rlimit_headroom": 0.0427,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0,
-    "V8_bench_rlimit_total": 39913235,
-    "V9_bench_defs_at_limit": 1,
+    "V8_bench_rlimit_total": 26900517,
+    "V9_bench_defs_at_limit": 0,
     "S1_external_crates": 0,
     "S2_external_processes": [
       "clang",
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 35727,
+    "S4_stage0_rust_lines": 35827,
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
     "P1_runnable_programs": 58,
@@ -1354,6 +1354,32 @@
         "O2_soundness_fuzzers": [
           12,
           13
+        ]
+      }
+    },
+    {
+      "date": "2026-10-29",
+      "reason": "T2-04·ADR-0064: 배열을 묶는 잎 spec fn을 매크로로. 벤치 증명 비용 V8 −33%, 한도에 닿은 벤치 정의 V9 1 → 0",
+      "changed": {
+        "V4_rlimit_total": [
+          7878533,
+          7879083
+        ],
+        "V5_rlimit_headroom": [
+          0.0153,
+          0.0427
+        ],
+        "V8_bench_rlimit_total": [
+          39913235,
+          26900517
+        ],
+        "V9_bench_defs_at_limit": [
+          1,
+          0
+        ],
+        "S4_stage0_rust_lines": [
+          35727,
+          35827
         ]
       }
     }
