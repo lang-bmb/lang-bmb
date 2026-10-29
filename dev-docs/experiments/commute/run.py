@@ -2,7 +2,15 @@
 """H-COMMUTE: concurrent edits merged by text and by definition (backlog T1-12).
 
   python3 dev-docs/experiments/commute/run.py --work DIR [--bmb PATH] [--profile P]
-          [--span J] [--every S] [--defs N] > results.md
+          [--span J] [--every S] [--defs N] [--variants none,own,reader,world]
+          [--rows R.jsonl] > results.md
+
+Since T1-27 each pair is also judged by judge.py (ADR-0065 and its variants:
+read sets from `bmb reads`, the refinement exemption from `bmb weaken
+--readers`), and the definition-level merge is proved whenever the two sides
+wrote different definitions by their own text (the transitive `bmb hash`
+sets below skip pairs whose edits touch different definitions). The second
+report section compares the verdicts on that ground truth.
 
 Two agents start from the same tree: the BCB history (bench/bcb/history.py) at
 commit c. Agent A makes the next J commits (c+1..c+J), agent B the J after
@@ -39,6 +47,9 @@ import tempfile
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 sys.path.insert(0, os.path.join(ROOT, "bench", "bcb"))
 import history  # noqa: E402
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import judge  # noqa: E402
 
 
 def jsonl(text):
@@ -122,6 +133,9 @@ def main():
     ap.add_argument("--commits", type=int, default=1000)
     ap.add_argument("--span", type=int, default=1, help="commits each agent makes apart")
     ap.add_argument("--every", type=int, default=10, help="sample a base commit every S commits")
+    ap.add_argument("--rows", help="also write the per-pair rows (JSONL) here")
+    ap.add_argument("--variants", default=",".join(judge.VARIANTS),
+                    help="judge.py variants (`own` runs `bmb weaken` on the whole program per side)")
     args = ap.parse_args()
     os.makedirs(args.work, exist_ok=True)
     hist = os.path.join(args.work, f"{args.profile}-{args.defs}.jsonl")
@@ -131,6 +145,7 @@ def main():
                           "--profile", args.profile])
     header, commits = history.load(hist)
     bmb = Bmb(args.bmb, os.path.join(args.work, "cache"))
+    jb = judge.Bmb(args.bmb, os.path.join(args.work, "cache"))
     bases = {}
     for k, tree, _ in history.replay(header, commits):
         if k % args.every == 0 and k + 2 * args.span <= len(commits):
@@ -178,12 +193,35 @@ def main():
                 def_proves = bmb.proves(write(m, os.path.join(tmp, "m")))
             except (KeyError, ValueError, IndexError):
                 def_proves = False
+        # ADR-0065 (T1-27): judge.py from the three versions alone, and the
+        # ground truth on the definitions' own write sets: the merge exists
+        # unless both sides wrote one definition (the transitive sets above
+        # also skip pairs whose edits touch different definitions).
+        jb.take()
+        verdict = judge.judge(jb, *(os.path.join(tmp, n, "bmb", "src") for n in "oab"),
+                              variants=tuple(args.variants.split(",")))
+        cost = jb.take()
+        merge_proves = def_proves
+        if verdict["ww"]:
+            merge_proves = None
+        elif def_conflict:
+            try:
+                m = apply_all(a, eb)
+                merge_proves = bmb.proves(write(m, os.path.join(tmp, "m")))
+            except (KeyError, ValueError, IndexError):
+                merge_proves = False
         rows.append({**row, "wa": len(wa), "wb": len(wb), "independent": independent,
                      "text_conflict_bmb": conf_bmb, "text_conflict_rust": conf_rust, "text_proves": text_proves,
-                     "def_conflict": def_conflict, "def_proves": def_proves})
+                     "def_conflict": def_conflict, "def_proves": def_proves,
+                     "merge_proves": merge_proves, "judge": verdict, "cost": cost})
         print(json.dumps(rows[-1]), file=sys.stderr, flush=True)
     shutil.rmtree(tmp, ignore_errors=True)
+    if args.rows:
+        with open(args.rows, "w") as f:
+            for r in rows:
+                f.write(json.dumps(r, sort_keys=True) + "\n")
     report(args, rows)
+    report_adr(args, rows)
 
 
 def report(args, rows):
@@ -224,6 +262,48 @@ def report(args, rows):
             print(f"| {r['k']} | {len(r['a'])} | {len(r['b'])} | {r['wa']}·{r['wb']} | {r['independent']} | "
                   f"{r['text_conflict_bmb']}·{r['text_conflict_rust']} | {r['text_proves']} | {r['def_conflict']} | "
                   f"{r['def_proves']} |")
+
+
+def report_adr(args, rows):
+    """The ADR-0065 judgement and its variants (judge.py) on the same pairs."""
+    used = [r for r in rows if "skip" not in r]
+    verdicts = ("old",) + tuple(v for v in judge.VARIANTS if v in args.variants.split(","))
+
+    def commute(r, v):
+        return r["independent"] if v == "old" else r["judge"][v]["commute"]
+    truth = [r for r in used if r["merge_proves"] is not None]
+    print(f"\n### ADR-0065 판정(T1-27): 프로필 `{args.profile}`, 각자 커밋 {args.span}개\n")
+    print(f"정답은 정의 단위 병합의 증명이다. 두 편집이 같은 정의를 썼으면(자기 텍스트 기준) 병합이 없으므로 충돌이 "
+          f"정답이다. 쓴 쌍 {len(used)}개 중 같은 정의를 쓴 쌍 {len(used) - len(truth)}개, 병합이 증명된 쌍 "
+          f"{sum(1 for r in truth if r['merge_proves'])}개, 실패 {sum(1 for r in truth if not r['merge_proves'])}개. "
+          f"첫 재생은 전이적 쓰기 집합(`bmb hash`)이 겹친 쌍을 병합하지 않았다. 그중 자기 텍스트로는 겹치지 않는 "
+          f"{sum(1 for r in used if r['def_conflict'] and not r['judge']['ww'])}쌍을 이번에 병합했다.\n")
+    print("| 판정 | 교환 | 충돌 | 건전성 위반(교환인데 병합 실패) | 거짓 충돌(충돌인데 병합 증명) |")
+    print("| --- | ---: | ---: | ---: | ---: |")
+    for v in verdicts:
+        c = [r for r in used if commute(r, v)]
+        print(f"| `{v}` | {len(c)} | {len(used) - len(c)} | "
+              f"{sum(1 for r in c if r['merge_proves'] is not True)} | "
+              f"{sum(1 for r in used if not commute(r, v) and r['merge_proves'] is True)} |")
+    asks = sum(r["judge"]["queries"]["a"][0] + r["judge"]["queries"]["b"][0] for r in used)
+    obls = sum(r["judge"]["queries"]["a"][1] + r["judge"]["queries"]["b"][1] for r in used)
+    cost = {}
+    for r in used:
+        for k, (n, s) in r["cost"].items():
+            c = cost.setdefault(k, [0, 0.0])
+            c[0] += n
+            c[1] += s
+    print(f"\n면제 질의(읽는 쪽 판): 행 {asks}개, 해법기 의무 {obls}개. "
+          f"`id` 쓰기 집합(ADR-0065 §1 초안)이면 생기는 쓰기 충돌(자기 텍스트로는 없음): "
+          f"{sum(1 for r in used if r['judge']['ww_id'] and not r['judge']['ww'])}쌍. CPU(호출 수 · 초): "
+          + ", ".join(f"`{k}` {n} · {s:.1f}" for k, (n, s) in sorted(cost.items())) + ".\n")
+    print("| k | 쓰기 겹침(자기·id) | 병합 증명 | " + " | ".join(verdicts) + " | 면제 질의 |")
+    print("| ---: | --- | --- | " + " | ".join("---" for _ in verdicts) + " | ---: |")
+    for r in used:
+        j = r["judge"]
+        print(f"| {r['k']} | {len(j['ww'])}·{j['ww_id']} | {r['merge_proves']} | "
+              + " | ".join("교환" if commute(r, v) else "충돌" for v in verdicts)
+              + f" | {j['queries']['a'][0] + j['queries']['b'][0]} |")
 
 
 if __name__ == "__main__":
