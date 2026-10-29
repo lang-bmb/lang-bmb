@@ -150,6 +150,17 @@ fn every_definition_gets_its_verdict() {
             "undecided",
             &[("m::total", "undecided", "same", "undecided", "same")],
         ),
+        (
+            "readers",
+            &[
+                ("m::dec", "same", "same", "same", "same"),
+                ("m::half", "refined", "weaker", "same", "same"),
+                ("m::third", "refined", "weaker", "same", "same"),
+                // One `id`, two symbols (`pos`, `gt0`) that it does not
+                // reveal: not the same contract.
+                ("m::quarter", "weakened", "incomparable", "same", "same"),
+            ],
+        ),
     ];
     for (c, want) in cases {
         let (_, out) = case(c);
@@ -319,6 +330,93 @@ fn body_mutants_of_real_programs_are_the_same() {
         );
     }
     let _ = fs::remove_dir_all(&dir);
+}
+
+/// `bmb verify` on files of the corpus: each definition's status.
+fn statuses(files: &[&str]) -> BTreeMap<String, String> {
+    let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
+        .current_dir(corpus())
+        .arg("verify")
+        .args(files)
+        .output()
+        .unwrap();
+    String::from_utf8(out.stdout)
+        .unwrap()
+        .lines()
+        .filter(|l| l.contains("\"status\":"))
+        .map(|l| (field(l, "def").unwrap(), field(l, "status").unwrap()))
+        .collect()
+}
+
+/// The reader's comparison (ADR-0065 §3, backlog T1-27): a contract change
+/// is a refinement for a reader only through the spec fns that reader
+/// reveals. Each reader of `readers/readers.jsonl` is a caller in
+/// `readers/callers.bmb` (or none, `m::gone`); every caller proves against
+/// the old version, and against the new one exactly when its reader's row
+/// is not `weakened`. The definitions' own `#[uses]` (the plain comparison)
+/// call `m::dec` the same, which `c::dec_opaque` and `c::dec_pos` refute.
+#[test]
+fn a_refinement_is_judged_with_the_readers_reveal_set() {
+    let run = || {
+        let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
+            .current_dir(corpus())
+            .args([
+                "weaken",
+                "--readers",
+                "readers/readers.jsonl",
+                "readers/old.bmb",
+                "readers/new.bmb",
+            ])
+            .output()
+            .unwrap();
+        (out.status.code(), String::from_utf8(out.stdout).unwrap())
+    };
+    let (code, out) = run();
+    assert_eq!(run(), (code, out.clone()), "deterministic");
+    assert_eq!(code, Some(1), "{out}");
+    let lines: Vec<&str> = out.lines().filter(|l| l.contains("\"verdict\":")).collect();
+    // (reader caller, verdict, revealed)
+    let want: &[(Option<&str>, &str, &str)] = &[
+        (Some("c::dec_opaque"), "weakened", "[]"),
+        (Some("c::dec_pos"), "weakened", "[\"m::pos\"]"),
+        (Some("c::dec_both"), "compatible", "[\"m::gt0\",\"m::pos\"]"),
+        (Some("c::half_big"), "weakened", "[\"m::big\"]"),
+        (
+            Some("c::half_both"),
+            "compatible",
+            "[\"m::big\",\"m::mid\"]",
+        ),
+        (Some("c::third_opaque"), "compatible", "[]"),
+        (None, "undecided", "[]"),
+        (None, "weakened", "[]"),
+        (
+            Some("c::quarter_both"),
+            "compatible",
+            "[\"m::gt0\",\"m::pos\"]",
+        ),
+    ];
+    assert_eq!(lines.len(), want.len(), "{out}");
+    let old = statuses(&["readers/old.bmb", "readers/callers.bmb"]);
+    let new = statuses(&["readers/new.bmb", "readers/callers.bmb"]);
+    assert!(old.values().all(|s| s == "verified"), "{old:?}");
+    for (row, (caller, verdict, revealed)) in lines.iter().zip(want) {
+        assert_eq!(field(row, "verdict").as_deref(), Some(*verdict), "{row}");
+        assert!(
+            row.ends_with(&format!(",\"revealed\":{revealed}}}")),
+            "{row}"
+        );
+        if let Some(c) = caller {
+            let proves = *verdict != "weakened";
+            assert_eq!(new[*c] == "verified", proves, "{c}: {row}");
+        }
+    }
+    // The plain comparison reveals each version's own `#[uses]`.
+    let (_, plain) = case("readers");
+    assert_eq!(
+        field(&rows(&plain)["m::dec"], "verdict").as_deref(),
+        Some("same")
+    );
+    assert!(out.ends_with("\"queries\":8}\n"), "{out}");
 }
 
 #[test]

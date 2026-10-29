@@ -140,6 +140,58 @@ pub struct Stats {
     pub audit_mismatches: Vec<String>,
 }
 
+/// One row of a definition's proof key that is not the same for every
+/// definition (backlog T1-27, ADR-0065 §2): what it is (`self` the
+/// definition's qualified text, `component` its recursive component,
+/// `callee` an executable callee's contract, `spec` a revealed `spec fn`'s
+/// text, `names` a `spec fn` named only, `decl` a `spec fn`'s SMT
+/// declaration, `type` a data type's declaration, `invariant` a type
+/// invariant's predicate text), the definition or type it is about, and a
+/// digest of the row (empty for `names`, which only says the name is there).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct KeyRead {
+    pub kind: &'static str,
+    pub path: String,
+    pub digest: String,
+}
+
+/// A definition's proof key as rows: the read set of its proof. Two versions
+/// of a program give a definition the same proof key exactly when its rows
+/// are the same (the other rows of the key, compiler, solver and query
+/// header, are the same for every definition).
+#[derive(Clone, Debug)]
+pub struct DefReads {
+    pub kind: FnKind,
+    pub key: String,
+    /// What its `#[uses]` reveals (full paths, a trait method's with every
+    /// impl's).
+    pub uses: Vec<String>,
+    pub reads: Vec<KeyRead>,
+    /// What another definition's key takes of this one: as a callee, its
+    /// contract (`callee` row digest; a spec fn's `spec` row is its `self`
+    /// row), and a spec fn's declaration (`decl` row digest).
+    pub contract: String,
+    pub decl: Option<String>,
+}
+
+/// The read set of every definition's proof, from the incremental proof
+/// keys (`bmb reads`, backlog T1-27), and each data type's digest (the row
+/// a reader's key takes of it).
+pub fn proof_reads(
+    p: &Program,
+    t: &Tables,
+    sm: &SourceMap,
+) -> (BTreeMap<String, DefReads>, BTreeMap<String, String>) {
+    let mut rows = BTreeMap::new();
+    Session::keys(&compiler_id(), p, t, sm, None, Some(&mut rows));
+    let types = t
+        .adts
+        .iter()
+        .map(|(path, a)| (path.clone(), crate::sha256::hex(adt_line(a).as_bytes())))
+        .collect();
+    (rows, types)
+}
+
 fn escape(s: &str) -> String {
     s.replace('\\', "\\\\").replace('\n', "\\n")
 }
@@ -723,7 +775,7 @@ impl Session {
     /// stored entries and counters. A definition whose key is unchanged is
     /// then reused as in a new session over the same cache.
     pub fn rekey(&mut self, p: &Program, t: &Tables, sm: &SourceMap) {
-        let (proof_keys, ir_keys) = Session::keys(&self.id, p, t, sm, None);
+        let (proof_keys, ir_keys) = Session::keys(&self.id, p, t, sm, None, None);
         self.proof_keys = proof_keys;
         self.ir_keys = ir_keys;
     }
@@ -737,7 +789,7 @@ impl Session {
         sm: &SourceMap,
         only: Option<&BTreeSet<String>>,
     ) -> Session {
-        let (proof_keys, ir_keys) = Session::keys(&id, p, t, sm, only);
+        let (proof_keys, ir_keys) = Session::keys(&id, p, t, sm, only, None);
         let stats = Stats {
             damaged: store.damaged,
             ..Stats::default()
@@ -763,12 +815,14 @@ impl Session {
     /// the module comment). What a key reads of other definitions (their
     /// hashes, the names their texts mention) is computed on first use, so
     /// the keys of a few definitions cost what those definitions reach.
+    /// With `rows`, also each definition's proof key as rows (`proof_reads`).
     fn keys(
         id: &str,
         p: &Program,
         t: &Tables,
         sm: &SourceMap,
         only: Option<&BTreeSet<String>>,
+        mut rows: Option<&mut BTreeMap<String, DefReads>>,
     ) -> (BTreeMap<String, String>, BTreeMap<String, String>) {
         let mut defs = crate::check::defs_of(p, &t.fns);
         defs.sort_by(|a, b| a.0.cmp(&b.0));
@@ -908,6 +962,21 @@ impl Session {
             let mut ik = String::from("ir\n");
             ik.push_str(&own);
             section(&mut ik, "source", slice);
+            // The rows of the proof key that differ between definitions
+            // (`proof_reads`): (kind, what it is about, digest).
+            let mut read: Vec<KeyRead> = Vec::new();
+            let mut row = |kind: &'static str, path: &str, digest: String| {
+                if rows.is_some() {
+                    read.push(KeyRead {
+                        kind,
+                        path: path.to_string(),
+                        digest,
+                    });
+                }
+            };
+            let digest = |text: &str| crate::sha256::hex(text.as_bytes());
+            row("self", path, digest(&qual));
+            row("component", path, digest(&comp.join(" ")));
             for r in &refs {
                 let r = r.as_str();
                 let (body, caller) = &hash_of(r);
@@ -916,12 +985,17 @@ impl Session {
                         let line = format!("{r} {caller}");
                         section(&mut pk, "callee", &line);
                         section(&mut ik, "callee", &line);
+                        row("callee", r, caller.clone());
                     }
                     FnKind::Spec if uses.contains(r) || comp.contains(&r) => {
-                        section(&mut pk, "spec", &format!("{r} {body}"))
+                        section(&mut pk, "spec", &format!("{r} {body}"));
+                        row("spec", r, body.clone());
                     }
                     // Named only: the query reads its declaration (below).
-                    FnKind::Spec => section(&mut pk, "names", r),
+                    FnKind::Spec => {
+                        section(&mut pk, "names", r);
+                        row("names", r, String::new());
+                    }
                 }
             }
             // Declarations the queries can contain (backlog 2D-14): a query
@@ -943,6 +1017,7 @@ impl Session {
             for r in &reach {
                 if let Some(decl) = decls.get(r) {
                     section(&mut pk, "decl", decl);
+                    row("decl", r, digest(decl));
                 }
             }
             // Data types the queries read (fields, payloads: ADR-0027):
@@ -985,6 +1060,7 @@ impl Session {
                 let line = adt_line(&t.adts[ty]);
                 section(&mut pk, "type", &line);
                 section(&mut ik, "type", &line);
+                row("type", ty, digest(&line));
                 // A type invariant is assumed and proved wherever a value
                 // of the type crosses a boundary (ADR-0060 §3): its
                 // predicate's text and declaration.
@@ -993,12 +1069,28 @@ impl Session {
                 {
                     let (body, _) = hash_of(inv);
                     section(&mut pk, "invariant", &format!("{ty} {inv} {body}"));
+                    row("invariant", inv, body.clone());
                     if let Some(decl) = decls.get(inv) {
                         section(&mut pk, "decl", decl);
+                        row("decl", inv, digest(decl));
                     }
                 }
             }
-            proof_keys.insert(path.clone(), crate::sha256::hex(pk.as_bytes()));
+            let key = crate::sha256::hex(pk.as_bytes());
+            if let Some(rows) = rows.as_deref_mut() {
+                rows.insert(
+                    path.clone(),
+                    DefReads {
+                        kind: f.kind,
+                        key: key.clone(),
+                        uses: uses.iter().cloned().collect(),
+                        reads: read,
+                        contract: hash_of(path).1,
+                        decl: decls.get(path).map(|d| digest(d)),
+                    },
+                );
+            }
+            proof_keys.insert(path.clone(), key);
             ir_keys.insert(path.clone(), crate::sha256::hex(ik.as_bytes()));
         }
         (proof_keys, ir_keys)

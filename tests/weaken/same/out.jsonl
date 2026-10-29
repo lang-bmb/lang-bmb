@@ -3,4 +3,4 @@
 {"def":"m::inc_body","old":"m::inc_body","match":"path","verdict":"same","requires":"same","ensures":"same","effects":"same","lost":[],"gained":[],"undecided":[],"why":null}
 {"def":"m::inc_order","old":"m::inc_order","match":"path","verdict":"same","requires":"same","ensures":"same","effects":"same","lost":[],"gained":[],"undecided":[],"why":null}
 {"def":"m::twice","old":"m::twice","match":"path","verdict":"same","requires":"same","ensures":"same","effects":"same","lost":[],"gained":[],"undecided":[],"why":null}
-{"summary":true,"defs":5,"same":5,"refined":0,"compatible":0,"weakened":0,"undecided":0,"signature":0,"added":0,"removed":0,"queries":17}
+{"summary":true,"defs":5,"same":5,"refined":0,"compatible":0,"weakened":0,"undecided":0,"signature":0,"added":0,"removed":0,"queries":21}

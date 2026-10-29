@@ -1,0 +1,57 @@
+#[summary("readers of m::dec, m::half and m::third, proved against old.bmb and new.bmb")]
+mod c {
+    // Sees the predicates by name only.
+    #[effects(pure)]
+    fn dec_opaque(x: i64) -> i64
+        requires m::pos(x),
+    {
+        m::dec(x)
+    }
+
+    #[effects(pure)]
+    #[uses(m::pos)]
+    fn dec_pos(x: i64) -> i64
+        requires m::pos(x),
+    {
+        m::dec(x)
+    }
+
+    #[effects(pure)]
+    #[uses(m::pos, m::gt0)]
+    fn dec_both(x: i64) -> i64
+        requires m::pos(x),
+    {
+        m::dec(x)
+    }
+
+    #[effects(pure)]
+    #[uses(m::big)]
+    fn half_big(x: i64) -> i64
+        requires m::big(x),
+    {
+        m::half(x)
+    }
+
+    #[effects(pure)]
+    #[uses(m::big, m::mid)]
+    fn half_both(x: i64) -> i64
+        requires m::big(x),
+    {
+        m::half(x)
+    }
+
+    #[effects(pure)]
+    fn third_opaque(x: i64) -> i64
+        requires m::pos(x), m::big(x),
+    {
+        m::third(x)
+    }
+
+    #[effects(pure)]
+    #[uses(m::pos, m::gt0)]
+    fn quarter_both(x: i64) -> i64
+        requires m::pos(x),
+    {
+        m::quarter(x)
+    }
+}

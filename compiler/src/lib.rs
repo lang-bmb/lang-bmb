@@ -655,6 +655,56 @@ pub fn hash_sources(files: &[(String, String)]) -> Result<String, String> {
     Ok(out)
 }
 
+/// `bmb reads` (backlog T1-27, ADR-0065 §2): each definition's proof key as
+/// rows, the read set of its proof (`incremental::proof_reads`), then each
+/// data type's digest. JSONL, by path:
+/// `{"def","kind","key","contract","decl","uses":[..],"reads":[{"kind","path","digest"},..]}`
+/// and `{"type","digest"}`.
+pub fn reads_sources(files: &[(String, String)]) -> Result<String, String> {
+    let fe = frontend(files);
+    if fe.diags.has_errors() {
+        return Err(fe.diags.to_jsonl(&fe.sm));
+    }
+    let (defs, types) = incremental::proof_reads(&fe.program, &fe.tables, &fe.sm);
+    let mut out = String::new();
+    for (path, d) in &defs {
+        let uses: Vec<String> = d.uses.iter().map(|u| diag::json_str(u)).collect();
+        let reads: Vec<String> = d
+            .reads
+            .iter()
+            .map(|r| {
+                format!(
+                    "{{\"kind\":\"{}\",\"path\":{},\"digest\":\"{}\"}}",
+                    r.kind,
+                    diag::json_str(&r.path),
+                    r.digest
+                )
+            })
+            .collect();
+        let kind = match d.kind {
+            ast::FnKind::Exec => "fn",
+            ast::FnKind::Spec => "spec fn",
+            ast::FnKind::Proof => "proof fn",
+        };
+        out.push_str(&format!(
+            "{{\"def\":{},\"kind\":\"{kind}\",\"key\":\"{}\",\"contract\":\"{}\",\"decl\":{},\"uses\":[{}],\"reads\":[{}]}}\n",
+            diag::json_str(path),
+            d.key,
+            d.contract,
+            d.decl.as_ref().map_or("null".to_string(), |x| format!("\"{x}\"")),
+            uses.join(","),
+            reads.join(",")
+        ));
+    }
+    for (path, digest) in &types {
+        out.push_str(&format!(
+            "{{\"type\":{},\"digest\":\"{digest}\"}}\n",
+            diag::json_str(path)
+        ));
+    }
+    Ok(out)
+}
+
 /// Builds the maps and answers a request against them (ADR-0020).
 /// `request` is `["map", level]` or `["query", name, args..]`.
 pub fn map_request(files: &[(String, String)], request: &[String]) -> Result<String, String> {

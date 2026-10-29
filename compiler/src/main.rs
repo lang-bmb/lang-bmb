@@ -73,6 +73,13 @@ const USAGE: &str = "usage:
                             signature, added or removed, by SMT implication with counterexamples;
                             W0908 for each weakened contract, then a summary; fails if a
                             contract got weaker or a comparison was not decided
+  bmb weaken --readers FILE OLD NEW
+                            the same comparison for each reader in FILE (JSONL lines
+                            {\"def\",\"uses\"}), revealing only the spec fns that reader reveals,
+                            forward direction only; one row per reader, in order
+  bmb reads <file.bmb>...   each definition's proof key as rows (the read set of its proof:
+                            own text, callee contracts, revealed spec fns, declarations, types)
+                            and each type's digest, as JSONL
   bmb hash <file.bmb>...    nameless identities and hashes (id, body, iface) as JSONL
   bmb map [--cache DIR] [L0|L1|L2|all] <file.bmb>...
                             standard maps as JSONL (ADR-0020)
@@ -536,6 +543,46 @@ fn run() -> ExitCode {
                     ExitCode::from(1)
                 }
             }
+        }
+        Some("weaken") if args.len() == 5 && args[1] == "--readers" => {
+            let readers = match std::fs::read_to_string(&args[2]) {
+                Ok(text) => match bmb::weaken::parse_readers(&text) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        eprintln!("bmb: {e}");
+                        return ExitCode::from(2);
+                    }
+                },
+                Err(e) => {
+                    eprintln!("bmb: cannot read {}: {e}", args[2]);
+                    return ExitCode::from(2);
+                }
+            };
+            let (old, new) = match (read_files(&args[3..4]), read_files(&args[4..5])) {
+                (Ok(o), Ok(n)) => (o, n),
+                (Err(code), _) | (_, Err(code)) => return code,
+            };
+            match bmb::weaken::weaken_for_readers(&old, &new, &readers) {
+                Ok(out) => {
+                    print!("{}", out.report());
+                    if out.ok() {
+                        ExitCode::SUCCESS
+                    } else {
+                        ExitCode::from(1)
+                    }
+                }
+                Err(diags) => {
+                    print!("{diags}");
+                    ExitCode::from(1)
+                }
+            }
+        }
+        Some("reads") if args.len() > 1 => {
+            let files = match read_files(&args[1..]) {
+                Ok(f) => f,
+                Err(code) => return code,
+            };
+            respond(bmb::reads_sources(&files))
         }
         Some("hash") if args.len() > 1 => {
             let files = match read_files(&args[1..]) {

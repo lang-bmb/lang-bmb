@@ -1,0 +1,48 @@
+#[summary("contracts whose refinement depends on what the reader reveals")]
+mod m {
+    spec fn pos(x: i64) -> bool { x > 0 }
+
+    spec fn gt0(x: i64) -> bool { x > 0 }
+
+    spec fn big(x: i64) -> bool { x > 10 }
+
+    spec fn mid(x: i64) -> bool { x > 5 }
+
+    // `pos(x)` becomes `gt0(x)`: the same for a proof that reveals both,
+    // which `dec` itself does. A caller that reveals `pos` alone, or
+    // nothing, proved `pos(x)` and cannot prove `gt0(x)` from it.
+    #[effects(pure)]
+    #[uses(pos, gt0)]
+    fn dec(x: i64) -> i64
+        requires pos(x),
+    {
+        x - 1
+    }
+
+    // `big(x)` becomes `mid(x)`: weaker for a proof that reveals both.
+    #[effects(pure)]
+    #[uses(big, mid)]
+    fn half(x: i64) -> i64
+        requires big(x),
+    {
+        x / 2
+    }
+
+    // A clause goes: weaker for every reader.
+    #[effects(pure)]
+    #[uses(pos)]
+    fn third(x: i64) -> i64
+        requires pos(x), big(x),
+    {
+        x / 3 + 1
+    }
+
+    // `pos(x)` becomes `gt0(x)`, revealed by nobody: one `id` (the two
+    // predicates have one body) but two symbols for every proof.
+    #[effects(pure)]
+    fn quarter(x: i64) -> i64
+        requires pos(x),
+    {
+        x / 4
+    }
+}

@@ -140,6 +140,9 @@ pub struct Row {
     /// Clauses the solver did not decide.
     pub undecided: Vec<Clause>,
     pub why: Option<String>,
+    /// A reader's comparison (`weaken_for_readers`): the reader's `uses`
+    /// and the revealed spec fns the two contracts reach.
+    pub reader: Option<(Vec<String>, Vec<String>)>,
 }
 
 impl Row {
@@ -156,6 +159,7 @@ impl Row {
             gained: Vec::new(),
             undecided: Vec::new(),
             why: None,
+            reader: None,
         }
     }
 
@@ -187,8 +191,15 @@ impl Row {
                 .collect();
             format!("[{}]", xs.join(","))
         };
+        let strs = |xs: &[String]| {
+            let xs: Vec<String> = xs.iter().map(|x| json_str(x)).collect();
+            format!("[{}]", xs.join(","))
+        };
+        let reader = self.reader.as_ref().map_or(String::new(), |(u, r)| {
+            format!(",\"uses\":{},\"revealed\":{}", strs(u), strs(r))
+        });
         format!(
-            "{{\"def\":{},\"old\":{},\"match\":{},\"verdict\":{},\"requires\":{},\"ensures\":{},\"effects\":{},\"lost\":{},\"gained\":{},\"undecided\":{},\"why\":{}}}",
+            "{{\"def\":{},\"old\":{},\"match\":{},\"verdict\":{},\"requires\":{},\"ensures\":{},\"effects\":{},\"lost\":{},\"gained\":{},\"undecided\":{},\"why\":{}{reader}}}",
             opt(&self.def),
             opt(&self.old),
             self.matched.map_or("null".into(), json_str),
@@ -255,6 +266,9 @@ struct Def<'p> {
     f: &'p FnDef,
     sig: &'p FnSig,
     id: String,
+    /// The contract as a caller's proof sees it, by full paths: the
+    /// qualified surface without its name and `#[uses]`.
+    contract: String,
 }
 
 /// The executable functions and `proof fn`s of a checked program (free and
@@ -266,14 +280,18 @@ fn defs<'p>(p: &'p Program, t: &'p crate::verify::Tables, ids: &Ids) -> BTreeMap
         .filter(|(path, _, f)| {
             f.kind != FnKind::Spec && !path.starts_with('<') && t.fns[path].trait_of.is_none()
         })
-        .filter_map(|(path, _, f)| {
+        .filter_map(|(path, unit, f)| {
             let id = ids.def(&path)?.id;
+            let mut g = f.clone();
+            g.name.name = String::new();
+            let contract = crate::fmt::caller_text(&g, &unit, &t.fns);
             Some((
                 path.clone(),
                 Def {
                     f,
                     sig: &t.fns[&path],
                     id,
+                    contract,
                 },
             ))
         })
@@ -525,6 +543,8 @@ struct Aligned {
     /// The changed `impl` functions of shared types, by old path: where
     /// they are (functions of the old unit).
     moved: BTreeMap<String, String>,
+    /// Every old function's path there (a reader's reveal set, ADR-0065 §3).
+    paths: BTreeMap<String, String>,
 }
 
 /// Which old items the aligned program shares with the new version: old
@@ -782,11 +802,19 @@ fn align(
     }
     let at = compared.iter().map(|p| (p.clone(), to(p))).collect();
     let moved = conv.iter().map(|(p, c)| (p.clone(), private(c))).collect();
+    let paths = old
+        .tables
+        .fns
+        .iter()
+        .filter(|(_, s)| !s.builtin)
+        .map(|(p, _)| (p.clone(), to(p)))
+        .collect();
     Aligned {
         files,
         at,
         units,
         moved,
+        paths,
     }
 }
 
@@ -976,11 +1004,115 @@ fn undecided(r: &Row) -> Verdict {
     }
 }
 
+/// A proof that reads a definition's contract (ADR-0065 §3, backlog
+/// T1-27): the definition (its path in the new version, or the old path of
+/// a removed one) and the spec fns the reading proof's `#[uses]` reveals
+/// (full paths).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Reader {
+    pub def: String,
+    pub uses: Vec<String>,
+}
+
+/// The readers of `bmb weaken --readers FILE`: one JSON object per line,
+/// `{"def":"u::f","uses":["u::p",..]}`.
+pub fn parse_readers(text: &str) -> Result<Vec<Reader>, String> {
+    let mut out = Vec::new();
+    for (k, line) in text.lines().enumerate() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let bad = |what: &str| format!("readers line {}: {what}", k + 1);
+        let v = crate::json::parse(line).map_err(|e| bad(&e))?;
+        let def = v
+            .get("def")
+            .and_then(|d| d.as_str())
+            .ok_or_else(|| bad("no string `def`"))?;
+        let uses = match v.get("uses") {
+            Some(crate::json::Value::Array(xs)) => xs
+                .iter()
+                .map(|x| x.as_str().map(String::from))
+                .collect::<Option<Vec<_>>>()
+                .ok_or_else(|| bad("`uses` holds a non-string"))?,
+            None => Vec::new(),
+            Some(_) => return Err(bad("`uses` is not an array")),
+        };
+        out.push(Reader {
+            def: def.to_string(),
+            uses,
+        });
+    }
+    Ok(out)
+}
+
 /// Compares the contracts of two versions of a program (see the module
 /// comment). `Err` carries the diagnostics when a version does not check.
 pub fn weaken_sources(
     old: &[(String, String)],
     new: &[(String, String)],
+) -> Result<WeakenOutput, String> {
+    compare(old, new, None)
+}
+
+/// The reader's comparison (`bmb weaken --readers`, ADR-0065 §3): one row
+/// per reader, in order, comparing the reader's definition with the spec
+/// fns that reader reveals and no others. A spec fn the reader does not
+/// reveal is seen by name only, as the reader's proof sees it, so a
+/// refinement that holds only through the definition's own `#[uses]` is not
+/// one for that reader. Only the forward direction is asked (what a reader
+/// needs), so a proved comparison is `compatible` (or `same` by identity).
+/// Each row carries the reader's `uses` and `revealed`: the revealed spec
+/// fns the two contracts reach (through revealed bodies), whose bodies the
+/// answer depends on. No W0908 lines.
+pub fn weaken_for_readers(
+    old: &[(String, String)],
+    new: &[(String, String)],
+    readers: &[Reader],
+) -> Result<WeakenOutput, String> {
+    compare(old, new, Some(readers))
+}
+
+/// A comparison that needs the solver: the row, the two paths, and the
+/// reader's reveal set (`None`: both versions' `#[uses]` and the changed
+/// spec fns, `reveal`).
+struct Ask {
+    k: usize,
+    o: String,
+    n: String,
+    uses: Option<Vec<String>>,
+}
+
+/// The revealed spec fns of `list` that the two surfaces reach through
+/// revealed bodies.
+fn reached(
+    ids: &Ids,
+    t: &crate::verify::Tables,
+    sides: [&str; 2],
+    list: &BTreeSet<String>,
+) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    let mut seen = BTreeSet::new();
+    let mut work: Vec<Key> = sides
+        .iter()
+        .flat_map(|s| ids.surface_refs(&Key::Def(s.to_string())))
+        .collect();
+    while let Some(k) = work.pop() {
+        let Key::Def(s) = &k else { continue };
+        if !seen.insert(s.clone()) || t.fns.get(s).is_none_or(|g| g.kind != FnKind::Spec) {
+            continue;
+        }
+        if list.contains(s) {
+            out.insert(s.clone());
+            work.extend(ids.surface_refs(&k));
+        }
+    }
+    out
+}
+
+fn compare(
+    old: &[(String, String)],
+    new: &[(String, String)],
+    readers: Option<&[Reader]>,
 ) -> Result<WeakenOutput, String> {
     let fo = crate::frontend(old);
     if fo.diags.has_errors() {
@@ -996,18 +1128,17 @@ pub fn weaken_sources(
     let nd = defs(&fnw.program, &fnw.tables, &inw);
     let pairs = match_defs(&od, &nd, &body_ids(&fo.program), &body_ids(&fnw.program));
 
-    let mut rows: Vec<Row> = Vec::new();
-    // Pairs that need the solver: (row index, old, new).
-    let mut asks: Vec<(usize, String, String)> = Vec::new();
+    // Each pair's row without the solver, and the paths when it needs it.
+    let mut base: Vec<(Row, Option<(String, String)>)> = Vec::new();
     for (op, np, how) in pairs {
         let (o, n) = match (&op, &np) {
             (Some(o), Some(n)) => (o, n),
             (Some(o), None) => {
-                rows.push(Row::new(None, Some(o), Verdict::Removed));
+                base.push((Row::new(None, Some(o), Verdict::Removed), None));
                 continue;
             }
             (None, Some(n)) => {
-                rows.push(Row::new(Some(n), None, Verdict::Added));
+                base.push((Row::new(Some(n), None, Verdict::Added), None));
                 continue;
             }
             (None, None) => continue,
@@ -1018,7 +1149,7 @@ pub fn weaken_sources(
         if let Some(why) = signature_change(od1, &io, nd1, &inw) {
             row.verdict = Verdict::Signature;
             row.why = Some(why);
-            rows.push(row);
+            base.push((row, None));
             continue;
         }
         let eff = effects_rel(od1.sig, nd1.sig);
@@ -1031,7 +1162,11 @@ pub fn weaken_sources(
             });
         }
         let empty = |f: &FnDef| f.requires.is_empty() && f.ensures.is_empty();
-        if od1.id == nd1.id || (empty(od1.f) && empty(nd1.f)) {
+        // The same `id` is the same contract only when it names the same
+        // definitions: the `id` is nameless, so two spec fns of one body
+        // share it, but a proof that does not reveal them sees two symbols
+        // (`pos(x)` rewritten as an equal `gt0(x)`, `tests/weaken/readers`).
+        if (od1.id == nd1.id && od1.contract == nd1.contract) || (empty(od1.f) && empty(nd1.f)) {
             row.requires = Some(Rel::Same);
             row.ensures = Some(Rel::Same);
             row.verdict = match eff {
@@ -1039,18 +1174,70 @@ pub fn weaken_sources(
                 Rel::Weaker => Verdict::Weakened,
                 _ => Verdict::Refined,
             };
-            rows.push(row);
+            base.push((row, None));
             continue;
         }
-        asks.push((rows.len(), o.clone(), n.clone()));
-        rows.push(row);
+        base.push((row, Some((o.clone(), n.clone()))));
+    }
+
+    let mut rows: Vec<Row> = Vec::new();
+    let mut asks: Vec<Ask> = Vec::new();
+    match readers {
+        None => {
+            for (row, need) in base {
+                if let Some((o, n)) = need {
+                    asks.push(Ask {
+                        k: rows.len(),
+                        o,
+                        n,
+                        uses: None,
+                    });
+                }
+                rows.push(row);
+            }
+        }
+        Some(readers) => {
+            for r in readers {
+                let found = base
+                    .iter()
+                    .find(|(row, _)| row.def.as_deref() == Some(r.def.as_str()))
+                    .or_else(|| {
+                        base.iter().find(|(row, _)| {
+                            row.def.is_none() && row.old.as_deref() == Some(r.def.as_str())
+                        })
+                    });
+                let mut row = match found {
+                    Some((row, need)) => {
+                        if let Some((o, n)) = need {
+                            asks.push(Ask {
+                                k: rows.len(),
+                                o: o.clone(),
+                                n: n.clone(),
+                                uses: Some(r.uses.clone()),
+                            });
+                        }
+                        row.clone()
+                    }
+                    None => {
+                        let mut row = Row::new(Some(&r.def), None, Verdict::Undecided);
+                        row.why = Some(format!(
+                            "neither version has an executable function or proof fn `{}`",
+                            r.def
+                        ));
+                        row
+                    }
+                };
+                row.reader = Some((r.uses.clone(), Vec::new()));
+                rows.push(row);
+            }
+        }
     }
 
     let mut queries = 0;
     if !asks.is_empty() {
-        let compared: BTreeSet<String> = asks.iter().map(|(_, o, _)| o.clone()).collect();
+        let compared: BTreeSet<String> = asks.iter().map(|a| a.o.clone()).collect();
         let al = align(&fo, &io, new, &fnw, &inw, &compared);
-        let mut fc = crate::frontend(&al.files);
+        let fc = crate::frontend(&al.files);
         let ic = Ids::new(&fc.program, &fc.tables);
         let ready = if fc.diags.has_errors() {
             let first = fc
@@ -1068,11 +1255,11 @@ pub fn weaken_sources(
         };
         match ready {
             Err(why) => {
-                for (k, _, _) in &asks {
-                    rows[*k].verdict = undecided(&rows[*k]);
-                    rows[*k].requires = Some(Rel::Undecided);
-                    rows[*k].ensures = Some(Rel::Undecided);
-                    rows[*k].why = Some(why.clone());
+                for a in &asks {
+                    rows[a.k].verdict = undecided(&rows[a.k]);
+                    rows[a.k].requires = Some(Rel::Undecided);
+                    rows[a.k].ensures = Some(Rel::Undecided);
+                    rows[a.k].why = Some(why.clone());
                 }
             }
             Ok(()) => {
@@ -1082,97 +1269,6 @@ pub fn weaken_sources(
                 let changed = |s: &str| {
                     let unit = s.split("::").next().unwrap_or_default().to_string();
                     private.contains(&unit) || ic.def(s).is_none_or(|h| !old_ids.contains(&h.id))
-                };
-                let mut jobs: BTreeMap<String, RefineJob> = BTreeMap::new();
-                let mut uses: Vec<(String, Vec<String>)> = Vec::new();
-                let tsub = |from: &str, to: &str| -> BTreeMap<String, TypeKind> {
-                    let (a, b) = (&fc.tables.fns[from], &fc.tables.fns[to]);
-                    a.generics
-                        .iter()
-                        .zip(&b.generics)
-                        .map(|(x, y)| (x.name.clone(), TypeKind::Param(y.name.clone())))
-                        .collect()
-                };
-                for (k, o, n) in &asks {
-                    let oc = &al.at[o];
-                    // The aligned signatures: a type the alignment could not
-                    // share makes them differ.
-                    let (so, sn) = (&fc.tables.fns[oc], &fc.tables.fns[n]);
-                    let sub = tsub(oc, n);
-                    let tys = |s: &FnSig, m: &BTreeMap<String, TypeKind>| -> Vec<String> {
-                        s.params
-                            .iter()
-                            .chain([&s.ret])
-                            .map(|t| crate::check::ty_str(&crate::check::subst(t, m)))
-                            .collect()
-                    };
-                    if tys(so, &sub) != tys(sn, &BTreeMap::new()) {
-                        rows[*k].verdict = undecided(&rows[*k]);
-                        rows[*k].requires = Some(Rel::Undecided);
-                        rows[*k].ensures = Some(Rel::Undecided);
-                        rows[*k].why = Some(format!(
-                            "a type of `{o}`'s signature could not be shared between the versions"
-                        ));
-                        continue;
-                    }
-                    let list = reveal(&ic, &fc.tables, &fc.program, [n, oc], &changed);
-                    uses.push((n.clone(), list.clone()));
-                    uses.push((oc.clone(), list));
-                    jobs.insert(
-                        n.clone(),
-                        RefineJob {
-                            decl: oc.clone(),
-                            tsub: sub,
-                            own_domain: false,
-                        },
-                    );
-                }
-                for (_, o, n) in &asks {
-                    let oc = &al.at[o];
-                    if jobs.contains_key(n) && !jobs.contains_key(oc) {
-                        jobs.insert(
-                            oc.clone(),
-                            RefineJob {
-                                decl: n.clone(),
-                                tsub: tsub(n, oc),
-                                own_domain: true,
-                            },
-                        );
-                    }
-                }
-                drop(ic);
-                // Each side reveals what the comparison needs (`reveal`).
-                for (path, list) in uses {
-                    if let Some(f) = def_mut(&mut fc.program, &path) {
-                        f.attrs.retain(|a| a.name.name != "uses");
-                        if !list.is_empty() {
-                            f.attrs.push(Attr {
-                                name: Ident {
-                                    name: "uses".into(),
-                                    span: f.name.span,
-                                },
-                                args: list
-                                    .iter()
-                                    .map(|s| {
-                                        AttrArg::Ident(Ident {
-                                            name: s.clone(),
-                                            span: f.name.span,
-                                        })
-                                    })
-                                    .collect(),
-                                span: f.name.span,
-                            });
-                        }
-                    }
-                }
-                let results =
-                    crate::verify::contract_refinements(&fc.program, &fc.tables, jobs.clone());
-                queries = results.values().map(Vec::len).sum();
-                let find = |p: &str| -> Option<(&FnDef, String)> {
-                    crate::check::defs_of(&fc.program, &fc.tables.fns)
-                        .into_iter()
-                        .find(|(q, _, _)| q == p)
-                        .map(|(_, u, f)| (f, u))
                 };
                 // A spec fn the prover named from `unit`, by its full path
                 // in the version it is from.
@@ -1191,93 +1287,259 @@ pub fn weaken_sources(
                         _ => q,
                     }
                 };
-                for (k, o, n) in &asks {
-                    if !jobs.contains_key(n) {
+                let tsub = |from: &str, to: &str| -> BTreeMap<String, TypeKind> {
+                    let (a, b) = (&fc.tables.fns[from], &fc.tables.fns[to]);
+                    a.generics
+                        .iter()
+                        .zip(&b.generics)
+                        .map(|(x, y)| (x.name.clone(), TypeKind::Param(y.name.clone())))
+                        .collect()
+                };
+                let is_spec = |t: &crate::verify::Tables, p: &str| {
+                    t.fns.get(p).is_some_and(|s| s.kind == FnKind::Spec)
+                };
+                // What each comparison reveals; `None`: not compared.
+                let mut lists: Vec<Option<Vec<String>>> = vec![None; asks.len()];
+                for (i, a) in asks.iter().enumerate() {
+                    let oc = &al.at[&a.o];
+                    // The aligned signatures: a type the alignment could not
+                    // share makes them differ.
+                    let (so, sn) = (&fc.tables.fns[oc], &fc.tables.fns[&a.n]);
+                    let sub = tsub(oc, &a.n);
+                    let tys = |s: &FnSig, m: &BTreeMap<String, TypeKind>| -> Vec<String> {
+                        s.params
+                            .iter()
+                            .chain([&s.ret])
+                            .map(|t| crate::check::ty_str(&crate::check::subst(t, m)))
+                            .collect()
+                    };
+                    if tys(so, &sub) != tys(sn, &BTreeMap::new()) {
+                        let row = &mut rows[a.k];
+                        row.verdict = undecided(row);
+                        row.requires = Some(Rel::Undecided);
+                        row.ensures = Some(Rel::Undecided);
+                        row.why = Some(format!(
+                            "a type of `{}`'s signature could not be shared between the versions",
+                            a.o
+                        ));
                         continue;
                     }
-                    let oc = &al.at[o];
-                    let (Some((fo_c, uo)), Some((fn_c, un))) = (find(oc), find(n)) else {
-                        continue;
-                    };
-                    let fwd_req = answers(results.get(n), &fn_c.requires);
-                    let fwd_ens = answers(results.get(n), &fo_c.ensures);
-                    let backward = jobs.get(oc).is_some_and(|j| &j.decl == n);
-                    let (back_req, back_ens) = if backward {
-                        (
-                            answers(results.get(oc), &fo_c.requires),
-                            answers(results.get(oc), &fn_c.ensures),
-                        )
-                    } else {
-                        let u = |cs: &[Expr]| {
-                            vec![ClauseAnswer::Undecided("not compared".into()); cs.len().max(1)]
-                        };
-                        (u(&fo_c.requires), u(&fn_c.ensures))
-                    };
-                    let (of, nf) = (od[o].f, nd[n].f);
-                    let text = |kw: &str, e: &Expr| format!("{kw} {}", crate::fmt::expr_text(e));
-                    let row = &mut rows[*k];
-                    let mut put = |xs: &[ClauseAnswer], cs: &[Expr], kw: &str, fwd: bool| {
-                        // Forward obligations are the new version's, backward
-                        // ones the old version's (named from its unit).
-                        let unit = if fwd { &un } else { &uo };
-                        for (a, c) in xs.iter().zip(cs) {
-                            match a {
-                                ClauseAnswer::Proved => {}
-                                ClauseAnswer::Refuted {
-                                    counterexample,
-                                    opaque,
-                                } => {
-                                    let c = Clause {
-                                        clause: text(kw, c),
-                                        detail: counterexample.clone(),
-                                        opaque: opaque.iter().map(|o| full(o, unit)).collect(),
-                                    };
-                                    if fwd {
-                                        row.lost.push(c);
-                                    } else {
-                                        row.gained.push(c);
-                                    }
+                    lists[i] = Some(match &a.uses {
+                        None => reveal(&ic, &fc.tables, &fc.program, [&a.n, oc], &changed),
+                        Some(uses) => {
+                            // The reader's spec fns, in each version.
+                            let mut list: BTreeSet<String> = BTreeSet::new();
+                            for u in uses {
+                                if is_spec(&fnw.tables, u) {
+                                    list.insert(u.clone());
                                 }
-                                ClauseAnswer::Undecided(why) if fwd => row.undecided.push(Clause {
-                                    clause: text(kw, c),
-                                    detail: why.clone(),
-                                    opaque: Vec::new(),
-                                }),
-                                ClauseAnswer::Undecided(_) => {}
+                                if is_spec(&fo.tables, u)
+                                    && let Some(q) = al.paths.get(u)
+                                {
+                                    list.insert(q.clone());
+                                }
+                            }
+                            let seen = reached(&ic, &fc.tables, [&a.n, oc], &list);
+                            let shown: BTreeSet<String> =
+                                seen.iter().map(|s| full(s, "")).collect();
+                            if let Some(r) = rows[a.k].reader.as_mut() {
+                                r.1 = shown.into_iter().collect();
+                            }
+                            list.into_iter().collect()
+                        }
+                    });
+                }
+                drop(ic);
+                let find = |prog: &Program, p: &str| -> Option<(FnDef, String)> {
+                    crate::check::defs_of(prog, &fc.tables.fns)
+                        .into_iter()
+                        .find(|(q, _, _)| q == p)
+                        .map(|(_, u, f)| (f.clone(), u))
+                };
+                // A definition holds one `#[uses]` list, so each round
+                // compares a definition once (several readers of one
+                // definition take several rounds).
+                let mut done = vec![false; asks.len()];
+                loop {
+                    let mut taken: BTreeSet<&str> = BTreeSet::new();
+                    let round: Vec<usize> = (0..asks.len())
+                        .filter(|&i| {
+                            !done[i] && lists[i].is_some() && taken.insert(asks[i].n.as_str())
+                        })
+                        .collect();
+                    if round.is_empty() {
+                        break;
+                    }
+                    let mut prog = fc.program.clone();
+                    let mut jobs: BTreeMap<String, RefineJob> = BTreeMap::new();
+                    let mut uses: Vec<(String, Vec<String>)> = Vec::new();
+                    for &i in &round {
+                        done[i] = true;
+                        let a = &asks[i];
+                        let oc = &al.at[&a.o];
+                        let list = lists[i].clone().unwrap_or_default();
+                        uses.push((a.n.clone(), list.clone()));
+                        uses.push((oc.clone(), list));
+                        jobs.insert(
+                            a.n.clone(),
+                            RefineJob {
+                                decl: oc.clone(),
+                                tsub: tsub(oc, &a.n),
+                                own_domain: false,
+                            },
+                        );
+                    }
+                    // The backward direction, except for a reader (it needs
+                    // the forward one only).
+                    if readers.is_none() {
+                        for &i in &round {
+                            let a = &asks[i];
+                            let oc = &al.at[&a.o];
+                            if jobs.contains_key(&a.n) && !jobs.contains_key(oc) {
+                                jobs.insert(
+                                    oc.clone(),
+                                    RefineJob {
+                                        decl: a.n.clone(),
+                                        tsub: tsub(&a.n, oc),
+                                        own_domain: true,
+                                    },
+                                );
                             }
                         }
-                    };
-                    // Forward: the new requires the old ones must imply, the
-                    // old ensures the new ones must imply. Backward: the
-                    // other way.
-                    put(&fwd_req, &nf.requires, "new requires", true);
-                    put(&fwd_ens, &of.ensures, "old ensures", true);
-                    if backward {
-                        put(&back_req, &of.requires, "old requires", false);
-                        put(&back_ens, &nf.ensures, "new ensures", false);
                     }
-                    let (fr, fe) = (dir(&fwd_req), dir(&fwd_ens));
-                    let (br, be) = (dir(&back_req), dir(&back_ens));
-                    row.requires = Some(relation(fr, br, true));
-                    row.ensures = Some(relation(fe, be, false));
-                    let eff = row.effects.unwrap_or(Rel::Same);
-                    row.verdict = if fr == Dir::Refuted || fe == Dir::Refuted || eff == Rel::Weaker
-                    {
-                        Verdict::Weakened
-                    } else if fr == Dir::Undecided || fe == Dir::Undecided {
-                        Verdict::Undecided
-                    } else if br == Dir::Refuted || be == Dir::Refuted || eff == Rel::Stronger {
-                        Verdict::Refined
-                    } else if br == Dir::Proved && be == Dir::Proved {
-                        Verdict::Same
-                    } else {
-                        Verdict::Compatible
-                    };
+                    // Each side reveals what the comparison needs.
+                    for (path, list) in uses {
+                        if let Some(f) = def_mut(&mut prog, &path) {
+                            f.attrs.retain(|a| a.name.name != "uses");
+                            if !list.is_empty() {
+                                f.attrs.push(Attr {
+                                    name: Ident {
+                                        name: "uses".into(),
+                                        span: f.name.span,
+                                    },
+                                    args: list
+                                        .iter()
+                                        .map(|s| {
+                                            AttrArg::Ident(Ident {
+                                                name: s.clone(),
+                                                span: f.name.span,
+                                            })
+                                        })
+                                        .collect(),
+                                    span: f.name.span,
+                                });
+                            }
+                        }
+                    }
+                    let results =
+                        crate::verify::contract_refinements(&prog, &fc.tables, jobs.clone());
+                    queries += results.values().map(Vec::len).sum::<usize>();
+                    for &i in &round {
+                        let a = &asks[i];
+                        let (o, n) = (&a.o, &a.n);
+                        let oc = &al.at[o];
+                        let (Some((fo_c, uo)), Some((fn_c, un))) =
+                            (find(&prog, oc), find(&prog, n))
+                        else {
+                            continue;
+                        };
+                        let fwd_req = answers(results.get(n), &fn_c.requires);
+                        let fwd_ens = answers(results.get(n), &fo_c.ensures);
+                        let backward = jobs.get(oc).is_some_and(|j| &j.decl == n);
+                        let (back_req, back_ens) = if backward {
+                            (
+                                answers(results.get(oc), &fo_c.requires),
+                                answers(results.get(oc), &fn_c.ensures),
+                            )
+                        } else {
+                            let u = |cs: &[Expr]| {
+                                vec![
+                                    ClauseAnswer::Undecided("not compared".into());
+                                    cs.len().max(1)
+                                ]
+                            };
+                            (u(&fo_c.requires), u(&fn_c.ensures))
+                        };
+                        let (of, nf) = (od[o].f, nd[n].f);
+                        let text =
+                            |kw: &str, e: &Expr| format!("{kw} {}", crate::fmt::expr_text(e));
+                        let row = &mut rows[a.k];
+                        let mut put = |xs: &[ClauseAnswer], cs: &[Expr], kw: &str, fwd: bool| {
+                            // Forward obligations are the new version's,
+                            // backward ones the old version's (named from its
+                            // unit).
+                            let unit = if fwd { &un } else { &uo };
+                            for (a, c) in xs.iter().zip(cs) {
+                                match a {
+                                    ClauseAnswer::Proved => {}
+                                    ClauseAnswer::Refuted {
+                                        counterexample,
+                                        opaque,
+                                    } => {
+                                        let c = Clause {
+                                            clause: text(kw, c),
+                                            detail: counterexample.clone(),
+                                            opaque: opaque.iter().map(|o| full(o, unit)).collect(),
+                                        };
+                                        if fwd {
+                                            row.lost.push(c);
+                                        } else {
+                                            row.gained.push(c);
+                                        }
+                                    }
+                                    ClauseAnswer::Undecided(why) if fwd => {
+                                        row.undecided.push(Clause {
+                                            clause: text(kw, c),
+                                            detail: why.clone(),
+                                            opaque: Vec::new(),
+                                        })
+                                    }
+                                    ClauseAnswer::Undecided(_) => {}
+                                }
+                            }
+                        };
+                        // Forward: the new requires the old ones must imply,
+                        // the old ensures the new ones must imply. Backward:
+                        // the other way.
+                        put(&fwd_req, &nf.requires, "new requires", true);
+                        put(&fwd_ens, &of.ensures, "old ensures", true);
+                        if backward {
+                            put(&back_req, &of.requires, "old requires", false);
+                            put(&back_ens, &nf.ensures, "new ensures", false);
+                        }
+                        let (fr, fe) = (dir(&fwd_req), dir(&fwd_ens));
+                        let (br, be) = (dir(&back_req), dir(&back_ens));
+                        row.requires = Some(relation(fr, br, true));
+                        row.ensures = Some(relation(fe, be, false));
+                        let eff = row.effects.unwrap_or(Rel::Same);
+                        row.verdict = if fr == Dir::Refuted
+                            || fe == Dir::Refuted
+                            || eff == Rel::Weaker
+                        {
+                            Verdict::Weakened
+                        } else if fr == Dir::Undecided || fe == Dir::Undecided {
+                            Verdict::Undecided
+                        } else if br == Dir::Refuted || be == Dir::Refuted || eff == Rel::Stronger {
+                            Verdict::Refined
+                        } else if br == Dir::Proved && be == Dir::Proved {
+                            Verdict::Same
+                        } else {
+                            Verdict::Compatible
+                        };
+                    }
                 }
             }
         }
     }
 
+    // A reader's rows stay in the readers' order, with no diagnostics.
+    if readers.is_some() {
+        return Ok(WeakenOutput {
+            rows,
+            diagnostics: String::new(),
+            queries,
+        });
+    }
     rows.sort_by(|a, b| {
         let key = |r: &Row| (r.def.clone().or(r.old.clone()), r.old.clone());
         key(a).cmp(&key(b))
