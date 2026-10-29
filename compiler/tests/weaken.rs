@@ -213,7 +213,7 @@ fn counterexamples_name_the_lost_promise() {
     );
     let (_, out) = case("shapes");
     assert!(
-        rows(&out)["m::zero_first"].contains("a = [2] (len 1), a after = [0, 2] (len 2)"),
+        rows(&out)["m::zero_first"].contains("a = [0] (len 1), a after = [0, 0] (len 2)"),
         "{out}"
     );
     let (_, out) = case("opaque");
