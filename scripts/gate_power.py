@@ -503,6 +503,22 @@ MUTANTS = [
      '''        if interpreted || name == "f64.lt" {
             let params''',
      "`<` on `f64` is interpreted (`fp.lt`) in ordinary queries, outside `by (bit_vector)` (ADR-0061 §5)"),
+    # Checks of unproved code that differ by width (backlog 2N-04): only a
+    # build that runs a panicking call, `tests/soundness_widths.rs`, sees them.
+    ("c-shift-literal-at-width", "miscompile", C,
+     '''        let literal = matches!(r.kind, ExprKind::Int(k, _) if k < w as u128);''',
+     '''        let literal = matches!(r.kind, ExprKind::Int(k, _) if k <= w as u128);''',
+     "an unproved shift by a literal amount equal to the width is not checked (LLVM poison, Rust panics)"),
+    ("c-narrow-min-div-unchecked", "miscompile", C,
+     '''                            let ok = self.t();
+                            self.emit(format!("{m} = icmp eq i64 {a}, {}", i.min_value()));''',
+     '''                            let ok = self.t();
+                            self.emit(format!("{m} = icmp eq i64 {a}, {}", i64::MIN));''',
+     "an unproved `T::MIN / -1` of a signed type narrower than 64 bits is not checked (it gives `-T::MIN`)"),
+    ("c-narrow-conv-signed-compare", "miscompile", C,
+     '''                self.emit(format!("{c} = icmp ule i64 {v}, {}", max as u64));''',
+     '''                self.emit(format!("{c} = icmp sle i64 {v}, {}", max as u64));''',
+     "an unproved conversion to `u8`/`u16`/`u32` compares signed: negative `i*` and large `u64` values pass"),
 ]
 
 

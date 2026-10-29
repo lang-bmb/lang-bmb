@@ -5567,8 +5567,11 @@ impl<'a> Checker<'a> {
             }
             // `!` is logical on `bool` and bitwise on integers (ADR-0048 §2).
             ExprKind::Unary(UnOp::Not, inner) => {
-                let hint = expected.filter(|t| is_int(t)).unwrap_or(&TypeKind::Bool);
-                let t = self.expr(cx, inner, Some(hint), mode);
+                // Without an expected type (a method receiver) the operand
+                // decides: `(!(a ^ 9)).rotate_left(1)` is bitwise (backlog
+                // 2N-04).
+                let hint = expected.filter(|t| is_int(t) || **t == TypeKind::Bool);
+                let t = self.expr(cx, inner, hint, mode);
                 match t {
                     TypeKind::Bool | TypeKind::Int(_) | TypeKind::Error => t,
                     _ => {
@@ -6355,7 +6358,11 @@ impl<'a> Checker<'a> {
         span: Span,
     ) -> TypeKind {
         let lt = self.expr(cx, l, expected.filter(|t| is_int(t)), mode);
-        let rt = self.expr(cx, r, Some(&TypeKind::Int(IntTy::U32)), mode);
+        // Only a literal amount is a `u32`: an amount with a type of its own
+        // keeps it (`x >> (match b { None => 1, Some(v) => v })` with
+        // `v: u8`, backlog 2N-04), as Rust infers it.
+        let hint = untyped_literal(r).then_some(&TypeKind::Int(IntTy::U32));
+        let rt = self.expr(cx, r, hint, mode);
         if lt == TypeKind::Error || rt == TypeKind::Error {
             return TypeKind::Error;
         }

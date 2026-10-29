@@ -7,4 +7,17 @@ mod lits {
         let b: u64 = if small { 7 } else { y };
         a.wrapping_add(b)
     }
+
+    // Only a literal shift amount is a `u32`: one with a type of its own
+    // keeps it, as Rust infers it (backlog 2N-04).
+    #[effects(pure)]
+    fn amount(x: u32, b: Option<u8>) -> u32 {
+        x >> ((match b { None => 1, Some(v) => v }) & 7)
+    }
+
+    // A method receiver has no expected type: `!` of an integer is bitwise.
+    #[effects(pure)]
+    fn flip(a: i16) -> i16 {
+        (!(a ^ 9)).rotate_left(1)
+    }
 }

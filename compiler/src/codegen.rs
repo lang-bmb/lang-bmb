@@ -2573,7 +2573,16 @@ impl<'p> Gen<'p> {
     /// 64 bits, then the type's range is checked unless proved (E0803).
     fn narrow_arith(&mut self, e: &Expr, inst: &str, a: &str, b: &str, i: IntTy) -> CVal {
         let r = self.t();
-        self.emit(format!("{r} = {inst} nsw i64 {a}, {b}"));
+        // The flag states what holds: every result fits in `i64` except a
+        // `u32` product, which can exceed `i64::MAX` (`(2^32 - 1)^2`) but
+        // never `u64::MAX`; a poison value would make the range check
+        // undefined.
+        let flag = if inst == "mul" && !i.signed() {
+            "nuw"
+        } else {
+            "nsw"
+        };
+        self.emit(format!("{r} = {inst} {flag} i64 {a}, {b}"));
         if self.proved("E0803", e) {
             self.emit("; proved E0803");
         } else {
