@@ -507,8 +507,9 @@ MUTANTS = [
     # Contract weakening between versions (backlog 2D-19): a missed weakening
     # passes the audit.
     ("w-requires-direction-dropped", "unsound", W,
-     '''row.verdict = if fr == Dir::Refuted || fe == Dir::Refuted || eff == Rel::Weaker''',
-     '''row.verdict = if fe == Dir::Refuted || eff == Rel::Weaker''',
+     '''row.verdict = if fr == Dir::Refuted
+                            || fe == Dir::Refuted''',
+     '''row.verdict = if fe == Dir::Refuted''',
      "`bmb weaken` ignores the `requires` direction: a stronger precondition is judged the same"),
     # Checks of unproved code that differ by width (backlog 2N-04): only a
     # build that runs a panicking call, `tests/soundness_widths.rs`, sees them.
