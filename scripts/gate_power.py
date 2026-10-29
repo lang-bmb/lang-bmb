@@ -7,7 +7,7 @@
   gate_power.py table FILE.jsonl       Markdown table and the catch rate
 
 Each mutant is one plausible defect in `compiler/src/verify.rs`,
-`compiler/src/codegen.rs`, `compiler/src/check.rs` or `compiler/src/subproof.rs`: an encoding with the wrong sign or bound, an
+`compiler/src/codegen.rs`, `compiler/src/check.rs`, `compiler/src/subproof.rs` or `compiler/src/weaken.rs`: an encoding with the wrong sign or bound, an
 obligation that is never sent, a havoc that forgets a variable, a code
 generator that emits the wrong instruction or drops a check it may not drop,
 a checker that lets ghost code run executable code.
@@ -33,6 +33,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 V, C, K = "compiler/src/verify.rs", "compiler/src/codegen.rs", "compiler/src/check.rs"
 S = "compiler/src/subproof.rs"
 VI = "compiler/src/verify/invariants.rs"
+W = "compiler/src/weaken.rs"
 
 # (id, class, file, old, new, what)
 MUTANTS = [
@@ -503,6 +504,12 @@ MUTANTS = [
      '''        if interpreted || name == "f64.lt" {
             let params''',
      "`<` on `f64` is interpreted (`fp.lt`) in ordinary queries, outside `by (bit_vector)` (ADR-0061 §5)"),
+    # Contract weakening between versions (backlog 2D-19): a missed weakening
+    # passes the audit.
+    ("w-requires-direction-dropped", "unsound", W,
+     '''row.verdict = if fr == Dir::Refuted || fe == Dir::Refuted || eff == Rel::Weaker''',
+     '''row.verdict = if fe == Dir::Refuted || eff == Rel::Weaker''',
+     "`bmb weaken` ignores the `requires` direction: a stronger precondition is judged the same"),
 ]
 
 

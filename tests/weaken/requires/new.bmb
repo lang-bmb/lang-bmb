@@ -1,0 +1,30 @@
+#[summary("a precondition made stronger, one made weaker")]
+mod m {
+    spec fn pos(x: i64) -> bool { x > 0 }
+
+    spec fn nonneg(x: i64) -> bool { x >= 0 }
+
+    spec fn small(x: i64) -> bool { x < 100 }
+
+    spec fn is_succ(x: i64, r: i64) -> bool { r == x + 1 }
+
+    // `nonneg` becomes `pos`: the new version may not be called with 0.
+    #[effects(pure)]
+    #[uses(small, pos, is_succ)]
+    fn inc(x: i64) -> (r: i64)
+        requires small(x), pos(x),
+        ensures is_succ(x, r),
+    {
+        x + 1
+    }
+
+    // `pos` becomes `nonneg`: every old call is still allowed.
+    #[effects(pure)]
+    #[uses(small, nonneg, is_succ)]
+    fn inc_wide(x: i64) -> (r: i64)
+        requires small(x), nonneg(x),
+        ensures is_succ(x, r),
+    {
+        x + 1
+    }
+}

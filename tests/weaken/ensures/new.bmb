@@ -1,0 +1,41 @@
+#[summary("postconditions made weaker, stronger and incomparable")]
+mod m {
+    spec fn small(x: i64) -> bool { x < 100 }
+
+    spec fn is_succ(x: i64, r: i64) -> bool { r == x + 1 }
+
+    spec fn bigger(x: i64, r: i64) -> bool { r > x }
+
+    spec fn even(r: i64) -> bool { r % 2 == 0 }
+
+    spec fn odd(r: i64) -> bool { r % 2 == 1 }
+
+    // `is_succ` becomes `bigger`: a caller can no longer know the result.
+    #[effects(pure)]
+    #[uses(small, bigger)]
+    fn inc(x: i64) -> (r: i64)
+        requires small(x),
+        ensures bigger(x, r),
+    {
+        x + 1
+    }
+
+    // `bigger` becomes `is_succ`: a caller learns more.
+    #[effects(pure)]
+    #[uses(small, is_succ)]
+    fn up(x: i64) -> (r: i64)
+        requires small(x),
+        ensures is_succ(x, r),
+    {
+        x + 1
+    }
+
+    // `even` becomes `odd`: neither implies the other.
+    #[effects(pure)]
+    #[uses(odd)]
+    fn parity(x: i64) -> (r: i64)
+        ensures odd(r),
+    {
+        1
+    }
+}

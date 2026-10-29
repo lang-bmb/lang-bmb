@@ -1,0 +1,61 @@
+#[summary("a spec fn whose body changes under the same name")]
+mod m {
+    // `x < 100` becomes `x < 1000`.
+    spec fn small(x: i64) -> bool { x < 100 }
+
+    spec fn tiny(x: i64) -> bool { x < 50 }
+
+    spec fn is_succ(x: i64, r: i64) -> bool { r == x + 1 }
+
+    spec fn bounded(x: i64) -> bool { small(x) }
+
+    // In `requires`: more inputs are allowed (a refinement).
+    #[effects(pure)]
+    #[uses(small, is_succ)]
+    fn inc(x: i64) -> (r: i64)
+        requires small(x),
+        ensures is_succ(x, r),
+    {
+        x + 1
+    }
+
+    // In `ensures`: the result is known less precisely (a weakening).
+    #[effects(pure)]
+    #[uses(tiny, small)]
+    fn clamp(x: i64) -> (r: i64)
+        requires tiny(x),
+        ensures small(r),
+    {
+        x
+    }
+
+    // `small` is never revealed here: the comparison still reads its
+    // bodies, not its name.
+    #[effects(pure)]
+    fn keep(x: i64) -> (r: i64)
+        requires small(x),
+        ensures small(r),
+    {
+        x
+    }
+
+    // Through another spec fn whose own text does not change.
+    #[effects(pure)]
+    #[uses(tiny, bounded, small)]
+    fn clamp2(x: i64) -> (r: i64)
+        requires tiny(x),
+        ensures bounded(r),
+    {
+        x
+    }
+
+    // Does not name `small`: the same.
+    #[effects(pure)]
+    #[uses(tiny, is_succ)]
+    fn inc_tiny(x: i64) -> (r: i64)
+        requires tiny(x),
+        ensures is_succ(x, r),
+    {
+        x + 1
+    }
+}

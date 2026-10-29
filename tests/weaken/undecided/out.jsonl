@@ -1,0 +1,2 @@
+{"def":"m::total","old":"m::total","match":"path","verdict":"undecided","requires":"same","ensures":"undecided","effects":"same","lost":[],"gained":[],"undecided":[{"clause":"old ensures is_total(a, r)","why":"solver could not decide (a model exists for the instantiated definitions only)"}],"why":null}
+{"summary":true,"defs":1,"same":0,"refined":0,"compatible":0,"weakened":0,"undecided":1,"signature":0,"added":0,"removed":0,"queries":2}

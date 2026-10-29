@@ -16,6 +16,7 @@ cargo run -- stability a.bmb     # Z3 시드 0..5로 증명해 판정이 시드�
 cargo run -- uses a.bmb          # 증명되지 않는 정의마다 최소 #[uses(..)] 목록을 찾아 보고. --write면 파일 수정(2D-05). --cache DIR은 verify와 같은 캐시(2D-15)
 cargo run -- lint a.bmb          # 계약 조정 린트: 불가능한 pre, 증명에 쓰이지 않는 pre, 호출자가 쓰지 않는 post, 변이가 살아남는 약한 명세(경고 W09xx, 2D-08·2D-09). --cache DIR은 verify와 같은 캐시(2D-15)
 cargo run -- mutate --def u::f a.bmb  # W0904 변이 전부(상한 없음, 증명 안 함)를 프로그램으로: 행마다 바뀐 단위의 정규형(BSB 생성기용, 2A-10)
+cargo run -- weaken old/ new/    # 명세 약화 감지: 두 판(파일이나 작업 공간)의 계약을 SMT 함의로 비교, 정의마다 same·refined·weakened 등과 반례, 약화는 W0908(2D-19). 약화·미결이 있으면 종료 코드 1
 cargo run -- doctor              # 고정된 Z3·LLVM 버전 확인(scripts/toolchain.env)
 ../scripts/setup.sh              # 고정 버전 설치(새 클라우드 세션은 시작 훅이 자동 실행)
 ../scripts/check.sh              # 검증 게이트: fmt·clippy·빌드·백로그·문서, 그다음 테스트 실행 파일과 벤치 검사를 동시에(INF-08, scripts/gate_jobs.py). 종료 코드로 판단
@@ -87,7 +88,7 @@ ADR-0016의 부분집합을 구체화한 것이다. 모두 "선택을 필수로"
 
 ## 진단
 
-- 한 줄에 객체 하나: `code`, `severity`(`W`로 시작하는 코드는 `warning`, 나머지는 `error`. `W` 코드는 `bmb lint`만 낸다), `message`, `file`, `line`, `col`, `end_line`, `end_col`, 선택적 `fix`(`message`, 기계적으로 고칠 수 있으면 `replacement`).
+- 한 줄에 객체 하나: `code`, `severity`(`W`로 시작하는 코드는 `warning`, 나머지는 `error`. `W` 코드는 `bmb lint`와 `bmb weaken`만 낸다), `message`, `file`, `line`, `col`, `end_line`, `end_col`, 선택적 `fix`(`message`, 기계적으로 고칠 수 있으면 `replacement`).
 - 위치 순으로 정렬되고 중복이 제거된다. 같은 입력이면 같은 바이트가 나온다.
 - 코드는 `src/diag.rs`의 `CODES`가 유일한 목록이다. 번호는 바꾸거나 재사용하지 않는다.
 - `bmb fix`(백로그 2D-04)는 `replacement`가 있는 진단을 모두 적용하고 다시 검사하기를 적용할 것이 없을 때까지 반복한다(최대 16회, 같은 텍스트가 다시 나오면 멈춤). 한 회차에는 (파일, 시작, 끝, 코드, 텍스트) 순으로 보며 이미 고른 것과 겹치지 않는 것만 적용한다(같은 위치의 삽입 둘도 겹침). 출력은 적용한 수정마다 `{"round","file","line","col","code","replacement"}`(위치는 그 회차 전 텍스트 기준), 남은 진단, 요약 행 `{"summary":true,"rounds","applied","changed","remaining","ok"}`. 검사를 통과한 프로그램이면 셀 수 있는 `while`의 정규형 수정 W0907(ADR-0057)도 같은 규칙으로 적용한다. 증명은 돌리지 않는다. 기본은 파일을 바꾸지 않고, `--write`가 바뀐 파일만 제자리에 쓴다. 공백은 정리하지 않으므로 정규형이 필요하면 `bmb fmt`를 이어 쓴다. 오류가 남으면 종료 코드 1
@@ -138,6 +139,19 @@ ADR-0016의 부분집합을 구체화한 것이다. 모두 "선택을 필수로"
 - 요약 행: `{"summary":true,"defs","reports","verifications","skipped","mutants","surviving","mutants_skipped"}`(뒤 세 키는 2D-09에서 추가).
 - 한계: W0903은 현재 프로그램의 호출자만 본다(공개 API로 쓸 post도 보고될 수 있어 정보성이다). 기준 검증에서 실패한 함수나 호출자가 실패한 함수는 판정하지 않는다.
 - `bmb mutate --def PATH [--def PATH].. <file.bmb>..`(백로그 2A-10, `lint::mutate_sources`): W0904와 같은 변이 지점(같은 순서)마다 변이를 하나 적용한 프로그램을 만든다. 상한도 증명도 없다. 행은 `{"def","site","line","col","before","after","unit","text"}`(`text`는 바뀐 최상위 단위의 정규형, 다른 단위는 그대로)이고 마지막 줄은 `{"summary":true,"mutants"}`. 실행 함수가 아닌 경로나 검사 오류면 종료 코드 1. BSB 변이체 생성기(`bench/m1/bsb_gen.py`)가 쓴다.
+
+## 명세 약화 감지 (`bmb weaken`, 백로그 2D-19)
+
+`bmb weaken OLD NEW`(각각 파일이나 작업 공간, `src/weaken.rs`). 두 판 사이에서 정의의 계약이 약해졌는지(`requires` 강화, `ensures` 약화, `pure`가 `io`로)를 SMT 함의로 판정한다. 게이트 우회 감사(H-GAME)와 교환 관계의 정제 판정(T1-16)이 쓴다. 요청할 때만 돌고 `check`·`verify`는 그대로다.
+
+- **대상과 짝짓기:** 실행 함수와 `proof fn`(자유 함수, `impl T` 함수). 경로로 먼저 짝짓고, 남은 것은 `id`(ADR-0059: 이름 바꾸기·이동만), 그다음 모든 `requires`·`ensures`·`#[uses]`를 지운 프로그램의 `id`(본문 정체성)로 짝짓는다. 계약이 `id`에 들어 있으므로 이름 바꾸기와 약화를 한 편집에서 하면 `id`가 바뀐다. 그래서 셋째 단계가 그것을 잡는다(`match`: `path`·`id`·`body`). 해시로 짝짓기는 양쪽에서 그 해시가 하나뿐일 때만 한다. 짝이 없으면 `added`·`removed`. trait `impl` 함수와 기본 본문은 trait 계약의 정제를 게이트가 증명하므로(E0817) 대상이 아니다.
+- **판정:** 옛 계약 (R0, E0), 새 계약 (R1, E1). 정방향은 증명기의 trait 정제 의무(`Enc::refines`, ADR-0046 §4)와 같다: R0 ⇒ R1의 각 절, R0 ∧ E1 ⇒ E0의 각 절(매개변수, 결과, `&mut` 매개변수 뒤의 새 값 위에서). 역방향: R1 ⇒ R0의 각 절, R0 ∧ E0 ⇒ E1의 각 절(옛 정의역에서 비교, `RefineJob::own_domain`). `verdict`는 `weakened`(정방향 절 하나가 반박되거나 `pure`가 `io`로), `undecided`(반박은 없고 결정 못 한 정방향 절이 있음, G1: 추측하지 않는다), `same`(네 방향 모두 증명, 효과 같음), `refined`(정방향 증명, 역방향 절 하나가 반박되거나 `io`가 `pure`로), `compatible`(정방향 증명, 역방향 미결), `signature`(매개변수·결과·타입 매개변수가 다름. 타입은 `id`로 비교하므로 이름만 바꾼 타입은 같다), `added`·`removed`. `id`가 같은 짝과 양쪽 다 계약이 없는 짝은 질의 없이 `same`(효과만 비교)이다.
+- **해법기가 보는 것:** 각 판의 `#[uses]`가 펼치는 `spec fn`(보통 증명과 같다), 그리고 두 계약에서 펼친 본문을 따라 닿는 `spec fn` 중 `id`가 판 사이에 바뀐 것 전부. 그래서 이름은 같고 본문이 바뀐 `spec fn`을 부르는 계약은 이름이 아니라 두 본문으로 비교된다(`tests/weaken/spec`). 바뀌지 않은 `spec fn`은 두 판에서 같은 함수이고, 어느 쪽도 펼치지 않으면 이름으로만 본다. 그때 반례는 그 술어를 자유롭게 해석하므로 행의 `opaque`가 그 이름을 댄다(`tests/weaken/opaque`: 펼치지 않은 술어로 다시 쓴 `requires`는 이름으로만 보는 호출자의 증명을 깨므로 약화로 보고된다). 고정 `rlimit`, 시간 제한 없음, 시드 0, 의무마다 초기화된 해법기와 기저 인스턴스 재시도(DESIGN.md §8.2).
+- **한 프로그램으로:** 두 판을 한 질의에 담는다. 옛 단위는 새 이름(`old_u`)으로 들어가고, 새 판에도 같은 `id`가 있는 옛 정의·타입·trait는 그것과 공유한다(참조를 새 것으로 다시 쓴다, `src/refs.rs`의 참조 순회. 트랜잭션 `rename`과 같은 순회). 그래서 바뀌지 않은 타입은 같은 정렬이고 바뀌지 않은 `spec fn`은 같은 함수다. 같은 `id`의 새 항목이 여럿이면(필드가 같은 두 구조체) 같은 경로의 것과만, trait와 그 `impl` 함수는 같은 경로일 때만 공유한다. 공유한 타입의 바뀐 `impl` 함수는 옛 단위의 함수 `T__f`가 된다(`Self`는 `T`, 수신자는 `this`). 비교할 옛 정의는 늘 제 사본을 둔다(역방향 비교가 그 사본에서 돈다). 공유하지 않은 항목을 참조하는 것은 공유하지 않는다. 합친 프로그램이 검사를 통과하고 모든 옛 항목의 `id`가 그대로여야 한다(정렬 감사, `audit`). 아니면 비교할 정의는 그 이유와 함께 `undecided`다.
+- **출력(JSONL):** 정의마다 `{"def","old","match","verdict","requires","ensures","effects","lost","gained","undecided","why"}`(경로순, 해당 없는 키는 `null`). `requires`·`ensures`·`effects`는 새 판의 옛 판에 대한 관계: `same`·`weaker`·`stronger`·`incomparable`·`undecided`(두 방향이 모두 결정될 때만 관계를 적는다). `lost`(옛 계약이 약속했지만 새 계약은 약속하지 않는 것: 정방향 반박)·`gained`(역방향 반박)는 `{"clause","counterexample","opaque"}`이고 절은 판을 붙여 쓴다(`new requires pos(x)`, `old ensures is_succ(x, r)`, `effects pure`). 반례는 입력과 결과(결과가 `()`이면 첫 `&mut` 매개변수의 호출 뒤 값, `a after`). `undecided`는 `{"clause","why"}`. 그다음 약화마다 새 판의 그 절(`ensures`면 새 `ensures` 전체, 효과면 이름)에 경고 W0908, 끝으로 `{"summary":true,"defs","same","refined","compatible","weakened","undecided","signature","added","removed","queries"}`. 약화나 미결이 있으면 종료 코드 1, 판이 검사를 통과하지 못하면 그 진단과 1.
+- **`proof fn`:** 펼친 `spec fn`으로 `requires`에서 따라 나오는 `ensures` 절을 빼면 같은 명제다(`tests/weaken/shapes`의 `below_more`). 보조 정리의 약화는 `requires` 강화로 드러난다.
+- **측정:** 코퍼스 `tests/weaken/`(8쌍 32정의, `tests/weaken.rs`). 실제 프로그램 88개의 본문 변이체(`bmb mutate`) 233개는 행 1,472개(해법기 의무 350개)가 모두 `same`이다(`dev-docs/experiments/weaken/mutants.py`. 이 과정에서 같은 `id`의 두 구조체와 trait를 공유하지 않던 결함을 고쳤다, 시험 `body_mutants_of_real_programs_are_the_same`). BCB 이력의 커밋별 비교는 `dev-docs/experiments/weaken/results.md`.
+- **한계:** 공유한 타입의 바뀐 `impl` 함수를 메서드 문법(`x.f()`)으로 부르는 옛 명세는 새 함수로 풀려 정렬 감사가 `undecided`로 돌린다. 제네릭 `impl`의 함수가 바뀐 타입은 공유하지 않는다(그 타입을 시그니처에 쓰는 정의는 `undecided`). 이름이 바뀐 필드·변형을 쓰는 옛 코드는 공유한 타입과 맞지 않아 검사가 실패하고 `undecided`다. 백로그 2D-26.
 
 ## 정체성과 이름 (ADR-0059, 백로그 T1-10)
 

@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 
 use crate::ast::*;
 use crate::diag::Diags;
+use crate::refs::{Decl, Rewrite, Site};
 use crate::source::SourceMap;
 use crate::{check, fmt, lexer, parser};
 
@@ -205,37 +206,16 @@ enum TargetKind {
     Trait,
 }
 
-/// Where a path is written, which decides how it can name the target.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Site {
-    /// The callee of a call (`f(..)`, `T::new(..)`, `T::V(..)`,
-    /// `Trait::m(..)`), or a `#[uses]` target.
-    Call,
-    /// A type (`T`, `geo::T<A>`).
-    Type,
-    /// A struct literal's type.
-    Struct,
-    /// A unit variant or a pattern (`T::V`).
-    Variant,
-    /// A trait bound or the trait of an `impl`.
-    Bound,
-}
-
 /// Renames one definition and every reference to it (ADR-0059 §5).
 struct Renamer<'a> {
     target: Target,
     to: &'a str,
-    /// The unit being walked.
-    unit: Vec<String>,
-    /// Type parameters in scope (a one-segment type path that names one is
-    /// no reference to a type).
-    tparams: Vec<String>,
 }
 
-impl Renamer<'_> {
-    /// Rewrites `segs` (as written in the current unit) if they name the
-    /// target at `site`.
-    fn segs(&self, segs: &mut [String], site: Site) {
+impl Rewrite for Renamer<'_> {
+    /// Rewrites `segs` (as written in `unit`) if they name the target at
+    /// `site`.
+    fn path(&mut self, segs: &mut Vec<String>, site: Site, unit: &[String], tparams: &[String]) {
         let t = &self.target;
         let full: Vec<String> = t.unit.iter().chain(&t.local).cloned().collect();
         // How many segments past the target's name the path has at `site`.
@@ -252,285 +232,32 @@ impl Renamer<'_> {
         };
         if hit(&full) {
             segs[full.len() - 1] = self.to.to_string();
-        } else if self.unit == t.unit
+        } else if unit == t.unit.as_slice()
             && hit(&t.local)
-            && !(site == Site::Type && segs.len() == 1 && self.tparams.contains(&segs[0]))
+            && !(site == Site::Type && segs.len() == 1 && tparams.contains(&segs[0]))
         {
             segs[t.local.len() - 1] = self.to.to_string();
         }
     }
 
-    fn idents(&self, path: &mut [Ident], site: Site) {
-        let mut s: Vec<String> = path.iter().map(|i| i.name.clone()).collect();
-        self.segs(&mut s, site);
-        for (i, n) in path.iter_mut().zip(s) {
-            i.name = n;
+    /// The target's own declaration (a type's also in its `impl` head).
+    fn decl(&mut self, unit: &[String], d: Decl<'_>) {
+        if unit != self.target.unit.as_slice() {
+            return;
         }
-    }
-
-    fn ty(&self, t: &mut Type) {
-        match &mut t.kind {
-            TypeKind::Named { path, args } => {
-                self.segs(path, Site::Type);
-                args.iter_mut().for_each(|a| self.ty(a));
+        let (kind, local) = (self.target.kind, &self.target.local);
+        let name = match d {
+            Decl::Fn(n) if kind == TargetKind::Fn && n.name == local[0] => n,
+            Decl::Type(n) | Decl::ImplTy(n) if kind == TargetKind::Type && n.name == local[0] => n,
+            Decl::ImplFn { ty, name }
+                if kind == TargetKind::ImplFn && ty == local[0] && name.name == local[1] =>
+            {
+                name
             }
-            TypeKind::Array(e, _) | TypeKind::Slice(e) | TypeKind::Vec(e) | TypeKind::Box(e) => {
-                self.ty(e)
-            }
-            TypeKind::Ref { inner, .. } => self.ty(inner),
-            _ => {}
-        }
-    }
-
-    fn generics(&mut self, gs: &mut [TypeParam]) {
-        for g in gs {
-            self.tparams.push(g.name.name.clone());
-            for b in &mut g.bounds {
-                self.idents(b, Site::Bound);
-            }
-        }
-    }
-
-    /// The spec fns an attribute names (`#[uses(..)]`, `#[invariant(..)]`).
-    fn attr_targets(&self, a: &mut Attr) {
-        for x in &mut a.args {
-            if let AttrArg::Ident(i) = x {
-                let mut s: Vec<String> = i.name.split("::").map(String::from).collect();
-                self.segs(&mut s, Site::Call);
-                i.name = s.join("::");
-            }
-        }
-    }
-
-    fn function(&mut self, f: &mut FnDef) {
-        let depth = self.tparams.len();
-        self.generics(&mut f.generics);
-        for a in f.attrs.iter_mut().filter(|a| a.name.name == "uses") {
-            self.attr_targets(a);
-        }
-        for p in &mut f.params {
-            self.ty(&mut p.ty);
-        }
-        self.ty(&mut f.ret.ty);
-        for e in f.requires.iter_mut().chain(&mut f.ensures) {
-            self.expr(e);
-        }
-        if let Some(d) = &mut f.decreases {
-            self.expr(d);
-        }
-        self.block(&mut f.body);
-        self.tparams.truncate(depth);
-    }
-
-    fn block(&self, b: &mut Block) {
-        for s in &mut b.stmts {
-            match s {
-                Stmt::Let { ty, init, .. } => {
-                    self.ty(ty);
-                    self.expr(init);
-                }
-                Stmt::Assign { target, value, .. } => {
-                    self.expr(target);
-                    self.expr(value);
-                }
-                Stmt::While {
-                    cond,
-                    invariants,
-                    decreases,
-                    body,
-                    ..
-                } => {
-                    self.expr(cond);
-                    invariants.iter_mut().for_each(|e| self.expr(e));
-                    if let Some(d) = decreases {
-                        self.expr(d);
-                    }
-                    self.block(body);
-                }
-                Stmt::For {
-                    lo,
-                    hi,
-                    invariants,
-                    body,
-                    ..
-                } => {
-                    self.expr(lo);
-                    self.expr(hi);
-                    invariants.iter_mut().for_each(|e| self.expr(e));
-                    self.block(body);
-                }
-                Stmt::Assert { cond, .. } => self.expr(cond),
-                Stmt::Proof { body, .. } => self.block(body),
-                Stmt::LetFields { path, init, .. } => {
-                    self.idents(path, Site::Struct);
-                    self.expr(init);
-                }
-                Stmt::Expr(e) => self.expr(e),
-            }
-        }
-        if let Some(t) = &mut b.tail {
-            self.expr(t);
-        }
-    }
-
-    fn expr(&self, e: &mut Expr) {
-        match &mut e.kind {
-            ExprKind::Call { path, targs, args } => {
-                self.idents(path, Site::Call);
-                targs
-                    .iter_mut()
-                    .flat_map(|t| &mut t.args)
-                    .for_each(|t| self.ty(t));
-                args.iter_mut().for_each(|a| self.expr(a));
-            }
-            ExprKind::Method { recv, args, .. } => {
-                self.expr(recv);
-                args.iter_mut().for_each(|a| self.expr(a));
-            }
-            ExprKind::Index { base, index } => {
-                self.expr(base);
-                self.expr(index);
-            }
-            ExprKind::Unary(_, x)
-            | ExprKind::Ref { expr: x, .. }
-            | ExprKind::Old(x)
-            | ExprKind::Trigger(x)
-            | ExprKind::Deref(x)
-            | ExprKind::Try(x) => self.expr(x),
-            ExprKind::Field { base, .. } => self.expr(base),
-            ExprKind::Binary(_, l, r) => {
-                self.expr(l);
-                self.expr(r);
-            }
-            ExprKind::If { cond, then, els } => {
-                self.expr(cond);
-                self.block(then);
-                if let Some(x) = els {
-                    self.expr(x);
-                }
-            }
-            ExprKind::Block(b) => self.block(b),
-            ExprKind::Array(xs) => xs.iter_mut().for_each(|x| self.expr(x)),
-            ExprKind::Repeat { value, .. } => self.expr(value),
-            ExprKind::Forall { binders, body } => {
-                binders.iter_mut().for_each(|b| self.ty(&mut b.ty));
-                self.expr(body);
-            }
-            ExprKind::StructLit { path, fields, rest } => {
-                self.idents(path, Site::Struct);
-                fields.iter_mut().for_each(|(_, x)| self.expr(x));
-                if let Some(r) = rest {
-                    self.expr(r);
-                }
-            }
-            ExprKind::Path(path) => self.idents(path, Site::Variant),
-            ExprKind::Match { scrut, arms } => {
-                self.expr(scrut);
-                for a in arms {
-                    self.idents(&mut a.pat.path, Site::Variant);
-                    self.expr(&mut a.body);
-                }
-            }
-            ExprKind::Return(x) | ExprKind::Break { value: x, .. } => {
-                if let Some(x) = x {
-                    self.expr(x);
-                }
-            }
-            ExprKind::Loop {
-                invariants,
-                decreases,
-                body,
-                ..
-            } => {
-                invariants.iter_mut().for_each(|e| self.expr(e));
-                if let Some(d) = decreases {
-                    self.expr(d);
-                }
-                self.block(body);
-            }
-            ExprKind::Int(..)
-            | ExprKind::ByteLit(_)
-            | ExprKind::Float(_)
-            | ExprKind::ByteStr(_)
-            | ExprKind::Bool(_)
-            | ExprKind::Unit
-            | ExprKind::Var(_)
-            | ExprKind::Continue { .. }
-            | ExprKind::Error => {}
-        }
-    }
-
-    /// Walks unit `m` (and its sub-units): the definition itself and every
-    /// reference.
-    fn module(&mut self, m: &mut Mod, prefix: &[String]) {
-        let mut unit = prefix.to_vec();
-        unit.push(m.name.name.clone());
-        for s in &mut m.mods {
-            self.module(s, &unit);
-        }
-        self.unit = unit.clone();
-        let here = unit == self.target.unit;
-        let (kind, local) = (self.target.kind, self.target.local.clone());
-        let to = self.to.to_string();
-        for f in &mut m.fns {
-            if here && kind == TargetKind::Fn && f.name.name == local[0] {
-                f.name.name = to.clone();
-            }
-            self.function(f);
-        }
-        for td in &mut m.types {
-            if here && kind == TargetKind::Type && td.name.name == local[0] {
-                td.name.name = to.clone();
-            }
-            // `#[invariant(p)]` names its predicate as `#[uses]` does.
-            for a in td.attrs.iter_mut().filter(|a| a.name.name == "invariant") {
-                self.attr_targets(a);
-            }
-            let depth = self.tparams.len();
-            self.generics(&mut td.generics);
-            match &mut td.kind {
-                TypeDefKind::Struct(fs) => fs.iter_mut().for_each(|f| self.ty(&mut f.ty)),
-                TypeDefKind::Enum(vs) => vs
-                    .iter_mut()
-                    .flat_map(|v| &mut v.payload)
-                    .for_each(|t| self.ty(t)),
-            }
-            self.tparams.truncate(depth);
-        }
-        for i in &mut m.impls {
-            let of_target = here && i.ty.name == local[0];
-            if of_target && kind == TargetKind::Type {
-                i.ty.name = to.clone();
-            }
-            let depth = self.tparams.len();
-            self.generics(&mut i.generics);
-            i.ty_args.iter_mut().for_each(|t| self.ty(t));
-            for f in &mut i.fns {
-                if of_target && kind == TargetKind::ImplFn && f.name.name == local[1] {
-                    f.name.name = to.clone();
-                }
-                self.function(f);
-            }
-            self.tparams.truncate(depth);
-        }
-        for i in &mut m.trait_impls {
-            let depth = self.tparams.len();
-            self.generics(&mut i.generics);
-            self.idents(&mut i.trait_path, Site::Bound);
-            self.ty(&mut i.self_ty);
-            for f in &mut i.fns {
-                self.function(f);
-            }
-            self.tparams.truncate(depth);
-        }
-        for tr in &mut m.traits {
-            if here && kind == TargetKind::Trait && tr.name.name == local[0] {
-                tr.name.name = to.clone();
-            }
-            for tf in &mut tr.fns {
-                self.function(&mut tf.f);
-            }
-        }
+            Decl::Trait(n) if kind == TargetKind::Trait && n.name == local[0] => n,
+            _ => return,
+        };
+        name.name = self.to.to_string();
     }
 }
 
@@ -568,15 +295,8 @@ fn rename(p: &mut Program, def: &str, to: &str) -> Result<(), String> {
         kind,
     };
     let mut renamed = p.clone();
-    let mut r = Renamer {
-        target,
-        to,
-        unit: Vec::new(),
-        tparams: Vec::new(),
-    };
-    for m in &mut renamed.mods {
-        r.module(m, &[]);
-    }
+    let mut r = Renamer { target, to };
+    crate::refs::walk(&mut renamed, &mut r);
     // The program after the rename is checked with the transaction's other
     // operations; if it checks here, no identity may have moved.
     if let Some(t2) = checked(&renamed) {
@@ -602,7 +322,7 @@ fn rename(p: &mut Program, def: &str, to: &str) -> Result<(), String> {
 }
 
 /// The full paths of the trait declarations.
-fn trait_paths(p: &Program) -> std::collections::BTreeSet<String> {
+pub(crate) fn trait_paths(p: &Program) -> std::collections::BTreeSet<String> {
     fn walk(m: &Mod, prefix: &str, out: &mut std::collections::BTreeSet<String>) {
         let mp = format!("{prefix}{}", m.name.name);
         for s in &m.mods {

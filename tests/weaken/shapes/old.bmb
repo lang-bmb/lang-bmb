@@ -1,0 +1,136 @@
+#[summary("effects, signatures, `&mut`, data types, generics, lemmas")]
+mod m {
+    enum Shape {
+        Dot,
+        Square(i64),
+    }
+
+    struct Pair {
+        a: i64,
+        b: i64,
+    }
+
+    impl Pair {
+        // An `impl` function whose precondition becomes stronger.
+        #[effects(pure)]
+        #[uses(small)]
+        fn make(x: i64) -> Pair
+            requires small(x),
+        {
+            Pair { a: x, b: x }
+        }
+    }
+
+    spec fn small(x: i64) -> bool { x < 100 }
+
+    spec fn tiny(x: i64) -> bool { x < 10 }
+
+    spec fn is_succ(x: i64, r: i64) -> bool { r == x + 1 }
+
+    spec fn first_is(a: &[i64], v: i64) -> bool { a.len() > 0 && a[0] == v }
+
+    spec fn same_len(a: &[i64], b: &[i64]) -> bool { a.len() == b.len() }
+
+    spec fn nonempty(a: &[i64]) -> bool { a.len() > 0 }
+
+    spec fn area_ok(s: Shape, r: i64) -> bool {
+        match s {
+            Shape::Dot => r == 0,
+            Shape::Square(k) => r == k * k,
+        }
+    }
+
+    spec fn small_shape(s: Shape) -> bool {
+        match s {
+            Shape::Dot => true,
+            Shape::Square(k) => 0 <= k && k < 1000,
+        }
+    }
+
+    spec fn sorted_pair(p: Pair) -> bool { p.a <= p.b }
+
+    spec fn same_pair(p: Pair, q: Pair) -> bool { p.a == q.a && p.b == q.b }
+
+    spec fn below(x: i64, n: i64) -> bool { x < n }
+
+    spec fn either(r: i64, a: i64, b: i64) -> bool { r == a || r == b }
+
+    // `pure` becomes `io`.
+    #[effects(pure)]
+    #[uses(small, is_succ)]
+    fn noisy(x: i64) -> (r: i64)
+        requires small(x),
+        ensures is_succ(x, r),
+    {
+        x + 1
+    }
+
+    // `io` becomes `pure`.
+    #[effects(io)]
+    #[uses(small, is_succ)]
+    fn quiet(x: i64) -> (r: i64)
+        requires small(x),
+        ensures is_succ(x, r),
+    {
+        x + 1
+    }
+
+    // `i64` becomes `u64`: callers no longer check, not a silent change.
+    #[effects(pure)]
+    fn widen(x: i64) -> i64 {
+        x
+    }
+
+    // Through `&mut`: the new version drops `same_len(old(a), a)`.
+    #[effects(pure)]
+    #[uses(nonempty, first_is, same_len)]
+    fn zero_first(a: &mut [i64]) -> ()
+        requires nonempty(a),
+        ensures first_is(a, 0), same_len(old(a), a),
+    {
+        a[0] = 0;
+    }
+
+    // An enum parameter: the shared type is one sort for both versions;
+    // the new version narrows the precondition.
+    #[effects(pure)]
+    #[uses(small_shape, area_ok)]
+    fn area(s: Shape) -> (r: i64)
+        requires small_shape(s),
+        ensures area_ok(s, r),
+    {
+        match s {
+            Shape::Dot => 0,
+            Shape::Square(k) => k * k,
+        }
+    }
+
+    // A struct parameter; the new version drops the precondition.
+    #[effects(pure)]
+    #[uses(sorted_pair, same_pair)]
+    fn keep_pair(p: Pair) -> (q: Pair)
+        requires sorted_pair(p),
+        ensures same_pair(p, q),
+    {
+        p
+    }
+
+    // A lemma whose precondition becomes stronger. (A dropped `ensures`
+    // clause that follows from the `requires` with the revealed spec fns is
+    // the same statement.)
+    #[uses(below, small)]
+    proof fn below_more(x: i64, n: i64)
+        requires below(x, n), small(n),
+        ensures below(x, n + 1), below(x, n + 2),
+    {
+    }
+
+    // A generic function: type parameters match by position.
+    #[effects(pure)]
+    #[uses(either)]
+    fn pick<T: Copy>(a: i64, b: i64, first: bool, t: T) -> (r: i64)
+        ensures either(r, a, b),
+    {
+        if first { a } else { b }
+    }
+}

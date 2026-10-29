@@ -344,7 +344,7 @@ pub const CODES: &[(&str, &str)] = &[
         "E0823",
         "a type invariant may not hold where a value leaves the function's hands: a call argument, a return, a `&mut` parameter at exit, a loop head (ADR-0060 §2)",
     ),
-    // W09xx: contract lint (`bmb lint` only; severity "warning", never from `check`/`verify`)
+    // W09xx: contract adjustment (`bmb lint` and `bmb weaken` only; severity "warning", never from `check`/`verify`)
     (
         "W0901",
         "preconditions are unsatisfiable together: the function can never be called and its proofs are vacuous",
@@ -370,9 +370,13 @@ pub const CODES: &[(&str, &str)] = &[
         "W0907",
         "a counting `while` whose canonical form is a range `for` (the fix rewrites it; `bmb fix` applies it)",
     ),
+    (
+        "W0908",
+        "the contract is weaker than in the old version: a stronger `requires`, a weaker `ensures` or `pure` become `io` (`bmb weaken`, with the counterexample)",
+    ),
 ];
 
-/// Severity of a code: `W` codes are warnings (reported only by `bmb lint`),
+/// Severity of a code: `W` codes are warnings (reported only by `bmb lint` and `bmb weaken`),
 /// every other code is an error.
 pub fn severity(code: &str) -> &'static str {
     if code.starts_with('W') {
@@ -538,7 +542,7 @@ pub fn codes_markdown() -> String {
         ("E06", "효과·속성"),
         ("E07", "프로그램 구조"),
         ("E08", "증명 게이트"),
-        ("W09", "계약 조정 린트(경고, `bmb lint`만)"),
+        ("W09", "계약 조정(경고, `bmb lint`·`bmb weaken`만)"),
     ];
     let mut out = String::from(
         "# 진단 코드\n\n> 생성 파일: `bmb codes --md`가 `compiler/src/diag.rs`의 `CODES`에서 만든다. 손으로 고치지 않는다.\n> 코드는 바꾸거나 재사용하지 않는다. 진단 형식은 `compiler/README.md`.\n",
