@@ -14,11 +14,11 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 35827,
+    "S4_stage0_rust_lines": 36200,
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
     "P1_runnable_programs": 58,
-    "P2_bmb_lines": 19639,
+    "P2_bmb_lines": 19792,
     "P3_errors_with_help": 0.872,
     "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
@@ -1380,6 +1380,20 @@
         "S4_stage0_rust_lines": [
           35727,
           35827
+        ]
+      }
+    },
+    {
+      "date": "2026-10-29",
+      "reason": "T1-27: tests/weaken/readers corpus (P2 19,639 -> 19,792); S4 report-only +373 Rust lines for bmb reads and weaken --readers",
+      "changed": {
+        "S4_stage0_rust_lines": [
+          35827,
+          36200
+        ],
+        "P2_bmb_lines": [
+          19639,
+          19792
         ]
       }
     }
