@@ -510,6 +510,18 @@ MUTANTS = [
      '''row.verdict = if fr == Dir::Refuted || fe == Dir::Refuted || eff == Rel::Weaker''',
      '''row.verdict = if fe == Dir::Refuted || eff == Rel::Weaker''',
      "`bmb weaken` ignores the `requires` direction: a stronger precondition is judged the same"),
+    # Checks of unproved code that differ by width (backlog 2N-04): only a
+    # build that runs a panicking call, `tests/soundness_widths.rs`, sees them.
+    ("c-shift-literal-at-width", "miscompile", C,
+     '''        let literal = matches!(r.kind, ExprKind::Int(k, _) if k < w as u128);''',
+     '''        let literal = matches!(r.kind, ExprKind::Int(k, _) if k <= w as u128);''',
+     "an unproved shift by a literal amount equal to the width is not checked (LLVM poison, Rust panics)"),
+    ("c-narrow-min-div-unchecked", "miscompile", C,
+     '''                            let ok = self.t();
+                            self.emit(format!("{m} = icmp eq i64 {a}, {}", i.min_value()));''',
+     '''                            let ok = self.t();
+                            self.emit(format!("{m} = icmp eq i64 {a}, {}", i64::MIN));''',
+     "an unproved `T::MIN / -1` of a signed type narrower than 64 bits is not checked (it gives `-T::MIN`)"),
 ]
 
 
