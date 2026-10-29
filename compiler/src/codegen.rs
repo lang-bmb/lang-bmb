@@ -134,6 +134,25 @@ fn vec_len_max(e: &TypeKind) -> &'static str {
     }
 }
 
+/// `print_f64` (ADR-0061 §6): Rust's `println!("{:.N}", x)`. glibc's
+/// `printf("%.*f")` writes the exact decimal value rounded to `N` digits,
+/// ties to even, as Rust does, and `inf`/`-inf` as Rust; a NaN is printed
+/// `NaN` as Rust prints it. `N` is at most 65535 (the call's precondition).
+const PRINT_F64: &str = "@bmb.fmtf = private unnamed_addr constant [6 x i8] c\"%.*f\\0A\\00\"
+@bmb.nan = private unnamed_addr constant [5 x i8] c\"NaN\\0A\\00\"
+define internal void @bmb_print_f64(double %x, i64 %d) {
+  %nan = fcmp uno double %x, %x
+  br i1 %nan, label %n, label %f
+n:
+  call i32 (ptr, ...) @printf(ptr @bmb.nan)
+  ret void
+f:
+  %p = trunc i64 %d to i32
+  call i32 (ptr, ...) @printf(ptr @bmb.fmtf, i32 %p, double %x)
+  ret void
+}
+";
+
 /// The run-time support of `Vec` (ADR-0031 §4): allocation through libc,
 /// growth to twice the capacity (at least 4), and `abort` when a size does
 /// not fit in `isize` or the allocator fails.
@@ -247,6 +266,7 @@ fn mem_ty(t: &TypeKind) -> String {
         TypeKind::Box(_) => "ptr".into(),
         TypeKind::Bool => "i8".into(),
         TypeKind::Int(i) => format!("i{}", i.bits()),
+        TypeKind::F64 => "double".into(),
         TypeKind::Named { .. } => data_ty(t),
         TypeKind::Array(e, n) => format!("[{n} x {}]", mem_ty(&e.kind)),
         _ => "i64".into(),
@@ -514,17 +534,25 @@ fn drop_glue(tb: &Tables, extra: &[TypeKind]) -> String {
     out
 }
 
-/// Whether `t` is an integer type or `bool`.
+/// Whether `t` is an integer type, `f64` or `bool`.
 fn is_scalar_ty(t: &TypeKind) -> bool {
-    matches!(t, TypeKind::Int(_) | TypeKind::Bool)
+    matches!(t, TypeKind::Int(_) | TypeKind::Bool | TypeKind::F64)
 }
 
+/// The register type of a scalar: `f64` is a `double`, a slot kind of its
+/// own beside the `i64` registers of the integers (ADR-0061 §6).
 fn llty(t: &TypeKind) -> &'static str {
     match t {
         TypeKind::Bool => "i1",
+        TypeKind::F64 => "double",
         TypeKind::Unit => "void",
         _ => "i64",
     }
+}
+
+/// An `f64` constant in LLVM's exact hexadecimal form.
+fn f64_const(bits: u64) -> String {
+    format!("0x{bits:016X}")
 }
 
 fn elem_of(t: &TypeKind) -> TypeKind {
@@ -786,6 +814,10 @@ impl<'p> Gen<'p> {
             self.emit(format!("{b} = trunc i8 {r} to i1"));
             return b;
         }
+        if *t == TypeKind::F64 {
+            self.emit(format!("{r} = load double, ptr {ptr}"));
+            return r;
+        }
         if let Some(i) = t.int().filter(|i| i.bits() < 64) {
             let w = i.bits();
             self.emit(format!("{r} = load i{w}, ptr {ptr}"));
@@ -819,6 +851,9 @@ impl<'p> Gen<'p> {
                 let z = self.t();
                 self.emit(format!("{z} = trunc i64 {x} to i{w}"));
                 self.emit(format!("store i{w} {z}, ptr {ptr}"));
+            }
+            CVal::Imm(x) if *value_ty(t) == TypeKind::F64 => {
+                self.emit(format!("store double {x}, ptr {ptr}"))
             }
             CVal::Imm(x) => self.emit(format!("store i64 {x}, ptr {ptr}")),
             CVal::Ptr { ptr: src, .. } | CVal::Arr { ptr: src, .. } => self.copy(ptr, &src, t),
@@ -1379,6 +1414,7 @@ impl<'p> Gen<'p> {
             ExprKind::Break { label, value } => self.jump(e, label, value.as_deref(), true),
             ExprKind::Continue { label } => self.jump(e, label, None, false),
             ExprKind::Int(v, _) => CVal::Imm(v.to_string()),
+            ExprKind::Float(b) => CVal::Imm(f64_const(*b)),
             ExprKind::ByteLit(v) => CVal::Imm(v.to_string()),
             ExprKind::ByteStr(v) => {
                 let name = format!("@\"{}.bytes.{}\"", self.path, self.globals.lines().count());
@@ -1408,6 +1444,16 @@ impl<'p> Gen<'p> {
                 Slot::Arr { ptr, len, .. } => CVal::Arr { ptr, len },
                 Slot::Data { ptr, ty } => CVal::Ptr { ptr, ty },
             },
+            // `f64` negation flips the sign bit (`-0.0` included).
+            ExprKind::Unary(UnOp::Neg, x) if self.ty(x) == TypeKind::F64 => {
+                if let ExprKind::Float(b) = x.kind {
+                    return CVal::Imm(f64_const(b ^ (1u64 << 63)));
+                }
+                let v = self.expr(x).imm();
+                let r = self.t();
+                self.emit(format!("{r} = fneg double {v}"));
+                CVal::Imm(r)
+            }
             ExprKind::Unary(UnOp::Neg, x) => {
                 if let ExprKind::Int(v, _) = x.kind {
                     return CVal::Imm(format!("-{v}"));
@@ -1449,6 +1495,32 @@ impl<'p> Gen<'p> {
                 let out = self.t();
                 self.emit(format!("{out} = load i1, ptr {slot}"));
                 CVal::Imm(out)
+            }
+            // IEEE 754 with rounding to nearest even (ADR-0061 §6): no
+            // fast-math flags, no `contract`; ordered comparisons, `une` for
+            // `!=` (true when either side is NaN).
+            ExprKind::Binary(op, l, r) if self.ty(l) == TypeKind::F64 => {
+                let a = self.expr(l).imm();
+                let b = self.expr(r).imm();
+                let (inst, pred) = match op {
+                    BinOp::Add => ("fadd", None),
+                    BinOp::Sub => ("fsub", None),
+                    BinOp::Mul => ("fmul", None),
+                    BinOp::Div => ("fdiv", None),
+                    BinOp::Eq => ("fcmp", Some("oeq")),
+                    BinOp::Ne => ("fcmp", Some("une")),
+                    BinOp::Lt => ("fcmp", Some("olt")),
+                    BinOp::Le => ("fcmp", Some("ole")),
+                    BinOp::Gt => ("fcmp", Some("ogt")),
+                    BinOp::Ge => ("fcmp", Some("oge")),
+                    _ => unreachable!("the checker allows no other `f64` operation"),
+                };
+                let res = self.t();
+                match pred {
+                    Some(p) => self.emit(format!("{res} = fcmp {p} double {a}, {b}")),
+                    None => self.emit(format!("{res} = {inst} double {a}, {b}")),
+                }
+                CVal::Imm(res)
             }
             ExprKind::Binary(op, l, r) => {
                 let lt = self.ty(l);
@@ -1593,6 +1665,11 @@ impl<'p> Gen<'p> {
             ExprKind::Method { recv, name, args } if is_vec(&self.ty(recv)) => {
                 self.vec_method(e, recv, &name.name, args)
             }
+            ExprKind::Method { recv, name, args } if *value_ty(&self.ty(recv)) == TypeKind::F64 => {
+                let a = self.expr(recv).imm();
+                let b = args.first().map(|x| self.expr(x).imm());
+                self.f64_method(&name.name, &a, b.as_deref())
+            }
             ExprKind::Method { recv, name, args } => {
                 let rv = self.expr(recv);
                 match name.name.as_str() {
@@ -1627,6 +1704,9 @@ impl<'p> Gen<'p> {
             }
             ExprKind::Call { path, args, .. } if crate::check::is_box_new(path) => {
                 self.box_new(e, args)
+            }
+            ExprKind::Call { path, args, .. } if crate::check::is_f64_from(path) => {
+                self.f64_from(e, &args[0])
             }
             ExprKind::Call { path, args, .. } if crate::check::mem_op(path).is_some() => {
                 self.mem_call(crate::check::mem_op(path).expect("checked"), args)
@@ -1777,6 +1857,9 @@ impl<'p> Gen<'p> {
                     .1
                     .to_string(),
             ),
+            ExprKind::Path(segs) if crate::check::f64_const(segs).is_some() => {
+                CVal::Imm(f64_const(crate::check::f64_const(segs).expect("checked")))
+            }
             ExprKind::Path(segs) => {
                 let t = self.ty(e);
                 self.variant(&t, &segs.last().unwrap().name, &[])
@@ -2256,6 +2339,68 @@ impl<'p> Gen<'p> {
         ));
         self.emit(format!("store i64 {v}, ptr {p}"));
         CVal::Ptr { ptr: tmp, ty: t }
+    }
+
+    /// A method of `f64` (ADR-0061 §6): `sqrt` and `abs` are LLVM's
+    /// intrinsics (`sqrt` is correctly rounded, no libm), `min` and `max`
+    /// are `minnum`/`maxnum` (Rust's: a NaN operand gives the other one),
+    /// `is_nan` is an unordered comparison with itself and `is_finite` an
+    /// ordered `|x| < inf`.
+    fn f64_method(&mut self, m: &str, a: &str, b: Option<&str>) -> CVal {
+        let r = self.t();
+        match (m, b) {
+            ("sqrt" | "abs", None) => {
+                let f = if m == "sqrt" { "sqrt" } else { "fabs" };
+                self.emit(format!("{r} = call double @llvm.{f}.f64(double {a})"));
+            }
+            ("min" | "max", Some(b)) => {
+                let f = if m == "min" { "minnum" } else { "maxnum" };
+                self.emit(format!(
+                    "{r} = call double @llvm.{f}.f64(double {a}, double {b})"
+                ));
+            }
+            ("is_nan", None) => self.emit(format!("{r} = fcmp uno double {a}, {a}")),
+            ("is_finite", None) => {
+                let x = self.t();
+                self.emit(format!("{x} = call double @llvm.fabs.f64(double {a})"));
+                self.emit(format!(
+                    "{r} = fcmp olt double {x}, {}",
+                    f64_const(f64::INFINITY.to_bits())
+                ));
+            }
+            _ => unreachable!("the checker allows no other `f64` method"),
+        }
+        CVal::Imm(r)
+    }
+
+    /// `f64::from(x)` (ADR-0061 §4): `sitofp`/`uitofp` of the 64-bit
+    /// register (exact below `2^53`, the obligation of a 64-bit source,
+    /// checked here unless proved); an `f64` is itself.
+    fn f64_from(&mut self, e: &Expr, x: &Expr) -> CVal {
+        let st = self.ty(x);
+        let v = self.expr(x).imm();
+        let Some(i) = st.int() else {
+            return CVal::Imm(v);
+        };
+        if i.bits() == 64 {
+            if self.proved("E0815", e) {
+                self.emit("; proved E0815");
+            } else {
+                let c = self.t();
+                if i.signed() {
+                    let s = self.t();
+                    self.emit(format!("{s} = add i64 {v}, 9007199254740992"));
+                    self.emit(format!("{c} = icmp ule i64 {s}, 18014398509481984"));
+                } else {
+                    self.emit(format!("{c} = icmp ule i64 {v}, 9007199254740992"));
+                }
+                self.check(&c, "`f64::from` may not be exact");
+            }
+        }
+        let r = self.t();
+        let inst = if i.signed() { "sitofp" } else { "uitofp" };
+        self.emit(format!("{r} = {inst} i64 {v} to double"));
+        CVal::Imm(r)
     }
 
     /// A built-in integer method `a.op(b)` (ADR-0028 §6): `wrapping_*` is the
@@ -2830,8 +2975,18 @@ impl<'p> Gen<'p> {
                 },
             }
         }
-        let (callee, ret) = if matches!(target.as_str(), "print_i64" | "print_u64" | "print_bytes")
-        {
+        // `print_f64(x, decimals)` (ADR-0061 §6): Rust panics on a
+        // precision above `u16::MAX`, so that is its precondition.
+        if target == "print_f64" && !self.proved("E0801", e) {
+            let d = flat[1].trim_start_matches("i64 ").to_string();
+            let c = self.t();
+            self.emit(format!("{c} = icmp ule i64 {d}, 65535"));
+            self.check(&c, "`print_f64` decimals above 65535");
+        }
+        let (callee, ret) = if matches!(
+            target.as_str(),
+            "print_i64" | "print_u64" | "print_bytes" | "print_f64"
+        ) {
             (format!("@bmb_{target}"), TypeKind::Unit)
         } else if csub.is_empty() {
             (fn_sym(&target), self.t.fns[&target].ret.clone())
@@ -3468,6 +3623,11 @@ pub fn emit_with(
                 queue.push_back((key, callee, m.clone(), *cf, csub));
             }
         }
+    }
+    // `print_f64(x, decimals)` (ADR-0061 §6), when called: Rust's `{:.N}`
+    // through glibc's `%.*f` (exact, ties to even); NaN is `NaN`.
+    if ir.contains("@bmb_print_f64(") {
+        ir.push_str(PRINT_F64);
     }
     let extra: Vec<TypeKind> = used_types.into_values().collect();
     let glue = drop_glue(t, &extra);

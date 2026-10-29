@@ -1,0 +1,72 @@
+#[summary("f64 검사: 정수 리터럴, 섞인 타입, %, 비트 연산, 메서드, 변환, Eq·Ord 경계, 상수 (ADR-0061 §1·§3·§4, backlog T2-03)")]
+mod fc {
+    #[effects(pure)]
+    fn int_literal() -> f64 {
+        let x: f64 = 1;
+        x * 2
+    }
+
+    #[effects(pure)]
+    fn mixed(x: f64, n: i64) -> f64 {
+        x + n
+    }
+
+    #[effects(pure)]
+    fn remainder(x: f64, y: f64) -> f64 {
+        x % y
+    }
+
+    #[effects(pure)]
+    fn bits(x: f64, y: f64) -> f64 {
+        x & y
+    }
+
+    #[effects(pure)]
+    fn methods(x: f64) -> f64 {
+        let a: f64 = x.sin();
+        let b: f64 = x.floor();
+        let c: f64 = x.sqrt(x);
+        let d: f64 = x.min();
+        a + b + c + d
+    }
+
+    #[effects(pure)]
+    fn reinterpret(x: f64) -> u64 {
+        x.to_bits()
+    }
+
+    #[effects(pure)]
+    fn to_int(x: f64) -> i64 {
+        i64::try_from(x).unwrap()
+    }
+
+    #[effects(pure)]
+    fn returns_int(x: f64) -> i64 {
+        x
+    }
+
+    #[effects(pure)]
+    fn from_bool(b: bool) -> f64 {
+        f64::from(b)
+    }
+
+    #[effects(pure)]
+    fn constant() -> f64 {
+        f64::PI
+    }
+
+    #[effects(pure)]
+    fn largest<T: Copy + Ord>(a: T, b: T) -> T {
+        if a < b { b } else { a }
+    }
+
+    #[effects(pure)]
+    fn ordered(x: f64, y: f64) -> f64 {
+        largest::<f64>(x, y)
+    }
+
+    #[effects(pure)]
+    fn total(x: f64, y: f64) -> bool {
+        x.total_cmp(y)
+    }
+}

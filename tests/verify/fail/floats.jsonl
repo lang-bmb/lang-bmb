@@ -1,0 +1,12 @@
+{"code":"E0810","severity":"error","message":"assertion may not hold in `ff::below`; counterexample: x = NaN","file":"fail/floats.bmb","line":6,"col":9,"end_line":6,"end_col":25}
+{"code":"E0811","severity":"error","message":"assertion may not hold in `ff::two`: solver could not decide (`f64` operations are uninterpreted here; no IEEE 754 counterexample: it holds with IEEE 754 arithmetic, which only `by (bit_vector)` uses)","file":"fail/floats.bmb","line":14,"col":9,"end_line":14,"end_col":34,"fix":{"message":"outside `by (bit_vector)` the `f64` operations are uninterpreted (ADR-0061 §5): prove the `f64` fact the obligation needs with `assert(e) by (bit_vector);` before it"}}
+{"code":"E0810","severity":"error","message":"assertion may not hold in `ff::commutes`; counterexample: x = 1.7918661468021248e-299, y = NaN","file":"fail/floats.bmb","line":21,"col":9,"end_line":21,"end_col":32}
+{"code":"E0815","severity":"error","message":"`f64::from` of `u64` may not be exact (|x| <= 2^53) in `ff::convert`; counterexample: n = 9007199254741024","file":"fail/floats.bmb","line":27,"col":9,"end_line":27,"end_col":21}
+{"code":"E0801","severity":"error","message":"`print_f64` may get more than 65535 decimals (Rust panics) in `ff::show`; counterexample: x = NaN, d = 65536","file":"fail/floats.bmb","line":33,"col":9,"end_line":33,"end_col":24}
+{"code":"E0818","severity":"error","message":"bit-vector assertion may not hold in `ff::finite_sum`; counterexample: x = -1.5588846119205942e308","file":"fail/floats.bmb","line":39,"col":9,"end_line":39,"end_col":71,"fix":{"message":"the sub-proof sees only the assertion's variables, each over its whole type, and no fact of the path: write what it needs into the assertion as `p ==> e`"}}
+{"def":"ff::below","status":"failed","obligations":1,"failed":1,"rlimit":1083,"rlimit_max":1083}
+{"def":"ff::commutes","status":"failed","obligations":1,"failed":1,"rlimit":3859,"rlimit_max":3859}
+{"def":"ff::convert","status":"failed","obligations":1,"failed":1,"rlimit":3532,"rlimit_max":3532}
+{"def":"ff::finite_sum","status":"failed","obligations":1,"failed":1,"rlimit":30426,"rlimit_max":30426}
+{"def":"ff::show","status":"failed","obligations":1,"failed":1,"rlimit":978,"rlimit_max":978}
+{"def":"ff::two","status":"failed","obligations":1,"failed":1,"rlimit":1519,"rlimit_max":1519}

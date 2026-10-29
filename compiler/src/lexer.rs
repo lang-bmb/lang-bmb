@@ -8,6 +8,9 @@ use crate::source::Span;
 pub enum Tok {
     Ident(String),
     Int(u128, Radix),
+    /// A floating-point literal `d.d[e[+-]d]` (ADR-0061 §2): the bits of
+    /// the nearest `f64` (correctly rounded, as Rust's `str::parse`).
+    Float(u64),
     Str(String),
     /// `b'a'` (ADR-0044 §2).
     Byte(u8),
@@ -142,6 +145,92 @@ pub fn lex(file: u32, text: &str, diags: &mut Diags) -> Vec<Token> {
             }
             out.push(Token {
                 tok: Tok::Ident(text[lo..i].to_string()),
+                span: sp(lo, i),
+            });
+            continue;
+        }
+        // A floating-point literal (ADR-0061 §2), or a malformed one: `.5`
+        // where no field name can follow a `.`, `1.`, `1e5` (E0109).
+        let after_value =
+            i > 0 && (b[i - 1].is_ascii_alphanumeric() || matches!(b[i - 1], b'_' | b')' | b']'));
+        if (c == b'.' && !after_value && b.get(i + 1).is_some_and(u8::is_ascii_digit))
+            || (c.is_ascii_digit() && float_start(b, i))
+        {
+            let lo = i;
+            let f = float_parts(b, i);
+            i = f.end;
+            let fixed = f.fixed();
+            let shape = if f.int.is_empty() {
+                Some("has no digits before the point")
+            } else if f.frac.is_none() {
+                Some("has no point")
+            } else if f.frac.as_deref() == Some("") {
+                Some("has no digits after the point")
+            } else {
+                None
+            };
+            if let Some(why) = shape {
+                diags.push(
+                    Diag::new(
+                        "E0109",
+                        sp(lo, i),
+                        format!("float literal `{}` {why}", &text[lo..i]),
+                    )
+                    .fix(
+                        "a float literal has digits on both sides of the point: `1.0`, `0.5`, `1.0e-9`",
+                        f.exp_ok().then(|| fixed.clone()),
+                    ),
+                );
+            } else if !f.exp_ok() {
+                diags.push(
+                    Diag::new(
+                        "E0109",
+                        sp(lo, i),
+                        format!("float literal `{}` has no exponent digits", &text[lo..i]),
+                    )
+                    .fix("write the exponent's digits after `e`: `1.0e-9`", None),
+                );
+            }
+            let value: f64 = if f.exp_ok() {
+                fixed.parse().unwrap_or(0.0)
+            } else {
+                0.0
+            };
+            if value.is_infinite() {
+                diags.push(
+                    Diag::new(
+                        "E0406",
+                        sp(lo, i),
+                        format!("float literal `{}` is too large for `f64`", &text[lo..i]),
+                    )
+                    .fix(
+                        "the largest finite `f64` is `f64::MAX`; infinity is `f64::INFINITY`",
+                        None,
+                    ),
+                );
+            }
+            if i < b.len() && (b[i].is_ascii_alphanumeric() || b[i] == b'_') {
+                let slo = i;
+                while i < b.len() && (b[i].is_ascii_alphanumeric() || b[i] == b'_') {
+                    i += 1;
+                }
+                let suffix = &text[slo..i];
+                let d = Diag::new(
+                    "E0104",
+                    sp(lo, i),
+                    format!("literal suffix `{suffix}` is not allowed"),
+                );
+                diags.push(if suffix == "f64" || suffix == "f32" {
+                    d.fix("remove the suffix", Some(text[lo..slo].to_string()))
+                } else {
+                    d.fix(
+                        "a float literal is digits, a point, digits and an optional exponent: `6.02e23`",
+                        None,
+                    )
+                });
+            }
+            out.push(Token {
+                tok: Tok::Float(value.to_bits()),
                 span: sp(lo, i),
             });
             continue;
@@ -427,6 +516,118 @@ pub fn lex(file: u32, text: &str, diags: &mut Diags) -> Vec<Token> {
         span: sp(b.len(), b.len()),
     });
     out
+}
+
+/// Whether the decimal digits at `b[i]` begin a float literal, written
+/// well (`1.5`, `2.0e-3`) or not (`1.`, `1e5`): a point and a digit, a point
+/// that neither starts a range (`0..n`) nor a method or field name
+/// (`1.max(2)`), or an exponent right after the digits.
+fn float_start(b: &[u8], i: usize) -> bool {
+    if b[i] == b'0' && matches!(b.get(i + 1), Some(b'x' | b'o' | b'b')) {
+        return false;
+    }
+    let mut j = i;
+    while j < b.len() && (b[j].is_ascii_digit() || b[j] == b'_') {
+        j += 1;
+    }
+    match b.get(j) {
+        Some(b'.') => match b.get(j + 1) {
+            Some(c) if c.is_ascii_digit() => true,
+            Some(c) => !(c.is_ascii_alphabetic() || *c == b'_' || *c == b'.'),
+            None => true,
+        },
+        Some(b'e' | b'E') => match b.get(j + 1) {
+            Some(c) if c.is_ascii_digit() => true,
+            Some(b'+' | b'-') => b.get(j + 2).is_some_and(u8::is_ascii_digit),
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
+/// The parts of a float literal (digits without `_` separators).
+struct FloatParts {
+    int: String,
+    /// The digits after the point; `None` without a point.
+    frac: Option<String>,
+    /// The exponent's sign and digits, after `e`/`E`.
+    exp: Option<(String, String)>,
+    end: usize,
+}
+
+impl FloatParts {
+    fn exp_ok(&self) -> bool {
+        self.exp.as_ref().is_none_or(|(_, d)| !d.is_empty())
+    }
+
+    /// The literal with the missing digits written (`.5` -> `0.5`, `1.` ->
+    /// `1.0`, `1e5` -> `1.0e5`).
+    fn fixed(&self) -> String {
+        let int = if self.int.is_empty() { "0" } else { &self.int };
+        let frac = match self.frac.as_deref() {
+            None | Some("") => "0",
+            Some(f) => f,
+        };
+        let exp = match &self.exp {
+            Some((sign, d)) => format!("e{sign}{d}"),
+            None => String::new(),
+        };
+        format!("{int}.{frac}{exp}")
+    }
+}
+
+fn float_parts(b: &[u8], mut i: usize) -> FloatParts {
+    let digits = |i: &mut usize| {
+        let mut d = String::new();
+        while *i < b.len() && (b[*i].is_ascii_digit() || b[*i] == b'_') {
+            if b[*i] != b'_' {
+                d.push(b[*i] as char);
+            }
+            *i += 1;
+        }
+        d
+    };
+    let int = digits(&mut i);
+    let frac = if b.get(i) == Some(&b'.') {
+        i += 1;
+        Some(digits(&mut i))
+    } else {
+        None
+    };
+    let exp = if matches!(b.get(i), Some(b'e' | b'E')) {
+        i += 1;
+        let sign = match b.get(i) {
+            Some(b'-') => {
+                i += 1;
+                "-"
+            }
+            Some(b'+') => {
+                i += 1;
+                ""
+            }
+            _ => "",
+        };
+        Some((sign.to_string(), digits(&mut i)))
+    } else {
+        None
+    };
+    FloatParts {
+        int,
+        frac,
+        exp,
+        end: i,
+    }
+}
+
+/// The normal form of a float literal's value (ADR-0061 §2): the shortest
+/// text that reads back as the same `f64` (Rust's `{:?}`), with a point in
+/// the mantissa (`1e-9` is written `1.0e-9`, so it is a literal again).
+pub fn float_text(bits: u64) -> String {
+    let s = format!("{:?}", f64::from_bits(bits));
+    match s.split_once('e') {
+        Some((m, e)) if !m.contains('.') => format!("{m}.0e{e}"),
+        _ => s,
+    }
 }
 
 /// The escape at `b[i]` (a backslash) in a byte literal: its value and its

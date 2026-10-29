@@ -32,6 +32,9 @@ BASELINE = ROOT / "dev-docs" / "health" / "baseline.json"
 
 # Proof corpora whose cost is tracked: the language corpus and the bench seeds.
 PROOF_SETS = ["tests/verify/pass", "tests/run", "bench/m1/seed/src", "bench/m1b/seed/src"]
+# Floating-point run programs whose proof, IR and output V6 also repeats
+# (ADR-0061 §6: no fast-math, no contraction, the same bits every time).
+FLOAT_PROGRAMS = ["tests/run/floats.bmb", "tests/run/mandel.bmb"]
 ALLOWED_RUNTIME = {"linux-vdso.so.1", "libc.so.6", "ld-linux-x86-64.so.2"}
 
 
@@ -65,7 +68,7 @@ def proof_metrics():
     for d in PROOF_SETS[2:]:
         files = sorted(str(p.relative_to(ROOT)) for p in (ROOT / d).glob("*.bmb"))
         again.append(verify_rows(files)[0])
-    deterministic = again == outs[-len(again):]
+    deterministic = again == outs[-len(again):] and floats_deterministic()
     worst = max(rows, key=lambda r: r["rlimit_max"])
     return {
         "V3_unproved_defs": sum(r["status"] != "verified" for r in rows),
@@ -75,6 +78,27 @@ def proof_metrics():
         "_proved_defs": len(rows),
         "_worst_obligation": worst["def"],
     }
+
+
+def floats_deterministic():
+    """V6 for floating point (ADR-0061 §6): each `FLOAT_PROGRAMS` entry
+    proves with the same output, lowers to the same IR and, built twice,
+    prints the same bytes, which are its expected output."""
+    with tempfile.TemporaryDirectory() as t:
+        for f in FLOAT_PROGRAMS:
+            seen = []
+            for k in range(2):
+                ll, exe = os.path.join(t, f"{k}.ll"), os.path.join(t, f"{k}")
+                proof = run([str(BMB), "verify", f]).stdout
+                r = run([str(BMB), "emit-llvm", f, "-o", ll])
+                b = run(["clang", "-O2", "-Wno-override-module", "-o", exe, ll])
+                if r.returncode != 0 or b.returncode != 0:
+                    return False
+                seen.append((proof, open(ll).read(), run([exe]).stdout))
+            want = (ROOT / f).with_suffix(".out").read_text()
+            if seen[0] != seen[1] or seen[0][2] != want:
+                return False
+    return True
 
 
 def bench_load():

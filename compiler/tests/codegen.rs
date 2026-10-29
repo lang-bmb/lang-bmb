@@ -794,3 +794,309 @@ mod m {{
     }
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// A BMB `f64` literal (or constant) for `v` (ADR-0061 §2).
+fn f64_lit(v: f64) -> String {
+    if v.is_nan() {
+        return "f64::NAN".into();
+    }
+    if v.is_infinite() {
+        return if v > 0.0 {
+            "f64::INFINITY"
+        } else {
+            "f64::NEG_INFINITY"
+        }
+        .into();
+    }
+    let s = format!("{:?}", v.abs());
+    let s = match s.split_once('e') {
+        Some((m, e)) if !m.contains('.') => format!("{m}.0e{e}"),
+        _ => s,
+    };
+    if v.is_sign_negative() {
+        format!("-{s}")
+    } else {
+        s
+    }
+}
+
+/// Builds a fully proved program, runs it and returns its output.
+fn run_program(tag: &str, text: &str) -> String {
+    let out = bmb::emit_llvm_sources(&src("f.bmb", text));
+    assert!(out.verify.ok, "{tag}: {}", out.verify.output);
+    assert_eq!(out.checks, 0, "{tag}");
+    let dir = std::env::temp_dir().join(format!("bmb-{tag}-{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    let exe = dir.join("p");
+    bmb::toolchain::build_executable(&out.ir.unwrap(), exe.to_str().unwrap()).unwrap();
+    let run = Command::new(&exe).output().unwrap();
+    let _ = fs::remove_dir_all(&dir);
+    assert!(run.status.success(), "{tag}: {}", run.status);
+    String::from_utf8_lossy(&run.stdout).into_owned()
+}
+
+/// The `f64` operations (ADR-0061 §6) compute what Rust's do over a table
+/// of edge values: `+ - * /`, unary `-`, `sqrt` and `abs` bit for bit
+/// (printed with 1074 decimals, which tell every `f64` apart and show the
+/// sign of zero), the six comparisons (NaN, signed zeros, equal operands),
+/// `min`, `max`, `is_nan`, `is_finite`, and `f64::from` of `i64`, `i32` and
+/// `u16`. Catches an `fadd`/`fsub` or `olt`/`ole` mix-up in code generation
+/// (gate-power mutants `c-fadd-as-fsub`, `c-olt-as-ole`).
+#[test]
+fn f64_operations_compute_rusts_results() {
+    let xs: [f64; 14] = [
+        0.0,
+        -0.0,
+        1.0,
+        -1.5,
+        0.1,
+        1.0 / 3.0,
+        1.0e308,
+        -1.0e308,
+        5.0e-324,
+        2.2250738585072014e-308,
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+        f64::NAN,
+        123456789.125,
+    ];
+    let exact = |v: f64| format!("{v:.1074}\n");
+    let flag = |b: bool| format!("{}\n", u64::from(b));
+    let mut want = String::new();
+    for &a in &xs {
+        for &b in &xs {
+            for v in [a + b, a - b, a * b, a / b] {
+                want.push_str(&exact(v));
+            }
+            for c in [a < b, a <= b, a > b, a >= b, a == b, a != b] {
+                want.push_str(&flag(c));
+            }
+            // Rust leaves the sign of `min`/`max` of two zeros open.
+            if !(a == 0.0 && b == 0.0) {
+                want.push_str(&exact(a.min(b)));
+                want.push_str(&exact(a.max(b)));
+            }
+        }
+        for v in [a.sqrt(), a.abs(), -a] {
+            want.push_str(&exact(v));
+        }
+        want.push_str(&flag(a.is_nan()));
+        want.push_str(&flag(a.is_finite()));
+    }
+    let ks: [i64; 6] = [
+        0,
+        -1,
+        2147483647,
+        -2147483648,
+        9007199254740992,
+        -9007199254740991,
+    ];
+    for &k in &ks {
+        want.push_str(&exact(k as f64));
+        want.push_str(&exact(f64::from(k as i32)));
+        want.push_str(&exact(f64::from(k as u16)));
+    }
+    let lits: Vec<String> = xs.iter().map(|v| f64_lit(*v)).collect();
+    let text = format!(
+        "#[summary(\"f64 ops\")]
+mod m {{
+    spec fn exact(k: i64) -> bool {{ -9007199254740992 <= k && k <= 9007199254740992 }}
+
+    #[effects(io)]
+    fn show(x: f64) -> () {{
+        print_f64(x, 1074);
+    }}
+
+    #[effects(io)]
+    fn flag(b: bool) -> () {{
+        if b {{
+            print_u64(1);
+        }} else {{
+            print_u64(0);
+        }}
+    }}
+
+    #[effects(io)]
+    #[uses(exact)]
+    fn conv(k: i64, w: i32, u: u16) -> ()
+        requires exact(k),
+    {{
+        show(f64::from(k));
+        show(f64::from(w));
+        show(f64::from(u));
+    }}
+
+    #[effects(io)]
+    #[uses(exact)]
+    fn main() -> () {{
+        let xs: [f64; {n}] = [{xs}];
+        for i in 0..xs.len() {{
+            let a: f64 = xs[i];
+            for j in 0..xs.len() {{
+                let b: f64 = xs[j];
+                show(a + b);
+                show(a - b);
+                show(a * b);
+                show(a / b);
+                flag(a < b);
+                flag(a <= b);
+                flag(a > b);
+                flag(a >= b);
+                flag(a == b);
+                flag(a != b);
+                if !(a == 0.0 && b == 0.0) {{
+                    show(a.min(b));
+                    show(a.max(b));
+                }}
+            }}
+            show(a.sqrt());
+            show(a.abs());
+            show(-a);
+            flag(a.is_nan());
+            flag(a.is_finite());
+        }}
+        {convs}
+    }}
+}}
+",
+        n = xs.len(),
+        xs = lits.join(", "),
+        convs = ks
+            .iter()
+            .map(|k| format!("conv({k}, {}, {});", *k as i32, *k as u16))
+            .collect::<Vec<_>>()
+            .join("\n        "),
+    );
+    assert_eq!(run_program("f64ops", &text), want);
+}
+
+/// `print_f64(x, n)` prints what Rust's `println!("{:.n}", x)` does
+/// (ADR-0061 §6): exact ties round to even (`k / 16` at 0 to 3 decimals),
+/// values that are not ties, large and tiny magnitudes, signed zero, NaN
+/// and the infinities, at precisions up to 40.
+#[test]
+fn print_f64_formats_as_rust() {
+    let mut xs: Vec<f64> = (-40..=40).map(|k| f64::from(k) / 16.0).collect();
+    xs.extend([
+        2.675,
+        1.005,
+        0.045,
+        1.0e21,
+        1.0e22,
+        123456789012345680.0,
+        1.0e23,
+        1.0e-7,
+        5.0e-324,
+        f64::MAX,
+        -f64::MIN_POSITIVE,
+        -0.0,
+        f64::NAN,
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+        0.1 + 0.2,
+    ]);
+    let ds: [u32; 7] = [0, 1, 2, 3, 6, 17, 40];
+    let mut want = String::new();
+    for &x in &xs {
+        for &d in &ds {
+            want.push_str(&format!("{x:.*}\n", d as usize));
+        }
+    }
+    let lits: Vec<String> = xs.iter().map(|v| f64_lit(*v)).collect();
+    let text = format!(
+        "#[summary(\"print_f64\")]
+mod m {{
+    #[effects(io)]
+    fn main() -> () {{
+        let xs: [f64; {n}] = [{xs}];
+        let ds: [u32; {nd}] = [{ds}];
+        for i in 0..xs.len() {{
+            for j in 0..ds.len() {{
+                if ds[j] <= 65535 {{
+                    print_f64(xs[i], ds[j]);
+                }}
+            }}
+        }}
+    }}
+}}
+",
+        n = xs.len(),
+        xs = lits.join(", "),
+        nd = ds.len(),
+        ds = ds.map(|d| d.to_string()).join(", "),
+    );
+    assert_eq!(run_program("printf64", &text), want);
+}
+
+/// Floating point leaves no room for the optimizer (ADR-0061 §6, C2): no
+/// fast-math flag and no `contract` on any `f64` instruction, and a
+/// multiply-add stays two rounded operations (an FMA would round once).
+#[test]
+fn f64_code_has_no_fast_math_or_contraction() {
+    let text = "#[summary(\"fma\")]
+mod m {
+    #[effects(pure)]
+    fn madd(a: f64, b: f64, c: f64) -> f64 {
+        a * b + c
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        let a: f64 = 0.1;
+        print_f64(madd(a, 10.0, -1.0), 30);
+    }
+}
+";
+    let out = bmb::emit_llvm_sources(&src("fma.bmb", text));
+    let ir = out.ir.unwrap();
+    for line in ir.lines().filter(|l| l.contains(" double ")) {
+        for flag in [
+            "fast", "contract", "reassoc", "nnan", "ninf", "nsz", "arcp", "afn",
+        ] {
+            assert!(!line.contains(&format!(" {flag} ")), "{line}");
+        }
+    }
+    let a: f64 = std::hint::black_box(0.1);
+    let want = format!("{:.30}\n", a * 10.0 - 1.0);
+    assert_eq!(run_program("fma", text), want);
+    assert_ne!(want, format!("{:.30}\n", a.mul_add(10.0, -1.0)));
+}
+
+/// The Benchmarks Game programs that have a Rust reference
+/// (`bench/game/ref/*.rs`, backlog T3-04: n-body, spectral-norm) print the
+/// benchmark's check output for its small argument (`bench/game/*.out`),
+/// and so does the Rust reference built by rustc.
+#[test]
+fn game_programs_match_their_rust_references() {
+    let game = Path::new(env!("CARGO_MANIFEST_DIR")).join("../bench/game");
+    let dir = std::env::temp_dir().join(format!("bmb-game-{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    let mut refs: Vec<PathBuf> = fs::read_dir(game.join("ref"))
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.extension().is_some_and(|x| x == "rs"))
+        .collect();
+    refs.sort();
+    assert!(refs.len() >= 2);
+    for r in refs {
+        let stem = r.file_stem().unwrap().to_str().unwrap().to_string();
+        let want = fs::read_to_string(game.join(&stem).with_extension("out")).unwrap();
+        let text = fs::read_to_string(game.join(&stem).with_extension("bmb")).unwrap();
+        assert_eq!(run_program(&stem, &text), want, "{stem}");
+        let exe = dir.join(format!("{stem}-rs"));
+        let built = Command::new("rustc")
+            .args(["-O", "--edition", "2021", "-o"])
+            .arg(&exe)
+            .arg(&r)
+            .output()
+            .unwrap();
+        assert!(
+            built.status.success(),
+            "{stem}: {}",
+            String::from_utf8_lossy(&built.stderr)
+        );
+        let run = Command::new(&exe).output().unwrap();
+        assert_eq!(String::from_utf8_lossy(&run.stdout), want, "{stem} (Rust)");
+    }
+    let _ = fs::remove_dir_all(&dir);
+}

@@ -701,6 +701,7 @@ fn walk_expr(e: &mut Expr, parent: Option<Span>, f: &mut dyn FnMut(&mut Expr, Op
         | ExprKind::Trigger(_)
         | ExprKind::Int(..)
         | ExprKind::ByteLit(_)
+        | ExprKind::Float(_)
         | ExprKind::ByteStr(_)
         | ExprKind::Bool(_)
         | ExprKind::Unit
@@ -883,6 +884,7 @@ fn children(e: &Expr) -> Vec<&Expr> {
         ExprKind::Path(_)
         | ExprKind::Int(..)
         | ExprKind::ByteLit(_)
+        | ExprKind::Float(_)
         | ExprKind::ByteStr(_)
         | ExprKind::Bool(_)
         | ExprKind::Unit

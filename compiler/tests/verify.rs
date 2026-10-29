@@ -423,3 +423,99 @@ fn the_vv0039_equivalent_contract_is_proved_with_a_lemma() {
     let out = run(&quantified, call);
     assert!(out.ok, "{}", out.output);
 }
+
+/// The values a counterexample in `msg` gives the `f64` inputs `names`.
+fn f64_cex(msg: &str, names: &[&str]) -> Vec<f64> {
+    let cex = msg
+        .split("; counterexample: ")
+        .nth(1)
+        .unwrap_or_else(|| panic!("no counterexample: {msg}"));
+    names
+        .iter()
+        .map(|n| {
+            let v = cex
+                .split(", ")
+                .find_map(|kv| kv.strip_prefix(&format!("{n} = ")))
+                .unwrap_or_else(|| panic!("no `{n}` in {msg}"));
+            v.split('"')
+                .next()
+                .unwrap_or(v)
+                .parse()
+                .unwrap_or_else(|_| panic!("`{v}` is not an f64"))
+        })
+        .collect()
+}
+
+/// G1 for `f64` (ADR-0061 §5, backlog T2-03): outside `by (bit_vector)`
+/// the operations are uninterpreted, so the solver's model may be no IEEE
+/// arithmetic at all (`1.0 + 1.0 == 2.0` is satisfiable with `f64.add`
+/// free; `x + y == y + x` first gets both zeros with `f64.eq` false). Such
+/// a model is recomputed with Rust's `f64` arithmetic and not shown; a
+/// counterexample comes only from a model IEEE arithmetic confirms, here
+/// checked again by running the assertion on the shown values. The same
+/// assertions show what is and is not proved where: `!(x < x)` holds in
+/// IEEE arithmetic, is not proved in an ordinary query (the gate-power
+/// mutant `v-f64-lt-interpreted` would prove it) and is proved by
+/// `by (bit_vector)`.
+#[test]
+fn f64_counterexamples_are_confirmed_by_ieee_arithmetic() {
+    let text = "#[summary(\"g1\")]
+mod g {
+    #[effects(pure)]
+    fn two() -> () {
+        let one: f64 = 1.0;
+        assert(one + one == 2.0);
+    }
+
+    #[effects(pure)]
+    fn commutes(x: f64, y: f64) -> () {
+        assert(x + y == y + x);
+    }
+
+    #[effects(pure)]
+    fn below(x: f64) -> () {
+        assert(x * x >= 0.0);
+    }
+
+    #[effects(pure)]
+    fn irreflexive(x: f64) -> () {
+        assert(!(x < x));
+    }
+
+    #[effects(pure)]
+    fn exactly(x: f64) -> () {
+        assert(!(x < x)) by (bit_vector);
+        assert(x * x >= 0.0 || x.is_nan()) by (bit_vector);
+    }
+}
+";
+    let out = bmb::verify_sources(&[("g.bmb".to_string(), text.to_string())]);
+    let lines: Vec<&str> = out.output.lines().collect();
+    let diag = |def: &str| -> &str {
+        lines
+            .iter()
+            .find(|l| l.contains(&format!("in `g::{def}`")))
+            .unwrap_or_else(|| panic!("no diagnostic for {def}:\n{}", out.output))
+    };
+    // A true assertion: undecided, and no counterexample.
+    for def in ["two", "irreflexive"] {
+        let d = diag(def);
+        assert!(
+            d.contains("\"code\":\"E0811\"") && !d.contains("; counterexample:"),
+            "{d}"
+        );
+        assert!(d.contains("it holds with IEEE 754 arithmetic"), "{d}");
+    }
+    // False ones: the shown values break the assertion in Rust.
+    let v = f64_cex(diag("commutes"), &["x", "y"]);
+    let (x, y) = (v[0], v[1]);
+    assert!(x + y != y + x, "{x} {y}");
+    let x = f64_cex(diag("below"), &["x"])[0];
+    assert!(x * x < 0.0 || (x * x).is_nan(), "{x}");
+    assert!(
+        out.output
+            .contains("{\"def\":\"g::exactly\",\"status\":\"verified\""),
+        "{}",
+        out.output
+    );
+}

@@ -1,0 +1,41 @@
+#[summary("f64 증명 실패: IEEE로 확인된 반례, 불투명 모델이 거짓인 경우의 미결정(G1), f64::from 정확성, print_f64 정밀도, by (bit_vector) 반례 (ADR-0061 §4·§5, backlog T2-03)")]
+mod ff {
+    // NaN is not below 1.0: a counterexample IEEE arithmetic confirms.
+    #[effects(pure)]
+    fn below(x: f64) -> () {
+        assert(x < 1.0);
+    }
+
+    // True in IEEE arithmetic, but the operations are uninterpreted here:
+    // the opaque model is not IEEE's, so no counterexample is shown.
+    #[effects(pure)]
+    fn two() -> () {
+        let one: f64 = 1.0;
+        assert(one + one == 2.0);
+    }
+
+    // The opaque model (both zeros) is not IEEE's; the search with IEEE
+    // arithmetic finds a NaN.
+    #[effects(pure)]
+    fn commutes(x: f64, y: f64) -> () {
+        assert(x + y == y + x);
+    }
+
+    // A 64-bit integer above 2^53 is not exactly an `f64` (E0815).
+    #[effects(pure)]
+    fn convert(n: u64) -> f64 {
+        f64::from(n)
+    }
+
+    // Rust panics on more than 65535 decimals (E0801).
+    #[effects(io)]
+    fn show(x: f64, d: u32) -> () {
+        print_f64(x, d);
+    }
+
+    // A bit-precise counterexample: the largest finite value plus itself.
+    #[effects(pure)]
+    fn finite_sum(x: f64) -> () {
+        assert(x.is_finite() ==> (x + x).is_finite()) by (bit_vector);
+    }
+}

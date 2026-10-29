@@ -271,6 +271,8 @@ impl IntTy {
 pub enum TypeKind {
     /// A fixed-width integer (ADR-0048 §1).
     Int(IntTy),
+    /// IEEE 754 binary64 (ADR-0061 §1).
+    F64,
     Bool,
     Unit,
     Array(Box<Type>, u64),
@@ -516,6 +518,9 @@ impl Radix {
 pub enum ExprKind {
     /// An integer literal and the base it is written in.
     Int(u128, Radix),
+    /// A floating-point literal (ADR-0061 §2): the bits of its `f64`
+    /// value. It is an `f64` wherever it appears.
+    Float(u64),
     /// `b'a'`: a `u8` (ADR-0044 §2).
     ByteLit(u8),
     /// `b"..."`: a `&[u8]`, only as a call argument (ADR-0044 §2).

@@ -538,6 +538,7 @@ fn node_spans(f: &FnDef) -> Vec<Span> {
             ExprKind::Continue { label } => out.extend(label.iter().map(|l| l.span)),
             ExprKind::Int(..)
             | ExprKind::ByteLit(_)
+            | ExprKind::Float(_)
             | ExprKind::ByteStr(_)
             | ExprKind::Bool(_)
             | ExprKind::Unit

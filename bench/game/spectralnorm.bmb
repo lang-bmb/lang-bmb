@@ -1,0 +1,76 @@
+#[summary("Benchmarks Game spectral-norm(T3-04): 무한 행렬 A의 앞 n×n(n = 100)에 대한 스펙트럼 노름, 거듭제곱법 10회. 단일 스레드")]
+mod sn {
+    spec fn small(i: usize, j: usize) -> bool { i <= 10000 && j <= 10000 }
+
+    spec fn sized(v: &[f64], n: usize) -> bool { v.len() == n && n <= 10000 }
+
+    // Entry (i, j) of A: 1 / ((i + j)(i + j + 1) / 2 + i + 1). The index fits in 2^53, so
+    // `f64::from` is exact (E0815).
+    #[effects(pure)]
+    #[uses(small)]
+    fn a(i: usize, j: usize) -> f64
+        requires small(i, j),
+    {
+        let k: usize = i + j;
+        1.0 / f64::from((k * (k + 1)) / 2 + i + 1)
+    }
+
+    // out = A v, or out = A^T v (`transpose`).
+    #[effects(pure)]
+    #[uses(sized, small)]
+    fn mul(v: &[f64], out: &mut [f64], n: usize, transpose: bool) -> ()
+        requires sized(v, n), sized(out, n),
+        ensures sized(out, n),
+    {
+        for i in 0..n
+            invariant sized(out, n),
+        {
+            let mut sum: f64 = 0.0;
+            for j in 0..n {
+                let aij: f64 = if transpose { a(j, i) } else { a(i, j) };
+                sum = sum + aij * v[j];
+            }
+            out[i] = sum;
+        }
+    }
+
+    // out = A^T A v.
+    #[effects(pure)]
+    #[uses(sized)]
+    fn mul_atav(v: &[f64], out: &mut [f64], tmp: &mut [f64], n: usize) -> ()
+        requires sized(v, n), sized(out, n), sized(tmp, n),
+        ensures sized(out, n), sized(tmp, n),
+    {
+        mul(v, tmp, n, false);
+        mul(tmp, out, n, true);
+    }
+
+    #[effects(io)]
+    #[uses(sized)]
+    fn main() -> () {
+        let n: usize = 100;
+        let mut u: Vec<f64> = Vec::new();
+        let mut v: Vec<f64> = Vec::new();
+        let mut tmp: Vec<f64> = Vec::new();
+        for i in 0..n
+            invariant u.len() == i, v.len() == i, tmp.len() == i,
+        {
+            u.push(1.0);
+            v.push(0.0);
+            tmp.push(0.0);
+        }
+        for k in 0..10
+            invariant u.len() == n, v.len() == n, tmp.len() == n,
+        {
+            mul_atav(u.as_slice(), v.as_mut_slice(), tmp.as_mut_slice(), n);
+            mul_atav(v.as_slice(), u.as_mut_slice(), tmp.as_mut_slice(), n);
+        }
+        let mut vbv: f64 = 0.0;
+        let mut vv: f64 = 0.0;
+        for m in 0..n {
+            vbv = vbv + u[m] * v[m];
+            vv = vv + v[m] * v[m];
+        }
+        print_f64((vbv / vv).sqrt(), 9);
+    }
+}

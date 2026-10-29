@@ -209,6 +209,7 @@ impl<'a> Parser<'a> {
         match t {
             Tok::Ident(s) => format!("`{s}`"),
             Tok::Int(v, r) => format!("`{}`", r.text(*v)),
+            Tok::Float(b) => format!("`{}`", crate::lexer::float_text(*b)),
             Tok::Str(_) => "string literal".into(),
             Tok::Byte(_) => "byte literal".into(),
             Tok::Bytes(_) => "byte string literal".into(),
@@ -1528,6 +1529,7 @@ impl<'a> Parser<'a> {
                 self.bump();
                 let kind = match s.as_str() {
                     "bool" => TypeKind::Bool,
+                    "f64" => TypeKind::F64,
                     n if IntTy::from_name(n).is_some() => {
                         TypeKind::Int(IntTy::from_name(n).unwrap())
                     }
@@ -1539,6 +1541,8 @@ impl<'a> Parser<'a> {
                             // Text is bytes (ADR-0044 §5): `&str` is `&[u8]`.
                             "char" => Some("u8"),
                             "str" => Some("[u8]"),
+                            // ADR-0061 §1, open question 3.
+                            "f32" => Some("f64"),
                             _ => None,
                         };
                         let mut d = Diag::new(
@@ -1548,7 +1552,7 @@ impl<'a> Parser<'a> {
                         );
                         d = match fix {
                             Some(f) => d.fix(format!("use `{f}`"), Some(f.to_string())),
-                            None => d.fix("types: the integers i8..i64, isize, u8..u64, usize; bool, (), [T; N], &[T], &mut [T], Vec<T>, Box<T>, Option<T>, Result<T, E>, structs and enums", None),
+                            None => d.fix("types: the integers i8..i64, isize, u8..u64, usize; f64, bool, (), [T; N], &[T], &mut [T], Vec<T>, Box<T>, Option<T>, Result<T, E>, structs and enums", None),
                         };
                         self.diags.push(d);
                         if self.is_p("<") {
@@ -2429,9 +2433,35 @@ impl<'a> Parser<'a> {
                             span,
                         };
                     }
+                    // An integer to `f64` (ADR-0061 §4): `f64::from(x)`, exact
+                    // or with an exactness obligation.
+                    None if ty.kind == TypeKind::F64 => {
+                        let x = self
+                            .text
+                            .get(e.span.lo as usize..e.span.hi as usize)
+                            .unwrap_or_default()
+                            .to_string();
+                        let r = format!("f64::from({})", unparen(&x));
+                        self.diags.push(d.fix(
+                            "an integer converts to `f64` with `f64::from(x)` (ADR-0061)",
+                            Some(r),
+                        ));
+                        let ident = |name: &str| Ident {
+                            name: name.into(),
+                            span,
+                        };
+                        e = Expr {
+                            kind: ExprKind::Call {
+                                path: vec![ident("f64"), ident("from")],
+                                targs: Vec::new(),
+                                args: vec![e],
+                            },
+                            span,
+                        };
+                    }
                     None => {
                         self.diags.push(d.fix(
-                            "only integer types convert, with `T::try_from(x).unwrap()`",
+                            "integer types convert with `T::try_from(x).unwrap()`, integers to `f64` with `f64::from(x)`; `f64` does not convert to integers",
                             None,
                         ));
                         e = Expr {
@@ -2467,6 +2497,13 @@ impl<'a> Parser<'a> {
                 self.bump();
                 Ok(Expr {
                     kind: ExprKind::Int(v, r),
+                    span: lo,
+                })
+            }
+            Tok::Float(v) => {
+                self.bump();
+                Ok(Expr {
+                    kind: ExprKind::Float(v),
                     span: lo,
                 })
             }
@@ -2771,7 +2808,7 @@ impl<'a> Parser<'a> {
         let lo = self.span();
         let literal = matches!(
             self.peek(),
-            Tok::Int(..) | Tok::Str(_) | Tok::Byte(_) | Tok::Bytes(_) | Tok::P("-")
+            Tok::Int(..) | Tok::Float(_) | Tok::Str(_) | Tok::Byte(_) | Tok::Bytes(_) | Tok::P("-")
         ) || self.is_kw("true")
             || self.is_kw("false");
         if literal || self.is_p("(") || self.is_p("[") || self.is_p("&") {

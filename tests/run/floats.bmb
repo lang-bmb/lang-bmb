@@ -1,0 +1,152 @@
+#[summary("f64 실행: 산술, 특수값, 변환, 메서드, 구조체·Vec·Option 안의 f64, print_f64 (ADR-0061, backlog T2-03). 기대 출력은 floats_ref.rs(Rust)의 출력")]
+mod fl {
+    struct Point {
+        x: f64,
+        y: f64,
+    }
+
+    spec fn bounded(n: i64) -> bool { -1000000 <= n && n <= 1000000 }
+
+    #[effects(pure)]
+    fn dist(a: Point, b: Point) -> f64 {
+        let dx: f64 = a.x - b.x;
+        let dy: f64 = a.y - b.y;
+        (dx * dx + dy * dy).sqrt()
+    }
+
+    // Newton's iteration for the square root, a fixed number of steps.
+    #[effects(pure)]
+    fn newton(x: f64) -> f64 {
+        let mut r: f64 = if x > 1.0 { x } else { 1.0 };
+        for k in 0..60 {
+            r = 0.5 * (r + x / r);
+        }
+        r
+    }
+
+    // Kahan's compensated sum.
+    #[effects(pure)]
+    fn kahan(v: &Vec<f64>) -> f64 {
+        let mut sum: f64 = 0.0;
+        let mut c: f64 = 0.0;
+        for i in 0..v.len() {
+            let y: f64 = v[i] - c;
+            let t: f64 = sum + y;
+            c = (t - sum) - y;
+            sum = t;
+        }
+        sum
+    }
+
+    #[effects(pure)]
+    fn naive(v: &Vec<f64>) -> f64 {
+        let mut sum: f64 = 0.0;
+        for i in 0..v.len() {
+            sum = sum + v[i];
+        }
+        sum
+    }
+
+    #[effects(pure)]
+    fn first_negative(v: &Vec<f64>) -> Option<f64> {
+        for i in 0..v.len() {
+            if v[i] < 0.0 {
+                return Some(v[i]);
+            }
+        }
+        None
+    }
+
+    #[effects(pure)]
+    #[uses(bounded)]
+    fn half(n: i64) -> f64
+        requires bounded(n),
+    {
+        f64::from(n) / 2.0
+    }
+
+    #[effects(io)]
+    fn show(x: f64) -> () {
+        print_f64(x, 6);
+    }
+
+    #[effects(io)]
+    fn flag(b: bool) -> () {
+        if b {
+            print_u64(1);
+        } else {
+            print_u64(0);
+        }
+    }
+
+    #[effects(io)]
+    #[uses(bounded)]
+    fn main() -> () {
+        // Arithmetic and rounding.
+        show(0.1 + 0.2);
+        print_f64(0.1 + 0.2, 17);
+        print_f64(1.0 / 3.0, 20);
+        show(dist(Point { x: 1.0, y: 2.0 }, Point { x: 4.0, y: 6.0 }));
+        show(newton(2.0));
+        print_f64(newton(2.0) - 2.0.sqrt(), 20);
+        // Special values: NaN, infinities, signed zero.
+        let zero: f64 = 0.0;
+        let inf: f64 = 1.0 / zero;
+        let nan: f64 = zero / zero;
+        show(inf);
+        show(-inf);
+        show(nan);
+        show(-zero);
+        show(inf - inf);
+        flag(nan == nan);
+        flag(nan != nan);
+        flag(nan < 1.0);
+        flag(nan >= 1.0);
+        flag(-zero == zero);
+        flag(nan.is_nan());
+        flag(inf.is_finite());
+        flag(f64::MAX.is_finite());
+        show(nan.min(3.0));
+        show(nan.max(-3.0));
+        show(2.5.min(-1.5));
+        show(2.5.max(-1.5));
+        show((-7.25).abs());
+        show((-1.0).sqrt());
+        show(f64::MAX * 2.0);
+        print_f64(f64::MIN_POSITIVE / 4.0, 320);
+        print_f64(f64::EPSILON, 20);
+        show(f64::MIN);
+        // Conversions.
+        show(half(7));
+        show(half(-1000000));
+        let byte: u8 = 255;
+        show(f64::from(byte));
+        show(f64::from(u32::MAX));
+        show(f64::from(i32::MIN));
+        // Ties round to even, as Rust's `{:.N}`.
+        print_f64(0.125, 2);
+        print_f64(0.375, 2);
+        print_f64(2.5, 0);
+        print_f64(3.5, 0);
+        print_f64(-0.5, 0);
+        print_f64(1.0e21, 1);
+        print_f64(123456.789e3, 3);
+        // Data structures.
+        let mut v: Vec<f64> = Vec::new();
+        v.push(1.0e16);
+        for k in 0..10
+            invariant v.len() == k + 1,
+        {
+            v.push(1.0);
+        }
+        v.push(-1.0e16);
+        show(naive(&v));
+        show(kahan(&v));
+        match first_negative(&v) {
+            None => print_u64(0),
+            Some(x) => show(x),
+        }
+        let ps: [Point; 2] = [Point { x: -0.5, y: 0.25 }, Point { x: 1.5, y: -2.0 }];
+        show(dist(ps[0], ps[1]));
+    }
+}

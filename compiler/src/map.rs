@@ -249,6 +249,7 @@ fn calls_in_expr<'e>(
         ExprKind::Continue { .. } => {}
         ExprKind::Int(..)
         | ExprKind::ByteLit(_)
+        | ExprKind::Float(_)
         | ExprKind::ByteStr(_)
         | ExprKind::Bool(_)
         | ExprKind::Unit
@@ -520,6 +521,7 @@ fn exprs_of(f: &FnDef) -> Vec<&Expr> {
             ExprKind::Path(_)
             | ExprKind::Int(..)
             | ExprKind::ByteLit(_)
+            | ExprKind::Float(_)
             | ExprKind::ByteStr(_)
             | ExprKind::Bool(_)
             | ExprKind::Unit

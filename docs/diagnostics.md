@@ -15,6 +15,7 @@
 | E0106 | block comments are not allowed; use `//` |
 | E0107 | nesting too deep |
 | E0108 | malformed integer literal: a digit outside its base, or a base prefix without digits |
+| E0109 | malformed float literal: digits on both sides of the point (`1.0`, `0.5`) and after an exponent `e` are required |
 
 ## E02xx Rust 습관(수정 제안 포함)
 
@@ -131,7 +132,7 @@
 | E0507 | recursive function requires `decreases` |
 | E0513 | conversions are not used in specifications (integer types mix there) |
 | E0514 | `==` is not defined for `Vec` |
-| E0515 | `assert(..) by (bit_vector)` takes integer and `bool` terms only (no element, field, quantifier, `old` or data value) |
+| E0515 | `assert(..) by (bit_vector)` takes integer, `f64` and `bool` terms only (no element, field, quantifier, `old` or data value) |
 | E0516 | unknown prover in `assert(..) by (..)` (the one prover is `bit_vector`) |
 | E0508 | `old(..)` is only allowed in `ensures`, loop invariants and `assert` on a `&mut` parameter |
 | E0509 | `#[uses(..)]` entry is not a spec function |
@@ -175,7 +176,7 @@
 | E0811 | solver could not decide (resource limit or incompleteness) |
 | E0812 | proof gate cannot run (solver missing, wrong version or failed) |
 | E0813 | recursive spec function may not terminate |
-| E0815 | integer conversion may be out of range |
+| E0815 | integer conversion may be out of range (to `f64`: a 64-bit value may be above 2^53 and inexact) |
 | E0816 | a `Vec` may exceed its maximum length |
 | E0817 | a trait impl's function does not refine the trait's contract |
 | E0818 | a `by (bit_vector)` sub-proof may not hold, or its assertion has no bit-vector translation |
