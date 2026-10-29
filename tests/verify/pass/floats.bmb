@@ -1,0 +1,91 @@
+#[summary("f64 증명: 불투명 연산 위의 정수·인덱스 의무, f64::from 정확성(E0815), print_f64 정밀도, by (bit_vector) 안의 IEEE 사실 (ADR-0061 §4·§5, backlog T2-03)")]
+mod fp {
+    struct Sample {
+        t: f64,
+        v: f64,
+    }
+
+    spec fn within(n: i64) -> bool { -9007199254740992 <= n && n <= 9007199254740992 }
+
+    spec fn ordered_or_nan(r: f64) -> bool { r >= 0.0 || r.is_nan() }
+
+    spec fn kept(x: f64, r: f64) -> bool { x > 0.0 ==> r > 0.0 }
+
+    spec fn at_most(r: usize, v: &[f64]) -> bool { r <= v.len() }
+
+    // The integer obligations of a loop over `f64` data are proved whatever
+    // the values are (the operations are uninterpreted).
+    #[effects(pure)]
+    #[uses(at_most)]
+    fn count_above(v: &[f64], limit: f64) -> (r: usize)
+        ensures at_most(r, v),
+    {
+        let mut c: usize = 0;
+        for i in 0..v.len()
+            invariant c <= i,
+        {
+            if v[i] > limit {
+                c = c + 1;
+            }
+        }
+        c
+    }
+
+    // A 64-bit integer converts exactly within 2^53 (E0815, ADR-0061 §4);
+    // 32-bit and narrower ones always do.
+    #[effects(pure)]
+    #[uses(within)]
+    fn exact(n: i64, k: u32, b: i8) -> f64
+        requires within(n),
+    {
+        f64::from(n) + f64::from(k) + f64::from(b)
+    }
+
+    // A comparison on the path is an atom of the query: the branch taken
+    // is known, though not what it means in IEEE arithmetic.
+    #[effects(pure)]
+    #[uses(kept)]
+    fn positive_part(x: f64) -> (r: f64)
+        ensures kept(x, r),
+    {
+        if x > 0.0 { x } else { 0.0 }
+    }
+
+    // What `!(x < 0.0)` means is IEEE's: proved bit-precisely, then used.
+    #[effects(pure)]
+    #[uses(ordered_or_nan)]
+    fn clamp(x: f64) -> (r: f64)
+        ensures ordered_or_nan(r),
+    {
+        assert(!(x < 0.0) ==> x >= 0.0 || x.is_nan()) by (bit_vector);
+        assert(0.0 >= 0.0) by (bit_vector);
+        if x < 0.0 { 0.0 } else { x }
+    }
+
+    // Facts of IEEE arithmetic: no free variable, and over one variable.
+    #[effects(pure)]
+    fn ieee(x: f64) -> () {
+        assert(1.0 + 2.0 == 3.0 && 0.1 + 0.2 != 0.3) by (bit_vector);
+        assert(x == x || x.is_nan()) by (bit_vector);
+        assert(!(x < x)) by (bit_vector);
+        assert(x.is_finite() ==> x - x == 0.0) by (bit_vector);
+        assert(f64::NAN != f64::NAN && -0.0 == 0.0) by (bit_vector);
+        assert(f64::from(16777217) == 16777217.0 && f64::from(9007199254740993) == 9007199254740992.0) by (bit_vector);
+    }
+
+    #[effects(pure)]
+    fn latest(s: &Vec<Sample>) -> Option<f64> {
+        let n: usize = s.len();
+        if n == 0 {
+            return None;
+        }
+        Some(s[n - 1].v)
+    }
+
+    #[effects(io)]
+    fn report(x: f64, d: u32) -> () {
+        if d <= 20 {
+            print_f64(x, d);
+        }
+    }
+}

@@ -171,6 +171,30 @@ impl Solver {
         }
     }
 
+    /// Values of the given terms in the current model, as the solver
+    /// writes them.
+    pub fn get_value_terms(&mut self, terms: &[String]) -> Result<Vec<Sexp>, String> {
+        if terms.is_empty() {
+            return Ok(Vec::new());
+        }
+        self.send(&format!("(get-value ({}))", terms.join(" ")))?;
+        let r = self.read_response()?;
+        if r.starts_with("(error") {
+            return Err(r);
+        }
+        let tree = parse(&r).ok_or_else(|| format!("cannot parse model: {r}"))?;
+        let Sexp::List(pairs) = tree else {
+            return Err(format!("unexpected model: {r}"));
+        };
+        Ok(pairs
+            .into_iter()
+            .map(|p| match p {
+                Sexp::List(mut kv) if kv.len() == 2 => kv.pop().expect("two"),
+                other => other,
+            })
+            .collect())
+    }
+
     /// Values of the given terms in the current model, rendered for humans.
     pub fn get_values(&mut self, terms: &[String]) -> Result<Vec<String>, String> {
         if terms.is_empty() {
@@ -321,10 +345,59 @@ pub fn print(e: &Sexp) -> String {
     }
 }
 
+/// The `f64` a model value of sort `Float64` denotes (ADR-0061 §5):
+/// `(fp #b0 #b.. #x..)`, `(_ +zero 11 53)`, `(_ -oo 11 53)`, `(_ NaN 11
+/// 53)` (Rust's `f64::NAN` for NaN).
+pub fn fp_value(v: &Sexp) -> Option<f64> {
+    let bits = |a: &Sexp, w: u32| -> Option<u64> {
+        let Sexp::Atom(a) = a else { return None };
+        let (digits, radix, n) = match a.strip_prefix("#b") {
+            Some(b) => (b, 2, b.len() as u32),
+            None => {
+                let h = a.strip_prefix("#x")?;
+                (h, 16, 4 * h.len() as u32)
+            }
+        };
+        (n == w).then(|| u64::from_str_radix(digits, radix).ok())?
+    };
+    match v {
+        Sexp::List(xs) => match xs.as_slice() {
+            [Sexp::Atom(f), s, e, m] if f == "fp" => {
+                let b = (bits(s, 1)? << 63) | (bits(e, 11)? << 52) | bits(m, 52)?;
+                Some(f64::from_bits(b))
+            }
+            [Sexp::Atom(u), Sexp::Atom(k), Sexp::Atom(eb), Sexp::Atom(sb)]
+                if u == "_" && eb == "11" && sb == "53" =>
+            {
+                Some(match k.as_str() {
+                    "+zero" => 0.0,
+                    "-zero" => -0.0,
+                    "+oo" => f64::INFINITY,
+                    "-oo" => f64::NEG_INFINITY,
+                    "NaN" => f64::NAN,
+                    _ => return None,
+                })
+            }
+            _ => None,
+        },
+        Sexp::Atom(_) => None,
+    }
+}
+
 /// `5` -> `5`, `(- 5)` -> `-5`, `true` -> `true`, a value of type
-/// parameter `T` (an element of its sort, ADR-0046 §4) `T#1`; other terms
-/// are printed back.
+/// parameter `T` (an element of its sort, ADR-0046 §4) `T#1`, an `f64` in
+/// Rust's shortest form (`0.1`, `-0.0`, `NaN`, `inf`); other terms are
+/// printed back.
 pub fn render_value(v: &Sexp) -> String {
+    if let Some(x) = fp_value(v) {
+        return if x.is_nan() {
+            "NaN".into()
+        } else if x.is_infinite() {
+            format!("{x}")
+        } else {
+            crate::lexer::float_text(x.to_bits())
+        };
+    }
     match v {
         Sexp::Atom(a) => match a
             .strip_prefix("|'")

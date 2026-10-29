@@ -1,0 +1,51 @@
+#[summary("f64 실행: 망델브로 집합을 글자로 그린다(48×20, 반복 최대 64회). 기대 출력은 mandel_ref.rs(Rust)의 출력 (ADR-0061, backlog T2-03)")]
+mod md {
+    // Iterations of z = z^2 + c before |z| > 2, at most `limit`.
+    #[effects(pure)]
+    fn escape(cr: f64, ci: f64, limit: u32) -> u32 {
+        let mut zr: f64 = 0.0;
+        let mut zi: f64 = 0.0;
+        let mut n: u32 = 0;
+        while n < limit && zr * zr + zi * zi <= 4.0
+            invariant n <= limit,
+            decreases limit - n,
+        {
+            let t: f64 = zr * zr - zi * zi + cr;
+            zi = 2.0 * zr * zi + ci;
+            zr = t;
+            n = n + 1;
+        }
+        n
+    }
+
+    #[effects(pure)]
+    fn shade(n: u32) -> u8 {
+        if n >= 64 {
+            b'#'
+        } else if n >= 16 {
+            b'+'
+        } else if n >= 6 {
+            b'.'
+        } else {
+            b' '
+        }
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        let w: u32 = 48;
+        let h: u32 = 20;
+        for y in 0..h {
+            let mut line: Vec<u8> = Vec::new();
+            for x in 0..w
+                invariant line.len() == x,
+            {
+                let cr: f64 = -2.2 + 3.0 * f64::from(x) / f64::from(w);
+                let ci: f64 = -1.2 + 2.4 * f64::from(y) / f64::from(h);
+                line.push(shade(escape(cr, ci, 64)));
+            }
+            line.push(b'\n');
+            print_bytes(line.as_slice());
+        }
+    }
+}

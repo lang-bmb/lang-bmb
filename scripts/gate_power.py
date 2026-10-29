@@ -16,7 +16,8 @@ the whole gate there (`scripts/check.sh`) after `cargo fmt` (formatting
 must not be what catches a defect); the gate catches a mutant when it exits
 non-zero, and `detected_by` names the gate jobs that failed (empty when an
 earlier step such as clippy or the build failed; `tail` shows which). Classes: `unsound` (a false program could be proved),
-`incomplete` (a true program could fail), `miscompile` (a proved program could
+`incomplete` (a true program could fail), `encoding` (a query departs from
+the adopted encoding: true facts, at another cost), `miscompile` (a proved program could
 run wrongly). A mutant the gate misses is either a gap (a test is added for
 it) or equivalent (no program can tell, reasoned in `note`).
 Standard library only.
@@ -487,6 +488,21 @@ MUTANTS = [
      '''            self.oblige_valid(a.span, Boundary::Arg(a, &target), v, t);''',
      '''            let _ = (a, v, t);''',
      "a call argument is not proved valid, while the callee assumes its parameter is (E0823)"),
+    # `f64` (ADR-0061 §7, backlog T2-03).
+    ("c-fadd-as-fsub", "miscompile", C,
+     '''                    BinOp::Add => ("fadd", None),''',
+     '''                    BinOp::Add => ("fsub", None),''',
+     "`+` on `f64` is lowered to `fsub`"),
+    ("c-olt-as-ole", "miscompile", C,
+     '''                    BinOp::Lt => ("fcmp", Some("olt")),''',
+     '''                    BinOp::Lt => ("fcmp", Some("ole")),''',
+     "`<` on `f64` is lowered to `fcmp ole` (equal operands compare below)"),
+    ("v-f64-lt-interpreted", "encoding", V,
+     '''        if interpreted {
+            let params''',
+     '''        if interpreted || name == "f64.lt" {
+            let params''',
+     "`<` on `f64` is interpreted (`fp.lt`) in ordinary queries, outside `by (bit_vector)` (ADR-0061 §5)"),
 ]
 
 
@@ -559,7 +575,7 @@ def table(args):
     caught = sum(r["caught"] for r in rows)
     out.append("")
     out.append(f"검출: {caught}/{len(rows)}")
-    for cls in ("unsound", "incomplete", "miscompile"):
+    for cls in ("unsound", "incomplete", "encoding", "miscompile"):
         rs = [r for r in rows if r["class"] == cls]
         if rs:
             out.append(f"- {cls}: {sum(r['caught'] for r in rs)}/{len(rs)}")

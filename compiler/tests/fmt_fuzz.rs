@@ -162,8 +162,8 @@ fn hashes(files: &Files) -> Vec<String> {
 }
 
 /// Adds comments, blank lines, indentation and line breaks between tokens.
-/// Lines holding a string literal (`#[summary("..")]`) only get comments and
-/// blank lines around them, so the literal is untouched.
+/// Lines holding a string or byte literal (`#[summary("..")]`, `b' '`) only
+/// get comments and blank lines around them, so the literal is untouched.
 fn relayout(rng: &mut Rng, text: &str) -> String {
     let mut out = String::new();
     for line in text.lines() {
@@ -173,7 +173,7 @@ fn relayout(rng: &mut Rng, text: &str) -> String {
         if rng.chance(10) {
             out.push_str("// note\n");
         }
-        let body = if line.contains('"') {
+        let body = if line.contains('"') || line.contains('\'') {
             line.to_string()
         } else {
             let mut b = String::new();

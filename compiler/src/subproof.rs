@@ -24,7 +24,10 @@
 //!
 //! Another theory plugs in at `Sort`: ADR-0061 §5 adds `f64` variables as
 //! `(_ FloatingPoint 11 53)` and interprets the encoder's `f64.*` symbols as
-//! `fp.*` here only; `Query::logic` then names a logic with both.
+//! `fp.*` with rounding to nearest even here only (`verify::F64_FUNS`, the
+//! same definitions the counterexample search uses); `Query::logic` then
+//! names a logic with both. An integer converted by `f64.from` is a signed
+//! bit-vector, which `to_fp` rounds as LLVM's `sitofp` does.
 
 use std::collections::BTreeMap;
 
@@ -36,6 +39,8 @@ use crate::smt::Sexp;
 pub enum Sort {
     Int(IntTy),
     Bool,
+    /// `f64` (ADR-0061 §5).
+    F64,
 }
 
 /// A spec fn's body over placeholder symbols for its parameters (the
@@ -106,6 +111,8 @@ enum T {
         t: String,
         w: u32,
     },
+    /// An `f64`: a `(_ FloatingPoint 11 53)` term.
+    Fp(String),
 }
 
 type Unfold<'u> = dyn FnMut(&str, &[String]) -> Result<Option<Unfolded>, String> + 'u;
@@ -150,8 +157,22 @@ pub fn bit_vector(
         T::Bool(g) => g,
         _ => return Err("the assertion is not a `bool`".into()),
     };
+    // The `f64` operations, defined (ADR-0061 §5), before the definitions
+    // that apply them.
+    let all = format!("{} {} {goal}", tr.decls.join(" "), tr.hyps.join(" "));
+    let defs = crate::verify::f64_decls(&all, true);
+    if !defs.is_empty() {
+        let mut d: Vec<String> = defs.lines().map(String::from).collect();
+        d.append(&mut tr.decls);
+        tr.decls = d;
+    }
+    let fp = vars.iter().any(|(_, s)| *s == Sort::F64)
+        || !defs.is_empty()
+        || all.contains("(fp ")
+        || all.contains("(_ NaN")
+        || all.contains("to_fp");
     Ok(Query {
-        logic: "QF_BV",
+        logic: if fp { "QF_FPBV" } else { "QF_BV" },
         decls: tr.decls,
         hyps: tr.hyps,
         goal,
@@ -190,6 +211,7 @@ pub fn bit_vector_int(term: &Sexp, vars: &[(String, Sort)]) -> Result<(String, u
 fn var(s: &str, sort: Sort) -> (String, T) {
     match sort {
         Sort::Bool => ("Bool".to_string(), T::Bool(s.to_string())),
+        Sort::F64 => ("Float64".to_string(), T::Fp(s.to_string())),
         Sort::Int(i) => {
             let w = i.bits();
             let iv = Some((i.min_value(), i.max_value()));
@@ -427,6 +449,14 @@ impl Tr<'_, '_> {
                         let w: u32 = w.parse().map_err(|_| "bad literal width")?;
                         Ok(T::Bv { t: print(e), w })
                     }
+                    // `(_ NaN 11 53)`, `(_ +zero 11 53)`: `f64` constants.
+                    [_, Sexp::Atom(v), Sexp::Atom(eb), Sexp::Atom(sb)]
+                        if eb == "11"
+                            && sb == "53"
+                            && matches!(v.as_str(), "NaN" | "+zero" | "-zero" | "+oo" | "-oo") =>
+                    {
+                        Ok(T::Fp(print(e)))
+                    }
                     _ => Err(format!("`{}` has no bit-vector translation", print(e))),
                 },
                 Sexp::Atom(h) => self.app(h, &xs[1..], e),
@@ -450,6 +480,38 @@ impl Tr<'_, '_> {
                 _ => Err(format!("`{}` is not a `bool`", print(x))),
             })
             .collect()
+    }
+
+    fn fps(&mut self, xs: &[Sexp]) -> Result<Vec<String>, String> {
+        xs.iter()
+            .map(|x| match self.term(x)? {
+                T::Fp(t) => Ok(t),
+                _ => Err(format!("`{}` is not an `f64`", print(x))),
+            })
+            .collect()
+    }
+
+    /// An `f64` operation of the encoder (ADR-0061 §5). It stays an
+    /// application of its symbol, which the query defines with its IEEE
+    /// meaning (`verify::f64_decls`, interpreted: `fp.*` with rounding to
+    /// nearest even), except `f64.from`: its integer operand is a signed
+    /// bit-vector here, which `to_fp` rounds as `sitofp` does.
+    fn float(&mut self, h: &str, args: &[Sexp]) -> Result<T, String> {
+        if h == "f64.from" {
+            let (t, _, _) = self.ints(args)?.remove(0);
+            return Ok(T::Fp(format!("((_ to_fp 11 53) RNE {t})")));
+        }
+        let ret = match h {
+            "f64.is_finite" => "Bool",
+            _ => crate::verify::F64_FUNS
+                .iter()
+                .find(|(n, ..)| *n == h)
+                .map(|(_, _, ret, _)| *ret)
+                .ok_or_else(|| format!("`{h}` has no floating-point translation"))?,
+        };
+        let xs = self.fps(args)?;
+        let t = format!("({h} {})", xs.join(" "));
+        Ok(if ret == "Bool" { T::Bool(t) } else { T::Fp(t) })
     }
 
     fn bvs(&mut self, xs: &[Sexp]) -> Result<Vec<(String, u32)>, String> {
@@ -611,7 +673,7 @@ impl Tr<'_, '_> {
             .unwrap_or(0);
         let text = |x: &T| match x {
             T::Int { t, w, .. } => resize(t, *w, ww),
-            T::Bool(t) | T::Bv { t, .. } => t.clone(),
+            T::Bool(t) | T::Bv { t, .. } | T::Fp(t) => t.clone(),
         };
         let parts: Vec<String> = xs
             .windows(2)
@@ -631,6 +693,7 @@ impl Tr<'_, '_> {
                 t: format!("(ite {c} {x} {y})"),
                 w,
             },
+            (T::Fp(x), T::Fp(y)) => T::Fp(format!("(ite {c} {x} {y})")),
             (
                 T::Int {
                     t: x,
@@ -653,6 +716,9 @@ impl Tr<'_, '_> {
 
     fn app(&mut self, h: &str, args: &[Sexp], e: &Sexp) -> Result<T, String> {
         match h {
+            _ if h.starts_with("f64.") => self.float(h, args),
+            // An `f64` literal: its sign, exponent and significand.
+            "fp" => Ok(T::Fp(print(e))),
             "+" | "-" | "*" => self.arith(h, args),
             "div" | "mod" => self.divmod(h, args),
             "<" | "<=" | ">" | ">=" => self.compare(h, args),
@@ -758,7 +824,7 @@ impl Tr<'_, '_> {
             "{f} {}",
             vals.iter()
                 .map(|v| match v {
-                    T::Bool(t) | T::Int { t, .. } | T::Bv { t, .. } => t.as_str(),
+                    T::Bool(t) | T::Int { t, .. } | T::Bv { t, .. } | T::Fp(t) => t.as_str(),
                 })
                 .collect::<Vec<_>>()
                 .join(" ")
@@ -786,6 +852,10 @@ impl Tr<'_, '_> {
                         w: *w,
                         iv: *iv,
                     }
+                }
+                T::Fp(t) if t.contains(' ') => {
+                    self.decls.push(format!("(define-fun {p} () Float64 {t})"));
+                    T::Fp(p.clone())
                 }
                 other => other.clone(),
             };

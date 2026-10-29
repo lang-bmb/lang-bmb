@@ -450,6 +450,7 @@ impl Renamer<'_> {
             }
             ExprKind::Int(..)
             | ExprKind::ByteLit(_)
+            | ExprKind::Float(_)
             | ExprKind::ByteStr(_)
             | ExprKind::Bool(_)
             | ExprKind::Unit

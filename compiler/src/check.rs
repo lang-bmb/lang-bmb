@@ -494,6 +494,7 @@ struct LoopCx {
 pub fn ty_str(t: &TypeKind) -> String {
     match t {
         TypeKind::Int(t) => t.name().into(),
+        TypeKind::F64 => "f64".into(),
         TypeKind::Bool => "bool".into(),
         TypeKind::Unit => "()".into(),
         TypeKind::Array(e, n) => format!("[{}; {n}]", ty_str(&e.kind)),
@@ -532,10 +533,8 @@ pub fn parse_ty(s: &str) -> Option<TypeKind> {
             span: Span::default(),
         };
         Some(match s {
-            "i64" => TypeKind::Int(IntTy::I64),
-            "u64" => TypeKind::Int(IntTy::U64),
-            "u8" => TypeKind::Int(IntTy::U8),
-            "usize" => TypeKind::Int(IntTy::Usize),
+            _ if IntTy::from_name(s).is_some() => TypeKind::Int(IntTy::from_name(s)?),
+            "f64" => TypeKind::F64,
             "bool" => TypeKind::Bool,
             "()" => TypeKind::Unit,
             _ if s.starts_with("&mut ") => TypeKind::Ref {
@@ -623,8 +622,9 @@ pub fn bit_method_arity(m: &str) -> Option<usize> {
         _ => None,
     }
 }
+/// A scalar value: an integer, `f64` (ADR-0061 §1) or `bool`.
 fn is_scalar(t: &TypeKind) -> bool {
-    is_int(t) || matches!(t, TypeKind::Bool)
+    is_int(t) || matches!(t, TypeKind::Bool | TypeKind::F64)
 }
 
 /// Whether values of `t` move (ADR-0047 §1): a `Vec`, a `Box`, and the
@@ -759,6 +759,26 @@ impl<'a> Checker<'a> {
                     mutable: false,
                     inner: mk(TypeKind::Slice(mk(TypeKind::Int(IntTy::U8)))),
                 }],
+                ret: TypeKind::Unit,
+                effect: Effect::Io,
+                vacuous: false,
+                builtin: true,
+                in_impl: false,
+                trait_of: None,
+                default: false,
+                span: Span::default(),
+                generics: Vec::new(),
+                impl_generics: 0,
+            },
+        );
+        // `print_f64(x, decimals)` (ADR-0061 §6): Rust's
+        // `println!("{:.N}", x)`, `decimals <= 65535` (Rust panics above).
+        fns.insert(
+            "print_f64".to_string(),
+            FnSig {
+                path: "print_f64".into(),
+                kind: FnKind::Exec,
+                params: vec![TypeKind::F64, TypeKind::Int(IntTy::U32)],
                 ret: TypeKind::Unit,
                 effect: Effect::Io,
                 vacuous: false,
@@ -1653,13 +1673,13 @@ impl<'a> Checker<'a> {
 
     /// Whether `t` has the built-in trait `b` (`Eq` or `Ord`): the integer
     /// types, `bool`, and a type parameter in scope bounded by it (`Ord`
-    /// includes `Eq`).
+    /// includes `Eq`). Not `f64`: NaN is not equal to itself (ADR-0061 §1).
     fn has_builtin(&self, t: &TypeKind, b: &str) -> bool {
         match t {
             TypeKind::Param(n) => self.tparams.iter().any(|p| {
                 p.name == *n && p.bounds.iter().any(|x| x == b || (b == "Eq" && x == "Ord"))
             }),
-            t => is_scalar(t),
+            t => is_int(t) || *t == TypeKind::Bool,
         }
     }
 
@@ -1712,7 +1732,11 @@ impl<'a> Checker<'a> {
                             ),
                         )
                         .fix(
-                            format!("`{b}` holds for the integer types, `bool` and type parameters bounded by it; for data types it is ADR-0046 open question 4"),
+                            if *t == TypeKind::F64 {
+                                format!("`f64` is not `{b}`, as in Rust: NaN is not equal to itself (ADR-0061 §1); compare `f64` values with `<`, `==` in code, or drop the bound")
+                            } else {
+                                format!("`{b}` holds for the integer types, `bool` and type parameters bounded by it; for data types it is ADR-0046 open question 4")
+                            },
                             None,
                         ),
                     );
@@ -3355,6 +3379,16 @@ impl<'a> Checker<'a> {
                     };
                     d.fix(fix, None)
                 }
+                // ADR-0061 §4: integers convert to `f64` explicitly, and
+                // `f64` does not convert to integers.
+                TypeKind::Int(_) if *want == TypeKind::F64 => d.fix(
+                    "convert: `f64::from(x)` (exact; a 64-bit integer has the obligation `|x| <= 2^53`)",
+                    None,
+                ),
+                TypeKind::F64 if is_int(want) => d.fix(
+                    "`f64` does not convert to an integer type (ADR-0061 §4, open question 1)",
+                    None,
+                ),
                 _ => d,
             };
             self.diags.push(d);
@@ -5354,6 +5388,28 @@ impl<'a> Checker<'a> {
             ExprKind::Path(path) if int_const(path).is_some() => {
                 int_const(path).expect("checked").0
             }
+            ExprKind::Path(path) if f64_const(path).is_some() => TypeKind::F64,
+            ExprKind::Path(path) if path.len() == 2 && path[0].name == "f64" => {
+                self.diags.push(
+                    Diag::new(
+                        "E0305",
+                        e.span,
+                        format!("`f64` has no constant `{}`", path[1].name),
+                    )
+                    .fix(
+                        format!(
+                            "the `f64` constants are {}",
+                            F64_CONSTS
+                                .iter()
+                                .map(|(n, _)| format!("`f64::{n}`"))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        ),
+                        None,
+                    ),
+                );
+                TypeKind::Error
+            }
             ExprKind::Path(path) if path.len() == 2 && int_type(&path[0].name).is_some() => {
                 self.diags.push(
                     Diag::new(
@@ -5443,7 +5499,11 @@ impl<'a> Checker<'a> {
             }
             ExprKind::Unit => TypeKind::Unit,
             ExprKind::Bool(_) => TypeKind::Bool,
+            ExprKind::Int(v, _) if expected == Some(&TypeKind::F64) => {
+                self.int_for_float(&v.to_string(), e.span)
+            }
             ExprKind::Int(v, _) => self.int_lit(*v, false, expected, e.span, mode),
+            ExprKind::Float(_) => TypeKind::F64,
             ExprKind::ByteLit(_) => TypeKind::Int(IntTy::U8),
             // A `&[u8]` is a reference: second-class (ADR-0015, ADR-0044 §2).
             ExprKind::ByteStr(_) => {
@@ -5479,12 +5539,19 @@ impl<'a> Checker<'a> {
             },
             ExprKind::Unary(UnOp::Neg, inner) => {
                 if let ExprKind::Int(v, _) = inner.kind {
+                    if expected == Some(&TypeKind::F64) {
+                        // The literal is the operand: record its type too.
+                        let t = self.int_for_float(&format!("-{v}"), e.span);
+                        self.types
+                            .insert((inner.span.file, inner.span.lo, inner.span.hi), t.clone());
+                        return t;
+                    }
                     return self.int_lit(v, true, expected, e.span, mode);
                 }
                 let t = self.expr(cx, inner, expected, mode);
                 match t {
                     TypeKind::Int(i) if i.signed() => t,
-                    TypeKind::Error => t,
+                    TypeKind::F64 | TypeKind::Error => t,
                     // Specification integers are mathematical: `-x` of an
                     // unsigned value is just an integer (ADR-0024).
                     TypeKind::Int(_) if mode != Mode::Exec => TypeKind::Int(IntTy::I64),
@@ -5544,6 +5611,10 @@ impl<'a> Checker<'a> {
             }
             ExprKind::Method { recv, name, args } => {
                 self.method(cx, recv, name, args, e.span, mode)
+            }
+            // An integer (or `f64`) to `f64` (ADR-0061 §4).
+            ExprKind::Call { path, args, .. } if is_f64_from(path) => {
+                self.f64_from(cx, args, e.span, mode)
             }
             // A conversion without `.unwrap()` / `.ok()` (ADR-0028 §1), and
             // `T::from(x)` (E0212).
@@ -5797,6 +5868,55 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// An integer literal where an `f64` is expected (`let x: f64 = 1;`):
+    /// E0401 with the float literal as the fix, as in Rust. Checking goes
+    /// on with an `f64`.
+    fn int_for_float(&mut self, text: &str, span: Span) -> TypeKind {
+        self.diags.push(
+            Diag::new(
+                "E0401",
+                span,
+                format!("expected `f64`, found integer literal `{text}`"),
+            )
+            .fix(
+                "write a float literal (ADR-0061 §2)",
+                Some(format!("{text}.0")),
+            ),
+        );
+        TypeKind::F64
+    }
+
+    /// `f64::from(x)` (ADR-0061 §4): `x` an integer of any type (exact up
+    /// to 32 bits; a 64-bit source has the obligation `|x| <= 2^53`,
+    /// E0815) or an `f64` (itself).
+    fn f64_from(&mut self, cx: &mut FnCtx, args: &[Expr], span: Span, mode: Mode) -> TypeKind {
+        if args.len() != 1 {
+            self.diags.push(
+                Diag::new("E0405", span, "`f64::from` takes one argument")
+                    .fix("write `f64::from(x)` with an integer `x`", None),
+            );
+            for a in args {
+                self.expr(cx, a, None, mode);
+            }
+            return TypeKind::Error;
+        }
+        let t = self.expr(cx, &args[0], None, mode);
+        match t {
+            TypeKind::Int(_) | TypeKind::F64 | TypeKind::Error => TypeKind::F64,
+            other => {
+                self.diags.push(
+                    Diag::new(
+                        "E0401",
+                        args[0].span,
+                        format!("`f64::from` takes an integer, found `{}`", ty_str(&other)),
+                    )
+                    .fix("`f64::from(x)` converts an integer of any type", None),
+                );
+                TypeKind::Error
+            }
+        }
+    }
+
     fn int_lit(
         &mut self,
         v: u128,
@@ -5874,7 +5994,7 @@ impl<'a> Checker<'a> {
                 // An operation whose value has its operands' type.
                 let valued = op.is_arith() || op.is_bit();
                 let hint = if op.is_arith() {
-                    expected.filter(|t| is_int(t))
+                    expected.filter(|t| is_int(t) || **t == TypeKind::F64)
                 } else if op.is_bit() {
                     expected.filter(|t| is_int(t) || **t == TypeKind::Bool)
                 } else {
@@ -5943,8 +6063,16 @@ impl<'a> Checker<'a> {
                             ty_str(&rt)
                         ),
                     );
-                    // Integers convert explicitly (ADR-0028).
-                    let d = if is_int(&lt) && is_int(&rt) {
+                    // Integers convert explicitly (ADR-0028), to `f64` too
+                    // (ADR-0061 §4).
+                    let d = if (is_int(&lt) && rt == TypeKind::F64)
+                        || (lt == TypeKind::F64 && is_int(&rt))
+                    {
+                        d.fix(
+                            "convert the integer operand: `f64::from(x)` (`f64` does not convert to integers)",
+                            None,
+                        )
+                    } else if is_int(&lt) && is_int(&rt) {
                         let wide = if conv_obligation(&lt, &rt) { &lt } else { &rt };
                         let narrow = if wide == &lt { &rt } else { &lt };
                         d.fix(
@@ -6080,7 +6208,10 @@ impl<'a> Checker<'a> {
                     BinOp::Eq | BinOp::Ne => is_scalar(&lt),
                     // Rust's `&`, `|`, `^` on `bool` evaluate both sides.
                     _ if op.is_bit() => is_int(&lt) || lt == TypeKind::Bool,
-                    _ => is_int(&lt),
+                    // `f64`: IEEE arithmetic and comparisons; the remainder
+                    // is not in the first range (ADR-0061 §3).
+                    BinOp::Rem => is_int(&lt),
+                    _ => is_int(&lt) || lt == TypeKind::F64,
                 };
                 if !ok {
                     let d = Diag::new(
@@ -6088,7 +6219,17 @@ impl<'a> Checker<'a> {
                         span,
                         format!("`{}` is not defined for `{}`", op.symbol(), ty_str(&lt)),
                     );
-                    let d = if op.is_bit() {
+                    let d = if lt == TypeKind::F64 && op == BinOp::Rem {
+                        d.fix(
+                            "`%` on `f64` (Rust's truncated remainder) is not supported yet (ADR-0061 §3): compute `x - y * q` with the quotient you need",
+                            None,
+                        )
+                    } else if lt == TypeKind::F64 {
+                        d.fix(
+                            "`f64` has `+ - * /`, unary `-` and the comparisons; bit operations are on integers",
+                            None,
+                        )
+                    } else if op.is_bit() {
                         d.fix(
                             "`&`, `|` and `^` take two integers of one type, or two `bool`s",
                             None,
@@ -6108,8 +6249,9 @@ impl<'a> Checker<'a> {
         }
     }
 
-    /// The terms of `assert(e) by (bit_vector)` (ADR-0048 §4): integer and
-    /// `bool` values built from variables, literals, integer constants,
+    /// The terms of `assert(e) by (bit_vector)` (ADR-0048 §4): integer,
+    /// `f64` (ADR-0061 §5) and `bool` values built from variables,
+    /// literals, integer and `f64` constants,
     /// operators, `if`, `let` blocks, integer methods with an integer value
     /// and spec fn calls (whose bodies the prover unfolds, E0818 when it
     /// cannot). Anything else (an index, a field, a quantifier, `old`, a
@@ -6120,11 +6262,15 @@ impl<'a> Checker<'a> {
             .get(&(e.span.file, e.span.lo, e.span.hi))
             .cloned()
             .unwrap_or(TypeKind::Error);
-        let scalar = is_int(&ty) || ty == TypeKind::Bool;
+        let scalar = is_scalar(&ty);
         let what = match &e.kind {
             _ if ty == TypeKind::Error => return,
-            ExprKind::Int(..) | ExprKind::ByteLit(_) | ExprKind::Bool(_) if scalar => None,
-            ExprKind::Path(p) if int_const(p).is_some() => None,
+            ExprKind::Int(..) | ExprKind::Float(_) | ExprKind::ByteLit(_) | ExprKind::Bool(_)
+                if scalar =>
+            {
+                None
+            }
+            ExprKind::Path(p) if int_const(p).is_some() || f64_const(p).is_some() => None,
             ExprKind::Var(_) if scalar => None,
             ExprKind::Var(_) => Some(format!("a value of type `{}`", ty_str(&ty))),
             ExprKind::Unary(_, x) if scalar => {
@@ -6170,7 +6316,7 @@ impl<'a> Checker<'a> {
                 "E0515",
                 e.span,
                 format!(
-                    "`by (bit_vector)` takes integer and `bool` terms: `{}` is {what}",
+                    "`by (bit_vector)` takes integer, `f64` and `bool` terms: `{}` is {what}",
                     crate::fmt::expr_text(e)
                 ),
             )
@@ -6307,6 +6453,9 @@ impl<'a> Checker<'a> {
                 return sig.ret.clone();
             }
         }
+        if *value == TypeKind::F64 {
+            return self.f64_method(cx, &rt, name, args, mode);
+        }
         match name.name.as_str() {
             "len" => {
                 if !args.is_empty() {
@@ -6440,6 +6589,74 @@ impl<'a> Checker<'a> {
                 TypeKind::Error
             }
         }
+    }
+
+    /// A method of `f64` (ADR-0061 §3): `sqrt`, `abs`, `is_nan` and
+    /// `is_finite` take no argument, `min` and `max` one `f64`, as in Rust.
+    fn f64_method(
+        &mut self,
+        cx: &mut FnCtx,
+        rt: &TypeKind,
+        name: &Ident,
+        args: &[Expr],
+        mode: Mode,
+    ) -> TypeKind {
+        let m = name.name.as_str();
+        let Some((arity, ret)) = f64_method_sig(m) else {
+            for a in args {
+                self.expr(cx, a, None, mode);
+            }
+            let fix = match m {
+                "to_bits" | "from_bits" | "to_be_bytes" | "to_le_bytes" | "to_ne_bytes" => {
+                    "bit reinterpretation of `f64` is not available (ADR-0061 §4: NaN payloads are not portable)".to_string()
+                }
+                "total_cmp" | "partial_cmp" | "clamp" => {
+                    "not available yet (ADR-0061 open question 4): compare with `<`, `<=`, `>`, `>=`".to_string()
+                }
+                "round" | "floor" | "ceil" | "trunc" | "fract" | "rem_euclid" | "div_euclid"
+                | "signum" | "copysign" | "mul_add" | "recip" | "to_int_unchecked" => {
+                    "not available yet: the `f64` methods are `sqrt`, `abs`, `min`, `max`, `is_nan` and `is_finite` (ADR-0061 §3)".to_string()
+                }
+                _ => "the `f64` methods are `sqrt`, `abs`, `min`, `max`, `is_nan` and `is_finite` (ADR-0061 §3); libm functions (`sin`, `exp`, `ln`, `powf`, ..) are not available (open question 2)".to_string(),
+            };
+            self.diags.push(
+                Diag::new("E0404", name.span, format!("unknown method `{m}` of `f64`"))
+                    .fix(fix, None),
+            );
+            return TypeKind::Error;
+        };
+        if args.len() != arity {
+            let form = if arity == 0 {
+                format!("`x.{m}()`")
+            } else {
+                format!("`x.{m}(y)` with `y: f64`")
+            };
+            self.diags.push(
+                Diag::new(
+                    "E0405",
+                    name.span,
+                    format!(
+                        "`{m}` takes {}",
+                        if arity == 0 {
+                            "no arguments"
+                        } else {
+                            "one argument"
+                        }
+                    ),
+                )
+                .fix(format!("write {form} (Rust's signature)"), None),
+            );
+            for a in args {
+                self.expr(cx, a, None, mode);
+            }
+            return TypeKind::Error;
+        }
+        if let Some(a) = args.first() {
+            let at = self.expr(cx, a, Some(&TypeKind::F64), mode);
+            self.expect_ty(&at, &TypeKind::F64, a.span);
+        }
+        let _ = rt;
+        ret
     }
 
     /// A built-in method of `Vec<T>` (ADR-0031 §1): `push`, `pop`, `len`,
@@ -7438,6 +7655,11 @@ impl<'a> Checker<'a> {
                             "choose the values",
                             Some(format!("if {x} {{ 1 }} else {{ 0 }}")),
                         )
+                    } else if st == TypeKind::F64 {
+                        Diag::new("E0412", args[0].span, msg).fix(
+                            "`f64` does not convert to an integer type yet (ADR-0061 §4, open question 1)",
+                            None,
+                        )
                     } else {
                         Diag::new("E0412", args[0].span, msg)
                     });
@@ -8050,6 +8272,7 @@ fn mentions(e: &Expr, name: &str) -> bool {
         | ExprKind::Match { .. } => true,
         ExprKind::Int(..)
         | ExprKind::ByteLit(_)
+        | ExprKind::Float(_)
         | ExprKind::ByteStr(_)
         | ExprKind::Bool(_)
         | ExprKind::Unit
@@ -8113,6 +8336,7 @@ fn collect_triggers<'e>(e: &'e Expr, out: &mut Vec<&'e Expr>) {
         | ExprKind::Path(_)
         | ExprKind::Int(..)
         | ExprKind::ByteLit(_)
+        | ExprKind::Float(_)
         | ExprKind::ByteStr(_)
         | ExprKind::Bool(_)
         | ExprKind::Unit
@@ -8464,6 +8688,47 @@ pub fn int_const(path: &[Ident]) -> Option<(TypeKind, i128)> {
         "MAX" => Some((t, max)),
         _ => None,
     }
+}
+
+/// The associated constants of `f64` (ADR-0061 §2), as Rust's, and their
+/// bits.
+pub const F64_CONSTS: [(&str, u64); 7] = [
+    ("INFINITY", 0x7ff0_0000_0000_0000),
+    ("NEG_INFINITY", 0xfff0_0000_0000_0000),
+    ("NAN", 0x7ff8_0000_0000_0000),
+    ("MAX", 0x7fef_ffff_ffff_ffff),
+    ("MIN", 0xffef_ffff_ffff_ffff),
+    ("MIN_POSITIVE", 0x0010_0000_0000_0000),
+    ("EPSILON", 0x3cb0_0000_0000_0000),
+];
+
+/// `f64::NAN`, `f64::MAX`, ..: the constant's bits (same path as
+/// `int_const`).
+pub fn f64_const(path: &[Ident]) -> Option<u64> {
+    let [ty, c] = path else { return None };
+    if ty.name != "f64" {
+        return None;
+    }
+    F64_CONSTS
+        .iter()
+        .find(|(n, _)| *n == c.name)
+        .map(|(_, b)| *b)
+}
+
+/// A method of `f64` (ADR-0061 §3): its number of arguments and its
+/// result type.
+pub fn f64_method_sig(m: &str) -> Option<(usize, TypeKind)> {
+    Some(match m {
+        "sqrt" | "abs" => (0, TypeKind::F64),
+        "is_nan" | "is_finite" => (0, TypeKind::Bool),
+        "min" | "max" => (1, TypeKind::F64),
+        _ => return None,
+    })
+}
+
+/// `f64::from(..)` (ADR-0061 §4).
+pub fn is_f64_from(path: &[Ident]) -> bool {
+    path.len() == 2 && path[0].name == "f64" && path[1].name == "from"
 }
 
 fn int_type(name: &str) -> Option<TypeKind> {

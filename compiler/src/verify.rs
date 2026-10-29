@@ -1786,6 +1786,7 @@ fn num(v: i128) -> String {
 fn sort_of(t: &TypeKind) -> String {
     match t {
         TypeKind::Bool => "Bool".into(),
+        TypeKind::F64 => "Float64".into(),
         // A type parameter is an uninterpreted sort (ADR-0046 §4).
         TypeKind::Param(n) => sym(&format!("'{n}")),
         // An enum is a datatype named after its type (ADR-0027 §3).
@@ -2040,6 +2041,154 @@ fn bit_facts_of(op: BinOp, i: IntTy, a: &str, b: &str, r: &str) -> Vec<String> {
     }
     fs
 }
+
+/// The operations of `f64` (ADR-0061 §5) as the encoder names them: in an
+/// ordinary query each is an uninterpreted function or predicate over
+/// `Float64` (`f64_decls`); a `by (bit_vector)` sub-proof, and the search
+/// for a counterexample (`f64_decls` interpreted), give them their IEEE 754
+/// meaning with rounding to nearest even. `>` and `>=` are `f64.lt` and
+/// `f64.le` with the operands swapped (IEEE: `a > b` iff `b < a`, NaN
+/// included). `f64.from` takes an integer (`f64::from`, ADR-0061 §4).
+pub const F64_FUNS: [(&str, &str, &str, &str); 14] = [
+    (
+        "f64.add",
+        "(Float64 Float64)",
+        "Float64",
+        "(fp.add RNE a b)",
+    ),
+    (
+        "f64.sub",
+        "(Float64 Float64)",
+        "Float64",
+        "(fp.sub RNE a b)",
+    ),
+    (
+        "f64.mul",
+        "(Float64 Float64)",
+        "Float64",
+        "(fp.mul RNE a b)",
+    ),
+    (
+        "f64.div",
+        "(Float64 Float64)",
+        "Float64",
+        "(fp.div RNE a b)",
+    ),
+    ("f64.neg", "(Float64)", "Float64", "(fp.neg a)"),
+    ("f64.sqrt", "(Float64)", "Float64", "(fp.sqrt RNE a)"),
+    ("f64.abs", "(Float64)", "Float64", "(fp.abs a)"),
+    ("f64.min", "(Float64 Float64)", "Float64", "(fp.min a b)"),
+    ("f64.max", "(Float64 Float64)", "Float64", "(fp.max a b)"),
+    (
+        "f64.from",
+        "(Int)",
+        "Float64",
+        "((_ to_fp 11 53) RNE (to_real a))",
+    ),
+    ("f64.lt", "(Float64 Float64)", "Bool", "(fp.lt a b)"),
+    ("f64.le", "(Float64 Float64)", "Bool", "(fp.leq a b)"),
+    ("f64.eq", "(Float64 Float64)", "Bool", "(fp.eq a b)"),
+    ("f64.is_nan", "(Float64)", "Bool", "(fp.isNaN a)"),
+];
+
+/// `f64.is_finite` is defined from `f64.is_nan`'s kin in both readings: a
+/// separate symbol keeps the opaque query free of `fp.*` terms.
+const F64_IS_FINITE: (&str, &str) = (
+    "(declare-fun f64.is_finite (Float64) Bool)",
+    "(define-fun f64.is_finite ((a Float64)) Bool (not (or (fp.isInfinite a) (fp.isNaN a))))",
+);
+
+/// The declarations of the `f64` operations `text` applies, in a fixed
+/// order: uninterpreted (an ordinary query, ADR-0061 §5), or with their
+/// IEEE definitions (`interpreted`, the counterexample search). Empty for
+/// a query without `f64` operations, so its text is unchanged.
+pub fn f64_decls(text: &str, interpreted: bool) -> String {
+    if !text.contains("(f64.") {
+        return String::new();
+    }
+    let mut out = String::new();
+    for (name, args, ret, def) in F64_FUNS {
+        if !text.contains(&format!("({name} ")) {
+            continue;
+        }
+        if interpreted {
+            let params: Vec<String> = args
+                .trim_matches(|c| c == '(' || c == ')')
+                .split(' ')
+                .zip(["a", "b"])
+                .map(|(s, p)| format!("({p} {s})"))
+                .collect();
+            out.push_str(&format!(
+                "(define-fun {name} ({}) {ret} {def})\n",
+                params.join(" ")
+            ));
+        } else {
+            out.push_str(&format!("(declare-fun {name} {args} {ret})\n"));
+        }
+    }
+    if text.contains("(f64.is_finite ") {
+        out.push_str(if interpreted {
+            F64_IS_FINITE.1
+        } else {
+            F64_IS_FINITE.0
+        });
+        out.push('\n');
+    }
+    out
+}
+
+/// An `f64` value as an SMT term (ADR-0061 §5): its exact bit pattern
+/// (sign, exponent, significand); every NaN is SMT-LIB's one NaN.
+pub fn f64_lit(bits: u64) -> String {
+    if f64::from_bits(bits).is_nan() {
+        return "(_ NaN 11 53)".into();
+    }
+    format!(
+        "(fp #b{} #b{:011b} #x{:013x})",
+        bits >> 63,
+        (bits >> 52) & 0x7ff,
+        bits & ((1u64 << 52) - 1)
+    )
+}
+
+/// `a op b` on `f64` (ADR-0061 §3, §5): arithmetic and comparisons as the
+/// encoder's `f64.*` symbols. `None` for an operation `f64` does not have.
+fn f64_binary(op: BinOp, a: &str, b: &str) -> Option<String> {
+    Some(match op {
+        BinOp::Add => format!("(f64.add {a} {b})"),
+        BinOp::Sub => format!("(f64.sub {a} {b})"),
+        BinOp::Mul => format!("(f64.mul {a} {b})"),
+        BinOp::Div => format!("(f64.div {a} {b})"),
+        BinOp::Lt => format!("(f64.lt {a} {b})"),
+        BinOp::Le => format!("(f64.le {a} {b})"),
+        BinOp::Gt => format!("(f64.lt {b} {a})"),
+        BinOp::Ge => format!("(f64.le {b} {a})"),
+        BinOp::Eq => format!("(f64.eq {a} {b})"),
+        BinOp::Ne => format!("(not (f64.eq {a} {b}))"),
+        _ => return None,
+    })
+}
+
+/// `-x` on `f64`: a literal's negation is the literal of the negated value
+/// (`-0.0` is negative zero, as in Rust).
+fn f64_neg(x: &Expr, v: &str) -> String {
+    match x.kind {
+        ExprKind::Float(b) => f64_lit(b ^ (1u64 << 63)),
+        _ => format!("(f64.neg {v})"),
+    }
+}
+
+/// A method of `f64` (ADR-0061 §3) as its symbol applied to `a` (and `b`).
+fn f64_method(m: &str, a: &str, b: Option<&str>) -> String {
+    match b {
+        Some(b) => format!("(f64.{m} {a} {b})"),
+        None => format!("(f64.{m} {a})"),
+    }
+}
+
+/// `2^53`: the integers up to it in absolute value are exactly `f64`s
+/// (ADR-0061 §4).
+const F64_EXACT: &str = "9007199254740992";
 
 /// `&`, `|`, `^` on `bool`: both sides evaluated (Rust).
 fn bool_bit(op: BinOp, a: &str, b: &str) -> String {
@@ -2698,6 +2847,7 @@ impl<'p, 'q> Enc<'p, 'q> {
             | ExprKind::Break { .. }
             | ExprKind::Continue { .. } => unreachable!("rejected by the checker (E0503)"),
             ExprKind::Int(v, _) => Val::S(num(*v as i128)),
+            ExprKind::Float(b) => Val::S(f64_lit(*b)),
             ExprKind::ByteLit(v) => Val::S(v.to_string()),
             // A byte string: its length and every element are known.
             ExprKind::ByteStr(v) => Val::A {
@@ -2713,6 +2863,10 @@ impl<'p, 'q> Enc<'p, 'q> {
                 .get(&id.name)
                 .cloned()
                 .unwrap_or_else(|| panic!("unbound `{}` in {}", id.name, self.path)),
+            ExprKind::Unary(UnOp::Neg, x) if self.ty(x) == TypeKind::F64 => {
+                let v = self.spec(x, env, old).s();
+                Val::S(f64_neg(x, &v))
+            }
             ExprKind::Unary(UnOp::Neg, x) => {
                 if let ExprKind::Int(v, _) = x.kind {
                     return Val::S(num(-(v as i128)));
@@ -2758,6 +2912,11 @@ impl<'p, 'q> Enc<'p, 'q> {
                     self.spec_pc.pop();
                 }
                 let signed = self.ty(l).is_signed();
+                if self.ty(l) == TypeKind::F64
+                    && let Some(t) = f64_binary(*op, &lt, &rt)
+                {
+                    return Val::S(t);
+                }
                 if op.is_bit() || op.is_shift() {
                     // In a specification a bit operation is its term alone:
                     // the facts and the shift obligation belong to code. Its
@@ -2803,6 +2962,10 @@ impl<'p, 'q> Enc<'p, 'q> {
                         _ => panic!("len of scalar"),
                     },
                     "as_slice" | "as_mut_slice" => rv,
+                    m if value_ty(&self.ty(recv)) == &TypeKind::F64 => {
+                        let b = args.first().map(|x| self.spec(x, env, old).s());
+                        Val::S(f64_method(m, &rv.s(), b.as_deref()))
+                    }
                     m if crate::check::bit_method_arity(m).is_some() => {
                         let i = self.ty(recv).int().expect("an integer method");
                         let n = args.first().map(|x| self.spec(x, env, old).s());
@@ -2821,12 +2984,24 @@ impl<'p, 'q> Enc<'p, 'q> {
             ExprKind::Call { path, args, .. } if crate::check::is_box_new(path) => {
                 self.spec(&args[0], env, old)
             }
+            // `f64::from(x)` (ADR-0061 §4): an integer's `f64`, or `x` itself.
+            ExprKind::Call { path, args, .. } if crate::check::is_f64_from(path) => {
+                let v = self.spec(&args[0], env, old).s();
+                if self.ty(&args[0]) == TypeKind::F64 {
+                    Val::S(v)
+                } else {
+                    Val::S(format!("(f64.from {v})"))
+                }
+            }
             ExprKind::Call { path, args, .. } if self.is_variant(path) => {
                 let vals: Vec<Val> = args.iter().map(|a| self.spec(a, env, old)).collect();
                 self.variant_value(&self.ty(e), &path.last().unwrap().name, &vals)
             }
             ExprKind::Path(segs) if crate::check::int_const(segs).is_some() => {
                 Val::S(num(crate::check::int_const(segs).expect("checked").1))
+            }
+            ExprKind::Path(segs) if crate::check::f64_const(segs).is_some() => {
+                Val::S(f64_lit(crate::check::f64_const(segs).expect("checked")))
             }
             ExprKind::Path(segs) => {
                 self.variant_value(&self.ty(e), &segs.last().unwrap().name, &[])
@@ -3179,6 +3354,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                 Val::Unit
             }
             ExprKind::Int(v, _) => Val::S(num(*v as i128)),
+            ExprKind::Float(b) => Val::S(f64_lit(*b)),
             ExprKind::ByteLit(v) => Val::S(v.to_string()),
             // A byte string: its length and every element are known.
             ExprKind::ByteStr(v) => Val::A {
@@ -3191,6 +3367,11 @@ impl<'p, 'q> Enc<'p, 'q> {
                 self.variant_value(&self.ty(e), "None", &[])
             }
             ExprKind::Var(id) => self.vars[&id.name].clone(),
+            // `f64` arithmetic is total in Rust: no obligation (ADR-0061 §3).
+            ExprKind::Unary(UnOp::Neg, x) if self.ty(x) == TypeKind::F64 => {
+                let v = self.eval(x).s();
+                Val::S(f64_neg(x, &v))
+            }
             ExprKind::Unary(UnOp::Neg, x) => {
                 if let ExprKind::Int(v, _) = x.kind {
                     return Val::S(num(-(v as i128)));
@@ -3235,6 +3416,11 @@ impl<'p, 'q> Enc<'p, 'q> {
                     self.pc.push(format!("(=> {guard} {})", and(&facts)));
                 }
                 Val::S(format!("({name} {lt} {rt})"))
+            }
+            ExprKind::Binary(op, l, r) if self.ty(l) == TypeKind::F64 => {
+                let lt = self.eval(l).s();
+                let rt = self.eval(r).s();
+                Val::S(f64_binary(*op, &lt, &rt).expect("an `f64` operation"))
             }
             ExprKind::Binary(op, l, r) => {
                 let lt = self.eval(l).s();
@@ -3392,6 +3578,10 @@ impl<'p, 'q> Enc<'p, 'q> {
                     },
                     "as_slice" | "as_mut_slice" | "clone" => rv,
                     m @ ("push" | "pop" | "truncate") => self.vec_change(e, recv, rv, m, args),
+                    m if value_ty(&self.ty(recv)) == &TypeKind::F64 => {
+                        let b = args.first().map(|x| self.eval(x).s());
+                        Val::S(f64_method(m, &rv.s(), b.as_deref()))
+                    }
                     m if crate::check::bit_method_arity(m).is_some() => {
                         let i = self.ty(recv).int().expect("an integer method");
                         let n = args.first().map(|x| self.eval(x).s());
@@ -3421,6 +3611,29 @@ impl<'p, 'q> Enc<'p, 'q> {
             }
             ExprKind::Call { path, args, .. } if crate::check::is_box_new(path) => {
                 self.eval(&args[0])
+            }
+            // `f64::from(x)` (ADR-0061 §4): exact for a source of 32 bits or
+            // fewer; a 64-bit source must be within `2^53` (E0815).
+            ExprKind::Call { path, args, .. } if crate::check::is_f64_from(path) => {
+                let v = self.eval(&args[0]).s();
+                let st = self.ty(&args[0]);
+                match st.int() {
+                    None => Val::S(v),
+                    Some(i) => {
+                        if i.bits() == 64 {
+                            self.oblige(
+                                "E0815",
+                                e.span,
+                                format!(
+                                    "`f64::from` of `{}` may not be exact (|x| <= 2^53)",
+                                    i.name()
+                                ),
+                                format!("(and (<= (- {F64_EXACT}) {v}) (<= {v} {F64_EXACT}))"),
+                            );
+                        }
+                        Val::S(format!("(f64.from {v})"))
+                    }
+                }
             }
             ExprKind::Call { path, args, .. } if crate::check::mem_op(path).is_some() => {
                 self.mem_call(crate::check::mem_op(path).expect("checked"), args)
@@ -3545,6 +3758,9 @@ impl<'p, 'q> Enc<'p, 'q> {
             ExprKind::Deref(x) => self.eval(x),
             ExprKind::Path(segs) if crate::check::int_const(segs).is_some() => {
                 Val::S(num(crate::check::int_const(segs).expect("checked").1))
+            }
+            ExprKind::Path(segs) if crate::check::f64_const(segs).is_some() => {
+                Val::S(f64_lit(crate::check::f64_const(segs).expect("checked")))
             }
             ExprKind::Path(segs) => {
                 self.variant_value(&self.ty(e), &segs.last().unwrap().name, &[])
@@ -3817,7 +4033,7 @@ impl<'p, 'q> Enc<'p, 'q> {
             .iter()
             .filter_map(|(n, s)| match s {
                 crate::subproof::Sort::Int(i) => Some(range_int(*i, &env.get(n)?.s())),
-                crate::subproof::Sort::Bool => None,
+                crate::subproof::Sort::Bool | crate::subproof::Sort::F64 => None,
             })
             .collect();
         if let Ok(q) = &query {
@@ -3858,6 +4074,7 @@ impl<'p, 'q> Enc<'p, 'q> {
             ExprKind::Var(id) if !bound.contains(&id.name) => {
                 let sort = match self.ty(e) {
                     TypeKind::Int(i) => crate::subproof::Sort::Int(i),
+                    TypeKind::F64 => crate::subproof::Sort::F64,
                     _ => crate::subproof::Sort::Bool,
                 };
                 out.insert(id.name.clone(), sort);
@@ -3935,7 +4152,7 @@ impl<'p, 'q> Enc<'p, 'q> {
         let sig = &prog.t.fns[path];
         if d.inst || !sig.generics.is_empty() {
             return Err(format!(
-                "`{path}` is generic: a bit-vector sub-proof unfolds spec fns of integers and `bool`s"
+                "`{path}` is generic: a bit-vector sub-proof unfolds spec fns of integers, `f64`s and `bool`s"
             ));
         }
         if !revealed.contains(path) {
@@ -3956,12 +4173,13 @@ impl<'p, 'q> Enc<'p, 'q> {
         let sort = |t: &TypeKind| match t {
             TypeKind::Int(i) => Some(Sort::Int(*i)),
             TypeKind::Bool => Some(Sort::Bool),
+            TypeKind::F64 => Some(Sort::F64),
             _ => None,
         };
         let params: Option<Vec<Sort>> = sig.params.iter().map(sort).collect();
         let (Some(params), Some(_)) = (params, sort(&sig.ret)) else {
             return Err(format!(
-                "`{path}` takes or returns a value that is not an integer or `bool`"
+                "`{path}` takes or returns a value that is not an integer, `f64` or `bool`"
             ));
         };
         let env: BTreeMap<String, Val> =
@@ -4959,13 +5177,26 @@ impl<'p, 'q> Enc<'p, 'q> {
             argv.push(v);
         }
         let Some(def) = self.prog.defs.get(&target) else {
-            // The one built-in function has no contract; anything else
+            // The built-in functions have no contract but `print_f64`'s
+            // precision bound (Rust panics above it); anything else
             // unresolved would drop a callee's effects.
             assert!(
-                matches!(target.as_str(), "print_i64" | "print_u64" | "print_bytes"),
+                matches!(
+                    target.as_str(),
+                    "print_i64" | "print_u64" | "print_bytes" | "print_f64"
+                ),
                 "unresolved call in {}",
                 self.path
             );
+            if target == "print_f64" && !self.ghost {
+                let d = argv[1].s();
+                self.oblige(
+                    "E0801",
+                    span,
+                    "`print_f64` may get more than 65535 decimals (Rust panics)",
+                    format!("(<= {d} 65535)"),
+                );
+            }
             return Val::Unit;
         };
         let f = def.f;
@@ -5089,7 +5320,11 @@ impl<'p, 'q> Enc<'p, 'q> {
 }
 
 fn default_of(t: &TypeKind) -> &'static str {
-    if *t == TypeKind::Bool { "false" } else { "0" }
+    match t {
+        TypeKind::Bool => "false",
+        TypeKind::F64 => "(_ +zero 11 53)",
+        _ => "0",
+    }
 }
 
 fn bind_params(f: &FnDef, args: &[Val]) -> BTreeMap<String, Val> {
@@ -5237,6 +5472,7 @@ fn find_let_expr(e: &Expr, name: &str, out: &mut Option<TypeKind>) {
         ExprKind::Continue { .. } => {}
         ExprKind::Int(..)
         | ExprKind::ByteLit(_)
+        | ExprKind::Float(_)
         | ExprKind::ByteStr(_)
         | ExprKind::Bool(_)
         | ExprKind::Unit
@@ -5836,9 +6072,12 @@ fn needed_decls(
     // `dev-docs/measurements/z3-nested-datatypes`).
     // The bit-vector functions of the bit methods the query applies (none
     // in a query without them: its text is unchanged).
+    // The `f64` operations the query applies, uninterpreted (ADR-0061 §5;
+    // none in a query without them).
     format!(
-        "{head}{PRELUDE}\n{}{out}",
-        crate::subproof::helper_defs(text)
+        "{head}{PRELUDE}\n{}{}{out}",
+        crate::subproof::helper_defs(text),
+        f64_decls(text, false)
     )
 }
 
@@ -6204,7 +6443,7 @@ fn verify_impl(
                         // An unrevealed spec fn: the hint `bmb uses` reads.
                         diags.push(if hidden.is_empty() {
                             d.fix(
-                                "a bit-vector sub-proof takes integers and `bool`s, bit operations, `+`, `-`, `*`, division by positive constants, comparisons, and calls of non-recursive spec fns named in `#[uses(..)]`",
+                                "a bit-vector sub-proof takes integers, `f64`s and `bool`s, bit operations, `+`, `-`, `*`, division by positive constants (integers), the `f64` operations, comparisons, and calls of non-recursive spec fns named in `#[uses(..)]`",
                                 None,
                             )
                         } else {
@@ -6271,7 +6510,13 @@ fn verify_impl(
                         continue;
                     }
                     Ok(Answer::Sat) => {
-                        let cex = sub_counterexample(sol, q);
+                        // `f64` operations are defined here, but `min` and
+                        // `max` of zeros of both signs are not (G1).
+                        let checked = f64_model_check(sol, &format!("{base}{neg}"));
+                        let cex = match checked {
+                            Ok(()) => sub_counterexample(sol, q),
+                            Err(_) => String::new(),
+                        };
                         let mut msg = format!("{} in `{path}`", o.msg);
                         if !cex.is_empty() {
                             msg.push_str(&format!("; counterexample: {cex}"));
@@ -6446,6 +6691,8 @@ fn verify_impl(
                     answer
                 }
             };
+            // What the solver holds when it answers (the model's query).
+            let mut answered = format!("{base}\n{q}");
             // Undecided with quantified definitions: retry quantifier-free with
             // ground instances (sound for both answers, see `ground_instances`).
             if matches!(answer, Ok(Answer::Unknown(_)))
@@ -6470,7 +6717,10 @@ fn verify_impl(
                         answer = retry;
                         retried = true;
                     }
-                    Ok(Answer::Sat) if complete => answer = retry,
+                    Ok(Answer::Sat) if complete => {
+                        answer = retry;
+                        answered = format!("{head}\n{inst}{q}");
+                    }
                     Ok(Answer::Sat) => {
                         answer = Ok(Answer::Unknown(
                             "a model exists for the instantiated definitions only".into(),
@@ -6492,12 +6742,38 @@ fn verify_impl(
             match answer {
                 Ok(Answer::Unsat) => failed -= 1,
                 Ok(Answer::Sat) => {
-                    let cex = counterexample(sol, &shown_inputs(&enc.inputs, o), t);
-                    let mut msg = format!("{} in `{path}`", o.msg);
-                    if !cex.is_empty() {
-                        msg.push_str(&format!("; counterexample: {cex}"));
+                    // An `f64` model is shown only when IEEE arithmetic
+                    // agrees with it (G1), else one is searched for with
+                    // IEEE arithmetic (ADR-0061 §5, backlog T2-03).
+                    let confirmed = match f64_model_check(sol, &answered) {
+                        Ok(()) => Ok(()),
+                        Err(why) => {
+                            let exact = f64_interpreted(&answered);
+                            let a = sol
+                                .run("(reset)")
+                                .and_then(|_| sol.run(&exact))
+                                .and_then(|_| sol.check_sat());
+                            match a {
+                                Ok(Answer::Sat) => f64_model_check(sol, &exact),
+                                Ok(Answer::Unsat) => Err(
+                                    "it holds with IEEE 754 arithmetic, which only `by (bit_vector)` uses"
+                                        .to_string(),
+                                ),
+                                _ => Err(why),
+                            }
+                        }
+                    };
+                    match confirmed {
+                        Ok(()) => {
+                            let cex = counterexample(sol, &shown_inputs(&enc.inputs, o), t);
+                            let mut msg = format!("{} in `{path}`", o.msg);
+                            if !cex.is_empty() {
+                                msg.push_str(&format!("; counterexample: {cex}"));
+                            }
+                            diags.push(with_hint(Diag::new(o.code, o.span, msg), &hint, false));
+                        }
+                        Err(why) => diags.push(f64_undecided(o, path, &why)),
                     }
-                    diags.push(with_hint(Diag::new(o.code, o.span, msg), &hint, false));
                 }
                 Ok(Answer::Unknown(why)) => {
                     let why = if why.contains("canceled") || why.contains("resource") {
@@ -6506,8 +6782,12 @@ fn verify_impl(
                         why
                     };
                     let mut msg = format!("{} in `{path}`: solver could not decide ({why})", o.msg);
-                    // Z3 often keeps a candidate model; show it, marked as unconfirmed.
-                    let cex = counterexample(sol, &shown_inputs(&enc.inputs, o), t);
+                    // Z3 often keeps a candidate model; show it, marked as
+                    // unconfirmed (and only when its `f64` values are IEEE's).
+                    let cex = match f64_model_check(sol, &answered) {
+                        Ok(()) => counterexample(sol, &shown_inputs(&enc.inputs, o), t),
+                        Err(_) => String::new(),
+                    };
                     if !cex.is_empty() {
                         msg.push_str(&format!("; unconfirmed counterexample: {cex}"));
                     }
@@ -7176,12 +7456,180 @@ fn sub_counterexample(sol: &mut Solver, q: &crate::subproof::Query) -> String {
                 crate::subproof::Sort::Int(i) => {
                     crate::subproof::model_int(&v, *i).map_or(v.clone(), |x| x.to_string())
                 }
-                crate::subproof::Sort::Bool => v,
+                crate::subproof::Sort::Bool | crate::subproof::Sort::F64 => v,
             };
             format!("{name} = {shown}")
         })
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+/// Whether the current model gives every `f64` operation of the query
+/// (`script`: what was asserted) the value IEEE 754 gives its operands'
+/// values (ADR-0061 §5, backlog T2-03). In an ordinary query the operations
+/// are uninterpreted, so a model may make `x < 1.0` false at `x = 0.0`: a
+/// counterexample read from it would be false (G1). Each application
+/// outside a quantifier is recomputed with Rust's `f64` arithmetic on the
+/// model's values of its operands and compared with the model's value of
+/// the application (NaN with NaN, anything else bit for bit). `Err` names
+/// why the model is not confirmed: a mismatch, an application under a
+/// quantifier or in a definition's body (its operands are not values), or
+/// `min`/`max` of zeros of both signs (Rust leaves the sign unspecified).
+fn f64_model_check(sol: &mut Solver, script: &str) -> Result<(), String> {
+    use smt::Sexp::{Atom, List};
+    if !script.contains("(f64.") {
+        return Ok(());
+    }
+    fn mentions_f64(e: &smt::Sexp) -> bool {
+        match e {
+            Atom(a) => a.starts_with("f64."),
+            List(xs) => xs.iter().any(mentions_f64),
+        }
+    }
+    fn apps(e: &smt::Sexp, out: &mut Vec<smt::Sexp>) -> Result<(), String> {
+        let List(xs) = e else { return Ok(()) };
+        match xs.first() {
+            Some(Atom(q)) if (q == "forall" || q == "exists") && mentions_f64(e) => {
+                Err("an `f64` operation under a quantifier".into())
+            }
+            Some(Atom(h)) if h.starts_with("f64.") => {
+                for x in &xs[1..] {
+                    apps(x, out)?;
+                }
+                if !out.contains(e) {
+                    out.push(e.clone());
+                }
+                Ok(())
+            }
+            _ => xs.iter().try_for_each(|x| apps(x, out)),
+        }
+    }
+    let mut found = Vec::new();
+    for cmd in smt::split_commands(script) {
+        let Some(c) = smt::parse(&cmd) else { continue };
+        let List(xs) = &c else { continue };
+        match xs.first() {
+            Some(Atom(a)) if a == "assert" => {
+                if let Some(x) = xs.get(1) {
+                    apps(x, &mut found)?;
+                }
+            }
+            // A defined symbol of the query (not an `f64` operation's own
+            // definition) whose body applies one.
+            Some(Atom(a)) if a == "define-fun" => {
+                let named_f64 = matches!(xs.get(1), Some(Atom(n)) if n.starts_with("f64."));
+                if !named_f64 && xs.get(4).is_some_and(mentions_f64) {
+                    return Err("an `f64` operation in a definition".into());
+                }
+            }
+            _ => {}
+        }
+    }
+    if found.is_empty() {
+        return Ok(());
+    }
+    let mut terms = Vec::new();
+    for a in &found {
+        let List(xs) = a else { unreachable!() };
+        terms.push(smt::print(a));
+        terms.extend(xs[1..].iter().map(smt::print));
+    }
+    let vals = sol.get_value_terms(&terms)?;
+    let mut it = vals.into_iter();
+    for a in &found {
+        let List(xs) = a else { unreachable!() };
+        let Atom(h) = &xs[0] else { unreachable!() };
+        let got = it.next().ok_or("missing model value")?;
+        let ops: Vec<smt::Sexp> = (1..xs.len()).filter_map(|_| it.next()).collect();
+        if !f64_agrees(h, &ops, &got)? {
+            return Err(format!(
+                "the model gives `{}` a value IEEE 754 does not",
+                smt::print(a)
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Whether `got` is the IEEE 754 value (rounding to nearest even) of the
+/// `f64` operation `h` on the model values `ops` (`f64_model_check`).
+fn f64_agrees(h: &str, ops: &[smt::Sexp], got: &smt::Sexp) -> Result<bool, String> {
+    let fp = |k: usize| -> Result<f64, String> {
+        ops.get(k)
+            .and_then(smt::fp_value)
+            .ok_or_else(|| "a model value that is not an `f64`".to_string())
+    };
+    let same = |x: f64, y: f64| (x.is_nan() && y.is_nan()) || x.to_bits() == y.to_bits();
+    let boolean = |b: bool| -> Result<bool, String> {
+        match got {
+            smt::Sexp::Atom(a) if a == "true" || a == "false" => Ok((a == "true") == b),
+            _ => Err("a model value that is not a `bool`".into()),
+        }
+    };
+    let value = |x: f64| -> Result<bool, String> {
+        let y = smt::fp_value(got).ok_or("a model value that is not an `f64`")?;
+        Ok(same(x, y))
+    };
+    match h {
+        "f64.add" => value(fp(0)? + fp(1)?),
+        "f64.sub" => value(fp(0)? - fp(1)?),
+        "f64.mul" => value(fp(0)? * fp(1)?),
+        "f64.div" => value(fp(0)? / fp(1)?),
+        "f64.neg" => value(-fp(0)?),
+        "f64.sqrt" => value(fp(0)?.sqrt()),
+        "f64.abs" => value(fp(0)?.abs()),
+        "f64.min" | "f64.max" => {
+            let (a, b) = (fp(0)?, fp(1)?);
+            if a == 0.0 && b == 0.0 && a.to_bits() != b.to_bits() {
+                return Err("`min`/`max` of zeros of both signs".into());
+            }
+            value(if h == "f64.min" { a.min(b) } else { a.max(b) })
+        }
+        "f64.from" => {
+            let n: i128 = smt::render_value(&ops[0])
+                .parse()
+                .map_err(|_| "an integer model value out of range")?;
+            value(n as f64)
+        }
+        "f64.lt" => boolean(fp(0)? < fp(1)?),
+        "f64.le" => boolean(fp(0)? <= fp(1)?),
+        "f64.eq" => boolean(fp(0)? == fp(1)?),
+        "f64.is_nan" => boolean(fp(0)?.is_nan()),
+        "f64.is_finite" => boolean(fp(0)?.is_finite()),
+        _ => Err(format!("unknown `f64` operation `{h}`")),
+    }
+}
+
+/// `script` with each `f64` operation declared uninterpreted replaced by
+/// its IEEE 754 definition (`f64_decls`): a model of it is a model of the
+/// program's arithmetic. It runs under the same pinned `rlimit` (bit-precise
+/// queries spend resource units fast but cheaply: `x + y == y + x` takes
+/// 2.8M units in half a second).
+fn f64_interpreted(script: &str) -> String {
+    let opaque = f64_decls(script, false);
+    let exact = f64_decls(script, true);
+    let mut s = script.to_string();
+    for (o, x) in opaque.lines().zip(exact.lines()) {
+        s = s.replace(o, x);
+    }
+    s
+}
+
+/// E0811 for an obligation whose `f64` counterexample IEEE 754 arithmetic
+/// does not confirm (`f64_model_check`): undecided, no counterexample.
+fn f64_undecided(o: &Obl, path: &str, why: &str) -> Diag {
+    Diag::new(
+        "E0811",
+        o.span,
+        format!(
+            "{} in `{path}`: solver could not decide (`f64` operations are uninterpreted here; no IEEE 754 counterexample: {why})",
+            o.msg
+        ),
+    )
+    .fix(
+        "outside `by (bit_vector)` the `f64` operations are uninterpreted (ADR-0061 §5): prove the `f64` fact the obligation needs with `assert(e) by (bit_vector);` before it",
+        None,
+    )
 }
 
 /// `x = 5, a = [1, 2] (len 2), p = Point { x: 1, y: 2 }` from the current

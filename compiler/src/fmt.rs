@@ -1109,6 +1109,7 @@ impl<'a> Printer<'a> {
     fn expr_raw(&mut self, e: &Expr) -> String {
         match &e.kind {
             ExprKind::Int(v, r) => r.text(*v),
+            ExprKind::Float(b) => crate::lexer::float_text(*b),
             ExprKind::ByteLit(v) => crate::lexer::byte_text(&[*v], '\''),
             ExprKind::ByteStr(v) => crate::lexer::byte_text(v, '"'),
             ExprKind::Bool(b) => b.to_string(),

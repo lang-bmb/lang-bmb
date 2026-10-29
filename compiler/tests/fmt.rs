@@ -302,3 +302,50 @@ fn bit_vector_assertions_have_one_normal_form() {
         def_line(&one("x.bmb", &plain), "b::f")
     );
 }
+
+/// A float literal's normal form is the shortest text that reads back as
+/// the same `f64` (ADR-0061 §2, Rust's `{:?}` with a point in the
+/// mantissa): `0.10`, `1_0.0e-2` and `0.1` are one text and one hash.
+#[test]
+fn float_literals_have_one_normal_form() {
+    let prog = |lit: &str| {
+        format!(
+            "#[summary(\"f\")]\nmod f {{\n    #[effects(pure)]\n    fn g() -> f64 {{\n        {lit} + 2.5E-3 * 1.0e16 - 100000000000000000.0 + 6.02e23 * 1.0e-9\n    }}\n}}\n"
+        )
+    };
+    let out = normal(&prog("0.10"));
+    assert!(
+        out.contains("0.1 + 0.0025 * 1.0e16 - 1.0e17 + 6.02e23 * 1.0e-9"),
+        "{out}"
+    );
+    assert_eq!(normal(&out), out);
+    let h = |lit: &str| hashes(&one("x.bmb", &prog(lit)));
+    assert_eq!(h("0.10"), h("1_0.0e-2"));
+    assert_eq!(h("0.10"), h("0.1"));
+    assert_ne!(h("0.1"), h("0.2"));
+    // Every `f64` (bit patterns of each class) reads back from its text.
+    let mut seed: u64 = 0x2545_f491_4f6c_dd1d;
+    let mut bits: Vec<u64> = vec![1, 0x000f_ffff_ffff_ffff, 0x0010_0000_0000_0000];
+    bits.extend([0x7fef_ffff_ffff_ffff, 0x3ff0_0000_0000_0001]);
+    for _ in 0..2000 {
+        seed ^= seed << 13;
+        seed ^= seed >> 7;
+        seed ^= seed << 17;
+        bits.push(seed & 0x7fff_ffff_ffff_ffff);
+    }
+    for b in bits {
+        let v = f64::from_bits(b);
+        if !v.is_finite() {
+            continue;
+        }
+        let text = bmb::lexer::float_text(b);
+        let mut d = bmb::diag::Diags::default();
+        let toks = bmb::lexer::lex(0, &text, &mut d);
+        assert!(d.items.is_empty(), "{text}");
+        assert!(
+            matches!(toks[0].tok, bmb::lexer::Tok::Float(x) if x == b),
+            "{text} is not {v:?}"
+        );
+        assert_eq!(toks.len(), 2, "{text}");
+    }
+}

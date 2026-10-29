@@ -21,6 +21,10 @@ pub const CODES: &[(&str, &str)] = &[
         "E0108",
         "malformed integer literal: a digit outside its base, or a base prefix without digits",
     ),
+    (
+        "E0109",
+        "malformed float literal: digits on both sides of the point (`1.0`, `0.5`) and after an exponent `e` are required",
+    ),
     // E02xx: Rust habits rejected by BMB (each carries a fix when mechanical)
     ("E0201", "`let` requires an explicit type"),
     ("E0202", "macros are not allowed"),
@@ -268,7 +272,7 @@ pub const CODES: &[(&str, &str)] = &[
     ("E0514", "`==` is not defined for `Vec`"),
     (
         "E0515",
-        "`assert(..) by (bit_vector)` takes integer and `bool` terms only (no element, field, quantifier, `old` or data value)",
+        "`assert(..) by (bit_vector)` takes integer, `f64` and `bool` terms only (no element, field, quantifier, `old` or data value)",
     ),
     (
         "E0516",
@@ -319,7 +323,10 @@ pub const CODES: &[(&str, &str)] = &[
         "proof gate cannot run (solver missing, wrong version or failed)",
     ),
     ("E0813", "recursive spec function may not terminate"),
-    ("E0815", "integer conversion may be out of range"),
+    (
+        "E0815",
+        "integer conversion may be out of range (to `f64`: a 64-bit value may be above 2^53 and inexact)",
+    ),
     ("E0816", "a `Vec` may exceed its maximum length"),
     (
         "E0817",
