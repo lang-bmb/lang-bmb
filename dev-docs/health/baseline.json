@@ -14,15 +14,15 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 35721,
+    "S4_stage0_rust_lines": 35727,
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
     "P1_runnable_programs": 58,
-    "P2_bmb_lines": 19626,
+    "P2_bmb_lines": 19639,
     "P3_errors_with_help": 0.872,
     "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
-    "O2_soundness_fuzzers": 12
+    "O2_soundness_fuzzers": 13
   },
   "history": [
     {
@@ -1336,6 +1336,24 @@
         "P2_bmb_lines": [
           18748,
           19626
+        ]
+      }
+    },
+    {
+      "date": "2026-10-29",
+      "reason": "2N-04 병합: soundness_widths 퍼저(O2), 회귀 사례(P2)",
+      "changed": {
+        "S4_stage0_rust_lines": [
+          35721,
+          35727
+        ],
+        "P2_bmb_lines": [
+          19626,
+          19639
+        ],
+        "O2_soundness_fuzzers": [
+          12,
+          13
         ]
       }
     }
