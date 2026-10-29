@@ -4,17 +4,17 @@
 {"code":"E0809","severity":"error","message":"recursive call to `contracts::no_decrease` may not decrease its measure in `contracts::no_decrease`; counterexample: n = 1","file":"fail/contracts.bmb","line":33,"col":32,"end_line":33,"end_col":46}
 {"code":"E0813","severity":"error","message":"recursive call to `contracts::loops_forever` may not decrease its `decreases` measure in `contracts::loops_forever`","file":"fail/contracts.bmb","line":39,"col":9,"end_line":39,"end_col":25}
 {"code":"E0810","severity":"error","message":"assertion may not hold in `contracts::false_assert`; counterexample: x = 0","file":"fail/contracts.bmb","line":44,"col":9,"end_line":44,"end_col":23}
-{"code":"E0802","severity":"error","message":"postcondition `zeroed` may not hold in `contracts::forgets_write`; counterexample: a = [-1] (len 1)","file":"fail/contracts.bmb","line":52,"col":17,"end_line":52,"end_col":26}
+{"code":"E0802","severity":"error","message":"postcondition `zeroed` may not hold in `contracts::forgets_write`; counterexample: a = [1] (len 1)","file":"fail/contracts.bmb","line":52,"col":17,"end_line":52,"end_col":26}
 {"code":"E0809","severity":"error","message":"recursive call to `mutual::pong` may not decrease its measure in `mutual::ping`; counterexample: n = 1","file":"fail/contracts.bmb","line":63,"col":32,"end_line":63,"end_col":39}
 {"code":"E0813","severity":"error","message":"recursive call to `frec::loops` may not decrease its `decreases` measure in `frec::loops`","file":"fail/contracts.bmb","line":79,"col":59,"end_line":79,"end_col":67}
 {"def":"contracts::bad_caller","status":"failed","obligations":1,"failed":1,"rlimit":232,"rlimit_max":232}
 {"def":"contracts::false_assert","status":"failed","obligations":1,"failed":1,"rlimit":245,"rlimit_max":245}
-{"def":"contracts::forgets_write","status":"failed","obligations":1,"failed":1,"rlimit":4047,"rlimit_max":2876}
+{"def":"contracts::forgets_write","status":"failed","obligations":1,"failed":1,"rlimit":1096,"rlimit_max":1096}
 {"def":"contracts::loops_forever","status":"failed","obligations":1,"failed":1,"rlimit":759,"rlimit_max":759}
-{"def":"contracts::needs_small","status":"verified","obligations":1,"failed":0,"rlimit":1063,"rlimit_max":1063}
+{"def":"contracts::needs_small","status":"verified","obligations":1,"failed":0,"rlimit":481,"rlimit_max":481}
 {"def":"contracts::no_decrease","status":"failed","obligations":1,"failed":1,"rlimit":1794,"rlimit_max":1794}
 {"def":"contracts::opaque_caller","status":"failed","obligations":1,"failed":1,"rlimit":232,"rlimit_max":232}
-{"def":"contracts::wrong_post","status":"failed","obligations":1,"failed":1,"rlimit":5000562,"rlimit_max":5000190}
+{"def":"contracts::wrong_post","status":"failed","obligations":1,"failed":1,"rlimit":390,"rlimit_max":390}
 {"def":"frec::loops","status":"failed","obligations":1,"failed":1,"rlimit":1383,"rlimit_max":1383}
 {"def":"mutual::ping","status":"failed","obligations":1,"failed":1,"rlimit":1794,"rlimit_max":1794}
 {"def":"mutual::pong","status":"verified","obligations":2,"failed":0,"rlimit":640,"rlimit_max":427}

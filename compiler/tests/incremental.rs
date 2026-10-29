@@ -420,9 +420,13 @@ fn adding_an_unrelated_spec_fn_reencodes_nothing() {
     assert!(!before.is_empty());
     assert_eq!(before, after);
     assert!(after.values().all(|s| !s.contains("|m2::extra|")));
-    // The definitions that mention a spec fn declare it; the others do not.
+    // The definitions that mention a spec fn declare it (or define it, when
+    // they reveal it: a macro, backlog T2-04); the others do not.
     let s = &after["m1::f0"];
-    assert!(s.contains("(declare-fun |m1::pos| (Int) Bool)"), "{s}");
+    assert!(
+        s.contains("(declare-fun |m1::pos| (Int) Bool)") || s.contains("(define-fun |m1::pos| "),
+        "{s}"
+    );
     assert!(
         !s.contains("|m1::pos2|") && !s.contains("|m0::small|"),
         "{s}"

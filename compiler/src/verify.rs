@@ -5841,7 +5841,14 @@ impl<'p> Prog<'p> {
         out
     }
 
-    /// Definitional axiom of a spec fn (ADR-0017 §4).
+    /// Definition of a revealed spec fn (ADR-0017 §4). A recursive one is a
+    /// quantified axiom with its application as the pattern. Any other is a
+    /// macro, `(define-fun f (..) (ite guard body (f!ext ..)))`: the same
+    /// meaning (the body where the parameters are in their types, an
+    /// unconstrained value elsewhere) with no quantifier, so a satisfiable
+    /// query needs no model search over it (backlog T2-04: a quantified
+    /// definition over an `(Array Int Float64)` parameter kept Z3 from
+    /// ending a satisfiable query, `incomplete (theory array)`).
     fn axiom(&self, path: &str) -> (String, AxiomParts) {
         let d = &self.defs[path];
         let mut enc = Enc::new(self, path, &d.mod_path);
@@ -5872,22 +5879,47 @@ impl<'p> Prog<'p> {
         let mut bodies = Vec::new();
         flatten(&value, &mut bodies);
         let guard = and(&facts);
+        // An instance of a generic spec fn is recursive when its generic is.
+        let base = self.t.insts.get(path).map_or(path, |(b, _)| b.as_str());
+        let recursive = self.t.recursive.contains_key(base);
+        // Only a leaf (a body that names no other spec fn) becomes a macro:
+        // Z3 expands every macro use in place, so nested macros multiply the
+        // term size (SHA-256's round functions over its sigma functions).
+        let leaf = !bodies.iter().any(|b| {
+            self.t.fns.iter().any(|(q, sig)| {
+                q != path && sig.kind == FnKind::Spec && b.contains(&spec_key(q, self.t))
+            })
+        });
         // One definition per SMT function: a struct result has one per leaf.
         let mut ax = Vec::new();
-        for ((f, _), body) in spec_funs(path, self.t).iter().zip(&bodies) {
+        for ((f, sort), body) in spec_funs(path, self.t).iter().zip(&bodies) {
             let app = if app_args.is_empty() {
                 f.clone()
             } else {
                 format!("({f} {})", app_args.join(" "))
             };
-            ax.push(if binders.is_empty() {
+            let def = if binders.is_empty() {
                 format!("(assert (= {app} {body}))")
+            } else if !recursive && leaf {
+                let value = if guard == "true" {
+                    body.clone()
+                } else {
+                    let ext = macro_ext(f);
+                    let sorts: Vec<&str> = binders
+                        .iter()
+                        .map(|b| b[1..b.len() - 1].split_once(' ').map_or("", |(_, s)| s))
+                        .collect();
+                    ax.push(format!("(declare-fun {ext} ({}) {sort})", sorts.join(" ")));
+                    format!("(ite {guard} {body} ({ext} {}))", app_args.join(" "))
+                };
+                format!("(define-fun {f} ({}) {sort} {value})", binders.join(" "))
             } else {
                 format!(
                     "(assert (forall ({}) (! (=> {guard} (= {app} {body})) :pattern ({app}))))",
                     binders.join(" "),
                 )
-            });
+            };
+            ax.push(def);
         }
         // Ground instances (ADR-0023) cover single-result spec fns.
         let parts = AxiomParts {
@@ -6035,7 +6067,8 @@ fn needed_decls(
 ) -> String {
     let mut out = String::new();
     for (_, s, decl) in spec_decls {
-        if text.contains(s.as_str()) {
+        // A revealed non-recursive spec fn is defined by its macro instead.
+        if text.contains(s.as_str()) && !text.contains(&format!("(define-fun {s}")) {
             out.push_str(decl);
             out.push('\n');
         }
@@ -7411,14 +7444,47 @@ fn relevant_axioms(axioms: &[(String, String)], text: &str) -> String {
             break;
         }
     }
+    // A macro (`define-fun`) must come before every definition that names it.
+    let is_macro: Vec<bool> = axioms
+        .iter()
+        .map(|(symbol, ax)| ax.contains(&format!("(define-fun {symbol}")))
+        .collect();
+    let mut done = vec![false; axioms.len()];
     let mut out = String::new();
-    for (k, (_, ax)) in axioms.iter().enumerate() {
-        if chosen[k] {
-            out.push_str(ax);
-            out.push('\n');
+    loop {
+        let mut progressed = false;
+        for k in 0..axioms.len() {
+            if !chosen[k] || done[k] {
+                continue;
+            }
+            let waits = (0..axioms.len()).any(|j| {
+                j != k
+                    && chosen[j]
+                    && !done[j]
+                    && is_macro[j]
+                    && axioms[k].1.contains(axioms[j].0.as_str())
+            });
+            if !waits {
+                done[k] = true;
+                out.push_str(&axioms[k].1);
+                out.push('\n');
+                progressed = true;
+            }
+        }
+        if !progressed {
+            break;
         }
     }
     out
+}
+
+/// The uninterpreted part of spec fn symbol `f`'s macro: its value outside
+/// the parameters' types (`|m::f|` → `|m::f!ext|`).
+fn macro_ext(f: &str) -> String {
+    match f.strip_suffix('|') {
+        Some(head) => format!("{head}!ext|"),
+        None => format!("{f}!ext"),
+    }
 }
 
 /// Query `q` with the ground instances of the validity functions of

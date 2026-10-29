@@ -2,11 +2,11 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 7878533,
-    "V5_rlimit_headroom": 0.0153,
+    "V4_rlimit_total": 6510104,
+    "V5_rlimit_headroom": 0.0245,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0,
-    "V8_bench_rlimit_total": 39913235,
+    "V8_bench_rlimit_total": 28886260,
     "V9_bench_defs_at_limit": 1,
     "S1_external_crates": 0,
     "S2_external_processes": [
@@ -14,7 +14,7 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 34306,
+    "S4_stage0_rust_lines": 34351,
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
     "P1_runnable_programs": 58,
@@ -1322,6 +1322,28 @@
         "O2_soundness_fuzzers": [
           11,
           12
+        ]
+      }
+    },
+    {
+      "date": "2026-10-29",
+      "reason": "T2-04·ADR-0064: 비재귀 spec fn 정의를 같은 뜻의 매크로로. 코퍼스 증명 비용 V4 −17%, 벤치 V8 −28%, 실패 코퍼스 rlimit 합 −89%",
+      "changed": {
+        "V4_rlimit_total": [
+          7878533,
+          6510104
+        ],
+        "V5_rlimit_headroom": [
+          0.0153,
+          0.0245
+        ],
+        "V8_bench_rlimit_total": [
+          39913235,
+          28886260
+        ],
+        "S4_stage0_rust_lines": [
+          34306,
+          34351
         ]
       }
     }

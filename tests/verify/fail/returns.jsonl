@@ -1,10 +1,10 @@
 {"code":"E0802","severity":"error","message":"postcondition `nonneg` may not hold in `rf::early`; counterexample: x = -1","file":"fail/returns.bmb","line":11,"col":17,"end_line":11,"end_col":26}
 {"code":"E0803","severity":"error","message":"`+` may overflow `i64` in `rf::grows`; counterexample: x = 9223372036854775807","file":"fail/returns.bmb","line":23,"col":20,"end_line":23,"end_col":25}
 {"code":"E0804","severity":"error","message":"divisor may be zero in `rf::rest`; counterexample: x = 0","file":"fail/returns.bmb","line":34,"col":14,"end_line":34,"end_col":15}
-{"code":"E0802","severity":"error","message":"postcondition `at` may not hold in `rf::find`; counterexample: a = [-9223372036854774571, -9223372036854774571, -9223372036854774571, -9223372036854774571, ..] (len 7719), x = -9223372036854774572","file":"fail/returns.bmb","line":42,"col":17,"end_line":42,"end_col":28}
+{"code":"E0802","severity":"error","message":"postcondition `at` may not hold in `rf::find`; counterexample: a = [] (len 0), x = 0","file":"fail/returns.bmb","line":42,"col":17,"end_line":42,"end_col":28}
 {"code":"E0802","severity":"error","message":"postcondition `nonneg` may not hold in `rf::arm`; counterexample: o = None","file":"fail/returns.bmb","line":61,"col":17,"end_line":61,"end_col":26}
-{"def":"rf::arm","status":"failed","obligations":2,"failed":1,"rlimit":4499,"rlimit_max":3447}
-{"def":"rf::early","status":"failed","obligations":2,"failed":1,"rlimit":4094,"rlimit_max":3178}
-{"def":"rf::find","status":"failed","obligations":7,"failed":1,"rlimit":12638,"rlimit_max":3651}
+{"def":"rf::arm","status":"failed","obligations":2,"failed":1,"rlimit":821,"rlimit_max":578}
+{"def":"rf::early","status":"failed","obligations":2,"failed":1,"rlimit":764,"rlimit_max":428}
+{"def":"rf::find","status":"failed","obligations":7,"failed":1,"rlimit":6919,"rlimit_max":1718}
 {"def":"rf::grows","status":"failed","obligations":1,"failed":1,"rlimit":651,"rlimit_max":651}
 {"def":"rf::rest","status":"failed","obligations":2,"failed":1,"rlimit":736,"rlimit_max":502}

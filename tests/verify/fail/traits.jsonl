@@ -2,7 +2,7 @@
 {"code":"E0803","severity":"error","message":"`+` may overflow `i64` in `tr::total`; counterexample: a = T#0, b = T#1","file":"fail/traits.bmb","line":26,"col":9,"end_line":26,"end_col":40}
 {"code":"E0802","severity":"error","message":"postcondition `pos` may not hold in `tr::bounded`; counterexample: a = T#0","file":"fail/traits.bmb","line":33,"col":17,"end_line":33,"end_col":23}
 {"code":"E0810","severity":"error","message":"assertion may not hold in `tr::exact`; counterexample: q = Sq { s: 0 }","file":"fail/traits.bmb","line":42,"col":9,"end_line":42,"end_col":23,"fix":{"message":"the proof sees `pos` only by name; if the failure depends on its definition, add to #[uses(pos)]"}}
-{"def":"<tr::Sq as tr::Area>::area","status":"failed","obligations":1,"failed":1,"rlimit":3419,"rlimit_max":3419}
-{"def":"tr::bounded","status":"failed","obligations":1,"failed":1,"rlimit":3383,"rlimit_max":3383}
+{"def":"<tr::Sq as tr::Area>::area","status":"failed","obligations":1,"failed":1,"rlimit":435,"rlimit_max":435}
+{"def":"tr::bounded","status":"failed","obligations":1,"failed":1,"rlimit":454,"rlimit_max":454}
 {"def":"tr::exact","status":"failed","obligations":1,"failed":1,"rlimit":400,"rlimit_max":400}
 {"def":"tr::total","status":"failed","obligations":1,"failed":1,"rlimit":694,"rlimit_max":694}
