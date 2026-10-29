@@ -183,7 +183,7 @@
 | E0819 | an argument of a `proof fn` call may be outside its parameter's type (ghost arithmetic is mathematical, ADR-0062 §2) |
 | E0823 | a type invariant may not hold where a value leaves the function's hands: a call argument, a return, a `&mut` parameter at exit, a loop head (ADR-0060 §2) |
 
-## W09xx 계약 조정 린트(경고, `bmb lint`만)
+## W09xx 계약 조정(경고, `bmb lint`·`bmb weaken`만)
 
 | 코드 | 뜻 |
 | --- | --- |
@@ -194,6 +194,7 @@
 | W0905 | a point of a verified function is unreachable in its proof: what follows is proved vacuously |
 | W0906 | a `forall`'s only trigger matches a term of its own body: instances feed each other (matching loop) |
 | W0907 | a counting `while` whose canonical form is a range `for` (the fix rewrites it; `bmb fix` applies it) |
+| W0908 | the contract is weaker than in the old version: a stronger `requires`, a weaker `ensures` or `pure` become `io` (`bmb weaken`, with the counterexample) |
 
 ## 은퇴한 코드(다시 쓰지 않는다)
 

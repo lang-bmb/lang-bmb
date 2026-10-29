@@ -1,0 +1,60 @@
+#[summary("rewrites that keep the meaning")]
+mod m {
+    spec fn pos(x: i64) -> bool { x > 0 }
+
+    spec fn nonneg(x: i64) -> bool { x >= 0 }
+
+    spec fn nonzero(x: i64) -> bool { x != 0 }
+
+    spec fn small(x: i64) -> bool { x < 100 }
+
+    spec fn is_succ(x: i64, r: i64) -> bool { r == x + 1 }
+
+    spec fn one_more(r: i64, x: i64) -> bool { r - x == 1 }
+
+    // `pos` written as `nonneg` and `nonzero`, `is_succ` as `one_more`.
+    #[effects(pure)]
+    #[uses(small, nonneg, nonzero, one_more)]
+    fn inc(x: i64) -> (r: i64)
+        requires small(x), nonneg(x), nonzero(x),
+        ensures one_more(r, x),
+    {
+        x + 1
+    }
+
+    // Only the body changes (its `id` too).
+    #[effects(pure)]
+    #[uses(small, is_succ)]
+    fn inc_body(x: i64) -> (r: i64)
+        requires small(x),
+        ensures is_succ(x, r),
+    {
+        1 + x
+    }
+
+    // The clauses in another order.
+    #[effects(pure)]
+    #[uses(small, pos, is_succ)]
+    fn inc_order(x: i64) -> (r: i64)
+        requires pos(x), small(x),
+        ensures is_succ(x, r),
+    {
+        x + 1
+    }
+
+    // Renamed to `bump` with nothing else changed: the same `id`.
+    #[effects(pure)]
+    #[uses(small, is_succ)]
+    fn bump(y: i64) -> (s: i64)
+        requires small(y),
+        ensures is_succ(y, s),
+    {
+        y + 1
+    }
+
+    // No contract on either side.
+    #[effects(pure)]
+    fn twice(x: i64) -> i64 {
+        x + x - x
+    }
+}

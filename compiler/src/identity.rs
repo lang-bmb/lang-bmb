@@ -357,6 +357,36 @@ impl<'p> Ids<'p> {
         self.ents.keys()
     }
 
+    /// The items `key`'s text refers to (the edges of the reference
+    /// graph).
+    pub fn refs(&self, key: &Key) -> Vec<Key> {
+        if !self.ents.contains_key(key) {
+            return Vec::new();
+        }
+        self.succ(key)
+    }
+
+    /// The items `key`'s surface refers to: a function's text without its
+    /// body (signature, `#[uses]`, contract), a `spec fn`'s with its body
+    /// (its body is its surface), a type's or a trait's whole text.
+    pub fn surface_refs(&self, key: &Key) -> Vec<Key> {
+        let part = match self.ents.get(key) {
+            None => return Vec::new(),
+            Some(Ent::Def { f, .. }) if f.kind != FnKind::Spec => Part::Iface,
+            Some(_) => Part::Body,
+        };
+        let c = Collect(RefCell::default());
+        let order: Vec<String> = match &self.ents[key] {
+            Ent::Trait { t, .. } => t.fns.iter().map(|tf| tf.f.name.name.clone()).collect(),
+            _ => Vec::new(),
+        };
+        self.print(key, &c, part, &order);
+        c.0.into_inner()
+            .into_iter()
+            .filter(|k| self.ents.contains_key(k))
+            .collect()
+    }
+
     /// The items `key`'s text refers to.
     fn succ(&self, key: &Key) -> Vec<Key> {
         if let Some(e) = self.edges.borrow().get(key) {

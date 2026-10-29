@@ -333,6 +333,36 @@ mod m {
     assert_eq!(out.checks, 1);
 }
 
+/// A narrow product is computed in 64 bits before its range check: the
+/// flag must hold for every operand pair, or the check reads a poison
+/// value. `u32` products reach `(2^32 - 1)^2 > i64::MAX` (backlog 2N-04).
+#[test]
+fn narrow_products_claim_only_what_holds() {
+    let text = r#"
+#[summary("곱")]
+mod m {
+    #[effects(pure)]
+    fn a(x: u32, y: u32) -> u32 { x * y }
+
+    #[effects(pure)]
+    fn b(x: i32, y: i32) -> i32 { x * y }
+
+    #[effects(pure)]
+    fn c(x: u16, y: u16) -> u16 { x * y }
+}
+"#;
+    let ir = bmb::emit_llvm_sources(&src("p.bmb", text)).ir.unwrap();
+    let body = |f: &str, next: Option<&str>| {
+        let s = ir.find(&format!("@\"m::{f}\"(")).unwrap();
+        let e = next.map_or(ir.len(), |n| ir.find(&format!("@\"m::{n}\"(")).unwrap());
+        ir[s..e].to_string()
+    };
+    let (a, b, c) = (body("a", Some("b")), body("b", Some("c")), body("c", None));
+    assert!(a.contains("mul nuw i64") && !a.contains("mul nsw"), "{a}");
+    assert!(b.contains("mul nsw i64"), "{b}");
+    assert!(c.contains("mul nuw i64"), "{c}");
+}
+
 #[test]
 fn mut_slices_are_noalias_and_shared_ones_readonly() {
     let text = r#"

@@ -1,0 +1,61 @@
+#[summary("renamed definitions")]
+mod m {
+    // Renamed to `lt_hundred` (the same `id`).
+    spec fn lt_hundred(x: i64) -> bool { x < 100 }
+
+    spec fn pos(x: i64) -> bool { x > 0 }
+
+    spec fn is_succ(x: i64, r: i64) -> bool { r == x + 1 }
+
+    spec fn bigger(x: i64, r: i64) -> bool { r > x }
+
+    // Renamed to `step` and its postcondition weakened in the same edit:
+    // matched by its body.
+    #[effects(pure)]
+    #[uses(lt_hundred, bigger)]
+    fn step(x: i64) -> (r: i64)
+        requires lt_hundred(x),
+        ensures bigger(x, r),
+    {
+        x + 1
+    }
+
+    // Only the spec fn it names is renamed: the same `id`.
+    #[effects(pure)]
+    #[uses(lt_hundred, is_succ)]
+    fn inc3(x: i64) -> (r: i64)
+        requires lt_hundred(x),
+        ensures is_succ(x, r),
+    {
+        x + 1
+    }
+
+    // The renamed spec fn, and a new precondition.
+    #[effects(pure)]
+    #[uses(lt_hundred, pos)]
+    fn dec(x: i64) -> i64
+        requires lt_hundred(x), pos(x),
+    {
+        x - 1
+    }
+
+    // New.
+    #[effects(pure)]
+    fn fresh(x: i64) -> i64 {
+        x - 4
+    }
+}
+
+#[summary("the moved definition")]
+mod n {
+    spec fn below(x: i64) -> bool { x < 1000 }
+
+    #[effects(pure)]
+    #[uses(below, m::bigger)]
+    fn up(x: i64) -> (r: i64)
+        requires below(x),
+        ensures m::bigger(x, r),
+    {
+        x + 2
+    }
+}

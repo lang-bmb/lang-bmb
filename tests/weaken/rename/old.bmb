@@ -1,0 +1,57 @@
+#[summary("renamed definitions")]
+mod m {
+    // Renamed to `lt_hundred` (the same `id`).
+    spec fn small(x: i64) -> bool { x < 100 }
+
+    spec fn pos(x: i64) -> bool { x > 0 }
+
+    spec fn is_succ(x: i64, r: i64) -> bool { r == x + 1 }
+
+    spec fn bigger(x: i64, r: i64) -> bool { r > x }
+
+    // Renamed to `step` and its postcondition weakened in the same edit:
+    // matched by its body.
+    #[effects(pure)]
+    #[uses(small, is_succ)]
+    fn inc(x: i64) -> (r: i64)
+        requires small(x),
+        ensures is_succ(x, r),
+    {
+        x + 1
+    }
+
+    // Moved to unit `n` with its precondition weakened (a refinement).
+    #[effects(pure)]
+    #[uses(small, bigger)]
+    fn up(x: i64) -> (r: i64)
+        requires small(x),
+        ensures bigger(x, r),
+    {
+        x + 2
+    }
+
+    // Only the spec fn it names is renamed: the same `id`.
+    #[effects(pure)]
+    #[uses(small, is_succ)]
+    fn inc3(x: i64) -> (r: i64)
+        requires small(x),
+        ensures is_succ(x, r),
+    {
+        x + 1
+    }
+
+    // The renamed spec fn, and a new precondition.
+    #[effects(pure)]
+    #[uses(small)]
+    fn dec(x: i64) -> i64
+        requires small(x),
+    {
+        x - 1
+    }
+
+    // Deleted.
+    #[effects(pure)]
+    fn gone(x: i64) -> i64 {
+        x - 3
+    }
+}

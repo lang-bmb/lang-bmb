@@ -1,0 +1,27 @@
+#[summary("two recursive definitions the solver cannot relate")]
+mod m {
+    // Summed from the end.
+    spec fn sum(a: &[i64], n: usize) -> i64
+        decreases n,
+    {
+        if n == 0 { 0 } else { sum(a, n - 1) + a[n - 1] }
+    }
+
+    // Summed from the front; equal to `sum`, but only by induction.
+    spec fn sum_from(a: &[i64], i: usize) -> i64
+        decreases a.len() - i,
+    {
+        if i >= a.len() { 0 } else { a[i] + sum_from(a, i + 1) }
+    }
+
+    // `sum` becomes `sum_from`: the comparison cannot decide it, and says so.
+    spec fn is_total(a: &[i64], r: i64) -> bool { r == sum(a, a.len()) }
+
+    #[effects(pure)]
+    #[uses(is_total, sum, sum_from)]
+    fn total(a: &[i64]) -> (r: i64)
+        ensures is_total(a, r),
+    {
+        0
+    }
+}

@@ -602,6 +602,143 @@ thread_local! {
     /// Set by `vacuous_ends`: record reach points, check them instead of the
     /// obligations.
     static REACH: Cell<bool> = const { Cell::new(false) };
+    /// Set by `contract_refinements`: the comparison of each listed
+    /// definition, encoded instead of its body; the obligations each one
+    /// made are recorded.
+    static REFINE: RefCell<Option<Refining>> = const { RefCell::new(None) };
+}
+
+/// Where the obligations of `Enc::refines` stand.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RefineAt {
+    /// A trait impl function against its trait (E0817): the `ensures`
+    /// obligations at the function's name.
+    Trait,
+    /// Two versions of a definition (backlog 2D-19): each obligation at
+    /// its clause, the result shown in a counterexample.
+    Version { own_domain: bool },
+}
+
+/// One contract comparison of `contract_refinements`: the definition it
+/// is listed under (the refiner) against `decl`, as a trait impl
+/// function's contract against its trait's (ADR-0046 §4): `decl`'s
+/// `requires` imply each of the refiner's, and `decl`'s `requires` with
+/// the refiner's `ensures` imply each of `decl`'s `ensures`.
+#[derive(Clone, Debug)]
+pub struct RefineJob {
+    pub decl: String,
+    /// `decl`'s type parameters by the refiner's (by position).
+    pub tsub: BTreeMap<String, TypeKind>,
+    /// The `ensures` obligations assume the refiner's own `requires` in
+    /// place of `decl`'s: both sides' `ensures` compared on the
+    /// refiner's domain.
+    pub own_domain: bool,
+}
+
+struct Refining {
+    jobs: BTreeMap<String, RefineJob>,
+    /// The obligations each refiner made: (code, span).
+    made: Vec<(String, Vec<(&'static str, Span)>)>,
+}
+
+/// The answer to one obligation of a contract comparison.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ClauseAnswer {
+    Proved,
+    /// The solver found a model: the counterexample (inputs, and the result
+    /// for an `ensures` clause), as Rust values, and the spec fns the query
+    /// saw only by name (the model interprets them freely, as a caller's
+    /// proof that does not reveal them may).
+    Refuted {
+        counterexample: String,
+        opaque: Vec<String>,
+    },
+    /// Unknown, resource limit, or no solver (G1: never a guess).
+    Undecided(String),
+}
+
+/// The contract comparisons `jobs` (backlog 2D-19, `weaken.rs`), each by the
+/// prover's own encoding: the refiner's parameters on entry, the spec fns
+/// its `#[uses]` reveals, every obligation on a reset solver with the
+/// pinned `rlimit` and the ground-instance retry. No body is encoded.
+/// Returns, per refiner, each obligation's span and answer, in the order
+/// made: `requires` obligations at the refiner's clauses, `ensures`
+/// obligations at `decl`'s.
+pub fn contract_refinements(
+    p: &Program,
+    t: &Tables,
+    jobs: BTreeMap<String, RefineJob>,
+) -> BTreeMap<String, Vec<(Span, ClauseAnswer)>> {
+    let only: BTreeSet<String> = jobs.keys().cloned().collect();
+    let prev = REFINE.with(|r| {
+        r.replace(Some(Refining {
+            jobs,
+            made: Vec::new(),
+        }))
+    });
+    let mut diags = Diags::default();
+    let o = verify_impl(p, t, &mut diags, 0, None, Some(&only), false, None);
+    let made = REFINE
+        .with(|r| std::mem::replace(&mut *r.borrow_mut(), prev))
+        .map(|r| r.made)
+        .unwrap_or_default();
+    let mut out = BTreeMap::new();
+    for (path, obls) in made {
+        let answers = obls
+            .into_iter()
+            .map(|(code, span)| {
+                let key = (code, span.file, span.lo, span.hi);
+                let at = |d: &&Diag| d.span == span;
+                let answer = if o.proven.contains(&key) {
+                    ClauseAnswer::Proved
+                } else if let Some(d) = diags.items.iter().find(|d| at(d) && d.code == code) {
+                    let cex = d
+                        .message
+                        .split_once("; counterexample: ")
+                        .map_or("", |(_, c)| c);
+                    // The hint `with_hint` attaches names them.
+                    let opaque = d
+                        .fix
+                        .as_ref()
+                        .and_then(|f| f.message.strip_prefix("the proof sees "))
+                        .and_then(|m| m.split_once(" only by name"))
+                        .map(|(names, _)| {
+                            names
+                                .split(", ")
+                                .map(|n| n.trim_matches('`').to_string())
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    ClauseAnswer::Refuted {
+                        counterexample: cex.to_string(),
+                        opaque,
+                    }
+                } else {
+                    let why = diags
+                        .items
+                        .iter()
+                        .find(at)
+                        .or_else(|| diags.items.iter().find(|d| d.code == "E0812"))
+                        .map_or("not decided".to_string(), |d| {
+                            // The reason, without the prover's own names
+                            // and an unconfirmed model.
+                            let m = &d.message;
+                            let m = m
+                                .find("solver could not decide")
+                                .map_or(m.as_str(), |k| &m[k..]);
+                            m.split("; unconfirmed counterexample")
+                                .next()
+                                .unwrap_or(m)
+                                .to_string()
+                        });
+                    ClauseAnswer::Undecided(why)
+                };
+                (span, answer)
+            })
+            .collect();
+        out.insert(path, answers);
+    }
+    out
 }
 
 /// The points of a definition that its own encoding makes unreachable
@@ -5063,8 +5200,9 @@ impl<'p, 'q> Enc<'p, 'q> {
     /// `f`'s `ensures` imply each of the trait's `ensures` (on a new
     /// result and new values behind `&mut` parameters). Parameters match
     /// by position; `tsub` states the trait's contract for `f`. Nothing
-    /// is assumed afterwards.
-    fn refines(&mut self, f: &FnDef, decl: &str, tsub: BTreeMap<String, TypeKind>) {
+    /// is assumed afterwards. `at` says where the obligations stand
+    /// (`RefineAt`).
+    fn refines(&mut self, f: &FnDef, decl: &str, tsub: BTreeMap<String, TypeKind>, at: RefineAt) {
         let Some(td) = self.prog.defs.get(decl) else {
             return;
         };
@@ -5122,7 +5260,17 @@ impl<'p, 'q> Enc<'p, 'q> {
             if let Some(n) = &f.ret.name {
                 ipost.insert(n.name.clone(), result.clone());
             }
-            let mut assumed = treq.clone();
+            // The domain the `ensures` are compared on: `decl`'s
+            // `requires`, or `f`'s own (the backward direction of a version
+            // comparison, `RefineJob::own_domain`).
+            let mut assumed = match at {
+                RefineAt::Version { own_domain: true } => f
+                    .requires
+                    .iter()
+                    .map(|r| self.spec(r, &env, &old).s())
+                    .collect(),
+                _ => treq.clone(),
+            };
             for en in &f.ensures {
                 assumed.push(self.spec(en, &ipost, &old).s());
             }
@@ -5135,12 +5283,40 @@ impl<'p, 'q> Enc<'p, 'q> {
             let base = self.pc.clone();
             for en in &tf.ensures {
                 let g = self.in_def(&tunit, tsub.clone(), |s| s.spec(en, &tpost, &told).s());
+                // A version comparison tells the clauses apart by their
+                // spans and shows the result in a counterexample.
+                let span = match at {
+                    RefineAt::Trait => f.name.span,
+                    RefineAt::Version { .. } => en.span,
+                };
+                let n = self.obls.len();
                 self.oblige(
                     "E0817",
-                    f.name.span,
+                    span,
                     format!("postcondition `{}` of `{decl}` may not hold", pred_name(en)),
                     format!("(=> {hyp} {g})"),
                 );
+                // The result, or for a `()` function the new value behind
+                // its first `&mut` parameter.
+                if let RefineAt::Version { .. } = at
+                    && self.obls.len() > n
+                {
+                    let after = f.params.iter().find(|p| {
+                        ret == TypeKind::Unit
+                            && matches!(p.ty.kind, TypeKind::Ref { mutable: true, .. })
+                    });
+                    self.obls[n].shown = match after {
+                        Some(p) => Some((
+                            format!("{} after", p.name.name),
+                            post[&p.name.name].clone(),
+                            self.local_ty(&p.name.name),
+                        )),
+                        None => {
+                            let name = f.ret.name.as_ref().map_or("result", |r| r.name.as_str());
+                            Some((name.to_string(), result.clone(), ret.clone()))
+                        }
+                    };
+                }
                 self.pc = base.clone();
             }
         }
@@ -6312,8 +6488,40 @@ fn verify_impl(
         let mut axioms: Vec<(String, String)> = Vec::new();
         let mut axiom_parts: Vec<AxiomParts> = Vec::new();
 
-        match d.f.kind {
-            FnKind::Spec => {
+        let job = REFINE.with(|r| r.borrow().as_ref().map(|x| x.jobs.get(path).cloned()));
+        match (job, d.f.kind) {
+            // Under `contract_refinements`: only the listed definitions,
+            // each its comparison on the entry state of its parameters (as
+            // an executable function's), no body.
+            (Some(None), _) => continue,
+            (Some(Some(job)), _) => {
+                for u in prog.revealed(d.f, &d.mod_path) {
+                    let (ax, parts) = prog.axiom(&u);
+                    axioms.push((spec_key(&u, t), ax));
+                    axiom_parts.push(parts);
+                }
+                for prm in &d.f.params {
+                    let ty = enc.local_ty(&prm.name.name);
+                    let v = enc.fresh_val(&prm.name.name, &ty);
+                    enc.assume_valid(&v, &ty);
+                    if let TypeKind::Ref { mutable: true, .. } = prm.ty.kind {
+                        enc.old.insert(prm.name.name.clone(), v.clone());
+                    }
+                    enc.inputs.push((prm.name.name.clone(), v.clone(), ty));
+                    enc.vars.insert(prm.name.name.clone(), v);
+                }
+                let at = RefineAt::Version {
+                    own_domain: job.own_domain,
+                };
+                enc.refines(d.f, &job.decl, job.tsub, at);
+                let made = enc.obls.iter().map(|o| (o.code, o.span)).collect();
+                REFINE.with(|r| {
+                    if let Some(x) = r.borrow_mut().as_mut() {
+                        x.made.push((path.clone(), made));
+                    }
+                });
+            }
+            (None, FnKind::Spec) => {
                 // Only recursive spec fns carry obligations (termination).
                 let Some(comp) = t.recursive.get(path).copied() else {
                     continue;
@@ -6332,7 +6540,7 @@ fn verify_impl(
             }
             // A lemma (ADR-0062 §2): its body is ghost code, proved like an
             // executable function's against its contract.
-            FnKind::Proof => {
+            (None, FnKind::Proof) => {
                 for u in prog.revealed(d.f, &d.mod_path) {
                     let (ax, parts) = prog.axiom(&u);
                     axioms.push((spec_key(&u, t), ax));
@@ -6364,7 +6572,7 @@ fn verify_impl(
                 enc.mark_reach(d.f.name.span, "end of the body");
                 enc.post_check(Val::Unit, d.f.name.span, "at the end of the body");
             }
-            FnKind::Exec => {
+            (None, FnKind::Exec) => {
                 for u in prog.revealed(d.f, &d.mod_path) {
                     let (ax, parts) = prog.axiom(&u);
                     axioms.push((spec_key(&u, t), ax));
@@ -6382,7 +6590,7 @@ fn verify_impl(
                     enc.vars.insert(prm.name.name.clone(), v);
                 }
                 if let Some((decl, rsub)) = refinement_of(t, path) {
-                    enc.refines(d.f, &decl, rsub);
+                    enc.refines(d.f, &decl, rsub, RefineAt::Trait);
                 }
                 let (env, old) = enc.cur_env();
                 for r in &d.f.requires {

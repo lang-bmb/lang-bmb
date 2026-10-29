@@ -1,0 +1,22 @@
+#[summary("a rewrite through spec fns neither version reveals")]
+mod m {
+    spec fn pos(x: i64) -> bool { x > 0 }
+
+    spec fn nonneg(x: i64) -> bool { x >= 0 }
+
+    spec fn nonzero(x: i64) -> bool { x != 0 }
+
+    spec fn small(x: i64) -> bool { x < 100 }
+
+    // `pos` written as `nonneg` and `nonzero`, which the new version does
+    // not reveal (its proof does not need them): a caller that proves
+    // `pos(x)` cannot prove `nonneg(x)` without revealing it, so the
+    // comparison, which sees the spec fns as the proofs do, reports it.
+    #[effects(pure)]
+    #[uses(small)]
+    fn inc(x: i64) -> i64
+        requires small(x), nonneg(x), nonzero(x),
+    {
+        x + 1
+    }
+}

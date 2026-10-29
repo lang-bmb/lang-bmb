@@ -68,6 +68,11 @@ const USAGE: &str = "usage:
   bmb mutate --def PATH [--def PATH].. <file.bmb>...
                             every W0904 body mutation of the named functions, unproved, as
                             JSONL rows with the changed unit's normal form, then a summary
+  bmb weaken OLD NEW        compare the contracts of two versions (each a file or a workspace):
+                            per definition same, refined, compatible, weakened, undecided,
+                            signature, added or removed, by SMT implication with counterexamples;
+                            W0908 for each weakened contract, then a summary; fails if a
+                            contract got weaker or a comparison was not decided
   bmb hash <file.bmb>...    nameless identities and hashes (id, body, iface) as JSONL
   bmb map [--cache DIR] [L0|L1|L2|all] <file.bmb>...
                             standard maps as JSONL (ADR-0020)
@@ -508,6 +513,26 @@ fn run() -> ExitCode {
                 }
                 Err(e) => {
                     print!("{e}");
+                    ExitCode::from(1)
+                }
+            }
+        }
+        Some("weaken") if args.len() == 3 => {
+            let (old, new) = match (read_files(&args[1..2]), read_files(&args[2..3])) {
+                (Ok(o), Ok(n)) => (o, n),
+                (Err(code), _) | (_, Err(code)) => return code,
+            };
+            match bmb::weaken::weaken_sources(&old, &new) {
+                Ok(out) => {
+                    print!("{}", out.report());
+                    if out.ok() {
+                        ExitCode::SUCCESS
+                    } else {
+                        ExitCode::from(1)
+                    }
+                }
+                Err(diags) => {
+                    print!("{diags}");
                     ExitCode::from(1)
                 }
             }
