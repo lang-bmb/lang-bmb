@@ -2,14 +2,14 @@
 {"code":"E0803","severity":"error","message":"`+` may overflow `i64` in `geo::overflow`; counterexample: s = Shape::Square(9223372036854775807)","file":"fail/enums.bmb","line":28,"col":33,"end_line":28,"end_col":38}
 {"code":"E0803","severity":"error","message":"`+` may overflow `i64` in `geo::struct_payload`; counterexample: s = Shape::Rect(Point { x: 9223372036854775807, y: 0 }, Point { x: 1, y: -9223372036854773371 })","file":"fail/enums.bmb","line":39,"col":34,"end_line":39,"end_col":43}
 {"code":"E0802","severity":"error","message":"postcondition `is_dot` may not hold in `geo::after_call`; counterexample: s = Shape::Dot","file":"fail/enums.bmb","line":53,"col":17,"end_line":53,"end_col":26}
-{"code":"E0810","severity":"error","message":"assertion may not hold in `geo::distinct`; counterexample: n = -9223372036854775808","file":"fail/enums.bmb","line":65,"col":9,"end_line":65,"end_col":52}
+{"code":"E0810","severity":"error","message":"assertion may not hold in `geo::distinct`; counterexample: n = 0","file":"fail/enums.bmb","line":65,"col":9,"end_line":65,"end_col":52}
 {"code":"E0802","severity":"error","message":"postcondition `is_dot` may not hold in `geo::loop_forgets`; counterexample: n = 0","file":"fail/enums.bmb","line":71,"col":17,"end_line":71,"end_col":26}
-{"code":"E0802","severity":"error","message":"postcondition `same` may not hold in `cells::swapped`; counterexample: c = Cell::Full([-9223372036854766952, -9223372036854766953])","file":"fail/enums.bmb","line":95,"col":17,"end_line":95,"end_col":27}
-{"def":"cells::swapped","status":"failed","obligations":3,"failed":1,"rlimit":2552,"rlimit_max":2036}
-{"def":"geo::after_call","status":"failed","obligations":1,"failed":1,"rlimit":2472,"rlimit_max":2472}
-{"def":"geo::distinct","status":"failed","obligations":1,"failed":1,"rlimit":757,"rlimit_max":757}
-{"def":"geo::loop_forgets","status":"failed","obligations":7,"failed":1,"rlimit":6487,"rlimit_max":1748}
+{"code":"E0802","severity":"error","message":"postcondition `same` may not hold in `cells::swapped`; counterexample: c = Cell::Full([-9223372036854774571, -9223372036854774572])","file":"fail/enums.bmb","line":95,"col":17,"end_line":95,"end_col":27}
+{"def":"cells::swapped","status":"failed","obligations":3,"failed":1,"rlimit":4813,"rlimit_max":4297}
+{"def":"geo::after_call","status":"failed","obligations":1,"failed":1,"rlimit":3771,"rlimit_max":3771}
+{"def":"geo::distinct","status":"failed","obligations":1,"failed":1,"rlimit":991,"rlimit_max":991}
+{"def":"geo::loop_forgets","status":"failed","obligations":7,"failed":1,"rlimit":7372,"rlimit_max":2619}
 {"def":"geo::overflow","status":"failed","obligations":1,"failed":1,"rlimit":1484,"rlimit_max":1484}
-{"def":"geo::payload_sign","status":"failed","obligations":1,"failed":1,"rlimit":1037,"rlimit_max":1037}
+{"def":"geo::payload_sign","status":"failed","obligations":1,"failed":1,"rlimit":3637,"rlimit_max":3637}
 {"def":"geo::struct_payload","status":"failed","obligations":3,"failed":1,"rlimit":5241,"rlimit_max":3629}
 {"def":"geo::touch","status":"verified","obligations":0,"failed":0,"rlimit":0,"rlimit_max":0}

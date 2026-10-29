@@ -5,11 +5,11 @@
 {"code":"E0803","severity":"error","message":"`+` may overflow `i64` in `rf::bump`; counterexample: n = Node { v: 9223372036854775807, kids: [] (len 0) }","file":"fail/rec_structs.bmb","line":44,"col":9,"end_line":44,"end_col":16}
 {"code":"E0802","severity":"error","message":"postcondition `grew` may not hold in `rf::misplaced`; counterexample: n = Node { v: 9, kids: [Node { .. }] (len 1) }, c = Node { v: 5, kids: [Node { .. }] (len 1) }","file":"fail/rec_structs.bmb","line":52,"col":17,"end_line":52,"end_col":32}
 {"code":"E0816","severity":"error","message":"`push` may exceed the maximum length of a `Vec` in `rf::misplaced`; counterexample: n = Node { v: 9, kids: [Node { .. }] (len 1) }, c = Node { v: 5, kids: [Node { .. }] (len 1) }","file":"fail/rec_structs.bmb","line":54,"col":9,"end_line":54,"end_col":31}
-{"code":"E0802","severity":"error","message":"postcondition `labeled` may not hold in `rf::relabel`; counterexample: n = Node { v: 7, kids: [] (len 0) }, x = 0","file":"fail/rec_structs.bmb","line":60,"col":17,"end_line":60,"end_col":30}
+{"code":"E0802","severity":"error","message":"postcondition `labeled` may not hold in `rf::relabel`; counterexample: n = Node { v: -9223372036854775809, kids: [] (len 0) }, x = -2","file":"fail/rec_structs.bmb","line":60,"col":17,"end_line":60,"end_col":30}
 {"def":"rf::built","status":"failed","obligations":1,"failed":1,"rlimit":646,"rlimit_max":646}
 {"def":"rf::bump","status":"failed","obligations":1,"failed":1,"rlimit":418,"rlimit_max":418}
 {"def":"rf::first","status":"failed","obligations":1,"failed":1,"rlimit":335,"rlimit_max":335}
 {"def":"rf::fresh","status":"failed","obligations":1,"failed":1,"rlimit":574,"rlimit_max":574}
-{"def":"rf::misplaced","status":"failed","obligations":3,"failed":2,"rlimit":3505,"rlimit_max":1701}
-{"def":"rf::relabel","status":"failed","obligations":2,"failed":1,"rlimit":1793,"rlimit_max":1502}
+{"def":"rf::misplaced","status":"failed","obligations":3,"failed":2,"rlimit":8251,"rlimit_max":3821}
+{"def":"rf::relabel","status":"failed","obligations":2,"failed":1,"rlimit":18045,"rlimit_max":17754}
 {"def":"rf::same","status":"failed","obligations":1,"failed":1,"rlimit":353,"rlimit_max":353}

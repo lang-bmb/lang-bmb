@@ -1,4 +1,4 @@
 {"code":"E0803","severity":"error","message":"`+` may overflow `i64` in `ic::near_top`; counterexample: x = 2","file":"fail/int_consts.bmb","line":11,"col":9,"end_line":11,"end_col":25}
 {"code":"E0803","severity":"error","message":"`+` may overflow `u8` in `ic::byte_over`; counterexample: b = 254","file":"fail/int_consts.bmb","line":17,"col":38,"end_line":17,"end_col":43}
 {"def":"ic::byte_over","status":"failed","obligations":1,"failed":1,"rlimit":673,"rlimit_max":673}
-{"def":"ic::near_top","status":"failed","obligations":2,"failed":1,"rlimit":772,"rlimit_max":526}
+{"def":"ic::near_top","status":"failed","obligations":2,"failed":1,"rlimit":4063,"rlimit_max":3814}

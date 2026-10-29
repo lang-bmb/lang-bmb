@@ -8,5 +8,5 @@
 {"def":"wf::inc","status":"failed","obligations":1,"failed":1,"rlimit":558,"rlimit_max":558}
 {"def":"wf::index","status":"failed","obligations":1,"failed":1,"rlimit":893,"rlimit_max":893}
 {"def":"wf::narrow","status":"failed","obligations":1,"failed":1,"rlimit":6724,"rlimit_max":6724}
-{"def":"wf::rem","status":"failed","obligations":3,"failed":1,"rlimit":5681,"rlimit_max":5031}
+{"def":"wf::rem","status":"failed","obligations":3,"failed":1,"rlimit":10095,"rlimit_max":7382}
 {"def":"wf::scale","status":"failed","obligations":1,"failed":1,"rlimit":6726,"rlimit_max":6726}

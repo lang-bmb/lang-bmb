@@ -6,7 +6,7 @@
 {"code":"E0810","severity":"error","message":"assertion may not hold in `loops::arm_assigns`; counterexample: o = None","file":"fail/loops.bmb","line":108,"col":9,"end_line":108,"end_col":24}
 {"code":"E0810","severity":"error","message":"assertion may not hold in `loops::binding_writes`; counterexample: c = Cell::Full(0)","file":"fail/loops.bmb","line":131,"col":9,"end_line":131,"end_col":25}
 {"def":"loops::arm_assigns","status":"failed","obligations":5,"failed":1,"rlimit":2881,"rlimit_max":886}
-{"def":"loops::binding_writes","status":"failed","obligations":5,"failed":1,"rlimit":3300,"rlimit_max":1138}
+{"def":"loops::binding_writes","status":"failed","obligations":5,"failed":1,"rlimit":4797,"rlimit_max":2353}
 {"def":"loops::entry","status":"failed","obligations":4,"failed":1,"rlimit":1241,"rlimit_max":743}
 {"def":"loops::negative_measure","status":"failed","obligations":1,"failed":1,"rlimit":829,"rlimit_max":829}
 {"def":"loops::no_progress","status":"failed","obligations":3,"failed":1,"rlimit":889,"rlimit_max":525}

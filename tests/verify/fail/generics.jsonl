@@ -4,10 +4,10 @@
 {"code":"E0801","severity":"error","message":"precondition `idx` of `gen::get` may not hold in `gen::past_end`","file":"fail/generics.bmb","line":68,"col":9,"end_line":68,"end_col":26}
 {"code":"E0810","severity":"error","message":"assertion may not hold in `gen::wrong_value`","file":"fail/generics.bmb","line":76,"col":9,"end_line":76,"end_col":24}
 {"code":"E0802","severity":"error","message":"postcondition `first` may not hold in `gen::max_first`; counterexample: a = T#0, b = T#1","file":"fail/generics.bmb","line":86,"col":17,"end_line":86,"end_col":33}
-{"def":"gen::empty","status":"failed","obligations":1,"failed":1,"rlimit":236,"rlimit_max":236}
+{"def":"gen::empty","status":"failed","obligations":1,"failed":1,"rlimit":860,"rlimit_max":860}
 {"def":"gen::fill_short","status":"failed","obligations":7,"failed":1,"rlimit":11343,"rlimit_max":2740}
 {"def":"gen::get","status":"verified","obligations":2,"failed":0,"rlimit":1739,"rlimit_max":1323}
-{"def":"gen::max_first","status":"failed","obligations":2,"failed":1,"rlimit":3978,"rlimit_max":3120}
-{"def":"gen::other","status":"failed","obligations":1,"failed":1,"rlimit":322,"rlimit_max":322}
+{"def":"gen::max_first","status":"failed","obligations":2,"failed":1,"rlimit":5974,"rlimit_max":4104}
+{"def":"gen::other","status":"failed","obligations":1,"failed":1,"rlimit":947,"rlimit_max":947}
 {"def":"gen::past_end","status":"failed","obligations":1,"failed":1,"rlimit":251,"rlimit_max":251}
-{"def":"gen::wrong_value","status":"failed","obligations":1,"failed":1,"rlimit":380,"rlimit_max":380}
+{"def":"gen::wrong_value","status":"failed","obligations":1,"failed":1,"rlimit":5000671,"rlimit_max":5000214}

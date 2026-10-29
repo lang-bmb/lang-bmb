@@ -5,5 +5,5 @@
 {"def":"g::bad_elem","status":"failed","obligations":2,"failed":1,"rlimit":795,"rlimit_max":610}
 {"def":"g::bad_field","status":"failed","obligations":1,"failed":1,"rlimit":647,"rlimit_max":647}
 {"def":"g::bad_local","status":"failed","obligations":1,"failed":1,"rlimit":542,"rlimit_max":542}
-{"def":"g::bump","status":"verified","obligations":2,"failed":0,"rlimit":882,"rlimit_max":481}
-{"def":"g::good","status":"verified","obligations":7,"failed":0,"rlimit":2749,"rlimit_max":571}
+{"def":"g::bump","status":"verified","obligations":2,"failed":0,"rlimit":2834,"rlimit_max":1771}
+{"def":"g::good","status":"verified","obligations":7,"failed":0,"rlimit":7628,"rlimit_max":2281}

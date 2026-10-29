@@ -3,12 +3,12 @@
 {"code":"E0803","severity":"error","message":"`<<` may overflow `u8`: the shift amount may be outside 0..8 in `bf::wide`; counterexample: x = 0","file":"fail/bits.bmb","line":25,"col":9,"end_line":25,"end_col":15}
 {"code":"E0803","severity":"error","message":"`+` may overflow `u16` in `bf::flip`; counterexample: x = 0","file":"fail/bits.bmb","line":31,"col":9,"end_line":31,"end_col":15}
 {"code":"E0803","severity":"error","message":"`+` may overflow `u8` in `bf::set`; counterexample: x = 255","file":"fail/bits.bmb","line":37,"col":9,"end_line":37,"end_col":20}
-{"code":"E0802","severity":"error","message":"postcondition `at_most` may not hold in `bf::or`; counterexample: a = 2147483647, b = 4294967295","file":"fail/bits.bmb","line":48,"col":17,"end_line":48,"end_col":30}
+{"code":"E0802","severity":"error","message":"postcondition `at_most` may not hold in `bf::or`; counterexample: a = 2147483646, b = 2147483647","file":"fail/bits.bmb","line":48,"col":17,"end_line":48,"end_col":30}
 {"code":"E0802","severity":"error","message":"postcondition `nonneg` may not hold in `bf::half`; counterexample: x = -2","file":"fail/bits.bmb","line":61,"col":17,"end_line":61,"end_col":26}
 {"def":"bf::flip","status":"failed","obligations":1,"failed":1,"rlimit":6623,"rlimit_max":6623}
-{"def":"bf::half","status":"failed","obligations":1,"failed":1,"rlimit":617,"rlimit_max":617}
-{"def":"bf::or","status":"failed","obligations":1,"failed":1,"rlimit":6069,"rlimit_max":5145}
+{"def":"bf::half","status":"failed","obligations":1,"failed":1,"rlimit":3202,"rlimit_max":3202}
+{"def":"bf::or","status":"failed","obligations":1,"failed":1,"rlimit":5006067,"rlimit_max":5000242}
 {"def":"bf::set","status":"failed","obligations":1,"failed":1,"rlimit":2635,"rlimit_max":1700}
 {"def":"bf::shl","status":"failed","obligations":1,"failed":1,"rlimit":460,"rlimit_max":460}
-{"def":"bf::shr","status":"failed","obligations":1,"failed":1,"rlimit":517,"rlimit_max":517}
+{"def":"bf::shr","status":"failed","obligations":1,"failed":1,"rlimit":3950,"rlimit_max":3950}
 {"def":"bf::wide","status":"failed","obligations":1,"failed":1,"rlimit":291,"rlimit_max":291}

@@ -6067,36 +6067,50 @@ impl<'p> Prog<'p> {
             })
         });
         // One definition per SMT function: a struct result has one per leaf.
-        let mut ax = Vec::new();
+        let mut quant = Vec::new();
+        let mut mac = Vec::new();
         for ((f, sort), body) in spec_funs(path, self.t).iter().zip(&bodies) {
             let app = if app_args.is_empty() {
                 f.clone()
             } else {
                 format!("({f} {})", app_args.join(" "))
             };
-            let def = if binders.is_empty() {
-                format!("(assert (= {app} {body}))")
-            } else if !recursive && leaf {
-                let value = if guard == "true" {
-                    body.clone()
-                } else {
-                    let ext = macro_ext(f);
-                    let sorts: Vec<&str> = binders
-                        .iter()
-                        .map(|b| b[1..b.len() - 1].split_once(' ').map_or("", |(_, s)| s))
-                        .collect();
-                    ax.push(format!("(declare-fun {ext} ({}) {sort})", sorts.join(" ")));
-                    format!("(ite {guard} {body} ({ext} {}))", app_args.join(" "))
-                };
-                format!("(define-fun {f} ({}) {sort} {value})", binders.join(" "))
+            if binders.is_empty() {
+                quant.push(format!("(assert (= {app} {body}))"));
+                continue;
+            }
+            quant.push(format!(
+                "(assert (forall ({}) (! (=> {guard} (= {app} {body})) :pattern ({app}))))",
+                binders.join(" "),
+            ));
+            let value = if guard == "true" {
+                body.clone()
             } else {
-                format!(
-                    "(assert (forall ({}) (! (=> {guard} (= {app} {body})) :pattern ({app}))))",
-                    binders.join(" "),
-                )
+                let ext = macro_ext(f);
+                let sorts: Vec<&str> = binders
+                    .iter()
+                    .map(|b| b[1..b.len() - 1].split_once(' ').map_or("", |(_, s)| s))
+                    .collect();
+                mac.push(format!("(declare-fun {ext} ({}) {sort})", sorts.join(" ")));
+                format!("(ite {guard} {body} ({ext} {}))", app_args.join(" "))
             };
-            ax.push(def);
+            mac.push(format!(
+                "(define-fun {f} ({}) {sort} {value})",
+                binders.join(" ")
+            ));
         }
+        // A macro keeps its quantified form after the marker: a query whose
+        // patterns name the spec fn takes that instead (`relevant_axioms`).
+        // Only a definition that binds an array (a slice or `Vec` parameter)
+        // becomes a macro: Z3's model search fails on quantifiers over array
+        // sorts (`incomplete (theory array)`), and over scalars a quantified
+        // definition is fine and leaves nonlinear proofs the search they had.
+        let binds_array = binders.iter().any(|b| b.contains("(Array "));
+        let text = if !recursive && leaf && binds_array {
+            format!("{}{QUANTIFIED}{}", mac.join("\n"), quant.join("\n"))
+        } else {
+            quant.join("\n")
+        };
         // Ground instances (ADR-0023) cover single-result spec fns.
         let parts = AxiomParts {
             sym: spec_key(path, self.t),
@@ -6104,7 +6118,7 @@ impl<'p> Prog<'p> {
             guard,
             body: bodies.first().cloned().unwrap_or_default(),
         };
-        (ax.join("\n"), parts)
+        (text, parts)
     }
 }
 
@@ -7652,10 +7666,29 @@ fn relevant_axioms(axioms: &[(String, String)], text: &str) -> String {
             break;
         }
     }
+    // A spec fn named in a pattern must stay uninterpreted: Z3 expands a
+    // macro inside a pattern, which leaves no usable trigger (ADR-0064). The
+    // patterns are those of the query and of the chosen definitions' bodies.
+    let mut seen = text.to_string();
+    for (k, (_, ax)) in axioms.iter().enumerate() {
+        if chosen[k] {
+            seen.push_str(ax.split(QUANTIFIED).next().unwrap_or(ax));
+        }
+    }
+    let patterns = pattern_terms(&seen);
+    let forms: Vec<&str> = axioms
+        .iter()
+        .map(|(symbol, ax)| match ax.split_once(QUANTIFIED) {
+            Some((_, quant)) if patterns.iter().any(|p| p.contains(symbol.as_str())) => quant,
+            Some((mac, _)) => mac,
+            None => ax.as_str(),
+        })
+        .collect();
     // A macro (`define-fun`) must come before every definition that names it.
     let is_macro: Vec<bool> = axioms
         .iter()
-        .map(|(symbol, ax)| ax.contains(&format!("(define-fun {symbol}")))
+        .zip(&forms)
+        .map(|((symbol, _), form)| form.contains(&format!("(define-fun {symbol}")))
         .collect();
     let mut done = vec![false; axioms.len()];
     let mut out = String::new();
@@ -7670,11 +7703,11 @@ fn relevant_axioms(axioms: &[(String, String)], text: &str) -> String {
                     && chosen[j]
                     && !done[j]
                     && is_macro[j]
-                    && axioms[k].1.contains(axioms[j].0.as_str())
+                    && forms[k].contains(axioms[j].0.as_str())
             });
             if !waits {
                 done[k] = true;
-                out.push_str(&axioms[k].1);
+                out.push_str(forms[k]);
                 out.push('\n');
                 progressed = true;
             }
@@ -7682,6 +7715,37 @@ fn relevant_axioms(axioms: &[(String, String)], text: &str) -> String {
         if !progressed {
             break;
         }
+    }
+    out
+}
+
+/// Separates a macro definition from its quantified form in an axiom text
+/// (`Prog::axiom`).
+const QUANTIFIED: &str = "\n; quantified form\n";
+
+/// The terms of every `:pattern (..)` in `text`.
+fn pattern_terms(text: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    let mut rest = text;
+    while let Some(i) = rest.find(":pattern (") {
+        let start = i + ":pattern ".len();
+        let mut depth = 0usize;
+        let mut end = start;
+        for (j, c) in rest[start..].char_indices() {
+            match c {
+                '(' => depth += 1,
+                ')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = start + j + 1;
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        out.push(&rest[start..end]);
+        rest = &rest[end.max(start)..];
     }
     out
 }

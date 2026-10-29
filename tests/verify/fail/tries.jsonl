@@ -1,8 +1,8 @@
 {"code":"E0802","severity":"error","message":"postcondition `some` may not hold in `tf::always`; counterexample: x = 0","file":"fail/tries.bmb","line":19,"col":17,"end_line":19,"end_col":24}
 {"code":"E0802","severity":"error","message":"postcondition `small_err` may not hold in `tf::forward`; counterexample: x = 0","file":"fail/tries.bmb","line":41,"col":17,"end_line":41,"end_col":29}
 {"code":"E0803","severity":"error","message":"`+` may overflow `u64` in `tf::grow`; counterexample: x = 0","file":"fail/tries.bmb","line":51,"col":14,"end_line":51,"end_col":19}
-{"def":"tf::always","status":"failed","obligations":2,"failed":1,"rlimit":869,"rlimit_max":643}
-{"def":"tf::forward","status":"failed","obligations":2,"failed":1,"rlimit":961,"rlimit_max":706}
+{"def":"tf::always","status":"failed","obligations":2,"failed":1,"rlimit":2390,"rlimit_max":1340}
+{"def":"tf::forward","status":"failed","obligations":2,"failed":1,"rlimit":3161,"rlimit_max":1629}
 {"def":"tf::grow","status":"failed","obligations":1,"failed":1,"rlimit":724,"rlimit_max":724}
 {"def":"tf::half","status":"verified","obligations":4,"failed":0,"rlimit":1474,"rlimit_max":787}
 {"def":"tf::parse","status":"verified","obligations":0,"failed":0,"rlimit":0,"rlimit_max":0}

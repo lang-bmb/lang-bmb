@@ -2,8 +2,8 @@
 {"code":"E0805","severity":"error","message":"index may be out of bounds in `bounds::read_len`; counterexample: a = [] (len 0)","file":"fail/bounds.bmb","line":7,"col":37,"end_line":7,"end_col":47}
 {"code":"E0805","severity":"error","message":"index may be out of bounds in `bounds::write_any`; counterexample: a = [] (len 0), i = 0","file":"fail/bounds.bmb","line":10,"col":51,"end_line":10,"end_col":55}
 {"code":"E0805","severity":"error","message":"index may be out of bounds in `bounds::local_array`","file":"fail/bounds.bmb","line":15,"col":9,"end_line":15,"end_col":13}
-{"code":"E0802","severity":"error","message":"postcondition `not_seven` may not hold in `bounds::cex_after_array`; counterexample: a = [0] (len 1), x = 7","file":"fail/bounds.bmb","line":28,"col":17,"end_line":28,"end_col":29}
-{"def":"bounds::cex_after_array","status":"failed","obligations":1,"failed":1,"rlimit":917,"rlimit_max":917}
+{"code":"E0802","severity":"error","message":"postcondition `not_seven` may not hold in `bounds::cex_after_array`; counterexample: a = [7] (len 1), x = 7","file":"fail/bounds.bmb","line":28,"col":17,"end_line":28,"end_col":29}
+{"def":"bounds::cex_after_array","status":"failed","obligations":1,"failed":1,"rlimit":3347,"rlimit_max":3347}
 {"def":"bounds::local_array","status":"failed","obligations":1,"failed":1,"rlimit":171,"rlimit_max":171}
 {"def":"bounds::read_any","status":"failed","obligations":1,"failed":1,"rlimit":986,"rlimit_max":986}
 {"def":"bounds::read_len","status":"failed","obligations":1,"failed":1,"rlimit":708,"rlimit_max":708}

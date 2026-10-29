@@ -6,9 +6,9 @@
 {"code":"E0803","severity":"error","message":"`/` may overflow `i64` in `arith::div_min`; counterexample: a = -9223372036854775808, b = -1","file":"fail/arith.bmb","line":25,"col":9,"end_line":25,"end_col":14}
 {"code":"E0803","severity":"error","message":"`i64::MIN % -1` may occur in `arith::rem_min`; counterexample: a = -9223372036854775808, b = -1","file":"fail/arith.bmb","line":33,"col":9,"end_line":33,"end_col":14}
 {"def":"arith::add_overflow","status":"failed","obligations":1,"failed":1,"rlimit":558,"rlimit_max":558}
-{"def":"arith::div_min","status":"failed","obligations":2,"failed":1,"rlimit":6836,"rlimit_max":6560}
+{"def":"arith::div_min","status":"failed","obligations":2,"failed":1,"rlimit":23041,"rlimit_max":22011}
 {"def":"arith::div_zero","status":"failed","obligations":2,"failed":1,"rlimit":2483,"rlimit_max":1663}
 {"def":"arith::mul_overflow","status":"failed","obligations":1,"failed":1,"rlimit":1298,"rlimit_max":1298}
 {"def":"arith::neg_min","status":"failed","obligations":1,"failed":1,"rlimit":411,"rlimit_max":411}
-{"def":"arith::rem_min","status":"failed","obligations":3,"failed":1,"rlimit":5681,"rlimit_max":5031}
+{"def":"arith::rem_min","status":"failed","obligations":3,"failed":1,"rlimit":10095,"rlimit_max":7382}
 {"def":"arith::sub_underflow","status":"failed","obligations":1,"failed":1,"rlimit":674,"rlimit_max":674}

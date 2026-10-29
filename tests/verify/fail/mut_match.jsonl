@@ -1,4 +1,4 @@
 {"code":"E0802","severity":"error","message":"postcondition `holds` may not hold in `mf::half`; counterexample: s = Slot::Full(0, false), v = -9223372036854754570","file":"fail/mut_match.bmb","line":23,"col":17,"end_line":23,"end_col":28}
 {"code":"E0802","severity":"error","message":"postcondition `full` may not hold in `mf::still_empty`; counterexample: s = Slot::Empty","file":"fail/mut_match.bmb","line":37,"col":17,"end_line":37,"end_col":24}
-{"def":"mf::half","status":"failed","obligations":1,"failed":1,"rlimit":1232,"rlimit_max":1232}
-{"def":"mf::still_empty","status":"failed","obligations":1,"failed":1,"rlimit":742,"rlimit_max":742}
+{"def":"mf::half","status":"failed","obligations":1,"failed":1,"rlimit":5001503,"rlimit_max":5000224}
+{"def":"mf::still_empty","status":"failed","obligations":1,"failed":1,"rlimit":1441,"rlimit_max":1441}

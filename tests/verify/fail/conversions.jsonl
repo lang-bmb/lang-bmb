@@ -2,7 +2,7 @@
 {"code":"E0815","severity":"error","message":"conversion to `i64` may be out of range in `conv::too_big`; counterexample: n = 9223372036854775808","file":"fail/conversions.bmb","line":7,"col":33,"end_line":7,"end_col":58}
 {"code":"E0815","severity":"error","message":"conversion to `i64` may be out of range in `conv::size`; counterexample: n = 9223372036854775808","file":"fail/conversions.bmb","line":10,"col":32,"end_line":10,"end_col":57}
 {"code":"E0802","severity":"error","message":"postcondition `holds` may not hold in `conv::always_some`; counterexample: k = -1","file":"fail/conversions.bmb","line":18,"col":17,"end_line":18,"end_col":25}
-{"def":"conv::always_some","status":"failed","obligations":1,"failed":1,"rlimit":1223,"rlimit_max":1223}
+{"def":"conv::always_some","status":"failed","obligations":1,"failed":1,"rlimit":1785,"rlimit_max":1785}
 {"def":"conv::negative","status":"failed","obligations":1,"failed":1,"rlimit":893,"rlimit_max":893}
 {"def":"conv::size","status":"failed","obligations":1,"failed":1,"rlimit":1298,"rlimit_max":1298}
 {"def":"conv::too_big","status":"failed","obligations":1,"failed":1,"rlimit":1298,"rlimit_max":1298}

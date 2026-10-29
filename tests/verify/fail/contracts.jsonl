@@ -11,10 +11,10 @@
 {"def":"contracts::false_assert","status":"failed","obligations":1,"failed":1,"rlimit":245,"rlimit_max":245}
 {"def":"contracts::forgets_write","status":"failed","obligations":1,"failed":1,"rlimit":1096,"rlimit_max":1096}
 {"def":"contracts::loops_forever","status":"failed","obligations":1,"failed":1,"rlimit":759,"rlimit_max":759}
-{"def":"contracts::needs_small","status":"verified","obligations":1,"failed":0,"rlimit":481,"rlimit_max":481}
+{"def":"contracts::needs_small","status":"verified","obligations":1,"failed":0,"rlimit":1063,"rlimit_max":1063}
 {"def":"contracts::no_decrease","status":"failed","obligations":1,"failed":1,"rlimit":1794,"rlimit_max":1794}
 {"def":"contracts::opaque_caller","status":"failed","obligations":1,"failed":1,"rlimit":232,"rlimit_max":232}
-{"def":"contracts::wrong_post","status":"failed","obligations":1,"failed":1,"rlimit":390,"rlimit_max":390}
+{"def":"contracts::wrong_post","status":"failed","obligations":1,"failed":1,"rlimit":5000562,"rlimit_max":5000190}
 {"def":"frec::loops","status":"failed","obligations":1,"failed":1,"rlimit":1383,"rlimit_max":1383}
 {"def":"mutual::ping","status":"failed","obligations":1,"failed":1,"rlimit":1794,"rlimit_max":1794}
 {"def":"mutual::pong","status":"verified","obligations":2,"failed":0,"rlimit":640,"rlimit_max":427}
