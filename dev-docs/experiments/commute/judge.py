@@ -45,6 +45,12 @@ verify --def`. Every other definition of M keeps a proof by the relation: its
 rows in M are one side's, or the other side's changes to them are exempt for
 it. The pair is mergeable when that re-proof passes. `whole` proves the
 whole merge without caches, the cost the step is compared with.
+
+`decide` is the relation T1-31 recommends for ADR-0065 (decision 3 out of
+the relation, decision 4 the default): `none` finished by `resolve`, the
+readers proved through the incremental cache the build gate uses, so the
+gate does not prove them again. No exemption query is asked. The other
+variants stay for the comparisons of results.md.
 """
 import json
 import os
@@ -54,6 +60,8 @@ import tempfile
 
 VARIANTS = ("none", "own", "reader", "world")
 RESOLVE = ("none", "world")  # the sound variants `resolve` finishes (T1-29)
+RECOMMENDED = "none"  # T1-31: no exemption, the overlap re-proved (`decide`)
+QUERYING = ("own", "reader", "world")  # the variants that ask `bmb weaken`
 EXEMPT = ("same", "refined", "compatible")
 
 
@@ -95,10 +103,13 @@ class Bmb:
             ok = self.run(kind, "verify", "--cache", self.cache, "--stats", f.name, src)[0] == 0
             return ok, len(json.loads(f.read() or "{}").get("encoded", []))
 
-    def verify(self, src, defs=None, kind="verify_cold"):
-        """`bmb verify` without caches, of the whole program or (`defs`) of
-        those definitions alone: (proved, definitions proved, obligations)."""
+    def verify(self, src, defs=None, kind="verify_cold", cache=None):
+        """`bmb verify` without caches (or through `cache`), of the whole
+        program or (`defs`) of those definitions alone: (proved, definitions
+        proved, obligations)."""
         args = [a for d in sorted(defs or ()) for a in ("--def", d)]
+        if cache:
+            args = ["--cache", cache] + args
         code, out = self.run(kind, "verify", *args, src)
         if code == 2:
             raise RuntimeError(f"bmb verify {args} {src}: {out[:400]}")
@@ -250,6 +261,8 @@ def judge(bmb, src_o, src_a, src_b, old=False, variants=VARIANTS):
                 if c[0] == "callee" and changed_x(c) and vo.value(*c) is not None \
                         and vers[x].value(*c) is not None:
                     asks[x].add((c[1], vers[y].defs[d]["uses"]))
+    if not any(v in QUERYING for v in variants):
+        asks = {"a": set(), "b": set()}  # nothing to exempt: ask nothing (T1-31)
     answers, own, queries = {}, {}, {}
     for x in "ab":
         answers[x], qr = bmb.weaken_readers(src_o, srcs[x], asks[x])
@@ -342,12 +355,14 @@ def old_judge(bmb, h0, ha, hb, src_a, src_b):
     return not (wa & wb) and not (ib & reads_a) and not (ia & reads_b)
 
 
-def resolve(bmb, verdict, src_m, variant="world"):
+def resolve(bmb, verdict, src_m, variant="world", cache=None):
     """ADR-0065 §4 (T1-29): the verdict of `variant` finished on the merge
     `src_m` (None when there is none). None when the pair commutes (nothing
     to do); otherwise {"resolved": the merge checks and every conflict reader
     it has proves, "defs": readers proved, "obligations"}. A pair whose
-    write sets overlap has no merge and stays a conflict."""
+    write sets overlap has no merge and stays a conflict. With `cache` the
+    readers are proved through that incremental cache (T1-31: the build
+    gate on the merge then reuses their proofs)."""
     v = verdict[variant]
     if v["commute"]:
         return None
@@ -355,10 +370,23 @@ def resolve(bmb, verdict, src_m, variant="world"):
         return {"resolved": False, "defs": 0, "obligations": 0, "merge": False}
     kind = f"reprove_{variant}"
     if v["readers"]:
-        ok, n, obl = bmb.verify(src_m, v["readers"], kind)
+        ok, n, obl = bmb.verify(src_m, v["readers"], kind, cache)
     else:
         ok, n, obl = bmb.run(kind, "check", src_m)[0] == 0, 0, 0
     return {"resolved": ok, "defs": n, "obligations": obl, "merge": True}
+
+
+def decide(bmb, src_o, src_a, src_b, src_m, cache=None):
+    """The verdict T1-31 recommends for ADR-0065: the write and read sets
+    without exemption (decision 3 out of the relation) and, for a conflict
+    whose write sets do not overlap, the overlapping readers re-proved on
+    the merge `src_m` (decision 4), through `cache` when given.
+    {"mergeable", "commute", "verdict", "resolve"}."""
+    verdict = judge(bmb, src_o, src_a, src_b, variants=(RECOMMENDED,))
+    r = resolve(bmb, verdict, src_m, RECOMMENDED, cache)
+    commute = verdict[RECOMMENDED]["commute"]
+    return {"mergeable": commute or bool(r and r["resolved"]), "commute": commute,
+            "verdict": verdict, "resolve": r}
 
 
 def report_resolve(rows, families=False):

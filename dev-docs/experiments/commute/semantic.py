@@ -2,7 +2,7 @@
 """H-COMMUTE: concurrent edit pairs with semantic conflicts (backlog T1-19).
 
   semantic.py gen OUT.jsonl [--seed S] [--per-family N] [--defs D]
-  semantic.py manifest [--check]           (regenerate the frozen set, compare
+  semantic.py manifest [--check]           (regenerate the frozen sets, compare
                                             with MANIFEST, or rewrite MANIFEST)
   semantic.py run PAIRS.jsonl --work DIR [--bmb PATH] [--limit N] [--rows R.jsonl] > results.md
   semantic.py report PAIRS.jsonl R.jsonl > results.md
@@ -584,11 +584,15 @@ def sha(data):
 
 
 def manifest_lines():
+    """The harness files and the frozen pair sets: this one, and hot.py's
+    (T1-31, large overlapping reads)."""
+    import hot
     out = []
-    for f in ("semantic.py", "judge.py", "run.py"):
+    for f in ("semantic.py", "judge.py", "run.py", "hot.py"):
         out.append(f"{sha(open(os.path.join(HERE, f), 'rb').read())}  {f}")
     frozen = dump(generate(**FROZEN))
     out.append(f"{sha(frozen)}  pairs/semantic-s{FROZEN['seed']}-n{FROZEN['per_family']}-d{FROZEN['defs']}.jsonl")
+    out.append(f"{sha(dump(hot.generate(**hot.FROZEN)))}  {hot.frozen_name()}")
     return out
 
 
