@@ -19,8 +19,9 @@ Agents:
   weak              a plausible but wrong solution that passes its own checker
                     (BMB: verifies with a weak contract; Rust: its own tests
                     pass): the hidden judge must find defects (CI)
-  anthropic:MODEL   a real model through the Anthropic Messages API (paid; needs
-                    ANTHROPIC_API_KEY and human approval, AUTONOMY.md §4)
+  openai:MODEL      a real model, OpenAI-compatible Chat Completions
+  anthropic:MODEL   a real model, Anthropic Messages API
+                    (models and endpoints: ADR-0066, bench/m1/model_api.py)
 
 Standard library only.
 """
@@ -144,11 +145,11 @@ def make_agent(kind, task, arm):
                                                    {"op": "put", "unit": "tasks", "code": code}]))
         code = task.RUST_REF if kind == "oracle" else task.RUST_WEAK
         return m1.ScriptAgent([("write_file", {"path": "src/lib.rs", "content": code}), ("cargo_test", {})])
-    if kind.startswith("anthropic:"):
-        sys.path.insert(0, M1)
-        from anthropic_agent import AnthropicAgent  # noqa: E402
-        prompt = read_bytes(os.path.join(HERE, f"prompt-{arm}.md")).decode()
-        return AnthropicAgent(kind.split(":", 1)[1], prompt, judge.task_prompt(task, arm))
+    sys.path.insert(0, M1)
+    from model_api import make_model_agent  # noqa: E402
+    prompt = read_bytes(os.path.join(HERE, f"prompt-{arm}.md")).decode()
+    if agent := make_model_agent(kind, prompt, judge.task_prompt(task, arm)):
+        return agent
     sys.exit(f"unknown agent {kind}")
 
 

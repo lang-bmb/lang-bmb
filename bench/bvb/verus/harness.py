@@ -28,7 +28,9 @@ Agents:
                     and the judge accepts the original spec)
   weak              writes `verus.reference` with the target's `ensures` removed;
                     the spec check must reject it
-  anthropic:MODEL   a real model (paid; needs ANTHROPIC_API_KEY and human approval)
+  openai:MODEL      a real model, OpenAI-compatible Chat Completions
+  anthropic:MODEL   a real model, Anthropic Messages API
+                    (models and endpoints: ADR-0066, bench/m1/model_api.py)
 
 The verifier is `verus` from bench/bvb/verus/install.sh ($BVB_VERUS overrides
 the binary). Standard library only.
@@ -248,11 +250,11 @@ def make_agent(kind, task):
     if kind == "weak":
         return bmb_harness.ScriptAgent([("write_file", {"code": strip_ensures(v["reference"], v["target"])}),
                                         ("verify", {})])
-    if kind.startswith("anthropic:"):
-        from anthropic_agent import AnthropicAgent  # noqa: E402  (bench/m1, same settings as BMB)
-        with open(os.path.join(HERE, "prompt.md")) as f:
-            prompt = f.read()
-        return AnthropicAgent(kind.split(":", 1)[1], prompt, v["prompt"])
+    from model_api import make_model_agent  # noqa: E402  (bench/m1, same settings as BMB)
+    with open(os.path.join(HERE, "prompt.md")) as f:
+        prompt = f.read()
+    if agent := make_model_agent(kind, prompt, v["prompt"]):
+        return agent
     sys.exit(f"unknown agent {kind}")
 
 

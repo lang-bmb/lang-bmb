@@ -13,8 +13,9 @@ Agents:
   oracle            submits each task's reference solution through MCP (CI check
                     that every task is solvable and the harness works end to end)
   weak              submits `weak_reference` solutions; they must be rejected
-  anthropic:MODEL   a real model through the Anthropic Messages API (paid; needs
-                    ANTHROPIC_API_KEY and human approval, AUTONOMY.md §4)
+  openai:MODEL      a real model, OpenAI-compatible Chat Completions
+  anthropic:MODEL   a real model, Anthropic Messages API
+                    (models and endpoints: ADR-0066, bench/m1/model_api.py)
 
 Standard library only.
 """
@@ -217,11 +218,10 @@ def make_agent(kind, task, workspace):
         return ScriptAgent([("answer", {"defs": sorted(truth(task, workspace))})])
     if kind == "weak":
         return ScriptAgent(ops_to_calls(task.get("weak_reference", [])))
-    if kind.startswith("anthropic:"):
-        sys.path.insert(0, HERE)
-        from anthropic_agent import AnthropicAgent  # noqa: E402
-        prompt = open(os.path.join(SET, "prompt.md")).read()
-        return AnthropicAgent(kind.split(":", 1)[1], prompt, task["prompt"])
+    sys.path.insert(0, HERE)
+    from model_api import make_model_agent  # noqa: E402
+    if agent := make_model_agent(kind, open(os.path.join(SET, "prompt.md")).read(), task["prompt"]):
+        return agent
     sys.exit(f"unknown agent {kind}")
 
 

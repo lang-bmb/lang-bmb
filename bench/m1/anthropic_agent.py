@@ -1,6 +1,8 @@
-"""Real-model agent for the M1 harness (ADR-0021). Paid: run only with human
-approval (AUTONOMY.md §4). Uses the official `anthropic` SDK with a manual tool
-loop, because the harness itself must execute every tool call (limits, metrics).
+"""Real-model agent for the M1 harness (ADR-0021), Anthropic Messages API.
+Models and endpoints are the ones ADR-0066 approves (`model_api.py`). A manual
+tool loop, because the harness itself must execute every tool call (limits,
+metrics). The client is the standard-library `model_api.HttpAnthropic`, which
+speaks the same `messages.create` as the `anthropic` SDK.
 
 Measurement choices, recorded with each result:
 - effort is explicit (`EFFORT`), thinking is the model default (adaptive);
@@ -22,9 +24,9 @@ def to_api_tools(mcp_tools):
 class AnthropicAgent:
     def __init__(self, model, system_prompt, task_prompt, client=None):
         if client is None:
-            import anthropic  # pip install anthropic
+            from model_api import HttpAnthropic
 
-            client = anthropic.Anthropic()
+            client = HttpAnthropic()
         self.client = client
         self.model = model
         self.system = system_prompt
@@ -32,6 +34,8 @@ class AnthropicAgent:
         self.tools = None
         self.pending = []  # tool_use ids of the last response, in order
         self.usage = {"input_tokens": 0, "output_tokens": 0, "requests": 0}
+        if hasattr(client, "stats"):
+            client.stats = self.usage  # transport retries land in the usage row
         self.stop = None
         self.settings = {"model": model, "effort": EFFORT, "max_tokens": MAX_TOKENS}
 

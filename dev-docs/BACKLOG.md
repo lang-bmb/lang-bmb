@@ -25,7 +25,7 @@
 | 5 | M2-a | `2A-14e`(배경) | 측정 머신이 빌 때. CPU 팔이 무거운 일과 겹치면 안 된다 |
 | 6 | 국면 끝 | `2P-01`(M2-a), `2P-02`(M2-b) 종료 감사 | 통과 기준 추적 표 |
 | 7 | M2-c·M2-d | `T1-18`(ADR-0062), `T1-10`(ADR-0059) 병행, `T2-02`(✅) → `2N-03` → `T1-11`(ADR-0060), `T2-03`(ADR-0061) | ADR-0059~0062 채택(2026-10-28). 순서는 ROADMAP 우선순위 6 |
-| 대기 | — | 승인: `T0-03`, `T1-16` 채택, 협업 논의 Q2, 정식 측정의 쓰기 표면, `sha2` 비교(T4-01). 승인 없이 할 수 있는 준비: `T1-16` 초안 | 결정이 오는 대로 국면에 넣는다 |
+| 대기 | — | 승인: `T1-16` 채택, 협업 논의 Q2, 정식 측정의 쓰기 표면, `sha2` 비교(T4-01). 승인 없이 할 수 있는 준비: `T1-16` 초안 | 결정이 오는 대로 국면에 넣는다 |
 | 미룸 | — | `2R-03`·`2R-05`(모델 측정), 2E·2F(1E-07 대기), 3단계 이후 | M2-e(2H) 또는 승인 뒤 |
 
 **승인(2026-10-26, "Ok, 승인"):** 판단 기준(ADR-0045, `dev-docs/JUDGMENT.md`)으로 기존 결정을 소급 점검하는 태스크(2V) 등록과, 그 결과로 W5a를 다시 짜는 것을 승인. 점검 결과는 `dev-docs/reviews/2V-01-judgment-retro.md`. 컴파일러 층 수정(2V-02~2V-05)은 자율, 언어 층(2V-06~2V-12)은 ADR 초안까지 자율이고 채택은 승인이다. 직전 W5a 제안(단형 맵, 아레나 전제의 파일럿)은 철회한다(점검 R12).
@@ -92,11 +92,13 @@
 | --- | --- | --- | --- | --- |
 | T0-01 | CLI 파일럿 실행기 | `bench/pilot/`: Claude Code CLI를 피험 에이전트로, 동결 과제·MANIFEST·`prompt.md`(시스템 프롬프트 전체)·`bmb mcp` 도구만(내장 도구 없음, 저장소 밖 빈 디렉터리)·40회 한도·과제당 한 세션·하네스 판정(`judge_write`·`spec_kill`·`judge_navigate`). 행마다 `"pilot": true` | — | ✅ `bench/pilot/cli_pilot.py`·`mcp_proxy.py`, 스모크 `w01-clamp` 성공(도구 7회, MCP만) |
 | T0-02 | 파일럿 실행: m1·m1b·BVB | 세 집합을 한 번씩 돌려 `bench/pilot/results/`에 결과와 요약을 커밋. 결과는 가설 등록부의 "파일럿" 상태에만 쓴다 | T0-01 | ✅ `bench/pilot/results/2026-10-28-*`. 1차는 큰 도구 결과를 보지 못하는 파일럿 결함(`T1-15`) 아래라 기록으로만 둔다. 2차(`*-r2.jsonl`): m1 15/15, m1b 37/37(BSB 186/186), BVB 42/45. 1차의 "실패는 모두 명세가 약해서"라는 해석은 틀렸다(`T1-14`, `bench/pilot/README.md` 정정) |
-| T0-03 | 정식 자동 측정 경로 | API 키를 시크릿으로 두고 `bench/run_models.py --budget`로 m1·m1b·BVB·BRB를 실행해 결과 커밋(`1E-10`·`2A-06`의 대체 경로) | T0-01 | ⏳ 승인(유료 API, 시크릿 설정은 사람) |
+| T0-03 | 정식 자동 측정 경로 | API 키를 시크릿으로 두고 `bench/run_models.py --budget`로 m1·m1b·BVB·BRB를 실행해 결과 커밋(`1E-10`·`2A-06`의 대체 경로) | T0-01 | 🔄 ADR-0066(사람 승인 2026-10-30): 이 환경의 게이트웨이, 기본 `openai:qwen3.8-27b`, 교차 비교 `anthropic:claude-sonnet-5-5`. 하네스 어댑터 `bench/m1/model_api.py`(표준 라이브러리, `test_model_api.py`), 모든 하네스가 `make_model_agent`로, `run_models.py`가 두 종류를 받음. 끝까지 확인: m1 `w01-clamp`·`n01-callers`를 두 모델 모두 성공(검증 실행, 커밋 안 함). 측정은 T0-10·T0-11 |
 | T0-04 | 2차 파일럿: 새 과제 집합 | H-NAME 난독화 쌍둥이(`T1-04`)와 H-SPLIT 분업판(`T1-13`)을 `T0-02`와 같은 조건으로 실행해 `bench/pilot/results/`에 커밋 | T1-04, T1-13 | ⏳ |
 | T0-07 | BRB 파일럿(H-ORACLE, G5, G8) | `bench/pilot/brb_pilot.py`·`rust_mcp.py`: 동결 하네스를 라이브러리로 두 비교군 24과제, `bench/brb/harness.py summarize`로 표 | T0-01 | ✅ 큰 모델(`claude-opus-5-5`): 두 쪽 24/24, H-ORACLE 판정 불가(Rust 통과 & 숨은 실패 0), G8 0줄 대 834줄, 비용 $3.56 대 $1.45(총 토큰 3.6배). 작은 모델(`claude-haiku-5-5`): BMB 21/24 대 Rust 24/24, H-ORACLE 판정 불가(0/21 대 0/22), G8 0줄 대 1,277줄, 총 토큰 11.9배. BMB 실패 셋(t10·t16·t24)은 모두 비선형 산술이고, 40회 한도에 걸렸다. 같은 모델의 `write` 판(`brb_pilot.py --variant bench/brb-write`)은 24/24였으므로, 원인은 트랜잭션 절차의 호출 예산이다(처음의 ADR-0062 귀속은 정정, `bench/pilot/README.md`). 원자료 `bench/pilot/results/2026-10-28-brb-*`, 요약 `bench/pilot/README.md` BRB 절. H-ORACLE을 가르려면 더 어려운 과제가 필요하다(T0-08) |
 | T0-08 | H-ORACLE 변별 과제(BRB 어려운 판) | 두 크기 모델 모두 Rust 쪽 "테스트 통과 & 숨은 실패"가 0이라 H-ORACLE을 가르지 못했다(T0-07). 경계·오버플로·드문 입력에서 테스트가 놓치기 쉬운 과제를 새 동결 판으로 만들고, 숨은 판정·기준 해법·약한 해법을 함께 커밋한다. 과제와 프롬프트는 먼저 동결하고 한 번씩 돌린다 | T0-07 | ⏳ |
 | T0-09 | H-ENCAP BRB 확장(ADR-0060 결과 6) | 자료 구조 수정 과제(정렬 집합, 고리 버퍼, 구간 목록, 최소 힙)를 BRB 새 판으로 만들어 동결: 과제마다 숨은 불변식 판정, BMB 팔(타입 불변식)과 Rust 팔(private + 테스트)의 기준·약한 해법을 CI로 확인. 실행은 파일럿 조건(T0-01)으로 한 번, "통과 & 숨은 불변식 위반" 비율을 비교. 반증 조건: BMB 팔에서 위반이 게이트를 통과 | T1-11, T0-07 | ⏳ |
+| T0-10 | 정식 측정: `qwen3.8-27b` | `run_models.py --agent openai:qwen3.8-27b`로 m1·m1b·BVB(BMB)·BRB 두 팔을 깨끗한 커밋에서 한 번 실행하고 결과·보고서를 커밋(ADR-0066 §2·§5). 보고서에 G2·G3·G5·G8, H-SPEC 보조, H-ORACLE과 실패마다 귀속 층. Verus 팔은 설치되어 있으면 함께 | T0-03 | ⏳ |
+| T0-11 | 교차 비교: `claude-sonnet-5-5` | T0-10과 같은 커밋·같은 집합을 `anthropic:claude-sonnet-5-5`로 한 번 실행해 두 모델을 나란히 보고(ADR-0066 §3). 모델 간 차이와 두 모델에 공통인 실패(언어·도구 쪽 원인 후보)를 나눈다 | T0-10 | ⏳ |
 | T0-05 | 판정 거부 이유 기록 | 명세 강도 검사가 거부할 때 `refuted`(반례)와 `undecided`(해법기 미결정)를 행에 남김. 판정은 그대로 | T1-14 | ✅ `bench/m1/harness.py` `spec_rejection`·`spec_rejections`, `test_harness.py` `SpecRejection`·`AlsoCheck` |
 | T0-06 | 판정기 미결정의 분리 보고 | 요약(`summarize`, `compare`)에 명세 강도의 "반박"과 "미결정"을 따로 세는 열. 미결정이 같은 뜻 명세일 때 측정이 언어가 아니라 판정기를 재는 문제를 드러낸다 | T0-05 | ✅ `bench/m1/harness.py` `summarize`: "명세 강도 거부: 반박(반례)"·"미결정(해법기)" 두 행, 과제 표의 실패 칸에 이유. 시험 `SummarizeRejections` |
 

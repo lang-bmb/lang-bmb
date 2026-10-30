@@ -38,7 +38,7 @@ python3 bench/m1/harness.py run --agent oracle --expect all-pass --out "$tmp" > 
 table=$(python3 bench/m1/harness.py summarize "$tmp")
 grep -qF "| 작성 1회 성공률 | 10/10 |" <<< "$table" || { echo "harness summarize: unexpected table"; exit 1; }' \
   --job "bench m1 weak=python3 bench/m1/harness.py run --agent weak --expect weak-fail > /dev/null" \
-  --job "bench m1 anthropic agent=python3 bench/m1/test_anthropic_agent.py" \
+  --job "bench m1 model agents=python3 bench/m1/test_anthropic_agent.py && python3 bench/m1/test_model_api.py" \
   --job "bench m1 harness tests=python3 bench/m1/test_harness.py" \
   --job 'bench m1b oracle=tmp=$(mktemp); trap "rm -f $tmp" EXIT
 python3 bench/m1/harness.py --set bench/m1b run --agent oracle --expect all-pass --jobs 2 --out "$tmp" > /dev/null

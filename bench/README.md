@@ -16,14 +16,18 @@
 
 ```
 python3 bench/run_models.py --dry-run                     # 대본 기준 해법으로 끝까지(비용 0). 게이트는 --limit 2
-python3 bench/run_models.py --agent anthropic:MODEL \
-    --price-in P --price-out Q --budget USD --report report.md
-python3 bench/run_models.py --agent anthropic:MODEL ... --sets brb-bmb,brb-rust   # 일부만, 또는 예산으로 멈춘 뒤 나머지
+python3 bench/run_models.py --agent openai:qwen3.8-27b \
+    --price-in 0 --price-out 0 --budget 0 --report report.md        # 기본 모델(ADR-0066, 로컬)
+python3 bench/run_models.py --agent anthropic:claude-sonnet-5-5 \
+    --price-in P --price-out Q --budget USD --report report.md      # 프런티어 교차 비교
+python3 bench/run_models.py --agent ... --sets brb-bmb,brb-rust   # 일부만, 또는 예산으로 멈춘 뒤 나머지
 ```
+
+- **모델 환경(ADR-0066).** 에이전트 종류는 `openai:MODEL`(Chat Completions)과 `anthropic:MODEL`(Messages API)이고, 주소 기본값은 이 환경의 게이트웨이 `https://token.iyulab.com`(`/openai/v1`, `/anthropic/v1`)다. `BMB_OPENAI_BASE_URL`·`BMB_ANTHROPIC_BASE_URL`로 바꾼다. 자격 증명은 환경이 넣고 저장소에는 키가 없다(`bench/m1/model_api.py`). 기본은 `qwen3.8-27b`, `claude-sonnet-5-5`는 같은 집합·같은 커밋의 교차 비교에만 쓴다. 각 하네스의 `run --agent`도 같은 문자열을 받는다.
 
 - **가격은 인자다.** 가격이 바뀌므로 제공자의 가격표에서 백만 토큰당 USD를 넣는다.
 - **예산 장치.** 집합이 끝날 때마다 기록된 토큰으로 지출을 계산하고, 다음 집합을 시작하기 전에 (지금까지 세션당 평균 비용 × 그 집합의 세션 수)로 예상한다. 지출 + 예상이 예산을 넘으면 그 집합부터 시작하지 않는다. 집합을 중간에 끊지 않으므로 한 집합만큼 넘을 수 있다. 첫 집합(m1, 15세션)에는 예상이 없다.
-- **시작 전 거부.** 커밋되지 않은 트리(`+dirty` 결과는 보고에 쓰지 않는다), `ANTHROPIC_API_KEY` 없음, MANIFEST 불일치, bvb-verus를 골랐는데 Verus 없음(`bench/bvb/verus/install.sh`). 같은 날짜·모델의 결과 파일이 이미 있으면 덮어쓰지 않는다.
+- **시작 전 거부.** 커밋되지 않은 트리(`+dirty` 결과는 보고에 쓰지 않는다), MANIFEST 불일치, bvb-verus를 골랐는데 Verus 없음(`bench/bvb/verus/install.sh`). 같은 날짜·모델의 결과 파일이 이미 있으면 덮어쓰지 않는다.
 - **결과 위치.** `bench/<집합>/results/<날짜>-<모델>[-verus|-bmb|-rust].jsonl`. 보고서(1E-06)는 이 파일들로 쓴다.
 - **한 번에 채우는 지표.** G2(m1·m1b 작성 1회 성공률), G3(m1b BSB 판별률), H-SPEC 보조(BVB 명세 강도), H-FAMILIAR(BVB BMB 대 Verus, Verus 필요), G5·H-ORACLE·G8(BRB). 결과 행에 최종 파일이 남아(BRB `final_sources`) 나중에 정한 지표도 다시 돌리지 않고 계산한다.
 - 게이트(`bench run_models (dry run)`)는 Verus 없이 돌아 H-FAMILIAR를 "건너뜀"으로 보고하고 나머지 줄이 모두 채워지는지 확인한다.

@@ -24,7 +24,7 @@ groups) between the two.
 Agents: `oracle` is a scripted agent per arm that uses the cheapest correct
 strategy its tools allow (bmb: `query edges/impact/contracts/effects/
 duplicates`; rust: grep + read_file), so its token counts bound an arm's cost
-from below. `anthropic:MODEL` runs a real model (paid; AUTONOMY.md §4).
+from below. `openai:MODEL` and `anthropic:MODEL` run a real model (ADR-0066).
 
 Cost: every tool response counts, tokens = ceil(bytes/4) (ADR-0021); request
 bytes (the tool arguments) are recorded separately. Fixed per-session costs
@@ -595,10 +595,9 @@ def make_agent(kind, arm, task):
             return GenAgent(oracle_bmb(task))
         o = RustOracle(task)
         return GenAgent(o.run())
-    if kind.startswith("anthropic:"):
-        from anthropic_agent import AnthropicAgent  # noqa: E402
-        prompt = open(os.path.join(HERE, f"prompt-{arm}.md")).read()
-        return AnthropicAgent(kind.split(":", 1)[1], prompt, task["prompt"])
+    from model_api import make_model_agent  # noqa: E402
+    if agent := make_model_agent(kind, open(os.path.join(HERE, f"prompt-{arm}.md")).read(), task["prompt"]):
+        return agent
     sys.exit(f"unknown agent {kind}")
 
 

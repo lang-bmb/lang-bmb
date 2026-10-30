@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """One command for the real-model measurements (backlog INF-14).
 
-  run_models.py --agent anthropic:MODEL --price-in P --price-out Q --budget USD [--sets ..]
+  run_models.py --agent openai:MODEL|anthropic:MODEL --price-in P --price-out Q --budget USD [--sets ..]
   run_models.py --dry-run [--limit N] [--sets ..] [--out-dir DIR]
 
 Runs the frozen task sets that need a real model, in a fixed order, with the
@@ -31,8 +31,10 @@ each metric line appears. The gate runs it (backlog INF-14). The Verus side is
 skipped when Verus is not installed, so H-FAMILIAR then reads "skipped".
 
 Real runs refuse to start on an uncommitted tree (results from `+dirty`
-commits are not reported, ADR-0021), without ANTHROPIC_API_KEY, or with
-bvb-verus selected and Verus missing. Standard library only.
+commits are not reported, ADR-0021), or with bvb-verus selected and Verus
+missing. Models and endpoints are the ones ADR-0066 approves
+(bench/m1/model_api.py: `openai:qwen3.8-27b` by default, `anthropic:claude-sonnet-5-5`
+for the frontier cross-comparison). Standard library only.
 """
 import argparse
 import datetime
@@ -45,6 +47,8 @@ import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
+sys.path.insert(0, os.path.join(HERE, "m1"))
+from model_api import is_model_kind  # noqa: E402
 PY = sys.executable
 
 
@@ -162,8 +166,6 @@ def report(paths, skipped):
 
 def preflight_real(sets):
     problems = []
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        problems.append("ANTHROPIC_API_KEY가 없다")
     if subprocess.run(["git", "status", "--porcelain"], cwd=ROOT, capture_output=True, text=True).stdout.strip():
         problems.append("커밋되지 않은 변경이 있다(+dirty 결과는 보고에 쓰지 않는다)")
     if "bvb-verus" in sets and not verus_installed():
@@ -178,7 +180,7 @@ def preflight_real(sets):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--agent", help="anthropic:MODEL (real run)")
+    ap.add_argument("--agent", help="openai:MODEL or anthropic:MODEL (real run, ADR-0066)")
     ap.add_argument("--dry-run", action="store_true", help="scripted reference agents, no model")
     ap.add_argument("--sets", default=",".join(NAMES), help="comma list, in this order: " + ",".join(NAMES))
     ap.add_argument("--limit", type=int, help="first N tasks of each set (dry run only)")
@@ -196,8 +198,8 @@ def main(argv=None):
     sets = [n for n in NAMES if n in sets]
     real = not args.dry_run
     if real:
-        if not (args.agent and args.agent.startswith("anthropic:")):
-            sys.exit("a real run needs --agent anthropic:MODEL (or --dry-run)")
+        if not (args.agent and is_model_kind(args.agent)):
+            sys.exit("a real run needs --agent openai:MODEL or anthropic:MODEL (or --dry-run)")
         if None in (args.price_in, args.price_out, args.budget):
             sys.exit("a real run needs --price-in, --price-out and --budget")
         if args.limit:
