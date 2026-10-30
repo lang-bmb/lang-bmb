@@ -3,6 +3,7 @@ stub transport (no network)."""
 import json
 import os
 import sys
+import types
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -16,7 +17,7 @@ class StubPost:
         self.responses = list(responses)
         self.requests = []
 
-    def __call__(self, url, body, headers, stats=None):
+    def __call__(self, url, body, headers, stats=None, fold=None):
         self.requests.append(json.loads(json.dumps(body)))
         return self.responses.pop(0)
 
@@ -65,6 +66,70 @@ class OpenAI(unittest.TestCase):
         a.set_tools([])
         self.assertEqual(a.next_calls([]), [])
         self.assertEqual(a.stop, "length")
+
+
+class ApiErrors(unittest.TestCase):
+    def test_unrecoverable_error_ends_the_session(self):
+        def fail(*a, **k):
+            raise RuntimeError("http://x: HTTP 400: context")
+        for agent in (OpenAIAgent("m", "s", "t", post=fail, base="http://x"),
+                      AnthropicAgent("m", "s", "t", client=types.SimpleNamespace(
+                          messages=types.SimpleNamespace(create=fail)))):
+            agent.set_tools([])
+            self.assertEqual(agent.next_calls([]), [])
+            self.assertEqual(agent.stop, "api_error")
+            self.assertIn("HTTP 400", agent.usage["api_error"])
+            self.assertEqual(agent.next_calls([]), [])
+
+
+class Streams(unittest.TestCase):
+    def test_fold_openai(self):
+        lines = [b": keep-alive", b""] + [b"data: " + json.dumps(e).encode() for e in [
+            {"choices": [{"delta": {"reasoning_content": "hmm"}}]},
+            {"choices": [{"delta": {"content": "do"}}]},
+            {"choices": [{"delta": {"tool_calls": [{"index": 0, "id": "c1", "function": {"name": "que",
+                                                                                          "arguments": '{"na'}}]}}]},
+            {"choices": [{"delta": {"tool_calls": [{"index": 0, "function": {"name": "ry", "arguments": 'me": 1}'}},
+                                                   {"index": 1, "id": "c2", "function": {"name": "verify",
+                                                                                         "arguments": "{}"}}]}}]},
+            {"choices": [{"delta": {}, "finish_reason": "tool_calls"}]},
+            {"choices": [], "usage": {"prompt_tokens": 7, "completion_tokens": 3}},
+        ]] + [b"data: [DONE]"]
+        r = model_api.fold_openai(model_api.sse_events(lines))
+        msg = r["choices"][0]["message"]
+        self.assertEqual(msg["content"], "do")
+        self.assertEqual([(c["id"], c["function"]["name"], c["function"]["arguments"]) for c in msg["tool_calls"]],
+                         [("c1", "query", '{"name": 1}'), ("c2", "verify", "{}")])
+        self.assertEqual((r["choices"][0]["finish_reason"], r["usage"]["completion_tokens"]), ("tool_calls", 3))
+
+    def test_fold_anthropic(self):
+        events = [
+            {"type": "message_start", "message": {"id": "m", "role": "assistant", "content": [],
+                                                  "stop_reason": None, "usage": {"input_tokens": 9,
+                                                                                 "output_tokens": 1}}},
+            {"type": "content_block_start", "index": 0, "content_block": {"type": "thinking", "thinking": ""}},
+            {"type": "content_block_delta", "index": 0, "delta": {"type": "thinking_delta", "thinking": "a"}},
+            {"type": "content_block_delta", "index": 0, "delta": {"type": "signature_delta", "signature": "s"}},
+            {"type": "content_block_stop", "index": 0},
+            {"type": "content_block_start", "index": 1, "content_block": {"type": "tool_use", "id": "t",
+                                                                          "name": "verify", "input": {}}},
+            {"type": "content_block_delta", "index": 1, "delta": {"type": "input_json_delta",
+                                                                  "partial_json": '{"x": '}},
+            {"type": "content_block_delta", "index": 1, "delta": {"type": "input_json_delta", "partial_json": "2}"}},
+            {"type": "content_block_stop", "index": 1},
+            {"type": "message_delta", "delta": {"stop_reason": "tool_use"}, "usage": {"output_tokens": 12}},
+            {"type": "message_stop"},
+        ]
+        m = model_api.fold_anthropic(events)
+        self.assertEqual(m["content"], [{"type": "thinking", "thinking": "a", "signature": "s"},
+                                        {"type": "tool_use", "id": "t", "name": "verify", "input": {"x": 2}}])
+        self.assertEqual((m["stop_reason"], m["usage"]), ("tool_use", {"input_tokens": 9, "output_tokens": 12}))
+
+    def test_cut_streams_are_transport_failures(self):
+        with self.assertRaises(model_api.StreamCut):
+            model_api.fold_openai([{"choices": [{"delta": {"content": "x"}}]}])
+        with self.assertRaises(model_api.StreamCut):
+            model_api.fold_anthropic([{"type": "message_start", "message": {"content": []}}])
 
 
 class Kinds(unittest.TestCase):

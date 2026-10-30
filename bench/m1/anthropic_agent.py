@@ -55,14 +55,18 @@ class AnthropicAgent:
                                 "content": "not run: tool call limit reached", "is_error": True})
             self.messages.append({"role": "user", "content": results})
             self.pending = []
-        response = self.client.messages.create(
-            model=self.model,
-            max_tokens=MAX_TOKENS,
-            system=self.system,
-            tools=self.tools,
-            messages=self.messages,
-            output_config={"effort": EFFORT},
-        )
+        try:
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=MAX_TOKENS,
+                system=self.system,
+                tools=self.tools,
+                messages=self.messages,
+                output_config={"effort": EFFORT},
+            )
+        except RuntimeError as e:  # model_api: not fixed by retrying (ADR-0066)
+            self.stop, self.usage["api_error"] = "api_error", str(e)[:500]
+            return []
         self.usage["requests"] += 1
         self.usage["input_tokens"] += response.usage.input_tokens
         self.usage["output_tokens"] += response.usage.output_tokens
