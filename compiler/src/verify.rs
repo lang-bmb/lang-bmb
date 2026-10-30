@@ -598,6 +598,10 @@ pub struct Outcome {
     pub vacuous: Vec<(String, Span, &'static str)>,
 }
 
+/// The limit of a reach point's query (`vacuous_ends`): a refutation comes
+/// fast, a model may take long.
+const REACH_LIMIT: &str = "(set-option :rlimit 1000000)";
+
 thread_local! {
     /// Set by `vacuous_ends`: record reach points, check them instead of the
     /// obligations.
@@ -6391,11 +6395,24 @@ pub fn preconditions_satisfiable(p: &Program, t: &Tables) -> Vec<(String, Span, 
             }
         }
         let sol = solver.as_mut().expect("solver started");
-        let mut answer = sol
-            .run("(reset)")
-            .and_then(|_| sol.run(&full))
-            .and_then(|_| sol.run(&q))
-            .and_then(|_| sol.check_sat());
+        // The probe first, as for an obligation (ADR-0069): the same meaning,
+        // so its `sat` is a model of the clauses and its `unsat` refutes them.
+        let probe = probe_base(&axioms, &q, &relevant, &spec_decls, &dts, &base, &decls);
+        let probed = probe.and_then(|pb| {
+            let a = sol
+                .run("(reset)")
+                .and_then(|_| sol.run(&pb))
+                .and_then(|_| sol.run(&probe_limit()))
+                .and_then(|_| sol.run(&q))
+                .and_then(|_| sol.check_sat());
+            matches!(a, Ok(Answer::Unsat | Answer::Sat)).then_some(a)
+        });
+        let mut answer = probed.unwrap_or_else(|| {
+            sol.run("(reset)")
+                .and_then(|_| sol.run(&full))
+                .and_then(|_| sol.run(&q))
+                .and_then(|_| sol.check_sat())
+        });
         // Undecided with quantified definitions: ground instances follow from
         // the definitions, so `unsat` with them is `unsat` (as in the prover).
         if matches!(answer, Ok(Answer::Unknown(_))) && !axiom_parts.is_empty() {
@@ -6637,20 +6654,21 @@ fn verify_impl(
             prefix.push_str(&sort_decls(&t.fns[path]));
             let decls = enc.decls.join("\n");
             for (span, what, pc) in &enc.reach {
-                // A refutation comes fast; a model may take long: a small
-                // budget, and undecided is not reported.
-                let q = format!(
-                    "(set-option :rlimit 1000000)\n{}",
-                    pc.iter()
-                        .map(|a| format!("(assert {a})"))
-                        .collect::<Vec<_>>()
-                        .join("\n")
-                );
+                // A small budget (`REACH_LIMIT`); undecided is not reported.
+                let q = pc
+                    .iter()
+                    .map(|a| format!("(assert {a})"))
+                    .collect::<Vec<_>>()
+                    .join("\n");
                 let q = valid_instances(&enc.valid_defs, q);
                 let q = format!("{q}\n{}", prog.struct_facts(&q));
                 let relevant = relevant_axioms(&axioms, &q);
                 let used = needed_decls(&spec_decls, &dts, &format!("{relevant}{decls}\n{q}"));
                 let base = format!("{prefix}{used}{relevant}{decls}");
+                // The probe first, as for an obligation (ADR-0069): the same
+                // meaning, so its `unsat` refutes the point and its `sat`
+                // reaches it.
+                let probe = probe_base(&axioms, &q, &relevant, &spec_decls, &dts, &prefix, &decls);
                 if solver.as_ref().is_some_and(|s| !s.reusable()) {
                     solver = None;
                 }
@@ -6658,11 +6676,22 @@ fn verify_impl(
                     solver = Solver::start().ok();
                 }
                 let Some(sol) = solver.as_mut() else { break };
-                let answer = sol
-                    .run("(reset)")
-                    .and_then(|_| sol.run(&base))
-                    .and_then(|_| sol.run(&q))
-                    .and_then(|_| sol.check_sat());
+                let probed = probe.and_then(|pb| {
+                    let a = sol
+                        .run("(reset)")
+                        .and_then(|_| sol.run(&pb))
+                        .and_then(|_| sol.run(&probe_limit()))
+                        .and_then(|_| sol.run(&q))
+                        .and_then(|_| sol.check_sat());
+                    matches!(a, Ok(Answer::Unsat | Answer::Sat)).then_some(a)
+                });
+                let answer = probed.unwrap_or_else(|| {
+                    sol.run("(reset)")
+                        .and_then(|_| sol.run(&base))
+                        .and_then(|_| sol.run(REACH_LIMIT))
+                        .and_then(|_| sol.run(&q))
+                        .and_then(|_| sol.check_sat())
+                });
                 if matches!(answer, Ok(Answer::Unsat)) {
                     vacuous.push((path.clone(), *span, *what));
                 }
@@ -6844,14 +6873,16 @@ fn verify_impl(
             // The probe (ADR-0067): every leaf definition a macro, under a
             // small share of the limit. The same meaning, so its `unsat` is a
             // proof and its `sat` a model; undecided, the full query decides.
-            let probe = {
-                let forms = axioms_in_forms(&axioms, &q, true);
-                (forms != relevant_text).then(|| {
-                    let used = needed_decls(&spec_decls, &dts, &format!("{forms}{decls}\n{q}"));
-                    format!("{prefix}{used}{forms}{decls}")
-                })
-            };
-            let probe_limit = format!("(set-option :rlimit {})", smt::rlimit() / PROBE_SHARE);
+            let probe = probe_base(
+                &axioms,
+                &q,
+                &relevant_text,
+                &spec_decls,
+                &dts,
+                &prefix,
+                &decls,
+            );
+            let probe_limit = probe_limit();
             // In the script, the probe comes just before the full query.
             let probe_script = probe.as_ref().map_or(String::new(), |pb| {
                 format!(
@@ -7798,7 +7829,33 @@ fn quantified(ax: &str) -> &str {
 
 /// The share of the solver limit an obligation's probe may use (ADR-0067):
 /// 1%, so a probe that does not decide adds at most that to the full query.
+/// The vacuity and precondition checks' probes use the same (ADR-0069).
 const PROBE_SHARE: u64 = 100;
+
+/// The probe's limit command (`PROBE_SHARE`), sent after its base.
+fn probe_limit() -> String {
+    format!("(set-option :rlimit {})", smt::rlimit() / PROBE_SHARE)
+}
+
+/// The base of a query's probe (ADR-0067): `prefix`, the declarations the
+/// probe needs, every leaf definition `q` reaches as a macro, and `decls`.
+/// `None` when that is the full query's base (`relevant` is the full query's
+/// definitions: no scalar leaf), so there is no probe.
+fn probe_base(
+    axioms: &[(String, String)],
+    q: &str,
+    relevant: &str,
+    spec_decls: &[(String, String, String)],
+    dts: &[(String, String, String)],
+    prefix: &str,
+    decls: &str,
+) -> Option<String> {
+    let forms = axioms_in_forms(axioms, q, true);
+    (forms != relevant).then(|| {
+        let used = needed_decls(spec_decls, dts, &format!("{forms}{decls}\n{q}"));
+        format!("{prefix}{used}{forms}{decls}")
+    })
+}
 
 /// The terms of every `:pattern (..)` in `text`.
 fn pattern_terms(text: &str) -> Vec<&str> {
@@ -8405,6 +8462,56 @@ mod tests {
 
     /// Ground instances (ADR-0023) take datatype terms as arguments: the
     /// applications are found and substituted whole (backlog 2B-05d).
+    /// The precondition check probes like an obligation (backlog T2-06,
+    /// ADR-0069). With the quantified definition of the scalar leaf `le` Z3
+    /// found no model of `le(a, b)` over `u64` (`unknown`, the function was
+    /// undecided: `arith_ok::sub_guarded` in the pass corpus); the probe
+    /// with `le` a macro finds one.
+    #[test]
+    fn precondition_check_probes_scalar_leaves() {
+        let src = r#"#[summary("t")]
+mod m {
+    spec fn le(a: u64, b: u64) -> bool { b <= a }
+
+    spec fn lt(a: u64, b: u64) -> bool { a < b }
+
+    #[effects(pure)]
+    #[uses(le)]
+    fn sub(a: u64, b: u64) -> u64
+        requires le(a, b),
+    {
+        a - b
+    }
+
+    #[effects(pure)]
+    #[uses(le, lt)]
+    fn never(a: u64, b: u64) -> u64
+        requires le(a, b), lt(a, b),
+    {
+        a
+    }
+}
+"#;
+        let mut diags = crate::diag::Diags::default();
+        let toks = crate::lexer::lex(0, src, &mut diags);
+        let program = crate::parser::Parser::new(toks, &mut diags, src).parse_program();
+        let mut c = crate::check::Checker::new(&mut diags);
+        c.check_program(&program);
+        let tables = c.into_tables();
+        assert!(!diags.has_errors());
+        let got: Vec<(String, Option<bool>)> = preconditions_satisfiable(&program, &tables)
+            .into_iter()
+            .map(|(p, _, v)| (p, v))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                ("m::never".into(), Some(false)),
+                ("m::sub".into(), Some(true))
+            ]
+        );
+    }
+
     #[test]
     fn ground_instances_take_datatype_arguments() {
         let ax = AxiomParts {
