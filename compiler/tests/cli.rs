@@ -290,3 +290,62 @@ mod geo {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// `verify --def` proves only the named definitions (backlog T1-29, ADR-0065
+/// §4: the overlapping reads of two edits, re-proved in their merge). Each
+/// named definition gets the status line of a whole-program run, with and
+/// without the caches; the exit code follows the named ones alone; a name
+/// that is not a definition is a usage error.
+#[test]
+fn verify_def_proves_only_the_named_definitions() {
+    let dir = std::env::temp_dir().join(format!("bmb-cli-def-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let f = dir.join("a.bmb");
+    std::fs::write(
+        &f,
+        "#[summary(\"t\")]\nmod a {\n    spec fn small(x: i64) -> bool { x < 100 }\n\n    spec fn tiny(x: i64) -> bool { x < 10 }\n\n    spec fn above(r: i64, x: i64) -> bool { r > x }\n\n    #[effects(pure)]\n    #[uses(small, above)]\n    fn inc(x: i64) -> (r: i64)\n        requires small(x),\n        ensures above(r, x),\n    {\n        x + 1\n    }\n\n    #[effects(pure)]\n    #[uses(small, tiny)]\n    fn good(x: i64) -> i64\n        requires tiny(x),\n    {\n        inc(x)\n    }\n\n    #[effects(pure)]\n    fn bad(x: i64) -> i64 {\n        inc(x)\n    }\n}\n",
+    )
+    .unwrap();
+    let f = f.to_str().unwrap();
+    let cache = dir.join("cache");
+    let cache = cache.to_str().unwrap();
+    let run = |args: &[&str]| {
+        let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
+            .arg("verify")
+            .args(args)
+            .arg(f)
+            .output()
+            .unwrap();
+        let text = String::from_utf8(out.stdout).unwrap();
+        let rows: Vec<String> = text
+            .lines()
+            .filter(|l| l.starts_with("{\"def\":"))
+            .map(String::from)
+            .collect();
+        (out.status.code(), rows, text)
+    };
+    let (code, all, text) = run(&[]);
+    assert_eq!(code, Some(1), "{text}");
+    let row = |d: &str| {
+        all.iter()
+            .find(|l| l.contains(&format!("\"{d}\"")))
+            .unwrap()
+    };
+    for pre in [&[][..], &["--cache", cache], &["--cache", cache]] {
+        let (code, rows, text) = run(&[pre, &["--def", "a::good", "--def", "a::inc"]].concat());
+        assert_eq!(code, Some(0), "{text}");
+        assert_eq!(
+            rows,
+            vec![row("a::good").clone(), row("a::inc").clone()],
+            "{text}"
+        );
+        let (code, rows, text) = run(&[pre, &["--def", "a::bad"]].concat());
+        assert_eq!(code, Some(1), "{text}");
+        assert_eq!(rows, vec![row("a::bad").clone()], "{text}");
+        assert!(text.contains("\"code\":\"E0801\""), "{text}");
+    }
+    let (code, rows, _) = run(&["--def", "a::nope"]);
+    assert_eq!((code, rows.len()), (Some(2), 0));
+    let _ = std::fs::remove_dir_all(&dir);
+}

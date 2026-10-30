@@ -316,40 +316,82 @@ pub fn verify_sources_opts(
     cache_dir: Option<&std::path::Path>,
     reuse: bool,
 ) -> VerifyOutput {
-    verify_frontend(&frontend(files), cache_dir, reuse)
+    verify_frontend(&frontend(files), cache_dir, reuse, None)
+}
+
+/// As `verify_sources_opts`, proving only the definitions in `only` (full
+/// paths, `bmb verify --def`; backlog T1-29, ADR-0065 §4: re-proving the
+/// overlapping reads of two edits in their merge). The whole program is
+/// still checked, and each listed definition gets the status of a
+/// whole-program run (`verify::verify_only`); the output has status lines for
+/// the listed definitions alone. `Err` names the listed paths that are not
+/// definitions of a program that checks.
+pub fn verify_sources_only(
+    files: &[(String, String)],
+    cache_dir: Option<&std::path::Path>,
+    reuse: bool,
+    only: &std::collections::BTreeSet<String>,
+) -> Result<VerifyOutput, String> {
+    let fe = frontend(files);
+    let (out, proved) = verify_frontend_defs(&fe, cache_dir, reuse, Some(only));
+    let missing: Vec<&str> = only
+        .iter()
+        .filter(|d| !fe.diags.has_errors() && !proved.contains(*d))
+        .map(String::as_str)
+        .collect();
+    if missing.is_empty() {
+        Ok(out)
+    } else {
+        Err(format!("no definition {}", missing.join(", ")))
+    }
 }
 
 fn verify_frontend(
     fe: &Frontend,
     cache_dir: Option<&std::path::Path>,
     reuse: bool,
+    only: Option<&std::collections::BTreeSet<String>>,
 ) -> VerifyOutput {
+    verify_frontend_defs(fe, cache_dir, reuse, only).0
+}
+
+/// `verify_frontend` and the paths of the definitions it gave a status.
+fn verify_frontend_defs(
+    fe: &Frontend,
+    cache_dir: Option<&std::path::Path>,
+    reuse: bool,
+    only: Option<&std::collections::BTreeSet<String>>,
+) -> (VerifyOutput, std::collections::BTreeSet<String>) {
     if fe.diags.has_errors() {
-        return VerifyOutput {
+        let out = VerifyOutput {
             ok: false,
             output: fe.diags.to_jsonl(&fe.sm),
             scripts: BTreeMap::new(),
             cache: (0, 0),
             incr: incremental::Stats::default(),
         };
+        return (out, Default::default());
     }
     let mut diags = fe.diags.clone();
-    let mut incr = cache_dir
-        .filter(|_| reuse)
-        .map(|d| incremental::Session::new(d, &fe.program, &fe.tables, &fe.sm));
-    let (outcome, cache) = prove(fe, &mut diags, cache_dir, incr.as_mut());
+    let mut incr = cache_dir.filter(|_| reuse).map(|d| match only {
+        Some(only) => incremental::Session::new_for(d, &fe.program, &fe.tables, &fe.sm, only),
+        None => incremental::Session::new(d, &fe.program, &fe.tables, &fe.sm),
+    });
+    let (outcome, cache) = prove_defs(fe, &mut diags, cache_dir, incr.as_mut(), only);
     let mut output = diags.to_jsonl(&fe.sm);
     output.push_str(&status_lines(&outcome));
     if let Some(s) = &mut incr {
         s.save();
     }
-    VerifyOutput {
+    let defs = outcome.statuses.iter().map(|s| s.path.clone()).collect();
+    let out = VerifyOutput {
         ok: !diags.has_errors() && outcome.statuses.iter().all(|s| s.failed == 0),
         output,
         scripts: outcome.scripts,
         cache,
         incr: incr.map(|s| s.stats).unwrap_or_default(),
-    }
+    };
+    (out, defs)
 }
 
 /// Proof stability (backlog 1B-19): proves the program once per solver seed
@@ -937,7 +979,7 @@ impl FrontCache {
 
     /// As `verify_sources_cached` on the files of the last `update`.
     pub fn verify(&self, cache_dir: Option<&std::path::Path>) -> VerifyOutput {
-        verify_frontend(self.fe(), cache_dir, true)
+        verify_frontend(self.fe(), cache_dir, true, None)
     }
 
     /// As `emit_llvm_sources_cached` on the files of the last `update`.

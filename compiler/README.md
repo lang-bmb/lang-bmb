@@ -12,6 +12,7 @@ cargo run -- emit-llvm --all-checks a.bmb -o a.ll  # 증명 없이 IR. 모든 �
 cargo run -- codes               # 진단 코드 목록(JSONL)
 cargo run -- fix a.bmb           # 기계적 수정(replacement)을 적용·재검사 반복. 기본은 보고만(JSONL), --write로 제자리 수정, --print로 고친 텍스트 출력
 cargo run -- verify --cache .bmb-cache a.bmb  # 증명 캐시: 해법기 입력이 같은 증명된 의무는 다시 풀지 않음(2D-01). 바뀌지 않은 정의는 인코딩·IR 생성도 건너뜀(2D-10)
+cargo run -- verify --def u::f --def u::g a.bmb  # 이름 댄 정의만 증명(프로그램 전체는 검사). 상태 줄은 전체 증명과 바이트 동일, 종료 코드는 그 정의들만 따름. 없는 이름은 종료 코드 2(T1-29: 두 편집의 겹친 읽기를 병합에서 재증명, ADR-0065 결정 4)
 cargo run -- stability a.bmb     # Z3 시드 0..5로 증명해 판정이 시드에 따라 바뀌는 정의를 보고(1B-19)
 cargo run -- uses a.bmb          # 증명되지 않는 정의마다 최소 #[uses(..)] 목록을 찾아 보고. --write면 파일 수정(2D-05). --cache DIR은 verify와 같은 캐시(2D-15)
 cargo run -- lint a.bmb          # 계약 조정 린트: 불가능한 pre, 증명에 쓰이지 않는 pre, 호출자가 쓰지 않는 post, 변이가 살아남는 약한 명세(경고 W09xx, 2D-08·2D-09). --cache DIR은 verify와 같은 캐시(2D-15)

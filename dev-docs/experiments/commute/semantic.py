@@ -25,7 +25,9 @@ definition level (A's and B's operations on the base) and proves the result,
 and only pairs whose base, A and B each prove are used. Each pair is also
 merged as text (`git merge-file` per unit file) and the clean merges are
 proved (a failure is a git false merge), and judged by judge.py (ADR-0065
-and its variants) from the three versions alone.
+and its variants) from the three versions alone. Since T1-29 the conflicts
+are finished on the merge (`judge.resolve`, ADR-0065 §4) and compared with
+proving the whole merge (the report's last section).
 
 The pair file holds the background parameters and, per pair, the scenario's
 operations, so it is a deterministic function of (seed, per-family, defs);
@@ -638,7 +640,9 @@ def run(args):
             print(json.dumps(row), file=sys.stderr, flush=True)
             continue
         bmb.take()
-        row["merge_proves"] = bmb.proves(m.write(os.path.join(tmp, "m")), "verify_merge") if m else None
+        src_m = m.write(os.path.join(tmp, "m")) if m else None
+        row["merge_proves"], row["merge_encoded"] = (
+            bmb.proves_stats(src_m, "verify_merge") if m else (None, None))
         merged, row["text_conflicts"] = text_merge(base, a, b, tmp)
         row["text_proves"] = None
         if row["text_conflicts"] == 0:
@@ -651,6 +655,12 @@ def run(args):
             row["text_proves"] = bmb.proves(d, "verify_text")
         verdict = judge.judge(bmb, src["o"], src["a"], src["b"], old=True)
         row.update(verdict)
+        # ADR-0065 §4 (T1-29): finish the conflicts on the merge, and the
+        # whole merge proved without caches for the cost comparison.
+        row["resolve"] = {v: judge.resolve(bmb, verdict, src_m, v) for v in judge.RESOLVE}
+        row["whole"] = None
+        if any(r and r["merge"] for r in row["resolve"].values()):
+            row["whole"] = bmb.verify(src_m, kind="verify_whole_cold")
         row["cost"] = bmb.take()
         rows.append(row)
         print(json.dumps(row), file=sys.stderr, flush=True)
@@ -731,6 +741,11 @@ def report(header, rows, args):
               f"{r['text_conflicts']}·{r['text_proves']} | "
               + " | ".join("교환" if commute(r, v) else "충돌" for v in verdicts)
               + f" | {r['queries']['a'][0] + r['queries']['b'][0]} |")
+    if used and all("resolve" in r for r in used):
+        print("\n### 비교환 쌍의 해소(T1-29, ADR-0065 결정 4)\n")
+        judge.report_resolve([{"verdict": r, "merge_proves": r["merge_proves"], "resolve": r["resolve"],
+                               "whole": r["whole"], "cost": r["cost"], "family": r["family"],
+                               "merge_encoded": r["merge_encoded"]} for r in used], families=True)
 
 
 def main():

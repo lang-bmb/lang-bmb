@@ -10,7 +10,10 @@ read sets from `bmb reads`, the refinement exemption from `bmb weaken
 --readers`), and the definition-level merge is proved whenever the two sides
 wrote different definitions by their own text (the transitive `bmb hash`
 sets below skip pairs whose edits touch different definitions). The second
-report section compares the verdicts on that ground truth.
+report section compares the verdicts on that ground truth. Since T1-29 a
+conflict without overlapping write sets is finished on the merge
+(`judge.resolve`, ADR-0065 §4: only the conflict readers re-proved), and that
+merge is also proved whole without caches for the cost; the third section.
 
 Two agents start from the same tree: the BCB history (bench/bcb/history.py) at
 commit c. Agent A makes the next J commits (c+1..c+J), agent B the J after
@@ -187,10 +190,12 @@ def main():
         # definition merge
         def_conflict = bool(wa & wb)
         def_proves = None
+        src_m = None
         if not def_conflict:
             try:
                 m = apply_all(a, eb)
-                def_proves = bmb.proves(write(m, os.path.join(tmp, "m")))
+                src_m = write(m, os.path.join(tmp, "m"))
+                def_proves = bmb.proves(src_m)
             except (KeyError, ValueError, IndexError):
                 def_proves = False
         # ADR-0065 (T1-27): judge.py from the three versions alone, and the
@@ -203,17 +208,26 @@ def main():
         cost = jb.take()
         merge_proves = def_proves
         if verdict["ww"]:
-            merge_proves = None
+            merge_proves, src_m = None, None
         elif def_conflict:
             try:
                 m = apply_all(a, eb)
-                merge_proves = bmb.proves(write(m, os.path.join(tmp, "m")))
+                src_m = write(m, os.path.join(tmp, "m"))
+                merge_proves = bmb.proves(src_m)
             except (KeyError, ValueError, IndexError):
                 merge_proves = False
+        # ADR-0065 §4 (T1-29): finish the conflicts on the merge; the whole
+        # merge proved without caches for the cost comparison.
+        resolved = {v: judge.resolve(jb, verdict, src_m, v) for v in judge.RESOLVE if v in verdict}
+        whole = None
+        if any(r and r["merge"] for r in resolved.values()):
+            whole = jb.verify(src_m, kind="verify_whole_cold")
+        step_cost = jb.take()
         rows.append({**row, "wa": len(wa), "wb": len(wb), "independent": independent,
                      "text_conflict_bmb": conf_bmb, "text_conflict_rust": conf_rust, "text_proves": text_proves,
                      "def_conflict": def_conflict, "def_proves": def_proves,
-                     "merge_proves": merge_proves, "judge": verdict, "cost": cost})
+                     "merge_proves": merge_proves, "judge": verdict, "cost": cost,
+                     "resolve": resolved, "whole": whole, "step_cost": step_cost})
         print(json.dumps(rows[-1]), file=sys.stderr, flush=True)
     shutil.rmtree(tmp, ignore_errors=True)
     if args.rows:
@@ -304,6 +318,31 @@ def report_adr(args, rows):
         print(f"| {r['k']} | {len(j['ww'])}·{j['ww_id']} | {r['merge_proves']} | "
               + " | ".join("교환" if commute(r, v) else "충돌" for v in verdicts)
               + f" | {j['queries']['a'][0] + j['queries']['b'][0]} |")
+    if not used or not all("resolve" in r for r in used):
+        return
+    print(f"\n### 비교환 쌍의 해소(T1-29, ADR-0065 결정 4): 프로필 `{args.profile}`, 각자 커밋 {args.span}개\n")
+    judge.report_resolve([{"verdict": r["judge"], "merge_proves": r["merge_proves"], "resolve": r["resolve"],
+                           "whole": r["whole"], "cost": {**r["cost"], **r["step_cost"]}} for r in used])
+    step = [r for r in used if any(x and x["merge"] for x in r["resolve"].values())]
+    if step:
+        print("\n| k | 병합 증명 | " + " | ".join(f"`{v}` 충돌 원소 · 재증명 정의 · 의무 · 해소" for v in r["resolve"])
+              + " | 병합 전체 정의 · 의무 | CPU초: 재증명 " + " · ".join(r["resolve"]) + " · 병합 전체 |")
+        print("| ---: | --- | " + " | ".join("---" for _ in r["resolve"]) + " | --- | --- |")
+        for r in step:
+            cells = []
+            for v, x in r["resolve"].items():
+                if x is None:
+                    cells.append("교환")
+                elif not x["merge"]:
+                    cells.append("쓰기 겹침")
+                else:
+                    cells.append(f"{r['judge'][v]['n_conflicts']} · {x['defs']} · {x['obligations']} · "
+                                 f"{'해소' if x['resolved'] else '충돌'}")
+            c = r["step_cost"]
+            print(f"| {r['k']} | {r['merge_proves']} | " + " | ".join(cells)
+                  + f" | {r['whole'][1]} · {r['whole'][2]} | "
+                  + " · ".join(f"{c.get(f'reprove_{v}', (0, 0.0))[1]:.2f}" for v in r["resolve"])
+                  + f" · {c['verify_whole_cold'][1]:.1f} |")
 
 
 if __name__ == "__main__":

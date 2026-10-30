@@ -27,8 +27,10 @@ fn write_stdout(args: std::fmt::Arguments) {
 
 const USAGE: &str = "usage:
   bmb check <file.bmb>...   check sources; diagnostics as JSONL on stdout
-  bmb verify [--emit-smt DIR] [--cache DIR] [--stats FILE] <file.bmb>...
+  bmb verify [--emit-smt DIR] [--cache DIR] [--stats FILE] [--def PATH]... <file.bmb>...
                             check and prove; diagnostics and per-definition status as JSONL;
+                            --def proves only the named definitions (the whole program is
+                            still checked; each gets its whole-program status);
                             --cache keeps proved obligations in DIR and skips them next time,
                             and reuses unchanged definitions without encoding them;
                             --stats writes what the caches did as one JSON line to FILE
@@ -201,11 +203,15 @@ fn run() -> ExitCode {
             let mut emit = None;
             let mut cache = None;
             let mut stats = None;
+            let mut defs = std::collections::BTreeSet::new();
             loop {
                 match rest.first().map(String::as_str) {
                     Some("--emit-smt") if rest.len() > 2 => emit = Some(rest[1].clone()),
                     Some("--cache") if rest.len() > 2 => cache = Some(rest[1].clone()),
                     Some("--stats") if rest.len() > 2 => stats = Some(rest[1].clone()),
+                    Some("--def") if rest.len() > 2 => {
+                        defs.insert(rest[1].clone());
+                    }
                     _ => break,
                 }
                 rest = &rest[2..];
@@ -216,11 +222,18 @@ fn run() -> ExitCode {
             };
             // `--emit-smt` needs every definition's script, so every
             // definition is encoded (the proof cache still applies).
-            let out = bmb::verify_sources_opts(
-                &files,
-                cache.as_deref().map(std::path::Path::new),
-                emit.is_none(),
-            );
+            let cache_dir = cache.as_deref().map(std::path::Path::new);
+            let out = if defs.is_empty() {
+                bmb::verify_sources_opts(&files, cache_dir, emit.is_none())
+            } else {
+                match bmb::verify_sources_only(&files, cache_dir, emit.is_none(), &defs) {
+                    Ok(out) => out,
+                    Err(e) => {
+                        eprintln!("bmb: {e}");
+                        return ExitCode::from(2);
+                    }
+                }
+            };
             if let Some(dir) = emit {
                 if let Err(e) = std::fs::create_dir_all(&dir) {
                     eprintln!("bmb: cannot create {dir}: {e}");

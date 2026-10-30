@@ -36,6 +36,15 @@ Everything comes from the compiler; nothing proves the merge.
   old         the first replay's verdict (T1-12): written sets by `bmb hash`
               (body, iface), read sets by L2 edges out of the written
               definitions, every interface change read is a conflict.
+
+`resolve` (T1-29, ADR-0065 §4) finishes the verdict of a pair judged
+conflicting when the two write sets do not overlap: it checks the merge M
+and proves in it only the conflict readers (the definitions whose read rows
+the other side changed without exemption, that M still has) with `bmb
+verify --def`. Every other definition of M keeps a proof by the relation: its
+rows in M are one side's, or the other side's changes to them are exempt for
+it. The pair is mergeable when that re-proof passes. `whole` proves the
+whole merge without caches, the cost the step is compared with.
 """
 import json
 import os
@@ -44,6 +53,7 @@ import subprocess
 import tempfile
 
 VARIANTS = ("none", "own", "reader", "world")
+RESOLVE = ("none", "world")  # the sound variants `resolve` finishes (T1-29)
 EXEMPT = ("same", "refined", "compatible")
 
 
@@ -78,6 +88,22 @@ class Bmb:
 
     def proves(self, src, kind="verify"):
         return self.run(kind, "verify", "--cache", self.cache, src)[0] == 0
+
+    def proves_stats(self, src, kind="verify"):
+        """`proves`, and the definitions the warm caches encoded again."""
+        with tempfile.NamedTemporaryFile("r", suffix=".json") as f:
+            ok = self.run(kind, "verify", "--cache", self.cache, "--stats", f.name, src)[0] == 0
+            return ok, len(json.loads(f.read() or "{}").get("encoded", []))
+
+    def verify(self, src, defs=None, kind="verify_cold"):
+        """`bmb verify` without caches, of the whole program or (`defs`) of
+        those definitions alone: (proved, definitions proved, obligations)."""
+        args = [a for d in sorted(defs or ()) for a in ("--def", d)]
+        code, out = self.run(kind, "verify", *args, src)
+        if code == 2:
+            raise RuntimeError(f"bmb verify {args} {src}: {out[:400]}")
+        st = [j for j in jsonl(out) if "status" in j]
+        return code == 0, len(st), sum(j["obligations"] for j in st)
 
     def checks(self, src):
         return self.run("check", "check", src)[0] == 0
@@ -248,6 +274,14 @@ def judge(bmb, src_o, src_a, src_b, old=False, variants=VARIANTS):
 
     out = {"queries": queries}
     wa, wb = sides["a"][0], sides["b"][0]
+
+    def in_merge(d):
+        """Whether the definition-level merge has d: the side that wrote d
+        decides (the write sets are disjoint when there is a merge)."""
+        for x in "ab":
+            if d in sides[x][0]:
+                return d in vers[x].defs
+        return d in vo.defs
     out["ww"] = sorted(wa & wb)
     for variant in variants:
         reprove = {}
@@ -274,9 +308,12 @@ def judge(bmb, src_o, src_a, src_b, old=False, variants=VARIANTS):
                             and exempt(variant, x, c[1], r["uses"], sides[y][0]):
                         continue
                     conflicts.append((x, d, c[0], c[1]))
+        readers = {d for _, d, _, _ in conflicts}
         out[variant] = {"commute": not out["ww"] and not conflicts,
                         "reprove": {x: len(reprove[x]) for x in "ab"},
-                        "conflicts": conflicts[:8], "n_conflicts": len(conflicts)}
+                        "conflicts": conflicts[:8], "n_conflicts": len(conflicts),
+                        "readers": sorted(d for d in readers if in_merge(d)),
+                        "readers_gone": len([d for d in readers if not in_merge(d)])}
     # The `id` write set (ADR-0065 §1 as drafted).
     ho, ha, hb = bmb.ids(src_o), bmb.ids(src_a), bmb.ids(src_b)
     wia = {d for d in set(ho) | set(ha) if ho.get(d, (None,))[0] != ha.get(d, (None,))[0]}
@@ -303,3 +340,88 @@ def old_judge(bmb, h0, ha, hb, src_a, src_b):
     reads_a = set().union(*(ra.get(d, set()) for d in wa)) if wa else set()
     reads_b = set().union(*(rb.get(d, set()) for d in wb)) if wb else set()
     return not (wa & wb) and not (ib & reads_a) and not (ia & reads_b)
+
+
+def resolve(bmb, verdict, src_m, variant="world"):
+    """ADR-0065 §4 (T1-29): the verdict of `variant` finished on the merge
+    `src_m` (None when there is none). None when the pair commutes (nothing
+    to do); otherwise {"resolved": the merge checks and every conflict reader
+    it has proves, "defs": readers proved, "obligations"}. A pair whose
+    write sets overlap has no merge and stays a conflict."""
+    v = verdict[variant]
+    if v["commute"]:
+        return None
+    if verdict["ww"] or src_m is None:
+        return {"resolved": False, "defs": 0, "obligations": 0, "merge": False}
+    kind = f"reprove_{variant}"
+    if v["readers"]:
+        ok, n, obl = bmb.verify(src_m, v["readers"], kind)
+    else:
+        ok, n, obl = bmb.run(kind, "check", src_m)[0] == 0, 0, 0
+    return {"resolved": ok, "defs": n, "obligations": obl, "merge": True}
+
+
+def report_resolve(rows, families=False):
+    """Markdown tables of `resolve` (T1-29) over rows of one set. Each row:
+    "verdict" (`judge`'s output), "merge_proves" (the ground truth: the
+    definition-level merge proved; None when both sides wrote one
+    definition), "resolve", "whole", "cost" ({kind: (calls, seconds)} of the
+    pair), and "family" when `families`, "merge_encoded" when the merge was
+    also proved through the warm caches."""
+    def final(r, v):
+        return r["verdict"][v]["commute"] or bool(r["resolve"][v] and r["resolve"][v]["resolved"])
+
+    def cpu_of(r, kind):
+        return r["cost"].get(kind, (0, 0.0))[1]
+
+    fails = [r for r in rows if r["merge_proves"] is not True]
+    print("| 판정 | 충돌 판정 | 그중 쓰기 겹침(병합 없음) | 겹친 정의를 재증명한 쌍 | 해소(병합 가능) | "
+          "**위반(해소인데 병합 실패)** | 병합 실패 중 최종 충돌 | 거짓 충돌: 단계 전 → 후 |")
+    print("| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |")
+    for v in RESOLVE:
+        conf = [r for r in rows if not r["verdict"][v]["commute"]]
+        ww = [r for r in conf if not r["resolve"][v]["merge"]]
+        step = [r for r in conf if r["resolve"][v]["merge"]]
+        res = [r for r in step if r["resolve"][v]["resolved"]]
+        before = sum(1 for r in conf if r["merge_proves"] is True)
+        after = sum(1 for r in rows if not final(r, v) and r["merge_proves"] is True)
+        print(f"| `{v}` + 재증명 | {len(conf)} | {len(ww)} | {len(step)} | {len(res)} | "
+              f"{sum(1 for r in res if r['merge_proves'] is not True)} | "
+              f"{sum(1 for r in fails if not final(r, v))} / {len(fails)} | {before} → {after} |")
+    print("\n| 판정 | 재증명한 쌍 | 겹친 정의 재증명: 정의 · 의무 · CPU초 | 병합 전체(캐시 없음): 정의 · 의무 · CPU초 | "
+          "CPU 비율 | 의무 비율 | 면제 질의 CPU초(이 쌍들) |")
+    print("| --- | ---: | --- | --- | ---: | ---: | ---: |")
+    for v in RESOLVE:
+        step = [r for r in rows if r["resolve"][v] and r["resolve"][v]["merge"]]
+        sd = sum(r["resolve"][v]["defs"] for r in step)
+        so = sum(r["resolve"][v]["obligations"] for r in step)
+        sc = sum(cpu_of(r, f"reprove_{v}") for r in step)
+        wd = sum(r["whole"][1] for r in step)
+        wo = sum(r["whole"][2] for r in step)
+        wc = sum(cpu_of(r, "verify_whole_cold") for r in step)
+        q = sum(cpu_of(r, "weaken_reader") for r in step) if v != "none" else 0.0
+        print(f"| `{v}` | {len(step)} | {sd} · {so} · {sc:.1f} | {wd} · {wo} · {wc:.1f} | "
+              f"{sc / wc if wc else 0:.3f} | {so / wo if wo else 0:.3f} | {q:.1f} |")
+    warm = [r for r in rows if r["resolve"]["world"] and r["resolve"]["world"]["merge"]
+            and r.get("merge_encoded") is not None]
+    if warm:
+        print(f"\n같은 `world` 쌍 {len(warm)}개의 병합을 따뜻한 캐시(기준·A·B를 증명한 증분 캐시)로 증명하면 "
+              f"다시 인코딩한 정의 {sum(r['merge_encoded'] for r in warm)}개, CPU "
+              f"{sum(cpu_of(r, 'verify_merge') for r in warm):.1f}초다.")
+    if families:
+        print("\n| 가족 | 쌍 | 병합 실패 | `world` 충돌 | 쓰기 겹침 | 해소 | 위반 | 거짓 충돌 전 → 후 | "
+              "재증명 정의 · 의무 | 병합 전체 정의 · 의무 |")
+        print("| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |")
+        for fam in sorted({r["family"] for r in rows}):
+            rs = [r for r in rows if r["family"] == fam]
+            conf = [r for r in rs if not r["verdict"]["world"]["commute"]]
+            step = [r for r in conf if r["resolve"]["world"]["merge"]]
+            res = [r for r in step if r["resolve"]["world"]["resolved"]]
+            print(f"| `{fam}` | {len(rs)} | {sum(1 for r in rs if r['merge_proves'] is not True)} | {len(conf)} | "
+                  f"{len(conf) - len(step)} | {len(res)} | "
+                  f"{sum(1 for r in res if r['merge_proves'] is not True)} | "
+                  f"{sum(1 for r in conf if r['merge_proves'] is True)} → "
+                  f"{sum(1 for r in rs if not final(r, 'world') and r['merge_proves'] is True)} | "
+                  f"{sum(r['resolve']['world']['defs'] for r in step)} · "
+                  f"{sum(r['resolve']['world']['obligations'] for r in step)} | "
+                  f"{sum(r['whole'][1] for r in step)} · {sum(r['whole'][2] for r in step)} |")
