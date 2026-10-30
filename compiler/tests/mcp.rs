@@ -672,3 +672,155 @@ fn write_tool_commits_and_proves_in_one_call() {
     assert!(err && t.contains("nothing to write"), "{t}");
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// `--compact` (backlog 2D-23, ADR-0068): the same answers in the compact
+/// agent view. Every surface keeps its path, status, signature and contract,
+/// every definition and edge is listed, no hash or file position is shown,
+/// verified definitions become a count, and the default server is unchanged.
+#[test]
+fn compact_view_carries_the_same_answers() {
+    let root = temp_root("compact");
+    let mut w = Client::start_with(&root, &["--write-tool"]);
+    let code = "spec fn small(x: i64) -> bool { -1000 <= x && x <= 1000 }\n\nspec fn bigger(x: i64, r: i64) -> bool { r > x }\n\n#[effects(pure)]\n#[uses(small, bigger)]\nfn inc(x: i64) -> (r: i64)\n    requires small(x),\n    ensures bigger(x, r),\n{\n    x + 1\n}\n\n#[effects(pure)]\nfn get(a: &[i64], i: usize) -> i64 {\n    a[i]\n}";
+    let (t, err) = w.tool(
+        "write",
+        &format!(
+            "{{\"unit\":\"calc\",\"summary\":{},\"code\":{}}}",
+            q("계산"),
+            q(code)
+        ),
+    );
+    assert!(err && t.contains("\"committed\":true"), "{t}");
+    let mut plain = Client::start(&root);
+    let mut c = Client::start_with(&root, &["--compact"]);
+
+    // Same tool names; only the read and proof descriptions differ.
+    let names = |v: &Value| -> Vec<(String, String)> {
+        let Value::Array(list) = v.get("result").unwrap().get("tools").unwrap() else {
+            panic!()
+        };
+        list.iter()
+            .map(|t| {
+                (
+                    t.get("name").unwrap().as_str().unwrap().to_string(),
+                    t.get("description").unwrap().as_str().unwrap().to_string(),
+                )
+            })
+            .collect()
+    };
+    let (a, b) = (
+        names(&plain.request("tools/list", "{}")),
+        names(&c.request("tools/list", "{}")),
+    );
+    assert_eq!(a.len(), b.len());
+    for ((na, da), (nb, db)) in a.iter().zip(&b) {
+        assert_eq!(na, nb);
+        assert_eq!(
+            da != db,
+            ["query", "map", "verify"].contains(&na.as_str()),
+            "{na}"
+        );
+    }
+
+    let rows = |text: &str| -> Vec<Value> {
+        text.lines()
+            .filter_map(|l| json::parse(l).ok())
+            .filter(|v| v.get("schema").is_none())
+            .collect()
+    };
+    let strs = |v: &Value, k: &str| -> Vec<String> {
+        match v.get(k) {
+            Some(Value::Array(xs)) => xs.iter().map(|x| x.as_str().unwrap().to_string()).collect(),
+            _ => Vec::new(),
+        }
+    };
+    let (full, _) = plain.tool("map", "{\"level\":\"all\"}");
+    let (short, _) = c.tool("map", "{\"level\":\"all\"}");
+    assert!(short.len() * 2 < full.len(), "{short}");
+    assert!(
+        !short.contains("sha256:") && !short.contains(".bmb"),
+        "{short}"
+    );
+    for r in rows(&full) {
+        let s = |k: &str| r.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+        match (s("level").as_str(), s("kind").as_str()) {
+            ("L0", "unit") => assert!(
+                short.contains(&format!(
+                    "#[summary({})] mod {};",
+                    q(&s("summary")),
+                    s("path")
+                )),
+                "{short}"
+            ),
+            ("L0", _) => assert!(
+                short.contains(&format!("{} {}\n", s("def_kind"), s("path"))),
+                "{short}"
+            ),
+            ("L1", _) => {
+                let status = match s("status").as_str() {
+                    "verified" => ": verified".to_string(),
+                    "failed" => format!(
+                        ": failed {} of {} obligations",
+                        r.get("failed").unwrap().as_i64().unwrap(),
+                        r.get("obligations").unwrap().as_i64().unwrap()
+                    ),
+                    _ => String::new(),
+                };
+                let head = format!("// {}{status}\n", s("path"));
+                let at = short.find(&head).unwrap_or_else(|| panic!("{head}"));
+                let surface = &short[at..];
+                assert!(surface.contains(&s("signature")), "{surface}");
+                for clause in ["requires", "ensures"] {
+                    for item in strs(&r, clause) {
+                        assert!(surface.contains(&item), "{item}");
+                    }
+                }
+                for u in strs(&r, "uses") {
+                    assert!(surface.contains(&u), "{u}");
+                }
+            }
+            ("L2", _) => assert!(
+                short.contains(&format!("{} {} {}", s("from"), s("kind"), s("to"))),
+                "{short}"
+            ),
+            _ => {}
+        }
+    }
+
+    // Verify: diagnostics as they are, failed definitions without proof
+    // cost, verified ones as a count.
+    let (full, e1) = plain.tool("verify", "{}");
+    let (short, e2) = c.tool("verify", "{}");
+    assert!(e1 && e2);
+    let verified = rows(&full)
+        .iter()
+        .filter(|r| r.get("status").and_then(Value::as_str) == Some("verified"))
+        .count();
+    assert!(verified > 0);
+    assert!(
+        short.ends_with(&format!("{{\"verified\":{verified}}}\n")),
+        "{short}"
+    );
+    for line in full.lines().filter(|l| l.contains("\"severity\"")) {
+        assert!(short.contains(line), "{line}");
+    }
+    assert!(
+        short.contains(
+            "{\"def\":\"calc::get\",\"status\":\"failed\",\"obligations\":1,\"failed\":1}"
+        ),
+        "{short}"
+    );
+    assert!(!short.contains("rlimit"), "{short}");
+
+    // A slice is the code itself, not an escaped JSON string.
+    let (t, err) = c.tool("query", "{\"name\":\"slice\",\"args\":[\"calc::inc\"]}");
+    assert!(
+        !err && t.starts_with("// calc::inc\n") && t.contains("    x + 1\n"),
+        "{t}"
+    );
+    for mut client in [w, plain, c] {
+        drop(client.child.stdin.take());
+        client.child.wait().unwrap();
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}

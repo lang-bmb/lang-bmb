@@ -32,6 +32,9 @@ pub struct Server {
     front: crate::FrontCache,
     /// Offer the one-call `write` tool (backlog 2D-24).
     write_tool: bool,
+    /// Show tool results in the compact agent view (`view::compact`,
+    /// backlog 2D-23, ADR-0068).
+    compact: bool,
 }
 
 fn s(x: &str) -> Value {
@@ -68,7 +71,9 @@ fn schema(props: &[(&str, &str, &str)], required: &[&str]) -> Value {
 /// The tool list. `write` is offered only when the server is started with it
 /// (`bmb mcp --write-tool`): the frozen measurement task sets see the tools
 /// they were frozen with (ADR-0021; compiler/README.md, MCP descriptions).
-fn tools(write: bool) -> Value {
+/// With `compact` (`--compact`, ADR-0068) the read and proof tools describe
+/// the compact view their results come in.
+fn tools(write: bool, compact: bool) -> Value {
     let t = |name: &str, desc: &str, input: Value| {
         obj(vec![
             ("name", s(name)),
@@ -76,10 +81,20 @@ fn tools(write: bool) -> Value {
             ("inputSchema", input),
         ])
     };
+    // What a proof result lists, in `verify` and `write`.
+    let statuses = if compact {
+        "one status line per definition that did not verify and the number of verified definitions"
+    } else {
+        "one status line per definition"
+    };
     let mut list = vec![
         t(
             "query",
-            "Read query on the standard maps (ADR-0020): units, surface DEF, edges DEF [out|in|both] [depth], slice DEF, find NAME, contracts PRED, status. Returns JSONL.",
+            if compact {
+                "Read query on the standard maps (ADR-0020): units, surface DEF, edges DEF [out|in|both] [depth], slice DEF, find NAME, contracts PRED, status. Units, surfaces and slices come as Rust-shaped text: a surface is the definition without its body, after a `// PATH: STATUS` line; edges as `FROM KIND TO`; other rows as JSON lines without empty fields."
+            } else {
+                "Read query on the standard maps (ADR-0020): units, surface DEF, edges DEF [out|in|both] [depth], slice DEF, find NAME, contracts PRED, status. Returns JSONL."
+            },
             schema(
                 &[
                     ("name", "string", "query name"),
@@ -90,12 +105,19 @@ fn tools(write: bool) -> Value {
         ),
         t(
             "map",
-            "Standard map as JSONL: level L0 (units and definitions), L1 (surfaces), L2 (edges) or all.",
+            if compact {
+                "Standard map as Rust-shaped text: level L0 (units and definitions), L1 (surfaces: each definition without its body, after a `// PATH: STATUS` line), L2 (edges, `FROM KIND TO`) or all."
+            } else {
+                "Standard map as JSONL: level L0 (units and definitions), L1 (surfaces), L2 (edges) or all."
+            },
             schema(&[("level", "string", "L0, L1, L2 or all")], &[]),
         ),
         t(
             "verify",
-            "Check and prove the workspace. Returns diagnostics (with counterexamples) and one status line per definition.",
+            &format!(
+                "Check and prove the workspace. Returns diagnostics (with counterexamples){} {statuses}.",
+                if compact { "," } else { " and" }
+            ),
             schema(&[], &[]),
         ),
         t(
@@ -170,7 +192,9 @@ fn tools(write: bool) -> Value {
             4,
             t(
                 "write",
-                "Write in one call (backlog 2D-24): when `summary` is given, create unit UNIT or replace its summary; add or replace the definitions in `code` (one or more, with attributes) in UNIT; remove the definitions in `remove` (full paths); commit; then prove the workspace. Rejected as a whole on any structural or type error (diagnostics returned, nothing written). After a commit, returns the commit line and the proof result (diagnostics with counterexamples, one status line per definition), as an error when a proof fails.",
+                &format!(
+                    "Write in one call (backlog 2D-24): when `summary` is given, create unit UNIT or replace its summary; add or replace the definitions in `code` (one or more, with attributes) in UNIT; remove the definitions in `remove` (full paths); commit; then prove the workspace. Rejected as a whole on any structural or type error (diagnostics returned, nothing written). After a commit, returns the commit line and the proof result (diagnostics with counterexamples, {statuses}), as an error when a proof fails."
+                ),
                 schema(
                     &[
                         ("unit", "string", "unit path"),
@@ -198,6 +222,7 @@ impl Server {
             next_tx: 1,
             front: crate::FrontCache::default(),
             write_tool: false,
+            compact: false,
         }
     }
 
@@ -206,6 +231,15 @@ impl Server {
         Server {
             write_tool: true,
             ..Server::new(root)
+        }
+    }
+
+    /// The same server showing tool results in the compact agent view
+    /// (`bmb mcp --compact`, backlog 2D-23, ADR-0068).
+    pub fn compact(self) -> Server {
+        Server {
+            compact: true,
+            ..self
         }
     }
 
@@ -480,7 +514,7 @@ impl Server {
                 ),
             ])),
             "ping" => Ok(obj(vec![])),
-            "tools/list" => Ok(obj(vec![("tools", tools(self.write_tool))])),
+            "tools/list" => Ok(obj(vec![("tools", tools(self.write_tool, self.compact))])),
             "tools/call" => {
                 let params = msg.get("params").cloned().unwrap_or(Value::Null);
                 let name = params
@@ -492,6 +526,11 @@ impl Server {
                 let (text, is_error) = match self.call(&name, &args) {
                     Ok(t) => (t, false),
                     Err(t) => (t, true),
+                };
+                let text = if self.compact {
+                    crate::view::compact(&text)
+                } else {
+                    text
                 };
                 Ok(obj(vec![
                     (
@@ -524,13 +563,15 @@ fn rpc_error(id: Value, code: i64, message: &str) -> Value {
     ])
 }
 
-/// Serves stdin/stdout until end of input; `write_tool` offers `write` too.
-pub fn serve(root: &Path, write_tool: bool) -> std::io::Result<()> {
-    let mut server = if write_tool {
+/// Serves stdin/stdout until end of input; `write_tool` offers `write` too,
+/// `compact` shows results in the compact agent view.
+pub fn serve(root: &Path, write_tool: bool, compact: bool) -> std::io::Result<()> {
+    let server = if write_tool {
         Server::with_write_tool(root)
     } else {
         Server::new(root)
     };
+    let mut server = if compact { server.compact() } else { server };
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout();
     for line in stdin.lock().lines() {

@@ -5,6 +5,7 @@ import os
 import sys
 import types
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import model_api  # noqa: E402
@@ -50,6 +51,17 @@ class OpenAI(unittest.TestCase):
         self.assertEqual([(m["tool_call_id"], m["content"]) for m in tail[1:]], [("c1", "rows"), ("c2", "error: bad")])
         self.assertEqual(a.usage, {"input_tokens": 20, "output_tokens": 10, "requests": 2})
         self.assertEqual(a.stop, "stop")
+
+    def test_context_log_is_opt_in(self):
+        # BMB_CONTEXT_LOG=1 adds per-request tokens (backlog 2D-25); without it
+        # the usage is the same as before (previous test).
+        post = StubPost([resp("tool_calls", calls=[("c1", "verify", "{}")], usage=(7, 3)),
+                         resp("stop", usage=(9, 4))])
+        a = OpenAIAgent("qwen3.8-27b", "sys", "task", post=post, base="http://x")
+        with mock.patch.dict(os.environ, {"BMB_CONTEXT_LOG": "1"}):
+            a.next_calls([])
+            a.next_calls([("verify", {}, "ok", False)])
+        self.assertEqual((a.usage["request_input_tokens"], a.usage["request_output_tokens"]), ([7, 9], [3, 4]))
 
     def test_unrun_calls_and_bad_arguments(self):
         post = StubPost([resp("tool_calls", calls=[("a", "verify", "{}"), ("b", "query", "not json")]),

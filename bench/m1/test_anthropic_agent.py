@@ -3,6 +3,7 @@ import os
 import sys
 import types
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from anthropic_agent import AnthropicAgent  # noqa: E402
@@ -46,6 +47,13 @@ class T(unittest.TestCase):
         self.assertEqual(client.requests[0]["output_config"], {"effort": "high"})
         self.assertEqual(a.usage, {"input_tokens": 20, "output_tokens": 10, "requests": 2})
         self.assertEqual(a.stop, "end_turn")
+
+    def test_context_log_is_opt_in(self):
+        client = StubClient([resp("end_turn", block(type="text", text="done"))])
+        a = AnthropicAgent("claude-opus-5-5", "sys", "task", client=client)
+        with mock.patch.dict(os.environ, {"BMB_CONTEXT_LOG": "1"}):
+            a.next_calls([])
+        self.assertEqual((a.usage["request_input_tokens"], a.usage["request_output_tokens"]), ([10], [5]))
 
     def test_unrun_calls_get_error_results(self):
         client = StubClient([

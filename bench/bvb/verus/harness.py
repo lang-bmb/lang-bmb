@@ -265,6 +265,8 @@ def run_task(task, agent_kind, verifier, agent=None):
         agent.set_tools(TOOLS)
     code = skeleton(task)
     m = {"tool_calls": 0, "writes": 0, "verify_calls": 0, "limit_hit": False}
+    # Every call's tool and result size, in order, with BMB_CONTEXT_LOG=1 (backlog 2D-25).
+    calls_log = []
     last = []
     while True:
         calls = agent.next_calls(last)
@@ -288,13 +290,15 @@ def run_task(task, agent_kind, verifier, agent=None):
                 text, err = ("verified\n" if ok else "verification failed\n") + out, not ok
             else:
                 text, err = f"unknown tool or bad arguments: {name}", True
+            calls_log.append({"name": name, "bytes": len(text.encode()), "error": bool(err)})
             last.append((name, args, text, err))
         if m["limit_hit"]:
             break
     verdict = judge(task, code, verifier)
     return {"id": task["id"], "kind": "write", "agent": agent_kind, **verdict, **m,
             "model_usage": agent.usage, "agent_settings": getattr(agent, "settings", None),
-            "stop": getattr(agent, "stop", None)}
+            "stop": getattr(agent, "stop", None),
+            **({"calls": calls_log} if os.environ.get("BMB_CONTEXT_LOG") == "1" else {})}
 
 
 def load_tasks(ids=None):

@@ -31,4 +31,5 @@ python3 bench/run_models.py --agent ... --sets brb-bmb,brb-rust   # 일부만, �
 - **시작 전 거부.** 커밋되지 않은 트리(`+dirty` 결과는 보고에 쓰지 않는다), MANIFEST 불일치, bvb-verus를 골랐는데 Verus 없음(`bench/bvb/verus/install.sh`). 같은 날짜·모델의 다른 커밋 결과 파일이 이미 있으면 덮어쓰지 않는다. 미커밋 판정은 결과 파일(`bench/*/results/`)을 세지 않는다.
 - **결과 위치.** `bench/<집합>/results/<날짜>-<모델>[-verus|-bmb|-rust].jsonl`. 보고서(1E-06)는 이 파일들로 쓴다.
 - **한 번에 채우는 지표.** G2(m1·m1b 작성 1회 성공률), G3(m1b BSB 판별률), H-SPEC 보조(BVB 명세 강도), H-FAMILIAR(BVB BMB 대 Verus, Verus 필요), G5·H-ORACLE·G8(BRB). 결과 행에 최종 파일이 남아(BRB `final_sources`) 나중에 정한 지표도 다시 돌리지 않고 계산한다.
+- **차례별 문맥 기록(선택, 백로그 2D-25).** `BMB_CONTEXT_LOG=1`이면 결과 행에 요청별 입력·출력 토큰(`model_usage.request_input_tokens`·`request_output_tokens`)과 호출별 도구·결과 바이트(`calls`)가 더해진다. 기본은 꺼져 결과 행이 그대로이고, 모델이 보는 것은 켜도 같다. 분해 도구는 `dev-docs/experiments/context-size/`.
 - 게이트(`bench run_models (dry run)`)는 Verus 없이 돌아 H-FAMILIAR를 "건너뜀"으로 보고하고 나머지 줄이 모두 채워지는지 확인한다.

@@ -42,6 +42,7 @@ READ_TOOLS = {"query", "map"}
 sys.path.insert(0, HERE)
 import bsb  # noqa: E402
 import resultlog  # noqa: E402
+from model_api import context_log  # noqa: E402
 
 
 def run_commit():
@@ -462,6 +463,10 @@ def run_task(task, agent_kind):
     if hasattr(agent, "set_tools"):
         agent.set_tools(mcp.tools + ([ANSWER_TOOL] if task["kind"] == "navigate" else []))
     m = {"tool_calls": 0, "read_calls": 0, "read_bytes": 0, "commits": 0, "e02": 0, "limit_hit": False}
+    # With BMB_CONTEXT_LOG=1 (model_api.context_log), every call's tool and
+    # result size, in order (backlog 2D-25): with the agent's per-request
+    # tokens they decompose each turn's context. Off by default.
+    calls_log = []
     tx = None
     answer = None
     last = []
@@ -490,6 +495,7 @@ def run_task(task, agent_kind):
                     m["read_calls"] += 1
                     m["read_bytes"] += len(text.encode())
                 m["e02"] += len(re.findall(r'"code":"E02\d\d"', text))
+                calls_log.append({"name": name, "bytes": len(text.encode()), "error": bool(err)})
                 last.append((name, args, text, err))
             if m["limit_hit"]:
                 break
@@ -516,6 +522,7 @@ def run_task(task, agent_kind):
         "model_usage": agent.usage,
         "agent_settings": getattr(agent, "settings", None),
         "stop": getattr(agent, "stop", None),
+        **({"calls": calls_log} if context_log() else {}),
     }
 
 

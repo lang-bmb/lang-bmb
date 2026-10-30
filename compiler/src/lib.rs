@@ -23,6 +23,7 @@ pub mod subproof;
 pub mod toolchain;
 pub mod uses_fill;
 pub mod verify;
+pub mod view;
 pub mod weaken;
 pub mod workspace;
 

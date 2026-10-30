@@ -135,6 +135,15 @@ class JudgeWrite(unittest.TestCase):
     def test_reference_is_accepted(self):
         r = run_with_ops(self.task, self.task["reference"])
         self.assertTrue(r["success"], self.verdict(r))
+        self.assertNotIn("calls", r)  # the call log is opt-in
+
+    def test_context_log_lists_every_call(self):
+        # BMB_CONTEXT_LOG=1: every call in order with its result size (backlog 2D-25).
+        with mock.patch.dict(os.environ, {"BMB_CONTEXT_LOG": "1"}):
+            r = run_with_ops(self.task, self.task["reference"])
+        names = [c[0] for c in harness.ops_to_calls(self.task["reference"])]
+        self.assertEqual([c["name"] for c in r["calls"]], names)
+        self.assertTrue(all(c["bytes"] > 0 for c in r["calls"]))
 
     def test_weak_reference_is_rejected(self):
         r = run_with_ops(self.task, self.task["weak_reference"])

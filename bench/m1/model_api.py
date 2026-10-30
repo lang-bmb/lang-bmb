@@ -44,6 +44,14 @@ class StreamCut(Exception):
     pass
 
 
+def context_log():
+    """`BMB_CONTEXT_LOG=1`: also record each request's tokens and each tool
+    call's result size (backlog 2D-25), to decompose every turn's context.
+    Off by default, so the result rows of a run stay as they were; what the
+    model sees is the same either way."""
+    return os.environ.get("BMB_CONTEXT_LOG") == "1"
+
+
 def sse_events(lines):
     """The JSON payloads of a server-sent event stream, up to `[DONE]`."""
     for raw in lines:
@@ -230,6 +238,9 @@ class OpenAIAgent:
         u = r.get("usage") or {}
         self.usage["input_tokens"] += u.get("prompt_tokens", 0)
         self.usage["output_tokens"] += u.get("completion_tokens", 0)
+        if context_log():
+            self.usage.setdefault("request_input_tokens", []).append(u.get("prompt_tokens", 0))
+            self.usage.setdefault("request_output_tokens", []).append(u.get("completion_tokens", 0))
         choice = r["choices"][0]
         msg = choice["message"]
         calls = msg.get("tool_calls") or []

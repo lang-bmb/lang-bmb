@@ -9,6 +9,11 @@ Measurement choices, recorded with each result:
 - no server-side model fallback: a refusal ends the session and is recorded,
   since a silent model switch would corrupt the measurement.
 """
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from model_api import context_log  # noqa: E402
 
 EFFORT = "high"
 MAX_TOKENS = 16000
@@ -70,6 +75,9 @@ class AnthropicAgent:
         self.usage["requests"] += 1
         self.usage["input_tokens"] += response.usage.input_tokens
         self.usage["output_tokens"] += response.usage.output_tokens
+        if context_log():  # model_api: opt-in per-request tokens (backlog 2D-25)
+            self.usage.setdefault("request_input_tokens", []).append(response.usage.input_tokens)
+            self.usage.setdefault("request_output_tokens", []).append(response.usage.output_tokens)
         if response.stop_reason == "refusal":
             self.stop = "refusal"
             return []
