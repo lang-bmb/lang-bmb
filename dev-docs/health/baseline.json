@@ -8,6 +8,7 @@
     "V7_unstable_queries": 0.0,
     "V8_bench_rlimit_total": 24992756,
     "V9_bench_defs_at_limit": 0,
+    "V10_library_rlimit_total": 13819750,
     "S1_external_crates": 0,
     "S2_external_processes": [
       "clang",
@@ -1412,6 +1413,16 @@
         "S4_stage0_rust_lines": [
           36200,
           36300
+        ]
+      }
+    },
+    {
+      "date": "2026-10-30",
+      "reason": "T2-08: 라이브러리 증명 비용 V10(lib/*.bmb 단독 + bench/game 제 정의, 예산 +10%) 기준선 13,819,750",
+      "changed": {
+        "V10_library_rlimit_total": [
+          null,
+          13819750
         ]
       }
     }

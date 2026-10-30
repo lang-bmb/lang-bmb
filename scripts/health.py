@@ -35,6 +35,9 @@ PROOF_SETS = ["tests/verify/pass", "tests/run", "bench/m1/seed/src", "bench/m1b/
 # Floating-point run programs whose proof, IR and output V6 also repeats
 # (ADR-0061 §6: no fast-math, no contraction, the same bits every time).
 FLOAT_PROGRAMS = ["tests/run/floats.bmb", "tests/run/mandel.bmb"]
+# The libraries and the programs built on them (V10, backlog T2-08).
+LIBRARIES = "lib"
+LIBRARY_PROGRAMS = "bench/game"
 ALLOWED_RUNTIME = {"linux-vdso.so.1", "libc.so.6", "ld-linux-x86-64.so.2"}
 
 
@@ -124,6 +127,34 @@ def bench_load():
                 total += row.get("rlimit_total", 0) + row.get("bsb_rlimit_total", 0)
                 at_limit += (row.get("rlimit_max", 0) >= limit) + (row.get("bsb_rlimit_max", 0) >= limit)
     return {"V8_bench_rlimit_total": total, "V9_bench_defs_at_limit": at_limit}
+
+
+def library_cost():
+    """V10 (backlog T2-08): the proof cost of the libraries and of the
+    Benchmarks Game programs that use them, which V4 does not see (T2-05's
+    probe moved `lib/*.bmb` by +20% and no metric moved). Each library is
+    proved alone and each game program with every library, as the tests
+    `libraries_are_proved` and `game_programs_are_proved` do; a game
+    program's rows count only its own definitions, the libraries' are
+    counted once, alone. One proof cache serves every run: a library's
+    obligations are the same queries in a program, and a cached obligation
+    reports the `rlimit` it was proved with."""
+    libs = sorted(str(p.relative_to(ROOT)) for p in (ROOT / LIBRARIES).glob("*.bmb"))
+    games = sorted(str(p.relative_to(ROOT)) for p in (ROOT / LIBRARY_PROGRAMS).glob("*.bmb"))
+    rows, lib_defs = [], set()
+    with tempfile.TemporaryDirectory() as cache:
+        for lib in libs:
+            r = verify_rows(["--cache", cache, lib])[1]
+            lib_defs |= {x["def"] for x in r}
+            rows += r
+        for game in games:
+            rows += [x for x in verify_rows(["--cache", cache, game, *libs])[1] if x["def"] not in lib_defs]
+    worst = max(rows, key=lambda r: r["rlimit_max"])
+    return {
+        "V10_library_rlimit_total": sum(r["rlimit"] for r in rows),
+        "_library_unproved_defs": sum(r["status"] != "verified" for r in rows),
+        "_library_worst_obligation": f"{worst['def']} {round(worst['rlimit_max'] / toolchain_rlimit(), 4)}",
+    }
 
 
 def solver_stability():
@@ -257,6 +288,7 @@ RULES = {
     "V7_unstable_queries": ("fixed_below", 0.026),
     "V8_bench_rlimit_total": ("budget", 0.10),
     "V9_bench_defs_at_limit": ("no_worse_down", None),
+    "V10_library_rlimit_total": ("budget", 0.10),
     "S1_external_crates": ("fixed", 0),
     "S2_external_processes": ("same", None),
     "S3_runtime_libs_outside_libc": ("fixed", []),
@@ -274,8 +306,8 @@ RULES = {
 
 def compute():
     m = {}
-    for f in (diag_coverage, proof_metrics, solver_stability, bench_load, helpful_errors, self_containment,
-              practicality, binary_size, process):
+    for f in (diag_coverage, proof_metrics, library_cost, solver_stability, bench_load, helpful_errors,
+              self_containment, practicality, binary_size, process):
         m.update(f())
     return m
 
