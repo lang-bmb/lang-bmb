@@ -30,6 +30,12 @@ cost), `--limit N` tasks per set, into a temporary directory, and checks that
 each metric line appears. The gate runs it (backlog INF-14). The Verus side is
 skipped when Verus is not installed, so H-FAMILIAR then reads "skipped".
 
+Interrupted runs resume (backlog INF-16). The harnesses write each session's
+row as it finishes. Run again with the same arguments: a set already finished on
+this commit with this model is not run again and its file is reported, and a
+set left partial on this commit continues from the tasks without a row (a task
+is never run twice, so this is not a retry).
+
 Real runs refuse to start on an uncommitted tree (results from `+dirty`
 commits are not reported, ADR-0021), or with bvb-verus selected and Verus
 missing. Models and endpoints are the ones ADR-0066 approves
@@ -48,6 +54,7 @@ import tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, os.path.join(HERE, "m1"))
+import resultlog  # noqa: E402
 from model_api import is_model_kind  # noqa: E402
 PY = sys.executable
 
@@ -96,9 +103,8 @@ def verus_installed():
 def usage_of(path):
     """(sessions, input tokens, output tokens) recorded in a results file."""
     n = i = o = 0
-    for line in open(path):
-        r = json.loads(line)
-        if r.get("summary"):
+    for r in resultlog.read(path):
+        if "id" not in r:  # summary, or a partial run's header and resume marks
             continue
         u = r.get("model_usage") or {}
         n, i, o = n + 1, i + u.get("input_tokens", 0), o + u.get("output_tokens", 0)
@@ -166,7 +172,8 @@ def report(paths, skipped):
 
 def preflight_real(sets):
     problems = []
-    if subprocess.run(["git", "status", "--porcelain"], cwd=ROOT, capture_output=True, text=True).stdout.strip():
+    if subprocess.run(["git", "status", "--porcelain", "--", ".", ":!bench/*/results/*"], cwd=ROOT,
+                      capture_output=True, text=True).stdout.strip():
         problems.append("커밋되지 않은 변경이 있다(+dirty 결과는 보고에 쓰지 않는다)")
     if "bvb-verus" in sets and not verus_installed():
         problems.append("Verus가 없다: bench/bvb/verus/install.sh, 또는 --sets에서 bvb-verus를 뺀다")
@@ -176,6 +183,24 @@ def preflight_real(sets):
         if r.returncode != 0:
             problems.append(f"{' '.join(argv[1:])}: {r.stderr.strip()[-200:]}")
     return problems
+
+
+def earlier_run(results_dir, model, suffix, agent, commit):
+    """("finished" | "partial", path) of this set's results file for this
+    model, agent and commit, or (None, None). A run is named by its first day,
+    so a resumed run keeps its file."""
+    d = os.path.join(ROOT, results_dir)
+    pattern = re.compile(r"\d{4}-\d{2}-\d{2}-" + re.escape(model + suffix) + r"\.jsonl$")
+    for f in sorted(os.listdir(d)) if os.path.isdir(d) else []:
+        if pattern.match(f):
+            state, head = resultlog.status(os.path.join(d, f))
+            if state and head.get("agent") == agent and head.get("commit") == commit:
+                return state, os.path.join(d, f)
+    return None, None
+
+
+def head_commit():
+    return subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
 
 
 def main(argv=None):
@@ -208,6 +233,7 @@ def main(argv=None):
             sys.exit("not starting:\n- " + "\n- ".join(problems))
         model = args.agent.split(":", 1)[1]
         stamp = datetime.date.today().isoformat()
+        commit = head_commit()
     out_dir = args.out_dir or (None if real else tempfile.mkdtemp(prefix="bmb-models-"))
 
     paths, skipped = {}, {}
@@ -223,6 +249,16 @@ def main(argv=None):
         if args.limit:
             task_ids = task_ids[:args.limit]
         if real:
+            suffix = {"m1": "", "m1b": "", "bvb": "", "bvb-verus": "-verus", "brb-bmb": "-bmb", "brb-rust": "-rust"}[name]
+            state, out = earlier_run(results_dir, model, suffix, args.agent, commit)
+            if state == "finished":
+                print(f"run_models: {name}: already measured on this commit ({os.path.relpath(out, ROOT)})",
+                      file=sys.stderr)
+                paths[name] = out
+                n, ti, to = usage_of(out)
+                sessions += n
+                spent += cost(ti, to, args.price_in, args.price_out)
+                continue
             if why := over_budget(spent, sessions, len(task_ids), args.budget):
                 skipped[name] = why
                 print(f"run_models: stop before {name}: {why}", file=sys.stderr)
@@ -230,10 +266,12 @@ def main(argv=None):
                     skipped[rest] = "예산으로 멈춤"
                 break
             os.makedirs(os.path.join(ROOT, results_dir), exist_ok=True)
-            suffix = {"m1": "", "m1b": "", "bvb": "", "bvb-verus": "-verus", "brb-bmb": "-bmb", "brb-rust": "-rust"}[name]
-            out = os.path.join(ROOT, results_dir, f"{stamp}-{model}{suffix}.jsonl")
-            if os.path.exists(out):
-                sys.exit(f"{out} exists: a frozen set is run once (ADR-0021)")
+            if state == "partial":
+                print(f"run_models: {name}: resuming {os.path.relpath(out, ROOT)}", file=sys.stderr)
+            else:
+                out = os.path.join(ROOT, results_dir, f"{stamp}-{model}{suffix}.jsonl")
+                if os.path.exists(out):
+                    sys.exit(f"{out} exists: a frozen set is run once (ADR-0021)")
             cmd = run_argv(args.agent, out, [], True)
         else:
             out = os.path.join(out_dir, f"{name}.jsonl")

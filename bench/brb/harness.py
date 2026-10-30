@@ -514,10 +514,6 @@ def summarize(paths):
 
 # ---------- main ----------
 
-def git(*args):
-    return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True).stdout.strip()
-
-
 def main():
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -572,32 +568,39 @@ def main():
         return
 
     proptest = args.proptest == "on"
+    commit = m1.run_commit()
+    # Rows are written as sessions finish and an interrupted run resumes (INF-16).
+    log = m1.resultlog.ResultLog(args.out, {"agent": args.agent, "task_set": "brb", "arm": args.arm,
+                                            "manifest": manifest_digest(), "commit": commit,
+                                            "tasks": [t.ID for t in ts]})
+
+    def session(t):
+        r = run_session(t, args.arm, args.agent, tmp_target, proptest)
+        log.add(r)
+        return r
+
     tmp_target = tempfile.mkdtemp(prefix="brb-target-")
     try:
         if args.arm == "rust":
             warm_rust(tmp_target, proptest)
-        results = list(pool.map(lambda t: run_session(t, args.arm, args.agent, tmp_target, proptest), ts))
+        list(pool.map(session, [t for t in ts if not log.done(t.ID)]))
     finally:
         shutil.rmtree(tmp_target, ignore_errors=True)
+    results = [log.rows[t.ID] for t in ts]
     for r in results:
         print(json.dumps(r, ensure_ascii=False))
-    commit = git("rev-parse", "HEAD")
-    dirty = bool(git("status", "--porcelain", "--", ".", ":!bench/*/results/*"))  # earlier sets' results
     n = len(results)
     summary = {
         "summary": True, "task_set": "brb", "arm": args.arm, "agent": args.agent, "tasks": n,
         "proptest": proptest if args.arm == "rust" else None,
-        "manifest": manifest_digest(), "commit": commit + ("+dirty" if dirty else ""),
+        "manifest": manifest_digest(), "commit": commit,
         "limits": {"tool_calls": MAX_TOOL_CALLS, "session_output_tokens": SESSION_OUTPUT_TOKENS},
         "success": f"{sum(r['success'] for r in results)}/{n}",
         "defect_rate": round(sum(r["defect"] for r in results) / n, 3) if n else None,
         "total_tokens": sum(r["total_tokens"] for r in results),
     }
+    log.finish(results, summary)
     print(json.dumps(summary, ensure_ascii=False))
-    if args.out:
-        with open(args.out, "w") as f:
-            for r in results + [summary]:
-                f.write(json.dumps(r, ensure_ascii=False) + "\n")
     if args.expect == "all-pass" and not all(r["success"] and r["final_check_ok"] for r in results):
         sys.exit("expected every task to pass the hidden judge and its own checker")
     if args.expect == "weak-fail":

@@ -433,6 +433,30 @@ class Summarize(unittest.TestCase):
             self.assertIn("| 명세 변이체 판별률 | 6/8 (75.0%) |", harness.summarize([p]))
 
 
+class Resume(unittest.TestCase):
+    """An interrupted run continues to the file one uninterrupted run writes
+    (backlog INF-16)."""
+
+    def run_harness(self, out):
+        subprocess.run([sys.executable, os.path.join(HERE, "harness.py"), "run", "--agent", "oracle", "--tasks",
+                        "n01-callers,w02-abs-diff", "--out", out], check=True, capture_output=True)
+        with open(out) as f:
+            return [json.loads(line) for line in f]
+
+    def test_resumed_run_has_the_rows_of_one_run(self):
+        d = tempfile.mkdtemp()
+        whole = self.run_harness(os.path.join(d, "whole.jsonl"))
+        s = whole[-1]
+        cut = os.path.join(d, "cut.jsonl")
+        with open(cut, "w") as f:  # stopped after the first session
+            head = {"partial": True, "agent": "oracle", "task_set": "m1", "manifest": s["manifest"],
+                    "commit": s["commit"], "tasks": ["n01-callers", "w02-abs-diff"]}
+            f.write(json.dumps(head) + "\n" + json.dumps(whole[0]) + "\n")
+        resumed = self.run_harness(cut)
+        self.assertEqual(resumed[:-1], whole[:-1])
+        self.assertEqual(resumed[-1], {**s, "resumes": 1})
+
+
 if __name__ == "__main__":
     # The harness leaves subprocess pipes to the garbage collector.
     unittest.main(warnings="ignore")

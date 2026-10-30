@@ -54,6 +54,7 @@ sys.path.insert(0, M1)  # anthropic_agent
 _spec = importlib.util.spec_from_file_location("bmb_harness", os.path.join(M1, "harness.py"))
 bmb_harness = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(bmb_harness)
+import resultlog  # noqa: E402
 
 MAX_TOOL_CALLS = bmb_harness.MAX_TOOL_CALLS
 SKELETON = "use vstd::prelude::*;\n\nfn main() {}\n\nverus! {\n\n} // verus!\n"
@@ -312,23 +313,26 @@ def load_tasks(ids=None):
 
 def run(args, verifier):
     tasks = load_tasks(args.tasks)
+    commit = bmb_harness.run_commit()
+    log = resultlog.ResultLog(args.out, {"agent": args.agent, "task_set": "bvb-verus",
+                                         "manifest": bmb_harness.manifest_digest(), "commit": commit,
+                                         "tasks": [t["id"] for t in tasks]})
+
+    def session(t):
+        r = run_task(t, args.agent, verifier)
+        log.add(r)
+        return r
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
-        results = list(pool.map(lambda t: run_task(t, args.agent, verifier), tasks))
+        list(pool.map(session, [t for t in tasks if not log.done(t["id"])]))
+    results = [log.rows[t["id"]] for t in tasks]
     for r in results:
         print(json.dumps(r, ensure_ascii=False))
-    commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
-    # Result files of earlier sets in the same run are not source changes.
-    dirty = bool(subprocess.run(["git", "status", "--porcelain", "--", ".", ":!bench/*/results/*"], cwd=ROOT,
-                                capture_output=True, text=True).stdout.strip())
     summary = {"summary": True, "agent": args.agent, "tasks": len(results), "task_set": "bvb-verus",
                "manifest": bmb_harness.manifest_digest(), "verus_version": getattr(verifier, "version", None),
-               "commit": commit + ("+dirty" if dirty else ""),
-               "write_success": f"{sum(r['success'] for r in results)}/{len(results)}"}
+               "commit": commit, "write_success": f"{sum(r['success'] for r in results)}/{len(results)}"}
+    log.finish(results, summary)
     print(json.dumps(summary, ensure_ascii=False))
-    if args.out:
-        with open(args.out, "w") as f:
-            for r in results + [summary]:
-                f.write(json.dumps(r, ensure_ascii=False) + "\n")
     if args.expect == "all-pass" and not all(r["success"] for r in results):
         sys.exit("expected every task to pass: " + ", ".join(r["id"] for r in results if not r["success"]))
     if args.expect == "weak-fail" and (not results or any(r["success"] or not r["verified"] for r in results)):
