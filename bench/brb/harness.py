@@ -582,7 +582,7 @@ def main():
     for r in results:
         print(json.dumps(r, ensure_ascii=False))
     commit = git("rev-parse", "HEAD")
-    dirty = bool(git("status", "--porcelain"))
+    dirty = bool(git("status", "--porcelain", "--", ".", ":!bench/*/results/*"))  # earlier sets' results
     n = len(results)
     summary = {
         "summary": True, "task_set": "brb", "arm": args.arm, "agent": args.agent, "tasks": n,

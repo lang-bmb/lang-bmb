@@ -641,7 +641,9 @@ def main():
     write = [r for r in results if r["kind"] == "write"]
     nav = [r for r in results if r["kind"] == "navigate"]
     commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
-    dirty = bool(subprocess.run(["git", "status", "--porcelain"], cwd=ROOT, capture_output=True, text=True).stdout.strip())
+    # Result files of earlier sets in the same run are not source changes.
+    dirty = bool(subprocess.run(["git", "status", "--porcelain", "--", ".", ":!bench/*/results/*"], cwd=ROOT,
+                                capture_output=True, text=True).stdout.strip())
     summary = {
         "summary": True, "agent": args.agent, "tasks": len(results),
         "task_set": set_name(), "manifest": manifest_digest(),

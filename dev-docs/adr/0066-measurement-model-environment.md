@@ -31,7 +31,8 @@
 ## 결과
 
 - 하네스(`bench/m1`·`bench/brb`·`bench/bvb/verus`·`bench/bnb`)는 `model_api.make_model_agent`로 에이전트를 만든다. Anthropic 에이전트는 SDK 대신 표준 라이브러리 클라이언트를 쓴다(같은 `messages.create` 꼴, 설정은 그대로 `effort: high`).
-- BRB의 MANIFEST는 `harness.py`를 담으므로 다시 동결했다. 바뀐 것은 에이전트 종류 분기뿐이고 과제·프롬프트·판정은 그대로이며, BRB에는 아직 정식 측정 결과가 없다(파일럿만). 정식 결과가 생기기 전의 재동결은 선례가 있다(699ebdc0). m1·m1b·BVB의 MANIFEST는 하네스 코드를 담지 않아 그대로다.
+- BRB의 MANIFEST는 `harness.py`를 담으므로 다시 동결했다. 바뀐 것은 에이전트 종류 분기와 `+dirty` 판정뿐이고 과제·프롬프트·판정은 그대로이며, BRB에는 아직 정식 측정 결과가 없다(파일럿만). 정식 결과가 생기기 전의 재동결은 선례가 있다(699ebdc0). m1·m1b·BVB의 MANIFEST는 하네스 코드를 담지 않아 그대로다.
+- 하네스의 `+dirty` 판정은 `bench/*/results/`를 세지 않는다. 한 실행이 집합을 차례로 돌 때 앞 집합의 결과 파일 때문에 뒤 집합이 `+dirty`(보고 제외)로 찍히던 결함이다.
 - `bench/run_models.py`는 `openai:`·`anthropic:` 둘을 받고 `ANTHROPIC_API_KEY`를 요구하지 않는다. 게이트웨이는 가격을 알려 주지 않으므로 가격 인자는 그대로 둔다(로컬 qwen은 0, sonnet은 제공자 가격표).
 - 데이터: qwen은 게이트웨이의 로컬 장비에서 돈다. sonnet은 외부 제공자로 나가며 게이트웨이 표시로 보존 30일·학습 사용 없음이다. 보내는 것은 동결 과제와 BMB 코드뿐이다.
 - 백로그: T0-03은 이 경로로 진행한다. qwen 정식 측정(m1·m1b·BVB·BRB)과 sonnet 교차 비교가 다음 태스크다.

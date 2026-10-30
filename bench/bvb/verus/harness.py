@@ -317,7 +317,9 @@ def run(args, verifier):
     for r in results:
         print(json.dumps(r, ensure_ascii=False))
     commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
-    dirty = bool(subprocess.run(["git", "status", "--porcelain"], cwd=ROOT, capture_output=True, text=True).stdout.strip())
+    # Result files of earlier sets in the same run are not source changes.
+    dirty = bool(subprocess.run(["git", "status", "--porcelain", "--", ".", ":!bench/*/results/*"], cwd=ROOT,
+                                capture_output=True, text=True).stdout.strip())
     summary = {"summary": True, "agent": args.agent, "tasks": len(results), "task_set": "bvb-verus",
                "manifest": bmb_harness.manifest_digest(), "verus_version": getattr(verifier, "version", None),
                "commit": commit + ("+dirty" if dirty else ""),
