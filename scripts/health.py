@@ -159,11 +159,13 @@ def library_cost():
 
 def solver_stability():
     """V7: the share of obligations whose verdict changes under meaning-
-    preserving query changes (backlog 1B-40, scripts/solver_stability.py)."""
+    preserving query changes (backlog 1B-40, scripts/solver_stability.py).
+    An obligation's verdict is that of all its stages (backlog T2-07)."""
     sys.path.insert(0, str(ROOT / "scripts"))
     import solver_stability
     r = solver_stability.measure(solver_stability.default_paths(), 1, str(BMB))
-    return {"V7_unstable_queries": r["ratio"], "_stability_obligations": r["obligations"]}
+    return {"V7_unstable_queries": r["ratio"], "_stability_obligations": r["obligations"],
+            "_stability_stages": r["stages"]}
 
 
 def diag_coverage():

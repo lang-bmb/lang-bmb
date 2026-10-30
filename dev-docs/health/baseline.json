@@ -15,7 +15,7 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 36300,
+    "S4_stage0_rust_lines": 36342,
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
     "P1_runnable_programs": 58,
@@ -1423,6 +1423,16 @@
         "V10_library_rlimit_total": [
           null,
           13819750
+        ]
+      }
+    },
+    {
+      "date": "2026-10-30",
+      "reason": "T2-07: V7가 의무의 모든 단계(추상화 시도·탐침·전체 질의·재시도)를 변형마다 풀어 판정을 잰다. 재측정 의무 2,687개(단계 3,793개) 0 -> 0. T2-06(ADR-0069)의 S4 증가 포함",
+      "changed": {
+        "S4_stage0_rust_lines": [
+          36300,
+          36342
         ]
       }
     }

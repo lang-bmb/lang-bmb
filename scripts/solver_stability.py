@@ -13,9 +13,16 @@ again under meaning-preserving changes, after Mariposa (Zhou et al., 2023):
   seed      other `smt.random_seed` and `sat.random_seed` values
   all       the three together
 
-An obligation is unstable when some variant's verdict (proved = `unsat`,
-anything else = not proved) differs from the unchanged script's. The resource
-limit (`rlimit`) stays the compiler's, so verdicts do not depend on time or
+An obligation may take several attempts (stages): the abstracted query of a
+bit obligation (ADR-0048 §4), the probe with every leaf definition a macro
+(ADR-0067), the full or exact query, and the retry with ground instances
+(ADR-0023) when it ran. Its verdict is proved when some stage answers
+`unsat`, as in the compiler. Every stage is solved, unchanged and under each
+variant (backlog T2-07), and an obligation is unstable when some variant's
+verdict differs from the unchanged script's. A retry the compiler did not
+need is not in the script, so a variant that leaves the full query undecided
+is not given one: the measure errs towards unstable. The resource limit
+(`rlimit`) stays the compiler's, so verdicts do not depend on time or
 machine load. Variant k of an obligation is seeded by its file, index and k:
 the same input gives the same report. The ratio of unstable obligations is
 health metric V7 (fixed below 2.6%, Mariposa's measured rate for Dafny and
@@ -37,21 +44,28 @@ SYM = re.compile(r"\|[^|]*\||\bbmb_[A-Za-z0-9_]+\b")
 SEED = re.compile(r"\(set-option :(smt|sat)\.random_seed \d+\)")
 
 
+STAGE = re.compile(r"^; (probe of obligation|obligation|exact query of obligation|retry of obligation) (\d+)",
+                   re.M)
+
+
 def blocks(script):
-    """The obligations of one emitted script: (header comment, commands).
-    A retry with ground instances (after an `unknown`) is left out: the
-    measure is the first attempt's verdict. With bit operations the first
-    attempt is the abstracted query, and the exact one follows (ADR-0048 §4).
-    The probe with every leaf definition a macro (ADR-0067), which comes just
-    before the full query, is left out too: the measure is the query that
-    decides when the probe does not (backlog T2-07)."""
-    out = []
-    for part in script.split("; obligation ")[1:]:
-        head, _, body = part.partition("\n")
-        for cut in ("; retry of obligation ", "; exact query of obligation ", "; probe of obligation "):
-            body = body.split(cut)[0]
-        out.append((head.strip(), body))
-    return out
+    """The obligations of one emitted script, in order: (header comment,
+    [stage bodies]). The stages are the obligation's attempts in the order
+    the compiler makes them: the probe (`; probe of obligation k`) comes just
+    before the full query (`; obligation k`), or after the abstracted
+    attempt of a bit obligation (whose header is `; obligation k`) and
+    before its exact query (`; exact query of obligation k`); a retry
+    (`; retry of obligation k`) follows."""
+    heads, stages = {}, {}
+    marks = list(STAGE.finditer(script))
+    for n, m in enumerate(marks):
+        end = marks[n + 1].start() if n + 1 < len(marks) else len(script)
+        line, _, body = script[m.start():end].partition("\n")
+        k = int(m.group(2))
+        stages.setdefault(k, []).append(body)
+        if m.group(1) == "obligation":
+            heads[k] = line[len("; obligation "):].strip()
+    return [(heads.get(k, str(k)), stages[k]) for k in stages]
 
 
 def commands(body):
@@ -132,10 +146,42 @@ def sources(paths):
     return progs
 
 
+def proved(answers):
+    """An obligation's verdict from its stages' answers: some `unsat`."""
+    return "unsat" in answers
+
+
+def unstable_obligations(name, f, obs, variants):
+    """(answers per obligation, {index: changes}) for the obligations `obs`
+    (stage command lists) of definition file `f` of program `name`: every
+    stage solved unchanged and under each variant, the verdicts compared."""
+    queries = ["\n".join(c) for stages in obs for c in stages]
+    tried = []
+    for i, stages in enumerate(obs):
+        for kind in KINDS:
+            for k in range(variants):
+                key = f"{name}:{f}:{i}:{kind}:{k}"
+                rng = random.Random(hashlib.sha256(key.encode()).digest())
+                tried.append((i, kind, k, len(stages)))
+                queries += ["\n".join(variant(c, kind, rng)) for c in stages]
+    answers = solve(queries)
+    base, at = [], 0
+    for stages in obs:
+        base.append(answers[at:at + len(stages)])
+        at += len(stages)
+    changed = {}
+    for i, kind, k, n in tried:
+        got = answers[at:at + n]
+        at += n
+        if proved(got) != proved(base[i]):
+            changed.setdefault(i, []).append(f"{kind}#{k}:{'/'.join(got)}")
+    return base, changed
+
+
 def measure(paths, variants=1, bmb=None):
     bmb = bmb or os.environ.get("BMB", os.path.join(ROOT, "target", "release", "bmb"))
     rows, unstable = [], []
-    total = 0
+    total = stages = 0
     for name, files in sources(paths):
         with tempfile.TemporaryDirectory() as d:
             subprocess.run([bmb, "verify", "--emit-smt", d, *files], capture_output=True, text=True)
@@ -144,28 +190,16 @@ def measure(paths, variants=1, bmb=None):
                 obs = blocks(text)
                 if not obs:
                     continue
-                base_cmds = [commands(body) for _, body in obs]
-                scripts = ["\n".join(c) for c in base_cmds]
-                tried = []
-                for i, cmds in enumerate(base_cmds):
-                    for kind in KINDS:
-                        for k in range(variants):
-                            key = f"{name}:{f}:{i}:{kind}:{k}"
-                            rng = random.Random(hashlib.sha256(key.encode()).digest())
-                            tried.append((i, kind, k, "\n".join(variant(cmds, kind, rng))))
-                answers = solve(scripts + [t[3] for t in tried])
-                base, var = answers[:len(scripts)], answers[len(scripts):]
-                changed = {}
-                for (i, kind, k, _), a in zip(tried, var):
-                    if (a == "unsat") != (base[i] == "unsat"):
-                        changed.setdefault(i, []).append(f"{kind}#{k}:{a}")
-                for i, (head, _) in enumerate(obs):
+                cmds = [[commands(body) for body in bodies] for _, bodies in obs]
+                base, changed = unstable_obligations(name, f, cmds, variants)
+                for i, (head, bodies) in enumerate(obs):
                     total += 1
+                    stages += len(bodies)
                     if i in changed:
                         unstable.append({"program": name, "def": f[:-len(".smt2")], "obligation": head,
-                                         "base": base[i], "changed": changed[i]})
+                                         "base": "/".join(base[i]), "changed": changed[i]})
         rows.append(name)
-    return {"programs": len(rows), "obligations": total, "variants_per_kind": variants,
+    return {"programs": len(rows), "obligations": total, "stages": stages, "variants_per_kind": variants,
             "unstable": len(unstable), "ratio": round(len(unstable) / total, 4) if total else 0.0,
             "unstable_obligations": unstable}
 
@@ -194,7 +228,8 @@ def main():
     if args.json:
         print(json.dumps(r, ensure_ascii=False))
         return
-    print(f"programs {r['programs']}, obligations {r['obligations']}, variants {len(KINDS)} x {args.variants}")
+    print(f"programs {r['programs']}, obligations {r['obligations']} ({r['stages']} stages), "
+          f"variants {len(KINDS)} x {args.variants}")
     print(f"unstable {r['unstable']} ({100 * r['ratio']:.2f}%)")
     for u in r["unstable_obligations"]:
         print(f"  {u['program']} {u['def']} [{u['obligation']}]: base {u['base']}, {', '.join(u['changed'])}")
