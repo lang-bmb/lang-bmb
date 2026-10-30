@@ -1,9 +1,9 @@
 {"code":"E0802","severity":"error","message":"postcondition `doubled` may not hold in `df::Shape::twice`; counterexample: self = Self#0","file":"fail/trait_defaults.bmb","line":17,"col":21,"end_line":17,"end_col":45}
 {"code":"E0810","severity":"error","message":"assertion may not hold in `df::bounded`; counterexample: x = T#0","file":"fail/trait_defaults.bmb","line":70,"col":9,"end_line":70,"end_col":39}
-{"def":"<df::Big as df::Shape>::area","status":"verified","obligations":2,"failed":0,"rlimit":1690,"rlimit_max":1408}
-{"def":"<df::Big as df::Shape>::twice","status":"verified","obligations":2,"failed":0,"rlimit":2612,"rlimit_max":2294}
-{"def":"<df::Sq as df::Shape>::area","status":"verified","obligations":2,"failed":0,"rlimit":1690,"rlimit_max":1408}
+{"def":"<df::Big as df::Shape>::area","status":"verified","obligations":2,"failed":0,"rlimit":1465,"rlimit_max":1194}
+{"def":"<df::Big as df::Shape>::twice","status":"verified","obligations":2,"failed":0,"rlimit":2384,"rlimit_max":2057}
+{"def":"<df::Sq as df::Shape>::area","status":"verified","obligations":2,"failed":0,"rlimit":1465,"rlimit_max":1194}
 {"def":"df::Shape::twice","status":"failed","obligations":1,"failed":1,"rlimit":33572,"rlimit_max":33572}
 {"def":"df::bounded","status":"failed","obligations":1,"failed":1,"rlimit":313,"rlimit_max":313}
-{"def":"df::labels","status":"verified","obligations":2,"failed":0,"rlimit":2343,"rlimit_max":1396}
-{"def":"df::main","status":"verified","obligations":1,"failed":0,"rlimit":1842,"rlimit_max":1842}
+{"def":"df::labels","status":"verified","obligations":2,"failed":0,"rlimit":627,"rlimit_max":355}
+{"def":"df::main","status":"verified","obligations":1,"failed":0,"rlimit":1794,"rlimit_max":1794}

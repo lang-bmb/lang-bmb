@@ -9,7 +9,7 @@
 {"def":"vf::after_pop","status":"failed","obligations":3,"failed":1,"rlimit":2203,"rlimit_max":1488}
 {"def":"vf::after_push_loop","status":"failed","obligations":8,"failed":1,"rlimit":3678,"rlimit_max":964}
 {"def":"vf::capacity","status":"failed","obligations":1,"failed":1,"rlimit":1494,"rlimit_max":1494}
-{"def":"vf::pop_some","status":"failed","obligations":1,"failed":1,"rlimit":1482,"rlimit_max":1482}
+{"def":"vf::pop_some","status":"failed","obligations":1,"failed":1,"rlimit":968,"rlimit_max":968}
 {"def":"vf::touch","status":"verified","obligations":0,"failed":0,"rlimit":0,"rlimit_max":0}
 {"def":"vf::truncated","status":"failed","obligations":1,"failed":1,"rlimit":937,"rlimit_max":937}
 {"def":"vf::unbounded","status":"failed","obligations":1,"failed":1,"rlimit":662,"rlimit_max":662}

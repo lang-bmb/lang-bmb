@@ -1,9 +1,9 @@
-{"code":"E0802","severity":"error","message":"postcondition `same` may not hold in `geo::after_call`; counterexample: p = Point { x: -9223372036854774572, y: -9223372036854773370 }","file":"fail/structs.bmb","line":24,"col":17,"end_line":24,"end_col":27}
-{"code":"E0802","severity":"error","message":"postcondition `same` may not hold in `geo::after_write`; counterexample: s = Seg { a: Point { x: 2, y: 0 }, b: Point { x: 0, y: 0 } }","file":"fail/structs.bmb","line":35,"col":17,"end_line":35,"end_col":29}
-{"code":"E0802","severity":"error","message":"postcondition `y_kept` may not hold in `geo::after_loop`; counterexample: p = Point { x: 0, y: -9223372036854768089 }","file":"fail/structs.bmb","line":46,"col":17,"end_line":46,"end_col":29}
+{"code":"E0802","severity":"error","message":"postcondition `same` may not hold in `geo::after_call`; counterexample: p = Point { x: 0, y: -1 }","file":"fail/structs.bmb","line":24,"col":17,"end_line":24,"end_col":27}
+{"code":"E0802","severity":"error","message":"postcondition `same` may not hold in `geo::after_write`; counterexample: s = Seg { a: Point { x: 0, y: 0 }, b: Point { x: 0, y: 0 } }","file":"fail/structs.bmb","line":35,"col":17,"end_line":35,"end_col":29}
+{"code":"E0802","severity":"error","message":"postcondition `y_kept` may not hold in `geo::after_loop`; counterexample: p = Point { x: 0, y: 0 }","file":"fail/structs.bmb","line":46,"col":17,"end_line":46,"end_col":29}
 {"code":"E0810","severity":"error","message":"assertion may not hold in `geo::param`; counterexample: p = Point { x: 0, y: 0 }","file":"fail/structs.bmb","line":65,"col":9,"end_line":65,"end_col":26}
 {"code":"E0803","severity":"error","message":"`*` may overflow `i64` in `geo::overflow`; counterexample: p = Point { x: 4611686018427387904, y: 0 }","file":"fail/structs.bmb","line":70,"col":9,"end_line":70,"end_col":16}
-{"code":"E0802","severity":"error","message":"postcondition `same` may not hold in `geo::branch`; counterexample: c = false, p = Point { x: 1, y: 11798 }, q = Point { x: 0, y: 0 }","file":"fail/structs.bmb","line":76,"col":17,"end_line":76,"end_col":27}
+{"code":"E0802","severity":"error","message":"postcondition `same` may not hold in `geo::branch`; counterexample: c = false, p = Point { x: 0, y: -9223372036854745196 }, q = Point { x: 9223372036854775807, y: -9223372036854745195 }","file":"fail/structs.bmb","line":76,"col":17,"end_line":76,"end_col":27}
 {"code":"E0802","severity":"error","message":"postcondition `same_box` may not hold in `geo::element_differs`; counterexample: p = Box2 { w: [-9223372036854775770, -1] (len 2), tag: false }","file":"fail/structs.bmb","line":93,"col":17,"end_line":93,"end_col":31}
 {"code":"E0802","severity":"error","message":"postcondition `on_diag` may not hold in `geo::off_diag`; counterexample: a = -9223372036854775770","file":"fail/structs.bmb","line":101,"col":17,"end_line":101,"end_col":27}
 {"code":"E0805","severity":"error","message":"index may be out of bounds in `geo::set_cell`; counterexample: g = Grid { w: [3, 3, 3] (len 3) }, i = 3","file":"fail/structs.bmb","line":111,"col":9,"end_line":111,"end_col":15}
@@ -13,17 +13,17 @@
 {"code":"E0802","severity":"error","message":"postcondition `first_is` may not hold in `geo::wrong_first`; counterexample: a = [Point { x: -9223372036854767442, y: -9223372036854743522 }, Point { x: -9223372036854767443, y: -9223372036854743523 }] (len 2)","file":"fail/structs.bmb","line":149,"col":17,"end_line":149,"end_col":34}
 {"code":"E0802","severity":"error","message":"postcondition `is_123` may not hold in `geo::not_123`","file":"fail/structs.bmb","line":160,"col":17,"end_line":160,"end_col":26}
 {"def":"geo::Point::bump","status":"verified","obligations":0,"failed":0,"rlimit":0,"rlimit_max":0}
-{"def":"geo::after_call","status":"failed","obligations":1,"failed":1,"rlimit":5001058,"rlimit_max":5000225}
-{"def":"geo::after_loop","status":"failed","obligations":7,"failed":1,"rlimit":5004621,"rlimit_max":5000249}
-{"def":"geo::after_write","status":"failed","obligations":1,"failed":1,"rlimit":5000919,"rlimit_max":5000225}
-{"def":"geo::branch","status":"failed","obligations":1,"failed":1,"rlimit":5001337,"rlimit_max":5000229}
+{"def":"geo::after_call","status":"failed","obligations":1,"failed":1,"rlimit":886,"rlimit_max":886}
+{"def":"geo::after_loop","status":"failed","obligations":7,"failed":1,"rlimit":4397,"rlimit_max":1076}
+{"def":"geo::after_write","status":"failed","obligations":1,"failed":1,"rlimit":755,"rlimit_max":755}
+{"def":"geo::branch","status":"failed","obligations":1,"failed":1,"rlimit":1296,"rlimit_max":1296}
 {"def":"geo::element_differs","status":"failed","obligations":2,"failed":1,"rlimit":1430,"rlimit_max":1233}
 {"def":"geo::local_elem","status":"failed","obligations":1,"failed":1,"rlimit":2172,"rlimit_max":2172}
 {"def":"geo::not_123","status":"failed","obligations":1,"failed":1,"rlimit":291,"rlimit_max":291}
-{"def":"geo::off_diag","status":"failed","obligations":1,"failed":1,"rlimit":5000785,"rlimit_max":5000236}
+{"def":"geo::off_diag","status":"failed","obligations":1,"failed":1,"rlimit":5051027,"rlimit_max":5000236}
 {"def":"geo::overflow","status":"failed","obligations":1,"failed":1,"rlimit":596,"rlimit_max":596}
-{"def":"geo::param","status":"failed","obligations":1,"failed":1,"rlimit":4785,"rlimit_max":4785}
+{"def":"geo::param","status":"failed","obligations":1,"failed":1,"rlimit":433,"rlimit_max":433}
 {"def":"geo::route_elem","status":"failed","obligations":1,"failed":1,"rlimit":2172,"rlimit_max":2172}
 {"def":"geo::set_cell","status":"failed","obligations":1,"failed":1,"rlimit":793,"rlimit_max":793}
-{"def":"geo::stale_copy","status":"failed","obligations":3,"failed":1,"rlimit":1858,"rlimit_max":1507}
+{"def":"geo::stale_copy","status":"failed","obligations":3,"failed":1,"rlimit":626,"rlimit_max":275}
 {"def":"geo::wrong_first","status":"failed","obligations":3,"failed":1,"rlimit":1592,"rlimit_max":1197}

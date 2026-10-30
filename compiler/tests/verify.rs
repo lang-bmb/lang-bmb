@@ -138,6 +138,95 @@ fn fail_corpus_matches_expected() {
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
+/// An obligation that reveals a scalar leaf `spec fn` is first probed with
+/// the definition as a macro under 1% of the solver limit, then, undecided,
+/// solved with the quantified definition (backlog T2-05, ADR-0067). The
+/// counterexample comes from the probe, far below the limit (with the
+/// quantified definition alone the query reached it, `contracts::wrong_post`
+/// in the fail corpus).
+#[test]
+fn scalar_leaf_definitions_are_probed_as_macros() {
+    let src = r#"
+#[summary("탐침")]
+mod m {
+    spec fn is_succ(x: i64, r: i64) -> bool { r == x + 1 }
+
+    spec fn small(x: i64) -> bool { x < 100 }
+
+    #[effects(pure)]
+    #[uses(is_succ)]
+    fn wrong(x: i64) -> (r: i64)
+        ensures is_succ(x, r),
+    {
+        x
+    }
+
+    #[effects(pure)]
+    #[uses(is_succ, small)]
+    fn right(x: i64) -> (r: i64)
+        requires small(x),
+        ensures is_succ(x, r),
+    {
+        x + 1
+    }
+}
+"#;
+    let out = bmb::verify_sources(&[("m.bmb".into(), src.into())]);
+    for def in ["m::wrong", "m::right"] {
+        let script = &out.scripts[def];
+        // The postcondition's probe comes just before its full query.
+        let lines: Vec<&str> = script.lines().collect();
+        let section = |prefix: &str| {
+            let at = lines
+                .iter()
+                .position(|l| l.starts_with(prefix) && l.contains(": E0802 "))
+                .expect(script);
+            let len = lines[at + 1..]
+                .iter()
+                .take_while(|l| !l.starts_with("; "))
+                .count();
+            (at, lines[at..at + 1 + len].join("\n"))
+        };
+        let (probe_at, probe) = section("; probe of obligation ");
+        let (full_at, full) = section("; obligation ");
+        assert_eq!(probe_at + probe.lines().count(), full_at, "{script}");
+        assert!(
+            probe.contains("(define-fun |m::is_succ| ")
+                && probe.contains("(set-option :rlimit 50000)"),
+            "{script}"
+        );
+        assert!(
+            full.contains("(forall ((|x!p| Int) (|r!p| Int))")
+                && !full.contains("(define-fun |m::is_succ| "),
+            "{script}"
+        );
+    }
+    let row = |def: &str| {
+        out.output
+            .lines()
+            .find(|l| l.starts_with(&format!(r#"{{"def":"{def}""#)))
+            .unwrap()
+            .to_string()
+    };
+    let rlimit = |row: &str| -> u64 {
+        row.split(r#""rlimit":"#)
+            .nth(1)
+            .and_then(|r| r.split(',').next())
+            .and_then(|n| n.parse().ok())
+            .unwrap()
+    };
+    let wrong = row("m::wrong");
+    assert!(wrong.contains(r#""status":"failed""#), "{wrong}");
+    assert!(rlimit(&wrong) < 50_000, "{wrong}");
+    assert!(
+        out.output.contains("counterexample: x = "),
+        "{}",
+        out.output
+    );
+    let right = row("m::right");
+    assert!(right.contains(r#""status":"verified""#), "{right}");
+}
+
 #[test]
 fn queries_and_output_are_deterministic() {
     let mut files = bmb_files(&root().join("check").join("ok"));

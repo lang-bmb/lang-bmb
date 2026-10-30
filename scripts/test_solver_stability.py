@@ -62,6 +62,19 @@ class Variants(unittest.TestCase):
         self.assertEqual(len(blocks), 2)
         self.assertEqual(st.commands(blocks[1][1]), self.obs[1])
 
+    def test_the_probe_is_not_an_obligation(self):
+        # ADR-0067: the probe of an obligation comes just before its full
+        # query (after the abstracted attempt of a bit obligation).
+        probe = "; probe of obligation {k}: E0805 index may be out of bounds\n(reset)\n(declare-const |p@0| Int)\n(check-sat)\n"
+        script = SCRIPT.replace("; obligation 1: ", probe.format(k=1) + "; obligation 1: ")
+        blocks = st.blocks(script)
+        self.assertEqual(len(blocks), 2)
+        self.assertEqual([st.commands(b) for _, b in blocks], self.obs)
+        bits = SCRIPT.replace("; obligation 1: E0805 index may be out of bounds\n",
+                              "; obligation 1: E0805 index may be out of bounds (bit operations abstracted)\n")
+        bits += probe.format(k=1) + "; exact query of obligation 1\n(reset)\n(declare-const |i@0| Int)\n(check-sat)\n"
+        self.assertEqual([st.commands(b) for _, b in st.blocks(bits)], self.obs)
+
     def test_shuffle_declares_before_use(self):
         v = st.variant(self.obs[0], "shuffle", random.Random(1))
         first_assert = next(i for i, c in enumerate(v) if c.startswith("(assert"))

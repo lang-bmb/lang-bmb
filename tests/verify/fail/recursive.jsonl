@@ -5,7 +5,7 @@
 {"code":"E0802","severity":"error","message":"postcondition `positive` may not hold in `rf::last`; counterexample: n = Node { v: 0, next: None }","file":"fail/recursive.bmb","line":65,"col":17,"end_line":65,"end_col":28}
 {"def":"rf::again","status":"failed","obligations":1,"failed":1,"rlimit":360,"rlimit_max":360}
 {"def":"rf::eval","status":"failed","obligations":3,"failed":1,"rlimit":1387,"rlimit_max":829}
-{"def":"rf::last","status":"failed","obligations":2,"failed":1,"rlimit":4997,"rlimit_max":4424}
+{"def":"rf::last","status":"failed","obligations":2,"failed":1,"rlimit":2179,"rlimit_max":1606}
 {"def":"rf::loops","status":"failed","obligations":1,"failed":1,"rlimit":570,"rlimit_max":570}
 {"def":"rf::rebuilt","status":"failed","obligations":1,"failed":1,"rlimit":360,"rlimit_max":360}
 {"def":"rf::value","status":"verified","obligations":2,"failed":0,"rlimit":376,"rlimit_max":188}

@@ -6,20 +6,20 @@
 {"code":"E0818","severity":"error","message":"the assertion has no bit-vector translation in `bvf::unrevealed`: `bvf::hidden` is not revealed (the sub-proof unfolds the spec fns the assertion calls)","file":"fail/bit_vector.bmb","line":58,"col":9,"end_line":58,"end_col":52,"fix":{"message":"the proof sees `hidden` only by name; if the failure depends on its definition, add to #[uses(hidden)]"}}
 {"code":"E0818","severity":"error","message":"the assertion has no bit-vector translation in `bvf::signed_division`: signed `/` and `%` have no bit-vector translation (divide by a constant of an unsigned type)","file":"fail/bit_vector.bmb","line":64,"col":9,"end_line":64,"end_col":53,"fix":{"message":"a bit-vector sub-proof takes integers, `f64`s and `bool`s, bit operations, `+`, `-`, `*`, division by positive constants (integers), the `f64` operations, comparisons, and calls of non-recursive spec fns named in `#[uses(..)]`"}}
 {"code":"E0802","severity":"error","message":"postcondition `too_many` may not hold in `bvf::ones`; counterexample: x = 255","file":"fail/bit_vector.bmb","line":74,"col":17,"end_line":74,"end_col":31}
-{"code":"E0802","severity":"error","message":"postcondition `left` may not hold in `bvf::rotate_wrong`; counterexample: x = 127","file":"fail/bit_vector.bmb","line":85,"col":17,"end_line":85,"end_col":27}
+{"code":"E0802","severity":"error","message":"postcondition `left` may not hold in `bvf::rotate_wrong`; counterexample: x = 1","file":"fail/bit_vector.bmb","line":85,"col":17,"end_line":85,"end_col":27}
 {"code":"E0802","severity":"error","message":"postcondition `fits` may not hold in `bvf::ghost_range`; counterexample: x = 255","file":"fail/bit_vector.bmb","line":97,"col":17,"end_line":97,"end_col":24}
 {"code":"E0802","severity":"error","message":"postcondition `same_fits` may not hold in `bvf::spec_guard`; counterexample: x = 255","file":"fail/bit_vector.bmb","line":112,"col":17,"end_line":112,"end_col":29}
 {"code":"E0803","severity":"error","message":"`-` may overflow `u32` in `bvf::top`; counterexample: x = 0","file":"fail/bit_vector.bmb","line":120,"col":9,"end_line":120,"end_col":31}
 {"def":"bvf::even","status":"failed","obligations":1,"failed":1,"rlimit":98,"rlimit_max":98}
-{"def":"bvf::ghost_range","status":"failed","obligations":2,"failed":1,"rlimit":2265,"rlimit_max":2257}
+{"def":"bvf::ghost_range","status":"failed","obligations":2,"failed":1,"rlimit":324,"rlimit_max":316}
 {"def":"bvf::ghost_value","status":"failed","obligations":1,"failed":1,"rlimit":81,"rlimit_max":81}
 {"def":"bvf::loop_back","status":"verified","obligations":1,"failed":0,"rlimit":202,"rlimit_max":202}
-{"def":"bvf::ones","status":"failed","obligations":1,"failed":1,"rlimit":13514,"rlimit_max":12689}
+{"def":"bvf::ones","status":"failed","obligations":1,"failed":1,"rlimit":3649,"rlimit_max":2824}
 {"def":"bvf::path_fact","status":"failed","obligations":1,"failed":1,"rlimit":18984,"rlimit_max":18984}
 {"def":"bvf::recursive","status":"failed","obligations":1,"failed":1,"rlimit":0,"rlimit_max":0}
-{"def":"bvf::rotate_wrong","status":"failed","obligations":1,"failed":1,"rlimit":5001382,"rlimit_max":5000200}
+{"def":"bvf::rotate_wrong","status":"failed","obligations":1,"failed":1,"rlimit":1139,"rlimit_max":1139}
 {"def":"bvf::rotations","status":"failed","obligations":2,"failed":1,"rlimit":3299,"rlimit_max":2558}
 {"def":"bvf::signed_division","status":"failed","obligations":1,"failed":1,"rlimit":0,"rlimit_max":0}
-{"def":"bvf::spec_guard","status":"failed","obligations":2,"failed":1,"rlimit":3410,"rlimit_max":3384}
+{"def":"bvf::spec_guard","status":"failed","obligations":2,"failed":1,"rlimit":4066,"rlimit_max":4040}
 {"def":"bvf::top","status":"failed","obligations":1,"failed":1,"rlimit":63523,"rlimit_max":62427}
 {"def":"bvf::unrevealed","status":"failed","obligations":1,"failed":1,"rlimit":0,"rlimit_max":0}

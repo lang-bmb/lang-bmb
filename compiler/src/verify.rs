@@ -6018,13 +6018,15 @@ impl<'p> Prog<'p> {
     }
 
     /// Definition of a revealed spec fn (ADR-0017 §4). A recursive one is a
-    /// quantified axiom with its application as the pattern. Any other is a
-    /// macro, `(define-fun f (..) (ite guard body (f!ext ..)))`: the same
-    /// meaning (the body where the parameters are in their types, an
-    /// unconstrained value elsewhere) with no quantifier, so a satisfiable
-    /// query needs no model search over it (backlog T2-04: a quantified
-    /// definition over an `(Array Int Float64)` parameter kept Z3 from
-    /// ending a satisfiable query, `incomplete (theory array)`).
+    /// quantified axiom with its application as the pattern. A leaf (a body
+    /// that names no other spec fn) also has a macro form,
+    /// `(define-fun f (..) (ite guard body (f!ext ..)))`: the same meaning
+    /// (the body where the parameters are in their types, an unconstrained
+    /// value elsewhere) with no quantifier, so a satisfiable query needs no
+    /// model search over it (backlog T2-04: a quantified definition over an
+    /// `(Array Int Float64)` parameter kept Z3 from ending a satisfiable
+    /// query, `incomplete (theory array)`). `relevant_axioms` picks the form
+    /// (ADR-0064, ADR-0067).
     fn axiom(&self, path: &str) -> (String, AxiomParts) {
         let d = &self.defs[path];
         let mut enc = Enc::new(self, path, &d.mod_path);
@@ -6099,15 +6101,21 @@ impl<'p> Prog<'p> {
                 binders.join(" ")
             ));
         }
-        // A macro keeps its quantified form after the marker: a query whose
-        // patterns name the spec fn takes that instead (`relevant_axioms`).
-        // Only a definition that binds an array (a slice or `Vec` parameter)
-        // becomes a macro: Z3's model search fails on quantifiers over array
-        // sorts (`incomplete (theory array)`), and over scalars a quantified
-        // definition is fine and leaves nonlinear proofs the search they had.
+        // The macro form, a marker, the quantified form (`relevant_axioms`
+        // chooses). A definition that binds an array (a slice or `Vec`
+        // parameter) is a macro in every query: Z3's model search fails on
+        // quantifiers over array sorts (`incomplete (theory array)`). One over
+        // scalars is a macro only in an obligation's probe (ADR-0067): in the
+        // full query its quantified form leaves nonlinear proofs the search
+        // they had.
         let binds_array = binders.iter().any(|b| b.contains("(Array "));
-        let text = if !recursive && leaf && binds_array {
-            format!("{}{QUANTIFIED}{}", mac.join("\n"), quant.join("\n"))
+        let text = if !recursive && leaf && !mac.is_empty() {
+            let marker = if binds_array {
+                QUANTIFIED
+            } else {
+                PROBE_QUANTIFIED
+            };
+            format!("{}{marker}{}", mac.join("\n"), quant.join("\n"))
         } else {
             quant.join("\n")
         };
@@ -6833,6 +6841,24 @@ fn verify_impl(
             // 2D-14): an unrelated spec fn does not change the query text.
             let used = needed_decls(&spec_decls, &dts, &format!("{relevant}{decls}\n{q}"));
             let base = format!("{prefix}{used}{relevant}{decls}");
+            // The probe (ADR-0067): every leaf definition a macro, under a
+            // small share of the limit. The same meaning, so its `unsat` is a
+            // proof and its `sat` a model; undecided, the full query decides.
+            let probe = {
+                let forms = axioms_in_forms(&axioms, &q, true);
+                (forms != relevant_text).then(|| {
+                    let used = needed_decls(&spec_decls, &dts, &format!("{forms}{decls}\n{q}"));
+                    format!("{prefix}{used}{forms}{decls}")
+                })
+            };
+            let probe_limit = format!("(set-option :rlimit {})", smt::rlimit() / PROBE_SHARE);
+            // In the script, the probe comes just before the full query.
+            let probe_script = probe.as_ref().map_or(String::new(), |pb| {
+                format!(
+                    "; probe of obligation {k}: {} {}\n(reset)\n{pb}\n{probe_limit}\n{q}\n(check-sat)\n",
+                    o.code, o.msg
+                )
+            });
             let key = (o.code, o.span.file, o.span.lo, o.span.hi);
             let cache_key = cache
                 .as_ref()
@@ -6868,11 +6894,11 @@ fn verify_impl(
             };
             match &abstracted {
                 Some((head, aq)) => script.push_str(&format!(
-                    "; obligation {k}: {} {} (bit operations abstracted)\n(reset)\n{head}\n{aq}\n(check-sat)\n; exact query of obligation {k}\n(reset)\n{base}\n{q}\n(check-sat)\n",
+                    "; obligation {k}: {} {} (bit operations abstracted)\n(reset)\n{head}\n{aq}\n(check-sat)\n{probe_script}; exact query of obligation {k}\n(reset)\n{base}\n{q}\n(check-sat)\n",
                     o.code, o.msg
                 )),
                 None => script.push_str(&format!(
-                    "; obligation {k}: {} {}\n(reset)\n{base}\n{q}\n(check-sat)\n",
+                    "{probe_script}; obligation {k}: {} {}\n(reset)\n{base}\n{q}\n(check-sat)\n",
                     o.code, o.msg
                 )),
             }
@@ -6928,7 +6954,31 @@ fn verify_impl(
                     proved_abstract = Some(a);
                 }
             }
-            let mut answer = match proved_abstract {
+            // What the solver holds when it answers (the model's query).
+            let mut answered = format!("{base}\n{q}");
+            let mut probed = None;
+            if proved_abstract.is_none()
+                && let Some(pb) = &probe
+            {
+                let a = sol
+                    .run("(reset)")
+                    .and_then(|_| sol.run(pb))
+                    .and_then(|_| sol.run(&probe_limit))
+                    .and_then(|_| sol.run(&q))
+                    .and_then(|_| sol.check_sat());
+                if a.is_ok()
+                    && let Ok(used) = sol.rlimit_used()
+                {
+                    rlimit_total += used;
+                    rlimit_max = rlimit_max.max(used);
+                    first_used = used;
+                }
+                if matches!(a, Ok(Answer::Unsat | Answer::Sat)) {
+                    answered = format!("{pb}\n{q}");
+                    probed = Some(a);
+                }
+            }
+            let mut answer = match proved_abstract.or(probed) {
                 Some(a) => a,
                 None => {
                     let answer = sol
@@ -6946,8 +6996,6 @@ fn verify_impl(
                     answer
                 }
             };
-            // What the solver holds when it answers (the model's query).
-            let mut answered = format!("{base}\n{q}");
             // Undecided with quantified definitions: retry quantifier-free with
             // ground instances (sound for both answers, see `ground_instances`).
             if matches!(answer, Ok(Answer::Unknown(_)))
@@ -7649,8 +7697,15 @@ pub fn has_nonlinear_product(text: &str) -> bool {
         .any(|e| walk(&e))
 }
 
-/// Axioms whose symbol occurs in `text`, closed over the axioms' own bodies.
+/// Axioms whose symbol occurs in `text`, closed over the axioms' own bodies,
+/// in the full query's forms (ADR-0064).
 fn relevant_axioms(axioms: &[(String, String)], text: &str) -> String {
+    axioms_in_forms(axioms, text, false)
+}
+
+/// As `relevant_axioms`, with every leaf definition a macro when `probe`
+/// (an obligation's probe, ADR-0067).
+fn axioms_in_forms(axioms: &[(String, String)], text: &str, probe: bool) -> String {
     let mut chosen = vec![false; axioms.len()];
     let mut haystack = text.to_string();
     loop {
@@ -7672,16 +7727,16 @@ fn relevant_axioms(axioms: &[(String, String)], text: &str) -> String {
     let mut seen = text.to_string();
     for (k, (_, ax)) in axioms.iter().enumerate() {
         if chosen[k] {
-            seen.push_str(ax.split(QUANTIFIED).next().unwrap_or(ax));
+            seen.push_str(macro_form(ax, probe).map_or_else(|| quantified(ax), |(mac, _)| mac));
         }
     }
     let patterns = pattern_terms(&seen);
     let forms: Vec<&str> = axioms
         .iter()
-        .map(|(symbol, ax)| match ax.split_once(QUANTIFIED) {
+        .map(|(symbol, ax)| match macro_form(ax, probe) {
             Some((_, quant)) if patterns.iter().any(|p| p.contains(symbol.as_str())) => quant,
             Some((mac, _)) => mac,
-            None => ax.as_str(),
+            None => quantified(ax),
         })
         .collect();
     // A macro (`define-fun`) must come before every definition that names it.
@@ -7720,8 +7775,30 @@ fn relevant_axioms(axioms: &[(String, String)], text: &str) -> String {
 }
 
 /// Separates a macro definition from its quantified form in an axiom text
-/// (`Prog::axiom`).
+/// (`Prog::axiom`): the macro serves every query.
 const QUANTIFIED: &str = "\n; quantified form\n";
+
+/// As `QUANTIFIED`, but the macro serves only an obligation's probe.
+const PROBE_QUANTIFIED: &str = "\n; quantified form outside the probe\n";
+
+/// The macro and quantified forms of an axiom text that has both, when its
+/// macro serves this query (`probe`: an obligation's probe).
+fn macro_form(ax: &str, probe: bool) -> Option<(&str, &str)> {
+    ax.split_once(QUANTIFIED)
+        .or_else(|| ax.split_once(PROBE_QUANTIFIED).filter(|_| probe))
+}
+
+/// The quantified form of an axiom text: the part after a marker, or all of
+/// it.
+fn quantified(ax: &str) -> &str {
+    ax.split_once(QUANTIFIED)
+        .or_else(|| ax.split_once(PROBE_QUANTIFIED))
+        .map_or(ax, |(_, quant)| quant)
+}
+
+/// The share of the solver limit an obligation's probe may use (ADR-0067):
+/// 1%, so a probe that does not decide adds at most that to the full query.
+const PROBE_SHARE: u64 = 100;
 
 /// The terms of every `:pattern (..)` in `text`.
 fn pattern_terms(text: &str) -> Vec<&str> {

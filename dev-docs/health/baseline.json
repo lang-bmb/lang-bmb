@@ -2,11 +2,11 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 7879083,
+    "V4_rlimit_total": 7387374,
     "V5_rlimit_headroom": 0.0427,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0,
-    "V8_bench_rlimit_total": 26900517,
+    "V8_bench_rlimit_total": 24992756,
     "V9_bench_defs_at_limit": 0,
     "S1_external_crates": 0,
     "S2_external_processes": [
@@ -14,7 +14,7 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 36200,
+    "S4_stage0_rust_lines": 36300,
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
     "P1_runnable_programs": 58,
@@ -1394,6 +1394,24 @@
         "P2_bmb_lines": [
           19639,
           19792
+        ]
+      }
+    },
+    {
+      "date": "2026-10-30",
+      "reason": "T2-05·ADR-0067: 증명 의무의 매크로 탐침(한도의 1%). V4 −6.2%, V8 −7.1%, 실패 코퍼스 rlimit −87%",
+      "changed": {
+        "V4_rlimit_total": [
+          7879083,
+          7387374
+        ],
+        "V8_bench_rlimit_total": [
+          26900517,
+          24992756
+        ],
+        "S4_stage0_rust_lines": [
+          36200,
+          36300
         ]
       }
     }
