@@ -60,13 +60,16 @@ const USAGE: &str = "usage:
                             or not_found, with the attribute replacement) and a summary;
                             --write rewrites changed files; fails if a definition stays unproved;
                             --cache uses and updates the caches in DIR as `verify --cache` does
-  bmb lint [--cache DIR] <file.bmb>...
+  bmb lint [--cache DIR] [--select CODES] <file.bmb>...
                             contract lint (warnings W09xx as JSONL, then a summary): preconditions
                             that cannot hold together, preconditions the function's proof does
                             not need, postconditions no caller's proof uses, body mutations the
                             specification does not distinguish; re-verifications and mutants are
-                            capped; fails only if the program does not check or the gate cannot run;
-                            --cache uses and updates the caches in DIR as `verify --cache` does
+                            capped; the summary also gives the rlimit and undecided count of the
+                            W0901 and W0905 satisfiability checks; fails only if the program does
+                            not check or the gate cannot run; --cache uses and updates the caches
+                            in DIR as `verify --cache` does; --select W0901,W0905 runs only the
+                            listed checks
   bmb mutate --def PATH [--def PATH].. <file.bmb>...
                             every W0904 body mutation of the named functions, unproved, as
                             JSONL rows with the changed unit's normal form, then a summary
@@ -492,16 +495,42 @@ fn run() -> ExitCode {
             }
         }
         Some("lint") if args.len() > 1 => {
-            let (cache, paths) = match args[1].as_str() {
-                "--cache" if args.len() > 3 => (Some(args[2].clone()), &args[3..]),
-                _ => (None, &args[1..]),
-            };
+            let mut cache = None;
+            let mut select: Vec<&str> = bmb::lint::CODES.to_vec();
+            let mut paths = &args[1..];
+            loop {
+                match paths {
+                    [flag, dir, tail @ ..] if flag == "--cache" => {
+                        cache = Some(dir.clone());
+                        paths = tail;
+                    }
+                    [flag, codes, tail @ ..] if flag == "--select" => {
+                        select.clear();
+                        for c in codes.split(',') {
+                            let Some(known) = bmb::lint::CODES.iter().find(|k| **k == c) else {
+                                eprintln!(
+                                    "bmb: lint has no check {c:?} (the checks are {})",
+                                    bmb::lint::CODES.join(", ")
+                                );
+                                return ExitCode::from(2);
+                            };
+                            select.push(known);
+                        }
+                        paths = tail;
+                    }
+                    _ => break,
+                }
+            }
+            if paths.is_empty() {
+                eprintln!("{USAGE}");
+                return ExitCode::from(2);
+            }
             let files = match read_files(paths) {
                 Ok(f) => f,
                 Err(code) => return code,
             };
-            match bmb::lint::lint_sources_cached(&files, cache.as_deref().map(std::path::Path::new))
-            {
+            let cache = cache.as_deref().map(std::path::Path::new);
+            match bmb::lint::lint_sources_selected(&files, cache, &select) {
                 Ok(out) => {
                     print!("{}", out.report());
                     if out.ok {

@@ -38,6 +38,8 @@ FLOAT_PROGRAMS = ["tests/run/floats.bmb", "tests/run/mandel.bmb"]
 # The libraries and the programs built on them (V10, backlog T2-08).
 LIBRARIES = "lib"
 LIBRARY_PROGRAMS = "bench/game"
+# Seed units of the BRB-ENCAP tasks (backlog T0-09), one directory per task.
+ENCAP_SEEDS = "bench/brb-encap/seed"
 ALLOWED_RUNTIME = {"linux-vdso.so.1", "libc.so.6", "ld-linux-x86-64.so.2"}
 
 
@@ -155,6 +157,52 @@ def library_cost():
         "_library_unproved_defs": sum(r["status"] != "verified" for r in rows),
         "_library_worst_obligation": f"{worst['def']} {round(worst['rlimit_max'] / toolchain_rlimit(), 4)}",
         "_library_headroom": round(worst["rlimit_max"] / toolchain_rlimit(), 4),
+    }
+
+
+def sat_check_programs():
+    """The programs of the gate test `proofs_are_not_vacuous`
+    (`compiler/tests/verify.rs`) and the Benchmarks Game programs, as T2-10
+    measured the satisfiability checks: each file of `tests/verify/pass`,
+    `tests/run`, `bench/baseline` and of each BRB-ENCAP task alone, each
+    bench seed as one workspace, each library alone, and each
+    `tests/lib_run` and `bench/game` program with every library."""
+    def files(d):
+        return sorted(str(p.relative_to(ROOT)) for p in (ROOT / d).glob("*.bmb"))
+    progs = [[f] for d in ("tests/verify/pass", "tests/run", "bench/baseline") for f in files(d)]
+    progs += [files(f"bench/{s}/seed/src") for s in ("m1", "m1b", "bvb")]
+    for task in sorted(p for p in (ROOT / ENCAP_SEEDS).iterdir() if p.is_dir()):
+        progs += [[f] for f in files(task.relative_to(ROOT))]
+    libs = files(LIBRARIES)
+    progs += [[lib] for lib in libs]
+    progs += [[f, *libs] for d in ("tests/lib_run", LIBRARY_PROGRAMS) for f in files(d)]
+    return progs
+
+
+def sat_check_cost():
+    """V11, V12 (backlog T2-10, T2-12): the solver cost of the vacuity check
+    (W0905) and the precondition check (W0901), which no proof metric sees
+    (after T2-06 it exceeded V4, V8 and V10 together). `bmb lint --select
+    W0901,W0905` runs only those two checks and its summary gives each
+    one's `rlimit` (every query: probes, full queries, retries) and
+    undecided count (an undecided point or function is not reported, so
+    this is its only trace). One cache serves every run: it holds the first
+    verification, which only decides which functions W0905 reports on, not
+    what the checks cost."""
+    pre = reach = pre_und = reach_und = 0
+    with tempfile.TemporaryDirectory() as cache:
+        for files in sat_check_programs():
+            r = run([str(BMB), "lint", "--cache", cache, "--select", "W0901,W0905", *files])
+            if r.returncode != 0:
+                raise SystemExit(f"health: lint of {files[0]} failed\n{r.stdout[-1000:]}{r.stderr[-1000:]}")
+            s = json.loads(r.stdout.splitlines()[-1])
+            pre, pre_und = pre + s["pre_rlimit"], pre_und + s["pre_undecided"]
+            reach, reach_und = reach + s["reach_rlimit"], reach_und + s["reach_undecided"]
+    return {
+        "V11_sat_check_rlimit_total": pre + reach,
+        "V12_sat_check_undecided": pre_und + reach_und,
+        "_sat_check_rlimit": f"W0905 {reach} + W0901 {pre}",
+        "_sat_check_undecided": f"W0905 {reach_und} + W0901 {pre_und}",
     }
 
 
@@ -294,6 +342,8 @@ RULES = {
     "V8_bench_rlimit_total": ("budget", 0.10),
     "V9_bench_defs_at_limit": ("no_worse_down", None),
     "V10_library_rlimit_total": ("budget", 0.10),
+    "V11_sat_check_rlimit_total": ("budget", 0.10),
+    "V12_sat_check_undecided": ("no_worse_down", None),
     "S1_external_crates": ("fixed", 0),
     "S2_external_processes": ("same", None),
     "S3_runtime_libs_outside_libc": ("fixed", []),
@@ -311,8 +361,8 @@ RULES = {
 
 def compute():
     m = {}
-    for f in (diag_coverage, proof_metrics, library_cost, solver_stability, bench_load, helpful_errors,
-              self_containment, practicality, binary_size, process):
+    for f in (diag_coverage, proof_metrics, library_cost, sat_check_cost, solver_stability, bench_load,
+              helpful_errors, self_containment, practicality, binary_size, process):
         m.update(f())
     return with_library_headroom(m)
 

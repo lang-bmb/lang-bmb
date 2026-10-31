@@ -156,10 +156,18 @@ fn each_report_and_nothing_else() {
     assert_eq!(out.reports, 3);
     let report = out.report();
     let last = rows(&report).pop().unwrap();
-    assert_eq!(
-        report.lines().last().unwrap(),
-        "{\"summary\":true,\"defs\":5,\"reports\":3,\"verifications\":6,\"skipped\":0,\"mutants\":2,\"surviving\":0,\"mutants_skipped\":0}"
+    // The satisfiability checks' cost follows (backlog T2-12): `rlimit`
+    // depends on the pinned solver, nothing is undecided here.
+    let line = report.lines().last().unwrap();
+    assert!(
+        line.starts_with(
+            "{\"summary\":true,\"defs\":5,\"reports\":3,\"verifications\":6,\"skipped\":0,\"mutants\":2,\"surviving\":0,\"mutants_skipped\":0,\"pre_rlimit\":"
+        ) && line.contains(",\"pre_undecided\":0,\"reach_rlimit\":")
+            && line.ends_with(",\"reach_undecided\":0}"),
+        "{line}"
     );
+    assert!(out.pre_cost.is_some_and(|c| c.rlimit > 0));
+    assert!(out.reach_cost.is_some_and(|c| c.rlimit > 0));
     assert!(matches!(
         last.get("summary"),
         Some(bmb::json::Value::Bool(true))
@@ -234,7 +242,7 @@ fn cli_reports_and_exit_codes() {
         .collect();
     assert_eq!(codes, ["W0901", "W0902", "W0903"], "{text}");
     assert!(
-        text.ends_with("\"skipped\":0,\"mutants\":2,\"surviving\":0,\"mutants_skipped\":0}\n"),
+        text.contains("\"skipped\":0,\"mutants\":2,\"surviving\":0,\"mutants_skipped\":0,"),
         "{text}"
     );
 
@@ -325,7 +333,7 @@ fn weak_specification_lets_mutants_survive() {
     assert_eq!(out.reports, 3);
     assert!(
         out.report()
-            .ends_with("\"skipped\":0,\"mutants\":16,\"surviving\":3,\"mutants_skipped\":0}\n")
+            .contains("\"skipped\":0,\"mutants\":16,\"surviving\":3,\"mutants_skipped\":0,")
     );
     // Deterministic.
     assert_eq!(

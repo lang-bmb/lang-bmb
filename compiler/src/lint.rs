@@ -49,6 +49,13 @@
 //! capped (`MAX_PRE_TRIALS`, `MAX_POST_TRIALS`); clauses beyond the cap are
 //! counted as `skipped` in the summary, in a fixed (path, clause) order. It
 //! runs only on request (`bmb lint`); `check` and `verify` are unchanged.
+//!
+//! `bmb lint --select CODES` runs only the listed checks (backlog T2-12):
+//! each reports what it reports in a full run, and the first verification
+//! and the precondition check run only when a selected check needs them.
+//! The summary carries the solver cost of the two satisfiability checks
+//! (`verify::SatCost`): W0901's and W0905's `rlimit` and undecided count,
+//! `null` when the check did not run.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -61,6 +68,7 @@ use crate::cache::ProofCache;
 use crate::diag::{Diag, Diags};
 use crate::incremental::Session;
 use crate::source::Span;
+use crate::verify::SatCost;
 
 /// Upper bound on re-verifications for unused-precondition checks (W0902).
 pub const MAX_PRE_TRIALS: usize = 32;
@@ -68,6 +76,11 @@ pub const MAX_PRE_TRIALS: usize = 32;
 pub const MAX_POST_TRIALS: usize = 32;
 /// Upper bound on mutants verified per run (W0904).
 pub const MAX_MUTANTS: usize = 64;
+
+/// The checks of the lint, by the code each reports (`bmb lint --select`).
+pub const CODES: [&str; 7] = [
+    "W0901", "W0902", "W0903", "W0904", "W0905", "W0906", "W0907",
+];
 
 pub struct LintOutput {
     /// Lint diagnostics as deterministic JSONL (plus any `E0812` when the
@@ -87,16 +100,28 @@ pub struct LintOutput {
     pub surviving: usize,
     /// Mutants not verified because `MAX_MUTANTS` was reached.
     pub mutants_skipped: usize,
+    /// What the precondition check (W0901) cost, if it ran (for W0901, or
+    /// for the checks that skip the functions it refutes).
+    pub pre_cost: Option<SatCost>,
+    /// What the reach-point check (W0905) cost, if it ran.
+    pub reach_cost: Option<SatCost>,
     /// False when the proof gate could not run.
     pub ok: bool,
 }
 
 impl LintOutput {
     /// JSONL: the diagnostics, then
-    /// `{"summary":true,"defs","reports","verifications","skipped","mutants","surviving","mutants_skipped"}`.
+    /// `{"summary":true,"defs","reports","verifications","skipped","mutants","surviving","mutants_skipped","pre_rlimit","pre_undecided","reach_rlimit","reach_undecided"}`.
     pub fn report(&self) -> String {
+        let cost = |c: Option<SatCost>| {
+            c.map_or(("null".to_string(), "null".to_string()), |c| {
+                (c.rlimit.to_string(), c.undecided.to_string())
+            })
+        };
+        let (pre_rlimit, pre_undecided) = cost(self.pre_cost);
+        let (reach_rlimit, reach_undecided) = cost(self.reach_cost);
         format!(
-            "{}{{\"summary\":true,\"defs\":{},\"reports\":{},\"verifications\":{},\"skipped\":{},\"mutants\":{},\"surviving\":{},\"mutants_skipped\":{}}}\n",
+            "{}{{\"summary\":true,\"defs\":{},\"reports\":{},\"verifications\":{},\"skipped\":{},\"mutants\":{},\"surviving\":{},\"mutants_skipped\":{},\"pre_rlimit\":{pre_rlimit},\"pre_undecided\":{pre_undecided},\"reach_rlimit\":{reach_rlimit},\"reach_undecided\":{reach_undecided}}}\n",
             self.diagnostics,
             self.defs,
             self.reports,
@@ -170,15 +195,50 @@ pub fn lint_sources_cached(
     files: &[(String, String)],
     cache_dir: Option<&Path>,
 ) -> Result<LintOutput, String> {
+    lint_sources_selected(files, cache_dir, &CODES)
+}
+
+/// As `lint_sources_cached`, running only the checks whose codes `select`
+/// lists (`CODES`; backlog T2-12). Each selected check reports exactly what
+/// it reports in a full run. The first verification runs only for the
+/// checks that judge verified functions (W0902 to W0905), the precondition
+/// check also for the ones that skip its unsatisfiable functions (W0902,
+/// W0904, W0905); a summary count of a check that did not run is 0, the
+/// cost of a satisfiability check that did not run `null`.
+pub fn lint_sources_selected(
+    files: &[(String, String)],
+    cache_dir: Option<&Path>,
+    select: &[&str],
+) -> Result<LintOutput, String> {
     let mut fe = crate::frontend(files);
     if fe.diags.has_errors() {
         return Err(fe.diags.to_jsonl(&fe.sm));
     }
+    let runs = |code: &str| select.contains(&code);
+    let needs_base = ["W0902", "W0903", "W0904", "W0905"].iter().any(|c| runs(c));
+    let needs_pre = ["W0901", "W0902", "W0904", "W0905"].iter().any(|c| runs(c));
     let mut cache = cache_dir.map(ProofCache::load).unwrap_or_default();
     // Only the first verification covers the whole program; the restricted
     // ones below each change the definitions they prove, so the incremental
     // cache serves this one alone (and records it, with `cache_dir`).
     let base = match cache_dir {
+        _ if !needs_base => {
+            // No first verification: a solver that cannot run is still
+            // reported (E0812), as the verification would, when W0901 runs.
+            if needs_pre && let Err(e) = crate::toolchain::check_z3() {
+                let at = fe
+                    .program
+                    .mods
+                    .first()
+                    .map_or(Span::default(), |m| m.name.span);
+                fe.diags.push(Diag::new(
+                    "E0812",
+                    at,
+                    format!("proof gate cannot run: {e}"),
+                ));
+            }
+            crate::verify::Outcome::default()
+        }
         Some(d) => {
             let mut session = Session::new(d, &fe.program, &fe.tables, &fe.sm);
             let o = crate::verify::verify_program_incremental(
@@ -228,8 +288,17 @@ pub fn lint_sources_cached(
 
     // W0901: unsatisfiable preconditions.
     let mut unsat = BTreeSet::new();
-    for (path, span, verdict) in crate::verify::preconditions_satisfiable(&fe.program, &fe.tables) {
-        if verdict == Some(false) {
+    let (pre, pre_cost) = if needs_pre {
+        let (v, c) = crate::verify::preconditions_satisfiable(&fe.program, &fe.tables);
+        (v, Some(c))
+    } else {
+        (Vec::new(), None)
+    };
+    for (path, span, verdict) in pre {
+        if verdict != Some(false) {
+            continue;
+        }
+        if runs("W0901") {
             out.push(
                 Diag::new(
                     "W0901",
@@ -240,8 +309,8 @@ pub fn lint_sources_cached(
                 )
                 .fix("weaken or correct the preconditions", None),
             );
-            unsat.insert(path);
         }
+        unsat.insert(path);
     }
 
     let verified = |p: &String| {
@@ -250,11 +319,16 @@ pub fn lint_sources_cached(
     };
 
     // W0905: points of verified functions their own proof cannot reach.
-    for (path, span, what) in crate::verify::vacuous_ends(&fe.program, &fe.tables) {
-        if unsat.contains(&path) || !verified(&path) {
-            continue;
+    let mut reach_cost = None;
+    if runs("W0905") {
+        let (points, cost) = crate::verify::vacuous_ends(&fe.program, &fe.tables);
+        reach_cost = Some(cost);
+        for (path, span, what) in points {
+            if unsat.contains(&path) || !verified(&path) {
+                continue;
+            }
+            out.push(w0905(&path, span, what));
         }
-        out.push(w0905(&path, span, what));
     }
     let mut verifications = 0;
     let mut skipped = 0;
@@ -263,7 +337,7 @@ pub fn lint_sources_cached(
     let mut trials = 0;
     for path in &exec {
         let f = defs[*path];
-        if f.requires.is_empty() || unsat.contains(*path) || !verified(path) {
+        if !runs("W0902") || f.requires.is_empty() || unsat.contains(*path) || !verified(path) {
             continue;
         }
         for i in 0..f.requires.len() {
@@ -321,7 +395,7 @@ pub fn lint_sources_cached(
     let mut trials = 0;
     for path in &exec {
         let f = defs[*path];
-        let Some(cs) = callers.get(path.as_str()) else {
+        let Some(cs) = callers.get(path.as_str()).filter(|_| runs("W0903")) else {
             continue;
         };
         if f.ensures.is_empty() || !clean(&base, &fe.diags, &spans, cs) {
@@ -368,7 +442,7 @@ pub fn lint_sources_cached(
     let mut plan: Vec<(&String, Vec<Site>)> = Vec::new();
     for path in &exec {
         let f = defs[*path];
-        if f.ensures.is_empty() || unsat.contains(*path) || !verified(path) {
+        if !runs("W0904") || f.ensures.is_empty() || unsat.contains(*path) || !verified(path) {
             continue;
         }
         let text = &files[f.span.file as usize].1;
@@ -421,7 +495,7 @@ pub fn lint_sources_cached(
     }
 
     // W0906: self-matching triggers (syntactic).
-    for f in defs.values() {
+    for f in defs.values().filter(|_| runs("W0906")) {
         let text = &files[f.span.file as usize].1;
         for d in self_matching(f, text) {
             out.push(d);
@@ -429,8 +503,10 @@ pub fn lint_sources_cached(
     }
 
     // W0907: counting `while` loops with a canonical `for` (syntactic).
-    for d in canonical_loops(&fe.program, files) {
-        out.push(d);
+    if runs("W0907") {
+        for d in canonical_loops(&fe.program, files) {
+            out.push(d);
+        }
     }
 
     if let Some(d) = cache_dir
@@ -449,6 +525,8 @@ pub fn lint_sources_cached(
         mutants,
         surviving,
         mutants_skipped,
+        pre_cost,
+        reach_cost,
         ok,
     })
 }

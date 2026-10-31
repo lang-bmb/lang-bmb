@@ -349,3 +349,124 @@ fn verify_def_proves_only_the_named_definitions() {
     assert_eq!((code, rows.len()), (Some(2), 0));
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// `bmb lint --select` runs only the listed checks, each reporting what it
+/// reports in a full run, and the summary gives what the two
+/// satisfiability checks cost (backlog T2-12): W0901's and W0905's `rlimit`
+/// and undecided count, the same in both runs, `null` for a check that did
+/// not run. `health.py` reads them (V11, V12).
+#[test]
+fn lint_select_runs_only_the_listed_checks_and_reports_their_cost() {
+    const SRC: &str = r#"#[summary("selected lint checks")]
+mod s {
+    spec fn pos(x: i64) -> bool { x > 0 }
+
+    spec fn neg(x: i64) -> bool { x < 0 }
+
+    spec fn small(x: i64) -> bool { x < 100 }
+
+    spec fn sum_to(n: u64) -> u64
+        decreases n,
+    {
+        if n == 0 { 0 } else { n + sum_to(n - 1) }
+    }
+
+    spec fn odd_sum(n: u64, t: u64) -> bool { n < 1000 && t == sum_to(n) && t % 7 == 3 }
+
+    // `pos` and `neg` cannot hold together (W0901).
+    #[effects(pure)]
+    #[uses(pos, neg)]
+    fn never(x: i64) -> i64
+        requires pos(x), neg(x),
+    {
+        x
+    }
+
+    // `pos` is not needed (W0902).
+    #[effects(pure)]
+    #[uses(small)]
+    fn inc(x: i64) -> i64
+        requires small(x), pos(x),
+    {
+        x + 1
+    }
+
+    // The solver decides neither the clauses nor the end of the body
+    // (a recursive definition).
+    #[effects(pure)]
+    #[uses(odd_sum, sum_to)]
+    fn total(n: u64, t: u64) -> u64
+        requires odd_sum(n, t),
+    {
+        t
+    }
+}
+"#;
+    let dir = std::env::temp_dir().join(format!("bmb-cli-select-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let f = dir.join("s.bmb");
+    std::fs::write(&f, SRC).unwrap();
+    let lint = |select: &[&str]| {
+        let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
+            .arg("lint")
+            .args(select)
+            .arg(&f)
+            .output()
+            .unwrap();
+        (out.status.code(), String::from_utf8(out.stdout).unwrap())
+    };
+    // A summary field's text.
+    let field = |text: &str, key: &str| -> String {
+        let line = text.lines().last().unwrap();
+        let at = line.find(&format!("\"{key}\":")).expect(line) + key.len() + 3;
+        line[at..].split([',', '}']).next().unwrap().to_string()
+    };
+    let costs = [
+        "pre_rlimit",
+        "pre_undecided",
+        "reach_rlimit",
+        "reach_undecided",
+    ];
+    let (code, full) = lint(&[]);
+    assert_eq!(code, Some(0), "{full}");
+    let (code, sel) = lint(&["--select", "W0901,W0905"]);
+    assert_eq!(code, Some(0), "{sel}");
+    let kept: Vec<&str> = full
+        .lines()
+        .filter(|l| l.contains("\"code\":\"W0901\"") || l.contains("\"code\":\"W0905\""))
+        .collect();
+    assert_eq!(kept.len(), 1, "{full}");
+    assert_eq!(
+        sel.lines()
+            .filter(|l| l.contains("\"code\""))
+            .collect::<Vec<_>>(),
+        kept
+    );
+    assert!(full.contains("\"code\":\"W0902\""), "{full}");
+    for key in costs {
+        assert_eq!(field(&full, key), field(&sel, key), "{key}");
+    }
+    // `total`'s clauses and the end of its body are undecided; every
+    // query counts, the probes too.
+    assert_eq!(field(&sel, "pre_undecided"), "1", "{sel}");
+    assert_eq!(field(&sel, "reach_undecided"), "1", "{sel}");
+    let rlimit: u64 = field(&sel, "pre_rlimit").parse().unwrap();
+    assert!(rlimit > 5_000_000, "{sel}");
+    let rlimit: u64 = field(&sel, "reach_rlimit").parse().unwrap();
+    assert!(rlimit > 1_000_000, "{sel}");
+    assert_eq!(field(&sel, "verifications"), "0");
+    assert_eq!(field(&sel, "mutants"), "0");
+    // W0902 skips W0901's functions, so the precondition check runs for it.
+    let (_, w0902) = lint(&["--select", "W0902"]);
+    assert_eq!(w0902.matches("\"code\":\"W0902\"").count(), 2, "{w0902}");
+    assert!(!w0902.contains("W0901"), "{w0902}");
+    assert_eq!(field(&w0902, "pre_rlimit"), field(&full, "pre_rlimit"));
+    assert_eq!(field(&w0902, "reach_rlimit"), "null");
+    let (_, syntactic) = lint(&["--select", "W0906,W0907"]);
+    for key in costs {
+        assert_eq!(field(&syntactic, key), "null", "{syntactic}");
+    }
+    let (code, unknown) = lint(&["--select", "W0901,W0999"]);
+    assert_eq!(code, Some(2), "{unknown}");
+    let _ = std::fs::remove_dir_all(&dir);
+}

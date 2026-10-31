@@ -111,6 +111,7 @@ pub fn vacuous_points(files: &[(String, String)]) -> Vec<String> {
         return Vec::new();
     }
     verify::vacuous_ends(&fe.program, &fe.tables)
+        .0
         .into_iter()
         .map(|(path, _, what)| format!("{path}: {what}"))
         .collect()

@@ -9,13 +9,15 @@
     "V8_bench_rlimit_total": 24316281,
     "V9_bench_defs_at_limit": 0,
     "V10_library_rlimit_total": 11946407,
+    "V11_sat_check_rlimit_total": 260896911,
+    "V12_sat_check_undecided": 285,
     "S1_external_crates": 0,
     "S2_external_processes": [
       "clang",
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 36732,
+    "S4_stage0_rust_lines": 39512,
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
     "P1_runnable_programs": 58,
@@ -1483,6 +1485,24 @@
         "P2_bmb_lines": [
           19830,
           20163
+        ]
+      }
+    },
+    {
+      "date": "2026-10-31",
+      "reason": "T2-12: V11 (satisfiability checks' rlimit, W0905 + W0901) and V12 (their undecided count) read from bmb lint --select W0901,W0905 over proofs_are_not_vacuous's programs and bench/game; T2-10's 112 programs give its z3-proxy values exactly (239,829,012 + 20,619,118, 281 + 4), the 4 BRB-ENCAP seeds (T0-09) add 448,781 and no undecided",
+      "changed": {
+        "V11_sat_check_rlimit_total": [
+          null,
+          260896911
+        ],
+        "V12_sat_check_undecided": [
+          null,
+          285
+        ],
+        "S4_stage0_rust_lines": [
+          36732,
+          39512
         ]
       }
     }

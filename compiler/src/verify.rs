@@ -596,6 +596,30 @@ pub struct Outcome {
     /// Under `vacuous_ends` only: the points of each definition whose path
     /// condition the solver refutes (backlog 1B-44).
     pub vacuous: Vec<(String, Span, &'static str)>,
+    /// Under `vacuous_ends` only: what deciding the reach points cost.
+    pub reach_cost: SatCost,
+}
+
+/// What a satisfiability check (`vacuous_ends`, `preconditions_satisfiable`)
+/// cost the solver (backlog T2-12): the `rlimit` of every query it sent
+/// (probes, full queries, ground-instance retries) and the number of its
+/// points or functions left undecided. An undecided one is not reported,
+/// so this cost is the check's only trace of it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SatCost {
+    pub rlimit: u64,
+    pub undecided: usize,
+}
+
+/// `check-sat`, adding the query's `rlimit` to `spent` when it answered.
+fn check_sat_counted(sol: &mut Solver, spent: &mut u64) -> Result<Answer, String> {
+    let a = sol.check_sat();
+    if a.is_ok()
+        && let Ok(u) = sol.rlimit_used()
+    {
+        *spent += u;
+    }
+    a
 }
 
 /// The limit of a reach point's query (`vacuous_ends`): a refutation comes
@@ -753,12 +777,12 @@ pub fn contract_refinements(
 /// proved obligations never trap, every loop has a decreasing measure, so
 /// the end is reached. A refuted point means its proofs hold vacuously:
 /// contradictory contracts, or a fault in the encoding (2G-05 found one).
-/// An undecided point is not reported.
-pub fn vacuous_ends(p: &Program, t: &Tables) -> Vec<(String, Span, &'static str)> {
+/// An undecided point is not reported; it is counted in the cost.
+pub fn vacuous_ends(p: &Program, t: &Tables) -> (Vec<(String, Span, &'static str)>, SatCost) {
     let prev = REACH.with(|r| r.replace(true));
     let o = verify_impl(p, t, &mut Diags::default(), 0, None, None, false, None);
     REACH.with(|r| r.set(prev));
-    o.vacuous
+    (o.vacuous, o.reach_cost)
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -6427,8 +6451,11 @@ fn needed_decls(
 /// span from the first to the last clause, and `Some(true)` (satisfiable),
 /// `Some(false)` (unsatisfiable: the function can never be called and every
 /// proof about it is vacuous) or `None` (undecided, unsupported construct,
-/// or the solver could not run).
-pub fn preconditions_satisfiable(p: &Program, t: &Tables) -> Vec<(String, Span, Option<bool>)> {
+/// or the solver could not run). With it, what the queries cost (`SatCost`).
+pub fn preconditions_satisfiable(
+    p: &Program,
+    t: &Tables,
+) -> (Vec<(String, Span, Option<bool>)>, SatCost) {
     let view = prepare(p, t);
     let t = &view;
     let prog = prog_of(p, t);
@@ -6437,6 +6464,7 @@ pub fn preconditions_satisfiable(p: &Program, t: &Tables) -> Vec<(String, Span, 
     let mut solver: Option<Solver> = None;
     let mut solver_down = crate::toolchain::check_z3().is_err();
     let mut out = Vec::new();
+    let mut spent = 0u64;
     for (path, d) in &prog.defs {
         if d.inst || d.f.kind != FnKind::Exec || d.f.requires.is_empty() {
             continue;
@@ -6516,14 +6544,14 @@ pub fn preconditions_satisfiable(p: &Program, t: &Tables) -> Vec<(String, Span, 
                 .and_then(|_| sol.run(&pb))
                 .and_then(|_| sol.run(&probe_limit()))
                 .and_then(|_| sol.run(&q))
-                .and_then(|_| sol.check_sat());
+                .and_then(|_| check_sat_counted(sol, &mut spent));
             matches!(a, Ok(Answer::Unsat | Answer::Sat)).then_some(a)
         });
         let mut answer = probed.unwrap_or_else(|| {
             sol.run("(reset)")
                 .and_then(|_| sol.run(&full))
                 .and_then(|_| sol.run(&q))
-                .and_then(|_| sol.check_sat())
+                .and_then(|_| check_sat_counted(sol, &mut spent))
         });
         // Undecided with quantified definitions: ground instances follow from
         // the definitions, so `unsat` with them is `unsat` (as in the prover).
@@ -6537,7 +6565,7 @@ pub fn preconditions_satisfiable(p: &Program, t: &Tables) -> Vec<(String, Span, 
                     .run("(reset)")
                     .and_then(|_| sol.run(&head))
                     .and_then(|_| sol.run(&format!("{inst}{q}")))
-                    .and_then(|_| sol.check_sat());
+                    .and_then(|_| check_sat_counted(sol, &mut spent));
                 if matches!(retry, Ok(Answer::Unsat)) {
                     answer = retry;
                 }
@@ -6554,7 +6582,11 @@ pub fn preconditions_satisfiable(p: &Program, t: &Tables) -> Vec<(String, Span, 
         };
         out.push((path.clone(), span, verdict));
     }
-    out
+    let cost = SatCost {
+        rlimit: spent,
+        undecided: out.iter().filter(|(_, _, v)| v.is_none()).count(),
+    };
+    (out, cost)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -6576,6 +6608,7 @@ fn verify_impl(
     let mut proved_keys: BTreeSet<ObKey> = BTreeSet::new();
     let mut failed_keys: BTreeSet<ObKey> = BTreeSet::new();
     let mut vacuous = Vec::new();
+    let mut reach_cost = SatCost::default();
     let spec_decls = prog.spec_decls();
     let dts = datatypes(t);
     let first_span = prog
@@ -6765,7 +6798,7 @@ fn verify_impl(
             prefix.push('\n');
             prefix.push_str(&sort_decls(&t.fns[path]));
             let decls = enc.decls.join("\n");
-            for (span, what, pc) in &enc.reach {
+            for (k, (span, what, pc)) in enc.reach.iter().enumerate() {
                 // A small budget (`REACH_LIMIT`); undecided is not reported.
                 let q = pc
                     .iter()
@@ -6797,14 +6830,19 @@ fn verify_impl(
                 if solver.is_none() {
                     solver = Solver::start().ok();
                 }
-                let Some(sol) = solver.as_mut() else { break };
+                let Some(sol) = solver.as_mut() else {
+                    // No solver: this point and the rest are undecided.
+                    reach_cost.undecided += enc.reach.len() - k;
+                    break;
+                };
+                let spent = &mut reach_cost.rlimit;
                 let probed = probe.and_then(|pb| {
                     let a = sol
                         .run("(reset)")
                         .and_then(|_| sol.run(&pb))
                         .and_then(|_| sol.run(&probe_limit()))
                         .and_then(|_| sol.run(&q))
-                        .and_then(|_| sol.check_sat());
+                        .and_then(|_| check_sat_counted(sol, spent));
                     matches!(a, Ok(Answer::Unsat | Answer::Sat)).then_some(a)
                 });
                 let answer = probed.unwrap_or_else(|| {
@@ -6812,10 +6850,12 @@ fn verify_impl(
                         .and_then(|_| sol.run(&base))
                         .and_then(|_| sol.run(REACH_LIMIT))
                         .and_then(|_| sol.run(&q))
-                        .and_then(|_| sol.check_sat())
+                        .and_then(|_| check_sat_counted(sol, spent))
                 });
-                if matches!(answer, Ok(Answer::Unsat)) {
-                    vacuous.push((path.clone(), *span, *what));
+                match answer {
+                    Ok(Answer::Unsat) => vacuous.push((path.clone(), *span, *what)),
+                    Ok(Answer::Sat) => {}
+                    _ => reach_cost.undecided += 1,
                 }
             }
             continue;
@@ -7295,6 +7335,7 @@ fn verify_impl(
         proven,
         scripts,
         vacuous,
+        reach_cost,
     }
 }
 
@@ -8679,6 +8720,7 @@ mod m {
         let tables = c.into_tables();
         assert!(!diags.has_errors());
         let got: Vec<(String, Option<bool>)> = preconditions_satisfiable(&program, &tables)
+            .0
             .into_iter()
             .map(|(p, _, v)| (p, v))
             .collect();
@@ -8731,6 +8773,7 @@ mod m {
         let tables = c.into_tables();
         assert!(!diags.has_errors());
         let got: Vec<(String, Option<bool>)> = preconditions_satisfiable(&program, &tables)
+            .0
             .into_iter()
             .map(|(p, _, v)| (p, v))
             .collect();

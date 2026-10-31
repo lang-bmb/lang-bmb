@@ -15,7 +15,7 @@ cargo run -- verify --cache .bmb-cache a.bmb  # 증명 캐시: 해법기 입력�
 cargo run -- verify --def u::f --def u::g a.bmb  # 이름 댄 정의만 증명(프로그램 전체는 검사). 상태 줄은 전체 증명과 바이트 동일, 종료 코드는 그 정의들만 따름. 없는 이름은 종료 코드 2(T1-29: 두 편집의 겹친 읽기를 병합에서 재증명, ADR-0065 결정 4)
 cargo run -- stability a.bmb     # Z3 시드 0..5로 증명해 판정이 시드에 따라 바뀌는 정의를 보고(1B-19)
 cargo run -- uses a.bmb          # 증명되지 않는 정의마다 최소 #[uses(..)] 목록을 찾아 보고. --write면 파일 수정(2D-05). --cache DIR은 verify와 같은 캐시(2D-15)
-cargo run -- lint a.bmb          # 계약 조정 린트: 불가능한 pre, 증명에 쓰이지 않는 pre, 호출자가 쓰지 않는 post, 변이가 살아남는 약한 명세(경고 W09xx, 2D-08·2D-09). --cache DIR은 verify와 같은 캐시(2D-15)
+cargo run -- lint a.bmb          # 계약 조정 린트: 불가능한 pre, 증명에 쓰이지 않는 pre, 호출자가 쓰지 않는 post, 변이가 살아남는 약한 명세(경고 W09xx, 2D-08·2D-09). --cache DIR은 verify와 같은 캐시(2D-15). --select W0901,W0905는 그 검사만(T2-12)
 cargo run -- mutate --def u::f a.bmb  # W0904 변이 전부(상한 없음, 증명 안 함)를 프로그램으로: 행마다 바뀐 단위의 정규형(BSB 생성기용, 2A-10)
 cargo run -- weaken old/ new/    # 명세 약화 감지: 두 판(파일이나 작업 공간)의 계약을 SMT 함의로 비교, 정의마다 same·refined·weakened 등과 반례, 약화는 W0908(2D-19). 약화·미결이 있으면 종료 코드 1
 cargo run -- weaken --readers r.jsonl old/ new/  # 읽는 쪽의 비교: 줄마다 정의와 그 계약을 읽는 증명의 #[uses], 그 공개 집합으로만 정방향 판정(T1-27, ADR-0065 §3)
@@ -128,7 +128,7 @@ ADR-0016의 부분집합을 구체화한 것이다. 모두 "선택을 필수로"
 
 ## 계약 조정 린트
 
-`bmb lint [--cache DIR] <file.bmb|DIR>...`(백로그 2D-08, DESIGN.md §8.2 "계약 조정", `src/lint.rs`). 요청할 때만 돌고 `check`·`verify`의 출력은 그대로다. 출력은 경고 진단(JSONL, `"severity":"warning"`)과 요약 행(아래). 프로그램이 검사를 통과하지 못하거나 증명 게이트가 돌 수 없을 때(E0812)만 종료 코드 1이다.
+`bmb lint [--cache DIR] [--select CODES] <file.bmb|DIR>...`(백로그 2D-08, DESIGN.md §8.2 "계약 조정", `src/lint.rs`). 요청할 때만 돌고 `check`·`verify`의 출력은 그대로다. 출력은 경고 진단(JSONL, `"severity":"warning"`)과 요약 행(아래). 프로그램이 검사를 통과하지 못하거나 증명 게이트가 돌 수 없을 때(E0812)만 종료 코드 1이다.
 
 | 코드 | 보고 | 방법 |
 | --- | --- | --- |
@@ -148,7 +148,9 @@ ADR-0016의 부분집합을 구체화한 것이다. 모두 "선택을 필수로"
 - 측정(`tests/run/search.bmb`): 변이 48개 중 9개가 살아남았다(2D-16 전 33개 중 7개). 예: `alg::digit_sum`의 `n / 10` → `n / 11`, `n % 10` → `n / 10`(2D-16), `alg::lower_bound_of`의 `(hi - lo) / 2` → `(hi - lo) / 3`. 마지막 것은 이분 탐색이 계속 맞으므로 실제로 명세가 구별할 필요가 없는 변경이다. 인덱스 변이 6개(`a[mid]`, `a[i]`, `a[best]`)는 모두 죽었다.
 - 비용(2D-15): 제한 재검증(`verify::verify_defs`)은 처음 실패한 의무에서 멈춘다. 린트는 "완전히 증명되는가"만 묻기 때문이다. `--cache DIR`이면 첫 전체 검증이 증분 캐시를 쓰고 증명 캐시는 `DIR/proofs`에서 읽고 써 넣는다. 릴리스 빌드 CPU 시간(해법기 포함, 2D-16 전 변이 집합): `search.bmb` 11.7초 → 4.7초(따뜻한 `--cache` 3.8초), m1b 시드 40.3초 → 30.6초(따뜻한 `--cache` 29.8초). m1b에서 남는 비용은 대부분 죽는 변이의 실패 의무(실패는 캐시하지 않는다)와 W0901 충족 가능성 질의 중 `rlimit`까지 가는 수량자 질의 몇 개다.
 - 결정론: 고정 시드·`rlimit`, 경로·절·변이 순서. 같은 입력이면 같은 바이트다.
-- 요약 행: `{"summary":true,"defs","reports","verifications","skipped","mutants","surviving","mutants_skipped"}`(뒤 세 키는 2D-09에서 추가).
+- 요약 행: `{"summary":true,"defs","reports","verifications","skipped","mutants","surviving","mutants_skipped","pre_rlimit","pre_undecided","reach_rlimit","reach_undecided"}`(`mutants` 등 세 키는 2D-09, 비용 네 키는 T2-12에서 추가).
+- 충족 가능성 검사의 비용(백로그 T2-12, `verify::SatCost`): `pre_*`는 W0901의 사전조건 충족 검사, `reach_*`는 W0905의 공허 검사다. `*_rlimit`은 그 검사가 보낸 모든 질의(탐침, 전체 질의, 기저 인스턴스 재시도)의 `rlimit` 합, `*_undecided`는 결정하지 못한 함수(W0901)·도달 지점(W0905) 수다(해법기가 돌지 못한 것 포함). 미결정은 보고하지 않으므로 출력에 남는 흔적은 이 수뿐이다. 두 검사는 판정 대상을 거르기 전에 모든 함수·지점을 풀므로(W0905는 증명되지 않은 함수와 W0901 함수의 보고만 뺀다) 비용도 모두를 센다. 돌지 않은 검사는 `null`. 고정 시드·`rlimit`이라 결정론적이고 캐시와 무관하다. `scripts/health.py`의 V11·V12가 읽는다.
+- `--select CODES`(쉼표로 구분, `lint::CODES`의 W0901~W0907): 그 검사만 돌린다(flake8·ruff의 `--select`). 고른 검사는 전체 실행과 같은 것을 보고한다. 첫 전체 검증은 증명된 함수를 판정하는 W0902~W0905를 고를 때만, 사전조건 충족 검사는 W0901과 그 불가 함수를 빼는 W0902·W0904·W0905를 고를 때만 돈다(그때 `pre_*`도 나온다). 고르지 않은 검사의 수는 0이다. 모르는 코드는 종료 코드 2. 비용만 볼 때는 `--select W0901,W0905`(W0902~W0904의 재검증과 변이를 건너뛴다).
 - 한계: W0903은 현재 프로그램의 호출자만 본다(공개 API로 쓸 post도 보고될 수 있어 정보성이다). 기준 검증에서 실패한 함수나 호출자가 실패한 함수는 판정하지 않는다.
 - `bmb mutate --def PATH [--def PATH].. <file.bmb>..`(백로그 2A-10, `lint::mutate_sources`): W0904와 같은 변이 지점(같은 순서)마다 변이를 하나 적용한 프로그램을 만든다. 상한도 증명도 없다. 행은 `{"def","site","line","col","before","after","unit","text"}`(`text`는 바뀐 최상위 단위의 정규형, 다른 단위는 그대로)이고 마지막 줄은 `{"summary":true,"mutants"}`. 실행 함수가 아닌 경로나 검사 오류면 종료 코드 1. BSB 변이체 생성기(`bench/m1/bsb_gen.py`)가 쓴다.
 
