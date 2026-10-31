@@ -1,0 +1,26 @@
+{
+ "base": "f83cd47d8d4b60f0e725b607da7d59d602059327",
+ "head": "01710da8413682f6cbe5a9f9399dd9559f14c767",
+ "bmb_sha256": "af71a88631e7dfc9665ee0f130a487582676dffbb7b542b9b333d392cad411d5",
+ "scripts": [
+  "oracle",
+  "stress"
+ ],
+ "providers": [
+  "openai",
+  "anthropic"
+ ],
+ "sets": {
+  "bvb": {
+   "same": true,
+   "diffs": [],
+   "tasks": 45
+  },
+  "bvb-verus": {
+   "same": true,
+   "diffs": [],
+   "tasks": 45
+  }
+ },
+ "same": true
+}
