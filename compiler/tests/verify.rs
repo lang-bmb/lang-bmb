@@ -63,6 +63,15 @@ fn proofs_are_not_vacuous() {
             .collect();
         programs.push((format!("{set}/seed"), files));
     }
+    // BRB-ENCAP (backlog T0-09): one seed unit per task directory.
+    let mut encap: Vec<PathBuf> = fs::read_dir(bench.join("brb-encap").join("seed"))
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .collect();
+    encap.sort();
+    for dir in encap {
+        programs.extend(bmb_files(&dir).iter().map(|p| one(p)));
+    }
     // The libraries, each alone and all of them with each program that uses them.
     let libs: Vec<(String, String)> = bmb_files(&bench.join("..").join("lib"))
         .iter()

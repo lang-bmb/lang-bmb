@@ -15,11 +15,11 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 36625,
+    "S4_stage0_rust_lines": 36732,
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
     "P1_runnable_programs": 58,
-    "P2_bmb_lines": 19830,
+    "P2_bmb_lines": 20163,
     "P3_errors_with_help": 0.872,
     "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
@@ -1469,6 +1469,20 @@
         "S4_stage0_rust_lines": [
           36342,
           36625
+        ]
+      }
+    },
+    {
+      "date": "2026-10-31",
+      "reason": "T0-09: bench/brb-encap seeds (four BMB data-structure units, 333 lines)",
+      "changed": {
+        "S4_stage0_rust_lines": [
+          36625,
+          36732
+        ],
+        "P2_bmb_lines": [
+          19830,
+          20163
         ]
       }
     }

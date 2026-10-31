@@ -6,6 +6,7 @@
 | `bvb` | Verus 이식 과제, 원본 Verus와 비교(ADR-0038) | 필요 |
 | `impossible` | BMB-Impossible: 불가능 계약에서 정직 보고 대 게이트 우회(H-GAME, 2A-13) | 필요(증명서·대조군은 불필요) |
 | `brb` | BMB+증명 대 Rust+테스트(G5, H-ORACLE, G8) | 필요 |
+| `brb-encap` | 자료 구조 수정: 타입 불변식 대 private + 테스트(H-ENCAP, T0-09) | 필요(기준·약한·게이밍 해법은 불필요) |
 | `bnb` | 맵 도구 대 파일 도구(Rust 쌍둥이) | 오라클 팔은 불필요 |
 | `bcb` | 누적 검증 비용(ADR-0042) | 불필요 |
 | `m3` | 생성 코드베이스 | 불필요 |

@@ -1,0 +1,67 @@
+#[summary("binary min-heap of at most 8 values")]
+mod heap {
+    // The values `a[0..len]` in heap order: no value is smaller than its
+    // parent's (the parent of `i > 0` is `(i - 1) / 2`), so `a[0]` is the
+    // smallest.
+    #[invariant(ordered)]
+    struct Heap { a: [i64; 8], len: usize }
+
+    spec fn ordered(h: &Heap) -> bool {
+        h.len <= 8 && (forall|i: usize| 0 < i && i < h.len ==> h.a[(i - 1) / 2] <= #[trigger] h.a[i])
+    }
+
+    // Loop invariant of `push`: heap order on `v[0..n]` except between `k`
+    // and its parent, and `k`'s parent is no larger than `k`'s children.
+    spec fn rising(v: [i64; 8], n: usize, k: usize) -> bool {
+        (forall|i: usize| 0 < i && i < n && i != k ==> v[(i - 1) / 2] <= #[trigger] v[i]) && (k > 0 ==> (forall|c: usize| 0 < c && c < n && (c - 1) / 2 == k ==> v[(k - 1) / 2] <= #[trigger] v[c]))
+    }
+
+    impl Heap {
+        #[effects(pure)]
+        #[uses(ordered)]
+        fn new() -> Heap {
+            Heap { a: [0; 8], len: 0 }
+        }
+
+        #[effects(pure)]
+        fn size(self: &Heap) -> usize {
+            self.len
+        }
+
+        // The smallest value.
+        #[effects(pure)]
+        fn peek(self: &Heap) -> Option<i64> {
+            if self.len == 0 {
+                None
+            } else {
+                Some(self.a[0])
+            }
+        }
+
+        // `false` when full: the value is not stored.
+        #[effects(pure)]
+        #[uses(ordered, rising)]
+        fn push(self: &mut Heap, x: i64) -> bool {
+            if self.len == 8 {
+                return false;
+            }
+            let n: usize = self.len + 1;
+            let mut v: [i64; 8] = self.a;
+            v[n - 1] = x;
+            let mut k: usize = n - 1;
+            while k > 0 && v[(k - 1) / 2] > v[k]
+                invariant k < n, n <= 8, rising(v, n, k),
+                decreases k,
+            {
+                let p: usize = (k - 1) / 2;
+                let t: i64 = v[p];
+                v[p] = v[k];
+                v[k] = t;
+                k = p;
+            }
+            self.a = v;
+            self.len = n;
+            true
+        }
+    }
+}
