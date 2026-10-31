@@ -154,6 +154,7 @@ def library_cost():
         "V10_library_rlimit_total": sum(r["rlimit"] for r in rows),
         "_library_unproved_defs": sum(r["status"] != "verified" for r in rows),
         "_library_worst_obligation": f"{worst['def']} {round(worst['rlimit_max'] / toolchain_rlimit(), 4)}",
+        "_library_headroom": round(worst["rlimit_max"] / toolchain_rlimit(), 4),
     }
 
 
@@ -312,6 +313,14 @@ def compute():
     for f in (diag_coverage, proof_metrics, library_cost, solver_stability, bench_load, helpful_errors,
               self_containment, practicality, binary_size, process):
         m.update(f())
+    return with_library_headroom(m)
+
+
+def with_library_headroom(m):
+    """V5 covers the libraries and the game programs too (backlog T2-09): a
+    library obligation near the limit breaks with a seed or a solver version
+    as a corpus one does (`utf8::width` stood at 0.37 of it, unseen)."""
+    m["V5_rlimit_headroom"] = max(m["V5_rlimit_headroom"], m.pop("_library_headroom"))
     return m
 
 

@@ -35,6 +35,12 @@ def main():
     assert bad({"V10_library_rlimit_total": 2201})[0]  # budget +10%
     assert bad({"V10_library_rlimit_total": 2200}) == ([], [])
     assert bad({"V9_bench_defs_at_limit": 0}) == ([], ["V9_bench_defs_at_limit: 1 -> 0"])
+    # V5 is the worse of the corpus and the libraries (T2-09): a library
+    # obligation near the limit fails the fixed rule as a corpus one does
+    lib = health.with_library_headroom(dict(GOOD, _library_headroom=0.37))
+    assert lib["V5_rlimit_headroom"] == 0.37 and "_library_headroom" not in lib
+    assert health.judge(lib, GOOD)[0]
+    assert health.with_library_headroom(dict(GOOD, _library_headroom=0.0))["V5_rlimit_headroom"] == 0.01
     assert bad({"S3_runtime_libs_outside_libc": ["libm.so.6"]})[0]
     # a new external process needs an accepted baseline (and an ADR)
     assert bad({"S2_external_processes": ["clang", "cvc5", "z3"]})[0]

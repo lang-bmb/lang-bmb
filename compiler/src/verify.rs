@@ -1991,6 +1991,106 @@ fn and(xs: &[String]) -> String {
     }
 }
 
+/// The facts of one side of a branch (or of the right of `&&`/`||`) under
+/// its guard `c`, with connectives nested no deeper than `LIFT_DEPTH` plus
+/// the guard (backlog T2-09). The facts stay one `(=> c (and ..))`, except
+/// that an implication `(=> g x)` among them at least `LIFT_DEPTH` deep, such
+/// as an inner branch's own facts, becomes `(=> (and c g) x)` beside it.
+/// Nesting `(=> c (and .. (=> g (and ..))))` at every `if` made Z3's context
+/// simplifier (`ctx-simplify`, in the preprocessing of every quantified
+/// query) visit each inner conjunct again under each of its siblings,
+/// exponentially in the depth: `utf8::width` (nested `if`s, depth 15) spent
+/// 1,821,059 of its 1,843,925 `rlimit` there, and 8,180 lifted. The meaning
+/// is the same (`c => (a && (g => x))` is `(c => a) && (c && g => x)`), and
+/// a side without deep implications keeps its old text.
+fn guarded(c: &str, facts: &[String]) -> Vec<String> {
+    let mut plain = Vec::new();
+    let mut lifted = Vec::new();
+    for f in facts {
+        match implication(f).filter(|_| bool_depth(f) >= LIFT_DEPTH) {
+            Some((g, x)) => lifted.push(format!("(=> (and {c} {g}) {x})")),
+            None => plain.push(f.clone()),
+        }
+    }
+    let mut out = Vec::new();
+    if !plain.is_empty() {
+        out.push(format!("(=> {c} {})", and(&plain)));
+    }
+    out.extend(lifted);
+    out
+}
+
+/// The connective depth (`and`, `or`, `=>`) from which `guarded` lifts an
+/// implication out of the conjunction it would nest in. Below it the facts
+/// keep their nested form: a two-level group such as a division lemma's
+/// `(=> (and (>= a 0) (> b 0)) (and ..))` costs `ctx-simplify` a constant
+/// factor, and lifting it too changed the nonlinear search of `gcd_exec`
+/// (`vc-va0053-aspect-pairs`) from 226,723 to 3,755,290 at seed 0 and to
+/// `unknown` at two of seeds 0..7 (backlog T2-09).
+const LIFT_DEPTH: usize = 3;
+
+/// The nesting depth of the connectives `and`, `or` and `=>` in term `t`.
+fn bool_depth(t: &str) -> usize {
+    // For each open list: whether its head is a connective, and the
+    // deepest connective nesting among its children so far.
+    let mut stack: Vec<(bool, usize)> = Vec::new();
+    let mut best = 0;
+    let mut quoted = false;
+    let b = t.as_bytes();
+    for (i, &ch) in b.iter().enumerate() {
+        match ch {
+            b'|' => quoted = !quoted,
+            _ if quoted => {}
+            b'(' => {
+                let rest = &t[i + 1..];
+                let head = ["and ", "or ", "=> "].iter().any(|h| rest.starts_with(h));
+                stack.push((head, 0));
+            }
+            b')' => {
+                if let Some((head, inner)) = stack.pop() {
+                    let d = inner + usize::from(head);
+                    match stack.last_mut() {
+                        Some(parent) => parent.1 = parent.1.max(d),
+                        None => best = best.max(d),
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    best
+}
+
+/// The antecedent and consequent of an SMT implication `(=> g x)`, as text.
+fn implication(f: &str) -> Option<(&str, &str)> {
+    let rest = f.strip_prefix("(=> ")?.strip_suffix(')')?;
+    let g = first_term(rest)?;
+    let x = rest[g.len()..].strip_prefix(' ')?;
+    (first_term(x)? == x).then_some((g, x))
+}
+
+/// The first complete term of `s` (an atom, a `|quoted|` symbol or a
+/// parenthesized list), as a prefix of `s`.
+fn first_term(s: &str) -> Option<&str> {
+    let (mut depth, mut quoted) = (0usize, false);
+    for (i, ch) in s.char_indices() {
+        match ch {
+            '|' => quoted = !quoted,
+            _ if quoted => {}
+            '(' => depth += 1,
+            ')' => {
+                depth = depth.checked_sub(1)?;
+                if depth == 0 {
+                    return Some(&s[..=i]);
+                }
+            }
+            ' ' if depth == 0 => return (i > 0).then_some(&s[..i]),
+            _ => {}
+        }
+    }
+    (depth == 0 && !quoted && !s.is_empty()).then_some(s)
+}
+
 fn ite(c: &str, a: &str, b: &str) -> String {
     if a == b {
         a.to_string()
@@ -3553,9 +3653,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                 // lemmas, element ranges) hold whenever it ran (1B-29).
                 let facts: Vec<String> = self.pc[n + 1..].to_vec();
                 self.pc.truncate(n);
-                if !facts.is_empty() {
-                    self.pc.push(format!("(=> {guard} {})", and(&facts)));
-                }
+                self.pc.extend(guarded(&guard, &facts));
                 Val::S(format!("({name} {lt} {rt})"))
             }
             ExprKind::Binary(op, l, r) if self.ty(l) == TypeKind::F64 => {
@@ -3980,12 +4078,8 @@ impl<'p, 'q> Enc<'p, 'q> {
             merged.insert(k.clone(), v);
         }
         self.vars = merged;
-        if !then_facts.is_empty() {
-            self.pc.push(format!("(=> {c} {})", and(&then_facts)));
-        }
-        if !else_facts.is_empty() {
-            self.pc.push(format!("(=> (not {c}) {})", and(&else_facts)));
-        }
+        self.pc.extend(guarded(c, &then_facts));
+        self.pc.extend(guarded(&format!("(not {c})"), &else_facts));
         self.merge(c, &tv, &ev, ty)
     }
 
@@ -8510,6 +8604,36 @@ mod m {
                 ("m::sub".into(), Some(true))
             ]
         );
+    }
+
+    /// Branch facts keep their text unless an implication among them nests
+    /// `LIFT_DEPTH` connectives deep (backlog T2-09); then it is lifted with
+    /// the guard conjoined, the same meaning without the nesting.
+    #[test]
+    fn guarded_lifts_only_deep_implications() {
+        let shallow = vec![
+            "(> x 0)".to_string(),
+            "(=> (> y 0) (and (> z 0) (< z 9)))".to_string(),
+        ];
+        assert_eq!(
+            guarded("c", &shallow),
+            ["(=> c (and (> x 0) (=> (> y 0) (and (> z 0) (< z 9)))))"]
+        );
+        let deep = vec![
+            "(> x 0)".to_string(),
+            "(=> (> |a b| 0) (and (> z 0) (=> d (and e f))))".to_string(),
+        ];
+        assert_eq!(
+            guarded("c", &deep),
+            [
+                "(=> c (> x 0))",
+                "(=> (and c (> |a b| 0)) (and (> z 0) (=> d (and e f))))"
+            ]
+        );
+        assert_eq!(bool_depth("(=> (> |a (b| 0) (and x (or y z)))"), 3);
+        assert_eq!(implication("(=> |p)| q)"), Some(("|p)|", "q")));
+        assert_eq!(implication("(=> p q r)"), None);
+        assert_eq!(implication("(and p q)"), None);
     }
 
     #[test]
