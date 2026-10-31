@@ -6124,7 +6124,8 @@ impl<'p> Prog<'p> {
     /// model search over it (backlog T2-04: a quantified definition over an
     /// `(Array Int Float64)` parameter kept Z3 from ending a satisfiable
     /// query, `incomplete (theory array)`). `relevant_axioms` picks the form
-    /// (ADR-0064, ADR-0067).
+    /// (ADR-0064, ADR-0067). A non-recursive definition that is not a leaf
+    /// has a macro form for the probe of a satisfiability check (ADR-0072).
     fn axiom(&self, path: &str) -> (String, AxiomParts) {
         let d = &self.defs[path];
         let mut enc = Enc::new(self, path, &d.mod_path);
@@ -6158,9 +6159,11 @@ impl<'p> Prog<'p> {
         // An instance of a generic spec fn is recursive when its generic is.
         let base = self.t.insts.get(path).map_or(path, |(b, _)| b.as_str());
         let recursive = self.t.recursive.contains_key(base);
-        // Only a leaf (a body that names no other spec fn) becomes a macro:
-        // Z3 expands every macro use in place, so nested macros multiply the
-        // term size (SHA-256's round functions over its sigma functions).
+        // Only a leaf (a body that names no other spec fn) becomes a macro
+        // in the proofs: Z3 expands every macro use in place, so nested
+        // macros multiply the term size (SHA-256's round functions over its
+        // sigma functions). A satisfiability check's probe takes the others
+        // too (ADR-0072).
         let leaf = !bodies.iter().any(|b| {
             self.t.fns.iter().any(|(q, sig)| {
                 q != path && sig.kind == FnKind::Spec && b.contains(&spec_key(q, self.t))
@@ -6206,9 +6209,14 @@ impl<'p> Prog<'p> {
         // scalars is a macro only in an obligation's probe (ADR-0067): in the
         // full query its quantified form leaves nonlinear proofs the search
         // they had.
+        // A definition that names other spec fns is a macro only in the
+        // probe of a satisfiability check (ADR-0072), and only where every
+        // definition it names is a macro there too (`axioms_in_forms`).
         let binds_array = binders.iter().any(|b| b.contains("(Array "));
-        let text = if !recursive && leaf && !mac.is_empty() {
-            let marker = if binds_array {
+        let text = if !recursive && !mac.is_empty() {
+            let marker = if !leaf {
+                SAT_QUANTIFIED
+            } else if binds_array {
                 QUANTIFIED
             } else {
                 PROBE_QUANTIFIED
@@ -6489,9 +6497,19 @@ pub fn preconditions_satisfiable(p: &Program, t: &Tables) -> Vec<(String, Span, 
             }
         }
         let sol = solver.as_mut().expect("solver started");
-        // The probe first, as for an obligation (ADR-0069): the same meaning,
+        // The probe first, as for an obligation (ADR-0069), in the forms of a
+        // satisfiability check (ADR-0072): the same meaning,
         // so its `sat` is a model of the clauses and its `unsat` refutes them.
-        let probe = probe_base(&axioms, &q, &relevant, &spec_decls, &dts, &base, &decls);
+        let probe = probe_base(
+            &axioms,
+            &q,
+            &relevant,
+            &spec_decls,
+            &dts,
+            &base,
+            &decls,
+            Forms::SatProbe,
+        );
         let probed = probe.and_then(|pb| {
             let a = sol
                 .run("(reset)")
@@ -6759,10 +6777,20 @@ fn verify_impl(
                 let relevant = relevant_axioms(&axioms, &q);
                 let used = needed_decls(&spec_decls, &dts, &format!("{relevant}{decls}\n{q}"));
                 let base = format!("{prefix}{used}{relevant}{decls}");
-                // The probe first, as for an obligation (ADR-0069): the same
+                // The probe first, as for an obligation (ADR-0069), in the forms
+                // of a satisfiability check (ADR-0072): the same
                 // meaning, so its `unsat` refutes the point and its `sat`
                 // reaches it.
-                let probe = probe_base(&axioms, &q, &relevant, &spec_decls, &dts, &prefix, &decls);
+                let probe = probe_base(
+                    &axioms,
+                    &q,
+                    &relevant,
+                    &spec_decls,
+                    &dts,
+                    &prefix,
+                    &decls,
+                    Forms::SatProbe,
+                );
                 if solver.as_ref().is_some_and(|s| !s.reusable()) {
                     solver = None;
                 }
@@ -6975,6 +7003,7 @@ fn verify_impl(
                 &dts,
                 &prefix,
                 &decls,
+                Forms::Probe,
             );
             let probe_limit = probe_limit();
             // In the script, the probe comes just before the full query.
@@ -7825,12 +7854,23 @@ pub fn has_nonlinear_product(text: &str) -> bool {
 /// Axioms whose symbol occurs in `text`, closed over the axioms' own bodies,
 /// in the full query's forms (ADR-0064).
 fn relevant_axioms(axioms: &[(String, String)], text: &str) -> String {
-    axioms_in_forms(axioms, text, false)
+    axioms_in_forms(axioms, text, Forms::Full)
 }
 
-/// As `relevant_axioms`, with every leaf definition a macro when `probe`
-/// (an obligation's probe, ADR-0067).
-fn axioms_in_forms(axioms: &[(String, String)], text: &str, probe: bool) -> String {
+/// Which query the definitions are written for (`axioms_in_forms`).
+#[derive(Clone, Copy, PartialEq)]
+enum Forms {
+    /// The full query: only leaves that bind an array are macros (ADR-0064).
+    Full,
+    /// An obligation's probe: every leaf is a macro (ADR-0067).
+    Probe,
+    /// The probe of a satisfiability check (reach points, preconditions):
+    /// every definition outside recursion is a macro (ADR-0072).
+    SatProbe,
+}
+
+/// As `relevant_axioms`, in the forms of query `forms`.
+fn axioms_in_forms(axioms: &[(String, String)], text: &str, forms_of: Forms) -> String {
     let mut chosen = vec![false; axioms.len()];
     let mut haystack = text.to_string();
     loop {
@@ -7852,18 +7892,46 @@ fn axioms_in_forms(axioms: &[(String, String)], text: &str, probe: bool) -> Stri
     let mut seen = text.to_string();
     for (k, (_, ax)) in axioms.iter().enumerate() {
         if chosen[k] {
-            seen.push_str(macro_form(ax, probe).map_or_else(|| quantified(ax), |(mac, _)| mac));
+            seen.push_str(macro_form(ax, forms_of).map_or_else(|| quantified(ax), |(mac, _)| mac));
         }
     }
     let patterns = pattern_terms(&seen);
-    let forms: Vec<&str> = axioms
+    let mut forms: Vec<&str> = axioms
         .iter()
-        .map(|(symbol, ax)| match macro_form(ax, probe) {
+        .map(|(symbol, ax)| match macro_form(ax, forms_of) {
             Some((_, quant)) if patterns.iter().any(|p| p.contains(symbol.as_str())) => quant,
             Some((mac, _)) => mac,
             None => quantified(ax),
         })
         .collect();
+    // A macro that names a quantified definition (a recursive one, or one
+    // a pattern names) is quantified too: Z3 would expand it into that
+    // definition's quantifier, where its model search failed (ADR-0072).
+    // Leaves name none; this settles the definitions above them.
+    loop {
+        let quantified_now: Vec<&str> = axioms
+            .iter()
+            .zip(&forms)
+            .enumerate()
+            .filter(|(k, ((_, ax), form))| chosen[*k] && **form == quantified(ax))
+            .map(|(_, ((symbol, _), _))| symbol.as_str())
+            .collect();
+        let mut changed = false;
+        for (k, (symbol, ax)) in axioms.iter().enumerate() {
+            if chosen[k]
+                && forms[k] != quantified(ax)
+                && quantified_now
+                    .iter()
+                    .any(|q| *q != symbol.as_str() && forms[k].contains(q))
+            {
+                forms[k] = quantified(ax);
+                changed = true;
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
     // A macro (`define-fun`) must come before every definition that names it.
     let is_macro: Vec<bool> = axioms
         .iter()
@@ -7903,14 +7971,26 @@ fn axioms_in_forms(axioms: &[(String, String)], text: &str, probe: bool) -> Stri
 /// (`Prog::axiom`): the macro serves every query.
 const QUANTIFIED: &str = "\n; quantified form\n";
 
-/// As `QUANTIFIED`, but the macro serves only an obligation's probe.
+/// As `QUANTIFIED`, but the macro serves only a probe (an obligation's or a
+/// satisfiability check's).
 const PROBE_QUANTIFIED: &str = "\n; quantified form outside the probe\n";
 
+/// As `QUANTIFIED`, but the macro serves only a satisfiability check's probe
+/// (ADR-0072).
+const SAT_QUANTIFIED: &str = "\n; quantified form outside the satisfiability probe\n";
+
 /// The macro and quantified forms of an axiom text that has both, when its
-/// macro serves this query (`probe`: an obligation's probe).
-fn macro_form(ax: &str, probe: bool) -> Option<(&str, &str)> {
+/// macro serves query `forms`.
+fn macro_form(ax: &str, forms: Forms) -> Option<(&str, &str)> {
     ax.split_once(QUANTIFIED)
-        .or_else(|| ax.split_once(PROBE_QUANTIFIED).filter(|_| probe))
+        .or_else(|| {
+            ax.split_once(PROBE_QUANTIFIED)
+                .filter(|_| forms != Forms::Full)
+        })
+        .or_else(|| {
+            ax.split_once(SAT_QUANTIFIED)
+                .filter(|_| forms == Forms::SatProbe)
+        })
 }
 
 /// The quantified form of an axiom text: the part after a marker, or all of
@@ -7918,6 +7998,7 @@ fn macro_form(ax: &str, probe: bool) -> Option<(&str, &str)> {
 fn quantified(ax: &str) -> &str {
     ax.split_once(QUANTIFIED)
         .or_else(|| ax.split_once(PROBE_QUANTIFIED))
+        .or_else(|| ax.split_once(SAT_QUANTIFIED))
         .map_or(ax, |(_, quant)| quant)
 }
 
@@ -7932,9 +8013,12 @@ fn probe_limit() -> String {
 }
 
 /// The base of a query's probe (ADR-0067): `prefix`, the declarations the
-/// probe needs, every leaf definition `q` reaches as a macro, and `decls`.
-/// `None` when that is the full query's base (`relevant` is the full query's
-/// definitions: no scalar leaf), so there is no probe.
+/// probe needs, the definitions `q` reaches in the probe's forms (`Probe`:
+/// every leaf a macro; `SatProbe`, for the satisfiability checks: every
+/// definition outside recursion, ADR-0072), and `decls`. `None` when that is
+/// the full query's base (`relevant` is the full query's definitions), so
+/// there is no probe.
+#[allow(clippy::too_many_arguments)]
 fn probe_base(
     axioms: &[(String, String)],
     q: &str,
@@ -7943,8 +8027,9 @@ fn probe_base(
     dts: &[(String, String, String)],
     prefix: &str,
     decls: &str,
+    forms_of: Forms,
 ) -> Option<String> {
-    let forms = axioms_in_forms(axioms, q, true);
+    let forms = axioms_in_forms(axioms, q, forms_of);
     (forms != relevant).then(|| {
         let used = needed_decls(spec_decls, dts, &format!("{forms}{decls}\n{q}"));
         format!("{prefix}{used}{forms}{decls}")
@@ -8604,6 +8689,84 @@ mod m {
                 ("m::sub".into(), Some(true))
             ]
         );
+    }
+
+    /// The satisfiability probe writes every definition outside recursion
+    /// as a macro (ADR-0072). `is_parity` names `parity`, so it is no leaf:
+    /// in the obligations' probe its quantified definition kept Z3 from
+    /// finding a model and the check ran to the limit undecided
+    /// (`pass/recursion.bmb`'s reach points, backlog T2-10).
+    #[test]
+    fn satisfiability_probe_unfolds_definitions_outside_recursion() {
+        let src = r#"#[summary("t")]
+mod m {
+    spec fn parity(n: u64) -> u64 { n % 2 }
+
+    spec fn is_parity(n: u64, r: u64) -> bool { r == parity(n) }
+
+    spec fn is_three(r: u64) -> bool { r == 3 }
+
+    #[effects(pure)]
+    #[uses(is_parity, parity)]
+    fn odd(n: u64, r: u64) -> u64
+        requires is_parity(n, r),
+    {
+        r
+    }
+
+    #[effects(pure)]
+    #[uses(is_parity, parity, is_three)]
+    fn three(n: u64, r: u64) -> u64
+        requires is_parity(n, r), is_three(r),
+    {
+        r
+    }
+}
+"#;
+        let mut diags = crate::diag::Diags::default();
+        let toks = crate::lexer::lex(0, src, &mut diags);
+        let program = crate::parser::Parser::new(toks, &mut diags, src).parse_program();
+        let mut c = crate::check::Checker::new(&mut diags);
+        c.check_program(&program);
+        let tables = c.into_tables();
+        assert!(!diags.has_errors());
+        let got: Vec<(String, Option<bool>)> = preconditions_satisfiable(&program, &tables)
+            .into_iter()
+            .map(|(p, _, v)| (p, v))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                ("m::odd".into(), Some(true)),
+                ("m::three".into(), Some(false))
+            ]
+        );
+    }
+
+    /// A definition that names a recursive one stays quantified in the
+    /// satisfiability probe, and so does every definition above it.
+    #[test]
+    fn satisfiability_probe_keeps_recursion_quantified() {
+        let leaf = "(define-fun |m::leaf| ((x Int)) Int x)\n; quantified form outside the probe\n(assert (forall ((x Int)) (= (|m::leaf| x) x)))".to_string();
+        let mid = "(define-fun |m::mid| ((x Int)) Int (|m::leaf| x))\n; quantified form outside the satisfiability probe\n(assert (forall ((x Int)) (! (= (|m::mid| x) (|m::leaf| x)) :pattern ((|m::mid| x)))))".to_string();
+        let rec = "(assert (forall ((x Int)) (! (= (|m::rec| x) (|m::rec| (- x 1))) :pattern ((|m::rec| x)))))".to_string();
+        let top = "(define-fun |m::top| ((x Int)) Int (|m::rec| x))\n; quantified form outside the satisfiability probe\n(assert (forall ((x Int)) (! (= (|m::top| x) (|m::rec| x)) :pattern ((|m::top| x)))))".to_string();
+        let up = "(define-fun |m::up| ((x Int)) Int (|m::top| x))\n; quantified form outside the satisfiability probe\n(assert (forall ((x Int)) (! (= (|m::up| x) (|m::top| x)) :pattern ((|m::up| x)))))".to_string();
+        let axioms = vec![
+            ("|m::leaf|".to_string(), leaf),
+            ("|m::mid|".to_string(), mid),
+            ("|m::rec|".to_string(), rec),
+            ("|m::top|".to_string(), top),
+            ("|m::up|".to_string(), up),
+        ];
+        let q = "(assert (= (|m::mid| 1) (|m::up| 2)))";
+        let sat = axioms_in_forms(&axioms, q, Forms::SatProbe);
+        assert!(sat.contains("(define-fun |m::mid|") && sat.contains("(define-fun |m::leaf|"));
+        assert!(!sat.contains("(define-fun |m::top|") && !sat.contains("(define-fun |m::up|"));
+        // The obligations' probe and the full query are as before.
+        let probe = axioms_in_forms(&axioms, q, Forms::Probe);
+        assert!(probe.contains("(define-fun |m::leaf|") && !probe.contains("(define-fun |m::mid|"));
+        assert!(!relevant_axioms(&axioms, q).contains("define-fun"));
     }
 
     /// Branch facts keep their text unless an implication among them nests
