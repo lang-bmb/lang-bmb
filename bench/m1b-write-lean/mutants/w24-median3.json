@@ -1,0 +1,566 @@
+{
+ "task": "w24-median3",
+ "generator": "bench/m1/bsb_gen.py",
+ "max_witnesses": 2,
+ "targets": [
+  {
+   "def": "tasks::median3",
+   "signature": "fn median3(a: i64, b: i64, c: i64) -> (r: i64)",
+   "mutated": [
+    "tasks::median3"
+   ],
+   "inputs": [
+    {
+     "a": 1,
+     "b": 2,
+     "c": 3
+    },
+    {
+     "a": 1,
+     "b": 3,
+     "c": 2
+    },
+    {
+     "a": 2,
+     "b": 1,
+     "c": 3
+    },
+    {
+     "a": 2,
+     "b": 3,
+     "c": 1
+    },
+    {
+     "a": 3,
+     "b": 1,
+     "c": 2
+    },
+    {
+     "a": 3,
+     "b": 2,
+     "c": 1
+    },
+    {
+     "a": 1,
+     "b": 1,
+     "c": 1
+    },
+    {
+     "a": 1,
+     "b": 1,
+     "c": 2
+    },
+    {
+     "a": 1,
+     "b": 2,
+     "c": 1
+    },
+    {
+     "a": 2,
+     "b": 1,
+     "c": 1
+    },
+    {
+     "a": 2,
+     "b": 2,
+     "c": 1
+    },
+    {
+     "a": 2,
+     "b": 1,
+     "c": 2
+    },
+    {
+     "a": 1,
+     "b": 2,
+     "c": 2
+    },
+    {
+     "a": -5,
+     "b": 0,
+     "c": 5
+    },
+    {
+     "a": 1,
+     "b": 2,
+     "c": -1
+    },
+    {
+     "a": 3,
+     "b": -1,
+     "c": 0
+    },
+    {
+     "a": 3,
+     "b": -3,
+     "c": -1
+    },
+    {
+     "a": 3,
+     "b": -2,
+     "c": 2
+    },
+    {
+     "a": 0,
+     "b": -3,
+     "c": 2
+    },
+    {
+     "a": -2,
+     "b": 2,
+     "c": 2
+    },
+    {
+     "a": -1,
+     "b": -1,
+     "c": 1
+    },
+    {
+     "a": -1,
+     "b": 0,
+     "c": 0
+    },
+    {
+     "a": 1,
+     "b": 0,
+     "c": 2
+    },
+    {
+     "a": -1,
+     "b": 2,
+     "c": 0
+    },
+    {
+     "a": 2,
+     "b": -3,
+     "c": 0
+    },
+    {
+     "a": -1,
+     "b": 0,
+     "c": -1
+    },
+    {
+     "a": -2,
+     "b": 1,
+     "c": 0
+    },
+    {
+     "a": -2,
+     "b": -3,
+     "c": -1
+    },
+    {
+     "a": 2,
+     "b": -1,
+     "c": -3
+    },
+    {
+     "a": 2,
+     "b": -1,
+     "c": 1
+    },
+    {
+     "a": 3,
+     "b": -2,
+     "c": 0
+    },
+    {
+     "a": -2,
+     "b": 2,
+     "c": -2
+    },
+    {
+     "a": 1,
+     "b": 0,
+     "c": -2
+    },
+    {
+     "a": 0,
+     "b": -1,
+     "c": -2
+    }
+   ],
+   "counts": {
+    "generated": 16,
+    "kept": 8,
+    "equivalent": 8,
+    "trap_only": 0,
+    "allowed": 0,
+    "no_check": 0
+   },
+   "mutants": [
+    {
+     "def": "tasks::median3",
+     "site": 0,
+     "line": 12,
+     "col": 9,
+     "before": "b <= a && a <= c || c <= a && a <= b",
+     "after": "!(b <= a && a <= c || c <= a && a <= b)",
+     "witnesses": [
+      {
+       "input": {
+        "a": 1,
+        "b": 2,
+        "c": 3
+       },
+       "expected": {
+        "r": 2
+       },
+       "output": {
+        "r": 1
+       }
+      },
+      {
+       "input": {
+        "a": 1,
+        "b": 3,
+        "c": 2
+       },
+       "expected": {
+        "r": 2
+       },
+       "output": {
+        "r": 1
+       }
+      }
+     ],
+     "id": "m00"
+    },
+    {
+     "def": "tasks::median3",
+     "site": 1,
+     "line": 12,
+     "col": 12,
+     "before": "b <= a && a <= c || c <= a && a <= b",
+     "after": "b <= a && a <= c && c <= a && a <= b",
+     "witnesses": [
+      {
+       "input": {
+        "a": 2,
+        "b": 1,
+        "c": 3
+       },
+       "expected": {
+        "r": 2
+       },
+       "output": {
+        "r": 3
+       }
+      },
+      {
+       "input": {
+        "a": 2,
+        "b": 3,
+        "c": 1
+       },
+       "expected": {
+        "r": 2
+       },
+       "output": {
+        "r": 1
+       }
+      }
+     ],
+     "id": "m01"
+    },
+    {
+     "def": "tasks::median3",
+     "site": 2,
+     "line": 12,
+     "col": 12,
+     "before": "b <= a && a <= c",
+     "after": "b <= a || a <= c",
+     "witnesses": [
+      {
+       "input": {
+        "a": 1,
+        "b": 2,
+        "c": 3
+       },
+       "expected": {
+        "r": 2
+       },
+       "output": {
+        "r": 1
+       }
+      },
+      {
+       "input": {
+        "a": 1,
+        "b": 3,
+        "c": 2
+       },
+       "expected": {
+        "r": 2
+       },
+       "output": {
+        "r": 1
+       }
+      }
+     ],
+     "id": "m02"
+    },
+    {
+     "def": "tasks::median3",
+     "site": 5,
+     "line": 12,
+     "col": 32,
+     "before": "c <= a && a <= b",
+     "after": "c <= a || a <= b",
+     "witnesses": [
+      {
+       "input": {
+        "a": 1,
+        "b": 2,
+        "c": 3
+       },
+       "expected": {
+        "r": 2
+       },
+       "output": {
+        "r": 1
+       }
+      },
+      {
+       "input": {
+        "a": 1,
+        "b": 3,
+        "c": 2
+       },
+       "expected": {
+        "r": 2
+       },
+       "output": {
+        "r": 1
+       }
+      }
+     ],
+     "id": "m03"
+    },
+    {
+     "def": "tasks::median3",
+     "site": 8,
+     "line": 15,
+     "col": 13,
+     "before": "a <= b && b <= c || c <= b && b <= a",
+     "after": "!(a <= b && b <= c || c <= b && b <= a)",
+     "witnesses": [
+      {
+       "input": {
+        "a": 1,
+        "b": 2,
+        "c": 3
+       },
+       "expected": {
+        "r": 2
+       },
+       "output": {
+        "r": 3
+       }
+      },
+      {
+       "input": {
+        "a": 1,
+        "b": 3,
+        "c": 2
+       },
+       "expected": {
+        "r": 2
+       },
+       "output": {
+        "r": 3
+       }
+      }
+     ],
+     "id": "m04"
+    },
+    {
+     "def": "tasks::median3",
+     "site": 9,
+     "line": 15,
+     "col": 16,
+     "before": "a <= b && b <= c || c <= b && b <= a",
+     "after": "a <= b && b <= c && c <= b && b <= a",
+     "witnesses": [
+      {
+       "input": {
+        "a": 1,
+        "b": 2,
+        "c": 3
+       },
+       "expected": {
+        "r": 2
+       },
+       "output": {
+        "r": 3
+       }
+      },
+      {
+       "input": {
+        "a": 3,
+        "b": 2,
+        "c": 1
+       },
+       "expected": {
+        "r": 2
+       },
+       "output": {
+        "r": 1
+       }
+      }
+     ],
+     "id": "m05"
+    },
+    {
+     "def": "tasks::median3",
+     "site": 10,
+     "line": 15,
+     "col": 16,
+     "before": "a <= b && b <= c",
+     "after": "a <= b || b <= c",
+     "witnesses": [
+      {
+       "input": {
+        "a": 1,
+        "b": 3,
+        "c": 2
+       },
+       "expected": {
+        "r": 2
+       },
+       "output": {
+        "r": 3
+       }
+      },
+      {
+       "input": {
+        "a": 3,
+        "b": 1,
+        "c": 2
+       },
+       "expected": {
+        "r": 2
+       },
+       "output": {
+        "r": 1
+       }
+      }
+     ],
+     "id": "m06"
+    },
+    {
+     "def": "tasks::median3",
+     "site": 13,
+     "line": 15,
+     "col": 36,
+     "before": "c <= b && b <= a",
+     "after": "c <= b || b <= a",
+     "witnesses": [
+      {
+       "input": {
+        "a": 1,
+        "b": 3,
+        "c": 2
+       },
+       "expected": {
+        "r": 2
+       },
+       "output": {
+        "r": 3
+       }
+      },
+      {
+       "input": {
+        "a": 3,
+        "b": 1,
+        "c": 2
+       },
+       "expected": {
+        "r": 2
+       },
+       "output": {
+        "r": 1
+       }
+      }
+     ],
+     "id": "m07"
+    }
+   ],
+   "discarded": [
+    {
+     "def": "tasks::median3",
+     "site": 3,
+     "line": 12,
+     "col": 12,
+     "before": "b <= a",
+     "after": "b < a",
+     "reason": "equivalent"
+    },
+    {
+     "def": "tasks::median3",
+     "site": 4,
+     "line": 12,
+     "col": 22,
+     "before": "a <= c",
+     "after": "a < c",
+     "reason": "equivalent"
+    },
+    {
+     "def": "tasks::median3",
+     "site": 6,
+     "line": 12,
+     "col": 32,
+     "before": "c <= a",
+     "after": "c < a",
+     "reason": "equivalent"
+    },
+    {
+     "def": "tasks::median3",
+     "site": 7,
+     "line": 12,
+     "col": 42,
+     "before": "a <= b",
+     "after": "a < b",
+     "reason": "equivalent"
+    },
+    {
+     "def": "tasks::median3",
+     "site": 11,
+     "line": 15,
+     "col": 16,
+     "before": "a <= b",
+     "after": "a < b",
+     "reason": "equivalent"
+    },
+    {
+     "def": "tasks::median3",
+     "site": 12,
+     "line": 15,
+     "col": 26,
+     "before": "b <= c",
+     "after": "b < c",
+     "reason": "equivalent"
+    },
+    {
+     "def": "tasks::median3",
+     "site": 14,
+     "line": 15,
+     "col": 36,
+     "before": "c <= b",
+     "after": "c < b",
+     "reason": "equivalent"
+    },
+    {
+     "def": "tasks::median3",
+     "site": 15,
+     "line": 15,
+     "col": 46,
+     "before": "b <= a",
+     "after": "b < a",
+     "reason": "equivalent"
+    }
+   ]
+  }
+ ]
+}

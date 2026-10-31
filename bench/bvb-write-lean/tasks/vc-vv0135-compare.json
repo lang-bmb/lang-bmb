@@ -1,0 +1,57 @@
+{
+  "id": "vc-vv0135-compare",
+  "kind": "write",
+  "prompt": "Create unit `tasks` for this task.\n\nImplement `compare`: return whether `a` equals `b`. The contract must state the result in both cases (equal and not equal).\n\nRequired signature (in unit `tasks`):\nfn compare(a: i64, b: i64) -> (r: bool)",
+  "unit": "tasks",
+  "def": "tasks::compare",
+  "signature": "fn compare(a: i64, b: i64) -> (r: bool)",
+  "accept": {
+    "specs": "spec fn ref_post(a: i64, b: i64, r: bool) -> bool { (a == b ==> r == true) && (a != b ==> r == false) }",
+    "pre": null,
+    "post": "ref_post(a, b, r)",
+    "args": "a, b"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn result_ok(a: i64, b: i64, r: bool) -> bool { (a == b ==> r == true) && (a != b ==> r == false) }\n\n#[effects(pure)]\n#[uses(result_ok)]\nfn compare(a: i64, b: i64) -> (r: bool)\n    ensures result_ok(a, b, r),\n{\n    a == b\n}"
+    }
+  ],
+  "weak_reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn result_ok(a: i64, b: i64, r: bool) -> bool { a == b ==> r == true }\n\n#[effects(pure)]\n#[uses(result_ok)]\nfn compare(a: i64, b: i64) -> (r: bool)\n    ensures result_ok(a, b, r),\n{\n    a == b\n}"
+    }
+  ],
+  "source": {
+    "benchmark": "Vericoding",
+    "origin": "verina verina_basic_55_task",
+    "path": "jsonl/verus_tasks.jsonl#VV0135",
+    "rules": [
+      "T2"
+    ]
+  },
+  "verus": {
+    "prompt": "Implement `compare`: return whether `a` equals `b`. The contract must state the result in both cases (equal and not equal).\n\nRequired signature:\nfn compare(a: i32, b: i32) -> (result: bool)",
+    "signature": "fn compare(a: i32, b: i32) -> (result: bool)",
+    "target": "compare",
+    "specs": "",
+    "pre": null,
+    "post": "(a == b ==> result == true) && (a != b ==> result == false)",
+    "args": "a, b",
+    "reference": "// <vc-preamble>\nuse vstd::prelude::*;\n\nverus! {\n// </vc-preamble>\n\n// <vc-helpers>\nspec fn is_equal_i32(a: i32, b: i32) -> bool { a == b }\n\nproof fn equal_true_iff(a: i32, b: i32)\n    ensures\n        a == b ==> is_equal_i32(a, b) == true,\n        a != b ==> is_equal_i32(a, b) == false\n{}\n\n// </vc-helpers>\n\n// <vc-spec>\nfn compare(a: i32, b: i32) -> (result: bool)\n    ensures\n        (a == b ==> result == true) && (a != b ==> result == false),\n// </vc-spec>\n// <vc-code>\n{\n    if a == b {\n        true\n    } else {\n        false\n    }\n}\n// </vc-code>\n\n}\nfn main() {}",
+    "reference_origin": "upstream"
+  }
+}

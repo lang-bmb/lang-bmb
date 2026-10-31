@@ -35,6 +35,9 @@ pub struct Server {
     /// Show tool results in the compact agent view (`view::compact`,
     /// backlog 2D-23, ADR-0068).
     compact: bool,
+    /// Tool descriptions that document the tools on their own, so a prompt
+    /// need not (`--tool-docs`, backlog 2D-28).
+    tool_docs: bool,
 }
 
 fn s(x: &str) -> Value {
@@ -72,8 +75,13 @@ fn schema(props: &[(&str, &str, &str)], required: &[&str]) -> Value {
 /// (`bmb mcp --write-tool`): the frozen measurement task sets see the tools
 /// they were frozen with (ADR-0021; compiler/README.md, MCP descriptions).
 /// With `compact` (`--compact`, ADR-0068) the read and proof tools describe
-/// the compact view their results come in.
-fn tools(write: bool, compact: bool) -> Value {
+/// the compact view their results come in. With `docs` (`--tool-docs`,
+/// backlog 2D-28) the descriptions are the one place that documents the
+/// tools: `query` says what each query returns and `write` that it is the
+/// only way to write (what the frozen prompts' tool section said), each
+/// `write` argument is described once (in its schema), and no design
+/// reference is left.
+fn tools(write: bool, compact: bool, docs: bool) -> Value {
     let t = |name: &str, desc: &str, input: Value| {
         obj(vec![
             ("name", s(name)),
@@ -87,14 +95,25 @@ fn tools(write: bool, compact: bool) -> Value {
     } else {
         "one status line per definition"
     };
+    // The form query results come in.
+    let query_form = if compact {
+        "Units, surfaces and slices come as Rust-shaped text: a surface is the definition without its body, after a `// PATH: STATUS` line; edges as `FROM KIND TO`; other rows as JSON lines without empty fields."
+    } else {
+        "Returns JSONL."
+    };
+    let query = if docs {
+        format!(
+            "Read the workspace. Start with `units` (units and their definitions), then narrow down: `surface DEF` (signature, contract, proof status), `edges DEF [out|in|both] [depth]` (resolved calls, contract uses, #[uses], &mut writes), `slice DEF` (the definition and the contracts it depends on), `find NAME`, `contracts PRED`, `status`. {query_form}"
+        )
+    } else {
+        format!(
+            "Read query on the standard maps (ADR-0020): units, surface DEF, edges DEF [out|in|both] [depth], slice DEF, find NAME, contracts PRED, status. {query_form}"
+        )
+    };
     let mut list = vec![
         t(
             "query",
-            if compact {
-                "Read query on the standard maps (ADR-0020): units, surface DEF, edges DEF [out|in|both] [depth], slice DEF, find NAME, contracts PRED, status. Units, surfaces and slices come as Rust-shaped text: a surface is the definition without its body, after a `// PATH: STATUS` line; edges as `FROM KIND TO`; other rows as JSON lines without empty fields."
-            } else {
-                "Read query on the standard maps (ADR-0020): units, surface DEF, edges DEF [out|in|both] [depth], slice DEF, find NAME, contracts PRED, status. Returns JSONL."
-            },
+            &query,
             schema(
                 &[
                     ("name", "string", "query name"),
@@ -188,23 +207,40 @@ fn tools(write: bool, compact: bool) -> Value {
         ),
     ];
     if write {
+        // With `docs`, what each argument does is said once, in the schema.
+        let (what, code) = if docs {
+            (
+                "The only way to write: add, replace and remove definitions in one unit, then commit and prove the whole workspace.",
+                "one or more complete definitions (with attributes) to add or replace",
+            )
+        } else {
+            (
+                "Write in one call (backlog 2D-24): when `summary` is given, create unit UNIT or replace its summary; add or replace the definitions in `code` (one or more, with attributes) in UNIT; remove the definitions in `remove` (full paths); commit; then prove the workspace.",
+                "definitions to add or replace",
+            )
+        };
+        let remove = if docs {
+            "full paths of definitions to remove"
+        } else {
+            "definition paths to remove"
+        };
         list.insert(
             4,
             t(
                 "write",
                 &format!(
-                    "Write in one call (backlog 2D-24): when `summary` is given, create unit UNIT or replace its summary; add or replace the definitions in `code` (one or more, with attributes) in UNIT; remove the definitions in `remove` (full paths); commit; then prove the workspace. Rejected as a whole on any structural or type error (diagnostics returned, nothing written). After a commit, returns the commit line and the proof result (diagnostics with counterexamples, {statuses}), as an error when a proof fails."
+                    "{what} Rejected as a whole on any structural or type error (diagnostics returned, nothing written). After a commit, returns the commit line and the proof result (diagnostics with counterexamples, {statuses}), as an error when a proof fails."
                 ),
                 schema(
                     &[
                         ("unit", "string", "unit path"),
-                        ("code", "string", "definitions to add or replace"),
+                        ("code", "string", code),
                         (
                             "summary",
                             "string",
                             "one-line summary: creates the unit or replaces its summary",
                         ),
-                        ("remove", "array", "definition paths to remove"),
+                        ("remove", "array", remove),
                     ],
                     &["unit"],
                 ),
@@ -223,6 +259,7 @@ impl Server {
             front: crate::FrontCache::default(),
             write_tool: false,
             compact: false,
+            tool_docs: false,
         }
     }
 
@@ -239,6 +276,15 @@ impl Server {
     pub fn compact(self) -> Server {
         Server {
             compact: true,
+            ..self
+        }
+    }
+
+    /// The same server with tool descriptions that document the tools on
+    /// their own (`bmb mcp --tool-docs`, backlog 2D-28).
+    pub fn tool_docs(self) -> Server {
+        Server {
+            tool_docs: true,
             ..self
         }
     }
@@ -514,7 +560,10 @@ impl Server {
                 ),
             ])),
             "ping" => Ok(obj(vec![])),
-            "tools/list" => Ok(obj(vec![("tools", tools(self.write_tool, self.compact))])),
+            "tools/list" => Ok(obj(vec![(
+                "tools",
+                tools(self.write_tool, self.compact, self.tool_docs),
+            )])),
             "tools/call" => {
                 let params = msg.get("params").cloned().unwrap_or(Value::Null);
                 let name = params
@@ -564,14 +613,20 @@ fn rpc_error(id: Value, code: i64, message: &str) -> Value {
 }
 
 /// Serves stdin/stdout until end of input; `write_tool` offers `write` too,
-/// `compact` shows results in the compact agent view.
-pub fn serve(root: &Path, write_tool: bool, compact: bool) -> std::io::Result<()> {
+/// `compact` shows results in the compact agent view, `tool_docs` gives the
+/// self-contained tool descriptions.
+pub fn serve(root: &Path, write_tool: bool, compact: bool, tool_docs: bool) -> std::io::Result<()> {
     let server = if write_tool {
         Server::with_write_tool(root)
     } else {
         Server::new(root)
     };
-    let mut server = if compact { server.compact() } else { server };
+    let server = if compact { server.compact() } else { server };
+    let mut server = if tool_docs {
+        server.tool_docs()
+    } else {
+        server
+    };
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout();
     for line in stdin.lock().lines() {

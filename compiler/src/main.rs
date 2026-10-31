@@ -93,12 +93,14 @@ const USAGE: &str = "usage:
   bmb apply DIR OPS.json    commit a transaction (JSON array of unit/put/remove/remove_unit/
                             rename/expect ops)
                             to workspace DIR; rejected as a whole on any structural or type error
-  bmb mcp [--write-tool] [--compact] DIR
+  bmb mcp [--write-tool] [--compact] [--tool-docs] DIR
                             MCP server (stdio) for workspace DIR: query, map, verify, build, tx_*;
                             --write-tool also offers `write` (unit, definitions, removals,
                             commit and proof in one call); --compact shows results in the
                             compact agent view (surfaces as Rust-shaped text without hashes
-                            or positions, verified definitions as a count)
+                            or positions, verified definitions as a count); --tool-docs gives
+                            tool descriptions that document the tools on their own (what
+                            each query returns, `write` as the only way to write)
   bmb codes [--md]          list diagnostic codes as JSONL (or the Markdown reference page)
 
 Any <file.bmb> argument may also be a workspace directory (its src/*.bmb).
@@ -719,7 +721,7 @@ fn run() -> ExitCode {
             if args.len() >= 2
                 && args[1..args.len() - 1]
                     .iter()
-                    .all(|a| a == "--write-tool" || a == "--compact") =>
+                    .all(|a| a == "--write-tool" || a == "--compact" || a == "--tool-docs") =>
         {
             let flags = &args[1..args.len() - 1];
             let has = |f: &str| flags.iter().any(|a| a == f);
@@ -727,6 +729,7 @@ fn run() -> ExitCode {
                 std::path::Path::new(&args[args.len() - 1]),
                 has("--write-tool"),
                 has("--compact"),
+                has("--tool-docs"),
             ) {
                 Ok(()) => ExitCode::SUCCESS,
                 Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {

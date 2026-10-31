@@ -1,0 +1,59 @@
+{
+  "id": "vb-clover-binary-search",
+  "kind": "write",
+  "prompt": "Create unit `tasks` for this task.\n\nImplement `binary_search`: `v` is sorted in non-decreasing order (v[i] <= v[j] for all positions i <= j) and `k` occurs in `v`. Return a position of `k` in `v` using binary search. The contract must state that the result is a valid position holding `k`.\n\nRequired signature (in unit `tasks`):\nfn binary_search(v: &[u64], k: u64) -> (r: usize)",
+  "unit": "tasks",
+  "def": "tasks::binary_search",
+  "signature": "fn binary_search(v: &[u64], k: u64) -> (r: usize)",
+  "accept": {
+    "specs": "spec fn ref_pre(v: &[u64], k: u64) -> bool { (forall|i: usize, j: usize| i <= j && j < v.len() ==> #[trigger] v[i] <= #[trigger] v[j]) && !(forall|q: usize| q < v.len() ==> k != #[trigger] v[q]) }\nspec fn ref_post(v: &[u64], k: u64, r: usize) -> bool { r < v.len() && k == v[r] }",
+    "pre": "ref_pre(v, k)",
+    "post": "ref_post(v, k, r)",
+    "args": "v, k"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn sorted_with(v: &[u64], k: u64) -> bool { (forall|i: usize, j: usize| i <= j && j < v.len() ==> #[trigger] v[i] <= #[trigger] v[j]) && !(forall|q: usize| q < v.len() ==> k != #[trigger] v[q]) }\n\nspec fn in_window(v: &[u64], k: u64, lo: usize, hi: usize) -> bool { lo <= hi && hi < v.len() && !(forall|i: usize| lo <= i && i <= hi ==> k != #[trigger] v[i]) }\n\nspec fn found(v: &[u64], k: u64, r: usize) -> bool { r < v.len() && k == v[r] }\n\n#[effects(pure)]\n#[uses(sorted_with, in_window, found)]\nfn binary_search(v: &[u64], k: u64) -> (r: usize)\n    requires sorted_with(v, k),\n    ensures found(v, k, r),\n{\n    let mut lo: usize = 0;\n    let mut hi: usize = v.len() - 1;\n    while lo != hi\n        invariant sorted_with(v, k), in_window(v, k, lo, hi),\n        decreases hi - lo,\n    {\n        let mid: usize = lo + (hi - lo) / 2;\n        if v[mid] < k {\n            lo = mid + 1;\n        } else {\n            hi = mid;\n        }\n    }\n    lo\n}"
+    }
+  ],
+  "weak_reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn sorted_with(v: &[u64], k: u64) -> bool { (forall|i: usize, j: usize| i <= j && j < v.len() ==> #[trigger] v[i] <= #[trigger] v[j]) && !(forall|q: usize| q < v.len() ==> k != #[trigger] v[q]) }\n\nspec fn in_window(v: &[u64], k: u64, lo: usize, hi: usize) -> bool { lo <= hi && hi < v.len() && !(forall|i: usize| lo <= i && i <= hi ==> k != #[trigger] v[i]) }\n\nspec fn in_bounds(v: &[u64], r: usize) -> bool { r < v.len() }\n\n#[effects(pure)]\n#[uses(sorted_with, in_window, in_bounds)]\nfn binary_search(v: &[u64], k: u64) -> (r: usize)\n    requires sorted_with(v, k),\n    ensures in_bounds(v, r),\n{\n    let mut lo: usize = 0;\n    let mut hi: usize = v.len() - 1;\n    while lo != hi\n        invariant sorted_with(v, k), in_window(v, k, lo, hi),\n        decreases hi - lo,\n    {\n        let mid: usize = lo + (hi - lo) / 2;\n        if v[mid] < k {\n            lo = mid + 1;\n        } else {\n            hi = mid;\n        }\n    }\n    lo\n}"
+    }
+  ],
+  "source": {
+    "benchmark": "Verus-Bench",
+    "origin": "CloverBench",
+    "path": "benchmarks/Verus-Bench/CloverBench/verified/binary_search.rs",
+    "rules": [
+      "T1",
+      "T2",
+      "T3"
+    ]
+  },
+  "verus": {
+    "prompt": "Implement `binary_search`: `v` is sorted in non-decreasing order (v[i] <= v[j] for all positions i <= j) and `k` occurs in `v`. Return a position of `k` in `v` using binary search. The contract must state that the result is a valid position holding `k`.\n\nRequired signature:\nfn binary_search(v: &Vec<u64>, k: u64) -> (r: usize)",
+    "signature": "fn binary_search(v: &Vec<u64>, k: u64) -> (r: usize)",
+    "target": "binary_search",
+    "specs": "",
+    "pre": "forall|i: int, j: int| 0 <= i <= j < v.len() ==> v[i] <= v[j],\nexists|i: int| 0 <= i < v.len() && k == v[i]",
+    "post": "r < v.len(),\nk == v[r as int]",
+    "args": "v, k",
+    "reference": "use vstd::prelude::*;\n\nfn main() {}\nverus! {\n\nfn binary_search(v: &Vec<u64>, k: u64) -> (r: usize)\n    requires\n        forall|i: int, j: int| 0 <= i <= j < v.len() ==> v[i] <= v[j],\n        exists|i: int| 0 <= i < v.len() && k == v[i],\n    ensures\n        r < v.len(),\n        k == v[r as int],\n{\n    let mut i1: usize = 0;\n    let mut i2: usize = v.len() - 1;\n    while i1 != i2\n        invariant\n            i2 < v.len(),\n            exists|i: int| i1 <= i <= i2 && k == v[i],\n            forall|i: int, j: int| 0 <= i <= j < v.len() ==> v[i] <= v[j],\n        decreases i2 - i1,\n    {\n        let ghost d = i2 - i1;\n\n        let ix = i1 + (i2 - i1) / 2;\n        if v[ix] < k {\n            i1 = ix + 1;\n        } else {\n            i2 = ix;\n        }\n        assert(i2 - i1 < d);\n    }\n    i1\n}\n\n} // verus!",
+    "reference_origin": "upstream"
+  }
+}

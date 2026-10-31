@@ -1,0 +1,16 @@
+{
+ "mcp_flags": [
+  "--write-tool",
+  "--tool-docs"
+ ],
+ "hide_tools": [
+  "tx_begin",
+  "tx_unit",
+  "tx_put",
+  "tx_remove",
+  "tx_remove_unit",
+  "tx_commit",
+  "tx_abort",
+  "build"
+ ]
+}

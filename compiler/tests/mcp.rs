@@ -824,3 +824,88 @@ fn compact_view_carries_the_same_answers() {
     }
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// `--tool-docs` (backlog 2D-28): the tool descriptions document the tools
+/// on their own, so a prompt need not. Only `query` and `write` read
+/// differently; names and arguments stay (`write` describes its arguments in
+/// the schema only); no design reference is left in them; `--compact` still says which form results come in; without the flag
+/// the list is the frozen one.
+#[test]
+fn tool_docs_document_the_tools_on_their_own() {
+    let root = temp_root("tool-docs");
+    let list = |flags: &[&str]| -> Vec<(String, String, String)> {
+        let mut c = Client::start_with(&root, flags);
+        let Value::Array(list) = c
+            .request("tools/list", "{}")
+            .get("result")
+            .unwrap()
+            .get("tools")
+            .unwrap()
+            .clone()
+        else {
+            panic!()
+        };
+        list.iter()
+            .map(|t| {
+                (
+                    t.get("name").unwrap().as_str().unwrap().to_string(),
+                    t.get("description").unwrap().as_str().unwrap().to_string(),
+                    t.get("inputSchema").unwrap().to_json(),
+                )
+            })
+            .collect()
+    };
+    for compact in [false, true] {
+        let base: Vec<&str> = if compact {
+            vec!["--write-tool", "--compact"]
+        } else {
+            vec!["--write-tool"]
+        };
+        let docs: Vec<&str> = base.iter().copied().chain(["--tool-docs"]).collect();
+        let (a, b) = (list(&base), list(&docs));
+        assert_eq!(a.len(), b.len());
+        for ((na, da, sa), (nb, db, sb)) in a.iter().zip(&b) {
+            assert_eq!(na, nb);
+            // `write` describes its arguments in the schema; the arguments stay.
+            assert_eq!(sa != sb, na == "write", "{na}");
+            let props = |s: &str| {
+                let v = json::parse(s).unwrap();
+                let Some(Value::Object(p)) = v.get("properties") else {
+                    panic!()
+                };
+                (
+                    p.iter().map(|(k, _)| k.clone()).collect::<Vec<_>>(),
+                    v.get("required").unwrap().to_json(),
+                )
+            };
+            assert_eq!(props(sa), props(sb), "{na}");
+            assert_eq!(da != db, ["query", "write"].contains(&na.as_str()), "{na}");
+            if da != db {
+                assert!(!db.contains("ADR-") && !db.contains("backlog"), "{db}");
+            }
+        }
+        let desc = |n: &str| b.iter().find(|t| t.0 == n).unwrap().1.clone();
+        for part in [
+            "`surface DEF` (signature, contract, proof status)",
+            "`slice DEF` (the definition and the contracts it depends on)",
+            "&mut writes",
+        ] {
+            assert!(desc("query").contains(part), "{part}");
+        }
+        assert!(desc("write").starts_with("The only way to write:"));
+        assert_eq!(
+            desc("query").contains("Rust-shaped text"),
+            compact,
+            "{}",
+            desc("query")
+        );
+    }
+    // Without `--write-tool` there is no `write`, and `--tool-docs` alone
+    // changes only `query`.
+    let (a, b) = (list(&[]), list(&["--tool-docs"]));
+    assert!(b.iter().all(|t| t.0 != "write"));
+    for ((na, da, _), (_, db, _)) in a.iter().zip(&b) {
+        assert_eq!(da != db, na == "query", "{na}");
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}

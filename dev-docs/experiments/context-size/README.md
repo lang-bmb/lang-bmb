@@ -53,3 +53,56 @@
 ## 다음 측정에 남기는 것
 
 `BMB_CONTEXT_LOG=1`이면 정식 하네스가 요청마다 입력·출력 토큰(`model_usage.request_input_tokens`·`request_output_tokens`)과 호출마다 도구·결과 바이트(`calls`)를 남긴다(`model_api.context_log`, m1 하네스·Verus 하네스·두 에이전트. BRB는 MANIFEST가 하네스를 담아 그대로). 기본은 꺼져 있어 결과 행이 이전과 같은 바이트이고(HEAD 하네스와 오라클 행 비교), 에이전트가 보는 것은 켜도 같다. 켜고 돈 정식 실행은 분해를 추정 없이 낸다.
+
+## 2D-28: 고정 부분 줄이기(프롬프트와 도구 설명)
+
+- 표: `rules.md`(`rules.py`, 언어 규칙 탐침), `fixed.md`(`fixed.py`, 고정 부분 전후). 둘 다 모델 호출 없음, 두 번 돌려 같은 바이트.
+- 판: `bench/lean/gen.py` → `bench/m1b-write-lean`·`bench/bvb-write-lean`(동결, MANIFEST). 결정: ADR-0071. 실행: `T0-17`.
+
+**겹침(도구 절 1,028바이트 / 395토큰).** 프롬프트의 `## Tools`는 도구 설명을 다시 말한다. 프롬프트에만 있던 것은 질의마다 돌려주는 것(`surface`: 시그니처·계약·증명 상태, `edges`의 간선 종류, `slice`: 정의와 그것이 기대는 계약), "`units`부터 좁혀 간다", "`write`가 유일한 쓰기 길"이다. 도구 설명에만 있는 것은 결과 형식과 인자다. `answer` 줄은 하네스의 `answer` 설명과 같다. 도구 설명에는 에이전트에게 쓸모없는 설계 참조(`(ADR-0020)`, `(backlog 2D-24)`)가 있고, `write`는 설명과 인자 스키마가 같은 것을 두 번 말한다. `build`(107토큰)는 어떤 과제도 쓰지 않는다(판정은 `verify`·서명·명세 강도). 조치(도구 층): `bmb mcp --tool-docs`가 프롬프트에만 있던 것을 `query`·`write` 설명으로 옮기고 설계 참조를 빼며 `write` 인자는 스키마에서만 설명한다. 판은 도구 절을 지우고 `build`를 숨긴다. 기본 출력은 같은 바이트(플래그 조합 넷의 `initialize`·`tools/list`를 `6a0e0ba7` 바이너리와 비교, `tests/mcp.rs` `tool_docs_document_the_tools_on_their_own`).
+
+**언어 규칙 절(1,677바이트 / 726토큰).** 절의 여덟 줄마다 Rust·Verus 작성자가 할 법한 위반을 탐침으로 만들어 `bmb check`·`verify`에 넣었다(`rules.md`, 탐침 40개). 7개는 지금 받는다(`struct`, `enum`·`match`, 제네릭, `i32`, `return`, 범위 `for`, `continue`): 동결 뒤 언어가 넓어져 규칙이 낡았다(ADR-0021로 동결된 원판은 그대로 둔다). 거부 33개 중 24개는 진단이 `fix`로 고칠 꼴을 준다. `fix`가 없는 9개: `crate::`·`super::` 경로(E0103 구문 오류, 고칠 길 없음), 클로저(E0207), `&mut` 별칭(E0410, Rust 규칙), 증명 실패 넷(넘침·0 나눗셈·범위는 반례, 불변식 누락은 E0802; Verus와 같은 의무), 절 순서(E0103이 순서를 말함), `old`(E0508이 쓸 곳을 말함), 트리거 변수(E0512가 변수를 말함).
+
+남기는 기준: (가) 진단이 고칠 길을 주지 않거나, (나) 에이전트가 쓰는 거의 모든 정의에 걸리고 Rust·Verus와 달라 진단으로 배우면 세션마다 거부된 `write` 한 번을 거의 확실히 치르는 규칙. 나머지(고칠 길을 주는 진단이 있는 금지, 낡은 금지, Verus와 같은 의무)는 뺀다. 마지막 줄 "Other rules come back as diagnostics ..., most with a fix"는 24/33에 근거한다.
+
+| 원판의 줄 | 판 | 근거(`rules.md`) |
+| --- | --- | --- |
+| 단위 꼴 `#[summary] mod` | 뺌 | `write`가 단위·요약을 인자로 받는다. E0703·E0704 `fix`. 예제가 꼴을 보인다 |
+| 다른 단위는 전체 경로 | 남김 | `crate::`·`super::`는 E0103만, 고칠 길 없음(가) |
+| `use`·`pub`·매크로 금지 | 뺌 | E0214·E0207(치환)·E0202 `fix` |
+| `struct`·`enum`·`impl`·제네릭 금지 | 뺌 | 받음(낡음) |
+| 클로저 금지 | 뺌 | E0207, `fix` 없음. 이 과제들에 쓸 일이 드물다(측정으로 확인, T0-17) |
+| 타입 목록, 참조는 매개변수만, `&mut` 별칭 | 뺌 | `i32` 받음(낡음), E0403 `fix`, E0410은 Rust의 빌림 규칙 |
+| `let` 타입, 반환 타입, 효과 | 남김 | `fix`(치환)가 있지만 모든 함수·`let`에 걸리고 Rust와 다르다(나) |
+| `print_i64`는 `io`만 | 뺌 | E0603 `fix`. 출력하는 작성 과제가 없다 |
+| `return`·`for`·`loop`·`match`·`break`·`continue`·`as`·`?`·`.unwrap()` 금지 | 뺌 | 받음 넷(낡음), `loop`은 E0506 `fix`, `as`·`?`·`.unwrap()`은 `fix` |
+| 넘침·나눗셈·범위 | 뺌 | 반례가 붙는 증명 의무, Verus와 같다 |
+| 계약은 이름 붙은 술어 | 남김 | E0501 `fix`가 있지만 모든 계약에 걸리고 Verus와 다르다(나) |
+| 절 순서, 결과 이름 `-> (r: T)`, `old` | 뺌 | Verus와 같은 문법. E0103·E0301 `fix`·E0508이 말한다 |
+| 술어는 불투명, `#[uses]`(전이 아님) | 남김 | E0802 `fix`가 `#[uses(p)]`를 말하지만 증명 한 바퀴 뒤이고 술어를 쓰는 모든 정의에 걸린다(나). 전이 아님은 진단이 말하지 않는다(가) |
+| `while`의 `invariant`·`decreases`, 재귀 `decreases` | 뺌 | Verus와 같다. E0506·E0507 `fix` |
+| `forall`의 `#[trigger]` | 남김 | E0511 `fix`가 있지만 모든 `forall`에 걸리고 Verus는 트리거를 추론한다(나) |
+| 명세는 정수 타입을 섞어도 됨 | 뺌 | 실행 코드의 섞기는 E0401 `fix` |
+
+**고정 부분 추정(`fixed.md`, `run.py` 2절과 같은 셈).**
+
+| 판 | 시스템 프롬프트 | 도구 정의 | 과제 지시문 | 합 | 원판 대비 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `bvb-write` | 1,433 | 851 | 183 | 2,467 | |
+| `bvb-write-lean` | 578 | 767 | 183 | 1,528 | −38% |
+| `m1b-write` | 1,433 | 851 | 149 | 2,433 | |
+| `m1b-write-lean` | 578 | 767 | 149 | 1,494 | −39% |
+| Verus(`bvb-verus`) | 441 | 197 | 165 | 803 | |
+
+- BVB에서 Verus와의 고정 부분 차이: 1,664 → 725(−56%). 프롬프트 1,433 → 578(도구 절 −395, 언어 규칙 726 → 255, 머리 +11). 도구 정의 851 → 767(`query` +71, `write` −48, `build` −107).
+- 파일럿 세션의 같은 호출이면 마지막 요청은 BVB `write` 6,851 → 약 5,912, `--compact`와 함께 6,262 → 약 5,322(Verus 3,660). 고정 부분만 바꾼 추정이고, 규칙을 진단으로 배우느라 늘어나는 호출은 들어 있지 않다. 그 몫과 성공률은 실행(`T0-17`)이 잰다.
+- qwen 토큰으로는 고정 부분의 비 0.79(위 5절)로 약 1,950 → 1,210.
+
+**재현.**
+
+```
+# bmb는 target/debug/bmb(다른 바이너리는 --bmb PATH, 하네스는 환경 변수 BMB)
+python3 dev-docs/experiments/context-size/rules.py > dev-docs/experiments/context-size/rules.md
+python3 dev-docs/experiments/context-size/fixed.py > dev-docs/experiments/context-size/fixed.md
+python3 bench/lean/gen.py --check && python3 bench/lean/test_gen.py
+```

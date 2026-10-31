@@ -1,0 +1,58 @@
+{
+  "id": "vc-va0093-max-balance",
+  "kind": "write",
+  "prompt": "Create unit `tasks` for this task.\n\nImplement `solve`: `n` is an 8-bit integer (in [-128, 127]) with n >= 10 or n <= -10. For n >= 0 return n. For negative n return the larger of floor(n / 10) and floor(n / 100) * 10 + (n mod 10), where floor division rounds toward negative infinity and n mod 10 is the remainder in [0, 10) (deleting the last digit, or the digit before it). The contract must state the result exactly.\n\nRequired signature (in unit `tasks`):\nfn solve(n: i64) -> (r: i64)",
+  "unit": "tasks",
+  "def": "tasks::solve",
+  "signature": "fn solve(n: i64) -> (r: i64)",
+  "accept": {
+    "specs": "spec fn ref_fmod(n: i64, d: i64) -> i64 { (n % d + d) % d }\nspec fn ref_fdiv(n: i64, d: i64) -> i64 { (n - ref_fmod(n, d)) / d }\nspec fn ref_balance(n: i64) -> i64 { if n >= 0 { n } else { if ref_fdiv(n, 10) > ref_fdiv(n, 100) * 10 + ref_fmod(n, 10) { ref_fdiv(n, 10) } else { ref_fdiv(n, 100) * 10 + ref_fmod(n, 10) } } }\nspec fn ref_pre(n: i64) -> bool { -128 <= n && n <= 127 && (n >= 10 || n <= -10) }\nspec fn ref_post(n: i64, r: i64) -> bool { r == ref_balance(n) }",
+    "pre": "ref_pre(n)",
+    "post": "ref_post(n, r)",
+    "args": "n"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn fmod(n: i64, d: i64) -> i64 { (n % d + d) % d }\n\nspec fn fdiv(n: i64, d: i64) -> i64 { (n - fmod(n, d)) / d }\n\nspec fn balance(n: i64) -> i64 { if n >= 0 { n } else { if fdiv(n, 10) > fdiv(n, 100) * 10 + fmod(n, 10) { fdiv(n, 10) } else { fdiv(n, 100) * 10 + fmod(n, 10) } } }\n\nspec fn input_ok(n: i64) -> bool { -128 <= n && n <= 127 && (n >= 10 || n <= -10) }\n\nspec fn result_ok(n: i64, r: i64) -> bool { r == balance(n) }\n\n#[effects(pure)]\n#[uses(input_ok, result_ok, fmod, fdiv, balance)]\nfn solve(n: i64) -> (r: i64)\n    requires input_ok(n),\n    ensures result_ok(n, r),\n{\n    if n >= 0 {\n        n\n    } else {\n        let m10: i64 = (n % 10 + 10) % 10;\n        let m100: i64 = (n % 100 + 100) % 100;\n        let o1: i64 = (n - m10) / 10;\n        let o2: i64 = (n - m100) / 100 * 10 + m10;\n        if o1 > o2 {\n            o1\n        } else {\n            o2\n        }\n    }\n}"
+    }
+  ],
+  "weak_reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn fmod(n: i64, d: i64) -> i64 { (n % d + d) % d }\n\nspec fn fdiv(n: i64, d: i64) -> i64 { (n - fmod(n, d)) / d }\n\nspec fn balance(n: i64) -> i64 { if n >= 0 { n } else { if fdiv(n, 10) > fdiv(n, 100) * 10 + fmod(n, 10) { fdiv(n, 10) } else { fdiv(n, 100) * 10 + fmod(n, 10) } } }\n\nspec fn input_ok(n: i64) -> bool { -128 <= n && n <= 127 && (n >= 10 || n <= -10) }\n\nspec fn result_ok(n: i64, r: i64) -> bool { r >= n }\n\n#[effects(pure)]\n#[uses(input_ok, result_ok, fmod, fdiv, balance)]\nfn solve(n: i64) -> (r: i64)\n    requires input_ok(n),\n    ensures result_ok(n, r),\n{\n    if n >= 0 {\n        n\n    } else {\n        let m10: i64 = (n % 10 + 10) % 10;\n        let m100: i64 = (n % 100 + 100) % 100;\n        let o1: i64 = (n - m10) / 10;\n        let o2: i64 = (n - m100) / 100 * 10 + m10;\n        if o1 > o2 {\n            o1\n        } else {\n            o2\n        }\n    }\n}"
+    }
+  ],
+  "source": {
+    "benchmark": "Vericoding",
+    "origin": "apps apps_test_491",
+    "path": "jsonl/verus_tasks.jsonl#VA0093",
+    "rules": [
+      "T2",
+      "T7"
+    ]
+  },
+  "verus": {
+    "prompt": "Implement `solve`: `n` is an 8-bit integer (in [-128, 127]) with n >= 10 or n <= -10. For n >= 0 return n. For negative n return the larger of floor(n / 10) and floor(n / 100) * 10 + (n mod 10), where floor division rounds toward negative infinity and n mod 10 is the remainder in [0, 10) (deleting the last digit, or the digit before it). The contract must state the result exactly.\n\nRequired signature:\nfn solve(n: i8) -> (result: i8)",
+    "signature": "fn solve(n: i8) -> (result: i8)",
+    "target": "solve",
+    "specs": "spec fn bvb_ref_valid_input(n: int) -> bool {\n    n >= 10 || n <= -10\n}\n\nspec fn bvb_ref_max_balance_after_operation(n: int) -> int\n    recommends bvb_ref_valid_input(n)\n{\n    if n >= 0 {\n        n\n    } else {\n        /* For negative numbers, we need to delete either the last digit\n           or the digit before the last digit to maximize the balance.\n           Since this involves string operations that are not easily\n           expressible in pure logic, we use a simplified specification. */\n        let option1 = n / 10;\n        let option2 = (n / 100) * 10 + (n % 10);\n        if option1 > option2 { option1 } else { option2 }\n    }\n}",
+    "pre": "bvb_ref_valid_input(n as int)",
+    "post": "result as int == bvb_ref_max_balance_after_operation(n as int)",
+    "args": "n",
+    "reference": "use vstd::prelude::*;\n\nverus! {\nspec fn valid_input(n: int) -> bool {\n    n >= 10 || n <= -10\n}\n\nspec fn max_balance_after_operation(n: int) -> int\n    recommends valid_input(n)\n{\n    if n >= 0 {\n        n\n    } else {\n        /* For negative numbers, we need to delete either the last digit\n           or the digit before the last digit to maximize the balance.\n           Since this involves string operations that are not easily\n           expressible in pure logic, we use a simplified specification. */\n        let option1 = n / 10;\n        let option2 = (n / 100) * 10 + (n % 10);\n        if option1 > option2 { option1 } else { option2 }\n    }\n}\n\nfn solve(n: i8) -> (result: i8)\n    requires valid_input(n as int)\n    ensures result as int == max_balance_after_operation(n as int)\n{\n    if n >= 0 {\n        n\n    } else {\n        let m: i16 = n as i16;\n        let r10: i16 = ((m % 10) + 10) % 10;\n        let q10: i16 = (m - r10) / 10;\n        let r100: i16 = ((m % 100) + 100) % 100;\n        let q100: i16 = (m - r100) / 100;\n        assert(r10 as int == (n as int) % 10);\n        assert(q10 as int == (n as int) / 10);\n        assert(q100 as int == (n as int) / 100);\n        let o2: i16 = q100 * 10 + r10;\n        if q10 > o2 {\n            q10 as i8\n        } else {\n            o2 as i8\n        }\n    }\n}\n\n}\n\nfn main() {}",
+    "reference_origin": "bvb"
+  }
+}

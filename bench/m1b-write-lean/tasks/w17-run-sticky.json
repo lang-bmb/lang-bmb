@@ -1,0 +1,22 @@
+{
+  "id": "w17-run-sticky",
+  "kind": "write",
+  "prompt": "In the state machine `fsm`, states 2 and 3 are terminal. Add to the postcondition of `fsm::run` that if the start state s0 is terminal, the result equals s0, keeping everything else. Change other definitions if the proof needs it; the whole workspace must still verify.\n\nRequired signature (in unit `fsm`):\nfn run(events: &[i64], s0: i64) -> (r: i64)",
+  "unit": "fsm",
+  "def": "fsm::run",
+  "signature": "fn run(events: &[i64], s0: i64) -> (r: i64)",
+  "accept": {
+    "specs": "spec fn ref_pre(s0: i64) -> bool { 0 <= s0 && s0 <= 3 }\nspec fn ref_post(s0: i64, r: i64) -> bool { 0 <= r && r <= 3 && ((s0 == 2 || s0 == 3) ==> r == s0) }",
+    "pre": "ref_pre(s0)",
+    "post": "ref_post(s0, r)",
+    "args": "events, s0"
+  },
+  "reference": [
+    {
+      "op": "put",
+      "unit": "fsm",
+      "code": "spec fn sticky(s: i64, r: i64) -> bool { (s == 2 || s == 3) ==> r == s }\n\n#[effects(pure)]\n#[uses(state_ok, sticky)]\nfn step(s: i64, ev: i64) -> (r: i64)\n    requires state_ok(s),\n    ensures state_ok(r), sticky(s, r),\n{\n    if s == 0 {\n        if ev == 1 {\n            1\n        } else {\n            0\n        }\n    } else {\n        if s == 1 {\n            if ev == 2 {\n                2\n            } else {\n                if ev < 0 {\n                    3\n                } else {\n                    1\n                }\n            }\n        } else {\n            s\n        }\n    }\n}\n\n#[effects(pure)]\n#[uses(state_ok, sticky)]\nfn run(events: &[i64], s0: i64) -> (r: i64)\n    requires state_ok(s0),\n    ensures state_ok(r), sticky(s0, r),\n{\n    let mut s: i64 = s0;\n    let mut k: usize = 0;\n    while k < events.len()\n        invariant k <= events.len(), state_ok(s), sticky(s0, s),\n        decreases events.len() - k,\n    {\n        s = step(s, events[k]);\n        k = k + 1;\n    }\n    s\n}"
+    }
+  ],
+  "weak_reference": []
+}

@@ -31,6 +31,7 @@ cargo run -- apply ws ops.json   # 쓰기 트랜잭션(unit/put/remove/remove_un
 cargo run -- mcp ws              # MCP 서버(stdio): query map verify build tx_begin/put/commit 등
 cargo run -- mcp --write-tool ws # 위에 `write`(단위·정의·삭제·커밋·증명을 한 호출로, 2D-24)를 더한다. 동결 과제 집합은 끄고 쓴다
 cargo run -- mcp --compact ws    # 압축 에이전트 투영(ADR-0068, `src/view.rs`): 표면은 `// 경로: 상태` 뒤 본문 없는 정규형, L0·L2·slice는 텍스트, 성공한 증명은 `{"verified":N}`, 해시·위치·비용 없음. 기본은 끔(동결 측정 조건)
+cargo run -- mcp --tool-docs ws  # 도구 설명만으로 도구를 설명한다(2D-28): `query`는 질의마다 돌려주는 것, `write`는 유일한 쓰기 길(인자는 스키마에서만 설명), 설계 참조(ADR·백로그 번호) 없음. 프롬프트의 도구 절을 대신한다(ADR-0071). 기본은 끔(동결 측정 조건)
 BMB_SOUND_ITERS=60 cargo test --release --test soundness  # 건전성 퍼징(1B-17): 증명·반례·빌드를 독립 해석기와 대조
 BMB_SOUND_ITERS=40 cargo test --release --test soundness_owned  # 소유 자료 퍼징(2O-05): 연결 리스트·Box·Vec 필드의 이동·교체·참조 match, 증명·반례·빌드·valgrind 해제를 해석기와 대조
 BMB_SOUND_ITERS=200 cargo test --release --test soundness_widths  # 정수 폭·비트 연산 퍼징(2N-04): 열 정수 타입, 섞인 폭, 비트 연산·시프트(폭 안팎의 리터럴·변수 양)·비트 메서드·변환, 증명·반례·두 빌드의 출력과 트랩을 Rust 의미의 해석기와 대조
