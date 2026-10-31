@@ -290,6 +290,28 @@ fn tool_errors_over_mcp() {
             ("tx_put", format!("\"unit\":\"lib\",\"code\":{}", q(lib))),
         ],
     );
+    // `tx_put` takes functions only: an `impl` with them rejects the commit
+    // instead of being dropped (backlog T0-20).
+    let (t, _) = c.tool("tx_begin", "{}");
+    let id = json::parse(&t)
+        .unwrap()
+        .get("tx")
+        .unwrap()
+        .as_i64()
+        .unwrap();
+    let mixed = format!("impl Q {{ }}\n\n{lib}");
+    let (t, err) = c.tool(
+        "tx_put",
+        &format!("{{\"tx\":{id},\"unit\":\"lib\",\"code\":{}}}", q(&mixed)),
+    );
+    assert!(!err, "{t}");
+    let (t, err) = c.tool("tx_commit", &format!("{{\"tx\":{id}}}"));
+    assert!(
+        err && t.contains("`code` holds `impl Q` besides its functions")
+            && t.contains("\"committed\":false"),
+        "{t}"
+    );
+
     let (t, err) = c.tool("build", "{\"name\":\"app\"}");
     assert!(err && t.contains("build refused: no `main`"), "{t}");
     for bad in ["../x", ".x", "a/b", "a\\\\b", "", ".."] {
@@ -648,6 +670,21 @@ fn write_tool_commits_and_proves_in_one_call() {
         t.contains("\"def\":\"calc::twice\",\"status\":\"verified\""),
         "{t}"
     );
+
+    // A type or `impl` among the definitions rejects the call; it is not
+    // dropped while the functions commit (backlog T0-20).
+    let before = snapshot(&root);
+    let mixed = "struct P { x: i64 }\n\nimpl P {\n    #[effects(pure)]\n    fn get(self: &P) -> i64 { self.x }\n}\n\n#[effects(pure)]\nfn one() -> i64 { 1 }";
+    let (t, err) = c.tool(
+        "write",
+        &format!("{{\"unit\":\"calc\",\"code\":{}}}", q(mixed)),
+    );
+    assert!(
+        err && t.contains("`code` holds `struct P`, `impl P` (`fn get`) besides its functions")
+            && t.contains("\"committed\":false,\"changed\":[]"),
+        "{t}"
+    );
+    assert_eq!(snapshot(&root), before);
 
     // A definition that does not prove is committed, and the call says why.
     let weak = "#[effects(pure)]\nfn thrice(x: i64) -> i64 {\n    x + x + x\n}";

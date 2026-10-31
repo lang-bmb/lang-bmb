@@ -165,6 +165,61 @@ fn segments<'p>(k: usize, what: &str, path: &'p str) -> Result<Vec<&'p str>, Str
     }
 }
 
+/// The items of `m` other than `fn` / `spec fn` definitions (what `put`
+/// cannot write), named as written, in source order.
+fn non_fn_items(m: &Mod) -> Vec<String> {
+    let fns = |fs: &[FnDef]| {
+        fs.iter()
+            .map(|f| format!("`fn {}`", f.name.name))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let args = |ts: &[Type]| {
+        if ts.is_empty() {
+            String::new()
+        } else {
+            let ts: Vec<String> = ts.iter().map(fmt::type_str).collect();
+            format!("<{}>", ts.join(", "))
+        }
+    };
+    let mut items: Vec<(u32, String)> = Vec::new();
+    for t in &m.types {
+        let kind = match t.kind {
+            TypeDefKind::Struct(_) => "struct",
+            TypeDefKind::Enum(_) => "enum",
+        };
+        items.push((t.span.lo, format!("`{kind} {}`", t.name.name)));
+    }
+    for i in &m.impls {
+        let head = format!("impl {}{}", i.ty.name, args(&i.ty_args));
+        let text = if i.fns.is_empty() {
+            format!("`{head}`")
+        } else {
+            format!("`{head}` ({})", fns(&i.fns))
+        };
+        items.push((i.span.lo, text));
+    }
+    for t in &m.traits {
+        items.push((t.span.lo, format!("`trait {}`", t.name.name)));
+    }
+    for i in &m.trait_impls {
+        let tr: Vec<&str> = i.trait_path.iter().map(|s| s.name.as_str()).collect();
+        let head = format!("impl {} for {}", tr.join("::"), fmt::type_str(&i.self_ty));
+        let text = if i.fns.is_empty() {
+            format!("`{head}`")
+        } else {
+            format!("`{head}` ({})", fns(&i.fns))
+        };
+        items.push((i.span.lo, text));
+    }
+    for u in &m.uses {
+        let p: Vec<&str> = u.path.iter().map(|s| s.name.as_str()).collect();
+        items.push((u.span.lo, format!("`use {}`", p.join("::"))));
+    }
+    items.sort();
+    items.into_iter().map(|(_, s)| s).collect()
+}
+
 /// What a commit compares: each definition's own text, other definitions
 /// by path (`fmt::qualified_hashes`). A body edit reports that definition
 /// alone, though the identities of its referrers change too (ADR-0059).
@@ -400,6 +455,23 @@ pub fn plan(files: &[(String, String)], ops: &[Op]) -> (Commit, Option<BTreeMap<
                         "op {k}: `code` must contain only `fn` / `spec fn` definitions (create units with a `unit` op)"
                     ));
                     continue;
+                }
+                // `put` writes functions only; anything else in `code` rejects
+                // the transaction rather than being dropped (backlog T0-20).
+                if let Some(m) = parsed.mods.first().filter(|_| syntax_ok) {
+                    let others = non_fn_items(m);
+                    if !others.is_empty() {
+                        problems.push(format!(
+                            "op {k}: `put` writes only `fn` and `spec fn` definitions, and `code` holds {}{}; no transaction operation adds or edits types, `impl` blocks, traits, trait impls or `use` items",
+                            others.join(", "),
+                            if m.fns.is_empty() {
+                                ""
+                            } else {
+                                " besides its functions"
+                            },
+                        ));
+                        continue;
+                    }
                 }
                 let new_fns: Vec<FnDef> = parsed.mods.into_iter().flat_map(|m| m.fns).collect();
                 if syntax_ok && new_fns.is_empty() {

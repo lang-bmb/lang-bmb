@@ -27,7 +27,7 @@ cargo run -- map all a.bmb        # 표준 맵 L0~L2(JSONL, ADR-0020; 타입·`i
 cargo run -- query slice u::f -- a.bmb  # 읽기 질의: units surface edges slice find contracts status impact duplicates effects tests
 cargo run -- query --cache .bmb-cache status -- ws  # map·query도 --cache DIR을 받는다(증명하는 L1·surface·status만 영향, 출력은 같은 바이트, INF-08)
 cargo run -- import ws a.bmb     # 작업 공간 ws/src/에 단위당 정규형 파일 하나
-cargo run -- apply ws ops.json   # 쓰기 트랜잭션(unit/put/remove/remove_unit/rename/expect, 아래 "정체성"). 구조·타입 오류면 전체 거부
+cargo run -- apply ws ops.json   # 쓰기 트랜잭션(unit/put/remove/remove_unit/rename/expect, 아래 "정체성"). 구조·타입 오류면 전체 거부. `put`은 `fn`·`spec fn`만 쓰고, `code`에 타입·`impl`·trait·trait impl·`use`가 있으면 그 항목들을 이름 대어 전체 거부(버리지 않음, T0-20)
 cargo run -- mcp ws              # MCP 서버(stdio): query map verify build tx_begin/put/commit 등
 cargo run -- mcp --write-tool ws # 위에 `write`(단위·정의·삭제·커밋·증명을 한 호출로, 2D-24)를 더한다. 동결 과제 집합은 끄고 쓴다
 cargo run -- mcp --compact ws    # 압축 에이전트 투영(ADR-0068, `src/view.rs`): 표면은 `// 경로: 상태` 뒤 본문 없는 정규형, L0·L2·slice는 텍스트, 성공한 증명은 `{"verified":N}`, 해시·위치·비용 없음. 기본은 끔(동결 측정 조건)

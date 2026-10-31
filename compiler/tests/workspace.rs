@@ -297,6 +297,70 @@ fn put_rejects_units_and_empty_code() {
     }
 }
 
+/// `put` writes functions only (backlog T0-20): a type, `impl` block,
+/// trait, trait impl or `use` item in `code` rejects the whole transaction,
+/// naming each such item in source order, whether or not functions come
+/// with it. Mixed with functions they used to be dropped while the commit
+/// reported the functions as changed.
+#[test]
+fn put_rejects_items_it_cannot_write() {
+    let root = init_rich("putitems");
+    let before = snapshot(&root);
+    let three = "#[effects(pure)]\nfn three() -> i64 { 3 }";
+    let cases: [(String, &str); 4] = [
+        (
+            format!(
+                "impl Pt {{\n    #[effects(pure)]\n    fn two(self: &Pt) -> i64 {{ 2 }}\n}}\n\n{three}"
+            ),
+            "`code` holds `impl Pt` (`fn two`) besides its functions;",
+        ),
+        (
+            "struct Q { a: i64 }".into(),
+            "`code` holds `struct Q`; no transaction operation",
+        ),
+        (
+            format!(
+                "use geo::dec;\n{three}\nenum E {{ A, B }}\ntrait T {{\n    #[effects(pure)]\n    fn t(self: &Self) -> i64;\n}}\nimpl Area for E {{\n    #[effects(pure)]\n    fn area(self: &E) -> i64 {{ 0 }}\n    #[effects(pure)]\n    fn twice(self: &E) -> i64 {{ 0 }}\n}}"
+            ),
+            "`code` holds `use geo::dec`, `enum E`, `trait T`, `impl Area for E` (`fn area`, `fn twice`) besides its functions;",
+        ),
+        (
+            "struct S<T> { v: T }\nimpl<T> S<T> { }".into(),
+            "`code` holds `struct S`, `impl S<T>`;",
+        ),
+    ];
+    for (code, want) in &cases {
+        // Through a transaction, alone and with an op that would commit.
+        for ops in [
+            vec![put("geo", code)],
+            vec![put("app", three), put("geo", code)],
+        ] {
+            let c = commit(&root, &ops).unwrap();
+            assert!(!c.ok, "{code}");
+            assert!(c.changed.is_empty(), "{code}: {:?}", c.changed);
+            let op = ops.len() - 1;
+            assert!(
+                c.diagnostics.contains(&format!(
+                    "op {op}: `put` writes only `fn` and `spec fn` definitions, and {want}"
+                )),
+                "{code}: {}",
+                c.diagnostics
+            );
+            assert!(
+                c.diagnostics
+                    .contains("no transaction operation adds or edits types, `impl` blocks, traits, trait impls or `use` items"),
+                "{}",
+                c.diagnostics
+            );
+            assert_eq!(snapshot(&root), before);
+        }
+    }
+    // The functions alone still commit.
+    let c = commit(&root, &[put("geo", three)]).unwrap();
+    assert!(c.ok, "{}", c.diagnostics);
+    assert_eq!(c.changed, ["geo::three"]);
+}
+
 /// No temporary files are left behind by a commit.
 #[test]
 fn commit_leaves_no_temporary_files() {
