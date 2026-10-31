@@ -1,8 +1,10 @@
 """Results files written as sessions finish, and resumed (backlog INF-16)."""
 import json
 import os
+import stat
 import sys
 import tempfile
+import threading
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -78,6 +80,32 @@ class Log(unittest.TestCase):
         log.add({"id": "a"})
         log.finish([log.rows["a"]], {"summary": True})
         self.assertTrue(log.done("a"))
+
+    def test_a_device_or_pipe_is_written_through_not_replaced(self):
+        # `--out /dev/null` once renamed a regular file over /dev/null.
+        fifo = self.path + ".fifo"
+        os.mkfifo(fifo)
+        got = []
+        reader = threading.Thread(target=lambda: got.extend(drain(fifo)))
+        reader.start()
+        log = ResultLog(fifo, RUN)
+        reader.join()
+        reader = threading.Thread(target=lambda: got.extend(drain(fifo)))
+        reader.start()
+        log.add({"id": "a"})
+        reader.join()
+        reader = threading.Thread(target=lambda: got.extend(drain(fifo)))
+        reader.start()
+        log.finish([log.rows["a"]], {"summary": True})
+        reader.join()
+        self.assertTrue(stat.S_ISFIFO(os.stat(fifo).st_mode))
+        self.assertFalse(os.path.exists(fifo + ".tmp"))
+        self.assertEqual(got[-2:], [{"id": "a"}, {"summary": True}])
+
+
+def drain(path):
+    with open(path) as f:
+        return [json.loads(line) for line in f if line.strip()]
 
 
 if __name__ == "__main__":

@@ -79,7 +79,8 @@ class ResultLog:
                 with open(self.path, "a") as f:
                     f.write(json.dumps(row, ensure_ascii=False) + "\n")
                     f.flush()
-                    os.fsync(f.fileno())
+                    if os.path.isfile(self.path):  # a device or pipe has nothing to sync
+                        os.fsync(f.fileno())
 
     def finish(self, rows, summary):
         """The final file: `rows` in task order, then `summary`."""
@@ -89,6 +90,14 @@ class ResultLog:
             self._write(rows + [summary])
 
     def _write(self, objs):
+        if os.path.exists(self.path) and not os.path.isfile(self.path):
+            # `--out /dev/null` or a pipe: write through it. Renaming over it
+            # replaced /dev/null with a regular file (2026-10-31: cargo's
+            # `rustc -` probe then compiled whatever was last written there).
+            with open(self.path, "w") as f:
+                for o in objs:
+                    f.write(json.dumps(o, ensure_ascii=False) + "\n")
+            return
         tmp = self.path + ".tmp"
         with open(tmp, "w") as f:
             for o in objs:
