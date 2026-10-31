@@ -29,6 +29,23 @@ class Guard(unittest.TestCase):
                 run_models.main(argv)
             self.assertNotEqual(cm.exception.code, 0, argv)
 
+    def test_same_as_needs_a_build_and_a_report(self):
+        saved = run_models.condition.provenance, run_models.condition.find_report
+        try:
+            run_models.condition.provenance = lambda _c: None
+            with self.assertRaises(SystemExit) as cm:
+                run_models.same_as("HEAD", ["m1"], "openai:qwen")
+            self.assertIn("condition.py build", str(cm.exception.code))
+            run_models.condition.provenance = lambda _c: {"compiler_tree": "t", "bmb_sha256": "s"}
+            run_models.condition.find_report = lambda *_a: None
+            with self.assertRaises(SystemExit) as cm:
+                run_models.same_as("HEAD", ["m1"], "openai:qwen")
+            self.assertIn("condition.py same", str(cm.exception.code))
+        finally:
+            run_models.condition.provenance, run_models.condition.find_report = saved
+        with self.assertRaises(SystemExit):
+            run_models.main(["--dry-run", "--same-as", "HEAD"])
+
     def test_every_set_has_tasks(self):
         for name, ids, _, _ in run_models.SETS:
             self.assertTrue(ids(), name)
@@ -64,6 +81,14 @@ class Resume(unittest.TestCase):
         self.assertEqual(run_models.earlier_run("bench/m1/results", "qwen", "", "anthropic:qwen", "c"),
                          (None, None))
         self.assertEqual(run_models.earlier_run("bench/nosuch/results", "qwen", "", a, "c"), (None, None))
+
+    def test_a_run_under_an_earlier_condition_is_its_own_run(self):
+        a, claim = "openai:qwen", {"same_as": "base", "compiler_tree": "t"}
+        self.put("2026-10-30-qwen.jsonl", {"summary": True, "agent": a, "commit": "c"})
+        self.put("2026-10-31-qwen.jsonl", {"partial": True, "agent": a, "commit": "c", "condition": claim})
+        self.assertEqual(run_models.earlier_run("bench/m1/results", "qwen", "", a, "c", claim),
+                         ("partial", os.path.join(self.root, "bench/m1/results/2026-10-31-qwen.jsonl")))
+        self.assertEqual(run_models.earlier_run("bench/m1/results", "qwen", "", a, "c")[0], "finished")
 
     def test_usage_counts_sessions_only(self):
         self.put("p.jsonl", {"partial": True}, {"id": "a", "model_usage": {"input_tokens": 3, "output_tokens": 1}},

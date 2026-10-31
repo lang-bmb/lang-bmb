@@ -55,6 +55,7 @@ _spec = importlib.util.spec_from_file_location("bmb_harness", os.path.join(M1, "
 bmb_harness = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(bmb_harness)
 import resultlog  # noqa: E402
+import sessionlog  # noqa: E402
 
 MAX_TOOL_CALLS = bmb_harness.MAX_TOOL_CALLS
 SKELETON = "use vstd::prelude::*;\n\nfn main() {}\n\nverus! {\n\n} // verus!\n"
@@ -259,7 +260,7 @@ def make_agent(kind, task):
     sys.exit(f"unknown agent {kind}")
 
 
-def run_task(task, agent_kind, verifier, agent=None):
+def run_task(task, agent_kind, verifier, agent=None, sessions=None):
     agent = agent or make_agent(agent_kind, task)
     if hasattr(agent, "set_tools"):
         agent.set_tools(TOOLS)
@@ -267,13 +268,14 @@ def run_task(task, agent_kind, verifier, agent=None):
     m = {"tool_calls": 0, "writes": 0, "verify_calls": 0, "limit_hit": False}
     # Every call's tool and result size, in order, with BMB_CONTEXT_LOG=1 (backlog 2D-25).
     calls_log = []
+    calls = []  # every call in full, for the session record (INF-17)
     last = []
     while True:
-        calls = agent.next_calls(last)
-        if not calls:
+        step = agent.next_calls(last)
+        if not step:
             break
         last = []
-        for name, args in calls:
+        for name, args in step:
             if m["tool_calls"] >= MAX_TOOL_CALLS:
                 m["limit_hit"] = True
                 break
@@ -291,10 +293,14 @@ def run_task(task, agent_kind, verifier, agent=None):
             else:
                 text, err = f"unknown tool or bad arguments: {name}", True
             calls_log.append({"name": name, "bytes": len(text.encode()), "error": bool(err)})
+            calls.append({"name": name, "args": args, "error": bool(err), "text": text})
             last.append((name, args, text, err))
         if m["limit_hit"]:
             break
     verdict = judge(task, code, verifier)
+    if sessions:
+        sessionlog.write(sessions, sessionlog.record(task["id"], agent_kind, agent, calls,
+                                                     {"changed": {"main.rs": code}, "removed": []}))
     return {"id": task["id"], "kind": "write", "agent": agent_kind, **verdict, **m,
             "model_usage": agent.usage, "agent_settings": getattr(agent, "settings", None),
             "stop": getattr(agent, "stop", None),
@@ -320,10 +326,10 @@ def run(args, verifier):
     commit = bmb_harness.run_commit()
     log = resultlog.ResultLog(args.out, {"agent": args.agent, "task_set": "bvb-verus",
                                          "manifest": bmb_harness.manifest_digest(), "commit": commit,
-                                         "tasks": [t["id"] for t in tasks]})
+                                         "tasks": [t["id"] for t in tasks], **bmb_harness.condition_fields()})
 
     def session(t):
-        r = run_task(t, args.agent, verifier)
+        r = run_task(t, args.agent, verifier, sessions=args.sessions)
         log.add(r)
         return r
 
@@ -334,7 +340,7 @@ def run(args, verifier):
         print(json.dumps(r, ensure_ascii=False))
     summary = {"summary": True, "agent": args.agent, "tasks": len(results), "task_set": "bvb-verus",
                "manifest": bmb_harness.manifest_digest(), "verus_version": getattr(verifier, "version", None),
-               "commit": commit, "write_success": f"{sum(r['success'] for r in results)}/{len(results)}"}
+               "commit": commit, **bmb_harness.condition_fields(), "jobs": args.jobs, "write_success": f"{sum(r['success'] for r in results)}/{len(results)}"}
     log.finish(results, summary)
     print(json.dumps(summary, ensure_ascii=False))
     if args.expect == "all-pass" and not all(r["success"] for r in results):
@@ -415,6 +421,7 @@ def main():
     rn.add_argument("--out")
     rn.add_argument("--expect", choices=["all-pass", "weak-fail"])
     rn.add_argument("--jobs", type=int, default=1)
+    rn.add_argument("--sessions", help="directory for session records (backlog INF-17)")
     cp = sub.add_parser("compare")
     cp.add_argument("bmb")
     cp.add_argument("verus")

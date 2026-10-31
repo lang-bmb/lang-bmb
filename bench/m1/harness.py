@@ -37,11 +37,14 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 # The task set in use (backlog 2A-04). `main` changes it with --set.
 SET = HERE
 MAX_TOOL_CALLS = 40
+# `--sessions DIR`: write a session record per task (backlog INF-17, sessionlog.py).
+SESSIONS = None
 READ_TOOLS = {"query", "map"}
 
 sys.path.insert(0, HERE)
 import bsb  # noqa: E402
 import resultlog  # noqa: E402
+import sessionlog  # noqa: E402
 from model_api import context_log  # noqa: E402
 
 
@@ -52,6 +55,13 @@ def run_commit():
     dirty = subprocess.run(["git", "status", "--porcelain", "--", ".", ":!bench/*/results/*"], cwd=ROOT,
                            capture_output=True, text=True).stdout.strip()
     return commit + ("+dirty" if dirty else "")
+
+
+def condition_fields():
+    """`BMB_CONDITION` (set by `run_models.py --same-as`, ADR-0070): the run's
+    claim to an earlier commit's condition, kept in the header and summary."""
+    c = os.environ.get("BMB_CONDITION")
+    return {"condition": json.loads(c)} if c else {}
 
 
 def bmb_bin():
@@ -467,16 +477,17 @@ def run_task(task, agent_kind):
     # result size, in order (backlog 2D-25): with the agent's per-request
     # tokens they decompose each turn's context. Off by default.
     calls_log = []
+    calls = []  # every call in full, for the session record (INF-17)
     tx = None
     answer = None
     last = []
     try:
         while True:
-            calls = agent.next_calls(last)
-            if not calls:
+            step = agent.next_calls(last)
+            if not step:
                 break
             last = []
-            for name, args in calls:
+            for name, args in step:
                 if m["tool_calls"] >= MAX_TOOL_CALLS:
                     m["limit_hit"] = True
                     break
@@ -496,6 +507,7 @@ def run_task(task, agent_kind):
                     m["read_bytes"] += len(text.encode())
                 m["e02"] += len(re.findall(r'"code":"E02\d\d"', text))
                 calls_log.append({"name": name, "bytes": len(text.encode()), "error": bool(err)})
+                calls.append({"name": name, "args": args, "error": bool(err), "text": text})
                 last.append((name, args, text, err))
             if m["limit_hit"]:
                 break
@@ -511,6 +523,9 @@ def run_task(task, agent_kind):
         verdict = judge_navigate(task, ws, answer)
     summary = [r for r in rows(st) if r.get("summary")]
     status = [r for r in rows(st) if "status" in r]
+    if SESSIONS:
+        sessionlog.write(SESSIONS, sessionlog.record(task["id"], agent_kind, agent, calls, sessionlog.workspace_changes(
+            os.path.join(SET, "seed"), ws)))
     shutil.rmtree(tmp, ignore_errors=True)
     tokens = m["read_bytes"] // 4 + (1 if m["read_bytes"] % 4 else 0)
     return {
@@ -611,7 +626,7 @@ def summarize(paths):
 
 
 def main():
-    global SET
+    global SET, SESSIONS
     ap = argparse.ArgumentParser()
     ap.add_argument("--set", default=HERE, help="task-set directory (default: bench/m1)")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -625,6 +640,7 @@ def main():
     # Sessions are independent (own workspace copy, own `bmb mcp`), so CI runs
     # them in parallel; results keep task order.
     rn.add_argument("--jobs", type=int, default=1)
+    rn.add_argument("--sessions", help="directory for session records (backlog INF-17)")
     sm = sub.add_parser("summarize")
     sm.add_argument("results", nargs="+")
     args = ap.parse_args()
@@ -644,6 +660,7 @@ def main():
 
     check_manifest()
     bsb_ready()
+    SESSIONS = args.sessions
     tdir = os.path.join(SET, "tasks")
     tasks = [json.load(open(os.path.join(tdir, f))) for f in sorted(os.listdir(tdir))]
     if args.tasks:
@@ -654,7 +671,7 @@ def main():
     # Results depend on the compiler (diagnostics, hints), so record it.
     commit = run_commit()
     log = resultlog.ResultLog(args.out, {"agent": args.agent, "task_set": set_name(), "manifest": manifest_digest(),
-                                         "commit": commit, "tasks": [t["id"] for t in tasks]})
+                                         "commit": commit, "tasks": [t["id"] for t in tasks], **condition_fields()})
 
     def session(t):
         r = run_task(t, args.agent)
@@ -670,7 +687,8 @@ def main():
     nav = [r for r in results if r["kind"] == "navigate"]
     summary = {
         "summary": True, "agent": args.agent, "tasks": len(results),
-        "task_set": set_name(), "manifest": manifest_digest(), "commit": commit,
+        "task_set": set_name(), "manifest": manifest_digest(), "commit": commit, **condition_fields(),
+        "jobs": args.jobs,
         "write_success": f"{sum(r['success'] for r in write)}/{len(write)}",
         "navigate_success": f"{sum(r['success'] for r in nav)}/{len(nav)}",
         "navigate_precision": round(sum(r["precision"] for r in nav) / len(nav), 3) if nav else None,

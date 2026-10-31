@@ -39,6 +39,7 @@ class AnthropicAgent:
         self.tools = None
         self.pending = []  # tool_use ids of the last response, in order
         self.usage = {"input_tokens": 0, "output_tokens": 0, "requests": 0}
+        self.requests = []  # per request, for the session record (backlog INF-17)
         if hasattr(client, "stats"):
             client.stats = self.usage  # transport retries land in the usage row
         self.stop = None
@@ -71,6 +72,7 @@ class AnthropicAgent:
             )
         except RuntimeError as e:  # model_api: not fixed by retrying (ADR-0066)
             self.stop, self.usage["api_error"] = "api_error", str(e)[:500]
+            self.requests.append({"error": str(e)[:500]})
             return []
         self.usage["requests"] += 1
         self.usage["input_tokens"] += response.usage.input_tokens
@@ -78,6 +80,10 @@ class AnthropicAgent:
         if context_log():  # model_api: opt-in per-request tokens (backlog 2D-25)
             self.usage.setdefault("request_input_tokens", []).append(response.usage.input_tokens)
             self.usage.setdefault("request_output_tokens", []).append(response.usage.output_tokens)
+        self.requests.append({"stop": response.stop_reason, "input_tokens": response.usage.input_tokens,
+                              "output_tokens": response.usage.output_tokens,
+                              "text": "".join(getattr(b, "text", "") for b in response.content
+                                              if getattr(b, "type", None) == "text")})
         if response.stop_reason == "refusal":
             self.stop = "refusal"
             return []

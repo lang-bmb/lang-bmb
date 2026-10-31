@@ -155,7 +155,7 @@ def make_agent(kind, task, arm):
 
 # ---------- sessions ----------
 
-def run_session(task, arm, agent_kind, rust_target, proptest):
+def run_session(task, arm, agent_kind, rust_target, proptest, sessions=None):
     tmp = tempfile.mkdtemp(prefix=f"brb-{arm}-{task.ID}-")
     try:
         if arm == "bmb":
@@ -175,14 +175,15 @@ def run_session(task, arm, agent_kind, rust_target, proptest):
              "limit_hit": None, "tool_counts": {}}
         tx = None
         last = []
+        calls = []  # every call in full, for the session record (INF-17)
         t0 = time.monotonic()
         try:
             while True:
-                calls = agent.next_calls(last)
-                if not calls:
+                step = agent.next_calls(last)
+                if not step:
                     break
                 last = []
-                for name, args in calls:
+                for name, args in step:
                     if m["tool_calls"] >= MAX_TOOL_CALLS:
                         m["limit_hit"] = "tool_calls"
                         break
@@ -197,6 +198,7 @@ def run_session(task, arm, agent_kind, rust_target, proptest):
                     if name == check_tool:
                         m["checks"] += 1
                         m["last_check_ok"] = check_ok(arm, text, err)
+                    calls.append({"name": name, "args": args, "error": bool(err), "text": text})
                     last.append((name, args, text, err))
                 if m["limit_hit"]:
                     break
@@ -223,6 +225,9 @@ def run_session(task, arm, agent_kind, rust_target, proptest):
         else:
             verdict = judge.judge_rust(task, ws, jdir)
         judge_s = time.monotonic() - t1
+        if sessions:
+            m1.sessionlog.write(sessions, m1.sessionlog.record(task.ID, agent_kind, agent, calls,
+                                                            {"changed": final_sources, "removed": []}))
         success = verdict["delivered"] and verdict["failed"] == 0 and verdict.get("domain_ok", True) is not False
         usage = agent.usage
         return {
@@ -526,6 +531,7 @@ def main():
     rn.add_argument("--out")
     rn.add_argument("--expect", choices=["all-pass", "weak-fail"])
     rn.add_argument("--jobs", type=int, default=1)
+    rn.add_argument("--sessions", help="directory for session records (backlog INF-17)")
     # proptest needs the template's crates (fetched once, then offline). On by
     # default for measurements; CI runs the scripted agents with it off.
     rn.add_argument("--proptest", choices=["on", "off"], default="on")
@@ -572,10 +578,10 @@ def main():
     # Rows are written as sessions finish and an interrupted run resumes (INF-16).
     log = m1.resultlog.ResultLog(args.out, {"agent": args.agent, "task_set": "brb", "arm": args.arm,
                                             "manifest": manifest_digest(), "commit": commit,
-                                            "tasks": [t.ID for t in ts]})
+                                            "tasks": [t.ID for t in ts], **m1.condition_fields()})
 
     def session(t):
-        r = run_session(t, args.arm, args.agent, tmp_target, proptest)
+        r = run_session(t, args.arm, args.agent, tmp_target, proptest, args.sessions)
         log.add(r)
         return r
 
@@ -593,7 +599,7 @@ def main():
     summary = {
         "summary": True, "task_set": "brb", "arm": args.arm, "agent": args.agent, "tasks": n,
         "proptest": proptest if args.arm == "rust" else None,
-        "manifest": manifest_digest(), "commit": commit,
+        "manifest": manifest_digest(), "commit": commit, **m1.condition_fields(),
         "limits": {"tool_calls": MAX_TOOL_CALLS, "session_output_tokens": SESSION_OUTPUT_TOKENS},
         "success": f"{sum(r['success'] for r in results)}/{n}",
         "defect_rate": round(sum(r["defect"] for r in results) / n, 3) if n else None,

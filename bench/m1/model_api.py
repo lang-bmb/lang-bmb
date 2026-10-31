@@ -206,6 +206,9 @@ class OpenAIAgent:
         self.tools = None
         self.pending = []
         self.usage = {"input_tokens": 0, "output_tokens": 0, "requests": 0}
+        # Per request: stop reason, tokens and visible text, for the session
+        # record (backlog INF-17). Not part of the result row.
+        self.requests = []
         self.stop = None
         self.settings = {"model": model, "api": "openai-chat", "max_tokens": self.MAX_TOKENS,
                          "reasoning": "model default"}
@@ -233,6 +236,7 @@ class OpenAIAgent:
             r = self.post(self.url, body, self.headers, self.usage, fold=fold_openai)
         except RuntimeError as e:
             self.stop, self.usage["api_error"] = "api_error", str(e)[:500]
+            self.requests.append({"error": str(e)[:500]})
             return []
         self.usage["requests"] += 1
         u = r.get("usage") or {}
@@ -244,6 +248,8 @@ class OpenAIAgent:
         choice = r["choices"][0]
         msg = choice["message"]
         calls = msg.get("tool_calls") or []
+        self.requests.append({"stop": choice.get("finish_reason"), "input_tokens": u.get("prompt_tokens", 0),
+                              "output_tokens": u.get("completion_tokens", 0), "text": msg.get("content") or ""})
         self.messages.append({"role": "assistant", "content": msg.get("content") or "",
                               **({"tool_calls": calls} if calls else {})})
         if not calls:

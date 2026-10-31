@@ -36,6 +36,21 @@ this commit with this model is not run again and its file is reported, and a
 set left partial on this commit continues from the tasks without a row (a task
 is never run twice, so this is not a retry).
 
+Session records (backlog INF-17). A real run keeps every session's record
+(calls with full results, requests, final workspace; bench/m1/sessionlog.py)
+in `<results file without .jsonl>.sessions/`, committed with the results.
+
+Parallel sessions (backlog INF-18). `--jobs N` runs N sessions of a set at a
+time in a real run too: sessions are independent and judged by deterministic
+solver limits, and the model's time is the gateway's. The BRB arms stay at one:
+their judges run programs under wall-clock timeouts.
+
+The same condition on a later commit (ADR-0070). `--same-as COMMIT` runs with
+`bmb` built from COMMIT's compiler (`bench/condition.py build COMMIT`) and only
+for sets a committed report (`bench/condition.py same --base COMMIT`) shows to
+be judged and shown to the model exactly as on COMMIT. The header records the
+claim; a cross-comparison against a run made on COMMIT is then valid.
+
 Real runs refuse to start on an uncommitted tree (results from `+dirty`
 commits are not reported, ADR-0021), or with bvb-verus selected and Verus
 missing. Models and endpoints are the ones ADR-0066 approves
@@ -54,7 +69,9 @@ import tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, os.path.join(HERE, "m1"))
+sys.path.insert(0, HERE)
 import resultlog  # noqa: E402
+import condition  # noqa: E402
 from model_api import is_model_kind  # noqa: E402
 PY = sys.executable
 
@@ -185,7 +202,7 @@ def preflight_real(sets):
     return problems
 
 
-def earlier_run(results_dir, model, suffix, agent, commit):
+def earlier_run(results_dir, model, suffix, agent, commit, claim=None):
     """("finished" | "partial", path) of this set's results file for this
     model, agent and commit, or (None, None). A run is named by its first day,
     so a resumed run keeps its file."""
@@ -194,9 +211,31 @@ def earlier_run(results_dir, model, suffix, agent, commit):
     for f in sorted(os.listdir(d)) if os.path.isdir(d) else []:
         if pattern.match(f):
             state, head = resultlog.status(os.path.join(d, f))
-            if state and head.get("agent") == agent and head.get("commit") == commit:
+            if state and head.get("agent") == agent and head.get("commit") == commit and head.get("condition") == claim:
                 return state, os.path.join(d, f)
     return None, None
+
+
+def same_as(commit, sets, agent):
+    """(the condition claim, the pinned `bmb`) for a run under `commit`'s
+    condition, or exit naming what is missing (ADR-0070)."""
+    try:
+        base = condition.git("rev-parse", commit)
+    except subprocess.CalledProcessError:
+        sys.exit(f"--same-as {commit}: not a commit")
+    prov = condition.provenance(base)
+    if not prov:
+        sys.exit(f"--same-as {commit}: no build of its compiler; run `bench/condition.py build {commit}`")
+    provider = agent.split(":", 1)[0]
+    reports = {}
+    for s in sets:
+        if not (path := condition.find_report(base, s, provider)):
+            sys.exit(f"--same-as {commit}: no committed report shows {s} ({provider}) to be the same condition; "
+                     f"run `bench/condition.py same --base {commit} --sets {s}` on a clean tree and commit it")
+        reports[s] = os.path.relpath(path, ROOT)
+    claim = {"same_as": base, "compiler_tree": prov["compiler_tree"], "bmb_sha256": prov["bmb_sha256"],
+             "reports": sorted(set(reports.values()))}
+    return claim, os.path.join(condition.build_dir(base), "bmb")
 
 
 def head_commit():
@@ -214,7 +253,9 @@ def main(argv=None):
     ap.add_argument("--budget", type=float, help="USD; no set starts that the projection puts over it")
     ap.add_argument("--out-dir", help="dry run: where results go (default: a temporary directory)")
     ap.add_argument("--report", help="also write the report to this file")
-    ap.add_argument("--jobs", type=int, default=2, help="dry run: sessions at a time (real runs: 1)")
+    ap.add_argument("--jobs", type=int, help="sessions at a time (default: 2 in a dry run, 1 in a real run; "
+                    "BRB real runs always 1)")
+    ap.add_argument("--same-as", metavar="COMMIT", help="real run under COMMIT's condition (ADR-0070)")
     args = ap.parse_args(argv)
 
     sets = [s.strip() for s in args.sets.split(",") if s.strip()]
@@ -222,6 +263,8 @@ def main(argv=None):
         sys.exit(f"unknown sets: {unknown}")
     sets = [n for n in NAMES if n in sets]
     real = not args.dry_run
+    jobs = args.jobs or (1 if real else 2)
+    env = dict(os.environ)
     if real:
         if not (args.agent and is_model_kind(args.agent)):
             sys.exit("a real run needs --agent openai:MODEL or anthropic:MODEL (or --dry-run)")
@@ -234,6 +277,12 @@ def main(argv=None):
         model = args.agent.split(":", 1)[1]
         stamp = datetime.date.today().isoformat()
         commit = head_commit()
+        claim = None
+        if args.same_as:
+            claim, bmb = same_as(args.same_as, sets, args.agent)
+            env["BMB"], env["BMB_CONDITION"] = bmb, json.dumps(claim, sort_keys=True)
+    elif args.same_as:
+        sys.exit("--same-as is for real runs")
     out_dir = args.out_dir or (None if real else tempfile.mkdtemp(prefix="bmb-models-"))
 
     paths, skipped = {}, {}
@@ -250,7 +299,7 @@ def main(argv=None):
             task_ids = task_ids[:args.limit]
         if real:
             suffix = {"m1": "", "m1b": "", "bvb": "", "bvb-verus": "-verus", "brb-bmb": "-bmb", "brb-rust": "-rust"}[name]
-            state, out = earlier_run(results_dir, model, suffix, args.agent, commit)
+            state, out = earlier_run(results_dir, model, suffix, args.agent, commit, claim)
             if state == "finished":
                 print(f"run_models: {name}: already measured on this commit ({os.path.relpath(out, ROOT)})",
                       file=sys.stderr)
@@ -272,14 +321,20 @@ def main(argv=None):
                 out = os.path.join(ROOT, results_dir, f"{stamp}-{model}{suffix}.jsonl")
                 if os.path.exists(out):
                     sys.exit(f"{out} exists: a frozen set is run once (ADR-0021)")
-            cmd = run_argv(args.agent, out, [], True)
+            n_jobs = 1 if name.startswith("brb-") else jobs
+            cmd = run_argv(args.agent, out, ["--sessions", out[:-len(".jsonl")] + ".sessions", "--jobs", str(n_jobs)],
+                           True)
         else:
             out = os.path.join(out_dir, f"{name}.jsonl")
-            cmd = run_argv("oracle", out, ["--tasks", ",".join(task_ids), "--jobs", str(args.jobs)], False)
+            cmd = run_argv("oracle", out, ["--tasks", ",".join(task_ids), "--jobs", str(jobs),
+                                           "--sessions", out[:-len(".jsonl")] + ".sessions"], False)
         print(f"run_models: {name}: {len(task_ids)} sessions", file=sys.stderr)
-        r = subprocess.run(cmd, cwd=ROOT, stdout=subprocess.DEVNULL)
+        r = subprocess.run(cmd, cwd=ROOT, stdout=subprocess.DEVNULL, env=env)
         if r.returncode != 0 or not os.path.exists(out):
             sys.exit(f"run_models: {name} failed (exit {r.returncode})")
+        records = out[:-len(".jsonl")] + ".sessions"
+        if len(os.listdir(records) if os.path.isdir(records) else []) < len(task_ids):
+            sys.exit(f"run_models: {name}: a session left no record in {records}")
         paths[name] = out
         n, ti, to = usage_of(out)
         sessions += n
