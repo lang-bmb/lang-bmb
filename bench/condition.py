@@ -234,8 +234,11 @@ def probe(tree, set_name, provider, script, out, tasks=None):
 # ---------- compare ----------
 
 def normalize(text, tree):
-    """Temporary directories and the tree's location are not part of the condition."""
+    """Temporary directories, the tree's location and the times cargo prints
+    (`Finished ... in 0.08s`, `finished in 0.00s`: two runs of one tree differ
+    there, more under load) are not part of the condition."""
     text = text.replace(tree, "<tree>")
+    text = re.sub(r"\bin \d+(?:\.\d+)?m?s\b", "in <time>", text)
     return re.sub(re.escape(tempfile.gettempdir()) + r"/[^/\"\\\s]+", "<tmp>", text)
 
 

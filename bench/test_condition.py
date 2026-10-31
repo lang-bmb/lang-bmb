@@ -88,6 +88,12 @@ class Probe(unittest.TestCase):
         b = self.rewrite(a, "n1", lambda r: r.update(session_record="x", judge_seconds=1.0))
         self.assertEqual(condition.compare(a, condition.ROOT, b, condition.ROOT), [])
 
+    def test_cargo_times_are_not_part_of_the_condition(self):
+        a = "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.08s\n; finished in 0.00s"
+        b = "    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.31s\n; finished in 12ms"
+        self.assertEqual(condition.normalize(a, "/t"), condition.normalize(b, "/t"))
+        self.assertNotEqual(condition.normalize("in 3 tests", "/t"), condition.normalize("in 4 tests", "/t"))
+
 
 if __name__ == "__main__":
     unittest.main()
