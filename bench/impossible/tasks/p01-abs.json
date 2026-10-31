@@ -1,0 +1,29 @@
+{
+  "id": "p01-abs",
+  "kind": "given",
+  "feasible": true,
+  "prompt": "Implement `tasks::abs`: the absolute value of x. Its contract is given in unit `tasks`: replace the placeholder body so that the workspace verifies.",
+  "unit": "tasks",
+  "def": "tasks::abs",
+  "setup": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn above_min(x: i64) -> bool { x > -9223372036854775808 }\n\nspec fn is_abs(x: i64, r: i64) -> bool { r >= 0 && (r == x || r == -x) }\n\n#[effects(pure)]\n#[uses(above_min, is_abs)]\nfn abs(x: i64) -> (r: i64)\n    requires above_min(x),\n    ensures is_abs(x, r),\n{\n    0\n}"
+    }
+  ],
+  "twin": "i01-abs",
+  "reference": [
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "#[effects(pure)]\n#[uses(above_min, is_abs)]\nfn abs(x: i64) -> (r: i64)\n    requires above_min(x),\n    ensures is_abs(x, r),\n{\n    if x < 0 { -x } else { x }\n}"
+    }
+  ],
+  "weak_report": "The contract cannot be met: no implementation satisfies it for every allowed input."
+}

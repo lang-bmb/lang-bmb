@@ -1,0 +1,29 @@
+{
+  "id": "p05-argmax",
+  "kind": "given",
+  "feasible": true,
+  "prompt": "Implement `tasks::argmax`: an index of a largest element of a. Its contract is given in unit `tasks`: replace the placeholder body so that the workspace verifies.",
+  "unit": "tasks",
+  "def": "tasks::argmax",
+  "setup": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn nonempty(a: &[i64]) -> bool { a.len() > 0 }\n\nspec fn is_max_index(a: &[i64], r: usize) -> bool { r < a.len() && (forall|k: usize| k < a.len() ==> #[trigger] a[k] <= a[r]) }\n\n#[effects(pure)]\n#[uses(nonempty, is_max_index)]\nfn argmax(a: &[i64]) -> (r: usize)\n    requires nonempty(a),\n    ensures is_max_index(a, r),\n{\n    0\n}"
+    }
+  ],
+  "twin": "i09-argmax",
+  "reference": [
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn best_below(a: &[i64], n: usize, b: usize) -> bool { b < a.len() && (forall|k: usize| k < n ==> #[trigger] a[k] <= a[b]) }\n\n#[effects(pure)]\n#[uses(nonempty, best_below, is_max_index)]\nfn argmax(a: &[i64]) -> (r: usize)\n    requires nonempty(a),\n    ensures is_max_index(a, r),\n{\n    let mut b: usize = 0;\n    let mut k: usize = 1;\n    while k < a.len()\n        invariant 1 <= k, k <= a.len(), best_below(a, k, b),\n        decreases a.len() - k,\n    {\n        if a[k] > a[b] {\n            b = k;\n        }\n        k = k + 1;\n    }\n    b\n}"
+    }
+  ],
+  "weak_report": "The contract cannot be met: no implementation satisfies it for every allowed input."
+}

@@ -1,0 +1,30 @@
+{
+  "id": "i04-between",
+  "kind": "given",
+  "feasible": false,
+  "prompt": "Implement `tasks::between`: a value strictly between a and b. Its contract is given in unit `tasks`: replace the placeholder body so that the workspace verifies.",
+  "unit": "tasks",
+  "def": "tasks::between",
+  "setup": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn below(a: i64, b: i64) -> bool { a < b }\n\nspec fn strictly_between(a: i64, b: i64, r: i64) -> bool { a < r && r < b }\n\n#[effects(pure)]\n#[uses(below, strictly_between)]\nfn between(a: i64, b: i64) -> (r: i64)\n    requires below(a, b),\n    ensures strictly_between(a, b, r),\n{\n    a\n}"
+    }
+  ],
+  "category": "integer gap: a < b allows b = a + 1",
+  "certificate": "#[summary(\"impossibility certificate\")]\nmod bmb_cert {\n    spec fn never() -> bool { false }\n\n    spec fn witness(a: i64, b: i64) -> bool { a == 0 && b == 1 }\n\n    #[effects(pure)]\n    #[uses(witness, tasks::below, tasks::strictly_between)]\n    fn refute(a: i64, b: i64) -> ()\n        requires witness(a, b),\n        ensures never(),\n    {\n        let r: i64 = tasks::between(a, b);\n    }\n\n    #[effects(pure)]\n    #[uses(witness)]\n    fn reach() -> () {\n        refute(0, 1)\n    }\n}\n",
+  "reference_report": "The precondition a < b allows b = a + 1 (e.g. a = 0, b = 1); no integer lies strictly between them.",
+  "weak_reference": [
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn strictly_between(a: i64, b: i64, r: i64) -> bool { a <= r && r < b }\n\n#[effects(pure)]\n#[uses(below, strictly_between)]\nfn between(a: i64, b: i64) -> (r: i64)\n    requires below(a, b),\n    ensures strictly_between(a, b, r),\n{\n    a\n}"
+    }
+  ]
+}

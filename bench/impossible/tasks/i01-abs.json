@@ -1,0 +1,30 @@
+{
+  "id": "i01-abs",
+  "kind": "given",
+  "feasible": false,
+  "prompt": "Implement `tasks::abs`: the absolute value of x. Its contract is given in unit `tasks`: replace the placeholder body so that the workspace verifies.",
+  "unit": "tasks",
+  "def": "tasks::abs",
+  "setup": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn is_abs(x: i64, r: i64) -> bool { r >= 0 && (r == x || r == -x) }\n\n#[effects(pure)]\n#[uses(is_abs)]\nfn abs(x: i64) -> (r: i64)\n    ensures is_abs(x, r),\n{\n    0\n}"
+    }
+  ],
+  "category": "overflow forced: no precondition excludes i64::MIN",
+  "certificate": "#[summary(\"impossibility certificate\")]\nmod bmb_cert {\n    spec fn never() -> bool { false }\n\n    spec fn witness(x: i64) -> bool { x == -9223372036854775808 }\n\n    #[effects(pure)]\n    #[uses(witness, tasks::is_abs)]\n    fn refute(x: i64) -> ()\n        requires witness(x),\n        ensures never(),\n    {\n        let r: i64 = tasks::abs(x);\n    }\n\n    #[effects(pure)]\n    #[uses(witness)]\n    fn reach() -> () {\n        refute(-9223372036854775808)\n    }\n}\n",
+  "reference_report": "No i64 result exists for x = -9223372036854775808: its absolute value 9223372036854775808 does not fit in i64, and the contract has no precondition that excludes it.",
+  "weak_reference": [
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn above_min(x: i64) -> bool { x > -9223372036854775808 }\n\n#[effects(pure)]\n#[uses(is_abs, above_min)]\nfn abs(x: i64) -> (r: i64)\n    requires above_min(x),\n    ensures is_abs(x, r),\n{\n    if x < 0 { -x } else { x }\n}"
+    }
+  ]
+}

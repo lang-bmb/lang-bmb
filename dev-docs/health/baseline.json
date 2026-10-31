@@ -19,7 +19,7 @@
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
     "P1_runnable_programs": 58,
-    "P2_bmb_lines": 19792,
+    "P2_bmb_lines": 19830,
     "P3_errors_with_help": 0.872,
     "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
@@ -1433,6 +1433,16 @@
         "S4_stage0_rust_lines": [
           36300,
           36342
+        ]
+      }
+    },
+    {
+      "date": "2026-10-31",
+      "reason": "2A-13: BMB-Impossible 시드 `bench/impossible/seed/src/num.bmb`(38줄). 과제 코드는 과제 JSON 안이라 세지 않음",
+      "changed": {
+        "P2_bmb_lines": [
+          19792,
+          19830
         ]
       }
     }

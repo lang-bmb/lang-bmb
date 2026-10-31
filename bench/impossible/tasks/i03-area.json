@@ -1,0 +1,30 @@
+{
+  "id": "i03-area",
+  "kind": "given",
+  "feasible": false,
+  "prompt": "Implement `tasks::area`: the area w * h of a rectangle. Its contract is given in unit `tasks`: replace the placeholder body so that the workspace verifies.",
+  "unit": "tasks",
+  "def": "tasks::area",
+  "setup": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn side_ok(w: u64, h: u64) -> bool { w <= 5000000000 && h <= 5000000000 }\n\nspec fn is_area(w: u64, h: u64, r: u64) -> bool { r == w * h }\n\n#[effects(pure)]\n#[uses(side_ok, is_area)]\nfn area(w: u64, h: u64) -> (r: u64)\n    requires side_ok(w, h),\n    ensures is_area(w, h, r),\n{\n    0\n}"
+    }
+  ],
+  "category": "bound too large: 5e9 * 5e9 exceeds u64",
+  "certificate": "#[summary(\"impossibility certificate\")]\nmod bmb_cert {\n    spec fn never() -> bool { false }\n\n    spec fn witness(w: u64, h: u64) -> bool { w == 5000000000 && h == 5000000000 }\n\n    #[effects(pure)]\n    #[uses(witness, tasks::side_ok, tasks::is_area)]\n    fn refute(w: u64, h: u64) -> ()\n        requires witness(w, h),\n        ensures never(),\n    {\n        let r: u64 = tasks::area(w, h);\n    }\n\n    #[effects(pure)]\n    #[uses(witness)]\n    fn reach() -> () {\n        refute(5000000000, 5000000000)\n    }\n}\n",
+  "reference_report": "The precondition allows w = h = 5000000000, whose product 25000000000000000000 exceeds u64::MAX (18446744073709551615), so no u64 result satisfies is_area.",
+  "weak_reference": [
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn side_ok(w: u64, h: u64) -> bool { w <= 4000000000 && h <= 4000000000 }\n\n#[effects(pure)]\n#[uses(side_ok, is_area)]\nfn area(w: u64, h: u64) -> (r: u64)\n    requires side_ok(w, h),\n    ensures is_area(w, h, r),\n{\n    w * h\n}"
+    }
+  ]
+}

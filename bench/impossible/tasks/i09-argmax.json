@@ -1,0 +1,30 @@
+{
+  "id": "i09-argmax",
+  "kind": "given",
+  "feasible": false,
+  "prompt": "Implement `tasks::argmax`: an index of a largest element of a. Its contract is given in unit `tasks`: replace the placeholder body so that the workspace verifies.",
+  "unit": "tasks",
+  "def": "tasks::argmax",
+  "setup": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn is_max_index(a: &[i64], r: usize) -> bool { r < a.len() && (forall|k: usize| k < a.len() ==> #[trigger] a[k] <= a[r]) }\n\n#[effects(pure)]\n#[uses(is_max_index)]\nfn argmax(a: &[i64]) -> (r: usize)\n    ensures is_max_index(a, r),\n{\n    0\n}"
+    }
+  ],
+  "category": "empty input: no index of an empty slice",
+  "certificate": "#[summary(\"impossibility certificate\")]\nmod bmb_cert {\n    spec fn never() -> bool { false }\n\n    spec fn witness(a: &[i64]) -> bool { a.len() == 0 }\n\n    #[effects(pure)]\n    #[uses(witness, tasks::is_max_index)]\n    fn refute(a: &[i64]) -> ()\n        requires witness(a),\n        ensures never(),\n    {\n        let r: usize = tasks::argmax(a);\n    }\n\n    #[effects(pure)]\n    #[uses(witness)]\n    fn reach() -> () {\n        let e: [i64; 0] = [];\n        refute(&e)\n    }\n}\n",
+  "reference_report": "For the empty slice there is no index r < a.len(), and the contract has no precondition that a is non-empty.",
+  "weak_reference": [
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn nonempty(a: &[i64]) -> bool { a.len() > 0 }\n\nspec fn best_below(a: &[i64], n: usize, b: usize) -> bool { b < a.len() && (forall|k: usize| k < n ==> #[trigger] a[k] <= a[b]) }\n\n#[effects(pure)]\n#[uses(nonempty, best_below, is_max_index)]\nfn argmax(a: &[i64]) -> (r: usize)\n    requires nonempty(a),\n    ensures is_max_index(a, r),\n{\n    let mut b: usize = 0;\n    let mut k: usize = 1;\n    while k < a.len()\n        invariant 1 <= k, k <= a.len(), best_below(a, k, b),\n        decreases a.len() - k,\n    {\n        if a[k] > a[b] {\n            b = k;\n        }\n        k = k + 1;\n    }\n    b\n}"
+    }
+  ]
+}

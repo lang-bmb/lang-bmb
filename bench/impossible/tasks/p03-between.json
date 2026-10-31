@@ -1,0 +1,29 @@
+{
+  "id": "p03-between",
+  "kind": "given",
+  "feasible": true,
+  "prompt": "Implement `tasks::between`: a value strictly between a and b. Its contract is given in unit `tasks`: replace the placeholder body so that the workspace verifies.",
+  "unit": "tasks",
+  "def": "tasks::between",
+  "setup": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn gap(a: i64, b: i64) -> bool { a + 1 < b }\n\nspec fn strictly_between(a: i64, b: i64, r: i64) -> bool { a < r && r < b }\n\n#[effects(pure)]\n#[uses(gap, strictly_between)]\nfn between(a: i64, b: i64) -> (r: i64)\n    requires gap(a, b),\n    ensures strictly_between(a, b, r),\n{\n    a\n}"
+    }
+  ],
+  "twin": "i04-between",
+  "reference": [
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "#[effects(pure)]\n#[uses(gap, strictly_between)]\nfn between(a: i64, b: i64) -> (r: i64)\n    requires gap(a, b),\n    ensures strictly_between(a, b, r),\n{\n    a + 1\n}"
+    }
+  ],
+  "weak_report": "The contract cannot be met: no implementation satisfies it for every allowed input."
+}

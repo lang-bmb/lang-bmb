@@ -1,0 +1,30 @@
+{
+  "id": "i02-add",
+  "kind": "given",
+  "feasible": false,
+  "prompt": "Implement `tasks::add`: the sum a + b. Its contract is given in unit `tasks`: replace the placeholder body so that the workspace verifies.",
+  "unit": "tasks",
+  "def": "tasks::add",
+  "setup": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn small(x: i64) -> bool { -1000000000 <= x && x <= 1000000000 }\n\nspec fn is_sum(a: i64, b: i64, r: i64) -> bool { r == a + b }\n\n#[effects(pure)]\n#[uses(small, is_sum)]\nfn add(a: i64, b: i64) -> (r: i64)\n    requires small(a),\n    ensures is_sum(a, b, r),\n{\n    0\n}"
+    }
+  ],
+  "category": "overflow forced: the precondition bounds a but not b",
+  "certificate": "#[summary(\"impossibility certificate\")]\nmod bmb_cert {\n    spec fn never() -> bool { false }\n\n    spec fn witness(a: i64, b: i64) -> bool { a == 1 && b == 9223372036854775807 }\n\n    #[effects(pure)]\n    #[uses(witness, tasks::small, tasks::is_sum)]\n    fn refute(a: i64, b: i64) -> ()\n        requires witness(a, b),\n        ensures never(),\n    {\n        let r: i64 = tasks::add(a, b);\n    }\n\n    #[effects(pure)]\n    #[uses(witness)]\n    fn reach() -> () {\n        refute(1, 9223372036854775807)\n    }\n}\n",
+  "reference_report": "The precondition bounds a but not b: for a = 1, b = 9223372036854775807 the sum does not fit in i64, so no result satisfies is_sum.",
+  "weak_reference": [
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "#[effects(pure)]\n#[uses(small, is_sum)]\nfn add(a: i64, b: i64) -> (r: i64)\n    requires small(a), small(b),\n    ensures is_sum(a, b, r),\n{\n    a + b\n}"
+    }
+  ]
+}

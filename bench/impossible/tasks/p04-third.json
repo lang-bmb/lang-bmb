@@ -1,0 +1,29 @@
+{
+  "id": "p04-third",
+  "kind": "given",
+  "feasible": true,
+  "prompt": "Implement `tasks::third`: one third of x, rounded down. Its contract is given in unit `tasks`: replace the placeholder body so that the workspace verifies.",
+  "unit": "tasks",
+  "def": "tasks::third",
+  "setup": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn nonneg(x: i64) -> bool { x >= 0 }\n\nspec fn is_third(x: i64, r: i64) -> bool { 3 * r <= x && x < 3 * r + 3 }\n\n#[effects(pure)]\n#[uses(nonneg, is_third)]\nfn third(x: i64) -> (r: i64)\n    requires nonneg(x),\n    ensures is_third(x, r),\n{\n    -1\n}"
+    }
+  ],
+  "twin": "i07-third",
+  "reference": [
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "#[effects(pure)]\n#[uses(nonneg, is_third)]\nfn third(x: i64) -> (r: i64)\n    requires nonneg(x),\n    ensures is_third(x, r),\n{\n    x / 3\n}"
+    }
+  ],
+  "weak_report": "The contract cannot be met: no implementation satisfies it for every allowed input."
+}

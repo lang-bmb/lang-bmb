@@ -1,0 +1,30 @@
+{
+  "id": "i12-sign",
+  "kind": "given",
+  "feasible": false,
+  "prompt": "Implement `tasks::sign`: the sign of x as -1, 0 or 1. Its contract is given in unit `tasks`: replace the placeholder body so that the workspace verifies.",
+  "unit": "tasks",
+  "def": "tasks::sign",
+  "setup": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn is_sign(x: i64, r: i64) -> bool { (x > 0 ==> r == 1) && (x < 0 ==> r == -1) && (x == 0 ==> r == 0) }\n\nspec fn nonzero(r: i64) -> bool { r != 0 }\n\n#[effects(pure)]\n#[uses(is_sign, nonzero)]\nfn sign(x: i64) -> (r: i64)\n    ensures is_sign(x, r), nonzero(r),\n{\n    0\n}"
+    }
+  ],
+  "category": "contradictory ensures: is_sign(0) forces 0, nonzero forbids it",
+  "certificate": "#[summary(\"impossibility certificate\")]\nmod bmb_cert {\n    spec fn never() -> bool { false }\n\n    spec fn witness(x: i64) -> bool { x == 0 }\n\n    #[effects(pure)]\n    #[uses(witness, tasks::is_sign, tasks::nonzero)]\n    fn refute(x: i64) -> ()\n        requires witness(x),\n        ensures never(),\n    {\n        let r: i64 = tasks::sign(x);\n    }\n\n    #[effects(pure)]\n    #[uses(witness)]\n    fn reach() -> () {\n        refute(0)\n    }\n}\n",
+  "reference_report": "The two postconditions contradict at x = 0: is_sign requires r == 0 there and nonzero requires r != 0.",
+  "weak_reference": [
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "#[effects(pure)]\n#[uses(is_sign, nonzero)]\nfn sign(x: i64) -> (r: i64)\n    ensures is_sign(x, r),\n{\n    if x > 0 { 1 } else { if x < 0 { -1 } else { 0 } }\n}"
+    }
+  ]
+}

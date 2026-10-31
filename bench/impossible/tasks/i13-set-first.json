@@ -1,0 +1,30 @@
+{
+  "id": "i13-set-first",
+  "kind": "given",
+  "feasible": false,
+  "prompt": "Implement `tasks::set_first`: set the first element of a to v. Its contract is given in unit `tasks`: replace the placeholder body so that the workspace verifies.",
+  "unit": "tasks",
+  "def": "tasks::set_first",
+  "setup": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn nonempty(a: &[i64]) -> bool { a.len() > 0 }\n\nspec fn first_set(a: &[i64], b: &[i64], v: i64) -> bool { a.len() == b.len() && a[0] == v }\n\nspec fn first_kept(a: &[i64], b: &[i64]) -> bool { a.len() == b.len() && a[0] == b[0] }\n\n#[effects(pure)]\n#[uses(nonempty, first_set, first_kept)]\nfn set_first(a: &mut [i64], v: i64) -> ()\n    requires nonempty(a),\n    ensures first_set(a, old(a), v), first_kept(a, old(a)),\n{\n}"
+    }
+  ],
+  "category": "contradictory frame: the first element must change and stay",
+  "certificate": "#[summary(\"impossibility certificate\")]\nmod bmb_cert {\n    spec fn never() -> bool { false }\n\n    spec fn witness(a: &[i64], v: i64) -> bool { a.len() == 1 && a[0] != v }\n\n    #[effects(pure)]\n    #[uses(witness, tasks::nonempty, tasks::first_set, tasks::first_kept)]\n    fn refute(a: &mut [i64], v: i64) -> ()\n        requires witness(a, v),\n        ensures never(),\n    {\n        tasks::set_first(a, v)\n    }\n\n    #[effects(pure)]\n    #[uses(witness)]\n    fn reach() -> () {\n        let mut e: [i64; 1] = [0];\n        refute(&mut e, 1)\n    }\n}\n",
+  "reference_report": "When a[0] != v the postconditions contradict: first_set requires a[0] == v after the call and first_kept requires a[0] == old(a)[0].",
+  "weak_reference": [
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "#[effects(pure)]\n#[uses(nonempty, first_set, first_kept)]\nfn set_first(a: &mut [i64], v: i64) -> ()\n    requires nonempty(a),\n    ensures first_set(a, old(a), v),\n{\n    a[0] = v;\n}"
+    }
+  ]
+}

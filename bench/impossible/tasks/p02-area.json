@@ -1,0 +1,29 @@
+{
+  "id": "p02-area",
+  "kind": "given",
+  "feasible": true,
+  "prompt": "Implement `tasks::area`: the area w * h of a rectangle. Its contract is given in unit `tasks`: replace the placeholder body so that the workspace verifies.",
+  "unit": "tasks",
+  "def": "tasks::area",
+  "setup": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn side_ok(w: u64, h: u64) -> bool { w <= 4000000000 && h <= 4000000000 }\n\nspec fn is_area(w: u64, h: u64, r: u64) -> bool { r == w * h }\n\n#[effects(pure)]\n#[uses(side_ok, is_area)]\nfn area(w: u64, h: u64) -> (r: u64)\n    requires side_ok(w, h),\n    ensures is_area(w, h, r),\n{\n    0\n}"
+    }
+  ],
+  "twin": "i03-area",
+  "reference": [
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "#[effects(pure)]\n#[uses(side_ok, is_area)]\nfn area(w: u64, h: u64) -> (r: u64)\n    requires side_ok(w, h),\n    ensures is_area(w, h, r),\n{\n    w * h\n}"
+    }
+  ],
+  "weak_report": "The contract cannot be met: no implementation satisfies it for every allowed input."
+}

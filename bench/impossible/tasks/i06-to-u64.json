@@ -1,0 +1,30 @@
+{
+  "id": "i06-to-u64",
+  "kind": "given",
+  "feasible": false,
+  "prompt": "Implement `tasks::to_u64`: x as an unsigned value. Its contract is given in unit `tasks`: replace the placeholder body so that the workspace verifies.",
+  "unit": "tasks",
+  "def": "tasks::to_u64",
+  "setup": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn same_value(x: i64, r: u64) -> bool { r == x }\n\n#[effects(pure)]\n#[uses(same_value)]\nfn to_u64(x: i64) -> (r: u64)\n    ensures same_value(x, r),\n{\n    0\n}"
+    }
+  ],
+  "category": "range conversion: negative x has no u64 value",
+  "certificate": "#[summary(\"impossibility certificate\")]\nmod bmb_cert {\n    spec fn never() -> bool { false }\n\n    spec fn witness(x: i64) -> bool { x == -1 }\n\n    #[effects(pure)]\n    #[uses(witness, tasks::same_value)]\n    fn refute(x: i64) -> ()\n        requires witness(x),\n        ensures never(),\n    {\n        let r: u64 = tasks::to_u64(x);\n    }\n\n    #[effects(pure)]\n    #[uses(witness)]\n    fn reach() -> () {\n        refute(-1)\n    }\n}\n",
+  "reference_report": "For negative x (e.g. x = -1) no u64 equals x, and the contract has no precondition x >= 0.",
+  "weak_reference": [
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn same_value(x: u64, r: u64) -> bool { r == x }\n\n#[effects(pure)]\n#[uses(same_value)]\nfn to_u64(x: u64) -> (r: u64)\n    ensures same_value(x, r),\n{\n    x\n}"
+    }
+  ]
+}

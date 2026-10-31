@@ -1,0 +1,29 @@
+{
+  "id": "p06-sign",
+  "kind": "given",
+  "feasible": true,
+  "prompt": "Implement `tasks::sign`: the sign of x as -1, 0 or 1. Its contract is given in unit `tasks`: replace the placeholder body so that the workspace verifies.",
+  "unit": "tasks",
+  "def": "tasks::sign",
+  "setup": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn is_sign(x: i64, r: i64) -> bool { (x > 0 ==> r == 1) && (x < 0 ==> r == -1) && (x == 0 ==> r == 0) }\n\nspec fn bounded(r: i64) -> bool { -1 <= r && r <= 1 }\n\n#[effects(pure)]\n#[uses(is_sign, bounded)]\nfn sign(x: i64) -> (r: i64)\n    ensures is_sign(x, r), bounded(r),\n{\n    2\n}"
+    }
+  ],
+  "twin": "i12-sign",
+  "reference": [
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "#[effects(pure)]\n#[uses(is_sign, bounded)]\nfn sign(x: i64) -> (r: i64)\n    ensures is_sign(x, r), bounded(r),\n{\n    if x > 0 { 1 } else { if x < 0 { -1 } else { 0 } }\n}"
+    }
+  ],
+  "weak_report": "The contract cannot be met: no implementation satisfies it for every allowed input."
+}
