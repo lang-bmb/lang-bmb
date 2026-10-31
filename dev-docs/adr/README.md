@@ -119,5 +119,6 @@ BMB v2의 설계 결정을 한 건에 파일 하나로 남긴다. 현재 확정�
 | [0071](0071-lean-fixed-context.md) | 고정 문맥: 도구 문서는 도구 설명 한 곳(`bmb mcp --tool-docs`), 프롬프트 언어 규칙은 진단으로 배울 수 없는 것만. 기본값 전환은 측정 뒤 승인 | 채택 | 2D-28, T0-17 |
 | [0072](0072-satisfiability-probe-unfolds-non-recursive.md) | 충족 가능성 검사의 탐침은 재귀 밖의 정의를 모두 매크로로(ADR-0069 보완) | 채택 | T2-10 |
 | [0073](0073-edit-surfaces-file-diff-and-json-ast.md) | H-EDIT의 비교 표면: 파일 diff는 `git apply --recount`(`bmb mcp --file-tools`), JSON AST는 구문 트리 + JSON Patch(`--ast-tools`, `bmb ast`) | 채택 | T1-06 |
+| [0074](0074-transaction-writes-every-item.md) | 트랜잭션의 `put`·`remove`는 단위의 모든 항목을 주소로: 타입 `unit::T`, 고유 `impl` 함수 `unit::T::f`(함수마다 병합), trait `unit::Trait`, trait impl `<unit::T as unit::Trait>`(통째로). `use`는 E0214. 동작은 모두에게, 새 설명은 `--item-docs`와 새 판에서 | 제안 | T0-23 |
 
 채택 계획(2026-10-24 승인): 0026은 2B 착수 때, 0028은 2C 착수 때 채택한다. 0029·0030·0031은 2단계 측정(2H) 뒤로 미룬다. "제안" ADR의 진단 코드 번호는 잠정이다. 제안끼리 겹치는 번호가 있으며(예: E0212·E0412), 채택 후 구현할 때 `compiler/src/diag.rs`에서 확정한다.
