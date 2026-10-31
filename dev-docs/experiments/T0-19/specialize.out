@@ -1,0 +1,76 @@
+## vb-mbpp-454-contains-z-H_index_helper obligation 0: E0802 postcondition `ref_post` may not hold
+first query      ('unknown', 10125, 'smt tactic failed to show goal to be sat/unsat (incomplete (theory array))')
+retry as is      ('sat', 3511, '')
+retry+specialized ('unsat', 8293, '') 1 specialized
+## vb-mbpp-804-product-even-H_index_helper obligation 0: E0802 postcondition `ref_post` may not hold
+first query      ('unknown', 14911, 'smt tactic failed to show goal to be sat/unsat (incomplete (theory array))')
+retry as is      ('sat', 3008, '')
+retry+specialized ('unsat', 9222, '') 1 specialized
+## vb-mbpp-808-contains-k-H_index_helper obligation 0: E0802 postcondition `ref_post` may not hold
+first query      ('unknown', 12196, 'smt tactic failed to show goal to be sat/unsat (incomplete (theory array))')
+retry as is      ('sat', 2986, '')
+retry+specialized ('unsat', 6993, '') 1 specialized
+## vb-misc-choose-odd-D_helper_app_trigger obligation 0: E0801 precondition `has_odd` of `tasks::choose_odd` may not hold
+first query      ('unknown', 7703, 'smt tactic failed to show goal to be sat/unsat (incomplete (theory array))')
+retry as is      ('sat', 2181, '')
+retry+specialized ('unsat', 7552, '') 1 specialized
+## vb-misc-choose-odd-Q2_verus_after_index_helper obligation 0: E0801 precondition `odd_at_or_after` of `tasks::choose_odd` may not hold
+first query      ('unknown', 9722, 'smt tactic failed to show goal to be sat/unsat (incomplete (theory array))')
+retry as is      ('sat', 2626, '')
+retry+specialized ('unsat', 7591, '') 1 specialized
+## vb-mbpp-809-is-smaller-D_helper_app_trigger obligation 1: E0802 postcondition `ref_post` may not hold
+first query      ('unknown', 10941, 'smt tactic failed to show goal to be sat/unsat (incomplete (theory array))')
+retry as is      ('sat', 5568, '')
+retry+specialized ('unsat', 8283, '') 1 specialized
+## vb-mbpp-454-contains-z-weak_reference obligation 0: E0802 postcondition `ref_post` may not hold
+first query      ('unknown', 16587, 'smt tactic failed to show goal to be sat/unsat (incomplete (theory array))')
+retry as is      ('sat', 2831, '')
+retry+specialized ('sat', 2831, '') 0 specialized
+## vb-mbpp-804-product-even-weak_reference obligation 0: E0802 postcondition `ref_post` may not hold
+first query      ('unknown', 13554, 'smt tactic failed to show goal to be sat/unsat (incomplete (theory array))')
+retry as is      ('sat', 2847, '')
+retry+specialized ('sat', 2847, '') 0 specialized
+## vb-mbpp-808-contains-k-weak_reference obligation 0: E0802 postcondition `ref_post` may not hold
+first query      ('unknown', 42415, 'smt tactic failed to show goal to be sat/unsat (incomplete (theory array))')
+retry as is      ('sat', 2906, '')
+retry+specialized ('sat', 2906, '') 0 specialized
+## vb-mbpp-809-is-smaller-weak_reference obligation 1: E0802 postcondition `ref_post` may not hold
+first query      ('unknown', 39897, 'smt tactic failed to show goal to be sat/unsat (incomplete (theory array))')
+retry as is      ('sat', 3904, '')
+retry+specialized ('sat', 3904, '') 0 specialized
+## vb-mbpp-454-contains-z-B_recursive obligation 0: E0802 postcondition `ref_post` may not hold
+first query      ('unknown', 5000357, 'canceled')
+retry as is      ('sat', 4348, '')
+retry+specialized ('sat', 4348, '') 0 specialized
+## vb-mbpp-804-product-even-B_recursive obligation 0: E0802 postcondition `ref_post` may not hold
+first query      ('unknown', 5000347, 'canceled')
+retry as is      ('sat', 4113, '')
+retry+specialized ('sat', 4113, '') 0 specialized
+## vb-mbpp-808-contains-k-B_recursive obligation 0: E0802 postcondition `ref_post` may not hold
+first query      ('unknown', 43909, 'smt tactic failed to show goal to be sat/unsat (incomplete (theory array))')
+retry as is      ('sat', 4162, '')
+retry+specialized ('sat', 4162, '') 0 specialized
+## vb-mbpp-809-is-smaller-B_recursive obligation 1: E0802 postcondition `ref_post` may not hold
+first query      ('unknown', 5000529, 'canceled')
+retry as is      ('unknown', 5000399, 'push canceled')
+retry+specialized ('unknown', 5000399, 'push canceled') 0 specialized
+## vb-misc-choose-odd-B_recursive obligation 0: E0801 precondition `has_odd` of `tasks::choose_odd` may not hold
+first query      ('unknown', 75500, 'smt tactic failed to show goal to be sat/unsat (incomplete (theory array))')
+retry as is      ('sat', 4050, '')
+retry+specialized ('sat', 4050, '') 0 specialized
+## vc-vv0039-max-of-list-B_recursive_contains obligation 1: E0802 postcondition `ref_post` may not hold
+first query      ('unknown', 5000619, 'push canceled')
+retry as is      ('sat', 8738, '')
+retry+specialized ('sat', 8738, '') 0 specialized
+## vc-vv0039-max-of-list-B2_recursive_max obligation 1: E0802 postcondition `ref_post` may not hold
+first query      ('unknown', 5000530, 'canceled')
+retry as is      ('sat', 8603, '')
+retry+specialized ('sat', 8603, '') 0 specialized
+## agent vb-mbpp-809-is-smaller D_helper_app_trigger obligation 4: E0807 loop invariant may not be preserved
+first query      ('unknown', 16167, 'smt tactic failed to show goal to be sat/unsat (incomplete (theory array))')
+retry as is      ('sat', 9062, '')
+retry+specialized ('unsat', 13767, '') 1 specialized
+## agent vc-vv0039-max-of-list D_helper_app_trigger obligation 11: E0802 postcondition `contains` may not hold
+first query      ('unknown', 10905, 'smt tactic failed to show goal to be sat/unsat (incomplete (theory array))')
+retry as is      ('sat', 8315, '')
+retry+specialized ('unsat', 6943, '') 1 specialized

@@ -1,0 +1,25 @@
+#[summary("t019 variant")]
+mod tasks {
+    spec fn found_one(arr: &[u64], r: bool) -> bool { r ==> !(forall|j: usize| j < arr.len() ==> !(#[trigger] arr[j] % 2 == 0)) }
+    spec fn none_found(arr: &[u64], r: bool) -> bool { !r ==> (forall|j: usize| j < arr.len() ==> #[trigger] arr[j] % 2 == 1) }
+    spec fn inv(arr: &[u64], i: usize, found: bool) -> bool { i <= arr.len() && found == !(forall|j: usize| j < i ==> !(#[trigger] arr[j] % 2 == 0)) }
+
+    #[effects(pure)]
+    #[uses(found_one, inv, none_found)]
+    fn is_product_even(arr: &[u64]) -> (r: bool)
+        ensures found_one(arr, r), none_found(arr, r),
+    {
+        let mut i: usize = 0;
+        let mut found: bool = false;
+        while i < arr.len()
+            invariant inv(arr, i, found),
+            decreases arr.len() - i,
+        {
+            if arr[i] % 2 == 0 {
+                found = true;
+            }
+            i = i + 1;
+        }
+        found
+    }
+}

@@ -1,0 +1,29 @@
+#[summary("product evenness of an array")]
+mod tasks {
+    spec fn even_upto(arr: &[u64], n: usize, r: bool) -> bool {
+        n <= arr.len() && r == !(forall|j: usize| j < n ==> #[trigger] arr[j] % 2 != 0)
+    }
+
+    #[effects(pure)]
+    #[uses(even_upto, product_even)]
+    fn is_product_even(arr: &[u64]) -> (r: bool)
+        ensures product_even(arr, r),
+    {
+        let mut i: usize = 0;
+        let mut found: bool = false;
+        while i < arr.len()
+            invariant even_upto(arr, i, found),
+            decreases arr.len() - i,
+        {
+            if arr[i] % 2 == 0 {
+                found = true;
+            }
+            i = i + 1;
+        }
+        found
+    }
+
+    spec fn product_even(arr: &[u64], r: bool) -> bool {
+        r == !(forall|j: usize| j < arr.len() ==> #[trigger] arr[j] % 2 != 0)
+    }
+}

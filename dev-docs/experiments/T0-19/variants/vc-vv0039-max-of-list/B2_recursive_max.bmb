@@ -1,0 +1,34 @@
+#[summary("t019 variant")]
+mod tasks {
+spec fn max_upto(lst: &[i64], n: usize) -> i64
+    decreases n,
+{
+    if n <= 1 { lst[0] } else { if lst[n - 1] > max_upto(lst, n - 1) { lst[n - 1] } else { max_upto(lst, n - 1) } }
+}
+#[uses(max_upto)]
+spec fn is_max(lst: &[i64], r: i64) -> bool { r == max_upto(lst, lst.len()) }
+#[uses(max_upto)]
+spec fn upto(lst: &[i64], m: i64, n: usize) -> bool { 1 <= n && n <= lst.len() && m == max_upto(lst, n) }
+spec fn nonempty(lst: &[i64]) -> bool { lst.len() > 0 }
+#[effects(pure)]
+#[uses(is_max, max_upto, nonempty, upto)]
+fn max_of_list(lst: &[i64]) -> (r: i64)
+    requires nonempty(lst),
+    ensures is_max(lst, r),
+{
+    let mut m: i64 = lst[0];
+    let mut p: usize = 0;
+    let mut i: usize = 1;
+    while i < lst.len()
+        invariant 1 <= i, i <= lst.len(), upto(lst, m, i),
+        decreases lst.len() - i,
+    {
+        if lst[i] > m {
+            m = lst[i];
+            p = i;
+        }
+        i = i + 1;
+    }
+    m
+}
+}

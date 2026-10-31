@@ -1,0 +1,27 @@
+#[summary("t019 variant")]
+mod tasks {
+    spec fn none_below(text: &[u64], n: usize) -> bool { forall|j: usize| j < n && j < text.len() ==> !(#[trigger] (text[j] == 90 || text[j] == 122)) }
+    #[uses(none_below)]
+    spec fn post(text: &[u64], r: bool) -> bool { r == !none_below(text, text.len()) }
+    #[uses(none_below)]
+    spec fn inv(text: &[u64], i: usize, found: bool) -> bool { i <= text.len() && found == !none_below(text, i) }
+
+    #[effects(pure)]
+    #[uses(inv, none_below, post)]
+    fn contains_z(text: &[u64]) -> (r: bool)
+        ensures post(text, r),
+    {
+        let mut i: usize = 0;
+        let mut found: bool = false;
+        while i < text.len()
+            invariant inv(text, i, found),
+            decreases text.len() - i,
+        {
+            if (text[i] == 90 || text[i] == 122) {
+                found = true;
+            }
+            i = i + 1;
+        }
+        found
+    }
+}

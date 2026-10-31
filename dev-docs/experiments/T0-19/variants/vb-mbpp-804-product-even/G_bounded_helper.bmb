@@ -1,0 +1,27 @@
+#[summary("t019 variant")]
+mod tasks {
+    spec fn none_below(arr: &[u64], n: usize) -> bool { forall|j: usize| j < n && j < arr.len() ==> !(#[trigger] arr[j] % 2 == 0) }
+    #[uses(none_below)]
+    spec fn post(arr: &[u64], r: bool) -> bool { r == !none_below(arr, arr.len()) }
+    #[uses(none_below)]
+    spec fn inv(arr: &[u64], i: usize, found: bool) -> bool { i <= arr.len() && found == !none_below(arr, i) }
+
+    #[effects(pure)]
+    #[uses(inv, none_below, post)]
+    fn is_product_even(arr: &[u64]) -> (r: bool)
+        ensures post(arr, r),
+    {
+        let mut i: usize = 0;
+        let mut found: bool = false;
+        while i < arr.len()
+            invariant inv(arr, i, found),
+            decreases arr.len() - i,
+        {
+            if arr[i] % 2 == 0 {
+                found = true;
+            }
+            i = i + 1;
+        }
+        found
+    }
+}

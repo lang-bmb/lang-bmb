@@ -1,0 +1,41 @@
+#[summary("contains_z: does a byte string contain the letter z (Z or z)")]
+mod tasks {
+    #[effects(pure)]
+    #[uses(contains_z_post, scan_inv, z_in_prefix)]
+    fn contains_z(text: &[u64]) -> (r: bool)
+        ensures contains_z_post(text, r),
+    {
+        let mut i: usize = 0;
+        let mut found: bool = false;
+        while i < text.len()
+            invariant scan_inv(text, i, found),
+            decreases text.len() - i,
+        {
+            if text[i] == 90 || text[i] == 122 {
+                found = true;
+            }
+            i = i + 1;
+        }
+        found
+    }
+
+    #[uses(z_in_prefix)]
+    spec fn contains_z_post(text: &[u64], r: bool) -> bool {
+        r == z_in_prefix(text, text.len())
+    }
+
+    #[uses(z_in_prefix)]
+    spec fn scan_inv(text: &[u64], i: usize, found: bool) -> bool {
+        i <= text.len() && found == z_in_prefix(text, i)
+    }
+
+    spec fn z_in_prefix(text: &[u64], n: usize) -> bool
+        decreases n,
+    {
+        if n == 0 {
+            false
+        } else {
+            z_in_prefix(text, n - 1) || text[n - 1] == 90 || text[n - 1] == 122
+        }
+    }
+}

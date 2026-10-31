@@ -1,0 +1,25 @@
+#[summary("t019 variant")]
+mod tasks {
+    spec fn found_one(arr: &[i64], k: i64, r: bool) -> bool { r ==> !(forall|j: usize| j < arr.len() ==> !(#[trigger] arr[j] == k)) }
+    spec fn none_found(arr: &[i64], k: i64, r: bool) -> bool { !r ==> (forall|j: usize| j < arr.len() ==> #[trigger] arr[j] != k) }
+    spec fn inv(arr: &[i64], k: i64, i: usize, found: bool) -> bool { i <= arr.len() && found == !(forall|j: usize| j < i ==> !(#[trigger] arr[j] == k)) }
+
+    #[effects(pure)]
+    #[uses(found_one, inv, none_found)]
+    fn contains_k(arr: &[i64], k: i64) -> (r: bool)
+        ensures found_one(arr, k, r), none_found(arr, k, r),
+    {
+        let mut i: usize = 0;
+        let mut found: bool = false;
+        while i < arr.len()
+            invariant inv(arr, k, i, found),
+            decreases arr.len() - i,
+        {
+            if arr[i] == k {
+                found = true;
+            }
+            i = i + 1;
+        }
+        found
+    }
+}

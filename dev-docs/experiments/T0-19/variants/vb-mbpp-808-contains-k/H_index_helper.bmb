@@ -1,0 +1,27 @@
+#[summary("t019 variant")]
+mod tasks {
+    spec fn hit_at(arr: &[i64], k: i64, j: usize) -> bool { j < arr.len() && arr[j] == k }
+    #[uses(hit_at)]
+    spec fn post(arr: &[i64], k: i64, r: bool) -> bool { r == !(forall|j: usize| !#[trigger] hit_at(arr, k, j)) }
+    #[uses(hit_at)]
+    spec fn inv(arr: &[i64], k: i64, i: usize, found: bool) -> bool { i <= arr.len() && found == !(forall|j: usize| j < i ==> !#[trigger] hit_at(arr, k, j)) }
+
+    #[effects(pure)]
+    #[uses(hit_at, inv, post)]
+    fn contains_k(arr: &[i64], k: i64) -> (r: bool)
+        ensures post(arr, k, r),
+    {
+        let mut i: usize = 0;
+        let mut found: bool = false;
+        while i < arr.len()
+            invariant inv(arr, k, i, found),
+            decreases arr.len() - i,
+        {
+            if arr[i] == k {
+                found = true;
+            }
+            i = i + 1;
+        }
+        found
+    }
+}

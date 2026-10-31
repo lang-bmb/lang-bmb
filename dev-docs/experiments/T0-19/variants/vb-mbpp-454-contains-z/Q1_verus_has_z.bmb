@@ -1,0 +1,26 @@
+#[summary("t019 variant")]
+mod tasks {
+spec fn is_z(b: u64) -> bool { b == 90 || b == 122 }
+#[uses(is_z)]
+spec fn has_z(text: &[u64]) -> bool { !(forall|i: usize| i < text.len() ==> !#[trigger] is_z(text[i])) }
+#[uses(is_z)]
+spec fn has_z_upto(text: &[u64], n: usize) -> bool { !(forall|i: usize| i < n ==> !#[trigger] is_z(text[i])) }
+spec fn result_ok(text: &[u64], r: bool) -> bool { r == has_z(text) }
+#[effects(pure)]
+#[uses(has_z, has_z_upto, is_z, result_ok)]
+fn contains_z(text: &[u64]) -> (r: bool)
+    ensures result_ok(text, r),
+{
+    let mut i: usize = 0;
+    while i < text.len()
+        invariant i <= text.len(), !has_z_upto(text, i),
+        decreases text.len() - i,
+    {
+        if text[i] == 90 || text[i] == 122 {
+            return true;
+        }
+        i = i + 1;
+    }
+    false
+}
+}

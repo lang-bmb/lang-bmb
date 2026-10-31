@@ -1,0 +1,27 @@
+#[summary("t019 variant")]
+mod tasks {
+    spec fn none_below(arr: &[i64], k: i64, n: usize) -> bool { forall|j: usize| j < n && j < arr.len() ==> !(#[trigger] arr[j] == k) }
+    #[uses(none_below)]
+    spec fn post(arr: &[i64], k: i64, r: bool) -> bool { r == !none_below(arr, k, arr.len()) }
+    #[uses(none_below)]
+    spec fn inv(arr: &[i64], k: i64, i: usize, found: bool) -> bool { i <= arr.len() && found == !none_below(arr, k, i) }
+
+    #[effects(pure)]
+    #[uses(inv, none_below, post)]
+    fn contains_k(arr: &[i64], k: i64) -> (r: bool)
+        ensures post(arr, k, r),
+    {
+        let mut i: usize = 0;
+        let mut found: bool = false;
+        while i < arr.len()
+            invariant inv(arr, k, i, found),
+            decreases arr.len() - i,
+        {
+            if arr[i] == k {
+                found = true;
+            }
+            i = i + 1;
+        }
+        found
+    }
+}

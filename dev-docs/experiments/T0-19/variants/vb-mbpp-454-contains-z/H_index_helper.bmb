@@ -1,0 +1,27 @@
+#[summary("t019 variant")]
+mod tasks {
+    spec fn hit_at(text: &[u64], j: usize) -> bool { j < text.len() && (text[j] == 90 || text[j] == 122) }
+    #[uses(hit_at)]
+    spec fn post(text: &[u64], r: bool) -> bool { r == !(forall|j: usize| !#[trigger] hit_at(text, j)) }
+    #[uses(hit_at)]
+    spec fn inv(text: &[u64], i: usize, found: bool) -> bool { i <= text.len() && found == !(forall|j: usize| j < i ==> !#[trigger] hit_at(text, j)) }
+
+    #[effects(pure)]
+    #[uses(hit_at, inv, post)]
+    fn contains_z(text: &[u64]) -> (r: bool)
+        ensures post(text, r),
+    {
+        let mut i: usize = 0;
+        let mut found: bool = false;
+        while i < text.len()
+            invariant inv(text, i, found),
+            decreases text.len() - i,
+        {
+            if (text[i] == 90 || text[i] == 122) {
+                found = true;
+            }
+            i = i + 1;
+        }
+        found
+    }
+}

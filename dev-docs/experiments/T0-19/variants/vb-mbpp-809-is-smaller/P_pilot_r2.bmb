@@ -1,0 +1,34 @@
+#[summary("is_smaller: elementwise strict greater check")]
+mod tasks {
+    spec fn all_greater(a: &[i64], b: &[i64], r: bool) -> bool {
+        r == (forall|j: usize| j < a.len() && j < b.len() ==> #[trigger] a[j] > b[j])
+    }
+
+    #[effects(pure)]
+    #[uses(all_greater, loop_inv, same_len)]
+    fn is_smaller(arr1: &[i64], arr2: &[i64]) -> (r: bool)
+        requires same_len(arr1, arr2),
+        ensures all_greater(arr1, arr2, r),
+    {
+        let mut i: usize = 0;
+        let mut ok: bool = true;
+        while i < arr1.len()
+            invariant loop_inv(arr1, arr2, i, ok),
+            decreases arr1.len() - i,
+        {
+            if arr1[i] <= arr2[i] {
+                ok = false;
+            }
+            i = i + 1;
+        }
+        ok
+    }
+
+    spec fn loop_inv(a: &[i64], b: &[i64], i: usize, ok: bool) -> bool {
+        i <= a.len() && a.len() == b.len() && ok == (forall|j: usize| j < i ==> #[trigger] a[j] > b[j])
+    }
+
+    spec fn same_len(a: &[i64], b: &[i64]) -> bool {
+        a.len() == b.len()
+    }
+}

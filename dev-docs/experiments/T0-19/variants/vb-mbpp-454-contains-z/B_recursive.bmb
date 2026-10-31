@@ -1,0 +1,31 @@
+#[summary("t019 variant")]
+mod tasks {
+    spec fn hit_below(text: &[u64], n: usize) -> bool
+        decreases n,
+    {
+        if n == 0 { false } else { hit_below(text, n - 1) || (text[n - 1] == 90 || text[n - 1] == 122) }
+    }
+    #[uses(hit_below)]
+    spec fn post(text: &[u64], r: bool) -> bool { r == hit_below(text, text.len()) }
+    #[uses(hit_below)]
+    spec fn inv(text: &[u64], i: usize, found: bool) -> bool { i <= text.len() && found == hit_below(text, i) }
+
+    #[effects(pure)]
+    #[uses(hit_below, inv, post)]
+    fn contains_z(text: &[u64]) -> (r: bool)
+        ensures post(text, r),
+    {
+        let mut i: usize = 0;
+        let mut found: bool = false;
+        while i < text.len()
+            invariant inv(text, i, found),
+            decreases text.len() - i,
+        {
+            if (text[i] == 90 || text[i] == 122) {
+                found = true;
+            }
+            i = i + 1;
+        }
+        found
+    }
+}

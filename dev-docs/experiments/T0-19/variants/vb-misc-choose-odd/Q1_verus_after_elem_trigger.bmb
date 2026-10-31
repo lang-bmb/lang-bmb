@@ -1,0 +1,21 @@
+#[summary("t019 variant")]
+mod tasks {
+spec fn is_odd_index(v: &[u64], i: usize) -> bool { i < v.len() && v[i] % 2 == 1 }
+spec fn odd_at_or_after(v: &[u64], i: usize) -> bool { !(forall|j: usize| i <= j && j < v.len() ==> #[trigger] v[j] % 2 != 1) }
+spec fn valid(v: &[u64], r: usize) -> bool { r < v.len() }
+#[effects(pure)]
+#[uses(is_odd_index, odd_at_or_after, valid)]
+fn choose_odd(v: &[u64]) -> (r: usize)
+    requires odd_at_or_after(v, 0),
+    ensures is_odd_index(v, r),
+{
+    let mut j: usize = 0;
+    while j < v.len() && v[j] % 2 != 1
+        invariant j <= v.len(), odd_at_or_after(v, j),
+        decreases v.len() - j,
+    {
+        j = j + 1;
+    }
+    j
+}
+}

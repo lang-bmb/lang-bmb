@@ -1,0 +1,26 @@
+#[summary("t019 variant")]
+mod tasks {
+spec fn odd_from(v: &[u64], i: usize) -> bool
+    decreases v.len() - i,
+{
+    if i >= v.len() { false } else { v[i] % 2 == 1 || odd_from(v, i + 1) }
+}
+#[uses(odd_from)]
+spec fn has_odd(v: &[u64]) -> bool { odd_from(v, 0) }
+spec fn valid(v: &[u64], r: usize) -> bool { r < v.len() }
+#[effects(pure)]
+#[uses(has_odd, odd_from, valid)]
+fn choose_odd(v: &[u64]) -> (r: usize)
+    requires has_odd(v),
+    ensures valid(v, r),
+{
+    let mut j: usize = 0;
+    while j < v.len() && v[j] % 2 != 1
+        invariant j <= v.len(), odd_from(v, j),
+        decreases v.len() - j,
+    {
+        j = j + 1;
+    }
+    j
+}
+}

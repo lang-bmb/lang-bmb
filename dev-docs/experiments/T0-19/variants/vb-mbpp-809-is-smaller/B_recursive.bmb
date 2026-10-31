@@ -1,0 +1,32 @@
+#[summary("t019 variant")]
+mod tasks {
+spec fn all_gt(a: &[i64], b: &[i64], n: usize) -> bool
+    decreases n,
+{
+    if n == 0 { true } else { all_gt(a, b, n - 1) && n - 1 < b.len() && a[n - 1] > b[n - 1] }
+}
+#[uses(all_gt)]
+spec fn post(a: &[i64], b: &[i64], r: bool) -> bool { r == all_gt(a, b, a.len()) }
+#[uses(all_gt)]
+spec fn inv(a: &[i64], b: &[i64], i: usize, ok: bool) -> bool { i <= a.len() && a.len() == b.len() && ok == all_gt(a, b, i) }
+#[effects(pure)]
+#[uses(all_gt, inv, post, same_len)]
+fn is_smaller(arr1: &[i64], arr2: &[i64]) -> (r: bool)
+    requires same_len(arr1, arr2),
+    ensures post(arr1, arr2, r),
+{
+    let mut i: usize = 0;
+    let mut ok: bool = true;
+    while i < arr1.len()
+        invariant inv(arr1, arr2, i, ok),
+        decreases arr1.len() - i,
+    {
+        if arr1[i] <= arr2[i] {
+            ok = false;
+        }
+        i = i + 1;
+    }
+    ok
+}
+spec fn same_len(arr1: &[i64], arr2: &[i64]) -> bool { arr1.len() == arr2.len() }
+}

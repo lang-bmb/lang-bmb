@@ -1,0 +1,27 @@
+#[summary("t019 variant")]
+mod tasks {
+    spec fn hit_at(arr: &[u64], j: usize) -> bool { j < arr.len() && arr[j] % 2 == 0 }
+    #[uses(hit_at)]
+    spec fn post(arr: &[u64], r: bool) -> bool { r == !(forall|j: usize| !#[trigger] hit_at(arr, j)) }
+    #[uses(hit_at)]
+    spec fn inv(arr: &[u64], i: usize, found: bool) -> bool { i <= arr.len() && found == !(forall|j: usize| j < i ==> !#[trigger] hit_at(arr, j)) }
+
+    #[effects(pure)]
+    #[uses(hit_at, inv, post)]
+    fn is_product_even(arr: &[u64]) -> (r: bool)
+        ensures post(arr, r),
+    {
+        let mut i: usize = 0;
+        let mut found: bool = false;
+        while i < arr.len()
+            invariant inv(arr, i, found),
+            decreases arr.len() - i,
+        {
+            if arr[i] % 2 == 0 {
+                found = true;
+            }
+            i = i + 1;
+        }
+        found
+    }
+}

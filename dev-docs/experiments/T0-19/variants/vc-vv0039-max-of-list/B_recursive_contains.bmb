@@ -1,0 +1,35 @@
+#[summary("t019 variant")]
+mod tasks {
+spec fn contains_prefix(lst: &[i64], n: usize, r: i64) -> bool
+    decreases n,
+{
+    if n == 0 { false } else { contains_prefix(lst, n - 1, r) || (n - 1 < lst.len() && lst[n - 1] == r) }
+}
+#[uses(contains_prefix)]
+spec fn contains(lst: &[i64], r: i64) -> bool { contains_prefix(lst, lst.len(), r) }
+spec fn ge_all(lst: &[i64], r: i64) -> bool { forall|j: usize| j < lst.len() ==> #[trigger] lst[j] <= r }
+#[uses(contains_prefix)]
+spec fn upto(lst: &[i64], m: i64, n: usize) -> bool { n <= lst.len() && contains_prefix(lst, n, m) && (forall|j: usize| j < n ==> #[trigger] lst[j] <= m) }
+spec fn nonempty(lst: &[i64]) -> bool { lst.len() > 0 }
+#[effects(pure)]
+#[uses(contains, contains_prefix, ge_all, nonempty, upto)]
+fn max_of_list(lst: &[i64]) -> (r: i64)
+    requires nonempty(lst),
+    ensures contains(lst, r), ge_all(lst, r),
+{
+    let mut m: i64 = lst[0];
+    let mut p: usize = 0;
+    let mut i: usize = 1;
+    while i < lst.len()
+        invariant 1 <= i, i <= lst.len(), upto(lst, m, i),
+        decreases lst.len() - i,
+    {
+        if lst[i] > m {
+            m = lst[i];
+            p = i;
+        }
+        i = i + 1;
+    }
+    m
+}
+}

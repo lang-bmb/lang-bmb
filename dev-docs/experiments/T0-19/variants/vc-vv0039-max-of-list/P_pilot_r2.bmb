@@ -1,0 +1,34 @@
+#[summary("max_of_list task")]
+mod tasks {
+    spec fn is_max_of(a: &[i64], r: i64) -> bool {
+        !(forall|i: usize| i < a.len() ==> #[trigger] a[i] != r) && (forall|j: usize| j < a.len() ==> #[trigger] a[j] <= r)
+    }
+
+    #[effects(pure)]
+    #[uses(is_max_of, non_empty, prefix_max)]
+    fn max_of_list(lst: &[i64]) -> (r: i64)
+        requires non_empty(lst),
+        ensures is_max_of(lst, r),
+    {
+        let mut m: i64 = lst[0];
+        let mut k: usize = 1;
+        while k < lst.len()
+            invariant prefix_max(lst, k, m),
+            decreases lst.len() - k,
+        {
+            if lst[k] > m {
+                m = lst[k];
+            }
+            k = k + 1;
+        }
+        m
+    }
+
+    spec fn non_empty(a: &[i64]) -> bool {
+        a.len() > 0
+    }
+
+    spec fn prefix_max(a: &[i64], k: usize, m: i64) -> bool {
+        1 <= k && k <= a.len() && !(forall|i: usize| i < k ==> #[trigger] a[i] != m) && (forall|j: usize| j < k ==> #[trigger] a[j] <= m)
+    }
+}

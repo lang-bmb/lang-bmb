@@ -1,0 +1,21 @@
+#[summary("t019 variant")]
+mod tasks {
+spec fn has_odd(v: &[u64]) -> bool { !(forall|q: usize| q < v.len() ==> #[trigger] v[q] % 2 != 1) }
+spec fn even_below(v: &[u64], n: usize) -> bool { forall|q: usize| q < n ==> #[trigger] v[q] % 2 != 1 }
+spec fn valid(v: &[u64], r: usize) -> bool { r < v.len() }
+#[effects(pure)]
+#[uses(even_below, has_odd, valid)]
+fn choose_odd(v: &[u64]) -> (r: usize)
+    requires has_odd(v),
+    ensures valid(v, r),
+{
+    let mut j: usize = 0;
+    while j < v.len() && v[j] % 2 != 1
+        invariant j <= v.len(), has_odd(v), even_below(v, j),
+        decreases v.len() - j,
+    {
+        j = j + 1;
+    }
+    j
+}
+}

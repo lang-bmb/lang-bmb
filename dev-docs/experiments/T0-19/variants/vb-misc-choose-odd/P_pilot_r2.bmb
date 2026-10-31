@@ -1,0 +1,40 @@
+#[summary("search for an odd element")]
+mod tasks {
+    #[effects(pure)]
+    #[uses(has_odd, is_odd_at, odd_from, valid_pos)]
+    fn choose_odd(v: &[u64]) -> (r: usize)
+        requires has_odd(v),
+        ensures valid_pos(v, r), is_odd_at(v, r),
+    {
+        let mut i: usize = 0;
+        while v[i] % 2 == 0
+            invariant odd_from(v, i),
+            decreases v.len() - i,
+        {
+            i = i + 1;
+        }
+        i
+    }
+
+    spec fn has_odd(v: &[u64]) -> bool {
+        odd_from(v, 0)
+    }
+
+    spec fn is_odd_at(v: &[u64], r: usize) -> bool {
+        r < v.len() && v[r] % 2 == 1
+    }
+
+    spec fn odd_from(v: &[u64], i: usize) -> bool
+        decreases v.len() - i,
+    {
+        if i >= v.len() {
+            false
+        } else {
+            v[i] % 2 == 1 || odd_from(v, i + 1)
+        }
+    }
+
+    spec fn valid_pos(v: &[u64], r: usize) -> bool {
+        r < v.len()
+    }
+}

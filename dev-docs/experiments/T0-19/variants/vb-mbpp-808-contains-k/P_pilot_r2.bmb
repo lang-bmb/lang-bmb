@@ -1,0 +1,29 @@
+#[summary("contains_k: membership test of k in an array")]
+mod tasks {
+    #[effects(pure)]
+    #[uses(contains_result, scan_inv)]
+    fn contains_k(arr: &[i64], k: i64) -> (r: bool)
+        ensures contains_result(arr, k, r),
+    {
+        let mut i: usize = 0;
+        let mut found: bool = false;
+        while i < arr.len()
+            invariant scan_inv(arr, k, i, found),
+            decreases arr.len() - i,
+        {
+            if arr[i] == k {
+                found = true;
+            }
+            i = i + 1;
+        }
+        found
+    }
+
+    spec fn contains_result(arr: &[i64], k: i64, r: bool) -> bool {
+        r == !(forall|j: usize| j < arr.len() ==> #[trigger] arr[j] != k)
+    }
+
+    spec fn scan_inv(arr: &[i64], k: i64, i: usize, found: bool) -> bool {
+        i <= arr.len() && found == !(forall|j: usize| j < i ==> #[trigger] arr[j] != k)
+    }
+}
