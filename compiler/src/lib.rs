@@ -1,6 +1,7 @@
 //! BMB v2 compiler. Milestone 1: parse, check, prove.
 
 pub mod ast;
+pub mod ast_json;
 pub mod cache;
 pub mod check;
 pub mod codegen;
@@ -21,6 +22,7 @@ pub mod smt;
 pub mod source;
 pub mod subproof;
 pub mod toolchain;
+pub mod udiff;
 pub mod uses_fill;
 pub mod verify;
 pub mod view;

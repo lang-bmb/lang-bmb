@@ -1,0 +1,63 @@
+{
+  "id": "vb-clover-is-prime",
+  "kind": "write",
+  "prompt": "Create unit `tasks` for this task.\n\nImplement `test_prime`: `candidate` is greater than 1. Return whether `candidate` is prime (no factor f with 1 < f < candidate divides it). The contract must state the result exactly using the given specification functions.\n\nGiven specification functions in unit `given` (use them, do not change them):\n```\nspec fn divides(factor: u64, candidate: u64) -> bool {\n    candidate % factor == 0\n}\n\nspec fn is_prime(candidate: u64) -> bool {\n    1 < candidate && (forall|factor: u64| 1 < factor && factor < candidate ==> !#[trigger] divides(factor, candidate))\n}\n```\n\nRequired signature (in unit `tasks`):\nfn test_prime(candidate: u64) -> (r: bool)",
+  "unit": "tasks",
+  "def": "tasks::test_prime",
+  "signature": "fn test_prime(candidate: u64) -> (r: bool)",
+  "accept": {
+    "specs": "spec fn ref_pre(candidate: u64) -> bool { 1 < candidate }\nspec fn ref_post(candidate: u64, r: bool) -> bool { r == given::is_prime(candidate) }",
+    "pre": "ref_pre(candidate)",
+    "post": "ref_post(candidate, r)",
+    "args": "candidate"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn above_one(candidate: u64) -> bool { 1 < candidate }\n\nspec fn stopped(candidate: u64, f: u64) -> bool { f >= candidate || given::divides(f, candidate) }\n\nspec fn no_factor_below(candidate: u64, m: u64) -> bool { forall|f: u64| 1 < f && f < m ==> !(#[trigger] given::divides(f, candidate)) }\n\nspec fn prime_ok(candidate: u64, r: bool) -> bool { r == given::is_prime(candidate) }\n\n#[effects(pure)]\n#[uses(above_one, stopped, no_factor_below, prime_ok, given::divides, given::is_prime)]\nfn test_prime(candidate: u64) -> (r: bool)\n    requires above_one(candidate),\n    ensures prime_ok(candidate, r),\n{\n    let mut f: u64 = 2;\n    while f < candidate && candidate % f != 0\n        invariant 2 <= f, f <= candidate, no_factor_below(candidate, f),\n        decreases candidate - f,\n    {\n        f = f + 1;\n    }\n    assert(stopped(candidate, f));\n    f >= candidate\n}"
+    }
+  ],
+  "weak_reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn above_one(candidate: u64) -> bool { 1 < candidate }\n\nspec fn stopped(candidate: u64, f: u64) -> bool { f >= candidate || given::divides(f, candidate) }\n\nspec fn no_factor_below(candidate: u64, m: u64) -> bool { forall|f: u64| 1 < f && f < m ==> !(#[trigger] given::divides(f, candidate)) }\n\nspec fn prime_if(candidate: u64, r: bool) -> bool { r ==> given::is_prime(candidate) }\n\n#[effects(pure)]\n#[uses(above_one, stopped, no_factor_below, prime_if, given::divides, given::is_prime)]\nfn test_prime(candidate: u64) -> (r: bool)\n    requires above_one(candidate),\n    ensures prime_if(candidate, r),\n{\n    let mut f: u64 = 2;\n    while f < candidate && candidate % f != 0\n        invariant 2 <= f, f <= candidate, no_factor_below(candidate, f),\n        decreases candidate - f,\n    {\n        f = f + 1;\n    }\n    assert(stopped(candidate, f));\n    f >= candidate\n}"
+    }
+  ],
+  "source": {
+    "benchmark": "Verus-Bench",
+    "origin": "CloverBench",
+    "path": "benchmarks/Verus-Bench/CloverBench/verified/is_prime.rs",
+    "rules": [
+      "T2",
+      "G1"
+    ]
+  },
+  "verus": {
+    "prompt": "Implement `test_prime`: `candidate` is greater than 1. Return whether `candidate` is prime (no factor f with 1 < f < candidate divides it). The contract must state the result exactly using the given specification functions.\n\nThe file starts with these given specification functions (use them, do not change them):\n```\nspec fn divides(factor: nat, candidate: nat) -> bool {\n    candidate % factor == 0\n}\n\nspec fn is_prime(candidate: nat) -> bool {\n    &&& 1 < candidate\n    &&& forall|factor: nat| 1 < factor && factor < candidate ==> !divides(factor, candidate)\n}\n```\n\nRequired signature:\nfn test_prime(candidate: u64) -> (result: bool)",
+    "signature": "fn test_prime(candidate: u64) -> (result: bool)",
+    "target": "test_prime",
+    "specs": "",
+    "pre": "1 < candidate",
+    "post": "result == is_prime(candidate as nat)",
+    "args": "candidate",
+    "reference": "use vstd::prelude::*;\n\nfn main() {}\nverus! {\n\nspec fn divides(factor: nat, candidate: nat) -> bool {\n    candidate % factor == 0\n}\n\nspec fn is_prime(candidate: nat) -> bool {\n    &&& 1 < candidate\n    &&& forall|factor: nat| 1 < factor && factor < candidate ==> !divides(factor, candidate)\n}\n\nfn test_prime(candidate: u64) -> (result: bool)\n    requires\n        1 < candidate,\n    ensures\n        result == is_prime(candidate as nat),\n{\n    let mut factor: u64 = 2;\n    while factor < candidate\n        invariant\n            1 < factor <= candidate,\n            forall|smallerfactor: nat|\n                1 < smallerfactor < factor ==> !divides(smallerfactor, candidate as nat),\n        decreases candidate - factor,\n    {\n        if candidate % factor == 0 {\n            assert(divides(factor as nat, candidate as nat));\n            assert(!is_prime(candidate as nat));\n            return false;\n        }\n        factor = factor + 1;\n    }\n    true\n}\n\n} // verus!",
+    "reference_origin": "upstream",
+    "given": "spec fn divides(factor: nat, candidate: nat) -> bool {\n    candidate % factor == 0\n}\n\nspec fn is_prime(candidate: nat) -> bool {\n    &&& 1 < candidate\n    &&& forall|factor: nat| 1 < factor && factor < candidate ==> !divides(factor, candidate)\n}"
+  },
+  "frozen": [
+    "given::divides",
+    "given::is_prime"
+  ]
+}

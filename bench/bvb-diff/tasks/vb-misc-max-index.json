@@ -1,0 +1,58 @@
+{
+  "id": "vb-misc-max-index",
+  "kind": "write",
+  "prompt": "Create unit `tasks` for this task.\n\nImplement `myfun1`: `x` is non-empty. Return the position of a largest element. The contract must state that the result is a valid position whose element is at least every element of `x`.\n\nRequired signature (in unit `tasks`):\nfn myfun1(x: &[i64]) -> (r: usize)",
+  "unit": "tasks",
+  "def": "tasks::myfun1",
+  "signature": "fn myfun1(x: &[i64]) -> (r: usize)",
+  "accept": {
+    "specs": "spec fn ref_pre(x: &[i64]) -> bool { x.len() >= 1 }\nspec fn ref_post(x: &[i64], r: usize) -> bool { r < x.len() && (forall|k: usize| k < x.len() ==> x[r] >= #[trigger] x[k]) }",
+    "pre": "ref_pre(x)",
+    "post": "ref_post(x, r)",
+    "args": "x"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn nonempty(x: &[i64]) -> bool { x.len() >= 1 }\n\nspec fn max_at_upto(x: &[i64], m: usize, n: usize) -> bool { m < n && n <= x.len() && (forall|k: usize| k < n ==> x[m] >= #[trigger] x[k]) }\n\nspec fn max_at(x: &[i64], r: usize) -> bool { r < x.len() && (forall|k: usize| k < x.len() ==> x[r] >= #[trigger] x[k]) }\n\n#[effects(pure)]\n#[uses(nonempty, max_at_upto, max_at)]\nfn myfun1(x: &[i64]) -> (r: usize)\n    requires nonempty(x),\n    ensures max_at(x, r),\n{\n    let mut m: usize = 0;\n    let mut i: usize = 1;\n    while i < x.len()\n        invariant 1 <= i, max_at_upto(x, m, i),\n        decreases x.len() - i,\n    {\n        if x[i] > x[m] {\n            m = i;\n        }\n        i = i + 1;\n    }\n    m\n}"
+    }
+  ],
+  "weak_reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn nonempty(x: &[i64]) -> bool { x.len() >= 1 }\n\nspec fn valid_at(x: &[i64], r: usize) -> bool { r < x.len() && x[r] >= x[0] }\n\n#[effects(pure)]\n#[uses(nonempty, valid_at)]\nfn myfun1(x: &[i64]) -> (r: usize)\n    requires nonempty(x),\n    ensures valid_at(x, r),\n{\n    let mut m: usize = 0;\n    let mut i: usize = 1;\n    while i < x.len()\n        invariant 1 <= i, m < i, i <= x.len(), x[m] >= x[0],\n        decreases x.len() - i,\n    {\n        if x[i] > x[m] {\n            m = i;\n        }\n        i = i + 1;\n    }\n    m\n}"
+    }
+  ],
+  "source": {
+    "benchmark": "Verus-Bench",
+    "origin": "Misc",
+    "path": "benchmarks/Verus-Bench/Misc/verified/max_index.rs",
+    "rules": [
+      "T1",
+      "T2"
+    ]
+  },
+  "verus": {
+    "prompt": "Implement `myfun1`: `x` is non-empty. Return the position of a largest element. The contract must state that the result is a valid position whose element is at least every element of `x`.\n\nRequired signature:\nfn myfun1(x: &Vec<i32>) -> (max_index: usize)",
+    "signature": "fn myfun1(x: &Vec<i32>) -> (max_index: usize)",
+    "target": "myfun1",
+    "specs": "",
+    "pre": "x.len() >= 1",
+    "post": "forall|k: int| 0 <= k < x.len() ==> x[max_index as int] >= x[k],\nmax_index < x.len()",
+    "args": "x",
+    "reference": "use vstd::prelude::*;\nfn main() {}\nverus! {\n\npub fn myfun1(x: &Vec<i32>) -> (max_index: usize)\n    requires\n        x.len() >= 1,\n    ensures\n        forall|k: int| 0 <= k < x.len() ==> x[max_index as int] >= x[k],\n        max_index < x.len(),\n{\n    let mut max_index = 0;\n    let mut i: usize = 1;\n    while (i < x.len())\n        invariant\n            i <= x.len(),\n            max_index < x.len(),\n            forall|k: int| 0 <= k < i ==> x[max_index as int] >= x[k],\n        decreases x@.len() - i,\n    {\n        if x[i] > x[max_index] {\n            max_index = i;\n        }\n        i = i + 1;\n    }\n\n    max_index\n}\n\n} // verus!",
+    "reference_origin": "upstream"
+  }
+}

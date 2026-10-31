@@ -1,0 +1,57 @@
+{
+  "id": "vc-va0644-takahashi-dates",
+  "kind": "write",
+  "prompt": "Create unit `tasks` for this task.\n\nImplement `solve`: `a` is a month (1 to 12) and `b` a day (1 to 31). Count the dates from 2018-1-1 through 2018-a-b on which the month number equals the day number: a - 1 if a > b, otherwise a. The contract must state the result exactly, including both cases.\n\nRequired signature (in unit `tasks`):\nfn solve(a: i64, b: i64) -> (r: i64)",
+  "unit": "tasks",
+  "def": "tasks::solve",
+  "signature": "fn solve(a: i64, b: i64) -> (r: i64)",
+  "accept": {
+    "specs": "spec fn ref_pre(a: i64, b: i64) -> bool { 1 <= a && a <= 12 && 1 <= b && b <= 31 }\nspec fn ref_post(a: i64, b: i64, r: i64) -> bool { r == (if a > b { a - 1 } else { a }) && (a > b ==> r == a - 1) && (a <= b ==> r == a) }",
+    "pre": "ref_pre(a, b)",
+    "post": "ref_post(a, b, r)",
+    "args": "a, b"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn input_ok(a: i64, b: i64) -> bool { 1 <= a && a <= 12 && 1 <= b && b <= 31 }\n\nspec fn result_ok(a: i64, b: i64, r: i64) -> bool { r == (if a > b { a - 1 } else { a }) && (a > b ==> r == a - 1) && (a <= b ==> r == a) }\n\n#[effects(pure)]\n#[uses(input_ok, result_ok)]\nfn solve(a: i64, b: i64) -> (r: i64)\n    requires input_ok(a, b),\n    ensures result_ok(a, b, r),\n{\n    if a > b {\n        a - 1\n    } else {\n        a\n    }\n}"
+    }
+  ],
+  "weak_reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn input_ok(a: i64, b: i64) -> bool { 1 <= a && a <= 12 && 1 <= b && b <= 31 }\n\nspec fn result_ok(a: i64, b: i64, r: i64) -> bool { r >= 0 && r <= a }\n\n#[effects(pure)]\n#[uses(input_ok, result_ok)]\nfn solve(a: i64, b: i64) -> (r: i64)\n    requires input_ok(a, b),\n    ensures result_ok(a, b, r),\n{\n    if a > b {\n        a - 1\n    } else {\n        a\n    }\n}"
+    }
+  ],
+  "source": {
+    "benchmark": "Vericoding",
+    "origin": "apps apps_test_4607",
+    "path": "jsonl/verus_tasks.jsonl#VA0644",
+    "rules": [
+      "T2"
+    ]
+  },
+  "verus": {
+    "prompt": "Implement `solve`: `a` is a month (1 to 12) and `b` a day (1 to 31). Count the dates from 2018-1-1 through 2018-a-b on which the month number equals the day number: a - 1 if a > b, otherwise a. The contract must state the result exactly, including both cases.\n\nRequired signature:\nfn solve(a: i8, b: i8) -> (result: i8)",
+    "signature": "fn solve(a: i8, b: i8) -> (result: i8)",
+    "target": "solve",
+    "specs": "spec fn bvb_ref_valid_input(a: int, b: int) -> bool {\n    1 <= a <= 12 && 1 <= b <= 31\n}\n\nspec fn bvb_ref_takahashi_count(a: int, b: int) -> int\n    recommends bvb_ref_valid_input(a, b)\n{\n    if a > b { a - 1 } else { a }\n}",
+    "pre": "bvb_ref_valid_input(a as int, b as int)",
+    "post": "result as int == bvb_ref_takahashi_count(a as int, b as int) &&\n        (a > b ==> result as int == a as int - 1) &&\n        (a <= b ==> result as int == a as int)",
+    "args": "a, b",
+    "reference": "// <vc-preamble>\nuse vstd::prelude::*;\n\nverus! {\nspec fn valid_input(a: int, b: int) -> bool {\n    1 <= a <= 12 && 1 <= b <= 31\n}\n\nspec fn takahashi_count(a: int, b: int) -> int\n    recommends valid_input(a, b)\n{\n    if a > b { a - 1 } else { a }\n}\n// </vc-preamble>\n\n// <vc-helpers>\n/* helper modified by LLM (iteration 2): prove bounds for takahashi_count within the valid input range */\nproof fn takahashi_bounds(a: int, b: int)\n    requires\n        valid_input(a, b),\n    ensures\n        0 <= takahashi_count(a, b),\n        takahashi_count(a, b) <= 12,\n{\n    if a > b {\n        assert(takahashi_count(a, b) == a - 1);\n        assert(1 <= a && a <= 12);\n        assert(0 <= a - 1);\n        assert(a - 1 <= 11);\n        assert(0 <= takahashi_count(a, b));\n        assert(takahashi_count(a, b) <= 11);\n    } else {\n        assert(takahashi_count(a, b) == a);\n        assert(1 <= a && a <= 12);\n        assert(0 <= a);\n        assert(a <= 12);\n        assert(0 <= takahashi_count(a, b));\n        assert(takahashi_count(a, b) <= 12);\n    }\n}\n\n/* helper modified by LLM (iteration 2): relate i8 and int orderings via casts */\nproof fn i8_int_ordering_compat(a: i8, b: i8)\n    ensures\n        (a > b) == ((a as int) > (b as int)),\n        (a <= b) == ((a as int) <= (b as int)),\n{\n    if a > b {\n        assert((a as int) > (b as int));\n        assert(!((a as int) <= (b as int)));\n    } else {\n        assert(a <= b);\n        assert((a as int) <= (b as int));\n        assert(!((a as int) > (b as int)));\n    }\n}\n// </vc-helpers>\n\n// <vc-spec>\nfn solve(a: i8, b: i8) -> (result: i8)\n    requires valid_input(a as int, b as int)\n    ensures \n        result as int == takahashi_count(a as int, b as int) &&\n        (a > b ==> result as int == a as int - 1) &&\n        (a <= b ==> result as int == a as int)\n// </vc-spec>\n// <vc-code>\n{\n    /* code modified by LLM (iteration 2): avoid non-ghost ints in exec; compute with i8 and prove spec equality */\n    let result: i8;\n    if a > b {\n        proof {\n            assert(1 <= a as int && a as int <= 12);\n            assert(-128 <= (a as int) - 1 && (a as int) - 1 <= 127);\n        }\n        result = a - 1;\n    } else {\n        result = a;\n    }\n\n    proof {\n        let ghost ai: int = a as int;\n        let ghost bi: int = b as int;\n        assert(valid_input(ai, bi));\n        i8_int_ordering_compat(a, b);\n        if a > b {\n            assert(ai > bi);\n            assert(takahashi_count(ai, bi) == ai - 1);\n            assert(result as int == (a - 1) as int);\n            assert((a - 1) as int == ai - 1);\n        } else {\n            assert(!(ai > bi));\n            assert(ai <= bi);\n            assert(takahashi_count(ai, bi) == ai);\n            assert(result as int == a as int);\n        }\n    }\n\n    result\n}\n// </vc-code>\n\n\n}\n\nfn main() {}",
+    "reference_origin": "upstream"
+  }
+}

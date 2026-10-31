@@ -1,0 +1,38 @@
+{
+  "id": "w23-div-floor",
+  "kind": "write",
+  "prompt": "Create unit `tasks` and implement `div_floor`: for |a| <= 1000000000 and 1 <= b <= 1000000000, return a divided by b rounded toward negative infinity (note that `/` rounds toward zero). The contract must state r * b <= a < r * b + b.\n\nRequired signature (in unit `tasks`):\nfn div_floor(a: i64, b: i64) -> (r: i64)",
+  "unit": "tasks",
+  "def": "tasks::div_floor",
+  "signature": "fn div_floor(a: i64, b: i64) -> (r: i64)",
+  "accept": {
+    "specs": "spec fn ref_pre(a: i64, b: i64) -> bool { -1000000000 <= a && a <= 1000000000 && 1 <= b && b <= 1000000000 }\nspec fn ref_post(a: i64, b: i64, r: i64) -> bool { r * b <= a && a < r * b + b }",
+    "pre": "ref_pre(a, b)",
+    "post": "ref_post(a, b, r)",
+    "args": "a, b"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn div_args(a: i64, b: i64) -> bool { -1000000000 <= a && a <= 1000000000 && 1 <= b && b <= 1000000000 }\n\nspec fn floor_ok(a: i64, b: i64, r: i64) -> bool { r * b <= a && a < r * b + b }\n\n#[effects(pure)]\n#[uses(div_args, floor_ok)]\nfn div_floor(a: i64, b: i64) -> (r: i64)\n    requires div_args(a, b),\n    ensures floor_ok(a, b, r),\n{\n    let q: i64 = a / b;\n    if a % b != 0 && a < 0 {\n        q - 1\n    } else {\n        q\n    }\n}"
+    }
+  ],
+  "weak_reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn div_args(a: i64, b: i64) -> bool { -1000000000 <= a && a <= 1000000000 && 1 <= b && b <= 1000000000 }\n\nspec fn not_above(a: i64, b: i64, r: i64) -> bool { r * b <= a }\n\n#[effects(pure)]\n#[uses(div_args, not_above)]\nfn div_floor(a: i64, b: i64) -> (r: i64)\n    requires div_args(a, b),\n    ensures not_above(a, b, r),\n{\n    let q: i64 = a / b;\n    if a % b != 0 && a < 0 {\n        q - 1\n    } else {\n        q\n    }\n}"
+    }
+  ]
+}

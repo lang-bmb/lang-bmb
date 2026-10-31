@@ -1,0 +1,34 @@
+#[summary("진입점과 보고")]
+mod app {
+    #[effects(io)]
+    #[uses(arr::idx, arr::idx2, arr::nonempty, fsm::state_ok, fsm::states_ok, ledger::acct, ledger::amount_ok, ledger::cap_ok, ledger::small_book, num::ordered, num::small, order::from_ok, report_ok, search::max_at, stats::bounded_elems)]
+    fn main() -> () {
+        let mut xs: [i64; 6] = [5, -3, 8, 0, 8, 2];
+        report(&xs);
+        order::selection_sort(&mut xs);
+        print_i64(arr::first(&xs));
+        let mut book: [i64; 4] = [100, 0, 50, 7];
+        let paid: usize = ledger::pay_all(&mut book, 0, 10);
+        print_i64(ledger::total(&book));
+        let mut jobs: [i64; 3] = [0, 1, 2];
+        fsm::advance_all(&mut jobs, 1);
+        print_i64(fsm::run(&xs, 0));
+        print_i64(num::clamp(arr::last(&xs), 0, 5));
+        arr::fill(&mut jobs, 0);
+        print_i64(xs[search::argmax(&xs)]);
+    }
+
+    #[effects(io)]
+    #[uses(arr::nonempty, report_ok, stats::bounded_elems)]
+    fn report(a: &[i64]) -> ()
+        requires report_ok(a), stats::bounded_elems(a),
+    {
+        print_i64(stats::sum(a));
+        print_i64(stats::spread(a));
+        print_i64(stats::mean_floor(a));
+    }
+
+    spec fn report_ok(a: &[i64]) -> bool {
+        a.len() > 0 && a.len() <= 1000
+    }
+}

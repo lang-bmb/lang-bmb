@@ -673,6 +673,231 @@ fn write_tool_commits_and_proves_in_one_call() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// The file diff surface (`--file-tools`, backlog T1-06, ADR-0073): a
+/// unified diff creates, edits and deletes unit files, then the call commits
+/// and proves; a diff that does not apply, or a result with a type error or a
+/// file holding another unit, writes nothing; the stored file is the normal
+/// form and the call says when that differs from the diff's text.
+#[test]
+fn file_tools_edit_by_unified_diff() {
+    let root = temp_root("file-tools");
+    for flags in [&[][..], &["--write-tool"][..]] {
+        let mut c = Client::start_with(&root, flags);
+        let tools = c.request("tools/list", "{}").to_json();
+        assert!(!tools.contains("\"edit_file\"") && !tools.contains("\"read_file\""));
+        let (t, err) = c.tool("edit_file", "{\"diff\":\"\"}");
+        assert!(err && t.contains("unknown tool"), "{t}");
+    }
+    let mut c = Client::start_with(&root, &["--file-tools"]);
+    let tools = c.request("tools/list", "{}").to_json();
+    assert!(
+        tools.contains("\"edit_file\"") && !tools.contains("\"write\""),
+        "{tools}"
+    );
+    let edit =
+        |c: &mut Client, diff: &str| c.tool("edit_file", &format!("{{\"diff\":{}}}", q(diff)));
+
+    // A type error: nothing is written, positions are the diff's file.
+    let create = "--- /dev/null\n+++ b/src/calc.bmb\n@@ -0,0 +1,7 @@\n+#[summary(\"calc\")]\n+mod calc {\n+    #[effects(pure)]\n+    fn twice(x: i64) -> bool {\n+        x\n+    }\n+}\n";
+    let (t, err) = edit(&mut c, create);
+    assert!(
+        err && t.contains("E0401") && t.contains("\"file\":\"src/calc.bmb\",\"line\":5"),
+        "{t}"
+    );
+    assert!(
+        snapshot(&root).is_empty(),
+        "a rejected diff must write nothing"
+    );
+    // A file must hold the unit its name says.
+    let (t, err) = edit(&mut c, &create.replace("b/src/calc.bmb", "b/src/other.bmb"));
+    assert!(
+        err && t.contains("src/other.bmb must hold exactly one top-level unit, `mod other`"),
+        "{t}"
+    );
+
+    // Created, committed and proved; the extra blank line is normalized away.
+    let good = "--- /dev/null\n+++ b/src/calc.bmb\n@@ -0,0 +1,9 @@\n+#[summary(\"calc\")]\n+mod calc {\n+    #[effects(pure)]\n+    fn twice(x: i64) -> i64 {\n+        let y: i64 = x % 1000;\n+\n+        y + y\n+    }\n+}\n";
+    let (t, err) = edit(&mut c, good);
+    assert!(!err, "{t}");
+    assert!(t.starts_with("{\"committed\":true,\"changed\":[\"calc::twice\"],\"removed\":[],\"reformatted\":[\"src/calc.bmb\"]}"), "{t}");
+    assert!(
+        t.contains("\"def\":\"calc::twice\",\"status\":\"verified\""),
+        "{t}"
+    );
+    let (file, err) = c.tool("read_file", "{\"path\":\"src/calc.bmb\"}");
+    assert!(
+        !err && file.contains("        let y: i64 = x % 1000;\n        y + y\n"),
+        "{file}"
+    );
+    let (t, err) = c.tool("read_file", "{\"path\":\"src/nope.bmb\"}");
+    assert!(err && t.contains("the files are: src/calc.bmb"), "{t}");
+
+    // A hunk that does not match the file is refused and says why.
+    let (t, err) = edit(
+        &mut c,
+        "--- a/src/calc.bmb\n+++ b/src/calc.bmb\n@@ -5,2 +5,2 @@\n-        y * y\n+        y\n",
+    );
+    assert!(
+        err && t.contains("`        y * y` is not in the file"),
+        "{t}"
+    );
+    // An edit that does not prove is committed, with its counterexample;
+    // wrong counts are recounted.
+    let (t, err) = edit(
+        &mut c,
+        "--- a/src/calc.bmb\n+++ b/src/calc.bmb\n@@ -5,99 +5,1 @@\n         let y: i64 = x % 1000;\n-        y + y\n+        y * 9223372036854775807\n",
+    );
+    assert!(
+        err && t.contains("\"committed\":true") && t.contains("counterexample"),
+        "{t}"
+    );
+    assert!(!t.contains("reformatted"), "{t}");
+    // Deleting the file removes the unit.
+    let (t, err) = edit(&mut c, "--- a/src/calc.bmb\n+++ /dev/null\n");
+    assert!(!err && t.contains("\"removed\":[\"calc::twice\"]"), "{t}");
+    assert!(snapshot(&root).is_empty());
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// The JSON AST surface (`--ast-tools`, backlog T1-06, ADR-0073): the tree
+/// is read at a pointer and edited by a JSON Patch, then committed and
+/// proved; a bad patch or tree writes nothing, and diagnostics point into
+/// the tree (`at`) instead of a text position.
+#[test]
+fn ast_tools_edit_by_json_patch() {
+    let root = temp_root("ast-tools");
+    let mut plain = Client::start_with(&root, &["--write-tool"]);
+    assert!(
+        !plain
+            .request("tools/list", "{}")
+            .to_json()
+            .contains("\"edit_ast\"")
+    );
+    let mut c = Client::start_with(&root, &["--ast-tools"]);
+    let tools = c.request("tools/list", "{}").to_json();
+    assert!(
+        tools.contains("\"read_ast\"") && tools.contains("\"edit_ast\""),
+        "{tools}"
+    );
+    let (t, err) = c.tool("read_ast", "{}");
+    assert!(!err && t == "{}", "{t}");
+
+    let int = |v: i64| format!("{{\"kind\":\"int\",\"value\":{v}}}");
+    let ty = |k: &str| format!("{{\"kind\":\"{k}\"}}");
+    let twice = |ret: &str| {
+        format!(
+            "{{\"kind\":\"fn\",\"effects\":[\"pure\"],\"params\":[{{\"name\":\"x\",\"ty\":{}}}],\"ret\":{{\"ty\":{}}},\"body\":{{\"stmts\":[{{\"kind\":\"let\",\"name\":\"y\",\"ty\":{},\"init\":{{\"kind\":\"binary\",\"op\":\"%\",\"lhs\":{{\"kind\":\"var\",\"name\":\"x\"}},\"rhs\":{}}}}}],\"tail\":{{\"kind\":\"binary\",\"op\":\"+\",\"lhs\":{{\"kind\":\"var\",\"name\":\"y\"}},\"rhs\":{{\"kind\":\"var\",\"name\":\"y\"}}}}}}}}",
+            ty("i64"),
+            ty(ret),
+            ty("i64"),
+            int(1000)
+        )
+    };
+    let unit = |f: &str| format!("{{\"summary\":\"calc\",\"fns\":{{\"twice\":{f}}}}}");
+    let edit = |c: &mut Client, patch: &str| c.tool("edit_ast", &format!("{{\"patch\":{patch}}}"));
+
+    // A type error: nothing is written, and the diagnostic names the node.
+    let (t, err) = edit(
+        &mut c,
+        &format!(
+            "[{{\"op\":\"add\",\"path\":\"/calc\",\"value\":{}}}]",
+            unit(&twice("bool"))
+        ),
+    );
+    assert!(
+        err && t.contains("\"code\":\"E0401\"")
+            && t.contains("\"at\":\"/calc/fns/twice/body/tail\""),
+        "{t}"
+    );
+    assert!(!t.contains("\"line\""), "{t}");
+    assert!(
+        snapshot(&root).is_empty(),
+        "a rejected patch must write nothing"
+    );
+    // A tree that is not one, and a patch that does not apply.
+    let (t, err) = edit(
+        &mut c,
+        &format!(
+            "[{{\"op\":\"add\",\"path\":\"/calc\",\"value\":{}}}]",
+            unit(&twice("i65"))
+        ),
+    );
+    assert!(
+        err && t.contains("/calc/fns/twice/ret/ty: unknown type kind `i65`"),
+        "{t}"
+    );
+    let (t, err) = edit(&mut c, "[{\"op\":\"remove\",\"path\":\"/calc\"}]");
+    assert!(
+        err && t.contains("operation 0: remove `/calc`: no such member"),
+        "{t}"
+    );
+    // A keyword where a name goes does not print as itself.
+    let (t, err) = edit(
+        &mut c,
+        &format!(
+            "[{{\"op\":\"add\",\"path\":\"/calc\",\"value\":{}}}]",
+            unit(&twice("i64")).replace("\"name\":\"y\"", "\"name\":\"loop\"")
+        ),
+    );
+    assert!(err, "{t}");
+    assert!(snapshot(&root).is_empty());
+    // A tree whose text parses back as another tree says what it becomes:
+    // an `if` statement at the end of a block is the block's value.
+    let last_if = "{\"kind\":\"fn\",\"effects\":[\"pure\"],\"ret\":{\"ty\":{\"kind\":\"unit\"}},\"body\":{\"stmts\":[{\"kind\":\"expr\",\"expr\":{\"kind\":\"if\",\"cond\":{\"kind\":\"bool\",\"value\":true},\"then\":{}}}]}}";
+    let (t, err) = edit(
+        &mut c,
+        &format!(
+            "[{{\"op\":\"add\",\"path\":\"/calc\",\"value\":{}}}]",
+            unit(last_if)
+        ),
+    );
+    assert!(
+        err && t.starts_with("/calc/fns/twice/body: this part of the tree has no text of its own: it prints and parses back as {\"tail\":{\"kind\":\"if\""),
+        "{t}"
+    );
+    assert!(snapshot(&root).is_empty());
+
+    // Unit, function and proof in one call; the patch may come as JSON text.
+    let patch = format!(
+        "[{{\"op\":\"add\",\"path\":\"/calc\",\"value\":{}}}]",
+        unit(&twice("i64"))
+    );
+    let (t, err) = c.tool("edit_ast", &format!("{{\"patch\":{}}}", q(&patch)));
+    assert!(!err, "{t}");
+    assert!(
+        t.starts_with("{\"committed\":true,\"changed\":[\"calc::twice\"],\"removed\":[]}"),
+        "{t}"
+    );
+    let (t, err) = c.tool("read_ast", "{\"path\":\"/calc/fns/twice/body/tail/op\"}");
+    assert!(!err && t == "\"+\"", "{t}");
+
+    // A node replaced in place; a proof failure points at the node.
+    let (t, err) = edit(
+        &mut c,
+        &format!(
+            "[{{\"op\":\"test\",\"path\":\"/calc/fns/twice/body/tail/op\",\"value\":\"+\"}},{{\"op\":\"replace\",\"path\":\"/calc/fns/twice/body/tail/rhs\",\"value\":{}}}]",
+            int(9223372036854775807i64)
+        ),
+    );
+    assert!(
+        err && t.contains("\"committed\":true")
+            && t.contains("\"at\":\"/calc/fns/twice/body/tail\""),
+        "{t}"
+    );
+    let (t, err) = c.tool("verify", "{}");
+    assert!(
+        err && t.contains("\"at\":\"/calc/fns/twice/body/tail\"") && !t.contains("\"line\""),
+        "{t}"
+    );
+    let (t, err) = edit(
+        &mut c,
+        "[{\"op\":\"remove\",\"path\":\"/calc/fns/twice\"},{\"op\":\"add\",\"path\":\"/calc/fns/zero\",\"value\":{\"kind\":\"fn\",\"effects\":[\"pure\"],\"ret\":{\"name\":\"r\",\"ty\":{\"kind\":\"u8\"}},\"body\":{\"tail\":{\"kind\":\"int\",\"value\":0}}}}]",
+    );
+    assert!(!err && t.contains("\"removed\":[\"calc::twice\"]"), "{t}");
+    assert!(snapshot(&root)[0].1.contains("fn zero() -> (r: u8) {"));
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// `--compact` (backlog 2D-23, ADR-0068): the same answers in the compact
 /// agent view. Every surface keeps its path, status, signature and contract,
 /// every definition and edge is listed, no hash or file position is shown,

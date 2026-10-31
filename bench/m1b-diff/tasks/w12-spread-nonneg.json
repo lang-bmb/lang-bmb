@@ -1,0 +1,28 @@
+{
+  "id": "w12-spread-nonneg",
+  "kind": "write",
+  "prompt": "The library function `stats::spread` has no postcondition. Give it one stating that the result lies in [0, 2000], keeping its parameters, precondition and what it computes. Change other definitions if the proof needs it; the whole workspace must still verify.\n\nRequired signature (in unit `stats`):\nfn spread(a: &[i64]) -> (r: i64)",
+  "unit": "stats",
+  "def": "stats::spread",
+  "signature": "fn spread(a: &[i64]) -> (r: i64)",
+  "accept": {
+    "specs": "spec fn ref_pre(a: &[i64]) -> bool { a.len() > 0 && a.len() <= 1000000 && (forall|k: usize| k < a.len() ==> -1000 <= #[trigger] a[k] && a[k] <= 1000) }\nspec fn ref_post(r: i64) -> bool { 0 <= r && r <= 2000 }",
+    "pre": "ref_pre(a)",
+    "post": "ref_post(r)",
+    "args": "a"
+  },
+  "reference": [
+    {
+      "op": "put",
+      "unit": "stats",
+      "code": "spec fn upper_all(a: &[i64], r: i64) -> bool { forall|k: usize| k < a.len() ==> #[trigger] a[k] <= r }\n\nspec fn upper_below(a: &[i64], n: usize, r: i64) -> bool { forall|k: usize| k < n ==> #[trigger] a[k] <= r }\n\n#[effects(pure)]\n#[uses(arr::nonempty, bounded_elems, in_thousand, upper_all, upper_below, num::is_max2)]\nfn max_of(a: &[i64]) -> (r: i64)\n    requires arr::nonempty(a), bounded_elems(a),\n    ensures in_thousand(r), upper_all(a, r),\n{\n    let mut m: i64 = a[0];\n    let mut k: usize = 1;\n    while k < a.len()\n        invariant 1 <= k, k <= a.len(), in_thousand(m), upper_below(a, k, m),\n        decreases a.len() - k,\n    {\n        m = num::max2(m, a[k]);\n        k = k + 1;\n    }\n    m\n}\n\n\nspec fn lower_all(a: &[i64], r: i64) -> bool { forall|k: usize| k < a.len() ==> r <= #[trigger] a[k] }\n\nspec fn lower_below(a: &[i64], n: usize, r: i64) -> bool { forall|k: usize| k < n ==> r <= #[trigger] a[k] }\n\n#[effects(pure)]\n#[uses(arr::nonempty, bounded_elems, in_thousand, lower_all, lower_below, num::is_min2)]\nfn min_of(a: &[i64]) -> (r: i64)\n    requires arr::nonempty(a), bounded_elems(a),\n    ensures in_thousand(r), lower_all(a, r),\n{\n    let mut m: i64 = a[0];\n    let mut k: usize = 1;\n    while k < a.len()\n        invariant 1 <= k, k <= a.len(), in_thousand(m), lower_below(a, k, m),\n        decreases a.len() - k,\n    {\n        m = num::min2(m, a[k]);\n        k = k + 1;\n    }\n    m\n}\n\nspec fn spread_ok(r: i64) -> bool { 0 <= r && r <= 2000 }\n\n#[effects(pure)]\n#[uses(arr::nonempty, in_thousand, upper_all, lower_all, spread_ok)]\nfn spread(a: &[i64]) -> (r: i64)\n    requires arr::nonempty(a), bounded_elems(a),\n    ensures spread_ok(r),\n{\n    let hi: i64 = max_of(a);\n    let lo: i64 = min_of(a);\n    let x0: i64 = a[0];\n    hi - lo\n}"
+    }
+  ],
+  "weak_reference": [
+    {
+      "op": "put",
+      "unit": "stats",
+      "code": "spec fn spread_wide(r: i64) -> bool { -2000 <= r && r <= 2000 }\n\n#[effects(pure)]\n#[uses(in_thousand, spread_wide, num::small)]\nfn spread(a: &[i64]) -> (r: i64)\n    requires arr::nonempty(a), bounded_elems(a),\n    ensures spread_wide(r),\n{\n    let hi: i64 = max_of(a);\n    let lo: i64 = min_of(a);\n    hi - lo\n}"
+    }
+  ]
+}

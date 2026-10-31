@@ -1,0 +1,118 @@
+#[summary("배열 기본 연산")]
+mod arr {
+    spec fn all_eq(a: &[i64], v: i64) -> bool {
+        forall|k: usize| k < a.len() ==> #[trigger] a[k] == v
+    }
+
+    spec fn copied(dst: &[i64], src: &[i64]) -> bool {
+        dst.len() == src.len() && (forall|k: usize| k < dst.len() ==> #[trigger] dst[k] == src[k])
+    }
+
+    spec fn copied_below(dst: &[i64], src: &[i64], n: usize) -> bool {
+        forall|k: usize| k < n ==> #[trigger] dst[k] == src[k]
+    }
+
+    #[effects(pure)]
+    #[uses(copied, copied_below, same_len)]
+    fn copy_into(dst: &mut [i64], src: &[i64]) -> ()
+        requires same_len(dst, src),
+        ensures copied(dst, src),
+    {
+        let mut k: usize = 0;
+        while k < dst.len()
+            invariant k <= dst.len(), dst.len() == src.len(), copied_below(dst, src, k),
+            decreases dst.len() - k,
+        {
+            dst[k] = src[k];
+            k = k + 1;
+        }
+    }
+
+    spec fn eq_below(a: &[i64], v: i64, n: usize) -> bool {
+        forall|k: usize| k < n ==> #[trigger] a[k] == v
+    }
+
+    #[effects(pure)]
+    #[uses(all_eq, eq_below)]
+    fn fill(a: &mut [i64], v: i64) -> ()
+        ensures all_eq(a, v),
+    {
+        let mut k: usize = 0;
+        while k < a.len()
+            invariant k <= a.len(), eq_below(a, v, k),
+            decreases a.len() - k,
+        {
+            a[k] = v;
+            k = k + 1;
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(nonempty)]
+    fn first(a: &[i64]) -> i64
+        requires nonempty(a),
+    {
+        a[0]
+    }
+
+    spec fn idx(a: &[i64], i: usize) -> bool {
+        i < a.len()
+    }
+
+    spec fn idx2(a: &[i64], i: usize, j: usize) -> bool {
+        i < a.len() && j < a.len()
+    }
+
+    #[effects(pure)]
+    #[uses(nonempty)]
+    fn last(a: &[i64]) -> i64
+        requires nonempty(a),
+    {
+        a[a.len() - 1]
+    }
+
+    spec fn nonempty(a: &[i64]) -> bool {
+        a.len() > 0
+    }
+
+    #[effects(pure)]
+    #[uses(idx2, nonempty)]
+    fn reverse_ends(a: &mut [i64]) -> ()
+        requires nonempty(a),
+    {
+        let n: usize = a.len();
+        swap(a, 0, n - 1);
+    }
+
+    spec fn same_len(a: &[i64], b: &[i64]) -> bool {
+        a.len() == b.len()
+    }
+
+    #[effects(pure)]
+    #[uses(idx, set_ok)]
+    fn set_at(a: &mut [i64], i: usize, v: i64) -> ()
+        requires idx(a, i),
+        ensures set_ok(a, old(a), i, v),
+    {
+        a[i] = v;
+    }
+
+    spec fn set_ok(a: &[i64], b: &[i64], i: usize, v: i64) -> bool {
+        a.len() == b.len() && a[i] == v && (forall|k: usize| k < a.len() && k != i ==> #[trigger] a[k] == b[k])
+    }
+
+    #[effects(pure)]
+    #[uses(idx2, swapped)]
+    fn swap(a: &mut [i64], i: usize, j: usize) -> ()
+        requires idx2(a, i, j),
+        ensures swapped(a, old(a), i, j),
+    {
+        let t: i64 = a[i];
+        a[i] = a[j];
+        a[j] = t;
+    }
+
+    spec fn swapped(a: &[i64], b: &[i64], i: usize, j: usize) -> bool {
+        a.len() == b.len() && a[i] == b[j] && a[j] == b[i] && (forall|k: usize| k < a.len() && k != i && k != j ==> #[trigger] a[k] == b[k])
+    }
+}

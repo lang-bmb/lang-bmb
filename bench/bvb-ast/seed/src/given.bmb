@@ -1,0 +1,102 @@
+#[summary("과제가 주는 명세 함수(원본 Verus 과제의 재귀 명세)")]
+mod given {
+    spec fn arith_sum(i: u64) -> u64
+        decreases i,
+    {
+        if i == 0 {
+            0
+        } else {
+            i + arith_sum(i - 1)
+        }
+    }
+
+    spec fn count_digits(text: &[u64], n: usize) -> u64
+        decreases n,
+    {
+        if n == 0 {
+            0
+        } else {
+            count_digits(text, n - 1) + (if text[n - 1] >= 48 && text[n - 1] <= 57 { 1 } else { 0 })
+        }
+    }
+
+    spec fn count_identical(arr1: &[i64], arr2: &[i64], arr3: &[i64], n: usize) -> u64
+        decreases n,
+    {
+        if n == 0 {
+            0
+        } else {
+            count_identical(arr1, arr2, arr3, n - 1) + (if arr1[n - 1] == arr2[n - 1] && arr2[n - 1] == arr3[n - 1] { 1 } else { 0 })
+        }
+    }
+
+    spec fn count_true(arr: &[bool], n: usize) -> u64
+        decreases n,
+    {
+        if n == 0 {
+            0
+        } else {
+            count_true(arr, n - 1) + (if arr[n - 1] { 1 } else { 0 })
+        }
+    }
+
+    spec fn count_upper(text: &[u64], n: usize) -> u64
+        decreases n,
+    {
+        if n == 0 {
+            0
+        } else {
+            count_upper(text, n - 1) + (if text[n - 1] >= 65 && text[n - 1] <= 90 { 1 } else { 0 })
+        }
+    }
+
+    spec fn divides(factor: u64, candidate: u64) -> bool {
+        candidate % factor == 0
+    }
+
+    spec fn gcd(a: u64, b: u64) -> u64
+        decreases b,
+    {
+        if b == 0 {
+            a
+        } else {
+            gcd(b, a % b)
+        }
+    }
+
+    spec fn is_divisible(n: u64, divisor: u64) -> bool {
+        n % divisor == 0
+    }
+
+    spec fn is_prime(candidate: u64) -> bool {
+        1 < candidate && (forall|factor: u64| 1 < factor && factor < candidate ==> !#[trigger] divides(factor, candidate))
+    }
+
+    spec fn max_prefix(arr: &[i64], n: usize) -> i64
+        decreases n,
+    {
+        if n <= 1 {
+            arr[0]
+        } else {
+            if arr[n - 1] >= max_prefix(arr, n - 1) {
+                arr[n - 1]
+            } else {
+                max_prefix(arr, n - 1)
+            }
+        }
+    }
+
+    spec fn min_prefix(arr: &[i64], n: usize) -> i64
+        decreases n,
+    {
+        if n <= 1 {
+            arr[0]
+        } else {
+            if arr[n - 1] <= min_prefix(arr, n - 1) {
+                arr[n - 1]
+            } else {
+                min_prefix(arr, n - 1)
+            }
+        }
+    }
+}

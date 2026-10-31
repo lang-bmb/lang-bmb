@@ -32,6 +32,9 @@ cargo run -- mcp ws              # MCP 서버(stdio): query map verify build tx_
 cargo run -- mcp --write-tool ws # 위에 `write`(단위·정의·삭제·커밋·증명을 한 호출로, 2D-24)를 더한다. 동결 과제 집합은 끄고 쓴다
 cargo run -- mcp --compact ws    # 압축 에이전트 투영(ADR-0068, `src/view.rs`): 표면은 `// 경로: 상태` 뒤 본문 없는 정규형, L0·L2·slice는 텍스트, 성공한 증명은 `{"verified":N}`, 해시·위치·비용 없음. 기본은 끔(동결 측정 조건)
 cargo run -- mcp --tool-docs ws  # 도구 설명만으로 도구를 설명한다(2D-28): `query`는 질의마다 돌려주는 것, `write`는 유일한 쓰기 길(인자는 스키마에서만 설명), 설계 참조(ADR·백로그 번호) 없음. 프롬프트의 도구 절을 대신한다(ADR-0072). 기본은 끔(동결 측정 조건)
+cargo run -- mcp --file-tools ws # 파일 diff 편집 표면(ADR-0073, T1-06): `read_file`(단위 파일 원문)과 `edit_file`(통합 diff 적용·커밋·증명을 한 호출로). 기본은 끔(동결 측정 조건)
+cargo run -- mcp --ast-tools ws  # JSON AST 편집 표면(ADR-0073, T1-06): `read_ast`(JSON Pointer 위치의 구문 트리)와 `edit_ast`(JSON Patch 적용·커밋·증명을 한 호출로), 진단 위치는 트리 포인터 `at`. 기본은 끔(동결 측정 조건)
+cargo run -- ast ws              # 구문 트리를 JSON 문서 하나로(JSON AST 표면이 보이는 것, 단위 이름이 키, 위치 없음)
 BMB_SOUND_ITERS=60 cargo test --release --test soundness  # 건전성 퍼징(1B-17): 증명·반례·빌드를 독립 해석기와 대조
 BMB_SOUND_ITERS=40 cargo test --release --test soundness_owned  # 소유 자료 퍼징(2O-05): 연결 리스트·Box·Vec 필드의 이동·교체·참조 match, 증명·반례·빌드·valgrind 해제를 해석기와 대조
 BMB_SOUND_ITERS=200 cargo test --release --test soundness_widths  # 정수 폭·비트 연산 퍼징(2N-04): 열 정수 타입, 섞인 폭, 비트 연산·시프트(폭 안팎의 리터럴·변수 양)·비트 메서드·변환, 증명·반례·두 빌드의 출력과 트랩을 Rust 의미의 해석기와 대조
@@ -192,6 +195,14 @@ ADR-0016의 부분집합을 구체화한 것이다. 모두 "선택을 필수로"
 - 부르는 실행 함수는 호출자 해시로 키에 들어간다: 계약 해시에서 `#[uses]`를 뺀 것(`fmt::caller_text`, ADR-0043). `#[uses]`는 그 함수 자신의 질의에서만 본문을 펼치므로, 피호출자의 `#[uses]`만 바뀌면 그 함수만 다시 인코딩한다(`verify_stats_name_the_reencoded_definitions`, 감사 모드는 `edits_that_shift_spans_or_change_context_keep_outputs_exact`). `bmb hash`·맵의 `iface`는 그대로다(`#[uses]`의 대상 `id`를 담는다).
 - `bmb reads <file.bmb|DIR>..`(백로그 T1-27, ADR-0065 §2): 정의마다 증명 키를 행으로 낸다. 증명의 읽기 집합이다. `{"def","kind","key","contract","decl","uses","reads":[{"kind","path","digest"},..]}`. 행의 종류는 `self`(한정 정규형), `component`, `callee`(피호출자의 호출자 해시), `spec`(펼친 `spec fn`의 텍스트), `names`(이름만 보는 `spec fn`, 해시 없음), `decl`(SMT 선언), `type`, `invariant`. `contract`·`decl`은 다른 정의의 키가 이 정의에서 가져가는 값이다. 끝에 타입마다 `{"type","digest"}`. 행은 키를 만드는 같은 코드(`incremental::Session::keys`)가 기록하므로 행이 같으면 키가 같고 그 역도 성립한다. 따뜻한 `verify --stats`는 행이 바뀐 실행 정의만 다시 인코딩한다(`tests/reads.rs`). 교환 판정 하네스(`dev-docs/experiments/commute/judge.py`)가 쓴다.
 - `--stats FILE`(`verify`·`emit-llvm`·`build`)은 캐시가 한 일을 JSON 한 줄로 쓴다: `{"encoded":[..],"reused":[..],"lowered":[..],"ir_reused":[..],"proof_cache_hits","proof_cache_misses"}`(정의 경로는 정렬, `verify`는 IR 목록이 빈다). 표준 출력은 그대로다. BCB(2A-14)가 커밋당 재증명 집합을 잰다.
+
+## 편집 표면 (ADR-0073, 백로그 T1-06)
+
+H-EDIT·H-GRAIN 측정 판(`bench/edit/gen.py`)을 위한 두 쓰기 표면. 둘 다 `write`처럼 한 호출이 커밋하고 작업 공간 전체를 증명하며, 커밋은 트랜잭션과 같은 규칙(구조·타입 오류면 전체 거부, 아무것도 쓰지 않음)이다. 결과 파일은 정규형으로 저장된다(`workspace::plan_files`: 새 파일 전체를 검사하고, `src/UNIT.bmb`는 최상위 단위 `UNIT` 하나만 담아야 한다).
+
+- **파일 diff**(`--file-tools`, `src/udiff.rs`): `git apply --recount`의 규칙. 헝크의 줄 수는 세지 않고 다시 센다. 머리의 줄 번호는 먼저 찾아볼 곳이고, 여러 곳에 맞으면 그 번호에 가장 가까운 곳, 번호가 없으면 한 곳에만 맞아야 한다. 문맥·삭제 줄은 공백까지 정확히 맞아야 한다(퍼지 없음). 맞지 않으면 어느 줄이 없는지(공백만 다르면 그렇다고) 말한다. `--- /dev/null`은 새 파일, `+++ /dev/null`은 삭제, 비워진 파일도 삭제. 헝크 안의 접두어 없는 줄은 오류다(그 뒤 헝크를 조용히 버리지 않는다). 커밋 결과에 정규형이 쓴 텍스트와 다른 파일을 `reformatted`로 알린다.
+- **JSON AST**(`--ast-tools`, `src/ast_json.rs`): 문서는 최상위 단위 이름이 키인 객체다. 단위는 `summary`와 이름이 키인 `units`·`types`·`traits`·`impls`(타입 이름)·`fns`, 배열 `trait_impls`를 갖는다. 그 밖의 노드는 `kind`와 `ast.rs`의 필드 이름을 쓴다. 이름·경로(`a::b`)·연산자는 문자열, 빈 목록·`false`·없는 부분은 생략, 위치는 없다. 정규형이 버리는 것(함수의 `effects`·`uses` 밖 속성, 단위의 `summary` 밖 속성)과 파서의 복구 꼴(`use`, 타입 없는 `let`, 구조 분해 `let`, `..base`, 와일드카드 갈래)은 표현하지 않는다. `edit_ast`는 RFC 6902 JSON Patch(원자적)를 문서에 적용하고, 트리를 프로그램으로 읽어 정규형으로 찍은 뒤 다시 파싱해 같은 트리인지 확인한다(이름 자리의 키워드 같은 텍스트 주입을 막는다). 다르면 처음 다른 곳의 포인터와 다시 파싱된 모양을 돌려준다(예: 블록 끝의 `if` 문은 블록의 값 `tail`이 된다). 진단과 증명 결과의 위치는 그 위치를 담는 가장 안쪽 노드의 포인터 `at`으로 바뀐다(`verify`도 이 표면에서는). `patch`가 JSON 텍스트로 오면 파싱해 쓴다.
+- 플래그가 없으면 `tools/list`와 모든 응답은 이전과 같은 바이트다(동결 집합, ADR-0021). 코퍼스 전부가 트리로 왕복한다(`tests/ast_json.rs`: `bmb ast` → `edit_ast`로 빈 작업 공간에 쓰기 → 같은 정규형·같은 트리).
 
 ## MCP 서버의 전단 캐시
 

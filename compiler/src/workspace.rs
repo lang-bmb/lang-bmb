@@ -348,18 +348,7 @@ pub fn plan(files: &[(String, String)], ops: &[Op]) -> (Commit, Option<BTreeMap<
             .mods
             .extend(parse_into(&mut sm, &mut diags, name, text).mods);
     }
-    // The qualified hashes `changed` compares, and the identities `expect`
-    // reads (only of a workspace that checks).
-    let (before, before_ids) = if diags.has_errors() {
-        (BTreeMap::new(), None)
-    } else {
-        let mut d2 = Diags::default();
-        let mut c = check::Checker::new(&mut d2);
-        c.check_program(&program);
-        let t = c.into_tables();
-        let ids = (!d2.has_errors()).then(|| identities(&program, &t));
-        (hashes(&program, &t.fns), ids)
-    };
+    let (before, before_ids) = before_state(&program, &diags);
 
     let mut problems: Vec<String> = Vec::new();
     for (k, op) in ops.iter().enumerate() {
@@ -493,11 +482,39 @@ pub fn plan(files: &[(String, String)], ops: &[Op]) -> (Commit, Option<BTreeMap<
         }
     }
 
+    finish(program, sm, diags, &problems, &before)
+}
+
+/// The qualified hashes `changed` compares, and the identities `expect`
+/// reads (only of a workspace that checks).
+fn before_state(
+    program: &Program,
+    diags: &Diags,
+) -> (BTreeMap<String, String>, Option<BTreeMap<String, String>>) {
+    if diags.has_errors() {
+        return (BTreeMap::new(), None);
+    }
+    let mut d2 = Diags::default();
+    let mut c = check::Checker::new(&mut d2);
+    c.check_program(program);
+    let t = c.into_tables();
+    let ids = (!d2.has_errors()).then(|| identities(program, &t));
+    (hashes(program, &t.fns), ids)
+}
+
+/// Checks the new program and reports what changed against `before`.
+fn finish(
+    program: Program,
+    sm: SourceMap,
+    mut diags: Diags,
+    problems: &[String],
+    before: &BTreeMap<String, String>,
+) -> (Commit, Option<BTreeMap<String, String>>) {
     let mut c = check::Checker::new(&mut diags);
     c.check_program(&program);
     let tables = c.into_tables();
     let mut diagnostics = diags.to_jsonl(&sm);
-    for p in &problems {
+    for p in problems {
         diagnostics.push_str(&format!("{{\"error\":{}}}\n", crate::diag::json_str(p)));
     }
     if !diagnostics.is_empty() {
@@ -527,6 +544,89 @@ pub fn plan(files: &[(String, String)], ops: &[Op]) -> (Commit, Option<BTreeMap<
         removed,
     };
     (commit, Some(fmt::format_units(&program)))
+}
+
+/// The workspace files `src/UNIT.bmb` as `(name, text)` with `name`
+/// relative to the workspace (`src/calc.bmb`), sorted by name.
+pub fn relative_sources(root: &Path) -> Result<Vec<(String, String)>, String> {
+    if !src_dir(root).is_dir() {
+        return Ok(Vec::new());
+    }
+    let mut out: Vec<(String, String)> = read_dir_sources(root)?
+        .into_iter()
+        .map(|(p, t)| {
+            let name = Path::new(&p)
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or(p);
+            (format!("src/{name}"), t)
+        })
+        .collect();
+    out.sort();
+    Ok(out)
+}
+
+/// Replaces the workspace's files with `new` (the file diff and JSON AST
+/// edit surfaces, ADR-0073): `old` and `new` are whole files
+/// `(src/UNIT.bmb, text)`. As a transaction (ADR-0009): the result must
+/// have no structural or type error, and each file must hold exactly the
+/// top-level unit its name says (the tools lay files out, ADR-0011).
+/// Nothing is written; `Ok` carries the new normal-form files.
+pub fn plan_files(
+    old: &[(String, String)],
+    new: &[(String, String)],
+) -> (Commit, Option<BTreeMap<String, String>>) {
+    let mut sm = SourceMap::default();
+    let mut diags = Diags::default();
+    let mut before_program = Program { mods: Vec::new() };
+    for (name, text) in old {
+        before_program
+            .mods
+            .extend(parse_into(&mut sm, &mut diags, name, text).mods);
+    }
+    let (before, _) = before_state(&before_program, &diags);
+    let mut sm = SourceMap::default();
+    let mut diags = Diags::default();
+    let mut program = Program { mods: Vec::new() };
+    let mut problems = Vec::new();
+    for (name, text) in new {
+        let parsed = parse_into(&mut sm, &mut diags, name, text);
+        let unit = Path::new(name)
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let units: Vec<&str> = parsed.mods.iter().map(|m| m.name.name.as_str()).collect();
+        if units != [unit.as_str()] && !diags.has_errors() {
+            problems.push(format!(
+                "{name} must hold exactly one top-level unit, `mod {unit}` (it holds {})",
+                if units.is_empty() {
+                    "none".to_string()
+                } else {
+                    units
+                        .iter()
+                        .map(|u| format!("`mod {u}`"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                }
+            ));
+        }
+        program.mods.extend(parsed.mods);
+    }
+    finish(program, sm, diags, &problems, &before)
+}
+
+/// Parses `files` without checking them: the program, its source map and
+/// the syntax diagnostics.
+pub fn parse_files(files: &[(String, String)]) -> (Program, SourceMap, Diags) {
+    let mut sm = SourceMap::default();
+    let mut diags = Diags::default();
+    let mut program = Program { mods: Vec::new() };
+    for (name, text) in files {
+        program
+            .mods
+            .extend(parse_into(&mut sm, &mut diags, name, text).mods);
+    }
+    (program, sm, diags)
 }
 
 /// Commits `ops` to the workspace at `root`: files change only on success.

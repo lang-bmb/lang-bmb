@@ -1,0 +1,1072 @@
+{
+ "task": "w15-pay-all-count",
+ "generator": "bench/m1/bsb_gen.py",
+ "max_witnesses": 2,
+ "targets": [
+  {
+   "def": "ledger::pay_all",
+   "signature": "fn pay_all(a: &mut [i64], from: usize, x: i64) -> (r: usize)",
+   "mutated": [
+    "ledger::pay_all",
+    "ledger::deposit",
+    "ledger::transfer",
+    "ledger::withdraw"
+   ],
+   "inputs": [
+    {
+     "a": [
+      10,
+      0
+     ],
+     "from": 0,
+     "x": 5
+    },
+    {
+     "a": [
+      10,
+      0,
+      0
+     ],
+     "from": 0,
+     "x": 5
+    },
+    {
+     "a": [
+      10,
+      0,
+      0
+     ],
+     "from": 0,
+     "x": 4
+    },
+    {
+     "a": [
+      3,
+      0
+     ],
+     "from": 0,
+     "x": 5
+    },
+    {
+     "a": [
+      10,
+      1000000000
+     ],
+     "from": 0,
+     "x": 1
+    },
+    {
+     "a": [
+      7
+     ],
+     "from": 0,
+     "x": 1
+    },
+    {
+     "a": [
+      0,
+      10,
+      0
+     ],
+     "from": 1,
+     "x": 5
+    },
+    {
+     "a": [
+      5
+     ],
+     "from": 0,
+     "x": 1
+    },
+    {
+     "a": [
+      10,
+      1,
+      5
+     ],
+     "from": 0,
+     "x": 1000000000
+    },
+    {
+     "a": [
+      999999999,
+      5
+     ],
+     "from": 0,
+     "x": 10
+    },
+    {
+     "a": [
+      0,
+      5,
+      0
+     ],
+     "from": 2,
+     "x": 10
+    },
+    {
+     "a": [
+      0,
+      1000000000,
+      999999999,
+      1000000000
+     ],
+     "from": 1,
+     "x": 1000000000
+    },
+    {
+     "a": [
+      5,
+      1,
+      999999999,
+      5
+     ],
+     "from": 1,
+     "x": 1
+    },
+    {
+     "a": [
+      10
+     ],
+     "from": 0,
+     "x": 5
+    },
+    {
+     "a": [
+      5,
+      10,
+      999999999
+     ],
+     "from": 1,
+     "x": 1000000000
+    },
+    {
+     "a": [
+      999999999,
+      0,
+      10
+     ],
+     "from": 1,
+     "x": 0
+    },
+    {
+     "a": [
+      1000000000
+     ],
+     "from": 0,
+     "x": 10
+    },
+    {
+     "a": [
+      10,
+      1000000000,
+      999999999,
+      10
+     ],
+     "from": 1,
+     "x": 1
+    },
+    {
+     "a": [
+      1000000000,
+      0,
+      0,
+      1
+     ],
+     "from": 0,
+     "x": 10
+    },
+    {
+     "a": [
+      5,
+      5,
+      1
+     ],
+     "from": 2,
+     "x": 1000000000
+    },
+    {
+     "a": [
+      0,
+      0,
+      1,
+      0
+     ],
+     "from": 1,
+     "x": 1000000000
+    },
+    {
+     "a": [
+      0,
+      0
+     ],
+     "from": 0,
+     "x": 5
+    },
+    {
+     "a": [
+      10,
+      10
+     ],
+     "from": 1,
+     "x": 0
+    },
+    {
+     "a": [
+      10,
+      0,
+      999999999,
+      999999999
+     ],
+     "from": 2,
+     "x": 1
+    },
+    {
+     "a": [
+      10,
+      10,
+      1,
+      10
+     ],
+     "from": 2,
+     "x": 0
+    },
+    {
+     "a": [
+      10,
+      5,
+      5,
+      1
+     ],
+     "from": 3,
+     "x": 5
+    },
+    {
+     "a": [
+      999999999
+     ],
+     "from": 0,
+     "x": 1
+    },
+    {
+     "a": [
+      999999999,
+      1,
+      10
+     ],
+     "from": 0,
+     "x": 1000000000
+    },
+    {
+     "a": [
+      1000000000,
+      1000000000
+     ],
+     "from": 1,
+     "x": 5
+    },
+    {
+     "a": [
+      10,
+      1,
+      1
+     ],
+     "from": 0,
+     "x": 0
+    },
+    {
+     "a": [
+      5,
+      5
+     ],
+     "from": 0,
+     "x": 1000000000
+    },
+    {
+     "a": [
+      1000000000,
+      0,
+      5
+     ],
+     "from": 1,
+     "x": 1
+    },
+    {
+     "a": [
+      5,
+      5,
+      10
+     ],
+     "from": 2,
+     "x": 0
+    },
+    {
+     "a": [
+      1
+     ],
+     "from": 0,
+     "x": 1
+    },
+    {
+     "a": [
+      999999999
+     ],
+     "from": 0,
+     "x": 5
+    },
+    {
+     "a": [
+      1,
+      5
+     ],
+     "from": 0,
+     "x": 5
+    },
+    {
+     "a": [
+      0,
+      1,
+      1
+     ],
+     "from": 1,
+     "x": 1000000000
+    }
+   ],
+   "counts": {
+    "generated": 46,
+    "kept": 6,
+    "equivalent": 5,
+    "trap_only": 6,
+    "allowed": 29,
+    "no_check": 0
+   },
+   "mutants": [
+    {
+     "def": "ledger::pay_all",
+     "site": 5,
+     "line": 66,
+     "col": 31,
+     "before": "paid + 1",
+     "after": "paid + 2",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         10,
+         0,
+         0
+        ],
+        "from": 0,
+        "x": 5
+       },
+       "expected": {
+        "r": 2,
+        "a": [
+         0,
+         5,
+         5
+        ]
+       },
+       "output": {
+        "r": 4,
+        "a": [
+         0,
+         5,
+         5
+        ]
+       }
+      },
+      {
+       "input": {
+        "a": [
+         10,
+         0,
+         0
+        ],
+        "from": 0,
+        "x": 4
+       },
+       "expected": {
+        "r": 2,
+        "a": [
+         2,
+         4,
+         4
+        ]
+       },
+       "output": {
+        "r": 4,
+        "a": [
+         2,
+         4,
+         4
+        ]
+       }
+      }
+     ],
+     "id": "m00"
+    },
+    {
+     "def": "ledger::deposit",
+     "site": 8,
+     "line": 38,
+     "col": 20,
+     "before": "a[i] + x",
+     "after": "a[i] - x",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         10,
+         0
+        ],
+        "from": 0,
+        "x": 5
+       },
+       "expected": {
+        "r": 1,
+        "a": [
+         5,
+         5
+        ]
+       },
+       "output": {
+        "r": 1,
+        "a": [
+         5,
+         -5
+        ]
+       }
+      },
+      {
+       "input": {
+        "a": [
+         10,
+         0,
+         0
+        ],
+        "from": 0,
+        "x": 5
+       },
+       "expected": {
+        "r": 2,
+        "a": [
+         0,
+         5,
+         5
+        ]
+       },
+       "output": {
+        "r": 2,
+        "a": [
+         0,
+         -5,
+         -5
+        ]
+       }
+      }
+     ],
+     "id": "m01"
+    },
+    {
+     "def": "ledger::deposit",
+     "site": 10,
+     "line": 38,
+     "col": 20,
+     "before": "a[i]",
+     "after": "a[i - 1]",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1000000000,
+         0,
+         0,
+         1
+        ],
+        "from": 0,
+        "x": 10
+       },
+       "expected": {
+        "r": 3,
+        "a": [
+         999999970,
+         10,
+         10,
+         11
+        ]
+       },
+       "output": {
+        "r": 3,
+        "a": [
+         999999970,
+         1000000000,
+         1000000010,
+         1000000020
+        ]
+       }
+      }
+     ],
+     "id": "m02"
+    },
+    {
+     "def": "ledger::withdraw",
+     "site": 6,
+     "line": 121,
+     "col": 20,
+     "before": "a[i] - x",
+     "after": "a[i] + x",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         999999999,
+         5
+        ],
+        "from": 0,
+        "x": 10
+       },
+       "expected": {
+        "r": 1,
+        "a": [
+         999999989,
+         15
+        ]
+       },
+       "output": {
+        "r": 1,
+        "a": [
+         1000000009,
+         15
+        ]
+       }
+      },
+      {
+       "input": {
+        "a": [
+         0,
+         1000000000,
+         999999999,
+         1000000000
+        ],
+        "from": 1,
+        "x": 1000000000
+       },
+       "expected": {
+        "r": 1,
+        "a": [
+         1000000000,
+         0,
+         999999999,
+         1000000000
+        ]
+       },
+       "output": {
+        "r": 1,
+        "a": [
+         1000000000,
+         2000000000,
+         999999999,
+         1000000000
+        ]
+       }
+      }
+     ],
+     "id": "m03"
+    },
+    {
+     "def": "ledger::withdraw",
+     "site": 7,
+     "line": 121,
+     "col": 20,
+     "before": "a[i]",
+     "after": "a[i + 1]",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         10,
+         0
+        ],
+        "from": 0,
+        "x": 5
+       },
+       "expected": {
+        "r": 1,
+        "a": [
+         5,
+         5
+        ]
+       },
+       "output": {
+        "r": 1,
+        "a": [
+         -5,
+         5
+        ]
+       }
+      },
+      {
+       "input": {
+        "a": [
+         10,
+         0,
+         0
+        ],
+        "from": 0,
+        "x": 5
+       },
+       "expected": {
+        "r": 2,
+        "a": [
+         0,
+         5,
+         5
+        ]
+       },
+       "output": {
+        "r": 1,
+        "a": [
+         -5,
+         5,
+         0
+        ]
+       }
+      }
+     ],
+     "id": "m04"
+    },
+    {
+     "def": "ledger::withdraw",
+     "site": 8,
+     "line": 121,
+     "col": 20,
+     "before": "a[i]",
+     "after": "a[i - 1]",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         0,
+         10,
+         0
+        ],
+        "from": 1,
+        "x": 5
+       },
+       "expected": {
+        "r": 2,
+        "a": [
+         5,
+         0,
+         5
+        ]
+       },
+       "output": {
+        "r": 1,
+        "a": [
+         5,
+         -5,
+         0
+        ]
+       }
+      },
+      {
+       "input": {
+        "a": [
+         0,
+         1000000000,
+         999999999,
+         1000000000
+        ],
+        "from": 1,
+        "x": 1000000000
+       },
+       "expected": {
+        "r": 1,
+        "a": [
+         1000000000,
+         0,
+         999999999,
+         1000000000
+        ]
+       },
+       "output": {
+        "r": 1,
+        "a": [
+         1000000000,
+         -1000000000,
+         999999999,
+         1000000000
+        ]
+       }
+      }
+     ],
+     "id": "m05"
+    }
+   ],
+   "discarded": [
+    {
+     "def": "ledger::pay_all",
+     "site": 0,
+     "line": 59,
+     "col": 31,
+     "before": "0",
+     "after": "1",
+     "reason": "allowed"
+    },
+    {
+     "def": "ledger::pay_all",
+     "site": 1,
+     "line": 60,
+     "col": 28,
+     "before": "0",
+     "after": "1",
+     "reason": "allowed"
+    },
+    {
+     "def": "ledger::pay_all",
+     "site": 2,
+     "line": 61,
+     "col": 15,
+     "before": "k < a.len()",
+     "after": "k <= a.len()",
+     "reason": "trap_only"
+    },
+    {
+     "def": "ledger::pay_all",
+     "site": 3,
+     "line": 65,
+     "col": 13,
+     "before": "transfer(a, from, k, x)",
+     "after": "!(transfer(a, from, k, x))",
+     "reason": "allowed"
+    },
+    {
+     "def": "ledger::pay_all",
+     "site": 4,
+     "line": 66,
+     "col": 24,
+     "before": "paid + 1",
+     "after": "paid - 1",
+     "reason": "trap_only"
+    },
+    {
+     "def": "ledger::pay_all",
+     "site": 6,
+     "line": 68,
+     "col": 17,
+     "before": "k + 1",
+     "after": "k - 1",
+     "reason": "trap_only"
+    },
+    {
+     "def": "ledger::pay_all",
+     "site": 7,
+     "line": 68,
+     "col": 21,
+     "before": "k + 1",
+     "after": "k + 2",
+     "reason": "allowed"
+    },
+    {
+     "def": "ledger::deposit",
+     "site": 0,
+     "line": 37,
+     "col": 9,
+     "before": "a[i] <= 1000000000 - x",
+     "after": "!(a[i] <= 1000000000 - x)",
+     "reason": "allowed"
+    },
+    {
+     "def": "ledger::deposit",
+     "site": 1,
+     "line": 37,
+     "col": 12,
+     "before": "a[i] <= 1000000000 - x",
+     "after": "a[i] < 1000000000 - x",
+     "reason": "allowed"
+    },
+    {
+     "def": "ledger::deposit",
+     "site": 2,
+     "line": 37,
+     "col": 12,
+     "before": "a[i]",
+     "after": "a[i + 1]",
+     "reason": "trap_only"
+    },
+    {
+     "def": "ledger::deposit",
+     "site": 3,
+     "line": 37,
+     "col": 12,
+     "before": "a[i]",
+     "after": "a[i - 1]",
+     "reason": "trap_only"
+    },
+    {
+     "def": "ledger::deposit",
+     "site": 4,
+     "line": 37,
+     "col": 20,
+     "before": "1000000000 - x",
+     "after": "1000000000 + x",
+     "reason": "equivalent"
+    },
+    {
+     "def": "ledger::deposit",
+     "site": 5,
+     "line": 37,
+     "col": 20,
+     "before": "1000000000 - x",
+     "after": "1000000001 - x",
+     "reason": "equivalent"
+    },
+    {
+     "def": "ledger::deposit",
+     "site": 6,
+     "line": 38,
+     "col": 13,
+     "before": "a[i]",
+     "after": "a[i + 1]",
+     "reason": "allowed"
+    },
+    {
+     "def": "ledger::deposit",
+     "site": 7,
+     "line": 38,
+     "col": 13,
+     "before": "a[i]",
+     "after": "a[i - 1]",
+     "reason": "allowed"
+    },
+    {
+     "def": "ledger::deposit",
+     "site": 9,
+     "line": 38,
+     "col": 20,
+     "before": "a[i]",
+     "after": "a[i + 1]",
+     "reason": "allowed"
+    },
+    {
+     "def": "ledger::deposit",
+     "site": 11,
+     "line": 39,
+     "col": 13,
+     "before": "true",
+     "after": "false",
+     "reason": "allowed"
+    },
+    {
+     "def": "ledger::deposit",
+     "site": 12,
+     "line": 41,
+     "col": 13,
+     "before": "false",
+     "after": "true",
+     "reason": "equivalent"
+    },
+    {
+     "def": "ledger::transfer",
+     "site": 0,
+     "line": 105,
+     "col": 28,
+     "before": "false",
+     "after": "true",
+     "reason": "allowed"
+    },
+    {
+     "def": "ledger::transfer",
+     "site": 1,
+     "line": 106,
+     "col": 9,
+     "before": "i != j && a[i] >= x && a[j] <= 1000000000 - x",
+     "after": "!(i != j && a[i] >= x && a[j] <= 1000000000 - x)",
+     "reason": "allowed"
+    },
+    {
+     "def": "ledger::transfer",
+     "site": 2,
+     "line": 106,
+     "col": 12,
+     "before": "i != j && a[i] >= x && a[j] <= 1000000000 - x",
+     "after": "i != j && a[i] >= x || a[j] <= 1000000000 - x",
+     "reason": "allowed"
+    },
+    {
+     "def": "ledger::transfer",
+     "site": 3,
+     "line": 106,
+     "col": 12,
+     "before": "i != j && a[i] >= x",
+     "after": "i != j || a[i] >= x",
+     "reason": "allowed"
+    },
+    {
+     "def": "ledger::transfer",
+     "site": 4,
+     "line": 106,
+     "col": 12,
+     "before": "i != j",
+     "after": "i == j",
+     "reason": "allowed"
+    },
+    {
+     "def": "ledger::transfer",
+     "site": 5,
+     "line": 106,
+     "col": 22,
+     "before": "a[i] >= x",
+     "after": "a[i] > x",
+     "reason": "allowed"
+    },
+    {
+     "def": "ledger::transfer",
+     "site": 6,
+     "line": 106,
+     "col": 22,
+     "before": "a[i]",
+     "after": "a[i + 1]",
+     "reason": "allowed"
+    },
+    {
+     "def": "ledger::transfer",
+     "site": 7,
+     "line": 106,
+     "col": 22,
+     "before": "a[i]",
+     "after": "a[i - 1]",
+     "reason": "allowed"
+    },
+    {
+     "def": "ledger::transfer",
+     "site": 8,
+     "line": 106,
+     "col": 35,
+     "before": "a[j] <= 1000000000 - x",
+     "after": "a[j] < 1000000000 - x",
+     "reason": "allowed"
+    },
+    {
+     "def": "ledger::transfer",
+     "site": 9,
+     "line": 106,
+     "col": 35,
+     "before": "a[j]",
+     "after": "a[j + 1]",
+     "reason": "trap_only"
+    },
+    {
+     "def": "ledger::transfer",
+     "site": 10,
+     "line": 106,
+     "col": 35,
+     "before": "a[j]",
+     "after": "a[j - 1]",
+     "reason": "allowed"
+    },
+    {
+     "def": "ledger::transfer",
+     "site": 11,
+     "line": 106,
+     "col": 43,
+     "before": "1000000000 - x",
+     "after": "1000000000 + x",
+     "reason": "allowed"
+    },
+    {
+     "def": "ledger::transfer",
+     "site": 12,
+     "line": 106,
+     "col": 43,
+     "before": "1000000000 - x",
+     "after": "1000000001 - x",
+     "reason": "allowed"
+    },
+    {
+     "def": "ledger::transfer",
+     "site": 13,
+     "line": 109,
+     "col": 18,
+     "before": "w && d",
+     "after": "w || d",
+     "reason": "equivalent"
+    },
+    {
+     "def": "ledger::withdraw",
+     "site": 0,
+     "line": 120,
+     "col": 9,
+     "before": "a[i] >= x",
+     "after": "!(a[i] >= x)",
+     "reason": "allowed"
+    },
+    {
+     "def": "ledger::withdraw",
+     "site": 1,
+     "line": 120,
+     "col": 12,
+     "before": "a[i] >= x",
+     "after": "a[i] > x",
+     "reason": "allowed"
+    },
+    {
+     "def": "ledger::withdraw",
+     "site": 2,
+     "line": 120,
+     "col": 12,
+     "before": "a[i]",
+     "after": "a[i + 1]",
+     "reason": "allowed"
+    },
+    {
+     "def": "ledger::withdraw",
+     "site": 3,
+     "line": 120,
+     "col": 12,
+     "before": "a[i]",
+     "after": "a[i - 1]",
+     "reason": "allowed"
+    },
+    {
+     "def": "ledger::withdraw",
+     "site": 4,
+     "line": 121,
+     "col": 13,
+     "before": "a[i]",
+     "after": "a[i + 1]",
+     "reason": "allowed"
+    },
+    {
+     "def": "ledger::withdraw",
+     "site": 5,
+     "line": 121,
+     "col": 13,
+     "before": "a[i]",
+     "after": "a[i - 1]",
+     "reason": "allowed"
+    },
+    {
+     "def": "ledger::withdraw",
+     "site": 9,
+     "line": 122,
+     "col": 13,
+     "before": "true",
+     "after": "false",
+     "reason": "allowed"
+    },
+    {
+     "def": "ledger::withdraw",
+     "site": 10,
+     "line": 124,
+     "col": 13,
+     "before": "false",
+     "after": "true",
+     "reason": "equivalent"
+    }
+   ]
+  }
+ ]
+}

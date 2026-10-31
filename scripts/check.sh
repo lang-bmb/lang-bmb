@@ -27,7 +27,7 @@ if [ -z "${BMB_GATE_POWER_RUN:-}" ]; then
   step "power"; python3 scripts/gate_power.py check > /dev/null
 fi
 
-step "test, bench m1, bench m1b, bench hname, bench edit, bench view, bench lean, bench impossible, bench bvb, bench m3, bench bnb, bench bcb, bench brb, bench run_models, health (concurrent)"
+step "test, bench m1, bench m1b, bench hname, bench edit (write, diff, ast), bench view, bench lean, bench impossible, bench bvb, bench m3, bench bnb, bench bcb, bench brb, bench run_models, health (concurrent)"
 # Bench sessions are independent (ADR-0025, backlog 2A-04): m1b and bvb run two at a time per agent.
 # The original-Verus side of bvb (2A-09) needs the Verus toolchain: here only its harness logic
 # runs (stub verifier); the real oracle/weak runs are the `bvb-verus` CI job.
@@ -57,7 +57,16 @@ grep -qE "\| [0-9]+/[0-9]+ \(" <<< "$row" && ! grep -qE "\| ([0-9]+)/\1 \(" <<< 
 python3 bench/m1/harness.py --set bench/m1b-write run --agent oracle --expect all-pass --jobs 2 > /dev/null
 python3 bench/m1/harness.py --set bench/m1b-write run --agent weak --expect weak-fail --jobs 2 > /dev/null
 python3 bench/m1/harness.py --set bench/bvb-write run --agent oracle --expect all-pass --jobs 2 > /dev/null
-python3 bench/m1/harness.py --set bench/bvb-write run --agent weak --expect weak-fail --jobs 2 > /dev/null' \
+python3 bench/m1/harness.py --set bench/bvb-write run --agent weak --expect weak-fail --jobs 2 > /dev/null
+python3 bench/edit/test_gen.py' \
+  --job 'bench edit diff (file diff surface, ADR-0073)=for s in m1b-diff bvb-diff; do
+  python3 bench/m1/harness.py --set bench/$s run --agent oracle --expect all-pass --jobs 2 > /dev/null
+  python3 bench/m1/harness.py --set bench/$s run --agent weak --expect weak-fail --jobs 2 > /dev/null
+done' \
+  --job 'bench edit ast (JSON AST surface, ADR-0073)=for s in m1b-ast bvb-ast; do
+  python3 bench/m1/harness.py --set bench/$s run --agent oracle --expect all-pass --jobs 2 > /dev/null
+  python3 bench/m1/harness.py --set bench/$s run --agent weak --expect weak-fail --jobs 2 > /dev/null
+done' \
   --job "bench view (compact sets, not frozen)=python3 bench/view/test_gen.py" \
   --job "bench lean (fixed context sets, 2D-28)=python3 bench/lean/test_gen.py" \
   --job 'bench hname=python3 bench/hname/gen.py --check > /dev/null

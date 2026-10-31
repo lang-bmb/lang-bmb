@@ -1,0 +1,14 @@
+{
+  "id": "n12-io",
+  "kind": "navigate",
+  "prompt": "Which definitions have the `io` effect? Use the `answer` tool with the full paths (unit::name) of all such definitions.",
+  "truth": {
+    "query": [
+      "status"
+    ],
+    "effects": [
+      "io"
+    ],
+    "field": "path"
+  }
+}

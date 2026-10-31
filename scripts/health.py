@@ -247,7 +247,8 @@ def practicality():
         # Generated copies of m1b and BVB (bench/hname/gen.py T1-04, bench/edit/gen.py T1-06,
         # bench/lean/gen.py 2D-28) are not code anyone wrote.
         if rel[:2] in (("bench", "m1b-alpha"), ("bench", "m1b-mislead"), ("bench", "m1b-write"),
-                       ("bench", "bvb-write"), ("bench", "m1b-write-lean"), ("bench", "bvb-write-lean")):
+                       ("bench", "bvb-write"), ("bench", "m1b-write-lean"), ("bench", "bvb-write-lean"),
+                       ("bench", "m1b-diff"), ("bench", "bvb-diff"), ("bench", "m1b-ast"), ("bench", "bvb-ast")):
             continue
         bmb_lines += len(p.read_text().splitlines())
     return {"P1_runnable_programs": len(runnable), "P2_bmb_lines": bmb_lines}

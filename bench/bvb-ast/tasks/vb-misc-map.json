@@ -1,0 +1,58 @@
+{
+  "id": "vb-misc-map",
+  "kind": "write",
+  "prompt": "Create unit `tasks` for this task.\n\nImplement `myfun2`: every element of `x` is at most 2147483643. Add 4 to every element of `x` in place. The contract must state that the length is unchanged and every element equals its value on entry plus 4.\n\nRequired signature (in unit `tasks`):\nfn myfun2(x: &mut [i64]) -> ()",
+  "unit": "tasks",
+  "def": "tasks::myfun2",
+  "signature": "fn myfun2(x: &mut [i64]) -> ()",
+  "accept": {
+    "specs": "spec fn ref_pre(x: &[i64]) -> bool { forall|k: usize| k < x.len() ==> #[trigger] x[k] <= 2147483643 }\nspec fn ref_post(old_x: &[i64], x: &[i64]) -> bool { x.len() == old_x.len() && (forall|k: usize| k < x.len() ==> #[trigger] x[k] == old_x[k] + 4) }",
+    "pre": "ref_pre(x)",
+    "post": "ref_post(old(x), x)",
+    "args": "x"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn small(x: &[i64]) -> bool { forall|k: usize| k < x.len() ==> #[trigger] x[k] <= 2147483643 }\n\nspec fn added_upto(old_x: &[i64], x: &[i64], n: usize) -> bool { x.len() == old_x.len() && (forall|k: usize| k < x.len() ==> ((k < n ==> #[trigger] x[k] == old_x[k] + 4) && (n <= k ==> x[k] == old_x[k]))) }\n\nspec fn added(old_x: &[i64], x: &[i64]) -> bool { x.len() == old_x.len() && (forall|k: usize| k < x.len() ==> #[trigger] x[k] == old_x[k] + 4) }\n\n#[effects(pure)]\n#[uses(small, added_upto, added)]\nfn myfun2(x: &mut [i64]) -> ()\n    requires small(x),\n    ensures added(old(x), x),\n{\n    let mut i: usize = 0;\n    while i < x.len()\n        invariant i <= x.len(), small(old(x)), added_upto(old(x), x, i),\n        decreases x.len() - i,\n    {\n        x[i] = x[i] + 4;\n        i = i + 1;\n    }\n}"
+    }
+  ],
+  "weak_reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn small(x: &[i64]) -> bool { forall|k: usize| k < x.len() ==> #[trigger] x[k] <= 2147483643 }\n\nspec fn added_upto(old_x: &[i64], x: &[i64], n: usize) -> bool { x.len() == old_x.len() && (forall|k: usize| k < x.len() ==> ((k < n ==> #[trigger] x[k] == old_x[k] + 4) && (n <= k ==> x[k] == old_x[k]))) }\n\nspec fn grew(old_x: &[i64], x: &[i64]) -> bool { x.len() == old_x.len() && (forall|k: usize| k < x.len() ==> #[trigger] x[k] > old_x[k]) }\n\n#[effects(pure)]\n#[uses(small, added_upto, grew)]\nfn myfun2(x: &mut [i64]) -> ()\n    requires small(x),\n    ensures grew(old(x), x),\n{\n    let mut i: usize = 0;\n    while i < x.len()\n        invariant i <= x.len(), small(old(x)), added_upto(old(x), x, i),\n        decreases x.len() - i,\n    {\n        x[i] = x[i] + 4;\n        i = i + 1;\n    }\n}"
+    }
+  ],
+  "source": {
+    "benchmark": "Verus-Bench",
+    "origin": "Misc",
+    "path": "benchmarks/Verus-Bench/Misc/verified/map.rs",
+    "rules": [
+      "T1",
+      "T2"
+    ]
+  },
+  "verus": {
+    "prompt": "Implement `myfun2`: every element of `x` is at most 2147483643. Add 4 to every element of `x` in place. The contract must state that the length is unchanged and every element equals its value on entry plus 4.\n\nRequired signature:\nfn myfun2(x: &mut Vec<i32>)",
+    "signature": "fn myfun2(x: &mut Vec<i32>)",
+    "target": "myfun2",
+    "specs": "",
+    "pre": "forall |k:int| 0 <= k < old(x).len() ==> old(x)[k] <= 0x7FFF_FFFB",
+    "post": "final(x)@.len() == old(x)@.len(),\nforall |k:int| 0 <= k < final(x).len() ==> #[trigger] final(x)@[k] == old(x)@[k] + 4",
+    "args": "x",
+    "reference": "use vstd::prelude::*;\nfn main() {}\nverus!{\npub fn myfun2(x: &mut Vec<i32>) \nrequires \n    forall |k:int| 0 <= k < old(x).len() ==> old(x)[k] <= 0x7FFF_FFFB,\nensures\n    final(x)@.len() == old(x)@.len(),\n    forall |k:int| 0 <= k < final(x).len() ==> #[trigger] final(x)@[k] == old(x)@[k] + 4,\n{\n    let mut i: usize = 0;\n    let xlen: usize = x.len();\n    while (i < xlen) \n        invariant \n            xlen == x.len(),  // always specify the length of vectors used in the loop\n            forall |k:int| 0 <= k < i ==> #[trigger] x[k] == old(x)[k] + 4,\n            forall |k:int| i <= k < xlen ==> x[k] == old(x)[k],\n            forall |k:int| 0 <= k < xlen ==> old(x)[k] <= 0x7FFF_FFFB,\n        decreases xlen - i,\n    { \n        x.set(i, x[i] + 4);  \n        i = i + 1;\n    }  \n}\n}",
+    "reference_origin": "upstream-migrated"
+  }
+}

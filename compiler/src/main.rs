@@ -93,14 +93,20 @@ const USAGE: &str = "usage:
   bmb apply DIR OPS.json    commit a transaction (JSON array of unit/put/remove/remove_unit/
                             rename/expect ops)
                             to workspace DIR; rejected as a whole on any structural or type error
-  bmb mcp [--write-tool] [--compact] [--tool-docs] DIR
+  bmb mcp [--write-tool] [--compact] [--tool-docs] [--file-tools] [--ast-tools] DIR
                             MCP server (stdio) for workspace DIR: query, map, verify, build, tx_*;
                             --write-tool also offers `write` (unit, definitions, removals,
                             commit and proof in one call); --compact shows results in the
                             compact agent view (surfaces as Rust-shaped text without hashes
                             or positions, verified definitions as a count); --tool-docs gives
                             tool descriptions that document the tools on their own (what
-                            each query returns, `write` as the only way to write)
+                            each query returns, `write` as the only way to write);
+                            --file-tools offers `read_file` and `edit_file` (a unified diff,
+                            committed and proved in one call); --ast-tools offers `read_ast`
+                            and `edit_ast` (a JSON Patch on the JSON syntax tree, committed and
+                            proved in one call) and gives positions as pointers into the tree
+  bmb ast <file.bmb>...     the syntax tree as one JSON document (the JSON AST edit surface's,
+                            keyed by unit; positions are not part of it)
   bmb codes [--md]          list diagnostic codes as JSONL (or the Markdown reference page)
 
 Any <file.bmb> argument may also be a workspace directory (its src/*.bmb).
@@ -721,16 +727,10 @@ fn run() -> ExitCode {
             if args.len() >= 2
                 && args[1..args.len() - 1]
                     .iter()
-                    .all(|a| a == "--write-tool" || a == "--compact" || a == "--tool-docs") =>
+                    .all(|a| bmb::mcp::FLAGS.contains(&a.as_str())) =>
         {
-            let flags = &args[1..args.len() - 1];
-            let has = |f: &str| flags.iter().any(|a| a == f);
-            match bmb::mcp::serve(
-                std::path::Path::new(&args[args.len() - 1]),
-                has("--write-tool"),
-                has("--compact"),
-                has("--tool-docs"),
-            ) {
+            let flags: Vec<&str> = args[1..args.len() - 1].iter().map(String::as_str).collect();
+            match bmb::mcp::serve(std::path::Path::new(&args[args.len() - 1]), &flags) {
                 Ok(()) => ExitCode::SUCCESS,
                 Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {
                     ExitCode::from(CLOSED_STDOUT)
@@ -738,6 +738,27 @@ fn run() -> ExitCode {
                 Err(e) => {
                     eprintln!("bmb: {e}");
                     ExitCode::from(2)
+                }
+            }
+        }
+        Some("ast") if args.len() > 1 => {
+            let files = match read_files(&args[1..]) {
+                Ok(f) => f,
+                Err(code) => return code,
+            };
+            let (program, sm, diags) = bmb::workspace::parse_files(&files);
+            if diags.has_errors() {
+                print!("{}", diags.to_jsonl(&sm));
+                return ExitCode::from(1);
+            }
+            match bmb::ast_json::export(&program) {
+                Ok(v) => {
+                    println!("{}", v.to_json());
+                    ExitCode::SUCCESS
+                }
+                Err(e) => {
+                    eprintln!("bmb: {e}");
+                    ExitCode::from(1)
                 }
             }
         }

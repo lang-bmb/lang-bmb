@@ -1,0 +1,38 @@
+{
+  "id": "w08-triangle",
+  "kind": "write",
+  "prompt": "Create unit `tasks` and implement `triangle`: return 0 + 1 + .. + n for n <= 1000000. The contract must state 2 * r == n * (n + 1). Reuse the existing library (see `query units`) where it helps.\n\nRequired signature (in unit `tasks`):\nfn triangle(n: u64) -> (r: u64)",
+  "unit": "tasks",
+  "def": "tasks::triangle",
+  "signature": "fn triangle(n: u64) -> (r: u64)",
+  "accept": {
+    "specs": "spec fn ref_pre(n: u64) -> bool { n <= 1000000 }\nspec fn ref_post(n: u64, r: u64) -> bool { 2 * r == n * (n + 1) }",
+    "pre": "ref_pre(n)",
+    "post": "ref_post(n, r)",
+    "args": "n"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "#[effects(pure)]\n#[uses(arith::modest)]\nfn triangle(n: u64) -> (r: u64)\n    requires arith::modest(n),\n    ensures arith::triangle(n, r),\n{\n    arith::sum_to(n)\n}"
+    }
+  ],
+  "weak_reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn at_least(n: u64, r: u64) -> bool { r >= n }\n\n#[effects(pure)]\n#[uses(arith::modest, at_least)]\nfn triangle(n: u64) -> (r: u64)\n    requires arith::modest(n),\n    ensures at_least(n, r),\n{\n    n\n}"
+    }
+  ]
+}

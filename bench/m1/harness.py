@@ -83,6 +83,8 @@ def set_config():
     """`set.json` of the task set, when it has one (backlog 2D-24, T1-06):
     `mcp_flags` for `bmb mcp` (e.g. `--write-tool`) and `hide_tools`, tools the
     model is not shown (still callable, so scripted agents keep their calls).
+    `script` names the edit surface the scripted agents write through
+    (`surface.py`, ADR-0073); without it they use the transaction tools.
     Frozen with the set."""
     path = os.path.join(SET, "set.json")
     if not os.path.exists(path):
@@ -251,6 +253,16 @@ def ops_to_calls(ops):
     return calls
 
 
+def write_calls(ops, workspace):
+    """A scripted write of `ops`: through the set's `script` surface when it
+    names one (backlog T1-06), else the transaction tools."""
+    surface = set_config().get("script")
+    if surface:
+        import surface as edit_surface  # noqa: E402
+        return edit_surface.calls(surface, ops, workspace, bmb_bin())
+    return ops_to_calls(ops)
+
+
 def given_calls(ops, report):
     """A scripted `given` session: the writes (or only `verify`), then a report."""
     calls = ops_to_calls(ops) if ops else [("verify", {})]
@@ -260,14 +272,14 @@ def given_calls(ops, report):
 def make_agent(kind, task, workspace):
     if kind == "oracle":
         if task["kind"] == "write":
-            return ScriptAgent(ops_to_calls(task["reference"]))
+            return ScriptAgent(write_calls(task["reference"], workspace))
         if task["kind"] == "given":
             return ScriptAgent(given_calls(task.get("reference"), task.get("reference_report")))
         return ScriptAgent([("answer", {"defs": sorted(truth(task, workspace))})])
     if kind == "weak":
         if task["kind"] == "given":
             return ScriptAgent(given_calls(task.get("weak_reference"), task.get("weak_report")))
-        return ScriptAgent(ops_to_calls(task.get("weak_reference", [])))
+        return ScriptAgent(write_calls(task.get("weak_reference", []), workspace))
     sys.path.insert(0, HERE)
     from model_api import make_model_agent  # noqa: E402
     if agent := make_model_agent(kind, open(os.path.join(SET, "prompt.md")).read(), task["prompt"]):

@@ -1,0 +1,22 @@
+{
+  "id": "w16-step-terminal",
+  "kind": "write",
+  "prompt": "In the state machine `fsm`, states 2 and 3 are terminal. Add to the postcondition of `fsm::step` that a terminal state never changes, keeping everything else.\n\nRequired signature (in unit `fsm`):\nfn step(s: i64, ev: i64) -> (r: i64)",
+  "unit": "fsm",
+  "def": "fsm::step",
+  "signature": "fn step(s: i64, ev: i64) -> (r: i64)",
+  "accept": {
+    "specs": "spec fn ref_pre(s: i64) -> bool { 0 <= s && s <= 3 }\nspec fn ref_post(s: i64, r: i64) -> bool { 0 <= r && r <= 3 && ((s == 2 || s == 3) ==> r == s) }",
+    "pre": "ref_pre(s)",
+    "post": "ref_post(s, r)",
+    "args": "s, ev"
+  },
+  "reference": [
+    {
+      "op": "put",
+      "unit": "fsm",
+      "code": "spec fn sticky(s: i64, r: i64) -> bool { (s == 2 || s == 3) ==> r == s }\n\n#[effects(pure)]\n#[uses(state_ok, sticky)]\nfn step(s: i64, ev: i64) -> (r: i64)\n    requires state_ok(s),\n    ensures state_ok(r), sticky(s, r),\n{\n    if s == 0 {\n        if ev == 1 {\n            1\n        } else {\n            0\n        }\n    } else {\n        if s == 1 {\n            if ev == 2 {\n                2\n            } else {\n                if ev < 0 {\n                    3\n                } else {\n                    1\n                }\n            }\n        } else {\n            s\n        }\n    }\n}"
+    }
+  ],
+  "weak_reference": []
+}
