@@ -297,7 +297,7 @@ def same(base, sets, providers, scripts, bmb, tasks=None, head_tree=ROOT):
     """The equivalence report of `head_tree`'s harness against `base`'s."""
     base = git("rev-parse", base)
     if harness_changed("HEAD"):
-        raise SystemExit("uncommitted changes under bench/: the report must name the harness that was checked")
+        raise SystemExit("uncommitted harness changes: the report must name the harness that was checked")
     tmp = tempfile.mkdtemp(prefix="bmb-same-")
     base_tree = os.path.join(tmp, "base")
     report = {"base": base, "head": git("rev-parse", "HEAD", cwd=head_tree), "bmb_sha256": sha256_file(bmb),
@@ -332,8 +332,10 @@ def same(base, sets, providers, scripts, bmb, tasks=None, head_tree=ROOT):
 
 SET_DIRS = {"m1": "bench/m1", "m1b": "bench/m1b", "bvb": "bench/bvb", "bvb-verus": "bench/bvb",
             "brb-bmb": "bench/brb", "brb-rust": "bench/brb"}
-# What may differ between the checked harness and the one that runs.
-NOT_HARNESS = [":(exclude)bench/conditions", ":(exclude,glob)bench/**/results/**"]
+# The code and frozen inputs of a run: the four harness directories (with
+# their sets) and the orchestrator. Results, reports and tests may differ.
+HARNESS_PATHS = ["bench/m1", "bench/m1b", "bench/bvb", "bench/brb", "bench/run_models.py",
+                 ":(exclude,glob)bench/**/results/**", ":(exclude,glob)bench/**/test_*.py"]
 
 
 # Files a MANIFEST freezes that are instrument code, not task inputs: the
@@ -356,9 +358,9 @@ def manifests(commit, set_name):
 
 
 def harness_changed(commit):
-    """Whether anything under bench/ but results and reports differs between
+    """Whether the harnesses, their sets or the orchestrator differ between
     `commit` and the working tree (uncommitted changes included)."""
-    r = subprocess.run(["git", "diff", "--quiet", commit, "--", "bench", *NOT_HARNESS], cwd=ROOT)
+    r = subprocess.run(["git", "diff", "--quiet", commit, "--", *HARNESS_PATHS], cwd=ROOT)
     return r.returncode != 0
 
 
