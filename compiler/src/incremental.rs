@@ -540,7 +540,11 @@ fn node_spans(f: &FnDef) -> Vec<Span> {
                 expr(value, out);
                 out.push(*count_span);
             }
-            ExprKind::Forall { binders, body } => {
+            ExprKind::Quant {
+                q: _,
+                binders,
+                body,
+            } => {
                 for b in binders {
                     out.push(b.name.span);
                     ty(&b.ty, out);

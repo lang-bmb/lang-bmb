@@ -729,8 +729,8 @@ impl Ex<'_> {
                 k("old");
                 kv.push(("expr", self.under("expr", |x| x.expr(e))?));
             }
-            ExprKind::Forall { binders, body } => {
-                k("forall");
+            ExprKind::Quant { q, binders, body } => {
+                k(q.keyword());
                 kv.push(("binders", self.list("binders", binders, Ex::param)?));
                 kv.push(("body", self.under("body", |e| e.expr(body))?));
             }
@@ -1752,9 +1752,16 @@ impl Im {
                     _ => ExprKind::Try(e),
                 }
             }
-            "forall" => {
-                let o = fields(self, "a `forall`", &["binders", "body"])?;
-                ExprKind::Forall {
+            "forall" | "exists" => {
+                let q = if k == "forall" {
+                    Quantifier::Forall
+                } else {
+                    Quantifier::Exists
+                };
+                let what = format!("an `{k}`");
+                let o = fields(self, &what, &["binders", "body"])?;
+                ExprKind::Quant {
+                    q,
                     binders: self.list(&o, "binders", Im::param)?,
                     body: self.sub(&o, "body")?,
                 }
@@ -1846,7 +1853,7 @@ impl Im {
             }
             other => {
                 return self.fail(&format!(
-                    "unknown expression kind `{other}` (int, float, byte, bytes, bool, unit, var, call, method, index, unary, binary, ref, if, block, array, repeat, old, forall, trigger, struct, path, deref, field, match, return, try, loop, break, continue)"
+                    "unknown expression kind `{other}` (int, float, byte, bytes, bool, unit, var, call, method, index, unary, binary, ref, if, block, array, repeat, old, forall, exists, trigger, struct, path, deref, field, match, return, try, loop, break, continue)"
                 ));
             }
         };

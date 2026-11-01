@@ -1804,7 +1804,7 @@ impl<'p> Gen<'p> {
                     len: n.to_string(),
                 }
             }
-            ExprKind::Old(_) | ExprKind::Forall { .. } | ExprKind::Trigger(_) | ExprKind::Error => {
+            ExprKind::Old(_) | ExprKind::Quant { .. } | ExprKind::Trigger(_) | ExprKind::Error => {
                 unreachable!("specification construct in executable code")
             }
             // Fields are evaluated and copied in the written order.

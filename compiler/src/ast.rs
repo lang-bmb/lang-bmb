@@ -565,7 +565,9 @@ pub enum ExprKind {
         count_span: Span,
     },
     Old(Box<Expr>),
-    Forall {
+    /// `forall|x: T| e` or `exists|x: T| e` (specifications only, ADR-0079).
+    Quant {
+        q: Quantifier,
         binders: Vec<Param>,
         body: Box<Expr>,
     },
@@ -615,6 +617,23 @@ pub enum ExprKind {
         label: Option<Ident>,
     },
     Error,
+}
+
+/// The quantifier of an `ExprKind::Quant` (ADR-0079).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Quantifier {
+    Forall,
+    Exists,
+}
+
+impl Quantifier {
+    /// Its keyword, as written.
+    pub fn keyword(self) -> &'static str {
+        match self {
+            Quantifier::Forall => "forall",
+            Quantifier::Exists => "exists",
+        }
+    }
 }
 
 /// One `match` arm (ADR-0026: one per variant, in declaration order).

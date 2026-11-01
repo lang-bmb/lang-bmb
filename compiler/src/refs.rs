@@ -254,7 +254,11 @@ impl Walker<'_> {
             ExprKind::Block(b) => self.block(b),
             ExprKind::Array(xs) => xs.iter_mut().for_each(|x| self.expr(x)),
             ExprKind::Repeat { value, .. } => self.expr(value),
-            ExprKind::Forall { binders, body } => {
+            ExprKind::Quant {
+                q: _,
+                binders,
+                body,
+            } => {
                 binders.iter_mut().for_each(|b| self.ty(&mut b.ty));
                 self.expr(body);
             }

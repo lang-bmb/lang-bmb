@@ -67,6 +67,7 @@ const RESERVED: &[&str] = &[
     "decreases",
     "invariant",
     "forall",
+    "exists",
     "old",
     "assert",
     "return",
@@ -2650,7 +2651,8 @@ impl<'a> Parser<'a> {
                         span: lo.to(hi),
                     })
                 }
-                "forall" => self.parse_forall(),
+                "forall" => self.parse_quant(Quantifier::Forall),
+                "exists" => self.parse_quant(Quantifier::Exists),
                 "match" => self.parse_match(),
                 "self" => {
                     let span = self.bump().span;
@@ -2912,7 +2914,8 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_forall(&mut self) -> PResult<Expr> {
+    /// `forall|x: T, ..| e` and `exists|x: T, ..| e` (ADR-0079).
+    fn parse_quant(&mut self, q: Quantifier) -> PResult<Expr> {
         let lo = self.bump().span;
         self.expect_p("|")?;
         let mut binders = Vec::new();
@@ -2929,7 +2932,8 @@ impl<'a> Parser<'a> {
         let body = self.parse_expr()?;
         let span = lo.to(body.span);
         Ok(Expr {
-            kind: ExprKind::Forall {
+            kind: ExprKind::Quant {
+                q,
                 binders,
                 body: Box::new(body),
             },

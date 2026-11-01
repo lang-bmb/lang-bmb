@@ -238,7 +238,7 @@ fn each_expr<'e>(e: &'e Expr, f: &mut dyn FnMut(&'e Expr)) {
         | ExprKind::Trigger(x)
         | ExprKind::Repeat { value: x, .. }
         | ExprKind::Field { base: x, .. }
-        | ExprKind::Forall { body: x, .. } => sub(x),
+        | ExprKind::Quant { body: x, .. } => sub(x),
         ExprKind::If { cond, then, els } => {
             sub(cond);
             each_block_expr(then, f);
@@ -3302,7 +3302,10 @@ impl<'p, 'q> Enc<'p, 'q> {
                 };
                 old.get(&id.name).cloned().expect("old of unknown variable")
             }
-            ExprKind::Forall { binders, body } => {
+            ExprKind::Quant { q, binders, body } => {
+                // `exists` binds like `forall`: the same sorts, range facts
+                // and triggers (ADR-0079). A recursive call under either is
+                // checked for every value of the bound variables.
                 let mut env2 = env.clone();
                 let mut decl = Vec::new();
                 let mut facts = Vec::new();
@@ -3327,10 +3330,10 @@ impl<'p, 'q> Enc<'p, 'q> {
                 let bt = self.spec(body, &env2, old).s();
                 let pats = self.triggers.pop().unwrap();
                 self.foralls.pop();
-                let inner = if facts.is_empty() {
-                    bt
-                } else {
-                    format!("(=> {} {bt})", and(&facts))
+                let inner = match (q, facts.is_empty()) {
+                    (_, true) => bt,
+                    (Quantifier::Forall, false) => format!("(=> {} {bt})", and(&facts)),
+                    (Quantifier::Exists, false) => format!("(and {} {bt})", and(&facts)),
                 };
                 // One multi-pattern per choice of an alternative from each
                 // trigger (a struct trigger offers each of its leaves).
@@ -3353,7 +3356,8 @@ impl<'p, 'q> Enc<'p, 'q> {
                     .map(|c| format!(":pattern ({})", c.join(" ")))
                     .collect();
                 Val::S(format!(
-                    "(forall ({}) (! {inner} {}))",
+                    "({} ({}) (! {inner} {}))",
+                    q.keyword(),
                     decl.join(" "),
                     patterns.join(" ")
                 ))
@@ -3982,7 +3986,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                 }
             }
             ExprKind::Ref { expr, .. } => self.eval(expr),
-            ExprKind::Old(_) | ExprKind::Forall { .. } | ExprKind::Trigger(_) | ExprKind::Error => {
+            ExprKind::Old(_) | ExprKind::Quant { .. } | ExprKind::Trigger(_) | ExprKind::Error => {
                 panic!("specification construct in executable code")
             }
             // Fields are evaluated as written; the value is in declaration order.
@@ -5752,7 +5756,7 @@ fn find_let_expr(e: &Expr, name: &str, out: &mut Option<TypeKind>) {
         | ExprKind::Trigger(x) => find_let_expr(x, name, out),
         ExprKind::Repeat { value, .. } => find_let_expr(value, name, out),
         ExprKind::Array(items) => items.iter().for_each(|a| find_let_expr(a, name, out)),
-        ExprKind::Forall { body, .. } => find_let_expr(body, name, out),
+        ExprKind::Quant { body, .. } => find_let_expr(body, name, out),
         ExprKind::Field { base, .. } | ExprKind::Deref(base) | ExprKind::Try(base) => {
             find_let_expr(base, name, out)
         }

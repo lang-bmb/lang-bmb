@@ -1,0 +1,11 @@
+#[summary("`exists`는 `forall`과 같은 규칙을 따른다(ADR-0079)")]
+mod exists_rules {
+    spec fn untriggered(a: &[i64]) -> bool { exists|i: usize| i < a.len() && a[i] == 0 }
+
+    spec fn not_integer(a: &[i64]) -> bool { exists|b: bool| #[trigger] a[0] == 0 && b }
+
+    spec fn unmentioned(a: &[i64]) -> bool { exists|i: usize, j: usize| #[trigger] a[i] == 0 && j < i }
+
+    #[effects(pure)]
+    fn in_code(a: &[i64]) -> bool { exists|i: usize| #[trigger] a[i] == 0 }
+}

@@ -775,7 +775,7 @@ fn walk_expr(e: &mut Expr, parent: Option<Span>, f: &mut dyn FnMut(&mut Expr, Op
         ExprKind::Continue { .. } => {}
         ExprKind::Path(_)
         | ExprKind::Old(_)
-        | ExprKind::Forall { .. }
+        | ExprKind::Quant { .. }
         | ExprKind::Trigger(_)
         | ExprKind::Int(..)
         | ExprKind::ByteLit(_)
@@ -929,7 +929,7 @@ fn children(e: &Expr) -> Vec<&Expr> {
         | ExprKind::Trigger(x)
         | ExprKind::Repeat { value: x, .. }
         | ExprKind::Field { base: x, .. }
-        | ExprKind::Forall { body: x, .. } => vec![x],
+        | ExprKind::Quant { body: x, .. } => vec![x],
         ExprKind::If { cond, then, els } => {
             let mut v = vec![&**cond];
             v.extend(block_exprs(then));
@@ -1011,9 +1011,9 @@ fn block_exprs(b: &Block) -> Vec<&Expr> {
     v
 }
 
-/// Every `forall` in `e`, nested ones included.
+/// Every quantifier (`forall`, `exists`) in `e`, nested ones included.
 fn foralls<'e>(e: &'e Expr, out: &mut Vec<&'e Expr>) {
-    if matches!(e.kind, ExprKind::Forall { .. }) {
+    if matches!(e.kind, ExprKind::Quant { .. }) {
         out.push(e);
     }
     for c in children(e) {
@@ -1026,7 +1026,7 @@ fn foralls<'e>(e: &'e Expr, out: &mut Vec<&'e Expr>) {
 /// the trigger terms themselves.
 fn body_terms<'e>(e: &'e Expr, in_trigger: bool, out: &mut Vec<&'e Expr>) {
     match &e.kind {
-        ExprKind::Forall { .. } => {}
+        ExprKind::Quant { .. } => {}
         ExprKind::Trigger(x) => {
             if in_trigger {
                 out.push(x);
@@ -1071,7 +1071,7 @@ fn term_key(e: &Expr, text: &str) -> Option<(String, String)> {
     }
 }
 
-/// W0906 for every `forall` of `f` (contracts, body, invariants, `assert`).
+/// W0906 for every quantifier of `f` (contracts, body, invariants, `assert`).
 fn self_matching(f: &FnDef, text: &str) -> Vec<Diag> {
     let mut roots: Vec<&Expr> = f.requires.iter().chain(&f.ensures).collect();
     roots.extend(&f.decreases);
@@ -1082,7 +1082,12 @@ fn self_matching(f: &FnDef, text: &str) -> Vec<Diag> {
     }
     let mut out = Vec::new();
     for q in all {
-        let ExprKind::Forall { binders, body } = &q.kind else {
+        let ExprKind::Quant {
+            q: kind,
+            binders,
+            body,
+        } = &q.kind
+        else {
             continue;
         };
         let mut trig = Vec::new();
@@ -1108,8 +1113,9 @@ fn self_matching(f: &FnDef, text: &str) -> Vec<Diag> {
                     "W0906",
                     e.span,
                     format!(
-                        "`{}` matches the same pattern as this `forall`'s only trigger `{}` at other arguments: each instance yields a term the trigger matches again (a matching loop), which can run the solver to its limit",
+                        "`{}` matches the same pattern as this `{}`'s only trigger `{}` at other arguments: each instance yields a term the trigger matches again (a matching loop), which can run the solver to its limit",
                         shown(e.span),
+                        kind.keyword(),
                         shown(t.span)
                     ),
                 )

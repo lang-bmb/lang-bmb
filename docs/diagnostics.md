@@ -136,9 +136,9 @@
 | E0516 | unknown prover in `assert(..) by (..)` (the one prover is `bit_vector`) |
 | E0508 | `old(..)` is only allowed in `ensures`, loop invariants and `assert` on a `&mut` parameter |
 | E0509 | `#[uses(..)]` entry is not a spec function |
-| E0510 | `#[trigger]` is only allowed inside `forall` |
-| E0511 | `forall` requires at least one `#[trigger]` |
-| E0512 | the triggers of a `forall` must together mention every bound variable |
+| E0510 | `#[trigger]` is only allowed inside `forall` or `exists` |
+| E0511 | `forall` and `exists` require at least one `#[trigger]` |
+| E0512 | the triggers of a `forall` or `exists` must together mention every bound variable |
 
 ## E06xx 효과·속성
 
@@ -192,7 +192,7 @@
 | W0903 | postcondition is not used by any caller's proof |
 | W0904 | the specification does not distinguish this change to the body (the mutant still verifies) |
 | W0905 | a point of a verified function is unreachable in its proof: what follows is proved vacuously |
-| W0906 | a `forall`'s only trigger matches a term of its own body: instances feed each other (matching loop) |
+| W0906 | a quantifier's only trigger matches a term of its own body: instances feed each other (matching loop) |
 | W0907 | a counting `while` whose canonical form is a range `for` (the fix rewrites it; `bmb fix` applies it) |
 | W0908 | the contract is weaker than in the old version: a stronger `requires`, a weaker `ensures` or `pure` become `io` (`bmb weaken`, with the counterexample) |
 

@@ -225,7 +225,7 @@ fn prec(e: &Expr) -> u8 {
         // Always parenthesized when nested (ADR-0019 §1).
         ExprKind::If { .. }
         | ExprKind::Block(_)
-        | ExprKind::Forall { .. }
+        | ExprKind::Quant { .. }
         | ExprKind::Match { .. }
         | ExprKind::Loop { .. }
         | ExprKind::Return(_)
@@ -1193,7 +1193,7 @@ impl<'a> Printer<'a> {
             }
             ExprKind::Repeat { value, count, .. } => format!("[{}; {count}]", self.expr(value, 0)),
             ExprKind::Old(x) => format!("old({})", self.expr(x, 0)),
-            ExprKind::Forall { binders, body } => {
+            ExprKind::Quant { q, binders, body } => {
                 let bs: Vec<String> = binders
                     .iter()
                     .map(|b| {
@@ -1201,7 +1201,7 @@ impl<'a> Printer<'a> {
                         format!("{n}: {}", self.ty(&b.ty))
                     })
                     .collect();
-                format!("forall|{}| {}", bs.join(", "), self.expr(body, 0))
+                format!("{}|{}| {}", q.keyword(), bs.join(", "), self.expr(body, 0))
             }
             ExprKind::Trigger(x) => format!("#[trigger] {}", self.expr(x, PREFIX)),
             ExprKind::StructLit { path, fields, rest } => {

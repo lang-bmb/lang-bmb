@@ -5806,19 +5806,37 @@ impl<'a> Checker<'a> {
                     }
                 }
             }
-            ExprKind::Forall { binders, body } => {
+            ExprKind::Quant { q, binders, body } => {
+                // `forall` and `exists` follow the same rules (ADR-0079).
+                let kw = q.keyword();
                 if mode == Mode::Exec {
-                    self.err(
-                        "E0503",
-                        e.span,
-                        "`forall` is only allowed in specifications",
+                    self.diags.push(
+                        Diag::new(
+                            "E0503",
+                            e.span,
+                            format!("`{kw}` is only allowed in specifications"),
+                        )
+                        .fix(
+                            "state it in a `spec fn` used by a contract, or compute it in code with a loop",
+                            None,
+                        ),
                     );
                     return TypeKind::Error;
                 }
                 cx.scopes.push(BTreeMap::new());
                 for b in binders {
                     if !is_int(&b.ty.kind) && b.ty.kind != TypeKind::Error {
-                        self.err("E0402", b.ty.span, "`forall` binders must be integers");
+                        self.diags.push(
+                            Diag::new(
+                                "E0402",
+                                b.ty.span,
+                                format!("`{kw}` binders must be integers"),
+                            )
+                            .fix(
+                                "bind an integer index (e.g. `i: usize`) and reach the value through it",
+                                None,
+                            ),
+                        );
                     }
                     self.declare(cx, &b.name, b.ty.kind.clone(), false, false);
                 }
@@ -5826,20 +5844,32 @@ impl<'a> Checker<'a> {
                 collect_triggers(body, &mut triggers);
                 if triggers.is_empty() {
                     self.diags.push(
-                        Diag::new("E0511", e.span, "`forall` has no `#[trigger]`").fix(
+                        Diag::new("E0511", e.span, format!("`{kw}` has no `#[trigger]`")).fix(
                             "mark a term that mentions every bound variable, e.g. `#[trigger] a[i]`",
                             None,
                         ),
                     );
                 }
-                // All triggers of one `forall` form a single multi-pattern.
+                // All triggers of one quantifier form a single multi-pattern.
                 if !triggers.is_empty() {
                     for b in binders {
                         if !triggers.iter().any(|t| mentions_strict(t, &b.name.name)) {
-                            self.err(
-                                "E0512",
-                                b.name.span,
-                                format!("no trigger mentions bound variable `{}`", b.name.name),
+                            self.diags.push(
+                                Diag::new(
+                                    "E0512",
+                                    b.name.span,
+                                    format!(
+                                        "no trigger mentions bound variable `{}`",
+                                        b.name.name
+                                    ),
+                                )
+                                .fix(
+                                    format!(
+                                        "mark a term that mentions `{}` with `#[trigger]` as well (the triggers form one pattern)",
+                                        b.name.name
+                                    ),
+                                    None,
+                                ),
                             );
                         }
                     }
@@ -5861,7 +5891,7 @@ impl<'a> Checker<'a> {
                 } else if cx.forall_depth == 0 {
                     self.diags.push(
                         Diag::new("E0510", e.span, "`#[trigger]` outside `forall`").fix(
-                            "remove `#[trigger]`, or move the term into a `forall` body",
+                            "remove `#[trigger]`, or move the term into a `forall` or `exists` body",
                             None,
                         ),
                     );
@@ -6308,7 +6338,7 @@ impl<'a> Checker<'a> {
             }
             ExprKind::Index { .. } => Some("an element".to_string()),
             ExprKind::Field { .. } => Some("a field".to_string()),
-            ExprKind::Forall { .. } => Some("a quantifier".to_string()),
+            ExprKind::Quant { .. } => Some("a quantifier".to_string()),
             ExprKind::Old(_) => Some("an entry value (`old`)".to_string()),
             ExprKind::Deref(_) => Some("a value behind a reference".to_string()),
             _ if !scalar => Some(format!("a value of type `{}`", ty_str(&ty))),
@@ -8275,7 +8305,7 @@ fn mentions(e: &Expr, name: &str) -> bool {
         // Blocks and conditionals as call arguments are rare; be conservative.
         ExprKind::If { .. }
         | ExprKind::Block(_)
-        | ExprKind::Forall { .. }
+        | ExprKind::Quant { .. }
         | ExprKind::Match { .. } => true,
         ExprKind::Int(..)
         | ExprKind::ByteLit(_)
@@ -8288,14 +8318,14 @@ fn mentions(e: &Expr, name: &str) -> bool {
     }
 }
 
-/// `#[trigger]` terms of a `forall` body, not descending into nested `forall`s.
+/// `#[trigger]` terms of a quantifier body, not descending into nested quantifiers.
 fn collect_triggers<'e>(e: &'e Expr, out: &mut Vec<&'e Expr>) {
     match &e.kind {
         ExprKind::Trigger(inner) => {
             out.push(inner);
             collect_triggers(inner, out);
         }
-        ExprKind::Forall { .. } => {}
+        ExprKind::Quant { .. } => {}
         ExprKind::Call { args, .. } | ExprKind::Array(args) => {
             args.iter().for_each(|a| collect_triggers(a, out))
         }
@@ -8401,7 +8431,7 @@ fn mentions_strict(e: &Expr, name: &str) -> bool {
                 || els.as_ref().is_some_and(|x| mentions_strict(x, name))
         }
         ExprKind::Block(b) => block_mentions(b, name),
-        ExprKind::Forall { body, .. } => mentions_strict(body, name),
+        ExprKind::Quant { body, .. } => mentions_strict(body, name),
         ExprKind::Call { args, .. } | ExprKind::Array(args) => {
             args.iter().any(|a| mentions_strict(a, name))
         }

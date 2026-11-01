@@ -220,7 +220,7 @@ fn calls_in_expr<'e>(
         ExprKind::Block(b) => calls_in_block(b, spec, out),
         ExprKind::Array(xs) => xs.iter().for_each(|x| calls_in_expr(x, spec, out)),
         ExprKind::Repeat { value, .. } => calls_in_expr(value, spec, out),
-        ExprKind::Forall { body, .. } => calls_in_expr(body, true, out),
+        ExprKind::Quant { body, .. } => calls_in_expr(body, true, out),
         ExprKind::Field { base, .. } | ExprKind::Deref(base) | ExprKind::Try(base) => {
             calls_in_expr(base, spec, out)
         }
@@ -483,7 +483,7 @@ fn exprs_of(f: &FnDef) -> Vec<&Expr> {
             | ExprKind::Try(x)
             | ExprKind::Field { base: x, .. }
             | ExprKind::Repeat { value: x, .. }
-            | ExprKind::Forall { body: x, .. } => expr(x, out),
+            | ExprKind::Quant { body: x, .. } => expr(x, out),
             ExprKind::Binary(_, l, r) => {
                 expr(l, out);
                 expr(r, out);

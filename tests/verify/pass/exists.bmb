@@ -1,0 +1,56 @@
+#[summary("명세의 `exists`: 계약·루프 불변식·사전조건에서 `forall`과 같은 트리거 규칙으로 증명된다(백로그 T0-25, ADR-0079)")]
+mod exists_specs {
+    #[effects(pure)]
+    #[uses(found, has, none_below)]
+    fn contains(a: &[i64], k: i64) -> (r: bool)
+        ensures found(a, k, r),
+    {
+        let mut i: usize = 0;
+        while i < a.len()
+            invariant none_below(a, k, i),
+            decreases a.len() - i,
+        {
+            if a[i] == k {
+                return true;
+            }
+            i = i + 1;
+        }
+        false
+    }
+
+    #[effects(pure)]
+    #[uses(odd_at, odd_from)]
+    fn first_odd(v: &[u64]) -> (r: usize)
+        requires odd_from(v, 0),
+        ensures odd_at(v, r),
+    {
+        let mut j: usize = 0;
+        while j < v.len() && v[j] % 2 != 1
+            invariant odd_from(v, j),
+            decreases v.len() - j,
+        {
+            j = j + 1;
+        }
+        j
+    }
+
+    spec fn found(a: &[i64], k: i64, r: bool) -> bool {
+        r == has(a, k)
+    }
+
+    spec fn has(a: &[i64], k: i64) -> bool {
+        exists|i: usize| i < a.len() && #[trigger] a[i] == k
+    }
+
+    spec fn none_below(a: &[i64], k: i64, i: usize) -> bool {
+        i <= a.len() && (forall|j: usize| j < i ==> #[trigger] a[j] != k)
+    }
+
+    spec fn odd_at(v: &[u64], r: usize) -> bool {
+        r < v.len() && v[r] % 2 == 1
+    }
+
+    spec fn odd_from(v: &[u64], j: usize) -> bool {
+        j <= v.len() && (exists|q: usize| j <= q && q < v.len() && #[trigger] v[q] % 2 == 1)
+    }
+}

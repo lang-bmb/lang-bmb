@@ -816,7 +816,7 @@ impl Mv<'_> {
             }
             ExprKind::Repeat { value, .. } => self.expr(value, true),
             ExprKind::Old(x) | ExprKind::Trigger(x) => self.expr(x, false),
-            ExprKind::Forall { body, .. } => self.expr(body, false),
+            ExprKind::Quant { body, .. } => self.expr(body, false),
             ExprKind::StructLit { fields, rest, .. } => {
                 for (_, v) in fields {
                     self.expr(v, true);

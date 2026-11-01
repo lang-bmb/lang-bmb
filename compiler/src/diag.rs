@@ -283,11 +283,17 @@ pub const CODES: &[(&str, &str)] = &[
         "`old(..)` is only allowed in `ensures`, loop invariants and `assert` on a `&mut` parameter",
     ),
     ("E0509", "`#[uses(..)]` entry is not a spec function"),
-    ("E0510", "`#[trigger]` is only allowed inside `forall`"),
-    ("E0511", "`forall` requires at least one `#[trigger]`"),
+    (
+        "E0510",
+        "`#[trigger]` is only allowed inside `forall` or `exists`",
+    ),
+    (
+        "E0511",
+        "`forall` and `exists` require at least one `#[trigger]`",
+    ),
     (
         "E0512",
-        "the triggers of a `forall` must together mention every bound variable",
+        "the triggers of a `forall` or `exists` must together mention every bound variable",
     ),
     // E06xx: effects and attributes
     ("E0601", "function requires an `#[effects(..)]` attribute"),
@@ -364,7 +370,7 @@ pub const CODES: &[(&str, &str)] = &[
     ),
     (
         "W0906",
-        "a `forall`'s only trigger matches a term of its own body: instances feed each other (matching loop)",
+        "a quantifier's only trigger matches a term of its own body: instances feed each other (matching loop)",
     ),
     (
         "W0907",
