@@ -71,8 +71,29 @@ const SUMMARIES: &[&str] = &[
     "}",
 ];
 const DEFS: &[&str] = &[
-    "a::f", "a::g", "a::p", "b::f", "b::h", "c::m", "a::s::f", "b::t::k", "a::nope", "", "a", "f",
-    "a::fn", "../f",
+    "a::f",
+    "a::g",
+    "a::p",
+    "b::f",
+    "b::h",
+    "c::m",
+    "a::s::f",
+    "b::t::k",
+    "a::nope",
+    "",
+    "a",
+    "f",
+    "a::fn",
+    "../f",
+    // Item addresses (ADR-0074 §3), and ones `remove` refuses.
+    "a::P",
+    "a::P::get",
+    "a::Val",
+    "<a::P as a::Val>",
+    "<a::P as a::Val>::val",
+    "a::Val::val",
+    "<a::P as",
+    "<>",
 ];
 
 /// Definitions to `put`: valid ones (that check alone or once their callees
@@ -81,7 +102,7 @@ fn code(rng: &mut Rng) -> String {
     let n = pick(rng, &["f", "g", "h", "k", "m"]);
     let callee = pick(rng, &["a::f", "b::f", "a::s::f", "f", "g", "b::t::k"]);
     let lit = rng.below(100);
-    match rng.below(16) {
+    match rng.below(22) {
         0..=3 => format!("#[effects(pure)]\nfn {n}(x: i64) -> i64 {{ x.wrapping_add({lit}) }}"),
         4 => format!("#[effects(pure)]\nfn {n}(x: i64) -> i64 {{ {callee}(x) }}"),
         5 => format!(
@@ -100,6 +121,29 @@ fn code(rng: &mut Rng) -> String {
         14 => format!(
             "#[effects(pure)]\nfn {n}(x: i64) -> i64 {{ x }}\n\n#[effects(pure)]\nfn {n}(x: i64) -> i64 {{ x }}"
         ),
+        // Items besides functions (ADR-0074): a type, its `impl`
+        // functions, a trait and a trait impl, alone and together; a `use`
+        // (E0214) and an empty block.
+        16 => format!(
+            "struct P {{ v: i64 }}\n\nimpl P {{\n    #[effects(pure)]\n    fn get(self: &P) -> i64 {{ self.v.wrapping_add({lit}) }}\n}}"
+        ),
+        17 => "trait Val {\n    #[effects(pure)]\n    fn val(self: &Self) -> i64;\n}".to_string(),
+        18 => format!(
+            "impl Val for P {{\n    #[effects(pure)]\n    fn val(self: &P) -> i64 {{ self.v.wrapping_sub({lit}) }}\n}}"
+        ),
+        19 => {
+            format!("impl P {{\n    #[effects(pure)]\n    fn {n}(self: &P) -> i64 {{ self.v }}\n}}")
+        }
+        20 => pick(
+            rng,
+            &[
+                "use a::f;",
+                "impl P { }",
+                "enum P { A, B }",
+                "struct P { v: bool }",
+            ],
+        )
+        .to_string(),
         _ => {
             let bytes = b"{}()[];:,<>=!&|*+-/%#\"\\\n x0fnmod";
             (0..rng.below(30))

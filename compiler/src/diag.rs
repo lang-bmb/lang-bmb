@@ -251,6 +251,10 @@ pub const CODES: &[(&str, &str)] = &[
         "E0433",
         "a value is used whole after one of its fields was moved",
     ),
+    (
+        "E0434",
+        "struct literal fields must be given in declaration order (the order of evaluation)",
+    ),
     // E05xx: specifications
     (
         "E0501",

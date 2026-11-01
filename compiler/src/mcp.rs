@@ -44,6 +44,10 @@ pub struct Server {
     /// The JSON AST edit surface: `read_ast` and `edit_ast`, and positions
     /// as pointers into the tree (`--ast-tools`, backlog T1-06, ADR-0073).
     ast_tools: bool,
+    /// Descriptions of `tx_put`, `tx_remove` and `write` that name every
+    /// item they write, not only definitions (`--item-docs`, ADR-0074 §6).
+    /// What the tools do is the same with or without it.
+    item_docs: bool,
 }
 
 /// The flags `bmb mcp` takes before the workspace directory.
@@ -53,6 +57,7 @@ pub const FLAGS: &[&str] = &[
     "--tool-docs",
     "--file-tools",
     "--ast-tools",
+    "--item-docs",
 ];
 
 fn s(x: &str) -> Value {
@@ -96,7 +101,7 @@ fn schema(props: &[(&str, &str, &str)], required: &[&str]) -> Value {
 /// only way to write (what the frozen prompts' tool section said), each
 /// `write` argument is described once (in its schema), and no design
 /// reference is left.
-fn tools(write: bool, compact: bool, docs: bool, files: bool, ast: bool) -> Value {
+fn tools(write: bool, compact: bool, docs: bool, files: bool, ast: bool, items: bool) -> Value {
     let t = |name: &str, desc: &str, input: Value| {
         obj(vec![
             ("name", s(name)),
@@ -178,23 +183,43 @@ fn tools(write: bool, compact: bool, docs: bool, files: bool, ast: bool) -> Valu
         ),
         t(
             "tx_put",
-            "In a transaction: add or replace one definition (fn or spec fn with its attributes) in UNIT.",
+            if items {
+                "In a transaction: add or replace items in UNIT. A function, type (with its attributes), trait or trait impl replaces the one at the same path; the functions of an `impl T { .. }` block are added to or replace those of T's `impl` block."
+            } else {
+                "In a transaction: add or replace one definition (fn or spec fn with its attributes) in UNIT."
+            },
             schema(
                 &[
                     ("tx", "integer", "transaction id"),
                     ("unit", "string", "unit path"),
-                    ("code", "string", "the definition"),
+                    (
+                        "code",
+                        "string",
+                        if items { "the items" } else { "the definition" },
+                    ),
                 ],
                 &["tx", "unit", "code"],
             ),
         ),
         t(
             "tx_remove",
-            "In a transaction: remove definition DEF (full path).",
+            if items {
+                "In a transaction: remove the item at PATH: `unit::f`, `unit::T` (with its `impl` block), `unit::T::f`, `unit::Trait` or `<unit::T as unit::Trait>`."
+            } else {
+                "In a transaction: remove definition DEF (full path)."
+            },
             schema(
                 &[
                     ("tx", "integer", "transaction id"),
-                    ("def", "string", "definition path"),
+                    (
+                        "def",
+                        "string",
+                        if items {
+                            "item path"
+                        } else {
+                            "definition path"
+                        },
+                    ),
                 ],
                 &["tx", "def"],
             ),
@@ -223,21 +248,30 @@ fn tools(write: bool, compact: bool, docs: bool, files: bool, ast: bool) -> Valu
     ];
     if write {
         // With `docs`, what each argument does is said once, in the schema.
-        let (what, code) = if docs {
-            (
+        let (what, code) = match (docs, items) {
+            (true, false) => (
                 "The only way to write: add, replace and remove definitions in one unit, then commit and prove the whole workspace.",
                 "one or more complete definitions (with attributes) to add or replace",
-            )
-        } else {
-            (
+            ),
+            (false, false) => (
                 "Write in one call (backlog 2D-24): when `summary` is given, create unit UNIT or replace its summary; add or replace the definitions in `code` (one or more, with attributes) in UNIT; remove the definitions in `remove` (full paths); commit; then prove the workspace.",
                 "definitions to add or replace",
-            )
+            ),
+            (true, true) => (
+                "The only way to write: add, replace and remove items (functions, types, `impl` functions, traits, trait impls) in one unit, then commit and prove the whole workspace. A function, type, trait or trait impl replaces the one at the same path; the functions of an `impl T { .. }` block are added to or replace those of T's block.",
+                "one or more complete items (with attributes) to add or replace",
+            ),
+            (false, true) => (
+                "Write in one call: when `summary` is given, create unit UNIT or replace its summary; add or replace the items in `code` (functions, types, `impl` functions, traits, trait impls, with attributes) in UNIT; remove the items in `remove`; commit; then prove the workspace. A function, type, trait or trait impl replaces the one at the same path; the functions of an `impl T { .. }` block are added to or replace those of T's block.",
+                "items to add or replace",
+            ),
         };
-        let remove = if docs {
-            "full paths of definitions to remove"
-        } else {
-            "definition paths to remove"
+        let remove = match (docs, items) {
+            (true, false) => "full paths of definitions to remove",
+            (false, false) => "definition paths to remove",
+            (_, true) => {
+                "item paths to remove: `unit::f`, `unit::T` (with its `impl` block), `unit::T::f`, `unit::Trait`, `<unit::T as unit::Trait>`"
+            }
         };
         list.insert(
             4,
@@ -383,6 +417,16 @@ impl Server {
             tool_docs: false,
             file_tools: false,
             ast_tools: false,
+            item_docs: false,
+        }
+    }
+
+    /// The same server describing every item `tx_put`, `tx_remove` and
+    /// `write` take (`--item-docs`, ADR-0074 §6).
+    pub fn item_docs(self) -> Server {
+        Server {
+            item_docs: true,
+            ..self
         }
     }
 
@@ -812,6 +856,7 @@ impl Server {
                     self.tool_docs,
                     self.file_tools,
                     self.ast_tools,
+                    self.item_docs,
                 ),
             )])),
             "tools/call" => {
@@ -866,7 +911,8 @@ fn rpc_error(id: Value, code: i64, message: &str) -> Value {
 /// `--write-tool` offers `write` too, `--compact` shows results in the
 /// compact agent view, `--tool-docs` gives the self-contained tool
 /// descriptions, `--file-tools` and `--ast-tools` offer the file diff and
-/// JSON AST edit surfaces.
+/// JSON AST edit surfaces, `--item-docs` describes every item `tx_put`,
+/// `tx_remove` and `write` take (ADR-0074 §6).
 pub fn serve(root: &Path, flags: &[&str]) -> std::io::Result<()> {
     let has = |f: &str| flags.contains(&f);
     let mut server = if has("--write-tool") {
@@ -885,6 +931,9 @@ pub fn serve(root: &Path, flags: &[&str]) -> std::io::Result<()> {
     }
     if has("--ast-tools") {
         server = server.ast_tools();
+    }
+    if has("--item-docs") {
+        server = server.item_docs();
     }
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout();

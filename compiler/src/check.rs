@@ -5142,6 +5142,47 @@ impl<'a> Checker<'a> {
             let name = path.last().unwrap().name.clone();
             self.instance(&tp, &tm, &format!("`{name} {{ .. }}`"), span)
         };
+        // The fields in declaration order (ADR-0080, backlog 2B-13): the
+        // order is the order of evaluation, so the normal form does not sort
+        // them and a literal that gives them in another order is fixed by
+        // writing them in declaration order.
+        let order: Vec<usize> = fields
+            .iter()
+            .filter_map(|(f, _)| fs.iter().position(|(n, _)| *n == f.name))
+            .collect();
+        if rest.is_none()
+            && order.len() == fields.len()
+            && given.len() == fields.len()
+            && order.windows(2).any(|w| w[0] > w[1])
+        {
+            let name = path
+                .iter()
+                .map(|i| i.name.as_str())
+                .collect::<Vec<_>>()
+                .join("::");
+            let sorted: Vec<String> = fs
+                .iter()
+                .filter_map(|(n, _)| {
+                    let (_, x) = fields.iter().find(|(f, _)| f.name == *n)?;
+                    Some(format!("{n}: {}", crate::fmt::expr_text(x)))
+                })
+                .collect();
+            let decl: Vec<&str> = fs.iter().map(|(n, _)| n.as_str()).collect();
+            self.diags.push(
+                Diag::new(
+                    "E0434",
+                    span,
+                    format!(
+                        "the fields of `{tp}` are given out of their declaration order ({})",
+                        decl.join(", ")
+                    ),
+                )
+                .fix(
+                    "give the fields in declaration order (they are evaluated in the order written)",
+                    Some(format!("{name} {{ {} }}", sorted.join(", "))),
+                ),
+            );
+        }
         let missing: Vec<&str> = fs
             .iter()
             .map(|(n, _)| n.as_str())

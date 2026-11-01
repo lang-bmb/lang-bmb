@@ -191,7 +191,7 @@ mod geo {
 
     #[effects(pure)]
     fn make(x: i64) -> Point {
-        Point { y: 0, x: x }
+        Point { x: x, y: 0 }
     }
 
     #[effects(pure)]

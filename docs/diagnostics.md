@@ -118,6 +118,7 @@
 | E0431 | `==` on a recursive type that holds a `Vec` (in a specification) |
 | E0432 | a value of a recursive struct is built in a specification |
 | E0433 | a value is used whole after one of its fields was moved |
+| E0434 | struct literal fields must be given in declaration order (the order of evaluation) |
 
 ## E05xx 명세
 

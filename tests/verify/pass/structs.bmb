@@ -52,7 +52,7 @@ mod geo {
     {
         let mut q: Point = p;
         Point::shift(&mut q, d);
-        let mut z: Point = Point { y: q.y, x: q.x };
+        let mut z: Point = Point { x: q.x, y: q.y };
         z.x = z.x + d;
         z
     }

@@ -165,59 +165,148 @@ fn segments<'p>(k: usize, what: &str, path: &'p str) -> Result<Vec<&'p str>, Str
     }
 }
 
-/// The items of `m` other than `fn` / `spec fn` definitions (what `put`
-/// cannot write), named as written, in source order.
-fn non_fn_items(m: &Mod) -> Vec<String> {
-    let fns = |fs: &[FnDef]| {
-        fs.iter()
-            .map(|f| format!("`fn {}`", f.name.name))
-            .collect::<Vec<_>>()
-            .join(", ")
-    };
-    let args = |ts: &[Type]| {
-        if ts.is_empty() {
-            String::new()
-        } else {
-            let ts: Vec<String> = ts.iter().map(fmt::type_str).collect();
-            format!("<{}>", ts.join(", "))
+/// The items of a `put`'s `code`, in source order (ADR-0074 §2: a later
+/// item at the same address replaces an earlier one).
+enum Item {
+    Fn(Box<FnDef>),
+    Type(TypeDef),
+    Impl(Impl),
+    Trait(TraitDef),
+    TraitImpl(TraitImpl),
+    Use(UseItem),
+}
+
+fn items_of(m: Mod) -> Vec<Item> {
+    let mut items: Vec<(u32, Item)> = Vec::new();
+    items.extend(
+        m.fns
+            .into_iter()
+            .map(|f| (f.span.lo, Item::Fn(Box::new(f)))),
+    );
+    items.extend(m.types.into_iter().map(|t| (t.span.lo, Item::Type(t))));
+    items.extend(m.impls.into_iter().map(|i| (i.span.lo, Item::Impl(i))));
+    items.extend(m.traits.into_iter().map(|t| (t.span.lo, Item::Trait(t))));
+    items.extend(
+        m.trait_impls
+            .into_iter()
+            .map(|i| (i.span.lo, Item::TraitImpl(i))),
+    );
+    items.extend(m.uses.into_iter().map(|u| (u.span.lo, Item::Use(u))));
+    items.sort_by_key(|(lo, _)| *lo);
+    items.into_iter().map(|(_, i)| i).collect()
+}
+
+/// Writes `item` into unit `m` (path `mp`) by the merge rules of ADR-0074
+/// §2: a function, type, trait or trait impl replaces the one at its
+/// address; the functions of `impl T { .. }` replace or join those of T's
+/// block, whose head becomes this one; a `use` joins the unit for the
+/// checker to reject (E0214). Items of another kind under the same name are
+/// added, not replaced: the checker rejects the clash (E0302).
+fn put_item(m: &mut Mod, mp: &str, item: Item) {
+    match item {
+        Item::Fn(f) => {
+            m.fns.retain(|g| g.name.name != f.name.name);
+            m.fns.push(*f);
         }
-    };
-    let mut items: Vec<(u32, String)> = Vec::new();
-    for t in &m.types {
-        let kind = match t.kind {
-            TypeDefKind::Struct(_) => "struct",
-            TypeDefKind::Enum(_) => "enum",
-        };
-        items.push((t.span.lo, format!("`{kind} {}`", t.name.name)));
+        Item::Type(t) => {
+            m.types.retain(|u| u.name.name != t.name.name);
+            m.types.push(t);
+        }
+        Item::Impl(i) => match m.impls.iter_mut().find(|b| b.ty.name == i.ty.name) {
+            Some(block) => {
+                block.generics = i.generics;
+                block.ty_args = i.ty_args;
+                for f in i.fns {
+                    block.fns.retain(|g| g.name.name != f.name.name);
+                    block.fns.push(f);
+                }
+            }
+            None => m.impls.push(i),
+        },
+        Item::Trait(t) => {
+            m.traits.retain(|u| u.name.name != t.name.name);
+            m.traits.push(t);
+        }
+        Item::TraitImpl(i) => {
+            let addr = fmt::trait_impl_address(mp, m, &i);
+            let keep: Vec<bool> = m
+                .trait_impls
+                .iter()
+                .map(|o| fmt::trait_impl_address(mp, m, o) != addr)
+                .collect();
+            let mut k = keep.into_iter();
+            m.trait_impls.retain(|_| k.next().unwrap_or(true));
+            m.trait_impls.push(i);
+        }
+        Item::Use(u) => m.uses.push(u),
     }
-    for i in &m.impls {
-        let head = format!("impl {}{}", i.ty.name, args(&i.ty_args));
-        let text = if i.fns.is_empty() {
-            format!("`{head}`")
-        } else {
-            format!("`{head}` ({})", fns(&i.fns))
-        };
-        items.push((i.span.lo, text));
+}
+
+/// Removes the trait impl at `addr` (`<unit::T as unit::Trait>`) from the
+/// unit that holds it; false when no unit does.
+fn remove_trait_impl(mods: &mut [Mod], prefix: &str, addr: &str) -> bool {
+    for m in mods.iter_mut() {
+        let mp = format!("{prefix}{}", m.name.name);
+        let keep: Vec<bool> = m
+            .trait_impls
+            .iter()
+            .map(|i| fmt::trait_impl_address(&mp, m, i) != addr)
+            .collect();
+        if keep.contains(&false) {
+            let mut k = keep.into_iter();
+            m.trait_impls.retain(|_| k.next().unwrap_or(true));
+            return true;
+        }
+        if remove_trait_impl(&mut m.mods, &format!("{mp}::"), addr) {
+            return true;
+        }
     }
-    for t in &m.traits {
-        items.push((t.span.lo, format!("`trait {}`", t.name.name)));
+    false
+}
+
+/// Removes the item at `segs` (ADR-0074 §3): a function, a type with its
+/// `impl` block, an `impl` function (and the block when it was the last), a
+/// trait with its default bodies. `Err` says why nothing was removed.
+fn remove_item(mods: &mut [Mod], def: &str, segs: &[&str]) -> Result<(), String> {
+    let (name, unit) = segs.split_last().unwrap();
+    if find_mod(mods, segs).is_some() {
+        return Err(format!(
+            "`{def}` is a unit; remove a unit with a `remove_unit` op"
+        ));
     }
-    for i in &m.trait_impls {
-        let tr: Vec<&str> = i.trait_path.iter().map(|s| s.name.as_str()).collect();
-        let head = format!("impl {} for {}", tr.join("::"), fmt::type_str(&i.self_ty));
-        let text = if i.fns.is_empty() {
-            format!("`{head}`")
-        } else {
-            format!("`{head}` ({})", fns(&i.fns))
-        };
-        items.push((i.span.lo, text));
+    if let Some(m) = find_mod(mods, unit) {
+        let before = (m.fns.len(), m.types.len(), m.traits.len());
+        m.fns.retain(|f| f.name.name != *name);
+        m.types.retain(|t| t.name.name != *name);
+        m.traits.retain(|t| t.name.name != *name);
+        let removed_type = m.types.len() < before.1;
+        if removed_type {
+            m.impls.retain(|i| i.ty.name != *name);
+        }
+        if (m.fns.len(), m.types.len(), m.traits.len()) != before {
+            return Ok(());
+        }
     }
-    for u in &m.uses {
-        let p: Vec<&str> = u.path.iter().map(|s| s.name.as_str()).collect();
-        items.push((u.span.lo, format!("`use {}`", p.join("::"))));
+    if let Some((ty, unit)) = unit.split_last()
+        && let Some(m) = find_mod(mods, unit)
+    {
+        if m.traits.iter().any(|t| t.name.name == *ty) {
+            return Err(format!(
+                "`{def}` is a method of trait `{}`; a trait is written whole: `put` the trait without it",
+                segs[..segs.len() - 1].join("::")
+            ));
+        }
+        if let Some(block) = m.impls.iter_mut().find(|i| i.ty.name == *ty)
+            && block.fns.iter().any(|f| f.name.name == *name)
+        {
+            block.fns.retain(|f| f.name.name != *name);
+            if block.fns.is_empty() {
+                m.impls.retain(|i| i.ty.name != *ty);
+            }
+            return Ok(());
+        }
     }
-    items.sort();
-    items.into_iter().map(|(_, s)| s).collect()
+    Err(format!("no definition `{def}`"))
 }
 
 /// What a commit compares: each definition's own text, other definitions
@@ -448,33 +537,27 @@ pub fn plan(files: &[(String, String)], ops: &[Op]) -> (Commit, Option<BTreeMap<
                 let before = diags.items.len();
                 let parsed = parse_into(&mut sm, &mut diags, &format!("tx/op{k}"), &wrapped);
                 let syntax_ok = diags.items.len() == before;
-                // The code must stay inside the wrapper and hold only definitions:
-                // anything else would be dropped silently.
+                // The code must stay inside the wrapper: units are made by
+                // `unit` ops.
                 if syntax_ok && (parsed.mods.len() != 1 || !parsed.mods[0].mods.is_empty()) {
                     problems.push(format!(
-                        "op {k}: `code` must contain only `fn` / `spec fn` definitions (create units with a `unit` op)"
+                        "op {k}: `code` must not contain units (create units with a `unit` op)"
                     ));
                     continue;
                 }
-                // `put` writes functions only; anything else in `code` rejects
-                // the transaction rather than being dropped (backlog T0-20).
-                if let Some(m) = parsed.mods.first().filter(|_| syntax_ok) {
-                    let others = non_fn_items(m);
-                    if !others.is_empty() {
-                        problems.push(format!(
-                            "op {k}: `put` writes only `fn` and `spec fn` definitions, and `code` holds {}{}; no transaction operation adds or edits types, `impl` blocks, traits, trait impls or `use` items",
-                            others.join(", "),
-                            if m.fns.is_empty() {
-                                ""
-                            } else {
-                                " besides its functions"
-                            },
-                        ));
-                        continue;
-                    }
+                let items: Vec<Item> = parsed.mods.into_iter().flat_map(items_of).collect();
+                // An `impl T { }` with no function writes nothing (ADR-0074 §4).
+                if let Some(Item::Impl(i)) = items
+                    .iter()
+                    .find(|i| matches!(i, Item::Impl(b) if b.fns.is_empty()))
+                {
+                    problems.push(format!(
+                        "op {k}: `impl {} {{ }}` contains no definition",
+                        i.ty.name
+                    ));
+                    continue;
                 }
-                let new_fns: Vec<FnDef> = parsed.mods.into_iter().flat_map(|m| m.fns).collect();
-                if syntax_ok && new_fns.is_empty() {
+                if syntax_ok && items.is_empty() {
                     problems.push(format!("op {k}: `code` contains no definition"));
                     continue;
                 }
@@ -484,12 +567,25 @@ pub fn plan(files: &[(String, String)], ops: &[Op]) -> (Commit, Option<BTreeMap<
                     ));
                     continue;
                 };
-                for f in new_fns {
-                    m.fns.retain(|g| g.name.name != f.name.name);
-                    m.fns.push(f);
+                // Every item at its address (ADR-0074 §1, §2), in source order.
+                for item in items {
+                    put_item(m, unit, item);
                 }
             }
             Op::Remove { def } => {
+                // A trait impl by its address `<unit::T as unit::Trait>`
+                // (ADR-0074 §3); one of its functions is refused.
+                if def.starts_with('<') {
+                    let ok = def.ends_with('>') && def.contains(" as ");
+                    if !ok {
+                        problems.push(format!(
+                            "op {k}: `{def}` is a function of a trait impl; a trait impl is written whole: `put` the impl without it"
+                        ));
+                    } else if !remove_trait_impl(&mut program.mods, "", def) {
+                        problems.push(format!("op {k}: no trait impl `{def}`"));
+                    }
+                    continue;
+                }
                 let segs = match segments(k, "definition", def) {
                     Ok(s) => s,
                     Err(e) => {
@@ -497,12 +593,8 @@ pub fn plan(files: &[(String, String)], ops: &[Op]) -> (Commit, Option<BTreeMap<
                         continue;
                     }
                 };
-                let (name, unit) = segs.split_last().unwrap();
-                match find_mod(&mut program.mods, unit) {
-                    Some(m) if m.fns.iter().any(|f| f.name.name == *name) => {
-                        m.fns.retain(|f| f.name.name != *name)
-                    }
-                    _ => problems.push(format!("op {k}: no definition `{def}`")),
+                if let Err(e) = remove_item(&mut program.mods, def, &segs) {
+                    problems.push(format!("op {k}: {e}"));
                 }
             }
             Op::RemoveUnit { path } => {

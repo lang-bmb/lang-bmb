@@ -97,7 +97,7 @@ mod shapes {
     #[effects(io)]
     #[uses(small_p, small_s, small)]
     fn main() -> () {
-        let p: Point = Point { y: 2, x: 1 };
+        let p: Point = Point { x: 1, y: 2 };
         let mut q: Point = p;
         q.x = 10;
         print_i64(p.x);

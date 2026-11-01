@@ -17,12 +17,12 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 39733,
+    "S4_stage0_rust_lines": 39927,
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
     "P1_runnable_programs": 58,
-    "P2_bmb_lines": 21805,
-    "P3_errors_with_help": 0.8778,
+    "P2_bmb_lines": 21824,
+    "P3_errors_with_help": 0.8782,
     "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 13
@@ -1559,6 +1559,24 @@
         "P3_errors_with_help": [
           0.8722,
           0.8778
+        ]
+      }
+    },
+    {
+      "date": "2026-11-01",
+      "reason": "T0-23 (ADR-0074: transactions write every item) and 2B-13 (ADR-0080: struct literal fields in declaration order, E0434 with a fix): new corpus lines (P2) and an error that carries its fix (P3)",
+      "changed": {
+        "S4_stage0_rust_lines": [
+          39733,
+          39927
+        ],
+        "P2_bmb_lines": [
+          21805,
+          21824
+        ],
+        "P3_errors_with_help": [
+          0.8778,
+          0.8782
         ]
       }
     }

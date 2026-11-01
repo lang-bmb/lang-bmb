@@ -1,0 +1,19 @@
+#[summary("구조체 생성 식의 필드는 선언 순서로 쓴다(평가 순서, ADR-0080)")]
+mod field_order {
+    struct Pair { a: i64, b: i64 }
+
+    #[effects(io)]
+    fn loud(x: i64) -> i64 {
+        print_i64(x);
+        x
+    }
+
+    #[effects(pure)]
+    fn swapped() -> Pair { Pair { b: 2, a: 1 } }
+
+    #[effects(io)]
+    fn effects_in_order() -> Pair { Pair { b: loud(2), a: loud(1) } }
+
+    #[effects(pure)]
+    fn in_order() -> Pair { Pair { a: 1, b: 2 } }
+}

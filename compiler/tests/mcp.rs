@@ -290,8 +290,8 @@ fn tool_errors_over_mcp() {
             ("tx_put", format!("\"unit\":\"lib\",\"code\":{}", q(lib))),
         ],
     );
-    // `tx_put` takes functions only: an `impl` with them rejects the commit
-    // instead of being dropped (backlog T0-20).
+    // An `impl` block with no function writes nothing: the commit is
+    // rejected rather than dropping it (backlog T0-20, ADR-0074 §4).
     let (t, _) = c.tool("tx_begin", "{}");
     let id = json::parse(&t)
         .unwrap()
@@ -307,7 +307,7 @@ fn tool_errors_over_mcp() {
     assert!(!err, "{t}");
     let (t, err) = c.tool("tx_commit", &format!("{{\"tx\":{id}}}"));
     assert!(
-        err && t.contains("`code` holds `impl Q` besides its functions")
+        err && t.contains("`impl Q { }` contains no definition")
             && t.contains("\"committed\":false"),
         "{t}"
     );
@@ -671,20 +671,19 @@ fn write_tool_commits_and_proves_in_one_call() {
         "{t}"
     );
 
-    // A type or `impl` among the definitions rejects the call; it is not
-    // dropped while the functions commit (backlog T0-20).
-    let before = snapshot(&root);
+    // A type and its `impl` with the functions commit and prove in one call
+    // (ADR-0074; T0-20 rejected them, before that they were dropped).
     let mixed = "struct P { x: i64 }\n\nimpl P {\n    #[effects(pure)]\n    fn get(self: &P) -> i64 { self.x }\n}\n\n#[effects(pure)]\nfn one() -> i64 { 1 }";
     let (t, err) = c.tool(
         "write",
         &format!("{{\"unit\":\"calc\",\"code\":{}}}", q(mixed)),
     );
     assert!(
-        err && t.contains("`code` holds `struct P`, `impl P` (`fn get`) besides its functions")
-            && t.contains("\"committed\":false,\"changed\":[]"),
+        !err && t.starts_with(
+            "{\"committed\":true,\"changed\":[\"calc::P\",\"calc::P::get\",\"calc::one\"]"
+        ) && t.contains("\"def\":\"calc::P::get\",\"status\":\"verified\""),
         "{t}"
     );
-    assert_eq!(snapshot(&root), before);
 
     // A definition that does not prove is committed, and the call says why.
     let weak = "#[effects(pure)]\nfn thrice(x: i64) -> i64 {\n    x + x + x\n}";
@@ -1214,4 +1213,65 @@ fn frozen_tool_lists_keep_their_bytes() {
     }
     let want: Vec<String> = frozen.iter().map(|(_, h)| h.to_string()).collect();
     assert_eq!(got, want, "flags: {:?}", frozen.map(|(f, _)| f));
+}
+
+/// `--item-docs` (ADR-0074 §6): `tx_put`, `tx_remove` and `write` name every
+/// item they take; the other tools and every argument stay; without the
+/// flag the lists keep their frozen bytes (`frozen_tool_lists_keep_their_bytes`).
+#[test]
+fn item_docs_name_every_item() {
+    let root = temp_root("item-docs");
+    let tools = |flags: &[&str]| -> Vec<(String, String, String)> {
+        let mut c = Client::start_with(&root, flags);
+        let Value::Array(list) = c
+            .request("tools/list", "{}")
+            .get("result")
+            .unwrap()
+            .get("tools")
+            .unwrap()
+            .clone()
+        else {
+            panic!()
+        };
+        list.iter()
+            .map(|t| {
+                (
+                    t.get("name").unwrap().as_str().unwrap().to_string(),
+                    t.get("description").unwrap().as_str().unwrap().to_string(),
+                    t.get("inputSchema").unwrap().to_json(),
+                )
+            })
+            .collect()
+    };
+    for base in [&["--write-tool"][..], &["--write-tool", "--tool-docs"][..]] {
+        let items: Vec<&str> = base.iter().copied().chain(["--item-docs"]).collect();
+        let (a, b) = (tools(base), tools(&items));
+        assert_eq!(
+            a.iter().map(|x| &x.0).collect::<Vec<_>>(),
+            b.iter().map(|x| &x.0).collect::<Vec<_>>()
+        );
+        for ((name, da, sa), (_, db, sb)) in a.iter().zip(&b) {
+            let changed = ["tx_put", "tx_remove", "write"].contains(&name.as_str());
+            assert_eq!(da != db, changed, "{name}");
+            if changed {
+                assert!(
+                    db.contains("unit::Trait") || db.contains("trait impl"),
+                    "{name}: {db}"
+                );
+            }
+            let keys = |s: &str| {
+                let v = json::parse(s).unwrap();
+                let Some(Value::Object(p)) = v.get("properties") else {
+                    panic!()
+                };
+                p.iter().map(|(k, _)| k.clone()).collect::<Vec<_>>()
+            };
+            assert_eq!(keys(sa), keys(sb), "{name}");
+        }
+    }
+    let put = tools(&["--item-docs"])
+        .into_iter()
+        .find(|t| t.0 == "tx_remove")
+        .unwrap();
+    assert!(put.1.contains("`<unit::T as unit::Trait>`"), "{}", put.1);
 }

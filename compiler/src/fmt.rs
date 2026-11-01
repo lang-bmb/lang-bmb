@@ -1366,6 +1366,7 @@ pub fn qualified_hashes(p: &Program, fns: &BTreeMap<String, FnSig>) -> BTreeMap<
         })
         .collect();
     out.extend(type_hashes(p));
+    out.extend(trait_hashes(p));
     out
 }
 
@@ -1401,42 +1402,16 @@ fn type_hashes(p: &Program) -> Vec<(String, String)> {
             types(s, &format!("{mp}::"), out);
         }
         let local: BTreeSet<&str> = m.types.iter().map(|t| t.name.name.as_str()).collect();
-        // Unit-local type names written in full (the qualified normal form).
-        fn qualify(t: &Type, mp: &str, local: &BTreeSet<&str>) -> Type {
-            let q = |x: &Type| Box::new(qualify(x, mp, local));
-            let kind = match &t.kind {
-                TypeKind::Named { path, args }
-                    if path.len() == 1 && local.contains(path[0].as_str()) =>
-                {
-                    TypeKind::Named {
-                        path: vec![mp.to_string(), path[0].clone()],
-                        args: args.iter().map(|a| qualify(a, mp, local)).collect(),
-                    }
-                }
-                TypeKind::Named { path, args } => TypeKind::Named {
-                    path: path.clone(),
-                    args: args.iter().map(|a| qualify(a, mp, local)).collect(),
-                },
-                TypeKind::Array(e, n) => TypeKind::Array(q(e), *n),
-                TypeKind::Slice(e) => TypeKind::Slice(q(e)),
-                TypeKind::Ref { mutable, inner } => TypeKind::Ref {
-                    mutable: *mutable,
-                    inner: q(inner),
-                },
-                k => k.clone(),
-            };
-            Type { kind, span: t.span }
-        }
         for t in &m.types {
             let mut q = t.clone();
             match &mut q.kind {
                 TypeDefKind::Struct(fs) => fs
                     .iter_mut()
-                    .for_each(|f| f.ty = qualify(&f.ty, &mp, &local)),
+                    .for_each(|f| f.ty = qualify_type(&f.ty, &mp, &local)),
                 TypeDefKind::Enum(vs) => vs
                     .iter_mut()
                     .flat_map(|v| v.payload.iter_mut())
-                    .for_each(|ty| *ty = qualify(ty, &mp, &local)),
+                    .for_each(|ty| *ty = qualify_type(ty, &mp, &local)),
             }
             let mut pr = plain();
             pr.type_def_as(&q, 0, "_");
@@ -1446,6 +1421,81 @@ fn type_hashes(p: &Program) -> Vec<(String, String)> {
     }
     for m in &p.mods {
         types(m, "", &mut out);
+    }
+    out
+}
+
+/// `t` with the unit-local type names of unit `mp` written in full (the
+/// qualified normal form, `T` -> `mp::T`).
+pub(crate) fn qualify_type(t: &Type, mp: &str, local: &BTreeSet<&str>) -> Type {
+    let q = |x: &Type| Box::new(qualify_type(x, mp, local));
+    let kind = match &t.kind {
+        TypeKind::Named { path, args } if path.len() == 1 && local.contains(path[0].as_str()) => {
+            TypeKind::Named {
+                path: vec![mp.to_string(), path[0].clone()],
+                args: args.iter().map(|a| qualify_type(a, mp, local)).collect(),
+            }
+        }
+        TypeKind::Named { path, args } => TypeKind::Named {
+            path: path.clone(),
+            args: args.iter().map(|a| qualify_type(a, mp, local)).collect(),
+        },
+        TypeKind::Array(e, n) => TypeKind::Array(q(e), *n),
+        TypeKind::Slice(e) => TypeKind::Slice(q(e)),
+        TypeKind::Ref { mutable, inner } => TypeKind::Ref {
+            mutable: *mutable,
+            inner: q(inner),
+        },
+        k => k.clone(),
+    };
+    Type { kind, span: t.span }
+}
+
+/// The address of trait impl `i` written in unit `m` (path `mp`), as the
+/// checker names its functions without the `::f` (ADR-0074 §1,
+/// `check::TraitImplInfo::fn_path`): `<mp::T as mp::Trait>`. The trait is
+/// the unit's when one segment names a trait of `m`, otherwise as written
+/// (a full path, or a built-in `Ord`, `Eq`, `Copy`); the unit's own type
+/// names are written in full.
+pub fn trait_impl_address(mp: &str, m: &Mod, i: &TraitImpl) -> String {
+    let local: BTreeSet<&str> = m.types.iter().map(|t| t.name.name.as_str()).collect();
+    let ty = type_str(&qualify_type(&i.self_ty, mp, &local));
+    let plain = path_str(&i.trait_path);
+    let tr = if i.trait_path.len() == 1 && m.traits.iter().any(|t| t.name.name == plain) {
+        format!("{mp}::{plain}")
+    } else {
+        plain
+    };
+    format!("<{ty} as {tr}>")
+}
+
+/// Rows for each trait (`unit::Trait`, its declaration) and each trait impl
+/// head (`<unit::T as unit::Trait>`, its parameters), so a commit names
+/// every item `put` writes (ADR-0074 §5). The impl's functions have rows of
+/// their own (`defs_of`).
+fn trait_hashes(p: &Program) -> Vec<(String, String)> {
+    fn walk(m: &Mod, prefix: &str, out: &mut Vec<(String, String)>) {
+        let mp = format!("{prefix}{}", m.name.name);
+        for s in &m.mods {
+            walk(s, &format!("{mp}::"), out);
+        }
+        for t in &m.traits {
+            let mut pr = plain();
+            pr.trait_def(t, 0);
+            out.push((
+                format!("{mp}::{}", t.name.name),
+                crate::sha256::hex(pr.out.as_bytes()),
+            ));
+        }
+        for i in &m.trait_impls {
+            let addr = trait_impl_address(&mp, m, i);
+            let head = format!("impl{} {addr}", generics_str(&i.generics));
+            out.push((addr, crate::sha256::hex(head.as_bytes())));
+        }
+    }
+    let mut out = Vec::new();
+    for m in &p.mods {
+        walk(m, "", &mut out);
     }
     out
 }

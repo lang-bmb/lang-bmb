@@ -272,8 +272,8 @@ fn invalid_paths_are_rejected_and_write_nothing() {
     let _ = fs::remove_dir_all(&outer);
 }
 
-/// `put` takes definitions only: nested units, code that closes the wrapper,
-/// and code without a definition are errors, not silently dropped (1D-19).
+/// `put` takes items only: nested units, code that closes the wrapper, and
+/// code without an item are errors, not silently dropped (1D-19).
 #[test]
 fn put_rejects_units_and_empty_code() {
     let root = init("putshape");
@@ -289,7 +289,8 @@ fn put_rejects_units_and_empty_code() {
         let c = commit(&root, &[put("core", code)]).unwrap();
         assert!(!c.ok, "{code:?}");
         assert!(
-            c.diagnostics.contains("only `fn`") || c.diagnostics.contains("no definition"),
+            c.diagnostics.contains("must not contain units")
+                || c.diagnostics.contains("no definition"),
             "{code:?}: {}",
             c.diagnostics
         );
@@ -297,68 +298,203 @@ fn put_rejects_units_and_empty_code() {
     }
 }
 
-/// `put` writes functions only (backlog T0-20): a type, `impl` block,
-/// trait, trait impl or `use` item in `code` rejects the whole transaction,
-/// naming each such item in source order, whether or not functions come
-/// with it. Mixed with functions they used to be dropped while the commit
-/// reported the functions as changed.
+fn rm(def: &str) -> Op {
+    Op::Remove { def: def.into() }
+}
+
+fn unit_text(root: &Path, unit: &str) -> String {
+    snapshot(root)
+        .into_iter()
+        .find(|(k, _)| k.ends_with(&format!("{unit}.bmb")))
+        .map(|(_, t)| t)
+        .unwrap_or_default()
+}
+
+/// `impl T { .. }` merges function by function into T's block (ADR-0074
+/// §2): a new function joins it, one of the same name replaces its
+/// namesake, the others stay. The commit names the functions it wrote.
 #[test]
-fn put_rejects_items_it_cannot_write() {
-    let root = init_rich("putitems");
-    let before = snapshot(&root);
-    let three = "#[effects(pure)]\nfn three() -> i64 { 3 }";
-    let cases: [(String, &str); 4] = [
-        (
-            format!(
-                "impl Pt {{\n    #[effects(pure)]\n    fn two(self: &Pt) -> i64 {{ 2 }}\n}}\n\n{three}"
-            ),
-            "`code` holds `impl Pt` (`fn two`) besides its functions;",
-        ),
-        (
-            "struct Q { a: i64 }".into(),
-            "`code` holds `struct Q`; no transaction operation",
-        ),
-        (
-            format!(
-                "use geo::dec;\n{three}\nenum E {{ A, B }}\ntrait T {{\n    #[effects(pure)]\n    fn t(self: &Self) -> i64;\n}}\nimpl Area for E {{\n    #[effects(pure)]\n    fn area(self: &E) -> i64 {{ 0 }}\n    #[effects(pure)]\n    fn twice(self: &E) -> i64 {{ 0 }}\n}}"
-            ),
-            "`code` holds `use geo::dec`, `enum E`, `trait T`, `impl Area for E` (`fn area`, `fn twice`) besides its functions;",
-        ),
-        (
-            "struct S<T> { v: T }\nimpl<T> S<T> { }".into(),
-            "`code` holds `struct S`, `impl S<T>`;",
-        ),
-    ];
-    for (code, want) in &cases {
-        // Through a transaction, alone and with an op that would commit.
-        for ops in [
-            vec![put("geo", code)],
-            vec![put("app", three), put("geo", code)],
-        ] {
-            let c = commit(&root, &ops).unwrap();
-            assert!(!c.ok, "{code}");
-            assert!(c.changed.is_empty(), "{code}: {:?}", c.changed);
-            let op = ops.len() - 1;
-            assert!(
-                c.diagnostics.contains(&format!(
-                    "op {op}: `put` writes only `fn` and `spec fn` definitions, and {want}"
-                )),
-                "{code}: {}",
-                c.diagnostics
-            );
-            assert!(
-                c.diagnostics
-                    .contains("no transaction operation adds or edits types, `impl` blocks, traits, trait impls or `use` items"),
-                "{}",
-                c.diagnostics
-            );
-            assert_eq!(snapshot(&root), before);
-        }
-    }
-    // The functions alone still commit.
-    let c = commit(&root, &[put("geo", three)]).unwrap();
+fn put_merges_impl_functions_into_the_block() {
+    let root = init_rich("putimpl");
+    let get_x = "impl Pt {\n    #[effects(pure)]\n    fn get_x(self: &Pt) -> i64 { self.x }\n}";
+    let c = commit(&root, &[put("geo", get_x)]).unwrap();
     assert!(c.ok, "{}", c.diagnostics);
-    assert_eq!(c.changed, ["geo::three"]);
+    assert_eq!(c.changed, ["geo::Pt::get_x"]);
+    let text = unit_text(&root, "geo");
+    assert!(
+        text.contains("fn get_x(self: &Pt)") && text.contains("fn new(x: i64, y: i64)"),
+        "{text}"
+    );
+    assert_eq!(text.matches("impl Pt {").count(), 1, "{text}");
+    // Replacing `new` leaves `get_x`.
+    let new = "impl Pt {\n    #[effects(pure)]\n    fn new(x: i64, y: i64) -> Pt { Pt { x: y, y: x } }\n}";
+    let c = commit(&root, &[put("geo", new)]).unwrap();
+    assert!(c.ok, "{}", c.diagnostics);
+    assert_eq!(c.changed, ["geo::Pt::new"]);
+    assert!(unit_text(&root, "geo").contains("fn get_x(self: &Pt)"));
+    // A block with no function writes nothing (ADR-0074 §4).
+    let before = snapshot(&root);
+    let c = commit(&root, &[put("geo", "impl Pt { }")]).unwrap();
+    assert!(
+        !c.ok
+            && c.diagnostics
+                .contains("op 0: `impl Pt { }` contains no definition"),
+        "{}",
+        c.diagnostics
+    );
+    assert_eq!(snapshot(&root), before);
+}
+
+/// A type is replaced whole (ADR-0074 §1): a changed field list that breaks
+/// a construction site is rejected with the checker's diagnostic, and an
+/// added `#[invariant(p)]` shows the type as changed (§5).
+#[test]
+fn put_replaces_types_whole() {
+    let root = init_rich("puttype");
+    let before = snapshot(&root);
+    let c = commit(&root, &[put("geo", "struct Pt { x: i64, y: i64, z: i64 }")]).unwrap();
+    assert!(!c.ok, "a construction site lacks `z`");
+    assert!(c.changed.is_empty());
+    assert_eq!(snapshot(&root), before);
+    let inv = "spec fn tidy(p: &Pt) -> bool { p.x <= p.y }\n\n#[invariant(tidy)]\nstruct Pt { x: i64, y: i64 }";
+    let c = commit(&root, &[put("geo", inv)]).unwrap();
+    assert!(c.ok, "{}", c.diagnostics);
+    assert_eq!(c.changed, ["geo::Pt", "geo::tidy"]);
+    assert!(unit_text(&root, "geo").contains("#[invariant(tidy)]"));
+}
+
+/// A trait and a trait impl are written and replaced whole, the impl at its
+/// address `<unit::T as unit::Trait>` (ADR-0074 §1); a missing method is
+/// the checker's E0315.
+#[test]
+fn put_writes_traits_and_trait_impls() {
+    let root = init_rich("puttrait");
+    let code = "trait Perim {\n    #[effects(pure)]\n    fn perim(self: &Self) -> i64;\n}\n\nimpl Perim for Pt {\n    #[effects(pure)]\n    fn perim(self: &Pt) -> i64 { self.x.saturating_add(self.y) }\n}";
+    let c = commit(&root, &[put("geo", code)]).unwrap();
+    assert!(c.ok, "{}", c.diagnostics);
+    assert_eq!(
+        c.changed,
+        [
+            "<geo::Pt as geo::Perim>",
+            "<geo::Pt as geo::Perim>::perim",
+            "geo::Perim"
+        ]
+    );
+    // The same address again replaces the impl; there is still one.
+    let again = "impl Perim for Pt {\n    #[effects(pure)]\n    fn perim(self: &Pt) -> i64 { self.y.saturating_add(self.x) }\n}";
+    let c = commit(&root, &[put("geo", again)]).unwrap();
+    assert!(c.ok, "{}", c.diagnostics);
+    assert_eq!(c.changed, ["<geo::Pt as geo::Perim>::perim"]);
+    assert_eq!(
+        unit_text(&root, "geo").matches("impl Perim for Pt").count(),
+        1
+    );
+    let before = snapshot(&root);
+    let c = commit(&root, &[put("geo", "impl Perim for Pt { }")]).unwrap();
+    assert!(
+        !c.ok && c.diagnostics.contains("E0315"),
+        "{}",
+        c.diagnostics
+    );
+    assert_eq!(snapshot(&root), before);
+}
+
+/// Five kinds of item in one `code` commit together, each at its address,
+/// and the commit names them all; a `use` is the checker's E0214 (ADR-0074
+/// §4), the same as in a file.
+#[test]
+fn put_writes_every_kind_of_item_at_once() {
+    let root = init("putall");
+    let code = "struct Box2 { v: i64 }\n\nimpl Box2 {\n    #[effects(pure)]\n    fn get(self: &Box2) -> i64 { self.v }\n}\n\ntrait Val {\n    #[effects(pure)]\n    fn val(self: &Self) -> i64;\n}\n\nimpl Val for Box2 {\n    #[effects(pure)]\n    fn val(self: &Box2) -> i64 { self.v }\n}\n\n#[effects(pure)]\nfn one() -> i64 { 1 }";
+    let c = commit(&root, &[put("app", code)]).unwrap();
+    assert!(c.ok, "{}", c.diagnostics);
+    assert_eq!(
+        c.changed,
+        [
+            "<app::Box2 as app::Val>",
+            "<app::Box2 as app::Val>::val",
+            "app::Box2",
+            "app::Box2::get",
+            "app::Val",
+            "app::one"
+        ]
+    );
+    let before = snapshot(&root);
+    let c = commit(
+        &root,
+        &[put(
+            "app",
+            "use core::dec;\n#[effects(pure)]\nfn two() -> i64 { 2 }",
+        )],
+    )
+    .unwrap();
+    assert!(
+        !c.ok && c.diagnostics.contains("E0214"),
+        "{}",
+        c.diagnostics
+    );
+    assert_eq!(snapshot(&root), before);
+}
+
+/// `remove` takes the five addresses (ADR-0074 §3): a type goes with its
+/// `impl` block, the last function of a block takes the block, a trait impl
+/// goes by its address; a trait method, a trait impl function and a unit
+/// are refused with what to do instead.
+#[test]
+fn remove_takes_every_item_address() {
+    let root = init("rmall");
+    let code = "struct Box2 { v: i64 }\n\nimpl Box2 {\n    #[effects(pure)]\n    fn get(self: &Box2) -> i64 { self.v }\n\n    #[effects(pure)]\n    fn twice(self: &Box2) -> i64 { self.v.saturating_mul(2) }\n}\n\ntrait Val {\n    #[effects(pure)]\n    fn val(self: &Self) -> i64;\n}\n\nimpl Val for Box2 {\n    #[effects(pure)]\n    fn val(self: &Box2) -> i64 { self.v }\n}";
+    assert!(commit(&root, &[put("app", code)]).unwrap().ok);
+    let before = snapshot(&root);
+    for (def, want) in [
+        ("app::Val::val", "is a method of trait `app::Val`"),
+        (
+            "<app::Box2 as app::Val>::val",
+            "is a function of a trait impl",
+        ),
+        ("app", "is a unit; remove a unit with a `remove_unit` op"),
+        (
+            "<app::Box2 as app::Nope>",
+            "no trait impl `<app::Box2 as app::Nope>`",
+        ),
+        ("app::Box2::nope", "no definition `app::Box2::nope`"),
+    ] {
+        let c = commit(&root, &[rm(def)]).unwrap();
+        assert!(
+            !c.ok && c.diagnostics.contains(want),
+            "{def}: {}",
+            c.diagnostics
+        );
+        assert_eq!(snapshot(&root), before);
+    }
+    // A trait still implemented is the checker's to refuse (E0305).
+    let c = commit(&root, &[rm("app::Val")]).unwrap();
+    assert!(!c.ok, "{}", c.diagnostics);
+    // One function of the block; then the impl, the trait, the type.
+    let c = commit(&root, &[rm("app::Box2::twice")]).unwrap();
+    assert!(c.ok, "{}", c.diagnostics);
+    assert_eq!(c.removed, ["app::Box2::twice"]);
+    let c = commit(
+        &root,
+        &[
+            rm("<app::Box2 as app::Val>"),
+            rm("app::Val"),
+            rm("app::Box2"),
+        ],
+    )
+    .unwrap();
+    assert!(c.ok, "{}", c.diagnostics);
+    assert_eq!(
+        c.removed,
+        [
+            "<app::Box2 as app::Val>",
+            "<app::Box2 as app::Val>::val",
+            "app::Box2",
+            "app::Box2::get",
+            "app::Val"
+        ]
+    );
+    assert!(!unit_text(&root, "app").contains("Box2"));
 }
 
 /// No temporary files are left behind by a commit.
@@ -715,4 +851,83 @@ mod iv {
     let text: String = snapshot(&root).into_values().collect();
     assert!(text.contains("#[invariant(sorted_pair)]"), "{text}");
     assert!(!text.contains("ordered"), "{text}");
+}
+
+/// Every corpus program can be written through transactions alone (ADR-0074
+/// §7): in an empty workspace, a `unit` op per unit and a `put` per item, in
+/// one commit, give the same normal-form files as importing the program.
+/// The commit also names each trait impl at the address the checker uses
+/// for its functions (`<A>` beside every `<A>::f`).
+#[test]
+fn every_corpus_program_round_trips_through_put() {
+    let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests");
+    let mut files: Vec<PathBuf> = Vec::new();
+    for dir in ["verify/pass", "run", "check/ok"] {
+        for e in fs::read_dir(corpus.join(dir)).unwrap() {
+            let p = e.unwrap().path();
+            if p.extension().is_some_and(|x| x == "bmb") {
+                files.push(p);
+            }
+        }
+    }
+    files.sort();
+    let mut seen_impls = 0;
+    for path in files {
+        let text = fs::read_to_string(&path).unwrap();
+        let units = bmb::format_sources(&[(path.display().to_string(), text)]).unwrap();
+        let mut ops = Vec::new();
+        for (name, unit) in &units {
+            let summary = unit
+                .lines()
+                .next()
+                .and_then(|l| l.strip_prefix("#[summary(\"")?.strip_suffix("\")]"))
+                .unwrap_or_else(|| panic!("{}: {unit}", path.display()))
+                .replace("\\\"", "\"");
+            ops.push(Op::Unit {
+                path: name.clone(),
+                summary,
+            });
+            // The unit's body, split at its top-level items (normal form:
+            // items at four spaces, one blank line between them).
+            let open = unit.find("{\n").unwrap() + 2;
+            let body = &unit[open..unit.trim_end().len() - 1];
+            let mut item = String::new();
+            for line in body.lines() {
+                let top = line.starts_with("    ") && !line.starts_with("     ");
+                let starts = top && (line.starts_with("    #[") || !item.trim_end().ends_with(']'));
+                if starts && !item.trim().is_empty() && item.ends_with("\n\n") {
+                    ops.push(put(name, item.trim()));
+                    item.clear();
+                }
+                item.push_str(line);
+                item.push('\n');
+            }
+            if !item.trim().is_empty() {
+                ops.push(put(name, item.trim()));
+            }
+        }
+        let root = temp(&format!(
+            "roundtrip-{}",
+            path.file_stem().unwrap().to_string_lossy()
+        ));
+        fs::create_dir_all(root.join("src")).unwrap();
+        let c = commit(&root, &ops).unwrap();
+        assert!(c.ok, "{}: {}", path.display(), c.diagnostics);
+        let got: Vec<String> = snapshot(&root).into_values().collect();
+        let want: Vec<String> = units.values().cloned().collect();
+        assert_eq!(got, want, "{}", path.display());
+        for row in &c.changed {
+            if let Some(head) = row.strip_prefix('<').and_then(|r| r.rsplit_once(">::")) {
+                seen_impls += 1;
+                let addr = format!("<{}>", head.0);
+                assert!(
+                    c.changed.contains(&addr),
+                    "{}: {row} without {addr}",
+                    path.display()
+                );
+            }
+        }
+        let _ = fs::remove_dir_all(&root);
+    }
+    assert!(seen_impls > 0, "the corpus has trait impls");
 }

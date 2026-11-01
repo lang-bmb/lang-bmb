@@ -1,6 +1,6 @@
 //! Soundness fuzzing of the proof gate over data types (backlog 2B-09).
 //!
-//! Random functions build a struct (fields written in a random order), may
+//! Random functions build a struct (fields in declaration order, ADR-0080), may
 //! update a field, may route it through a nested array (backlog 2V-04b: a
 //! 2x2 grid of the values, one cell written, one cell read back), pick an
 //! enum variant under a random condition, `match` it and return an integer
@@ -45,10 +45,11 @@ struct DFunc {
     q: bool,
     /// `#[uses(p_inv)]`: the invariant's definition is visible.
     uses_inv: bool,
-    /// `P { a, b }` from `x`, `y`; written `b` first when `b_first`.
+    /// `P { a, b }` from `x`, `y`, in declaration order (ADR-0080: another
+    /// order is E0434, so `b` is never written first).
     pa: E,
     pb: E,
-    b_first: bool,
+    _b_first: bool,
     /// `p.a = ..` after the literal, over `x`, `y`, `p.a`, `p.b`.
     upd: Option<E>,
     /// `let mut g: [[i64; 2]; 2] = [[x, y], [p.a, p.b]]; g[w] = val;
@@ -102,7 +103,9 @@ fn gen_dfunc(rng: &mut Rng, k: usize, inv: bool) -> DFunc {
         uses_inv,
         pa: gen_e(rng, &xy, 2),
         pb: gen_e(rng, &xy, 2),
-        b_first: rng.chance(50),
+        // Drawn but unused since ADR-0080 (the fields were written `b`
+        // first on true): the draws after it stay those of earlier seeds.
+        _b_first: rng.chance(50),
         upd: rng.chance(50).then(|| gen_e(rng, &pv, 2)),
         grid: rng.chance(50).then(|| Grid {
             w: (rng.below(2), rng.below(2)),
@@ -157,11 +160,7 @@ impl DFunc {
             "    #[effects(pure)]\n    #[uses({n}_pre, {n}_post{inv})]\n    fn {n}(x: i64, y: i64{q}) -> (r: {ret})\n        requires {n}_pre(x, y),\n        ensures {n}_post(x, y, r),\n    {{"
         );
         let (a, b) = (e_text(&self.pa), e_text(&self.pb));
-        let lit = if self.b_first {
-            format!("P {{ b: {b}, a: {a} }}")
-        } else {
-            format!("P {{ a: {a}, b: {b} }}")
-        };
+        let lit = format!("P {{ a: {a}, b: {b} }}");
         let _ = writeln!(t, "        let mut p: P = {lit};");
         if let Some(u) = &self.upd {
             let _ = writeln!(t, "        p.a = {};", e_text(u));
@@ -210,13 +209,8 @@ impl DFunc {
             env.push(("q.b".into(), q.1));
         }
         // Both fields are evaluated; a fault in either stops the run.
-        let (pa, pb) = if self.b_first {
-            let pb = e_eval(&self.pb, &env)?;
-            (e_eval(&self.pa, &env)?, pb)
-        } else {
-            let pa = e_eval(&self.pa, &env)?;
-            (pa, e_eval(&self.pb, &env)?)
-        };
+        let pa = e_eval(&self.pa, &env)?;
+        let pb = e_eval(&self.pb, &env)?;
         env.push(("p.a".into(), pa));
         env.push(("p.b".into(), pb));
         if let Some(u) = &self.upd {
