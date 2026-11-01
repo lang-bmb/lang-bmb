@@ -7,6 +7,7 @@ from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from anthropic_agent import AnthropicAgent  # noqa: E402
+from model_api import CONTINUE_NOTE  # noqa: E402
 
 
 def block(**kw):
@@ -45,7 +46,8 @@ class T(unittest.TestCase):
         self.assertTrue(last["content"][1]["is_error"])
         self.assertEqual(client.requests[0]["tools"][0]["input_schema"], {"type": "object"})
         self.assertEqual(client.requests[0]["output_config"], {"effort": "high"})
-        self.assertEqual(a.usage, {"input_tokens": 20, "output_tokens": 10, "requests": 2})
+        self.assertEqual(a.usage, {"input_tokens": 20, "output_tokens": 10, "requests": 2,
+                                   "visible_output_tokens": 9})
         self.assertEqual(a.stop, "end_turn")
 
     def test_context_log_is_opt_in(self):
@@ -73,6 +75,32 @@ class T(unittest.TestCase):
         a.set_tools([])
         self.assertEqual(a.next_calls([]), [])
         self.assertEqual(a.stop, "refusal")
+
+    def test_max_tokens_is_continued_once_per_turn(self):
+        # ADR-0076: the cut text stays, the cut tool call is dropped, the note follows.
+        client = StubClient([
+            resp("max_tokens", block(type="thinking", thinking="..."), block(type="text", text="half"),
+                 block(type="tool_use", id="x", name="write", input={})),
+            resp("tool_use", block(type="tool_use", id="t1", name="verify", input={})),
+        ])
+        a = AnthropicAgent("m", "s", "t", client=client)
+        a.set_tools([])
+        self.assertEqual(a.next_calls([]), [("verify", {})])
+        msgs = client.requests[1]["messages"]
+        self.assertEqual([b.type for b in msgs[-2]["content"]], ["text"])
+        self.assertEqual(msgs[-1], {"role": "user", "content": CONTINUE_NOTE})
+
+    def test_max_tokens_with_nothing_visible_joins_the_last_user_turn(self):
+        client = StubClient([resp("max_tokens", block(type="thinking", thinking="...")),
+                             resp("max_tokens"), resp("max_tokens")])
+        a = AnthropicAgent("m", "s", "t", client=client)
+        a.set_tools([])
+        self.assertEqual(a.next_calls([]), [])
+        msgs = client.requests[1]["messages"]
+        self.assertEqual(msgs, [{"role": "user", "content": [{"type": "text", "text": "t"},
+                                                             {"type": "text", "text": CONTINUE_NOTE}]}])
+        # The continuation was cut too: the session ends with the stop reason.
+        self.assertEqual((a.stop, len(client.requests)), ("max_tokens", 2))
 
 
 if __name__ == "__main__":

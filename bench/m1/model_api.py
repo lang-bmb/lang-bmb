@@ -44,6 +44,22 @@ class StreamCut(Exception):
     pass
 
 
+# A response that reaches its output limit is continued once in the same
+# turn (ADR-0076, backlog T0-27): the cut text stays, any tool call in it is
+# dropped (its arguments may be cut), and this note follows. A second cut in
+# the same turn ends the session as before (`stop: "length"`).
+CONTINUE_NOTE = ("(harness) Your previous reply reached the output limit and was cut off; any tool call "
+                 "in it was dropped. Continue from where you stopped and make your next tool calls.")
+
+
+def visible_tokens(text, calls):
+    """The visible output of one response as ceil(bytes / 4) (ADR-0076): its
+    text and each tool call's name and arguments, reasoning excluded. The
+    same rule for every provider, whatever the API reports as reasoning."""
+    n = len(text.encode()) + sum(len(name.encode()) + len(args.encode()) for name, args in calls)
+    return -(-n // 4)
+
+
 def context_log():
     """`BMB_CONTEXT_LOG=1`: also record each request's tokens and each tool
     call's result size (backlog 2D-25), to decompose every turn's context.
@@ -205,13 +221,14 @@ class OpenAIAgent:
         self.messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": task_prompt}]
         self.tools = None
         self.pending = []
-        self.usage = {"input_tokens": 0, "output_tokens": 0, "requests": 0}
+        self.usage = {"input_tokens": 0, "output_tokens": 0, "requests": 0, "visible_output_tokens": 0}
         # Per request: stop reason, tokens and visible text, for the session
         # record (backlog INF-17). Not part of the result row.
         self.requests = []
         self.stop = None
+        self.continued = False  # this turn was already continued once (ADR-0076)
         self.settings = {"model": model, "api": "openai-chat", "max_tokens": self.MAX_TOKENS,
-                         "reasoning": "model default"}
+                         "reasoning": "model default", "length": "continue once per turn"}
 
     def set_tools(self, mcp_tools):
         self.tools = to_openai_tools(mcp_tools)
@@ -248,8 +265,22 @@ class OpenAIAgent:
         choice = r["choices"][0]
         msg = choice["message"]
         calls = msg.get("tool_calls") or []
+        visible = visible_tokens(msg.get("content") or "", [(c["function"].get("name") or "",
+                                                              c["function"].get("arguments") or "") for c in calls])
+        self.usage["visible_output_tokens"] += visible
+        reasoning = (u.get("completion_tokens_details") or {}).get("reasoning_tokens")
+        if reasoning is not None:
+            self.usage["reasoning_tokens"] = self.usage.get("reasoning_tokens", 0) + reasoning
         self.requests.append({"stop": choice.get("finish_reason"), "input_tokens": u.get("prompt_tokens", 0),
-                              "output_tokens": u.get("completion_tokens", 0), "text": msg.get("content") or ""})
+                              "output_tokens": u.get("completion_tokens", 0), "visible_output_tokens": visible,
+                              "text": msg.get("content") or ""})
+        if choice.get("finish_reason") == "length" and not self.continued:
+            # Cut at the output limit: continue once in this turn (ADR-0076).
+            self.continued = True
+            self.messages.append({"role": "assistant", "content": msg.get("content") or ""})
+            self.messages.append({"role": "user", "content": CONTINUE_NOTE})
+            return self.next_calls([])
+        self.continued = False
         self.messages.append({"role": "assistant", "content": msg.get("content") or "",
                               **({"tool_calls": calls} if calls else {})})
         if not calls:

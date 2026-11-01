@@ -57,8 +57,17 @@ m1 = _m1()
 
 MAX_TOOL_CALLS = m1.MAX_TOOL_CALLS  # 40, ADR-0021 §3
 # Model output tokens per session, the same in both arms (ADR-0034 §2 fairness).
-# Checked after every model turn; the session stops once it is reached.
+# Checked after every model turn; the session stops once it is reached. It
+# counts the visible output (text and tool calls, ceil(bytes/4)), not the
+# reasoning: with reasoning counted, a reasoning model's session measured
+# its token budget rather than the language (ADR-0076, backlog T0-16).
 SESSION_OUTPUT_TOKENS = 64000
+
+
+def session_output(usage):
+    """The output a session's limit counts (ADR-0076): the adapter's visible
+    output tokens; a scripted agent reports none."""
+    return usage.get("visible_output_tokens", 0)
 ARMS = ("bmb", "rust")
 TEMPLATE = os.path.join(HERE, "rust-template")
 
@@ -173,6 +182,9 @@ def run_session(task, arm, agent_kind, rust_target, proptest, sessions=None):
             agent.set_tools(server.tools)
         m = {"tool_calls": 0, "tool_seconds": 0.0, "checks": 0, "last_check_ok": None,
              "limit_hit": None, "tool_counts": {}}
+        if arm == "bmb":
+            # Every write's commit by its outcome (backlog T1-40).
+            m.update(commits_ok=0, commits_rejected=0)
         tx = None
         last = []
         calls = []  # every call in full, for the session record (INF-17)
@@ -195,6 +207,9 @@ def run_session(task, arm, agent_kind, rust_target, proptest, sessions=None):
                     m["tool_seconds"] += time.monotonic() - t1
                     if name == "tx_begin" and not err:
                         tx = json.loads(text)["tx"]
+                    outcome = m1.commit_outcome(name, text) if arm == "bmb" else None
+                    if outcome is not None:
+                        m["commits_ok" if outcome else "commits_rejected"] += 1
                     if name == check_tool:
                         m["checks"] += 1
                         m["last_check_ok"] = check_ok(arm, text, err)
@@ -202,7 +217,7 @@ def run_session(task, arm, agent_kind, rust_target, proptest, sessions=None):
                     last.append((name, args, text, err))
                 if m["limit_hit"]:
                     break
-                if agent.usage.get("output_tokens", 0) >= SESSION_OUTPUT_TOKENS:
+                if session_output(agent.usage) >= SESSION_OUTPUT_TOKENS:
                     m["limit_hit"] = "output_tokens"
                     break
             # The arm's own checker once more on the delivered state (backlog
@@ -600,7 +615,8 @@ def main():
         "summary": True, "task_set": "brb", "arm": args.arm, "agent": args.agent, "tasks": n,
         "proptest": proptest if args.arm == "rust" else None,
         "manifest": manifest_digest(), "commit": commit, **m1.condition_fields(),
-        "limits": {"tool_calls": MAX_TOOL_CALLS, "session_output_tokens": SESSION_OUTPUT_TOKENS},
+        "limits": {"tool_calls": MAX_TOOL_CALLS, "session_output_tokens": SESSION_OUTPUT_TOKENS,
+                   "session_output_counts": "visible (ADR-0076)"},
         "success": f"{sum(r['success'] for r in results)}/{n}",
         "defect_rate": round(sum(r["defect"] for r in results) / n, 3) if n else None,
         "total_tokens": sum(r["total_tokens"] for r in results),

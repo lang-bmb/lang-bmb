@@ -199,7 +199,7 @@ def run_session(task, arm, agent_kind, rust_target, proptest, sessions=None):
                     last.append((name, args, text, err))
                 if m["limit_hit"]:
                     break
-                if agent.usage.get("output_tokens", 0) >= SESSION_OUTPUT_TOKENS:
+                if brb.session_output(agent.usage) >= SESSION_OUTPUT_TOKENS:  # visible output (ADR-0076)
                     m["limit_hit"] = "output_tokens"
                     break
             # The arm's own checker once more on the delivered state (as in

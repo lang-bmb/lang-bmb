@@ -75,7 +75,7 @@ python3 bench/brb-encap/harness.py summarize BMB.jsonl RUST.jsonl              #
 
 ## 비교군과 공정성 규칙
 
-BRB와 같다(ADR-0021, ADR-0034 §2): 같은 어댑터·같은 모델 설정, 세션당 도구 호출 40회·모델 출력 토큰 64,000, 두 팔 모두 검사기(BMB `verify`, Rust `cargo_build`·`cargo_test`, proptest), 같은 숨은 판정, 과제당 1회. 세션 루프·Rust 샌드박스·도구 서버·최종 자기 검사는 `bench/brb/harness.py`의 것을 그대로 쓴다. 복사한 세션 루프는 같은 코드에 두 가지만 다르다: 시드를 쓰고, Rust 세션마다 미리 빌드한 대상 디렉터리의 사본을 쓴다. 모든 세션의 크레이트 이름이 `solution`이라, 대상 디렉터리를 함께 쓰는 세션이 동시에 돌면 통합 테스트(`tests/*.rs`, 시드에 있음)가 다른 세션의 라이브러리를 링크한다(재현: `--jobs 2`에서 `use solution::Ring`이 정렬 집합 크레이트를 봄). BRB 하네스의 같은 위험은 `T0-22`. 결과 행은 세션마다 쓰고(INF-16), `--sessions DIR`로 세션 기록(INF-17)을 남긴다. 세션 기록의 작업 공간은 시드와 다른 파일이다.
+BRB와 같다(ADR-0021, ADR-0034 §2): 같은 어댑터·같은 모델 설정, 세션당 도구 호출 40회·모델 출력 토큰 64,000(보이는 출력만, ADR-0076), 두 팔 모두 검사기(BMB `verify`, Rust `cargo_build`·`cargo_test`, proptest), 같은 숨은 판정, 과제당 1회. 세션 루프·Rust 샌드박스·도구 서버·최종 자기 검사는 `bench/brb/harness.py`의 것을 그대로 쓴다. 복사한 세션 루프는 같은 코드에 두 가지만 다르다: 시드를 쓰고, Rust 세션마다 미리 빌드한 대상 디렉터리의 사본을 쓴다. 모든 세션의 크레이트 이름이 `solution`이라, 대상 디렉터리를 함께 쓰는 세션이 동시에 돌면 통합 테스트(`tests/*.rs`, 시드에 있음)가 다른 세션의 라이브러리를 링크한다(재현: `--jobs 2`에서 `use solution::Ring`이 정렬 집합 크레이트를 봄). BRB 하네스의 같은 위험은 `T0-22`. 결과 행은 세션마다 쓰고(INF-16), `--sessions DIR`로 세션 기록(INF-17)을 남긴다. 세션 기록의 작업 공간은 시드와 다른 파일이다.
 
 ## CI (`scripts/check.sh`)
 

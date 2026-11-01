@@ -213,9 +213,11 @@ class StubClient:
         return self.responses.pop(0)
 
 
-def _resp(stop, out_tokens, *uses):
+def _resp(stop, out_tokens, *uses, text=""):
     from types import SimpleNamespace as NS
     content = [NS(type="tool_use", id=f"u{i}", name=n, input=a) for i, (n, a) in enumerate(uses)]
+    if text:
+        content.insert(0, NS(type="text", text=text))
     return NS(stop_reason=stop, content=content, usage=NS(input_tokens=100, output_tokens=out_tokens))
 
 
@@ -246,11 +248,23 @@ class ModelAdapter(unittest.TestCase):
         self.assertEqual((r["total_tokens"], r["limit_hit"]), (260, None))
 
     def test_output_token_cap(self):
+        # The cap counts visible output (ADR-0076): text and tool calls.
         r = self._session([
-            _resp("tool_use", harness.SESSION_OUTPUT_TOKENS, ("list_files", {})),
+            _resp("tool_use", 10, ("list_files", {}), text="x" * (4 * harness.SESSION_OUTPUT_TOKENS)),
             _resp("tool_use", 10, ("list_files", {})),
         ])
         self.assertEqual((r["limit_hit"], r["tool_calls"], r["delivered"]), ("output_tokens", 1, False))
+
+    def test_reasoning_does_not_count_toward_the_cap(self):
+        # A response whose output is all reasoning (API output tokens at the
+        # cap, nothing visible) does not end the session (ADR-0076).
+        t = next(t for t in TASKS if t.ID == "t01-clamp")
+        r = self._session([
+            _resp("tool_use", harness.SESSION_OUTPUT_TOKENS, ("list_files", {})),
+            _resp("tool_use", 50, ("write_file", {"path": "src/lib.rs", "content": t.RUST_REF}), ("cargo_test", {})),
+            _resp("end_turn", 10),
+        ])
+        self.assertEqual((r["limit_hit"], r["tool_calls"], r["success"]), (None, 3, True))
 
 
 class Checker(unittest.TestCase):

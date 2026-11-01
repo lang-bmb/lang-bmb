@@ -49,7 +49,9 @@ class OpenAI(unittest.TestCase):
         self.assertEqual(tail[0]["role"], "assistant")
         self.assertNotIn("reasoning_content", tail[0])  # reasoning is not sent back
         self.assertEqual([(m["tool_call_id"], m["content"]) for m in tail[1:]], [("c1", "rows"), ("c2", "error: bad")])
-        self.assertEqual(a.usage, {"input_tokens": 20, "output_tokens": 10, "requests": 2})
+        # Visible output (ADR-0076): ceil(bytes/4) of text and tool calls, reasoning excluded.
+        self.assertEqual(a.usage, {"input_tokens": 20, "output_tokens": 10, "requests": 2,
+                                   "visible_output_tokens": 9})
         self.assertEqual(a.stop, "stop")
 
     def test_context_log_is_opt_in(self):
@@ -73,11 +75,29 @@ class OpenAI(unittest.TestCase):
         self.assertEqual(post.requests[1]["messages"][-1]["content"], "error: not run: tool call limit reached")
         self.assertNotIn("tools", post.requests[0])
 
-    def test_length_without_calls_stops(self):
-        a = OpenAIAgent("m", "s", "t", post=StubPost([resp("length")]), base="http://x")
+    def test_length_is_continued_once_per_turn(self):
+        # ADR-0076: a cut response is continued once in the same turn; its cut
+        # tool call is dropped and the note follows its text.
+        post = StubPost([resp("length", "half a plan", calls=[("x", "write", '{"code": "fn f(')]),
+                         resp("tool_calls", calls=[("c1", "verify", "{}")]),
+                         resp("length", "again"), resp("length", "and again")])
+        a = OpenAIAgent("m", "s", "t", post=post, base="http://x")
         a.set_tools([])
-        self.assertEqual(a.next_calls([]), [])
-        self.assertEqual(a.stop, "length")
+        self.assertEqual(a.next_calls([]), [("verify", {})])
+        cont = post.requests[1]["messages"]
+        self.assertEqual(cont[-2], {"role": "assistant", "content": "half a plan"})
+        self.assertEqual(cont[-1], {"role": "user", "content": model_api.CONTINUE_NOTE})
+        # The next turn may be continued again; a second cut in it ends the session.
+        self.assertEqual(a.next_calls([("verify", {}, "ok", False)]), [])
+        self.assertEqual((a.stop, len(post.requests), a.usage["requests"]), ("length", 4, 4))
+
+    def test_reasoning_tokens_are_recorded_apart(self):
+        r = resp("stop", "done")
+        r["usage"]["completion_tokens_details"] = {"reasoning_tokens": 4}
+        a = OpenAIAgent("m", "s", "t", post=StubPost([r]), base="http://x")
+        a.next_calls([])
+        self.assertEqual((a.usage["output_tokens"], a.usage["reasoning_tokens"], a.usage["visible_output_tokens"]),
+                         (5, 4, 1))
 
 
 class ApiErrors(unittest.TestCase):
