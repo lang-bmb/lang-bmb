@@ -1171,3 +1171,47 @@ fn tool_docs_document_the_tools_on_their_own() {
     }
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// The tool list every frozen set's server shows is byte-for-byte the one it
+/// was frozen with (ADR-0074 §6, backlog T0-23): the hashes were taken before
+/// `put` and `remove` learned types, `impl` blocks and traits, whose new
+/// descriptions appear only with `--item-docs`. A change here changes what
+/// the model sees in those sets (ADR-0070): make it a new flag instead.
+#[test]
+fn frozen_tool_lists_keep_their_bytes() {
+    let root = temp_root("frozen-tool-lists");
+    let frozen: [(&[&str], &str); 5] = [
+        (
+            &[],
+            "sha256:4a29da37758a220ee71556a98fe60b4c55599d52a7aad71dfd4172cbe5c7465b",
+        ),
+        (
+            &["--write-tool"],
+            "sha256:ea8a6d8b238c6dc448a35ad8e457f5e3bd45680cc6c5a62c5d59ccaac08885ff",
+        ),
+        (
+            &["--write-tool", "--tool-docs"],
+            "sha256:97a613f47d86414cf2da6ef408f3ae54a1336e3acb1e9cd86de213c2e33fb2af",
+        ),
+        (
+            &["--file-tools"],
+            "sha256:83f82cf0f107a01abd63428efce8d945038199610fa639e4d5ad271a863e1f17",
+        ),
+        (
+            &["--ast-tools"],
+            "sha256:fbce265402f4cf4db5aee88eb679e76cee7cd3b893d3d80bf6756160c11dfd2b",
+        ),
+    ];
+    let mut got = Vec::new();
+    for (flags, _) in &frozen {
+        let mut c = Client::start_with(&root, flags);
+        let list = c
+            .request("tools/list", "{}")
+            .get("result")
+            .unwrap()
+            .to_json();
+        got.push(bmb::sha256::hex(list.as_bytes()));
+    }
+    let want: Vec<String> = frozen.iter().map(|(_, h)| h.to_string()).collect();
+    assert_eq!(got, want, "flags: {:?}", frozen.map(|(f, _)| f));
+}
