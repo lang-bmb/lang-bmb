@@ -123,5 +123,6 @@ BMB v2의 설계 결정을 한 건에 파일 하나로 남긴다. 현재 확정�
 | [0075](0075-specialized-instances-under-quantifiers.md) | 기저 인스턴스 재시도는 한정 기호 아래 비재귀 적용에 특수화 인스턴스를 더하고, 반례의 완전성은 적용 단위로(ADR-0023 보완) | 채택 | T0-24 |
 | [0076](0076-visible-output-limit-and-length-continuation.md) | 세션 출력 한도는 보이는 출력(텍스트·도구 호출, ceil(bytes/4))만 세고, 출력 한도에서 끊긴 응답은 같은 차례에서 한 번 이어 쓴다(ADR-0066 §3·0070 보완, 새 측정 조건) | 채택 | T0-16, T0-27 |
 | [0077](0077-repeated-runs-and-target-rule.md) | 반복 측정(qwen의 m1·m1b 5회, `run_models.py --repeat`)과 목표값 판정(실행 수준 95% t 구간, Wilson 하한, 충족·미충족·미정), 단일 실행 비교의 최소 차이(ADR-0066 §5의 선언된 예외) | 채택 | T0-12 |
+| [0078](0078-supplementary-hypotheses.md) | 보완 가설 여섯의 등록(H-EFFECT, H-INTENT, H-REVIEW, H-SMALL, H-REPAIR, H-COMPAT)과 판정 기준 동결, 나머지 열넷은 등록하지 않음(사유) | 채택 | T1-42 |
 
 채택 계획(2026-10-24 승인): 0026은 2B 착수 때, 0028은 2C 착수 때 채택한다. 0029·0030·0031은 2단계 측정(2H) 뒤로 미룬다. "제안" ADR의 진단 코드 번호는 잠정이다. 제안끼리 겹치는 번호가 있으며(예: E0212·E0412), 채택 후 구현할 때 `compiler/src/diag.rs`에서 확정한다.
