@@ -29,6 +29,17 @@ class Guard(unittest.TestCase):
                 run_models.main(argv)
             self.assertNotEqual(cm.exception.code, 0, argv)
 
+    def test_repeats_are_declared_for_qwen_on_m1_and_m1b(self):
+        # ADR-0077: five repeats, qwen only, m1 and m1b only; never in a dry run.
+        self.assertIsNone(run_models.repeat_problem(1, "openai:qwen3.8-27b", ["m1", "m1b"]))
+        self.assertIsNone(run_models.repeat_problem(5, "openai:qwen3.8-27b", ["m1b"]))
+        self.assertIn("1..5", run_models.repeat_problem(6, "openai:qwen3.8-27b", ["m1"]))
+        self.assertIn("once", run_models.repeat_problem(1, "anthropic:claude-sonnet-5-5", ["m1"]))
+        self.assertIn("not bvb", run_models.repeat_problem(1, "openai:qwen3.8-27b", ["m1", "bvb"]))
+        with self.assertRaises(SystemExit) as e:
+            run_models.main(["--dry-run", "--repeat", "1", "--sets", "m1"])
+        self.assertIn("real runs", str(e.exception))
+
     def test_same_as_needs_a_build_and_a_report(self):
         saved = run_models.condition.provenance, run_models.condition.find_report
         try:

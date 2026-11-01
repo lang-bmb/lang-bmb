@@ -83,7 +83,12 @@ def condition_fields():
     """`BMB_CONDITION` (set by `run_models.py --same-as`, ADR-0070): the run's
     claim to an earlier commit's condition, kept in the header and summary."""
     c = os.environ.get("BMB_CONDITION")
-    return {"condition": json.loads(c)} if c else {}
+    out = {"condition": json.loads(c)} if c else {}
+    # `BMB_REPEAT` (set by `run_models.py --repeat K`, ADR-0077): which of the
+    # declared repeated runs of the same (set, model, commit) this is.
+    if r := os.environ.get("BMB_REPEAT"):
+        out["repeat"] = int(r)
+    return out
 
 
 def bmb_bin():

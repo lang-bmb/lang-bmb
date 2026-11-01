@@ -45,6 +45,13 @@ time in a real run too: sessions are independent and judged by deterministic
 solver limits, and the model's time is the gateway's. The BRB arms stay at one:
 their judges run programs under wall-clock timeouts.
 
+Repeated runs (ADR-0077, backlog T0-12). `--repeat K` makes this the K-th of
+the declared repeated runs of the same (set, model, commit): qwen
+(`openai:qwen3.8-27b`) on m1 and m1b only, K from 1 to `REPEATS`. Each is a
+whole set run once more, one session per task, nothing chosen between runs; its
+file is named with `-repeatK` and its header records `repeat`. All repeats are
+committed and reported together (`bench/repeat.py`).
+
 The same condition on a later commit (ADR-0070). `--same-as COMMIT` runs with
 `bmb` built from COMMIT's compiler (`bench/condition.py build COMMIT`) and only
 for sets a committed report (`bench/condition.py same --base COMMIT`) shows to
@@ -202,6 +209,23 @@ def preflight_real(sets):
     return problems
 
 
+# ADR-0077: repeated runs, the model and sets they are declared for.
+REPEATS = 5
+REPEAT_AGENT = "openai:qwen3.8-27b"
+REPEAT_SETS = ("m1", "m1b")
+
+
+def repeat_problem(repeat, agent, sets):
+    """Why `--repeat` cannot be used here (ADR-0077), or None."""
+    if not 1 <= repeat <= REPEATS:
+        return f"--repeat is 1..{REPEATS} (ADR-0077)"
+    if agent != REPEAT_AGENT:
+        return f"--repeat is declared for {REPEAT_AGENT} only (ADR-0077; the cross-comparison model runs once)"
+    if extra := [s for s in sets if s not in REPEAT_SETS]:
+        return f"--repeat is declared for {', '.join(REPEAT_SETS)} only, not {', '.join(extra)} (ADR-0077)"
+    return None
+
+
 def earlier_run(results_dir, model, suffix, agent, commit, claim=None):
     """("finished" | "partial", path) of this set's results file for this
     model, agent and commit, or (None, None). A run is named by its first day,
@@ -256,6 +280,7 @@ def main(argv=None):
     ap.add_argument("--jobs", type=int, help="sessions at a time (default: 2 in a dry run, 1 in a real run; "
                     "BRB real runs always 1)")
     ap.add_argument("--same-as", metavar="COMMIT", help="real run under COMMIT's condition (ADR-0070)")
+    ap.add_argument("--repeat", type=int, metavar="K", help=f"the K-th of {REPEATS} declared repeated runs (ADR-0077)")
     args = ap.parse_args(argv)
 
     sets = [s.strip() for s in args.sets.split(",") if s.strip()]
@@ -274,6 +299,10 @@ def main(argv=None):
             sys.exit("--limit is for dry runs: a real run measures whole frozen sets")
         if problems := preflight_real(sets):
             sys.exit("not starting:\n- " + "\n- ".join(problems))
+        if args.repeat is not None:
+            if why := repeat_problem(args.repeat, args.agent, sets):
+                sys.exit(why)
+            env["BMB_REPEAT"] = str(args.repeat)
         model = args.agent.split(":", 1)[1]
         stamp = datetime.date.today().isoformat()
         commit = head_commit()
@@ -283,6 +312,8 @@ def main(argv=None):
             env["BMB"], env["BMB_CONDITION"] = bmb, json.dumps(claim, sort_keys=True)
     elif args.same_as:
         sys.exit("--same-as is for real runs")
+    elif args.repeat is not None:
+        sys.exit("--repeat is for real runs")
     out_dir = args.out_dir or (None if real else tempfile.mkdtemp(prefix="bmb-models-"))
 
     paths, skipped = {}, {}
@@ -299,6 +330,8 @@ def main(argv=None):
             task_ids = task_ids[:args.limit]
         if real:
             suffix = {"m1": "", "m1b": "", "bvb": "", "bvb-verus": "-verus", "brb-bmb": "-bmb", "brb-rust": "-rust"}[name]
+            if args.repeat is not None:
+                suffix += f"-repeat{args.repeat}"
             state, out = earlier_run(results_dir, model, suffix, args.agent, commit, claim)
             if state == "finished":
                 print(f"run_models: {name}: already measured on this commit ({os.path.relpath(out, ROOT)})",
