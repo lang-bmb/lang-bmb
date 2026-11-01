@@ -74,8 +74,8 @@ BMB v2의 설계 결정을 한 건에 파일 하나로 남긴다. 현재 확정�
 | [0026](0026-data-types-surface.md) | 데이터 타입 표면: 구조체·열거형·`match`·`impl`(내장 변형 맨이름, 수신자 `self: &T`) | 채택(승인된 계획) | 백로그 2B-01·2B-11 |
 | [0027](0027-data-types-encoding.md) | 데이터 타입의 증명 인코딩(구조체는 필드 분해, 열거형은 SMT 데이터타입) | 채택(승인) | 백로그 2B-02, `dev-docs/experiments/2B-02` |
 | [0028](0028-integer-conversions.md) | 정수 변환과 검사·포화 산술 | 채택 | 백로그 2C-01, 2C-05 |
-| [0029](0029-escape-hatches-and-rationale.md) | 탈출구(`assume`·`external_body`)와 구조화 근거 | 제안 | 백로그 2E-01 |
-| [0030](0030-effects-alloc-panic-nondet.md) | 효과 확장(`alloc`·`panic`·`nondet`)과 테스트 필요 면적 | 제안 | 백로그 2F-01 |
+| [0029](0029-escape-hatches-and-rationale.md) | 탈출구(`assume`·`external_body`)와 구조화 근거 | 채택 | 백로그 2E-01 |
+| [0030](0030-effects-alloc-panic-nondet.md) | 효과 확장(`alloc`·`panic`·`nondet`)과 테스트 필요 면적 | 채택 | 백로그 2F-01 |
 | [0031](0031-vec-and-ownership.md) | 힙 `Vec<T>`과 소유·이동 검사 | 채택 | 백로그 2G-01, 2G-07 |
 | [0032](0032-incremental-build-key.md) | 계약 방화벽 증분 빌드의 키 | 채택(자율) | 백로그 2D-10 |
 | [0033](0033-per-query-spec-declarations.md) | 의무별 `spec fn` 선언(질의 머리말 축소), ADR-0032 키 갱신 | 채택(자율) | 백로그 2D-14 |
@@ -108,9 +108,9 @@ BMB v2의 설계 결정을 한 건에 파일 하나로 남긴다. 현재 확정�
 | [0060](0060-type-invariants.md) | 타입 불변식: 가시성 대신 경계에서 증명하는 자료 불변식 | 채택 | T1-09, H-ENCAP |
 | [0061](0061-floating-point-f64.md) | 부동소수 `f64`: IEEE 의미, 기본 불투명 인코딩과 `by (bit_vector)` 안의 비트 정밀 증명 | 채택 | T2-01, T3 수요 |
 | [0062](0062-proof-functions-and-induction.md) | 증명 함수와 귀납: Verus 꼴 `proof fn`, `proof { }` 안의 호출, 코드 생성에서 지움 | 채택 | T1-17, T1-14 실패 분석 |
-| [0063](0063-canonical-query-symbols.md) | 질의 기호의 정준 이름: 정체성 해시 대신 질의 안의 위치 번호(ADR-0059 §4 기호 행) | 제안 | T1-10e |
+| [0063](0063-canonical-query-symbols.md) | 질의 기호의 정준 이름: 정체성 해시 대신 질의 안의 위치 번호(ADR-0059 §4 기호 행) | 채택 | T1-10e |
 | [0064](0064-non-recursive-spec-fn-macros.md) | 배열을 묶는 잎 `spec fn`의 정의는 양화 공리 대신 매크로(ADR-0017 §4 보완) | 채택 | T2-04 |
-| [0065](0065-commutation-relation.md) | 편집의 교환 관계: 쓰기 집합, 읽기 집합, 읽는 쪽 기준의 정제 면제 | 제안 | T1-16, 협업 논의 Q1 |
+| [0065](0065-commutation-relation.md) | 편집의 교환 관계: 쓰기 집합, 읽기 집합, 읽는 쪽 기준의 정제 면제 | 채택 | T1-16, 협업 논의 Q1 |
 | [0066](0066-measurement-model-environment.md) | 측정 모델 환경: 기본 `qwen3.8-27b`, 프런티어 교차 비교 `claude-sonnet-5-5`(정식 측정 경로, T0-03) | 채택(§3의 같은 커밋은 0070) | T0-03, ADR-0058 §2 |
 | [0067](0067-macro-probe-for-obligations.md) | 증명 의무는 잎 정의를 모두 매크로로 쓴 탐침을 한도의 1%로 먼저(ADR-0064 보완) | 채택 | T2-05 |
 | [0068](0068-compact-agent-view.md) | 압축 에이전트 투영(`bmb mcp --compact`): 표면은 본문 없는 정규형, 성공한 증명은 개수. 기본값 전환은 측정 뒤 승인 | 채택 | 2D-23, 2D-25 |
@@ -119,7 +119,7 @@ BMB v2의 설계 결정을 한 건에 파일 하나로 남긴다. 현재 확정�
 | [0071](0071-lean-fixed-context.md) | 고정 문맥: 도구 문서는 도구 설명 한 곳(`bmb mcp --tool-docs`), 프롬프트 언어 규칙은 진단으로 배울 수 없는 것만. 기본값 전환은 측정 뒤 승인 | 채택 | 2D-28, T0-17 |
 | [0072](0072-satisfiability-probe-unfolds-non-recursive.md) | 충족 가능성 검사의 탐침은 재귀 밖의 정의를 모두 매크로로(ADR-0069 보완) | 채택 | T2-10 |
 | [0073](0073-edit-surfaces-file-diff-and-json-ast.md) | H-EDIT의 비교 표면: 파일 diff는 `git apply --recount`(`bmb mcp --file-tools`), JSON AST는 구문 트리 + JSON Patch(`--ast-tools`, `bmb ast`) | 채택 | T1-06 |
-| [0074](0074-transaction-writes-every-item.md) | 트랜잭션의 `put`·`remove`는 단위의 모든 항목을 주소로: 타입 `unit::T`, 고유 `impl` 함수 `unit::T::f`(함수마다 병합), trait `unit::Trait`, trait impl `<unit::T as unit::Trait>`(통째로). `use`는 E0214. 동작은 모두에게, 새 설명은 `--item-docs`와 새 판에서 | 제안 | T0-23 |
+| [0074](0074-transaction-writes-every-item.md) | 트랜잭션의 `put`·`remove`는 단위의 모든 항목을 주소로: 타입 `unit::T`, 고유 `impl` 함수 `unit::T::f`(함수마다 병합), trait `unit::Trait`, trait impl `<unit::T as unit::Trait>`(통째로). `use`는 E0214. 동작은 모두에게, 새 설명은 `--item-docs`와 새 판에서 | 채택 | T0-23 |
 | [0075](0075-specialized-instances-under-quantifiers.md) | 기저 인스턴스 재시도는 한정 기호 아래 비재귀 적용에 특수화 인스턴스를 더하고, 반례의 완전성은 적용 단위로(ADR-0023 보완) | 채택 | T0-24 |
 
 채택 계획(2026-10-24 승인): 0026은 2B 착수 때, 0028은 2C 착수 때 채택한다. 0029·0030·0031은 2단계 측정(2H) 뒤로 미룬다. "제안" ADR의 진단 코드 번호는 잠정이다. 제안끼리 겹치는 번호가 있으며(예: E0212·E0412), 채택 후 구현할 때 `compiler/src/diag.rs`에서 확정한다.
