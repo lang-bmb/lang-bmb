@@ -1,0 +1,31 @@
+#[summary("정의의 몸에 수량자가 남아도 모든 적용이 인스턴스를 가지면 반례가 확정된다(백로그 T0-24, ADR-0075)")]
+mod weak_witness {
+    spec fn holds_below(text: &[u64], n: usize) -> bool { forall|i: usize| i < n && i < text.len() ==> !(#[trigger] text[i] == 122) }
+
+    spec fn one_way(text: &[u64], r: bool) -> bool { r ==> !holds_below(text, text.len()) }
+
+    spec fn ref_post(text: &[u64], r: bool) -> bool { r == !(forall|i: usize| i < text.len() ==> !(#[trigger] text[i] == 122)) }
+
+    #[effects(pure)]
+    #[uses(holds_below, one_way)]
+    fn find(text: &[u64]) -> (r: bool)
+        ensures one_way(text, r),
+    {
+        let mut idx: usize = 0;
+        while idx < text.len() && !(text[idx] == 122)
+            invariant idx <= text.len(), holds_below(text, idx),
+            decreases text.len() - idx,
+        {
+            idx = idx + 1;
+        }
+        idx < text.len()
+    }
+
+    #[effects(pure)]
+    #[uses(ref_post, holds_below, one_way)]
+    fn check(text: &[u64]) -> (r: bool)
+        ensures ref_post(text, r),
+    {
+        find(text)
+    }
+}

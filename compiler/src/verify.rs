@@ -6253,8 +6253,10 @@ impl<'p> Prog<'p> {
         let parts = AxiomParts {
             sym: spec_key(path, self.t),
             params: app_args,
+            binders,
             guard,
             body: bodies.first().cloned().unwrap_or_default(),
+            recursive,
         };
         (text, parts)
     }
@@ -6554,9 +6556,10 @@ pub fn preconditions_satisfiable(
                 .and_then(|_| check_sat_counted(sol, &mut spent))
         });
         // Undecided with quantified definitions: ground instances follow from
-        // the definitions, so `unsat` with them is `unsat` (as in the prover).
+        // the definitions, so `unsat` with them is `unsat` (as in the prover),
+        // and `sat` with an instance for every application is `sat` (ADR-0075).
         if matches!(answer, Ok(Answer::Unknown(_))) && !axiom_parts.is_empty() {
-            let (inst, _) = ground_instances(&axiom_parts, &q, 3);
+            let (inst, complete) = ground_instances(&axiom_parts, &q, 3);
             let inst = format!("{inst}{}", prog.struct_facts(&inst));
             if !inst.is_empty() {
                 let used = needed_decls(&spec_decls, &dts, &format!("{decls}\n{inst}{q}"));
@@ -6566,8 +6569,10 @@ pub fn preconditions_satisfiable(
                     .and_then(|_| sol.run(&head))
                     .and_then(|_| sol.run(&format!("{inst}{q}")))
                     .and_then(|_| check_sat_counted(sol, &mut spent));
-                if matches!(retry, Ok(Answer::Unsat)) {
-                    answer = retry;
+                match retry {
+                    Ok(Answer::Unsat) => answer = retry,
+                    Ok(Answer::Sat) if complete => answer = retry,
+                    _ => {}
                 }
             }
         }
@@ -6845,13 +6850,33 @@ fn verify_impl(
                         .and_then(|_| check_sat_counted(sol, spent));
                     matches!(a, Ok(Answer::Unsat | Answer::Sat)).then_some(a)
                 });
-                let answer = probed.unwrap_or_else(|| {
+                let mut answer = probed.unwrap_or_else(|| {
                     sol.run("(reset)")
                         .and_then(|_| sol.run(&base))
                         .and_then(|_| sol.run(REACH_LIMIT))
                         .and_then(|_| sol.run(&q))
                         .and_then(|_| check_sat_counted(sol, spent))
                 });
+                // The ground-instance retry, as for a precondition check: its
+                // `unsat` refutes the point, its complete `sat` reaches it.
+                if matches!(answer, Ok(Answer::Unknown(_))) && !axiom_parts.is_empty() {
+                    let (inst, complete) = ground_instances(&axiom_parts, &q, 3);
+                    let inst = format!("{inst}{}", prog.struct_facts(&inst));
+                    if !inst.is_empty() {
+                        let used = needed_decls(&spec_decls, &dts, &format!("{decls}\n{inst}{q}"));
+                        let retry = sol
+                            .run("(reset)")
+                            .and_then(|_| sol.run(&format!("{prefix}{used}{decls}")))
+                            .and_then(|_| sol.run(&probe_limit()))
+                            .and_then(|_| sol.run(&format!("{inst}{q}")))
+                            .and_then(|_| check_sat_counted(sol, spent));
+                        match retry {
+                            Ok(Answer::Unsat) => answer = retry,
+                            Ok(Answer::Sat) if complete => answer = retry,
+                            _ => {}
+                        }
+                    }
+                }
                 match answer {
                     Ok(Answer::Unsat) => vacuous.push((path.clone(), *span, *what)),
                     Ok(Answer::Sat) => {}
@@ -7730,88 +7755,164 @@ struct AxiomParts {
     sym: String,
     /// Bound parameter symbols, in application order.
     params: Vec<String>,
+    /// Their binders `(p sort)`, in the same order.
+    binders: Vec<String>,
     guard: String,
     body: String,
+    /// A recursive definition is instantiated at applications outside
+    /// quantifiers only (ADR-0075).
+    recursive: bool,
 }
 
-/// Ground instances of the definitions for the applications occurring in
-/// `text`, to `depth` levels of nesting (backlog 1B-14). Instances follow from
-/// the quantified definitions, so a proof with them is a proof. The second
-/// result is true when every application got its instance and no quantifier
-/// remains, which makes a model of the instances a model of the definitions.
+/// Instances of the definitions for the applications occurring in `text`, to
+/// `depth` levels of nesting (backlog 1B-14, ADR-0023). An application outside
+/// quantifiers gets the ground instance of its definition. One under a
+/// quantifier whose arguments mention the variables bound there gets, for a
+/// non-recursive definition, the definition specialized to the arguments that
+/// do not: the other parameters stay quantified, with that application as the
+/// pattern (ADR-0075, backlog T0-24). Every instance follows from the
+/// quantified definition, so a proof with them is a proof. The second result
+/// is true when every application, under quantifiers too, got its instance
+/// and none was cut at `depth`: a model of the instances then extends to a
+/// model of the definitions (each definition evaluated where no instance
+/// fixes it), so it is a counterexample.
 fn ground_instances(axioms: &[AxiomParts], text: &str, depth: usize) -> (String, bool) {
     let mut seen = BTreeSet::new();
     let mut out = String::new();
-    let mut frontier = text.to_string();
+    let mut frontier: Vec<smt::Sexp> = smt::split_commands(text)
+        .iter()
+        .filter_map(|c| smt::parse(c))
+        .collect();
     let mut complete = true;
     for level in 0..=depth {
-        let mut next = String::new();
+        let mut next = Vec::new();
         let mut apps = Vec::new();
-        for cmd in smt::split_commands(&frontier) {
-            if let Some(e) = smt::parse(&cmd) {
-                collect_apps(&e, axioms, &mut apps);
-            }
+        for e in &frontier {
+            collect_apps(e, axioms, &BTreeSet::new(), &mut apps);
         }
-        // Zero-arity definitions appear as bare symbols.
-        for a in axioms.iter().filter(|a| a.params.is_empty()) {
-            if frontier.contains(&a.sym) {
-                apps.push((a.sym.clone(), a.sym.clone(), Vec::new()));
-            }
-        }
-        for (app, symbol, args) in apps {
-            if !seen.insert(app.clone()) {
+        for (ax, args, bound) in apps {
+            let Some((inst, body)) = instance(ax, &args, &bound) else {
+                complete = false;
+                continue;
+            };
+            if !seen.insert(inst.clone()) {
                 continue;
             }
             if level == depth {
                 complete = false;
                 break;
             }
-            let ax = axioms.iter().find(|a| a.sym == symbol).unwrap();
-            let subst = |t: &str| {
-                let mut t = t.to_string();
-                for (p, a) in ax.params.iter().zip(&args) {
-                    t = t.replace(p.as_str(), a);
-                }
-                t
-            };
-            let body = subst(&ax.body);
-            if body.contains("(forall") {
-                complete = false;
-            }
-            out.push_str(&format!(
-                "(assert (=> {} (= {app} {body})))\n",
-                subst(&ax.guard)
-            ));
-            next.push_str(&body);
-            next.push(' ');
+            out.push_str(&inst);
+            out.push('\n');
+            next.push(body);
         }
         if next.is_empty() {
             break;
         }
-        frontier = format!("(assert (and {next} true))");
+        frontier = next;
     }
     (out, complete)
 }
 
-fn collect_apps(
-    e: &smt::Sexp,
-    axioms: &[AxiomParts],
-    out: &mut Vec<(String, String, Vec<String>)>,
-) {
-    if let smt::Sexp::List(xs) = e {
-        if let Some(smt::Sexp::Atom(head)) = xs.first()
-            && axioms
-                .iter()
-                .any(|a| &a.sym == head && a.params.len() == xs.len() - 1)
-        {
-            let args: Vec<String> = xs[1..].iter().map(smt::print).collect();
-            out.push((smt::print(e), head.clone(), args));
-        }
-        // Bound variables of a quantifier cannot be instantiated from outside.
-        if xs.first() != Some(&smt::Sexp::Atom("forall".into())) {
-            xs.iter().for_each(|x| collect_apps(x, axioms, out));
+/// The instance of `ax` for an application with `args` under the variables
+/// `bound`, and its body (under the quantifier the instance keeps) for the
+/// next level. `None` when there is none: a recursive definition applied to
+/// bound variables, or a definition whose text does not parse.
+fn instance(
+    ax: &AxiomParts,
+    args: &[smt::Sexp],
+    bound: &BTreeSet<String>,
+) -> Option<(String, smt::Sexp)> {
+    let mut sub = BTreeMap::new();
+    let mut rest = Vec::new();
+    for ((p, b), a) in ax.params.iter().zip(&ax.binders).zip(args) {
+        if bound.is_empty() || !mentions_any(a, bound) {
+            sub.insert(p.clone(), a.clone());
+        } else {
+            rest.push(b.as_str());
         }
     }
+    if !rest.is_empty() && ax.recursive {
+        return None;
+    }
+    let guard = smt::print(&subst_atoms(&smt::parse(&ax.guard)?, &sub));
+    let body = subst_atoms(&smt::parse(&ax.body)?, &sub);
+    let app = if ax.params.is_empty() {
+        ax.sym.clone()
+    } else {
+        let args: Vec<String> = ax
+            .params
+            .iter()
+            .map(|p| sub.get(p).map_or_else(|| p.clone(), smt::print))
+            .collect();
+        format!("({} {})", ax.sym, args.join(" "))
+    };
+    let eq = format!("(=> {guard} (= {app} {}))", smt::print(&body));
+    if rest.is_empty() {
+        return Some((format!("(assert {eq})"), body));
+    }
+    let rest = rest.join(" ");
+    let inst = format!("(assert (forall ({rest}) (! {eq} :pattern ({app}))))");
+    let body = smt::parse(&format!("(forall ({rest}) {})", smt::print(&body)))?;
+    Some((inst, body))
+}
+
+/// True if `e` mentions one of the symbols `names`.
+fn mentions_any(e: &smt::Sexp, names: &BTreeSet<String>) -> bool {
+    match e {
+        smt::Sexp::Atom(a) => names.contains(a),
+        smt::Sexp::List(xs) => xs.iter().any(|x| mentions_any(x, names)),
+    }
+}
+
+/// The applications of the definitions `axioms` in `e`, each with its
+/// arguments and the variables bound where it occurs (by `forall`, `exists`
+/// or `let`, inside `bound`).
+fn collect_apps<'a>(
+    e: &smt::Sexp,
+    axioms: &'a [AxiomParts],
+    bound: &BTreeSet<String>,
+    out: &mut Vec<(&'a AxiomParts, Vec<smt::Sexp>, BTreeSet<String>)>,
+) {
+    use smt::Sexp::{Atom, List};
+    let xs = match e {
+        // Zero-arity definitions appear as bare symbols.
+        Atom(a) => {
+            if let Some(ax) = axioms.iter().find(|x| x.params.is_empty() && &x.sym == a) {
+                out.push((ax, Vec::new(), bound.clone()));
+            }
+            return;
+        }
+        List(xs) => xs,
+    };
+    if let [Atom(q), List(bs), body] = xs.as_slice()
+        && matches!(q.as_str(), "forall" | "exists" | "let")
+    {
+        let mut inner = bound.clone();
+        for b in bs {
+            if let List(p) = b
+                && let Some(Atom(v)) = p.first()
+            {
+                inner.insert(v.clone());
+                // A `let` binds over its body only, not its own terms.
+                if q == "let" {
+                    p[1..]
+                        .iter()
+                        .for_each(|t| collect_apps(t, axioms, bound, out));
+                }
+            }
+        }
+        collect_apps(body, axioms, &inner, out);
+        return;
+    }
+    if let Some(Atom(head)) = xs.first()
+        && let Some(ax) = axioms
+            .iter()
+            .find(|a| &a.sym == head && !a.params.is_empty() && a.params.len() == xs.len() - 1)
+    {
+        out.push((ax, xs[1..].to_vec(), bound.clone()));
+    }
+    xs.iter().for_each(|x| collect_apps(x, axioms, bound, out));
 }
 
 /// Spec fns the obligation mentions by name but whose definition the proof
@@ -8842,13 +8943,95 @@ mod m {
         assert_eq!(implication("(and p q)"), None);
     }
 
+    /// `hit_at(a, k, j)`: `j < len a && a[j] == k`, over an array and two scalars.
+    fn hit_at(recursive: bool) -> AxiomParts {
+        AxiomParts {
+            sym: "|m::hit_at|".into(),
+            params: vec!["|a!p|".into(), "|k!p|".into(), "|j!p|".into()],
+            binders: vec![
+                "(|a!p| (Array Int Int))".into(),
+                "(|k!p| Int)".into(),
+                "(|j!p| Int)".into(),
+            ],
+            guard: "(<= 0 |j!p|)".into(),
+            body: "(= (select |a!p| |j!p|) |k!p|)".into(),
+            recursive,
+        }
+    }
+
+    #[test]
+    fn applications_under_quantifiers_get_specialized_instances() {
+        // ADR-0075: the arguments that do not mention the bound `j` are
+        // substituted, `j`'s parameter stays quantified with the application
+        // as its pattern.
+        let text = "(assert (forall ((j Int)) (! (not (|m::hit_at| arr k j)) :pattern ((|m::hit_at| arr k j)))))";
+        let (inst, complete) = ground_instances(&[hit_at(false)], text, 3);
+        assert!(complete, "{inst}");
+        assert_eq!(
+            inst,
+            "(assert (forall ((|j!p| Int)) (! (=> (<= 0 |j!p|) (= (|m::hit_at| arr k |j!p|) (= (select arr |j!p|) k))) :pattern ((|m::hit_at| arr k |j!p|)))))\n"
+        );
+        // An argument built from the bound variable keeps its parameter
+        // quantified too; one built from `let`-bound names as well.
+        let text = "(assert (forall ((j Int)) (|m::hit_at| arr (+ j 1) j)))";
+        let (inst, _) = ground_instances(&[hit_at(false)], text, 3);
+        assert!(
+            inst.starts_with("(assert (forall ((|k!p| Int) (|j!p| Int)) "),
+            "{inst}"
+        );
+        let text = "(assert (let ((x 3)) (|m::hit_at| arr x 0)))";
+        let (inst, _) = ground_instances(&[hit_at(false)], text, 3);
+        assert!(inst.starts_with("(assert (forall ((|k!p| Int)) "), "{inst}");
+        // Outside quantifiers, and under one when no argument mentions its
+        // variables, the instance is ground as before.
+        let text = "(assert (forall ((j Int)) (=> (> j 0) (|m::hit_at| arr k 2))))";
+        let (inst, complete) = ground_instances(&[hit_at(false)], text, 3);
+        assert!(complete, "{inst}");
+        assert_eq!(
+            inst,
+            "(assert (=> (<= 0 2) (= (|m::hit_at| arr k 2) (= (select arr 2) k))))\n"
+        );
+    }
+
+    #[test]
+    fn recursive_definitions_under_quantifiers_leave_the_instances_incomplete() {
+        let text = "(assert (forall ((j Int)) (! (not (|m::hit_at| arr k j)) :pattern ((|m::hit_at| arr k j)))))";
+        let (inst, complete) = ground_instances(&[hit_at(true)], text, 3);
+        assert!(!complete);
+        assert_eq!(inst, "");
+    }
+
+    #[test]
+    fn a_quantifier_in_a_body_keeps_the_instances_complete() {
+        // ADR-0075: completeness is about applications, not quantifiers. A
+        // body's own quantifier with no application under it is part of
+        // the model Z3 checks (ADR-0023 counted it as incomplete).
+        let none_at = AxiomParts {
+            sym: "|m::none|".into(),
+            params: vec!["|a!p|".into(), "|n!p|".into()],
+            binders: vec!["(|a!p| (Array Int Int))".into(), "(|n!p| Int)".into()],
+            guard: "true".into(),
+            body: "(forall ((i Int)) (=> (< i |n!p|) (distinct (select |a!p| i) 7)))".into(),
+            recursive: false,
+        };
+        let text = "(assert (not (|m::none| arr 3)))";
+        let (inst, complete) = ground_instances(&[none_at], text, 3);
+        assert!(complete, "{inst}");
+        assert_eq!(
+            inst,
+            "(assert (=> true (= (|m::none| arr 3) (forall ((i Int)) (=> (< i 3) (distinct (select arr i) 7))))))\n"
+        );
+    }
+
     #[test]
     fn ground_instances_take_datatype_arguments() {
         let ax = AxiomParts {
             sym: "|m::is_some|".into(),
             params: vec!["|o!p|".into()],
+            binders: vec!["(|o!p| |Option<i64>|)".into()],
             guard: "true".into(),
             body: "((_ is |Option<i64>::Some|) |o!p|)".into(),
+            recursive: false,
         };
         let text = "(assert (not (|m::is_some| (|Option<i64>::Some| (- 5)))))";
         let (inst, complete) = ground_instances(&[ax], text, 3);

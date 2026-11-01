@@ -305,9 +305,12 @@ impl<'p, 'q> Enc<'p, 'q> {
             let body = self.valid_dt(&x, &t);
             self.valid_defs.push(AxiomParts {
                 sym: f.clone(),
-                params: vec![x],
+                params: vec![x.clone()],
+                binders: vec![format!("({x} {})", sort_of(&t))],
                 guard: "true".into(),
                 body: and(&body),
+                // A recursive datatype's validity names itself.
+                recursive: true,
             });
         }
         f

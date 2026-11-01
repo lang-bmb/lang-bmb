@@ -2,27 +2,27 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 7217013,
+    "V4_rlimit_total": 7315846,
     "V5_rlimit_headroom": 0.1355,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0,
     "V8_bench_rlimit_total": 24316281,
     "V9_bench_defs_at_limit": 0,
     "V10_library_rlimit_total": 11946407,
-    "V11_sat_check_rlimit_total": 260896911,
-    "V12_sat_check_undecided": 285,
+    "V11_sat_check_rlimit_total": 270327604,
+    "V12_sat_check_undecided": 265,
     "S1_external_crates": 0,
     "S2_external_processes": [
       "clang",
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 39512,
+    "S4_stage0_rust_lines": 39659,
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
     "P1_runnable_programs": 58,
-    "P2_bmb_lines": 20163,
-    "P3_errors_with_help": 0.872,
+    "P2_bmb_lines": 21708,
+    "P3_errors_with_help": 0.8722,
     "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 13
@@ -1503,6 +1503,36 @@
         "S4_stage0_rust_lines": [
           36732,
           39512
+        ]
+      }
+    },
+    {
+      "date": "2026-11-01",
+      "reason": "T0-24, ADR-0075: specialized instances under quantifiers and per-application completeness in the ground-instance retry; the satisfiability checks use the retry (V12 292 -> 265 incl. the new corpus file tests/verify/pass/index_preds.bmb; V4 +0.08% from that file; V11 +2.4% from the reach retry at the probe share)",
+      "changed": {
+        "V4_rlimit_total": [
+          7217013,
+          7315846
+        ],
+        "V11_sat_check_rlimit_total": [
+          260896911,
+          270327604
+        ],
+        "V12_sat_check_undecided": [
+          285,
+          265
+        ],
+        "S4_stage0_rust_lines": [
+          39512,
+          39659
+        ],
+        "P2_bmb_lines": [
+          20163,
+          21708
+        ],
+        "P3_errors_with_help": [
+          0.872,
+          0.8722
         ]
       }
     }

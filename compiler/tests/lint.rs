@@ -706,3 +706,23 @@ mod tasks {
     let out = lint_sources(&one("w.bmb", &multi)).unwrap();
     assert!(!out.diagnostics.contains("W0906"), "{}", out.diagnostics);
 }
+
+/// ADR-0075: the satisfiability checks retry an undecided query with ground
+/// instances, specialized under quantifiers, and take its complete `sat`.
+/// An index predicate used as a trigger left the precondition check of
+/// `pick` and six reach points undecided before.
+#[test]
+fn index_predicates_leave_no_satisfiability_check_undecided() {
+    let file = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../tests/verify/pass/index_preds.bmb");
+    let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
+        .args(["lint", "--select", "W0901,W0905", file.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    let text = String::from_utf8(out.stdout).unwrap();
+    let summary = rows(&text).pop().unwrap();
+    assert_eq!(n(&summary, "reports"), 0, "{text}");
+    assert_eq!(n(&summary, "pre_undecided"), 0, "{text}");
+    assert_eq!(n(&summary, "reach_undecided"), 0, "{text}");
+}
