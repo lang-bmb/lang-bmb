@@ -123,6 +123,40 @@ class Signatures(unittest.TestCase):
         self.assertEqual(harness.parse_signature("fn f() -> (r: i64)"), ("f", "", "i64"))
 
 
+class CommitCount(unittest.TestCase):
+    """Every write's commit by its outcome, one-call surfaces too (backlog T1-40)."""
+
+    def test_outcome_of_each_write_surface(self):
+        ok = '{"committed":true,"changed":["tasks::f"],"removed":[]}\n{"def":"tasks::f","status":"verified"}'
+        refused = '{"code":"E0201","message":"..."}\n{"committed":false,"changed":[],"removed":[]}'
+        for name in ("tx_commit", "write", "edit_file", "edit_ast"):
+            self.assertIs(harness.commit_outcome(name, ok), True, name)
+            self.assertIs(harness.commit_outcome(name, refused), False, name)
+        # Calls that never reach a commit, and tools that do not commit.
+        self.assertIsNone(harness.commit_outcome("tx_commit", "no open transaction 3"))
+        self.assertIsNone(harness.commit_outcome("edit_file", "src/a.bmb: hunk 1 does not apply"))
+        self.assertIsNone(harness.commit_outcome("tx_put", '{"tx":1,"ops":1}'))
+        self.assertIsNone(harness.commit_outcome("query", ok))
+
+    def test_transaction_rows_count_both_ways(self):
+        t = task("w01-clamp")
+        r = run_with_ops(t, t["reference"])
+        self.assertEqual((r["commits"], r["commits_ok"], r["commits_rejected"]), (1, 1, 0))
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "r.jsonl")
+            with open(path, "w") as f:
+                f.write(json.dumps({"summary": True, "task_set": "m1"}) + "\n" + json.dumps(r) + "\n")
+            table = harness.summarize([path])
+        self.assertIn("| 커밋(성공 / 거부, 한 호출 쓰기 포함) | 1 / 0 |", table)
+        # Rows of a harness before T1-40 have no such row.
+        old = {k: v for k, v in r.items() if k not in ("commits_ok", "commits_rejected")}
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "r.jsonl")
+            with open(path, "w") as f:
+                f.write(json.dumps({"summary": True, "task_set": "m1"}) + "\n" + json.dumps(old) + "\n")
+            self.assertNotIn("한 호출 쓰기 포함", harness.summarize([path]))
+
+
 class JudgeWrite(unittest.TestCase):
     """Names the agent may choose that also appear in the hidden acceptance module."""
 

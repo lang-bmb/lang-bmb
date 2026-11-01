@@ -46,6 +46,23 @@ MAX_TOOL_CALLS = 40
 SESSIONS = None
 READ_TOOLS = {"query", "map"}
 
+# The calls that commit a write or are refused at the commit: the
+# transaction's `tx_commit` and the one-call write surfaces (backlog T1-40).
+# `commits` keeps counting `tx_commit` calls (ADR-0070: a field a later
+# harness changes is a new condition); `commits_ok` and `commits_rejected`
+# count every commit by its outcome, so the one-call surfaces have them too.
+WRITE_COMMITS = ("tx_commit", "write", "edit_file", "edit_ast")
+
+
+def commit_outcome(name, text):
+    """True for a committed write, False for a refused one, None when the
+    call did not reach a commit (an unknown transaction, missing arguments,
+    a malformed diff or patch)."""
+    if name not in WRITE_COMMITS:
+        return None
+    m = re.search(r'"committed":(true|false)', text)
+    return None if m is None else m.group(1) == "true"
+
 sys.path.insert(0, HERE)
 import bsb  # noqa: E402
 import resultlog  # noqa: E402
@@ -579,7 +596,8 @@ def run_task(task, agent_kind):
     agent = make_agent(agent_kind, task, ws)
     if hasattr(agent, "set_tools"):
         agent.set_tools(mcp.tools + extra_tools(task))
-    m = {"tool_calls": 0, "read_calls": 0, "read_bytes": 0, "commits": 0, "e02": 0, "limit_hit": False}
+    m = {"tool_calls": 0, "read_calls": 0, "read_bytes": 0, "commits": 0, "e02": 0, "limit_hit": False,
+         "commits_ok": 0, "commits_rejected": 0}
     # With BMB_CONTEXT_LOG=1 (model_api.context_log), every call's tool and
     # result size, in order (backlog 2D-25): with the agent's per-request
     # tokens they decompose each turn's context. Off by default.
@@ -613,6 +631,9 @@ def run_task(task, agent_kind):
                     tx = json.loads(text)["tx"]
                 if name == "tx_commit":
                     m["commits"] += 1
+                outcome = commit_outcome(name, text)
+                if outcome is not None:
+                    m["commits_ok" if outcome else "commits_rejected"] += 1
                 if name in READ_TOOLS:
                     m["read_calls"] += 1
                     m["read_bytes"] += len(text.encode())
@@ -718,6 +739,19 @@ def summarize(paths):
             ("불가능 과제: 계약 유지로 게이트 통과(건전성 결함)", count(imp, "unsound")),
         ] if g else []
 
+    def commit_rows(tasks):
+        # Every write's commit, one-call surfaces included (backlog T1-40);
+        # rows of a harness before T1-40 lack the fields.
+        if not tasks or not all("commits_ok" in r for r in tasks):
+            return []
+        ok = sum(r["commits_ok"] for r in tasks)
+        rejected = sum(r["commits_rejected"] for r in tasks)
+        return [
+            ("커밋(성공 / 거부, 한 호출 쓰기 포함)", f"{ok} / {rejected}"),
+            ("Rust 습관 오류율(E02xx / 커밋, 한 호출 쓰기 포함)",
+             f"{sum(r['e02'] for r in tasks) / (ok + rejected):.3f}" if ok + rejected else "—"),
+        ]
+
     def metrics(tasks):
         w = [r for r in tasks if r["kind"] == "write"]
         n = [r for r in tasks if r["kind"] == "navigate"]
@@ -732,6 +766,7 @@ def summarize(paths):
             ("탐색 재현율(평균)", mean(n, "recall")),
             ("질의당 토큰(ceil(bytes/4), 전체 평균)", f"{-(-rbytes // 4) / reads:.1f}" if reads else "—"),
             ("Rust 습관 오류율(E02xx / tx_commit)", f"{sum(r['e02'] for r in tasks) / commits:.3f}" if commits else "—"),
+            *commit_rows(tasks),
             ("미증명 의무(합)", str(sum(r["unproved_obligations"] for r in tasks))),
             ("`io` 정의(과제당 평균)", mean(tasks, "io_defs")),
             ("도구 호출(합)", str(sum(r["tool_calls"] for r in tasks))),

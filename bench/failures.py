@@ -49,7 +49,9 @@ def verdict(r):
         if r.get("failed"):
             return "hidden-cases"
         return "domain"
-    if r.get("commits") == 0:
+    # A harness from T1-40 on counts every write's commit by its outcome
+    # (one-call surfaces too); before it, `commits` counts `tx_commit` calls.
+    if r.get("commits_ok", r.get("commits")) == 0:
         return "no-commit"
     if not r.get("verified"):
         return "unverified"

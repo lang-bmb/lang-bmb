@@ -31,6 +31,10 @@ class Classify(unittest.TestCase):
         self.assertEqual(failures.verdict({"kind": "navigate"}), "navigate")
         self.assertEqual(failures.verdict({"delivered": False, "why": "not verified"}), "not-delivered (not verified)")
         self.assertEqual(failures.verdict({"delivered": True, "failed": 2}), "hidden-cases")
+        # From T1-40 on, a write's commit counts by its outcome on every
+        # surface: a one-call write session has `commits` 0 but commits.
+        self.assertEqual(failures.verdict({**W, "commits": 0, "commits_ok": 2, "commits_rejected": 1}), "spec")
+        self.assertEqual(failures.verdict({**W, "commits": 3, "commits_ok": 0, "commits_rejected": 3, "verified": False}), "no-commit")
         # Verus rows have no `commits`.
         self.assertEqual(failures.verdict({"kind": "write", "verified": False}), "unverified")
 
