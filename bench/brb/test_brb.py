@@ -267,6 +267,65 @@ class ModelAdapter(unittest.TestCase):
         self.assertEqual((r["limit_hit"], r["tool_calls"], r["success"]), (None, 3, True))
 
 
+class ParallelRust(unittest.TestCase):
+    """Rust sessions that run at once each link their own crate (backlog T0-22)."""
+
+    def test_integration_tests_link_their_own_crate(self):
+        import concurrent.futures
+        ts = [t for t in TASKS if t.ID in ("t01-clamp", "t02-midpoint")]
+        d = tempfile.mkdtemp()
+        real = harness.make_agent
+
+        def script(task, arm):
+            mark = task.ID.replace("-", "_")
+            lib = task.RUST_REF + f"\npub const MARK: &str = \"{mark}\";\n"
+            test = f"#[test]\nfn own_crate() {{ assert_eq!(solution::MARK, \"{mark}\"); }}\n"
+            return harness.m1.ScriptAgent([("write_file", {"path": "src/lib.rs", "content": lib}),
+                                           ("write_file", {"path": "tests/own.rs", "content": test}),
+                                           ("cargo_test", {})])
+        harness.make_agent = lambda kind, task, arm: script(task, arm)
+        try:
+            target = os.path.join(d, "target")
+            harness.warm_rust(target, False)
+            with concurrent.futures.ThreadPoolExecutor(2) as pool:
+                rs = list(pool.map(lambda t: harness.run_session(t, "rust", "scripted", target, False), ts))
+        finally:
+            harness.make_agent = real
+            shutil.rmtree(d)
+        self.assertEqual([(r["id"], r["last_check_ok"]) for r in rs], [(t.ID, True) for t in ts])
+
+    def test_each_session_gets_a_private_target_directory(self):
+        # The race of a shared directory did not reproduce here (three runs of
+        # the test above on the shared one passed), so the private copy is
+        # checked directly: a session's tools build in its own directory,
+        # which starts as a copy of the warmed one.
+        seen = []
+        real_tools, real_agent = harness.RustTools, harness.make_agent
+
+        class Recorder(real_tools):
+            def __init__(self, crate, target_dir):
+                seen.append((crate, target_dir, os.path.isfile(os.path.join(target_dir, "warm"))))
+                super().__init__(crate, target_dir)
+        harness.RustTools = Recorder
+        harness.make_agent = lambda kind, task, arm: harness.m1.ScriptAgent([])
+        d = tempfile.mkdtemp()
+        try:
+            shared = os.path.join(d, "target")
+            os.makedirs(shared)
+            open(os.path.join(shared, "warm"), "w").close()
+            t = next(t for t in TASKS if t.ID == "t01-clamp")
+            for _ in range(2):
+                harness.run_session(t, "rust", "scripted", shared, False)
+        finally:
+            harness.RustTools, harness.make_agent = real_tools, real_agent
+            shutil.rmtree(d)
+        (c1, t1, w1), (c2, t2, w2) = seen
+        self.assertTrue(w1 and w2)
+        self.assertNotEqual(t1, t2)
+        self.assertNotIn(shared, (t1, t2))
+        self.assertEqual((os.path.dirname(t1), os.path.dirname(t2)), (os.path.dirname(c1), os.path.dirname(c2)))
+
+
 class Checker(unittest.TestCase):
     def test_bmb_verify_verdict(self):
         ok = '{"def":"tasks::f","status":"verified","obligations":1,"failed":0}\n'

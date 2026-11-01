@@ -175,7 +175,14 @@ def run_session(task, arm, agent_kind, rust_target, proptest, sessions=None):
         else:
             ws = os.path.join(tmp, "solution")
             make_crate(ws, proptest)
-            server = RustTools(ws, rust_target)
+            # A private copy of the warmed target directory (backlog T0-22):
+            # every session's crate is named `solution`, so sessions that run
+            # at once and share one target directory link each other's
+            # library into their integration tests (`tests/*.rs`).
+            target = os.path.join(tmp, "target")
+            if os.path.isdir(rust_target):
+                shutil.copytree(rust_target, target, symlinks=True)
+            server = RustTools(ws, target)
             check_tool = "cargo_test"
         agent = make_agent(agent_kind, task, arm)
         if hasattr(agent, "set_tools"):
