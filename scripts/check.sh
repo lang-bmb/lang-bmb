@@ -27,7 +27,7 @@ if [ -z "${BMB_GATE_POWER_RUN:-}" ]; then
   step "power"; python3 scripts/gate_power.py check > /dev/null
 fi
 
-step "test, bench m1, bench m1b, bench hname, bench edit (write, diff, ast), bench view, bench lean, bench impossible, bench bvb, bench m3, bench bnb, bench bcb, bench brb, bench brb-encap, bench run_models, health (concurrent)"
+step "test, bench m1, bench m1b, bench hname, bench edit (write, diff, ast), bench view, bench lean, bench impossible, bench bvb, bench m3, bench bnb, bench bcb, bench brb, bench brb-encap, bench run_models, bench utility report, health (concurrent)"
 # Bench sessions are independent (ADR-0025, backlog 2A-04): m1b and bvb run two at a time per agent.
 # The original-Verus side of bvb (2A-09) needs the Verus toolchain: here only its harness logic
 # runs (stub verifier); the real oracle/weak runs are the `bvb-verus` CI job.
@@ -42,6 +42,7 @@ grep -qF "| 작성 1회 성공률 | 10/10 |" <<< "$table" || { echo "harness sum
   --job "bench m1 harness tests=python3 bench/m1/test_harness.py && python3 bench/m1/test_resultlog.py && python3 bench/m1/test_sessionlog.py" \
   --job "bench condition (ADR-0070)=python3 bench/test_condition.py" \
   --job "bench failure table (T0-16)=python3 bench/test_failures.py" \
+  --job "bench utility report (T0-26)=python3 bench/test_utility.py && python3 bench/utility.py --check dev-docs/reports/utility.md" \
   --job 'bench m1b oracle=tmp=$(mktemp); trap "rm -f $tmp" EXIT
 python3 bench/m1/harness.py --set bench/m1b run --agent oracle --expect all-pass --jobs 2 --out "$tmp" > /dev/null
 table=$(python3 bench/m1/harness.py summarize "$tmp")
