@@ -1140,3 +1140,27 @@ mod u {
     }
     assert_eq!(key(&BASE.replace("{ x >= 1 }", "{ x >= 3 }")), base);
 }
+
+/// A definition that reuses another's result by key (equal up to names)
+/// keeps it under its own path: editing the other one later re-encodes
+/// only that one (`bench/bcb` found the loss).
+#[test]
+fn a_result_reused_by_key_stays_when_its_source_changes() {
+    let dir = tmp("twin");
+    let base = generate(3);
+    let (_, cold) = cached(&files(&base), &dir);
+    // `m1::f1` and `m2::f1` are `m0::f1` up to names: reused in the cold run.
+    for d in ["m1::f1", "m2::f1"] {
+        assert!(cold.reused.contains(&d.to_string()), "{cold:?}");
+    }
+    // Edit `m0::f1`, the definition they took the result from.
+    let edited = base.replacen(
+        "        if y > 5 { y - 5 } else { y }",
+        "        if y > 6 { y - 6 } else { y }",
+        1,
+    );
+    assert!(edited.find("y > 6").unwrap() < edited.find("mod m1 {").unwrap());
+    let (_, stats) = cached(&files(&edited), &dir);
+    assert_eq!(stats.encoded, vec!["m0::f1".to_string()], "{stats:?}");
+    let _ = fs::remove_dir_all(&dir);
+}

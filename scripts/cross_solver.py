@@ -225,6 +225,8 @@ def main():
     if not BMB.exists():
         sys.exit("cross_solver: build bmb first (cargo build)")
 
+    # The commit the queries come from: recorded before anything runs.
+    at = commit()
     work = Path(a.keep or tempfile.mkdtemp(prefix="bmb-cross-"))
     groups = a.groups.split(",")
     unique = {}  # segment hash -> (text, kind, first place)
@@ -265,7 +267,7 @@ def main():
     report = [
         f"# 두 번째 해법기 교차 확인 (1B-39)",
         "",
-        f"- 커밋 `{commit()}`, Z3 {pins()['Z3_VERSION']}, cvc5 {want} (`rlimit-per` {CVC5_RLIMIT:,})",
+        f"- 커밋 `{at}`, Z3 {pins()['Z3_VERSION']}, cvc5 {want} (`rlimit-per` {CVC5_RLIMIT:,})",
         f"- 프로그램: " + ", ".join(f"{g} {progs[g]}" for g in groups),
         f"- 질의 {sum(places.values()):,}개(" + ", ".join(f"{g} {places[g]:,}" for g in groups)
         + f"), 서로 다른 것 {len(keys):,}개",

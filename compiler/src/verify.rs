@@ -6697,7 +6697,7 @@ fn verify_impl(
         }
         // Incremental build (backlog 2D-10): an unchanged, fully proved
         // definition is not encoded again.
-        let hit = incr.as_ref().and_then(|s| s.proof_lookup(path, d.f));
+        let hit = incr.as_mut().and_then(|s| s.proof_lookup(path, d.f));
         if let Some(h) = &hit
             && !incr.as_ref().is_some_and(|s| s.audit())
         {

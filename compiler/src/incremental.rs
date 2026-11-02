@@ -1298,12 +1298,19 @@ impl Session {
     }
 
     /// The stored proof result of `path`, relocated into `span`.
-    pub fn proof_lookup(&self, path: &str, f: &FnDef) -> Option<ProofHit> {
-        let key = self.proof_keys.get(path)?;
-        let payload = self
-            .store
-            .get("P", path, key)
-            .or_else(|| self.store.find("P", key))?;
+    pub fn proof_lookup(&mut self, path: &str, f: &FnDef) -> Option<ProofHit> {
+        let key = self.proof_keys.get(path)?.clone();
+        let payload = match self.store.get("P", path, &key) {
+            Some(p) => p,
+            // Another definition's entry with the same key (a rename, or a
+            // definition equal up to names): kept under this path too, so
+            // it stays when the other one changes.
+            None => {
+                let p = self.store.find("P", &key)?;
+                self.store.put("P", path, key.clone(), p.clone());
+                p
+            }
+        };
         let mut it = payload.split(' ');
         let obligations: usize = it.next()?.parse().ok()?;
         let rlimit_total: u64 = it.next()?.parse().ok()?;
