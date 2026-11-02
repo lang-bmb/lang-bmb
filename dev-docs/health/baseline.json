@@ -3,13 +3,13 @@
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
     "V4_rlimit_total": 7473584,
-    "V5_rlimit_headroom": 0.1804,
+    "V5_rlimit_headroom": 0.1355,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0,
     "V8_bench_rlimit_total": 24254414,
     "V9_bench_defs_at_limit": 0,
-    "V10_library_rlimit_total": 13157963,
-    "V11_sat_check_rlimit_total": 278165611,
+    "V10_library_rlimit_total": 12178127,
+    "V11_sat_check_rlimit_total": 282082391,
     "V12_sat_check_undecided": 277,
     "S1_external_crates": 0,
     "S2_external_processes": [
@@ -21,7 +21,7 @@
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
     "P1_runnable_programs": 60,
-    "P2_bmb_lines": 22154,
+    "P2_bmb_lines": 22496,
     "P3_errors_with_help": 0.8854,
     "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
@@ -1653,6 +1653,28 @@
         "P3_errors_with_help": [
           0.8798,
           0.8854
+        ]
+      }
+    },
+    {
+      "date": "2026-11-02",
+      "reason": "T2-14: a bit_vector sub-proof in base64::byte0 and per-push pad_upto assertions in sha256::pad (order-insensitive): V5 0.1804 -> 0.1355, V10 13.16M -> 12.18M; V11 +1.4% (the sub-proof's reach point in byte0); byte1's sub-proof was dropped (it left one more reach point undecided in every program with the libraries, V12 +10); P2 from bench/brb-encap-b's seeds",
+      "changed": {
+        "V5_rlimit_headroom": [
+          0.1804,
+          0.1355
+        ],
+        "V10_library_rlimit_total": [
+          13157963,
+          12178127
+        ],
+        "V11_sat_check_rlimit_total": [
+          278165611,
+          282082391
+        ],
+        "P2_bmb_lines": [
+          22154,
+          22496
         ]
       }
     }

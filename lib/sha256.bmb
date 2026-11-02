@@ -359,13 +359,21 @@ mod sha256 {
         }
         let bits: u64 = u64::try_from(n).unwrap() * 8;
         p.push(u8::try_from(bits >> 56).unwrap());
+        assert(pad_upto(msg, p.as_slice(), p.len()));
         p.push(u8::try_from((bits >> 48) & 0xff).unwrap());
+        assert(pad_upto(msg, p.as_slice(), p.len()));
         p.push(u8::try_from((bits >> 40) & 0xff).unwrap());
+        assert(pad_upto(msg, p.as_slice(), p.len()));
         p.push(u8::try_from((bits >> 32) & 0xff).unwrap());
+        assert(pad_upto(msg, p.as_slice(), p.len()));
         p.push(u8::try_from((bits >> 24) & 0xff).unwrap());
+        assert(pad_upto(msg, p.as_slice(), p.len()));
         p.push(u8::try_from((bits >> 16) & 0xff).unwrap());
+        assert(pad_upto(msg, p.as_slice(), p.len()));
         p.push(u8::try_from((bits >> 8) & 0xff).unwrap());
+        assert(pad_upto(msg, p.as_slice(), p.len()));
         p.push(u8::try_from(bits & 0xff).unwrap());
+        assert(pad_upto(msg, p.as_slice(), p.len()));
         p
     }
 
