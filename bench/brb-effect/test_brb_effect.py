@@ -143,6 +143,7 @@ class Verdict(unittest.TestCase):
             self.assertIn("면적 2/12 = 0.167", table)
             self.assertIn("줄 BMB 16 / Rust 80 = 0.200", table)
             self.assertIn("→ 이 모델에서 확정 조건 충족", table)
+            self.assertIn("보조(판정에 쓰지 않음): 기준 해법 면적 4/19 = 0.211, 대비 0.79배", table)
         finally:
             shutil.rmtree(tmp)
 

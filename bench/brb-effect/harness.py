@@ -70,6 +70,11 @@ SESSION_OUTPUT_TOKENS = brb.SESSION_OUTPUT_TOKENS
 # code lines at most this share of the Rust arm's.
 AREA_MAX = 0.20
 LINES_MAX = 1 / 3
+# The reference solutions' area (test-needing / executable definitions),
+# reported beside the verdict as an auxiliary measure, never part of it
+# (decision 2026-11-02: the 0.20 criterion stays). The gate checks the
+# references still give it (`check.sh`, bench brb-effect controls).
+REFERENCE_AREA = (4, 19)
 
 
 def bmb_test_surface(ws):
@@ -166,12 +171,18 @@ def effect_verdict(bmb, rust):
     if rlines == 0:
         parts.append(f"줄 BMB {blines} / Rust 0 (Rust 통과 {rn})")
         verdict = "반증(면적)" if area > AREA_MAX else "판정 불가(Rust 테스트 0줄)"
-        return f"{head}: " + ", ".join(parts) + f" → {verdict}"
+        return f"{head}: " + ", ".join(parts) + f" → {verdict}" + aux_line(area)
     ratio = blines / rlines
     parts.append(f"줄 BMB {blines} / Rust {rlines} = {ratio:.3f} (Rust 통과 {rn})")
     over = [n for n, bad in (("면적", area > AREA_MAX), ("줄", ratio > LINES_MAX)) if bad]
     verdict = f"반증({'·'.join(over)})" if over else "이 모델에서 확정 조건 충족"
-    return f"{head}: " + ", ".join(parts) + f" → {verdict}"
+    return f"{head}: " + ", ".join(parts) + f" → {verdict}" + aux_line(area)
+
+
+def aux_line(area):
+    """The auxiliary measure: the area against the reference solutions'."""
+    rn, rd = REFERENCE_AREA
+    return f"\n보조(판정에 쓰지 않음): 기준 해법 면적 {rn}/{rd} = {rn / rd:.3f}, 대비 {area / (rn / rd):.2f}배"
 
 
 def summarize(paths):
