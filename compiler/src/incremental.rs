@@ -25,16 +25,26 @@
 //!   tree order) and relocated to the current text on a hit, so layout and
 //!   comments change no proof key (ADR-0059 §4);
 //!
-//! **Names in the proof key (ADR-0059 §4, backlog T1-10).** The rows above
-//! name definitions, parameters, fields and types, because the query text
-//! does: its symbols are built from them (`verify::sym`, local constants,
-//! datatype selectors), and some encodings take names in order (merges walk
-//! the locals by name). A key without names would let a renamed definition
-//! reuse a result whose script and `rlimit` counts came from other symbols,
-//! so cached and uncached outputs would differ. The named rows are therefore
-//! the legend of the names the query holds; they go when the queries name
-//! nothing (canonical symbols, backlog T1-ID-02b), and the key is then the
-//! nameless one;
+//! **No names in the proof key (ADR-0063 §4, backlog T1-49).** The key
+//! does not hold the rows above as named text: it holds `D`'s nameless
+//! text and, for each item that text reaches, a number of the key's own
+//! (`@k`, in order of first reference) and the nameless text of what `D`'s
+//! queries read of it (`nameless_reads`): an executable callee's caller
+//! surface, a revealed `spec fn`'s body (by `#[uses]`, in the recursive
+//! component, or a type's invariant), any other `spec fn`'s declaration, a
+//! type's declaration, a trait method's declaration and the functions that
+//! define it. Nameless texts are the identity printer's (`identity::Ids`:
+//! binders by position, fields and variants by declaration position,
+//! built-ins by name), so two versions give `D` the same key exactly when
+//! its read set is the same up to a renaming. A renaming changes no query
+//! (canonical symbols, ADR-0063 §1, §2): the stored verdict, `rlimit` and
+//! script digest (of the canonical script) are the ones a fresh run gives.
+//! The store is looked up by key, so a renamed definition finds the entry
+//! its old name stored, and two definitions that are the same up to names
+//! share one. The named rows remain the read set that `bmb reads` reports
+//! (`proof_reads`): the same rows give the same key; a rename keeps the key
+//! and changes the rows. What the key takes, by row:
+//!
 //! - each definition `D`'s qualified text names: an executable callee through
 //!   its contract, signature and effects (`fmt::caller_text`: the iface
 //!   without `#[uses]`, which reveals bodies only in the callee's own
@@ -78,11 +88,13 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use crate::ast::{FnDef, FnKind, Program, TypeKind};
+use crate::fmt::Resolve;
+use crate::identity::Key;
 use crate::source::{SourceMap, Span};
 use crate::verify::{FnStatus, ObKey, Tables};
 
 pub const FILE: &str = "defs";
-const MAGIC: &str = "bmb incremental cache v2";
+const MAGIC: &str = "bmb incremental cache v3";
 
 thread_local! {
     static ID_OVERRIDE: RefCell<Option<String>> = const { RefCell::new(None) };
@@ -155,10 +167,11 @@ pub struct KeyRead {
     pub digest: String,
 }
 
-/// A definition's proof key as rows: the read set of its proof. Two versions
-/// of a program give a definition the same proof key exactly when its rows
-/// are the same (the other rows of the key, compiler, solver and query
-/// header, are the same for every definition).
+/// A definition's proof key as rows: the read set of its proof, by name.
+/// Two versions of a program with the same rows give a definition the same
+/// proof key (the other rows of the key, compiler, solver and query header,
+/// are the same for every definition); the key itself names nothing, so a
+/// rename keeps it (backlog T1-49).
 #[derive(Clone, Debug)]
 pub struct DefReads {
     pub kind: FnKind,
@@ -316,6 +329,30 @@ impl Store {
                 .find_map(|raw| check_line(kind, path, raw))?,
         };
         (k == key).then_some(p)
+    }
+
+    /// Any entry of `kind` stored under `key`, whatever its path: proof
+    /// keys name nothing (backlog T1-49), so a renamed definition finds the
+    /// entry its old name stored.
+    fn find(&self, kind: &str, key: &str) -> Option<String> {
+        if let Some((_, (_, p))) = self
+            .entries
+            .iter()
+            .find(|((k, _), (stored, _))| k == kind && stored == key)
+        {
+            return Some(p.clone());
+        }
+        self.pending
+            .iter()
+            .filter(|((k, _), _)| k == kind)
+            .find_map(|((_, path), lines)| {
+                // A slot's value is its last line whose digest holds (`get`).
+                let (k, p) = lines
+                    .iter()
+                    .rev()
+                    .find_map(|raw| check_line(kind, path, raw))?;
+                (k == key).then_some(p)
+            })
     }
 
     fn put(&mut self, kind: &str, path: &str, key: String, payload: String) {
@@ -738,8 +775,160 @@ fn parse_deps(text: &str) -> Option<(IrDeps, &str)> {
     Some((deps, rest))
 }
 
+/// The digest of a definition's script as the solver receives it
+/// (canonical symbols, ADR-0063): the same for a renamed definition.
+fn script_digest(script: &str) -> String {
+    crate::sha256::hex(crate::smt::canonical(script).as_bytes())
+}
+
 fn section(out: &mut String, tag: &str, text: &str) {
     out.push_str(&format!("{tag} {}\n{text}\n", text.len()));
+}
+
+/// A reference in a nameless proof key (ADR-0063 §4): an item, or a trait
+/// method (its trait's path and its name).
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+enum Ref {
+    Item(Key),
+    Method(String, String),
+}
+
+/// Numbers what a proof key reads, `@0`, `@1`, .., in order of first
+/// reference: the key's own positions, so no name is written.
+#[derive(Default)]
+struct Numbering {
+    at: RefCell<BTreeMap<Ref, usize>>,
+    order: RefCell<Vec<Ref>>,
+}
+
+impl Numbering {
+    fn number(&self, r: Ref) -> usize {
+        if let Some(&k) = self.at.borrow().get(&r) {
+            return k;
+        }
+        let k = self.order.borrow().len();
+        self.order.borrow_mut().push(r.clone());
+        self.at.borrow_mut().insert(r, k);
+        k
+    }
+
+    fn has(&self, r: &Ref) -> bool {
+        self.at.borrow().contains_key(r)
+    }
+}
+
+impl Resolve for Numbering {
+    fn entity(&self, key: &Key) -> String {
+        format!("@{}", self.number(Ref::Item(key.clone())))
+    }
+    fn method(&self, trait_path: &str, name: &str) -> String {
+        format!(
+            "@{}",
+            self.number(Ref::Method(trait_path.into(), name.into()))
+        )
+    }
+}
+
+/// References erased: orders the members of a recursive component that a
+/// key reaches no other way.
+struct Erased;
+
+impl Resolve for Erased {
+    fn entity(&self, _: &Key) -> String {
+        "@?".into()
+    }
+    fn method(&self, _: &str, _: &str) -> String {
+        "@?".into()
+    }
+}
+
+/// What the queries of definition `path` read, without names (ADR-0063 §4,
+/// backlog T1-49): `@0` is the definition's whole nameless text
+/// (`identity::Ids`: binders by position, fields and variants by
+/// declaration position, built-ins by name), and each item it reaches gets
+/// the next number at its first reference and, once, the text its queries
+/// read of it, the same reads as the named rows (`proof_reads`):
+///
+/// - an executable or proof function: its caller surface (2D-22);
+/// - a `spec fn` revealed by `#[uses]`, in the recursive component, or a
+///   type's invariant: its whole text; any other `spec fn`: its
+///   declaration (2D-14);
+/// - a data type: its declaration (fields and payloads, ADR-0027);
+/// - a trait method: its declaration and the functions that define it.
+///
+/// Members of the component that nothing reaches come last, ordered by
+/// their text with references erased (then path; a tie that remains costs
+/// at most a rebuild after a rename). Two programs give a definition the
+/// same text exactly when its read set is the same up to a renaming, and a
+/// renaming changes no query (canonical symbols, ADR-0063 §1, §2).
+fn nameless_reads(
+    ids: &crate::identity::Ids,
+    path: &str,
+    comp: &[&str],
+    uses: &BTreeSet<String>,
+    kinds: &BTreeMap<&str, FnKind>,
+    invariants: &BTreeSet<String>,
+) -> String {
+    use crate::identity::Read;
+    let read_of = |r: &Ref, res: &dyn Resolve| -> String {
+        match r {
+            Ref::Item(Key::Def(p)) => {
+                let read = if p == path {
+                    Read::Body
+                } else {
+                    match kinds.get(p.as_str()) {
+                        Some(FnKind::Spec)
+                            if uses.contains(p)
+                                || comp.contains(&p.as_str())
+                                || invariants.contains(p) =>
+                        {
+                            Read::Body
+                        }
+                        Some(FnKind::Spec) => Read::Decl,
+                        _ => Read::Caller,
+                    }
+                };
+                ids.read_text(&Key::Def(p.clone()), res, read)
+                    .unwrap_or_else(|| format!("? {p}\n"))
+            }
+            Ref::Item(k) => ids
+                .read_text(k, res, Read::Body)
+                .unwrap_or_else(|| format!("? {}\n", k.path())),
+            Ref::Method(tr, m) => ids
+                .method_read(tr, m, res)
+                .unwrap_or_else(|| format!("? {tr}::{m}\n")),
+        }
+    };
+    let n = Numbering::default();
+    n.number(Ref::Item(Key::Def(path.to_string())));
+    let mut out = String::new();
+    let mut i = 0;
+    loop {
+        while i < n.order.borrow().len() {
+            let r = n.order.borrow()[i].clone();
+            let text = read_of(&r, &n);
+            out.push_str(&format!("@{i}\n{text}"));
+            i += 1;
+        }
+        let mut rest: Vec<(String, &str)> = comp
+            .iter()
+            .filter(|q| !n.has(&Ref::Item(Key::Def(q.to_string()))))
+            .map(|q| (read_of(&Ref::Item(Key::Def(q.to_string())), &Erased), *q))
+            .collect();
+        rest.sort();
+        match rest.first() {
+            Some((_, q)) => n.number(Ref::Item(Key::Def(q.to_string()))),
+            None => break,
+        };
+    }
+    let mut members: Vec<usize> = comp
+        .iter()
+        .map(|q| n.number(Ref::Item(Key::Def(q.to_string()))))
+        .collect();
+    members.sort();
+    let members: Vec<String> = members.iter().map(|k| format!("@{k}")).collect();
+    out.push_str(&format!("component {}\n", members.join(" ")));
+    out
 }
 
 impl Session {
@@ -907,6 +1096,10 @@ impl Session {
                 .clone()
         };
         let z3 = crate::toolchain::z3_version();
+        let ids = crate::identity::Ids::new(p, t);
+        // Type invariants: their predicates' bodies are read wherever a
+        // value of the type crosses a boundary (ADR-0060 §3).
+        let invariants: BTreeSet<String> = t.adts.values().filter_map(|a| a.inv.clone()).collect();
         let mut proof_keys = BTreeMap::new();
         let mut ir_keys = BTreeMap::new();
         for (path, unit, f) in &defs {
@@ -958,11 +1151,18 @@ impl Session {
             section(&mut own, "path", path);
             section(&mut own, "unit", unit);
             section(&mut own, "qualified", &qual);
+            // The proof key names nothing (ADR-0063 §4, backlog T1-49): the
+            // definition's nameless text and what its queries read of each
+            // item it reaches, references numbered inside the key.
             let mut pk = String::from("proof\n");
+            section(&mut pk, "id", id);
             section(&mut pk, "z3", z3);
             section(&mut pk, "header", &header);
-            pk.push_str(&own);
-            section(&mut pk, "component", &comp.join(" "));
+            section(
+                &mut pk,
+                "reads",
+                &nameless_reads(&ids, path, &comp, &uses, &kinds, &invariants),
+            );
             let mut ik = String::from("ir\n");
             ik.push_str(&own);
             section(&mut ik, "source", slice);
@@ -987,17 +1187,14 @@ impl Session {
                 match kinds[r] {
                     FnKind::Exec | FnKind::Proof => {
                         let line = format!("{r} {caller}");
-                        section(&mut pk, "callee", &line);
                         section(&mut ik, "callee", &line);
                         row("callee", r, caller.clone());
                     }
                     FnKind::Spec if uses.contains(r) || comp.contains(&r) => {
-                        section(&mut pk, "spec", &format!("{r} {body}"));
                         row("spec", r, body.clone());
                     }
                     // Named only: the query reads its declaration (below).
                     FnKind::Spec => {
-                        section(&mut pk, "names", r);
                         row("names", r, String::new());
                     }
                 }
@@ -1020,7 +1217,6 @@ impl Session {
             }
             for r in &reach {
                 if let Some(decl) = decls.get(r) {
-                    section(&mut pk, "decl", decl);
                     row("decl", r, digest(decl));
                 }
             }
@@ -1062,7 +1258,6 @@ impl Session {
             }
             for ty in &tys {
                 let line = adt_line(&t.adts[ty]);
-                section(&mut pk, "type", &line);
                 section(&mut ik, "type", &line);
                 row("type", ty, digest(&line));
                 // A type invariant is assumed and proved wherever a value
@@ -1072,10 +1267,8 @@ impl Session {
                     && by_path.contains_key(inv.as_str())
                 {
                     let (body, _) = hash_of(inv);
-                    section(&mut pk, "invariant", &format!("{ty} {inv} {body}"));
                     row("invariant", inv, body.clone());
                     if let Some(decl) = decls.get(inv) {
-                        section(&mut pk, "decl", decl);
                         row("decl", inv, digest(decl));
                     }
                 }
@@ -1107,7 +1300,10 @@ impl Session {
     /// The stored proof result of `path`, relocated into `span`.
     pub fn proof_lookup(&self, path: &str, f: &FnDef) -> Option<ProofHit> {
         let key = self.proof_keys.get(path)?;
-        let payload = self.store.get("P", path, key)?;
+        let payload = self
+            .store
+            .get("P", path, key)
+            .or_else(|| self.store.find("P", key))?;
         let mut it = payload.split(' ');
         let obligations: usize = it.next()?.parse().ok()?;
         let rlimit_total: u64 = it.next()?.parse().ok()?;
@@ -1144,7 +1340,7 @@ impl Session {
             status.obligations,
             status.rlimit_total,
             status.rlimit_max,
-            crate::sha256::hex(script.as_bytes()),
+            script_digest(script),
             nodes_text(&rel)
         );
         self.store.put("P", &status.path, key.clone(), payload);
@@ -1164,7 +1360,7 @@ impl Session {
         a.dedup();
         b.sort();
         b.dedup();
-        let same = hit.script_sha == crate::sha256::hex(script.as_bytes())
+        let same = hit.script_sha == script_digest(script)
             && status.failed == 0
             && hit.status.obligations == status.obligations
             && hit.status.rlimit_total == status.rlimit_total

@@ -1,0 +1,17 @@
+# The `sha2` crate arm of the SHA-256 speed bench (backlog T4-01, approved
+# 2026-11-01: bench only, not a compiler dependency). Same data and output as
+# ../sha256_speed.bmb and ../sha256_speed.rs; opt-level 2 as their rustc.
+[package]
+name = "sha256-speed-sha2"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+sha2 = "=0.11.1"
+
+[profile.release]
+opt-level = 2
+
+# Not a member of the repository's workspace.
+[workspace]

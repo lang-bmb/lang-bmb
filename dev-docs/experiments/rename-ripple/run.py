@@ -13,7 +13,9 @@ renamed one is reported apart as `noise` (the word also occurred elsewhere).
 
 With `--stats`, each rename is also verified through a copy of a warm cache
 (`bmb verify --cache --stats`): the definitions the incremental build encoded
-again and the proof cache misses (ADR-0059 H-ID closing measurement).
+again and the proof cache misses (ADR-0059 H-ID closing measurement); and once
+more through another copy with `--audit`, which proves every reused
+definition anyway and compares it with the stored result (backlog T1-49).
 
   python3 dev-docs/experiments/rename-ripple/run.py [--bmb PATH] [--stats] > results.md
 """
@@ -65,8 +67,12 @@ def stats_of(bmb, warm, text, tmp, tag):
         f.write(text)
     subprocess.run([bmb, "verify", "--cache", cache, "--stats", st, src], capture_output=True)
     s = json.load(open(st))
+    shutil.rmtree(cache)
+    shutil.copytree(warm, cache)
+    subprocess.run([bmb, "verify", "--cache", cache, "--stats", st, "--audit", src], capture_output=True)
+    audit = json.load(open(st))["audit_mismatches"]
     shutil.rmtree(d)
-    return len(s["encoded"]), s["proof_cache_misses"]
+    return len(s["encoded"]), s["proof_cache_misses"], len(audit)
 
 
 def main():
@@ -78,7 +84,7 @@ def main():
     files = [os.path.join(ROOT, "lib", "bytes.bmb")]
     files += sorted(glob.glob(os.path.join(ROOT, "tests", "run", "*.bmb")))
     tot = dict(files=0, defs=0, renamed=0, skipped=0, rippling=0, body=0, iface=0, id=0, noise=0,
-               encoded=0, encoding_renames=0, misses=0, missing_renames=0)
+               encoded=0, encoding_renames=0, misses=0, missing_renames=0, audit=0)
     rows = []
     with tempfile.TemporaryDirectory() as tmp:
         work = os.path.join(tmp, "w.bmb")
@@ -125,11 +131,12 @@ def main():
                     res = list(ex.map(lambda kt: stats_of(args.bmb, warm, kt[1], tmp, kt[0]),
                                       enumerate(renamed_texts)))
                 shutil.rmtree(warm)
-                for enc, miss in res:
+                for enc, miss, audit in res:
                     f["encoded"] += enc
                     f["misses"] += miss
                     tot["encoded"] += enc
                     tot["misses"] += miss
+                    tot["audit"] += audit
                     tot["encoding_renames"] += enc > 0
                     tot["missing_renames"] += miss > 0
             tot["renamed"] += f["renamed"]
@@ -155,6 +162,7 @@ def main():
         print("| 다시 인코딩이 있었던 이름 바꾸기 | %d |" % tot["encoding_renames"])
         print("| 증명 캐시 놓침(합) | %d |" % tot["misses"])
         print("| 증명 캐시 놓침이 있었던 이름 바꾸기 | %d |" % tot["missing_renames"])
+        print("| 감사 불일치(합, `verify --audit`) | %d |" % tot["audit"])
     print()
     if args.stats:
         print("| 파일 | 정의 | 바꾼 이름 | 파급 | 계약 해시 파급 | 재인코딩 | 캐시 놓침 |\n| --- | ---: | ---: | ---: | ---: | ---: | ---: |")

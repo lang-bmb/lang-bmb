@@ -27,7 +27,7 @@ fn write_stdout(args: std::fmt::Arguments) {
 
 const USAGE: &str = "usage:
   bmb check <file.bmb>...   check sources; diagnostics as JSONL on stdout
-  bmb verify [--emit-smt DIR] [--cache DIR] [--stats FILE] [--def PATH]... <file.bmb>...
+  bmb verify [--emit-smt DIR] [--cache DIR] [--stats FILE] [--audit] [--def PATH]... <file.bmb>...
                             check and prove; diagnostics and per-definition status as JSONL;
                             --def proves only the named definitions (the whole program is
                             still checked; each gets its whole-program status);
@@ -35,7 +35,10 @@ const USAGE: &str = "usage:
                             and reuses unchanged definitions without encoding them;
                             --stats writes what the caches did as one JSON line to FILE
                             (definitions encoded, reused, lowered, IR reused, proof cache
-                            hits and misses; emit-llvm and build take it too)
+                            hits and misses; emit-llvm and build take it too);
+                            --audit proves each definition the cache would reuse anyway and
+                            compares (script as the solver receives it, status, proved
+                            obligations); --stats then lists the differences (audit_mismatches)
   bmb stability [--seeds N] <file.bmb>...
                             prove under solver seeds 0..N (default 5); per-definition verdicts
                             and rlimit as JSONL; fails if a verdict depends on the seed
@@ -216,9 +219,15 @@ fn run() -> ExitCode {
             let mut emit = None;
             let mut cache = None;
             let mut stats = None;
+            let mut audit = false;
             let mut defs = std::collections::BTreeSet::new();
             loop {
                 match rest.first().map(String::as_str) {
+                    Some("--audit") if rest.len() > 1 => {
+                        audit = true;
+                        rest = &rest[1..];
+                        continue;
+                    }
                     Some("--emit-smt") if rest.len() > 2 => emit = Some(rest[1].clone()),
                     Some("--cache") if rest.len() > 2 => cache = Some(rest[1].clone()),
                     Some("--stats") if rest.len() > 2 => stats = Some(rest[1].clone()),
@@ -236,15 +245,22 @@ fn run() -> ExitCode {
             // `--emit-smt` needs every definition's script, so every
             // definition is encoded (the proof cache still applies).
             let cache_dir = cache.as_deref().map(std::path::Path::new);
-            let out = if defs.is_empty() {
-                bmb::verify_sources_opts(&files, cache_dir, emit.is_none())
+            let run = || {
+                if defs.is_empty() {
+                    Ok(bmb::verify_sources_opts(&files, cache_dir, emit.is_none()))
+                } else {
+                    bmb::verify_sources_only(&files, cache_dir, emit.is_none(), &defs)
+                }
+            };
+            let out = match if audit {
+                bmb::incremental::with_audit(run)
             } else {
-                match bmb::verify_sources_only(&files, cache_dir, emit.is_none(), &defs) {
-                    Ok(out) => out,
-                    Err(e) => {
-                        eprintln!("bmb: {e}");
-                        return ExitCode::from(2);
-                    }
+                run()
+            } {
+                Ok(out) => out,
+                Err(e) => {
+                    eprintln!("bmb: {e}");
+                    return ExitCode::from(2);
                 }
             };
             if let Some(dir) = emit {
@@ -877,12 +893,13 @@ fn verify_stats(out: &bmb::VerifyOutput) -> String {
         format!("[{}]", xs.join(","))
     };
     format!(
-        "{{\"encoded\":{},\"reused\":{},\"lowered\":{},\"ir_reused\":{},\"proof_cache_hits\":{},\"proof_cache_misses\":{}}}\n",
+        "{{\"encoded\":{},\"reused\":{},\"lowered\":{},\"ir_reused\":{},\"proof_cache_hits\":{},\"proof_cache_misses\":{},\"audit_mismatches\":{}}}\n",
         names(&out.incr.encoded),
         names(&out.incr.reused),
         names(&out.incr.lowered),
         names(&out.incr.ir_reused),
         out.cache.0,
-        out.cache.1
+        out.cache.1,
+        names(&out.incr.audit_mismatches)
     )
 }

@@ -143,6 +143,25 @@ fn set(v: &[String]) -> BTreeSet<String> {
     v.iter().cloned().collect()
 }
 
+/// The definitions of `generate(units)` that a run with an empty cache
+/// encodes. Proof keys name nothing (ADR-0063 §4, backlog T1-49), so a
+/// definition whose read set is another's up to names reuses its result:
+/// units 2.. repeat unit 1 except `f0`'s constant, and unit 1 repeats unit 0
+/// except `f0` and `g` (the call into the previous unit).
+fn alpha_distinct(units: usize) -> BTreeSet<String> {
+    let mut s: BTreeSet<String> = ["f0", "f1", "f2", "rec", "g"]
+        .iter()
+        .map(|f| format!("m0::{f}"))
+        .collect();
+    for k in 1..units {
+        s.insert(format!("m{k}::f0"));
+    }
+    if units > 1 {
+        s.insert("m1::g".into());
+    }
+    s
+}
+
 fn failed_defs(output: &str) -> BTreeSet<String> {
     output
         .lines()
@@ -188,7 +207,9 @@ fn a_body_change_relowers_only_that_definition() {
     let dir = tmp("body");
     let base = generate(6);
     let (_, cold) = cached(&files(&base), &dir);
-    assert!(cold.reused.is_empty() && cold.ir_reused.is_empty());
+    assert_eq!(set(&cold.encoded), alpha_distinct(6));
+    assert_eq!(cold.encoded.len() + cold.reused.len(), 30);
+    assert!(cold.ir_reused.is_empty());
     assert_eq!(cold.lowered.len(), 30);
     let (_, warm) = cached(&files(&base), &dir);
     assert!(
@@ -205,6 +226,74 @@ fn a_body_change_relowers_only_that_definition() {
     assert_eq!(out, plain(&f));
     assert_eq!(stats.encoded, vec!["m3::f0".to_string()]);
     assert_eq!(stats.lowered, vec!["m3::f0".to_string()]);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A rename re-encodes nothing (ADR-0063 §4, backlog T1-49): a spec fn, an
+/// executable function and its callers' calls, a parameter and a local, in
+/// one unit. Every stored result is reused, the audit (which proves each
+/// definition again and compares the script as the solver receives it, the
+/// status and the proved obligations) finds no difference, and the output is
+/// the uncached one.
+#[test]
+fn a_rename_reencodes_nothing() {
+    let dir = tmp("rename");
+    let base = generate(6);
+    cached(&files(&base), &dir);
+    let unit = |text: &str, k: usize| -> (usize, usize) {
+        let lo = text.find(&format!("mod m{k} {{")).unwrap();
+        let hi = text[lo + 1..]
+            .find("mod m")
+            .map_or(text.len(), |h| lo + 1 + h);
+        (lo, hi)
+    };
+    let (lo, hi) = unit(&base, 3);
+    let renamed_unit = base[lo..hi]
+        .replace("m2::pos", "M2_POS")
+        .replace("pos(", "nonneg(")
+        .replace("pos,", "nonneg,")
+        .replace("pos)", "nonneg)")
+        .replace("fn f0(", "fn first(")
+        .replace("f0(x)", "first(x)")
+        .replace("let y: i64", "let v: i64")
+        .replace(
+            "if y > 5 { y - 5 } else { y }",
+            "if v > 5 { v - 5 } else { v }",
+        )
+        .replace("fn f2(n: i64)", "fn f2(m: i64)")
+        .replace(
+            "requires small(n),\n    {\n        let mut c",
+            "requires small(m),\n    {\n        let mut c",
+        )
+        .replace(
+            "while i < n\n            invariant i <= n,",
+            "while i < m\n            invariant i <= m,",
+        )
+        .replace("decreases n - i,", "decreases m - i,")
+        .replace("M2_POS", "m2::pos");
+    // The next unit's `#[uses]` follows the renamed spec fn.
+    let renamed =
+        format!("{}{renamed_unit}{}", &base[..lo], &base[hi..]).replace("m3::pos", "m3::nonneg");
+    assert!(
+        renamed.contains("fn first(")
+            && renamed.contains("spec fn nonneg(")
+            && renamed.contains("let v: i64")
+    );
+    assert!(renamed.contains("while i < m"));
+    let f = files(&renamed);
+    let expect = plain(&f);
+    assert!(
+        failed_defs(&expect.0).is_empty() && !expect.0.contains("error"),
+        "{}",
+        expect.0
+    );
+    let (out, stats) = bmb::incremental::with_audit(|| cached(&f, &dir));
+    assert_eq!(out, expect);
+    assert!(stats.audit_mismatches.is_empty(), "{stats:?}");
+    let (out, stats) = cached(&f, &dir);
+    assert_eq!(out, expect);
+    assert!(stats.encoded.is_empty(), "{stats:?}");
+    assert_eq!(stats.reused.len(), 30);
     let _ = fs::remove_dir_all(&dir);
 }
 
@@ -486,8 +575,10 @@ fn another_compiler_identity_invalidates_everything() {
     cached(&f, &dir);
     let (out, stats) = bmb::incremental::with_compiler_id("other", || cached(&f, &dir));
     assert_eq!(out, expect);
-    assert!(stats.reused.is_empty() && stats.ir_reused.is_empty());
-    assert_eq!(stats.encoded.len(), 10);
+    // As a run with an empty cache: only the run's own results are reused.
+    assert!(stats.ir_reused.is_empty());
+    assert_eq!(set(&stats.encoded), alpha_distinct(2));
+    assert_eq!(stats.encoded.len() + stats.reused.len(), 10);
     let (_, stats) = bmb::incremental::with_compiler_id("other", || cached(&f, &dir));
     assert_eq!(stats.reused.len(), 10);
     let _ = fs::remove_dir_all(&dir);
@@ -616,7 +707,8 @@ fn verify_stats_name_the_reencoded_definitions() {
     let base = generate(6);
     fs::write(&src, &base).unwrap();
     run(true);
-    assert_eq!(field("encoded").len(), 30);
+    assert_eq!(set(&field("encoded")), alpha_distinct(6));
+    assert_eq!(field("encoded").len() + field("reused").len(), 30);
     assert_eq!(run(true), run(false));
     assert!(field("encoded").is_empty());
     assert_eq!(field("reused").len(), 30);
@@ -953,4 +1045,98 @@ mod iv {
     assert_ne!(id(&stronger), base_id);
     assert_ne!(id(&without), base_id);
     assert_eq!(id(&BASE.replace("ordered", "sorted_pair")), base_id);
+}
+
+/// The proof key of `def` (`bmb reads`).
+fn proof_key(src: &str, def: &str) -> String {
+    let rows = bmb::reads_sources(&files(src)).unwrap();
+    let line = rows
+        .lines()
+        .find(|l| l.starts_with(&format!("{{\"def\":\"{def}\"")))
+        .unwrap_or_else(|| panic!("{def}: {rows}"));
+    line.split("\"key\":\"").nth(1).unwrap()[..64].to_string()
+}
+
+/// Nameless proof keys (ADR-0063 §4, backlog T1-49) keep apart what the
+/// queries read: a key names nothing, but a renaming is the only change
+/// that keeps it. Each pair below has the same shape up to names; the first
+/// differs only by names (same key), the others in what a query reads
+/// (different keys).
+#[test]
+fn nameless_keys_tell_apart_what_queries_read() {
+    const BASE: &str = r#"#[summary("k")]
+mod u {
+    struct S { a: i64, b: i64, c: i64 }
+
+    spec fn p(x: i64) -> bool { x >= 0 }
+
+    spec fn q(x: i64) -> bool { x >= 1 }
+
+    spec fn small(x: i64) -> bool { 0 <= x && x < 100 }
+
+    spec fn both(s: S) -> bool { small(s.a) && small(s.b) }
+
+    #[effects(pure)]
+    #[uses(small, p)]
+    fn f(x: i64) -> (r: i64)
+        requires small(x),
+        ensures p(r),
+    { x }
+
+    #[effects(pure)]
+    #[uses(small, p)]
+    fn g(x: i64) -> (r: i64)
+        requires small(x),
+        ensures p(r),
+    { x }
+
+    #[effects(pure)]
+    #[uses(both, small, p)]
+    fn d(s: S) -> (r: i64)
+        requires both(s),
+        ensures p(r),
+    {
+        let y: i64 = f(s.a);
+        let z: i64 = g(s.b);
+        y + z
+    }
+}
+"#;
+    let key = |src: &str| proof_key(src, "u::d");
+    let base = key(BASE);
+    // Names only: a spec fn, a callee, the type, a field, a local.
+    let renamed = BASE
+        .replace("spec fn p(", "spec fn nonneg(")
+        .replace("p(r)", "nonneg(r)")
+        .replace(", p)]", ", nonneg)]")
+        .replace("fn f(", "fn first(")
+        .replace("f(s.a)", "first(s.a)")
+        .replace("struct S { a: i64", "struct Pair { left: i64")
+        .replace("(s: S)", "(s: Pair)")
+        .replace("s.a", "s.left")
+        .replace("let y: i64", "let w: i64")
+        .replace("y + z", "w + z");
+    assert!(!renamed.contains("fn p(") && !renamed.contains("s.a") && !renamed.contains("let y"));
+    assert_eq!(key(&renamed), base, "a rename keeps the key");
+    for (what, changed) in [
+        // A callee's contract names an unrevealed spec fn of the same
+        // signature instead of the revealed one.
+        (
+            "callee contract",
+            BASE.replacen("ensures p(r),\n    { x }", "ensures q(r),\n    { x }", 1),
+        ),
+        // The same callee twice instead of two alike.
+        ("same callee twice", BASE.replace("g(s.b)", "f(s.b)")),
+        // The other field.
+        ("field", BASE.replace("f(s.a)", "f(s.b)")),
+        // The revealed spec fn's body.
+        ("revealed body", BASE.replace("{ x >= 0 }", "{ x >= 2 }")),
+        // A field's type.
+        ("field type", BASE.replace("c: i64 }", "c: i32 }")),
+    ] {
+        assert_ne!(changed, BASE, "{what}");
+        assert!(bmb::reads_sources(&files(&changed)).is_ok(), "{what}");
+        assert_ne!(key(&changed), base, "{what}");
+    }
+    assert_eq!(key(&BASE.replace("{ x >= 1 }", "{ x >= 3 }")), base);
 }

@@ -11,6 +11,13 @@ if ! command -v z3 >/dev/null || [[ "$(z3 --version)" != *"version ${Z3_VERSION}
     || python3 -m pip install --quiet "z3-solver==${Z3_VERSION}.0"
 fi
 
+# The second solver of the cross-check (scripts/cross_solver.py, backlog 1B-39).
+if ! python3 -c "import cvc5, sys; sys.exit(cvc5.__version__ != '${CVC5_VERSION}')" 2>/dev/null; then
+  echo "installing cvc5 ${CVC5_VERSION}"
+  python3 -m pip install --quiet --break-system-packages "cvc5==${CVC5_VERSION}" 2>/dev/null \
+    || python3 -m pip install --quiet "cvc5==${CVC5_VERSION}"
+fi
+
 llvm_ok() { command -v llc >/dev/null && llc --version | grep -q "LLVM version ${LLVM_MAJOR}\."; }
 if ! llvm_ok; then
   bin="/usr/lib/llvm-${LLVM_MAJOR}/bin"

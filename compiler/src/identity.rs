@@ -117,6 +117,16 @@ struct ImplInfo<'p> {
     fns: Vec<(String, String)>,
 }
 
+/// What an incremental proof key reads of a definition (`Ids::read_text`):
+/// its whole text, the surface a caller reads, or its declaration (a
+/// `spec fn` whose body the queries do not reveal).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum Read {
+    Body,
+    Caller,
+    Decl,
+}
+
 /// What printing a text produces: the text with or without its body, or
 /// the surface a caller reads.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -350,6 +360,69 @@ impl<'p> Ids<'p> {
     /// The hashes of the definition with a body at `path`.
     pub fn def(&self, path: &str) -> Option<Hashes> {
         self.get(&Key::Def(path.to_string()))
+    }
+
+    /// The nameless text of `key` as an incremental proof key reads it
+    /// (ADR-0063 §4, backlog T1-49), references written by `res`: a
+    /// definition's whole text, its caller surface or its declaration
+    /// (`Read`), a type's declaration without its `impl`s (the key reads a
+    /// type's fields and payloads, ADR-0027), a trait as `trait` (a key
+    /// reaches what it reads of a trait through its methods,
+    /// `method_read`). `None` when the program has no such item.
+    pub(crate) fn read_text(&self, key: &Key, res: &dyn Resolve, read: Read) -> Option<String> {
+        Some(match self.ents.get(key)? {
+            Ent::Def { .. } => {
+                let part = match read {
+                    Read::Body => Part::Body,
+                    Read::Caller => Part::Caller,
+                    Read::Decl => Part::Iface,
+                };
+                self.print(key, res, part, &[])
+            }
+            Ent::Type { unit, t } => {
+                let mut pr = Printer::identity(res, self.t, &self.traits, unit);
+                pr.type_def_as(t, 0, "_");
+                pr.out
+            }
+            Ent::Trait { .. } => "trait".into(),
+        })
+    }
+
+    /// Method `name` of trait `trait_path` as an incremental proof key
+    /// reads it (backlog T1-49): its trait and position in the trait's
+    /// declaration, its declaration's caller surface, and the functions
+    /// that define it (each `impl`'s, in source order, and the default
+    /// body). A call with a known `Self` reads that `impl`'s contract
+    /// (ADR-0046 §4), and a trait `impl`'s function is proved against the
+    /// declaration (its refinement obligations).
+    pub(crate) fn method_read(
+        &self,
+        trait_path: &str,
+        name: &str,
+        res: &dyn Resolve,
+    ) -> Option<String> {
+        let tk = Key::Trait(trait_path.to_string());
+        let Ent::Trait { unit, t } = self.ents.get(&tk)? else {
+            return None;
+        };
+        let k = t.fns.iter().position(|tf| tf.f.name.name == name)?;
+        let mut pr = Printer::identity(res, self.t, &self.traits, unit);
+        let mut decl = t.fns[k].f.clone();
+        decl.attrs.retain(|a| a.name.name != "uses");
+        pr.function(&decl, 0, Some("_"), false);
+        let mut out = format!("method {k} of {}\n{}", res.entity(&tk), pr.out);
+        for &i in self.impls_of_trait.get(trait_path).into_iter().flatten() {
+            for (m, path) in &self.impls[i].fns {
+                if m == name {
+                    out.push_str(&format!("impl {}\n", res.entity(&Key::Def(path.clone()))));
+                }
+            }
+        }
+        let default = Key::Def(format!("{trait_path}::{name}"));
+        if self.ents.contains_key(&default) {
+            out.push_str(&format!("default {}\n", res.entity(&default)));
+        }
+        Some(out)
     }
 
     /// Every item of the program, by key.
