@@ -1817,6 +1817,10 @@ struct Enc<'p, 'q> {
     counters: BTreeMap<String, u32>,
     pc: Vec<String>,
     vars: BTreeMap<String, Val>,
+    /// The order in which each local was first bound (ADR-0063 §2): merges
+    /// and loop heads walk locals in this order, not by name, so a renamed
+    /// local leaves the query text the same.
+    var_rank: BTreeMap<String, usize>,
     old: BTreeMap<String, Val>,
     entry_measure: Option<(String, bool)>,
     obls: Vec<Obl>,
@@ -2677,6 +2681,7 @@ impl<'p, 'q> Enc<'p, 'q> {
             counters: BTreeMap::new(),
             pc: Vec::new(),
             vars: BTreeMap::new(),
+            var_rank: BTreeMap::new(),
             old: BTreeMap::new(),
             entry_measure: None,
             obls: Vec::new(),
@@ -4051,6 +4056,22 @@ impl<'p, 'q> Enc<'p, 'q> {
     }
 
     /// Runs two branches from the same state and merges them under `c`.
+    /// Binds local `k` to `v`, noting when it was first bound.
+    fn bind_var(&mut self, k: String, v: Val) {
+        if !self.var_rank.contains_key(&k) {
+            let r = self.var_rank.len();
+            self.var_rank.insert(k.clone(), r);
+        }
+        self.vars.insert(k, v);
+    }
+
+    /// `names` in the order they were first bound (ADR-0063 §2).
+    fn in_binding_order<'n>(&self, names: impl IntoIterator<Item = &'n String>) -> Vec<String> {
+        let mut out: Vec<String> = names.into_iter().cloned().collect();
+        out.sort_by_key(|n| self.var_rank.get(n).copied().unwrap_or(usize::MAX));
+        out
+    }
+
     fn branch(
         &mut self,
         c: &str,
@@ -4095,7 +4116,7 @@ impl<'p, 'q> Enc<'p, 'q> {
             (false, false) => {}
         }
         let mut merged = BTreeMap::new();
-        for k in base_vars.keys() {
+        for k in &self.in_binding_order(base_vars.keys()) {
             let (a, b) = (&then_vars[k], &else_vars[k]);
             let t = if a == b {
                 TypeKind::Error
@@ -4115,11 +4136,19 @@ impl<'p, 'q> Enc<'p, 'q> {
     /// that later merges refer to it instead of copying it: copying doubles
     /// the term at every sequential `if` (backlog 1B-26).
     fn merge(&mut self, c: &str, a: &Val, b: &Val, t: &TypeKind) -> Val {
-        const BIND_ABOVE: usize = 200;
+        // A term's size in atoms, not characters: a size in characters
+        // counted the length of the names in it, so renaming a definition
+        // or local changed which merges were bound (ADR-0063 §2).
+        const BIND_ABOVE: usize = 24;
+        fn size(term: &str) -> usize {
+            term.split(|c: char| c == '(' || c == ')' || c.is_whitespace())
+                .filter(|w| !w.is_empty())
+                .count()
+        }
         match (a, b) {
             (Val::S(x), Val::S(y)) => {
                 let term = ite(c, x, y);
-                if term.len() > BIND_ABOVE
+                if size(&term) > BIND_ABOVE
                     && !matches!(t, TypeKind::Error | TypeKind::Unit)
                     && !is_array(t)
                 {
@@ -4149,7 +4178,7 @@ impl<'p, 'q> Enc<'p, 'q> {
             (Val::Arr { .. }, Val::Arr { .. }) => ite_val(c, a, b),
             (Val::A { elems: e1, len: l1 }, Val::A { elems: e2, len: l2 }) => {
                 let mut elems = ite(c, e1, e2);
-                if elems.len() > BIND_ABOVE && is_array(t) {
+                if size(&elems) > BIND_ABOVE && is_array(t) {
                     let v = self.fresh("merge", &format!("(Array Int {})", sort_of(&elem_ty(t))));
                     self.pc.push(format!("(= {v} {elems})"));
                     elems = v;
@@ -4467,11 +4496,11 @@ impl<'p, 'q> Enc<'p, 'q> {
             Stmt::Let { name, init, .. } if self.ghost => {
                 let (env, old) = self.cur_env();
                 let v = self.spec(init, &env, &old);
-                self.vars.insert(name.name.clone(), v);
+                self.bind_var(name.name.clone(), v);
             }
             Stmt::Let { name, init, .. } => {
                 let v = self.eval(init);
-                self.vars.insert(name.name.clone(), v);
+                self.bind_var(name.name.clone(), v);
             }
             Stmt::Proof { body, .. } => self.proof_block(body),
             Stmt::Assign { target, value, .. } => {
@@ -4481,7 +4510,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                 let root = self.place(target, &mut steps, true);
                 let cur = self.vars[&root].clone();
                 let nv = self.set_at(cur, &steps, v);
-                self.vars.insert(root, nv);
+                self.bind_var(root, nv);
             }
             Stmt::Assert {
                 cond,
@@ -4531,7 +4560,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                 let lo = self.eval(lo).s();
                 let hi = self.eval(hi).s();
                 let ty = self.local_ty(&var.name);
-                self.vars.insert(var.name.clone(), Val::S(lo.clone()));
+                self.bind_var(var.name.clone(), Val::S(lo.clone()));
                 let step = ForStep {
                     var: var.name.clone(),
                     ty,
@@ -4609,7 +4638,7 @@ impl<'p, 'q> Enc<'p, 'q> {
             let cur = self.vars[v].clone();
             self.oblige_valid(span, Boundary::LoopEntry(v), &cur, ty);
         }
-        for v in &modified {
+        for v in &self.in_binding_order(&modified) {
             let Some(cur) = self.vars.get(v).cloned() else {
                 continue;
             };
@@ -4640,7 +4669,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                 }
                 Val::Unit => Val::Unit,
             };
-            self.vars.insert(v.clone(), fresh);
+            self.bind_var(v.clone(), fresh);
         }
         for (v, ty) in &valid_vars {
             let cur = self.vars[v].clone();
@@ -4715,7 +4744,8 @@ impl<'p, 'q> Enc<'p, 'q> {
             format!("(or {})", alts.join(" "))
         });
         let mut vars = BTreeMap::new();
-        for (k, v0) in &after_cond_vars {
+        for k in &self.in_binding_order(after_cond_vars.keys()) {
+            let v0 = &after_cond_vars[k];
             let mut v = if exits {
                 v0.clone()
             } else {
@@ -4785,7 +4815,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                 let msg = format!("`+` may overflow `{}`", crate::check::ty_str(&st.ty));
                 self.oblige("E0803", st.span, msg, rg);
             }
-            self.vars.insert(st.var.clone(), Val::S(next));
+            self.bind_var(st.var.clone(), Val::S(next));
         }
         self.back_to_head(k);
     }
@@ -4927,7 +4957,7 @@ impl<'p, 'q> Enc<'p, 'q> {
         let root = self.place(recv, &mut steps, false);
         let cur = self.vars[&root].clone();
         let nv = self.set_at(cur, &steps, new);
-        self.vars.insert(root, nv);
+        self.bind_var(root, nv);
         result
     }
 
@@ -4946,7 +4976,7 @@ impl<'p, 'q> Enc<'p, 'q> {
         let root = self.place(&p0, &mut steps, true);
         let cur = self.vars[&root].clone();
         let nv = self.set_at(cur, &steps, new);
-        self.vars.insert(root, nv);
+        self.bind_var(root, nv);
         if op == "replace" {
             return old;
         }
@@ -4954,7 +4984,7 @@ impl<'p, 'q> Enc<'p, 'q> {
         let root = self.place(&p1, &mut steps, true);
         let cur = self.vars[&root].clone();
         let nv = self.set_at(cur, &steps, old);
-        self.vars.insert(root, nv);
+        self.bind_var(root, nv);
         Val::Unit
     }
 
@@ -5157,7 +5187,7 @@ impl<'p, 'q> Enc<'p, 'q> {
             s.pc.extend(facts);
             for (b, val) in arm.pat.binds.iter().zip(&vals) {
                 if let Some(id) = b {
-                    s.vars.insert(id.name.clone(), val.clone());
+                    s.bind_var(id.name.clone(), val.clone());
                 }
             }
             let r = s.eval(&arm.body);
@@ -5177,7 +5207,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                 let root = s.place(place, &mut steps, false);
                 let cur = s.vars[&root].clone();
                 let nv = s.set_at(cur, &steps, new);
-                s.vars.insert(root, nv);
+                s.bind_var(root, nv);
             }
             r
         };
@@ -5602,7 +5632,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                 self.assume_valid(&nv, &param_tys[i]);
                 let cur = self.vars[&root].clone();
                 let whole = self.set_at(cur, &steps, nv.clone());
-                self.vars.insert(root, whole);
+                self.bind_var(root, whole);
                 post_args[i] = nv;
             }
         }
@@ -6400,12 +6430,18 @@ fn needed_decls(
     text: &str,
 ) -> String {
     let mut out = String::new();
-    for (_, s, decl) in spec_decls {
+    // In order of first use in `text`, not by name (ADR-0063 §2): a renamed
+    // spec fn keeps its place, so the canonical query text stays the same.
+    let mut used: Vec<(usize, &String)> = spec_decls
+        .iter()
         // A revealed non-recursive spec fn is defined by its macro instead.
-        if text.contains(s.as_str()) && !text.contains(&format!("(define-fun {s}")) {
-            out.push_str(decl);
-            out.push('\n');
-        }
+        .filter(|(_, s, _)| !text.contains(&format!("(define-fun {s}")))
+        .filter_map(|(_, s, decl)| text.find(s.as_str()).map(|at| (at, decl)))
+        .collect();
+    used.sort_by_key(|(at, _)| *at);
+    for (_, decl) in used {
+        out.push_str(decl);
+        out.push('\n');
     }
     // The datatypes the query or those declarations name, with the ones
     // their constructors name; `dts` lists dependencies first.
@@ -6491,7 +6527,7 @@ pub fn preconditions_satisfiable(
             let v = enc.fresh_val(&prm.name.name, &ty);
             // The entry state the prover assumes: valid parameters too.
             enc.assume_valid(&v, &ty);
-            enc.vars.insert(prm.name.name.clone(), v);
+            enc.bind_var(prm.name.name.clone(), v);
         }
         let (env, old) = enc.cur_env();
         for r in &d.f.requires {
@@ -6701,7 +6737,7 @@ fn verify_impl(
                         enc.old.insert(prm.name.name.clone(), v.clone());
                     }
                     enc.inputs.push((prm.name.name.clone(), v.clone(), ty));
-                    enc.vars.insert(prm.name.name.clone(), v);
+                    enc.bind_var(prm.name.name.clone(), v);
                 }
                 let at = RefineAt::Version {
                     own_domain: job.own_domain,
@@ -6749,7 +6785,7 @@ fn verify_impl(
                     let facts = enc.type_facts(&v, &ty);
                     enc.pc.extend(facts);
                     enc.inputs.push((prm.name.name.clone(), v.clone(), ty));
-                    enc.vars.insert(prm.name.name.clone(), v);
+                    enc.bind_var(prm.name.name.clone(), v);
                 }
                 let (env, old) = enc.cur_env();
                 for r in &d.f.requires {
@@ -6780,7 +6816,7 @@ fn verify_impl(
                         enc.old.insert(prm.name.name.clone(), v.clone());
                     }
                     enc.inputs.push((prm.name.name.clone(), v.clone(), ty));
-                    enc.vars.insert(prm.name.name.clone(), v);
+                    enc.bind_var(prm.name.name.clone(), v);
                 }
                 if let Some((decl, rsub)) = refinement_of(t, path) {
                     enc.refines(d.f, &decl, rsub, RefineAt::Trait);
@@ -8017,19 +8053,28 @@ enum Forms {
 
 /// As `relevant_axioms`, in the forms of query `forms`.
 fn axioms_in_forms(axioms: &[(String, String)], text: &str, forms_of: Forms) -> String {
+    // The definitions the text reaches, in order of first use: first those
+    // the query names, by where it first names them, then those their
+    // bodies name, and so on (ADR-0063 §2: not by name, so a renamed
+    // definition keeps its place and the canonical query text its bytes).
     let mut chosen = vec![false; axioms.len()];
+    let mut order: Vec<usize> = Vec::new();
     let mut haystack = text.to_string();
     loop {
-        let mut grew = false;
-        for (k, (symbol, ax)) in axioms.iter().enumerate() {
-            if !chosen[k] && haystack.contains(symbol.as_str()) {
-                chosen[k] = true;
-                haystack.push_str(ax);
-                grew = true;
-            }
-        }
-        if !grew {
+        let mut found: Vec<(usize, usize)> = axioms
+            .iter()
+            .enumerate()
+            .filter(|(k, _)| !chosen[*k])
+            .filter_map(|(k, (symbol, _))| haystack.find(symbol.as_str()).map(|at| (at, k)))
+            .collect();
+        if found.is_empty() {
             break;
+        }
+        found.sort();
+        for (_, k) in found {
+            chosen[k] = true;
+            order.push(k);
+            haystack.push_str(&axioms[k].1);
         }
     }
     // A spec fn named in a pattern must stay uninterpreted: Z3 expands a
@@ -8088,8 +8133,8 @@ fn axioms_in_forms(axioms: &[(String, String)], text: &str, forms_of: Forms) -> 
     let mut out = String::new();
     loop {
         let mut progressed = false;
-        for k in 0..axioms.len() {
-            if !chosen[k] || done[k] {
+        for &k in &order {
+            if done[k] {
                 continue;
             }
             let waits = (0..axioms.len()).any(|j| {

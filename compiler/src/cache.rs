@@ -1,7 +1,7 @@
 //! Proof cache (backlog 2D-01). An obligation is cached only once proved, and
 //! its key is the SHA-256 of the exact text the solver received (options,
-//! prelude, revealed definitions, declarations, query) plus the solver
-//! version. The same text gives the same answer from the pinned solver, so a
+//! prelude, revealed definitions, declarations, query; with canonical
+//! symbols, ADR-0063, `smt::canonical`) plus the solver version. The same text gives the same answer from the pinned solver, so a
 //! hit is as good as running it. Anything that changes the query (a callee's
 //! contract, a revealed definition, the encoding, `rlimit`, the seed) changes
 //! the key; unproved obligations always run again.
@@ -13,7 +13,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 pub const FILE: &str = "proofs";
-const MAGIC: &str = "bmb proof cache v2";
+const MAGIC: &str = "bmb proof cache v3";
 
 #[derive(Default)]
 pub struct ProofCache {
@@ -27,10 +27,13 @@ pub struct ProofCache {
 }
 
 impl ProofCache {
+    /// The key of `query` as the encoder writes it: the text the solver
+    /// receives is its canonical form (ADR-0063), so a renamed program's
+    /// query has the same key.
     pub fn key(query: &str) -> String {
         let mut text = String::from(crate::toolchain::z3_version());
         text.push('\n');
-        text.push_str(query);
+        text.push_str(&crate::smt::canonical(query));
         crate::sha256::hex(text.as_bytes())
     }
 

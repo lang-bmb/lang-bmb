@@ -3,6 +3,7 @@
 //! The solver runs as a child process speaking SMT-LIB on stdin/stdout. Every
 //! answer other than `unsat` is a failure for the proof gate.
 
+use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -22,6 +23,203 @@ pub struct Solver {
     stdin: ChildStdin,
     stdout: BufReader<ChildStdout>,
     started: Instant,
+    /// The canonical symbols of the query since the last `(reset)`
+    /// (ADR-0063): what the solver sees names nothing of the program.
+    canon: Canon,
+}
+
+/// Canonical symbols of a query (ADR-0063, backlog T1-10e). Every quoted
+/// symbol `|..|` (definitions, locals, callee results, selectors,
+/// constructors, datatypes: everything the encoder names after the program)
+/// becomes `|$k|`, numbered in order of first occurrence. Renaming the
+/// program then leaves the query text the same, so the solver's work and
+/// the proof cache key are the same too. `back` turns the solver's answers
+/// (models, errors) into the program's names again. Comments and string
+/// literals are kept as they are.
+#[derive(Debug, Default, Clone)]
+pub struct Canon {
+    fwd: HashMap<String, String>,
+    names: Vec<String>,
+}
+
+impl Canon {
+    /// `text` with its quoted symbols in canonical form, numbering new ones.
+    pub fn forward(&mut self, text: &str) -> String {
+        let mut out = String::with_capacity(text.len());
+        let mut chars = text.chars().peekable();
+        while let Some(c) = chars.next() {
+            match c {
+                '|' => {
+                    let mut sym = String::from("|");
+                    for d in chars.by_ref() {
+                        sym.push(d);
+                        if d == '|' {
+                            break;
+                        }
+                    }
+                    match self.fwd.get(&sym) {
+                        Some(canon) => out.push_str(canon),
+                        None => {
+                            let canon = format!("|${}|", self.names.len());
+                            out.push_str(&canon);
+                            self.fwd.insert(sym.clone(), canon);
+                            self.names.push(sym);
+                        }
+                    }
+                }
+                '"' => {
+                    out.push(c);
+                    for d in chars.by_ref() {
+                        out.push(d);
+                        if d == '"' {
+                            break;
+                        }
+                    }
+                }
+                ';' => {
+                    out.push(c);
+                    for d in chars.by_ref() {
+                        out.push(d);
+                        if d == '\n' {
+                            break;
+                        }
+                    }
+                }
+                _ => out.push(c),
+            }
+        }
+        out
+    }
+
+    /// `text` from the solver with canonical symbols named as in the program,
+    /// written as the solver writes them: the solver prints `|$2|` as `$2`
+    /// and the values of an uninterpreted sort `|$0|` as `$0!val!0`, so a
+    /// token, quoted or not, that starts with `$k` gets the original name in
+    /// place of `$k`, quoted only when it is not a simple symbol (SMT-LIB).
+    pub fn back(&self, text: &str) -> String {
+        if self.names.is_empty() || !text.contains('$') {
+            return text.to_string();
+        }
+        let chars: Vec<char> = text.chars().collect();
+        let mut out = String::with_capacity(text.len());
+        let mut i = 0;
+        while i < chars.len() {
+            let c = chars[i];
+            if c == '|' {
+                let mut j = i + 1;
+                while j < chars.len() && chars[j] != '|' {
+                    j += 1;
+                }
+                let inner: String = chars[i + 1..j.min(chars.len())].iter().collect();
+                match self.rename(&inner) {
+                    Some(name) => out.push_str(&quote(&name)),
+                    None => {
+                        out.push('|');
+                        out.push_str(&inner);
+                        if j < chars.len() {
+                            out.push('|');
+                        }
+                    }
+                }
+                i = j + 1;
+            } else if c == '$' && (i == 0 || !is_symbol_char(chars[i - 1])) {
+                let mut j = i;
+                while j < chars.len() && is_symbol_char(chars[j]) {
+                    j += 1;
+                }
+                let tok: String = chars[i..j].iter().collect();
+                match self.rename(&tok) {
+                    Some(name) => out.push_str(&quote(&name)),
+                    None => out.push_str(&tok),
+                }
+                i = j;
+            } else {
+                out.push(c);
+                i += 1;
+            }
+        }
+        out
+    }
+
+    /// The unquoted name of token `tok` (`$k` then a suffix) in the program:
+    /// the original symbol's name, then the suffix.
+    fn rename(&self, tok: &str) -> Option<String> {
+        let rest = tok.strip_prefix('$')?;
+        let digits = rest.chars().take_while(char::is_ascii_digit).count();
+        let k: usize = rest[..digits].parse().ok()?;
+        let orig = self.names.get(k)?;
+        let orig = orig.strip_prefix('|')?.strip_suffix('|')?;
+        Some(format!("{orig}{}", &rest[digits..]))
+    }
+
+    /// The program's name of each canonical symbol, in order (`|$0|` first).
+    pub fn legend(&self) -> &[String] {
+        &self.names
+    }
+}
+
+/// A character of an SMT-LIB simple symbol.
+fn is_symbol_char(c: char) -> bool {
+    c.is_ascii_alphanumeric() || "~!@$%^&*_-+=<>.?/".contains(c)
+}
+
+/// `name` as the solver prints a symbol: bare when it is a simple symbol.
+fn quote(name: &str) -> String {
+    let simple = !name.is_empty()
+        && !name.starts_with(|c: char| c.is_ascii_digit())
+        && name.chars().all(is_symbol_char);
+    if simple {
+        name.to_string()
+    } else {
+        format!("|{name}|")
+    }
+}
+
+/// `text` (one query) as the solver receives it (ADR-0063): its commands
+/// only (text between commands, such as comments, never reaches the
+/// solver), with canonical symbols. The proof cache key's input.
+pub fn canonical(text: &str) -> String {
+    let mut canon = Canon::default();
+    split_commands(text)
+        .iter()
+        .map(|cmd| canon.forward(cmd))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// A script of queries that each start with `(reset)` (`--emit-smt`), each
+/// query with its own canonical symbols, and the legend of every query in
+/// order: `; query K` then one `|$k| NAME` line per symbol.
+pub fn canonical_script(script: &str) -> (String, String) {
+    let mut out = String::new();
+    let mut legend = String::new();
+    let mut canon = Canon::default();
+    let mut query = 0;
+    for line in script.split_inclusive('\n') {
+        if line.trim() == "(reset)" {
+            if !canon.legend().is_empty() {
+                legend_of(&mut legend, query, &canon);
+            }
+            canon = Canon::default();
+            query += 1;
+        }
+        if line.trim_start().starts_with(';') {
+            out.push_str(line);
+        } else {
+            out.push_str(&canon.forward(line));
+        }
+    }
+    if !canon.legend().is_empty() {
+        legend_of(&mut legend, query, &canon);
+    }
+    (out, legend)
+}
+
+fn legend_of(out: &mut String, query: usize, canon: &Canon) {
+    out.push_str(&format!("; query {query}\n"));
+    for (k, name) in canon.legend().iter().enumerate() {
+        out.push_str(&format!("|${k}| {name}\n"));
+    }
 }
 
 /// Wall-clock backstop in seconds. Results are governed by the deterministic
@@ -77,6 +275,7 @@ impl Solver {
             stdin,
             stdout,
             started: Instant::now(),
+            canon: Canon::default(),
         };
         // Every command answers, so an error is seen at the command that caused it.
         s.send("(set-option :print-success true)")?;
@@ -96,14 +295,23 @@ impl Solver {
         if r == "success" {
             Ok(())
         } else {
-            Err(format!("{r} (in `{}`)", truncate(cmd, 160)))
+            Err(format!(
+                "{} (in `{}`)",
+                self.canon.back(&r),
+                truncate(cmd, 160)
+            ))
         }
     }
 
     /// Runs a sequence of top-level commands that answer `success`.
     pub fn run(&mut self, script: &str) -> Result<(), String> {
         for cmd in split_commands(script) {
-            self.send(&cmd)?;
+            // Each query starts with `(reset)` and numbers its own symbols.
+            if cmd.trim() == "(reset)" {
+                self.canon = Canon::default();
+            }
+            let sent = self.canon.forward(&cmd);
+            self.send(&sent)?;
             self.expect_success(&cmd)?;
         }
         Ok(())
@@ -165,7 +373,7 @@ impl Solver {
             "unknown" => {
                 self.send("(get-info :reason-unknown)")?;
                 let why = self.read_response()?;
-                Ok(Answer::Unknown(reason_text(&why)))
+                Ok(Answer::Unknown(self.canon.back(&reason_text(&why))))
             }
             other => Err(format!("unexpected solver response: {other}")),
         }
@@ -177,8 +385,12 @@ impl Solver {
         if terms.is_empty() {
             return Ok(Vec::new());
         }
-        self.send(&format!("(get-value ({}))", terms.join(" ")))?;
-        let r = self.read_response()?;
+        let asked = self
+            .canon
+            .forward(&format!("(get-value ({}))", terms.join(" ")));
+        self.send(&asked)?;
+        let raw = self.read_response()?;
+        let r = self.canon.back(&raw);
         if r.starts_with("(error") {
             return Err(r);
         }
@@ -201,8 +413,12 @@ impl Solver {
             return Ok(Vec::new());
         }
         // Values are only meaningful right after `sat`.
-        self.send(&format!("(get-value ({}))", terms.join(" ")))?;
-        let r = self.read_response()?;
+        let asked = self
+            .canon
+            .forward(&format!("(get-value ({}))", terms.join(" ")));
+        self.send(&asked)?;
+        let raw = self.read_response()?;
+        let r = self.canon.back(&raw);
         if r.starts_with("(error") {
             return Err(r);
         }
@@ -420,6 +636,38 @@ pub fn render_value(v: &Sexp) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn canonical_symbols_number_quoted_symbols_by_first_use() {
+        // ADR-0063: two queries that differ only in names are the same text.
+        let a = "(declare-const |m::x@0| Int)\n(assert (> |m::x@0| |m::f.result@1|))";
+        let b = "(declare-const |m::y@0| Int)\n(assert (> |m::y@0| |m::g.result@1|))";
+        assert_eq!(canonical(a), canonical(b));
+        assert_eq!(
+            canonical(a),
+            "(declare-const |$0| Int)\n(assert (> |$0| |$1|))"
+        );
+        // Text between commands (comments) never reaches the solver and is
+        // not part of the key; strings keep their bars.
+        let c = format!("; |m::x@0| is a local\n{a}\n; done");
+        assert_eq!(canonical(&c), canonical(a));
+        assert_eq!(canonical("(echo \"|a|\")"), "(echo \"|a|\")");
+    }
+
+    #[test]
+    fn canonical_answers_are_named_back_as_the_solver_writes_them() {
+        let mut c = Canon::default();
+        let sent = c.forward("(declare-datatypes ((|Option<i64>| 0)) (((|Option<i64>::None|) (|Option<i64>::Some| (|v| Int)))))\n(declare-sort |T| 0)");
+        assert!(sent.contains("|$0|") && sent.contains("|$4|"), "{sent}");
+        // The solver prints simple symbols bare, and the values of an
+        // uninterpreted sort with `!val!k`.
+        assert_eq!(c.back("(($2 7))"), "((|Option<i64>::Some| 7))");
+        assert_eq!(c.back("((x $1))"), "((x |Option<i64>::None|))");
+        assert_eq!(c.back("$4!val!0"), "T!val!0");
+        assert_eq!(c.back("|$4|"), "T");
+        // What is not a canonical symbol stays.
+        assert_eq!(c.back("$x $99 a$1 |$q|"), "$x $99 a$1 |$q|");
+    }
 
     #[test]
     fn renders_values() {

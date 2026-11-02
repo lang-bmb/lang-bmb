@@ -7,7 +7,7 @@
 {"code":"E0804","severity":"error","message":"divisor may be zero in `rf::stop_early`; counterexample: n = 4","file":"fail/ranges.bmb","line":72,"col":14,"end_line":72,"end_col":24}
 {"code":"E0803","severity":"error","message":"`-` may overflow `u64` in `rf::reverse`; counterexample: n = 0","file":"fail/ranges.bmb","line":80,"col":17,"end_line":80,"end_col":26}
 {"def":"rf::maybe_empty","status":"failed","obligations":6,"failed":1,"rlimit":7081,"rlimit_max":2028}
-{"def":"rf::past_end","status":"failed","obligations":5,"failed":1,"rlimit":6091,"rlimit_max":1795}
+{"def":"rf::past_end","status":"failed","obligations":5,"failed":1,"rlimit":6087,"rlimit_max":1795}
 {"def":"rf::reverse","status":"failed","obligations":6,"failed":1,"rlimit":4667,"rlimit_max":1222}
 {"def":"rf::skip","status":"failed","obligations":13,"failed":1,"rlimit":14734,"rlimit_max":2119}
 {"def":"rf::stop_early","status":"failed","obligations":7,"failed":2,"rlimit":8367,"rlimit_max":2658}

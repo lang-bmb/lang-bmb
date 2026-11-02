@@ -1,0 +1,23 @@
+#[summary("Rust 경로 접두사와 클로저: 고칠 길이 붙는 Rust 습관 진단(백로그 2D-29)")]
+mod outer {
+    #[effects(pure)]
+    fn g(x: i64) -> i64 { x }
+
+    #[summary("하위 단위")]
+    mod inner {
+        #[effects(pure)]
+        fn from_super(x: i64) -> i64 { super::g(x) }
+    }
+
+    #[effects(pure)]
+    fn from_crate(x: i64) -> i64 { crate::outer::g(x) }
+
+    #[effects(pure)]
+    fn from_self(x: i64) -> i64 { self::g(x) }
+
+    #[effects(pure)]
+    fn closure(x: i64) -> i64 {
+        let add = |y: i64| y + 1;
+        x
+    }
+}

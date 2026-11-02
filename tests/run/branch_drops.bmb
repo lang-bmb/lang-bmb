@@ -1,0 +1,57 @@
+#[summary("한 갈래에서만 옮긴 값은 다른 갈래 끝에서 해제된다(ADR-0081, 백로그 2O-07)")]
+mod bd {
+    struct Pt { x: i64, y: i64 }
+
+    struct Pair { a: Box<Pt>, b: Box<Pt> }
+
+    enum Pick { First, Second, Neither }
+
+    #[effects(pure)]
+    fn mk(x: i64) -> Box<Pt> {
+        Box::new(Pt { x: x, y: x.wrapping_mul(10) })
+    }
+
+    #[effects(pure)]
+    fn take(p: Box<Pt>) -> i64 {
+        p.x.wrapping_add(p.y)
+    }
+
+    // `p` moves on the then path only: the else path drops it.
+    #[effects(pure)]
+    fn one_branch(c: bool, x: i64) -> i64 {
+        let p: Box<Pt> = mk(x);
+        if c { take(p) } else { 0 }
+    }
+
+    // Moved on two arms of three: the third drops it.
+    #[effects(pure)]
+    fn arms(k: Pick, x: i64) -> i64 {
+        let p: Box<Pt> = mk(x);
+        let q: Box<Pt> = mk(x.wrapping_add(1));
+        match k {
+            Pick::First => take(p),
+            Pick::Second => take(q),
+            Pick::Neither => -1,
+        }
+    }
+
+    // One field moves on one path; the other path drops that field, and the
+    // rest of the struct is dropped at the end of the block either way.
+    #[effects(pure)]
+    fn field(c: bool, x: i64) -> i64 {
+        let s: Pair = Pair { a: mk(x), b: mk(x.wrapping_add(2)) };
+        let r: i64 = if c { take(s.a) } else { s.b.x };
+        r
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        print_i64(one_branch(true, 1));
+        print_i64(one_branch(false, 2));
+        print_i64(arms(Pick::First, 3));
+        print_i64(arms(Pick::Second, 4));
+        print_i64(arms(Pick::Neither, 5));
+        print_i64(field(true, 6));
+        print_i64(field(false, 7));
+    }
+}

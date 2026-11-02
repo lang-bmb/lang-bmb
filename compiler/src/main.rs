@@ -253,10 +253,15 @@ fn run() -> ExitCode {
                     return ExitCode::from(2);
                 }
                 for (def, script) in &out.scripts {
+                    // What the solver received (canonical symbols, ADR-0063),
+                    // and beside it the legend of each query's symbols.
+                    let (text, legend) = bmb::smt::canonical_script(script);
                     let file = format!("{dir}/{}.smt2", def.replace("::", "."));
-                    if let Err(e) = std::fs::write(&file, script) {
-                        eprintln!("bmb: cannot write {file}: {e}");
-                        return ExitCode::from(2);
+                    for (f, t) in [(file.clone(), text), (format!("{file}.legend"), legend)] {
+                        if let Err(e) = std::fs::write(&f, t) {
+                            eprintln!("bmb: cannot write {f}: {e}");
+                            return ExitCode::from(2);
+                        }
                     }
                 }
             }

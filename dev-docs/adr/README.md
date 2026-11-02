@@ -126,5 +126,6 @@ BMB v2의 설계 결정을 한 건에 파일 하나로 남긴다. 현재 확정�
 | [0078](0078-supplementary-hypotheses.md) | 보완 가설 여섯의 등록(H-EFFECT, H-INTENT, H-REVIEW, H-SMALL, H-REPAIR, H-COMPAT)과 판정 기준 동결, 나머지 열넷은 등록하지 않음(사유) | 채택 | T1-42 |
 | [0079](0079-exists-in-specifications.md) | 명세의 `exists|x: T| e`: `forall`과 같은 묶음·트리거·문맥 규칙, 구문 트리 `ExprKind::Quant`, 인코딩은 SMT `exists`(언어 범위 확대) | 채택 | T0-25 |
 | [0080](0080-struct-literal-field-order.md) | 구조체 생성 식의 필드는 선언 순서로: 검사기가 요구하고 고친다(E0434), 정규형은 정렬하지 않는다(ADR-0026 §1·§6의 정렬 문구 대체) | 채택 | 2B-13 |
+| [0081](0081-static-drop-at-branch-joins.md) | `if`·`else`와 `match`에서 한 갈래만 옮긴 값은 옮기지 않은 갈래 끝에서 정적으로 해제(ADR-0031 §2의 E0414를 그 합류점에서 대체, 플래그 없음) | 채택 | 2O-07 |
 
 채택 계획(2026-10-24 승인): 0026은 2B 착수 때, 0028은 2C 착수 때 채택한다. 0029·0030·0031은 2단계 측정(2H) 뒤로 미룬다. "제안" ADR의 진단 코드 번호는 잠정이다. 제안끼리 겹치는 번호가 있으며(예: E0212·E0412), 채택 후 구현할 때 `compiler/src/diag.rs`에서 확정한다.

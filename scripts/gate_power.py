@@ -141,9 +141,9 @@ MUTANTS = [
                 format!("(< {d1} {d0})"),''',
      "a loop measure may go below zero"),
     ("v-havoc-skipped", "unsound", V,
-     '''        for v in &modified {
+     '''        for v in &self.in_binding_order(&modified) {
             let Some(cur) = self.vars.get(v).cloned() else {''',
-     '''        for v in modified.iter().take(0) {
+     '''        for v in self.in_binding_order(&modified).iter().take(0) {
             let Some(cur) = self.vars.get(v).cloned() else {''',
      "variables a loop assigns keep their entry values"),
     ("v-mut-param-havoc-skipped", "unsound", V,

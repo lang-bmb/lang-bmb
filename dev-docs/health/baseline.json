@@ -2,27 +2,27 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 7354084,
-    "V5_rlimit_headroom": 0.1355,
+    "V4_rlimit_total": 7423209,
+    "V5_rlimit_headroom": 0.1804,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0,
-    "V8_bench_rlimit_total": 24316281,
+    "V8_bench_rlimit_total": 24254414,
     "V9_bench_defs_at_limit": 0,
-    "V10_library_rlimit_total": 11946407,
-    "V11_sat_check_rlimit_total": 270343853,
-    "V12_sat_check_undecided": 265,
+    "V10_library_rlimit_total": 13157963,
+    "V11_sat_check_rlimit_total": 278100374,
+    "V12_sat_check_undecided": 277,
     "S1_external_crates": 0,
     "S2_external_processes": [
       "clang",
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 39927,
+    "S4_stage0_rust_lines": 40263,
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
-    "P1_runnable_programs": 58,
-    "P2_bmb_lines": 21824,
-    "P3_errors_with_help": 0.8782,
+    "P1_runnable_programs": 59,
+    "P2_bmb_lines": 21913,
+    "P3_errors_with_help": 0.8798,
     "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 13
@@ -1577,6 +1577,52 @@
         "P3_errors_with_help": [
           0.8778,
           0.8782
+        ]
+      }
+    },
+    {
+      "date": "2026-11-02",
+      "reason": "T1-48 (ADR-0063 canonical query symbols, first-use order of declarations and definitions): V10 +10.1% and V12 265 -> 277 come from the new declaration order alone (base64::byte0, byte1, sha256::pad; the merge threshold does not move V10, canonical names alone add ~1.3%), accepted for rename invariance (proof cache misses under renames 4,297 -> 0); T2-14 brings them back. Also 2O-07 (ADR-0081, a runnable program, P1) and 2D-29 (E0242, closure fix, P3)",
+      "changed": {
+        "V4_rlimit_total": [
+          7354084,
+          7423209
+        ],
+        "V5_rlimit_headroom": [
+          0.1355,
+          0.1804
+        ],
+        "V8_bench_rlimit_total": [
+          24316281,
+          24254414
+        ],
+        "V10_library_rlimit_total": [
+          11946407,
+          13157963
+        ],
+        "V11_sat_check_rlimit_total": [
+          270343853,
+          278100374
+        ],
+        "V12_sat_check_undecided": [
+          265,
+          277
+        ],
+        "S4_stage0_rust_lines": [
+          39927,
+          40263
+        ],
+        "P1_runnable_programs": [
+          58,
+          59
+        ],
+        "P2_bmb_lines": [
+          21824,
+          21913
+        ],
+        "P3_errors_with_help": [
+          0.8782,
+          0.8798
         ]
       }
     }

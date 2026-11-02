@@ -75,6 +75,12 @@ pub struct MoveInfo {
     /// Per `return` (by its span): the owned locals and parameters (or
     /// their fields still owned) dropped on that exit.
     pub exits: BTreeMap<Key, Vec<String>>,
+    /// Per branch of an `if` or `match` (by the span of the then block, the
+    /// `else` expression or the arm's body): the paths that branch still
+    /// owns at its end but another branch moved, dropped at its end so that
+    /// they are moved after the join on every path (ADR-0081, backlog
+    /// 2O-07). No run-time flag: the place is fixed by the program text.
+    pub branch_drops: BTreeMap<Key, Vec<String>>,
 }
 
 /// A loop a `break` or `continue` may leave.
@@ -385,6 +391,61 @@ impl Mv<'_> {
             if !n.contains('.') || matches!(st, St::Moved) {
                 out.insert(n.clone(), st);
             }
+        }
+        self.state = out;
+    }
+
+    /// The join of the branches of an `if` or `match`: each with its state,
+    /// whether it left the function, and where it ends. A path owned on some
+    /// branches and moved on others is dropped at the end of each branch
+    /// that owns it (`branch_drops`) and is moved after the join (ADR-0081).
+    fn join_branches(&mut self, paths: Vec<(BTreeMap<String, St>, bool, Key)>) {
+        let reaching: Vec<&(BTreeMap<String, St>, bool, Key)> =
+            paths.iter().filter(|(_, dead, _)| !dead).collect();
+        match reaching.len() {
+            0 => {
+                self.state = paths.into_iter().next().map(|p| p.0).unwrap_or_default();
+                self.dead = true;
+                return;
+            }
+            1 => {
+                self.state = reaching[0].0.clone();
+                self.dead = false;
+                return;
+            }
+            _ => {}
+        }
+        self.dead = false;
+        let keys: BTreeSet<&String> = reaching.iter().flat_map(|p| p.0.keys()).collect();
+        let mut out = BTreeMap::new();
+        let mut drops: Vec<(Key, Vec<String>)> = Vec::new();
+        for n in keys {
+            let root = n.split('.').next().unwrap_or(n);
+            if !reaching.iter().all(|p| p.0.contains_key(root)) {
+                continue;
+            }
+            let sts: Option<Vec<St>> = reaching.iter().map(|p| status_in(&p.0, n)).collect();
+            let Some(sts) = sts else { continue };
+            let st = if sts.iter().all(|x| x.same(sts[0])) {
+                sts[0]
+            } else {
+                for (p, st) in reaching.iter().zip(&sts) {
+                    if matches!(st, St::Owned) {
+                        let saved = std::mem::replace(&mut self.state, p.0.clone());
+                        let ps = self.drop_paths(n);
+                        self.state = saved;
+                        drops.push((p.2, ps));
+                    }
+                }
+                St::Moved
+            };
+            // A field is kept only when moved (owned is inherited).
+            if !n.contains('.') || matches!(st, St::Moved) {
+                out.insert(n.clone(), st);
+            }
+        }
+        for (k, ps) in drops {
+            self.info.branch_drops.entry(k).or_default().extend(ps);
         }
         self.state = out;
     }
@@ -806,7 +867,15 @@ impl Mv<'_> {
                 }
                 let after_else = std::mem::take(&mut self.state);
                 let else_dead = std::mem::replace(&mut self.dead, false);
-                self.join((after_then, then_dead), (after_else, else_dead), e.span);
+                // Without `else` the other path is the `if` itself: what the
+                // then block moves cannot be dropped on it (E0414).
+                match els {
+                    Some(el) => self.join_branches(vec![
+                        (after_then, then_dead, key(then.span)),
+                        (after_else, else_dead, key(el.span)),
+                    ]),
+                    None => self.join((after_then, then_dead), (after_else, else_dead), e.span),
+                }
             }
             ExprKind::Block(b) => self.block(b),
             ExprKind::Array(items) => {
@@ -914,7 +983,7 @@ impl Mv<'_> {
                     _ => self.expr(scrut, binds_owned),
                 }
                 let before = self.state.clone();
-                let mut joined: Option<(BTreeMap<String, St>, bool)> = None;
+                let mut ends: Vec<(BTreeMap<String, St>, bool, Key)> = Vec::new();
                 for arm in arms {
                     self.state = before.clone();
                     let binds: Vec<String> = arm
@@ -940,21 +1009,12 @@ impl Mv<'_> {
                         self.info.arm_drops.insert(key(arm.body.span), owned);
                     }
                     let after = std::mem::take(&mut self.state);
-                    joined = Some(match joined {
-                        None => (after, dead),
-                        Some(j) => {
-                            self.join(j, (after, dead), e.span);
-                            let d = std::mem::replace(&mut self.dead, false);
-                            (std::mem::take(&mut self.state), d)
-                        }
-                    });
+                    ends.push((after, dead, key(arm.body.span)));
                 }
-                match joined {
-                    Some((st, dead)) => {
-                        self.state = st;
-                        self.dead = dead;
-                    }
-                    None => self.state = before,
+                if ends.is_empty() {
+                    self.state = before;
+                } else {
+                    self.join_branches(ends);
                 }
             }
             ExprKind::Loop {

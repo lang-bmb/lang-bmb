@@ -1116,6 +1116,7 @@ impl<'p> Gen<'p> {
                     self.drop_at(&ptr, &ty);
                 }
             }
+            self.drop_branch(a.body.span);
             self.emit(format!("br label %{end}"));
         }
         self.block(&end);
@@ -1741,6 +1742,12 @@ impl<'p> Gen<'p> {
                             "call void @llvm.memcpy.p0.p0.i64(ptr {buf}, ptr {src}, i64 {bytes}, i1 false)"
                         ));
                     }
+                    match branch {
+                        Some(b) => self.drop_branch(b.span),
+                        None => {
+                            self.drop_branch(els.as_ref().expect("array `if` has an else").span)
+                        }
+                    }
                     self.emit(format!("br label %{end}"));
                 }
                 self.block(&end);
@@ -1760,11 +1767,13 @@ impl<'p> Gen<'p> {
                 self.block(&lt);
                 let tv = self.block_expr(then);
                 self.store_result(&slot, tv, &ty);
+                self.drop_branch(then.span);
                 self.emit(format!("br label %{end}"));
                 self.block(&le);
                 if let Some(x) = els {
                     let ev = self.expr(x);
                     self.store_result(&slot, ev, &ty);
+                    self.drop_branch(x.span);
                 }
                 self.emit(format!("br label %{end}"));
                 self.block(&end);
@@ -2282,6 +2291,23 @@ impl<'p> Gen<'p> {
         };
         for n in names {
             self.drop_path(&n);
+        }
+    }
+
+    /// Drops what the branch ending at `span` owns but another branch of the
+    /// same join moved (ADR-0081, backlog 2O-07).
+    fn drop_branch(&mut self, span: Span) {
+        let Some(paths) = self
+            .t
+            .moves
+            .get(&self.base)
+            .and_then(|m| m.branch_drops.get(&(span.file, span.lo, span.hi)))
+            .cloned()
+        else {
+            return;
+        };
+        for p in paths {
+            self.drop_path(&p);
         }
     }
 

@@ -396,10 +396,14 @@ impl<'p, 'q> Enc<'p, 'q> {
         if self.ghost {
             return Vec::new();
         }
-        modified
-            .iter()
-            .filter(|v| self.vars.contains_key(*v))
-            .map(|v| (v.clone(), self.local_ty(v)))
+        // In the order the locals were first bound (ADR-0063 §2).
+        self.in_binding_order(modified)
+            .into_iter()
+            .filter(|v| self.vars.contains_key(v))
+            .map(|v| {
+                let t = self.local_ty(&v);
+                (v, t)
+            })
             .filter(|(_, t)| self.prog.needs_valid(t))
             .collect()
     }

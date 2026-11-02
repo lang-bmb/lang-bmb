@@ -7,13 +7,13 @@
 | units | item outside `mod` | check | E0703 | items must be declared inside a `mod` | wrap the item in `#[summary("..")] mod name { .. }` |
 | units | `mod` without summary | check | E0704 | unit `p` has no summary | add `#[summary("one line")]` above `mod` |
 | units | other unit without path | check | E0304 | unknown function `g` | no `g` in unit `p`; other units are reached by full path `unit::g` |
-| units | `crate::` path | check | E0103 | expected name, found `crate` |  |
+| units | `crate::` path | check | E0242 | `crate::` is not used: a path names a unit from the root (`unit::f`) | replace `crate::` with nothing (치환) |
 | units | `use` | check | E0214 | `use q::g;` is not used: write `q::g` where it is used | delete the `use`; its names are rewritten to full paths (치환) |
 | units | `pub fn` | check | E0207 | `pub` is not used; every definition of a unit is part of its surface | remove `pub` (치환) |
 | units | `struct` | check | 없음 | | |
 | units | `enum` and `match` | check | 없음 | | |
 | units | generics | check | 없음 | | |
-| units | closure | check | E0207 | closures are not supported in milestone 1 |  |
+| units | closure | check | E0207 | closures are not supported | move the closure's body into a named `fn` of the unit, taking what it captures as parameters, and call that function |
 | units | closure | check | E0301 | unknown name `c` |  |
 | units | `assert!` | check | E0202 | macro `assert!` is not allowed | use `assert(cond);` (a proof obligation, not a runtime check) |
 | units | `vec!` | check | E0202 | macro `vec!` is not allowed | a fixed array is `[a, b]` or `[v; N]`; a `Vec` is `Vec::with_capacity(n)` and `push` |
@@ -44,5 +44,5 @@
 | loops | `while` without `invariant` | verify | E0802 | postcondition `is3` may not hold in `p::f` |  |
 | loops | recursion without `decreases` | check | E0507 | `p::f` is recursive and has no `decreases` clause | add `decreases <expr>,` after `ensures` |
 | loops | `forall` without trigger | check | E0511 | `forall` has no `#[trigger]` | mark a term that mentions every bound variable, e.g. `#[trigger] a[i]` |
-| loops | trigger misses a variable | check | E0512 | no trigger mentions bound variable `j` |  |
+| loops | trigger misses a variable | check | E0512 | no trigger mentions bound variable `j` | mark a term that mentions `j` with `#[trigger]` as well (the triggers form one pattern) |
 | loops | mixed integer types in code | check | E0401 | `+` needs operands of one type, found `u64` and `usize` | convert the `u64` operand: `usize::try_from(x).unwrap()` |

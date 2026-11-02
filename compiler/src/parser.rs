@@ -26,6 +26,9 @@ pub struct Parser<'a> {
     decl_ok: bool,
     /// The span of the last type parameter list read, `<` to `>`.
     generics_span: Option<Span>,
+    /// The units being read, outermost first (for the fix of a `super::`
+    /// path, backlog 2D-29).
+    units: Vec<String>,
 }
 
 /// An `impl` block: inherent or of a trait.
@@ -122,6 +125,7 @@ impl<'a> Parser<'a> {
             impl_ty: None,
             decl_ok: false,
             generics_span: None,
+            units: Vec::new(),
         }
     }
 
@@ -526,12 +530,16 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_mod(&mut self, attrs: Vec<Attr>) -> PResult<Mod> {
-        self.nested(|p| p.parse_mod_inner(attrs))
+        let depth = self.units.len();
+        let m = self.nested(|p| p.parse_mod_inner(attrs));
+        self.units.truncate(depth);
+        m
     }
 
     fn parse_mod_inner(&mut self, attrs: Vec<Attr>) -> PResult<Mod> {
         let lo = self.bump().span; // `mod`
         let name = self.ident("module name")?;
+        self.units.push(name.name.clone());
         self.expect_p("{")?;
         let mut fns = Vec::new();
         let mut mods = Vec::new();
@@ -2618,11 +2626,12 @@ impl<'a> Parser<'a> {
                 })
             }
             Tok::P("|") | Tok::P("||") => {
-                self.diags.push(Diag::new(
-                    "E0207",
-                    lo,
-                    "closures are not supported in milestone 1",
-                ));
+                self.diags.push(
+                    Diag::new("E0207", lo, "closures are not supported").fix(
+                        "move the closure's body into a named `fn` of the unit, taking what it captures as parameters, and call that function",
+                        None,
+                    ),
+                );
                 Err(())
             }
             Tok::Label(_)
@@ -2654,6 +2663,8 @@ impl<'a> Parser<'a> {
                 "forall" => self.parse_quant(Quantifier::Forall),
                 "exists" => self.parse_quant(Quantifier::Exists),
                 "match" => self.parse_match(),
+                // `self::f` is a Rust path (E0242), not the receiver.
+                "self" if matches!(self.peek_at(1), Tok::P("::")) => self.parse_path_expr(),
                 "self" => {
                     let span = self.bump().span;
                     Ok(Expr {
@@ -2941,6 +2952,51 @@ impl<'a> Parser<'a> {
         })
     }
 
+    /// Rust habit (backlog 2D-29): `crate::q::g`, `super::q::g`, `self::g`.
+    /// A path names a unit from the root (`q::g`), so the prefix is E0242
+    /// with the root path as its replacement; the path is read on as the
+    /// replacement would make it (the units it names come first).
+    fn relative_path_prefix(&mut self) -> Vec<Ident> {
+        let Tok::Ident(kw) = self.peek().clone() else {
+            return Vec::new();
+        };
+        if !matches!(kw.as_str(), "crate" | "super" | "self")
+            || !matches!(self.peek_at(1), Tok::P("::"))
+        {
+            return Vec::new();
+        }
+        let at = self.bump().span;
+        self.bump(); // `::`
+        let unit_of = |units: &[String]| {
+            if units.is_empty() {
+                String::new()
+            } else {
+                format!("{}::", units.join("::"))
+            }
+        };
+        let units: Vec<String> = match kw.as_str() {
+            "crate" => Vec::new(),
+            "super" => self.units[..self.units.len().saturating_sub(1)].to_vec(),
+            _ => self.units.clone(),
+        };
+        let replacement = unit_of(&units);
+        let shown = if replacement.is_empty() {
+            "nothing".to_string()
+        } else {
+            format!("`{replacement}`")
+        };
+        self.diags.push(
+            Diag::new(
+                "E0242",
+                at.to(self.prev_span()),
+                format!("`{kw}::` is not used: a path names a unit from the root (`unit::f`)"),
+            )
+            .fix(format!("replace `{kw}::` with {shown}"), Some(replacement)),
+        );
+        let span = at.to(self.prev_span());
+        units.into_iter().map(|name| Ident { name, span }).collect()
+    }
+
     fn parse_path_expr(&mut self) -> PResult<Expr> {
         let lo = self.span();
         // Macro invocation: `name!(..)` / `name![..]` / `name!{..}`.
@@ -2978,7 +3034,8 @@ impl<'a> Parser<'a> {
                 span: lo.to(self.prev_span()),
             });
         }
-        let mut path = vec![self.ident("name")?];
+        let mut path = self.relative_path_prefix();
+        path.push(self.ident("name")?);
         let mut targs = Vec::new();
         while self.is_p("::") {
             let colons = self.bump().span;

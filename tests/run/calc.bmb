@@ -31,12 +31,9 @@ mod calc {
                     Some(a) => {
                         let r2: Parsed = parse(s, l.next, fuel - 1);
                         match r2.e {
-                            // `a` moves on the other path (E0414): hand it
-                            // to a local that ends here.
-                            None => {
-                                let unused: Box<Expr> = a;
-                                Parsed { e: None, next: r2.next }
-                            }
+                            // `a` moves on the other arm only: this arm
+                            // drops it (ADR-0081).
+                            None => Parsed { e: None, next: r2.next },
                             Some(b) => {
                                 let node: Expr = if c == b'+' { Expr::Add(a, b) } else { Expr::Mul(a, b) };
                                 Parsed { e: Some(Box::new(node)), next: r2.next }

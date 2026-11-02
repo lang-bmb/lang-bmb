@@ -117,4 +117,16 @@ mod mv {
         let mut w: Vec<i64> = Vec::new();
         fill(w.as_mut_slice(), read(w.as_slice()));
     }
+
+    // An `if` without `else` (ADR-0081): the path that skips the block has no
+    // end of its own to drop `v` at, so this stays E0414.
+    #[effects(pure)]
+    fn no_else(c: bool) -> usize {
+        let v: Vec<i64> = Vec::new();
+        let mut n: usize = 0;
+        if c {
+            n = take(v);
+        }
+        n
+    }
 }

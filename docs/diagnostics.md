@@ -39,6 +39,7 @@
 | E0240 | a `where` clause is not used: bounds go next to the type parameter |
 | E0236 | trait objects `dyn Trait` are not used |
 | E0241 | `?` whose `None`/`Err` the function cannot return (another error type, or not an `Option`/`Result` function) |
+| E0242 | `crate::`, `super::` or `self::` path: a path names a unit from the root |
 | E0250 | `break` or `continue` outside a loop |
 | E0251 | `break` with a value outside a `loop` |
 | E0252 | `for` over something other than an integer range |
