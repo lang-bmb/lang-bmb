@@ -2,14 +2,14 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 7473584,
+    "V4_rlimit_total": 7428098,
     "V5_rlimit_headroom": 0.1355,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0,
     "V8_bench_rlimit_total": 24254414,
     "V9_bench_defs_at_limit": 0,
     "V10_library_rlimit_total": 12178127,
-    "V11_sat_check_rlimit_total": 282082391,
+    "V11_sat_check_rlimit_total": 282057550,
     "V12_sat_check_undecided": 277,
     "S1_external_crates": 0,
     "S2_external_processes": [
@@ -17,12 +17,12 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 42011,
+    "S4_stage0_rust_lines": 42337,
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
     "P1_runnable_programs": 60,
-    "P2_bmb_lines": 22496,
-    "P3_errors_with_help": 0.8854,
+    "P2_bmb_lines": 22610,
+    "P3_errors_with_help": 0.8867,
     "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 13
@@ -1677,6 +1677,37 @@
           22496
         ]
       }
+    },
+    {
+      "date": "2026-11-02",
+      "reason": "T1-26a copy_within: corpus programs added (P2), sorted_set insert in place (V4)",
+      "changed": {
+        "V4_rlimit_total": [
+          7473584,
+          7428098
+        ],
+        "V11_sat_check_rlimit_total": [
+          282082391,
+          282057550
+        ],
+        "S4_stage0_rust_lines": [
+          42011,
+          42337
+        ],
+        "P2_bmb_lines": [
+          22496,
+          22610
+        ],
+        "P3_errors_with_help": [
+          0.8854,
+          0.8867
+        ]
+      }
+    },
+    {
+      "date": "2026-11-02",
+      "reason": "T1-26a copy_within: corpus programs added (P2), sorted_set insert in place (V4)",
+      "changed": {}
     }
   ]
 }
