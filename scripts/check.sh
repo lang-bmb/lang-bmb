@@ -27,7 +27,7 @@ if [ -z "${BMB_GATE_POWER_RUN:-}" ]; then
   step "power"; python3 scripts/gate_power.py check > /dev/null
 fi
 
-step "test, bench m1, bench m1b, bench hname, bench edit (write, diff, ast), bench view, bench lean, bench impossible, bench bvb, bench m3, bench bnb, bench bcb, bench brb, bench brb-encap, bench brb-encap-b, bench run_models, bench utility report, health (concurrent)"
+step "test, bench m1, bench m1b, bench hname, bench edit (write, diff, ast), bench view, bench lean, bench impossible, bench bvb, bench m3, bench bnb, bench bcb, bench brb, bench brb-encap, bench brb-encap-b, bench brb-effect, bench run_models, bench utility report, health (concurrent)"
 # Bench sessions are independent (ADR-0025, backlog 2A-04): m1b and bvb run two at a time per agent.
 # The original-Verus side of bvb (2A-09) needs the Verus toolchain: here only its harness logic
 # runs (stub verifier); the real oracle/weak runs are the `bvb-verus` CI job.
@@ -176,6 +176,21 @@ for row in "| 자기 검사 통과 & 숨은 불변식 위반 / 자기 검사 통
 done' \
   --job "bench brb-encap-b adequacy=python3 bench/brb-encap-b/harness.py adequacy --jobs 2 > /dev/null" \
   --job "bench brb-encap-b tests=python3 bench/brb-encap-b/test_brb_encap_b.py" \
+  --job 'bench brb-effect controls=b=$(mktemp); r=$(mktemp); wb=$(mktemp); wr=$(mktemp); trap "rm -f $b $r $wb $wr" EXIT
+# H-EFFECT (backlog T1-43): the references pass the hidden judge (printed
+# lines included) in both arms; the weak solutions pass their own check and
+# the hidden judge finds the defect.
+python3 bench/brb-effect/harness.py run --arm bmb --agent oracle --expect all-pass --jobs 2 --out "$b" > /dev/null
+python3 bench/brb-effect/harness.py run --arm rust --agent oracle --proptest off --expect all-pass --jobs 2 --out "$r" > /dev/null
+python3 bench/brb-effect/harness.py run --arm bmb --agent weak --expect weak-fail --jobs 2 --out "$wb" > /dev/null
+python3 bench/brb-effect/harness.py run --arm rust --agent weak --proptest off --expect weak-fail --jobs 2 --out "$wr" > /dev/null
+table=$(python3 bench/brb-effect/harness.py summarize "$b" "$r")
+for row in "| 성공(숨은 판정 전부 통과) | 4/4 | 4/4 |" \
+           "| 남은 테스트 면적(BMB 통과 세션: 테스트 필요 / 실행 정의) | 4/19 | — |"; do
+  grep -qF "$row" <<< "$table" || { echo "brb-effect oracle summarize: missing row: $row"; echo "$table"; exit 1; }
+done' \
+  --job "bench brb-effect adequacy=python3 bench/brb-effect/harness.py adequacy --jobs 2 > /dev/null" \
+  --job "bench brb-effect tests=python3 bench/brb-effect/test_brb_effect.py" \
   --job "health=python3 scripts/health.py" \
   --job "health rules=python3 scripts/test_health.py && python3 scripts/test_solver_stability.py"
 echo "all checks passed"
