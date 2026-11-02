@@ -50,5 +50,20 @@ class Classify(unittest.TestCase):
         self.assertIn("| a | limit | signature |", text)
 
 
+
+class Undecided(unittest.TestCase):
+    """H-DECIDE as a metric (backlog T0-28): only sessions that reached the
+    hidden spec check count, and an `undecided` rejection is undecided."""
+
+    def test_counts_only_sessions_that_reached_the_spec_check(self):
+        rs = [
+            {"id": "a", "spec_accepted": True},
+            {"id": "b", "spec_accepted": False, "spec_rejections": [{"def": "t::f", "reason": "undecided"}]},
+            {"id": "c", "spec_accepted": False, "spec_rejections": [{"def": "t::f", "reason": "refuted"}]},
+            {"id": "d", "spec_accepted": False},
+            {"id": "e"},
+        ]
+        self.assertEqual(failures.undecided(rs), (1, 3))
+
 if __name__ == "__main__":
     unittest.main()

@@ -13,7 +13,9 @@ m1b, BVB, Verus): `no-commit` (BMB: no transaction committed), `unverified`,
 `spec-undecided`, `spec`; for BRB: `not-delivered (<why>)`, `hidden-cases`,
 `domain`; for navigation: `navigate`. This is attribution to the judge step,
 not to a layer: the layer needs the session record (backlog INF-17), and runs
-without records (T0-10) stop here. Standard library only.
+without records (T0-10) stop here. A file whose rows carry the hidden spec
+check (BVB) also gets the judge's undecided rate (H-DECIDE as a metric,
+backlog T0-28). Standard library only.
 """
 import collections
 import json
@@ -67,6 +69,16 @@ def verdict(r):
     return "spec"
 
 
+def undecided(rs):
+    """H-DECIDE as a metric (ADR-0078 §2, backlog T0-28): of the sessions
+    whose final state reached the hidden spec check (proved, signature right:
+    the row's spec is accepted or has rejections), those the judge could not
+    decide (a rejection with reason `undecided`). (undecided, checked)."""
+    checked = [r for r in rs if r.get("spec_accepted") or r.get("spec_rejections")]
+    und = sum(1 for r in checked if any(j.get("reason") == "undecided" for j in r.get("spec_rejections", [])))
+    return und, len(checked)
+
+
 def table(path):
     head, rs = rows(path)
     failed = [r for r in rs if not r.get("success")]
@@ -78,6 +90,9 @@ def table(path):
     for e in sorted({ending(r) for r in failed}):
         cells = [str(grid[(e, v)] or "") for v in vs]
         out.append(f"| {e} | " + " | ".join(cells) + f" | {sum(grid[(e, v)] for v in vs)} |")
+    und, checked = undecided(rs)
+    if checked:
+        out += ["", f"판정기 미결정(숨은 명세 검사에 닿은 세션 중): {und}/{checked}, 전체 세션 중 {und}/{len(rs)}"]
     out += ["", "| 과제 | 끝남 | 판정 | 도구 호출 | 출력 토큰 |", "| --- | --- | --- | --- | --- |"]
     for r in failed:
         out.append(f"| {r['id']} | {ending(r)} | {verdict(r)} | {r.get('tool_calls', '')} | "

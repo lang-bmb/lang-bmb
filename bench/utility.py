@@ -131,12 +131,28 @@ def tool_mix_table(rs):
     return lines
 
 
+def undecided_table(rs):
+    """H-DECIDE as a metric (ADR-0078 §2, backlog T0-28): the sessions that
+    reached the hidden spec check, and those the judge left undecided."""
+    lines = ["| 집합 | 팔 | 모델 | 명세 검사에 닿은 세션 | 미결정 | 미결정 비율 | 전체 세션 중 미결정 |",
+             "| --- | --- | --- | --- | --- | --- | --- |"]
+    for s, model, arm, summary, rows in rs:
+        checked = [r for r in rows if r.get("spec_accepted") or r.get("spec_rejections")]
+        if not checked:
+            continue
+        und = sum(1 for r in checked if any(j.get("reason") == "undecided" for j in r.get("spec_rejections", [])))
+        lines.append(f"| {s} | {arm or 'bmb'} | {model} | {len(checked)} | {und} | {und / len(checked):.1%} | "
+                     f"{ratio(und, len(rows))} |")
+    return lines
+
+
 def tables():
     rs = runs()
     out = ["### A. 결과와 비용(정식 측정 전부)", ""] + outcome_table(rs)
     out += ["", "### B. 테스트 코드와 숨은 결함(BRB, G5·G8·H-ORACLE)", ""] + test_code_table(rs)
     out += ["", "### C. 탐색(m1·m1b 탐색 과제, G4)", ""] + navigation_table(rs)
     out += ["", "### D. 도구 사용의 구성(BRB 세션 합계)", ""] + tool_mix_table(rs)
+    out += ["", "### E. 판정기 미결정률(숨은 명세 검사, H-DECIDE 지표, T0-28)", ""] + undecided_table(rs)
     files = sorted({f"`bench/{s}/results/`" for s, *_ in rs})
     out += ["", f"원자료: {', '.join(files)}의 결과 파일 {len(rs)}개(요약 행이 있는 것)."]
     return "\n".join(out) + "\n"

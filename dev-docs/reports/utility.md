@@ -190,6 +190,19 @@
 | brb | rust | claude-sonnet-5-5 | 23 | 24 | 24 | 32% |
 | brb | rust | qwen3.8-27b | 76 | 116 | 48 | 32% |
 
+### E. 판정기 미결정률(숨은 명세 검사, H-DECIDE 지표, T0-28)
+
+| 집합 | 팔 | 모델 | 명세 검사에 닿은 세션 | 미결정 | 미결정 비율 | 전체 세션 중 미결정 |
+| --- | --- | --- | --- | --- | --- | --- |
+| m1 | bmb | claude-sonnet-5-5 | 10 | 0 | 0.0% | 0/15 |
+| m1 | bmb | qwen3.8-27b | 8 | 1 | 12.5% | 1/15 |
+| m1b | bmb | claude-sonnet-5-5 | 25 | 0 | 0.0% | 0/37 |
+| m1b | bmb | qwen3.8-27b | 21 | 1 | 4.8% | 1/37 |
+| bvb | bmb | claude-sonnet-5-5 | 45 | 1 | 2.2% | 1/45 |
+| bvb | bmb | qwen3.8-27b | 20 | 6 | 30.0% | 6/45 |
+| bvb | verus | claude-sonnet-5-5 | 43 | 0 | 0.0% | 0/45 |
+| bvb | verus | qwen3.8-27b | 15 | 0 | 0.0% | 0/45 |
+
 원자료: `bench/brb/results/`, `bench/bvb/results/`, `bench/m1/results/`, `bench/m1b/results/`의 결과 파일 12개(요약 행이 있는 것).
 
 <!-- utility:data end -->
