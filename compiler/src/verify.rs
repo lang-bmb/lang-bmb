@@ -948,6 +948,9 @@ fn store_len(len: &str, i: &str, x: &str) -> String {
     }
 }
 
+/// The longest `copy_within` with constant bounds encoded as stores.
+const COPY_UNROLL: u64 = 16;
+
 /// The leaf arrays of two element templates of the same type, paired
 /// (`copy_within`): every array over the outer index, inner lengths that
 /// are arrays included, fixed lengths left out.
@@ -5098,20 +5101,38 @@ impl<'p, 'q> Enc<'p, 'q> {
             "`copy_within` destination may be out of bounds",
             format!("(<= (+ {dest} (- {hi} {lo})) {len})"),
         );
-        let new = match &old {
-            Val::S(_) => {
-                Val::S(self.fresh("copy_within", &format!("(Array Int {})", sort_of(&el))))
-            }
-            _ => self.fresh_struct_elems("copy_within", &el),
+        // Constant bounds (a short copy): stores of the old values, which a
+        // model of the query can satisfy without instantiating anything
+        // (the reachability checks decide them, T2-10). Otherwise a fresh
+        // array per leaf and one quantified fact.
+        let constant = match (lo.parse::<u64>(), hi.parse::<u64>(), dest.parse::<u64>()) {
+            (Ok(l), Ok(h), Ok(d)) if l <= h && h - l <= COPY_UNROLL => Some((l, h, d)),
+            _ => None,
         };
-        let mut pairs = Vec::new();
-        leaf_pairs(&new, &old, &mut pairs);
-        let inside = format!("(and (<= {dest} k) (< k (+ {dest} (- {hi} {lo}))))");
-        for (n, o) in pairs {
-            self.pc.push(format!(
-                "(forall ((k Int)) (! (= (select {n} k) (ite {inside} (select {o} (+ (- k {dest}) {lo})) (select {o} k))) :pattern ((select {n} k))))"
-            ));
-        }
+        let new = if let Some((l, h, d)) = constant {
+            let mut cur = old.clone();
+            for k in 0..h - l {
+                let x = select_val(&old, &(l + k).to_string());
+                cur = store_val(&cur, &(d + k).to_string(), &x);
+            }
+            cur
+        } else {
+            let new = match &old {
+                Val::S(_) => {
+                    Val::S(self.fresh("copy_within", &format!("(Array Int {})", sort_of(&el))))
+                }
+                _ => self.fresh_struct_elems("copy_within", &el),
+            };
+            let mut pairs = Vec::new();
+            leaf_pairs(&new, &old, &mut pairs);
+            let inside = format!("(and (<= {dest} k) (< k (+ {dest} (- {hi} {lo}))))");
+            for (n, o) in pairs {
+                self.pc.push(format!(
+                    "(forall ((k Int)) (! (= (select {n} k) (ite {inside} (select {o} (+ (- k {dest}) {lo})) (select {o} k))) :pattern ((select {n} k))))"
+                ));
+            }
+            new
+        };
         let value = match new {
             Val::S(elems) => Val::A { elems, len },
             elem => Val::Arr {

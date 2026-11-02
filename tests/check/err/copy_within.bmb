@@ -30,8 +30,4 @@ mod cw {
     fn take(n: usize) -> usize {
         n
     }
-
-    spec fn in_spec(a: &[i64]) -> bool {
-        a.copy_within(0..1, 1) == ()
-    }
 }

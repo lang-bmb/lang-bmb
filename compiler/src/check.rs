@@ -7205,10 +7205,16 @@ impl<'a> Checker<'a> {
                     "change the value outside the `proof` block",
                 );
             } else {
-                self.err(
-                    "E0503",
-                    span,
-                    "`.copy_within()` is not allowed in a specification",
+                self.diags.push(
+                    Diag::new(
+                        "E0503",
+                        span,
+                        "`.copy_within()` is not allowed in a specification",
+                    )
+                    .fix(
+                        "state the result with a predicate over the old and new values",
+                        None,
+                    ),
                 );
             }
             return TypeKind::Unit;
