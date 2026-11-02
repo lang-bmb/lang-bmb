@@ -560,6 +560,10 @@ fn node_spans(f: &FnDef) -> Vec<Span> {
             | ExprKind::Trigger(x)
             | ExprKind::Deref(x)
             | ExprKind::Try(x) => expr(x, out),
+            ExprKind::Range { lo: l, hi: r } => {
+                expr(l, out);
+                expr(r, out);
+            }
             ExprKind::Binary(_, l, r) => {
                 expr(l, out);
                 expr(r, out);

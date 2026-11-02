@@ -1,0 +1,65 @@
+#[summary("copy_within: 제자리 이동 (ADR-0083)")]
+mod cw {
+    struct P { x: i64, y: bool }
+
+    #[effects(pure)]
+    fn array() -> i64 {
+        let mut x: [i64; 4] = [1, 2, 3, 4];
+        x.copy_within(1..4, 0);
+        assert(x[0] == 2 && x[1] == 3 && x[2] == 4 && x[3] == 4);
+        x[0]
+    }
+
+    spec fn five(a: &[i64]) -> bool {
+        a.len() == 5
+    }
+
+    #[effects(pure)]
+    #[uses(moved, ranged)]
+    fn general(a: &mut [i64], lo: usize, hi: usize, d: usize) -> ()
+        requires ranged(a, lo, hi, d),
+        ensures moved(a, old(a), lo, hi, d),
+    {
+        a.copy_within(lo..hi, d);
+    }
+
+    spec fn moved(a: &[i64], b: &[i64], lo: usize, hi: usize, d: usize) -> bool {
+        a.len() == b.len() && (forall|k: usize| d <= k && k < d + (hi - lo) ==> #[trigger] a[k] == b[k - d + lo]) && (forall|m: usize| m < a.len() && (m < d || d + (hi - lo) <= m) ==> #[trigger] a[m] == b[m])
+    }
+
+    spec fn ranged(a: &[i64], lo: usize, hi: usize, d: usize) -> bool {
+        lo <= hi && hi <= a.len() && d + (hi - lo) <= a.len()
+    }
+
+    #[effects(pure)]
+    #[uses(five, shifted_up)]
+    fn shift(a: &mut [i64]) -> ()
+        requires five(a),
+        ensures shifted_up(a, old(a)),
+    {
+        a.copy_within(0..3, 1);
+    }
+
+    spec fn shifted_up(a: &[i64], b: &[i64]) -> bool {
+        a.len() == b.len() && a[0] == b[0] && a[1] == b[0] && a[2] == b[1] && a[3] == b[2] && a[4] == b[4]
+    }
+
+    #[effects(pure)]
+    fn structs() -> bool {
+        let mut ps: [P; 3] = [P { x: 1, y: true }, P { x: 2, y: false }, P { x: 3, y: true }];
+        ps.copy_within(1..3, 0);
+        assert(ps[0].x == 2 && !ps[0].y && ps[1].x == 3 && ps[2].x == 3);
+        ps[1].y
+    }
+
+    #[effects(alloc)]
+    fn vector() -> usize {
+        let mut v: Vec<i64> = Vec::new();
+        v.push(1);
+        v.push(2);
+        v.push(3);
+        v.copy_within(0..2, 1);
+        assert(v.len() == 3 && v[0] == 1 && v[1] == 1 && v[2] == 2);
+        v.len()
+    }
+}

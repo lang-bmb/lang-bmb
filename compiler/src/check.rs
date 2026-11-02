@@ -5659,6 +5659,20 @@ impl<'a> Checker<'a> {
         }
         match &e.kind {
             ExprKind::Error => TypeKind::Error,
+            ExprKind::Range { lo, hi } => {
+                for x in [lo, hi] {
+                    self.expr(cx, x, None, mode);
+                }
+                self.diags.push(
+                    Diag::new(
+                        "E0435",
+                        e.span,
+                        "a range `lo..hi` is only `copy_within`'s source",
+                    )
+                    .fix("use a `for` loop over the range, or pass both bounds", None),
+                );
+                TypeKind::Error
+            }
             ExprKind::Return(x) => {
                 if mode != Mode::Exec {
                     self.diags.push(
@@ -6932,6 +6946,10 @@ impl<'a> Checker<'a> {
             return self.f64_method(cx, &rt, name, args, mode);
         }
         match name.name.as_str() {
+            "copy_within" if elem_of(&rt).is_some() => {
+                let et = elem_of(&rt).cloned().expect("an element type");
+                self.copy_within(cx, recv, &rt, &et, name, args, span, mode)
+            }
             "len" => {
                 if !args.is_empty() {
                     self.err("E0405", name.span, "`len` takes no arguments");
@@ -7134,8 +7152,102 @@ impl<'a> Checker<'a> {
         ret
     }
 
+    /// `a.copy_within(lo..hi, dest)` on an array, a `&mut [T]` or a `Vec<T>`
+    /// with `T: Copy` (ADR-0083): copies `a[lo..hi]` to `a[dest..]` in
+    /// place (the ranges may overlap). The bounds are proof obligations
+    /// (E0805).
+    #[allow(clippy::too_many_arguments)]
+    fn copy_within(
+        &mut self,
+        cx: &mut FnCtx,
+        recv: &Expr,
+        rt: &TypeKind,
+        et: &TypeKind,
+        name: &Ident,
+        args: &[Expr],
+        span: Span,
+        mode: Mode,
+    ) -> TypeKind {
+        let usize_ty = TypeKind::Int(IntTy::Usize);
+        let range = args.first().and_then(|a| match &a.kind {
+            ExprKind::Range { lo, hi } => Some((lo, hi)),
+            _ => None,
+        });
+        match (range, args.len()) {
+            (Some((lo, hi)), 2) => {
+                for x in [&**lo, &**hi, &args[1]] {
+                    let t = self.expr(cx, x, Some(&usize_ty), mode);
+                    self.expect_ty(&t, &usize_ty, x.span);
+                }
+            }
+            _ => {
+                for a in args {
+                    if !matches!(a.kind, ExprKind::Range { .. }) {
+                        self.expr(cx, a, None, mode);
+                    }
+                }
+                self.diags.push(
+                    Diag::new(
+                        "E0405",
+                        name.span,
+                        "`copy_within` takes a range and a destination: `a.copy_within(lo..hi, dest)`",
+                    )
+                    .fix("give the source as `lo..hi` and the destination index", None),
+                );
+                return TypeKind::Error;
+            }
+        }
+        if mode != Mode::Exec {
+            if cx.ghost {
+                self.ghost_violation(
+                    span,
+                    "`.copy_within()`",
+                    "change the value outside the `proof` block",
+                );
+            } else {
+                self.err(
+                    "E0503",
+                    span,
+                    "`.copy_within()` is not allowed in a specification",
+                );
+            }
+            return TypeKind::Unit;
+        }
+        if !self.is_copy(et) && *et != TypeKind::Error {
+            self.diags.push(
+                Diag::new(
+                    "E0404",
+                    name.span,
+                    format!("`copy_within` copies elements, and `{}` moves", ty_str(et)),
+                )
+                .fix(
+                    "move the elements one by one, or keep elements of a `Copy` type",
+                    None,
+                ),
+            );
+        }
+        let shared_slice = matches!(rt, TypeKind::Ref { mutable: false, .. });
+        if (shared_slice || !Self::writable(cx, recv)) && *rt != TypeKind::Error {
+            let fix = if matches!(rt, TypeKind::Ref { .. }) {
+                "take the parameter as `&mut`"
+            } else {
+                "declare it with `let mut`"
+            };
+            self.diags.push(
+                Diag::new(
+                    "E0408",
+                    recv.span,
+                    "`.copy_within()` needs a mutable receiver",
+                )
+                .fix(fix, None),
+            );
+        }
+        TypeKind::Unit
+    }
+
     /// A built-in method of `Vec<T>` (ADR-0031 §1): `push`, `pop`, `len`,
-    /// `truncate`, `clone`; `as_slice` / `as_mut_slice` only as arguments.
+    /// `truncate`, `clone`, `copy_within`; `as_slice` / `as_mut_slice` only
+    /// as arguments.
     #[allow(clippy::too_many_arguments)]
     fn vec_method(
         &mut self,
@@ -7149,6 +7261,9 @@ impl<'a> Checker<'a> {
         mode: Mode,
     ) -> TypeKind {
         let m = name.name.as_str();
+        if m == "copy_within" {
+            return self.copy_within(cx, recv, rt, &et, name, args, span, mode);
+        }
         if mode == Mode::Exec && matches!(m, "push" | "clone") {
             // Growing or copying the buffer (ADR-0030 §1).
             cx.need_own(Effects::ALLOC, || format!("`Vec::{m}`"));
@@ -8738,6 +8853,7 @@ fn mentions(e: &Expr, name: &str) -> bool {
         | ExprKind::Try(x)
         | ExprKind::Trigger(x) => mentions(x, name),
         ExprKind::Repeat { value, .. } => mentions(value, name),
+        ExprKind::Range { lo: l, hi: r } => mentions(l, name) || mentions(r, name),
         ExprKind::Binary(_, l, r) => mentions(l, name) || mentions(r, name),
         ExprKind::Field { base, .. } => mentions(base, name),
         ExprKind::Return(x) | ExprKind::Break { value: x, .. } => {
@@ -8787,6 +8903,10 @@ fn collect_triggers<'e>(e: &'e Expr, out: &mut Vec<&'e Expr>) {
         | ExprKind::Deref(x)
         | ExprKind::Try(x) => collect_triggers(x, out),
         ExprKind::Repeat { value, .. } => collect_triggers(value, out),
+        ExprKind::Range { lo: l, hi: r } => {
+            collect_triggers(l, out);
+            collect_triggers(r, out);
+        }
         ExprKind::Binary(_, l, r) => {
             collect_triggers(l, out);
             collect_triggers(r, out);

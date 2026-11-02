@@ -1,0 +1,37 @@
+#[summary("copy_within 규칙 (ADR-0083)")]
+mod cw {
+    #[effects(pure)]
+    fn shared(a: &[i64]) -> () {
+        a.copy_within(0..1, 1);
+    }
+
+    #[effects(pure)]
+    fn immutable() -> () {
+        let x: [i64; 4] = [1, 2, 3, 4];
+        x.copy_within(1..3, 0);
+    }
+
+    #[effects(alloc)]
+    fn moving(v: &mut Vec<Vec<i64>>) -> () {
+        v.copy_within(0..1, 1);
+    }
+
+    #[effects(pure)]
+    fn no_range(a: &mut [i64], lo: usize) -> () {
+        a.copy_within(lo, 1);
+    }
+
+    #[effects(pure)]
+    fn range_elsewhere(a: &mut [i64]) -> usize {
+        cw::take(0..2)
+    }
+
+    #[effects(pure)]
+    fn take(n: usize) -> usize {
+        n
+    }
+
+    spec fn in_spec(a: &[i64]) -> bool {
+        a.copy_within(0..1, 1) == ()
+    }
+}

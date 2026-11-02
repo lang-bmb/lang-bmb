@@ -1409,6 +1409,7 @@ impl<'p> Gen<'p> {
 
     fn expr(&mut self, e: &Expr) -> CVal {
         match &e.kind {
+            ExprKind::Range { .. } => unreachable!("only as `copy_within`'s argument (E0435)"),
             ExprKind::Return(x) => self.return_expr(e, x.as_deref()),
             ExprKind::Try(x) => self.try_expr(e, x),
             ExprKind::Loop { label, body, .. } => self.loop_expr(e, label, body),
@@ -1662,6 +1663,9 @@ impl<'p> Gen<'p> {
                     "true".to_string()
                 };
                 self.option(e, &ok, &v)
+            }
+            ExprKind::Method { recv, name, args } if name.name == "copy_within" => {
+                self.copy_within(e, recv, args)
             }
             ExprKind::Method { recv, name, args } if is_vec(&self.ty(recv)) => {
                 self.vec_method(e, recv, &name.name, args)
@@ -2137,6 +2141,56 @@ impl<'p> Gen<'p> {
             size_of(&el)
         ));
         CVal::Ptr { ptr: hdr, ty: t }
+    }
+
+    /// `a.copy_within(lo..hi, dest)` (ADR-0083): one `memmove` (the ranges
+    /// may overlap), after the bounds checks the proof did not discharge.
+    fn copy_within(&mut self, e: &Expr, recv: &Expr, args: &[Expr]) -> CVal {
+        let t = self.ty(recv);
+        let el = if is_vec(&t) {
+            vec_elem(&t)
+        } else {
+            elem_of(&t)
+        };
+        let CVal::Arr { ptr, len } = self.array_of(recv) else {
+            unreachable!("an array, a slice or a Vec")
+        };
+        let ExprKind::Range { lo, hi } = &args[0].kind else {
+            unreachable!("checked: `copy_within(lo..hi, dest)`")
+        };
+        let lo = self.expr(lo).imm();
+        let hi = self.expr(hi).imm();
+        let dest = self.expr(&args[1]).imm();
+        let note = if self.proved("E0805", e) {
+            " ; proved E0805"
+        } else {
+            let (a, b) = (self.t(), self.t());
+            self.emit(format!("{a} = icmp ule i64 {lo}, {hi}"));
+            self.emit(format!("{b} = icmp ule i64 {hi}, {len}"));
+            let src = self.t();
+            self.emit(format!("{src} = and i1 {a}, {b}"));
+            self.check(&src, "`copy_within` source range may be out of bounds");
+            let (n, room, c) = (self.t(), self.t(), self.t());
+            self.emit(format!("{n} = sub nuw i64 {hi}, {lo}"));
+            self.emit(format!("{room} = sub nuw i64 {len}, {n}"));
+            self.emit(format!("{c} = icmp ule i64 {dest}, {room}"));
+            self.check(&c, "`copy_within` destination may be out of bounds");
+            ""
+        };
+        let (n, bytes, src, dst) = (self.t(), self.t(), self.t(), self.t());
+        let et = mem_ty(&el);
+        self.emit(format!("{n} = sub nuw i64 {hi}, {lo}{note}"));
+        self.emit(format!("{bytes} = mul nuw i64 {n}, {}", size_of(&el)));
+        self.emit(format!(
+            "{src} = getelementptr inbounds {et}, ptr {ptr}, i64 {lo}"
+        ));
+        self.emit(format!(
+            "{dst} = getelementptr inbounds {et}, ptr {ptr}, i64 {dest}"
+        ));
+        self.emit(format!(
+            "call void @llvm.memmove.p0.p0.i64(ptr {dst}, ptr {src}, i64 {bytes}, i1 false)"
+        ));
+        CVal::Unit
     }
 
     fn vec_method(&mut self, e: &Expr, recv: &Expr, m: &str, args: &[Expr]) -> CVal {

@@ -948,6 +948,31 @@ fn store_len(len: &str, i: &str, x: &str) -> String {
     }
 }
 
+/// The leaf arrays of two element templates of the same type, paired
+/// (`copy_within`): every array over the outer index, inner lengths that
+/// are arrays included, fixed lengths left out.
+fn leaf_pairs(new: &Val, old: &Val, out: &mut Vec<(String, String)>) {
+    match (new, old) {
+        (Val::S(n), Val::S(o)) => out.push((n.clone(), o.clone())),
+        (Val::Struct(ns), Val::Struct(os)) => {
+            ns.iter().zip(os).for_each(|(n, o)| leaf_pairs(n, o, out))
+        }
+        (Val::A { elems: n, len: nl }, Val::A { elems: o, len: ol }) => {
+            out.push((n.clone(), o.clone()));
+            if !fixed_len(nl) {
+                out.push((nl.clone(), ol.clone()));
+            }
+        }
+        (Val::Arr { elem: n, len: nl }, Val::Arr { elem: o, len: ol }) => {
+            leaf_pairs(n, o, out);
+            if !fixed_len(nl) {
+                out.push((nl.clone(), ol.clone()));
+            }
+        }
+        (n, o) => panic!("element {n:?} does not match {o:?}"),
+    }
+}
+
 /// The element arrays of a slice of structs with element `i` set to `v`.
 fn store_val(elem: &Val, i: &str, v: &Val) -> Val {
     match (elem, v) {
@@ -3187,7 +3212,8 @@ impl<'p, 'q> Enc<'p, 'q> {
             | ExprKind::Try(_)
             | ExprKind::Loop { .. }
             | ExprKind::Break { .. }
-            | ExprKind::Continue { .. } => unreachable!("rejected by the checker (E0503)"),
+            | ExprKind::Continue { .. }
+            | ExprKind::Range { .. } => unreachable!("rejected by the checker (E0503)"),
             ExprKind::Int(v, _) => Val::S(num(*v as i128)),
             ExprKind::Float(b) => Val::S(f64_lit(*b)),
             ExprKind::ByteLit(v) => Val::S(v.to_string()),
@@ -3619,6 +3645,7 @@ impl<'p, 'q> Enc<'p, 'q> {
             return Val::Unit;
         }
         match &e.kind {
+            ExprKind::Range { .. } => unreachable!("only as `copy_within`'s argument (E0435)"),
             ExprKind::Loop {
                 label,
                 invariants,
@@ -3922,6 +3949,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                     },
                     "as_slice" | "as_mut_slice" | "clone" => rv,
                     m @ ("push" | "pop" | "truncate") => self.vec_change(e, recv, rv, m, args),
+                    "copy_within" => self.copy_within(e, recv, rv, args),
                     m if value_ty(&self.ty(recv)) == &TypeKind::F64 => {
                         let b = args.first().map(|x| self.eval(x).s());
                         Val::S(f64_method(m, &rv.s(), b.as_deref()))
@@ -5041,6 +5069,64 @@ impl<'p, 'q> Enc<'p, 'q> {
         result
     }
 
+    /// `a.copy_within(lo..hi, dest)` (ADR-0083): the source range and the
+    /// destination range lie in the array (E0805), and the new elements are
+    /// fresh arrays equal to the old ones shifted on `[dest, dest + hi - lo)`
+    /// and the old ones elsewhere (one quantified fact per leaf array,
+    /// triggered by a read of the new array). The length stays.
+    fn copy_within(&mut self, e: &Expr, recv: &Expr, rv: Val, args: &[Expr]) -> Val {
+        let ExprKind::Range { lo, hi } = &args[0].kind else {
+            unreachable!("checked: `copy_within(lo..hi, dest)`")
+        };
+        let (lo, hi) = (self.eval(lo).s(), self.eval(hi).s());
+        let dest = self.eval(&args[1]).s();
+        let el = elem_ty(&self.ty(recv));
+        let (len, old) = match rv {
+            Val::A { elems, len } => (len, Val::S(elems)),
+            Val::Arr { elem, len } => (len, *elem),
+            v => panic!("copy_within of {v:?}"),
+        };
+        self.oblige(
+            "E0805",
+            e.span,
+            "`copy_within` source range may be out of bounds",
+            format!("(and (<= {lo} {hi}) (<= {hi} {len}))"),
+        );
+        self.oblige(
+            "E0805",
+            e.span,
+            "`copy_within` destination may be out of bounds",
+            format!("(<= (+ {dest} (- {hi} {lo})) {len})"),
+        );
+        let new = match &old {
+            Val::S(_) => {
+                Val::S(self.fresh("copy_within", &format!("(Array Int {})", sort_of(&el))))
+            }
+            _ => self.fresh_struct_elems("copy_within", &el),
+        };
+        let mut pairs = Vec::new();
+        leaf_pairs(&new, &old, &mut pairs);
+        let inside = format!("(and (<= {dest} k) (< k (+ {dest} (- {hi} {lo}))))");
+        for (n, o) in pairs {
+            self.pc.push(format!(
+                "(forall ((k Int)) (! (= (select {n} k) (ite {inside} (select {o} (+ (- k {dest}) {lo})) (select {o} k))) :pattern ((select {n} k))))"
+            ));
+        }
+        let value = match new {
+            Val::S(elems) => Val::A { elems, len },
+            elem => Val::Arr {
+                elem: Box::new(elem),
+                len,
+            },
+        };
+        let mut steps = Vec::new();
+        let root = self.place(recv, &mut steps, false);
+        let cur = self.vars[&root].clone();
+        let nv = self.set_at(cur, &steps, value);
+        self.bind_var(root, nv);
+        Val::Unit
+    }
+
     /// `std::mem::replace(&mut p, v)`: the old value of `p`, which now
     /// holds `v`; `std::mem::swap(&mut a, &mut b)` exchanges the values of
     /// two places of different variables (ADR-0047 §2).
@@ -5860,6 +5946,10 @@ fn find_let_expr(e: &Expr, name: &str, out: &mut Option<TypeKind>) {
             find_let_expr(base, name, out);
             find_let_expr(index, name, out);
         }
+        ExprKind::Range { lo: l, hi: r } => {
+            find_let_expr(l, name, out);
+            find_let_expr(r, name, out);
+        }
         ExprKind::Binary(_, l, r) => {
             find_let_expr(l, name, out);
             find_let_expr(r, name, out);
@@ -5974,7 +6064,7 @@ fn assigned_in_expr(e: &Expr, out: &mut BTreeSet<String>) {
         ExprKind::Method { recv, name, args } => {
             if matches!(
                 name.name.as_str(),
-                "push" | "pop" | "truncate" | "as_mut_slice"
+                "push" | "pop" | "truncate" | "as_mut_slice" | "copy_within"
             ) && let Some(r) = root_var(recv)
             {
                 out.insert(r);

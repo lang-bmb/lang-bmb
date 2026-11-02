@@ -1191,6 +1191,7 @@ impl<'a> Printer<'a> {
                 let o = if *op == UnOp::Neg { "-" } else { "!" };
                 format!("{o}{}", self.expr(x, PREFIX))
             }
+            ExprKind::Range { lo, hi } => format!("{}..{}", self.cond(lo), self.cond(hi)),
             ExprKind::Binary(op, l, r) => {
                 let p = prec(e);
                 let (lm, rm) = match op {

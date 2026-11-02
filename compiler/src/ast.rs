@@ -628,6 +628,12 @@ pub enum ExprKind {
     Continue {
         label: Option<Ident>,
     },
+    /// `lo..hi`: only as the first argument of `copy_within` (ADR-0083);
+    /// anywhere else the checker refuses it (E0435).
+    Range {
+        lo: Box<Expr>,
+        hi: Box<Expr>,
+    },
     Error,
 }
 

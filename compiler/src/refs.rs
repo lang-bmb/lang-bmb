@@ -240,6 +240,10 @@ impl Walker<'_> {
             | ExprKind::Deref(x)
             | ExprKind::Try(x) => self.expr(x),
             ExprKind::Field { base, .. } => self.expr(base),
+            ExprKind::Range { lo: l, hi: r } => {
+                self.expr(l);
+                self.expr(r);
+            }
             ExprKind::Binary(_, l, r) => {
                 self.expr(l);
                 self.expr(r);

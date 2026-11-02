@@ -545,6 +545,16 @@ MUTANTS = [
         }''',
      '''        out.proven.extend(r.proven);''',
      "a definition proved with trusted facts drops its checks: a false `assume` is undefined behavior, not a trap"),
+    # `copy_within` (ADR-0083, backlog T1-26a): the destination bound
+    # forgets the copied length, or the new array keeps the old elements.
+    ("v-copy-within-dest-bound", "unsound", V,
+     '''            format!("(<= (+ {dest} (- {hi} {lo})) {len})"),''',
+     '''            format!("(<= {dest} {len})"),''',
+     "a copy that runs past the end is proved: the memmove writes out of bounds"),
+    ("v-copy-within-unshifted", "unsound", V,
+     '''(ite {inside} (select {o} (+ (- k {dest}) {lo})) (select {o} k))''',
+     '''(ite {inside} (select {o} k) (select {o} k))''',
+     "the prover sees the array unchanged after a copy: claims about the old values are proved"),
 ]
 
 

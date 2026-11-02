@@ -13,10 +13,6 @@ mod sset {
         forall|k: usize| k < p ==> #[trigger] a[k] < x
     }
 
-    spec fn shifted(a: [i64; 8], b: [i64; 8], j: usize, n: usize) -> bool {
-        (forall|k: usize| k <= j ==> #[trigger] b[k] == a[k]) && (forall|m: usize| j < m && m <= n ==> #[trigger] b[m] == a[m - 1])
-    }
-
     spec fn closed(a: [i64; 8], b: [i64; 8], p: usize, j: usize, n: usize) -> bool {
         (forall|k: usize| k < p ==> #[trigger] b[k] == a[k]) && (forall|m: usize| p <= m && m < j ==> #[trigger] b[m] == a[m + 1]) && (forall|q: usize| j <= q && q < n ==> #[trigger] b[q] == a[q])
     }
@@ -64,11 +60,11 @@ mod sset {
         }
 
         // `false` when `x` is there already or the set is full. The values
-        // above `x` move up one place in a copy: shifting `self.items` in
-        // place leaves two equal values between iterations, and a loop
-        // head needs the invariant (ADR-0060 open question 3).
+        // above `x` move up one place with `copy_within` (ADR-0083): the
+        // invariant is broken only inside that one operation, not between
+        // loop iterations.
         #[effects(pure)]
-        #[uses(below, shifted, sorted)]
+        #[uses(below, sorted)]
         fn insert(self: &mut Set, x: i64) -> bool {
             if self.len == 8 {
                 return false;
@@ -84,17 +80,8 @@ mod sset {
                 return false;
             }
             let n: usize = self.len;
-            let mut a: [i64; 8] = self.items;
-            let mut j: usize = n;
-            while j > p
-                invariant p <= j, j <= n, n < 8, shifted(self.items, a, j, n),
-                decreases j,
-            {
-                a[j] = a[j - 1];
-                j = j - 1;
-            }
-            a[p] = x;
-            self.items = a;
+            self.items.copy_within(p..n, p + 1);
+            self.items[p] = x;
             self.len = n + 1;
             true
         }

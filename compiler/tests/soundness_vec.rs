@@ -4,7 +4,8 @@
 //! `pop` into an accumulator, `truncate`, element writes and reads, the
 //! length, a clone that replaces the original, a `&mut Vec` callee with an
 //! exact contract, a `push` loop, a temporary clone read for its length,
-//! and a move into a by-value callee. Lengths do not depend on `x` and `y`,
+//! a move into a by-value callee, and `copy_within` (ADR-0083, bounds
+//! sometimes past the end). Lengths do not depend on `x` and `y`,
 //! so the generator knows them and writes the loop invariants. As in the
 //! other fuzzers an independent interpreter (a Rust `Vec`) checks every
 //! claim:
@@ -66,6 +67,8 @@ enum Op {
     WRead(usize),
     /// `let l: i64 = first_or(b"..", d);`
     Lit(Vec<u8>, u8),
+    /// `v.copy_within(lo..hi, d);` (ADR-0083)
+    CopyWithin(usize, usize, usize),
 }
 
 /// A byte as a `b'..'` literal.
@@ -123,7 +126,13 @@ fn gen_vfunc(rng: &mut Rng, k: usize) -> VFunc {
     let mut wlen = 0usize;
     let mut ops = Vec::new();
     for j in 0..2 + rng.below(6) {
-        let op = match rng.below(14) {
+        let op = match rng.below(15) {
+            // Bounds sometimes past the end: an obligation fails.
+            14 => {
+                let lo = rng.below(len + 2);
+                let hi = lo + rng.below(len + 2 - lo.min(len + 1));
+                Op::CopyWithin(lo, hi, rng.below(len + 2))
+            }
             11 => {
                 wlen += 1;
                 Op::WPush(gen_byte(rng))
@@ -265,6 +274,7 @@ impl VFunc {
                     bytes_lit(s),
                     byte_lit(*d)
                 ),
+                Op::CopyWithin(lo, hi, d) => format!("v.copy_within({lo}..{hi}, {d});"),
             };
             let _ = writeln!(t, "        {line}");
         }
@@ -303,6 +313,12 @@ impl VFunc {
                 Op::WPush(c) => w.push(*c),
                 Op::WRead(i) => env.push((format!("b{j}"), i64::from(*w.get(*i).ok_or(Fault)?))),
                 Op::Lit(s, d) => env.push((format!("l{j}"), i64::from(*s.first().unwrap_or(d)))),
+                Op::CopyWithin(lo, hi, d) => {
+                    if lo > hi || *hi > v.len() || d + (hi - lo) > v.len() {
+                        return Err(Fault);
+                    }
+                    v.copy_within(*lo..*hi, *d);
+                }
             }
         }
         e_eval(&self.tail, &env)

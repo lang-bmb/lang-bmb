@@ -45,3 +45,12 @@ ADR-0060 §2는 루프가 havoc하는 지역(불변식이 있는 타입)의 유�
 ## 8. 우회
 
 지금의 사본 우회는 백로그 T1-26에 "우회"로 남아 있다. 해제 조건: 이 ADR의 채택과 구현.
+
+## 구현 (2026-11-02, 백로그 T1-26a)
+
+- 표면: 인자 자리의 `lo..hi`는 구문 트리 `ExprKind::Range`이고 `copy_within`의 첫 인자에서만 받는다(다른 곳 E0435, 새 진단). 인자 모양 E0405, 공유·불변 수신자 E0408, 이동 원소 E0404, 명세 안 E0503.
+- 인코딩: §5의 의무 둘(E0805)과, 원소 잎 배열마다 새 상수 하나와 정량 사실 하나(트리거는 새 배열 읽기). 길이는 그대로이고 루프 쓰기 집합에 수신자가 든다.
+- 코드 생성: 증명되지 않은 범위만 검사하고 `llvm.memmove` 한 번.
+- 시험: `tests/verify/pass/copy_within.bmb`(배열·슬라이스·`Vec`·구조체 원소, 일반 계약), `tests/verify/fail/copy_within.bmb`, `tests/check/err/copy_within.bmb`, `soundness_vec`의 `CopyWithin`(경계 밖 포함, 해석기 대조), 게이트 검출력 변이체 `v-copy-within-dest-bound`·`v-copy-within-unshifted`.
+- `tests/run/sorted_set`의 `insert`는 사본 우회 대신 `self.items.copy_within(p..n, p + 1)`로 옮기고 `shifted` 술어가 사라졌다. 출력은 그대로다.
+

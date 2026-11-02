@@ -851,6 +851,10 @@ impl Mv<'_> {
                 let dead = std::mem::replace(&mut self.dead, false);
                 self.join((skip, false), (taken, dead), e.span);
             }
+            ExprKind::Range { lo: l, hi: r } => {
+                self.expr(l, false);
+                self.expr(r, false);
+            }
             ExprKind::Binary(_, l, r) => {
                 self.expr(l, false);
                 self.expr(r, false);

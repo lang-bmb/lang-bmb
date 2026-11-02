@@ -722,6 +722,11 @@ impl Ex<'_> {
                 kv.push(("op", s(if *op == UnOp::Neg { "-" } else { "!" })));
                 kv.push(("expr", self.under("expr", |x| x.expr(e))?));
             }
+            ExprKind::Range { lo, hi } => {
+                k("range");
+                kv.push(("lo", self.under("lo", |e| e.expr(lo))?));
+                kv.push(("hi", self.under("hi", |e| e.expr(hi))?));
+            }
             ExprKind::Binary(op, l, r) => {
                 k("binary");
                 kv.push(("op", s(bin_name(*op))));
@@ -1771,6 +1776,13 @@ impl Im {
                     }
                 };
                 ExprKind::Unary(op, self.sub(&o, "expr")?)
+            }
+            "range" => {
+                let o = fields(self, "a range", &["lo", "hi"])?;
+                ExprKind::Range {
+                    lo: self.sub(&o, "lo")?,
+                    hi: self.sub(&o, "hi")?,
+                }
             }
             "binary" => {
                 let o = fields(self, "a binary operation", &["op", "lhs", "rhs"])?;

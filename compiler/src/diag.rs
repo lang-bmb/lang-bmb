@@ -271,6 +271,10 @@ pub const CODES: &[(&str, &str)] = &[
         "E0434",
         "struct literal fields must be given in declaration order (the order of evaluation)",
     ),
+    (
+        "E0435",
+        "a range `lo..hi` outside the source argument of `copy_within`",
+    ),
     // E05xx: specifications
     (
         "E0501",

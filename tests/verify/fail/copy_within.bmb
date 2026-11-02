@@ -1,0 +1,29 @@
+#[summary("copy_within의 의무 (ADR-0083)")]
+mod cwf {
+    #[effects(pure)]
+    #[uses(same_head)]
+    fn claim(a: &mut [i64]) -> ()
+        requires same_head(a, a),
+        ensures same_head(a, old(a)),
+    {
+        if a.len() > 1 {
+            a.copy_within(1..2, 0);
+        }
+    }
+
+    #[effects(pure)]
+    fn destination(a: &mut [i64], d: usize) -> () {
+        if a.len() > 2 {
+            a.copy_within(0..2, d);
+        }
+    }
+
+    spec fn same_head(a: &[i64], b: &[i64]) -> bool {
+        a.len() > 0 && b.len() > 0 && a[0] == b[0]
+    }
+
+    #[effects(pure)]
+    fn source(a: &mut [i64], lo: usize, hi: usize) -> () {
+        a.copy_within(lo..hi, 0);
+    }
+}

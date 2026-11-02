@@ -2637,7 +2637,23 @@ impl<'a> Parser<'a> {
         self.expect_p("(")?;
         let mut args = Vec::new();
         while !self.is_p(")") {
-            args.push(self.parse_expr()?);
+            let a = self.parse_expr()?;
+            // `lo..hi` (ADR-0083: `copy_within`'s source; the checker
+            // refuses it in any other argument, E0435).
+            let a = if self.eat_p("..") {
+                let hi = self.parse_expr()?;
+                let span = a.span.to(hi.span);
+                Expr {
+                    kind: ExprKind::Range {
+                        lo: Box::new(a),
+                        hi: Box::new(hi),
+                    },
+                    span,
+                }
+            } else {
+                a
+            };
+            args.push(a);
             if !self.eat_p(",") {
                 break;
             }
