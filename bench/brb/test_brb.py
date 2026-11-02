@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -66,6 +67,44 @@ class TaskSet(unittest.TestCase):
 
     def test_manifest_matches(self):
         self.assertEqual(harness.read_bytes(os.path.join(HERE, "MANIFEST")).decode(), harness.manifest_text())
+
+    def test_write_variant_changes_only_the_bmb_prompt_and_tools(self):
+        # backlog T0-13: `--variant bench/brb-write`.
+        variant = os.path.join(harness.ROOT, "bench", "brb-write")
+        saved = (harness.VARIANT, harness.m1.set_config)
+        try:
+            self.assertEqual(harness.variant_fields(), {"task_set": "brb"})
+            harness.use_variant(variant)
+            self.assertEqual(harness.m1.set_config()["mcp_flags"], ["--write-tool"])
+            fields = harness.variant_fields()
+            self.assertEqual(fields["task_set"], "brb-write")
+            self.assertEqual(len(fields["variant_manifest"]), 64)
+            task = TASKS[0]
+            with unittest.mock.patch.dict(sys.modules):
+                sys.path.insert(0, harness.M1)
+                import model_api
+                seen = {}
+                with unittest.mock.patch.object(model_api, "make_model_agent",
+                                                lambda kind, prompt, msg: seen.setdefault("p", prompt)):
+                    harness.make_agent("openai:m", task, "bmb")
+                    bmb_prompt = seen.pop("p")
+                    harness.make_agent("openai:m", task, "rust")
+                    rust_prompt = seen.pop("p")
+            self.assertEqual(bmb_prompt, open(os.path.join(variant, "prompt-bmb.md")).read())
+            self.assertEqual(rust_prompt, open(os.path.join(HERE, "prompt-rust.md")).read())
+            # A changed variant is refused.
+            tmp = tempfile.mkdtemp()
+            try:
+                bad = os.path.join(tmp, "brb-write")
+                shutil.copytree(variant, bad)
+                with open(os.path.join(bad, "set.json"), "a") as f:
+                    f.write(" ")
+                with self.assertRaises(SystemExit):
+                    harness.use_variant(bad)
+            finally:
+                shutil.rmtree(tmp)
+        finally:
+            harness.VARIANT, harness.m1.set_config = saved
 
 
 class Verdict(unittest.TestCase):

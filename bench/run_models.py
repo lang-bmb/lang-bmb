@@ -99,10 +99,11 @@ def m1_run(set_dir):
                                             "--out", out] + tasks
 
 
-def brb_run(arm):
+def brb_run(arm, variant=None):
     return lambda agent, out, tasks, real: ([PY, "bench/brb/harness.py", "run", "--arm", arm, "--agent", agent,
                                              "--out", out] + tasks
-                                            + (["--proptest", "on" if real else "off"] if arm == "rust" else []))
+                                            + (["--proptest", "on" if real else "off"] if arm == "rust" else [])
+                                            + (["--variant", variant] if variant else []))
 
 
 # name, task ids, argv(agent, out, tasks, real), results directory
@@ -115,8 +116,18 @@ SETS = [
      "bench/bvb/results"),
     ("brb-bmb", brb_ids, brb_run("bmb"), "bench/brb/results"),
     ("brb-rust", brb_ids, brb_run("rust"), "bench/brb/results"),
+    # The one-call `write` surface of the same tasks (backlog T0-13, H-GRAIN):
+    # run only when named in --sets. brb-write is BRB's BMB arm with the
+    # variant's prompt and tools; its Rust arm is brb-rust.
+    ("m1b-write", lambda: json_ids(os.path.join(HERE, "m1b-write")), m1_run("bench/m1b-write"),
+     "bench/m1b-write/results"),
+    ("bvb-write", lambda: json_ids(os.path.join(HERE, "bvb-write")), m1_run("bench/bvb-write"),
+     "bench/bvb-write/results"),
+    ("brb-write", brb_ids, brb_run("bmb", "bench/brb-write"), "bench/brb-write/results"),
 ]
 NAMES = [s[0] for s in SETS]
+VARIANTS = ("m1b-write", "bvb-write", "brb-write")
+DEFAULT = [n for n in NAMES if n not in VARIANTS]
 
 
 def verus_installed():
@@ -158,7 +169,7 @@ def report(paths, skipped):
         return r.stdout if r.returncode == 0 else f"(실패: {r.stderr.strip()[-300:]})\n"
 
     out = []
-    for n in ("m1", "m1b", "bvb"):
+    for n in ("m1", "m1b", "bvb", "m1b-write", "bvb-write"):
         if n in paths:
             out += [f"## {n}" + ("(BMB)" if n == "bvb" else ""), "", sh("bench/m1/harness.py", "summarize", paths[n])]
     if "bvb" in paths and "bvb-verus" in paths:
@@ -167,8 +178,11 @@ def report(paths, skipped):
         out += ["## BVB 명세 강도(BMB만)", "", sh("bench/bvb/verus/harness.py", "strength", paths["bvb"])]
     if "brb-bmb" in paths and "brb-rust" in paths:
         out += ["## BRB", "", sh("bench/brb/harness.py", "summarize", paths["brb-bmb"], paths["brb-rust"])]
+    if "brb-write" in paths:
+        brb = [paths[n] for n in ("brb-bmb", "brb-write", "brb-rust") if n in paths]
+        out += ["## BRB 쓰기 표면", "", sh("bench/brb/harness.py", "summarize", *brb)]
     text = "\n".join(out)
-    sections = {n: text.split(f"## {n}", 1)[1].split("\n## ", 1)[0] for n in ("m1", "m1b") if f"## {n}" in text}
+    sections = {n: text.split(f"## {n}\n", 1)[1].split("\n## ", 1)[0] for n in ("m1", "m1b") if f"## {n}\n" in text}
     checks = [
         ("G2 작성 1회 성공률(m1·m1b)", "| 작성 1회 성공률 |", ("m1", "m1b")),
         ("G3 명세 변이체 판별률(m1b, BSB)", "| 명세 변이체 판별률 |", ("m1b",)),
@@ -202,7 +216,10 @@ def preflight_real(sets):
     if "bvb-verus" in sets and not verus_installed():
         problems.append("Verus가 없다: bench/bvb/verus/install.sh, 또는 --sets에서 bvb-verus를 뺀다")
     for argv in ([PY, "bench/m1/harness.py", "manifest"], [PY, "bench/m1/harness.py", "--set", "bench/m1b", "manifest"],
-                 [PY, "bench/m1/harness.py", "--set", "bench/bvb", "manifest"], [PY, "bench/brb/harness.py", "manifest"]):
+                 [PY, "bench/m1/harness.py", "--set", "bench/bvb", "manifest"], [PY, "bench/brb/harness.py", "manifest"],
+                 *([PY, "bench/m1/harness.py", "--set", f"bench/{v}", "manifest"] for v in ("m1b-write", "bvb-write")
+                   if v in sets),
+                 *([[PY, "bench/edit/gen.py", "--check"]] if "brb-write" in sets else [])):
         r = subprocess.run(argv, cwd=ROOT, capture_output=True, text=True)
         if r.returncode != 0:
             problems.append(f"{' '.join(argv[1:])}: {r.stderr.strip()[-200:]}")
@@ -270,7 +287,8 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--agent", help="openai:MODEL or anthropic:MODEL (real run, ADR-0066)")
     ap.add_argument("--dry-run", action="store_true", help="scripted reference agents, no model")
-    ap.add_argument("--sets", default=",".join(NAMES), help="comma list, in this order: " + ",".join(NAMES))
+    ap.add_argument("--sets", default=",".join(DEFAULT),
+                    help="comma list, in this order: " + ",".join(NAMES) + f" (default: all but {', '.join(VARIANTS)})")
     ap.add_argument("--limit", type=int, help="first N tasks of each set (dry run only)")
     ap.add_argument("--price-in", type=float, help="USD per million input tokens")
     ap.add_argument("--price-out", type=float, help="USD per million output tokens")
@@ -329,7 +347,8 @@ def main(argv=None):
         if args.limit:
             task_ids = task_ids[:args.limit]
         if real:
-            suffix = {"m1": "", "m1b": "", "bvb": "", "bvb-verus": "-verus", "brb-bmb": "-bmb", "brb-rust": "-rust"}[name]
+            suffix = {"m1": "", "m1b": "", "bvb": "", "bvb-verus": "-verus", "brb-bmb": "-bmb", "brb-rust": "-rust",
+                      "m1b-write": "", "bvb-write": "", "brb-write": "-bmb"}[name]
             if args.repeat is not None:
                 suffix += f"-repeat{args.repeat}"
             state, out = earlier_run(results_dir, model, suffix, args.agent, commit, claim)

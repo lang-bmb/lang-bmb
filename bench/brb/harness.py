@@ -4,6 +4,7 @@
   harness.py manifest [--write]          check (or rewrite) the frozen-input hashes
   harness.py run --arm bmb|rust --agent AGENT [--tasks ID,..] [--jobs N]
                  [--out FILE] [--expect all-pass|weak-fail] [--proptest on|off]
+                 [--variant DIR]          BMB arm only: a write-surface set (bench/brb-write)
   harness.py adequacy [--jobs N]          every Rust mutant is killed by the hidden cases
   harness.py summarize RESULTS.jsonl..   metric table (one column per file), the G5, H-ORACLE and G8 lines
 
@@ -144,6 +145,39 @@ def warm_rust(target_dir, proptest):
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+# ---------- write-surface variants (backlog T0-13) ----------
+
+# A variant (`--variant DIR`, a set `bench/edit/gen.py` built from this one,
+# e.g. `bench/brb-write`) changes the BMB arm's prompt and `bmb mcp` flags and
+# nothing else: the tasks, judge, limits and Rust arm are BRB's, so its rows
+# keep this MANIFEST's digest and compare with the Rust arm; `task_set` and
+# `variant_manifest` say which surface ran. None: BRB itself.
+VARIANT = None
+
+
+def use_variant(path):
+    """Checks the variant's MANIFEST and makes its prompt and `set.json` the
+    BMB arm's (the m1 harness reads a set's configuration through
+    `set_config`)."""
+    global VARIANT
+    spec = importlib.util.spec_from_file_location("brb_edit_gen", os.path.join(ROOT, "bench", "edit", "gen.py"))
+    gen = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gen)
+    if read_bytes(os.path.join(path, "MANIFEST")).decode() != gen.brb_manifest(path):
+        sys.exit("variant inputs differ from its MANIFEST: refusing to run (ADR-0021 §1)")
+    with open(os.path.join(path, "set.json")) as f:
+        cfg = json.load(f)
+    m1.set_config = lambda: cfg
+    VARIANT = path
+
+
+def variant_fields():
+    if VARIANT is None:
+        return {"task_set": "brb"}
+    return {"task_set": os.path.basename(os.path.normpath(VARIANT)),
+            "variant_manifest": hashlib.sha256(read_bytes(os.path.join(VARIANT, "MANIFEST"))).hexdigest()}
+
+
 # ---------- agents ----------
 
 def make_agent(kind, task, arm):
@@ -156,7 +190,8 @@ def make_agent(kind, task, arm):
         return m1.ScriptAgent([("write_file", {"path": "src/lib.rs", "content": code}), ("cargo_test", {})])
     sys.path.insert(0, M1)
     from model_api import make_model_agent  # noqa: E402
-    prompt = read_bytes(os.path.join(HERE, f"prompt-{arm}.md")).decode()
+    pdir = VARIANT if VARIANT and arm == "bmb" else HERE
+    prompt = read_bytes(os.path.join(pdir, f"prompt-{arm}.md")).decode()
     if agent := make_model_agent(kind, prompt, judge.task_prompt(task, arm)):
         return agent
     sys.exit(f"unknown agent {kind}")
@@ -557,6 +592,7 @@ def main():
     # proptest needs the template's crates (fetched once, then offline). On by
     # default for measurements; CI runs the scripted agents with it off.
     rn.add_argument("--proptest", choices=["on", "off"], default="on")
+    rn.add_argument("--variant", help="BMB arm only: a write-surface set built from BRB (bench/brb-write)")
     ad = sub.add_parser("adequacy")
     ad.add_argument("--jobs", type=int, default=1)
     ad.add_argument("--tasks")
@@ -577,6 +613,10 @@ def main():
         return
 
     check_manifest()
+    if getattr(args, "variant", None):
+        if args.arm != "bmb":
+            sys.exit("--variant changes the BMB arm only")
+        use_variant(os.path.abspath(args.variant))
     ts = tasks()
     if args.tasks:
         wanted = set(args.tasks.split(","))
@@ -598,7 +638,7 @@ def main():
     proptest = args.proptest == "on"
     commit = m1.run_commit()
     # Rows are written as sessions finish and an interrupted run resumes (INF-16).
-    log = m1.resultlog.ResultLog(args.out, {"agent": args.agent, "task_set": "brb", "arm": args.arm,
+    log = m1.resultlog.ResultLog(args.out, {"agent": args.agent, **variant_fields(), "arm": args.arm,
                                             "manifest": manifest_digest(), "commit": commit,
                                             "tasks": [t.ID for t in ts], **m1.condition_fields()})
 
@@ -619,7 +659,7 @@ def main():
         print(json.dumps(r, ensure_ascii=False))
     n = len(results)
     summary = {
-        "summary": True, "task_set": "brb", "arm": args.arm, "agent": args.agent, "tasks": n,
+        "summary": True, **variant_fields(), "arm": args.arm, "agent": args.agent, "tasks": n,
         "proptest": proptest if args.arm == "rust" else None,
         "manifest": manifest_digest(), "commit": commit, **m1.condition_fields(),
         "limits": {"tool_calls": MAX_TOOL_CALLS, "session_output_tokens": SESSION_OUTPUT_TOKENS,
