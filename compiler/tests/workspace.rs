@@ -931,3 +931,68 @@ fn every_corpus_program_round_trips_through_put() {
     }
     assert!(seen_impls > 0, "the corpus has trait impls");
 }
+
+/// Two types with the same fields have one identity (ADR-0059 §1: a type's
+/// text is its structure and its trait `impl`s; backlog T1-28, ADR-0082).
+/// The tools that read identities still tell them apart: `expect` names a
+/// path, so a change to one type leaves an expectation on the other true;
+/// `rename` compares the identities as a multiset, so renaming one of two
+/// equal types commits and both identities stay.
+#[test]
+fn equal_types_share_an_identity_and_the_tools_tell_them_apart() {
+    const TWO: &str = r#"#[summary("first")]
+mod geo {
+    struct Point { x: i64, y: i64 }
+
+    #[effects(pure)]
+    fn origin() -> Point {
+        Point { x: 0, y: 0 }
+    }
+}
+
+#[summary("second")]
+mod arrs {
+    struct Point { x: i64, y: i64 }
+
+    #[effects(pure)]
+    fn corner() -> Point {
+        Point { x: 1, y: 1 }
+    }
+}
+"#;
+    let root = temp("equal-types");
+    let units = bmb::format_sources(&[("two.bmb".into(), TWO.into())]).unwrap();
+    write_units(&root, &units).unwrap();
+    let id_of = |p: &str| ids(&root)[p].split('"').nth(3).unwrap().to_string();
+    let (geo, arrs) = (id_of("geo::Point"), id_of("arrs::Point"));
+    assert_eq!(geo, arrs, "same fields, same identity");
+    // A rename of one: the multiset of identities is the same, so it commits.
+    let c = commit(&root, &[rename("geo::Point", "Pos")]).unwrap();
+    assert!(c.ok, "{}", c.diagnostics);
+    assert_eq!(id_of("geo::Pos"), arrs);
+    assert_eq!(id_of("arrs::Point"), arrs);
+    // A change to one: an expectation on the other still holds, one on the
+    // changed path does not.
+    let c = commit(
+        &root,
+        &[
+            put("geo", "struct Pos { x: i64, y: i64, z: i64 }"),
+            put(
+                "geo",
+                "#[effects(pure)]\nfn origin() -> Pos {\n    Pos { x: 0, y: 0, z: 0 }\n}",
+            ),
+        ],
+    )
+    .unwrap();
+    assert!(c.ok, "{}", c.diagnostics);
+    assert_ne!(id_of("geo::Pos"), arrs);
+    let expect = |def: &str, id: &str| Op::Expect {
+        def: def.into(),
+        id: id.into(),
+    };
+    let c = commit(&root, &[expect("arrs::Point", &arrs)]).unwrap();
+    assert!(c.ok, "{}", c.diagnostics);
+    let c = commit(&root, &[expect("geo::Pos", &geo)]).unwrap();
+    assert!(!c.ok);
+    let _ = fs::remove_dir_all(&root);
+}
