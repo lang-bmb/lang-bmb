@@ -7,11 +7,77 @@ use crate::ast::*;
 use crate::diag::{Diag, Diags};
 use crate::source::Span;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Effect {
-    Pure,
-    Io,
+/// A function's effects (ADR-0030 §1): a set of atomic effects, ordered by
+/// inclusion; `pure` is the empty set. `alloc` is heap allocation (the
+/// program ends when memory runs out, as Rust's `handle_alloc_error`), `io`
+/// interaction with the outside whose order is observed, `panic` a trap a
+/// definition with an escape may end in (ADR-0029 §4). `nondet` comes with
+/// its source (ADR-0030 open question 2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, PartialOrd, Ord, Hash)]
+pub struct Effects(u8);
+
+impl Effects {
+    pub const PURE: Effects = Effects(0);
+    pub const ALLOC: Effects = Effects(1);
+    pub const IO: Effects = Effects(2);
+    /// The program may end in a trap: a definition with an escape
+    /// (`assume`, `#[external_body]`, ADR-0029) keeps its run-time checks.
+    pub const PANIC: Effects = Effects(4);
+    /// The atoms with their names, in the normal form's order (by name).
+    pub const ATOMS: [(Effects, &'static str); 3] = [
+        (Effects::ALLOC, "alloc"),
+        (Effects::IO, "io"),
+        (Effects::PANIC, "panic"),
+    ];
+
+    /// The atom named `name`.
+    pub fn atom(name: &str) -> Option<Effects> {
+        Effects::ATOMS
+            .iter()
+            .find(|(_, n)| *n == name)
+            .map(|(e, _)| *e)
+    }
+
+    pub fn is_pure(self) -> bool {
+        self.0 == 0
+    }
+
+    /// Every effect of `other` is one of these.
+    pub fn contains(self, other: Effects) -> bool {
+        self.0 & other.0 == other.0
+    }
+
+    pub fn union(self, other: Effects) -> Effects {
+        Effects(self.0 | other.0)
+    }
+
+    /// These effects without `other`'s.
+    pub fn minus(self, other: Effects) -> Effects {
+        Effects(self.0 & !other.0)
+    }
+
+    /// The atoms' names, by name.
+    pub fn names(self) -> Vec<&'static str> {
+        Effects::ATOMS
+            .iter()
+            .filter(|(e, _)| self.contains(*e))
+            .map(|(_, n)| *n)
+            .collect()
+    }
+
+    /// As `#[effects(..)]` writes it: `pure`, or the atoms by name
+    /// (`alloc, io`).
+    pub fn text(self) -> String {
+        if self.is_pure() {
+            "pure".into()
+        } else {
+            self.names().join(", ")
+        }
+    }
 }
+
+/// The kinds of a rationale (ADR-0029 §1): why a fact is taken as given.
+pub const RATIONALE_KINDS: [&str; 4] = ["nonlinear", "solver_limit", "boundary", "performance"];
 
 /// A type parameter of a generic definition (ADR-0046): its name and its
 /// bounds (`Copy` is built in).
@@ -175,7 +241,7 @@ pub struct FnSig {
     pub impl_generics: usize,
     pub params: Vec<TypeKind>,
     pub ret: TypeKind,
-    pub effect: Effect,
+    pub effect: Effects,
     /// A spec fn whose body is the literal `true`.
     pub vacuous: bool,
     pub builtin: bool,
@@ -401,6 +467,11 @@ pub struct Checker<'a> {
     imports: BTreeMap<String, BTreeMap<String, String>>,
     /// Exec-to-exec and spec-to-spec call edges, by path.
     calls: BTreeMap<String, BTreeSet<String>>,
+    /// Per executable definition: its own effects and what its body needs
+    /// (`Tables::effect_needs`).
+    effect_needs: BTreeMap<String, (Effects, Effects)>,
+    /// The `#[external_body]` functions (ADR-0029 §1).
+    external: BTreeSet<String>,
     /// Type of every checked expression, keyed by its span `(file, lo, hi)`.
     pub types: BTreeMap<(u32, u32, u32), TypeKind>,
     /// Recursive definitions: path -> id of its strongly connected component.
@@ -467,7 +538,7 @@ struct Local {
 struct FnCtx {
     path: String,
     mod_path: String,
-    effect: Effect,
+    effect: Effects,
     scopes: Vec<BTreeMap<String, Local>>,
     all_names: BTreeSet<String>,
     forall_depth: u32,
@@ -480,6 +551,34 @@ struct FnCtx {
     for_vars: BTreeSet<String>,
     /// Checking ghost code (ADR-0062): mutation is E0257, not E0503.
     ghost: bool,
+    /// The effects the body needs (ADR-0030 §3), each atom with its first
+    /// source: a built-in operation (`push`) or an executable callee.
+    needs: Vec<(Effects, String)>,
+    /// The effects of the body's own operations (not its calls).
+    own: Effects,
+}
+
+impl FnCtx {
+    /// Records a source of `e`: an operation of the body or a call.
+    fn need(&mut self, e: Effects, what: impl Fn() -> String) {
+        for (atom, _) in Effects::ATOMS {
+            if e.contains(atom) && !self.needs.iter().any(|(a, _)| *a == atom) {
+                self.needs.push((atom, what()));
+            }
+        }
+    }
+
+    /// Records an operation of the body itself with effect `e`.
+    fn need_own(&mut self, e: Effects, what: impl Fn() -> String) {
+        self.own = self.own.union(e);
+        self.need(e, what);
+    }
+
+    fn needed(&self) -> Effects {
+        self.needs
+            .iter()
+            .fold(Effects::PURE, |acc, (e, _)| acc.union(*e))
+    }
 }
 
 /// A loop a `break` or `continue` may name.
@@ -739,7 +838,7 @@ impl<'a> Checker<'a> {
                 kind: FnKind::Exec,
                 params: vec![TypeKind::Int(IntTy::I64)],
                 ret: TypeKind::Unit,
-                effect: Effect::Io,
+                effect: Effects::IO,
                 vacuous: false,
                 builtin: true,
                 in_impl: false,
@@ -760,7 +859,7 @@ impl<'a> Checker<'a> {
                     inner: mk(TypeKind::Slice(mk(TypeKind::Int(IntTy::U8)))),
                 }],
                 ret: TypeKind::Unit,
-                effect: Effect::Io,
+                effect: Effects::IO,
                 vacuous: false,
                 builtin: true,
                 in_impl: false,
@@ -780,7 +879,7 @@ impl<'a> Checker<'a> {
                 kind: FnKind::Exec,
                 params: vec![TypeKind::F64, TypeKind::Int(IntTy::U32)],
                 ret: TypeKind::Unit,
-                effect: Effect::Io,
+                effect: Effects::IO,
                 vacuous: false,
                 builtin: true,
                 in_impl: false,
@@ -798,7 +897,7 @@ impl<'a> Checker<'a> {
                 kind: FnKind::Exec,
                 params: vec![TypeKind::Int(IntTy::U64)],
                 ret: TypeKind::Unit,
-                effect: Effect::Io,
+                effect: Effects::IO,
                 vacuous: false,
                 builtin: true,
                 in_impl: false,
@@ -826,11 +925,14 @@ impl<'a> Checker<'a> {
             tparams: Vec::new(),
             gcalls: Vec::new(),
             owned_ready: false,
+            effect_needs: BTreeMap::new(),
+            external: BTreeSet::new(),
         }
     }
 
     /// Hands the tables the proof gate needs to the verifier.
     pub fn into_tables(self) -> crate::verify::Tables {
+        let may_untrusted = self.may_untrusted();
         crate::verify::Tables {
             fns: self.fns,
             types: self.types,
@@ -842,6 +944,46 @@ impl<'a> Checker<'a> {
             trait_impls: self.trait_impls,
             insts: BTreeMap::new(),
             inst_types: Vec::new(),
+            may_untrusted,
+            external: self.external.clone(),
+            calls: self.calls.clone(),
+            effect_needs: self.effect_needs,
+        }
+    }
+
+    /// `Tables::may_untrusted`: the definitions with an escape (own effect
+    /// `panic`, ADR-0029), closed over callers and over trait methods with
+    /// such an `impl` function.
+    fn may_untrusted(&self) -> BTreeSet<String> {
+        let mut out: BTreeSet<String> = self
+            .effect_needs
+            .iter()
+            .filter(|(_, (own, _))| own.contains(Effects::PANIC))
+            .map(|(p, _)| p.clone())
+            .collect();
+        loop {
+            let mut add = Vec::new();
+            for (f, callees) in &self.calls {
+                if !out.contains(f) && callees.iter().any(|c| out.contains(c)) {
+                    add.push(f.clone());
+                }
+            }
+            for p in &out {
+                // `<T as unit::Trait>::m` makes `unit::Trait::m` untrusted.
+                if let Some(rest) = p.strip_prefix('<')
+                    && let Some((head, m)) = rest.rsplit_once(">::")
+                    && let Some((_, tr)) = head.rsplit_once(" as ")
+                {
+                    let decl = format!("{tr}::{m}");
+                    if !out.contains(&decl) {
+                        add.push(decl);
+                    }
+                }
+            }
+            if add.is_empty() {
+                break out;
+            }
+            out.extend(add);
         }
     }
 
@@ -1265,18 +1407,27 @@ impl<'a> Checker<'a> {
                     ),
                 );
             }
-            if tsig.effect == Effect::Pure && isig.effect == Effect::Io {
+            // An impl's function has no effect its trait method does not
+            // declare: a bound call sees the trait's (ADR-0030 §3).
+            if !tsig.effect.contains(isig.effect) {
+                let extra = isig.effect.minus(tsig.effect);
                 self.diags.push(
                     Diag::new(
                         "E0316",
                         f.name.span,
                         format!(
-                            "`{}` has effect `io`, but `{name}` declares it `pure`",
-                            f.name.name
+                            "`{}` has effect `{}`, but `{name}` declares `{}`",
+                            f.name.name,
+                            extra.text(),
+                            tsig.effect.text()
                         ),
                     )
                     .fix(
-                        "make the function pure, or declare the trait method `#[effects(io)]`",
+                        format!(
+                            "remove the effect from the function, or declare the trait method \
+                             `#[effects({})]`",
+                            tsig.effect.union(isig.effect).text()
+                        ),
                         None,
                     ),
                 );
@@ -2762,8 +2913,63 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// The effect set an `#[effects(..)]` attribute declares (ADR-0030 §2):
+    /// `pure`, or atoms (`alloc`, `io`). `pure` with another effect and an
+    /// effect named twice are E0607, fixed to the normal form; an unknown
+    /// name is E0602.
+    fn effects_attr(&mut self, a: &Attr) -> Effects {
+        let mut e = Effects::PURE;
+        let mut pure = false;
+        let mut repeated = false;
+        if a.args.is_empty() {
+            self.diags.push(
+                Diag::new("E0602", a.span, "`#[effects(..)]` names no effect").fix(
+                    "write `#[effects(pure)]`, or the effects the function has",
+                    None,
+                ),
+            );
+        }
+        for arg in &a.args {
+            match arg {
+                AttrArg::Ident(i) if i.name == "pure" => {
+                    repeated |= pure;
+                    pure = true;
+                }
+                AttrArg::Ident(i) if let Some(atom) = Effects::atom(&i.name) => {
+                    repeated |= e.contains(atom);
+                    e = e.union(atom);
+                }
+                AttrArg::Ident(i) => self.diags.push(
+                    Diag::new("E0602", i.span, format!("unknown effect `{}`", i.name)).fix(
+                        "effects are `pure` (none), `alloc` (the function allocates: `Vec`, \
+                         `Box`), `io` (it prints) and `panic` (it has an escape: `assume`, \
+                         `#[external_body]`)",
+                        None,
+                    ),
+                ),
+                AttrArg::Str(_, sp) => self.err("E0602", *sp, "effect must be an identifier"),
+                AttrArg::Pair(k, _) => self.err("E0602", k.span, "effect must be an identifier"),
+            }
+        }
+        if (pure && !e.is_pure()) || repeated {
+            let msg = if pure && !e.is_pure() {
+                format!(
+                    "`pure` means no effect: it cannot be listed with `{}`",
+                    e.text()
+                )
+            } else {
+                "an effect is listed twice".to_string()
+            };
+            self.diags.push(Diag::new("E0607", a.span, msg).fix(
+                format!("write `#[effects({})]`", e.text()),
+                Some(format!("#[effects({})]", e.text())),
+            ));
+        }
+        e
+    }
+
     /// Reads `#[effects(..)]` and reports attribute problems once, during collection.
-    fn fn_effect(&mut self, f: &FnDef) -> Effect {
+    fn fn_effect(&mut self, f: &FnDef) -> Effects {
         let mut effect = None;
         for a in &f.attrs {
             match a.name.name.as_str() {
@@ -2793,37 +2999,25 @@ impl<'a> Checker<'a> {
                         );
                         continue;
                     }
-                    let mut e = Effect::Pure;
-                    if a.args.len() != 1 {
-                        self.err(
-                            "E0602",
-                            a.span,
-                            "`#[effects(..)]` takes exactly one effect: `pure` or `io`",
-                        );
-                    }
-                    for arg in &a.args {
-                        match arg {
-                            AttrArg::Ident(i) if i.name == "pure" => e = Effect::Pure,
-                            AttrArg::Ident(i) if i.name == "io" => e = Effect::Io,
-                            AttrArg::Ident(i) => self.diags.push(
-                                Diag::new(
-                                    "E0602",
-                                    i.span,
-                                    format!(
-                                        "unknown effect `{}`; milestone 1 has `pure` and `io`",
-                                        i.name
-                                    ),
-                                )
-                                .fix("write `pure`, or `io` if the function prints", None),
-                            ),
-                            AttrArg::Str(_, sp) => {
-                                self.err("E0602", *sp, "effect must be an identifier")
-                            }
-                        }
-                    }
-                    effect = Some(e);
+                    effect = Some(self.effects_attr(a));
                 }
                 "uses" => {}
+                // ADR-0029 §1: the escape and its rationale.
+                "external_body" => {
+                    if f.kind != FnKind::Exec || f.name.name == "main" {
+                        self.diags.push(
+                            Diag::new(
+                                "E1004",
+                                a.span,
+                                "`#[external_body]` is for an executable function other than `main`",
+                            )
+                            .fix("remove the attribute", Some(String::new())),
+                        );
+                    } else if !f.attrs.iter().any(|r| r.name.name == "rationale") {
+                        self.missing_rationale(a.span, "`#[external_body]`");
+                    }
+                }
+                "rationale" => self.check_rationale(a),
                 other => self.diags.push(
                     Diag::new(
                         "E0605",
@@ -2831,7 +3025,7 @@ impl<'a> Checker<'a> {
                         format!("unknown attribute `{other}` on a function"),
                     )
                     .fix(
-                        "remove it: functions take `#[effects(..)]` and `#[uses(..)]`",
+                        "remove it: functions take `#[effects(..)]`, `#[uses(..)]`, `#[external_body]` and `#[rationale(..)]`",
                         Some(String::new()),
                     ),
                 ),
@@ -2854,7 +3048,7 @@ impl<'a> Checker<'a> {
                 ),
             );
         }
-        effect.unwrap_or(Effect::Pure)
+        effect.unwrap_or(Effects::PURE)
     }
 
     fn check_mod(&mut self, m: &Mod, prefix: &str) {
@@ -2981,6 +3175,8 @@ impl<'a> Checker<'a> {
             loops: Vec::new(),
             for_vars: BTreeSet::new(),
             ghost: f.kind == FnKind::Proof,
+            needs: Vec::new(),
+            own: Effects::PURE,
         };
         self.calls.entry(path.clone()).or_default();
 
@@ -3011,6 +3207,9 @@ impl<'a> Checker<'a> {
                         }
                         AttrArg::Str(_, sp) => {
                             self.err("E0509", *sp, "`#[uses(..)]` takes spec function names")
+                        }
+                        AttrArg::Pair(k, _) => {
+                            self.err("E0509", k.span, "`#[uses(..)]` takes spec function names")
                         }
                     }
                 }
@@ -3078,6 +3277,13 @@ impl<'a> Checker<'a> {
             f.body.tail.as_ref().map_or(f.body.span, |e| e.span),
         );
         if f.kind == FnKind::Exec {
+            if f.attrs.iter().any(|a| a.name.name == "external_body") {
+                cx.need_own(Effects::PANIC, || "`#[external_body]`".into());
+                self.external.insert(path.clone());
+            }
+            self.check_effects(f, &cx);
+            self.effect_needs
+                .insert(path.clone(), (cx.own, cx.needed()));
             let none = BTreeMap::new();
             let locals = self.locals.get(&path).unwrap_or(&none);
             let moving = self.moving_params();
@@ -3088,6 +3294,46 @@ impl<'a> Checker<'a> {
             self.moves.insert(path, info);
         }
         self.tparams.clear();
+    }
+
+    /// The declared effects contain what the body needs (ADR-0030 §3): its
+    /// own operations (`alloc`: `Vec::new`, `Vec::with_capacity`, `push`,
+    /// `clone` of a `Vec`, `Box::new`) and the declared effects of its
+    /// executable callees. A missing effect is E0606, one per definition,
+    /// whose fix writes the attribute with every effect the body needs. A
+    /// `pure` function calling an `io` one is E0603 at the call (as in
+    /// milestone 1); when that is all that is missing, E0606 is not added.
+    fn check_effects(&mut self, f: &FnDef, cx: &FnCtx) {
+        let missing = cx.needed().minus(cx.effect);
+        if missing.is_pure() || (cx.effect.is_pure() && missing == Effects::IO) {
+            return;
+        }
+        let Some(attr) = f.attrs.iter().find(|a| a.name.name == "effects") else {
+            return; // E0601
+        };
+        let why: Vec<String> = cx
+            .needs
+            .iter()
+            .filter(|(e, _)| missing.contains(*e))
+            .map(|(e, what)| format!("`{}` ({what})", e.text()))
+            .collect();
+        let want = cx.effect.union(cx.needed());
+        self.diags.push(
+            Diag::new(
+                "E0606",
+                attr.span,
+                format!(
+                    "`{}` needs {} but declares `#[effects({})]`",
+                    f.name.name,
+                    why.join(" and "),
+                    cx.effect.text()
+                ),
+            )
+            .fix(
+                format!("declare `#[effects({})]`", want.text()),
+                Some(format!("#[effects({})]", want.text())),
+            ),
+        );
     }
 
     fn check_param_type(&mut self, t: &Type, kind: FnKind) {
@@ -3244,6 +3490,146 @@ impl<'a> Checker<'a> {
                     ),
                 )
                 .fix(ARRAY_ELEMENT_HELP, None),
+            );
+        }
+    }
+
+    /// `assume(p(..));` (ADR-0029 §1): in executable code, one named
+    /// predicate call (E1003), a rationale before it (E1001, E1002). It is a
+    /// source of `panic` (§4: the definition may keep its checks).
+    fn assume_stmt(
+        &mut self,
+        cx: &mut FnCtx,
+        cond: &Expr,
+        rationale: Option<&Attr>,
+        span: Span,
+        mode: Mode,
+    ) {
+        if mode != Mode::Exec {
+            self.diags.push(
+                Diag::new(
+                    "E1003",
+                    span,
+                    "`assume` is not allowed in a specification or ghost code",
+                )
+                .fix(
+                    "an escape is a statement of executable code; a ghost fact is proved \
+                         (`assert`, a `proof fn`)",
+                    None,
+                ),
+            );
+        }
+        let t = self.expr(
+            cx,
+            cond,
+            Some(&TypeKind::Bool),
+            Mode::Spec { allow_old: false },
+        );
+        let named = match &cond.kind {
+            ExprKind::Call { path, .. } => self
+                .resolve(path, &cx.mod_path)
+                .and_then(|p| self.fns.get(&p).cloned()),
+            _ => None,
+        };
+        let is_pred = named.is_some_and(|s| s.kind == FnKind::Spec && s.ret == TypeKind::Bool);
+        if !is_pred && t != TypeKind::Error {
+            self.diags.push(
+                Diag::new(
+                    "E1003",
+                    cond.span,
+                    "`assume` takes one named predicate call",
+                )
+                .fix(
+                    "move the condition into `spec fn name(..) -> bool { .. }` and assume \
+                         `name(..)`",
+                    None,
+                ),
+            );
+        }
+        match rationale {
+            Some(a) => self.check_rationale(a),
+            None => self.missing_rationale(span, "`assume`"),
+        }
+        if mode == Mode::Exec {
+            cx.need_own(Effects::PANIC, || "`assume`".into());
+        }
+    }
+
+    /// E1001: an escape with no `#[rationale(..)]` before it.
+    fn missing_rationale(&mut self, span: Span, what: &str) {
+        self.diags.push(
+            Diag::new(
+                "E1001",
+                span,
+                format!("{what} is an escape and needs a `#[rationale(..)]` before it"),
+            )
+            .fix(
+                "write `#[rationale(kind = K, \"why the fact holds\")]` before it, `K` one of \
+                 `nonlinear`, `solver_limit`, `boundary`, `performance`",
+                None,
+            ),
+        );
+    }
+
+    /// A `#[rationale(kind = K, hash = "..", "explanation")]` (ADR-0029 §1):
+    /// `kind` from the closed list, one non-empty explanation, `hash` a
+    /// string the tools write (E1002).
+    fn check_rationale(&mut self, a: &Attr) {
+        let mut kind = None;
+        let mut kind_written = false;
+        let mut text = None;
+        let mut bad = Vec::new();
+        for arg in &a.args {
+            match arg {
+                AttrArg::Pair(k, v) if k.name == "kind" => {
+                    kind_written = true;
+                    match &**v {
+                        AttrArg::Ident(i) if RATIONALE_KINDS.contains(&i.name.as_str()) => {
+                            if kind.replace(i.name.clone()).is_some() {
+                                bad.push("`kind` is given twice".to_string());
+                            }
+                        }
+                        _ => bad.push(format!(
+                            "`kind` is one of {}",
+                            RATIONALE_KINDS.map(|k| format!("`{k}`")).join(", ")
+                        )),
+                    }
+                }
+                AttrArg::Pair(k, v) if k.name == "hash" => {
+                    if !matches!(&**v, AttrArg::Str(..)) {
+                        bad.push("`hash` is a string (the tools write it)".into());
+                    }
+                }
+                AttrArg::Pair(k, _) => bad.push(format!("unknown key `{}`", k.name)),
+                AttrArg::Str(t, _) => {
+                    if t.trim().is_empty() {
+                        bad.push("the explanation is empty".into());
+                    }
+                    if text.replace(t.clone()).is_some() {
+                        bad.push("one explanation, as one string".into());
+                    }
+                }
+                AttrArg::Ident(i) => bad.push(format!("`{}` needs a key (`kind = ..`)", i.name)),
+            }
+        }
+        if !kind_written {
+            bad.push("`kind = ..` is missing".into());
+        }
+        if text.is_none() {
+            bad.push("the explanation (a string) is missing".into());
+        }
+        if !bad.is_empty() {
+            self.diags.push(
+                Diag::new(
+                    "E1002",
+                    a.span,
+                    format!("malformed rationale: {}", bad.join("; ")),
+                )
+                .fix(
+                    "write `#[rationale(kind = K, \"why the fact holds\")]`, `K` one of \
+                         `nonlinear`, `solver_limit`, `boundary`, `performance`",
+                    None,
+                ),
             );
         }
     }
@@ -3674,6 +4060,11 @@ impl<'a> Checker<'a> {
                     self.bit_vector_terms(cond);
                 }
             }
+            Stmt::Assume {
+                cond,
+                rationale,
+                span,
+            } => self.assume_stmt(cx, cond, rationale.as_ref(), *span, mode),
             Stmt::Expr(e) => {
                 self.expr(cx, e, None, mode);
             }
@@ -5721,11 +6112,17 @@ impl<'a> Checker<'a> {
             ExprKind::Call { path, args, .. }
                 if self.resolve(path, &cx.mod_path).is_none() && is_box_new(path) =>
             {
+                if mode == Mode::Exec {
+                    cx.need_own(Effects::ALLOC, || "`Box::new`".into());
+                }
                 self.box_new(cx, args, expected, e.span, mode)
             }
             ExprKind::Call { path, args, .. }
                 if self.resolve(path, &cx.mod_path).is_none() && vec_builtin(path) =>
             {
+                if mode == Mode::Exec && path[0].name == "Vec" {
+                    cx.need_own(Effects::ALLOC, || format!("`{}`", Self::path_text(path)));
+                }
                 self.vec_call(cx, path, args, expected, e.span, mode)
             }
             ExprKind::Call { path, targs, args } => {
@@ -6752,6 +7149,10 @@ impl<'a> Checker<'a> {
         mode: Mode,
     ) -> TypeKind {
         let m = name.name.as_str();
+        if mode == Mode::Exec && matches!(m, "push" | "clone") {
+            // Growing or copying the buffer (ADR-0030 §1).
+            cx.need_own(Effects::ALLOC, || format!("`Vec::{m}`"));
+        }
         let (arity, mutates, ret) = match m {
             "push" => (1, true, TypeKind::Unit),
             "pop" => (0, true, option_of(et.clone())),
@@ -7456,7 +7857,8 @@ impl<'a> Checker<'a> {
                 );
             }
             (Mode::Exec, FnKind::Exec) => {
-                if cx.effect == Effect::Pure && sig.effect == Effect::Io {
+                cx.need(sig.effect, || format!("a call of `{name}`"));
+                if cx.effect.is_pure() && sig.effect.contains(Effects::IO) {
                     self.diags.push(
                         Diag::new(
                             "E0603",
@@ -8308,7 +8710,8 @@ impl<'a> Checker<'a> {
                         "`main` must be `#[effects(io)] fn main() -> ()`",
                     )
                     .fix(
-                        "write `#[effects(io)] fn main() -> ()`: no parameters, no result",
+                        "write `#[effects(io)] fn main() -> ()`: no parameters, no result \
+                         (other effects may be listed with `io`)",
                         None,
                     ),
                 );
@@ -8458,7 +8861,7 @@ fn block_mentions(b: &Block, name: &str) -> bool {
                 || invariants.iter().any(|i| mentions_strict(i, name))
                 || block_mentions(body, name)
         }
-        Stmt::Assert { cond, .. } => mentions_strict(cond, name),
+        Stmt::Assert { cond, .. } | Stmt::Assume { cond, .. } => mentions_strict(cond, name),
         Stmt::Expr(e) => mentions_strict(e, name),
         Stmt::Proof { body, .. } => block_mentions(body, name),
     }) || b.tail.as_ref().is_some_and(|t| mentions_strict(t, name))

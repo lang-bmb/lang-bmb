@@ -29,7 +29,7 @@ mod nv {
         s
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(rows, small)]
     fn grid(n: usize) -> (out: Vec<Vec<i64>>)
         requires small(n),
@@ -48,7 +48,7 @@ mod nv {
         g
     }
 
-    #[effects(io)]
+    #[effects(alloc, io)]
     #[uses(rows, small)]
     fn main() -> () {
         let mut g: Vec<Vec<i64>> = grid(3);

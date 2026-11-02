@@ -32,7 +32,7 @@ mod of {
         }
     }
 
-    #[effects(io)]
+    #[effects(alloc, io)]
     fn main() -> () {
         let mut b: Buf = Buf { data: Vec::new(), n: 0 };
         b.data.push(5);

@@ -26,12 +26,12 @@ mod fo {
         }
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     fn leaf(v: i64) -> Box<Tree> {
         Box::new(Tree::Leaf(v))
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     fn more(t: Box<Tree>, rest: Forest) -> Forest {
         Forest::More(t, Box::new(rest))
     }
@@ -54,7 +54,7 @@ mod fo {
         }
     }
 
-    #[effects(io)]
+    #[effects(alloc, io)]
     fn main() -> () {
         let inner: Forest = more(leaf(3), more(leaf(4), Forest::Empty));
         let f: Forest = more(leaf(1), more(Box::new(Tree::Branch(Box::new(inner))), more(leaf(10), Forest::Empty)));

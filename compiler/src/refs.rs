@@ -194,7 +194,7 @@ impl Walker<'_> {
                     invariants.iter_mut().for_each(|e| self.expr(e));
                     self.block(body);
                 }
-                Stmt::Assert { cond, .. } => self.expr(cond),
+                Stmt::Assert { cond, .. } | Stmt::Assume { cond, .. } => self.expr(cond),
                 Stmt::Proof { body, .. } => self.block(body),
                 Stmt::LetFields { path, init, .. } => {
                     self.idents(path, Site::Struct);

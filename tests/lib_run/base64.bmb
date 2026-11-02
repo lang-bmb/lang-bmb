@@ -9,7 +9,7 @@ mod app {
     spec fn line_ok(s: &[u8]) -> bool { s.len() <= 1000 }
 
     // `<label> <value>` on one line.
-    #[effects(io)]
+    #[effects(alloc, io)]
     #[uses(label_ok, bytes::room, bytes::grew_by, bytes::kept, bytes::fits, bytes::appended, bytes::copied)]
     fn show(label: &[u8], x: u64) -> ()
         requires label_ok(label),
@@ -23,7 +23,7 @@ mod app {
     }
 
     // `<label> <text>` on one line.
-    #[effects(io)]
+    #[effects(alloc, io)]
     #[uses(label_ok, line_ok, bytes::fits, bytes::appended, bytes::kept, bytes::copied)]
     fn say(label: &[u8], text: &[u8]) -> ()
         requires label_ok(label), line_ok(text),
@@ -37,7 +37,7 @@ mod app {
     }
 
     // The encoding of `s`, and its decoding.
-    #[effects(io)]
+    #[effects(alloc, io)]
     #[uses(label_ok, line_ok, base64::fits, base64::round_trip, base64::encoded, base64::enc_len, base64::decoded, base64::decodes, base64::dec_len)]
     fn vector(s: &[u8]) -> ()
         requires line_ok(s),
@@ -57,7 +57,7 @@ mod app {
     }
 
     // The decoding of `t`: its length, or `none`.
-    #[effects(io)]
+    #[effects(alloc, io)]
     #[uses(label_ok)]
     fn reject(t: &[u8]) -> () {
         match base64::decode(t) {
@@ -68,7 +68,7 @@ mod app {
 
     // `n` deterministic bytes: the high bits of a 64-bit LCG, the same
     // sequence as `base64_ref.py`.
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(short, size_ok)]
     fn stream(n: usize) -> (r: Vec<u8>)
         requires size_ok(n),
@@ -86,7 +86,7 @@ mod app {
     }
 
     // The first `n` bytes of `s` (all of it when shorter).
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(short)]
     fn take(s: &[u8], n: usize) -> (r: Vec<u8>)
         ensures short(r.as_slice(), n),
@@ -137,7 +137,7 @@ mod app {
     struct Tally { count: u64, sum: u64 }
 
     // One more decoding: counted, its bytes folded into the sum.
-    #[effects(pure)]
+    #[effects(alloc)]
     fn add(x: Tally, t: &[u8]) -> Tally {
         match base64::decode(t) {
             None => x,
@@ -152,7 +152,7 @@ mod app {
     }
 
     // Every string of four of the 16 characters.
-    #[effects(pure)]
+    #[effects(alloc)]
     fn four() -> Tally {
         let cs: [u8; 16] = chars();
         let n: usize = 16;
@@ -175,7 +175,7 @@ mod app {
     }
 
     // The same after the group `QUJD`.
-    #[effects(pure)]
+    #[effects(alloc)]
     fn eight() -> Tally {
         let cs: [u8; 16] = chars();
         let n: usize = 16;
@@ -197,7 +197,7 @@ mod app {
         x
     }
 
-    #[effects(io)]
+    #[effects(alloc, io)]
     #[uses(short, size_ok, label_ok, line_ok, base64::fits, base64::round_trip, base64::decoded, base64::decodes, base64::dec_len, base64::encoded, base64::enc_len, same_bytes, eq_result)]
     fn main() -> () {
         // RFC 4648 §10.

@@ -3363,7 +3363,7 @@ impl<'p> Gen<'p> {
                 self.block(&end);
             }
             // Proof-only statements: no code (ghost code is erased, ADR-0062 §2).
-            Stmt::Assert { .. } | Stmt::Proof { .. } => {}
+            Stmt::Assert { .. } | Stmt::Assume { .. } | Stmt::Proof { .. } => {}
             // A discarded value is dropped (a local named here is moved).
             Stmt::Expr(e) => {
                 let v = self.expr(e);
@@ -3389,6 +3389,8 @@ pub struct Module {
     pub ir: String,
     /// Runtime checks left in the IR because their obligation is unproved.
     pub checks: u32,
+    /// The same by definition (an instance under its generic definition).
+    pub checks_by: BTreeMap<String, u32>,
     pub main: Option<String>,
 }
 
@@ -3452,6 +3454,7 @@ pub fn emit_with(
          define internal void @bmb_print_bytes(ptr %p, i64 %n) {\n  %f = load ptr, ptr @stdout\n  call i64 @fwrite(ptr %p, i64 1, i64 %n, ptr %f)\n  ret void\n}\n",
     );
     let mut checks = 0;
+    let mut checks_by: BTreeMap<String, u32> = BTreeMap::new();
     let mut main = None;
     // Generic functions are lowered per instance a lowered function calls
     // (ADR-0046 §5), after the definitions, in the order they are reached.
@@ -3498,6 +3501,7 @@ pub fn emit_with(
             && !incr.as_ref().is_some_and(|s| s.audit())
         {
             checks += h.checks;
+            *checks_by.entry(base.clone()).or_default() += h.checks;
             ir.push_str(&h.ir);
             if let Some(s) = incr.as_mut() {
                 s.stats.ir_reused.push(path.clone());
@@ -3626,6 +3630,7 @@ pub fn emit_with(
             llty(&sig.ret)
         };
         checks += g.checks;
+        *checks_by.entry(base.clone()).or_default() += g.checks;
         let frag = format!(
             "\n{}define internal {ret} {}({}) {{\nentry:\n{}{}}}\n",
             g.globals,
@@ -3680,5 +3685,10 @@ pub fn emit_with(
             fn_sym(m)
         );
     }
-    Module { ir, checks, main }
+    Module {
+        ir,
+        checks,
+        checks_by,
+        main,
+    }
 }

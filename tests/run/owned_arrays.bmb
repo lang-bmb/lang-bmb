@@ -2,7 +2,7 @@
 mod ar {
     struct Cell { b: Box<i64>, n: i64 }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     fn mk(v: i64) -> [Box<i64>; 3] {
         [Box::new(v), Box::new(v.wrapping_add(1)), Box::new(v.wrapping_add(2))]
     }
@@ -17,7 +17,7 @@ mod ar {
         *a[1]
     }
 
-    #[effects(io)]
+    #[effects(alloc, io)]
     fn main() -> () {
         let mut a: [Box<i64>; 3] = mk(10);
         print_i64(total(&a));

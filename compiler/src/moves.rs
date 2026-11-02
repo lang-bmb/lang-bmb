@@ -802,7 +802,7 @@ impl Mv<'_> {
                     self.merge(cur, b, *span);
                 }
             }
-            Stmt::Assert { cond, .. } => self.expr(cond, false),
+            Stmt::Assert { cond, .. } | Stmt::Assume { cond, .. } => self.expr(cond, false),
             Stmt::Expr(e) => self.expr(e, true),
             Stmt::Proof { body, .. } => {
                 let ghost = std::mem::replace(&mut self.ghost, true);

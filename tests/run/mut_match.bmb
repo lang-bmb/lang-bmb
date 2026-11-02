@@ -55,7 +55,7 @@ mod mr {
         }
     }
 
-    #[effects(io)]
+    #[effects(alloc, io)]
     fn main() -> () {
         let mut e: Expr = Expr::Add(Box::new(Expr::Num(2)), Box::new(Expr::Neg(Box::new(Expr::Num(5)))));
         double(&mut e);

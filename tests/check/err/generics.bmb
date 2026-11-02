@@ -61,7 +61,7 @@ mod generics {
         }
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     fn calls() -> i64 {
         let a: i64 = id(5);
         let b: u64 = id(7);

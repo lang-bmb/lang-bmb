@@ -79,7 +79,7 @@ mod lx {
         k <= 1001 && k * k <= n + 2 * k + 1
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     fn owned(n: u64) -> u64 {
         let mut i: u64 = 0;
         let mut total: u64 = 0;

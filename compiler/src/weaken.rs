@@ -47,7 +47,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::ast::*;
-use crate::check::{Effect, FnSig};
+use crate::check::FnSig;
 use crate::diag::{Diag, Diags, json_str};
 use crate::identity::{Ids, Key};
 use crate::refs::{Rewrite, Site};
@@ -402,13 +402,14 @@ fn signature_change(o: &Def, io: &Ids, n: &Def, inw: &Ids) -> Option<String> {
     None
 }
 
-/// The effect of the new version against the old: `io` promises less than
-/// `pure`.
+/// The effects of the new version against the old (ADR-0030 §1, sets
+/// ordered by inclusion): more effects promise less.
 fn effects_rel(o: &FnSig, n: &FnSig) -> Rel {
     match (o.effect, n.effect) {
         (a, b) if a == b => Rel::Same,
-        (Effect::Pure, Effect::Io) => Rel::Weaker,
-        _ => Rel::Stronger,
+        (a, b) if b.contains(a) => Rel::Weaker,
+        (a, b) if a.contains(b) => Rel::Stronger,
+        _ => Rel::Incomparable,
     }
 }
 

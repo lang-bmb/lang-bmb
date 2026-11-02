@@ -4,7 +4,7 @@ mod bt {
 
     spec fn shallow(d: u64) -> bool { d <= 40 }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(shallow)]
     fn bottom_up(d: u64) -> Box<Tree>
         requires shallow(d),
@@ -32,7 +32,7 @@ mod bt {
 
     spec fn label(s: &[u8]) -> bool { s.len() <= 64 }
 
-    #[effects(io)]
+    #[effects(alloc, io)]
     #[uses(label, bytes::room, bytes::grew_by, bytes::kept, bytes::fits, bytes::appended)]
     fn line(a: &[u8], x: u64, b: &[u8], y: u64, c: &[u8], z: u64, three: bool) -> ()
         requires label(a), label(b), label(c),
@@ -50,7 +50,7 @@ mod bt {
         print_bytes(out.as_slice());
     }
 
-    #[effects(io)]
+    #[effects(alloc, io)]
     #[uses(shallow, label)]
     fn main() -> () {
         let n: u64 = 21;

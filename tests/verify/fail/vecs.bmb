@@ -1,12 +1,12 @@
 #[summary("Vec: what does not follow (ADR-0031 §3, backlog 2G-03)")]
 mod vf {
     // No bound on the length: `push` may pass the maximum (E0816).
-    #[effects(pure)]
+    #[effects(alloc)]
     fn unbounded(v: &mut Vec<i64>) -> () {
         v.push(1);
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     fn capacity(n: usize) -> usize {
         let v: Vec<u64> = Vec::with_capacity(n);
         v.len()
@@ -25,7 +25,7 @@ mod vf {
     fn touch(v: &mut Vec<i64>) -> () {}
 
     // Without an `ensures`, a `&mut Vec` callee may change the length.
-    #[effects(pure)]
+    #[effects(alloc)]
     fn after_call() -> i64 {
         let mut v: Vec<i64> = Vec::new();
         v.push(5);
@@ -62,7 +62,7 @@ mod vf {
     // A loop that pushes changes the length: the code after it is reachable
     // (backlog 2G-05 found the loop havoc keeping the length, which made
     // this verify).
-    #[effects(pure)]
+    #[effects(alloc)]
     fn after_push_loop(x: i64, y: i64) -> i64 {
         let mut v: Vec<i64> = Vec::new();
         let mut i: usize = 0;

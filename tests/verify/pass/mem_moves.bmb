@@ -14,7 +14,7 @@ mod mp {
 
     spec fn swapped(a: i64, b: i64, x: i64, y: i64) -> bool { a == y && b == x }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(emptied, len_is)]
     fn take(b: &mut Buf) -> (r: Vec<i64>)
         ensures emptied(b), len_is(r.as_slice(), old(b).data.len()),

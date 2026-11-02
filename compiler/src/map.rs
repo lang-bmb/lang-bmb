@@ -132,8 +132,23 @@ pub struct Index {
     /// Executable definitions with effect `io`, built-ins (`print_i64`)
     /// included.
     pub io: BTreeSet<String>,
+    /// Per executable definition with a body (ADR-0030 §3, §5).
+    pub effects: BTreeMap<String, DefEffects>,
     /// `edges` by target, each list in edge order.
     incoming: BTreeMap<String, Vec<Edge>>,
+}
+
+/// The effects of one executable definition (ADR-0030): what it declares,
+/// what its own operations have (`alloc`: `Vec::new`, `push`, `Box::new`
+/// ..; `io`: a call of a built-in `io` operation such as `print_i64`), and
+/// its transitive effects `eff*`: its own and those of every executable
+/// callee (a built-in or a trait method without a body by its
+/// declaration). The effect check makes `eff* ⊆ declared` hold.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DefEffects {
+    pub declared: crate::check::Effects,
+    pub own: crate::check::Effects,
+    pub all: crate::check::Effects,
 }
 
 /// The maps of one program with one proof outcome.
@@ -147,6 +162,14 @@ pub struct Model<'p> {
     ids: OnceCell<crate::identity::Ids<'p>>,
     /// Proof results by path: (obligations, failed, rlimit_max).
     status: BTreeMap<String, (usize, usize, u64)>,
+    /// Trust levels other than `proved` (ADR-0029 §2), the definitions
+    /// compiled with every check (§4), and the obligations only trusted
+    /// facts prove, by path.
+    trust: BTreeMap<String, crate::verify::Trust>,
+    checked: BTreeSet<String>,
+    assumed_obligations: BTreeMap<String, usize>,
+    /// Rationale hashes (ADR-0029 §3), made on first use.
+    rationale_hashes: OnceCell<crate::escape::Hashes<'p>>,
 }
 
 impl std::ops::Deref for Model<'_> {
@@ -297,7 +320,7 @@ fn calls_in_block<'e>(
                 invariants.iter().for_each(|i| calls_in_expr(i, true, out));
                 calls_in_block(body, spec, out);
             }
-            Stmt::Assert { cond, .. } => calls_in_expr(cond, true, out),
+            Stmt::Assert { cond, .. } | Stmt::Assume { cond, .. } => calls_in_expr(cond, true, out),
             Stmt::Expr(e) => calls_in_expr(e, spec, out),
             Stmt::Proof { body, .. } => calls_in_block(body, true, out),
         }
@@ -452,7 +475,7 @@ fn exprs_of(f: &FnDef) -> Vec<&Expr> {
                     invariants.iter().for_each(|x| expr(x, out));
                     block(body, out);
                 }
-                Stmt::Assert { cond, .. } => expr(cond, out),
+                Stmt::Assert { cond, .. } | Stmt::Assume { cond, .. } => expr(cond, out),
                 Stmt::Expr(e) => expr(e, out),
                 Stmt::Proof { body, .. } => block(body, out),
             }
@@ -764,20 +787,76 @@ impl Index {
         let io = t
             .fns
             .iter()
-            .filter(|(_, s)| s.kind == FnKind::Exec && s.effect == crate::check::Effect::Io)
+            .filter(|(_, s)| s.kind == FnKind::Exec && s.effect.contains(crate::check::Effects::IO))
             .map(|(p, _)| p.clone())
             .collect();
         let mut incoming: BTreeMap<String, Vec<Edge>> = BTreeMap::new();
         for e in &edges {
             incoming.entry(e.to.clone()).or_default().push(e.clone());
         }
+        let effects = def_effects(t, &edges);
         Index {
             units,
             defs,
             types,
             edges,
             io,
+            effects,
             incoming,
+        }
+    }
+}
+
+/// `Index::effects`: each executable definition's declared, own and
+/// transitive effects, the last a fixed point over the `calls` edges.
+fn def_effects(t: &Tables, edges: &BTreeSet<Edge>) -> BTreeMap<String, DefEffects> {
+    use crate::check::Effects;
+    let mut calls: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+    for e in edges.iter().filter(|e| e.kind == "calls") {
+        calls
+            .entry(e.from.as_str())
+            .or_default()
+            .push(e.to.as_str());
+    }
+    let declared = |p: &str| t.fns.get(p).map_or(Effects::PURE, |s| s.effect);
+    let builtin = |p: &str| t.fns.get(p).is_some_and(|s| s.builtin);
+    let mut out: BTreeMap<String, DefEffects> = t
+        .effect_needs
+        .iter()
+        .map(|(p, (own_ops, _))| {
+            let io_ops = calls
+                .get(p.as_str())
+                .into_iter()
+                .flatten()
+                .filter(|c| builtin(c))
+                .fold(Effects::PURE, |acc, c| acc.union(declared(c)));
+            let own = own_ops.union(io_ops);
+            let e = DefEffects {
+                declared: declared(p),
+                own,
+                all: own,
+            };
+            (p.clone(), e)
+        })
+        .collect();
+    loop {
+        let mut changed = false;
+        let paths: Vec<String> = out.keys().cloned().collect();
+        for p in &paths {
+            let mut all = out[p].all;
+            for c in calls.get(p.as_str()).into_iter().flatten() {
+                all = all.union(match out.get(*c) {
+                    Some(d) => d.all,
+                    None => declared(c),
+                });
+            }
+            if all != out[p].all {
+                out.get_mut(p).unwrap().all = all;
+                changed = true;
+            }
+        }
+        if !changed {
+            break out;
         }
     }
 }
@@ -809,7 +888,90 @@ impl<'p> Model<'p> {
             t,
             ids: OnceCell::new(),
             status: status_map(outcome),
+            trust: outcome
+                .statuses
+                .iter()
+                .filter(|s| s.trust != crate::verify::Trust::Proved)
+                .map(|s| (s.path.clone(), s.trust))
+                .collect(),
+            checked: outcome.checked.clone(),
+            assumed_obligations: outcome.assumed_obligations.clone(),
+            rationale_hashes: OnceCell::new(),
         }
+    }
+
+    /// The escape keys of a definition's L1 and `status` rows (ADR-0029 §5,
+    /// backlog 2E-03): `trust` (`proved`, `assumed`, `external`, `failed`),
+    /// `escapes` (its `assume` statements, one more for `#[external_body]`),
+    /// `assumed_obligations`, `checked` (compiled with every check),
+    /// `rationale` (`none`, `confirmed`, `unconfirmed`: every rationale
+    /// carries the hash it is bound to, §3) and `rationale_kinds`.
+    fn escape_keys(&self, d: &Def) -> Vec<(&'static str, J)> {
+        let trust = if d.failed > 0 {
+            "failed"
+        } else {
+            self.trust.get(&d.path).map_or("proved", |t| t.name())
+        };
+        let e = crate::escape::of(d.f);
+        let rationale = match e.rationales.is_empty() {
+            true => "none",
+            false => {
+                let h = self
+                    .rationale_hashes
+                    .get_or_init(|| crate::escape::Hashes::new(self.p, &self.t.fns));
+                match h.of(&d.path).and_then(|h| crate::escape::confirmed(&e, &h)) {
+                    Some(true) => "confirmed",
+                    _ => "unconfirmed",
+                }
+            }
+        };
+        let kinds: BTreeSet<String> = e.rationales.iter().filter_map(|r| r.kind.clone()).collect();
+        vec![
+            ("trust", J::S(trust.into())),
+            ("escapes", J::N(e.count() as u64)),
+            (
+                "assumed_obligations",
+                J::N(self.assumed_obligations.get(&d.path).copied().unwrap_or(0) as u64),
+            ),
+            (
+                "checked",
+                J::B(d.f.kind == FnKind::Exec && self.checked.contains(&d.path)),
+            ),
+            ("rationale", J::S(rationale.into())),
+            (
+                "rationale_kinds",
+                strs(kinds.into_iter().collect::<Vec<_>>()),
+            ),
+        ]
+    }
+
+    /// The `status` summary's escape keys (ADR-0029 §5): definitions by
+    /// trust level, escapes, and definitions with an unconfirmed rationale.
+    fn escape_summary(&self) -> Vec<(&'static str, J)> {
+        let (mut proved, mut assumed, mut external, mut escapes, mut unconfirmed) = (0, 0, 0, 0, 0);
+        for d in self.all_defs() {
+            let keys = self.escape_keys(&d);
+            let get = |k: &str| keys.iter().find(|(n, _)| *n == k).map(|(_, v)| v);
+            match get("trust") {
+                Some(J::S(t)) if t == "proved" => proved += 1,
+                Some(J::S(t)) if t == "assumed" => assumed += 1,
+                Some(J::S(t)) if t == "external" => external += 1,
+                _ => {}
+            }
+            if let Some(J::N(n)) = get("escapes") {
+                escapes += n;
+            }
+            if matches!(get("rationale"), Some(J::S(r)) if r == "unconfirmed") {
+                unconfirmed += 1;
+            }
+        }
+        vec![
+            ("proved", J::N(proved)),
+            ("assumed", J::N(assumed)),
+            ("external", J::N(external)),
+            ("escapes", J::N(escapes)),
+            ("unconfirmed", J::N(unconfirmed)),
+        ]
     }
 
     /// `e` as a query sees it.
@@ -919,14 +1081,29 @@ impl<'p> Model<'p> {
             FnKind::Proof => return "proof".into(),
             FnKind::Exec => {}
         }
-        d.f.attrs
-            .iter()
-            .find(|a| a.name.name == "effects")
-            .and_then(|a| match a.args.first() {
-                Some(AttrArg::Ident(i)) => Some(i.name.clone()),
-                _ => None,
-            })
-            .unwrap_or_default()
+        // The declared set as the normal form writes it (ADR-0030 §5):
+        // `pure`, `io`, `alloc, io`.
+        let mut names: Vec<String> =
+            d.f.attrs
+                .iter()
+                .find(|a| a.name.name == "effects")
+                .map(|a| {
+                    a.args
+                        .iter()
+                        .filter_map(|x| match x {
+                            AttrArg::Ident(i) => Some(i.name.clone()),
+                            AttrArg::Str(..) | AttrArg::Pair(..) => None,
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+        names.sort();
+        names.join(", ")
+    }
+
+    /// The declared effects include `io`.
+    fn declares_io(d: &Def) -> bool {
+        Self::effects(d).split(", ").any(|e| e == "io")
     }
 
     fn l1(&self, d: &Def) -> J {
@@ -937,27 +1114,77 @@ impl<'p> Model<'p> {
             .map(|e| e.to.clone())
             .collect();
         let h = self.hashes(d);
-        J::O(vec![
-            ("level", J::S("L1".into())),
-            ("path", J::S(d.path.clone())),
-            ("def_kind", J::S(Self::def_kind(d).into())),
-            ("signature", J::S(sig)),
-            ("requires", strs(req)),
-            ("ensures", strs(ens)),
-            ("decreases", dec.map_or(J::Null, J::S)),
-            ("effects", J::S(Self::effects(d))),
-            ("uses", strs(uses)),
-            ("status", J::S(d.status.into())),
-            ("obligations", J::N(d.obligations as u64)),
-            ("failed", J::N(d.failed as u64)),
-            ("body", J::S(h.body.clone())),
-            ("iface", J::S(h.iface.clone())),
-            ("id", J::S(h.id.clone())),
-            ("file", J::S(d.file.clone())),
-            ("line", J::N(d.line as u64)),
-            // Added after version 1 (backward compatible, ADR-0020 §1).
-            ("rlimit_max", J::N(d.rlimit_max)),
-        ])
+        J::O(
+            vec![
+                ("level", J::S("L1".into())),
+                ("path", J::S(d.path.clone())),
+                ("def_kind", J::S(Self::def_kind(d).into())),
+                ("signature", J::S(sig)),
+                ("requires", strs(req)),
+                ("ensures", strs(ens)),
+                ("decreases", dec.map_or(J::Null, J::S)),
+                ("effects", J::S(Self::effects(d))),
+                ("uses", strs(uses)),
+                ("status", J::S(d.status.into())),
+                ("obligations", J::N(d.obligations as u64)),
+                ("failed", J::N(d.failed as u64)),
+                ("body", J::S(h.body.clone())),
+                ("iface", J::S(h.iface.clone())),
+                ("id", J::S(h.id.clone())),
+                ("file", J::S(d.file.clone())),
+                ("line", J::N(d.line as u64)),
+                // Added after version 1 (backward compatible, ADR-0020 §1).
+                ("rlimit_max", J::N(d.rlimit_max)),
+                ("effects_required", strs(self.effects_required(d))),
+                ("test_reasons", strs(self.test_reasons(d))),
+            ]
+            .into_iter()
+            .chain(self.escape_keys(d))
+            .collect(),
+        )
+    }
+
+    /// `eff*` of an executable definition by name (ADR-0030 §5); empty for
+    /// spec and proof functions.
+    fn effects_required(&self, d: &Def) -> Vec<String> {
+        self.effects.get(&d.path).map_or(Vec::new(), |e| {
+            e.all.names().into_iter().map(String::from).collect()
+        })
+    }
+
+    /// Why an executable definition still needs tests (ADR-0030 §4,
+    /// ADR-0003): `io` in `eff*` (the order and content of its interactions
+    /// are in no contract), `panic` in `eff*` (an escape below it may trap),
+    /// `unproved` (an obligation failed) and `trust` (its proof rests on
+    /// trusted facts, ADR-0029). `alloc` is no reason: running out of memory
+    /// is the environment's, and the values are proved.
+    fn test_reasons(&self, d: &Def) -> Vec<String> {
+        let mut out = Vec::new();
+        if d.f.kind != FnKind::Exec {
+            return out;
+        }
+        if self
+            .effects
+            .get(&d.path)
+            .is_some_and(|e| e.all.contains(crate::check::Effects::IO))
+        {
+            out.push("io".to_string());
+        }
+        if self
+            .effects
+            .get(&d.path)
+            .is_some_and(|e| e.all.contains(crate::check::Effects::PANIC))
+        {
+            out.push("panic".to_string());
+        }
+        if d.status == "failed" {
+            out.push("unproved".to_string());
+        } else if self.trust.contains_key(&d.path) {
+            // `assumed` or `external` (ADR-0029): the contract rests on
+            // trusted facts.
+            out.push("trust".to_string());
+        }
+        out
     }
 
     /// The edges from `path`, in order: a range of the ordered edge set, so
@@ -1143,26 +1370,49 @@ impl<'p> Model<'p> {
                 let mut rows: Vec<J> = self
                     .all_defs()
                     .map(|d| {
-                        J::O(vec![
-                            ("path", J::S(d.path.clone())),
-                            ("status", J::S(d.status.into())),
-                            ("obligations", J::N(d.obligations as u64)),
-                            ("failed", J::N(d.failed as u64)),
-                            ("effects", J::S(Self::effects(&d))),
-                            ("rlimit_max", J::N(d.rlimit_max)),
-                        ])
+                        J::O(
+                            vec![
+                                ("path", J::S(d.path.clone())),
+                                ("status", J::S(d.status.into())),
+                                ("obligations", J::N(d.obligations as u64)),
+                                ("failed", J::N(d.failed as u64)),
+                                ("effects", J::S(Self::effects(&d))),
+                                ("rlimit_max", J::N(d.rlimit_max)),
+                                ("effects_required", strs(self.effects_required(&d))),
+                                ("test_reasons", strs(self.test_reasons(&d))),
+                            ]
+                            .into_iter()
+                            .chain(self.escape_keys(&d))
+                            .collect(),
+                        )
                     })
                     .collect();
                 let verified = self.all_defs().filter(|d| d.status == "verified").count();
                 let failed = self.all_defs().filter(|d| d.status == "failed").count();
-                let io = self.all_defs().filter(|d| Self::effects(d) == "io").count();
-                rows.push(J::O(vec![
-                    ("summary", J::B(true)),
-                    ("defs", J::N(self.defs.len() as u64)),
-                    ("verified", J::N(verified as u64)),
-                    ("failed", J::N(failed as u64)),
-                    ("io_defs", J::N(io as u64)),
-                ]));
+                let io = self.all_defs().filter(|d| Self::declares_io(d)).count();
+                let alloc = self
+                    .effects
+                    .values()
+                    .filter(|e| e.declared.contains(crate::check::Effects::ALLOC))
+                    .count();
+                let tested = self
+                    .all_defs()
+                    .filter(|d| !self.test_reasons(d).is_empty())
+                    .count();
+                rows.push(J::O(
+                    vec![
+                        ("summary", J::B(true)),
+                        ("defs", J::N(self.defs.len() as u64)),
+                        ("verified", J::N(verified as u64)),
+                        ("failed", J::N(failed as u64)),
+                        ("io_defs", J::N(io as u64)),
+                        ("alloc_defs", J::N(alloc as u64)),
+                        ("test_needed_defs", J::N(tested as u64)),
+                    ]
+                    .into_iter()
+                    .chain(self.escape_summary())
+                    .collect(),
+                ));
                 Self::lines(rows)
             }
             "impact" => {
@@ -1179,23 +1429,35 @@ impl<'p> Model<'p> {
                 Some(_) => Self::lines(self.effects_of(&def(0)?)),
                 None => Self::lines(self.effects_all()),
             },
+            "effect" => {
+                let name = args
+                    .first()
+                    .ok_or("`effect` takes an effect: `alloc` or `io`")?;
+                let e = crate::check::Effects::atom(name)
+                    .ok_or_else(|| format!("unknown effect `{name}`: `alloc` or `io`"))?;
+                Self::lines(self.effect_defs(name, e))
+            }
             other => return Err(format!("unknown query `{other}`")),
         };
         Ok(body)
     }
 
-    /// The `io` definitions reachable from `start` over executable `calls`
-    /// edges (`start` itself included when it is `io`), each with a shortest
-    /// call path from `start`, in breadth-first order. Callees are taken in
-    /// path order, so each path is the lexicographically smallest of the
-    /// shortest ones and the first entry is the nearest `io` definition.
-    fn io_paths(&self, start: &str) -> Vec<(String, Vec<String>)> {
+    /// The definitions `target` holds for that are reachable from `start`
+    /// over executable `calls` edges (`start` itself included), each with a
+    /// shortest call path from `start`, in breadth-first order. Callees are
+    /// taken in path order, so each path is the lexicographically smallest
+    /// of the shortest ones and the first entry is the nearest.
+    fn effect_paths(
+        &self,
+        start: &str,
+        target: impl Fn(&str) -> bool,
+    ) -> Vec<(String, Vec<String>)> {
         let mut parent: BTreeMap<String, Option<String>> = BTreeMap::new();
         parent.insert(start.to_string(), None);
         let mut queue = std::collections::VecDeque::from([start.to_string()]);
         let mut found = Vec::new();
         while let Some(at) = queue.pop_front() {
-            if self.io.contains(&at) {
+            if target(&at) {
                 let mut path = vec![at.clone()];
                 while let Some(Some(p)) = parent.get(path.last().unwrap()) {
                     path.push(p.clone());
@@ -1213,31 +1475,55 @@ impl<'p> Model<'p> {
         found
     }
 
-    fn effect_row(def: &str, path: Vec<String>) -> J {
+    /// The `io` definitions (declared, built-ins included) `start` reaches.
+    fn io_paths(&self, start: &str) -> Vec<(String, Vec<String>)> {
+        self.effect_paths(start, |p| self.io.contains(p))
+    }
+
+    /// Whether `p`'s declared effects, or its own operations' (`own`), hold
+    /// `alloc`.
+    fn has_alloc(&self, p: &str, own: bool) -> bool {
+        self.effects.get(p).is_some_and(|e| {
+            let set = if own { e.own } else { e.declared };
+            set.contains(crate::check::Effects::ALLOC)
+        })
+    }
+
+    fn effect_row(def: &str, effect: &str, path: Vec<String>) -> J {
         J::O(vec![
             ("def", J::S(def.into())),
-            ("effect", J::S("io".into())),
+            ("effect", J::S(effect.into())),
             ("path", strs(path)),
         ])
     }
 
-    /// `effects DEF` (backlog 2D-11, DESIGN.md §7.2 effect view): one row
-    /// `{"def","effect":"io","path"}` per `io` definition DEF reaches
-    /// (`def` is DEF, `path` a shortest call path from DEF that ends at the
-    /// `io` definition), ordered by that definition; then a summary row.
+    /// `effects DEF` (backlog 2D-11, 2F-03, DESIGN.md §7.2 effect view): one
+    /// row `{"def","effect","path"}` per definition DEF reaches that has the
+    /// effect (`def` is DEF, `path` a shortest call path from DEF that ends
+    /// at it): first each `io` definition (DEF itself and built-ins such as
+    /// `print_i64` included), then each definition declaring `alloc`, each
+    /// group ordered by that definition; then a summary row.
     fn effects_of(&self, d: &Def) -> Vec<J> {
-        let mut found = self.io_paths(&d.path);
-        found.sort();
-        let n = found.len();
-        let mut rows: Vec<J> = found
+        let mut io = self.io_paths(&d.path);
+        io.sort();
+        let mut alloc = self.effect_paths(&d.path, |p| self.has_alloc(p, false));
+        alloc.sort();
+        let (n, m) = (io.len(), alloc.len());
+        let mut rows: Vec<J> = io
             .into_iter()
-            .map(|(_, path)| Self::effect_row(&d.path, path))
+            .map(|(_, path)| Self::effect_row(&d.path, "io", path))
             .collect();
+        rows.extend(
+            alloc
+                .into_iter()
+                .map(|(_, path)| Self::effect_row(&d.path, "alloc", path)),
+        );
         rows.push(J::O(vec![
             ("summary", J::B(true)),
             ("def", J::S(d.path.clone())),
             ("io_reached", J::N(n as u64)),
             ("defs", J::N(self.defs.len() as u64)),
+            ("alloc_reached", J::N(m as u64)),
         ]));
         rows
     }
@@ -1245,8 +1531,11 @@ impl<'p> Model<'p> {
     /// `effects` without a definition: one row per definition whose calls
     /// reach a built-in `io` operation (`print_i64`), by path, where `def`
     /// is that definition and `path` a shortest call path to the nearest
-    /// such operation; then a summary row. The effect check (E0603) already
-    /// makes every such definition `io`; a definition declared `io` that
+    /// such operation; then one row per definition that reaches an
+    /// allocating operation (`Vec::new`, `push`, `Box::new` ..: a definition
+    /// whose own operations allocate, the path ends there); then a summary
+    /// row. The effect check (E0603, E0606) already makes every such
+    /// definition declare the effect; a definition that declares one but
     /// reaches no operation has no row.
     fn effects_all(&self) -> Vec<J> {
         let mut rows = Vec::new();
@@ -1256,25 +1545,84 @@ impl<'p> Model<'p> {
                 .into_iter()
                 .find(|(to, _)| !self.defs.contains_key(to));
             if let Some((_, path)) = nearest {
-                rows.push(Self::effect_row(&d.path, path));
+                rows.push(Self::effect_row(&d.path, "io", path));
             }
         }
         let n = rows.len();
+        for d in self.defs.values() {
+            let nearest = self
+                .effect_paths(&d.path, |p| self.has_alloc(p, true))
+                .into_iter()
+                .next();
+            if let Some((_, path)) = nearest {
+                rows.push(Self::effect_row(&d.path, "alloc", path));
+            }
+        }
+        let m = rows.len() - n;
         let io = self.defs.keys().filter(|p| self.io.contains(*p)).count();
+        let alloc = self
+            .defs
+            .keys()
+            .filter(|p| self.has_alloc(p, false))
+            .count();
         rows.push(J::O(vec![
             ("summary", J::B(true)),
             ("io_reaching", J::N(n as u64)),
             ("io_defs", J::N(io as u64)),
+            ("defs", J::N(self.defs.len() as u64)),
+            ("alloc_reaching", J::N(m as u64)),
+            ("alloc_defs", J::N(alloc as u64)),
+        ]));
+        rows
+    }
+
+    /// `effect E` (ADR-0030 §5, backlog 2F-03): the executable definitions
+    /// that declare `E` or need it (`E` in `eff*`), by path, as
+    /// `{"def","effect","declares","requires","source"}` where `source` is
+    /// `own` (the definition's own operations have it: an allocation, a
+    /// call of a built-in `io` operation), `callee` (only through its
+    /// calls) or `null` (declared, not needed); then a summary row.
+    fn effect_defs(&self, name: &str, e: crate::check::Effects) -> Vec<J> {
+        let mut rows = Vec::new();
+        let (mut declares, mut requires) = (0, 0);
+        for (path, d) in &self.effects {
+            let (decl, req) = (d.declared.contains(e), d.all.contains(e));
+            if !decl && !req {
+                continue;
+            }
+            declares += usize::from(decl);
+            requires += usize::from(req);
+            let source = if d.own.contains(e) {
+                J::S("own".into())
+            } else if req {
+                J::S("callee".into())
+            } else {
+                J::Null
+            };
+            rows.push(J::O(vec![
+                ("def", J::S(path.clone())),
+                ("effect", J::S(name.into())),
+                ("declares", J::B(decl)),
+                ("requires", J::B(req)),
+                ("source", source),
+            ]));
+        }
+        rows.push(J::O(vec![
+            ("summary", J::B(true)),
+            ("effect", J::S(name.into())),
+            ("declares", J::N(declares as u64)),
+            ("requires", J::N(requires as u64)),
             ("defs", J::N(self.defs.len() as u64)),
         ]));
         rows
     }
 
     /// `tests` (backlog 2D-21, ADR-0003, DESIGN.md principle 4): the
-    /// executable definitions that still need tests, with why. M1 has two
-    /// reasons: `io` (its calls reach a built-in `io` operation, whose order
-    /// and content no contract states) and `unproved` (an obligation failed,
-    /// so the contract itself is not established). One row
+    /// executable definitions that still need tests, with why
+    /// (`test_reasons`, ADR-0030 §4): `io` (`io` is in its transitive
+    /// effects: the order and content of its interactions are in no
+    /// contract) and `unproved` (an obligation failed, so the contract
+    /// itself is not established). One row
     /// `{"path","test_reasons","sites","lines"}` per such definition, by
     /// path: `sites` counts its own calls of built-in `io` operations (where
     /// a test aims), `lines` its normal-form lines. Then a summary row with
@@ -1293,19 +1641,9 @@ impl<'p> Model<'p> {
                 continue;
             }
             exec += 1;
-            let mut reasons = Vec::new();
-            let io = self
-                .io_paths(&d.path)
-                .iter()
-                .any(|(to, _)| !self.defs.contains_key(to));
-            if io {
-                reasons.push("io".to_string());
-                io_n += 1;
-            }
-            if d.status == "failed" {
-                reasons.push("unproved".to_string());
-                unproved_n += 1;
-            }
+            let reasons = self.test_reasons(&d);
+            io_n += usize::from(reasons.iter().any(|r| r == "io"));
+            unproved_n += usize::from(reasons.iter().any(|r| r == "unproved"));
             if reasons.is_empty() {
                 continue;
             }

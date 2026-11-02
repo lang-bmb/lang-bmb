@@ -106,3 +106,14 @@ E10xx·W10xx는 새 범주 "탈출구와 근거"다. W09xx(계약 조정 린트)
 4. **`//` 주석의 처리:** DESIGN.md §4.1은 자유 주석을 구조화 근거로 대체한다고 했다. M2에서 `//`를 없앨지(Rust 습관 오류 증가 예상) 사람이 정한다.
 5. **`kind` 목록:** 네 값으로 충분한지. `todo`(임시)를 둘지 — 두면 남용 위험, 없으면 작업 중 상태 표현이 없다.
 6. **`external_body`의 효과:** 본문 검사로 효과를 확인하므로 효과는 신뢰하지 않는다(제안). 외부 경계(FFI)가 들어올 때 다시 정한다(4단계 생태계 이후).
+
+## 구현 (2026-11-02, 백로그 2E-02)
+
+- 표면: `assume(p(..));`(`Stmt::Assume`, `assume`은 예약어), `#[external_body]`, `#[rationale(kind = K, hash = "..", "설명")]`(속성 인자 `key = value`, `AttrArg::Pair`). 문장 앞의 속성은 `assume` 앞의 `#[rationale]`만 받고 나머지는 E1002(`#[trigger]`는 식이 읽는다). 정규형은 근거를 쓰지만 한정 텍스트와 정체성 인쇄는 쓰지 않는다(§3: 근거 문구를 고쳐도 해시·증분 키가 그대로). JSON AST는 함수의 `external_body`·`rationale`, 문장 `{"kind":"assume","cond","rationale"}`.
+- **`panic` 효과(ADR-0030)는 구문으로 정한다:** `assume`이 있거나 `#[external_body]`인 정의의 자기 효과다. 신뢰 등급은 증명 뒤에야 알지만 효과 검사는 증명 전이라, "전체 검사 모드인 정의"(§4) 대신 "탈출구가 있는 정의"를 원천으로 했다. 그래서 탈출구 없이 증명되는 정의(`assume`이 필요 없는 정의)도 `panic`을 선언한다(W1002가 그 `assume`을 지우게 한다). 거짓 신뢰 사실의 trap은 탈출구가 있는 정의의 호출 범위 안에서만 나고, 그 호출자는 선언을 따라 `panic`을 갖는다.
+- 증명(§2): `verify::verify_trusting`. 탈출구가 없는 프로그램(`Tables::may_untrusted`가 빔)은 예전 그대로 한 번이다. 있으면 A 패스(신뢰 사실 없음: `assume`은 아무것도 하지 않고, 신뢰되지 않는 피호출자의 `ensures`를 가정하지 않음)를 모든 정의에, B 패스(모든 사실)를 A에서 실패하고 탈출구에 닿을 수 있는 정의에만 돌린다. §2의 "실패한 의무만 다시"는 정의 단위로 했다(B는 정의 전체를 다시 증명하고, 그 정의의 진단과 결과는 B의 것). `assumed`가 된 정의가 신뢰되지 않는 집합에 들고, `proved`였던 정의 중 탈출구에 닿을 수 있는 것을 A로 다시 증명한다(집합은 늘기만 해서 끝난다). trait 메서드는 impl 함수 하나라도 신뢰되지 않으면 신뢰되지 않는다.
+- 증분 캐시: 탈출구에 닿을 수 있는 정의는 찾지도 저장하지도 않는다. 그래서 키에 피호출자의 신뢰 등급을 넣지 않아도 된다(§2의 "증명 캐시 키에 등급"은 질의 텍스트가 이미 가른다: A 패스의 질의에는 신뢰 사실이 없다).
+- 코드 생성(§4): `Outcome::checked` = `proved`가 아니거나 실패한 정의와 그것이 부르는 모든 정의(검사기의 호출 그래프 `Tables::calls`). 그 정의들의 의무는 `proven`에 넣지 않는다. 그 검사는 증명이 빠진 것이 아니라서 `build`는 막지 않는다(`codegen::Module::checks_by`로 정의별로 세고 그 정의들을 뺀다).
+- 상태 줄: `proved`가 아니면 `"trust":"assumed"`·`"external"`를 덧붙인다(키 추가, 증명된 정의의 줄은 그대로).
+- §5(백로그 2E-03): L1·`status` 행의 `trust`·`escapes`·`assumed_obligations`·`checked`·`rationale`·`rationale_kinds`, `status` 요약의 `proved`·`assumed`·`external`·`escapes`·`unconfirmed`. `assumed_obligations`는 "2차에서만 증명된 의무"를 정의 단위 B 패스에 맞춰 "신뢰 사실 없이 실패한 의무 수"로 쟀다. 테스트 이유(ADR-0030 §4)에 `panic`(`eff*`)과 `trust`(`assumed`·`external`)가 더해졌다. 미증명 면적 뷰의 원인 간선(어느 피호출자 때문인지)은 아직 없다.
+- §3(백로그 2E-04): 근거 해시 `escape::Hashes`(정의의 한정 정규형 ‖ 부르는 `spec fn`들의 한정 텍스트, SHA-256 앞 16자리). `assume`과 `#[external_body]`의 근거 모두 둘러싼 정의에 묶인다(열린 질문 3의 권고). 미확인은 경고(W1001)다. 확인은 CLI `bmb fix --confirm`이고, 없는 해시는 `bmb fix`가 쓴다(§1 "도구가 채운다"). 트랜잭션 연산 `tx.confirm_rationale`은 아직 없다(MCP 에이전트는 `fix`를 부르지 않으므로 수요가 생기면 더한다). W1002는 첫 검증의 `proved` 정의에 있는 `assume`마다다.

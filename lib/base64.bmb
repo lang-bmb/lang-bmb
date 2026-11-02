@@ -268,7 +268,7 @@ mod base64 {
     }
 
     // Appends the encoding of the whole group `g` of `s`.
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(fits, groups_done, grown, kept, group_in, enc_c, dec_b, syms4, enc_at, at0, dec_byte, char_result, is_e0, is_e1, is_e2, is_e3, d0, d1, d2, e0, e1, e2, e3, six)]
     fn push_group(t: &mut Vec<u8>, s: &[u8], g: usize) -> ()
         requires fits(s), group_in(s, g), groups_done(t.as_slice(), g),
@@ -284,7 +284,7 @@ mod base64 {
     }
 
     // Appends the encoding of the last group `g` of `s`, of one byte.
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(fits, groups_done, grown, kept, tail_at, enc_c, dec_b, last1, enc_at, at0, dec_byte, char_result, is_e0, is_e1, d0, d1, d2, e0, e1, six, vz, val, sym)]
     fn push_one(t: &mut Vec<u8>, s: &[u8], g: usize) -> ()
         requires fits(s), tail_at(s, g, 1), groups_done(t.as_slice(), g),
@@ -298,7 +298,7 @@ mod base64 {
     }
 
     // Appends the encoding of the last group `g` of `s`, of two bytes.
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(fits, groups_done, grown, kept, tail_at, enc_c, dec_b, last2, enc_at, at0, dec_byte, char_result, is_e0, is_e1, is_e2, d0, d1, d2, e0, e1, e2, six, vz, val, sym)]
     fn push_two(t: &mut Vec<u8>, s: &[u8], g: usize) -> ()
         requires fits(s), tail_at(s, g, 2), groups_done(t.as_slice(), g),
@@ -324,7 +324,7 @@ mod base64 {
 
     // The base64 encoding of `s` (RFC 4648 §4, with padding). It is
     // canonical and decodes back to `s`.
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(fits, round_trip, encoded, enc_len, enc_upto, dec_upto, decodes, dec_len, dec_byte, well_formed, pads, sym, val, groups_done, grown, kept, group_in, tail_at, enc_c, dec_b, syms4, last1, last2)]
     fn encode(s: &[u8]) -> (r: Vec<u8>)
         requires fits(s),
@@ -407,7 +407,7 @@ mod base64 {
     spec fn room(v: &[u8]) -> bool { v.len() + 3 <= 9223372036854775807 }
 
     // Appends the first `c` bytes the characters of group `g` encode.
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(digits, appended, kept, count_ok, room, dec_byte, six, is_vz, is_d0, is_d1, is_d2)]
     fn push_bytes(v: &mut Vec<u8>, t: &[u8], g: usize, c: usize) -> ()
         requires digits(t, g), count_ok(c), room(v.as_slice()),
@@ -431,7 +431,7 @@ mod base64 {
     }
 
     // The bytes `t` encodes, or `None` when it is not a canonical encoding.
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(decoded, decodes, valid_result, well_formed, pads, sym, val, vz, dec_len, dec_prefix, digits, appended, kept, count_ok, room)]
     fn decode(t: &[u8]) -> (r: Option<Vec<u8>>)
         ensures decoded(t, r),
@@ -468,7 +468,7 @@ mod base64 {
 
     // The round trip (RFC 4648 §3): decoding the encoding of `s` gives `s`.
     // Proved from the two contracts alone; it runs both.
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(fits, back, round_trip, decoded, decodes)]
     fn round(s: &[u8]) -> (r: Option<Vec<u8>>)
         requires fits(s),

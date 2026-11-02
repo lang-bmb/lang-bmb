@@ -10,7 +10,7 @@ mod calc {
 
     // `+ab`, `*ab` and one digit; `None` on anything else or when `fuel`
     // runs out.
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(ends_within, within)]
     fn parse(s: &[u8], i: usize, fuel: u64) -> (r: Parsed)
         requires within(s, i),
@@ -70,7 +70,7 @@ mod calc {
         }
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(ends_within, within)]
     fn calc(s: &[u8]) -> i64 {
         let p: Parsed = parse(s, 0, 64);
@@ -83,7 +83,7 @@ mod calc {
         }
     }
 
-    #[effects(io)]
+    #[effects(alloc, io)]
     #[uses(ends_within, within)]
     fn main() -> () {
         print_i64(calc(b"7"));

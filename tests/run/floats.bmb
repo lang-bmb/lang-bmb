@@ -79,7 +79,7 @@ mod fl {
         }
     }
 
-    #[effects(io)]
+    #[effects(alloc, io)]
     #[uses(bounded)]
     fn main() -> () {
         // Arithmetic and rounding.

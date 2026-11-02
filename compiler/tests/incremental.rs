@@ -196,8 +196,20 @@ fn outputs_are_identical_with_and_without_the_cache() {
         assert!(stats.audit_mismatches.is_empty(), "{name}: {stats:?}");
         let (warm, stats) = cached(&f, &dir);
         assert_eq!(expect, warm, "{name} (warm)");
-        // Warm: only failed definitions are encoded again.
-        assert_eq!(set(&stats.encoded), failed_defs(&expect.0), "{name}");
+        // Warm: only failed definitions are encoded again, and with an
+        // escape (ADR-0029) those that may rest on trusted facts, which
+        // are never stored: every one except the `#[external_body]` ones.
+        if text.contains("assume(") || text.contains("#[external_body]") {
+            let externals: BTreeSet<String> = expect
+                .0
+                .lines()
+                .filter(|l| l.contains("\"trust\":\"external\""))
+                .map(|l| l.split('"').nth(3).unwrap().to_string())
+                .collect();
+            assert!(set(&stats.encoded).is_disjoint(&externals), "{name}");
+        } else {
+            assert_eq!(set(&stats.encoded), failed_defs(&expect.0), "{name}");
+        }
         let _ = fs::remove_dir_all(&dir);
     }
 }

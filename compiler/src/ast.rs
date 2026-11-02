@@ -12,6 +12,9 @@ pub struct Ident {
 pub enum AttrArg {
     Ident(Ident),
     Str(String, Span),
+    /// `key = value` (`#[rationale(kind = nonlinear, hash = "..")]`,
+    /// ADR-0029 §1): the value is an identifier or a string.
+    Pair(Ident, Box<AttrArg>),
 }
 
 #[derive(Debug, Clone)]
@@ -364,6 +367,15 @@ pub enum Stmt {
     Assert {
         cond: Expr,
         by: Option<Prover>,
+        span: Span,
+    },
+    /// `assume(p(..));` (ADR-0029 §1): an escape. The proof after it may
+    /// assume the named predicate, as a trusted fact (§2: the definition is
+    /// then `assumed` if it needs it). `rationale` is the
+    /// `#[rationale(..)]` written before it (E1001 without).
+    Assume {
+        cond: Expr,
+        rationale: Option<Attr>,
         span: Span,
     },
     /// `proof { .. }` (ADR-0062 §1): ghost statements in executable code.

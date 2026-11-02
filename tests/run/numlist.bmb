@@ -83,7 +83,7 @@ mod nl {
     // Spaces are skipped, `;` ends the list, a number has at most five
     // digits; the first other byte is an error at its position (an empty
     // list, at the end).
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(digit_ok, fits, le, parsed, pow10, pow10_le, short, small_nums)]
     fn parse(s: &[u8]) -> (r: Result<Vec<u64>, usize>)
         requires short(s),
@@ -188,7 +188,7 @@ mod nl {
     }
 
     // Both summaries through `?`: no list, no summary.
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(digit_ok, fits, largest_ok, parsed, short, small_nums, total_ok)]
     fn summary(s: &[u8]) -> Option<u64>
         requires short(s),
@@ -210,7 +210,7 @@ mod nl {
         }
     }
 
-    #[effects(io)]
+    #[effects(alloc, io)]
     #[uses(digit_ok, fits, largest_ok, parsed, short, small_nums, total_ok)]
     fn main() -> () {
         show(summary(b"12, 7,300"));

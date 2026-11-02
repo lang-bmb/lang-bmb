@@ -336,7 +336,7 @@ mod sha256 {
 
     // The padded message (§5.1.1): `msg`, the byte 0x80, zeros, and the
     // length in bits as a big-endian 64-bit number.
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(msg_ok, padlen, pad_byte, len_byte, wide, padded, pad_upto)]
     fn pad(msg: &[u8]) -> (r: Vec<u8>)
         requires msg_ok(msg),
@@ -437,7 +437,7 @@ mod sha256 {
     }
 
     // The SHA-256 digest of `msg` (FIPS 180-4 §6.2).
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(msg_ok, hashed, padded, padlen, ktab, block, chained, chain, is_compressed, is_h0)]
     fn digest(msg: &[u8]) -> (r: [u8; 32])
         requires msg_ok(msg),

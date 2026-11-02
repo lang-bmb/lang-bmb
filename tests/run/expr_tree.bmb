@@ -4,17 +4,17 @@ mod et {
 
     struct Node { v: i64, next: Option<Box<Node>> }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     fn num(v: i64) -> Box<Expr> {
         Box::new(Expr::Num(v))
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     fn add(a: Box<Expr>, b: Box<Expr>) -> Box<Expr> {
         Box::new(Expr::Add(a, b))
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     fn mul(a: Box<Expr>, b: Box<Expr>) -> Box<Expr> {
         Box::new(Expr::Mul(a, b))
     }
@@ -44,7 +44,7 @@ mod et {
     }
 
     // A new tree with every negation of a number folded into the number.
-    #[effects(pure)]
+    #[effects(alloc)]
     fn fold(e: &Expr) -> Box<Expr>
         decreases e,
     {
@@ -81,7 +81,7 @@ mod et {
         }
     }
 
-    #[effects(io)]
+    #[effects(alloc, io)]
     fn main() -> () {
         // (2 + 3) * -(4) + --7
         let e: Box<Expr> = add(

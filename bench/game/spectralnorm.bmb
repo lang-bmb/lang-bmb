@@ -45,7 +45,7 @@ mod sn {
         mul(tmp, out, n, true);
     }
 
-    #[effects(io)]
+    #[effects(alloc, io)]
     #[uses(sized)]
     fn main() -> () {
         let n: usize = 100;

@@ -27,7 +27,7 @@ mod rf {
     }
 
     // A value built here is not smaller than the parameter.
-    #[effects(pure)]
+    #[effects(alloc)]
     fn rebuilt(e: &Expr) -> i64
         decreases e,
     {

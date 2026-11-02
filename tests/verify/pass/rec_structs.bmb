@@ -31,7 +31,7 @@ mod rs {
 
     spec fn spine_ok(n: &Node) -> bool { spine(n) >= 0 }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(bare)]
     fn leaf(x: i64) -> (r: Node)
         ensures bare(&r, x),
@@ -39,7 +39,7 @@ mod rs {
         Node { v: x, kids: Vec::new() }
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(small, adopted)]
     fn adopt(n: &mut Node, c: Node) -> ()
         requires small(n),
@@ -118,7 +118,7 @@ mod rs {
         }
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(bare, small, adopted, first_is)]
     fn build() -> i64 {
         let mut root: Node = leaf(1);

@@ -726,3 +726,66 @@ fn index_predicates_leave_no_satisfiability_check_undecided() {
     assert_eq!(n(&summary, "pre_undecided"), 0, "{text}");
     assert_eq!(n(&summary, "reach_undecided"), 0, "{text}");
 }
+
+/// W0909 (ADR-0030 §3, backlog 2F-02): a declared effect the body does not
+/// need, from its own operations or its callees' declared effects. Not for
+/// `main`'s `io`, a trait's method or an `impl`'s function of a trait. The
+/// fix writes what the body needs.
+#[test]
+fn unneeded_effects() {
+    let text = r#"#[summary("effects")]
+mod w {
+    #[effects(alloc, io)]
+    fn wide(x: i64) -> i64 { x }
+
+    #[effects(alloc)]
+    fn grows() -> usize {
+        let mut v: Vec<i64> = Vec::new();
+        v.push(1);
+        v.len()
+    }
+
+    #[effects(alloc, io)]
+    fn calls() -> usize {
+        grows()
+    }
+
+    trait Shape {
+        #[effects(io)]
+        fn show(self: &Self) -> ();
+    }
+
+    struct Sq { s: i64 }
+
+    impl Shape for Sq {
+        #[effects(io)]
+        fn show(self: &Sq) -> () {}
+    }
+
+    #[effects(alloc, io)]
+    fn main() -> () {}
+}
+"#;
+    let out = lint_sources(&one("w.bmb", text)).unwrap();
+    let found: Vec<(i64, String)> = rows(&out.diagnostics)
+        .iter()
+        .filter(|d| s(d, "code") == "W0909")
+        .map(|d| {
+            let fix = d
+                .get("fix")
+                .and_then(|f| f.get("replacement"))
+                .and_then(|r| r.as_str());
+            (n(d, "line"), fix.unwrap_or_default().to_string())
+        })
+        .collect();
+    assert_eq!(
+        found,
+        [
+            (3, "#[effects(pure)]".to_string()),
+            (13, "#[effects(alloc)]".to_string()),
+            (30, "#[effects(io)]".to_string()),
+        ],
+        "{}",
+        out.diagnostics
+    );
+}

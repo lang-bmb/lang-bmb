@@ -54,7 +54,7 @@ mod rt {
         None
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     fn first_big(v: Vec<i64>) -> i64 {
         let w: Vec<i64> = v;
         if w.len() == 0 {

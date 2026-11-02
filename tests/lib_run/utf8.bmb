@@ -11,7 +11,7 @@ mod app {
     }
 
     // `<length> <valid> <sum>` on one line.
-    #[effects(io)]
+    #[effects(alloc, io)]
     #[uses(bytes::room, bytes::grew_by, bytes::kept)]
     fn show(len: u64, t: Tally) -> () {
         let mut out: Vec<u8> = Vec::new();
@@ -93,7 +93,7 @@ mod app {
         t
     }
 
-    #[effects(io)]
+    #[effects(alloc, io)]
     #[uses(bytes::room, bytes::grew_by, bytes::kept)]
     fn main() -> () {
         show(1, len1());

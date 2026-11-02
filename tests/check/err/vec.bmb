@@ -15,19 +15,19 @@ mod vs {
         read(&v) + read(r)
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     fn mut_coercion() -> () {
         let mut v: Vec<i64> = Vec::new();
         write(&mut v);
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     fn wrong_slice() -> () {
         let mut v: Vec<i64> = Vec::new();
         write(v.as_slice());
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     fn drops() -> () {
         let v: Vec<i64> = Vec::new();
         drop(v);
@@ -38,23 +38,23 @@ mod vs {
         let w: Vec<i64> = std::mem::take(v);
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     fn not_mutable() -> () {
         let v: Vec<i64> = Vec::new();
         v.push(1);
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     fn shared_ref(v: &Vec<i64>) -> () {
         v.push(1);
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     fn no_element_type() -> usize {
         Vec::new().len()
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     fn wrong_element(v: &mut Vec<i64>, x: u64) -> () {
         v.push(x);
     }
@@ -87,7 +87,7 @@ mod vs {
 
     spec fn pushes(a: &[i64]) -> bool { a.len() > 0 }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(pushes)]
     fn in_spec(v: &mut Vec<i64>) -> ()
         ensures pushes(v.as_slice()),
@@ -95,7 +95,7 @@ mod vs {
         v.push(1);
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     fn fine(n: usize) -> Vec<u64> {
         let mut v: Vec<u64> = Vec::with_capacity(n);
         v.push(3);

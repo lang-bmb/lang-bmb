@@ -7,7 +7,7 @@ mod app {
     spec fn size_ok(n: usize) -> bool { n <= 16777216 }
 
     // `<label> <value>` on one line.
-    #[effects(io)]
+    #[effects(alloc, io)]
     #[uses(label_ok, bytes::room, bytes::grew_by, bytes::kept, bytes::fits, bytes::appended, bytes::copied)]
     fn show(label: &[u8], x: u64) -> ()
         requires label_ok(label),
@@ -27,7 +27,7 @@ mod app {
 
     // `n` deterministic bytes: the high bits of a 64-bit LCG (Knuth's MMIX
     // constants), the same sequence as `crc32_ref.py`.
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(short, size_ok)]
     fn stream(n: usize) -> Vec<u8>
         requires size_ok(n),
@@ -44,7 +44,7 @@ mod app {
     }
 
     // The first `k` bytes of `s` (`k <= s.len()`), and the rest.
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(short)]
     fn take(s: &[u8], from: usize, to: usize) -> Vec<u8> {
         let mut v: Vec<u8> = Vec::new();
@@ -78,7 +78,7 @@ mod app {
         sum
     }
 
-    #[effects(io)]
+    #[effects(alloc, io)]
     #[uses(label_ok, size_ok)]
     fn main() -> () {
         show(b"check", wide(crc32::checksum(b"123456789")));

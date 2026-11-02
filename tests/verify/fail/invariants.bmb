@@ -103,7 +103,7 @@ mod invf {
         }
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(small)]
     fn cons(l: List, x: i64) -> List {
         List::Cons(x, Box::new(l))

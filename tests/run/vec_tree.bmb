@@ -24,7 +24,7 @@ mod rt {
         }
     }
 
-    #[effects(io)]
+    #[effects(alloc, io)]
     fn main() -> () {
         let mut kids: Vec<Tree> = Vec::new();
         kids.push(Tree::Leaf(3));

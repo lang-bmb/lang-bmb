@@ -29,6 +29,15 @@ pub type Spans = Vec<(Span, String)>;
 
 type R = Result<Value, String>;
 
+/// An attribute argument as JSON: a name, `{"str": ..}`, `{"key", "value"}`.
+fn attr_arg(x: &AttrArg) -> Value {
+    match x {
+        AttrArg::Ident(i) => s(&i.name),
+        AttrArg::Str(t, _) => obj(vec![("str", s(t))]),
+        AttrArg::Pair(k, v) => obj(vec![("key", s(&k.name)), ("value", attr_arg(v))]),
+    }
+}
+
 fn s(x: &str) -> Value {
     Value::Str(x.to_string())
 }
@@ -222,14 +231,7 @@ impl Ex<'_> {
     fn attrs(&mut self, attrs: &[Attr]) -> R {
         self.list("attrs", attrs, |e, a| {
             e.mark(a.span);
-            let args: Vec<Value> = a
-                .args
-                .iter()
-                .map(|x| match x {
-                    AttrArg::Ident(i) => s(&i.name),
-                    AttrArg::Str(t, _) => obj(vec![("str", s(t))]),
-                })
-                .collect();
+            let args: Vec<Value> = a.args.iter().map(attr_arg).collect();
             let mut kv = vec![("name", s(&a.name.name))];
             if !args.is_empty() {
                 kv.push(("args", Value::Array(args)));
@@ -377,10 +379,22 @@ impl Ex<'_> {
             for x in &a.args {
                 match x {
                     AttrArg::Ident(i) => xs.push(s(&i.name)),
-                    AttrArg::Str(..) => return self.fail("`effects` takes names, not strings"),
+                    AttrArg::Str(..) | AttrArg::Pair(..) => {
+                        return self.fail("`effects` takes names");
+                    }
                 }
             }
             kv.push(("effects", Value::Array(xs)));
+        }
+        // Escapes (ADR-0029 §1): `#[external_body]` and its rationale.
+        if f.attrs.iter().any(|a| a.name.name == "external_body") {
+            kv.push(("external_body", Value::Bool(true)));
+        }
+        if let Some(a) = f.attrs.iter().find(|a| a.name.name == "rationale") {
+            kv.push((
+                "rationale",
+                Value::Array(a.args.iter().map(attr_arg).collect()),
+            ));
         }
         let uses: BTreeSet<&str> = f
             .attrs
@@ -389,7 +403,7 @@ impl Ex<'_> {
             .flat_map(|a| a.args.iter())
             .filter_map(|x| match x {
                 AttrArg::Ident(i) => Some(i.name.as_str()),
-                AttrArg::Str(..) => None,
+                AttrArg::Str(..) | AttrArg::Pair(..) => None,
             })
             .collect();
         if !uses.is_empty() {
@@ -601,6 +615,21 @@ impl Ex<'_> {
                 kv.push(("cond", self.under("cond", |e| e.expr(cond))?));
                 if let Some(p) = by {
                     kv.push(("by", s(p.name())));
+                }
+            }
+            Stmt::Assume {
+                cond,
+                rationale,
+                span,
+            } => {
+                self.mark(*span);
+                kv.push(("kind", s("assume")));
+                kv.push(("cond", self.under("cond", |e| e.expr(cond))?));
+                if let Some(a) = rationale {
+                    kv.push((
+                        "rationale",
+                        Value::Array(a.args.iter().map(attr_arg).collect()),
+                    ));
                 }
             }
             Stmt::Proof { body, span } => {
@@ -1152,23 +1181,38 @@ impl Im {
         self.list(o, "attrs", |m, v| {
             let a = m.obj(v, "an attribute", &["name", "args"])?;
             let name = m.name(&a, "name")?;
-            let args = m.list(&a, "args", |m, x| match x {
-                Value::Str(t) => {
-                    m.path_of("", t)?;
-                    Ok(AttrArg::Ident(id(t)))
-                }
-                Value::Object(_) => {
-                    let s = m.obj(x, "a string argument", &["str"])?;
-                    Ok(AttrArg::Str(m.string(&s, "str")?, sp()))
-                }
-                _ => m.fail("expected a name or {\"str\": ..}"),
-            })?;
+            let args = m.list(&a, "args", Im::attr_arg)?;
             Ok(Attr {
                 name,
                 args,
                 span: sp(),
             })
         })
+    }
+
+    /// An attribute argument: a name, `{"str": ..}`, or `{"key", "value"}`
+    /// (ADR-0029 §1).
+    fn attr_arg(&mut self, x: &Value) -> Result<AttrArg, String> {
+        match x {
+            Value::Str(t) => {
+                self.path_of("", t)?;
+                Ok(AttrArg::Ident(id(t)))
+            }
+            Value::Object(o) if o.iter().any(|(k, _)| k == "key") => {
+                let p = self.obj(x, "a `key = value` argument", &["key", "value"])?;
+                let key = self.name(&p, "key")?;
+                let value = self.field(&p, "value", Im::attr_arg)?;
+                if matches!(value, AttrArg::Pair(..)) {
+                    return self.fail("a value is a name or a string");
+                }
+                Ok(AttrArg::Pair(key, Box::new(value)))
+            }
+            Value::Object(_) => {
+                let s = self.obj(x, "a string argument", &["str"])?;
+                Ok(AttrArg::Str(self.string(&s, "str")?, sp()))
+            }
+            _ => self.fail("expected a name, {\"str\": ..} or {\"key\", \"value\"}"),
+        }
     }
 
     fn generics(&mut self, o: &Obj) -> Result<Vec<TypeParam>, String> {
@@ -1288,6 +1332,8 @@ impl Im {
             "a function",
             &[
                 "kind",
+                "external_body",
+                "rationale",
                 "effects",
                 "uses",
                 "generics",
@@ -1312,6 +1358,20 @@ impl Im {
             }
         };
         let mut attrs = Vec::new();
+        if o.get("rationale").is_some() {
+            attrs.push(Attr {
+                name: id("rationale"),
+                args: self.list(&o, "rationale", Im::attr_arg)?,
+                span: sp(),
+            });
+        }
+        if self.flag(&o, "external_body")? {
+            attrs.push(Attr {
+                name: id("external_body"),
+                args: Vec::new(),
+                span: sp(),
+            });
+        }
         for (attr, field) in [("effects", "effects"), ("uses", "uses")] {
             if o.get(field).is_none() {
                 continue;
@@ -1549,6 +1609,22 @@ impl Im {
                 Stmt::Assert {
                     cond: self.field(&o, "cond", Im::expr)?,
                     by,
+                    span: sp(),
+                }
+            }
+            "assume" => {
+                let o = self.obj(v, "an `assume`", &["kind", "cond", "rationale"])?;
+                let rationale = match o.get("rationale") {
+                    None => None,
+                    Some(_) => Some(Attr {
+                        name: id("rationale"),
+                        args: self.list(&o, "rationale", Im::attr_arg)?,
+                        span: sp(),
+                    }),
+                };
+                Stmt::Assume {
+                    cond: self.field(&o, "cond", Im::expr)?,
+                    rationale,
                     span: sp(),
                 }
             }

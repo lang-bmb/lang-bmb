@@ -31,7 +31,7 @@ mod md {
         }
     }
 
-    #[effects(io)]
+    #[effects(alloc, io)]
     fn main() -> () {
         let w: u32 = 48;
         let h: u32 = 20;

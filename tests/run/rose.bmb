@@ -10,7 +10,7 @@ mod rose {
 
     spec fn adopted(a: &Node, b: &Node) -> bool { b.kids.len() == a.kids.len() + 1 && b.v == a.v }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(bare)]
     fn leaf(x: i64) -> (r: Node)
         ensures bare(&r, x),
@@ -42,7 +42,7 @@ mod rose {
         n.v = x;
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(small, adopted)]
     fn adopt(n: &mut Node, c: Node) -> ()
         requires small(n),
@@ -51,7 +51,7 @@ mod rose {
         n.kids.push(c);
     }
 
-    #[effects(io)]
+    #[effects(alloc, io)]
     #[uses(bare, small, adopted, relabeled)]
     fn main() -> () {
         let mut root: Node = leaf(1);

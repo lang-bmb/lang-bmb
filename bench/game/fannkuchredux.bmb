@@ -48,7 +48,7 @@ mod fk {
         f
     }
 
-    #[effects(io)]
+    #[effects(alloc, io)]
     #[uses(below, below_upto, counts, bytes::room, bytes::grew_by, bytes::kept, bytes::fits, bytes::appended)]
     fn main() -> () {
         let n: usize = 12;

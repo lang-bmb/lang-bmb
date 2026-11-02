@@ -1,0 +1,80 @@
+#[summary("탈출구와 근거(ADR-0029)")]
+mod esc {
+    spec fn small(x: i64) -> bool { 0 <= x && x <= 10 }
+
+    #[effects(panic)]
+    fn no_rationale(x: i64) -> i64 {
+        assume(small(x));
+        x
+    }
+
+    #[effects(panic)]
+    fn bad_kind(x: i64) -> i64 {
+        #[rationale(kind = todo, "later")]
+        assume(small(x));
+        x
+    }
+
+    #[effects(panic)]
+    fn no_text(x: i64) -> i64 {
+        #[rationale(kind = nonlinear)]
+        assume(small(x));
+        x
+    }
+
+    #[effects(panic)]
+    fn not_a_predicate(x: i64) -> i64 {
+        #[rationale(kind = nonlinear, "small")]
+        assume(x < 10);
+        x
+    }
+
+    #[effects(pure)]
+    fn not_before_assume(x: i64) -> i64 {
+        #[rationale(kind = nonlinear, "misplaced")]
+        let y: i64 = x;
+        y
+    }
+
+    #[effects(pure)]
+    fn missing_panic(x: i64) -> i64 {
+        #[rationale(kind = nonlinear, "callers pass small values")]
+        assume(small(x));
+        x
+    }
+
+    #[effects(panic)]
+    #[external_body]
+    fn external_without() -> i64 {
+        0
+    }
+
+    #[rationale(kind = boundary, "never")]
+    #[external_body]
+    spec fn external_spec() -> bool { true }
+
+    #[rationale(kind = boundary, "never")]
+    #[external_body]
+    #[effects(io, panic)]
+    fn main() -> () {}
+
+    #[effects(pure)]
+    fn verus(x: i64) -> i64 {
+        admit();
+        x
+    }
+
+    #[effects(pure)]
+    fn rust(x: i64) -> i64 {
+        unsafe {
+            x
+        }
+    }
+
+    #[rationale(kind = boundary, "Verus spelling")]
+    #[verifier::external_body]
+    #[effects(panic)]
+    fn verus_attr() -> i64 {
+        0
+    }
+}

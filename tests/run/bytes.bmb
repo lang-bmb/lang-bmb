@@ -13,7 +13,7 @@ mod by {
     spec fn fresh(out: &[u8], s: &[u8]) -> bool { out.len() == 0 && s.len() <= 1000 }
 
     // Upper-case ASCII letters, other bytes as they are.
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(fresh)]
     fn shout(s: &[u8], out: &mut Vec<u8>) -> ()
         requires fresh(out.as_slice(), s),
@@ -35,7 +35,7 @@ mod by {
         print_u64(u64::try_from(c).unwrap());
     }
 
-    #[effects(io)]
+    #[effects(alloc, io)]
     #[uses(starts_h, fresh)]
     fn main() -> () {
         print_bytes(b"hello, \"bytes\"\n");

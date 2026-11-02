@@ -523,6 +523,28 @@ MUTANTS = [
      '''                            let ok = self.t();
                             self.emit(format!("{m} = icmp eq i64 {a}, {}", i64::MIN));''',
      "an unproved `T::MIN / -1` of a signed type narrower than 64 bits is not checked (it gives `-T::MIN`)"),
+    # The effect check (ADR-0030, backlog 2F-02): a missed effect makes a
+    # definition look free of what it does (no test reason, wrong `impact`).
+    ("k-push-not-alloc", "effects", K,
+     '''if mode == Mode::Exec && matches!(m, "push" | "clone") {''',
+     '''if mode == Mode::Exec && matches!(m, "clone") {''',
+     "`Vec::push` is not an `alloc` source: a `pure` function may grow a vector"),
+    ("k-callee-effects-ignored", "effects", K,
+     '''cx.need(sig.effect, || format!("a call of `{name}`"));''',
+     '''cx.need(Effects::PURE, || format!("a call of `{name}`"));''',
+     "a call does not carry the callee's declared effects to the caller"),
+    # Escapes (ADR-0029, backlog 2E-02): a trusted fact used where the
+    # definition must be proved without it, or a check dropped below one.
+    ("v-assume-trusted-first", "unsound", V,
+     '''    TRUST.with(|t| t.borrow().as_ref().is_none_or(|t| t.trusted))''',
+     '''    TRUST.with(|t| t.borrow().as_ref().is_none_or(|_| true))''',
+     "`assume` is assumed in the pass without trusted facts: an assumed definition reads `proved`"),
+    ("v-checks-dropped-below-escape", "miscompile", V,
+     '''        if !checked.contains(&path) {
+            out.proven.extend(r.proven);
+        }''',
+     '''        out.proven.extend(r.proven);''',
+     "a definition proved with trusted facts drops its checks: a false `assume` is undefined behavior, not a trap"),
 ]
 
 

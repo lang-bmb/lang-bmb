@@ -7,7 +7,7 @@ mod mf {
     spec fn same(a: i64, b: i64) -> bool { a == b }
 
     // `replace` changes the place.
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(kept)]
     fn take(b: &mut Buf) -> Vec<i64>
         ensures kept(*old(b), *b),

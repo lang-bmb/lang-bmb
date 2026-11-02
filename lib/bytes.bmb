@@ -83,7 +83,7 @@ mod bytes {
     }
 
     // Appends `s` (Rust `extend_from_slice`).
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(kept, copied, fits, appended)]
     fn extend(v: &mut Vec<u8>, s: &[u8]) -> ()
         requires fits(v.as_slice(), s),
@@ -153,7 +153,7 @@ mod bytes {
     spec fn grew_by(v: &[u8], w: &[u8], m: usize) -> bool { w.len() < v.len() && v.len() <= w.len() + m && kept(v, w) }
 
     // Appends `x` in decimal (at most 20 bytes).
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(kept, room, grew_by)]
     fn push_u64(v: &mut Vec<u8>, x: u64) -> ()
         requires room(v.as_slice(), 20),
@@ -185,7 +185,7 @@ mod bytes {
     }
 
     // Appends `x` in decimal, with `-` when negative (at most 21 bytes).
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(kept, room, grew_by)]
     fn push_i64(v: &mut Vec<u8>, x: i64) -> ()
         requires room(v.as_slice(), 21),

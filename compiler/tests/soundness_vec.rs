@@ -214,7 +214,7 @@ impl VFunc {
         );
         let _ = writeln!(
             t,
-            "    #[effects(pure)]\n    #[uses({n}_pre, {n}_post, room, pushed, is_first)]\n    fn {n}(x: i64, y: i64) -> (r: i64)\n        requires {n}_pre(x, y),\n        ensures {n}_post(x, y, r),\n    {{"
+            "    #[effects(alloc)]\n    #[uses({n}_pre, {n}_post, room, pushed, is_first)]\n    fn {n}(x: i64, y: i64) -> (r: i64)\n        requires {n}_pre(x, y),\n        ensures {n}_post(x, y, r),\n    {{"
         );
         let new = match self.cap {
             Some(c) => format!("Vec::with_capacity({c})"),
@@ -324,7 +324,7 @@ const HELPERS: &str = "    spec fn room(a: &[i64]) -> bool { a.len() < 1000 }
         a.len() == b.len() + 1 && a[b.len()] == x && forall|k: usize| k < b.len() ==> #[trigger] a[k] == b[k]
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(room, pushed)]
     fn bump(v: &mut Vec<i64>, x: i64) -> ()
         requires room(v.as_slice()),
@@ -333,14 +333,14 @@ const HELPERS: &str = "    spec fn room(a: &[i64]) -> bool { a.len() < 1000 }
         v.push(x);
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     fn count(w: Vec<i64>) -> i64 {
         i64::try_from(w.len()).unwrap()
     }
 
     spec fn is_first(r: i64, s: &[u8], d: u8) -> bool { (s.len() > 0 && r == s[0]) || (s.len() == 0 && r == d) }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(is_first)]
     fn first_or(s: &[u8], d: u8) -> (r: i64)
         ensures is_first(r, s, d),
@@ -400,7 +400,7 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path, checker: AddrCheck
         src.push_str(&f.text());
     }
     src.push_str(
-        "}\n\n#[summary(\"실행\")]\nmod app {\n    #[effects(io)]\n    fn main() -> () {\n",
+        "}\n\n#[summary(\"실행\")]\nmod app {\n    #[effects(alloc, io)]\n    fn main() -> () {\n",
     );
     let mut expected = String::new();
     for f in &funcs {

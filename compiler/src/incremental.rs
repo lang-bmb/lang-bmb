@@ -513,7 +513,7 @@ fn node_spans(f: &FnDef) -> Vec<Span> {
                 invariants.iter().for_each(|e| expr(e, out));
                 block(body, out);
             }
-            Stmt::Assert { cond, span, .. } => {
+            Stmt::Assert { cond, span, .. } | Stmt::Assume { cond, span, .. } => {
                 out.push(*span);
                 expr(cond, out);
             }
@@ -1325,6 +1325,7 @@ impl Session {
                 path: path.to_string(),
                 obligations,
                 failed: 0,
+                trust: crate::verify::Trust::Proved,
                 rlimit_total,
                 rlimit_max,
             },

@@ -2,13 +2,13 @@
 mod da {
     struct Bufs { v: [Vec<i64>; 2] }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     fn local() -> usize {
         let w: [Vec<i64>; 2] = [Vec::new(), Vec::new()];
         0
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     fn vecs() -> usize {
         let v: Vec<i64> = Vec::new();
         [v][0].len()

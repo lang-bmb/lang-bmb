@@ -15,14 +15,14 @@ mod ne {
     }
 
     // Cloning a `Vec` of owned elements is not supported yet.
-    #[effects(pure)]
+    #[effects(alloc)]
     fn copy(g: &Vec<Vec<i64>>) -> usize {
         let h: Vec<Vec<i64>> = g.clone();
         h.len()
     }
 
     // Writing an element needs a mutable place.
-    #[effects(pure)]
+    #[effects(alloc)]
     fn immutable(g: Vec<Vec<i64>>) -> usize {
         g[0].push(1);
         g.len()

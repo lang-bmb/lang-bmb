@@ -19,7 +19,7 @@ mod mg {
         std::mem::replace(a, b)
     }
 
-    #[effects(io)]
+    #[effects(alloc, io)]
     fn main() -> () {
         let mut v: Vec<i64> = Vec::new();
         v.push(3);

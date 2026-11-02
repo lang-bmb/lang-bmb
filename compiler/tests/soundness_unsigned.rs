@@ -420,7 +420,7 @@ impl Func {
     fn text(&self) -> String {
         let n = &self.name;
         format!(
-            "    spec fn {n}_pre(x: u64, y: u64) -> bool {{ {} <= x && x <= {} && {} <= y && y <= {} }}\n\n    spec fn {n}_post(x: u64, y: u64, r: u64) -> bool {{ {} }}\n\n    #[effects(pure)]\n    #[uses({n}_pre, {n}_post)]\n    fn {n}(x: u64, y: u64) -> (r: u64)\n        requires {n}_pre(x, y),\n        ensures {n}_post(x, y, r),\n    {{\n        {}\n    }}\n\n",
+            "    spec fn {n}_pre(x: u64, y: u64) -> bool {{ {} <= x && x <= {} && {} <= y && y <= {} }}\n\n    spec fn {n}_post(x: u64, y: u64, r: u64) -> bool {{ {} }}\n\n    #[effects(alloc)]\n    #[uses({n}_pre, {n}_post)]\n    fn {n}(x: u64, y: u64) -> (r: u64)\n        requires {n}_pre(x, y),\n        ensures {n}_post(x, y, r),\n    {{\n        {}\n    }}\n\n",
             self.lo.0,
             self.hi.0,
             self.lo.1,
@@ -525,7 +525,7 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
     }
     // `main` prints each result (`print_u64`, ADR-0028 §4).
     src.push_str(
-        "}\n\n#[summary(\"실행\")]\nmod app {\n    #[effects(io)]\n    fn main() -> () {\n",
+        "}\n\n#[summary(\"실행\")]\nmod app {\n    #[effects(alloc, io)]\n    fn main() -> () {\n",
     );
     let mut expected = String::new();
     for f in &funcs {

@@ -21,7 +21,7 @@ mod bx {
         }
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(at)]
     fn mk(x: i64) -> (r: Box<Pt>)
         ensures at(*r, x),
@@ -47,7 +47,7 @@ mod bx {
         **b = **b + **b;
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(at, held)]
     fn hold(x: i64) -> (r: Holder)
         ensures held(&r, x),
@@ -58,7 +58,7 @@ mod bx {
         h
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(same)]
     fn copy_out(b: &Box<i64>) -> (r: Box<i64>)
         ensures same(*b, r),
@@ -78,7 +78,7 @@ mod bx {
         }
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(doubled, small)]
     fn nested(v: i64) -> (r: i64)
         requires small(v),

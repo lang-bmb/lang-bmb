@@ -21,3 +21,101 @@ mod second {
     #[effects(io)]
     fn main() -> () {}
 }
+
+#[summary("효과 집합(ADR-0030): alloc, 빠진 효과 E0606, 목록 E0607")]
+mod sets {
+    #[effects(pure)]
+    fn grows() -> Vec<i64> {
+        let mut v: Vec<i64> = Vec::new();
+        v.push(1);
+        v
+    }
+
+    #[effects(pure)]
+    fn adds(v: &mut Vec<i64>) -> () {
+        v.push(1)
+    }
+
+    #[effects(pure)]
+    fn boxes() -> Box<i64> {
+        Box::new(1)
+    }
+
+    #[effects(pure)]
+    fn copies(v: &Vec<i64>) -> Vec<i64> {
+        v.clone()
+    }
+
+    #[effects(alloc)]
+    fn caller() -> usize {
+        let v: Vec<i64> = grows();
+        v.len()
+    }
+
+    #[effects(alloc)]
+    fn prints_too() -> () {
+        print_i64(1)
+    }
+
+    #[effects(pure)]
+    fn both() -> () {
+        let b: Box<i64> = Box::new(1);
+        print_i64(*b)
+    }
+
+    #[effects(io, io)]
+    fn twice() -> () {
+        print_i64(1)
+    }
+
+    #[effects(alloc, pure)]
+    fn pure_too() -> () {}
+
+    #[effects()]
+    fn none() -> () {}
+
+    #[effects(alloc, io)]
+    fn wider() -> () {}
+
+    #[effects(pure)]
+    fn reads(v: &Vec<i64>) -> usize {
+        v.len()
+    }
+
+    #[effects(alloc)]
+    fn ping(n: u64) -> u64
+        decreases n,
+    {
+        if n == 0 { 0 } else { pong(n - 1) }
+    }
+
+    #[effects(pure)]
+    fn pong(n: u64) -> u64
+        decreases n,
+    {
+        if n == 0 {
+            let v: Vec<i64> = Vec::new();
+            0
+        } else {
+            ping(n - 1)
+        }
+    }
+}
+
+#[summary("trait 메서드의 효과(ADR-0030 §3)")]
+mod traits {
+    trait Make {
+        #[effects(pure)]
+        fn make(self: &Self) -> i64;
+    }
+
+    struct A { x: i64 }
+
+    impl Make for A {
+        #[effects(alloc)]
+        fn make(self: &A) -> i64 {
+            let b: Box<i64> = Box::new(self.x);
+            *b
+        }
+    }
+}

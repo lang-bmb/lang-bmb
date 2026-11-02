@@ -37,7 +37,7 @@ mod mv {
     }
 
     // A place, as `&mut place`.
-    #[effects(pure)]
+    #[effects(alloc)]
     fn by_value(v: Vec<i64>) -> Vec<i64> {
         std::mem::replace(v, Vec::new())
     }

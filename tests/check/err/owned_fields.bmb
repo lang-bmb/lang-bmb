@@ -39,7 +39,7 @@ mod ow {
     }
 
     // A field of a moved struct.
-    #[effects(pure)]
+    #[effects(alloc)]
     fn field_of_moved(b: Buf) -> usize {
         let mut m: Buf = b;
         let c: Buf = m;
@@ -48,7 +48,7 @@ mod ow {
     }
 
     // `push` needs a mutable place.
-    #[effects(pure)]
+    #[effects(alloc)]
     fn immutable(b: Buf) -> usize {
         b.data.push(1);
         b.data.len()

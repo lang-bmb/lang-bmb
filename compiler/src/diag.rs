@@ -52,6 +52,18 @@ pub const CODES: &[(&str, &str)] = &[
         "a `Vec` is passed where a slice is expected: write `v.as_slice()`",
     ),
     ("E0219", "`drop(v)` and `mem::take` are not used"),
+    (
+        "E0215",
+        "`unsafe` is not used: a body that cannot be proved is `#[external_body]`",
+    ),
+    (
+        "E0216",
+        "Verus's `#[verifier::external_body]`: BMB writes `#[external_body]`",
+    ),
+    (
+        "E0217",
+        "Verus's `admit()`: BMB writes `assume(p(..))` with a rationale",
+    ),
     ("E0234", "a string literal: text is bytes, write `b\"...\"`"),
     ("E0235", "a blanket impl `impl<T> Trait for T` is not used"),
     (
@@ -309,6 +321,14 @@ pub const CODES: &[(&str, &str)] = &[
     ("E0603", "`pure` function calls a function with effect `io`"),
     ("E0604", "spec functions take no `#[effects(..)]` attribute"),
     ("E0605", "unknown or misplaced attribute"),
+    (
+        "E0606",
+        "the body needs an effect the function does not declare",
+    ),
+    (
+        "E0607",
+        "`pure` listed with another effect, or an effect listed twice",
+    ),
     // E07xx: program structure
     ("E0701", "`main` must be `#[effects(io)] fn main() -> ()`"),
     ("E0702", "more than one `main`"),
@@ -358,6 +378,32 @@ pub const CODES: &[(&str, &str)] = &[
         "E0823",
         "a type invariant may not hold where a value leaves the function's hands: a call argument, a return, a `&mut` parameter at exit, a loop head (ADR-0060 §2)",
     ),
+    // E10xx: escapes and rationales (ADR-0029)
+    (
+        "E1001",
+        "an escape (`assume`, `#[external_body]`) without a `#[rationale(..)]` before it",
+    ),
+    (
+        "E1002",
+        "a malformed `#[rationale(..)]`: `kind` outside the list, no explanation, or not before an escape",
+    ),
+    (
+        "E1003",
+        "`assume` takes one named predicate call, in executable code",
+    ),
+    (
+        "E1004",
+        "`#[external_body]` on a spec fn, a proof fn or `main`",
+    ),
+    // W10xx: escapes (`bmb lint` only)
+    (
+        "W1001",
+        "an unconfirmed rationale: what it is bound to changed, or it carries no hash (`bmb fix --confirm`)",
+    ),
+    (
+        "W1002",
+        "an `assume` the proof does not need: the definition is proved without it",
+    ),
     // W09xx: contract adjustment (`bmb lint` and `bmb weaken` only; severity "warning", never from `check`/`verify`)
     (
         "W0901",
@@ -383,6 +429,10 @@ pub const CODES: &[(&str, &str)] = &[
     (
         "W0907",
         "a counting `while` whose canonical form is a range `for` (the fix rewrites it; `bmb fix` applies it)",
+    ),
+    (
+        "W0909",
+        "an executable function declares an effect its body does not need (callers must declare it too)",
     ),
     (
         "W0908",
@@ -557,6 +607,8 @@ pub fn codes_markdown() -> String {
         ("E07", "프로그램 구조"),
         ("E08", "증명 게이트"),
         ("W09", "계약 조정(경고, `bmb lint`·`bmb weaken`만)"),
+        ("E10", "탈출구와 근거(ADR-0029)"),
+        ("W10", "탈출구와 근거(경고, `bmb lint`만)"),
     ];
     let mut out = String::from(
         "# 진단 코드\n\n> 생성 파일: `bmb codes --md`가 `compiler/src/diag.rs`의 `CODES`에서 만든다. 손으로 고치지 않는다.\n> 코드는 바꾸거나 재사용하지 않는다. 진단 형식은 `compiler/README.md`.\n",

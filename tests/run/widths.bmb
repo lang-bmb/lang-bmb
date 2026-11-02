@@ -35,7 +35,7 @@ mod wd {
         a + b + c + d
     }
 
-    #[effects(io)]
+    #[effects(alloc, io)]
     #[uses(small16)]
     fn main() -> () {
         // Bounds and negative values of the signed types.

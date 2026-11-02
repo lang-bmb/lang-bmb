@@ -7,7 +7,7 @@ mod pr {
     spec fn primes_below(p: &[u64], n: usize) -> bool { p.len() <= n }
 
     // Sieve of Eratosthenes: `composite[k]` for k < n, then the primes in order.
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(small, len_is, primes_below)]
     fn primes(n: usize) -> (r: Vec<u64>)
         requires small(n),
@@ -53,7 +53,7 @@ mod pr {
     spec fn merged(r: &[i64], a: &[i64], b: &[i64]) -> bool { r.len() == a.len() + b.len() }
 
     // Two sorted runs into one; equal keys from `a` first.
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(room, merged)]
     fn merge(a: &[i64], b: &[i64]) -> (r: Vec<i64>)
         requires room(a), room(b),
@@ -81,7 +81,7 @@ mod pr {
 
     spec fn few(n: usize) -> bool { n <= 100 }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(sorted_build, few)]
     fn evens(n: usize) -> (r: Vec<i64>)
         requires few(n),
@@ -96,7 +96,7 @@ mod pr {
         v
     }
 
-    #[effects(io)]
+    #[effects(alloc, io)]
     #[uses(small, len_is, primes_below, room, merged, sorted_build, few)]
     fn main() -> () {
         let p: Vec<u64> = primes(1000);

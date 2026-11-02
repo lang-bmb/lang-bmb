@@ -6,7 +6,7 @@ mod vr {
 
     // Multiples of 3 (linear, so cheap to prove); grows past the first
     // capacity (4) several times: 4, 8, 16, 32.
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(small, len_is)]
     fn triples(n: usize) -> (r: Vec<u64>)
         requires small(n),
@@ -37,7 +37,7 @@ mod vr {
 
     spec fn grew(a: &[u64], b: &[u64]) -> bool { a.len() == b.len() + 1 }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(room, grew)]
     fn append(v: &mut Vec<u64>, x: u64) -> ()
         requires room(v.as_slice()),
@@ -66,7 +66,7 @@ mod vr {
 
     spec fn added(h: Id, s: &[Point], t: &[Point]) -> bool { h.i == t.len() && s.len() == t.len() + 1 }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(store_room, added)]
     fn add(s: &mut Vec<Point>, p: Point) -> (h: Id)
         requires store_room(s.as_slice()),
@@ -82,7 +82,7 @@ mod vr {
         print_u64(u64::try_from(n).unwrap());
     }
 
-    #[effects(io)]
+    #[effects(alloc, io)]
     #[uses(small, len_is, room, grew, store_room, added)]
     fn main() -> () {
         let v: Vec<u64> = triples(20);

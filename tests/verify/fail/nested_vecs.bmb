@@ -12,7 +12,7 @@ mod nf {
 
     // `push` on an element changes that element only; the others keep
     // their lengths, but nothing says the first is not empty.
-    #[effects(pure)]
+    #[effects(alloc)]
     fn second(g: &mut Vec<Vec<i64>>) -> i64 {
         if g.len() > 1 {
             g[1].push(5);
@@ -23,7 +23,7 @@ mod nf {
     }
 
     // Replacing an element replaces its contents.
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(first_is)]
     fn replaced(g: &mut Vec<Vec<i64>>) -> ()
         requires first_is(g.as_slice(), 1),

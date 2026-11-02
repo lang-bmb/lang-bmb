@@ -281,7 +281,7 @@ fn applied(name: &str, args: &[Type]) -> String {
     format!("{name}<{}>", a.join(", "))
 }
 
-fn escape(s: &str) -> String {
+pub(crate) fn escape(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
@@ -594,11 +594,20 @@ impl<'a> Printer<'a> {
             .iter()
             .map(|x| match x {
                 AttrArg::Ident(i) if inv => self.uses_name(&i.name),
-                AttrArg::Ident(i) => i.name.clone(),
-                AttrArg::Str(s, _) => format!("\"{}\"", escape(s)),
+                x => attr_arg(x),
             })
             .collect();
         self.line(depth, &format!("#[{}({})]", a.name.name, args.join(", ")));
+    }
+
+    /// `#[rationale(..)]` (ADR-0029 §1) in the normal form only: no hash
+    /// reads it (§3: editing a rationale changes no identity, key or
+    /// rationale hash).
+    fn rationale_line(&mut self, a: &Attr, depth: usize) {
+        if self.id.is_none() && self.qualify.is_none() {
+            let args: Vec<String> = a.args.iter().map(attr_arg).collect();
+            self.line(depth, &format!("#[rationale({})]", args.join(", ")));
+        }
     }
 
     /// `struct T { f: U, .. }` / `enum T { A, B(U), .. }` on one line; fields and
@@ -769,16 +778,18 @@ impl<'a> Printer<'a> {
         rename: Option<&str>,
         with_body: bool,
     ) {
+        if let Some(a) = f.attrs.iter().find(|a| a.name.name == "rationale") {
+            self.rationale_line(a, depth);
+        }
+        // An escape (ADR-0029 §1): part of every text, the meaning changes.
+        if f.attrs.iter().any(|a| a.name.name == "external_body") {
+            self.line(depth, "#[external_body]");
+        }
         let effects = f.attrs.iter().find(|a| a.name.name == "effects");
         if let Some(a) = effects {
-            let args: Vec<String> = a
-                .args
-                .iter()
-                .map(|x| match x {
-                    AttrArg::Ident(i) => i.name.clone(),
-                    AttrArg::Str(s, _) => format!("\"{}\"", escape(s)),
-                })
-                .collect();
+            let mut args: Vec<String> = a.args.iter().map(attr_arg).collect();
+            // A set: by name (ADR-0030 §2, `alloc, io`).
+            args.sort();
             self.line(depth, &format!("#[effects({})]", args.join(", ")));
         }
         let uses: BTreeSet<String> = f
@@ -788,7 +799,7 @@ impl<'a> Printer<'a> {
             .flat_map(|a| a.args.iter())
             .filter_map(|x| match x {
                 AttrArg::Ident(i) => Some(self.uses_name(&i.name)),
-                AttrArg::Str(..) => None,
+                AttrArg::Str(..) | AttrArg::Pair(..) => None,
             })
             .collect();
         if !uses.is_empty() {
@@ -1052,6 +1063,15 @@ impl<'a> Printer<'a> {
                 let c = self.expr(cond, 0);
                 let by = by.map_or_else(String::new, |p| format!(" by ({})", p.name()));
                 self.line(depth, &format!("assert({c}){by};"));
+            }
+            Stmt::Assume {
+                cond, rationale, ..
+            } => {
+                if let Some(a) = rationale {
+                    self.rationale_line(a, depth);
+                }
+                let c = self.expr(cond, 0);
+                self.line(depth, &format!("assume({c});"));
             }
             // A statement where it is written: what it proves holds from
             // there on (ADR-0062, open question 3).
@@ -1526,6 +1546,15 @@ pub fn caller_text(f: &FnDef, unit: &str, fns: &BTreeMap<String, FnSig>) -> Stri
     let mut g = f.clone();
     g.attrs.retain(|a| a.name.name != "uses");
     qualified_text(&g, unit, fns, false)
+}
+
+/// An attribute argument as written: a name, a string, `key = value`.
+fn attr_arg(x: &AttrArg) -> String {
+    match x {
+        AttrArg::Ident(i) => i.name.clone(),
+        AttrArg::Str(s, _) => format!("\"{}\"", escape(s)),
+        AttrArg::Pair(k, v) => format!("{} = {}", k.name, attr_arg(v)),
+    }
 }
 
 fn plain() -> Printer<'static> {

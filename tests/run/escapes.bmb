@@ -1,0 +1,63 @@
+#[summary("escapes")]
+mod e {
+    spec fn small(x: i64) -> bool { 0 <= x && x <= 10 }
+
+    spec fn sq_small(r: i64) -> bool { 0 <= r && r <= 100 }
+
+    spec fn pos(x: i64) -> bool { x > 0 }
+
+    // Needs its trusted fact: the solver alone cannot bound `x * x`
+    // without the precondition, so it is assumed.
+    #[effects(panic)]
+    #[uses(sq_small, small)]
+    fn square(x: i64) -> (r: i64)
+        ensures sq_small(r),
+    {
+        #[rationale(kind = nonlinear, hash = "99850c0c37931c6c", "callers pass small values")]
+        assume(small(x));
+        x * x
+    }
+
+    // Proves without its `assume`: proved (W1002 later).
+    #[effects(panic)]
+    #[uses(small)]
+    fn needless(x: i64) -> i64
+        requires small(x),
+    {
+        #[rationale(kind = solver_limit, hash = "9aab59430a44cac1", "not needed")]
+        assume(small(x));
+        x + 1
+    }
+
+    #[rationale(kind = boundary, hash = "c056fe8f5fb4854f", "the outside world")]
+    #[external_body]
+    #[effects(panic)]
+    #[uses(small)]
+    fn outside() -> (r: i64)
+        ensures small(r),
+    {
+        7
+    }
+
+    // Uses `outside`'s `ensures` to avoid an overflow: assumed.
+    #[effects(panic)]
+    #[uses(small)]
+    fn caller() -> i64 {
+        let v: i64 = outside();
+        v + 1
+    }
+
+    // Does not need `square`'s `ensures`: proved.
+    #[effects(panic)]
+    fn ignores() -> i64 {
+        let v: i64 = square(3);
+        0
+    }
+
+    #[effects(io, panic)]
+    fn main() -> () {
+        print_i64(caller());
+        print_i64(square(3));
+        print_i64(ignores());
+    }
+}

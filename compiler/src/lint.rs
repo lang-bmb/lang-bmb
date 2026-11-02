@@ -31,6 +31,9 @@
 //! - `W0905` a loop exit or the end of the body of a verified function that
 //!   its own proof cannot reach (`verify::vacuous_ends`, backlog 1B-44):
 //!   what follows holds vacuously. No honest program yields one.
+//! - `W0909` an executable function declares an effect its body does not
+//!   need (ADR-0030 §3): its own operations and its callees' declared
+//!   effects need none of it. Syntactic, no proof involved.
 //! - `W0906` a `forall` whose one trigger term and another term of its body
 //!   read the same array (or call the same function) at different arguments
 //!   that mention the bound variables, as `#[trigger] out[k + 1] == out[k] +
@@ -78,8 +81,8 @@ pub const MAX_POST_TRIALS: usize = 32;
 pub const MAX_MUTANTS: usize = 64;
 
 /// The checks of the lint, by the code each reports (`bmb lint --select`).
-pub const CODES: [&str; 7] = [
-    "W0901", "W0902", "W0903", "W0904", "W0905", "W0906", "W0907",
+pub const CODES: [&str; 10] = [
+    "W0901", "W0902", "W0903", "W0904", "W0905", "W0906", "W0907", "W0909", "W1001", "W1002",
 ];
 
 pub struct LintOutput {
@@ -215,7 +218,9 @@ pub fn lint_sources_selected(
         return Err(fe.diags.to_jsonl(&fe.sm));
     }
     let runs = |code: &str| select.contains(&code);
-    let needs_base = ["W0902", "W0903", "W0904", "W0905"].iter().any(|c| runs(c));
+    let needs_base = ["W0902", "W0903", "W0904", "W0905", "W1002"]
+        .iter()
+        .any(|c| runs(c));
     let needs_pre = ["W0901", "W0902", "W0904", "W0905"].iter().any(|c| runs(c));
     let mut cache = cache_dir.map(ProofCache::load).unwrap_or_default();
     // Only the first verification covers the whole program; the restricted
@@ -509,6 +514,25 @@ pub fn lint_sources_selected(
         }
     }
 
+    // W0909: declared effects the body does not need (syntactic).
+    if runs("W0909") {
+        for d in unneeded_effects(&fe.tables, &defs) {
+            out.push(d);
+        }
+    }
+
+    // W1001, W1002: rationales and escapes (ADR-0029 §3, §2).
+    if runs("W1001") {
+        for d in unconfirmed_rationales(&fe.program, &fe.tables, true) {
+            out.push(d);
+        }
+    }
+    if runs("W1002") {
+        for d in needless_assumes(&base, &defs) {
+            out.push(d);
+        }
+    }
+
     if let Some(d) = cache_dir
         && let Err(e) = cache.save(d)
     {
@@ -717,7 +741,7 @@ fn walk_block(b: &mut Block, f: &mut dyn FnMut(&mut Expr, Option<Span>)) {
                 walk_expr(hi, None, f);
                 walk_block(body, f);
             }
-            Stmt::Assert { .. } | Stmt::Proof { .. } => {}
+            Stmt::Assert { .. } | Stmt::Assume { .. } | Stmt::Proof { .. } => {}
             Stmt::Expr(e) => walk_expr(e, None, f),
         }
     }
@@ -912,6 +936,129 @@ fn w0905(path: &str, span: Span, what: &str) -> Diag {
     )
 }
 
+// ---------- escapes (W1001, W1002, ADR-0029, backlog 2E-04) ----------
+
+/// W1001 for each `#[rationale(..)]` whose hash is not the one it is bound
+/// to (ADR-0029 §3): what it speaks for (the definition, the predicates it
+/// names) changed since it was confirmed, or it never was. The fix writes
+/// the current hash; it is a judgment, so `bmb fix` applies it only with
+/// `--confirm`.
+///
+/// With `all` false, only rationales that carry no hash: `bmb fix` writes
+/// those (the tools fill the hash in, §1), and `--confirm` the others too.
+pub fn unconfirmed_rationales(p: &Program, t: &crate::verify::Tables, all: bool) -> Vec<Diag> {
+    let hashes = crate::escape::Hashes::new(p, &t.fns);
+    let mut out = Vec::new();
+    for (path, _, f) in crate::check::defs_of(p, &t.fns) {
+        let path = &path;
+        let e = crate::escape::of(f);
+        if e.rationales.is_empty() {
+            continue;
+        }
+        let Some(h) = hashes.of(path) else { continue };
+        for r in &e.rationales {
+            if r.hash.as_deref() == Some(h.as_str()) || (!all && r.hash.is_some()) {
+                continue;
+            }
+            let why = match &r.hash {
+                None => "it carries no hash yet".to_string(),
+                Some(_) => {
+                    format!("`{path}` or a predicate it names changed since it was confirmed")
+                }
+            };
+            out.push(
+                Diag::new("W1001", r.span, format!("unconfirmed rationale: {why}"))
+                    .fix(
+                        "if the reason still holds, confirm it: `bmb fix --confirm` writes the current hash",
+                        Some(crate::escape::with_hash(&r.attr, &h)),
+                    ),
+            );
+        }
+    }
+    out
+}
+
+/// W1002 for each `assume` of a definition that is `proved` (ADR-0029 §2):
+/// its proof does not need the trusted fact, so the escape (and its
+/// rationale) can go. The fix removes it.
+fn needless_assumes(base: &crate::verify::Outcome, defs: &BTreeMap<String, &FnDef>) -> Vec<Diag> {
+    let mut out = Vec::new();
+    for s in &base.statuses {
+        if s.failed > 0 || s.trust != crate::verify::Trust::Proved {
+            continue;
+        }
+        let Some(f) = defs.get(&s.path) else { continue };
+        for sp in crate::escape::of(f).assumes {
+            out.push(
+                Diag::new(
+                    "W1002",
+                    sp,
+                    format!(
+                        "`{}` is proved without this `assume`: the escape is not needed",
+                        s.path
+                    ),
+                )
+                .fix("remove it (and its rationale)", Some(String::new())),
+            );
+        }
+    }
+    out
+}
+
+// ---------- unneeded effects (W0909, ADR-0030 §3, backlog 2F-02) ----------
+
+/// W0909 for each executable function that declares an effect its body
+/// does not need (`Tables::effect_needs`: its own operations and its
+/// callees' declared effects): the declaration is an interface and may be
+/// wider, but a wider one makes every caller declare it too. Not reported
+/// for a trait's method or an `impl`'s function of a trait (the trait's
+/// declaration is the interface) or for `main`'s `io` (required, E0701).
+fn unneeded_effects(t: &crate::verify::Tables, defs: &BTreeMap<String, &FnDef>) -> Vec<Diag> {
+    use crate::check::Effects;
+    let mut out = Vec::new();
+    for (path, (_, needed)) in &t.effect_needs {
+        let Some(sig) = t.fns.get(path) else {
+            continue;
+        };
+        if sig.trait_of.is_some() || sig.default || path.starts_with('<') {
+            continue;
+        }
+        let Some(f) = defs.get(path) else {
+            continue;
+        };
+        let keep = if f.name.name == "main" && !path.contains("::main::") {
+            needed.union(Effects::IO)
+        } else {
+            *needed
+        };
+        let extra = sig.effect.minus(keep);
+        if extra.is_pure() {
+            continue;
+        }
+        let Some(attr) = f.attrs.iter().find(|a| a.name.name == "effects") else {
+            continue;
+        };
+        out.push(
+            Diag::new(
+                "W0909",
+                attr.span,
+                format!(
+                    "`{path}` declares effects its body does not need: `{}`",
+                    extra.text()
+                ),
+            )
+            .fix(
+                format!(
+                    "declare `#[effects({})]`, unless the wider interface is meant (callers must declare it too)",
+                    keep.text()
+                ),
+                Some(format!("#[effects({})]", keep.text())),
+            ),
+        );
+    }
+    out
+}
+
 // ---------- self-matching triggers (W0906, backlog 1B-45) ----------
 
 /// The subexpressions of `e`, specification parts included.
@@ -1002,7 +1149,7 @@ fn block_exprs(b: &Block) -> Vec<&Expr> {
                 v.extend(invariants);
                 v.extend(block_exprs(body));
             }
-            Stmt::Assert { cond, .. } => v.push(cond),
+            Stmt::Assert { cond, .. } | Stmt::Assume { cond, .. } => v.push(cond),
             Stmt::Expr(e) => v.push(e),
             Stmt::Proof { body, .. } => v.extend(block_exprs(body)),
         }
@@ -1150,7 +1297,7 @@ fn blocks_in<'b>(b: &'b Block, out: &mut Vec<&'b Block>) {
                 expr_blocks(target, out);
                 expr_blocks(value, out);
             }
-            Stmt::Assert { .. } | Stmt::Proof { .. } => {}
+            Stmt::Assert { .. } | Stmt::Assume { .. } | Stmt::Proof { .. } => {}
             Stmt::Expr(e) => expr_blocks(e, out),
         }
     }
@@ -1236,7 +1383,7 @@ fn continues_to(b: &Block, label: Option<&str>) -> bool {
             Stmt::Assign { target, value, .. } => {
                 in_expr(target, label, inner) || in_expr(value, label, inner)
             }
-            Stmt::Assert { .. } | Stmt::Proof { .. } => false,
+            Stmt::Assert { .. } | Stmt::Assume { .. } | Stmt::Proof { .. } => false,
         }) || b.tail.as_ref().is_some_and(|t| in_expr(t, label, inner))
     }
     fn in_expr(e: &Expr, label: Option<&str>, inner: bool) -> bool {

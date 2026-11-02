@@ -186,7 +186,7 @@ impl OFunc {
         );
         let _ = writeln!(
             t,
-            "    #[effects(pure)]\n    #[uses({n}_pre, {n}_post)]\n    fn {n}(x: i64, y: i64) -> (r: i64)\n        requires {n}_pre(x, y),\n        ensures {n}_post(x, y, r),\n    {{"
+            "    #[effects(alloc)]\n    #[uses({n}_pre, {n}_post)]\n    fn {n}(x: i64, y: i64) -> (r: i64)\n        requires {n}_pre(x, y),\n        ensures {n}_post(x, y, r),\n    {{"
         );
         let _ = writeln!(t, "        let mut l: Option<Box<Node>> = None;");
         let _ = writeln!(t, "        let mut m: Option<Box<Node>> = None;");
@@ -376,7 +376,7 @@ const HELPERS: &str = "    struct Node { v: i64, next: Option<Box<Node>> }
 
     enum Tree { Leaf(i64), Many(Vec<Tree>) }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     fn rose_total(t: &Rose) -> i64
         decreases t,
     {
@@ -392,7 +392,7 @@ const HELPERS: &str = "    struct Node { v: i64, next: Option<Box<Node>> }
         s
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     fn tree_total(t: &Tree) -> i64
         decreases t,
     {
@@ -413,7 +413,7 @@ const HELPERS: &str = "    struct Node { v: i64, next: Option<Box<Node>> }
         }
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     fn sum(l: &Option<Box<Node>>) -> i64
         decreases l,
     {
@@ -474,7 +474,7 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path, checker: AddrCheck
         src.push_str(&f.text());
     }
     src.push_str(
-        "}\n\n#[summary(\"실행\")]\nmod app {\n    #[effects(io)]\n    fn main() -> () {\n",
+        "}\n\n#[summary(\"실행\")]\nmod app {\n    #[effects(alloc, io)]\n    fn main() -> () {\n",
     );
     let mut expected = String::new();
     for f in &funcs {

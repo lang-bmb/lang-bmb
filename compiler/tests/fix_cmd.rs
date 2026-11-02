@@ -338,7 +338,7 @@ fn conversion_habits_are_fixed_into_a_checked_program() {
 /// §7, backlog 2G-02) becomes `v.as_slice()` / `v.as_mut_slice()`.
 #[test]
 fn vec_coercions_are_fixed_into_a_checked_program() {
-    let text = "#[summary(\"t\")]\nmod m {\n    #[effects(pure)]\n    fn read(a: &[i64]) -> usize { a.len() }\n\n    #[effects(pure)]\n    fn write(a: &mut [i64]) -> () {}\n\n    #[effects(pure)]\n    fn f(r: &Vec<i64>) -> usize {\n        let mut v: Vec<i64> = Vec::new();\n        write(&mut v);\n        read(&v) + read(r)\n    }\n}\n";
+    let text = "#[summary(\"t\")]\nmod m {\n    #[effects(pure)]\n    fn read(a: &[i64]) -> usize { a.len() }\n\n    #[effects(pure)]\n    fn write(a: &mut [i64]) -> () {}\n\n    #[effects(alloc)]\n    fn f(r: &Vec<i64>) -> usize {\n        let mut v: Vec<i64> = Vec::new();\n        write(&mut v);\n        read(&v) + read(r)\n    }\n}\n";
     let input = one(text);
     assert!(!bmb::check_sources(&input).ok);
     let out = bmb::fix_sources(&input);

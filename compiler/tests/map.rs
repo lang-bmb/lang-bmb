@@ -122,7 +122,7 @@ fn queries_answer_from_the_maps() {
 
     let st = run(&f, &["query", "status"]);
     assert!(
-        st.contains("{\"summary\":true,\"defs\":5,\"verified\":3,\"failed\":0,\"io_defs\":1}"),
+        st.contains("{\"summary\":true,\"defs\":5,\"verified\":3,\"failed\":0,\"io_defs\":1,\"alloc_defs\":0,\"test_needed_defs\":1,\"proved\":"),
         "{st}"
     );
 
@@ -381,7 +381,7 @@ fn effects_lists_shortest_paths_to_io() {
         "{\"def\":\"app::main\",\"effect\":\"io\",\"path\":[\"app::main\"]}",
         "{\"def\":\"app::main\",\"effect\":\"io\",\"path\":[\"app::main\",\"app::quiet\"]}",
         "{\"def\":\"app::main\",\"effect\":\"io\",\"path\":[\"app::main\",\"app::a_log\",\"app::emit\",\"print_i64\"]}",
-        "{\"summary\":true,\"def\":\"app::main\",\"io_reached\":6,\"defs\":6}",
+        "{\"summary\":true,\"def\":\"app::main\",\"io_reached\":6,\"defs\":6,\"alloc_reached\":0}",
     ];
     assert_eq!(one, expected.join("\n") + "\n");
 
@@ -391,7 +391,7 @@ fn effects_lists_shortest_paths_to_io() {
             .lines()
             .nth(1)
             .unwrap(),
-        "{\"summary\":true,\"def\":\"app::twice\",\"io_reached\":0,\"defs\":6}"
+        "{\"summary\":true,\"def\":\"app::twice\",\"io_reached\":0,\"defs\":6,\"alloc_reached\":0}"
     );
 
     // Without a definition: every definition that reaches an `io`
@@ -404,7 +404,7 @@ fn effects_lists_shortest_paths_to_io() {
         "{\"def\":\"app::b_log\",\"effect\":\"io\",\"path\":[\"app::b_log\",\"app::emit\",\"print_i64\"]}",
         "{\"def\":\"app::emit\",\"effect\":\"io\",\"path\":[\"app::emit\",\"print_i64\"]}",
         "{\"def\":\"app::main\",\"effect\":\"io\",\"path\":[\"app::main\",\"app::a_log\",\"app::emit\",\"print_i64\"]}",
-        "{\"summary\":true,\"io_reaching\":4,\"io_defs\":5,\"defs\":6}",
+        "{\"summary\":true,\"io_reaching\":4,\"io_defs\":5,\"defs\":6,\"alloc_reaching\":0,\"alloc_defs\":0}",
     ];
     assert_eq!(all, expected.join("\n") + "\n");
 
@@ -572,5 +572,101 @@ mod iv {
     assert!(
         slice.contains(r#""path":"iv::ordered","text":"spec fn ordered(s: &Span) -> bool {"#),
         "{slice}"
+    );
+}
+
+/// Effect sets in the maps (ADR-0030 §5, backlog 2F-03): `effects` adds
+/// `alloc` rows after the `io` ones, `effect E` lists who declares and who
+/// needs `E` and why, and L1 and `status` carry `effects_required` (`eff*`)
+/// and `test_reasons` (`alloc` is no reason).
+#[test]
+fn effect_sets_in_the_maps() {
+    const P: &str = r#"#[summary("effects")]
+mod q {
+    #[effects(alloc)]
+    fn make() -> Vec<i64> {
+        let mut v: Vec<i64> = Vec::new();
+        v.push(1);
+        v
+    }
+
+    #[effects(alloc)]
+    fn uses_make() -> i64 {
+        let v: Vec<i64> = make();
+        7
+    }
+
+    #[effects(alloc, io)]
+    fn wide() -> () {}
+
+    #[effects(alloc, io)]
+    fn main() -> () {
+        let n: i64 = uses_make();
+        print_i64(n)
+    }
+}
+"#;
+    let f = files(&[("q.bmb", P)]);
+    let all: Vec<String> = run(&f, &["query", "effects"])
+        .lines()
+        .skip(1)
+        .map(String::from)
+        .collect();
+    assert_eq!(
+        all,
+        [
+            r#"{"def":"q::main","effect":"io","path":["q::main","print_i64"]}"#,
+            r#"{"def":"q::main","effect":"alloc","path":["q::main","q::uses_make","q::make"]}"#,
+            r#"{"def":"q::make","effect":"alloc","path":["q::make"]}"#,
+            r#"{"def":"q::uses_make","effect":"alloc","path":["q::uses_make","q::make"]}"#,
+            r#"{"summary":true,"io_reaching":1,"io_defs":2,"defs":4,"alloc_reaching":3,"alloc_defs":4}"#,
+        ]
+    );
+    let alloc: Vec<String> = run(&f, &["query", "effect", "alloc"])
+        .lines()
+        .skip(1)
+        .map(String::from)
+        .collect();
+    assert_eq!(
+        alloc,
+        [
+            r#"{"def":"q::main","effect":"alloc","declares":true,"requires":true,"source":"callee"}"#,
+            r#"{"def":"q::make","effect":"alloc","declares":true,"requires":true,"source":"own"}"#,
+            r#"{"def":"q::uses_make","effect":"alloc","declares":true,"requires":true,"source":"callee"}"#,
+            r#"{"def":"q::wide","effect":"alloc","declares":true,"requires":false,"source":null}"#,
+            r#"{"summary":true,"effect":"alloc","declares":4,"requires":3,"defs":4}"#,
+        ]
+    );
+    assert!(bmb::map_request(&f, &["query".into(), "effect".into(), "nondet".into()]).is_err());
+    let l1 = run(&f, &["map", "L1"]);
+    let main = l1
+        .lines()
+        .find(|l| l.contains("\"path\":\"q::main\""))
+        .unwrap();
+    assert!(main.contains(r#""effects":"alloc, io""#), "{main}");
+    assert!(
+        main.contains(r#""effects_required":["alloc","io"],"test_reasons":["io"],"trust""#),
+        "{main}"
+    );
+    let make = l1
+        .lines()
+        .find(|l| l.contains("\"path\":\"q::make\""))
+        .unwrap();
+    assert!(
+        make.contains(r#""effects_required":["alloc"],"test_reasons":[],"trust""#),
+        "{make}"
+    );
+    let wide = l1
+        .lines()
+        .find(|l| l.contains("\"path\":\"q::wide\""))
+        .unwrap();
+    assert!(
+        wide.contains(r#""effects_required":[],"test_reasons":[],"trust""#),
+        "{wide}"
+    );
+    let st = run(&f, &["query", "status"]);
+    assert!(
+        st.contains("\"io_defs\":2,\"alloc_defs\":4,\"test_needed_defs\":1,\"proved\""),
+        "{st}"
     );
 }

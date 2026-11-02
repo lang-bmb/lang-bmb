@@ -3,7 +3,7 @@ mod app {
     spec fn short(v: &[u8], n: u64) -> bool { v.len() <= 50 * n }
 
     // `n=<i> sq=<i*i>` lines, built in one buffer and written once.
-    #[effects(io)]
+    #[effects(alloc, io)]
     #[uses(short, bytes::room, bytes::grew_by, bytes::kept, bytes::fits, bytes::appended, bytes::copied)]
     fn squares() -> () {
         let mut out: Vec<u8> = Vec::new();
@@ -23,7 +23,7 @@ mod app {
     }
 
     // A parsed value, or `none`, on its own line.
-    #[effects(io)]
+    #[effects(alloc, io)]
     #[uses(bytes::room, bytes::grew_by, bytes::kept)]
     fn show(r: Option<u64>) -> () {
         let mut out: Vec<u8> = Vec::new();
@@ -37,7 +37,7 @@ mod app {
         }
     }
 
-    #[effects(io)]
+    #[effects(alloc, io)]
     #[uses(bytes::room, bytes::grew_by, bytes::kept)]
     fn show_at(r: Option<usize>) -> () {
         match r {
@@ -46,7 +46,7 @@ mod app {
         }
     }
 
-    #[effects(io)]
+    #[effects(alloc, io)]
     #[uses(bytes::room, bytes::grew_by, bytes::kept)]
     fn signed() -> () {
         let mut out: Vec<u8> = Vec::new();
@@ -59,7 +59,7 @@ mod app {
         print_bytes(out.as_slice());
     }
 
-    #[effects(io)]
+    #[effects(alloc, io)]
     #[uses(short, bytes::room, bytes::grew_by, bytes::kept, bytes::fits, bytes::appended, bytes::copied)]
     fn main() -> () {
         squares();

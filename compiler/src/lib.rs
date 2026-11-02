@@ -6,6 +6,7 @@ pub mod cache;
 pub mod check;
 pub mod codegen;
 pub mod diag;
+pub mod escape;
 pub mod fmt;
 pub mod identity;
 pub mod incremental;
@@ -206,6 +207,14 @@ pub const FIX_MAX_ROUNDS: usize = 16;
 /// replacement changes the text, when a text repeats, or after
 /// `FIX_MAX_ROUNDS` rounds. The result depends only on the input.
 pub fn fix_sources(files: &[(String, String)]) -> FixOutput {
+    fix_sources_with(files, false)
+}
+
+/// As `fix_sources`; on a program that checks it also writes the hash of
+/// each `#[rationale(..)]` that carries none (ADR-0029 §1: the tools fill
+/// it in) and, with `confirm`, of each whose hash is no longer current
+/// (`bmb fix --confirm`: confirming is a judgment, §3).
+pub fn fix_sources_with(files: &[(String, String)], confirm: bool) -> FixOutput {
     let mut texts: Vec<(String, String)> = files.to_vec();
     let mut applied = Vec::new();
     let mut rounds = 0;
@@ -221,7 +230,13 @@ pub fn fix_sources(files: &[(String, String)]) -> FixOutput {
         let canon = if fe.diags.has_errors() {
             Vec::new()
         } else {
-            lint::canonical_loops(&fe.program, &texts)
+            let mut c = lint::canonical_loops(&fe.program, &texts);
+            c.extend(lint::unconfirmed_rationales(
+                &fe.program,
+                &fe.tables,
+                confirm,
+            ));
+            c
         };
         let mut cand: Vec<(usize, usize, usize, &'static str, String)> = fe
             .diags
@@ -538,7 +553,13 @@ fn emit_llvm_frontend(
             cache,
             incr: incr.map(|s| s.stats).unwrap_or_default(),
         },
-        checks: module.checks,
+        // Checks kept below an escape are not missing proofs (ADR-0029 §4).
+        checks: module
+            .checks_by
+            .iter()
+            .filter(|(p, _)| !outcome.checked.contains(*p))
+            .map(|(_, n)| n)
+            .sum(),
         has_main: module.main.is_some(),
         ir: Some(module.ir),
     }
@@ -641,8 +662,15 @@ fn status_lines(outcome: &verify::Outcome) -> String {
     let mut out = String::new();
     for s in &outcome.statuses {
         let status = if s.failed == 0 { "verified" } else { "failed" };
+        // A proof with trusted facts says so (ADR-0029 §5); a `proved` line
+        // is as before.
+        let trust = match s.trust {
+            verify::Trust::Proved => String::new(),
+            t if s.failed == 0 => format!(",\"trust\":\"{}\"", t.name()),
+            _ => String::new(),
+        };
         out.push_str(&format!(
-            "{{\"def\":{},\"status\":\"{status}\",\"obligations\":{},\"failed\":{},\"rlimit\":{},\"rlimit_max\":{}}}\n",
+            "{{\"def\":{},\"status\":\"{status}\",\"obligations\":{},\"failed\":{},\"rlimit\":{},\"rlimit_max\":{}{trust}}}\n",
             diag::json_str(&s.path),
             s.obligations,
             s.failed,

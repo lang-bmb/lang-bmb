@@ -157,7 +157,7 @@ mod inv {
         }
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     fn keep(v: &mut Vec<Span>, s: Span) -> () {
         if v.len() < 100 {
             v.push(s);
@@ -206,7 +206,7 @@ mod inv {
         }
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(pct, percent)]
     fn push_front(l: List, x: i64) -> List
         requires pct(x),

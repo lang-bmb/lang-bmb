@@ -34,6 +34,9 @@
 | E0214 | `use` is not used: names are written in full |
 | E0218 | a `Vec` is passed where a slice is expected: write `v.as_slice()` |
 | E0219 | `drop(v)` and `mem::take` are not used |
+| E0215 | `unsafe` is not used: a body that cannot be proved is `#[external_body]` |
+| E0216 | Verus's `#[verifier::external_body]`: BMB writes `#[external_body]` |
+| E0217 | Verus's `admit()`: BMB writes `assume(p(..))` with a rationale |
 | E0234 | a string literal: text is bytes, write `b"..."` |
 | E0235 | a blanket impl `impl<T> Trait for T` is not used |
 | E0240 | a `where` clause is not used: bounds go next to the type parameter |
@@ -151,6 +154,8 @@
 | E0603 | `pure` function calls a function with effect `io` |
 | E0604 | spec functions take no `#[effects(..)]` attribute |
 | E0605 | unknown or misplaced attribute |
+| E0606 | the body needs an effect the function does not declare |
+| E0607 | `pure` listed with another effect, or an effect listed twice |
 
 ## E07xx 프로그램 구조
 
@@ -196,7 +201,24 @@
 | W0905 | a point of a verified function is unreachable in its proof: what follows is proved vacuously |
 | W0906 | a quantifier's only trigger matches a term of its own body: instances feed each other (matching loop) |
 | W0907 | a counting `while` whose canonical form is a range `for` (the fix rewrites it; `bmb fix` applies it) |
+| W0909 | an executable function declares an effect its body does not need (callers must declare it too) |
 | W0908 | the contract is weaker than in the old version: a stronger `requires`, a weaker `ensures` or `pure` become `io` (`bmb weaken`, with the counterexample) |
+
+## E10xx 탈출구와 근거(ADR-0029)
+
+| 코드 | 뜻 |
+| --- | --- |
+| E1001 | an escape (`assume`, `#[external_body]`) without a `#[rationale(..)]` before it |
+| E1002 | a malformed `#[rationale(..)]`: `kind` outside the list, no explanation, or not before an escape |
+| E1003 | `assume` takes one named predicate call, in executable code |
+| E1004 | `#[external_body]` on a spec fn, a proof fn or `main` |
+
+## W10xx 탈출구와 근거(경고, `bmb lint`만)
+
+| 코드 | 뜻 |
+| --- | --- |
+| W1001 | an unconfirmed rationale: what it is bound to changed, or it carries no hash (`bmb fix --confirm`) |
+| W1002 | an `assume` the proof does not need: the definition is proved without it |
 
 ## 은퇴한 코드(다시 쓰지 않는다)
 

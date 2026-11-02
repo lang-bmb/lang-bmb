@@ -18,7 +18,7 @@ mod np {
         rows.len() == n && forall|i: usize| i < rows.len() ==> #[trigger] rows[i].cells.len() == 1
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(pairs, small)]
     fn grid(n: usize) -> (out: Vec<Vec<i64>>)
         requires small(n),
@@ -47,7 +47,7 @@ mod np {
     }
 
     // `push` on one element changes that element's length only.
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(at, len_is, pairs)]
     fn grow(g: &mut Vec<Vec<i64>>) -> ()
         requires pairs(g.as_slice(), 3),
@@ -56,7 +56,7 @@ mod np {
         g[1].push(7);
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(small, tagged)]
     fn row_cells(n: usize) -> (out: Vec<Row>)
         requires small(n),

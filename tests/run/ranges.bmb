@@ -145,7 +145,7 @@ mod rg {
         c
     }
 
-    #[effects(io)]
+    #[effects(alloc, io)]
     #[uses(bounded, few, found_at, order, small)]
     fn main() -> () {
         let a: [i64; 6] = [4, 7, 2, 9, 6, 5];

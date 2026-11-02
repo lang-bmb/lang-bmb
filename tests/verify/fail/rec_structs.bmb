@@ -17,7 +17,7 @@ mod rf {
     }
 
     // Recursion on a new value is not on a part of the old one.
-    #[effects(pure)]
+    #[effects(alloc)]
     fn fresh(n: &Node) -> i64
         decreases n,
     {
@@ -33,7 +33,7 @@ mod rf {
     // A field of a new value is checked where it is computed, not taken
     // from the facts of the value it goes into (a fault the owned-data
     // fuzzer found while 2O-03d was written).
-    #[effects(pure)]
+    #[effects(alloc)]
     fn built(x: i64) -> i64 {
         let r: Node = Node { v: 3 * x, kids: Vec::new() };
         r.v
@@ -45,7 +45,7 @@ mod rf {
     }
 
     // The push goes to the child, not to `n`.
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(grew, parent)]
     fn misplaced(n: &mut Node, c: Node) -> ()
         requires parent(n),

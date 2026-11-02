@@ -49,9 +49,11 @@ const USAGE: &str = "usage:
                             check, prove (all obligations) and build an executable
   bmb fmt [--check] <file.bmb>...
                             print the normal form (ADR-0019); --check fails if a file differs
-  bmb fix [--write|--print] <file.bmb>...
+  bmb fix [--write|--print] [--confirm] <file.bmb>...
                             apply mechanical fixes (diagnostic replacements, and on a program
-                            that checks the canonical `for` of counting `while` loops, W0907)
+                            that checks the canonical `for` of counting `while` loops, W0907,
+                            and the hash of each `#[rationale(..)]` that carries none;
+                            --confirm also rewrites the hashes that are no longer current, W1001)
                             and re-check until none applies; JSONL report of applied fixes,
                             remaining diagnostics
                             and a summary; --write rewrites changed files in place, --print
@@ -91,7 +93,7 @@ const USAGE: &str = "usage:
   bmb hash <file.bmb>...    nameless identities and hashes (id, body, iface) as JSONL
   bmb map [--cache DIR] [L0|L1|L2|all] <file.bmb>...
                             standard maps as JSONL (ADR-0020)
-  bmb query [--cache DIR] <units|surface|edges|slice|find|contracts|status|impact|duplicates|effects|tests> [args] -- <file.bmb>...
+  bmb query [--cache DIR] <units|surface|edges|slice|find|contracts|status|impact|duplicates|effects|effect|tests> [args] -- <file.bmb>...
                             read queries as JSONL (ADR-0020); --cache as for verify (only
                             the L1 rows, `surface` and `status` prove)
   bmb import DIR <file.bmb>...
@@ -412,11 +414,12 @@ fn run() -> ExitCode {
         }
         Some("fix") if args.len() > 1 => {
             let mut rest = &args[1..];
-            let (mut write, mut print_text) = (false, false);
+            let (mut write, mut print_text, mut confirm) = (false, false, false);
             loop {
                 match rest.first().map(String::as_str) {
                     Some("--write") => write = true,
                     Some("--print") => print_text = true,
+                    Some("--confirm") => confirm = true,
                     _ => break,
                 }
                 rest = &rest[1..];
@@ -429,7 +432,7 @@ fn run() -> ExitCode {
                 Ok(f) => f,
                 Err(code) => return code,
             };
-            let out = bmb::fix_sources(&files);
+            let out = bmb::fix_sources_with(&files, confirm);
             if print_text {
                 let text = out
                     .files

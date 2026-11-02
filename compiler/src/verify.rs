@@ -48,6 +48,19 @@ pub struct Tables {
     /// The types instances and substituted contracts mention, for the
     /// datatype declarations.
     pub inst_types: Vec<TypeKind>,
+    /// Per executable definition (ADR-0030 §3): the effects of its own
+    /// operations and the effects its body needs (those and its callees'
+    /// declared effects).
+    pub effect_needs: BTreeMap<String, (crate::check::Effects, crate::check::Effects)>,
+    /// Definitions that may end up not `proved` (ADR-0029 §2), from the
+    /// text alone: those with an escape (`assume`, `#[external_body]`),
+    /// those that call one of them, and a trait method one of whose `impl`
+    /// functions is one. Only these can have trusted facts in their proofs.
+    pub may_untrusted: BTreeSet<String>,
+    /// The `#[external_body]` functions (no obligations, trust `external`).
+    pub external: BTreeSet<String>,
+    /// The executable calls of each definition (the checker's call graph).
+    pub calls: BTreeMap<String, BTreeSet<String>>,
 }
 
 impl Tables {
@@ -145,6 +158,10 @@ impl Tables {
             trait_impls,
             insts: BTreeMap::new(),
             inst_types: Vec::new(),
+            effect_needs: self.effect_needs.clone(),
+            may_untrusted: self.may_untrusted.clone(),
+            external: self.external.clone(),
+            calls: self.calls.clone(),
         }
     }
 }
@@ -308,7 +325,7 @@ fn each_block_expr<'e>(b: &'e Block, f: &mut dyn FnMut(&'e Expr)) {
                 invariants.iter().for_each(|x| each_expr(x, f));
                 each_block_expr(body, f);
             }
-            Stmt::Assert { cond, .. } => each_expr(cond, f),
+            Stmt::Assert { cond, .. } | Stmt::Assume { cond, .. } => each_expr(cond, f),
             Stmt::Expr(e) => each_expr(e, f),
             Stmt::Proof { body, .. } => each_block_expr(body, f),
         }
@@ -574,6 +591,10 @@ pub struct FnStatus {
     pub path: String,
     pub obligations: usize,
     pub failed: usize,
+    /// How the definition's proof stands when it has no failure (ADR-0029
+    /// §2): `Proved` without trusted facts, `Assumed` with them, `External`
+    /// for `#[external_body]` (no obligations).
+    pub trust: Trust,
     /// Solver resource units over all obligations, and the largest single one
     /// (compare with the pinned rlimit to see how close a proof is to failing).
     pub rlimit_total: u64,
@@ -598,6 +619,13 @@ pub struct Outcome {
     pub vacuous: Vec<(String, Span, &'static str)>,
     /// Under `vacuous_ends` only: what deciding the reach points cost.
     pub reach_cost: SatCost,
+    /// The definitions code generation compiles with every check (ADR-0029
+    /// §4): those that are not `proved` and every definition they reach.
+    /// Their checks are not missing proofs.
+    pub checked: BTreeSet<String>,
+    /// Per `assumed` definition: its obligations that only trusted facts
+    /// prove (those that failed without them, ADR-0029 §5).
+    pub assumed_obligations: BTreeMap<String, usize>,
 }
 
 /// What a satisfiability check (`vacuous_ends`, `preconditions_satisfiable`)
@@ -634,6 +662,50 @@ thread_local! {
     /// definition, encoded instead of its body; the obligations each one
     /// made are recorded.
     static REFINE: RefCell<Option<Refining>> = const { RefCell::new(None) };
+    /// The trust of the pass being run (ADR-0029 §2), set by
+    /// `verify_trusting`; `None` (a program without escapes) trusts all.
+    static TRUST: RefCell<Option<TrustPass>> = const { RefCell::new(None) };
+}
+
+/// The trust level of a definition's proof (ADR-0029 §2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Trust {
+    #[default]
+    Proved,
+    Assumed,
+    External,
+}
+
+impl Trust {
+    pub fn name(self) -> &'static str {
+        match self {
+            Trust::Proved => "proved",
+            Trust::Assumed => "assumed",
+            Trust::External => "external",
+        }
+    }
+}
+
+/// One pass of `verify_trusting`: whether trusted facts enter the proof
+/// (`assume`, the `ensures` of the `untrusted` callees), and which callees
+/// are not `proved`.
+struct TrustPass {
+    trusted: bool,
+    untrusted: BTreeSet<String>,
+}
+
+/// Whether the current pass assumes `assume` facts.
+fn trusts_assumptions() -> bool {
+    TRUST.with(|t| t.borrow().as_ref().is_none_or(|t| t.trusted))
+}
+
+/// Whether the current pass assumes callee `path`'s `ensures`.
+fn trusts_callee(path: &str) -> bool {
+    TRUST.with(|t| {
+        t.borrow()
+            .as_ref()
+            .is_none_or(|t| t.trusted || !t.untrusted.contains(path))
+    })
 }
 
 /// Where the obligations of `Enc::refines` stand.
@@ -4522,6 +4594,14 @@ impl<'p, 'q> Enc<'p, 'q> {
                 let g = self.spec(cond, &env, &old).s();
                 self.oblige("E0810", *span, "assertion may not hold", g);
             }
+            // A trusted fact (ADR-0029 §2): only in a pass that trusts.
+            Stmt::Assume { cond, .. } => {
+                if trusts_assumptions() {
+                    let (env, old) = self.cur_env();
+                    let g = self.spec(cond, &env, &old).s();
+                    self.pc.push(g);
+                }
+            }
             Stmt::Expr(e) => {
                 self.eval(e);
             }
@@ -5643,9 +5723,13 @@ impl<'p, 'q> Enc<'p, 'q> {
         if let Some(n) = &f.ret.name {
             post_env.insert(n.name.clone(), result.clone());
         }
-        for en in &f.ensures {
-            let g = self.in_def(&unit, csub.clone(), |s| s.spec(en, &post_env, &old_env).s());
-            self.pc.push(g);
+        // The `ensures` of a callee that is not `proved` is a trusted fact
+        // (ADR-0029 §2): assumed only in a pass that trusts.
+        if trusts_callee(&target) {
+            for en in &f.ensures {
+                let g = self.in_def(&unit, csub.clone(), |s| s.spec(en, &post_env, &old_env).s());
+                self.pc.push(g);
+            }
         }
         result
     }
@@ -5743,7 +5827,7 @@ fn find_let(b: &Block, name: &str, out: &mut Option<TypeKind>) {
                 invariants.iter().for_each(|e| find_let_expr(e, name, out));
                 find_let(body, name, out);
             }
-            Stmt::Assert { cond, .. } => find_let_expr(cond, name, out),
+            Stmt::Assert { cond, .. } | Stmt::Assume { cond, .. } => find_let_expr(cond, name, out),
             Stmt::LetFields { init, .. } => find_let_expr(init, name, out),
             Stmt::Expr(e) => find_let_expr(e, name, out),
             Stmt::Proof { body, .. } => find_let(body, name, out),
@@ -5842,7 +5926,7 @@ fn assigned_in_block(b: &Block, out: &mut BTreeSet<String>) {
             }
             Stmt::Expr(e) => assigned_in_expr(e, out),
             // Ghost code assigns nothing (E0257).
-            Stmt::Assert { .. } | Stmt::Proof { .. } => {}
+            Stmt::Assert { .. } | Stmt::Assume { .. } | Stmt::Proof { .. } => {}
         }
     }
     if let Some(t) = &b.tail {
@@ -6634,8 +6718,274 @@ pub fn preconditions_satisfiable(
     (out, cost)
 }
 
+/// Proves the program's definitions (or `only` those). With an escape in
+/// the program (ADR-0029), `verify_trusting` separates trusted facts;
+/// without, one pass as before.
 #[allow(clippy::too_many_arguments)]
 fn verify_impl(
+    p: &Program,
+    t: &Tables,
+    diags: &mut Diags,
+    seed: u64,
+    cache: Option<&mut ProofCache>,
+    only: Option<&BTreeSet<String>>,
+    stop_at_failure: bool,
+    incr: Option<&mut crate::incremental::Session>,
+) -> Outcome {
+    if t.may_untrusted.is_empty() {
+        verify_pass(p, t, diags, seed, cache, only, stop_at_failure, incr)
+    } else {
+        verify_trusting(p, t, diags, seed, cache, only, stop_at_failure, incr)
+    }
+}
+
+/// What one pass decided for one definition.
+struct DefResult {
+    status: FnStatus,
+    diags: Vec<Diag>,
+    proven: BTreeSet<ObKey>,
+    script: Option<String>,
+}
+
+/// Splits a pass's outcome and diagnostics by definition (by span); the
+/// diagnostics outside every definition come back apart.
+fn split_pass(
+    o: Outcome,
+    d: Diags,
+    spans: &BTreeMap<String, Span>,
+) -> (BTreeMap<String, DefResult>, Vec<Diag>) {
+    let within =
+        |sp: &Span, file: u32, lo: u32, hi: u32| sp.file == file && sp.lo <= lo && hi <= sp.hi;
+    let mut out: BTreeMap<String, DefResult> = BTreeMap::new();
+    let mut scripts = o.scripts;
+    for st in o.statuses {
+        let path = st.path.clone();
+        out.insert(
+            path.clone(),
+            DefResult {
+                status: st,
+                diags: Vec::new(),
+                proven: BTreeSet::new(),
+                script: scripts.remove(&path),
+            },
+        );
+    }
+    for k in o.proven {
+        if let Some((p, _)) = spans
+            .iter()
+            .find(|(p, sp)| out.contains_key(*p) && within(sp, k.1, k.2, k.3))
+        {
+            out.get_mut(p).unwrap().proven.insert(k);
+        }
+    }
+    let mut rest = Vec::new();
+    for x in d.items {
+        let s = x.span;
+        match spans
+            .iter()
+            .find(|(p, sp)| out.contains_key(*p) && within(sp, s.file, s.lo, s.hi))
+        {
+            Some((p, _)) => out.get_mut(p).unwrap().diags.push(x),
+            None => rest.push(x),
+        }
+    }
+    (out, rest)
+}
+
+/// The proof gate with trusted facts (ADR-0029 §2). Pass A proves every
+/// definition without them: no `assume`, no `ensures` of a callee that is
+/// not `proved` (at first the `#[external_body]` ones). A definition that
+/// fails there and can reach an escape (`Tables::may_untrusted`) is proved
+/// again in pass B with every fact: `assumed` if that proves it, failed
+/// otherwise (its diagnostics are pass B's). The `assumed` ones join the
+/// untrusted callees and the definitions they make fail pass A are proved
+/// again, until nothing changes (the set only grows). An `#[external_body]`
+/// function has no obligations. Code generation (§4) keeps every check of
+/// the definitions that are not `proved` and of every definition they
+/// reach: `proven` holds only the obligations of the others.
+#[allow(clippy::too_many_arguments)]
+fn verify_trusting(
+    p: &Program,
+    t: &Tables,
+    diags: &mut Diags,
+    seed: u64,
+    mut cache: Option<&mut ProofCache>,
+    only: Option<&BTreeSet<String>>,
+    stop_at_failure: bool,
+    mut incr: Option<&mut crate::incremental::Session>,
+) -> Outcome {
+    let spans: BTreeMap<String, Span> = crate::check::defs_of(p, &t.fns)
+        .into_iter()
+        .map(|(path, _, f)| (path, f.span))
+        .collect();
+    let close = |set: &BTreeSet<String>| -> BTreeSet<String> {
+        let mut out = set.clone();
+        for p in set {
+            if let Some(rest) = p.strip_prefix('<')
+                && let Some((head, m)) = rest.rsplit_once(">::")
+                && let Some((_, tr)) = head.rsplit_once(" as ")
+            {
+                out.insert(format!("{tr}::{m}"));
+            }
+        }
+        out
+    };
+    let pass =
+        |trusted: bool, untrusted: &BTreeSet<String>, run: &mut dyn FnMut() -> (Outcome, Diags)| {
+            TRUST.with(|x| {
+                *x.borrow_mut() = Some(TrustPass {
+                    trusted,
+                    untrusted: untrusted.clone(),
+                })
+            });
+            let r = run();
+            TRUST.with(|x| *x.borrow_mut() = None);
+            r
+        };
+    let mut untrusted = close(&t.external);
+    let (a, da) = pass(false, &untrusted, &mut || {
+        let mut d = Diags::default();
+        let o = verify_pass(
+            p,
+            t,
+            &mut d,
+            seed,
+            cache.as_deref_mut(),
+            only,
+            stop_at_failure,
+            incr.as_deref_mut(),
+        );
+        (o, d)
+    });
+    let vacuous = a.vacuous.clone();
+    let reach_cost = a.reach_cost;
+    let (mut result, rest) = split_pass(a, da, &spans);
+    // Definitions whose current result comes from pass B.
+    let mut trusted_pass: BTreeSet<String> = BTreeSet::new();
+    let mut assumed_obligations: BTreeMap<String, usize> = BTreeMap::new();
+    loop {
+        let cands: BTreeSet<String> = result
+            .iter()
+            .filter(|(p, r)| {
+                r.status.failed > 0 && t.may_untrusted.contains(*p) && !trusted_pass.contains(*p)
+            })
+            .map(|(p, _)| p.clone())
+            .collect();
+        if !cands.is_empty() {
+            let (b, db) = pass(true, &untrusted, &mut || {
+                let mut d = Diags::default();
+                let o = verify_pass(
+                    p,
+                    t,
+                    &mut d,
+                    seed,
+                    cache.as_deref_mut(),
+                    Some(&cands),
+                    stop_at_failure,
+                    None,
+                );
+                (o, d)
+            });
+            let (rb, _) = split_pass(b, db, &spans);
+            for (path, mut r) in rb {
+                if r.status.failed == 0 {
+                    r.status.trust = Trust::Assumed;
+                    let before = result.get(&path).map_or(0, |a| a.status.failed);
+                    assumed_obligations.insert(path.clone(), before);
+                }
+                trusted_pass.insert(path.clone());
+                result.insert(path, r);
+            }
+        }
+        let not_proved: BTreeSet<String> = result
+            .iter()
+            .filter(|(_, r)| r.status.failed == 0 && r.status.trust != Trust::Proved)
+            .map(|(p, _)| p.clone())
+            .chain(t.external.iter().cloned())
+            .collect();
+        let grown = close(&not_proved);
+        if grown.is_subset(&untrusted) {
+            break;
+        }
+        untrusted.extend(grown);
+        // Proved before, possibly with a callee's `ensures` no longer trusted.
+        let again: BTreeSet<String> = result
+            .iter()
+            .filter(|(p, r)| {
+                r.status.failed == 0
+                    && r.status.trust == Trust::Proved
+                    && t.may_untrusted.contains(*p)
+                    && !t.external.contains(*p)
+            })
+            .map(|(p, _)| p.clone())
+            .collect();
+        if again.is_empty() {
+            break;
+        }
+        let (a2, da2) = pass(false, &untrusted, &mut || {
+            let mut d = Diags::default();
+            let o = verify_pass(
+                p,
+                t,
+                &mut d,
+                seed,
+                cache.as_deref_mut(),
+                Some(&again),
+                stop_at_failure,
+                None,
+            );
+            (o, d)
+        });
+        let (ra, _) = split_pass(a2, da2, &spans);
+        for (path, r) in ra {
+            result.insert(path, r);
+        }
+    }
+    // Code generation keeps the checks below every definition that is not
+    // `proved` (ADR-0029 §4, downward).
+    let mut checked: BTreeSet<String> = result
+        .iter()
+        .filter(|(_, r)| r.status.trust != Trust::Proved || r.status.failed > 0)
+        .map(|(p, _)| p.clone())
+        .collect();
+    let mut todo: Vec<String> = checked.iter().cloned().collect();
+    while let Some(f) = todo.pop() {
+        for c in t.calls.get(&f).into_iter().flatten() {
+            if checked.insert(c.clone()) {
+                todo.push(c.clone());
+            }
+        }
+    }
+    let mut out = Outcome {
+        statuses: Vec::new(),
+        proven: BTreeSet::new(),
+        scripts: BTreeMap::new(),
+        vacuous,
+        reach_cost,
+        checked: BTreeSet::new(),
+        assumed_obligations,
+    };
+    for x in rest {
+        diags.push(x);
+    }
+    for (path, r) in result {
+        for x in r.diags {
+            diags.push(x);
+        }
+        if !checked.contains(&path) {
+            out.proven.extend(r.proven);
+        }
+        if let Some(s) = r.script {
+            out.scripts.insert(path.clone(), s);
+        }
+        out.statuses.push(r.status);
+    }
+    out.checked = checked;
+    out
+}
+
+#[allow(clippy::too_many_arguments)]
+fn verify_pass(
     p: &Program,
     t: &Tables,
     diags: &mut Diags,
@@ -6695,9 +7045,27 @@ fn verify_impl(
         if only.is_some_and(|o| !o.contains(path)) {
             continue;
         }
+        // `#[external_body]` (ADR-0029 §2): checked, not proved.
+        if t.external.contains(path) {
+            statuses.push(FnStatus {
+                path: path.clone(),
+                obligations: 0,
+                failed: 0,
+                trust: Trust::External,
+                rlimit_total: 0,
+                rlimit_max: 0,
+            });
+            continue;
+        }
         // Incremental build (backlog 2D-10): an unchanged, fully proved
-        // definition is not encoded again.
-        let hit = incr.as_mut().and_then(|s| s.proof_lookup(path, d.f));
+        // definition is not encoded again. One that may rest on trusted
+        // facts (ADR-0029) is neither looked up nor stored: its result
+        // depends on how its callees' proofs stand.
+        let hit = if t.may_untrusted.contains(path) {
+            None
+        } else {
+            incr.as_mut().and_then(|s| s.proof_lookup(path, d.f))
+        };
         if let Some(h) = &hit
             && !incr.as_ref().is_some_and(|s| s.audit())
         {
@@ -7381,6 +7749,7 @@ fn verify_impl(
             path: path.clone(),
             obligations: enc.obls.len(),
             failed,
+            trust: Trust::Proved,
             rlimit_total,
             rlimit_max,
         };
@@ -7389,7 +7758,9 @@ fn verify_impl(
             if let Some(h) = &hit {
                 s.proof_audit(h, &status, &def_proved, &script);
             }
-            s.proof_record(&status, d.f, &def_proved, &script);
+            if !t.may_untrusted.contains(path) {
+                s.proof_record(&status, d.f, &def_proved, &script);
+            }
         }
         statuses.push(status);
         scripts.insert(path.clone(), script);
@@ -7401,6 +7772,8 @@ fn verify_impl(
         scripts,
         vacuous,
         reach_cost,
+        checked: BTreeSet::new(),
+        assumed_obligations: BTreeMap::new(),
     }
 }
 

@@ -178,7 +178,7 @@ fn walk(m: &Mod, prefix: &str, out: &mut BTreeMap<String, Target>) {
             .flat_map(|a| a.args.iter())
             .filter_map(|x| match x {
                 crate::ast::AttrArg::Ident(i) => Some(full(&i.name, &mp)),
-                crate::ast::AttrArg::Str(..) => None,
+                crate::ast::AttrArg::Str(..) | crate::ast::AttrArg::Pair(..) => None,
             })
             .collect();
         out.entry(format!("{mp}::{}", f.name.name))

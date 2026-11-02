@@ -7,7 +7,7 @@ mod vp {
     }
 
     // The callee's contract is all the caller knows of the new length.
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(room, grew)]
     fn push_one(v: &mut Vec<i64>, x: i64) -> ()
         requires room(v.as_slice()),
@@ -22,7 +22,7 @@ mod vp {
         a.len() == n && forall|k: usize| k < n ==> #[trigger] a[k] == k * k
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(small, squares)]
     fn first_squares(n: usize) -> (r: Vec<i64>)
         requires small(n),
@@ -39,7 +39,7 @@ mod vp {
     }
 
     // A result's contract gives its length: the index is proved.
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(small, squares, room, grew)]
     fn use_result() -> i64 {
         let mut v: Vec<i64> = first_squares(5);
@@ -75,7 +75,7 @@ mod vp {
     }
 
     // A clone is the same value; a move carries it on.
-    #[effects(pure)]
+    #[effects(alloc)]
     fn copies() -> i64 {
         let mut v: Vec<i64> = Vec::new();
         v.push(3);
@@ -101,7 +101,7 @@ mod vp {
     }
 
     // The handle pattern: a store that only grows keeps old handles valid.
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(valid, kept, store_room, added)]
     fn add(s: &mut Vec<Point>, p: Point) -> (h: Id)
         requires store_room(s.as_slice()),
@@ -112,7 +112,7 @@ mod vp {
         Id { i: i }
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(valid, kept, store_room, added)]
     fn two_points() -> i64 {
         let mut s: Vec<Point> = Vec::new();

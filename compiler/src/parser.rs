@@ -73,6 +73,7 @@ const RESERVED: &[&str] = &[
     "exists",
     "old",
     "assert",
+    "assume",
     "return",
     "for",
     "loop",
@@ -471,10 +472,43 @@ impl<'a> Parser<'a> {
                     continue;
                 }
             };
+            // Verus's `#[verifier::external_body]` (ADR-0029 §7, E0216).
+            let mut verus_path = None;
+            if name.name == "verifier"
+                && self.is_p("::")
+                && let Tok::Ident(seg) = self.peek_at(1).clone()
+            {
+                self.bump();
+                verus_path = Some(Ident {
+                    name: seg,
+                    span: self.bump().span,
+                });
+            }
             let mut args = Vec::new();
             if self.eat_p("(") {
                 while !self.is_p(")") && !matches!(self.peek(), Tok::Eof) {
                     match self.peek().clone() {
+                        Tok::Ident(s) if matches!(self.peek_at(1), Tok::P("=")) => {
+                            // `key = value` (ADR-0029 §1).
+                            let key = Ident {
+                                name: s,
+                                span: self.bump().span,
+                            };
+                            self.bump();
+                            let value = match self.peek().clone() {
+                                Tok::Ident(v) => AttrArg::Ident(Ident {
+                                    name: v,
+                                    span: self.bump().span,
+                                }),
+                                Tok::Str(v) => AttrArg::Str(v, self.bump().span),
+                                _ => {
+                                    self.err_expected("a name or a string");
+                                    self.bump();
+                                    continue;
+                                }
+                            };
+                            args.push(AttrArg::Pair(key, Box::new(value)));
+                        }
                         Tok::Ident(s) => {
                             // A path argument `unit::name` is kept as one name.
                             let mut name = s;
@@ -513,11 +547,44 @@ impl<'a> Parser<'a> {
                     continue;
                 }
             };
-            out.push(Attr {
-                name,
-                args,
-                span: lo.to(hi),
-            });
+            let span = lo.to(hi);
+            // `#[verifier::external_body]`, `#[verifier(external_body)]`.
+            let verus = match (&verus_path, args.as_slice()) {
+                (Some(seg), []) => Some(seg.name.clone()),
+                (None, [AttrArg::Ident(i)]) if name.name == "verifier" => Some(i.name.clone()),
+                _ => None,
+            };
+            if verus.as_deref() == Some("external_body") {
+                self.diags.push(
+                    Diag::new(
+                        "E0216",
+                        span,
+                        "Verus's `verifier` attribute: BMB writes `#[external_body]`",
+                    )
+                    .fix(
+                        "write `#[external_body]` (with a `#[rationale(..)]` before it)",
+                        Some("#[external_body]".into()),
+                    ),
+                );
+                out.push(Attr {
+                    name: Ident {
+                        name: "external_body".into(),
+                        span: name.span,
+                    },
+                    args: Vec::new(),
+                    span,
+                });
+                continue;
+            }
+            if let Some(seg) = verus_path {
+                self.diags.push(Diag::new(
+                    "E0216",
+                    span,
+                    format!("Verus's `verifier::{}` attribute is not used", seg.name),
+                ));
+                continue;
+            }
+            out.push(Attr { name, args, span });
         }
         out
     }
@@ -590,18 +657,22 @@ impl<'a> Parser<'a> {
                 && UNSUPPORTED_ITEMS.contains(&s.as_str())
             {
                 let sp = self.span();
-                let fix = match s.as_str() {
-                    "const" | "static" => "use a `spec fn` returning the value, or a literal",
-                    _ => "units hold `fn`, `spec fn`, `struct`, `enum`, `trait` and `impl`",
-                };
-                self.diags.push(
-                    Diag::new(
-                        "E0207",
-                        sp,
-                        format!("`{s}` items are not supported in milestone 1"),
-                    )
-                    .fix(fix, None),
-                );
+                if s == "unsafe" {
+                    self.diags.push(unsafe_habit(sp));
+                } else {
+                    let fix = match s.as_str() {
+                        "const" | "static" => "use a `spec fn` returning the value, or a literal",
+                        _ => "units hold `fn`, `spec fn`, `struct`, `enum`, `trait` and `impl`",
+                    };
+                    self.diags.push(
+                        Diag::new(
+                            "E0207",
+                            sp,
+                            format!("`{s}` items are not supported in milestone 1"),
+                        )
+                        .fix(fix, None),
+                    );
+                }
                 self.bump();
                 self.recover_item();
             } else {
@@ -1682,10 +1753,86 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// `assume(p(..));` (ADR-0029 §1), at `assume`.
+    fn parse_assume(&mut self, lo: Span, rationale: Option<Attr>) -> PResult<StmtOrTail> {
+        self.bump();
+        self.bump();
+        let cond = self.parse_expr()?;
+        self.expect_p(")")?;
+        let hi = self.expect_p(";")?;
+        Ok(stmt(Stmt::Assume {
+            cond,
+            rationale,
+            span: lo.to(hi),
+        }))
+    }
+
     fn parse_stmt(&mut self) -> PResult<StmtOrTail> {
         let lo = self.span();
+        // Attributes before a statement: only `#[rationale(..)]` before
+        // `assume` (ADR-0029 §1); anything else is E1002 and is dropped.
+        // `#[trigger]` starts an expression (a quantifier's term).
+        if self.is_p("#")
+            && matches!(self.peek_at(1), Tok::P("["))
+            && !matches!(self.peek_at(2), Tok::Ident(n) if n == "trigger")
+        {
+            let attrs = self.attrs();
+            let before_assume = self.is_kw("assume") && matches!(self.peek_at(1), Tok::P("("));
+            let mut rationale = None;
+            for a in attrs {
+                if a.name.name == "rationale" && before_assume && rationale.is_none() {
+                    rationale = Some(a);
+                } else {
+                    self.diags.push(
+                        Diag::new(
+                            "E1002",
+                            a.span,
+                            format!(
+                                "`#[{}]` is not allowed here: before a statement, only \
+                                 `#[rationale(..)]` before `assume(..)`",
+                                a.name.name
+                            ),
+                        )
+                        .fix("remove the attribute", Some(String::new())),
+                    );
+                }
+            }
+            if before_assume {
+                return self.parse_assume(lo, rationale);
+            }
+        }
         if let Tok::Ident(s) = self.peek().clone() {
             match s.as_str() {
+                "assume" if matches!(self.peek_at(1), Tok::P("(")) => {
+                    return self.parse_assume(lo, None);
+                }
+                // Verus's `admit()` (ADR-0029 §7).
+                "admit" if matches!(self.peek_at(1), Tok::P("(")) => {
+                    self.bump();
+                    self.bump();
+                    let close = self.expect_p(")")?;
+                    let hi = if self.is_p(";") {
+                        self.expect_p(";")?
+                    } else {
+                        close
+                    };
+                    self.diags.push(
+                        Diag::new("E0217", lo.to(hi), "Verus's `admit()` is not used").fix(
+                            "state what you take as given: `assume(p(..));` with a \
+                                 `#[rationale(kind = .., \"why\")]` before it, or prove it",
+                            None,
+                        ),
+                    );
+                    return Ok(stmt(Stmt::Expr(Expr {
+                        kind: ExprKind::Block(Block {
+                            stmts: Vec::new(),
+                            tail: None,
+                            span: lo.to(hi),
+                        }),
+                        span: lo.to(hi),
+                    })));
+                }
+
                 "let" => return self.parse_let().map(stmt),
                 "while" => return self.parse_while().map(stmt),
                 "assert" if matches!(self.peek_at(1), Tok::P("(")) => {
@@ -2663,6 +2810,17 @@ impl<'a> Parser<'a> {
                 "forall" => self.parse_quant(Quantifier::Forall),
                 "exists" => self.parse_quant(Quantifier::Exists),
                 "match" => self.parse_match(),
+                // Rust's `unsafe { .. }` (ADR-0029 §7): read as a block.
+                "unsafe" if matches!(self.peek_at(1), Tok::P("{")) => {
+                    self.diags.push(unsafe_habit(self.span()));
+                    self.bump();
+                    let body = self.nested(Self::parse_block)?;
+                    let span = body.span;
+                    Ok(Expr {
+                        kind: ExprKind::Block(body),
+                        span,
+                    })
+                }
                 // `self::f` is a Rust path (E0242), not the receiver.
                 "self" if matches!(self.peek_at(1), Tok::P("::")) => self.parse_path_expr(),
                 "self" => {
@@ -3140,6 +3298,16 @@ impl<'a> Parser<'a> {
 }
 
 /// A statement, boxed (it is much larger than an expression).
+/// Rust's `unsafe` (ADR-0029 §7): a body that cannot be proved is an
+/// `#[external_body]` function with a rationale.
+fn unsafe_habit(sp: Span) -> Diag {
+    Diag::new("E0215", sp, "`unsafe` is not used: BMB code is proved").fix(
+        "a body that cannot be proved goes in its own function marked \
+         `#[external_body]`, with a `#[rationale(kind = .., \"why\")]` before it",
+        None,
+    )
+}
+
 fn stmt(s: Stmt) -> StmtOrTail {
     StmtOrTail::Stmt(Box::new(s))
 }

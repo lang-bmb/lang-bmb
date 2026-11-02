@@ -75,7 +75,7 @@ mod lx {
         i
     }
 
-    #[effects(io)]
+    #[effects(alloc, io)]
     #[uses(below, bounded, found_at, near, small)]
     fn main() -> () {
         let a: [i64; 5] = [4, 7, 2, 9, 6];
@@ -91,7 +91,7 @@ mod lx {
         k <= 1001 && k * k <= n + 2 * k + 1
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     fn owned(n: u64) -> u64 {
         let mut i: u64 = 0;
         let mut total: u64 = 0;

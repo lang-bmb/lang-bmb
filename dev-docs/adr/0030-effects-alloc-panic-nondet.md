@@ -107,3 +107,14 @@ ADR-0003은 테스트가 필요한 면적을 효과 선언으로 산출하기로
 3. **`alloc`의 테스트 필요 여부와 해제의 효과:** 제안은 둘 다 아님. 메모리 상한이 중요한 과제가 생기면 다시 본다.
 4. **테스트 필요 면적의 단위:** 정의 수 대 원천 지점 수 중 어느 것을 측정 축(DESIGN.md §9 R4)의 대표값으로 할지. `m2`에서 두 값을 모두 보고하고 정한다.
 5. **LLVM 속성의 이득:** `memory`·`willreturn`이 기준선 벤치에서 측정 가능한 차이를 내는지. 없으면 속성은 유지하되 성능 주장은 하지 않는다.
+
+## 구현 (2026-11-02, 백로그 2F-02)
+
+- 효과 집합 `check::Effects`(비트 집합, 포함 순서). 원천이 있는 원자 `alloc`·`io`만 받는다. `panic`(전체 검사 모드, 2E)과 `nondet`(입력 내장)은 원천과 함께 들인다(열린 질문 1·2의 권고: 원천 없는 효과는 검증할 수 없다).
+- `alloc`의 원천: `Vec::new`, `Vec::with_capacity`, `push`, `Vec`의 `clone`, `Box::new`(ADR-0047이 이 ADR 뒤에 들인 할당). `std::mem::take`는 빈 `Vec`을 남기지만 할당하지 않아 원천이 아니다(코드 생성의 `bmb_vec_alloc`·`grow`·`clone`·`bmb_box_alloc`과 맞춤).
+- E0606은 정의당 하나다(§3의 "빠진 효과마다"를 문구로: 빠진 효과마다 첫 원천을 적는다). 수정은 본문이 필요한 효과를 모두 쓴 속성이라 `bmb fix` 한 번에 맞는다. `pure` 함수가 `io` 함수를 부르는 경우는 E0603이 그 호출에 남고, 그것만 빠졌으면 E0606을 더하지 않는다.
+- 쓰이지 않는 선언 효과는 W0909(`bmb lint`). trait의 메서드와 trait impl의 함수, `main`의 `io`는 보고하지 않는다.
+- trait impl의 함수는 trait 메서드의 효과의 부분집합(E0316), `bmb weaken`은 효과를 포함 순서로 비교한다(더 넓으면 약함, 비교 불가면 `incomparable`).
+- 코퍼스: 할당하는 정의 66곳(라이브러리, 실행·검증 코퍼스, Benchmarks Game 프로그램)에 `alloc`을 더했다(E0606의 교체만 고정점까지 적용). 동결 집합의 시드·기준 해법에는 할당이 없어 바뀌지 않았다.
+- §5(백로그 2F-03): L1·`status` 행의 `effects_required`·`test_reasons`, `status` 요약의 `alloc_defs`·`test_needed_defs`, `query effects`의 `alloc` 행, `query effect E`. 요약의 `panic_defs`·`nondet_defs`와 `test_sites`(`tests` 질의에는 있다)는 원천이 생길 때 더한다. `query effects DEF`는 효과마다 경로 하나가 아니라 지금처럼 그 효과를 가진 정의마다 한 행이다(2D-11의 꼴을 지켜 소비자가 그대로 읽는다).
+- 남은 것: §6의 LLVM 속성과 §8의 동적 효과 퍼저(백로그 2F-04).

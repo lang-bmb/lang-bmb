@@ -84,7 +84,7 @@ impl Caller {
         );
         let _ = writeln!(
             t,
-            "    #[effects(pure)]\n    #[uses({})]\n    fn {n}(x: i64, y: i64) -> (r: i64)\n        requires {n}_pre(x, y),\n        ensures {n}_post(x, y, r),\n    {{",
+            "    #[effects(alloc)]\n    #[uses({})]\n    fn {n}(x: i64, y: i64) -> (r: i64)\n        requires {n}_pre(x, y),\n        ensures {n}_post(x, y, r),\n    {{",
             uses.join(", ")
         );
         for (i, b) in self.binds.iter().enumerate() {
@@ -308,7 +308,7 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
         src.push_str(&c.text(&callees));
     }
     src.push_str(
-        "}\n\n#[summary(\"실행\")]\nmod app {\n    #[effects(io)]\n    fn main() -> () {\n",
+        "}\n\n#[summary(\"실행\")]\nmod app {\n    #[effects(alloc, io)]\n    fn main() -> () {\n",
     );
     let mut expected = String::new();
     for c in &callers {

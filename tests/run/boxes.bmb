@@ -6,12 +6,12 @@ mod bx {
 
     enum Two { Neither, One(Box<i64>), Both(Box<i64>, Box<Pt>) }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     fn mk(x: i64) -> Box<Pt> {
         Box::new(Pt { x: x, y: x.wrapping_mul(10) })
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     fn boxed(v: i64) -> Box<i64> {
         Box::new(v)
     }
@@ -26,12 +26,12 @@ mod bx {
         h.p.x.wrapping_add(h.n)
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     fn hold(x: i64) -> Holder {
         Holder { p: mk(x), n: 100 }
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     fn reset(b: &mut Box<i64>, v: i64) -> () {
         *b = Box::new(v);
     }
@@ -62,7 +62,7 @@ mod bx {
         }
     }
 
-    #[effects(io)]
+    #[effects(alloc, io)]
     fn main() -> () {
         let mut b: Box<Pt> = mk(5);
         print_i64(sum(&b));

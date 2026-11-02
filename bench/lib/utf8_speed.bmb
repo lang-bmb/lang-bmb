@@ -5,7 +5,7 @@ mod app {
     spec fn small(v: &[u8], n: usize) -> bool { v.len() <= n + 4 && size_ok(n) }
 
     // Deterministic mixed text: each step appends one character of 1, 2, 3 or 4 bytes.
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(small, size_ok)]
     fn text(n: usize) -> Vec<u8>
         requires size_ok(n),
@@ -37,7 +37,7 @@ mod app {
         v
     }
 
-    #[effects(io)]
+    #[effects(alloc, io)]
     #[uses(size_ok)]
     fn main() -> () {
         let n: usize = 16777216;

@@ -14,7 +14,7 @@ mod vf {
     }
 
     // A tree built here is not part of the argument.
-    #[effects(pure)]
+    #[effects(alloc)]
     fn built(t: &Tree) -> i64
         decreases t,
     {

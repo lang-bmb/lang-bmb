@@ -11,7 +11,7 @@ mod bf {
     spec fn held(h: &Holder, x: i64) -> bool { h.p.x == x && h.n == x }
 
     // The value in the box is the one built.
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(at)]
     fn wrong_x(x: i64) -> (r: Box<Pt>)
         ensures at(*r, x),
@@ -35,7 +35,7 @@ mod bf {
     }
 
     // The field written is the one in the box, not a copy.
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(held)]
     fn forgot(x: i64) -> (r: Holder)
         ensures held(&r, x),

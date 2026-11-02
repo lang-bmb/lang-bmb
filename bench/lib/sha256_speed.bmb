@@ -5,7 +5,7 @@ mod app {
     spec fn exactly(v: &[u8], n: usize) -> bool { v.len() == n }
 
     // `n` deterministic bytes: the high bits of a 64-bit LCG.
-    #[effects(pure)]
+    #[effects(alloc)]
     #[uses(size_ok, exactly)]
     fn data(n: usize) -> (r: Vec<u8>)
         requires size_ok(n),
@@ -22,7 +22,7 @@ mod app {
         v
     }
 
-    #[effects(io)]
+    #[effects(alloc, io)]
     #[uses(size_ok, exactly, sha256::msg_ok)]
     fn main() -> () {
         let n: usize = 16777216;

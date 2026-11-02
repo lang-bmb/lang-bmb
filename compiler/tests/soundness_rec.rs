@@ -97,7 +97,7 @@ impl Rec {
         );
         let _ = writeln!(
             t,
-            "    #[effects(pure)]\n    #[uses({n}_pre, {n}_post)]\n    fn {n}(n: u64, x: i64) -> (r: i64)\n        requires {n}_pre(n, x),\n        ensures {n}_post(n, x, r),\n        decreases n,\n    {{"
+            "    #[effects(alloc)]\n    #[uses({n}_pre, {n}_post)]\n    fn {n}(n: u64, x: i64) -> (r: i64)\n        requires {n}_pre(n, x),\n        ensures {n}_post(n, x, r),\n        decreases n,\n    {{"
         );
         let _ = writeln!(
             t,
@@ -224,7 +224,7 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
         src.push_str(&r.text());
     }
     src.push_str(
-        "}\n\n#[summary(\"실행\")]\nmod app {\n    #[effects(io)]\n    fn main() -> () {\n",
+        "}\n\n#[summary(\"실행\")]\nmod app {\n    #[effects(alloc, io)]\n    fn main() -> () {\n",
     );
     let mut expected = String::new();
     for r in &recs {

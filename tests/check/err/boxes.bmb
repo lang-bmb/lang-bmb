@@ -21,7 +21,7 @@ mod bx {
     #[effects(pure)]
     fn take(b: Box<Pt>) -> i64 { b.x }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     fn after_move() -> i64 {
         let b: Box<Pt> = Box::new(Pt { x: 1, y: 2 });
         let n: i64 = take(b);
@@ -34,7 +34,7 @@ mod bx {
         p.x
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     fn maybe_moved(c: bool) -> i64 {
         let b: Box<Pt> = Box::new(Pt { x: 1, y: 2 });
         if c { take(b) } else { 0 }
@@ -46,7 +46,7 @@ mod bx {
         inner.x
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     fn immutable() -> i64 {
         let b: Box<i64> = Box::new(1);
         *b = 2;
@@ -58,7 +58,7 @@ mod bx {
         a == b
     }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     fn bad_boxes() -> i64 {
         let u: Box<()> = Box::new(());
         let v: Box<Vec<i64>> = Box::new(Vec::new());

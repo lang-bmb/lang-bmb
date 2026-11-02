@@ -2,10 +2,10 @@
 mod bp {
     struct Pt { x: i64, y: i64 }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     fn mk(x: i64) -> Box<Pt> { Box::new(Pt { x: x, y: 1 }) }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     fn boxed(v: i64) -> Box<i64> { Box::new(v) }
 
     #[effects(pure)]
@@ -20,13 +20,13 @@ mod bp {
     #[effects(pure)]
     fn ignore(b: Box<Pt>) -> i64 { 0 }
 
-    #[effects(pure)]
+    #[effects(alloc)]
     fn wrap<T: Copy>(v: T) -> Box<T> { Box::new(v) }
 
     #[effects(pure)]
     fn unwrap<T: Copy>(b: Box<T>) -> T { *b }
 
-    #[effects(io)]
+    #[effects(alloc, io)]
     fn main() -> () {
         print_i64(sum(&mk(3)));
         let c: bool = true;

@@ -534,7 +534,7 @@ mod m {
 #[test]
 fn a_proved_push_has_no_check_and_an_unproved_one_keeps_it() {
     // Backlog 2G-04: E0816 like every obligation (ADR-0031 §4).
-    let text = "#[summary(\"g\")]\nmod m {\n    #[effects(pure)]\n    fn grow(v: &mut Vec<i64>) -> () {\n        v.push(2);\n    }\n\n    #[effects(pure)]\n    fn n() -> usize {\n        let mut v: Vec<i64> = Vec::new();\n        v.push(1);\n        v.len()\n    }\n}\n";
+    let text = "#[summary(\"g\")]\nmod m {\n    #[effects(alloc)]\n    fn grow(v: &mut Vec<i64>) -> () {\n        v.push(2);\n    }\n\n    #[effects(alloc)]\n    fn n() -> usize {\n        let mut v: Vec<i64> = Vec::new();\n        v.push(1);\n        v.len()\n    }\n}\n";
     let out = bmb::emit_llvm_sources(&src("g.bmb", text));
     let ir = out.ir.unwrap();
     assert_eq!(ir.matches("; proved E0816").count(), 1, "{ir}");
@@ -548,7 +548,7 @@ fn an_unproved_vec_index_traps_exactly_from_the_length() {
     fs::create_dir_all(&dir).unwrap();
     for (i, want) in [(2, Some("3\n")), (3, None)] {
         let text = format!(
-            "#[summary(\"trap\")]\nmod m {{\n    #[effects(pure)]\n    fn get(v: &Vec<i64>, i: usize) -> i64 {{\n        v[i]\n    }}\n\n    #[effects(io)]\n    fn main() -> () {{\n        let mut v: Vec<i64> = Vec::new();\n        v.push(1);\n        v.push(2);\n        v.push(3);\n        print_i64(get(&v, {i}));\n    }}\n}}\n"
+            "#[summary(\"trap\")]\nmod m {{\n    #[effects(pure)]\n    fn get(v: &Vec<i64>, i: usize) -> i64 {{\n        v[i]\n    }}\n\n    #[effects(alloc, io)]\n    fn main() -> () {{\n        let mut v: Vec<i64> = Vec::new();\n        v.push(1);\n        v.push(2);\n        v.push(3);\n        print_i64(get(&v, {i}));\n    }}\n}}\n"
         );
         let out = bmb::emit_llvm_sources(&src("t.bmb", &text));
         assert!(!out.verify.ok);
