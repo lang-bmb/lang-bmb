@@ -1,0 +1,484 @@
+{"k": 2, "def": "m48::halve_1", "post": false, "callers": ["m49::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 2, "def": "m1::clamp_1", "post": false, "callers": ["m1::mix_2", "m2::mix_2", "m2::show_15"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 3, "def": "m20::clamp_1", "post": false, "callers": ["m23::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 3, "def": "m49::shift_1", "post": true, "callers": ["m49::mix_2", "m49::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 4, "def": "m46::shift_5", "post": true, "callers": ["m46::mix_6", "m48::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 10, "def": "m49::clamp_9", "post": false, "callers": [], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 13, "def": "m24::clamp_5", "post": false, "callers": ["m24::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 16, "def": "m41::clamp_1", "post": true, "callers": ["m41::mix_6", "m42::mix_6", "m43::remap_13"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 26, "def": "m42::clamp_5", "post": true, "callers": ["m42::mix_2", "m42::show_15"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 27, "def": "m1::shift_5", "post": false, "callers": ["m2::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 32, "def": "m26::shift_5", "post": true, "callers": ["m29::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 35, "def": "m36::halve_1", "post": true, "callers": ["m38::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 42, "def": "m0::clamp_1", "post": false, "callers": ["m0::mix_2", "m0::mix_6", "m1::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 43, "def": "m44::clamp_9", "post": false, "callers": ["m44::mix_6", "m47::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 46, "def": "m48::halve_5", "post": false, "callers": ["m48::mix_6", "m49::show_15"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 47, "def": "m1::clamp_1", "post": true, "callers": ["m1::mix_2", "m2::mix_2", "m2::show_15"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 48, "def": "m24::abs_1", "post": false, "callers": ["m25::mix_2", "m25::peak_11", "m26::mix_2", "m27::show_14"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 50, "def": "m34::halve_5", "post": false, "callers": ["m36::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 51, "def": "m19::halve_1", "post": false, "callers": ["m19::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 51, "def": "m47::abs_1", "post": false, "callers": [], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 58, "def": "m42::shift_9", "post": true, "callers": ["m43::show_15"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 59, "def": "m4::abs_5", "post": false, "callers": ["m5::remap_13"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 59, "def": "m36::halve_9", "post": true, "callers": ["m37::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 60, "def": "m22::abs_5", "post": false, "callers": ["m22::mix_2", "m23::mix_10"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 62, "def": "m35::shift_5", "post": true, "callers": ["m35::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 62, "def": "m1::clamp_1", "post": false, "callers": ["m1::mix_2", "m2::mix_2", "m2::show_15"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 63, "def": "m39::abs_5", "post": false, "callers": ["m39::remap_12", "m39::show_14", "m41::mix_10"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 69, "def": "m5::halve_5", "post": true, "callers": ["m5::mix_2", "m6::remap_13", "m7::remap_13", "m8::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 72, "def": "m33::shift_1", "post": true, "callers": ["m36::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 73, "def": "m33::shift_1", "post": false, "callers": ["m36::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 74, "def": "m6::abs_5", "post": true, "callers": ["m7::mix_6", "m8::mix_2", "m9::peak_11"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 75, "def": "m37::halve_9", "post": true, "callers": ["m39::mix_6", "m40::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 77, "def": "m40::halve_9", "post": true, "callers": ["m41::mix_6", "m43::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 78, "def": "m12::halve_1", "post": true, "callers": ["m12::mix_2", "m12::mix_6", "m15::peak_11"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 83, "def": "m26::shift_9", "post": false, "callers": ["m28::mix_10", "m29::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 85, "def": "m32::abs_1", "post": false, "callers": [], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 94, "def": "m43::halve_9", "post": true, "callers": ["m43::mix_2", "m44::show_15"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 96, "def": "m47::shift_5", "post": true, "callers": ["m49::peak_11"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 97, "def": "m21::abs_9", "post": true, "callers": ["m21::mix_6", "m23::mix_10", "m24::show_14"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 98, "def": "m24::clamp_5", "post": true, "callers": ["m24::mix_6", "m25::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 100, "def": "m21::abs_1", "post": false, "callers": ["m21::remap_13", "m22::peak_10", "m24::mix_2", "m24::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 101, "def": "m13::halve_5", "post": true, "callers": ["m16::peak_12", "m16::remap_14"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 107, "def": "m27::abs_1", "post": false, "callers": ["m27::remap_12", "m28::mix_2", "m29::peak_10", "m29::show_14"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 113, "def": "m47::shift_9", "post": true, "callers": ["m48::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 115, "def": "m33::clamp_16", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 117, "def": "m40::shift_1", "post": true, "callers": ["m43::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 118, "def": "m13::halve_5", "post": false, "callers": ["m16::mix_6", "m16::peak_12", "m16::remap_14"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 118, "def": "m32::abs_5", "post": false, "callers": ["m32::mix_2", "m33::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 119, "def": "m41::halve_18", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 120, "def": "m44::shift_5", "post": true, "callers": ["m44::mix_2", "m46::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 124, "def": "m7::halve_5", "post": false, "callers": ["m10::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 124, "def": "m42::clamp_5", "post": false, "callers": ["m42::mix_2", "m42::show_15"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 125, "def": "m41::abs_9", "post": true, "callers": ["m41::mix_2", "m42::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 134, "def": "m33::shift_1", "post": true, "callers": ["m36::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 135, "def": "m23::halve_5", "post": true, "callers": ["m23::show_16", "m26::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 139, "def": "m31::shift_1", "post": true, "callers": ["m32::mix_6", "m33::mix_6", "m34::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 140, "def": "m7::clamp_9", "post": true, "callers": ["m9::mix_2", "m9::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 141, "def": "m2::clamp_5", "post": true, "callers": ["m2::peak_11", "m3::mix_2", "m4::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 144, "def": "m1::shift_5", "post": true, "callers": ["m2::mix_6", "m3::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 150, "def": "m32::clamp_15", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 152, "def": "m4::abs_1", "post": false, "callers": ["m4::mix_2", "m5::peak_11", "m6::mix_2", "m6::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 152, "def": "m39::shift_1", "post": false, "callers": ["m40::mix_6", "m41::mix_10", "m42::remap_13"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 152, "def": "m6::abs_5", "post": false, "callers": ["m7::mix_6", "m8::mix_2", "m9::peak_11"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 155, "def": "m46::shift_17", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 155, "def": "m44::halve_1", "post": true, "callers": ["m46::mix_2", "m46::mix_6", "m47::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 156, "def": "m24::abs_1", "post": true, "callers": ["m24::mix_2", "m25::mix_2", "m25::peak_11", "m27::show_14"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 156, "def": "m32::abs_1", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 159, "def": "m34::halve_5", "post": true, "callers": ["m36::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 161, "def": "m8::shift_9", "post": true, "callers": ["m10::peak_10", "m11::mix_6", "m8::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 161, "def": "m22::halve_15", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 163, "def": "m33::clamp_9", "post": false, "callers": ["m35::peak_11"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 165, "def": "m27::abs_1", "post": true, "callers": ["m28::mix_2", "m29::peak_10", "m29::show_14"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 168, "def": "m34::clamp_16", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 168, "def": "m32::abs_1", "post": false, "callers": [], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 172, "def": "m40::halve_9", "post": false, "callers": ["m41::mix_6", "m43::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 173, "def": "m3::abs_5", "post": false, "callers": ["m5::mix_6", "m6::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 174, "def": "m31::shift_1", "post": false, "callers": ["m32::mix_6", "m33::mix_6", "m34::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 177, "def": "m32::abs_5", "post": true, "callers": ["m32::mix_2", "m33::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 178, "def": "m39::shift_1", "post": true, "callers": ["m41::mix_10", "m42::remap_13"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 179, "def": "m38::halve_1", "post": true, "callers": ["m39::peak_10"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 182, "def": "m21::abs_5", "post": true, "callers": ["m21::mix_2", "m21::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 183, "def": "m31::abs_9", "post": true, "callers": ["m33::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 184, "def": "m31::abs_9", "post": false, "callers": ["m33::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 185, "def": "m21::abs_1", "post": true, "callers": ["m21::remap_13", "m22::peak_10", "m24::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 188, "def": "m48::halve_5", "post": true, "callers": ["m48::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 189, "def": "m20::clamp_1", "post": true, "callers": ["m23::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 197, "def": "m1::shift_5", "post": false, "callers": ["m2::mix_6", "m3::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 198, "def": "m24::abs_1", "post": false, "callers": ["m24::mix_2", "m25::mix_2", "m25::peak_11", "m27::mix_2", "m27::show_14"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 203, "def": "m10::clamp_1", "post": false, "callers": ["m11::mix_10", "m12::mix_10"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 204, "def": "m42::shift_1", "post": false, "callers": ["m44::peak_11"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 205, "def": "m26::shift_9", "post": true, "callers": ["m28::mix_10", "m29::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 210, "def": "m43::clamp_5", "post": false, "callers": ["m46::mix_10", "m46::show_16"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 212, "def": "m25::abs_1", "post": true, "callers": ["m25::mix_6", "m26::mix_6", "m28::mix_2", "m28::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 215, "def": "m10::abs_15", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 216, "def": "m4::clamp_15", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 219, "def": "m23::clamp_1", "post": true, "callers": ["m24::peak_10", "m25::mix_6", "m26::mix_2", "m26::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 221, "def": "m41::halve_17", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 230, "def": "m33::clamp_9", "post": true, "callers": ["m35::mix_2", "m35::peak_11"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 230, "def": "m16::halve_9", "post": true, "callers": ["m16::mix_2", "m18::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 231, "def": "m11::halve_5", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 235, "def": "m33::clamp_5", "post": true, "callers": ["m33::mix_2", "m34::remap_13", "m35::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 236, "def": "m21::abs_5", "post": false, "callers": ["m21::mix_2", "m21::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 236, "def": "m28::shift_5", "post": true, "callers": ["m29::remap_12"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 240, "def": "m4::clamp_15", "post": false, "callers": [], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 242, "def": "m46::shift_18", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 244, "def": "m19::halve_5", "post": false, "callers": ["m19::mix_2", "m22::mix_2", "m22::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 246, "def": "m47::shift_5", "post": false, "callers": ["m49::peak_11"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 250, "def": "m14::clamp_9", "post": true, "callers": ["m15::mix_6", "m17::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 251, "def": "m12::abs_9", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 253, "def": "m35::clamp_9", "post": true, "callers": ["m35::mix_2", "m35::remap_13", "m36::mix_6", "m38::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 255, "def": "m25::abs_1", "post": false, "callers": ["m25::mix_6", "m26::mix_6", "m28::mix_2", "m28::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 255, "def": "m3::abs_5", "post": true, "callers": ["m5::mix_6", "m6::remap_13"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 256, "def": "m49::shift_1", "post": false, "callers": ["m49::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 259, "def": "m34::halve_9", "post": true, "callers": ["m34::show_15"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 261, "def": "m15::clamp_1", "post": false, "callers": ["m16::mix_10", "m17::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 262, "def": "m9::shift_18", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 262, "def": "m24::clamp_5", "post": false, "callers": ["m24::mix_6", "m27::remap_12"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 264, "def": "m41::clamp_1", "post": false, "callers": ["m41::mix_6", "m42::mix_6", "m43::remap_13"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 264, "def": "m44::clamp_9", "post": true, "callers": ["m44::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 266, "def": "m34::halve_5", "post": false, "callers": ["m36::mix_2", "m36::peak_11", "m37::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 272, "def": "m39::shift_1", "post": false, "callers": ["m41::mix_10", "m42::remap_13"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 275, "def": "m4::abs_5", "post": true, "callers": ["m5::remap_13"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 276, "def": "m33::clamp_5", "post": false, "callers": ["m33::mix_2", "m34::remap_13", "m35::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 279, "def": "m8::shift_9", "post": false, "callers": ["m10::peak_10", "m11::mix_6", "m8::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 280, "def": "m43::halve_16", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 282, "def": "m38::halve_1", "post": false, "callers": ["m39::peak_10"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 282, "def": "m41::abs_5", "post": true, "callers": ["m41::mix_2", "m42::mix_6", "m43::mix_2", "m43::mix_6", "m44::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 283, "def": "m18::halve_5", "post": true, "callers": ["m18::mix_6", "m19::mix_2", "m21::mix_2", "m21::show_15"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 285, "def": "m16::shift_5", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 289, "def": "m38::shift_9", "post": true, "callers": ["m39::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 293, "def": "m49::shift_1", "post": true, "callers": ["m49::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 294, "def": "m26::halve_1", "post": true, "callers": ["m27::mix_2", "m29::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 295, "def": "m3::clamp_9", "post": true, "callers": ["m4::mix_6", "m5::mix_2", "m6::peak_11"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 302, "def": "m34::halve_9", "post": false, "callers": ["m34::show_15"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 307, "def": "m26::shift_9", "post": false, "callers": ["m28::mix_10", "m29::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 309, "def": "m39::abs_5", "post": true, "callers": ["m39::remap_12", "m39::show_14", "m41::mix_10"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 311, "def": "m34::abs_1", "post": true, "callers": ["m36::show_15", "m37::show_15"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 311, "def": "m30::shift_9", "post": true, "callers": ["m31::mix_2", "m33::peak_11"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 312, "def": "m29::clamp_16", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 314, "def": "m7::clamp_9", "post": false, "callers": ["m9::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 316, "def": "m26::abs_16", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 318, "def": "m7::clamp_1", "post": true, "callers": ["m7::mix_6", "m8::remap_13"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 320, "def": "m7::clamp_1", "post": false, "callers": ["m7::mix_6", "m8::remap_13"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 321, "def": "m6::abs_5", "post": true, "callers": ["m7::mix_6", "m8::mix_2", "m9::peak_11"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 325, "def": "m31::abs_9", "post": true, "callers": ["m33::mix_2", "m34::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 328, "def": "m4::abs_1", "post": true, "callers": ["m4::mix_2", "m5::peak_11", "m6::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 329, "def": "m47::shift_5", "post": true, "callers": ["m49::peak_11"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 329, "def": "m30::clamp_5", "post": false, "callers": ["m31::mix_6", "m33::remap_13"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 331, "def": "m35::abs_18", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 332, "def": "m19::shift_18", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 333, "def": "m32::abs_5", "post": false, "callers": ["m32::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 335, "def": "m27::clamp_15", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 338, "def": "m28::shift_1", "post": true, "callers": ["m30::mix_6", "m31::mix_2", "m31::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 339, "def": "m34::clamp_16", "post": false, "callers": ["m35::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 342, "def": "m2::halve_17", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 342, "def": "m17::halve_1", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 344, "def": "m29::clamp_16", "post": false, "callers": [], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 346, "def": "m40::shift_1", "post": false, "callers": ["m43::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 347, "def": "m44::clamp_9", "post": false, "callers": ["m44::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 348, "def": "m32::shift_17", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 348, "def": "m25::abs_17", "post": true, "callers": ["m26::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 349, "def": "m24::clamp_5", "post": true, "callers": ["m24::mix_6", "m27::remap_12"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 358, "def": "m20::abs_15", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 361, "def": "m26::shift_9", "post": true, "callers": ["m28::mix_10", "m29::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 361, "def": "m25::abs_17", "post": false, "callers": ["m26::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 362, "def": "m7::clamp_17", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 367, "def": "m5::abs_17", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 367, "def": "m34::halve_5", "post": true, "callers": ["m36::mix_2", "m36::peak_11", "m37::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 370, "def": "m24::abs_1", "post": true, "callers": ["m24::mix_2", "m25::mix_2", "m25::peak_11", "m27::mix_2", "m27::show_14"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 373, "def": "m29::clamp_16", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 374, "def": "m44::clamp_16", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 375, "def": "m11::abs_9", "post": true, "callers": ["m12::mix_2", "m13::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 377, "def": "m35::abs_16", "post": true, "callers": ["m38::show_15"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 380, "def": "m26::shift_5", "post": false, "callers": ["m29::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 382, "def": "m9::clamp_17", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 383, "def": "m4::abs_1", "post": false, "callers": ["m4::mix_2", "m5::peak_11", "m6::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 384, "def": "m3::halve_1", "post": true, "callers": ["m4::remap_12", "m6::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 386, "def": "m33::clamp_5", "post": true, "callers": ["m33::mix_2", "m34::remap_13", "m35::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 387, "def": "m32::clamp_15", "post": false, "callers": ["m35::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 390, "def": "m4::abs_5", "post": false, "callers": ["m5::remap_13"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 391, "def": "m5::halve_5", "post": false, "callers": ["m7::remap_13", "m8::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 394, "def": "m8::abs_1", "post": true, "callers": ["m11::mix_10", "m11::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 396, "def": "m12::abs_5", "post": true, "callers": ["m13::mix_2", "m14::mix_2", "m15::mix_2", "m15::remap_13"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 400, "def": "m29::shift_15", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 400, "def": "m32::abs_16", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 401, "def": "m3::clamp_9", "post": false, "callers": ["m4::mix_6", "m5::mix_2", "m6::peak_11"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 401, "def": "m44::shift_5", "post": false, "callers": ["m44::mix_2", "m45::mix_2", "m46::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 403, "def": "m46::clamp_9", "post": true, "callers": ["m47::mix_2", "m49::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 404, "def": "m33::shift_1", "post": false, "callers": ["m36::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 404, "def": "m41::abs_5", "post": false, "callers": ["m41::mix_2", "m42::mix_6", "m43::mix_2", "m43::mix_6", "m44::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 405, "def": "m41::abs_9", "post": false, "callers": [], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 405, "def": "m32::abs_5", "post": true, "callers": ["m32::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 406, "def": "m31::abs_9", "post": false, "callers": ["m33::mix_2", "m34::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 409, "def": "m16::shift_5", "post": false, "callers": [], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 411, "def": "m34::abs_1", "post": false, "callers": ["m36::show_15", "m37::show_15"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 414, "def": "m14::abs_16", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 415, "def": "m0::clamp_5", "post": false, "callers": ["m0::mix_2", "m0::mix_6", "m1::mix_2", "m1::mix_6", "m3::show_15"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 417, "def": "m29::clamp_17", "post": true, "callers": ["m30::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 425, "def": "m45::halve_5", "post": false, "callers": ["m48::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 426, "def": "m26::shift_5", "post": true, "callers": ["m29::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 427, "def": "m6::abs_9", "post": true, "callers": ["m6::mix_2", "m7::mix_2", "m8::show_15", "m9::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 427, "def": "m35::abs_18", "post": false, "callers": [], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 431, "def": "m12::halve_1", "post": false, "callers": ["m12::mix_6", "m15::mix_6", "m15::peak_11"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 434, "def": "m26::halve_1", "post": false, "callers": ["m27::mix_2", "m29::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 434, "def": "m20::shift_5", "post": false, "callers": ["m23::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 436, "def": "m39::abs_5", "post": false, "callers": ["m39::remap_12", "m41::mix_10"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 437, "def": "m36::halve_9", "post": false, "callers": ["m37::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 439, "def": "m6::abs_1", "post": false, "callers": ["m8::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 440, "def": "m8::clamp_5", "post": false, "callers": ["m10::mix_2", "m11::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 441, "def": "m40::shift_1", "post": true, "callers": ["m43::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 442, "def": "m28::shift_1", "post": false, "callers": ["m30::mix_6", "m31::mix_2", "m31::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 445, "def": "m24::clamp_15", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 446, "def": "m49::shift_1", "post": false, "callers": ["m49::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 446, "def": "m40::halve_9", "post": true, "callers": ["m40::mix_2", "m41::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 448, "def": "m25::abs_17", "post": true, "callers": ["m26::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 449, "def": "m17::abs_21", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 451, "def": "m38::halve_17", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 454, "def": "m32::shift_17", "post": false, "callers": [], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 454, "def": "m36::abs_5", "post": false, "callers": ["m36::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 454, "def": "m23::clamp_1", "post": false, "callers": ["m24::peak_10", "m25::mix_6", "m26::mix_2", "m26::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 457, "def": "m9::clamp_9", "post": false, "callers": [], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 458, "def": "m8::clamp_5", "post": true, "callers": ["m10::mix_2", "m11::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 458, "def": "m27::abs_1", "post": false, "callers": ["m28::mix_2", "m29::peak_10", "m29::show_14", "m30::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 464, "def": "m46::shift_5", "post": false, "callers": ["m46::mix_6", "m47::mix_6", "m48::mix_2", "m49::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 465, "def": "m30::abs_1", "post": true, "callers": ["m30::remap_13", "m32::mix_2", "m33::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 467, "def": "m49::clamp_17", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 471, "def": "m14::shift_17", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 471, "def": "m32::clamp_15", "post": true, "callers": ["m35::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 473, "def": "m13::abs_9", "post": true, "callers": ["m14::mix_6", "m16::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 474, "def": "m37::halve_9", "post": false, "callers": ["m39::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 476, "def": "m41::clamp_1", "post": true, "callers": ["m41::mix_6", "m42::mix_6", "m43::remap_13"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 477, "def": "m45::clamp_16", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 478, "def": "m0::clamp_1", "post": true, "callers": ["m0::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 478, "def": "m28::halve_9", "post": true, "callers": ["m28::mix_10", "m29::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 479, "def": "m19::shift_18", "post": false, "callers": [], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 489, "def": "m36::halve_9", "post": true, "callers": ["m37::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 490, "def": "m22::shift_18", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 491, "def": "m42::clamp_5", "post": true, "callers": ["m42::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 492, "def": "m32::abs_5", "post": false, "callers": ["m32::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 493, "def": "m44::clamp_9", "post": true, "callers": ["m44::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 496, "def": "m22::halve_16", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 497, "def": "m40::halve_9", "post": false, "callers": ["m40::mix_2", "m41::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 498, "def": "m36::halve_9", "post": false, "callers": ["m37::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 500, "def": "m16::shift_5", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 500, "def": "m8::shift_9", "post": true, "callers": ["m10::peak_10", "m11::mix_6", "m8::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 505, "def": "m27::clamp_5", "post": false, "callers": ["m27::mix_6", "m27::peak_10", "m30::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 508, "def": "m3::halve_1", "post": false, "callers": ["m4::remap_12", "m6::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 509, "def": "m20::clamp_1", "post": false, "callers": ["m23::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 510, "def": "m38::halve_18", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 511, "def": "m44::halve_1", "post": false, "callers": ["m46::mix_2", "m46::mix_6", "m47::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 512, "def": "m7::halve_5", "post": true, "callers": ["m7::mix_2", "m7::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 513, "def": "m24::clamp_15", "post": false, "callers": [], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 513, "def": "m6::abs_1", "post": true, "callers": ["m8::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 515, "def": "m26::shift_9", "post": false, "callers": ["m28::mix_10", "m29::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 516, "def": "m37::abs_16", "post": true, "callers": ["m40::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 522, "def": "m27::shift_16", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 523, "def": "m2::shift_9", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 526, "def": "m9::abs_20", "post": true, "callers": ["m10::mix_6", "m9::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 527, "def": "m40::shift_1", "post": false, "callers": ["m43::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 528, "def": "m43::clamp_1", "post": true, "callers": ["m44::mix_6", "m45::mix_6", "m46::mix_10"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 530, "def": "m29::clamp_17", "post": false, "callers": ["m30::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 531, "def": "m10::halve_17", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 532, "def": "m41::halve_17", "post": false, "callers": ["m41::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 535, "def": "m0::halve_16", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 536, "def": "m33::shift_18", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 539, "def": "m1::shift_5", "post": true, "callers": ["m2::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 539, "def": "m38::halve_18", "post": false, "callers": [], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 540, "def": "m39::clamp_16", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 541, "def": "m43::halve_9", "post": false, "callers": ["m43::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 541, "def": "m31::shift_5", "post": false, "callers": ["m32::mix_6", "m32::peak_10", "m34::mix_2", "m34::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 542, "def": "m12::abs_5", "post": false, "callers": ["m13::mix_2", "m14::mix_2", "m15::mix_2", "m15::remap_13"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 543, "def": "m7::clamp_1", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 544, "def": "m31::shift_1", "post": true, "callers": ["m32::mix_6", "m33::mix_6", "m34::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 549, "def": "m46::shift_5", "post": true, "callers": ["m46::mix_6", "m47::mix_6", "m48::mix_2", "m49::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 553, "def": "m25::halve_18", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 554, "def": "m13::clamp_1", "post": false, "callers": ["m15::mix_2", "m15::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 556, "def": "m28::shift_1", "post": true, "callers": ["m30::mix_6", "m31::mix_2", "m31::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 558, "def": "m46::shift_5", "post": false, "callers": ["m46::mix_6", "m47::mix_6", "m48::mix_2", "m49::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 559, "def": "m33::shift_18", "post": false, "callers": [], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 560, "def": "m14::clamp_9", "post": false, "callers": ["m17::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 567, "def": "m34::halve_9", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 569, "def": "m1::clamp_1", "post": true, "callers": ["m1::mix_2", "m1::mix_6", "m2::mix_2", "m2::show_15", "m3::mix_6", "m3::show_15"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 570, "def": "m20::clamp_1", "post": true, "callers": ["m23::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 571, "def": "m14::abs_16", "post": false, "callers": [], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 571, "def": "m16::shift_5", "post": false, "callers": [], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 572, "def": "m20::shift_5", "post": true, "callers": ["m23::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 573, "def": "m17::halve_20", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 574, "def": "m6::abs_9", "post": false, "callers": ["m6::mix_2", "m7::mix_2", "m8::show_15", "m9::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 578, "def": "m34::halve_5", "post": false, "callers": ["m37::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 579, "def": "m41::abs_9", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 581, "def": "m30::abs_1", "post": false, "callers": ["m30::remap_13", "m33::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 582, "def": "m18::abs_20", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 589, "def": "m6::abs_9", "post": true, "callers": ["m6::mix_2", "m7::mix_2", "m8::show_15", "m9::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 590, "def": "m1::clamp_1", "post": false, "callers": ["m1::mix_2", "m1::mix_6", "m2::mix_2", "m2::show_15", "m3::mix_6", "m3::show_15"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 591, "def": "m40::shift_1", "post": true, "callers": ["m43::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 596, "def": "m18::halve_5", "post": false, "callers": ["m19::mix_2", "m21::mix_2", "m21::show_15"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 598, "def": "m11::halve_5", "post": false, "callers": ["m12::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 598, "def": "m24::abs_1", "post": false, "callers": ["m24::mix_2", "m25::mix_2", "m25::peak_11", "m27::show_14"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 600, "def": "m2::shift_1", "post": false, "callers": ["m2::mix_6", "m5::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 602, "def": "m48::halve_5", "post": false, "callers": [], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 604, "def": "m40::halve_9", "post": true, "callers": ["m40::mix_2", "m41::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 605, "def": "m45::clamp_17", "post": true, "callers": ["m45::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 607, "def": "m20::abs_15", "post": false, "callers": [], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 612, "def": "m12::halve_1", "post": true, "callers": ["m12::mix_6", "m15::mix_6", "m15::peak_11"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 614, "def": "m8::shift_9", "post": false, "callers": ["m10::peak_10", "m11::mix_6", "m8::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 614, "def": "m16::shift_5", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 617, "def": "m21::abs_5", "post": true, "callers": ["m21::mix_2", "m21::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 619, "def": "m19::halve_1", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 623, "def": "m7::clamp_1", "post": false, "callers": [], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 623, "def": "m35::abs_16", "post": false, "callers": ["m36::mix_2", "m38::show_15"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 624, "def": "m38::shift_16", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 628, "def": "m7::clamp_17", "post": false, "callers": [], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 629, "def": "m37::clamp_1", "post": false, "callers": ["m37::mix_2", "m37::peak_11", "m39::mix_2", "m40::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 630, "def": "m2::shift_19", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 631, "def": "m31::abs_9", "post": true, "callers": ["m33::mix_2", "m34::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 632, "def": "m22::shift_18", "post": false, "callers": [], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 633, "def": "m34::halve_5", "post": true, "callers": ["m37::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 636, "def": "m24::shift_16", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 637, "def": "m29::clamp_17", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 637, "def": "m10::abs_15", "post": false, "callers": ["m12::mix_10"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 638, "def": "m36::halve_9", "post": true, "callers": ["m36::mix_2", "m37::mix_2", "m38::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 644, "def": "m46::shift_19", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 648, "def": "m34::halve_9", "post": false, "callers": [], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 649, "def": "m44::shift_5", "post": true, "callers": ["m44::mix_2", "m45::mix_2", "m46::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 649, "def": "m25::halve_18", "post": false, "callers": [], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 651, "def": "m33::clamp_9", "post": false, "callers": ["m35::peak_11"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 652, "def": "m14::shift_17", "post": false, "callers": [], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 653, "def": "m2::shift_1", "post": true, "callers": ["m2::mix_6", "m5::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 657, "def": "m24::clamp_5", "post": false, "callers": ["m24::mix_6", "m26::mix_2", "m27::remap_12"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 658, "def": "m46::shift_18", "post": false, "callers": [], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 660, "def": "m27::shift_16", "post": false, "callers": ["m27::mix_2", "m30::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 662, "def": "m24::abs_1", "post": true, "callers": ["m24::mix_2", "m25::mix_2", "m25::peak_11", "m27::show_14"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 667, "def": "m30::shift_9", "post": false, "callers": ["m31::mix_2", "m33::peak_11"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 667, "def": "m28::shift_5", "post": false, "callers": ["m29::remap_12"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 670, "def": "m45::clamp_17", "post": false, "callers": ["m45::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 671, "def": "m30::clamp_5", "post": true, "callers": ["m31::mix_6", "m33::remap_13"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 671, "def": "m29::shift_15", "post": false, "callers": [], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 675, "def": "m22::abs_5", "post": true, "callers": ["m22::mix_2", "m23::mix_10"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 678, "def": "m1::clamp_1", "post": true, "callers": ["m1::mix_2", "m1::mix_6", "m2::mix_2", "m3::mix_6", "m3::show_15"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 680, "def": "m1::shift_5", "post": false, "callers": ["m2::mix_6", "m3::remap_13"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 684, "def": "m9::shift_18", "post": false, "callers": ["m10::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 685, "def": "m32::shift_17", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 690, "def": "m23::clamp_1", "post": true, "callers": ["m24::peak_10", "m25::mix_6", "m26::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 690, "def": "m15::shift_20", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 694, "def": "m23::clamp_18", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 695, "def": "m13::halve_5", "post": true, "callers": ["m16::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 697, "def": "m25::clamp_5", "post": true, "callers": ["m27::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 699, "def": "m15::clamp_1", "post": true, "callers": ["m16::mix_10", "m18::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 702, "def": "m20::abs_15", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 705, "def": "m19::halve_16", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 707, "def": "m40::halve_9", "post": false, "callers": ["m40::mix_2", "m41::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 707, "def": "m8::clamp_5", "post": false, "callers": ["m10::mix_2", "m11::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 710, "def": "m32::abs_16", "post": false, "callers": [], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 713, "def": "m38::halve_18", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 714, "def": "m20::abs_15", "post": false, "callers": [], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 716, "def": "m19::halve_1", "post": false, "callers": [], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 717, "def": "m38::halve_18", "post": false, "callers": [], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 718, "def": "m36::abs_5", "post": true, "callers": ["m36::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 718, "def": "m13::abs_9", "post": false, "callers": ["m14::mix_6", "m16::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 719, "def": "m30::shift_9", "post": true, "callers": ["m31::mix_2", "m33::peak_11"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 721, "def": "m46::shift_20", "post": true, "callers": ["m46::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 721, "def": "m36::halve_1", "post": false, "callers": ["m38::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 722, "def": "m11::halve_5", "post": true, "callers": ["m12::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 724, "def": "m44::clamp_9", "post": false, "callers": ["m44::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 725, "def": "m7::clamp_1", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 726, "def": "m18::halve_19", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 727, "def": "m8::abs_1", "post": false, "callers": ["m11::mix_10", "m11::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 728, "def": "m6::abs_17", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 728, "def": "m39::abs_15", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 729, "def": "m1::shift_5", "post": true, "callers": ["m2::mix_6", "m3::remap_13"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 731, "def": "m15::clamp_16", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 732, "def": "m8::shift_18", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 733, "def": "m7::halve_5", "post": false, "callers": ["m7::mix_2", "m7::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 734, "def": "m10::abs_15", "post": true, "callers": ["m12::mix_10"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 737, "def": "m35::abs_16", "post": true, "callers": ["m36::mix_2", "m38::show_15"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 743, "def": "m38::halve_1", "post": true, "callers": ["m39::peak_10", "m40::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 746, "def": "m48::clamp_15", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 749, "def": "m48::halve_5", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 750, "def": "m38::halve_1", "post": false, "callers": ["m39::peak_10", "m40::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 750, "def": "m33::clamp_5", "post": false, "callers": ["m33::mix_2", "m34::remap_13", "m35::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 752, "def": "m41::clamp_1", "post": false, "callers": ["m41::mix_6", "m42::mix_6", "m43::remap_13"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 755, "def": "m27::abs_18", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 756, "def": "m7::clamp_1", "post": false, "callers": [], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 759, "def": "m28::halve_9", "post": false, "callers": ["m28::mix_10", "m29::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 762, "def": "m17::halve_23", "post": true, "callers": ["m17::peak_12"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 763, "def": "m40::shift_1", "post": false, "callers": ["m43::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 763, "def": "m13::clamp_1", "post": true, "callers": ["m15::mix_2", "m15::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 765, "def": "m2::abs_20", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 766, "def": "m18::halve_1", "post": true, "callers": ["m18::mix_2", "m19::show_14", "m20::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 767, "def": "m3::halve_1", "post": true, "callers": ["m4::remap_12", "m6::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 778, "def": "m45::abs_1", "post": false, "callers": [], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 778, "def": "m13::shift_16", "post": true, "callers": ["m15::show_15"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 779, "def": "m22::halve_16", "post": false, "callers": [], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 781, "def": "m46::shift_17", "post": false, "callers": ["m46::mix_10", "m48::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 781, "def": "m33::clamp_9", "post": true, "callers": ["m35::peak_11"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 784, "def": "m21::shift_18", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 786, "def": "m13::abs_9", "post": true, "callers": ["m14::mix_6", "m16::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 787, "def": "m25::halve_18", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 790, "def": "m12::halve_1", "post": false, "callers": ["m12::mix_6", "m15::mix_6", "m15::peak_11"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 790, "def": "m18::abs_20", "post": false, "callers": [], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 791, "def": "m45::abs_1", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 797, "def": "m33::shift_18", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 798, "def": "m4::clamp_17", "post": true, "callers": ["m4::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 801, "def": "m26::abs_17", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 807, "def": "m36::halve_9", "post": false, "callers": ["m36::mix_2", "m37::mix_2", "m38::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 825, "def": "m4::abs_5", "post": true, "callers": ["m5::remap_13"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 826, "def": "m10::clamp_18", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 826, "def": "m3::halve_1", "post": false, "callers": ["m4::remap_12", "m6::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 833, "def": "m24::abs_1", "post": false, "callers": ["m24::mix_2", "m25::mix_2", "m25::peak_11", "m27::show_14"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 837, "def": "m28::halve_18", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 838, "def": "m19::shift_18", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 839, "def": "m44::shift_5", "post": false, "callers": ["m44::mix_2", "m45::mix_2", "m46::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 839, "def": "m1::clamp_16", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 841, "def": "m16::clamp_20", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 842, "def": "m40::halve_16", "post": true, "callers": ["m43::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 844, "def": "m3::clamp_9", "post": true, "callers": ["m5::mix_2", "m6::peak_11"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 845, "def": "m22::shift_19", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 846, "def": "m19::abs_19", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 848, "def": "m48::halve_19", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 850, "def": "m38::shift_9", "post": false, "callers": ["m39::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 851, "def": "m45::clamp_18", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 852, "def": "m24::clamp_15", "post": true, "callers": ["m27::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 853, "def": "m35::clamp_9", "post": false, "callers": ["m35::remap_13", "m36::mix_6", "m38::remap_13"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 855, "def": "m47::shift_9", "post": false, "callers": ["m48::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 859, "def": "m7::halve_18", "post": true, "callers": ["m10::peak_10"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 859, "def": "m4::clamp_17", "post": false, "callers": ["m4::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 860, "def": "m17::halve_9", "post": true, "callers": ["m19::mix_6", "m20::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 861, "def": "m21::abs_5", "post": false, "callers": ["m21::mix_2", "m21::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 863, "def": "m12::clamp_19", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 864, "def": "m18::halve_9", "post": false, "callers": ["m19::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 867, "def": "m43::clamp_18", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 871, "def": "m22::shift_18", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 872, "def": "m17::halve_1", "post": false, "callers": ["m18::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 873, "def": "m37::halve_9", "post": true, "callers": ["m38::mix_2", "m39::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 876, "def": "m39::shift_18", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 876, "def": "m2::halve_21", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 879, "def": "m22::clamp_1", "post": false, "callers": ["m22::show_14"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 879, "def": "m0::clamp_1", "post": false, "callers": ["m0::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 880, "def": "m48::clamp_23", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 880, "def": "m37::halve_9", "post": false, "callers": ["m38::mix_2", "m39::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 886, "def": "m13::clamp_1", "post": false, "callers": ["m15::mix_2", "m15::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 892, "def": "m5::abs_17", "post": false, "callers": ["m6::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 895, "def": "m29::abs_18", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 897, "def": "m10::halve_17", "post": false, "callers": ["m10::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 899, "def": "m30::halve_17", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 901, "def": "m35::abs_19", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 903, "def": "m6::abs_5", "post": false, "callers": ["m7::mix_6", "m8::mix_2", "m9::peak_11"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 904, "def": "m42::clamp_16", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 904, "def": "m39::clamp_16", "post": false, "callers": [], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 907, "def": "m17::halve_17", "post": true, "callers": ["m17::remap_14"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 908, "def": "m32::clamp_15", "post": false, "callers": ["m35::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 916, "def": "m29::abs_19", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 917, "def": "m49::shift_18", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 918, "def": "m4::clamp_17", "post": true, "callers": ["m4::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 920, "def": "m15::shift_9", "post": true, "callers": ["m16::mix_10", "m16::remap_14"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 922, "def": "m6::shift_16", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 926, "def": "m11::abs_17", "post": true, "callers": ["m13::remap_13"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 927, "def": "m23::shift_17", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 928, "def": "m22::abs_17", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 930, "def": "m46::clamp_21", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 936, "def": "m46::shift_20", "post": false, "callers": ["m46::mix_6", "m49::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 939, "def": "m45::clamp_16", "post": false, "callers": ["m46::mix_10", "m46::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 939, "def": "m38::shift_9", "post": true, "callers": ["m39::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 941, "def": "m12::abs_17", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 941, "def": "m5::halve_5", "post": true, "callers": ["m7::remap_13", "m8::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 943, "def": "m40::clamp_17", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 945, "def": "m18::halve_1", "post": false, "callers": ["m19::show_14", "m20::mix_6"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 948, "def": "m25::halve_18", "post": false, "callers": [], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 952, "def": "m14::abs_16", "post": true, "callers": ["m17::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 955, "def": "m41::halve_17", "post": true, "callers": ["m41::mix_2", "m42::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 958, "def": "m41::halve_17", "post": false, "callers": ["m41::mix_2", "m42::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 959, "def": "m29::clamp_17", "post": false, "callers": [], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 963, "def": "m38::halve_1", "post": true, "callers": ["m39::peak_10", "m40::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 966, "def": "m11::clamp_19", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 966, "def": "m0::shift_18", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 967, "def": "m48::halve_21", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 976, "def": "m40::clamp_17", "post": false, "callers": [], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 976, "def": "m38::halve_1", "post": false, "callers": ["m39::peak_10", "m40::mix_2"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 980, "def": "m20::clamp_1", "post": false, "callers": [], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 982, "def": "m26::halve_18", "post": true, "callers": [], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 984, "def": "m17::halve_17", "post": false, "callers": ["m17::remap_14"], "missed": [], "extra": [], "verdict": "weakened", "expected": "weakened", "verdict_ok": true}
+{"k": 989, "def": "m0::clamp_5", "post": true, "callers": ["m0::mix_2", "m0::mix_6", "m1::mix_6"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"k": 997, "def": "m5::shift_16", "post": true, "callers": ["m5::mix_2"], "missed": [], "extra": [], "verdict": "refined", "expected": "compatible", "verdict_ok": true}
+{"summary": true, "history": "contract-heavy-1k.jsonl", "profile": "contract-heavy", "defs": 1000, "commits": 1000, "contract_edits": 483, "callers": 673, "missed": 0, "recall": 1.0, "extra": 0, "verdicts_right": 483, "undecided": 0, "accuracy": 1.0}

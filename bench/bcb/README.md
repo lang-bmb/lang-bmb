@@ -9,7 +9,8 @@
 | `rustify.py` | BMB 실행 정의 → 쌍둥이 형식 Rust 변환기(생성 부분집합). 원본을 변환하면 쌍둥이와 바이트 단위로 같음을 매번 확인한다. 변이체를 두 언어의 같은 자리에 적용하는 데 쓴다 |
 | `kills.py` | 판별률: W0904 변이체(`bmb mutate`)를 두 언어에 적용해 BMB 증명·Rust 테스트·오라클 테스트의 판정을 비교 |
 | `bcb.py` | 재생 하네스(`run`)와 표(`table`). 팔 `rust`(한 번의 재생에서 R0·R1·R2: 빌드는 같고 테스트 선택만 다르다), `b1`(유지 캐시), `b0`(표본 커밋마다 새 캐시). 커밋마다 명령별 CPU(user+sys, `wait4`)·벽시계, 선택한 테스트 수, R2가 덮는 정의 수, B1이 다시 증명한 정의(`build --stats`)를 JSONL로 쓴다. 사건 커밋은 캐시를 지우고 한 번 더 잰다(`"cold": true`) |
-| `test_bcb.py` | 게이트: 이력 결정성, 다이제스트 재현, 모든 커밋에서 BMB 전부 증명·Rust `cargo check --tests`(경고 = 오류), 편집 종류별 성질(body 편집은 시그니처·계약 불변), `contract-heavy` 이력 끝에서 판별 동등성 |
+| `compat.py` | H-COMPAT(T1-46): 계약 편집마다 `bmb query impact LEAF iface`가 생성기의 호출처(`Tree.callers`)를 모두 짚는지(재현율)와 `bmb weaken` 판정이 정답과 같은지(정확도, 미결정은 실패). 결과 `dev-docs/measurements/compat/` |
+| `test_bcb.py` | 게이트: 이력 결정성, 다이제스트 재현, 모든 커밋에서 BMB 전부 증명·Rust `cargo check --tests`(경고 = 오류), 편집 종류별 성질(body 편집은 시그니처·계약 불변), `contract-heavy` 이력 끝에서 판별 동등성, 편집 국소화(`localize.py`), 호환 판정(`compat.py`) |
 
 ```
 python3 bench/bcb/bcb.py run H.jsonl --work W --out R.jsonl [--b0-every 50]   # 측정(팔 rust,b1,b0)

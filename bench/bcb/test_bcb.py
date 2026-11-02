@@ -25,8 +25,9 @@ import history  # noqa: E402
 import kills  # noqa: E402
 import bcb  # noqa: E402
 import localize  # noqa: E402
+import compat  # noqa: E402
 
-bcb.BMB = kills.BMB = localize.BMB = BMB
+bcb.BMB = kills.BMB = localize.BMB = compat.BMB = BMB
 
 COMMITS = 40
 
@@ -253,6 +254,23 @@ def check_localization(t):
         localize.impact = real
 
 
+def check_compat(t):
+    """H-COMPAT (T1-46): at every contract edit of the contract-heavy history,
+    `impact` names every caller the generator says reads the contract, and
+    `bmb weaken` gives the generator's verdict; and the check does fail when
+    `impact` names nothing."""
+    path = os.path.join(t, "contract-heavy.jsonl")
+    assert compat.main([path, "--out", os.path.join(t, "compat.jsonl")]) == 0, "compat: missed callers or wrong verdicts"
+    s = json.loads(open(os.path.join(t, "compat.jsonl"), encoding="utf-8").read().splitlines()[-1])
+    assert s["contract_edits"] > 0 and s["callers"] > 0, s
+    real = compat.impact
+    compat.impact = lambda src, p: set()
+    try:
+        assert compat.main([path]) != 0, "compat accepted an empty impact set"
+    finally:
+        compat.impact = real
+
+
 def main():
     with tempfile.TemporaryDirectory() as t:
         out = {}
@@ -263,6 +281,7 @@ def main():
         assert out["body-only"]["body"] > 0 and sum(out["body-only"].values()) == out["body-only"]["body"], out
         assert all(out["contract-heavy"][k] > 0 for k in history.KINDS), out
         check_localization(t)
+        check_compat(t)
         # A tampered history is refused.
         path = os.path.join(t, "body-heavy.jsonl")
         lines = open(path, encoding="utf-8").read().splitlines()
