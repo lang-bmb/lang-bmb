@@ -1,0 +1,137 @@
+#[summary("비트 연산 없는 정수론")]
+mod arith {
+    spec fn ceil_ok(a: u64, b: u64, r: u64) -> bool {
+        r * b >= a && r * b < a + b
+    }
+
+    #[effects(pure)]
+    #[uses(digits_bound)]
+    fn count_digits(n: u64) -> (r: u64)
+        ensures digits_bound(n, r),
+        decreases n,
+    {
+        if n < 10 {
+            1
+        } else {
+            1 + count_digits(n / 10)
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(digit_sum_bound)]
+    fn digit_sum(n: u64) -> (r: u64)
+        ensures digit_sum_bound(n, r),
+        decreases n,
+    {
+        if n < 10 {
+            n
+        } else {
+            n % 10 + digit_sum(n / 10)
+        }
+    }
+
+    spec fn digit_sum_bound(n: u64, r: u64) -> bool {
+        r <= n
+    }
+
+    spec fn digits_bound(n: u64, r: u64) -> bool {
+        1 <= r && r <= n + 1
+    }
+
+    #[effects(pure)]
+    #[uses(ceil_ok, modest, pos)]
+    fn div_ceil(a: u64, b: u64) -> (r: u64)
+        requires modest(a), modest(b), pos(b),
+        ensures ceil_ok(a, b, r),
+    {
+        (a + b - 1) / b
+    }
+
+    #[effects(pure)]
+    #[uses(divides_spec, pos)]
+    fn divides(d: u64, n: u64) -> (r: bool)
+        requires pos(d),
+        ensures divides_spec(d, n, r),
+    {
+        n % d == 0
+    }
+
+    spec fn divides_spec(d: u64, n: u64, r: bool) -> bool {
+        r == (n % d == 0)
+    }
+
+    #[effects(pure)]
+    #[uses(gcd_bound, pos2)]
+    fn gcd(a: u64, b: u64) -> (g: u64)
+        requires pos2(a, b),
+        ensures gcd_bound(g, a, b),
+        decreases b,
+    {
+        if a % b == 0 {
+            if b <= a {
+                b
+            } else {
+                a
+            }
+        } else {
+            gcd(b, a % b)
+        }
+    }
+
+    spec fn gcd_bound(g: u64, a: u64, b: u64) -> bool {
+        g > 0 && (g <= a || g <= b)
+    }
+
+    #[effects(pure)]
+    #[uses(modest)]
+    fn is_prime(n: u64) -> bool
+        requires modest(n),
+    {
+        let mut d: u64 = 2;
+        let mut found: bool = false;
+        while d < n && !found
+            invariant 2 <= d,
+            decreases n - d,
+        {
+            if n % d == 0 {
+                found = true;
+            }
+            d = d + 1;
+        }
+        n >= 2 && !found
+    }
+
+    spec fn modest(n: u64) -> bool {
+        n <= 1000000
+    }
+
+    spec fn pos(n: u64) -> bool {
+        n > 0
+    }
+
+    spec fn pos2(a: u64, b: u64) -> bool {
+        a > 0 && b > 0
+    }
+
+    #[effects(pure)]
+    #[uses(modest, triangle)]
+    fn sum_to(n: u64) -> (r: u64)
+        requires modest(n),
+        ensures triangle(n, r),
+    {
+        let mut s: u64 = 0;
+        let mut k: u64 = 0;
+        while k < n
+            invariant k <= n, triangle(k, s),
+            decreases n - k,
+        {
+            k = k + 1;
+            s = s + k;
+        }
+        s
+    }
+
+    spec fn triangle(n: u64, r: u64) -> bool {
+        2 * r == n * (n + 1)
+    }
+}

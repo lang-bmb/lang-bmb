@@ -1,0 +1,137 @@
+#[summary("선형·이분 탐색")]
+mod search {
+    spec fn absent_below(a: &[i64], v: i64, n: usize) -> bool {
+        forall|k: usize| k < n ==> #[trigger] a[k] != v
+    }
+
+    #[effects(pure)]
+    #[uses(arr::nonempty, max_at, max_below)]
+    fn argmax(a: &[i64]) -> (r: usize)
+        requires arr::nonempty(a),
+        ensures max_at(a, r),
+    {
+        let mut best: usize = 0;
+        let mut k: usize = 1;
+        while k < a.len()
+            invariant k <= a.len(), max_below(a, k, best),
+            decreases a.len() - k,
+        {
+            if a[k] > a[best] {
+                best = k;
+            }
+            k = k + 1;
+        }
+        best
+    }
+
+    spec fn at_least_target(a: &[i64], t: i64, n: usize) -> bool {
+        forall|k: usize| n <= k && k < a.len() ==> #[trigger] a[k] >= t
+    }
+
+    spec fn below_target(a: &[i64], t: i64, n: usize) -> bool {
+        forall|k: usize| k < n ==> #[trigger] a[k] < t
+    }
+
+    #[effects(pure)]
+    #[uses(absent_below, contains_ok, exists_at, find_ok)]
+    fn contains(a: &[i64], v: i64) -> (r: bool)
+        ensures contains_ok(a, v, r),
+    {
+        let i: usize = find_first(a, v);
+        i < a.len()
+    }
+
+    spec fn contains_ok(a: &[i64], v: i64, r: bool) -> bool {
+        r == exists_at(a, v)
+    }
+
+    spec fn count_bound(a: &[i64], r: usize) -> bool {
+        r <= a.len()
+    }
+
+    #[effects(pure)]
+    #[uses(count_bound)]
+    fn count_eq(a: &[i64], v: i64) -> (r: usize)
+        ensures count_bound(a, r),
+    {
+        let mut c: usize = 0;
+        let mut k: usize = 0;
+        while k < a.len()
+            invariant k <= a.len(), c <= k,
+            decreases a.len() - k,
+        {
+            if a[k] == v {
+                c = c + 1;
+            }
+            k = k + 1;
+        }
+        c
+    }
+
+    spec fn exists_at(a: &[i64], v: i64) -> bool {
+        !absent_below(a, v, a.len())
+    }
+
+    #[effects(pure)]
+    #[uses(absent_below, find_ok)]
+    fn find_first(a: &[i64], v: i64) -> (r: usize)
+        ensures find_ok(a, v, r),
+    {
+        let mut k: usize = 0;
+        while k < a.len() && a[k] != v
+            invariant k <= a.len(), absent_below(a, v, k),
+            decreases a.len() - k,
+        {
+            k = k + 1;
+        }
+        k
+    }
+
+    spec fn find_ok(a: &[i64], v: i64, r: usize) -> bool {
+        r <= a.len() && (r < a.len() ==> a[r] == v) && absent_below(a, v, r)
+    }
+
+    spec fn lb_ok(a: &[i64], t: i64, r: usize) -> bool {
+        r <= a.len() && below_target(a, t, r) && at_least_target(a, t, r)
+    }
+
+    #[effects(pure)]
+    #[uses(at_least_target, below_target, lb_ok, order::sorted)]
+    fn lower_bound(a: &[i64], t: i64) -> (r: usize)
+        requires order::sorted(a),
+        ensures lb_ok(a, t, r),
+    {
+        let mut lo: usize = 0;
+        let mut hi: usize = a.len();
+        while lo < hi
+            invariant lo <= hi, hi <= a.len(), below_target(a, t, lo), at_least_target(a, t, hi),
+            decreases hi - lo,
+        {
+            let m: usize = lo + (hi - lo) / 2;
+            if a[m] < t {
+                lo = m + 1;
+            } else {
+                hi = m;
+            }
+        }
+        lo
+    }
+
+    spec fn max_at(a: &[i64], r: usize) -> bool {
+        r < a.len() && (forall|k: usize| k < a.len() ==> #[trigger] a[k] <= a[r])
+    }
+
+    spec fn max_below(a: &[i64], n: usize, r: usize) -> bool {
+        r < n && (forall|k: usize| k < n ==> #[trigger] a[k] <= a[r])
+    }
+
+    #[effects(pure)]
+    #[uses(absent_below, at_least_target, below_target, contains_ok, exists_at, lb_ok, order::sorted)]
+    fn sorted_contains(a: &[i64], t: i64) -> (r: bool)
+        requires order::sorted(a),
+        ensures contains_ok(a, t, r),
+    {
+        let i: usize = lower_bound(a, t);
+        i < a.len() && a[i] == t
+    }
+}

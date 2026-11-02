@@ -1,0 +1,127 @@
+#[summary("작업 상태 기계(0 대기, 1 실행, 2 완료, 3 오류)")]
+mod fsm {
+    #[effects(pure)]
+    #[uses(state_ok, states_ok)]
+    fn advance_all(a: &mut [i64], ev: i64) -> ()
+        requires states_ok(a),
+        ensures states_ok(a),
+    {
+        let mut k: usize = 0;
+        while k < a.len()
+            invariant k <= a.len(), states_ok(a),
+            decreases a.len() - k,
+        {
+            a[k] = step(a[k], ev);
+            k = k + 1;
+        }
+    }
+
+    spec fn count_ok(a: &[i64], r: usize) -> bool {
+        r <= a.len()
+    }
+
+    #[effects(pure)]
+    #[uses(count_ok)]
+    fn count_state(a: &[i64], s: i64) -> (r: usize)
+        ensures count_ok(a, r),
+    {
+        let mut c: usize = 0;
+        let mut k: usize = 0;
+        while k < a.len()
+            invariant k <= a.len(), c <= k,
+            decreases a.len() - k,
+        {
+            if a[k] == s {
+                c = c + 1;
+            }
+            k = k + 1;
+        }
+        c
+    }
+
+    #[effects(pure)]
+    #[uses(terminal_spec)]
+    fn is_terminal(s: i64) -> (r: bool)
+        ensures terminal_spec(s, r),
+    {
+        s == 2 || s == 3
+    }
+
+    #[effects(pure)]
+    #[uses(state_ok, states_below, states_ok)]
+    fn reset_all(a: &mut [i64]) -> ()
+        ensures states_ok(a),
+    {
+        let mut k: usize = 0;
+        while k < a.len()
+            invariant k <= a.len(), states_below(a, k),
+            decreases a.len() - k,
+        {
+            a[k] = 0;
+            k = k + 1;
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(state_ok)]
+    fn run(events: &[i64], s0: i64) -> (r: i64)
+        requires state_ok(s0),
+        ensures state_ok(r),
+    {
+        let mut s: i64 = s0;
+        let mut k: usize = 0;
+        while k < events.len()
+            invariant k <= events.len(), state_ok(s),
+            decreases events.len() - k,
+        {
+            s = step(s, events[k]);
+            k = k + 1;
+        }
+        s
+    }
+
+    spec fn state_ok(s: i64) -> bool {
+        0 <= s && s <= 3
+    }
+
+    spec fn states_below(a: &[i64], n: usize) -> bool {
+        forall|k: usize| k < n ==> state_ok(#[trigger] a[k])
+    }
+
+    spec fn states_ok(a: &[i64]) -> bool {
+        forall|k: usize| k < a.len() ==> state_ok(#[trigger] a[k])
+    }
+
+    #[effects(pure)]
+    #[uses(state_ok)]
+    fn step(s: i64, ev: i64) -> (r: i64)
+        requires state_ok(s),
+        ensures state_ok(r),
+    {
+        if s == 0 {
+            if ev == 1 {
+                1
+            } else {
+                0
+            }
+        } else {
+            if s == 1 {
+                if ev == 2 {
+                    2
+                } else {
+                    if ev < 0 {
+                        3
+                    } else {
+                        1
+                    }
+                }
+            } else {
+                s
+            }
+        }
+    }
+
+    spec fn terminal_spec(s: i64, r: bool) -> bool {
+        r == (s == 2 || s == 3)
+    }
+}

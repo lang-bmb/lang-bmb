@@ -1,0 +1,120 @@
+#[summary("유계 원소 배열의 통계")]
+mod stats {
+    spec fn at_most_len(a: &[i64], r: usize) -> bool {
+        r <= a.len()
+    }
+
+    spec fn bounded_elems(a: &[i64]) -> bool {
+        a.len() <= 1000000 && (forall|k: usize| k < a.len() ==> -1000 <= #[trigger] a[k] && a[k] <= 1000)
+    }
+
+    #[effects(pure)]
+    #[uses(at_most_len)]
+    fn count_above(a: &[i64], t: i64) -> (r: usize)
+        ensures at_most_len(a, r),
+    {
+        let mut c: usize = 0;
+        let mut k: usize = 0;
+        while k < a.len()
+            invariant k <= a.len(), c <= k,
+            decreases a.len() - k,
+        {
+            if a[k] > t {
+                c = c + 1;
+            }
+            k = k + 1;
+        }
+        c
+    }
+
+    spec fn in_thousand(x: i64) -> bool {
+        -1000 <= x && x <= 1000
+    }
+
+    #[effects(pure)]
+    #[uses(arr::nonempty, bounded_elems, in_thousand, num::is_max2)]
+    fn max_of(a: &[i64]) -> (r: i64)
+        requires arr::nonempty(a), bounded_elems(a),
+        ensures in_thousand(r),
+    {
+        let mut m: i64 = a[0];
+        let mut k: usize = 1;
+        while k < a.len()
+            invariant 1 <= k, k <= a.len(), in_thousand(m),
+            decreases a.len() - k,
+        {
+            m = num::max2(m, a[k]);
+            k = k + 1;
+        }
+        m
+    }
+
+    #[effects(pure)]
+    #[uses(arr::nonempty, bounded_elems, sum_bound)]
+    fn mean_floor(a: &[i64]) -> i64
+        requires arr::nonempty(a), bounded_elems(a),
+    {
+        let s: i64 = sum(a);
+        let n: usize = a.len();
+        let mut d: i64 = 0;
+        let mut k: usize = 0;
+        while k < n
+            invariant k <= n, n <= 1000000, d == k,
+            decreases n - k,
+        {
+            d = d + 1;
+            k = k + 1;
+        }
+        s / d
+    }
+
+    #[effects(pure)]
+    #[uses(arr::nonempty, bounded_elems, in_thousand, num::is_min2)]
+    fn min_of(a: &[i64]) -> (r: i64)
+        requires arr::nonempty(a), bounded_elems(a),
+        ensures in_thousand(r),
+    {
+        let mut m: i64 = a[0];
+        let mut k: usize = 1;
+        while k < a.len()
+            invariant 1 <= k, k <= a.len(), in_thousand(m),
+            decreases a.len() - k,
+        {
+            m = num::min2(m, a[k]);
+            k = k + 1;
+        }
+        m
+    }
+
+    #[effects(pure)]
+    #[uses(in_thousand, num::small)]
+    fn spread(a: &[i64]) -> i64
+        requires arr::nonempty(a), bounded_elems(a),
+    {
+        let hi: i64 = max_of(a);
+        let lo: i64 = min_of(a);
+        num::sub_small(hi, lo)
+    }
+
+    #[effects(pure)]
+    #[uses(bounded_elems, sum_bound)]
+    fn sum(a: &[i64]) -> (r: i64)
+        requires bounded_elems(a),
+        ensures sum_bound(r, a.len()),
+    {
+        let mut s: i64 = 0;
+        let mut k: usize = 0;
+        while k < a.len()
+            invariant k <= a.len(), sum_bound(s, k),
+            decreases a.len() - k,
+        {
+            s = s + a[k];
+            k = k + 1;
+        }
+        s
+    }
+
+    spec fn sum_bound(s: i64, n: usize) -> bool {
+        -1000 * n <= s && s <= 1000 * n
+    }
+}

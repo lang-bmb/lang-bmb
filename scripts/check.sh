@@ -27,7 +27,7 @@ if [ -z "${BMB_GATE_POWER_RUN:-}" ]; then
   step "power"; python3 scripts/gate_power.py check > /dev/null
 fi
 
-step "test, bench m1, bench m1b, bench hname, bench edit (write, diff, ast), bench view, bench lean, bench impossible, bench bvb, bench m3, bench bnb, bench bcb, bench brb, bench brb-encap, bench brb-encap-b, bench brb-effect, bench run_models, bench utility report, health (concurrent)"
+step "test, bench m1, bench m1b, bench hname, bench edit (write, diff, ast), bench view, bench lean, bench repair, bench impossible, bench bvb, bench m3, bench bnb, bench bcb, bench brb, bench brb-encap, bench brb-encap-b, bench brb-effect, bench run_models, bench utility report, health (concurrent)"
 # Bench sessions are independent (ADR-0025, backlog 2A-04): m1b and bvb run two at a time per agent.
 # The original-Verus side of bvb (2A-09) needs the Verus toolchain: here only its harness logic
 # runs (stub verifier); the real oracle/weak runs are the `bvb-verus` CI job.
@@ -71,6 +71,7 @@ done' \
 done' \
   --job "bench view (compact sets, not frozen)=python3 bench/view/test_gen.py" \
   --job "bench lean (fixed context sets, 2D-28)=python3 bench/lean/test_gen.py" \
+  --job "bench repair (H-REPAIR ablation set, T1-45)=python3 bench/repair/gen.py --check > /dev/null && python3 bench/repair/test_gen.py" \
   --job 'bench hname=python3 bench/hname/gen.py --check > /dev/null
 for s in alpha mislead; do
   python3 bench/m1/harness.py --set bench/m1b-$s run --agent oracle --expect all-pass --jobs 2 > /dev/null

@@ -1,0 +1,740 @@
+{
+ "task": "w13-rotate-left",
+ "generator": "bench/m1/bsb_gen.py",
+ "max_witnesses": 2,
+ "targets": [
+  {
+   "def": "arr::rotate_left",
+   "signature": "fn rotate_left(a: &mut [i64]) -> ()",
+   "mutated": [
+    "arr::rotate_left"
+   ],
+   "inputs": [
+    {
+     "a": [
+      1
+     ]
+    },
+    {
+     "a": [
+      1,
+      2
+     ]
+    },
+    {
+     "a": [
+      1,
+      2,
+      3
+     ]
+    },
+    {
+     "a": [
+      1,
+      2,
+      3,
+      4
+     ]
+    },
+    {
+     "a": [
+      5,
+      5
+     ]
+    },
+    {
+     "a": [
+      4,
+      3,
+      2,
+      1
+     ]
+    },
+    {
+     "a": [
+      -4
+     ]
+    },
+    {
+     "a": [
+      1,
+      0,
+      5
+     ]
+    },
+    {
+     "a": [
+      4
+     ]
+    },
+    {
+     "a": [
+      3,
+      -2,
+      -4
+     ]
+    },
+    {
+     "a": [
+      -2,
+      -4
+     ]
+    },
+    {
+     "a": [
+      5
+     ]
+    },
+    {
+     "a": [
+      -2,
+      5
+     ]
+    },
+    {
+     "a": [
+      6,
+      1
+     ]
+    },
+    {
+     "a": [
+      0,
+      1,
+      4
+     ]
+    },
+    {
+     "a": [
+      1,
+      -1
+     ]
+    },
+    {
+     "a": [
+      -3,
+      5,
+      5
+     ]
+    },
+    {
+     "a": [
+      -4,
+      6,
+      -1
+     ]
+    },
+    {
+     "a": [
+      -4,
+      -4
+     ]
+    },
+    {
+     "a": [
+      4,
+      6,
+      0,
+      3
+     ]
+    },
+    {
+     "a": [
+      -1,
+      3,
+      5
+     ]
+    },
+    {
+     "a": [
+      5,
+      6,
+      1,
+      -4
+     ]
+    },
+    {
+     "a": [
+      6,
+      6
+     ]
+    },
+    {
+     "a": [
+      4,
+      4,
+      4,
+      4
+     ]
+    },
+    {
+     "a": [
+      -1,
+      -2
+     ]
+    },
+    {
+     "a": [
+      1,
+      3,
+      -2,
+      -4
+     ]
+    },
+    {
+     "a": [
+      -2,
+      -1
+     ]
+    },
+    {
+     "a": [
+      -1,
+      2,
+      -2
+     ]
+    },
+    {
+     "a": [
+      1,
+      3,
+      -2
+     ]
+    },
+    {
+     "a": [
+      -2
+     ]
+    }
+   ],
+   "counts": {
+    "generated": 17,
+    "kept": 8,
+    "equivalent": 0,
+    "trap_only": 9,
+    "allowed": 0,
+    "no_check": 0
+   },
+   "mutants": [
+    {
+     "def": "arr::rotate_left",
+     "site": 0,
+     "line": 93,
+     "col": 22,
+     "before": "a[0]",
+     "after": "a[0 + 1]",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1,
+         2
+        ]
+       },
+       "expected": {
+        "a": [
+         2,
+         1
+        ]
+       },
+       "output": {
+        "a": [
+         2,
+         2
+        ]
+       }
+      },
+      {
+       "input": {
+        "a": [
+         1,
+         2,
+         3
+        ]
+       },
+       "expected": {
+        "a": [
+         2,
+         3,
+         1
+        ]
+       },
+       "output": {
+        "a": [
+         2,
+         3,
+         2
+        ]
+       }
+      }
+     ],
+     "id": "m00"
+    },
+    {
+     "def": "arr::rotate_left",
+     "site": 2,
+     "line": 93,
+     "col": 24,
+     "before": "0",
+     "after": "1",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1,
+         2
+        ]
+       },
+       "expected": {
+        "a": [
+         2,
+         1
+        ]
+       },
+       "output": {
+        "a": [
+         2,
+         2
+        ]
+       }
+      },
+      {
+       "input": {
+        "a": [
+         1,
+         2,
+         3
+        ]
+       },
+       "expected": {
+        "a": [
+         2,
+         3,
+         1
+        ]
+       },
+       "output": {
+        "a": [
+         2,
+         3,
+         2
+        ]
+       }
+      }
+     ],
+     "id": "m01"
+    },
+    {
+     "def": "arr::rotate_left",
+     "site": 3,
+     "line": 94,
+     "col": 28,
+     "before": "0",
+     "after": "1",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1,
+         2
+        ]
+       },
+       "expected": {
+        "a": [
+         2,
+         1
+        ]
+       },
+       "output": {
+        "a": [
+         1,
+         1
+        ]
+       }
+      },
+      {
+       "input": {
+        "a": [
+         1,
+         2,
+         3
+        ]
+       },
+       "expected": {
+        "a": [
+         2,
+         3,
+         1
+        ]
+       },
+       "output": {
+        "a": [
+         1,
+         3,
+         1
+        ]
+       }
+      }
+     ],
+     "id": "m02"
+    },
+    {
+     "def": "arr::rotate_left",
+     "site": 6,
+     "line": 95,
+     "col": 19,
+     "before": "k + 1",
+     "after": "k + 2",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1,
+         2
+        ]
+       },
+       "expected": {
+        "a": [
+         2,
+         1
+        ]
+       },
+       "output": {
+        "a": [
+         1,
+         2
+        ]
+       }
+      },
+      {
+       "input": {
+        "a": [
+         1,
+         2,
+         3
+        ]
+       },
+       "expected": {
+        "a": [
+         2,
+         3,
+         1
+        ]
+       },
+       "output": {
+        "a": [
+         2,
+         1,
+         3
+        ]
+       }
+      }
+     ],
+     "id": "m03"
+    },
+    {
+     "def": "arr::rotate_left",
+     "site": 7,
+     "line": 99,
+     "col": 13,
+     "before": "a[k]",
+     "after": "a[k + 1]",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1,
+         2
+        ]
+       },
+       "expected": {
+        "a": [
+         2,
+         1
+        ]
+       },
+       "output": {
+        "a": [
+         1,
+         1
+        ]
+       }
+      },
+      {
+       "input": {
+        "a": [
+         1,
+         2,
+         3
+        ]
+       },
+       "expected": {
+        "a": [
+         2,
+         3,
+         1
+        ]
+       },
+       "output": {
+        "a": [
+         1,
+         2,
+         1
+        ]
+       }
+      }
+     ],
+     "id": "m04"
+    },
+    {
+     "def": "arr::rotate_left",
+     "site": 10,
+     "line": 99,
+     "col": 20,
+     "before": "a[k + 1]",
+     "after": "a[k + 1 - 1]",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1,
+         2
+        ]
+       },
+       "expected": {
+        "a": [
+         2,
+         1
+        ]
+       },
+       "output": {
+        "a": [
+         1,
+         1
+        ]
+       }
+      },
+      {
+       "input": {
+        "a": [
+         1,
+         2,
+         3
+        ]
+       },
+       "expected": {
+        "a": [
+         2,
+         3,
+         1
+        ]
+       },
+       "output": {
+        "a": [
+         1,
+         2,
+         1
+        ]
+       }
+      }
+     ],
+     "id": "m05"
+    },
+    {
+     "def": "arr::rotate_left",
+     "site": 14,
+     "line": 100,
+     "col": 21,
+     "before": "k + 1",
+     "after": "k + 2",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1,
+         2,
+         3
+        ]
+       },
+       "expected": {
+        "a": [
+         2,
+         3,
+         1
+        ]
+       },
+       "output": {
+        "a": [
+         2,
+         2,
+         1
+        ]
+       }
+      },
+      {
+       "input": {
+        "a": [
+         1,
+         0,
+         5
+        ]
+       },
+       "expected": {
+        "a": [
+         0,
+         5,
+         1
+        ]
+       },
+       "output": {
+        "a": [
+         0,
+         0,
+         1
+        ]
+       }
+      }
+     ],
+     "id": "m06"
+    },
+    {
+     "def": "arr::rotate_left",
+     "site": 16,
+     "line": 102,
+     "col": 9,
+     "before": "a[k]",
+     "after": "a[k - 1]",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1,
+         2
+        ]
+       },
+       "expected": {
+        "a": [
+         2,
+         1
+        ]
+       },
+       "output": {
+        "a": [
+         1,
+         2
+        ]
+       }
+      },
+      {
+       "input": {
+        "a": [
+         1,
+         2,
+         3
+        ]
+       },
+       "expected": {
+        "a": [
+         2,
+         3,
+         1
+        ]
+       },
+       "output": {
+        "a": [
+         2,
+         1,
+         3
+        ]
+       }
+      }
+     ],
+     "id": "m07"
+    }
+   ],
+   "discarded": [
+    {
+     "def": "arr::rotate_left",
+     "site": 1,
+     "line": 93,
+     "col": 22,
+     "before": "a[0]",
+     "after": "a[0 - 1]",
+     "reason": "trap_only"
+    },
+    {
+     "def": "arr::rotate_left",
+     "site": 4,
+     "line": 95,
+     "col": 15,
+     "before": "k + 1 < a.len()",
+     "after": "k + 1 <= a.len()",
+     "reason": "trap_only"
+    },
+    {
+     "def": "arr::rotate_left",
+     "site": 5,
+     "line": 95,
+     "col": 15,
+     "before": "k + 1",
+     "after": "k - 1",
+     "reason": "trap_only"
+    },
+    {
+     "def": "arr::rotate_left",
+     "site": 8,
+     "line": 99,
+     "col": 13,
+     "before": "a[k]",
+     "after": "a[k - 1]",
+     "reason": "trap_only"
+    },
+    {
+     "def": "arr::rotate_left",
+     "site": 9,
+     "line": 99,
+     "col": 20,
+     "before": "a[k + 1]",
+     "after": "a[k + 1 + 1]",
+     "reason": "trap_only"
+    },
+    {
+     "def": "arr::rotate_left",
+     "site": 11,
+     "line": 99,
+     "col": 22,
+     "before": "k + 1",
+     "after": "k - 1",
+     "reason": "trap_only"
+    },
+    {
+     "def": "arr::rotate_left",
+     "site": 12,
+     "line": 99,
+     "col": 26,
+     "before": "k + 1",
+     "after": "k + 2",
+     "reason": "trap_only"
+    },
+    {
+     "def": "arr::rotate_left",
+     "site": 13,
+     "line": 100,
+     "col": 17,
+     "before": "k + 1",
+     "after": "k - 1",
+     "reason": "trap_only"
+    },
+    {
+     "def": "arr::rotate_left",
+     "site": 15,
+     "line": 102,
+     "col": 9,
+     "before": "a[k]",
+     "after": "a[k + 1]",
+     "reason": "trap_only"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,1045 @@
+{
+ "task": "w19-select-step-post",
+ "generator": "bench/m1/bsb_gen.py",
+ "max_witnesses": 2,
+ "targets": [
+  {
+   "def": "order::select_step",
+   "signature": "fn select_step(a: &mut [i64], i: usize) -> ()",
+   "mutated": [
+    "order::select_step",
+    "arr::swap",
+    "order::min_index"
+   ],
+   "inputs": [
+    {
+     "a": [
+      1
+     ],
+     "i": 0
+    },
+    {
+     "a": [
+      2,
+      1
+     ],
+     "i": 0
+    },
+    {
+     "a": [
+      1,
+      2
+     ],
+     "i": 0
+    },
+    {
+     "a": [
+      3,
+      1,
+      2
+     ],
+     "i": 0
+    },
+    {
+     "a": [
+      3,
+      1,
+      2
+     ],
+     "i": 1
+    },
+    {
+     "a": [
+      3,
+      2,
+      1
+     ],
+     "i": 2
+    },
+    {
+     "a": [
+      1,
+      3,
+      2,
+      0
+     ],
+     "i": 1
+    },
+    {
+     "a": [
+      3,
+      0
+     ],
+     "i": 0
+    },
+    {
+     "a": [
+      -3,
+      -1,
+      -1
+     ],
+     "i": 2
+    },
+    {
+     "a": [
+      -1,
+      0,
+      3
+     ],
+     "i": 2
+    },
+    {
+     "a": [
+      -2,
+      0,
+      3,
+      3,
+      1
+     ],
+     "i": 1
+    },
+    {
+     "a": [
+      -1,
+      3,
+      0
+     ],
+     "i": 0
+    },
+    {
+     "a": [
+      -2,
+      -2,
+      1,
+      0
+     ],
+     "i": 2
+    },
+    {
+     "a": [
+      -2,
+      -2,
+      3
+     ],
+     "i": 0
+    },
+    {
+     "a": [
+      0,
+      -3,
+      3,
+      0
+     ],
+     "i": 3
+    },
+    {
+     "a": [
+      -1,
+      -3
+     ],
+     "i": 1
+    },
+    {
+     "a": [
+      2
+     ],
+     "i": 0
+    },
+    {
+     "a": [
+      -3,
+      1,
+      -1,
+      -2
+     ],
+     "i": 2
+    },
+    {
+     "a": [
+      0,
+      0
+     ],
+     "i": 0
+    },
+    {
+     "a": [
+      1,
+      -1
+     ],
+     "i": 0
+    },
+    {
+     "a": [
+      0
+     ],
+     "i": 0
+    },
+    {
+     "a": [
+      2,
+      1,
+      1,
+      1,
+      -2
+     ],
+     "i": 3
+    },
+    {
+     "a": [
+      -3,
+      -3,
+      -2,
+      0
+     ],
+     "i": 3
+    },
+    {
+     "a": [
+      2,
+      -2,
+      0
+     ],
+     "i": 2
+    },
+    {
+     "a": [
+      -2,
+      0,
+      -1,
+      -3
+     ],
+     "i": 2
+    },
+    {
+     "a": [
+      0,
+      0,
+      -2
+     ],
+     "i": 1
+    },
+    {
+     "a": [
+      2,
+      3
+     ],
+     "i": 1
+    },
+    {
+     "a": [
+      1,
+      0,
+      0,
+      -3,
+      3
+     ],
+     "i": 3
+    },
+    {
+     "a": [
+      -3,
+      2,
+      0,
+      3,
+      0
+     ],
+     "i": 2
+    },
+    {
+     "a": [
+      -1,
+      3
+     ],
+     "i": 0
+    },
+    {
+     "a": [
+      3
+     ],
+     "i": 0
+    },
+    {
+     "a": [
+      -1,
+      -2,
+      -3
+     ],
+     "i": 2
+    },
+    {
+     "a": [
+      0,
+      -1,
+      -2,
+      3
+     ],
+     "i": 3
+    },
+    {
+     "a": [
+      -2
+     ],
+     "i": 0
+    },
+    {
+     "a": [
+      -2,
+      0
+     ],
+     "i": 0
+    },
+    {
+     "a": [
+      -2,
+      0,
+      1
+     ],
+     "i": 1
+    },
+    {
+     "a": [
+      1,
+      1,
+      -3
+     ],
+     "i": 2
+    }
+   ],
+   "counts": {
+    "generated": 19,
+    "kept": 12,
+    "equivalent": 1,
+    "trap_only": 3,
+    "allowed": 3,
+    "no_check": 0
+   },
+   "mutants": [
+    {
+     "def": "arr::swap",
+     "site": 1,
+     "line": 110,
+     "col": 22,
+     "before": "a[i]",
+     "after": "a[i - 1]",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         3,
+         1,
+         2
+        ],
+        "i": 1
+       },
+       "expected": {
+        "a": [
+         3,
+         1,
+         2
+        ]
+       },
+       "output": {
+        "a": [
+         3,
+         3,
+         2
+        ]
+       }
+      },
+      {
+       "input": {
+        "a": [
+         -2,
+         -2,
+         1,
+         0
+        ],
+        "i": 2
+       },
+       "expected": {
+        "a": [
+         -2,
+         -2,
+         0,
+         1
+        ]
+       },
+       "output": {
+        "a": [
+         -2,
+         -2,
+         0,
+         -2
+        ]
+       }
+      }
+     ],
+     "id": "m00"
+    },
+    {
+     "def": "arr::swap",
+     "site": 2,
+     "line": 111,
+     "col": 9,
+     "before": "a[i]",
+     "after": "a[i + 1]",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         3,
+         1,
+         2
+        ],
+        "i": 0
+       },
+       "expected": {
+        "a": [
+         1,
+         3,
+         2
+        ]
+       },
+       "output": {
+        "a": [
+         3,
+         3,
+         2
+        ]
+       }
+      },
+      {
+       "input": {
+        "a": [
+         1,
+         3,
+         2,
+         0
+        ],
+        "i": 1
+       },
+       "expected": {
+        "a": [
+         1,
+         0,
+         2,
+         3
+        ]
+       },
+       "output": {
+        "a": [
+         1,
+         3,
+         0,
+         3
+        ]
+       }
+      }
+     ],
+     "id": "m01"
+    },
+    {
+     "def": "arr::swap",
+     "site": 3,
+     "line": 111,
+     "col": 9,
+     "before": "a[i]",
+     "after": "a[i - 1]",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         3,
+         1,
+         2
+        ],
+        "i": 1
+       },
+       "expected": {
+        "a": [
+         3,
+         1,
+         2
+        ]
+       },
+       "output": {
+        "a": [
+         1,
+         1,
+         2
+        ]
+       }
+      },
+      {
+       "input": {
+        "a": [
+         3,
+         2,
+         1
+        ],
+        "i": 2
+       },
+       "expected": {
+        "a": [
+         3,
+         2,
+         1
+        ]
+       },
+       "output": {
+        "a": [
+         3,
+         1,
+         1
+        ]
+       }
+      }
+     ],
+     "id": "m02"
+    },
+    {
+     "def": "arr::swap",
+     "site": 5,
+     "line": 111,
+     "col": 16,
+     "before": "a[j]",
+     "after": "a[j - 1]",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         3,
+         1,
+         2
+        ],
+        "i": 0
+       },
+       "expected": {
+        "a": [
+         1,
+         3,
+         2
+        ]
+       },
+       "output": {
+        "a": [
+         3,
+         3,
+         2
+        ]
+       }
+      }
+     ],
+     "id": "m03"
+    },
+    {
+     "def": "arr::swap",
+     "site": 7,
+     "line": 112,
+     "col": 9,
+     "before": "a[j]",
+     "after": "a[j - 1]",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         2,
+         1
+        ],
+        "i": 0
+       },
+       "expected": {
+        "a": [
+         1,
+         2
+        ]
+       },
+       "output": {
+        "a": [
+         2,
+         1
+        ]
+       }
+      },
+      {
+       "input": {
+        "a": [
+         3,
+         1,
+         2
+        ],
+        "i": 0
+       },
+       "expected": {
+        "a": [
+         1,
+         3,
+         2
+        ]
+       },
+       "output": {
+        "a": [
+         3,
+         1,
+         2
+        ]
+       }
+      }
+     ],
+     "id": "m04"
+    },
+    {
+     "def": "order::min_index",
+     "site": 0,
+     "line": 64,
+     "col": 28,
+     "before": "from + 1",
+     "after": "from - 1",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         -1,
+         0,
+         3
+        ],
+        "i": 2
+       },
+       "expected": {
+        "a": [
+         -1,
+         0,
+         3
+        ]
+       },
+       "output": {
+        "a": [
+         -1,
+         3,
+         0
+        ]
+       }
+      },
+      {
+       "input": {
+        "a": [
+         -2,
+         0,
+         3,
+         3,
+         1
+        ],
+        "i": 1
+       },
+       "expected": {
+        "a": [
+         -2,
+         0,
+         3,
+         3,
+         1
+        ]
+       },
+       "output": {
+        "a": [
+         0,
+         -2,
+         3,
+         3,
+         1
+        ]
+       }
+      }
+     ],
+     "id": "m05"
+    },
+    {
+     "def": "order::min_index",
+     "site": 1,
+     "line": 64,
+     "col": 35,
+     "before": "from + 1",
+     "after": "from + 2",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         2,
+         1
+        ],
+        "i": 0
+       },
+       "expected": {
+        "a": [
+         1,
+         2
+        ]
+       },
+       "output": {
+        "a": [
+         2,
+         1
+        ]
+       }
+      },
+      {
+       "input": {
+        "a": [
+         3,
+         1,
+         2
+        ],
+        "i": 0
+       },
+       "expected": {
+        "a": [
+         1,
+         3,
+         2
+        ]
+       },
+       "output": {
+        "a": [
+         2,
+         1,
+         3
+        ]
+       }
+      }
+     ],
+     "id": "m06"
+    },
+    {
+     "def": "order::min_index",
+     "site": 3,
+     "line": 69,
+     "col": 13,
+     "before": "a[k] < a[best]",
+     "after": "!(a[k] < a[best])",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         2,
+         1
+        ],
+        "i": 0
+       },
+       "expected": {
+        "a": [
+         1,
+         2
+        ]
+       },
+       "output": {
+        "a": [
+         2,
+         1
+        ]
+       }
+      },
+      {
+       "input": {
+        "a": [
+         1,
+         2
+        ],
+        "i": 0
+       },
+       "expected": {
+        "a": [
+         1,
+         2
+        ]
+       },
+       "output": {
+        "a": [
+         2,
+         1
+        ]
+       }
+      }
+     ],
+     "id": "m07"
+    },
+    {
+     "def": "order::min_index",
+     "site": 6,
+     "line": 69,
+     "col": 16,
+     "before": "a[k]",
+     "after": "a[k - 1]",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         2,
+         1
+        ],
+        "i": 0
+       },
+       "expected": {
+        "a": [
+         1,
+         2
+        ]
+       },
+       "output": {
+        "a": [
+         2,
+         1
+        ]
+       }
+      },
+      {
+       "input": {
+        "a": [
+         3,
+         1,
+         2
+        ],
+        "i": 0
+       },
+       "expected": {
+        "a": [
+         1,
+         3,
+         2
+        ]
+       },
+       "output": {
+        "a": [
+         2,
+         1,
+         3
+        ]
+       }
+      }
+     ],
+     "id": "m08"
+    },
+    {
+     "def": "order::min_index",
+     "site": 7,
+     "line": 69,
+     "col": 23,
+     "before": "a[best]",
+     "after": "a[best + 1]",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         2,
+         1
+        ],
+        "i": 0
+       },
+       "expected": {
+        "a": [
+         1,
+         2
+        ]
+       },
+       "output": {
+        "a": [
+         2,
+         1
+        ]
+       }
+      },
+      {
+       "input": {
+        "a": [
+         3,
+         1,
+         2
+        ],
+        "i": 0
+       },
+       "expected": {
+        "a": [
+         1,
+         3,
+         2
+        ]
+       },
+       "output": {
+        "a": [
+         3,
+         1,
+         2
+        ]
+       }
+      }
+     ],
+     "id": "m09"
+    },
+    {
+     "def": "order::min_index",
+     "site": 8,
+     "line": 69,
+     "col": 23,
+     "before": "a[best]",
+     "after": "a[best - 1]",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         3,
+         1,
+         2
+        ],
+        "i": 1
+       },
+       "expected": {
+        "a": [
+         3,
+         1,
+         2
+        ]
+       },
+       "output": {
+        "a": [
+         3,
+         2,
+         1
+        ]
+       }
+      },
+      {
+       "input": {
+        "a": [
+         -2,
+         -2,
+         1,
+         0
+        ],
+        "i": 2
+       },
+       "expected": {
+        "a": [
+         -2,
+         -2,
+         0,
+         1
+        ]
+       },
+       "output": {
+        "a": [
+         -2,
+         -2,
+         1,
+         0
+        ]
+       }
+      }
+     ],
+     "id": "m10"
+    },
+    {
+     "def": "order::min_index",
+     "site": 10,
+     "line": 72,
+     "col": 21,
+     "before": "k + 1",
+     "after": "k + 2",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1,
+         3,
+         2,
+         0
+        ],
+        "i": 1
+       },
+       "expected": {
+        "a": [
+         1,
+         0,
+         2,
+         3
+        ]
+       },
+       "output": {
+        "a": [
+         1,
+         2,
+         3,
+         0
+        ]
+       }
+      }
+     ],
+     "id": "m11"
+    }
+   ],
+   "discarded": [
+    {
+     "def": "arr::swap",
+     "site": 0,
+     "line": 110,
+     "col": 22,
+     "before": "a[i]",
+     "after": "a[i + 1]",
+     "reason": "allowed"
+    },
+    {
+     "def": "arr::swap",
+     "site": 4,
+     "line": 111,
+     "col": 16,
+     "before": "a[j]",
+     "after": "a[j + 1]",
+     "reason": "allowed"
+    },
+    {
+     "def": "arr::swap",
+     "site": 6,
+     "line": 112,
+     "col": 9,
+     "before": "a[j]",
+     "after": "a[j + 1]",
+     "reason": "allowed"
+    },
+    {
+     "def": "order::min_index",
+     "site": 2,
+     "line": 65,
+     "col": 15,
+     "before": "k < a.len()",
+     "after": "k <= a.len()",
+     "reason": "trap_only"
+    },
+    {
+     "def": "order::min_index",
+     "site": 4,
+     "line": 69,
+     "col": 16,
+     "before": "a[k] < a[best]",
+     "after": "a[k] <= a[best]",
+     "reason": "equivalent"
+    },
+    {
+     "def": "order::min_index",
+     "site": 5,
+     "line": 69,
+     "col": 16,
+     "before": "a[k]",
+     "after": "a[k + 1]",
+     "reason": "trap_only"
+    },
+    {
+     "def": "order::min_index",
+     "site": 9,
+     "line": 72,
+     "col": 17,
+     "before": "k + 1",
+     "after": "k - 1",
+     "reason": "trap_only"
+    }
+   ]
+  }
+ ]
+}

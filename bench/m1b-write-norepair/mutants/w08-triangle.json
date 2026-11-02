@@ -1,0 +1,242 @@
+{
+ "task": "w08-triangle",
+ "generator": "bench/m1/bsb_gen.py",
+ "max_witnesses": 2,
+ "targets": [
+  {
+   "def": "tasks::triangle",
+   "signature": "fn triangle(n: u64) -> (r: u64)",
+   "mutated": [
+    "tasks::triangle",
+    "arith::sum_to"
+   ],
+   "inputs": [
+    {
+     "n": 0
+    },
+    {
+     "n": 1
+    },
+    {
+     "n": 2
+    },
+    {
+     "n": 3
+    },
+    {
+     "n": 4
+    },
+    {
+     "n": 5
+    },
+    {
+     "n": 6
+    },
+    {
+     "n": 7
+    },
+    {
+     "n": 8
+    },
+    {
+     "n": 9
+    },
+    {
+     "n": 10
+    },
+    {
+     "n": 11
+    },
+    {
+     "n": 12
+    },
+    {
+     "n": 50
+    },
+    {
+     "n": 99
+    },
+    {
+     "n": 100
+    },
+    {
+     "n": 1000
+    },
+    {
+     "n": 9999
+    },
+    {
+     "n": 100000
+    },
+    {
+     "n": 999999
+    },
+    {
+     "n": 1000000
+    }
+   ],
+   "counts": {
+    "generated": 6,
+    "kept": 4,
+    "equivalent": 0,
+    "trap_only": 2,
+    "allowed": 0,
+    "no_check": 0
+   },
+   "mutants": [
+    {
+     "def": "arith::sum_to",
+     "site": 0,
+     "line": 122,
+     "col": 26,
+     "before": "0",
+     "after": "1",
+     "witnesses": [
+      {
+       "input": {
+        "n": 0
+       },
+       "expected": {
+        "r": 0
+       },
+       "output": {
+        "r": 1
+       }
+      },
+      {
+       "input": {
+        "n": 1
+       },
+       "expected": {
+        "r": 1
+       },
+       "output": {
+        "r": 2
+       }
+      }
+     ],
+     "id": "m00"
+    },
+    {
+     "def": "arith::sum_to",
+     "site": 1,
+     "line": 123,
+     "col": 26,
+     "before": "0",
+     "after": "1",
+     "witnesses": [
+      {
+       "input": {
+        "n": 1
+       },
+       "expected": {
+        "r": 1
+       },
+       "output": {
+        "r": 0
+       }
+      },
+      {
+       "input": {
+        "n": 2
+       },
+       "expected": {
+        "r": 3
+       },
+       "output": {
+        "r": 2
+       }
+      }
+     ],
+     "id": "m01"
+    },
+    {
+     "def": "arith::sum_to",
+     "site": 2,
+     "line": 124,
+     "col": 15,
+     "before": "k < n",
+     "after": "k <= n",
+     "witnesses": [
+      {
+       "input": {
+        "n": 0
+       },
+       "expected": {
+        "r": 0
+       },
+       "output": {
+        "r": 1
+       }
+      },
+      {
+       "input": {
+        "n": 1
+       },
+       "expected": {
+        "r": 1
+       },
+       "output": {
+        "r": 3
+       }
+      }
+     ],
+     "id": "m02"
+    },
+    {
+     "def": "arith::sum_to",
+     "site": 4,
+     "line": 128,
+     "col": 21,
+     "before": "k + 1",
+     "after": "k + 2",
+     "witnesses": [
+      {
+       "input": {
+        "n": 1
+       },
+       "expected": {
+        "r": 1
+       },
+       "output": {
+        "r": 2
+       }
+      },
+      {
+       "input": {
+        "n": 2
+       },
+       "expected": {
+        "r": 3
+       },
+       "output": {
+        "r": 2
+       }
+      }
+     ],
+     "id": "m03"
+    }
+   ],
+   "discarded": [
+    {
+     "def": "arith::sum_to",
+     "site": 3,
+     "line": 128,
+     "col": 17,
+     "before": "k + 1",
+     "after": "k - 1",
+     "reason": "trap_only"
+    },
+    {
+     "def": "arith::sum_to",
+     "site": 5,
+     "line": 129,
+     "col": 17,
+     "before": "s + k",
+     "after": "s - k",
+     "reason": "trap_only"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,38 @@
+{
+  "id": "w04-argmin",
+  "kind": "write",
+  "prompt": "Create unit `tasks` and implement `argmin`: for a non-empty array, return an index of a smallest element. The contract must state that the index is in bounds and that no element is smaller than the one at the index. Reuse the existing library (see `query units`) where it helps.\n\nRequired signature (in unit `tasks`):\nfn argmin(a: &[i64]) -> (r: usize)",
+  "unit": "tasks",
+  "def": "tasks::argmin",
+  "signature": "fn argmin(a: &[i64]) -> (r: usize)",
+  "accept": {
+    "specs": "spec fn ref_pre(a: &[i64]) -> bool { a.len() > 0 }\nspec fn ref_post(a: &[i64], r: usize) -> bool { r < a.len() && (forall|k: usize| k < a.len() ==> a[r] <= #[trigger] a[k]) }",
+    "pre": "ref_pre(a)",
+    "post": "ref_post(a, r)",
+    "args": "a"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn min_at(a: &[i64], r: usize) -> bool { r < a.len() && (forall|k: usize| k < a.len() ==> a[r] <= #[trigger] a[k]) }\n\n#[effects(pure)]\n#[uses(arr::nonempty, order::from_ok, order::min_ok, min_at)]\nfn argmin(a: &[i64]) -> (r: usize)\n    requires arr::nonempty(a),\n    ensures min_at(a, r),\n{\n    order::min_index(a, 0)\n}"
+    }
+  ],
+  "weak_reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn in_bounds(a: &[i64], r: usize) -> bool { r < a.len() }\n\n#[effects(pure)]\n#[uses(arr::nonempty, order::from_ok, order::min_ok, in_bounds)]\nfn argmin(a: &[i64]) -> (r: usize)\n    requires arr::nonempty(a),\n    ensures in_bounds(a, r),\n{\n    order::min_index(a, 0)\n}"
+    }
+  ]
+}

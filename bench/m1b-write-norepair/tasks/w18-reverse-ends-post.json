@@ -1,0 +1,22 @@
+{
+  "id": "w18-reverse-ends-post",
+  "kind": "write",
+  "prompt": "The library function `arr::reverse_ends` has no postcondition. Give it one stating that the first and last elements are exchanged and every other element is unchanged, keeping its parameters, precondition and body.\n\nRequired signature (in unit `arr`):\nfn reverse_ends(a: &mut [i64]) -> ()",
+  "unit": "arr",
+  "def": "arr::reverse_ends",
+  "signature": "fn reverse_ends(a: &mut [i64]) -> ()",
+  "accept": {
+    "specs": "spec fn ref_pre(a: &[i64]) -> bool { a.len() > 0 }\nspec fn ref_post(a: &[i64], b: &[i64]) -> bool { a.len() == b.len() && a.len() > 0 && a[0] == b[a.len() - 1] && a[a.len() - 1] == b[0] && (forall|k: usize| 0 < k && k + 1 < a.len() ==> #[trigger] a[k] == b[k]) }",
+    "pre": "ref_pre(a)",
+    "post": "ref_post(a, old(a))",
+    "args": "a"
+  },
+  "reference": [
+    {
+      "op": "put",
+      "unit": "arr",
+      "code": "spec fn ends_swapped(a: &[i64], b: &[i64]) -> bool { a.len() > 0 && swapped(a, b, 0, a.len() - 1) }\n\n#[effects(pure)]\n#[uses(idx2, nonempty, swapped, ends_swapped)]\nfn reverse_ends(a: &mut [i64]) -> ()\n    requires nonempty(a),\n    ensures ends_swapped(a, old(a)),\n{\n    let n: usize = a.len();\n    swap(a, 0, n - 1);\n}"
+    }
+  ],
+  "weak_reference": []
+}

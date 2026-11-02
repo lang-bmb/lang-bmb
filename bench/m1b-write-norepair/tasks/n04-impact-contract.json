@@ -1,0 +1,19 @@
+{
+  "id": "n04-impact-contract",
+  "kind": "navigate",
+  "prompt": "Suppose the contract (requires/ensures) of `arr::swap` changes. Which definitions must be proved again, including `arr::swap` itself? Proofs see a called function only through its contract. Use the `answer` tool with the full paths (unit::name) of all such definitions.",
+  "truth": {
+    "query": [
+      "impact",
+      "arr::swap",
+      "iface"
+    ],
+    "reasons": [
+      "changed",
+      "calls",
+      "uses",
+      "names"
+    ],
+    "field": "path"
+  }
+}

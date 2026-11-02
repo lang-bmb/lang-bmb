@@ -1,0 +1,828 @@
+{
+ "task": "w09-find-sorted",
+ "generator": "bench/m1/bsb_gen.py",
+ "max_witnesses": 2,
+ "targets": [
+  {
+   "def": "tasks::find_sorted",
+   "signature": "fn find_sorted(a: &[i64], t: i64) -> (r: usize)",
+   "mutated": [
+    "tasks::find_sorted",
+    "search::lower_bound"
+   ],
+   "inputs": [
+    {
+     "a": [],
+     "t": 0
+    },
+    {
+     "a": [
+      1
+     ],
+     "t": 1
+    },
+    {
+     "a": [
+      1
+     ],
+     "t": 0
+    },
+    {
+     "a": [
+      1
+     ],
+     "t": 2
+    },
+    {
+     "a": [
+      1,
+      2
+     ],
+     "t": 2
+    },
+    {
+     "a": [
+      1,
+      1,
+      2
+     ],
+     "t": 1
+    },
+    {
+     "a": [
+      0,
+      2,
+      4
+     ],
+     "t": 3
+    },
+    {
+     "a": [
+      0,
+      2,
+      4
+     ],
+     "t": 4
+    },
+    {
+     "a": [
+      0,
+      2,
+      4
+     ],
+     "t": 5
+    },
+    {
+     "a": [
+      0,
+      2,
+      4
+     ],
+     "t": -1
+    },
+    {
+     "a": [
+      4
+     ],
+     "t": 5
+    },
+    {
+     "a": [
+      1,
+      3
+     ],
+     "t": 2
+    },
+    {
+     "a": [
+      0,
+      1,
+      2,
+      4
+     ],
+     "t": 4
+    },
+    {
+     "a": [
+      0,
+      0,
+      2,
+      3
+     ],
+     "t": 5
+    },
+    {
+     "a": [
+      0,
+      2
+     ],
+     "t": 0
+    },
+    {
+     "a": [],
+     "t": 4
+    },
+    {
+     "a": [
+      0,
+      0,
+      2,
+      2,
+      3
+     ],
+     "t": 4
+    },
+    {
+     "a": [
+      3
+     ],
+     "t": 1
+    },
+    {
+     "a": [
+      2
+     ],
+     "t": 4
+    },
+    {
+     "a": [
+      0,
+      4
+     ],
+     "t": 3
+    },
+    {
+     "a": [
+      0,
+      0,
+      0,
+      0,
+      2
+     ],
+     "t": 0
+    },
+    {
+     "a": [
+      4
+     ],
+     "t": 3
+    },
+    {
+     "a": [],
+     "t": 5
+    },
+    {
+     "a": [
+      1,
+      1,
+      4
+     ],
+     "t": -1
+    },
+    {
+     "a": [
+      2
+     ],
+     "t": 5
+    },
+    {
+     "a": [
+      0,
+      4,
+      4
+     ],
+     "t": 5
+    },
+    {
+     "a": [
+      0,
+      3,
+      3,
+      4
+     ],
+     "t": 4
+    },
+    {
+     "a": [
+      1,
+      2,
+      3,
+      3
+     ],
+     "t": 4
+    },
+    {
+     "a": [
+      0,
+      2,
+      3,
+      4,
+      4
+     ],
+     "t": 4
+    },
+    {
+     "a": [],
+     "t": -1
+    },
+    {
+     "a": [
+      0,
+      1,
+      1,
+      3,
+      4
+     ],
+     "t": 0
+    },
+    {
+     "a": [
+      0,
+      1,
+      4
+     ],
+     "t": 1
+    },
+    {
+     "a": [
+      1,
+      2
+     ],
+     "t": 0
+    },
+    {
+     "a": [
+      0,
+      1,
+      2,
+      3,
+      4
+     ],
+     "t": 2
+    },
+    {
+     "a": [
+      1,
+      4,
+      4,
+      4
+     ],
+     "t": 0
+    },
+    {
+     "a": [
+      0,
+      0,
+      0,
+      4,
+      4
+     ],
+     "t": 3
+    },
+    {
+     "a": [
+      0,
+      1,
+      2
+     ],
+     "t": 5
+    },
+    {
+     "a": [
+      1,
+      1
+     ],
+     "t": 4
+    }
+   ],
+   "counts": {
+    "generated": 18,
+    "kept": 11,
+    "equivalent": 1,
+    "trap_only": 6,
+    "allowed": 0,
+    "no_check": 0
+   },
+   "mutants": [
+    {
+     "def": "tasks::find_sorted",
+     "site": 0,
+     "line": 10,
+     "col": 9,
+     "before": "i < a.len() && a[i] == t",
+     "after": "!(i < a.len() && a[i] == t)",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1
+        ],
+        "t": 1
+       },
+       "expected": {
+        "r": 0
+       },
+       "output": {
+        "r": 1
+       }
+      },
+      {
+       "input": {
+        "a": [
+         1
+        ],
+        "t": 0
+       },
+       "expected": {
+        "r": 1
+       },
+       "output": {
+        "r": 0
+       }
+      }
+     ],
+     "id": "m00"
+    },
+    {
+     "def": "tasks::find_sorted",
+     "site": 1,
+     "line": 10,
+     "col": 12,
+     "before": "i < a.len() && a[i] == t",
+     "after": "i < a.len() || a[i] == t",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1
+        ],
+        "t": 0
+       },
+       "expected": {
+        "r": 1
+       },
+       "output": {
+        "r": 0
+       }
+      },
+      {
+       "input": {
+        "a": [
+         0,
+         2,
+         4
+        ],
+        "t": 3
+       },
+       "expected": {
+        "r": 3
+       },
+       "output": {
+        "r": 2
+       }
+      }
+     ],
+     "id": "m01"
+    },
+    {
+     "def": "tasks::find_sorted",
+     "site": 3,
+     "line": 10,
+     "col": 27,
+     "before": "a[i] == t",
+     "after": "a[i] != t",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1
+        ],
+        "t": 1
+       },
+       "expected": {
+        "r": 0
+       },
+       "output": {
+        "r": 1
+       }
+      },
+      {
+       "input": {
+        "a": [
+         1
+        ],
+        "t": 0
+       },
+       "expected": {
+        "r": 1
+       },
+       "output": {
+        "r": 0
+       }
+      }
+     ],
+     "id": "m02"
+    },
+    {
+     "def": "tasks::find_sorted",
+     "site": 4,
+     "line": 10,
+     "col": 27,
+     "before": "a[i]",
+     "after": "a[i + 1]",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         0,
+         2
+        ],
+        "t": 0
+       },
+       "expected": {
+        "r": 0
+       },
+       "output": {
+        "r": 2
+       }
+      },
+      {
+       "input": {
+        "a": [
+         0,
+         1,
+         1,
+         3,
+         4
+        ],
+        "t": 0
+       },
+       "expected": {
+        "r": 0
+       },
+       "output": {
+        "r": 5
+       }
+      }
+     ],
+     "id": "m03"
+    },
+    {
+     "def": "tasks::find_sorted",
+     "site": 5,
+     "line": 10,
+     "col": 27,
+     "before": "a[i]",
+     "after": "a[i - 1]",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1,
+         2
+        ],
+        "t": 2
+       },
+       "expected": {
+        "r": 1
+       },
+       "output": {
+        "r": 2
+       }
+      },
+      {
+       "input": {
+        "a": [
+         0,
+         2,
+         4
+        ],
+        "t": 4
+       },
+       "expected": {
+        "r": 2
+       },
+       "output": {
+        "r": 3
+       }
+      }
+     ],
+     "id": "m04"
+    },
+    {
+     "def": "search::lower_bound",
+     "site": 0,
+     "line": 104,
+     "col": 29,
+     "before": "0",
+     "after": "1",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1
+        ],
+        "t": 1
+       },
+       "expected": {
+        "r": 0
+       },
+       "output": {
+        "r": 1
+       }
+      },
+      {
+       "input": {
+        "a": [
+         0,
+         2
+        ],
+        "t": 0
+       },
+       "expected": {
+        "r": 0
+       },
+       "output": {
+        "r": 2
+       }
+      }
+     ],
+     "id": "m05"
+    },
+    {
+     "def": "search::lower_bound",
+     "site": 6,
+     "line": 111,
+     "col": 13,
+     "before": "a[m] < t",
+     "after": "!(a[m] < t)",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1
+        ],
+        "t": 1
+       },
+       "expected": {
+        "r": 0
+       },
+       "output": {
+        "r": 1
+       }
+      },
+      {
+       "input": {
+        "a": [
+         1,
+         2
+        ],
+        "t": 2
+       },
+       "expected": {
+        "r": 1
+       },
+       "output": {
+        "r": 2
+       }
+      }
+     ],
+     "id": "m06"
+    },
+    {
+     "def": "search::lower_bound",
+     "site": 7,
+     "line": 111,
+     "col": 16,
+     "before": "a[m] < t",
+     "after": "a[m] <= t",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1
+        ],
+        "t": 1
+       },
+       "expected": {
+        "r": 0
+       },
+       "output": {
+        "r": 1
+       }
+      },
+      {
+       "input": {
+        "a": [
+         1,
+         2
+        ],
+        "t": 2
+       },
+       "expected": {
+        "r": 1
+       },
+       "output": {
+        "r": 2
+       }
+      }
+     ],
+     "id": "m07"
+    },
+    {
+     "def": "search::lower_bound",
+     "site": 8,
+     "line": 111,
+     "col": 16,
+     "before": "a[m]",
+     "after": "a[m + 1]",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         0,
+         2,
+         4
+        ],
+        "t": 4
+       },
+       "expected": {
+        "r": 2
+       },
+       "output": {
+        "r": 3
+       }
+      },
+      {
+       "input": {
+        "a": [
+         0,
+         1,
+         2,
+         4
+        ],
+        "t": 4
+       },
+       "expected": {
+        "r": 3
+       },
+       "output": {
+        "r": 4
+       }
+      }
+     ],
+     "id": "m08"
+    },
+    {
+     "def": "search::lower_bound",
+     "site": 9,
+     "line": 111,
+     "col": 16,
+     "before": "a[m]",
+     "after": "a[m - 1]",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1,
+         2
+        ],
+        "t": 2
+       },
+       "expected": {
+        "r": 1
+       },
+       "output": {
+        "r": 2
+       }
+      },
+      {
+       "input": {
+        "a": [
+         0,
+         2,
+         4
+        ],
+        "t": 4
+       },
+       "expected": {
+        "r": 2
+       },
+       "output": {
+        "r": 3
+       }
+      }
+     ],
+     "id": "m09"
+    },
+    {
+     "def": "search::lower_bound",
+     "site": 11,
+     "line": 112,
+     "col": 26,
+     "before": "m + 1",
+     "after": "m + 2",
+     "witnesses": [
+      {
+       "input": {
+        "a": [
+         1,
+         2
+        ],
+        "t": 2
+       },
+       "expected": {
+        "r": 1
+       },
+       "output": {
+        "r": 2
+       }
+      },
+      {
+       "input": {
+        "a": [
+         0,
+         2,
+         4
+        ],
+        "t": 4
+       },
+       "expected": {
+        "r": 2
+       },
+       "output": {
+        "r": 3
+       }
+      }
+     ],
+     "id": "m10"
+    }
+   ],
+   "discarded": [
+    {
+     "def": "tasks::find_sorted",
+     "site": 2,
+     "line": 10,
+     "col": 12,
+     "before": "i < a.len()",
+     "after": "i <= a.len()",
+     "reason": "trap_only"
+    },
+    {
+     "def": "search::lower_bound",
+     "site": 1,
+     "line": 106,
+     "col": 15,
+     "before": "lo < hi",
+     "after": "lo <= hi",
+     "reason": "trap_only"
+    },
+    {
+     "def": "search::lower_bound",
+     "site": 2,
+     "line": 110,
+     "col": 28,
+     "before": "lo + (hi - lo) / 2",
+     "after": "lo - (hi - lo) / 2",
+     "reason": "trap_only"
+    },
+    {
+     "def": "search::lower_bound",
+     "site": 3,
+     "line": 110,
+     "col": 33,
+     "before": "(hi - lo) / 2",
+     "after": "(hi - lo) % 2",
+     "reason": "trap_only"
+    },
+    {
+     "def": "search::lower_bound",
+     "site": 4,
+     "line": 110,
+     "col": 33,
+     "before": "(hi - lo)",
+     "after": "(hi + lo)",
+     "reason": "trap_only"
+    },
+    {
+     "def": "search::lower_bound",
+     "site": 5,
+     "line": 110,
+     "col": 45,
+     "before": "(hi - lo) / 2",
+     "after": "(hi - lo) / 3",
+     "reason": "equivalent"
+    },
+    {
+     "def": "search::lower_bound",
+     "site": 10,
+     "line": 112,
+     "col": 22,
+     "before": "m + 1",
+     "after": "m - 1",
+     "reason": "trap_only"
+    }
+   ]
+  }
+ ]
+}

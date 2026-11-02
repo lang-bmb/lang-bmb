@@ -1,0 +1,38 @@
+{
+  "id": "w06-add-all",
+  "kind": "write",
+  "prompt": "Create unit `tasks` and implement `add_all`: add d to every element of `a`, for d and every element in [-1000, 1000] (you may also assume a.len() <= 1000000, as `stats::bounded_elems` does). The contract must state that each element equals its old value plus d.\n\nRequired signature (in unit `tasks`):\nfn add_all(a: &mut [i64], d: i64) -> ()",
+  "unit": "tasks",
+  "def": "tasks::add_all",
+  "signature": "fn add_all(a: &mut [i64], d: i64) -> ()",
+  "accept": {
+    "specs": "spec fn ref_pre(a: &[i64], d: i64) -> bool { a.len() <= 1000000 && -1000 <= d && d <= 1000 && (forall|k: usize| k < a.len() ==> -1000 <= #[trigger] a[k] && a[k] <= 1000) }\nspec fn ref_post(a: &[i64], b: &[i64], d: i64) -> bool { a.len() == b.len() && (forall|k: usize| k < a.len() ==> #[trigger] a[k] == b[k] + d) }",
+    "pre": "ref_pre(a, d)",
+    "post": "ref_post(a, old(a), d)",
+    "args": "a, d"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn small_d(d: i64) -> bool { -1000 <= d && d <= 1000 }\n\nspec fn added_below(a: &[i64], b: &[i64], d: i64, n: usize) -> bool {\n    a.len() == b.len() && (forall|k: usize| k < a.len() ==> ((k < n ==> #[trigger] a[k] == b[k] + d) && (k >= n ==> a[k] == b[k])))\n}\n\nspec fn added(a: &[i64], b: &[i64], d: i64) -> bool { a.len() == b.len() && (forall|k: usize| k < a.len() ==> #[trigger] a[k] == b[k] + d) }\n\n#[effects(pure)]\n#[uses(stats::bounded_elems, small_d, added_below, added)]\nfn add_all(a: &mut [i64], d: i64) -> ()\n    requires stats::bounded_elems(a), small_d(d),\n    ensures added(a, old(a), d),\n{\n    let mut k: usize = 0;\n    while k < a.len()\n        invariant k <= a.len(), stats::bounded_elems(old(a)), added_below(a, old(a), d, k),\n        decreases a.len() - k,\n    {\n        a[k] = a[k] + d;\n        k = k + 1;\n    }\n}"
+    }
+  ],
+  "weak_reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn small_d(d: i64) -> bool { -1000 <= d && d <= 1000 }\n\n#[effects(pure)]\n#[uses(stats::bounded_elems, small_d, arr::same_len)]\nfn add_all(a: &mut [i64], d: i64) -> ()\n    requires stats::bounded_elems(a), small_d(d),\n    ensures arr::same_len(a, old(a)),\n{\n    let mut k: usize = 0;\n    while k < a.len()\n        invariant k <= a.len(),\n        decreases a.len() - k,\n    {\n        a[k] = a[k].wrapping_add(d);\n        k = k + 1;\n    }\n}"
+    }
+  ]
+}

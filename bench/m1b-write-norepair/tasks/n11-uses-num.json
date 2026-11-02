@@ -1,0 +1,16 @@
+{
+  "id": "n11-uses-num",
+  "kind": "navigate",
+  "prompt": "Which definitions reveal (list in `#[uses(..)]`) the predicate `num::small` or `num::ordered`? Use the `answer` tool with the full paths (unit::name) of all such definitions.",
+  "truth": {
+    "query": [
+      "contracts",
+      "num::small"
+    ],
+    "also": [
+      "contracts",
+      "num::ordered"
+    ],
+    "list": "uses_by"
+  }
+}

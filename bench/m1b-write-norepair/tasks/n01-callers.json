@@ -1,0 +1,17 @@
+{
+  "id": "n01-callers",
+  "kind": "navigate",
+  "prompt": "Which definitions directly call `fsm::step`? Use the `answer` tool with the full paths (unit::name) of all such definitions.",
+  "truth": {
+    "query": [
+      "edges",
+      "fsm::step",
+      "in",
+      "1"
+    ],
+    "kinds": [
+      "calls"
+    ],
+    "field": "from"
+  }
+}

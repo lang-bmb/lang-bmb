@@ -1,0 +1,22 @@
+{
+  "id": "w15-pay-all-count",
+  "kind": "write",
+  "prompt": "The library function `ledger::pay_all` returns how many transfers succeeded but its contract does not bound that number. Add to its postcondition that the result is at most a.len(), keeping everything else.\n\nRequired signature (in unit `ledger`):\nfn pay_all(a: &mut [i64], from: usize, x: i64) -> (r: usize)",
+  "unit": "ledger",
+  "def": "ledger::pay_all",
+  "signature": "fn pay_all(a: &mut [i64], from: usize, x: i64) -> (r: usize)",
+  "accept": {
+    "specs": "spec fn ref_pre(a: &[i64], from: usize, x: i64) -> bool { (forall|k: usize| k < a.len() ==> 0 <= #[trigger] a[k] && a[k] <= 1000000000) && from < a.len() && 0 <= x && x <= 1000000000 }\nspec fn ref_post(a: &[i64], r: usize) -> bool { r <= a.len() && (forall|k: usize| k < a.len() ==> 0 <= #[trigger] a[k] && a[k] <= 1000000000) }",
+    "pre": "ref_pre(a, from, x)",
+    "post": "ref_post(a, r)",
+    "args": "a, from, x"
+  },
+  "reference": [
+    {
+      "op": "put",
+      "unit": "ledger",
+      "code": "spec fn paid_ok(a: &[i64], r: usize) -> bool { r <= a.len() }\n\n#[effects(pure)]\n#[uses(cap_ok, acct, amount_ok, paid_ok)]\nfn pay_all(a: &mut [i64], from: usize, x: i64) -> (r: usize)\n    requires cap_ok(a), acct(a, from), amount_ok(x),\n    ensures cap_ok(a), paid_ok(a, r),\n{\n    let mut paid: usize = 0;\n    let mut k: usize = 0;\n    while k < a.len()\n        invariant k <= a.len(), paid <= k, from < a.len(), cap_ok(a),\n        decreases a.len() - k,\n    {\n        if transfer(a, from, k, x) {\n            paid = paid + 1;\n        }\n        k = k + 1;\n    }\n    paid\n}"
+    }
+  ],
+  "weak_reference": []
+}

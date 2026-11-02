@@ -54,6 +54,58 @@ READ_TOOLS = {"query", "map"}
 WRITE_COMMITS = ("tx_commit", "write", "edit_file", "edit_ast")
 
 
+# Results that carry a proof outcome: a committed write proves the whole
+# workspace, and `verify` proves it again (backlog T1-45, H-REPAIR).
+PROOF_RESULTS = ("verify",) + WRITE_COMMITS
+
+
+def proof_failed(name, text):
+    """True when a call's result reports a failed proof: a `verify`, or a
+    write that committed and then proved, with an error diagnostic."""
+    if name not in PROOF_RESULTS or (name in WRITE_COMMITS and commit_outcome(name, text) is not True):
+        return False
+    return '"severity":"error"' in text
+
+
+# H-REPAIR's ablation (ADR-0078, backlog T1-45): a set whose `set.json` has
+# `"tool_filter": "no-repair"` shows the model every tool result without the
+# repair information, and nothing else changes. Removed: the counterexample
+# that ends a diagnostic's message (`; counterexample: ..`, `; unconfirmed
+# counterexample: ..`), every `fix` (the suggested change and the hints the
+# compiler gives with it) and every `counterexample` field. A line that is not
+# JSON, or that has none of these, is passed on byte for byte.
+CEX_TAIL = re.compile(r"; (?:unconfirmed )?counterexample: .*\Z", re.S)
+
+
+def _strip(v):
+    if isinstance(v, dict):
+        out = {}
+        for k, x in v.items():
+            if k in ("fix", "counterexample"):
+                continue
+            out[k] = CEX_TAIL.sub("", x) if k == "message" and isinstance(x, str) else _strip(x)
+        return out
+    if isinstance(v, list):
+        return [_strip(x) for x in v]
+    return v
+
+
+def strip_repair(text):
+    lines = []
+    for line in text.split("\n"):
+        try:
+            v = json.loads(line)
+        except ValueError:
+            lines.append(line)
+            continue
+        w = _strip(v)
+        lines.append(line if w == v else json.dumps(w, ensure_ascii=False, separators=(",", ":")))
+    return "\n".join(lines)
+
+
+TOOL_FILTERS = {"no-repair": strip_repair}
+
+
 def commit_outcome(name, text):
     """True for a committed write, False for a refused one, None when the
     call did not reach a commit (an unknown transaction, missing arguments,
@@ -107,7 +159,8 @@ def set_config():
     model is not shown (still callable, so scripted agents keep their calls).
     `script` names the edit surface the scripted agents write through
     (`surface.py`, ADR-0073); without it they use the transaction tools.
-    Frozen with the set."""
+    `tool_filter` names a filter of every tool result the model sees
+    (`TOOL_FILTERS`; `no-repair`, H-REPAIR's ablation). Frozen with the set."""
     path = os.path.join(SET, "set.json")
     if not os.path.exists(path):
         return {}
@@ -208,6 +261,7 @@ class Mcp:
         self.p.stdin.flush()
         hidden = set(cfg.get("hide_tools", []))
         self.tools = [x for x in self.request("tools/list", {})["result"]["tools"] if x["name"] not in hidden]
+        self.filter = TOOL_FILTERS[cfg["tool_filter"]] if "tool_filter" in cfg else None
 
     def request(self, method, params):
         msg = {"jsonrpc": "2.0", "id": self.next, "method": method, "params": params}
@@ -218,7 +272,8 @@ class Mcp:
 
     def call(self, name, args):
         r = self.request("tools/call", {"name": name, "arguments": args})["result"]
-        return r["content"][0]["text"], r.get("isError", False)
+        text = r["content"][0]["text"]
+        return (self.filter(text) if self.filter else text), r.get("isError", False)
 
     def close(self):
         self.p.stdin.close()
@@ -602,7 +657,7 @@ def run_task(task, agent_kind):
     if hasattr(agent, "set_tools"):
         agent.set_tools(mcp.tools + extra_tools(task))
     m = {"tool_calls": 0, "read_calls": 0, "read_bytes": 0, "commits": 0, "e02": 0, "limit_hit": False,
-         "commits_ok": 0, "commits_rejected": 0}
+         "commits_ok": 0, "commits_rejected": 0, "proofs_failed": 0}
     # With BMB_CONTEXT_LOG=1 (model_api.context_log), every call's tool and
     # result size, in order (backlog 2D-25): with the agent's per-request
     # tokens they decompose each turn's context. Off by default.
@@ -639,6 +694,7 @@ def run_task(task, agent_kind):
                 outcome = commit_outcome(name, text)
                 if outcome is not None:
                     m["commits_ok" if outcome else "commits_rejected"] += 1
+                m["proofs_failed"] += proof_failed(name, text)
                 if name in READ_TOOLS:
                     m["read_calls"] += 1
                     m["read_bytes"] += len(text.encode())
