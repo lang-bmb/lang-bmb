@@ -31,4 +31,5 @@
 - 코드: `bench/run_models.py`의 `--repeat`(`REPEATS`·`REPEAT_AGENT`·`REPEAT_SETS`, `repeat_problem`), `bench/m1/harness.py`의 `condition_fields`(`BMB_REPEAT` → 머리의 `repeat`), 요약 `bench/repeat.py summary`.
 - 시험: `bench/test_run_models.py`의 `test_repeats_are_declared_for_qwen_on_m1_and_m1b`, `bench/test_repeat.py`(구간, 판정, 요약, 섞인 실행 거부). 게이트 작업 "bench repeated runs (ADR-0077)".
 - 실행은 측정 게이트웨이에 닿는 환경에서 한다(백로그 T0-12). 결과가 나오면 utility §4의 한계 1과 §6을 고치고, 가설 등록부의 판정은 §3·§4로 읽는다.
+- 첫 반복(2026-11-02, 백로그 T0-12, `dev-docs/measurements/t0-12.md`): qwen, 커밋 `086bfcd4`, 다섯 번. **D = 30%p**(m1 작성 범위 6/10~9/10; m1b 20%p). G2 판정: m1b 작성 충족(하한 74.1%), m1 작성 미정(하한 59.3%).
 - 되돌리기: `--repeat`를 지우면 ADR-0066 §5 그대로다.
