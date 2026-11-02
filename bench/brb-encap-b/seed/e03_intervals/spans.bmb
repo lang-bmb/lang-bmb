@@ -1,0 +1,79 @@
+#[summary("interval list: disjoint sorted spans with gaps, at most 8")]
+mod spans {
+    // The values `lo[i]..=hi[i]` for `i < len`. Every span is nonempty, the
+    // spans are in increasing order, and two neighbours never touch (there
+    // is at least one value between them): one list per set of values.
+    #[invariant(canon)]
+    struct Spans { lo: [i64; 8], hi: [i64; 8], len: usize }
+
+    spec fn canon(s: &Spans) -> bool {
+        s.len <= 8 && (forall|i: usize| i < s.len ==> #[trigger] s.lo[i] <= s.hi[i]) && (forall|j: usize| j + 1 < s.len ==> #[trigger] s.hi[j] + 1 < s.lo[j + 1])
+    }
+
+    impl Spans {
+        #[effects(pure)]
+        #[uses(canon)]
+        fn new() -> Spans {
+            Spans { lo: [0; 8], hi: [0; 8], len: 0 }
+        }
+
+        #[effects(pure)]
+        fn count(self: &Spans) -> usize {
+            self.len
+        }
+
+        // The first value of the `i`-th span.
+        #[effects(pure)]
+        #[uses(canon)]
+        fn first(self: &Spans, i: usize) -> Option<i64> {
+            if i < self.len {
+                Some(self.lo[i])
+            } else {
+                None
+            }
+        }
+
+        // The last value of the `i`-th span.
+        #[effects(pure)]
+        #[uses(canon)]
+        fn last(self: &Spans, i: usize) -> Option<i64> {
+            if i < self.len {
+                Some(self.hi[i])
+            } else {
+                None
+            }
+        }
+
+        #[effects(pure)]
+        #[uses(canon)]
+        fn contains(self: &Spans, x: i64) -> bool {
+            for i in 0..self.len {
+                if x < self.lo[i] {
+                    return false;
+                }
+                if x <= self.hi[i] {
+                    return true;
+                }
+            }
+            false
+        }
+
+        // Appends the span `lo..=hi` after the last one. `false` (and no
+        // change) when `lo > hi`, when the span does not lie above the last
+        // one with a gap, or when the list is full.
+        #[effects(pure)]
+        #[uses(canon)]
+        fn push(self: &mut Spans, lo: i64, hi: i64) -> bool {
+            if lo > hi || self.len == 8 {
+                return false;
+            }
+            if self.len > 0 && (self.hi[self.len - 1] >= lo || self.hi[self.len - 1] + 1 == lo) {
+                return false;
+            }
+            self.lo[self.len] = lo;
+            self.hi[self.len] = hi;
+            self.len = self.len + 1;
+            true
+        }
+    }
+}

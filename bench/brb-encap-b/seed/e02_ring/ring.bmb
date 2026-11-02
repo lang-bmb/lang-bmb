@@ -1,0 +1,59 @@
+#[summary("ring buffer of at most 8 values")]
+mod ring {
+    // The values, oldest first, are `buf[(head + i) % 8]` for `i < len`.
+    #[invariant(in_bounds)]
+    struct Ring { buf: [i64; 8], head: usize, len: usize }
+
+    spec fn in_bounds(r: &Ring) -> bool {
+        r.head < 8 && r.len <= 8
+    }
+
+    impl Ring {
+        #[effects(pure)]
+        #[uses(in_bounds)]
+        fn new() -> Ring {
+            Ring { buf: [0; 8], head: 0, len: 0 }
+        }
+
+        // Adds `x` as the newest value; `false` when full: the value is not
+        // stored.
+        #[effects(pure)]
+        #[uses(in_bounds)]
+        fn push(self: &mut Ring, x: i64) -> bool {
+            if self.len == 8 {
+                return false;
+            }
+            self.buf[(self.head + self.len) % 8] = x;
+            self.len = self.len + 1;
+            true
+        }
+
+        // Removes and returns the oldest value; `None` when empty.
+        #[effects(pure)]
+        #[uses(in_bounds)]
+        fn pop(self: &mut Ring) -> Option<i64> {
+            if self.len == 0 {
+                return None;
+            }
+            let x: i64 = self.buf[self.head];
+            self.head = (self.head + 1) % 8;
+            self.len = self.len - 1;
+            Some(x)
+        }
+
+        // The `i`-th value from the oldest.
+        #[effects(pure)]
+        #[uses(in_bounds)]
+        fn get(self: &Ring, i: usize) -> Option<i64> {
+            if i >= self.len {
+                return None;
+            }
+            Some(self.buf[(self.head + i) % 8])
+        }
+
+        #[effects(pure)]
+        fn size(self: &Ring) -> usize {
+            self.len
+        }
+    }
+}

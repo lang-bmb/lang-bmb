@@ -27,7 +27,7 @@ if [ -z "${BMB_GATE_POWER_RUN:-}" ]; then
   step "power"; python3 scripts/gate_power.py check > /dev/null
 fi
 
-step "test, bench m1, bench m1b, bench hname, bench edit (write, diff, ast), bench view, bench lean, bench impossible, bench bvb, bench m3, bench bnb, bench bcb, bench brb, bench brb-encap, bench run_models, bench utility report, health (concurrent)"
+step "test, bench m1, bench m1b, bench hname, bench edit (write, diff, ast), bench view, bench lean, bench impossible, bench bvb, bench m3, bench bnb, bench bcb, bench brb, bench brb-encap, bench brb-encap-b, bench run_models, bench utility report, health (concurrent)"
 # Bench sessions are independent (ADR-0025, backlog 2A-04): m1b and bvb run two at a time per agent.
 # The original-Verus side of bvb (2A-09) needs the Verus toolchain: here only its harness logic
 # runs (stub verifier); the real oracle/weak runs are the `bvb-verus` CI job.
@@ -149,6 +149,33 @@ for row in "| 자기 검사 통과 & 숨은 불변식 위반 / 자기 검사 통
 done' \
   --job "bench brb-encap adequacy=python3 bench/brb-encap/harness.py adequacy --jobs 2 > /dev/null" \
   --job "bench brb-encap tests=python3 bench/brb-encap/test_brb_encap.py" \
+  --job 'bench brb-encap-b oracle=b=$(mktemp); r=$(mktemp); trap "rm -f $b $r" EXIT
+# H-ENCAP with the new operation as an `impl` method (backlog T0-29): the
+# same checks as brb-encap.
+python3 bench/brb-encap-b/harness.py run --arm bmb --agent oracle --expect all-pass --jobs 2 --out "$b" > /dev/null
+python3 bench/brb-encap-b/harness.py run --arm rust --agent oracle --proptest off --expect all-pass --jobs 2 --out "$r" > /dev/null
+table=$(python3 bench/brb-encap-b/harness.py summarize "$b" "$r")
+for row in "| 성공(숨은 판정 전부 통과) | 4/4 | 4/4 |" \
+           "| 자기 검사 통과 & 숨은 불변식 위반 / 자기 검사 통과 | 0/4 | 0/4 |" \
+           "→ 판정 불가(Rust 통과 & 위반 0)"; do
+  grep -qF "$row" <<< "$table" || { echo "brb-encap-b oracle summarize: missing row: $row"; echo "$table"; exit 1; }
+done' \
+  --job 'bench brb-encap-b weak=b=$(mktemp); r=$(mktemp); g=$(mktemp); trap "rm -f $b $r $g" EXIT
+# The weak operation breaks the invariant: Rust passes its own tests and the
+# hidden judge finds the violation; the BMB gate rejects it at a type
+# invariant boundary. The gaming control (weakened invariant predicate) passes
+# the gate and is judged a changed invariant with a violation.
+python3 bench/brb-encap-b/harness.py run --arm bmb --agent weak --expect weak-caught --jobs 2 --out "$b" > /dev/null
+python3 bench/brb-encap-b/harness.py run --arm rust --agent weak --proptest off --expect weak-caught --jobs 2 --out "$r" > /dev/null
+python3 bench/brb-encap-b/harness.py run --arm bmb --agent game --expect gamed --jobs 2 --out "$g" > /dev/null
+table=$(python3 bench/brb-encap-b/harness.py summarize "$b" "$r" "$g")
+for row in "| 자기 검사 통과 & 숨은 불변식 위반 / 자기 검사 통과 | 0/0 | 4/4 | 3/3 |" \
+           "| 게이트 거부: 불변식 경계(BMB, E0823·E0811) | 4 | — | 0 |" \
+           "| 그중 불변식 변경(BMB: 타입·술어가 시드와 다름) | 0 | — | 3 |"; do
+  grep -qF "$row" <<< "$table" || { echo "brb-encap-b weak summarize: missing row: $row"; echo "$table"; exit 1; }
+done' \
+  --job "bench brb-encap-b adequacy=python3 bench/brb-encap-b/harness.py adequacy --jobs 2 > /dev/null" \
+  --job "bench brb-encap-b tests=python3 bench/brb-encap-b/test_brb_encap_b.py" \
   --job "health=python3 scripts/health.py" \
   --job "health rules=python3 scripts/test_health.py && python3 scripts/test_solver_stability.py"
 echo "all checks passed"
