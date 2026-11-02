@@ -2,14 +2,14 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 7423209,
+    "V4_rlimit_total": 7473584,
     "V5_rlimit_headroom": 0.1804,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0,
     "V8_bench_rlimit_total": 24254414,
     "V9_bench_defs_at_limit": 0,
     "V10_library_rlimit_total": 13157963,
-    "V11_sat_check_rlimit_total": 278100374,
+    "V11_sat_check_rlimit_total": 278165611,
     "V12_sat_check_undecided": 277,
     "S1_external_crates": 0,
     "S2_external_processes": [
@@ -17,12 +17,12 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 40263,
+    "S4_stage0_rust_lines": 42011,
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
-    "P1_runnable_programs": 59,
-    "P2_bmb_lines": 21913,
-    "P3_errors_with_help": 0.8798,
+    "P1_runnable_programs": 60,
+    "P2_bmb_lines": 22154,
+    "P3_errors_with_help": 0.8854,
     "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 13
@@ -1623,6 +1623,36 @@
         "P3_errors_with_help": [
           0.8782,
           0.8798
+        ]
+      }
+    },
+    {
+      "date": "2026-11-02",
+      "reason": "2F-02/2F-03/2E-02..04: tests/run/escapes.bmb (P1, P2; its obligations, two passes for the assumed ones: V4 +0.7%, V11 +0.02%), new effect and escape diagnostics with fixes (P3)",
+      "changed": {
+        "V4_rlimit_total": [
+          7423209,
+          7473584
+        ],
+        "V11_sat_check_rlimit_total": [
+          278100374,
+          278165611
+        ],
+        "S4_stage0_rust_lines": [
+          40263,
+          42011
+        ],
+        "P1_runnable_programs": [
+          59,
+          60
+        ],
+        "P2_bmb_lines": [
+          21913,
+          22154
+        ],
+        "P3_errors_with_help": [
+          0.8798,
+          0.8854
         ]
       }
     }
