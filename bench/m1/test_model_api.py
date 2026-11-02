@@ -163,6 +163,14 @@ class Streams(unittest.TestCase):
         with self.assertRaises(model_api.StreamCut):
             model_api.fold_anthropic([{"type": "message_start", "message": {"content": []}}])
 
+    def test_a_stream_past_its_deadline_is_cut(self):
+        # Keep-alive lines reset the read timeout; the deadline bounds the
+        # whole request (T0-13 stall, 2026-11-02).
+        lines = [b": keep-alive\n"] * 3 + [b'data: {"x": 1}\n']
+        with self.assertRaises(model_api.StreamCut):
+            list(model_api.sse_events(lines, deadline=model_api.time.monotonic() - 1))
+        self.assertEqual(list(model_api.sse_events(lines, deadline=model_api.time.monotonic() + 60)), [{"x": 1}])
+
 
 class Kinds(unittest.TestCase):
     def test_dispatch(self):

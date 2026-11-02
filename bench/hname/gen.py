@@ -246,8 +246,11 @@ def build(name, umap, dmap, neutral_summaries, root):
 
 
 def tree(d):
+    """{relative path: bytes} of a set, without its measurement results."""
     out = {}
-    for base, _, fs in os.walk(d):
+    for base, dirs, fs in os.walk(d):
+        if base == d:
+            dirs[:] = [x for x in dirs if x != "results"]
         for f in fs:
             p = os.path.join(base, f)
             out[os.path.relpath(p, d)] = open(p, "rb").read()

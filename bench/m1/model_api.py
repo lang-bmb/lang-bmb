@@ -37,6 +37,11 @@ GATEWAY = "https://token.iyulab.com"
 OPENAI_BASE = os.environ.get("BMB_OPENAI_BASE_URL", GATEWAY + "/openai/v1")
 ANTHROPIC_BASE = os.environ.get("BMB_ANTHROPIC_BASE_URL", GATEWAY + "/anthropic/v1")
 TIMEOUT = 900
+# A whole streamed request (ADR-0076 sessions reach 65,536 output tokens,
+# about half an hour at the gateway's rate). `TIMEOUT` bounds each read only,
+# so a stream kept open with keep-alive lines and no end stalled a session
+# for hours (T0-13, 2026-11-02); past this it is cut and retried.
+REQUEST_DEADLINE = 3600
 RETRIES = 6  # backoff 2..64 s, about two minutes of a gateway outage
 
 
@@ -68,9 +73,12 @@ def context_log():
     return os.environ.get("BMB_CONTEXT_LOG") == "1"
 
 
-def sse_events(lines):
-    """The JSON payloads of a server-sent event stream, up to `[DONE]`."""
+def sse_events(lines, deadline=None):
+    """The JSON payloads of a server-sent event stream, up to `[DONE]`;
+    `StreamCut` once `time.monotonic()` passes `deadline`."""
     for raw in lines:
+        if deadline is not None and time.monotonic() > deadline:
+            raise StreamCut("the request passed its deadline")
         line = raw.decode() if isinstance(raw, bytes) else raw
         line = line.strip()
         if not line.startswith("data:"):
@@ -154,7 +162,9 @@ def post_json(url, body, headers, stats=None, timeout=TIMEOUT, retries=RETRIES, 
         req = urllib.request.Request(url, data=data, headers={"content-type": "application/json", **headers})
         try:
             with urllib.request.urlopen(req, timeout=timeout) as r:
-                return fold(sse_events(r)) if fold else json.loads(r.read())
+                if fold:
+                    return fold(sse_events(r, time.monotonic() + REQUEST_DEADLINE))
+                return json.loads(r.read())
         except urllib.error.HTTPError as e:
             if e.code != 429 and e.code < 500 or attempt == retries:
                 raise RuntimeError(f"{url}: HTTP {e.code}: {e.read()[:500]!r}") from None

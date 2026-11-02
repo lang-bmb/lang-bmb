@@ -70,8 +70,11 @@ def build(root):
 
 
 def tree(d):
+    """{relative path: bytes} of a set, without its measurement results."""
     out = {}
-    for base, _, files in os.walk(d):
+    for base, dirs, files in os.walk(d):
+        if base == d:
+            dirs[:] = [x for x in dirs if x != "results"]
         for f in files:
             if "__pycache__" in base:
                 continue

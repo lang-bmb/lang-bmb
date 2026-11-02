@@ -214,8 +214,13 @@ def build(root):
 
 
 def tree(d):
+    """{relative path: bytes} of a set, without its measurement results
+    (`results/`, written by runs, not by this generator) or byte code."""
     out = {}
-    for base, _, fs in os.walk(d):
+    for base, dirs, fs in os.walk(d):
+        if base == d:
+            dirs[:] = [x for x in dirs if x != "results"]
+        dirs[:] = [x for x in dirs if x != "__pycache__"]
         for f in fs:
             p = os.path.join(base, f)
             out[os.path.relpath(p, d)] = open(p, "rb").read()
