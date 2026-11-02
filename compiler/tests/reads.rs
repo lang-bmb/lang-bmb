@@ -135,10 +135,14 @@ fn reads_follow_the_contract_firewall() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// The rows are the cache's key: two versions give a definition the same
-/// rows exactly when they give it the same key, and a warm `verify` encodes
-/// exactly the definitions whose key changed (the corpus case that changes
-/// contracts under their readers, `tests/weaken/readers`).
+/// The rows are what the cache's key reads, by name: two versions that give
+/// a definition the same rows give it the same key. The key names nothing
+/// (backlog T1-49), so rows that differ only by a renaming keep it:
+/// `m::quarter`'s precondition goes from `pos(x)` to `gt0(x)`, two opaque
+/// spec fns of the same signature, which its queries read as declarations
+/// only. A warm `verify` encodes exactly the definitions whose key changed
+/// (the corpus case that changes contracts under their readers,
+/// `tests/weaken/readers`).
 #[test]
 fn reads_are_the_incremental_proof_key() {
     let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/weaken/readers");
@@ -154,13 +158,19 @@ fn reads_are_the_incremental_proof_key() {
     let (a, b) = (mk("a", "old.bmb"), mk("b", "new.bmb"));
     let (ra, rb) = (reads(&a), reads(&b));
     let mut changed = BTreeSet::new();
+    let mut renamed = BTreeSet::new();
     for (d, (key, rows)) in &rb {
         let (key0, rows0) = &ra[d];
-        assert_eq!(key == key0, rows == rows0, "{d}");
+        if rows == rows0 {
+            assert_eq!(key, key0, "{d}");
+        }
         if key != key0 {
             changed.insert(d.clone());
+        } else if rows != rows0 {
+            renamed.insert(d.clone());
         }
     }
+    assert_eq!(renamed, BTreeSet::from(["m::quarter".to_string()]));
     assert!(changed.contains("c::dec_opaque") && !changed.contains("m::pos"));
     let cache = dir.join("cache");
     let stats = dir.join("stats.json");
@@ -181,11 +191,18 @@ fn reads_are_the_incremental_proof_key() {
         .filter(|x| !x.is_empty())
         .map(|x| x.trim_matches('"').to_string())
         .collect();
-    // Spec fns have keys but no proof of their own to encode.
+    // Spec fns have keys but no proof of their own to encode. A definition
+    // whose key changed to the key of another the same run proves reuses
+    // that result (keys name nothing): `c::quarter_both` is `c::dec_both`
+    // up to names (both require `m::pos(x)` and call a function whose
+    // surface is `requires gt0(x)`).
     let exec: BTreeSet<String> = changed
         .into_iter()
         .filter(|d| !["m::pos", "m::gt0", "m::big", "m::mid"].contains(&d.as_str()))
         .collect();
-    assert_eq!(encoded, exec);
+    let reused: BTreeSet<String> = exec.difference(&encoded).cloned().collect();
+    assert!(encoded.is_subset(&exec), "{encoded:?}");
+    assert_eq!(reused, BTreeSet::from(["c::quarter_both".to_string()]));
+    assert_eq!(rb["c::quarter_both"].0, rb["c::dec_both"].0);
     let _ = fs::remove_dir_all(&dir);
 }
