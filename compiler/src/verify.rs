@@ -6384,7 +6384,7 @@ impl<'p> Prog<'p> {
     /// query, `incomplete (theory array)`). `relevant_axioms` picks the form
     /// (ADR-0064, ADR-0067). A non-recursive definition that is not a leaf
     /// has a macro form for the probe of a satisfiability check (ADR-0072).
-    fn axiom(&self, path: &str) -> (String, AxiomParts) {
+    fn axiom(&self, path: &str) -> (String, Vec<AxiomParts>) {
         let d = &self.defs[path];
         let mut enc = Enc::new(self, path, &d.mod_path);
         let mut binders = Vec::new();
@@ -6483,15 +6483,22 @@ impl<'p> Prog<'p> {
         } else {
             quant.join("\n")
         };
-        // Ground instances (ADR-0023) cover single-result spec fns.
-        let parts = AxiomParts {
-            sym: spec_key(path, self.t),
-            params: app_args,
-            binders,
-            guard,
-            body: bodies.first().cloned().unwrap_or_default(),
-            recursive,
-        };
+        // Ground instances (ADR-0023): one definition per SMT function, so a
+        // struct result's fields are instantiated too. With the first field
+        // only, applications of the others had no instance and the instances
+        // were still called complete (backlog 1B-53).
+        let parts = spec_funs(path, self.t)
+            .iter()
+            .zip(&bodies)
+            .map(|((f, _), body)| AxiomParts {
+                sym: f.clone(),
+                params: app_args.clone(),
+                binders: binders.clone(),
+                guard: guard.clone(),
+                body: body.clone(),
+                recursive,
+            })
+            .collect();
         (text, parts)
     }
 }
@@ -6720,7 +6727,7 @@ pub fn preconditions_satisfiable(
         for u in prog.revealed(d.f, &d.mod_path) {
             let (ax, parts) = prog.axiom(&u);
             axioms.push((spec_key(&u, t), ax));
-            axiom_parts.push(parts);
+            axiom_parts.extend(parts);
         }
         for prm in &d.f.params {
             let ty = enc.local_ty(&prm.name.name);
@@ -7211,7 +7218,7 @@ fn verify_pass(
                 for u in prog.revealed(d.f, &d.mod_path) {
                     let (ax, parts) = prog.axiom(&u);
                     axioms.push((spec_key(&u, t), ax));
-                    axiom_parts.push(parts);
+                    axiom_parts.extend(parts);
                 }
                 for prm in &d.f.params {
                     let ty = enc.local_ty(&prm.name.name);
@@ -7257,7 +7264,7 @@ fn verify_pass(
                 for u in prog.revealed(d.f, &d.mod_path) {
                     let (ax, parts) = prog.axiom(&u);
                     axioms.push((spec_key(&u, t), ax));
-                    axiom_parts.push(parts);
+                    axiom_parts.extend(parts);
                 }
                 // Each parameter satisfies what every call proves of its
                 // argument (`type_facts`), and nothing more.
@@ -7289,7 +7296,7 @@ fn verify_pass(
                 for u in prog.revealed(d.f, &d.mod_path) {
                     let (ax, parts) = prog.axiom(&u);
                     axioms.push((spec_key(&u, t), ax));
-                    axiom_parts.push(parts);
+                    axiom_parts.extend(parts);
                 }
                 for prm in &d.f.params {
                     let ty = enc.local_ty(&prm.name.name);
@@ -9559,6 +9566,38 @@ mod m {
             inst,
             "(assert (=> true (= (|m::none| arr 3) (forall ((i Int)) (=> (< i 3) (distinct (select arr i) 7))))))\n"
         );
+    }
+
+    /// A struct-valued spec fn has one SMT function per field, and each gets
+    /// its ground instance. With the first field's definition only, an
+    /// application of another field had none and the instances were still
+    /// called complete: a confirmed counterexample that was not one
+    /// (`lib/sha256.bmb`'s `chain`, backlog 1B-53).
+    #[test]
+    fn every_field_of_a_struct_result_has_ground_instances() {
+        let src = r#"#[summary("t")]
+mod m {
+    struct P { a: i64, b: i64 }
+
+    spec fn pair(x: i64) -> P { P { a: x, b: x + 1 } }
+}
+"#;
+        let mut diags = crate::diag::Diags::default();
+        let toks = crate::lexer::lex(0, src, &mut diags);
+        let program = crate::parser::Parser::new(toks, &mut diags, src).parse_program();
+        let mut c = crate::check::Checker::new(&mut diags);
+        c.check_program(&program);
+        let tables = c.into_tables();
+        assert!(!diags.has_errors());
+        let prog = prog_of(&program, &tables);
+        let (_, parts) = prog.axiom("m::pair");
+        let syms: Vec<&str> = parts.iter().map(|p| p.sym.as_str()).collect();
+        assert_eq!(syms.len(), 2, "{syms:?}");
+        let second = syms[1];
+        let text = format!("(assert (not (= ({second} 5) 6)))");
+        let (inst, complete) = ground_instances(&parts, &text, 3);
+        assert!(complete);
+        assert!(inst.contains(&format!("(= ({second} 5)")), "{inst}");
     }
 
     #[test]

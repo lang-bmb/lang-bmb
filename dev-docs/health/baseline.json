@@ -9,15 +9,15 @@
     "V8_bench_rlimit_total": 23914744,
     "V9_bench_defs_at_limit": 0,
     "V10_library_rlimit_total": 12021529,
-    "V11_sat_check_rlimit_total": 283986695,
-    "V12_sat_check_undecided": 277,
+    "V11_sat_check_rlimit_total": 284089325,
+    "V12_sat_check_undecided": 297,
     "S1_external_crates": 0,
     "S2_external_processes": [
       "clang",
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 42339,
+    "S4_stage0_rust_lines": 42343,
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
     "P1_runnable_programs": 60,
@@ -1744,6 +1744,24 @@
         "P3_errors_with_help": [
           0.8867,
           0.8868
+        ]
+      }
+    },
+    {
+      "date": "2026-11-04",
+      "reason": "1B-53: ground instances for every field of a struct-valued spec fn; V12 +20 are satisfiability checks whose 'complete' instances were missing fields (decisions resting on a false completeness), now undecided (T2-13)",
+      "changed": {
+        "V11_sat_check_rlimit_total": [
+          283986695,
+          284089325
+        ],
+        "V12_sat_check_undecided": [
+          277,
+          297
+        ],
+        "S4_stage0_rust_lines": [
+          42339,
+          42343
         ]
       }
     }
