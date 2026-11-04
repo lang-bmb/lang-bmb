@@ -28,6 +28,7 @@ use std::process::Command;
 mod common;
 
 use common::scalar::*;
+use common::trap;
 
 /// A variant of `enum E { A, B(i64), C(P) }`.
 enum Ctor {
@@ -276,6 +277,8 @@ struct Stats {
     verified_runs: usize,
     cexes: usize,
     compiled_runs: usize,
+    /// Calls that fault in the interpreter, run as trap programs (1B-54).
+    traps: usize,
     /// Under a random invariant: verified functions that take a `q` or
     /// return a `P`, and E0823 counterexamples replayed.
     inv_verified: usize,
@@ -328,9 +331,10 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
     for f in &funcs {
         src.push_str(&f.text());
     }
-    src.push_str(
-        "}\n\n#[summary(\"실행\")]\nmod app {\n    #[effects(io)]\n    fn main() -> () {\n",
-    );
+    src.push_str("}\n\n");
+    let module = src.clone();
+    let main_head = "#[summary(\"실행\")]\nmod app {\n    #[effects(io)]\n    fn main() -> () {\n";
+    src.push_str(main_head);
     // Values of `P` that keep the invariant: a function's `q`.
     let mut qs: Vec<(i64, i64)> = Vec::new();
     for _ in 0..80 {
@@ -344,16 +348,27 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
     }
     let q_inputs = |f: &DFunc| -> Vec<(i64, i64)> { if f.q { qs.clone() } else { vec![(0, 0)] } };
     let mut expected = String::new();
-    for f in &funcs {
+    // Calls that fault in the interpreter (backlog 1B-54), as `main` lines.
+    let mut faults: Vec<(usize, String)> = Vec::new();
+    for (fi, f) in funcs.iter().enumerate() {
         for (x, y) in f.base.inputs(&mut rng) {
             for q in q_inputs(f) {
-                if let Ok(r) = f.run(x, y, q) {
-                    let qa = if f.q {
-                        format!(", m::P {{ a: {}, b: {} }}", lit(q.0), lit(q.1))
+                let qa = if f.q {
+                    format!(", m::P {{ a: {}, b: {} }}", lit(q.0), lit(q.1))
+                } else {
+                    String::new()
+                };
+                let call = format!("m::{}({}, {}{qa})", f.name(), lit(x), lit(y));
+                let Ok(r) = f.run(x, y, q) else {
+                    let shown = if f.returns_p {
+                        format!("{call}.a")
                     } else {
-                        String::new()
+                        call
                     };
-                    let call = format!("m::{}({}, {}{qa})", f.name(), lit(x), lit(y));
+                    faults.push((fi, format!("        print_i64({shown});\n")));
+                    continue;
+                };
+                {
                     if f.returns_p {
                         let _ = writeln!(src, "        print_i64({call}.a);");
                         let _ = writeln!(src, "        print_i64({call}.b);");
@@ -368,6 +383,7 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
     src.push_str("    }\n}\n");
     let file = dir.join(format!("d{seed}.bmb"));
     fs::write(&file, &src).unwrap();
+    let cache = dir.join(format!("cache{seed}"));
     // `emit-llvm` writes the IR whenever the program checks (with runtime
     // checks where proofs are missing) and prints the verification rows.
     let emit = |all_checks: bool| -> (String, Option<String>) {
@@ -377,6 +393,8 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
         cmd.arg("emit-llvm");
         if all_checks {
             cmd.arg("--all-checks");
+        } else {
+            cmd.arg("--cache").arg(&cache);
         }
         let out = cmd.arg(&file).arg("-o").arg(&ll).output().unwrap();
         let ir = fs::read_to_string(&ll).ok();
@@ -533,6 +551,18 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
         );
         stats.compiled_runs += n;
     }
+
+    // Calls that fault in the interpreter trap in both builds.
+    for (j, (fi, call)) in trap::choose(&faults, |_| ()).into_iter().enumerate() {
+        let src = format!("{module}{main_head}{}    }}\n}}\n", trap::body(&call));
+        let files = vec![(format!("d{seed}.bmb"), src.clone())];
+        let exe = dir.join(format!("d{seed}-trap{j}"));
+        if let Some(e) = trap::check(&files, &cache, &exe) {
+            panic!("seed {seed}: {}: {e}\n{src}", funcs[fi].name());
+        }
+        stats.traps += 1;
+    }
+    let _ = fs::remove_dir_all(&cache);
 }
 
 #[test]
@@ -560,14 +590,15 @@ fn data_type_proofs_counterexamples_and_builds_agree_with_the_interpreter() {
     }
     let _ = fs::remove_dir_all(&dir);
     eprintln!(
-        "soundness (data): {} functions, {} verified ({} runs), {} counterexamples replayed, {} compiled runs; invariants: {} verified, {} E0823 counterexamples replayed",
+        "soundness (data): {} functions, {} verified ({} runs), {} counterexamples replayed, {} compiled runs, {} traps confirmed; invariants: {} verified, {} E0823 counterexamples replayed",
         stats.funcs,
         stats.verified,
         stats.verified_runs,
         stats.cexes,
         stats.compiled_runs,
+        stats.traps,
         stats.inv_verified,
         stats.inv_cexes
     );
-    assert!(stats.verified > 0 && stats.cexes > 0);
+    assert!(stats.verified > 0 && stats.cexes > 0 && stats.traps > 0);
 }

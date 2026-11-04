@@ -49,33 +49,65 @@ pub fn body(call: &str) -> String {
     format!("        print_i64(1);\n{call}        print_i64(2);\n")
 }
 
-/// Builds `files` twice and runs each build. Returns `None` when both
-/// printed `1` and ended by `SIGILL`, or what went wrong.
+/// Builds `files` twice through the CLI (`bmb emit-llvm`, then clang as
+/// `bmb build` does) and runs each build: the first proves through the proof
+/// cache in `cache`, the second keeps every check (`--all-checks`). Returns
+/// `None` when both printed `1` and ended by `SIGILL`, or what went wrong.
+/// The CLI, so the fuzzers that use it test whichever compiler is built
+/// (backlog 4A-04).
 pub fn check(files: &[(String, String)], cache: &Path, exe: &Path) -> Option<String> {
-    for all_checks in [false, true] {
-        let out = if all_checks {
-            bmb::emit_llvm_sources_with(files, true)
-        } else {
-            bmb::emit_llvm_sources_cached(files, Some(cache))
-        };
-        let Some(ir) = out.ir else {
-            return Some(format!(
-                "no IR for the trap (all_checks = {all_checks})\n{}",
-                out.verify.output
-            ));
-        };
-        if let Err(e) = bmb::toolchain::build_executable(&ir, exe.to_str().unwrap()) {
-            return Some(e);
+    let dir = exe.with_extension("src");
+    fs::create_dir_all(&dir).unwrap();
+    let paths: Vec<_> = files
+        .iter()
+        .map(|(name, text)| {
+            let p = dir.join(name);
+            fs::write(&p, text).unwrap();
+            p
+        })
+        .collect();
+    let result = (|| {
+        for all_checks in [false, true] {
+            let ll = exe.with_extension("ll");
+            let mut cmd = Command::new(env!("CARGO_BIN_EXE_bmb"));
+            cmd.arg("emit-llvm");
+            if all_checks {
+                cmd.arg("--all-checks");
+            } else {
+                cmd.arg("--cache").arg(cache);
+            }
+            let out = cmd.args(&paths).arg("-o").arg(&ll).output().unwrap();
+            let Ok(ir) = fs::read_to_string(&ll) else {
+                return Some(format!(
+                    "no IR for the trap (all_checks = {all_checks})\n{}",
+                    String::from_utf8_lossy(&out.stdout)
+                ));
+            };
+            let _ = fs::remove_file(&ll);
+            let build = exe.with_extension("build.ll");
+            fs::write(&build, ir).unwrap();
+            let cc = Command::new("clang")
+                .args(["-O2", "-Wno-override-module", "-o"])
+                .arg(exe)
+                .arg(&build)
+                .output()
+                .unwrap();
+            let _ = fs::remove_file(&build);
+            if !cc.status.success() {
+                return Some(String::from_utf8_lossy(&cc.stderr).into_owned());
+            }
+            let run = Command::new(exe).output().unwrap();
+            let _ = fs::remove_file(exe);
+            let printed = String::from_utf8_lossy(&run.stdout);
+            if printed != "1\n" || run.status.signal() != Some(SIGILL) {
+                return Some(format!(
+                    "the call panics in Rust, but the build (all_checks = {all_checks}) printed {printed:?} and ended with {}",
+                    run.status
+                ));
+            }
         }
-        let run = Command::new(exe).output().unwrap();
-        let _ = fs::remove_file(exe);
-        let printed = String::from_utf8_lossy(&run.stdout);
-        if printed != "1\n" || run.status.signal() != Some(SIGILL) {
-            return Some(format!(
-                "the call panics in Rust, but the build (all_checks = {all_checks}) printed {printed:?} and ended with {}",
-                run.status
-            ));
-        }
-    }
-    None
+        None
+    })();
+    let _ = fs::remove_dir_all(&dir);
+    result
 }
