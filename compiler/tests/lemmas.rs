@@ -540,7 +540,7 @@ fn bit_facts_hold() {
     }
 }
 
-const METHODS: [&str; 9] = [
+const METHODS: [&str; 12] = [
     "rotate_left",
     "rotate_right",
     "wrapping_shl",
@@ -550,6 +550,9 @@ const METHODS: [&str; 9] = [
     "leading_zeros",
     "trailing_zeros",
     "swap_bytes",
+    "leading_ones",
+    "trailing_ones",
+    "reverse_bits",
 ];
 
 /// Rust's result of bit method `m` on `a` of type `i` (amount `n`).
@@ -567,6 +570,9 @@ fn rust_method(m: &str, i: IntTy, a: i128, n: u32) -> i128 {
                 "leading_zeros" => x.leading_zeros() as i128,
                 "trailing_zeros" => x.trailing_zeros() as i128,
                 "swap_bytes" => x.swap_bytes() as i128,
+                "leading_ones" => x.leading_ones() as i128,
+                "trailing_ones" => x.trailing_ones() as i128,
+                "reverse_bits" => x.reverse_bits() as i128,
                 _ => unreachable!(),
             }
         }};

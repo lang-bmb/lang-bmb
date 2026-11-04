@@ -236,7 +236,7 @@ fn var(s: &str, sort: Sort) -> (String, T) {
 
 /// The bit-vector functions the encoder names for the bit methods
 /// (`verify::bit_method`): `bmb_ctpop{w}`, `bmb_clz{w}`, `bmb_ctz{w}`,
-/// `bmb_bswap{w}` of one argument and `bmb_rotl{w}`, `bmb_rotr{w}` of a
+/// `bmb_bswap{w}`, `bmb_brev{w}` of one argument and `bmb_rotl{w}`, `bmb_rotr{w}` of a
 /// value and an amount (taken modulo `w`), for `w` in 8, 16, 32, 64. A
 /// query that mentions one gets its definition (`helper_defs`); a named
 /// function keeps the terms of code and specification comparable for the
@@ -267,6 +267,14 @@ pub fn helper_def(name: &str) -> Option<(String, u32)> {
         "ctz" => (0..w)
             .rev()
             .fold(n(w), |t, k| format!("(ite {} {} {t})", bit(k), n(k))),
+        // Bit k of the result is bit w - 1 - k of `x` (backlog 2N-09).
+        "brev" => format!(
+            "(concat {})",
+            (0..w)
+                .map(|k| format!("((_ extract {k} {k}) x)"))
+                .collect::<Vec<_>>()
+                .join(" ")
+        ),
         "bswap" if w > 8 => format!(
             "(concat {})",
             (0..w / 8)
@@ -299,7 +307,7 @@ pub fn helper_defs(text: &str) -> String {
         return String::new();
     }
     let mut out = String::new();
-    for op in ["bswap", "clz", "ctpop", "ctz", "rotl", "rotr"] {
+    for op in ["brev", "bswap", "clz", "ctpop", "ctz", "rotl", "rotr"] {
         for w in [16, 32, 64, 8] {
             let name = format!("bmb_{op}{w}");
             if text.contains(&format!("({name} ")) {

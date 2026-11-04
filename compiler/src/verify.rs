@@ -2650,6 +2650,10 @@ fn method_term(m: &str, i: IntTy, a: &str, xa: &str, n: Option<&str>, xn: Option
         "count_zeros" => format!("(- {w} (bv2nat ({} {xa})))", h("ctpop")),
         "leading_zeros" => format!("(bv2nat ({} {xa}))", h("clz")),
         "trailing_zeros" => format!("(bv2nat ({} {xa}))", h("ctz")),
+        // The ones as the zeros of the complement (backlog 2N-09).
+        "leading_ones" => format!("(bv2nat ({} (bvnot {xa})))", h("clz")),
+        "trailing_ones" => format!("(bv2nat ({} (bvnot {xa})))", h("ctz")),
+        "reverse_bits" => from_bv(i, &format!("({} {xa})", h("brev"))),
         _ => unreachable!("bit method {m}"),
     }
 }
@@ -2670,6 +2674,14 @@ fn method_facts(m: &str, i: IntTy, a: &str, r: &str) -> Vec<String> {
         "count_zeros" | "leading_zeros" | "trailing_zeros" => vec![
             format!("(and (<= 0 {r}) (<= {r} {w}))"),
             format!("(= (= {r} {w}) (= {a} 0))"),
+        ],
+        // Every bit set: all ones, `-1` signed and `MAX` unsigned.
+        "leading_ones" | "trailing_ones" => vec![
+            format!("(and (<= 0 {r}) (<= {r} {w}))"),
+            format!(
+                "(= (= {r} {w}) (= {a} {}))",
+                num(if i.signed() { -1 } else { i.max_value() })
+            ),
         ],
         _ => vec![range_int(i, r)],
     };

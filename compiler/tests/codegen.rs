@@ -764,6 +764,9 @@ fn bit_methods_compute_rusts_results() {
                         x.leading_zeros() as i128,
                         x.trailing_zeros() as i128,
                         x.swap_bytes() as i128,
+                        x.leading_ones() as i128,
+                        x.trailing_ones() as i128,
+                        x.reverse_bits() as i128,
                     ] {
                         want.push_str(&format!("{v}\n"));
                     }
@@ -821,6 +824,9 @@ mod m {{
             count(x.leading_zeros());
             count(x.trailing_zeros());
             show(x.swap_bytes());
+            count(x.leading_ones());
+            count(x.trailing_ones());
+            show(x.reverse_bits());
         }}
     }}
 }}

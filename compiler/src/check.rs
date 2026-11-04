@@ -712,14 +712,29 @@ fn is_int(t: &TypeKind) -> bool {
 }
 
 /// The number of arguments of a bit method of the integer types (ADR-0048
-/// §2, backlog 2N-03), as in Rust: a rotation or wrapping shift takes its
-/// `u32` amount; the counts and `swap_bytes` take none.
+/// §2, backlogs 2N-03 and 2N-09), as in Rust: a rotation or wrapping shift
+/// takes its `u32` amount; the counts, `swap_bytes` and `reverse_bits` take
+/// none.
 pub fn bit_method_arity(m: &str) -> Option<usize> {
     match m {
         "rotate_left" | "rotate_right" | "wrapping_shl" | "wrapping_shr" => Some(1),
-        "count_ones" | "count_zeros" | "leading_zeros" | "trailing_zeros" | "swap_bytes" => Some(0),
+        "swap_bytes" | "reverse_bits" => Some(0),
+        m if is_bit_count(m) => Some(0),
         _ => None,
     }
+}
+
+/// Whether bit method `m` is a count (a `u32` in `0..=w`).
+pub fn is_bit_count(m: &str) -> bool {
+    matches!(
+        m,
+        "count_ones"
+            | "count_zeros"
+            | "leading_zeros"
+            | "trailing_zeros"
+            | "leading_ones"
+            | "trailing_ones"
+    )
 }
 /// A scalar value: an integer, `f64` (ADR-0061 §1) or `bool`.
 fn is_scalar(t: &TypeKind) -> bool {
@@ -7029,11 +7044,7 @@ impl<'a> Checker<'a> {
                 if let (Some(at), Some(a)) = (at, args.first()) {
                     self.expect_ty(&at, &u32t, a.span);
                 }
-                if m.starts_with("count_") || m.ends_with("_zeros") {
-                    u32t
-                } else {
-                    rt
-                }
+                if is_bit_count(m) { u32t } else { rt }
             }
             "into" | "try_into" if is_int(&rt) => {
                 for a in args {

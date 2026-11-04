@@ -119,4 +119,15 @@ mod bvf {
     fn top(x: u32) -> u32 {
         31 - x.leading_zeros()
     }
+
+    spec fn short_run(x: u8, r: u32) -> bool { r < 8 }
+
+    // `trailing_ones` of 255 is 8 (backlog 2N-09).
+    #[effects(pure)]
+    #[uses(short_run)]
+    fn low_ones(x: u8) -> (r: u32)
+        ensures short_run(x, r),
+    {
+        x.trailing_ones()
+    }
 }

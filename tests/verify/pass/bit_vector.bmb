@@ -139,4 +139,38 @@ mod bvp {
     fn shifts(x: i8, k: u32) -> i8 {
         x.wrapping_shl(k) ^ x.wrapping_shr(k)
     }
+
+    // The ones counts (backlog 2N-09): every bit set is the width, at 255
+    // unsigned and at -1 signed.
+    spec fn all_ones(x: u8, r: u32) -> bool { r <= 8 && (r == 8) == (x == 255) }
+
+    #[effects(pure)]
+    #[uses(all_ones)]
+    fn ones_from_top(x: u8) -> (r: u32)
+        ensures all_ones(x, r),
+    {
+        x.leading_ones()
+    }
+
+    spec fn low_run(x: i16, r: u32) -> bool { (r == 16) == (x == -1) }
+
+    #[effects(pure)]
+    #[uses(low_run)]
+    fn low_ones(x: i16) -> (r: u32)
+        ensures low_run(x, r),
+    {
+        x.trailing_ones()
+    }
+
+    // `reverse_bits` twice is the identity.
+    spec fn mirrored(x: u32, r: u32) -> bool { r == x.reverse_bits() }
+
+    #[effects(pure)]
+    #[uses(mirrored)]
+    fn mirror(x: u32) -> (r: u32)
+        ensures mirrored(x, r),
+    {
+        assert(x.reverse_bits().reverse_bits() == x) by (bit_vector);
+        x.reverse_bits()
+    }
 }

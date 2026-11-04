@@ -2772,6 +2772,18 @@ impl<'p> Gen<'p> {
                     "{r} = call {it} @llvm.{f}.{it}({it} {x}, i1 false)"
                 ));
             }
+            // The ones counted as the zeros of the complement (backlog 2N-09).
+            "leading_ones" | "trailing_ones" => {
+                let f = if m == "leading_ones" { "ctlz" } else { "cttz" };
+                let n = self.t();
+                self.emit(format!("{n} = xor {it} {x}, -1"));
+                self.emit(format!(
+                    "{r} = call {it} @llvm.{f}.{it}({it} {n}, i1 false)"
+                ));
+            }
+            "reverse_bits" => {
+                self.emit(format!("{r} = call {it} @llvm.bitreverse.{it}({it} {x})"));
+            }
             "swap_bytes" => {
                 self.emit(format!("{r} = call {it} @llvm.bswap.{it}({it} {x})"));
             }
@@ -2788,7 +2800,7 @@ impl<'p> Gen<'p> {
             return CVal::Imm(r);
         }
         // A count is at most the width: its bits are its value.
-        let ext = if m.starts_with("count_") || m.ends_with("_zeros") {
+        let ext = if crate::check::is_bit_count(m) {
             "zext"
         } else {
             ext
