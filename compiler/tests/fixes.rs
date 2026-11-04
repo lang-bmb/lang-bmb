@@ -1,8 +1,38 @@
 //! Mechanical fixes (backlog 1A-06, DESIGN.md §8.2): every `replacement` replaces
 //! exactly the text of its diagnostic's span, and applying them removes the
-//! diagnostics they belong to.
+//! diagnostics they belong to. Through the CLI (`bmb check`, backlog 4A-04).
 
-use bmb::json::{self, Value};
+use std::process::Command;
+
+mod common;
+
+use common::jsonl::{num_field, str_field};
+
+/// What `bmb check` says about `text` (as `t.bmb`).
+struct Checked {
+    ok: bool,
+    diagnostics: String,
+}
+
+fn check(text: &str) -> Checked {
+    let dir = std::env::temp_dir().join(format!(
+        "bmb-fixes-{}-{:x}",
+        std::process::id(),
+        text.len() as u64 * 31 + text.bytes().map(u64::from).sum::<u64>()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("t.bmb"), text).unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
+        .args(["check", "t.bmb"])
+        .current_dir(&dir)
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+    Checked {
+        ok: out.status.success(),
+        diagnostics: String::from_utf8_lossy(&out.stdout).into_owned(),
+    }
+}
 
 /// Byte offset of a 1-based (line, column-in-characters) position.
 fn offset(text: &str, line: usize, col: usize) -> usize {
@@ -21,28 +51,18 @@ fn offset(text: &str, line: usize, col: usize) -> usize {
 
 /// Applies all replacements; returns the new text and the codes that had one.
 fn apply(text: &str) -> (String, Vec<String>) {
-    let out = bmb::check_sources(&[("t.bmb".into(), text.into())]);
+    let out = check(text);
     let mut edits = Vec::new();
-    for line in out.diagnostics.lines() {
-        let d = json::parse(line).unwrap();
-        let Some(r) = d
-            .get("fix")
-            .and_then(|f| f.get("replacement"))
-            .and_then(Value::as_str)
-        else {
+    for d in out.diagnostics.lines() {
+        let Some(r) = str_field(d, "replacement") else {
             continue;
         };
-        let n = |k: &str| d.get(k).unwrap().as_i64().unwrap() as usize;
+        let n = |k: &str| num_field(d, k).unwrap() as usize;
         let (lo, hi) = (
             offset(text, n("line"), n("col")),
             offset(text, n("end_line"), n("end_col")),
         );
-        edits.push((
-            lo,
-            hi,
-            r.to_string(),
-            d.get("code").unwrap().as_str().unwrap().to_string(),
-        ));
+        edits.push((lo, hi, r.to_string(), str_field(d, "code").unwrap()));
     }
     edits.sort_by_key(|e| std::cmp::Reverse(e.0));
     let mut s = text.to_string();
@@ -94,7 +114,7 @@ fn each_mechanical_fix_applies_and_clears_its_error() {
             codes.iter().any(|c| c == code),
             "{code}: no replacement offered for\n{text}"
         );
-        let after = bmb::check_sources(&[("t.bmb".into(), fixed.clone())]);
+        let after = check(&fixed);
         assert!(
             after.ok,
             "{code}: still failing after the fix:\n{fixed}\n{}",
@@ -111,7 +131,7 @@ fn mut_parameter_fix_clears_e0210_and_exposes_the_assignment() {
     let text = wrap("#[effects(pure)]\nfn f(mut x: i64) -> i64 { x = x + 1; x }");
     let (fixed, codes) = apply(&text);
     assert_eq!(codes, ["E0210"], "{text}");
-    let after = bmb::check_sources(&[("t.bmb".into(), fixed.clone())]);
+    let after = check(&fixed);
     assert!(
         !after.diagnostics.contains("\"E0210\""),
         "E0210 still reported after the fix:\n{fixed}\n{}",
