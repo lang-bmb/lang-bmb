@@ -153,17 +153,21 @@
 | m1 | bmb | claude-sonnet-5-5 | 10/10 | 442,068 | 44,206 | 9 |
 | m1 | bmb | qwen3.8-27b | 7/10 | 1,517,372 | 216,767 | 25.5 |
 | m1b | bmb | claude-sonnet-5-5 | 24/25 | 3,506,428 | 146,101 | 10 |
+| m1b | bmb | claude-sonnet-5-5 | 25/25 | 3,325,641 | 133,025 | 9 |
 | m1b | bmb | qwen3.8-27b | 19/25 | 6,816,683 | 358,772 | 26 |
 | m1b | bmb | qwen3.8-27b | 23/25 | 7,615,574 | 331,111 | 24 |
 | bvb | bmb | claude-sonnet-5-5 | 44/45 | 2,305,162 | 52,390 | 12 |
+| bvb | bmb | claude-sonnet-5-5 | 45/45 | 1,772,006 | 39,377 | 9 |
 | bvb | bmb | qwen3.8-27b | 14/45 | 9,131,066 | 652,219 | 32 |
 | bvb | bmb | qwen3.8-27b | 24/45 | 9,887,860 | 411,994 | 38 |
 | bvb | verus | claude-sonnet-5-5 | 43/45 | 607,402 | 14,125 | 3 |
 | bvb | verus | qwen3.8-27b | 15/45 | 8,485,383 | 565,692 | 40 |
 | brb | bmb | claude-sonnet-5-5 | 21/24 | 2,204,755 | 104,988 | 17.5 |
+| brb | bmb | claude-sonnet-5-5 | 20/24 | 1,990,121 | 99,506 | 17 |
 | brb | bmb | qwen3.8-27b | 2/24 | 2,214,634 | 1,107,317 | 17 |
 | brb | bmb | qwen3.8-27b | 7/24 | 4,846,660 | 692,380 | 23 |
 | brb | rust | claude-sonnet-5-5 | 24/24 | 141,570 | 5,898 | 3 |
+| brb | rust | claude-sonnet-5-5 | 24/24 | 145,151 | 6,047 | 3 |
 | brb | rust | qwen3.8-27b | 24/24 | 1,429,512 | 59,563 | 10 |
 | brb | rust | qwen3.8-27b | 24/24 | 2,635,719 | 109,821 | 8.5 |
 
@@ -172,9 +176,11 @@
 | 모델 | 팔 | 성공 | 성공 세션의 테스트 코드 줄 | 성공 세션당 | 자기 검사 호출(중앙값) | 통과 & 숨은 실패 |
 | --- | --- | --- | --- | --- | --- | --- |
 | claude-sonnet-5-5 | bmb | 21/24 | 0 | 0.0 | 2 | 0/21 |
+| claude-sonnet-5-5 | bmb | 20/24 | 0 | 0.0 | 2 | 0/20 |
 | qwen3.8-27b | bmb | 2/24 | 0 | 0.0 | 0 | 0/2 |
 | qwen3.8-27b | bmb | 7/24 | 0 | 0.0 | 0 | 0/7 |
 | claude-sonnet-5-5 | rust | 24/24 | 386 | 16.1 | 1 | 0/24 |
+| claude-sonnet-5-5 | rust | 24/24 | 371 | 15.5 | 1 | 0/24 |
 | qwen3.8-27b | rust | 24/24 | 2083 | 86.8 | 2 | 0/24 |
 | qwen3.8-27b | rust | 24/24 | 2087 | 87.0 | 1.5 | 0/24 |
 
@@ -185,6 +191,7 @@
 | m1 | claude-sonnet-5-5 | 5/5 | 1 | 394 | 10758 |
 | m1 | qwen3.8-27b | 5/5 | 2 | 2097 | 12705 |
 | m1b | claude-sonnet-5-5 | 12/12 | 1 | 899.5 | 11384 |
+| m1b | claude-sonnet-5-5 | 12/12 | 1 | 742.5 | 11196.5 |
 | m1b | qwen3.8-27b | 12/12 | 5.5 | 18380 | 51745.5 |
 | m1b | qwen3.8-27b | 12/12 | 7 | 20750 | 44836 |
 
@@ -193,9 +200,11 @@
 | 집합 | 팔 | 모델 | 읽기 도구 | 쓰기 도구 | 검사 도구 | 읽기 비율 |
 | --- | --- | --- | --- | --- | --- | --- |
 | brb | bmb | claude-sonnet-5-5 | 17 | 428 | 57 | 3% |
+| brb | bmb | claude-sonnet-5-5 | 17 | 420 | 55 | 3% |
 | brb | bmb | qwen3.8-27b | 49 | 292 | 5 | 14% |
 | brb | bmb | qwen3.8-27b | 56 | 489 | 11 | 10% |
 | brb | rust | claude-sonnet-5-5 | 23 | 24 | 24 | 32% |
+| brb | rust | claude-sonnet-5-5 | 23 | 25 | 25 | 32% |
 | brb | rust | qwen3.8-27b | 76 | 116 | 48 | 32% |
 | brb | rust | qwen3.8-27b | 79 | 149 | 50 | 28% |
 
@@ -206,15 +215,17 @@
 | m1 | bmb | claude-sonnet-5-5 | 10 | 0 | 0.0% | 0/15 |
 | m1 | bmb | qwen3.8-27b | 8 | 1 | 12.5% | 1/15 |
 | m1b | bmb | claude-sonnet-5-5 | 25 | 0 | 0.0% | 0/37 |
+| m1b | bmb | claude-sonnet-5-5 | 25 | 0 | 0.0% | 0/37 |
 | m1b | bmb | qwen3.8-27b | 21 | 1 | 4.8% | 1/37 |
 | m1b | bmb | qwen3.8-27b | 23 | 0 | 0.0% | 0/37 |
 | bvb | bmb | claude-sonnet-5-5 | 45 | 1 | 2.2% | 1/45 |
+| bvb | bmb | claude-sonnet-5-5 | 45 | 0 | 0.0% | 0/45 |
 | bvb | bmb | qwen3.8-27b | 20 | 6 | 30.0% | 6/45 |
 | bvb | bmb | qwen3.8-27b | 25 | 1 | 4.0% | 1/45 |
 | bvb | verus | claude-sonnet-5-5 | 43 | 0 | 0.0% | 0/45 |
 | bvb | verus | qwen3.8-27b | 15 | 0 | 0.0% | 0/45 |
 
-원자료: `bench/brb/results/`, `bench/bvb/results/`, `bench/m1/results/`, `bench/m1b/results/`의 결과 파일 16개(요약 행이 있는 것).
+원자료: `bench/brb/results/`, `bench/bvb/results/`, `bench/m1/results/`, `bench/m1b/results/`의 결과 파일 20개(요약 행이 있는 것).
 
 <!-- utility:data end -->
 
