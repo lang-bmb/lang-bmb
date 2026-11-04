@@ -17,8 +17,8 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 42343,
-    "S5_tests_bound_to_rust_api": 30,
+    "S4_stage0_rust_lines": 42712,
+    "S5_tests_bound_to_rust_api": 27,
     "S6_selfhost_bmb_lines": 0,
     "P1_runnable_programs": 60,
     "P2_bmb_lines": 22672,
@@ -1762,6 +1762,20 @@
         "S4_stage0_rust_lines": [
           42339,
           42343
+        ]
+      }
+    },
+    {
+      "date": "2026-11-04",
+      "reason": "4A-04a: toolchain, stability and corpus tests go through the CLI (S5 30 -> 27); S4 +369 from INF-26 (per-query backstop) and 2D-30a (W0910 lint)",
+      "changed": {
+        "S4_stage0_rust_lines": [
+          42343,
+          42712
+        ],
+        "S5_tests_bound_to_rust_api": [
+          30,
+          27
         ]
       }
     }

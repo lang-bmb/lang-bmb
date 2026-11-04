@@ -4,9 +4,31 @@
 //! - `tests/check/err/*.bmb` must produce exactly the diagnostics in the sibling `.jsonl`.
 //!
 //! Set `BMB_BLESS=1` to rewrite the expected `.jsonl` files.
+//!
+//! Through the CLI (`bmb check`, `bmb codes`), so the corpus tests whichever
+//! compiler is built (backlog 4A-04).
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
+
+fn bmb(args: &[&str]) -> (bool, String) {
+    let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
+        .args(args)
+        .current_dir(root())
+        .output()
+        .unwrap();
+    (
+        out.status.success(),
+        String::from_utf8_lossy(&out.stdout).into_owned(),
+    )
+}
+
+/// What `bmb check` says about a corpus file.
+struct CheckOutput {
+    ok: bool,
+    diagnostics: String,
+}
 
 fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -25,7 +47,7 @@ fn bmb_files(dir: &Path) -> Vec<PathBuf> {
     v
 }
 
-fn run(path: &Path) -> bmb::CheckOutput {
+fn run(path: &Path) -> CheckOutput {
     let name = format!(
         "{}/{}",
         path.parent()
@@ -36,8 +58,8 @@ fn run(path: &Path) -> bmb::CheckOutput {
             .unwrap(),
         path.file_name().unwrap().to_str().unwrap()
     );
-    let text = fs::read_to_string(path).unwrap();
-    bmb::with_stack(|| bmb::check_sources(&[(name, text)]))
+    let (ok, diagnostics) = bmb(&["check", &name]);
+    CheckOutput { ok, diagnostics }
 }
 
 #[test]
@@ -84,9 +106,17 @@ fn output_is_deterministic() {
 #[test]
 fn every_code_is_documented_once() {
     let mut seen = std::collections::BTreeSet::new();
-    let page = bmb::diag::codes_markdown();
-    for (c, d) in bmb::diag::CODES {
-        assert!(seen.insert(*c), "duplicate code {c}");
+    let (ok, page) = bmb(&["codes", "--md"]);
+    assert!(ok);
+    let (ok, codes) = bmb(&["codes"]);
+    assert!(ok);
+    for row in codes.lines() {
+        let field = |k: &str| {
+            let at = row.find(&format!("\"{k}\":\"")).unwrap() + k.len() + 4;
+            row[at..].split('"').next().unwrap().to_string()
+        };
+        let (c, d) = (field("code"), field("description"));
+        assert!(seen.insert(c.clone()), "duplicate code {c}");
         assert!(!d.is_empty());
         assert!(
             page.contains(&format!("| {c} |")),
