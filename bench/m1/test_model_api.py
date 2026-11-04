@@ -114,6 +114,27 @@ class ApiErrors(unittest.TestCase):
             self.assertEqual(agent.next_calls([]), [])
 
 
+    def test_the_spend_cap_stops_the_run(self):
+        # HTTP 402 `cap_reached` is not a session outcome: it escapes the
+        # agent, so the harness writes no row and resumes later (INF-23).
+        import io
+        import urllib.error
+        body = b'{"type":"error","error":{"type":"cap_reached"}}'
+        def cap(*_a, **_k):
+            raise urllib.error.HTTPError("http://x", 402, "Payment Required", {}, io.BytesIO(body))
+        with mock.patch.object(model_api.urllib.request, "urlopen", side_effect=cap):
+            with self.assertRaises(model_api.CapReached):
+                model_api.post_json("http://x", {}, {}, retries=0)
+            agent = OpenAIAgent("m", "s", "t", base="http://x")
+            agent.set_tools([])
+            with self.assertRaises(model_api.CapReached):
+                agent.next_calls([])
+        other = urllib.error.HTTPError("http://x", 402, "Payment Required", {}, io.BytesIO(b"other"))
+        with mock.patch.object(model_api.urllib.request, "urlopen", side_effect=other):
+            with self.assertRaises(RuntimeError):
+                model_api.post_json("http://x", {}, {}, retries=0)
+
+
 class Streams(unittest.TestCase):
     def test_fold_openai(self):
         lines = [b": keep-alive", b""] + [b"data: " + json.dumps(e).encode() for e in [

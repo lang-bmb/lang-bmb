@@ -24,6 +24,11 @@ model's context window, or a transport failure past the retries) ends that
 session with `stop: "api_error"` and the message in `usage["api_error"]`; the
 harness judges the state reached, as at the tool-call limit, and the report can
 tell these sessions apart.
+
+The gateway's spend cap (HTTP 402 `cap_reached`) is not an answer about the
+session: it raises `CapReached`, which no agent catches, so the run stops
+without writing that session's row and resumes from it once the cap resets
+(backlog INF-23, ADR-0088).
 """
 import http.client
 import json
@@ -153,6 +158,11 @@ def fold_anthropic(events):
     return msg
 
 
+class CapReached(Exception):
+    """The gateway's spend cap: the run stops, the session is not recorded
+    (not a `RuntimeError`, which ends a session as `api_error`)."""
+
+
 def post_json(url, body, headers, stats=None, timeout=TIMEOUT, retries=RETRIES, fold=None):
     """POST `body`; with `fold`, the request streams and `fold` turns its events
     into the response."""
@@ -166,8 +176,11 @@ def post_json(url, body, headers, stats=None, timeout=TIMEOUT, retries=RETRIES, 
                     return fold(sse_events(r, time.monotonic() + REQUEST_DEADLINE))
                 return json.loads(r.read())
         except urllib.error.HTTPError as e:
+            text = e.read()[:500]
+            if e.code == 402 and b"cap_reached" in text:
+                raise CapReached(f"{url}: HTTP 402: {text!r}") from None
             if e.code != 429 and e.code < 500 or attempt == retries:
-                raise RuntimeError(f"{url}: HTTP {e.code}: {e.read()[:500]!r}") from None
+                raise RuntimeError(f"{url}: HTTP {e.code}: {text!r}") from None
         except (OSError, http.client.HTTPException, StreamCut) as e:  # connection, TLS, cut stream
             if attempt == retries:
                 raise RuntimeError(f"{url}: {e}") from None
