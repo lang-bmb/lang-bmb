@@ -439,6 +439,10 @@ pub const CODES: &[(&str, &str)] = &[
         "an executable function declares an effect its body does not need (callers must declare it too)",
     ),
     (
+        "W0910",
+        "a loop of an `io` function prints and carries state whose every update is pure: the update can be a pure function, proved instead of tested",
+    ),
+    (
         "W0908",
         "the contract is weaker than in the old version: a stronger `requires`, a weaker `ensures` or `pure` become `io` (`bmb weaken`, with the counterexample)",
     ),

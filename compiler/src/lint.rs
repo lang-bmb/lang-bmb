@@ -34,6 +34,11 @@
 //! - `W0909` an executable function declares an effect its body does not
 //!   need (ADR-0030 §3): its own operations and its callees' declared
 //!   effects need none of it. Syntactic, no proof involved.
+//! - `W0910` a loop of an `io` function that prints and carries state (a
+//!   local declared before the loop and assigned in it) whose every update
+//!   is pure (backlog 2D-30, from T0-34): the update can be a pure function
+//!   with a contract, proved, and only the printing shell needs a test.
+//!   Syntactic.
 //! - `W0906` a `forall` whose one trigger term and another term of its body
 //!   read the same array (or call the same function) at different arguments
 //!   that mention the bound variables, as `#[trigger] out[k + 1] == out[k] +
@@ -81,8 +86,9 @@ pub const MAX_POST_TRIALS: usize = 32;
 pub const MAX_MUTANTS: usize = 64;
 
 /// The checks of the lint, by the code each reports (`bmb lint --select`).
-pub const CODES: [&str; 10] = [
-    "W0901", "W0902", "W0903", "W0904", "W0905", "W0906", "W0907", "W0909", "W1001", "W1002",
+pub const CODES: [&str; 11] = [
+    "W0901", "W0902", "W0903", "W0904", "W0905", "W0906", "W0907", "W0909", "W0910", "W1001",
+    "W1002",
 ];
 
 pub struct LintOutput {
@@ -517,6 +523,13 @@ pub fn lint_sources_selected(
     // W0909: declared effects the body does not need (syntactic).
     if runs("W0909") {
         for d in unneeded_effects(&fe.tables, &defs) {
+            out.push(d);
+        }
+    }
+
+    // W0910: pure state updates in printing loops (syntactic).
+    if runs("W0910") {
+        for d in io_loop_cores(&fe.tables, &defs) {
             out.push(d);
         }
     }
@@ -1061,6 +1074,376 @@ fn unneeded_effects(t: &crate::verify::Tables, defs: &BTreeMap<String, &FnDef>) 
         );
     }
     out
+}
+
+// ---------- pure state in printing loops (W0910, backlog 2D-30) ----------
+
+/// W0910 for each outermost `while`/`for` of an `io` function whose body
+/// calls a function that needs `io` and assigns locals declared before the
+/// loop, every such assignment's value calling nothing that needs `io`.
+/// That loop is a state machine with its output: the update is a pure
+/// function of the state and the loop's inputs, which a contract can
+/// specify and the gate prove, and only the printing remains to test (the
+/// agents of T0-30 kept both in one `io` function, H-EFFECT). The suggested
+/// signature takes the variables the updates read and returns the state.
+fn io_loop_cores(t: &crate::verify::Tables, defs: &BTreeMap<String, &FnDef>) -> Vec<Diag> {
+    use crate::check::Effects;
+    let mut out = Vec::new();
+    for (path, f) in defs {
+        let Some(sig) = t.fns.get(path) else {
+            continue;
+        };
+        if !sig.effect.contains(Effects::IO) || path.starts_with('<') {
+            continue;
+        }
+        let mod_path = path.rsplit_once("::").map_or("", |p| p.0);
+        let needs_io = |e: &Expr| {
+            let mut found = false;
+            each_expr(e, &mut |x| {
+                if let ExprKind::Call { path: p, .. } = &x.kind {
+                    let callee = crate::verify::resolve_in(t, p, mod_path);
+                    if t.fns
+                        .get(&callee)
+                        .is_some_and(|s| s.effect.contains(Effects::IO))
+                    {
+                        found = true;
+                    }
+                }
+            });
+            found
+        };
+        let mut loops = Vec::new();
+        outer_loops(&f.body, &mut loops);
+        for (span, body, var, wcond) in loops {
+            let mut lp = LoopParts::default();
+            loop_parts(body, &mut lp, &needs_io);
+            let LoopParts {
+                declared,
+                lets,
+                assigns,
+                conds,
+                prints,
+            } = lp;
+            // The loop's counter (in the `while` condition, only stepped)
+            // is the shell's, not state.
+            let in_cond = |n: &str| {
+                let mut found = false;
+                if let Some(c) = wcond {
+                    each_expr(c, &mut |x| {
+                        if matches!(&x.kind, ExprKind::Var(v) if v.name == n) {
+                            found = true;
+                        }
+                    });
+                }
+                found
+            };
+            let counter = |n: &str| {
+                in_cond(n)
+                    && assigns
+                        .iter()
+                        .filter(|(m, _)| *m == n)
+                        .all(|(_, e)| simple_update(e) && !matches!(e.kind, ExprKind::Call { .. }))
+            };
+            let state: Vec<&str> = {
+                let mut s: Vec<&str> = Vec::new();
+                for (n, _) in &assigns {
+                    if !declared.contains(*n) && !s.contains(n) && !counter(n) {
+                        s.push(n);
+                    }
+                }
+                s
+            };
+            if !prints || state.is_empty() {
+                continue;
+            }
+            let updates: Vec<&Expr> = assigns
+                .iter()
+                .filter(|(n, _)| state.contains(n))
+                .map(|(_, e)| *e)
+                .collect();
+            if updates.iter().any(|e| needs_io(e)) {
+                continue;
+            }
+            // Only a decision or computation written in the loop itself: a
+            // loop that steps counters and asks pure functions is already
+            // the shell.
+            let decides = conds.iter().any(|(c, names)| {
+                inline_logic(c) && names.iter().any(|n| state.contains(n)) && !needs_io(c)
+            });
+            if !decides && updates.iter().all(|e| simple_update(e)) {
+                continue;
+            }
+            // A `let` of the loop that reads no state is an input of the
+            // step (`kind = kinds[k]`); one that does is inside the step.
+            let reads_state = |e: &Expr| {
+                let mut found = false;
+                each_expr(e, &mut |x| {
+                    if matches!(&x.kind, ExprKind::Var(v) if state.contains(&v.name.as_str())) {
+                        found = true;
+                    }
+                });
+                found
+            };
+            let input = |n: &str| {
+                lets.iter()
+                    .any(|(m, init, mutable)| *m == n && !*mutable && !reads_state(init))
+            };
+            // A `let mut` of the loop that a deciding branch assigns is a
+            // result of the step (the value printed).
+            let results: Vec<&str> = lets
+                .iter()
+                .filter(|(n, _, mutable)| {
+                    *mutable
+                        && conds
+                            .iter()
+                            .any(|(c, names)| inline_logic(c) && names.contains(n))
+                })
+                .map(|(n, _, _)| *n)
+                .collect();
+            let mut reads: Vec<String> = state.iter().map(|s| s.to_string()).collect();
+            let mut read = |x: &Expr| {
+                if let ExprKind::Var(v) = &x.kind
+                    && !reads.contains(&v.name)
+                    && (!declared.contains(v.name.as_str()) || input(&v.name))
+                    && !counter(&v.name)
+                    && var != Some(v.name.as_str())
+                {
+                    reads.push(v.name.clone());
+                }
+            };
+            for (c, names) in &conds {
+                if names
+                    .iter()
+                    .any(|n| state.contains(n) || results.contains(n))
+                {
+                    each_expr(c, &mut read);
+                }
+            }
+            for (n, e) in &assigns {
+                if state.contains(n) || results.contains(n) {
+                    each_expr(e, &mut read);
+                }
+            }
+            let locals = t.locals.get(path);
+            let typed = |n: &str| match locals.and_then(|l| l.get(n)) {
+                Some(ty) => format!("{n}: {}", crate::check::ty_str(ty)),
+                None => n.to_string(),
+            };
+            let outs: Vec<&str> = state.iter().chain(&results).copied().collect();
+            let ret = match &outs[..] {
+                [one] => locals
+                    .and_then(|l| l.get(*one))
+                    .map_or_else(|| one.to_string(), crate::check::ty_str),
+                many => format!(
+                    "({})",
+                    many.iter()
+                        .map(|n| {
+                            locals
+                                .and_then(|l| l.get(*n))
+                                .map_or_else(|| n.to_string(), crate::check::ty_str)
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+            };
+            let name = format!("{}_step", f.name.name);
+            out.push(
+                Diag::new(
+                    "W0910",
+                    span,
+                    format!(
+                        "this loop of `{path}` prints and updates its state `{}` with pure expressions only: the update can be a pure function, proved by its contract, so that only the printing needs a test",
+                        state.join("`, `")
+                    ),
+                )
+                .fix(
+                    format!(
+                        "move the update into `fn {name}({}) -> {ret}` with `#[effects(pure)]` and a contract, and assign its result here",
+                        reads.iter().map(|r| typed(r)).collect::<Vec<_>>().join(", ")
+                    ),
+                    None,
+                ),
+            );
+        }
+    }
+    out
+}
+
+type LoopRef<'a> = (Span, &'a Block, Option<&'a str>, Option<&'a Expr>);
+
+/// The outermost `while` and `for` loops of a block (not inside another):
+/// span, body, the `for` variable, the `while` condition.
+fn outer_loops<'a>(b: &'a Block, out: &mut Vec<LoopRef<'a>>) {
+    for s in &b.stmts {
+        match s {
+            Stmt::While {
+                body, span, cond, ..
+            } => out.push((*span, body, None, Some(cond))),
+            Stmt::For {
+                var, body, span, ..
+            } => out.push((*span, body, Some(var.name.as_str()), None)),
+            Stmt::Let { init: e, .. } | Stmt::Expr(e) | Stmt::Assign { value: e, .. } => {
+                expr_loops(e, out)
+            }
+            _ => {}
+        }
+    }
+    if let Some(e) = &b.tail {
+        expr_loops(e, out);
+    }
+}
+
+fn expr_loops<'a>(e: &'a Expr, out: &mut Vec<LoopRef<'a>>) {
+    match &e.kind {
+        ExprKind::If { then, els, .. } => {
+            outer_loops(then, out);
+            if let Some(x) = els {
+                expr_loops(x, out);
+            }
+        }
+        ExprKind::Block(b) => outer_loops(b, out),
+        ExprKind::Match { arms, .. } => {
+            for a in arms {
+                expr_loops(&a.body, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// What a loop body declares, assigns (to a plain local), the conditions
+/// of its branches with the locals each branch assigns, and whether it calls
+/// something that needs `io`; nested blocks and loops included.
+#[derive(Default)]
+struct LoopParts<'a> {
+    declared: BTreeSet<&'a str>,
+    /// The loop's own `let`s: name, initializer, `mut`.
+    lets: Vec<(&'a str, &'a Expr, bool)>,
+    assigns: Vec<(&'a str, &'a Expr)>,
+    conds: Vec<(&'a Expr, Vec<&'a str>)>,
+    prints: bool,
+}
+
+fn loop_parts<'a>(b: &'a Block, lp: &mut LoopParts<'a>, needs_io: &dyn Fn(&Expr) -> bool) {
+    for s in &b.stmts {
+        match s {
+            Stmt::Let {
+                name,
+                init,
+                mutable,
+                ..
+            } => {
+                lp.declared.insert(name.name.as_str());
+                lp.lets.push((name.name.as_str(), init, *mutable));
+                lp.prints |= needs_io(init);
+                expr_parts(init, lp, needs_io);
+            }
+            Stmt::Assign { target, value, .. } => {
+                if let ExprKind::Var(v) = &target.kind {
+                    lp.assigns.push((v.name.as_str(), value));
+                }
+                lp.prints |= needs_io(value);
+                expr_parts(value, lp, needs_io);
+            }
+            Stmt::While { cond, body, .. } => {
+                lp.prints |= needs_io(cond);
+                loop_parts(body, lp, needs_io);
+            }
+            Stmt::For { var, body, .. } => {
+                lp.declared.insert(var.name.as_str());
+                loop_parts(body, lp, needs_io);
+            }
+            Stmt::Expr(e) => {
+                lp.prints |= needs_io(e);
+                expr_parts(e, lp, needs_io);
+            }
+            _ => {}
+        }
+    }
+    if let Some(e) = &b.tail {
+        lp.prints |= needs_io(e);
+        expr_parts(e, lp, needs_io);
+    }
+}
+
+fn expr_parts<'a>(e: &'a Expr, lp: &mut LoopParts<'a>, needs_io: &dyn Fn(&Expr) -> bool) {
+    let before = lp.assigns.len();
+    let cond = match &e.kind {
+        ExprKind::If { cond, then, els } => {
+            loop_parts(then, lp, needs_io);
+            if let Some(x) = els {
+                expr_parts(x, lp, needs_io);
+            }
+            Some(&**cond)
+        }
+        ExprKind::Block(b) | ExprKind::Loop { body: b, .. } => {
+            loop_parts(b, lp, needs_io);
+            None
+        }
+        ExprKind::Match { scrut, arms } => {
+            for a in arms {
+                expr_parts(&a.body, lp, needs_io);
+            }
+            Some(&**scrut)
+        }
+        _ => None,
+    };
+    if let Some(c) = cond {
+        let names = lp.assigns[before..].iter().map(|(n, _)| *n).collect();
+        lp.conds.push((c, names));
+    }
+}
+
+/// A branch condition that is a decision of its own: not a call (an
+/// extracted pure predicate), a local, the negation of one, or the test of
+/// one value against a literal (`n < 0`: the shell reading a result).
+fn inline_logic(c: &Expr) -> bool {
+    let read = |x: &Expr| {
+        matches!(
+            x.kind,
+            ExprKind::Var(_)
+                | ExprKind::Index { .. }
+                | ExprKind::Field { .. }
+                | ExprKind::Call { .. }
+        )
+    };
+    let lit = |x: &Expr| match &x.kind {
+        ExprKind::Int(..) | ExprKind::Bool(_) | ExprKind::Float(_) => true,
+        ExprKind::Unary(UnOp::Neg, y) => matches!(y.kind, ExprKind::Int(..) | ExprKind::Float(_)),
+        _ => false,
+    };
+    match &c.kind {
+        ExprKind::Call { .. } | ExprKind::Var(_) | ExprKind::Bool(_) => false,
+        ExprKind::Unary(UnOp::Not, x) => inline_logic(x),
+        ExprKind::Binary(op, l, r) if op.is_cmp() => !((read(l) && lit(r)) || (lit(l) && read(r))),
+        _ => true,
+    }
+}
+
+/// A state update that is a step, not a computation: a literal, a local,
+/// an element or field read, a call, or `v + k` / `v - k` with a literal.
+fn simple_update(e: &Expr) -> bool {
+    let atom = |x: &Expr| {
+        matches!(
+            x.kind,
+            ExprKind::Int(..) | ExprKind::Bool(_) | ExprKind::Var(_) | ExprKind::Float(_)
+        )
+    };
+    match &e.kind {
+        ExprKind::Call { .. } | ExprKind::Index { .. } | ExprKind::Field { .. } => true,
+        ExprKind::Binary(BinOp::Add | BinOp::Sub, l, r) => {
+            atom(l) && matches!(r.kind, ExprKind::Int(..))
+        }
+        _ => atom(e),
+    }
+}
+
+/// Calls `f` on `e` and every subexpression of it, blocks included.
+fn each_expr(e: &Expr, f: &mut dyn FnMut(&Expr)) {
+    f(e);
+    for c in children(e) {
+        each_expr(c, f);
+    }
 }
 
 // ---------- self-matching triggers (W0906, backlog 1B-45) ----------

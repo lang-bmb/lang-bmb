@@ -178,7 +178,7 @@ pub(crate) fn inst_key(path: &str, args: &[TypeKind]) -> String {
 }
 
 /// The definition a call `path` from unit `mod_path` names.
-fn resolve_in(t: &Tables, path: &[Ident], mod_path: &str) -> String {
+pub(crate) fn resolve_in(t: &Tables, path: &[Ident], mod_path: &str) -> String {
     let name = path
         .iter()
         .map(|i| i.name.as_str())

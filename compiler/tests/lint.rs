@@ -789,3 +789,89 @@ mod w {
         out.diagnostics
     );
 }
+
+/// W0910 (backlog 2D-30, from T0-34): a printing loop of an `io` function
+/// that decides and computes its state itself (the agents of T0-30 wrote
+/// the ledger this way) gets the suggestion to move the update into a pure
+/// function: the state, the loop's own inputs and the value it prints. The
+/// same loop over an extracted step, with a counter and a sentinel test,
+/// gets none (the BRB-EFFECT reference solutions get none).
+#[test]
+fn pure_state_in_printing_loops() {
+    let text = r#"#[summary("w0910")]
+mod w {
+    #[effects(io)]
+    fn ledger(kinds: &[i64], amounts: &[i64], start: i64) -> i64 {
+        let mut bal: i64 = start % 1000;
+        let mut k: usize = 0;
+        while k < kinds.len()
+            decreases kinds.len() - k,
+        {
+            let kind: i64 = kinds[k] % 4;
+            let amt: i64 = amounts[k] % 1000;
+            let mut out: i64 = -1;
+            if kind == 0 && amt >= 0 {
+                bal = bal % 1000 + amt;
+                out = bal;
+            }
+            print_i64(out);
+            k = k + 1;
+        }
+        bal
+    }
+
+    #[effects(pure)]
+    fn step(bal: i64, kind: i64, amt: i64) -> i64 {
+        if kind == 0 && amt >= 0 { bal % 1000 + amt % 1000 } else { -1 }
+    }
+
+    #[effects(io)]
+    fn shell(kinds: &[i64], amounts: &[i64], start: i64) -> i64 {
+        let mut bal: i64 = start % 1000;
+        let mut k: usize = 0;
+        while k < kinds.len()
+            decreases kinds.len() - k,
+        {
+            let n: i64 = step(bal, kinds[k] % 4, amounts[k]);
+            if n < 0 {
+                print_i64(-1);
+            } else {
+                bal = n;
+                print_i64(bal);
+            }
+            k = k + 1;
+        }
+        bal
+    }
+
+    #[effects(io)]
+    fn main() -> () {}
+}
+"#;
+    let out = lint_sources(&one("w.bmb", text)).unwrap();
+    let found: Vec<(i64, String, String)> = rows(&out.diagnostics)
+        .iter()
+        .filter(|d| s(d, "code") == "W0910")
+        .map(|d| {
+            let fix = d
+                .get("fix")
+                .and_then(|f| f.get("message"))
+                .and_then(|r| r.as_str());
+            (
+                n(d, "line"),
+                s(d, "message").to_string(),
+                fix.unwrap_or_default().to_string(),
+            )
+        })
+        .collect();
+    assert_eq!(found.len(), 1, "{}", out.diagnostics);
+    assert_eq!(found[0].0, 7);
+    assert!(found[0].1.contains("its state `bal`"), "{}", found[0].1);
+    assert!(
+        found[0]
+            .2
+            .contains("fn ledger_step(bal: i64, kind: i64, amt: i64) -> (i64, i64)"),
+        "{}",
+        found[0].2
+    );
+}

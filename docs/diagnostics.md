@@ -203,6 +203,7 @@
 | W0906 | a quantifier's only trigger matches a term of its own body: instances feed each other (matching loop) |
 | W0907 | a counting `while` whose canonical form is a range `for` (the fix rewrites it; `bmb fix` applies it) |
 | W0909 | an executable function declares an effect its body does not need (callers must declare it too) |
+| W0910 | a loop of an `io` function prints and carries state whose every update is pure: the update can be a pure function, proved instead of tested |
 | W0908 | the contract is weaker than in the old version: a stronger `requires`, a weaker `ensures` or `pure` become `io` (`bmb weaken`, with the counterexample) |
 
 ## E10xx 탈출구와 근거(ADR-0029)
