@@ -20,6 +20,7 @@ use std::process::Command;
 mod common;
 
 use common::scalar::*;
+use common::trap;
 
 /// `let aK: i64 = <call or value>;`
 enum Bind {
@@ -292,6 +293,7 @@ struct Stats {
     runs: usize,
     cexes: usize,
     compiled_runs: usize,
+    traps: usize,
 }
 
 fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
@@ -300,34 +302,44 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
     let callers: Vec<Caller> = (0..5)
         .map(|n| gen_caller(&mut rng, n, callees.len()))
         .collect();
-    let mut src = String::from("#[summary(\"호출 건전성 퍼징\")]\nmod m {\n");
+    let mut module = String::from("#[summary(\"호출 건전성 퍼징\")]\nmod m {\n");
     for f in &callees {
-        src.push_str(&f.text());
+        module.push_str(&f.text());
     }
     for c in &callers {
-        src.push_str(&c.text(&callees));
+        module.push_str(&c.text(&callees));
     }
-    src.push_str(
-        "}\n\n#[summary(\"실행\")]\nmod app {\n    #[effects(alloc, io)]\n    fn main() -> () {\n",
-    );
+    module.push_str("}\n\n");
+    let main_head =
+        "#[summary(\"실행\")]\nmod app {\n    #[effects(alloc, io)]\n    fn main() -> () {\n";
+    let mut src = format!("{module}{main_head}");
     let mut expected = String::new();
-    for c in &callers {
+    // Calls that fault in the interpreter (backlog 1B-51). A call that breaks
+    // a callee's precondition is not run: preconditions are not checked at
+    // run time.
+    let mut faults: Vec<(usize, (i64, i64))> = Vec::new();
+    for (i, c) in callers.iter().enumerate() {
         for (x, y) in c.inputs(&mut rng) {
-            if let Outcome::Value(v) = c.run(&callees, x, y) {
-                let _ = writeln!(
-                    src,
-                    "        print_i64(m::{}({}, {}));",
-                    c.name,
-                    lit(x),
-                    lit(y)
-                );
-                let _ = writeln!(expected, "{v}");
+            match c.run(&callees, x, y) {
+                Outcome::Value(v) => {
+                    let _ = writeln!(
+                        src,
+                        "        print_i64(m::{}({}, {}));",
+                        c.name,
+                        lit(x),
+                        lit(y)
+                    );
+                    let _ = writeln!(expected, "{v}");
+                }
+                Outcome::Fault => faults.push((i, (x, y))),
+                Outcome::BadCall(_) => {}
             }
         }
     }
     src.push_str("    }\n}\n");
     let files = vec![("c.bmb".to_string(), src.clone())];
-    let out = bmb::emit_llvm_sources(&files);
+    let cache = dir.join(format!("cache{seed}"));
+    let out = bmb::emit_llvm_sources_cached(&files, Some(&cache));
     assert!(
         out.ir.is_some(),
         "seed {seed}: generated program must check\n{src}\n{}",
@@ -417,6 +429,25 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
         );
         stats.compiled_runs += n;
     }
+
+    // Calls that fault in the interpreter trap in both builds.
+    for (j, (i, (x, y))) in trap::choose(&faults, |_| ()).into_iter().enumerate() {
+        let c = &callers[i];
+        let call = format!(
+            "        print_i64(m::{}({}, {}));\n",
+            c.name,
+            lit(x),
+            lit(y)
+        );
+        let src = format!("{module}{main_head}{}    }}\n}}\n", trap::body(&call));
+        let files = vec![("c.bmb".to_string(), src.clone())];
+        let exe = dir.join(format!("c{seed}-trap{j}"));
+        if let Some(e) = trap::check(&files, &cache, &exe) {
+            panic!("seed {seed}: m::{}({x}, {y}): {e}\n{src}", c.name);
+        }
+        stats.traps += 1;
+    }
+    let _ = fs::remove_dir_all(&cache);
 }
 
 #[test]
@@ -442,8 +473,8 @@ fn call_proofs_and_builds_agree_with_the_interpreter() {
     }
     let _ = fs::remove_dir_all(&dir);
     eprintln!(
-        "soundness (calls): {} callers, {} checked with verified callees ({} runs), {} counterexamples, {} compiled runs",
-        stats.callers, stats.checked, stats.runs, stats.cexes, stats.compiled_runs
+        "soundness (calls): {} callers, {} checked with verified callees ({} runs), {} counterexamples, {} compiled runs, {} traps confirmed",
+        stats.callers, stats.checked, stats.runs, stats.cexes, stats.compiled_runs, stats.traps
     );
-    assert!(stats.checked > 0 && stats.cexes > 0);
+    assert!(stats.checked > 0 && stats.cexes > 0 && stats.traps > 0);
 }

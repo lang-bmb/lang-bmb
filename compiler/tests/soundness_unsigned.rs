@@ -26,6 +26,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 mod common;
 
 use common::scalar::{Rng, field};
+use common::trap;
 
 #[derive(Clone, Copy)]
 enum Op {
@@ -507,6 +508,7 @@ struct Stats {
     runs: usize,
     cexes: usize,
     compiled_runs: usize,
+    traps: usize,
 }
 
 fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
@@ -519,26 +521,33 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
     funcs[0].body = U::Byte(op, Box::new(U::Var("x")), Box::new(U::Var("y")));
     // Its verdict rests on the obligations alone.
     funcs[0].post = vec![Post::In(0, u64::MAX)];
-    let mut src = String::from("#[summary(\"부호 없는 산술 건전성 퍼징\")]\nmod m {\n");
+    let mut module = String::from("#[summary(\"부호 없는 산술 건전성 퍼징\")]\nmod m {\n");
     for f in &funcs {
-        src.push_str(&f.text());
+        module.push_str(&f.text());
     }
+    module.push_str("}\n\n");
     // `main` prints each result (`print_u64`, ADR-0028 §4).
-    src.push_str(
-        "}\n\n#[summary(\"실행\")]\nmod app {\n    #[effects(alloc, io)]\n    fn main() -> () {\n",
-    );
+    let main_head =
+        "#[summary(\"실행\")]\nmod app {\n    #[effects(alloc, io)]\n    fn main() -> () {\n";
+    let mut src = format!("{module}{main_head}");
     let mut expected = String::new();
-    for f in &funcs {
+    // Calls that fault in the interpreter (backlog 1B-51).
+    let mut faults: Vec<(usize, (u64, u64))> = Vec::new();
+    for (i, f) in funcs.iter().enumerate() {
         for (x, y) in f.inputs(&mut rng) {
-            if let Ok(r) = eval(&f.body, x, y) {
-                let _ = writeln!(src, "        print_u64(m::{}({x}, {y}));", f.name);
-                let _ = writeln!(expected, "{r}");
+            match eval(&f.body, x, y) {
+                Ok(r) => {
+                    let _ = writeln!(src, "        print_u64(m::{}({x}, {y}));", f.name);
+                    let _ = writeln!(expected, "{r}");
+                }
+                Err(Fault) => faults.push((i, (x, y))),
             }
         }
     }
     src.push_str("    }\n}\n");
     let files = vec![("u.bmb".to_string(), src.clone())];
-    let built = bmb::emit_llvm_sources(&files);
+    let cache = dir.join(format!("ucache{seed}-{}", std::process::id()));
+    let built = bmb::emit_llvm_sources_cached(&files, Some(&cache));
     let out = &built.verify;
     let ctx = |what: &str| format!("seed {seed}: {what}\n{src}\n{}", out.output);
     assert!(
@@ -641,6 +650,20 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
         );
         stats.compiled_runs += n;
     }
+
+    // Calls that fault in the interpreter trap in both builds.
+    for (j, (i, (x, y))) in trap::choose(&faults, |_| ()).into_iter().enumerate() {
+        let f = &funcs[i];
+        let call = format!("        print_u64(m::{}({x}, {y}));\n", f.name);
+        let src = format!("{module}{main_head}{}    }}\n}}\n", trap::body(&call));
+        let files = vec![("u.bmb".to_string(), src.clone())];
+        let exe = dir.join(format!("u{seed}-trap{j}-{}", std::process::id()));
+        if let Some(e) = trap::check(&files, &cache, &exe) {
+            panic!("seed {seed}: m::{}({x}, {y}): {e}\n{src}", f.name);
+        }
+        stats.traps += 1;
+    }
+    let _ = fs::remove_dir_all(&cache);
 }
 
 #[test]
@@ -664,14 +687,15 @@ fn unsigned_proofs_counterexamples_and_builds_agree_with_the_interpreter() {
         batch(seed, &mut stats, &dir);
     }
     eprintln!(
-        "soundness (unsigned): {} functions, {} verified ({} with ADR-0028/0044 forms, {} with u8, {} runs), {} counterexamples replayed, {} compiled runs",
+        "soundness (unsigned): {} functions, {} verified ({} with ADR-0028/0044 forms, {} with u8, {} runs), {} counterexamples replayed, {} compiled runs, {} traps confirmed",
         stats.funcs,
         stats.verified,
         stats.verified_adr28,
         stats.verified_u8,
         stats.runs,
         stats.cexes,
-        stats.compiled_runs
+        stats.compiled_runs,
+        stats.traps
     );
-    assert!(stats.verified > 0 && stats.cexes > 0);
+    assert!(stats.verified > 0 && stats.cexes > 0 && stats.traps > 0);
 }
