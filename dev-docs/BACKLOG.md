@@ -272,7 +272,7 @@ T0-10이 남긴 행(m1·m1b 완료, BVB 20/45, 2026-10-31 00:09)에서 두 가�
 | 0-02 | 설계·착수 문서 | `docs/DESIGN.md`, `dev-docs/v2-genesis.md` | — | ✅ `c7f8d5a` |
 | 0-03 | ADR 체계와 착수 결정 이관 | ADR-0001~0016 | 0-02 | ✅ `9a3adec` |
 | 0-04 | `v0.100-legacy` 태그 | GitHub에 태그 존재. 이 환경에서는 태그 푸시가 막혀 GitHub 웹에서 생성 필요 | 0-01 | 🚫 |
-| 0-05 | 작업 브랜치 정리 | 원격 브랜치 삭제가 막혀 GitHub 웹에서 삭제 필요 | — | 🚫 승인 2026-11-01(병합된 원격 브랜치 넷: `ccr-a7a8cfbc-pfp6rq`·`ccr-049225ff-fz80qw`·`claude/adoring-rubin-m6w91r`·`claude/new-session-6ww93j`). 이 세션의 권한 정책이 원격 삭제를 거부해 GitHub 웹에서 지워야 한다 |
+| 0-05 | 작업 브랜치 정리 | 원격 브랜치 삭제가 막혀 GitHub 웹에서 삭제 필요 | — | 🚫 승인 2026-11-01, 다시 지시 2026-11-04. 2026-11-04에 `ccr-8a901559-d3tkap`(T0-13·T0-30·T0-31·INF-22, CI 초록 `b77e54e1`)을 main에 fast-forward해 병합되지 않은 원격 브랜치는 없다. 지울 브랜치 다섯(모두 main의 조상): `ccr-8a901559-d3tkap`·`ccr-a7a8cfbc-pfp6rq`·`ccr-049225ff-fz80qw`·`claude/adoring-rubin-m6w91r`·`claude/new-session-6ww93j`. `legacy/v0`는 남긴다(v0 코드의 유일한 위치). 세션 프록시가 원격 삭제를 HTTP 403으로 거부해(2026-11-04 다시 확인) GitHub 웹에서 지워야 한다 |
 
 ## 인프라
 
