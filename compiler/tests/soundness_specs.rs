@@ -27,6 +27,9 @@
 //!   skipped;
 //! - both builds (proved checks removed, every check kept) print what the
 //!   interpreter computes, array contents included;
+//! - a call the interpreter says faults runs as a program of its own
+//!   (`common::trap`, backlog 1B-54): both builds print the line before it
+//!   and end by the trap;
 //! - lemmas (ADR-0062, backlog T1-18): two more functions per batch rest on a
 //!   `proof fn` from templates (an induction on `i` over a recursive spec fn,
 //!   or a plain proof) called in a `proof` block, with near-miss mutations of
@@ -45,6 +48,7 @@ use std::process::Command;
 mod common;
 
 use common::scalar::{Rng, field, lit};
+use common::trap;
 
 fn pick<T: Copy>(rng: &mut Rng, xs: &[T]) -> T {
     xs[rng.below(xs.len())]
@@ -1853,6 +1857,8 @@ struct Stats {
     lemma_replayed: usize,
     partial_cexes: usize,
     compiled_runs: usize,
+    /// Calls that fault in the interpreter, run as trap programs (1B-54).
+    traps: usize,
     by_template: std::collections::BTreeMap<&'static str, (usize, usize)>,
     codes: std::collections::BTreeMap<String, usize>,
 }
@@ -1867,25 +1873,38 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
         src.push_str(&f.text());
     }
     // One runner per function keeps each runner's proof context small.
-    src.push_str("}\n\n#[summary(\"실행\")]\nmod app {\n");
+    src.push_str("}\n\n");
+    let module = src.clone();
+    src.push_str("#[summary(\"실행\")]\nmod app {\n");
     let mut expected = String::new();
     let mut n = 0;
-    for f in &funcs {
+    // Calls that fault in the interpreter (backlog 1B-54), as `main` lines.
+    let mut faults: Vec<(usize, String)> = Vec::new();
+    for (fi, f) in funcs.iter().enumerate() {
         let _ = writeln!(src, "    #[effects(io)]\n    fn run_{}() -> () {{", f.name);
         for (a, i, x) in inputs(f, &mut rng) {
-            let Ok((v, after)) = run(f, &a, i, x).result else {
-                continue;
-            };
             if a.is_empty() {
                 continue;
             }
-            n += 1;
             let elems = a.iter().map(|&e| lit(e)).collect::<Vec<_>>().join(", ");
             let (m, r) = if f.mutable {
                 ("let mut", "&mut ")
             } else {
                 ("let", "&")
             };
+            let Ok((v, after)) = run(f, &a, i, x).result else {
+                faults.push((
+                    fi,
+                    format!(
+                        "        {m} t: [i64; {}] = [{elems}];\n        print_i64(m::{}({r}t, {i}, {}));\n",
+                        a.len(),
+                        f.name,
+                        lit(x)
+                    ),
+                ));
+                continue;
+            };
+            n += 1;
             let _ = writeln!(
                 src,
                 "        {m} a{n}: [i64; {}] = [{elems}];\n        print_i64(m::{}({r}a{n}, {i}, {}));",
@@ -1909,7 +1928,8 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
     }
     src.push_str("    }\n}\n");
     let files = vec![("s.bmb".to_string(), src.clone())];
-    let out = bmb::emit_llvm_sources(&files);
+    let cache = dir.join(format!("cache{seed}"));
+    let out = bmb::emit_llvm_sources_cached(&files, Some(&cache));
     assert!(
         out.ir.is_some(),
         "seed {seed}: generated program must check\n{src}\n{}",
@@ -2161,6 +2181,21 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
         );
         stats.compiled_runs += lines;
     }
+
+    // Calls that fault in the interpreter trap in both builds.
+    for (j, (fi, call)) in trap::choose(&faults, |_| ()).into_iter().enumerate() {
+        let src = format!(
+            "{module}#[summary(\"실행\")]\nmod app {{\n    #[effects(io)]\n    fn main() -> () {{\n{}    }}\n}}\n",
+            trap::body(&call)
+        );
+        let files = vec![("s.bmb".to_string(), src.clone())];
+        let exe = dir.join(format!("s{seed}-trap{j}"));
+        if let Some(e) = trap::check(&files, &cache, &exe) {
+            panic!("seed {seed}: {}: {e}\n{src}", funcs[fi].name);
+        }
+        stats.traps += 1;
+    }
+    let _ = fs::remove_dir_all(&cache);
 }
 
 #[test]
@@ -2188,7 +2223,7 @@ fn spec_proofs_counterexamples_and_builds_agree_with_the_interpreter() {
     }
     let _ = fs::remove_dir_all(&dir);
     eprintln!(
-        "soundness (specs): {} functions, {} verified ({} runs), {} counterexamples ({} replayed, {} entry replays, {} opaque, {} partial, {} undetermined), {} undetermined verified runs, {} compiled outputs",
+        "soundness (specs): {} functions, {} verified ({} runs), {} counterexamples ({} replayed, {} entry replays, {} opaque, {} partial, {} undetermined), {} undetermined verified runs, {} compiled outputs, {} traps confirmed",
         stats.funcs,
         stats.verified,
         stats.verified_runs,
@@ -2199,7 +2234,8 @@ fn spec_proofs_counterexamples_and_builds_agree_with_the_interpreter() {
         stats.partial_cexes,
         stats.cex_undetermined,
         stats.undetermined,
-        stats.compiled_runs
+        stats.compiled_runs,
+        stats.traps
     );
     eprintln!(
         "verified by template (functions, verified): {:#?}",
@@ -2210,5 +2246,5 @@ fn spec_proofs_counterexamples_and_builds_agree_with_the_interpreter() {
         stats.lemmas, stats.lemmas_verified, stats.lemma_runs, stats.lemma_replayed
     );
     eprintln!("failures by kind: {:#?}", stats.codes);
-    assert!(stats.verified > 0 && stats.cexes > 0);
+    assert!(stats.verified > 0 && stats.cexes > 0 && stats.traps > 0);
 }

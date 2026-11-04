@@ -25,6 +25,9 @@
 //!   past it the solver picks any value);
 //! - the program built with proved checks removed, and with every check
 //!   kept, prints what the interpreter computes;
+//! - a call the interpreter says faults runs as a program of its own
+//!   (`common::trap`, backlog 1B-54): both builds print the line before it
+//!   and end by the trap;
 //! - a third run under an address checker (valgrind memcheck with leak
 //!   checking, else AddressSanitizer) finds no invalid access, double free
 //!   or leak: every owned value is freed exactly once at the point the
@@ -41,6 +44,7 @@ use std::process::Command;
 mod common;
 
 use common::scalar::*;
+use common::trap;
 
 /// One statement.
 enum Op {
@@ -463,6 +467,8 @@ struct Stats {
     replayed: usize,
     compiled_runs: usize,
     checked_runs: usize,
+    /// Calls that fault in the interpreter, run as trap programs (1B-54).
+    traps: usize,
 }
 
 fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path, checker: AddrCheck) {
@@ -473,27 +479,35 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path, checker: AddrCheck
     for f in &funcs {
         src.push_str(&f.text());
     }
-    src.push_str(
-        "}\n\n#[summary(\"실행\")]\nmod app {\n    #[effects(alloc, io)]\n    fn main() -> () {\n",
-    );
+    src.push_str("}\n\n");
+    let module = src.clone();
+    let main_head =
+        "#[summary(\"실행\")]\nmod app {\n    #[effects(alloc, io)]\n    fn main() -> () {\n";
+    src.push_str(main_head);
     let mut expected = String::new();
-    for f in &funcs {
+    // Calls that fault in the interpreter (backlog 1B-54), as `main` lines.
+    let mut faults: Vec<(usize, String)> = Vec::new();
+    for (fi, f) in funcs.iter().enumerate() {
         for (x, y) in f.base.inputs(&mut rng) {
-            if let Ok(r) = f.run(x, y) {
-                let _ = writeln!(
-                    src,
-                    "        print_i64(m::{}({}, {}));",
-                    f.name(),
-                    lit(x),
-                    lit(y)
-                );
-                let _ = writeln!(expected, "{r}");
+            let line = format!(
+                "        print_i64(m::{}({}, {}));\n",
+                f.name(),
+                lit(x),
+                lit(y)
+            );
+            match f.run(x, y) {
+                Ok(r) => {
+                    src.push_str(&line);
+                    let _ = writeln!(expected, "{r}");
+                }
+                Err(Fault) => faults.push((fi, line)),
             }
         }
     }
     src.push_str("    }\n}\n");
     let file = dir.join(format!("v{seed}.bmb"));
     fs::write(&file, &src).unwrap();
+    let cache = dir.join(format!("cache{seed}"));
     let emit = |all_checks: bool| -> (String, Option<String>) {
         let ll = dir.join(format!("v{seed}-{all_checks}.ll"));
         let _ = fs::remove_file(&ll);
@@ -501,6 +515,8 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path, checker: AddrCheck
         cmd.arg("emit-llvm");
         if all_checks {
             cmd.arg("--all-checks");
+        } else {
+            cmd.arg("--cache").arg(&cache);
         }
         let out = cmd.arg(&file).arg("-o").arg(&ll).output().unwrap();
         let ir = fs::read_to_string(&ll).ok();
@@ -661,6 +677,18 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path, checker: AddrCheck
         let _ = fs::remove_file(&exe);
         let _ = fs::remove_file(&ll);
     }
+
+    // Calls that fault in the interpreter trap in both builds.
+    for (j, (fi, call)) in trap::choose(&faults, |_| ()).into_iter().enumerate() {
+        let src = format!("{module}{main_head}{}    }}\n}}\n", trap::body(&call));
+        let files = vec![(format!("v{seed}.bmb"), src.clone())];
+        let exe = dir.join(format!("v{seed}-trap{j}"));
+        if let Some(e) = trap::check(&files, &cache, &exe) {
+            panic!("seed {seed}: {}: {e}\n{src}", funcs[fi].name());
+        }
+        stats.traps += 1;
+    }
+    let _ = fs::remove_dir_all(&cache);
 }
 
 #[test]
@@ -689,14 +717,15 @@ fn owned_proofs_counterexamples_builds_and_frees_agree_with_the_interpreter() {
     }
     let _ = fs::remove_dir_all(&dir);
     eprintln!(
-        "soundness (owned, {checker:?}): {} functions, {} verified ({} runs), {} counterexamples ({} replayed), {} compiled runs, {} address-checked runs",
+        "soundness (owned, {checker:?}): {} functions, {} verified ({} runs), {} counterexamples ({} replayed), {} compiled runs, {} address-checked runs, {} traps confirmed",
         stats.funcs,
         stats.verified,
         stats.verified_runs,
         stats.cexes,
         stats.replayed,
         stats.compiled_runs,
-        stats.checked_runs
+        stats.checked_runs,
+        stats.traps
     );
-    assert!(stats.verified > 0 && stats.replayed > 0);
+    assert!(stats.verified > 0 && stats.replayed > 0 && stats.traps > 0);
 }

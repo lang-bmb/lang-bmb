@@ -23,7 +23,8 @@
 //!   both print what the interpreter computes, and a call that panics in
 //!   Rust (overflow, a shift amount outside `0..w`, division by zero,
 //!   `MIN / -1`, an out-of-range conversion) traps in both (`SIGILL`, a
-//!   program of its own per call, as a trap ends the run), after the line
+//!   program of its own per call through `common::trap`, as a trap ends
+//!   the run), after the line
 //!   printed before the call, as Rust prints the lines before a panic
 //!   (backlog 1B-52). A trap in the first build is a check the prover did
 //!   not erase, so a wrongly proved obligation shows as a missing trap.
@@ -51,6 +52,7 @@ use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use common::scalar::{Rng, field};
+use common::trap;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Ty {
@@ -1116,9 +1118,6 @@ fn run(ir: &str, exe: &Path) -> Result<(String, Option<i32>, bool), String> {
     ))
 }
 
-/// Traps per batch run as programs of their own (one trap ends a run).
-const TRAPS: usize = 3;
-
 fn batch(seed: u64, stats: &mut Stats, dir: &Path) {
     let mut rng = Rng(seed.wrapping_mul(0x9E3779B97F4A7C15) | 1);
     // Every width in turn, both signednesses in every batch.
@@ -1147,7 +1146,7 @@ fn batch(seed: u64, stats: &mut Stats, dir: &Path) {
     // Printed calls (the interpreter's value) and trapping ones.
     let mut calls = String::new();
     let mut expected = String::new();
-    let mut traps: Vec<(usize, Env, Panic)> = Vec::new();
+    let mut traps: Vec<(usize, (Env, Panic))> = Vec::new();
     for (i, f) in funcs.iter().enumerate() {
         for env in f.inputs(&mut rng, 6) {
             match eval(&f.body, env) {
@@ -1155,7 +1154,7 @@ fn batch(seed: u64, stats: &mut Stats, dir: &Path) {
                     calls.push_str(&call_text(f, env));
                     let _ = writeln!(expected, "{r}");
                 }
-                Err(p) => traps.push((i, env, p)),
+                Err(p) => traps.push((i, (env, p))),
             }
         }
     }
@@ -1290,45 +1289,26 @@ fn batch(seed: u64, stats: &mut Stats, dir: &Path) {
         stats.compared += n;
     }
 
-    // Calls that panic in Rust trap in both builds.
-    // Each kind of panic once, then other functions.
-    let mut chosen: Vec<(usize, Env, Panic)> = Vec::new();
-    for t in &traps {
-        if chosen.len() < TRAPS && !chosen.iter().any(|c| c.2 == t.2 || c.0 == t.0) {
-            chosen.push(*t);
-        }
-    }
-    for t in &traps {
-        if chosen.len() < TRAPS && !chosen.iter().any(|c| c.0 == t.0) {
-            chosen.push(*t);
-        }
-    }
-    for (j, (i, env, _)) in chosen.into_iter().enumerate() {
+    // Calls that panic in Rust trap in both builds (`common::trap`), each
+    // kind of panic once, then other functions.
+    for (j, (i, (env, _))) in trap::choose(&traps, |t| t.1).into_iter().enumerate() {
         let f = &funcs[i];
         let src = format!(
-            "{module}{main_head}        print_i64(1);\n{}        print_i64(2);\n    }}\n}}\n",
-            call_text(f, env)
+            "{module}{main_head}{}    }}\n}}\n",
+            trap::body(&call_text(f, env))
         );
-        let file = dir.join(format!("w{seed}-trap{j}.bmb"));
-        fs::write(&file, &src).unwrap();
-        for all_checks in [false, true] {
-            let b = emit(&file, &cache, all_checks);
-            let ir = b
-                .ir
-                .unwrap_or_else(|| panic!("{}", ctx(&format!("no IR for the trap of {}", f.name))));
-            let exe = dir.join(format!("w{seed}-trap{j}-{all_checks}"));
-            let (out, sig, _) = run(&ir, &exe).unwrap_or_else(|e| panic!("{}", ctx(&e)));
-            assert!(
-                out == "1\n" && sig == Some(4),
+        let files = vec![(format!("w{seed}.bmb"), src.clone())];
+        let exe = dir.join(format!("w{seed}-trap{j}"));
+        if let Some(e) = trap::check(&files, &cache, &exe) {
+            panic!(
                 "{}",
                 ctx(&format!(
-                    "m::{}({}, {}, {}) panics in Rust, but the build (all_checks = {all_checks}) printed {out:?} and ended by signal {sig:?}",
+                    "m::{}({}, {}, {}): {e}\n{src}",
                     f.name, env.x, env.y, env.k
                 ))
             );
-            stats.traps += 1;
         }
-        let _ = fs::remove_file(&file);
+        stats.traps += 1;
     }
     let _ = fs::remove_file(&file);
 }

@@ -20,7 +20,10 @@
 //!   breaks it;
 //! - the compiled program, built twice (proved checks removed, and every
 //!   check kept), prints what the interpreter computes for `h`, `f::<B>`,
-//!   `f::<N<B>>` and `R::get`.
+//!   `f::<N<B>>` and `R::get`;
+//! - a call the interpreter says faults runs as a program of its own
+//!   (`common::trap`, backlog 1B-54): both builds print the line before it
+//!   and end by the trap.
 //!
 //! It drives the `bmb` command line (HEALTH.md S5). `BMB_SOUND_ITERS`
 //! raises the number of batches for longer runs.
@@ -32,6 +35,7 @@ use std::process::Command;
 mod common;
 
 use common::scalar::*;
+use common::trap;
 
 /// The random impl `R`: `get` returns `body` (over `v`, the field), and
 /// ensures `got` (the trait's contract) or its own `post` over `v`, `r`.
@@ -201,6 +205,8 @@ struct Stats {
     cexes: usize,
     generic_cexes: usize,
     compiled_runs: usize,
+    /// Calls that fault in the interpreter, run as trap programs (1B-54).
+    traps: usize,
 }
 
 fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
@@ -240,18 +246,36 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
         })
         .collect();
     uses.extend(["m::got".to_string(), "m::Val::val".to_string()]);
-    let _ = write!(
-        src,
-        "}}\n\n#[summary(\"실행\")]\nmod app {{\n    #[effects(io)]\n    #[uses({})]\n    fn main() -> () {{\n",
+    src.push_str("}\n\n");
+    let module = src.clone();
+    let main_head = format!(
+        "#[summary(\"실행\")]\nmod app {{\n    #[effects(io)]\n    #[uses({})]\n    fn main() -> () {{\n",
         uses.join(", ")
     );
+    src.push_str(&main_head);
     let mut expected = String::new();
     let mut n = 0;
-    for f in &funcs {
+    // Calls that fault in the interpreter (backlog 1B-54): `main` lines for
+    // `h`, `f::<B>` and `f::<N<B>>` (the kind), one form each.
+    let mut faults: Vec<(usize, (usize, String))> = Vec::new();
+    for (fi, f) in funcs.iter().enumerate() {
         let k = &f.name[1..];
         for (x, y) in f.inputs(&mut rng) {
-            let Ok(res) = f.run(x, y) else { continue };
             let (lx, ly) = (lit(x), lit(y));
+            let Ok(res) = f.run(x, y) else {
+                let form = faults.len() % 3;
+                let call = match form {
+                    0 => format!("        print_i64(m::h{k}({lx}, {ly}));\n"),
+                    1 => format!(
+                        "        let a: m::B = m::B {{ v: {lx} }};\n        let b: m::B = m::B {{ v: {ly} }};\n        print_i64(m::f{k}::<m::B>(a, b));\n"
+                    ),
+                    _ => format!(
+                        "        let c: m::N<m::B> = m::N {{ inner: m::B {{ v: {lx} }} }};\n        let d: m::N<m::B> = m::N {{ inner: m::B {{ v: {ly} }} }};\n        print_i64(m::f{k}::<m::N<m::B>>(c, d));\n"
+                    ),
+                };
+                faults.push((fi, (form, call)));
+                continue;
+            };
             let _ = writeln!(src, "        print_i64(m::h{k}({lx}, {ly}));");
             let _ = writeln!(
                 src,
@@ -281,6 +305,7 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
     src.push_str("    }\n}\n");
     let file = dir.join(format!("t{seed}.bmb"));
     fs::write(&file, &src).unwrap();
+    let cache = dir.join(format!("cache{seed}"));
     let emit = |all_checks: bool| -> (String, Option<String>) {
         let ll = dir.join(format!("t{seed}-{all_checks}.ll"));
         let _ = fs::remove_file(&ll);
@@ -288,6 +313,8 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
         cmd.arg("emit-llvm");
         if all_checks {
             cmd.arg("--all-checks");
+        } else {
+            cmd.arg("--cache").arg(&cache);
         }
         let out = cmd.arg(&file).arg("-o").arg(&ll).output().unwrap();
         let ir = fs::read_to_string(&ll).ok();
@@ -467,6 +494,19 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
         );
         stats.compiled_runs += lines;
     }
+
+    // Calls that fault in the interpreter trap in both builds.
+    let chosen = trap::choose(&faults, |(form, _)| *form);
+    for (j, (fi, (_, call))) in chosen.into_iter().enumerate() {
+        let src = format!("{module}{main_head}{}    }}\n}}\n", trap::body(&call));
+        let files = vec![(format!("t{seed}.bmb"), src.clone())];
+        let exe = dir.join(format!("t{seed}-trap{j}"));
+        if let Some(e) = trap::check(&files, &cache, &exe) {
+            panic!("seed {seed}: {}: {e}\n{src}", funcs[fi].name);
+        }
+        stats.traps += 1;
+    }
+    let _ = fs::remove_dir_all(&cache);
 }
 
 #[test]
@@ -494,14 +534,15 @@ fn trait_proofs_counterexamples_and_builds_agree_with_the_interpreter() {
     }
     let _ = fs::remove_dir_all(&dir);
     eprintln!(
-        "soundness (traits): {} functions, {} verified ({} runs), R::get verified in {} batches, {} counterexamples replayed, {} over a sort, {} compiled runs",
+        "soundness (traits): {} functions, {} verified ({} runs), R::get verified in {} batches, {} counterexamples replayed, {} over a sort, {} compiled runs, {} traps confirmed",
         stats.funcs,
         stats.verified,
         stats.verified_runs,
         stats.r_verified,
         stats.cexes,
         stats.generic_cexes,
-        stats.compiled_runs
+        stats.compiled_runs,
+        stats.traps
     );
-    assert!(stats.verified > 0 && stats.cexes > 0);
+    assert!(stats.verified > 0 && stats.cexes > 0 && stats.traps > 0);
 }
