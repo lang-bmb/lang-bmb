@@ -17,6 +17,7 @@ use std::process::Command;
 mod common;
 
 use common::scalar::*;
+use common::trap;
 
 struct Rec {
     name: String,
@@ -214,30 +215,40 @@ struct Stats {
     runs: usize,
     cexes: usize,
     compiled_runs: usize,
+    traps: usize,
 }
 
 fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
     let mut rng = Rng(seed.wrapping_mul(0x9E3779B97F4A7C15) | 1);
     let recs: Vec<Rec> = (0..6).map(|k| gen_rec(&mut rng, k)).collect();
-    let mut src = String::from("#[summary(\"재귀 건전성 퍼징\")]\nmod m {\n");
+    let mut module = String::from("#[summary(\"재귀 건전성 퍼징\")]\nmod m {\n");
     for r in &recs {
-        src.push_str(&r.text());
+        module.push_str(&r.text());
     }
-    src.push_str(
-        "}\n\n#[summary(\"실행\")]\nmod app {\n    #[effects(alloc, io)]\n    fn main() -> () {\n",
-    );
+    module.push_str("}\n\n");
+    let main_head =
+        "#[summary(\"실행\")]\nmod app {\n    #[effects(alloc, io)]\n    fn main() -> () {\n";
+    let mut src = format!("{module}{main_head}");
     let mut expected = String::new();
-    for r in &recs {
+    // Calls that fault in the interpreter (backlog 1B-54); a diverging one
+    // is not run.
+    let mut faults: Vec<(usize, (u64, i64))> = Vec::new();
+    for (i, r) in recs.iter().enumerate() {
         for (n, x) in r.inputs(&mut rng) {
-            if let Run::Value(v) = r.run(n, x, 0) {
-                let _ = writeln!(src, "        print_i64(m::{}({n}, {}));", r.name, lit(x));
-                let _ = writeln!(expected, "{v}");
+            match r.run(n, x, 0) {
+                Run::Value(v) => {
+                    let _ = writeln!(src, "        print_i64(m::{}({n}, {}));", r.name, lit(x));
+                    let _ = writeln!(expected, "{v}");
+                }
+                Run::Fault => faults.push((i, (n, x))),
+                Run::Diverges => {}
             }
         }
     }
     src.push_str("    }\n}\n");
     let files = vec![("r.bmb".to_string(), src.clone())];
-    let out = bmb::emit_llvm_sources(&files);
+    let cache = dir.join(format!("cache{seed}"));
+    let out = bmb::emit_llvm_sources_cached(&files, Some(&cache));
     assert!(
         out.ir.is_some(),
         "seed {seed}: generated program must check\n{src}\n{}",
@@ -323,6 +334,20 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
         );
         stats.compiled_runs += lines;
     }
+
+    // Calls that fault in the interpreter trap in both builds.
+    for (j, (i, (n, x))) in trap::choose(&faults, |_| ()).into_iter().enumerate() {
+        let r = &recs[i];
+        let call = format!("        print_i64(m::{}({n}, {}));\n", r.name, lit(x));
+        let src = format!("{module}{main_head}{}    }}\n}}\n", trap::body(&call));
+        let files = vec![("r.bmb".to_string(), src.clone())];
+        let exe = dir.join(format!("r{seed}-trap{j}"));
+        if let Some(e) = trap::check(&files, &cache, &exe) {
+            panic!("seed {seed}: m::{}({n}, {x}): {e}\n{src}", r.name);
+        }
+        stats.traps += 1;
+    }
+    let _ = fs::remove_dir_all(&cache);
 }
 
 #[test]
@@ -348,8 +373,8 @@ fn recursion_proofs_and_builds_agree_with_the_interpreter() {
     }
     let _ = fs::remove_dir_all(&dir);
     eprintln!(
-        "soundness (recursion): {} functions, {} verified ({} runs), {} counterexamples, {} compiled runs",
-        stats.funcs, stats.verified, stats.runs, stats.cexes, stats.compiled_runs
+        "soundness (recursion): {} functions, {} verified ({} runs), {} counterexamples, {} compiled runs, {} traps confirmed",
+        stats.funcs, stats.verified, stats.runs, stats.cexes, stats.compiled_runs, stats.traps
     );
-    assert!(stats.verified > 0 && stats.cexes > 0);
+    assert!(stats.verified > 0 && stats.cexes > 0 && stats.traps > 0);
 }

@@ -23,6 +23,10 @@ use std::fmt::Write as _;
 use std::fs;
 use std::process::Command;
 
+mod common;
+
+use common::trap;
+
 struct Rng(u64);
 
 impl Rng {
@@ -1112,6 +1116,8 @@ struct Stats {
     cexes: usize,
     entry_replays: usize,
     compiled_runs: usize,
+    /// Calls that fault in the interpreter, run as trap programs (1B-54).
+    traps: usize,
     /// Verified functions with a range `for`, an early exit, a `?`.
     verified_for: usize,
     verified_exit: usize,
@@ -1121,6 +1127,9 @@ struct Stats {
     /// Failure codes over all functions, to see what keeps proofs from passing.
     codes: std::collections::BTreeMap<String, usize>,
 }
+
+/// A call's array, `k` and `x`.
+type Call = (Vec<i64>, u64, i64);
 
 fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
     let mut rng = Rng(seed.wrapping_mul(0x9E3779B97F4A7C15) | 1);
@@ -1133,17 +1142,24 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
     }
     src.push_str("}\n\n#[summary(\"실행\")]\nmod app {\n");
     src.push_str(SHOW);
-    src.push_str("    #[effects(io)]\n    fn main() -> () {\n");
+    let module = src.clone();
+    let main_head = "    #[effects(io)]\n    fn main() -> () {\n";
+    src.push_str(main_head);
     let mut expected = String::new();
     let mut n = 0;
-    for f in &funcs {
+    // Calls that fault in the interpreter (backlog 1B-54).
+    let mut faults: Vec<(usize, Call)> = Vec::new();
+    for (fi, f) in funcs.iter().enumerate() {
         for (a, k, x) in inputs(f, &mut rng) {
             let mut after = a.clone();
             let r = run(f, &mut after, k, x);
-            let Ok(v) = r.result else { continue };
             if a.is_empty() {
                 continue;
             }
+            let Ok(v) = r.result else {
+                faults.push((fi, (a.clone(), k, x)));
+                continue;
+            };
             n += 1;
             let elems = a.iter().map(|&e| lit(e)).collect::<Vec<_>>().join(", ");
             let print = if f.opt { "show" } else { "print_i64" };
@@ -1168,7 +1184,8 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
     }
     src.push_str("    }\n}\n");
     let files = vec![("l.bmb".to_string(), src.clone())];
-    let out = bmb::emit_llvm_sources(&files);
+    let cache = dir.join(format!("cache{seed}"));
+    let out = bmb::emit_llvm_sources_cached(&files, Some(&cache));
     assert!(
         out.ir.is_some(),
         "seed {seed}: generated program must check\n{src}\n{}",
@@ -1287,6 +1304,27 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
         );
         stats.compiled_runs += lines;
     }
+
+    // Calls that fault in the interpreter trap in both builds.
+    for (j, (fi, (a, k, x))) in trap::choose(&faults, |_| ()).into_iter().enumerate() {
+        let f = &funcs[fi];
+        let elems = a.iter().map(|&e| lit(e)).collect::<Vec<_>>().join(", ");
+        let print = if f.opt { "show" } else { "print_i64" };
+        let call = format!(
+            "        let mut t: [i64; {}] = [{elems}];\n        {print}(m::{}(&mut t, {k}, {}));\n",
+            a.len(),
+            f.name,
+            lit(x)
+        );
+        let src = format!("{module}{main_head}{}    }}\n}}\n", trap::body(&call));
+        let files = vec![("l.bmb".to_string(), src.clone())];
+        let exe = dir.join(format!("l{seed}-trap{j}"));
+        if let Some(e) = trap::check(&files, &cache, &exe) {
+            panic!("seed {seed}: m::{}({a:?}, {k}, {x}): {e}\n{src}", f.name);
+        }
+        stats.traps += 1;
+    }
+    let _ = fs::remove_dir_all(&cache);
 }
 
 #[test]
@@ -1314,18 +1352,19 @@ fn loop_proofs_counterexamples_and_builds_agree_with_the_interpreter() {
     }
     let _ = fs::remove_dir_all(&dir);
     eprintln!(
-        "soundness (loops): {} functions, {} verified ({} runs), {} counterexamples ({} entry replays), {} compiled outputs",
+        "soundness (loops): {} functions, {} verified ({} runs), {} counterexamples ({} entry replays), {} compiled outputs, {} traps confirmed",
         stats.funcs,
         stats.verified,
         stats.verified_runs,
         stats.cexes,
         stats.entry_replays,
-        stats.compiled_runs
+        stats.compiled_runs,
+        stats.traps
     );
     eprintln!(
         "early exits (2K-05): verified {} with `for`, {} with an exit, {} with `?`; {} verified runs left early",
         stats.verified_for, stats.verified_exit, stats.verified_try, stats.early_runs
     );
     eprintln!("failures by kind: {:#?}", stats.codes);
-    assert!(stats.verified > 0 && stats.cexes > 0);
+    assert!(stats.verified > 0 && stats.cexes > 0 && stats.traps > 0);
 }
