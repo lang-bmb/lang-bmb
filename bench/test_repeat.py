@@ -55,6 +55,25 @@ class Summary(unittest.TestCase):
         self.assertIn("| 1 / 1 / 2 |", text)
         self.assertIn("흔들린 과제: t1, t2", text)
         self.assertIn("최소 차이(ADR-0077 §4): 50%p", text)
+        self.assertIn("집합별 최소 차이(ADR-0086 §2): m1b 50%p", text)
+
+    def test_brb_rows_are_writes_of_their_arm(self):
+        with tempfile.TemporaryDirectory() as d:
+            files = []
+            for k, succ in enumerate([[True, True], [True, False]]):
+                path = os.path.join(d, f"b{k}.jsonl")
+                with open(path, "w") as f:
+                    f.write(json.dumps({"summary": True, "task_set": "brb-write", "arm": "bmb",
+                                        "agent": "openai:qwen3.8-27b", "commit": "c", "repeat": k + 1}) + "\n")
+                    for i, ok in enumerate(succ):
+                        f.write(json.dumps({"id": f"t{i}", "arm": "bmb", "success": ok}) + "\n")
+                files.append(path)
+            files.append(run_file(d, 1, [True, False, False, False], task_set="bvb"))
+            files.append(run_file(d, 2, [True, True, True, False], task_set="bvb"))
+            text = repeat.summary(files, 0.6)
+        self.assertIn("## brb-write-bmb: 반복 2회", text)
+        self.assertIn("| 작성 | 2/2, 1/2 | 75.0% |", text)
+        self.assertIn("집합별 최소 차이(ADR-0086 §2): brb-write-bmb 50%p, bvb 50%p", text)
 
     def test_mixed_runs_are_refused(self):
         with tempfile.TemporaryDirectory() as d:

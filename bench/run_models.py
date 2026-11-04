@@ -229,7 +229,7 @@ def preflight_real(sets):
 # ADR-0077: repeated runs, the model and sets they are declared for.
 REPEATS = 5
 REPEAT_AGENT = "openai:qwen3.8-27b"
-REPEAT_SETS = ("m1", "m1b")
+REPEAT_SETS = ("m1", "m1b", "bvb", "brb-bmb", "bvb-write", "brb-write")  # ADR-0077, ADR-0086
 
 
 def repeat_problem(repeat, agent, sets):
@@ -239,7 +239,7 @@ def repeat_problem(repeat, agent, sets):
     if agent != REPEAT_AGENT:
         return f"--repeat is declared for {REPEAT_AGENT} only (ADR-0077; the cross-comparison model runs once)"
     if extra := [s for s in sets if s not in REPEAT_SETS]:
-        return f"--repeat is declared for {', '.join(REPEAT_SETS)} only, not {', '.join(extra)} (ADR-0077)"
+        return f"--repeat is declared for {', '.join(REPEAT_SETS)} only, not {', '.join(extra)} (ADR-0077, ADR-0086)"
     return None
 
 

@@ -35,7 +35,9 @@ class Guard(unittest.TestCase):
         self.assertIsNone(run_models.repeat_problem(5, "openai:qwen3.8-27b", ["m1b"]))
         self.assertIn("1..5", run_models.repeat_problem(6, "openai:qwen3.8-27b", ["m1"]))
         self.assertIn("once", run_models.repeat_problem(1, "anthropic:claude-sonnet-5-5", ["m1"]))
-        self.assertIn("not bvb", run_models.repeat_problem(1, "openai:qwen3.8-27b", ["m1", "bvb"]))
+        # ADR-0086: also BVB and BRB (BMB arm), each in both surfaces.
+        self.assertIsNone(run_models.repeat_problem(1, "openai:qwen3.8-27b", ["bvb", "brb-bmb", "bvb-write", "brb-write"]))
+        self.assertIn("not brb-rust", run_models.repeat_problem(1, "openai:qwen3.8-27b", ["m1", "brb-rust"]))
         with self.assertRaises(SystemExit) as e:
             run_models.main(["--dry-run", "--repeat", "1", "--sets", "m1"])
         self.assertIn("real runs", str(e.exception))
@@ -77,7 +79,8 @@ class Guard(unittest.TestCase):
         self.assertEqual(argv[-2:], ["--variant", "bench/brb-write"])
         self.assertIn("bmb", argv)
         self.assertEqual(run_models.repeat_problem(1, run_models.REPEAT_AGENT, ["m1b-write"]),
-                         "--repeat is declared for m1, m1b only, not m1b-write (ADR-0077)")
+                         "--repeat is declared for m1, m1b, bvb, brb-bmb, bvb-write, brb-write only, not m1b-write "
+                         "(ADR-0077, ADR-0086)")
 
 
 class Resume(unittest.TestCase):

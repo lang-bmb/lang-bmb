@@ -20,7 +20,9 @@ The target rule (ADR-0077 §3): a target is met when the interval's lower end is
 at or above it, missed when its upper end is below it, and undetermined
 otherwise. The minimum difference for comparing single runs (§4) is the
 largest range over the sets' write tasks, in whole percentage points rounded
-up. Standard library only.
+up. Each set's own minimum difference (ADR-0086 §2) is its write range the
+same way. BRB results (no task `kind`, one arm per file) count as writes of
+the set named by `task_set` and `arm` (`brb-write-bmb`). Standard library only.
 """
 import argparse
 import json
@@ -76,7 +78,7 @@ def group(files):
         head, rows = load(path)
         if "repeat" not in head:
             sys.exit(f"{path}: not a repeated run (no `repeat` in its header, ADR-0077)")
-        name = head.get("task_set", "m1")
+        name = head.get("task_set", "m1") + (f"-{head['arm']}" if head.get("arm") else "")
         key = (head.get("agent"), head.get("commit"), json.dumps(head.get("condition"), sort_keys=True))
         runs = sets.setdefault(name, {"key": key, "runs": []})
         if runs["key"] != key:
@@ -92,7 +94,7 @@ def kind_stats(runs, kind):
     per = []
     by_task = {}
     for _, rows in runs:
-        rs = [r for r in rows if r.get("kind") == kind]
+        rs = [r for r in rows if r.get("kind", "write") == kind]  # BRB rows are all writes
         per.append((sum(1 for r in rs if r.get("success")), len(rs)))
         for r in rs:
             by_task.setdefault(r["id"], []).append(bool(r.get("success")))
@@ -112,6 +114,7 @@ def summary(files, target):
     sets = group(files)
     out = []
     ranges = []
+    per_set = []
     for name, runs in sorted(sets.items()):
         out += [f"## {name}: 반복 {len(runs)}회", "",
                 "| 과제 종류 | 실행별 성공 | 평균 | 95% 구간 | 범위 | 늘 성공 / 늘 실패 / 흔들림 | 목표 " +
@@ -122,6 +125,7 @@ def summary(files, target):
                 continue
             if kind == "write":
                 ranges.append(st["range"])
+                per_set.append((name, st["range"]))
             out.append(f"| {label} | {', '.join(f'{k}/{n}' for k, n in st['per_run'])} | {st['mean']:.1%} | "
                        f"{st['lo']:.1%}~{st['hi']:.1%} | {st['range'] * 100:.1f}%p | "
                        f"{st['always']} / {st['never']} / {len(st['unstable'])} | {verdict(st['lo'], st['hi'], target)} |")
@@ -129,7 +133,14 @@ def summary(files, target):
         out += ["", f"흔들린 과제: {', '.join(unstable) if unstable else '없음'}", ""]
     if ranges:
         out.append(f"단일 실행 비교의 최소 차이(ADR-0077 §4): {math.ceil(max(ranges) * 100 - 1e-9)}%p")
+        out.append("")
+        out.append("집합별 최소 차이(ADR-0086 §2): " + ", ".join(f"{n} {points(r)}%p" for n, r in per_set))
     return "\n".join(out) + "\n"
+
+
+def points(r):
+    """A range in whole percentage points, rounded up."""
+    return math.ceil(r * 100 - 1e-9)
 
 
 def main(argv=None):
