@@ -4,9 +4,9 @@
 {"code":"E0815","severity":"error","message":"`f64::from` of `u64` may not be exact (|x| <= 2^53) in `ff::convert`; counterexample: n = 9007199254741024","file":"fail/floats.bmb","line":27,"col":9,"end_line":27,"end_col":21}
 {"code":"E0801","severity":"error","message":"`print_f64` may get more than 65535 decimals (Rust panics) in `ff::show`; counterexample: x = NaN, d = 65536","file":"fail/floats.bmb","line":33,"col":9,"end_line":33,"end_col":24}
 {"code":"E0818","severity":"error","message":"bit-vector assertion may not hold in `ff::finite_sum`; counterexample: x = -1.5588846119205942e308","file":"fail/floats.bmb","line":39,"col":9,"end_line":39,"end_col":71,"fix":{"message":"the sub-proof sees only the assertion's variables, each over its whole type, and no fact of the path: write what it needs into the assertion as `p ==> e`"}}
-{"def":"ff::below","status":"failed","obligations":1,"failed":1,"rlimit":1083,"rlimit_max":1083}
-{"def":"ff::commutes","status":"failed","obligations":1,"failed":1,"rlimit":3859,"rlimit_max":3859}
-{"def":"ff::convert","status":"failed","obligations":1,"failed":1,"rlimit":3532,"rlimit_max":3532}
+{"def":"ff::below","status":"failed","obligations":1,"failed":1,"rlimit":1027,"rlimit_max":1027}
+{"def":"ff::commutes","status":"failed","obligations":1,"failed":1,"rlimit":3803,"rlimit_max":3803}
+{"def":"ff::convert","status":"failed","obligations":1,"failed":1,"rlimit":3476,"rlimit_max":3476}
 {"def":"ff::finite_sum","status":"failed","obligations":1,"failed":1,"rlimit":30426,"rlimit_max":30426}
-{"def":"ff::show","status":"failed","obligations":1,"failed":1,"rlimit":978,"rlimit_max":978}
-{"def":"ff::two","status":"failed","obligations":1,"failed":1,"rlimit":1519,"rlimit_max":1519}
+{"def":"ff::show","status":"failed","obligations":1,"failed":1,"rlimit":922,"rlimit_max":922}
+{"def":"ff::two","status":"failed","obligations":1,"failed":1,"rlimit":1463,"rlimit_max":1463}

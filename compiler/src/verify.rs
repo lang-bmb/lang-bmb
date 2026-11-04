@@ -6253,9 +6253,14 @@ pub fn instantiate(template: &str, a: &str, b: &str, q: &str, r: &str) -> String
         .replace("{r}", r)
 }
 
+/// Truncating `/` and `%` from one Euclidean `div` and `mod` of the same
+/// operands (ADR-0085): the solver introduces one quotient and remainder per
+/// pair, and `%` needs no product with the divisor. For `b != 0` these are
+/// ADR-0017's `sign(a)·sign(b)·div(|a|,|b|)` and `a − b·tdiv(a,b)`; at
+/// `b = 0` both are left unconstrained.
 pub const PRELUDE: &str = "(define-fun bmb_abs ((x Int)) Int (ite (>= x 0) x (- x)))
-(define-fun bmb_tdiv ((a Int) (b Int)) Int (ite (>= a 0) (ite (> b 0) (div a b) (- (div a (- b)))) (ite (> b 0) (- (div (- a) b)) (div (- a) (- b)))))
-(define-fun bmb_trem ((a Int) (b Int)) Int (- a (* b (bmb_tdiv a b))))";
+(define-fun bmb_tdiv ((a Int) (b Int)) Int (ite (or (>= a 0) (= (mod a b) 0)) (div a b) (ite (> b 0) (+ (div a b) 1) (- (div a b) 1))))
+(define-fun bmb_trem ((a Int) (b Int)) Int (ite (or (>= a 0) (= (mod a b) 0)) (mod a b) (- (mod a b) (bmb_abs b))))";
 
 impl<'p> Prog<'p> {
     /// The facts of the recursive struct fields `text` reads outside a

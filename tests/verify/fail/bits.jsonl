@@ -5,10 +5,10 @@
 {"code":"E0803","severity":"error","message":"`+` may overflow `u8` in `bf::set`; counterexample: x = 255","file":"fail/bits.bmb","line":37,"col":9,"end_line":37,"end_col":20}
 {"code":"E0802","severity":"error","message":"postcondition `at_most` may not hold in `bf::or`; counterexample: a = 2147483647, b = 4294967295","file":"fail/bits.bmb","line":48,"col":17,"end_line":48,"end_col":30}
 {"code":"E0802","severity":"error","message":"postcondition `nonneg` may not hold in `bf::half`; counterexample: x = -2","file":"fail/bits.bmb","line":61,"col":17,"end_line":61,"end_col":26}
-{"def":"bf::flip","status":"failed","obligations":1,"failed":1,"rlimit":6623,"rlimit_max":6623}
-{"def":"bf::half","status":"failed","obligations":1,"failed":1,"rlimit":617,"rlimit_max":617}
-{"def":"bf::or","status":"failed","obligations":1,"failed":1,"rlimit":6069,"rlimit_max":5145}
-{"def":"bf::set","status":"failed","obligations":1,"failed":1,"rlimit":2635,"rlimit_max":1700}
-{"def":"bf::shl","status":"failed","obligations":1,"failed":1,"rlimit":460,"rlimit_max":460}
-{"def":"bf::shr","status":"failed","obligations":1,"failed":1,"rlimit":517,"rlimit_max":517}
-{"def":"bf::wide","status":"failed","obligations":1,"failed":1,"rlimit":291,"rlimit_max":291}
+{"def":"bf::flip","status":"failed","obligations":1,"failed":1,"rlimit":6567,"rlimit_max":6567}
+{"def":"bf::half","status":"failed","obligations":1,"failed":1,"rlimit":561,"rlimit_max":561}
+{"def":"bf::or","status":"failed","obligations":1,"failed":1,"rlimit":5957,"rlimit_max":5089}
+{"def":"bf::set","status":"failed","obligations":1,"failed":1,"rlimit":2523,"rlimit_max":1644}
+{"def":"bf::shl","status":"failed","obligations":1,"failed":1,"rlimit":404,"rlimit_max":404}
+{"def":"bf::shr","status":"failed","obligations":1,"failed":1,"rlimit":461,"rlimit_max":461}
+{"def":"bf::wide","status":"failed","obligations":1,"failed":1,"rlimit":235,"rlimit_max":235}

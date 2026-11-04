@@ -13,17 +13,17 @@
 {"code":"E0802","severity":"error","message":"postcondition `first_is` may not hold in `geo::wrong_first`; counterexample: a = [Point { x: -9223372036854767442, y: -9223372036854743522 }, Point { x: -9223372036854767443, y: -9223372036854743523 }] (len 2)","file":"fail/structs.bmb","line":149,"col":17,"end_line":149,"end_col":34}
 {"code":"E0802","severity":"error","message":"postcondition `is_123` may not hold in `geo::not_123`","file":"fail/structs.bmb","line":160,"col":17,"end_line":160,"end_col":26}
 {"def":"geo::Point::bump","status":"verified","obligations":0,"failed":0,"rlimit":0,"rlimit_max":0}
-{"def":"geo::after_call","status":"failed","obligations":1,"failed":1,"rlimit":886,"rlimit_max":886}
-{"def":"geo::after_loop","status":"failed","obligations":7,"failed":1,"rlimit":4397,"rlimit_max":1076}
-{"def":"geo::after_write","status":"failed","obligations":1,"failed":1,"rlimit":755,"rlimit_max":755}
-{"def":"geo::branch","status":"failed","obligations":1,"failed":1,"rlimit":1296,"rlimit_max":1296}
-{"def":"geo::element_differs","status":"failed","obligations":2,"failed":1,"rlimit":1430,"rlimit_max":1233}
-{"def":"geo::local_elem","status":"failed","obligations":1,"failed":1,"rlimit":2172,"rlimit_max":2172}
-{"def":"geo::not_123","status":"failed","obligations":1,"failed":1,"rlimit":291,"rlimit_max":291}
-{"def":"geo::off_diag","status":"failed","obligations":1,"failed":1,"rlimit":5051025,"rlimit_max":5000234}
-{"def":"geo::overflow","status":"failed","obligations":1,"failed":1,"rlimit":596,"rlimit_max":596}
-{"def":"geo::param","status":"failed","obligations":1,"failed":1,"rlimit":433,"rlimit_max":433}
-{"def":"geo::route_elem","status":"failed","obligations":1,"failed":1,"rlimit":2172,"rlimit_max":2172}
-{"def":"geo::set_cell","status":"failed","obligations":1,"failed":1,"rlimit":793,"rlimit_max":793}
-{"def":"geo::stale_copy","status":"failed","obligations":3,"failed":1,"rlimit":626,"rlimit_max":275}
-{"def":"geo::wrong_first","status":"failed","obligations":3,"failed":1,"rlimit":1592,"rlimit_max":1197}
+{"def":"geo::after_call","status":"failed","obligations":1,"failed":1,"rlimit":830,"rlimit_max":830}
+{"def":"geo::after_loop","status":"failed","obligations":7,"failed":1,"rlimit":4005,"rlimit_max":1020}
+{"def":"geo::after_write","status":"failed","obligations":1,"failed":1,"rlimit":699,"rlimit_max":699}
+{"def":"geo::branch","status":"failed","obligations":1,"failed":1,"rlimit":1240,"rlimit_max":1240}
+{"def":"geo::element_differs","status":"failed","obligations":2,"failed":1,"rlimit":1318,"rlimit_max":1177}
+{"def":"geo::local_elem","status":"failed","obligations":1,"failed":1,"rlimit":2116,"rlimit_max":2116}
+{"def":"geo::not_123","status":"failed","obligations":1,"failed":1,"rlimit":235,"rlimit_max":235}
+{"def":"geo::off_diag","status":"failed","obligations":1,"failed":1,"rlimit":5050857,"rlimit_max":5000178}
+{"def":"geo::overflow","status":"failed","obligations":1,"failed":1,"rlimit":540,"rlimit_max":540}
+{"def":"geo::param","status":"failed","obligations":1,"failed":1,"rlimit":377,"rlimit_max":377}
+{"def":"geo::route_elem","status":"failed","obligations":1,"failed":1,"rlimit":2116,"rlimit_max":2116}
+{"def":"geo::set_cell","status":"failed","obligations":1,"failed":1,"rlimit":737,"rlimit_max":737}
+{"def":"geo::stale_copy","status":"failed","obligations":3,"failed":1,"rlimit":458,"rlimit_max":219}
+{"def":"geo::wrong_first","status":"failed","obligations":3,"failed":1,"rlimit":1424,"rlimit_max":1141}

@@ -8,15 +8,15 @@
 {"code":"E0804","severity":"error","message":"divisor may be zero in `invf::opaque`; counterexample: s = Span { lo: 0, hi: -1 }","file":"fail/invariants.bmb","line":88,"col":17,"end_line":88,"end_col":18,"fix":{"message":"the proof sees `ordered` only by name; if the failure depends on its definition, add to #[uses(ordered)]"}}
 {"code":"E0823","severity":"error","message":"type invariant of `invf::List` may not hold for the result at the end of the body in `invf::cons`; counterexample: l = List::Nil, x = 100, result = List::Cons(100, List::Nil)","file":"fail/invariants.bmb","line":109,"col":9,"end_line":109,"end_col":35}
 {"code":"E0823","severity":"error","message":"type invariant of `invf::Span` may not hold for argument `s` of `invf::fill` in `invf::instance`; counterexample: a = 1, argument = Span { lo: 1, hi: 0 }","file":"fail/invariants.bmb","line":122,"col":22,"end_line":122,"end_col":23}
-{"def":"invf::argument","status":"failed","obligations":1,"failed":1,"rlimit":528,"rlimit_max":528}
-{"def":"invf::cons","status":"failed","obligations":1,"failed":1,"rlimit":1873,"rlimit_max":1873}
-{"def":"invf::early","status":"failed","obligations":2,"failed":1,"rlimit":719,"rlimit_max":441}
-{"def":"invf::entry","status":"failed","obligations":6,"failed":1,"rlimit":2317,"rlimit_max":858}
+{"def":"invf::argument","status":"failed","obligations":1,"failed":1,"rlimit":472,"rlimit_max":472}
+{"def":"invf::cons","status":"failed","obligations":1,"failed":1,"rlimit":1817,"rlimit_max":1817}
+{"def":"invf::early","status":"failed","obligations":2,"failed":1,"rlimit":607,"rlimit_max":385}
+{"def":"invf::entry","status":"failed","obligations":6,"failed":1,"rlimit":1981,"rlimit_max":802}
 {"def":"invf::fill","status":"verified","obligations":0,"failed":0,"rlimit":0,"rlimit_max":0}
-{"def":"invf::instance","status":"failed","obligations":1,"failed":1,"rlimit":426,"rlimit_max":426}
-{"def":"invf::iteration","status":"failed","obligations":6,"failed":1,"rlimit":8717,"rlimit_max":1934}
-{"def":"invf::opaque","status":"failed","obligations":2,"failed":1,"rlimit":1023,"rlimit_max":566}
-{"def":"invf::shrink","status":"failed","obligations":2,"failed":1,"rlimit":1894,"rlimit_max":1204}
-{"def":"invf::tail","status":"failed","obligations":1,"failed":1,"rlimit":426,"rlimit_max":426}
+{"def":"invf::instance","status":"failed","obligations":1,"failed":1,"rlimit":370,"rlimit_max":370}
+{"def":"invf::iteration","status":"failed","obligations":6,"failed":1,"rlimit":8381,"rlimit_max":1878}
+{"def":"invf::opaque","status":"failed","obligations":2,"failed":1,"rlimit":815,"rlimit_max":414}
+{"def":"invf::shrink","status":"failed","obligations":2,"failed":1,"rlimit":1782,"rlimit_max":1148}
+{"def":"invf::tail","status":"failed","obligations":1,"failed":1,"rlimit":370,"rlimit_max":370}
 {"def":"invf::take","status":"verified","obligations":0,"failed":0,"rlimit":0,"rlimit_max":0}
-{"def":"invf::tried","status":"failed","obligations":1,"failed":1,"rlimit":1063,"rlimit_max":1063}
+{"def":"invf::tried","status":"failed","obligations":1,"failed":1,"rlimit":1007,"rlimit_max":1007}

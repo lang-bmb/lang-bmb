@@ -2,14 +2,14 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 7428098,
-    "V5_rlimit_headroom": 0.1355,
+    "V4_rlimit_total": 7898495,
+    "V5_rlimit_headroom": 0.1244,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0,
-    "V8_bench_rlimit_total": 24254414,
+    "V8_bench_rlimit_total": 23914744,
     "V9_bench_defs_at_limit": 0,
-    "V10_library_rlimit_total": 12178127,
-    "V11_sat_check_rlimit_total": 282057550,
+    "V10_library_rlimit_total": 12021529,
+    "V11_sat_check_rlimit_total": 283986695,
     "V12_sat_check_undecided": 277,
     "S1_external_crates": 0,
     "S2_external_processes": [
@@ -17,12 +17,12 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 42337,
+    "S4_stage0_rust_lines": 42339,
     "S5_tests_bound_to_rust_api": 30,
     "S6_selfhost_bmb_lines": 0,
     "P1_runnable_programs": 60,
-    "P2_bmb_lines": 22610,
-    "P3_errors_with_help": 0.8867,
+    "P2_bmb_lines": 22672,
+    "P3_errors_with_help": 0.8868,
     "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 13
@@ -1708,6 +1708,44 @@
       "date": "2026-11-02",
       "reason": "T1-26a copy_within: corpus programs added (P2), sorted_set insert in place (V4)",
       "changed": {}
+    },
+    {
+      "date": "2026-11-04",
+      "reason": "1B-47, ADR-0085: truncating division from one div/mod pair (V4, V8, V10 down; V4 includes the new const_division pass case)",
+      "changed": {
+        "V4_rlimit_total": [
+          7428098,
+          7898495
+        ],
+        "V5_rlimit_headroom": [
+          0.1355,
+          0.1244
+        ],
+        "V8_bench_rlimit_total": [
+          24254414,
+          23914744
+        ],
+        "V10_library_rlimit_total": [
+          12178127,
+          12021529
+        ],
+        "V11_sat_check_rlimit_total": [
+          282057550,
+          283986695
+        ],
+        "S4_stage0_rust_lines": [
+          42337,
+          42339
+        ],
+        "P2_bmb_lines": [
+          22610,
+          22672
+        ],
+        "P3_errors_with_help": [
+          0.8867,
+          0.8868
+        ]
+      }
     }
   ]
 }

@@ -3,8 +3,8 @@
 {"code":"E0802","severity":"error","message":"postcondition `small` may not hold in `bf::reset`; counterexample: b = -9223372036854775808","file":"fail/boxes.bmb","line":32,"col":17,"end_line":32,"end_col":27}
 {"code":"E0802","severity":"error","message":"postcondition `held` may not hold in `bf::forgot`; counterexample: x = -1","file":"fail/boxes.bmb","line":41,"col":17,"end_line":41,"end_col":28}
 {"code":"E0802","severity":"error","message":"postcondition `small` may not hold in `bf::payload`; counterexample: o = Some(1000)","file":"fail/boxes.bmb","line":52,"col":17,"end_line":52,"end_col":25}
-{"def":"bf::forgot","status":"failed","obligations":1,"failed":1,"rlimit":529,"rlimit_max":529}
-{"def":"bf::overflow","status":"failed","obligations":1,"failed":1,"rlimit":558,"rlimit_max":558}
-{"def":"bf::payload","status":"failed","obligations":1,"failed":1,"rlimit":1211,"rlimit_max":1211}
-{"def":"bf::reset","status":"failed","obligations":1,"failed":1,"rlimit":821,"rlimit_max":821}
-{"def":"bf::wrong_x","status":"failed","obligations":1,"failed":1,"rlimit":709,"rlimit_max":709}
+{"def":"bf::forgot","status":"failed","obligations":1,"failed":1,"rlimit":473,"rlimit_max":473}
+{"def":"bf::overflow","status":"failed","obligations":1,"failed":1,"rlimit":502,"rlimit_max":502}
+{"def":"bf::payload","status":"failed","obligations":1,"failed":1,"rlimit":1155,"rlimit_max":1155}
+{"def":"bf::reset","status":"failed","obligations":1,"failed":1,"rlimit":765,"rlimit_max":765}
+{"def":"bf::wrong_x","status":"failed","obligations":1,"failed":1,"rlimit":653,"rlimit_max":653}

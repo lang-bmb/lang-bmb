@@ -5,8 +5,8 @@
 {"code":"E0807","severity":"error","message":"loop invariant may not be preserved in `lf::skip`; counterexample: n = 3","file":"fail/loop_exits.bmb","line":60,"col":23,"end_line":60,"end_col":43}
 {"code":"E0808","severity":"error","message":"`decreases` may not decrease or may be negative in `lf::stuck`; counterexample: n = 3","file":"fail/loop_exits.bmb","line":78,"col":23,"end_line":78,"end_col":28}
 {"code":"E0802","severity":"error","message":"postcondition `pos` may not hold in `lf::zero`; counterexample: n = 0","file":"fail/loop_exits.bmb","line":95,"col":17,"end_line":95,"end_col":23}
-{"def":"lf::nested","status":"failed","obligations":12,"failed":3,"rlimit":15655,"rlimit_max":3038}
-{"def":"lf::scan","status":"failed","obligations":6,"failed":1,"rlimit":6586,"rlimit_max":1905}
-{"def":"lf::skip","status":"failed","obligations":8,"failed":1,"rlimit":6974,"rlimit_max":1169}
-{"def":"lf::stuck","status":"failed","obligations":6,"failed":1,"rlimit":4692,"rlimit_max":1988}
-{"def":"lf::zero","status":"failed","obligations":5,"failed":1,"rlimit":2676,"rlimit_max":741}
+{"def":"lf::nested","status":"failed","obligations":12,"failed":3,"rlimit":14983,"rlimit_max":2982}
+{"def":"lf::scan","status":"failed","obligations":6,"failed":1,"rlimit":6250,"rlimit_max":1849}
+{"def":"lf::skip","status":"failed","obligations":8,"failed":1,"rlimit":6526,"rlimit_max":1113}
+{"def":"lf::stuck","status":"failed","obligations":6,"failed":1,"rlimit":4356,"rlimit_max":1932}
+{"def":"lf::zero","status":"failed","obligations":5,"failed":1,"rlimit":2396,"rlimit_max":685}

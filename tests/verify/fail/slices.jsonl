@@ -5,11 +5,11 @@
 {"code":"E0810","severity":"error","message":"assertion may not hold in `geo::enum_elem`; counterexample: s = [Shape::Dot] (len 1)","file":"fail/slices.bmb","line":60,"col":13,"end_line":60,"end_col":34}
 {"code":"E0805","severity":"error","message":"index may be out of bounds in `geo::inner_index`; counterexample: g = [[0, 0, 0] (len 3)] (len 1), i = 0, j = 3","file":"fail/slices.bmb","line":72,"col":9,"end_line":72,"end_col":16}
 {"code":"E0802","severity":"error","message":"postcondition `corner` may not hold in `geo::set_corner`; counterexample: v = -1","file":"fail/slices.bmb","line":81,"col":17,"end_line":81,"end_col":29}
-{"def":"geo::after_call","status":"failed","obligations":2,"failed":1,"rlimit":1436,"rlimit_max":996}
-{"def":"geo::enum_elem","status":"failed","obligations":2,"failed":1,"rlimit":706,"rlimit_max":520}
-{"def":"geo::inner_index","status":"failed","obligations":2,"failed":1,"rlimit":1069,"rlimit_max":703}
-{"def":"geo::overflow","status":"failed","obligations":3,"failed":1,"rlimit":2009,"rlimit_max":1249}
-{"def":"geo::set_corner","status":"failed","obligations":4,"failed":1,"rlimit":1177,"rlimit_max":576}
-{"def":"geo::touch","status":"verified","obligations":1,"failed":0,"rlimit":347,"rlimit_max":347}
-{"def":"geo::unchecked","status":"failed","obligations":1,"failed":1,"rlimit":517,"rlimit_max":517}
-{"def":"geo::wrong_field","status":"failed","obligations":2,"failed":1,"rlimit":1368,"rlimit_max":998}
+{"def":"geo::after_call","status":"failed","obligations":2,"failed":1,"rlimit":1324,"rlimit_max":940}
+{"def":"geo::enum_elem","status":"failed","obligations":2,"failed":1,"rlimit":594,"rlimit_max":464}
+{"def":"geo::inner_index","status":"failed","obligations":2,"failed":1,"rlimit":957,"rlimit_max":647}
+{"def":"geo::overflow","status":"failed","obligations":3,"failed":1,"rlimit":1841,"rlimit_max":1193}
+{"def":"geo::set_corner","status":"failed","obligations":4,"failed":1,"rlimit":953,"rlimit_max":520}
+{"def":"geo::touch","status":"verified","obligations":1,"failed":0,"rlimit":291,"rlimit_max":291}
+{"def":"geo::unchecked","status":"failed","obligations":1,"failed":1,"rlimit":461,"rlimit_max":461}
+{"def":"geo::wrong_field","status":"failed","obligations":2,"failed":1,"rlimit":1256,"rlimit_max":942}

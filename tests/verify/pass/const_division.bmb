@@ -1,0 +1,49 @@
+#[summary("상수 나눗셈의 같은 뜻 명세")]
+mod const_division {
+    // Floor division and modulo written two ways: Euclidean-style through a
+    // divisor parameter, and through truncation by constants. The BVB task
+    // `vc-va0093-max-balance` judged one against the other and was undecided
+    // at the rlimit before ADR-0085 (backlog 1B-47).
+    spec fn ref_fmod(n: i64, d: i64) -> i64 { (n % d + d) % d }
+
+    spec fn ref_fdiv(n: i64, d: i64) -> i64 { (n - ref_fmod(n, d)) / d }
+
+    spec fn ref_balance(n: i64) -> i64 {
+        if n >= 0 {
+            n
+        } else {
+            if ref_fdiv(n, 10) > ref_fdiv(n, 100) * 10 + ref_fmod(n, 10) {
+                ref_fdiv(n, 10)
+            } else {
+                ref_fdiv(n, 100) * 10 + ref_fmod(n, 10)
+            }
+        }
+    }
+
+    spec fn ref_pre(n: i64) -> bool { -128 <= n && n <= 127 && (n >= 10 || n <= -10) }
+
+    spec fn ref_post(n: i64, r: i64) -> bool { r == ref_balance(n) }
+
+    spec fn floor10(n: i64) -> i64 { 0 - (9 - n) / 10 }
+
+    spec fn alt(n: i64) -> i64 { (0 - (99 - n) / 100) * 10 + (n - 10 * floor10(n)) }
+
+    #[uses(floor10, alt)]
+    spec fn solve_post(n: i64, r: i64) -> bool {
+        if n >= 0 {
+            r == n
+        } else {
+            if floor10(n) >= alt(n) { r == floor10(n) } else { r == alt(n) }
+        }
+    }
+
+    spec fn both(n: i64, r: i64) -> bool { ref_pre(n) && solve_post(n, r) }
+
+    #[effects(pure)]
+    #[uses(both, ref_post, ref_pre, solve_post, ref_balance, ref_fdiv, ref_fmod, floor10, alt)]
+    fn implies(n: i64, r: i64) -> ()
+        requires both(n, r),
+        ensures ref_post(n, r),
+    {
+    }
+}

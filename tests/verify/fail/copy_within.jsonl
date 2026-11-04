@@ -1,6 +1,6 @@
 {"code":"E0802","severity":"error","message":"postcondition `same_head` may not hold in `cwf::claim`; counterexample: a = [-9223372036854768088, -9223372036854768089] (len 2)","file":"fail/copy_within.bmb","line":7,"col":17,"end_line":7,"end_col":37}
 {"code":"E0805","severity":"error","message":"`copy_within` destination may be out of bounds in `cwf::destination`; counterexample: a = [1, 1, 1] (len 3), d = 2","file":"fail/copy_within.bmb","line":17,"col":13,"end_line":17,"end_col":35}
 {"code":"E0805","severity":"error","message":"`copy_within` source range may be out of bounds in `cwf::source`; counterexample: a = [] (len 0), lo = 0, hi = 1","file":"fail/copy_within.bmb","line":27,"col":9,"end_line":27,"end_col":33}
-{"def":"cwf::claim","status":"failed","obligations":3,"failed":1,"rlimit":4262,"rlimit_max":1913}
-{"def":"cwf::destination","status":"failed","obligations":2,"failed":1,"rlimit":2209,"rlimit_max":1219}
-{"def":"cwf::source","status":"failed","obligations":2,"failed":1,"rlimit":2616,"rlimit_max":1320}
+{"def":"cwf::claim","status":"failed","obligations":3,"failed":1,"rlimit":4094,"rlimit_max":1857}
+{"def":"cwf::destination","status":"failed","obligations":2,"failed":1,"rlimit":2097,"rlimit_max":1163}
+{"def":"cwf::source","status":"failed","obligations":2,"failed":1,"rlimit":2504,"rlimit_max":1264}

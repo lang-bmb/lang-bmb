@@ -5,11 +5,11 @@
 {"code":"E0810","severity":"error","message":"assertion may not hold in `geo::distinct`; counterexample: n = -9223372036854775808","file":"fail/enums.bmb","line":65,"col":9,"end_line":65,"end_col":52}
 {"code":"E0802","severity":"error","message":"postcondition `is_dot` may not hold in `geo::loop_forgets`; counterexample: n = 0","file":"fail/enums.bmb","line":71,"col":17,"end_line":71,"end_col":26}
 {"code":"E0802","severity":"error","message":"postcondition `same` may not hold in `cells::swapped`; counterexample: c = Cell::Full([-9223372036854766952, -9223372036854766953])","file":"fail/enums.bmb","line":95,"col":17,"end_line":95,"end_col":27}
-{"def":"cells::swapped","status":"failed","obligations":3,"failed":1,"rlimit":2552,"rlimit_max":2036}
-{"def":"geo::after_call","status":"failed","obligations":1,"failed":1,"rlimit":2472,"rlimit_max":2472}
-{"def":"geo::distinct","status":"failed","obligations":1,"failed":1,"rlimit":757,"rlimit_max":757}
-{"def":"geo::loop_forgets","status":"failed","obligations":7,"failed":1,"rlimit":6487,"rlimit_max":1748}
-{"def":"geo::overflow","status":"failed","obligations":1,"failed":1,"rlimit":1484,"rlimit_max":1484}
-{"def":"geo::payload_sign","status":"failed","obligations":1,"failed":1,"rlimit":1037,"rlimit_max":1037}
-{"def":"geo::struct_payload","status":"failed","obligations":3,"failed":1,"rlimit":5241,"rlimit_max":3629}
+{"def":"cells::swapped","status":"failed","obligations":3,"failed":1,"rlimit":2384,"rlimit_max":1980}
+{"def":"geo::after_call","status":"failed","obligations":1,"failed":1,"rlimit":2416,"rlimit_max":2416}
+{"def":"geo::distinct","status":"failed","obligations":1,"failed":1,"rlimit":701,"rlimit_max":701}
+{"def":"geo::loop_forgets","status":"failed","obligations":7,"failed":1,"rlimit":6095,"rlimit_max":1692}
+{"def":"geo::overflow","status":"failed","obligations":1,"failed":1,"rlimit":1428,"rlimit_max":1428}
+{"def":"geo::payload_sign","status":"failed","obligations":1,"failed":1,"rlimit":981,"rlimit_max":981}
+{"def":"geo::struct_payload","status":"failed","obligations":3,"failed":1,"rlimit":4972,"rlimit_max":3472}
 {"def":"geo::touch","status":"verified","obligations":0,"failed":0,"rlimit":0,"rlimit_max":0}
