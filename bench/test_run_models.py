@@ -52,6 +52,13 @@ class Guard(unittest.TestCase):
             with self.assertRaises(SystemExit) as cm:
                 run_models.same_as("HEAD", ["m1"], "openai:qwen")
             self.assertIn("condition.py same", str(cm.exception.code))
+            # Each set claims its own report: a run resumed with fewer sets
+            # makes the same claim for each (backlog INF-21).
+            run_models.condition.find_report = lambda _b, s, _p: os.path.join(run_models.ROOT, f"r-{s}.json")
+            both, _ = run_models.same_as("HEAD", ["m1", "m1b"], "openai:qwen")
+            one, _ = run_models.same_as("HEAD", ["m1b"], "openai:qwen")
+            self.assertEqual(both["m1b"], one["m1b"])
+            self.assertEqual(both["m1"]["reports"], ["r-m1.json"])
         finally:
             run_models.condition.provenance, run_models.condition.find_report = saved
         with self.assertRaises(SystemExit):

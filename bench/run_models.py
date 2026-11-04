@@ -258,8 +258,10 @@ def earlier_run(results_dir, model, suffix, agent, commit, claim=None):
 
 
 def same_as(commit, sets, agent):
-    """(the condition claim, the pinned `bmb`) for a run under `commit`'s
-    condition, or exit naming what is missing (ADR-0070)."""
+    """({set: its condition claim}, the pinned `bmb`) for a run under
+    `commit`'s condition, or exit naming what is missing (ADR-0070). Each
+    set's claim names that set's own report, so a run resumed with fewer sets
+    makes the same claims (backlog INF-21)."""
     try:
         base = condition.git("rev-parse", commit)
     except subprocess.CalledProcessError:
@@ -274,9 +276,9 @@ def same_as(commit, sets, agent):
             sys.exit(f"--same-as {commit}: no committed report shows {s} ({provider}) to be the same condition; "
                      f"run `bench/condition.py same --base {commit} --sets {s}` on a clean tree and commit it")
         reports[s] = os.path.relpath(path, ROOT)
-    claim = {"same_as": base, "compiler_tree": prov["compiler_tree"], "bmb_sha256": prov["bmb_sha256"],
-             "reports": sorted(set(reports.values()))}
-    return claim, os.path.join(condition.build_dir(base), "bmb")
+    claims = {s: {"same_as": base, "compiler_tree": prov["compiler_tree"], "bmb_sha256": prov["bmb_sha256"],
+                  "reports": [reports[s]]} for s in sets}
+    return claims, os.path.join(condition.build_dir(base), "bmb")
 
 
 def head_commit():
@@ -324,10 +326,10 @@ def main(argv=None):
         model = args.agent.split(":", 1)[1]
         stamp = datetime.date.today().isoformat()
         commit = head_commit()
-        claim = None
+        claims = {}
         if args.same_as:
-            claim, bmb = same_as(args.same_as, sets, args.agent)
-            env["BMB"], env["BMB_CONDITION"] = bmb, json.dumps(claim, sort_keys=True)
+            claims, bmb = same_as(args.same_as, sets, args.agent)
+            env["BMB"] = bmb
     elif args.same_as:
         sys.exit("--same-as is for real runs")
     elif args.repeat is not None:
@@ -351,6 +353,9 @@ def main(argv=None):
                       "m1b-write": "", "bvb-write": "", "brb-write": "-bmb"}[name]
             if args.repeat is not None:
                 suffix += f"-repeat{args.repeat}"
+            claim = claims.get(name)
+            if claim is not None:
+                env["BMB_CONDITION"] = json.dumps(claim, sort_keys=True)
             state, out = earlier_run(results_dir, model, suffix, args.agent, commit, claim)
             if state == "finished":
                 print(f"run_models: {name}: already measured on this commit ({os.path.relpath(out, ROOT)})",
