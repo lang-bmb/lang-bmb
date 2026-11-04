@@ -42,6 +42,7 @@ BENCH = os.path.dirname(HERE)
 sys.path.insert(0, os.path.join(BENCH, "m1"))
 import bsb  # noqa: E402
 import harness  # noqa: E402
+import resultlog  # noqa: E402
 
 # The write sets' generator, for its prompt text and helpers (both are `gen.py`).
 _spec = importlib.util.spec_from_file_location("edit_gen", os.path.join(BENCH, "edit", "gen.py"))
@@ -115,7 +116,7 @@ def prompt(src):
 def build_set(root, source):
     src = os.path.join(BENCH, source)
     out = os.path.join(root, f"{source}-lean")
-    shutil.rmtree(out, ignore_errors=True)
+    resultlog.clear_set(out)
     shutil.copytree(os.path.join(src, "seed"), os.path.join(out, "seed"))
     shutil.copytree(os.path.join(src, "tasks"), os.path.join(out, "tasks"))
     if os.path.isdir(bsb.mutants_dir(src)):

@@ -44,6 +44,7 @@ SRC = os.path.join(ROOT, "bench", "m1b")
 sys.path.insert(0, os.path.join(ROOT, "bench", "m1"))
 import bsb  # noqa: E402
 import harness  # noqa: E402
+import resultlog  # noqa: E402
 
 KEEP = {"main"}
 
@@ -204,7 +205,7 @@ def task(r, t):
 def build(name, umap, dmap, neutral_summaries, root):
     r = Renamer(umap, dmap)
     out = os.path.join(root, f"m1b-{name}")
-    shutil.rmtree(out, ignore_errors=True)
+    resultlog.clear_set(out)
     os.makedirs(os.path.join(out, "seed", "src"))
     os.makedirs(os.path.join(out, "tasks"))
     shutil.copy(os.path.join(SRC, "prompt.md"), os.path.join(out, "prompt.md"))

@@ -476,8 +476,11 @@ def passed_lines(t):
 
 def passed_defective(t):
     """(tasks whose final self-check passed with a hidden defect, tasks whose
-    final self-check passed); results without the field count as not passed."""
-    passed = [r for r in t if r.get("final_check_ok") is True]
+    final self-check passed); results without the field count as not passed.
+    Only delivered tasks count (backlog T0-32): a session that leaves the
+    target undefined and proves some other unit passes the BMB gate, but there
+    is no delivered state for the checker to have passed on (ADR-0040 §4)."""
+    passed = [r for r in t if r.get("final_check_ok") is True and r.get("delivered")]
     return sum(r["defect"] for r in passed), len(passed)
 
 

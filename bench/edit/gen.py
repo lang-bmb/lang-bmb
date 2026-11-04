@@ -46,6 +46,7 @@ BENCH = os.path.join(ROOT, "bench")
 sys.path.insert(0, os.path.join(BENCH, "m1"))
 import bsb  # noqa: E402
 import harness  # noqa: E402
+import resultlog  # noqa: E402
 
 TX = ["tx_begin", "tx_unit", "tx_put", "tx_remove", "tx_remove_unit", "tx_commit", "tx_abort"]
 SET_JSON = {"mcp_flags": ["--write-tool"], "hide_tools": TX}
@@ -171,7 +172,7 @@ def build_set(root, source, surface="write"):
     """m1b or BVB: a whole task set for bench/m1/harness.py."""
     src = os.path.join(BENCH, source)
     out = os.path.join(root, f"{source}-{surface}")
-    shutil.rmtree(out, ignore_errors=True)
+    resultlog.clear_set(out)
     shutil.copytree(os.path.join(src, "seed"), os.path.join(out, "seed"))
     shutil.copytree(os.path.join(src, "tasks"), os.path.join(out, "tasks"))
     if os.path.isdir(bsb.mutants_dir(src)):
@@ -197,8 +198,8 @@ def brb_manifest(out):
 
 def build_brb(root, surface="write"):
     out = os.path.join(root, f"brb-{surface}")
-    shutil.rmtree(out, ignore_errors=True)
-    os.makedirs(out)
+    resultlog.clear_set(out)
+    os.makedirs(out, exist_ok=True)
     with open(os.path.join(out, "prompt-bmb.md"), "w") as f:
         f.write(prompt(os.path.join(BENCH, "brb", "prompt-bmb.md"), surface, OLD_WORK_BRB, brb=True))
     write_set_json(out, surface)

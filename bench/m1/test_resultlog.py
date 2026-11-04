@@ -19,6 +19,20 @@ def lines(path):
         return [json.loads(line) for line in f]
 
 
+class ClearSet(unittest.TestCase):
+    def test_keeps_results_and_removes_the_rest(self):
+        d = tempfile.mkdtemp()
+        out = os.path.join(d, "set")
+        for rel in ("results/run.jsonl", "results/run.sessions/t1.json.gz", "seed/src/a.bmb", "MANIFEST"):
+            os.makedirs(os.path.dirname(os.path.join(out, rel)), exist_ok=True)
+            with open(os.path.join(out, rel), "w") as f:
+                f.write("x")
+        resultlog.clear_set(out)
+        found = sorted(os.path.relpath(os.path.join(b, f), out) for b, _, fs in os.walk(out) for f in fs)
+        self.assertEqual(found, ["results/run.jsonl", "results/run.sessions/t1.json.gz"])
+        resultlog.clear_set(os.path.join(d, "missing"))  # nothing to clear
+
+
 class Log(unittest.TestCase):
     def setUp(self):
         self.path = os.path.join(tempfile.mkdtemp(), "r.jsonl")

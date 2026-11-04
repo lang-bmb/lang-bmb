@@ -16,7 +16,24 @@ summary row is a finished run and is not resumed. A header that does not match
 """
 import json
 import os
+import shutil
 import threading
+
+
+def clear_set(out):
+    """Empty a generated set directory for regeneration, keeping its committed
+    measurement results (`results/`, written by runs, not by a generator). A
+    generator that removed the whole directory deleted them (backlog T0-32)."""
+    if not os.path.isdir(out):
+        return
+    for name in os.listdir(out):
+        if name == "results":
+            continue
+        p = os.path.join(out, name)
+        if os.path.isdir(p) and not os.path.islink(p):
+            shutil.rmtree(p)
+        else:
+            os.remove(p)
 
 
 def read(path):

@@ -166,6 +166,14 @@ class Verdict(unittest.TestCase):
             # A task whose checker fails at the end is not a "passed" task.
             b2 = self._results(d, "b2.jsonl", "bmb", [(True, 30, False), (False, 30), (True, 30), (False, 30)])
             self.assertIn("BMB 1/3 = 0.333, Rust 2/4 = 0.500 → 지지", harness.summarize([b2, r]))
+            # An undelivered session whose gate passed on some other unit is not a
+            # "passed" task either (backlog T0-32).
+            with open(b) as f:
+                rows = [json.loads(line) for line in f]
+            rows[2]["delivered"] = False
+            with open(b, "w") as f:
+                f.write("".join(json.dumps(x) + "\n" for x in rows))
+            self.assertIn("BMB 0/3 = 0.000, Rust 2/4 = 0.500 → 지지", harness.summarize([b, r]))
             self.assertIn("Rust 0줄/2과제 → 판정 불가(Rust 테스트 0줄)", out)
             # G8 counts the test code of the tasks that pass the hidden judge only.
             b3 = self._results(d, "b3.jsonl", "bmb", [(False, 30, True, 0), (True, 30, True, 7)])

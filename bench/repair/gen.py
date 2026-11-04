@@ -31,6 +31,7 @@ BENCH = os.path.dirname(HERE)
 sys.path.insert(0, os.path.join(BENCH, "m1"))
 import bsb  # noqa: E402
 import harness  # noqa: E402
+import resultlog  # noqa: E402
 
 SOURCE = "m1b-write"
 NAME = "m1b-write-norepair"
@@ -45,7 +46,7 @@ README = f"""# {NAME} (H-REPAIR 절제 판, 백로그 T1-45)
 def build(root):
     src = os.path.join(BENCH, SOURCE)
     out = os.path.join(root, NAME)
-    shutil.rmtree(out, ignore_errors=True)
+    resultlog.clear_set(out)
     shutil.copytree(os.path.join(src, "seed"), os.path.join(out, "seed"))
     shutil.copytree(os.path.join(src, "tasks"), os.path.join(out, "tasks"))
     if os.path.isdir(bsb.mutants_dir(src)):
