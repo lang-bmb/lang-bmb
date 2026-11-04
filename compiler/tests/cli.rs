@@ -470,3 +470,46 @@ mod s {
     assert_eq!(code, Some(2), "{unknown}");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// The ground-instance retry at the probe's share (backlog 1B-46) is a
+/// stage of the emitted script, and a proof from the proof cache prints the
+/// same script and status as the run that stored it (backlog 2V-03).
+#[test]
+fn an_early_retry_prints_the_same_script_from_the_proof_cache() {
+    let dir = std::env::temp_dir().join(format!("bmb-cli-early-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let file = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../tests/verify/pass/const_division.bmb"
+    );
+    let run = |smt: &str| {
+        let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
+            .args(["verify", "--emit-smt"])
+            .arg(dir.join(smt))
+            .arg("--cache")
+            .arg(dir.join("cache"))
+            .arg(file)
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stdout)
+        );
+        let script =
+            std::fs::read_to_string(dir.join(smt).join("const_division.implies.smt2")).unwrap();
+        (String::from_utf8_lossy(&out.stdout).into_owned(), script)
+    };
+    let cold = run("cold");
+    assert!(
+        cold.1
+            .contains("with ground instances at the probe's share"),
+        "{}",
+        cold.1
+    );
+    let stored = std::fs::read_to_string(dir.join("cache").join("proofs")).unwrap();
+    assert!(stored.lines().any(|l| l.ends_with(" 1")), "{stored}");
+    let warm = run("warm");
+    assert_eq!(cold, warm);
+    let _ = std::fs::remove_dir_all(&dir);
+}

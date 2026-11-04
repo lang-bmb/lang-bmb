@@ -13,14 +13,20 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 pub const FILE: &str = "proofs";
-const MAGIC: &str = "bmb proof cache v3";
+const MAGIC: &str = "bmb proof cache v4";
+
+/// Stage bits of an entry: the ground-instance retry ran at the probe's
+/// share (backlog 1B-46), and after the full query (it proved).
+pub const EARLY_RETRY: u8 = 1;
+pub const LATE_RETRY: u8 = 2;
 
 #[derive(Default)]
 pub struct ProofCache {
     /// key -> (contribution to the definition's `rlimit` total, to its max,
-    /// whether the ground-instance retry proved it). The retry flag lets a
-    /// hit print the same script as the run that stored it (backlog 2V-03).
-    known: BTreeMap<String, (u64, u64, bool)>,
+    /// the retries that ran: `EARLY_RETRY`, `LATE_RETRY`). The stage bits
+    /// let a hit print the same script as the run that stored it (backlog
+    /// 2V-03).
+    known: BTreeMap<String, (u64, u64, u8)>,
     added: usize,
     pub hits: usize,
     pub misses: usize,
@@ -37,7 +43,7 @@ impl ProofCache {
         crate::sha256::hex(text.as_bytes())
     }
 
-    pub fn get(&mut self, key: &str) -> Option<(u64, u64, bool)> {
+    pub fn get(&mut self, key: &str) -> Option<(u64, u64, u8)> {
         let hit = self.known.get(key).copied();
         if hit.is_some() {
             self.hits += 1;
@@ -47,8 +53,8 @@ impl ProofCache {
         hit
     }
 
-    pub fn insert(&mut self, key: String, total: u64, max: u64, retried: bool) {
-        if self.known.insert(key, (total, max, retried)).is_none() {
+    pub fn insert(&mut self, key: String, total: u64, max: u64, stages: u8) {
+        if self.known.insert(key, (total, max, stages)).is_none() {
             self.added += 1;
         }
     }
@@ -73,9 +79,10 @@ impl ProofCache {
                 (it.next(), it.next(), it.next(), it.next())
                 && let (Ok(t), Ok(m)) = (t.parse(), m.parse())
                 && k.starts_with("sha256:")
-                && (r == "0" || r == "1")
+                && let Ok(r) = r.parse::<u8>()
+                && r <= EARLY_RETRY | LATE_RETRY
             {
-                c.known.insert(k.to_string(), (t, m, r == "1"));
+                c.known.insert(k.to_string(), (t, m, r));
             }
         }
         c
@@ -90,7 +97,7 @@ impl ProofCache {
         std::fs::create_dir_all(dir)?;
         let mut out = format!("{MAGIC}\n");
         for (k, (t, m, r)) in &self.known {
-            out.push_str(&format!("{k} {t} {m} {}\n", u8::from(*r)));
+            out.push_str(&format!("{k} {t} {m} {r}\n"));
         }
         let tmp = dir.join(format!("{FILE}.tmp"));
         crate::workspace::write_new(&tmp, &out)?;

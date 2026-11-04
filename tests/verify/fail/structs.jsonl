@@ -20,7 +20,7 @@
 {"def":"geo::element_differs","status":"failed","obligations":2,"failed":1,"rlimit":1318,"rlimit_max":1177}
 {"def":"geo::local_elem","status":"failed","obligations":1,"failed":1,"rlimit":2116,"rlimit_max":2116}
 {"def":"geo::not_123","status":"failed","obligations":1,"failed":1,"rlimit":235,"rlimit_max":235}
-{"def":"geo::off_diag","status":"failed","obligations":1,"failed":1,"rlimit":5050957,"rlimit_max":5000178}
+{"def":"geo::off_diag","status":"failed","obligations":1,"failed":1,"rlimit":50779,"rlimit_max":50186}
 {"def":"geo::overflow","status":"failed","obligations":1,"failed":1,"rlimit":540,"rlimit_max":540}
 {"def":"geo::param","status":"failed","obligations":1,"failed":1,"rlimit":377,"rlimit_max":377}
 {"def":"geo::route_elem","status":"failed","obligations":1,"failed":1,"rlimit":2116,"rlimit_max":2116}

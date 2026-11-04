@@ -13,7 +13,7 @@ mod invariants;
 use invariants::Boundary;
 
 use crate::ast::*;
-use crate::cache::ProofCache;
+use crate::cache::{self, ProofCache};
 use crate::check::FnSig;
 use crate::diag::{Diag, Diags};
 use crate::smt::{self, Answer, Solver};
@@ -7532,7 +7532,7 @@ fn verify_pass(
                         proved_keys.insert(key);
                         def_proved.push(key);
                         if let (Some(c), Some(ck)) = (cache.as_mut(), cache_key) {
-                            c.insert(ck, used, used, false);
+                            c.insert(ck, used, used, 0);
                         }
                         continue;
                     }
@@ -7666,14 +7666,21 @@ fn verify_pass(
                 )),
             }
             if let (Some(c), Some(ck)) = (cache.as_mut(), cache_key.as_ref())
-                && let Some((total, max, retried)) = c.get(ck)
+                && let Some((total, max, stages)) = c.get(ck)
             {
                 rlimit_total += total;
                 rlimit_max = rlimit_max.max(max);
-                if retried && let Some((head, inst, _)) = retry_script(&q) {
-                    script.push_str(&format!(
-                        "; retry of obligation {k} with ground instances\n(reset)\n{head}\n{inst}{q}\n(check-sat)\n"
-                    ));
+                if stages != 0
+                    && let Some((head, inst, _)) = retry_script(&q)
+                {
+                    if stages & cache::EARLY_RETRY != 0 {
+                        script.push_str(&early_retry_text(k, &head, &probe_limit, &inst, &q));
+                    }
+                    if stages & cache::LATE_RETRY != 0 {
+                        script.push_str(&format!(
+                            "; retry of obligation {k} with ground instances\n(reset)\n{head}\n{inst}{q}\n(check-sat)\n"
+                        ));
+                    }
                 }
                 proved_keys.insert(key);
                 def_proved.push(key);
@@ -7698,7 +7705,8 @@ fn verify_pass(
             };
             let total_before = rlimit_total;
             let mut first_used = 0;
-            let mut retried = false;
+            // The retries that ran (`cache::EARLY_RETRY`, `cache::LATE_RETRY`).
+            let mut stages = 0u8;
             let mut proved_abstract = None;
             if let Some((head, aq)) = &abstracted {
                 let a = sol
@@ -7741,6 +7749,40 @@ fn verify_pass(
                     probed = Some(a);
                 }
             }
+            // The probe undecided with quantified definitions: the
+            // ground-instance retry at the probe's share before the full query
+            // (backlog 1B-46). Its answers count as in the late retry below
+            // (`unsat` proves, `sat` refutes when the instances are complete);
+            // a false obligation's cheap counterexample no longer waits for
+            // the full query to exhaust its limit.
+            if proved_abstract.is_none()
+                && probed.is_none()
+                && probe.is_some()
+                && !axiom_parts.is_empty()
+                && let Some((head, inst, complete)) = retry_script(&q)
+            {
+                stages |= cache::EARLY_RETRY;
+                script.push_str(&early_retry_text(k, &head, &probe_limit, &inst, &q));
+                let a = sol
+                    .run("(reset)")
+                    .and_then(|_| sol.run(&head))
+                    .and_then(|_| sol.run(&probe_limit))
+                    .and_then(|_| sol.run(&format!("{inst}{q}")))
+                    .and_then(|_| sol.check_sat());
+                if a.is_ok()
+                    && let Ok(used) = sol.rlimit_used()
+                {
+                    rlimit_total += used;
+                }
+                match a {
+                    Ok(Answer::Unsat) => probed = Some(a),
+                    Ok(Answer::Sat) if complete => {
+                        answered = format!("{head}\n{inst}{q}");
+                        probed = Some(a);
+                    }
+                    _ => {}
+                }
+            }
             let mut answer = match proved_abstract.or(probed) {
                 Some(a) => a,
                 None => {
@@ -7781,7 +7823,7 @@ fn verify_pass(
                 match retry {
                     Ok(Answer::Unsat) => {
                         answer = retry;
-                        retried = true;
+                        stages |= cache::LATE_RETRY;
                     }
                     Ok(Answer::Sat) if complete => {
                         answer = retry;
@@ -7800,7 +7842,7 @@ fn verify_pass(
                 proved_keys.insert(key);
                 def_proved.push(key);
                 if let (Some(c), Some(ck)) = (cache.as_mut(), cache_key) {
-                    c.insert(ck, rlimit_total - total_before, first_used, retried);
+                    c.insert(ck, rlimit_total - total_before, first_used, stages);
                 }
             } else {
                 failed_keys.insert(key);
@@ -8704,6 +8746,15 @@ fn quantified(ax: &str) -> &str {
 /// 1%, so a probe that does not decide adds at most that to the full query.
 /// The vacuity and precondition checks' probes use the same (ADR-0069).
 const PROBE_SHARE: u64 = 100;
+
+/// The script text of the ground-instance retry at the probe's share
+/// (backlog 1B-46): a stage of obligation `k` as the stability measure
+/// reads it (`; retry of obligation k`), with the probe's limit.
+fn early_retry_text(k: usize, head: &str, limit: &str, inst: &str, q: &str) -> String {
+    format!(
+        "; retry of obligation {k} with ground instances at the probe's share\n(reset)\n{head}\n{limit}\n{inst}{q}\n(check-sat)\n"
+    )
+}
 
 /// The probe's limit command (`PROBE_SHARE`), sent after its base.
 fn probe_limit() -> String {

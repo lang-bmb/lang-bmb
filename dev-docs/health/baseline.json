@@ -2,14 +2,14 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 7898495,
+    "V4_rlimit_total": 7999335,
     "V5_rlimit_headroom": 0.1244,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0,
-    "V8_bench_rlimit_total": 23914744,
+    "V8_bench_rlimit_total": 22810907,
     "V9_bench_defs_at_limit": 0,
-    "V10_library_rlimit_total": 12021529,
-    "V11_sat_check_rlimit_total": 284089325,
+    "V10_library_rlimit_total": 12806234,
+    "V11_sat_check_rlimit_total": 284824748,
     "V12_sat_check_undecided": 297,
     "S1_external_crates": 0,
     "S2_external_processes": [
@@ -17,12 +17,12 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 42712,
+    "S4_stage0_rust_lines": 42791,
     "S5_tests_bound_to_rust_api": 25,
     "S6_selfhost_bmb_lines": 0,
     "P1_runnable_programs": 60,
-    "P2_bmb_lines": 22672,
-    "P3_errors_with_help": 0.8868,
+    "P2_bmb_lines": 22717,
+    "P3_errors_with_help": 0.887,
     "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 13
@@ -1786,6 +1786,40 @@
         "S5_tests_bound_to_rust_api": [
           27,
           25
+        ]
+      }
+    },
+    {
+      "date": "2026-11-04",
+      "reason": "1B-46 (ADR-0089): the ground-instance retry runs at the probe's share before the full query; a false obligation's counterexample no longer waits for the full limit (failure corpus -30%, V8 -4.6%), proofs that the early retry does not decide pay its share (V4 +1.3%, V10 +6.5%); 2N-09a adds three bit methods (P2)",
+      "changed": {
+        "V4_rlimit_total": [
+          7898495,
+          7999335
+        ],
+        "V8_bench_rlimit_total": [
+          23914744,
+          22810907
+        ],
+        "V10_library_rlimit_total": [
+          12021529,
+          12806234
+        ],
+        "V11_sat_check_rlimit_total": [
+          284089325,
+          284824748
+        ],
+        "S4_stage0_rust_lines": [
+          42712,
+          42791
+        ],
+        "P2_bmb_lines": [
+          22672,
+          22717
+        ],
+        "P3_errors_with_help": [
+          0.8868,
+          0.887
         ]
       }
     }
