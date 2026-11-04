@@ -12,6 +12,7 @@ BMB v2: AI 에이전트가 쓰고 결정론적 도구로 다루는 Rust 방언. 
 - `dev-docs/JUDGMENT.md`: 판단 기준(ADR-0045). 원인이 있는 층(언어·컴파일러·도구·프로세스)에서 고치고, 정석을 택하고, 작업량·영향 범위는 기준이 아니다. 0.x 동안 리팩터링은 언제나 허용. 권장안은 §10 형식으로 쓴다.
 - `dev-docs/AUTONOMY.md`: 자율 진행 규칙(작업 루프, 태스크 선택·도출, 결정 권한, 보고 조건). 작업은 이 루프를 따른다.
 - `dev-docs/reports/utility.md`: BMB 효용 종합 평가(살아 있는 보고서). 측정 결과·국면 감사·결정론 실험 때 갱신하고, 표는 `bench/utility.py --write`, 게이트가 신선도를 확인한다.
+- `dev-docs/reports/progress.md`: 진행 리포트(부트스트랩·언어·성능·생태계·미션 효용). 한 파일을 제자리에서 갱신하고 지난 판은 git 이력으로 본다. 표는 `scripts/progress.py --write`, 주기는 주 1회와 국면 종료.
 - `dev-docs/HEALTH.md`: 지속 관리 지침(다섯 축 지표, 래칫 기준선 `dev-docs/health/baseline.json`, 신뢰 기반, 자립 사다리, 실용성 점검). 푸시는 `scripts/ship.sh`로 한다.
 - `compiler/`: 컴파일러(Rust). 사용법과 표면 규칙은 `compiler/README.md`. 변경 후 `cargo fmt`, `cargo clippy --all-targets`, `cargo test` 통과.
 - v0(v0.100) 코드는 `legacy/v0` 브랜치에만 있다. v0 코드는 가져오지 않는다. 설계와 측정 자산만 참고한다.
