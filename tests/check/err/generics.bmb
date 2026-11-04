@@ -124,4 +124,17 @@ mod generics {
     {
         x
     }
+
+    // A generic `spec fn` in a contract without its type arguments: one E0237
+    // per call (backlog 1A-15 saw the same line twice).
+    spec fn same<T: Eq>(a: T, b: T) -> bool {
+        a == b
+    }
+
+    #[effects(pure)]
+    fn same_ensured(x: i64) -> i64
+        ensures same(x, x),
+    {
+        x
+    }
 }
