@@ -194,5 +194,6 @@ done' \
   --job "bench brb-effect tests=python3 bench/brb-effect/test_brb_effect.py" \
   --job "health=python3 scripts/health.py" \
   --job "health rules=python3 scripts/test_health.py && python3 scripts/test_solver_stability.py" \
-  --job "progress report (INF-24)=python3 scripts/test_progress.py"
+  --job "progress report (INF-24)=python3 scripts/test_progress.py" \
+  --job "baseline perf check rules (INF-25)=python3 bench/baseline/test_run.py"
 echo "all checks passed"
