@@ -446,10 +446,12 @@ fn check_proof_and_ir(what: &str, base: &Files) {
         let b = bmb::with_stack(|| bmb::emit_llvm_sources(&nf));
         (a.join().unwrap(), b)
     });
+    // A query the wall-clock backstop ended makes the line machine-dependent
+    // and says so (`"backstop"`, backlog INF-26).
     assert_eq!(
         statuses(&a.verify.output),
         statuses(&b.verify.output),
-        "{what}: status lines differ after fmt\n{base:?}"
+        "{what}: status lines differ after fmt (a `backstop` field: a query reached the wall-clock backstop before its rlimit)\n{base:?}"
     );
     assert!(a.ir.is_some(), "{what}: no IR\n{}", a.verify.output);
     assert_eq!(a.ir, b.ir, "{what}: IR differs after fmt");

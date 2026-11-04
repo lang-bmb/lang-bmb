@@ -32,6 +32,26 @@ fn gate_fails_without_solver_or_resources() {
     assert!(!out.scripts.values().any(|s| s.contains("999999999999")));
     unsafe { std::env::remove_var("BMB_Z3_RLIMIT") };
 
+    // A query the wall-clock backstop ends, before its rlimit, is marked:
+    // that verdict depends on the machine (backlog INF-26). `pff::tri_le`
+    // spends the whole rlimit (about a second); 50 ms ends it.
+    let fail = std::fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/verify/fail/proofs.bmb"),
+    )
+    .unwrap();
+    let fail = [("proofs.bmb".to_string(), fail)];
+    let line = |out: &str| {
+        out.lines()
+            .find(|l| l.starts_with("{\"def\":\"pff::tri_le\""))
+            .unwrap()
+            .to_string()
+    };
+    assert!(!line(&bmb::verify_sources(&fail).output).contains("backstop"));
+    unsafe { std::env::set_var("BMB_Z3_BACKSTOP_MS", "50") };
+    let out = bmb::verify_sources(&fail).output;
+    unsafe { std::env::remove_var("BMB_Z3_BACKSTOP_MS") };
+    assert!(line(&out).contains("\"backstop\":"), "{out}");
+
     // No solver on PATH: no proof, no success.
     let path = std::env::var("PATH").unwrap();
     unsafe { std::env::set_var("PATH", "/nonexistent") };

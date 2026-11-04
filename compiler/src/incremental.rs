@@ -1332,6 +1332,7 @@ impl Session {
                 trust: crate::verify::Trust::Proved,
                 rlimit_total,
                 rlimit_max,
+                backstop: 0,
             },
             proved,
             script_sha,
@@ -1340,7 +1341,9 @@ impl Session {
 
     /// Stores the result of a fully proved definition.
     pub fn proof_record(&mut self, status: &FnStatus, f: &FnDef, proved: &[ObKey], script: &str) {
-        if status.failed != 0 {
+        // A result the backstop shaped is the machine's, not the program's
+        // (backlog INF-26): proved again next time.
+        if status.failed != 0 || status.backstop != 0 {
             return;
         }
         let (Some(key), Some(rel)) = (self.proof_keys.get(&status.path), to_nodes(proved, f))

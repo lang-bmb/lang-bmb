@@ -26,6 +26,9 @@ pub struct Solver {
     /// The canonical symbols of the query since the last `(reset)`
     /// (ADR-0063): what the solver sees names nothing of the program.
     canon: Canon,
+    /// Queries since the last `take_timeouts` that the per-query backstop
+    /// ended (`reason-unknown` "timeout", backlog INF-26).
+    timeouts: usize,
 }
 
 /// Canonical symbols of a query (ADR-0063, backlog T1-10e). Every quoted
@@ -222,15 +225,46 @@ fn legend_of(out: &mut String, query: usize, canon: &Canon) {
     }
 }
 
-/// Wall-clock backstop in seconds. Results are governed by the deterministic
-/// `rlimit`; this only stops a runaway process.
+/// Wall-clock backstop in seconds, per query (Z3's soft timeout `-t`).
+/// Results are governed by the deterministic `rlimit`; this only stops a
+/// query whose rlimit ticks slowly. Reaching it is reported as its own reason
+/// (`unknown_reason`), as the verdict then depends on the machine: a ground
+/// retry that spent its 5,000,000 in 194 s on one machine was cut off on a
+/// slower one, and the two runs' rlimit totals differed (backlog INF-26).
+/// Per query, so a query's share no longer depends on how long its process
+/// had been running (with the process limit alone it was 300 to 360 s).
 const BACKSTOP_SECS: u64 = 300;
 
+/// The per-query backstop in milliseconds. `BMB_Z3_BACKSTOP_MS` may lower it
+/// (for tests); it can never raise it.
+pub fn backstop_ms() -> u64 {
+    std::env::var("BMB_Z3_BACKSTOP_MS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .map_or(BACKSTOP_SECS * 1000, |v| v.min(BACKSTOP_SECS * 1000))
+}
+
 /// A process may be reused for a new definition only this long after it
-/// started (backlog 1D-18). Its `-T` limit covers this window plus the full
-/// backstop, so every definition still gets at least `BACKSTOP_SECS`, as it
-/// did when each definition started its own process.
+/// started (backlog 1D-18).
 const REUSE_SECS: u64 = 60;
+
+/// The process's hard limit (`-T`): only for a process that does not stop
+/// at its soft timeout.
+const HARD_SECS: u64 = REUSE_SECS + 2 * BACKSTOP_SECS;
+
+/// The reason in an "undecided" diagnostic for Z3's `reason-unknown`.
+pub fn unknown_reason(why: &str) -> String {
+    if why.contains("timeout") {
+        format!(
+            "wall-clock backstop of {} ms reached before the rlimit; this verdict depends on the machine",
+            backstop_ms()
+        )
+    } else if why.contains("canceled") || why.contains("resource") {
+        format!("resource limit reached, rlimit {}", rlimit())
+    } else {
+        why.to_string()
+    }
+}
 
 static STARTS: AtomicUsize = AtomicUsize::new(0);
 
@@ -261,7 +295,8 @@ impl Solver {
             .args([
                 "-in",
                 "-smt2",
-                &format!("-T:{}", BACKSTOP_SECS + REUSE_SECS),
+                &format!("-t:{}", backstop_ms()),
+                &format!("-T:{HARD_SECS}"),
             ])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -276,6 +311,7 @@ impl Solver {
             stdout,
             started: Instant::now(),
             canon: Canon::default(),
+            timeouts: 0,
         };
         // Every command answers, so an error is seen at the command that caused it.
         s.send("(set-option :print-success true)")?;
@@ -354,6 +390,11 @@ impl Solver {
 
     /// Resource units spent since the last `(reset)` (deterministic for a
     /// given solver version and query).
+    /// Queries the backstop ended since the last call (see `timeouts`).
+    pub fn take_timeouts(&mut self) -> usize {
+        std::mem::take(&mut self.timeouts)
+    }
+
     pub fn rlimit_used(&mut self) -> Result<u64, String> {
         self.send("(get-info :rlimit)")?;
         let r = self.read_response()?;
@@ -373,6 +414,9 @@ impl Solver {
             "unknown" => {
                 self.send("(get-info :reason-unknown)")?;
                 let why = self.read_response()?;
+                if reason_text(&why) == "timeout" {
+                    self.timeouts += 1;
+                }
                 Ok(Answer::Unknown(self.canon.back(&reason_text(&why))))
             }
             other => Err(format!("unexpected solver response: {other}")),
@@ -692,5 +736,11 @@ mod tests {
     #[test]
     fn reason() {
         assert_eq!(reason_text("(:reason-unknown \"canceled\")"), "canceled");
+        assert!(unknown_reason("canceled").starts_with("resource limit reached"));
+        assert!(unknown_reason("timeout").contains("depends on the machine"));
+        assert_eq!(
+            unknown_reason("incomplete quantifiers"),
+            "incomplete quantifiers"
+        );
     }
 }

@@ -599,6 +599,10 @@ pub struct FnStatus {
     /// (compare with the pinned rlimit to see how close a proof is to failing).
     pub rlimit_total: u64,
     pub rlimit_max: u64,
+    /// Queries the wall-clock backstop ended instead of the rlimit (backlog
+    /// INF-26): nonzero means this definition's result depends on the
+    /// machine. Status lines carry it only when nonzero.
+    pub backstop: usize,
 }
 
 /// An obligation's identity: diagnostic code and source span `(file, lo, hi)`.
@@ -7177,6 +7181,7 @@ fn verify_pass(
                 trust: Trust::External,
                 rlimit_total: 0,
                 rlimit_max: 0,
+                backstop: 0,
             });
             continue;
         }
@@ -7537,11 +7542,7 @@ fn verify_pass(
                         ));
                     }
                     Ok(Answer::Unknown(why)) => {
-                        let why = if why.contains("canceled") || why.contains("resource") {
-                            format!("resource limit reached, rlimit {}", smt::rlimit())
-                        } else {
-                            why
-                        };
+                        let why = smt::unknown_reason(&why);
                         diags.push(Diag::new(
                             "E0811",
                             o.span,
@@ -7829,11 +7830,7 @@ fn verify_pass(
                     }
                 }
                 Ok(Answer::Unknown(why)) => {
-                    let why = if why.contains("canceled") || why.contains("resource") {
-                        format!("resource limit reached, rlimit {}", smt::rlimit())
-                    } else {
-                        why
-                    };
+                    let why = smt::unknown_reason(&why);
                     let mut msg = format!("{} in `{path}`: solver could not decide ({why})", o.msg);
                     // Z3 often keeps a candidate model; show it, marked as
                     // unconfirmed (and only when its `f64` values are IEEE's).
@@ -7868,6 +7865,7 @@ fn verify_pass(
             }
         }
         stopped = stop_at_failure && failed > 0;
+        let backstop = solver.as_mut().map_or(0, |s| s.take_timeouts());
         let status = FnStatus {
             path: path.clone(),
             obligations: enc.obls.len(),
@@ -7875,6 +7873,7 @@ fn verify_pass(
             trust: Trust::Proved,
             rlimit_total,
             rlimit_max,
+            backstop,
         };
         if let Some(s) = incr.as_mut() {
             s.stats.encoded.push(path.clone());

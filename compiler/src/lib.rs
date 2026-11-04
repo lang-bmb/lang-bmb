@@ -669,6 +669,12 @@ fn status_lines(outcome: &verify::Outcome) -> String {
             t if s.failed == 0 => format!(",\"trust\":\"{}\"", t.name()),
             _ => String::new(),
         };
+        // Only when the backstop ended a query (backlog INF-26).
+        let trust = if s.backstop > 0 {
+            format!("{trust},\"backstop\":{}", s.backstop)
+        } else {
+            trust
+        };
         out.push_str(&format!(
             "{{\"def\":{},\"status\":\"{status}\",\"obligations\":{},\"failed\":{},\"rlimit\":{},\"rlimit_max\":{}{trust}}}\n",
             diag::json_str(&s.path),
