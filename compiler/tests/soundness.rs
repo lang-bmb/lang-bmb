@@ -15,6 +15,10 @@
 //!   1B-51): a check that a wrong proof erased or code generation forgot
 //!   shows as a missing trap.
 //!
+//! Each batch adds one function at an operation's faulting edge
+//! (`gen_edge`, backlog 1B-43): `-x`, `x % y` or `x / y` at `i64::MIN`
+//! and `-1`, where random contracts rarely reach.
+//!
 //! `BMB_SOUND_ITERS` raises the number of batches for longer runs.
 
 use std::fmt::Write as _;
@@ -38,7 +42,9 @@ struct Stats {
 
 fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
     let mut rng = Rng(seed.wrapping_mul(0x9E3779B97F4A7C15) | 1);
-    let funcs: Vec<Func> = (0..8).map(|k| gen_func(&mut rng, k)).collect();
+    let mut funcs: Vec<Func> = (0..8).map(|k| gen_func(&mut rng, k)).collect();
+    // One function at a faulting edge per batch, each kind in turn.
+    funcs.push(gen_edge(8, seed as usize % EDGES));
     let mut module = String::from("#[summary(\"건전성 퍼징\")]\nmod m {\n");
     for f in &funcs {
         module.push_str(&f.text());

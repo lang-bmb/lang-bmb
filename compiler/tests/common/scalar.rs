@@ -370,6 +370,41 @@ pub fn bounds(rng: &mut Rng) -> (i64, i64) {
     (a.min(b), a.max(b))
 }
 
+/// Kinds of `gen_edge` functions.
+pub const EDGES: usize = 3;
+
+/// A function at an operation's one faulting edge (backlog 1B-43): `-x`,
+/// `x % y` or `x / y` (`shape`) at `x` in `MIN..=MIN + 1` and `y` in
+/// `-2..=-1` (four inputs, all run), so no other obligation fails. The value
+/// is only compared (`if e == 0 { 0 } else { 1 }`): returned, an
+/// out-of-range value would fail the result's range check instead. The
+/// prover must refute it at `x = MIN`, `y = -1`; a prover that drops the
+/// edge's obligation proves it, and the interpreter's run there faults.
+/// Random contracts rarely admit exactly that point.
+pub fn gen_edge(k: usize, shape: usize) -> Func {
+    let (x, y) = (E::Var("x".into()), E::Var("y".into()));
+    let op = match shape % EDGES {
+        0 => E::Neg(Box::new(x)),
+        1 => E::Bin(Op::Rem, Box::new(x), Box::new(y)),
+        _ => E::Bin(Op::Div, Box::new(x), Box::new(y)),
+    };
+    let body = E::If(
+        Box::new(C::Cmp(Cmp::Eq, op, E::Lit(0))),
+        Box::new(E::Lit(0)),
+        Box::new(E::Lit(1)),
+    );
+    Func {
+        name: format!("f{k}"),
+        lo: (i64::MIN, -2),
+        hi: (i64::MIN + 1, -1),
+        extra: None,
+        lets: Vec::new(),
+        arr: Vec::new(),
+        body,
+        post: P::Cmp(Cmp::Le, S::Var("r"), S::Var("r")),
+    }
+}
+
 pub fn gen_func(rng: &mut Rng, k: usize) -> Func {
     let (lx, hx) = bounds(rng);
     let (ly, hy) = bounds(rng);

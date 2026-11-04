@@ -17,6 +17,10 @@
 //! - both builds (proved checks removed, every check kept) print what the
 //!   interpreter computes, array contents included.
 //!
+//! A loop body may also write through a callee, `put(a, j, v)` with an exact
+//! contract (backlog 1B-43), so the loop head must forget what the `&mut`
+//! parameter held.
+//!
 //! `BMB_SOUND_ITERS` / `BMB_SOUND_SEED` as in `soundness.rs`.
 
 use std::fmt::Write as _;
@@ -102,6 +106,9 @@ enum S {
     Exit(Exit, Cmp, E, E, Option<Pre>),
     /// `acc = lim(e, c)?;`: `None` when `e > c`.
     Try(E, i64),
+    /// `put(a, idx, e);`: a callee writes through the `&mut` parameter
+    /// (backlog 1B-43: the loop head must forget what `a` held).
+    Put(Idx, E),
 }
 
 enum Exit {
@@ -379,6 +386,23 @@ fn bounds_pair(rng: &mut Rng) -> (i64, i64) {
 /// Correct-by-construction loops (most prove), sometimes with one mutation
 /// that may or may not break them: near misses are where a verifier errs.
 fn gen_template(rng: &mut Rng, n: usize) -> Func {
+    // Fill through `put` from 0, claiming the first element is kept
+    // (backlog 1B-43): false, and only the loop head's havoc of the `&mut`
+    // parameter passed to `put` shows it. From a stream of its own.
+    if Rng(rng.0 ^ 0x9e37_79b9_7f4a_7c15).chance(20) {
+        return Func {
+            name: format!("g{n}"),
+            pre: vec![Clause::LenGe(1), Clause::XIn(-1000, 1000)],
+            inv: vec![Clause::ILeLen, Clause::SameLen],
+            post: vec![Clause::SameLen, Clause::FirstKept],
+            start: Start::Zero,
+            cond: Cond::ILtLen,
+            body: vec![S::Put(Idx::I, E::X)],
+            ret: Ret::X,
+            form: Form::While,
+            opt: false,
+        };
+    }
     let kind = rng.below(5);
     let mut f = match kind {
         // Sum of bounded elements (with a near miss when `kind` is 4).
@@ -587,6 +611,12 @@ fn gen_func(rng: &mut Rng, n: usize) -> Func {
         inv.push(Clause::SameLen);
     }
     let mut body = Vec::new();
+    // A write through a callee, from a stream of its own so the other draws
+    // (and the programs of earlier seeds) stay as they were.
+    let mut side = Rng(rng.0 ^ 0x5bd1_e995_9e37_79b9);
+    let put = side
+        .chance(30)
+        .then(|| S::Put(gen_idx(&mut side), gen_e(&mut side, 1)));
     for _ in 0..1 + rng.below(2) {
         body.push(match rng.below(3) {
             0 => S::SetAcc(gen_e(rng, 2)),
@@ -624,6 +654,9 @@ fn gen_func(rng: &mut Rng, n: usize) -> Func {
         opt: false,
     };
     add_exits(rng, &mut f);
+    if let Some(p) = put {
+        f.body.insert(0, p);
+    }
     f
 }
 
@@ -694,11 +727,14 @@ impl Func {
                 conj(&self.post)
             );
         }
-        let (rty, uses) = if self.opt {
-            ("Option<i64>", ", lim_post")
+        let (rty, mut uses) = if self.opt {
+            ("Option<i64>", ", lim_post".to_string())
         } else {
-            ("i64", "")
+            ("i64", String::new())
         };
+        if self.body.iter().any(|s| matches!(s, S::Put(..))) {
+            uses.push_str(", put_pre, put_post");
+        }
         let _ = writeln!(
             t,
             "    #[effects(pure)]\n    #[uses({n}_pre, {n}_inv, {n}_post{uses})]\n    fn {n}(a: &mut [i64], k: usize, x: i64) -> (r: {rty})\n        requires {n}_pre(a, k, x),\n        ensures {n}_post(a, old(a), k, x, r),\n    {{"
@@ -734,6 +770,9 @@ impl Func {
                 }
                 S::Write(i, e) => {
                     let _ = writeln!(t, "            a[{}] = {};", idx_text(*i), e_text(e));
+                }
+                S::Put(i, e) => {
+                    let _ = writeln!(t, "            put(a, {}, {});", idx_text(*i), e_text(e));
                 }
                 S::IfWrite(c, l, r, i, e) => {
                     let _ = writeln!(
@@ -941,6 +980,13 @@ impl St<'_> {
                     let j = self.idx(*i)?;
                     self.a[j] = v;
                 }
+                S::Put(i, e) => {
+                    // Arguments left to right; the callee's `a[j]` panics
+                    // outside the array.
+                    let j = self.idx(*i)?;
+                    let v = self.e(e)?;
+                    self.a[j] = v;
+                }
                 S::IfWrite(c, l, r, i, e) => {
                     let (l, r) = (self.e(l)?, self.e(r)?);
                     let take = match c {
@@ -1046,6 +1092,10 @@ fn post_holds(f: &Func, a: &[i64], old: &[i64], k: u64, x: i64, out: Out) -> boo
     )
 }
 
+/// `put`, a callee that writes one element through `&mut` (an exact
+/// contract, backlog 1B-43).
+const PUT: &str = "    spec fn put_pre(a: &[i64], j: usize) -> bool { j < a.len() }\n\n    spec fn put_post(a: &[i64], b: &[i64], j: usize, v: i64) -> bool {\n        a.len() == b.len() && j < a.len() && a[j] == v && (forall|t: usize| t < a.len() && t != j ==> #[trigger] a[t] == b[t])\n    }\n\n    #[effects(pure)]\n    #[uses(put_pre, put_post)]\n    fn put(a: &mut [i64], j: usize, v: i64) -> ()\n        requires put_pre(a, j),\n        ensures put_post(a, old(a), j, v),\n    {\n        a[j] = v;\n    }\n\n";
+
 /// `lim`, the callee of every `?`, and `show`, which prints an `Option`.
 const LIM: &str = "    spec fn lim_post(v: i64, c: i64, r: Option<i64>) -> bool {\n        match r {\n            None => c < v,\n            Some(w) => w == v && v <= c,\n        }\n    }\n\n    #[effects(pure)]\n    #[uses(lim_post)]\n    fn lim(v: i64, c: i64) -> (r: Option<i64>)\n        ensures lim_post(v, c, r),\n    {\n        if v <= c { Some(v) } else { None }\n    }\n\n";
 const SHOW: &str = "    #[effects(io)]\n    fn show(o: Option<i64>) -> () {\n        match o {\n            None => print_bytes(b\"none\\n\"),\n            Some(v) => print_i64(v),\n        }\n    }\n\n";
@@ -1122,6 +1172,8 @@ struct Stats {
     verified_for: usize,
     verified_exit: usize,
     verified_try: usize,
+    /// Verified functions whose loop writes through `put` (1B-43).
+    verified_put: usize,
     /// Interpreted runs of verified functions that left early.
     early_runs: usize,
     /// Failure codes over all functions, to see what keeps proofs from passing.
@@ -1137,6 +1189,7 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
     funcs.extend((1..6).map(|n| gen_func(&mut rng, n)));
     let mut src = String::from("#[summary(\"루프 건전성 퍼징\")]\nmod m {\n");
     src.push_str(LIM);
+    src.push_str(PUT);
     for f in &funcs {
         src.push_str(&f.text());
     }
@@ -1197,6 +1250,15 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
         let Some(name) = field(line, "def").and_then(|d| d.strip_prefix("m::")) else {
             continue;
         };
+        if name == "put" {
+            assert_eq!(
+                field(line, "status"),
+                Some("verified"),
+                "{}",
+                ctx("the callee `put` must verify")
+            );
+            continue;
+        }
         let Some(f) = funcs.iter().find(|f| f.name == name) else {
             continue;
         };
@@ -1212,6 +1274,7 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
                 .iter()
                 .any(|s| matches!(s, S::Try(..) | S::Exit(Exit::Try(..), ..))),
         );
+        stats.verified_put += usize::from(f.body.iter().any(|s| matches!(s, S::Put(..))));
         for (a, k, x) in inputs(f, &mut rng) {
             stats.verified_runs += 1;
             let mut after = a.clone();
@@ -1362,8 +1425,12 @@ fn loop_proofs_counterexamples_and_builds_agree_with_the_interpreter() {
         stats.traps
     );
     eprintln!(
-        "early exits (2K-05): verified {} with `for`, {} with an exit, {} with `?`; {} verified runs left early",
-        stats.verified_for, stats.verified_exit, stats.verified_try, stats.early_runs
+        "early exits (2K-05): verified {} with `for`, {} with an exit, {} with `?`, {} writing through `put`; {} verified runs left early",
+        stats.verified_for,
+        stats.verified_exit,
+        stats.verified_try,
+        stats.verified_put,
+        stats.early_runs
     );
     eprintln!("failures by kind: {:#?}", stats.codes);
     assert!(stats.verified > 0 && stats.cexes > 0 && stats.traps > 0);

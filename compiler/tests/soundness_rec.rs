@@ -6,7 +6,9 @@
 //! accepts one, the interpreter must find, on every input the precondition
 //! admits: termination, no fault (overflow, u64 underflow), and the
 //! postcondition. Counterexamples must satisfy the precondition. Both builds
-//! must print what the interpreter computes.
+//! must print what the interpreter computes. Some functions recurse on the
+//! same `n` with a contract that holds by induction (backlog 1B-43), so only
+//! the measure obligation stands between them and a proof.
 //!
 //! `BMB_SOUND_ITERS` / `BMB_SOUND_SEED` as in `soundness.rs`.
 
@@ -193,6 +195,24 @@ fn gen_rec(rng: &mut Rng, k: usize) -> Rec {
             )
         }
         _ => gen_p(rng, &["n", "x", "r"], 1),
+    };
+    // Sometimes a step that never decreases with a result that keeps the
+    // contract (backlog 1B-43): `r(n, x)` returns `r(n, x)`, so `r == x`
+    // follows by induction whatever the measure, and only the measure
+    // obligation (E0809) rejects it. From a stream of its own: the other
+    // draws stay as they were.
+    let mut side = Rng(rng.0 ^ 0x2545_f491_4f6c_dd1d);
+    let (c, guard, base, arg, step, post) = if side.chance(15) {
+        (
+            0,
+            1,
+            E::Var("x".into()),
+            E::Var("x".into()),
+            E::Var("acc".into()),
+            P::Cmp(Cmp::Eq, S::Var("r"), S::Var("x")),
+        )
+    } else {
+        (c, guard, base, arg, step, post)
     };
     Rec {
         name: format!("r{k}"),

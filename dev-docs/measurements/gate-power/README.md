@@ -34,6 +34,17 @@
 
 **T1-11 (2026-10-28).** 타입 불변식(ADR-0060) 변이체 셋. 결과 절 5가 요구한 경계 셋이다: `v-inv-mut-exit-dropped`(`&mut` 매개변수를 불변식 증명 없이 돌려줌, `src/verify/invariants.rs`), `v-inv-loop-entry-dropped`(루프가 havoc한 지역을 머리에서 유효하다고 가정하면서 진입 의무가 없음), `v-inv-arg-dropped`(호출 인자의 불변식 의무가 없는데 피호출자는 매개변수를 가정). T1-18처럼 각 변이체를 넣고 대상 시험만 돌렸다(전체 게이트 실행은 `results.jsonl`에 없다). 셋 모두 `test verify`의 `fail_corpus_matches_expected`(`tests/verify/fail/invariants`의 `shrink`·`entry`·`argument`)가 잡는다. 데이터 퍼저(`test soundness_data`, 무작위 불변식)는 호출·루프·`&mut`를 만들지 않으므로 이 셋을 잡지 않는다. 그 퍼저가 겨누는 것은 결과 경계와 진입 가정이다. 이 기록에서 `post_check`의 시그니처가 바뀌어(출구 위치) `v-return-post-dropped`·`v-try-return-post-skipped`·`v-lemma-post-dropped`의 원문을 현재 코드로 다시 겨눴다(결함은 같다).
 
+**1B-43·1B-54 (2026-11-04, 커밋 cfecae40 위).** 퍼저 단독 검출을 쟀다: 변이체를 분리된 작업 트리에 하나씩 넣고 건전성 퍼저 열하나(`soundness`·`_unsigned`·`_calls`·`_rec`·`_loops`·`_data`·`_vec`·`_owned`·`_traits`·`_specs`·`_widths`)만 기본 반복으로 돌렸다(게이트 전체가 아니므로 `results.jsonl`에는 넣지 않는다). 1B-38이 `test verify`만 잡는다고 적은 여섯 중 `v-havoc-skipped`는 이미 `soundness_loops`·`soundness_vec`가 잡았고, 나머지 넷은 아무 퍼저도 잡지 못했다. 생성기에 더한 것과 그 뒤:
+
+| 변이체 | 못 잡던 까닭 | 더한 것 | 단독으로 잡는 퍼저 |
+| --- | --- | --- | --- |
+| `v-min-rem-dropped`, `v-neg-overflow-dropped` | 무작위 계약이 `x = MIN`, `y = -1` 한 점을 거의 허용하지 않고, 값을 돌려주면 결과의 범위 검사가 대신 잡는다 | `common::scalar::gen_edge`: 배치마다 `-x`·`x % y`·`x / y`를 `x ∈ MIN..=MIN+1`, `y ∈ -2..=-1`에서 비교만 하는 함수 하나 | `soundness`(seed 1, `verified f8 faults at x = -9223372036854775808, y = -1`) |
+| `v-mut-param-havoc-skipped` | 루프 몸통이 `a`를 직접 쓰기만 해(직접 쓰기는 따로 havoc된다) 피호출자에게 넘기는 루프가 없었다 | 정확한 계약의 `put(a, j, v)`를 몸통 문장으로(30%), 그리고 `put`으로 0부터 채우며 첫 원소가 그대로라고 주장하는 아슬아슬한 틀(20%) | `soundness_loops`(seed 1 `g2`: 사후조건이 깨짐) |
+| `v-recursion-measure-dropped` | `c = 0`(같은 `n`으로 재귀)인 함수가 무작위 사후조건으로는 귀납이 서지 않아 변이체 아래에서도 증명되지 않았다 | `r(n, x)`가 `r(n, x)`를 돌려주고 `r == x`를 보장하는 꼴(15%): 측도 의무(E0809)만이 증명을 막는다 | `soundness_rec`(seed 1, `verified r2(2, 1073741824): Diverges`) |
+| `v-decreases-unbounded` | 실행으로 드러나지 않는다 | 없음(아래) | 없음, `test verify`(`negative_measure`) |
+
+`v-decreases-unbounded`(측도의 하한 `0 <=` 없음)는 실행 결과를 바꾸지 못한다. 실행 상태는 기계 값(유한한 정수, 길이가 정해진 배열)이라 측도가 취하는 값도 유한 집합이고, 그 위에서 엄격히 줄어드는 열은 유한하다. 그래서 하한이 없어도 루프는 끝난다(`negative_measure`도 끝난다). 드러날 수 있는 것은 상태가 유한하지 않은 경우(`Vec`가 자라며 측도가 음으로 계속 내려가는 루프, 메모리가 다할 때까지)뿐이고, 그것은 퍼저가 아니라 `test verify`의 코퍼스가 겨눈다. 1B-54의 코드 생성 변이체 둘도 같은 방법으로 쟀다: `c-bounds-check-removed`는 `soundness_loops`·`soundness_vec`, `c-overflow-check-removed`는 `soundness`·`soundness_owned`·`soundness_traits`가 단독으로 잡는다.
+
 | 변이체 | 종류 | 결함 | 게이트 |
 | --- | --- | --- | --- |
 | `v-read-index-le` | unsound | reading a[len] is allowed | 잡음: bench bcb, test verify |
