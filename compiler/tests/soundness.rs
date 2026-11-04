@@ -9,7 +9,11 @@
 //!   satisfies the precondition and execution fails or the postcondition is
 //!   false);
 //! - the compiled program, built twice (proved checks removed, and every check
-//!   kept), prints what the interpreter computes.
+//!   kept), prints what the interpreter computes;
+//! - a call the interpreter says faults (in a function that was not proved)
+//!   traps in both builds, as a program of its own (`common::trap`, backlog
+//!   1B-51): a check that a wrong proof erased or code generation forgot
+//!   shows as a missing trap.
 //!
 //! `BMB_SOUND_ITERS` raises the number of batches for longer runs.
 
@@ -20,6 +24,7 @@ use std::process::Command;
 mod common;
 
 use common::scalar::*;
+use common::trap;
 
 #[derive(Default)]
 struct Stats {
@@ -28,36 +33,41 @@ struct Stats {
     verified_runs: usize,
     cexes: usize,
     compiled_runs: usize,
+    traps: usize,
 }
 
 fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
     let mut rng = Rng(seed.wrapping_mul(0x9E3779B97F4A7C15) | 1);
     let funcs: Vec<Func> = (0..8).map(|k| gen_func(&mut rng, k)).collect();
-    let mut src = String::from("#[summary(\"건전성 퍼징\")]\nmod m {\n");
+    let mut module = String::from("#[summary(\"건전성 퍼징\")]\nmod m {\n");
     for f in &funcs {
-        src.push_str(&f.text());
+        module.push_str(&f.text());
     }
-    src.push_str(
-        "}\n\n#[summary(\"실행\")]\nmod app {\n    #[effects(io)]\n    fn main() -> () {\n",
-    );
+    module.push_str("}\n\n");
+    let main_head = "#[summary(\"실행\")]\nmod app {\n    #[effects(io)]\n    fn main() -> () {\n";
+    let mut src = format!("{module}{main_head}");
     let mut expected = String::new();
-    for f in &funcs {
+    let mut faults: Vec<(usize, (i64, i64))> = Vec::new();
+    for (i, f) in funcs.iter().enumerate() {
         for (x, y) in f.inputs(&mut rng) {
-            if let Ok(r) = f.run(x, y) {
-                let _ = writeln!(
-                    src,
-                    "        print_i64(m::{}({}, {}));",
-                    f.name,
-                    lit(x),
-                    lit(y)
-                );
-                let _ = writeln!(expected, "{r}");
-            }
+            let Ok(r) = f.run(x, y) else {
+                faults.push((i, (x, y)));
+                continue;
+            };
+            let _ = writeln!(
+                src,
+                "        print_i64(m::{}({}, {}));",
+                f.name,
+                lit(x),
+                lit(y)
+            );
+            let _ = writeln!(expected, "{r}");
         }
     }
     src.push_str("    }\n}\n");
     let files = vec![("s.bmb".to_string(), src.clone())];
-    let out = bmb::emit_llvm_sources(&files);
+    let cache = dir.join(format!("cache{seed}"));
+    let out = bmb::emit_llvm_sources_cached(&files, Some(&cache));
     assert!(
         out.ir.is_some(),
         "seed {seed}: generated program must check\n{src}\n{}",
@@ -164,6 +174,25 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
         );
         stats.compiled_runs += n;
     }
+
+    // Calls that fault in the interpreter trap in both builds.
+    for (j, (i, (x, y))) in trap::choose(&faults, |_| ()).into_iter().enumerate() {
+        let f = &funcs[i];
+        let call = format!(
+            "        print_i64(m::{}({}, {}));\n",
+            f.name,
+            lit(x),
+            lit(y)
+        );
+        let src = format!("{module}{main_head}{}    }}\n}}\n", trap::body(&call));
+        let files = vec![("s.bmb".to_string(), src.clone())];
+        let exe = dir.join(format!("s{seed}-trap{j}"));
+        if let Some(e) = trap::check(&files, &cache, &exe) {
+            panic!("seed {seed}: m::{}({x}, {y}): {e}\n{src}", f.name);
+        }
+        stats.traps += 1;
+    }
+    let _ = fs::remove_dir_all(&cache);
 }
 
 #[test]
@@ -193,9 +222,14 @@ fn proofs_counterexamples_and_builds_agree_with_the_interpreter() {
     }
     let _ = fs::remove_dir_all(&dir);
     eprintln!(
-        "soundness: {} functions, {} verified ({} runs), {} counterexamples replayed, {} compiled runs",
-        stats.funcs, stats.verified, stats.verified_runs, stats.cexes, stats.compiled_runs
+        "soundness: {} functions, {} verified ({} runs), {} counterexamples replayed, {} compiled runs, {} traps confirmed",
+        stats.funcs,
+        stats.verified,
+        stats.verified_runs,
+        stats.cexes,
+        stats.compiled_runs,
+        stats.traps
     );
-    // The generator must actually reach both outcomes.
-    assert!(stats.verified > 0 && stats.cexes > 0);
+    // The generator must actually reach every outcome.
+    assert!(stats.verified > 0 && stats.cexes > 0 && stats.traps > 0);
 }
