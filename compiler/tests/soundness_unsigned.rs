@@ -16,7 +16,8 @@
 //! range above 255), the sum of two low bytes in `u8` (overflows above
 //! 255), and their wrapping and saturating products.
 //!
-//! `BMB_SOUND_ITERS` / `BMB_SOUND_SEED` as in `soundness.rs`.
+//! It drives the `bmb` command line (`common::cli`, HEALTH.md S5, backlog
+//! 4A-04). `BMB_SOUND_ITERS` / `BMB_SOUND_SEED` as in `soundness.rs`.
 
 use std::fmt::Write as _;
 use std::fs;
@@ -25,6 +26,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 mod common;
 
+use common::cli;
 use common::scalar::{Rng, field};
 use common::trap;
 
@@ -547,8 +549,8 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
     src.push_str("    }\n}\n");
     let files = vec![("u.bmb".to_string(), src.clone())];
     let cache = dir.join(format!("ucache{seed}-{}", std::process::id()));
-    let built = bmb::emit_llvm_sources_cached(&files, Some(&cache));
-    let out = &built.verify;
+    let built = cli::emit_llvm(&files, &dir.join(format!("src{seed}")), Some(&cache), false);
+    let out = &built;
     let ctx = |what: &str| format!("seed {seed}: {what}\n{src}\n{}", out.output);
     assert!(
         built.ir.is_some(),
@@ -623,13 +625,14 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
     let n = expected.lines().count();
     for all_checks in [false, true] {
         let ir = if all_checks {
-            bmb::emit_llvm_sources_with(&files, true).ir.unwrap()
+            cli::emit_llvm(&files, &dir.join(format!("src{seed}")), None, true)
+                .ir
+                .unwrap()
         } else {
             built.ir.clone().unwrap()
         };
         let exe = dir.join(format!("u{seed}-{all_checks}-{}", std::process::id()));
-        bmb::toolchain::build_executable(&ir, exe.to_str().unwrap())
-            .unwrap_or_else(|e| panic!("{}", ctx(&e)));
+        cli::build(&ir, &exe).unwrap_or_else(|e| panic!("{}", ctx(&e)));
         let res = Command::new(&exe).output().unwrap();
         let _ = fs::remove_file(&exe);
         assert!(

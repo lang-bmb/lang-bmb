@@ -21,7 +21,8 @@
 //! contract (backlog 1B-43), so the loop head must forget what the `&mut`
 //! parameter held.
 //!
-//! `BMB_SOUND_ITERS` / `BMB_SOUND_SEED` as in `soundness.rs`.
+//! It drives the `bmb` command line (`common::cli`, HEALTH.md S5, backlog
+//! 4A-04). `BMB_SOUND_ITERS` / `BMB_SOUND_SEED` as in `soundness.rs`.
 
 use std::fmt::Write as _;
 use std::fs;
@@ -29,6 +30,7 @@ use std::process::Command;
 
 mod common;
 
+use common::cli;
 use common::trap;
 
 struct Rng(u64);
@@ -1238,15 +1240,15 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
     src.push_str("    }\n}\n");
     let files = vec![("l.bmb".to_string(), src.clone())];
     let cache = dir.join(format!("cache{seed}"));
-    let out = bmb::emit_llvm_sources_cached(&files, Some(&cache));
+    let out = cli::emit_llvm(&files, &dir.join(format!("src{seed}")), Some(&cache), false);
     assert!(
         out.ir.is_some(),
         "seed {seed}: generated program must check\n{src}\n{}",
-        out.verify.output
+        out.output
     );
-    let ctx = |what: &str| format!("seed {seed}: {what}\n{src}\n{}", out.verify.output);
+    let ctx = |what: &str| format!("seed {seed}: {what}\n{src}\n{}", out.output);
 
-    for line in out.verify.output.lines() {
+    for line in out.output.lines() {
         let Some(name) = field(line, "def").and_then(|d| d.strip_prefix("m::")) else {
             continue;
         };
@@ -1301,7 +1303,7 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
         }
     }
 
-    for line in out.verify.output.lines() {
+    for line in out.output.lines() {
         let Some(msg) = field(line, "message") else {
             continue;
         };
@@ -1342,13 +1344,14 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
     let lines = expected.lines().count();
     for all_checks in [false, true] {
         let ir = if all_checks {
-            bmb::emit_llvm_sources_with(&files, true).ir.unwrap()
+            cli::emit_llvm(&files, &dir.join(format!("src{seed}")), None, true)
+                .ir
+                .unwrap()
         } else {
             out.ir.clone().unwrap()
         };
         let exe = dir.join(format!("l{seed}-{all_checks}"));
-        bmb::toolchain::build_executable(&ir, exe.to_str().unwrap())
-            .unwrap_or_else(|e| panic!("{}", ctx(&e)));
+        cli::build(&ir, &exe).unwrap_or_else(|e| panic!("{}", ctx(&e)));
         let res = Command::new(&exe).output().unwrap();
         let _ = fs::remove_file(&exe);
         assert!(
