@@ -23,8 +23,9 @@
 //!   both print what the interpreter computes, and a call that panics in
 //!   Rust (overflow, a shift amount outside `0..w`, division by zero,
 //!   `MIN / -1`, an out-of-range conversion) traps in both (`SIGILL`, a
-//!   program of its own per call, as a trap ends the run and loses the
-//!   buffered output). A trap in the first build is a check the prover did
+//!   program of its own per call, as a trap ends the run), after the line
+//!   printed before the call, as Rust prints the lines before a panic
+//!   (backlog 1B-52). A trap in the first build is a check the prover did
 //!   not erase, so a wrongly proved obligation shows as a missing trap.
 //!
 //! Registers hold 64-bit extended values (ADR-0048 §5), so the generator
@@ -1305,7 +1306,7 @@ fn batch(seed: u64, stats: &mut Stats, dir: &Path) {
     for (j, (i, env, _)) in chosen.into_iter().enumerate() {
         let f = &funcs[i];
         let src = format!(
-            "{module}{main_head}{}        print_i64(2);\n    }}\n}}\n",
+            "{module}{main_head}        print_i64(1);\n{}        print_i64(2);\n    }}\n}}\n",
             call_text(f, env)
         );
         let file = dir.join(format!("w{seed}-trap{j}.bmb"));
@@ -1318,7 +1319,7 @@ fn batch(seed: u64, stats: &mut Stats, dir: &Path) {
             let exe = dir.join(format!("w{seed}-trap{j}-{all_checks}"));
             let (out, sig, _) = run(&ir, &exe).unwrap_or_else(|e| panic!("{}", ctx(&e)));
             assert!(
-                out.is_empty() && sig == Some(4),
+                out == "1\n" && sig == Some(4),
                 "{}",
                 ctx(&format!(
                     "m::{}({}, {}, {}) panics in Rust, but the build (all_checks = {all_checks}) printed {out:?} and ended by signal {sig:?}",

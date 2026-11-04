@@ -767,7 +767,9 @@ impl<'p> Gen<'p> {
             "br i1 {cond}, label %{ok}, label %{bad} ; unproved: {what}"
         ));
         self.block(&bad);
-        self.emit("call void @llvm.trap()");
+        // The output written before the trap reaches stdout first, as Rust's
+        // line-buffered `stdout` shows the lines before a panic (backlog 1B-52).
+        self.emit("call void @bmb_trap()");
         self.emit("unreachable");
         self.block(&ok);
     }
@@ -3505,7 +3507,9 @@ pub fn emit_with(
          define internal void @bmb_print_u64(i64 %x) {\n  call i32 (ptr, ...) @printf(ptr @bmb.fmtu, i64 %x)\n  ret void\n}\n\
          @stdout = external global ptr\n\
          declare i64 @fwrite(ptr, i64, i64, ptr)\n\
-         define internal void @bmb_print_bytes(ptr %p, i64 %n) {\n  %f = load ptr, ptr @stdout\n  call i64 @fwrite(ptr %p, i64 1, i64 %n, ptr %f)\n  ret void\n}\n",
+         define internal void @bmb_print_bytes(ptr %p, i64 %n) {\n  %f = load ptr, ptr @stdout\n  call i64 @fwrite(ptr %p, i64 1, i64 %n, ptr %f)\n  ret void\n}\n\
+         declare i32 @fflush(ptr)\n\
+         define internal void @bmb_trap() cold noreturn nounwind {\n  call i32 @fflush(ptr null)\n  call void @llvm.trap()\n  unreachable\n}\n",
     );
     let mut checks = 0;
     let mut checks_by: BTreeMap<String, u32> = BTreeMap::new();

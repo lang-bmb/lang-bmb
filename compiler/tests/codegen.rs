@@ -169,7 +169,24 @@ fn proved_index_has_no_check_and_unproved_keeps_one() {
         ir.contains("; unproved: index may be out of bounds"),
         "{ir}"
     );
-    assert!(ir.contains("call void @llvm.trap()"));
+    assert!(ir.contains("call void @bmb_trap()"));
+}
+
+#[test]
+fn output_before_a_trap_reaches_stdout() {
+    // Rust's `stdout` is line-buffered, so the lines printed before a panic
+    // reach a pipe; the trap flushes first to do the same (backlog 1B-52).
+    let dir = std::env::temp_dir().join(format!("bmb-flush-{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    let text = "#[summary(\"trap\")]\nmod m {\n    #[effects(pure)]\n    fn get(a: &[i64], i: usize) -> i64 {\n        a[i]\n    }\n\n    #[effects(io)]\n    fn main() -> () {\n        let a: [i64; 3] = [1, 2, 3];\n        print_i64(7);\n        print_bytes(b\"partial\");\n        print_i64(get(&a, 3));\n    }\n}\n";
+    let out = bmb::emit_llvm_sources(&src("t.bmb", text));
+    assert!(!out.verify.ok);
+    let exe = dir.join("t");
+    bmb::toolchain::build_executable(&out.ir.unwrap(), exe.to_str().unwrap()).unwrap();
+    let run = Command::new(&exe).output().unwrap();
+    assert!(!run.status.success(), "index 3 must trap");
+    assert_eq!(String::from_utf8_lossy(&run.stdout), "7\npartial");
+    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -497,7 +514,7 @@ mod m {
     let out = bmb::emit_llvm_sources(&src("l.bmb", text));
     let ir = out.ir.unwrap();
     let defines: Vec<&str> = ir.lines().filter(|l| l.starts_with("define ")).collect();
-    assert_eq!(defines.len(), 7, "{ir}");
+    assert_eq!(defines.len(), 8, "{ir}");
     for d in &defines {
         assert!(
             d.starts_with("define internal ") || d.starts_with("define i32 @main()"),
@@ -1243,7 +1260,7 @@ mod escapes {
         for f in ["square", "caller", "outside"] {
             assert!(!body(f).contains("; proved"), "{f}: {}", body(f));
         }
-        assert!(body("square").contains("@llvm.trap"), "{}", body("square"));
+        assert!(body("square").contains("@bmb_trap"), "{}", body("square"));
         assert!(
             body("needless").contains("; proved E0803"),
             "{}",

@@ -221,7 +221,7 @@ H-EDIT·H-GRAIN 측정 판(`bench/edit/gen.py`)을 위한 두 쓰기 표면. 둘
 ## 코드 생성
 
 - 증명된 의무는 검사 없이 LLVM에 사실로 전달된다: 넘침 없음 → `nsw`/`nuw`, 범위 안 → 검사 없는 `getelementptr inbounds`, 0 아닌 제수 → 검사 없는 `sdiv`/`udiv`. 각 줄에 `; proved Exxxx` 주석이 붙는다.
-- 증명되지 않은 의무는 `llvm.trap`으로 가는 검사로 남는다(`; unproved: ..`). `bmb build`는 그런 프로그램을 거부한다.
+- 증명되지 않은 의무는 트랩으로 가는 검사로 남는다(`; unproved: ..`). 트랩(`@bmb_trap`)은 표준 출력을 비운 뒤 `llvm.trap`이라, Rust의 panic처럼 앞서 출력한 내용이 남는다. `bmb build`는 그런 프로그램을 거부한다.
 - `&mut` 슬라이스 매개변수는 `noalias`, `&` 슬라이스는 `readonly`(ADR-0015).
 - 닫힌 세계(백로그 2D-07): 모듈 하나가 프로그램 전체이므로 모든 함수(BMB `main`, `bmb_print_i64`·`bmb_print_u64` 포함)가 `internal`이고, C 진입점 `@main`만 외부에 보인다. LLVM이 자유롭게 인라인하고 쓰지 않는 함수를 지운다. 기준선 벤치 7개에서 실행 파일에 BMB 함수 기호가 0개가 되었고(전에는 2~4개) 크기가 100~180바이트 줄었다. 실행 시간 차이는 측정 잡음(±10%) 안이었다.
 
