@@ -22,7 +22,8 @@ use bmb::smt::{self, Sexp};
 use bmb::subproof::{self, Sort};
 use bmb::verify::{
     MUL_BOUND_LEMMA, MUL_LEMMAS, PRELUDE, SIGNED_DIV_LEMMAS, UNSIGNED_DIV_LEMMAS, bit_method,
-    bit_op, bv_value, instantiate, instantiate_mul, linear_bit, not_term,
+    bit_op, bv_value, byte_term, from_bytes_term, instantiate, instantiate_mul, linear_bit,
+    not_term,
 };
 
 fn prove_all(header: &str, lemmas: &[&str], q: &str, r: &str) {
@@ -225,13 +226,23 @@ fn eval_in(e: &Sexp, env: &Env) -> V {
                 "-" => V::I(i(0) - i(1)),
                 "+" => V::I(args.iter().map(|v| int(*v)).sum()),
                 "*" => V::I(i(0) * i(1)),
+                // SMT-LIB's Euclidean division (`0 <= r < |b|`), and the
+                // encoder's truncating one (`verify::PRELUDE`).
                 "div" => {
-                    assert!(i(1) > 0);
+                    assert!(i(1) != 0);
                     V::I(i(0).div_euclid(i(1)))
                 }
                 "mod" => {
-                    assert!(i(1) > 0);
+                    assert!(i(1) != 0);
                     V::I(i(0).rem_euclid(i(1)))
+                }
+                "bmb_tdiv" => {
+                    assert!(i(1) != 0);
+                    V::I(i(0) / i(1))
+                }
+                "bmb_trem" => {
+                    assert!(i(1) != 0);
+                    V::I(i(0) % i(1))
                 }
                 "ite" => {
                     if bl(0) {
@@ -326,6 +337,18 @@ fn eval_in(e: &Sexp, env: &Env) -> V {
                         "bvsmod" => {
                             assert!(sy > 0);
                             image(sx.rem_euclid(sy), w)
+                        }
+                        "bvsrem" => {
+                            assert!(sy != 0);
+                            image(sx % sy, w)
+                        }
+                        "bvudiv" => {
+                            assert!(y != 0);
+                            x / y
+                        }
+                        "bvurem" => {
+                            assert!(y != 0);
+                            x % y
                         }
                         other => panic!("unknown operation {other}"),
                     };
@@ -642,6 +665,79 @@ fn bit_method_terms_are_rusts_methods() {
     }
 }
 
+/// The bytes of an integer and the integer of bytes (backlog 2N-09c) are
+/// Rust's `to_{be,le}_bytes` and `from_{be,le}_bytes`, for every value, for
+/// operands outside the type (their image, ADR-0090) and for bytes outside
+/// `u8` (theirs).
+#[test]
+fn byte_terms_are_rusts_bytes() {
+    for i in IntTy::ALL {
+        let w = i.bits();
+        let n = w / 8;
+        let size = 1i128 << w;
+        for a in values(i) {
+            let u = image(a, w);
+            for le in [false, true] {
+                let want: Vec<i128> = (0..n)
+                    .map(|k| {
+                        let s = 8 * if le { k } else { n - 1 - k };
+                        ((u >> s) & 0xff) as i128
+                    })
+                    .collect();
+                // Rust's bytes for the native types.
+                if w == 64 && !le {
+                    assert_eq!(
+                        want,
+                        (u as u64).to_be_bytes().map(i128::from).to_vec(),
+                        "{a}"
+                    );
+                }
+                for (k, &b) in want.iter().enumerate() {
+                    let t = byte_term(i, le, "a", k as u32);
+                    assert_eq!(int(value(&t, a, 0)), b, "byte {k} of {a} on {}", i.name());
+                    // An operand outside the type: the image's byte.
+                    assert_eq!(int(value(&t, a + 3 * size, 0)), b, "{a} + 3 * 2^{w}");
+                    assert_eq!(int(value(&t, a - size, 0)), b, "{a} - 2^{w}");
+                }
+                // Back from the bytes, given as `b0`, `b1`, ...: `a`; a byte
+                // outside `u8` is its image.
+                let names: Vec<String> = (0..n).map(|k| format!("b{k}")).collect();
+                let back = smt::parse(&from_bytes_term(i, le, &names)).unwrap();
+                let mut env: Env = names
+                    .iter()
+                    .zip(&want)
+                    .map(|(x, &b)| (x.clone(), V::I(b)))
+                    .collect();
+                assert_eq!(
+                    int(eval_in(&back, &env)),
+                    a,
+                    "{a} on {} (le {le})",
+                    i.name()
+                );
+                env.insert("b0".into(), V::I(want[0] - 256));
+                assert_eq!(int(eval_in(&back, &env)), a, "b0 - 256");
+            }
+        }
+    }
+    // Rust's `from_*_bytes` on two types for the decoded order.
+    let b = [0x80u8, 1, 2, 0xff];
+    for (le, want) in [
+        (false, i128::from(i32::from_be_bytes(b))),
+        (true, i128::from(i32::from_le_bytes(b))),
+    ] {
+        let bs: Vec<String> = b.iter().map(|x| x.to_string()).collect();
+        assert_eq!(
+            int(value(&from_bytes_term(IntTy::I32, le, &bs), 0, 0)),
+            want
+        );
+    }
+    let bs: Vec<String> = [0xfeu8, 0x7f].iter().map(|x| x.to_string()).collect();
+    assert_eq!(
+        int(value(&from_bytes_term(IntTy::U16, true, &bs), 0, 0)),
+        i128::from(u16::from_le_bytes([0xfe, 0x7f]))
+    );
+}
+
 /// Terms over `a` and `b` of type `i` the encoder makes: bit operations
 /// and methods, their linear forms, and arithmetic around them, with
 /// operands that leave `i` (specification arithmetic).
@@ -728,6 +824,86 @@ fn bit_vector_translations_are_exact() {
                 }
             }
         }
+    }
+}
+
+/// Division by a term (backlog 2N-11): the code's unsigned `/`·`%`
+/// (SMT-LIB's Euclidean `div`/`mod`) and signed ones (`bmb_tdiv`/`bmb_trem`)
+/// translate exactly wherever the divisor is not zero, for operands of
+/// either sign (specification arithmetic), and a divisor that may be zero
+/// is a hypothesis and a guard.
+#[test]
+fn division_translations_are_exact() {
+    let ops = ["div", "mod", "bmb_tdiv", "bmb_trem"];
+    for i in IntTy::ALL {
+        let w = i.bits();
+        let vars = vec![
+            ("a".to_string(), Sort::Int(i)),
+            ("b".to_string(), Sort::Int(i)),
+        ];
+        let all = values(i);
+        let step = (all.len() / 14).max(1);
+        let vs: Vec<i128> = all
+            .iter()
+            .step_by(step)
+            .chain(all.iter().rev().take(4))
+            .copied()
+            .collect();
+        for op in ops {
+            for (x, y) in [
+                ("a", "b"),
+                ("(- a b)", "b"),
+                ("(+ a b)", "(- b)"),
+                ("(- a)", "(- b 1)"),
+                ("a", "(- 3)"),
+                ("(* 2 a)", "7"),
+            ] {
+                let t = format!("({op} {x} {y})");
+                let term = smt::parse(&t).unwrap();
+                let divisor = smt::parse(y).unwrap();
+                let (bt, bw) = subproof::bit_vector_int(&term, &vars)
+                    .unwrap_or_else(|e| panic!("{t} on {}: {e}", i.name()));
+                assert!(bw <= 128, "{t}: {bw} bits");
+                let bterm = smt::parse(&bt).unwrap();
+                for &a in &vs {
+                    for &b in &vs {
+                        if int(eval(&divisor, a, b)) == 0 {
+                            continue;
+                        }
+                        let want = int(eval(&term, a, b));
+                        let env: Env = [
+                            ("a".to_string(), V::Bv(image(a, w), w)),
+                            ("b".to_string(), V::Bv(image(b, w), w)),
+                        ]
+                        .into();
+                        let (v, vw) = bv(eval_in(&bterm, &env));
+                        assert_eq!(vw, bw);
+                        assert_eq!(
+                            signed(v, vw),
+                            want,
+                            "{t} at a = {a}, b = {b} on {}",
+                            i.name()
+                        );
+                    }
+                }
+            }
+        }
+    }
+    // A divisor that may be zero is a hypothesis and a guard; a nonzero
+    // constant is neither.
+    let vars = vec![
+        ("a".to_string(), Sort::Int(IntTy::I32)),
+        ("b".to_string(), Sort::Int(IntTy::I32)),
+    ];
+    let mut none = |_: &str, _: &[String]| Ok(None);
+    for (t, guards) in [
+        ("(= (bmb_tdiv a b) (bmb_tdiv a b))", vec!["(not (= b 0))"]),
+        ("(< (mod a (+ b 1)) 5)", vec!["(not (= (+ b 1) 0))"]),
+        ("(= (bmb_trem a (- 3)) 0)", vec![]),
+    ] {
+        let q = subproof::bit_vector(&smt::parse(t).unwrap(), &vars, &mut none).unwrap();
+        assert_eq!(q.guards, guards, "{t}");
+        assert_eq!(q.hyps.len(), guards.len(), "{t}");
     }
 }
 

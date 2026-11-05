@@ -6077,6 +6077,49 @@ impl<'a> Checker<'a> {
             ExprKind::Method { recv, name, args } => {
                 self.method(cx, recv, name, args, e.span, mode)
             }
+            // An integer from its bytes (backlog 2N-09c).
+            ExprKind::Call { path, args, .. } if from_bytes_call(path).is_some() => {
+                let (i, _) = from_bytes_call(path).expect("a byte conversion");
+                let bt = bytes_ty(i);
+                if args.len() != 1 {
+                    self.diags.push(
+                        Diag::new(
+                            "E0405",
+                            e.span,
+                            format!("`{}` takes one argument", path[1].name),
+                        )
+                        .fix(
+                            format!(
+                                "write `{}::{}(b)` with `b: {}`",
+                                i.name(),
+                                path[1].name,
+                                ty_str(&bt)
+                            ),
+                            None,
+                        ),
+                    );
+                    return TypeKind::Error;
+                }
+                let at = self.expr(cx, &args[0], Some(&bt), mode);
+                if at != bt && at != TypeKind::Error && at != TypeKind::Never {
+                    self.diags.push(
+                        Diag::new(
+                            "E0401",
+                            args[0].span,
+                            format!("expected `{}`, found `{}`", ty_str(&bt), ty_str(&at)),
+                        )
+                        .fix(
+                            format!(
+                                "the bytes of a `{}` are a `{}` (`x.to_be_bytes()`, `x.to_le_bytes()`)",
+                                i.name(),
+                                ty_str(&bt)
+                            ),
+                            None,
+                        ),
+                    );
+                }
+                TypeKind::Int(i)
+            }
             // An integer (or `f64`) to `f64` (ADR-0061 §4).
             ExprKind::Call { path, args, .. } if is_f64_from(path) => {
                 self.f64_from(cx, args, e.span, mode)
@@ -7007,6 +7050,32 @@ impl<'a> Checker<'a> {
                     return option_of(rt);
                 }
                 rt
+            }
+            // The bytes of an integer (ADR-0048 §2, backlog 2N-09c): a
+            // `[u8; w / 8]`, most or least significant first.
+            m @ ("to_be_bytes" | "to_le_bytes") => {
+                if !args.is_empty() {
+                    self.diags.push(
+                        Diag::new("E0405", name.span, format!("`{m}` takes no arguments"))
+                            .fix(format!("write `x.{m}()` (Rust's signature)"), None),
+                    );
+                    return TypeKind::Error;
+                }
+                match &rt {
+                    TypeKind::Int(i) => bytes_ty(*i),
+                    TypeKind::Error => TypeKind::Error,
+                    _ => {
+                        self.diags.push(
+                            Diag::new(
+                                "E0404",
+                                name.span,
+                                format!("`{m}` is not defined for `{}`", ty_str(&rt)),
+                            )
+                            .fix("bit methods are methods of the integer types", None),
+                        );
+                        TypeKind::Error
+                    }
+                }
             }
             // Bit methods (ADR-0048 §2, backlog 2N-03), Rust's signatures:
             // the amount is a `u32` and the counts are `u32`s.
@@ -9366,6 +9435,24 @@ pub fn f64_method_sig(m: &str) -> Option<(usize, TypeKind)> {
         "min" | "max" => (1, TypeKind::F64),
         _ => return None,
     })
+}
+
+/// `T::from_be_bytes(..)` / `T::from_le_bytes(..)` with `T` an integer type
+/// (ADR-0048 §2, backlog 2N-09c): `T` and whether the first byte is the
+/// least significant.
+pub fn from_bytes_call(path: &[Ident]) -> Option<(IntTy, bool)> {
+    let [ty, f] = path else { return None };
+    let le = match f.name.as_str() {
+        "from_be_bytes" => false,
+        "from_le_bytes" => true,
+        _ => return None,
+    };
+    Some((IntTy::from_name(&ty.name)?, le))
+}
+
+/// The type of an integer's bytes: `[u8; w / 8]`.
+pub fn bytes_ty(i: IntTy) -> TypeKind {
+    TypeKind::Array(mk(TypeKind::Int(IntTy::U8)), u64::from(i.bits() / 8))
 }
 
 /// `f64::from(..)` (ADR-0061 §4).

@@ -11,8 +11,10 @@
 //! query assumes, whatever linear or bit-vector form the encoder chose for
 //! each operation (`verify::bit_op`, `verify::bit_method`). Every integer
 //! subterm becomes a two's complement bit-vector wide enough to hold all of
-//! its values (an interval is kept for each), so `+`, `*`, `div` and `mod` by
-//! constants, comparisons and `bv2nat`/`int2bv` are exact: for every value of
+//! its values (an interval is kept for each), so `+`, `*`, `div` and `mod`
+//! (by constants, and by terms, which are then nonzero hypotheses and
+//! guards: `general_div`), the truncating `bmb_tdiv`/`bmb_trem`,
+//! comparisons and `bv2nat`/`int2bv` are exact: for every value of
 //! the free variables in their types, the translation and the term agree
 //! (checked by evaluation in `tests/lemmas.rs`).
 //!
@@ -598,15 +600,15 @@ impl Tr<'_, '_> {
     }
 
     /// `(div a c)` / `(mod a c)` for a positive constant `c` (floor
-    /// division, as SMT-LIB's on integers).
+    /// division, as SMT-LIB's on integers); any other divisor is
+    /// `general_div`.
     fn divmod(&mut self, op: &str, args: &[Sexp]) -> Result<T, String> {
-        let c = match args.get(1).and_then(numeral) {
-            Some(c) if c > 0 && args.len() == 2 => c,
-            _ => {
-                return Err(format!(
-                    "`{op}` by a value that is not a positive constant has no exact bit-vector form (a division in the assertion)"
-                ));
-            }
+        if args.len() != 2 {
+            return Err(format!("`{op}` takes two operands"));
+        }
+        let c = match numeral(&args[1]) {
+            Some(c) if c > 0 => c,
+            _ => return self.general_div(op, args),
         };
         let (t, w, iv) = self.ints(&args[..1])?.remove(0);
         let pow = (c & (c - 1)) == 0;
@@ -642,6 +644,88 @@ impl Tr<'_, '_> {
         let ww = w.max(bits(c, c));
         let r = format!("(bvsmod {} {})", resize(&t, w, ww), lit(c, ww));
         int(r, ww, niv)
+    }
+
+    /// A division by a term `b` that may be zero or negative (backlog
+    /// 2N-11): SMT-LIB's Euclidean `div`/`mod` (`0 <= r < |b|`, the code's
+    /// unsigned `/`·`%`), or the encoder's truncating `bmb_tdiv`/`bmb_trem`
+    /// (the code's signed ones, LLVM's `sdiv`/`srem` and SMT-LIB's
+    /// `bvsdiv`/`bvsrem`), each exact at a width that holds the operands,
+    /// `|b|` and `MIN / -1`. A divisor not a nonzero constant is a
+    /// hypothesis `b != 0` of the sub-proof and an antecedent of the
+    /// assumed fact (`Query::guards`): the integer theories leave division
+    /// by zero open, so the sub-proof says nothing there.
+    fn general_div(&mut self, op: &str, args: &[Sexp]) -> Result<T, String> {
+        let mut xs = self.ints(args)?;
+        let (bt, wb, ivb) = xs.pop().expect("a divisor");
+        let (at, wa, iva) = xs.pop().expect("a dividend");
+        // Room for `|b|` and `a - r` (Euclidean), or for `MIN / -1`.
+        let ww = wa.max(wb) + if op.starts_with("bmb_") { 1 } else { 2 };
+        if ww > MAX_WIDTH {
+            return Err(format!(
+                "a term needs more than {MAX_WIDTH} bits as a bit-vector"
+            ));
+        }
+        if numeral(&args[1]).is_none_or(|c| c == 0) {
+            let h = format!("(not (= {bt} {}))", lit(0, wb));
+            if !self.hyps.contains(&h) {
+                self.hyps.push(h);
+            }
+            let g = format!("(not (= {} 0))", print(&self.outer(&args[1])));
+            if !self.guards.contains(&g) {
+                self.guards.push(g);
+            }
+        }
+        // Both operands non-negative (the code's unsigned operands): the
+        // unsigned operations at the width of their magnitudes, which a
+        // solver bit-blasts far more cheaply than the signed ones.
+        if let (Some((0.., ha)), Some((0.., hb))) = (iva, ivb) {
+            let n = bitlen(ha.max(hb)).max(1);
+            let un = |t: &str, w: u32| {
+                if w > n {
+                    format!("((_ extract {} 0) {t})", n - 1)
+                } else {
+                    resize(t, w, n)
+                }
+            };
+            let (a, b) = (un(&at, wa), un(&bt, wb));
+            let (f, iv) = match op {
+                "div" | "bmb_tdiv" => ("bvudiv", (0, ha)),
+                _ => ("bvurem", (0, ha.min((hb - 1).max(0)))),
+            };
+            return int(
+                format!("((_ zero_extend 1) ({f} {a} {b}))"),
+                n + 1,
+                Some(iv),
+            );
+        }
+        let (a, b) = (resize(&at, wa, ww), resize(&bt, wb, ww));
+        let zero = lit(0, ww);
+        // The largest magnitudes, when known.
+        let mag = |iv: Interval| {
+            iv.and_then(|(lo, hi)| lo.checked_abs()?.max(hi.checked_abs()?).checked_add(1))
+        };
+        let (ma, mb) = (mag(iva), mag(ivb));
+        let (r, iv) = match op {
+            "div" | "mod" => {
+                let abs = format!("(ite (bvslt {b} {zero}) (bvneg {b}) {b})");
+                let m = format!("(bvsmod {a} {abs})");
+                if op == "mod" {
+                    (m, mb.map(|m| (0, (m - 2).max(0))))
+                } else {
+                    (format!("(bvsdiv (bvsub {a} {m}) {b})"), ma.map(|m| (-m, m)))
+                }
+            }
+            "bmb_tdiv" => (format!("(bvsdiv {a} {b})"), ma.map(|m| (-m, m))),
+            _ => (
+                format!("(bvsrem {a} {b})"),
+                ma.zip(mb).map(|(m, n)| {
+                    let k = m.min(n - 1);
+                    (-k, k)
+                }),
+            ),
+        };
+        int(r, ww, iv)
     }
 
     fn compare(&mut self, op: &str, args: &[Sexp]) -> Result<T, String> {
@@ -729,6 +813,7 @@ impl Tr<'_, '_> {
             "fp" => Ok(T::Fp(print(e))),
             "+" | "-" | "*" => self.arith(h, args),
             "div" | "mod" => self.divmod(h, args),
+            "bmb_tdiv" | "bmb_trem" if args.len() == 2 => self.general_div(h, args),
             "<" | "<=" | ">" | ">=" => self.compare(h, args),
             "=" => self.equal(args),
             "ite" => self.ite(args),

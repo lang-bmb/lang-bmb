@@ -781,6 +781,15 @@ fn bit_methods_compute_rusts_results() {
                         let p = (x as u128 & (u128::MAX >> (128 - i.bits()))).is_power_of_two();
                         want.push_str(&format!("{}\n", u32::from(p)));
                     }
+                    // The bytes both ways, and the integer back from the
+                    // big-endian bytes read both ways (backlog 2N-09c).
+                    let be = x.to_be_bytes();
+                    for b in be.iter().chain(x.to_le_bytes().iter()) {
+                        want.push_str(&format!("{b}\n"));
+                    }
+                    for v in [<$t>::from_be_bytes(be), <$t>::from_le_bytes(be)] {
+                        want.push_str(&format!("{}\n", v as i128));
+                    }
                 }
             }};
         }
@@ -818,6 +827,13 @@ mod m {{
     }}
 
     #[effects(io)]
+    fn bytes(b: [u8; {nb}]) -> () {{
+        for j in 0..b.len() {{
+            print_u64(u64::try_from(b[j]).unwrap());
+        }}
+    }}
+
+    #[effects(io)]
     fn main() -> () {{
         let xs: [{t}; {nx}] = [{xs}];
         let ks: [u32; {nk}] = [{ks}];
@@ -847,6 +863,11 @@ mod m {{
             count(x.trailing_ones());
             show(x.reverse_bits());
             {pow}
+            let be: [u8; {nb}] = x.to_be_bytes();
+            bytes(be);
+            bytes(x.to_le_bytes());
+            show({t}::from_be_bytes(be));
+            show({t}::from_le_bytes(be));
         }}
     }}
 }}
@@ -856,6 +877,7 @@ mod m {{
             } else {
                 "if x.is_power_of_two() { count(1); } else { count(0); }"
             },
+            nb = i.bits() / 8,
             nx = xs.len(),
             xs = lits.join(", "),
             nk = amounts.len(),

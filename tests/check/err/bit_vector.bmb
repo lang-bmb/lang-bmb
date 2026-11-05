@@ -72,4 +72,15 @@ mod bve {
     fn signed_power(x: i32) -> bool {
         x.is_power_of_two()
     }
+
+    // The bytes of a `u32` are a `[u8; 4]` (backlog 2N-09c).
+    #[effects(pure)]
+    fn short_bytes(b: [u8; 2]) -> u32 {
+        u32::from_be_bytes(b)
+    }
+
+    #[effects(pure)]
+    fn bytes_amount(x: u64) -> [u8; 8] {
+        x.to_le_bytes(1)
+    }
 }

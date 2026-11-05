@@ -1,12 +1,13 @@
 //! Soundness fuzzing of `assert(e) by (bit_vector)` sub-proofs (backlog
 //! 2N-03, ADR-0048 §4): random assertions over two variables of `u8` or
-//! `i8` with arithmetic (unbounded in specifications), bit operations,
-//! shifts, `!`, the bit methods, `if`, and a spec fn whose argument may
-//! leave its type. An independent interpreter evaluates the assertion at
-//! every one of the 65,536 points: a verified assertion holds wherever the
-//! spec fn's arguments are in its parameter's type (the guard the enclosing
-//! proof assumes it under), and a counterexample is such a point where it
-//! does not hold.
+//! `i8` with arithmetic (unbounded in specifications), `/` and `%` by
+//! terms (backlog 2N-11), bit operations, shifts, `!`, the bit methods,
+//! `if`, and a spec fn whose argument may leave its type. An independent
+//! interpreter evaluates the assertion at every one of the 65,536 points: a
+//! verified assertion holds wherever every divisor is nonzero and the spec
+//! fn's arguments are in its parameter's type (the guard the enclosing proof
+//! assumes it under), and a counterexample is such a point where it does not
+//! hold.
 //!
 //! The interpreter computes what each operation means in a specification
 //! (ADR-0090): every bit operation, shift, `!` and bit method reads the two's
@@ -56,6 +57,11 @@ enum Bin {
     Add,
     Sub,
     Mul,
+    /// `/` and `%` (backlog 2N-11): truncating on `i8` (Rust's), SMT-LIB's
+    /// Euclidean on `u8` (specification arithmetic may leave the type); a
+    /// zero divisor is outside the guard.
+    Div,
+    Rem,
     And,
     Or,
     Xor,
@@ -142,7 +148,16 @@ fn gen_any(rng: &mut Rng, t: Ty, depth: usize, call: bool) -> E {
     let d = depth - 1;
     match rng.below(11) {
         0..=3 => {
-            let op = [Bin::Add, Bin::Sub, Bin::Mul, Bin::And, Bin::Or, Bin::Xor][rng.below(6)];
+            let op = [
+                Bin::Add,
+                Bin::Sub,
+                Bin::Mul,
+                Bin::And,
+                Bin::Or,
+                Bin::Xor,
+                Bin::Div,
+                Bin::Rem,
+            ][rng.below(8)];
             let a = gen_any(rng, t, d, call);
             let b = gen_any(rng, t, d, call);
             // One operand with a variable fixes the literal's type.
@@ -219,6 +234,8 @@ fn e_text(e: &E) -> String {
                 Bin::Add => "+",
                 Bin::Sub => "-",
                 Bin::Mul => "*",
+                Bin::Div => "/",
+                Bin::Rem => "%",
                 Bin::And => "&",
                 Bin::Or => "|",
                 Bin::Xor => "^",
@@ -303,7 +320,8 @@ struct H {
 struct Point {
     x: i128,
     y: i128,
-    /// Every argument of `h` was in its parameter's type.
+    /// Every divisor was nonzero and every argument of `h` in its
+    /// parameter's type.
     guard: bool,
 }
 
@@ -322,6 +340,14 @@ fn eval_e(e: &E, t: Ty, h: &H, p: &mut Point) -> i128 {
                 Bin::Add => a + b,
                 Bin::Sub => a - b,
                 Bin::Mul => a * b,
+                Bin::Div | Bin::Rem if b == 0 => {
+                    p.guard = false;
+                    0
+                }
+                Bin::Div if t == Ty::I8 => a / b,
+                Bin::Rem if t == Ty::I8 => a % b,
+                Bin::Div => a.div_euclid(b),
+                Bin::Rem => a.rem_euclid(b),
                 Bin::And => t.of_bits(a.rem_euclid(256) & b.rem_euclid(256)),
                 Bin::Or => t.of_bits(a.rem_euclid(256) | b.rem_euclid(256)),
                 Bin::Xor => t.of_bits(a.rem_euclid(256) ^ b.rem_euclid(256)),
@@ -359,12 +385,11 @@ fn eval_e(e: &E, t: Ty, h: &H, p: &mut Point) -> i128 {
                 }
             }
         }
+        // Both branches are evaluated: the sub-proof assumes the guards of
+        // every division and unfolded argument, taken or not.
         E::If(c, a, b) => {
-            if eval_c(c, t, h, p) {
-                eval_e(a, t, h, p)
-            } else {
-                eval_e(b, t, h, p)
-            }
+            let (c, a, b) = (eval_c(c, t, h, p), eval_e(a, t, h, p), eval_e(b, t, h, p));
+            if c { a } else { b }
         }
         E::Call(a) => {
             let v = eval_e(a, t, h, p);
@@ -375,7 +400,10 @@ fn eval_e(e: &E, t: Ty, h: &H, p: &mut Point) -> i128 {
                 y: v,
                 guard: true,
             };
-            eval_e(&h.body, t, h, &mut inner)
+            let r = eval_e(&h.body, t, h, &mut inner);
+            // A division in the body is guarded too.
+            p.guard &= inner.guard;
+            r
         }
     }
 }
@@ -600,7 +628,7 @@ fn bit_vector_sub_proofs_agree_with_the_interpreter() {
         batch(seed, &mut stats);
     }
     eprintln!(
-        "soundness (bit_vector): {} assertions, {} verified, {} counterexamples replayed, {} with a guarded spec fn argument, {} undecided",
+        "soundness (bit_vector): {} assertions, {} verified, {} counterexamples replayed, {} with a guard (a divisor or spec fn argument), {} undecided",
         stats.asserts, stats.verified, stats.cexes, stats.guarded, stats.undecided
     );
     assert!(stats.verified > 0 && stats.cexes > 0);

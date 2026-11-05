@@ -61,7 +61,7 @@ mod bvf {
 
     #[effects(pure)]
     fn signed_division(x: i32) -> i32 {
-        assert(x / 2 <= x || x < 0) by (bit_vector);
+        assert(x % 3 >= 0) by (bit_vector);
         x
     }
 
@@ -145,5 +145,16 @@ mod bvf {
         ensures always_some(r),
     {
         x.checked_shr(k)
+    }
+
+    spec fn low_first(x: u32, b: [u8; 4]) -> bool { b[0] == x & 255 }
+
+    // Big-endian bytes start with the top byte (backlog 2N-09c).
+    #[effects(pure)]
+    #[uses(low_first)]
+    fn first_byte(x: u32) -> (b: [u8; 4])
+        ensures low_first(x, b),
+    {
+        x.to_be_bytes()
     }
 }

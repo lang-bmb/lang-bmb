@@ -17,3 +17,5 @@
 {"code":"E0404","severity":"error","message":"`count_ones` is not defined for `bool`","file":"err/bit_vector.bmb","line":65,"col":25,"end_line":65,"end_col":35,"fix":{"message":"bit methods are methods of the integer types"}}
 {"code":"E0401","severity":"error","message":"expected `u8`, found `u32`","file":"err/bit_vector.bmb","line":66,"col":21,"end_line":66,"end_col":38,"fix":{"message":"convert: `u8::try_from(x).unwrap()` (its range is a proof obligation)"}}
 {"code":"E0404","severity":"error","message":"`is_power_of_two` is not defined for `i32`","file":"err/bit_vector.bmb","line":73,"col":11,"end_line":73,"end_col":26,"fix":{"message":"it is a method of the unsigned integer types (Rust's)"}}
+{"code":"E0401","severity":"error","message":"expected `[u8; 4]`, found `[u8; 2]`","file":"err/bit_vector.bmb","line":79,"col":28,"end_line":79,"end_col":29,"fix":{"message":"the bytes of a `u32` are a `[u8; 4]` (`x.to_be_bytes()`, `x.to_le_bytes()`)"}}
+{"code":"E0405","severity":"error","message":"`to_le_bytes` takes no arguments","file":"err/bit_vector.bmb","line":84,"col":11,"end_line":84,"end_col":22,"fix":{"message":"write `x.to_le_bytes()` (Rust's signature)"}}

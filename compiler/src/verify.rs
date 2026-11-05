@@ -2621,6 +2621,72 @@ pub fn bit_method(m: &str, i: IntTy, a: &str, n: Option<&str>) -> (String, Vec<S
     (t, facts)
 }
 
+/// Byte `k` (array index) of `a.to_be_bytes()` (`le` false) or
+/// `a.to_le_bytes()` of type `i` (backlog 2N-09c): bits `s..s + 8` of `a`'s
+/// two's complement image, `s` counted from the end the order starts at.
+/// `div` by a positive constant is the floor, so the bits are those of the
+/// image for every integer `a`, in `i`'s range or not (ADR-0090). Linear;
+/// checked by `tests/lemmas.rs`.
+pub fn byte_term(i: IntTy, le: bool, a: &str, k: u32) -> String {
+    let n = i.bits() / 8;
+    let s = 8 * if le { k } else { n - 1 - k };
+    if s == 0 {
+        format!("(mod {a} 256)")
+    } else {
+        format!("(mod (div {a} {}) 256)", num(1i128 << s))
+    }
+}
+
+/// `T::from_be_bytes(b)` (`le` false) or `T::from_le_bytes(b)` of the byte
+/// terms `bs` in index order (backlog 2N-09c): the unsigned sum of each
+/// byte's image at its place, read as a value of `i`.
+pub fn from_bytes_term(i: IntTy, le: bool, bs: &[String]) -> String {
+    let n = bs.len() as u32;
+    let parts: Vec<String> = bs
+        .iter()
+        .enumerate()
+        .map(|(k, b)| {
+            let k = k as u32;
+            let s = 8 * if le { k } else { n - 1 - k };
+            if s == 0 {
+                format!("(mod {b} 256)")
+            } else {
+                format!("(* (mod {b} 256) {})", num(1i128 << s))
+            }
+        })
+        .collect();
+    let u = if parts.len() == 1 {
+        parts[0].clone()
+    } else {
+        format!("(+ {})", parts.join(" "))
+    };
+    if i.signed() { wrap_int(i, &u) } else { u }
+}
+
+/// `to_be_bytes`/`to_le_bytes` of `a`: the byte array value.
+fn bytes_val(i: IntTy, le: bool, a: &str) -> Val {
+    let n = i.bits() / 8;
+    let mut arr = "((as const (Array Int Int)) 0)".to_string();
+    for k in 0..n {
+        arr = format!("(store {arr} {k} {})", byte_term(i, le, a, k));
+    }
+    Val::A {
+        elems: arr,
+        len: n.to_string(),
+    }
+}
+
+/// `from_be_bytes`/`from_le_bytes` of the byte array value `v`.
+fn from_bytes_val(i: IntTy, le: bool, v: &Val) -> Val {
+    let Val::A { elems, .. } = v else {
+        panic!("bytes of a non-array {v:?}")
+    };
+    let bs: Vec<String> = (0..i.bits() / 8)
+        .map(|k| format!("(select {elems} {k})"))
+        .collect();
+    Val::S(from_bytes_term(i, le, &bs))
+}
+
 /// `bit_method`'s term over `xa`, the bit-vector of `a`, and `xn`, the
 /// amount modulo `2^w` as a bit-vector of `a`'s width `w` (which `w`
 /// divides, so the amount modulo `w` is its low bits).
@@ -3405,6 +3471,10 @@ impl<'p, 'q> Enc<'p, 'q> {
                         let v = bit_method(w, i, &a, Some(&n)).0;
                         self.checked(e, &format!("(< {n} {})", i.bits()), v)
                     }
+                    m @ ("to_be_bytes" | "to_le_bytes") => {
+                        let i = self.ty(recv).int().expect("an integer method");
+                        bytes_val(i, m == "to_le_bytes", &rv.s())
+                    }
                     "is_power_of_two" => {
                         let i = self.ty(recv).int().expect("an integer method");
                         let c = bit_method("count_ones", i, &rv.s(), None).0;
@@ -3435,6 +3505,12 @@ impl<'p, 'q> Enc<'p, 'q> {
             // `Box::new(v)` is `v` (ADR-0047 §3).
             ExprKind::Call { path, args, .. } if crate::check::is_box_new(path) => {
                 self.spec(&args[0], env, old)
+            }
+            // An integer from its bytes (backlog 2N-09c).
+            ExprKind::Call { path, args, .. } if crate::check::from_bytes_call(path).is_some() => {
+                let (i, le) = crate::check::from_bytes_call(path).expect("a byte conversion");
+                let v = self.spec(&args[0], env, old);
+                from_bytes_val(i, le, &v)
             }
             // `f64::from(x)` (ADR-0061 §4): an integer's `f64`, or `x` itself.
             ExprKind::Call { path, args, .. } if crate::check::is_f64_from(path) => {
@@ -4045,6 +4121,10 @@ impl<'p, 'q> Enc<'p, 'q> {
                         let v = self.bit_method_code(w, i, &rv.s(), Some(&n));
                         self.checked(e, &format!("(< {n} {})", i.bits()), v)
                     }
+                    m @ ("to_be_bytes" | "to_le_bytes") => {
+                        let i = self.ty(recv).int().expect("an integer method");
+                        bytes_val(i, m == "to_le_bytes", &rv.s())
+                    }
                     "is_power_of_two" => {
                         let i = self.ty(recv).int().expect("an integer method");
                         let c = self.bit_method_code("count_ones", i, &rv.s(), None);
@@ -4079,6 +4159,11 @@ impl<'p, 'q> Enc<'p, 'q> {
             }
             ExprKind::Call { path, args, .. } if crate::check::is_box_new(path) => {
                 self.eval(&args[0])
+            }
+            ExprKind::Call { path, args, .. } if crate::check::from_bytes_call(path).is_some() => {
+                let (i, le) = crate::check::from_bytes_call(path).expect("a byte conversion");
+                let v = self.eval(&args[0]);
+                from_bytes_val(i, le, &v)
             }
             // `f64::from(x)` (ADR-0061 §4): exact for a source of 32 bits or
             // fewer; a 64-bit source must be within `2^53` (E0815).
@@ -4623,12 +4708,6 @@ impl<'p, 'q> Enc<'p, 'q> {
         hidden: &mut Vec<String>,
     ) -> Result<Option<crate::subproof::Unfolded>, String> {
         use crate::subproof::Sort;
-        if f == "bmb_tdiv" || f == "bmb_trem" {
-            return Err(
-                "signed `/` and `%` have no bit-vector translation (divide by a constant of an unsigned type)"
-                    .into(),
-            );
-        }
         let prog = self.prog;
         let Some((path, d)) = prog
             .defs

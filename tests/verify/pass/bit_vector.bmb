@@ -224,4 +224,52 @@ mod bvp {
     {
         x.is_power_of_two()
     }
+
+    // An integer's bytes and back (backlog 2N-09c): the big-endian bytes
+    // read back are the value, the first is the top byte, and a value read
+    // from little-endian bytes gives them back.
+    spec fn same_value(x: u32, r: u32) -> bool { r == x }
+
+    #[effects(pure)]
+    #[uses(same_value)]
+    fn bytes_back(x: u32) -> (r: u32)
+        ensures same_value(x, r),
+    {
+        u32::from_be_bytes(x.to_be_bytes())
+    }
+
+    spec fn ends(x: u32, b: [u8; 4]) -> bool { b[0] == x >> 24 && b[3] == x & 255 }
+
+    #[effects(pure)]
+    #[uses(ends)]
+    fn big_end(x: u32) -> (b: [u8; 4])
+        ensures ends(x, b),
+    {
+        x.to_be_bytes()
+    }
+
+    spec fn same_bytes(b: [u8; 2], r: i16) -> bool {
+        r.to_le_bytes()[0] == b[0] && r.to_le_bytes()[1] == b[1]
+    }
+
+    #[effects(pure)]
+    #[uses(same_bytes)]
+    fn from_little(b: [u8; 2]) -> (r: i16)
+        ensures same_bytes(b, r),
+    {
+        i16::from_le_bytes(b)
+    }
+
+    // Signed division and division by a variable (backlog 2N-11): Rust's
+    // truncating `/` and `%`; a divisor that may be zero is an antecedent of
+    // the assumed fact. A variable divisor is a divider circuit for the
+    // solver: cheap at 8 bits, undecided within the limit from 32.
+    #[effects(pure)]
+    fn divisions(x: i32, y: i8, z: i8, u: u8, v: u8) -> i32 {
+        assert(x / 2 <= x || x < 0) by (bit_vector);
+        assert(x % 3 <= 0 || x > 0) by (bit_vector);
+        assert(z != 0 ==> y % z == 0 || (y % z < 0) == (y < 0)) by (bit_vector);
+        assert(v != 0 ==> u % v < v && u / v <= u) by (bit_vector);
+        x
+    }
 }

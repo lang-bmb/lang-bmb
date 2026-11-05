@@ -1684,6 +1684,33 @@ impl<'p> Gen<'p> {
                         CVal::Arr { len, .. } => CVal::Imm(len),
                         _ => unreachable!(),
                     },
+                    // An integer's bytes (backlog 2N-09c): each byte is the
+                    // register shifted right logically and truncated.
+                    m @ ("to_be_bytes" | "to_le_bytes") => {
+                        let i = self.ty(recv).int().expect("an integer method");
+                        let n = i.bits() / 8;
+                        let a = rv.imm();
+                        let ptr = self.alloca(&format!("[{n} x i8]"));
+                        for k in 0..n {
+                            let s = 8 * if m == "to_le_bytes" { k } else { n - 1 - k };
+                            let v = if s == 0 {
+                                a.clone()
+                            } else {
+                                let v = self.t();
+                                self.emit(format!("{v} = lshr i64 {a}, {s}"));
+                                v
+                            };
+                            let p = self.t();
+                            self.emit(format!(
+                                "{p} = getelementptr inbounds [{n} x i8], ptr {ptr}, i64 0, i64 {k}"
+                            ));
+                            self.store_elem("u8", &v, &p);
+                        }
+                        CVal::Arr {
+                            ptr,
+                            len: n.to_string(),
+                        }
+                    }
                     // `Some` of the wrapping shift exactly when the amount is
                     // below the width (backlog 2N-09b).
                     m @ ("checked_shl" | "checked_shr") => {
@@ -1736,6 +1763,42 @@ impl<'p> Gen<'p> {
             }
             ExprKind::Call { path, args, .. } if crate::check::is_f64_from(path) => {
                 self.f64_from(e, &args[0])
+            }
+            // An integer from its bytes (backlog 2N-09c): each byte loaded,
+            // shifted to its place and or-ed in; a narrow signed type is the
+            // sign extension of its `w` bits.
+            ExprKind::Call { path, args, .. } if crate::check::from_bytes_call(path).is_some() => {
+                let (i, le) = crate::check::from_bytes_call(path).expect("a byte conversion");
+                let CVal::Arr { ptr, .. } = self.expr(&args[0]) else {
+                    unreachable!("bytes are an array")
+                };
+                let (w, n) = (i.bits(), i.bits() / 8);
+                let mut acc = "0".to_string();
+                for k in 0..n {
+                    let s = 8 * if le { k } else { n - 1 - k };
+                    let p = self.t();
+                    self.emit(format!(
+                        "{p} = getelementptr inbounds [{n} x i8], ptr {ptr}, i64 0, i64 {k}"
+                    ));
+                    let b = self.load_elem("u8", &p);
+                    let b = if s == 0 {
+                        b
+                    } else {
+                        let t = self.t();
+                        self.emit(format!("{t} = shl i64 {b}, {s}"));
+                        t
+                    };
+                    let r = self.t();
+                    self.emit(format!("{r} = or i64 {acc}, {b}"));
+                    acc = r;
+                }
+                if i.signed() && w < 64 {
+                    let (t, x) = (self.t(), self.t());
+                    self.emit(format!("{t} = trunc i64 {acc} to i{w}"));
+                    self.emit(format!("{x} = sext i{w} {t} to i64"));
+                    acc = x;
+                }
+                CVal::Imm(acc)
             }
             ExprKind::Call { path, args, .. } if crate::check::mem_op(path).is_some() => {
                 self.mem_call(crate::check::mem_op(path).expect("checked"), args)
