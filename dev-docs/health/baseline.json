@@ -1845,7 +1845,7 @@
     },
     {
       "date": "2026-11-05",
-      "reason": "4A-04e: the impact and proof cache tests go through the CLI; S5 16 -> 14",
+      "reason": "4A-04e: the impact and proof cache tests go through the CLI, S5 16 -> 14; also 2N-09b and 2N-10 (ADR-0090): their corpus proofs (shift_image 44,787) raise V4 by 0.6%, V10 +1,888, S4 +99 compiler lines, P2 +73 corpus lines",
       "changed": {
         "V4_rlimit_total": [
           7999335,
