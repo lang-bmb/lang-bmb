@@ -5,6 +5,53 @@
 use std::fs;
 use std::path::Path;
 use std::process::Command;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+/// `bmb ARGS NAMES..` in a new directory holding `files` (name, text): its
+/// success and stdout.
+pub fn run(args: &[&str], files: &[(String, String)]) -> (bool, String) {
+    static N: AtomicUsize = AtomicUsize::new(0);
+    let dir = std::env::temp_dir().join(format!(
+        "bmb-cli-{}-{}",
+        std::process::id(),
+        N.fetch_add(1, Ordering::SeqCst)
+    ));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    for (name, text) in files {
+        fs::write(dir.join(name), text).unwrap();
+    }
+    let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
+        .current_dir(&dir)
+        .args(args)
+        .args(files.iter().map(|(n, _)| n))
+        .output()
+        .unwrap();
+    let _ = fs::remove_dir_all(&dir);
+    (out.status.success(), String::from_utf8(out.stdout).unwrap())
+}
+
+/// The normal form `bmb fmt` printed, back into its units (name, text): each
+/// unit ends at its unindented `}` and the next follows a blank line.
+pub fn units(formatted: &str) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let (mut name, mut text) = (String::new(), String::new());
+    for line in formatted.lines() {
+        if text.is_empty() && line.is_empty() {
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix("mod ") {
+            name = rest.trim_end_matches(" {").to_string();
+        }
+        text.push_str(line);
+        text.push('\n');
+        if line == "}" {
+            out.push((std::mem::take(&mut name), std::mem::take(&mut text)));
+        }
+    }
+    assert!(text.is_empty(), "a unit does not end: {text}");
+    out
+}
 
 /// What `bmb emit-llvm` printed (the verification rows) and the IR it
 /// wrote, when the program checks.

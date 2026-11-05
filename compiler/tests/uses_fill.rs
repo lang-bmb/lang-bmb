@@ -1,10 +1,155 @@
 //! `#[uses]` auto-fill (backlog 2D-05): a failing definition gets the
 //! smallest `#[uses(..)]` list, built from its entries and the hidden
 //! predicates its diagnostics name, that makes it prove; nothing else changes.
+//! Through the CLI (backlog 4A-04): `bmb uses --write`, its report read with
+//! the tests' JSON reader.
 
+mod common;
+
+use std::path::Path;
 use std::process::Command;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
-use bmb::uses_fill::{UsesStatus, fill_uses};
+use common::json::{self, Value};
+
+/// A new directory holding `files`.
+fn workdir(files: &[(String, String)]) -> std::path::PathBuf {
+    static N: AtomicUsize = AtomicUsize::new(0);
+    let dir = std::env::temp_dir().join(format!(
+        "bmb-uses-fill-{}-{}",
+        std::process::id(),
+        N.fetch_add(1, Ordering::SeqCst)
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    for (name, text) in files {
+        std::fs::write(dir.join(name), text).unwrap();
+    }
+    dir
+}
+
+#[derive(Debug, PartialEq)]
+enum UsesStatus {
+    Proved,
+    Unchanged,
+    NotFound,
+}
+
+/// The replacement a row proposes.
+struct Edit {
+    line: u32,
+    col: u32,
+    end_line: u32,
+    end_col: u32,
+    replacement: String,
+}
+
+struct UsesRow {
+    def: String,
+    uses: Vec<String>,
+    status: UsesStatus,
+    verifications: i64,
+    edit: Option<Edit>,
+}
+
+/// What `bmb uses --write` reported and wrote.
+struct UsesOutput {
+    rows: Vec<UsesRow>,
+    files: Vec<(String, String)>,
+    report: String,
+    ok: bool,
+    verifications: i64,
+}
+
+impl UsesOutput {
+    fn ok(&self) -> bool {
+        self.ok
+    }
+
+    fn report(&self, _input: &[(String, String)]) -> String {
+        self.report.clone()
+    }
+}
+
+/// `bmb uses --write [--cache DIR]` on `files`: the report and the files
+/// after it, or the diagnostics of a program that does not check.
+fn fill_uses_cached(
+    files: &[(String, String)],
+    cache: Option<&Path>,
+) -> Result<UsesOutput, String> {
+    let dir = workdir(files);
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_bmb"));
+    cmd.current_dir(&dir).args(["uses", "--write"]);
+    if let Some(c) = cache {
+        cmd.arg("--cache").arg(c);
+    }
+    let out = cmd.args(files.iter().map(|(n, _)| n)).output().unwrap();
+    let report = String::from_utf8(out.stdout).unwrap();
+    let after: Vec<(String, String)> = files
+        .iter()
+        .map(|(n, _)| (n.clone(), std::fs::read_to_string(dir.join(n)).unwrap()))
+        .collect();
+    let _ = std::fs::remove_dir_all(&dir);
+    let rows: Vec<Value> = report.lines().map(|l| json::parse(l).unwrap()).collect();
+    let Some(summary) = rows.last().filter(|r| r.get("summary").is_some()) else {
+        return Err(report);
+    };
+    let num = |v: &Value, k: &str| v.get(k).and_then(Value::as_i64).unwrap();
+    let rows = rows[..rows.len() - 1]
+        .iter()
+        .map(|r| UsesRow {
+            def: r.get("def").and_then(Value::as_str).unwrap().to_string(),
+            uses: match r.get("uses") {
+                Some(Value::Array(xs)) => {
+                    xs.iter().map(|x| x.as_str().unwrap().to_string()).collect()
+                }
+                _ => panic!("no uses: {}", r.to_json()),
+            },
+            status: match r.get("status").and_then(Value::as_str) {
+                Some("proved") => UsesStatus::Proved,
+                Some("unchanged") => UsesStatus::Unchanged,
+                Some("not_found") => UsesStatus::NotFound,
+                other => panic!("status {other:?}"),
+            },
+            verifications: num(r, "verifications"),
+            edit: r.get("fix").map(|f| Edit {
+                line: num(r, "line") as u32,
+                col: num(r, "col") as u32,
+                end_line: num(r, "end_line") as u32,
+                end_col: num(r, "end_col") as u32,
+                replacement: f
+                    .get("replacement")
+                    .and_then(Value::as_str)
+                    .unwrap()
+                    .to_string(),
+            }),
+        })
+        .collect();
+    Ok(UsesOutput {
+        rows,
+        files: after,
+        ok: out.status.success(),
+        verifications: num(summary, "verifications"),
+        report,
+    })
+}
+
+fn fill_uses(files: &[(String, String)]) -> Result<UsesOutput, String> {
+    fill_uses_cached(files, None)
+}
+
+/// `bmb verify` of `files`: success and output.
+fn verify(files: &[(String, String)]) -> (bool, String) {
+    let dir = workdir(files);
+    let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
+        .current_dir(&dir)
+        .arg("verify")
+        .args(files.iter().map(|(n, _)| n))
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+    (out.status.success(), String::from_utf8(out.stdout).unwrap())
+}
 
 const SRC: &str = r#"#[summary("uses fill")]
 mod m {
@@ -70,13 +215,13 @@ fn one(text: &str) -> Vec<(String, String)> {
     vec![("u.bmb".to_string(), text.to_string())]
 }
 
-fn row<'a>(out: &'a bmb::uses_fill::UsesOutput, def: &str) -> &'a bmb::uses_fill::UsesRow {
+fn row<'a>(out: &'a UsesOutput, def: &str) -> &'a UsesRow {
     out.rows.iter().find(|r| r.def == def).unwrap()
 }
 
 fn verified(files: &[(String, String)], def: &str) -> bool {
-    bmb::verify_sources(files)
-        .output
+    verify(files)
+        .1
         .contains(&format!("{{\"def\":\"{def}\",\"status\":\"verified\""))
 }
 
@@ -121,7 +266,7 @@ fn missing_predicates_are_added_and_prove() {
 fn closure_reaches_predicates_named_only_in_revealed_bodies() {
     // The first diagnostics name only `tiny`; `small` shows up once `tiny`'s
     // body is revealed, and both are needed.
-    let first = bmb::verify_sources(&one(SRC)).output;
+    let first = verify(&one(SRC)).1;
     let deep_hint = first
         .lines()
         .find(|l| l.contains("in `m::deep`"))
@@ -242,7 +387,7 @@ fn qualified_predicates_from_other_units() {
             .1
             .contains("#[effects(pure)] #[uses(a::small)] fn inc(")
     );
-    assert!(bmb::verify_sources(&out.files).ok);
+    assert!(verify(&out.files).0);
 }
 
 #[test]
@@ -298,12 +443,13 @@ fn caches_do_not_change_the_result() {
     let dir = std::env::temp_dir().join(format!("bmb-uses-cache-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     for round in ["cold", "warm"] {
-        let out = bmb::uses_fill::fill_uses_cached(&input, Some(&dir)).unwrap();
+        let out = fill_uses_cached(&input, Some(&dir)).unwrap();
         assert_eq!(out.report(&input), plain.report(&input), "{round}");
         assert_eq!(out.files, plain.files, "{round}");
     }
-    assert!(dir.join(bmb::incremental::FILE).exists());
-    assert!(dir.join(bmb::cache::FILE).exists());
+    // The incremental and proof caches.
+    assert!(dir.join("defs").exists());
+    assert!(dir.join("proofs").exists());
     let _ = std::fs::remove_dir_all(&dir);
 }
 

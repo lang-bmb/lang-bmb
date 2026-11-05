@@ -14,6 +14,8 @@
 //! - the normal form proves with the same status lines and lowers to the same
 //!   IR as the original text.
 //!
+//! Through the CLI (backlog 4A-04): `bmb fmt`, `hash`, `check`, `emit-llvm`.
+//!
 //! `BMB_FMT_FUZZ_ITERS` raises the number of generated programs (the first
 //! `BMB_FMT_FUZZ_PROVE` of them, default 2, are also proved and lowered) and
 //! `BMB_FMT_FUZZ_SEED` picks another sequence.
@@ -25,6 +27,7 @@ use std::path::Path;
 
 mod common;
 
+use common::cli;
 use common::scalar::*;
 
 type Files = Vec<(String, String)>;
@@ -137,9 +140,9 @@ fn one(text: String) -> Files {
 }
 
 fn normal(files: &Files) -> BTreeMap<String, String> {
-    match bmb::format_sources(files) {
-        Ok(units) => units,
-        Err(d) => panic!("program must check:\n{d}\n{files:?}"),
+    match cli::run(&["fmt"], files) {
+        (true, text) => cli::units(&text).into_iter().collect(),
+        (false, d) => panic!("program must check:\n{d}\n{files:?}"),
     }
 }
 
@@ -152,11 +155,9 @@ fn normal_files(files: &Files) -> Files {
 }
 
 fn hashes(files: &Files) -> Vec<String> {
-    let mut v: Vec<String> = bmb::hash_sources(files)
-        .unwrap()
-        .lines()
-        .map(String::from)
-        .collect();
+    let (ok, out) = cli::run(&["hash"], files);
+    assert!(ok, "{out}");
+    let mut v: Vec<String> = out.lines().map(String::from).collect();
     v.sort();
     v
 }
@@ -344,7 +345,7 @@ fn check_renames(rng: &mut Rng, what: &str, base: &Files, max: usize) -> usize {
             .map(|(n, t)| (n.clone(), rename_word(t, w, &to, &mut Vec::new())))
             .collect();
         // Built-in names and keywords do not rename (the program stops checking).
-        if !bmb::check_sources(&files).ok {
+        if !cli::run(&["check"], &files).0 {
             continue;
         }
         let got = ids(&files, str::to_string);
@@ -415,7 +416,7 @@ fn check_edit(rng: &mut Rng, what: &str, base: &Files) -> bool {
             changed[li] = format!("{}{}{}", &line[..at], n + 1, &line[at + digits..]);
             let mut files = nf.clone();
             files[fi].1 = changed.join("\n") + "\n";
-            if !bmb::check_sources(&files).ok {
+            if !cli::run(&["check"], &files).0 {
                 continue;
             }
             let got = ids(&files, str::to_string);
@@ -441,21 +442,25 @@ fn statuses(out: &str) -> Vec<String> {
 fn check_proof_and_ir(what: &str, base: &Files) {
     let nf = normal_files(base);
     // Two independent proofs of the same program: run them side by side.
+    static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let k = N.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let dir = std::env::temp_dir().join(format!("bmb-fmt-fuzz-{}-{k}", std::process::id()));
     let (a, b) = std::thread::scope(|s| {
-        let a = s.spawn(|| bmb::with_stack(|| bmb::emit_llvm_sources(base)));
-        let b = bmb::with_stack(|| bmb::emit_llvm_sources(&nf));
+        let a = s.spawn(|| cli::emit_llvm(base, &dir.join("a"), None, false));
+        let b = cli::emit_llvm(&nf, &dir.join("b"), None, false);
         (a.join().unwrap(), b)
     });
+    let _ = fs::remove_dir_all(&dir);
     // A query the wall-clock backstop ended makes the line machine-dependent
     // and says so (`"backstop"`, backlog INF-26).
     assert_eq!(
-        statuses(&a.verify.output),
-        statuses(&b.verify.output),
+        statuses(&a.output),
+        statuses(&b.output),
         "{what}: status lines differ after fmt (a `backstop` field: a query reached the wall-clock backstop before its rlimit)\n{base:?}"
     );
-    assert!(a.ir.is_some(), "{what}: no IR\n{}", a.verify.output);
+    assert!(a.ir.is_some(), "{what}: no IR\n{}", a.output);
+    // The kept checks are in the IR.
     assert_eq!(a.ir, b.ir, "{what}: IR differs after fmt");
-    assert_eq!(a.checks, b.checks, "{what}: kept checks differ after fmt");
 }
 
 #[test]

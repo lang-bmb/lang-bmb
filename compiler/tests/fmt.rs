@@ -1,33 +1,12 @@
 //! Normal form and definition hashes (ADR-0019, backlog 1D-02, 1D-03).
 //! Through the CLI (backlog 4A-04): `bmb fmt`, `bmb verify`, `bmb hash`.
 
+mod common;
+
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
-/// `bmb ARGS NAMES..` in a new directory holding `files` (name, text): its
-/// success and stdout.
-fn bmb(args: &[&str], files: &[(String, String)]) -> (bool, String) {
-    static N: AtomicUsize = AtomicUsize::new(0);
-    let dir = std::env::temp_dir().join(format!(
-        "bmb-fmt-{}-{}",
-        std::process::id(),
-        N.fetch_add(1, Ordering::SeqCst)
-    ));
-    fs::create_dir_all(&dir).unwrap();
-    for (name, text) in files {
-        fs::write(dir.join(name), text).unwrap();
-    }
-    let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
-        .current_dir(&dir)
-        .args(args)
-        .args(files.iter().map(|(n, _)| n))
-        .output()
-        .unwrap();
-    let _ = fs::remove_dir_all(&dir);
-    (out.status.success(), String::from_utf8(out.stdout).unwrap())
-}
+use common::cli::run as bmb;
 
 /// `bmb verify` of `files`: success and output.
 fn verify(files: &[(String, String)]) -> (bool, String) {
