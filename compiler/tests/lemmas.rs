@@ -1017,3 +1017,69 @@ fn bit_vector_goals_and_guards() {
         }
     }
 }
+
+/// The text terms of the prover (ADR-0050 §3, backlog 2U-02) against
+/// Rust: `is_char_boundary` on valid UTF-8 at every position (the byte read
+/// is the term's only array access, given as `b`), `char::from_u32`'s
+/// scalar values and `len_utf8`.
+#[test]
+fn text_terms_are_rusts() {
+    let texts = [
+        "",
+        "a",
+        "é",
+        "aé€😀",
+        "\u{7f}\u{80}\u{7ff}\u{800}\u{ffff}\u{10000}\u{10ffff}",
+    ];
+    let t = bmb::verify::text_boundary("A", "N", "I").replace("(select A I)", "b");
+    let term = smt::parse(&t).unwrap();
+    for s in texts {
+        let bytes = s.as_bytes();
+        for i in 0..=bytes.len() + 2 {
+            // Past the end the byte is anything: the term must not read it.
+            for b in [bytes.get(i).copied().unwrap_or(0x80), 0x41] {
+                if i < bytes.len() && b != bytes[i] {
+                    continue;
+                }
+                let env: Env = [
+                    ("b".to_string(), V::I(i128::from(b))),
+                    ("I".to_string(), V::I(i as i128)),
+                    ("N".to_string(), V::I(bytes.len() as i128)),
+                ]
+                .into();
+                assert_eq!(
+                    boolean(eval_in(&term, &env)),
+                    s.is_char_boundary(i),
+                    "{s:?} at {i}"
+                );
+            }
+        }
+    }
+    let scalar = smt::parse(&bmb::verify::char_scalar("c")).unwrap();
+    let len = smt::parse(&bmb::verify::char_utf8_len("c")).unwrap();
+    let edges = [
+        0,
+        0x7f,
+        0x80,
+        0x7ff,
+        0x800,
+        0xd7ff,
+        0xd800,
+        0xdfff,
+        0xe000,
+        0xffff,
+        0x10000,
+        0x10ffff,
+        0x110000,
+        u32::MAX,
+    ];
+    let values = (0..0x11_2000u32).step_by(97).chain(edges);
+    for c in values {
+        let env: Env = [("c".to_string(), V::I(i128::from(c)))].into();
+        let ch = char::from_u32(c);
+        assert_eq!(boolean(eval_in(&scalar, &env)), ch.is_some(), "{c:#x}");
+        if let Some(ch) = ch {
+            assert_eq!(int(eval_in(&len, &env)), ch.len_utf8() as i128, "{c:#x}");
+        }
+    }
+}

@@ -1,0 +1,15 @@
+{"code":"E0820","severity":"error","message":"the range may not lie on character boundaries of the string in `sf::unguarded`; counterexample: t = [128, 128] (len 2)","file":"fail/strings.bmb","line":12,"col":19,"end_line":12,"end_col":26,"fix":{"message":"check `s.is_char_boundary(a) && s.is_char_boundary(b) && a <= b` before `&s[a..b]`, or require it"}}
+{"code":"E0820","severity":"error","message":"the range may not lie on character boundaries of the string in `sf::mid_char`","file":"fail/strings.bmb","line":21,"col":15,"end_line":21,"end_col":24,"fix":{"message":"check `s.is_char_boundary(a) && s.is_char_boundary(b) && a <= b` before `&s[a..b]`, or require it"}}
+{"code":"E0820","severity":"error","message":"the range may not lie on character boundaries of the string in `sf::reversed`; counterexample: t = [0, 38, 0] (len 3), a = 2, b = 1","file":"fail/strings.bmb","line":28,"col":19,"end_line":28,"end_col":26,"fix":{"message":"check `s.is_char_boundary(a) && s.is_char_boundary(b) && a <= b` before `&s[a..b]`, or require it"}}
+{"code":"E0816","severity":"error","message":"`push_str` may exceed the maximum length of a `String` in `sf::unbounded`; counterexample: s = [2] (len 1), t = [2, 2, 74, 2, ..] (len 9223372036854775807)","file":"fail/strings.bmb","line":37,"col":9,"end_line":37,"end_col":22}
+{"code":"E0802","severity":"error","message":"postcondition `valid` may not hold in `sf::ascii_is_valid`","file":"fail/strings.bmb","line":51,"col":17,"end_line":51,"end_col":25}
+{"code":"E0802","severity":"error","message":"postcondition `before` may not hold in `sf::wrong_order`","file":"fail/strings.bmb","line":66,"col":17,"end_line":66,"end_col":34}
+{"code":"E0802","severity":"error","message":"postcondition `is_some` may not hold in `sf::surrogate`","file":"fail/strings.bmb","line":82,"col":17,"end_line":82,"end_col":47}
+{"def":"sf::ascii_is_valid","status":"failed","obligations":2,"failed":1,"rlimit":1194,"rlimit_max":1065}
+{"def":"sf::mid_char","status":"failed","obligations":1,"failed":1,"rlimit":243,"rlimit_max":243}
+{"def":"sf::reversed","status":"failed","obligations":1,"failed":1,"rlimit":3157,"rlimit_max":3157}
+{"def":"sf::surrogate","status":"failed","obligations":1,"failed":1,"rlimit":143,"rlimit_max":143}
+{"def":"sf::take","status":"verified","obligations":0,"failed":0,"rlimit":0,"rlimit_max":0}
+{"def":"sf::unbounded","status":"failed","obligations":1,"failed":1,"rlimit":2118,"rlimit_max":2118}
+{"def":"sf::unguarded","status":"failed","obligations":1,"failed":1,"rlimit":1392,"rlimit_max":1392}
+{"def":"sf::wrong_order","status":"failed","obligations":1,"failed":1,"rlimit":2407,"rlimit_max":2407}

@@ -1132,6 +1132,10 @@ impl<'a> Printer<'a> {
             ExprKind::Float(b) => crate::lexer::float_text(*b),
             ExprKind::ByteLit(v) => crate::lexer::byte_text(&[*v], '\''),
             ExprKind::ByteStr(v) => crate::lexer::byte_text(v, '"'),
+            ExprKind::StrLit(t) => crate::lexer::str_text(t, '"'),
+            ExprKind::CharLit(c) => {
+                crate::lexer::str_text(&char::from_u32(*c).unwrap_or('\0').to_string(), '\'')
+            }
             ExprKind::Bool(b) => b.to_string(),
             ExprKind::Unit => "()".into(),
             ExprKind::Return(None) => "return".into(),

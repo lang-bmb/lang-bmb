@@ -278,6 +278,12 @@ pub enum TypeKind {
     F64,
     Bool,
     Unit,
+    /// A Unicode scalar value (ADR-0050 §1).
+    Char,
+    /// The owned UTF-8 string `String` (ADR-0050 §1): a move type.
+    String,
+    /// `str`, only behind a reference: `&str` (ADR-0050 §1).
+    Str,
     Array(Box<Type>, u64),
     Slice(Box<Type>),
     Ref {
@@ -537,6 +543,10 @@ pub enum ExprKind {
     ByteLit(u8),
     /// `b"..."`: a `&[u8]`, only as a call argument (ADR-0044 §2).
     ByteStr(Vec<u8>),
+    /// `"..."`: a `&str`, only as a call argument (ADR-0050 §1).
+    StrLit(String),
+    /// `'a'`: a `char`, the scalar value (ADR-0050 §1).
+    CharLit(u32),
     Bool(bool),
     Unit,
     /// A local name (single segment).

@@ -10,7 +10,10 @@ use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
 
 mod invariants;
+mod text;
 use invariants::Boundary;
+/// The text terms (ADR-0050 §3), for `tests/lemmas.rs`.
+pub use text::{boundary as text_boundary, scalar as char_scalar, utf8_len as char_utf8_len};
 
 use crate::ast::*;
 use crate::cache::{self, ProofCache};
@@ -61,9 +64,87 @@ pub struct Tables {
     pub external: BTreeSet<String>,
     /// The executable calls of each definition (the checker's call graph).
     pub calls: BTreeMap<String, BTreeSet<String>>,
+    /// The expressions whose value is text (`String`, `&String`, `&str`,
+    /// ADR-0050): the prover and the code generator see their bytes
+    /// (`lowered`) and tell text operations from byte ones by this.
+    pub text: BTreeSet<(u32, u32, u32)>,
 }
 
 impl Tables {
+    /// The tables with text as bytes and `char` as `u32` (ADR-0050 §3,
+    /// §4, `check::lower`): what the prover and the code generator see.
+    pub fn lowered(&self) -> Tables {
+        let low = crate::check::lower;
+        let mut adts = self.adts.clone();
+        for a in adts.values_mut() {
+            match &mut a.kind {
+                crate::check::AdtKind::Struct(fs) => {
+                    for (_, ft) in fs.iter_mut() {
+                        *ft = low(ft);
+                    }
+                }
+                crate::check::AdtKind::Enum(vs) => {
+                    for (_, ps) in vs.iter_mut() {
+                        for pt in ps.iter_mut() {
+                            *pt = low(pt);
+                        }
+                    }
+                }
+            }
+        }
+        let mut fns = self.fns.clone();
+        for s in fns.values_mut() {
+            s.params = s.params.iter().map(low).collect();
+            s.ret = low(&s.ret);
+        }
+        let mut trait_impls = self.trait_impls.clone();
+        for i in &mut trait_impls {
+            i.head = low(&i.head);
+        }
+        Tables {
+            fns,
+            types: self.types.iter().map(|(k, t)| (*k, low(t))).collect(),
+            recursive: self.recursive.clone(),
+            adts,
+            locals: self
+                .locals
+                .iter()
+                .map(|(p, m)| {
+                    (
+                        p.clone(),
+                        m.iter().map(|(n, t)| (n.clone(), low(t))).collect(),
+                    )
+                })
+                .collect(),
+            moves: self.moves.clone(),
+            targs: self
+                .targs
+                .iter()
+                .map(|(k, ts)| (*k, ts.iter().map(low).collect()))
+                .collect(),
+            trait_impls,
+            insts: self
+                .insts
+                .iter()
+                .map(|(k, (g, sub))| {
+                    (
+                        k.clone(),
+                        (
+                            g.clone(),
+                            sub.iter().map(|(n, t)| (n.clone(), low(t))).collect(),
+                        ),
+                    )
+                })
+                .collect(),
+            inst_types: self.inst_types.iter().map(low).collect(),
+            effect_needs: self.effect_needs.clone(),
+            may_untrusted: self.may_untrusted.clone(),
+            external: self.external.clone(),
+            calls: self.calls.clone(),
+            text: self.text.clone(),
+        }
+    }
+
     /// The tables as the encoder sees them (ADR-0031 §3): a `Vec<T>` is a
     /// slice value, the pair of its element array and length, and
     /// `&Vec<T>` / `&mut Vec<T>` are slice references. The operations that
@@ -73,6 +154,7 @@ impl Tables {
     /// and type arguments.
     fn slice_view(&self) -> Tables {
         fn view(t: &TypeKind) -> TypeKind {
+            let t = &crate::check::lower(t);
             let sub = |x: &Type| Type {
                 kind: view(&x.kind),
                 span: x.span,
@@ -162,6 +244,7 @@ impl Tables {
             may_untrusted: self.may_untrusted.clone(),
             external: self.external.clone(),
             calls: self.calls.clone(),
+            text: self.text.clone(),
         }
     }
 }
@@ -3414,6 +3497,12 @@ impl<'p, 'q> Enc<'p, 'q> {
                 elems: byte_array(v),
                 len: v.len().to_string(),
             },
+            // A string literal: its UTF-8 bytes (ADR-0050 §3).
+            ExprKind::StrLit(t) => Val::A {
+                elems: byte_array(t.as_bytes()),
+                len: t.len().to_string(),
+            },
+            ExprKind::CharLit(c) => Val::S(c.to_string()),
             ExprKind::Bool(b) => Val::S(b.to_string()),
             ExprKind::Unit => Val::Unit,
             ExprKind::Var(id) if id.name == "None" && !env.contains_key("None") => {
@@ -3439,6 +3528,14 @@ impl<'p, 'q> Enc<'p, 'q> {
                     Some(i) => Val::S(not_term(i, &image(i, x, &v))),
                     None => Val::S(format!("(not {v})")),
                 }
+            }
+            // Text compares by bytes (ADR-0050 §2).
+            ExprKind::Binary(op, l, r)
+                if op.is_cmp() && (self.is_text_expr(l) || self.is_text_expr(r)) =>
+            {
+                let a = self.spec(l, env, old);
+                let b = self.spec(r, env, old);
+                Val::S(self.text_cmp_spec(*op, &a, &b))
             }
             // Structural `==` (ADR-0026 §2): field by field; a value that
             // holds an array compares its elements below the length only,
@@ -3511,6 +3608,15 @@ impl<'p, 'q> Enc<'p, 'q> {
                     _ => unreachable!("bit operations are above"),
                 })
             }
+            // `&s[a..b]` (ADR-0050 §2): the bytes between.
+            ExprKind::Index { base, index } if matches!(index.kind, ExprKind::Range { .. }) => {
+                let ExprKind::Range { lo, hi } = &index.kind else {
+                    unreachable!("a range")
+                };
+                let bv = self.spec(base, env, old);
+                let (lo, hi) = (self.spec(lo, env, old).s(), self.spec(hi, env, old).s());
+                self.sub_text(&bv, &lo, &hi)
+            }
             ExprKind::Index { base, index } => {
                 let bv = self.spec(base, env, old);
                 let i = self.spec(index, env, old).s();
@@ -3527,7 +3633,15 @@ impl<'p, 'q> Enc<'p, 'q> {
                         Val::A { len, .. } | Val::Arr { len, .. } => Val::S(len),
                         _ => panic!("len of scalar"),
                     },
-                    "as_slice" | "as_mut_slice" => rv,
+                    "as_slice" | "as_mut_slice" | "as_str" | "as_bytes" => rv,
+                    "is_char_boundary" => {
+                        let i = self.spec(&args[0], env, old).s();
+                        let Val::A { elems, len } = rv else {
+                            panic!("is_char_boundary of {rv:?}")
+                        };
+                        Val::S(text::boundary(&elems, &len, &i))
+                    }
+                    "len_utf8" => Val::S(text::utf8_len(&rv.s())),
                     m if value_ty(&self.ty(recv)) == &TypeKind::F64 => {
                         let b = args.first().map(|x| self.spec(x, env, old).s());
                         Val::S(f64_method(m, &rv.s(), b.as_deref()))
@@ -3583,6 +3697,16 @@ impl<'p, 'q> Enc<'p, 'q> {
                 self.spec(&args[0], env, old)
             }
             // An integer from its bytes (backlog 2N-09c).
+            // `u32::from(c)`: a character's scalar value (ADR-0050 §2).
+            ExprKind::Call { path, args, .. } if is_char_value(path) => {
+                self.spec(&args[0], env, old)
+            }
+            ExprKind::Call { path, args, .. }
+                if path.len() == 2 && path[0].name == "char" && path[1].name == "from_u32" =>
+            {
+                let x = self.spec(&args[0], env, old).s();
+                self.char_from_u32(e, x)
+            }
             ExprKind::Call { path, args, .. } if crate::check::from_bytes_call(path).is_some() => {
                 let (i, le) = crate::check::from_bytes_call(path).expect("a byte conversion");
                 let v = self.spec(&args[0], env, old);
@@ -3970,6 +4094,12 @@ impl<'p, 'q> Enc<'p, 'q> {
                 elems: byte_array(v),
                 len: v.len().to_string(),
             },
+            // A string literal: its UTF-8 bytes (ADR-0050 §3).
+            ExprKind::StrLit(t) => Val::A {
+                elems: byte_array(t.as_bytes()),
+                len: t.len().to_string(),
+            },
+            ExprKind::CharLit(c) => Val::S(c.to_string()),
             ExprKind::Bool(b) => Val::S(b.to_string()),
             ExprKind::Unit => Val::Unit,
             ExprKind::Var(id) if id.name == "None" && !self.vars.contains_key("None") => {
@@ -4023,6 +4153,14 @@ impl<'p, 'q> Enc<'p, 'q> {
                 self.pc.truncate(n);
                 self.pc.extend(guarded(&guard, &facts));
                 Val::S(format!("({name} {lt} {rt})"))
+            }
+            // Text compares by bytes (ADR-0050 §2).
+            ExprKind::Binary(op, l, r)
+                if op.is_cmp() && (self.is_text_expr(l) || self.is_text_expr(r)) =>
+            {
+                let a = self.eval(l);
+                let b = self.eval(r);
+                Val::S(self.text_cmp_code(*op, &a, &b))
             }
             ExprKind::Binary(op, l, r) if self.ty(l) == TypeKind::F64 => {
                 let lt = self.eval(l).s();
@@ -4116,6 +4254,12 @@ impl<'p, 'q> Enc<'p, 'q> {
                 }
                 Val::S(t)
             }
+            ExprKind::Index { base, index } if matches!(index.kind, ExprKind::Range { .. }) => {
+                let ExprKind::Range { lo, hi } = &index.kind else {
+                    unreachable!("a range")
+                };
+                self.str_slice(e, base, lo, hi)
+            }
             ExprKind::Index { base, index } => {
                 let bv = self.eval(base);
                 let i = self.eval(index).s();
@@ -4183,7 +4327,23 @@ impl<'p, 'q> Enc<'p, 'q> {
                         Val::A { len, .. } | Val::Arr { len, .. } => Val::S(len),
                         _ => panic!("len of scalar"),
                     },
-                    "as_slice" | "as_mut_slice" | "clone" => rv,
+                    "as_slice" | "as_mut_slice" | "clone" | "as_str" | "as_bytes" => rv,
+                    // Text (ADR-0050 §2): its bytes change by characters.
+                    m @ ("push_str" | "push") if self.is_text_expr(recv) => {
+                        self.text_change(e, recv, rv, m, args)
+                    }
+                    "is_char_boundary" => {
+                        let i = self.eval(&args[0]).s();
+                        let Val::A { elems, len } = rv else {
+                            panic!("is_char_boundary of {rv:?}")
+                        };
+                        Val::S(text::boundary(&elems, &len, &i))
+                    }
+                    "len_utf8" => {
+                        let c = rv.s();
+                        self.pc.push(text::scalar(&c));
+                        Val::S(text::utf8_len(&c))
+                    }
                     m @ ("push" | "pop" | "truncate") => self.vec_change(e, recv, rv, m, args),
                     "copy_within" => self.copy_within(e, recv, rv, args),
                     m if value_ty(&self.ty(recv)) == &TypeKind::F64 => {
@@ -4228,10 +4388,21 @@ impl<'p, 'q> Enc<'p, 'q> {
             }
             ExprKind::Call { path, args, .. }
                 if path.len() == 2
-                    && path[0].name == "Vec"
+                    && matches!(path[0].name.as_str(), "Vec" | "String")
                     && matches!(path[1].name.as_str(), "new" | "with_capacity") =>
             {
                 self.vec_new(e, path, args)
+            }
+            // Text built from text, and `char` (ADR-0050 §2).
+            ExprKind::Call { path, args, .. }
+                if crate::check::text_builtin(path) || is_char_value(path) =>
+            {
+                let v = self.eval(&args[0]);
+                match path[1].name.as_str() {
+                    "from_utf8" => self.string_from_utf8(e, v),
+                    "from_u32" => self.char_from_u32(e, v.s()),
+                    _ => v,
+                }
             }
             ExprKind::Call { path, args, .. } if crate::check::is_box_new(path) => {
                 self.eval(&args[0])
@@ -5950,7 +6121,7 @@ impl<'p, 'q> Enc<'p, 'q> {
             assert!(
                 matches!(
                     target.as_str(),
-                    "print_i64" | "print_u64" | "print_bytes" | "print_f64"
+                    "print_i64" | "print_u64" | "print_bytes" | "print_str" | "print_f64"
                 ),
                 "unresolved call in {}",
                 self.path
@@ -6249,6 +6420,8 @@ fn find_let_expr(e: &Expr, name: &str, out: &mut Option<TypeKind>) {
         | ExprKind::ByteLit(_)
         | ExprKind::Float(_)
         | ExprKind::ByteStr(_)
+        | ExprKind::StrLit(_)
+        | ExprKind::CharLit(_)
         | ExprKind::Bool(_)
         | ExprKind::Unit
         | ExprKind::Var(_)
@@ -6933,9 +7106,10 @@ fn needed_decls(
     // The `f64` operations the query applies, uninterpreted (ADR-0061 §5;
     // none in a query without them).
     format!(
-        "{head}{PRELUDE}\n{}{}{out}",
+        "{head}{PRELUDE}\n{}{}{}{out}",
         crate::subproof::helper_defs(text),
-        f64_decls(text, false)
+        f64_decls(text, false),
+        text::text_decls(text)
     )
 }
 
@@ -8127,7 +8301,16 @@ fn verify_pass(
                             if !cex.is_empty() {
                                 msg.push_str(&format!("; counterexample: {cex}"));
                             }
-                            diags.push(with_hint(Diag::new(o.code, o.span, msg), &hint, false));
+                            let d = with_hint(Diag::new(o.code, o.span, msg), &hint, false);
+                            // A slice off the boundaries (ADR-0050 §2): the guard that proves it.
+                            diags.push(if d.fix.is_none() && o.code == "E0820" {
+                                d.fix(
+                                    "check `s.is_char_boundary(a) && s.is_char_boundary(b) && a <= b` before `&s[a..b]`, or require it",
+                                    None,
+                                )
+                            } else {
+                                d
+                            });
                         }
                         Err(why) => diags.push(f64_undecided(o, path, &why)),
                     }
@@ -9431,6 +9614,12 @@ fn show_leaves<'a>(
     }
 }
 
+/// `u32::from(c)` of a `char` (ADR-0050 §2): its scalar value. The
+/// checker allows `u32::from` only for a `char` (E0212).
+fn is_char_value(path: &[Ident]) -> bool {
+    path.len() == 2 && path[0].name == "u32" && path[1].name == "from"
+}
+
 fn is_scalar_ty(t: &TypeKind) -> bool {
     matches!(t, TypeKind::Int(_) | TypeKind::Bool)
 }
@@ -9928,5 +10117,21 @@ mod m {
             inst,
             "(assert (=> true (= (|m::is_some| (|Option<i64>::Some| (- 5))) ((_ is |Option<i64>::Some|) (|Option<i64>::Some| (- 5))))))\n"
         );
+    }
+}
+
+#[cfg(test)]
+mod nonlinear_tests {
+    use super::has_nonlinear_product;
+
+    /// The syntactic test behind the nonlinear hint (moved from
+    /// `tests/verify.rs`: it tests a function of this file, backlog 4A-04).
+    #[test]
+    fn nonlinear_detection() {
+        assert!(has_nonlinear_product("(assert (= r (* x y)))"));
+        assert!(has_nonlinear_product("(assert (> (+ 1 (* x x x)) 0))"));
+        assert!(!has_nonlinear_product("(assert (= r (* 2 x)))"));
+        assert!(!has_nonlinear_product("(assert (= r (* x (- 3))))"));
+        assert!(!has_nonlinear_product("(assert (|f| x y))"));
     }
 }

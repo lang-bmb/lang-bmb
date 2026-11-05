@@ -1,0 +1,122 @@
+#[summary("문자열과 그 주변의 Rust 습관 (ADR-0050, backlog 2U-01)")]
+mod st {
+    #[effects(pure)]
+    fn take(t: &str) -> usize {
+        t.len()
+    }
+
+    #[effects(alloc)]
+    fn owned() -> String {
+        String::from("ok")
+    }
+
+    #[effects(pure)]
+    fn literal_value() -> usize {
+        let n: usize = take("fine");
+        "no".len() + n
+    }
+
+    #[effects(alloc)]
+    fn deref_coercion(s: String) -> usize {
+        take(&s) + take(s.as_str())
+    }
+
+    #[effects(alloc)]
+    fn passed_owned(s: String) -> usize {
+        take(s)
+    }
+
+    #[effects(pure)]
+    fn as_str_value(s: &String) -> usize {
+        let t: usize = s.as_str().len();
+        t
+    }
+
+    #[effects(alloc)]
+    fn read_only(t: &str) -> () {
+        t.push_str("x");
+    }
+
+    #[effects(alloc)]
+    fn immutable() -> () {
+        let s: String = String::new();
+        s.push('a');
+    }
+
+    #[effects(pure)]
+    fn concat(a: &str, b: &str) -> bool {
+        a + b == a
+    }
+
+    #[effects(pure)]
+    fn no_iterators(t: &str) -> usize {
+        t.chars().count()
+    }
+
+    #[effects(alloc)]
+    fn to_string(t: &str) -> String {
+        t.to_string()
+    }
+
+    #[effects(pure)]
+    fn char_for_byte() -> u8 {
+        'é'
+    }
+
+    #[effects(pure)]
+    fn byte_for_char() -> char {
+        b'a'
+    }
+
+    #[effects(alloc)]
+    fn push_byte(s: &mut String) -> () {
+        s.push(b'a');
+    }
+
+    #[effects(pure)]
+    fn mut_str(t: &mut str) -> () {}
+
+    #[effects(pure)]
+    fn char_arith(c: char) -> char {
+        c + 1
+    }
+
+    spec fn spec_owned(s: String) -> bool {
+        s.len() > 0
+    }
+
+    spec fn spec_push(s: &String) -> bool {
+        s.clone().len() > 0
+    }
+
+    #[effects(pure)]
+    fn range_value(t: &str) -> usize {
+        let r: usize = t[0..1].len();
+        r
+    }
+
+    #[effects(pure)]
+    fn bytes_not_text(v: &[u8]) -> usize {
+        take(&v[0..1])
+    }
+
+    #[effects(alloc)]
+    fn arity() -> String {
+        String::new(1)
+    }
+
+    #[effects(pure)]
+    fn escapes() -> usize {
+        take("\q \x80 \u{d800} \u{110000}")
+    }
+
+    #[effects(pure)]
+    fn two_chars() -> char {
+        'ab'
+    }
+
+    #[effects(io)]
+    fn bytes_for_text() -> () {
+        print_bytes("text");
+    }
+}

@@ -1,0 +1,86 @@
+#[summary("문자열: 따르지 않는 것 (ADR-0050 §3, backlog 2U-02)")]
+mod sf {
+    #[effects(pure)]
+    fn take(t: &str) -> usize {
+        t.len()
+    }
+
+    // No boundary is known: the slice may cut a character (E0820).
+    #[effects(pure)]
+    fn unguarded(t: &str) -> usize {
+        if t.len() >= 2 {
+            take(&t[0..1])
+        } else {
+            0
+        }
+    }
+
+    // A boundary of a literal: `é` is two bytes, so 1 is inside it.
+    #[effects(pure)]
+    fn mid_char() -> usize {
+        take(&"é"[0..1])
+    }
+
+    // The bounds may be reversed.
+    #[effects(pure)]
+    fn reversed(t: &str, a: usize, b: usize) -> usize {
+        if t.is_char_boundary(a) && t.is_char_boundary(b) {
+            take(&t[a..b])
+        } else {
+            0
+        }
+    }
+
+    // A `String` has a maximum length (E0816).
+    #[effects(alloc)]
+    fn unbounded(s: &mut String, t: &str) -> () {
+        s.push_str(t);
+    }
+
+    spec fn valid(r: Result<String, Vec<u8>>) -> bool {
+        match r {
+            Ok(s) => true,
+            Err(v) => false,
+        }
+    }
+
+    // UTF-8 validity is not modelled: `from_utf8` may be either.
+    #[effects(alloc)]
+    #[uses(valid)]
+    fn ascii_is_valid() -> (r: Result<String, Vec<u8>>)
+        ensures valid(r),
+    {
+        let mut v: Vec<u8> = Vec::new();
+        v.push(97);
+        String::from_utf8(v)
+    }
+
+    spec fn before(t: &str, u: &str) -> bool {
+        t < u
+    }
+
+    // `"b" < "ab"` is false: the first bytes decide.
+    #[effects(pure)]
+    #[uses(before)]
+    fn wrong_order() -> bool
+        ensures before("b", "ab"),
+    {
+        true
+    }
+
+    spec fn is_some(r: Option<char>) -> bool {
+        match r {
+            None => false,
+            Some(c) => true,
+        }
+    }
+
+    // A surrogate is no scalar value.
+    #[effects(pure)]
+    #[uses(is_some)]
+    fn surrogate() -> bool
+        ensures is_some(char::from_u32(57343)),
+    {
+        true
+    }
+}

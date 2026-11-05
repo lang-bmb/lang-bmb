@@ -46,10 +46,10 @@ pub const CODES: &[(&str, &str)] = &[
         "`T::try_from(x).expect(..)` is written `.unwrap()`",
     ),
     ("E0214", "`use` is not used: names are written in full"),
-    // E0218-E0219: Rust habits around `Vec` (ADR-0031 §7)
+    // E0218-E0219: Rust habits around `Vec` (ADR-0031 §7) and `String`
     (
         "E0218",
-        "a `Vec` is passed where a slice is expected: write `v.as_slice()`",
+        "a `Vec` or `String` is passed where a slice or `&str` is expected: write `v.as_slice()` or `s.as_str()`",
     ),
     ("E0219", "`drop(v)` and `mem::take` are not used"),
     (
@@ -64,7 +64,6 @@ pub const CODES: &[(&str, &str)] = &[
         "E0217",
         "Verus's `admit()`: BMB writes `assume(p(..))` with a rationale",
     ),
-    ("E0234", "a string literal: text is bytes, write `b\"...\"`"),
     ("E0235", "a blanket impl `impl<T> Trait for T` is not used"),
     (
         "E0240",
@@ -273,7 +272,7 @@ pub const CODES: &[(&str, &str)] = &[
     ),
     (
         "E0435",
-        "a range `lo..hi` outside the source argument of `copy_within`",
+        "a range `lo..hi` outside the source argument of `copy_within` and the bounds of a `&str` argument `&s[lo..hi]`",
     ),
     // E05xx: specifications
     (
@@ -377,6 +376,10 @@ pub const CODES: &[(&str, &str)] = &[
     (
         "E0819",
         "an argument of a `proof fn` call may be outside its parameter's type (ghost arithmetic is mathematical, ADR-0062 §2)",
+    ),
+    (
+        "E0820",
+        "a string position may not be a character boundary (`&s[a..b]` needs `s.is_char_boundary(a)`, `s.is_char_boundary(b)` and `a <= b`, ADR-0050 §2)",
     ),
     (
         "E0823",
@@ -587,6 +590,10 @@ pub const RETIRED: &[(&str, &str)] = &[
     (
         "E0206",
         "the `?` operator is not allowed (retired by backlog 2K-01e: `?` is part of the language, ADR-0049)",
+    ),
+    (
+        "E0234",
+        "a string literal: text is bytes, write `b\"...\"` (retired by backlog 2U-01: `\"...\"` is a `&str`, ADR-0050)",
     ),
 ];
 

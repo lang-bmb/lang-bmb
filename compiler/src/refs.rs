@@ -305,6 +305,8 @@ impl Walker<'_> {
             | ExprKind::ByteLit(_)
             | ExprKind::Float(_)
             | ExprKind::ByteStr(_)
+            | ExprKind::StrLit(_)
+            | ExprKind::CharLit(_)
             | ExprKind::Bool(_)
             | ExprKind::Unit
             | ExprKind::Continue { .. }

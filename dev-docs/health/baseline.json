@@ -2,30 +2,30 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 8388557,
+    "V4_rlimit_total": 10569429,
     "V5_rlimit_headroom": 0.1244,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0,
     "V8_bench_rlimit_total": 22810907,
     "V9_bench_defs_at_limit": 0,
     "V10_library_rlimit_total": 12808122,
-    "V11_sat_check_rlimit_total": 228209546,
-    "V12_sat_check_undecided": 242,
+    "V11_sat_check_rlimit_total": 229556981,
+    "V12_sat_check_undecided": 244,
     "S1_external_crates": 0,
     "S2_external_processes": [
       "clang",
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 43392,
-    "S5_tests_bound_to_rust_api": 7,
+    "S4_stage0_rust_lines": 45116,
+    "S5_tests_bound_to_rust_api": 5,
     "S6_selfhost_bmb_lines": 0,
-    "P1_runnable_programs": 60,
-    "P2_bmb_lines": 22860,
-    "P3_errors_with_help": 0.8878,
+    "P1_runnable_programs": 62,
+    "P2_bmb_lines": 23466,
+    "P3_errors_with_help": 0.8884,
     "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
-    "O2_soundness_fuzzers": 13
+    "O2_soundness_fuzzers": 14
   },
   "history": [
     {
@@ -1908,6 +1908,48 @@
         "P3_errors_with_help": [
           0.8873,
           0.8878
+        ]
+      }
+    },
+    {
+      "date": "2026-11-05",
+      "reason": "2U (ADR-0050 strings) and 4A-04h: V4 8,388,557 -> 10,569,429 (+26%) is exactly the three new programs (tests/run/escape 1,545,367, tests/run/strings 612,200, tests/verify/pass/strings 23,305; existing programs unchanged); V11 +0.6% and V12 242 -> 244 are their satisfiability checks (one undecided reach point each in tests/run/escape and tests/verify/pass/strings); S4 43,392 -> 45,116 the string checker, prover and code generator (src/check/text.rs, src/verify/text.rs, src/codegen/text.rs); S5 7 -> 5 (fix_cmd and verify tests through the CLI); P1 60 -> 62 (run programs strings, escape); P2 +606 BMB lines; P3 0.8878 -> 0.8884 (string diagnostics with fixes); O2 13 -> 14 (soundness_text)",
+      "changed": {
+        "V4_rlimit_total": [
+          8388557,
+          10569429
+        ],
+        "V11_sat_check_rlimit_total": [
+          228209546,
+          229556981
+        ],
+        "V12_sat_check_undecided": [
+          242,
+          244
+        ],
+        "S4_stage0_rust_lines": [
+          43392,
+          45116
+        ],
+        "S5_tests_bound_to_rust_api": [
+          7,
+          5
+        ],
+        "P1_runnable_programs": [
+          60,
+          62
+        ],
+        "P2_bmb_lines": [
+          22860,
+          23466
+        ],
+        "P3_errors_with_help": [
+          0.8878,
+          0.8884
+        ],
+        "O2_soundness_fuzzers": [
+          13,
+          14
         ]
       }
     }

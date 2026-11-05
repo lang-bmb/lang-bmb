@@ -267,6 +267,18 @@ fn tokens(text: &str) -> Vec<String> {
     out
 }
 
+/// The length of the character literal at the start of `cs` (`'a'`,
+/// `'\''`, `'\u{1F600}'`), or `None` for a label or lifetime (`'outer`).
+fn char_literal_len(cs: &[char]) -> Option<usize> {
+    match cs.get(1)? {
+        '\\' => {
+            let close = cs.iter().skip(2).position(|&c| c == '\'')? + 2;
+            Some(close + 1)
+        }
+        _ => (cs.get(2) == Some(&'\'')).then_some(3),
+    }
+}
+
 fn rename_word(text: &str, from: &str, to: &str, seen: &mut Vec<String>) -> String {
     let mut out = String::with_capacity(text.len());
     let cs: Vec<char> = text.chars().collect();
@@ -289,6 +301,13 @@ fn rename_word(text: &str, from: &str, to: &str, seen: &mut Vec<String>) -> Stri
                 out.push(cs[i]);
                 i += 1;
             }
+        } else if c == '\''
+            && let Some(n) = char_literal_len(&cs[i..])
+        {
+            // A character literal (`'a'`, `'\n'`, `b'"'`) stays as it is: a
+            // quote inside it opens no string.
+            out.extend(&cs[i..i + n]);
+            i += n;
         } else if c == '/' && cs.get(i + 1) == Some(&'/') {
             while i < cs.len() && cs[i] != '\n' {
                 out.push(cs[i]);

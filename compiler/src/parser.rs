@@ -217,6 +217,7 @@ impl<'a> Parser<'a> {
             Tok::Int(v, r) => format!("`{}`", r.text(*v)),
             Tok::Float(b) => format!("`{}`", crate::lexer::float_text(*b)),
             Tok::Str(_) => "string literal".into(),
+            Tok::Char(_) => "character literal".into(),
             Tok::Byte(_) => "byte literal".into(),
             Tok::Bytes(_) => "byte string literal".into(),
             Tok::P(p) => format!("`{p}`"),
@@ -1610,6 +1611,8 @@ impl<'a> Parser<'a> {
                 let kind = match s.as_str() {
                     "bool" => TypeKind::Bool,
                     "f64" => TypeKind::F64,
+                    "char" => TypeKind::Char,
+                    "str" => TypeKind::Str,
                     n if IntTy::from_name(n).is_some() => {
                         TypeKind::Int(IntTy::from_name(n).unwrap())
                     }
@@ -1618,9 +1621,6 @@ impl<'a> Parser<'a> {
                             // ADR-0048, open question 1.
                             "i128" => Some("i64"),
                             "u128" => Some("u64"),
-                            // Text is bytes (ADR-0044 §5): `&str` is `&[u8]`.
-                            "char" => Some("u8"),
-                            "str" => Some("[u8]"),
                             // ADR-0061 §1, open question 3.
                             "f32" => Some("f64"),
                             _ => None,
@@ -1632,7 +1632,7 @@ impl<'a> Parser<'a> {
                         );
                         d = match fix {
                             Some(f) => d.fix(format!("use `{f}`"), Some(f.to_string())),
-                            None => d.fix("types: the integers i8..i64, isize, u8..u64, usize; f64, bool, (), [T; N], &[T], &mut [T], Vec<T>, Box<T>, Option<T>, Result<T, E>, structs and enums", None),
+                            None => d.fix("types: the integers i8..i64, isize, u8..u64, usize; f64, bool, char, (), [T; N], &[T], &mut [T], &str, String, Vec<T>, Box<T>, Option<T>, Result<T, E>, structs and enums", None),
                         };
                         self.diags.push(d);
                         if self.is_p("<") {
@@ -2535,6 +2535,21 @@ impl<'a> Parser<'a> {
             } else if self.is_p("[") {
                 self.bump();
                 let index = self.parse_expr()?;
+                // `s[a..b]` (ADR-0050 §2: `&s[a..b]` of text, as an
+                // argument; the checker refuses it elsewhere).
+                let index = if self.eat_p("..") {
+                    let to = self.parse_expr()?;
+                    let span = index.span.to(to.span);
+                    Expr {
+                        kind: ExprKind::Range {
+                            lo: Box::new(index),
+                            hi: Box::new(to),
+                        },
+                        span,
+                    }
+                } else {
+                    index
+                };
                 let hi = self.expect_p("]")?;
                 let span = e.span.to(hi);
                 e = Expr {
@@ -2693,16 +2708,18 @@ impl<'a> Parser<'a> {
                     span: lo,
                 })
             }
-            // Rust habit: a `&str`. Text is bytes (ADR-0044 §5).
+            // A `&str` (ADR-0050 §1).
             Tok::Str(s) => {
                 self.bump();
-                let r = crate::lexer::byte_text(s.as_bytes(), '"');
-                self.diags.push(
-                    Diag::new("E0234", lo, "string literals are byte strings")
-                        .fix("write `b\"...\"` (`&[u8]`)", Some(r)),
-                );
                 Ok(Expr {
-                    kind: ExprKind::ByteStr(s.into_bytes()),
+                    kind: ExprKind::StrLit(s),
+                    span: lo,
+                })
+            }
+            Tok::Char(c) => {
+                self.bump();
+                Ok(Expr {
+                    kind: ExprKind::CharLit(c),
                     span: lo,
                 })
             }
@@ -2995,7 +3012,13 @@ impl<'a> Parser<'a> {
         let lo = self.span();
         let literal = matches!(
             self.peek(),
-            Tok::Int(..) | Tok::Float(_) | Tok::Str(_) | Tok::Byte(_) | Tok::Bytes(_) | Tok::P("-")
+            Tok::Int(..)
+                | Tok::Float(_)
+                | Tok::Str(_)
+                | Tok::Char(_)
+                | Tok::Byte(_)
+                | Tok::Bytes(_)
+                | Tok::P("-")
         ) || self.is_kw("true")
             || self.is_kw("false");
         if literal || self.is_p("(") || self.is_p("[") || self.is_p("&") {

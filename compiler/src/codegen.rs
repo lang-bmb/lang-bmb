@@ -13,6 +13,7 @@
 //! obligations keep a check that traps; `bmb build` refuses such programs
 //! anyway, so this matters only for `bmb emit-llvm` on partial proofs.
 
+mod text;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write;
 
@@ -1409,6 +1410,21 @@ impl<'p> Gen<'p> {
 
     // ---------- expressions ----------
 
+    /// A constant byte string: the global holding `v` and its length.
+    fn byte_const(&mut self, v: &[u8]) -> CVal {
+        let name = format!("@\"{}.bytes.{}\"", self.path, self.globals.lines().count());
+        let body: String = v.iter().map(|b| format!("\\{b:02X}")).collect();
+        let _ = writeln!(
+            self.globals,
+            "{name} = private unnamed_addr constant [{} x i8] c\"{body}\", align 1",
+            v.len()
+        );
+        CVal::Arr {
+            ptr: name,
+            len: v.len().to_string(),
+        }
+    }
+
     fn expr(&mut self, e: &Expr) -> CVal {
         match &e.kind {
             ExprKind::Range { .. } => unreachable!("only as `copy_within`'s argument (E0435)"),
@@ -1420,19 +1436,10 @@ impl<'p> Gen<'p> {
             ExprKind::Int(v, _) => CVal::Imm(v.to_string()),
             ExprKind::Float(b) => CVal::Imm(f64_const(*b)),
             ExprKind::ByteLit(v) => CVal::Imm(v.to_string()),
-            ExprKind::ByteStr(v) => {
-                let name = format!("@\"{}.bytes.{}\"", self.path, self.globals.lines().count());
-                let body: String = v.iter().map(|b| format!("\\{b:02X}")).collect();
-                let _ = writeln!(
-                    self.globals,
-                    "{name} = private unnamed_addr constant [{} x i8] c\"{body}\", align 1",
-                    v.len()
-                );
-                CVal::Arr {
-                    ptr: name,
-                    len: v.len().to_string(),
-                }
-            }
+            ExprKind::ByteStr(v) => self.byte_const(v),
+            // A `&str` is its UTF-8 bytes (ADR-0050 §4).
+            ExprKind::StrLit(t) => self.byte_const(t.as_bytes()),
+            ExprKind::CharLit(c) => CVal::Imm(c.to_string()),
             ExprKind::Bool(b) => CVal::Imm(b.to_string()),
             ExprKind::Unit => CVal::Unit,
             ExprKind::Var(id) if id.name == "None" && !self.slots.contains_key("None") => {
@@ -1503,6 +1510,11 @@ impl<'p> Gen<'p> {
             // IEEE 754 with rounding to nearest even (ADR-0061 §6): no
             // fast-math flags, no `contract`; ordered comparisons, `une` for
             // `!=` (true when either side is NaN).
+            ExprKind::Binary(op, l, r)
+                if op.is_cmp() && (self.is_text_expr(l) || self.is_text_expr(r)) =>
+            {
+                self.text_cmp(*op, l, r)
+            }
             ExprKind::Binary(op, l, r) if self.ty(l) == TypeKind::F64 => {
                 let a = self.expr(l).imm();
                 let b = self.expr(r).imm();
@@ -1619,6 +1631,13 @@ impl<'p> Gen<'p> {
                     _ => unreachable!(),
                 }
             }
+            // `&s[a..b]` (ADR-0050 §2).
+            ExprKind::Index { base, index } if matches!(index.kind, ExprKind::Range { .. }) => {
+                let ExprKind::Range { lo, hi } = &index.kind else {
+                    unreachable!("a range")
+                };
+                self.str_slice(e, base, lo, hi)
+            }
             ExprKind::Index { base, index } if is_mem_elem(&self.ty(e)) => {
                 let ety = self.ty(e);
                 let CVal::Arr { ptr, len } = self.array_of(base) else {
@@ -1669,6 +1688,18 @@ impl<'p> Gen<'p> {
             ExprKind::Method { recv, name, args } if name.name == "copy_within" => {
                 self.copy_within(e, recv, args)
             }
+            // Text (ADR-0050 §2); `len` and `clone` of a `String` are the
+            // `Vec` ones.
+            ExprKind::Method { recv, name, args }
+                if self.is_text_expr(recv)
+                    && matches!(
+                        name.name.as_str(),
+                        "push_str" | "push" | "as_str" | "as_bytes" | "is_char_boundary"
+                    ) =>
+            {
+                self.text_method(e, recv, &name.name, args)
+            }
+            ExprKind::Method { recv, name, .. } if name.name == "len_utf8" => self.len_utf8(recv),
             ExprKind::Method { recv, name, args } if is_vec(&self.ty(recv)) => {
                 self.vec_method(e, recv, &name.name, args)
             }
@@ -1753,10 +1784,24 @@ impl<'p> Gen<'p> {
             }
             ExprKind::Call { path, args, .. }
                 if path.len() == 2
-                    && path[0].name == "Vec"
+                    && matches!(path[0].name.as_str(), "Vec" | "String")
                     && matches!(path[1].name.as_str(), "new" | "with_capacity") =>
             {
                 self.vec_new(e, args)
+            }
+            ExprKind::Call { path, args, .. } if crate::check::text_builtin(path) => {
+                match path[1].name.as_str() {
+                    "from" => self.string_from(e, &args[0]),
+                    "from_utf8" => self.string_from_utf8(e, &args[0]),
+                    _ => self.char_from_u32(e, &args[0]),
+                }
+            }
+            // `u32::from(c)` of a `char`: its scalar value (the checker
+            // allows `u32::from` only for a `char`, E0212).
+            ExprKind::Call { path, args, .. }
+                if path.len() == 2 && path[0].name == "u32" && path[1].name == "from" =>
+            {
+                self.expr(&args[0])
             }
             ExprKind::Call { path, args, .. } if crate::check::is_box_new(path) => {
                 self.box_new(e, args)
@@ -3176,6 +3221,9 @@ impl<'p> Gen<'p> {
             "print_i64" | "print_u64" | "print_bytes" | "print_f64"
         ) {
             (format!("@bmb_{target}"), TypeKind::Unit)
+        } else if target == "print_str" {
+            // The bytes of the text (ADR-0050 §2).
+            ("@bmb_print_bytes".to_string(), TypeKind::Unit)
         } else if csub.is_empty() {
             (fn_sym(&target), self.t.fns[&target].ret.clone())
         } else {
@@ -3565,6 +3613,9 @@ pub fn emit_with(
     proven: &BTreeSet<ObKey>,
     mut incr: Option<&mut crate::incremental::Session>,
 ) -> Module {
+    // Text is bytes and a `char` a `u32` here (ADR-0050 §4).
+    let lowered = t.lowered();
+    let t = &lowered;
     let mut defs = crate::check::defs_of(p, &t.fns);
     defs.sort_by(|a, b| a.0.cmp(&b.0));
     let mut ir = String::from(
@@ -3823,6 +3874,16 @@ pub fn emit_with(
     // through glibc's `%.*f` (exact, ties to even); NaN is `NaN`.
     if ir.contains("@bmb_print_f64(") {
         ir.push_str(PRINT_F64);
+    }
+    // Text (ADR-0050 §4), when used.
+    if ir.contains("@bmb_str_cmp(") {
+        ir.push_str(text::TEXT_CMP);
+    }
+    if ir.contains("@bmb_str_append(") || ir.contains("@bmb_str_push_char(") {
+        ir.push_str(text::TEXT_GROW);
+    }
+    if ir.contains("@bmb_utf8_valid(") {
+        ir.push_str(text::TEXT_UTF8);
     }
     let extra: Vec<TypeKind> = used_types.into_values().collect();
     let glue = drop_glue(t, &extra);

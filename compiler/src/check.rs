@@ -7,6 +7,9 @@ use crate::ast::*;
 use crate::diag::{Diag, Diags};
 use crate::source::Span;
 
+mod text;
+pub use text::{as_bytes_of, is_text, lower, mentions_text, str_slice_of, text_builtin};
+
 /// A function's effects (ADR-0030 §1): a set of atomic effects, ordered by
 /// inclusion; `pure` is the empty set. `alloc` is heap allocation (the
 /// program ends when memory runs out, as Rust's `handle_alloc_error`), `io`
@@ -596,6 +599,9 @@ pub fn ty_str(t: &TypeKind) -> String {
         TypeKind::F64 => "f64".into(),
         TypeKind::Bool => "bool".into(),
         TypeKind::Unit => "()".into(),
+        TypeKind::Char => "char".into(),
+        TypeKind::String => "String".into(),
+        TypeKind::Str => "str".into(),
         TypeKind::Array(e, n) => format!("[{}; {n}]", ty_str(&e.kind)),
         TypeKind::Slice(e) => format!("[{}]", ty_str(&e.kind)),
         TypeKind::Ref { mutable, inner } => format!(
@@ -636,6 +642,9 @@ pub fn parse_ty(s: &str) -> Option<TypeKind> {
             "f64" => TypeKind::F64,
             "bool" => TypeKind::Bool,
             "()" => TypeKind::Unit,
+            "char" => TypeKind::Char,
+            "String" => TypeKind::String,
+            "str" => TypeKind::Str,
             _ if s.starts_with("&mut ") => TypeKind::Ref {
                 mutable: true,
                 inner: Box::new(t(ty(&s[5..])?)),
@@ -737,9 +746,10 @@ pub fn is_bit_count(m: &str) -> bool {
             | "trailing_ones"
     )
 }
-/// A scalar value: an integer, `f64` (ADR-0061 §1) or `bool`.
+/// A scalar value: an integer, `f64` (ADR-0061 §1), `bool` or `char`
+/// (ADR-0050 §1).
 fn is_scalar(t: &TypeKind) -> bool {
-    is_int(t) || matches!(t, TypeKind::Bool | TypeKind::F64)
+    is_int(t) || matches!(t, TypeKind::Bool | TypeKind::F64 | TypeKind::Char)
 }
 
 /// Whether values of `t` move (ADR-0047 §1): a `Vec`, a `Box`, and the
@@ -774,7 +784,7 @@ pub fn is_move_in(t: &TypeKind, adts: &BTreeMap<String, Adt>, moving: &BTreeSet<
         seen: &mut BTreeSet<String>,
     ) -> bool {
         match t {
-            TypeKind::Vec(_) | TypeKind::Box(_) => true,
+            TypeKind::Vec(_) | TypeKind::Box(_) | TypeKind::String => true,
             TypeKind::Param(n) => moving.contains(n),
             TypeKind::Array(e, _) => go(&e.kind, adts, moving, seen),
             TypeKind::Named { path, args } => {
@@ -837,7 +847,10 @@ const ARRAY_ELEMENT_HELP: &str = "an array element is a scalar, a struct or enum
 /// a scalar, a struct or enum, or such an array again; not a `Vec`.
 fn array_elem_ok(e: &TypeKind) -> bool {
     match e {
-        TypeKind::Named { path, .. } => !(path.len() == 1 && path[0] == "Vec"),
+        TypeKind::Named { path, .. } => {
+            !(path.len() == 1 && (path[0] == "Vec" || path[0] == "String"))
+        }
+        TypeKind::String => false,
         TypeKind::Array(inner, _) => array_elem_ok(&inner.kind),
         TypeKind::Error => true,
         t => is_scalar(t),
@@ -874,6 +887,25 @@ impl<'a> Checker<'a> {
                     mutable: false,
                     inner: mk(TypeKind::Slice(mk(TypeKind::Int(IntTy::U8)))),
                 }],
+                ret: TypeKind::Unit,
+                effect: Effects::IO,
+                vacuous: false,
+                builtin: true,
+                in_impl: false,
+                trait_of: None,
+                default: false,
+                span: Span::default(),
+                generics: Vec::new(),
+                impl_generics: 0,
+            },
+        );
+        // `print_str(s)` (ADR-0050 §2): the bytes of `s`, as `print_bytes`.
+        fns.insert(
+            "print_str".to_string(),
+            FnSig {
+                path: "print_str".into(),
+                kind: FnKind::Exec,
+                params: vec![text::str_ref()],
                 ret: TypeKind::Unit,
                 effect: Effects::IO,
                 vacuous: false,
@@ -949,7 +981,14 @@ impl<'a> Checker<'a> {
     /// Hands the tables the proof gate needs to the verifier.
     pub fn into_tables(self) -> crate::verify::Tables {
         let may_untrusted = self.may_untrusted();
+        let text = self
+            .types
+            .iter()
+            .filter(|(_, t)| is_text(t))
+            .map(|(k, _)| *k)
+            .collect();
         crate::verify::Tables {
+            text,
             fns: self.fns,
             types: self.types,
             recursive: self.recursive,
@@ -1839,14 +1878,15 @@ impl<'a> Checker<'a> {
     }
 
     /// Whether `t` has the built-in trait `b` (`Eq` or `Ord`): the integer
-    /// types, `bool`, and a type parameter in scope bounded by it (`Ord`
-    /// includes `Eq`). Not `f64`: NaN is not equal to itself (ADR-0061 §1).
+    /// types, `bool`, `char`, and a type parameter in scope bounded by it
+    /// (`Ord` includes `Eq`). Not `f64`: NaN is not equal to itself
+    /// (ADR-0061 §1).
     fn has_builtin(&self, t: &TypeKind, b: &str) -> bool {
         match t {
             TypeKind::Param(n) => self.tparams.iter().any(|p| {
                 p.name == *n && p.bounds.iter().any(|x| x == b || (b == "Eq" && x == "Ord"))
             }),
-            t => is_int(t) || *t == TypeKind::Bool,
+            t => is_int(t) || matches!(t, TypeKind::Bool | TypeKind::Char),
         }
     }
 
@@ -1855,7 +1895,7 @@ impl<'a> Checker<'a> {
     fn targ_ok(&mut self, t: &TypeKind, p: &TParam, of: &str, span: Span, report: bool) -> bool {
         match t {
             TypeKind::Error => false,
-            TypeKind::Ref { .. } | TypeKind::Slice(_) | TypeKind::Unit => {
+            TypeKind::Ref { .. } | TypeKind::Slice(_) | TypeKind::Str | TypeKind::Unit => {
                 if report {
                     self.diags.push(
                         Diag::new(
@@ -1968,7 +2008,7 @@ impl<'a> Checker<'a> {
     /// A field or payload type: a value type without references (ADR-0015).
     fn field_type(&mut self, t: &Type, mp: &str) -> TypeKind {
         match &t.kind {
-            TypeKind::Ref { .. } | TypeKind::Slice(_) => {
+            TypeKind::Ref { .. } | TypeKind::Slice(_) | TypeKind::Str => {
                 self.diags.push(
                     Diag::new(
                         "E0403",
@@ -2364,17 +2404,13 @@ impl<'a> Checker<'a> {
                     && name == "String"
                     && !self.adts.contains_key(&format!("{mp}::String"))
                 {
-                    if report {
-                        self.diags.push(
-                            Diag::new(
-                                "E0402",
-                                t.span,
-                                "there is no `String`: text is bytes (ADR-0044)",
-                            )
-                            .fix("use `Vec<u8>`", Some("Vec<u8>".into())),
-                        );
+                    if !args.is_empty() {
+                        if report {
+                            self.err("E0420", t.span, "`String` takes no type arguments");
+                        }
+                        return TypeKind::Error;
                     }
-                    return TypeKind::Error;
+                    return TypeKind::String;
                 }
                 if path.len() == 1 && (name == "Option" || name == "Result") {
                     let want = if name == "Option" { 1 } else { 2 };
@@ -2480,7 +2516,7 @@ impl<'a> Checker<'a> {
         let e = self.canon(&args[0], mp, report);
         match &e {
             TypeKind::Error => return TypeKind::Error,
-            TypeKind::Ref { .. } | TypeKind::Slice(_) | TypeKind::Unit => {
+            TypeKind::Ref { .. } | TypeKind::Slice(_) | TypeKind::Str | TypeKind::Unit => {
                 if report {
                     self.diags.push(
                         Diag::new(
@@ -2595,6 +2631,8 @@ impl<'a> Checker<'a> {
         match e {
             TypeKind::Named { .. } => !self.holds_array(e, &mut BTreeSet::new()),
             TypeKind::Vec(inner) | TypeKind::Box(inner) => self.vec_elem_ok(&inner.kind),
+            // A `String` is a `Vec<u8>` (ADR-0050 §4).
+            TypeKind::String => true,
             other => is_scalar(other),
         }
     }
@@ -3243,6 +3281,11 @@ impl<'a> Checker<'a> {
         {
             self.spec_vec(f.ret.ty.span);
         }
+        if f.kind == FnKind::Spec
+            && matches!(&f.ret.ty.kind, TypeKind::Named { path, .. } if path.len() == 1 && path[0] == "String")
+        {
+            self.spec_string(f.ret.ty.span);
+        }
         let ret_ty = self.canon(&f.ret.ty, mod_path, true);
         cx.ret = ret_ty.clone();
 
@@ -3359,7 +3402,7 @@ impl<'a> Checker<'a> {
                 // (backlog 2O-03b).
                 TypeKind::Slice(e)
                     if array_elem_ok(&e.kind)
-                        || matches!(&e.kind, TypeKind::Named { path, .. } if path.len() == 1 && path[0] == "Vec") =>
+                        || matches!(&e.kind, TypeKind::Named { path, .. } if path.len() == 1 && (path[0] == "Vec" || path[0] == "String")) =>
                 {
                     if *mutable && kind != FnKind::Exec {
                         self.ghost_mut_param(t.span, kind);
@@ -3368,6 +3411,11 @@ impl<'a> Checker<'a> {
                 TypeKind::Named { path, .. } if path.len() == 1 && path[0] == "Vec" => {
                     if kind != FnKind::Exec {
                         self.spec_vec(t.span);
+                    }
+                }
+                TypeKind::Named { path, .. } if path.len() == 1 && path[0] == "String" => {
+                    if kind != FnKind::Exec {
+                        self.spec_string(t.span);
                     }
                 }
                 TypeKind::Named { .. } => {
@@ -3382,6 +3430,13 @@ impl<'a> Checker<'a> {
                         self.ghost_mut_param(t.span, kind);
                     }
                 }
+                // `&str` (ADR-0050 §1). A `&mut str` could change no
+                // length; the owner of growable text is `&mut String`.
+                TypeKind::Str if *mutable => self.diags.push(
+                    Diag::new("E0402", t.span, "a `&mut str` parameter is not supported")
+                        .fix("take `&mut String` to change the text", None),
+                ),
+                TypeKind::Str => {}
                 TypeKind::Error => {}
                 _ => self.diags.push(
                     Diag::new(
@@ -3399,6 +3454,11 @@ impl<'a> Checker<'a> {
                 if kind != FnKind::Exec && path.len() == 1 && path[0] == "Vec" =>
             {
                 self.spec_vec(t.span)
+            }
+            TypeKind::Named { path, .. }
+                if kind != FnKind::Exec && path.len() == 1 && path[0] == "String" =>
+            {
+                self.spec_string(t.span)
             }
             // Checked after canonicalization (`data_array`).
             TypeKind::Array(e, _) if matches!(e.kind, TypeKind::Named { .. }) => {}
@@ -3448,6 +3508,18 @@ impl<'a> Checker<'a> {
         );
     }
 
+    /// E0402: specifications see a `String` as its `&str` (ADR-0050 §3).
+    fn spec_string(&mut self, span: Span) {
+        self.diags.push(
+            Diag::new(
+                "E0402",
+                span,
+                "a spec function cannot take or return a `String`",
+            )
+            .fix("take `&str` and pass `s.as_str()`", None),
+        );
+    }
+
     /// Types for locals and results: no references, no bare slices.
     fn check_value_type(&mut self, t: &Type, what: &str) {
         match &t.kind {
@@ -3461,6 +3533,11 @@ impl<'a> Checker<'a> {
                 "E0402",
                 t.span,
                 "a bare slice is unsized; use `&[T]` as a parameter or `[T; N]`",
+            ),
+            TypeKind::Str => self.err(
+                "E0402",
+                t.span,
+                "a bare `str` is unsized; use `&str` as a parameter or `String`",
             ),
             TypeKind::Array(e, _) if !array_elem_ok(&e.kind) => {
                 self.diags.push(
@@ -5683,7 +5760,7 @@ impl<'a> Checker<'a> {
                     Diag::new(
                         "E0435",
                         e.span,
-                        "a range `lo..hi` is only `copy_within`'s source",
+                        "a range `lo..hi` is only `copy_within`'s source or the bounds of `&s[lo..hi]` for a `&str` argument",
                     )
                     .fix("use a `for` loop over the range, or pass both bounds", None),
                 );
@@ -5966,7 +6043,52 @@ impl<'a> Checker<'a> {
             }
             ExprKind::Int(v, _) => self.int_lit(*v, false, expected, e.span, mode),
             ExprKind::Float(_) => TypeKind::F64,
+            // A byte where a character is wanted.
+            ExprKind::ByteLit(b) if expected == Some(&TypeKind::Char) => {
+                let c = char::from(*b);
+                self.diags.push(
+                    Diag::new("E0401", e.span, "expected `char`, found `u8`").fix(
+                        "a character is `'a'`",
+                        Some(crate::lexer::str_text(&c.to_string(), '\'')),
+                    ),
+                );
+                TypeKind::Char
+            }
             ExprKind::ByteLit(_) => TypeKind::Int(IntTy::U8),
+            // The Rust habit of a character where a byte is wanted: in BMB
+            // as in Rust, a byte is `b'a'`.
+            ExprKind::CharLit(c) if expected == Some(&TypeKind::Int(IntTy::U8)) => {
+                let mut d = Diag::new("E0401", e.span, "expected `u8`, found `char`");
+                if let Some(b) = u8::try_from(*c).ok().filter(u8::is_ascii) {
+                    d = d.fix(
+                        "a byte is `b'..'` (`u8`)",
+                        Some(crate::lexer::byte_text(&[b], '\'')),
+                    );
+                } else {
+                    d = d.fix(
+                        "a byte is `b'..'`; this character is more than one byte",
+                        None,
+                    );
+                }
+                self.diags.push(d);
+                TypeKind::Int(IntTy::U8)
+            }
+            ExprKind::CharLit(_) => TypeKind::Char,
+            // A `&str` is a reference: second-class (ADR-0015, ADR-0050 §1).
+            ExprKind::StrLit(t) => {
+                self.diags.push(
+                    Diag::new(
+                        "E0409",
+                        e.span,
+                        "a string literal may only appear directly as a call argument",
+                    )
+                    .fix(
+                        "pass it to a `&str` parameter, or own it: `String::from(\"..\")`",
+                        Some(format!("String::from({})", crate::lexer::str_text(t, '"'))),
+                    ),
+                );
+                TypeKind::Error
+            }
             // A `&[u8]` is a reference: second-class (ADR-0015, ADR-0044 §2).
             ExprKind::ByteStr(_) => {
                 self.diags.push(
@@ -6053,6 +6175,22 @@ impl<'a> Checker<'a> {
                 }
             }
             ExprKind::Binary(op, l, r) => self.binary(cx, *op, l, r, expected, mode, e.span),
+            // A byte of a string (ADR-0050 §2): `s.as_bytes()[i]`.
+            ExprKind::Index { base, index } if as_bytes_of(base).is_some() => {
+                let recv = as_bytes_of(base).expect("as_bytes");
+                let ok = self.as_bytes_arg(cx, base, recv, mode);
+                let it = self.expr(cx, index, Some(&TypeKind::Int(IntTy::Usize)), mode);
+                self.expect_ty(&it, &TypeKind::Int(IntTy::Usize), index.span);
+                if !ok {
+                    self.err(
+                        "E0404",
+                        base.span,
+                        "`as_bytes` is defined for `String` and `&str`",
+                    );
+                    return TypeKind::Error;
+                }
+                TypeKind::Int(IntTy::U8)
+            }
             ExprKind::Index { base, index } => {
                 let bt = self.expr(cx, base, None, mode);
                 let it = self.expr(cx, index, Some(&TypeKind::Int(IntTy::Usize)), mode);
@@ -6060,7 +6198,19 @@ impl<'a> Checker<'a> {
                 match elem_of(&bt) {
                     Some(t) => t.clone(),
                     None => {
-                        if bt != TypeKind::Error {
+                        if is_text(&bt) {
+                            self.diags.push(
+                                Diag::new(
+                                    "E0407",
+                                    base.span,
+                                    format!("type `{}` cannot be indexed", ty_str(&bt)),
+                                )
+                                .fix(
+                                    "read a byte with `s.as_bytes()[i]`; a part of the text is `&s[a..b]`, as an argument",
+                                    None,
+                                ),
+                            );
+                        } else if bt != TypeKind::Error {
                             self.err(
                                 "E0407",
                                 base.span,
@@ -6129,8 +6279,11 @@ impl<'a> Checker<'a> {
             ExprKind::Call { path, args, .. }
                 if conv_call(e).is_some() || from_call(path).is_some() =>
             {
-                for a in args {
-                    self.expr(cx, a, None, mode);
+                let ats: Vec<TypeKind> =
+                    args.iter().map(|a| self.expr(cx, a, None, mode)).collect();
+                // A character's scalar value (ADR-0050 §2): `u32::from(c)`.
+                if from_call(path) == Some(TypeKind::Int(IntTy::U32)) && ats == [TypeKind::Char] {
+                    return TypeKind::Int(IntTy::U32);
                 }
                 let x = args.first().map(crate::fmt::expr_text).unwrap_or_default();
                 if let Some(t) = from_call(path) {
@@ -6189,6 +6342,11 @@ impl<'a> Checker<'a> {
                     cx.need_own(Effects::ALLOC, || "`Box::new`".into());
                 }
                 self.box_new(cx, args, expected, e.span, mode)
+            }
+            ExprKind::Call { path, args, .. }
+                if self.resolve(path, &cx.mod_path).is_none() && text::text_builtin(path) =>
+            {
+                self.text_call(cx, path, args, e.span, mode)
             }
             ExprKind::Call { path, args, .. }
                 if self.resolve(path, &cx.mod_path).is_none() && vec_builtin(path) =>
@@ -6545,15 +6703,65 @@ impl<'a> Checker<'a> {
                     None
                 };
                 let (lt, rt) = if lit(l) && !lit(r) {
-                    let rt = self.expr(cx, r, hint, mode);
-                    let lt = self.expr(cx, l, Some(&rt), mode);
+                    let rt = self.text_operand(cx, r, hint, mode);
+                    let lt = self.text_operand(cx, l, Some(&rt), mode);
                     (lt, rt)
                 } else {
-                    let lt = self.expr(cx, l, hint, mode);
-                    let rt = self.expr(cx, r, Some(&lt), mode);
+                    let lt = self.text_operand(cx, l, hint, mode);
+                    let rt = self.text_operand(cx, r, Some(&lt), mode);
                     (lt, rt)
                 };
                 if lt == TypeKind::Error || rt == TypeKind::Error {
+                    return if valued {
+                        TypeKind::Error
+                    } else {
+                        TypeKind::Bool
+                    };
+                }
+                // A `char` is no number (Rust's): its scalar value is.
+                if (lt == TypeKind::Char || rt == TypeKind::Char) && !op.is_cmp() {
+                    self.diags.push(
+                        Diag::new(
+                            "E0401",
+                            span,
+                            format!("`{}` is not defined for `char`", op.symbol()),
+                        )
+                        .fix(
+                            "compute on the scalar value `u32::from(c)` and make a character with `char::from_u32(x)`",
+                            None,
+                        ),
+                    );
+                    return if valued {
+                        TypeKind::Error
+                    } else {
+                        TypeKind::Bool
+                    };
+                }
+                // Text compares by bytes, in code and in specifications;
+                // `String`, `&String` and `&str` mix (Rust's `PartialEq`
+                // and `PartialOrd`, ADR-0050 §2).
+                if is_text(&lt) || is_text(&rt) {
+                    if is_text(&lt) && is_text(&rt) && op.is_cmp() {
+                        return TypeKind::Bool;
+                    }
+                    let d = Diag::new(
+                        "E0401",
+                        span,
+                        format!(
+                            "`{}` is not defined for `{}` and `{}`",
+                            op.symbol(),
+                            ty_str(&lt),
+                            ty_str(&rt)
+                        ),
+                    );
+                    self.diags.push(if op == BinOp::Add && is_text(&lt) {
+                        d.fix("append with `s.push_str(t)` (or `s.push(c)`)", None)
+                    } else {
+                        d.fix(
+                            "text compares with text: `==`, `<` and the other comparisons",
+                            None,
+                        )
+                    });
                     return if valued {
                         TypeKind::Error
                     } else {
@@ -6755,6 +6963,8 @@ impl<'a> Checker<'a> {
                     // `f64`: IEEE arithmetic and comparisons; the remainder
                     // is not in the first range (ADR-0061 §3).
                     BinOp::Rem => is_int(&lt),
+                    // A `char` compares by its scalar value (Rust's `Ord`).
+                    _ if op.is_cmp() && lt == TypeKind::Char => true,
                     _ => is_int(&lt) || lt == TypeKind::F64,
                 };
                 if !ok {
@@ -6809,7 +7019,11 @@ impl<'a> Checker<'a> {
         let scalar = is_scalar(&ty);
         let what = match &e.kind {
             _ if ty == TypeKind::Error => return,
-            ExprKind::Int(..) | ExprKind::Float(_) | ExprKind::ByteLit(_) | ExprKind::Bool(_)
+            ExprKind::Int(..)
+            | ExprKind::Float(_)
+            | ExprKind::ByteLit(_)
+            | ExprKind::CharLit(_)
+            | ExprKind::Bool(_)
                 if scalar =>
             {
                 None
@@ -6945,6 +7159,19 @@ impl<'a> Checker<'a> {
         mode: Mode,
     ) -> TypeKind {
         let rt = self.expr(cx, recv, None, mode);
+        // The receiver's error is reported; its methods would only repeat it.
+        if rt == TypeKind::Error {
+            for a in args {
+                self.expr(cx, a, None, mode);
+            }
+            return TypeKind::Error;
+        }
+        if is_text(&rt) {
+            return self.text_method(cx, recv, &rt, name, args, span, mode);
+        }
+        if rt == TypeKind::Char {
+            return self.char_method(cx, name, args, mode);
+        }
         if let Some(et) = vec_elem(&rt).cloned() {
             return self.vec_method(cx, recv, &rt, et, name, args, span, mode);
         }
@@ -8409,11 +8636,49 @@ impl<'a> Checker<'a> {
         mode: Mode,
     ) -> Option<String> {
         let want = format!("&{}{}", if pm { "mut " } else { "" }, ty_str(&inner.kind));
+        if inner.kind == TypeKind::Str {
+            self.text_arg(cx, a, mode);
+            return None;
+        }
         let TypeKind::Slice(pe) = &inner.kind else {
             return self.data_ref_arg(cx, a, pm, &inner.kind, &want, mode);
         };
         if let Some(r) = self.slice_of_vec(cx, a, pm, &pe.kind, &want, mode) {
             return r;
+        }
+        if let Some(recv) = as_bytes_of(a) {
+            if !self.as_bytes_arg(cx, a, recv, mode) {
+                self.err(
+                    "E0404",
+                    a.span,
+                    "`as_bytes` is defined for `String` and `&str`",
+                );
+            } else if pm || pe.kind != TypeKind::Int(IntTy::U8) {
+                self.err(
+                    "E0401",
+                    a.span,
+                    format!("expected `{want}`, found the bytes of a string (`&[u8]`, read-only)"),
+                );
+            }
+            return None;
+        }
+        // A string literal for bytes: in BMB as in Rust, bytes are `b"..."`.
+        if let ExprKind::StrLit(t) = &a.kind {
+            self.types
+                .insert((a.span.file, a.span.lo, a.span.hi), text::str_ref());
+            let mut d = Diag::new(
+                "E0401",
+                a.span,
+                format!("expected `{want}`, found a string literal (`&str`)"),
+            );
+            if !pm && pe.kind == TypeKind::Int(IntTy::U8) {
+                d = d.fix(
+                    "write a byte string `b\"...\"`",
+                    Some(crate::lexer::byte_text(t.as_bytes(), '"')),
+                );
+            }
+            self.diags.push(d);
+            return None;
         }
         if let ExprKind::ByteStr(_) = &a.kind {
             let st = TypeKind::Ref {
@@ -8981,6 +9246,8 @@ fn mentions(e: &Expr, name: &str) -> bool {
         | ExprKind::ByteLit(_)
         | ExprKind::Float(_)
         | ExprKind::ByteStr(_)
+        | ExprKind::StrLit(_)
+        | ExprKind::CharLit(_)
         | ExprKind::Bool(_)
         | ExprKind::Unit
         | ExprKind::Path(_)
@@ -9049,6 +9316,8 @@ fn collect_triggers<'e>(e: &'e Expr, out: &mut Vec<&'e Expr>) {
         | ExprKind::ByteLit(_)
         | ExprKind::Float(_)
         | ExprKind::ByteStr(_)
+        | ExprKind::StrLit(_)
+        | ExprKind::CharLit(_)
         | ExprKind::Bool(_)
         | ExprKind::Unit
         | ExprKind::Return(_)

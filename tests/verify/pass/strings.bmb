@@ -1,0 +1,122 @@
+#[summary("문자열: 증명되는 것 (ADR-0050 §3, backlog 2U-02)")]
+mod sp {
+    spec fn three(t: &str) -> bool {
+        t.len() == 3
+    }
+
+    spec fn grew(n: usize, s: &str) -> bool {
+        s.len() == n + 4
+    }
+
+    spec fn room(s: &str) -> bool {
+        s.len() < 1000
+    }
+
+    spec fn same(t: &str, u: &str) -> bool {
+        t == u
+    }
+
+    spec fn before(t: &str, u: &str) -> bool {
+        t < u
+    }
+
+    spec fn ascii_start(t: &str) -> bool {
+        t.len() > 0 && t.as_bytes()[0] < 128
+    }
+
+    spec fn is_some_a(r: Option<char>) -> bool {
+        match r {
+            None => false,
+            Some(c) => c == 'A',
+        }
+    }
+
+    spec fn none(r: Option<char>) -> bool {
+        match r {
+            None => true,
+            Some(c) => false,
+        }
+    }
+
+    spec fn one_byte(n: usize) -> bool {
+        n == 1
+    }
+
+    spec fn four_bytes(n: usize) -> bool {
+        n == 4
+    }
+
+    // A literal's length is its UTF-8 length.
+    #[effects(pure)]
+    #[uses(three)]
+    fn literal_len() -> usize
+        ensures three("aé"),
+    {
+        0
+    }
+
+    // `push` of a constant adds its UTF-8 bytes; `push_str` adds the other's.
+    #[effects(alloc)]
+    #[uses(grew, room)]
+    fn push_lengths(s: &mut String) -> ()
+        requires room(s.as_str()),
+        ensures grew(old(s).len(), s.as_str()),
+    {
+        s.push('€');
+        s.push_str("!");
+    }
+
+    // The exact bytes of a constant character.
+    #[effects(alloc)]
+    fn pushed_bytes() -> u8 {
+        let mut s: String = String::new();
+        s.push('é');
+        (s.as_bytes()[0] - 195) + (s.as_bytes()[1] - 169)
+    }
+
+    // Text equality is byte equality, and the order is Rust's.
+    #[effects(alloc)]
+    #[uses(before, same)]
+    fn compare() -> bool
+        ensures same("ab", "ab"), before("ab", "abc"), before("ab", "b"),
+    {
+        let s: String = String::from("ab");
+        s == "ab" && s < "b" && s.as_str() >= "a"
+    }
+
+    // A boundary check guards a slice; its length is the difference.
+    #[effects(pure)]
+    #[uses(ascii_start)]
+    fn first_char_len(t: &str) -> usize
+        requires ascii_start(t),
+    {
+        if t.is_char_boundary(1) {
+            take(&t[0..1])
+        } else {
+            0
+        }
+    }
+
+    #[effects(pure)]
+    fn take(t: &str) -> usize {
+        t.len()
+    }
+
+    // `char::from_u32` is `Some` exactly for the scalar values.
+    #[effects(pure)]
+    #[uses(is_some_a, none)]
+    fn scalars() -> bool
+        ensures is_some_a(char::from_u32(65)), none(char::from_u32(55296)),
+    {
+        true
+    }
+
+    // `len_utf8` and the scalar value of a constant.
+    #[effects(pure)]
+    #[uses(four_bytes, one_byte)]
+    fn widths() -> u32
+        ensures one_byte('a'.len_utf8()), four_bytes('😀'.len_utf8()),
+    {
+        u32::from('é') - 233
+    }
+}

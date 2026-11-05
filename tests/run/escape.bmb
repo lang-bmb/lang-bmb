@@ -1,0 +1,107 @@
+#[summary("JSON 문자열 이스케이프: 따옴표·역슬래시·제어 문자를 바꾸고 나머지 글자는 조각으로 옮긴다. 조각마다 글자 경계를 확인하고 길이 의무를 증명한다 (backlog 2U-05)")]
+mod esc {
+    // `t` as a JSON string literal: `"`, `\` and the control characters
+    // escaped, everything else as it is, copied a run at a time.
+    #[effects(alloc)]
+    #[uses(ascii, digit, fits, short, within)]
+    fn escape(t: &str) -> String
+        requires short(t),
+    {
+        let mut out: String = String::from("\"");
+        let mut a: usize = 0;
+        let mut i: usize = 0;
+        while i < t.len()
+            invariant a <= i, within(i, t), fits(out.len(), a),
+            decreases t.len() - i,
+        {
+            let b: u8 = t.as_bytes()[i];
+            if b == b'"' || b == b'\\' || b < 32 {
+                // The run before the byte; a run starts after an ASCII byte
+                // and ends before one, so the checks always hold for UTF-8.
+                if t.is_char_boundary(a) && t.is_char_boundary(i) {
+                    out.push_str(&t[a..i]);
+                }
+                if b == b'"' {
+                    out.push_str("\\\"");
+                } else if b == b'\\' {
+                    out.push_str("\\\\");
+                } else if b == b'\n' {
+                    out.push_str("\\n");
+                } else {
+                    out.push_str("\\u00");
+                    out.push(hex(u32::try_from(b / 16).unwrap()));
+                    out.push(hex(u32::try_from(b % 16).unwrap()));
+                }
+                a = i + 1;
+            }
+            i = i + 1;
+        }
+        if t.is_char_boundary(a) {
+            out.push_str(&t[a..t.len()]);
+        }
+        out.push('"');
+        out
+    }
+
+    // The escaped text of a prefix of `i` bytes: at most six bytes each,
+    // plus the opening quote.
+    spec fn fits(n: usize, i: usize) -> bool {
+        n <= 6 * i + 1
+    }
+
+    spec fn digit(d: u32) -> bool {
+        d < 16
+    }
+
+    spec fn ascii(c: char) -> bool {
+        c < '\u{80}'
+    }
+
+    // The lowercase hexadecimal digit of `d`.
+    #[effects(pure)]
+    #[uses(ascii, digit)]
+    fn hex(d: u32) -> (r: char)
+        requires digit(d),
+        ensures ascii(r),
+    {
+        let c: Option<char> = if d < 10 {
+            char::from_u32(48 + d)
+        } else {
+            char::from_u32(87 + d)
+        };
+        match c {
+            None => '?',
+            Some(x) => x,
+        }
+    }
+
+    #[effects(alloc, io)]
+    #[uses(short)]
+    fn main() -> () {
+        show("plain");
+        show("say \"hi\"\n");
+        show("tab\tbell\u{7}back\\slash");
+        show("naïve café — ok ✓");
+        show("");
+    }
+
+    // At most 64 bytes.
+    spec fn short(t: &str) -> bool {
+        t.len() <= 64
+    }
+
+    #[effects(alloc, io)]
+    #[uses(short)]
+    fn show(t: &str) -> ()
+        requires short(t),
+    {
+        let e: String = escape(t);
+        print_str(e.as_str());
+        print_str("\n");
+        print_u64(u64::try_from(e.len()).unwrap());
+    }
+
+    spec fn within(i: usize, t: &str) -> bool {
+        i <= t.len()
+    }
+}

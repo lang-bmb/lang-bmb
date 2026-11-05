@@ -754,6 +754,7 @@ pub fn dump_tokens(files: &[(String, String)]) -> Result<String, String> {
                     ),
                 ),
                 Tok::Str(x) => ("str", format!(",\"text\":{}", q(x))),
+                Tok::Char(c) => ("char", format!(",\"value\":{c}")),
                 Tok::Byte(v) => ("byte", format!(",\"value\":{v}")),
                 Tok::Bytes(bs) => {
                     let vs: Vec<String> = bs.iter().map(u8::to_string).collect();

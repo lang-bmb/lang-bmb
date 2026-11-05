@@ -34,6 +34,7 @@ V, C, K = "compiler/src/verify.rs", "compiler/src/codegen.rs", "compiler/src/che
 S = "compiler/src/subproof.rs"
 VI = "compiler/src/verify/invariants.rs"
 W = "compiler/src/weaken.rs"
+VT, CT = "compiler/src/verify/text.rs", "compiler/src/codegen/text.rs"
 
 # (id, class, file, old, new, what)
 MUTANTS = [
@@ -523,6 +524,21 @@ MUTANTS = [
      '''                            let ok = self.t();
                             self.emit(format!("{m} = icmp eq i64 {a}, {}", i64::MIN));''',
      "an unproved `T::MIN / -1` of a signed type narrower than 64 bits is not checked (it gives `-T::MIN`)"),
+    # Text (ADR-0050, backlog 2U-02/2U-03): a slice off the character
+    # boundaries is proved, or not checked where unproved. Only
+    # `tests/soundness_text.rs` builds and runs such slices.
+    ("v-str-boundary-dropped", "soundness", VT,
+     '''            format!(
+                "(and (<= {lo} {hi}) {} {})",
+                boundary(&a, &n, &lo),
+                boundary(&a, &n, &hi)
+            ),''',
+     '''            format!("(and (<= {lo} {hi}) (<= {hi} {n}))"),''',
+     "`&s[a..b]` needs only `a <= b <= s.len()`: a proved slice may cut a character"),
+    ("c-str-boundary-unchecked", "miscompile", CT,
+     '''            self.emit(format!("{c} = and i1 {ab}, {ord}"));''',
+     '''            self.emit(format!("{c} = or i1 {ab}, true"));''',
+     "an unproved `&s[a..b]` is not checked: the slice may cut a character"),
     # The effect check (ADR-0030, backlog 2F-02): a missed effect makes a
     # definition look free of what it does (no test reason, wrong `impact`).
     ("k-push-not-alloc", "effects", K,

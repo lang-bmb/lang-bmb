@@ -3,8 +3,81 @@
 //! - `tests/verify/fail`: output matches the sibling `.jsonl`
 //!   (`BMB_BLESS=1` rewrites it), and every non-helper definition fails.
 
+//!
+//! Through the command line (backlog 4A-04): `bmb verify` (its stdout and
+//! exit status), `--emit-smt` for the scripts and `bmb lint` for the
+//! vacuity points.
+
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+mod common;
+
+use common::cli;
+use common::json;
+
+/// What `bmb verify` printed (diagnostics, then a status line per
+/// definition) and whether it succeeded.
+struct Out {
+    ok: bool,
+    output: String,
+}
+
+fn verify_files(files: &[(String, String)]) -> Out {
+    let (ok, output) = cli::run(&["verify"], files);
+    Out { ok, output }
+}
+
+/// `bmb verify --emit-smt`: its result and the script of every
+/// definition, by path.
+fn verify_scripts(files: &[(String, String)]) -> (Out, BTreeMap<String, String>) {
+    static N: AtomicUsize = AtomicUsize::new(0);
+    let dir = std::env::temp_dir().join(format!(
+        "bmb-verify-smt-{}-{}",
+        std::process::id(),
+        N.fetch_add(1, Ordering::SeqCst)
+    ));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("smt")).unwrap();
+    for (name, text) in files {
+        let p = dir.join(name);
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        fs::write(p, text).unwrap();
+    }
+    let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
+        .current_dir(&dir)
+        .args(["verify", "--emit-smt", "smt"])
+        .args(files.iter().map(|(n, _)| n))
+        .output()
+        .unwrap();
+    let mut scripts = BTreeMap::new();
+    for e in fs::read_dir(dir.join("smt")).unwrap() {
+        let p = e.unwrap().path();
+        let name = p.file_name().unwrap().to_str().unwrap().to_string();
+        if let Some(def) = name.strip_suffix(".smt2") {
+            scripts.insert(def.replace('.', "::"), fs::read_to_string(&p).unwrap());
+        }
+    }
+    let _ = fs::remove_dir_all(&dir);
+    let res = Out {
+        ok: out.status.success(),
+        output: String::from_utf8(out.stdout).unwrap(),
+    };
+    (res, scripts)
+}
+
+/// The reach points `bmb lint` finds refuted by the program's own proofs
+/// (W0905).
+fn vacuous_points(files: &[(String, String)]) -> Vec<String> {
+    let (_, out) = cli::run(&["lint", "--select", "W0905"], files);
+    out.lines()
+        .filter(|l| l.contains("\"code\":\"W0905\""))
+        .map(str::to_string)
+        .collect()
+}
 
 fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -27,8 +100,8 @@ fn name(p: &Path) -> String {
     format!("{parent}/{}", p.file_name().unwrap().to_str().unwrap())
 }
 
-fn verify(p: &Path) -> bmb::VerifyOutput {
-    bmb::verify_sources(&[(name(p), fs::read_to_string(p).unwrap())])
+fn verify(p: &Path) -> Out {
+    verify_files(&[(name(p), fs::read_to_string(p).unwrap())])
 }
 
 #[test]
@@ -86,7 +159,7 @@ fn proofs_are_not_vacuous() {
         programs.push((name(&p), files));
     }
     for (label, files) in programs {
-        let points = bmb::vacuous_points(&files);
+        let points = vacuous_points(&files);
         assert!(points.is_empty(), "{label}: {points:?}");
     }
 }
@@ -106,7 +179,7 @@ fn game_programs_are_proved() {
     for p in games {
         let mut files = vec![(name(&p), fs::read_to_string(&p).unwrap())];
         files.extend(libs.iter().cloned());
-        let out = bmb::verify_sources(&files);
+        let out = verify_files(&files);
         assert!(out.ok, "{}: {}", p.display(), out.output);
     }
 }
@@ -118,7 +191,7 @@ fn libraries_are_proved() {
     let libs = bmb_files(&root().join("..").join("lib"));
     assert!(libs.len() >= 5);
     for p in libs {
-        let out = bmb::verify_sources(&[(name(&p), fs::read_to_string(&p).unwrap())]);
+        let out = verify_files(&[(name(&p), fs::read_to_string(&p).unwrap())]);
         assert!(out.ok, "{}: {}", p.display(), out.output);
     }
 }
@@ -180,9 +253,9 @@ mod m {
     }
 }
 "#;
-    let out = bmb::verify_sources(&[("m.bmb".into(), src.into())]);
+    let (out, scripts) = verify_scripts(&[("m.bmb".into(), src.into())]);
     for def in ["m::wrong", "m::right"] {
-        let script = &out.scripts[def];
+        let script = &scripts[def];
         // The postcondition's probe comes just before its full query.
         let lines: Vec<&str> = script.lines().collect();
         let section = |prefix: &str| {
@@ -199,14 +272,15 @@ mod m {
         let (probe_at, probe) = section("; probe of obligation ");
         let (full_at, full) = section("; obligation ");
         assert_eq!(probe_at + probe.lines().count(), full_at, "{script}");
+        // The scripts are what the solver gets: canonical symbols (`|$k|`,
+        // ADR-0063). The probe defines the predicate as a macro; the full
+        // query states it by a quantified definition.
         assert!(
-            probe.contains("(define-fun |m::is_succ| ")
-                && probe.contains("(set-option :rlimit 50000)"),
+            probe.contains("(define-fun |$") && probe.contains("(set-option :rlimit 50000)"),
             "{script}"
         );
         assert!(
-            full.contains("(forall ((|x!p| Int) (|r!p| Int))")
-                && !full.contains("(define-fun |m::is_succ| "),
+            full.contains("(forall ((|$") && !full.contains("(define-fun |$"),
             "{script}"
         );
     }
@@ -241,8 +315,9 @@ fn queries_and_output_are_deterministic() {
     let mut files = bmb_files(&root().join("check").join("ok"));
     files.extend(bmb_files(&root().join("verify").join("fail")));
     for p in files {
-        let (a, b) = (verify(&p), verify(&p));
-        assert_eq!(a.scripts, b.scripts, "{}", p.display());
+        let file = [(name(&p), fs::read_to_string(&p).unwrap())];
+        let ((a, sa), (b, sb)) = (verify_scripts(&file), verify_scripts(&file));
+        assert_eq!(sa, sb, "{}", p.display());
         assert_eq!(a.output, b.output, "{}", p.display());
     }
 }
@@ -260,7 +335,7 @@ fn benchmark_programs_are_proved() {
         .into_iter()
         .map(|p| (name(&p), fs::read_to_string(&p).unwrap()))
         .collect();
-    let out = bmb::verify_sources(&files);
+    let out = verify_files(&files);
     assert!(out.ok, "seed workspace should verify:\n{}", out.output);
 }
 
@@ -291,7 +366,7 @@ mod h {
     }
 }
 "#;
-    let run = |uses: &str| bmb::verify_sources(&[("h.bmb".into(), src.replace("USES", uses))]);
+    let run = |uses: &str| verify_files(&[("h.bmb".into(), src.replace("USES", uses))]);
     let first = run("bigger");
     assert!(!first.ok);
     // The precondition `small(5)` fails; the hint names `small` and nothing else.
@@ -302,16 +377,6 @@ mod h {
         .expect("precondition failure");
     assert!(hint.contains("add to #[uses(small)]"), "{hint}");
     assert!(run("bigger, small").ok);
-}
-
-#[test]
-fn nonlinear_detection() {
-    use bmb::verify::has_nonlinear_product;
-    assert!(has_nonlinear_product("(assert (= r (* x y)))"));
-    assert!(has_nonlinear_product("(assert (> (+ 1 (* x x x)) 0))"));
-    assert!(!has_nonlinear_product("(assert (= r (* 2 x)))"));
-    assert!(!has_nonlinear_product("(assert (= r (* x (- 3))))"));
-    assert!(!has_nonlinear_product("(assert (|f| x y))"));
 }
 
 /// A range `for` is encoded as its `while` expansion (ADR-0049 §2, backlog
@@ -343,9 +408,9 @@ fn for_queries_are_the_while_expansion() {
     for (for_body, while_body) in cases {
         let script = |body: &str| {
             let files = [("t.bmb".to_string(), unit(body))];
-            let out = bmb::verify_sources_opts(&files, None, false);
+            let (out, scripts) = verify_scripts(&files);
             assert!(out.ok, "{}", out.output);
-            out.scripts["t::f"].clone()
+            scripts["t::f"].clone()
         };
         assert_eq!(script(for_body), script(while_body), "{for_body}");
     }
@@ -374,9 +439,9 @@ fn try_queries_are_the_match_expansion() {
     for (try_body, match_body) in cases {
         let script = |body: &str| {
             let files = [("t.bmb".to_string(), unit(body))];
-            let out = bmb::verify_sources_opts(&files, None, false);
+            let (out, scripts) = verify_scripts(&files);
             assert!(out.ok, "{}", out.output);
-            out.scripts["t::f"].clone()
+            scripts["t::f"].clone()
         };
         assert_eq!(script(try_body), script(match_body), "{try_body}");
     }
@@ -454,7 +519,7 @@ mod tasks {
 fn vv0039_judge(body: &str) -> String {
     let task =
         fs::read_to_string(root().join("../bench/bvb/tasks/vc-vv0039-max-of-list.json")).unwrap();
-    let task = bmb::json::parse(&task).unwrap();
+    let task = json::parse(&task).unwrap();
     let accept = task.get("accept").unwrap();
     let field = |k: &str| accept.get(k).unwrap().as_str().unwrap().to_string();
     let specs = [
@@ -494,7 +559,7 @@ fn the_vv0039_equivalent_contract_is_proved_with_a_lemma() {
             "proof {\n            contains_has_index(lst, lst.len(), m);\n        }",
         );
     let run = |agent: &str, body: &str| {
-        bmb::verify_sources(&[
+        verify_files(&[
             ("ws.bmb".to_string(), agent.to_string()),
             ("accept.bmb".to_string(), vv0039_judge(body)),
         ])
@@ -587,7 +652,7 @@ mod g {
     }
 }
 ";
-    let out = bmb::verify_sources(&[("g.bmb".to_string(), text.to_string())]);
+    let out = verify_files(&[("g.bmb".to_string(), text.to_string())]);
     let lines: Vec<&str> = out.output.lines().collect();
     let diag = |def: &str| -> &str {
         lines

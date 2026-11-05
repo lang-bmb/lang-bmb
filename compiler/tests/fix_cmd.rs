@@ -1,7 +1,92 @@
 //! `bmb fix` (backlog 2D-04): applies every mechanical fix, re-checks and
-//! repeats until none applies.
+//! repeats until none applies. Through the command line (backlog 4A-04):
+//! `bmb fix --write` in a directory of its own, then the files and the
+//! report it printed.
 
+use std::fs;
 use std::process::Command;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+mod common;
+
+use common::cli;
+use common::json;
+
+/// What `bmb fix --write` did to `files`: the files after it, its exit
+/// status, the report's rounds, applied codes (in report order), remaining
+/// diagnostics, changed files and the whole report.
+struct Fixed {
+    files: Vec<(String, String)>,
+    ok: bool,
+    rounds: i64,
+    codes: Vec<String>,
+    diagnostics: String,
+    changed: Vec<String>,
+    report: String,
+}
+
+fn fix(files: &[(String, String)]) -> Fixed {
+    static N: AtomicUsize = AtomicUsize::new(0);
+    let dir = std::env::temp_dir().join(format!(
+        "bmb-fix-cli-{}-{}",
+        std::process::id(),
+        N.fetch_add(1, Ordering::SeqCst)
+    ));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    for (name, text) in files {
+        fs::write(dir.join(name), text).unwrap();
+    }
+    let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
+        .current_dir(&dir)
+        .args(["fix", "--write"])
+        .args(files.iter().map(|(n, _)| n))
+        .output()
+        .unwrap();
+    let after = files
+        .iter()
+        .map(|(n, _)| (n.clone(), fs::read_to_string(dir.join(n)).unwrap()))
+        .collect();
+    let _ = fs::remove_dir_all(&dir);
+    let report = String::from_utf8(out.stdout).unwrap();
+    let mut fixed = Fixed {
+        files: after,
+        ok: out.status.success(),
+        rounds: -1,
+        codes: Vec::new(),
+        diagnostics: String::new(),
+        changed: Vec::new(),
+        report: report.clone(),
+    };
+    for line in report.lines() {
+        let v = json::parse(line).unwrap();
+        if v.get("summary").is_some() {
+            fixed.rounds = v.get("rounds").and_then(json::Value::as_i64).unwrap();
+            if let Some(json::Value::Array(xs)) = v.get("changed") {
+                fixed.changed = xs.iter().map(|x| x.as_str().unwrap().to_string()).collect();
+            }
+        } else if v.get("round").is_some() {
+            fixed.codes.push(
+                v.get("code")
+                    .and_then(json::Value::as_str)
+                    .unwrap()
+                    .to_string(),
+            );
+        } else {
+            fixed.diagnostics.push_str(line);
+            fixed.diagnostics.push('\n');
+        }
+    }
+    fixed
+}
+
+fn checks(files: &[(String, String)]) -> bool {
+    cli::run(&["check"], files).0
+}
+
+fn verifies(files: &[(String, String)]) -> bool {
+    cli::run(&["verify"], files).0
+}
 
 const HABITS: &str = r#"#[summary("Rust habits")]
 mod m {
@@ -54,15 +139,15 @@ fn one(text: &str) -> Vec<(String, String)> {
 #[test]
 fn rust_habits_are_fixed_over_rounds() {
     let input = one(HABITS);
-    assert!(!bmb::check_sources(&input).ok);
-    let out = bmb::fix_sources(&input);
+    assert!(!checks(&input));
+    let out = fix(&input);
     assert_eq!(out.files[0].1, FIXED);
     assert!(out.ok, "{}", out.diagnostics);
     assert_eq!(out.diagnostics, "");
-    assert!(bmb::check_sources(&out.files).ok);
+    assert!(checks(&out.files));
     // `let z` gets its type only once `x` is `i64`: a second round.
     assert_eq!(out.rounds, 2);
-    let mut codes: Vec<&str> = out.applied.iter().map(|a| a.code).collect();
+    let mut codes: Vec<&str> = out.codes.iter().map(String::as_str).collect();
     codes.sort();
     assert_eq!(
         codes,
@@ -70,7 +155,7 @@ fn rust_habits_are_fixed_over_rounds() {
             "E0104", "E0201", "E0201", "E0207", "E0208", "E0209", "E0402"
         ]
     );
-    let report = out.report(&input);
+    let report = out.report.clone();
     assert!(
         report.ends_with(
             "{\"summary\":true,\"rounds\":2,\"applied\":7,\"changed\":[\"t.bmb\"],\"remaining\":0,\"ok\":true}\n"
@@ -78,19 +163,19 @@ fn rust_habits_are_fixed_over_rounds() {
         "{report}"
     );
     // Deterministic.
-    assert_eq!(bmb::fix_sources(&input).report(&input), report);
+    assert_eq!(fix(&input).report, report);
 }
 
 #[test]
 fn fix_is_idempotent() {
     for text in [FIXED, HABITS] {
-        let first = bmb::fix_sources(&one(text));
-        let again = bmb::fix_sources(&first.files);
+        let first = fix(&one(text));
+        let again = fix(&first.files);
         assert_eq!(again.files, first.files);
-        assert!(again.applied.is_empty());
+        assert!(again.codes.is_empty());
         assert_eq!(again.rounds, 0);
         assert_eq!(
-            again.report(&first.files),
+            again.report.clone(),
             "{\"summary\":true,\"rounds\":0,\"applied\":0,\"changed\":[],\"remaining\":0,\"ok\":true}\n"
         );
     }
@@ -100,14 +185,14 @@ fn fix_is_idempotent() {
 fn non_mechanical_errors_remain() {
     // A `while` without `decreases` has no mechanical fix; the suffix does.
     let text = "#[summary(\"x\")]\nmod m {\n    #[effects(pure)]\n    fn f() -> i64 {\n        let mut i: i64 = 5i64;\n        while i > 0 {\n            i = i - 1;\n        }\n        i\n    }\n}\n";
-    let out = bmb::fix_sources(&one(text));
+    let out = fix(&one(text));
     assert!(!out.ok);
     assert!(
         out.files[0].1.contains("let mut i: i64 = 5;"),
         "{}",
         out.files[0].1
     );
-    assert_eq!(out.applied.len(), 1);
+    assert_eq!(out.codes.len(), 1);
     assert!(out.diagnostics.contains("\"code\":\"E0506\""));
     assert!(!out.diagnostics.contains("E0104"));
 }
@@ -124,11 +209,11 @@ fn fixes_apply_per_file_in_a_multi_file_program() {
             "#[summary(\"b\")]\nmod b {\n    #[effects(io)]\n    fn main() -> () { print_i64(a::f(7i64)); }\n}\n".to_string(),
         ),
     ];
-    let out = bmb::fix_sources(&files);
+    let out = fix(&files);
     assert!(out.ok, "{}", out.diagnostics);
     assert!(out.files[0].1.contains("fn f(x: i64)"));
     assert!(out.files[1].1.contains("a::f(7)"));
-    assert_eq!(out.changed(&files), ["a.bmb", "b.bmb"]);
+    assert_eq!(out.changed, ["a.bmb", "b.bmb"]);
 }
 
 #[test]
@@ -177,7 +262,7 @@ fn literal_fixes_keep_the_value() {
     // `0x10` once lost its `x10` and became `0` (2R-02 finding). Bases are
     // literals now (ADR-0048 §3); a suffix goes, the base and digits stay.
     let text = "#[summary(\"t\")]\nmod m {\n    #[effects(pure)]\n    fn f() -> i64 { 0x10 + 0o17 + 0b1_01 + 5i64 + 0xfi64 }\n}\n";
-    let out = bmb::fix_sources(&one(text));
+    let out = fix(&one(text));
     assert!(out.ok, "{}", out.diagnostics);
     assert!(
         out.files[0]
@@ -188,7 +273,7 @@ fn literal_fixes_keep_the_value() {
     );
     // An unknown suffix gets no mechanical fix.
     let odd = text.replace("5i64", "7abc");
-    let out = bmb::fix_sources(&one(&odd));
+    let out = fix(&one(&odd));
     assert!(!out.ok);
     assert!(out.files[0].1.contains("7abc"));
 }
@@ -259,12 +344,12 @@ mod shapes {
 #[test]
 fn data_type_habits_are_fixed_into_a_checked_program() {
     let input = one(DATA_HABITS);
-    assert!(!bmb::check_sources(&input).ok);
-    let out = bmb::fix_sources(&input);
+    assert!(!checks(&input));
+    let out = fix(&input);
     assert!(out.ok, "{}", out.diagnostics);
-    assert!(bmb::check_sources(&out.files).ok);
+    assert!(checks(&out.files));
     assert_eq!(out.rounds, 1);
-    let mut codes: Vec<&str> = out.applied.iter().map(|a| a.code).collect();
+    let mut codes: Vec<&str> = out.codes.iter().map(String::as_str).collect();
     codes.sort();
     codes.dedup();
     assert_eq!(
@@ -314,11 +399,11 @@ mod conv {
 #[test]
 fn conversion_habits_are_fixed_into_a_checked_program() {
     let input = one(CONV_HABITS);
-    assert!(!bmb::check_sources(&input).ok);
-    let out = bmb::fix_sources(&input);
+    assert!(!checks(&input));
+    let out = fix(&input);
     assert!(out.ok, "{}", out.diagnostics);
-    assert!(bmb::check_sources(&out.files).ok);
-    let mut codes: Vec<&str> = out.applied.iter().map(|a| a.code).collect();
+    assert!(checks(&out.files));
+    let mut codes: Vec<&str> = out.codes.iter().map(String::as_str).collect();
     codes.sort();
     codes.dedup();
     assert_eq!(codes, ["E0205", "E0212", "E0213", "E0412"]);
@@ -340,11 +425,11 @@ fn conversion_habits_are_fixed_into_a_checked_program() {
 fn vec_coercions_are_fixed_into_a_checked_program() {
     let text = "#[summary(\"t\")]\nmod m {\n    #[effects(pure)]\n    fn read(a: &[i64]) -> usize { a.len() }\n\n    #[effects(pure)]\n    fn write(a: &mut [i64]) -> () {}\n\n    #[effects(alloc)]\n    fn f(r: &Vec<i64>) -> usize {\n        let mut v: Vec<i64> = Vec::new();\n        write(&mut v);\n        read(&v) + read(r)\n    }\n}\n";
     let input = one(text);
-    assert!(!bmb::check_sources(&input).ok);
-    let out = bmb::fix_sources(&input);
+    assert!(!checks(&input));
+    let out = fix(&input);
     assert!(out.ok, "{}", out.diagnostics);
-    assert!(bmb::check_sources(&out.files).ok);
-    let codes: Vec<&str> = out.applied.iter().map(|a| a.code).collect();
+    assert!(checks(&out.files));
+    let codes: Vec<&str> = out.codes.iter().map(String::as_str).collect();
     assert_eq!(codes, ["E0218", "E0218", "E0218"]);
     let fixed = &out.files[0].1;
     assert!(fixed.contains("write(v.as_mut_slice());"), "{fixed}");
@@ -360,13 +445,15 @@ fn vec_coercions_are_fixed_into_a_checked_program() {
 fn text_habits_are_fixed_into_a_checked_program() {
     let text = "#[summary(\"t\")]\nmod m {\n    #[effects(io)]\n    fn f(c: char) -> () {\n        print_bytes(\"caf\u{e9} \\\"x\\\"\\n\");\n        let n: u8 = 'a';\n    }\n}\n";
     let input = one(text);
-    assert!(!bmb::check_sources(&input).ok);
-    let out = bmb::fix_sources(&input);
+    assert!(!checks(&input));
+    let out = fix(&input);
     assert!(out.ok, "{}", out.diagnostics);
-    assert!(bmb::check_sources(&out.files).ok);
+    assert!(checks(&out.files));
     let fixed = &out.files[0].1;
+    // `char` is a type (ADR-0050); a string literal for bytes and a
+    // character for a byte get their byte forms.
     for want in [
-        "fn f(c: u8) -> ()",
+        "fn f(c: char) -> ()",
         "print_bytes(b\"caf\\xc3\\xa9 \\\"x\\\"\\n\");",
         "let n: u8 = b'a';",
     ] {
@@ -380,10 +467,10 @@ fn text_habits_are_fixed_into_a_checked_program() {
 fn reference_where_a_value_is_expected_is_fixed() {
     let text = "#[summary(\"t\")]\nmod d {\n    struct P { x: i64 }\n\n    spec fn small(p: P) -> bool { p.x < 100 }\n\n    spec fn moved(p: P, q: P) -> bool { p.x <= q.x }\n\n    impl P {\n        #[effects(pure)]\n        #[uses(small, moved)]\n        fn bump(self: &mut P) -> ()\n            requires small(*self),\n            ensures moved(old(self), self),\n        {\n            self.x = self.x + 1;\n        }\n    }\n\n    #[effects(pure)]\n    fn copy(r: &P) -> i64 {\n        let p: P = r;\n        p.x\n    }\n}\n";
     let input = one(text);
-    assert!(!bmb::check_sources(&input).ok);
-    let out = bmb::fix_sources(&input);
+    assert!(!checks(&input));
+    let out = fix(&input);
     assert!(out.ok, "{}", out.diagnostics);
-    assert!(bmb::verify_sources(&out.files).ok);
+    assert!(verifies(&out.files));
     let fixed = &out.files[0].1;
     assert!(
         fixed.contains("ensures moved(*old(self), *self),"),
@@ -398,10 +485,10 @@ fn use_items_are_rewritten_to_full_paths() {
     // in full; the result checks and proves.
     let text = "#[summary(\"g\")]\nmod geo {\n    struct Point { x: i64, y: i64 }\n\n    #[effects(pure)]\n    fn origin() -> Point {\n        Point { x: 0, y: 0 }\n    }\n}\n\n#[summary(\"a\")]\nmod app {\n    use geo::Point;\n    use geo::origin;\n\n    #[effects(pure)]\n    fn x_of(p: Point) -> i64 {\n        p.x\n    }\n\n    #[effects(pure)]\n    fn go() -> i64 {\n        let p: Point = origin();\n        x_of(p)\n    }\n}\n";
     let input = one(text);
-    assert!(!bmb::check_sources(&input).ok);
-    let out = bmb::fix_sources(&input);
+    assert!(!checks(&input));
+    let out = fix(&input);
     assert!(out.ok, "{}", out.diagnostics);
-    assert!(bmb::verify_sources(&out.files).ok);
+    assert!(verifies(&out.files));
     let fixed = &out.files[0].1;
     assert!(!fixed.contains("use "), "{fixed}");
     assert!(fixed.contains("fn x_of(p: geo::Point) -> i64 {"), "{fixed}");
@@ -422,10 +509,10 @@ fn omitted_type_arguments_are_written_out() {
     // the function's and for an `impl`'s parameters.
     let text = "#[summary(\"g\")]\nmod g {\n    struct Cell<T: Copy> { v: T }\n\n    impl<T: Copy> Cell<T> {\n        #[effects(pure)]\n        fn new(v: T) -> Cell<T> {\n            Cell { v: v }\n        }\n    }\n\n    #[effects(pure)]\n    fn pick<A: Copy, B: Copy>(a: A, b: B) -> B {\n        b\n    }\n\n    #[effects(pure)]\n    fn go(x: u64) -> bool {\n        let c: Cell<bool> = Cell::new(true);\n        let y: u64 = pick(c, x);\n        pick(y, c.v)\n    }\n}\n";
     let input = one(text);
-    assert!(!bmb::check_sources(&input).ok);
-    let out = bmb::fix_sources(&input);
+    assert!(!checks(&input));
+    let out = fix(&input);
     assert!(out.ok, "{}", out.diagnostics);
-    assert!(bmb::verify_sources(&out.files).ok);
+    assert!(verifies(&out.files));
     let fixed = &out.files[0].1;
     assert!(fixed.contains("Cell::<bool>::new(true)"), "{fixed}");
     assert!(fixed.contains("pick::<Cell<bool>, u64>(c, x)"), "{fixed}");
@@ -438,10 +525,10 @@ fn where_clauses_move_to_the_parameters() {
     // to the type parameters, on a function, an `impl` and a type.
     let text = "#[summary(\"w\")]\nmod w {\n    trait Shape {\n        #[effects(pure)]\n        fn area(self: &Self) -> i64;\n    }\n\n    struct Cell<T> where T: Copy { v: T }\n\n    impl<T> Shape for Cell<T>\n    where\n        T: Copy + Shape,\n    {\n        #[effects(pure)]\n        fn area(self: &Cell<T>) -> i64 {\n            Shape::area(&self.v)\n        }\n    }\n\n    #[effects(pure)]\n    fn least<T: Copy, U>(a: T, b: T, u: U) -> T\n        where T: Ord, U: Copy\n    {\n        if a <= b { a } else { b }\n    }\n}\n";
     let input = one(text);
-    assert!(!bmb::check_sources(&input).ok);
-    let out = bmb::fix_sources(&input);
+    assert!(!checks(&input));
+    let out = fix(&input);
     assert!(out.ok, "{}", out.diagnostics);
-    assert!(bmb::verify_sources(&out.files).ok);
+    assert!(verifies(&out.files));
     let fixed = &out.files[0].1;
     assert!(!fixed.contains("where"), "{fixed}");
     assert!(fixed.contains("struct Cell<T: Copy>"), "{fixed}");
@@ -528,10 +615,10 @@ mod c {
 #[test]
 fn counting_while_becomes_a_range_for() {
     let input = one(COUNTING);
-    assert!(bmb::verify_sources(&input).ok);
-    let out = bmb::fix_sources(&input);
+    assert!(verifies(&input));
+    let out = fix(&input);
     assert!(out.ok, "{}", out.diagnostics);
-    let codes: Vec<&str> = out.applied.iter().map(|a| a.code).collect();
+    let codes: Vec<&str> = out.codes.iter().map(String::as_str).collect();
     assert_eq!(codes, ["W0907"]);
     let text = &out.files[0].1;
     assert!(
@@ -542,7 +629,7 @@ fn counting_while_becomes_a_range_for() {
     );
     assert_eq!(text.matches("while").count(), 4, "{text}");
     let after = one(text);
-    assert!(bmb::verify_sources(&after).ok);
+    assert!(verifies(&after));
     // A fixed program has nothing left to rewrite.
-    assert!(bmb::fix_sources(&after).applied.is_empty());
+    assert!(fix(&after).codes.is_empty());
 }

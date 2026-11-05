@@ -1,6 +1,6 @@
 {"code":"E0207","severity":"error","message":"`const` items are not supported in milestone 1","file":"err/unsupported.bmb","line":3,"col":5,"end_line":3,"end_col":10,"fix":{"message":"use a `spec fn` returning the value, or a literal"}}
 {"code":"E0207","severity":"error","message":"`static` items are not supported in milestone 1","file":"err/unsupported.bmb","line":5,"col":5,"end_line":5,"end_col":11,"fix":{"message":"use a `spec fn` returning the value, or a literal"}}
-{"code":"E0101","severity":"error","message":"character literals are not supported","file":"err/unsupported.bmb","line":8,"col":24,"end_line":8,"end_col":27,"fix":{"message":"a byte is `b'..'` (`u8`)","replacement":"b'a'"}}
+{"code":"E0401","severity":"error","message":"expected `u8`, found `char`","file":"err/unsupported.bmb","line":8,"col":24,"end_line":8,"end_col":27,"fix":{"message":"a byte is `b'..'` (`u8`)","replacement":"b'a'"}}
 {"code":"E0506","severity":"error","message":"`loop` has no `decreases` clause","file":"err/unsupported.bmb","line":11,"col":27,"end_line":11,"end_col":31,"fix":{"message":"add `decreases <expr>,` before the loop body"}}
 {"code":"E0423","severity":"error","message":"`match` needs an enum value, found `i64`","file":"err/unsupported.bmb","line":14,"col":39,"end_line":14,"end_col":40,"fix":{"message":"branch with `if` on a condition"}}
 {"code":"E0306","severity":"error","message":"`i64` has no field `x`","file":"err/unsupported.bmb","line":17,"col":34,"end_line":17,"end_col":35,"fix":{"message":"only structs have fields"}}

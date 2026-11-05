@@ -1,0 +1,169 @@
+#[summary("문자열: 공백으로 나눈 낱말을 String으로 모으고, 가장 긴 낱말과 사전순 첫 낱말을 찾고, 쉼표로 다시 잇는다. 글자 경계 의무(E0820)와 길이 의무를 증명한다 (backlog 2U-05)")]
+mod strs {
+    spec fn between(i: usize, r: usize, t: &str) -> bool {
+        i <= r && r <= t.len()
+    }
+
+    // The joined text of `i` short words: at most 64 bytes and a separator each.
+    spec fn bounded(n: usize, i: usize) -> bool {
+        n <= 66 * i
+    }
+
+    // The index of the first word in byte order (Rust's `Ord` for `String`), or 0.
+    #[effects(pure)]
+    fn first(v: &[String]) -> usize {
+        let mut best: usize = 0;
+        let mut i: usize = 1;
+        while i < v.len()
+            invariant best < i || v.len() == 0, i >= 1,
+            decreases v.len() - i,
+        {
+            if v[i] < v[best] {
+                best = i;
+            }
+            i = i + 1;
+        }
+        best
+    }
+
+    // The words joined by `", "`.
+    #[effects(alloc)]
+    #[uses(bounded, small)]
+    fn join(v: &[String]) -> String
+        requires small(v),
+    {
+        let mut out: String = String::new();
+        let mut i: usize = 0;
+        while i < v.len()
+            invariant i <= v.len(), bounded(out.len(), i),
+            decreases v.len() - i,
+        {
+            if i > 0 {
+                out.push_str(", ");
+            }
+            out.push_str(v[i].as_str());
+            i = i + 1;
+        }
+        out
+    }
+
+    // The index of the longest word (the first of them), or 0.
+    #[effects(pure)]
+    fn longest(v: &[String]) -> usize {
+        let mut best: usize = 0;
+        let mut i: usize = 1;
+        while i < v.len()
+            invariant best < i || v.len() == 0, i >= 1,
+            decreases v.len() - i,
+        {
+            if v[i].len() > v[best].len() {
+                best = i;
+            }
+            i = i + 1;
+        }
+        best
+    }
+
+    #[effects(alloc, io)]
+    #[uses(short)]
+    fn main() -> () {
+        show("the quick brown fox jumps over the lazy dog");
+        show("  café crème  brûlée ");
+        show("");
+        show("Ελληνικά und Deutsch: Übermut");
+        let mut s: String = String::from("a");
+        s.push('é');
+        s.push('€');
+        s.push('😀');
+        print_u64(u64::try_from(s.len()).unwrap());
+        if s.as_str() == "aé€😀" && s.as_str() < "b" {
+            print_str("same\n");
+        }
+    }
+
+    // At most 64 bytes: the sentences here.
+    spec fn short(t: &str) -> bool {
+        t.len() <= 64
+    }
+
+    // The words of `t`: how many, the longest and the first, and all of them joined.
+    #[effects(alloc, io)]
+    #[uses(short, small)]
+    fn show(t: &str) -> ()
+        requires short(t),
+    {
+        let v: Vec<String> = words(t);
+        print_u64(u64::try_from(v.len()).unwrap());
+        if v.len() > 0 {
+            let l: usize = longest(v.as_slice());
+            let f: usize = first(v.as_slice());
+            if l < v.len() && f < v.len() {
+                print_str(v[l].as_str());
+                print_str(" ");
+                print_str(v[f].as_str());
+                print_str("\n");
+            }
+        }
+        let j: String = join(v.as_slice());
+        print_str(j.as_str());
+        print_str("\n");
+    }
+
+    // Every word is short and there are at most 64 of them.
+    spec fn small(v: &[String]) -> bool {
+        v.len() <= 64 && (forall|j: usize| j < v.len() ==> #[trigger] v[j].len() <= 64)
+    }
+
+    spec fn within(i: usize, t: &str) -> bool {
+        i <= t.len()
+    }
+
+    // The index of the first space at or after `i`, or the length.
+    #[effects(pure)]
+    #[uses(between, within)]
+    fn word_end(t: &str, i: usize) -> (r: usize)
+        requires within(i, t),
+        ensures between(i, r, t),
+    {
+        let mut j: usize = i;
+        while j < t.len() && t.as_bytes()[j] != b' '
+            invariant between(i, j, t),
+            decreases t.len() - j,
+        {
+            j = j + 1;
+        }
+        j
+    }
+
+    // The words of `t` (runs of bytes other than spaces), as owned strings. A
+    // word starts after a space and ends before one, so the boundary checks
+    // always hold for UTF-8 (the prover does not know the invariant yet).
+    #[effects(alloc)]
+    #[uses(between, short, small, within)]
+    fn words(t: &str) -> (r: Vec<String>)
+        requires short(t),
+        ensures small(r.as_slice()),
+    {
+        let mut v: Vec<String> = Vec::new();
+        let mut i: usize = 0;
+        while i < t.len()
+            invariant within(i, t), v.len() <= i, small(v.as_slice()),
+            decreases t.len() - i,
+        {
+            if t.as_bytes()[i] == b' ' {
+                i = i + 1;
+            } else {
+                let e: usize = word_end(t, i);
+                if t.is_char_boundary(i) && t.is_char_boundary(e) {
+                    v.push(String::from(&t[i..e]));
+                }
+                if e < t.len() {
+                    i = e + 1;
+                } else {
+                    i = e;
+                }
+            }
+        }
+        v
+    }
+}

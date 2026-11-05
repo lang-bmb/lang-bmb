@@ -19,7 +19,9 @@ pub fn run(args: &[&str], files: &[(String, String)]) -> (bool, String) {
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
     for (name, text) in files {
-        fs::write(dir.join(name), text).unwrap();
+        let p = dir.join(name);
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        fs::write(p, text).unwrap();
     }
     let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
         .current_dir(&dir)

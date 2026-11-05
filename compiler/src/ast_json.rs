@@ -455,6 +455,11 @@ impl Ex<'_> {
             TypeKind::F64 => obj(vec![("kind", s("f64"))]),
             TypeKind::Bool => obj(vec![("kind", s("bool"))]),
             TypeKind::Unit => obj(vec![("kind", s("unit"))]),
+            TypeKind::Char => obj(vec![("kind", s("char"))]),
+            TypeKind::Str => obj(vec![("kind", s("str"))]),
+            // The parser writes `String` as a path (a program may declare
+            // its own); the checker resolves it.
+            TypeKind::String => obj(vec![("kind", s("named")), ("path", s("String"))]),
             TypeKind::Array(e, n) => obj(vec![
                 ("kind", s("array")),
                 ("elem", self.under("elem", |x| x.ty(e))?),
@@ -682,6 +687,14 @@ impl Ex<'_> {
                     "value",
                     Value::Array(bs.iter().map(|b| Value::Num(b.to_string())).collect()),
                 ));
+            }
+            ExprKind::StrLit(t) => {
+                k("str");
+                kv.push(("value", s(t)));
+            }
+            ExprKind::CharLit(c) => {
+                k("char");
+                kv.push(("value", Value::Num(c.to_string())));
             }
             ExprKind::Bool(b) => {
                 k("bool");
@@ -1455,11 +1468,13 @@ impl Im {
             TypeKind::Int(i)
         } else {
             match k {
-                "f64" | "bool" | "unit" => {
+                "f64" | "bool" | "unit" | "char" | "str" => {
                     self.obj(v, "a type", &["kind"])?;
                     match k {
                         "f64" => TypeKind::F64,
                         "bool" => TypeKind::Bool,
+                        "char" => TypeKind::Char,
+                        "str" => TypeKind::Str,
                         _ => TypeKind::Unit,
                     }
                 }
@@ -1711,6 +1726,21 @@ impl Im {
                     _ => m.fail("expected a byte (0..=255)"),
                 })?;
                 ExprKind::ByteStr(bs)
+            }
+            "str" => {
+                let o = fields(self, "a string literal", &["value"])?;
+                ExprKind::StrLit(self.string(&o, "value")?)
+            }
+            "char" => {
+                let o = fields(self, "a character literal", &["value"])?;
+                let c = self.number(&o, "value")?;
+                match u32::try_from(c).ok().and_then(char::from_u32) {
+                    Some(c) => ExprKind::CharLit(c as u32),
+                    None => {
+                        return self
+                            .under("value", |m| m.fail("a character is a Unicode scalar value"));
+                    }
+                }
             }
             "bool" => {
                 let o = fields(self, "a bool", &["value"])?;

@@ -637,6 +637,8 @@ fn node_spans(f: &FnDef) -> Vec<Span> {
             | ExprKind::ByteLit(_)
             | ExprKind::Float(_)
             | ExprKind::ByteStr(_)
+            | ExprKind::StrLit(_)
+            | ExprKind::CharLit(_)
             | ExprKind::Bool(_)
             | ExprKind::Unit
             | ExprKind::Error => {}
