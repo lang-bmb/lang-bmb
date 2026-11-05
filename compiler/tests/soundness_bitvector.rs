@@ -8,11 +8,12 @@
 //! proof assumes it under), and a counterexample is such a point where it
 //! does not hold.
 //!
-//! The interpreter computes what each operation means in a specification:
-//! a bit operation on the two's complement images of its operands at the
-//! type's width, `<<` by a constant as that, `>>` by a constant as floor
-//! division and `!` as `-a - 1` (`MAX - a` unsigned) for any integer, as
-//! the encoder defines them (`verify::bit_op`, `verify::bit_method`).
+//! The interpreter computes what each operation means in a specification
+//! (ADR-0090): every bit operation, shift, `!` and bit method reads the two's
+//! complement image of its operand at the type's width, which specification
+//! arithmetic may leave (ADR-0022); `>>` is then floor division and `!` is
+//! `-a - 1` (`MAX - a` unsigned). The encoder writes the image only where
+//! the operand may leave the type (`verify::image`).
 //!
 //! `BMB_SOUND_ITERS` / `BMB_SOUND_SEED` as in `soundness.rs`.
 
@@ -327,16 +328,16 @@ fn eval_e(e: &E, t: Ty, h: &H, p: &mut Point) -> i128 {
             }
         }
         E::Shl(a, k) => shl(eval_e(a, t, h, p), *k, t),
-        E::Shr(a, k) => shr(eval_e(a, t, h, p), *k),
+        E::Shr(a, k) => shr(t.of_bits(eval_e(a, t, h, p)), *k),
         E::Not(a) => {
-            let a = eval_e(a, t, h, p);
+            let a = t.of_bits(eval_e(a, t, h, p));
             match t {
                 Ty::I8 => -a - 1,
                 Ty::U8 => 255 - a,
             }
         }
         E::Method(m, a, k) => {
-            let a = eval_e(a, t, h, p);
+            let a = t.of_bits(eval_e(a, t, h, p));
             let k = *k % 8;
             match m {
                 Meth::Wshl => shl(a, k, t),

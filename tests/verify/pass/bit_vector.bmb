@@ -173,4 +173,28 @@ mod bvp {
         assert(x.reverse_bits().reverse_bits() == x) by (bit_vector);
         x.reverse_bits()
     }
+
+    // A bit operation's operand outside its type (specification arithmetic,
+    // ADR-0022) is its two's complement image (ADR-0090): a constant shift
+    // agrees with the same variable one, `!` and a rotation with their
+    // masked operand.
+    spec fn same_halves(x: u8, y: u8, k: u32) -> bool {
+        k == 1 ==> (x + y) >> k == (x + y) >> 1
+    }
+
+    #[uses(same_halves)]
+    proof fn shift_image(x: u8, y: u8, k: u32)
+        ensures same_halves(x, y, k),
+    {
+    }
+
+    spec fn same_not(x: u8, y: u8) -> bool {
+        !(x + y) == !((x + y) & 255) && (x + y).rotate_left(1) == ((x + y) & 255).rotate_left(1)
+    }
+
+    #[uses(same_not)]
+    proof fn not_image(x: u8, y: u8)
+        ensures same_not(x, y),
+    {
+    }
 }

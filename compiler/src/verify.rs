@@ -2277,6 +2277,37 @@ fn from_bv(i: IntTy, v: &str) -> String {
 
 /// `!a` on integer type `i`: every bit flipped, which is linear
 /// (`-a - 1`, or `MAX - a` unsigned).
+/// Whether the specification value of `e` is a value of its type
+/// syntactically: a literal, a variable, a place, a method result, or a bit
+/// operation. Arithmetic, calls and branches may leave the type (ADR-0022).
+fn in_type(e: &Expr) -> bool {
+    match &e.kind {
+        ExprKind::Int(..)
+        | ExprKind::Var(_)
+        | ExprKind::Path(_)
+        | ExprKind::Field { .. }
+        | ExprKind::Index { .. }
+        | ExprKind::Deref(_)
+        | ExprKind::Method { .. } => true,
+        ExprKind::Old(x) | ExprKind::Unary(UnOp::Not, x) => in_type(x),
+        ExprKind::Binary(op, ..) => op.is_bit() || op.is_shift(),
+        _ => false,
+    }
+}
+
+/// The operand `a` (the term of `e`) of a bit operation on `i` as the
+/// operation reads it (ADR-0090): a value outside `i`, which specification
+/// arithmetic may produce, stands for its two's complement image at `i`'s
+/// width, the value the bit-vector forms take (`int2bv`). Terms of values
+/// of `i` stay as they are, so their queries do not change.
+fn image(i: IntTy, e: &Expr, a: &str) -> String {
+    if in_type(e) {
+        a.to_string()
+    } else {
+        wrap_int(i, a)
+    }
+}
+
 pub fn not_term(i: IntTy, a: &str) -> String {
     if i.signed() {
         format!("(- (- {a}) 1)")
@@ -3263,7 +3294,7 @@ impl<'p, 'q> Enc<'p, 'q> {
             ExprKind::Unary(UnOp::Not, x) => {
                 let v = self.spec(x, env, old).s();
                 match self.ty(x).int() {
-                    Some(i) => Val::S(not_term(i, &v)),
+                    Some(i) => Val::S(not_term(i, &image(i, x, &v))),
                     None => Val::S(format!("(not {v})")),
                 }
             }
@@ -3309,6 +3340,12 @@ impl<'p, 'q> Enc<'p, 'q> {
                     // the facts and the shift obligation belong to code. Its
                     // width is its type's (operands may mix there).
                     return Val::S(match self.ty(e).int() {
+                        // A constant `>>` is a division of the operand's
+                        // value: its image, as the bit-vector forms read it
+                        // (ADR-0090).
+                        Some(i) if *op == BinOp::Shr && numeral(&rt).is_some() => {
+                            bit_op(*op, i, &image(i, l, &lt), &rt).0
+                        }
                         Some(i) => bit_op(*op, i, &lt, &rt).0,
                         None => bool_bit(*op, &lt, &rt),
                     });
@@ -3356,7 +3393,15 @@ impl<'p, 'q> Enc<'p, 'q> {
                     m if crate::check::bit_method_arity(m).is_some() => {
                         let i = self.ty(recv).int().expect("an integer method");
                         let n = args.first().map(|x| self.spec(x, env, old).s());
-                        Val::S(bit_method(m, i, &rv.s(), n.as_deref()).0)
+                        // The linear forms (a constant amount, `swap_bytes`
+                        // on a byte) read the receiver's value: its image
+                        // (ADR-0090).
+                        let a = if n.as_deref().and_then(numeral).is_some() || m == "swap_bytes" {
+                            image(i, recv, &rv.s())
+                        } else {
+                            rv.s()
+                        };
+                        Val::S(bit_method(m, i, &a, n.as_deref()).0)
                     }
                     op => {
                         let b = self.spec(&args[0], env, old).s();
