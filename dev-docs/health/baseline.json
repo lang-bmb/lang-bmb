@@ -2,27 +2,27 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 8046269,
+    "V4_rlimit_total": 8388557,
     "V5_rlimit_headroom": 0.1244,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0,
     "V8_bench_rlimit_total": 22810907,
     "V9_bench_defs_at_limit": 0,
     "V10_library_rlimit_total": 12808122,
-    "V11_sat_check_rlimit_total": 284837323,
-    "V12_sat_check_undecided": 297,
+    "V11_sat_check_rlimit_total": 228209546,
+    "V12_sat_check_undecided": 242,
     "S1_external_crates": 0,
     "S2_external_processes": [
       "clang",
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 42890,
-    "S5_tests_bound_to_rust_api": 14,
+    "S4_stage0_rust_lines": 43392,
+    "S5_tests_bound_to_rust_api": 7,
     "S6_selfhost_bmb_lines": 0,
     "P1_runnable_programs": 60,
-    "P2_bmb_lines": 22790,
-    "P3_errors_with_help": 0.8873,
+    "P2_bmb_lines": 22860,
+    "P3_errors_with_help": 0.8878,
     "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 13
@@ -1874,6 +1874,40 @@
         "P3_errors_with_help": [
           0.887,
           0.8873
+        ]
+      }
+    },
+    {
+      "date": "2026-11-05",
+      "reason": "2N-09c/2N-11: the bit_vector corpus gains byte and division cases (V4 8,046,269 -> 8,388,557, +4.3% within budget; P2 +70 BMB lines; P3 0.8873 -> 0.8878 with the new E0401 help); 4A-04f/g and 4A-03: seven test files leave the library API (S5 14 -> 7); dump tokens, mcp --stats, the byte methods, sub-proof division and the bit-vector reach query add stage0 code (S4 42,890 -> 43,392); T2-13: the vacuity check solves bounded bit-level reach points as bit-vectors (V11 284,837,323 -> 228,209,546, -19.9%; V12 297 -> 242)",
+      "changed": {
+        "V4_rlimit_total": [
+          8046269,
+          8388557
+        ],
+        "V11_sat_check_rlimit_total": [
+          284837323,
+          228209546
+        ],
+        "V12_sat_check_undecided": [
+          297,
+          242
+        ],
+        "S4_stage0_rust_lines": [
+          42890,
+          43392
+        ],
+        "S5_tests_bound_to_rust_api": [
+          14,
+          7
+        ],
+        "P2_bmb_lines": [
+          22790,
+          22860
+        ],
+        "P3_errors_with_help": [
+          0.8873,
+          0.8878
         ]
       }
     }
