@@ -658,6 +658,82 @@ fn check_sat_counted(sol: &mut Solver, spent: &mut u64) -> Result<Answer, String
 /// fast, a model may take long.
 const REACH_LIMIT: &str = "(set-option :rlimit 1000000)";
 
+/// The reach-point query `q` (assertions) over the encoder's declarations
+/// `decls` as an exact bit-vector query (backlog T2-13,
+/// `subproof::bit_vector_sat`), when every integer constant it uses is
+/// asserted in an integer type's range and it names nothing else than
+/// constants: no definition is then relevant to it.
+fn bv_reach(decls: &str, q: &str) -> Option<crate::subproof::SatQuery> {
+    use crate::subproof::Const;
+    use smt::Sexp;
+    let Sexp::List(forms) = smt::parse(&format!("({q})"))? else {
+        return None;
+    };
+    let mut asserts = Vec::new();
+    for f in forms {
+        match f {
+            Sexp::List(mut xs) if xs.len() == 2 && xs[0] == Sexp::Atom("assert".into()) => {
+                asserts.push(xs.pop().expect("an assertion"));
+            }
+            _ => return None,
+        }
+    }
+    // `(and (<= lo x) (<= x hi))`: the range of `x`.
+    let mut ranges: BTreeMap<String, (i128, i128)> = BTreeMap::new();
+    for a in &asserts {
+        let Sexp::List(xs) = a else { continue };
+        let [and, l, h] = xs.as_slice() else { continue };
+        let (Sexp::List(l), Sexp::List(h)) = (l, h) else {
+            continue;
+        };
+        if and != &Sexp::Atom("and".into()) || l.len() != 3 || h.len() != 3 {
+            continue;
+        }
+        let le = Sexp::Atom("<=".into());
+        if l[0] != le || h[0] != le || l[2] != h[1] {
+            continue;
+        }
+        let (Some(lo), Some(hi), Sexp::Atom(x)) = (
+            numeral(&smt::print(&l[1])),
+            numeral(&smt::print(&h[2])),
+            &l[2],
+        ) else {
+            continue;
+        };
+        ranges.insert(x.clone(), (lo, hi));
+    }
+    let mut consts = Vec::new();
+    for d in decls.lines() {
+        let Some(Sexp::List(xs)) = smt::parse(d) else {
+            continue;
+        };
+        let [kw, Sexp::Atom(name), sort] = xs.as_slice() else {
+            continue;
+        };
+        if kw != &Sexp::Atom("declare-const".into()) {
+            continue;
+        }
+        let c = match smt::print(sort).as_str() {
+            "Int" => ranges.get(name).and_then(|&(lo, hi)| {
+                IntTy::ALL
+                    .into_iter()
+                    .find(|i| i.min_value() == lo && i.max_value() == hi)
+                    .map(Const::Int)
+            }),
+            "Bool" => Some(Const::Bool),
+            other => other
+                .strip_prefix("(_ BitVec ")
+                .and_then(|w| w.strip_suffix(')'))
+                .and_then(|w| w.parse().ok())
+                .map(Const::Bv),
+        };
+        if let Some(c) = c {
+            consts.push((name.clone(), c));
+        }
+    }
+    crate::subproof::bit_vector_sat(&asserts, &consts).ok()
+}
+
 thread_local! {
     /// Set by `vacuous_ends`: record reach points, check them instead of the
     /// obligations.
@@ -7554,6 +7630,23 @@ fn verify_pass(
                         .and_then(|_| check_sat_counted(sol, spent));
                     matches!(a, Ok(Answer::Unsat | Answer::Sat)).then_some(a)
                 });
+                // A query of bounded integers and bit-vectors alone, which
+                // the integer form leaves undecided when it mixes `bv2nat`
+                // with linear arithmetic: its exact bit-vector form at the
+                // probe's share before the full limit (backlog T2-13).
+                let probed = probed.or_else(|| {
+                    let bq = bv_reach(&decls, &q)?;
+                    let a = sol
+                        .run("(reset)")
+                        .and_then(|_| sol.run(&format!("{}\n{}", header.join("\n"), bq.script)))
+                        .and_then(|_| sol.run(&probe_limit()))
+                        .and_then(|_| check_sat_counted(sol, spent));
+                    match a {
+                        Ok(Answer::Sat) => Some(a),
+                        Ok(Answer::Unsat) if bq.exact => Some(a),
+                        _ => None,
+                    }
+                });
                 let mut answer = probed.unwrap_or_else(|| {
                     sol.run("(reset)")
                         .and_then(|_| sol.run(&base))
@@ -7626,7 +7719,7 @@ fn verify_pass(
                         // An unrevealed spec fn: the hint `bmb uses` reads.
                         diags.push(if hidden.is_empty() {
                             d.fix(
-                                "a bit-vector sub-proof takes integers, `f64`s and `bool`s, bit operations, `+`, `-`, `*`, division by positive constants (integers), the `f64` operations, comparisons, and calls of non-recursive spec fns named in `#[uses(..)]`",
+                                "a bit-vector sub-proof takes integers, `f64`s and `bool`s, bit operations, `+`, `-`, `*`, `/` and `%` (integers; a divisor that may be zero becomes an antecedent), the `f64` operations, comparisons, and calls of non-recursive spec fns named in `#[uses(..)]`",
                                 None,
                             )
                         } else {

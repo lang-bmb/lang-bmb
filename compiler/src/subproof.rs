@@ -183,6 +183,87 @@ pub fn bit_vector(
     })
 }
 
+/// A free constant of a satisfiability query (`bit_vector_sat`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Const {
+    /// An integer constant the query asserts in this type's range.
+    Int(IntTy),
+    Bool,
+    /// A bit-vector constant of this width.
+    Bv(u32),
+}
+
+/// A satisfiability query in QF_BV (`bit_vector_sat`): the script (logic,
+/// declarations, assertions; no `check-sat`), and whether its answer is the
+/// original query's both ways. With a hypothesis (a divisor that may be
+/// zero is nonzero) only its `sat` is: a model of the narrower query is one
+/// of the original.
+pub struct SatQuery {
+    pub script: String,
+    pub exact: bool,
+}
+
+/// The conjunction of the `Bool` terms `asserts` over `consts` as one
+/// bit-vector query with the same models (backlog T2-13): every integer
+/// subterm a two's complement bit-vector wide enough for its values, as for
+/// a sub-proof, which the query's range assertions bound. A query that mixes
+/// linear integer arithmetic with `bv2nat` (rotations and `^` of the SHA-256
+/// functions) is then one the solver bit-blasts, where its integer form
+/// leaves model search undecided. Any other symbol (a function, an array, a
+/// datatype) has no translation (`Err`).
+pub fn bit_vector_sat(asserts: &[Sexp], consts: &[(String, Const)]) -> Result<SatQuery, String> {
+    let mut none = |_: &str, _: &[String]| Ok::<Option<Unfolded>, String>(None);
+    let mut tr = Tr {
+        syms: BTreeMap::new(),
+        args: BTreeMap::new(),
+        decls: Vec::new(),
+        hyps: Vec::new(),
+        guards: Vec::new(),
+        memo: BTreeMap::new(),
+        next: 0,
+        depth: 0,
+        unfold: &mut none,
+    };
+    for (s, c) in consts {
+        let (decl, t) = match c {
+            Const::Int(i) => var(s, Sort::Int(*i)),
+            Const::Bool => var(s, Sort::Bool),
+            Const::Bv(w) => (
+                format!("(_ BitVec {w})"),
+                T::Bv {
+                    t: s.clone(),
+                    w: *w,
+                },
+            ),
+        };
+        tr.decls.push(format!("(declare-const {s} {decl})"));
+        tr.syms.insert(s.clone(), t);
+    }
+    let mut goals = Vec::new();
+    for a in asserts {
+        match tr.term(a)? {
+            T::Bool(g) => goals.push(g),
+            _ => return Err("an assertion is not a `bool`".into()),
+        }
+    }
+    let all = format!("{} {}", tr.decls.join(" "), goals.join(" "));
+    if all.contains("(fp ") || all.contains("to_fp") || all.contains("Float64") {
+        return Err("`f64` terms are left to the integer query".into());
+    }
+    let mut script = String::from("(set-logic QF_BV)\n");
+    for d in &tr.decls {
+        script.push_str(d);
+        script.push('\n');
+    }
+    for h in tr.hyps.iter().chain(&goals) {
+        script.push_str(&format!("(assert {h})\n"));
+    }
+    Ok(SatQuery {
+        script,
+        exact: tr.hyps.is_empty(),
+    })
+}
+
 /// The translation of the integer term `term` (no spec fn applications):
 /// a bit-vector of the returned width holding its value in two's
 /// complement, and the declarations it needs. `tests/lemmas.rs` evaluates
@@ -885,6 +966,9 @@ impl Tr<'_, '_> {
             .map(|k| atom(k).and_then(|a| a.parse().ok()))
             .collect::<Option<_>>()
             .ok_or_else(|| format!("`{}` has no bit-vector translation", print(e)))?;
+        if args.len() != 1 || ks.is_empty() {
+            return Err(format!("`{}` has no bit-vector translation", print(e)));
+        }
         if name == "int2bv" {
             let (t, w, _) = self.ints(args)?.remove(0);
             let to = ks[0];

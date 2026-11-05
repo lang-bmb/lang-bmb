@@ -907,6 +907,67 @@ fn division_translations_are_exact() {
     }
 }
 
+/// z3's answer to `script` (no limit but a timeout).
+fn z3_answer(script: &str) -> String {
+    let mut child = Command::new("z3")
+        .args(["-in", "-T:60"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("z3 must be installed (scripts/setup.sh)");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(script.as_bytes())
+        .unwrap();
+    let out = child.wait_with_output().unwrap();
+    String::from_utf8_lossy(&out.stdout).trim().to_string()
+}
+
+/// A reach-point query of bounded integers and bit-vectors (backlog T2-13)
+/// as a bit-vector query: the SHA-256 `Σ0` point, which the integer form
+/// leaves undecided, is `sat`; a contradiction through `bv2nat` is `unsat`
+/// and exact; a divisor that may be zero makes it `sat`-only; a function
+/// has no translation.
+#[test]
+fn reach_queries_translate_to_bit_vectors() {
+    use bmb::subproof::{Const, bit_vector_sat};
+    let parse = |xs: &[&str]| -> Vec<Sexp> { xs.iter().map(|x| smt::parse(x).unwrap()).collect() };
+    let sigma = parse(&[
+        "(and (<= 0 |$0|) (<= |$0| 4294967295))",
+        "(= (bv2nat |$1|) (+ (* (mod |$0| 4) 1073741824) (div |$0| 4)))",
+        "(= (bv2nat |$2|) (+ (* (mod |$0| 8192) 524288) (div |$0| 8192)))",
+        "(= (bv2nat |$3|) (bv2nat (bvxor |$1| |$2|)))",
+        "(= (bv2nat |$4|) (+ (* (mod |$0| 4194304) 1024) (div |$0| 4194304)))",
+        "(<= 0 (bv2nat (bvxor |$3| |$4|)))",
+    ]);
+    let consts = vec![
+        ("|$0|".to_string(), Const::Int(IntTy::U32)),
+        ("|$1|".to_string(), Const::Bv(32)),
+        ("|$2|".to_string(), Const::Bv(32)),
+        ("|$3|".to_string(), Const::Bv(32)),
+        ("|$4|".to_string(), Const::Bv(32)),
+    ];
+    let q = bit_vector_sat(&sigma, &consts).unwrap();
+    assert!(q.exact);
+    assert_eq!(z3_answer(&format!("{}(check-sat)\n", q.script)), "sat");
+
+    let x = vec![("x".to_string(), Const::Int(IntTy::U8))];
+    let none = parse(&[
+        "(and (<= 0 x) (<= x 255))",
+        "(= (bv2nat (bvxor ((_ int2bv 8) x) ((_ int2bv 8) x))) (+ x 1))",
+        "(> x 254)",
+    ]);
+    let q = bit_vector_sat(&none, &x).unwrap();
+    assert!(q.exact);
+    assert_eq!(z3_answer(&format!("{}(check-sat)\n", q.script)), "unsat");
+
+    let div = parse(&["(= (div 7 x) 1)"]);
+    assert!(!bit_vector_sat(&div, &x).unwrap().exact);
+    assert!(bit_vector_sat(&parse(&["(= (|f| x) 1)"]), &x).is_err());
+}
+
 /// A sub-proof's goal: true exactly when the assertion holds, and a spec fn
 /// argument outside its parameter's type becomes a hypothesis and a guard.
 #[test]
