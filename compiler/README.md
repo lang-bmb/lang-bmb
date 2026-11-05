@@ -33,9 +33,12 @@ cargo run -- mcp --write-tool ws # 위에 `write`(단위·정의·삭제·커밋
 cargo run -- mcp --compact ws    # 압축 에이전트 투영(ADR-0068, `src/view.rs`): 표면은 `// 경로: 상태` 뒤 본문 없는 정규형, L0·L2·slice는 텍스트, 성공한 증명은 `{"verified":N}`, 해시·위치·비용 없음. 기본은 끔(동결 측정 조건)
 cargo run -- mcp --tool-docs ws  # 도구 설명만으로 도구를 설명한다(2D-28): `query`는 질의마다 돌려주는 것, `write`는 유일한 쓰기 길(인자는 스키마에서만 설명), 설계 참조(ADR·백로그 번호) 없음. 프롬프트의 도구 절을 대신한다(ADR-0072). 기본은 끔(동결 측정 조건)
 cargo run -- mcp --item-docs ws  # `tx_put`·`tx_remove`·`write`의 설명이 다섯 항목과 주소를 말한다(ADR-0074 §6). 동작은 플래그와 무관하고, 플래그가 없으면 동결 집합의 도구 목록 바이트가 그대로다(`tests/mcp.rs`의 `frozen_tool_lists_keep_their_bytes`)
+cargo run -- mcp --stats ws      # 응답마다 프런트엔드 캐시의 셈(`parsed`·`reused`·`checks`·`indexes`) 한 줄을 표준 오류로(4A-04, `tests/mcp_cache.rs`). 응답 바이트는 그대로다
 cargo run -- mcp --file-tools ws # 파일 diff 편집 표면(ADR-0073, T1-06): `read_file`(단위 파일 원문)과 `edit_file`(통합 diff 적용·커밋·증명을 한 호출로). 기본은 끔(동결 측정 조건)
 cargo run -- mcp --ast-tools ws  # JSON AST 편집 표면(ADR-0073, T1-06): `read_ast`(JSON Pointer 위치의 구문 트리)와 `edit_ast`(JSON Patch 적용·커밋·증명을 한 호출로), 진단 위치는 트리 포인터 `at`. 기본은 끔(동결 측정 조건)
 cargo run -- ast ws              # 구문 트리를 JSON 문서 하나로(JSON AST 표면이 보이는 것, 단위 이름이 키, 위치 없음)
+cargo run -- dump tokens a.bmb   # 렉서의 토큰을 JSONL로(파일, 바이트 구간, 종류, 리터럴의 정규형 `text`, 정수 `value`·부동소수 `bits`·바이트열 `value`; 4A-03: 다른 구현과 단계별 대조)
+cargo run -- dump parse a.bmb    # 파서의 프로그램을 검사 전에 정규형으로(검사기가 거부하는 프로그램도, `bmb fmt`는 검사 뒤)
 BMB_SOUND_ITERS=60 cargo test --release --test soundness  # 건전성 퍼징(1B-17): 증명·반례·빌드를 독립 해석기와 대조
 BMB_SOUND_ITERS=40 cargo test --release --test soundness_owned  # 소유 자료 퍼징(2O-05): 연결 리스트·Box·Vec 필드의 이동·교체·참조 match, 증명·반례·빌드·valgrind 해제를 해석기와 대조
 BMB_SOUND_ITERS=200 cargo test --release --test soundness_widths  # 정수 폭·비트 연산 퍼징(2N-04): 열 정수 타입, 섞인 폭, 비트 연산·시프트(폭 안팎의 리터럴·변수 양)·비트 메서드·변환, 증명·반례·두 빌드의 출력과 트랩을 Rust 의미의 해석기와 대조

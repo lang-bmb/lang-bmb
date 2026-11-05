@@ -1,9 +1,12 @@
-//! MCP server end to end over stdio (backlog 1D-11).
+//! MCP server end to end over stdio (backlog 1D-11). The responses are
+//! read with the tests' own JSON reader (backlog 4A-04).
+
+mod common;
 
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Command, Stdio};
 
-use bmb::json::{self, Value};
+use common::json::{self, Value};
 
 struct Client {
     child: std::process::Child,
@@ -214,11 +217,22 @@ fn temp_root(name: &str) -> std::path::PathBuf {
 }
 
 fn snapshot(root: &std::path::Path) -> Vec<(String, String)> {
-    if root.join("src").is_dir() {
-        bmb::workspace::read_dir_sources(root).unwrap()
-    } else {
-        Vec::new()
-    }
+    // The workspace's source files (`src/*.bmb`), by path.
+    let Ok(dir) = std::fs::read_dir(root.join("src")) else {
+        return Vec::new();
+    };
+    let mut v: Vec<(String, String)> = dir
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.extension().is_some_and(|x| x == "bmb"))
+        .map(|p| {
+            (
+                p.display().to_string(),
+                std::fs::read_to_string(&p).unwrap(),
+            )
+        })
+        .collect();
+    v.sort();
+    v
 }
 
 /// Commits one transaction of (tool, args) steps; panics unless it commits.
@@ -544,8 +558,9 @@ fn untrusted_workspace_cannot_reach_outside() {
             .contains("fn g(")
     );
 
-    // At most MAX_OPEN_TXS open transactions (each holds a copy of the files).
-    for _ in 0..bmb::mcp::MAX_OPEN_TXS {
+    // At most 64 open transactions (each holds a copy of the files,
+    // `mcp::MAX_OPEN_TXS`).
+    for _ in 0..64 {
         assert!(!c.tool("tx_begin", "{}").1);
     }
     let (t, err) = c.tool("tx_begin", "{}");
@@ -1209,7 +1224,7 @@ fn frozen_tool_lists_keep_their_bytes() {
             .get("result")
             .unwrap()
             .to_json();
-        got.push(bmb::sha256::hex(list.as_bytes()));
+        got.push(sha256(&list));
     }
     let want: Vec<String> = frozen.iter().map(|(_, h)| h.to_string()).collect();
     assert_eq!(got, want, "flags: {:?}", frozen.map(|(f, _)| f));
@@ -1274,4 +1289,22 @@ fn item_docs_name_every_item() {
         .find(|t| t.0 == "tx_remove")
         .unwrap();
     assert!(put.1.contains("`<unit::T as unit::Trait>`"), "{}", put.1);
+}
+
+/// The SHA-256 of `text` as `sha256:` and lowercase hex (coreutils
+/// `sha256sum`).
+fn sha256(text: &str) -> String {
+    let mut child = Command::new("sha256sum")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(text.as_bytes())
+        .unwrap();
+    let out = child.wait_with_output().unwrap();
+    format!("sha256:{}", &String::from_utf8(out.stdout).unwrap()[..64])
 }

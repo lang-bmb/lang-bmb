@@ -24,9 +24,9 @@ use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{Receiver, channel};
 use std::time::Duration;
 
-use bmb::json::{self, Value};
-
 mod common;
+
+use common::json::{self, Value};
 
 use common::scalar::Rng;
 
@@ -248,23 +248,54 @@ fn check_workspace(snap: &BTreeMap<String, String>, ctx: &str) {
             "{ctx}: stray file {name}"
         );
     }
-    let files = as_files(snap);
-    let out = bmb::check_sources(&files);
+    // An empty workspace checks and is in normal form.
+    if snap.is_empty() {
+        return;
+    }
+    // Through the CLI (backlog 4A-04), on a copy of the snapshot.
+    let dir = std::env::temp_dir().join(format!(
+        "bmb-mcp-fuzz-check-{}-{}",
+        std::process::id(),
+        CHECKS.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    for (name, text) in as_files(snap) {
+        std::fs::write(dir.join(&name), text).unwrap();
+    }
+    let names: Vec<&String> = snap.keys().collect();
+    let bmb = |args: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_bmb"))
+            .current_dir(&dir)
+            .args(args)
+            .args(&names)
+            .output()
+            .unwrap()
+    };
+    let out = bmb(&["check"]);
+    let diags = String::from_utf8_lossy(&out.stdout).into_owned();
     assert!(
-        out.ok && out.diagnostics.is_empty(),
-        "{ctx}: committed workspace does not check:\n{}\n{snap:#?}",
-        out.diagnostics
+        out.status.success() && diags.is_empty(),
+        "{ctx}: committed workspace does not check:\n{diags}\n{snap:#?}"
     );
-    let units = bmb::format_sources(&files).unwrap();
-    let normal: BTreeMap<String, String> = units
-        .into_iter()
-        .map(|(u, t)| (format!("{u}.bmb"), t))
-        .collect();
-    assert_eq!(
-        &normal, snap,
-        "{ctx}: committed files are not in normal form"
+    // Each file holds the unit it is named after, and the files in name
+    // order (the units' order) are the program's normal form.
+    for (name, text) in snap {
+        let unit = name.strip_suffix(".bmb").unwrap();
+        assert!(
+            text.contains(&format!("mod {unit} {{")),
+            "{ctx}: {name} does not hold unit {unit}"
+        );
+    }
+    let fmt = bmb(&["fmt", "--check"]);
+    assert!(
+        fmt.status.success(),
+        "{ctx}: committed files are not in normal form\n{snap:#?}"
     );
+    let _ = std::fs::remove_dir_all(&dir);
 }
+
+static CHECKS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
 struct Model {
     next_tx: i64,

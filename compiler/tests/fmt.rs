@@ -1,7 +1,38 @@
 //! Normal form and definition hashes (ADR-0019, backlog 1D-02, 1D-03).
+//! Through the CLI (backlog 4A-04): `bmb fmt`, `bmb verify`, `bmb hash`.
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+/// `bmb ARGS NAMES..` in a new directory holding `files` (name, text): its
+/// success and stdout.
+fn bmb(args: &[&str], files: &[(String, String)]) -> (bool, String) {
+    static N: AtomicUsize = AtomicUsize::new(0);
+    let dir = std::env::temp_dir().join(format!(
+        "bmb-fmt-{}-{}",
+        std::process::id(),
+        N.fetch_add(1, Ordering::SeqCst)
+    ));
+    fs::create_dir_all(&dir).unwrap();
+    for (name, text) in files {
+        fs::write(dir.join(name), text).unwrap();
+    }
+    let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
+        .current_dir(&dir)
+        .args(args)
+        .args(files.iter().map(|(n, _)| n))
+        .output()
+        .unwrap();
+    let _ = fs::remove_dir_all(&dir);
+    (out.status.success(), String::from_utf8(out.stdout).unwrap())
+}
+
+/// `bmb verify` of `files`: success and output.
+fn verify(files: &[(String, String)]) -> (bool, String) {
+    bmb(&["verify"], files)
+}
 
 fn corpus() -> Vec<PathBuf> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests");
@@ -23,12 +54,9 @@ fn one(name: &str, text: &str) -> Vec<(String, String)> {
 }
 
 fn normal(text: &str) -> String {
-    bmb::format_sources(&one("x.bmb", text))
-        .unwrap()
-        .values()
-        .cloned()
-        .collect::<Vec<_>>()
-        .join("\n")
+    let (ok, out) = bmb(&["fmt"], &one("x.bmb", text));
+    assert!(ok, "{out}");
+    out
 }
 
 fn statuses(out: &str) -> Vec<String> {
@@ -50,23 +78,16 @@ fn formatting_is_idempotent() {
 fn formatting_preserves_proof_results() {
     for p in corpus() {
         let text = fs::read_to_string(&p).unwrap();
-        let before = bmb::verify_sources(&one("x.bmb", &text));
-        let after = bmb::verify_sources(&one("x.bmb", &normal(&text)));
-        assert_eq!(
-            statuses(&before.output),
-            statuses(&after.output),
-            "{}",
-            p.display()
-        );
+        let before = verify(&one("x.bmb", &text)).1;
+        let after = verify(&one("x.bmb", &normal(&text))).1;
+        assert_eq!(statuses(&before), statuses(&after), "{}", p.display());
     }
 }
 
 fn hashes(files: &[(String, String)]) -> Vec<String> {
-    let mut v: Vec<String> = bmb::hash_sources(files)
-        .unwrap()
-        .lines()
-        .map(String::from)
-        .collect();
+    let (ok, out) = bmb(&["hash"], files);
+    assert!(ok, "{out}");
+    let mut v: Vec<String> = out.lines().map(String::from).collect();
     v.sort();
     v
 }
@@ -236,18 +257,21 @@ mod geo {
     }
 }
 "#;
-    let once = bmb::format_parsed(&one("x.bmb", SRC)).unwrap();
-    assert_eq!(once.values().cloned().collect::<String>(), NORMAL);
-    let twice = bmb::format_parsed(&one("x.bmb", NORMAL)).unwrap();
-    assert_eq!(twice.values().cloned().collect::<String>(), NORMAL);
+    // `bmb dump parse`: the parsed program in normal form (backlog 4A-03).
+    let parse = |name: &str, text: &str| bmb(&["dump", "parse"], &one(name, text));
+    assert_eq!(parse("x.bmb", SRC), (true, NORMAL.to_string()));
+    assert_eq!(parse("x.bmb", NORMAL), (true, NORMAL.to_string()));
     // The checker rejects this sample (unknown `Shape`, values not checked yet).
-    assert!(bmb::format_sources(&one("x.bmb", SRC)).is_err());
+    assert!(!bmb(&["fmt"], &one("x.bmb", SRC)).0);
     // A wildcard arm parses; the checker rejects it with the arms it stands
     // for (ADR-0026: one arm per variant).
     let wild = "#[summary(\"w\")]\nmod w {\n    #[effects(pure)]\n    fn f(o: Option<i64>) -> i64 { match o { Some(v) => v, _ => 0 } }\n}\n";
-    assert!(bmb::format_parsed(&one("w.bmb", wild)).is_ok());
-    let err = bmb::format_sources(&one("w.bmb", wild)).unwrap_err();
-    assert!(err.contains("E0224") && err.contains("None => 0"), "{err}");
+    assert!(parse("w.bmb", wild).0);
+    let (ok, err) = bmb(&["fmt"], &one("w.bmb", wild));
+    assert!(
+        !ok && err.contains("E0224") && err.contains("None => 0"),
+        "{err}"
+    );
 }
 
 /// A literal keeps its base; separators, leading zeros and the case of hex
@@ -272,9 +296,9 @@ fn literal_bases_and_bit_operators_have_one_normal_form() {
     );
     assert!(out.contains("m & n == p & (n | 1 ^ 2)"), "{out}");
     assert_eq!(normal(&out), out);
-    let before = bmb::verify_sources(&one("x.bmb", text));
-    let after = bmb::verify_sources(&one("x.bmb", &out));
-    assert_eq!(statuses(&before.output), statuses(&after.output));
+    let before = verify(&one("x.bmb", text));
+    let after = verify(&one("x.bmb", &out));
+    assert_eq!(statuses(&before.1), statuses(&after.1));
 }
 
 /// `assert(e) by (bit_vector);` has one normal form (backlog 2N-03), and a
@@ -292,10 +316,10 @@ fn bit_vector_assertions_have_one_normal_form() {
         "{out}"
     );
     assert_eq!(normal(&out), out);
-    let before = bmb::verify_sources(&one("x.bmb", text));
-    let after = bmb::verify_sources(&one("x.bmb", &out));
-    assert_eq!(statuses(&before.output), statuses(&after.output));
-    assert!(before.ok, "{}", before.output);
+    let before = verify(&one("x.bmb", text));
+    let after = verify(&one("x.bmb", &out));
+    assert_eq!(statuses(&before.1), statuses(&after.1));
+    assert!(before.0, "{}", before.1);
     let plain = out.replace(" by (bit_vector);", ";");
     assert_ne!(
         def_line(&one("x.bmb", &out), "b::f"),
@@ -323,7 +347,9 @@ fn float_literals_have_one_normal_form() {
     assert_eq!(h("0.10"), h("1_0.0e-2"));
     assert_eq!(h("0.10"), h("0.1"));
     assert_ne!(h("0.1"), h("0.2"));
-    // Every `f64` (bit patterns of each class) reads back from its text.
+    // Every `f64` (bit patterns of each class) reads back from its text:
+    // the lexer gives each written literal and its normal text the same
+    // bits (`bmb dump tokens`), and that text is Rust's value.
     let mut seed: u64 = 0x2545_f491_4f6c_dd1d;
     let mut bits: Vec<u64> = vec![1, 0x000f_ffff_ffff_ffff, 0x0010_0000_0000_0000];
     bits.extend([0x7fef_ffff_ffff_ffff, 0x3ff0_0000_0000_0001]);
@@ -333,19 +359,37 @@ fn float_literals_have_one_normal_form() {
         seed ^= seed << 17;
         bits.push(seed & 0x7fff_ffff_ffff_ffff);
     }
-    for b in bits {
-        let v = f64::from_bits(b);
-        if !v.is_finite() {
-            continue;
-        }
-        let text = bmb::lexer::float_text(b);
-        let mut d = bmb::diag::Diags::default();
-        let toks = bmb::lexer::lex(0, &text, &mut d);
-        assert!(d.items.is_empty(), "{text}");
-        assert!(
-            matches!(toks[0].tok, bmb::lexer::Tok::Float(x) if x == b),
-            "{text} is not {v:?}"
-        );
-        assert_eq!(toks.len(), 2, "{text}");
+    bits.retain(|b| f64::from_bits(*b).is_finite());
+    // Rust's shortest text, with a point in the mantissa.
+    let written: Vec<String> = bits
+        .iter()
+        .map(|b| {
+            let s = format!("{:?}", f64::from_bits(*b));
+            match s.split_once('e') {
+                Some((m, e)) if !m.contains('.') => format!("{m}.0e{e}"),
+                _ => s,
+            }
+        })
+        .collect();
+    let (ok, toks) = bmb(&["dump", "tokens"], &one("t.bmb", &written.join(" ")));
+    assert!(ok, "{toks}");
+    let rows: Vec<&str> = toks
+        .lines()
+        .filter(|l| l.contains("\"kind\":\"float\""))
+        .collect();
+    assert_eq!(rows.len(), bits.len());
+    let normal: Vec<String> = rows.iter().map(|r| field(r, "text")).collect();
+    for ((b, row), text) in bits.iter().zip(&rows).zip(&normal) {
+        assert_eq!(field(row, "bits"), format!("{b:#018x}"), "{row}");
+        assert_eq!(text.parse::<f64>().unwrap().to_bits(), *b, "{text}");
     }
+    let (ok, again) = bmb(&["dump", "tokens"], &one("t.bmb", &normal.join(" ")));
+    assert!(ok, "{again}");
+    let back: Vec<String> = again
+        .lines()
+        .filter(|l| l.contains("\"kind\":\"float\""))
+        .map(|r| field(r, "bits"))
+        .collect();
+    let want: Vec<String> = bits.iter().map(|b| format!("{b:#018x}")).collect();
+    assert_eq!(back, want);
 }

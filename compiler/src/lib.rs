@@ -716,6 +716,58 @@ pub fn format_parsed(files: &[(String, String)]) -> Result<BTreeMap<String, Stri
     Ok(fmt::format_units(&program))
 }
 
+/// The tokens of `files` as JSONL (`bmb dump tokens`, backlog 4A-03): one
+/// row per token with its file, byte span, kind and value, for comparing
+/// another lexer with this one. A literal's `text` is its normal form
+/// (ADR-0019 §1); a float also gives the bits of its `f64`, a byte string
+/// its bytes. Lexer errors are the diagnostics instead.
+pub fn dump_tokens(files: &[(String, String)]) -> Result<String, String> {
+    use json::Value;
+    use lexer::Tok;
+    let q = |s: &str| Value::Str(s.to_string()).to_json();
+    let mut sm = SourceMap::default();
+    let mut diags = Diags::default();
+    let mut out = String::new();
+    for (name, text) in files {
+        let id = sm.add(name.clone(), text.clone());
+        for t in lexer::lex(id, text, &mut diags) {
+            let (kind, rest) = match &t.tok {
+                Tok::Ident(x) => ("ident", format!(",\"text\":{}", q(x))),
+                Tok::Int(v, r) => (
+                    "int",
+                    format!(",\"text\":{},\"value\":\"{v}\"", q(&r.text(*v))),
+                ),
+                Tok::Float(b) => (
+                    "float",
+                    format!(
+                        ",\"text\":{},\"bits\":\"{b:#018x}\"",
+                        q(&lexer::float_text(*b))
+                    ),
+                ),
+                Tok::Str(x) => ("str", format!(",\"text\":{}", q(x))),
+                Tok::Byte(v) => ("byte", format!(",\"value\":{v}")),
+                Tok::Bytes(bs) => {
+                    let vs: Vec<String> = bs.iter().map(u8::to_string).collect();
+                    ("bytes", format!(",\"value\":[{}]", vs.join(",")))
+                }
+                Tok::P(x) => ("punct", format!(",\"text\":{}", q(x))),
+                Tok::Label(x) => ("label", format!(",\"text\":{}", q(x))),
+                Tok::Eof => ("eof", String::new()),
+            };
+            out.push_str(&format!(
+                "{{\"file\":{},\"lo\":{},\"hi\":{},\"kind\":\"{kind}\"{rest}}}\n",
+                q(name),
+                t.span.lo,
+                t.span.hi
+            ));
+        }
+    }
+    if diags.has_errors() {
+        return Err(diags.to_jsonl(&sm));
+    }
+    Ok(out)
+}
+
 /// Definition identities and hashes as JSONL (ADR-0059 §1, §4).
 pub fn hash_sources(files: &[(String, String)]) -> Result<String, String> {
     let fe = frontend(files);

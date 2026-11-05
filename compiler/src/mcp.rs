@@ -58,6 +58,7 @@ pub const FLAGS: &[&str] = &[
     "--file-tools",
     "--ast-tools",
     "--item-docs",
+    "--stats",
 ];
 
 fn s(x: &str) -> Value {
@@ -949,6 +950,15 @@ pub fn serve(root: &Path, flags: &[&str]) -> std::io::Result<()> {
         if let Some(r) = reply {
             writeln!(stdout, "{}", r.to_json())?;
             stdout.flush()?;
+            // The front-end cache's counts after each reply (backlog 4A-04:
+            // the cache test reads them through the CLI).
+            if has("--stats") {
+                let st = server.front_stats();
+                eprintln!(
+                    "{{\"parsed\":{},\"reused\":{},\"checks\":{},\"indexes\":{}}}",
+                    st.parsed, st.reused, st.checks, st.indexes
+                );
+            }
         }
     }
     Ok(())

@@ -1,4 +1,8 @@
-//! Maps and read queries (ADR-0020, backlog 1D-05, 1D-06, 1D-12).
+//! Maps and read queries (ADR-0020, backlog 1D-05, 1D-06, 1D-12). Through
+//! the CLI (backlog 4A-04): `bmb map` and `bmb query`.
+
+use std::process::Command;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 const A: &str = r#"
 #[summary("탐색 대상")]
@@ -50,9 +54,36 @@ fn files(parts: &[(&str, &str)]) -> Vec<(String, String)> {
         .collect()
 }
 
+/// `bmb map LEVEL NAMES..` or `bmb query ARGS -- NAMES..` (backlog 4A-04)
+/// in a new directory holding `f`: stdout on success, else the output.
+fn request(f: &[(String, String)], req: &[&str]) -> Result<String, String> {
+    static N: AtomicUsize = AtomicUsize::new(0);
+    let dir = std::env::temp_dir().join(format!(
+        "bmb-map-{}-{}",
+        std::process::id(),
+        N.fetch_add(1, Ordering::SeqCst)
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    for (name, text) in f {
+        std::fs::write(dir.join(name), text).unwrap();
+    }
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_bmb"));
+    cmd.current_dir(&dir).args(req);
+    if req[0] == "query" {
+        cmd.arg("--");
+    }
+    let out = cmd.args(f.iter().map(|(n, _)| n)).output().unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+    let text = String::from_utf8(out.stdout).unwrap();
+    if out.status.success() {
+        Ok(text)
+    } else {
+        Err(text + &String::from_utf8_lossy(&out.stderr))
+    }
+}
+
 fn run(f: &[(String, String)], req: &[&str]) -> String {
-    let req: Vec<String> = req.iter().map(|s| s.to_string()).collect();
-    bmb::map_request(f, &req).unwrap()
+    request(f, req).unwrap()
 }
 
 /// Drops the location keys, which follow the file layout by design.
@@ -142,8 +173,7 @@ fn queries_answer_from_the_maps() {
 #[test]
 fn bad_queries_are_errors() {
     let f = files(&[("a.bmb", A), ("b.bmb", B)]);
-    let req =
-        |r: &[&str]| bmb::map_request(&f, &r.iter().map(|s| s.to_string()).collect::<Vec<_>>());
+    let req = |r: &[&str]| request(&f, r);
     assert!(req(&["query", "surface", "nope::nope"]).is_err());
     assert!(req(&["query", "edges", "lib::dec", "sideways"]).is_err());
     assert!(req(&["query", "teleport"]).is_err());
@@ -423,8 +453,7 @@ fn effects_lists_shortest_paths_to_io() {
     assert_eq!(all, run(&g, &["query", "effects"]));
     assert_eq!(one, run(&g, &["query", "effects", "app::main"]));
 
-    let req =
-        |r: &[&str]| bmb::map_request(&f, &r.iter().map(|s| s.to_string()).collect::<Vec<_>>());
+    let req = |r: &[&str]| request(&f, r);
     assert!(req(&["query", "effects", "app::nope"]).is_err());
 }
 
@@ -637,7 +666,7 @@ mod q {
             r#"{"summary":true,"effect":"alloc","declares":4,"requires":3,"defs":4}"#,
         ]
     );
-    assert!(bmb::map_request(&f, &["query".into(), "effect".into(), "nondet".into()]).is_err());
+    assert!(request(&f, &["query", "effect", "nondet"]).is_err());
     let l1 = run(&f, &["map", "L1"]);
     let main = l1
         .lines()

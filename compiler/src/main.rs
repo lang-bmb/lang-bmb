@@ -101,7 +101,7 @@ const USAGE: &str = "usage:
   bmb apply DIR OPS.json    commit a transaction (JSON array of unit/put/remove/remove_unit/
                             rename/expect ops)
                             to workspace DIR; rejected as a whole on any structural or type error
-  bmb mcp [--write-tool] [--compact] [--tool-docs] [--file-tools] [--ast-tools] DIR
+  bmb mcp [--write-tool] [--compact] [--tool-docs] [--file-tools] [--ast-tools] [--item-docs] [--stats] DIR
                             MCP server (stdio) for workspace DIR: query, map, verify, build, tx_*;
                             --write-tool also offers `write` (unit, definitions, removals,
                             commit and proof in one call); --compact shows results in the
@@ -115,6 +115,10 @@ const USAGE: &str = "usage:
                             proved in one call) and gives positions as pointers into the tree
   bmb ast <file.bmb>...     the syntax tree as one JSON document (the JSON AST edit surface's,
                             keyed by unit; positions are not part of it)
+  bmb dump tokens <file.bmb>...
+                            the lexer's tokens as JSONL (file, span, kind, normal text, value)
+  bmb dump parse <file.bmb>...
+                            the parsed program in normal form, before any check
   bmb codes [--md]          list diagnostic codes as JSONL (or the Markdown reference page)
 
 Any <file.bmb> argument may also be a workspace directory (its src/*.bmb).
@@ -791,6 +795,31 @@ fn run() -> ExitCode {
                 Err(e) => {
                     eprintln!("bmb: {e}");
                     ExitCode::from(2)
+                }
+            }
+        }
+        // Each front-end stage's output, for comparing another
+        // implementation stage by stage (backlog 4A-03): the tokens, and
+        // the parsed program in normal form before any check.
+        Some("dump") if args.len() > 2 && matches!(args[1].as_str(), "tokens" | "parse") => {
+            let files = match read_files(&args[2..]) {
+                Ok(f) => f,
+                Err(code) => return code,
+            };
+            let out = if args[1] == "tokens" {
+                bmb::dump_tokens(&files)
+            } else {
+                bmb::format_parsed(&files)
+                    .map(|units| units.values().cloned().collect::<Vec<_>>().join("\n"))
+            };
+            match out {
+                Ok(text) => {
+                    print!("{text}");
+                    ExitCode::SUCCESS
+                }
+                Err(diags) => {
+                    print!("{diags}");
+                    ExitCode::from(1)
                 }
             }
         }
