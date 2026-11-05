@@ -1,8 +1,55 @@
 //! Nesting limits (backlog 1A-11): deep input is a diagnostic, not a crash, and
 //! programs just inside the limit go through the whole pipeline on the stack
-//! the CLI and the MCP server use (`bmb::with_stack`).
+//! the CLI uses. Through the CLI (backlog 4A-04).
 
-use bmb::parser::MAX_NESTING;
+use std::fs;
+use std::path::PathBuf;
+use std::process::{Command, Output};
+
+/// `parser::MAX_NESTING`, read from the source.
+fn max_nesting() -> usize {
+    let src = include_str!("../src/parser.rs");
+    let line = src
+        .lines()
+        .find_map(|l| l.strip_prefix("pub const MAX_NESTING: usize = "))
+        .expect("MAX_NESTING in src/parser.rs");
+    line.trim_end_matches(';').parse().unwrap()
+}
+
+/// Writes `files` into a fresh directory named `tag` and runs `bmb args..
+/// files` there.
+fn bmb(tag: &str, files: &[(String, String)], args: &[&str]) -> Output {
+    let dir: PathBuf =
+        std::env::temp_dir().join(format!("bmb-nesting-{tag}-{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    for (name, text) in files {
+        fs::write(dir.join(name), text).unwrap();
+    }
+    let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
+        .current_dir(&dir)
+        .args(args)
+        .args(files.iter().map(|(n, _)| n))
+        .output()
+        .unwrap();
+    let _ = fs::remove_dir_all(&dir);
+    out
+}
+
+fn stdout(o: &Output) -> String {
+    String::from_utf8_lossy(&o.stdout).into_owned()
+}
+
+/// `bmb check`: a deep program fails with E0107 and does not crash.
+fn assert_too_deep(tag: &str, files: &[(String, String)]) {
+    let out = bmb(tag, files, &["check"]);
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(stdout(&out).contains("\"E0107\""), "{}", stdout(&out));
+}
 
 fn program(body: &str) -> Vec<(String, String)> {
     vec![(
@@ -71,73 +118,77 @@ fn implications(n: usize) -> String {
 
 #[test]
 fn deep_nesting_is_a_diagnostic() {
-    bmb::with_stack(|| {
-        let n = 50_000;
-        for body in [
-            parens(n),
-            blocks(n),
-            negs(n),
-            sums(n),
-            indexes(n),
-            methods(n),
-            implications(n),
-            ifs(5_000),
-            else_ifs(n),
-        ] {
-            let out = bmb::check_sources(&program(&body));
-            assert!(!out.ok);
-            assert!(out.diagnostics.contains("\"E0107\""), "{}", out.diagnostics);
-        }
-    });
+    let n = 50_000;
+    for (k, body) in [
+        parens(n),
+        blocks(n),
+        negs(n),
+        sums(n),
+        indexes(n),
+        methods(n),
+        implications(n),
+        ifs(5_000),
+        else_ifs(n),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        assert_too_deep(&format!("expr{k}"), &program(&body));
+    }
 }
 
 #[test]
 fn deep_types_and_units_are_a_diagnostic() {
-    bmb::with_stack(|| {
-        let n = 50_000;
-        let ty = format!(
-            "#[summary(\"t\")]\nmod t {{\n    #[effects(pure)]\n    fn f(a: &{}i64{}) -> () {{ () }}\n}}\n",
-            "[".repeat(n),
-            "]".repeat(n)
-        );
-        let units = format!(
-            "{}{}",
-            "#[summary(\"u\")] mod u { ".repeat(n),
-            "}".repeat(n)
-        );
-        for text in [ty, units] {
-            let out = bmb::check_sources(&[("deep.bmb".into(), text)]);
-            assert!(!out.ok);
-            assert!(out.diagnostics.contains("\"E0107\""), "{}", out.diagnostics);
-        }
-    });
+    let n = 50_000;
+    let ty = format!(
+        "#[summary(\"t\")]\nmod t {{\n    #[effects(pure)]\n    fn f(a: &{}i64{}) -> () {{ () }}\n}}\n",
+        "[".repeat(n),
+        "]".repeat(n)
+    );
+    let units = format!(
+        "{}{}",
+        "#[summary(\"u\")] mod u { ".repeat(n),
+        "}".repeat(n)
+    );
+    for (k, text) in [ty, units].into_iter().enumerate() {
+        assert_too_deep(&format!("decl{k}"), &[("deep.bmb".into(), text)]);
+    }
 }
 
 #[test]
 fn programs_inside_the_limit_pass_the_whole_pipeline() {
-    bmb::with_stack(|| {
-        // Each kind uses at most one level per syntactic level, plus a few for
-        // the surrounding function.
-        let n = MAX_NESTING - 8;
-        let half = n / 2 - 1;
-        for body in [
-            parens(n),
-            blocks(n),
-            ors(n),
-            nots(n),
-            methods(n),
-            ifs(half),
-            else_ifs(n),
+    // Each kind uses at most one level per syntactic level, plus a few for
+    // the surrounding function.
+    let n = max_nesting() - 8;
+    let half = n / 2 - 1;
+    for (k, body) in [
+        parens(n),
+        blocks(n),
+        ors(n),
+        nots(n),
+        methods(n),
+        ifs(half),
+        else_ifs(n),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let files = program(&body);
+        let tag = format!("in{k}");
+        for args in [
+            &["check"][..],
+            &["verify"],
+            &["emit-llvm", "-o", "deep.ll"],
+            &["fmt"],
+            &["map", "all"],
         ] {
-            let files = program(&body);
-            let out = bmb::check_sources(&files);
-            assert!(out.ok, "{}", out.diagnostics);
-            let v = bmb::verify_sources(&files);
-            assert!(v.ok, "{}", v.output);
-            let ir = bmb::emit_llvm_sources(&files);
-            assert!(ir.ir.is_some());
-            bmb::format_sources(&files).unwrap();
-            bmb::map_request(&files, &["map".into(), "all".into()]).unwrap();
+            let out = bmb(&tag, &files, args);
+            assert!(
+                out.status.success(),
+                "{args:?} on kind {k}: {}{}",
+                stdout(&out),
+                String::from_utf8_lossy(&out.stderr)
+            );
         }
-    });
+    }
 }

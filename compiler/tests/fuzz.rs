@@ -1,11 +1,33 @@
 //! Deterministic mutation fuzzing of the front end (backlog 1A-09): mutated
 //! corpus programs must never make the lexer, parser or checker panic.
 //! `BMB_FUZZ_ITERS` raises the iteration count for longer runs and
-//! `BMB_FUZZ_SEED` picks another mutant sequence.
+//! `BMB_FUZZ_SEED` picks another mutant sequence. Through the CLI (backlog
+//! 4A-04): a mutant fails when `bmb` ends other than with status 0 or 1 (a
+//! panic is 101, a stack overflow a signal), on the stack the CLI uses.
 
 use std::fs;
-use std::panic;
 use std::path::Path;
+use std::process::Command;
+
+/// Runs `bmb args.. f.bmb` in `dir`: `Ok(succeeded)`, or `Err` when it
+/// crashed (neither status 0 nor 1).
+fn run(dir: &Path, args: &[&str]) -> Result<bool, String> {
+    let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
+        .current_dir(dir)
+        .args(args)
+        .arg("f.bmb")
+        .output()
+        .unwrap();
+    match out.status.code() {
+        Some(0) => Ok(true),
+        Some(1) => Ok(false),
+        _ => Err(format!(
+            "bmb {args:?} ended with {}: {}",
+            out.status,
+            String::from_utf8_lossy(&out.stderr)
+        )),
+    }
+}
 
 struct Rng(u64);
 
@@ -163,48 +185,36 @@ fn front_end_never_panics_on_mutated_programs() {
     let mut rng = Rng(0x9E3779B97F4A7C15 ^ seed.wrapping_mul(0xD1B54A32D192ED03) | 1);
     let mut failures = Vec::new();
     let mut clean = 0usize;
+    let dir = std::env::temp_dir().join(format!("bmb-fuzz-{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
     for i in 0..iters {
         let pick = rng.below(corpus.len());
         let src = mutate(&mut rng, &corpus[pick], &corpus);
-        let input = src.clone();
-        // Silence the panic message only around the compiler call.
-        let prev = panic::take_hook();
-        panic::set_hook(Box::new(|_| {}));
-        // On the stack the CLI and MCP server use (`bmb::with_stack`): the
-        // corpus holds programs at the nesting limit (backlog 1A-11).
-        let result = panic::catch_unwind(move || {
-            bmb::with_stack(|| bmb::check_sources(&[("f.bmb".into(), input)]))
-        });
-        panic::set_hook(prev);
+        fs::write(dir.join("f.bmb"), &src).unwrap();
         // Mutants that type-check also go through proof and code generation,
         // whose internal invariants assume a checked program.
-        let result = match result {
-            Ok(out) if out.ok => {
+        let result = run(&dir, &["check"]).and_then(|ok| {
+            if ok {
                 clean += 1;
-                let input = src.clone();
-                let prev = panic::take_hook();
-                panic::set_hook(Box::new(|_| {}));
-                let r = panic::catch_unwind(move || {
-                    bmb::with_stack(|| bmb::emit_llvm_sources(&[("f.bmb".into(), input)]));
-                });
-                panic::set_hook(prev);
-                r.map(|_| ())
+                run(&dir, &["emit-llvm", "-o", "f.ll"]).map(|_| ())
+            } else {
+                Ok(())
             }
-            other => other.map(|_| ()),
-        };
-        if result.is_err() {
-            failures.push((i, src));
+        });
+        if let Err(e) = result {
+            failures.push((i, src, e));
             if failures.len() >= 3 {
                 break;
             }
         }
     }
     eprintln!("fuzz: {iters} mutants, {clean} type-check cleanly and were also proved and lowered");
-    if let Some((i, src)) = failures.first() {
+    let _ = fs::remove_dir_all(&dir);
+    if let Some((i, src, e)) = failures.first() {
         let path = std::env::temp_dir().join("bmb-fuzz-crash.bmb");
         fs::write(&path, src).unwrap();
         panic!(
-            "{} panic(s); first at iteration {i}, input saved to {}",
+            "{} crash(es); first at iteration {i} ({e}), input saved to {}",
             failures.len(),
             path.display()
         );

@@ -18,7 +18,7 @@
     ],
     "S3_runtime_libs_outside_libc": [],
     "S4_stage0_rust_lines": 42791,
-    "S5_tests_bound_to_rust_api": 19,
+    "S5_tests_bound_to_rust_api": 16,
     "S6_selfhost_bmb_lines": 0,
     "P1_runnable_programs": 60,
     "P2_bmb_lines": 22717,
@@ -1830,6 +1830,16 @@
         "S5_tests_bound_to_rust_api": [
           25,
           19
+        ]
+      }
+    },
+    {
+      "date": "2026-11-05",
+      "reason": "4A-04d: the gate, nesting and front-end fuzz tests go through the CLI; S5 19 -> 16",
+      "changed": {
+        "S5_tests_bound_to_rust_api": [
+          19,
+          16
         ]
       }
     }
