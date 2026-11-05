@@ -413,6 +413,12 @@ fn verify_frontend_defs(
     (out, defs)
 }
 
+/// `hi / lo` in hundredths, rounded half up (`lo > 0`).
+fn hundredths(hi: u64, lo: u64) -> u128 {
+    let (hi, lo) = (u128::from(hi), u128::from(lo));
+    (hi * 200 + lo) / (2 * lo)
+}
+
 /// Proof stability (backlog 1B-19): proves the program once per solver seed
 /// `0..seeds` and reports, per definition, the verdict and `rlimit` under each
 /// seed. A definition is unstable when its verdict differs between seeds.
@@ -432,7 +438,9 @@ pub fn stability_sources(files: &[(String, String)], seeds: u64) -> Result<(Stri
     }
     let mut out = String::new();
     let mut unstable = 0;
-    let mut spread_max = 1.0f64;
+    // The largest `hi / lo` in hundredths, rounded half up: integer fixed
+    // point, so no float formatting is involved (backlog 4A-03).
+    let mut spread_max: u128 = 100;
     for (i, s) in runs[0].iter().enumerate() {
         let per: Vec<&verify::FnStatus> = runs.iter().map(|r| &r[i]).collect();
         let verdicts: Vec<String> = per
@@ -451,7 +459,7 @@ pub fn stability_sources(files: &[(String, String)], seeds: u64) -> Result<(Stri
         let lo = per.iter().map(|p| p.rlimit_total).min().unwrap_or(0);
         let hi = per.iter().map(|p| p.rlimit_total).max().unwrap_or(0);
         if lo > 0 {
-            spread_max = spread_max.max(hi as f64 / lo as f64);
+            spread_max = spread_max.max(hundredths(hi, lo));
         }
         out.push_str(&format!(
             "{{\"def\":{},\"stable\":{stable},\"verdicts\":[{}],\"rlimit_min\":{lo},\"rlimit_max\":{hi}}}\n",
@@ -460,10 +468,11 @@ pub fn stability_sources(files: &[(String, String)], seeds: u64) -> Result<(Stri
         ));
     }
     out.push_str(&format!(
-        "{{\"summary\":true,\"seeds\":{},\"defs\":{},\"unstable\":{unstable},\"rlimit_spread_max\":{:.2}}}\n",
+        "{{\"summary\":true,\"seeds\":{},\"defs\":{},\"unstable\":{unstable},\"rlimit_spread_max\":{}.{:02}}}\n",
         runs.len(),
         runs[0].len(),
-        spread_max
+        spread_max / 100,
+        spread_max % 100
     ));
     Ok((out, unstable == 0))
 }
@@ -1075,5 +1084,32 @@ impl FrontCache {
     /// As `emit_llvm_sources_cached` on the files of the last `update`.
     pub fn emit_llvm(&self, cache_dir: Option<&std::path::Path>) -> LlvmOutput {
         emit_llvm_frontend(self.fe(), false, cache_dir)
+    }
+}
+
+#[cfg(test)]
+mod spread_tests {
+    /// The integer form prints what `{:.2}` of the quotient printed, away
+    /// from exact ties.
+    #[test]
+    fn hundredths_are_the_rounded_quotient() {
+        let mut seed: u64 = 0x9e37_79b9_7f4a_7c15;
+        for _ in 0..10_000 {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            let lo = seed % 5_000_000 + 1;
+            let hi = lo + (seed >> 20) % (3 * lo);
+            let x = super::hundredths(hi, lo);
+            let q = hi as f64 / lo as f64;
+            if ((q * 100.0).fract() - 0.5).abs() < 1e-6 {
+                continue;
+            }
+            assert_eq!(
+                format!("{}.{:02}", x / 100, x % 100),
+                format!("{q:.2}"),
+                "{hi}/{lo}"
+            );
+        }
     }
 }

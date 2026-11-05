@@ -4,6 +4,9 @@
 //! `BMB_FUZZ_SEED` picks another mutant sequence. Through the CLI (backlog
 //! 4A-04): a mutant fails when `bmb` ends other than with status 0 or 1 (a
 //! panic is 101, a stack overflow a signal), on the stack the CLI uses.
+//! `BMB_FUZZ_EXPORT=DIR` also writes every mutant to `DIR/NNNNN.bmb` (backlog
+//! 4A-03): the inputs on which another front end is compared with this one
+//! (`bmb dump tokens`, `bmb dump parse`, `bmb check`).
 
 use std::fs;
 use std::path::Path;
@@ -187,20 +190,31 @@ fn front_end_never_panics_on_mutated_programs() {
     let mut clean = 0usize;
     let dir = std::env::temp_dir().join(format!("bmb-fuzz-{}", std::process::id()));
     fs::create_dir_all(&dir).unwrap();
+    let export = std::env::var_os("BMB_FUZZ_EXPORT").map(std::path::PathBuf::from);
+    if let Some(e) = &export {
+        fs::create_dir_all(e).unwrap();
+    }
     for i in 0..iters {
         let pick = rng.below(corpus.len());
         let src = mutate(&mut rng, &corpus[pick], &corpus);
         fs::write(dir.join("f.bmb"), &src).unwrap();
+        if let Some(e) = &export {
+            fs::write(e.join(format!("{i:05}.bmb")), &src).unwrap();
+        }
         // Mutants that type-check also go through proof and code generation,
         // whose internal invariants assume a checked program.
-        let result = run(&dir, &["check"]).and_then(|ok| {
-            if ok {
-                clean += 1;
-                run(&dir, &["emit-llvm", "-o", "f.ll"]).map(|_| ())
-            } else {
-                Ok(())
-            }
-        });
+        // The stage dumps (backlog 4A-03) see every mutant too.
+        let result = run(&dir, &["dump", "tokens"])
+            .and_then(|_| run(&dir, &["dump", "parse"]))
+            .and_then(|_| run(&dir, &["check"]))
+            .and_then(|ok| {
+                if ok {
+                    clean += 1;
+                    run(&dir, &["emit-llvm", "-o", "f.ll"]).map(|_| ())
+                } else {
+                    Ok(())
+                }
+            });
         if let Err(e) = result {
             failures.push((i, src, e));
             if failures.len() >= 3 {

@@ -68,8 +68,12 @@ pub fn check_z3() -> Result<String, String> {
 
 fn check_z3_uncached() -> Result<String, String> {
     let out = run("z3", "--version")?;
-    let found =
-        parse_z3_version(&out).ok_or_else(|| format!("cannot read z3 version from {out:?}"))?;
+    let found = parse_z3_version(&out).ok_or_else(|| {
+        format!(
+            "cannot read z3 version from {}",
+            crate::diag::json_str(&out)
+        )
+    })?;
     if found == z3_version() {
         Ok(found.to_string())
     } else {
