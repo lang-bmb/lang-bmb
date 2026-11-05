@@ -1,25 +1,78 @@
 //! The `impact` query (backlog 2D-02) is complete: when a definition's body
 //! changes, every definition whose proof script changes is in the reported
 //! set. The proof scripts are exactly what the solver sees, so they are the
-//! ground truth for "this proof must be redone".
+//! ground truth for "this proof must be redone". Through the CLI (backlog
+//! 4A-04): scripts from `bmb verify --emit-smt`, maps and queries from
+//! `bmb map` and `bmb query`.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Output};
 
-fn files(text: &str) -> Vec<(String, String)> {
-    vec![("c.bmb".to_string(), text.to_string())]
+mod common;
+
+use common::jsonl::str_field;
+
+/// A scratch directory for `tag`, created empty.
+fn scratch(tag: &str) -> PathBuf {
+    let d = std::env::temp_dir().join(format!("bmb-impact-{tag}-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&d);
+    fs::create_dir_all(&d).unwrap();
+    d
 }
 
-fn rows(out: &str) -> Vec<bmb::json::Value> {
-    out.lines()
-        .filter(|l| !l.is_empty())
-        .map(|l| bmb::json::parse(l).unwrap())
-        .collect()
+/// `bmb args.. c.bmb` on `text`, written as `c.bmb` in `dir`.
+fn bmb(dir: &Path, text: &str, args: &[&str]) -> Output {
+    fs::write(dir.join("c.bmb"), text).unwrap();
+    Command::new(env!("CARGO_BIN_EXE_bmb"))
+        .current_dir(dir)
+        .args(args)
+        .arg("c.bmb")
+        .output()
+        .unwrap()
 }
 
-fn s<'a>(v: &'a bmb::json::Value, key: &str) -> Option<&'a str> {
-    v.get(key).and_then(|x| x.as_str())
+fn stdout(o: &Output) -> String {
+    String::from_utf8_lossy(&o.stdout).into_owned()
+}
+
+/// Whether `text` verifies, its output, and each definition's proof script
+/// (`--emit-smt` names a script `unit.name.smt2`).
+fn verify(dir: &Path, text: &str) -> (bool, String, BTreeMap<String, String>) {
+    let smt = dir.join("smt");
+    let _ = fs::remove_dir_all(&smt);
+    let out = bmb(dir, text, &["verify", "--emit-smt", "smt"]);
+    let mut scripts = BTreeMap::new();
+    for e in fs::read_dir(&smt).unwrap() {
+        let p = e.unwrap().path();
+        let Some(stem) = p
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .strip_suffix(".smt2")
+        else {
+            continue;
+        };
+        scripts.insert(stem.replace('.', "::"), fs::read_to_string(&p).unwrap());
+    }
+    (out.status.success(), stdout(&out), scripts)
+}
+
+/// The rows of `bmb map`/`bmb query` (`args` before the file).
+fn query(dir: &Path, text: &str, args: &[&str]) -> Vec<String> {
+    let out = bmb(dir, text, args);
+    assert!(
+        out.status.success(),
+        "{args:?}: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    stdout(&out).lines().map(str::to_string).collect()
+}
+
+fn s(row: &str, key: &str) -> Option<String> {
+    str_field(row, key)
 }
 
 /// Index of the `{` that opens the body of `unit::name`.
@@ -78,46 +131,42 @@ fn change_body(text: &str, path: &str, spec: bool) -> String {
 #[test]
 fn body_changes_reach_only_the_reported_definitions() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests");
+    let dir = scratch("body");
     let mut reached_others = 0;
     for rel in ["run/search.bmb"] {
         let text = fs::read_to_string(root.join(rel)).unwrap();
-        let base = bmb::verify_sources(&files(&text));
-        assert!(base.ok, "{rel}: {}", base.output);
-        let l0 = bmb::map_request(&files(&text), &["map".into(), "L0".into()]).unwrap();
-        let defs: Vec<(String, bool)> = rows(&l0)
+        let base = verify(&dir, &text);
+        assert!(base.0, "{rel}: {}", base.1);
+        let defs: Vec<(String, bool)> = query(&dir, &text, &["map", "L0"])
             .iter()
-            .filter(|r| s(r, "kind") == Some("def"))
+            .filter(|r| s(r, "kind").as_deref() == Some("def"))
             .map(|r| {
                 (
-                    s(r, "path").unwrap().to_string(),
-                    s(r, "def_kind") == Some("spec fn"),
+                    s(r, "path").unwrap(),
+                    s(r, "def_kind").as_deref() == Some("spec fn"),
                 )
             })
             .collect();
         assert!(defs.len() > 10, "{rel}");
         for (path, spec) in &defs {
             let changed = change_body(&text, path, *spec);
-            let after = bmb::verify_sources(&files(&changed));
+            let after = verify(&dir, &changed);
             assert!(
-                after.ok,
+                after.0,
                 "{rel}: changing {path} broke it:\n{changed}\n{}",
-                after.output
+                after.1
             );
             let touched: BTreeSet<&String> = base
-                .scripts
+                .2
                 .keys()
-                .chain(after.scripts.keys())
-                .filter(|k| base.scripts.get(*k) != after.scripts.get(*k))
+                .chain(after.2.keys())
+                .filter(|k| base.2.get(*k) != after.2.get(*k))
                 .collect();
-            let impact = bmb::map_request(
-                &files(&text),
-                &["query".into(), "impact".into(), path.clone(), "body".into()],
-            )
-            .unwrap();
-            let reported: BTreeSet<String> = rows(&impact)
-                .iter()
-                .filter_map(|r| s(r, "path").map(str::to_string))
-                .collect();
+            let reported: BTreeSet<String> =
+                query(&dir, &text, &["query", "impact", path, "body", "--"])
+                    .iter()
+                    .filter_map(|r| s(r, "path"))
+                    .collect();
             reached_others += touched.iter().filter(|t| **t != path).count();
             for t in &touched {
                 assert!(
@@ -127,6 +176,7 @@ fn body_changes_reach_only_the_reported_definitions() {
             }
         }
     }
+    let _ = fs::remove_dir_all(&dir);
     // Not vacuous: spec fn bodies do reach other proofs.
     assert!(reached_others > 0);
 }
@@ -164,15 +214,11 @@ mod u {
     }
 }
 "#;
+    let dir = scratch("contract");
     let ask = |def: &str, change: &str| -> Vec<(String, String)> {
-        let out = bmb::map_request(
-            &files(text),
-            &["query".into(), "impact".into(), def.into(), change.into()],
-        )
-        .unwrap();
-        rows(&out)
+        query(&dir, text, &["query", "impact", def, change, "--"])
             .iter()
-            .filter_map(|r| Some((s(r, "path")?.to_string(), s(r, "reason")?.to_string())))
+            .filter_map(|r| Some((s(r, "path")?, s(r, "reason")?)))
             .collect()
     };
     let pairs = |xs: &[(&str, &str)]| -> Vec<(String, String)> {
@@ -199,14 +245,7 @@ mod u {
             ("u::q", "names")
         ])
     );
-    let usage = bmb::map_request(
-        &files(text),
-        &[
-            "query".into(),
-            "impact".into(),
-            "u::f".into(),
-            "both".into(),
-        ],
-    );
-    assert!(usage.is_err());
+    let usage = bmb(&dir, text, &["query", "impact", "u::f", "both", "--"]);
+    assert_eq!(usage.status.code(), Some(1));
+    let _ = fs::remove_dir_all(&dir);
 }

@@ -1,9 +1,16 @@
 //! Proof cache (backlog 2D-01): the same output with or without it, warm runs
 //! skip the solver for proved obligations, and a change to anything a proof
-//! read invalidates that proof.
+//! read invalidates that proof. Through the CLI (backlog 4A-04): the cache's
+//! hits and misses come from `--stats`.
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+mod common;
+
+use common::jsonl::num_field;
 
 fn tmp(name: &str) -> PathBuf {
     let d = std::env::temp_dir().join(format!("bmb-cache-{name}-{}", std::process::id()));
@@ -11,8 +18,57 @@ fn tmp(name: &str) -> PathBuf {
     d
 }
 
-fn files(text: &str) -> Vec<(String, String)> {
-    vec![("c.bmb".to_string(), text.to_string())]
+/// What `bmb verify` reported: whether it succeeded, its stdout, and the
+/// proof cache's (hits, misses) when it ran with one.
+struct Run {
+    ok: bool,
+    output: String,
+    cache: (usize, usize),
+}
+
+/// `bmb verify [--cache DIR] c.bmb` on `text`, written into a directory of
+/// its own so the rows name `c.bmb`.
+fn verify(text: &str, cache: Option<&Path>) -> Run {
+    // Tests run in parallel: each run its own directory.
+    static RUNS: AtomicUsize = AtomicUsize::new(0);
+    let work = tmp(&format!("work{}", RUNS.fetch_add(1, Ordering::Relaxed)));
+    fs::create_dir_all(&work).unwrap();
+    fs::write(work.join("c.bmb"), text).unwrap();
+    let stats = work.join("stats.json");
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_bmb"));
+    cmd.current_dir(&work).arg("verify");
+    if let Some(c) = cache {
+        cmd.arg("--cache").arg(c).arg("--stats").arg(&stats);
+    }
+    let out = cmd.arg("c.bmb").output().unwrap();
+    let st = fs::read_to_string(&stats).unwrap_or_default();
+    // With a cache the counts must come from `--stats`, or the assertions
+    // on them would hold vacuously.
+    assert!(
+        cache.is_none() || st.contains("\"proof_cache_misses\":"),
+        "no stats: {st:?}"
+    );
+    let n = |k: &str| num_field(&st, k).unwrap_or(0) as usize;
+    let run = Run {
+        ok: out.status.success(),
+        output: String::from_utf8_lossy(&out.stdout).into_owned(),
+        cache: (n("proof_cache_hits"), n("proof_cache_misses")),
+    };
+    let _ = fs::remove_dir_all(&work);
+    run
+}
+
+/// Runs `bmb args..` in `dir` and returns (status, stdout).
+fn bmb_in(dir: &Path, args: &[&str]) -> (Option<i32>, String) {
+    let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
+        .current_dir(dir)
+        .args(args)
+        .output()
+        .unwrap();
+    (
+        out.status.code(),
+        String::from_utf8_lossy(&out.stdout).into_owned(),
+    )
 }
 
 #[test]
@@ -27,10 +83,10 @@ fn cached_output_is_identical_and_warm_runs_skip_proved_obligations() {
             .collect();
         paths.sort();
         for p in paths {
-            let f = files(&fs::read_to_string(&p).unwrap());
-            let plain = bmb::verify_sources(&f);
-            let cold = bmb::verify_sources_cached(&f, Some(&dir));
-            let warm = bmb::verify_sources_cached(&f, Some(&dir));
+            let f = fs::read_to_string(&p).unwrap();
+            let plain = verify(&f, None);
+            let cold = verify(&f, Some(&dir));
+            let warm = verify(&f, Some(&dir));
             for (name, run) in [("cold", &cold), ("warm", &warm)] {
                 assert_eq!(plain.output, run.output, "{} ({name})", p.display());
                 assert_eq!(plain.ok, run.ok, "{} ({name})", p.display());
@@ -118,7 +174,7 @@ mod u {
 #[test]
 fn a_change_a_proof_read_invalidates_it() {
     let dir = tmp("invalidate");
-    let first = bmb::verify_sources_cached(&files(BASE), Some(&dir));
+    let first = verify(BASE, Some(&dir));
     assert!(
         !first.ok,
         "user cannot see small(one()): `small` is opaque to it"
@@ -133,14 +189,14 @@ fn a_change_a_proof_read_invalidates_it() {
             "    #[effects(pure)]\n    fn user()",
             "    #[effects(pure)]\n    #[uses(small, big)]\n    fn user()",
         );
-    let proved = bmb::verify_sources_cached(&files(&strong), Some(&dir));
+    let proved = verify(&strong, Some(&dir));
     assert!(proved.ok, "{}", proved.output);
     // Weaken the revealed definition again: the cached proof of `user` must not
     // be reused, because the query text it was keyed on changed.
     let weak = strong.replace("r > 0 && r < 10", "r > 0");
-    let again = bmb::verify_sources_cached(&files(&weak), Some(&dir));
+    let again = verify(&weak, Some(&dir));
     assert!(!again.ok, "a stale proof was reused:\n{}", again.output);
-    assert_eq!(again.output, bmb::verify_sources(&files(&weak)).output);
+    assert_eq!(again.output, verify(&weak, None).output);
     let _ = fs::remove_dir_all(&dir);
 }
 
@@ -149,28 +205,39 @@ fn foreign_or_damaged_cache_files_are_ignored() {
     let dir = tmp("foreign");
     fs::create_dir_all(&dir).unwrap();
     fs::write(dir.join("proofs"), "not a cache\nsha256:00 1 1\n").unwrap();
-    let out = bmb::verify_sources_cached(&files(BASE), Some(&dir));
+    let out = verify(BASE, Some(&dir));
     assert_eq!(out.cache.0, 0);
-    assert_eq!(out.output, bmb::verify_sources(&files(BASE)).output);
+    assert_eq!(out.output, verify(BASE, None).output);
     let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
 fn builds_and_maps_through_the_cache_match_the_uncached_ones() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests");
+    let run = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/run");
     let dir = tmp("paths");
-    let f = files(&fs::read_to_string(root.join("run/search.bmb")).unwrap());
-    let plain = bmb::emit_llvm_sources(&f);
-    for _ in 0..2 {
-        let cached = bmb::emit_llvm_sources_cached(&f, Some(&dir));
-        assert_eq!(plain.verify.output, cached.verify.output);
-        assert_eq!(plain.ir, cached.ir, "same proofs, same checks removed");
-        assert_eq!(plain.checks, cached.checks);
+    let cache = dir.join("cache");
+    let cache = cache.to_str().unwrap();
+    fs::create_dir_all(&dir).unwrap();
+    let ir = |args: &[&str], out: &str| {
+        let ll = dir.join(out);
+        let mut a = args.to_vec();
+        a.extend(["search.bmb", "-o", ll.to_str().unwrap()]);
+        let r = bmb_in(&run, &a);
+        (r, fs::read_to_string(&ll).unwrap())
+    };
+    let plain = ir(&["emit-llvm"], "plain.ll");
+    for k in 0..2 {
+        let cached = ir(&["emit-llvm", "--cache", cache], &format!("cached{k}.ll"));
+        assert_eq!(plain.0, cached.0);
+        // Same proofs, same checks removed.
+        assert_eq!(plain.1, cached.1);
     }
-    let req = ["query".to_string(), "status".to_string()];
     assert_eq!(
-        bmb::map_request(&f, &req).unwrap(),
-        bmb::map_request_cached(&f, &req, Some(&dir)).unwrap()
+        bmb_in(&run, &["query", "status", "--", "search.bmb"]),
+        bmb_in(
+            &run,
+            &["query", "--cache", cache, "status", "--", "search.bmb"]
+        )
     );
     let _ = fs::remove_dir_all(&dir);
 }
@@ -222,9 +289,6 @@ fn query_and_map_cli_take_the_cache() {
         }
         assert_eq!(bmb(&["map", src]), bmb(&["map", "--cache", cache, src]));
     }
-    assert!(
-        dir.join(bmb::cache::FILE).exists(),
-        "the queries filled the cache"
-    );
+    assert!(dir.join("proofs").exists(), "the queries filled the cache");
     let _ = fs::remove_dir_all(&dir);
 }
