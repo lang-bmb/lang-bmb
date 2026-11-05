@@ -11,6 +11,7 @@
 {"code":"E0802","severity":"error","message":"postcondition `same_fits` may not hold in `bvf::spec_guard`; counterexample: x = 255","file":"fail/bit_vector.bmb","line":112,"col":17,"end_line":112,"end_col":29}
 {"code":"E0803","severity":"error","message":"`-` may overflow `u32` in `bvf::top`; counterexample: x = 0","file":"fail/bit_vector.bmb","line":120,"col":9,"end_line":120,"end_col":31}
 {"code":"E0802","severity":"error","message":"postcondition `short_run` may not hold in `bvf::low_ones`; counterexample: x = 255","file":"fail/bit_vector.bmb","line":129,"col":17,"end_line":129,"end_col":32}
+{"code":"E0802","severity":"error","message":"postcondition `always_some` may not hold in `bvf::shift_some`; counterexample: x = 127, k = 16","file":"fail/bit_vector.bmb","line":145,"col":17,"end_line":145,"end_col":31}
 {"def":"bvf::even","status":"failed","obligations":1,"failed":1,"rlimit":98,"rlimit_max":98}
 {"def":"bvf::ghost_range","status":"failed","obligations":2,"failed":1,"rlimit":268,"rlimit_max":260}
 {"def":"bvf::ghost_value","status":"failed","obligations":1,"failed":1,"rlimit":81,"rlimit_max":81}
@@ -21,6 +22,7 @@
 {"def":"bvf::recursive","status":"failed","obligations":1,"failed":1,"rlimit":0,"rlimit_max":0}
 {"def":"bvf::rotate_wrong","status":"failed","obligations":1,"failed":1,"rlimit":1083,"rlimit_max":1083}
 {"def":"bvf::rotations","status":"failed","obligations":2,"failed":1,"rlimit":3243,"rlimit_max":2558}
+{"def":"bvf::shift_some","status":"failed","obligations":1,"failed":1,"rlimit":7940,"rlimit_max":7057}
 {"def":"bvf::signed_division","status":"failed","obligations":1,"failed":1,"rlimit":0,"rlimit_max":0}
 {"def":"bvf::spec_guard","status":"failed","obligations":2,"failed":1,"rlimit":3949,"rlimit_max":3923}
 {"def":"bvf::top","status":"failed","obligations":1,"failed":1,"rlimit":63411,"rlimit_max":62371}

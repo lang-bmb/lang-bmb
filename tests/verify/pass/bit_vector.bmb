@@ -197,4 +197,31 @@ mod bvp {
         ensures same_not(x, y),
     {
     }
+
+    // `checked_shl` is `Some` exactly when the amount is below the width, of
+    // the wrapping shift; a power of two has one bit set (backlog 2N-09b).
+    spec fn shifted(x: u16, k: u32, r: Option<u16>) -> bool {
+        match r {
+            None => k >= 16,
+            Some(v) => k < 16 && v == x.wrapping_shl(k),
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(shifted)]
+    fn try_shift(x: u16, k: u32) -> (r: Option<u16>)
+        ensures shifted(x, k, r),
+    {
+        x.checked_shl(k)
+    }
+
+    spec fn one_bit(x: u32, r: bool) -> bool { r == (x.count_ones() == 1) && (r ==> x != 0) }
+
+    #[effects(pure)]
+    #[uses(one_bit)]
+    fn single(x: u32) -> (r: bool)
+        ensures one_bit(x, r),
+    {
+        x.is_power_of_two()
+    }
 }

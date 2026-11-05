@@ -66,4 +66,10 @@ mod bve {
         let f: u8 = x.leading_zeros();
         a
     }
+
+    // `is_power_of_two` is a method of the unsigned types (backlog 2N-09b).
+    #[effects(pure)]
+    fn signed_power(x: i32) -> bool {
+        x.is_power_of_two()
+    }
 }

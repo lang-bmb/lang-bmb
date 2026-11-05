@@ -757,6 +757,13 @@ fn bit_methods_compute_rusts_results() {
                         ] {
                             want.push_str(&format!("{v}\n"));
                         }
+                        // `None` prints 99 (backlog 2N-09b).
+                        for v in [x.checked_shl(k), x.checked_shr(k)] {
+                            match v {
+                                Some(v) => want.push_str(&format!("{}\n", v as i128)),
+                                None => want.push_str("99\n"),
+                            }
+                        }
                     }
                     for v in [
                         x.count_ones() as i128,
@@ -769,6 +776,10 @@ fn bit_methods_compute_rusts_results() {
                         x.reverse_bits() as i128,
                     ] {
                         want.push_str(&format!("{v}\n"));
+                    }
+                    if !i.signed() {
+                        let p = (x as u128 & (u128::MAX >> (128 - i.bits()))).is_power_of_two();
+                        want.push_str(&format!("{}\n", u32::from(p)));
                     }
                 }
             }};
@@ -818,6 +829,14 @@ mod m {{
                 show(x.rotate_right(k));
                 show(x.wrapping_shl(k));
                 show(x.wrapping_shr(k));
+                match x.checked_shl(k) {{
+                    None => count(99),
+                    Some(l) => show(l),
+                }}
+                match x.checked_shr(k) {{
+                    None => count(99),
+                    Some(h) => show(h),
+                }}
             }}
             count(x.count_ones());
             count(x.count_zeros());
@@ -827,10 +846,16 @@ mod m {{
             count(x.leading_ones());
             count(x.trailing_ones());
             show(x.reverse_bits());
+            {pow}
         }}
     }}
 }}
 ",
+            pow = if i.signed() {
+                ""
+            } else {
+                "if x.is_power_of_two() { count(1); } else { count(0); }"
+            },
             nx = xs.len(),
             xs = lits.join(", "),
             nk = amounts.len(),

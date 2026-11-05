@@ -3390,6 +3390,26 @@ impl<'p, 'q> Enc<'p, 'q> {
                         let b = args.first().map(|x| self.spec(x, env, old).s());
                         Val::S(f64_method(m, &rv.s(), b.as_deref()))
                     }
+                    // Backlog 2N-09b: `Some` of the wrapping shift exactly
+                    // when the amount is below the width; a power of two has
+                    // one bit set.
+                    m @ ("checked_shl" | "checked_shr") => {
+                        let i = self.ty(recv).int().expect("an integer method");
+                        let n = self.spec(&args[0], env, old).s();
+                        let a = if numeral(&n).is_some() {
+                            image(i, recv, &rv.s())
+                        } else {
+                            rv.s()
+                        };
+                        let w = &m.replace("checked", "wrapping");
+                        let v = bit_method(w, i, &a, Some(&n)).0;
+                        self.checked(e, &format!("(< {n} {})", i.bits()), v)
+                    }
+                    "is_power_of_two" => {
+                        let i = self.ty(recv).int().expect("an integer method");
+                        let c = bit_method("count_ones", i, &rv.s(), None).0;
+                        Val::S(format!("(= {c} 1)"))
+                    }
                     m if crate::check::bit_method_arity(m).is_some() => {
                         let i = self.ty(recv).int().expect("an integer method");
                         let n = args.first().map(|x| self.spec(x, env, old).s());
@@ -4017,6 +4037,18 @@ impl<'p, 'q> Enc<'p, 'q> {
                     m if value_ty(&self.ty(recv)) == &TypeKind::F64 => {
                         let b = args.first().map(|x| self.eval(x).s());
                         Val::S(f64_method(m, &rv.s(), b.as_deref()))
+                    }
+                    m @ ("checked_shl" | "checked_shr") => {
+                        let i = self.ty(recv).int().expect("an integer method");
+                        let n = self.eval(&args[0]).s();
+                        let w = &m.replace("checked", "wrapping");
+                        let v = self.bit_method_code(w, i, &rv.s(), Some(&n));
+                        self.checked(e, &format!("(< {n} {})", i.bits()), v)
+                    }
+                    "is_power_of_two" => {
+                        let i = self.ty(recv).int().expect("an integer method");
+                        let c = self.bit_method_code("count_ones", i, &rv.s(), None);
+                        Val::S(format!("(= {c} 1)"))
                     }
                     m if crate::check::bit_method_arity(m).is_some() => {
                         let i = self.ty(recv).int().expect("an integer method");

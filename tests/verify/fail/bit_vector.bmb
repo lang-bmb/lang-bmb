@@ -130,4 +130,20 @@ mod bvf {
     {
         x.trailing_ones()
     }
+
+    spec fn always_some(r: Option<u8>) -> bool {
+        match r {
+            None => false,
+            Some(v) => true,
+        }
+    }
+
+    // `checked_shr` is `None` from the width on (backlog 2N-09b).
+    #[effects(pure)]
+    #[uses(always_some)]
+    fn shift_some(x: u8, k: u32) -> (r: Option<u8>)
+        ensures always_some(r),
+    {
+        x.checked_shr(k)
+    }
 }

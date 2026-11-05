@@ -717,8 +717,9 @@ fn is_int(t: &TypeKind) -> bool {
 /// none.
 pub fn bit_method_arity(m: &str) -> Option<usize> {
     match m {
-        "rotate_left" | "rotate_right" | "wrapping_shl" | "wrapping_shr" => Some(1),
-        "swap_bytes" | "reverse_bits" => Some(0),
+        "rotate_left" | "rotate_right" | "wrapping_shl" | "wrapping_shr" | "checked_shl"
+        | "checked_shr" => Some(1),
+        "swap_bytes" | "reverse_bits" | "is_power_of_two" => Some(0),
         m if is_bit_count(m) => Some(0),
         _ => None,
     }
@@ -7043,6 +7044,29 @@ impl<'a> Checker<'a> {
                 }
                 if let (Some(at), Some(a)) = (at, args.first()) {
                     self.expect_ty(&at, &u32t, a.span);
+                }
+                // `is_power_of_two` is a method of the unsigned types only
+                // (Rust's); `checked_shl`/`checked_shr` are `Some` exactly
+                // when the amount is below the width (backlog 2N-09b).
+                if m == "is_power_of_two" {
+                    if rt.is_signed() {
+                        self.diags.push(
+                            Diag::new(
+                                "E0404",
+                                name.span,
+                                format!("`{m}` is not defined for `{}`", ty_str(&rt)),
+                            )
+                            .fix(
+                                "it is a method of the unsigned integer types (Rust's)",
+                                None,
+                            ),
+                        );
+                        return TypeKind::Error;
+                    }
+                    return TypeKind::Bool;
+                }
+                if m.starts_with("checked_") {
+                    return option_of(rt);
                 }
                 if is_bit_count(m) { u32t } else { rt }
             }

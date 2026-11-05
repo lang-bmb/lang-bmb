@@ -1684,6 +1684,28 @@ impl<'p> Gen<'p> {
                         CVal::Arr { len, .. } => CVal::Imm(len),
                         _ => unreachable!(),
                     },
+                    // `Some` of the wrapping shift exactly when the amount is
+                    // below the width (backlog 2N-09b).
+                    m @ ("checked_shl" | "checked_shr") => {
+                        let i = self.ty(recv).int().expect("an integer method");
+                        let n = self.expr(&args[0]).imm();
+                        let ok = self.t();
+                        self.emit(format!("{ok} = icmp ult i64 {n}, {}", i.bits()));
+                        let v = self.bit_method(
+                            &m.replace("checked", "wrapping"),
+                            i,
+                            &rv.imm(),
+                            Some(&n),
+                        );
+                        self.option(e, &ok, &v.imm())
+                    }
+                    "is_power_of_two" => {
+                        let i = self.ty(recv).int().expect("an integer method");
+                        let c = self.bit_method("count_ones", i, &rv.imm(), None);
+                        let r = self.t();
+                        self.emit(format!("{r} = icmp eq i64 {}, 1", c.imm()));
+                        CVal::Imm(r)
+                    }
                     m if crate::check::bit_method_arity(m).is_some() => {
                         let i = self.ty(recv).int().expect("an integer method");
                         let n = args.first().map(|x| self.expr(x).imm());

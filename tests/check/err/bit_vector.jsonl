@@ -16,3 +16,4 @@
 {"code":"E0405","severity":"error","message":"`rotate_right` takes one argument","file":"err/bit_vector.bmb","line":64,"col":24,"end_line":64,"end_col":36,"fix":{"message":"write `x.rotate_right(n)` with an amount `n: u32` (Rust's signature)"}}
 {"code":"E0404","severity":"error","message":"`count_ones` is not defined for `bool`","file":"err/bit_vector.bmb","line":65,"col":25,"end_line":65,"end_col":35,"fix":{"message":"bit methods are methods of the integer types"}}
 {"code":"E0401","severity":"error","message":"expected `u8`, found `u32`","file":"err/bit_vector.bmb","line":66,"col":21,"end_line":66,"end_col":38,"fix":{"message":"convert: `u8::try_from(x).unwrap()` (its range is a proof obligation)"}}
+{"code":"E0404","severity":"error","message":"`is_power_of_two` is not defined for `i32`","file":"err/bit_vector.bmb","line":73,"col":11,"end_line":73,"end_col":26,"fix":{"message":"it is a method of the unsigned integer types (Rust's)"}}
