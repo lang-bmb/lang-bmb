@@ -2,7 +2,7 @@
 
 > 갱신: 2026-10-26
 > 에이전트가 사람의 개입 없이 백로그를 소화하기 위한 규칙이다. 사람의 개입 지점은 §4의 표로 한정한다.
-> 관련: `docs/ROADMAP.md`(단계·통과 기준), `dev-docs/BACKLOG.md`(태스크), `CLAUDE.md`(커밋 규칙).
+> 관련: `docs/ROADMAP.md`(단계·통과 기준·언어 전체 수순), `dev-docs/BACKLOG.md`(태스크), `CLAUDE.md`(커밋 규칙).
 
 ## 1. 원칙
 

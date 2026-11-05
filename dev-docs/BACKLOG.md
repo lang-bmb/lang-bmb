@@ -10,6 +10,18 @@
 
 ## 지금 할 일
 
+### 실행 계획(2026-11-05, 사람 지시: "모두 로드맵에 반영, 전체 언어개발 수순은 로드맵에")
+
+로드맵에 "언어 전체 수순"(언어 코어 → 남은 언어 기능 → 런타임·시스템 인터페이스 → 표준 라이브러리 → 문법 결정·stage0 동결 → 포팅 → 부트스트랩 E1·E2 → 자기 증명·은퇴 → 성숙)을 두고, 이번 범위를 그 위치와 함께 "우선순위(2026-11-05)"에 적었다. 측정 줄은 2026-11-04 계획 그대로.
+
+| 순위 | 줄 | 태스크(순서) | 수순 |
+| --- | --- | --- | --- |
+| 1 | 언어 | `2U-01` → `2U-02` → `2U-03` → `2U-04` → `2U-05` | ② 남은 언어 기능 |
+| 2 | 자립 준비 | `4A-04` 나머지(S5 7 → 1) | ⑥ 포팅 준비, 사다리 L1 |
+| 3 | 자립 설계 | `4C-03`(시스템 인터페이스·런타임 초안) → `4B-03`(표준 라이브러리 초안) | ③·④ |
+| 4 | 측정 결과 | `T1-41` 보고, `T0-33` 요약, T0-13·`2A-16` 권장안(측정이 끝나는 대로) | 측정 트랙 |
+| 다음 | — | `2E-05`·`2F-05` → `2M` → `T4-05` → `4C-01`·`4B-01` 채택 뒤 `4C-02`·`4B-02` | ①~④ |
+
 ### 실행 계획(2026-11-04, 사람 승인: "권장안 승인, 자율 실행/검증 승인")
 
 승인한 것: 측정 판정력 ADR(ADR-0086, `T0-33`), T0-13 표면 결정은 `T0-33` 뒤로, 미션 목표값(`2A-16`)은 `T0-33`과 함께, 측정 줄과 병행 코드 작업의 자율 진행.
@@ -487,8 +499,8 @@ ROADMAP의 통과 기준마다 그것을 확인하는 태스크다. 빈칸이 �
 | 2B | 1~4. 실행·망라성·퍼저·측정, 실용성(HEALTH §5) | 2B-08, 2B-04, 2B-09, 2B-10, 2B-12 |
 | 2C | 1~2. 변환 의무, 퍼저, 실용성(HEALTH §5) | 2C-02, 2C-04, 2C-06 |
 | 2D | 1~2. 결정론 테스트, 증명 보존 | 2D-01~2D-13 각 행 |
-| 2E | 1~2. 근거 필수·면적 집계, 미확인 표시 | 2E-03, 2E-04 |
-| 2F | 효과 검사·질의 | 2F-02, 2F-03 |
+| 2E | 1~2. 근거 필수·면적 집계, 미확인 표시 | 2E-03, 2E-04, 2E-05 |
+| 2F | 효과 검사·질의 | 2F-02, 2F-03, 2F-05 |
 | 2G | 1~2. `Vec` 모델·이동 검사, 퍼저 | 2G-03, 2G-02, 2G-05 |
 | 2S | 바이트·문자열 실행·퍼저 | 2S-02 |
 | 2T | 1. 검사·인코딩·코드 생성·코퍼스 | 2T-01, 2T-02, 2T-03, 2T-04, 2T-07 |
@@ -647,6 +659,7 @@ ROADMAP의 통과 기준마다 그것을 확인하는 태스크다. 빈칸이 �
 | 2E-02 | 탈출구 구현 | 근거 없으면 오류, 증명기는 가정으로 사용, 코드 생성은 검사 유지 여부를 ADR대로 | 2E-01 | ✅ 표면 `assume(p(..));`·`#[external_body]`·`#[rationale(kind = K, hash = "..", "설명")]`(E1001 근거 없음, E1002 형식, E1003 술어 아님·명세 문맥, E1004 `spec fn`·`proof fn`·`main`), Rust·Verus 습관 E0215(`unsafe`)·E0216(`#[verifier::external_body]`, 교체)·E0217(`admit()`). 탈출구가 있는 정의는 `panic` 효과의 원천(구문, ADR-0029 구현 노트). 증명 `verify::verify_trusting`: 신뢰 사실 없는 A 패스, 실패하고 탈출구에 닿을 수 있는 정의만 B 패스(`assumed`), `#[external_body]`는 의무 없음(`external`), 신뢰되지 않는 집합이 늘지 않을 때까지. 탈출구 없는 프로그램은 예전 그대로. 코드 생성: `proved`가 아닌 정의와 그 아래 모두 전체 검사(`Outcome::checked`), `build`는 그 검사로 막지 않음. 상태 줄 `trust` 키(proved가 아닐 때만). 증분 캐시는 탈출구에 닿을 수 있는 정의를 저장·조회하지 않음. 정규형·JSON AST·정체성(근거는 해시 밖). 시험 `tests/codegen.rs`의 `escapes` 모듈(등급, `assume`을 지워도 `proved` 집합 불변, 검사 위치, 거짓 `assume`은 trap), `tests/run/escapes.bmb`, `tests/check/err/escapes.bmb` |
 | 2E-03 | 미증명 면적 집계 | 맵 L1·`status`에 정의별 탈출구·미증명 의무 수 | 2E-02 | ✅ L1·`status` 행에 `trust`·`escapes`·`assumed_obligations`·`checked`·`rationale`·`rationale_kinds`, `status` 요약에 `proved`·`assumed`·`external`·`escapes`·`unconfirmed`(`map::Model::escape_keys`, `verify::Outcome`의 `checked`·`assumed_obligations`). 테스트 이유에 `panic`·`trust`(ADR-0030 §4). 시험 `tests/codegen.rs`의 `escapes` 모듈의 `maps_show_trust_and_escapes`. 남은 것: 미증명 면적 뷰의 원인 간선 |
 | 2E-04 | 구조화 근거의 미확인 표시 | 근거가 묶인 노드 해시가 바뀌면 "미확인" | 2E-02 | ✅ 근거 해시 `escape::Hashes`(정의의 한정 정규형과 부르는 `spec fn`들의 텍스트, 근거 문구는 빠짐), 미확인 = 해시가 다르거나 없음(맵 `rationale`, 린트 W1001, 수정은 현재 해시). `bmb fix`가 없는 해시를 쓰고 `bmb fix --confirm`이 낡은 해시를 고친다. W1002(필요 없는 `assume`, 수정은 지우기). 시험 `rationales_go_unconfirmed_with_their_code`(코드·술어 편집은 미확인, 문구 편집은 확인 그대로이고 증명 키도 그대로, `fix`는 낡은 해시를 두고 `--confirm`이 고침, 없는 해시는 `fix`가 씀), `needless_assumes_are_reported`. 게이트 변이체 `v-assume-trusted-first`·`v-checks-dropped-below-escape`. 남은 것: 트랜잭션 `tx.confirm_rationale`(수요 시) |
+| 2E-05 | 종료 감사 | 2E 통과 기준 1·2를 하나씩 확인하고 `dev-docs/health/2E.md`(실행 프로그램, 퍼저, 마찰 표). 로드맵 정리(2026-11-05)에서 구현은 끝났는데 감사가 없어 페이즈가 닫히지 않은 것을 발견 | 2E-04 | ⏳ |
 
 ### 2F 효과 확장
 
@@ -656,6 +669,7 @@ ROADMAP의 통과 기준마다 그것을 확인하는 태스크다. 빈칸이 �
 | 2F-02 | 효과 검사 구현 | 호출 그래프를 따른 효과 검사, 진단 코퍼스 | 2F-01 | ✅ 효과 집합 `check::Effects`(`pure` = 빈 집합, 원자 `alloc`·`io`, 정규형 이름순, `fmt`가 정렬). `alloc` 원천: `Vec::new`·`Vec::with_capacity`·`push`·`Vec`의 `clone`·`Box::new`(코드 생성의 할당 지점과 같음). 선언 ⊇ 필요(자기 연산 ∪ 실행 피호출자의 선언 효과): 빠지면 E0606(정의당 하나, 첫 원천을 적고 수정은 필요한 효과를 다 쓴 속성), `pure`→`io` 호출은 E0603 그대로. `pure`와 다른 효과·중복은 E0607(정규형으로 고침), 빈 목록·모르는 이름은 E0602(새 목록 안내). trait impl 함수의 효과 ⊆ trait 메서드의 것(E0316), `bmb weaken`의 효과 관계는 포함 순서. 맵 L1·`status`의 `effects`는 선언 집합 전체(`alloc, io`), `io_defs`는 `io`를 담은 정의. 정의별 자기 효과와 필요 효과는 `Tables::effect_needs`(2F-03이 씀). 린트 W0909(쓰이지 않는 선언 효과, 수정은 필요한 것만, trait 메서드·trait impl 함수·`main`의 `io` 제외). 코퍼스: 할당하는 정의 66곳에 `alloc`(E0606 교체만 고정점까지). 시험: 진단 코퍼스 `tests/check/err/effects.bmb`(`Vec::new`·`push`·`clone`·`Box::new` 원천, 피호출자 효과, 두 효과 빠짐, E0607 둘, 빈 목록, 상호 재귀, trait impl), `tests/lint.rs`의 `unneeded_effects`, `gate_power.py` 변이체 `k-push-not-alloc`·`k-callee-effects-ignored`. `panic`·`nondet`은 원천과 함께(2E, 입력 내장). LLVM 속성·동적 효과 퍼저는 `2F-04` |
 | 2F-04 | 효과의 코드 생성 속성과 동적 효과 퍼저 | ADR-0030 §6(`nounwind`, `panic` 없고 `proved`인 함수의 `willreturn`·`mustprogress`, 효과가 비면 `memory(argmem: read)`/`memory(none)`, `alloc`이면 `inaccessiblemem: readwrite`)과 §8(해석기가 실행 중 일어난 효과를 정의별로 기록, 성질: 동적 효과 ⊆ 정적 `eff*`), IR 시험(`willreturn`은 `proved`이고 `panic`이 없는 함수에만), 결정론. 속도 이득은 측정으로만 주장(열린 질문 5) | 2F-02 | ⏳ 보류(ADR-0084, 사람 승인 2026-11-02): 속성은 건전한 부분집합만(힙 포인터 없는 타입의 `memory`, `alloc`·검사가 남은 함수는 `nounwind`만, `willreturn`은 피호출자까지 검사 없는 함수). 구현은 `bench/baseline`에서 속도 이득 근거가 생긴 뒤. 동적 효과 퍼저(ADR-0030 §8)는 따로 진행할 수 있다 |
 | 2F-03 | 효과별 정의 질의 | 효과별 정의 목록과 경로(2D-11 확장) | 2F-02, 2D-11 | ✅ `map::Index::effects`(정의마다 선언·자기·전이 효과, `eff*`는 `calls` 간선 위의 고정점: 자기 연산(할당, 내장 `io` 호출) ∪ 피호출자의 `eff*`, 내장과 본문 없는 trait 메서드는 선언 효과). L1·`status` 행에 `effects_required`(`eff*`)·`test_reasons`(`io` ∈ `eff*`, `unproved`; `alloc`은 이유 아님), `status` 요약에 `alloc_defs`·`test_needed_defs`(키 추가만, ADR-0020). `query effects [DEF]`가 `io` 행 뒤에 같은 꼴의 `alloc` 행(DEF: `alloc`을 선언한 정의까지, 전체: 할당 연산까지의 최단 경로)과 요약 `alloc_reached`·`alloc_reaching`·`alloc_defs`. 새 질의 `query effect E`(선언·필요·원천 `own`/`callee`/`null`, 요약). `tests`의 이유는 L1의 `test_reasons`를 씀. 시험 `tests/map.rs`의 `effect_sets_in_the_maps`(행·질의·L1 키·`status` 요약, 모르는 효과는 오류), 기존 요약 기대값에 키 추가. 동결 집합의 프로그램은 할당하지 않아 `effects` 행은 그대로(BNB 하네스가 읽는 `io` 행 불변) |
+| 2F-05 | 종료 감사 | 2F 통과 기준(효과가 호출 그래프를 따라 검사, 효과별 정의 목록 질의)을 확인하고 `dev-docs/health/2F.md`. 2F-04는 ADR-0084로 보류임을 감사에 적는다. 2E-05와 같은 발견 | 2F-03 | ⏳ |
 
 ### 2G 메모리
 
@@ -850,17 +864,18 @@ Rust·Verus 표면을 따른 것은 새 언어의 학습 부족을 줄이기 위
 | 4A-04 | 통합 테스트의 CLI 이전 | 라이브러리 API만 쓰는 통합 테스트 15개를 CLI 경유로 바꿔 stage0 은퇴 뒤에도 같은 테스트가 BMB 컴파일러를 시험 | 4A-02 | 🔄 4A-04a ✅: `compiler/tests/toolchain.rs`(`bmb doctor`의 required = detail), `stability.rs`(`bmb stability --seeds N`, 종료 코드가 판정), `corpus.rs`(`bmb check`를 `tests/check`에서 실행해 `.jsonl`과 바이트 비교, `bmb codes`·`codes --md`)를 CLI로. S5 30 → 27(`health.py accept`). 4A-04b ✅: `no_prove.rs`(가짜 `z3`가 시작마다 기록: 증명 상태가 없는 요청은 기록 0이고 진짜 해법기와 같은 답, 증명 상태 요청은 시작을 시도하고 `verified`가 없다), `fixes.rs`(`bmb check`, 진단 줄은 `tests/common/jsonl.rs`의 필드 읽기). S5 27 → 25. 4A-04c ✅: 라이브러리 API로 빌드하던 건전성 퍼저 여섯(`soundness`·`_rec`·`_calls`·`_unsigned`·`_loops`·`_specs`)을 `tests/common/cli.rs`(`bmb emit-llvm`을 파일 이름 그대로 실행, 증명 캐시 또는 `--all-checks`, clang `-O2`)로. 통계는 라이브러리 경유와 같다(정수 54 함수·15 증명·트랩 18, 재귀 36·3·12, 호출 30·3·1, 부호 없음 48·12·13, 루프 36·10·6, 명세 43·21·6). 이제 건전성 퍼저는 모두 CLI 경유다. S5 25 → 19. 4A-04d ✅: `gate.rs`(경우마다 제 환경의 `bmb verify`: 프로세스 환경을 바꾸지 않는다, 고정 rlimit은 `scripts/toolchain.env`, 해법기 시작은 가짜 `z3`의 기록), `nesting.rs`(`bmb check`·`verify`·`emit-llvm`·`fmt`·`map all`: CLI의 실제 스택, `MAX_NESTING`은 파서 원문에서), `fuzz.rs`(변이체마다 `bmb check`, 깨끗하면 `emit-llvm`, 상태가 0·1이 아니면 충돌: 같은 1,500 변이체 중 깨끗한 51, 11초 → 36초). S5 19 → 16. 4A-04e ✅: `impact.rs`(증명 스크립트는 `bmb verify --emit-smt`의 `unit.name.smt2`, L0와 `query impact`는 CLI, 잘못된 변경 종류는 상태 1), `cache.rs`(적중·놓침은 `--stats`의 `proof_cache_hits`·`misses`, 캐시가 있으면 통계가 있어야 한다: 없으면 단언이 공허하므로; IR과 `query status`는 캐시 유무로 바이트 비교). S5 16 → 14. 남은 14개 파일은 크기순으로 다음 하위 태스크(`mcp_cache.rs`·`fmt.rs`부터) 4A-04f ✅: `mcp_cache.rs`(오래 사는 `bmb mcp --stats` 프로세스와 호출마다 새 프로세스의 응답이 바이트로 같고, 프런트엔드 캐시의 셈은 `--stats`가 응답마다 표준 오류에 쓰는 줄, `surface`는 `bmb map L1`·`bmb query [--cache]`), `fmt.rs`(`bmb fmt`·`verify`·`hash`, 검사 전 정규형은 `bmb dump parse`, 부동소수 왕복은 `bmb dump tokens`의 `bits`와 Rust의 값), `map.rs`(`bmb map`·`bmb query`), `mcp.rs`·`mcp_fuzz.rs`(응답은 시험 쪽의 독립 JSON 리더 `tests/common/json.rs`, 고정 도구 목록 해시는 `sha256sum`, 커밋된 작업 공간은 `bmb check`·`bmb fmt --check`). S5 14 → 9. 4A-04g ✅: `uses_fill.rs`(`bmb uses --write [--cache]`의 보고 행과 쓴 파일), `fmt_fuzz.rs`(`bmb fmt`·`hash`·`check`, 정규형과 IR은 `emit-llvm` 두 번을 나란히; 남긴 검사는 IR에 있다), 공용 실행기 `common::cli::run`·`units`. S5 9 → 7. 다음: `verify.rs`·`workspace.rs`·`lint.rs`·`incremental.rs`·`fix_cmd.rs`·`codegen.rs`(`lemmas.rs`는 인코더 항의 단위 시험이라 CLI 대상이 아니다) |
 | 4B-01 | 표준 라이브러리 설계 ADR | 범위(문자열·바이트, `Vec`, 정렬된 맵, `Option`·`Result`, 서식), 계약 스타일, 증명 비용 | 4B-03 | ⏳ 승인 |
 | 4B-02 | 표준 라이브러리 구현 | 4B-01 범위를 BMB로 구현하고 전부 증명, 퍼저 대상 추가 | 4B-01, 2B-09, 2G-05 | ⏳ 승인 |
-| 4B-03 | ADR 초안: 표준 라이브러리 | 4A-01 격차와 2B-11·제안 ADR-0031 표면으로 범위·계약 스타일·증명 비용을 정한 초안(상태 "제안"). 2G·2S 설계가 셀프호스팅 요구를 놓치지 않게 하는 입력 | 4A-01, 2B-11, 2V-12 | ⏳ 점검 R12: 제네릭·소유 타입·`String` 결정(2V-12) 위에서 쓴다. 단형 맵 전제는 철회 |
+| 4B-03 | ADR 초안: 표준 라이브러리 | 4A-01 격차와 2B-11·제안 ADR-0031 표면으로 범위·계약 스타일·증명 비용을 정한 초안(상태 "제안"). 2G·2S 설계가 셀프호스팅 요구를 놓치지 않게 하는 입력 | 4A-01, 2B-11, 2V-12 | ⏳ 점검 R12: 제네릭·소유 타입·`String` 결정(2V-12) 위에서 쓴다. 단형 맵 전제는 철회. 로드맵 2026-11-05 범위 사이클 10(2U 뒤에 쓴다) |
 | 4C-01 | 시스템 인터페이스 ADR | 파일·프로세스·인자·종료 코드, 내장 대 FFI, 효과(`io`)와 신뢰 경계 | 4C-03 | ⏳ 승인 |
 | 4C-02 | 시스템 인터페이스 구현 | stage0의 외부 호출(Z3·clang 실행, 파일 입출력)을 모두 대체할 수 있음을 예제로 확인 | 4C-01 | ⏳ 승인 |
-| 4C-03 | ADR 초안: 시스템 인터페이스 | 파일·프로세스·인자·종료 코드, 내장 대 FFI, `io` 효과와 신뢰 경계(ADR-0030 제안과 대조). 상태 "제안" | 4A-01, 2F-01 | ⏳ |
+| 4C-03 | ADR 초안: 시스템 인터페이스와 런타임 | 파일·디렉터리(읽기·쓰기·이름 바꾸기·삭제·목록), 표준 입력, 대화형 파이프가 있는 프로세스, 인자·환경 변수·종료 코드, 단조 시계, 내장 대 FFI, `io`·`nondet` 효과와 `external_body` 신뢰 경계(ADR-0029·0030과 대조). 런타임(생성 바이너리가 libc 위에 링크하는 층)의 구현 방식과 크기, 스택 크기(재귀 중첩 256), stage0과 같은 오류 문구(포팅 지도 §4). 상태 "제안" | 4A-01, 2F-01 | ⏳ 로드맵 2026-11-05 범위 사이클 9. 지금 생성 바이너리는 출력만 있고 입력이 없다 |
 | 4D-01 | stage0 기능 동결 선언 | 동결 범위와 예외(버그 수정·부트스트랩 필수 변경) ADR, CI 검사(동결 뒤 언어 기능 변경 감지) | 4A-02, 2H-02 | ⏳ 승인 |
-| 4D-02 | 렉서·파서 포팅 | 코퍼스·퍼저 입력에서 stage0과 진단·정규형 출력 동일 | 4D-01, 4B-02 | ⏳ |
-| 4D-03 | 검사기 포팅 | 진단 JSONL 바이트 동일 | 4D-02 | ⏳ |
-| 4D-04 | 증명기 포팅 | SMT 스크립트·상태 줄 바이트 동일 | 4D-03, 4C-02 | ⏳ |
-| 4D-05 | 코드 생성 포팅 | IR 바이트 동일, 실행 코퍼스 출력 동일 | 4D-04 | ⏳ |
-| 4D-06 | 맵·도구·MCP 포팅 | 맵·질의·도구 출력 동일, MCP 세션 퍼저 통과 | 4D-05 | ⏳ |
-| 4E-01 | 부트스트랩 고정점 | stage0→stage1→stage2→stage3, stage2 = stage3 바이트 동일, stage2로 전체 게이트 통과, CI 매 커밋 | 4D-06 | ⏳ |
+| 4D-02 | 기반 라이브러리·런타임·렉서·파서 포팅(포팅 지도 P0~P2) | SHA-256·JSON·서식의 차등 시험, `bmb dump tokens`·`dump parse` JSONL과 종료 코드가 코퍼스·퍼저 입력에서 stage0과 같다 | 4D-01, 4B-02, 4C-02 | ⏳ |
+| 4D-03 | 검사기·정규형 포팅(P3) | `check` 진단 JSONL·종료 코드, `fmt`·`hash` 출력, `codes --md` 바이트 동일 | 4D-02 | ⏳ |
+| 4D-04 | 증명기·해법기 연결 포팅(P6·P7) | `verify --emit-smt` 스크립트·상태 줄·반례 바이트 동일, `stability` 같음 | 4E-02 | ⏳ |
+| 4D-05 | 코드 생성 포팅(P4, 전체 검사 모드) | `emit-llvm --all-checks` IR 바이트 동일, 실행 코퍼스 출력 동일. 증명된 의무 집합이 비어 증명기 없이 돈다(포팅 지도 P4) | 4D-03 | ⏳ |
+| 4D-06 | 맵·캐시·도구·작업 공간·MCP·CLI 포팅(P5, P8~P11) | 맵·질의·도구 출력 동일, 캐시 없음·콜드·웜 출력 동일, MCP 세션 기록 재생 동일 | 4D-04 | ⏳ |
+| 4E-02 | 부트스트랩 조기 고정점(E1) | 증명기 없는 구성 요소(C0~C4·C8, 약 42%)의 BMB 소스를 stage0 `emit-llvm --all-checks`와 clang으로 빌드(1단 stage1) → stage1로 같은 소스(2단 stage2) → stage2로(stage3). stage2 IR = stage3 IR, stage2가 P1~P4 차등 시험 통과 | 4D-05 | ⏳ |
+| 4E-01 | 부트스트랩 전체 고정점(E2) | 전체 컴파일러로 stage0→stage1→stage2→stage3, stage2 = stage3 바이트 동일, stage2로 전체 게이트 통과, CI 매 커밋(자립 사다리 L3) | 4D-06 | ⏳ |
 | 4F-01 | 자기 증명 | BMB 컴파일러가 자기 증명 게이트 통과, 미증명 면적 상한(값은 ADR) 이하 | 4E-01, 2E-03 | ⏳ |
 | 4G-01 | stage0 은퇴 | 씨앗 동결·보존(태그·바이너리), 씨앗에서 고정점까지 재현 절차 CI | 4E-01 | ⏳ 승인 |
 
