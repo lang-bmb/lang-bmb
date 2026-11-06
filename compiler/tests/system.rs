@@ -429,3 +429,161 @@ fn files_read_and_write_as_rust_does() {
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// In the directory named by the first argument: makes a nested tree, makes
+/// it again, lists it, replaces a file atomically (a temporary, then a
+/// rename), removes files, and tries what fails. The same program in Rust
+/// is `DIRS_REF`.
+const DIRS: &str = r#"#[summary("dirs")]
+mod app {
+    #[effects(alloc, io)]
+    fn show(r: Result<(), std::io::Error>) -> () {
+        match r {
+            Ok(u) => {
+                print_str("ok\n");
+            }
+            Err(e) => {
+                print_i64(i64::try_from(e.code).unwrap());
+                print_str(e.message.as_str());
+                print_str("\n");
+            }
+        }
+    }
+
+    #[effects(alloc, io, nondet)]
+    fn list(at: &str) -> () {
+        match std::fs::read_dir(at) {
+            Ok(names) => {
+                for i in 0..names.len() {
+                    print_str(names[i].as_str());
+                    print_str(" ");
+                }
+                print_str("\n");
+            }
+            Err(e) => {
+                print_i64(i64::try_from(e.code).unwrap());
+                print_str(e.message.as_str());
+                print_str("\n");
+            }
+        }
+    }
+
+    #[effects(alloc, io, nondet)]
+    fn main() -> () {
+        let a: Vec<String> = std::env::args();
+        if a.len() < 6 {
+            std::process::exit(2);
+        }
+        show(std::fs::create_dir_all(a[2].as_str()));
+        show(std::fs::create_dir_all(a[2].as_str()));
+        show(std::fs::write(a[3].as_str(), b"first\n"));
+        show(std::fs::write(a[4].as_str(), b"second\n"));
+        show(std::fs::rename(a[4].as_str(), a[3].as_str()));
+        list(a[1].as_str());
+        match std::fs::read_to_string(a[3].as_str()) {
+            Ok(t) => {
+                print_str(t.as_str());
+            }
+            Err(e) => {
+                print_str(e.message.as_str());
+            }
+        }
+        show(std::fs::create_dir_all(a[5].as_str()));
+        show(std::fs::remove_file(a[3].as_str()));
+        show(std::fs::remove_file(a[3].as_str()));
+        show(std::fs::rename(a[3].as_str(), a[4].as_str()));
+        list(a[3].as_str());
+        list(a[2].as_str());
+    }
+}
+"#;
+
+const DIRS_REF: &str = r#"fn show(r: std::io::Result<()>) {
+    match r {
+        Ok(()) => println!("ok"),
+        Err(e) => {
+            println!("{}", e.raw_os_error().unwrap_or(0));
+            println!("{e}");
+        }
+    }
+}
+fn list(at: &str) {
+    match std::fs::read_dir(at) {
+        Ok(rd) => {
+            let mut names: Vec<String> =
+                rd.map(|e| e.unwrap().file_name().into_string().unwrap()).collect();
+            names.sort();
+            for n in names {
+                print!("{n} ");
+            }
+            println!();
+        }
+        Err(e) => {
+            println!("{}", e.raw_os_error().unwrap_or(0));
+            println!("{e}");
+        }
+    }
+}
+fn main() {
+    let a: Vec<String> = std::env::args().collect();
+    show(std::fs::create_dir_all(&a[2]));
+    show(std::fs::create_dir_all(&a[2]));
+    show(std::fs::write(&a[3], b"first\n"));
+    show(std::fs::write(&a[4], b"second\n"));
+    show(std::fs::rename(&a[4], &a[3]));
+    list(&a[1]);
+    match std::fs::read_to_string(&a[3]) {
+        Ok(t) => print!("{t}"),
+        Err(e) => print!("{e}"),
+    }
+    show(std::fs::create_dir_all(&a[5]));
+    show(std::fs::remove_file(&a[3]));
+    show(std::fs::remove_file(&a[3]));
+    show(std::fs::rename(&a[3], &a[4]));
+    list(&a[3]);
+    list(&a[2]);
+}
+"#;
+
+/// Directories and an atomic replace (ADR-0091 §2, slice (c)), byte for
+/// byte against the Rust program built by rustc: nested and repeated
+/// `create_dir_all`, a file in the way, sorted listings, `rename` over a
+/// file, removing a missing file, listing a missing directory.
+#[test]
+fn directories_behave_as_rust() {
+    let dir = cli::fresh_dir();
+    let rs = dir.join("r.rs");
+    std::fs::write(&rs, DIRS_REF).unwrap();
+    let rexe = dir.join("r");
+    let built = Command::new("rustc")
+        .args(["-O", "-o"])
+        .arg(&rexe)
+        .arg(&rs)
+        .output()
+        .unwrap();
+    assert!(built.status.success(), "{}", text(&built.stderr));
+    let bexe = dir.join("b");
+    let out = cli::emit(&one(DIRS), false);
+    assert!(out.ok, "{}", out.output);
+    cli::build(&out.ir.unwrap(), &bexe).unwrap();
+    for (k, exe) in [(0, &rexe), (1, &bexe)] {
+        let root = dir.join(format!("t{k}"));
+        std::fs::create_dir_all(&root).unwrap();
+        let p = |n: &str| root.join(n).display().to_string();
+        let o = Command::new(exe)
+            .args([
+                root.display().to_string(),
+                p("a/b//c/"),
+                p("f.txt"),
+                p("f.tmp"),
+                p("f.txt/inside"),
+            ])
+            .output()
+            .unwrap();
+        std::fs::write(dir.join(format!("out{k}")), &o.stdout).unwrap();
+    }
+    let r = std::fs::read(dir.join("out0")).unwrap();
+    let b = std::fs::read(dir.join("out1")).unwrap();
+    assert_eq!(text(&b), text(&r));
+    let _ = std::fs::remove_dir_all(&dir);
+}

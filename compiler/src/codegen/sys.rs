@@ -393,6 +393,312 @@ done:
 }
 ";
 
+/// Directories (ADR-0091 §2, slice (c)): `rename`, `remove_file`,
+/// `create_dir_all` (Rust's algorithm: make the directory, on `ENOENT`
+/// make its parent first; an existing directory is success) and `read_dir`
+/// (the names but `.` and `..`, sorted by their bytes for determinism, §6;
+/// a name that is not UTF-8 is the UTF-8 error). Whether a path is a
+/// directory is `open(O_PATH | O_DIRECTORY)`, which needs no read right.
+/// Linux x86-64: `struct dirent` keeps the name at byte 19.
+const DIRS: &str = "declare i32 @rename(ptr, ptr)
+declare i32 @unlink(ptr)
+declare i32 @mkdir(ptr, i32)
+declare ptr @opendir(ptr)
+declare ptr @readdir(ptr)
+declare i32 @closedir(ptr)
+declare void @qsort(ptr, i64, i64, ptr)
+define internal i64 @bmb_rt_fs_rename(ptr %p, i64 %n, ptr %q, i64 %m) {
+entry:
+  %a = call ptr @bmb_cpath(ptr %p, i64 %n)
+  %b = call ptr @bmb_cpath(ptr %q, i64 %m)
+  %an = icmp eq ptr %a, null
+  %bn = icmp eq ptr %b, null
+  %either = or i1 %an, %bn
+  br i1 %either, label %badpath, label %go
+badpath:
+  call void @free(ptr %a)
+  call void @free(ptr %b)
+  ret i64 -1001
+go:
+  %r = call i32 @rename(ptr %a, ptr %b)
+  %fail = icmp ne i32 %r, 0
+  br i1 %fail, label %os, label %ok
+os:
+  %e = call i64 @bmb_errno()
+  call void @free(ptr %a)
+  call void @free(ptr %b)
+  ret i64 %e
+ok:
+  call void @free(ptr %a)
+  call void @free(ptr %b)
+  ret i64 0
+}
+define internal i64 @bmb_rt_fs_remove_file(ptr %p, i64 %n) {
+entry:
+  %c = call ptr @bmb_cpath(ptr %p, i64 %n)
+  %nul = icmp eq ptr %c, null
+  br i1 %nul, label %badpath, label %go
+badpath:
+  ret i64 -1001
+go:
+  %r = call i32 @unlink(ptr %c)
+  %fail = icmp ne i32 %r, 0
+  br i1 %fail, label %os, label %ok
+os:
+  %e = call i64 @bmb_errno()
+  call void @free(ptr %c)
+  ret i64 %e
+ok:
+  call void @free(ptr %c)
+  ret i64 0
+}
+define internal i1 @bmb_is_dir(ptr %c) {
+entry:
+  %fd = call i32 (ptr, i32, ...) @open(ptr %c, i32 2686976)
+  %ok = icmp sge i32 %fd, 0
+  br i1 %ok, label %yes, label %no
+yes:
+  call i32 @close(i32 %fd)
+  ret i1 true
+no:
+  ret i1 false
+}
+define internal i64 @bmb_mkdir_once(ptr %c, i64 %n) {
+entry:
+  %endp = getelementptr inbounds i8, ptr %c, i64 %n
+  %saved = load i8, ptr %endp
+  store i8 0, ptr %endp
+  %r = call i32 @mkdir(ptr %c, i32 511)
+  %fail = icmp ne i32 %r, 0
+  br i1 %fail, label %error, label %ok
+error:
+  %e = call i64 @bmb_errno()
+  %dir = call i1 @bmb_is_dir(ptr %c)
+  store i8 %saved, ptr %endp
+  %res = select i1 %dir, i64 0, i64 %e
+  ret i64 %res
+ok:
+  store i8 %saved, ptr %endp
+  ret i64 0
+}
+define internal i64 @bmb_parent_len(ptr %c, i64 %n) {
+entry:
+  br label %strip
+strip:
+  %m0 = phi i64 [%n, %entry], [%m0d, %stripmore]
+  %s0 = icmp ugt i64 %m0, 0
+  br i1 %s0, label %stripchk, label %back
+stripchk:
+  %m0m = sub nuw i64 %m0, 1
+  %sp = getelementptr inbounds i8, ptr %c, i64 %m0m
+  %sb = load i8, ptr %sp
+  %slash = icmp eq i8 %sb, 47
+  br i1 %slash, label %stripmore, label %back
+stripmore:
+  %m0d = sub nuw i64 %m0, 1
+  br label %strip
+back:
+  %m1 = phi i64 [%m0, %strip], [%m0, %stripchk], [%m1d, %backmore]
+  %s1 = icmp ugt i64 %m1, 0
+  br i1 %s1, label %backchk, label %trim
+backchk:
+  %m1m = sub nuw i64 %m1, 1
+  %bp = getelementptr inbounds i8, ptr %c, i64 %m1m
+  %bb = load i8, ptr %bp
+  %isslash = icmp eq i8 %bb, 47
+  br i1 %isslash, label %trim, label %backmore
+backmore:
+  %m1d = sub nuw i64 %m1, 1
+  br label %back
+trim:
+  %m2 = phi i64 [%m1, %back], [%m1, %backchk], [%m2d, %trimmore]
+  %s2 = icmp ugt i64 %m2, 1
+  br i1 %s2, label %trimchk, label %done
+trimchk:
+  %m2m = sub nuw i64 %m2, 1
+  %tp = getelementptr inbounds i8, ptr %c, i64 %m2m
+  %tb = load i8, ptr %tp
+  %tslash = icmp eq i8 %tb, 47
+  br i1 %tslash, label %trimmore, label %done
+trimmore:
+  %m2d = sub nuw i64 %m2, 1
+  br label %trim
+done:
+  %m = phi i64 [%m2, %trim], [%m2, %trimchk]
+  ret i64 %m
+}
+define internal i64 @bmb_mkdir_all(ptr %c, i64 %n) {
+entry:
+  %empty = icmp eq i64 %n, 0
+  br i1 %empty, label %ok, label %try
+try:
+  %endp = getelementptr inbounds i8, ptr %c, i64 %n
+  %saved = load i8, ptr %endp
+  store i8 0, ptr %endp
+  %r = call i32 @mkdir(ptr %c, i32 511)
+  %fail = icmp ne i32 %r, 0
+  br i1 %fail, label %error, label %made
+made:
+  store i8 %saved, ptr %endp
+  br label %ok
+error:
+  %e = call i64 @bmb_errno()
+  %dir = call i1 @bmb_is_dir(ptr %c)
+  store i8 %saved, ptr %endp
+  br i1 %dir, label %ok, label %why
+why:
+  %enoent = icmp eq i64 %e, -3
+  br i1 %enoent, label %parent, label %fail2
+fail2:
+  ret i64 %e
+parent:
+  %m = call i64 @bmb_parent_len(ptr %c, i64 %n)
+  %pr = call i64 @bmb_mkdir_all(ptr %c, i64 %m)
+  %pbad = icmp slt i64 %pr, 0
+  br i1 %pbad, label %pfail, label %again
+pfail:
+  ret i64 %pr
+again:
+  %r2 = call i64 @bmb_mkdir_once(ptr %c, i64 %n)
+  ret i64 %r2
+ok:
+  ret i64 0
+}
+define internal i64 @bmb_rt_fs_create_dir_all(ptr %p, i64 %n) {
+entry:
+  %c = call ptr @bmb_cpath(ptr %p, i64 %n)
+  %nul = icmp eq ptr %c, null
+  br i1 %nul, label %badpath, label %go
+badpath:
+  ret i64 -1001
+go:
+  %r = call i64 @bmb_mkdir_all(ptr %c, i64 %n)
+  call void @free(ptr %c)
+  ret i64 %r
+}
+define internal i32 @bmb_name_cmp(ptr %a, ptr %b) {
+entry:
+  %ap = load ptr, ptr %a
+  %alp = getelementptr inbounds %bmb.vec, ptr %a, i32 0, i32 1
+  %al = load i64, ptr %alp
+  %bp = load ptr, ptr %b
+  %blp = getelementptr inbounds %bmb.vec, ptr %b, i32 0, i32 1
+  %bl = load i64, ptr %blp
+  %r = call i32 @bmb_str_cmp(ptr %ap, i64 %al, ptr %bp, i64 %bl)
+  ret i32 %r
+}
+define internal void @bmb_names_free(ptr %h) {
+entry:
+  %buf = load ptr, ptr %h
+  %lp = getelementptr inbounds %bmb.vec, ptr %h, i32 0, i32 1
+  %len = load i64, ptr %lp
+  br label %head
+head:
+  %i = phi i64 [0, %entry], [%i1, %body]
+  %more = icmp ult i64 %i, %len
+  br i1 %more, label %body, label %done
+body:
+  %e = getelementptr inbounds %bmb.vec, ptr %buf, i64 %i
+  %eb = load ptr, ptr %e
+  call void @free(ptr %eb)
+  %i1 = add nuw i64 %i, 1
+  br label %head
+done:
+  call void @free(ptr %buf)
+  ret void
+}
+define internal i64 @bmb_rt_fs_read_dir(ptr %out, ptr %p, i64 %n) {
+entry:
+  call void @bmb_vec_alloc(ptr %out, i64 0, i64 24)
+  %c = call ptr @bmb_cpath(ptr %p, i64 %n)
+  %nul = icmp eq ptr %c, null
+  br i1 %nul, label %badpath, label %open
+badpath:
+  ret i64 -1001
+open:
+  %d = call ptr @opendir(ptr %c)
+  %fail = icmp eq ptr %d, null
+  br i1 %fail, label %oserr, label %go
+oserr:
+  %e = call i64 @bmb_errno()
+  call void @free(ptr %c)
+  ret i64 %e
+go:
+  call void @free(ptr %c)
+  %lp = getelementptr inbounds %bmb.vec, ptr %out, i32 0, i32 1
+  %cp = getelementptr inbounds %bmb.vec, ptr %out, i32 0, i32 2
+  br label %next
+next:
+  %ep = call ptr @__errno_location()
+  store i32 0, ptr %ep
+  %ent = call ptr @readdir(ptr %d)
+  %end = icmp eq ptr %ent, null
+  br i1 %end, label %ended, label %got
+got:
+  %name = getelementptr inbounds i8, ptr %ent, i64 19
+  %nlen = call i64 @strlen(ptr %name)
+  %c0 = load i8, ptr %name
+  %dot = icmp eq i8 %c0, 46
+  %short = icmp ule i64 %nlen, 2
+  %maybe = and i1 %dot, %short
+  br i1 %maybe, label %dots, label %keep
+dots:
+  %one = icmp eq i64 %nlen, 1
+  %c1p = getelementptr inbounds i8, ptr %name, i64 1
+  %c1 = load i8, ptr %c1p
+  %dot2 = icmp eq i8 %c1, 46
+  %skip = or i1 %one, %dot2
+  br i1 %skip, label %next, label %keep
+keep:
+  %valid = call i1 @bmb_utf8_valid(ptr %name, i64 %nlen)
+  br i1 %valid, label %push, label %notutf
+notutf:
+  call i32 @closedir(ptr %d)
+  call void @bmb_names_free(ptr %out)
+  ret i64 -1
+push:
+  %len = load i64, ptr %lp
+  %cap = load i64, ptr %cp
+  %full = icmp eq i64 %len, %cap
+  br i1 %full, label %grow, label %put
+grow:
+  call void @bmb_vec_grow(ptr %out, i64 24)
+  br label %put
+put:
+  %buf = load ptr, ptr %out
+  %slot = getelementptr inbounds %bmb.vec, ptr %buf, i64 %len
+  call void @bmb_vec_alloc(ptr %slot, i64 %nlen, i64 1)
+  %sb = load ptr, ptr %slot
+  call void @llvm.memcpy.p0.p0.i64(ptr %sb, ptr %name, i64 %nlen, i1 false)
+  %slp = getelementptr inbounds %bmb.vec, ptr %slot, i32 0, i32 1
+  store i64 %nlen, ptr %slp
+  %len1 = add nuw i64 %len, 1
+  store i64 %len1, ptr %lp
+  br label %next
+ended:
+  %ep2 = call ptr @__errno_location()
+  %err = load i32, ptr %ep2
+  %bad = icmp ne i32 %err, 0
+  br i1 %bad, label %rderr, label %sort
+rderr:
+  %re = call i64 @bmb_errno()
+  call i32 @closedir(ptr %d)
+  call void @bmb_names_free(ptr %out)
+  ret i64 %re
+sort:
+  call i32 @closedir(ptr %d)
+  %all = load i64, ptr %lp
+  %base = load ptr, ptr %out
+  %some = icmp ugt i64 %all, 1
+  br i1 %some, label %qs, label %done
+qs:
+  call void @qsort(ptr %base, i64 %all, i64 24, ptr @bmb_name_cmp)
+  br label %done
+done:
+  ret i64 0
+}
+";
+
 /// What every input and output built-in shares: `errno` as a result code,
 /// whether the last failure was `EINTR`, and the message of an
 /// `std::io::Error` (Rust's `Display`): `strerror` and ` (os error N)` for
@@ -466,7 +772,7 @@ enum Payload {
 /// The built-ins whose result is `Result<T, std::io::Error>`: path, the
 /// runtime function, its flattened parameters (as the call passes the
 /// built-in's arguments) and what it gives on success.
-const IO_BUILTINS: [(&str, &str, &[&str], Payload); 5] = [
+const IO_BUILTINS: [(&str, &str, &[&str], Payload); 9] = [
     (
         "std::io::read_line",
         "bmb_stdin_line",
@@ -496,6 +802,30 @@ const IO_BUILTINS: [(&str, &str, &[&str], Payload); 5] = [
         "bmb_rt_fs_write",
         &["ptr", "i64", "ptr", "i64"],
         Payload::Unit,
+    ),
+    (
+        "std::fs::rename",
+        "bmb_rt_fs_rename",
+        &["ptr", "i64", "ptr", "i64"],
+        Payload::Unit,
+    ),
+    (
+        "std::fs::remove_file",
+        "bmb_rt_fs_remove_file",
+        &["ptr", "i64"],
+        Payload::Unit,
+    ),
+    (
+        "std::fs::create_dir_all",
+        "bmb_rt_fs_create_dir_all",
+        &["ptr", "i64"],
+        Payload::Unit,
+    ),
+    (
+        "std::fs::read_dir",
+        "bmb_rt_fs_read_dir",
+        &["ptr", "i64"],
+        Payload::Value,
     ),
 ];
 
@@ -604,6 +934,19 @@ err:
     }
     if used.iter().any(|(p, ..)| p.starts_with("std::fs::")) {
         out.push_str(FS);
+        // `strlen` is declared once: by `std::env::args` when it is called.
+        if !ir.contains("@bmb_args(") {
+            out.push_str("declare i64 @strlen(ptr)\n");
+        }
+    }
+    let dirs = [
+        "std::fs::rename",
+        "std::fs::remove_file",
+        "std::fs::create_dir_all",
+        "std::fs::read_dir",
+    ];
+    if used.iter().any(|(p, ..)| dirs.contains(p)) {
+        out.push_str(DIRS);
     }
     out.push_str(IO_COMMON);
     out

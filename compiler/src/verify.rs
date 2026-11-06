@@ -6137,6 +6137,10 @@ impl<'p, 'q> Enc<'p, 'q> {
                         | "std::fs::read"
                         | "std::fs::read_to_string"
                         | "std::fs::write"
+                        | "std::fs::rename"
+                        | "std::fs::remove_file"
+                        | "std::fs::create_dir_all"
+                        | "std::fs::read_dir"
                 ),
                 "unresolved call in {}",
                 self.path

@@ -926,6 +926,33 @@ fn system_builtins() -> Vec<(&'static str, Vec<TypeKind>, TypeKind, Effects)> {
             // An error's message is a new `String`.
             Effects::ALLOC.union(Effects::IO),
         ),
+        // Slice (c), directories: `rename(from, to)`, `remove_file(path)`,
+        // `create_dir_all(path)` and `read_dir(path)` (the entries' names,
+        // sorted by their bytes, not an iterator: ADR-0091 §2, §6).
+        (
+            "std::fs::rename",
+            vec![text::str_ref(), text::str_ref()],
+            io_result(TypeKind::Unit),
+            Effects::ALLOC.union(Effects::IO),
+        ),
+        (
+            "std::fs::remove_file",
+            vec![text::str_ref()],
+            io_result(TypeKind::Unit),
+            Effects::ALLOC.union(Effects::IO),
+        ),
+        (
+            "std::fs::create_dir_all",
+            vec![text::str_ref()],
+            io_result(TypeKind::Unit),
+            Effects::ALLOC.union(Effects::IO),
+        ),
+        (
+            "std::fs::read_dir",
+            vec![text::str_ref()],
+            io_result(TypeKind::Vec(mk(TypeKind::String))),
+            Effects::ALLOC.union(Effects::IO).union(Effects::NONDET),
+        ),
     ]
 }
 
