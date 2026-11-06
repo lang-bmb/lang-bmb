@@ -6143,6 +6143,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                         | "std::fs::read_dir"
                         | "std::env::var"
                         | "std::time::monotonic_ms"
+                        | "std::process::run"
                 ),
                 "unresolved call in {}",
                 self.path
@@ -6167,7 +6168,10 @@ impl<'p, 'q> Enc<'p, 'q> {
             // of its type (any length, valid as the callee would leave it),
             // as after a call with a `&mut` argument, and the result is any
             // value of its type.
-            if target.starts_with("std::io::") || target.starts_with("std::fs::") {
+            if target.starts_with("std::io::")
+                || target.starts_with("std::fs::")
+                || target == "std::process::run"
+            {
                 let ptys = self.prog.t.fns[&target].params.clone();
                 for (i, pt) in ptys.iter().enumerate() {
                     if let TypeKind::Ref { mutable: true, .. } = pt

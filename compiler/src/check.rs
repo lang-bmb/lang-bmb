@@ -975,6 +975,29 @@ fn system_builtins() -> Vec<(&'static str, Vec<TypeKind>, TypeKind, Effects)> {
             TypeKind::Int(IntTy::U64),
             Effects::IO.union(Effects::NONDET),
         ),
+        // Slice (e): `std::process::run(prog, args, input)` runs `prog`
+        // with `args` (looked up in `PATH`), gives it `input` and waits:
+        // its status and what it wrote (Rust's `Command::output` with the
+        // input written to its standard input).
+        (
+            "std::process::run",
+            vec![
+                text::str_ref(),
+                TypeKind::Ref {
+                    mutable: false,
+                    inner: mk(TypeKind::Slice(mk(TypeKind::String))),
+                },
+                TypeKind::Ref {
+                    mutable: false,
+                    inner: mk(TypeKind::Slice(mk(TypeKind::Int(IntTy::U8)))),
+                },
+            ],
+            io_result(TypeKind::Named {
+                path: vec!["std".into(), "process".into(), "Output".into()],
+                args: Vec::new(),
+            }),
+            Effects::ALLOC.union(Effects::IO).union(Effects::NONDET),
+        ),
     ]
 }
 
@@ -1004,7 +1027,9 @@ pub fn io_error() -> TypeKind {
     }
 }
 
-/// The system types (ADR-0091 §2): `std::io::Error { code, message }`.
+/// The system types (ADR-0091 §2): `std::io::Error { code, message }` and
+/// `std::process::Output { status, stdout, stderr }` (`status` the exit
+/// code, or 128 + the signal that ended the process).
 /// `code` is the OS error number (`errno`), 0 for an error that has none
 /// (invalid UTF-8); `message` is what Rust's `Display` writes for it
 /// (`strerror` and ` (os error N)`, or Rust's own text).
@@ -1020,7 +1045,19 @@ fn system_types() -> BTreeMap<String, Adt> {
         span: Span::default(),
         inv: None,
     };
-    BTreeMap::from([(path, adt)])
+    let out = "std::process::Output".to_string();
+    let output = Adt {
+        path: out.clone(),
+        generics: Vec::new(),
+        kind: AdtKind::Struct(vec![
+            ("status".into(), TypeKind::Int(IntTy::I32)),
+            ("stdout".into(), TypeKind::Vec(mk(TypeKind::Int(IntTy::U8)))),
+            ("stderr".into(), TypeKind::Vec(mk(TypeKind::Int(IntTy::U8)))),
+        ]),
+        span: Span::default(),
+        inv: None,
+    };
+    BTreeMap::from([(path, adt), (out, output)])
 }
 
 /// The help of E0402 for an array inside an array element (backlog 2B-14).

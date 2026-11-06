@@ -789,6 +789,288 @@ pub(super) fn helpers(text: &str) -> String {
     out
 }
 
+/// Processes (ADR-0091 §2, slice (e)): `bmb_rt_process_run` runs `prog`
+/// (looked up in `PATH` as Rust's `Command` does) with `args`, writes
+/// `input` to its standard input while reading its standard output and
+/// error (a `poll` loop, so neither side blocks the other; writes are at
+/// most `PIPE_BUF` bytes), and waits. `SIGPIPE` is ignored as in Rust's
+/// runtime: a child that stops reading ends the writing, not this process.
+/// The status is the exit code, or 128 + the signal that ended the child.
+/// An argument with a NUL byte is the `InvalidInput` error, a program
+/// that cannot start is the spawn error (`ENOENT`, ..). Linux x86-64
+/// layouts: a `pollfd` is 8 bytes, the spawn file actions fit in 128.
+const RUN: &str = "declare i32 @pipe2(ptr, i32)
+declare i32 @posix_spawn_file_actions_init(ptr)
+declare i32 @posix_spawn_file_actions_destroy(ptr)
+declare i32 @posix_spawn_file_actions_adddup2(ptr, i32, i32)
+declare i32 @posix_spawnp(ptr, ptr, ptr, ptr, ptr, ptr)
+declare i32 @poll(ptr, i64, i32)
+declare i32 @waitpid(i32, ptr, i32)
+declare ptr @signal(i32, ptr)
+@environ = external global ptr
+define internal i64 @bmb_fd_read_some(i32 %fd, ptr %h) {
+entry:
+  %lp = getelementptr inbounds %bmb.vec, ptr %h, i32 0, i32 1
+  %cp = getelementptr inbounds %bmb.vec, ptr %h, i32 0, i32 2
+  %len = load i64, ptr %lp
+  %cap = load i64, ptr %cp
+  %full = icmp eq i64 %len, %cap
+  br i1 %full, label %grow, label %read
+grow:
+  call void @bmb_vec_grow(ptr %h, i64 1)
+  br label %read
+read:
+  %len1 = load i64, ptr %lp
+  %cap1 = load i64, ptr %cp
+  %room = sub nuw i64 %cap1, %len1
+  %buf = load ptr, ptr %h
+  %at = getelementptr inbounds i8, ptr %buf, i64 %len1
+  %got = call i64 @read(i32 %fd, ptr %at, i64 %room)
+  %fail = icmp slt i64 %got, 0
+  br i1 %fail, label %error, label %some
+error:
+  %intr = call i1 @bmb_interrupted()
+  %again = select i1 %intr, i64 1, i64 -1
+  ret i64 %again
+some:
+  %len2 = add nuw i64 %len1, %got
+  store i64 %len2, ptr %lp
+  ret i64 %got
+}
+define internal void @bmb_argv_free(ptr %argv, i64 %n) {
+entry:
+  br label %head
+head:
+  %i = phi i64 [0, %entry], [%i1, %body]
+  %more = icmp ult i64 %i, %n
+  br i1 %more, label %body, label %done
+body:
+  %ap = getelementptr inbounds ptr, ptr %argv, i64 %i
+  %a = load ptr, ptr %ap
+  call void @free(ptr %a)
+  %i1 = add nuw i64 %i, 1
+  br label %head
+done:
+  call void @free(ptr %argv)
+  ret void
+}
+define internal i64 @bmb_rt_process_run(ptr %out, ptr %p, i64 %pn, ptr %args, i64 %an, ptr %in, i64 %inn) {
+entry:
+  %cprog = call ptr @bmb_cpath(ptr %p, i64 %pn)
+  %pnul = icmp eq ptr %cprog, null
+  br i1 %pnul, label %badprog, label %mkargv
+badprog:
+  ret i64 -1001
+mkargv:
+  %cnt = add nuw i64 %an, 2
+  %bytes = mul nuw i64 %cnt, 8
+  %argv = call ptr @bmb_box_alloc(i64 %bytes)
+  store ptr %cprog, ptr %argv
+  br label %ahead
+ahead:
+  %i = phi i64 [0, %mkargv], [%i1, %astore]
+  %amore = icmp ult i64 %i, %an
+  br i1 %amore, label %abody, label %aend
+abody:
+  %eh = getelementptr inbounds %bmb.vec, ptr %args, i64 %i
+  %ep = load ptr, ptr %eh
+  %elp = getelementptr inbounds %bmb.vec, ptr %eh, i32 0, i32 1
+  %el = load i64, ptr %elp
+  %ca = call ptr @bmb_cpath(ptr %ep, i64 %el)
+  %anul = icmp eq ptr %ca, null
+  br i1 %anul, label %badarg, label %astore
+badarg:
+  %filled = add nuw i64 %i, 1
+  call void @bmb_argv_free(ptr %argv, i64 %filled)
+  ret i64 -1001
+astore:
+  %slot = add nuw i64 %i, 1
+  %sp = getelementptr inbounds ptr, ptr %argv, i64 %slot
+  store ptr %ca, ptr %sp
+  %i1 = add nuw i64 %i, 1
+  br label %ahead
+aend:
+  %last = add nuw i64 %an, 1
+  %lastp = getelementptr inbounds ptr, ptr %argv, i64 %last
+  store ptr null, ptr %lastp
+  %fds = alloca [6 x i32]
+  %f_in = getelementptr inbounds [6 x i32], ptr %fds, i32 0, i32 0
+  %f_out = getelementptr inbounds [6 x i32], ptr %fds, i32 0, i32 2
+  %f_err = getelementptr inbounds [6 x i32], ptr %fds, i32 0, i32 4
+  %p1 = call i32 @pipe2(ptr %f_in, i32 524288)
+  %p2 = call i32 @pipe2(ptr %f_out, i32 524288)
+  %p3 = call i32 @pipe2(ptr %f_err, i32 524288)
+  %p12 = or i32 %p1, %p2
+  %p123 = or i32 %p12, %p3
+  %pipefail = icmp ne i32 %p123, 0
+  br i1 %pipefail, label %nopipe, label %spawn
+nopipe:
+  %pe = call i64 @bmb_errno()
+  call void @bmb_argv_free(ptr %argv, i64 %last)
+  ret i64 %pe
+spawn:
+  %in_r = load i32, ptr %f_in
+  %in_wp = getelementptr inbounds [6 x i32], ptr %fds, i32 0, i32 1
+  %in_w = load i32, ptr %in_wp
+  %out_r = load i32, ptr %f_out
+  %out_wp = getelementptr inbounds [6 x i32], ptr %fds, i32 0, i32 3
+  %out_w = load i32, ptr %out_wp
+  %err_r = load i32, ptr %f_err
+  %err_wp = getelementptr inbounds [6 x i32], ptr %fds, i32 0, i32 5
+  %err_w = load i32, ptr %err_wp
+  %fa = alloca [128 x i8]
+  call i32 @posix_spawn_file_actions_init(ptr %fa)
+  call i32 @posix_spawn_file_actions_adddup2(ptr %fa, i32 %in_r, i32 0)
+  call i32 @posix_spawn_file_actions_adddup2(ptr %fa, i32 %out_w, i32 1)
+  call i32 @posix_spawn_file_actions_adddup2(ptr %fa, i32 %err_w, i32 2)
+  %pid = alloca i32
+  %env = load ptr, ptr @environ
+  %rc = call i32 @posix_spawnp(ptr %pid, ptr %cprog, ptr %fa, ptr null, ptr %argv, ptr %env)
+  call i32 @posix_spawn_file_actions_destroy(ptr %fa)
+  call void @bmb_argv_free(ptr %argv, i64 %last)
+  call i32 @close(i32 %in_r)
+  call i32 @close(i32 %out_w)
+  call i32 @close(i32 %err_w)
+  %spawnfail = icmp ne i32 %rc, 0
+  br i1 %spawnfail, label %nospawn, label %started
+nospawn:
+  call i32 @close(i32 %in_w)
+  call i32 @close(i32 %out_r)
+  call i32 @close(i32 %err_r)
+  %rc64 = sext i32 %rc to i64
+  %se = sub i64 -1, %rc64
+  ret i64 %se
+started:
+  call ptr @signal(i32 13, ptr inttoptr (i64 1 to ptr))
+  %so = getelementptr inbounds %\"std::process::Output\", ptr %out, i32 0, i32 1
+  %sr = getelementptr inbounds %\"std::process::Output\", ptr %out, i32 0, i32 2
+  call void @bmb_vec_alloc(ptr %so, i64 0, i64 1)
+  call void @bmb_vec_alloc(ptr %sr, i64 0, i64 1)
+  %win = alloca i32
+  %rout = alloca i32
+  %rerr = alloca i32
+  %off = alloca i64
+  store i32 %in_w, ptr %win
+  store i32 %out_r, ptr %rout
+  store i32 %err_r, ptr %rerr
+  store i64 0, ptr %off
+  %pfd = alloca [24 x i8]
+  %noinput = icmp eq i64 %inn, 0
+  br i1 %noinput, label %closein0, label %loop
+closein0:
+  call i32 @close(i32 %in_w)
+  store i32 -1, ptr %win
+  br label %loop
+loop:
+  %w0 = load i32, ptr %win
+  %o0 = load i32, ptr %rout
+  %e0 = load i32, ptr %rerr
+  %wo = and i32 %w0, %o0
+  %woe = and i32 %wo, %e0
+  %allshut = icmp eq i32 %woe, -1
+  br i1 %allshut, label %wait, label %poll
+poll:
+  store i32 %w0, ptr %pfd
+  %ev0 = getelementptr inbounds i8, ptr %pfd, i64 4
+  store i16 4, ptr %ev0
+  %re0 = getelementptr inbounds i8, ptr %pfd, i64 6
+  store i16 0, ptr %re0
+  %fd1 = getelementptr inbounds i8, ptr %pfd, i64 8
+  store i32 %o0, ptr %fd1
+  %ev1 = getelementptr inbounds i8, ptr %pfd, i64 12
+  store i16 1, ptr %ev1
+  %re1 = getelementptr inbounds i8, ptr %pfd, i64 14
+  store i16 0, ptr %re1
+  %fd2 = getelementptr inbounds i8, ptr %pfd, i64 16
+  store i32 %e0, ptr %fd2
+  %ev2 = getelementptr inbounds i8, ptr %pfd, i64 20
+  store i16 1, ptr %ev2
+  %re2 = getelementptr inbounds i8, ptr %pfd, i64 22
+  store i16 0, ptr %re2
+  %pr = call i32 @poll(ptr %pfd, i64 3, i32 -1)
+  %pbad = icmp slt i32 %pr, 0
+  br i1 %pbad, label %loop, label %step_in
+step_in:
+  %r0 = load i16, ptr %re0
+  %has0 = icmp ne i16 %r0, 0
+  %live0 = icmp sge i32 %w0, 0
+  %go0 = and i1 %has0, %live0
+  br i1 %go0, label %write, label %step_out
+write:
+  %o = load i64, ptr %off
+  %left = sub nuw i64 %inn, %o
+  %big = icmp ugt i64 %left, 4096
+  %chunk = select i1 %big, i64 4096, i64 %left
+  %at = getelementptr inbounds i8, ptr %in, i64 %o
+  %wr = call i64 @write(i32 %w0, ptr %at, i64 %chunk)
+  %wfail = icmp slt i64 %wr, 0
+  br i1 %wfail, label %werr, label %wrote
+werr:
+  %wintr = call i1 @bmb_interrupted()
+  br i1 %wintr, label %step_out, label %closein
+wrote:
+  %o1 = add nuw i64 %o, %wr
+  store i64 %o1, ptr %off
+  %alldone = icmp eq i64 %o1, %inn
+  br i1 %alldone, label %closein, label %step_out
+closein:
+  call i32 @close(i32 %w0)
+  store i32 -1, ptr %win
+  br label %step_out
+step_out:
+  %r1 = load i16, ptr %re1
+  %has1 = icmp ne i16 %r1, 0
+  %live1 = icmp sge i32 %o0, 0
+  %go1 = and i1 %has1, %live1
+  br i1 %go1, label %readout, label %step_err
+readout:
+  %g1 = call i64 @bmb_fd_read_some(i32 %o0, ptr %so)
+  %end1 = icmp sle i64 %g1, 0
+  br i1 %end1, label %closeout, label %step_err
+closeout:
+  call i32 @close(i32 %o0)
+  store i32 -1, ptr %rout
+  br label %step_err
+step_err:
+  %r2 = load i16, ptr %re2
+  %has2 = icmp ne i16 %r2, 0
+  %live2 = icmp sge i32 %e0, 0
+  %go2 = and i1 %has2, %live2
+  br i1 %go2, label %readerr, label %loop
+readerr:
+  %g2 = call i64 @bmb_fd_read_some(i32 %e0, ptr %sr)
+  %end2 = icmp sle i64 %g2, 0
+  br i1 %end2, label %closeerr, label %loop
+closeerr:
+  call i32 @close(i32 %e0)
+  store i32 -1, ptr %rerr
+  br label %loop
+wait:
+  %st = alloca i32
+  store i32 0, ptr %st
+  %pidv = load i32, ptr %pid
+  br label %waiting
+waiting:
+  %wp = call i32 @waitpid(i32 %pidv, ptr %st, i32 0)
+  %wbad = icmp slt i32 %wp, 0
+  br i1 %wbad, label %waitretry, label %reaped
+waitretry:
+  %wi = call i1 @bmb_interrupted()
+  br i1 %wi, label %waiting, label %reaped
+reaped:
+  %s = load i32, ptr %st
+  %sig = and i32 %s, 127
+  %exited = icmp eq i32 %sig, 0
+  %code = lshr i32 %s, 8
+  %code8 = and i32 %code, 255
+  %bysig = add nuw i32 %sig, 128
+  %status = select i1 %exited, i32 %code8, i32 %bysig
+  %stp = getelementptr inbounds %\"std::process::Output\", ptr %out, i32 0, i32 0
+  store i32 %status, ptr %stp
+  ret i64 0
+}
+";
+
 /// What every input and output built-in shares: `errno` as a result code,
 /// whether the last failure was `EINTR`, and the message of an
 /// `std::io::Error` (Rust's `Display`): `strerror` and ` (os error N)` for
@@ -862,7 +1144,7 @@ enum Payload {
 /// The built-ins whose result is `Result<T, std::io::Error>`: path, the
 /// runtime function, its flattened parameters (as the call passes the
 /// built-in's arguments) and what it gives on success.
-const IO_BUILTINS: [(&str, &str, &[&str], Payload); 9] = [
+const IO_BUILTINS: [(&str, &str, &[&str], Payload); 10] = [
     (
         "std::io::read_line",
         "bmb_stdin_line",
@@ -915,6 +1197,12 @@ const IO_BUILTINS: [(&str, &str, &[&str], Payload); 9] = [
         "std::fs::read_dir",
         "bmb_rt_fs_read_dir",
         &["ptr", "i64"],
+        Payload::Value,
+    ),
+    (
+        "std::process::run",
+        "bmb_rt_process_run",
+        &["ptr", "i64", "ptr", "i64", "ptr", "i64"],
         Payload::Value,
     ),
 ];
@@ -1022,8 +1310,12 @@ err:
     if used.iter().any(|(p, ..)| p.starts_with("std::io::")) {
         out.push_str(STDIN);
     }
-    if used.iter().any(|(p, ..)| p.starts_with("std::fs::")) {
+    let runs = used.iter().any(|(p, ..)| *p == "std::process::run");
+    if runs || used.iter().any(|(p, ..)| p.starts_with("std::fs::")) {
         out.push_str(FS);
+    }
+    if runs {
+        out.push_str(RUN);
     }
     let dirs = [
         "std::fs::rename",

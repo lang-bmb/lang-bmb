@@ -648,3 +648,122 @@ fn environment_and_clock() {
     let (ok, diags) = cli::run(&["check"], &one(&missing));
     assert!(!ok && diags.contains("E0606"), "{diags}");
 }
+
+/// Runs `sh -c <first argument>` with this program's own standard input as
+/// the child's input, then prints the status, the child's output length
+/// and bytes, and its error output.
+const RUN: &str = r#"#[summary("run")]
+mod app {
+    #[effects(alloc, io, nondet)]
+    fn main() -> () {
+        let a: Vec<String> = std::env::args();
+        if a.len() < 3 {
+            std::process::exit(2);
+        }
+        let mut input: Vec<u8> = Vec::new();
+        match std::io::read_to_end(&mut input) {
+            Ok(n) => {}
+            Err(e) => {
+                std::process::exit(3);
+            }
+        }
+        let mut sh: Vec<String> = Vec::new();
+        sh.push(String::from("-c"));
+        sh.push(String::from(a[2].as_str()));
+        match std::process::run(a[1].as_str(), sh.as_slice(), input.as_slice()) {
+            Ok(o) => {
+                print_i64(i64::try_from(o.status).unwrap());
+                print_u64(u64::try_from(o.stdout.len()).unwrap());
+                eprint_str("[");
+                print_bytes(o.stderr.as_slice());
+                eprint_str("]");
+                std::process::exit(0);
+            }
+            Err(e2) => {
+                print_i64(i64::try_from(e2.code).unwrap());
+                print_str(e2.message.as_str());
+                print_str("\n");
+            }
+        }
+    }
+}
+"#;
+
+/// Processes (ADR-0091 §2, slice (e)): a megabyte through `cat` both ways
+/// (the input is written while the output is read, so neither blocks), a
+/// child that stops reading early, one ended by a signal and a program that
+/// does not exist (a NUL byte in an argument is the path rule, tested with
+/// the files: a process argument cannot carry one).
+#[test]
+fn processes_run_with_pipes() {
+    let out = cli::emit(&one(RUN), false);
+    assert!(out.ok, "{}", out.output);
+    let dir = cli::fresh_dir();
+    let exe = dir.join("p");
+    cli::build(&out.ir.unwrap(), &exe).unwrap();
+    let feed = |prog: &str, script: &str, input: &[u8]| -> String {
+        let mut child = Command::new(&exe)
+            .args([prog, script])
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        use std::io::Write;
+        child.stdin.take().unwrap().write_all(input).unwrap();
+        let o = child.wait_with_output().unwrap();
+        text(&o.stdout)
+    };
+    let big: Vec<u8> = (0..1u32 << 20).map(|i| (i % 251) as u8).collect();
+    assert_eq!(
+        feed("sh", "cat; cat >&2 </dev/null", &big),
+        format!("0\n{}\n", big.len())
+    );
+    assert_eq!(feed("sh", "head -c 10 >/dev/null; exit 4", &big), "4\n0\n");
+    assert_eq!(feed("sh", "kill -9 $$", b""), "137\n0\n");
+    assert_eq!(
+        feed("no-such-program-bmb", "x", b""),
+        "2\nNo such file or directory (os error 2)\n"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+const SOLVER: &str = r#"#[summary("ask z3")]
+mod app {
+    #[effects(alloc, io, nondet)]
+    fn main() -> () {
+        let mut args: Vec<String> = Vec::new();
+        args.push(String::from("-in"));
+        match std::process::run("z3", args.as_slice(), b"(declare-const x Int)\n(assert (> (* x x) 10))\n(check-sat)\n(assert (< x 0))\n(assert (> x 0))\n(check-sat)\n") {
+            Ok(o) => {
+                print_i64(i64::try_from(o.status).unwrap());
+                print_bytes(o.stdout.as_slice());
+            }
+            Err(e) => {
+                print_str(e.message.as_str());
+                print_str("\n");
+            }
+        }
+        let mut v: Vec<String> = Vec::new();
+        v.push(String::from("--version"));
+        match std::process::run("clang", v.as_slice(), b"") {
+            Ok(c) => {
+                print_i64(i64::try_from(c.status).unwrap());
+            }
+            Err(e2) => {
+                print_str(e2.message.as_str());
+                print_str("\n");
+            }
+        }
+    }
+}
+"#;
+
+/// The compiler's own outside processes (ADR-0091, 4C-02's criterion): a BMB
+/// program starts the pinned Z3, sends it a script and reads its answers,
+/// and runs `clang --version`.
+#[test]
+fn a_program_asks_z3_and_clang() {
+    let o = run(SOLVER, &[], b"");
+    assert_eq!(text(&o.stdout), "0\nsat\nunsat\n0\n", "{}", text(&o.stderr));
+}
