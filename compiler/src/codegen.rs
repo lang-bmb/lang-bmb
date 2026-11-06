@@ -3939,21 +3939,30 @@ pub fn emit_with(
     ir.insert_str(types_at, &format!("{header}{}{glue}", type_defs(t, &extra)));
     if let Some(m) = &main {
         // The arguments are kept for `std::env::args` when it is called.
-        let _ = if sys_runtime.contains("@bmb.argv") {
-            write!(
-                ir,
-                "\ndefine i32 @main(i32 %argc, ptr %argv) {{\n  store i32 %argc, ptr @bmb.argc\n  store ptr %argv, ptr @bmb.argv\n  call void {}()\n  ret i32 0\n}}\n",
-                fn_sym(m)
+        let (params, keep) = if sys_runtime.contains("@bmb.argv") {
+            (
+                "i32 %argc, ptr %argv",
+                "  store i32 %argc, ptr @bmb.argc\n  store ptr %argv, ptr @bmb.argv\n",
             )
         } else {
-            write!(
-                ir,
-                "\ndefine i32 @main() {{\n  call void {}()\n  ret i32 0\n}}\n",
-                fn_sym(m)
-            )
+            ("", "")
         };
+        // A program with recursion runs on a large stack (ADR-0091 §5).
+        let deep = t
+            .recursive
+            .keys()
+            .any(|p| t.fns.get(p).is_some_and(|s| s.kind == FnKind::Exec));
+        let run = if deep {
+            ir.push_str(&sys::big_stack(&fn_sym(m)));
+            "@bmb_big_stack".to_string()
+        } else {
+            fn_sym(m)
+        };
+        let _ = write!(
+            ir,
+            "\ndefine i32 @main({params}) {{\n{keep}  call void {run}()\n  ret i32 0\n}}\n"
+        );
     }
-
     Module {
         ir,
         checks,

@@ -767,3 +767,56 @@ fn a_program_asks_z3_and_clang() {
     let o = run(SOLVER, &[], b"");
     assert_eq!(text(&o.stdout), "0\nsat\nunsat\n0\n", "{}", text(&o.stderr));
 }
+
+const DEEP: &str = r#"#[summary("deep recursion")]
+mod app {
+    spec fn bounded(n: u64, r: u64) -> bool { r <= n }
+
+    #[effects(pure)]
+    #[uses(bounded)]
+    fn depth(n: u64) -> (r: u64)
+        ensures bounded(n, r),
+        decreases n,
+    {
+        if n == 0 {
+            0
+        } else {
+            depth(n - 1) + 1
+        }
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        print_u64(depth(1000000));
+    }
+}
+"#;
+
+/// The stack (ADR-0091 §5, slice (f)): a program with recursion runs its
+/// `main` on a 256 MiB thread. A million nested calls (unoptimized, so no
+/// call becomes a jump) need more than the default 8 MiB; a program
+/// without recursion keeps the plain `main`.
+#[test]
+fn recursion_runs_on_a_large_stack() {
+    let out = cli::emit(&one(DEEP), false);
+    assert!(out.ok, "{}", out.output);
+    let ir = out.ir.unwrap();
+    assert!(ir.contains("call void @bmb_big_stack()"), "{ir}");
+    let dir = cli::fresh_dir();
+    let ll = dir.join("p.ll");
+    std::fs::write(&ll, &ir).unwrap();
+    let exe = dir.join("p");
+    let built = Command::new("clang")
+        .args(["-O0", "-Wno-override-module", "-o"])
+        .arg(&exe)
+        .arg(&ll)
+        .output()
+        .unwrap();
+    assert!(built.status.success(), "{}", text(&built.stderr));
+    let o = Command::new(&exe).output().unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(o.status.code(), Some(0));
+    assert_eq!(text(&o.stdout), "1000000\n");
+    let flat = cli::emit(&one(EXIT), false).ir.unwrap();
+    assert!(!flat.contains("pthread"), "{flat}");
+}

@@ -1329,3 +1329,42 @@ err:
     out.push_str(IO_COMMON);
     out
 }
+
+/// The stack of a program with recursion (ADR-0091 §5, slice (f)): its
+/// `main` runs on a thread with 256 MiB of stack (stage0's `STACK_BYTES`,
+/// for nesting 256 deep in the compiler's recursive passes), which `main`
+/// joins; the memory is only reserved until it is touched. Should the
+/// thread not start, `main` runs on the process's own stack.
+pub(super) fn big_stack(main: &str) -> String {
+    format!(
+        "declare i32 @pthread_attr_init(ptr)
+declare i32 @pthread_attr_setstacksize(ptr, i64)
+declare i32 @pthread_create(ptr, ptr, ptr, ptr)
+declare i32 @pthread_join(i64, ptr)
+define internal ptr @bmb_main_thread(ptr %u) {{
+  call void {main}()
+  ret ptr null
+}}
+define internal void @bmb_big_stack() {{
+entry:
+  %attr = alloca [64 x i8]
+  call i32 @pthread_attr_init(ptr %attr)
+  call i32 @pthread_attr_setstacksize(ptr %attr, i64 {STACK_BYTES})
+  %t = alloca i64
+  %rc = call i32 @pthread_create(ptr %t, ptr %attr, ptr @bmb_main_thread, ptr null)
+  %fail = icmp ne i32 %rc, 0
+  br i1 %fail, label %direct, label %join
+direct:
+  call void {main}()
+  ret void
+join:
+  %tv = load i64, ptr %t
+  call i32 @pthread_join(i64 %tv, ptr null)
+  ret void
+}}
+"
+    )
+}
+
+/// The stack of `big_stack`'s thread.
+pub(super) const STACK_BYTES: u64 = 256 << 20;
