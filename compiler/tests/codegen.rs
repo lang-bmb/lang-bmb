@@ -1,6 +1,9 @@
 //! Code generation (backlog 1C-05, 1C-06): built programs print what they
 //! should, and runtime checks exist exactly where proofs are missing.
 
+mod common;
+
+use common::cli;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -11,6 +14,11 @@ fn root() -> PathBuf {
 
 fn src(name: &str, text: &str) -> Vec<(String, String)> {
     vec![(name.to_string(), text.to_string())]
+}
+
+/// `bmb emit-llvm` on `files`.
+fn emit(files: &[(String, String)]) -> cli::Emitted {
+    cli::emit(files, false)
 }
 
 #[test]
@@ -25,16 +33,16 @@ fn run_corpus_prints_expected_output() {
     files.sort();
     assert!(!files.is_empty());
     for p in files {
-        let out = bmb::emit_llvm_sources(&src("run.bmb", &fs::read_to_string(&p).unwrap()));
+        let out = emit(&src("run.bmb", &fs::read_to_string(&p).unwrap()));
         assert!(
-            out.verify.ok,
+            out.ok,
             "{} must be fully proved:\n{}",
             p.display(),
-            out.verify.output
+            out.output
         );
         assert_eq!(out.checks, 0, "{}", p.display());
         let exe = dir.join(p.file_stem().unwrap());
-        bmb::toolchain::build_executable(&out.ir.unwrap(), exe.to_str().unwrap()).unwrap();
+        cli::build(&out.ir.unwrap(), &exe).unwrap();
         let run = Command::new(&exe).output().unwrap();
         assert!(
             run.status.success(),
@@ -76,7 +84,7 @@ fn run_corpus_frees_every_allocation_once() {
         if !text.contains("Box<") && !text.contains("Vec<") {
             continue;
         }
-        let out = bmb::emit_llvm_sources(&src("run.bmb", &text));
+        let out = emit(&src("run.bmb", &text));
         let ll = dir.join(p.file_stem().unwrap()).with_extension("ll");
         fs::write(&ll, out.ir.unwrap()).unwrap();
         let exe = dir.join(p.file_stem().unwrap());
@@ -148,8 +156,8 @@ mod m {
 
 #[test]
 fn proved_index_has_no_check_and_unproved_keeps_one() {
-    let proved = bmb::emit_llvm_sources(&src("p.bmb", PROVED));
-    assert!(proved.verify.ok, "{}", proved.verify.output);
+    let proved = emit(&src("p.bmb", PROVED));
+    assert!(proved.ok, "{}", proved.output);
     let ir = proved.ir.unwrap();
     assert_eq!(proved.checks, 0);
     assert!(!ir.contains("unproved"));
@@ -161,8 +169,8 @@ fn proved_index_has_no_check_and_unproved_keeps_one() {
 
     // The same function without its precondition: the proof fails, the check stays.
     let unproved_src = PROVED.replace("        requires idx_ok(a, i),\n", "");
-    let unproved = bmb::emit_llvm_sources(&src("u.bmb", &unproved_src));
-    assert!(!unproved.verify.ok);
+    let unproved = emit(&src("u.bmb", &unproved_src));
+    assert!(!unproved.ok);
     let ir = unproved.ir.unwrap();
     assert_eq!(unproved.checks, 1);
     assert!(
@@ -179,10 +187,10 @@ fn output_before_a_trap_reaches_stdout() {
     let dir = std::env::temp_dir().join(format!("bmb-flush-{}", std::process::id()));
     fs::create_dir_all(&dir).unwrap();
     let text = "#[summary(\"trap\")]\nmod m {\n    #[effects(pure)]\n    fn get(a: &[i64], i: usize) -> i64 {\n        a[i]\n    }\n\n    #[effects(io)]\n    fn main() -> () {\n        let a: [i64; 3] = [1, 2, 3];\n        print_i64(7);\n        print_bytes(b\"partial\");\n        print_i64(get(&a, 3));\n    }\n}\n";
-    let out = bmb::emit_llvm_sources(&src("t.bmb", text));
-    assert!(!out.verify.ok);
+    let out = emit(&src("t.bmb", text));
+    assert!(!out.ok);
     let exe = dir.join("t");
-    bmb::toolchain::build_executable(&out.ir.unwrap(), exe.to_str().unwrap()).unwrap();
+    cli::build(&out.ir.unwrap(), &exe).unwrap();
     let run = Command::new(&exe).output().unwrap();
     assert!(!run.status.success(), "index 3 must trap");
     assert_eq!(String::from_utf8_lossy(&run.stdout), "7\npartial");
@@ -199,10 +207,10 @@ fn an_unproved_index_traps_exactly_from_the_length() {
         let text = format!(
             "#[summary(\"trap\")]\nmod m {{\n    #[effects(pure)]\n    fn get(a: &[i64], i: usize) -> i64 {{\n        a[i]\n    }}\n\n    #[effects(io)]\n    fn main() -> () {{\n        let a: [i64; 3] = [1, 2, 3];\n        print_i64(get(&a, {i}));\n    }}\n}}\n"
         );
-        let out = bmb::emit_llvm_sources(&src("t.bmb", &text));
-        assert!(!out.verify.ok);
+        let out = emit(&src("t.bmb", &text));
+        assert!(!out.ok);
         let exe = dir.join(format!("t{i}"));
-        bmb::toolchain::build_executable(&out.ir.unwrap(), exe.to_str().unwrap()).unwrap();
+        cli::build(&out.ir.unwrap(), &exe).unwrap();
         let run = Command::new(&exe).output().unwrap();
         match want {
             Some(o) => {
@@ -244,10 +252,10 @@ fn an_unproved_conversion_traps_exactly_outside_the_range() {
         let text = format!(
             "#[summary(\"trap\")]\nmod m {{\n    #[effects(pure)]\n    fn conv(x: {from}) -> {to} {{\n        {to}::try_from(x).unwrap()\n    }}\n\n    #[effects(io)]\n    fn main() -> () {{\n        {print}(conv({v}));\n    }}\n}}\n"
         );
-        let out = bmb::emit_llvm_sources(&src("t.bmb", &text));
-        assert!(!out.verify.ok);
+        let out = emit(&src("t.bmb", &text));
+        assert!(!out.ok);
         let exe = dir.join(format!("c{k}"));
-        bmb::toolchain::build_executable(&out.ir.unwrap(), exe.to_str().unwrap()).unwrap();
+        cli::build(&out.ir.unwrap(), &exe).unwrap();
         let run = Command::new(&exe).output().unwrap();
         match want {
             Some(o) => {
@@ -296,10 +304,10 @@ fn an_unproved_shift_traps_exactly_from_the_width() {
         let text = format!(
             "#[summary(\"trap\")]\nmod m {{\n    #[effects(pure)]\n    fn sh(x: {t}, s: {a}) -> {t} {{\n        x {op} s\n    }}\n\n    #[effects(io)]\n    fn main() -> () {{\n        let x: {t} = {x};\n        let s: {a} = {s};\n        {print};\n    }}\n}}\n"
         );
-        let out = bmb::emit_llvm_sources(&src("t.bmb", &text));
-        assert!(!out.verify.ok);
+        let out = emit(&src("t.bmb", &text));
+        assert!(!out.ok);
         let exe = dir.join(format!("s{k}"));
-        bmb::toolchain::build_executable(&out.ir.unwrap(), exe.to_str().unwrap()).unwrap();
+        cli::build(&out.ir.unwrap(), &exe).unwrap();
         let run = Command::new(&exe).output().unwrap();
         match want {
             Some(o) => {
@@ -313,8 +321,8 @@ fn an_unproved_shift_traps_exactly_from_the_width() {
         }
     }
     let text = "#[summary(\"lit\")]\nmod m {\n    #[effects(pure)]\n    fn f(x: u16) -> u16 {\n        (x << 3) | (x >> 15)\n    }\n}\n";
-    let out = bmb::emit_llvm_sources(&src("t.bmb", text));
-    assert!(out.verify.ok, "{}", out.verify.output);
+    let out = emit(&src("t.bmb", text));
+    assert!(out.ok, "{}", out.output);
     assert_eq!(out.checks, 0);
     let _ = fs::remove_dir_all(&dir);
 }
@@ -338,7 +346,7 @@ mod m {
     fn g(x: i64) -> i64 { x + 1 }
 }
 "#;
-    let out = bmb::emit_llvm_sources(&src("a.bmb", text));
+    let out = emit(&src("a.bmb", text));
     let ir = out.ir.unwrap();
     let f = &ir[ir.find("@\"m::f\"").unwrap()..ir.find("@\"m::g\"").unwrap()];
     assert!(
@@ -368,7 +376,7 @@ mod m {
     fn c(x: u16, y: u16) -> u16 { x * y }
 }
 "#;
-    let ir = bmb::emit_llvm_sources(&src("p.bmb", text)).ir.unwrap();
+    let ir = emit(&src("p.bmb", text)).ir.unwrap();
     let body = |f: &str, next: Option<&str>| {
         let s = ir.find(&format!("@\"m::{f}\"(")).unwrap();
         let e = next.map_or(ir.len(), |n| ir.find(&format!("@\"m::{n}\"(")).unwrap());
@@ -389,7 +397,7 @@ mod m {
     fn f(a: &mut [i64], b: &[i64]) -> () {}
 }
 "#;
-    let ir = bmb::emit_llvm_sources(&src("n.bmb", text)).ir.unwrap();
+    let ir = emit(&src("n.bmb", text)).ir.unwrap();
     assert!(ir.contains("ptr noalias %\"a.ptr\""), "{ir}");
     assert!(ir.contains("ptr readonly %\"b.ptr\""), "{ir}");
     assert!(
@@ -417,7 +425,7 @@ mod m {
     }
 }
 "#;
-    let ir = bmb::emit_llvm_sources(&src("b.bmb", text)).ir.unwrap();
+    let ir = emit(&src("b.bmb", text)).ir.unwrap();
     let body = &ir[ir.find("@\"m::set_all\"").unwrap()..];
     assert!(!body.contains("store i1 "), "{body}");
     assert!(
@@ -433,7 +441,7 @@ mod m {
 
 #[test]
 fn word_elements_are_eight_byte_aligned() {
-    let ir = bmb::emit_llvm_sources(&src("p.bmb", PROVED)).ir.unwrap();
+    let ir = emit(&src("p.bmb", PROVED)).ir.unwrap();
     let body = &ir[ir.find("@\"m::get\"").unwrap()..];
     assert!(
         body.lines()
@@ -478,8 +486,8 @@ mod m {
     }
 }
 "#;
-    let out = bmb::emit_llvm_sources(&src("p.bmb", text));
-    assert!(!out.verify.ok);
+    let out = emit(&src("p.bmb", text));
+    assert!(!out.ok);
     let ir = out.ir.unwrap();
     let body = |name: &str| -> String {
         let start = ir.find(&format!("@\"m::{name}\"(")).unwrap();
@@ -511,7 +519,7 @@ mod m {
     }
 }
 "#;
-    let out = bmb::emit_llvm_sources(&src("l.bmb", text));
+    let out = emit(&src("l.bmb", text));
     let ir = out.ir.unwrap();
     let defines: Vec<&str> = ir.lines().filter(|l| l.starts_with("define ")).collect();
     assert_eq!(defines.len(), 8, "{ir}");
@@ -542,7 +550,7 @@ mod m {
     let dir = std::env::temp_dir().join(format!("bmb-link-{}", std::process::id()));
     fs::create_dir_all(&dir).unwrap();
     let exe = dir.join("l");
-    bmb::toolchain::build_executable(&ir, exe.to_str().unwrap()).unwrap();
+    cli::build(&ir, &exe).unwrap();
     let run = Command::new(&exe).output().unwrap();
     assert_eq!(String::from_utf8_lossy(&run.stdout), "1\n");
     let _ = fs::remove_dir_all(&dir);
@@ -552,7 +560,7 @@ mod m {
 fn a_proved_push_has_no_check_and_an_unproved_one_keeps_it() {
     // Backlog 2G-04: E0816 like every obligation (ADR-0031 §4).
     let text = "#[summary(\"g\")]\nmod m {\n    #[effects(alloc)]\n    fn grow(v: &mut Vec<i64>) -> () {\n        v.push(2);\n    }\n\n    #[effects(alloc)]\n    fn n() -> usize {\n        let mut v: Vec<i64> = Vec::new();\n        v.push(1);\n        v.len()\n    }\n}\n";
-    let out = bmb::emit_llvm_sources(&src("g.bmb", text));
+    let out = emit(&src("g.bmb", text));
     let ir = out.ir.unwrap();
     assert_eq!(ir.matches("; proved E0816").count(), 1, "{ir}");
     assert_eq!(ir.matches("unproved: `push` may exceed").count(), 1, "{ir}");
@@ -567,10 +575,10 @@ fn an_unproved_vec_index_traps_exactly_from_the_length() {
         let text = format!(
             "#[summary(\"trap\")]\nmod m {{\n    #[effects(pure)]\n    fn get(v: &Vec<i64>, i: usize) -> i64 {{\n        v[i]\n    }}\n\n    #[effects(alloc, io)]\n    fn main() -> () {{\n        let mut v: Vec<i64> = Vec::new();\n        v.push(1);\n        v.push(2);\n        v.push(3);\n        print_i64(get(&v, {i}));\n    }}\n}}\n"
         );
-        let out = bmb::emit_llvm_sources(&src("t.bmb", &text));
-        assert!(!out.verify.ok);
+        let out = emit(&src("t.bmb", &text));
+        assert!(!out.ok);
         let exe = dir.join(format!("v{i}"));
-        bmb::toolchain::build_executable(&out.ir.unwrap(), exe.to_str().unwrap()).unwrap();
+        cli::build(&out.ir.unwrap(), &exe).unwrap();
         let run = Command::new(&exe).output().unwrap();
         match want {
             Some(o) => {
@@ -619,11 +627,11 @@ fn library_programs_print_expected_output() {
     for p in files {
         let mut program = vec![("run.bmb".to_string(), fs::read_to_string(&p).unwrap())];
         program.extend(libs.iter().cloned());
-        let out = bmb::emit_llvm_sources(&program);
-        assert!(out.verify.ok, "{}:\n{}", p.display(), out.verify.output);
+        let out = emit(&program);
+        assert!(out.ok, "{}:\n{}", p.display(), out.output);
         assert_eq!(out.checks, 0, "{}", p.display());
         let exe = dir.join(p.file_stem().unwrap());
-        bmb::toolchain::build_executable(&out.ir.unwrap(), exe.to_str().unwrap()).unwrap();
+        cli::build(&out.ir.unwrap(), &exe).unwrap();
         let run = Command::new(&exe).output().unwrap();
         assert!(
             run.status.success(),
@@ -690,13 +698,13 @@ fn ghost_code_leaves_no_trace_in_the_ir() {
     );
     // Unproved (every obligation a check), the IR is the same bytes as the
     // program's without its ghost code.
-    let with = bmb::emit_llvm_sources_with(&src("m.bmb", &text), true);
-    let without = bmb::emit_llvm_sources_with(&src("m.bmb", &stripped), true);
+    let with = cli::emit(&src("m.bmb", &text), true);
+    let without = cli::emit(&src("m.bmb", &stripped), true);
     assert_eq!(with.ir.unwrap(), without.ir.unwrap());
     // Proved, no lemma appears and no check is left: a lemma's facts reach
     // code generation only as proved obligations.
-    let proved = bmb::emit_llvm_sources(&src("m.bmb", &text));
-    assert!(proved.verify.ok, "{}", proved.verify.output);
+    let proved = emit(&src("m.bmb", &text));
+    assert!(proved.ok, "{}", proved.output);
     assert_eq!(proved.checks, 0);
     let ir = proved.ir.unwrap();
     for name in [
@@ -708,8 +716,8 @@ fn ghost_code_leaves_no_trace_in_the_ir() {
         assert!(!ir.contains(name), "{name}: {ir}");
     }
     // Without the lemmas the running sum of `total` keeps its overflow check.
-    let unproved = bmb::emit_llvm_sources(&src("m.bmb", &stripped));
-    assert!(!unproved.verify.ok);
+    let unproved = emit(&src("m.bmb", &stripped));
+    assert!(!unproved.ok);
     assert!(unproved.checks > 0);
 }
 
@@ -719,13 +727,29 @@ fn ghost_code_leaves_no_trace_in_the_ir() {
 /// compared with the same methods run by this test (compiled by rustc).
 #[test]
 fn bit_methods_compute_rusts_results() {
-    use bmb::ast::IntTy;
+    // Each integer type: its name, width and signedness.
+    const INTS: [(&str, u32, bool); 10] = [
+        ("i8", 8, true),
+        ("i16", 16, true),
+        ("i32", 32, true),
+        ("i64", 64, true),
+        ("isize", 64, true),
+        ("u8", 8, false),
+        ("u16", 16, false),
+        ("u32", 32, false),
+        ("u64", 64, false),
+        ("usize", 64, false),
+    ];
     let dir = std::env::temp_dir().join(format!("bmb-bitm-{}", std::process::id()));
     fs::create_dir_all(&dir).unwrap();
     let amounts: [u32; 9] = [0, 1, 3, 7, 8, 31, 33, 64, u32::MAX];
-    for i in IntTy::ALL {
-        let (lo, hi) = (i.min_value(), i.max_value());
-        let size = 1i128 << i.bits();
+    for (t, bits, signed) in INTS {
+        let size = 1i128 << bits;
+        let (lo, hi) = if signed {
+            (-(size / 2), size / 2 - 1)
+        } else {
+            (0, size - 1)
+        };
         let mut xs: Vec<i128> = vec![lo, lo + 1, -1, 0, 1, 2, 0x5a, 0x80, hi - 1, hi];
         let mut seed: u64 = 0x9e37_79b9_7f4a_7c15;
         for _ in 0..6 {
@@ -777,8 +801,8 @@ fn bit_methods_compute_rusts_results() {
                     ] {
                         want.push_str(&format!("{v}\n"));
                     }
-                    if !i.signed() {
-                        let p = (x as u128 & (u128::MAX >> (128 - i.bits()))).is_power_of_two();
+                    if !signed {
+                        let p = (x as u128 & (u128::MAX >> (128 - bits))).is_power_of_two();
                         want.push_str(&format!("{}\n", u32::from(p)));
                     }
                     // The bytes both ways, and the integer back from the
@@ -793,20 +817,20 @@ fn bit_methods_compute_rusts_results() {
                 }
             }};
         }
-        match i {
-            IntTy::I8 => on!(i8),
-            IntTy::I16 => on!(i16),
-            IntTy::I32 => on!(i32),
-            IntTy::I64 => on!(i64),
-            IntTy::Isize => on!(isize),
-            IntTy::U8 => on!(u8),
-            IntTy::U16 => on!(u16),
-            IntTy::U32 => on!(u32),
-            IntTy::U64 => on!(u64),
-            IntTy::Usize => on!(usize),
+        match t {
+            "i8" => on!(i8),
+            "i16" => on!(i16),
+            "i32" => on!(i32),
+            "i64" => on!(i64),
+            "isize" => on!(isize),
+            "u8" => on!(u8),
+            "u16" => on!(u16),
+            "u32" => on!(u32),
+            "u64" => on!(u64),
+            "usize" => on!(usize),
+            _ => unreachable!(),
         }
-        let t = i.name();
-        let (print, conv) = if i.signed() {
+        let (print, conv) = if signed {
             ("print_i64", "i64")
         } else {
             ("print_u64", "u64")
@@ -872,22 +896,22 @@ mod m {{
     }}
 }}
 ",
-            pow = if i.signed() {
+            pow = if signed {
                 ""
             } else {
                 "if x.is_power_of_two() { count(1); } else { count(0); }"
             },
-            nb = i.bits() / 8,
+            nb = bits / 8,
             nx = xs.len(),
             xs = lits.join(", "),
             nk = amounts.len(),
             ks = ks.join(", "),
         );
-        let out = bmb::emit_llvm_sources(&src("t.bmb", &text));
-        assert!(out.verify.ok, "{t}: {}", out.verify.output);
+        let out = emit(&src("t.bmb", &text));
+        assert!(out.ok, "{t}: {}", out.output);
         assert_eq!(out.checks, 0, "{t}");
         let exe = dir.join(format!("m_{t}"));
-        bmb::toolchain::build_executable(&out.ir.unwrap(), exe.to_str().unwrap()).unwrap();
+        cli::build(&out.ir.unwrap(), &exe).unwrap();
         let run = Command::new(&exe).output().unwrap();
         assert!(run.status.success(), "{t}: {}", run.status);
         assert_eq!(String::from_utf8_lossy(&run.stdout), want, "{t}");
@@ -922,13 +946,13 @@ fn f64_lit(v: f64) -> String {
 
 /// Builds a fully proved program, runs it and returns its output.
 fn run_program(tag: &str, text: &str) -> String {
-    let out = bmb::emit_llvm_sources(&src("f.bmb", text));
-    assert!(out.verify.ok, "{tag}: {}", out.verify.output);
+    let out = emit(&src("f.bmb", text));
+    assert!(out.ok, "{tag}: {}", out.output);
     assert_eq!(out.checks, 0, "{tag}");
     let dir = std::env::temp_dir().join(format!("bmb-{tag}-{}", std::process::id()));
     fs::create_dir_all(&dir).unwrap();
     let exe = dir.join("p");
-    bmb::toolchain::build_executable(&out.ir.unwrap(), exe.to_str().unwrap()).unwrap();
+    cli::build(&out.ir.unwrap(), &exe).unwrap();
     let run = Command::new(&exe).output().unwrap();
     let _ = fs::remove_dir_all(&dir);
     assert!(run.status.success(), "{tag}: {}", run.status);
@@ -1147,7 +1171,7 @@ mod m {
     }
 }
 ";
-    let out = bmb::emit_llvm_sources(&src("fma.bmb", text));
+    let out = emit(&src("fma.bmb", text));
     let ir = out.ir.unwrap();
     for line in ir.lines().filter(|l| l.contains(" double ")) {
         for flag in [
@@ -1215,6 +1239,16 @@ mod escapes {
         vec![("e.bmb".to_string(), text.to_string())]
     }
 
+    /// The text `bmb fix` (with `--confirm` when `confirm`) makes of `text`.
+    fn fix(text: &str, confirm: bool) -> String {
+        let args: &[&str] = if confirm {
+            &["fix", "--print", "--confirm"]
+        } else {
+            &["fix", "--print"]
+        };
+        cli::run(args, &src(text)).1
+    }
+
     fn program() -> String {
         std::fs::read_to_string(
             Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/run/escapes.bmb"),
@@ -1245,9 +1279,9 @@ mod escapes {
 
     #[test]
     fn trust_levels_follow_what_each_proof_needs() {
-        let out = bmb::verify_sources(&src(&program()));
-        assert!(out.ok, "{}", out.output);
-        let t = trust(&out.output);
+        let (ok, output) = cli::run(&["verify"], &src(&program()));
+        assert!(ok, "{output}");
+        let t = trust(&output);
         let want = [
             // Needs `outside`'s `ensures` to rule out the overflow of `v + 1`.
             ("e::caller", "assumed"),
@@ -1281,7 +1315,7 @@ mod escapes {
             .collect();
         assert!(!without.contains("assume("));
         let proved = |s: &str| -> Vec<String> {
-            trust(&bmb::verify_sources(&src(s)).output)
+            trust(&cli::run(&["verify"], &src(s)).1)
                 .into_iter()
                 .filter(|(_, t)| t == "proved")
                 .map(|(d, _)| d)
@@ -1294,8 +1328,8 @@ mod escapes {
     /// reach, keep their checks; the others drop what their proofs show.
     #[test]
     fn checks_stay_below_every_escape() {
-        let out = bmb::emit_llvm_sources(&src(&program()));
-        assert!(out.verify.ok, "{}", out.verify.output);
+        let out = emit(&src(&program()));
+        assert!(out.ok, "{}", out.output);
         // Checks below an escape are not missing proofs: the build goes ahead.
         assert_eq!(out.checks, 0);
         let ir = out.ir.unwrap();
@@ -1325,12 +1359,12 @@ mod escapes {
     #[test]
     fn a_false_assumption_traps() {
         let text = program().replace("print_i64(square(3));", "print_i64(square(4000000000));");
-        let out = bmb::emit_llvm_sources(&src(&text));
-        assert!(out.verify.ok, "{}", out.verify.output);
+        let out = emit(&src(&text));
+        assert!(out.ok, "{}", out.output);
         let dir = std::env::temp_dir().join(format!("bmb-escapes-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let exe = dir.join("e");
-        bmb::toolchain::build_executable(&out.ir.unwrap(), exe.to_str().unwrap()).unwrap();
+        cli::build(&out.ir.unwrap(), &exe).unwrap();
         let run = Command::new(&exe).output().unwrap();
         assert!(!run.status.success());
         // No wrong value: at most what ran before the trap (stdout is buffered,
@@ -1344,7 +1378,8 @@ mod escapes {
     #[test]
     fn maps_show_trust_and_escapes() {
         let f = src(&program());
-        let st = bmb::map_request(&f, &["query".into(), "status".into()]).unwrap();
+        let (ok, st) = cli::run(&["query", "status", "--"], &f);
+        assert!(ok, "{st}");
         let row = |d: &str| {
             st.lines()
                 .find(|l| l.contains(&format!("\"path\":\"{d}\"")))
@@ -1389,10 +1424,9 @@ mod escapes {
     fn rationales_go_unconfirmed_with_their_code() {
         let text = program();
         let lint = |s: &str, code: &str| -> usize {
-            bmb::lint::lint_sources(&src(s))
-                .unwrap()
-                .diagnostics
-                .lines()
+            let (ok, out) = cli::run(&["lint"], &src(s));
+            assert!(ok, "{out}");
+            out.lines()
                 .filter(|l| l.contains(&format!("\"code\":\"{code}\"")))
                 .count()
         };
@@ -1400,8 +1434,8 @@ mod escapes {
         let worded = text.replace("callers pass small values", "callers pass values up to ten");
         assert_eq!(lint(&worded, "W1001"), 0);
         assert_eq!(
-            bmb::reads_sources(&src(&text)).unwrap(),
-            bmb::reads_sources(&src(&worded)).unwrap(),
+            cli::run(&["reads"], &src(&text)),
+            cli::run(&["reads"], &src(&worded)),
             "a rationale's wording is in no key"
         );
         let code = text.replace("        x * x\n", "        x * x + 0\n");
@@ -1414,26 +1448,26 @@ mod escapes {
         assert_ne!(predicate, text);
         assert!(lint(&predicate, "W1001") >= 1);
         // `fix` keeps a stale hash, `--confirm` rewrites it.
-        let kept = bmb::fix_sources(&src(&code));
-        assert_eq!(lint(&kept.files[0].1, "W1001"), 1);
-        let confirmed = bmb::fix_sources_with(&src(&code), true);
-        assert_eq!(lint(&confirmed.files[0].1, "W1001"), 0);
+        let kept = fix(&code, false);
+        assert_eq!(lint(&kept, "W1001"), 1);
+        let confirmed = fix(&code, true);
+        assert_eq!(lint(&confirmed, "W1001"), 0);
         // A missing hash is written by `fix`.
         let bare = text.replace(", hash = \"99850c0c37931c6c\"", "");
         assert_eq!(lint(&bare, "W1001"), 1);
-        assert_eq!(lint(&bmb::fix_sources(&src(&bare)).files[0].1, "W1001"), 0);
+        assert_eq!(lint(&fix(&bare, false), "W1001"), 0);
     }
 
     /// W1002: an `assume` the proof does not need; its fix removes it.
     #[test]
     fn needless_assumes_are_reported() {
-        let out = bmb::lint::lint_sources(&src(&program())).unwrap();
-        let w: Vec<&str> = out
-            .diagnostics
+        let (ok, diagnostics) = cli::run(&["lint"], &src(&program()));
+        assert!(ok, "{diagnostics}");
+        let w: Vec<&str> = diagnostics
             .lines()
             .filter(|l| l.contains("\"W1002\""))
             .collect();
-        assert_eq!(w.len(), 1, "{}", out.diagnostics);
+        assert_eq!(w.len(), 1, "{diagnostics}");
         assert!(w[0].contains("e::needless"), "{}", w[0]);
     }
 }

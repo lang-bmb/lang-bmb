@@ -601,8 +601,9 @@ pub fn codes_jsonl() -> String {
     let mut out = String::new();
     for (c, d) in CODES {
         out.push_str(&format!(
-            "{{\"code\":{},\"description\":{}}}\n",
+            "{{\"code\":{},\"severity\":\"{}\",\"description\":{}}}\n",
             json_str(c),
+            severity(c),
             json_str(d)
         ));
     }

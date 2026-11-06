@@ -895,3 +895,48 @@ pub fn parse_ops(json: &str) -> Result<Vec<Op>, String> {
     }
     Ok(ops)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Moved from tests/workspace.rs (backlog 4A-04): what `bmb apply` reads,
+    // below the command line.
+    #[test]
+    fn ops_parse_from_json() {
+        let ops = parse_ops(
+            r#"[{"op":"unit","path":"a","summary":"s"},{"op":"put","unit":"a","code":"fn f() -> () {}"},
+                {"op":"remove","def":"a::f"},{"op":"remove_unit","path":"a"}]"#,
+        )
+        .unwrap();
+        assert_eq!(ops.len(), 4);
+        assert!(parse_ops(r#"[{"op":"explode"}]"#).is_err());
+        assert!(parse_ops(r#"{"op":"put"}"#).is_err());
+    }
+
+    #[test]
+    fn rename_and_expect_parse_from_json() {
+        let ops = parse_ops(
+            r#"[{"op":"rename","def":"a::f","to":"g"},{"op":"expect","def":"a::g","id":"sha256:00"}]"#,
+        )
+        .unwrap();
+        assert!(matches!(&ops[0], Op::Rename { def, to } if def == "a::f" && to == "g"));
+        assert!(matches!(&ops[1], Op::Expect { def, id } if def == "a::g" && id == "sha256:00"));
+        assert!(parse_ops(r#"[{"op":"rename","def":"a::f"}]"#).is_err());
+    }
+
+    /// `write_units` itself refuses a unit name that is not an identifier
+    /// (backlog 1D-15), and writes nothing.
+    #[test]
+    fn write_units_refuses_a_name_that_is_not_an_identifier() {
+        let outer = std::env::temp_dir().join(format!("bmb-ws-unit-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&outer);
+        let root = outer.join("ws");
+        let mut evil = BTreeMap::new();
+        evil.insert("../../evil".to_string(), "x".to_string());
+        assert!(write_units(&root, &evil).is_err());
+        assert!(!outer.join("evil.bmb").exists());
+        assert!(!root.join("src").exists());
+        let _ = std::fs::remove_dir_all(&outer);
+    }
+}

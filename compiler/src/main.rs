@@ -288,7 +288,7 @@ fn run() -> ExitCode {
                 }
             }
             if let Some(file) = stats
-                && let Err(e) = std::fs::write(&file, verify_stats(&out))
+                && let Err(e) = std::fs::write(&file, verify_stats(&out, None))
             {
                 eprintln!("bmb: cannot write {file}: {e}");
                 return ExitCode::from(2);
@@ -347,7 +347,7 @@ fn run() -> ExitCode {
                 bmb::emit_llvm_sources_cached(&files, cache.as_deref().map(std::path::Path::new))
             };
             if let Some(file) = stats
-                && let Err(e) = std::fs::write(&file, verify_stats(&out.verify))
+                && let Err(e) = std::fs::write(&file, verify_stats(&out.verify, Some(out.checks)))
             {
                 eprintln!("bmb: cannot write {file}: {e}");
                 return ExitCode::from(2);
@@ -917,21 +917,23 @@ fn respond(r: Result<String, String>) -> ExitCode {
 
 /// `--stats` of `verify`, `emit-llvm` and `build` (backlog 2A-14, BCB): which
 /// definitions were encoded and lowered, which were reused by the incremental
-/// cache, and the proof cache counts.
-fn verify_stats(out: &bmb::VerifyOutput) -> String {
+/// cache, and the proof cache counts; for `emit-llvm` and `build` also the
+/// runtime checks the IR keeps because their obligations are unproved.
+fn verify_stats(out: &bmb::VerifyOutput, checks: Option<u32>) -> String {
     let names = |xs: &[String]| {
         let mut xs: Vec<String> = xs.iter().map(|x| bmb::diag::json_str(x)).collect();
         xs.sort();
         format!("[{}]", xs.join(","))
     };
     format!(
-        "{{\"encoded\":{},\"reused\":{},\"lowered\":{},\"ir_reused\":{},\"proof_cache_hits\":{},\"proof_cache_misses\":{},\"audit_mismatches\":{}}}\n",
+        "{{\"encoded\":{},\"reused\":{},\"lowered\":{},\"ir_reused\":{},\"proof_cache_hits\":{},\"proof_cache_misses\":{},\"audit_mismatches\":{}{}}}\n",
         names(&out.incr.encoded),
         names(&out.incr.reused),
         names(&out.incr.lowered),
         names(&out.incr.ir_reused),
         out.cache.0,
         out.cache.1,
-        names(&out.incr.audit_mismatches)
+        names(&out.incr.audit_mismatches),
+        checks.map_or(String::new(), |n| format!(",\"runtime_checks\":{n}"))
     )
 }

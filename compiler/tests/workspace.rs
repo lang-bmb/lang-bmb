@@ -1,10 +1,14 @@
 //! Workspaces and write transactions (ADR-0009, ADR-0019 §3, backlog 1D-08, 1D-09).
 
+mod common;
+
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
-use bmb::workspace::{Op, commit, read_dir_sources, write_units};
+use common::cli;
+use common::json::{self, Value};
 
 fn temp(name: &str) -> PathBuf {
     let d = std::env::temp_dir().join(format!("bmb-ws-{}-{name}", std::process::id()));
@@ -12,8 +16,127 @@ fn temp(name: &str) -> PathBuf {
     d
 }
 
+/// `bmb ARGS`: its success and stdout.
+fn bmb(args: &[&str]) -> (bool, String) {
+    let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
+        .args(args)
+        .output()
+        .unwrap();
+    (out.status.success(), String::from_utf8(out.stdout).unwrap())
+}
+
+fn arg(p: &Path) -> &str {
+    p.to_str().unwrap()
+}
+
+/// The workspace's source files (path, text), as `bmb` reads a directory:
+/// the `.bmb` files of `src/` (or of `root` itself), sorted.
 fn snapshot(root: &Path) -> BTreeMap<String, String> {
-    read_dir_sources(root).unwrap().into_iter().collect()
+    let dir = if root.join("src").is_dir() {
+        root.join("src")
+    } else {
+        root.to_path_buf()
+    };
+    fs::read_dir(&dir)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.extension().is_some_and(|x| x == "bmb"))
+        .map(|p| (p.display().to_string(), fs::read_to_string(&p).unwrap()))
+        .collect()
+}
+
+/// `bmb import ROOT` of `files`.
+fn import(root: &Path, files: &[(String, String)]) {
+    let (ok, out) = cli::run(&["import", arg(root)], files);
+    assert!(ok, "{out}");
+}
+
+/// The normal form of `files` (`bmb fmt`), unit name -> text.
+fn normal_units(files: &[(String, String)]) -> BTreeMap<String, String> {
+    let (ok, out) = cli::run(&["fmt"], files);
+    assert!(ok, "{out}");
+    cli::units(&out).into_iter().collect()
+}
+
+/// A transaction operation, as `bmb apply` reads it (ADR-0009).
+#[derive(Debug)]
+enum Op {
+    Unit { path: String, summary: String },
+    Put { unit: String, code: String },
+    Remove { def: String },
+    RemoveUnit { path: String },
+    Rename { def: String, to: String },
+    Expect { def: String, id: String },
+}
+
+impl Op {
+    fn json(&self) -> String {
+        let q = json::quote;
+        match self {
+            Op::Unit { path, summary } => format!(
+                "{{\"op\":\"unit\",\"path\":{},\"summary\":{}}}",
+                q(path),
+                q(summary)
+            ),
+            Op::Put { unit, code } => {
+                format!(
+                    "{{\"op\":\"put\",\"unit\":{},\"code\":{}}}",
+                    q(unit),
+                    q(code)
+                )
+            }
+            Op::Remove { def } => format!("{{\"op\":\"remove\",\"def\":{}}}", q(def)),
+            Op::RemoveUnit { path } => {
+                format!("{{\"op\":\"remove_unit\",\"path\":{}}}", q(path))
+            }
+            Op::Rename { def, to } => {
+                format!("{{\"op\":\"rename\",\"def\":{},\"to\":{}}}", q(def), q(to))
+            }
+            Op::Expect { def, id } => {
+                format!("{{\"op\":\"expect\",\"def\":{},\"id\":{}}}", q(def), q(id))
+            }
+        }
+    }
+}
+
+/// What `bmb apply` reported: the diagnostics, then the commit line.
+struct Commit {
+    ok: bool,
+    diagnostics: String,
+    changed: Vec<String>,
+    removed: Vec<String>,
+}
+
+/// `bmb apply ROOT OPS.json`; its error when it could not run (status 2).
+fn commit(root: &Path, ops: &[Op]) -> Result<Commit, String> {
+    let dir = cli::fresh_dir();
+    let file = dir.join("ops.json");
+    let ops: Vec<String> = ops.iter().map(Op::json).collect();
+    fs::write(&file, format!("[{}]", ops.join(","))).unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
+        .arg("apply")
+        .arg(root)
+        .arg(&file)
+        .output()
+        .unwrap();
+    let _ = fs::remove_dir_all(&dir);
+    if out.status.code() == Some(2) {
+        return Err(String::from_utf8_lossy(&out.stderr).into_owned());
+    }
+    let text = String::from_utf8(out.stdout).unwrap();
+    let all = text.trim_end();
+    let (diagnostics, line) = all.rsplit_once('\n').unwrap_or(("", all));
+    let line = json::parse(line).unwrap_or_else(|e| panic!("{e}: {text}"));
+    let list = |k: &str| match line.get(k) {
+        Some(Value::Array(xs)) => xs.iter().map(|x| x.as_str().unwrap().to_string()).collect(),
+        _ => panic!("{k}: {text}"),
+    };
+    Ok(Commit {
+        ok: matches!(line.get("committed"), Some(Value::Bool(true))),
+        diagnostics: diagnostics.to_string(),
+        changed: list("changed"),
+        removed: list("removed"),
+    })
 }
 
 const BASE: &str = r#"
@@ -40,8 +163,7 @@ mod app {
 
 fn init(name: &str) -> PathBuf {
     let root = temp(name);
-    let units = bmb::format_sources(&[("base.bmb".into(), BASE.into())]).unwrap();
-    write_units(&root, &units).unwrap();
+    import(&root, &[("base.bmb".into(), BASE.into())]);
     root
 }
 
@@ -63,9 +185,10 @@ fn import_places_one_normal_form_file_per_unit() {
     // The layout is a function of the program, not of how it was split before.
     let other = temp("import2");
     let (a, b) = BASE.split_at(BASE.find("#[summary(\"사용처").unwrap());
-    let units =
-        bmb::format_sources(&[("x.bmb".into(), b.into()), ("y.bmb".into(), a.into())]).unwrap();
-    write_units(&other, &units).unwrap();
+    import(
+        &other,
+        &[("x.bmb".into(), b.into()), ("y.bmb".into(), a.into())],
+    );
     let strip = |m: BTreeMap<String, String>| m.into_values().collect::<Vec<_>>();
     assert_eq!(strip(snapshot(&root)), strip(snapshot(&other)));
 }
@@ -149,12 +272,7 @@ fn unproved_definitions_commit_and_show_as_failed() {
     )
     .unwrap();
     assert!(c.ok, "{}", c.diagnostics);
-    let files = read_dir_sources(&root).unwrap();
-    let status = bmb::map_request(
-        &files,
-        &["query".into(), "surface".into(), "core::inc".into()],
-    )
-    .unwrap();
+    let (_, status) = bmb(&["query", "surface", "core::inc", "--", arg(&root)]);
     assert!(status.contains("\"status\":\"failed\""), "{status}");
 }
 
@@ -167,16 +285,30 @@ fn removing_a_unit_removes_its_file() {
     assert!(!snapshot(&root).keys().any(|k| k.ends_with("app.bmb")));
 }
 
+/// A transaction that is not a JSON array of known operations is refused
+/// before anything is read or written (status 2).
 #[test]
-fn ops_parse_from_json() {
-    let ops = bmb::workspace::parse_ops(
-        r#"[{"op":"unit","path":"a","summary":"s"},{"op":"put","unit":"a","code":"fn f() -> () {}"},
-            {"op":"remove","def":"a::f"},{"op":"remove_unit","path":"a"}]"#,
-    )
-    .unwrap();
-    assert_eq!(ops.len(), 4);
-    assert!(bmb::workspace::parse_ops(r#"[{"op":"explode"}]"#).is_err());
-    assert!(bmb::workspace::parse_ops(r#"{"op":"put"}"#).is_err());
+fn malformed_transactions_are_refused() {
+    let root = init("malformed");
+    let before = snapshot(&root);
+    for ops in [
+        r#"[{"op":"explode"}]"#,
+        r#"{"op":"put"}"#,
+        r#"[{"op":"rename","def":"core::dec"}]"#,
+        r#"[{"op":"unit","path":"a"}]"#,
+    ] {
+        let dir = cli::fresh_dir();
+        fs::write(dir.join("ops.json"), ops).unwrap();
+        let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
+            .arg("apply")
+            .arg(&root)
+            .arg(dir.join("ops.json"))
+            .output()
+            .unwrap();
+        let _ = fs::remove_dir_all(&dir);
+        assert_eq!(out.status.code(), Some(2), "{ops}");
+        assert_eq!(snapshot(&root), before, "{ops}");
+    }
 }
 
 /// Unit and definition paths become file names: anything but `::`-separated
@@ -185,8 +317,7 @@ fn ops_parse_from_json() {
 fn invalid_paths_are_rejected_and_write_nothing() {
     let outer = temp("traversal");
     let root = outer.join("ws");
-    let units = bmb::format_sources(&[("base.bmb".into(), BASE.into())]).unwrap();
-    write_units(&root, &units).unwrap();
+    import(&root, &[("base.bmb".into(), BASE.into())]);
     let before = snapshot(&root);
     let listing = |d: &Path| {
         let mut v: Vec<String> = fs::read_dir(d)
@@ -251,13 +382,6 @@ fn invalid_paths_are_rejected_and_write_nothing() {
         }
     }
     assert!(!outer.join("evil.bmb").exists());
-
-    // `write_units` itself refuses a name that is not an identifier.
-    let mut evil = BTreeMap::new();
-    evil.insert("../../evil".to_string(), "x".to_string());
-    assert!(write_units(&root, &evil).is_err());
-    assert_eq!(listing(&outer), outer_before);
-    assert_eq!(snapshot(&root), before);
 
     // The same through the CLI, as reported.
     let ops = outer.join("ops.json");
@@ -598,16 +722,15 @@ mod app {
 
 fn init_rich(name: &str) -> PathBuf {
     let root = temp(name);
-    let units = bmb::format_sources(&[("base.bmb".into(), RICH.into())]).unwrap();
-    write_units(&root, &units).unwrap();
+    import(&root, &[("base.bmb".into(), RICH.into())]);
     root
 }
 
 /// `bmb hash` rows of the workspace: path -> its identity and hashes.
 fn ids(root: &Path) -> BTreeMap<String, String> {
-    bmb::hash_sources(&read_dir_sources(root).unwrap())
-        .unwrap()
-        .lines()
+    let (ok, rows) = bmb(&["hash", arg(root)]);
+    assert!(ok, "{rows}");
+    rows.lines()
         .map(|l| {
             let path = l.split('"').nth(3).unwrap().to_string();
             (path, l[l.find(",\"id\"").unwrap()..].to_string())
@@ -676,8 +799,8 @@ fn rename_rewrites_references_and_keeps_every_identity() {
         assert!(!word(old), "{def}: `{old}` is still written\n{text}");
         assert!(word(to), "{def}\n{text}");
         // The program still verifies (a rename changes no proof).
-        let v = bmb::verify_sources(&read_dir_sources(&root).unwrap());
-        assert!(v.ok, "{def}\n{}", v.output);
+        let (ok, output) = bmb(&["verify", arg(&root)]);
+        assert!(ok, "{def}\n{output}");
     }
 }
 
@@ -809,17 +932,6 @@ fn expect_rejects_a_changed_definition_only() {
 }
 
 #[test]
-fn rename_and_expect_parse_from_json() {
-    let ops = bmb::workspace::parse_ops(
-        r#"[{"op":"rename","def":"a::f","to":"g"},{"op":"expect","def":"a::g","id":"sha256:00"}]"#,
-    )
-    .unwrap();
-    assert!(matches!(&ops[0], Op::Rename { def, to } if def == "a::f" && to == "g"));
-    assert!(matches!(&ops[1], Op::Expect { def, id } if def == "a::g" && id == "sha256:00"));
-    assert!(bmb::workspace::parse_ops(r#"[{"op":"rename","def":"a::f"}]"#).is_err());
-}
-
-#[test]
 fn rename_follows_an_invariant_predicate() {
     // `#[invariant(p)]` names its predicate as `#[uses]` does (ADR-0060 §1):
     // renaming the predicate rewrites the attribute and keeps every identity.
@@ -839,8 +951,7 @@ mod iv {
 }
 "#;
     let root = temp("rename_inv");
-    let units = bmb::format_sources(&[("base.bmb".into(), SRC.into())]).unwrap();
-    write_units(&root, &units).unwrap();
+    import(&root, &[("base.bmb".into(), SRC.into())]);
     let before = ids(&root);
     let c = commit(&root, &[rename("iv::ordered", "sorted_pair")]).unwrap();
     assert!(c.ok, "{}", c.diagnostics);
@@ -874,7 +985,8 @@ fn every_corpus_program_round_trips_through_put() {
     let mut seen_impls = 0;
     for path in files {
         let text = fs::read_to_string(&path).unwrap();
-        let units = bmb::format_sources(&[(path.display().to_string(), text)]).unwrap();
+        let name = path.file_name().unwrap().to_string_lossy().into_owned();
+        let units = normal_units(&[(name, text)]);
         let mut ops = Vec::new();
         for (name, unit) in &units {
             let summary = unit
@@ -961,8 +1073,7 @@ mod arrs {
 }
 "#;
     let root = temp("equal-types");
-    let units = bmb::format_sources(&[("two.bmb".into(), TWO.into())]).unwrap();
-    write_units(&root, &units).unwrap();
+    import(&root, &[("two.bmb".into(), TWO.into())]);
     let id_of = |p: &str| ids(&root)[p].split('"').nth(3).unwrap().to_string();
     let (geo, arrs) = (id_of("geo::Point"), id_of("arrs::Point"));
     assert_eq!(geo, arrs, "same fields, same identity");

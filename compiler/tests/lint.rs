@@ -3,9 +3,76 @@
 //! postconditions no caller uses (W0903). Opt-in: `check`/`verify` are
 //! unchanged.
 
+mod common;
+
+use std::path::Path;
 use std::process::Command;
 
-use bmb::lint::{MAX_MUTANTS, MAX_PRE_TRIALS, lint_sources};
+use common::cli;
+use common::json::{self, Value};
+
+// The caps `compiler/README.md` documents for `bmb lint`: re-verifications
+// per check (W0902, W0903) and mutants per run (W0904).
+const MAX_PRE_TRIALS: usize = 32;
+const MAX_MUTANTS: usize = 64;
+
+/// What `bmb lint` printed: the diagnostics, then the summary's counts.
+struct Lint {
+    ok: bool,
+    diagnostics: String,
+    report: String,
+    defs: usize,
+    reports: usize,
+    verifications: usize,
+    skipped: usize,
+    mutants: usize,
+    surviving: usize,
+    mutants_skipped: usize,
+}
+
+impl Lint {
+    fn report(&self) -> String {
+        self.report.clone()
+    }
+}
+
+/// `bmb lint` on `files`; the front end's diagnostics when it stops there.
+fn lint_sources(files: &[(String, String)]) -> Result<Lint, String> {
+    lint_args(&["lint"], files)
+}
+
+/// `bmb lint --cache DIR` on `files`.
+fn lint_cached(files: &[(String, String)], dir: &Path) -> Result<Lint, String> {
+    lint_args(&["lint", "--cache", dir.to_str().unwrap()], files)
+}
+
+fn lint_args(args: &[&str], files: &[(String, String)]) -> Result<Lint, String> {
+    let (ok, report) = cli::run(args, files);
+    let all = report.trim_end();
+    let (diagnostics, summary) = all.rsplit_once('\n').unwrap_or(("", all));
+    let summary = json::parse(summary).map_err(|_| report.clone())?;
+    if summary.get("summary").is_none() {
+        return Err(report);
+    }
+    let count = |k: &str| usize::try_from(n(&summary, k)).unwrap();
+    let diagnostics = if diagnostics.is_empty() {
+        String::new()
+    } else {
+        format!("{diagnostics}\n")
+    };
+    Ok(Lint {
+        ok,
+        defs: count("defs"),
+        reports: count("reports"),
+        verifications: count("verifications"),
+        skipped: count("skipped"),
+        mutants: count("mutants"),
+        surviving: count("surviving"),
+        mutants_skipped: count("mutants_skipped"),
+        diagnostics,
+        report,
+    })
+}
 
 const SRC: &str = r#"#[summary("contract lint")]
 mod m {
@@ -93,18 +160,18 @@ fn one(name: &str, text: &str) -> Vec<(String, String)> {
     vec![(name.to_string(), text.to_string())]
 }
 
-fn rows(jsonl: &str) -> Vec<bmb::json::Value> {
+fn rows(jsonl: &str) -> Vec<Value> {
     jsonl
         .lines()
-        .map(|l| bmb::json::parse(l).unwrap_or_else(|e| panic!("{e}: {l}")))
+        .map(|l| json::parse(l).unwrap_or_else(|e| panic!("{e}: {l}")))
         .collect()
 }
 
-fn s<'a>(v: &'a bmb::json::Value, k: &str) -> &'a str {
+fn s<'a>(v: &'a Value, k: &str) -> &'a str {
     v.get(k).and_then(|x| x.as_str()).unwrap_or("")
 }
 
-fn n(v: &bmb::json::Value, k: &str) -> i64 {
+fn n(v: &Value, k: &str) -> i64 {
     v.get(k).and_then(|x| x.as_i64()).unwrap()
 }
 
@@ -166,12 +233,10 @@ fn each_report_and_nothing_else() {
             && line.ends_with(",\"reach_undecided\":0}"),
         "{line}"
     );
-    assert!(out.pre_cost.is_some_and(|c| c.rlimit > 0));
-    assert!(out.reach_cost.is_some_and(|c| c.rlimit > 0));
-    assert!(matches!(
-        last.get("summary"),
-        Some(bmb::json::Value::Bool(true))
-    ));
+    for k in ["pre_rlimit", "reach_rlimit"] {
+        assert!(last.get(k).and_then(|v| v.as_i64()).is_some_and(|r| r > 0));
+    }
+    assert!(matches!(last.get("summary"), Some(Value::Bool(true))));
 }
 
 #[test]
@@ -194,12 +259,10 @@ fn deterministic() {
 #[test]
 fn check_and_verify_are_unchanged() {
     let files = one("l.bmb", SRC);
-    let check = bmb::check_sources(&files);
-    assert!(check.ok);
-    assert_eq!(check.diagnostics, "");
-    let verify = bmb::verify_sources(&files);
-    assert!(!verify.output.contains("\"W09"), "{}", verify.output);
-    assert!(!verify.output.contains("warning"), "{}", verify.output);
+    assert_eq!(cli::run(&["check"], &files), (true, String::new()));
+    let (_, verify) = cli::run(&["verify"], &files);
+    assert!(!verify.contains("\"W09"), "{verify}");
+    assert!(!verify.contains("warning"), "{verify}");
 }
 
 #[test]
@@ -386,36 +449,48 @@ fn mutants_are_capped() {
 #[test]
 fn mutate_makes_every_lint_mutant_as_a_program() {
     let input = one("w.bmb", MUT);
-    let defs = ["w::abs".to_string(), "w::sign".to_string()];
-    let ms = bmb::lint::mutate_sources(&input, &defs).unwrap();
+    let mutate = |defs: &[&str]| {
+        let args: Vec<&str> = std::iter::once("mutate")
+            .chain(defs.iter().flat_map(|d| ["--def", d]))
+            .collect();
+        cli::run(&args, &input)
+    };
+    let (ok, out) = mutate(&["w::abs", "w::sign"]);
+    assert!(ok, "{out}");
+    let mut ms = rows(&out);
+    let summary = ms.pop().unwrap();
     // The same sites W0904 proves (16, see above), uncapped and in order.
+    assert_eq!(n(&summary, "mutants"), 16);
     assert_eq!(ms.len(), 16);
-    assert_eq!(ms.iter().filter(|m| m.def == "w::abs").count(), 5);
-    assert_eq!((ms[0].def.as_str(), ms[0].site), ("w::abs", 0));
-    assert_eq!((ms[5].def.as_str(), ms[5].site), ("w::sign", 0));
-    let original = bmb::format_sources(&input).unwrap()["w"].clone();
+    assert_eq!(ms.iter().filter(|m| s(m, "def") == "w::abs").count(), 5);
+    assert_eq!((s(&ms[0], "def"), n(&ms[0], "site")), ("w::abs", 0));
+    assert_eq!((s(&ms[5], "def"), n(&ms[5], "site")), ("w::sign", 0));
+    let (_, normal) = cli::run(&["fmt"], &input);
+    let original = cli::units(&normal).remove(0).1;
     for m in &ms {
-        assert_eq!(m.unit, "w");
-        assert_ne!(m.text, original, "{} {}", m.before, m.after);
+        assert_eq!(s(m, "unit"), "w");
+        let text = s(m, "text");
+        assert_ne!(text, original, "{} {}", s(m, "before"), s(m, "after"));
         // Each mutant is a program that passes the front end.
-        let out = bmb::check_sources(&[("m.bmb".to_string(), m.text.clone())]);
-        assert!(out.ok, "{}: {}", m.after, out.diagnostics);
+        let (ok, diags) = cli::run(&["check"], &one("m.bmb", text));
+        assert!(ok, "{}: {diags}", s(m, "after"));
     }
     // The surviving W0904 changes are among them, at the reported place.
-    let survivor = ms.iter().find(|m| m.after == "1 - x").unwrap();
+    let survivor = ms.iter().find(|m| s(m, "after") == "1 - x").unwrap();
     assert_eq!(
-        (survivor.line, survivor.col, survivor.before.as_str()),
+        (
+            n(survivor, "line"),
+            n(survivor, "col"),
+            s(survivor, "before")
+        ),
         (14, 20, "0 - x")
     );
-    assert!(survivor.text.contains("1 - x"));
-    // Rows are JSON, and the result is deterministic.
-    let again = bmb::lint::mutate_sources(&input, &defs).unwrap();
-    let rows_of = |ms: &[bmb::lint::Mutant]| ms.iter().map(|m| m.row()).collect::<String>();
-    assert_eq!(rows_of(&ms), rows_of(&again));
-    assert_eq!(rows(&rows_of(&ms)).len(), 16);
+    assert!(s(survivor, "text").contains("1 - x"));
+    // The result is deterministic.
+    assert_eq!(mutate(&["w::abs", "w::sign"]), (true, out));
     // Only executable functions are mutated.
-    assert!(bmb::lint::mutate_sources(&input, &["w::nonneg".to_string()]).is_err());
-    assert!(bmb::lint::mutate_sources(&input, &["w::missing".to_string()]).is_err());
+    assert!(!mutate(&["w::nonneg"]).0);
+    assert!(!mutate(&["w::missing"]).0);
 }
 
 #[test]
@@ -469,11 +544,20 @@ fn mutate_and_all_checks_cli() {
 
 #[test]
 fn codes_are_warnings_on_the_reference_page() {
+    let (_, page) = cli::run(&["codes", "--md"], &[]);
+    let (_, codes) = cli::run(&["codes"], &[]);
+    let severity = |c: &str| {
+        let row = rows(&codes)
+            .into_iter()
+            .find(|r| s(r, "code") == c)
+            .unwrap();
+        s(&row, "severity").to_string()
+    };
     for c in ["W0901", "W0902", "W0903", "W0904", "W0905", "W0906"] {
-        assert_eq!(bmb::diag::severity(c), "warning");
-        assert!(bmb::diag::codes_markdown().contains(&format!("| {c} |")));
+        assert_eq!(severity(c), "warning");
+        assert!(page.contains(&format!("| {c} |")));
     }
-    assert_eq!(bmb::diag::severity("E0801"), "error");
+    assert_eq!(severity("E0801"), "error");
 }
 
 /// With `--cache DIR` (backlog 2D-15) the report is the same, cold and warm.
@@ -485,11 +569,12 @@ fn cache_does_not_change_the_report() {
         let input = one(name, src);
         let plain = lint_sources(&input).unwrap().report();
         for round in ["cold", "warm"] {
-            let out = bmb::lint::lint_sources_cached(&input, Some(&dir)).unwrap();
+            let out = lint_cached(&input, &dir).unwrap();
             assert_eq!(out.report(), plain, "{name} {round}");
         }
     }
-    assert!(dir.join(bmb::incremental::FILE).exists());
+    // The incremental store (`incremental::FILE`).
+    assert!(dir.join("defs").exists());
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -701,8 +786,8 @@ mod tasks {
         "#[trigger] out[k + 1] == out[k] +",
         "#[trigger] out[k + 1] == #[trigger] out[k] +",
     );
-    assert!(bmb::verify_sources(&one("w.bmb", text)).ok);
-    assert!(bmb::verify_sources(&one("w.bmb", &multi)).ok);
+    assert!(cli::run(&["verify"], &one("w.bmb", text)).0);
+    assert!(cli::run(&["verify"], &one("w.bmb", &multi)).0);
     let out = lint_sources(&one("w.bmb", &multi)).unwrap();
     assert!(!out.diagnostics.contains("W0906"), "{}", out.diagnostics);
 }

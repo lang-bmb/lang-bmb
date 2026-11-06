@@ -3,21 +3,14 @@
 //! the library API for it (HEALTH.md S5).
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// `bmb ARGS NAMES..` in a new directory holding `files` (name, text): its
 /// success and stdout.
 pub fn run(args: &[&str], files: &[(String, String)]) -> (bool, String) {
-    static N: AtomicUsize = AtomicUsize::new(0);
-    let dir = std::env::temp_dir().join(format!(
-        "bmb-cli-{}-{}",
-        std::process::id(),
-        N.fetch_add(1, Ordering::SeqCst)
-    ));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).unwrap();
+    let dir = fresh_dir();
     for (name, text) in files {
         let p = dir.join(name);
         fs::create_dir_all(p.parent().unwrap()).unwrap();
@@ -31,6 +24,19 @@ pub fn run(args: &[&str], files: &[(String, String)]) -> (bool, String) {
         .unwrap();
     let _ = fs::remove_dir_all(&dir);
     (out.status.success(), String::from_utf8(out.stdout).unwrap())
+}
+
+/// A new empty directory, distinct in this process.
+pub fn fresh_dir() -> PathBuf {
+    static N: AtomicUsize = AtomicUsize::new(0);
+    let dir = std::env::temp_dir().join(format!(
+        "bmb-cli-{}-{}",
+        std::process::id(),
+        N.fetch_add(1, Ordering::SeqCst)
+    ));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    dir
 }
 
 /// The normal form `bmb fmt` printed, back into its units (name, text): each
@@ -56,10 +62,13 @@ pub fn units(formatted: &str) -> Vec<(String, String)> {
 }
 
 /// What `bmb emit-llvm` printed (the verification rows) and the IR it
-/// wrote, when the program checks.
+/// wrote, when the program checks; whether it succeeded (checks and is
+/// fully proved) and the runtime checks the IR keeps (`--stats`).
 pub struct Emitted {
+    pub ok: bool,
     pub output: String,
     pub ir: Option<String>,
+    pub checks: u32,
 }
 
 /// `bmb emit-llvm` on `files`, written into `dir` under their names (so the
@@ -73,12 +82,19 @@ pub fn emit_llvm(
 ) -> Emitted {
     fs::create_dir_all(dir).unwrap();
     for (name, text) in files {
-        fs::write(dir.join(name), text).unwrap();
+        let p = dir.join(name);
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        fs::write(p, text).unwrap();
     }
     let ll = dir.join("out.ll");
+    let stats = dir.join("stats.json");
     let _ = fs::remove_file(&ll);
+    let _ = fs::remove_file(&stats);
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_bmb"));
-    cmd.current_dir(dir).arg("emit-llvm");
+    cmd.current_dir(dir)
+        .arg("emit-llvm")
+        .arg("--stats")
+        .arg(&stats);
     if all_checks {
         cmd.arg("--all-checks");
     }
@@ -92,11 +108,31 @@ pub fn emit_llvm(
         .output()
         .unwrap();
     let ir = fs::read_to_string(&ll).ok();
+    let checks = fs::read_to_string(&stats).ok().map_or(0, |s| {
+        let n = s
+            .split("\"runtime_checks\":")
+            .nth(1)
+            .expect("runtime_checks");
+        n.trim_end_matches(|c: char| !c.is_ascii_digit())
+            .parse()
+            .unwrap()
+    });
     let _ = fs::remove_file(&ll);
+    let _ = fs::remove_file(&stats);
     Emitted {
+        ok: out.status.success(),
         output: String::from_utf8_lossy(&out.stdout).into_owned(),
         ir,
+        checks,
     }
+}
+
+/// [`emit_llvm`] in a new directory, removed afterwards.
+pub fn emit(files: &[(String, String)], all_checks: bool) -> Emitted {
+    let dir = fresh_dir();
+    let out = emit_llvm(files, &dir, None, all_checks);
+    let _ = fs::remove_dir_all(&dir);
+    out
 }
 
 /// Builds `ir` into `exe` as `bmb build` does (clang `-O2`).
