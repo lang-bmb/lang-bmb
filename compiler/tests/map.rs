@@ -666,7 +666,16 @@ mod q {
             r#"{"summary":true,"effect":"alloc","declares":4,"requires":3,"defs":4}"#,
         ]
     );
-    assert!(request(&f, &["query", "effect", "nondet"]).is_err());
+    // `nondet` is an effect (ADR-0091 §3) that no definition here has; an
+    // unknown name is refused.
+    let nondet = run(&f, &["query", "effect", "nondet"]);
+    assert!(
+        nondet
+            .trim_end()
+            .ends_with(r#"{"summary":true,"effect":"nondet","declares":0,"requires":0,"defs":4}"#),
+        "{nondet}"
+    );
+    assert!(request(&f, &["query", "effect", "fast"]).is_err());
     let l1 = run(&f, &["map", "L1"]);
     let main = l1
         .lines()
