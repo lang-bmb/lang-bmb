@@ -1,0 +1,107 @@
+#[summary("fgrep: the lines of a file that contain a fixed string")]
+mod fgrep {
+    spec fn within(lo: usize, hi: usize, n: usize) -> bool { lo <= hi && hi <= n }
+
+    spec fn scan(lo: usize, at: usize, last: usize, m: usize, hi: usize, n: usize) -> bool {
+        lo <= at && at <= last + 1 && last + m == hi && hi <= n
+    }
+
+    spec fn prefix(k: usize, m: usize) -> bool { k <= m }
+
+    /// Whether `pat` occurs in `hay[lo..hi]`.
+    #[effects(pure)]
+    #[uses(within, scan, prefix)]
+    fn contains(hay: &[u8], lo: usize, hi: usize, pat: &[u8]) -> bool
+        requires within(lo, hi, hay.len()),
+    {
+        if pat.len() > hi - lo {
+            return false;
+        }
+        let last: usize = hi - pat.len();
+        let mut at: usize = lo;
+        while at <= last
+            invariant scan(lo, at, last, pat.len(), hi, hay.len()),
+            decreases last + 1 - at,
+        {
+            let mut k: usize = 0;
+            let mut same: bool = true;
+            while k < pat.len() && same
+                invariant prefix(k, pat.len()),
+                decreases pat.len() - k,
+            {
+                if hay[at + k] != pat[k] {
+                    same = false;
+                }
+                k = k + 1;
+            }
+            if same {
+                return true;
+            }
+            at = at + 1;
+        }
+        false
+    }
+
+    spec fn line(start: usize, i: usize) -> bool { start <= i }
+
+    spec fn copied(n: usize, k: usize, lo: usize) -> bool { lo <= k && n == k - lo }
+
+    /// Prints `text[lo..hi]` (a byte sub-slice cannot be an argument: it is
+    /// copied out).
+    #[effects(alloc, io)]
+    #[uses(within, copied)]
+    fn print_range(text: &[u8], lo: usize, hi: usize) -> ()
+        requires within(lo, hi, text.len()),
+    {
+        let mut out: Vec<u8> = Vec::with_capacity(hi - lo);
+        for k in lo..hi
+            invariant copied(out.len(), k, lo),
+        {
+            out.push(text[k]);
+        }
+        print_bytes(out.as_slice());
+    }
+
+    #[effects(alloc, io, nondet)]
+    #[uses(within, line)]
+    fn main() -> () {
+        let a: Vec<String> = std::env::args();
+        if a.len() != 3 {
+            eprint_str("usage: fgrep PATTERN FILE\n");
+            std::process::exit(2);
+        }
+        // `.as_bytes()` takes a variable, not an element (`a[1]`).
+        let pat: String = String::from(a[1].as_str());
+        match std::fs::read(a[2].as_str()) {
+            Ok(text) => {
+                let mut found: bool = false;
+                let mut start: usize = 0;
+                for i in 0..text.len()
+                    invariant line(start, i),
+                {
+                    if text[i] == 10 {
+                        if contains(text.as_slice(), start, i, pat.as_bytes()) {
+                            print_range(text.as_slice(), start, i + 1);
+                            found = true;
+                        }
+                        start = i + 1;
+                    }
+                }
+                if start < text.len() && contains(text.as_slice(), start, text.len(), pat.as_bytes()) {
+                    print_range(text.as_slice(), start, text.len());
+                    print_str("\n");
+                    found = true;
+                }
+                if !found {
+                    std::process::exit(1);
+                }
+            }
+            Err(e) => {
+                eprint_str("fgrep: ");
+                eprint_str(e.message.as_str());
+                eprint_str("\n");
+                std::process::exit(2);
+            }
+        }
+    }
+}

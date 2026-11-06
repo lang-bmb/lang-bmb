@@ -1,0 +1,49 @@
+#[summary("wc: the lines, words and bytes of standard input")]
+mod wc {
+    spec fn counts(lines: u64, words: u64, i: usize) -> bool { lines <= i && words <= i }
+
+    /// C's `isspace` in the C locale: space, `\t`, `\n`, `\v`, `\f`, `\r`.
+    #[effects(pure)]
+    fn space(b: u8) -> bool {
+        b == 32 || (b >= 9 && b <= 13)
+    }
+
+    #[effects(alloc, io, nondet)]
+    #[uses(counts)]
+    fn main() -> () {
+        let mut input: Vec<u8> = Vec::new();
+        match std::io::read_to_end(&mut input) {
+            Ok(n) => {}
+            Err(e) => {
+                eprint_str(e.message.as_str());
+                eprint_str("\n");
+                std::process::exit(1);
+            }
+        }
+        let mut lines: u64 = 0;
+        let mut words: u64 = 0;
+        let mut inword: bool = false;
+        for i in 0..input.len()
+            invariant counts(lines, words, i),
+        {
+            let b: u8 = input[i];
+            if b == 10 {
+                lines = lines + 1;
+            }
+            // GNU `wc` in the C locale: a word is a run of printable
+            // bytes between spaces; any other byte neither starts nor ends
+            // one.
+            if space(b) {
+                inword = false;
+            } else if b >= 33 && b <= 126 {
+                if !inword {
+                    words = words + 1;
+                }
+                inword = true;
+            }
+        }
+        print_u64(lines);
+        print_u64(words);
+        print_u64(u64::try_from(input.len()).unwrap());
+    }
+}

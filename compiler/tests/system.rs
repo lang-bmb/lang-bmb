@@ -820,3 +820,96 @@ fn recursion_runs_on_a_large_stack() {
     let flat = cli::emit(&one(EXIT), false).ir.unwrap();
     assert!(!flat.contains("pthread"), "{flat}");
 }
+
+/// Builds a tool of `tests/tools` (fully proved, no check left).
+fn tool(name: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../tests/tools")
+        .join(format!("{name}.bmb"));
+    let out = cli::emit(&one(&std::fs::read_to_string(src).unwrap()), false);
+    assert!(out.ok, "{}", out.output);
+    assert_eq!(out.checks, 0, "{name}: {}", out.output);
+    let dir = cli::fresh_dir();
+    let exe = dir.join(name);
+    cli::build(&out.ir.unwrap(), &exe).unwrap();
+    (dir, exe)
+}
+
+/// A tool with input and output (HEALTH.md §5 after 4C): `wc` against
+/// GNU `wc` on standard input.
+#[test]
+fn the_wc_tool_counts_as_wc_does() {
+    let (dir, exe) = tool("wc");
+    let big: Vec<u8> = (0..1u32 << 20).map(|i| (i % 256) as u8).collect();
+    for input in [
+        &b""[..],
+        &b"a b\n"[..],
+        &b"  h\xc3\xa9llo\tworld\n\nlast line without newline"[..],
+        &b"\x0b\x0c\r \n\n\n"[..],
+        &big[..],
+    ] {
+        let ours = Command::new(&exe)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .and_then(|mut c| {
+                use std::io::Write;
+                c.stdin.take().unwrap().write_all(input)?;
+                c.wait_with_output()
+            })
+            .unwrap();
+        let theirs = Command::new("sh")
+            .args(["-c", "LC_ALL=C wc -l -w -c"])
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .and_then(|mut c| {
+                use std::io::Write;
+                c.stdin.take().unwrap().write_all(input)?;
+                c.wait_with_output()
+            })
+            .unwrap();
+        let ours: Vec<String> = text(&ours.stdout)
+            .split_whitespace()
+            .map(String::from)
+            .collect();
+        let theirs: Vec<String> = text(&theirs.stdout)
+            .split_whitespace()
+            .map(String::from)
+            .collect();
+        assert_eq!(ours, theirs, "input of {} bytes", input.len());
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The second tool: `fgrep PATTERN FILE` against `grep -F` (output and
+/// exit codes: 0 found, 1 none, 2 an error).
+#[test]
+fn the_fgrep_tool_finds_as_grep_does() {
+    let (dir, exe) = tool("fgrep");
+    let file = dir.join("in.txt");
+    std::fs::write(
+        &file,
+        "alpha beta\n\ngamma alphabet\nbeta\nno newline alpha",
+    )
+    .unwrap();
+    let f = file.display().to_string();
+    let missing = dir.join("missing").display().to_string();
+    for (pat, path) in [
+        ("alpha", f.as_str()),
+        ("beta", f.as_str()),
+        ("zeta", f.as_str()),
+        ("", f.as_str()),
+        ("a much longer pattern than any line in it", f.as_str()),
+        ("alpha", missing.as_str()),
+    ] {
+        let ours = Command::new(&exe).args([pat, path]).output().unwrap();
+        let theirs = Command::new("grep")
+            .args(["-F", "--", pat, path])
+            .output()
+            .unwrap();
+        assert_eq!(text(&ours.stdout), text(&theirs.stdout), "{pat:?}");
+        assert_eq!(ours.status.code(), theirs.status.code(), "{pat:?}");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
