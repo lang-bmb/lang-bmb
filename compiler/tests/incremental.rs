@@ -4,10 +4,125 @@
 //! that definition; a contract change re-encodes exactly the `impact` set;
 //! damaged cache lines and another compiler identity cause rebuilds.
 
-use std::collections::BTreeSet;
+mod common;
+
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::time::Instant;
+
+use common::cli;
+use common::json::{self, Value};
+
+/// What the incremental cache did in one run (`--stats`; paths sorted).
+#[derive(Default, Debug)]
+struct Stats {
+    encoded: Vec<String>,
+    reused: Vec<String>,
+    lowered: Vec<String>,
+    ir_reused: Vec<String>,
+    audit_mismatches: Vec<String>,
+    damaged: usize,
+    runtime_checks: u32,
+}
+
+fn read_stats(path: &Path) -> Stats {
+    let text = fs::read_to_string(path).unwrap();
+    let v = json::parse(&text).unwrap_or_else(|e| panic!("{e}: {text}"));
+    let list = |k: &str| match v.get(k) {
+        Some(Value::Array(xs)) => xs.iter().map(|x| x.as_str().unwrap().to_string()).collect(),
+        _ => panic!("{k}: {text}"),
+    };
+    let num = |k: &str| v.get(k).and_then(Value::as_i64).unwrap_or(0);
+    Stats {
+        encoded: list("encoded"),
+        reused: list("reused"),
+        lowered: list("lowered"),
+        ir_reused: list("ir_reused"),
+        audit_mismatches: list("audit_mismatches"),
+        damaged: usize::try_from(num("damaged")).unwrap(),
+        runtime_checks: u32::try_from(num("runtime_checks")).unwrap(),
+    }
+}
+
+/// `bmb ARGS NAMES..` in the new directory `src` holding `f`: its success
+/// and stdout.
+fn bmb_in(src: &Path, args: &[&str], f: &[(String, String)]) -> (bool, String) {
+    for (name, text) in f {
+        fs::write(src.join(name), text).unwrap();
+    }
+    let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
+        .current_dir(src)
+        .args(args)
+        .args(f.iter().map(|(n, _)| n))
+        .output()
+        .unwrap();
+    (out.status.success(), String::from_utf8(out.stdout).unwrap())
+}
+
+/// `bmb emit-llvm` of `f` through the caches in `cache` (and `--audit`):
+/// its rows, its IR and the stats.
+fn emit_cached(
+    f: &[(String, String)],
+    cache: &Path,
+    audit: bool,
+) -> (String, Option<String>, Stats) {
+    let src = cli::fresh_dir();
+    let (ll, st) = (src.join("out.ll"), src.join("stats.json"));
+    let mut args = vec!["emit-llvm", "--cache", cache.to_str().unwrap()];
+    args.extend(["--stats", st.to_str().unwrap(), "-o", ll.to_str().unwrap()]);
+    if audit {
+        args.push("--audit");
+    }
+    let (_, output) = bmb_in(&src, &args, f);
+    let ir = fs::read_to_string(&ll).ok();
+    let stats = read_stats(&st);
+    let _ = fs::remove_dir_all(&src);
+    (output, ir, stats)
+}
+
+/// `bmb verify` of `f` through the caches in `cache`.
+struct Verified {
+    ok: bool,
+    output: String,
+    incr: Stats,
+}
+
+fn verify_cached(f: &[(String, String)], cache: &Path) -> Verified {
+    let src = cli::fresh_dir();
+    let st = src.join("stats.json");
+    let (ok, output) = bmb_in(
+        &src,
+        &[
+            "verify",
+            "--cache",
+            cache.to_str().unwrap(),
+            "--stats",
+            st.to_str().unwrap(),
+        ],
+        f,
+    );
+    let incr = read_stats(&st);
+    let _ = fs::remove_dir_all(&src);
+    Verified { ok, output, incr }
+}
+
+/// The script of each definition (`bmb verify --emit-smt`), by path.
+fn scripts(f: &[(String, String)]) -> BTreeMap<String, String> {
+    let src = cli::fresh_dir();
+    bmb_in(&src, &["verify", "--emit-smt", "smt"], f);
+    let mut out = BTreeMap::new();
+    for e in fs::read_dir(src.join("smt")).unwrap() {
+        let p = e.unwrap().path();
+        let name = p.file_name().unwrap().to_str().unwrap().to_string();
+        if let Some(def) = name.strip_suffix(".smt2") {
+            out.insert(def.replace('.', "::"), fs::read_to_string(&p).unwrap());
+        }
+    }
+    let _ = fs::remove_dir_all(&src);
+    out
+}
 
 fn tmp(name: &str) -> PathBuf {
     let d = std::env::temp_dir().join(format!("bmb-incr-{name}-{}", std::process::id()));
@@ -107,36 +222,43 @@ mod m{k} {{
     s
 }
 
-/// Everything a run outputs, uncached.
+/// Everything a run outputs, uncached: the rows, the IR, its runtime
+/// checks and the maps.
 fn plain(f: &[(String, String)]) -> (String, Option<String>, u32, String) {
-    let l = bmb::emit_llvm_sources(f);
-    let map = bmb::map_request(f, &["map".into(), "all".into()]).unwrap_or_else(|e| e);
-    (l.verify.output, l.ir, l.checks, map)
+    let l = cli::emit(f, false);
+    let (_, map) = cli::run(&["map", "all"], f);
+    (l.output, l.ir, l.checks, map)
 }
 
 /// The same through the cache in `dir`; also returns the stats of the
 /// `emit-llvm` run.
-fn cached(
+fn cached(f: &[(String, String)], dir: &Path) -> ((String, Option<String>, u32, String), Stats) {
+    cached_with(f, dir, false)
+}
+
+/// [`cached`] with `emit-llvm --audit`: every reused proof and IR is
+/// computed again and compared.
+fn audited(f: &[(String, String)], dir: &Path) -> ((String, Option<String>, u32, String), Stats) {
+    cached_with(f, dir, true)
+}
+
+fn cached_with(
     f: &[(String, String)],
     dir: &Path,
-) -> (
-    (String, Option<String>, u32, String),
-    bmb::incremental::Stats,
-) {
-    let l = bmb::emit_llvm_sources_cached(f, Some(dir));
-    let map =
-        bmb::map_request_cached(f, &["map".into(), "all".into()], Some(dir)).unwrap_or_else(|e| e);
-    let v = bmb::verify_sources_cached(f, Some(dir));
+    audit: bool,
+) -> ((String, Option<String>, u32, String), Stats) {
+    let (output, ir, stats) = emit_cached(f, dir, audit);
+    let (_, map) = cli::run(&["map", "--cache", dir.to_str().unwrap(), "all"], f);
+    let v = verify_cached(f, dir);
     // `emit-llvm` adds only that it cannot lower data types yet (2B-06).
-    let emitted: String = l
-        .verify
-        .output
+    let emitted: String = output
         .lines()
         .filter(|x| !x.contains("not compiled yet"))
         .map(|x| format!("{x}\n"))
         .collect();
     assert_eq!(v.output, emitted, "verify and emit-llvm agree");
-    ((l.verify.output, l.ir, l.checks, map), l.verify.incr)
+    let checks = stats.runtime_checks;
+    ((output, ir, checks, map), stats)
 }
 
 fn set(v: &[String]) -> BTreeSet<String> {
@@ -191,7 +313,7 @@ fn outputs_are_identical_with_and_without_the_cache() {
         let expect = plain(&f);
         let (cold, _) = cached(&f, &dir);
         assert_eq!(expect, cold, "{name} (cold)");
-        let (warm, stats) = bmb::incremental::with_audit(|| cached(&f, &dir));
+        let (warm, stats) = audited(&f, &dir);
         assert_eq!(expect, warm, "{name} (warm, audited)");
         assert!(stats.audit_mismatches.is_empty(), "{name}: {stats:?}");
         let (warm, stats) = cached(&f, &dir);
@@ -299,7 +421,7 @@ fn a_rename_reencodes_nothing() {
         "{}",
         expect.0
     );
-    let (out, stats) = bmb::incremental::with_audit(|| cached(&f, &dir));
+    let (out, stats) = audited(&f, &dir);
     assert_eq!(out, expect);
     assert!(stats.audit_mismatches.is_empty(), "{stats:?}");
     let (out, stats) = cached(&f, &dir);
@@ -310,11 +432,8 @@ fn a_rename_reencodes_nothing() {
 }
 
 fn impact(f: &[(String, String)], def: &str, change: &str) -> BTreeSet<String> {
-    let rows = bmb::map_request(
-        f,
-        &["query".into(), "impact".into(), def.into(), change.into()],
-    )
-    .unwrap();
+    let (ok, rows) = cli::run(&["query", "impact", def, change, "--"], f);
+    assert!(ok, "{rows}");
     rows.lines()
         .filter_map(|l| l.split("\"path\":\"").nth(1))
         .map(|r| r.split('"').next().unwrap().to_string())
@@ -455,7 +574,7 @@ fn edits_that_shift_spans_or_change_context_keep_outputs_exact() {
     cached(&files(&base), &dir);
     for (i, text) in edits.iter().enumerate() {
         let f = files(text);
-        let (out, stats) = bmb::incremental::with_audit(|| cached(&f, &dir));
+        let (out, stats) = audited(&f, &dir);
         assert_eq!(out, plain(&f), "edit {i}");
         assert!(stats.audit_mismatches.is_empty(), "edit {i}: {stats:?}");
         let (again, _) = cached(&f, &dir);
@@ -486,7 +605,7 @@ fn layout_inside_a_definition_reencodes_nothing() {
         );
     assert_ne!(changed, base);
     let f = files(&changed);
-    let (out, stats) = bmb::incremental::with_audit(|| cached(&f, &dir));
+    let (out, stats) = audited(&f, &dir);
     assert_eq!(out, plain(&f));
     assert!(stats.audit_mismatches.is_empty(), "{stats:?}");
     let (again, stats) = cached(&f, &dir);
@@ -516,22 +635,27 @@ fn adding_an_unrelated_spec_fn_reencodes_nothing() {
         "{stats:?}"
     );
     assert_eq!(stats.reused.len(), 20);
-    let before = bmb::verify_sources(&files(&base)).scripts;
-    let after = bmb::verify_sources(&f).scripts;
+    let before = scripts(&files(&base));
+    let after = scripts(&f);
     assert!(!before.is_empty());
     assert_eq!(before, after);
-    assert!(after.values().all(|s| !s.contains("|m2::extra|")));
-    // The definitions that mention a spec fn declare it (or define it, when
-    // they reveal it: a macro, backlog T2-04); the others do not.
+    // The definitions that mention a spec fn declare it (and define it,
+    // when they reveal it: a macro, backlog T2-04); the others do not. The
+    // scripts name nothing (canonical symbols, ADR-0063): `m1::f0` mentions
+    // `small` and `pos`, so no query of it declares a third predicate
+    // (`pos2`, which it reveals but does not mention, or `m0::small`), and
+    // the one of its postcondition declares both.
     let s = &after["m1::f0"];
-    assert!(
-        s.contains("(declare-fun |m1::pos| (Int) Bool)") || s.contains("(define-fun |m1::pos| "),
-        "{s}"
-    );
-    assert!(
-        !s.contains("|m1::pos2|") && !s.contains("|m0::small|"),
-        "{s}"
-    );
+    let mut queries: Vec<usize> = Vec::new();
+    for line in s.lines() {
+        if line.starts_with("; ") {
+            queries.push(0);
+        } else if line.starts_with("(declare-fun |$") && line.ends_with(" (Int) Bool)") {
+            *queries.last_mut().unwrap() += 1;
+        }
+    }
+    assert_eq!(queries.iter().max(), Some(&2), "{s}");
+    assert!(s.contains("(< |$") && s.contains(" 2000)"), "{s}");
     let _ = fs::remove_dir_all(&dir);
 }
 
@@ -542,7 +666,8 @@ fn damaged_cache_lines_are_ignored() {
     let f = files(&base);
     let expect = plain(&f);
     cached(&f, &dir);
-    let path = dir.join(bmb::incremental::FILE);
+    // The store (`incremental::FILE`).
+    let path = dir.join("defs");
     let text = fs::read_to_string(&path).unwrap();
     // Flip one byte of every third entry's payload: its digest no longer matches.
     let mut damaged = 0;
@@ -585,13 +710,22 @@ fn another_compiler_identity_invalidates_everything() {
     let f = files(&generate(2));
     let expect = plain(&f);
     cached(&f, &dir);
-    let (out, stats) = bmb::incremental::with_compiler_id("other", || cached(&f, &dir));
+    // The store as another compiler build wrote it: its second line names
+    // the build (`id VERSION+DIGEST`).
+    let path = dir.join("defs");
+    let text = fs::read_to_string(&path).unwrap();
+    let (magic, rest) = text.split_once('\n').unwrap();
+    let (id, entries) = rest.split_once('\n').unwrap();
+    assert!(id.starts_with("id "), "{id}");
+    fs::write(&path, format!("{magic}\nid other\n{entries}")).unwrap();
+    let (out, stats) = cached(&f, &dir);
     assert_eq!(out, expect);
     // As a run with an empty cache: only the run's own results are reused.
     assert!(stats.ir_reused.is_empty());
     assert_eq!(set(&stats.encoded), alpha_distinct(2));
     assert_eq!(stats.encoded.len() + stats.reused.len(), 10);
-    let (_, stats) = bmb::incremental::with_compiler_id("other", || cached(&f, &dir));
+    // That run stored its results under this build's identity.
+    let (_, stats) = cached(&f, &dir);
     assert_eq!(stats.reused.len(), 10);
     let _ = fs::remove_dir_all(&dir);
 }
@@ -609,18 +743,18 @@ fn measure_large_program() {
     let base = generate(units);
     let f = files(&base);
     let dir = tmp("measure");
-    let time = |label: &str, f: &dyn Fn() -> bmb::LlvmOutput| {
+    // Each run is a `bmb` process: the times include starting it.
+    let time = |label: &str, f: &dyn Fn() -> (String, Option<String>, Stats)| {
         let t = Instant::now();
         let out = f();
         let ms = t.elapsed().as_secs_f64() * 1000.0;
-        let s = &out.verify.incr;
+        let s = &out.2;
         println!(
-            "{label:<34} {ms:>9.1} ms  encoded {:>4} reused {:>4} lowered {:>4} ir_reused {:>4} solver-misses {:>5}",
+            "{label:<34} {ms:>9.1} ms  encoded {:>4} reused {:>4} lowered {:>4} ir_reused {:>4}",
             s.encoded.len(),
             s.reused.len(),
             s.lowered.len(),
             s.ir_reused.len(),
-            out.verify.cache.1
         );
         out
     };
@@ -630,30 +764,25 @@ fn measure_large_program() {
         units * 5
     );
     let t = Instant::now();
-    assert!(bmb::check_sources(&f).ok);
+    assert!(cli::run(&["check"], &f).0);
     println!(
         "{:<34} {:>9.1} ms  (parse and check only: the floor)",
         "front end",
         t.elapsed().as_secs_f64() * 1000.0
     );
-    let p = time("no cache", &|| bmb::emit_llvm_sources(&f));
-    let c = time("cold cache", &|| {
-        bmb::emit_llvm_sources_cached(&f, Some(&dir))
-    });
-    assert_eq!(p.ir, c.ir);
-    let w = time("warm", &|| bmb::emit_llvm_sources_cached(&f, Some(&dir)));
-    assert_eq!(p.ir, w.ir);
-    // The proof cache alone (2D-01): every definition encoded and lowered.
     let t = Instant::now();
-    let v = bmb::verify_sources_opts(&f, Some(&dir), false);
+    let p = cli::emit(&f, false);
     println!(
-        "{:<34} {:>9.1} ms  (verify only, solver-misses {})",
-        "warm, proof cache only",
-        t.elapsed().as_secs_f64() * 1000.0,
-        v.cache.1
+        "{:<34} {:>9.1} ms",
+        "no cache",
+        t.elapsed().as_secs_f64() * 1000.0
     );
+    let c = time("cold cache", &|| emit_cached(&f, &dir, false));
+    assert_eq!(p.ir, c.1);
+    let w = time("warm", &|| emit_cached(&f, &dir, false));
+    assert_eq!(p.ir, w.1);
     let t = Instant::now();
-    let v = bmb::verify_sources_cached(&f, Some(&dir));
+    let v = verify_cached(&f, &dir);
     println!(
         "{:<34} {:>9.1} ms  (verify only)",
         "warm, incremental",
@@ -667,23 +796,17 @@ fn measure_large_program() {
         1,
     );
     let f2 = files(&changed);
-    let b = time("one body changed", &|| {
-        bmb::emit_llvm_sources_cached(&f2, Some(&dir))
-    });
-    assert_eq!(b.ir, bmb::emit_llvm_sources(&f2).ir);
+    let b = time("one body changed", &|| emit_cached(&f2, &dir, false));
+    assert_eq!(b.1, cli::emit(&f2, false).ir);
     let changed = changed.replacen(
         &format!("ensures pos(r),\n    {{\n        {k} + x\n"),
         &format!("ensures pos2(r),\n    {{\n        {k} + x\n"),
         1,
     );
     let f3 = files(&changed);
-    let c = time("one contract changed", &|| {
-        bmb::emit_llvm_sources_cached(&f3, Some(&dir))
-    });
-    assert!(c.verify.ok);
-    let size = fs::metadata(dir.join(bmb::incremental::FILE))
-        .unwrap()
-        .len();
+    let c = time("one contract changed", &|| emit_cached(&f3, &dir, false));
+    assert!(c.1.is_some() && c.2.runtime_checks == 0);
+    let size = fs::metadata(dir.join("defs")).unwrap().len();
     println!("cache file {size} bytes");
     let _ = fs::remove_dir_all(&dir);
 }
@@ -708,11 +831,9 @@ fn verify_stats_name_the_reencoded_definitions() {
         String::from_utf8(out.stdout).unwrap()
     };
     let field = |name: &str| -> Vec<String> {
-        let v = bmb::json::parse(&fs::read_to_string(&stats).unwrap()).unwrap();
+        let v = json::parse(&fs::read_to_string(&stats).unwrap()).unwrap();
         match v.get(name) {
-            Some(bmb::json::Value::Array(xs)) => {
-                xs.iter().map(|x| x.as_str().unwrap().to_string()).collect()
-            }
+            Some(Value::Array(xs)) => xs.iter().map(|x| x.as_str().unwrap().to_string()).collect(),
             other => panic!("{name}: {other:?}"),
         }
     };
@@ -813,7 +934,7 @@ mod geo {
     // `Point::reset` is a call edge of `caller` (map and impact, 2B-07).
     assert!(impact(&files(BASE), "geo::Point::reset", "iface").contains("geo::caller"));
     let dir = tmp("types");
-    let run = |text: &str| bmb::verify_sources_cached(&files(text), Some(&dir));
+    let run = |text: &str| verify_cached(&files(text), &dir);
     let first = run(BASE);
     assert!(first.ok, "{}", first.output);
     assert!(run(BASE).incr.encoded.is_empty());
@@ -857,7 +978,7 @@ fn retried_proofs_are_reused_exactly() {
     let expect = plain(&f);
     let (cold, _) = cached(&f, &dir);
     assert_eq!(expect, cold, "cold");
-    let (warm, stats) = bmb::incremental::with_audit(|| cached(&f, &dir));
+    let (warm, stats) = audited(&f, &dir);
     assert_eq!(expect, warm, "warm, audited");
     assert!(stats.audit_mismatches.is_empty(), "{stats:?}");
 }
@@ -947,7 +1068,7 @@ fn lemma_edits_follow_the_contract_firewall() {
     cached(&files(&base), &dir);
     for text in [&body, &base, &contract, &base] {
         let f = files(text);
-        let (out, stats) = bmb::incremental::with_audit(|| cached(&f, &dir));
+        let (out, stats) = audited(&f, &dir);
         assert_eq!(out, plain(&f));
         assert!(stats.audit_mismatches.is_empty(), "{stats:?}");
     }
@@ -1023,7 +1144,7 @@ mod iv {
     cached(&files(BASE), &dir);
     for text in [&stronger, BASE, &without, BASE] {
         let f = files(text);
-        let (out, stats) = bmb::incremental::with_audit(|| cached(&f, &dir));
+        let (out, stats) = audited(&f, &dir);
         assert_eq!(out, plain(&f));
         assert!(stats.audit_mismatches.is_empty(), "{stats:?}");
     }
@@ -1046,7 +1167,8 @@ mod iv {
     // The type's identity holds its invariant (ADR-0059 §1): it changes
     // with the predicate and the attribute, not with the predicate's name.
     let id = |text: &str| -> String {
-        let h = bmb::hash_sources(&files(text)).unwrap();
+        let (ok, h) = cli::run(&["hash"], &files(text));
+        assert!(ok, "{h}");
         h.lines()
             .find(|l| l.contains("\"def\":\"iv::Span\""))
             .and_then(|l| l.split("\"id\":\"").nth(1))
@@ -1061,7 +1183,8 @@ mod iv {
 
 /// The proof key of `def` (`bmb reads`).
 fn proof_key(src: &str, def: &str) -> String {
-    let rows = bmb::reads_sources(&files(src)).unwrap();
+    let (ok, rows) = cli::run(&["reads"], &files(src));
+    assert!(ok, "{rows}");
     let line = rows
         .lines()
         .find(|l| l.starts_with(&format!("{{\"def\":\"{def}\"")))
@@ -1147,7 +1270,7 @@ mod u {
         ("field type", BASE.replace("c: i64 }", "c: i32 }")),
     ] {
         assert_ne!(changed, BASE, "{what}");
-        assert!(bmb::reads_sources(&files(&changed)).is_ok(), "{what}");
+        assert!(cli::run(&["reads"], &files(&changed)).0, "{what}");
         assert_ne!(key(&changed), base, "{what}");
     }
     assert_eq!(key(&BASE.replace("{ x >= 1 }", "{ x >= 3 }")), base);

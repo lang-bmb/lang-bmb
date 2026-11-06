@@ -66,7 +66,7 @@ scripts/ship.sh                               # 커밋된 트리에서 게이트
 | 칸 | 조건 | 상태 |
 | --- | --- | --- |
 | L0 | 외부 크레이트 0, 외부 프로세스 {z3, clang}, 생성 바이너리는 libc만 | ✅ (S1·S2·S3) |
-| L1 | 통합 시험이 CLI로 돈다 | S5 = 5/42, 4A-04 진행(남은 것: `codegen`·`incremental`·`lint`·`workspace`; `lemmas`는 인코더 항의 단위 시험) |
+| L1 | 통합 시험이 CLI로 돈다 | ✅ S5 = 1/42(2026-11-06, 4A-04 완료; 남은 `lemmas`는 인코더 항을 Rust와 대조하는 단위 시험) |
 | L2 | stage0 기능 동결 | 4D 착수 시 |
 | L3 | stage2 = stage3 | 4E |
 | L4 | 게이트·CI가 cargo 없이 돈다. Rust는 씨앗 재현에만 | 4G |

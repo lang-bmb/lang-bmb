@@ -35,17 +35,19 @@ const USAGE: &str = "usage:
                             and reuses unchanged definitions without encoding them;
                             --stats writes what the caches did as one JSON line to FILE
                             (definitions encoded, reused, lowered, IR reused, proof cache
-                            hits and misses; emit-llvm and build take it too);
+                            hits and misses, damaged cache lines; emit-llvm and build take
+                            it too, and add the runtime checks the IR keeps);
                             --audit proves each definition the cache would reuse anyway and
                             compares (script as the solver receives it, status, proved
                             obligations); --stats then lists the differences (audit_mismatches)
   bmb stability [--seeds N] <file.bmb>...
                             prove under solver seeds 0..N (default 5); per-definition verdicts
                             and rlimit as JSONL; fails if a verdict depends on the seed
-  bmb emit-llvm [--cache DIR] [--stats FILE] [--all-checks] <file.bmb>... -o OUT.ll
+  bmb emit-llvm [--cache DIR] [--stats FILE] [--audit] [--all-checks] <file.bmb>... -o OUT.ll
                             LLVM IR; unproved obligations keep runtime checks;
-                            --all-checks skips the proof and keeps every check
-  bmb build [--cache DIR] [--stats FILE] <file.bmb>... -o OUT
+                            --all-checks skips the proof and keeps every check;
+                            --audit as for verify, also for the IR the cache would reuse
+  bmb build [--cache DIR] [--stats FILE] [--audit] <file.bmb>... -o OUT
                             check, prove (all obligations) and build an executable
   bmb fmt [--check] <file.bmb>...
                             print the normal form (ADR-0019); --check fails if a file differs
@@ -337,14 +339,26 @@ fn run() -> ExitCode {
                 inputs.remove(c);
                 all_checks = true;
             }
+            // --audit: as for verify, every reused proof and IR is computed
+            // again and compared (--stats lists the differences).
+            let mut audit = false;
+            if let Some(c) = inputs.iter().position(|a| a == "--audit") {
+                inputs.remove(c);
+                audit = true;
+            }
             let files = match read_files(&inputs) {
                 Ok(f) => f,
                 Err(code) => return code,
             };
+            let cached = || {
+                bmb::emit_llvm_sources_cached(&files, cache.as_deref().map(std::path::Path::new))
+            };
             let out = if all_checks {
                 bmb::emit_llvm_sources_with(&files, true)
+            } else if audit {
+                bmb::incremental::with_audit(cached)
             } else {
-                bmb::emit_llvm_sources_cached(&files, cache.as_deref().map(std::path::Path::new))
+                cached()
             };
             if let Some(file) = stats
                 && let Err(e) = std::fs::write(&file, verify_stats(&out.verify, Some(out.checks)))
@@ -926,7 +940,7 @@ fn verify_stats(out: &bmb::VerifyOutput, checks: Option<u32>) -> String {
         format!("[{}]", xs.join(","))
     };
     format!(
-        "{{\"encoded\":{},\"reused\":{},\"lowered\":{},\"ir_reused\":{},\"proof_cache_hits\":{},\"proof_cache_misses\":{},\"audit_mismatches\":{}{}}}\n",
+        "{{\"encoded\":{},\"reused\":{},\"lowered\":{},\"ir_reused\":{},\"proof_cache_hits\":{},\"proof_cache_misses\":{},\"audit_mismatches\":{},\"damaged\":{}{}}}\n",
         names(&out.incr.encoded),
         names(&out.incr.reused),
         names(&out.incr.lowered),
@@ -934,6 +948,7 @@ fn verify_stats(out: &bmb::VerifyOutput, checks: Option<u32>) -> String {
         out.cache.0,
         out.cache.1,
         names(&out.incr.audit_mismatches),
+        out.incr.damaged,
         checks.map_or(String::new(), |n| format!(",\"runtime_checks\":{n}"))
     )
 }
