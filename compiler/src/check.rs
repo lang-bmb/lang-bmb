@@ -14,8 +14,8 @@ pub use text::{as_bytes_of, is_text, lower, mentions_text, str_slice_of, text_bu
 /// inclusion; `pure` is the empty set. `alloc` is heap allocation (the
 /// program ends when memory runs out, as Rust's `handle_alloc_error`), `io`
 /// interaction with the outside whose order is observed, `panic` a trap a
-/// definition with an escape may end in (ADR-0029 §4). `nondet` comes with
-/// its source (ADR-0030 open question 2).
+/// definition with an escape may end in (ADR-0029 §4), `nondet` a value
+/// from outside the program (the system built-ins of ADR-0091).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, PartialOrd, Ord, Hash)]
 pub struct Effects(u8);
 
@@ -26,10 +26,15 @@ impl Effects {
     /// The program may end in a trap: a definition with an escape
     /// (`assume`, `#[external_body]`, ADR-0029) keeps its run-time checks.
     pub const PANIC: Effects = Effects(4);
+    /// A value that may differ from run to run with the same program and
+    /// input to the function: the command-line arguments, standard input,
+    /// the environment (ADR-0030 §1, sources from ADR-0091 §3).
+    pub const NONDET: Effects = Effects(8);
     /// The atoms with their names, in the normal form's order (by name).
-    pub const ATOMS: [(Effects, &'static str); 3] = [
+    pub const ATOMS: [(Effects, &'static str); 4] = [
         (Effects::ALLOC, "alloc"),
         (Effects::IO, "io"),
+        (Effects::NONDET, "nondet"),
         (Effects::PANIC, "panic"),
     ];
 
@@ -840,6 +845,39 @@ fn mk(kind: TypeKind) -> Box<Type> {
     })
 }
 
+/// The system built-ins (ADR-0091 §2, backlog 4C-02): path, parameters,
+/// result and effects. Slice (a): the process's exit, standard error and
+/// arguments.
+fn system_builtins() -> Vec<(&'static str, Vec<TypeKind>, TypeKind, Effects)> {
+    vec![
+        // `std::process::exit(code)`: ends the process with `code` (the low
+        // byte is what a parent sees, as in Rust); no destructor runs.
+        (
+            "std::process::exit",
+            vec![TypeKind::Int(IntTy::I32)],
+            TypeKind::Never,
+            Effects::IO,
+        ),
+        // `eprint_str(s)`: the bytes of `s` on standard error, unbuffered
+        // (Rust's `eprint!("{s}")`).
+        (
+            "eprint_str",
+            vec![text::str_ref()],
+            TypeKind::Unit,
+            Effects::IO,
+        ),
+        // `std::env::args()`: the command-line arguments, the program's
+        // name first (Rust's `env::args().collect()`; an argument that is
+        // not UTF-8 ends the process as Rust's panic would, code 101).
+        (
+            "std::env::args",
+            Vec::new(),
+            TypeKind::Vec(mk(TypeKind::String)),
+            Effects::ALLOC.union(Effects::IO).union(Effects::NONDET),
+        ),
+    ]
+}
+
 /// The help of E0402 for an array inside an array element (backlog 2B-14).
 const ARRAY_ELEMENT_HELP: &str = "an array element is a scalar, a struct or enum, a `Box` or a fixed-size array; for growable elements use `Vec<Vec<T>>`";
 
@@ -918,6 +956,28 @@ impl<'a> Checker<'a> {
                 impl_generics: 0,
             },
         );
+        // The system interface (ADR-0091, backlog 4C-02): a closed list of
+        // built-ins under Rust's paths, implemented by the IR runtime.
+        for (path, params, ret, effect) in system_builtins() {
+            fns.insert(
+                path.to_string(),
+                FnSig {
+                    path: path.into(),
+                    kind: FnKind::Exec,
+                    params,
+                    ret,
+                    effect,
+                    vacuous: false,
+                    builtin: true,
+                    in_impl: false,
+                    trait_of: None,
+                    default: false,
+                    span: Span::default(),
+                    generics: Vec::new(),
+                    impl_generics: 0,
+                },
+            );
+        }
         // `print_f64(x, decimals)` (ADR-0061 §6): Rust's
         // `println!("{:.N}", x)`, `decimals <= 65535` (Rust panics above).
         fns.insert(
@@ -2996,8 +3056,9 @@ impl<'a> Checker<'a> {
                 AttrArg::Ident(i) => self.diags.push(
                     Diag::new("E0602", i.span, format!("unknown effect `{}`", i.name)).fix(
                         "effects are `pure` (none), `alloc` (the function allocates: `Vec`, \
-                         `Box`), `io` (it prints) and `panic` (it has an escape: `assume`, \
-                         `#[external_body]`)",
+                         `Box`), `io` (it prints or touches the system), `nondet` (it reads \
+                         a value from outside: arguments, input) and `panic` (it has an \
+                         escape: `assume`, `#[external_body]`)",
                         None,
                     ),
                 ),

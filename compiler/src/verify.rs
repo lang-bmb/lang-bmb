@@ -534,7 +534,8 @@ fn prepare(p: &Program, t: &Tables) -> Tables {
         // generic spec fns.
         let mut all: Vec<TypeKind> = view.types.values().cloned().collect();
         all.extend(view.locals.values().flat_map(|m| m.values().cloned()));
-        for s in view.fns.values() {
+        // A built-in's types count where it is called (ADR-0091 §4).
+        for s in view.fns.values().filter(|s| !s.builtin) {
             all.extend(s.params.iter().cloned());
             all.push(s.ret.clone());
         }
@@ -1675,7 +1676,9 @@ fn enum_dts(tb: &Tables) -> (Vec<String>, BTreeMap<String, Dt>) {
     let mut all: Vec<&TypeKind> = tb.types.values().collect();
     all.extend(tb.inst_types.iter());
     all.extend(tb.locals.values().flat_map(|m| m.values()));
-    for sig in tb.fns.values() {
+    // A built-in's types count where it is called (ADR-0091 §4): a
+    // program that does not call one declares nothing for it.
+    for sig in tb.fns.values().filter(|s| !s.builtin) {
         all.extend(sig.params.iter());
         all.push(&sig.ret);
     }
@@ -6121,11 +6124,29 @@ impl<'p, 'q> Enc<'p, 'q> {
             assert!(
                 matches!(
                     target.as_str(),
-                    "print_i64" | "print_u64" | "print_bytes" | "print_str" | "print_f64"
+                    "print_i64"
+                        | "print_u64"
+                        | "print_bytes"
+                        | "print_str"
+                        | "print_f64"
+                        | "eprint_str"
+                        | "std::process::exit"
+                        | "std::env::args"
                 ),
                 "unresolved call in {}",
                 self.path
             );
+            // The process ends here (ADR-0091): nothing after it runs and
+            // the postconditions are not owed on this path, as after a
+            // `return` they would be.
+            if target == "std::process::exit" && !self.ghost {
+                self.dead = true;
+            }
+            // A value from outside (ADR-0091 §3): only its type's facts.
+            if target == "std::env::args" {
+                let t = self.prog.t.fns[&target].ret.clone();
+                return self.fresh_val("args", &t);
+            }
             if target == "print_f64" && !self.ghost {
                 let d = argv[1].s();
                 self.oblige(

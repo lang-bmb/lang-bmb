@@ -1185,6 +1185,13 @@ impl<'p> Model<'p> {
         if self
             .effects
             .get(&d.path)
+            .is_some_and(|e| e.all.contains(crate::check::Effects::NONDET))
+        {
+            out.push("nondet".to_string());
+        }
+        if self
+            .effects
+            .get(&d.path)
             .is_some_and(|e| e.all.contains(crate::check::Effects::PANIC))
         {
             out.push("panic".to_string());

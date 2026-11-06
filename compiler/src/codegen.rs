@@ -13,6 +13,7 @@
 //! obligations keep a check that traps; `bmb build` refuses such programs
 //! anyway, so this matters only for `bmb emit-llvm` on partial proofs.
 
+mod sys;
 mod text;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write;
@@ -382,7 +383,10 @@ fn type_defs(tb: &Tables, extra: &[TypeKind]) -> String {
 fn all_types<'a>(tb: &'a Tables, extra: &'a [TypeKind]) -> Vec<&'a TypeKind> {
     let mut all: Vec<&TypeKind> = tb.types.values().collect();
     all.extend(tb.locals.values().flat_map(|m| m.values()));
-    for sig in tb.fns.values() {
+    // A built-in's types count when it is called (the call's types are in
+    // `types`): `std::env::args` returns a `Vec<String>` that a program
+    // without it does not hold (ADR-0091 §4, only what is used).
+    for sig in tb.fns.values().filter(|s| !s.builtin) {
         all.extend(sig.params.iter());
         all.push(&sig.ret);
     }
@@ -3216,6 +3220,14 @@ impl<'p> Gen<'p> {
             self.emit(format!("{c} = icmp ule i64 {d}, 65535"));
             self.check(&c, "`print_f64` decimals above 65535");
         }
+        // The process ends (ADR-0091): no drop runs, as Rust's `exit`.
+        if target == "std::process::exit" {
+            self.emit(format!("call void @bmb_exit({})", flat.join(", ")));
+            self.emit("unreachable");
+            let after = self.l("after_exit");
+            self.block(&after);
+            return CVal::Never;
+        }
         let (callee, ret) = if matches!(
             target.as_str(),
             "print_i64" | "print_u64" | "print_bytes" | "print_f64"
@@ -3224,6 +3236,10 @@ impl<'p> Gen<'p> {
         } else if target == "print_str" {
             // The bytes of the text (ADR-0050 §2).
             ("@bmb_print_bytes".to_string(), TypeKind::Unit)
+        } else if target == "eprint_str" {
+            ("@bmb_eprint_bytes".to_string(), TypeKind::Unit)
+        } else if target == "std::env::args" {
+            ("@bmb_args".to_string(), self.t.fns[&target].ret.clone())
         } else if csub.is_empty() {
             (fn_sym(&target), self.t.fns[&target].ret.clone())
         } else {
@@ -3875,6 +3891,10 @@ pub fn emit_with(
     if ir.contains("@bmb_print_f64(") {
         ir.push_str(PRINT_F64);
     }
+    // The system interface (ADR-0091 §4), each part when called; before
+    // the text runtime, which it may call (`bmb_utf8_valid`).
+    let sys_runtime = sys::runtime(&ir);
+    ir.push_str(&sys_runtime);
     // Text (ADR-0050 §4), when used.
     if ir.contains("@bmb_str_cmp(") {
         ir.push_str(text::TEXT_CMP);
@@ -3885,6 +3905,7 @@ pub fn emit_with(
     if ir.contains("@bmb_utf8_valid(") {
         ir.push_str(text::TEXT_UTF8);
     }
+
     let extra: Vec<TypeKind> = used_types.into_values().collect();
     let glue = drop_glue(t, &extra);
     // The `Vec` header first: data types and glue use it.
@@ -3895,12 +3916,22 @@ pub fn emit_with(
     };
     ir.insert_str(types_at, &format!("{header}{}{glue}", type_defs(t, &extra)));
     if let Some(m) = &main {
-        let _ = write!(
-            ir,
-            "\ndefine i32 @main() {{\n  call void {}()\n  ret i32 0\n}}\n",
-            fn_sym(m)
-        );
+        // The arguments are kept for `std::env::args` when it is called.
+        let _ = if sys_runtime.contains("@bmb.argv") {
+            write!(
+                ir,
+                "\ndefine i32 @main(i32 %argc, ptr %argv) {{\n  store i32 %argc, ptr @bmb.argc\n  store ptr %argv, ptr @bmb.argv\n  call void {}()\n  ret i32 0\n}}\n",
+                fn_sym(m)
+            )
+        } else {
+            write!(
+                ir,
+                "\ndefine i32 @main() {{\n  call void {}()\n  ret i32 0\n}}\n",
+                fn_sym(m)
+            )
+        };
     }
+
     Module {
         ir,
         checks,
