@@ -1458,7 +1458,7 @@ fn simple_update(e: &Expr) -> bool {
 }
 
 /// Calls `f` on `e` and every subexpression of it, blocks included.
-fn each_expr(e: &Expr, f: &mut dyn FnMut(&Expr)) {
+pub(crate) fn each_expr(e: &Expr, f: &mut dyn FnMut(&Expr)) {
     f(e);
     for c in children(e) {
         each_expr(c, f);
@@ -1529,7 +1529,7 @@ fn children(e: &Expr) -> Vec<&Expr> {
 
 /// The expressions of a block, loop invariants, measures and `assert`
 /// conditions included.
-fn block_exprs(b: &Block) -> Vec<&Expr> {
+pub(crate) fn block_exprs(b: &Block) -> Vec<&Expr> {
     let mut v = Vec::new();
     for s in &b.stmts {
         match s {

@@ -913,3 +913,62 @@ fn the_fgrep_tool_finds_as_grep_does() {
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+const LOOP: &str = r#"#[summary("number lines")]
+mod app {
+    #[effects(alloc, io, nondet)]
+    fn number() -> () {
+        let mut count: u64 = 0;
+        loop {
+            let mut line: String = String::new();
+            match std::io::read_line(&mut line) {
+                Ok(n) => {
+                    if n == 0 {
+                        break;
+                    }
+                    count = count.saturating_add(1);
+                    print_u64(count);
+                    print_str(line.as_str());
+                }
+                Err(e) => {
+                    std::process::exit(1);
+                }
+            }
+        }
+    }
+
+    #[effects(alloc, io, nondet)]
+    fn main() -> () {
+        number();
+    }
+}
+"#;
+
+/// A loop that runs until the input ends (ADR-0094): allowed without
+/// `decreases` in a `nondet` function, proved without termination, and
+/// marked (`termination: unproved`, the `nonterminating` test reason) on it
+/// and on its callers; elsewhere `loop` still needs a measure (E0506).
+#[test]
+fn input_loops_run_until_the_end() {
+    let o = run(LOOP, &[], b"a\nb\nlast");
+    assert_eq!(text(&o.stdout), "1\na\n2\nb\n3\nlast");
+    let (ok, status) = cli::run(&["query", "status", "--"], &one(LOOP));
+    assert!(ok, "{status}");
+    for def in ["app::number", "app::main"] {
+        let row = status
+            .lines()
+            .find(|l| l.contains(&format!("\"path\":\"{def}\"")))
+            .unwrap();
+        assert!(row.contains(r#""termination":"unproved""#), "{row}");
+        assert!(row.contains("\"nonterminating\""), "{row}");
+    }
+    let plain = cli::run(&["query", "status", "--"], &one(EXIT)).1;
+    assert!(!plain.contains("termination"), "{plain}");
+    let not_nondet = LOOP.replacen(
+        "#[effects(alloc, io, nondet)]\n    fn number()",
+        "#[effects(alloc, io)]\n    fn number()",
+        1,
+    );
+    let (ok, diags) = cli::run(&["check"], &one(&not_nondet));
+    assert!(!ok && diags.contains("E0506"), "{diags}");
+}

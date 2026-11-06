@@ -4579,15 +4579,26 @@ impl<'a> Checker<'a> {
                     );
                 }
             }
+            // A `loop` whose end is decided by input from outside (a
+            // `nondet` function reading until the input ends, ADR-0094) may
+            // have no measure: it is proved without termination and the map
+            // marks the function (`termination: unproved`).
+            None if kw == "loop" && cx.effect.contains(Effects::NONDET) => {}
             None => {
-                self.diags.push(
-                    Diag::new(
-                        "E0506",
-                        missing,
-                        format!("`{kw}` has no `decreases` clause"),
-                    )
-                    .fix("add `decreases <expr>,` before the loop body", None),
+                let mut d = Diag::new(
+                    "E0506",
+                    missing,
+                    format!("`{kw}` has no `decreases` clause"),
                 );
+                d = if kw == "loop" {
+                    d.fix(
+                        "add `decreases <expr>,` before the loop body; a loop that runs until outside input ends goes in a `nondet` function, where it may have none (its termination is then unproved, ADR-0094)",
+                        None,
+                    )
+                } else {
+                    d.fix("add `decreases <expr>,` before the loop body", None)
+                };
+                self.diags.push(d);
             }
         }
     }

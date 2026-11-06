@@ -138,5 +138,6 @@ BMB v2의 설계 결정을 한 건에 파일 하나로 남긴다. 현재 확정�
 | [0091](0091-system-interface-and-runtime.md) | 시스템 인터페이스와 런타임: 닫힌 내장 목록(Rust의 이름, BMB 꼴의 시그니처), libc 위 IR 런타임, `io`·`nondet`, 큰 스택의 `main`, FFI 없음 | 채택 | 4C-03, 4C-01 승인 |
 | [0092](0092-standard-library-core.md) | 표준 라이브러리 핵심: BMB로 쓰고 증명한 `std` 단위(텍스트·바이트, 정렬된 맵·집합, 정렬, 수 서식·해석, JSON), 계약 스타일과 증명 비용 예산 | 채택 | 4B-03, 4B-01 승인 |
 | [0093](0093-prompt-caching-in-measurement-requests.md) | 측정 요청의 프롬프트 캐싱: 마지막 도구 표시와 자동 캐싱(5분), 토큰 지표는 전체 프롬프트, 캐시는 측정 조건이 아니다 | 채택 | INF-27 |
+| [0094](0094-input-driven-loops.md) | 입력이 끝날 때까지 도는 루프: `nondet` 정의의 `loop`는 `decreases`를 생략할 수 있고, 부분 정확성으로 증명하며 `termination: unproved`·`nonterminating` 표식을 남긴다 | 채택 | 4C-04 |
 
 채택 계획(2026-10-24 승인): 0026은 2B 착수 때, 0028은 2C 착수 때 채택한다. 0029·0030·0031은 2단계 측정(2H) 뒤로 미룬다. "제안" ADR의 진단 코드 번호는 잠정이다. 제안끼리 겹치는 번호가 있으며(예: E0212·E0412), 채택 후 구현할 때 `compiler/src/diag.rs`에서 확정한다.

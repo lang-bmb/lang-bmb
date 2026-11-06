@@ -134,6 +134,10 @@ pub struct Index {
     pub io: BTreeSet<String>,
     /// Per executable definition with a body (ADR-0030 §3, §5).
     pub effects: BTreeMap<String, DefEffects>,
+    /// Executable definitions whose termination is not proved (ADR-0094):
+    /// a `loop` without `decreases` in their body (allowed in a `nondet`
+    /// function), or a call of such a definition.
+    pub nonterminating: BTreeSet<String>,
     /// `edges` by target, each list in edge order.
     incoming: BTreeMap<String, Vec<Edge>>,
 }
@@ -807,6 +811,7 @@ impl Index {
             incoming.entry(e.to.clone()).or_default().push(e.clone());
         }
         let effects = def_effects(t, &edges);
+        let nonterminating = nonterminating(p, t, &edges);
         Index {
             units,
             defs,
@@ -814,8 +819,49 @@ impl Index {
             edges,
             io,
             effects,
+            nonterminating,
             incoming,
         }
+    }
+}
+
+/// `Index::nonterminating`: the executable definitions with a `loop`
+/// without `decreases` (ADR-0094), and every definition that calls one,
+/// transitively over the `calls` edges.
+fn nonterminating(p: &Program, t: &Tables, edges: &BTreeSet<Edge>) -> BTreeSet<String> {
+    let mut out: BTreeSet<String> = BTreeSet::new();
+    for (path, _, f) in crate::check::defs_of(p, &t.fns) {
+        if f.kind != FnKind::Exec {
+            continue;
+        }
+        let mut found = false;
+        for e in crate::lint::block_exprs(&f.body) {
+            crate::lint::each_expr(e, &mut |x| {
+                if matches!(
+                    &x.kind,
+                    ExprKind::Loop {
+                        decreases: None,
+                        ..
+                    }
+                ) {
+                    found = true;
+                }
+            });
+        }
+        if found {
+            out.insert(path);
+        }
+    }
+    loop {
+        let add: Vec<String> = edges
+            .iter()
+            .filter(|e| e.kind == "calls" && out.contains(&e.to) && !out.contains(&e.from))
+            .map(|e| e.from.clone())
+            .collect();
+        if add.is_empty() {
+            return out;
+        }
+        out.extend(add);
     }
 }
 
@@ -1152,8 +1198,20 @@ impl<'p> Model<'p> {
             ]
             .into_iter()
             .chain(self.escape_keys(d))
+            .chain(self.termination_key(d))
             .collect(),
         )
+    }
+
+    /// `"termination":"unproved"` for a definition whose termination is not
+    /// proved (ADR-0094), nothing otherwise (a key added only where it
+    /// applies, as `trust`, ADR-0020 §1).
+    fn termination_key(&self, d: &Def) -> Vec<(&'static str, J)> {
+        if self.nonterminating.contains(&d.path) {
+            vec![("termination", J::S("unproved".into()))]
+        } else {
+            Vec::new()
+        }
     }
 
     /// `eff*` of an executable definition by name (ADR-0030 §5); empty for
@@ -1195,6 +1253,9 @@ impl<'p> Model<'p> {
             .is_some_and(|e| e.all.contains(crate::check::Effects::PANIC))
         {
             out.push("panic".to_string());
+        }
+        if self.nonterminating.contains(&d.path) {
+            out.push("nonterminating".to_string());
         }
         if d.status == "failed" {
             out.push("unproved".to_string());
@@ -1402,6 +1463,7 @@ impl<'p> Model<'p> {
                             ]
                             .into_iter()
                             .chain(self.escape_keys(&d))
+                            .chain(self.termination_key(&d))
                             .collect(),
                         )
                     })
