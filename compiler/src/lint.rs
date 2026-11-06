@@ -31,6 +31,10 @@
 //! - `W0905` a loop exit or the end of the body of a verified function that
 //!   its own proof cannot reach (`verify::vacuous_ends`, backlog 1B-44):
 //!   what follows holds vacuously. No honest program yields one.
+//!
+//! W0902, W0904 and W0905 skip `#[external_body]` functions (ADR-0029 §1):
+//! their body is not proved, so every mutant and every dropped clause would
+//! "still verify" (backlog 2E-05).
 //! - `W0909` an executable function declares an effect its body does not
 //!   need (ADR-0030 §3): its own operations and its callees' declared
 //!   effects need none of it. Syntactic, no proof involved.
@@ -324,6 +328,9 @@ pub fn lint_sources_selected(
         unsat.insert(path);
     }
 
+    // An `#[external_body]` body is not proved (ADR-0029 §1): what its proof
+    // needs, reaches or tells apart says nothing about it.
+    let external = |p: &String| fe.tables.external.contains(p);
     let verified = |p: &String| {
         let one: BTreeSet<String> = [p.clone()].into();
         clean(&base, &fe.diags, &spans, &one)
@@ -335,7 +342,7 @@ pub fn lint_sources_selected(
         let (points, cost) = crate::verify::vacuous_ends(&fe.program, &fe.tables);
         reach_cost = Some(cost);
         for (path, span, what) in points {
-            if unsat.contains(&path) || !verified(&path) {
+            if unsat.contains(&path) || external(&path) || !verified(&path) {
                 continue;
             }
             out.push(w0905(&path, span, what));
@@ -348,7 +355,12 @@ pub fn lint_sources_selected(
     let mut trials = 0;
     for path in &exec {
         let f = defs[*path];
-        if !runs("W0902") || f.requires.is_empty() || unsat.contains(*path) || !verified(path) {
+        if !runs("W0902")
+            || f.requires.is_empty()
+            || unsat.contains(*path)
+            || external(path)
+            || !verified(path)
+        {
             continue;
         }
         for i in 0..f.requires.len() {
@@ -453,7 +465,12 @@ pub fn lint_sources_selected(
     let mut plan: Vec<(&String, Vec<Site>)> = Vec::new();
     for path in &exec {
         let f = defs[*path];
-        if !runs("W0904") || f.ensures.is_empty() || unsat.contains(*path) || !verified(path) {
+        if !runs("W0904")
+            || f.ensures.is_empty()
+            || unsat.contains(*path)
+            || external(path)
+            || !verified(path)
+        {
             continue;
         }
         let text = &files[f.span.file as usize].1;

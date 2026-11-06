@@ -249,6 +249,25 @@ fn clean_file_has_no_reports() {
     assert_eq!(out.verifications, 3);
 }
 
+/// An `#[external_body]` body is not proved: no clause it "does not need",
+/// no mutant it "does not distinguish", no point it "cannot reach" (backlog
+/// 2E-05, found writing `tests/run/collatz.bmb`).
+#[test]
+fn external_bodies_are_not_judged_by_their_proof() {
+    let src = "#[summary(\"ext\")]\nmod x {\n    spec fn small(n: i64) -> bool { 1 <= n && n <= 10 }\n\n    spec fn low(r: i64) -> bool { 0 <= r && r <= 5 }\n\n    #[rationale(kind = boundary, hash = \"0000000000000000\", \"outside\")]\n    #[external_body]\n    #[effects(panic)]\n    #[uses(small, low)]\n    fn f(n: i64) -> (r: i64)\n        requires small(n),\n        ensures low(r),\n    {\n        n + 1\n    }\n}\n";
+    let out = lint_sources(&one("e.bmb", src)).unwrap();
+    for code in ["W0902", "W0904", "W0905"] {
+        assert!(
+            !out.diagnostics.contains(code),
+            "{code}:\n{}",
+            out.diagnostics
+        );
+    }
+    assert_eq!((out.mutants, out.surviving), (0, 0), "{}", out.diagnostics);
+    // The rationale itself is still judged (W1001: its hash is not current).
+    assert!(out.diagnostics.contains("W1001"), "{}", out.diagnostics);
+}
+
 #[test]
 fn deterministic() {
     let a = lint_sources(&one("l.bmb", SRC)).unwrap().report();

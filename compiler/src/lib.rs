@@ -196,6 +196,19 @@ impl FixOutput {
     }
 }
 
+/// `report` for the command line: the summary row also says whether the
+/// changed files were written (`--write`), since `changed` lists them
+/// either way (backlog 2E-05: read as written when they were not).
+pub fn with_written(report: String, written: bool) -> String {
+    let last = report.trim_end().rfind('\n').map_or(0, |i| i + 1);
+    match report.strip_suffix("}\n") {
+        Some(head) if report[last..].starts_with("{\"summary\":true") => {
+            format!("{head},\"written\":{written}}}\n")
+        }
+        _ => report,
+    }
+}
+
 /// Upper bound on fix rounds; each round re-checks the program.
 pub const FIX_MAX_ROUNDS: usize = 16;
 

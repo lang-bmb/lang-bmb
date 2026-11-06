@@ -460,7 +460,7 @@ fn run() -> ExitCode {
                     .join("\n");
                 print!("{text}");
             } else {
-                print!("{}", out.report(&files));
+                print!("{}", bmb::with_written(out.report(&files), write));
             }
             if write {
                 for (path, text) in out
@@ -516,7 +516,7 @@ fn run() -> ExitCode {
                     return ExitCode::from(1);
                 }
             };
-            print!("{}", out.report(&files));
+            print!("{}", bmb::with_written(out.report(&files), write));
             if write {
                 for (path, text) in out
                     .files

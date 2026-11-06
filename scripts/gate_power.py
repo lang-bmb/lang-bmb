@@ -561,6 +561,15 @@ MUTANTS = [
         }''',
      '''        out.proven.extend(r.proven);''',
      "a definition proved with trusted facts drops its checks: a false `assume` is undefined behavior, not a trap"),
+    # Found by the escape fuzzer (backlog 2E-05, `tests/soundness_escape.rs`).
+    ("v-escape-no-downward", "miscompile", V,
+     '''    while let Some(f) = todo.pop() {''',
+     '''    while let Some(f) = todo.pop().filter(|_| false) {''',
+     "the callees of an assumed definition keep dropping checks: its false fact reaches them as a broken precondition"),
+    ("v-escape-assumed-unchecked", "miscompile", V,
+     '''        .filter(|(_, r)| r.status.trust != Trust::Proved || r.status.failed > 0)''',
+     '''        .filter(|(_, r)| r.status.failed > 0)''',
+     "an assumed or external definition that verifies is compiled as proved: checks resting on a trusted fact are dropped"),
     # `copy_within` (ADR-0083, backlog T1-26a): the destination bound
     # forgets the copied length, or the new array keeps the old elements.
     ("v-copy-within-dest-bound", "unsound", V,

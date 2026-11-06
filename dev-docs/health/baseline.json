@@ -2,14 +2,14 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 10569429,
+    "V4_rlimit_total": 10599359,
     "V5_rlimit_headroom": 0.1244,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0,
     "V8_bench_rlimit_total": 22810907,
     "V9_bench_defs_at_limit": 0,
     "V10_library_rlimit_total": 12808122,
-    "V11_sat_check_rlimit_total": 229556981,
+    "V11_sat_check_rlimit_total": 229564587,
     "V12_sat_check_undecided": 244,
     "S1_external_crates": 0,
     "S2_external_processes": [
@@ -17,15 +17,15 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 45131,
+    "S4_stage0_rust_lines": 45151,
     "S5_tests_bound_to_rust_api": 1,
     "S6_selfhost_bmb_lines": 0,
-    "P1_runnable_programs": 62,
-    "P2_bmb_lines": 23466,
+    "P1_runnable_programs": 63,
+    "P2_bmb_lines": 23567,
     "P3_errors_with_help": 0.8884,
     "B1_baseline_binary_bytes": 101408,
     "O1_adr_index_mismatch": 0,
-    "O2_soundness_fuzzers": 14
+    "O2_soundness_fuzzers": 15
   },
   "history": [
     {
@@ -1964,6 +1964,36 @@
         "S5_tests_bound_to_rust_api": [
           5,
           1
+        ]
+      }
+    },
+    {
+      "date": "2026-11-06",
+      "reason": "2E-05 exit audit: V4 +29930 and V11 +7606 (new run program tests/run/collatz.bmb proved and lint-checked), S4 +20 (lint skips #[external_body] for W0902/W0904/W0905, fix/uses summary gains written), P1 62->63 and P2 +101 (collatz), O2 14->15 (soundness_escape fuzzer)",
+      "changed": {
+        "V4_rlimit_total": [
+          10569429,
+          10599359
+        ],
+        "V11_sat_check_rlimit_total": [
+          229556981,
+          229564587
+        ],
+        "S4_stage0_rust_lines": [
+          45131,
+          45151
+        ],
+        "P1_runnable_programs": [
+          62,
+          63
+        ],
+        "P2_bmb_lines": [
+          23466,
+          23567
+        ],
+        "O2_soundness_fuzzers": [
+          14,
+          15
         ]
       }
     }

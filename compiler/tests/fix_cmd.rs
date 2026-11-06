@@ -158,7 +158,7 @@ fn rust_habits_are_fixed_over_rounds() {
     let report = out.report.clone();
     assert!(
         report.ends_with(
-            "{\"summary\":true,\"rounds\":2,\"applied\":7,\"changed\":[\"t.bmb\"],\"remaining\":0,\"ok\":true}\n"
+            "{\"summary\":true,\"rounds\":2,\"applied\":7,\"changed\":[\"t.bmb\"],\"remaining\":0,\"ok\":true,\"written\":true}\n"
         ),
         "{report}"
     );
@@ -176,7 +176,7 @@ fn fix_is_idempotent() {
         assert_eq!(again.rounds, 0);
         assert_eq!(
             again.report.clone(),
-            "{\"summary\":true,\"rounds\":0,\"applied\":0,\"changed\":[],\"remaining\":0,\"ok\":true}\n"
+            "{\"summary\":true,\"rounds\":0,\"applied\":0,\"changed\":[],\"remaining\":0,\"ok\":true,\"written\":true}\n"
         );
     }
 }
@@ -227,7 +227,11 @@ fn cli_reports_by_default_and_writes_only_with_write() {
     let report = Command::new(bmb).arg("fix").arg(&path).output().unwrap();
     assert!(report.status.success());
     let stdout = String::from_utf8(report.stdout).unwrap();
-    assert!(stdout.lines().last().unwrap().contains("\"applied\":7"));
+    // `changed` lists the files either way; `written` says whether they
+    // were (backlog 2E-05: a report read as a write).
+    let summary = stdout.lines().last().unwrap();
+    assert!(summary.contains("\"applied\":7"), "{summary}");
+    assert!(summary.ends_with(",\"written\":false}"), "{summary}");
     assert_eq!(std::fs::read_to_string(&path).unwrap(), HABITS);
 
     let printed = Command::new(bmb)
@@ -244,6 +248,12 @@ fn cli_reports_by_default_and_writes_only_with_write() {
         .output()
         .unwrap();
     assert!(written.status.success());
+    assert!(
+        String::from_utf8(written.stdout)
+            .unwrap()
+            .trim_end()
+            .ends_with(",\"written\":true}")
+    );
     assert_eq!(std::fs::read_to_string(&path).unwrap(), FIXED);
 
     let bad = dir.join("r.bmb");

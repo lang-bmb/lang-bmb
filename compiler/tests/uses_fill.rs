@@ -346,7 +346,7 @@ fn deterministic_and_idempotent() {
     // most), and the final confirmation of all found lists together.
     assert!(
         a.report(&input).ends_with(
-            "{\"summary\":true,\"defs\":6,\"proved\":4,\"unchanged\":1,\"not_found\":1,\"verifications\":6,\"changed\":[\"u.bmb\"]}\n"
+            "{\"summary\":true,\"defs\":6,\"proved\":4,\"unchanged\":1,\"not_found\":1,\"verifications\":6,\"changed\":[\"u.bmb\"],\"written\":true}\n"
         ),
         "{}",
         a.report(&input)
@@ -362,7 +362,7 @@ fn deterministic_and_idempotent() {
             .all(|r| r.edit.is_none() && r.status != UsesStatus::Proved)
     );
     assert!(again.report(&a.files).ends_with(
-        "{\"summary\":true,\"defs\":6,\"proved\":0,\"unchanged\":5,\"not_found\":1,\"verifications\":2,\"changed\":[]}\n"
+        "{\"summary\":true,\"defs\":6,\"proved\":0,\"unchanged\":5,\"not_found\":1,\"verifications\":2,\"changed\":[],\"written\":true}\n"
     ));
 
     // A program that proves is left alone.
