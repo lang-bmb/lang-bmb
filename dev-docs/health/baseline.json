@@ -17,8 +17,8 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 45116,
-    "S5_tests_bound_to_rust_api": 5,
+    "S4_stage0_rust_lines": 45131,
+    "S5_tests_bound_to_rust_api": 1,
     "S6_selfhost_bmb_lines": 0,
     "P1_runnable_programs": 62,
     "P2_bmb_lines": 23466,
@@ -1950,6 +1950,20 @@
         "O2_soundness_fuzzers": [
           13,
           14
+        ]
+      }
+    },
+    {
+      "date": "2026-11-06",
+      "reason": "4A-04i: codegen, lint, workspace and incremental tests through the CLI (S5 5 -> 1); S4 +15 for the CLI flags they read (runtime_checks, damaged, emit-llvm --audit, codes severity)",
+      "changed": {
+        "S4_stage0_rust_lines": [
+          45116,
+          45131
+        ],
+        "S5_tests_bound_to_rust_api": [
+          5,
+          1
         ]
       }
     }
