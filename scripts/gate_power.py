@@ -7,7 +7,7 @@
   gate_power.py table FILE.jsonl       Markdown table and the catch rate
 
 Each mutant is one plausible defect in `compiler/src/verify.rs`,
-`compiler/src/codegen.rs`, `compiler/src/check.rs`, `compiler/src/subproof.rs` or `compiler/src/weaken.rs`: an encoding with the wrong sign or bound, an
+`compiler/src/codegen.rs`, `compiler/src/check.rs`, `compiler/src/subproof.rs`, `compiler/src/weaken.rs` or `compiler/src/map.rs`: an encoding with the wrong sign or bound, an
 obligation that is never sent, a havoc that forgets a variable, a code
 generator that emits the wrong instruction or drops a check it may not drop,
 a checker that lets ghost code run executable code.
@@ -35,6 +35,7 @@ S = "compiler/src/subproof.rs"
 VI = "compiler/src/verify/invariants.rs"
 W = "compiler/src/weaken.rs"
 VT, CT = "compiler/src/verify/text.rs", "compiler/src/codegen/text.rs"
+M = "compiler/src/map.rs"
 
 # (id, class, file, old, new, what)
 MUTANTS = [
@@ -549,6 +550,13 @@ MUTANTS = [
      '''cx.need(sig.effect, || format!("a call of `{name}`"));''',
      '''cx.need(Effects::PURE, || format!("a call of `{name}`"));''',
      "a call does not carry the callee's declared effects to the caller"),
+    # Found by the effect property test (backlog 2F-05, `tests/effects_props.rs`).
+    ("m-effects-declared-not-required", "effects", M,
+     '''                    Some(d) => d.all,
+                    None => declared(c),''',
+     '''                    Some(d) => d.declared,
+                    None => declared(c),''',
+     "`eff*` takes a callee's declaration for what it needs: a wide declaration makes its callers look `io`, which inflates the test-needed area"),
     # Escapes (ADR-0029, backlog 2E-02): a trusted fact used where the
     # definition must be proved without it, or a check dropped below one.
     ("v-assume-trusted-first", "unsound", V,
