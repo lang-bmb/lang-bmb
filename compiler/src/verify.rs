@@ -6141,6 +6141,8 @@ impl<'p, 'q> Enc<'p, 'q> {
                         | "std::fs::remove_file"
                         | "std::fs::create_dir_all"
                         | "std::fs::read_dir"
+                        | "std::env::var"
+                        | "std::time::monotonic_ms"
                 ),
                 "unresolved call in {}",
                 self.path
@@ -6152,9 +6154,14 @@ impl<'p, 'q> Enc<'p, 'q> {
                 self.dead = true;
             }
             // A value from outside (ADR-0091 §3): only its type's facts.
-            if target == "std::env::args" {
+            if matches!(
+                target.as_str(),
+                "std::env::args" | "std::env::var" | "std::time::monotonic_ms"
+            ) {
                 let t = self.prog.t.fns[&target].ret.clone();
-                return self.fresh_val("args", &t);
+                let v = self.fresh_val(&format!("{target}.result"), &t);
+                self.assume_valid(&v, &t);
+                return v;
             }
             // Input and output (ADR-0091 §3): a buffer changes to a value
             // of its type (any length, valid as the callee would leave it),

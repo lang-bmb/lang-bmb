@@ -953,6 +953,28 @@ fn system_builtins() -> Vec<(&'static str, Vec<TypeKind>, TypeKind, Effects)> {
             io_result(TypeKind::Vec(mk(TypeKind::String))),
             Effects::ALLOC.union(Effects::IO).union(Effects::NONDET),
         ),
+        // Slice (d): `std::env::var(name)` the variable's value, `None`
+        // when it is not set or not UTF-8 (Rust's `env::var` gives a
+        // `Result`); `std::time::monotonic_ms()` a monotonic clock in
+        // milliseconds from an arbitrary start (Rust's `Instant`).
+        (
+            "std::env::var",
+            vec![text::str_ref()],
+            TypeKind::Named {
+                path: vec!["Option".into()],
+                args: vec![Type {
+                    kind: TypeKind::String,
+                    span: Span::default(),
+                }],
+            },
+            Effects::ALLOC.union(Effects::IO).union(Effects::NONDET),
+        ),
+        (
+            "std::time::monotonic_ms",
+            Vec::new(),
+            TypeKind::Int(IntTy::U64),
+            Effects::IO.union(Effects::NONDET),
+        ),
     ]
 }
 

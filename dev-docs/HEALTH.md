@@ -59,7 +59,7 @@ scripts/ship.sh                               # 커밋된 트리에서 게이트
 | 증명 캐시·증분 빌드 키 | 낡은 증명 재사용 | 캐시 무효화 시험, 캐시 유무 출력 동일 | — |
 | 코드 생성(`codegen.rs`)·clang/LLVM 18 | 증명과 다른 실행 | 검사 제거 빌드와 전체 검사 빌드의 해석기 대조 | LLVM 최적화 자체는 신뢰 |
 | libc·Linux | 실행 환경 | — | 신뢰 |
-| 시스템 인터페이스 런타임(`codegen/sys.rs`, ADR-0091 §3·§4) | 바깥 세계와 다른 값·동작 | 정의마다 실행 시험(`compiler/tests/system.rs`: 종료 코드, 표준 오류, 인자, UTF-8 아닌 인자의 101) | 계약 없는 바깥 세계: 결과는 타입 사실만. 내장 목록 `std::process::exit`·`eprint_str`·`std::env::args`·`std::io::read_line`·`std::io::read_to_end`(4C-02 (a)), `std::fs::read`·`read_to_string`·`write`(4C-02 (b)), `rename`·`remove_file`·`create_dir_all`·`read_dir`(4C-02 (c)), 늘어나는 대로 여기에. 표준 입력·파일·디렉터리는 rustc로 빌드한 Rust 프로그램과 바이트 대조 |
+| 시스템 인터페이스 런타임(`codegen/sys.rs`, ADR-0091 §3·§4) | 바깥 세계와 다른 값·동작 | 정의마다 실행 시험(`compiler/tests/system.rs`: 종료 코드, 표준 오류, 인자, UTF-8 아닌 인자의 101) | 계약 없는 바깥 세계: 결과는 타입 사실만. 내장 목록 `std::process::exit`·`eprint_str`·`std::env::args`·`std::io::read_line`·`std::io::read_to_end`(4C-02 (a)), `std::fs::read`·`read_to_string`·`write`(4C-02 (b)), `rename`·`remove_file`·`create_dir_all`·`read_dir`(4C-02 (c)), `std::env::var`·`std::time::monotonic_ms`(4C-02 (d)), 늘어나는 대로 여기에. 표준 입력·파일·디렉터리는 rustc로 빌드한 Rust 프로그램과 바이트 대조 |
 | stage0 씨앗(4G 이후) | 부트스트랩 오염 | 고정점, 씨앗 재현 절차 | ADR-0037 |
 
 ## 4. 자립 사다리

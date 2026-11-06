@@ -587,3 +587,64 @@ fn directories_behave_as_rust() {
     assert_eq!(text(&b), text(&r));
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+const ENV: &str = r#"#[summary("env")]
+mod app {
+    #[effects(alloc, io, nondet)]
+    fn show(name: &str) -> () {
+        match std::env::var(name) {
+            None => {
+                print_str("none\n");
+            }
+            Some(v) => {
+                print_str("some ");
+                print_str(v.as_str());
+                print_str("\n");
+            }
+        }
+    }
+
+    #[effects(alloc, io, nondet)]
+    fn main() -> () {
+        show("BMB_TEST_SET");
+        show("BMB_TEST_EMPTY");
+        show("BMB_TEST_UNSET");
+        show("BMB_TEST_BYTES");
+        show("A\0B");
+        let t0: u64 = std::time::monotonic_ms();
+        let t1: u64 = std::time::monotonic_ms();
+        if t1 >= t0 {
+            print_str("monotonic\n");
+        }
+    }
+}
+"#;
+
+/// The environment and the clock (ADR-0091 §2, slice (d)): a set, empty,
+/// unset and non-UTF-8 variable, a name with a NUL byte, and a clock that
+/// never goes back.
+#[test]
+fn environment_and_clock() {
+    let out = cli::emit(&one(ENV), false);
+    assert!(out.ok, "{}", out.output);
+    let dir = cli::fresh_dir();
+    let exe = dir.join("p");
+    cli::build(&out.ir.unwrap(), &exe).unwrap();
+    use std::os::unix::ffi::OsStrExt;
+    let o = Command::new(&exe)
+        .env("BMB_TEST_SET", "héllo")
+        .env("BMB_TEST_EMPTY", "")
+        .env_remove("BMB_TEST_UNSET")
+        .env("BMB_TEST_BYTES", std::ffi::OsStr::from_bytes(b"\xff"))
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(
+        text(&o.stdout),
+        "some héllo\nsome \nnone\nnone\nnone\nmonotonic\n"
+    );
+    // The values are from outside: a definition reading one needs `nondet`.
+    let missing = ENV.replacen("#[effects(alloc, io, nondet)]", "#[effects(alloc, io)]", 1);
+    let (ok, diags) = cli::run(&["check"], &one(&missing));
+    assert!(!ok && diags.contains("E0606"), "{diags}");
+}

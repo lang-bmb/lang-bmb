@@ -3247,6 +3247,13 @@ impl<'p> Gen<'p> {
             ("@bmb_eprint_bytes".to_string(), TypeKind::Unit)
         } else if target == "std::env::args" {
             ("@bmb_args".to_string(), self.t.fns[&target].ret.clone())
+        } else if target == "std::env::var" {
+            ("@bmb_env_var".to_string(), self.t.fns[&target].ret.clone())
+        } else if target == "std::time::monotonic_ms" {
+            (
+                "@bmb_monotonic_ms".to_string(),
+                self.t.fns[&target].ret.clone(),
+            )
         } else if sys::is_io(&target) {
             // Input and output (ADR-0091 §2): a `Result` through the
             // caller's memory.
@@ -3906,6 +3913,9 @@ pub fn emit_with(
     // the text runtime, which it may call (`bmb_utf8_valid`).
     let mut sys_runtime = sys::runtime(&ir);
     sys_runtime.push_str(&sys::io_runtime(&ir, t));
+    sys_runtime.push_str(&sys::env_runtime(&ir, t));
+    let helpers = sys::helpers(&sys_runtime);
+    sys_runtime.push_str(&helpers);
     ir.push_str(&sys_runtime);
     // Text (ADR-0050 §4), when used.
     if ir.contains("@bmb_str_cmp(") {

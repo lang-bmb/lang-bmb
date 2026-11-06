@@ -36,7 +36,6 @@ define internal void @bmb_exit(i64 %c) cold noreturn {
 /// `Vec` runtime (the result is a `Vec<String>`) and `bmb_utf8_valid`.
 const ARGS: &str = "@bmb.argc = internal global i32 0
 @bmb.argv = internal global ptr null
-declare i64 @strlen(ptr)
 @bmb.args_bad = private unnamed_addr constant [__N__ x i8] c\"__MSG__\"
 define internal void @bmb_args(ptr %out) {
 entry:
@@ -242,25 +241,6 @@ const FS: &str = "declare i32 @open(ptr, i32, ...)
 declare i64 @read(i32, ptr, i64)
 declare i64 @write(i32, ptr, i64)
 declare i32 @close(i32)
-declare ptr @memchr(ptr, i32, i64)
-define internal ptr @bmb_cpath(ptr %p, i64 %n) {
-entry:
-  %empty = icmp eq i64 %n, 0
-  br i1 %empty, label %copy, label %scan
-scan:
-  %nul = call ptr @memchr(ptr %p, i32 0, i64 %n)
-  %has = icmp ne ptr %nul, null
-  br i1 %has, label %bad, label %copy
-bad:
-  ret ptr null
-copy:
-  %sz = add nuw i64 %n, 1
-  %c = call ptr @bmb_box_alloc(i64 %sz)
-  call void @llvm.memcpy.p0.p0.i64(ptr %c, ptr %p, i64 %n, i1 false)
-  %end = getelementptr inbounds i8, ptr %c, i64 %n
-  store i8 0, ptr %end
-  ret ptr %c
-}
 define internal i64 @bmb_fd_read_all(i32 %fd, ptr %h) {
 entry:
   %lp = getelementptr inbounds %bmb.vec, ptr %h, i32 0, i32 1
@@ -699,6 +679,116 @@ done:
 }
 ";
 
+/// A path or name as libc takes it: a copy with a NUL at its end, or null
+/// when it holds a NUL byte (Rust refuses those too). Needs the heap
+/// runtime.
+const CPATH: &str = "declare ptr @memchr(ptr, i32, i64)
+define internal ptr @bmb_cpath(ptr %p, i64 %n) {
+entry:
+  %empty = icmp eq i64 %n, 0
+  br i1 %empty, label %copy, label %scan
+scan:
+  %nul = call ptr @memchr(ptr %p, i32 0, i64 %n)
+  %has = icmp ne ptr %nul, null
+  br i1 %has, label %bad, label %copy
+bad:
+  ret ptr null
+copy:
+  %sz = add nuw i64 %n, 1
+  %c = call ptr @bmb_box_alloc(i64 %sz)
+  call void @llvm.memcpy.p0.p0.i64(ptr %c, ptr %p, i64 %n, i1 false)
+  %end = getelementptr inbounds i8, ptr %c, i64 %n
+  store i8 0, ptr %end
+  ret ptr %c
+}
+";
+
+/// The environment and the clock (ADR-0091 §2, slice (d)):
+/// `bmb_monotonic_ms` is `CLOCK_MONOTONIC` in milliseconds (an arbitrary
+/// start, never earlier than an earlier reading). Linux x86-64: a
+/// `timespec` is two `i64`s.
+const CLOCK: &str = "declare i32 @clock_gettime(i32, ptr)
+define internal i64 @bmb_monotonic_ms() {
+  %ts = alloca [2 x i64]
+  call i32 @clock_gettime(i32 1, ptr %ts)
+  %s = load i64, ptr %ts
+  %np = getelementptr inbounds [2 x i64], ptr %ts, i32 0, i32 1
+  %ns = load i64, ptr %np
+  %ms = mul i64 %s, 1000
+  %frac = udiv i64 %ns, 1000000
+  %r = add i64 %ms, %frac
+  ret i64 %r
+}
+";
+
+/// `std::env::var` (with the program's own LLVM names of `Option<String>`):
+/// `Some` of the value, `None` when it is not set, not UTF-8, or the name
+/// holds a NUL byte (where Rust's `env::var` returns an `Err`, ADR-0091 §2
+/// gives an `Option`).
+pub(super) fn env_runtime(ir: &str, tb: &Tables) -> String {
+    let mut out = String::new();
+    if ir.contains("@bmb_monotonic_ms(") {
+        out.push_str(CLOCK);
+    }
+    if !ir.contains("@bmb_env_var(") {
+        return out;
+    }
+    let result = &tb.fns["std::env::var"].ret;
+    let vs = enum_variants(result, tb).expect("`Option<String>`");
+    let tag = |v: &str| vs.iter().position(|(n, _)| n == v).expect("variant");
+    let _ = write!(
+        out,
+        "declare ptr @getenv(ptr)
+define internal void @bmb_env_var(ptr %out, ptr %p, i64 %n) {{
+entry:
+  %tag = getelementptr inbounds {res}, ptr %out, i32 0, i32 0
+  %c = call ptr @bmb_cpath(ptr %p, i64 %n)
+  %nul = icmp eq ptr %c, null
+  br i1 %nul, label %none, label %look
+look:
+  %v = call ptr @getenv(ptr %c)
+  call void @free(ptr %c)
+  %unset = icmp eq ptr %v, null
+  br i1 %unset, label %none, label %check
+check:
+  %vn = call i64 @strlen(ptr %v)
+  %valid = call i1 @bmb_utf8_valid(ptr %v, i64 %vn)
+  br i1 %valid, label %some, label %none
+some:
+  store i64 {some}, ptr %tag
+  %s = getelementptr inbounds {somev}, ptr %out, i32 0, i32 1
+  call void @bmb_vec_alloc(ptr %s, i64 %vn, i64 1)
+  %b = load ptr, ptr %s
+  call void @llvm.memcpy.p0.p0.i64(ptr %b, ptr %v, i64 %vn, i1 false)
+  %lp = getelementptr inbounds %bmb.vec, ptr %s, i32 0, i32 1
+  store i64 %vn, ptr %lp
+  ret void
+none:
+  store i64 {none}, ptr %tag
+  ret void
+}}
+",
+        res = data_ty(result),
+        some = tag("Some"),
+        somev = view_ty(result, "Some"),
+        none = tag("None"),
+    );
+    out
+}
+
+/// The helpers `text` (the runtime parts taken so far) calls, each once:
+/// the path copy and the declaration of `strlen`.
+pub(super) fn helpers(text: &str) -> String {
+    let mut out = String::new();
+    if text.contains("@bmb_cpath(") {
+        out.push_str(CPATH);
+    }
+    if text.contains("@strlen(") {
+        out.push_str("declare i64 @strlen(ptr)\n");
+    }
+    out
+}
+
 /// What every input and output built-in shares: `errno` as a result code,
 /// whether the last failure was `EINTR`, and the message of an
 /// `std::io::Error` (Rust's `Display`): `strerror` and ` (os error N)` for
@@ -934,10 +1024,6 @@ err:
     }
     if used.iter().any(|(p, ..)| p.starts_with("std::fs::")) {
         out.push_str(FS);
-        // `strlen` is declared once: by `std::env::args` when it is called.
-        if !ir.contains("@bmb_args(") {
-            out.push_str("declare i64 @strlen(ptr)\n");
-        }
     }
     let dirs = [
         "std::fs::rename",
