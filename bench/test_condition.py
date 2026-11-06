@@ -88,6 +88,16 @@ class Probe(unittest.TestCase):
         b = self.rewrite(a, "n1", lambda r: r.update(session_record="x", judge_seconds=1.0))
         self.assertEqual(condition.compare(a, condition.ROOT, b, condition.ROOT), [])
 
+    def test_prompt_caching_is_not_part_of_the_condition(self):
+        # ADR-0093: markers and cache token counts set the price, not what the model is shown.
+        body = {"tools": [{"name": "a"}], "messages": [{"role": "user", "content": "t"}]}
+        cached = {"tools": [{"name": "a", "cache_control": {"type": "ephemeral"}}],
+                  "messages": [{"role": "user", "content": "t"}], "cache_control": {"type": "ephemeral"}}
+        self.assertEqual(condition.without_cache(cached), body)
+        row = {"model_usage": {"input_tokens": 9, "cache_read_input_tokens": 7}}
+        self.assertEqual(condition.without_cache(row), {"model_usage": {"input_tokens": 9}})
+        self.assertNotEqual(condition.without_cache({**body, "system": "s"}), body)
+
     def test_cargo_times_are_not_part_of_the_condition(self):
         a = "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.08s\n; finished in 0.00s"
         b = "    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.31s\n; finished in 12ms"

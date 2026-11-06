@@ -47,8 +47,27 @@ class T(unittest.TestCase):
         self.assertEqual(client.requests[0]["tools"][0]["input_schema"], {"type": "object"})
         self.assertEqual(client.requests[0]["output_config"], {"effort": "high"})
         self.assertEqual(a.usage, {"input_tokens": 20, "output_tokens": 10, "requests": 2,
-                                   "visible_output_tokens": 9})
+                                   "visible_output_tokens": 9, "cache_creation_input_tokens": 0,
+                                   "cache_read_input_tokens": 0})
         self.assertEqual(a.stop, "end_turn")
+
+    def test_prompt_caching(self):
+        # ADR-0093: the last tool and the conversation are cached for 5 minutes,
+        # and `input_tokens` stays the whole prompt.
+        cached = block(input_tokens=3, output_tokens=5, cache_creation_input_tokens=40,
+                       cache_read_input_tokens=700)
+        client = StubClient([block(stop_reason="end_turn", content=[block(type="text", text="done")],
+                                   usage=cached)])
+        a = AnthropicAgent("claude-sonnet-5-5", "sys", "task", client=client)
+        a.set_tools([{"name": n, "description": "d", "inputSchema": {"type": "object"}} for n in ("a", "b")])
+        a.next_calls([])
+        req = client.requests[0]
+        self.assertEqual(req["cache_control"], {"type": "ephemeral"})
+        self.assertNotIn("cache_control", req["tools"][0])
+        self.assertEqual(req["tools"][1]["cache_control"], {"type": "ephemeral"})
+        self.assertEqual((a.usage["input_tokens"], a.usage["cache_creation_input_tokens"],
+                          a.usage["cache_read_input_tokens"]), (743, 40, 700))
+        self.assertEqual(a.requests[0]["input_tokens"], 743)
 
     def test_context_log_is_opt_in(self):
         client = StubClient([resp("end_turn", block(type="text", text="done"))])

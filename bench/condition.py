@@ -23,7 +23,8 @@ the same `bmb`, records the request bodies through the real adapters
 (`model_api.OpenAIAgent`, `anthropic_agent.AnthropicAgent`) with a fake
 transport, and compares them and the result rows. Fields the later harness
 adds are allowed; changed or missing fields, and `*_seconds` timings aside,
-are not. The report (`bench/conditions/BASE-HEAD.json`) is the evidence a run
+are not; prompt caching (its markers and token counts, ADR-0093) is not part of
+the condition. The report (`bench/conditions/BASE-HEAD.json`) is the evidence a run
 made with `run_models.py --same-as BASE` refers to.
 
 `build` makes `target/conditions/COMMIT/bmb` from a temporary worktree with
@@ -242,6 +243,20 @@ def normalize(text, tree):
     return re.sub(re.escape(tempfile.gettempdir()) + r"/[^/\"\\\s]+", "<tmp>", text)
 
 
+CACHE_KEYS = ("cache_control", "cache_creation_input_tokens", "cache_read_input_tokens")
+
+
+def without_cache(x):
+    """Prompt caching (ADR-0093) sets the price of a request, not what the
+    model is shown or how the result is judged: its markers in the request
+    bodies and its token counts in the rows are not part of the condition."""
+    if isinstance(x, dict):
+        return {k: without_cache(v) for k, v in x.items() if k not in CACHE_KEYS}
+    if isinstance(x, list):
+        return [without_cache(v) for v in x]
+    return x
+
+
 def result_rows(path):
     rows = {}
     with open(path) as f:
@@ -257,9 +272,9 @@ def compare(base_out, base_tree, head_out, head_tree):
     """Differences (strings) between two probe runs; empty when equivalent."""
     diffs = []
     with open(base_out + ".bodies.json") as f:
-        a = json.loads(normalize(f.read(), base_tree))
+        a = without_cache(json.loads(normalize(f.read(), base_tree)))
     with open(head_out + ".bodies.json") as f:
-        b = json.loads(normalize(f.read(), head_tree))
+        b = without_cache(json.loads(normalize(f.read(), head_tree)))
     for tid in sorted(set(a) | set(b)):
         x, y = a.get(tid, []), b.get(tid, [])
         if len(x) != len(y):
@@ -270,8 +285,8 @@ def compare(base_out, base_tree, head_out, head_tree):
                 keys = sorted(k for k in set(p) | set(q) if p.get(k) != q.get(k))
                 diffs.append(f"{tid}: request {i + 1} differs in {keys}")
                 break
-    ra = json.loads(normalize(json.dumps(result_rows(base_out)), base_tree))
-    rb = json.loads(normalize(json.dumps(result_rows(head_out)), head_tree))
+    ra = without_cache(json.loads(normalize(json.dumps(result_rows(base_out)), base_tree)))
+    rb = without_cache(json.loads(normalize(json.dumps(result_rows(head_out)), head_tree)))
     for tid in sorted(set(ra) | set(rb)):
         if tid not in ra or tid not in rb:
             diffs.append(f"{tid}: result row only in {'head' if tid in rb else 'base'}")

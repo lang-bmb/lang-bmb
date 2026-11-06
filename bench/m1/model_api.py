@@ -28,7 +28,9 @@ tell these sessions apart.
 The gateway's spend cap (HTTP 402 `cap_reached`) is not an answer about the
 session: it raises `CapReached`, which no agent catches, so the run stops
 without writing that session's row and resumes from it once the cap resets
-(backlog INF-23, ADR-0088).
+(backlog INF-23, ADR-0088). A refused credential (HTTP 401 or 403: an unknown
+or not yet active service key) is the same kind of stop, `Unauthenticated`
+(backlog INF-28).
 """
 import http.client
 import json
@@ -158,9 +160,18 @@ def fold_anthropic(events):
     return msg
 
 
-class CapReached(Exception):
-    """The gateway's spend cap: the run stops, the session is not recorded
-    (not a `RuntimeError`, which ends a session as `api_error`)."""
+class GatewayStop(Exception):
+    """The gateway refuses the run, not the session: the run stops and the
+    session is not recorded (not a `RuntimeError`, which ends a session as
+    `api_error`). No agent catches it."""
+
+
+class CapReached(GatewayStop):
+    """The gateway's spend cap (ADR-0088)."""
+
+
+class Unauthenticated(GatewayStop):
+    """The gateway does not accept the credential (INF-28)."""
 
 
 def post_json(url, body, headers, stats=None, timeout=TIMEOUT, retries=RETRIES, fold=None):
@@ -179,6 +190,8 @@ def post_json(url, body, headers, stats=None, timeout=TIMEOUT, retries=RETRIES, 
             text = e.read()[:500]
             if e.code == 402 and b"cap_reached" in text:
                 raise CapReached(f"{url}: HTTP 402: {text!r}") from None
+            if e.code in (401, 403):
+                raise Unauthenticated(f"{url}: HTTP {e.code}: {text!r}") from None
             if e.code != 429 and e.code < 500 or attempt == retries:
                 raise RuntimeError(f"{url}: HTTP {e.code}: {text!r}") from None
         except (OSError, http.client.HTTPException, StreamCut) as e:  # connection, TLS, cut stream

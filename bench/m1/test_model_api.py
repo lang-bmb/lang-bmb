@@ -134,6 +134,22 @@ class ApiErrors(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 model_api.post_json("http://x", {}, {}, retries=0)
 
+    def test_a_refused_key_stops_the_run(self):
+        # HTTP 401 (2026-11-06: a service key not yet active) answered every
+        # session in two minutes and was recorded as failures (INF-28).
+        import io
+        import urllib.error
+        body = b'{"type":"error","error":{"type":"unauthenticated","message":"The service key is not known."}}'
+        for code in (401, 403):
+            def refused(*_a, **_k):
+                raise urllib.error.HTTPError("http://x", code, "Unauthorized", {}, io.BytesIO(body))
+            with mock.patch.object(model_api.urllib.request, "urlopen", side_effect=refused):
+                agent = OpenAIAgent("m", "s", "t", base="http://x")
+                agent.set_tools([])
+                with self.assertRaises(model_api.Unauthenticated):
+                    agent.next_calls([])
+                self.assertIsNone(agent.stop)
+
 
 class Streams(unittest.TestCase):
     def test_fold_openai(self):

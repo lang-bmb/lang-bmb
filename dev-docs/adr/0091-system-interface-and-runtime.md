@@ -1,6 +1,6 @@
 # ADR-0091: 시스템 인터페이스와 런타임
 
-- 상태: 제안 (백로그 4C-03 초안, 채택은 4C-01 승인)
+- 상태: 채택 (2026-11-06, 사람 승인으로 4C-01 완료. 초안은 4C-03)
 - 날짜: 2026-11-05
 - 관련: ADR-0029(탈출구와 신뢰 수준), ADR-0030(효과 `io`·`nondet`), ADR-0037(자립), ADR-0050(문자열), `dev-docs/measurements/selfhost-gap.md` §3.4·§5.3, `selfhost-port-map.md` §4, ROADMAP "언어 전체 수순" ③
 
@@ -9,12 +9,12 @@
 - 생성 바이너리는 출력만 한다(`print_i64`·`print_u64`·`print_bytes`·`print_str`·`print_f64`, libc의 `printf`·`fwrite`·`fflush`, 힙은 `malloc`·`realloc`·`free`). **입력이 없다.** 모든 실행 프로그램은 데이터를 소스에 담는다.
 - 컴파일러(stage0)가 쓰는 외부 접촉은 격차 분석 §3.4에 다 있다: 소스 읽기(디렉터리 목록·UTF-8 검증), 원자적 쓰기(임시 파일 + 이름 바꾸기), 대화형 파이프가 있는 Z3, 출력을 받는 clang·`--version`, 명령줄 인자·종료 코드 0·1·2, 표준 입력 한 줄·전체, 표준 오류, 환경 변수 하나(`BMB_Z3_RLIMIT`), 단조 시계(Z3 재사용 창), 256MiB 스택, 그리고 출력 바이트에 들어가는 `io::Error` 문구(`strerror` + ` (os error N)`). 4D 포팅(P0)과 부트스트랩 1단은 이것 없이는 시작하지 못한다.
 
-## 결정 (제안)
+## 결정
 
 1. **닫힌 내장 목록, FFI 없음.** 시스템 접촉은 컴파일러가 아는 내장 함수뿐이다(지금의 `print_*`와 같은 방식). 사용자가 선언하는 `extern` 함수는 없다(바인딩은 5E, 원칙 4·6 입증 뒤). 내장의 구현은 생성 IR에 함께 들어가는 런타임(LLVM IR 텍스트, libc 위)이다: C 파일도 별도 라이브러리도 없다(S3 "libc 밖 런타임 0" 유지).
 2. **Rust의 이름, BMB에 맞는 시그니처.** 경로와 이름은 Rust 표준 라이브러리를 따른다(S1, ADR-0050 §2와 같은 원칙). Rust가 반복자·빌더·트레이트 객체를 쓰는 곳만 BMB 꼴로 바꾸고 그 차이를 습관 진단으로 안내한다.
 
-   | 영역 | 내장 (제안) | Rust와의 차이 |
+   | 영역 | 내장 | Rust와의 차이 |
    | --- | --- | --- |
    | 파일 | `std::fs::read(p: &str) -> Result<Vec<u8>, io::Error>`, `read_to_string`, `write(p, data: &[u8])`, `rename`, `remove_file`, `create_dir_all`, `read_dir(p) -> Result<Vec<String>, io::Error>`(이름, 바이트순 정렬) | `read_dir`은 반복자 대신 정렬된 이름(결정론), 경로는 `&str` |
    | 표준 입출력 | `std::io::read_line(buf: &mut String) -> Result<usize, io::Error>`, `std::io::read_to_end(buf: &mut Vec<u8>)`, `eprint_str(s: &str)`, `flush()` | `stdin().read_line` 사슬 대신 함수 |
@@ -31,7 +31,7 @@
 
 | 안 | 판정 |
 | --- | --- |
-| **닫힌 내장 목록 + IR 런타임(제안)** | 컴파일러 하나·도구 결정론·작은 TCB. 셀프호스팅에 필요한 접촉 전부(§3.4)를 덮고, 바인딩 없는 단계와 맞는다 |
+| **닫힌 내장 목록 + IR 런타임(채택)** | 컴파일러 하나·도구 결정론·작은 TCB. 셀프호스팅에 필요한 접촉 전부(§3.4)를 덮고, 바인딩 없는 단계와 맞는다 |
 | 일반 FFI(`extern "C"` + `external_body`) | 포인터·수명·ABI 표면이 언어에 들어온다. 생태계 단계(5E)의 결정이고 지금 수요는 고정된 목록이다 |
 | C로 쓴 런타임 라이브러리 | 두 번째 구현 언어와 빌드 단계가 생긴다(S3). IR 텍스트면 같은 `clang` 한 번으로 링크된다 |
 | Rust 시그니처 그대로(`Command`, `impl Iterator`) | 빌더·반복자·트레이트 객체가 없는 언어라 표면만 비슷하고 쓸 수 없다. 이름만 따르고 꼴은 바꾼다 |
