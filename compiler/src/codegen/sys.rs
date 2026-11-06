@@ -118,14 +118,6 @@ const ARGS_BAD: &str = "bmb: a command-line argument is not valid UTF-8\n";
 const STDIN: &str = "@stdin = external global ptr
 declare i32 @fgetc(ptr)
 declare i32 @ferror(ptr)
-declare ptr @__errno_location()
-define internal i64 @bmb_stdin_errno() {
-  %ep = call ptr @__errno_location()
-  %e = load i32, ptr %ep
-  %w = sext i32 %e to i64
-  %neg = sub i64 -1, %w
-  ret i64 %neg
-}
 define internal i1 @bmb_stdin_closed() {
   %ep = call ptr @__errno_location()
   %e = load i32, ptr %ep
@@ -168,7 +160,7 @@ which:
   %closed = call i1 @bmb_stdin_closed()
   br i1 %closed, label %check, label %os
 os:
-  %ec = call i64 @bmb_stdin_errno()
+  %ec = call i64 @bmb_errno()
   %olen = load i64, ptr %lp
   %on = sub nuw i64 %olen, %start
   %obuf = load ptr, ptr %h
@@ -228,7 +220,7 @@ which:
   %closed = call i1 @bmb_stdin_closed()
   br i1 %closed, label %done, label %os
 os:
-  %ec = call i64 @bmb_stdin_errno()
+  %ec = call i64 @bmb_errno()
   ret i64 %ec
 done:
   %len3 = load i64, ptr %lp
@@ -237,24 +229,215 @@ done:
 }
 ";
 
-/// The message of an `std::io::Error` (Rust's `Display`): for an OS error
-/// `strerror` and ` (os error N)`, for a line that is not UTF-8 Rust's own
-/// text. Written into the `String` header at `h`.
-const IO_MESSAGE: &str = "declare ptr @strerror(i32)
+/// Files (ADR-0091 §2, slice (b)): `bmb_rt_fs_read` reads the file at the
+/// path into the `Vec<u8>` at `out`, `bmb_rt_fs_read_to_string` also checks
+/// UTF-8 (Rust's `fs::read_to_string`), `bmb_rt_fs_write` creates or truncates
+/// the file (mode 0o666 under the umask, as Rust's `File::create`) and
+/// writes every byte. Reads and writes retry on `EINTR` as Rust's do. A
+/// path is copied with a NUL at its end; a path that holds a NUL byte is
+/// Rust's `InvalidInput` error (code 1000 here, 0 in the `io::Error`). Each
+/// returns 0, or `-1 - code`. Needs the heap and `Vec` runtimes and
+/// `bmb_utf8_valid`.
+const FS: &str = "declare i32 @open(ptr, i32, ...)
+declare i64 @read(i32, ptr, i64)
+declare i64 @write(i32, ptr, i64)
+declare i32 @close(i32)
+declare ptr @memchr(ptr, i32, i64)
+define internal ptr @bmb_cpath(ptr %p, i64 %n) {
+entry:
+  %empty = icmp eq i64 %n, 0
+  br i1 %empty, label %copy, label %scan
+scan:
+  %nul = call ptr @memchr(ptr %p, i32 0, i64 %n)
+  %has = icmp ne ptr %nul, null
+  br i1 %has, label %bad, label %copy
+bad:
+  ret ptr null
+copy:
+  %sz = add nuw i64 %n, 1
+  %c = call ptr @bmb_box_alloc(i64 %sz)
+  call void @llvm.memcpy.p0.p0.i64(ptr %c, ptr %p, i64 %n, i1 false)
+  %end = getelementptr inbounds i8, ptr %c, i64 %n
+  store i8 0, ptr %end
+  ret ptr %c
+}
+define internal i64 @bmb_fd_read_all(i32 %fd, ptr %h) {
+entry:
+  %lp = getelementptr inbounds %bmb.vec, ptr %h, i32 0, i32 1
+  %cp = getelementptr inbounds %bmb.vec, ptr %h, i32 0, i32 2
+  br label %next
+next:
+  %len = load i64, ptr %lp
+  %cap = load i64, ptr %cp
+  %full = icmp eq i64 %len, %cap
+  br i1 %full, label %grow, label %read
+grow:
+  call void @bmb_vec_grow(ptr %h, i64 1)
+  br label %read
+read:
+  %len1 = load i64, ptr %lp
+  %cap1 = load i64, ptr %cp
+  %room = sub nuw i64 %cap1, %len1
+  %buf = load ptr, ptr %h
+  %at = getelementptr inbounds i8, ptr %buf, i64 %len1
+  %got = call i64 @read(i32 %fd, ptr %at, i64 %room)
+  %fail = icmp slt i64 %got, 0
+  br i1 %fail, label %error, label %some
+error:
+  %intr = call i1 @bmb_interrupted()
+  br i1 %intr, label %next, label %os
+os:
+  %r = call i64 @bmb_errno()
+  ret i64 %r
+some:
+  %none = icmp eq i64 %got, 0
+  br i1 %none, label %done, label %more
+more:
+  %len2 = add nuw i64 %len1, %got
+  store i64 %len2, ptr %lp
+  br label %next
+done:
+  ret i64 0
+}
+define internal i64 @bmb_rt_fs_read(ptr %out, ptr %p, i64 %n) {
+entry:
+  call void @bmb_vec_alloc(ptr %out, i64 0, i64 1)
+  %c = call ptr @bmb_cpath(ptr %p, i64 %n)
+  %nul = icmp eq ptr %c, null
+  br i1 %nul, label %badpath, label %open
+badpath:
+  ret i64 -1001
+open:
+  %fd = call i32 (ptr, i32, ...) @open(ptr %c, i32 524288)
+  %fail = icmp slt i32 %fd, 0
+  br i1 %fail, label %oserr, label %go
+oserr:
+  %e = call i64 @bmb_errno()
+  call void @free(ptr %c)
+  ret i64 %e
+go:
+  call void @free(ptr %c)
+  %r = call i64 @bmb_fd_read_all(i32 %fd, ptr %out)
+  call i32 @close(i32 %fd)
+  %bad = icmp slt i64 %r, 0
+  br i1 %bad, label %drop, label %ok
+drop:
+  %b = load ptr, ptr %out
+  call void @free(ptr %b)
+  ret i64 %r
+ok:
+  ret i64 0
+}
+define internal i64 @bmb_rt_fs_read_to_string(ptr %out, ptr %p, i64 %n) {
+entry:
+  %r = call i64 @bmb_rt_fs_read(ptr %out, ptr %p, i64 %n)
+  %bad = icmp slt i64 %r, 0
+  br i1 %bad, label %fail, label %check
+fail:
+  ret i64 %r
+check:
+  %buf = load ptr, ptr %out
+  %lp = getelementptr inbounds %bmb.vec, ptr %out, i32 0, i32 1
+  %len = load i64, ptr %lp
+  %valid = call i1 @bmb_utf8_valid(ptr %buf, i64 %len)
+  br i1 %valid, label %ok, label %invalid
+invalid:
+  call void @free(ptr %buf)
+  ret i64 -1
+ok:
+  ret i64 0
+}
+define internal i64 @bmb_rt_fs_write(ptr %p, i64 %n, ptr %d, i64 %dn) {
+entry:
+  %c = call ptr @bmb_cpath(ptr %p, i64 %n)
+  %nul = icmp eq ptr %c, null
+  br i1 %nul, label %badpath, label %open
+badpath:
+  ret i64 -1001
+open:
+  %fd = call i32 (ptr, i32, ...) @open(ptr %c, i32 524865, i32 438)
+  %fail = icmp slt i32 %fd, 0
+  br i1 %fail, label %oserr, label %go
+oserr:
+  %e = call i64 @bmb_errno()
+  call void @free(ptr %c)
+  ret i64 %e
+go:
+  call void @free(ptr %c)
+  br label %next
+next:
+  %off = phi i64 [0, %go], [%off, %again], [%off1, %wrote]
+  %left = sub nuw i64 %dn, %off
+  %more = icmp ugt i64 %left, 0
+  br i1 %more, label %put, label %done
+put:
+  %at = getelementptr inbounds i8, ptr %d, i64 %off
+  %w = call i64 @write(i32 %fd, ptr %at, i64 %left)
+  %wfail = icmp slt i64 %w, 0
+  br i1 %wfail, label %error, label %wrote
+error:
+  %intr = call i1 @bmb_interrupted()
+  br i1 %intr, label %again, label %os
+again:
+  br label %next
+os:
+  %r = call i64 @bmb_errno()
+  call i32 @close(i32 %fd)
+  ret i64 %r
+wrote:
+  %off1 = add nuw i64 %off, %w
+  br label %next
+done:
+  call i32 @close(i32 %fd)
+  ret i64 0
+}
+";
+
+/// What every input and output built-in shares: `errno` as a result code,
+/// whether the last failure was `EINTR`, and the message of an
+/// `std::io::Error` (Rust's `Display`): `strerror` and ` (os error N)` for
+/// an OS error, Rust's own text for invalid UTF-8 (code 0) and for a path
+/// with a NUL byte (code 1000).
+const IO_COMMON: &str = "declare ptr @__errno_location()
+define internal i64 @bmb_errno() {
+  %ep = call ptr @__errno_location()
+  %e = load i32, ptr %ep
+  %w = sext i32 %e to i64
+  %neg = sub i64 -1, %w
+  ret i64 %neg
+}
+define internal i1 @bmb_interrupted() {
+  %ep = call ptr @__errno_location()
+  %e = load i32, ptr %ep
+  %i = icmp eq i32 %e, 4
+  ret i1 %i
+}
+declare ptr @strerror(i32)
 declare i32 @snprintf(ptr, i64, ptr, ...)
 @bmb.os_error = private unnamed_addr constant [17 x i8] c\"%s (os error %d)\\00\"
 @bmb.not_utf8 = private unnamed_addr constant [34 x i8] c\"stream did not contain valid UTF-8\"
+@bmb.nul_path = private unnamed_addr constant [42 x i8] c\"file name contained an unexpected NUL byte\"
+define internal void @bmb_io_text(ptr %h, ptr %t, i64 %n) {
+  call void @bmb_vec_alloc(ptr %h, i64 %n, i64 1)
+  %b = load ptr, ptr %h
+  call void @llvm.memcpy.p0.p0.i64(ptr %b, ptr %t, i64 %n, i1 false)
+  %lp = getelementptr inbounds %bmb.vec, ptr %h, i32 0, i32 1
+  store i64 %n, ptr %lp
+  ret void
+}
 define internal void @bmb_io_message(ptr %h, i64 %code) {
 entry:
   %tmp = alloca [160 x i8]
-  %lp = getelementptr inbounds %bmb.vec, ptr %h, i32 0, i32 1
   %z = icmp eq i64 %code, 0
-  br i1 %z, label %utf, label %os
+  br i1 %z, label %utf, label %notutf
 utf:
-  call void @bmb_vec_alloc(ptr %h, i64 34, i64 1)
-  %ub = load ptr, ptr %h
-  call void @llvm.memcpy.p0.p0.i64(ptr %ub, ptr @bmb.not_utf8, i64 34, i1 false)
-  store i64 34, ptr %lp
+  call void @bmb_io_text(ptr %h, ptr @bmb.not_utf8, i64 34)
+  ret void
+notutf:
+  %np = icmp eq i64 %code, 1000
+  br i1 %np, label %nul, label %os
+nul:
+  call void @bmb_io_text(ptr %h, ptr @bmb.nul_path, i64 42)
   ret void
 os:
   %c32 = trunc i64 %code to i32
@@ -263,63 +446,165 @@ os:
   %w64 = sext i32 %w to i64
   %over = icmp ugt i64 %w64, 159
   %n = select i1 %over, i64 159, i64 %w64
-  call void @bmb_vec_alloc(ptr %h, i64 %n, i64 1)
-  %ob = load ptr, ptr %h
-  call void @llvm.memcpy.p0.p0.i64(ptr %ob, ptr %tmp, i64 %n, i1 false)
-  store i64 %n, ptr %lp
+  call void @bmb_io_text(ptr %h, ptr %tmp, i64 %n)
   ret void
 }
 ";
 
-/// The `Result<usize, std::io::Error>` of an input built-in, from what its
-/// runtime returned (`n`, or `-1 - errno`): the wrappers `bmb_read_line`
-/// and `bmb_read_to_end` the program calls, with the program's own LLVM
-/// names of the result and error types.
-pub(super) fn io_wrappers(result: &TypeKind, tb: &Tables) -> String {
-    let vs = enum_variants(result, tb).expect("`Result` of an input built-in");
-    let tag = |v: &str| vs.iter().position(|(n, _)| n == v).expect("variant");
+/// What an input or output built-in's runtime gives on success.
+#[derive(Clone, Copy, PartialEq)]
+enum Payload {
+    /// The returned count is the value (`usize`).
+    Count,
+    /// The runtime writes the value (a `Vec<u8>` or `String` header)
+    /// through its first argument.
+    Value,
+    /// `()`.
+    Unit,
+}
+
+/// The built-ins whose result is `Result<T, std::io::Error>`: path, the
+/// runtime function, its flattened parameters (as the call passes the
+/// built-in's arguments) and what it gives on success.
+const IO_BUILTINS: [(&str, &str, &[&str], Payload); 5] = [
+    (
+        "std::io::read_line",
+        "bmb_stdin_line",
+        &["ptr"],
+        Payload::Count,
+    ),
+    (
+        "std::io::read_to_end",
+        "bmb_stdin_all",
+        &["ptr"],
+        Payload::Count,
+    ),
+    (
+        "std::fs::read",
+        "bmb_rt_fs_read",
+        &["ptr", "i64"],
+        Payload::Value,
+    ),
+    (
+        "std::fs::read_to_string",
+        "bmb_rt_fs_read_to_string",
+        &["ptr", "i64"],
+        Payload::Value,
+    ),
+    (
+        "std::fs::write",
+        "bmb_rt_fs_write",
+        &["ptr", "i64", "ptr", "i64"],
+        Payload::Unit,
+    ),
+];
+
+/// Whether `path` is an input or output built-in (its call goes through
+/// `wrapper`).
+pub(super) fn is_io(path: &str) -> bool {
+    IO_BUILTINS.iter().any(|(p, ..)| *p == path)
+}
+
+/// The function a call of the input or output built-in `path` calls:
+/// `@bmb_io_read_line`, `@bmb_fs_read`, ..
+pub(super) fn wrapper(path: &str) -> String {
+    format!(
+        "@bmb_{}",
+        path.trim_start_matches("std::").replace("::", "_")
+    )
+}
+
+/// The input and output runtime `ir` calls: each wrapper builds its
+/// `Result` (with the program's own LLVM names of the result and error
+/// types) from what its runtime returned (`n`, or `-1 - code`).
+pub(super) fn io_runtime(ir: &str, tb: &Tables) -> String {
+    let used: Vec<_> = IO_BUILTINS
+        .iter()
+        .filter(|(p, ..)| ir.contains(&format!("{}(", wrapper(p))))
+        .collect();
+    if used.is_empty() {
+        return String::new();
+    }
     let err_ty = data_ty(&crate::check::io_error());
     let mut out = format!(
-        "define internal void @bmb_io_result(ptr %out, i64 %r) {{
-entry:
-  %tag = getelementptr inbounds {res}, ptr %out, i32 0, i32 0
-  %neg = icmp slt i64 %r, 0
-  br i1 %neg, label %err, label %ok
-ok:
-  store i64 {ok}, ptr %tag
-  %v = getelementptr inbounds {okv}, ptr %out, i32 0, i32 1
-  store i64 %r, ptr %v
-  ret void
-err:
-  store i64 {err}, ptr %tag
-  %e = getelementptr inbounds {errv}, ptr %out, i32 0, i32 1
-  %code = sub i64 -1, %r
-  %c32 = trunc i64 %code to i32
+        "define internal void @bmb_io_error(ptr %e, i64 %code) {{
+  %os = icmp ult i64 %code, 1000
+  %kept = select i1 %os, i64 %code, i64 0
+  %c32 = trunc i64 %kept to i32
   %cp = getelementptr inbounds {err_ty}, ptr %e, i32 0, i32 0
   store i32 %c32, ptr %cp
   %mp = getelementptr inbounds {err_ty}, ptr %e, i32 0, i32 1
   call void @bmb_io_message(ptr %mp, i64 %code)
   ret void
 }}
-",
-        res = data_ty(result),
-        ok = tag("Ok"),
-        okv = view_ty(result, "Ok"),
-        err = tag("Err"),
-        errv = view_ty(result, "Err"),
+"
     );
-    for (name, inner) in [("read_line", "line"), ("read_to_end", "all")] {
+    for (path, runtime, params, payload) in &used {
+        let result = &tb.fns[*path].ret;
+        let vs = enum_variants(result, tb).expect("`Result` of an input or output built-in");
+        let tag = |v: &str| vs.iter().position(|(n, _)| n == v).expect("variant");
+        let ok_ty = vs[tag("Ok")].1[0].clone();
+        let decl: Vec<String> = params
+            .iter()
+            .enumerate()
+            .map(|(i, t)| format!("{t} %a{i}"))
+            .collect();
+        let mut args = decl.clone();
+        let (pay, store) = match payload {
+            Payload::Value => {
+                args.insert(0, "ptr %pay".into());
+                let m = mem_ty(&ok_ty);
+                (
+                    format!("  %pay = alloca {m}\n"),
+                    format!(
+                        "  %v = getelementptr inbounds {okv}, ptr %out, i32 0, i32 1\n  %x = load {m}, ptr %pay\n  store {m} %x, ptr %v\n",
+                        okv = view_ty(result, "Ok")
+                    ),
+                )
+            }
+            Payload::Count => (
+                String::new(),
+                format!(
+                    "  %v = getelementptr inbounds {okv}, ptr %out, i32 0, i32 1\n  store i64 %r, ptr %v\n",
+                    okv = view_ty(result, "Ok")
+                ),
+            ),
+            Payload::Unit => (String::new(), String::new()),
+        };
         let _ = write!(
             out,
-            "define internal void @bmb_{name}(ptr %out, ptr %h) {{
-  %r = call i64 @bmb_stdin_{inner}(ptr %h)
-  call void @bmb_io_result(ptr %out, i64 %r)
+            "define internal void {w}(ptr %out, {decl}) {{
+entry:
+{pay}  %r = call i64 @{runtime}({args})
+  %tag = getelementptr inbounds {res}, ptr %out, i32 0, i32 0
+  %neg = icmp slt i64 %r, 0
+  br i1 %neg, label %err, label %ok
+ok:
+  store i64 {ok}, ptr %tag
+{store}  ret void
+err:
+  store i64 {err}, ptr %tag
+  %e = getelementptr inbounds {errv}, ptr %out, i32 0, i32 1
+  %code = sub i64 -1, %r
+  call void @bmb_io_error(ptr %e, i64 %code)
   ret void
 }}
-"
+",
+            w = wrapper(path),
+            decl = decl.join(", "),
+            args = args.join(", "),
+            res = data_ty(result),
+            ok = tag("Ok"),
+            err = tag("Err"),
+            errv = view_ty(result, "Err"),
         );
     }
-    out.push_str(STDIN);
-    out.push_str(IO_MESSAGE);
+    if used.iter().any(|(p, ..)| p.starts_with("std::io::")) {
+        out.push_str(STDIN);
+    }
+    if used.iter().any(|(p, ..)| p.starts_with("std::fs::")) {
+        out.push_str(FS);
+    }
+    out.push_str(IO_COMMON);
     out
 }

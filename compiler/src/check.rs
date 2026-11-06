@@ -898,6 +898,34 @@ fn system_builtins() -> Vec<(&'static str, Vec<TypeKind>, TypeKind, Effects)> {
             io_result(TypeKind::Int(IntTy::Usize)),
             Effects::ALLOC.union(Effects::IO).union(Effects::NONDET),
         ),
+        // Slice (b), files: `std::fs::read(path)` the bytes of a file,
+        // `read_to_string(path)` its text (an error if it is not UTF-8),
+        // `write(path, data)` creates or truncates it and writes `data`.
+        (
+            "std::fs::read",
+            vec![text::str_ref()],
+            io_result(TypeKind::Vec(mk(TypeKind::Int(IntTy::U8)))),
+            Effects::ALLOC.union(Effects::IO).union(Effects::NONDET),
+        ),
+        (
+            "std::fs::read_to_string",
+            vec![text::str_ref()],
+            io_result(TypeKind::String),
+            Effects::ALLOC.union(Effects::IO).union(Effects::NONDET),
+        ),
+        (
+            "std::fs::write",
+            vec![
+                text::str_ref(),
+                TypeKind::Ref {
+                    mutable: false,
+                    inner: mk(TypeKind::Slice(mk(TypeKind::Int(IntTy::U8)))),
+                },
+            ],
+            io_result(TypeKind::Unit),
+            // An error's message is a new `String`.
+            Effects::ALLOC.union(Effects::IO),
+        ),
     ]
 }
 

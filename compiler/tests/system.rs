@@ -298,3 +298,134 @@ fn input_reads_as_rust_reads() {
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Reads the file named by the first argument as bytes and as text, reads
+/// a path with a NUL byte, writes the second argument's file and reads it
+/// back: the same program in Rust is `FILES_REF`.
+const FILES: &str = r#"#[summary("files")]
+mod app {
+    #[effects(alloc, io, nondet)]
+    fn main() -> () {
+        let a: Vec<String> = std::env::args();
+        if a.len() < 3 {
+            std::process::exit(2);
+        }
+        match std::fs::read(a[1].as_str()) {
+            Ok(b) => {
+                print_u64(u64::try_from(b.len()).unwrap());
+            }
+            Err(e) => {
+                print_i64(i64::try_from(e.code).unwrap());
+                print_str(e.message.as_str());
+                print_str("\n");
+            }
+        }
+        match std::fs::read_to_string(a[1].as_str()) {
+            Ok(t) => {
+                print_str(t.as_str());
+                print_str("|\n");
+            }
+            Err(e2) => {
+                print_i64(i64::try_from(e2.code).unwrap());
+                print_str(e2.message.as_str());
+                print_str("\n");
+            }
+        }
+        match std::fs::read("a\0b") {
+            Ok(b2) => {
+                print_str("read a NUL path\n");
+            }
+            Err(e3) => {
+                print_i64(i64::try_from(e3.code).unwrap());
+                print_str(e3.message.as_str());
+                print_str("\n");
+            }
+        }
+        match std::fs::write(a[2].as_str(), b"one\ntwo\n") {
+            Ok(u) => {
+                print_str("written\n");
+            }
+            Err(e4) => {
+                print_i64(i64::try_from(e4.code).unwrap());
+                print_str(e4.message.as_str());
+                print_str("\n");
+            }
+        }
+        match std::fs::read_to_string(a[2].as_str()) {
+            Ok(t2) => {
+                print_str(t2.as_str());
+            }
+            Err(e5) => {
+                print_str(e5.message.as_str());
+                print_str("\n");
+            }
+        }
+    }
+}
+"#;
+
+const FILES_REF: &str = r#"fn err(e: std::io::Error) {
+    println!("{}", e.raw_os_error().unwrap_or(0));
+    println!("{e}");
+}
+fn main() {
+    let a: Vec<String> = std::env::args().collect();
+    match std::fs::read(&a[1]) {
+        Ok(b) => println!("{}", b.len()),
+        Err(e) => err(e),
+    }
+    match std::fs::read_to_string(&a[1]) {
+        Ok(t) => println!("{t}|"),
+        Err(e) => err(e),
+    }
+    match std::fs::read("a\0b") {
+        Ok(_) => println!("read a NUL path"),
+        Err(e) => err(e),
+    }
+    match std::fs::write(&a[2], b"one\ntwo\n") {
+        Ok(()) => println!("written"),
+        Err(e) => err(e),
+    }
+    match std::fs::read_to_string(&a[2]) {
+        Ok(t) => print!("{t}"),
+        Err(e) => println!("{e}"),
+    }
+}
+"#;
+
+/// Files (ADR-0091 §2, slice (b)), byte for byte against the Rust program
+/// built by rustc: a file, text that is not UTF-8, a missing file, a
+/// directory, a path with a NUL byte, writing into a missing directory.
+#[test]
+fn files_read_and_write_as_rust_does() {
+    let dir = cli::fresh_dir();
+    let rs = dir.join("r.rs");
+    std::fs::write(&rs, FILES_REF).unwrap();
+    let rexe = dir.join("r");
+    let built = Command::new("rustc")
+        .args(["-O", "-o"])
+        .arg(&rexe)
+        .arg(&rs)
+        .output()
+        .unwrap();
+    assert!(built.status.success(), "{}", text(&built.stderr));
+    let bexe = dir.join("b");
+    let out = cli::emit(&one(FILES), false);
+    assert!(out.ok, "{}", out.output);
+    cli::build(&out.ir.unwrap(), &bexe).unwrap();
+    std::fs::write(dir.join("text"), "héllo\nworld").unwrap();
+    std::fs::write(dir.join("bytes"), b"ok\xff\xfe").unwrap();
+    let d = |n: &str| dir.join(n).display().to_string();
+    for (read, write) in [
+        (d("text"), d("w1")),
+        (d("bytes"), d("w2")),
+        (d("missing"), d("nodir/w3")),
+        (dir.display().to_string(), d("w4")),
+    ] {
+        let r = Command::new(&rexe).args([&read, &write]).output().unwrap();
+        let b = Command::new(&bexe).args([&read, &write]).output().unwrap();
+        assert_eq!(text(&b.stdout), text(&r.stdout), "{read} {write}");
+        assert_eq!(b.status.code(), r.status.code());
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}

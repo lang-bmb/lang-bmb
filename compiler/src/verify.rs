@@ -6134,6 +6134,9 @@ impl<'p, 'q> Enc<'p, 'q> {
                         | "std::env::args"
                         | "std::io::read_line"
                         | "std::io::read_to_end"
+                        | "std::fs::read"
+                        | "std::fs::read_to_string"
+                        | "std::fs::write"
                 ),
                 "unresolved call in {}",
                 self.path
@@ -6149,14 +6152,11 @@ impl<'p, 'q> Enc<'p, 'q> {
                 let t = self.prog.t.fns[&target].ret.clone();
                 return self.fresh_val("args", &t);
             }
-            // Input (ADR-0091 §3): the buffer changes to a value of its type
-            // (any length, valid as the callee would leave it), as after a
-            // call with a `&mut` argument, and the result is any value of
-            // its type.
-            if matches!(
-                target.as_str(),
-                "std::io::read_line" | "std::io::read_to_end"
-            ) {
+            // Input and output (ADR-0091 §3): a buffer changes to a value
+            // of its type (any length, valid as the callee would leave it),
+            // as after a call with a `&mut` argument, and the result is any
+            // value of its type.
+            if target.starts_with("std::io::") || target.starts_with("std::fs::") {
                 let ptys = self.prog.t.fns[&target].params.clone();
                 for (i, pt) in ptys.iter().enumerate() {
                     if let TypeKind::Ref { mutable: true, .. } = pt
