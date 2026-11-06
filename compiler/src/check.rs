@@ -875,7 +875,75 @@ fn system_builtins() -> Vec<(&'static str, Vec<TypeKind>, TypeKind, Effects)> {
             TypeKind::Vec(mk(TypeKind::String)),
             Effects::ALLOC.union(Effects::IO).union(Effects::NONDET),
         ),
+        // `std::io::read_line(buf)`: the next line of standard input, its
+        // `\n` included, appended to `buf`; `Ok(0)` at the end. Input that
+        // is not UTF-8 leaves `buf` as it was (Rust's `Stdin::read_line`).
+        (
+            "std::io::read_line",
+            vec![TypeKind::Ref {
+                mutable: true,
+                inner: mk(TypeKind::String),
+            }],
+            io_result(TypeKind::Int(IntTy::Usize)),
+            Effects::ALLOC.union(Effects::IO).union(Effects::NONDET),
+        ),
+        // `std::io::read_to_end(buf)`: the rest of standard input appended
+        // to `buf` (Rust's `Stdin::read_to_end`).
+        (
+            "std::io::read_to_end",
+            vec![TypeKind::Ref {
+                mutable: true,
+                inner: mk(TypeKind::Vec(mk(TypeKind::Int(IntTy::U8)))),
+            }],
+            io_result(TypeKind::Int(IntTy::Usize)),
+            Effects::ALLOC.union(Effects::IO).union(Effects::NONDET),
+        ),
     ]
+}
+
+/// `Result<T, std::io::Error>`.
+fn io_result(t: TypeKind) -> TypeKind {
+    TypeKind::Named {
+        path: vec!["Result".into()],
+        args: vec![
+            Type {
+                kind: t,
+                span: Span::default(),
+            },
+            Type {
+                kind: io_error(),
+                span: Span::default(),
+            },
+        ],
+    }
+}
+
+/// `std::io::Error` (ADR-0091 §2): a struct, where Rust has a type with
+/// methods (open question 1, decided with 2M).
+pub fn io_error() -> TypeKind {
+    TypeKind::Named {
+        path: vec!["std".into(), "io".into(), "Error".into()],
+        args: Vec::new(),
+    }
+}
+
+/// The system types (ADR-0091 §2): `std::io::Error { code, message }`.
+/// `code` is the OS error number (`errno`), 0 for an error that has none
+/// (invalid UTF-8); `message` is what Rust's `Display` writes for it
+/// (`strerror` and ` (os error N)`, or Rust's own text).
+fn system_types() -> BTreeMap<String, Adt> {
+    let path = "std::io::Error".to_string();
+    let adt = Adt {
+        path: path.clone(),
+        generics: Vec::new(),
+        kind: AdtKind::Struct(vec![
+            ("code".into(), TypeKind::Int(IntTy::I32)),
+            ("message".into(), TypeKind::String),
+        ]),
+        span: Span::default(),
+        inv: None,
+    };
+    BTreeMap::from([(path, adt)])
 }
 
 /// The help of E0402 for an array inside an array element (backlog 2B-14).
@@ -1019,7 +1087,7 @@ impl<'a> Checker<'a> {
         Checker {
             diags,
             fns,
-            adts: BTreeMap::new(),
+            adts: system_types(),
             imports: BTreeMap::new(),
             calls: BTreeMap::new(),
             types: BTreeMap::new(),

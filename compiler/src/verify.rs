@@ -6132,6 +6132,8 @@ impl<'p, 'q> Enc<'p, 'q> {
                         | "eprint_str"
                         | "std::process::exit"
                         | "std::env::args"
+                        | "std::io::read_line"
+                        | "std::io::read_to_end"
                 ),
                 "unresolved call in {}",
                 self.path
@@ -6146,6 +6148,33 @@ impl<'p, 'q> Enc<'p, 'q> {
             if target == "std::env::args" {
                 let t = self.prog.t.fns[&target].ret.clone();
                 return self.fresh_val("args", &t);
+            }
+            // Input (ADR-0091 §3): the buffer changes to a value of its type
+            // (any length, valid as the callee would leave it), as after a
+            // call with a `&mut` argument, and the result is any value of
+            // its type.
+            if matches!(
+                target.as_str(),
+                "std::io::read_line" | "std::io::read_to_end"
+            ) {
+                let ptys = self.prog.t.fns[&target].params.clone();
+                for (i, pt) in ptys.iter().enumerate() {
+                    if let TypeKind::Ref { mutable: true, .. } = pt
+                        && root_var(&args[i]).is_some()
+                    {
+                        let mut steps = Vec::new();
+                        let root = self.place(&args[i], &mut steps, false);
+                        let nv = self.fresh_val(&root, pt);
+                        self.assume_valid(&nv, pt);
+                        let cur = self.vars[&root].clone();
+                        let whole = self.set_at(cur, &steps, nv);
+                        self.bind_var(root, whole);
+                    }
+                }
+                let rt = self.prog.t.fns[&target].ret.clone();
+                let r = self.fresh_val(&format!("{target}.result"), &rt);
+                self.assume_valid(&r, &rt);
+                return r;
             }
             if target == "print_f64" && !self.ghost {
                 let d = argv[1].s();

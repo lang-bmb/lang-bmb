@@ -3240,6 +3240,10 @@ impl<'p> Gen<'p> {
             ("@bmb_eprint_bytes".to_string(), TypeKind::Unit)
         } else if target == "std::env::args" {
             ("@bmb_args".to_string(), self.t.fns[&target].ret.clone())
+        } else if let Some(name) = target.strip_prefix("std::io::") {
+            // `read_line`, `read_to_end` (ADR-0091 §2): a `Result` through
+            // the caller's memory.
+            (format!("@bmb_{name}"), self.t.fns[&target].ret.clone())
         } else if csub.is_empty() {
             (fn_sym(&target), self.t.fns[&target].ret.clone())
         } else {
@@ -3893,7 +3897,11 @@ pub fn emit_with(
     }
     // The system interface (ADR-0091 §4), each part when called; before
     // the text runtime, which it may call (`bmb_utf8_valid`).
-    let sys_runtime = sys::runtime(&ir);
+    let mut sys_runtime = sys::runtime(&ir);
+    if ir.contains("@bmb_read_line(") || ir.contains("@bmb_read_to_end(") {
+        let result = &t.fns["std::io::read_line"].ret;
+        sys_runtime.push_str(&sys::io_wrappers(result, t));
+    }
     ir.push_str(&sys_runtime);
     // Text (ADR-0050 §4), when used.
     if ir.contains("@bmb_str_cmp(") {

@@ -183,3 +183,118 @@ fn args_need_nondet_and_make_a_test_reason() {
     let (_, lint) = cli::run(&["lint"], &one(&wide));
     assert!(lint.contains("W0909") && lint.contains("nondet"), "{lint}");
 }
+
+/// Reads up to five lines, printing each result, then the rest of the
+/// input's length: the same program in Rust is `LINES_REF`.
+const LINES: &str = r#"#[summary("lines")]
+mod app {
+    #[effects(alloc, io, nondet)]
+    fn main() -> () {
+        let mut line: String = String::new();
+        for k in 0..5 {
+            match std::io::read_line(&mut line) {
+                Ok(n) => {
+                    print_u64(u64::try_from(n).unwrap());
+                    print_u64(u64::try_from(line.len()).unwrap());
+                }
+                Err(e) => {
+                    print_i64(i64::try_from(e.code).unwrap());
+                    print_str(e.message.as_str());
+                    print_str("\n");
+                    print_u64(u64::try_from(line.len()).unwrap());
+                }
+            }
+        }
+        let mut rest: Vec<u8> = Vec::new();
+        match std::io::read_to_end(&mut rest) {
+            Ok(got) => {
+                print_u64(u64::try_from(got).unwrap());
+            }
+            Err(why) => {
+                print_str(why.message.as_str());
+                print_str("\n");
+            }
+        }
+    }
+}
+"#;
+
+const LINES_REF: &str = r#"use std::io::{BufRead, Read};
+fn main() {
+    let stdin = std::io::stdin();
+    let mut h = stdin.lock();
+    let mut line = String::new();
+    for _ in 0..5 {
+        match h.read_line(&mut line) {
+            Ok(n) => {
+                println!("{n}");
+                println!("{}", line.len());
+            }
+            Err(e) => {
+                println!("{}", e.raw_os_error().unwrap_or(0));
+                println!("{e}");
+                println!("{}", line.len());
+            }
+        }
+    }
+    let mut rest = Vec::new();
+    match h.read_to_end(&mut rest) {
+        Ok(n) => println!("{n}"),
+        Err(e) => println!("{e}"),
+    }
+}
+"#;
+
+/// Standard input (ADR-0091 §2): line by line and to the end, with the
+/// errors Rust gives (a line that is not UTF-8 is taken back out of the
+/// buffer; a closed standard input is the OS error), byte for byte against
+/// the Rust program built by rustc.
+#[test]
+fn input_reads_as_rust_reads() {
+    let dir = cli::fresh_dir();
+    let rs = dir.join("r.rs");
+    std::fs::write(&rs, LINES_REF).unwrap();
+    let rexe = dir.join("r");
+    let built = Command::new("rustc")
+        .args(["-O", "-o"])
+        .arg(&rexe)
+        .arg(&rs)
+        .output()
+        .unwrap();
+    assert!(built.status.success(), "{}", text(&built.stderr));
+    let bexe = dir.join("b");
+    cli::build(&cli::emit(&one(LINES), false).ir.unwrap(), &bexe).unwrap();
+    let feed = |exe: &std::path::Path, input: Option<&[u8]>| -> Output {
+        let mut c = Command::new(exe);
+        match input {
+            Some(i) => {
+                let mut child = c
+                    .stdin(std::process::Stdio::piped())
+                    .stdout(std::process::Stdio::piped())
+                    .spawn()
+                    .unwrap();
+                use std::io::Write;
+                child.stdin.take().unwrap().write_all(i).unwrap();
+                child.wait_with_output().unwrap()
+            }
+            // A closed standard input (EBADF, which Rust reads as empty)
+            // and a directory (EISDIR, an OS error).
+            None => {
+                let sh = format!("{e} <&-; echo; {e} < /", e = exe.display());
+                Command::new("sh").args(["-c", &sh]).output().unwrap()
+            }
+        }
+    };
+    for input in [
+        Some(&b"ab\n\xff\ncd\nlast"[..]),
+        Some(&b""[..]),
+        Some(&b"h\xc3\xa9llo\n\n\nx\ny\nrest of it\nmore"[..]),
+        None,
+    ] {
+        let r = feed(&rexe, input);
+        let b = feed(&bexe, input);
+        assert_eq!(text(&b.stdout), text(&r.stdout), "input {input:?}");
+        assert_eq!(b.status.code(), r.status.code(), "input {input:?}");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
