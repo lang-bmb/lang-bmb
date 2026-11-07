@@ -594,6 +594,11 @@ MUTANTS = [
      '''            if let Some(sig) = self.fns.get(&fp).filter(|s| s.trait_of.is_none()).cloned() {''',
      '''            if let Some(sig) = self.fns.get(&fp).filter(|s| s.trait_of.is_none() && !self.trait_impls.iter().any(|i| i.matches(value).is_some() && self.traits.get(&i.trait_path).is_some_and(|t| t.methods.contains(&name.name)))).cloned() {''',
      "a method call names a trait's function where the type has its own of that name: the program runs another function than Rust's"),
+    # Sub-slice arguments (backlog 4C-05): the end bound of `&v[lo..hi]`.
+    ("v-subslice-end-unbounded", "unsound", VT,
+     '''            format!("(and (<= {lo} {hi}) (<= {hi} {n}))"),''',
+     '''            format!("(<= {lo} {hi})"),''',
+     "a part of a slice that runs past its end is proved: the callee reads out of bounds"),
 ]
 
 

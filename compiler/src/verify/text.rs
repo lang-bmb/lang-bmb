@@ -104,6 +104,26 @@ impl Enc<'_, '_> {
         self.sub_text(&v, &lo, &hi)
     }
 
+    /// `&v[lo..hi]` of an array, `Vec` or slice of integers (backlog
+    /// 4C-05): the bounds obligation (E0805, Rust's `slice index starts at
+    /// .. but ends at ..` and `range end index .. out of range` panics)
+    /// and the elements from `lo`, the same shifted array as text's.
+    pub(super) fn elem_slice(&mut self, e: &Expr, base: &Expr, lo: &Expr, hi: &Expr) -> Val {
+        let v = self.eval(base);
+        let (lo, hi) = (self.eval(lo).s(), self.eval(hi).s());
+        let (a, n) = parts(&v);
+        self.oblige(
+            "E0805",
+            e.span,
+            "the range may be out of bounds",
+            format!("(and (<= {lo} {hi}) (<= {hi} {n}))"),
+        );
+        Val::A {
+            elems: format!("(bmb_shift {a} {lo})"),
+            len: format!("(- {hi} {lo})"),
+        }
+    }
+
     /// The bytes of `push(c)` for a `c` that is not a constant: an ASCII
     /// value is its own byte, and otherwise the bytes are fresh, a lead
     /// byte and continuation bytes. The exact encoding's `div` and `mod`

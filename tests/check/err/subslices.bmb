@@ -1,0 +1,33 @@
+#[summary("부분 슬라이스 인자의 오류: 정수가 아닌 원소, &mut, 원소 타입, 범위가 아닌 것 (백로그 4C-05)")]
+mod se {
+    struct P { x: i64 }
+
+    #[effects(pure)]
+    fn points(ps: &[P]) -> usize {
+        ps.len()
+    }
+
+    #[effects(pure)]
+    fn bytes(b: &[u8]) -> usize {
+        b.len()
+    }
+
+    #[effects(pure)]
+    fn wide(b: &[i64]) -> usize {
+        b.len()
+    }
+
+    #[effects(pure)]
+    fn zero(b: &mut [u8]) -> () {
+        if b.len() > 0 {
+            b[0] = 0;
+        }
+    }
+
+    #[effects(pure)]
+    fn f(ps: &[P], b: &[u8], n: i64, t: [u8; 4]) -> usize {
+        let mut m: [u8; 4] = t;
+        zero(&mut m[0..2]);
+        points(&ps[0..1]) + wide(&b[0..1]) + bytes(&n[0..1]) + bytes(&(b[0]))
+    }
+}

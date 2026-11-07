@@ -1,0 +1,5 @@
+{"code":"E0805","severity":"error","message":"the range may be out of bounds in `sf::past_the_end`; counterexample: b = [] (len 0), hi = 1","file":"fail/subslices.bmb","line":10,"col":16,"end_line":10,"end_col":24}
+{"code":"E0805","severity":"error","message":"the range may be out of bounds in `sf::backwards`; counterexample: b = [] (len 0), lo = 0","file":"fail/subslices.bmb","line":16,"col":20,"end_line":16,"end_col":28}
+{"def":"sf::backwards","status":"failed","obligations":1,"failed":1,"rlimit":1126,"rlimit_max":1126}
+{"def":"sf::count","status":"verified","obligations":0,"failed":0,"rlimit":0,"rlimit_max":0}
+{"def":"sf::past_the_end","status":"failed","obligations":1,"failed":1,"rlimit":946,"rlimit_max":946}

@@ -44,22 +44,13 @@ mod fgrep {
 
     spec fn line(start: usize, i: usize) -> bool { start <= i }
 
-    spec fn copied(n: usize, k: usize, lo: usize) -> bool { lo <= k && n == k - lo }
-
-    /// Prints `text[lo..hi]` (a byte sub-slice cannot be an argument: it is
-    /// copied out).
-    #[effects(alloc, io)]
-    #[uses(within, copied)]
+    /// Prints `text[lo..hi]`.
+    #[effects(io)]
+    #[uses(within)]
     fn print_range(text: &[u8], lo: usize, hi: usize) -> ()
         requires within(lo, hi, text.len()),
     {
-        let mut out: Vec<u8> = Vec::with_capacity(hi - lo);
-        for k in lo..hi
-            invariant copied(out.len(), k, lo),
-        {
-            out.push(text[k]);
-        }
-        print_bytes(out.as_slice());
+        print_bytes(&text[lo..hi]);
     }
 
     #[effects(alloc, io, nondet)]
@@ -70,8 +61,6 @@ mod fgrep {
             eprint_str("usage: fgrep PATTERN FILE\n");
             std::process::exit(2);
         }
-        // `.as_bytes()` takes a variable, not an element (`a[1]`).
-        let pat: String = String::from(a[1].as_str());
         match std::fs::read(a[2].as_str()) {
             Ok(text) => {
                 let mut found: bool = false;
@@ -80,14 +69,14 @@ mod fgrep {
                     invariant line(start, i),
                 {
                     if text[i] == 10 {
-                        if contains(text.as_slice(), start, i, pat.as_bytes()) {
+                        if contains(text.as_slice(), start, i, a[1].as_bytes()) {
                             print_range(text.as_slice(), start, i + 1);
                             found = true;
                         }
                         start = i + 1;
                     }
                 }
-                if start < text.len() && contains(text.as_slice(), start, text.len(), pat.as_bytes()) {
+                if start < text.len() && contains(text.as_slice(), start, text.len(), a[1].as_bytes()) {
                     print_range(text.as_slice(), start, text.len());
                     print_str("\n");
                     found = true;

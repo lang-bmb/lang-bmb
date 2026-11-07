@@ -4261,7 +4261,11 @@ impl<'p, 'q> Enc<'p, 'q> {
                 let ExprKind::Range { lo, hi } = &index.kind else {
                     unreachable!("a range")
                 };
-                self.str_slice(e, base, lo, hi)
+                if self.is_text_expr(base) {
+                    self.str_slice(e, base, lo, hi)
+                } else {
+                    self.elem_slice(e, base, lo, hi)
+                }
             }
             ExprKind::Index { base, index } => {
                 let bv = self.eval(base);

@@ -5448,6 +5448,87 @@ impl<'a> Checker<'a> {
     }
 
     /// `base.name` for a struct (or a reference to one).
+    /// `&v[lo..hi]` for a `&[T]` parameter (backlog 4C-05): `v` an array,
+    /// `Vec` or slice of the integer type `T` (read-only), `lo` and `hi`
+    /// `usize`. The bounds are an obligation (E0805); the slice is the
+    /// elements from `lo` to `hi`.
+    #[allow(clippy::too_many_arguments)]
+    fn sub_slice_arg(
+        &mut self,
+        cx: &mut FnCtx,
+        a: &Expr,
+        base: &Expr,
+        lo: &Expr,
+        hi: &Expr,
+        pm: bool,
+        want_elem: &TypeKind,
+        want: &str,
+        mode: Mode,
+    ) {
+        let bt = self.expr(cx, base, None, mode);
+        let u = TypeKind::Int(IntTy::Usize);
+        for x in [lo, hi] {
+            let t = self.expr(cx, x, Some(&u), mode);
+            self.expect_ty(&t, &u, x.span);
+        }
+        if bt == TypeKind::Error {
+            return;
+        }
+        let Some(et) = elem_of(&bt).cloned() else {
+            self.diags.push(
+                Diag::new(
+                    "E0401",
+                    a.span,
+                    format!("expected `{want}`, found a range of `{}`", ty_str(&bt)),
+                )
+                .fix(
+                    "a range argument `&v[lo..hi]` is of an array, a `Vec` or a slice",
+                    None,
+                ),
+            );
+            return;
+        };
+        if !is_int(&et) {
+            self.diags.push(
+                Diag::new(
+                    "E0409",
+                    a.span,
+                    format!("a part of a slice of `{}` is not passed", ty_str(&et)),
+                )
+                .fix(
+                    "a range argument `&v[lo..hi]` is of integers; pass the whole slice and the bounds",
+                    None,
+                ),
+            );
+            return;
+        }
+        if pm || et != *want_elem {
+            self.diags.push(
+                Diag::new(
+                    "E0401",
+                    a.span,
+                    format!("expected `{want}`, found `&[{}]` (read-only)", ty_str(&et)),
+                )
+                .fix(
+                    "a range argument `&v[lo..hi]` is a shared slice of the elements' type",
+                    None,
+                ),
+            );
+            return;
+        }
+        let k = |e: &Expr| (e.span.file, e.span.lo, e.span.hi);
+        if let ExprKind::Ref { expr, .. } = &a.kind {
+            self.types.insert(k(expr), TypeKind::Slice(mk(et.clone())));
+        }
+        self.types.insert(
+            k(a),
+            TypeKind::Ref {
+                mutable: false,
+                inner: mk(TypeKind::Slice(mk(et))),
+            },
+        );
+    }
+
     /// E0436: a `std::process::Child` built or read by hand (ADR-0091 §2:
     /// its fields are the runtime's handles).
     fn child_by_hand(&mut self, span: Span) {
@@ -9799,11 +9880,32 @@ impl<'a> Checker<'a> {
             }
             return None;
         }
+        // A part of an array, `Vec` or slice of integers, `&v[lo..hi]`
+        // (backlog 4C-05, as `&s[a..b]` of text).
+        if let Some((base, lo, hi)) = str_slice_of(a) {
+            self.sub_slice_arg(cx, a, base, lo, hi, pm, &pe.kind, &want, mode);
+            return None;
+        }
         let (var, explicit_ref, am) = match &a.kind {
             ExprKind::Ref { mutable, expr } => match &expr.kind {
                 ExprKind::Var(id) => (id, true, *mutable),
+                ExprKind::Index { index, .. } if matches!(index.kind, ExprKind::Range { .. }) => {
+                    self.diags.push(
+                        Diag::new("E0409", a.span, "a part of a slice is passed read-only").fix(
+                            "pass `&mut v` and the bounds; `&v[lo..hi]` is a shared slice",
+                            None,
+                        ),
+                    );
+                    return None;
+                }
                 _ => {
-                    self.err("E0409", a.span, format!("expected `{want}` of a variable"));
+                    self.diags.push(
+                        Diag::new("E0409", a.span, format!("expected `{want}` of a variable"))
+                            .fix(
+                                "pass a variable's slice (`&v`, `v.as_slice()`), a part of one (`&v[lo..hi]`) or the bytes of text (`s.as_bytes()`)",
+                                None,
+                            ),
+                    );
                     return None;
                 }
             },

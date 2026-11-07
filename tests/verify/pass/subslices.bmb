@@ -1,0 +1,70 @@
+#[summary("부분 슬라이스 인자: 배열·Vec·슬라이스의 &v[lo..hi] (백로그 4C-05)")]
+mod ss {
+    spec fn within(lo: usize, hi: usize, n: usize) -> bool { lo <= hi && hi <= n }
+
+    spec fn sized(r: usize, n: usize) -> bool { r == n }
+
+    #[effects(pure)]
+    #[uses(sized)]
+    fn count(b: &[u8]) -> (r: usize)
+        ensures sized(r, b.len()),
+    {
+        b.len()
+    }
+
+    spec fn head(b: &[i64], r: i64) -> bool { b.len() == 0 || r == b[0] }
+
+    #[effects(pure)]
+    #[uses(head)]
+    fn first(b: &[i64]) -> (r: i64)
+        ensures head(b, r),
+    {
+        if b.len() > 0 { b[0] } else { 0 }
+    }
+
+    #[effects(pure)]
+    #[uses(within, sized)]
+    fn middle(b: &[u8], lo: usize, hi: usize) -> (r: usize)
+        requires within(lo, hi, b.len()),
+        ensures sized(r, hi - lo),
+    {
+        count(&b[lo..hi])
+    }
+
+    spec fn two(r: usize) -> bool { r == 2 }
+
+    #[effects(alloc)]
+    #[uses(two, sized)]
+    fn of_a_vec() -> (r: usize)
+        ensures two(r),
+    {
+        let mut v: Vec<u8> = Vec::new();
+        v.push(1);
+        v.push(2);
+        v.push(3);
+        count(&v[1..3])
+    }
+
+    spec fn third(r: i64) -> bool { r == 30 }
+
+    #[effects(pure)]
+    #[uses(third, head)]
+    fn of_an_array() -> (r: i64)
+        ensures third(r),
+    {
+        let a: [i64; 4] = [10, 20, 30, 40];
+        let x: i64 = first(&a[2..4]);
+        assert(x == 30);
+        x
+    }
+
+    spec fn empty(r: usize) -> bool { r == 0 }
+
+    #[effects(pure)]
+    #[uses(empty, sized)]
+    fn nothing(b: &[u8]) -> (r: usize)
+        ensures empty(r),
+    {
+        count(&b[0..0])
+    }
+}

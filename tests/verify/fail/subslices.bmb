@@ -1,0 +1,21 @@
+#[summary("부분 슬라이스의 경계 실패: 끝이 길이를 넘음, 시작이 끝보다 큼 (백로그 4C-05)")]
+mod sf {
+    #[effects(pure)]
+    fn count(b: &[u8]) -> usize {
+        b.len()
+    }
+
+    #[effects(pure)]
+    fn past_the_end(b: &[u8], hi: usize) -> usize {
+        count(&b[0..hi])
+    }
+
+    #[effects(pure)]
+    fn backwards(b: &[u8], lo: usize) -> usize {
+        if lo <= b.len() {
+            count(&b[lo..1])
+        } else {
+            0
+        }
+    }
+}

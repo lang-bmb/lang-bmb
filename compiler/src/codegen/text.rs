@@ -317,6 +317,42 @@ impl Gen<'_> {
         CVal::Arr { ptr, len }
     }
 
+    /// `&v[lo..hi]` of an array, `Vec` or slice of integers (backlog
+    /// 4C-05): the elements from `lo`, after the bounds check the proof
+    /// did not discharge (E0805).
+    pub(super) fn elem_slice(&mut self, idx: &Expr, base: &Expr, lo: &Expr, hi: &Expr) -> CVal {
+        let bt = self.ty(base);
+        let whole = match value_ty(&bt) {
+            TypeKind::Ref { inner, .. } => inner.kind.clone(),
+            t => t.clone(),
+        };
+        let et = match whole {
+            TypeKind::Array(e, _) | TypeKind::Vec(e) | TypeKind::Slice(e) => e.kind,
+            other => unreachable!("not a slice: {other:?}"),
+        };
+        let CVal::Arr { ptr: p, len: n } = self.array_of(base) else {
+            unreachable!("an array value")
+        };
+        let lo = self.expr(lo).imm();
+        let hi = self.expr(hi).imm();
+        if self.proved("E0805", idx) {
+            self.emit("; proved E0805");
+        } else {
+            let (ord, end, c) = (self.t(), self.t(), self.t());
+            self.emit(format!("{ord} = icmp ule i64 {lo}, {hi}"));
+            self.emit(format!("{end} = icmp ule i64 {hi}, {n}"));
+            self.emit(format!("{c} = and i1 {ord}, {end}"));
+            self.check(&c, "the range may be out of bounds");
+        }
+        let (ptr, len) = (self.t(), self.t());
+        self.emit(format!(
+            "{ptr} = getelementptr {}, ptr {p}, i64 {lo}",
+            mem_ty(&et)
+        ));
+        self.emit(format!("{len} = sub nuw i64 {hi}, {lo}"));
+        CVal::Arr { ptr, len }
+    }
+
     /// The UTF-8 length of the scalar value in register `c`.
     fn utf8_len(&mut self, c: &str) -> String {
         let (a, b, d) = (self.t(), self.t(), self.t());

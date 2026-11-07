@@ -1651,12 +1651,20 @@ impl<'p> Gen<'p> {
                     _ => unreachable!(),
                 }
             }
-            // `&s[a..b]` (ADR-0050 §2).
+            // `&s[a..b]` (ADR-0050 §2), `&v[a..b]` of integers (4C-05).
             ExprKind::Index { base, index } if matches!(index.kind, ExprKind::Range { .. }) => {
                 let ExprKind::Range { lo, hi } = &index.kind else {
                     unreachable!("a range")
                 };
-                self.str_slice(e, base, lo, hi)
+                if self
+                    .t
+                    .text
+                    .contains(&(base.span.file, base.span.lo, base.span.hi))
+                {
+                    self.str_slice(e, base, lo, hi)
+                } else {
+                    self.elem_slice(e, base, lo, hi)
+                }
             }
             ExprKind::Index { base, index } if is_mem_elem(&self.ty(e)) => {
                 let ety = self.ty(e);
