@@ -365,15 +365,14 @@ fn data_type_habits_are_fixed_into_a_checked_program() {
     assert_eq!(
         codes,
         [
-            "E0220", "E0221", "E0222", "E0223", "E0224", "E0225", "E0227", "E0228", "E0230",
-            "E0231"
+            "E0220", "E0221", "E0222", "E0223", "E0224", "E0225", "E0228", "E0230", "E0231"
         ]
     );
     let fixed = &out.files[0].1;
     for want in [
         "match o { None => { 0 }, Some(v) => { v } }",
         "match s { Shape::Dot => 0, Shape::Square(_) => 1, Shape::Rect(_, _) => 1 }",
-        "Point::sum(&p, 1) + Point::sum(q, 2)",
+        "p.sum(1) + q.sum(2)",
         "let x: i64 = p.x; let y: i64 = p.y;",
         "Point { x: 1, y: p.y }",
         "fn sum(self: &Point, k: i64)",

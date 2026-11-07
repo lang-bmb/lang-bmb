@@ -819,7 +819,7 @@ ROADMAP의 통과 기준마다 그것을 확인하는 태스크다. 빈칸이 �
 
 | ID | 태스크 | 완료 기준 | 의존 | 상태 |
 | --- | --- | --- | --- | --- |
-| 2M-01 | 파서·검사기·맵 | `x.f(..)`의 한 단계 수신자 조정, 고유 impl 우선과 trait 모호성(E0313), 맵 L2의 해석된 대상 | 2V-12, 2T-07 | ⏳ |
+| 2M-01 | 파서·검사기·맵 | `x.f(..)`의 한 단계 수신자 조정, 고유 impl 우선과 trait 모호성(E0313), 맵 L2의 해석된 대상 | 2V-12, 2T-07 | ✅ `check::check_resolved`: 검사기가 `x.f(..)`를 고유 `impl` 함수, 없으면 `f`를 가진 trait 하나(경계 또는 구현 trait)로 해석해 `T::f(조정(x), ..)` 경로 호출로 다시 쓰고(`ExprKind::Call`의 `method`), 남은 것이 없을 때까지 다시 검사한다. 이동(by-value `self` E0413)·재귀·효과·증명·코드 생성·맵은 다시 쓴 프로그램을 읽는다. 제네릭 타입의 타입 인자는 수신자 타입에서, 내장 메서드가 같은 이름의 trait보다 먼저. E0313(trait 둘), 새 E0314(연관 함수·자기 타입 매개변수, 경로 호출 문구), E0227 은퇴. 맵 L2 `calls`는 해석된 대상(`&mut self`는 `writes` arg 0), 슬라이스·진단 본문은 `x.f(..)` 그대로, `bmb fmt`는 쓴 그대로. 작업 공간 `rename`이 메서드 호출 이름도 바꾸고(`refs::Rewrite::method`, `tests/workspace.rs`의 `geo::Pt::norm1` 경우), `bmb weaken`의 판 정렬은 옛 판을 경로 호출로 쓴다(`tests/weaken/methods`: 이름이 바뀐 spec 메서드의 강해진 전제를 `weakened`로). 코퍼스 `tests/check/err/methods`, `tests/verify/pass/methods`(12정의 증명, 계약 안의 `self.room()`·`r.fresh(cap)`), `fail/methods`(반례 셋), 실행 `tests/run/methods`(Rust 번역 `methods_ref.rs`와 출력 동일, valgrind 깨끗). ADR-0051 "구현 시 확인" |
 | 2M-02 | 정규형과 이주 | `T::f(&x, ..)`을 메서드 구문으로 바꾸는 정규형, 코퍼스·라이브러리·퍼저 생성기 이주(퍼저가 메서드 구문을 만든다) | 2M-01 | ⏳ |
 | 2M-03 | 종료 감사 | `dev-docs/health/2M.md`, 통과 기준 확인 | 2M-02 | ⏳ |
 

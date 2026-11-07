@@ -1153,7 +1153,9 @@ impl<'a> Printer<'a> {
             ExprKind::Continue { label: None } => "continue".into(),
             ExprKind::Continue { label: Some(l) } => format!("continue '{}", self.label(&l.name)),
             ExprKind::Var(id) => self.local(&id.name),
-            ExprKind::Call { path, targs, args } if self.id.is_some() => {
+            ExprKind::Call {
+                path, targs, args, ..
+            } if self.id.is_some() => {
                 let a: Vec<String> = args.iter().map(|x| self.expr(x, 0)).collect();
                 let m = self.id.as_ref().unwrap();
                 // Type arguments by their segment counted from the end
@@ -1172,7 +1174,25 @@ impl<'a> Printer<'a> {
                 };
                 format!("{head}{ts}({})", a.join(", "))
             }
-            ExprKind::Call { path, targs, args } => {
+            // A call written `x.f(..)` (ADR-0051) prints as written.
+            ExprKind::Call {
+                path,
+                args,
+                method: Some(adjust),
+                ..
+            } if !args.is_empty() => {
+                let recv = match (&args[0].kind, adjust) {
+                    (ExprKind::Ref { expr, .. }, Adjust::Ref | Adjust::RefMut) => &**expr,
+                    _ => &args[0],
+                };
+                let r = self.expr(recv, POSTFIX);
+                let a: Vec<String> = args[1..].iter().map(|x| self.expr(x, 0)).collect();
+                let name = &path[path.len() - 1].name;
+                format!("{r}.{name}({})", a.join(", "))
+            }
+            ExprKind::Call {
+                path, targs, args, ..
+            } => {
                 let a: Vec<String> = args.iter().map(|x| self.expr(x, 0)).collect();
                 let mut segs: Vec<String> = self.path(path).split("::").map(String::from).collect();
                 // A qualified path gains its unit's segments in front.

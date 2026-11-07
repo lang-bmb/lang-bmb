@@ -151,6 +151,14 @@ fn every_definition_gets_its_verdict() {
             &[("m::total", "undecided", "same", "undecided", "same")],
         ),
         (
+            "methods",
+            &[
+                ("m::C::tick", "weakened", "stronger", "same", "same"),
+                ("m::C::fill", "weakened", "same", "weaker", "same"),
+                ("m::C::step", "same", "same", "same", "same"),
+            ],
+        ),
+        (
             "readers",
             &[
                 ("m::dec", "same", "same", "same", "same"),

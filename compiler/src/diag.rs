@@ -133,10 +133,6 @@ pub const CODES: &[(&str, &str)] = &[
         "E0226",
         "`while let`, `let .. else` and pattern `let` are not allowed",
     ),
-    (
-        "E0227",
-        "method calls are not allowed; call by path (`T::f(&x)`)",
-    ),
     ("E0228", "the receiver needs its type (`self: &T`)"),
     (
         "E0229",
@@ -176,6 +172,14 @@ pub const CODES: &[(&str, &str)] = &[
     (
         "E0312",
         "a trait impl in neither the unit of the trait nor the unit of the type",
+    ),
+    (
+        "E0313",
+        "a method call names a method of more than one trait; call by path",
+    ),
+    (
+        "E0314",
+        "a method call names a function that has no receiver or type parameters of its own; call by path",
     ),
     (
         "E0315",
@@ -594,6 +598,10 @@ pub const RETIRED: &[(&str, &str)] = &[
     (
         "E0234",
         "a string literal: text is bytes, write `b\"...\"` (retired by backlog 2U-01: `\"...\"` is a `&str`, ADR-0050)",
+    ),
+    (
+        "E0227",
+        "method calls are not allowed; call by path (retired by backlog 2M-01: `x.f(..)` calls a method, ADR-0051)",
     ),
 ];
 

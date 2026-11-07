@@ -503,6 +503,15 @@ impl BinOp {
     }
 }
 
+/// How a method call passes its receiver (ADR-0051): as written, or
+/// borrowed for a `self: &T` / `self: &mut T` receiver.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Adjust {
+    Value,
+    Ref,
+    RefMut,
+}
+
 #[derive(Debug, Clone)]
 pub struct Expr {
     pub kind: ExprKind,
@@ -557,6 +566,11 @@ pub enum ExprKind {
         /// Type arguments written in the path (ADR-0046 §3).
         targs: Vec<TArgs>,
         args: Vec<Expr>,
+        /// Written as the method call `x.f(..)` (ADR-0051): how the
+        /// receiver, the first argument, was passed. Only
+        /// `check::check_resolved` makes such calls; printing writes them
+        /// as they were written.
+        method: Option<Adjust>,
     },
     /// Built-in method: `a.len()`, `x.wrapping_add(y)`.
     Method {
@@ -708,5 +722,154 @@ impl TypeKind {
     /// A signed integer type.
     pub fn is_signed(&self) -> bool {
         self.int().is_some_and(IntTy::signed)
+    }
+}
+
+/// Visits every expression of the program, executable and specification
+/// alike, children before their node (`check::resolve_methods` rewrites
+/// method calls whose receivers it has already rewritten).
+pub fn exprs_mut(p: &mut Program, f: &mut dyn FnMut(&mut Expr)) {
+    fn module(m: &mut Mod, f: &mut dyn FnMut(&mut Expr)) {
+        for s in &mut m.mods {
+            module(s, f);
+        }
+        let fns = m
+            .fns
+            .iter_mut()
+            .chain(m.impls.iter_mut().flat_map(|i| &mut i.fns))
+            .chain(
+                m.traits
+                    .iter_mut()
+                    .flat_map(|t| t.fns.iter_mut().map(|t| &mut t.f)),
+            )
+            .chain(m.trait_impls.iter_mut().flat_map(|i| &mut i.fns));
+        for d in fns {
+            d.requires.iter_mut().for_each(|e| expr(e, f));
+            d.ensures.iter_mut().for_each(|e| expr(e, f));
+            if let Some(e) = &mut d.decreases {
+                expr(e, f);
+            }
+            block(&mut d.body, f);
+        }
+    }
+    fn block(b: &mut Block, f: &mut dyn FnMut(&mut Expr)) {
+        for s in &mut b.stmts {
+            match s {
+                Stmt::Let { init, .. } | Stmt::LetFields { init, .. } => expr(init, f),
+                Stmt::Assign { target, value, .. } => {
+                    expr(target, f);
+                    expr(value, f);
+                }
+                Stmt::While {
+                    cond,
+                    invariants,
+                    decreases,
+                    body,
+                    ..
+                } => {
+                    expr(cond, f);
+                    invariants.iter_mut().for_each(|e| expr(e, f));
+                    if let Some(e) = decreases {
+                        expr(e, f);
+                    }
+                    block(body, f);
+                }
+                Stmt::For {
+                    lo,
+                    hi,
+                    invariants,
+                    body,
+                    ..
+                } => {
+                    expr(lo, f);
+                    expr(hi, f);
+                    invariants.iter_mut().for_each(|e| expr(e, f));
+                    block(body, f);
+                }
+                Stmt::Assert { cond, .. } | Stmt::Assume { cond, .. } => expr(cond, f),
+                Stmt::Proof { body, .. } => block(body, f),
+                Stmt::Expr(e) => expr(e, f),
+            }
+        }
+        if let Some(t) = &mut b.tail {
+            expr(t, f);
+        }
+    }
+    fn expr(e: &mut Expr, f: &mut dyn FnMut(&mut Expr)) {
+        match &mut e.kind {
+            ExprKind::Int(..)
+            | ExprKind::Float(_)
+            | ExprKind::ByteLit(_)
+            | ExprKind::ByteStr(_)
+            | ExprKind::StrLit(_)
+            | ExprKind::CharLit(_)
+            | ExprKind::Bool(_)
+            | ExprKind::Unit
+            | ExprKind::Var(_)
+            | ExprKind::Path(_)
+            | ExprKind::Continue { .. }
+            | ExprKind::Error => {}
+            ExprKind::Call { args, .. } | ExprKind::Array(args) => {
+                args.iter_mut().for_each(|a| expr(a, f))
+            }
+            ExprKind::Method { recv, args, .. } => {
+                expr(recv, f);
+                args.iter_mut().for_each(|a| expr(a, f));
+            }
+            ExprKind::Index { base: a, index: b }
+            | ExprKind::Binary(_, a, b)
+            | ExprKind::Range { lo: a, hi: b } => {
+                expr(a, f);
+                expr(b, f);
+            }
+            ExprKind::Unary(_, x)
+            | ExprKind::Ref { expr: x, .. }
+            | ExprKind::Repeat { value: x, .. }
+            | ExprKind::Old(x)
+            | ExprKind::Trigger(x)
+            | ExprKind::Deref(x)
+            | ExprKind::Field { base: x, .. }
+            | ExprKind::Try(x) => expr(x, f),
+            ExprKind::Quant { body, .. } => expr(body, f),
+            ExprKind::If { cond, then, els } => {
+                expr(cond, f);
+                block(then, f);
+                if let Some(x) = els {
+                    expr(x, f);
+                }
+            }
+            ExprKind::Block(b) => block(b, f),
+            ExprKind::StructLit { fields, rest, .. } => {
+                fields.iter_mut().for_each(|(_, x)| expr(x, f));
+                if let Some(x) = rest {
+                    expr(x, f);
+                }
+            }
+            ExprKind::Match { scrut, arms } => {
+                expr(scrut, f);
+                arms.iter_mut().for_each(|a| expr(&mut a.body, f));
+            }
+            ExprKind::Return(x) | ExprKind::Break { value: x, .. } => {
+                if let Some(x) = x {
+                    expr(x, f);
+                }
+            }
+            ExprKind::Loop {
+                invariants,
+                decreases,
+                body,
+                ..
+            } => {
+                invariants.iter_mut().for_each(|e| expr(e, f));
+                if let Some(e) = decreases {
+                    expr(e, f);
+                }
+                block(body, f);
+            }
+        }
+        f(e);
+    }
+    for m in &mut p.mods {
+        module(m, f);
     }
 }

@@ -673,6 +673,11 @@ mod geo {
         fn new(x: i64, y: i64) -> Pt {
             Pt { x: x, y: y }
         }
+
+        #[effects(pure)]
+        fn norm1(self: &Pt) -> i64 {
+            self.x.saturating_add(self.y)
+        }
     }
 
     impl Area for Pt {
@@ -717,6 +722,11 @@ mod app {
     fn big(p: geo::Pt) -> i64 {
         geo::size::<geo::Pt>(p)
     }
+
+    #[effects(pure)]
+    fn len1(p: geo::Pt) -> i64 {
+        p.norm1()
+    }
 }
 "#;
 
@@ -753,12 +763,19 @@ fn rename_rewrites_references_and_keeps_every_identity() {
         ("geo::dec", "decrement", &[("geo::dec", "geo::decrement")]),
         ("geo::pos", "positive", &[("geo::pos", "geo::positive")]),
         ("geo::Pt::new", "make", &[("geo::Pt::new", "geo::Pt::make")]),
+        // Its method calls are renamed by the call (ADR-0051).
+        (
+            "geo::Pt::norm1",
+            "manhattan",
+            &[("geo::Pt::norm1", "geo::Pt::manhattan")],
+        ),
         ("geo::size", "measure", &[("geo::size", "geo::measure")]),
         (
             "geo::Pt",
             "Point",
             &[
                 ("geo::Pt::new", "geo::Point::new"),
+                ("geo::Pt::norm1", "geo::Point::norm1"),
                 ("geo::Pt", "geo::Point"),
                 (
                     "<geo::Pt as geo::Area>::area",

@@ -1,0 +1,98 @@
+#[summary("메서드 구문 오류: trait 모호성, 연관 함수, 자기 타입 매개변수, 수신자 조정 (ADR-0051, 2M-01)")]
+mod me {
+    struct P { x: i64 }
+
+    struct Bag { v: Vec<i64> }
+
+    impl P {
+        #[effects(pure)]
+        fn new(x: i64) -> P {
+            P { x: x }
+        }
+
+        #[effects(pure)]
+        fn bump(self: &mut P) -> () {
+            if self.x < 100 {
+                self.x = self.x + 1;
+            }
+        }
+
+        #[effects(pure)]
+        fn pick<U: Copy>(self: &P, u: U) -> U {
+            u
+        }
+    }
+
+    impl Bag {
+        #[effects(pure)]
+        fn size(self: Bag) -> usize {
+            self.v.len()
+        }
+    }
+
+    trait A {
+        #[effects(pure)]
+        fn name(self: &Self) -> i64;
+    }
+
+    trait B {
+        #[effects(pure)]
+        fn name(self: &Self) -> i64;
+    }
+
+    impl A for P {
+        #[effects(pure)]
+        fn name(self: &P) -> i64 {
+            1
+        }
+    }
+
+    impl B for P {
+        #[effects(pure)]
+        fn name(self: &P) -> i64 {
+            2
+        }
+    }
+
+    #[effects(pure)]
+    fn associated(p: P) -> i64 {
+        let q: P = p.new(3);
+        q.x
+    }
+
+    #[effects(pure)]
+    fn own_params(p: &P) -> i64 {
+        p.pick(4)
+    }
+
+    #[effects(pure)]
+    fn two_traits(p: &P) -> i64 {
+        p.name()
+    }
+
+    #[effects(pure)]
+    fn two_bounds<T: Copy + A + B>(x: &T) -> i64 {
+        x.name()
+    }
+
+    #[effects(pure)]
+    fn not_mutable(p: P) -> () {
+        p.bump();
+    }
+
+    #[effects(pure)]
+    fn shared_receiver(p: &P) -> () {
+        p.bump();
+    }
+
+    #[effects(pure)]
+    fn unknown(p: &P) -> i64 {
+        p.nope()
+    }
+
+    #[effects(alloc)]
+    fn moved(b: Bag) -> usize {
+        let n: usize = b.size();
+        n + b.size()
+    }
+}

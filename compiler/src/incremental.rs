@@ -537,7 +537,9 @@ fn node_spans(f: &FnDef) -> Vec<Span> {
     fn expr(e: &Expr, out: &mut Vec<Span>) {
         out.push(e.span);
         match &e.kind {
-            ExprKind::Call { path, targs, args } => {
+            ExprKind::Call {
+                path, targs, args, ..
+            } => {
                 out.extend(path.iter().map(|i| i.span));
                 for t in targs {
                     out.push(t.span);

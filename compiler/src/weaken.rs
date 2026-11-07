@@ -323,9 +323,7 @@ fn body_ids(p: &Program) -> BTreeMap<String, String> {
     let mut q = p.clone();
     q.mods.iter_mut().for_each(strip);
     let mut d = Diags::default();
-    let mut c = crate::check::Checker::new(&mut d);
-    c.check_program(&q);
-    let t = c.into_tables();
+    let (q, t) = crate::check::check_resolved(q, &mut d);
     if d.has_errors() {
         return BTreeMap::new();
     }
@@ -693,6 +691,14 @@ fn align(
     };
     let traits = crate::workspace::trait_paths(&old.program);
     let mut prog = old.program.clone();
+    // Method calls are written as the calls by path they resolved to
+    // (ADR-0051): an `impl` function below may become a function of its
+    // unit, which no method call reaches.
+    crate::ast::exprs_mut(&mut prog, &mut |e| {
+        if let ExprKind::Call { method, .. } = &mut e.kind {
+            *method = None;
+        }
+    });
     // Drops the shared items (and `main`, which the new version has). The
     // changed `impl` functions of a shared type become functions of their
     // unit, `T__f` (`conv`: old path -> that path), with `Self` written `T`

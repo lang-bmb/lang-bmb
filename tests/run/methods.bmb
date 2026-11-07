@@ -1,0 +1,166 @@
+#[summary("메서드 구문: 계좌와 거래 기록, 순위 trait, 수신자 조정 (ADR-0051, 2M-01)")]
+mod ledger {
+    spec fn small(x: i64) -> bool {
+        -1000000 <= x && x <= 1000000
+    }
+
+    // The balance is never negative and stays small.
+    #[invariant(sound)]
+    struct Account { id: u64, balance: i64 }
+
+    spec fn sound(a: &Account) -> bool {
+        0 <= a.balance && a.balance <= 1000000
+    }
+
+    // The moves of an account, in order.
+    struct Log { moves: Vec<i64> }
+
+    impl Account {
+        #[effects(pure)]
+        #[uses(sound)]
+        fn open(id: u64) -> Account {
+            Account { id: id, balance: 0 }
+        }
+
+        #[effects(pure)]
+        #[uses(sound)]
+        fn balance(self: &Account) -> i64 {
+            self.balance
+        }
+
+        // Adds `x` when the result stays in range; whether it did.
+        #[effects(pure)]
+        #[uses(sound, small)]
+        fn deposit(self: &mut Account, x: i64) -> bool
+            requires small(x),
+        {
+            if x <= 0 || self.balance + x > 1000000 {
+                return false;
+            }
+            self.balance = self.balance + x;
+            true
+        }
+
+        // Takes `x` out when the balance covers it; whether it did.
+        #[effects(pure)]
+        #[uses(sound, small)]
+        fn withdraw(self: &mut Account, x: i64) -> bool
+            requires small(x),
+        {
+            if x <= 0 || x > self.balance {
+                return false;
+            }
+            self.balance = self.balance - x;
+            true
+        }
+    }
+
+    impl Log {
+        #[effects(alloc)]
+        fn new() -> Log {
+            Log { moves: Vec::new() }
+        }
+
+        #[effects(alloc)]
+        fn record(self: &mut Log, ok: bool, x: i64) -> () {
+            if ok && self.moves.len() < 1000 {
+                self.moves.push(x);
+            }
+        }
+
+        #[effects(pure)]
+        fn count(self: &Log) -> usize {
+            self.moves.len()
+        }
+
+        // The moves, by value: the log is gone after.
+        #[effects(pure)]
+        fn close(self: Log) -> Vec<i64> {
+            self.moves
+        }
+    }
+
+    trait Rank {
+        #[effects(pure)]
+        fn rank(self: &Self) -> u64;
+
+        #[effects(pure)]
+        fn better(self: &Self, other: &Self) -> bool {
+            self.rank() > other.rank()
+        }
+    }
+
+    impl Rank for Account {
+        #[effects(pure)]
+        #[uses(sound)]
+        fn rank(self: &Account) -> u64 {
+            u64::try_from(self.balance / 100).unwrap()
+        }
+    }
+
+    impl Rank for u64 {
+        #[effects(pure)]
+        fn rank(self: &u64) -> u64 {
+            *self % 10
+        }
+    }
+
+    #[effects(pure)]
+    fn top<T: Copy + Rank>(xs: &[T]) -> u64 {
+        let mut best: u64 = 0;
+        for i in 0..xs.len()
+            invariant i <= xs.len(),
+        {
+            let r: u64 = xs[i].rank();
+            if r > best {
+                best = r;
+            }
+        }
+        best
+    }
+
+    spec fn bit(r: i64) -> bool {
+        0 <= r && r <= 1
+    }
+
+    #[effects(pure)]
+    #[uses(bit)]
+    fn flag(b: bool) -> (r: i64)
+        ensures bit(r),
+    {
+        if b { 1 } else { 0 }
+    }
+
+    #[effects(alloc, io)]
+    #[uses(sound, small, bit)]
+    fn main() -> () {
+        let mut a: Account = Account::open(1);
+        let mut b: Account = Account::open(2);
+        let mut log: Log = Log::new();
+        let ok: bool = a.deposit(500);
+        log.record(ok, 500);
+        let ok2: bool = a.withdraw(800);
+        log.record(ok2, -800);
+        let ok3: bool = a.withdraw(120);
+        log.record(ok3, -120);
+        print_i64(flag(ok) + flag(ok2) * 10 + flag(ok3) * 100);
+        print_i64(flag(b.deposit(999999)));
+        print_i64(flag(b.deposit(2)));
+        print_i64(a.balance());
+        print_i64(b.balance());
+        print_u64(a.rank());
+        print_i64(flag(b.better(&a)));
+        print_i64(flag(a.better(&b)));
+        let digits: [u64; 4] = [12, 7, 45, 31];
+        print_u64(top::<u64>(&digits));
+        print_u64(digits[1].rank());
+        print_u64(u64::try_from(log.count()).unwrap());
+        print_u64(b.id);
+        let moves: Vec<i64> = log.close();
+        for i in 0..moves.len()
+            invariant i <= moves.len(),
+        {
+            print_i64(moves[i]);
+        }
+    }
+}

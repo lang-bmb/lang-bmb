@@ -61,7 +61,6 @@
 | E0224 | a wildcard arm is not allowed |
 | E0225 | `if let` is not allowed; use `match` |
 | E0226 | `while let`, `let .. else` and pattern `let` are not allowed |
-| E0227 | method calls are not allowed; call by path (`T::f(&x)`) |
 | E0228 | the receiver needs its type (`self: &T`) |
 | E0229 | `.unwrap()` / `.expect()` are not allowed; `match` both cases |
 | E0230 | destructuring `let` is not allowed |
@@ -85,6 +84,8 @@
 | E0310 | `self` names exactly the receiver |
 | E0311 | two impls of a trait for types that can be the same |
 | E0312 | a trait impl in neither the unit of the trait nor the unit of the type |
+| E0313 | a method call names a method of more than one trait; call by path |
+| E0314 | a method call names a function that has no receiver or type parameters of its own; call by path |
 | E0315 | a trait impl misses a method of the trait, or has one the trait lacks |
 | E0316 | a trait impl's function does not match the trait's signature |
 | E0317 | a `break` or `continue` names a label no loop around it has |
@@ -231,3 +232,4 @@
 | E0204 | `for` is not allowed (retired by backlog 2K-01d: the range `for` is part of the language, ADR-0049) |
 | E0206 | the `?` operator is not allowed (retired by backlog 2K-01e: `?` is part of the language, ADR-0049) |
 | E0234 | a string literal: text is bytes, write `b"..."` (retired by backlog 2U-01: `"..."` is a `&str`, ADR-0050) |
+| E0227 | method calls are not allowed; call by path (retired by backlog 2M-01: `x.f(..)` calls a method, ADR-0051) |

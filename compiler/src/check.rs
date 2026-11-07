@@ -95,6 +95,171 @@ pub struct TParam {
     pub bounds: Vec<String>,
 }
 
+/// The function a method call names (ADR-0051), as the call by path the
+/// later stages read: `path::<type_args>::f(adjust(x), ..)`.
+#[derive(Debug, Clone)]
+pub struct MethodTarget {
+    /// The function's full path (`geo::Point::norm`, `geo::Shape::area`).
+    pub path: Vec<String>,
+    /// The arguments of the type's parameters (an inherent `impl` of a
+    /// generic type), written after the segment before the name.
+    pub type_args: Vec<TypeKind>,
+    pub adjust: Adjust,
+}
+
+/// How a receiver is passed to a function whose first parameter is
+/// `first`: `None` when it is not a receiver (`own` says whether a type is
+/// the receiver's). A receiver that is already a reference is passed as it
+/// is (one step, ADR-0051).
+fn receiver_adjust(
+    first: Option<&TypeKind>,
+    by_ref: bool,
+    own: impl Fn(&TypeKind) -> bool,
+) -> Option<Adjust> {
+    let adjust = match first? {
+        TypeKind::Ref { mutable, inner } if own(&inner.kind) => {
+            if by_ref {
+                Adjust::Value
+            } else if *mutable {
+                Adjust::RefMut
+            } else {
+                Adjust::Ref
+            }
+        }
+        t if own(t) => Adjust::Value,
+        _ => return None,
+    };
+    Some(adjust)
+}
+
+/// Whether `m` is the name of a built-in method of some built-in type: a
+/// trait method of that name on a built-in type is called by path.
+fn builtin_method_name(m: &str) -> bool {
+    matches!(
+        m,
+        "len"
+            | "is_char_boundary"
+            | "push_str"
+            | "push"
+            | "pop"
+            | "truncate"
+            | "clone"
+            | "as_str"
+            | "as_bytes"
+            | "as_slice"
+            | "as_mut_slice"
+            | "copy_within"
+            | "len_utf8"
+            | "unwrap"
+            | "expect"
+            | "ok"
+            | "to_be_bytes"
+            | "to_le_bytes"
+            | "wrapping_add"
+            | "wrapping_sub"
+            | "wrapping_mul"
+            | "saturating_add"
+            | "saturating_sub"
+            | "saturating_mul"
+            | "checked_add"
+            | "checked_sub"
+            | "checked_mul"
+            | "checked_div"
+            | "checked_rem"
+    ) || bit_method_arity(m).is_some()
+        || f64_method_sig(m).is_some()
+}
+
+/// The call by path `x.f(args)` stands for (ADR-0051): `t`'s function with
+/// the receiver adjusted. It keeps the method call's span; a borrow added
+/// to the receiver spans `x.f`, which no other expression does.
+pub fn method_call(
+    recv: Expr,
+    name: &Ident,
+    args: Vec<Expr>,
+    t: &MethodTarget,
+    span: Span,
+) -> Expr {
+    let id = |s: &str| Ident {
+        name: s.to_string(),
+        span: name.span,
+    };
+    let path: Vec<Ident> = t.path.iter().map(|s| id(s)).collect();
+    let targs = if t.type_args.is_empty() {
+        Vec::new()
+    } else {
+        vec![TArgs {
+            seg: path.len() - 2,
+            args: t
+                .type_args
+                .iter()
+                .map(|k| Type {
+                    kind: k.clone(),
+                    span: name.span,
+                })
+                .collect(),
+            span: name.span,
+        }]
+    };
+    let first = match t.adjust {
+        Adjust::Value => recv,
+        Adjust::Ref | Adjust::RefMut => Expr {
+            span: recv.span.to(name.span),
+            kind: ExprKind::Ref {
+                mutable: t.adjust == Adjust::RefMut,
+                expr: Box::new(recv),
+            },
+        },
+    };
+    Expr {
+        kind: ExprKind::Call {
+            path,
+            targs,
+            args: std::iter::once(first).chain(args).collect(),
+            method: Some(t.adjust),
+        },
+        span,
+    }
+}
+
+/// Checks `p` as `Checker::check_program` does, with its method calls of
+/// user functions resolved (ADR-0051): each is rewritten to the call by
+/// path it stands for and the program is checked again, until a run
+/// resolves none. The later stages (moves, recursion, proof, code) read
+/// the returned program, which has no such method call left; the
+/// diagnostics are those of the last run.
+pub fn check_resolved(mut p: Program, diags: &mut Diags) -> (Program, crate::verify::Tables) {
+    let base = diags.clone();
+    loop {
+        let mut d = base.clone();
+        let mut c = Checker::new(&mut d);
+        c.check_program(&p);
+        let methods = std::mem::take(&mut c.methods);
+        let tables = c.into_tables();
+        if methods.is_empty() {
+            *diags = d;
+            return (p, tables);
+        }
+        crate::ast::exprs_mut(&mut p, &mut |e| {
+            let key = (e.span.file, e.span.lo, e.span.hi);
+            let Some(t) = methods.get(&key) else {
+                return;
+            };
+            let ExprKind::Method { recv, name, args } = &mut e.kind else {
+                return;
+            };
+            let unit = Expr {
+                kind: ExprKind::Unit,
+                span: e.span,
+            };
+            let recv = std::mem::replace(recv.as_mut(), unit);
+            let name = name.clone();
+            let args = std::mem::take(args);
+            *e = method_call(recv, &name, args, t, e.span);
+        });
+    }
+}
+
 /// `t` with each type parameter in `m` replaced by its type (simultaneous:
 /// a replacement is not substituted again).
 pub fn subst(t: &TypeKind, m: &BTreeMap<String, TypeKind>) -> TypeKind {
@@ -506,6 +671,9 @@ pub struct Checker<'a> {
     /// Every field type is resolved, so which types move is known
     /// (`is_move`); fields themselves are checked by `check_owned_fields`.
     owned_ready: bool,
+    /// The method calls of user functions this run resolved (ADR-0051), by
+    /// the call's span: `check_resolved` rewrites them to calls by path.
+    methods: BTreeMap<(u32, u32, u32), MethodTarget>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -1217,6 +1385,7 @@ impl<'a> Checker<'a> {
             owned_ready: false,
             effect_needs: BTreeMap::new(),
             external: BTreeSet::new(),
+            methods: BTreeMap::new(),
         }
     }
 
@@ -6610,9 +6779,9 @@ impl<'a> Checker<'a> {
                 }
                 self.vec_call(cx, path, args, expected, e.span, mode)
             }
-            ExprKind::Call { path, targs, args } => {
-                self.call(cx, path, targs, args, expected, e.span, mode)
-            }
+            ExprKind::Call {
+                path, targs, args, ..
+            } => self.call(cx, path, targs, args, expected, e.span, mode),
             ExprKind::Ref { .. } => {
                 self.diags.push(Diag::new(
                     "E0409",
@@ -7420,6 +7589,22 @@ impl<'a> Checker<'a> {
             }
             return TypeKind::Error;
         }
+        match self.method_target(cx, &rt, recv, name, args, span) {
+            Some(Some(t)) => {
+                // `x.f(..)` is `T::f(adjust(x), ..)` (ADR-0051): checked as
+                // that call, and rewritten to it by `check_resolved`.
+                let call = method_call(recv.clone(), name, args.to_vec(), &t, span);
+                self.methods.insert((span.file, span.lo, span.hi), t);
+                return self.expr(cx, &call, None, mode);
+            }
+            Some(None) => {
+                for a in args {
+                    self.expr(cx, a, None, mode);
+                }
+                return TypeKind::Error;
+            }
+            None => {}
+        }
         if is_text(&rt) {
             return self.text_method(cx, recv, &rt, name, args, span, mode);
         }
@@ -7451,35 +7636,6 @@ impl<'a> Checker<'a> {
                         .fix(format!("`match` both cases: `match x {{ {arms} }}`"), None),
                 );
                 return TypeKind::Error;
-            }
-            if let Some(sig) = self.fns.get(&format!("{tp}::{}", name.name)).cloned() {
-                // Rust habit: a method call. The call is by path (ADR-0026 §3).
-                let amp = match sig.params.first() {
-                    Some(TypeKind::Ref { mutable: true, .. }) => "&mut ",
-                    Some(TypeKind::Ref { .. }) => "&",
-                    _ => "",
-                };
-                let r = crate::fmt::expr_text(recv);
-                let first = if matches!(rt, TypeKind::Ref { .. }) || amp.is_empty() {
-                    r
-                } else {
-                    format!("{amp}{r}")
-                };
-                let all: Vec<String> = std::iter::once(first)
-                    .chain(args.iter().map(crate::fmt::expr_text))
-                    .collect();
-                let callee = Self::variant_text(&tp, &name.name, &cx.mod_path);
-                self.diags.push(
-                    Diag::new("E0227", span, "method calls are not allowed").fix(
-                        "call by path",
-                        Some(format!("{callee}({})", all.join(", "))),
-                    ),
-                );
-                for (a, t) in args.iter().zip(sig.params.iter().skip(1)) {
-                    let at = self.expr(cx, a, Some(t), mode);
-                    self.expect_ty(&at, t, a.span);
-                }
-                return sig.ret.clone();
             }
         }
         if *value == TypeKind::F64 {
@@ -7667,6 +7823,191 @@ impl<'a> Checker<'a> {
                 TypeKind::Error
             }
         }
+    }
+
+    /// The user function `x.f(..)` names (ADR-0051): `f` of the inherent
+    /// `impl` of `x`'s type (the type behind one reference), else the one
+    /// trait that has `f` among the bounds of a type parameter or the
+    /// traits the type implements. `None` when it names none (a built-in
+    /// method, or an unknown one, reported by the caller); `Some(None)`
+    /// when the call is reported here (E0313, E0314).
+    fn method_target(
+        &mut self,
+        cx: &FnCtx,
+        rt: &TypeKind,
+        recv: &Expr,
+        name: &Ident,
+        args: &[Expr],
+        span: Span,
+    ) -> Option<Option<MethodTarget>> {
+        let (value, by_ref) = match rt {
+            TypeKind::Ref { inner, .. } => (&inner.kind, true),
+            t => (t, false),
+        };
+        // The inherent `impl` first, as in Rust.
+        if let TypeKind::Named { path, .. } = value
+            && self.adts.contains_key(&path.join("::"))
+        {
+            let tp = path.join("::");
+            let fp = format!("{tp}::{}", name.name);
+            if let Some(sig) = self.fns.get(&fp).filter(|s| s.trait_of.is_none()).cloned() {
+                let own =
+                    |t: &TypeKind| matches!(t, TypeKind::Named { path: q, .. } if *q == *path);
+                let Some(adjust) = receiver_adjust(sig.params.first(), by_ref, own) else {
+                    self.not_a_method(cx, &tp, recv, name, args, span, true, None);
+                    return Some(None);
+                };
+                if sig.generics.len() > sig.impl_generics {
+                    self.not_a_method(cx, &tp, recv, name, args, span, false, Some(adjust));
+                    return Some(None);
+                }
+                let ig = &sig.generics[..sig.impl_generics];
+                let mut m = BTreeMap::new();
+                if let Some(first) = sig.params.first() {
+                    let decl = match first {
+                        TypeKind::Ref { inner, .. } => &inner.kind,
+                        t => t,
+                    };
+                    unify(decl, value, ig, &mut m);
+                }
+                let type_args = ig
+                    .iter()
+                    .map(|g| m.get(&g.name).cloned().unwrap_or(TypeKind::Error))
+                    .collect();
+                let mut path: Vec<String> = path.clone();
+                path.push(name.name.clone());
+                return Some(Some(MethodTarget {
+                    path,
+                    type_args,
+                    adjust,
+                }));
+            }
+        }
+        // The traits that could name it: a type parameter's bounds, or the
+        // traits with an `impl` for the type. A built-in method of a
+        // built-in type comes first (Rust's inherent methods).
+        let user_type = matches!(value, TypeKind::Named { path, .. } if self.adts.contains_key(&path.join("::")));
+        let traits: Vec<String> = match value {
+            TypeKind::Param(p) => self
+                .tparams
+                .iter()
+                .filter(|t| t.name == *p)
+                .flat_map(|t| t.bounds.iter().cloned())
+                .collect(),
+            _ if !user_type && builtin_method_name(&name.name) => return None,
+            TypeKind::Error | TypeKind::Never => return None,
+            t => self
+                .trait_impls
+                .iter()
+                .filter(|i| i.matches(t).is_some())
+                .map(|i| i.trait_path.clone())
+                .collect(),
+        };
+        let mut with: Vec<String> = traits
+            .into_iter()
+            .filter(|t| {
+                self.traits
+                    .get(t)
+                    .is_some_and(|i| i.methods.contains(&name.name))
+            })
+            .collect();
+        with.sort();
+        with.dedup();
+        match with.as_slice() {
+            [] => None,
+            [tr] => {
+                let fp = format!("{tr}::{}", name.name);
+                let sig = self.fns.get(&fp)?.clone();
+                let own = |t: &TypeKind| *t == TypeKind::Param("Self".into());
+                let Some(adjust) = receiver_adjust(sig.params.first(), by_ref, own) else {
+                    self.not_a_method(cx, tr, recv, name, args, span, true, None);
+                    return Some(None);
+                };
+                if sig.generics.len() > sig.impl_generics {
+                    self.not_a_method(cx, tr, recv, name, args, span, false, Some(adjust));
+                    return Some(None);
+                }
+                let mut path: Vec<String> = tr.split("::").map(String::from).collect();
+                path.push(name.name.clone());
+                Some(Some(MethodTarget {
+                    path,
+                    type_args: Vec::new(),
+                    adjust,
+                }))
+            }
+            several => {
+                let shown: Vec<String> = several
+                    .iter()
+                    .map(|t| Self::variant_text(t, &name.name, &cx.mod_path))
+                    .collect();
+                self.diags.push(
+                    Diag::new(
+                        "E0313",
+                        name.span,
+                        format!(
+                            "`{}` is a method of more than one trait of `{}`: `{}`",
+                            name.name,
+                            ty_str_in(value, &cx.mod_path),
+                            shown.join("`, `")
+                        ),
+                    )
+                    .fix(
+                        format!("call the one you mean by path: `{}(..)`", shown[0]),
+                        None,
+                    ),
+                );
+                Some(None)
+            }
+        }
+    }
+
+    /// E0314: `x.f(..)` names a function of `owner` that is not called as a
+    /// method; the fix is the call by path. A function without a receiver
+    /// (`no_receiver`) does not take `x`; one with type parameters of its
+    /// own takes them written out.
+    #[allow(clippy::too_many_arguments)]
+    fn not_a_method(
+        &mut self,
+        cx: &FnCtx,
+        owner: &str,
+        recv: &Expr,
+        name: &Ident,
+        args: &[Expr],
+        span: Span,
+        no_receiver: bool,
+        adjust: Option<Adjust>,
+    ) {
+        let callee = Self::variant_text(owner, &name.name, &cx.mod_path);
+        let x = crate::fmt::expr_text(recv);
+        let first = match adjust {
+            Some(Adjust::Ref) => Some(format!("&{x}")),
+            Some(Adjust::RefMut) => Some(format!("&mut {x}")),
+            Some(Adjust::Value) => Some(x),
+            None => None,
+        };
+        let all: Vec<String> = first
+            .into_iter()
+            .chain(args.iter().map(crate::fmt::expr_text))
+            .collect();
+        let (why, call) = if no_receiver {
+            (
+                "it has no receiver",
+                format!("{callee}({})", all.join(", ")),
+            )
+        } else {
+            (
+                "it has type parameters of its own",
+                format!("{callee}::<..>({})", all.join(", ")),
+            )
+        };
+        self.diags.push(
+            Diag::new(
+                "E0314",
+                span,
+                format!("`{callee}` is not called as a method: {why}"),
+            )
+            .fix(format!("call it by path: `{call}`"), None),
+        );
     }
 
     /// A method of `f64` (ADR-0061 §3): `sqrt`, `abs`, `is_nan` and
@@ -8500,6 +8841,7 @@ impl<'a> Checker<'a> {
                         path: path.to_vec(),
                         targs: targs.to_vec(),
                         args: args.to_vec(),
+                        method: None,
                     },
                     span,
                 };

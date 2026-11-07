@@ -325,13 +325,35 @@ fn identities(p: &Program, t: &crate::verify::Tables) -> BTreeMap<String, String
         .collect()
 }
 
-/// Checks a copy of `p`: its tables, or `None` when it does not check.
-fn checked(p: &Program) -> Option<crate::verify::Tables> {
+/// Checks a copy of `p`: the program with its method calls resolved and
+/// its tables (`check::check_resolved`), or `None` when it does not check.
+fn checked(p: &Program) -> Option<(Program, crate::verify::Tables)> {
     let mut d = Diags::default();
-    let mut c = check::Checker::new(&mut d);
-    c.check_program(p);
-    let t = c.into_tables();
-    (!d.has_errors()).then_some(t)
+    let (r, t) = check::check_resolved(p.clone(), &mut d);
+    (!d.has_errors()).then_some((r, t))
+}
+
+/// The spans of the method calls in the resolved program `r` whose
+/// function is `def` (ADR-0051): `rename` renames them by the call.
+fn method_sites(r: &mut Program, def: &str) -> std::collections::BTreeSet<(u32, u32, u32)> {
+    let mut out = std::collections::BTreeSet::new();
+    crate::ast::exprs_mut(r, &mut |e| {
+        if let ExprKind::Call {
+            path,
+            method: Some(_),
+            ..
+        } = &e.kind
+            && path
+                .iter()
+                .map(|i| i.name.as_str())
+                .collect::<Vec<_>>()
+                .join("::")
+                == def
+        {
+            out.insert((e.span.file, e.span.lo, e.span.hi));
+        }
+    });
+    out
 }
 
 /// What `rename` renames: the full path of its unit, and the segments that
@@ -354,6 +376,8 @@ enum TargetKind {
 struct Renamer<'a> {
     target: Target,
     to: &'a str,
+    /// The method calls of the target (`x.f(..)`), by span.
+    methods: std::collections::BTreeSet<(u32, u32, u32)>,
 }
 
 impl Rewrite for Renamer<'_> {
@@ -384,6 +408,12 @@ impl Rewrite for Renamer<'_> {
         }
     }
 
+    fn method(&mut self, call: crate::source::Span, name: &mut Ident) {
+        if self.methods.contains(&(call.file, call.lo, call.hi)) {
+            name.name = self.to.to_string();
+        }
+    }
+
     /// The target's own declaration (a type's also in its `impl` head).
     fn decl(&mut self, unit: &[String], d: Decl<'_>) {
         if unit != self.target.unit.as_slice() {
@@ -411,7 +441,8 @@ impl Rewrite for Renamer<'_> {
 /// references, or the target is not one `rename` handles) it fails and `p`
 /// is left as it was.
 fn rename(p: &mut Program, def: &str, to: &str) -> Result<(), String> {
-    let t = checked(p).ok_or("`rename` needs a program that checks; this one does not")?;
+    let (mut resolved, t) =
+        checked(p).ok_or("`rename` needs a program that checks; this one does not")?;
     let fn_sig = t.fns.get(def).filter(|s| !s.builtin);
     let segs: Vec<String> = def.split("::").map(String::from).collect();
     let (kind, n_local) = if t.adts.contains_key(def) {
@@ -432,19 +463,24 @@ fn rename(p: &mut Program, def: &str, to: &str) -> Result<(), String> {
     if segs.len() <= n_local {
         return Err(format!("`{def}` is not a full path"));
     }
-    let before = identities(p, &t);
+    let before = identities(&resolved, &t);
+    let methods = method_sites(&mut resolved, def);
     let target = Target {
         unit: segs[..segs.len() - n_local].to_vec(),
         local: segs[segs.len() - n_local..].to_vec(),
         kind,
     };
     let mut renamed = p.clone();
-    let mut r = Renamer { target, to };
+    let mut r = Renamer {
+        target,
+        to,
+        methods,
+    };
     crate::refs::walk(&mut renamed, &mut r);
     // The program after the rename is checked with the transaction's other
     // operations; if it checks here, no identity may have moved.
-    if let Some(t2) = checked(&renamed) {
-        let after = identities(&renamed, &t2);
+    if let Some((r2, t2)) = checked(&renamed) {
+        let after = identities(&r2, &t2);
         let mut a: Vec<&String> = before.values().collect();
         let mut b: Vec<&String> = after.values().collect();
         a.sort();
@@ -659,10 +695,8 @@ fn before_state(
         return (BTreeMap::new(), None);
     }
     let mut d2 = Diags::default();
-    let mut c = check::Checker::new(&mut d2);
-    c.check_program(program);
-    let t = c.into_tables();
-    let ids = (!d2.has_errors()).then(|| identities(program, &t));
+    let (resolved, t) = check::check_resolved(program.clone(), &mut d2);
+    let ids = (!d2.has_errors()).then(|| identities(&resolved, &t));
     (hashes(program, &t.fns), ids)
 }
 
@@ -674,9 +708,7 @@ fn finish(
     problems: &[String],
     before: &BTreeMap<String, String>,
 ) -> (Commit, Option<BTreeMap<String, String>>) {
-    let mut c = check::Checker::new(&mut diags);
-    c.check_program(&program);
-    let tables = c.into_tables();
+    let (_, tables) = check::check_resolved(program.clone(), &mut diags);
     let mut diagnostics = diags.to_jsonl(&sm);
     for p in problems {
         diagnostics.push_str(&format!("{{\"error\":{}}}\n", crate::diag::json_str(p)));

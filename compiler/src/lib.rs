@@ -77,6 +77,10 @@ pub struct VerifyOutput {
 struct Frontend {
     sm: SourceMap,
     diags: Diags,
+    /// The program as parsed: the normal form prints it.
+    source: ast::Program,
+    /// The program the later stages read: method calls of user functions
+    /// rewritten to calls by path (ADR-0051, `check::check_resolved`).
     program: ast::Program,
     tables: verify::Tables,
 }
@@ -91,13 +95,12 @@ fn frontend(files: &[(String, String)]) -> Frontend {
         let mut p = parser::Parser::new(toks, &mut diags, text);
         program.mods.extend(p.parse_program().mods);
     }
-    let mut c = check::Checker::new(&mut diags);
-    c.check_program(&program);
-    let tables = c.into_tables();
+    let (resolved, tables) = check::check_resolved(program.clone(), &mut diags);
     Frontend {
         sm,
         diags,
-        program,
+        source: program,
+        program: resolved,
         tables,
     }
 }
@@ -716,7 +719,7 @@ pub fn format_sources(files: &[(String, String)]) -> Result<BTreeMap<String, Str
     if fe.diags.has_errors() {
         return Err(fe.diags.to_jsonl(&fe.sm));
     }
-    Ok(fmt::format_units(&fe.program))
+    Ok(fmt::format_units(&fe.source))
 }
 
 /// Normal form of parsed sources without checking them (backlog 2B-03: the
@@ -1020,7 +1023,7 @@ impl FrontCache {
         // Take the old syntax trees apart, file by file.
         let mut old_mods: Vec<Vec<ast::Mod>> = Vec::new();
         if let Some(fe) = self.fe.take() {
-            let mut it = fe.program.mods.into_iter();
+            let mut it = fe.source.mods.into_iter();
             for f in &self.files {
                 old_mods.push(it.by_ref().take(f.mods).collect());
             }
@@ -1056,13 +1059,12 @@ impl FrontCache {
             program.mods.extend(mods);
         }
         self.stats.checks += 1;
-        let mut c = check::Checker::new(&mut diags);
-        c.check_program(&program);
-        let tables = c.into_tables();
+        let (resolved, tables) = check::check_resolved(program.clone(), &mut diags);
         self.fe = Some(Frontend {
             sm,
             diags,
-            program,
+            source: program,
+            program: resolved,
             tables,
         });
     }

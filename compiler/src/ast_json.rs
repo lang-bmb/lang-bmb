@@ -705,7 +705,9 @@ impl Ex<'_> {
                 k("var");
                 kv.push(("name", s(&i.name)));
             }
-            ExprKind::Call { path, targs, args } => {
+            ExprKind::Call {
+                path, targs, args, ..
+            } => {
                 k("call");
                 kv.push(("path", s(&path_text(path))));
                 if !targs.is_empty() {
@@ -1777,6 +1779,7 @@ impl Im {
                     path,
                     targs,
                     args: self.exprs(&o, "args")?,
+                    method: None,
                 }
             }
             "method" => {

@@ -1,0 +1,38 @@
+#[summary("메서드 구문의 계약: 이름이 바뀐 spec 메서드와 그 호출 (ADR-0051, 2M-01)")]
+mod m {
+    struct C { n: u64, cap: u64 }
+
+    impl C {
+        spec fn room(self: &C) -> bool {
+            self.n < self.cap
+        }
+
+        spec fn full(self: &C) -> bool {
+            self.n == self.cap
+        }
+
+        #[effects(pure)]
+        #[uses(C::room)]
+        fn tick(self: &mut C) -> ()
+            requires self.room(),
+        {
+            self.n = self.n + 1;
+        }
+
+        #[effects(pure)]
+        #[uses(C::full)]
+        fn fill(self: &mut C) -> ()
+            ensures self.full(),
+        {
+            self.n = self.cap;
+        }
+
+        #[effects(pure)]
+        #[uses(C::room)]
+        fn step(self: &mut C) -> ()
+            requires self.room(),
+        {
+            self.tick();
+        }
+    }
+}

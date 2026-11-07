@@ -6,6 +6,7 @@
 //! 2D-19, `weaken.rs`) are its two rewrites.
 
 use crate::ast::*;
+use crate::source::Span;
 
 /// Where a path is written, which decides how it can name a definition.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -48,6 +49,9 @@ pub(crate) trait Rewrite {
     fn decl(&mut self, _unit: &[String], _d: Decl<'_>) {}
     /// A variable read (`ExprKind::Var`).
     fn var(&mut self, _name: &mut String) {}
+    /// The name of the method call at `call` (`x.f(..)`, ADR-0051), which
+    /// names its function only through the receiver's type.
+    fn method(&mut self, _call: Span, _name: &mut Ident) {}
 }
 
 /// Walks one function of `unit` with `r`.
@@ -209,8 +213,11 @@ impl Walker<'_> {
     }
 
     fn expr(&mut self, e: &mut Expr) {
+        let span = e.span;
         match &mut e.kind {
-            ExprKind::Call { path, targs, args } => {
+            ExprKind::Call {
+                path, targs, args, ..
+            } => {
                 let before = path.len() as isize;
                 let delta = self.idents(path, Site::Call);
                 // Type arguments stay on the segment they followed, counted
@@ -225,7 +232,8 @@ impl Walker<'_> {
                     .for_each(|t| self.ty(t));
                 args.iter_mut().for_each(|a| self.expr(a));
             }
-            ExprKind::Method { recv, args, .. } => {
+            ExprKind::Method { recv, name, args } => {
+                self.r.method(span, name);
                 self.expr(recv);
                 args.iter_mut().for_each(|a| self.expr(a));
             }

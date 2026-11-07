@@ -2595,6 +2595,7 @@ impl<'a> Parser<'a> {
                                         path: vec![ident(t), ident("try_from")],
                                         targs: Vec::new(),
                                         args: vec![e],
+                                        method: None,
                                     },
                                     span,
                                 }),
@@ -2626,6 +2627,7 @@ impl<'a> Parser<'a> {
                                 path: vec![ident("f64"), ident("from")],
                                 targs: Vec::new(),
                                 args: vec![e],
+                                method: None,
                             },
                             span,
                         };
@@ -3260,7 +3262,12 @@ impl<'a> Parser<'a> {
         if self.is_p("(") {
             let args = self.parse_args()?;
             return Ok(Expr {
-                kind: ExprKind::Call { path, targs, args },
+                kind: ExprKind::Call {
+                    path,
+                    targs,
+                    args,
+                    method: None,
+                },
                 span: lo.to(self.prev_span()),
             });
         }

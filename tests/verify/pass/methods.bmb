@@ -1,0 +1,170 @@
+#[summary("메서드 구문 증명: 수신자 조정, 고유 impl, 경계 trait, 계약의 메서드 (ADR-0051, 2M-01)")]
+mod mt {
+    struct Counter { n: u64, cap: u64 }
+
+    struct Stack<T: Copy> { items: [T; 4], len: usize }
+
+    impl Counter {
+        spec fn room(self: &Counter) -> bool {
+            self.n < self.cap
+        }
+
+        spec fn within(self: &Counter) -> bool {
+            self.n <= self.cap
+        }
+
+        spec fn ticked(self: &Counter, before: Counter) -> bool {
+            self.n == before.n + 1 && self.cap == before.cap
+        }
+
+        spec fn fresh(self: &Counter, cap: u64) -> bool {
+            self.n == 0 && self.cap == cap
+        }
+
+        #[effects(pure)]
+        #[uses(Counter::fresh)]
+        fn new(cap: u64) -> (r: Counter)
+            ensures r.fresh(cap),
+        {
+            Counter { n: 0, cap: cap }
+        }
+
+        #[effects(pure)]
+        #[uses(Counter::room, Counter::ticked)]
+        fn tick(self: &mut Counter) -> ()
+            requires self.room(),
+            ensures self.ticked(*old(self)),
+        {
+            self.n = self.n + 1;
+        }
+
+        #[effects(pure)]
+        #[uses(Counter::within, left_of)]
+        fn left(self: &Counter) -> (r: u64)
+            requires self.within(),
+            ensures left_of(self, r),
+        {
+            self.cap - self.n
+        }
+    }
+
+    spec fn left_of(c: &Counter, r: u64) -> bool {
+        r == c.cap - c.n
+    }
+
+    spec fn has_room<T: Copy>(s: &Stack<T>) -> bool {
+        s.len < 4
+    }
+
+    spec fn grew<T: Copy>(before: Stack<T>, after: Stack<T>) -> bool {
+        after.len == before.len + 1
+    }
+
+    spec fn two(r: usize) -> bool {
+        r == 2
+    }
+
+    spec fn percent(r: i64) -> bool {
+        0 <= r && r <= 100
+    }
+
+    spec fn twice_percent(r: i64) -> bool {
+        0 <= r && r <= 200
+    }
+
+    impl<T: Copy> Stack<T> {
+        #[effects(pure)]
+        fn size(self: &Stack<T>) -> usize {
+            self.len
+        }
+
+        #[effects(pure)]
+        #[uses(has_room, grew)]
+        fn push(self: &mut Stack<T>, x: T) -> ()
+            requires has_room::<T>(self),
+            ensures grew::<T>(*old(self), *self),
+        {
+            self.items[self.len] = x;
+            self.len = self.len + 1;
+        }
+    }
+
+    trait Score {
+        #[effects(pure)]
+        fn score(self: &Self) -> (r: i64)
+            ensures percent(r);
+
+        #[effects(pure)]
+        #[uses(percent, twice_percent)]
+        fn doubled(self: &Self) -> (r: i64)
+            ensures twice_percent(r),
+        {
+            self.score() + self.score()
+        }
+    }
+
+    impl Score for Counter {
+        #[effects(pure)]
+        #[uses(percent)]
+        fn score(self: &Counter) -> (r: i64)
+            ensures percent(r),
+        {
+            if self.n < 100 { i64::try_from(self.n).unwrap() } else { 100 }
+        }
+
+        #[effects(pure)]
+        #[uses(percent, twice_percent)]
+        fn doubled(self: &Counter) -> (r: i64)
+            ensures twice_percent(r),
+        {
+            self.score() * 2
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(percent)]
+    fn best<T: Copy + Score>(a: &T, b: &T) -> (r: i64)
+        ensures percent(r),
+    {
+        let x: i64 = a.score();
+        let y: i64 = b.score();
+        if x < y { y } else { x }
+    }
+
+    spec fn enough(cap: u64) -> bool {
+        2 <= cap
+    }
+
+    spec fn two_less(cap: u64, r: u64) -> bool {
+        r == cap - 2
+    }
+
+    #[effects(pure)]
+    #[uses(enough, two_less, Counter::fresh, Counter::room, Counter::ticked, Counter::within, left_of)]
+    fn run(cap: u64) -> (r: u64)
+        requires enough(cap),
+        ensures two_less(cap, r),
+    {
+        let mut c: Counter = Counter::new(cap);
+        c.tick();
+        c.tick();
+        c.left()
+    }
+
+    #[effects(pure)]
+    #[uses(has_room, grew)]
+    fn fill(x: i64) -> usize {
+        let mut s: Stack<i64> = Stack { items: [0; 4], len: 0 };
+        s.push(x);
+        s.push(x);
+        s.size()
+    }
+
+    #[effects(pure)]
+    #[uses(twice_percent)]
+    fn both(c: &Counter) -> (r: i64)
+        ensures twice_percent(r),
+    {
+        c.doubled()
+    }
+}

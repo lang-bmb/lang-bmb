@@ -1,0 +1,52 @@
+#[summary("메서드 구문 증명 실패: 수신자의 사전조건, 경계 trait의 사후조건 (ADR-0051, 2M-01)")]
+mod mf {
+    struct Counter { n: u64, cap: u64 }
+
+    impl Counter {
+        spec fn room(self: &Counter) -> bool {
+            self.n < self.cap
+        }
+
+        #[effects(pure)]
+        #[uses(Counter::room)]
+        fn tick(self: &mut Counter) -> ()
+            requires self.room(),
+        {
+            self.n = self.n + 1;
+        }
+    }
+
+    spec fn percent(r: i64) -> bool {
+        0 <= r && r <= 100
+    }
+
+    trait Score {
+        #[effects(pure)]
+        fn score(self: &Self) -> (r: i64)
+            ensures percent(r);
+
+        #[effects(pure)]
+        #[uses(percent)]
+        fn doubled(self: &Self) -> (r: i64)
+            ensures percent(r),
+        {
+            self.score() + self.score()
+        }
+    }
+
+    #[effects(pure)]
+    #[uses(Counter::room)]
+    fn overrun(cap: u64) -> u64 {
+        let mut c: Counter = Counter { n: 0, cap: cap };
+        c.tick();
+        c.n
+    }
+
+    #[effects(pure)]
+    #[uses(percent)]
+    fn sum_of<T: Copy + Score>(a: &T, b: &T) -> (r: i64)
+        ensures percent(r),
+    {
+        a.score() + b.score()
+    }
+}

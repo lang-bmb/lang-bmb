@@ -1,0 +1,8 @@
+{"code":"E0314","severity":"error","message":"`P::new` is not called as a method: it has no receiver","file":"err/methods.bmb","line":59,"col":20,"end_line":59,"end_col":28,"fix":{"message":"call it by path: `P::new(3)`"}}
+{"code":"E0314","severity":"error","message":"`P::pick` is not called as a method: it has type parameters of its own","file":"err/methods.bmb","line":65,"col":9,"end_line":65,"end_col":18,"fix":{"message":"call it by path: `P::pick::<..>(p, 4)`"}}
+{"code":"E0313","severity":"error","message":"`name` is a method of more than one trait of `P`: `A::name`, `B::name`","file":"err/methods.bmb","line":70,"col":11,"end_line":70,"end_col":15,"fix":{"message":"call the one you mean by path: `A::name(..)`"}}
+{"code":"E0313","severity":"error","message":"`name` is a method of more than one trait of `T`: `A::name`, `B::name`","file":"err/methods.bmb","line":75,"col":11,"end_line":75,"end_col":15,"fix":{"message":"call the one you mean by path: `A::name(..)`"}}
+{"code":"E0408","severity":"error","message":"`p` is not mutable","file":"err/methods.bmb","line":80,"col":9,"end_line":80,"end_col":10,"fix":{"message":"declare the variable with `let mut`"}}
+{"code":"E0401","severity":"error","message":"expected `&mut me::P`, found `&me::P`","file":"err/methods.bmb","line":85,"col":9,"end_line":85,"end_col":10}
+{"code":"E0404","severity":"error","message":"unknown method `nope`","file":"err/methods.bmb","line":90,"col":11,"end_line":90,"end_col":15}
+{"code":"E0413","severity":"error","message":"`b` is used after it was moved","file":"err/methods.bmb","line":96,"col":13,"end_line":96,"end_col":14,"fix":{"message":"move `b.clone()` instead, or assign `b` again before this use"}}
