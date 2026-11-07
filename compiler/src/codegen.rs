@@ -477,6 +477,11 @@ fn drop_glue(tb: &Tables, extra: &[TypeKind]) -> String {
                 }
                 body.push_str("  call void @free(ptr %h)\n");
             }
+            // A child process (ADR-0091 §2): its pipes are closed, the
+            // process is not waited for (Rust's `Drop`).
+            _ if crate::check::is_child(t) => {
+                body.push_str("  call void @bmb_rt_child_drop(ptr %p)\n");
+            }
             _ => {
                 if let Some(fs) = struct_fields(t, tb) {
                     for (k, (_, ft)) in fs.iter().enumerate() {
@@ -3254,6 +3259,8 @@ impl<'p> Gen<'p> {
                 "@bmb_monotonic_ms".to_string(),
                 self.t.fns[&target].ret.clone(),
             )
+        } else if target == "std::process::Child::id" {
+            ("@bmb_child_id".to_string(), self.t.fns[&target].ret.clone())
         } else if sys::is_io(&target) {
             // Input and output (ADR-0091 §2): a `Result` through the
             // caller's memory.

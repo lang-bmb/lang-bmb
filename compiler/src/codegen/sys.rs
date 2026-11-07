@@ -799,7 +799,9 @@ pub(super) fn helpers(text: &str) -> String {
 /// An argument with a NUL byte is the `InvalidInput` error, a program
 /// that cannot start is the spawn error (`ENOENT`, ..). Linux x86-64
 /// layouts: a `pollfd` is 8 bytes, the spawn file actions fit in 128.
-const RUN: &str = "declare i32 @pipe2(ptr, i32)
+/// What `run` and `spawn` share: the spawn and pipe declarations, reading
+/// what a pipe has and freeing an `argv`.
+const PROC: &str = "declare i32 @pipe2(ptr, i32)
 declare i32 @posix_spawn_file_actions_init(ptr)
 declare i32 @posix_spawn_file_actions_destroy(ptr)
 declare i32 @posix_spawn_file_actions_adddup2(ptr, i32, i32)
@@ -854,7 +856,9 @@ done:
   call void @free(ptr %argv)
   ret void
 }
-define internal i64 @bmb_rt_process_run(ptr %out, ptr %p, i64 %pn, ptr %args, i64 %an, ptr %in, i64 %inn) {
+";
+
+const RUN: &str = "define internal i64 @bmb_rt_process_run(ptr %out, ptr %p, i64 %pn, ptr %args, i64 %an, ptr %in, i64 %inn) {
 entry:
   %cprog = call ptr @bmb_cpath(ptr %p, i64 %pn)
   %pnul = icmp eq ptr %cprog, null
@@ -1071,6 +1075,274 @@ reaped:
 }
 ";
 
+/// A child process with pipes (ADR-0091 §2, the rest of slice (e)):
+/// `bmb_rt_process_spawn` starts `prog` as `bmb_rt_process_run` does (the
+/// same `argv`, `PATH` lookup and errors), with pipes to its standard input
+/// and output only (its standard error is this process's, Rust's default
+/// for a spawned child), and keeps the pipe ends as `FILE`s in the `Child`
+/// (`pid`, `stdin`, `stdout`). The pipes are close-on-exec, so a second
+/// child does not hold the first one's input open. `write_all` writes and
+/// flushes; `read_line` reads one line as `bmb_stdin_line` does, from the
+/// child's output; `wait` closes both pipes (the child sees the end of its
+/// input, as Rust's `wait` closes `stdin`), waits and gives the status;
+/// `bmb_rt_child_drop` (the drop glue) closes both and does not wait,
+/// Rust's `Drop`. A `FILE` that `fdopen` cannot make (no memory) is null
+/// and its operations fail with `EBADF`.
+const CHILD: &str = "declare ptr @fdopen(i32, ptr)
+declare i32 @fclose(ptr)
+@bmb.mode_w = private unnamed_addr constant [2 x i8] c\"w\\00\"
+@bmb.mode_r = private unnamed_addr constant [2 x i8] c\"r\\00\"
+define internal i64 @bmb_rt_process_spawn(ptr %out, ptr %p, i64 %pn, ptr %args, i64 %an) {
+entry:
+  %cprog = call ptr @bmb_cpath(ptr %p, i64 %pn)
+  %pnul = icmp eq ptr %cprog, null
+  br i1 %pnul, label %badprog, label %mkargv
+badprog:
+  ret i64 -1001
+mkargv:
+  %cnt = add nuw i64 %an, 2
+  %bytes = mul nuw i64 %cnt, 8
+  %argv = call ptr @bmb_box_alloc(i64 %bytes)
+  store ptr %cprog, ptr %argv
+  br label %ahead
+ahead:
+  %i = phi i64 [0, %mkargv], [%i1, %astore]
+  %amore = icmp ult i64 %i, %an
+  br i1 %amore, label %abody, label %aend
+abody:
+  %eh = getelementptr inbounds %bmb.vec, ptr %args, i64 %i
+  %ep = load ptr, ptr %eh
+  %elp = getelementptr inbounds %bmb.vec, ptr %eh, i32 0, i32 1
+  %el = load i64, ptr %elp
+  %ca = call ptr @bmb_cpath(ptr %ep, i64 %el)
+  %anul = icmp eq ptr %ca, null
+  br i1 %anul, label %badarg, label %astore
+badarg:
+  %filled = add nuw i64 %i, 1
+  call void @bmb_argv_free(ptr %argv, i64 %filled)
+  ret i64 -1001
+astore:
+  %slot = add nuw i64 %i, 1
+  %sp = getelementptr inbounds ptr, ptr %argv, i64 %slot
+  store ptr %ca, ptr %sp
+  %i1 = add nuw i64 %i, 1
+  br label %ahead
+aend:
+  %last = add nuw i64 %an, 1
+  %lastp = getelementptr inbounds ptr, ptr %argv, i64 %last
+  store ptr null, ptr %lastp
+  %fds = alloca [4 x i32]
+  %f_in = getelementptr inbounds [4 x i32], ptr %fds, i32 0, i32 0
+  %f_out = getelementptr inbounds [4 x i32], ptr %fds, i32 0, i32 2
+  %p1 = call i32 @pipe2(ptr %f_in, i32 524288)
+  %p1bad = icmp ne i32 %p1, 0
+  br i1 %p1bad, label %nopipe, label %second
+second:
+  %p2 = call i32 @pipe2(ptr %f_out, i32 524288)
+  %p2bad = icmp ne i32 %p2, 0
+  br i1 %p2bad, label %nopipe2, label %spawn
+nopipe2:
+  %pe2 = call i64 @bmb_errno()
+  %c_r = load i32, ptr %f_in
+  %c_wp = getelementptr inbounds [4 x i32], ptr %fds, i32 0, i32 1
+  %c_w = load i32, ptr %c_wp
+  call i32 @close(i32 %c_r)
+  call i32 @close(i32 %c_w)
+  call void @bmb_argv_free(ptr %argv, i64 %last)
+  ret i64 %pe2
+nopipe:
+  %pe = call i64 @bmb_errno()
+  call void @bmb_argv_free(ptr %argv, i64 %last)
+  ret i64 %pe
+spawn:
+  %in_r = load i32, ptr %f_in
+  %in_wp = getelementptr inbounds [4 x i32], ptr %fds, i32 0, i32 1
+  %in_w = load i32, ptr %in_wp
+  %out_r = load i32, ptr %f_out
+  %out_wp = getelementptr inbounds [4 x i32], ptr %fds, i32 0, i32 3
+  %out_w = load i32, ptr %out_wp
+  %fa = alloca [128 x i8]
+  call i32 @posix_spawn_file_actions_init(ptr %fa)
+  call i32 @posix_spawn_file_actions_adddup2(ptr %fa, i32 %in_r, i32 0)
+  call i32 @posix_spawn_file_actions_adddup2(ptr %fa, i32 %out_w, i32 1)
+  %pid = alloca i32
+  %env = load ptr, ptr @environ
+  %rc = call i32 @posix_spawnp(ptr %pid, ptr %cprog, ptr %fa, ptr null, ptr %argv, ptr %env)
+  call i32 @posix_spawn_file_actions_destroy(ptr %fa)
+  call void @bmb_argv_free(ptr %argv, i64 %last)
+  call i32 @close(i32 %in_r)
+  call i32 @close(i32 %out_w)
+  %spawnfail = icmp ne i32 %rc, 0
+  br i1 %spawnfail, label %nospawn, label %started
+nospawn:
+  call i32 @close(i32 %in_w)
+  call i32 @close(i32 %out_r)
+  %rc64 = sext i32 %rc to i64
+  %se = sub i64 -1, %rc64
+  ret i64 %se
+started:
+  call ptr @signal(i32 13, ptr inttoptr (i64 1 to ptr))
+  %fin = call ptr @fdopen(i32 %in_w, ptr @bmb.mode_w)
+  %fout = call ptr @fdopen(i32 %out_r, ptr @bmb.mode_r)
+  %pidv = load i32, ptr %pid
+  %pp = getelementptr inbounds %\"std::process::Child\", ptr %out, i32 0, i32 0
+  store i32 %pidv, ptr %pp
+  %ip = getelementptr inbounds %\"std::process::Child\", ptr %out, i32 0, i32 1
+  %fini = ptrtoint ptr %fin to i64
+  store i64 %fini, ptr %ip
+  %op = getelementptr inbounds %\"std::process::Child\", ptr %out, i32 0, i32 2
+  %fouti = ptrtoint ptr %fout to i64
+  store i64 %fouti, ptr %op
+  ret i64 0
+}
+define internal ptr @bmb_child_file(ptr %c, i32 %k) {
+  %pi = getelementptr inbounds %\"std::process::Child\", ptr %c, i32 0, i32 1
+  %po = getelementptr inbounds %\"std::process::Child\", ptr %c, i32 0, i32 2
+  %isin = icmp eq i32 %k, 1
+  %fp = select i1 %isin, ptr %pi, ptr %po
+  %fi = load i64, ptr %fp
+  %f = inttoptr i64 %fi to ptr
+  ret ptr %f
+}
+define internal i64 @bmb_rt_child_write_all(ptr %c, ptr %d, i64 %n) {
+entry:
+  %f = call ptr @bmb_child_file(ptr %c, i32 1)
+  %none = icmp eq ptr %f, null
+  br i1 %none, label %badf, label %write
+badf:
+  ret i64 -10
+write:
+  %w = call i64 @fwrite(ptr %d, i64 1, i64 %n, ptr %f)
+  %short = icmp ne i64 %w, %n
+  br i1 %short, label %err, label %flush
+flush:
+  %r = call i32 @fflush(ptr %f)
+  %bad = icmp ne i32 %r, 0
+  br i1 %bad, label %err, label %ok
+ok:
+  ret i64 0
+err:
+  %e = call i64 @bmb_errno()
+  ret i64 %e
+}
+define internal i64 @bmb_rt_child_read_line(ptr %c, ptr %h) {
+entry:
+  %f = call ptr @bmb_child_file(ptr %c, i32 2)
+  %none = icmp eq ptr %f, null
+  br i1 %none, label %badf, label %start
+badf:
+  ret i64 -10
+start:
+  %lp = getelementptr inbounds %bmb.vec, ptr %h, i32 0, i32 1
+  %cp = getelementptr inbounds %bmb.vec, ptr %h, i32 0, i32 2
+  %first = load i64, ptr %lp
+  br label %next
+next:
+  %ch = call i32 @fgetc(ptr %f)
+  %eof = icmp slt i32 %ch, 0
+  br i1 %eof, label %end, label %byte
+byte:
+  %len = load i64, ptr %lp
+  %cap = load i64, ptr %cp
+  %full = icmp eq i64 %len, %cap
+  br i1 %full, label %grow, label %put
+grow:
+  call void @bmb_vec_grow(ptr %h, i64 1)
+  br label %put
+put:
+  %buf = load ptr, ptr %h
+  %at = getelementptr inbounds i8, ptr %buf, i64 %len
+  %b = trunc i32 %ch to i8
+  store i8 %b, ptr %at
+  %len1 = add nuw i64 %len, 1
+  store i64 %len1, ptr %lp
+  %nl = icmp eq i32 %ch, 10
+  br i1 %nl, label %check, label %next
+end:
+  %ferr = call i32 @ferror(ptr %f)
+  %isbad = icmp ne i32 %ferr, 0
+  br i1 %isbad, label %os, label %check
+os:
+  %ec = call i64 @bmb_errno()
+  %olen = load i64, ptr %lp
+  %on = sub nuw i64 %olen, %first
+  %obuf = load ptr, ptr %h
+  %ofrom = getelementptr inbounds i8, ptr %obuf, i64 %first
+  %okeep = call i1 @bmb_utf8_valid(ptr %ofrom, i64 %on)
+  br i1 %okeep, label %osdone, label %osdrop
+osdrop:
+  store i64 %first, ptr %lp
+  br label %osdone
+osdone:
+  ret i64 %ec
+check:
+  %len2 = load i64, ptr %lp
+  %n = sub nuw i64 %len2, %first
+  %buf2 = load ptr, ptr %h
+  %from = getelementptr inbounds i8, ptr %buf2, i64 %first
+  %valid = call i1 @bmb_utf8_valid(ptr %from, i64 %n)
+  br i1 %valid, label %done, label %invalid
+invalid:
+  store i64 %first, ptr %lp
+  ret i64 -1
+done:
+  ret i64 %n
+}
+define internal void @bmb_rt_child_drop(ptr %c) {
+entry:
+  %fin = call ptr @bmb_child_file(ptr %c, i32 1)
+  %hasin = icmp ne ptr %fin, null
+  br i1 %hasin, label %closein, label %out
+closein:
+  call i32 @fclose(ptr %fin)
+  br label %out
+out:
+  %fout = call ptr @bmb_child_file(ptr %c, i32 2)
+  %hasout = icmp ne ptr %fout, null
+  br i1 %hasout, label %closeout, label %done
+closeout:
+  call i32 @fclose(ptr %fout)
+  br label %done
+done:
+  ret void
+}
+define internal i64 @bmb_rt_child_wait(ptr %c) {
+entry:
+  call void @bmb_rt_child_drop(ptr %c)
+  %pp = getelementptr inbounds %\"std::process::Child\", ptr %c, i32 0, i32 0
+  %pidv = load i32, ptr %pp
+  %st = alloca i32
+  store i32 0, ptr %st
+  br label %waiting
+waiting:
+  %wp = call i32 @waitpid(i32 %pidv, ptr %st, i32 0)
+  %wbad = icmp slt i32 %wp, 0
+  br i1 %wbad, label %retry, label %reaped
+retry:
+  %wi = call i1 @bmb_interrupted()
+  br i1 %wi, label %waiting, label %failed
+failed:
+  %we = call i64 @bmb_errno()
+  ret i64 %we
+reaped:
+  %s = load i32, ptr %st
+  %sig = and i32 %s, 127
+  %exited = icmp eq i32 %sig, 0
+  %code = lshr i32 %s, 8
+  %code8 = and i32 %code, 255
+  %bysig = add nuw i32 %sig, 128
+  %status = select i1 %exited, i32 %code8, i32 %bysig
+  %s64 = zext i32 %status to i64
+  ret i64 %s64
+}
+define internal i64 @bmb_child_id(ptr %c) {
+  %pp = getelementptr inbounds %\"std::process::Child\", ptr %c, i32 0, i32 0
+  %pidv = load i32, ptr %pp
+  %w = zext i32 %pidv to i64
+  ret i64 %w
+}
+";
+
 /// What every input and output built-in shares: `errno` as a result code,
 /// whether the last failure was `EINTR`, and the message of an
 /// `std::io::Error` (Rust's `Display`): `strerror` and ` (os error N)` for
@@ -1139,12 +1411,14 @@ enum Payload {
     Value,
     /// `()`.
     Unit,
+    /// The returned count is an `i32` value (a child's status).
+    Int32,
 }
 
 /// The built-ins whose result is `Result<T, std::io::Error>`: path, the
 /// runtime function, its flattened parameters (as the call passes the
 /// built-in's arguments) and what it gives on success.
-const IO_BUILTINS: [(&str, &str, &[&str], Payload); 10] = [
+const IO_BUILTINS: [(&str, &str, &[&str], Payload); 14] = [
     (
         "std::io::read_line",
         "bmb_stdin_line",
@@ -1204,6 +1478,30 @@ const IO_BUILTINS: [(&str, &str, &[&str], Payload); 10] = [
         "bmb_rt_process_run",
         &["ptr", "i64", "ptr", "i64", "ptr", "i64"],
         Payload::Value,
+    ),
+    (
+        "std::process::spawn",
+        "bmb_rt_process_spawn",
+        &["ptr", "i64", "ptr", "i64"],
+        Payload::Value,
+    ),
+    (
+        "std::process::Child::write_all",
+        "bmb_rt_child_write_all",
+        &["ptr", "ptr", "i64"],
+        Payload::Unit,
+    ),
+    (
+        "std::process::Child::read_line",
+        "bmb_rt_child_read_line",
+        &["ptr", "ptr"],
+        Payload::Count,
+    ),
+    (
+        "std::process::Child::wait",
+        "bmb_rt_child_wait",
+        &["ptr"],
+        Payload::Int32,
     ),
 ];
 
@@ -1277,6 +1575,13 @@ pub(super) fn io_runtime(ir: &str, tb: &Tables) -> String {
                     okv = view_ty(result, "Ok")
                 ),
             ),
+            Payload::Int32 => (
+                String::new(),
+                format!(
+                    "  %v = getelementptr inbounds {okv}, ptr %out, i32 0, i32 1\n  %r32 = trunc i64 %r to i32\n  store i32 %r32, ptr %v\n",
+                    okv = view_ty(result, "Ok")
+                ),
+            ),
             Payload::Unit => (String::new(), String::new()),
         };
         let _ = write!(
@@ -1307,15 +1612,22 @@ err:
             errv = view_ty(result, "Err"),
         );
     }
-    if used.iter().any(|(p, ..)| p.starts_with("std::io::")) {
+    let children = used.iter().any(|(p, ..)| *p == "std::process::spawn");
+    if children || used.iter().any(|(p, ..)| p.starts_with("std::io::")) {
         out.push_str(STDIN);
     }
-    let runs = used.iter().any(|(p, ..)| *p == "std::process::run");
+    let runs = children || used.iter().any(|(p, ..)| *p == "std::process::run");
     if runs || used.iter().any(|(p, ..)| p.starts_with("std::fs::")) {
         out.push_str(FS);
     }
     if runs {
+        out.push_str(PROC);
+    }
+    if used.iter().any(|(p, ..)| *p == "std::process::run") {
         out.push_str(RUN);
+    }
+    if children {
+        out.push_str(CHILD);
     }
     let dirs = [
         "std::fs::rename",

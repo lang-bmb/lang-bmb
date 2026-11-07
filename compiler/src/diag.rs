@@ -278,6 +278,10 @@ pub const CODES: &[(&str, &str)] = &[
         "E0435",
         "a range `lo..hi` outside the source argument of `copy_within` and the bounds of a `&str` argument `&s[lo..hi]`",
     ),
+    (
+        "E0436",
+        "a `std::process::Child` built or read by its fields (it comes from `std::process::spawn`)",
+    ),
     // E05xx: specifications
     (
         "E0501",

@@ -1,0 +1,29 @@
+#[summary("자식 프로세스 오류: 손으로 만든 Child, 필드, 이동 뒤 사용 (ADR-0091 §2, 4C-02)")]
+mod ch {
+    #[effects(alloc, io, nondet)]
+    fn forged() -> () {
+        let c: std::process::Child = std::process::Child { pid: 1, stdin: 0, stdout: 0 };
+        match c.wait() {
+            Ok(s) => {}
+            Err(e) => {}
+        }
+    }
+
+    #[effects(io, nondet)]
+    fn handle(c: &std::process::Child) -> i32 {
+        c.pid
+    }
+
+    #[effects(alloc, io, nondet)]
+    fn twice(c: std::process::Child) -> () {
+        let d: std::process::Child = c;
+        match d.wait() {
+            Ok(s) => {}
+            Err(e) => {}
+        }
+        match c.wait() {
+            Ok(t) => {}
+            Err(f) => {}
+        }
+    }
+}

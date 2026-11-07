@@ -346,19 +346,29 @@ impl Mv<'_> {
                 }
             }
             Some(St::Moved) => {
+                // A child process has one owner and no `clone` (ADR-0091 §2).
+                let help = if self
+                    .types
+                    .get(&key(span))
+                    .is_some_and(crate::check::is_child)
+                {
+                    format!(
+                        "a child process has one owner: lend it as `&mut {0}` where it is still needed, and move it last (`{0}.wait()`)",
+                        id.name
+                    )
+                } else {
+                    format!(
+                        "move `{0}.clone()` instead, or assign `{0}` again before this use",
+                        id.name
+                    )
+                };
                 self.diags.push(
                     Diag::new(
                         "E0413",
                         span,
                         format!("`{}` is used after it was moved", id.name),
                     )
-                    .fix(
-                        format!(
-                            "move `{0}.clone()` instead, or assign `{0}` again before this use",
-                            id.name
-                        ),
-                        None,
-                    ),
+                    .fix(help, None),
                 );
                 // One report per move: the use counts as owned from here.
                 let st = if moves { St::Moved } else { St::Owned };

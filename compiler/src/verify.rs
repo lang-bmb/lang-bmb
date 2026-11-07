@@ -6144,6 +6144,11 @@ impl<'p, 'q> Enc<'p, 'q> {
                         | "std::env::var"
                         | "std::time::monotonic_ms"
                         | "std::process::run"
+                        | "std::process::spawn"
+                        | "std::process::Child::write_all"
+                        | "std::process::Child::read_line"
+                        | "std::process::Child::id"
+                        | "std::process::Child::wait"
                 ),
                 "unresolved call in {}",
                 self.path
@@ -6170,7 +6175,7 @@ impl<'p, 'q> Enc<'p, 'q> {
             // value of its type.
             if target.starts_with("std::io::")
                 || target.starts_with("std::fs::")
-                || target == "std::process::run"
+                || target.starts_with("std::process::")
             {
                 let ptys = self.prog.t.fns[&target].params.clone();
                 for (i, pt) in ptys.iter().enumerate() {

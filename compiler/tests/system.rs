@@ -972,3 +972,223 @@ fn input_loops_run_until_the_end() {
     let (ok, diags) = cli::run(&["check"], &one(&not_nondet));
     assert!(!ok && diags.contains("E0506"), "{diags}");
 }
+
+const DIALOG: &str = r#"#[summary("talk to z3")]
+mod app {
+    // The line Z3 answers `q` with.
+    #[effects(alloc, io, nondet)]
+    fn ask(c: &mut std::process::Child, q: &str) -> String {
+        let mut line: String = String::new();
+        match c.write_all(q.as_bytes()) {
+            Ok(u) => {}
+            Err(e) => {
+                eprint_str(e.message.as_str());
+                return line;
+            }
+        }
+        match c.read_line(&mut line) {
+            Ok(n) => {}
+            Err(f) => eprint_str(f.message.as_str()),
+        }
+        line
+    }
+
+    #[effects(alloc, io, nondet)]
+    fn main() -> () {
+        let mut args: Vec<String> = Vec::new();
+        args.push(String::from("-in"));
+        match std::process::spawn("z3", args.as_slice()) {
+            Ok(child) => {
+                let mut c: std::process::Child = child;
+                let a: String = ask(&mut c, "(declare-const x Int)\n(assert (> (* x x) 10))\n(check-sat)\n");
+                print_str(a.as_str());
+                let b: String = ask(&mut c, "(assert (< x 0))\n(assert (> x 0))\n(check-sat)\n");
+                print_str(b.as_str());
+                let d: String = ask(&mut c, "(reset)\n(declare-const y Int)\n(assert (= (* 2 y) 7))\n(check-sat)\n");
+                print_str(d.as_str());
+                match c.write_all(b"(exit)\n") {
+                    Ok(u) => {}
+                    Err(e) => {}
+                }
+                match c.wait() {
+                    Ok(s) => print_i64(i64::try_from(s).unwrap()),
+                    Err(f) => eprint_str(f.message.as_str()),
+                }
+            }
+            Err(g) => {
+                print_str(g.message.as_str());
+                print_str("\n");
+            }
+        }
+    }
+}
+"#;
+
+/// The rest of slice (e) (ADR-0091 §2): a BMB program keeps the pinned Z3
+/// running and asks it three queries in turn, reading each answer before
+/// it writes the next (what stage0's solver connection does), then waits.
+#[test]
+fn a_program_talks_to_z3() {
+    let o = run(DIALOG, &[], b"");
+    assert_eq!(
+        text(&o.stdout),
+        "sat\nunsat\nunsat\n0\n",
+        "{}",
+        text(&o.stderr)
+    );
+}
+
+const CHILDREN: &str = r#"#[summary("children")]
+mod app {
+    #[effects(alloc)]
+    fn sh(script: &str) -> Vec<String> {
+        let mut a: Vec<String> = Vec::new();
+        a.push(String::from("-c"));
+        a.push(String::from(script));
+        a
+    }
+
+    #[effects(alloc, io, nondet)]
+    fn line(c: &mut std::process::Child) -> () {
+        let mut l: String = String::new();
+        match c.read_line(&mut l) {
+            Ok(n) => {
+                print_u64(u64::try_from(n).unwrap());
+                print_str(l.as_str());
+            }
+            Err(e) => {
+                print_str(e.message.as_str());
+                print_str("\n");
+            }
+        }
+    }
+
+    #[effects(alloc, io, nondet)]
+    fn status(c: std::process::Child) -> () {
+        match c.wait() {
+            Ok(s) => print_i64(i64::try_from(s).unwrap()),
+            Err(e) => {
+                print_str(e.message.as_str());
+                print_str("\n");
+            }
+        }
+    }
+
+    #[effects(alloc, io, nondet)]
+    fn say(c: &mut std::process::Child, data: &[u8]) -> () {
+        match c.write_all(data) {
+            Ok(u) => print_str("written\n"),
+            Err(e) => {
+                print_str(e.message.as_str());
+                print_str("\n");
+            }
+        }
+    }
+
+    // Each case starts its own child; a failed start prints its error.
+    #[effects(alloc, io, nondet)]
+    fn case(k: u64, prog: &str, args: &[String]) -> () {
+        match std::process::spawn(prog, args) {
+            Ok(child) => {
+                let mut c: std::process::Child = child;
+                if k == 0 {
+                    // An echo: each line comes back before the next is sent.
+                    say(&mut c, b"one\n");
+                    line(&mut c);
+                    say(&mut c, b"two\n");
+                    line(&mut c);
+                    status(c);
+                } else if k == 1 {
+                    // The end of its output, then `Ok(0)` again.
+                    line(&mut c);
+                    line(&mut c);
+                    line(&mut c);
+                    status(c);
+                } else if k == 2 {
+                    // Dropped without `wait`: its input closes, so `cat`
+                    // ends; this process does not wait for it.
+                    if c.id() > 0 {
+                        print_str("started\n");
+                    }
+                } else if k == 3 {
+                    status(c);
+                } else {
+                    // More than a pipe holds, to a child that reads nothing:
+                    // the write fails when it is gone.
+                    let mut big: Vec<u8> = Vec::new();
+                    for i in 0..1048576
+                        invariant big.len() == i,
+                    {
+                        big.push(120);
+                    }
+                    say(&mut c, big.as_slice());
+                    status(c);
+                }
+            }
+            Err(e) => {
+                print_str(e.message.as_str());
+                print_str("\n");
+            }
+        }
+    }
+
+    #[effects(alloc, io, nondet)]
+    fn main() -> () {
+        let none: Vec<String> = Vec::new();
+        case(0, "cat", none.as_slice());
+        let s1: Vec<String> = sh("printf 'a\\nb'");
+        case(1, "sh", s1.as_slice());
+        case(2, "cat", none.as_slice());
+        let s3: Vec<String> = sh("kill -9 $$");
+        case(3, "sh", s3.as_slice());
+        let s4: Vec<String> = sh("exit 3");
+        case(4, "sh", s4.as_slice());
+        case(5, "no-such-program-bmb", none.as_slice());
+    }
+}
+"#;
+
+/// A `Child`'s methods (ADR-0091 §2) behave as Rust's do with piped
+/// `stdin` and `stdout`: an echo line by line, the end of the output
+/// (`Ok(0)`, the last line without its newline), a child dropped without
+/// `wait` (its pipes close and nothing waits: the program ends), the
+/// status of a child killed by a signal (128 + 9), a write to a child that
+/// has exited (`EPIPE`, Rust's message; `SIGPIPE` is ignored as in Rust)
+/// and a program that does not exist (`ENOENT`). The program is fully
+/// proved and, under valgrind where it is installed, leaks nothing.
+#[test]
+fn children_talk_through_pipes() {
+    let o = run(CHILDREN, &[], b"");
+    let want = "written\n4\none\nwritten\n4\ntwo\n0\n2\na\n1\nb0\n0\nstarted\n137\nBroken pipe (os error 32)\n3\nNo such file or directory (os error 2)\n";
+    // Under valgrind: every `Vec` and both `FILE`s of each child freed,
+    // the dropped one's too (definite and indirect leaks are errors).
+    if Command::new("valgrind").arg("--version").output().is_ok() {
+        let out = cli::emit(&one(CHILDREN), false);
+        let dir = cli::fresh_dir();
+        let exe = dir.join("p");
+        cli::build(&out.ir.expect("IR"), &exe).unwrap();
+        let v = Command::new("valgrind")
+            .args([
+                "-q",
+                "--leak-check=full",
+                "--errors-for-leak-kinds=definite,indirect",
+                "--error-exitcode=9",
+            ])
+            .arg(&exe)
+            .output()
+            .unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(v.status.success(), "{}", text(&v.stderr));
+        // Valgrind runs `posix_spawnp` as a fork that cannot report the
+        // failed `exec` back: the missing program starts and exits 127
+        // there. The cases before it are compared.
+        let before = want.trim_end_matches("No such file or directory (os error 2)\n");
+        assert!(text(&v.stdout).starts_with(before), "{}", text(&v.stdout));
+    }
+    assert_eq!(
+        text(&o.stdout),
+        "written\n4\none\nwritten\n4\ntwo\n0\n2\na\n1\nb0\n0\nstarted\n137\nBroken pipe (os error 32)\n3\nNo such file or directory (os error 2)\n",
+        "{}",
+        text(&o.stderr)
+    );
+}

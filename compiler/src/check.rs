@@ -435,7 +435,10 @@ fn method_callee(
         .find_map(|o| t.fns.get(&format!("{o}::{name}")).map(|s| (o, s)))?;
     let is_trait = sig.trait_of.as_deref() == Some(owner.as_str());
     let inherent = sig.in_impl && sig.trait_of.is_none() && t.adts.contains_key(&owner);
-    if sig.builtin || !(is_trait || inherent) || sig.generics.len() != sig.impl_generics {
+    if (sig.builtin && !sig.in_impl)
+        || !(is_trait || inherent)
+        || sig.generics.len() != sig.impl_generics
+    {
         return None;
     }
     if targs.iter().any(|a| is_trait || a.seg != n - 2) {
@@ -1159,6 +1162,11 @@ pub fn is_move_in(t: &TypeKind, adts: &BTreeMap<String, Adt>, moving: &BTreeSet<
                     return true;
                 }
                 let p = path.join("::");
+                // A child process is a resource: one owner, released by
+                // `wait` or at the end of its scope (ADR-0091 §2).
+                if p == CHILD {
+                    return true;
+                }
                 if !seen.insert(p.clone()) {
                     return false;
                 }
@@ -1360,6 +1368,71 @@ fn system_builtins() -> Vec<(&'static str, Vec<TypeKind>, TypeKind, Effects)> {
             }),
             Effects::ALLOC.union(Effects::IO).union(Effects::NONDET),
         ),
+        // The rest of slice (e): `std::process::spawn(prog, args)` starts
+        // `prog` with pipes to its standard input and output (its standard
+        // error is this process's), and the methods of the `Child` talk to
+        // it: `write_all` writes and flushes, `read_line` reads one line
+        // of its output as `std::io::read_line` does, `id` is its process
+        // id and `wait` closes its input, waits and gives its status (the
+        // exit code, or 128 + the signal). A `Child` dropped without
+        // `wait` closes its pipes and is not waited for (Rust's `Drop`).
+        (
+            "std::process::spawn",
+            vec![
+                text::str_ref(),
+                TypeKind::Ref {
+                    mutable: false,
+                    inner: mk(TypeKind::Slice(mk(TypeKind::String))),
+                },
+            ],
+            io_result(child_ty()),
+            Effects::ALLOC.union(Effects::IO).union(Effects::NONDET),
+        ),
+        (
+            "std::process::Child::write_all",
+            vec![
+                TypeKind::Ref {
+                    mutable: true,
+                    inner: mk(child_ty()),
+                },
+                TypeKind::Ref {
+                    mutable: false,
+                    inner: mk(TypeKind::Slice(mk(TypeKind::Int(IntTy::U8)))),
+                },
+            ],
+            io_result(TypeKind::Unit),
+            Effects::ALLOC.union(Effects::IO),
+        ),
+        (
+            "std::process::Child::read_line",
+            vec![
+                TypeKind::Ref {
+                    mutable: true,
+                    inner: mk(child_ty()),
+                },
+                TypeKind::Ref {
+                    mutable: true,
+                    inner: mk(TypeKind::String),
+                },
+            ],
+            io_result(TypeKind::Int(IntTy::Usize)),
+            Effects::ALLOC.union(Effects::IO).union(Effects::NONDET),
+        ),
+        (
+            "std::process::Child::id",
+            vec![TypeKind::Ref {
+                mutable: false,
+                inner: mk(child_ty()),
+            }],
+            TypeKind::Int(IntTy::U32),
+            Effects::IO.union(Effects::NONDET),
+        ),
+        (
+            "std::process::Child::wait",
+            vec![child_ty()],
+            io_result(TypeKind::Int(IntTy::I32)),
+            Effects::ALLOC.union(Effects::IO).union(Effects::NONDET),
+        ),
     ]
 }
 
@@ -1419,7 +1492,41 @@ fn system_types() -> BTreeMap<String, Adt> {
         span: Span::default(),
         inv: None,
     };
-    BTreeMap::from([(path, adt), (out, output)])
+    // `std::process::Child`: the process id and the two ends of its pipes
+    // (`FILE` pointers of the runtime). The checker keeps them out of reach
+    // (E0436).
+    let child = Adt {
+        path: CHILD.into(),
+        generics: Vec::new(),
+        kind: AdtKind::Struct(vec![
+            ("pid".into(), TypeKind::Int(IntTy::I32)),
+            ("stdin".into(), TypeKind::Int(IntTy::U64)),
+            ("stdout".into(), TypeKind::Int(IntTy::U64)),
+        ]),
+        span: Span::default(),
+        inv: None,
+    };
+    BTreeMap::from([(path, adt), (out, output), (CHILD.into(), child)])
+}
+
+/// The path of the child process type (ADR-0091 §2).
+pub const CHILD: &str = "std::process::Child";
+
+/// `std::process::Child`, as a type.
+pub fn child_ty() -> TypeKind {
+    TypeKind::Named {
+        path: CHILD.split("::").map(String::from).collect(),
+        args: Vec::new(),
+    }
+}
+
+/// Whether `t` is a `std::process::Child` (or a reference to one).
+pub fn is_child(t: &TypeKind) -> bool {
+    let v = match t {
+        TypeKind::Ref { inner, .. } => &inner.kind,
+        t => t,
+    };
+    *v == child_ty()
 }
 
 /// The help of E0402 for an array inside an array element (backlog 2B-14).
@@ -1513,7 +1620,9 @@ impl<'a> Checker<'a> {
                     effect,
                     vacuous: false,
                     builtin: true,
-                    in_impl: false,
+                    // The `Child`'s methods are the functions of an `impl` of
+                    // the system type (ADR-0051: `c.wait()`).
+                    in_impl: path.starts_with("std::process::Child::"),
                     trait_of: None,
                     default: false,
                     span: Span::default(),
@@ -5264,8 +5373,28 @@ impl<'a> Checker<'a> {
     }
 
     /// `base.name` for a struct (or a reference to one).
+    /// E0436: a `std::process::Child` built or read by hand (ADR-0091 §2:
+    /// its fields are the runtime's handles).
+    fn child_by_hand(&mut self, span: Span) {
+        self.diags.push(
+            Diag::new(
+                "E0436",
+                span,
+                "a `std::process::Child` is not built or read by its fields",
+            )
+            .fix(
+                "get one from `std::process::spawn(prog, args.as_slice())` and use its methods: `write_all`, `read_line`, `id`, `wait`",
+                None,
+            ),
+        );
+    }
+
     fn field_type_of(&mut self, bt: &TypeKind, name: &Ident) -> TypeKind {
         if *bt == TypeKind::Error {
+            return TypeKind::Error;
+        }
+        if is_child(bt) {
+            self.child_by_hand(name.span);
             return TypeKind::Error;
         }
         match self.struct_fields(bt) {
@@ -6596,6 +6725,10 @@ impl<'a> Checker<'a> {
             }
             ExprKind::StructLit { path, fields, rest } => {
                 let t = self.struct_lit(cx, path, fields, rest.as_deref(), expected, e.span, mode);
+                if is_child(&t) {
+                    self.child_by_hand(e.span);
+                    return TypeKind::Error;
+                }
                 // The prover holds a recursive struct as an uninterpreted
                 // value whose fields are facts of the function's query
                 // (ADR-0047 §3, backlog 2O-03d): there is no term for one in

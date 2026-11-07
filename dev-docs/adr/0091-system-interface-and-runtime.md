@@ -42,6 +42,14 @@
 - HEALTH §3 TCB 표에 런타임 함수가 들어가고, S3는 그대로 `[]`다.
 - 4D-02(P0)와 부트스트랩 1단(4E-02)의 막힘이 풀린다.
 
+## 구현 시 확인 (2026-11-07, 4C-02 (e) 나머지, 자율 채택: 이 ADR 범위 안의 구현 결정)
+
+- 열린 질문 2(`Child`의 해제): Rust의 `Drop`을 따른다. `wait` 없이 범위를 벗어난 `Child`는 두 파이프를 닫고 기다리지 않는다(자식은 입력의 끝을 본다). 거부(E04xx)하지 않은 것은 Rust 의미와 같게 두고 이동 검사에 새 규칙(반드시 소비)을 더하지 않기 위해서다. `wait`는 값 수신자(`self: Child`)라 한 번만 부를 수 있다.
+- `Child`의 연산은 시스템 타입 `std::process::Child`의 `impl` 함수(`std::process::Child::write_all` 등)라 ADR-0051의 메서드 구문(`c.write_all(..)`)과 경로 호출이 함께 된다. Rust의 `child.stdin`·`child.stdout`(옵션 필드와 `BufReader`) 대신 `Child`의 메서드다: 표준 입력·출력만 파이프이고 표준 오류는 물려받는다(Rust `spawn`의 기본값).
+- 필드(`pid`와 런타임의 `FILE` 둘)는 손으로 만들거나 읽지 못한다(E0436). `Child`는 필드가 정수뿐이어도 이동 타입이다(`check::is_move`).
+- 열린 질문 1(`io::Error`)은 필드 구조체 그대로 둔다: 메서드 구문이 생겼지만 `raw_os_error()`·`kind()`를 쓸 곳이 아직 없다(`code`·`message`로 충분). 수요가 나오면 메서드를 더한다.
+- 측정: 고정된 Z3에 세 질의를 차례로 보내고 답을 읽는 BMB 프로그램(`tests/system.rs`의 `a_program_talks_to_z3`), valgrind 누수 0.
+
 ## 열린 질문
 
 1. `io::Error`를 필드 구조체로 둘지 Rust처럼 메서드(`raw_os_error()`, `kind()`)로 둘지: 메서드 구문(2M)과 함께 정한다.

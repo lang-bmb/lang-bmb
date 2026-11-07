@@ -124,6 +124,7 @@
 | E0433 | a value is used whole after one of its fields was moved |
 | E0434 | struct literal fields must be given in declaration order (the order of evaluation) |
 | E0435 | a range `lo..hi` outside the source argument of `copy_within` and the bounds of a `&str` argument `&s[lo..hi]` |
+| E0436 | a `std::process::Child` built or read by its fields (it comes from `std::process::spawn`) |
 
 ## E05xx 명세
 
