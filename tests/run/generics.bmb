@@ -85,9 +85,9 @@ mod gen {
         reverse::<bool>(&mut bs);
         if get::<bool>(&bs, 2) { print_i64(93); } else { print_i64(0); }
         let mut c: Cell<u64> = Cell::<u64>::new(5);
-        Cell::<u64>::set(&mut c, 8);
-        Cell::<u64>::set(&mut c, 13);
-        print_u64(Cell::<u64>::get(&c));
+        c.set(8);
+        c.set(13);
+        print_u64(c.get());
         print_u64(c.writes);
         let ps: [Pair<i64, i64>; 2] = pairs::<i64>(-4, 9);
         print_i64(ps[1].first);

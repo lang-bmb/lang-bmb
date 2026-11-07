@@ -41,12 +41,12 @@ mod tr {
     impl<A: Copy + Shape, B: Copy + Shape> Shape for Pair<A, B> {
         #[effects(pure)]
         fn area(self: &Pair<A, B>) -> i64 {
-            Shape::area(&self.a).saturating_add(Shape::area(&self.b))
+            self.a.area().saturating_add(self.b.area())
         }
 
         #[effects(pure)]
         fn sides(self: &Pair<A, B>) -> u64 {
-            Shape::sides(&self.a).saturating_add(Shape::sides(&self.b))
+            self.a.sides().saturating_add(self.b.sides())
         }
     }
 
@@ -56,7 +56,7 @@ mod tr {
         for i in 0..xs.len()
             invariant i <= xs.len(),
         {
-            let a: i64 = Shape::area(&xs[i]);
+            let a: i64 = xs[i].area();
             if a > best {
                 best = a;
             }
@@ -68,14 +68,14 @@ mod tr {
     fn main() -> () {
         let q: Sq = Sq { s: 3 };
         let t: Tri = Tri { b: 4, h: 5 };
-        print_i64(Shape::area(&q));
-        print_i64(Shape::area(&t));
-        print_u64(Shape::sides(&t));
+        print_i64(q.area());
+        print_i64(t.area());
+        print_u64(t.sides());
         let p: Pair<Sq, Tri> = Pair { a: q, b: t };
-        print_i64(Shape::area(&p));
-        print_u64(Shape::sides(&p));
+        print_i64(p.area());
+        print_u64(p.sides());
         let pp: Pair<Pair<Sq, Tri>, Sq> = Pair { a: p, b: Sq { s: 1 } };
-        print_i64(Shape::area(&pp));
+        print_i64(pp.area());
         let qs: [Sq; 3] = [Sq { s: 2 }, Sq { s: 7 }, Sq { s: 5 }];
         print_i64(largest::<Sq>(&qs));
         let ts: [Tri; 2] = [Tri { b: 10, h: 1 }, Tri { b: 2, h: 2 }];

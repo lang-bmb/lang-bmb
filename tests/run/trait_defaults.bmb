@@ -16,7 +16,7 @@ mod df {
         fn twice(self: &Self) -> (r: i64)
             ensures doubled::<Self>(self, r),
         {
-            Shape::area(self).saturating_mul(2)
+            self.area().saturating_mul(2)
         }
     }
 
@@ -65,7 +65,7 @@ mod df {
     }
 
     spec fn doubled<T: Copy + Shape>(x: &T, r: i64) -> bool {
-        r == Shape::model(x).saturating_mul(2)
+        r == x.model().saturating_mul(2)
     }
 
     struct Wrap<T: Copy> { inner: T }
@@ -76,11 +76,11 @@ mod df {
         fn area(self: &Wrap<T>) -> (r: i64)
             ensures scored::<Wrap<T>>(self, r),
         {
-            Shape::area(&self.inner)
+            self.inner.area()
         }
 
         spec fn model(self: &Wrap<T>) -> i64 {
-            Shape::model(&self.inner)
+            self.inner.model()
         }
     }
 
@@ -88,27 +88,27 @@ mod df {
     #[effects(pure)]
     #[uses(Shape::label)]
     fn wrapped<T: Copy + Shape>(w: Wrap<T>) -> () {
-        assert(Shape::label(&w) == 7);
+        assert(w.label() == 7);
     }
 
     #[effects(pure)]
     #[uses(Shape::label)]
     fn labels(q: Sq, b: Big) -> () {
-        assert(Shape::label(&q) == 7);
-        assert(Shape::label(&b) == 9);
+        assert(q.label() == 7);
+        assert(b.label() == 9);
     }
 
     #[effects(io)]
     #[uses(Shape::model, doubled)]
     fn main() -> () {
         let q: Sq = Sq { s: 21 };
-        let t: i64 = Shape::twice(&q);
+        let t: i64 = q.twice();
         assert(t == 42);
         print_i64(t);
-        print_i64(Shape::twice(&Big { s: 5 }));
+        print_i64(Big { s: 5 }.twice());
     }
 
     spec fn scored<T: Copy + Shape>(x: &T, r: i64) -> bool {
-        r == Shape::model(x)
+        r == x.model()
     }
 }

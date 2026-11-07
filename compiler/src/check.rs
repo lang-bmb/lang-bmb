@@ -260,6 +260,200 @@ pub fn check_resolved(mut p: Program, diags: &mut Diags) -> (Program, crate::ver
     }
 }
 
+/// The normal form's method calls (ADR-0051, backlog 2M-02): `src` with
+/// each call by path `T::f(a, ..)` of a method written `x.f(..)`, where
+/// that names the same function the same way. `resolved` and `tables` are
+/// `src` checked (`check_resolved`). The rewrite is checked again: a
+/// definition whose identity hash (callees by identity, ADR-0059) it would
+/// change, or that would not check, keeps its calls by path (the inherent
+/// function shadows the trait's, two traits have the name, ..).
+pub fn methodize(src: &Program, resolved: &Program, tables: &crate::verify::Tables) -> Program {
+    methodize_spans(src, resolved, tables).0
+}
+
+/// `methodize` and the spans of the calls it rewrote.
+pub fn methodize_spans(
+    src: &Program,
+    resolved: &Program,
+    tables: &crate::verify::Tables,
+) -> (Program, BTreeSet<(u32, u32, u32)>) {
+    type Key = (u32, u32, u32);
+    let key = |s: Span| (s.file, s.lo, s.hi);
+    let want: BTreeMap<String, String> = crate::fmt::hashes(resolved, tables)
+        .into_iter()
+        .map(|h| (h.path, h.body))
+        .collect();
+    // Calls and definitions that stay by path.
+    let mut keep = Keep::default();
+    loop {
+        let mut p = src.clone();
+        let mut conv: BTreeMap<Key, (Key, String)> = BTreeMap::new();
+        for m in &mut p.mods {
+            methodize_mod(m, "", tables, &keep, &mut conv);
+        }
+        if conv.is_empty() {
+            return (p, BTreeSet::new());
+        }
+        let mut d = Diags::default();
+        let (r, t) = check_resolved(p.clone(), &mut d);
+        let before = (keep.calls.len(), keep.defs.len());
+        // A rewritten call that does not resolve, or not to its function.
+        let mut seen: BTreeMap<Key, String> = BTreeMap::new();
+        crate::ast::exprs_mut(&mut r.clone(), &mut |e| {
+            if let ExprKind::Call {
+                path,
+                method: Some(_),
+                ..
+            } = &e.kind
+            {
+                let p: Vec<&str> = path.iter().map(|i| i.name.as_str()).collect();
+                seen.insert(key(e.span), p.join("::"));
+            }
+        });
+        for (c, (_, fp)) in &conv {
+            if seen.get(c) != Some(fp) {
+                keep.calls.insert(*c);
+            }
+        }
+        for x in &d.items {
+            let inside = |c: &Key| c.0 == x.span.file && c.1 <= x.span.lo && x.span.hi <= c.2;
+            match conv.keys().filter(|c| inside(c)).min_by_key(|c| c.2 - c.1) {
+                Some(c) => {
+                    keep.calls.insert(*c);
+                }
+                None => keep.defs.extend(conv.values().map(|(f, _)| *f)),
+            }
+        }
+        // The safety net: a definition whose meaning moved keeps its calls.
+        if !d.has_errors() && keep.calls.len() == before.0 {
+            let got: BTreeMap<String, String> = crate::fmt::hashes(&r, &t)
+                .into_iter()
+                .map(|h| (h.path, h.body))
+                .collect();
+            let changed: BTreeSet<Key> = conv.values().map(|(f, _)| *f).collect();
+            for (path, _, f) in defs_of(&r, &t.fns) {
+                if changed.contains(&key(f.span)) && want.get(&path) != got.get(&path) {
+                    keep.defs.insert(key(f.span));
+                }
+            }
+        }
+        if (keep.calls.len(), keep.defs.len()) == before {
+            return (p, conv.into_keys().collect());
+        }
+    }
+}
+
+/// What `methodize` leaves by path: calls and whole definitions, by span.
+#[derive(Default)]
+struct Keep {
+    calls: BTreeSet<(u32, u32, u32)>,
+    defs: BTreeSet<(u32, u32, u32)>,
+}
+
+/// Rewrites the method calls by path of unit `m` (and its sub-units) and
+/// records each, by its span, with its definition's span and the full path
+/// of its function.
+#[allow(clippy::type_complexity)]
+fn methodize_mod(
+    m: &mut Mod,
+    prefix: &str,
+    t: &crate::verify::Tables,
+    keep: &Keep,
+    conv: &mut BTreeMap<(u32, u32, u32), ((u32, u32, u32), String)>,
+) {
+    let mp = format!("{prefix}{}", m.name.name);
+    for s in &mut m.mods {
+        methodize_mod(s, &format!("{mp}::"), t, keep, conv);
+    }
+    for f in crate::ast::fns_mut(m) {
+        let fk = (f.span.file, f.span.lo, f.span.hi);
+        if keep.defs.contains(&fk) {
+            continue;
+        }
+        crate::ast::fn_exprs_mut(f, &mut |e| {
+            let ck = (e.span.file, e.span.lo, e.span.hi);
+            if keep.calls.contains(&ck) {
+                return;
+            }
+            let ExprKind::Call {
+                path,
+                targs,
+                args,
+                method: None,
+            } = &mut e.kind
+            else {
+                return;
+            };
+            let Some((by_ref, fp)) = method_callee(t, &mp, path, targs) else {
+                return;
+            };
+            if args.is_empty() {
+                return;
+            }
+            let mut args = std::mem::take(args);
+            let first = args.remove(0);
+            let recv = match first.kind {
+                ExprKind::Ref { expr, .. } if by_ref => *expr,
+                kind => Expr {
+                    kind,
+                    span: first.span,
+                },
+            };
+            let name = path[path.len() - 1].clone();
+            e.kind = ExprKind::Method {
+                recv: Box::new(recv),
+                name,
+                args,
+            };
+            conv.insert(ck, (fk, fp));
+        });
+    }
+}
+
+/// Whether the call by path `path` (written in unit `mp`) names a method:
+/// an inherent `impl` function or a trait method with a receiver and no
+/// type parameters of its own: whether its receiver is a reference (`&x`
+/// is then written `x`) and its full path.
+fn method_callee(
+    t: &crate::verify::Tables,
+    mp: &str,
+    path: &[Ident],
+    targs: &[TArgs],
+) -> Option<(bool, String)> {
+    let n = path.len();
+    if n < 2 {
+        return None;
+    }
+    let head = path[..n - 1]
+        .iter()
+        .map(|i| i.name.as_str())
+        .collect::<Vec<_>>()
+        .join("::");
+    let name = &path[n - 1].name;
+    let (owner, sig) = [format!("{mp}::{head}"), head]
+        .into_iter()
+        .find_map(|o| t.fns.get(&format!("{o}::{name}")).map(|s| (o, s)))?;
+    let is_trait = sig.trait_of.as_deref() == Some(owner.as_str());
+    let inherent = sig.in_impl && sig.trait_of.is_none() && t.adts.contains_key(&owner);
+    if sig.builtin || !(is_trait || inherent) || sig.generics.len() != sig.impl_generics {
+        return None;
+    }
+    if targs.iter().any(|a| is_trait || a.seg != n - 2) {
+        return None;
+    }
+    let own = |k: &TypeKind| match k {
+        TypeKind::Param(p) => is_trait && p == "Self",
+        TypeKind::Named { path, .. } => !is_trait && path.join("::") == owner,
+        _ => false,
+    };
+    let by_ref = match sig.params.first()? {
+        TypeKind::Ref { inner, .. } if own(&inner.kind) => true,
+        k if own(k) => false,
+        _ => return None,
+    };
+    Some((by_ref, format!("{owner}::{name}")))
+}
+
 /// `t` with each type parameter in `m` replaced by its type (simultaneous:
 /// a replacement is not substituted again).
 pub fn subst(t: &TypeKind, m: &BTreeMap<String, TypeKind>) -> TypeKind {

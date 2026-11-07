@@ -708,7 +708,7 @@ fn finish(
     problems: &[String],
     before: &BTreeMap<String, String>,
 ) -> (Commit, Option<BTreeMap<String, String>>) {
-    let (_, tables) = check::check_resolved(program.clone(), &mut diags);
+    let (resolved, tables) = check::check_resolved(program.clone(), &mut diags);
     let mut diagnostics = diags.to_jsonl(&sm);
     for p in problems {
         diagnostics.push_str(&format!("{{\"error\":{}}}\n", crate::diag::json_str(p)));
@@ -722,7 +722,10 @@ fn finish(
         };
         return (commit, None);
     }
-    let after = hashes(&program, &tables.fns);
+    // The normal form writes method calls by path as method calls
+    // (ADR-0051, backlog 2M-02); what changed is read from it.
+    let normal = check::methodize(&program, &resolved, &tables);
+    let after = hashes(&normal, &tables.fns);
     let changed = after
         .iter()
         .filter(|(p, h)| before.get(*p) != Some(*h))
@@ -739,7 +742,7 @@ fn finish(
         changed,
         removed,
     };
-    (commit, Some(fmt::format_units(&program)))
+    (commit, Some(fmt::format_units(&normal)))
 }
 
 /// The workspace files `src/UNIT.bmb` as `(name, text)` with `name`

@@ -114,20 +114,20 @@ mod sz {
     #[effects(pure)]
     fn both<T: Copy + Size>(a: T, b: T) -> u64 {
         let mut x: T = a;
-        Size::reset(&mut x);
-        Size::size(&x).saturating_add(Size::size(&b))
+        x.reset();
+        x.size().saturating_add(b.size())
     }
 
     #[effects(io)]
     fn run() -> () {
         let mut n: i64 = 41;
-        print_u64(Size::size(&n));
-        Size::reset(&mut n);
+        print_u64(n.size());
+        n.reset();
         print_i64(n);
         print_u64(both::<i64>(1, 2));
         print_u64(both::<bool>(true, false));
         let mut t: bool = true;
-        Size::reset(&mut t);
+        t.reset();
         if t {
             print_i64(1);
         } else {

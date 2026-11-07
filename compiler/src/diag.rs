@@ -446,6 +446,10 @@ pub const CODES: &[(&str, &str)] = &[
         "an executable function declares an effect its body does not need (callers must declare it too)",
     ),
     (
+        "W0911",
+        "a call by path of a method whose normal form is the method call `x.f(..)` (the fix rewrites it; `bmb fmt` and `bmb fix` apply it)",
+    ),
+    (
         "W0910",
         "a loop of an `io` function prints and carries state whose every update is pure: the update can be a pure function, proved instead of tested",
     ),

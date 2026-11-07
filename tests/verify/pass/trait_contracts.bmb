@@ -3,12 +3,12 @@ mod tr {
     trait Area {
         #[effects(pure)]
         fn area(self: &Self) -> (r: i64)
-            requires nonneg(Area::model(self)),
-            ensures is_model(r, Area::model(self));
+            requires nonneg(self.model()),
+            ensures is_model(r, self.model());
 
         #[effects(pure)]
         fn grow(self: &mut Self) -> ()
-            ensures not_less(Area::model(old(self)), Area::model(self));
+            ensures not_less((old(self)).model(), self.model());
 
         spec fn model(self: &Self) -> i64;
     }
@@ -19,7 +19,7 @@ mod tr {
         #[effects(pure)]
         #[uses(Area::model, is_model)]
         fn area(self: &Sq) -> (r: i64)
-            ensures is_model(r, Area::model(self)),
+            ensures is_model(r, self.model()),
         {
             self.s
         }
@@ -27,7 +27,7 @@ mod tr {
         #[effects(pure)]
         #[uses(Area::model, not_less)]
         fn grow(self: &mut Sq) -> ()
-            ensures not_less(Area::model(old(self)), Area::model(self)),
+            ensures not_less((old(self)).model(), self.model()),
         {
             if self.s < 1000 {
                 self.s = self.s + 1;
@@ -42,10 +42,10 @@ mod tr {
     #[effects(pure)]
     #[uses(is_model, nonneg)]
     fn get<T: Copy + Area>(x: T) -> (r: i64)
-        requires nonneg(Area::model(&x)),
-        ensures is_model(r, Area::model(&x)),
+        requires nonneg(x.model()),
+        ensures is_model(r, x.model()),
     {
-        Area::area(&x)
+        x.area()
     }
 
     spec fn is_model(r: i64, m: i64) -> bool {

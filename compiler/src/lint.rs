@@ -90,9 +90,9 @@ pub const MAX_POST_TRIALS: usize = 32;
 pub const MAX_MUTANTS: usize = 64;
 
 /// The checks of the lint, by the code each reports (`bmb lint --select`).
-pub const CODES: [&str; 11] = [
-    "W0901", "W0902", "W0903", "W0904", "W0905", "W0906", "W0907", "W0909", "W0910", "W1001",
-    "W1002",
+pub const CODES: [&str; 12] = [
+    "W0901", "W0902", "W0903", "W0904", "W0905", "W0906", "W0907", "W0909", "W0910", "W0911",
+    "W1001", "W1002",
 ];
 
 pub struct LintOutput {
@@ -533,6 +533,13 @@ pub fn lint_sources_selected(
     // W0907: counting `while` loops with a canonical `for` (syntactic).
     if runs("W0907") {
         for d in canonical_loops(&fe.program, files) {
+            out.push(d);
+        }
+    }
+
+    // W0911: method calls by path whose normal form is a method call.
+    if runs("W0911") {
+        for d in method_calls(&fe, files) {
             out.push(d);
         }
     }
@@ -1683,6 +1690,113 @@ fn self_matching(f: &FnDef, text: &str) -> Vec<Diag> {
         }
     }
     out
+}
+
+// ---------- method calls by path (W0911, backlog 2M-02) ----------
+
+/// W0911 for each call by path of a method that the normal form writes as
+/// a method call (ADR-0051, `check::methodize`): `T::f(&x, a)` is `x.f(a)`
+/// where that names the same function. The fix splices the receiver's and
+/// the arguments' own text, so their comments stay (as W0907, ADR-0057
+/// §4); a call inside another is rewritten in the next `bmb fix` round.
+pub(crate) fn method_calls(fe: &crate::Frontend, files: &[(String, String)]) -> Vec<Diag> {
+    let (mut p, spans) = crate::check::methodize_spans(&fe.source, &fe.program, &fe.tables);
+    let mut out = Vec::new();
+    crate::ast::exprs_mut(&mut p, &mut |e| {
+        let ExprKind::Method { recv, name, args } = &e.kind else {
+            return;
+        };
+        if !spans.contains(&(e.span.file, e.span.lo, e.span.hi)) {
+            return;
+        }
+        let text = &files[e.span.file as usize].1;
+        let slice = |lo: u32, hi: u32| text.get(lo as usize..hi as usize).unwrap_or_default();
+        let r = slice(recv.span.lo, recv.span.hi);
+        let postfix = matches!(
+            recv.kind,
+            ExprKind::Var(_)
+                | ExprKind::Field { .. }
+                | ExprKind::Index { .. }
+                | ExprKind::Call { .. }
+                | ExprKind::Method { .. }
+                | ExprKind::Path(_)
+                | ExprKind::StructLit { .. }
+        );
+        let r = if postfix || enclosed(r) {
+            r.to_string()
+        } else {
+            format!("({r})")
+        };
+        // The arguments after the receiver's comma, with their comments.
+        let rest = match args.last() {
+            Some(b) => {
+                let from = comma_after(text, recv.span.hi as usize).unwrap_or(b.span.lo as usize);
+                let r = text.get(from..b.span.hi as usize).unwrap_or_default();
+                if r.trim_start().starts_with("//") {
+                    r
+                } else {
+                    r.trim_start()
+                }
+            }
+            None => "",
+        };
+        let fixed = format!("{r}.{}({rest})", name.name);
+        out.push(
+            Diag::new(
+                "W0911",
+                e.span,
+                format!(
+                    "`{}` is a method: its normal form is a method call",
+                    name.name
+                ),
+            )
+            .fix(format!("write `{fixed}`"), Some(fixed)),
+        );
+    });
+    out.sort_by_key(|d| (d.span.file, d.span.lo));
+    out
+}
+
+/// The position just after the first `,` at or after `at`, past
+/// whitespace and `//` comments.
+fn comma_after(text: &str, at: usize) -> Option<usize> {
+    let b = text.as_bytes();
+    let mut i = at;
+    while i < b.len() {
+        match b[i] {
+            b',' => return Some(i + 1),
+            b'/' if b.get(i + 1) == Some(&b'/') => {
+                while i < b.len() && b[i] != b'\n' {
+                    i += 1;
+                }
+            }
+            c if c.is_ascii_whitespace() => i += 1,
+            _ => return None,
+        }
+    }
+    None
+}
+
+/// Whether `t` is one parenthesized expression: `(..)` whose first `(`
+/// closes at the end.
+fn enclosed(t: &str) -> bool {
+    if !(t.starts_with('(') && t.ends_with(')')) {
+        return false;
+    }
+    let mut depth = 0i32;
+    for (i, c) in t.char_indices() {
+        match c {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 && i + 1 < t.len() {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+    }
+    true
 }
 
 // ---------- canonical counting loops (W0907, backlog 2K-04) ----------

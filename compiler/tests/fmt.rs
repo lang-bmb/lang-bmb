@@ -372,3 +372,115 @@ fn float_literals_have_one_normal_form() {
     let want: Vec<String> = bits.iter().map(|b| format!("{b:#018x}")).collect();
     assert_eq!(back, want);
 }
+
+const BY_PATH: &str = r#"
+#[summary("경로 호출")]
+mod k {
+    struct P { x: i64 }
+
+    impl P {
+        #[effects(pure)]
+        fn name(self: &P) -> i64 { self.x }
+
+        #[effects(pure)]
+        fn pick<U: Copy>(self: &P, u: U) -> U { u }
+
+        #[effects(pure)]
+        fn make(x: i64) -> P { P { x: x } }
+    }
+
+    trait A {
+        #[effects(pure)]
+        fn name(self: &Self) -> i64;
+    }
+
+    trait B {
+        #[effects(pure)]
+        fn tag(self: &Self) -> i64;
+    }
+
+    trait C {
+        #[effects(pure)]
+        fn tag(self: &Self) -> i64;
+    }
+
+    trait D {
+        #[effects(pure)]
+        fn only(self: &Self) -> i64;
+    }
+
+    impl A for P {
+        #[effects(pure)]
+        fn name(self: &P) -> i64 { 1 }
+    }
+
+    impl B for P {
+        #[effects(pure)]
+        fn tag(self: &P) -> i64 { 2 }
+    }
+
+    impl C for P {
+        #[effects(pure)]
+        fn tag(self: &P) -> i64 { 3 }
+    }
+
+    impl D for P {
+        #[effects(pure)]
+        fn only(self: &P) -> i64 { 4 }
+    }
+
+    #[effects(pure)]
+    fn f(p: P) -> i64 {
+        let q: P = P::make(1);
+        A::name(&p) + P::name(&q) + B::tag(&p) + C::tag(&q) + P::pick::<i64>(&p, 4) + D::only(&q)
+    }
+}
+"#;
+
+/// The normal form writes a method called by path as a method call where
+/// that names the same function (ADR-0051, backlog 2M-02): not a trait
+/// method the type's own one shadows, not a name of two traits, not a
+/// function with type parameters of its own or without a receiver. The
+/// identities and the proof results are those of the program as written.
+#[test]
+fn methods_called_by_path_are_written_as_method_calls() {
+    let src = one("k.bmb", BY_PATH);
+    let out = normal(BY_PATH);
+    for want in [
+        "let q: P = P::make(1);",
+        "A::name(&p) + q.name() + B::tag(&p) + C::tag(&q) + P::pick::<i64>(&p, 4) + q.only()",
+    ] {
+        assert!(out.contains(want), "{want}\n{out}");
+    }
+    let formatted = one("k.bmb", &out);
+    assert_eq!(hashes(&formatted), hashes(&src));
+    assert_eq!(statuses(&verify(&formatted).1), statuses(&verify(&src).1));
+    assert_eq!(normal(&out), out, "idempotent");
+}
+
+/// `bmb fix` makes the same rewrite in place (W0911), splicing the
+/// receiver's and the arguments' text: a comment between them stays.
+#[test]
+fn fix_writes_method_calls_in_place_with_their_comments() {
+    let src = BY_PATH
+        .replace("D::only(&q)", "D::only(\n            &q,\n        )")
+        .replace(
+            "fn only(self: &Self) -> i64;",
+            "fn only(self: &Self, k: i64) -> i64;",
+        )
+        .replace(
+            "fn only(self: &P) -> i64 { 4 }",
+            "fn only(self: &P, k: i64) -> i64 { k }",
+        )
+        .replace(
+            "D::only(\n            &q,\n        )",
+            "D::only(\n            &q,\n            // the argument\n            4,\n        )",
+        );
+    let (ok, out) = bmb(&["fix", "--print"], &one("k.bmb", &src));
+    assert!(ok, "{out}");
+    assert!(
+        out.contains("q.only(\n            // the argument\n            4)"),
+        "{out}"
+    );
+    assert!(out.contains("A::name(&p) + q.name() + B::tag(&p)"), "{out}");
+}

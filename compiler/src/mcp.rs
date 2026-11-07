@@ -691,6 +691,11 @@ impl Server {
                     .map(|(u, t)| (format!("src/{u}.bmb"), t.clone()))
                     .collect();
                 let (back, _, _) = workspace::parse_files(&printed);
+                // The normal form writes a method call by path as a method
+                // call (ADR-0051): the tree is compared in that form.
+                let mut d = crate::diag::Diags::default();
+                let (resolved, tables) = crate::check::check_resolved(program.clone(), &mut d);
+                let program = crate::check::methodize(&program, &resolved, &tables);
                 let want = crate::ast_json::export(&program)?;
                 let got = crate::ast_json::export(&back)?;
                 if let Some((at, as_text)) = first_difference(&want, &got, &mut Vec::new()) {

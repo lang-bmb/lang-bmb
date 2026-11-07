@@ -102,8 +102,8 @@ mod shapes {
         q.x = 10;
         print_i64(p.x);
         print_i64(q.x);
-        print_i64(Point::sum(&q));
-        let m: Point = Point::mirror(q);
+        print_i64(q.sum());
+        let m: Point = q.mirror();
         print_i64(m.x);
         print_i64(m.y);
         let r: Shape = Shape::Rect(Point { x: 1, y: 1 }, Point { x: 4, y: 6 });

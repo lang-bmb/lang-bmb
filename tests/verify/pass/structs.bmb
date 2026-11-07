@@ -51,7 +51,7 @@ mod geo {
         ensures moved(p, r, d + d),
     {
         let mut q: Point = p;
-        Point::shift(&mut q, d);
+        q.shift(d);
         let mut z: Point = Point { x: q.x, y: q.y };
         z.x = z.x + d;
         z
@@ -125,7 +125,7 @@ mod user {
     fn far(p: geo::Point) -> i64
         requires geo::small(p),
     {
-        geo::Point::sum(&p)
+        p.sum()
     }
 }
 

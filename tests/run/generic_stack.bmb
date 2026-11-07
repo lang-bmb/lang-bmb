@@ -48,7 +48,7 @@ mod st {
             let c: u8 = s[i];
             if c == b'(' || c == b'[' {
                 if st.len < 8 {
-                    Stack::<u8>::push(&mut st, c);
+                    st.push(c);
                 } else {
                     ok = false;
                 }
@@ -56,7 +56,7 @@ mod st {
                 if st.len == 0 {
                     ok = false;
                 } else {
-                    let open: u8 = Stack::<u8>::pop(&mut st);
+                    let open: u8 = st.pop();
                     let want: u8 = if c == b')' {
                         b'('
                     } else {
@@ -84,16 +84,16 @@ mod st {
     #[uses(empty, popped, pushed, room, some)]
     fn main() -> () {
         let mut s: Stack<i64> = Stack::<i64>::new(0);
-        Stack::<i64>::push(&mut s, 3);
-        Stack::<i64>::push(&mut s, 5);
-        Stack::<i64>::push(&mut s, 9);
-        print_i64(Stack::<i64>::pop(&mut s));
-        print_i64(Stack::<i64>::pop(&mut s));
+        s.push(3);
+        s.push(5);
+        s.push(9);
+        print_i64(s.pop());
+        print_i64(s.pop());
         print_u64(u64::try_from(s.len).unwrap());
         let mut ps: Stack<Pt> = Stack::<Pt>::new(Pt { x: 0, y: 0 });
-        Stack::<Pt>::push(&mut ps, Pt { x: 1, y: 2 });
-        Stack::<Pt>::push(&mut ps, Pt { x: 3, y: 4 });
-        let top: Pt = Stack::<Pt>::pop(&mut ps);
+        ps.push(Pt { x: 1, y: 2 });
+        ps.push(Pt { x: 3, y: 4 });
+        let top: Pt = ps.pop();
         print_i64(top.x * 10 + top.y);
         let b: bool = balanced(b"([()][])");
         if b {

@@ -61,8 +61,8 @@ mod ring {
     #[effects(pure)]
     fn total(r: &Ring) -> i64 {
         let mut s: i64 = 0;
-        for i in 0..Ring::size(r) {
-            match Ring::get(r, i) {
+        for i in 0..r.size() {
+            match r.get(i) {
                 None => {}
                 Some(x) => {
                     s = s.saturating_add(x);
@@ -80,13 +80,13 @@ mod ring {
         while moved < 8
             decreases 8 - moved,
         {
-            if Ring::size(to) == 8 {
+            if to.size() == 8 {
                 break;
             }
-            match Ring::pop(from) {
+            match from.pop() {
                 None => break,
                 Some(x) => {
-                    let stored: bool = Ring::push(to, x);
+                    let stored: bool = to.push(x);
                     moved = moved + 1;
                 }
             }
@@ -96,9 +96,9 @@ mod ring {
 
     #[effects(io)]
     fn show(r: &Ring) -> () {
-        print_u64(u64::try_from(Ring::size(r)).unwrap());
-        for i in 0..Ring::size(r) {
-            match Ring::get(r, i) {
+        print_u64(u64::try_from(r.size()).unwrap());
+        for i in 0..r.size() {
+            match r.get(i) {
                 None => print_i64(-1),
                 Some(x) => print_i64(x),
             }
@@ -109,7 +109,7 @@ mod ring {
     fn main() -> () {
         let mut r: Ring = Ring::new();
         for i in 1..11 {
-            if Ring::push(&mut r, i * 10) {
+            if r.push(i * 10) {
                 print_i64(1);
             } else {
                 print_i64(0);
@@ -117,17 +117,17 @@ mod ring {
         }
         show(&r);
         for k in 0..3 {
-            match Ring::pop(&mut r) {
+            match r.pop() {
                 None => print_i64(-1),
                 Some(x) => print_i64(x),
             }
         }
-        let a: bool = Ring::push(&mut r, 7);
-        let b: bool = Ring::push(&mut r, 8);
+        let a: bool = r.push(7);
+        let b: bool = r.push(8);
         show(&r);
         print_i64(total(&r));
         let mut other: Ring = Ring::new();
-        let c: bool = Ring::push(&mut other, 99);
+        let c: bool = other.push(99);
         print_u64(drain(&mut r, &mut other));
         show(&r);
         show(&other);

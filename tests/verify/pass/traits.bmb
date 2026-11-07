@@ -39,7 +39,7 @@ mod tr {
     impl<T: Copy + Area> Area for Wrap<T> {
         #[effects(pure)]
         fn area(self: &Wrap<T>) -> i64 {
-            Area::area(&self.inner).saturating_add(self.k)
+            self.inner.area().saturating_add(self.k)
         }
 
         #[effects(pure)]
@@ -51,7 +51,7 @@ mod tr {
     // Through a bound only the signature is known: the sum saturates.
     #[effects(pure)]
     fn total<T: Copy + Area>(a: T, b: T) -> i64 {
-        Area::area(&a).saturating_add(Area::area(&b))
+        a.area().saturating_add(b.area())
     }
 
     #[effects(pure)]
@@ -59,7 +59,7 @@ mod tr {
     fn known(q: Sq) -> (r: i64)
         ensures small(r),
     {
-        Area::area(&q)
+        q.area()
     }
 
     #[effects(pure)]
@@ -73,7 +73,7 @@ mod tr {
     #[effects(pure)]
     #[uses(small)]
     fn wrapped(w: Wrap<Sq>) -> i64 {
-        let n: i64 = Area::area(&w.inner);
+        let n: i64 = w.inner.area();
         assert(small(n));
         total::<Wrap<Sq>>(w, w)
     }

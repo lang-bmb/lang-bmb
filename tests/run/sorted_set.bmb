@@ -116,9 +116,9 @@ mod sset {
 
     #[effects(io)]
     fn show(s: &Set) -> () {
-        print_u64(u64::try_from(Set::size(s)).unwrap());
-        for i in 0..Set::size(s) {
-            match Set::at(s, i) {
+        print_u64(u64::try_from(s.size()).unwrap());
+        for i in 0..s.size() {
+            match s.at(i) {
                 None => print_i64(-1),
                 Some(x) => print_i64(x),
             }
@@ -140,14 +140,14 @@ mod sset {
         let xs: [i64; 10] = [5, 3, 9, 3, 1, 7, 5, 11, 2, 8];
         for i in 0..10 {
             let k: usize = usize::try_from(i).unwrap();
-            flag(Set::insert(&mut s, xs[k]));
+            flag(s.insert(xs[k]));
         }
         show(&s);
-        flag(Set::contains(&s, 7));
-        flag(Set::contains(&s, 4));
-        flag(Set::remove(&mut s, 5));
-        flag(Set::remove(&mut s, 5));
-        flag(Set::insert(&mut s, 4));
+        flag(s.contains(7));
+        flag(s.contains(4));
+        flag(s.remove(5));
+        flag(s.remove(5));
+        flag(s.insert(4));
         show(&s);
     }
 }

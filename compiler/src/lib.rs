@@ -247,6 +247,7 @@ pub fn fix_sources_with(files: &[(String, String)], confirm: bool) -> FixOutput 
             Vec::new()
         } else {
             let mut c = lint::canonical_loops(&fe.program, &texts);
+            c.extend(lint::method_calls(&fe, &texts));
             c.extend(lint::unconfirmed_rationales(
                 &fe.program,
                 &fe.tables,
@@ -719,7 +720,9 @@ pub fn format_sources(files: &[(String, String)]) -> Result<BTreeMap<String, Str
     if fe.diags.has_errors() {
         return Err(fe.diags.to_jsonl(&fe.sm));
     }
-    Ok(fmt::format_units(&fe.source))
+    // Method calls by path become method syntax (ADR-0051, backlog 2M-02).
+    let normal = check::methodize(&fe.source, &fe.program, &fe.tables);
+    Ok(fmt::format_units(&normal))
 }
 
 /// Normal form of parsed sources without checking them (backlog 2B-03: the
