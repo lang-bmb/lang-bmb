@@ -2,27 +2,27 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 10729297,
+    "V4_rlimit_total": 10737252,
     "V5_rlimit_headroom": 0.1244,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0,
     "V8_bench_rlimit_total": 22810907,
     "V9_bench_defs_at_limit": 0,
     "V10_library_rlimit_total": 12808122,
-    "V11_sat_check_rlimit_total": 229682888,
-    "V12_sat_check_undecided": 244,
+    "V11_sat_check_rlimit_total": 229696867,
+    "V12_sat_check_undecided": 245,
     "S1_external_crates": 0,
     "S2_external_processes": [
       "clang",
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 48300,
+    "S4_stage0_rust_lines": 48454,
     "S5_tests_bound_to_rust_api": 1,
     "S6_selfhost_bmb_lines": 0,
     "P1_runnable_programs": 64,
-    "P2_bmb_lines": 24317,
-    "P3_errors_with_help": 0.8902,
+    "P2_bmb_lines": 24430,
+    "P3_errors_with_help": 0.8925,
     "B1_baseline_binary_bytes": 101664,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 15
@@ -2050,6 +2050,36 @@
         "B1_baseline_binary_bytes": [
           101440,
           101664
+        ]
+      }
+    },
+    {
+      "date": "2026-11-07",
+      "reason": "4C-05: P2, P3 up (subslice corpora, E0409 help); V4, V11 are the new corpus's proofs; V12 +1 is a new reach point of tests/verify/pass/subslices (of_an_array, through the quantified bmb_shift axiom of a sub-slice), recorded under T2-13",
+      "changed": {
+        "V4_rlimit_total": [
+          10729297,
+          10737252
+        ],
+        "V11_sat_check_rlimit_total": [
+          229682888,
+          229696867
+        ],
+        "V12_sat_check_undecided": [
+          244,
+          245
+        ],
+        "S4_stage0_rust_lines": [
+          48300,
+          48454
+        ],
+        "P2_bmb_lines": [
+          24317,
+          24430
+        ],
+        "P3_errors_with_help": [
+          0.8902,
+          0.8925
         ]
       }
     }
