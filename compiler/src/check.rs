@@ -7857,6 +7857,9 @@ impl<'a> Checker<'a> {
                     self.not_a_method(cx, &tp, recv, name, args, span, true, None);
                     return Some(None);
                 };
+                if self.shared_receiver(cx, rt, &sig, &tp, recv, name) {
+                    return Some(None);
+                }
                 if sig.generics.len() > sig.impl_generics {
                     self.not_a_method(cx, &tp, recv, name, args, span, false, Some(adjust));
                     return Some(None);
@@ -7903,6 +7906,7 @@ impl<'a> Checker<'a> {
                 .map(|i| i.trait_path.clone())
                 .collect(),
         };
+        let candidates = traits.clone();
         let mut with: Vec<String> = traits
             .into_iter()
             .filter(|t| {
@@ -7914,6 +7918,10 @@ impl<'a> Checker<'a> {
         with.sort();
         with.dedup();
         match with.as_slice() {
+            [] if user_type || matches!(value, TypeKind::Param(_)) => {
+                self.unknown_method(cx, value, name, &candidates);
+                Some(None)
+            }
             [] => None,
             [tr] => {
                 let fp = format!("{tr}::{}", name.name);
@@ -7923,6 +7931,9 @@ impl<'a> Checker<'a> {
                     self.not_a_method(cx, tr, recv, name, args, span, true, None);
                     return Some(None);
                 };
+                if self.shared_receiver(cx, rt, &sig, tr, recv, name) {
+                    return Some(None);
+                }
                 if sig.generics.len() > sig.impl_generics {
                     self.not_a_method(cx, tr, recv, name, args, span, false, Some(adjust));
                     return Some(None);
@@ -7959,6 +7970,101 @@ impl<'a> Checker<'a> {
                 Some(None)
             }
         }
+    }
+
+    /// E0401 for a shared receiver (`x: &T`) of a `self: &mut T` method:
+    /// a reference is passed as it is (one step, ADR-0051), so the call
+    /// would write through a `&`. Whether it was reported.
+    fn shared_receiver(
+        &mut self,
+        cx: &FnCtx,
+        rt: &TypeKind,
+        sig: &FnSig,
+        owner: &str,
+        recv: &Expr,
+        name: &Ident,
+    ) -> bool {
+        let shared = matches!(rt, TypeKind::Ref { mutable: false, .. });
+        let wants_mut = matches!(
+            sig.params.first(),
+            Some(TypeKind::Ref { mutable: true, .. })
+        );
+        if !(shared && wants_mut) {
+            return false;
+        }
+        let callee = Self::variant_text(owner, &name.name, &cx.mod_path);
+        self.diags.push(
+            Diag::new(
+                "E0401",
+                recv.span,
+                format!(
+                    "`{callee}` takes `self: &mut`, found the shared reference `{}`",
+                    ty_str_in(rt, &cx.mod_path)
+                ),
+            )
+            .fix(
+                format!(
+                    "pass a `&mut {}` receiver: declare `{}` with that type",
+                    match rt {
+                        TypeKind::Ref { inner, .. } => ty_str_in(&inner.kind, &cx.mod_path),
+                        t => ty_str_in(t, &cx.mod_path),
+                    },
+                    crate::fmt::expr_text(recv)
+                ),
+                None,
+            ),
+        );
+        true
+    }
+
+    /// E0404 for a method name that neither the type's `impl` nor its
+    /// traits (`traits`: the bounds or the implemented traits) have, with
+    /// the methods it does have.
+    fn unknown_method(&mut self, cx: &FnCtx, value: &TypeKind, name: &Ident, traits: &[String]) {
+        let mut have: Vec<String> = Vec::new();
+        if let TypeKind::Named { path, .. } = value {
+            let prefix = format!("{}::", path.join("::"));
+            for (p, sig) in &self.fns {
+                if let Some(m) = p.strip_prefix(&prefix)
+                    && !m.contains("::")
+                    && sig.trait_of.is_none()
+                    && sig.in_impl
+                    && sig.params.first().is_some_and(|t| {
+                        let t = match t {
+                            TypeKind::Ref { inner, .. } => &inner.kind,
+                            t => t,
+                        };
+                        matches!(t, TypeKind::Named { path: q, .. } if q == path)
+                    })
+                {
+                    have.push(m.to_string());
+                }
+            }
+        }
+        for t in traits {
+            if let Some(i) = self.traits.get(t) {
+                have.extend(i.methods.iter().cloned());
+            }
+        }
+        have.sort();
+        have.dedup();
+        let ty = ty_str_in(value, &cx.mod_path);
+        let fix = if have.is_empty() {
+            format!(
+                "`{ty}` has no methods; define `{}` in an `impl` of it",
+                name.name
+            )
+        } else {
+            format!("the methods of `{ty}` are `{}`", have.join("`, `"))
+        };
+        self.diags.push(
+            Diag::new(
+                "E0404",
+                name.span,
+                format!("unknown method `{}` of `{ty}`", name.name),
+            )
+            .fix(fix, None),
+        );
     }
 
     /// E0314: `x.f(..)` names a function of `owner` that is not called as a

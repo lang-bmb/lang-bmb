@@ -2,14 +2,14 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 10599359,
+    "V4_rlimit_total": 10729297,
     "V5_rlimit_headroom": 0.1244,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0,
     "V8_bench_rlimit_total": 22810907,
     "V9_bench_defs_at_limit": 0,
     "V10_library_rlimit_total": 12808122,
-    "V11_sat_check_rlimit_total": 229564587,
+    "V11_sat_check_rlimit_total": 229682888,
     "V12_sat_check_undecided": 244,
     "S1_external_crates": 0,
     "S2_external_processes": [
@@ -17,13 +17,13 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 45151,
+    "S4_stage0_rust_lines": 47390,
     "S5_tests_bound_to_rust_api": 1,
     "S6_selfhost_bmb_lines": 0,
-    "P1_runnable_programs": 63,
-    "P2_bmb_lines": 23567,
-    "P3_errors_with_help": 0.8884,
-    "B1_baseline_binary_bytes": 101408,
+    "P1_runnable_programs": 64,
+    "P2_bmb_lines": 24288,
+    "P3_errors_with_help": 0.8898,
+    "B1_baseline_binary_bytes": 101440,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 15
   },
@@ -1994,6 +1994,40 @@
         "O2_soundness_fuzzers": [
           14,
           15
+        ]
+      }
+    },
+    {
+      "date": "2026-11-07",
+      "reason": "2M-01: tests/run/methods (P1, P2 up; its proofs are the V4, V11 growth); method-call errors carry fixes (E0401 shared receiver, E0404 lists the type's methods), P3 up; S4 is the method resolution, rename and weaken code; B1 +32 bytes",
+      "changed": {
+        "V4_rlimit_total": [
+          10599359,
+          10729297
+        ],
+        "V11_sat_check_rlimit_total": [
+          229564587,
+          229682888
+        ],
+        "S4_stage0_rust_lines": [
+          45151,
+          47390
+        ],
+        "P1_runnable_programs": [
+          63,
+          64
+        ],
+        "P2_bmb_lines": [
+          23567,
+          24288
+        ],
+        "P3_errors_with_help": [
+          0.8884,
+          0.8898
+        ],
+        "B1_baseline_binary_bytes": [
+          101408,
+          101440
         ]
       }
     }
