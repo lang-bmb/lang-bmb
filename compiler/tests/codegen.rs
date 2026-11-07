@@ -522,7 +522,10 @@ mod m {
     let out = emit(&src("l.bmb", text));
     let ir = out.ir.unwrap();
     let defines: Vec<&str> = ir.lines().filter(|l| l.starts_with("define ")).collect();
-    assert_eq!(defines.len(), 8, "{ir}");
+    // The runtime's print_i64, print_u64, print_bytes, the closed-stdout
+    // check and flush (4C-06) and trap; the unit's main, one and unused;
+    // and the entry point.
+    assert_eq!(defines.len(), 10, "{ir}");
     for d in &defines {
         assert!(
             d.starts_with("define internal ") || d.starts_with("define i32 @main()"),
