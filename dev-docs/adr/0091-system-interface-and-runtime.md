@@ -50,6 +50,11 @@
 - 열린 질문 1(`io::Error`)은 필드 구조체 그대로 둔다: 메서드 구문이 생겼지만 `raw_os_error()`·`kind()`를 쓸 곳이 아직 없다(`code`·`message`로 충분). 수요가 나오면 메서드를 더한다.
 - 측정: 고정된 Z3에 세 질의를 차례로 보내고 답을 읽는 BMB 프로그램(`tests/system.rs`의 `a_program_talks_to_z3`), valgrind 누수 0.
 
+## 구현 시 확인 (2026-11-07, 4C-06, 자율 채택: 4C 종료 감사가 찾은 stage0의 남은 접촉)
+
+- 닫힌 목록에 넷을 더한다(§2의 표): `std::fs::metadata`·`symlink_metadata`(Rust 이름, 결과는 필드 구조체 `std::fs::Metadata { is_dir, is_file, is_symlink, len }`: Rust의 메서드 대신 필드, `io::Error`와 같은 꼴), `std::fs::write_new(path, data)`(Rust의 `File::create_new(path)?.write_all(data)`: 파일 타입이 없는 BMB의 함수 꼴, 이름만 다르다), `std::process::spawn`의 셋째 인자 `std::process::Stdio`(`Inherit`·`Null`: Rust의 `Stdio::inherit()`·`Stdio::null()`, 빌더 대신 인자).
+- `SIGPIPE`: 생성 프로그램은 시작에서 무시하고(Rust 런타임), 자식은 기본값으로 띄운다(Rust의 `Command`). 표준 출력 쓰기·비움이 `EPIPE`로 실패하면 종료 코드 141(stage0의 `CLOSED_STDOUT`: 신호로 죽은 프로세스의 셸 상태와 같은 수, 그러나 정상 종료라 부모가 코드를 읽는다). Rust의 `println!`은 이때 panic(101)하지만 stage0의 동작을 대체하는 것이 기준이라 141을 택했다.
+
 ## 열린 질문
 
 1. `io::Error`를 필드 구조체로 둘지 Rust처럼 메서드(`raw_os_error()`, `kind()`)로 둘지: 메서드 구문(2M)과 함께 정한다.

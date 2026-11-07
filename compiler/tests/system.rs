@@ -997,7 +997,7 @@ mod app {
     fn main() -> () {
         let mut args: Vec<String> = Vec::new();
         args.push(String::from("-in"));
-        match std::process::spawn("z3", args.as_slice()) {
+        match std::process::spawn("z3", args.as_slice(), std::process::Stdio::Inherit) {
             Ok(child) => {
                 let mut c: std::process::Child = child;
                 let a: String = ask(&mut c, "(declare-const x Int)\n(assert (> (* x x) 10))\n(check-sat)\n");
@@ -1088,7 +1088,7 @@ mod app {
     // Each case starts its own child; a failed start prints its error.
     #[effects(alloc, io, nondet)]
     fn case(k: u64, prog: &str, args: &[String]) -> () {
-        match std::process::spawn(prog, args) {
+        match std::process::spawn(prog, args, std::process::Stdio::Inherit) {
             Ok(child) => {
                 let mut c: std::process::Child = child;
                 if k == 0 {
@@ -1191,4 +1191,220 @@ fn children_talk_through_pipes() {
         "{}",
         text(&o.stderr)
     );
+}
+
+const META: &str = r#"#[summary("metadata")]
+mod app {
+    #[effects(alloc)]
+    fn at(dir: &str, name: &str) -> String {
+        let mut p: String = String::from(dir);
+        if dir.len() < 4096 && name.len() < 4096 {
+            p.push_str("/");
+            p.push_str(name);
+        }
+        p
+    }
+
+    #[effects(io)]
+    fn flag(b: bool) -> () {
+        if b {
+            print_str("1");
+        } else {
+            print_str("0");
+        }
+    }
+
+    #[effects(alloc, io)]
+    fn show(r: Result<std::fs::Metadata, std::io::Error>) -> () {
+        match r {
+            Ok(m) => {
+                flag(m.is_dir);
+                flag(m.is_file);
+                flag(m.is_symlink);
+                print_str(" ");
+                print_u64(m.len);
+            }
+            Err(e) => {
+                print_str(e.message.as_str());
+                print_str("\n");
+            }
+        }
+    }
+
+    #[effects(alloc, io, nondet)]
+    fn both(dir: &str, name: &str) -> () {
+        let p: String = at(dir, name);
+        show(std::fs::metadata(p.as_str()));
+        show(std::fs::symlink_metadata(p.as_str()));
+    }
+
+    #[effects(alloc, io)]
+    fn wrote(r: Result<(), std::io::Error>) -> () {
+        match r {
+            Ok(u) => print_str("ok\n"),
+            Err(e) => {
+                print_str(e.message.as_str());
+                print_str("\n");
+            }
+        }
+    }
+
+    #[effects(alloc, io, nondet)]
+    fn main() -> () {
+        let a: Vec<String> = std::env::args();
+        if a.len() < 2 {
+            return;
+        }
+        both(a[1].as_str(), "f");
+        both(a[1].as_str(), "l");
+        both(a[1].as_str(), "d");
+        both(a[1].as_str(), "missing");
+        let n: String = at(a[1].as_str(), "new");
+        wrote(std::fs::write_new(n.as_str(), b"fresh"));
+        wrote(std::fs::write_new(n.as_str(), b"again"));
+        let l: String = at(a[1].as_str(), "l");
+        wrote(std::fs::write_new(l.as_str(), b"through the link"));
+    }
+}
+"#;
+
+/// The rest of stage0's outside contacts (backlog 4C-06, `dev-docs/health/4C.md`):
+/// `metadata` (follows a link) and `symlink_metadata` (does not) tell the
+/// same as Rust's `std::fs` on a file, a link to it, a directory and a
+/// missing path; `write_new` writes a new file, refuses an existing one and
+/// does not follow a planted link (Rust's `File::create_new`).
+#[test]
+fn metadata_and_new_files_are_rusts() {
+    let dir = cli::fresh_dir();
+    std::fs::write(dir.join("f"), b"hello").unwrap();
+    std::os::unix::fs::symlink(dir.join("f"), dir.join("l")).unwrap();
+    std::fs::create_dir(dir.join("d")).unwrap();
+    let mut want = String::new();
+    for name in ["f", "l", "d", "missing"] {
+        let p = dir.join(name);
+        for m in [std::fs::metadata(&p), std::fs::symlink_metadata(&p)] {
+            match m {
+                Ok(m) => {
+                    let b = |x: bool| if x { "1" } else { "0" };
+                    want.push_str(&format!(
+                        "{}{}{} {}\n",
+                        b(m.is_dir()),
+                        b(m.is_file()),
+                        b(m.file_type().is_symlink()),
+                        m.len()
+                    ));
+                }
+                Err(e) => want.push_str(&format!("{e}\n")),
+            }
+        }
+    }
+    // Rust's `File::create_new` on the same three paths, in a copy.
+    let twin = cli::fresh_dir();
+    std::fs::write(twin.join("f"), b"hello").unwrap();
+    std::os::unix::fs::symlink(twin.join("f"), twin.join("l")).unwrap();
+    for (name, data) in [
+        ("new", "fresh"),
+        ("new", "again"),
+        ("l", "through the link"),
+    ] {
+        use std::io::Write;
+        match std::fs::File::create_new(twin.join(name)) {
+            Ok(mut f) => {
+                f.write_all(data.as_bytes()).unwrap();
+                want.push_str("ok\n");
+            }
+            Err(e) => want.push_str(&format!("{e}\n")),
+        }
+    }
+    let o = run(META, &[dir.to_str().unwrap()], b"");
+    assert_eq!(text(&o.stdout), want, "{}", text(&o.stderr));
+    assert_eq!(std::fs::read(dir.join("new")).unwrap(), b"fresh");
+    assert_eq!(std::fs::read(dir.join("f")).unwrap(), b"hello");
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&twin);
+}
+
+const QUIET: &str = r#"#[summary("stderr and SIGPIPE of children")]
+mod app {
+    #[effects(alloc)]
+    fn sh(script: &str) -> Vec<String> {
+        let mut a: Vec<String> = Vec::new();
+        a.push(String::from("-c"));
+        a.push(String::from(script));
+        a
+    }
+
+    #[effects(alloc, io, nondet)]
+    fn first_line(script: &str, err: std::process::Stdio) -> () {
+        let s: Vec<String> = sh(script);
+        match std::process::spawn("sh", s.as_slice(), err) {
+            Ok(child) => {
+                let mut c: std::process::Child = child;
+                let mut l: String = String::new();
+                match c.read_line(&mut l) {
+                    Ok(n) => print_str(l.as_str()),
+                    Err(e) => print_str(e.message.as_str()),
+                }
+                match c.wait() {
+                    Ok(st) => print_i64(i64::try_from(st).unwrap()),
+                    Err(f) => print_str(f.message.as_str()),
+                }
+            }
+            Err(g) => print_str(g.message.as_str()),
+        }
+    }
+
+    #[effects(alloc, io, nondet)]
+    fn main() -> () {
+        first_line("echo out; echo err-shown >&2", std::process::Stdio::Inherit);
+        first_line("echo out; echo err-hidden >&2", std::process::Stdio::Null);
+        // A child starts with `SIGPIPE` at its default (Rust's `Command`):
+        // `yes` ends quietly when `head` is done.
+        first_line("yes | head -n 1", std::process::Stdio::Inherit);
+        let a: Vec<String> = std::env::args();
+        if a.len() > 1 {
+            for i in 0..1000000 {
+                print_i64(i);
+            }
+        }
+    }
+}
+"#;
+
+/// A child's standard error is this process's (`Stdio::Inherit`) or
+/// discarded (`Stdio::Null`, stage0's solver, `smt.rs`); children start with
+/// `SIGPIPE` at its default though this process ignores it; and output to
+/// a closed standard output ends the program with code 141 after it has
+/// run children too (stage0's `CLOSED_STDOUT`, `tests/cli.rs`).
+#[test]
+fn children_inherit_or_drop_stderr_and_a_closed_stdout_ends_with_141() {
+    let o = run(QUIET, &[], b"");
+    assert_eq!(text(&o.stdout), "out\n0\nout\n0\ny\n0\n");
+    let err = text(&o.stderr);
+    assert!(
+        err.contains("err-shown") && !err.contains("err-hidden"),
+        "{err}"
+    );
+    assert!(!err.contains("Broken pipe"), "{err}");
+    let out = cli::emit(&one(QUIET), false);
+    let dir = cli::fresh_dir();
+    let exe = dir.join("p");
+    cli::build(&out.ir.expect("IR"), &exe).unwrap();
+    let mut child = Command::new(&exe)
+        .arg("many")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let mut first = [0u8; 10];
+    use std::io::Read;
+    child
+        .stdout
+        .as_mut()
+        .unwrap()
+        .read_exact(&mut first)
+        .unwrap();
+    drop(child.stdout.take());
+    assert_eq!(child.wait().unwrap().code(), Some(141));
+    let _ = std::fs::remove_dir_all(&dir);
 }

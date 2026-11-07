@@ -146,11 +146,15 @@ define internal void @bmb_print_f64(double %x, i64 %d) {
   %nan = fcmp uno double %x, %x
   br i1 %nan, label %n, label %f
 n:
-  call i32 (ptr, ...) @printf(ptr @bmb.nan)
+  %rn = call i32 (ptr, ...) @printf(ptr @bmb.nan)
+  %badn = icmp slt i32 %rn, 0
+  call void @bmb_out_check(i1 %badn)
   ret void
 f:
   %p = trunc i64 %d to i32
-  call i32 (ptr, ...) @printf(ptr @bmb.fmtf, i32 %p, double %x)
+  %rf = call i32 (ptr, ...) @printf(ptr @bmb.fmtf, i32 %p, double %x)
+  %badf = icmp slt i32 %rf, 0
+  call void @bmb_out_check(i1 %badf)
   ret void
 }
 ";
@@ -3691,13 +3695,18 @@ pub fn emit_with(
         }
     }
     ir.push_str(
-        "define internal void @bmb_print_i64(i64 %x) {\n  call i32 (ptr, ...) @printf(ptr @bmb.fmt, i64 %x)\n  ret void\n}\n\
+        "define internal void @bmb_print_i64(i64 %x) {\n  %r = call i32 (ptr, ...) @printf(ptr @bmb.fmt, i64 %x)\n  %bad = icmp slt i32 %r, 0\n  call void @bmb_out_check(i1 %bad)\n  ret void\n}\n\
          @bmb.fmtu = private unnamed_addr constant [6 x i8] c\"%llu\\0A\\00\"\n\
-         define internal void @bmb_print_u64(i64 %x) {\n  call i32 (ptr, ...) @printf(ptr @bmb.fmtu, i64 %x)\n  ret void\n}\n\
+         define internal void @bmb_print_u64(i64 %x) {\n  %r = call i32 (ptr, ...) @printf(ptr @bmb.fmtu, i64 %x)\n  %bad = icmp slt i32 %r, 0\n  call void @bmb_out_check(i1 %bad)\n  ret void\n}\n\
          @stdout = external global ptr\n\
          declare i64 @fwrite(ptr, i64, i64, ptr)\n\
-         define internal void @bmb_print_bytes(ptr %p, i64 %n) {\n  %f = load ptr, ptr @stdout\n  call i64 @fwrite(ptr %p, i64 1, i64 %n, ptr %f)\n  ret void\n}\n\
+         define internal void @bmb_print_bytes(ptr %p, i64 %n) {\n  %f = load ptr, ptr @stdout\n  %w = call i64 @fwrite(ptr %p, i64 1, i64 %n, ptr %f)\n  %bad = icmp ne i64 %w, %n\n  call void @bmb_out_check(i1 %bad)\n  ret void\n}\n\
          declare i32 @fflush(ptr)\n\
+         declare ptr @__errno_location()\n\
+         declare ptr @signal(i32, ptr)\n\
+         declare void @_exit(i32) noreturn\n\
+         define internal void @bmb_out_check(i1 %bad) {\nentry:\n  br i1 %bad, label %failed, label %ok\nfailed:\n  %ep = call ptr @__errno_location()\n  %e = load i32, ptr %ep\n  %pipe = icmp eq i32 %e, 32\n  br i1 %pipe, label %closed, label %ok\nclosed:\n  call void @_exit(i32 141)\n  unreachable\nok:\n  ret void\n}\n\
+         define internal void @bmb_flush_out() {\n  %o = load ptr, ptr @stdout\n  %r = call i32 @fflush(ptr %o)\n  %bad = icmp ne i32 %r, 0\n  call void @bmb_out_check(i1 %bad)\n  ret void\n}\n\
          define internal void @bmb_trap() cold noreturn nounwind {\n  call i32 @fflush(ptr null)\n  call void @llvm.trap()\n  unreachable\n}\n",
     );
     let mut checks = 0;
@@ -3967,7 +3976,7 @@ pub fn emit_with(
         };
         let _ = write!(
             ir,
-            "\ndefine i32 @main({params}) {{\n{keep}  call void {run}()\n  ret i32 0\n}}\n"
+            "\ndefine i32 @main({params}) {{\n{keep}  call ptr @signal(i32 13, ptr inttoptr (i64 1 to ptr))\n  call void {run}()\n  call void @bmb_flush_out()\n  ret i32 0\n}}\n"
         );
     }
     Module {

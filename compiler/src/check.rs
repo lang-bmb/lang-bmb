@@ -1323,6 +1323,35 @@ fn system_builtins() -> Vec<(&'static str, Vec<TypeKind>, TypeKind, Effects)> {
             io_result(TypeKind::Vec(mk(TypeKind::String))),
             Effects::ALLOC.union(Effects::IO).union(Effects::NONDET),
         ),
+        // Backlog 4C-06: `metadata(path)` follows a symbolic link (`stat`),
+        // `symlink_metadata(path)` does not (`lstat`); `write_new(path,
+        // data)` writes a file that must not exist yet (Rust's
+        // `File::create_new(path)?.write_all(data)`: a planted link is not
+        // followed).
+        (
+            "std::fs::metadata",
+            vec![text::str_ref()],
+            io_result(metadata_ty()),
+            Effects::ALLOC.union(Effects::IO).union(Effects::NONDET),
+        ),
+        (
+            "std::fs::symlink_metadata",
+            vec![text::str_ref()],
+            io_result(metadata_ty()),
+            Effects::ALLOC.union(Effects::IO).union(Effects::NONDET),
+        ),
+        (
+            "std::fs::write_new",
+            vec![
+                text::str_ref(),
+                TypeKind::Ref {
+                    mutable: false,
+                    inner: mk(TypeKind::Slice(mk(TypeKind::Int(IntTy::U8)))),
+                },
+            ],
+            io_result(TypeKind::Unit),
+            Effects::ALLOC.union(Effects::IO),
+        ),
         // Slice (d): `std::env::var(name)` the variable's value, `None`
         // when it is not set or not UTF-8 (Rust's `env::var` gives a
         // `Result`); `std::time::monotonic_ms()` a monotonic clock in
@@ -1368,9 +1397,10 @@ fn system_builtins() -> Vec<(&'static str, Vec<TypeKind>, TypeKind, Effects)> {
             }),
             Effects::ALLOC.union(Effects::IO).union(Effects::NONDET),
         ),
-        // The rest of slice (e): `std::process::spawn(prog, args)` starts
-        // `prog` with pipes to its standard input and output (its standard
-        // error is this process's), and the methods of the `Child` talk to
+        // The rest of slice (e): `std::process::spawn(prog, args, stderr)`
+        // starts `prog` with pipes to its standard input and output (its
+        // standard error is this process's, `Stdio::Inherit`, or discarded,
+        // `Stdio::Null`), and the methods of the `Child` talk to
         // it: `write_all` writes and flushes, `read_line` reads one line
         // of its output as `std::io::read_line` does, `id` is its process
         // id and `wait` closes its input, waits and gives its status (the
@@ -1383,6 +1413,10 @@ fn system_builtins() -> Vec<(&'static str, Vec<TypeKind>, TypeKind, Effects)> {
                 TypeKind::Ref {
                     mutable: false,
                     inner: mk(TypeKind::Slice(mk(TypeKind::String))),
+                },
+                TypeKind::Named {
+                    path: vec!["std".into(), "process".into(), "Stdio".into()],
+                    args: Vec::new(),
                 },
             ],
             io_result(child_ty()),
@@ -1506,7 +1540,48 @@ fn system_types() -> BTreeMap<String, Adt> {
         span: Span::default(),
         inv: None,
     };
-    BTreeMap::from([(path, adt), (out, output), (CHILD.into(), child)])
+    // `std::fs::Metadata`: what `metadata` and `symlink_metadata` tell of
+    // a path, as fields where Rust has methods (as `io::Error`, ADR-0091
+    // §2): `is_dir`, `is_file`, `is_symlink`, `len`.
+    let meta = Adt {
+        path: "std::fs::Metadata".into(),
+        generics: Vec::new(),
+        kind: AdtKind::Struct(vec![
+            ("is_dir".into(), TypeKind::Bool),
+            ("is_file".into(), TypeKind::Bool),
+            ("is_symlink".into(), TypeKind::Bool),
+            ("len".into(), TypeKind::Int(IntTy::U64)),
+        ]),
+        span: Span::default(),
+        inv: None,
+    };
+    // `std::process::Stdio`: where a child's standard error goes, Rust's
+    // `Stdio::inherit()` and `Stdio::null()`.
+    let stdio = Adt {
+        path: "std::process::Stdio".into(),
+        generics: Vec::new(),
+        kind: AdtKind::Enum(vec![
+            ("Inherit".into(), Vec::new()),
+            ("Null".into(), Vec::new()),
+        ]),
+        span: Span::default(),
+        inv: None,
+    };
+    BTreeMap::from([
+        (path, adt),
+        (out, output),
+        (CHILD.into(), child),
+        ("std::fs::Metadata".into(), meta),
+        ("std::process::Stdio".into(), stdio),
+    ])
+}
+
+/// `std::fs::Metadata`, as a type.
+pub fn metadata_ty() -> TypeKind {
+    TypeKind::Named {
+        path: vec!["std".into(), "fs".into(), "Metadata".into()],
+        args: Vec::new(),
+    }
 }
 
 /// The path of the child process type (ADR-0091 §2).
@@ -5383,7 +5458,7 @@ impl<'a> Checker<'a> {
                 "a `std::process::Child` is not built or read by its fields",
             )
             .fix(
-                "get one from `std::process::spawn(prog, args.as_slice())` and use its methods: `write_all`, `read_line`, `id`, `wait`",
+                "get one from `std::process::spawn(prog, args.as_slice(), std::process::Stdio::Inherit)` and use its methods: `write_all`, `read_line`, `id`, `wait`",
                 None,
             ),
         );

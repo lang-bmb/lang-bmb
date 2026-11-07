@@ -12,7 +12,9 @@ use super::*;
 const EPRINT: &str = "@stderr = external global ptr
 define internal void @bmb_eprint_bytes(ptr %p, i64 %n) {
   %o = load ptr, ptr @stdout
-  call i32 @fflush(ptr %o)
+  %fr = call i32 @fflush(ptr %o)
+  %bad = icmp ne i32 %fr, 0
+  call void @bmb_out_check(i1 %bad)
   %f = load ptr, ptr @stderr
   call i64 @fwrite(ptr %p, i64 1, i64 %n, ptr %f)
   ret void
@@ -23,6 +25,7 @@ define internal void @bmb_eprint_bytes(ptr %p, i64 %n) {
 /// (Rust's `exit` flushes its `stdout` too) and runs no destructor.
 const EXIT: &str = "declare void @exit(i32) noreturn
 define internal void @bmb_exit(i64 %c) cold noreturn {
+  call void @bmb_flush_out()
   %w = trunc i64 %c to i32
   call void @exit(i32 %w)
   unreachable
@@ -328,6 +331,14 @@ ok:
   ret i64 0
 }
 define internal i64 @bmb_rt_fs_write(ptr %p, i64 %n, ptr %d, i64 %dn) {
+  %r = call i64 @bmb_fs_write_with(ptr %p, i64 %n, ptr %d, i64 %dn, i32 524865)
+  ret i64 %r
+}
+define internal i64 @bmb_rt_fs_write_new(ptr %p, i64 %n, ptr %d, i64 %dn) {
+  %r = call i64 @bmb_fs_write_with(ptr %p, i64 %n, ptr %d, i64 %dn, i32 524481)
+  ret i64 %r
+}
+define internal i64 @bmb_fs_write_with(ptr %p, i64 %n, ptr %d, i64 %dn, i32 %flags) {
 entry:
   %c = call ptr @bmb_cpath(ptr %p, i64 %n)
   %nul = icmp eq ptr %c, null
@@ -335,7 +346,7 @@ entry:
 badpath:
   ret i64 -1001
 open:
-  %fd = call i32 (ptr, i32, ...) @open(ptr %c, i32 524865, i32 438)
+  %fd = call i32 (ptr, i32, ...) @open(ptr %c, i32 %flags, i32 438)
   %fail = icmp slt i32 %fd, 0
   br i1 %fail, label %oserr, label %go
 oserr:
@@ -799,16 +810,92 @@ pub(super) fn helpers(text: &str) -> String {
 /// An argument with a NUL byte is the `InvalidInput` error, a program
 /// that cannot start is the spawn error (`ENOENT`, ..). Linux x86-64
 /// layouts: a `pollfd` is 8 bytes, the spawn file actions fit in 128.
+/// `metadata` and `symlink_metadata` (backlog 4C-06): `stat` and `lstat`
+/// of the path into a `std::fs::Metadata` (Linux x86-64 `struct stat`:
+/// `st_mode` at byte 24, `st_size` at byte 48, 144 bytes).
+const META: &str = "declare i32 @stat(ptr, ptr)
+declare i32 @lstat(ptr, ptr)
+define internal i64 @bmb_fs_meta(ptr %out, ptr %p, i64 %n, i1 %follow) {
+entry:
+  %c = call ptr @bmb_cpath(ptr %p, i64 %n)
+  %nul = icmp eq ptr %c, null
+  br i1 %nul, label %badpath, label %go
+badpath:
+  ret i64 -1001
+go:
+  %st = alloca [144 x i8], align 8
+  br i1 %follow, label %s, label %l
+s:
+  %rs = call i32 @stat(ptr %c, ptr %st)
+  br label %got
+l:
+  %rl = call i32 @lstat(ptr %c, ptr %st)
+  br label %got
+got:
+  %r = phi i32 [%rs, %s], [%rl, %l]
+  %fail = icmp ne i32 %r, 0
+  br i1 %fail, label %oserr, label %ok
+oserr:
+  %e = call i64 @bmb_errno()
+  call void @free(ptr %c)
+  ret i64 %e
+ok:
+  call void @free(ptr %c)
+  %mp = getelementptr inbounds i8, ptr %st, i64 24
+  %mode = load i32, ptr %mp
+  %fmt = and i32 %mode, 61440
+  %d = icmp eq i32 %fmt, 16384
+  %f = icmp eq i32 %fmt, 32768
+  %k = icmp eq i32 %fmt, 40960
+  %sp = getelementptr inbounds i8, ptr %st, i64 48
+  %size = load i64, ptr %sp
+  %d8 = zext i1 %d to i8
+  %f8 = zext i1 %f to i8
+  %k8 = zext i1 %k to i8
+  %od = getelementptr inbounds %\"std::fs::Metadata\", ptr %out, i32 0, i32 0
+  store i8 %d8, ptr %od
+  %of = getelementptr inbounds %\"std::fs::Metadata\", ptr %out, i32 0, i32 1
+  store i8 %f8, ptr %of
+  %ok8 = getelementptr inbounds %\"std::fs::Metadata\", ptr %out, i32 0, i32 2
+  store i8 %k8, ptr %ok8
+  %ol = getelementptr inbounds %\"std::fs::Metadata\", ptr %out, i32 0, i32 3
+  store i64 %size, ptr %ol
+  ret i64 0
+}
+define internal i64 @bmb_rt_fs_metadata(ptr %out, ptr %p, i64 %n) {
+  %r = call i64 @bmb_fs_meta(ptr %out, ptr %p, i64 %n, i1 true)
+  ret i64 %r
+}
+define internal i64 @bmb_rt_fs_symlink_metadata(ptr %out, ptr %p, i64 %n) {
+  %r = call i64 @bmb_fs_meta(ptr %out, ptr %p, i64 %n, i1 false)
+  ret i64 %r
+}
+";
+
 /// What `run` and `spawn` share: the spawn and pipe declarations, reading
 /// what a pipe has and freeing an `argv`.
 const PROC: &str = "declare i32 @pipe2(ptr, i32)
+declare i32 @posix_spawnattr_init(ptr)
+declare i32 @posix_spawnattr_destroy(ptr)
+declare i32 @posix_spawnattr_setflags(ptr, i16)
+declare i32 @posix_spawnattr_setsigdefault(ptr, ptr)
+declare i32 @sigemptyset(ptr)
+declare i32 @sigaddset(ptr, i32)
+define internal void @bmb_spawn_attr(ptr %attr) {
+  %ss = alloca [128 x i8], align 8
+  call i32 @posix_spawnattr_init(ptr %attr)
+  call i32 @sigemptyset(ptr %ss)
+  call i32 @sigaddset(ptr %ss, i32 13)
+  call i32 @posix_spawnattr_setsigdefault(ptr %attr, ptr %ss)
+  call i32 @posix_spawnattr_setflags(ptr %attr, i16 4)
+  ret void
+}
 declare i32 @posix_spawn_file_actions_init(ptr)
 declare i32 @posix_spawn_file_actions_destroy(ptr)
 declare i32 @posix_spawn_file_actions_adddup2(ptr, i32, i32)
 declare i32 @posix_spawnp(ptr, ptr, ptr, ptr, ptr, ptr)
 declare i32 @poll(ptr, i64, i32)
 declare i32 @waitpid(i32, ptr, i32)
-declare ptr @signal(i32, ptr)
 @environ = external global ptr
 define internal i64 @bmb_fd_read_some(i32 %fd, ptr %h) {
 entry:
@@ -929,7 +1016,10 @@ spawn:
   call i32 @posix_spawn_file_actions_adddup2(ptr %fa, i32 %err_w, i32 2)
   %pid = alloca i32
   %env = load ptr, ptr @environ
-  %rc = call i32 @posix_spawnp(ptr %pid, ptr %cprog, ptr %fa, ptr null, ptr %argv, ptr %env)
+  %attr = alloca [512 x i8], align 8
+  call void @bmb_spawn_attr(ptr %attr)
+  %rc = call i32 @posix_spawnp(ptr %pid, ptr %cprog, ptr %fa, ptr %attr, ptr %argv, ptr %env)
+  call i32 @posix_spawnattr_destroy(ptr %attr)
   call i32 @posix_spawn_file_actions_destroy(ptr %fa)
   call void @bmb_argv_free(ptr %argv, i64 %last)
   call i32 @close(i32 %in_r)
@@ -945,7 +1035,6 @@ nospawn:
   %se = sub i64 -1, %rc64
   ret i64 %se
 started:
-  call ptr @signal(i32 13, ptr inttoptr (i64 1 to ptr))
   %so = getelementptr inbounds %\"std::process::Output\", ptr %out, i32 0, i32 1
   %sr = getelementptr inbounds %\"std::process::Output\", ptr %out, i32 0, i32 2
   call void @bmb_vec_alloc(ptr %so, i64 0, i64 1)
@@ -1092,7 +1181,8 @@ const CHILD: &str = "declare ptr @fdopen(i32, ptr)
 declare i32 @fclose(ptr)
 @bmb.mode_w = private unnamed_addr constant [2 x i8] c\"w\\00\"
 @bmb.mode_r = private unnamed_addr constant [2 x i8] c\"r\\00\"
-define internal i64 @bmb_rt_process_spawn(ptr %out, ptr %p, i64 %pn, ptr %args, i64 %an) {
+@bmb.dev_null = private unnamed_addr constant [10 x i8] c\"/dev/null\\00\"
+define internal i64 @bmb_rt_process_spawn(ptr %out, ptr %p, i64 %pn, ptr %args, i64 %an, ptr %how) {
 entry:
   %cprog = call ptr @bmb_cpath(ptr %p, i64 %pn)
   %pnul = icmp eq ptr %cprog, null
@@ -1165,13 +1255,34 @@ spawn:
   call i32 @posix_spawn_file_actions_init(ptr %fa)
   call i32 @posix_spawn_file_actions_adddup2(ptr %fa, i32 %in_r, i32 0)
   call i32 @posix_spawn_file_actions_adddup2(ptr %fa, i32 %out_w, i32 1)
+  %tag = load i64, ptr %how
+  %quiet = icmp eq i64 %tag, 1
+  br i1 %quiet, label %null, label %spawnit
+null:
+  %dn = call i32 (ptr, i32, ...) @open(ptr @bmb.dev_null, i32 524289)
+  %dnok = icmp sge i32 %dn, 0
+  br i1 %dnok, label %redirect, label %spawnit
+redirect:
+  call i32 @posix_spawn_file_actions_adddup2(ptr %fa, i32 %dn, i32 2)
+  br label %spawnit
+spawnit:
+  %devnull = phi i32 [-1, %spawn], [-1, %null], [%dn, %redirect]
   %pid = alloca i32
   %env = load ptr, ptr @environ
-  %rc = call i32 @posix_spawnp(ptr %pid, ptr %cprog, ptr %fa, ptr null, ptr %argv, ptr %env)
+  %attr = alloca [512 x i8], align 8
+  call void @bmb_spawn_attr(ptr %attr)
+  %rc = call i32 @posix_spawnp(ptr %pid, ptr %cprog, ptr %fa, ptr %attr, ptr %argv, ptr %env)
+  call i32 @posix_spawnattr_destroy(ptr %attr)
   call i32 @posix_spawn_file_actions_destroy(ptr %fa)
   call void @bmb_argv_free(ptr %argv, i64 %last)
   call i32 @close(i32 %in_r)
   call i32 @close(i32 %out_w)
+  %hasnull = icmp sge i32 %devnull, 0
+  br i1 %hasnull, label %closenull, label %after
+closenull:
+  call i32 @close(i32 %devnull)
+  br label %after
+after:
   %spawnfail = icmp ne i32 %rc, 0
   br i1 %spawnfail, label %nospawn, label %started
 nospawn:
@@ -1181,7 +1292,6 @@ nospawn:
   %se = sub i64 -1, %rc64
   ret i64 %se
 started:
-  call ptr @signal(i32 13, ptr inttoptr (i64 1 to ptr))
   %fin = call ptr @fdopen(i32 %in_w, ptr @bmb.mode_w)
   %fout = call ptr @fdopen(i32 %out_r, ptr @bmb.mode_r)
   %pidv = load i32, ptr %pid
@@ -1348,8 +1458,7 @@ define internal i64 @bmb_child_id(ptr %c) {
 /// `std::io::Error` (Rust's `Display`): `strerror` and ` (os error N)` for
 /// an OS error, Rust's own text for invalid UTF-8 (code 0) and for a path
 /// with a NUL byte (code 1000).
-const IO_COMMON: &str = "declare ptr @__errno_location()
-define internal i64 @bmb_errno() {
+const IO_COMMON: &str = "define internal i64 @bmb_errno() {
   %ep = call ptr @__errno_location()
   %e = load i32, ptr %ep
   %w = sext i32 %e to i64
@@ -1418,7 +1527,7 @@ enum Payload {
 /// The built-ins whose result is `Result<T, std::io::Error>`: path, the
 /// runtime function, its flattened parameters (as the call passes the
 /// built-in's arguments) and what it gives on success.
-const IO_BUILTINS: [(&str, &str, &[&str], Payload); 14] = [
+const IO_BUILTINS: [(&str, &str, &[&str], Payload); 17] = [
     (
         "std::io::read_line",
         "bmb_stdin_line",
@@ -1474,6 +1583,24 @@ const IO_BUILTINS: [(&str, &str, &[&str], Payload); 14] = [
         Payload::Value,
     ),
     (
+        "std::fs::write_new",
+        "bmb_rt_fs_write_new",
+        &["ptr", "i64", "ptr", "i64"],
+        Payload::Unit,
+    ),
+    (
+        "std::fs::metadata",
+        "bmb_rt_fs_metadata",
+        &["ptr", "i64"],
+        Payload::Value,
+    ),
+    (
+        "std::fs::symlink_metadata",
+        "bmb_rt_fs_symlink_metadata",
+        &["ptr", "i64"],
+        Payload::Value,
+    ),
+    (
         "std::process::run",
         "bmb_rt_process_run",
         &["ptr", "i64", "ptr", "i64", "ptr", "i64"],
@@ -1482,7 +1609,7 @@ const IO_BUILTINS: [(&str, &str, &[&str], Payload); 14] = [
     (
         "std::process::spawn",
         "bmb_rt_process_spawn",
-        &["ptr", "i64", "ptr", "i64"],
+        &["ptr", "i64", "ptr", "i64", "ptr"],
         Payload::Value,
     ),
     (
@@ -1628,6 +1755,12 @@ err:
     }
     if children {
         out.push_str(CHILD);
+    }
+    if used
+        .iter()
+        .any(|(p, ..)| *p == "std::fs::metadata" || *p == "std::fs::symlink_metadata")
+    {
+        out.push_str(META);
     }
     let dirs = [
         "std::fs::rename",

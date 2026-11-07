@@ -17,13 +17,13 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 47390,
+    "S4_stage0_rust_lines": 48300,
     "S5_tests_bound_to_rust_api": 1,
     "S6_selfhost_bmb_lines": 0,
     "P1_runnable_programs": 64,
-    "P2_bmb_lines": 24288,
-    "P3_errors_with_help": 0.8898,
-    "B1_baseline_binary_bytes": 101440,
+    "P2_bmb_lines": 24317,
+    "P3_errors_with_help": 0.8902,
+    "B1_baseline_binary_bytes": 101664,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 15
   },
@@ -2028,6 +2028,28 @@
         "B1_baseline_binary_bytes": [
           101408,
           101440
+        ]
+      }
+    },
+    {
+      "date": "2026-11-07",
+      "reason": "4C-02 (e) and 4C-06: P2, P3 up (child and system examples, Child hints); B1 +224 bytes is the stdout check of every print (exit 141 on EPIPE, stage0's CLOSED_STDOUT); S4 is the Child, Metadata, write_new, Stdio and SIGPIPE code",
+      "changed": {
+        "S4_stage0_rust_lines": [
+          47390,
+          48300
+        ],
+        "P2_bmb_lines": [
+          24288,
+          24317
+        ],
+        "P3_errors_with_help": [
+          0.8898,
+          0.8902
+        ],
+        "B1_baseline_binary_bytes": [
+          101440,
+          101664
         ]
       }
     }
