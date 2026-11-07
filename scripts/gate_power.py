@@ -588,6 +588,12 @@ MUTANTS = [
      '''(ite {inside} (select {o} (+ (- k {dest}) {lo})) (select {o} k))''',
      '''(ite {inside} (select {o} k) (select {o} k))''',
      "the prover sees the array unchanged after a copy: claims about the old values are proved"),
+    # Method calls (ADR-0051, backlog 2M-02): the type's own function comes
+    # before a trait's of the same name, as in Rust.
+    ("k-method-trait-before-inherent", "miscompile", K,
+     '''            if let Some(sig) = self.fns.get(&fp).filter(|s| s.trait_of.is_none()).cloned() {''',
+     '''            if let Some(sig) = self.fns.get(&fp).filter(|s| s.trait_of.is_none() && !self.trait_impls.iter().any(|i| i.matches(value).is_some() && self.traits.get(&i.trait_path).is_some_and(|t| t.methods.contains(&name.name)))).cloned() {''',
+     "a method call names a trait's function where the type has its own of that name: the program runs another function than Rust's"),
 ]
 
 

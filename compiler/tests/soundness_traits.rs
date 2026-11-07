@@ -25,6 +25,12 @@
 //!   (`common::trap`, backlog 1B-54): both builds print the line before it
 //!   and end by the trap.
 //!
+//! Odd seeds write the trait calls as method calls (`a.get()`,
+//! `self.inner.val()`, ADR-0051, backlog 2M-02), even seeds by path. `R`
+//! also has an inherent `get` (`v` plus `INHERENT_SHIFT`) that a method call on an `R`
+//! names before the trait's: the run prints `r.get()` (the inherent one)
+//! next to `Val::get(&r)` (the trait's random body).
+//!
 //! It drives the `bmb` command line (HEALTH.md S5). `BMB_SOUND_ITERS`
 //! raises the number of batches for longer runs.
 
@@ -88,6 +94,13 @@ const PRELUDE: &str = r#"    trait Val {
 
     struct R { v: i64 }
 
+    impl R {
+        #[effects(pure)]
+        fn get(self: &R) -> i64 {
+            self.v.wrapping_add(1000003)
+        }
+    }
+
     impl Val for B {
         spec fn val(self: &B) -> i64 {
             self.v
@@ -117,6 +130,48 @@ const PRELUDE: &str = r#"    trait Val {
     }
 
 "#;
+
+/// What the inherent `R::get` adds to `v`, so it differs from the random
+/// `R::get` body: that adds nothing, an interesting value or a small one
+/// (`common::scalar::value`), none of which is this, or a 64-bit random one.
+const INHERENT_SHIFT: i64 = 1000003;
+
+/// `text` with each trait call by path `Val::get(&a)`, `Val::val(x)`,
+/// `m::Val::get(&r0)` written as a method call (`a.get()`, `x.val()`):
+/// the receiver is a path of names and fields.
+fn method_calls(text: &str) -> String {
+    let mut out = String::new();
+    let mut rest = text;
+    while let Some(at) = rest.find("Val::") {
+        let (head, tail) = rest.split_at(at);
+        let head = head.strip_suffix("m::").unwrap_or(head);
+        let after = &tail["Val::".len()..];
+        let name_len = after
+            .find(|c: char| !(c.is_alphanumeric() || c == '_'))
+            .unwrap_or(after.len());
+        let (name, args) = after.split_at(name_len);
+        let recv = args
+            .strip_prefix('(')
+            .map(|a| a.strip_prefix('&').unwrap_or(a))
+            .and_then(|a| {
+                let n = a.find(|c: char| !(c.is_alphanumeric() || c == '_' || c == '.'))?;
+                (a[n..].starts_with(')') && n > 0).then(|| (&a[..n], &a[n + 1..]))
+            });
+        match recv {
+            Some((r, after_call)) if name == "get" || name == "val" => {
+                out.push_str(head);
+                let _ = write!(out, "{r}.{name}()");
+                rest = after_call;
+            }
+            _ => {
+                out.push_str(&rest[..at + "Val::".len()]);
+                rest = &rest[at + "Val::".len()..];
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
 
 /// `text` with the whole words `x` and `y` replaced.
 fn subst_xy(text: &str, x: &str, y: &str) -> String {
@@ -207,6 +262,8 @@ struct Stats {
     compiled_runs: usize,
     /// Calls that fault in the interpreter, run as trap programs (1B-54).
     traps: usize,
+    /// Batches written with method calls (ADR-0051).
+    method_batches: usize,
 }
 
 fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
@@ -236,6 +293,17 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
     src.push_str(&r.text());
     for f in &funcs {
         src.push_str(&funcs_text(f));
+    }
+    let methods = seed % 2 == 1;
+    if methods {
+        src = method_calls(&src);
+        assert!(
+            src.contains("a.get()")
+                && src.contains("self.inner.val()")
+                && !src.contains("Val::get(&a)"),
+            "{src}"
+        );
+        stats.method_batches += 1;
     }
     // The run: every function at inputs it runs on, and `R::get`.
     let mut uses: Vec<String> = funcs
@@ -300,6 +368,11 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
                 lit(*s)
             );
             let _ = writeln!(expected, "{g}");
+            // The inherent `R::get` comes before the trait's (Rust's rule).
+            if methods {
+                let _ = writeln!(src, "        print_i64(r{j}.get());");
+                let _ = writeln!(expected, "{}", s.wrapping_add(INHERENT_SHIFT));
+            }
         }
     }
     src.push_str("    }\n}\n");
@@ -534,7 +607,7 @@ fn trait_proofs_counterexamples_and_builds_agree_with_the_interpreter() {
     }
     let _ = fs::remove_dir_all(&dir);
     eprintln!(
-        "soundness (traits): {} functions, {} verified ({} runs), R::get verified in {} batches, {} counterexamples replayed, {} over a sort, {} compiled runs, {} traps confirmed",
+        "soundness (traits): {} functions, {} verified ({} runs), R::get verified in {} batches, {} counterexamples replayed, {} over a sort, {} compiled runs, {} traps confirmed, {} batches with method calls",
         stats.funcs,
         stats.verified,
         stats.verified_runs,
@@ -542,7 +615,9 @@ fn trait_proofs_counterexamples_and_builds_agree_with_the_interpreter() {
         stats.cexes,
         stats.generic_cexes,
         stats.compiled_runs,
-        stats.traps
+        stats.traps,
+        stats.method_batches
     );
     assert!(stats.verified > 0 && stats.cexes > 0 && stats.traps > 0);
+    assert!(iters < 2 || stats.method_batches > 0);
 }
