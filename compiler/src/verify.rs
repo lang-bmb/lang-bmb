@@ -10194,7 +10194,7 @@ mod m {
     /// its ground instance. With the first field's definition only, an
     /// application of another field had none and the instances were still
     /// called complete: a confirmed counterexample that was not one
-    /// (`lib/sha256.bmb`'s `chain`, backlog 1B-53).
+    /// (`lib/std/sha256.bmb`'s `chain`, backlog 1B-53).
     #[test]
     fn every_field_of_a_struct_result_has_ground_instances() {
         let src = r#"#[summary("t")]

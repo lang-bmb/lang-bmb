@@ -36,7 +36,7 @@ PROOF_SETS = ["tests/verify/pass", "tests/run", "bench/m1/seed/src", "bench/m1b/
 # (ADR-0061 §6: no fast-math, no contraction, the same bits every time).
 FLOAT_PROGRAMS = ["tests/run/floats.bmb", "tests/run/mandel.bmb"]
 # The libraries and the programs built on them (V10, backlog T2-08).
-LIBRARIES = "lib"
+LIBRARIES = "lib/std"
 LIBRARY_PROGRAMS = "bench/game"
 # Seed units of the BRB-ENCAP tasks (backlog T0-09), one directory per task.
 ENCAP_SEEDS = "bench/brb-encap/seed"
@@ -140,17 +140,18 @@ def library_cost():
     program's rows count only its own definitions, the libraries' are
     counted once, alone. One proof cache serves every run: a library's
     obligations are the same queries in a program, and a cached obligation
-    reports the `rlimit` it was proved with."""
+    reports the `rlimit` it was proved with. The libraries are the standard
+    library's units (`lib/std/`, ADR-0092), which the compiler adds to a
+    program that names them: a game program's `std::` rows are the
+    libraries'."""
     libs = sorted(str(p.relative_to(ROOT)) for p in (ROOT / LIBRARIES).glob("*.bmb"))
     games = sorted(str(p.relative_to(ROOT)) for p in (ROOT / LIBRARY_PROGRAMS).glob("*.bmb"))
-    rows, lib_defs = [], set()
+    rows = []
     with tempfile.TemporaryDirectory() as cache:
         for lib in libs:
-            r = verify_rows(["--cache", cache, lib])[1]
-            lib_defs |= {x["def"] for x in r}
-            rows += r
+            rows += verify_rows(["--cache", cache, lib])[1]
         for game in games:
-            rows += [x for x in verify_rows(["--cache", cache, game, *libs])[1] if x["def"] not in lib_defs]
+            rows += [x for x in verify_rows(["--cache", cache, game])[1] if not x["def"].startswith("std::")]
     worst = max(rows, key=lambda r: r["rlimit_max"])
     return {
         "V10_library_rlimit_total": sum(r["rlimit"] for r in rows),
@@ -166,7 +167,8 @@ def sat_check_programs():
     measured the satisfiability checks: each file of `tests/verify/pass`,
     `tests/run`, `bench/baseline` and of each BRB-ENCAP task alone, each
     bench seed as one workspace, each library alone, and each
-    `tests/lib_run` and `bench/game` program with every library."""
+    `tests/lib_run` and `bench/game` program (with the standard library
+    units it names, which the compiler adds)."""
     def files(d):
         return sorted(str(p.relative_to(ROOT)) for p in (ROOT / d).glob("*.bmb"))
     progs = [[f] for d in ("tests/verify/pass", "tests/run", "bench/baseline") for f in files(d)]
@@ -175,7 +177,7 @@ def sat_check_programs():
         progs += [[f] for f in files(task.relative_to(ROOT))]
     libs = files(LIBRARIES)
     progs += [[lib] for lib in libs]
-    progs += [[f, *libs] for d in ("tests/lib_run", LIBRARY_PROGRAMS) for f in files(d)]
+    progs += [[f] for d in ("tests/lib_run", LIBRARY_PROGRAMS) for f in files(d)]
     return progs
 
 
@@ -280,7 +282,7 @@ def self_containment():
 
 
 def practicality():
-    # `tests/lib_run` programs run with every `lib/` file (ADR-0044 §4, T4-02).
+    # `tests/lib_run` programs run with the standard library (ADR-0092).
     runnable = [
         p
         for d in ("run", "lib_run")

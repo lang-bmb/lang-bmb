@@ -33,18 +33,18 @@ mod bt {
     spec fn label(s: &[u8]) -> bool { s.len() <= 64 }
 
     #[effects(alloc, io)]
-    #[uses(label, bytes::room, bytes::grew_by, bytes::kept, bytes::fits, bytes::appended)]
+    #[uses(label, std::bytes::room, std::bytes::grew_by, std::bytes::kept, std::bytes::fits, std::bytes::appended)]
     fn line(a: &[u8], x: u64, b: &[u8], y: u64, c: &[u8], z: u64, three: bool) -> ()
         requires label(a), label(b), label(c),
     {
         let mut out: Vec<u8> = Vec::new();
-        bytes::extend(&mut out, a);
-        bytes::push_u64(&mut out, x);
-        bytes::extend(&mut out, b);
-        bytes::push_u64(&mut out, y);
+        std::bytes::extend(&mut out, a);
+        std::bytes::push_u64(&mut out, x);
+        std::bytes::extend(&mut out, b);
+        std::bytes::push_u64(&mut out, y);
         if three {
-            bytes::extend(&mut out, c);
-            bytes::push_u64(&mut out, z);
+            std::bytes::extend(&mut out, c);
+            std::bytes::push_u64(&mut out, z);
         }
         out.push(b'\n');
         print_bytes(out.as_slice());

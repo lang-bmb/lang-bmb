@@ -49,7 +49,7 @@ mod fk {
     }
 
     #[effects(alloc, io)]
-    #[uses(below, below_upto, counts, bytes::room, bytes::grew_by, bytes::kept, bytes::fits, bytes::appended)]
+    #[uses(below, below_upto, counts, std::bytes::room, std::bytes::grew_by, std::bytes::kept, std::bytes::fits, std::bytes::appended)]
     fn main() -> () {
         let n: usize = 12;
         let mut perm: [usize; 12] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
@@ -108,9 +108,9 @@ mod fk {
             }
         }
         let mut out: Vec<u8> = Vec::new();
-        bytes::push_i64(&mut out, checksum);
-        bytes::extend(&mut out, b"\nPfannkuchen(12) = ");
-        bytes::push_u64(&mut out, max_flips);
+        std::bytes::push_i64(&mut out, checksum);
+        std::bytes::extend(&mut out, b"\nPfannkuchen(12) = ");
+        std::bytes::push_u64(&mut out, max_flips);
         out.push(b'\n');
         print_bytes(out.as_slice());
     }

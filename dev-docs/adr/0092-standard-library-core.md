@@ -8,6 +8,7 @@
 - **싣기:** `lib/std/NAME.bmb`마다 단위 `mod NAME` 하나. `compiler/build.rs`가 파일 목록을 만들어 `include_str!`로 컴파일러에 넣고, 같은 파일을 컴파일러 정체성(증분 캐시 키 `BMB_SOURCE_DIGEST`)에 더한다. 설치 위치나 경로 인자가 없다.
 - **더하기(`compiler/src/stdlib.rs`):** 프로그램이 경로 `std::NAME::..`로 부르는 단위(호출·타입·패턴·경계·`#[uses]`, `refs::walk`)와 그 단위가 부르는 단위를 최상위 단위 `std` 아래에 프로그램의 단위 뒤에 더한다. 파일 이름은 `std/NAME.bmb`이고 소스 지도에서 프로그램 파일 뒤라, 프로그램 파일의 위치는 호출자의 파일 목록 번호 그대로다. 부르지 않는 단위는 더하지 않는다(열린 질문 1의 첫 판: 검사도 증명도 하지 않는다). 더한 단위는 다른 정의처럼 검사·증명·코드 생성된다.
 - **이름:** 프로그램의 최상위 단위 `std`는 E0309(내장 이름)다.
+- **`lib/` 이전(4B-02 (d), 결과 절 셋째 항):** 다섯 파일을 `lib/std/`로 옮겼다(내용 그대로, 단위 이름도). 부르는 쪽(`tests/lib_run`, `bench/game`의 둘, `bench/lib`의 둘)은 `bytes::f` → `std::bytes::f`로 고치고 파일을 넘기지 않는다. 출력은 같다. 이름 하나는 §2 표와 다르게 했다: SHA-256은 `std::hash`가 아니라 `std::sha256`이다. Rust의 `std::hash`는 `Hash`·`Hasher` trait(해시 표용)이라 같은 이름에 다른 뜻이 되고, §2의 원칙(Rust의 이름과 뜻)과 어긋난다. `base64`·`crc32`는 표에 없던 것을 그 이름 그대로 `std::base64`·`std::crc32`로 두었다.
 - **도구:** 정규형(`bmb fmt`·`import`)·작업 공간 파일·커밋의 `changed`는 프로그램 단위만 담는다. 트랜잭션의 `std` 경로 연산은 거부(`std` is the standard library). `fix`·`uses`·린트·`mutate`는 프로그램 파일·정의만 본다. 맵 L0·L1 행에 `"library":"std"`(있을 때만 붙는 키, ADR-0020 §1). 시험 `compiler/tests/stdlib.rs`, 실행 `tests/run/std_str`, 검사 `tests/check/err/std_unit`.
 
 ## 맥락

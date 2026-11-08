@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Speed and size of the proved libraries against Rust (backlog T4-01, T4-02).
 
-Each bench is a program pair: `NAME_speed.bmb` with `lib/NAME.bmb`, built by
+Each bench is a program pair: `NAME_speed.bmb` (with `std::NAME`, which the
+compiler adds, `lib/std/NAME.bmb`), built by
 `bmb build` (clang -O2; bounds checks removed only by proofs), and
 `NAME_speed.rs` built by `rustc -C opt-level=2`:
 
@@ -48,8 +49,7 @@ def build(tmp):
     exes = {}
     for b in BENCHES:
         exes[(b, "bmb")] = os.path.join(tmp, f"{b}.bmb")
-        sh([bmb, "build", os.path.join(HERE, f"{b}_speed.bmb"), os.path.join(ROOT, "lib", f"{b}.bmb"),
-            "-o", exes[(b, "bmb")]])
+        sh([bmb, "build", os.path.join(HERE, f"{b}_speed.bmb"), "-o", exes[(b, "bmb")]])
         exes[(b, "rust")] = os.path.join(tmp, f"{b}.rust")
         sh(RUSTC + ["-o", exes[(b, "rust")], os.path.join(HERE, f"{b}_speed.rs")])
     target = os.path.join(tmp, "sha2-target")

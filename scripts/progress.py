@@ -200,9 +200,9 @@ def mcp_tools():
 
 
 def library():
-    files = sorted((ROOT / "lib").glob("*.bmb"))
+    files = sorted((ROOT / "lib" / "std").glob("*.bmb"))
     if not files:
-        fail("no lib/*.bmb")
+        fail("no lib/std/*.bmb")
     lines = sum(len(f.read_text(encoding="utf-8").splitlines()) for f in files)
     return [f.stem for f in files], lines
 

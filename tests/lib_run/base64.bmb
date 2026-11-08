@@ -10,43 +10,43 @@ mod app {
 
     // `<label> <value>` on one line.
     #[effects(alloc, io)]
-    #[uses(label_ok, bytes::room, bytes::grew_by, bytes::kept, bytes::fits, bytes::appended, bytes::copied)]
+    #[uses(label_ok, std::bytes::room, std::bytes::grew_by, std::bytes::kept, std::bytes::fits, std::bytes::appended, std::bytes::copied)]
     fn show(label: &[u8], x: u64) -> ()
         requires label_ok(label),
     {
         let mut out: Vec<u8> = Vec::new();
-        bytes::extend(&mut out, label);
+        std::bytes::extend(&mut out, label);
         out.push(b' ');
-        bytes::push_u64(&mut out, x);
+        std::bytes::push_u64(&mut out, x);
         out.push(b'\n');
         print_bytes(out.as_slice());
     }
 
     // `<label> <text>` on one line.
     #[effects(alloc, io)]
-    #[uses(label_ok, line_ok, bytes::fits, bytes::appended, bytes::kept, bytes::copied)]
+    #[uses(label_ok, line_ok, std::bytes::fits, std::bytes::appended, std::bytes::kept, std::bytes::copied)]
     fn say(label: &[u8], text: &[u8]) -> ()
         requires label_ok(label), line_ok(text),
     {
         let mut out: Vec<u8> = Vec::new();
-        bytes::extend(&mut out, label);
+        std::bytes::extend(&mut out, label);
         out.push(b' ');
-        bytes::extend(&mut out, text);
+        std::bytes::extend(&mut out, text);
         out.push(b'\n');
         print_bytes(out.as_slice());
     }
 
     // The encoding of `s`, and its decoding.
     #[effects(alloc, io)]
-    #[uses(label_ok, line_ok, base64::fits, base64::round_trip, base64::encoded, base64::enc_len, base64::decoded, base64::decodes, base64::dec_len)]
+    #[uses(label_ok, line_ok, std::base64::fits, std::base64::round_trip, std::base64::encoded, std::base64::enc_len, std::base64::decoded, std::base64::decodes, std::base64::dec_len)]
     fn vector(s: &[u8]) -> ()
         requires line_ok(s),
     {
-        let t: Vec<u8> = base64::encode(s);
+        let t: Vec<u8> = std::base64::encode(s);
         if t.len() <= 1000 {
             say(b"enc", t.as_slice());
         }
-        match base64::decode(t.as_slice()) {
+        match std::base64::decode(t.as_slice()) {
             None => say(b"dec", b"none"),
             Some(v) => {
                 if v.len() <= 1000 {
@@ -60,7 +60,7 @@ mod app {
     #[effects(alloc, io)]
     #[uses(label_ok)]
     fn reject(t: &[u8]) -> () {
-        match base64::decode(t) {
+        match std::base64::decode(t) {
             None => print_bytes(b"bad none\n"),
             Some(v) => show(b"bad", u64::try_from(v.len()).unwrap()),
         }
@@ -139,7 +139,7 @@ mod app {
     // One more decoding: counted, its bytes folded into the sum.
     #[effects(alloc)]
     fn add(x: Tally, t: &[u8]) -> Tally {
-        match base64::decode(t) {
+        match std::base64::decode(t) {
             None => x,
             Some(v) => {
                 let mut sum: u64 = x.sum;
@@ -198,7 +198,7 @@ mod app {
     }
 
     #[effects(alloc, io)]
-    #[uses(short, size_ok, label_ok, line_ok, base64::fits, base64::round_trip, base64::decoded, base64::decodes, base64::dec_len, base64::encoded, base64::enc_len, same_bytes, eq_result)]
+    #[uses(short, size_ok, label_ok, line_ok, std::base64::fits, std::base64::round_trip, std::base64::decoded, std::base64::decodes, std::base64::dec_len, std::base64::encoded, std::base64::enc_len, same_bytes, eq_result)]
     fn main() -> () {
         // RFC 4648 §10.
         vector(b"");
@@ -232,7 +232,7 @@ mod app {
         let shown: usize = 65;
         for n in 0..shown {
             let p: Vec<u8> = take(s.as_slice(), n);
-            let e: Vec<u8> = base64::encode(p.as_slice());
+            let e: Vec<u8> = std::base64::encode(p.as_slice());
             if e.len() <= 1000 {
                 say(b"len", e.as_slice());
             }
@@ -244,9 +244,9 @@ mod app {
             invariant back <= m,
         {
             let q: Vec<u8> = take(s.as_slice(), m);
-            let f: Vec<u8> = base64::encode(q.as_slice());
-            sum = sum.wrapping_add(u64::try_from(crc32::checksum(f.as_slice())).unwrap());
-            match base64::decode(f.as_slice()) {
+            let f: Vec<u8> = std::base64::encode(q.as_slice());
+            sum = sum.wrapping_add(u64::try_from(std::crc32::checksum(f.as_slice())).unwrap());
+            match std::base64::decode(f.as_slice()) {
                 None => {}
                 Some(w) => {
                     if equal(w.as_slice(), q.as_slice()) {

@@ -8,14 +8,14 @@ mod app {
 
     // `<label> <value>` on one line.
     #[effects(alloc, io)]
-    #[uses(label_ok, bytes::room, bytes::grew_by, bytes::kept, bytes::fits, bytes::appended, bytes::copied)]
+    #[uses(label_ok, std::bytes::room, std::bytes::grew_by, std::bytes::kept, std::bytes::fits, std::bytes::appended, std::bytes::copied)]
     fn show(label: &[u8], x: u64) -> ()
         requires label_ok(label),
     {
         let mut out: Vec<u8> = Vec::new();
-        bytes::extend(&mut out, label);
+        std::bytes::extend(&mut out, label);
         out.push(b' ');
-        bytes::push_u64(&mut out, x);
+        std::bytes::push_u64(&mut out, x);
         out.push(b'\n');
         print_bytes(out.as_slice());
     }
@@ -68,11 +68,11 @@ mod app {
         let mut two: [u8; 2] = [0, 0];
         for a in 0..n {
             one[0] = u8::try_from(a).unwrap();
-            sum = sum.wrapping_add(wide(crc32::checksum(&one)));
+            sum = sum.wrapping_add(wide(std::crc32::checksum(&one)));
             for b in 0..n {
                 two[0] = u8::try_from(a).unwrap();
                 two[1] = u8::try_from(b).unwrap();
-                sum = sum.wrapping_add(wide(crc32::checksum(&two)));
+                sum = sum.wrapping_add(wide(std::crc32::checksum(&two)));
             }
         }
         sum
@@ -81,34 +81,34 @@ mod app {
     #[effects(alloc, io)]
     #[uses(label_ok, size_ok)]
     fn main() -> () {
-        show(b"check", wide(crc32::checksum(b"123456789")));
-        show(b"empty", wide(crc32::checksum(b"")));
-        show(b"fox", wide(crc32::checksum(b"The quick brown fox jumps over the lazy dog")));
+        show(b"check", wide(std::crc32::checksum(b"123456789")));
+        show(b"empty", wide(std::crc32::checksum(b"")));
+        show(b"fox", wide(std::crc32::checksum(b"The quick brown fox jumps over the lazy dog")));
         let total: usize = 4096;
         let s: Vec<u8> = stream(total);
         let first: usize = 65;
         for n in 0..first {
             let p: Vec<u8> = take(s.as_slice(), 0, n);
-            show(b"len", wide(crc32::checksum(p.as_slice())));
+            show(b"len", wide(std::crc32::checksum(p.as_slice())));
         }
         let mut sum: u64 = 0;
         for m in 0..total + 1 {
             let q: Vec<u8> = take(s.as_slice(), 0, m);
-            sum = sum.wrapping_add(wide(crc32::checksum(q.as_slice())));
+            sum = sum.wrapping_add(wide(std::crc32::checksum(q.as_slice())));
         }
         show(b"sum4096", sum);
         // One table serves every checksum (`update_with`, backlog 2N-03).
-        let t: [u32; 256] = crc32::table();
+        let t: [u32; 256] = std::crc32::table();
         let mut tsum: u64 = 0;
         for j in 0..total + 1 {
             let u: Vec<u8> = take(s.as_slice(), 0, j);
-            tsum = tsum.wrapping_add(wide(crc32::update_with(&t, 0, u.as_slice())));
+            tsum = tsum.wrapping_add(wide(std::crc32::update_with(&t, 0, u.as_slice())));
         }
         show(b"table4096", tsum);
         show(b"short", short_inputs());
         // `update` continues a checksum: every split of the stream gives the
         // checksum of the whole.
-        let whole: u32 = crc32::checksum(s.as_slice());
+        let whole: u32 = std::crc32::checksum(s.as_slice());
         show(b"whole", wide(whole));
         let mut same: u64 = 0;
         for k in 0..total + 1
@@ -116,7 +116,7 @@ mod app {
         {
             let a: Vec<u8> = take(s.as_slice(), 0, k);
             let b: Vec<u8> = take(s.as_slice(), k, total);
-            if crc32::update(crc32::checksum(a.as_slice()), b.as_slice()) == whole {
+            if std::crc32::update(std::crc32::checksum(a.as_slice()), b.as_slice()) == whole {
                 same = same + 1;
             }
         }

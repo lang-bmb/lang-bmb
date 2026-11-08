@@ -14,7 +14,7 @@ the health metrics prove (V4, V8, V10), plus the failing corpus:
            each file alone
   seeds    bench/{m1,m1b,bvb}/seed/src as one workspace each, and each
            BRB-encap task's seed files alone
-  lib      lib/*.bmb alone, tests/lib_run and bench/game with every library
+  lib      lib/std/*.bmb alone, tests/lib_run and bench/game (the compiler adds the std units they name)
   bench    the m1b and BVB reference and weak solutions as the frozen harness
            judges them (`--agent oracle` and `weak`), through a `bmb` wrapper
            that adds `--emit-smt` to each `verify` it runs
@@ -45,7 +45,7 @@ ROOT = Path(__file__).resolve().parent.parent
 BMB = ROOT / "target" / "debug" / "bmb"
 GROUPS = ["corpus", "seeds", "lib", "bench"]
 # Resource units per cvc5 query. Deterministic, unlike a time limit. Measured
-# on lib/base64.bmb's queries: 12,000 to 20,000 units a second on the slow
+# on lib/std/base64.bmb's queries: 12,000 to 20,000 units a second on the slow
 # ones, 95% of the queries under 210,000; so a query stops within about 20 s.
 CVC5_RLIMIT = 250_000
 
@@ -74,8 +74,8 @@ def programs(group):
             out += [(f, [f]) for f in files(task.relative_to(ROOT))]
         return out
     if group == "lib":
-        libs = files("lib")
-        return [(f, [f]) for f in libs] + [(f, [f, *libs]) for d in ("tests/lib_run", "bench/game")
+        libs = files("lib/std")
+        return [(f, [f]) for f in libs] + [(f, [f]) for d in ("tests/lib_run", "bench/game")
                                            for f in files(d)]
     raise ValueError(group)
 

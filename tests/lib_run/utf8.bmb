@@ -5,21 +5,21 @@ mod app {
     // One input: count it when all of it is well-formed, and add its valid prefix length.
     #[effects(pure)]
     fn add(t: Tally, s: &[u8]) -> Tally {
-        let r: usize = utf8::valid_up_to(s);
+        let r: usize = std::utf8::valid_up_to(s);
         let v: u64 = if r == s.len() { 1 } else { 0 };
         Tally { valid: t.valid.saturating_add(v), sum: t.sum.saturating_add(u64::try_from(r).unwrap()) }
     }
 
     // `<length> <valid> <sum>` on one line.
     #[effects(alloc, io)]
-    #[uses(bytes::room, bytes::grew_by, bytes::kept)]
+    #[uses(std::bytes::room, std::bytes::grew_by, std::bytes::kept)]
     fn show(len: u64, t: Tally) -> () {
         let mut out: Vec<u8> = Vec::new();
-        bytes::push_u64(&mut out, len);
+        std::bytes::push_u64(&mut out, len);
         out.push(b' ');
-        bytes::push_u64(&mut out, t.valid);
+        std::bytes::push_u64(&mut out, t.valid);
         out.push(b' ');
-        bytes::push_u64(&mut out, t.sum);
+        std::bytes::push_u64(&mut out, t.sum);
         out.push(b'\n');
         print_bytes(out.as_slice());
     }
@@ -94,7 +94,7 @@ mod app {
     }
 
     #[effects(alloc, io)]
-    #[uses(bytes::room, bytes::grew_by, bytes::kept)]
+    #[uses(std::bytes::room, std::bytes::grew_by, std::bytes::kept)]
     fn main() -> () {
         show(1, len1());
         show(2, len2());

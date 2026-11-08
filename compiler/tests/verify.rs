@@ -145,18 +145,13 @@ fn proofs_are_not_vacuous() {
     for dir in encap {
         programs.extend(bmb_files(&dir).iter().map(|p| one(p)));
     }
-    // The libraries, each alone and all of them with each program that uses them.
-    let libs: Vec<(String, String)> = bmb_files(&bench.join("..").join("lib"))
-        .iter()
-        .map(|p| (name(p), fs::read_to_string(p).unwrap()))
-        .collect();
-    for lib in &libs {
-        programs.push((lib.0.clone(), vec![lib.clone()]));
+    // The standard library's units, each alone, and each program that uses
+    // them (the compiler adds them, ADR-0092).
+    for lib in bmb_files(&bench.join("..").join("lib").join("std")) {
+        programs.push(one(&lib));
     }
     for p in bmb_files(&root().join("lib_run")) {
-        let mut files = vec![(name(&p), fs::read_to_string(&p).unwrap())];
-        files.extend(libs.iter().cloned());
-        programs.push((name(&p), files));
+        programs.push(one(&p));
     }
     for (label, files) in programs {
         let points = vacuous_points(&files);
@@ -165,31 +160,27 @@ fn proofs_are_not_vacuous() {
 }
 
 /// The Benchmarks Game programs (`bench/game`, backlog T3-01) are proved with
-/// the libraries. Running them takes tens of seconds, so the gate proves them
-/// and `bench/game/README.md` runs them.
+/// the standard library units they use. Running them takes tens of seconds,
+/// so the gate proves them and `bench/game/README.md` runs them.
 #[test]
 fn game_programs_are_proved() {
     let repo = root().join("..");
-    let libs: Vec<(String, String)> = bmb_files(&repo.join("lib"))
-        .iter()
-        .map(|p| (name(p), fs::read_to_string(p).unwrap()))
-        .collect();
     let games = bmb_files(&repo.join("bench").join("game"));
     assert!(games.len() >= 2);
     for p in games {
-        let mut files = vec![(name(&p), fs::read_to_string(&p).unwrap())];
-        files.extend(libs.iter().cloned());
+        let files = vec![(name(&p), fs::read_to_string(&p).unwrap())];
         let out = verify_files(&files);
         assert!(out.ok, "{}: {}", p.display(), out.output);
     }
 }
 
-/// Every library (`lib/`: bytes, ADR-0044 §4; UTF-8, CRC-32, SHA-256, base64,
-/// T4) is proved completely, each on its own.
+/// Every standard library unit (`lib/std/`: bytes, ADR-0044 §4; UTF-8,
+/// CRC-32, SHA-256, base64, T4; str, ADR-0092) is proved completely, each on
+/// its own.
 #[test]
 fn libraries_are_proved() {
-    let libs = bmb_files(&root().join("..").join("lib"));
-    assert!(libs.len() >= 5);
+    let libs = bmb_files(&root().join("..").join("lib").join("std"));
+    assert!(libs.len() >= 6);
     for p in libs {
         let out = verify_files(&[(name(&p), fs::read_to_string(&p).unwrap())]);
         assert!(out.ok, "{}: {}", p.display(), out.output);

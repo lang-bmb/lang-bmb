@@ -1,4 +1,4 @@
-#[summary("벤치(T4-01): 16MiB 의사 난수 바이트를 sha256::digest로 8번(매번 첫 바이트를 바꿈). 쌍둥이는 sha256_speed.rs(같은 알고리즘의 Rust: compiler/src/sha256.rs와 같은 코드, 표준 라이브러리만)")]
+#[summary("벤치(T4-01): 16MiB 의사 난수 바이트를 std::sha256::digest로 8번(매번 첫 바이트를 바꿈). 쌍둥이는 sha256_speed.rs(같은 알고리즘의 Rust: compiler/src/sha256.rs와 같은 코드, 표준 라이브러리만)")]
 mod app {
     spec fn size_ok(n: usize) -> bool { 0 < n && n <= 16777216 }
 
@@ -23,7 +23,7 @@ mod app {
     }
 
     #[effects(alloc, io)]
-    #[uses(size_ok, exactly, sha256::msg_ok)]
+    #[uses(size_ok, exactly, std::sha256::msg_ok)]
     fn main() -> () {
         let n: usize = 16777216;
         let mut v: Vec<u8> = data(n);
@@ -34,7 +34,7 @@ mod app {
             invariant exactly(v.as_slice(), n),
         {
             v[0] = u8::try_from(k).unwrap();
-            let d: [u8; 32] = sha256::digest(v.as_slice());
+            let d: [u8; 32] = std::sha256::digest(v.as_slice());
             for j in 0..width {
                 acc = acc.wrapping_mul(31).wrapping_add(u64::try_from(d[j]).unwrap());
             }

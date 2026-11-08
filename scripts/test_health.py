@@ -57,10 +57,10 @@ def sat_check_cost():
     dirs = {Path(f).parent.as_posix() for p in progs for f in p}
     for name in re.findall(r'"([a-z0-9_-]+)"', body):
         assert any(name in d.split("/") for d in dirs), name
-    libs = [p[0] for p in progs if len(p) == 1 and p[0].startswith("lib/")]
-    assert len(libs) >= 5
+    libs = [p[0] for p in progs if len(p) == 1 and p[0].startswith("lib/std/")]
+    assert len(libs) >= 6
     game = [p for p in progs if p[0].startswith("bench/game/")]
-    assert game and all(p[1:] == libs for p in game)
+    assert game and all(len(p) == 1 for p in game)
     assert any(p[0].startswith("bench/brb-encap/seed/") for p in progs)
     assert ["bench/m1b/seed/src/" + f.name for f in sorted((health.ROOT / "bench/m1b/seed/src").glob("*.bmb"))] in progs
 

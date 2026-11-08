@@ -1,6 +1,6 @@
 # Benchmarks Game 프로그램 (백로그 T3-01, T3-04)
 
-[Computer Language Benchmarks Game](https://benchmarksgame-team.pages.debian.net/benchmarksgame/)의 과제를 BMB로 쓴 것이다. 각 프로그램은 라이브러리(`lib/`)와 함께 전부 증명된다(게이트 시험 `game_programs_are_proved`). 실행에 수십 초가 걸려 게이트는 실행하지 않는다.
+[Computer Language Benchmarks Game](https://benchmarksgame-team.pages.debian.net/benchmarksgame/)의 과제를 BMB로 쓴 것이다. 각 프로그램은 쓰는 표준 라이브러리 단위(`std::bytes`, `lib/std/`, 컴파일러가 더한다)와 함께 전부 증명된다(게이트 시험 `game_programs_are_proved`). 실행에 수십 초가 걸려 게이트는 실행하지 않는다.
 
 | 프로그램 | 인자 | 출력 | 증명된 것 | 메모 |
 | --- | --- | --- | --- | --- |
@@ -10,8 +10,8 @@
 | `fannkuchredux.bmb` | n = 12 | `fannkuchredux.out` | 패닉·넘침 없음, 모든 인덱스 범위(순열 원소 < 12, 카운터 1..=i+1의 불변식) | 뒤집기 반복의 종료(topswops)는 감소 측정 하나로 증명되지 않는 정리라 연료 1000으로 묶는다(n = 12의 상한은 Knuth의 F(13) = 233). 체크섬은 `wrapping_add`·`wrapping_sub` |
 
 ```
-target/debug/bmb build bench/game/binarytrees.bmb lib/bytes.bmb -o bt && ./bt | diff - bench/game/binarytrees.out
-target/debug/bmb build bench/game/fannkuchredux.bmb lib/bytes.bmb -o fk && ./fk | diff - bench/game/fannkuchredux.out
+target/debug/bmb build bench/game/binarytrees.bmb -o bt && ./bt | diff - bench/game/binarytrees.out
+target/debug/bmb build bench/game/fannkuchredux.bmb -o fk && ./fk | diff - bench/game/fannkuchredux.out
 ```
 
 ## 상태

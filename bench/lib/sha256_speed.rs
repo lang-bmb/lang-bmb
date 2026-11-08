@@ -1,6 +1,6 @@
 // Twin of sha256_speed.bmb (backlog T4-01): the same data and digests, by
 // the SHA-256 of compiler/src/sha256.rs (standard library only: the same
-// algorithm as lib/sha256.bmb, with the padded copy). `rustc -C opt-level=2`.
+// algorithm as lib/std/sha256.bmb, with the padded copy). `rustc -C opt-level=2`.
 // The `sha2` crate comparison of the backlog row needs an external crate.
 const K: [u32; 64] = [
     0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
