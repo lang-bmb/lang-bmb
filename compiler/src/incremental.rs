@@ -1207,6 +1207,14 @@ impl Session {
                     }
                 }
             }
+            // Spec fns the context reveals that the text does not name (a
+            // callee's contract names them, ADR-0095 A1): the key reads
+            // their bodies too.
+            for r in uses.iter().filter(|u| !refs.contains(*u)) {
+                if kinds.get(r.as_str()) == Some(&FnKind::Spec) {
+                    row("spec", r, hash_of(r).0.clone());
+                }
+            }
             // Declarations the queries can contain (backlog 2D-14): a query
             // declares only the spec fns it mentions, and every symbol it
             // mentions comes from `D`'s text, a callee's contract or a spec

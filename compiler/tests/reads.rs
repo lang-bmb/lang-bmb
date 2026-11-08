@@ -90,11 +90,12 @@ fn reads_follow_the_contract_firewall() {
     let base = reads(&ws(&dir, "base", BASE));
     let row =
         |r: &Reads, d: &str, k: &str, p: &str| r[d].1.get(&(k.to_string(), p.to_string())).cloned();
-    // What each proof reads: `g` sees `f`'s contract and `small` by name,
-    // `h` reveals `small`.
+    // What each proof reads: `g` sees `f`'s contract and reveals `small`,
+    // which that contract names (the default context, ADR-0095 A1); `h`
+    // reveals `small` too.
     assert!(row(&base, "m::g", "callee", "m::f").is_some());
     assert!(row(&base, "m::g", "decl", "m::small").is_some());
-    assert!(row(&base, "m::g", "spec", "m::small").is_none());
+    assert!(row(&base, "m::g", "spec", "m::small").is_some());
     assert!(row(&base, "m::h", "spec", "m::small").is_some());
     assert_eq!(
         row(&base, "m::h", "spec", "m::small"),
@@ -126,12 +127,15 @@ fn reads_follow_the_contract_firewall() {
             "{d}"
         );
     }
-    // A spec fn body edit: the proofs that reveal it (`f`, `h`), not `g`,
-    // which sees it by name.
+    // A spec fn body edit: the proofs that reveal it (`f`, `h`, and `g`
+    // through `f`'s contract).
     let spec = reads(&ws(&dir, "spec", &BASE.replace("x < 100", "x < 50")));
     assert_ne!(base["m::f"], spec["m::f"]);
     assert_ne!(base["m::h"], spec["m::h"]);
-    assert_eq!(base["m::g"], spec["m::g"]);
+    assert_ne!(base["m::g"], spec["m::g"]);
+    // `pos` is in no context: its edit reaches no proof.
+    let other = reads(&ws(&dir, "other", &BASE.replace("x > 0", "x > 1")));
+    assert_eq!(base["m::g"], other["m::g"]);
     let _ = fs::remove_dir_all(&dir);
 }
 
