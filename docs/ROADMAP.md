@@ -135,7 +135,7 @@ flowchart LR
 ```mermaid
 flowchart LR
     A["M2-a 근거 기반<br/>T0·T1·T3"] --> C["M2-c 정체성과 협업<br/>T1 (ADR-0059·0060)"]
-    B["M2-b 실용 핵심<br/>T2 2N·T4·T3"] --> D["M2-d 표현 확장<br/>T2 2U·f64·2M"]
+    B["M2-b 실용 핵심<br/>T2 2N·T4·T3"] --> D["M2-d 표현 확장<br/>T2 2U·f64·2M ✅"]
     C --> E["M2-e 단계 판정(2H)"]
     D --> E
     A --> E
