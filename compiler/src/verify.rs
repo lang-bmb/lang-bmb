@@ -2080,7 +2080,9 @@ struct Prog<'p> {
 /// old length: backlog 4B-02).
 fn growable(t: &TypeKind) -> bool {
     match t {
-        TypeKind::Named { path, .. } => path.len() == 1 && (path[0] == "Vec" || path[0] == "String"),
+        TypeKind::Named { path, .. } => {
+            path.len() == 1 && (path[0] == "Vec" || path[0] == "String")
+        }
         TypeKind::Vec(_) | TypeKind::String => true,
         _ => false,
     }
@@ -6329,7 +6331,8 @@ impl<'p, 'q> Enc<'p, 'q> {
                 let root = self.place(&args[i], &mut steps, false);
                 // A `&mut Vec<T>` or a `&mut String` may change its length
                 // (text is bytes here: `Tables::lowered`, backlog 4B-02).
-                let grows = matches!(&p.ty.kind, TypeKind::Ref { inner, .. } if growable(&inner.kind));
+                let grows =
+                    matches!(&p.ty.kind, TypeKind::Ref { inner, .. } if growable(&inner.kind));
                 let e = elem_ty(&param_tys[i]);
                 let new_len = |s: &mut Self, len: &String| {
                     if !grows {
