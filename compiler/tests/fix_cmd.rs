@@ -663,8 +663,7 @@ mod m {
     let out = fix(&input);
     assert!(out.ok, "{}", out.diagnostics);
     let text = &out.files[0].1;
-    let formatted = bmb::format_sources(&out.files).unwrap();
-    assert_eq!(formatted.values().next().unwrap(), text, "{text}");
+    assert!(cli::run(&["fmt", "--check"], &out.files).0, "{text}");
     assert!(
         text.contains("    #[effects(pure)]\n    fn add(x: i64, y: i64) -> i64 {"),
         "{text}"
