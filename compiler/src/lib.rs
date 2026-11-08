@@ -21,6 +21,7 @@ pub(crate) mod refs;
 pub mod sha256;
 pub mod smt;
 pub mod source;
+pub mod stdlib;
 pub mod subproof;
 pub mod toolchain;
 pub mod udiff;
@@ -95,6 +96,8 @@ fn frontend(files: &[(String, String)]) -> Frontend {
         let mut p = parser::Parser::new(toks, &mut diags, text);
         program.mods.extend(p.parse_program().mods);
     }
+    // The library units it names, after its own (ADR-0092 §1).
+    stdlib::add(&mut sm, &mut program, &mut diags);
     let (resolved, tables) = check::check_resolved(program.clone(), &mut diags);
     Frontend {
         sm,
@@ -263,7 +266,8 @@ pub fn fix_sources_with(files: &[(String, String)], confirm: bool) -> FixOutput 
             .filter_map(|d| {
                 let r = d.fix.as_ref()?.replacement.as_ref()?;
                 let (f, lo, hi) = (d.span.file as usize, d.span.lo as usize, d.span.hi as usize);
-                let text = &texts[f].1;
+                // Only the program's files: the library is not written.
+                let text = &texts.get(f)?.1;
                 let ok = lo <= hi
                     && hi <= text.len()
                     && text.is_char_boundary(lo)
@@ -722,7 +726,10 @@ pub fn format_sources(files: &[(String, String)]) -> Result<BTreeMap<String, Str
     }
     // Method calls by path become method syntax (ADR-0051, backlog 2M-02).
     let normal = check::methodize(&fe.source, &fe.program, &fe.tables);
-    Ok(fmt::format_units(&normal))
+    // The program's units: the library is not its text (ADR-0092 §1).
+    let mut units = fmt::format_units(&normal);
+    units.remove(stdlib::UNIT);
+    Ok(units)
 }
 
 /// Normal form of parsed sources without checking them (backlog 2B-03: the
@@ -1061,6 +1068,8 @@ impl FrontCache {
             });
             program.mods.extend(mods);
         }
+        // After the files' units (`update` takes them apart by count).
+        stdlib::add(&mut sm, &mut program, &mut diags);
         self.stats.checks += 1;
         let (resolved, tables) = check::check_resolved(program.clone(), &mut diags);
         self.fe = Some(Frontend {

@@ -12,6 +12,17 @@ use crate::verify::{Outcome, Tables};
 pub const HEADER: &str = "{\"schema\":\"bmb.map\",\"version\":1}";
 
 /// A JSON value with keys kept in insertion order.
+/// `"library":"std"` on a row of the standard library (ADR-0092 §1: the
+/// map shows its units apart from the program's; a key added only where it
+/// applies, ADR-0020 §1).
+fn library_key(path: &str) -> Vec<(&'static str, J)> {
+    if crate::stdlib::in_std(path) {
+        vec![("library", J::S("std".into()))]
+    } else {
+        Vec::new()
+    }
+}
+
 pub enum J {
     S(String),
     N(u64),
@@ -1077,14 +1088,19 @@ impl<'p> Model<'p> {
     // ---------- rows ----------
 
     fn l0_unit(&self, u: &Unit) -> J {
-        J::O(vec![
-            ("level", J::S("L0".into())),
-            ("kind", J::S("unit".into())),
-            ("path", J::S(u.path.clone())),
-            ("summary", J::S(u.summary.clone())),
-            ("units", strs(u.units.clone())),
-            ("defs", strs(u.defs.clone())),
-        ])
+        J::O(
+            vec![
+                ("level", J::S("L0".into())),
+                ("kind", J::S("unit".into())),
+                ("path", J::S(u.path.clone())),
+                ("summary", J::S(u.summary.clone())),
+                ("units", strs(u.units.clone())),
+                ("defs", strs(u.defs.clone())),
+            ]
+            .into_iter()
+            .chain(library_key(&u.path))
+            .collect(),
+        )
     }
 
     fn def_kind(d: &Def) -> &'static str {
@@ -1096,41 +1112,56 @@ impl<'p> Model<'p> {
     }
 
     fn l0_def(&self, d: &Def) -> J {
-        J::O(vec![
-            ("level", J::S("L0".into())),
-            ("kind", J::S("def".into())),
-            ("path", J::S(d.path.clone())),
-            ("def_kind", J::S(Self::def_kind(d).into())),
-            (
-                "hash",
-                J::S(self.hashes(d).body.chars().take(7 + 12).collect()),
-            ),
-        ])
+        J::O(
+            vec![
+                ("level", J::S("L0".into())),
+                ("kind", J::S("def".into())),
+                ("path", J::S(d.path.clone())),
+                ("def_kind", J::S(Self::def_kind(d).into())),
+                (
+                    "hash",
+                    J::S(self.hashes(d).body.chars().take(7 + 12).collect()),
+                ),
+            ]
+            .into_iter()
+            .chain(library_key(&d.path))
+            .collect(),
+        )
     }
 
     fn l0_type(ty: &TypeEntry) -> J {
-        J::O(vec![
-            ("level", J::S("L0".into())),
-            ("kind", J::S("def".into())),
-            ("path", J::S(ty.path.clone())),
-            ("def_kind", J::S(ty.kind.into())),
-            ("hash", J::S(ty.hash.chars().take(7 + 12).collect())),
-        ])
+        J::O(
+            vec![
+                ("level", J::S("L0".into())),
+                ("kind", J::S("def".into())),
+                ("path", J::S(ty.path.clone())),
+                ("def_kind", J::S(ty.kind.into())),
+                ("hash", J::S(ty.hash.chars().take(7 + 12).collect())),
+            ]
+            .into_iter()
+            .chain(library_key(&ty.path))
+            .collect(),
+        )
     }
 
     /// A type's L1 row: its declaration is its surface (ADR-0026 §6).
     fn l1_type(ty: &TypeEntry) -> J {
-        J::O(vec![
-            ("level", J::S("L1".into())),
-            ("path", J::S(ty.path.clone())),
-            ("def_kind", J::S(ty.kind.into())),
-            ("signature", J::S(ty.text.clone())),
-            ("body", J::S(ty.hash.clone())),
-            ("iface", J::S(ty.hash.clone())),
-            ("id", J::S(ty.id.clone())),
-            ("file", J::S(ty.file.clone())),
-            ("line", J::N(ty.line as u64)),
-        ])
+        J::O(
+            vec![
+                ("level", J::S("L1".into())),
+                ("path", J::S(ty.path.clone())),
+                ("def_kind", J::S(ty.kind.into())),
+                ("signature", J::S(ty.text.clone())),
+                ("body", J::S(ty.hash.clone())),
+                ("iface", J::S(ty.hash.clone())),
+                ("id", J::S(ty.id.clone())),
+                ("file", J::S(ty.file.clone())),
+                ("line", J::N(ty.line as u64)),
+            ]
+            .into_iter()
+            .chain(library_key(&ty.path))
+            .collect(),
+        )
     }
 
     fn effects(d: &Def) -> String {
@@ -1199,6 +1230,7 @@ impl<'p> Model<'p> {
             .into_iter()
             .chain(self.escape_keys(d))
             .chain(self.termination_key(d))
+            .chain(library_key(&d.path))
             .collect(),
         )
     }

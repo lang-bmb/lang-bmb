@@ -1,0 +1,1 @@
+{"code":"E0309","severity":"error","message":"`std` is the standard library's unit (ADR-0092)","file":"err/std_unit.bmb","line":2,"col":5,"end_line":2,"end_col":8,"fix":{"message":"name the unit otherwise; the library's units are `std::str`, `std::num`, .."}}

@@ -378,8 +378,9 @@ pub fn fill_uses_cached(
     if fe.diags.has_errors() {
         return Err(fe.diags.to_jsonl(&fe.sm));
     }
+    // The program's definitions: the library is not written.
     let mut targets = BTreeMap::new();
-    for m in &fe.program.mods {
+    for m in fe.program.mods.iter().filter(|m| !crate::stdlib::is_std(m)) {
         walk(m, "", &mut targets);
     }
     let mut cache = Caches {

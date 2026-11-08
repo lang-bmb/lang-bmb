@@ -4,6 +4,12 @@
 - 날짜: 2026-11-05
 - 관련: ADR-0031(`Vec`), ADR-0046, ADR-0047, ADR-0050, ADR-0091(시스템 인터페이스), `dev-docs/measurements/selfhost-gap.md` §5.1, 백로그 2U-07, ROADMAP "언어 전체 수순" ④
 
+## 구현 시 확인 (2026-11-08, 4B-02 (a))
+- **싣기:** `lib/std/NAME.bmb`마다 단위 `mod NAME` 하나. `compiler/build.rs`가 파일 목록을 만들어 `include_str!`로 컴파일러에 넣고, 같은 파일을 컴파일러 정체성(증분 캐시 키 `BMB_SOURCE_DIGEST`)에 더한다. 설치 위치나 경로 인자가 없다.
+- **더하기(`compiler/src/stdlib.rs`):** 프로그램이 경로 `std::NAME::..`로 부르는 단위(호출·타입·패턴·경계·`#[uses]`, `refs::walk`)와 그 단위가 부르는 단위를 최상위 단위 `std` 아래에 프로그램의 단위 뒤에 더한다. 파일 이름은 `std/NAME.bmb`이고 소스 지도에서 프로그램 파일 뒤라, 프로그램 파일의 위치는 호출자의 파일 목록 번호 그대로다. 부르지 않는 단위는 더하지 않는다(열린 질문 1의 첫 판: 검사도 증명도 하지 않는다). 더한 단위는 다른 정의처럼 검사·증명·코드 생성된다.
+- **이름:** 프로그램의 최상위 단위 `std`는 E0309(내장 이름)다.
+- **도구:** 정규형(`bmb fmt`·`import`)·작업 공간 파일·커밋의 `changed`는 프로그램 단위만 담는다. 트랜잭션의 `std` 경로 연산은 거부(`std` is the standard library). `fix`·`uses`·린트·`mutate`는 프로그램 파일·정의만 본다. 맵 L0·L1 행에 `"library":"std"`(있을 때만 붙는 키, ADR-0020 §1). 시험 `compiler/tests/stdlib.rs`, 실행 `tests/run/std_str`, 검사 `tests/check/err/std_unit`.
+
 ## 맥락
 
 - 지금 있는 라이브러리는 `lib/`의 다섯(`bytes`·`utf8`·`sha256`·`base64`·`crc32`)이고, 쓰는 프로그램이 파일로 함께 넘긴다. 모두 전부 증명되고 공인 벡터를 통과한다(T4-01~04).

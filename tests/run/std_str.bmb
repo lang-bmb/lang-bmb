@@ -1,0 +1,15 @@
+#[summary("표준 라이브러리 단위를 경로로 부른다: 컴파일러가 이름 붙은 단위만 더한다 (ADR-0092 §1, backlog 4B-02)")]
+mod uses_std {
+    #[effects(io)]
+    fn main() -> () {
+        if std::str::starts_with("hello", "he") {
+            print_str("starts\n");
+        }
+        if !std::str::starts_with("hello", "lo") {
+            print_str("not\n");
+        }
+        if std::str::starts_with("", "") {
+            print_str("empty\n");
+        }
+    }
+}

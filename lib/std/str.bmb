@@ -1,0 +1,40 @@
+#[summary("텍스트 연산(Rust `str`의 이름과 뜻): 결과가 바이트 명세와 정확히 같다 (ADR-0092 §2, backlog 4B-02)")]
+mod str {
+    // The bytes of `p` begin `s`.
+    spec fn begins(s: &str, p: &str) -> bool {
+        p.len() <= s.len()
+            && forall |j: usize| j < p.len() ==> #[trigger] s.as_bytes()[j] == p.as_bytes()[j]
+    }
+
+    // The first `i` bytes of `p` begin `s`.
+    spec fn agree(s: &str, p: &str, i: usize) -> bool {
+        i <= p.len() && p.len() <= s.len()
+            && forall |j: usize| j < i ==> #[trigger] s.as_bytes()[j] == p.as_bytes()[j]
+    }
+
+    spec fn starts(r: bool, s: &str, p: &str) -> bool {
+        r == begins(s, p)
+    }
+
+    // Whether `p` begins `s` (Rust's `str::starts_with` of a `&str`).
+    #[effects(pure)]
+    #[uses(agree, begins, starts)]
+    fn starts_with(s: &str, p: &str) -> (r: bool)
+        ensures starts(r, s, p),
+    {
+        if p.len() > s.len() {
+            return false;
+        }
+        let mut i: usize = 0;
+        while i < p.len()
+            invariant agree(s, p, i),
+            decreases p.len() - i,
+        {
+            if s.as_bytes()[i] != p.as_bytes()[i] {
+                return false;
+            }
+            i = i + 1;
+        }
+        true
+    }
+}

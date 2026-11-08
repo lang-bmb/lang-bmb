@@ -328,8 +328,9 @@ fn identities(p: &Program, t: &crate::verify::Tables) -> BTreeMap<String, String
 /// Checks a copy of `p`: the program with its method calls resolved and
 /// its tables (`check::check_resolved`), or `None` when it does not check.
 fn checked(p: &Program) -> Option<(Program, crate::verify::Tables)> {
-    let mut d = Diags::default();
-    let (r, t) = check::check_resolved(p.clone(), &mut d);
+    // With the library units it names (ADR-0092 §1).
+    let (full, mut d) = crate::stdlib::with_std(p);
+    let (r, t) = check::check_resolved(full, &mut d);
     (!d.has_errors()).then_some((r, t))
 }
 
@@ -532,6 +533,19 @@ pub fn plan(files: &[(String, String)], ops: &[Op]) -> (Commit, Option<BTreeMap<
 
     let mut problems: Vec<String> = Vec::new();
     for (k, op) in ops.iter().enumerate() {
+        // The standard library is not the workspace's (ADR-0092 §1).
+        let target = match op {
+            Op::Unit { path, .. } | Op::RemoveUnit { path } => Some(path.as_str()),
+            Op::Put { unit, .. } => Some(unit.as_str()),
+            Op::Remove { def } | Op::Rename { def, .. } => Some(def.trim_start_matches('<')),
+            Op::Expect { .. } => None,
+        };
+        if target.is_some_and(crate::stdlib::in_std) {
+            problems.push(format!(
+                "op {k}: `std` is the standard library: a transaction does not change it"
+            ));
+            continue;
+        }
         match op {
             Op::Unit { path, summary } => {
                 let segs = match segments(k, "unit", path) {
@@ -694,20 +708,22 @@ fn before_state(
     if diags.has_errors() {
         return (BTreeMap::new(), None);
     }
-    let mut d2 = Diags::default();
-    let (resolved, t) = check::check_resolved(program.clone(), &mut d2);
+    let (full, mut d2) = crate::stdlib::with_std(program);
+    let (resolved, t) = check::check_resolved(full.clone(), &mut d2);
     let ids = (!d2.has_errors()).then(|| identities(&resolved, &t));
-    (hashes(program, &t.fns), ids)
+    (program_hashes(&full, &t.fns), ids)
 }
 
 /// Checks the new program and reports what changed against `before`.
 fn finish(
-    program: Program,
-    sm: SourceMap,
+    mut program: Program,
+    mut sm: SourceMap,
     mut diags: Diags,
     problems: &[String],
     before: &BTreeMap<String, String>,
 ) -> (Commit, Option<BTreeMap<String, String>>) {
+    // Checked with the library units it names; written without them.
+    crate::stdlib::add(&mut sm, &mut program, &mut diags);
     let (resolved, tables) = check::check_resolved(program.clone(), &mut diags);
     let mut diagnostics = diags.to_jsonl(&sm);
     for p in problems {
@@ -725,7 +741,7 @@ fn finish(
     // The normal form writes method calls by path as method calls
     // (ADR-0051, backlog 2M-02); what changed is read from it.
     let normal = check::methodize(&program, &resolved, &tables);
-    let after = hashes(&normal, &tables.fns);
+    let after = program_hashes(&normal, &tables.fns);
     let changed = after
         .iter()
         .filter(|(p, h)| before.get(*p) != Some(*h))
@@ -742,7 +758,20 @@ fn finish(
         changed,
         removed,
     };
-    (commit, Some(fmt::format_units(&normal)))
+    let mut units = fmt::format_units(&normal);
+    units.remove(crate::stdlib::UNIT);
+    (commit, Some(units))
+}
+
+/// `hashes` of the program's definitions, the library's left out: what a
+/// commit reports as changed.
+fn program_hashes(
+    p: &Program,
+    fns: &BTreeMap<String, crate::check::FnSig>,
+) -> BTreeMap<String, String> {
+    let mut h = hashes(p, fns);
+    h.retain(|path, _| !crate::stdlib::in_std(path));
+    h
 }
 
 /// The workspace files `src/UNIT.bmb` as `(name, text)` with `name`

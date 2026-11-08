@@ -1084,7 +1084,7 @@ fn locate(files: &[(String, String)], jsonl: &str) -> String {
         .map(|(i, (n, _))| (n.as_str(), i as u32))
         .collect();
     let offset = |file: u32, line: i64, col: i64| -> Option<u32> {
-        let text = &files[file as usize].1;
+        let text = &files.get(file as usize)?.1;
         let start: usize = text
             .split_inclusive('\n')
             .take(usize::try_from(line - 1).ok()?)

@@ -1,0 +1,7 @@
+#[summary("`std`는 표준 라이브러리의 단위다 (ADR-0092 §1, backlog 4B-02)")]
+mod std {
+    #[effects(pure)]
+    fn f() -> i64 {
+        0
+    }
+}

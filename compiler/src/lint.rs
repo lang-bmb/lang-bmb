@@ -288,8 +288,9 @@ pub fn lint_sources_selected(
         out.push(d);
     }
 
+    // The program's definitions: the library's are proved, not linted.
     let mut defs: BTreeMap<String, &FnDef> = BTreeMap::new();
-    for m in &fe.program.mods {
+    for m in fe.program.mods.iter().filter(|m| !crate::stdlib::is_std(m)) {
         collect(m, "", &mut defs);
     }
     let spans: BTreeMap<String, Span> = defs.iter().map(|(p, f)| (p.clone(), f.span)).collect();
@@ -927,7 +928,7 @@ pub fn mutate_sources(files: &[(String, String)], defs: &[String]) -> Result<Vec
         return Err(fe.diags.to_jsonl(&fe.sm));
     }
     let mut table: BTreeMap<String, &FnDef> = BTreeMap::new();
-    for m in &fe.program.mods {
+    for m in fe.program.mods.iter().filter(|m| !crate::stdlib::is_std(m)) {
         collect(m, "", &mut table);
     }
     let mut out = Vec::new();
@@ -993,6 +994,10 @@ pub fn unconfirmed_rationales(p: &Program, t: &crate::verify::Tables, all: bool)
     let hashes = crate::escape::Hashes::new(p, &t.fns);
     let mut out = Vec::new();
     for (path, _, f) in crate::check::defs_of(p, &t.fns) {
+        // The library is not written (ADR-0092 §1).
+        if crate::stdlib::in_std(&path) {
+            continue;
+        }
         let path = &path;
         let e = crate::escape::of(f);
         if e.rationales.is_empty() {
@@ -1709,7 +1714,10 @@ pub(crate) fn method_calls(fe: &crate::Frontend, files: &[(String, String)]) -> 
         if !spans.contains(&(e.span.file, e.span.lo, e.span.hi)) {
             return;
         }
-        let text = &files[e.span.file as usize].1;
+        // The program's files only (the library's come after them).
+        let Some((_, text)) = files.get(e.span.file as usize) else {
+            return;
+        };
         let slice = |lo: u32, hi: u32| text.get(lo as usize..hi as usize).unwrap_or_default();
         let r = slice(recv.span.lo, recv.span.hi);
         let postfix = matches!(
@@ -2076,7 +2084,7 @@ pub fn canonical_loops(p: &Program, files: &[(String, String)]) -> Vec<Diag> {
         }
     }
     let mut out = Vec::new();
-    for m in &p.mods {
+    for m in p.mods.iter().filter(|m| !crate::stdlib::is_std(m)) {
         walk(m, files, &mut out);
     }
     out.sort_by_key(|d| (d.span.file, d.span.lo));
