@@ -525,6 +525,80 @@ fn std_collections_text_keys_agree_with_rust() {
     collections_diff("std_text_keys_diff.bmb", &keys, 0x1B5_4A32_5DEE_CE66);
 }
 
+/// `std::intern` against an interner over Rust's `BTreeMap` (rustc's
+/// shape: a map from text to number and the names by number): random
+/// interns and lookups of words that are prefixes of each other, differ in
+/// case, hold characters of two to four bytes or are empty, then the names
+/// by number (`tests/data/std_intern_diff.bmb`, fully proved).
+#[test]
+fn std_intern_agrees_with_rust() {
+    use std::collections::BTreeMap;
+    let words = [
+        "", "a", "aa", "ab", "B", "fn", "let", "é", "€", "😀", "a😀", "10", "9",
+    ];
+    let n: usize = std::env::var("BMB_SOUND_ITERS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .map_or(2000, |k: usize| k * 500);
+    let src =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/std_intern_diff.bmb");
+    let dir = cli::fresh_dir();
+    let exe = dir.join("diff");
+    let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
+        .arg("build")
+        .arg(&src)
+        .arg("-o")
+        .arg(&exe)
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    let mut rng = common::scalar::Rng(0x4A32_1B5D_EECE_665D);
+    let mut ids: BTreeMap<String, usize> = BTreeMap::new();
+    let mut names: Vec<String> = Vec::new();
+    let mut input = String::new();
+    let mut expected = String::new();
+    for _ in 0..n {
+        let w = words[rng.below(words.len())];
+        if rng.below(4) == 0 {
+            input.push_str(&format!("g {w}\n"));
+            expected.push_str(&ids.get(w).map_or("-\n".to_string(), |v| format!("{v}\n")));
+        } else {
+            input.push_str(&format!("i {w}\n"));
+            let id = *ids.entry(w.to_string()).or_insert_with(|| {
+                names.push(w.to_string());
+                names.len() - 1
+            });
+            expected.push_str(&format!("{id}\n"));
+        }
+    }
+    for w in &names {
+        expected.push_str(&format!("{w}\n"));
+    }
+    let mut child = Command::new(&exe)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    {
+        use std::io::Write as _;
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(input.as_bytes())
+            .unwrap();
+    }
+    let run = child.wait_with_output().unwrap();
+    assert!(run.status.success());
+    let got = String::from_utf8(run.stdout).unwrap();
+    let _ = fs::remove_dir_all(&dir);
+    assert!(got == expected, "std::intern differs from Rust");
+}
+
 /// Builds `tests/data/{file}`, feeds it random operations on `keys` and
 /// compares its output with Rust's `BTreeMap` and `BTreeSet` doing the same.
 fn collections_diff<K: Ord + Clone + std::fmt::Display>(file: &str, keys: &[K], seed: u64) {

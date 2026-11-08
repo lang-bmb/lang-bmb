@@ -1,0 +1,68 @@
+#[summary("표준 라이브러리 std::intern: 낱말마다 번호를 매기고(처음 오면 다음 번호, 다시 오면 같은 번호) 번호로 이름을 되찾는다 (ADR-0092 §2, backlog 4B-02 (g))")]
+mod uses_intern {
+    spec fn short(s: &str) -> bool {
+        s.len() < 1000
+    }
+
+    // `a` begins or ends the text, or follows a space.
+    spec fn after_space(s: &str, a: usize) -> bool {
+        a == 0 || a == s.len() || (a < s.len() && s.as_bytes()[a - 1] == 32)
+    }
+
+    // The number of each word of `s` (between single spaces), then the
+    // names by number.
+    #[effects(alloc, io)]
+    #[uses(after_space, short, std::intern::empty, std::intern::grew, std::intern::id_pos, std::intern::name_room, std::intern::named, std::intern::pushed_name, std::intern::room, std::intern::size)]
+    fn number(s: &str) -> ()
+        requires short(s),
+    {
+        let mut t: std::intern::Interner = std::intern::Interner::new();
+        let mut a: usize = 0;
+        while a < s.len()
+            invariant a <= s.len(), after_space(s, a), t.names.len() <= a,
+            decreases s.len() - a,
+        {
+            let mut b: usize = a;
+            while b < s.len() && s.as_bytes()[b] != b' '
+                invariant a <= b, b <= s.len(),
+                decreases s.len() - b,
+            {
+                b = b + 1;
+            }
+            let id: usize = t.intern(&s[a..b]);
+            print_u64(u64::try_from(id).unwrap());
+            if b < s.len() {
+                a = b + 1;
+            } else {
+                a = b;
+            }
+        }
+        match t.get("let") {
+            None => print_str("no let\n"),
+            Some(i) => {
+                print_str("let is ");
+                print_u64(u64::try_from(i).unwrap());
+            }
+        }
+        match t.get("while") {
+            None => print_str("no while\n"),
+            Some(j) => print_u64(u64::try_from(j).unwrap()),
+        }
+        if t.len() > 0 && t.name_is(0, "fn") {
+            print_str("0 is fn\n");
+        }
+        for k in 0..t.len() {
+            let mut one: String = String::new();
+            t.push_name(k, &mut one);
+            print_str(one.as_str());
+            print_str("\n");
+        }
+    }
+
+    #[effects(alloc, io)]
+    #[uses(short)]
+    fn main() -> () {
+        number("fn main let x let y fn é x");
+        number("");
+    }
+}

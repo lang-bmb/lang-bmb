@@ -3378,9 +3378,12 @@ impl<'p, 'q> Enc<'p, 'q> {
                 }
                 out.extend(len_fact(len, &e));
             }
-            Val::Arr { len, .. } if is_array(t) => {
+            // The inner lengths are those of the element template (a
+            // `Vec<String>` field of a `proof fn`'s parameter took the outer
+            // length for the array of them, an ill-sorted query).
+            Val::Arr { elem, len } if is_array(t) => {
                 let e = elem_ty(t);
-                inner_len_facts(v, &e, self.prog.t, &mut out);
+                inner_len_facts(elem, &e, self.prog.t, &mut out);
                 out.extend(len_fact(len, &e));
             }
             Val::S(c) => out.extend(range(t, c)),

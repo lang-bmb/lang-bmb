@@ -1,0 +1,24 @@
+#[summary("proof fn의 매개변수가 Vec<String>을 담은 구조체여도 매개변수 사실(E0819)이 안쪽 길이의 배열을 쓴다: 바깥 길이를 배열로 써서 질의가 잘못된 정렬(E0812)이던 결함의 회귀 시험 (backlog 4B-02 (g))")]
+mod proof_text_vecs {
+    struct Bag { keys: Vec<String> }
+
+    #[effects(alloc)]
+    #[uses(small)]
+    fn caller(b: &mut Bag) -> ()
+        requires small(b),
+    {
+        proof {
+            kept(b);
+        }
+    }
+
+    #[uses(small)]
+    proof fn kept(b: &Bag)
+        requires small(b),
+        ensures small(b),
+    {}
+
+    spec fn small(b: &Bag) -> bool {
+        b.keys.len() < 10
+    }
+}

@@ -1,0 +1,80 @@
+#[summary("std::intern 차등 시험: 표준 입력의 줄마다 연산(`i 낱말` 번호 매기기, `g 낱말` 찾기)을 하고 번호를 찍은 뒤 끝에 이름을 번호 순서로 찍는다 (tests/stdlib.rs, backlog 4B-02 (g))")]
+mod idiff {
+    spec fn stop(t: &[u8], a: usize, r: usize) -> bool {
+        a <= r && r <= t.len() && (r == t.len() || t[r] == 32 || t[r] == 10)
+    }
+
+    spec fn within(t: &[u8], a: usize) -> bool {
+        a <= t.len()
+    }
+
+    // Where the word from `a` ends: at a space, the newline or the end.
+    #[effects(pure)]
+    #[uses(stop, within)]
+    fn word_end(t: &[u8], a: usize) -> (r: usize)
+        requires within(t, a),
+        ensures stop(t, a, r),
+    {
+        let mut b: usize = a;
+        while b < t.len() && t[b] != b' ' && t[b] != b'\n'
+            invariant a <= b, b <= t.len(),
+            decreases t.len() - b,
+        {
+            b = b + 1;
+        }
+        b
+    }
+
+    spec fn rooms(t: &std::intern::Interner) -> bool {
+        t.names.len() < 1000000
+    }
+
+    #[effects(io)]
+    fn opt(r: Option<usize>) -> () {
+        match r {
+            None => print_str("-\n"),
+            Some(v) => print_u64(u64::try_from(v).unwrap()),
+        }
+    }
+
+    #[effects(alloc, io, nondet)]
+    #[uses(rooms, stop, within, std::intern::empty, std::intern::grew, std::intern::id_pos, std::intern::name_room, std::intern::room, std::intern::size)]
+    fn main() -> () {
+        let mut t: std::intern::Interner = std::intern::Interner::new();
+        let mut n: u64 = 0;
+        while n < 100000
+            invariant rooms(&t), n <= 100000,
+            decreases 100000 - n,
+        {
+            let mut line: String = String::new();
+            match std::io::read_line(&mut line) {
+                Ok(k) => {
+                    if k == 0 {
+                        n = 100000;
+                    } else {
+                        if line.len() > 2 && line.as_bytes()[1] == b' ' {
+                            let op: u8 = line.as_bytes()[0];
+                            let e: usize = word_end(line.as_bytes(), 2);
+                            if op == b'i' && t.len() + 1 < 1000000 {
+                                let id: usize = t.intern(&line[2..e]);
+                                print_u64(u64::try_from(id).unwrap());
+                            } else if op == b'g' {
+                                opt(t.get(&line[2..e]));
+                            }
+                        }
+                        n = n + 1;
+                    }
+                }
+                Err(err) => {
+                    n = 100000;
+                }
+            }
+        }
+        for i in 0..t.len() {
+            let mut one: String = String::new();
+            t.push_name(i, &mut one);
+            print_str(one.as_str());
+            print_str("\n");
+        }
+    }
+}

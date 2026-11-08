@@ -1,0 +1,165 @@
+#[summary("인턴 표(rustc의 `Symbol` 표와 같은 뜻): 텍스트마다 번호가 하나, 처음 오면 0부터 다음 번호, 번호는 그 텍스트를 가리킨다. 정렬된 텍스트 키의 맵(std::collections) 위에 선다 (ADR-0092 §2, backlog 4B-02 (g))")]
+mod intern {
+    // Interned texts: `names[i]` is the text of number `i`, and `ids` maps
+    // each text to its number.
+    #[invariant(sound)]
+    struct Interner { ids: std::collections::BTreeMap<String, usize>, names: Vec<String> }
+
+    // `m` maps each key to the number whose name it is.
+    spec fn consistent<K: Ord>(m: &std::collections::BTreeMap<K, usize>, names: &[K]) -> bool {
+        m.keys.len() == names.len() && m.vals.len() == names.len()
+            && forall |i: usize| i < m.keys.len() ==> #[trigger] m.vals[i] < names.len() && names[m.vals[i]] == m.keys[i]
+    }
+
+    spec fn sound(t: &Interner) -> bool {
+        consistent::<String>(&t.ids, t.names.as_slice()) && t.names.len() < 1152921504606846975
+    }
+
+    // `names` is `before` with `k` after it.
+    spec fn appended<K: Ord>(names: &[K], before: &[K], k: &K) -> bool {
+        names.len() == before.len() + 1 && names[before.len()] == *k
+            && forall |j: usize| j < before.len() ==> #[trigger] names[j] == before[j]
+    }
+
+    spec fn insert_pre<K: Ord>(m: &std::collections::BTreeMap<K, usize>, n: &std::collections::BTreeMap<K, usize>, names: &[K], before: &[K], k: &K) -> bool {
+        (exists |p: usize| #[trigger] std::collections::inserted_at::<K>(m.keys.as_slice(), n.keys.as_slice(), p, k)
+            && std::collections::inserted_at::<usize>(m.vals.as_slice(), n.vals.as_slice(), p, &before.len()))
+            && consistent::<K>(n, before) && appended::<K>(names, before, k)
+    }
+
+    // A new key mapped to the next number, its name added at that number,
+    // keeps the map and the names consistent. Over any `Ord` keys: the
+    // instance for `String` is the same statement.
+    #[uses(appended, consistent, insert_pre, std::collections::inserted_at, std::collections::shifted)]
+    proof fn insert_keeps<K: Ord>(m: &std::collections::BTreeMap<K, usize>, n: &std::collections::BTreeMap<K, usize>, names: &[K], before: &[K], k: &K)
+        requires insert_pre::<K>(m, n, names, before, k),
+        ensures consistent::<K>(m, names),
+    {
+    }
+
+    // Number `r` names `s`.
+    spec fn named(t: &Interner, r: usize, s: &str) -> bool {
+        r < t.names.len() && t.names[r] == s
+    }
+
+    // `get`'s result: the number that names `s`, or none when no number
+    // does.
+    spec fn found(r: Option<usize>, t: &Interner, s: &str) -> bool {
+        match r {
+            None => forall |i: usize| i < t.ids.keys.len() ==> #[trigger] t.ids.keys[i] != s,
+            Some(j) => named(t, j, s),
+        }
+    }
+
+    spec fn id_pos(t: &Interner, i: usize) -> bool {
+        i < t.names.len()
+    }
+
+    spec fn room(t: &Interner) -> bool {
+        t.names.len() + 1 < 1152921504606846975
+    }
+
+    // At most one text more (what a caller needs to intern again).
+    spec fn grew(t: &Interner, u: &Interner) -> bool {
+        u.names.len() <= t.names.len() && t.names.len() <= u.names.len() + 1
+    }
+
+    spec fn empty(t: &Interner) -> bool {
+        t.names.len() == 0
+    }
+
+    spec fn size(r: usize, t: &Interner) -> bool {
+        r == t.names.len()
+    }
+
+    // `out` is `before` with the name of `i` after it.
+    spec fn pushed_name(out: &str, before: &str, t: &Interner, i: usize) -> bool {
+        i < t.names.len() && out.len() == before.len() + t.names[i].len()
+    }
+
+    spec fn name_room(out: &str, t: &Interner, i: usize) -> bool {
+        i < t.names.len() && out.len() + t.names[i].len() <= 9223372036854775807
+    }
+
+    impl Interner {
+        // An empty table.
+        #[effects(alloc)]
+        #[uses(consistent, empty, sound, std::collections::empty_map, std::collections::map_sound)]
+        fn new() -> (r: Interner)
+            ensures empty(&r),
+        {
+            let m: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::<String, usize>::new();
+            let v: Vec<String> = Vec::new();
+            Interner { ids: m, names: v }
+        }
+
+        // How many texts the table has.
+        #[effects(pure)]
+        #[uses(size)]
+        fn len(self: &Interner) -> (r: usize)
+            ensures size(r, self),
+        {
+            self.names.len()
+        }
+
+        // The number of `s`: its own if it came before, else the next one
+        // (rustc's `Symbol::intern`).
+        #[effects(alloc)]
+        #[uses(appended, consistent, grew, insert_pre, named, room, sound, std::collections::got, std::collections::has_key, std::collections::map_grew, std::collections::map_room, std::collections::maps, std::collections::put)]
+        fn intern(self: &mut Interner, s: &str) -> (r: usize)
+            requires room(self),
+            ensures named(self, r, s), grew(self, old(self)),
+        {
+            let known: Option<usize> = self.ids.get(&String::from(s));
+            match known {
+                None => {
+                    let fresh: usize = self.names.len();
+                    let key: String = String::from(s);
+                    self.ids.insert(key.clone(), fresh);
+                    self.names.push(key);
+                    proof {
+                        insert_keeps::<String>(&self.ids, &old(self).ids, self.names.as_slice(), old(self).names.as_slice(), &self.names[fresh]);
+                    }
+                    fresh
+                }
+                Some(id) => id,
+            }
+        }
+
+        // The number of `s` if it came before (rustc's interner's `get`).
+        #[effects(alloc)]
+        #[uses(consistent, found, named, sound, std::collections::got, std::collections::has_key, std::collections::maps)]
+        fn get(self: &Interner, s: &str) -> (r: Option<usize>)
+            ensures found(r, self, s),
+        {
+            self.ids.get(&String::from(s))
+        }
+
+        // Whether number `i` names `s`.
+        #[effects(pure)]
+        #[uses(id_pos)]
+        fn name_is(self: &Interner, i: usize, s: &str) -> bool
+            requires id_pos(self, i),
+        {
+            self.names[i] == s
+        }
+
+        // Adds the name of number `i` to `out` (rustc's `Symbol::as_str`,
+        // which borrows it).
+        #[effects(alloc)]
+        #[uses(name_room, pushed_name)]
+        fn push_name(self: &Interner, i: usize, out: &mut String) -> ()
+            requires name_room(out.as_str(), self, i),
+            ensures pushed_name(out.as_str(), old(out).as_str(), self, i),
+        {
+            out.push_str(self.names[i].as_str());
+        }
+
+        // The names in the order of their numbers.
+        #[effects(pure)]
+        #[uses(sound)]
+        fn into_names(self: Interner) -> Vec<String> {
+            self.names
+        }
+    }
+}
