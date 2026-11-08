@@ -15,6 +15,7 @@ from pathlib import Path
 ID = r"(?:\d|INF|T\d)[A-Z]?-\d{2}[a-z]?"
 ID_RE = re.compile(rf"^{ID}$")
 REF_RE = re.compile(rf"`({ID})`")
+CELL_RE = re.compile(r"(?<!\\)\|")
 
 
 def main() -> int:
@@ -26,7 +27,8 @@ def main() -> int:
     for n, line in enumerate(text.splitlines(), 1):
         if not line.startswith("|"):
             continue
-        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        # `\|` is a pipe inside a cell (Markdown), not a cell border.
+        cells = [c.strip() for c in CELL_RE.split(line.strip().strip("|"))]
         if len(cells) != 5 or not ID_RE.match(cells[0].strip("~")):
             continue
         tid = cells[0].strip("~")
