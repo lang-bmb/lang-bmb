@@ -1,0 +1,57 @@
+#[summary("std::num 차등 시험: 표준 입력의 줄마다 u64·i64·16진 u64로 읽고, 읽은 값을 다시 써서 찍는다 (tests/stdlib.rs, backlog 4B-02)")]
+mod diff {
+    // The line read three ways, and each value written back.
+    #[effects(alloc, io)]
+    #[uses(std::num::grew, std::num::room, std::num::room1)]
+    fn show(t: &str) -> () {
+        let mut out: String = String::new();
+        match std::num::parse_u64(t) {
+            None => out.push('-'),
+            Some(v) => std::num::push_u64(&mut out, v),
+        }
+        out.push(' ');
+        match std::num::parse_i64(t) {
+            None => out.push('-'),
+            Some(w) => std::num::push_i64(&mut out, w),
+        }
+        out.push(' ');
+        match std::num::parse_u64_hex(t) {
+            None => out.push('-'),
+            Some(h) => std::num::push_u64_hex(&mut out, h),
+        }
+        out.push('\n');
+        print_str(out.as_str());
+    }
+
+    // A line without its line feed.
+    #[effects(alloc, io)]
+    #[uses(std::str::ends, std::str::ended)]
+    fn one(line: &str) -> () {
+        if line.ends_with("\n") {
+            show(&line[0..line.len() - 1]);
+        }
+    }
+
+    #[effects(alloc, io, nondet)]
+    fn main() -> () {
+        let mut n: u64 = 0;
+        while n < 1000000
+            decreases 1000000 - n,
+        {
+            let mut line: String = String::new();
+            match std::io::read_line(&mut line) {
+                Ok(k) => {
+                    if k == 0 {
+                        n = 1000000;
+                    } else {
+                        one(line.as_str());
+                        n = n + 1;
+                    }
+                }
+                Err(e) => {
+                    n = 1000000;
+                }
+            }
+        }
+    }
+}

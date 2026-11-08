@@ -283,3 +283,127 @@ fn the_text_method_hint_names_every_std_str_function() {
         assert!(out.contains(&format!("`{f}`")), "`{f}` missing: {out}");
     }
 }
+
+/// What `tests/data/std_num_diff.bmb` prints for line `t`, by Rust's
+/// `parse`, `from_str_radix` and `Display`/`{:x}`.
+fn rust_num(t: &str) -> String {
+    let u = t.parse::<u64>().map_or("-".to_string(), |v| v.to_string());
+    let i = t.parse::<i64>().map_or("-".to_string(), |v| v.to_string());
+    let h = u64::from_str_radix(t, 16).map_or("-".to_string(), |v| format!("{v:x}"));
+    format!("{u} {i} {h}\n")
+}
+
+/// `std::num` against Rust (ADR-0092: Rust differential test and fuzzer
+/// target): decimal and hexadecimal texts near the limits of `u64` and
+/// `i64`, signs, leading zeros, empty and stray bytes; each value read is
+/// written back, so the round trip is in the comparison too.
+/// `BMB_SOUND_ITERS` sets the lines (default 3,000).
+#[test]
+fn std_num_agrees_with_rust() {
+    let n: usize = std::env::var("BMB_SOUND_ITERS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .map_or(3000, |k: usize| k * 750);
+    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/std_num_diff.bmb");
+    let dir = cli::fresh_dir();
+    let exe = dir.join("diff");
+    let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
+        .arg("build")
+        .arg(&src)
+        .arg("-o")
+        .arg(&exe)
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    let mut rng = common::scalar::Rng(0xD1B5_4A32_D192_ED03);
+    let edges: Vec<String> = [
+        "0",
+        "1",
+        "9",
+        "10",
+        "+0",
+        "-0",
+        "+",
+        "-",
+        "",
+        "00",
+        "007",
+        "18446744073709551615",
+        "18446744073709551616",
+        "99999999999999999999",
+        "9223372036854775807",
+        "9223372036854775808",
+        "-9223372036854775808",
+        "-9223372036854775809",
+        "ffffffffffffffff",
+        "10000000000000000",
+        "FfFf",
+        "0x1f",
+        " 1",
+        "1 ",
+        "+-1",
+        "--1",
+        "1_000",
+        "１",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
+    let mut input = String::new();
+    let mut expected = String::new();
+    for k in 0..n {
+        let t = if k < edges.len() {
+            edges[k].clone()
+        } else {
+            let value = match rng.below(4) {
+                0 => rng.next(),
+                1 => rng.next() >> rng.below(64),
+                2 => u64::MAX - rng.below(1000) as u64,
+                _ => rng.below(100) as u64,
+            };
+            let body = if rng.chance(30) {
+                format!("{value:x}")
+            } else {
+                value.to_string()
+            };
+            let sign = ["", "", "", "+", "-"][rng.below(5)];
+            let zeros = "0".repeat(if rng.chance(10) { rng.below(3) } else { 0 });
+            let mut t = format!("{sign}{zeros}{body}");
+            if rng.chance(10) {
+                let at = rng.below(t.len() + 1);
+                t.insert(at, ['x', ' ', 'g', 'G', '9', '+'][rng.below(6)]);
+            }
+            t
+        };
+        input.push_str(&t);
+        input.push('\n');
+        expected.push_str(&rust_num(&t));
+    }
+    let mut child = Command::new(&exe)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    {
+        use std::io::Write as _;
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(input.as_bytes())
+            .unwrap();
+    }
+    let run = child.wait_with_output().unwrap();
+    assert!(run.status.success());
+    let got = String::from_utf8(run.stdout).unwrap();
+    let _ = fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = input.lines().collect();
+    for (k, (g, e)) in got.lines().zip(expected.lines()).enumerate() {
+        assert_eq!(g, e, "std::num differs from Rust on {:?}", lines[k]);
+    }
+    assert_eq!(got.lines().count(), expected.lines().count());
+}

@@ -1,0 +1,688 @@
+#[summary("정수의 10진·16진 읽기와 쓰기(Rust `str::parse`·`from_str_radix`·`Display`·`{:x}`의 뜻): 읽기는 바이트 명세와 정확히 같고, 쓰기는 정규형이며 되읽힌다 (ADR-0092 §2, backlog 4B-02)")]
+mod num {
+    // ---------- decimal digits ----------
+
+    spec fn digit(c: u8) -> bool {
+        48 <= c && c <= 57
+    }
+
+    // The bytes of `s` from `a` to `n` are decimal digits.
+    spec fn digits(s: &[u8], a: usize, n: usize) -> bool {
+        a <= n && n <= s.len() && forall |k: usize| a <= k && k < n ==> digit(#[trigger] s[k])
+    }
+
+    // The value of the bytes of `s` from `a` to `n` read as decimal digits.
+    spec fn dec(s: &[u8], a: usize, n: usize) -> i64
+        decreases n,
+    {
+        if n <= a { 0 } else { dec(s, a, n - 1) * 10 + (s[n - 1] - 48) }
+    }
+
+    spec fn within_digits(s: &[u8], a: usize, i: usize, n: usize) -> bool {
+        digits(s, a, n) && a <= i && i <= n
+    }
+
+    spec fn no_less(s: &[u8], a: usize, i: usize, n: usize) -> bool {
+        dec(s, a, i) <= dec(s, a, n)
+    }
+
+    spec fn digits_to(s: &[u8], a: usize, n: usize) -> bool {
+        digits(s, a, n)
+    }
+
+    spec fn nonneg(s: &[u8], a: usize, n: usize) -> bool {
+        0 <= dec(s, a, n)
+    }
+
+    // Digits are worth at least zero.
+    #[uses(dec, digit, digits, digits_to, nonneg)]
+    proof fn dec_nonneg(s: &[u8], a: usize, n: usize)
+        requires digits_to(s, a, n),
+        ensures nonneg(s, a, n),
+        decreases n,
+    {
+        if n > a {
+            dec_nonneg(s, a, n - 1);
+        }
+    }
+
+    // More digits never make the value smaller.
+    #[uses(dec, digit, digits, digits_to, no_less, nonneg, within_digits)]
+    proof fn dec_grows(s: &[u8], a: usize, i: usize, n: usize)
+        requires within_digits(s, a, i, n),
+        ensures no_less(s, a, i, n),
+        decreases n,
+    {
+        if i < n {
+            dec_grows(s, a, i, n - 1);
+            dec_nonneg(s, a, n - 1);
+        }
+    }
+
+    // ---------- hexadecimal digits ----------
+
+    spec fn hex_digit(c: u8) -> bool {
+        digit(c) || (97 <= c && c <= 102) || (65 <= c && c <= 70)
+    }
+
+    // The bytes of `s` from `a` to `n` are hexadecimal digits.
+    spec fn hexes(s: &[u8], a: usize, n: usize) -> bool {
+        a <= n && n <= s.len() && forall |k: usize| a <= k && k < n ==> hex_digit(#[trigger] s[k])
+    }
+
+    // The value of the bytes of `s` from `a` to `n` read as hexadecimal digits.
+    spec fn hex(s: &[u8], a: usize, n: usize) -> i64
+        decreases n,
+    {
+        if n <= a {
+            0
+        } else if s[n - 1] <= 57 {
+            hex(s, a, n - 1) * 16 + (s[n - 1] - 48)
+        } else if s[n - 1] >= 97 {
+            hex(s, a, n - 1) * 16 + (s[n - 1] - 87)
+        } else {
+            hex(s, a, n - 1) * 16 + (s[n - 1] - 55)
+        }
+    }
+
+    spec fn hexes_to(s: &[u8], a: usize, n: usize) -> bool {
+        hexes(s, a, n)
+    }
+
+    spec fn hex_nonneg_at(s: &[u8], a: usize, n: usize) -> bool {
+        0 <= hex(s, a, n)
+    }
+
+    #[uses(digit, hex, hex_digit, hex_nonneg_at, hexes, hexes_to)]
+    proof fn hex_nonneg(s: &[u8], a: usize, n: usize)
+        requires hexes_to(s, a, n),
+        ensures hex_nonneg_at(s, a, n),
+        decreases n,
+    {
+        if n > a {
+            hex_nonneg(s, a, n - 1);
+        }
+    }
+
+    spec fn within_hexes(s: &[u8], a: usize, i: usize, n: usize) -> bool {
+        hexes(s, a, n) && a <= i && i <= n
+    }
+
+    spec fn hex_no_less(s: &[u8], a: usize, i: usize, n: usize) -> bool {
+        hex(s, a, i) <= hex(s, a, n)
+    }
+
+    #[uses(digit, hex, hex_digit, hex_no_less, hex_nonneg_at, hexes, hexes_to, within_hexes)]
+    proof fn hex_grows(s: &[u8], a: usize, i: usize, n: usize)
+        requires within_hexes(s, a, i, n),
+        ensures hex_no_less(s, a, i, n),
+        decreases n,
+    {
+        if i < n {
+            hex_grows(s, a, i, n - 1);
+            hex_nonneg(s, a, n - 1);
+        }
+    }
+
+    // ---------- reading ----------
+
+    // The digits of `s` from `a` to its end, at least one, fit a `u64`.
+    spec fn dec_fits(s: &[u8], a: usize) -> bool {
+        a < s.len() && digits(s, a, s.len()) && dec(s, a, s.len()) <= 18446744073709551615
+    }
+
+    spec fn scanned_dec(r: Option<u64>, s: &[u8], a: usize) -> bool {
+        match r {
+            None => !dec_fits(s, a),
+            Some(v) => dec_fits(s, a) && v == dec(s, a, s.len()),
+        }
+    }
+
+    // The scan so far: digits from `a` to `i` worth `acc`, or one that is not
+    // a digit, or a value past `u64`.
+    spec fn scanned(s: &[u8], a: usize, i: usize, acc: u64, bad: bool, over: bool) -> bool {
+        a <= i && i <= s.len()
+            && (bad ==> !digits(s, a, s.len()))
+            && (!bad ==> digits(s, a, i))
+            && (over ==> dec(s, a, i) > 18446744073709551615)
+            && (!bad && !over ==> acc == dec(s, a, i))
+    }
+
+    spec fn upto(a: usize, s: &[u8]) -> bool {
+        a <= s.len()
+    }
+
+    // The decimal digits of `s` from `a` to its end as a `u64`: none when
+    // there is none, one is not a digit, or the value does not fit.
+    #[effects(pure)]
+    #[uses(dec, dec_fits, digit, digits, digits_to, no_less, nonneg, scanned, scanned_dec, upto, within_digits)]
+    fn scan_dec(s: &[u8], a: usize) -> (r: Option<u64>)
+        requires upto(a, s),
+        ensures scanned_dec(r, s, a),
+    {
+        if a >= s.len() {
+            return None;
+        }
+        let mut acc: u64 = 0;
+        let mut bad: bool = false;
+        let mut over: bool = false;
+        let mut i: usize = a;
+        while i < s.len() && !bad
+            invariant scanned(s, a, i, acc, bad, over),
+            decreases s.len() - i,
+        {
+            let c: u8 = s[i];
+            if c < b'0' || c > b'9' {
+                bad = true;
+            } else if !over {
+                let d: u64 = u64::try_from(c - b'0').unwrap();
+                match acc.checked_mul(10) {
+                    None => {
+                        over = true;
+                    }
+                    Some(m) => match m.checked_add(d) {
+                        None => {
+                            over = true;
+                        }
+                        Some(t) => {
+                            acc = t;
+                        }
+                    },
+                }
+            }
+            i = i + 1;
+        }
+        if bad || over {
+            if over && !bad {
+                proof {
+                    dec_grows(s, a, i, s.len());
+                }
+            }
+            return None;
+        }
+        Some(acc)
+    }
+
+    spec fn hex_fits(s: &[u8], a: usize) -> bool {
+        a < s.len() && hexes(s, a, s.len()) && hex(s, a, s.len()) <= 18446744073709551615
+    }
+
+    spec fn scanned_hex(r: Option<u64>, s: &[u8], a: usize) -> bool {
+        match r {
+            None => !hex_fits(s, a),
+            Some(v) => hex_fits(s, a) && v == hex(s, a, s.len()),
+        }
+    }
+
+    spec fn scanning_hex(s: &[u8], a: usize, i: usize, acc: u64, bad: bool, over: bool) -> bool {
+        a <= i && i <= s.len()
+            && (bad ==> !hexes(s, a, s.len()))
+            && (!bad ==> hexes(s, a, i))
+            && (over ==> hex(s, a, i) > 18446744073709551615)
+            && (!bad && !over ==> acc == hex(s, a, i))
+    }
+
+    // The value of hexadecimal digit `c`, or 16 when it is not one.
+    spec fn hex_digit_value(r: u64, c: u8) -> bool {
+        (digit(c) && r == c - 48) || (97 <= c && c <= 102 && r == c - 87)
+            || (65 <= c && c <= 70 && r == c - 55) || (!hex_digit(c) && r == 16)
+    }
+
+    #[effects(pure)]
+    #[uses(digit, hex_digit, hex_digit_value)]
+    fn hex_of(c: u8) -> (r: u64)
+        ensures hex_digit_value(r, c),
+    {
+        if c >= b'0' && c <= b'9' {
+            u64::try_from(c - b'0').unwrap()
+        } else if c >= b'a' && c <= b'f' {
+            u64::try_from(c - 87).unwrap()
+        } else if c >= b'A' && c <= b'F' {
+            u64::try_from(c - 55).unwrap()
+        } else {
+            16
+        }
+    }
+
+    // The hexadecimal digits of `s` from `a` to its end as a `u64`.
+    #[effects(pure)]
+    #[uses(digit, hex, hex_digit, hex_digit_value, hex_fits, hex_no_less, hex_nonneg_at, hexes, hexes_to, scanned_hex, scanning_hex, upto, within_hexes)]
+    fn scan_hex(s: &[u8], a: usize) -> (r: Option<u64>)
+        requires upto(a, s),
+        ensures scanned_hex(r, s, a),
+    {
+        if a >= s.len() {
+            return None;
+        }
+        let mut acc: u64 = 0;
+        let mut bad: bool = false;
+        let mut over: bool = false;
+        let mut i: usize = a;
+        while i < s.len() && !bad
+            invariant scanning_hex(s, a, i, acc, bad, over),
+            decreases s.len() - i,
+        {
+            let d: u64 = hex_of(s[i]);
+            if d == 16 {
+                bad = true;
+            } else if !over {
+                match acc.checked_mul(16) {
+                    None => {
+                        over = true;
+                    }
+                    Some(m) => match m.checked_add(d) {
+                        None => {
+                            over = true;
+                        }
+                        Some(t) => {
+                            acc = t;
+                        }
+                    },
+                }
+            }
+            i = i + 1;
+        }
+        if bad || over {
+            if over && !bad {
+                proof {
+                    hex_grows(s, a, i, s.len());
+                }
+            }
+            return None;
+        }
+        Some(acc)
+    }
+
+    // Where the digits of `s` begin: after a leading `+` (Rust's `from_str`
+    // and `from_str_radix` take one for an unsigned integer).
+    spec fn start(s: &[u8]) -> usize {
+        if s.len() > 0 && s[0] == 43 { 1 } else { 0 }
+    }
+
+    // `s` is an unsigned decimal integer that fits a `u64`.
+    spec fn is_u64(s: &[u8]) -> bool {
+        dec_fits(s, start(s))
+    }
+
+    spec fn read_u64(r: Option<u64>, s: &[u8]) -> bool {
+        match r {
+            None => !is_u64(s),
+            Some(v) => is_u64(s) && v == dec(s, start(s), s.len()),
+        }
+    }
+
+    // `s` read as a `u64`: Rust's `u64::from_str` (`s.parse::<u64>()`).
+    #[effects(pure)]
+    #[uses(dec_fits, is_u64, read_u64, scanned_dec, start, upto)]
+    fn parse_u64_bytes(s: &[u8]) -> (r: Option<u64>)
+        ensures read_u64(r, s),
+    {
+        let a: usize = if s.len() > 0 && s[0] == b'+' { 1 } else { 0 };
+        scan_dec(s, a)
+    }
+
+    spec fn read_u64_text(r: Option<u64>, s: &str) -> bool {
+        read_u64(r, s.as_bytes())
+    }
+
+    // `s.parse::<u64>()` in Rust.
+    #[effects(pure)]
+    #[uses(read_u64, read_u64_text)]
+    fn parse_u64(s: &str) -> (r: Option<u64>)
+        ensures read_u64_text(r, s),
+    {
+        parse_u64_bytes(s.as_bytes())
+    }
+
+    // `s` begins with `-`.
+    spec fn minus(s: &[u8]) -> bool {
+        s.len() > 0 && s[0] == 45
+    }
+
+    // Where the digits of a signed integer begin: after a leading `+` or `-`.
+    spec fn sign_end(s: &[u8]) -> usize {
+        if s.len() > 0 && (s[0] == 43 || s[0] == 45) { 1 } else { 0 }
+    }
+
+    // `s` is a signed decimal integer that fits an `i64`.
+    spec fn is_i64(s: &[u8]) -> bool {
+        dec_fits(s, sign_end(s))
+            && ((minus(s) && dec(s, sign_end(s), s.len()) <= 9223372036854775808)
+                || (!minus(s) && dec(s, sign_end(s), s.len()) <= 9223372036854775807))
+    }
+
+    spec fn read_i64(r: Option<i64>, s: &[u8]) -> bool {
+        match r {
+            None => !is_i64(s),
+            Some(v) => is_i64(s)
+                && ((minus(s) && v == 0 - dec(s, sign_end(s), s.len()))
+                    || (!minus(s) && v == dec(s, sign_end(s), s.len()))),
+        }
+    }
+
+    // `s` read as an `i64`: Rust's `i64::from_str` (`s.parse::<i64>()`).
+    #[effects(pure)]
+    #[uses(dec_fits, is_i64, minus, read_i64, scanned_dec, sign_end, upto)]
+    fn parse_i64_bytes(s: &[u8]) -> (r: Option<i64>)
+        ensures read_i64(r, s),
+    {
+        let neg: bool = s.len() > 0 && s[0] == b'-';
+        let a: usize = if s.len() > 0 && (s[0] == b'+' || s[0] == b'-') { 1 } else { 0 };
+        match scan_dec(s, a) {
+            None => None,
+            Some(m) => {
+                if neg {
+                    if m == 9223372036854775808 {
+                        Some(-9223372036854775807 - 1)
+                    } else if m < 9223372036854775808 {
+                        Some(0 - i64::try_from(m).unwrap())
+                    } else {
+                        None
+                    }
+                } else if m <= 9223372036854775807 {
+                    Some(i64::try_from(m).unwrap())
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
+    spec fn read_i64_text(r: Option<i64>, s: &str) -> bool {
+        read_i64(r, s.as_bytes())
+    }
+
+    // `s.parse::<i64>()` in Rust.
+    #[effects(pure)]
+    #[uses(read_i64, read_i64_text)]
+    fn parse_i64(s: &str) -> (r: Option<i64>)
+        ensures read_i64_text(r, s),
+    {
+        parse_i64_bytes(s.as_bytes())
+    }
+
+    // `s` is an unsigned hexadecimal integer that fits a `u64`.
+    spec fn is_u64_hex(s: &[u8]) -> bool {
+        hex_fits(s, start(s))
+    }
+
+    spec fn read_u64_hex(r: Option<u64>, s: &[u8]) -> bool {
+        match r {
+            None => !is_u64_hex(s),
+            Some(v) => is_u64_hex(s) && v == hex(s, start(s), s.len()),
+        }
+    }
+
+    // `s` read as a hexadecimal `u64`, either case: Rust's
+    // `u64::from_str_radix(s, 16)`.
+    #[effects(pure)]
+    #[uses(hex_fits, is_u64_hex, read_u64_hex, scanned_hex, start, upto)]
+    fn parse_u64_hex_bytes(s: &[u8]) -> (r: Option<u64>)
+        ensures read_u64_hex(r, s),
+    {
+        let a: usize = if s.len() > 0 && s[0] == b'+' { 1 } else { 0 };
+        scan_hex(s, a)
+    }
+
+    spec fn read_u64_hex_text(r: Option<u64>, s: &str) -> bool {
+        read_u64_hex(r, s.as_bytes())
+    }
+
+    // `u64::from_str_radix(s, 16)` in Rust.
+    #[effects(pure)]
+    #[uses(read_u64_hex, read_u64_hex_text)]
+    fn parse_u64_hex(s: &str) -> (r: Option<u64>)
+        ensures read_u64_hex_text(r, s),
+    {
+        parse_u64_hex_bytes(s.as_bytes())
+    }
+
+    // ---------- writing ----------
+
+    // Digit `j` of `x` in decimal, counted from the last.
+    spec fn dig(x: u64, j: usize) -> u64
+        decreases j,
+    {
+        if j == 0 { x % 10 } else { dig(x / 10, j - 1) }
+    }
+
+    // `t[a..n]` is the decimal text of `x`: its `width(x)` digits, the
+    // first not `0` unless `x` is `0` (Rust's `Display` of an integer).
+    spec fn is_dec(t: &[u8], a: usize, n: usize, x: u64) -> bool {
+        n == a + width(x) && n <= t.len()
+            && forall |k: usize| a <= k && k < n ==> #[trigger] t[k] == 48 + dig(x, n - 1 - k)
+    }
+
+    // The number of decimal digits of `x`.
+    spec fn width(x: u64) -> usize {
+        if x < 10 { 1 }
+        else if x < 100 { 2 }
+        else if x < 1000 { 3 }
+        else if x < 10000 { 4 }
+        else if x < 100000 { 5 }
+        else if x < 1000000 { 6 }
+        else if x < 10000000 { 7 }
+        else if x < 100000000 { 8 }
+        else if x < 1000000000 { 9 }
+        else if x < 10000000000 { 10 }
+        else if x < 100000000000 { 11 }
+        else if x < 1000000000000 { 12 }
+        else if x < 10000000000000 { 13 }
+        else if x < 100000000000000 { 14 }
+        else if x < 1000000000000000 { 15 }
+        else if x < 10000000000000000 { 16 }
+        else if x < 100000000000000000 { 17 }
+        else if x < 1000000000000000000 { 18 }
+        else if x < 10000000000000000000 { 19 }
+        else { 20 }
+    }
+
+    // `t` and `u` have the same bytes from `a` to `n`.
+    spec fn same(t: &[u8], u: &[u8], a: usize, n: usize) -> bool {
+        n <= t.len() && n <= u.len() && forall |k: usize| a <= k && k < n ==> #[trigger] t[k] == u[k]
+    }
+
+    spec fn text_of(t: &[u8], a: usize, n: usize, x: u64) -> bool {
+        is_dec(t, a, n, x)
+    }
+
+    spec fn reads_as(t: &[u8], a: usize, n: usize, x: u64) -> bool {
+        digits(t, a, n) && dec(t, a, n) == x && n == a + width(x)
+    }
+
+    // The decimal text of `x` reads back as `x`, in `width(x)` digits.
+    #[uses(dec, dig, digit, digits, is_dec, reads_as, text_of, width)]
+    proof fn dec_reads(t: &[u8], a: usize, n: usize, x: u64)
+        requires text_of(t, a, n, x),
+        ensures reads_as(t, a, n, x),
+        decreases x,
+    {
+        if x >= 10 {
+            dec_reads(t, a, n - 1, x / 10);
+        }
+    }
+
+    spec fn room(t: &[u8]) -> bool {
+        t.len() + 20 <= 9223372036854775807
+    }
+
+    // `t` is `u` with at most 21 bytes more: what a caller needs to know to
+    // write again (cheaper to reveal than `wrote`).
+    spec fn grew(t: &[u8], u: &[u8]) -> bool {
+        u.len() < t.len() && t.len() <= u.len() + 21
+    }
+
+    // `t` is `u` with the decimal text of `x` after it.
+    spec fn wrote(t: &[u8], u: &[u8], x: u64) -> bool {
+        t.len() == u.len() + width(x) && same(t, u, 0, u.len()) && is_dec(t, u.len(), t.len(), x)
+    }
+
+    // Appends `x` in decimal (Rust's `write!(s, "{x}")`).
+    #[effects(alloc)]
+    #[uses(dig, grew, is_dec, room, same, width, wrote)]
+    fn push_u64(s: &mut String, x: u64) -> ()
+        requires room(s.as_bytes()),
+        ensures wrote(s.as_bytes(), old(s).as_bytes(), x), grew(s.as_bytes(), old(s).as_bytes()),
+        decreases x,
+    {
+        if x >= 10 {
+            push_u64(s, x / 10);
+        }
+        let d: u32 = u32::try_from(x % 10).unwrap();
+        match char::from_u32(48 + d) {
+            None => {}
+            Some(c) => s.push(c),
+        }
+    }
+
+    // `t` is `u` with the decimal text of `x` after it, `-` first when it
+    // is negative (Rust's `Display` of an `i64`).
+    spec fn wrote_i64(t: &[u8], u: &[u8], x: i64) -> bool {
+        (x >= 0 && t.len() == u.len() + width(x) && same(t, u, 0, u.len()) && is_dec(t, u.len(), t.len(), x))
+            || (x < 0 && t.len() == u.len() + 1 + width(0 - x) && same(t, u, 0, u.len()) && t[u.len()] == 45
+                && is_dec(t, u.len() + 1, t.len(), 0 - x))
+    }
+
+    spec fn room1(t: &[u8]) -> bool {
+        t.len() + 21 <= 9223372036854775807
+    }
+
+    // Appends `x` in decimal, `-` first when it is negative (Rust's
+    // `write!(s, "{x}")`).
+    #[effects(alloc)]
+    #[uses(dig, grew, is_dec, room, room1, same, width, wrote, wrote_i64)]
+    fn push_i64(s: &mut String, x: i64) -> ()
+        requires room1(s.as_bytes()),
+        ensures wrote_i64(s.as_bytes(), old(s).as_bytes(), x), grew(s.as_bytes(), old(s).as_bytes()),
+    {
+        if x < 0 {
+            s.push('-');
+            // `-x` overflows at `i64::MIN`; `-(x + 1)` does not.
+            push_u64(s, u64::try_from(0 - (x + 1)).unwrap() + 1);
+        } else {
+            push_u64(s, u64::try_from(x).unwrap());
+        }
+    }
+
+    // ---------- hexadecimal writing ----------
+
+    // Digit `j` of `x` in hexadecimal, counted from the last.
+    spec fn hdig(x: u64, j: usize) -> u64
+        decreases j,
+    {
+        if j == 0 { x % 16 } else { hdig(x / 16, j - 1) }
+    }
+
+    // The lowercase hexadecimal digit for `d` (below 16).
+    spec fn hex_char(c: u8, d: u64) -> bool {
+        (d < 10 && c == 48 + d) || (d >= 10 && c == 87 + d)
+    }
+
+    // `t[a..n]` is the lowercase hexadecimal text of `x`, the first digit
+    // not `0` unless `x` is `0` (Rust's `{:x}`).
+    spec fn is_hex(t: &[u8], a: usize, n: usize, x: u64) -> bool {
+        n == a + width16(x) && n <= t.len()
+            && forall |k: usize| a <= k && k < n ==> hex_char(#[trigger] t[k], hdig(x, n - 1 - k))
+    }
+
+    // The number of hexadecimal digits of `x`.
+    spec fn width16(x: u64) -> usize {
+        if x < 16 { 1 }
+        else if x < 256 { 2 }
+        else if x < 4096 { 3 }
+        else if x < 65536 { 4 }
+        else if x < 1048576 { 5 }
+        else if x < 16777216 { 6 }
+        else if x < 268435456 { 7 }
+        else if x < 4294967296 { 8 }
+        else if x < 68719476736 { 9 }
+        else if x < 1099511627776 { 10 }
+        else if x < 17592186044416 { 11 }
+        else if x < 281474976710656 { 12 }
+        else if x < 4503599627370496 { 13 }
+        else if x < 72057594037927936 { 14 }
+        else if x < 1152921504606846976 { 15 }
+        else { 16 }
+    }
+
+    spec fn wrote_hex(t: &[u8], u: &[u8], x: u64) -> bool {
+        t.len() == u.len() + width16(x) && same(t, u, 0, u.len()) && is_hex(t, u.len(), t.len(), x)
+    }
+
+    // Appends `x` in lowercase hexadecimal (Rust's `write!(s, "{x:x}")`).
+    #[effects(alloc)]
+    #[uses(grew, hdig, hex_char, is_hex, room, same, width16, wrote_hex)]
+    fn push_u64_hex(s: &mut String, x: u64) -> ()
+        requires room(s.as_bytes()),
+        ensures wrote_hex(s.as_bytes(), old(s).as_bytes(), x), grew(s.as_bytes(), old(s).as_bytes()),
+        decreases x,
+    {
+        if x >= 16 {
+            push_u64_hex(s, x / 16);
+        }
+        let d: u32 = u32::try_from(x % 16).unwrap();
+        let code: u32 = if d < 10 { 48 + d } else { 87 + d };
+        match char::from_u32(code) {
+            None => {}
+            Some(c) => s.push(c),
+        }
+    }
+
+    spec fn hex_text_of(t: &[u8], a: usize, n: usize, x: u64) -> bool {
+        is_hex(t, a, n, x)
+    }
+
+    spec fn hex_reads_as(t: &[u8], a: usize, n: usize, x: u64) -> bool {
+        hexes(t, a, n) && hex(t, a, n) == x && n == a + width16(x)
+    }
+
+    // The hexadecimal text of `x` reads back as `x`.
+    #[uses(digit, hdig, hex, hex_char, hex_digit, hex_reads_as, hex_text_of, hexes, is_hex, width16)]
+    proof fn hex_reads(t: &[u8], a: usize, n: usize, x: u64)
+        requires hex_text_of(t, a, n, x),
+        ensures hex_reads_as(t, a, n, x),
+        decreases x,
+    {
+        if x >= 16 {
+            hex_reads(t, a, n - 1, x / 16);
+        }
+    }
+
+    // ---------- round trips ----------
+
+    spec fn whole_dec(t: &[u8], x: u64) -> bool {
+        is_dec(t, 0, t.len(), x)
+    }
+
+    spec fn reads_u64(t: &[u8], x: u64) -> bool {
+        read_u64(Some(x), t)
+    }
+
+    // What `push_u64` writes to an empty text, `parse_u64` reads back:
+    // `parse(format(x)) == Some(x)`.
+    #[uses(dec, dec_fits, dig, digit, digits, is_dec, is_u64, read_u64, reads_as, reads_u64, start, text_of, whole_dec, width)]
+    proof fn u64_round_trip(t: &[u8], x: u64)
+        requires whole_dec(t, x),
+        ensures reads_u64(t, x),
+    {
+        dec_reads(t, 0, t.len(), x);
+    }
+
+    spec fn whole_hex(t: &[u8], x: u64) -> bool {
+        is_hex(t, 0, t.len(), x)
+    }
+
+    spec fn reads_u64_hex(t: &[u8], x: u64) -> bool {
+        read_u64_hex(Some(x), t)
+    }
+
+    // What `push_u64_hex` writes to an empty text, `parse_u64_hex` reads
+    // back.
+    #[uses(digit, hdig, hex, hex_char, hex_digit, hex_fits, hex_reads_as, hex_text_of, hexes, is_hex, is_u64_hex, read_u64_hex, reads_u64_hex, start, whole_hex, width16)]
+    proof fn u64_hex_round_trip(t: &[u8], x: u64)
+        requires whole_hex(t, x),
+        ensures reads_u64_hex(t, x),
+    {
+        hex_reads(t, 0, t.len(), x);
+    }
+}

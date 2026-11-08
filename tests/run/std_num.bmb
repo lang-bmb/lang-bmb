@@ -1,0 +1,57 @@
+#[summary("표준 라이브러리 std::num: 10진·16진 읽기와 쓰기, 경계 값과 되읽힘 (ADR-0092 §2, backlog 4B-02)")]
+mod uses_num {
+    #[effects(io)]
+    fn show_u(r: Option<u64>) -> () {
+        match r {
+            None => print_str("none\n"),
+            Some(v) => print_u64(v),
+        }
+    }
+
+    #[effects(io)]
+    fn show_i(r: Option<i64>) -> () {
+        match r {
+            None => print_str("none\n"),
+            Some(v) => print_i64(v),
+        }
+    }
+
+    #[effects(alloc, io)]
+    #[uses(std::num::grew, std::num::room, std::num::room1)]
+    fn main() -> () {
+        show_u(std::num::parse_u64("0"));
+        show_u(std::num::parse_u64("+42"));
+        show_u(std::num::parse_u64("18446744073709551615"));
+        show_u(std::num::parse_u64("18446744073709551616"));
+        show_u(std::num::parse_u64(""));
+        show_u(std::num::parse_u64("+"));
+        show_u(std::num::parse_u64("-1"));
+        show_u(std::num::parse_u64("12a"));
+        show_u(std::num::parse_u64("007"));
+        show_i(std::num::parse_i64("-9223372036854775808"));
+        show_i(std::num::parse_i64("9223372036854775807"));
+        show_i(std::num::parse_i64("9223372036854775808"));
+        show_i(std::num::parse_i64("-9223372036854775809"));
+        show_i(std::num::parse_i64("+5"));
+        show_i(std::num::parse_i64("-"));
+        show_u(std::num::parse_u64_hex("ff"));
+        show_u(std::num::parse_u64_hex("+DeadBeef"));
+        show_u(std::num::parse_u64_hex("ffffffffffffffff"));
+        show_u(std::num::parse_u64_hex("10000000000000000"));
+        show_u(std::num::parse_u64_hex("0x10"));
+        let mut s: String = String::new();
+        std::num::push_u64(&mut s, 0);
+        s.push(' ');
+        std::num::push_u64(&mut s, 18446744073709551615);
+        s.push(' ');
+        std::num::push_i64(&mut s, -9223372036854775807 - 1);
+        s.push(' ');
+        std::num::push_i64(&mut s, 120);
+        s.push(' ');
+        std::num::push_u64_hex(&mut s, 3735928559);
+        s.push(' ');
+        std::num::push_u64_hex(&mut s, 0);
+        print_str(s.as_str());
+        print_str("\n");
+    }
+}
