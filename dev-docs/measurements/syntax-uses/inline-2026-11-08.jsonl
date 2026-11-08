@@ -1,0 +1,2 @@
+{"corpus": "m1b seed", "spec_fns": 63, "single_use_contract_only": 32, "with_quantifier": 7, "leaves": 28, "tokens": 7604, "tokens_inline": 7118, "l1_bytes": 85974, "l1_bytes_inline": 65038}
+{"corpus": "m1 seed", "spec_fns": 12, "single_use_contract_only": 7, "with_quantifier": 2, "leaves": 7, "tokens": 1313, "tokens_inline": 1222, "l1_bytes": 16639, "l1_bytes_inline": 12133}
