@@ -203,6 +203,17 @@ pub fn method_call(
     };
     let first = match t.adjust {
         Adjust::Value => recv,
+        Adjust::AsStr => Expr {
+            span: recv.span.to(name.span),
+            kind: ExprKind::Method {
+                recv: Box::new(recv),
+                name: Ident {
+                    name: "as_str".into(),
+                    span: name.span,
+                },
+                args: Vec::new(),
+            },
+        },
         Adjust::Ref | Adjust::RefMut => Expr {
             span: recv.span.to(name.span),
             kind: ExprKind::Ref {
@@ -8079,7 +8090,17 @@ impl<'a> Checker<'a> {
         span: Span,
         mode: Mode,
     ) -> TypeKind {
-        let rt = self.expr(cx, recv, None, mode);
+        // A string literal receiver is a `&str` where the method is a text
+        // function of the standard library, which takes it as an argument
+        // (`"key=v".find("=")`, ADR-0092 §2); elsewhere E0409 as before.
+        let lit = matches!(recv.kind, ExprKind::StrLit(_));
+        let rt = if lit {
+            let t = text::str_ref();
+            self.types.insert(Self::key_of(recv), t.clone());
+            t
+        } else {
+            self.expr(cx, recv, None, mode)
+        };
         // The receiver's error is reported; its methods would only repeat it.
         if rt == TypeKind::Error {
             for a in args {
@@ -8102,6 +8123,13 @@ impl<'a> Checker<'a> {
                 return TypeKind::Error;
             }
             None => {}
+        }
+        if lit {
+            self.expr(cx, recv, None, mode);
+            for a in args {
+                self.expr(cx, a, None, mode);
+            }
+            return TypeKind::Error;
         }
         if is_text(&rt) {
             return self.text_method(cx, recv, &rt, name, args, span, mode);
@@ -8384,6 +8412,26 @@ impl<'a> Checker<'a> {
                 }));
             }
         }
+        // A text function of the standard library (ADR-0092 §2):
+        // `s.starts_with(p)` is `std::str::starts_with(s, p)`, a `String`
+        // passed as its text. The built-in methods come first.
+        if matches!(value, TypeKind::String | TypeKind::Str)
+            && !builtin_method_name(&name.name)
+            && let Some(sig) = self.fns.get(&format!("std::str::{}", name.name))
+            && sig.generics.is_empty()
+            && sig.params.first().is_some_and(is_text)
+        {
+            let adjust = if *value == TypeKind::Str {
+                Adjust::Value
+            } else {
+                Adjust::AsStr
+            };
+            return Some(Some(MethodTarget {
+                path: vec!["std".into(), "str".into(), name.name.clone()],
+                type_args: Vec::new(),
+                adjust,
+            }));
+        }
         // The traits that could name it: a type parameter's bounds, or the
         // traits with an `impl` for the type. A built-in method of a
         // built-in type comes first (Rust's inherent methods).
@@ -8587,6 +8635,7 @@ impl<'a> Checker<'a> {
             Some(Adjust::Ref) => Some(format!("&{x}")),
             Some(Adjust::RefMut) => Some(format!("&mut {x}")),
             Some(Adjust::Value) => Some(x),
+            Some(Adjust::AsStr) => Some(format!("{x}.as_str()")),
             None => None,
         };
         let all: Vec<String> = first

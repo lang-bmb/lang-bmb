@@ -1,5 +1,7 @@
-#[summary("텍스트 연산(Rust `str`의 이름과 뜻): 결과가 바이트 명세와 정확히 같다 (ADR-0092 §2, backlog 4B-02)")]
+#[summary("텍스트 연산(Rust `str`의 이름과 뜻): 접두·접미, 찾기, 떼기, ASCII 공백 다듬기, 글자 해독. 결과는 바이트 명세와 정확히 같고 조각 대신 위치를 돌려준다 (ADR-0092 §2, backlog 4B-02)")]
 mod str {
+    // ---------- prefixes and suffixes ----------
+
     // The bytes of `p` begin `s`.
     spec fn begins(s: &str, p: &str) -> bool {
         p.len() <= s.len()
@@ -36,5 +38,241 @@ mod str {
             i = i + 1;
         }
         true
+    }
+
+    // The bytes of `p` end `s`.
+    spec fn ends(s: &str, p: &str) -> bool {
+        p.len() <= s.len()
+            && forall |j: usize| j < p.len() ==> #[trigger] p.as_bytes()[j] == s.as_bytes()[s.len() - p.len() + j]
+    }
+
+    // The first `i` bytes of `p` are the bytes of `s` from `s.len() - p.len()`.
+    spec fn agree_end(s: &str, p: &str, i: usize) -> bool {
+        i <= p.len() && p.len() <= s.len()
+            && forall |j: usize| j < i ==> #[trigger] p.as_bytes()[j] == s.as_bytes()[s.len() - p.len() + j]
+    }
+
+    spec fn ended(r: bool, s: &str, p: &str) -> bool {
+        r == ends(s, p)
+    }
+
+    // Whether `p` ends `s` (Rust's `str::ends_with` of a `&str`).
+    #[effects(pure)]
+    #[uses(agree_end, ends, ended)]
+    fn ends_with(s: &str, p: &str) -> (r: bool)
+        ensures ended(r, s, p),
+    {
+        if p.len() > s.len() {
+            return false;
+        }
+        let d: usize = s.len() - p.len();
+        let mut i: usize = 0;
+        while i < p.len()
+            invariant agree_end(s, p, i), d + p.len() == s.len(),
+            decreases p.len() - i,
+        {
+            if s.as_bytes()[d + i] != p.as_bytes()[i] {
+                return false;
+            }
+            i = i + 1;
+        }
+        true
+    }
+
+    // ---------- search ----------
+
+    // `r` is the first byte position of `p` in `s`, or none (Rust's `find`
+    // of a `&str`: the position is a character boundary).
+    spec fn found(r: Option<usize>, s: &str, p: &str) -> bool {
+        std::bytes::found(r, s.as_bytes(), p.as_bytes())
+    }
+
+    // The first position of `p` in `s` (Rust's `str::find` of a `&str`).
+    #[effects(pure)]
+    #[uses(found, std::bytes::found)]
+    fn find(s: &str, p: &str) -> (r: Option<usize>)
+        ensures found(r, s, p),
+    {
+        std::bytes::find(s.as_bytes(), p.as_bytes())
+    }
+
+    // ---------- stripping ----------
+
+    // `r` is where `s` goes on after the prefix `p`, or none when `p` does
+    // not begin it (Rust's `strip_prefix`, whose result is `&s[r..]`).
+    spec fn stripped(r: Option<usize>, s: &str, p: &str) -> bool {
+        match r {
+            None => !begins(s, p),
+            Some(i) => i == p.len() && begins(s, p),
+        }
+    }
+
+    // The position after the prefix `p` of `s` (Rust's `str::strip_prefix`
+    // of a `&str`, whose result is `&s[i..]`).
+    #[effects(pure)]
+    #[uses(begins, starts, stripped)]
+    fn strip_prefix(s: &str, p: &str) -> (r: Option<usize>)
+        ensures stripped(r, s, p),
+    {
+        if starts_with(s, p) {
+            return Some(p.len());
+        }
+        None
+    }
+
+    // `r` is where the suffix `p` of `s` begins, or none when `p` does not
+    // end it (Rust's `strip_suffix`, whose result is `&s[..r]`).
+    spec fn stripped_end(r: Option<usize>, s: &str, p: &str) -> bool {
+        match r {
+            None => !ends(s, p),
+            Some(i) => ends(s, p) && i + p.len() == s.len(),
+        }
+    }
+
+    // The position before the suffix `p` of `s` (Rust's
+    // `str::strip_suffix` of a `&str`, whose result is `&s[..i]`).
+    #[effects(pure)]
+    #[uses(ended, ends, stripped_end)]
+    fn strip_suffix(s: &str, p: &str) -> (r: Option<usize>)
+        ensures stripped_end(r, s, p),
+    {
+        if ends_with(s, p) {
+            return Some(s.len() - p.len());
+        }
+        None
+    }
+
+    // ---------- ASCII whitespace ----------
+
+    // Rust's `u8::is_ascii_whitespace`: space, tab, line feed, form feed,
+    // carriage return.
+    spec fn space(b: u8) -> bool {
+        b == 32 || b == 9 || b == 10 || b == 12 || b == 13
+    }
+
+    spec fn is_space(r: bool, b: u8) -> bool {
+        r == space(b)
+    }
+
+    #[effects(pure)]
+    #[uses(is_space, space)]
+    fn ascii_space(b: u8) -> (r: bool)
+        ensures is_space(r, b),
+    {
+        b == b' ' || b == b'\t' || b == b'\n' || b == 12 || b == b'\r'
+    }
+
+    // The bytes of `s` from `a` to `b` are all ASCII whitespace.
+    spec fn spaces(s: &str, a: usize, b: usize) -> bool {
+        a <= b && b <= s.len()
+            && forall |k: usize| a <= k && k < b ==> space(#[trigger] s.as_bytes()[k])
+    }
+
+    // `r` is where `s` goes on after its leading ASCII whitespace.
+    spec fn start_trimmed(r: usize, s: &str) -> bool {
+        spaces(s, 0, r) && (r == s.len() || !space(s.as_bytes()[r]))
+    }
+
+    // The position after the leading ASCII whitespace of `s` (Rust's
+    // `str::trim_ascii_start`, whose result is `&s[i..]`).
+    #[effects(pure)]
+    #[uses(is_space, space, spaces, start_trimmed)]
+    fn trim_ascii_start(s: &str) -> (r: usize)
+        ensures start_trimmed(r, s),
+    {
+        let mut i: usize = 0;
+        while i < s.len() && ascii_space(s.as_bytes()[i])
+            invariant spaces(s, 0, i),
+            decreases s.len() - i,
+        {
+            i = i + 1;
+        }
+        i
+    }
+
+    // `r` is where the trailing ASCII whitespace of `s` begins.
+    spec fn end_trimmed(r: usize, s: &str) -> bool {
+        spaces(s, r, s.len()) && (r == 0 || !space(s.as_bytes()[r - 1]))
+    }
+
+    // The position before the trailing ASCII whitespace of `s` (Rust's
+    // `str::trim_ascii_end`, whose result is `&s[..i]`).
+    #[effects(pure)]
+    #[uses(end_trimmed, is_space, space, spaces)]
+    fn trim_ascii_end(s: &str) -> (r: usize)
+        ensures end_trimmed(r, s),
+    {
+        let mut i: usize = s.len();
+        while i > 0 && ascii_space(s.as_bytes()[i - 1])
+            invariant spaces(s, i, s.len()),
+            decreases i,
+        {
+            i = i - 1;
+        }
+        i
+    }
+
+    // ---------- characters ----------
+
+    // A character of `s` and the position after it.
+    struct Decoded { ch: char, next: usize }
+
+    // The scalar value of the well-formed sequence of `w` bytes at `i`.
+    // `v` is the scalar value of the well-formed sequence of `w` bytes at
+    // `i` of `s`.
+    spec fn is_code(v: u32, s: &[u8], i: usize, w: usize) -> bool {
+        (w == 1 && v == s[i])
+            || (w == 2 && v == (s[i] - 192) * 64 + (s[i + 1] - 128))
+            || (w == 3 && v == (s[i] - 224) * 4096 + (s[i + 1] - 128) * 64 + (s[i + 2] - 128))
+            || (w == 4
+                && v == (s[i] - 240) * 262144 + (s[i + 1] - 128) * 4096 + (s[i + 2] - 128) * 64
+                    + (s[i + 3] - 128))
+    }
+
+    // `r` is the character at byte `i` of `s` and the position after it, or
+    // none where no character begins there (the end, or inside one): the
+    // well-formed sequence of Unicode table 3-7 (`std::utf8::seq_len`).
+    spec fn decoded(r: Option<Decoded>, s: &str, i: usize) -> bool {
+        match r {
+            None => std::utf8::seq_len(s.as_bytes(), i) == 0,
+            Some(d) => 0 < std::utf8::seq_len(s.as_bytes(), i)
+                && d.next == i + std::utf8::seq_len(s.as_bytes(), i)
+                && is_code(u32::from(d.ch), s.as_bytes(), i, std::utf8::seq_len(s.as_bytes(), i)),
+        }
+    }
+
+    spec fn below(i: usize, s: &str) -> bool {
+        i < s.len()
+    }
+
+    // The character at byte `i` of `s` and the position after it (Rust's
+    // `s[i..].chars().next()` at a boundary; ADR-0050 open question 2).
+    #[effects(pure)]
+    #[uses(below, decoded, is_code, std::utf8::at, std::utf8::cont, std::utf8::second3, std::utf8::second4, std::utf8::seq_len, std::utf8::width_result)]
+    fn decode_utf8(s: &str, i: usize) -> (r: Option<Decoded>)
+        ensures decoded(r, s, i),
+    {
+        if i >= s.len() {
+            return None;
+        }
+        let w: usize = std::utf8::width(s.as_bytes(), i);
+        if w == 0 {
+            return None;
+        }
+        let b0: u32 = u32::try_from(s.as_bytes()[i]).unwrap();
+        let v: u32 = if w == 1 {
+            b0
+        } else if w == 2 {
+            (b0 - 192) * 64 + (u32::try_from(s.as_bytes()[i + 1]).unwrap() - 128)
+        } else if w == 3 {
+            (b0 - 224) * 4096 + (u32::try_from(s.as_bytes()[i + 1]).unwrap() - 128) * 64 + (u32::try_from(s.as_bytes()[i + 2]).unwrap() - 128)
+        } else {
+            (b0 - 240) * 262144 + (u32::try_from(s.as_bytes()[i + 1]).unwrap() - 128) * 4096
+                + (u32::try_from(s.as_bytes()[i + 2]).unwrap() - 128) * 64 + (u32::try_from(s.as_bytes()[i + 3]).unwrap() - 128)
+        };
+        match char::from_u32(v) {
+            None => None,
+            Some(c) => Some(Decoded { ch: c, next: i + w }),
+        }
     }
 }

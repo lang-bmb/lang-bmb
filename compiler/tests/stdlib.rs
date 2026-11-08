@@ -1,6 +1,7 @@
 //! The standard library as the tools see it (ADR-0092 §1, backlog 4B-02):
 //! added to a program that names it and only then, proved and run with it,
-//! shown apart in the map, and never written by a tool.
+//! shown apart in the map, and never written by a tool. Each unit is proved
+//! on its own by `tests/verify.rs` `libraries_are_proved`.
 
 mod common;
 
@@ -152,22 +153,133 @@ fn transactions_do_not_touch_the_library() {
     let _ = fs::remove_dir_all(&root);
 }
 
-/// Every library unit is proved: on its own, as a program of one unit.
-#[test]
-fn every_library_unit_is_proved() {
-    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../lib/std");
-    let mut n = 0;
-    for e in fs::read_dir(&dir).unwrap() {
-        let p = e.unwrap().path();
-        if p.extension().is_none_or(|x| x != "bmb") {
-            continue;
+/// What `tests/data/std_str_diff.bmb` prints for one line `s\tp`, by Rust's
+/// own `str` methods (the positions BMB returns where Rust returns slices).
+fn rust_str(s: &str, p: &str) -> String {
+    let opt = |r: Option<usize>| r.map_or("-".to_string(), |i| i.to_string());
+    let mut out = vec![
+        u8::from(s.starts_with(p)).to_string(),
+        u8::from(s.ends_with(p)).to_string(),
+        opt(s.find(p)),
+        opt(s.strip_prefix(p).map(|_| p.len())),
+        opt(s.strip_suffix(p).map(|r| r.len())),
+        (s.len() - s.trim_ascii_start().len()).to_string(),
+        s.trim_ascii_end().len().to_string(),
+    ];
+    for i in 0..=s.len() {
+        match s.get(i..).and_then(|t| t.chars().next()) {
+            Some(c) => {
+                out.push((c as u32).to_string());
+                out.push((i + c.len_utf8()).to_string());
+            }
+            None => out.push("-".to_string()),
         }
-        let text = fs::read_to_string(&p).unwrap();
-        let name = p.file_name().unwrap().to_string_lossy().into_owned();
-        let (ok, out) = cli::run(&["verify"], &[(name, text)]);
-        assert!(ok, "{}: {out}", p.display());
-        assert!(!out.contains("\"status\":\"failed\""), "{out}");
-        n += 1;
     }
-    assert!(n >= 1);
+    out.join("\n") + "\n"
+}
+
+/// `std::str` against Rust's `str` on random text (ADR-0092: each unit has
+/// a Rust differential test and a fuzzer target): ASCII letters and
+/// whitespace and characters of two, three and four bytes; patterns cut
+/// from the text (whole characters) or made the same way. The BMB program
+/// is fully proved (its slices at the tab and before the line feed too)
+/// and built once; `BMB_SOUND_ITERS` sets the lines (default 3,000).
+#[test]
+fn std_str_agrees_with_rust_str() {
+    let n: usize = std::env::var("BMB_SOUND_ITERS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .map_or(3000, |k: usize| k * 750);
+    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/std_str_diff.bmb");
+    let dir = cli::fresh_dir();
+    let exe = dir.join("diff");
+    let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
+        .arg("build")
+        .arg(&src)
+        .arg("-o")
+        .arg(&exe)
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    const PARTS: &[&str] = &[
+        "a", "b", "ab", " ", "\r", "\u{c}", "\u{b}", "é", "€", "😀", "ß", "x", "\u{7f}",
+    ];
+    let mut rng = common::scalar::Rng(0x9E37_79B9_7F4A_7C15);
+    let text = |rng: &mut common::scalar::Rng, len: usize| -> String {
+        (0..len).map(|_| PARTS[rng.below(PARTS.len())]).collect()
+    };
+    let mut input = String::new();
+    let mut expected = String::new();
+    for _ in 0..n {
+        let len = rng.below(9);
+        let s = text(&mut rng, len);
+        let p = if rng.chance(60) && !s.is_empty() {
+            // A run of whole characters of `s`.
+            let cuts: Vec<usize> = (0..=s.len()).filter(|&i| s.is_char_boundary(i)).collect();
+            let a = cuts[rng.below(cuts.len())];
+            let b = cuts[rng.below(cuts.len())];
+            s[a.min(b)..a.max(b)].to_string()
+        } else {
+            let len = rng.below(3);
+            text(&mut rng, len)
+        };
+        input.push_str(&format!("{s}\t{p}\n"));
+        expected.push_str(&rust_str(&s, &p));
+    }
+    let mut child = Command::new(&exe)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    {
+        use std::io::Write as _;
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(input.as_bytes())
+            .unwrap();
+    }
+    let run = child.wait_with_output().unwrap();
+    assert!(run.status.success());
+    let got = String::from_utf8(run.stdout).unwrap();
+    let _ = fs::remove_dir_all(&dir);
+    if got != expected {
+        let (g, e): (Vec<&str>, Vec<&str>) = (got.lines().collect(), expected.lines().collect());
+        let k = g
+            .iter()
+            .zip(&e)
+            .position(|(a, b)| a != b)
+            .unwrap_or(g.len().min(e.len()));
+        panic!(
+            "std::str differs from Rust's str at output line {k}: {:?} vs {:?}",
+            g.get(k),
+            e.get(k)
+        );
+    }
+}
+
+/// The hint of an unknown text method lists every function of `std::str`.
+#[test]
+fn the_text_method_hint_names_every_std_str_function() {
+    let lib = fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../lib/std/str.bmb"),
+    )
+    .unwrap();
+    let fns: Vec<&str> = lib
+        .lines()
+        .filter_map(|l| l.trim_start().strip_prefix("fn "))
+        .map(|l| &l[..l.find('(').unwrap()])
+        .filter(|f| *f != "ascii_space")
+        .collect();
+    assert!(fns.len() >= 8, "{fns:?}");
+    let prog = "#[summary(\"x\")]\nmod t {\n    #[effects(pure)]\n    fn f(s: &str) -> usize {\n        s.trim().len()\n    }\n}\n";
+    let (_, out) = cli::run(&["check"], &files(prog));
+    for f in fns {
+        assert!(out.contains(&format!("`{f}`")), "`{f}` missing: {out}");
+    }
 }

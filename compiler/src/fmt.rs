@@ -1183,6 +1183,7 @@ impl<'a> Printer<'a> {
             } if !args.is_empty() => {
                 let recv = match (&args[0].kind, adjust) {
                     (ExprKind::Ref { expr, .. }, Adjust::Ref | Adjust::RefMut) => &**expr,
+                    (ExprKind::Method { recv, .. }, Adjust::AsStr) => &**recv,
                     _ => &args[0],
                 };
                 let r = self.expr(recv, POSTFIX);

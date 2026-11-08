@@ -1,15 +1,112 @@
-#[summary("표준 라이브러리 단위를 경로로 부른다: 컴파일러가 이름 붙은 단위만 더한다 (ADR-0092 §1, backlog 4B-02)")]
+#[summary("표준 라이브러리 std::str: 접두·접미, 찾기, 떼기, ASCII 공백 다듬기, 글자 해독을 경로와 메서드 구문으로 부르고, 돌려받은 위치로 실행 검사 없이 조각낸다 (ADR-0092 §2, backlog 4B-02)")]
 mod uses_std {
     #[effects(io)]
+    fn yes(b: bool) -> () {
+        if b {
+            print_str("true\n");
+        } else {
+            print_str("false\n");
+        }
+    }
+
+    #[effects(io)]
+    fn at(r: Option<usize>) -> () {
+        match r {
+            None => print_str("none\n"),
+            Some(i) => print_u64(u64::try_from(i).unwrap()),
+        }
+    }
+
+    // The text between `s`'s leading and trailing ASCII whitespace: the
+    // two positions are character boundaries by their contracts.
+    #[effects(io)]
+    #[uses(std::str::end_trimmed, std::str::spaces, std::str::space, std::str::start_trimmed)]
+    fn trimmed(s: &str) -> () {
+        let a: usize = s.trim_ascii_start();
+        let b: usize = s.trim_ascii_end();
+        print_str("[");
+        if a < b {
+            print_str(&s[a..b]);
+        }
+        print_str("]\n");
+    }
+
+    // The rest of `s` after `p`, when `p` begins it.
+    #[effects(io)]
+    #[uses(std::str::begins, std::str::stripped)]
+    fn rest(s: &str, p: &str) -> () {
+        match s.strip_prefix(p) {
+            None => print_str("-\n"),
+            Some(i) => {
+                print_str(&s[i..s.len()]);
+                print_str("\n");
+            }
+        }
+    }
+
+    // The text before `p` at the end of `s`.
+    #[effects(io)]
+    #[uses(std::str::ends, std::str::stripped_end)]
+    fn head(s: &str, p: &str) -> () {
+        match std::str::strip_suffix(s, p) {
+            None => print_str("-\n"),
+            Some(i) => {
+                print_str(&s[0..i]);
+                print_str("\n");
+            }
+        }
+    }
+
+    // The characters of `s`, one scalar value a line, and their count.
+    #[effects(io)]
+    #[uses(std::str::decoded)]
+    fn chars(s: &str) -> () {
+        let mut i: usize = 0;
+        let mut n: u64 = 0;
+        while i < s.len() && n < 1000
+            decreases s.len() - i,
+        {
+            match s.decode_utf8(i) {
+                None => {
+                    i = s.len();
+                }
+                Some(d) => {
+                    print_u64(u64::try_from(u32::from(d.ch)).unwrap());
+                    if d.next > i {
+                        i = d.next;
+                    } else {
+                        i = s.len();
+                    }
+                    n = n + 1;
+                }
+            }
+        }
+        print_u64(n);
+    }
+
+    #[effects(alloc, io)]
     fn main() -> () {
-        if std::str::starts_with("hello", "he") {
-            print_str("starts\n");
-        }
-        if !std::str::starts_with("hello", "lo") {
-            print_str("not\n");
-        }
-        if std::str::starts_with("", "") {
-            print_str("empty\n");
-        }
+        yes(std::str::starts_with("hello", "he"));
+        yes("hello".starts_with("lo"));
+        yes(std::str::starts_with("", ""));
+        yes("hello".ends_with("llo"));
+        yes(std::str::ends_with("hello", "hel"));
+        at(std::str::find("hello world", "o"));
+        at("hello world".find("world"));
+        at("hello".find("xyz"));
+        at("abc".find(""));
+        let owned: String = String::from("  owned text \t");
+        trimmed(owned.as_str());
+        trimmed("\n\n");
+        trimmed("");
+        yes(owned.starts_with("  ow"));
+        at(owned.find("text"));
+        rest("key=value", "key=");
+        rest("key=value", "val");
+        rest("héllo", "h");
+        head("file.txt", ".txt");
+        head("file.txt", ".rs");
+        chars("aé€😀");
+        chars("");
     }
 }

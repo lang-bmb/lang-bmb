@@ -504,12 +504,15 @@ impl BinOp {
 }
 
 /// How a method call passes its receiver (ADR-0051): as written, or
-/// borrowed for a `self: &T` / `self: &mut T` receiver.
+/// borrowed for a `self: &T` / `self: &mut T` receiver, or a `String`'s
+/// text for a standard library text function taking `&str` (`s.as_str()`,
+/// ADR-0092 §2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Adjust {
     Value,
     Ref,
     RefMut,
+    AsStr,
 }
 
 #[derive(Debug, Clone)]

@@ -51,11 +51,54 @@ impl Rewrite for Named {
     }
 }
 
-/// The library units `p` names by path.
+/// The units whose functions are methods of a built-in type: `std::str`'s
+/// of text (`s.starts_with(p)`, ADR-0092 §2).
+const METHOD_UNITS: &[&str] = &["str"];
+
+/// The function names of library unit `u` (parsed once).
+fn fn_names(u: &str) -> &'static BTreeSet<String> {
+    static NAMES: std::sync::OnceLock<Vec<(&'static str, BTreeSet<String>)>> =
+        std::sync::OnceLock::new();
+    let all = NAMES.get_or_init(|| {
+        METHOD_UNITS
+            .iter()
+            .filter_map(|u| STD_UNITS.iter().find(|(n, _)| n == u))
+            .map(|(u, text)| {
+                let mut d = Diags::default();
+                let toks = crate::lexer::lex(0, text, &mut d);
+                let p = crate::parser::Parser::new(toks, &mut d, text).parse_program();
+                let names = p
+                    .mods
+                    .iter()
+                    .flat_map(|m| &m.fns)
+                    .map(|f| f.name.name.clone())
+                    .collect();
+                (*u, names)
+            })
+            .collect()
+    });
+    static EMPTY: BTreeSet<String> = BTreeSet::new();
+    all.iter().find(|(n, _)| *n == u).map_or(&EMPTY, |(_, s)| s)
+}
+
+/// The library units `p` names: by path, and by a method call named as a
+/// function of a unit of `METHOD_UNITS` (whatever the receiver: a unit
+/// added for nothing is checked and proved, no more).
 fn named(p: &Program) -> BTreeSet<&'static str> {
     let mut n = Named(BTreeSet::new());
     let mut q = p.clone();
     crate::refs::walk(&mut q, &mut n);
+    let mut methods = BTreeSet::new();
+    crate::ast::exprs_mut(&mut q, &mut |e| {
+        if let ExprKind::Method { name, .. } = &e.kind {
+            methods.insert(name.name.clone());
+        }
+    });
+    for u in METHOD_UNITS {
+        if fn_names(u).iter().any(|f| methods.contains(f)) {
+            n.0.insert(u);
+        }
+    }
     n.0
 }
 

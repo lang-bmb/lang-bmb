@@ -9,6 +9,10 @@
 
 use super::*;
 
+/// The text functions of the standard library, which are methods of text
+/// (ADR-0092 §2, `lib/std/str.bmb`).
+const STD_STR_METHODS: &str = "the text methods are the built-in `len`, `as_bytes`, `as_str`, `is_char_boundary`, `push`, `push_str`, `clone`, and `std::str`'s `starts_with`, `ends_with`, `find`, `strip_prefix`, `strip_suffix`, `trim_ascii_start`, `trim_ascii_end`, `decode_utf8`";
+
 /// Whether `t` is text: `String`, `str`, or a reference to one.
 pub fn is_text(t: &TypeKind) -> bool {
     match t {
@@ -123,7 +127,7 @@ pub fn str_slice_of(e: &Expr) -> Option<(&Expr, &Expr, &Expr)> {
 }
 
 impl Checker<'_> {
-    fn key_of(e: &Expr) -> (u32, u32, u32) {
+    pub(super) fn key_of(e: &Expr) -> (u32, u32, u32) {
         (e.span.file, e.span.lo, e.span.hi)
     }
 
@@ -404,11 +408,23 @@ impl Checker<'_> {
                             .into(),
                     ),
                     "is_empty" => Some("compare `s.len() == 0`".into()),
-                    "starts_with" | "ends_with" | "contains" | "find" | "split" | "trim"
-                    | "lines" | "parse" | "to_uppercase" | "to_lowercase" | "replace" => Some(
-                        "not built in; write it over the bytes (the standard library is 4B)".into(),
-                    ),
-                    _ => None,
+                    "trim" | "trim_start" | "trim_end" => Some(format!(
+                        "`std::str` trims ASCII whitespace and returns the position: `s.trim_ascii_start()`, `s.trim_ascii_end()`, then `&s[a..b]`; {}",
+                        STD_STR_METHODS
+                    )),
+                    "contains" => Some(format!(
+                        "`s.find(p)` is `Some` where `s` contains `p` (`std::str`); {}",
+                        STD_STR_METHODS
+                    )),
+                    "split_once" | "split" | "lines" => Some(format!(
+                        "find the separator with `s.find(p)` and slice at the position (`std::str`); {}",
+                        STD_STR_METHODS
+                    )),
+                    "parse" | "to_uppercase" | "to_lowercase" | "replace" => Some(format!(
+                        "not in the standard library yet: write it over the bytes; {}",
+                        STD_STR_METHODS
+                    )),
+                    _ => Some(STD_STR_METHODS.to_string()),
                 };
                 let mut d = Diag::new(
                     "E0404",

@@ -1,0 +1,86 @@
+#[summary("std::str 차등 시험: 표준 입력의 줄마다 `s\tp`를 읽어 모든 함수의 결과를 찍는다 (tests/stdlib.rs, backlog 4B-02)")]
+mod diff {
+    #[effects(io)]
+    fn opt(r: Option<usize>) -> () {
+        match r {
+            None => print_str("-\n"),
+            Some(i) => print_u64(u64::try_from(i).unwrap()),
+        }
+    }
+
+    #[effects(io)]
+    fn flag(b: bool) -> () {
+        if b {
+            print_str("1\n");
+        } else {
+            print_str("0\n");
+        }
+    }
+
+    // Every function of `std::str` on `s` and `p`, and the character at
+    // every byte of `s`.
+    #[effects(io)]
+    fn show(s: &str, p: &str) -> () {
+        flag(s.starts_with(p));
+        flag(s.ends_with(p));
+        opt(s.find(p));
+        opt(s.strip_prefix(p));
+        opt(s.strip_suffix(p));
+        print_u64(u64::try_from(s.trim_ascii_start()).unwrap());
+        print_u64(u64::try_from(s.trim_ascii_end()).unwrap());
+        let mut i: usize = 0;
+        while i <= s.len()
+            decreases s.len() + 1 - i,
+        {
+            match s.decode_utf8(i) {
+                None => print_str("-\n"),
+                Some(d) => {
+                    print_u64(u64::try_from(u32::from(d.ch)).unwrap());
+                    print_u64(u64::try_from(d.next).unwrap());
+                }
+            }
+            i = i + 1;
+        }
+    }
+
+    // A line `s\tp\n`: the two texts, cut at the tab and before the line
+    // feed (both ASCII, so both cuts are character boundaries).
+    #[effects(io)]
+    #[uses(std::bytes::found, std::bytes::at, std::str::found, std::str::ends, std::str::ended)]
+    fn one(line: &str) -> () {
+        if !line.ends_with("\n") {
+            return;
+        }
+        match line.find("\t") {
+            None => {}
+            Some(t) => {
+                if t < line.len() - 1 {
+                    show(&line[0..t], &line[t + 1..line.len() - 1]);
+                }
+            }
+        }
+    }
+
+    #[effects(alloc, io, nondet)]
+    fn main() -> () {
+        let mut n: u64 = 0;
+        while n < 1000000
+            decreases 1000000 - n,
+        {
+            let mut line: String = String::new();
+            match std::io::read_line(&mut line) {
+                Ok(k) => {
+                    if k == 0 {
+                        n = 1000000;
+                    } else {
+                        one(line.as_str());
+                        n = n + 1;
+                    }
+                }
+                Err(e) => {
+                    n = 1000000;
+                }
+            }
+        }
+    }
+}

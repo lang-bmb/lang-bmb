@@ -102,17 +102,29 @@ mod bytes {
         i + p.len() <= s.len() && n <= p.len() && forall|k: usize| k < n ==> #[trigger] p[k] == s[i + k]
     }
 
+    // No occurrence of `p` starts before `i`.
+    spec fn none_before(s: &[u8], p: &[u8], i: usize) -> bool {
+        forall|k: usize| k < i ==> !#[trigger] at(s, p, k, p.len())
+    }
+
+    // `p` occurs nowhere in `s`.
+    spec fn nowhere(s: &[u8], p: &[u8]) -> bool {
+        p.len() > s.len() || none_before(s, p, s.len() - p.len() + 1)
+    }
+
+    // `r` is the first position of `p` in `s`, or none when there is none
+    // (Rust's `find`).
     spec fn found(r: Option<usize>, s: &[u8], p: &[u8]) -> bool {
         match r {
-            None => true,
-            Some(i) => at(s, p, i, p.len()),
+            None => nowhere(s, p),
+            Some(i) => at(s, p, i, p.len()) && none_before(s, p, i),
         }
     }
 
-    // The first position of `p` in `s`, scanning from the start. `Some(i)` is
-    // proved to be an occurrence; `None` is not proved to mean there is none.
+    // The first position of `p` in `s`, scanning from the start: exactly
+    // Rust's `find` (an empty `p` is at 0).
     #[effects(pure)]
-    #[uses(at, found)]
+    #[uses(at, found, none_before, nowhere)]
     fn find(s: &[u8], p: &[u8]) -> (r: Option<usize>)
         ensures found(r, s, p),
     {
@@ -123,13 +135,16 @@ mod bytes {
             let mut i: usize = 0;
             let mut hit: bool = false;
             while i <= last && !hit
-                invariant i <= last + 1, last + p.len() == s.len(), hit ==> (0 < i && at(s, p, i - 1, p.len())),
+                invariant i <= last + 1, last + p.len() == s.len(),
+                    hit ==> (0 < i && at(s, p, i - 1, p.len()) && none_before(s, p, i - 1)),
+                    !hit ==> none_before(s, p, i),
                 decreases last + 1 - i,
             {
                 let mut j: usize = 0;
                 let mut ok: bool = true;
                 while j < p.len() && ok
                     invariant j <= p.len(), i <= last, last + p.len() == s.len(), ok ==> at(s, p, i, j),
+                        !ok ==> !at(s, p, i, p.len()),
                     decreases p.len() - j,
                 {
                     if s[i + j] != p[j] {
