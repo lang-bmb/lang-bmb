@@ -8204,7 +8204,8 @@ fn verify_pass(
                 continue;
             };
             let total_before = rlimit_total;
-            let mut first_used = 0;
+            // The largest single run of this obligation (`rlimit_max`).
+            let mut ob_max = 0;
             // The retries that ran (`cache::EARLY_RETRY`, `cache::LATE_RETRY`).
             let mut stages = 0u8;
             let mut proved_abstract = None;
@@ -8219,7 +8220,7 @@ fn verify_pass(
                 {
                     rlimit_total += used;
                     rlimit_max = rlimit_max.max(used);
-                    first_used = used;
+                    ob_max = ob_max.max(used);
                 }
                 if matches!(a, Ok(Answer::Unsat)) {
                     proved_abstract = Some(a);
@@ -8242,7 +8243,7 @@ fn verify_pass(
                 {
                     rlimit_total += used;
                     rlimit_max = rlimit_max.max(used);
-                    first_used = used;
+                    ob_max = ob_max.max(used);
                 }
                 if matches!(a, Ok(Answer::Unsat | Answer::Sat)) {
                     answered = format!("{pb}\n{q}");
@@ -8296,7 +8297,7 @@ fn verify_pass(
                     {
                         rlimit_total += used;
                         rlimit_max = rlimit_max.max(used);
-                        first_used = used;
+                        ob_max = ob_max.max(used);
                     }
                     answer
                 }
@@ -8342,7 +8343,7 @@ fn verify_pass(
                 proved_keys.insert(key);
                 def_proved.push(key);
                 if let (Some(c), Some(ck)) = (cache.as_mut(), cache_key) {
-                    c.insert(ck, rlimit_total - total_before, first_used, stages);
+                    c.insert(ck, rlimit_total - total_before, ob_max, stages);
                 }
             } else {
                 failed_keys.insert(key);
