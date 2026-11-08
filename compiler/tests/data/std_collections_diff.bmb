@@ -1,0 +1,102 @@
+#[summary("std::collections 차등 시험: 표준 입력의 줄마다 연산(`i k v` 넣기, `r k` 빼기, `g k` 찾기)을 BTreeMap<u64, u64>와 BTreeSet<u64>에 하고 결과와 끝의 내용을 순서대로 찍는다 (tests/stdlib.rs, backlog 4B-02)")]
+mod diff {
+    // The numbers of a line after its first byte, between spaces.
+    #[effects(alloc)]
+    #[uses(few)]
+    fn numbers(t: &[u8]) -> (r: Vec<u64>)
+        ensures few(r.as_slice()),
+    {
+        let mut v: Vec<u64> = Vec::new();
+        let mut a: usize = 1;
+        while a < t.len() && v.len() < 4
+            invariant v.len() <= 4,
+            decreases t.len() - a,
+        {
+            let mut b: usize = a;
+            while b < t.len() && t[b] != b' ' && t[b] != b'\n'
+                invariant a <= b, b <= t.len(),
+                decreases t.len() - b,
+            {
+                b = b + 1;
+            }
+            match std::num::parse_u64_bytes(&t[a..b]) {
+                None => {}
+                Some(k) => v.push(k),
+            }
+            a = b + 1;
+        }
+        v
+    }
+
+    spec fn few(v: &[u64]) -> bool {
+        v.len() <= 4
+    }
+
+    spec fn rooms(m: &std::collections::BTreeMap<u64, u64>, s: &std::collections::BTreeSet<u64>) -> bool {
+        m.keys.len() < 1000000 && s.keys.len() < 1000000
+    }
+
+    #[effects(io)]
+    fn opt(r: Option<u64>) -> () {
+        match r {
+            None => print_str("-\n"),
+            Some(v) => print_u64(v),
+        }
+    }
+
+    #[effects(io)]
+    fn flag(b: bool) -> () {
+        if b {
+            print_str("1\n");
+        } else {
+            print_str("0\n");
+        }
+    }
+
+    #[effects(alloc, io, nondet)]
+    #[uses(few, rooms, std::collections::at_pos, std::collections::empty_map, std::collections::empty_set, std::collections::key_pos, std::collections::map_grew, std::collections::map_room, std::collections::map_shrank, std::collections::map_size, std::collections::room_set, std::collections::set_grew, std::collections::set_shrank, std::collections::set_size)]
+    fn main() -> () {
+        let mut m: std::collections::BTreeMap<u64, u64> = std::collections::BTreeMap::<u64, u64>::new();
+        let mut s: std::collections::BTreeSet<u64> = std::collections::BTreeSet::<u64>::new();
+        let mut n: u64 = 0;
+        while n < 100000
+            invariant rooms(&m, &s), n <= 100000,
+            decreases 100000 - n,
+        {
+            let mut line: String = String::new();
+            match std::io::read_line(&mut line) {
+                Ok(k) => {
+                    if k == 0 {
+                        n = 100000;
+                    } else {
+                        let v: Vec<u64> = numbers(line.as_bytes());
+                        if line.len() > 0 && v.len() > 0 {
+                            let op: u8 = line.as_bytes()[0];
+                            if op == b'i' && v.len() > 1 && m.len() + 1 < 1000000 && s.len() + 1 < 1000000 {
+                                opt(m.insert(v[0], v[1]));
+                                flag(s.insert(v[0]));
+                            } else if op == b'r' {
+                                opt(m.remove(v[0]));
+                                flag(s.remove(v[0]));
+                            } else if op == b'g' {
+                                opt(m.get(v[0]));
+                                flag(s.contains(v[0]));
+                            }
+                        }
+                        n = n + 1;
+                    }
+                }
+                Err(e) => {
+                    n = 100000;
+                }
+            }
+        }
+        for i in 0..m.len() {
+            print_u64(m.key_at(i));
+            print_u64(m.value_at(i));
+        }
+        for j in 0..s.len() {
+            print_u64(s.at(j));
+        }
+    }
+}

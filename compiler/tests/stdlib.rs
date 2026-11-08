@@ -496,3 +496,98 @@ fn std_slice_agrees_with_rust() {
         );
     }
 }
+
+/// `std::collections` against Rust's `BTreeMap` and `BTreeSet`: random
+/// inserts (new keys and replaced values), removes and lookups over a small
+/// key range, so keys repeat, then the contents in order. The BMB program
+/// (`tests/data/std_collections_diff.bmb`) is fully proved. `BMB_SOUND_ITERS`
+/// sets the operations (default 2,000).
+#[test]
+fn std_collections_agree_with_rust() {
+    use std::collections::{BTreeMap, BTreeSet};
+    let n: usize = std::env::var("BMB_SOUND_ITERS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .map_or(2000, |k: usize| k * 500);
+    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/data/std_collections_diff.bmb");
+    let dir = cli::fresh_dir();
+    let exe = dir.join("diff");
+    let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
+        .arg("build")
+        .arg(&src)
+        .arg("-o")
+        .arg(&exe)
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    let mut rng = common::scalar::Rng(0x5DEE_CE66_D1B5_4A32);
+    let mut m: BTreeMap<u64, u64> = BTreeMap::new();
+    let mut s: BTreeSet<u64> = BTreeSet::new();
+    let mut input = String::new();
+    let mut expected = String::new();
+    let opt = |r: Option<u64>| r.map_or("-\n".to_string(), |v| format!("{v}\n"));
+    let flag = |b: bool| if b { "1\n" } else { "0\n" };
+    for _ in 0..n {
+        let k = rng.below(40) as u64;
+        match rng.below(10) {
+            0..=4 => {
+                let v = rng.next() % 1000;
+                input.push_str(&format!("i {k} {v}\n"));
+                expected.push_str(&opt(m.insert(k, v)));
+                expected.push_str(flag(s.insert(k)));
+            }
+            5..=7 => {
+                input.push_str(&format!("r {k}\n"));
+                expected.push_str(&opt(m.remove(&k)));
+                expected.push_str(flag(s.remove(&k)));
+            }
+            _ => {
+                input.push_str(&format!("g {k}\n"));
+                expected.push_str(&opt(m.get(&k).copied()));
+                expected.push_str(flag(s.contains(&k)));
+            }
+        }
+    }
+    for (k, v) in &m {
+        expected.push_str(&format!("{k}\n{v}\n"));
+    }
+    for k in &s {
+        expected.push_str(&format!("{k}\n"));
+    }
+    let mut child = Command::new(&exe)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    {
+        use std::io::Write as _;
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(input.as_bytes())
+            .unwrap();
+    }
+    let run = child.wait_with_output().unwrap();
+    assert!(run.status.success());
+    let got = String::from_utf8(run.stdout).unwrap();
+    let _ = fs::remove_dir_all(&dir);
+    if got != expected {
+        let (g, e): (Vec<&str>, Vec<&str>) = (got.lines().collect(), expected.lines().collect());
+        let k = g
+            .iter()
+            .zip(&e)
+            .position(|(a, b)| a != b)
+            .unwrap_or(g.len().min(e.len()));
+        panic!(
+            "std::collections differs from Rust at output line {k}: {:?} vs {:?}",
+            g.get(k),
+            e.get(k)
+        );
+    }
+}
