@@ -5,12 +5,12 @@
     "V4_rlimit_total": 13721465,
     "V5_rlimit_headroom": 0.1244,
     "V6_deterministic_verify": true,
-    "V7_unstable_queries": 0.0004,
+    "V7_unstable_queries": 0.0002,
     "V8_bench_rlimit_total": 22810907,
     "V9_bench_defs_at_limit": 0,
-    "V10_library_rlimit_total": 27006531,
-    "V11_sat_check_rlimit_total": 217370256,
-    "V12_sat_check_undecided": 204,
+    "V10_library_rlimit_total": 24512277,
+    "V11_sat_check_rlimit_total": 257907934,
+    "V12_sat_check_undecided": 208,
     "S1_external_crates": 0,
     "S2_external_processes": [
       "clang",
@@ -21,7 +21,7 @@
     "S5_tests_bound_to_rust_api": 1,
     "S6_selfhost_bmb_lines": 0,
     "P1_runnable_programs": 73,
-    "P2_bmb_lines": 28902,
+    "P2_bmb_lines": 28972,
     "P3_errors_with_help": 0.9118,
     "B1_baseline_binary_bytes": 101664,
     "O1_adr_index_mismatch": 0,
@@ -2322,6 +2322,32 @@
         "P2_bmb_lines": [
           27784,
           28902
+        ]
+      }
+    },
+    {
+      "date": "2026-11-08",
+      "reason": "std::json parse through an opaque state predicate: V7 json::parse obligations no longer unstable, V10 down",
+      "changed": {
+        "V7_unstable_queries": [
+          0.0004,
+          0.0002
+        ],
+        "V10_library_rlimit_total": [
+          27006531,
+          24512277
+        ],
+        "V11_sat_check_rlimit_total": [
+          217370256,
+          257907934
+        ],
+        "V12_sat_check_undecided": [
+          204,
+          208
+        ],
+        "P2_bmb_lines": [
+          28902,
+          28972
         ]
       }
     }
