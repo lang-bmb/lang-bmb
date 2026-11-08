@@ -1,0 +1,71 @@
+#[summary("타입 매개변수의 Vec: Vec<T>를 담는 제네릭 구조체와 함수, 복사 T와 이동 T(String)의 인스턴스와 해제 (backlog 2T-10)")]
+mod gv {
+    struct Bag<T> { items: Vec<T>, name: u64 }
+
+    spec fn fresh<T>(b: &Bag<T>, name: u64) -> bool {
+        b.items.len() == 0 && b.name == name
+    }
+
+    spec fn one_more<T>(b: &Bag<T>, c: &Bag<T>) -> bool {
+        b.items.len() == c.items.len() + 1 && b.name == c.name
+    }
+
+    #[effects(alloc)]
+    #[uses(fresh)]
+    fn bag<T>(name: u64) -> (r: Bag<T>)
+        ensures fresh::<T>(&r, name),
+    {
+        let v: Vec<T> = Vec::new();
+        Bag { items: v, name: name }
+    }
+
+    spec fn small<T>(b: &Bag<T>) -> bool {
+        b.items.len() < 1000
+    }
+
+    #[effects(alloc)]
+    #[uses(one_more, small)]
+    fn add<T>(b: &mut Bag<T>, x: T) -> ()
+        requires small::<T>(b),
+        ensures one_more::<T>(b, old(b)),
+    {
+        b.items.push(x);
+    }
+
+    #[effects(pure)]
+    fn count<T>(b: &Bag<T>) -> usize {
+        b.items.len()
+    }
+
+    // The largest of the copyable items, or `none`.
+    #[effects(pure)]
+    fn largest<T: Copy + Ord>(v: &[T], none: T) -> T {
+        let mut best: T = none;
+        for i in 0..v.len() {
+            if v[i] > best {
+                best = v[i];
+            }
+        }
+        best
+    }
+
+    #[effects(alloc, io)]
+    #[uses(fresh, one_more, small)]
+    fn main() -> () {
+        let mut a: Bag<u64> = bag::<u64>(1);
+        add::<u64>(&mut a, 5);
+        add::<u64>(&mut a, 9);
+        add::<u64>(&mut a, 2);
+        print_u64(u64::try_from(count::<u64>(&a)).unwrap());
+        print_u64(largest::<u64>(a.items.as_slice(), 0));
+        let mut s: Bag<String> = bag::<String>(2);
+        add::<String>(&mut s, String::from("one"));
+        add::<String>(&mut s, String::from("two"));
+        print_u64(u64::try_from(count::<String>(&s)).unwrap());
+        if s.items.len() > 1 {
+            print_str(s.items[1].as_str());
+            print_str("\n");
+        }
+        print_u64(s.name + a.name);
+    }
+}

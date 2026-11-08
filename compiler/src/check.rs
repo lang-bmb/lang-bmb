@@ -873,6 +873,9 @@ pub struct Checker<'a> {
     self_head: Option<(TypeKind, String)>,
     /// The type parameters in scope where types are resolved.
     tparams: Vec<TParam>,
+    /// The type parameters (by their span) that their definition uses as a
+    /// `Vec` element: bound `elem` (backlog 2T-10, `elem_params`).
+    elem_params: BTreeSet<(u32, u32, u32)>,
     /// Calls of generic functions: caller, callee, span, type arguments
     /// (E0430 needs the recursive ones).
     gcalls: Vec<(String, String, Span, Vec<TypeKind>)>,
@@ -1770,6 +1773,7 @@ impl<'a> Checker<'a> {
             trait_impls: Vec::new(),
             self_head: None,
             tparams: Vec::new(),
+            elem_params: BTreeSet::new(),
             gcalls: Vec::new(),
             owned_ready: false,
             effect_needs: BTreeMap::new(),
@@ -1862,6 +1866,7 @@ impl<'a> Checker<'a> {
     }
 
     pub fn check_program(&mut self, p: &Program) {
+        self.elem_params = elem_params(p);
         // Pass 1: collect signatures.
         let mut seen = BTreeMap::new();
         for m in &p.mods {
@@ -2216,8 +2221,9 @@ impl<'a> Checker<'a> {
             let want_ret = subst(&tsig.ret, &m);
             let same_bounds = town.len() == iown.len()
                 && town.iter().zip(iown).all(|(a, b)| {
-                    let x: BTreeSet<&String> = a.bounds.iter().collect();
-                    let y: BTreeSet<&String> = b.bounds.iter().collect();
+                    // `elem` follows from each body's own `Vec`s.
+                    let x: BTreeSet<&String> = a.bounds.iter().filter(|b| *b != ELEM).collect();
+                    let y: BTreeSet<&String> = b.bounds.iter().filter(|b| *b != ELEM).collect();
                     x == y
                 });
             let error = |t: &TypeKind| *t == TypeKind::Error;
@@ -2615,6 +2621,13 @@ impl<'a> Checker<'a> {
                     .fix("give each type parameter its own name", None),
                 );
             }
+            // `Vec<T>` in its definition: `T` must be a `Vec` element.
+            if self
+                .elem_params
+                .contains(&(g.span.file, g.span.lo, g.span.hi))
+            {
+                bounds.push(ELEM.to_string());
+            }
             out.push(TParam {
                 name: g.name.name.clone(),
                 bounds,
@@ -2793,6 +2806,26 @@ impl<'a> Checker<'a> {
                     };
                     self.diags
                         .push(Diag::new("E0428", span, what).fix(help, None));
+                }
+                false
+            }
+            _ if p.bounds.iter().any(|b| b == ELEM) && !self.vec_elem_ok(t) => {
+                if report {
+                    self.diags.push(
+                        Diag::new(
+                            "E0428",
+                            span,
+                            format!(
+                                "`{}` cannot be a `Vec` element, which `{}` is in `{of}`",
+                                ty_str(t),
+                                p.name
+                            ),
+                        )
+                        .fix(
+                            "pass a scalar, a struct or enum without arrays, a `String`, or a `Vec` or `Box` of them (backlog 2O-03b)",
+                            None,
+                        ),
+                    );
                 }
                 false
             }
@@ -3448,6 +3481,9 @@ impl<'a> Checker<'a> {
             TypeKind::Vec(inner) | TypeKind::Box(inner) => self.vec_elem_ok(&inner.kind),
             // A `String` is a `Vec<u8>` (ADR-0050 §4).
             TypeKind::String => true,
+            // Its definition gives it the bound `elem`, which every
+            // instantiation checks (backlog 2T-10).
+            TypeKind::Param(_) => true,
             other => is_scalar(other),
         }
     }
@@ -11022,6 +11058,99 @@ fn option_of(t: TypeKind) -> TypeKind {
             span: Span::default(),
         }],
     }
+}
+
+/// The implicit bound of a type parameter used as a `Vec` element.
+const ELEM: &str = "elem";
+
+/// The type parameters `p`'s definitions use as a `Vec` element, by span
+/// (backlog 2T-10): a struct's or enum's in its fields, a function's in its
+/// signature, `let`s and type arguments, an `impl`'s in any of its
+/// functions or its head.
+fn elem_params(p: &Program) -> BTreeSet<(u32, u32, u32)> {
+    fn names(t: &Type, out: &mut BTreeSet<String>) {
+        match &t.kind {
+            TypeKind::Vec(e) => {
+                if let TypeKind::Named { path, args } = &e.kind
+                    && path.len() == 1
+                    && args.is_empty()
+                {
+                    out.insert(path[0].clone());
+                }
+                names(e, out);
+            }
+            TypeKind::Named { path, args } => {
+                if path.len() == 1
+                    && path[0] == "Vec"
+                    && args.len() == 1
+                    && let TypeKind::Named { path: q, args: a } = &args[0].kind
+                    && q.len() == 1
+                    && a.is_empty()
+                {
+                    out.insert(q[0].clone());
+                }
+                args.iter().for_each(|a| names(a, out));
+            }
+            TypeKind::Array(e, _) | TypeKind::Slice(e) | TypeKind::Box(e) => names(e, out),
+            TypeKind::Ref { inner, .. } => names(inner, out),
+            _ => {}
+        }
+    }
+    fn mark(gs: &[TypeParam], used: &BTreeSet<String>, out: &mut BTreeSet<(u32, u32, u32)>) {
+        for g in gs {
+            if used.contains(&g.name.name) {
+                out.insert((g.span.file, g.span.lo, g.span.hi));
+            }
+        }
+    }
+    fn of_fns<'a>(
+        fs: impl Iterator<Item = &'a FnDef>,
+        out: &mut BTreeSet<(u32, u32, u32)>,
+    ) -> BTreeSet<String> {
+        let mut all = BTreeSet::new();
+        for f in fs {
+            let mut used = BTreeSet::new();
+            for t in crate::ast::fn_types(f) {
+                names(&t, &mut used);
+            }
+            mark(&f.generics, &used, out);
+            all.extend(used);
+        }
+        all
+    }
+    fn module(m: &Mod, out: &mut BTreeSet<(u32, u32, u32)>) {
+        for s in &m.mods {
+            module(s, out);
+        }
+        for t in &m.types {
+            let mut used = BTreeSet::new();
+            match &t.kind {
+                TypeDefKind::Struct(fs) => fs.iter().for_each(|f| names(&f.ty, &mut used)),
+                TypeDefKind::Enum(vs) => vs
+                    .iter()
+                    .for_each(|v| v.payload.iter().for_each(|t| names(t, &mut used))),
+            }
+            mark(&t.generics, &used, out);
+        }
+        of_fns(m.fns.iter(), out);
+        for t in &m.traits {
+            of_fns(t.fns.iter().map(|t| &t.f), out);
+        }
+        for i in &m.impls {
+            let used = of_fns(i.fns.iter(), out);
+            mark(&i.generics, &used, out);
+        }
+        for i in &m.trait_impls {
+            let mut used = of_fns(i.fns.iter(), out);
+            names(&i.self_ty, &mut used);
+            mark(&i.generics, &used, out);
+        }
+    }
+    let mut out = BTreeSet::new();
+    for m in &p.mods {
+        module(m, &mut out);
+    }
+    out
 }
 
 /// The parameters of `ps` without a `Copy` bound.

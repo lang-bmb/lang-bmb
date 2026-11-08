@@ -759,6 +759,39 @@ pub fn fns_mut(m: &mut Mod) -> impl Iterator<Item = &mut FnDef> {
         .chain(m.trait_impls.iter_mut().flat_map(|i| &mut i.fns))
 }
 
+/// Every type written in function `d`: its parameters, its result, every
+/// `let` annotation at any depth, and the type arguments of its calls.
+pub fn fn_types(d: &FnDef) -> Vec<Type> {
+    fn stmts(b: &Block, out: &mut Vec<Type>) {
+        for s in &b.stmts {
+            match s {
+                Stmt::Let { ty, .. } => out.push(ty.clone()),
+                Stmt::While { body, .. } | Stmt::For { body, .. } | Stmt::Proof { body, .. } => {
+                    stmts(body, out)
+                }
+                _ => {}
+            }
+        }
+    }
+    let mut out: Vec<Type> = d.params.iter().map(|p| p.ty.clone()).collect();
+    out.push(d.ret.ty.clone());
+    stmts(&d.body, &mut out);
+    let mut inner: Vec<Type> = Vec::new();
+    let mut c = d.clone();
+    fn_exprs_mut(&mut c, &mut |e| match &e.kind {
+        ExprKind::Block(b) | ExprKind::Loop { body: b, .. } => stmts(b, &mut inner),
+        ExprKind::If { then, .. } => stmts(then, &mut inner),
+        ExprKind::Call { targs, .. } => {
+            for t in targs {
+                inner.extend(t.args.iter().cloned());
+            }
+        }
+        _ => {}
+    });
+    out.extend(inner);
+    out
+}
+
 /// As `exprs_mut`, for one function: its contract, measure and body.
 pub fn fn_exprs_mut(d: &mut FnDef, f: &mut dyn FnMut(&mut Expr)) {
     d.requires.iter_mut().for_each(|e| expr_mut(e, f));

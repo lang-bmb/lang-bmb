@@ -1,0 +1,17 @@
+#[summary("Vec의 원소인 타입 매개변수: 인스턴스마다 타입 인자가 Vec의 원소여야 한다 (backlog 2T-10)")]
+mod ve {
+    struct Bag<T: Copy> { items: Vec<T> }
+
+    #[effects(alloc)]
+    fn make<T: Copy>(x: T) -> Bag<T> {
+        let mut v: Vec<T> = Vec::new();
+        v.push(x);
+        Bag { items: v }
+    }
+
+    #[effects(alloc)]
+    fn use_it() -> () {
+        let b: Bag<i64> = make::<i64>(3);
+        let c: Bag<[i64; 2]> = make::<[i64; 2]>([1, 2]);
+    }
+}
