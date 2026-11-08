@@ -246,6 +246,26 @@ mod json {
         }
     }
 
+    spec fn add_pre(v: &[Node], start: usize, end: usize) -> bool {
+        start < end && end < 1152921504606846975 && v.len() < 1152921504606846975 && nodes_in(v, v.len(), start)
+    }
+
+    spec fn add_post(v: &[Node], w: &[Node], end: usize) -> bool {
+        v.len() == w.len() + 1 && nodes_in(v, v.len(), end)
+    }
+
+    // Adds a node of `kind` over `start..end` with nothing in it: its
+    // `next` is the node after it.
+    #[effects(alloc)]
+    #[uses(add_post, add_pre, nodes_in)]
+    fn add(v: &mut Vec<Node>, kind: u8, start: usize, end: usize) -> ()
+        requires add_pre(v.as_slice(), start, end),
+        ensures add_post(v.as_slice(), old(v).as_slice(), end),
+    {
+        let k: usize = v.len();
+        v.push(Node { kind: kind, start: start, end: end, next: k + 1 });
+    }
+
     spec fn close_pre(v: &[Node], open: &[usize], i: usize) -> bool {
         i < 1152921504606846975 && nodes_in(v, v.len(), i) && opens(open, v.len())
     }
@@ -285,7 +305,7 @@ mod json {
     // between whitespace), none when it is not. The open arrays and objects
     // are a stack, so the depth is not the machine's.
     #[effects(alloc)]
-    #[uses(at, close_post, close_pre, doc_sound, ended, moved_on, nodes_in, not_longer, opens, parsed, room, same_len, short, upto)]
+    #[uses(add_post, add_pre, at, close_post, close_pre, doc_sound, ended, moved_on, nodes_in, not_longer, opens, parsed, room, same_len, short, upto)]
     fn parse(t: &[u8]) -> (r: Option<Doc>)
         requires short(t),
         ensures parsed(&r, t),
@@ -316,7 +336,7 @@ mod json {
                     } else {
                         6
                     };
-                    nodes.push(Node { kind: kind, start: i, end: i + 1, next: k + 1 });
+                    add(&mut nodes, kind, i, i + 1);
                     open.push(k);
                     state = if b == b'[' {
                         1
@@ -330,8 +350,7 @@ mod json {
                             return None;
                         }
                         Some(e) => {
-                            let ks: usize = nodes.len();
-                            nodes.push(Node { kind: scalar_kind(t[i]), start: i, end: e, next: ks + 1 });
+                            add(&mut nodes, scalar_kind(t[i]), i, e);
                             state = 5;
                             i = skip_ws(t, e);
                         }
@@ -350,8 +369,7 @@ mod json {
                             return None;
                         }
                         Some(f) => {
-                            let kk: usize = nodes.len();
-                            nodes.push(Node { kind: 4, start: i, end: f, next: kk + 1 });
+                            add(&mut nodes, 4, i, f);
                             state = 4;
                             i = skip_ws(t, f);
                         }
