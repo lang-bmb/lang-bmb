@@ -237,7 +237,7 @@ fn counterexamples_name_the_lost_promise() {
     );
     let (_, out) = case("opaque");
     assert!(
-        rows(&out)["m::inc"].contains("\"opaque\":[\"m::nonneg\"]"),
+        rows(&out)["m::inc"].contains("\"opaque\":[\"m::nonneg\",\"m::nonzero\"]"),
         "{out}"
     );
 }
@@ -385,22 +385,45 @@ fn a_refinement_is_judged_with_the_readers_reveal_set() {
     let lines: Vec<&str> = out.lines().filter(|l| l.contains("\"verdict\":")).collect();
     // (reader caller, verdict, revealed)
     let want: &[(Option<&str>, &str, &str)] = &[
-        (Some("c::dec_opaque"), "weakened", "[]"),
-        (Some("c::dec_pos"), "weakened", "[\"m::pos\"]"),
-        (Some("c::dec_both"), "compatible", "[\"m::gt0\",\"m::pos\"]"),
-        (Some("c::half_big"), "weakened", "[\"m::big\"]"),
+        // Every reader reveals what the compared contracts name, the
+        // wrappers `w_*` (its default context, ADR-0095 A1); what they wrap
+        // only by its `#[uses]`.
+        (
+            Some("c::dec_opaque"),
+            "weakened",
+            "[\"m::w_gt0\",\"m::w_pos\"]",
+        ),
+        (
+            Some("c::dec_pos"),
+            "weakened",
+            "[\"m::pos\",\"m::w_gt0\",\"m::w_pos\"]",
+        ),
+        (
+            Some("c::dec_both"),
+            "compatible",
+            "[\"m::gt0\",\"m::pos\",\"m::w_gt0\",\"m::w_pos\"]",
+        ),
+        (
+            Some("c::half_big"),
+            "weakened",
+            "[\"m::big\",\"m::w_big\",\"m::w_mid\"]",
+        ),
         (
             Some("c::half_both"),
             "compatible",
-            "[\"m::big\",\"m::mid\"]",
+            "[\"m::big\",\"m::mid\",\"m::w_big\",\"m::w_mid\"]",
         ),
-        (Some("c::third_opaque"), "compatible", "[]"),
+        (
+            Some("c::third_opaque"),
+            "compatible",
+            "[\"m::w_big\",\"m::w_pos\"]",
+        ),
         (None, "undecided", "[]"),
-        (None, "weakened", "[]"),
+        (None, "weakened", "[\"m::w_gt0\",\"m::w_pos\"]"),
         (
             Some("c::quarter_both"),
             "compatible",
-            "[\"m::gt0\",\"m::pos\"]",
+            "[\"m::gt0\",\"m::pos\",\"m::w_gt0\",\"m::w_pos\"]",
         ),
     ];
     assert_eq!(lines.len(), want.len(), "{out}");

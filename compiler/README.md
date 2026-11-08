@@ -18,7 +18,7 @@ cargo run -- uses a.bmb          # 증명되지 않는 정의마다 최소 #[use
 cargo run -- lint a.bmb          # 계약 조정 린트: 불가능한 pre, 증명에 쓰이지 않는 pre, 호출자가 쓰지 않는 post, 변이가 살아남는 약한 명세(경고 W09xx, 2D-08·2D-09). --cache DIR은 verify와 같은 캐시(2D-15). --select W0901,W0905는 그 검사만(T2-12)
 cargo run -- mutate --def u::f a.bmb  # W0904 변이 전부(상한 없음, 증명 안 함)를 프로그램으로: 행마다 바뀐 단위의 정규형(BSB 생성기용, 2A-10)
 cargo run -- weaken old/ new/    # 명세 약화 감지: 두 판(파일이나 작업 공간)의 계약을 SMT 함의로 비교, 정의마다 same·refined·weakened 등과 반례, 약화는 W0908(2D-19). 약화·미결이 있으면 종료 코드 1
-cargo run -- weaken --readers r.jsonl old/ new/  # 읽는 쪽의 비교: 줄마다 정의와 그 계약을 읽는 증명의 #[uses], 그 공개 집합으로만 정방향 판정(T1-27, ADR-0065 §3)
+cargo run -- weaken --readers r.jsonl old/ new/  # 읽는 쪽의 비교: 줄마다 정의와 그 계약을 읽는 증명의 #[uses], 그 공개 집합(과 두 계약이 부르는 spec fn: 읽는 쪽의 기본 문맥, ADR-0095 A1)으로만 정방향 판정(T1-27, ADR-0065 §3)
 cargo run -- reads a.bmb         # 정의마다 증명 키를 행으로(증명의 읽기 집합: 자기 텍스트, 피호출자 계약, 펼친 spec fn, 선언, 타입, T1-27)
 cargo run -- doctor              # 고정된 Z3·LLVM 버전 확인(scripts/toolchain.env)
 ../scripts/setup.sh              # 고정 버전 설치(새 클라우드 세션은 시작 훅이 자동 실행)

@@ -8,9 +8,12 @@ mod m {
 
     spec fn small(x: i64) -> bool { x < 100 }
 
-    // `pos` written as `nonneg` and `nonzero`, which the new version does
-    // not reveal (its proof does not need them): a caller that proves
-    // `pos(x)` cannot prove `nonneg(x)` without revealing it, so the
+    spec fn both(x: i64) -> bool { nonneg(x) && nonzero(x) }
+
+    // `pos` written as `both`, the conjunction of `nonneg` and `nonzero`,
+    // which the new version does not reveal (`both` is in its default
+    // context, ADR-0095 A1, its body's predicates are not): a caller that
+    // proves `pos(x)` cannot prove `both(x)` without revealing them, so the
     // comparison, which sees the spec fns as the proofs do, reports it.
     #[effects(pure)]
     #[uses(small, pos)]

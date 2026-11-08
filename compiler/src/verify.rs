@@ -7114,6 +7114,29 @@ pub fn default_contexts(p: &Program, t: &Tables) -> BTreeMap<String, BTreeSet<St
     out
 }
 
+/// The spec fns the `requires` and `ensures` of definition `path` name: what
+/// every caller's default context reveals of it (ADR-0095 A1).
+pub(crate) fn contract_specs(p: &Program, t: &Tables, path: &str) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    for (q, unit, f) in crate::check::defs_of(p, &t.fns) {
+        if q != path {
+            continue;
+        }
+        let mut g = f.clone();
+        for e in g.requires.iter_mut().chain(g.ensures.iter_mut()) {
+            crate::ast::expr_walk(e, &mut |x: &mut Expr| {
+                if let ExprKind::Call { path, .. } = &x.kind {
+                    let r = resolve_in(t, path, &unit);
+                    if t.fns.get(&r).is_some_and(|s| s.kind == FnKind::Spec) {
+                        out.insert(r);
+                    }
+                }
+            });
+        }
+    }
+    out
+}
+
 /// The spec fns definition `path` reveals: its default context (ADR-0095
 /// A1, `Tables::context`) and its `#[uses(..)]`.
 pub(crate) fn context_of(path: &str, f: &FnDef, mod_path: &str, t: &Tables) -> Vec<String> {

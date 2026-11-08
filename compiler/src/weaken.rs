@@ -1350,6 +1350,15 @@ fn compare(
                                     list.insert(q.clone());
                                 }
                             }
+                            // A reader's default context holds what the
+                            // compared contracts name (ADR-0095 A1).
+                            for side in [&a.n, oc] {
+                                list.extend(crate::verify::contract_specs(
+                                    &fc.program,
+                                    &fc.tables,
+                                    side,
+                                ));
+                            }
                             let seen = reached(&ic, &fc.tables, [&a.n, oc], &list);
                             let shown: BTreeSet<String> =
                                 seen.iter().map(|s| full(s, "")).collect();

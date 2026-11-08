@@ -8,22 +8,32 @@ mod m {
 
     spec fn mid(x: i64) -> bool { x > 5 }
 
-    // `pos(x)` becomes `gt0(x)`: the same for a proof that reveals both,
+    // The contracts name these (every caller reveals them, ADR-0095 A1);
+    // what they wrap is revealed only by a reader's `#[uses]`.
+    spec fn w_pos(x: i64) -> bool { pos(x) }
+
+    spec fn w_gt0(x: i64) -> bool { gt0(x) }
+
+    spec fn w_big(x: i64) -> bool { big(x) }
+
+    spec fn w_mid(x: i64) -> bool { mid(x) }
+
+    // `w_pos(x)` becomes `w_gt0(x)`: the same for a proof that reveals both,
     // which `dec` itself does. A caller that reveals `pos` alone, or
     // nothing, proved `pos(x)` and cannot prove `gt0(x)` from it.
     #[effects(pure)]
     #[uses(pos, gt0)]
     fn dec(x: i64) -> i64
-        requires gt0(x),
+        requires w_gt0(x),
     {
         x - 1
     }
 
-    // `big(x)` becomes `mid(x)`: weaker for a proof that reveals both.
+    // `w_big(x)` becomes `w_mid(x)`: weaker for a proof that reveals both.
     #[effects(pure)]
     #[uses(big, mid)]
     fn half(x: i64) -> i64
-        requires mid(x),
+        requires w_mid(x),
     {
         x / 2
     }
@@ -32,16 +42,16 @@ mod m {
     #[effects(pure)]
     #[uses(pos)]
     fn third(x: i64) -> i64
-        requires pos(x),
+        requires w_pos(x),
     {
         x / 3 + 1
     }
 
-    // `pos(x)` becomes `gt0(x)`, revealed by nobody: one `id` (the two
+    // `w_pos(x)` becomes `w_gt0(x)`, `pos` and `gt0` revealed by nobody: one `id` (the two
     // predicates have one body) but two symbols for every proof.
     #[effects(pure)]
     fn quarter(x: i64) -> i64
-        requires gt0(x),
+        requires w_gt0(x),
     {
         x / 4
     }
