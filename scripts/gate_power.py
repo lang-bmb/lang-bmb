@@ -594,6 +594,11 @@ MUTANTS = [
      '''            if let Some(sig) = self.fns.get(&fp).filter(|s| s.trait_of.is_none()).cloned() {''',
      '''            if let Some(sig) = self.fns.get(&fp).filter(|s| s.trait_of.is_none() && !self.trait_impls.iter().any(|i| i.matches(value).is_some() && self.traits.get(&i.trait_path).is_some_and(|t| t.methods.contains(&name.name)))).cloned() {''',
      "a method call names a trait's function where the type has its own of that name: the program runs another function than Rust's"),
+    # A `String` changes its length like a `Vec` (found in backlog 4B-02).
+    ("v-string-length-kept", "unsound", V,
+     '''        TypeKind::Named { path, .. } => path.len() == 1 && (path[0] == "Vec" || path[0] == "String"),''',
+     '''        TypeKind::Named { path, .. } => path.len() == 1 && path[0] == "Vec",''',
+     "a callee or a loop that grows a `String` leaves its old length to the proof: anything after it is proved"),
     # What UTF-8 holds before a boundary (backlog 2U-06).
     ("v-utf8-char-ends-before-ascii", "unsound", VT,
      '''    let ends = |m: i64| format!("(or (= (+ {k} {m}) {n}) (not {}))", cont(&at(m)));''',

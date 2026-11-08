@@ -1,0 +1,66 @@
+#[summary("String의 길이는 바뀐다: 키우는 피호출자와 루프 뒤의 길이를 옛 길이로 보지 않는다 (backlog 4B-02에서 발견한 건전성 결함)")]
+mod strlen {
+    #[effects(alloc)]
+    #[uses(grew, small)]
+    fn add(s: &mut String) -> ()
+        requires small(s.as_str()),
+        ensures grew(s.as_str(), old(s).as_str()),
+    {
+        s.push('a');
+    }
+
+    #[effects(alloc)]
+    #[uses(grew, never, small)]
+    fn caller() -> () {
+        let mut s: String = String::new();
+        add(&mut s);
+        assert(never(s.as_str()));
+    }
+
+    spec fn empty(t: &str) -> bool {
+        t.len() == 0
+    }
+
+    spec fn grew(t: &str, u: &str) -> bool {
+        t.len() == u.len() + 1
+    }
+
+    #[effects(alloc)]
+    #[uses(empty)]
+    fn looped() -> () {
+        let mut s: String = String::new();
+        let mut i: u64 = 0;
+        while i < 3
+            decreases 3 - i,
+        {
+            s.push('a');
+            i = i + 1;
+        }
+        assert(empty(s.as_str()));
+    }
+
+    spec fn never(t: &str) -> bool {
+        t.len() == 7 && t.len() == 8
+    }
+
+    #[effects(alloc)]
+    #[uses(empty)]
+    fn param(s: &mut String) -> ()
+        requires empty(s.as_str()),
+    {
+        let mut i: u64 = 0;
+        while i < 3
+            decreases 3 - i,
+        {
+            if s.len() < 10 {
+                s.push('a');
+            }
+            i = i + 1;
+        }
+        assert(empty(s.as_str()));
+    }
+
+    spec fn small(t: &str) -> bool {
+        t.len() < 100
+    }
+}

@@ -2074,6 +2074,18 @@ struct Prog<'p> {
     valid_memo: RefCell<BTreeMap<String, bool>>,
 }
 
+/// Whether a type as written is one whose length changes: a `Vec` or a
+/// `String` (both a byte or element array and a length to the encoder; a
+/// `String` was missed here, so a loop or a callee growing one kept its
+/// old length: backlog 4B-02).
+fn growable(t: &TypeKind) -> bool {
+    match t {
+        TypeKind::Named { path, .. } => path.len() == 1 && (path[0] == "Vec" || path[0] == "String"),
+        TypeKind::Vec(_) | TypeKind::String => true,
+        _ => false,
+    }
+}
+
 /// Symbolic state of one definition.
 struct Enc<'p, 'q> {
     prog: &'q Prog<'p>,
@@ -5446,14 +5458,13 @@ impl<'p, 'q> Enc<'p, 'q> {
         l
     }
 
-    /// Whether local or parameter `name` is a `Vec`, `&Vec` or `&mut Vec`
+    /// Whether local or parameter `name` is a `Vec` or a `String`, or a reference to one
     /// (the encoder's tables show them as slices; the program text does not).
     fn is_vec_local(&self, name: &str) -> bool {
         fn surface(t: &TypeKind) -> bool {
             match t {
-                TypeKind::Named { path, .. } => path.len() == 1 && path[0] == "Vec",
                 TypeKind::Ref { inner, .. } => surface(&inner.kind),
-                _ => false,
+                t => growable(t),
             }
         }
         let def = &self.prog.defs[&self.path];
@@ -6316,8 +6327,9 @@ impl<'p, 'q> Enc<'p, 'q> {
             {
                 let mut steps = Vec::new();
                 let root = self.place(&args[i], &mut steps, false);
-                let grows = matches!(&p.ty.kind, TypeKind::Ref { inner, .. }
-                    if matches!(&inner.kind, TypeKind::Named { path, .. } if path.len() == 1 && path[0] == "Vec"));
+                // A `&mut Vec<T>` or a `&mut String` may change its length
+                // (text is bytes here: `Tables::lowered`, backlog 4B-02).
+                let grows = matches!(&p.ty.kind, TypeKind::Ref { inner, .. } if growable(&inner.kind));
                 let e = elem_ty(&param_tys[i]);
                 let new_len = |s: &mut Self, len: &String| {
                     if !grows {
