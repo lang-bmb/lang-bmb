@@ -599,6 +599,15 @@ MUTANTS = [
      '''            path.len() == 1 && (path[0] == "Vec" || path[0] == "String")''',
      '''            path.len() == 1 && path[0] == "Vec"''',
      "a callee or a loop that grows a `String` leaves its old length to the proof: anything after it is proved"),
+    # A loop's `push_str` changes the receiver (found by the text fuzzer,
+    # backlog 1B-56).
+    ("k-push-str-keeps-receiver", "unsound", K,
+     '''    "copy_within",
+    "push_str",
+];''',
+     '''    "copy_within",
+];''',
+     "a loop that `push_str`s to a `String` keeps the length before it: an invariant of the length makes the code after the loop unreachable"),
     # What UTF-8 holds before a boundary (backlog 2U-06).
     ("v-utf8-char-ends-before-ascii", "unsound", VT,
      '''    let ends = |m: i64| format!("(or (= (+ {k} {m}) {n}) (not {}))", cont(&at(m)));''',

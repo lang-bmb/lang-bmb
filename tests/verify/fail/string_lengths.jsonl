@@ -1,8 +1,10 @@
 {"code":"E0810","severity":"error","message":"assertion may not hold in `strlen::caller`","file":"fail/string_lengths.bmb","line":17,"col":9,"end_line":17,"end_col":35}
-{"code":"E0816","severity":"error","message":"`push` may exceed the maximum length of a `String` in `strlen::looped`","file":"fail/string_lengths.bmb","line":36,"col":13,"end_line":36,"end_col":24}
-{"code":"E0810","severity":"error","message":"assertion may not hold in `strlen::looped`","file":"fail/string_lengths.bmb","line":39,"col":9,"end_line":39,"end_col":35}
-{"code":"E0810","severity":"error","message":"assertion may not hold in `strlen::param`; counterexample: s = [] (len 0)","file":"fail/string_lengths.bmb","line":60,"col":9,"end_line":60,"end_col":35}
+{"code":"E0816","severity":"error","message":"`push` may exceed the maximum length of a `String` in `strlen::looped`","file":"fail/string_lengths.bmb","line":40,"col":13,"end_line":40,"end_col":24}
+{"code":"E0810","severity":"error","message":"assertion may not hold in `strlen::looped`","file":"fail/string_lengths.bmb","line":43,"col":9,"end_line":43,"end_col":35}
+{"code":"E0810","severity":"error","message":"assertion may not hold in `strlen::param`; counterexample: s = [] (len 0)","file":"fail/string_lengths.bmb","line":64,"col":9,"end_line":64,"end_col":35}
+{"code":"E0810","severity":"error","message":"assertion may not hold in `strlen::pushed`","file":"fail/string_lengths.bmb","line":79,"col":9,"end_line":79,"end_col":35}
 {"def":"strlen::add","status":"verified","obligations":2,"failed":0,"rlimit":1851,"rlimit_max":1438}
 {"def":"strlen::caller","status":"failed","obligations":2,"failed":1,"rlimit":1425,"rlimit_max":1244}
 {"def":"strlen::looped","status":"failed","obligations":4,"failed":2,"rlimit":4912,"rlimit_max":1540}
 {"def":"strlen::param","status":"failed","obligations":4,"failed":1,"rlimit":5919,"rlimit_max":2231}
+{"def":"strlen::pushed","status":"failed","obligations":8,"failed":1,"rlimit":7214,"rlimit_max":1750}

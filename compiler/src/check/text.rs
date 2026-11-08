@@ -504,6 +504,7 @@ impl Checker<'_> {
             }
             _ => {}
         }
+        debug_assert!(!mutates || super::RECEIVER_MUT_METHODS.contains(&m), "{m}");
         if mutates && mode == Mode::Exec && !Self::writable(cx, recv) && *rt != TypeKind::Error {
             let fix = if matches!(rt, TypeKind::Ref { .. }) {
                 "take the parameter as `&mut String`"

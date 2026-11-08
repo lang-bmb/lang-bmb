@@ -6630,10 +6630,8 @@ fn assigned_in_expr(e: &Expr, out: &mut BTreeSet<String>) {
             assigned_in_expr(index, out);
         }
         ExprKind::Method { recv, name, args } => {
-            if matches!(
-                name.name.as_str(),
-                "push" | "pop" | "truncate" | "as_mut_slice" | "copy_within"
-            ) && let Some(r) = root_var(recv)
+            if crate::check::RECEIVER_MUT_METHODS.contains(&name.name.as_str())
+                && let Some(r) = root_var(recv)
             {
                 out.insert(r);
             }

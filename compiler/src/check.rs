@@ -132,6 +132,20 @@ fn receiver_adjust(
     Some(adjust)
 }
 
+/// The built-in methods that change their receiver: `Vec`'s `push`,
+/// `pop`, `truncate`, `as_mut_slice` and `copy_within`, and `String`'s
+/// `push` and `push_str`. The verifier havocs a receiver of one of them in a
+/// loop (backlog 1B-56: `push_str` was missing, so a loop's invariant over
+/// the length it grew was assumed of the length before the loop).
+pub const RECEIVER_MUT_METHODS: &[&str] = &[
+    "push",
+    "pop",
+    "truncate",
+    "as_mut_slice",
+    "copy_within",
+    "push_str",
+];
+
 /// Whether `m` is the name of a built-in method of some built-in type: a
 /// trait method of that name on a built-in type is called by path.
 fn builtin_method_name(m: &str) -> bool {
@@ -8976,6 +8990,7 @@ impl<'a> Checker<'a> {
             let at = self.expr(cx, a, Some(&want), mode);
             self.expect_ty(&at, &want, a.span);
         }
+        debug_assert!(!mutates || RECEIVER_MUT_METHODS.contains(&m), "{m}");
         if mutates && mode == Mode::Exec {
             let writable = Self::writable(cx, recv);
             if !writable && *rt != TypeKind::Error {

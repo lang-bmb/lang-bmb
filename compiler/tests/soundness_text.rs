@@ -7,7 +7,10 @@
 //! (the buffer the growth moves), `from_utf8` of random bytes (valid and
 //! not), slices `&s[a..b]` with and without a boundary guard, byte reads
 //! `s.as_bytes()[i]`, `is_char_boundary`, the comparisons with a literal,
-//! and the length. Bounds are `x`, `y`, constants or the length, so a slice
+//! and the length, loops that `push_str` a literal or call a function
+//! growing a `&mut String` (with an invariant of the length and without),
+//! and such calls on their own (with a postcondition of the length and
+//! without). Bounds are `x`, `y`, constants or the length, so a slice
 //! may be reversed, past the end or inside a character. As in the other
 //! fuzzers an independent interpreter (Rust's `String`) checks every claim:
 //!
@@ -73,6 +76,21 @@ enum Op {
     /// `from_utf8` of the bytes: appended when valid, else `acc + len`.
     Utf8(Vec<u8>),
     Clone,
+    /// `while i < b { s.push_str(LITS[j]) }` (or a call of `grow{j}` when
+    /// set), `b` being `y` or a constant, with the invariant of the length
+    /// when set (backlog 1B-56).
+    Loop {
+        bound: Idx,
+        j: usize,
+        call: bool,
+        inv: bool,
+    },
+    /// A call of `grow{j}(&mut s)` (with its postcondition of the length)
+    /// or `put{j}` (none): the callee pushes `LITS[j]` (backlog 1B-56).
+    Grow {
+        j: usize,
+        ensures: bool,
+    },
 }
 
 const CHARS: &[char] = &['a', 'é', '€', '😀', '\n', '"'];
@@ -142,7 +160,7 @@ fn gen_bytes(rng: &mut Rng) -> Vec<u8> {
 }
 
 fn gen_op(rng: &mut Rng, clones: &mut usize) -> Op {
-    match rng.below(12) {
+    match rng.below(15) {
         0 => Op::PushChar(CHARS[rng.below(CHARS.len())]),
         1 => Op::PushStr(LITS[rng.below(LITS.len())]),
         2 => Op::PushX,
@@ -156,6 +174,20 @@ fn gen_op(rng: &mut Rng, clones: &mut usize) -> Op {
         8 => Op::Boundary(gen_idx(rng)),
         9 => Op::Len,
         10 => Op::Utf8(gen_bytes(rng)),
+        11 | 12 => Op::Loop {
+            bound: if rng.chance(50) {
+                Idx::Y
+            } else {
+                Idx::K(rng.below(4))
+            },
+            j: 1 + rng.below(LITS.len() - 1),
+            call: rng.chance(40),
+            inv: rng.chance(50),
+        },
+        13 => Op::Grow {
+            j: 1 + rng.below(LITS.len() - 1),
+            ensures: rng.chance(50),
+        },
         _ if *clones == 0 => {
             *clones += 1;
             Op::Clone
@@ -237,7 +269,27 @@ const HELPERS: &str = "    spec fn is_len(r: usize, t: &str) -> bool {
         t.len()
     }
 
+    spec fn roomy(t: &str) -> bool {
+        t.len() < 1000000
+    }
+
 ";
+
+/// The callees that grow a `&mut String` by `LITS[j]`: `grow{j}` says by
+/// how much, `put{j}` does not (backlog 1B-56).
+fn growers() -> String {
+    let mut o = String::new();
+    for (j, t) in LITS.iter().enumerate().skip(1) {
+        let _ = write!(
+            o,
+            "    spec fn grew{j}(t: &str, u: &str) -> bool {{\n        t.len() == u.len() + {}\n    }}\n\n    #[effects(alloc)]\n    #[uses(grew{j}, roomy)]\n    fn grow{j}(t: &mut String) -> ()\n        requires roomy(t.as_str()),\n        ensures grew{j}(t.as_str(), old(t).as_str()),\n    {{\n        t.push_str({});\n    }}\n\n    #[effects(alloc)]\n    #[uses(roomy)]\n    fn put{j}(t: &mut String) -> ()\n        requires roomy(t.as_str()),\n    {{\n        t.push_str({});\n    }}\n\n",
+            t.len(),
+            str_lit(t),
+            str_lit(t)
+        );
+    }
+    o
+}
 
 impl TFunc {
     fn name(&self) -> String {
@@ -247,10 +299,12 @@ impl TFunc {
     /// Whether the prover knows the text exactly, so a counterexample is a
     /// real input.
     fn replayable(&self) -> bool {
-        !self
-            .ops
-            .iter()
-            .any(|o| matches!(o, Op::Utf8(_) | Op::PushX))
+        !self.ops.iter().any(|o| {
+            matches!(
+                o,
+                Op::Utf8(_) | Op::PushX | Op::Loop { .. } | Op::Grow { .. }
+            )
+        })
     }
 
     fn pre(&self, x: usize, y: usize) -> bool {
@@ -355,11 +409,42 @@ impl TFunc {
                     let _ = writeln!(b, "        let c{n}: String = s.clone();");
                     let _ = writeln!(b, "        s.push_str(c{n}.as_str());");
                 }
+                Op::Loop {
+                    bound,
+                    j,
+                    call,
+                    inv,
+                } => {
+                    let bt = idx_text(*bound);
+                    let body = if *call {
+                        format!("grow{j}(&mut s);")
+                    } else {
+                        format!("s.push_str({});", str_lit(LITS[*j]))
+                    };
+                    let _ = writeln!(b, "        let l{n}: usize = s.len();");
+                    let _ = writeln!(b, "        let mut i{n}: usize = 0;");
+                    let _ = writeln!(b, "        while i{n} < {bt}");
+                    if *inv {
+                        let _ = writeln!(
+                            b,
+                            "            invariant i{n} <= {bt}, s.len() == l{n} + i{n} * {},",
+                            LITS[*j].len()
+                        );
+                    }
+                    let _ = writeln!(
+                        b,
+                        "            decreases {bt} - i{n},\n        {{\n            {body}\n            i{n} = i{n} + 1;\n        }}"
+                    );
+                }
+                Op::Grow { j, ensures } => {
+                    let f = if *ensures { "grow" } else { "put" };
+                    let _ = writeln!(b, "        {f}{j}(&mut s);");
+                }
             }
         }
         b.push_str("        acc\n");
         format!(
-            "    spec fn pre{k}(x: usize, y: usize) -> bool {{\n        x <= {} && y <= {}\n    }}\n\n    spec fn post{k}(r: i64) -> bool {{\n        r {} {}\n    }}\n\n    #[effects(alloc)]\n    #[uses(is_len, post{k}, pre{k})]\n    fn f{k}(x: usize, y: usize) -> (r: i64)\n        requires pre{k}(x, y),\n        ensures post{k}(r),\n    {{\n{b}    }}\n\n",
+            "    spec fn pre{k}(x: usize, y: usize) -> bool {{\n        x <= {} && y <= {}\n    }}\n\n    spec fn post{k}(r: i64) -> bool {{\n        r {} {}\n    }}\n\n    #[effects(alloc)]\n    #[uses(is_len, post{k}, pre{k}, roomy, grew1, grew2, grew3, grew4)]\n    fn f{k}(x: usize, y: usize) -> (r: i64)\n        requires pre{k}(x, y),\n        ensures post{k}(r),\n    {{\n{b}    }}\n\n",
             self.xh,
             self.yh,
             cmp_text(self.post.0),
@@ -433,6 +518,12 @@ impl TFunc {
                     let c = s.clone();
                     s.push_str(&c);
                 }
+                Op::Loop { bound, j, .. } => {
+                    for _ in 0..at(&s, *bound) {
+                        s.push_str(LITS[*j]);
+                    }
+                }
+                Op::Grow { j, .. } => s.push_str(LITS[*j]),
             }
         }
         Ok(acc)
@@ -476,6 +567,7 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
     let funcs: Vec<TFunc> = (0..6).map(|k| gen_func(&mut rng, k)).collect();
     let mut src = String::from("#[summary(\"문자열 건전성 퍼징\")]\nmod m {\n");
     src.push_str(HELPERS);
+    src.push_str(&growers());
     for f in &funcs {
         src.push_str(&f.text());
     }
