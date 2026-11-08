@@ -2,26 +2,26 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 12060071,
+    "V4_rlimit_total": 12295689,
     "V5_rlimit_headroom": 0.1244,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0,
     "V8_bench_rlimit_total": 22810907,
     "V9_bench_defs_at_limit": 0,
-    "V10_library_rlimit_total": 14140265,
-    "V11_sat_check_rlimit_total": 119804421,
-    "V12_sat_check_undecided": 112,
+    "V10_library_rlimit_total": 15624992,
+    "V11_sat_check_rlimit_total": 136391367,
+    "V12_sat_check_undecided": 143,
     "S1_external_crates": 0,
     "S2_external_processes": [
       "clang",
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 48872,
+    "S4_stage0_rust_lines": 48875,
     "S5_tests_bound_to_rust_api": 1,
     "S6_selfhost_bmb_lines": 0,
-    "P1_runnable_programs": 66,
-    "P2_bmb_lines": 25303,
+    "P1_runnable_programs": 67,
+    "P2_bmb_lines": 26105,
     "P3_errors_with_help": 0.8905,
     "B1_baseline_binary_bytes": 101664,
     "O1_adr_index_mismatch": 0,
@@ -2148,6 +2148,40 @@
         "P3_errors_with_help": [
           0.8936,
           0.8905
+        ]
+      }
+    },
+    {
+      "date": "2026-11-08",
+      "reason": "4B-02 (c): V10 is the new library unit std::num (lib/std/num.bmb, 1,484,727 rlimit, largest obligation 90,206); P1-P3 up from tests/run/std_num",
+      "changed": {
+        "V4_rlimit_total": [
+          12060071,
+          12295689
+        ],
+        "V10_library_rlimit_total": [
+          14140265,
+          15624992
+        ],
+        "V11_sat_check_rlimit_total": [
+          119804421,
+          136391367
+        ],
+        "V12_sat_check_undecided": [
+          112,
+          143
+        ],
+        "S4_stage0_rust_lines": [
+          48872,
+          48875
+        ],
+        "P1_runnable_programs": [
+          66,
+          67
+        ],
+        "P2_bmb_lines": [
+          25303,
+          26105
         ]
       }
     }
