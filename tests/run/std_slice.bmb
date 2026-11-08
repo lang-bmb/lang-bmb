@@ -1,0 +1,55 @@
+#[summary("표준 라이브러리 std::slice: 키의 안정 정렬 순서로 기록을 늘어놓고(같은 키는 들어온 순서), 정렬된 키에서 이진 탐색한다 (ADR-0092 §2, backlog 4B-02)")]
+mod uses_slice {
+    // A record: its key and its name's letter.
+    struct Rec { key: u64, tag: u8 }
+
+    // The first `i` of `w` are the keys of `v` in the order `r`.
+    spec fn copied(w: &[u64], v: &[u64], r: &[usize], i: usize) -> bool {
+        i <= w.len() && i <= r.len()
+            && forall |k: usize| k < i ==> r[k] < v.len() && #[trigger] w[k] == v[r[k]]
+    }
+
+    #[effects(io)]
+    fn found(r: Result<usize, usize>) -> () {
+        match r {
+            Ok(i) => print_str("found\n"),
+            Err(j) => {
+                print_str("insert at ");
+                print_u64(u64::try_from(j).unwrap());
+            }
+        }
+    }
+
+    #[effects(alloc, io)]
+    #[uses(copied, std::slice::ascending, std::slice::below, std::slice::before, std::slice::bounded, std::slice::ordered_but, std::slice::sorted_order)]
+    fn main() -> () {
+        let mut recs: Vec<Rec> = Vec::new();
+        recs.push(Rec { key: 3, tag: b'a' });
+        recs.push(Rec { key: 1, tag: b'b' });
+        recs.push(Rec { key: 3, tag: b'c' });
+        recs.push(Rec { key: 2, tag: b'd' });
+        recs.push(Rec { key: 1, tag: b'e' });
+        recs.push(Rec { key: 3, tag: b'f' });
+        let mut keys: Vec<u64> = Vec::new();
+        for i in 0..recs.len()
+            invariant keys.len() == i,
+        {
+            keys.push(recs[i].key);
+        }
+        let r: Vec<usize> = std::slice::sort_indices::<u64>(keys.as_slice());
+        let mut sorted: Vec<u64> = Vec::new();
+        let mut line: Vec<u8> = Vec::new();
+        for k in 0..r.len()
+            invariant sorted.len() == k, line.len() == k, r.len() == keys.len(), keys.len() == recs.len(),
+                copied(sorted.as_slice(), keys.as_slice(), r.as_slice(), k),
+        {
+            line.push(recs[r[k]].tag);
+            sorted.push(keys[r[k]]);
+        }
+        line.push(b'\n');
+        print_bytes(line.as_slice());
+        found(std::slice::binary_search::<u64>(sorted.as_slice(), 2));
+        found(std::slice::binary_search::<u64>(sorted.as_slice(), 0));
+        found(std::slice::binary_search::<u64>(sorted.as_slice(), 4));
+    }
+}

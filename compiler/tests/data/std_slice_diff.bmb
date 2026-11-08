@@ -1,0 +1,94 @@
+#[summary("std::slice 차등 시험: 표준 입력의 줄마다 공백으로 나뉜 키를 읽어 안정 정렬 순서와, 정렬된 키에서 0..=10의 이진 탐색 결과를 찍는다 (tests/stdlib.rs, backlog 4B-02)")]
+mod diff {
+    spec fn short(v: &[u64]) -> bool {
+        v.len() <= 1000
+    }
+
+    // The keys of a line: its tokens between spaces, read as `u64` (a token
+    // that is not one is left out).
+    #[effects(alloc)]
+    #[uses(short)]
+    fn keys(t: &[u8]) -> (r: Vec<u64>)
+        ensures short(r.as_slice()),
+    {
+        let mut v: Vec<u64> = Vec::new();
+        let mut a: usize = 0;
+        while a < t.len() && v.len() < 1000
+            invariant v.len() <= 1000,
+            decreases t.len() - a,
+        {
+            let mut b: usize = a;
+            while b < t.len() && t[b] != b' ' && t[b] != b'\n'
+                invariant a <= b, b <= t.len(),
+                decreases t.len() - b,
+            {
+                b = b + 1;
+            }
+            match std::num::parse_u64_bytes(&t[a..b]) {
+                None => {}
+                Some(k) => v.push(k),
+            }
+            a = b + 1;
+        }
+        v
+    }
+
+    // The first `i` of `w` are the keys of `v` in the order `r`.
+    spec fn copied(w: &[u64], v: &[u64], r: &[usize], i: usize) -> bool {
+        i <= w.len() && i <= r.len()
+            && forall |k: usize| k < i ==> r[k] < v.len() && #[trigger] w[k] == v[r[k]]
+    }
+
+    #[effects(alloc, io)]
+    #[uses(copied, short, std::num::grew, std::num::room, std::slice::ascending, std::slice::below, std::slice::before, std::slice::bounded, std::slice::ordered_but, std::slice::sorted_order)]
+    fn show(t: &[u8]) -> () {
+        let v: Vec<u64> = keys(t);
+        let r: Vec<usize> = std::slice::sort_indices::<u64>(v.as_slice());
+        let mut out: String = String::new();
+        let mut sorted: Vec<u64> = Vec::new();
+        for i in 0..r.len()
+            invariant out.len() <= 22 * i, sorted.len() == i, r.len() == v.len(),
+                copied(sorted.as_slice(), v.as_slice(), r.as_slice(), i),
+        {
+            std::num::push_u64(&mut out, u64::try_from(r[i]).unwrap());
+            out.push(' ');
+            sorted.push(v[r[i]]);
+        }
+        out.push('|');
+        print_str(out.as_str());
+        print_str("\n");
+        let mut x: u64 = 0;
+        while x <= 10
+            decreases 11 - x,
+        {
+            match std::slice::binary_search::<u64>(sorted.as_slice(), x) {
+                Ok(p) => print_str("y\n"),
+                Err(q) => print_u64(u64::try_from(q).unwrap()),
+            }
+            x = x + 1;
+        }
+    }
+
+    #[effects(alloc, io, nondet)]
+    fn main() -> () {
+        let mut n: u64 = 0;
+        while n < 1000000
+            decreases 1000000 - n,
+        {
+            let mut line: String = String::new();
+            match std::io::read_line(&mut line) {
+                Ok(k) => {
+                    if k == 0 {
+                        n = 1000000;
+                    } else {
+                        show(line.as_bytes());
+                        n = n + 1;
+                    }
+                }
+                Err(e) => {
+                    n = 1000000;
+                }
+            }
+        }
+    }
+}

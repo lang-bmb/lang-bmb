@@ -407,3 +407,92 @@ fn std_num_agrees_with_rust() {
     }
     assert_eq!(got.lines().count(), expected.lines().count());
 }
+
+/// What `tests/data/std_slice_diff.bmb` prints for keys `v`: Rust's stable
+/// `sort_by_key` as positions, then `binary_search` of 0..=10 in the
+/// sorted keys (`y` for any match, as Rust may return any; the insertion
+/// point otherwise, which is unique).
+fn rust_slice(v: &[u64]) -> String {
+    let mut r: Vec<usize> = (0..v.len()).collect();
+    r.sort_by_key(|&i| v[i]);
+    let mut out: String = r.iter().map(|i| format!("{i} ")).collect();
+    out.push_str("|\n");
+    let sorted: Vec<u64> = r.iter().map(|&i| v[i]).collect();
+    for x in 0..=10u64 {
+        match sorted.binary_search(&x) {
+            Ok(_) => out.push_str("y\n"),
+            Err(i) => out.push_str(&format!("{i}\n")),
+        }
+    }
+    out
+}
+
+/// `std::slice` against Rust: random keys with many repeats (so stability
+/// shows), sorted by position, and searched. `BMB_SOUND_ITERS` sets the
+/// lines (default 1,500).
+#[test]
+fn std_slice_agrees_with_rust() {
+    let n: usize = std::env::var("BMB_SOUND_ITERS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .map_or(1500, |k: usize| k * 375);
+    let src =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/std_slice_diff.bmb");
+    let dir = cli::fresh_dir();
+    let exe = dir.join("diff");
+    let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
+        .arg("build")
+        .arg(&src)
+        .arg("-o")
+        .arg(&exe)
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    let mut rng = common::scalar::Rng(0x2545_F491_4F6C_DD1D);
+    let mut input = String::new();
+    let mut expected = String::new();
+    for _ in 0..n {
+        let len = rng.below(12);
+        let range = [3, 6, 11, 1000][rng.below(4)];
+        let v: Vec<u64> = (0..len).map(|_| rng.below(range) as u64).collect();
+        let text: Vec<String> = v.iter().map(|k| k.to_string()).collect();
+        input.push_str(&text.join(" "));
+        input.push('\n');
+        expected.push_str(&rust_slice(&v));
+    }
+    let mut child = Command::new(&exe)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    {
+        use std::io::Write as _;
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(input.as_bytes())
+            .unwrap();
+    }
+    let run = child.wait_with_output().unwrap();
+    assert!(run.status.success());
+    let got = String::from_utf8(run.stdout).unwrap();
+    let _ = fs::remove_dir_all(&dir);
+    if got != expected {
+        let (g, e): (Vec<&str>, Vec<&str>) = (got.lines().collect(), expected.lines().collect());
+        let k = g
+            .iter()
+            .zip(&e)
+            .position(|(a, b)| a != b)
+            .unwrap_or(g.len().min(e.len()));
+        panic!(
+            "std::slice differs from Rust at output line {k}: {:?} vs {:?}",
+            g.get(k),
+            e.get(k)
+        );
+    }
+}
