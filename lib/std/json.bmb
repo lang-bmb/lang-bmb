@@ -219,8 +219,10 @@ mod json {
         forall |k: usize| k < open.len() ==> #[trigger] open[k] < n
     }
 
-    spec fn room(open: &[usize], v: &[Node], t: &[u8], i: usize) -> bool {
-        open.len() <= i && v.len() <= i && i <= t.len()
+    // The parser's state at byte `i`: the nodes so far lie before `i`, the
+    // open arrays and objects are among them, and both fit.
+    spec fn tape(v: &[Node], open: &[usize], i: usize) -> bool {
+        v.len() <= i && open.len() <= i && i < 1152921504606846975 && nodes_in(v, v.len(), i) && opens(open, v.len())
     }
 
     spec fn parsed(r: &Option<Doc>, t: &[u8]) -> bool {
@@ -246,49 +248,63 @@ mod json {
         }
     }
 
-    spec fn add_pre(v: &[Node], start: usize, end: usize) -> bool {
-        start < end && end < 1152921504606846975 && v.len() < 1152921504606846975 && nodes_in(v, v.len(), start)
+    spec fn moved_pre(v: &[Node], open: &[usize], i: usize, j: usize) -> bool {
+        tape(v, open, i) && i < j && j < 1152921504606846975
     }
 
-    spec fn add_post(v: &[Node], w: &[Node], end: usize) -> bool {
-        v.len() == w.len() + 1 && nodes_in(v, v.len(), end)
+    spec fn add_pre(v: &[Node], open: &[usize], start: usize, end: usize, j: usize) -> bool {
+        tape(v, open, start) && start < end && end <= j && j < 1152921504606846975
     }
 
-    // Adds a node of `kind` over `start..end` with nothing in it: its
-    // `next` is the node after it.
-    #[effects(alloc)]
-    #[uses(add_post, add_pre, nodes_in)]
-    fn add(v: &mut Vec<Node>, kind: u8, start: usize, end: usize) -> ()
-        requires add_pre(v.as_slice(), start, end),
-        ensures add_post(v.as_slice(), old(v).as_slice(), end),
-    {
-        let k: usize = v.len();
-        v.push(Node { kind: kind, start: start, end: end, next: k + 1 });
-    }
-
-    spec fn close_pre(v: &[Node], open: &[usize], i: usize) -> bool {
-        i < 1152921504606846975 && nodes_in(v, v.len(), i) && opens(open, v.len())
-    }
-
-    spec fn close_post(v: &[Node], open: &[usize], i: usize) -> bool {
-        nodes_in(v, v.len(), i + 1) && opens(open, v.len())
+    spec fn one_node_more(v: &[Node], w: &[Node]) -> bool {
+        v.len() == w.len() + 1
     }
 
     spec fn same_len(v: &[Node], w: &[Node]) -> bool {
         v.len() == w.len()
     }
 
-    spec fn not_longer(v: &[usize], w: &[usize]) -> bool {
-        v.len() <= w.len()
+    // The state holds at a later byte.
+    #[uses(moved_pre, nodes_in, opens, tape)]
+    proof fn later(v: &[Node], open: &[usize], i: usize, j: usize)
+        requires moved_pre(v, open, i, j),
+        ensures tape(v, open, j),
+    {
+    }
+
+    // Adds a node of `kind` over `start..end` with nothing in it (its
+    // `next` is the node after it); the state holds at `j`.
+    #[effects(alloc)]
+    #[uses(add_pre, nodes_in, one_node_more, opens, tape)]
+    fn add(v: &mut Vec<Node>, open: &[usize], kind: u8, start: usize, end: usize, j: usize) -> ()
+        requires add_pre(v.as_slice(), open, start, end, j),
+        ensures tape(v.as_slice(), open, j), one_node_more(v.as_slice(), old(v).as_slice()),
+    {
+        let k: usize = v.len();
+        v.push(Node { kind: kind, start: start, end: end, next: k + 1 });
+    }
+
+    // Opens an array (`kind` 5) or object (6) at the bracket at `i`; the
+    // state holds at `j`.
+    #[effects(alloc)]
+    #[uses(moved_pre, nodes_in, opens, tape)]
+    fn open_at(v: &mut Vec<Node>, open: &mut Vec<usize>, kind: u8, i: usize, j: usize) -> ()
+        requires moved_pre(v.as_slice(), open.as_slice(), i, j),
+        ensures tape(v.as_slice(), open.as_slice(), j),
+    {
+        let k: usize = v.len();
+        v.push(Node { kind: kind, start: i, end: i + 1, next: k + 1 });
+        open.push(k);
     }
 
     // Closes the innermost open array or object with the bracket at `i`:
-    // it ends after `i`, and the node after it is the next one to come.
+    // it ends after `i`, and the node after it is the next one to come;
+    // false when none is open. The state holds at `j`.
     #[effects(pure)]
-    #[uses(close_pre, close_post, nodes_in, not_longer, opens, same_len)]
-    fn close(v: &mut Vec<Node>, open: &mut Vec<usize>, i: usize) -> (r: bool)
-        requires close_pre(v.as_slice(), open.as_slice(), i),
-        ensures close_post(v.as_slice(), open.as_slice(), i), same_len(v.as_slice(), old(v).as_slice()), not_longer(open.as_slice(), old(open).as_slice()),
+    #[uses(moved_pre, nodes_in, opens, same_len, tape)]
+    fn close(v: &mut Vec<Node>, open: &mut Vec<usize>, i: usize, j: usize) -> (r: bool)
+        requires moved_pre(v.as_slice(), open.as_slice(), i, j),
+        ensures tape(v.as_slice(), open.as_slice(), j), same_len(v.as_slice(), old(v).as_slice()),
     {
         match open.pop() {
             None => false,
@@ -301,11 +317,44 @@ mod json {
         }
     }
 
+    spec fn some_open(v: &[Node], open: &[usize], i: usize) -> bool {
+        tape(v, open, i) && open.len() > 0
+    }
+
+    // The kind of the innermost open array or object.
+    #[effects(pure)]
+    #[uses(nodes_in, opens, some_open, tape)]
+    fn top_kind(v: &[Node], open: &[usize], i: usize) -> u8
+        requires some_open(v, open, i),
+    {
+        v[open[open.len() - 1]].kind
+    }
+
+    spec fn done_pre(v: &[Node], open: &[usize], i: usize) -> bool {
+        tape(v, open, i) && v.len() > 0
+    }
+
+    spec fn doc_of(d: &Doc, n: usize) -> bool {
+        d.len == n
+    }
+
+    // The parsed text of length `n`.
+    #[effects(pure)]
+    #[uses(doc_of, doc_sound, done_pre, nodes_in, opens, tape)]
+    fn done(v: Vec<Node>, open: &[usize], n: usize) -> (d: Doc)
+        requires done_pre(v.as_slice(), open, n),
+        ensures doc_of(&d, n),
+    {
+        Doc { nodes: v, len: n }
+    }
+
     // The nodes of `t` when it is one JSON text (RFC 8259 §2: a value
     // between whitespace), none when it is not. The open arrays and objects
-    // are a stack, so the depth is not the machine's.
+    // are a stack, so the depth is not the machine's. The state (`tape`) is
+    // kept by the helpers above, so this function's queries do not see its
+    // quantifiers.
     #[effects(alloc)]
-    #[uses(add_post, add_pre, at, close_post, close_pre, doc_sound, ended, moved_on, nodes_in, not_longer, opens, parsed, room, same_len, short, upto)]
+    #[uses(add_pre, at, doc_of, done_pre, ended, first_pre, moved_on, moved_pre, one_node_more, parsed, same_len, short, some_open, upto)]
     fn parse(t: &[u8]) -> (r: Option<Doc>)
         requires short(t),
         ensures parsed(&r, t),
@@ -317,61 +366,63 @@ mod json {
         let mut open: Vec<usize> = Vec::new();
         let mut state: u8 = 0;
         let mut i: usize = skip_ws(t, 0);
+        proof {
+            first(nodes.as_slice(), open.as_slice(), i);
+        }
         while i < t.len()
-            invariant room(open.as_slice(), nodes.as_slice(), t, i), nodes_in(nodes.as_slice(), nodes.len(), i), opens(open.as_slice(), nodes.len()),
+            invariant i <= t.len(), tape(nodes.as_slice(), open.as_slice(), i),
             decreases t.len() - i,
         {
             let b: u8 = t[i];
             if state == 0 || state == 1 {
                 if state == 1 && b == b']' {
-                    if !close(&mut nodes, &mut open, i) {
+                    let j1: usize = skip_ws(t, i + 1);
+                    if !close(&mut nodes, &mut open, i, j1) {
                         return None;
                     }
                     state = 5;
-                    i = skip_ws(t, i + 1);
+                    i = j1;
                 } else if b == b'[' || b == b'{' {
-                    let k: usize = nodes.len();
-                    let kind: u8 = if b == b'[' {
-                        5
+                    let j2: usize = skip_ws(t, i + 1);
+                    if b == b'[' {
+                        open_at(&mut nodes, &mut open, 5, i, j2);
+                        state = 1;
                     } else {
-                        6
-                    };
-                    add(&mut nodes, kind, i, i + 1);
-                    open.push(k);
-                    state = if b == b'[' {
-                        1
-                    } else {
-                        3
-                    };
-                    i = skip_ws(t, i + 1);
+                        open_at(&mut nodes, &mut open, 6, i, j2);
+                        state = 3;
+                    }
+                    i = j2;
                 } else {
                     match scalar_end(t, i) {
                         None => {
                             return None;
                         }
                         Some(e) => {
-                            add(&mut nodes, scalar_kind(t[i]), i, e);
+                            let j3: usize = skip_ws(t, e);
+                            add(&mut nodes, open.as_slice(), scalar_kind(t[i]), i, e, j3);
                             state = 5;
-                            i = skip_ws(t, e);
+                            i = j3;
                         }
                     }
                 }
             } else if state == 2 || state == 3 {
                 if state == 3 && b == b'}' {
-                    if !close(&mut nodes, &mut open, i) {
+                    let j4: usize = skip_ws(t, i + 1);
+                    if !close(&mut nodes, &mut open, i, j4) {
                         return None;
                     }
                     state = 5;
-                    i = skip_ws(t, i + 1);
+                    i = j4;
                 } else if b == b'"' {
                     match string_end(t, i) {
                         None => {
                             return None;
                         }
                         Some(f) => {
-                            add(&mut nodes, 4, i, f);
+                            let j5: usize = skip_ws(t, f);
+                            add(&mut nodes, open.as_slice(), 4, i, f, j5);
                             state = 4;
-                            i = skip_ws(t, f);
+                            i = j5;
                         }
                     }
                 } else {
@@ -381,35 +432,54 @@ mod json {
                 if b != b':' {
                     return None;
                 }
+                let j6: usize = skip_ws(t, i + 1);
+                proof {
+                    later(nodes.as_slice(), open.as_slice(), i, j6);
+                }
                 state = 0;
-                i = skip_ws(t, i + 1);
+                i = j6;
             } else {
-                let n: usize = open.len();
-                if n == 0 {
+                if open.len() == 0 {
                     return None;
                 }
-                let top: u8 = nodes[open[n - 1]].kind;
+                let top: u8 = top_kind(nodes.as_slice(), open.as_slice(), i);
+                let j7: usize = skip_ws(t, i + 1);
                 if b == b',' {
+                    proof {
+                        later(nodes.as_slice(), open.as_slice(), i, j7);
+                    }
                     state = if top == 5 {
                         0
                     } else {
                         2
                     };
-                    i = skip_ws(t, i + 1);
+                    i = j7;
                 } else if (b == b']' && top == 5) || (b == b'}' && top == 6) {
-                    if !close(&mut nodes, &mut open, i) {
+                    if !close(&mut nodes, &mut open, i, j7) {
                         return None;
                     }
-                    i = skip_ws(t, i + 1);
+                    i = j7;
                 } else {
                     return None;
                 }
             }
         }
         if state == 5 && open.len() == 0 && nodes.len() > 0 {
-            return Some(Doc { nodes: nodes, len: t.len() });
+            return Some(done(nodes, open.as_slice(), t.len()));
         }
         None
+    }
+
+    spec fn first_pre(v: &[Node], open: &[usize], i: usize) -> bool {
+        v.len() == 0 && open.len() == 0 && i < 1152921504606846975
+    }
+
+    // The state holds at the start.
+    #[uses(first_pre, nodes_in, opens, tape)]
+    proof fn first(v: &[Node], open: &[usize], i: usize)
+        requires first_pre(v, open, i),
+        ensures tape(v, open, i),
+    {
     }
 
     // Whether `t` is one JSON text.
