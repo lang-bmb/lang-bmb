@@ -2,27 +2,27 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 12621613,
+    "V4_rlimit_total": 13644627,
     "V5_rlimit_headroom": 0.1244,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0,
     "V8_bench_rlimit_total": 22810907,
     "V9_bench_defs_at_limit": 0,
-    "V10_library_rlimit_total": 18555436,
-    "V11_sat_check_rlimit_total": 150880290,
-    "V12_sat_check_undecided": 155,
+    "V10_library_rlimit_total": 19337563,
+    "V11_sat_check_rlimit_total": 149167673,
+    "V12_sat_check_undecided": 153,
     "S1_external_crates": 0,
     "S2_external_processes": [
       "clang",
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 49021,
+    "S4_stage0_rust_lines": 49071,
     "S5_tests_bound_to_rust_api": 1,
     "S6_selfhost_bmb_lines": 0,
-    "P1_runnable_programs": 70,
-    "P2_bmb_lines": 27126,
-    "P3_errors_with_help": 0.8907,
+    "P1_runnable_programs": 72,
+    "P2_bmb_lines": 27784,
+    "P3_errors_with_help": 0.9118,
     "B1_baseline_binary_bytes": 101664,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 15
@@ -2250,6 +2250,44 @@
         "P2_bmb_lines": [
           26487,
           27126
+        ]
+      }
+    },
+    {
+      "date": "2026-11-08",
+      "reason": "1B-56 (text fuzzer, push_str havoc), no-inputs help (P3), 4B-04 (String Ord, text-keyed std::collections), 4B-02 (g) std::intern",
+      "changed": {
+        "V4_rlimit_total": [
+          12621613,
+          13644627
+        ],
+        "V10_library_rlimit_total": [
+          18555436,
+          19337563
+        ],
+        "V11_sat_check_rlimit_total": [
+          150880290,
+          149167673
+        ],
+        "V12_sat_check_undecided": [
+          155,
+          153
+        ],
+        "S4_stage0_rust_lines": [
+          49021,
+          49071
+        ],
+        "P1_runnable_programs": [
+          70,
+          72
+        ],
+        "P2_bmb_lines": [
+          27126,
+          27784
+        ],
+        "P3_errors_with_help": [
+          0.8907,
+          0.9118
         ]
       }
     }
