@@ -8,7 +8,6 @@ mod mf {
 
     // `replace` changes the place.
     #[effects(alloc)]
-    #[uses(kept)]
     fn take(b: &mut Buf) -> Vec<i64>
         ensures kept(*old(b), *b),
     {
@@ -17,7 +16,6 @@ mod mf {
 
     // `swap` exchanges the values.
     #[effects(pure)]
-    #[uses(same)]
     fn exchange(a: &mut i64, b: &mut i64) -> ()
         ensures same(*a, *old(a)),
     {
@@ -26,7 +24,6 @@ mod mf {
 
     // The old value is returned, not the new one.
     #[effects(pure)]
-    #[uses(same)]
     fn returned(a: &mut i64) -> (r: i64)
         ensures same(r, 0),
     {

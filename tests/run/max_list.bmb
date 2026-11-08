@@ -31,7 +31,7 @@ mod ml {
     // Recursion to quantifier, by induction on `n`. Without it the step
     // from `contains_prefix` to the quantifier needs an induction the
     // solver does not do (backlog T1-14: the judge was undecided).
-    #[uses(contains_prefix, has_index_below, prefix_ok)]
+    #[uses(contains_prefix)]
     proof fn contains_has_index(a: &[i64], n: usize, r: i64)
         requires prefix_ok(a, n, r),
         ensures has_index_below(a, n, r),
@@ -51,7 +51,7 @@ mod ml {
     // The loop keeps the recursive invariant (each step unfolds the
     // definition once); the lemma turns it into the hidden contract.
     #[effects(pure)]
-    #[uses(contains_prefix, ge_prefix, has_index_below, is_max, max_upto, non_empty, prefix_ok)]
+    #[uses(contains_prefix, ge_prefix)]
     fn max_of_list(lst: &[i64]) -> (r: i64)
         requires non_empty(lst),
         ensures is_max(lst, r),
@@ -85,7 +85,7 @@ mod ml {
     }
 
     // A prefix sum is at most a longer one.
-    #[uses(sum_le, sum_to, within)]
+    #[uses(sum_to)]
     proof fn sum_grows(a: &[u64], i: usize, j: usize)
         requires within(a, i, j),
         ensures sum_le(a, i, j),
@@ -107,7 +107,6 @@ mod ml {
     // A bound on the whole sum bounds every running sum: the lemma, called
     // in the loop body, shows the addition cannot overflow.
     #[effects(pure)]
-    #[uses(is_sum, sum_le, sum_to, total_small, within)]
     fn total(a: &[u64]) -> (r: u64)
         requires total_small(a),
         ensures is_sum(a, r),
@@ -125,7 +124,7 @@ mod ml {
     }
 
     #[effects(io)]
-    #[uses(contains_prefix, ge_prefix, has_index_below, is_max, non_empty, sum_to, total_small)]
+    #[uses(contains_prefix, ge_prefix, has_index_below, sum_to)]
     fn main() -> () {
         let xs: [i64; 5] = [3, -7, 12, 12, 0];
         print_i64(max_of_list(&xs));

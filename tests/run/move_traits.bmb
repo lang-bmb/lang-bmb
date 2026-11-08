@@ -33,13 +33,13 @@ mod mt {
     impl Weigh for Bag {
         #[effects(pure)]
         fn weight(self: &Bag) -> u64 {
-            u64::try_from(self.items.len()).unwrap()
+            self.items.len() as u64
         }
 
         #[effects(pure)]
         fn spend(self: Bag) -> u64 {
             let v: Vec<u64> = self.items;
-            u64::try_from(v.len()).unwrap()
+            v.len() as u64
         }
     }
 
@@ -90,7 +90,6 @@ mod mt {
     }
 
     #[effects(alloc)]
-    #[uses(few)]
     fn bag(n: u64) -> Bag
         requires few(n),
     {
@@ -104,7 +103,6 @@ mod mt {
     }
 
     #[effects(alloc, io)]
-    #[uses(few)]
     fn main() -> () {
         let a: Bag = bag(3);
         print_u64(total::<Bag>(&a, bag(2)));

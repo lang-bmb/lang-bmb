@@ -7,12 +7,21 @@ mod specs {
     #[effects(pure)]
     fn helper(x: i64) -> i64 { x }
 
+    // Quantifier-free clauses are expressions (ADR-0095 A2); a clause with
+    // a quantifier is a named predicate (E0501).
     #[effects(pure)]
     fn raw_contract(x: i64) -> (r: i64)
         requires x > 0,
         ensures r == x,
     {
         x
+    }
+
+    #[effects(pure)]
+    fn quantified_contract(a: &[i64]) -> i64
+        requires exists |i: usize| i < a.len() && #[trigger] a[i] > 0,
+    {
+        0
     }
 
     #[effects(pure)]

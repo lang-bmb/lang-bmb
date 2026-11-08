@@ -7,7 +7,6 @@ mod vr {
     // Multiples of 3 (linear, so cheap to prove); grows past the first
     // capacity (4) several times: 4, 8, 16, 32.
     #[effects(alloc)]
-    #[uses(small, len_is)]
     fn triples(n: usize) -> (r: Vec<u64>)
         requires small(n),
         ensures len_is(r.as_slice(), n),
@@ -16,7 +15,7 @@ mod vr {
         for i in 0..n
             invariant i <= n, v.len() == i, len_is(v.as_slice(), i),
         {
-            let k: u64 = u64::try_from(i).unwrap();
+            let k: u64 = i as u64;
             v.push(3 * k);
         }
         v
@@ -38,7 +37,6 @@ mod vr {
     spec fn grew(a: &[u64], b: &[u64]) -> bool { a.len() == b.len() + 1 }
 
     #[effects(alloc)]
-    #[uses(room, grew)]
     fn append(v: &mut Vec<u64>, x: u64) -> ()
         requires room(v.as_slice()),
         ensures grew(v.as_slice(), old(v).as_slice()),
@@ -67,7 +65,6 @@ mod vr {
     spec fn added(h: Id, s: &[Point], t: &[Point]) -> bool { h.i == t.len() && s.len() == t.len() + 1 }
 
     #[effects(alloc)]
-    #[uses(store_room, added)]
     fn add(s: &mut Vec<Point>, p: Point) -> (h: Id)
         requires store_room(s.as_slice()),
         ensures added(h, s.as_slice(), old(s).as_slice()),
@@ -79,11 +76,10 @@ mod vr {
 
     #[effects(io)]
     fn show(n: usize) -> () {
-        print_u64(u64::try_from(n).unwrap());
+        print_u64(n as u64);
     }
 
     #[effects(alloc, io)]
-    #[uses(small, len_is, room, grew, store_room, added)]
     fn main() -> () {
         let v: Vec<u64> = triples(20);
         show(v.len());

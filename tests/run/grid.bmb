@@ -9,7 +9,6 @@ mod gr {
     }
 
     #[effects(pure)]
-    #[uses(scaled, small)]
     fn identity(v: i64) -> (r: [[i64; 3]; 3])
         requires small(v),
         ensures scaled(r, v),
@@ -22,7 +21,6 @@ mod gr {
     }
 
     #[effects(io)]
-    #[uses(bounded, scaled, small)]
     fn main() -> () {
         let g: [[i64; 3]; 3] = identity(7);
         print_i64(g[0][0] + g[1][1] + g[2][2] + g[0][1]);
@@ -47,7 +45,7 @@ mod gr {
     }
 
     #[effects(pure)]
-    #[uses(bounded, small)]
+    #[uses(small)]
     fn trace(g: &[[i64; 3]]) -> i64
         requires bounded(g),
     {

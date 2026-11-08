@@ -10,7 +10,6 @@ mod rg {
 
     // `i < a.len()` holds in the body: the index needs no invariant.
     #[effects(pure)]
-    #[uses(bounded, small)]
     fn sum(a: &[i64]) -> i64
         requires small(a),
     {
@@ -38,7 +37,6 @@ mod rg {
     // After the loop the variable is gone; the invariant at the exit says
     // what the loop did.
     #[effects(pure)]
-    #[uses(order)]
     fn count(lo: i64, hi: i64) -> i64
         requires order(lo, hi),
     {
@@ -69,7 +67,6 @@ mod rg {
 
     // `continue` steps the variable; `break` and `return` leave.
     #[effects(pure)]
-    #[uses(small)]
     fn odd_sum_until(a: &[i64], stop: i64) -> i64
         requires small(a),
     {
@@ -93,7 +90,6 @@ mod rg {
     }
 
     #[effects(pure)]
-    #[uses(found_at)]
     fn index_of(a: &[i64], x: i64) -> (r: usize)
         ensures found_at(a, x, r),
     {
@@ -107,7 +103,6 @@ mod rg {
 
     // A labeled `break` leaves the outer `for` from the inner one.
     #[effects(pure)]
-    #[uses(few)]
     fn first_pair(n: u64, t: u64) -> u64
         requires few(n),
     {
@@ -130,7 +125,6 @@ mod rg {
     // The bounds are read once: changing `m` in the body does not change
     // the range.
     #[effects(pure)]
-    #[uses(few)]
     fn fixed_end(n: u64) -> u64
         requires few(n),
     {
@@ -146,17 +140,17 @@ mod rg {
     }
 
     #[effects(alloc, io)]
-    #[uses(bounded, few, found_at, order, small)]
+    #[uses(bounded)]
     fn main() -> () {
         let a: [i64; 6] = [4, 7, 2, 9, 6, 5];
         print_i64(sum(&a));
-        print_u64(u64::try_from(last_byte()).unwrap());
+        print_u64(last_byte() as u64);
         print_i64(count(-3, 4));
         print_u64(empty(5));
         print_i64(odd_sum_until(&a, 6));
         print_i64(odd_sum_until(&a, 100));
-        print_u64(u64::try_from(index_of(&a, 9)).unwrap());
-        print_u64(u64::try_from(index_of(&a, 8)).unwrap());
+        print_u64(index_of(&a, 9) as u64);
+        print_u64(index_of(&a, 8) as u64);
         print_u64(first_pair(10, 7));
         print_u64(fixed_end(4));
         // Nested ranges, `continue`, and a `Vec` freed in every iteration.

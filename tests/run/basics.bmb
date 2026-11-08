@@ -5,7 +5,6 @@ mod basics {
     spec fn tri_bound(n: i64, r: i64) -> bool { 0 <= r && r <= 1000 * n }
 
     #[effects(pure)]
-    #[uses(small, tri_bound)]
     fn tri(n: i64) -> (r: i64)
         requires small(n),
         ensures tri_bound(n, r),
@@ -17,7 +16,6 @@ mod basics {
     spec fn positive(a: i64, b: i64) -> bool { a > 0 && b >= 0 }
 
     #[effects(pure)]
-    #[uses(positive)]
     fn gcd(a: i64, b: i64) -> i64
         requires positive(a, b),
         decreases b,
@@ -28,7 +26,6 @@ mod basics {
     spec fn nonempty(a: &[i64]) -> bool { a.len() > 0 }
 
     #[effects(pure)]
-    #[uses(nonempty)]
     fn max_of(a: &[i64]) -> i64
         requires nonempty(a),
     {
@@ -59,7 +56,6 @@ mod basics {
 #[summary("진입점: 결과를 한 줄씩 출력")]
 mod app {
     #[effects(io)]
-    #[uses(basics::small, basics::positive, basics::nonempty)]
     fn main() -> () {
         print_i64(basics::tri(10));
         print_i64(basics::gcd(48, 18));

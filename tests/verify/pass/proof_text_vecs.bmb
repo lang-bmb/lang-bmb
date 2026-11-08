@@ -3,7 +3,6 @@ mod proof_text_vecs {
     struct Bag { keys: Vec<String> }
 
     #[effects(alloc)]
-    #[uses(small)]
     fn caller(b: &mut Bag) -> ()
         requires small(b),
     {
@@ -12,7 +11,6 @@ mod proof_text_vecs {
         }
     }
 
-    #[uses(small)]
     proof fn kept(b: &Bag)
         requires small(b),
         ensures small(b),

@@ -8,7 +8,7 @@ mod app {
 
     // `<label> <value>` on one line.
     #[effects(alloc, io)]
-    #[uses(label_ok, std::bytes::room, std::bytes::grew_by, std::bytes::kept, std::bytes::fits, std::bytes::appended, std::bytes::copied)]
+    #[uses(std::bytes::kept, std::bytes::copied)]
     fn show(label: &[u8], x: u64) -> ()
         requires label_ok(label),
     {
@@ -22,13 +22,12 @@ mod app {
 
     #[effects(pure)]
     fn wide(x: u32) -> u64 {
-        u64::try_from(x).unwrap()
+        x as u64
     }
 
     // `n` deterministic bytes: the high bits of a 64-bit LCG (Knuth's MMIX
     // constants), the same sequence as `crc32_ref.py`.
     #[effects(alloc)]
-    #[uses(short, size_ok)]
     fn stream(n: usize) -> Vec<u8>
         requires size_ok(n),
     {
@@ -38,14 +37,13 @@ mod app {
             invariant short(v.as_slice(), i),
         {
             x = x.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-            v.push(u8::try_from(x >> 56).unwrap());
+            v.push((x >> 56) as u8);
         }
         v
     }
 
     // The first `k` bytes of `s` (`k <= s.len()`), and the rest.
     #[effects(alloc)]
-    #[uses(short)]
     fn take(s: &[u8], from: usize, to: usize) -> Vec<u8> {
         let mut v: Vec<u8> = Vec::new();
         let mut i: usize = from;
@@ -67,11 +65,11 @@ mod app {
         let mut one: [u8; 1] = [0];
         let mut two: [u8; 2] = [0, 0];
         for a in 0..n {
-            one[0] = u8::try_from(a).unwrap();
+            one[0] = a as u8;
             sum = sum.wrapping_add(wide(std::crc32::checksum(&one)));
             for b in 0..n {
-                two[0] = u8::try_from(a).unwrap();
-                two[1] = u8::try_from(b).unwrap();
+                two[0] = a as u8;
+                two[1] = b as u8;
                 sum = sum.wrapping_add(wide(std::crc32::checksum(&two)));
             }
         }
@@ -79,7 +77,6 @@ mod app {
     }
 
     #[effects(alloc, io)]
-    #[uses(label_ok, size_ok)]
     fn main() -> () {
         show(b"check", wide(std::crc32::checksum(b"123456789")));
         show(b"empty", wide(std::crc32::checksum(b"")));

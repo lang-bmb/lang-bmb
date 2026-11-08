@@ -7,12 +7,12 @@ mod app {
     fn add(t: Tally, s: &[u8]) -> Tally {
         let r: usize = std::utf8::valid_up_to(s);
         let v: u64 = if r == s.len() { 1 } else { 0 };
-        Tally { valid: t.valid.saturating_add(v), sum: t.sum.saturating_add(u64::try_from(r).unwrap()) }
+        Tally { valid: t.valid.saturating_add(v), sum: t.sum.saturating_add(r as u64) }
     }
 
     // `<length> <valid> <sum>` on one line.
     #[effects(alloc, io)]
-    #[uses(std::bytes::room, std::bytes::grew_by, std::bytes::kept)]
+    #[uses(std::bytes::kept)]
     fn show(len: u64, t: Tally) -> () {
         let mut out: Vec<u8> = Vec::new();
         std::bytes::push_u64(&mut out, len);
@@ -30,7 +30,7 @@ mod app {
         let mut t: Tally = Tally { valid: 0, sum: 0 };
         let mut a: [u8; 1] = [0];
         for b0 in 0..n {
-            a[0] = u8::try_from(b0).unwrap();
+            a[0] = b0 as u8;
             t = add(t, &a);
         }
         t
@@ -43,8 +43,8 @@ mod app {
         let mut a: [u8; 2] = [0, 0];
         for b0 in 0..n {
             for b1 in 0..n {
-                a[0] = u8::try_from(b0).unwrap();
-                a[1] = u8::try_from(b1).unwrap();
+                a[0] = b0 as u8;
+                a[1] = b1 as u8;
                 t = add(t, &a);
             }
         }
@@ -59,9 +59,9 @@ mod app {
         for b0 in 0..n {
             for b1 in 0..n {
                 for b2 in 0..n {
-                    a[0] = u8::try_from(b0).unwrap();
-                    a[1] = u8::try_from(b1).unwrap();
-                    a[2] = u8::try_from(b2).unwrap();
+                    a[0] = b0 as u8;
+                    a[1] = b1 as u8;
+                    a[2] = b2 as u8;
                     t = add(t, &a);
                 }
             }
@@ -81,7 +81,7 @@ mod app {
             for i in 0..m {
                 for j in 0..m {
                     for k in 0..m {
-                        a[0] = u8::try_from(b0).unwrap();
+                        a[0] = b0 as u8;
                         a[1] = edge[i];
                         a[2] = edge[j];
                         a[3] = edge[k];

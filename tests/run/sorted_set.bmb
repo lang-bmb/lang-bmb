@@ -64,7 +64,7 @@ mod sset {
         // invariant is broken only inside that one operation, not between
         // loop iterations.
         #[effects(pure)]
-        #[uses(below, sorted)]
+        #[uses(sorted)]
         fn insert(self: &mut Set, x: i64) -> bool {
             if self.len == 8 {
                 return false;
@@ -89,7 +89,7 @@ mod sset {
         // `false` when `x` is not there. Removing keeps the order: the
         // shift down never makes two values equal.
         #[effects(pure)]
-        #[uses(closed, sorted)]
+        #[uses(sorted)]
         fn remove(self: &mut Set, x: i64) -> bool {
             let mut p: usize = 0;
             while p < self.len && self.items[p] != x
@@ -116,7 +116,7 @@ mod sset {
 
     #[effects(io)]
     fn show(s: &Set) -> () {
-        print_u64(u64::try_from(s.size()).unwrap());
+        print_u64(s.size() as u64);
         for i in 0..s.size() {
             match s.at(i) {
                 None => print_i64(-1),
@@ -139,7 +139,7 @@ mod sset {
         let mut s: Set = Set::new();
         let xs: [i64; 10] = [5, 3, 9, 3, 1, 7, 5, 11, 2, 8];
         for i in 0..10 {
-            let k: usize = usize::try_from(i).unwrap();
+            let k: usize = i as usize;
             flag(s.insert(xs[k]));
         }
         show(&s);

@@ -1479,6 +1479,41 @@ impl Func {
         u
     }
 
+    /// Every odd-numbered function writes its quantifier-free contract
+    /// clauses inline instead of calling `gN_pre` / `gN_post` (ADR-0095 A2;
+    /// the spec fns stay, the interpreter evaluates them). A mutable
+    /// array's post speaks of `old(a)` through a parameter, so it stays
+    /// a call.
+    fn inline(&self) -> bool {
+        self.name.ends_with(['1', '3', '5', '7', '9'])
+    }
+
+    fn pre_clause(&self) -> String {
+        let text = conj(&self.pre);
+        if self.inline() && !text.contains("forall") && !text.contains("exists") && !text.is_empty()
+        {
+            text
+        } else {
+            format!("{}_pre(a, i, x)", self.name)
+        }
+    }
+
+    fn post_clause(&self, r: &str) -> String {
+        let text = conj(&self.post);
+        if self.inline()
+            && !self.mutable
+            && !text.contains("forall")
+            && !text.contains("exists")
+            && !text.is_empty()
+            && r == "r"
+        {
+            text
+        } else {
+            let ob = if self.mutable { "old(a), " } else { "" };
+            format!("{}_post(a, {ob}i, x, {r})", self.name)
+        }
+    }
+
     fn text(&self) -> String {
         let n = &self.name;
         let b = if self.mutable { "b: &[i64], " } else { "" };
@@ -1533,16 +1568,20 @@ impl Func {
             );
             let _ = writeln!(
                 t,
-                "    #[effects(pure)]\n    #[uses({})]\n    fn {n}(a: &[i64], i: usize, x: i64) -> (r: i64)\n        requires {n}_pre(a, i, x),\n        ensures {n}_post(a, i, x, r),\n    {{\n        proof {{\n            {n}_lemma(a, i, x);\n        }}\n        0\n    }}\n",
-                uses.join(", ")
+                "    #[effects(pure)]\n    #[uses({})]\n    fn {n}(a: &[i64], i: usize, x: i64) -> (r: i64)\n        requires {},\n        ensures {},\n    {{\n        proof {{\n            {n}_lemma(a, i, x);\n        }}\n        0\n    }}\n",
+                uses.join(", "),
+                self.pre_clause(),
+                self.post_clause("r"),
             );
             return t;
         }
         let _ = writeln!(
             t,
-            "    #[effects(pure)]\n    #[uses({})]\n    fn {n}(a: {}, i: usize, x: i64) -> (r: i64)\n        requires {n}_pre(a, i, x),\n        ensures {n}_post(a, {ob}i, x, r),\n    {{",
+            "    #[effects(pure)]\n    #[uses({})]\n    fn {n}(a: {}, i: usize, x: i64) -> (r: i64)\n        requires {},\n        ensures {},\n    {{",
             uses.join(", "),
-            if self.mutable { "&mut [i64]" } else { "&[i64]" }
+            if self.mutable { "&mut [i64]" } else { "&[i64]" },
+            self.pre_clause(),
+            self.post_clause("r"),
         );
         t.push_str("        let mut s: i64 = 0;\n        let mut t: i64 = 0;\n        let mut k: usize = 0;\n");
         for s in &self.before {

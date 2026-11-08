@@ -9,7 +9,6 @@ mod lx {
     }
 
     #[effects(pure)]
-    #[uses(small)]
     fn first_pair(a: &[i64], t: i64) -> i64
         requires small(a),
     {
@@ -36,7 +35,6 @@ mod lx {
     }
 
     #[effects(pure)]
-    #[uses(below, near)]
     fn first_square_at_least(n: u64) -> u64
         requires below(n),
     {
@@ -58,7 +56,6 @@ mod lx {
     }
 
     #[effects(pure)]
-    #[uses(found_at)]
     fn index_of(a: &[i64], x: i64) -> (r: usize)
         ensures found_at(a, x, r),
     {
@@ -106,7 +103,6 @@ mod lx {
     }
 
     #[effects(pure)]
-    #[uses(bounded, small)]
     fn sum_even(a: &[i64]) -> i64
         requires small(a),
     {

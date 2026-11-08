@@ -21,12 +21,11 @@ mod wf {
     // Not every `i32` is an `i16`.
     #[effects(pure)]
     fn narrow(x: i32) -> i16 {
-        i16::try_from(x).unwrap()
+        x as i16
     }
 
     // `i16::MIN % -1` overflows.
     #[effects(pure)]
-    #[uses(nonzero)]
     fn rem(n: i16, d: i16) -> i16
         requires nonzero(d),
     {
@@ -40,6 +39,6 @@ mod wf {
     // A negative `isize` is not a `usize`.
     #[effects(pure)]
     fn index(i: isize) -> usize {
-        usize::try_from(i).unwrap()
+        i as usize
     }
 }

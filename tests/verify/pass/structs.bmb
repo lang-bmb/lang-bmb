@@ -26,7 +26,6 @@ mod geo {
 
     impl Point {
         #[effects(pure)]
-        #[uses(small)]
         fn sum(self: &Point) -> i64
             requires small(*self),
         {
@@ -34,7 +33,6 @@ mod geo {
         }
 
         #[effects(pure)]
-        #[uses(small, small_d, moved)]
         fn shift(self: &mut Point, d: i64) -> ()
             requires small(*self), small_d(d),
             ensures moved(*old(self), *self, d),
@@ -45,7 +43,6 @@ mod geo {
 
     // A callee's `&mut` effect is its `ensures`, nothing more.
     #[effects(pure)]
-    #[uses(small, small_d, moved)]
     fn twice(p: Point, d: i64) -> (r: Point)
         requires small(p), small_d(d),
         ensures moved(p, r, d + d),
@@ -59,7 +56,6 @@ mod geo {
 
     // Nested fields: writing one leaves the others.
     #[effects(pure)]
-    #[uses(ends)]
     fn reshape(p: Point, q: Point) -> (r: Seg)
         ensures ends(r, p, q),
     {
@@ -70,7 +66,6 @@ mod geo {
     }
 
     #[effects(pure)]
-    #[uses(either)]
     fn pick(c: bool, p: Point, q: Point) -> (r: Point)
         ensures either(r, p, q),
     {
@@ -80,7 +75,6 @@ mod geo {
 
     // A loop that writes a field keeps only what its invariant says.
     #[effects(pure)]
-    #[uses(small)]
     fn count(n: i64) -> (r: Point)
         ensures small(r),
     {
@@ -94,7 +88,7 @@ mod geo {
     }
 
     #[effects(pure)]
-    #[uses(on_diag, diag)]
+    #[uses(diag)]
     fn square(a: i64) -> (r: Point)
         ensures on_diag(r),
     {
@@ -102,7 +96,6 @@ mod geo {
     }
 
     #[effects(pure)]
-    #[uses(same_seg)]
     fn rebuild(s: Seg) -> (r: Seg)
         ensures same_seg(s, r),
     {
@@ -110,7 +103,6 @@ mod geo {
     }
 
     #[effects(pure)]
-    #[uses(small)]
     fn replace(p: &mut Point) -> ()
         ensures small(*p),
     {
@@ -121,7 +113,6 @@ mod geo {
 #[summary("다른 단위에서 전체 경로로")]
 mod user {
     #[effects(pure)]
-    #[uses(geo::small)]
     fn far(p: geo::Point) -> i64
         requires geo::small(p),
     {
@@ -143,7 +134,6 @@ mod arrs {
 
     // A copy is not changed by a later write to the original.
     #[effects(pure)]
-    #[uses(is)]
     fn copied() -> (r: i64)
         ensures is(r, 514),
     {
@@ -156,18 +146,16 @@ mod arrs {
 
     // A repeat gives every element the value; the length is fixed.
     #[effects(pure)]
-    #[uses(is, below)]
     fn repeated(i: usize) -> (r: i64)
         requires below(i, 4),
         ensures is(r, 7),
     {
         let z: [Point; 4] = [Point { x: 7, y: 0 }; 4];
-        z[i].x + i64::try_from(z.len()).unwrap() - 4
+        z[i].x + z.len() as i64 - 4
     }
 
     // Elements of an enum array literal are known.
     #[effects(pure)]
-    #[uses(is)]
     fn cells() -> (r: i64)
         ensures is(r, 9),
     {
@@ -187,14 +175,13 @@ mod arrs {
     // An array field has its declared length; a whole-array assignment
     // swaps elements as read before the first write.
     #[effects(pure)]
-    #[uses(is)]
     fn field(q: Path) -> (r: i64)
         ensures is(r, 3),
     {
         let mut t: Path = q;
         t.p = [Point { x: 1, y: 0 }, Point { x: 2, y: 0 }, Point { x: 3, y: 0 }];
         t.p = [t.p[2], t.p[1], t.p[0]];
-        t.p[0].x + i64::try_from(t.p.len()).unwrap() - 3
+        t.p[0].x + t.p.len() as i64 - 3
     }
 }
 
@@ -211,7 +198,6 @@ mod speclit {
     spec fn points(a: [P; 2], v: i64) -> bool { a == [P { x: v, y: 0 }, P { x: 0, y: v }] }
 
     #[effects(pure)]
-    #[uses(is_123)]
     fn make() -> (r: [i64; 3])
         ensures is_123(r),
     {
@@ -219,7 +205,6 @@ mod speclit {
     }
 
     #[effects(pure)]
-    #[uses(zeros, zeros_below)]
     fn clear() -> (r: [i64; 4])
         ensures zeros(r),
     {
@@ -236,7 +221,6 @@ mod speclit {
     }
 
     #[effects(pure)]
-    #[uses(points)]
     fn pts(v: i64) -> (r: [P; 2])
         ensures points(r, v),
     {

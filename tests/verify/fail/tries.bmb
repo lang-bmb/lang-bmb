@@ -14,7 +14,6 @@ mod tf {
 
     // `?` returns `None` when `half` does.
     #[effects(pure)]
-    #[uses(some)]
     fn always(x: u64) -> (r: Option<u64>)
         ensures some(r),
     {
@@ -36,7 +35,6 @@ mod tf {
 
     // The error goes out unchanged, and nothing bounds it.
     #[effects(pure)]
-    #[uses(small_err)]
     fn forward(x: u64) -> (r: Result<u64, u64>)
         ensures small_err(r),
     {

@@ -96,7 +96,7 @@ mod ring {
 
     #[effects(io)]
     fn show(r: &Ring) -> () {
-        print_u64(u64::try_from(r.size()).unwrap());
+        print_u64(r.size() as u64);
         for i in 0..r.size() {
             match r.get(i) {
                 None => print_i64(-1),

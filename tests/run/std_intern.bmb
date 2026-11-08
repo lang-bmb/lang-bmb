@@ -12,7 +12,6 @@ mod uses_intern {
     // The number of each word of `s` (between single spaces), then the
     // names by number.
     #[effects(alloc, io)]
-    #[uses(after_space, short, std::intern::empty, std::intern::grew, std::intern::id_pos, std::intern::name_room, std::intern::named, std::intern::pushed_name, std::intern::room, std::intern::size)]
     fn number(s: &str) -> ()
         requires short(s),
     {
@@ -30,7 +29,7 @@ mod uses_intern {
                 b = b + 1;
             }
             let id: usize = t.intern(&s[a..b]);
-            print_u64(u64::try_from(id).unwrap());
+            print_u64(id as u64);
             if b < s.len() {
                 a = b + 1;
             } else {
@@ -41,12 +40,12 @@ mod uses_intern {
             None => print_str("no let\n"),
             Some(i) => {
                 print_str("let is ");
-                print_u64(u64::try_from(i).unwrap());
+                print_u64(i as u64);
             }
         }
         match t.get("while") {
             None => print_str("no while\n"),
-            Some(j) => print_u64(u64::try_from(j).unwrap()),
+            Some(j) => print_u64(j as u64),
         }
         if t.len() > 0 && t.name_is(0, "fn") {
             print_str("0 is fn\n");
@@ -60,7 +59,6 @@ mod uses_intern {
     }
 
     #[effects(alloc, io)]
-    #[uses(short)]
     fn main() -> () {
         number("fn main let x let y fn é x");
         number("");

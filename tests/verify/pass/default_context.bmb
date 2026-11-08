@@ -1,0 +1,40 @@
+#[summary("The default proof context (ADR-0095 A1): without `#[uses]`, a definition sees the spec fns its own clauses name and those its callees' contracts name")]
+mod dc {
+    #[effects(pure)]
+    fn make(n: u64) -> (r: u64)
+        requires small(n),
+        ensures double(n, r),
+    {
+        n + n
+    }
+
+    // `small` and `double` are `make`'s contract: revealed here too.
+    #[effects(pure)]
+    fn user(n: u64) -> (r: u64)
+        requires n < 10,
+        ensures r < 20,
+    {
+        make(n)
+    }
+
+    // `bounded` names `small` in its body: the body is not reached, so it
+    // is written in `#[uses]`.
+    #[effects(pure)]
+    fn checked(n: u64) -> u64
+        requires bounded(n),
+    {
+        make(n)
+    }
+
+    spec fn bounded(n: u64) -> bool {
+        small(n) && n > 0
+    }
+
+    spec fn double(n: u64, r: u64) -> bool {
+        r == n * 2
+    }
+
+    spec fn small(n: u64) -> bool {
+        n < 1000
+    }
+}

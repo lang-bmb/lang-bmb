@@ -17,7 +17,6 @@ mod uses_num {
     }
 
     #[effects(alloc, io)]
-    #[uses(std::num::grew, std::num::room, std::num::room1)]
     fn main() -> () {
         show_u(std::num::parse_u64("0"));
         show_u(std::num::parse_u64("+42"));

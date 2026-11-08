@@ -22,7 +22,6 @@ mod bounds {
     spec fn not_seven(r: i64) -> bool { r != 7 }
 
     #[effects(pure)]
-    #[uses(one_and_seven, not_seven)]
     fn cex_after_array(a: &[i64], x: i64) -> (r: i64)
         requires one_and_seven(a, x),
         ensures not_seven(r),

@@ -25,7 +25,7 @@ mod pts {
     }
 
     #[effects(pure)]
-    #[uses(cells_small, coin_small, short, small, within)]
+    #[uses(coin_small, small)]
     fn coins(a: &[Cell]) -> i64
         requires cells_small(a), short(a.len()),
     {
@@ -44,7 +44,7 @@ mod pts {
     }
 
     #[effects(io)]
-    #[uses(all_small, cells_small, coin_small, short, small, small_p)]
+    #[uses(coin_small, small, small_p)]
     fn main() -> () {
         let mut a: [Point; 3] = [Point { x: 1, y: 2 }, Point { x: 3, y: 4 }, Point { x: 5, y: 6 }];
         let b: [Point; 3] = a;
@@ -96,7 +96,7 @@ mod pts {
     }
 
     #[effects(pure)]
-    #[uses(all_small, short, small, small_p, within)]
+    #[uses(small, small_p)]
     fn sum_x(a: &[Point]) -> i64
         requires all_small(a), short(a.len()),
     {

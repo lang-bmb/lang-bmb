@@ -32,7 +32,6 @@ mod mm {
     }
 
     #[effects(pure)]
-    #[uses(holds)]
     fn fill(s: &mut Slot, v: i64) -> ()
         ensures holds(s, v),
     {
@@ -46,7 +45,7 @@ mod mm {
     }
 
     #[effects(pure)]
-    #[uses(leaf, leaf_is)]
+    #[uses(leaf)]
     fn set_leaf(e: &mut Expr, v: i64) -> ()
         ensures leaf_is(e, v),
         decreases e,
@@ -60,7 +59,6 @@ mod mm {
     }
 
     #[effects(pure)]
-    #[uses(labelled)]
     fn relabel(b: &mut Bag) -> ()
         ensures labelled(b, 42),
     {

@@ -28,7 +28,10 @@ pub const CODES: &[(&str, &str)] = &[
     // E02xx: Rust habits rejected by BMB (each carries a fix when mechanical)
     ("E0201", "`let` requires an explicit type"),
     ("E0202", "macros are not allowed"),
-    ("E0205", "`as` casts are not allowed"),
+    (
+        "E0205",
+        "`as` converts between integer types only (to `f64`: `f64::from(x)`)",
+    ),
     ("E0207", "construct not supported in milestone 1"),
     ("E0208", "lifetime annotations are not allowed"),
     (
@@ -39,7 +42,7 @@ pub const CODES: &[(&str, &str)] = &[
     ("E0211", "comparison operators cannot be chained"),
     (
         "E0212",
-        "`T::from(x)` / `x.into()` / `x.try_into()`: convert with `T::try_from(x).unwrap()`",
+        "`T::from(x)` / `x.into()` / `x.try_into()`: convert with `x as T`",
     ),
     (
         "E0213",
@@ -153,7 +156,7 @@ pub const CODES: &[(&str, &str)] = &[
     ("E0302", "duplicate definition"),
     (
         "E0303",
-        "name already bound in this function (shadowing is not allowed)",
+        "a local name hides a visible one (a parameter, an outer local, the result), or is bound elsewhere in the function with another type (ADR-0095 A3)",
     ),
     ("E0304", "unknown function"),
     ("E0305", "unknown type or trait"),
@@ -285,7 +288,7 @@ pub const CODES: &[(&str, &str)] = &[
     // E05xx: specifications
     (
         "E0501",
-        "contract clause must be a call to a named predicate (`spec fn ... -> bool`)",
+        "a contract clause with a quantifier must be a call to a named predicate (`spec fn ... -> bool`); one without is an expression (ADR-0095 A2)",
     ),
     ("E0502", "vacuous predicate used in a contract"),
     (
@@ -450,6 +453,26 @@ pub const CODES: &[(&str, &str)] = &[
         "an executable function declares an effect its body does not need (callers must declare it too)",
     ),
     (
+        "W0912",
+        "a clause keyword repeated (`invariant a, invariant b,`): the canonical form lists the clauses after one keyword (an input alias, ADR-0095; `bmb fmt` and `bmb fix` rewrite it)",
+    ),
+    (
+        "W0913",
+        "loop clauses at the start of the body (`while c { invariant a, .. }`): the canonical form puts them before the body (an input alias, ADR-0095; `bmb fmt` and `bmb fix` rewrite it)",
+    ),
+    (
+        "W0914",
+        "a compound assignment `t op= e`: the canonical form is `t = t op e` (an input alias, backlog 2N-07, ADR-0095; `bmb fmt` and `bmb fix` rewrite it)",
+    ),
+    (
+        "W0915",
+        "an integer conversion written `T::try_from(x).unwrap()`: the canonical form is `x as T` (an input alias, ADR-0095 A4; `bmb fmt` and `bmb fix` rewrite it)",
+    ),
+    (
+        "W0916",
+        "a `#[uses(..)]` entry the default proof context reveals already (the spec fns the definition's own clauses, invariants, assertions and proof code and its callees' contracts name, ADR-0095 A1; `bmb fix` removes it)",
+    ),
+    (
         "W0911",
         "a call by path of a method whose normal form is the method call `x.f(..)` (the fix rewrites it; `bmb fmt` and `bmb fix` apply it)",
     ),
@@ -518,6 +541,11 @@ impl Diag {
 #[derive(Default, Clone)]
 pub struct Diags {
     pub items: Vec<Diag>,
+    /// Input aliases the parser took (ADR-0095, "the meaning of an input
+    /// alias"): habit forms read as the canonical syntax tree, each with
+    /// the replacement that writes the canonical form. They are not
+    /// errors: `bmb lint` reports them and `bmb fix` applies them.
+    pub aliases: Vec<Diag>,
 }
 
 impl Diags {

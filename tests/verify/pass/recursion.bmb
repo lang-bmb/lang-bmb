@@ -5,7 +5,7 @@ mod rec {
     spec fn is_parity(n: u64, r: u64) -> bool { r == parity(n) }
 
     #[effects(pure)]
-    #[uses(is_parity, parity)]
+    #[uses(parity)]
     fn even_odd(n: u64) -> (r: u64)
         ensures is_parity(n, r),
         decreases n,
@@ -14,7 +14,7 @@ mod rec {
     }
 
     #[effects(pure)]
-    #[uses(is_parity, parity)]
+    #[uses(parity)]
     fn odd_even(n: u64) -> (r: u64)
         ensures is_parity(n, r),
         decreases n,
@@ -38,7 +38,6 @@ mod frec {
     }
 
     #[effects(pure)]
-    #[uses(below)]
     fn base() -> bool
         ensures below(0),
     {

@@ -1,7 +1,7 @@
 #[summary("명세의 `exists`: 계약·루프 불변식·사전조건에서 `forall`과 같은 트리거 규칙으로 증명된다(백로그 T0-25, ADR-0079)")]
 mod exists_specs {
     #[effects(pure)]
-    #[uses(found, has, none_below)]
+    #[uses(has)]
     fn contains(a: &[i64], k: i64) -> (r: bool)
         ensures found(a, k, r),
     {
@@ -19,7 +19,6 @@ mod exists_specs {
     }
 
     #[effects(pure)]
-    #[uses(odd_at, odd_from)]
     fn first_odd(v: &[u64]) -> (r: usize)
         requires odd_from(v, 0),
         ensures odd_at(v, r),

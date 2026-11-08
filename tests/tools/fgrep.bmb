@@ -10,7 +10,6 @@ mod fgrep {
 
     /// Whether `pat` occurs in `hay[lo..hi]`.
     #[effects(pure)]
-    #[uses(within, scan, prefix)]
     fn contains(hay: &[u8], lo: usize, hi: usize, pat: &[u8]) -> bool
         requires within(lo, hi, hay.len()),
     {
@@ -46,7 +45,6 @@ mod fgrep {
 
     /// Prints `text[lo..hi]`.
     #[effects(io)]
-    #[uses(within)]
     fn print_range(text: &[u8], lo: usize, hi: usize) -> ()
         requires within(lo, hi, text.len()),
     {
@@ -54,7 +52,6 @@ mod fgrep {
     }
 
     #[effects(alloc, io, nondet)]
-    #[uses(within, line)]
     fn main() -> () {
         let a: Vec<String> = std::env::args();
         if a.len() != 3 {

@@ -52,7 +52,6 @@ mod loops {
     spec fn first_len(a: &[i64]) -> bool { a.len() > 0 }
 
     #[effects(pure)]
-    #[uses(first_len)]
     fn zero_first(a: &mut [i64]) -> ()
         requires first_len(a),
     {
@@ -62,7 +61,6 @@ mod loops {
     // A `&mut` parameter passed on inside a loop is havocked at the loop
     // head: what was written before the loop is gone (backlog 1B-38).
     #[effects(pure)]
-    #[uses(first_len)]
     fn passed_on_in_loop(a: &mut [i64]) -> ()
         requires first_len(a),
     {
@@ -111,7 +109,6 @@ mod loops {
 
     // So is a write through a `&mut` match binding on a `&mut` parameter.
     #[effects(pure)]
-    #[uses(zero)]
     fn binding_writes(c: &mut Cell) -> ()
         requires zero(c),
     {

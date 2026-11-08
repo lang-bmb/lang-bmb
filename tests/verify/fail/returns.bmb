@@ -6,7 +6,6 @@ mod rf {
 
     // The early value breaks the postcondition.
     #[effects(pure)]
-    #[uses(nonneg)]
     fn early(x: i64) -> (r: i64)
         ensures nonneg(r),
     {
@@ -37,7 +36,6 @@ mod rf {
     // The value found in the loop is returned; the end of the body is
     // reached when nothing was found.
     #[effects(pure)]
-    #[uses(at)]
     fn find(a: &[i64], x: i64) -> (r: usize)
         ensures at(a, x, r),
     {
@@ -56,7 +54,6 @@ mod rf {
 
     // A `return` in a `match` arm.
     #[effects(pure)]
-    #[uses(nonneg)]
     fn arm(o: Option<i64>) -> (r: i64)
         ensures nonneg(r),
     {

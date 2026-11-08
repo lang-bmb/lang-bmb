@@ -18,7 +18,7 @@ mod inv {
 
     // No `requires`: the parameter is valid.
     #[effects(pure)]
-    #[uses(nonneg, within)]
+    #[uses(within)]
     fn width(s: Span) -> (w: i64)
         ensures nonneg(w),
     {
@@ -27,7 +27,7 @@ mod inv {
 
     // A new value is proved valid at the return.
     #[effects(pure)]
-    #[uses(small, within)]
+    #[uses(within)]
     fn make(a: i64, b: i64) -> Span
         requires small(a), small(b),
     {
@@ -52,7 +52,6 @@ mod inv {
     // A call result is valid, and so is an argument that is one: no
     // definition is needed here.
     #[effects(pure)]
-    #[uses(small)]
     fn caller(a: i64) -> i64
         requires small(a),
     {
@@ -64,7 +63,7 @@ mod inv {
     // A loop havocs `s`; its validity holds at the head without an
     // invariant clause, and is proved at the end of each iteration.
     #[effects(pure)]
-    #[uses(small, within)]
+    #[uses(within)]
     fn widen(s: &mut Span, n: i64) -> ()
         requires small(n),
     {
@@ -92,7 +91,7 @@ mod inv {
     struct Pair { a: Span, b: Span }
 
     #[effects(pure)]
-    #[uses(nonneg, within)]
+    #[uses(within)]
     fn total(p: &Pair) -> (w: i64)
         ensures nonneg(w),
     {
@@ -112,7 +111,7 @@ mod inv {
     }
 
     #[effects(pure)]
-    #[uses(nonneg, positive, within)]
+    #[uses(positive, within)]
     fn value(a: &Amount) -> (r: i64)
         ensures nonneg(r),
     {
@@ -146,7 +145,7 @@ mod inv {
 
     // `Vec` elements are valid (a quantifier over the elements).
     #[effects(pure)]
-    #[uses(nonneg, within)]
+    #[uses(within)]
     fn first_width(v: &Vec<Span>) -> (w: i64)
         ensures nonneg(w),
     {
@@ -168,7 +167,7 @@ mod inv {
     struct Holder { inner: Box<Span> }
 
     #[effects(pure)]
-    #[uses(nonneg, within)]
+    #[uses(within)]
     fn held(h: &Holder) -> (w: i64)
         ensures nonneg(w),
     {
@@ -193,7 +192,7 @@ mod inv {
 
     // Every node below is valid too (deep validity, two levels here).
     #[effects(pure)]
-    #[uses(nonneg, percent)]
+    #[uses(percent)]
     fn two(l: &List) -> (r: i64)
         ensures nonneg(r),
     {
@@ -207,7 +206,7 @@ mod inv {
     }
 
     #[effects(alloc)]
-    #[uses(pct, percent)]
+    #[uses(percent)]
     fn push_front(l: List, x: i64) -> List
         requires pct(x),
     {
@@ -244,7 +243,7 @@ mod inv {
 
     // Instances: an element of a `Buf<Span>` is a valid `Span`.
     #[effects(pure)]
-    #[uses(nonneg, within)]
+    #[uses(within)]
     fn last_width(b: &Buf<Span>, d: Span) -> (w: i64)
         ensures nonneg(w),
     {

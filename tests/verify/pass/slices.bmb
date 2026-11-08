@@ -18,7 +18,6 @@ mod geo {
 
     // Element ranges hold where an element is read.
     #[effects(pure)]
-    #[uses(idx)]
     fn halves(a: &[Point], i: usize) -> i64
         requires idx(a, i),
     {
@@ -27,7 +26,6 @@ mod geo {
 
     // Writing one field of one element keeps the other field.
     #[effects(pure)]
-    #[uses(idx, at_x, kept_y)]
     fn set_x(a: &mut [Point], i: usize, v: i64) -> ()
         requires idx(a, i),
         ensures at_x(a, i, v), kept_y(old(a), a, i),
@@ -36,7 +34,6 @@ mod geo {
     }
 
     #[effects(pure)]
-    #[uses(idx, at_x)]
     fn put(a: &mut [Point], i: usize, p: Point) -> ()
         requires idx(a, i),
         ensures at_x(a, i, p.x),
@@ -46,7 +43,6 @@ mod geo {
 
     // An enum slice is one array of datatype values.
     #[effects(pure)]
-    #[uses(sidx, all_dots)]
     fn clear(s: &mut [Shape]) -> ()
         ensures all_dots(s, s.len()),
     {
@@ -61,7 +57,6 @@ mod geo {
     }
 
     #[effects(pure)]
-    #[uses(idx)]
     fn caller(a: &mut [Point], i: usize) -> i64
         requires idx(a, i),
     {

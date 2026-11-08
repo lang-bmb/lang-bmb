@@ -15,7 +15,6 @@ mod collections {
 
     // The place of `k` in ascending keys, by bisection.
     #[effects(pure)]
-    #[uses(place, strictly)]
     fn locate<K: Ord>(v: &[K], k: &K) -> (p: usize)
         requires strictly::<K>(v),
         ensures place::<K>(v, k, p),
@@ -76,7 +75,7 @@ mod collections {
     // `Vec::insert`). Recursive: an item moves by `std::mem::replace`, so no
     // place is ever empty, and the contract speaks of `x` as it came in.
     #[effects(alloc)]
-    #[uses(insert_room, inserted_at, shifted)]
+    #[uses(shifted)]
     fn shift_in<T>(v: &mut Vec<T>, i: usize, x: T) -> ()
         requires insert_room::<T>(v.as_slice(), i),
         ensures inserted_at::<T>(v.as_slice(), old(v).as_slice(), i, &x),
@@ -93,7 +92,6 @@ mod collections {
     // Takes the item at `i` out and moves each one after it a place down
     // (Rust's `Vec::remove`, the item in `Some`).
     #[effects(pure)]
-    #[uses(remove_pos, removed_at, was_at)]
     fn shift_out<T>(v: &mut Vec<T>, i: usize) -> (r: Option<T>)
         requires remove_pos::<T>(v.as_slice(), i),
         ensures removed_at::<T>(v.as_slice(), old(v).as_slice(), i), was_at::<T>(&r, old(v).as_slice(), i),
@@ -130,7 +128,7 @@ mod collections {
     impl<K: Ord> BTreeSet<K> {
         // An empty set.
         #[effects(alloc)]
-        #[uses(empty_set, set_sound, strictly)]
+        #[uses(set_sound, strictly)]
         fn new() -> (r: BTreeSet<K>)
             ensures empty_set::<K>(&r),
         {
@@ -140,7 +138,6 @@ mod collections {
 
         // The number of keys (Rust's `len`).
         #[effects(pure)]
-        #[uses(set_size)]
         fn len(self: &BTreeSet<K>) -> (r: usize)
             ensures set_size::<K>(r, self),
         {
@@ -149,7 +146,7 @@ mod collections {
 
         // Whether `k` is in the set (Rust's `contains`).
         #[effects(pure)]
-        #[uses(contained, holds, place, set_sound, strictly)]
+        #[uses(holds, set_sound)]
         fn contains(self: &BTreeSet<K>, k: &K) -> (r: bool)
             ensures contained::<K>(r, self, k),
         {
@@ -159,7 +156,7 @@ mod collections {
 
         // Adds `k`; whether it was new (Rust's `insert`).
         #[effects(alloc)]
-        #[uses(added, holds, in_order, insert_pre, insert_room, inserted_at, kept_set, place, room_set, set_grew, set_sound, shifted, strictly)]
+        #[uses(holds, kept_set, set_sound, shifted)]
         fn insert(self: &mut BTreeSet<K>, k: K) -> (r: bool)
             requires room_set::<K>(self),
             ensures added::<K>(r, self, old(self), &k), set_grew::<K>(self, old(self)),
@@ -181,7 +178,7 @@ mod collections {
 
         // Takes `k` out; whether it was there (Rust's `remove`).
         #[effects(alloc)]
-        #[uses(dropped, holds, in_order, kept_set, place, remove_pos, remove_pre, removed_at, set_shrank, set_sound, strictly, was_at)]
+        #[uses(holds, kept_set, set_sound)]
         fn remove(self: &mut BTreeSet<K>, k: &K) -> (r: bool)
             ensures dropped::<K>(r, self, old(self), k), set_shrank::<K>(self, old(self)),
         {
@@ -200,7 +197,7 @@ mod collections {
 
         // The keys in ascending order (Rust's `into_iter().collect()`).
         #[effects(pure)]
-        #[uses(set_keys, set_sound, strictly)]
+        #[uses(set_sound, strictly)]
         fn into_keys(self: BTreeSet<K>) -> (r: Vec<K>)
             ensures set_keys::<K>(r.as_slice(), &self),
         {
@@ -218,7 +215,7 @@ mod collections {
     }
 
     // Taking a key out keeps the keys strictly ascending.
-    #[uses(in_order, remove_pre, removed_at, strictly)]
+    #[uses(removed_at, strictly)]
     proof fn remove_keeps_order<K: Ord>(v: &[K], w: &[K], p: usize)
         requires remove_pre::<K>(v, w, p),
         ensures in_order::<K>(v),
@@ -241,7 +238,7 @@ mod collections {
     }
 
     // Inserting a new key at its place keeps the keys strictly ascending.
-    #[uses(in_order, insert_pre, inserted_at, place, shifted, strictly)]
+    #[uses(inserted_at, place, shifted, strictly)]
     proof fn insert_keeps_order<K: Ord>(v: &[K], w: &[K], p: usize, k: &K)
         requires insert_pre::<K>(v, w, p, k),
         ensures in_order::<K>(v),
@@ -360,7 +357,7 @@ mod collections {
     impl<K: Ord, V: Copy> BTreeMap<K, V> {
         // An empty map.
         #[effects(alloc)]
-        #[uses(empty_map, map_sound, strictly)]
+        #[uses(map_sound, strictly)]
         fn new() -> (r: BTreeMap<K, V>)
             ensures empty_map::<K, V>(&r),
         {
@@ -371,7 +368,6 @@ mod collections {
 
         // The number of keys (Rust's `len`).
         #[effects(pure)]
-        #[uses(map_size)]
         fn len(self: &BTreeMap<K, V>) -> (r: usize)
             ensures map_size::<K, V>(r, self),
         {
@@ -380,7 +376,7 @@ mod collections {
 
         // The value of `k` (Rust's `get`, the value copied).
         #[effects(pure)]
-        #[uses(got, has_key, map_sound, maps, place, strictly)]
+        #[uses(has_key, map_sound, maps)]
         fn get(self: &BTreeMap<K, V>, k: &K) -> (r: Option<V>)
             ensures got::<K, V>(r, self, k),
         {
@@ -393,7 +389,7 @@ mod collections {
 
         // Whether the map has `k` (Rust's `contains_key`).
         #[effects(pure)]
-        #[uses(has_key, has_result, map_sound, place, strictly)]
+        #[uses(has_key, map_sound)]
         fn contains_key(self: &BTreeMap<K, V>, k: &K) -> (r: bool)
             ensures has_result::<K, V>(r, self, k),
         {
@@ -404,7 +400,7 @@ mod collections {
         // The value at position `i` in the order of the keys (Rust's
         // `values().nth(i)`).
         #[effects(pure)]
-        #[uses(key_pos, map_sound)]
+        #[uses(map_sound)]
         fn value_at(self: &BTreeMap<K, V>, i: usize) -> V
             requires key_pos::<K, V>(self, i),
         {
@@ -414,7 +410,7 @@ mod collections {
         // Maps `k` to `x`; the old value (Rust's `insert`, which keeps the
         // key there already).
         #[effects(alloc)]
-        #[uses(has_key, in_order, insert_pre, insert_room, inserted_at, map_grew, map_room, map_sound, place, put, replaced, same_keys, shifted, strictly)]
+        #[uses(has_key, map_sound, same_keys, shifted)]
         fn insert(self: &mut BTreeMap<K, V>, k: K, x: V) -> (r: Option<V>)
             requires map_room::<K, V>(self),
             ensures put::<K, V>(r, self, old(self), &k, x), map_grew::<K, V>(self, old(self)),
@@ -440,7 +436,7 @@ mod collections {
 
         // Takes `k` out; its value (Rust's `remove`).
         #[effects(alloc)]
-        #[uses(has_key, in_order, kept_map, map_shrank, map_sound, place, remove_pos, remove_pre, removed_at, strictly, took, was_at)]
+        #[uses(has_key, kept_map, map_sound)]
         fn remove(self: &mut BTreeMap<K, V>, k: &K) -> (r: Option<V>)
             ensures took::<K, V>(r, self, old(self), k), map_shrank::<K, V>(self, old(self)),
         {
@@ -462,7 +458,7 @@ mod collections {
 
         // The keys in ascending order (Rust's `into_keys().collect()`).
         #[effects(pure)]
-        #[uses(map_keys, map_sound, strictly)]
+        #[uses(map_sound, strictly)]
         fn into_keys(self: BTreeMap<K, V>) -> (r: Vec<K>)
             ensures map_keys::<K, V>(r.as_slice(), &self),
         {
@@ -472,7 +468,7 @@ mod collections {
         // The values in the order of their keys (Rust's
         // `into_values().collect()`).
         #[effects(pure)]
-        #[uses(map_sound, map_values)]
+        #[uses(map_sound)]
         fn into_values(self: BTreeMap<K, V>) -> (r: Vec<V>)
             ensures map_values::<K, V>(r.as_slice(), &self),
         {

@@ -10,5 +10,5 @@
 {"code":"E0427","severity":"error","message":"`Shape::Rect` holds 2 value(s), the pattern names 1","file":"err/match.bmb","line":73,"col":13,"end_line":73,"end_col":27,"fix":{"message":"one new name or `_` per payload position","replacement":"Shape::Rect(_, _)"}}
 {"code":"E0401","severity":"error","message":"this pattern is a `Result` variant; the value is `Option<i64>`","file":"err/match.bmb","line":81,"col":13,"end_line":81,"end_col":18,"fix":{"message":"the variants of `Option<i64>`: None, Some"}}
 {"code":"E0401","severity":"error","message":"expected `i64`, found `bool`","file":"err/match.bmb","line":89,"col":24,"end_line":89,"end_col":28}
-{"code":"E0303","severity":"error","message":"`v` is already bound in this function","file":"err/match.bmb","line":97,"col":18,"end_line":97,"end_col":19,"fix":{"message":"choose a new name"}}
+{"code":"E0303","severity":"error","message":"`v` hides a visible name of this function","file":"err/match.bmb","line":97,"col":18,"end_line":97,"end_col":19,"fix":{"message":"choose a new name"}}
 {"code":"E0401","severity":"error","message":"expected `i64`, found `bool`","file":"err/match.bmb","line":104,"col":22,"end_line":104,"end_col":23}

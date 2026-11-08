@@ -28,7 +28,6 @@ mod u8f {
     // The length of `t` without its leading spaces: the slice after the
     // last space is at a boundary (an ASCII byte ends a character).
     #[effects(pure)]
-    #[uses(after_space, within)]
     fn trim_start_len(t: &str) -> usize {
         let mut i: usize = 0;
         while i < t.len() && t.as_bytes()[i] == b' '
@@ -46,7 +45,6 @@ mod u8f {
     // The halves at the first `:`, or none: both slices are at boundaries
     // (an ASCII byte begins and ends a character).
     #[effects(pure)]
-    #[uses(within)]
     fn split_colon(t: &str) -> Option<Halves> {
         let mut i: usize = 0;
         while i < t.len()
@@ -67,7 +65,7 @@ mod u8f {
 
     // Whether `p` begins `s`.
     #[effects(pure)]
-    #[uses(agree, begins, found)]
+    #[uses(begins)]
     fn starts_with(s: &str, p: &str) -> (r: bool)
         ensures found(r, s, p),
     {
@@ -90,7 +88,7 @@ mod u8f {
     // The length of `s` after the prefix `p`: `p`'s last character is
     // whole, so the byte after it in `s` begins one.
     #[effects(pure)]
-    #[uses(begins, found)]
+    #[uses(begins)]
     fn strip_len(s: &str, p: &str) -> usize {
         if starts_with(s, p) {
             return count(&s[p.len()..s.len()]);

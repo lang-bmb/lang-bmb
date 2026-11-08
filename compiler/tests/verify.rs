@@ -337,12 +337,14 @@ fn hidden_predicate_hint_leads_to_a_proof() {
 mod h {
     spec fn small(x: i64) -> bool { x < 100 }
 
+    spec fn fits(x: i64) -> bool { small(x) }
+
     spec fn bigger(x: i64, r: i64) -> bool { r > x }
 
     #[effects(pure)]
     #[uses(small, bigger)]
     fn inc(x: i64) -> (r: i64)
-        requires small(x),
+        requires fits(x),
         ensures bigger(x, r),
     {
         x + 1
@@ -360,7 +362,9 @@ mod h {
     let run = |uses: &str| verify_files(&[("h.bmb".into(), src.replace("USES", uses))]);
     let first = run("bigger");
     assert!(!first.ok);
-    // The precondition `small(5)` fails; the hint names `small` and nothing else.
+    // The precondition `fits(5)` fails: the default context (ADR-0095 A1)
+    // reveals `fits` and `bigger`, the callee's contract, but not `small`
+    // in `fits`'s body. The hint names `small` and nothing else.
     let hint = first
         .output
         .lines()

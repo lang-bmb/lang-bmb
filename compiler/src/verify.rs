@@ -64,6 +64,9 @@ pub struct Tables {
     pub external: BTreeSet<String>,
     /// The executable calls of each definition (the checker's call graph).
     pub calls: BTreeMap<String, BTreeSet<String>>,
+    /// The default proof context of each definition (ADR-0095 A1,
+    /// `default_contexts`): spec fns revealed without `#[uses]`.
+    pub context: BTreeMap<String, BTreeSet<String>>,
     /// The expressions whose value is text (`String`, `&String`, `&str`,
     /// ADR-0050): the prover and the code generator see their bytes
     /// (`lowered`) and tell text operations from byte ones by this.
@@ -146,6 +149,7 @@ impl Tables {
             external: self.external.clone(),
             text_sigs: self.text_sigs.clone(),
             calls: self.calls.clone(),
+            context: self.context.clone(),
             text: self.text.clone(),
         }
     }
@@ -250,6 +254,7 @@ impl Tables {
             external: self.external.clone(),
             text_sigs: self.text_sigs.clone(),
             calls: self.calls.clone(),
+            context: self.context.clone(),
             text: self.text.clone(),
         }
     }
@@ -4881,7 +4886,7 @@ impl<'p, 'q> Enc<'p, 'q> {
             free.iter().map(|(n, s)| (sym(n), *s)).collect();
         let revealed: BTreeSet<String> = self
             .prog
-            .revealed(self.prog.defs[&self.path].f, &self.mod_path)
+            .revealed(&self.path, self.prog.defs[&self.path].f, &self.mod_path)
             .into_iter()
             .collect();
         let mut hidden = Vec::new();
@@ -6406,6 +6411,8 @@ fn bind_params(f: &FnDef, args: &[Val]) -> BTreeMap<String, Val> {
         .collect()
 }
 
+/// A contract clause in a message: the predicate's name, or the clause's
+/// own text when it is an expression (ADR-0095 A2).
 fn pred_name(e: &Expr) -> String {
     match &e.kind {
         ExprKind::Call { path, .. } => path
@@ -6413,7 +6420,7 @@ fn pred_name(e: &Expr) -> String {
             .map(|i| i.name.as_str())
             .collect::<Vec<_>>()
             .join("::"),
-        _ => "..".into(),
+        _ => crate::fmt::expr_text(e),
     }
 }
 
@@ -6868,10 +6875,10 @@ impl<'p> Prog<'p> {
 
     /// The spec fns `f`'s `#[uses]` reveals: a generic one by each of its
     /// instances.
-    fn revealed(&self, f: &FnDef, mod_path: &str) -> Vec<String> {
+    fn revealed(&self, path: &str, f: &FnDef, mod_path: &str) -> Vec<String> {
         let mut out = Vec::new();
         let mut named = Vec::new();
-        for u in uses_of(f, mod_path, &self.t.fns) {
+        for u in context_of(path, f, mod_path, self.t) {
             // A trait's spec method: every impl's definition of it.
             match &self.t.fns[&u].trait_of {
                 Some(tr) => {
@@ -7049,6 +7056,78 @@ impl<'p> Prog<'p> {
             .collect();
         (text, parts)
     }
+}
+
+/// The default proof context of each definition (ADR-0095 A1, as
+/// implemented: the rule without the closure over bodies, "r2"): the spec
+/// fns its own clauses, loop invariants, assertions and proof code name,
+/// and those its callees' `requires` and `ensures` name. Like a written
+/// `#[uses]`, it does not reach into their bodies: the closure (r2c) broke
+/// four of the standard library's proofs that keep a bit-level predicate
+/// opaque behind its user (`crc32::byte` behind `byte_result`: library
+/// cost +384%), the direct rule costs +0.6% there and changes no verdict
+/// (ADR-0095, implementation notes). Names are resolved as the checker
+/// resolved them (`p` is the checked program, method calls already calls
+/// by path, ADR-0051). `#[uses(..)]` adds to this (`context_of`).
+pub fn default_contexts(p: &Program, t: &Tables) -> BTreeMap<String, BTreeSet<String>> {
+    let defs = crate::check::defs_of(p, &t.fns);
+    let by_path: BTreeMap<&str, (&str, &FnDef)> = defs
+        .iter()
+        .map(|(q, u, f)| (q.as_str(), (u.as_str(), *f)))
+        .collect();
+    let calls = |f: &FnDef, unit: &str, clauses_only: bool| -> BTreeSet<String> {
+        let mut out = BTreeSet::new();
+        let mut g = f.clone();
+        let mut visit = |e: &mut Expr| {
+            if let ExprKind::Call { path, .. } = &e.kind {
+                let q = resolve_in(t, path, unit);
+                if t.fns.contains_key(&q) {
+                    out.insert(q);
+                }
+            }
+        };
+        if clauses_only {
+            for e in g.requires.iter_mut().chain(g.ensures.iter_mut()) {
+                crate::ast::expr_walk(e, &mut visit);
+            }
+        } else {
+            crate::ast::fn_exprs_mut(&mut g, &mut visit);
+        }
+        out
+    };
+    let is_spec = |q: &str| t.fns.get(q).is_some_and(|s| s.kind == FnKind::Spec);
+    let mut out = BTreeMap::new();
+    for (q, (u, f)) in &by_path {
+        let mut ctx: BTreeSet<String> = BTreeSet::new();
+        // A spec fn's body is its definition, not a clause of a proof: only
+        // its own contract counts.
+        for c in calls(f, u, f.kind == FnKind::Spec) {
+            if is_spec(&c) {
+                ctx.insert(c);
+            } else if let Some((cu, cf)) = by_path.get(c.as_str()) {
+                ctx.extend(calls(cf, cu, true).into_iter().filter(|s| is_spec(s)));
+            }
+        }
+        ctx.remove(*q);
+        out.insert(q.to_string(), ctx);
+    }
+    out
+}
+
+/// The spec fns definition `path` reveals: its default context (ADR-0095
+/// A1, `Tables::context`) and its `#[uses(..)]`.
+pub(crate) fn context_of(path: &str, f: &FnDef, mod_path: &str, t: &Tables) -> Vec<String> {
+    let mut out: BTreeSet<String> = uses_of(f, mod_path, &t.fns).into_iter().collect();
+    // An instance (`unit::f<i64>`) has its generic definition's context.
+    let generic = match path.rfind("::") {
+        Some(i) if path.ends_with('>') => {
+            path[i + 2..].find('<').map_or(path, |j| &path[..i + 2 + j])
+        }
+        _ => path,
+    };
+    let ctx = t.context.get(path).or_else(|| t.context.get(generic));
+    out.extend(ctx.into_iter().flatten().cloned());
+    out.into_iter().collect()
 }
 
 pub(crate) fn uses_of(f: &FnDef, mod_path: &str, fns: &BTreeMap<String, FnSig>) -> Vec<String> {
@@ -7273,7 +7352,7 @@ pub fn preconditions_satisfiable(
         let mut enc = Enc::new(&prog, path, &d.mod_path);
         let mut axioms: Vec<(String, String)> = Vec::new();
         let mut axiom_parts: Vec<AxiomParts> = Vec::new();
-        for u in prog.revealed(d.f, &d.mod_path) {
+        for u in prog.revealed(path, d.f, &d.mod_path) {
             let (ax, parts) = prog.axiom(&u);
             axioms.push((spec_key(&u, t), ax));
             axiom_parts.extend(parts);
@@ -7768,7 +7847,7 @@ fn verify_pass(
             // an executable function's), no body.
             (Some(None), _) => continue,
             (Some(Some(job)), _) => {
-                for u in prog.revealed(d.f, &d.mod_path) {
+                for u in prog.revealed(path, d.f, &d.mod_path) {
                     let (ax, parts) = prog.axiom(&u);
                     axioms.push((spec_key(&u, t), ax));
                     axiom_parts.extend(parts);
@@ -7817,7 +7896,7 @@ fn verify_pass(
             // A lemma (ADR-0062 §2): its body is ghost code, proved like an
             // executable function's against its contract.
             (None, FnKind::Proof) => {
-                for u in prog.revealed(d.f, &d.mod_path) {
+                for u in prog.revealed(path, d.f, &d.mod_path) {
                     let (ax, parts) = prog.axiom(&u);
                     axioms.push((spec_key(&u, t), ax));
                     axiom_parts.extend(parts);
@@ -7849,7 +7928,7 @@ fn verify_pass(
                 enc.post_check(Val::Unit, d.f.name.span, "at the end of the body");
             }
             (None, FnKind::Exec) => {
-                for u in prog.revealed(d.f, &d.mod_path) {
+                for u in prog.revealed(path, d.f, &d.mod_path) {
                     let (ax, parts) = prog.axiom(&u);
                     axioms.push((spec_key(&u, t), ax));
                     axiom_parts.extend(parts);

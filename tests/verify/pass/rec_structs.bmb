@@ -32,7 +32,6 @@ mod rs {
     spec fn spine_ok(n: &Node) -> bool { spine(n) >= 0 }
 
     #[effects(alloc)]
-    #[uses(bare)]
     fn leaf(x: i64) -> (r: Node)
         ensures bare(&r, x),
     {
@@ -40,7 +39,6 @@ mod rs {
     }
 
     #[effects(alloc)]
-    #[uses(small, adopted)]
     fn adopt(n: &mut Node, c: Node) -> ()
         requires small(n),
         ensures adopted(old(n), n, &c),
@@ -50,7 +48,6 @@ mod rs {
 
     // A write two levels down.
     #[effects(pure)]
-    #[uses(first_is)]
     fn relabel_first(n: &mut Node, x: i64) -> ()
         requires first_is(n, 0),
         ensures first_is(n, x),
@@ -84,7 +81,7 @@ mod rs {
         {
             n = n.wrapping_add(files(&d.subs[i]));
         }
-        n.wrapping_add(u64::try_from(d.files.len()).unwrap())
+        n.wrapping_add(d.files.len() as u64)
     }
 
     #[effects(pure)]
@@ -101,7 +98,7 @@ mod rs {
     }
 
     #[effects(pure)]
-    #[uses(spine, spine_ok)]
+    #[uses(spine)]
     fn spine_len(n: &Node) -> u64
         ensures spine_ok(n),
         decreases n,
@@ -119,7 +116,6 @@ mod rs {
     }
 
     #[effects(alloc)]
-    #[uses(bare, small, adopted, first_is)]
     fn build() -> i64 {
         let mut root: Node = leaf(1);
         adopt(&mut root, leaf(0));

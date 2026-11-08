@@ -3,7 +3,6 @@ mod unsigned_elems {
     spec fn all_nonneg(a: &[u64]) -> bool { forall|i: usize| i < a.len() ==> #[trigger] a[i] >= 0 }
 
     #[effects(pure)]
-    #[uses(all_nonneg)]
     fn f(a: &[u64]) -> (r: bool)
         ensures all_nonneg(a),
     {
@@ -11,7 +10,6 @@ mod unsigned_elems {
     }
 
     #[effects(pure)]
-    #[uses(all_nonneg)]
     fn g(a: &mut [u64]) -> ()
         ensures all_nonneg(a),
     {

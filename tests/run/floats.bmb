@@ -58,7 +58,6 @@ mod fl {
     }
 
     #[effects(pure)]
-    #[uses(bounded)]
     fn half(n: i64) -> f64
         requires bounded(n),
     {
@@ -80,7 +79,6 @@ mod fl {
     }
 
     #[effects(alloc, io)]
-    #[uses(bounded)]
     fn main() -> () {
         // Arithmetic and rounding.
         show(0.1 + 0.2);

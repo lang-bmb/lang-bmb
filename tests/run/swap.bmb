@@ -3,7 +3,6 @@ mod arr {
     spec fn swapped(r: i64) -> bool { r == 1 }
 
     #[effects(pure)]
-    #[uses(swapped)]
     fn swap_back() -> (r: i64)
         ensures swapped(r),
     {

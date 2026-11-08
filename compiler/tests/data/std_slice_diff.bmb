@@ -50,7 +50,7 @@ mod diff {
             invariant out.len() <= 22 * i, sorted.len() == i, r.len() == v.len(),
                 copied(sorted.as_slice(), v.as_slice(), r.as_slice(), i),
         {
-            std::num::push_u64(&mut out, u64::try_from(r[i]).unwrap());
+            std::num::push_u64(&mut out, r[i] as u64);
             out.push(' ');
             sorted.push(v[r[i]]);
         }
@@ -63,7 +63,7 @@ mod diff {
         {
             match std::slice::binary_search::<u64>(sorted.as_slice(), x) {
                 Ok(p) => print_str("y\n"),
-                Err(q) => print_u64(u64::try_from(q).unwrap()),
+                Err(q) => print_u64(q as u64),
             }
             x = x + 1;
         }

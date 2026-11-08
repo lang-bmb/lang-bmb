@@ -4,7 +4,6 @@ mod nl {
     spec fn not_fermat(x: i64, y: i64, z: i64) -> bool { x * x * x + y * y * y != z * z * z }
 
     #[effects(pure)]
-    #[uses(pos3, not_fermat)]
     fn f(x: i64, y: i64, z: i64) -> i64
         requires pos3(x, y, z),
         ensures not_fermat(x, y, z),

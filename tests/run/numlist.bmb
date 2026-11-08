@@ -17,11 +17,10 @@ mod nl {
 
     // A digit's value, or `None` for any other byte.
     #[effects(pure)]
-    #[uses(digit_ok)]
     fn digit(b: u8) -> (r: Option<u64>)
         ensures digit_ok(r),
     {
-        if 48 <= b && b <= 57 { Some(u64::try_from(b - 48).unwrap()) } else { None }
+        if 48 <= b && b <= 57 { Some((b - 48) as u64) } else { None }
     }
 
     spec fn digit_ok(r: Option<u64>) -> bool {
@@ -50,7 +49,7 @@ mod nl {
         pow10(d) >= 1
     }
 
-    #[uses(pow10, pow10_pos)]
+    #[uses(pow10)]
     proof fn pow10_positive(d: u64)
         ensures pow10_pos(d),
         decreases d,
@@ -63,7 +62,7 @@ mod nl {
     // A power of ten grows with its exponent: induction on `b`
     // (ADR-0062, backlog T1-18; it replaces a predicate unfolded case by
     // case, `dev-docs/measurements/m1.md` §6).
-    #[uses(le, pow10, pow10_le, pow10_pos)]
+    #[uses(pow10)]
     proof fn pow10_grows(a: u64, b: u64)
         requires le(a, b),
         ensures pow10_le(a, b),
@@ -84,7 +83,7 @@ mod nl {
     // digits; the first other byte is an error at its position (an empty
     // list, at the end).
     #[effects(alloc)]
-    #[uses(digit_ok, fits, le, parsed, pow10, pow10_le, short, small_nums)]
+    #[uses(pow10)]
     fn parse(s: &[u8]) -> (r: Result<Vec<u64>, usize>)
         requires short(s),
         ensures parsed(r, s.len()),
@@ -146,7 +145,6 @@ mod nl {
 
     // The sum and the largest value, or `None` for an empty list.
     #[effects(pure)]
-    #[uses(small_nums, total_ok)]
     fn total(v: &[u64]) -> (r: Option<u64>)
         requires small_nums(v),
         ensures total_ok(r),
@@ -171,7 +169,6 @@ mod nl {
     }
 
     #[effects(pure)]
-    #[uses(largest_ok, small_nums)]
     fn largest(v: &[u64]) -> (r: Option<u64>)
         requires small_nums(v),
         ensures largest_ok(r),
@@ -189,7 +186,7 @@ mod nl {
 
     // Both summaries through `?`: no list, no summary.
     #[effects(alloc)]
-    #[uses(digit_ok, fits, largest_ok, parsed, short, small_nums, total_ok)]
+    #[uses(digit_ok, fits)]
     fn summary(s: &[u8]) -> Option<u64>
         requires short(s),
     {
@@ -211,7 +208,7 @@ mod nl {
     }
 
     #[effects(alloc, io)]
-    #[uses(digit_ok, fits, largest_ok, parsed, short, small_nums, total_ok)]
+    #[uses(digit_ok, fits, largest_ok, small_nums, total_ok)]
     fn main() -> () {
         show(summary(b"12, 7,300"));
         show(summary(b"5,5 ; ignored 9"));
@@ -219,8 +216,8 @@ mod nl {
         show(summary(b"123456"));
         show(summary(b"4x"));
         match parse(b" 8 , 9x") {
-            Ok(v) => print_u64(u64::try_from(v.len()).unwrap()),
-            Err(at) => print_u64(u64::try_from(at).unwrap()),
+            Ok(v) => print_u64(v.len() as u64),
+            Err(at) => print_u64(at as u64),
         }
     }
 }

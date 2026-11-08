@@ -21,11 +21,16 @@ Habits (the inverse of a canonical form; each at its first site in a file):
   let-type    `let x: T = e;`          -> `let x = e;`          (E0201)
   unit-ret    `-> () {`                -> `{`                   (E0209)
   suffix      `let x: i64 = 5;`        -> `let x: i64 = 5i64;`  (E0104)
-  as-cast     `T::try_from(e).unwrap()`-> `e as T`              (E0205)
+  as-cast     `e as T`                 -> `T::try_from(e).unwrap()` (W0915)
   mut-param   `fn f(x: T`              -> `fn f(mut x: T`       (E0210)
   pub         `fn f(`                  -> `pub fn f(`           (E0207)
   effects     `#[effects(pure)]` line removed                  (E0601)
   turbofish   `f::<T>(`                -> `f(`                  (E0237)
+
+Since ADR-0095 the canonical conversion is `e as T`, and `T::try_from(e)
+.unwrap()` an input alias: no error, a lint warning W0915 whose fix `bmb
+fix` applies. An alias habit (`alias` below) is counted although the
+checker does not refuse it.
 
 Usage: bench/syntax/fix_recovery.py BMB [--write FILE]
 """
@@ -46,12 +51,16 @@ HABITS = [
     ("let-type", re.compile(r"let (mut )?(\w+): [^=;]+ = "), lambda m: f"let {m.group(1) or ''}{m.group(2)} = "),
     ("unit-ret", re.compile(r"\) -> \(\) \{"), lambda m: ") {"),
     ("suffix", re.compile(r"(let (?:mut )?\w+: i64 = )(\d+);"), lambda m: f"{m.group(1)}{m.group(2)}i64;"),
-    ("as-cast", re.compile(r"\b(u8|u16|u32|u64|usize|i8|i16|i32|i64)::try_from\((\w+)\)\.unwrap\(\)"), lambda m: f"({m.group(2)} as {m.group(1)})"),
+    ("as-cast", re.compile(r"(?<![.:\w])(\w+) as (u8|u16|u32|u64|usize|i8|i16|i32|i64)\b"), lambda m: f"{m.group(2)}::try_from({m.group(1)}).unwrap()"),
     ("mut-param", re.compile(r"(\n    fn \w+)\((\w+): "), lambda m: f"{m.group(1)}(mut {m.group(2)}: "),
     ("pub", re.compile(r"\n    fn (\w+)\("), lambda m: f"\n    pub fn {m.group(1)}("),
     ("effects", re.compile(r"\n    #\[effects\(pure\)\]\n"), lambda m: "\n"),
     ("turbofish", re.compile(r"\b(\w+)::<[A-Za-z0-9_, ]+>\("), lambda m: f"{m.group(1)}("),
 ]
+
+
+# Input aliases (ADR-0095): taken without an error, rewritten by `bmb fix`.
+ALIASES = {"as-cast": "W0915"}
 
 
 def run(args, **kw):
@@ -98,7 +107,9 @@ def main():
                 open(p, "w", encoding="utf-8").write(bad)
                 chk = [json.loads(x) for x in run([bmb, "check", p]).stdout.splitlines() if x.startswith('{"code"')]
                 errs = [x["code"] for x in chk if x.get("severity") == "error"]
-                if not errs:
+                if not errs and name in ALIASES:
+                    errs = [ALIASES[name]]
+                elif not errs:
                     continue  # not a habit the checker refuses here
                 c = counts[name]
                 c["sites"] += 1

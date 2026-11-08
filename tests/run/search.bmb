@@ -17,7 +17,6 @@ mod alg {
     }
 
     #[effects(pure)]
-    #[uses(is_sorted, below_target, at_least_target, lower_bound)]
     fn lower_bound_of(a: &[i64], t: i64) -> (r: usize)
         requires is_sorted(a),
         ensures lower_bound(a, t, r),
@@ -43,7 +42,6 @@ mod alg {
     spec fn bounded_by_input(g: u64, a: u64, b: u64) -> bool { g > 0 && (g <= a || g <= b) }
 
     #[effects(pure)]
-    #[uses(pos, bounded_by_input)]
     fn gcd(a: u64, b: u64) -> (g: u64)
         requires pos(a, b),
         ensures bounded_by_input(g, a, b),
@@ -55,7 +53,6 @@ mod alg {
     spec fn digit_sum_bound(n: u64, r: u64) -> bool { r <= n }
 
     #[effects(pure)]
-    #[uses(digit_sum_bound)]
     fn digit_sum(n: u64) -> (r: u64)
         ensures digit_sum_bound(n, r),
         decreases n,
@@ -74,7 +71,6 @@ mod alg {
     }
 
     #[effects(pure)]
-    #[uses(nonempty, is_max_index, max_below)]
     fn max_index(a: &[i64]) -> (r: usize)
         requires nonempty(a),
         ensures is_max_index(a, r),
@@ -109,7 +105,6 @@ mod alg {
     }
 
     #[effects(pure)]
-    #[uses(incremented, incremented_below, unchanged_from, all_small, same_len)]
     fn increment_all(a: &mut [i64]) -> ()
         requires all_small(a),
         ensures incremented(a, old(a)),
@@ -133,15 +128,13 @@ mod app {
     // A size printed as `i64`: the conversion's range follows from the
     // precondition (ADR-0028 §1, E0815).
     #[effects(pure)]
-    #[uses(printable_size)]
     fn show_size(n: usize) -> i64
         requires printable_size(n),
     {
-        i64::try_from(n).unwrap()
+        n as i64
     }
 
     #[effects(io)]
-    #[uses(alg::is_sorted, alg::pos, alg::nonempty, alg::all_small, alg::lower_bound, alg::is_max_index, alg::bounded_by_input, alg::digit_sum_bound, printable_size)]
     fn main() -> () {
         let mut xs: [i64; 6] = [-5, -1, 0, 3, 3, 9];
         print_i64(show_size(alg::lower_bound_of(&xs, 3)));

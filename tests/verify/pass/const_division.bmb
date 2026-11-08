@@ -28,7 +28,6 @@ mod const_division {
 
     spec fn alt(n: i64) -> i64 { (0 - (99 - n) / 100) * 10 + (n - 10 * floor10(n)) }
 
-    #[uses(floor10, alt)]
     spec fn solve_post(n: i64, r: i64) -> bool {
         if n >= 0 {
             r == n
@@ -40,7 +39,7 @@ mod const_division {
     spec fn both(n: i64, r: i64) -> bool { ref_pre(n) && solve_post(n, r) }
 
     #[effects(pure)]
-    #[uses(both, ref_post, ref_pre, solve_post, ref_balance, ref_fdiv, ref_fmod, floor10, alt)]
+    #[uses(ref_pre, solve_post, ref_balance, ref_fdiv, ref_fmod, floor10, alt)]
     fn implies(n: i64, r: i64) -> ()
         requires both(n, r),
         ensures ref_post(n, r),

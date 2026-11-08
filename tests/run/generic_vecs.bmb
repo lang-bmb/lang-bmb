@@ -11,7 +11,6 @@ mod gv {
     }
 
     #[effects(alloc)]
-    #[uses(fresh)]
     fn bag<T>(name: u64) -> (r: Bag<T>)
         ensures fresh::<T>(&r, name),
     {
@@ -24,7 +23,6 @@ mod gv {
     }
 
     #[effects(alloc)]
-    #[uses(one_more, small)]
     fn add<T>(b: &mut Bag<T>, x: T) -> ()
         requires small::<T>(b),
         ensures one_more::<T>(b, old(b)),
@@ -50,18 +48,17 @@ mod gv {
     }
 
     #[effects(alloc, io)]
-    #[uses(fresh, one_more, small)]
     fn main() -> () {
         let mut a: Bag<u64> = bag::<u64>(1);
         add::<u64>(&mut a, 5);
         add::<u64>(&mut a, 9);
         add::<u64>(&mut a, 2);
-        print_u64(u64::try_from(count::<u64>(&a)).unwrap());
+        print_u64(count::<u64>(&a) as u64);
         print_u64(largest::<u64>(a.items.as_slice(), 0));
         let mut s: Bag<String> = bag::<String>(2);
         add::<String>(&mut s, String::from("one"));
         add::<String>(&mut s, String::from("two"));
-        print_u64(u64::try_from(count::<String>(&s)).unwrap());
+        print_u64(count::<String>(&s) as u64);
         if s.items.len() > 1 {
             print_str(s.items[1].as_str());
             print_str("\n");

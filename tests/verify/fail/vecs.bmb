@@ -37,7 +37,6 @@ mod vf {
 
     // `truncate(0)` empties it.
     #[effects(pure)]
-    #[uses(nonempty)]
     fn truncated(v: &mut Vec<i64>) -> ()
         ensures nonempty(v.as_slice()),
     {
@@ -52,7 +51,6 @@ mod vf {
     }
 
     #[effects(pure)]
-    #[uses(is_some)]
     fn pop_some(v: &mut Vec<i64>) -> (r: Option<i64>)
         ensures is_some(r),
     {

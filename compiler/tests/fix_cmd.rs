@@ -382,8 +382,10 @@ fn data_type_habits_are_fixed_into_a_checked_program() {
 }
 
 /// The conversion habits with a mechanical fix (ADR-0028 §8, backlog 2C-02):
-/// each becomes `T::try_from(x).unwrap()`, which checks; the range is the
-/// prover's (E0815), not the fix's.
+/// each becomes the canonical `x as T` (ADR-0095 A4: the checker's fixes
+/// write the alias `T::try_from(x).unwrap()` and W0915 rewrites it), which
+/// checks; the range is the prover's (E0815), not the fix's. `x as T`
+/// itself is the canonical form and stays.
 const CONV_HABITS: &str = r#"#[summary("conversion habits")]
 mod conv {
     #[effects(pure)]
@@ -415,13 +417,13 @@ fn conversion_habits_are_fixed_into_a_checked_program() {
     let mut codes: Vec<&str> = out.codes.iter().map(String::as_str).collect();
     codes.sort();
     codes.dedup();
-    assert_eq!(codes, ["E0205", "E0212", "E0213", "E0412"]);
+    assert_eq!(codes, ["E0212", "E0213", "E0412", "W0915"]);
     let fixed = &out.files[0].1;
     for want in [
-        "i64::try_from(x).unwrap() + i64::try_from(a.len()).unwrap() + a[usize::try_from(k).unwrap()] + i64::try_from(k + 1).unwrap()",
-        "fn from(x: u64) -> i64 { i64::try_from(x).unwrap() }",
-        "fn expects(x: u64) -> i64 { i64::try_from(x).unwrap() }",
-        "fn bare(x: u64) -> i64 { i64::try_from(x).unwrap() }",
+        "x as i64 + a.len() as i64 + a[k as usize] + (k + 1) as i64",
+        "fn from(x: u64) -> i64 { x as i64 }",
+        "fn expects(x: u64) -> i64 { x as i64 }",
+        "fn bare(x: u64) -> i64 { x as i64 }",
         "fn flag(b: bool) -> i64 { if b { 1 } else { 0 } }",
     ] {
         assert!(fixed.contains(want), "{want}\n{fixed}");
@@ -558,7 +560,6 @@ mod c {
     }
 
     #[effects(pure)]
-    #[uses(small)]
     fn sum(a: &[u64]) -> u64
         requires small(a),
     {
@@ -695,4 +696,281 @@ mod t {
     );
     assert!(!text.contains("#[trigger] a[i] <="), "{text}");
     assert!(out.diagnostics.contains("E0511"), "{}", out.diagnostics);
+}
+
+/// The input aliases of ADR-0095 (B5, B6) and backlog 2N-07: a repeated
+/// clause keyword, loop clauses at the start of the body and compound
+/// assignments are read as the canonical syntax tree. So the program
+/// checks, its nameless hashes and its proof verdicts are the canonical
+/// program's, `bmb fmt` writes the canonical text, `bmb lint` reports each
+/// alias and `bmb fix` rewrites them into that normal form.
+const ALIASES: &str = r#"#[summary("aliases")]
+mod a {
+    #[effects(pure)]
+    fn f(n: u64) -> u64
+        requires small(n),
+        requires tiny(n),
+    {
+        let mut i: u64 = 0;
+        let mut h: u64 = 0;
+        while i < n {
+            invariant i <= n,
+            invariant h <= i,
+            decreases n - i,
+            i += 1;
+            h += 1;
+        }
+        let mut s: u64 = 0;
+        loop
+            invariant s <= n,
+            invariant tiny(n),
+            decreases n - s,
+        {
+            if s >= n {
+                break;
+            }
+            s += 1 + 0;
+        }
+        h ^= 1;
+        h
+    }
+
+    spec fn small(n: u64) -> bool {
+        n < 1000
+    }
+
+    spec fn tiny(n: u64) -> bool {
+        n < 100
+    }
+}
+"#;
+
+const CANONICAL: &str = r#"#[summary("aliases")]
+mod a {
+    #[effects(pure)]
+    fn f(n: u64) -> u64
+        requires small(n), tiny(n),
+    {
+        let mut i: u64 = 0;
+        let mut h: u64 = 0;
+        while i < n
+            invariant i <= n, h <= i,
+            decreases n - i,
+        {
+            i = i + 1;
+            h = h + 1;
+        }
+        let mut s: u64 = 0;
+        loop
+            invariant s <= n, tiny(n),
+            decreases n - s,
+        {
+            if s >= n {
+                break;
+            }
+            s = s + (1 + 0);
+        }
+        h = h ^ 1;
+        h
+    }
+
+    spec fn small(n: u64) -> bool {
+        n < 1000
+    }
+
+    spec fn tiny(n: u64) -> bool {
+        n < 100
+    }
+}
+"#;
+
+#[test]
+fn input_aliases_are_the_canonical_program() {
+    let alias = one(ALIASES);
+    let canon = one(CANONICAL);
+    assert!(checks(&alias));
+    assert!(cli::run(&["fmt", "--check"], &canon).0);
+    let (_, fmt) = cli::run(&["fmt"], &alias);
+    assert_eq!(fmt, CANONICAL);
+    assert_eq!(cli::run(&["hash"], &alias).1, cli::run(&["hash"], &canon).1);
+    let (ok_a, va) = cli::run(&["verify"], &alias);
+    let (ok_c, vc) = cli::run(&["verify"], &canon);
+    assert_eq!((ok_a, &va), (ok_c, &vc));
+    let (_, lint) = cli::run(&["lint", "--select", "W0912,W0913,W0914"], &alias);
+    let count = |c: &str| lint.matches(&format!("\"code\":\"{c}\"")).count();
+    assert_eq!(
+        (count("W0912"), count("W0913"), count("W0914")),
+        (3, 1, 4),
+        "{lint}"
+    );
+    let out = fix(&alias);
+    assert!(out.ok, "{}", out.diagnostics);
+    assert_eq!(out.files[0].1, CANONICAL);
+}
+
+/// A compound assignment names its place twice in the canonical form, so
+/// a place that calls a function is not taken (Rust evaluates it once).
+#[test]
+fn a_compound_assignment_to_a_computed_place_is_refused() {
+    let input = one(r#"#[summary("c")]
+mod c {
+    #[effects(pure)]
+    fn at(i: usize) -> usize {
+        i
+    }
+
+    #[effects(pure)]
+    fn f(a: &mut [u64]) {
+        a[at(0)] += 1;
+    }
+}
+"#);
+    let (ok, out) = cli::run(&["check"], &input);
+    assert!(!ok);
+    assert!(
+        out.contains("compound assignment `+=` to a place that calls a function"),
+        "{out}"
+    );
+}
+
+/// W0915 (ADR-0095 A4): `T::try_from(x).unwrap()` becomes `x as T`, in
+/// parentheses where the cast binds looser than its place (the operand of
+/// `-`, the left of `<`), and its operand in parentheses when it binds
+/// looser than the cast. The result is the normal form.
+#[test]
+fn conversions_are_written_as_casts_in_their_context() {
+    let input = one(r#"#[summary("casts")]
+mod c {
+    #[effects(pure)]
+    fn f(x: u32, y: i64, a: &[i64], k: u8) -> bool
+        requires a.len() > 300,
+    {
+        let n: i64 = -i64::try_from(x).unwrap();
+        let s: i64 = i64::try_from(x + 1).unwrap() * 2;
+        let t: i64 = a[usize::try_from(k).unwrap()];
+        i64::try_from(x).unwrap() < y && n < s + t
+    }
+}
+"#);
+    assert!(checks(&input));
+    let out = fix(&input);
+    assert!(out.ok, "{}", out.diagnostics);
+    let text = &out.files[0].1;
+    for want in [
+        "let n: i64 = -(x as i64);",
+        "let s: i64 = (x + 1) as i64 * 2;",
+        "let t: i64 = a[k as usize];",
+        "(x as i64) < y && n < s + t",
+    ] {
+        assert!(text.contains(want), "{want}\n{text}");
+    }
+    assert!(cli::run(&["fmt", "--check"], &out.files).0, "{text}");
+    assert_eq!(
+        cli::run(&["hash"], &input).1,
+        cli::run(&["hash"], &out.files).1
+    );
+}
+
+/// W0916 (ADR-0095 A1): a `#[uses]` entry the default context (rule r2c)
+/// reveals already is left out; an attribute with nothing left goes. The
+/// proofs are the same without them.
+#[test]
+fn uses_entries_of_the_default_context_are_removed() {
+    let input = one(r#"#[summary("u")]
+mod u {
+    #[effects(pure)]
+    #[uses(double, small)]
+    fn make(n: u64) -> (r: u64)
+        requires small(n),
+        ensures double(n, r),
+    {
+        n + n
+    }
+
+    #[effects(pure)]
+    #[uses(double, extra)]
+    fn user(n: u64) -> u64
+        requires n < 10,
+    {
+        let d: u64 = make(n);
+        d + 1
+    }
+
+    spec fn double(n: u64, r: u64) -> bool {
+        r == n * 2
+    }
+
+    spec fn extra(n: u64) -> bool {
+        n < 5
+    }
+
+    spec fn small(n: u64) -> bool {
+        n < 1000
+    }
+}
+"#);
+    let out = fix(&input);
+    assert!(out.ok, "{}", out.diagnostics);
+    let text = &out.files[0].1;
+    assert!(
+        text.contains("    #[effects(pure)]\n    fn make(n: u64)"),
+        "{text}"
+    );
+    assert!(
+        text.contains("    #[uses(extra)]\n    fn user(n: u64)"),
+        "{text}"
+    );
+    assert_eq!(out.codes, ["W0916", "W0916"]);
+    let (ok, v) = cli::run(&["verify"], &out.files);
+    assert!(ok, "{v}");
+}
+
+/// E0201's fix for `let x = 0;` and `let v = Vec::new();` takes the type
+/// from the local's first use (backlog 2N-12): an index is `usize`, an
+/// argument its parameter's type, a `Vec`'s first `push` its element. The
+/// fixed program checks (before, `i64` and no fix left E0401 and E0201).
+#[test]
+fn untyped_lets_take_the_type_of_their_first_use() {
+    let input = one(r#"#[summary("e")]
+mod e {
+    #[effects(pure)]
+    fn sum(a: &[u64]) -> u64 {
+        let mut i = 0;
+        let mut s: u64 = 0;
+        while i < a.len()
+            invariant i <= a.len(),
+            decreases a.len() - i,
+        {
+            s = s.wrapping_add(a[i]);
+            i = i + 1;
+        }
+        s
+    }
+
+    #[effects(alloc)]
+    fn build(n: u32) -> Vec<u32> {
+        let mut v = Vec::new();
+        let k = 3;
+        v.push(n);
+        take(k);
+        v
+    }
+
+    #[effects(pure)]
+    fn take(x: u8) -> u8 {
+        x
+    }
+}
+"#);
+    let out = fix(&input);
+    assert!(out.ok, "{}", out.diagnostics);
+    let text = &out.files[0].1;
+    for want in [
+        "let mut i: usize = 0;",
+        "let mut v: Vec<u32> = Vec::new();",
+        "let k: u8 = 3;",
+    ] {
+        assert!(text.contains(want), "{want}\n{text}");
+    }
+    assert!(checks(&out.files));
 }

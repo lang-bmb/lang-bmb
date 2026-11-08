@@ -189,7 +189,7 @@ mod sha256 {
     spec fn chained(msg: &[u8], n: usize, h: State) -> bool { h == chain(msg, n) }
 
     #[effects(pure)]
-    #[uses(is_bs0, bs0)]
+    #[uses(bs0)]
     fn big_sigma0(x: u32) -> (r: u32)
         ensures is_bs0(x, r),
     {
@@ -197,7 +197,7 @@ mod sha256 {
     }
 
     #[effects(pure)]
-    #[uses(is_bs1, bs1)]
+    #[uses(bs1)]
     fn big_sigma1(x: u32) -> (r: u32)
         ensures is_bs1(x, r),
     {
@@ -205,7 +205,7 @@ mod sha256 {
     }
 
     #[effects(pure)]
-    #[uses(is_ss0, ss0)]
+    #[uses(ss0)]
     fn small_sigma0(x: u32) -> (r: u32)
         ensures is_ss0(x, r),
     {
@@ -213,7 +213,7 @@ mod sha256 {
     }
 
     #[effects(pure)]
-    #[uses(is_ss1, ss1)]
+    #[uses(ss1)]
     fn small_sigma1(x: u32) -> (r: u32)
         ensures is_ss1(x, r),
     {
@@ -221,7 +221,7 @@ mod sha256 {
     }
 
     #[effects(pure)]
-    #[uses(is_ch, ch)]
+    #[uses(ch)]
     fn choose(e: u32, f: u32, g: u32) -> (r: u32)
         ensures is_ch(e, f, g, r),
     {
@@ -229,7 +229,7 @@ mod sha256 {
     }
 
     #[effects(pure)]
-    #[uses(is_maj, maj)]
+    #[uses(maj)]
     fn majority(a: u32, b: u32, c: u32) -> (r: u32)
         ensures is_maj(a, b, c, r),
     {
@@ -237,7 +237,7 @@ mod sha256 {
     }
 
     #[effects(pure)]
-    #[uses(is_expand, expand, is_ss0, is_ss1)]
+    #[uses(expand)]
     fn next_word(a: u32, b: u32, c: u32, d: u32) -> (r: u32)
         ensures is_expand(a, b, c, d, r),
     {
@@ -250,7 +250,7 @@ mod sha256 {
 
     // `T1` of §6.2.2 step 3.
     #[effects(pure)]
-    #[uses(is_t1, t1, is_bs1, is_ch)]
+    #[uses(t1)]
     fn temp1(s: State, k: u32, w: u32) -> (r: u32)
         ensures is_t1(s, k, w, r),
     {
@@ -259,7 +259,7 @@ mod sha256 {
 
     // `T2` of §6.2.2 step 3.
     #[effects(pure)]
-    #[uses(is_t2, t2, is_bs0, is_maj)]
+    #[uses(t2)]
     fn temp2(s: State) -> (r: u32)
         ensures is_t2(s, r),
     {
@@ -268,7 +268,7 @@ mod sha256 {
 
     // One round (§6.2.2 step 3).
     #[effects(pure)]
-    #[uses(is_round, round, is_t1, is_t2)]
+    #[uses(round)]
     fn step(s: State, k: u32, w: u32) -> (r: State)
         ensures is_round(s, k, w, r),
     {
@@ -278,7 +278,7 @@ mod sha256 {
     }
 
     #[effects(pure)]
-    #[uses(is_be32, be32)]
+    #[uses(be32)]
     fn join(b0: u32, b1: u32, b2: u32, b3: u32) -> (r: u32)
         ensures is_be32(b0, b1, b2, b3, r),
     {
@@ -289,16 +289,16 @@ mod sha256 {
 
     // The word at byte `i` of the padded message `p` of `msg`.
     #[effects(pure)]
-    #[uses(word_at, word, padded, word_in, is_be32)]
+    #[uses(word)]
     fn load(p: &[u8], msg: &[u8], i: usize) -> (r: u32)
         requires padded(msg, p), word_in(p, i),
         ensures word_at(msg, i, r),
     {
-        join(u32::try_from(p[i]).unwrap(), u32::try_from(p[i + 1]).unwrap(), u32::try_from(p[i + 2]).unwrap(), u32::try_from(p[i + 3]).unwrap())
+        join(p[i] as u32, p[i + 1] as u32, p[i + 2] as u32, p[i + 3] as u32)
     }
 
     #[effects(pure)]
-    #[uses(is_add8, add8)]
+    #[uses(add8)]
     fn add(x: State, y: State) -> (r: State)
         ensures is_add8(x, y, r),
     {
@@ -307,7 +307,7 @@ mod sha256 {
 
     // The compression of block `blk` of the padded message `p` (§6.2.2).
     #[effects(pure)]
-    #[uses(ktab, padded, block, word_in, word_at, scheduled, sched, rounds, rounds_at, is_round, is_expand, is_add8, is_compressed, compressed)]
+    #[uses(sched, rounds, compressed)]
     fn compress(k: &[u32], p: &[u8], msg: &[u8], blk: usize, h: State) -> (r: State)
         requires ktab(k), padded(msg, p), block(p, blk),
         ensures is_compressed(msg, blk, h, r),
@@ -343,7 +343,7 @@ mod sha256 {
     // The padded message (§5.1.1): `msg`, the byte 0x80, zeros, and the
     // length in bits as a big-endian 64-bit number.
     #[effects(alloc)]
-    #[uses(msg_ok, padlen, pad_byte, len_byte, wide, padded, pad_upto)]
+    #[uses(padlen, pad_byte, len_byte, wide)]
     fn pad(msg: &[u8]) -> (r: Vec<u8>)
         requires msg_ok(msg),
         ensures padded(msg, r.as_slice()),
@@ -363,28 +363,28 @@ mod sha256 {
         {
             p.push(0);
         }
-        let bits: u64 = u64::try_from(n).unwrap() * 8;
-        p.push(u8::try_from(bits >> 56).unwrap());
+        let bits: u64 = n as u64 * 8;
+        p.push((bits >> 56) as u8);
         assert(pad_upto(msg, p.as_slice(), p.len()));
-        p.push(u8::try_from((bits >> 48) & 0xff).unwrap());
+        p.push(((bits >> 48) & 0xff) as u8);
         assert(pad_upto(msg, p.as_slice(), p.len()));
-        p.push(u8::try_from((bits >> 40) & 0xff).unwrap());
+        p.push(((bits >> 40) & 0xff) as u8);
         assert(pad_upto(msg, p.as_slice(), p.len()));
-        p.push(u8::try_from((bits >> 32) & 0xff).unwrap());
+        p.push(((bits >> 32) & 0xff) as u8);
         assert(pad_upto(msg, p.as_slice(), p.len()));
-        p.push(u8::try_from((bits >> 24) & 0xff).unwrap());
+        p.push(((bits >> 24) & 0xff) as u8);
         assert(pad_upto(msg, p.as_slice(), p.len()));
-        p.push(u8::try_from((bits >> 16) & 0xff).unwrap());
+        p.push(((bits >> 16) & 0xff) as u8);
         assert(pad_upto(msg, p.as_slice(), p.len()));
-        p.push(u8::try_from((bits >> 8) & 0xff).unwrap());
+        p.push(((bits >> 8) & 0xff) as u8);
         assert(pad_upto(msg, p.as_slice(), p.len()));
-        p.push(u8::try_from(bits & 0xff).unwrap());
+        p.push((bits & 0xff) as u8);
         assert(pad_upto(msg, p.as_slice(), p.len()));
         p
     }
 
     #[effects(pure)]
-    #[uses(ktab, kk)]
+    #[uses(kk)]
     fn constants() -> (k: [u32; 64])
         ensures ktab(&k),
     {
@@ -401,7 +401,7 @@ mod sha256 {
     }
 
     #[effects(pure)]
-    #[uses(is_h0, h0)]
+    #[uses(h0)]
     fn initial() -> (r: State)
         ensures is_h0(r),
     {
@@ -410,49 +410,49 @@ mod sha256 {
 
     // The 32 bytes of the hash value, each word big-endian.
     #[effects(pure)]
-    #[uses(bytes_of, out_byte, be_byte)]
+    #[uses(out_byte, be_byte)]
     fn output(s: State) -> (out: [u8; 32])
         ensures bytes_of(s, &out),
     {
         let mut r: [u8; 32] = [0; 32];
-        r[0] = u8::try_from(s.a >> 24).unwrap();
-        r[1] = u8::try_from((s.a >> 16) & 0xff).unwrap();
-        r[2] = u8::try_from((s.a >> 8) & 0xff).unwrap();
-        r[3] = u8::try_from(s.a & 0xff).unwrap();
-        r[4] = u8::try_from(s.b >> 24).unwrap();
-        r[5] = u8::try_from((s.b >> 16) & 0xff).unwrap();
-        r[6] = u8::try_from((s.b >> 8) & 0xff).unwrap();
-        r[7] = u8::try_from(s.b & 0xff).unwrap();
-        r[8] = u8::try_from(s.c >> 24).unwrap();
-        r[9] = u8::try_from((s.c >> 16) & 0xff).unwrap();
-        r[10] = u8::try_from((s.c >> 8) & 0xff).unwrap();
-        r[11] = u8::try_from(s.c & 0xff).unwrap();
-        r[12] = u8::try_from(s.d >> 24).unwrap();
-        r[13] = u8::try_from((s.d >> 16) & 0xff).unwrap();
-        r[14] = u8::try_from((s.d >> 8) & 0xff).unwrap();
-        r[15] = u8::try_from(s.d & 0xff).unwrap();
-        r[16] = u8::try_from(s.e >> 24).unwrap();
-        r[17] = u8::try_from((s.e >> 16) & 0xff).unwrap();
-        r[18] = u8::try_from((s.e >> 8) & 0xff).unwrap();
-        r[19] = u8::try_from(s.e & 0xff).unwrap();
-        r[20] = u8::try_from(s.f >> 24).unwrap();
-        r[21] = u8::try_from((s.f >> 16) & 0xff).unwrap();
-        r[22] = u8::try_from((s.f >> 8) & 0xff).unwrap();
-        r[23] = u8::try_from(s.f & 0xff).unwrap();
-        r[24] = u8::try_from(s.g >> 24).unwrap();
-        r[25] = u8::try_from((s.g >> 16) & 0xff).unwrap();
-        r[26] = u8::try_from((s.g >> 8) & 0xff).unwrap();
-        r[27] = u8::try_from(s.g & 0xff).unwrap();
-        r[28] = u8::try_from(s.h >> 24).unwrap();
-        r[29] = u8::try_from((s.h >> 16) & 0xff).unwrap();
-        r[30] = u8::try_from((s.h >> 8) & 0xff).unwrap();
-        r[31] = u8::try_from(s.h & 0xff).unwrap();
+        r[0] = (s.a >> 24) as u8;
+        r[1] = ((s.a >> 16) & 0xff) as u8;
+        r[2] = ((s.a >> 8) & 0xff) as u8;
+        r[3] = (s.a & 0xff) as u8;
+        r[4] = (s.b >> 24) as u8;
+        r[5] = ((s.b >> 16) & 0xff) as u8;
+        r[6] = ((s.b >> 8) & 0xff) as u8;
+        r[7] = (s.b & 0xff) as u8;
+        r[8] = (s.c >> 24) as u8;
+        r[9] = ((s.c >> 16) & 0xff) as u8;
+        r[10] = ((s.c >> 8) & 0xff) as u8;
+        r[11] = (s.c & 0xff) as u8;
+        r[12] = (s.d >> 24) as u8;
+        r[13] = ((s.d >> 16) & 0xff) as u8;
+        r[14] = ((s.d >> 8) & 0xff) as u8;
+        r[15] = (s.d & 0xff) as u8;
+        r[16] = (s.e >> 24) as u8;
+        r[17] = ((s.e >> 16) & 0xff) as u8;
+        r[18] = ((s.e >> 8) & 0xff) as u8;
+        r[19] = (s.e & 0xff) as u8;
+        r[20] = (s.f >> 24) as u8;
+        r[21] = ((s.f >> 16) & 0xff) as u8;
+        r[22] = ((s.f >> 8) & 0xff) as u8;
+        r[23] = (s.f & 0xff) as u8;
+        r[24] = (s.g >> 24) as u8;
+        r[25] = ((s.g >> 16) & 0xff) as u8;
+        r[26] = ((s.g >> 8) & 0xff) as u8;
+        r[27] = (s.g & 0xff) as u8;
+        r[28] = (s.h >> 24) as u8;
+        r[29] = ((s.h >> 16) & 0xff) as u8;
+        r[30] = ((s.h >> 8) & 0xff) as u8;
+        r[31] = (s.h & 0xff) as u8;
         r
     }
 
     // The SHA-256 digest of `msg` (FIPS 180-4 §6.2).
     #[effects(alloc)]
-    #[uses(msg_ok, hashed, padded, padlen, ktab, block, chained, chain, is_compressed, is_h0)]
+    #[uses(padlen, chain)]
     fn digest(msg: &[u8]) -> (r: [u8; 32])
         requires msg_ok(msg),
         ensures hashed(msg, &r),

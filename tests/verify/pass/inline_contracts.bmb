@@ -1,0 +1,45 @@
+#[summary("Contract clauses without a quantifier written as expressions (ADR-0095 A2): bounds, `old`, the result, a named predicate inside an expression, and a caller that relies on them")]
+mod ic {
+    #[effects(pure)]
+    fn get(a: &[i64], i: usize) -> (r: i64)
+        requires i < a.len(), a[i] > 0,
+        ensures r == a[i], r > 0,
+    {
+        a[i]
+    }
+
+    #[effects(pure)]
+    fn bump(a: &mut [i64], i: usize) -> ()
+        requires i < a.len() && 0 < a[i] && a[i] < 100,
+        ensures a.len() == old(a).len(), a[i] == old(a)[i] + 1,
+    {
+        a[i] = a[i] + 1;
+    }
+
+    #[effects(pure)]
+    fn caller(a: &mut [i64]) -> (r: i64)
+        requires a.len() == 3, a[0] == 5,
+        ensures r == 6,
+    {
+        bump(a, 0);
+        get(a, 0)
+    }
+
+    #[effects(pure)]
+    fn clamp(x: i64, lo: i64, hi: i64) -> (r: i64)
+        requires lo <= hi,
+        ensures lo <= r && r <= hi, in_range(x, lo, hi) ==> r == x,
+    {
+        if x < lo {
+            lo
+        } else if x > hi {
+            hi
+        } else {
+            x
+        }
+    }
+
+    spec fn in_range(x: i64, lo: i64, hi: i64) -> bool {
+        lo <= x && x <= hi
+    }
+}

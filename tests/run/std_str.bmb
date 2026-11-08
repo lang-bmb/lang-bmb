@@ -13,14 +13,14 @@ mod uses_std {
     fn at(r: Option<usize>) -> () {
         match r {
             None => print_str("none\n"),
-            Some(i) => print_u64(u64::try_from(i).unwrap()),
+            Some(i) => print_u64(i as u64),
         }
     }
 
     // The text between `s`'s leading and trailing ASCII whitespace: the
     // two positions are character boundaries by their contracts.
     #[effects(io)]
-    #[uses(std::str::end_trimmed, std::str::spaces, std::str::space, std::str::start_trimmed)]
+    #[uses(std::str::spaces, std::str::space)]
     fn trimmed(s: &str) -> () {
         let a: usize = s.trim_ascii_start();
         let b: usize = s.trim_ascii_end();
@@ -33,7 +33,7 @@ mod uses_std {
 
     // The rest of `s` after `p`, when `p` begins it.
     #[effects(io)]
-    #[uses(std::str::begins, std::str::stripped)]
+    #[uses(std::str::begins)]
     fn rest(s: &str, p: &str) -> () {
         match s.strip_prefix(p) {
             None => print_str("-\n"),
@@ -46,7 +46,7 @@ mod uses_std {
 
     // The text before `p` at the end of `s`.
     #[effects(io)]
-    #[uses(std::str::ends, std::str::stripped_end)]
+    #[uses(std::str::ends)]
     fn head(s: &str, p: &str) -> () {
         match std::str::strip_suffix(s, p) {
             None => print_str("-\n"),
@@ -59,7 +59,6 @@ mod uses_std {
 
     // The characters of `s`, one scalar value a line, and their count.
     #[effects(io)]
-    #[uses(std::str::decoded)]
     fn chars(s: &str) -> () {
         let mut i: usize = 0;
         let mut n: u64 = 0;
@@ -71,7 +70,7 @@ mod uses_std {
                     i = s.len();
                 }
                 Some(d) => {
-                    print_u64(u64::try_from(u32::from(d.ch)).unwrap());
+                    print_u64(u32::from(d.ch) as u64);
                     if d.next > i {
                         i = d.next;
                     } else {

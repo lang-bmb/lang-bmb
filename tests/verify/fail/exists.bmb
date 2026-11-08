@@ -1,7 +1,6 @@
 #[summary("`exists` 계약의 반례(백로그 T0-25, ADR-0079)")]
 mod exists_fail {
     #[effects(pure)]
-    #[uses(some_zero)]
     fn first(a: &[i64]) -> i64
         requires some_zero(a),
     {
@@ -17,7 +16,7 @@ mod exists_fail {
     }
 
     #[effects(pure)]
-    #[uses(found, has)]
+    #[uses(has)]
     fn never_found(a: &[i64], k: i64) -> (r: bool)
         ensures found(a, k, r),
     {

@@ -32,7 +32,6 @@ mod lf {
     }
 
     #[effects(pure)]
-    #[uses(whole)]
     fn scan(a: &[i64], x: i64) -> (r: usize)
         ensures whole(a, r),
     {
@@ -50,7 +49,6 @@ mod lf {
     }
 
     #[effects(pure)]
-    #[uses(few)]
     fn skip(n: u64) -> u64
         requires few(n),
     {
@@ -90,7 +88,6 @@ mod lf {
     }
 
     #[effects(pure)]
-    #[uses(pos)]
     fn zero(n: u64) -> (r: u64)
         ensures pos(r),
     {

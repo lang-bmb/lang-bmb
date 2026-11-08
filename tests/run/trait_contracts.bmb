@@ -12,7 +12,7 @@ mod sc {
 
     impl Score for Card {
         #[effects(pure)]
-        #[uses(Score::value, scored)]
+        #[uses(Score::value)]
         fn score(self: &Card) -> (r: i64)
             ensures scored::<Card>(self, r),
         {
@@ -28,7 +28,7 @@ mod sc {
 
     impl Score for Hand {
         #[effects(pure)]
-        #[uses(Score::value, scored)]
+        #[uses(Score::value)]
         fn score(self: &Hand) -> (r: i64)
             ensures scored::<Hand>(self, r),
         {
@@ -41,7 +41,7 @@ mod sc {
     }
 
     #[effects(pure)]
-    #[uses(bounds_to, scored)]
+    #[uses(scored)]
     fn best<T: Copy + Score>(xs: &[T]) -> (r: i64)
         ensures bounds_to::<T>(xs, xs.len(), r),
     {

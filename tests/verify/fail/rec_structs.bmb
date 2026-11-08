@@ -46,7 +46,6 @@ mod rf {
 
     // The push goes to the child, not to `n`.
     #[effects(alloc)]
-    #[uses(grew, parent)]
     fn misplaced(n: &mut Node, c: Node) -> ()
         requires parent(n),
         ensures grew(old(n), n),
@@ -55,7 +54,6 @@ mod rf {
     }
 
     #[effects(pure)]
-    #[uses(labeled)]
     fn relabel(n: &mut Node, x: i64) -> ()
         ensures labeled(n, x),
     {

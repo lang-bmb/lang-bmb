@@ -8,7 +8,6 @@ mod tp {
     }
 
     #[effects(pure)]
-    #[uses(below)]
     fn half(x: u64) -> (r: Option<u64>)
         ensures below(r, x),
     {
@@ -17,7 +16,6 @@ mod tp {
 
     // The payload carries the callee's postcondition into the next step.
     #[effects(pure)]
-    #[uses(below)]
     fn quarter(x: u64) -> (r: Option<u64>)
         ensures below(r, x),
     {
@@ -34,7 +32,6 @@ mod tp {
     }
 
     #[effects(pure)]
-    #[uses(code_ok)]
     fn status(x: u64) -> (r: Result<u64, u64>)
         ensures code_ok(r),
     {
@@ -44,7 +41,6 @@ mod tp {
     // The `Err` path returns the operand's error: the postcondition holds
     // at the `?` with that value.
     #[effects(pure)]
-    #[uses(code_ok)]
     fn both(a: u64, b: u64) -> (r: Result<u64, u64>)
         ensures code_ok(r),
     {
@@ -55,7 +51,6 @@ mod tp {
 
     // `?` inside a loop leaves the loop and the function.
     #[effects(pure)]
-    #[uses(code_ok)]
     fn all(a: &[u64]) -> (r: Result<u64, u64>)
         ensures code_ok(r),
     {

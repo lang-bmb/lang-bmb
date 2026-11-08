@@ -10,7 +10,6 @@ mod rg {
 
     // `i < a.len()` holds in the body: the index needs no invariant.
     #[effects(pure)]
-    #[uses(bounded, small)]
     fn sum(a: &[i64]) -> i64
         requires small(a),
     {
@@ -38,7 +37,6 @@ mod rg {
     // After the loop the variable is gone; the invariant at the exit says
     // what the loop did.
     #[effects(pure)]
-    #[uses(order)]
     fn count(lo: i64, hi: i64) -> i64
         requires order(lo, hi),
     {
@@ -69,7 +67,6 @@ mod rg {
 
     // `continue` steps the variable; `break` and `return` leave.
     #[effects(pure)]
-    #[uses(small)]
     fn odd_sum_until(a: &[i64], stop: i64) -> i64
         requires small(a),
     {
@@ -93,7 +90,6 @@ mod rg {
     }
 
     #[effects(pure)]
-    #[uses(found_at)]
     fn index_of(a: &[i64], x: i64) -> (r: usize)
         ensures found_at(a, x, r),
     {
@@ -107,7 +103,6 @@ mod rg {
 
     // A labeled `break` leaves the outer `for` from the inner one.
     #[effects(pure)]
-    #[uses(few)]
     fn first_pair(n: u64, t: u64) -> u64
         requires few(n),
     {
@@ -130,7 +125,6 @@ mod rg {
     // The bounds are read once: changing `m` in the body does not change
     // the range.
     #[effects(pure)]
-    #[uses(few)]
     fn fixed_end(n: u64) -> u64
         requires few(n),
     {

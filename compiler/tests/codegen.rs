@@ -1442,7 +1442,7 @@ mod escapes {
         let confirmed = fix(&code, true);
         assert_eq!(lint(&confirmed, "W1001"), 0);
         // A missing hash is written by `fix`.
-        let bare = text.replace(", hash = \"99850c0c37931c6c\"", "");
+        let bare = text.replace(", hash = \"fe3d7e87fda1e129\"", "");
         assert_eq!(lint(&bare, "W1001"), 1);
         assert_eq!(lint(&fix(&bare, false), "W1001"), 0);
     }

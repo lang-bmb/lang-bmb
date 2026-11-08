@@ -31,7 +31,7 @@ mod stats {
         } else {
             match sum(a) {
                 None => None,
-                Some(s) => Some(s / i64::try_from(a.len()).unwrap()),
+                Some(s) => Some(s / a.len() as i64),
             }
         }
     }
@@ -42,14 +42,13 @@ mod stats {
 
     // Bucket `v / 10` of each score; a count stops at `u64::MAX`.
     #[effects(pure)]
-    #[uses(scores, ten)]
     fn histogram(a: &[i64], h: &mut [u64]) -> ()
         requires scores(a), ten(h),
     {
         for i in 0..a.len()
             invariant i <= a.len(), ten(h),
         {
-            let b: usize = usize::try_from(a[i] / 10).unwrap();
+            let b: usize = (a[i] / 10) as usize;
             h[b] = h[b].saturating_add(1);
         }
     }
@@ -66,7 +65,6 @@ mod stats {
 #[summary("진입점")]
 mod app {
     #[effects(io)]
-    #[uses(stats::scores, stats::ten)]
     fn main() -> () {
         let a: [i64; 8] = [91, 35, 78, 35, 4, 99, 60, 67];
         let big: [i64; 3] = [9223372036854775807, 1, -5];
@@ -81,6 +79,6 @@ mod app {
         print_u64(h[0]);
         print_u64(h[3]);
         print_u64(h[9]);
-        print_u64(u64::try_from(a.len()).unwrap());
+        print_u64(a.len() as u64);
     }
 }

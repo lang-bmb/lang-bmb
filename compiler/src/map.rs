@@ -735,6 +735,17 @@ impl Index {
                     }
                 }
             }
+            // The default context reveals as `#[uses]` does (ADR-0095 A1):
+            // a `uses` edge too, so `impact` and `query contracts` see it.
+            for to in t.context.get(&path).into_iter().flatten() {
+                edges.insert(Edge {
+                    from: path.clone(),
+                    to: to.clone(),
+                    kind: "uses",
+                    arg: None,
+                    targs: None,
+                });
+            }
             defs.insert(
                 path.clone(),
                 Entry {
@@ -1835,8 +1846,9 @@ impl<'p> Model<'p> {
     ///
     /// - body of a `fn`: the definition itself;
     /// - contract or signature of a `fn` (`iface`): itself and its callers;
-    /// - body of a `spec fn`: the definitions that reveal it with `#[uses]`,
-    ///   and itself when it is recursive (termination);
+    /// - body of a `spec fn`: the definitions that reveal it (`#[uses]` or
+    ///   the default context, ADR-0095 A1), and itself when it is
+    ///   recursive (termination);
     /// - signature of a `spec fn`: every definition that names it (they are
     ///   re-checked, and re-proved where they reveal it).
     fn impact(&self, d: &Def, change: &str) -> Vec<J> {

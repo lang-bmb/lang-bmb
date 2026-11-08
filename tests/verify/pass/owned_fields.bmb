@@ -9,7 +9,6 @@ mod ov {
     spec fn first_is(b: &Buf, x: i64) -> bool { b.data.len() > 0 && b.data[0] == x }
 
     #[effects(alloc)]
-    #[uses(fits, grew)]
     fn add(b: &mut Buf, x: i64) -> ()
         requires fits(b),
         ensures grew(*old(b), *b),
@@ -18,7 +17,6 @@ mod ov {
     }
 
     #[effects(alloc)]
-    #[uses(first_is)]
     fn mk(x: i64) -> (r: Buf)
         ensures first_is(&r, x),
     {
@@ -28,7 +26,6 @@ mod ov {
     }
 
     #[effects(pure)]
-    #[uses(first_is)]
     fn set0(b: &mut Buf, x: i64) -> ()
         requires first_is(b, 0),
         ensures first_is(b, x),

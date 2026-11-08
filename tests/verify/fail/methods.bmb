@@ -8,7 +8,6 @@ mod mf {
         }
 
         #[effects(pure)]
-        #[uses(Counter::room)]
         fn tick(self: &mut Counter) -> ()
             requires self.room(),
         {
@@ -26,7 +25,6 @@ mod mf {
             ensures percent(r);
 
         #[effects(pure)]
-        #[uses(percent)]
         fn doubled(self: &Self) -> (r: i64)
             ensures percent(r),
         {
@@ -35,7 +33,6 @@ mod mf {
     }
 
     #[effects(pure)]
-    #[uses(Counter::room)]
     fn overrun(cap: u64) -> u64 {
         let mut c: Counter = Counter { n: 0, cap: cap };
         c.tick();
@@ -43,7 +40,6 @@ mod mf {
     }
 
     #[effects(pure)]
-    #[uses(percent)]
     fn sum_of<T: Copy + Score>(a: &T, b: &T) -> (r: i64)
         ensures percent(r),
     {

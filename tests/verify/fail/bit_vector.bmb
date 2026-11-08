@@ -31,7 +31,6 @@ mod bvf {
 
     // In a lemma: rotating left twice by 4 is not the identity on `i8`
     // for every amount it is given.
-    #[uses(rotation_back)]
     proof fn rotations(x: i8, k: u32)
         ensures rotation_back(x, x.rotate_left(k).rotate_left(k)),
     {
@@ -47,17 +46,20 @@ mod bvf {
     spec fn hidden(x: u32) -> u32 { x | 1 }
 
     #[effects(pure)]
-    #[uses(loop_back)]
     fn recursive(x: u32) -> u32 {
         assert(loop_back(x) == 0) by (bit_vector);
         x
     }
 
+    // `odd` is in the default context (the assertion names it, ADR-0095
+    // A1), `hidden` in its body is not.
     #[effects(pure)]
     fn unrevealed(x: u32) -> u32 {
-        assert(hidden(x) & 1 == 1) by (bit_vector);
+        assert(odd(x)) by (bit_vector);
         x
     }
+
+    spec fn odd(x: u32) -> bool { hidden(x) & 1 == 1 }
 
     #[effects(pure)]
     fn signed_division(x: i32) -> i32 {
@@ -69,7 +71,6 @@ mod bvf {
 
     // `count_ones` of 255 is 8.
     #[effects(pure)]
-    #[uses(too_many)]
     fn ones(x: u8) -> (r: u32)
         ensures too_many(x, r),
     {
@@ -80,7 +81,6 @@ mod bvf {
 
     // The wrong direction.
     #[effects(pure)]
-    #[uses(left)]
     fn rotate_wrong(x: u8) -> (r: u8)
         ensures left(x, r),
     {
@@ -92,7 +92,6 @@ mod bvf {
     // The sub-proof holds for every `u8` value of `y`, but the ghost `y`
     // may be 256: the enclosing proof assumes it only when `y` is a `u8`
     // value, so `fits(255)` stays unproved.
-    #[uses(fits)]
     proof fn ghost_range(x: u8)
         ensures fits(x),
     {
@@ -107,7 +106,6 @@ mod bvf {
     // `same`'s definition holds for `u8` arguments: the sub-proof assumes
     // `x + 1` is one, and the enclosing proof gets the fact under that
     // guard, so `same_fits(255)` stays unproved.
-    #[uses(same, same_fits)]
     proof fn spec_guard(x: u8)
         ensures same_fits(x),
     {
@@ -124,7 +122,6 @@ mod bvf {
 
     // `trailing_ones` of 255 is 8 (backlog 2N-09).
     #[effects(pure)]
-    #[uses(short_run)]
     fn low_ones(x: u8) -> (r: u32)
         ensures short_run(x, r),
     {
@@ -140,7 +137,6 @@ mod bvf {
 
     // `checked_shr` is `None` from the width on (backlog 2N-09b).
     #[effects(pure)]
-    #[uses(always_some)]
     fn shift_some(x: u8, k: u32) -> (r: Option<u8>)
         ensures always_some(r),
     {
@@ -151,7 +147,6 @@ mod bvf {
 
     // Big-endian bytes start with the top byte (backlog 2N-09c).
     #[effects(pure)]
-    #[uses(low_first)]
     fn first_byte(x: u32) -> (b: [u8; 4])
         ensures low_first(x, b),
     {

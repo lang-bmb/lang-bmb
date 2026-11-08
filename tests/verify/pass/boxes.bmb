@@ -22,7 +22,6 @@ mod bx {
     }
 
     #[effects(alloc)]
-    #[uses(at)]
     fn mk(x: i64) -> (r: Box<Pt>)
         ensures at(*r, x),
     {
@@ -30,7 +29,6 @@ mod bx {
     }
 
     #[effects(pure)]
-    #[uses(doubled, small)]
     fn double(b: &Box<i64>) -> (r: i64)
         requires small(**b),
         ensures doubled(**b, r),
@@ -39,7 +37,6 @@ mod bx {
     }
 
     #[effects(pure)]
-    #[uses(doubled, small)]
     fn double_in_place(b: &mut Box<i64>) -> ()
         requires small(**b),
         ensures doubled(**old(b), **b),
@@ -48,7 +45,7 @@ mod bx {
     }
 
     #[effects(alloc)]
-    #[uses(at, held)]
+    #[uses(at)]
     fn hold(x: i64) -> (r: Holder)
         ensures held(&r, x),
     {
@@ -59,7 +56,6 @@ mod bx {
     }
 
     #[effects(alloc)]
-    #[uses(same)]
     fn copy_out(b: &Box<i64>) -> (r: Box<i64>)
         ensures same(*b, r),
     {
@@ -67,7 +63,6 @@ mod bx {
     }
 
     #[effects(pure)]
-    #[uses(small, some_small)]
     fn unwrap_or_zero(o: Option<Box<i64>>) -> (r: i64)
         requires some_small(o),
         ensures small(r),
@@ -79,7 +74,6 @@ mod bx {
     }
 
     #[effects(alloc)]
-    #[uses(doubled, small)]
     fn nested(v: i64) -> (r: i64)
         requires small(v),
         ensures doubled(v, r),

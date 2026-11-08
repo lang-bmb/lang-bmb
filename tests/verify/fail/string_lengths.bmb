@@ -1,7 +1,6 @@
 #[summary("String의 길이는 바뀐다: 키우는 피호출자와 루프 뒤의 길이를 옛 길이로 보지 않는다 (backlog 4B-02에서 발견한 건전성 결함), `push_str` 루프의 길이 불변식은 루프 뒤 길이를 옛 길이로 두지 않는다 (1B-56)")]
 mod strlen {
     #[effects(alloc)]
-    #[uses(grew, small)]
     fn add(s: &mut String) -> ()
         requires small(s.as_str()),
         ensures grew(s.as_str(), old(s).as_str()),
@@ -10,7 +9,6 @@ mod strlen {
     }
 
     #[effects(alloc)]
-    #[uses(grew, never, small)]
     fn caller() -> () {
         let mut s: String = String::new();
         add(&mut s);
@@ -30,7 +28,6 @@ mod strlen {
     }
 
     #[effects(alloc)]
-    #[uses(empty)]
     fn looped() -> () {
         let mut s: String = String::new();
         let mut i: u64 = 0;
@@ -48,7 +45,6 @@ mod strlen {
     }
 
     #[effects(alloc)]
-    #[uses(empty)]
     fn param(s: &mut String) -> ()
         requires empty(s.as_str()),
     {
@@ -65,7 +61,6 @@ mod strlen {
     }
 
     #[effects(alloc)]
-    #[uses(grown, never)]
     fn pushed() -> () {
         let mut s: String = String::from("a");
         let mut i: usize = 0;

@@ -1,7 +1,6 @@
 #[summary("String은 Ord다: 제네릭 정의는 정렬 위 비해석 전순서로 한 번 증명되고, String 인스턴스의 호출자는 Rust의 바이트 사전순으로 결과를 안다 (backlog 4B-04)")]
 mod text_ord {
     #[effects(alloc)]
-    #[uses(holds, less, same)]
     fn caller() -> () {
         let a: String = String::from("B");
         let b: String = String::from("a");
@@ -28,7 +27,6 @@ mod text_ord {
     }
 
     #[effects(pure)]
-    #[uses(less, same)]
     fn lt<T: Ord>(a: &T, b: &T) -> (r: bool)
         ensures same(r, less::<T>(a, b)),
     {

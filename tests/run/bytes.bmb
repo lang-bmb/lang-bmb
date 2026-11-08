@@ -3,7 +3,6 @@ mod by {
     spec fn starts_h(s: &[u8]) -> bool { s.len() > 0 && s[0] == 104 }
 
     #[effects(pure)]
-    #[uses(starts_h)]
     fn first(s: &[u8]) -> u8
         requires starts_h(s),
     {
@@ -14,7 +13,6 @@ mod by {
 
     // Upper-case ASCII letters, other bytes as they are.
     #[effects(alloc)]
-    #[uses(fresh)]
     fn shout(s: &[u8], out: &mut Vec<u8>) -> ()
         requires fresh(out.as_slice(), s),
     {
@@ -32,11 +30,10 @@ mod by {
 
     #[effects(io)]
     fn show(c: u8) -> () {
-        print_u64(u64::try_from(c).unwrap());
+        print_u64(c as u64);
     }
 
     #[effects(alloc, io)]
-    #[uses(starts_h, fresh)]
     fn main() -> () {
         print_bytes(b"hello, \"bytes\"\n");
         show(first(b"hi\x21"));
@@ -58,7 +55,7 @@ mod by {
         }
         let mut a: [u8; 3] = [1, 2, 255];
         a[0] = a[2];
-        print_u64(u64::try_from(a[0]).unwrap() + u64::try_from(a[1]).unwrap());
+        print_u64(a[0] as u64 + a[1] as u64);
         let mut v: Vec<u8> = Vec::new();
         shout(b"ok, Bytes!\n", &mut v);
         print_bytes(v.as_slice());

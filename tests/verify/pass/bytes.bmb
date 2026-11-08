@@ -6,7 +6,6 @@ mod bp {
 
     // `c - 48` cannot underflow under `digit`.
     #[effects(pure)]
-    #[uses(digit, below10)]
     fn digit_value(c: u8) -> (r: u8)
         requires digit(c),
         ensures below10(r),
@@ -19,7 +18,6 @@ mod bp {
     spec fn upper(r: u8) -> bool { 65 <= r && r <= 90 }
 
     #[effects(pure)]
-    #[uses(lower, upper)]
     fn to_upper(c: u8) -> (r: u8)
         requires lower(c),
         ensures upper(r),
@@ -29,20 +27,19 @@ mod bp {
 
     // Widening never needs an obligation; narrowing does.
     #[effects(pure)]
-    fn widen(c: u8) -> u64 { u64::try_from(c).unwrap() + 1 }
+    fn widen(c: u8) -> u64 { c as u64 + 1 }
 
     #[effects(pure)]
     fn narrow(x: u64) -> u8 {
-        if x < 256 { u8::try_from(x).unwrap() } else { 0 }
+        if x < 256 { x as u8 } else { 0 }
     }
 
     #[effects(pure)]
-    fn low_byte(x: u64) -> u8 { u8::try_from(x % 256).unwrap() }
+    fn low_byte(x: u64) -> u8 { (x % 256) as u8 }
 
     spec fn hello(s: &[u8]) -> bool { s.len() == 5 && s[0] == 104 && s[4] == 111 }
 
     #[effects(pure)]
-    #[uses(hello)]
     fn last(s: &[u8]) -> u8
         requires hello(s),
     {
@@ -51,7 +48,6 @@ mod bp {
 
     // The byte string's length and elements are known to the caller.
     #[effects(pure)]
-    #[uses(hello)]
     fn use_literal() -> u8 { last(b"hello") }
 
     #[effects(pure)]
@@ -60,7 +56,6 @@ mod bp {
     spec fn at_most(r: usize, a: &[u8]) -> bool { r <= a.len() }
 
     #[effects(pure)]
-    #[uses(at_most)]
     fn count_ascii(a: &[u8]) -> (r: usize)
         ensures at_most(r, a),
     {

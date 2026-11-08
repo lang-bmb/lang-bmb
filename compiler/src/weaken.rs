@@ -921,7 +921,7 @@ fn reveal(
     for path in sides {
         for (q, unit, f) in crate::check::defs_of(p, &t.fns) {
             if q == path {
-                out.extend(crate::verify::uses_of(f, &unit, &t.fns));
+                out.extend(crate::verify::context_of(&q, f, &unit, t));
             }
         }
     }

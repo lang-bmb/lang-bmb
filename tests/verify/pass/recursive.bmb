@@ -69,7 +69,7 @@ mod rv {
     // Only negations of a small number: by induction (the recursive call's
     // `ensures`) the value stays small, so no overflow.
     #[effects(pure)]
-    #[uses(bounded, is_value, small, value)]
+    #[uses(value)]
     fn eval_neg(e: &Expr) -> (r: i64)
         requires bounded(e),
         ensures is_value(e, r), small(r),
@@ -83,7 +83,7 @@ mod rv {
     }
 
     #[effects(pure)]
-    #[uses(len_is, length, short)]
+    #[uses(length)]
     fn count<T: Copy>(l: &List<T>) -> (r: usize)
         requires short::<T>(l),
         ensures len_is::<T>(l, r),

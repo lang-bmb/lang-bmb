@@ -11,7 +11,7 @@ mod values {
     spec fn small_p(p: Point) -> bool { small(p.x) && small(p.y) }
 
     #[effects(pure)]
-    #[uses(small_p, small)]
+    #[uses(small)]
     fn bump(p: &mut Point) -> ()
         requires small_p(*p),
         ensures small_p(*p),
@@ -33,7 +33,7 @@ mod values {
     }
 
     #[effects(io)]
-    #[uses(small_p, small)]
+    #[uses(small)]
     fn main() -> () {
         // A payload is a copy: changing the source later does not reach it.
         let mut p: Point = Point { x: 1, y: 2 };

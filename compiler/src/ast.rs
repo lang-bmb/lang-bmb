@@ -846,6 +846,22 @@ fn block_mut(b: &mut Block, f: &mut dyn FnMut(&mut Expr)) {
     }
 }
 
+/// Visits `e` and every expression inside it.
+pub fn expr_walk(e: &mut Expr, f: &mut dyn FnMut(&mut Expr)) {
+    expr_mut(e, f);
+}
+
+/// Whether `e` or an expression inside it is a quantifier (`forall`,
+/// `exists`).
+pub fn has_quant(e: &Expr) -> bool {
+    let mut e = e.clone();
+    let mut found = false;
+    expr_mut(&mut e, &mut |x| {
+        found |= matches!(x.kind, ExprKind::Quant { .. })
+    });
+    found
+}
+
 fn expr_mut(e: &mut Expr, f: &mut dyn FnMut(&mut Expr)) {
     match &mut e.kind {
         ExprKind::Int(..)

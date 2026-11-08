@@ -6,7 +6,6 @@ mod bits {
 
     // A rotation: two shifts whose amounts are below the width.
     #[effects(pure)]
-    #[uses(amount)]
     fn rotl(x: u32, k: u32) -> u32
         requires amount(k),
     {
@@ -36,7 +35,7 @@ mod bits {
         for k in 0..64
             invariant c <= k,
         {
-            c = c + u32::try_from((x >> k) & 1).unwrap();
+            c = c + ((x >> k) & 1) as u32;
         }
         c
     }
@@ -47,21 +46,20 @@ mod bits {
 
     // Four bytes, big-endian.
     #[effects(pure)]
-    #[uses(four)]
     fn pack(b: &[u8]) -> u32
         requires four(b),
     {
-        let b0: u32 = u32::try_from(b[0]).unwrap();
-        let b1: u32 = u32::try_from(b[1]).unwrap();
-        let b2: u32 = u32::try_from(b[2]).unwrap();
-        let b3: u32 = u32::try_from(b[3]).unwrap();
+        let b0: u32 = b[0] as u32;
+        let b1: u32 = b[1] as u32;
+        let b2: u32 = b[2] as u32;
+        let b3: u32 = b[3] as u32;
         (b0 << 24) | (b1 << 16) | (b2 << 8) | b3
     }
 
     // A byte read as `i8`: shifting left and back right is arithmetic.
     #[effects(pure)]
     fn sign_extend(b: u8) -> i32 {
-        (i32::try_from(b).unwrap() << 24) >> 24
+        ((b as i32) << 24) >> 24
     }
 
     spec fn below(k: u32, w: u32) -> bool {
@@ -69,7 +67,6 @@ mod bits {
     }
 
     #[effects(pure)]
-    #[uses(below)]
     fn shr16(x: i16, k: u32) -> i16
         requires below(k, 16),
     {
@@ -77,7 +74,6 @@ mod bits {
     }
 
     #[effects(pure)]
-    #[uses(below)]
     fn shl8(x: u8, k: u32) -> u8
         requires below(k, 8),
     {
@@ -85,7 +81,6 @@ mod bits {
     }
 
     #[effects(io)]
-    #[uses(amount, four, below)]
     fn main() -> () {
         // Literals in four bases, with separators.
         print_u64(0xff);
@@ -96,31 +91,31 @@ mod bits {
         print_i64(-0x80);
         // `&`, `|`, `^`, `!` on unsigned and signed values.
         let x: u32 = 0x12345678;
-        print_u64(u64::try_from(x & 0xff00).unwrap());
-        print_u64(u64::try_from(x | 0xf).unwrap());
-        print_u64(u64::try_from(x ^ 0xffffffff).unwrap());
-        print_u64(u64::try_from(!x).unwrap());
+        print_u64((x & 0xff00) as u64);
+        print_u64((x | 0xf) as u64);
+        print_u64((x ^ 0xffffffff) as u64);
+        print_u64(!x as u64);
         let n: i16 = -1000;
-        print_i64(i64::try_from(n & 0x7ff).unwrap());
-        print_i64(i64::try_from(n | 7).unwrap());
-        print_i64(i64::try_from(n ^ -1).unwrap());
-        print_i64(i64::try_from(!n).unwrap());
+        print_i64((n & 0x7ff) as i64);
+        print_i64((n | 7) as i64);
+        print_i64((n ^ -1) as i64);
+        print_i64(!n as i64);
         let s: i8 = 0;
-        print_i64(i64::try_from(!s).unwrap());
+        print_i64(!s as i64);
         let m: u16 = 5;
-        print_u64(u64::try_from(!m).unwrap());
+        print_u64(!m as u64);
         // Shifts: wrapping out of the width, arithmetic `>>` on signed values.
-        print_u64(u64::try_from(rotl(x, 8)).unwrap());
-        print_u64(u64::try_from(sigma0(x)).unwrap());
-        print_u64(u64::try_from(parity(x)).unwrap());
-        print_u64(u64::try_from(ones(0xf0f0_0000_0000_0001)).unwrap());
+        print_u64(rotl(x, 8) as u64);
+        print_u64(sigma0(x) as u64);
+        print_u64(parity(x) as u64);
+        print_u64(ones(0xf0f0_0000_0000_0001) as u64);
         let word: [u8; 4] = [0xde, 0xad, 0xbe, 0xef];
-        print_u64(u64::try_from(pack(&word)).unwrap());
-        print_i64(i64::try_from(sign_extend(0xf0)).unwrap());
-        print_i64(i64::try_from(sign_extend(0x7f)).unwrap());
-        print_i64(i64::try_from(shr16(-7, 1)).unwrap());
-        print_i64(i64::try_from(shr16(-32768, 15)).unwrap());
-        print_u64(u64::try_from(shl8(0b1011_0001, 3)).unwrap());
+        print_u64(pack(&word) as u64);
+        print_i64(sign_extend(0xf0) as i64);
+        print_i64(sign_extend(0x7f) as i64);
+        print_i64(shr16(-7, 1) as i64);
+        print_i64(shr16(-32768, 15) as i64);
+        print_u64(shl8(0b1011_0001, 3) as u64);
         let big: i64 = -100;
         print_i64(big >> 2);
         print_i64(big << 60);

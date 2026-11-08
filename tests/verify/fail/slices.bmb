@@ -16,7 +16,6 @@ mod geo {
     }
 
     #[effects(pure)]
-    #[uses(idx)]
     fn overflow(a: &[Point], i: usize) -> i64
         requires idx(a, i),
     {
@@ -25,7 +24,6 @@ mod geo {
 
     // Writing `x` says nothing about `y` being `v`.
     #[effects(pure)]
-    #[uses(idx, at_y)]
     fn wrong_field(a: &mut [Point], i: usize, v: i64) -> ()
         requires idx(a, i),
         ensures at_y(a, i, v),
@@ -34,7 +32,6 @@ mod geo {
     }
 
     #[effects(pure)]
-    #[uses(idx)]
     fn touch(a: &mut [Point], i: usize) -> ()
         requires idx(a, i),
     {
@@ -43,7 +40,6 @@ mod geo {
 
     // The callee may change any element.
     #[effects(pure)]
-    #[uses(idx, at_y)]
     fn after_call(a: &mut [Point], i: usize) -> ()
         requires idx(a, i), at_y(a, i, 7),
         ensures at_y(a, i, 7),
@@ -52,7 +48,6 @@ mod geo {
     }
 
     #[effects(pure)]
-    #[uses(is_dot)]
     fn enum_elem(s: &mut [Shape]) -> ()
     {
         if s.len() > 0 {
@@ -65,7 +60,6 @@ mod geo {
     spec fn row_idx(g: &[[i64; 3]], i: usize) -> bool { i < g.len() }
 
     #[effects(pure)]
-    #[uses(row_idx)]
     fn inner_index(g: &[[i64; 3]], i: usize, j: usize) -> i64
         requires row_idx(g, i),
     {
@@ -76,7 +70,6 @@ mod geo {
 
     // The write goes to `g[1][0]`, not the corner.
     #[effects(pure)]
-    #[uses(corner)]
     fn set_corner(v: i64) -> (r: [[i64; 2]; 2])
         ensures corner(r, v),
     {

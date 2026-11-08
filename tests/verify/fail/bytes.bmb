@@ -7,10 +7,10 @@ mod bf {
     fn below_zero(c: u8) -> u8 { c - b'0' }
 
     #[effects(pure)]
-    fn narrow(x: u64) -> u8 { u8::try_from(x).unwrap() }
+    fn narrow(x: u64) -> u8 { x as u8 }
 
     #[effects(pure)]
-    fn from_signed(x: i64) -> u8 { u8::try_from(x).unwrap() }
+    fn from_signed(x: i64) -> u8 { x as u8 }
 
     #[effects(pure)]
     fn first(s: &[u8]) -> u8 { s[0] }
@@ -24,7 +24,6 @@ mod bf {
     spec fn is_h(r: u8) -> bool { r == 104 }
 
     #[effects(pure)]
-    #[uses(two)]
     fn second(s: &[u8]) -> u8
         requires two(s),
     {
@@ -33,7 +32,6 @@ mod bf {
 
     // `b"hi"[1]` is `i` (105), not `h`.
     #[effects(pure)]
-    #[uses(two, is_h)]
     fn claims_h() -> (r: u8)
         ensures is_h(r),
     {

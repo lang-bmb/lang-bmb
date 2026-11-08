@@ -1,0 +1,12 @@
+{"rule": "written #[uses] only (before ADR-0095)", "corpus": "lib/std", "defs": 224, "rlimit_total": 21511157, "verdicts_changed": []}
+{"rule": "written #[uses] only (before ADR-0095)", "corpus": "tests/verify/pass", "defs": 324, "rlimit_total": 3312950, "verdicts_changed": []}
+{"rule": "written #[uses] only (before ADR-0095)", "corpus": "tests/run", "defs": 379, "rlimit_total": 9654008, "verdicts_changed": []}
+{"rule": "written #[uses] only (before ADR-0095)", "corpus": "tests/verify/fail", "defs": 263, "rlimit_total": 11667024, "verdicts_changed": []}
+{"rule": "r2c: own + callee contracts, closed over bodies", "corpus": "lib/std", "defs": 224, "rlimit_total": 104077170, "verdicts_changed": ["lib/std/base64.bmb base64::encode", "lib/std/crc32.bmb crc32::table", "lib/std/crc32.bmb crc32::update_with", "lib/std/sha256.bmb sha256::compress"]}
+{"rule": "r2c: own + callee contracts, closed over bodies", "corpus": "tests/verify/pass", "defs": 324, "rlimit_total": 3313214, "verdicts_changed": []}
+{"rule": "r2c: own + callee contracts, closed over bodies", "corpus": "tests/run", "defs": 379, "rlimit_total": 11621309, "verdicts_changed": []}
+{"rule": "r2c: own + callee contracts, closed over bodies", "corpus": "tests/verify/fail", "defs": 263, "rlimit_total": 11668836, "verdicts_changed": ["tests/verify/fail/bit_vector.bmb bvf::unrevealed", "tests/verify/fail/contracts.bmb contracts::opaque_caller"]}
+{"rule": "r2: own + callee contracts, not into bodies (implemented)", "corpus": "lib/std", "defs": 224, "rlimit_total": 21635167, "verdicts_changed": []}
+{"rule": "r2: own + callee contracts, not into bodies (implemented)", "corpus": "tests/verify/pass", "defs": 324, "rlimit_total": 3313214, "verdicts_changed": []}
+{"rule": "r2: own + callee contracts, not into bodies (implemented)", "corpus": "tests/run", "defs": 379, "rlimit_total": 10078033, "verdicts_changed": []}
+{"rule": "r2: own + callee contracts, not into bodies (implemented)", "corpus": "tests/verify/fail", "defs": 263, "rlimit_total": 11668034, "verdicts_changed": ["tests/verify/fail/bit_vector.bmb bvf::unrevealed", "tests/verify/fail/contracts.bmb contracts::opaque_caller"]}

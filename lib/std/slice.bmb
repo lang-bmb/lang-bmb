@@ -47,7 +47,7 @@ mod slice {
     // order of their positions: the order Rust's stable `sort_by_key` puts
     // the items in (`v[r[0]], v[r[1]], ..` is the sorted `v`).
     #[effects(alloc)]
-    #[uses(above, before, below, bounded, ordered_but, others_below, sorted_order)]
+    #[uses(before)]
     fn sort_indices<T: Ord>(keys: &[T]) -> (out: Vec<usize>)
         requires bounded::<T>(keys),
         ensures sorted_order::<T>(out.as_slice(), keys),
@@ -89,7 +89,7 @@ mod slice {
 
     // A stable order of `keys` is a permutation of its positions: each
     // below the length, none twice.
-    #[uses(before, below, distinct, order_of, ordered_but, sorted_order)]
+    #[uses(before, below, ordered_but, sorted_order)]
     proof fn sorted_is_perm<T: Ord>(r: &[usize], keys: &[T])
         requires order_of::<T>(r, keys),
         ensures distinct(r),
@@ -120,7 +120,6 @@ mod slice {
     }
 
     #[effects(pure)]
-    #[uses(ascending, outside, searched)]
     fn binary_search<T: Copy + Ord>(v: &[T], x: T) -> (r: Result<usize, usize>)
         requires ascending::<T>(v),
         ensures searched::<T>(r, v, x),

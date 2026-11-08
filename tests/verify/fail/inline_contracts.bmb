@@ -1,0 +1,24 @@
+#[summary("Contract clauses written as expressions that do not hold (ADR-0095 A2): a weak precondition, a wrong postcondition, a caller that breaks a precondition")]
+mod icf {
+    #[effects(pure)]
+    fn get(a: &[i64], i: usize) -> i64
+        requires i <= a.len(),
+    {
+        a[i]
+    }
+
+    #[effects(pure)]
+    fn twice(x: i64) -> (r: i64)
+        requires 0 <= x && x < 1000,
+        ensures r == x + x + 1,
+    {
+        x + x
+    }
+
+    #[effects(pure)]
+    fn caller(a: &[i64]) -> i64
+        requires a.len() == 2,
+    {
+        twice(5000) + get(a, 1)
+    }
+}

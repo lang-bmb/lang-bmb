@@ -285,9 +285,10 @@ pub fn check_resolved(mut p: Program, diags: &mut Diags) -> (Program, crate::ver
         let mut c = Checker::new(&mut d);
         c.check_program(&p);
         let methods = std::mem::take(&mut c.methods);
-        let tables = c.into_tables();
+        let mut tables = c.into_tables();
         if methods.is_empty() {
             *diags = d;
+            tables.context = crate::verify::default_contexts(&p, &tables);
             return (p, tables);
         }
         crate::ast::exprs_mut(&mut p, &mut |e| {
@@ -894,6 +895,17 @@ pub struct Checker<'a> {
     external: BTreeSet<String>,
     /// Type of every checked expression, keyed by its span `(file, lo, hi)`.
     pub types: BTreeMap<(u32, u32, u32), TypeKind>,
+    /// The function's `let`s without a type whose initializer says little
+    /// (`0`, `Vec::new()`): their E0201 fix waits for the first use
+    /// (`settle_lets`). The name and whether it is `Vec::new()`.
+    open_lets: Vec<(Ident, bool)>,
+    /// Locals given as the whole initializer of a typed `let`: the name,
+    /// where, and the declared type (`settle_lets`).
+    typed_uses: Vec<(String, u32, TypeKind)>,
+    /// Expressions checked as specification while a `let` waits for its
+    /// type (`settle_lets`): their integers are mathematical, so they say
+    /// nothing of the local's type.
+    spec_at: BTreeSet<(u32, u32, u32)>,
     /// Recursive definitions: path -> id of its strongly connected component.
     pub recursive: BTreeMap<String, usize>,
     /// Canonical type of every parameter and local, by definition path.
@@ -966,7 +978,12 @@ struct FnCtx {
     mod_path: String,
     effect: Effects,
     scopes: Vec<BTreeMap<String, Local>>,
+    /// Every local name bound so far in the function (its type is in
+    /// `Checker::locals`: one name has one type in a function).
     all_names: BTreeSet<String>,
+    /// Names the body may not bind although they are not in scope there
+    /// (the result name of the `ensures`).
+    reserved: BTreeSet<String>,
     forall_depth: u32,
     /// The function's result type (`return e`, ADR-0049 §1).
     ret: TypeKind,
@@ -1804,6 +1821,9 @@ impl<'a> Checker<'a> {
             imports: BTreeMap::new(),
             calls: BTreeMap::new(),
             types: BTreeMap::new(),
+            open_lets: Vec::new(),
+            typed_uses: Vec::new(),
+            spec_at: BTreeSet::new(),
             recursive: BTreeMap::new(),
             locals: BTreeMap::new(),
             moves: BTreeMap::new(),
@@ -1860,6 +1880,7 @@ impl<'a> Checker<'a> {
             may_untrusted,
             external: self.external.clone(),
             calls: self.calls.clone(),
+            context: BTreeMap::new(),
             effect_needs: self.effect_needs,
         }
     }
@@ -4101,6 +4122,137 @@ impl<'a> Checker<'a> {
         self.fns.contains_key(&p).then_some(p)
     }
 
+    /// The E0201 fixes of `let x = 0;` and `let v = Vec::new();` (backlog
+    /// 2N-12): the type comes from the local's first use after it, as
+    /// Rust's inference would take it: the other operand of an arithmetic
+    /// or comparison operator (not a literal), an index (`usize`), an
+    /// argument of a function (its parameter's type), and for a `Vec` its
+    /// first `push` (the element's type). Without such a use the fix keeps
+    /// the initializer's own type.
+    fn settle_lets(&mut self, f: &FnDef, mod_path: &str) {
+        let open = std::mem::take(&mut self.open_lets);
+        let typed = std::mem::take(&mut self.typed_uses);
+        let spec_at = std::mem::take(&mut self.spec_at);
+        if open.is_empty() {
+            return;
+        }
+        let mut body = f.clone();
+        for (name, vec_new) in open {
+            let mut best: Option<(u32, TypeKind)> = None;
+            let key = |e: &Expr| (e.span.file, e.span.lo, e.span.hi);
+            let is_var = |e: &Expr| {
+                matches!(&e.kind, ExprKind::Var(v) if v.name == name.name)
+                    && e.span.lo > name.span.hi
+                    && !spec_at.contains(&(e.span.file, e.span.lo, e.span.hi))
+            };
+            let literal = |e: &Expr| matches!(e.kind, ExprKind::Int(..));
+            let types = &self.types;
+            let fns = &self.fns;
+            let mut found = |lo: u32, t: TypeKind| {
+                if best.as_ref().is_none_or(|(b, _)| lo < *b) {
+                    best = Some((lo, t));
+                }
+            };
+            let mut cands: Vec<(u32, TypeKind)> = Vec::new();
+            let mut calls: Vec<(u32, Vec<Ident>, usize)> = Vec::new();
+            crate::ast::fn_exprs_mut(&mut body, &mut |e| match &e.kind {
+                ExprKind::Binary(op, a, b)
+                    if !vec_new && (op.is_arith() || op.is_cmp() || op.is_bit()) =>
+                {
+                    let other = if is_var(a) {
+                        Some((a.span.lo, b))
+                    } else if is_var(b) {
+                        Some((b.span.lo, a))
+                    } else {
+                        None
+                    };
+                    if let Some((lo, o)) = other
+                        && !literal(o)
+                        && let Some(t) = types.get(&key(o))
+                        && is_int(t)
+                    {
+                        cands.push((lo, t.clone()));
+                    }
+                }
+                ExprKind::Index { index, .. } if !vec_new && is_var(index) => {
+                    cands.push((index.span.lo, TypeKind::Int(IntTy::Usize)));
+                }
+                ExprKind::Call { path, args, .. } => {
+                    for (k, a) in args.iter().enumerate() {
+                        if is_var(a) {
+                            calls.push((a.span.lo, path.clone(), k));
+                        }
+                    }
+                }
+                ExprKind::Method {
+                    recv,
+                    name: m,
+                    args,
+                } if vec_new
+                    && m.name == "push"
+                    && is_var(recv)
+                    && args.len() == 1
+                    && !literal(&args[0]) =>
+                {
+                    if let Some(t) = types.get(&key(&args[0])) {
+                        cands.push((
+                            recv.span.lo,
+                            TypeKind::Vec(Box::new(Type {
+                                kind: t.clone(),
+                                span: args[0].span,
+                            })),
+                        ));
+                    }
+                }
+                _ => {}
+            });
+            for (lo, t) in cands {
+                found(lo, t);
+            }
+            for (n, lo, t) in &typed {
+                let fits = if vec_new {
+                    matches!(t, TypeKind::Vec(_))
+                } else {
+                    is_int(t)
+                };
+                if *n == name.name && *lo > name.span.hi && fits {
+                    found(*lo, t.clone());
+                }
+            }
+            for (lo, path, k) in calls {
+                let Some(sig) = self.resolve(&path, mod_path).and_then(|p| fns.get(&p)) else {
+                    continue;
+                };
+                if let Some(t) = sig.params.get(k)
+                    && (if vec_new {
+                        matches!(t, TypeKind::Vec(_))
+                    } else {
+                        is_int(t)
+                    })
+                {
+                    found(lo, t.clone());
+                }
+            }
+            let Some((_, t)) = best else {
+                continue;
+            };
+            let r = format!("{}: {}", name.name, ty_str(&t));
+            if let Some(d) = self
+                .diags
+                .items
+                .iter_mut()
+                .find(|d| d.code == "E0201" && d.span == name.span)
+            {
+                *d = Diag::new(
+                    "E0201",
+                    name.span,
+                    format!("`let {}` requires an explicit type", name.name),
+                )
+                .fix(format!("write `{r}`"), Some(r));
+            }
+        }
+    }
+
     // ---------- functions ----------
 
     fn check_fn(&mut self, f: &FnDef, mod_path: &str, path: &str) {
@@ -4115,6 +4267,7 @@ impl<'a> Checker<'a> {
             effect: sig.effect,
             scopes: vec![BTreeMap::new()],
             all_names: BTreeSet::new(),
+            reserved: BTreeSet::new(),
             forall_depth: 0,
             ret: TypeKind::Error,
             loops: Vec::new(),
@@ -4201,9 +4354,10 @@ impl<'a> Checker<'a> {
                 self.check_contract(&mut cx, e, true);
             }
             cx.scopes.pop();
-        } else if let Some(n) = &f.ret.name {
-            // The result name is still reserved so the body cannot rebind it.
-            cx.all_names.insert(n.name.clone());
+        }
+        if let Some(n) = &f.ret.name {
+            // The result name stays reserved: the body cannot rebind it.
+            cx.reserved.insert(n.name.clone());
         }
         if let Some(d) = &f.decreases {
             let t = self.expr(&mut cx, d, None, Mode::Spec { allow_old: false });
@@ -4220,12 +4374,16 @@ impl<'a> Checker<'a> {
             FnKind::Proof => Mode::Ghost,
             FnKind::Exec => Mode::Exec,
         };
+        self.open_lets.clear();
+        self.typed_uses.clear();
+        self.spec_at.clear();
         let t = self.block(&mut cx, &f.body, Some(&ret_ty), mode);
         self.expect_ty(
             &t,
             &ret_ty,
             f.body.tail.as_ref().map_or(f.body.span, |e| e.span),
         );
+        self.settle_lets(f, mod_path);
         if f.kind == FnKind::Exec {
             if f.attrs.iter().any(|a| a.name.name == "external_body") {
                 cx.need_own(Effects::PANIC, || "`#[external_body]`".into());
@@ -4637,11 +4795,21 @@ impl<'a> Checker<'a> {
                     );
                 }
             }
+            // A clause without a quantifier is an expression (ADR-0095 A2);
+            // one with a quantifier is the unit of triggers and reuse, a
+            // named predicate.
             _ => {
-                if t != TypeKind::Error {
+                if t != TypeKind::Error && crate::ast::has_quant(e) {
                     self.diags.push(
-                        Diag::new("E0501", e.span, "contract clause is not a named predicate")
-                            .fix("move the condition into `spec fn name(..) -> bool { .. }` and call it here", None),
+                        Diag::new(
+                            "E0501",
+                            e.span,
+                            "a contract clause with a quantifier is not a named predicate",
+                        )
+                        .fix(
+                            "move the quantified condition into `spec fn name(..) -> bool { .. }` and call it here",
+                            None,
+                        ),
                     );
                 }
             }
@@ -4656,16 +4824,43 @@ impl<'a> Checker<'a> {
         mutable: bool,
         is_param: bool,
     ) {
-        if !cx.all_names.insert(name.name.clone()) {
+        // A name may not hide a visible one (a parameter, an outer local,
+        // the result); disjoint scopes may reuse a name with its type
+        // (ADR-0095 A3): the locals' table has one type per name.
+        let hides = Self::lookup(cx, &name.name).is_some() || cx.reserved.contains(&name.name);
+        let other = if cx.all_names.contains(&name.name) {
+            self.locals
+                .get(&cx.path)
+                .and_then(|m| m.get(&name.name))
+                .filter(|t| **t != ty)
+                .cloned()
+        } else {
+            None
+        };
+        if hides {
             self.diags.push(
                 Diag::new(
                     "E0303",
                     name.span,
-                    format!("`{}` is already bound in this function", name.name),
+                    format!("`{}` hides a visible name of this function", name.name),
                 )
                 .fix("choose a new name", None),
             );
+        } else if let Some(t) = other {
+            self.diags.push(
+                Diag::new(
+                    "E0303",
+                    name.span,
+                    format!(
+                        "`{}` is bound elsewhere in this function with type `{}`",
+                        name.name,
+                        ty_str(&t)
+                    ),
+                )
+                .fix("choose a new name: a name has one type in a function", None),
+            );
         }
+        cx.all_names.insert(name.name.clone());
         self.locals
             .entry(cx.path.clone())
             .or_default()
@@ -4742,10 +4937,10 @@ impl<'a> Checker<'a> {
                     let w = ty_str(want);
                     let fix = if conv_obligation(found, want) {
                         format!(
-                            "convert: `{w}::try_from(x).unwrap()` (its range is a proof obligation)"
+                            "convert: `x as {w}` (its range is a proof obligation)"
                         )
                     } else {
-                        format!("convert: `{w}::try_from(x).unwrap()` (every value fits)")
+                        format!("convert: `x as {w}` (every value fits)")
                     };
                     d.fix(fix, None)
                 }
@@ -4842,6 +5037,21 @@ impl<'a> Checker<'a> {
             } => {
                 // Rust habit: infer the type only to offer it as the fix.
                 let t = self.expr(cx, init, None, mode);
+                // A bare integer literal or `Vec::new()` says little: the
+                // fix takes the type from the local's first use (backlog
+                // 2N-12, `settle_lets`).
+                let literal = match &init.kind {
+                    ExprKind::Int(..) => true,
+                    ExprKind::Unary(UnOp::Neg, x) => matches!(x.kind, ExprKind::Int(..)),
+                    _ => false,
+                };
+                let vec_new = matches!(&init.kind, ExprKind::Call { path, args, .. }
+                    if path.len() == 2 && path[0].name == "Vec"
+                        && ((path[1].name == "new" && args.is_empty())
+                            || (path[1].name == "with_capacity" && args.len() == 1)));
+                if literal || vec_new {
+                    self.open_lets.push((name.clone(), vec_new));
+                }
                 let mut d = Diag::new(
                     "E0201",
                     name.span,
@@ -4864,6 +5074,7 @@ impl<'a> Checker<'a> {
                 ..
             } => {
                 self.check_value_type(ty, "local variable type");
+
                 if *mutable && mode == Mode::Ghost {
                     self.ghost_violation(
                         name.span,
@@ -4878,6 +5089,11 @@ impl<'a> Checker<'a> {
                     );
                 }
                 let lty = self.canon(ty, &cx.mod_path.clone(), true);
+                // `let w: T = v;` types an untyped `v` (2N-12, `settle_lets`).
+                if let ExprKind::Var(v) = &init.kind {
+                    self.typed_uses
+                        .push((v.name.clone(), init.span.lo, lty.clone()));
+                }
                 let t = self.expr(cx, init, Some(&lty), mode.operand());
                 if !self.deref_fix(&t, &lty, init) {
                     self.expect_ty(&t, &lty, init.span);
@@ -4989,10 +5205,7 @@ impl<'a> Checker<'a> {
                                 ty_str(&ht)
                             ),
                         )
-                        .fix(
-                            format!("convert one end: `{}::try_from(..).unwrap()`", ty_str(&lt)),
-                            None,
-                        ),
+                        .fix(format!("convert one end: `.. as {}`", ty_str(&lt)), None),
                     );
                 } else {
                     self.expect_ty(&ht, &lt, hi.span);
@@ -6727,6 +6940,9 @@ impl<'a> Checker<'a> {
         let t = self.expr_inner(cx, e, expected, mode);
         self.types
             .insert((e.span.file, e.span.lo, e.span.hi), t.clone());
+        if mode != Mode::Exec && !self.open_lets.is_empty() {
+            self.spec_at.insert((e.span.file, e.span.lo, e.span.hi));
+        }
         t
     }
 
@@ -7295,8 +7511,9 @@ impl<'a> Checker<'a> {
                 let x = args.first().map(crate::fmt::expr_text).unwrap_or_default();
                 if let Some(t) = from_call(path) {
                     let r = format!("{}::try_from({x}).unwrap()", ty_str(&t));
+                    let c = crate::fmt::cast_text(&args[0], &ty_str(&t));
                     self.diags
-                        .push(Diag::new("E0212", e.span, format!("write `{r}`")).fix(
+                        .push(Diag::new("E0212", e.span, format!("write `{c}`")).fix(
                             "an integer conversion has a range obligation (ADR-0028)",
                             Some(r),
                         ));
@@ -7854,7 +8071,7 @@ impl<'a> Checker<'a> {
                         let narrow = if wide == &lt { &rt } else { &lt };
                         d.fix(
                             format!(
-                                "convert the `{}` operand: `{}::try_from(x).unwrap()`",
+                                "convert the `{}` operand: `x as {}`",
                                 ty_str(narrow),
                                 ty_str(wide)
                             ),
@@ -8407,7 +8624,7 @@ impl<'a> Checker<'a> {
                     )
                     .fix(
                         format!(
-                            "write `T::try_from({}).unwrap()` with the target type `T`",
+                            "write `{} as T` with the target type `T`",
                             crate::fmt::expr_text(recv)
                         ),
                         None,

@@ -7,7 +7,7 @@ mod bvp {
     // A sub-proof in code: masking twice is masking once. The variables
     // range over their types; the enclosing proof assumes the fact.
     #[effects(pure)]
-    #[uses(is_low, low_byte)]
+    #[uses(low_byte)]
     fn mask_twice(x: u32) -> (r: u32)
         ensures is_low(x, r),
     {
@@ -19,7 +19,6 @@ mod bvp {
 
     // In a `proof` block, with an antecedent written into the assertion.
     #[effects(pure)]
-    #[uses(parity_step)]
     fn fold(x: u32) -> (r: u32)
         ensures parity_step(x, r),
     {
@@ -33,7 +32,6 @@ mod bvp {
     spec fn swapped(a: u8, b: u8) -> bool { (a ^ b) ^ b == a }
 
     // A lemma proved by a sub-proof, used by its caller.
-    #[uses(swapped)]
     proof fn xor_twice(a: u8, b: u8)
         ensures swapped(a, b),
     {
@@ -43,7 +41,6 @@ mod bvp {
     spec fn same(a: u8, r: u8) -> bool { r == a }
 
     #[effects(pure)]
-    #[uses(same, swapped)]
     fn round_trip(a: u8, b: u8) -> (r: u8)
         ensures same(a, r),
     {
@@ -58,7 +55,6 @@ mod bvp {
     spec fn next(x: u8) -> u8 { x + 1 }
 
     #[effects(pure)]
-    #[uses(next)]
     fn guarded(x: u8) -> u8 {
         assert(x < 255 ==> next(x) & 0 == 0) by (bit_vector);
         x
@@ -74,7 +70,6 @@ mod bvp {
     spec fn rotated(x: u32, k: u32, r: u32) -> bool { r == x.rotate_left(k) }
 
     #[effects(pure)]
-    #[uses(rotated)]
     fn rotl(x: u32, k: u32) -> (r: u32)
         ensures rotated(x, k, r),
     {
@@ -84,7 +79,6 @@ mod bvp {
     spec fn counted(x: u64, r: u32) -> bool { r <= 64 && (r == 0) == (x == 0) }
 
     #[effects(pure)]
-    #[uses(counted)]
     fn ones(x: u64) -> (r: u32)
         ensures counted(x, r),
     {
@@ -94,7 +88,6 @@ mod bvp {
     spec fn below_width(x: u16, r: u32) -> bool { x != 0 ==> r < 16 }
 
     #[effects(pure)]
-    #[uses(below_width)]
     fn lowest_set(x: u16) -> (r: u32)
         ensures below_width(x, r),
     {
@@ -116,7 +109,6 @@ mod bvp {
     // Constant rotations are linear; the same rotation written as shifts
     // is equal to it over bit-vectors.
     #[effects(pure)]
-    #[uses(rotation)]
     fn ror8(x: u32) -> (r: u32)
         ensures rotation(x, r),
     {
@@ -127,7 +119,6 @@ mod bvp {
     spec fn bswapped(x: u32, r: u32) -> bool { r == x.swap_bytes() }
 
     #[effects(pure)]
-    #[uses(bswapped)]
     fn big_endian(x: u32) -> (r: u32)
         ensures bswapped(x, r),
     {
@@ -145,7 +136,6 @@ mod bvp {
     spec fn all_ones(x: u8, r: u32) -> bool { r <= 8 && (r == 8) == (x == 255) }
 
     #[effects(pure)]
-    #[uses(all_ones)]
     fn ones_from_top(x: u8) -> (r: u32)
         ensures all_ones(x, r),
     {
@@ -155,7 +145,6 @@ mod bvp {
     spec fn low_run(x: i16, r: u32) -> bool { (r == 16) == (x == -1) }
 
     #[effects(pure)]
-    #[uses(low_run)]
     fn low_ones(x: i16) -> (r: u32)
         ensures low_run(x, r),
     {
@@ -166,7 +155,6 @@ mod bvp {
     spec fn mirrored(x: u32, r: u32) -> bool { r == x.reverse_bits() }
 
     #[effects(pure)]
-    #[uses(mirrored)]
     fn mirror(x: u32) -> (r: u32)
         ensures mirrored(x, r),
     {
@@ -182,7 +170,6 @@ mod bvp {
         k == 1 ==> (x + y) >> k == (x + y) >> 1
     }
 
-    #[uses(same_halves)]
     proof fn shift_image(x: u8, y: u8, k: u32)
         ensures same_halves(x, y, k),
     {
@@ -192,7 +179,6 @@ mod bvp {
         !(x + y) == !((x + y) & 255) && (x + y).rotate_left(1) == ((x + y) & 255).rotate_left(1)
     }
 
-    #[uses(same_not)]
     proof fn not_image(x: u8, y: u8)
         ensures same_not(x, y),
     {
@@ -208,7 +194,6 @@ mod bvp {
     }
 
     #[effects(pure)]
-    #[uses(shifted)]
     fn try_shift(x: u16, k: u32) -> (r: Option<u16>)
         ensures shifted(x, k, r),
     {
@@ -218,7 +203,6 @@ mod bvp {
     spec fn one_bit(x: u32, r: bool) -> bool { r == (x.count_ones() == 1) && (r ==> x != 0) }
 
     #[effects(pure)]
-    #[uses(one_bit)]
     fn single(x: u32) -> (r: bool)
         ensures one_bit(x, r),
     {
@@ -231,7 +215,6 @@ mod bvp {
     spec fn same_value(x: u32, r: u32) -> bool { r == x }
 
     #[effects(pure)]
-    #[uses(same_value)]
     fn bytes_back(x: u32) -> (r: u32)
         ensures same_value(x, r),
     {
@@ -241,7 +224,6 @@ mod bvp {
     spec fn ends(x: u32, b: [u8; 4]) -> bool { b[0] == x >> 24 && b[3] == x & 255 }
 
     #[effects(pure)]
-    #[uses(ends)]
     fn big_end(x: u32) -> (b: [u8; 4])
         ensures ends(x, b),
     {
@@ -253,7 +235,6 @@ mod bvp {
     }
 
     #[effects(pure)]
-    #[uses(same_bytes)]
     fn from_little(b: [u8; 2]) -> (r: i16)
         ensures same_bytes(b, r),
     {

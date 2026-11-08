@@ -251,6 +251,8 @@ pub fn fix_sources_with(files: &[(String, String)], confirm: bool) -> FixOutput 
         } else {
             let mut c = lint::canonical_loops(&fe.program, &texts);
             c.extend(lint::method_calls(&fe, &texts));
+            c.extend(lint::conversions(&fe.source, &texts));
+            c.extend(lint::default_uses(&fe, &texts));
             c.extend(lint::unconfirmed_rationales(
                 &fe.program,
                 &fe.tables,
@@ -262,6 +264,7 @@ pub fn fix_sources_with(files: &[(String, String)], confirm: bool) -> FixOutput 
             .diags
             .items
             .iter()
+            .chain(&fe.diags.aliases)
             .chain(&canon)
             .filter_map(|d| {
                 let r = d.fix.as_ref()?.replacement.as_ref()?;
@@ -295,7 +298,7 @@ pub fn fix_sources_with(files: &[(String, String)], confirm: bool) -> FixOutput 
         let mut next = texts.clone();
         for (f, lo, hi, _, r) in kept.iter().rev() {
             let (hi, r) = layout(&texts[*f].1, *lo, *hi, r);
-            let lo = layout_start(&texts[*f].1, *lo, hi);
+            let lo = layout_start(&texts[*f].1, *lo, hi, &r);
             next[*f].1.replace_range(lo..hi, &r);
         }
         for (f, lo, _, code, r) in kept {
@@ -325,6 +328,16 @@ pub fn fix_sources_with(files: &[(String, String)], confirm: bool) -> FixOutput 
 fn layout(text: &str, lo: usize, hi: usize, r: &str) -> (usize, String) {
     let line_start = text[..lo].rfind('\n').map_or(0, |i| i + 1);
     if r.is_empty() {
+        // A deletion that leaves its line blank takes the line (an
+        // attribute, W0916); `layout_start` moves the start to the line's.
+        let line_end = text[hi..].find('\n').map_or(text.len(), |i| hi + i);
+        if lo > line_start
+            && text[line_start..lo].trim().is_empty()
+            && text[hi..line_end].trim().is_empty()
+            && line_end < text.len()
+        {
+            return (line_end + 1, String::new());
+        }
         let before = text[..lo].chars().next_back();
         // The only entry of a `<..>` list goes with its brackets; the first
         // of several with the comma after it (a lifetime, E0208).
@@ -369,8 +382,15 @@ fn layout(text: &str, lo: usize, hi: usize, r: &str) -> (usize, String) {
 
 /// The start of a deletion `layout` widened over a whole `<..>` list:
 /// the `<` goes too.
-fn layout_start(text: &str, lo: usize, hi: usize) -> usize {
-    if lo > 0 && text[..lo].ends_with('<') && text[..hi].ends_with('>') {
+fn layout_start(text: &str, lo: usize, hi: usize, r: &str) -> usize {
+    let line_start = text[..lo].rfind('\n').map_or(0, |i| i + 1);
+    if r.is_empty()
+        && lo > line_start
+        && text[line_start..lo].trim().is_empty()
+        && text[..hi].ends_with('\n')
+    {
+        line_start
+    } else if lo > 0 && text[..lo].ends_with('<') && text[..hi].ends_with('>') {
         lo - 1
     } else {
         lo
@@ -1045,6 +1065,8 @@ struct ParsedFile {
     mods: usize,
     /// Its lexer and parser diagnostics.
     diags: Vec<diag::Diag>,
+    /// The input aliases its parser took (`Diags::aliases`).
+    aliases: Vec<diag::Diag>,
 }
 
 /// Front-end results kept between calls by a long-lived process, the MCP
@@ -1108,25 +1130,27 @@ impl FrontCache {
         for (name, text) in files {
             let prev = old.next();
             let id = sm.add(name.clone(), text.clone());
-            let (mods, file_diags) = match prev {
+            let (mods, file_diags, file_aliases) = match prev {
                 Some((pf, mods)) if pf.name == name && pf.text == text => {
                     self.stats.reused += 1;
-                    (mods, pf.diags)
+                    (mods, pf.diags, pf.aliases)
                 }
                 _ => {
                     self.stats.parsed += 1;
                     let mut d = Diags::default();
                     let toks = lexer::lex(id, &text, &mut d);
                     let mut p = parser::Parser::new(toks, &mut d, &text);
-                    (p.parse_program().mods, d.items)
+                    (p.parse_program().mods, d.items, d.aliases)
                 }
             };
             diags.items.extend(file_diags.iter().cloned());
+            diags.aliases.extend(file_aliases.iter().cloned());
             self.files.push(ParsedFile {
                 name,
                 text,
                 mods: mods.len(),
                 diags: file_diags,
+                aliases: file_aliases,
             });
             program.mods.extend(mods);
         }

@@ -3,7 +3,6 @@ mod esc {
     // `t` as a JSON string literal: `"`, `\` and the control characters
     // escaped, everything else as it is, copied a run at a time.
     #[effects(alloc)]
-    #[uses(ascii, after_ascii, digit, fits, short, within)]
     fn escape(t: &str) -> String
         requires short(t),
     {
@@ -28,8 +27,8 @@ mod esc {
                     out.push_str("\\n");
                 } else {
                     out.push_str("\\u00");
-                    out.push(hex(u32::try_from(b / 16).unwrap()));
-                    out.push(hex(u32::try_from(b % 16).unwrap()));
+                    out.push(hex((b / 16) as u32));
+                    out.push(hex((b % 16) as u32));
                 }
                 a = i + 1;
             }
@@ -61,7 +60,6 @@ mod esc {
 
     // The lowercase hexadecimal digit of `d`.
     #[effects(pure)]
-    #[uses(ascii, digit)]
     fn hex(d: u32) -> (r: char)
         requires digit(d),
         ensures ascii(r),
@@ -78,7 +76,6 @@ mod esc {
     }
 
     #[effects(alloc, io)]
-    #[uses(short)]
     fn main() -> () {
         show("plain");
         show("say \"hi\"\n");
@@ -93,14 +90,13 @@ mod esc {
     }
 
     #[effects(alloc, io)]
-    #[uses(short)]
     fn show(t: &str) -> ()
         requires short(t),
     {
         let e: String = escape(t);
         print_str(e.as_str());
         print_str("\n");
-        print_u64(u64::try_from(e.len()).unwrap());
+        print_u64(e.len() as u64);
     }
 
     spec fn within(i: usize, t: &str) -> bool {

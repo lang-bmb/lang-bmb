@@ -56,9 +56,15 @@ mod pe {
         forever(x);
     }
 
-    // E0501: a contract clause is a named predicate.
+    // A clause without a quantifier is an expression (ADR-0095 A2); one
+    // with a quantifier is a named predicate (E0501).
     proof fn bare(x: i64)
         ensures x == x,
+    {
+    }
+
+    proof fn quantified(a: &[i64])
+        ensures forall |i: usize| i < a.len() ==> #[trigger] a[i] == a[i],
     {
     }
 

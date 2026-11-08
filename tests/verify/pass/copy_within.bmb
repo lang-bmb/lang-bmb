@@ -15,7 +15,6 @@ mod cw {
     }
 
     #[effects(pure)]
-    #[uses(moved, ranged)]
     fn general(a: &mut [i64], lo: usize, hi: usize, d: usize) -> ()
         requires ranged(a, lo, hi, d),
         ensures moved(a, old(a), lo, hi, d),
@@ -32,7 +31,6 @@ mod cw {
     }
 
     #[effects(pure)]
-    #[uses(five, shifted_up)]
     fn shift(a: &mut [i64]) -> ()
         requires five(a),
         ensures shifted_up(a, old(a)),

@@ -5,7 +5,6 @@ mod contracts {
     spec fn small(x: i64) -> bool { x < 100 }
 
     #[effects(pure)]
-    #[uses(is_succ)]
     fn wrong_post(x: i64) -> (r: i64)
         ensures is_succ(x, r),
     {
@@ -13,7 +12,6 @@ mod contracts {
     }
 
     #[effects(pure)]
-    #[uses(small)]
     fn needs_small(x: i64) -> i64
         requires small(x),
     {
@@ -23,8 +21,21 @@ mod contracts {
     #[effects(pure)]
     fn bad_caller() -> i64 { needs_small(200) }
 
+    // The callee's precondition is in the caller's default context
+    // (ADR-0095 A1), but not the spec fns its body calls: `tiny` unfolds,
+    // `small` stays opaque.
     #[effects(pure)]
-    fn opaque_caller() -> i64 { needs_small(1) }
+    #[uses(small)]
+    fn needs_tiny(x: i64) -> i64
+        requires tiny(x),
+    {
+        x + 1
+    }
+
+    #[effects(pure)]
+    fn opaque_caller() -> i64 { needs_tiny(1) }
+
+    spec fn tiny(x: i64) -> bool { small(x) && x > -100 }
 
     #[effects(pure)]
     fn no_decrease(n: u64) -> u64
@@ -47,7 +58,6 @@ mod contracts {
     spec fn zeroed(a: &[i64]) -> bool { a.len() == 0 || a[0] == 0 }
 
     #[effects(pure)]
-    #[uses(zeroed)]
     fn forgets_write(a: &mut [i64]) -> ()
         ensures zeroed(a),
     {

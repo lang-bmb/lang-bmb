@@ -88,7 +88,6 @@ mod m {
 
     // `pos` and `neg` cannot hold together.
     #[effects(pure)]
-    #[uses(pos, neg)]
     fn never(x: i64) -> i64
         requires pos(x), neg(x),
     {
@@ -97,7 +96,6 @@ mod m {
 
     // `small` rules out overflow; `pos` is not needed.
     #[effects(pure)]
-    #[uses(small, is_succ)]
     fn inc(x: i64) -> (r: i64)
         requires small(x), pos(x),
         ensures is_succ(x, r),
@@ -108,7 +106,6 @@ mod m {
     // Uses `inc`'s postcondition (no overflow in `+ 1`); needs both
     // preconditions to call `inc`.
     #[effects(pure)]
-    #[uses(small, is_succ)]
     fn add2(x: i64) -> i64
         requires small(x), pos(x),
     {
@@ -116,7 +113,6 @@ mod m {
     }
 
     #[effects(pure)]
-    #[uses(same)]
     fn id(x: i64) -> (r: i64)
         ensures same(x, r),
     {
@@ -138,7 +134,6 @@ mod c {
     spec fn is_succ(x: i64, r: i64) -> bool { r == x + 1 }
 
     #[effects(pure)]
-    #[uses(small, is_succ)]
     fn inc(x: i64) -> (r: i64)
         requires small(x),
         ensures is_succ(x, r),
@@ -147,7 +142,6 @@ mod c {
     }
 
     #[effects(pure)]
-    #[uses(small, is_succ)]
     fn add2(x: i64) -> i64
         requires small(x),
     {
@@ -196,13 +190,13 @@ fn each_report_and_nothing_else() {
     assert_eq!(got.len(), 3, "{}", out.diagnostics);
 
     // W0901 spans both clauses of `never`.
-    assert_eq!((got[0].0.as_str(), got[0].1, got[0].2), ("W0901", 17, 18));
+    assert_eq!((got[0].0.as_str(), got[0].1, got[0].2), ("W0901", 16, 18));
     assert_eq!(n(&ds[0], "end_col"), 32);
     assert!(got[0].3.contains("`m::never`"), "{}", got[0].3);
 
     // W0902 on `pos(x)` of `inc`, not on `small(x)`, and nothing on `add2`
     // (its clauses are needed to call `inc`) or on `never`.
-    assert_eq!((got[1].0.as_str(), got[1].1, got[1].2), ("W0902", 26, 28));
+    assert_eq!((got[1].0.as_str(), got[1].1, got[1].2), ("W0902", 24, 28));
     assert!(
         got[1]
             .3
@@ -212,7 +206,7 @@ fn each_report_and_nothing_else() {
     );
 
     // W0903 on `id`'s postcondition; `inc`'s is used by `add2`.
-    assert_eq!((got[2].0.as_str(), got[2].1, got[2].2), ("W0903", 45, 17));
+    assert_eq!((got[2].0.as_str(), got[2].1, got[2].2), ("W0903", 41, 17));
     assert!(got[2].3.contains("`same(x, r)`"), "{}", got[2].3);
     assert!(got[2].3.contains("1 caller of `m::id`"), "{}", got[2].3);
 
@@ -254,7 +248,7 @@ fn clean_file_has_no_reports() {
 /// 2E-05, found writing `tests/run/collatz.bmb`).
 #[test]
 fn external_bodies_are_not_judged_by_their_proof() {
-    let src = "#[summary(\"ext\")]\nmod x {\n    spec fn small(n: i64) -> bool { 1 <= n && n <= 10 }\n\n    spec fn low(r: i64) -> bool { 0 <= r && r <= 5 }\n\n    #[rationale(kind = boundary, hash = \"0000000000000000\", \"outside\")]\n    #[external_body]\n    #[effects(panic)]\n    #[uses(small, low)]\n    fn f(n: i64) -> (r: i64)\n        requires small(n),\n        ensures low(r),\n    {\n        n + 1\n    }\n}\n";
+    let src = "#[summary(\"ext\")]\nmod x {\n    spec fn small(n: i64) -> bool { 1 <= n && n <= 10 }\n\n    spec fn low(r: i64) -> bool { 0 <= r && r <= 5 }\n\n    #[rationale(kind = boundary, hash = \"0000000000000000\", \"outside\")]\n    #[external_body]\n    #[effects(panic)]\n    fn f(n: i64) -> (r: i64)\n        requires small(n),\n        ensures low(r),\n    {\n        n + 1\n    }\n}\n";
     let out = lint_sources(&one("e.bmb", src)).unwrap();
     for code in ["W0902", "W0904", "W0905"] {
         assert!(
@@ -290,7 +284,7 @@ fn re_verifications_are_capped() {
     let k = MAX_PRE_TRIALS + 2;
     let clauses: Vec<String> = (0..k).map(|_| "small(x)".to_string()).collect();
     let src = format!(
-        "#[summary(\"cap\")]\nmod k {{\n    spec fn small(x: i64) -> bool {{ x < 100 }}\n\n    #[effects(pure)]\n    #[uses(small)]\n    fn f(x: i64) -> i64\n        requires {},\n    {{\n        x + 1\n    }}\n}}\n",
+        "#[summary(\"cap\")]\nmod k {{\n    spec fn small(x: i64) -> bool {{ x < 100 }}\n\n    #[effects(pure)]\n    fn f(x: i64) -> i64\n        requires {},\n    {{\n        x + 1\n    }}\n}}\n",
         clauses.join(", ")
     );
     let out = lint_sources(&one("k.bmb", &src)).unwrap();
@@ -348,7 +342,6 @@ mod w {
 
     // Weak: says only that the result is not negative.
     #[effects(pure)]
-    #[uses(above_min, nonneg)]
     fn abs(x: i64) -> (r: i64)
         requires above_min(x),
         ensures nonneg(r),
@@ -362,7 +355,6 @@ mod w {
 
     // Exact, and no change below is equivalent: none survives.
     #[effects(pure)]
-    #[uses(is_sign)]
     fn sign(x: i64) -> (r: i64)
         ensures is_sign(x, r),
     {
@@ -389,8 +381,8 @@ fn weak_specification_lets_mutants_survive() {
             )
         })
         .collect();
-    // All on `abs` (line 14), none on the exactly specified `sign`.
-    assert!(got.iter().all(|g| g.0 == "W0904" && g.1 == 14), "{got:?}");
+    // All on `abs` (line 13), none on the exactly specified `sign`.
+    assert!(got.iter().all(|g| g.0 == "W0904" && g.1 == 13), "{got:?}");
     assert!(got.iter().all(|g| g.3.contains("`w::abs` still verifies")));
     // `0 - x` -> `1 - x` is a real change `nonneg` does not see.
     assert!(
@@ -427,7 +419,7 @@ fn weak_specification_lets_mutants_survive() {
 #[test]
 fn exact_specification_kills_every_mutant() {
     let exact = MUT.replace(
-        "    // Weak: says only that the result is not negative.\n    #[effects(pure)]\n    #[uses(above_min, nonneg)]\n    fn abs(x: i64) -> (r: i64)\n        requires above_min(x),\n        ensures nonneg(r),\n    {\n        if x < 0 { 0 - x } else { x }\n    }\n",
+        "    // Weak: says only that the result is not negative.\n    #[effects(pure)]\n    fn abs(x: i64) -> (r: i64)\n        requires above_min(x),\n        ensures nonneg(r),\n    {\n        if x < 0 { 0 - x } else { x }\n    }\n",
         "",
     );
     assert_ne!(exact, MUT);
@@ -447,7 +439,7 @@ fn mutants_are_capped() {
         .map(|i| format!("        let v{i}: i64 = 5;\n"))
         .collect();
     let src = format!(
-        "#[summary(\"cap\")]\nmod k {{\n    spec fn same(x: i64, r: i64) -> bool {{ r == x }}\n\n    #[effects(pure)]\n    #[uses(same)]\n    fn f(x: i64) -> (r: i64)\n        ensures same(x, r),\n    {{\n{lets}        x\n    }}\n}}\n"
+        "#[summary(\"cap\")]\nmod k {{\n    spec fn same(x: i64, r: i64) -> bool {{ r == x }}\n\n    #[effects(pure)]\n    fn f(x: i64) -> (r: i64)\n        ensures same(x, r),\n    {{\n{lets}        x\n    }}\n}}\n"
     );
     let out = lint_sources(&one("k.bmb", &src)).unwrap();
     assert!(out.ok, "{}", out.diagnostics);
@@ -457,10 +449,10 @@ fn mutants_are_capped() {
     assert_eq!(out.reports, MAX_MUTANTS);
     // The first sites in body order are the ones examined.
     let first = rows(&out.diagnostics);
-    assert_eq!(n(&first[0], "line"), 10);
+    assert_eq!(n(&first[0], "line"), 9);
     assert_eq!(
         n(&first[MAX_MUTANTS - 1], "line"),
-        10 + MAX_MUTANTS as i64 - 1
+        9 + MAX_MUTANTS as i64 - 1
     );
 }
 
@@ -502,7 +494,7 @@ fn mutate_makes_every_lint_mutant_as_a_program() {
             n(survivor, "col"),
             s(survivor, "before")
         ),
-        (14, 20, "0 - x")
+        (13, 20, "0 - x")
     );
     assert!(s(survivor, "text").contains("1 - x"));
     // The result is deterministic.
@@ -607,7 +599,6 @@ mod o {
 
     // Weak: `*` -> `+` and `/` -> `%` keep the result non-negative.
     #[effects(pure)]
-    #[uses(small, nonneg)]
     fn mix(x: i64, y: i64) -> (r: i64)
         requires small(x), small(y),
         ensures nonneg(r),
@@ -619,7 +610,6 @@ mod o {
 
     // Exact: `&&` -> `||` is ruled out.
     #[effects(pure)]
-    #[uses(is_and)]
     fn both(a: bool, b: bool) -> (r: bool)
         ensures is_and(a, b, r),
     {
@@ -632,7 +622,6 @@ mod o {
 
     // Weak: says nothing about which element is read.
     #[effects(pure)]
-    #[uses(has3_nonneg, nonneg)]
     fn mid(a: &[i64]) -> (r: i64)
         requires has3_nonneg(a),
         ensures nonneg(r),
@@ -646,7 +635,6 @@ mod o {
 
     // Exact: the shifted reads are out of bounds or differ.
     #[effects(pure)]
-    #[uses(inside, is_at)]
     fn at(a: &[i64], i: usize) -> (r: i64)
         requires inside(a, i),
         ensures is_at(a, i, r),
@@ -775,7 +763,7 @@ mod tasks {
     spec fn prefix_ok(a: &[i64], out: &[i64]) -> bool { out.len() == a.len() && (a.len() > 0 ==> out[0] == a[0]) && (forall|k: usize| k + 1 < a.len() ==> #[trigger] out[k + 1] == out[k] + a[k + 1]) }
 
     #[effects(pure)]
-    #[uses(shapes, bounded_elems, runs_below, sums_small, prefix_ok)]
+    #[uses(runs_below, sums_small)]
     fn prefix_sums(a: &[i64], out: &mut [i64]) -> ()
         requires shapes(a, out), bounded_elems(a),
         ensures prefix_ok(a, out),

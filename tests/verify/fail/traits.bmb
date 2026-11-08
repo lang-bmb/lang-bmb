@@ -12,7 +12,6 @@ mod tr {
     impl Area for Sq {
         // The body breaks the contract when `s` is 0.
         #[effects(pure)]
-        #[uses(pos)]
         fn area(self: &Sq) -> (r: i64)
             ensures pos(r),
         {
@@ -28,7 +27,6 @@ mod tr {
 
     // `pos` holds for `Sq` but is not part of the trait.
     #[effects(pure)]
-    #[uses(pos)]
     fn bounded<T: Copy + Area>(a: T) -> (r: i64)
         ensures pos(r),
     {

@@ -1,7 +1,6 @@
 #[summary("copy_within의 의무 (ADR-0083)")]
 mod cwf {
     #[effects(pure)]
-    #[uses(same_head)]
     fn claim(a: &mut [i64]) -> ()
         requires same_head(a, a),
         ensures same_head(a, old(a)),

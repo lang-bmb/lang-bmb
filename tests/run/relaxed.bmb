@@ -5,7 +5,6 @@ mod relax {
     spec fn put_done(a: &[i64], i: usize, v: i64) -> bool { i < a.len() && a[i] == v }
 
     #[effects(pure)]
-    #[uses(idx_ok, put_done)]
     fn put(a: &mut [i64], i: usize, v: i64) -> ()
         requires idx_ok(a, i),
         ensures put_done(a, i, v),
@@ -15,7 +14,6 @@ mod relax {
 
     // `a.len() - 1` and `a[0]` are values read before the call.
     #[effects(pure)]
-    #[uses(idx_ok, put_done)]
     fn last_gets_first() -> i64 {
         let mut a: [i64; 3] = [7, 8, 9];
         put(&mut a, a.len() - 1, a[0]);
@@ -25,7 +23,6 @@ mod relax {
     spec fn neg_below(x: u64, r: i64) -> bool { -x <= r && r < 100000000000000000000 }
 
     #[effects(pure)]
-    #[uses(neg_below)]
     fn bounded(x: u64) -> (r: i64)
         ensures neg_below(x, r),
     {

@@ -46,7 +46,6 @@ mod sf {
 
     // UTF-8 validity is not modelled: `from_utf8` may be either.
     #[effects(alloc)]
-    #[uses(valid)]
     fn ascii_is_valid() -> (r: Result<String, Vec<u8>>)
         ensures valid(r),
     {
@@ -61,7 +60,6 @@ mod sf {
 
     // `"b" < "ab"` is false: the first bytes decide.
     #[effects(pure)]
-    #[uses(before)]
     fn wrong_order() -> bool
         ensures before("b", "ab"),
     {
@@ -77,7 +75,6 @@ mod sf {
 
     // A surrogate is no scalar value.
     #[effects(pure)]
-    #[uses(is_some)]
     fn surrogate() -> bool
         ensures is_some(char::from_u32(57343)),
     {

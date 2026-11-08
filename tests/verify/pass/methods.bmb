@@ -22,7 +22,6 @@ mod mt {
         }
 
         #[effects(pure)]
-        #[uses(Counter::fresh)]
         fn new(cap: u64) -> (r: Counter)
             ensures r.fresh(cap),
         {
@@ -30,7 +29,6 @@ mod mt {
         }
 
         #[effects(pure)]
-        #[uses(Counter::room, Counter::ticked)]
         fn tick(self: &mut Counter) -> ()
             requires self.room(),
             ensures self.ticked(*old(self)),
@@ -39,7 +37,6 @@ mod mt {
         }
 
         #[effects(pure)]
-        #[uses(Counter::within, left_of)]
         fn left(self: &Counter) -> (r: u64)
             requires self.within(),
             ensures left_of(self, r),
@@ -79,7 +76,6 @@ mod mt {
         }
 
         #[effects(pure)]
-        #[uses(has_room, grew)]
         fn push(self: &mut Stack<T>, x: T) -> ()
             requires has_room::<T>(self),
             ensures grew::<T>(*old(self), *self),
@@ -95,7 +91,7 @@ mod mt {
             ensures percent(r);
 
         #[effects(pure)]
-        #[uses(percent, twice_percent)]
+        #[uses(percent)]
         fn doubled(self: &Self) -> (r: i64)
             ensures twice_percent(r),
         {
@@ -105,15 +101,14 @@ mod mt {
 
     impl Score for Counter {
         #[effects(pure)]
-        #[uses(percent)]
         fn score(self: &Counter) -> (r: i64)
             ensures percent(r),
         {
-            if self.n < 100 { i64::try_from(self.n).unwrap() } else { 100 }
+            if self.n < 100 { self.n as i64 } else { 100 }
         }
 
         #[effects(pure)]
-        #[uses(percent, twice_percent)]
+        #[uses(percent)]
         fn doubled(self: &Counter) -> (r: i64)
             ensures twice_percent(r),
         {
@@ -122,7 +117,6 @@ mod mt {
     }
 
     #[effects(pure)]
-    #[uses(percent)]
     fn best<T: Copy + Score>(a: &T, b: &T) -> (r: i64)
         ensures percent(r),
     {
@@ -140,7 +134,6 @@ mod mt {
     }
 
     #[effects(pure)]
-    #[uses(enough, two_less, Counter::fresh, Counter::room, Counter::ticked, Counter::within, left_of)]
     fn run(cap: u64) -> (r: u64)
         requires enough(cap),
         ensures two_less(cap, r),
@@ -152,7 +145,6 @@ mod mt {
     }
 
     #[effects(pure)]
-    #[uses(has_room, grew)]
     fn fill(x: i64) -> usize {
         let mut s: Stack<i64> = Stack { items: [0; 4], len: 0 };
         s.push(x);
@@ -161,7 +153,6 @@ mod mt {
     }
 
     #[effects(pure)]
-    #[uses(twice_percent)]
     fn both(c: &Counter) -> (r: i64)
         ensures twice_percent(r),
     {

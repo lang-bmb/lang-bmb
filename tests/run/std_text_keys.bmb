@@ -12,7 +12,6 @@ mod text_keys {
     // The words of `s` between single spaces: how often each occurs, in
     // byte-lexicographic order, then the distinct words without `drop`.
     #[effects(alloc, io)]
-    #[uses(after_space, short, std::collections::empty_map, std::collections::empty_set, std::collections::key_pos, std::collections::map_grew, std::collections::map_room, std::collections::map_size, std::collections::room_set, std::collections::set_grew, std::collections::set_shrank, std::collections::set_size)]
     fn count(s: &str, drop: &str) -> ()
         requires short(s),
     {
@@ -57,7 +56,7 @@ mod text_keys {
             print_str("has ab\n");
         }
         seen.remove(&String::from(drop));
-        print_u64(u64::try_from(seen.len()).unwrap());
+        print_u64(seen.len() as u64);
         let left: Vec<String> = seen.into_keys();
         for k in 0..left.len() {
             print_str(left[k].as_str());
@@ -66,7 +65,6 @@ mod text_keys {
     }
 
     #[effects(alloc, io)]
-    #[uses(short)]
     fn main() -> () {
         count("a b a ab é B a ab", "a");
         count("", "x");

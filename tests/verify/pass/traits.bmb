@@ -19,7 +19,6 @@ mod tr {
     impl Area for Sq {
         // A known `Self` sees this contract: callers prove `small` from it.
         #[effects(pure)]
-        #[uses(small)]
         fn area(self: &Sq) -> (r: i64)
             ensures small(r),
         {
@@ -27,7 +26,6 @@ mod tr {
         }
 
         #[effects(pure)]
-        #[uses(same)]
         fn pick<V: Copy>(self: &Sq, a: V, b: V) -> (r: V)
             ensures same::<V>(r, a),
         {
@@ -55,7 +53,6 @@ mod tr {
     }
 
     #[effects(pure)]
-    #[uses(small)]
     fn known(q: Sq) -> (r: i64)
         ensures small(r),
     {
@@ -63,7 +60,6 @@ mod tr {
     }
 
     #[effects(pure)]
-    #[uses(same)]
     fn first(q: Sq, a: bool, b: bool) -> (r: bool)
         ensures same::<bool>(r, a),
     {
@@ -71,7 +67,6 @@ mod tr {
     }
 
     #[effects(pure)]
-    #[uses(small)]
     fn wrapped(w: Wrap<Sq>) -> i64 {
         let n: i64 = w.inner.area();
         assert(small(n));

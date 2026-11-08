@@ -7,7 +7,6 @@ mod fa {
     spec fn first_is(s: G, v: i64) -> bool { s.w[0] == v && s.w[2] == 3 }
 
     #[effects(pure)]
-    #[uses(first_is)]
     fn set(s: &mut G, v: i64) -> ()
         ensures first_is(*s, v),
     {
@@ -16,7 +15,6 @@ mod fa {
     }
 
     #[effects(io)]
-    #[uses(first_is)]
     fn main() -> () {
         let mut h: H = H { g: G { w: [1, 2, 0], n: 5 } };
         h.g.w[1] = 20;

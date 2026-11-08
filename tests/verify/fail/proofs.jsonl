@@ -1,10 +1,10 @@
 {"code":"E0811","severity":"error","message":"postcondition `tri_small` may not hold in `pff::tri_le`: solver could not decide (a model exists for the instantiated definitions only); unconfirmed counterexample: n = 2","file":"fail/proofs.bmb","line":31,"col":17,"end_line":31,"end_col":29}
 {"code":"E0809","severity":"error","message":"recursive call to `pff::circular` may not decrease its measure in `pff::circular`; counterexample: a = [] (len 0), i = 0, j = 0","file":"fail/proofs.bmb","line":47,"col":9,"end_line":47,"end_col":26}
-{"code":"E0801","severity":"error","message":"precondition `within` of `pff::grows` may not hold in `pff::unestablished`; counterexample: a = [] (len 0)","file":"fail/proofs.bmb","line":70,"col":9,"end_line":70,"end_col":29,"fix":{"message":"the proof sees `within` only by name; if the failure depends on its definition, add to #[uses(within)]"}}
-{"code":"E0819","severity":"error","message":"argument `x - 1` of `pff::natural` may be outside `u32` in `pff::below_zero`; counterexample: x = 0","file":"fail/proofs.bmb","line":93,"col":17,"end_line":93,"end_col":22}
-{"code":"E0802","severity":"error","message":"postcondition `big` may not hold in `pff::wrong`; counterexample: x = 1","file":"fail/proofs.bmb","line":105,"col":17,"end_line":105,"end_col":23}
-{"code":"E0810","severity":"error","message":"assertion may not hold in `pff::asserts`; counterexample: x = 1","file":"fail/proofs.bmb","line":114,"col":9,"end_line":114,"end_col":23}
-{"code":"E0801","severity":"error","message":"precondition `within` of `pff::grows` may not hold in `pff::first`; counterexample: a = [] (len 0)","file":"fail/proofs.bmb","line":127,"col":13,"end_line":127,"end_col":27}
+{"code":"E0801","severity":"error","message":"precondition `within` of `pff::grows` may not hold in `pff::unestablished`; counterexample: a = [] (len 0)","file":"fail/proofs.bmb","line":69,"col":9,"end_line":69,"end_col":29}
+{"code":"E0819","severity":"error","message":"argument `x - 1` of `pff::natural` may be outside `u32` in `pff::below_zero`; counterexample: x = 0","file":"fail/proofs.bmb","line":90,"col":17,"end_line":90,"end_col":22}
+{"code":"E0802","severity":"error","message":"postcondition `big` may not hold in `pff::wrong`; counterexample: x = 1","file":"fail/proofs.bmb","line":101,"col":17,"end_line":101,"end_col":23}
+{"code":"E0810","severity":"error","message":"assertion may not hold in `pff::asserts`; counterexample: x = 1","file":"fail/proofs.bmb","line":109,"col":9,"end_line":109,"end_col":23}
+{"code":"E0801","severity":"error","message":"precondition `within` of `pff::grows` may not hold in `pff::first`; counterexample: a = [] (len 0)","file":"fail/proofs.bmb","line":122,"col":13,"end_line":122,"end_col":27}
 {"def":"pff::asserts","status":"failed","obligations":1,"failed":1,"rlimit":271,"rlimit_max":271}
 {"def":"pff::below_zero","status":"failed","obligations":2,"failed":1,"rlimit":27877,"rlimit_max":27664}
 {"def":"pff::circular","status":"failed","obligations":3,"failed":1,"rlimit":2271,"rlimit_max":1384}
@@ -14,5 +14,5 @@
 {"def":"pff::sum_to","status":"verified","obligations":1,"failed":0,"rlimit":180,"rlimit_max":180}
 {"def":"pff::tri","status":"verified","obligations":1,"failed":0,"rlimit":146,"rlimit_max":146}
 {"def":"pff::tri_le","status":"failed","obligations":3,"failed":1,"rlimit":5002550,"rlimit_max":5000188}
-{"def":"pff::unestablished","status":"failed","obligations":4,"failed":1,"rlimit":4017,"rlimit_max":2397}
+{"def":"pff::unestablished","status":"failed","obligations":4,"failed":1,"rlimit":4190,"rlimit_max":2568}
 {"def":"pff::wrong","status":"failed","obligations":1,"failed":1,"rlimit":416,"rlimit_max":416}

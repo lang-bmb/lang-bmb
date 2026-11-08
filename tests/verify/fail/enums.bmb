@@ -11,7 +11,6 @@ mod geo {
     spec fn same(a: Shape, b: Shape) -> bool { a == b }
 
     #[effects(pure)]
-    #[uses(nonneg)]
     fn payload_sign(o: Option<i64>) -> (r: i64)
         ensures nonneg(r),
     {
@@ -47,7 +46,6 @@ mod geo {
     }
 
     #[effects(pure)]
-    #[uses(is_dot)]
     fn after_call(s: Shape) -> (r: Shape)
         requires is_dot(s),
         ensures is_dot(r),
@@ -59,14 +57,12 @@ mod geo {
 
     // Two different variants are never equal.
     #[effects(pure)]
-    #[uses(same)]
     fn distinct(n: i64) -> ()
     {
         assert(same(Shape::Square(n), Shape::Dot));
     }
 
     #[effects(pure)]
-    #[uses(is_dot)]
     fn loop_forgets(n: i64) -> (r: Shape)
         ensures is_dot(r),
     {
@@ -90,7 +86,6 @@ mod cells {
     spec fn same(a: Cell, b: Cell) -> bool { a == b }
 
     #[effects(pure)]
-    #[uses(same)]
     fn swapped(c: Cell) -> (r: Cell)
         ensures same(r, c),
     {

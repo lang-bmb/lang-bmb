@@ -8,7 +8,6 @@ mod vp {
 
     // The callee's contract is all the caller knows of the new length.
     #[effects(alloc)]
-    #[uses(room, grew)]
     fn push_one(v: &mut Vec<i64>, x: i64) -> ()
         requires room(v.as_slice()),
         ensures grew(v.as_slice(), old(v).as_slice(), x),
@@ -23,7 +22,6 @@ mod vp {
     }
 
     #[effects(alloc)]
-    #[uses(small, squares)]
     fn first_squares(n: usize) -> (r: Vec<i64>)
         requires small(n),
         ensures squares(r.as_slice(), n),
@@ -32,7 +30,7 @@ mod vp {
         for i in 0..n
             invariant i <= n, squares(v.as_slice(), i),
         {
-            let k: i64 = i64::try_from(i).unwrap();
+            let k: i64 = i as i64;
             v.push(k * k);
         }
         v
@@ -40,7 +38,6 @@ mod vp {
 
     // A result's contract gives its length: the index is proved.
     #[effects(alloc)]
-    #[uses(small, squares, room, grew)]
     fn use_result() -> i64 {
         let mut v: Vec<i64> = first_squares(5);
         push_one(&mut v, 7);
@@ -54,7 +51,6 @@ mod vp {
     spec fn popped(r: i64, b: &[i64]) -> bool { b.len() == 0 || r == b[b.len() - 1] }
 
     #[effects(pure)]
-    #[uses(shrank, popped)]
     fn pop_or_zero(v: &mut Vec<i64>) -> (r: i64)
         ensures shrank(v.as_slice(), old(v).as_slice()), popped(r, old(v).as_slice()),
     {
@@ -67,7 +63,6 @@ mod vp {
     spec fn at_most(a: &[i64], b: &[i64], n: usize) -> bool { a.len() <= n && a.len() <= b.len() }
 
     #[effects(pure)]
-    #[uses(at_most)]
     fn cut(v: &mut Vec<i64>, n: usize) -> ()
         ensures at_most(v.as_slice(), old(v).as_slice(), n),
     {
@@ -102,7 +97,6 @@ mod vp {
 
     // The handle pattern: a store that only grows keeps old handles valid.
     #[effects(alloc)]
-    #[uses(valid, kept, store_room, added)]
     fn add(s: &mut Vec<Point>, p: Point) -> (h: Id)
         requires store_room(s.as_slice()),
         ensures valid(h, s.as_slice()), kept(s.as_slice(), old(s).as_slice()), added(h, s.as_slice(), old(s).as_slice(), p),
@@ -113,7 +107,6 @@ mod vp {
     }
 
     #[effects(alloc)]
-    #[uses(valid, kept, store_room, added)]
     fn two_points() -> i64 {
         let mut s: Vec<Point> = Vec::new();
         let a: Id = add(&mut s, Point { x: 1, y: 2 });

@@ -44,7 +44,7 @@ mod crc32 {
     spec fn by_table(c: u32, b: u8) -> bool { byte(c, b) == byte((c ^ b) & 0xff, 0) ^ (c >> 8) }
 
     #[effects(pure)]
-    #[uses(bit_result, bit)]
+    #[uses(bit)]
     fn bit_step(c: u32) -> (r: u32)
         ensures bit_result(c, r),
     {
@@ -53,11 +53,11 @@ mod crc32 {
 
     // The register after one byte, bit by bit (it fills the table).
     #[effects(pure)]
-    #[uses(byte_result, byte, bit_result)]
+    #[uses(byte)]
     fn byte_step(c: u32, b: u8) -> (r: u32)
         ensures byte_result(c, b, r),
     {
-        let x0: u32 = c ^ u32::try_from(b).unwrap();
+        let x0: u32 = c ^ b as u32;
         let x1: u32 = bit_step(x0);
         let x2: u32 = bit_step(x1);
         let x3: u32 = bit_step(x2);
@@ -71,7 +71,7 @@ mod crc32 {
     // The table step is the bitwise one: a fact of the bits of `c` and `b`
     // alone, proved over bit-vectors (backlog 2N-03; the mixed encoding did
     // not decide it within rlimit 5,000,000).
-    #[uses(by_table, byte, bit)]
+    #[uses(bit)]
     proof fn table_lemma(c: u32, b: u8)
         ensures by_table(c, b),
     {
@@ -80,7 +80,6 @@ mod crc32 {
 
     // zlib's 256-entry table.
     #[effects(pure)]
-    #[uses(tabulated, filled, byte_result)]
     fn table() -> (t: [u32; 256])
         ensures tabulated(&t),
     {
@@ -88,14 +87,13 @@ mod crc32 {
         for k in 0..e.len()
             invariant filled(&e, k),
         {
-            e[k] = byte_step(u32::try_from(k).unwrap(), 0);
+            e[k] = byte_step(k as u32, 0);
         }
         e
     }
 
     // The register after one byte by the table.
     #[effects(pure)]
-    #[uses(byte_result, tabulated, by_table)]
     fn table_step(t: &[u32], c: u32, b: u8) -> (r: u32)
         requires tabulated(t),
         ensures byte_result(c, b, r),
@@ -103,13 +101,13 @@ mod crc32 {
         proof {
             table_lemma(c, b);
         }
-        t[usize::try_from((c ^ u32::try_from(b).unwrap()) & 0xff).unwrap()] ^ (c >> 8)
+        t[((c ^ b as u32) & 0xff) as usize] ^ (c >> 8)
     }
 
     // The checksum `crc` of some bytes, continued with `s`, by the table `t`
     // (from `table()`: one table serves any number of checksums).
     #[effects(pure)]
-    #[uses(run, ran, continued, byte_result, tabulated)]
+    #[uses(run)]
     fn update_with(t: &[u32], crc: u32, s: &[u8]) -> (r: u32)
         requires tabulated(t),
         ensures continued(crc, s, r),
@@ -126,7 +124,6 @@ mod crc32 {
     // The checksum `crc` of some bytes, continued with `s` (zlib
     // `crc32(crc, s)`; `update(0, s)` is the checksum of `s`).
     #[effects(pure)]
-    #[uses(continued, tabulated)]
     fn update(crc: u32, s: &[u8]) -> (r: u32)
         ensures continued(crc, s, r),
     {
@@ -136,7 +133,6 @@ mod crc32 {
 
     // The CRC-32 of `s` (`"123456789"` gives `0xcbf43926`).
     #[effects(pure)]
-    #[uses(checksum_of, continued)]
     fn checksum(s: &[u8]) -> (r: u32)
         ensures checksum_of(s, r),
     {

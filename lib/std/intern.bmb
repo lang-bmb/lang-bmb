@@ -30,7 +30,7 @@ mod intern {
     // A new key mapped to the next number, its name added at that number,
     // keeps the map and the names consistent. Over any `Ord` keys: the
     // instance for `String` is the same statement.
-    #[uses(appended, consistent, insert_pre, std::collections::inserted_at, std::collections::shifted)]
+    #[uses(appended, std::collections::inserted_at, std::collections::shifted)]
     proof fn insert_keeps<K: Ord>(m: &std::collections::BTreeMap<K, usize>, n: &std::collections::BTreeMap<K, usize>, names: &[K], before: &[K], k: &K)
         requires insert_pre::<K>(m, n, names, before, k),
         ensures consistent::<K>(m, names),
@@ -84,7 +84,7 @@ mod intern {
     impl Interner {
         // An empty table.
         #[effects(alloc)]
-        #[uses(consistent, empty, sound, std::collections::empty_map, std::collections::map_sound)]
+        #[uses(consistent, sound, std::collections::map_sound)]
         fn new() -> (r: Interner)
             ensures empty(&r),
         {
@@ -95,7 +95,6 @@ mod intern {
 
         // How many texts the table has.
         #[effects(pure)]
-        #[uses(size)]
         fn len(self: &Interner) -> (r: usize)
             ensures size(r, self),
         {
@@ -105,7 +104,7 @@ mod intern {
         // The number of `s`: its own if it came before, else the next one
         // (rustc's `Symbol::intern`).
         #[effects(alloc)]
-        #[uses(appended, consistent, grew, insert_pre, named, room, sound, std::collections::got, std::collections::has_key, std::collections::map_grew, std::collections::map_room, std::collections::maps, std::collections::put)]
+        #[uses(appended, sound, std::collections::has_key, std::collections::maps)]
         fn intern(self: &mut Interner, s: &str) -> (r: usize)
             requires room(self),
             ensures named(self, r, s), grew(self, old(self)),
@@ -128,7 +127,7 @@ mod intern {
 
         // The number of `s` if it came before (rustc's interner's `get`).
         #[effects(alloc)]
-        #[uses(consistent, found, named, sound, std::collections::got, std::collections::has_key, std::collections::maps)]
+        #[uses(consistent, named, sound, std::collections::has_key, std::collections::maps)]
         fn get(self: &Interner, s: &str) -> (r: Option<usize>)
             ensures found(r, self, s),
         {
@@ -137,7 +136,6 @@ mod intern {
 
         // Whether number `i` names `s`.
         #[effects(pure)]
-        #[uses(id_pos)]
         fn name_is(self: &Interner, i: usize, s: &str) -> bool
             requires id_pos(self, i),
         {
@@ -147,7 +145,6 @@ mod intern {
         // Adds the name of number `i` to `out` (rustc's `Symbol::as_str`,
         // which borrows it).
         #[effects(alloc)]
-        #[uses(name_room, pushed_name)]
         fn push_name(self: &Interner, i: usize, out: &mut String) -> ()
             requires name_room(out.as_str(), self, i),
             ensures pushed_name(out.as_str(), old(out).as_str(), self, i),

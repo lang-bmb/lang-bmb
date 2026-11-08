@@ -12,7 +12,6 @@ mod bf {
 
     // The value in the box is the one built.
     #[effects(alloc)]
-    #[uses(at)]
     fn wrong_x(x: i64) -> (r: Box<Pt>)
         ensures at(*r, x),
     {
@@ -27,7 +26,6 @@ mod bf {
 
     // A write through `&mut Box<T>` is seen by the caller.
     #[effects(pure)]
-    #[uses(small)]
     fn reset(b: &mut Box<i64>) -> ()
         ensures small(**b),
     {
@@ -36,7 +34,6 @@ mod bf {
 
     // The field written is the one in the box, not a copy.
     #[effects(alloc)]
-    #[uses(held)]
     fn forgot(x: i64) -> (r: Holder)
         ensures held(&r, x),
     {
@@ -47,7 +44,6 @@ mod bf {
 
     // `None` carries no box.
     #[effects(pure)]
-    #[uses(small)]
     fn payload(o: Option<Box<i64>>) -> (r: i64)
         ensures small(r),
     {

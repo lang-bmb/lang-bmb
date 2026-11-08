@@ -10,7 +10,7 @@ mod app {
 
     // `<label> <value>` on one line.
     #[effects(alloc, io)]
-    #[uses(label_ok, std::bytes::room, std::bytes::grew_by, std::bytes::kept, std::bytes::fits, std::bytes::appended, std::bytes::copied)]
+    #[uses(std::bytes::kept, std::bytes::copied)]
     fn show(label: &[u8], x: u64) -> ()
         requires label_ok(label),
     {
@@ -24,7 +24,7 @@ mod app {
 
     // `<label> <text>` on one line.
     #[effects(alloc, io)]
-    #[uses(label_ok, line_ok, std::bytes::fits, std::bytes::appended, std::bytes::kept, std::bytes::copied)]
+    #[uses(std::bytes::kept, std::bytes::copied)]
     fn say(label: &[u8], text: &[u8]) -> ()
         requires label_ok(label), line_ok(text),
     {
@@ -38,7 +38,7 @@ mod app {
 
     // The encoding of `s`, and its decoding.
     #[effects(alloc, io)]
-    #[uses(label_ok, line_ok, std::base64::fits, std::base64::round_trip, std::base64::encoded, std::base64::enc_len, std::base64::decoded, std::base64::decodes, std::base64::dec_len)]
+    #[uses(std::base64::round_trip, std::base64::enc_len, std::base64::dec_len)]
     fn vector(s: &[u8]) -> ()
         requires line_ok(s),
     {
@@ -58,18 +58,16 @@ mod app {
 
     // The decoding of `t`: its length, or `none`.
     #[effects(alloc, io)]
-    #[uses(label_ok)]
     fn reject(t: &[u8]) -> () {
         match std::base64::decode(t) {
             None => print_bytes(b"bad none\n"),
-            Some(v) => show(b"bad", u64::try_from(v.len()).unwrap()),
+            Some(v) => show(b"bad", v.len() as u64),
         }
     }
 
     // `n` deterministic bytes: the high bits of a 64-bit LCG, the same
     // sequence as `base64_ref.py`.
     #[effects(alloc)]
-    #[uses(short, size_ok)]
     fn stream(n: usize) -> (r: Vec<u8>)
         requires size_ok(n),
         ensures short(r.as_slice(), n),
@@ -80,14 +78,13 @@ mod app {
             invariant short(v.as_slice(), i),
         {
             x = x.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-            v.push(u8::try_from(x >> 56).unwrap());
+            v.push((x >> 56) as u8);
         }
         v
     }
 
     // The first `n` bytes of `s` (all of it when shorter).
     #[effects(alloc)]
-    #[uses(short)]
     fn take(s: &[u8], n: usize) -> (r: Vec<u8>)
         ensures short(r.as_slice(), n),
     {
@@ -108,7 +105,7 @@ mod app {
     spec fn eq_result(a: &[u8], b: &[u8], r: bool) -> bool { (r && same_bytes(a, b)) || (!r && !same_bytes(a, b)) }
 
     #[effects(pure)]
-    #[uses(same_bytes, eq_result)]
+    #[uses(same_bytes)]
     fn equal(a: &[u8], b: &[u8]) -> (r: bool)
         ensures eq_result(a, b, r),
     {
@@ -144,7 +141,7 @@ mod app {
             Some(v) => {
                 let mut sum: u64 = x.sum;
                 for k in 0..v.len() {
-                    sum = sum.wrapping_mul(31).wrapping_add(u64::try_from(v[k]).unwrap());
+                    sum = sum.wrapping_mul(31).wrapping_add(v[k] as u64);
                 }
                 Tally { count: x.count.wrapping_add(1), sum: sum }
             }
@@ -198,7 +195,7 @@ mod app {
     }
 
     #[effects(alloc, io)]
-    #[uses(short, size_ok, label_ok, line_ok, std::base64::fits, std::base64::round_trip, std::base64::decoded, std::base64::decodes, std::base64::dec_len, std::base64::encoded, std::base64::enc_len, same_bytes, eq_result)]
+    #[uses(std::base64::round_trip, std::base64::dec_len, std::base64::enc_len, same_bytes)]
     fn main() -> () {
         // RFC 4648 §10.
         vector(b"");
@@ -245,7 +242,7 @@ mod app {
         {
             let q: Vec<u8> = take(s.as_slice(), m);
             let f: Vec<u8> = std::base64::encode(q.as_slice());
-            sum = sum.wrapping_add(u64::try_from(std::crc32::checksum(f.as_slice())).unwrap());
+            sum = sum.wrapping_add(std::crc32::checksum(f.as_slice()) as u64);
             match std::base64::decode(f.as_slice()) {
                 None => {}
                 Some(w) => {

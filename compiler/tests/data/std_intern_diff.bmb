@@ -33,7 +33,7 @@ mod idiff {
     fn opt(r: Option<usize>) -> () {
         match r {
             None => print_str("-\n"),
-            Some(v) => print_u64(u64::try_from(v).unwrap()),
+            Some(v) => print_u64(v as u64),
         }
     }
 
@@ -57,7 +57,7 @@ mod idiff {
                             let e: usize = word_end(line.as_bytes(), 2);
                             if op == b'i' && t.len() + 1 < 1000000 {
                                 let id: usize = t.intern(&line[2..e]);
-                                print_u64(u64::try_from(id).unwrap());
+                                print_u64(id as u64);
                             } else if op == b'g' {
                                 opt(t.get(&line[2..e]));
                             }

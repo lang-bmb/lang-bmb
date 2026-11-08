@@ -35,7 +35,7 @@ mod num {
     }
 
     // Digits are worth at least zero.
-    #[uses(dec, digit, digits, digits_to, nonneg)]
+    #[uses(dec, digit, digits)]
     proof fn dec_nonneg(s: &[u8], a: usize, n: usize)
         requires digits_to(s, a, n),
         ensures nonneg(s, a, n),
@@ -47,7 +47,7 @@ mod num {
     }
 
     // More digits never make the value smaller.
-    #[uses(dec, digit, digits, digits_to, no_less, nonneg, within_digits)]
+    #[uses(dec, digit, digits)]
     proof fn dec_grows(s: &[u8], a: usize, i: usize, n: usize)
         requires within_digits(s, a, i, n),
         ensures no_less(s, a, i, n),
@@ -93,7 +93,7 @@ mod num {
         0 <= hex(s, a, n)
     }
 
-    #[uses(digit, hex, hex_digit, hex_nonneg_at, hexes, hexes_to)]
+    #[uses(digit, hex, hex_digit, hexes)]
     proof fn hex_nonneg(s: &[u8], a: usize, n: usize)
         requires hexes_to(s, a, n),
         ensures hex_nonneg_at(s, a, n),
@@ -112,7 +112,7 @@ mod num {
         hex(s, a, i) <= hex(s, a, n)
     }
 
-    #[uses(digit, hex, hex_digit, hex_no_less, hex_nonneg_at, hexes, hexes_to, within_hexes)]
+    #[uses(digit, hex, hex_digit, hexes)]
     proof fn hex_grows(s: &[u8], a: usize, i: usize, n: usize)
         requires within_hexes(s, a, i, n),
         ensures hex_no_less(s, a, i, n),
@@ -155,7 +155,7 @@ mod num {
     // The decimal digits of `s` from `a` to its end as a `u64`: none when
     // there is none, one is not a digit, or the value does not fit.
     #[effects(pure)]
-    #[uses(dec, dec_fits, digit, digits, digits_to, no_less, nonneg, scanned, scanned_dec, upto, within_digits)]
+    #[uses(dec, dec_fits, digit, digits, digits_to, nonneg)]
     fn scan_dec(s: &[u8], a: usize) -> (r: Option<u64>)
         requires upto(a, s),
         ensures scanned_dec(r, s, a),
@@ -175,7 +175,7 @@ mod num {
             if c < b'0' || c > b'9' {
                 bad = true;
             } else if !over {
-                let d: u64 = u64::try_from(c - b'0').unwrap();
+                let d: u64 = (c - b'0') as u64;
                 match acc.checked_mul(10) {
                     None => {
                         over = true;
@@ -229,16 +229,16 @@ mod num {
     }
 
     #[effects(pure)]
-    #[uses(digit, hex_digit, hex_digit_value)]
+    #[uses(digit, hex_digit)]
     fn hex_of(c: u8) -> (r: u64)
         ensures hex_digit_value(r, c),
     {
         if c >= b'0' && c <= b'9' {
-            u64::try_from(c - b'0').unwrap()
+            (c - b'0') as u64
         } else if c >= b'a' && c <= b'f' {
-            u64::try_from(c - 87).unwrap()
+            (c - 87) as u64
         } else if c >= b'A' && c <= b'F' {
-            u64::try_from(c - 55).unwrap()
+            (c - 55) as u64
         } else {
             16
         }
@@ -246,7 +246,7 @@ mod num {
 
     // The hexadecimal digits of `s` from `a` to its end as a `u64`.
     #[effects(pure)]
-    #[uses(digit, hex, hex_digit, hex_digit_value, hex_fits, hex_no_less, hex_nonneg_at, hexes, hexes_to, scanned_hex, scanning_hex, upto, within_hexes)]
+    #[uses(digit, hex, hex_digit, hex_fits, hex_nonneg_at, hexes, hexes_to)]
     fn scan_hex(s: &[u8], a: usize) -> (r: Option<u64>)
         requires upto(a, s),
         ensures scanned_hex(r, s, a),
@@ -313,7 +313,7 @@ mod num {
 
     // `s` read as a `u64`: Rust's `u64::from_str` (`s.parse::<u64>()`).
     #[effects(pure)]
-    #[uses(dec_fits, is_u64, read_u64, scanned_dec, start, upto)]
+    #[uses(dec_fits, is_u64, start)]
     fn parse_u64_bytes(s: &[u8]) -> (r: Option<u64>)
         ensures read_u64(r, s),
     {
@@ -327,7 +327,6 @@ mod num {
 
     // `s.parse::<u64>()` in Rust.
     #[effects(pure)]
-    #[uses(read_u64, read_u64_text)]
     fn parse_u64(s: &str) -> (r: Option<u64>)
         ensures read_u64_text(r, s),
     {
@@ -362,7 +361,7 @@ mod num {
 
     // `s` read as an `i64`: Rust's `i64::from_str` (`s.parse::<i64>()`).
     #[effects(pure)]
-    #[uses(dec_fits, is_i64, minus, read_i64, scanned_dec, sign_end, upto)]
+    #[uses(dec_fits, is_i64, minus, sign_end)]
     fn parse_i64_bytes(s: &[u8]) -> (r: Option<i64>)
         ensures read_i64(r, s),
     {
@@ -375,12 +374,12 @@ mod num {
                     if m == 9223372036854775808 {
                         Some(-9223372036854775807 - 1)
                     } else if m < 9223372036854775808 {
-                        Some(0 - i64::try_from(m).unwrap())
+                        Some(0 - m as i64)
                     } else {
                         None
                     }
                 } else if m <= 9223372036854775807 {
-                    Some(i64::try_from(m).unwrap())
+                    Some(m as i64)
                 } else {
                     None
                 }
@@ -394,7 +393,6 @@ mod num {
 
     // `s.parse::<i64>()` in Rust.
     #[effects(pure)]
-    #[uses(read_i64, read_i64_text)]
     fn parse_i64(s: &str) -> (r: Option<i64>)
         ensures read_i64_text(r, s),
     {
@@ -416,7 +414,7 @@ mod num {
     // `s` read as a hexadecimal `u64`, either case: Rust's
     // `u64::from_str_radix(s, 16)`.
     #[effects(pure)]
-    #[uses(hex_fits, is_u64_hex, read_u64_hex, scanned_hex, start, upto)]
+    #[uses(hex_fits, is_u64_hex, start)]
     fn parse_u64_hex_bytes(s: &[u8]) -> (r: Option<u64>)
         ensures read_u64_hex(r, s),
     {
@@ -430,7 +428,6 @@ mod num {
 
     // `u64::from_str_radix(s, 16)` in Rust.
     #[effects(pure)]
-    #[uses(read_u64_hex, read_u64_hex_text)]
     fn parse_u64_hex(s: &str) -> (r: Option<u64>)
         ensures read_u64_hex_text(r, s),
     {
@@ -491,7 +488,7 @@ mod num {
     }
 
     // The decimal text of `x` reads back as `x`, in `width(x)` digits.
-    #[uses(dec, dig, digit, digits, is_dec, reads_as, text_of, width)]
+    #[uses(dec, dig, digit, digits, is_dec, width)]
     proof fn dec_reads(t: &[u8], a: usize, n: usize, x: u64)
         requires text_of(t, a, n, x),
         ensures reads_as(t, a, n, x),
@@ -519,7 +516,7 @@ mod num {
 
     // Appends `x` in decimal (Rust's `write!(s, "{x}")`).
     #[effects(alloc)]
-    #[uses(dig, grew, is_dec, room, same, width, wrote)]
+    #[uses(dig, is_dec, same, width)]
     fn push_u64(s: &mut String, x: u64) -> ()
         requires room(s.as_bytes()),
         ensures wrote(s.as_bytes(), old(s).as_bytes(), x), grew(s.as_bytes(), old(s).as_bytes()),
@@ -528,7 +525,7 @@ mod num {
         if x >= 10 {
             push_u64(s, x / 10);
         }
-        let d: u32 = u32::try_from(x % 10).unwrap();
+        let d: u32 = (x % 10) as u32;
         match char::from_u32(48 + d) {
             None => {}
             Some(c) => s.push(c),
@@ -550,7 +547,7 @@ mod num {
     // Appends `x` in decimal, `-` first when it is negative (Rust's
     // `write!(s, "{x}")`).
     #[effects(alloc)]
-    #[uses(dig, grew, is_dec, room, room1, same, width, wrote, wrote_i64)]
+    #[uses(dig, is_dec, same, width)]
     fn push_i64(s: &mut String, x: i64) -> ()
         requires room1(s.as_bytes()),
         ensures wrote_i64(s.as_bytes(), old(s).as_bytes(), x), grew(s.as_bytes(), old(s).as_bytes()),
@@ -558,9 +555,9 @@ mod num {
         if x < 0 {
             s.push('-');
             // `-x` overflows at `i64::MIN`; `-(x + 1)` does not.
-            push_u64(s, u64::try_from(0 - (x + 1)).unwrap() + 1);
+            push_u64(s, (0 - (x + 1)) as u64 + 1);
         } else {
-            push_u64(s, u64::try_from(x).unwrap());
+            push_u64(s, x as u64);
         }
     }
 
@@ -611,7 +608,7 @@ mod num {
 
     // Appends `x` in lowercase hexadecimal (Rust's `write!(s, "{x:x}")`).
     #[effects(alloc)]
-    #[uses(grew, hdig, hex_char, is_hex, room, same, width16, wrote_hex)]
+    #[uses(hdig, hex_char, is_hex, same, width16)]
     fn push_u64_hex(s: &mut String, x: u64) -> ()
         requires room(s.as_bytes()),
         ensures wrote_hex(s.as_bytes(), old(s).as_bytes(), x), grew(s.as_bytes(), old(s).as_bytes()),
@@ -620,7 +617,7 @@ mod num {
         if x >= 16 {
             push_u64_hex(s, x / 16);
         }
-        let d: u32 = u32::try_from(x % 16).unwrap();
+        let d: u32 = (x % 16) as u32;
         let code: u32 = if d < 10 { 48 + d } else { 87 + d };
         match char::from_u32(code) {
             None => {}
@@ -637,7 +634,7 @@ mod num {
     }
 
     // The hexadecimal text of `x` reads back as `x`.
-    #[uses(digit, hdig, hex, hex_char, hex_digit, hex_reads_as, hex_text_of, hexes, is_hex, width16)]
+    #[uses(digit, hdig, hex, hex_char, hex_digit, hexes, is_hex, width16)]
     proof fn hex_reads(t: &[u8], a: usize, n: usize, x: u64)
         requires hex_text_of(t, a, n, x),
         ensures hex_reads_as(t, a, n, x),
@@ -660,7 +657,7 @@ mod num {
 
     // What `push_u64` writes to an empty text, `parse_u64` reads back:
     // `parse(format(x)) == Some(x)`.
-    #[uses(dec, dec_fits, dig, digit, digits, is_dec, is_u64, read_u64, reads_as, reads_u64, start, text_of, whole_dec, width)]
+    #[uses(dec, dec_fits, dig, digit, digits, is_dec, is_u64, read_u64, start, width)]
     proof fn u64_round_trip(t: &[u8], x: u64)
         requires whole_dec(t, x),
         ensures reads_u64(t, x),
@@ -678,7 +675,7 @@ mod num {
 
     // What `push_u64_hex` writes to an empty text, `parse_u64_hex` reads
     // back.
-    #[uses(digit, hdig, hex, hex_char, hex_digit, hex_fits, hex_reads_as, hex_text_of, hexes, is_hex, is_u64_hex, read_u64_hex, reads_u64_hex, start, whole_hex, width16)]
+    #[uses(digit, hdig, hex, hex_char, hex_digit, hex_fits, hexes, is_hex, is_u64_hex, read_u64_hex, start, width16)]
     proof fn u64_hex_round_trip(t: &[u8], x: u64)
         requires whole_hex(t, x),
         ensures reads_u64_hex(t, x),

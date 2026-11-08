@@ -12,7 +12,6 @@ mod rt {
     }
 
     #[effects(pure)]
-    #[uses(bumped)]
     fn bump(x: &mut i64) -> ()
         ensures bumped(*old(x), *x),
     {
@@ -37,7 +36,6 @@ mod rt {
     }
 
     #[effects(pure)]
-    #[uses(at)]
     fn find(a: &[i64], x: i64) -> (r: Option<usize>)
         ensures at(a, x, r),
     {
@@ -111,7 +109,6 @@ mod rt {
     }
 
     #[effects(pure)]
-    #[uses(big, quot)]
     fn safe_div(a: i64, b: i64) -> (r: i64)
         requires big(a),
         ensures quot(a, b, r),

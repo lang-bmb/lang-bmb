@@ -7,7 +7,6 @@ mod mr {
     
 
     #[effects(alloc)]
-    #[uses(emptied)]
     fn take(b: &mut Buf) -> (r: Vec<i64>)
         ensures emptied(b),
     {
@@ -32,10 +31,10 @@ mod mr {
         let mut c: Buf = Buf { data: Vec::new(), n: 1 };
         c.data.push(9);
         swap_bufs(&mut b, &mut c);
-        print_u64(u64::try_from(b.data.len()).unwrap());
+        print_u64(b.data.len() as u64);
         let prev: Vec<i64> = take(&mut c);
-        print_u64(u64::try_from(prev.len()).unwrap());
-        print_u64(u64::try_from(c.data.len()).unwrap());
+        print_u64(prev.len() as u64);
+        print_u64(c.data.len() as u64);
         let mut x: i64 = 3;
         let mut y: i64 = 4;
         std::mem::swap(&mut x, &mut y);
@@ -53,6 +52,6 @@ mod mr {
         let mut w: Vec<i64> = Vec::new();
         w.push(7);
         let w2: Vec<i64> = reset(&mut w);
-        print_u64(u64::try_from(w2.len()).unwrap());
+        print_u64(w2.len() as u64);
     }
 }

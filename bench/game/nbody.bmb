@@ -25,7 +25,6 @@ mod nb {
 
     // The sun's velocity cancels the planets' momentum.
     #[effects(pure)]
-    #[uses(five)]
     fn offset_momentum(b: &mut [Body]) -> ()
         requires five(b),
         ensures five(b),
@@ -44,7 +43,6 @@ mod nb {
     }
 
     #[effects(pure)]
-    #[uses(five)]
     fn energy(b: &[Body]) -> f64
         requires five(b),
     {
@@ -63,7 +61,6 @@ mod nb {
 
     // One step of `dt`: every pair's attraction, then every position.
     #[effects(pure)]
-    #[uses(five)]
     fn advance(b: &mut [Body], dt: f64) -> ()
         requires five(b),
         ensures five(b),
@@ -99,7 +96,6 @@ mod nb {
     }
 
     #[effects(io)]
-    #[uses(five)]
     fn main() -> () {
         let n: u64 = 1000;
         let mut bodies: [Body; 5] = [

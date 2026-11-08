@@ -6,17 +6,16 @@ mod wp {
 
     // The precondition is the conversion's range obligation.
     #[effects(pure)]
-    #[uses(byte_range)]
     fn to_i8(x: i32) -> i8
         requires byte_range(x),
     {
-        i8::try_from(x).unwrap()
+        x as i8
     }
 
     // A `u8` and a `u16` always fit a `u32`: no obligation.
     #[effects(pure)]
     fn widen(a: u8, b: u16) -> u32 {
-        u32::try_from(a).unwrap() + u32::try_from(b).unwrap()
+        a as u32 + b as u32
     }
 
     spec fn not_minus_one(d: i16) -> bool {
@@ -25,7 +24,6 @@ mod wp {
 
     // `i16::MIN / -1` and `i16::MIN % -1` are excluded by the divisor.
     #[effects(pure)]
-    #[uses(not_minus_one)]
     fn quot(n: i16, d: i16) -> i16
         requires not_minus_one(d),
     {
@@ -33,7 +31,6 @@ mod wp {
     }
 
     #[effects(pure)]
-    #[uses(not_minus_one)]
     fn rem(n: i16, d: i16) -> i16
         requires not_minus_one(d),
     {
@@ -46,7 +43,6 @@ mod wp {
 
     // Wrapping and saturating results are in the type's range.
     #[effects(pure)]
-    #[uses(in_i8)]
     fn bump(x: i8) -> (r: i8)
         ensures in_i8(r),
     {
@@ -59,7 +55,6 @@ mod wp {
 
     // Elements of a `u16` slice are at most 65535: the sum fits a `u32`.
     #[effects(pure)]
-    #[uses(bounded)]
     fn total(v: &[u16]) -> u32
         requires bounded(v),
     {
@@ -67,18 +62,17 @@ mod wp {
         for k in 0..v.len()
             invariant s <= 65535 * k,
         {
-            s = s + u32::try_from(v[k]).unwrap();
+            s = s + v[k] as u32;
         }
         s
     }
 
     // `isize` and `usize` are 64 bits.
     #[effects(pure)]
-    #[uses(small_offset)]
     fn offset(base: usize, delta: isize) -> isize
         requires small_offset(base, delta),
     {
-        isize::try_from(base).unwrap() + delta
+        base as isize + delta
     }
 
     spec fn small_offset(base: usize, delta: isize) -> bool {

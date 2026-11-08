@@ -1412,7 +1412,9 @@ impl<'a> Parser<'a> {
         let mut ensures = Vec::new();
         let mut decreases = None;
         while let Some(k) = order.iter().position(|k| self.is_kw(k)) {
-            if k < stage {
+            if k + 1 == stage && k < 2 {
+                self.repeated_keyword();
+            } else if k < stage {
                 self.diags.push(Diag::new(
                     "E0103",
                     self.span(),
@@ -1451,6 +1453,107 @@ impl<'a> Parser<'a> {
             }
         }
         Ok(out)
+    }
+
+    /// The clause keyword at the cursor repeats the one before its list
+    /// (`invariant a, invariant b,`, Dafny's form): the list goes on (an
+    /// input alias, ADR-0095 B5). The fix deletes the keyword and writes
+    /// the comma the list needs: `a, b`.
+    fn repeated_keyword(&mut self) {
+        let kw = self.span();
+        let prev = self.prev_span();
+        let comma = self.pos > 0 && matches!(self.toks[self.pos - 1].tok, Tok::P(","));
+        let span = Span {
+            file: kw.file,
+            lo: prev.hi,
+            hi: kw.hi,
+        };
+        let name = Self::describe(self.peek());
+        self.diags.aliases.push(
+            Diag::new(
+                "W0912",
+                span,
+                format!("{name} repeated: one keyword lists the clauses"),
+            )
+            .fix(
+                "list the clauses after one keyword",
+                Some(if comma { "" } else { "," }.into()),
+            ),
+        );
+    }
+
+    /// `invariant ..,` lists, the keyword repeated or not (ADR-0095 B5).
+    /// `more` when the loop already has clauses written before this list
+    /// (in its head, for the clauses at the start of its body).
+    fn invariant_lists(&mut self, out: &mut Vec<Expr>, mut more: bool) -> PResult<()> {
+        while self.is_kw("invariant") {
+            if more {
+                self.repeated_keyword();
+            }
+            more = true;
+            self.bump();
+            out.extend(self.clause_list()?);
+        }
+        Ok(())
+    }
+
+    /// The clauses of a loop written at the start of its body (`while c {
+    /// invariant a, decreases d, .. }`): read as the head's (an input
+    /// alias, ADR-0095 B6). At `{` followed by `invariant` or `decreases`,
+    /// it reads `{` and the clauses and gives the span of `{`; the caller
+    /// reads the rest of the block. The fix moves the clauses before the
+    /// body, in the normal form's layout. `loop_lo` is where the loop starts.
+    fn body_clauses(
+        &mut self,
+        loop_lo: Span,
+        invariants: &mut Vec<Expr>,
+        decreases: &mut Option<Expr>,
+    ) -> PResult<Option<Span>> {
+        let lead = matches!(self.peek_at(1), Tok::Ident(k) if k == "invariant" || k == "decreases");
+        if !self.is_p("{") || !lead {
+            return Ok(None);
+        }
+        let before = self.prev_span();
+        let open = self.bump().span;
+        let first = self.span();
+        let had = !invariants.is_empty();
+        self.invariant_lists(invariants, had)?;
+        if self.is_kw("decreases") {
+            let sp = self.bump().span;
+            let e = self.parse_expr()?;
+            self.eat_p(",");
+            if decreases.is_some() {
+                self.diags.push(Diag::new(
+                    "E0103",
+                    sp,
+                    "the loop has a `decreases` clause already",
+                ));
+            } else {
+                *decreases = Some(e);
+            }
+        }
+        let last = self.prev_span();
+        let text = self.text;
+        let at = |i: u32| text.get(..i as usize).unwrap_or_default();
+        let line = at(loop_lo.lo).rfind('\n').map_or(0, |i| i + 1);
+        let indent: String = text[line..].chars().take_while(|c| *c == ' ').collect();
+        let clauses = text
+            .get(first.lo as usize..last.hi as usize)
+            .unwrap_or_default();
+        let r = format!("\n{indent}    {clauses}\n{indent}{{");
+        self.diags.aliases.push(
+            Diag::new(
+                "W0913",
+                Span {
+                    file: open.file,
+                    lo: before.hi,
+                    hi: last.hi,
+                },
+                "the loop's clauses are written at the start of its body",
+            )
+            .fix("write the clauses before the body", Some(r)),
+        );
+        Ok(Some(open))
     }
 
     // ---------- types ----------
@@ -1660,6 +1763,11 @@ impl<'a> Parser<'a> {
 
     fn parse_block(&mut self) -> PResult<Block> {
         let lo = self.expect_p("{")?;
+        self.parse_block_rest(lo)
+    }
+
+    /// A block after its `{` (at `lo`).
+    fn parse_block_rest(&mut self, lo: Span) -> PResult<Block> {
         let mut stmts = Vec::new();
         let mut tail: Option<Box<Expr>> = None;
         let mut had_err = false;
@@ -1911,6 +2019,9 @@ impl<'a> Parser<'a> {
             self.pos = pos;
             self.diags.items.truncate(nd);
         }
+        if let Some(s) = self.compound_assign(lo)? {
+            return Ok(stmt(s));
+        }
         let e = self.parse_expr()?;
         if self.eat_p("=") {
             let value = self.parse_expr()?;
@@ -2070,9 +2181,7 @@ impl<'a> Parser<'a> {
         };
         let hi = self.cond_expr()?;
         let mut invariants = Vec::new();
-        if self.eat_kw("invariant") {
-            invariants = self.clause_list()?;
-        }
+        self.invariant_lists(&mut invariants, false)?;
         if self.is_kw("decreases") {
             let sp = self.bump().span;
             self.diags.push(
@@ -2084,7 +2193,19 @@ impl<'a> Parser<'a> {
             let _ = self.parse_expr();
             self.eat_p(",");
         }
-        let body = self.parse_block()?;
+        let mut measure = None;
+        let body = match self.body_clauses(lo_span, &mut invariants, &mut measure)? {
+            Some(open) => self.parse_block_rest(open)?,
+            None => self.parse_block()?,
+        };
+        if let Some(m) = measure {
+            self.diags.push(
+                Diag::new("E0253", m.span, "a `for` loop's measure is automatic").fix(
+                    "remove the `decreases` clause: the range bounds the loop",
+                    None,
+                ),
+            );
+        }
         let span = lo_span.to(body.span);
         Ok(Stmt::For {
             label,
@@ -2110,20 +2231,21 @@ impl<'a> Parser<'a> {
         self.bump();
         let mut invariants = Vec::new();
         let mut decreases = None;
-        if self.eat_kw("invariant") {
-            invariants = self.clause_list()?;
-        }
+        self.invariant_lists(&mut invariants, false)?;
         if self.eat_kw("decreases") {
-            decreases = Some(Box::new(self.parse_expr()?));
+            decreases = Some(self.parse_expr()?);
             self.eat_p(",");
         }
-        let body = self.parse_block()?;
+        let body = match self.body_clauses(lo, &mut invariants, &mut decreases)? {
+            Some(open) => self.parse_block_rest(open)?,
+            None => self.parse_block()?,
+        };
         let span = lo.to(body.span);
         Ok(Expr {
             kind: ExprKind::Loop {
                 label,
                 invariants,
-                decreases,
+                decreases: decreases.map(Box::new),
                 body,
             },
             span,
@@ -2145,14 +2267,15 @@ impl<'a> Parser<'a> {
         let cond = self.cond_expr()?;
         let mut invariants = Vec::new();
         let mut decreases = None;
-        if self.eat_kw("invariant") {
-            invariants = self.clause_list()?;
-        }
+        self.invariant_lists(&mut invariants, false)?;
         if self.eat_kw("decreases") {
             decreases = Some(self.parse_expr()?);
             self.eat_p(",");
         }
-        let body = self.parse_block()?;
+        let body = match self.body_clauses(lo, &mut invariants, &mut decreases)? {
+            Some(open) => self.parse_block_rest(open)?,
+            None => self.parse_block()?,
+        };
         let span = lo.to(body.span);
         Ok(Stmt::While {
             label,
@@ -2339,6 +2462,143 @@ impl<'a> Parser<'a> {
         Ok(lhs)
     }
 
+    /// A compound assignment operator here (`+=`, `<<=`, ..): its operator
+    /// and how many tokens it spans. The lexer has no such tokens: `+=` is
+    /// `+` and `=` adjacent, `<<=` is `<` and `<=`, `>>=` is `>` and `>=`.
+    fn compound_op(&self) -> Option<BinOp> {
+        let a = &self.toks[self.pos];
+        let b = &self.toks[(self.pos + 1).min(self.toks.len() - 1)];
+        if a.span.hi != b.span.lo {
+            return None;
+        }
+        match (&a.tok, &b.tok) {
+            (Tok::P("<"), Tok::P("<=")) => Some(BinOp::Shl),
+            (Tok::P(">"), Tok::P(">=")) => Some(BinOp::Shr),
+            (Tok::P(o), Tok::P("=")) => Some(match *o {
+                "+" => BinOp::Add,
+                "-" => BinOp::Sub,
+                "*" => BinOp::Mul,
+                "/" => BinOp::Div,
+                "%" => BinOp::Rem,
+                "^" => BinOp::BitXor,
+                "|" => BinOp::BitOr,
+                "&" => BinOp::BitAnd,
+                _ => return None,
+            }),
+            _ => None,
+        }
+    }
+
+    /// `t op= e;` (backlog 2N-07): read as `t = t op e;`, an input alias
+    /// (ADR-0095, "the meaning of an input alias"; W0914). The place is
+    /// read twice in that form, so it must not call anything (Rust reads
+    /// it once): a variable, a field, a dereference, or an index by an
+    /// expression without calls. Any other is E0103 with the advice. At
+    /// anything else it reads nothing and gives `None`.
+    fn compound_assign(&mut self, lo: Span) -> PResult<Option<Stmt>> {
+        // A token scan first: reading the statement twice would cost twice
+        // per nesting level (blocks inside expressions).
+        if !self.compound_ahead() {
+            return Ok(None);
+        }
+        let (pos, nd, na) = (self.pos, self.diags.items.len(), self.diags.aliases.len());
+        let target = self.parse_unary();
+        let op = match (&target, self.compound_op()) {
+            (Ok(_), Some(op)) => op,
+            _ => {
+                self.pos = pos;
+                self.diags.items.truncate(nd);
+                self.diags.aliases.truncate(na);
+                return Ok(None);
+            }
+        };
+        let target = target?;
+        let op_lo = self.span();
+        self.bump();
+        self.bump();
+        let value = self.parse_expr()?;
+        let hi = self.expect_p(";")?;
+        let sym = op.symbol();
+        if !plain_place(&target) {
+            self.diags.push(
+                Diag::new(
+                    "E0103",
+                    op_lo.to(self.prev_span()),
+                    format!("compound assignment `{sym}=` to a place that calls a function"),
+                )
+                .fix(
+                    "compute the index into a local first, then write `t = t op e;`",
+                    None,
+                ),
+            );
+            return Err(());
+        }
+        let text = self.text;
+        let slice = |e: &Expr| {
+            text.get(e.span.lo as usize..e.span.hi as usize)
+                .unwrap_or_default()
+        };
+        let t = slice(&target);
+        let v = slice(&value);
+        let bin = Expr {
+            kind: ExprKind::Binary(op, Box::new(target.clone()), Box::new(value)),
+            span: target.span.to(self.prev_span()),
+        };
+        let ExprKind::Binary(_, _, value) = &bin.kind else {
+            unreachable!()
+        };
+        let v = if crate::fmt::prec(value) <= crate::fmt::prec(&bin) {
+            format!("({v})")
+        } else {
+            v.to_string()
+        };
+        self.diags.aliases.push(
+            Diag::new(
+                "W0914",
+                Span {
+                    file: lo.file,
+                    lo: target.span.lo,
+                    hi: value.span.hi,
+                },
+                format!("compound assignment `{sym}=`: the canonical form is `{t} = {t} {sym} ..`"),
+            )
+            .fix(
+                "write the assignment out",
+                Some(format!("{t} = {t} {sym} {v}")),
+            ),
+        );
+        Ok(Some(Stmt::Assign {
+            target,
+            value: bin,
+            span: lo.to(hi),
+        }))
+    }
+
+    /// Whether a compound assignment operator comes before the end of the
+    /// statement (`;`, or a `{`, `}` or `=` outside brackets).
+    fn compound_ahead(&mut self) -> bool {
+        let start = self.pos;
+        let mut depth = 0usize;
+        let mut found = false;
+        while self.pos < self.toks.len() - 1 {
+            match self.peek() {
+                Tok::P("(" | "[") => depth += 1,
+                Tok::P(")" | "]") if depth == 0 => break,
+                Tok::P(")" | "]") => depth -= 1,
+                Tok::P(";" | "{" | "}" | "=") if depth == 0 => break,
+                Tok::Eof => break,
+                _ if depth == 0 && self.compound_op().is_some() => {
+                    found = true;
+                    break;
+                }
+                _ => {}
+            }
+            self.pos += 1;
+        }
+        self.pos = start;
+        found
+    }
+
     /// `<<` or `>>` here: two adjacent `<` or `>` tokens. The lexer leaves
     /// them apart so `Vec<Vec<i64>>` closes two type argument lists (rustc's
     /// parser splits such tokens instead).
@@ -2398,7 +2658,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_mul_inner(&mut self) -> PResult<Expr> {
-        let mut lhs = self.parse_unary()?;
+        let mut lhs = self.parse_cast()?;
         loop {
             let op = if self.is_p("*") {
                 BinOp::Mul
@@ -2411,10 +2671,89 @@ impl<'a> Parser<'a> {
             };
             self.bump();
             self.enter()?;
-            let rhs = self.parse_unary()?;
+            let rhs = self.parse_cast()?;
             lhs = bin(op, lhs, rhs);
         }
         Ok(lhs)
+    }
+
+    /// `e as T` after the prefix operators and before `*`, as in Rust
+    /// (`-x as u64` is `(-x) as u64`; ADR-0095 A4).
+    fn parse_cast(&mut self) -> PResult<Expr> {
+        let mut e = self.parse_unary()?;
+        while self.is_kw("as") {
+            self.bump();
+            let ty = self.parse_type();
+            let span = e.span.to(ty.span);
+            let target = ty.kind.int().map(IntTy::name);
+            let d = Diag::new("E0205", span, "`as` converts between integer types only");
+            match target {
+                // An integer cast is a checked conversion (ADR-0028 §8,
+                // the canonical form by ADR-0095 A4): the value is kept,
+                // its range is a proof obligation. The tree is the one
+                // of `T::try_from(x).unwrap()` (its input alias).
+                Some(t) => {
+                    let ident = |name: &str| Ident {
+                        name: name.into(),
+                        span,
+                    };
+                    e = Expr {
+                        kind: ExprKind::Method {
+                            recv: Box::new(Expr {
+                                kind: ExprKind::Call {
+                                    path: vec![ident(t), ident("try_from")],
+                                    targs: Vec::new(),
+                                    args: vec![e],
+                                    method: None,
+                                },
+                                span,
+                            }),
+                            name: ident("unwrap"),
+                            args: Vec::new(),
+                        },
+                        span,
+                    };
+                }
+                // An integer to `f64` (ADR-0061 §4): `f64::from(x)`, exact
+                // or with an exactness obligation.
+                None if ty.kind == TypeKind::F64 => {
+                    let x = self
+                        .text
+                        .get(e.span.lo as usize..e.span.hi as usize)
+                        .unwrap_or_default()
+                        .to_string();
+                    let r = format!("f64::from({})", unparen(&x));
+                    self.diags.push(d.fix(
+                        "an integer converts to `f64` with `f64::from(x)` (ADR-0061)",
+                        Some(r),
+                    ));
+                    let ident = |name: &str| Ident {
+                        name: name.into(),
+                        span,
+                    };
+                    e = Expr {
+                        kind: ExprKind::Call {
+                            path: vec![ident("f64"), ident("from")],
+                            targs: Vec::new(),
+                            args: vec![e],
+                            method: None,
+                        },
+                        span,
+                    };
+                }
+                None => {
+                    self.diags.push(d.fix(
+                        "integer types convert with `x as T`, integers to `f64` with `f64::from(x)`; `f64` does not convert to integers",
+                        None,
+                    ));
+                    e = Expr {
+                        kind: ExprKind::Error,
+                        span,
+                    };
+                }
+            }
+        }
+        Ok(e)
     }
 
     fn parse_unary(&mut self) -> PResult<Expr> {
@@ -2566,83 +2905,6 @@ impl<'a> Parser<'a> {
                     kind: ExprKind::Try(Box::new(e)),
                     span,
                 };
-            } else if self.is_kw("as") {
-                self.bump();
-                let ty = self.parse_type();
-                let span = e.span.to(ty.span);
-                let target = ty.kind.int().map(IntTy::name);
-                let d = Diag::new("E0205", span, "`as` casts are not allowed");
-                match target {
-                    // An integer cast is a checked conversion (ADR-0028 §8):
-                    // the value is kept, its range is a proof obligation.
-                    Some(t) => {
-                        let x = self
-                            .text
-                            .get(e.span.lo as usize..e.span.hi as usize)
-                            .unwrap_or_default()
-                            .to_string();
-                        let r = format!("{t}::try_from({}).unwrap()", unparen(&x));
-                        self.diags
-                            .push(d.fix("convert with a range obligation (ADR-0028)", Some(r)));
-                        let ident = |name: &str| Ident {
-                            name: name.into(),
-                            span,
-                        };
-                        e = Expr {
-                            kind: ExprKind::Method {
-                                recv: Box::new(Expr {
-                                    kind: ExprKind::Call {
-                                        path: vec![ident(t), ident("try_from")],
-                                        targs: Vec::new(),
-                                        args: vec![e],
-                                        method: None,
-                                    },
-                                    span,
-                                }),
-                                name: ident("unwrap"),
-                                args: Vec::new(),
-                            },
-                            span,
-                        };
-                    }
-                    // An integer to `f64` (ADR-0061 §4): `f64::from(x)`, exact
-                    // or with an exactness obligation.
-                    None if ty.kind == TypeKind::F64 => {
-                        let x = self
-                            .text
-                            .get(e.span.lo as usize..e.span.hi as usize)
-                            .unwrap_or_default()
-                            .to_string();
-                        let r = format!("f64::from({})", unparen(&x));
-                        self.diags.push(d.fix(
-                            "an integer converts to `f64` with `f64::from(x)` (ADR-0061)",
-                            Some(r),
-                        ));
-                        let ident = |name: &str| Ident {
-                            name: name.into(),
-                            span,
-                        };
-                        e = Expr {
-                            kind: ExprKind::Call {
-                                path: vec![ident("f64"), ident("from")],
-                                targs: Vec::new(),
-                                args: vec![e],
-                                method: None,
-                            },
-                            span,
-                        };
-                    }
-                    None => {
-                        self.diags.push(d.fix(
-                            "integer types convert with `T::try_from(x).unwrap()`, integers to `f64` with `f64::from(x)`; `f64` does not convert to integers",
-                            None,
-                        ));
-                        e = Expr {
-                            kind: ExprKind::Error,
-                            span,
-                        };
-                    }
-                }
             } else {
                 break;
             }
@@ -3389,4 +3651,29 @@ fn unparen(x: &str) -> &str {
         }
     }
     inner
+}
+
+/// A place a compound assignment may name twice (`Parser::compound_assign`):
+/// no calls in it.
+fn plain_place(e: &Expr) -> bool {
+    fn pure(e: &Expr) -> bool {
+        match &e.kind {
+            ExprKind::Int(..) | ExprKind::Bool(_) | ExprKind::ByteLit(_) | ExprKind::CharLit(_) => {
+                true
+            }
+            ExprKind::Var(_) | ExprKind::Path(_) => true,
+            ExprKind::Unary(_, a) | ExprKind::Deref(a) => pure(a),
+            ExprKind::Binary(_, a, b) => pure(a) && pure(b),
+            ExprKind::Field { base, .. } => pure(base),
+            ExprKind::Index { base, index } => pure(base) && pure(index),
+            _ => false,
+        }
+    }
+    match &e.kind {
+        ExprKind::Var(_) => true,
+        ExprKind::Deref(a) => plain_place(a),
+        ExprKind::Field { base, .. } => plain_place(base),
+        ExprKind::Index { base, index } => plain_place(base) && pure(index),
+        _ => false,
+    }
 }

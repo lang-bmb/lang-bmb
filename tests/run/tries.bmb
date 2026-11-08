@@ -9,12 +9,11 @@ mod tr {
 
     // A digit's value, or the byte that is not one as an owned message.
     #[effects(alloc)]
-    #[uses(one_digit)]
     fn digit(b: u8) -> (r: Result<u64, Vec<u8>>)
         ensures one_digit(r),
     {
         if 48 <= b && b <= 57 {
-            Ok(u64::try_from(b - 48).unwrap())
+            Ok((b - 48) as u64)
         } else {
             let mut m: Vec<u8> = Vec::new();
             m.push(b);
@@ -29,7 +28,6 @@ mod tr {
     // The digit sum; the first bad byte returns its message, and the
     // scratch vector alive at that `?` is freed on the way out.
     #[effects(alloc)]
-    #[uses(one_digit, short)]
     fn digit_sum(s: &[u8]) -> Result<u64, Vec<u8>>
         requires short(s),
     {
@@ -80,7 +78,7 @@ mod tr {
     }
 
     #[effects(alloc, io)]
-    #[uses(one_digit, short)]
+    #[uses(one_digit)]
     fn main() -> () {
         show(digit_sum(b"2024"));
         show(digit_sum(b"20x4"));

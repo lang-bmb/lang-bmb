@@ -8,14 +8,13 @@ mod vm {
     // duplicates the top, `p` moves the top to the output; anything else
     // or a missing operand is skipped.
     #[effects(alloc)]
-    #[uses(bounded)]
     fn step(m: &mut Vm, op: u8) -> ()
         requires bounded(m),
         ensures bounded(m),
     {
         if op >= b'0' && op <= b'9' {
             if m.stack.len() < 1000 {
-                m.stack.push(i64::try_from(op - b'0').unwrap());
+                m.stack.push((op - b'0') as i64);
             }
         } else if op == b'+' || op == b'*' {
             if m.stack.len() >= 2 {
@@ -49,7 +48,6 @@ mod vm {
     }
 
     #[effects(alloc)]
-    #[uses(bounded)]
     fn run(code: &[u8]) -> Vec<i64> {
         let mut m: Vm = Vm { stack: Vec::new(), out: Vec::new(), steps: 0 };
         for pc in 0..code.len()

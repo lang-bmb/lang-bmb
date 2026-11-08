@@ -1,7 +1,6 @@
 #[summary("run")]
 mod app {
     #[effects(io, panic)]
-    #[uses(collatz::small, collatz::upto)]
     fn main() -> () {
         print_i64(collatz::steps(1));
         print_i64(collatz::steps(6));
@@ -26,7 +25,6 @@ mod collatz {
     }
 
     #[effects(panic)]
-    #[uses(best, bounded, small, upto)]
     fn longest(m: i64) -> Longest
         requires upto(m),
     {
@@ -51,10 +49,9 @@ mod collatz {
         1 <= n && n <= 10000
     }
 
-    #[rationale(kind = boundary, hash = "197da2129169f7b7", "termination of the Collatz map is an open problem; the bound was found by running every n up to 10000")]
+    #[rationale(kind = boundary, hash = "da34e6510158acd8", "termination of the Collatz map is an open problem; the bound was found by running every n up to 10000")]
     #[external_body]
     #[effects(panic)]
-    #[uses(bounded, small)]
     fn steps(n: i64) -> (r: i64)
         requires small(n),
         ensures bounded(r),
@@ -75,7 +72,6 @@ mod collatz {
     }
 
     #[effects(panic)]
-    #[uses(bounded, small, total_so_far, upto)]
     fn total(m: i64) -> i64
         requires upto(m),
     {

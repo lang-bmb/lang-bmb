@@ -16,7 +16,6 @@ mod fp {
     // The integer obligations of a loop over `f64` data are proved whatever
     // the values are (the operations are uninterpreted).
     #[effects(pure)]
-    #[uses(at_most)]
     fn count_above(v: &[f64], limit: f64) -> (r: usize)
         ensures at_most(r, v),
     {
@@ -34,7 +33,6 @@ mod fp {
     // A 64-bit integer converts exactly within 2^53 (E0815, ADR-0061 §4);
     // 32-bit and narrower ones always do.
     #[effects(pure)]
-    #[uses(within)]
     fn exact(n: i64, k: u32, b: i8) -> f64
         requires within(n),
     {
@@ -44,7 +42,6 @@ mod fp {
     // A comparison on the path is an atom of the query: the branch taken
     // is known, though not what it means in IEEE arithmetic.
     #[effects(pure)]
-    #[uses(kept)]
     fn positive_part(x: f64) -> (r: f64)
         ensures kept(x, r),
     {
@@ -53,7 +50,6 @@ mod fp {
 
     // What `!(x < 0.0)` means is IEEE's: proved bit-precisely, then used.
     #[effects(pure)]
-    #[uses(ordered_or_nan)]
     fn clamp(x: f64) -> (r: f64)
         ensures ordered_or_nan(r),
     {

@@ -29,7 +29,6 @@ mod g {
     }
 
     #[effects(pure)]
-    #[uses(grew, small)]
     fn bump(x: &mut i64) -> ()
         requires small(*x),
         ensures grew(*old(x), *x),
@@ -38,7 +37,6 @@ mod g {
     }
 
     #[effects(pure)]
-    #[uses(grew, small)]
     fn good() -> () {
         let mut acc: Acc = Acc { total: 7, other: 3 };
         bump(&mut acc.total);

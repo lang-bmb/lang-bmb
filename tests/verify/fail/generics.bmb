@@ -21,7 +21,6 @@ mod gen {
 
     // Returns the other value: two values of `T` may differ.
     #[effects(pure)]
-    #[uses(same)]
     fn other<T: Copy>(x: T, y: T) -> (r: T)
         ensures same::<T>(r, x),
     {
@@ -29,7 +28,6 @@ mod gen {
     }
 
     #[effects(pure)]
-    #[uses(is_just)]
     fn empty<T: Copy>(x: T) -> (r: Maybe<T>)
         ensures is_just::<T>(r),
     {
@@ -38,7 +36,6 @@ mod gen {
 
     // The invariant forgets the element just written.
     #[effects(pure)]
-    #[uses(all_are)]
     fn fill_short<T: Copy>(a: &mut [T], v: T) -> ()
         ensures all_are::<T>(a, v, a.len()),
     {
@@ -53,7 +50,6 @@ mod gen {
     }
 
     #[effects(pure)]
-    #[uses(idx)]
     fn get<T: Copy>(a: &[T], i: usize) -> T
         requires idx::<T>(a, i),
     {
@@ -62,7 +58,6 @@ mod gen {
 
     // The instance's precondition at `u64`.
     #[effects(pure)]
-    #[uses(idx)]
     fn past_end() -> u64 {
         let a: [u64; 2] = [1, 2];
         get::<u64>(&a, 2)
@@ -70,7 +65,6 @@ mod gen {
 
     // The contract at `i64` says `r == x`, not `r == 6`.
     #[effects(pure)]
-    #[uses(same, is6)]
     fn wrong_value() -> i64 {
         let x: i64 = other::<i64>(5, 6);
         assert(is6(x));
@@ -81,7 +75,6 @@ mod gen {
 
     // `max` of an order is not always its first argument.
     #[effects(pure)]
-    #[uses(first)]
     fn max_first<T: Ord + Copy>(a: T, b: T) -> (r: T)
         ensures first::<T>(r, a),
     {

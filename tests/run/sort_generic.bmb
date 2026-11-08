@@ -9,7 +9,6 @@ mod s {
     spec fn idx<T: Copy>(a: &[T], i: usize) -> bool { i < a.len() }
 
     #[effects(pure)]
-    #[uses(sorted_to, sorted)]
     fn insertion_sort<T: Ord + Copy>(a: &mut [T]) -> ()
         ensures sorted::<T>(a),
     {
@@ -60,7 +59,7 @@ mod s {
         if bs[0] { print_i64(1); } else { print_i64(0); }
         let mut us: [u8; 3] = [200, 7, 100];
         insertion_sort::<u8>(&mut us);
-        print_u64(u64::try_from(us[2]).unwrap());
+        print_u64(us[2] as u64);
         print_i64(max_of::<i64>(-2, 4));
         if max_of::<bool>(false, true) { print_i64(1); } else { print_i64(0); }
     }

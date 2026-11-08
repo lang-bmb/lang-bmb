@@ -5,7 +5,6 @@ mod primes {
     spec fn counted(c: i64, k: usize) -> bool { 0 <= c && c <= k }
 
     #[effects(pure)]
-    #[uses(len_ok, counted)]
     fn count(a: &mut [bool]) -> i64
         requires len_ok(a),
     {
@@ -44,7 +43,6 @@ mod primes {
 #[summary("진입점")]
 mod app {
     #[effects(io)]
-    #[uses(primes::len_ok)]
     fn main() -> () {
         let mut a: [bool; 100] = [true; 100];
         print_i64(primes::count(&mut a));

@@ -7,7 +7,7 @@ mod st {
 
     impl<T: Copy> Stack<T> {
         #[effects(pure)]
-        #[uses(empty, fits)]
+        #[uses(fits)]
         fn new(fill: T) -> (r: Stack<T>)
             ensures empty::<T>(&r),
         {
@@ -15,7 +15,7 @@ mod st {
         }
 
         #[effects(pure)]
-        #[uses(fits, popped, some)]
+        #[uses(fits)]
         fn pop(self: &mut Stack<T>) -> (r: T)
             requires some::<T>(self),
             ensures popped::<T>(*old(self), *self, r),
@@ -25,7 +25,7 @@ mod st {
         }
 
         #[effects(pure)]
-        #[uses(fits, pushed, room)]
+        #[uses(fits)]
         fn push(self: &mut Stack<T>, x: T) -> ()
             requires room::<T>(self),
             ensures pushed::<T>(*old(self), *self, x),
@@ -36,7 +36,6 @@ mod st {
     }
 
     #[effects(pure)]
-    #[uses(empty, popped, pushed, room, some)]
     fn balanced(s: &[u8]) -> bool {
         let mut st: Stack<u8> = Stack::<u8>::new(0);
         let mut i: usize = 0;
@@ -81,7 +80,6 @@ mod st {
     }
 
     #[effects(io)]
-    #[uses(empty, popped, pushed, room, some)]
     fn main() -> () {
         let mut s: Stack<i64> = Stack::<i64>::new(0);
         s.push(3);
@@ -89,7 +87,7 @@ mod st {
         s.push(9);
         print_i64(s.pop());
         print_i64(s.pop());
-        print_u64(u64::try_from(s.len).unwrap());
+        print_u64(s.len as u64);
         let mut ps: Stack<Pt> = Stack::<Pt>::new(Pt { x: 0, y: 0 });
         ps.push(Pt { x: 1, y: 2 });
         ps.push(Pt { x: 3, y: 4 });

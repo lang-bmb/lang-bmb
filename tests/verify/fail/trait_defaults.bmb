@@ -12,7 +12,7 @@ mod df {
         spec fn model(self: &Self) -> i64;
 
         #[effects(pure)]
-        #[uses(doubled, scored)]
+        #[uses(scored)]
         fn twice(self: &Self) -> (r: i64)
             ensures doubled::<Self>(self, r),
         {
@@ -24,7 +24,7 @@ mod df {
 
     impl Shape for Big {
         #[effects(pure)]
-        #[uses(Shape::model, scored)]
+        #[uses(Shape::model)]
         fn area(self: &Big) -> (r: i64)
             ensures scored::<Big>(self, r),
         {
@@ -40,7 +40,7 @@ mod df {
         }
 
         #[effects(pure)]
-        #[uses(Shape::model, doubled)]
+        #[uses(Shape::model)]
         fn twice(self: &Big) -> (r: i64)
             ensures doubled::<Big>(self, r),
         {
@@ -52,7 +52,7 @@ mod df {
 
     impl Shape for Sq {
         #[effects(pure)]
-        #[uses(Shape::model, scored)]
+        #[uses(Shape::model)]
         fn area(self: &Sq) -> (r: i64)
             ensures scored::<Sq>(self, r),
         {
@@ -65,7 +65,6 @@ mod df {
     }
 
     #[effects(pure)]
-    #[uses(Shape::label)]
     fn bounded<T: Copy + Shape>(x: T) -> () {
         assert(Shape::label(&x) == 7);
     }
@@ -75,14 +74,13 @@ mod df {
     }
 
     #[effects(pure)]
-    #[uses(Shape::label)]
     fn labels(q: Sq, b: Big) -> () {
         assert(Shape::label(&q) == 7);
         assert(Shape::label(&b) == 9);
     }
 
     #[effects(io)]
-    #[uses(Shape::model, doubled)]
+    #[uses(Shape::model)]
     fn main() -> () {
         let q: Sq = Sq { s: 21 };
         let t: i64 = Shape::twice(&q);

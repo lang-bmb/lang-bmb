@@ -20,7 +20,7 @@ mod str {
 
     // Whether `p` begins `s` (Rust's `str::starts_with` of a `&str`).
     #[effects(pure)]
-    #[uses(agree, begins, starts)]
+    #[uses(begins)]
     fn starts_with(s: &str, p: &str) -> (r: bool)
         ensures starts(r, s, p),
     {
@@ -58,7 +58,7 @@ mod str {
 
     // Whether `p` ends `s` (Rust's `str::ends_with` of a `&str`).
     #[effects(pure)]
-    #[uses(agree_end, ends, ended)]
+    #[uses(ends)]
     fn ends_with(s: &str, p: &str) -> (r: bool)
         ensures ended(r, s, p),
     {
@@ -89,7 +89,6 @@ mod str {
 
     // The first position of `p` in `s` (Rust's `str::find` of a `&str`).
     #[effects(pure)]
-    #[uses(found, std::bytes::found)]
     fn find(s: &str, p: &str) -> (r: Option<usize>)
         ensures found(r, s, p),
     {
@@ -110,7 +109,7 @@ mod str {
     // The position after the prefix `p` of `s` (Rust's `str::strip_prefix`
     // of a `&str`, whose result is `&s[i..]`).
     #[effects(pure)]
-    #[uses(begins, starts, stripped)]
+    #[uses(begins)]
     fn strip_prefix(s: &str, p: &str) -> (r: Option<usize>)
         ensures stripped(r, s, p),
     {
@@ -132,7 +131,7 @@ mod str {
     // The position before the suffix `p` of `s` (Rust's
     // `str::strip_suffix` of a `&str`, whose result is `&s[..i]`).
     #[effects(pure)]
-    #[uses(ended, ends, stripped_end)]
+    #[uses(ends)]
     fn strip_suffix(s: &str, p: &str) -> (r: Option<usize>)
         ensures stripped_end(r, s, p),
     {
@@ -155,7 +154,7 @@ mod str {
     }
 
     #[effects(pure)]
-    #[uses(is_space, space)]
+    #[uses(space)]
     fn ascii_space(b: u8) -> (r: bool)
         ensures is_space(r, b),
     {
@@ -176,7 +175,7 @@ mod str {
     // The position after the leading ASCII whitespace of `s` (Rust's
     // `str::trim_ascii_start`, whose result is `&s[i..]`).
     #[effects(pure)]
-    #[uses(is_space, space, spaces, start_trimmed)]
+    #[uses(space)]
     fn trim_ascii_start(s: &str) -> (r: usize)
         ensures start_trimmed(r, s),
     {
@@ -198,7 +197,7 @@ mod str {
     // The position before the trailing ASCII whitespace of `s` (Rust's
     // `str::trim_ascii_end`, whose result is `&s[..i]`).
     #[effects(pure)]
-    #[uses(end_trimmed, is_space, space, spaces)]
+    #[uses(space)]
     fn trim_ascii_end(s: &str) -> (r: usize)
         ensures end_trimmed(r, s),
     {
@@ -248,7 +247,7 @@ mod str {
     // The character at byte `i` of `s` and the position after it (Rust's
     // `s[i..].chars().next()` at a boundary; ADR-0050 open question 2).
     #[effects(pure)]
-    #[uses(below, decoded, is_code, std::utf8::at, std::utf8::cont, std::utf8::second3, std::utf8::second4, std::utf8::seq_len, std::utf8::width_result)]
+    #[uses(below, is_code, std::utf8::cont, std::utf8::second3, std::utf8::second4, std::utf8::seq_len)]
     fn decode_utf8(s: &str, i: usize) -> (r: Option<Decoded>)
         ensures decoded(r, s, i),
     {
@@ -259,16 +258,16 @@ mod str {
         if w == 0 {
             return None;
         }
-        let b0: u32 = u32::try_from(s.as_bytes()[i]).unwrap();
+        let b0: u32 = s.as_bytes()[i] as u32;
         let v: u32 = if w == 1 {
             b0
         } else if w == 2 {
-            (b0 - 192) * 64 + (u32::try_from(s.as_bytes()[i + 1]).unwrap() - 128)
+            (b0 - 192) * 64 + (s.as_bytes()[i + 1] as u32 - 128)
         } else if w == 3 {
-            (b0 - 224) * 4096 + (u32::try_from(s.as_bytes()[i + 1]).unwrap() - 128) * 64 + (u32::try_from(s.as_bytes()[i + 2]).unwrap() - 128)
+            (b0 - 224) * 4096 + (s.as_bytes()[i + 1] as u32 - 128) * 64 + (s.as_bytes()[i + 2] as u32 - 128)
         } else {
-            (b0 - 240) * 262144 + (u32::try_from(s.as_bytes()[i + 1]).unwrap() - 128) * 4096
-                + (u32::try_from(s.as_bytes()[i + 2]).unwrap() - 128) * 64 + (u32::try_from(s.as_bytes()[i + 3]).unwrap() - 128)
+            (b0 - 240) * 262144 + (s.as_bytes()[i + 1] as u32 - 128) * 4096
+                + (s.as_bytes()[i + 2] as u32 - 128) * 64 + (s.as_bytes()[i + 3] as u32 - 128)
         };
         match char::from_u32(v) {
             None => None,

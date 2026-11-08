@@ -5,7 +5,6 @@ mod ss {
     spec fn sized(r: usize, n: usize) -> bool { r == n }
 
     #[effects(pure)]
-    #[uses(sized)]
     fn count(b: &[u8]) -> (r: usize)
         ensures sized(r, b.len()),
     {
@@ -15,7 +14,6 @@ mod ss {
     spec fn head(b: &[i64], r: i64) -> bool { b.len() == 0 || r == b[0] }
 
     #[effects(pure)]
-    #[uses(head)]
     fn first(b: &[i64]) -> (r: i64)
         ensures head(b, r),
     {
@@ -23,7 +21,6 @@ mod ss {
     }
 
     #[effects(pure)]
-    #[uses(within, sized)]
     fn middle(b: &[u8], lo: usize, hi: usize) -> (r: usize)
         requires within(lo, hi, b.len()),
         ensures sized(r, hi - lo),
@@ -34,7 +31,6 @@ mod ss {
     spec fn two(r: usize) -> bool { r == 2 }
 
     #[effects(alloc)]
-    #[uses(two, sized)]
     fn of_a_vec() -> (r: usize)
         ensures two(r),
     {
@@ -48,7 +44,6 @@ mod ss {
     spec fn third(r: i64) -> bool { r == 30 }
 
     #[effects(pure)]
-    #[uses(third, head)]
     fn of_an_array() -> (r: i64)
         ensures third(r),
     {
@@ -61,7 +56,6 @@ mod ss {
     spec fn empty(r: usize) -> bool { r == 0 }
 
     #[effects(pure)]
-    #[uses(empty, sized)]
     fn nothing(b: &[u8]) -> (r: usize)
         ensures empty(r),
     {

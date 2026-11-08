@@ -7,7 +7,6 @@ mod weak_witness {
     spec fn ref_post(text: &[u64], r: bool) -> bool { r == !(forall|i: usize| i < text.len() ==> !(#[trigger] text[i] == 122)) }
 
     #[effects(pure)]
-    #[uses(holds_below, one_way)]
     fn find(text: &[u64]) -> (r: bool)
         ensures one_way(text, r),
     {
@@ -22,7 +21,7 @@ mod weak_witness {
     }
 
     #[effects(pure)]
-    #[uses(ref_post, holds_below, one_way)]
+    #[uses(holds_below)]
     fn check(text: &[u64]) -> (r: bool)
         ensures ref_post(text, r),
     {

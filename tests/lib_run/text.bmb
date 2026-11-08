@@ -4,7 +4,7 @@ mod app {
 
     // `n=<i> sq=<i*i>` lines, built in one buffer and written once.
     #[effects(alloc, io)]
-    #[uses(short, std::bytes::room, std::bytes::grew_by, std::bytes::kept, std::bytes::fits, std::bytes::appended, std::bytes::copied)]
+    #[uses(std::bytes::kept, std::bytes::copied)]
     fn squares() -> () {
         let mut out: Vec<u8> = Vec::new();
         let mut i: u64 = 0;
@@ -24,7 +24,7 @@ mod app {
 
     // A parsed value, or `none`, on its own line.
     #[effects(alloc, io)]
-    #[uses(std::bytes::room, std::bytes::grew_by, std::bytes::kept)]
+    #[uses(std::bytes::kept)]
     fn show(r: Option<u64>) -> () {
         let mut out: Vec<u8> = Vec::new();
         match r {
@@ -42,12 +42,12 @@ mod app {
     fn show_at(r: Option<usize>) -> () {
         match r {
             None => show(None),
-            Some(i) => show(Some(u64::try_from(i).unwrap())),
+            Some(i) => show(Some(i as u64)),
         }
     }
 
     #[effects(alloc, io)]
-    #[uses(std::bytes::room, std::bytes::grew_by, std::bytes::kept)]
+    #[uses(std::bytes::kept)]
     fn signed() -> () {
         let mut out: Vec<u8> = Vec::new();
         std::bytes::push_i64(&mut out, -9223372036854775807 - 1);

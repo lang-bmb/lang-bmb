@@ -1135,7 +1135,7 @@ impl Session {
                 .filter(|w| w != path)
                 .collect();
             // `#[uses(Trait::m)]` reveals every impl's definition of it.
-            let uses: BTreeSet<String> = crate::verify::uses_of(f, unit, &t.fns)
+            let uses: BTreeSet<String> = crate::verify::context_of(path, f, unit, t)
                 .into_iter()
                 .flat_map(|u| {
                     let impls = impls_of(&u);

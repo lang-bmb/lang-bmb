@@ -7,7 +7,6 @@ mod sn {
     // Entry (i, j) of A: 1 / ((i + j)(i + j + 1) / 2 + i + 1). The index fits in 2^53, so
     // `f64::from` is exact (E0815).
     #[effects(pure)]
-    #[uses(small)]
     fn a(i: usize, j: usize) -> f64
         requires small(i, j),
     {
@@ -17,7 +16,6 @@ mod sn {
 
     // out = A v, or out = A^T v (`transpose`).
     #[effects(pure)]
-    #[uses(sized, small)]
     fn mul(v: &[f64], out: &mut [f64], n: usize, transpose: bool) -> ()
         requires sized(v, n), sized(out, n),
         ensures sized(out, n),
@@ -36,7 +34,6 @@ mod sn {
 
     // out = A^T A v.
     #[effects(pure)]
-    #[uses(sized)]
     fn mul_atav(v: &[f64], out: &mut [f64], tmp: &mut [f64], n: usize) -> ()
         requires sized(v, n), sized(out, n), sized(tmp, n),
         ensures sized(out, n), sized(tmp, n),
@@ -46,7 +43,6 @@ mod sn {
     }
 
     #[effects(alloc, io)]
-    #[uses(sized)]
     fn main() -> () {
         let n: usize = 100;
         let mut u: Vec<f64> = Vec::new();

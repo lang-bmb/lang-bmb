@@ -24,7 +24,6 @@ mod nf {
 
     // Replacing an element replaces its contents.
     #[effects(alloc)]
-    #[uses(first_is)]
     fn replaced(g: &mut Vec<Vec<i64>>) -> ()
         requires first_is(g.as_slice(), 1),
         ensures first_is(g.as_slice(), 1),

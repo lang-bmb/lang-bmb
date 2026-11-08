@@ -30,7 +30,7 @@ mod ledger {
 
         // Adds `x` when the result stays in range; whether it did.
         #[effects(pure)]
-        #[uses(sound, small)]
+        #[uses(sound)]
         fn deposit(self: &mut Account, x: i64) -> bool
             requires small(x),
         {
@@ -43,7 +43,7 @@ mod ledger {
 
         // Takes `x` out when the balance covers it; whether it did.
         #[effects(pure)]
-        #[uses(sound, small)]
+        #[uses(sound)]
         fn withdraw(self: &mut Account, x: i64) -> bool
             requires small(x),
         {
@@ -94,7 +94,7 @@ mod ledger {
         #[effects(pure)]
         #[uses(sound)]
         fn rank(self: &Account) -> u64 {
-            u64::try_from(self.balance / 100).unwrap()
+            (self.balance / 100) as u64
         }
     }
 
@@ -124,7 +124,6 @@ mod ledger {
     }
 
     #[effects(pure)]
-    #[uses(bit)]
     fn flag(b: bool) -> (r: i64)
         ensures bit(r),
     {
@@ -132,7 +131,7 @@ mod ledger {
     }
 
     #[effects(alloc, io)]
-    #[uses(sound, small, bit)]
+    #[uses(sound)]
     fn main() -> () {
         let mut a: Account = Account::open(1);
         let mut b: Account = Account::open(2);
@@ -154,7 +153,7 @@ mod ledger {
         let digits: [u64; 4] = [12, 7, 45, 31];
         print_u64(top::<u64>(&digits));
         print_u64(digits[1].rank());
-        print_u64(u64::try_from(log.count()).unwrap());
+        print_u64(log.count() as u64);
         print_u64(b.id);
         let moves: Vec<i64> = log.close();
         for i in 0..moves.len()

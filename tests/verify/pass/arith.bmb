@@ -7,7 +7,6 @@ mod arith_ok {
     spec fn le(a: u64, b: u64) -> bool { b <= a }
 
     #[effects(pure)]
-    #[uses(below_max)]
     fn add_guarded(x: i64) -> i64
         requires below_max(x),
     {
@@ -15,7 +14,6 @@ mod arith_ok {
     }
 
     #[effects(pure)]
-    #[uses(le)]
     fn sub_guarded(a: u64, b: u64) -> u64
         requires le(a, b),
     {
@@ -23,7 +21,6 @@ mod arith_ok {
     }
 
     #[effects(pure)]
-    #[uses(not_min_or_m1)]
     fn div_guarded(a: i64, b: i64) -> i64
         requires not_min_or_m1(a, b),
     {
@@ -31,7 +28,6 @@ mod arith_ok {
     }
 
     #[effects(pure)]
-    #[uses(not_min_or_m1)]
     fn rem_guarded(a: i64, b: i64) -> i64
         requires not_min_or_m1(a, b),
     {
@@ -41,7 +37,6 @@ mod arith_ok {
     spec fn pos(b: u64) -> bool { b > 0 }
 
     #[effects(pure)]
-    #[uses(pos)]
     fn unsigned_div(a: u64, b: u64) -> u64
         requires pos(b),
     {
@@ -49,7 +44,6 @@ mod arith_ok {
     }
 
     #[effects(pure)]
-    #[uses(pos)]
     fn unsigned_rem(a: u64, b: u64) -> u64
         requires pos(b),
     {
@@ -67,7 +61,6 @@ mod arith_ok {
     spec fn not_min(x: i64) -> bool { x > -9223372036854775808 }
 
     #[effects(pure)]
-    #[uses(is_abs, not_min)]
     fn abs(x: i64) -> (r: i64)
         requires not_min(x),
         ensures is_abs(x, r),
@@ -82,7 +75,6 @@ mod arith_ok {
     spec fn nonempty(a: &[i64]) -> bool { a.len() > 0 }
 
     #[effects(pure)]
-    #[uses(is_max, nonempty, prefix_max)]
     fn max_of(a: &[i64]) -> (m: i64)
         requires nonempty(a),
         ensures is_max(a, m),
@@ -110,7 +102,6 @@ mod mixed {
     spec fn small_len(a: &[i64]) -> bool { a.len() <= 1000000 }
 
     #[effects(pure)]
-    #[uses(counted, small_len)]
     fn count_pos(a: &[i64]) -> i64
         requires small_len(a),
     {

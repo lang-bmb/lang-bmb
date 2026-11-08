@@ -90,9 +90,9 @@ pub const MAX_POST_TRIALS: usize = 32;
 pub const MAX_MUTANTS: usize = 64;
 
 /// The checks of the lint, by the code each reports (`bmb lint --select`).
-pub const CODES: [&str; 12] = [
+pub const CODES: [&str; 17] = [
     "W0901", "W0902", "W0903", "W0904", "W0905", "W0906", "W0907", "W0909", "W0910", "W0911",
-    "W1001", "W1002",
+    "W0912", "W0913", "W0914", "W0915", "W0916", "W1001", "W1002",
 ];
 
 pub struct LintOutput {
@@ -534,6 +534,27 @@ pub fn lint_sources_selected(
     // W0907: counting `while` loops with a canonical `for` (syntactic).
     if runs("W0907") {
         for d in canonical_loops(&fe.program, files) {
+            out.push(d);
+        }
+    }
+
+    // W0912, W0913, W0914: input aliases the parser took (ADR-0095).
+    for d in fe.diags.aliases.iter().filter(|d| runs(d.code)) {
+        if (d.span.file as usize) < files.len() {
+            out.push(d.clone());
+        }
+    }
+
+    // W0916: `#[uses]` entries the default context holds.
+    if runs("W0916") {
+        for d in default_uses(&fe, files) {
+            out.push(d);
+        }
+    }
+
+    // W0915: integer conversions written `T::try_from(x).unwrap()`.
+    if runs("W0915") {
+        for d in conversions(&fe.source, files) {
             out.push(d);
         }
     }
@@ -1757,6 +1778,136 @@ pub(crate) fn method_calls(fe: &crate::Frontend, files: &[(String, String)]) -> 
                     "`{}` is a method: its normal form is a method call",
                     name.name
                 ),
+            )
+            .fix(format!("write `{fixed}`"), Some(fixed)),
+        );
+    });
+    out.sort_by_key(|d| (d.span.file, d.span.lo));
+    out
+}
+
+// ---------- `#[uses]` entries the default context holds (W0916, ADR-0095 A1) ----------
+
+/// W0916 for each `#[uses(..)]` entry that names a spec fn the
+/// definition's default context (ADR-0095 A1, `Tables::context`) reveals
+/// already. The fix writes the attribute without those entries, or deletes
+/// its line when none is left.
+pub(crate) fn default_uses(fe: &crate::Frontend, files: &[(String, String)]) -> Vec<Diag> {
+    let mut out = Vec::new();
+    for (path, unit, f) in crate::check::defs_of(&fe.program, &fe.tables.fns) {
+        if crate::stdlib::in_std(&path) {
+            continue;
+        }
+        let ctx = match fe.tables.context.get(&path) {
+            Some(c) => c,
+            None => continue,
+        };
+        for a in f.attrs.iter().filter(|a| a.name.name == "uses") {
+            let Some((_, text)) = files.get(a.span.file as usize) else {
+                continue;
+            };
+            let mut kept = Vec::new();
+            let mut gone = Vec::new();
+            for arg in &a.args {
+                let crate::ast::AttrArg::Ident(i) = arg else {
+                    continue;
+                };
+                let full = crate::check::uses_target(&i.name, &unit, &fe.tables.fns);
+                if full.as_ref().is_some_and(|q| ctx.contains(q)) {
+                    gone.push(i.name.clone());
+                } else {
+                    kept.push(text[i.span.lo as usize..i.span.hi as usize].to_string());
+                }
+            }
+            if gone.is_empty() {
+                continue;
+            }
+            // With no entry left the attribute goes (the fix applier takes
+            // its line, `layout`).
+            let r = if kept.is_empty() {
+                String::new()
+            } else {
+                format!("#[uses({})]", kept.join(", "))
+            };
+            let span = a.span;
+            out.push(
+                Diag::new(
+                    "W0916",
+                    span,
+                    format!(
+                        "`#[uses]` names what the default context reveals already: {}",
+                        gone.join(", ")
+                    ),
+                )
+                .fix("leave out what the context holds (ADR-0095 A1)", Some(r)),
+            );
+        }
+    }
+    out.sort_by_key(|d| (d.span.file, d.span.lo));
+    out
+}
+
+// ---------- conversions written `T::try_from(x).unwrap()` (W0915, ADR-0095 A4) ----------
+
+/// W0915 for each integer conversion written `T::try_from(x).unwrap()`,
+/// whose canonical form is `x as T` (an input alias). The fix splices the
+/// operand's own text and parenthesizes the cast where its place binds
+/// tighter: the receiver of a method, a field, an index or `?`, the operand
+/// of a prefix operator, and the left of `<` or `<<` (which would read the
+/// type's arguments).
+pub(crate) fn conversions(p: &Program, files: &[(String, String)]) -> Vec<Diag> {
+    let mut p = p.clone();
+    let mut tight: BTreeSet<(u32, u32, u32)> = BTreeSet::new();
+    let key = |e: &Expr| (e.span.file, e.span.lo, e.span.hi);
+    crate::ast::exprs_mut(&mut p, &mut |e| match &e.kind {
+        ExprKind::Method { recv, .. } => {
+            tight.insert(key(recv));
+        }
+        ExprKind::Field { base, .. } | ExprKind::Index { base, .. } => {
+            tight.insert(key(base));
+        }
+        ExprKind::Try(x)
+        | ExprKind::Unary(_, x)
+        | ExprKind::Deref(x)
+        | ExprKind::Trigger(x)
+        | ExprKind::Ref { expr: x, .. } => {
+            tight.insert(key(x));
+        }
+        ExprKind::Binary(BinOp::Lt | BinOp::Shl, l, _) => {
+            tight.insert(key(l));
+        }
+        _ => {}
+    });
+    let mut out = Vec::new();
+    crate::ast::exprs_mut(&mut p, &mut |e| {
+        let Some((x, t)) = crate::fmt::cast_of(e) else {
+            return;
+        };
+        let Some((_, text)) = files.get(e.span.file as usize) else {
+            return;
+        };
+        let slice = |lo: u32, hi: u32| text.get(lo as usize..hi as usize).unwrap_or_default();
+        // Written `x as T`, the tree has the same shape: the text tells.
+        if !slice(e.span.lo, e.span.hi).starts_with(&format!("{t}::try_from")) {
+            return;
+        }
+        let xs = slice(x.span.lo, x.span.hi);
+        let xs = if crate::fmt::prec(x) < crate::fmt::prec(e) && !enclosed(xs) {
+            format!("({xs})")
+        } else {
+            xs.to_string()
+        };
+        let cast = format!("{xs} as {t}");
+        let fixed = if tight.contains(&key(e)) {
+            format!("({cast})")
+        } else {
+            cast
+        };
+        out.push(
+            Diag::new(
+                "W0915",
+                e.span,
+                format!("an integer conversion: its canonical form is `x as {t}`"),
             )
             .fix(format!("write `{fixed}`"), Some(fixed)),
         );

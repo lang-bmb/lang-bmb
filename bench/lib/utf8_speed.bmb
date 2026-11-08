@@ -45,8 +45,8 @@ mod app {
         let mut sum: u64 = 0;
         for k in 0..20 {
             let r: usize = std::utf8::valid_up_to(v.as_slice());
-            sum = sum.wrapping_add(u64::try_from(r).unwrap());
+            sum = sum.wrapping_add(r as u64);
         }
-        print_i64(i64::try_from(sum % 1000000007).unwrap());
+        print_i64((sum % 1000000007) as i64);
     }
 }

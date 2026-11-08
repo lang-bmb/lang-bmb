@@ -67,13 +67,16 @@ mod types {
     #[effects(pure)]
     fn unknown_var() -> i64 { y }
 
+    // `x` hides the parameter (E0303). The inner `z` is out of scope at
+    // the second, so a name of the same type would be taken (ADR-0095 A3);
+    // a name has one type in a function, so `u64` is E0303.
     #[effects(pure)]
     fn shadow(x: i64) -> i64 {
         let x: i64 = 1;
         {
             let z: i64 = 2;
         }
-        let z: i64 = 3;
+        let z: u64 = 3;
         x
     }
 

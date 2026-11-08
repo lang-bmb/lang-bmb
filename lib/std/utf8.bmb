@@ -52,7 +52,7 @@ mod utf8 {
 
     // A concatenation followed by one more well-formed sequence is a concatenation: induction on
     // the sequences of `s[a..i]` (ADR-0062).
-    #[uses(extended, parses, step_ok)]
+    #[uses(parses)]
     proof fn parses_extend(s: &[u8], a: usize, i: usize)
         requires step_ok(s, a, i),
         ensures extended(s, a, i),
@@ -71,7 +71,7 @@ mod utf8 {
 
     // The scan is deterministic: a concatenation that reaches `r` and one that reaches past it
     // agree up to `r`, so a sequence starts at `r`.
-    #[uses(goes_on, parses, two_ends)]
+    #[uses(parses)]
     proof fn parse_goes_on(s: &[u8], a: usize, r: usize, n: usize)
         requires two_ends(s, a, r, n),
         ensures goes_on(s, r),
@@ -88,7 +88,7 @@ mod utf8 {
 
     // `seq_len(s, i)` computed.
     #[effects(pure)]
-    #[uses(width_result, seq_len, cont, second3, second4, at)]
+    #[uses(seq_len, cont, second3, second4)]
     fn width(s: &[u8], i: usize) -> (w: usize)
         requires at(s, i),
         ensures width_result(s, i, w),
@@ -136,7 +136,7 @@ mod utf8 {
     // The length of the longest prefix of `s` that is well-formed UTF-8 (Rust: `Utf8Error::valid_up_to`,
     // or `s.len()` when `str::from_utf8(s)` succeeds).
     #[effects(pure)]
-    #[uses(valid_upto, stops, parses, extended, step_ok, seq_len, width_result, at)]
+    #[uses(parses, seq_len)]
     fn valid_up_to(s: &[u8]) -> (r: usize)
         ensures valid_upto(s, r), stops(s, r),
     {
@@ -163,7 +163,6 @@ mod utf8 {
 
     // Whether all of `s` is well-formed UTF-8 (Rust: `str::from_utf8(s).is_ok()`).
     #[effects(pure)]
-    #[uses(valid, valid_result, valid_upto, stops, goes_on, two_ends)]
     fn is_valid(s: &[u8]) -> (r: bool)
         ensures valid_result(s, r),
     {

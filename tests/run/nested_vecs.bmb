@@ -30,7 +30,6 @@ mod nv {
     }
 
     #[effects(alloc)]
-    #[uses(rows, small)]
     fn grid(n: usize) -> (out: Vec<Vec<i64>>)
         requires small(n),
         ensures rows(out.as_slice(), n),
@@ -40,7 +39,7 @@ mod nv {
             invariant k <= n && n <= 100 && rows(g.as_slice(), k),
         {
             let mut r: Vec<i64> = Vec::new();
-            let v: i64 = i64::try_from(k).unwrap();
+            let v: i64 = k as i64;
             r.push(v);
             r.push(v * 10);
             g.push(r);
@@ -49,7 +48,6 @@ mod nv {
     }
 
     #[effects(alloc, io)]
-    #[uses(rows, small)]
     fn main() -> () {
         let mut g: Vec<Vec<i64>> = grid(3);
         print_i64(total(&g));

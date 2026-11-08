@@ -17,7 +17,6 @@ mod bsearch {
     }
 
     #[effects(pure)]
-    #[uses(is_sorted, below_target, at_least_target, lower_bound)]
     fn lower_bound_of(a: &[i64], t: i64) -> (r: usize)
         requires is_sorted(a),
         ensures lower_bound(a, t, r),
@@ -43,7 +42,6 @@ mod bsearch {
     spec fn bounded_by_input(g: u64, a: u64, b: u64) -> bool { g > 0 && (g <= a || g <= b) }
 
     #[effects(pure)]
-    #[uses(pos, bounded_by_input)]
     fn gcd(a: u64, b: u64) -> (g: u64)
         requires pos(a, b),
         ensures bounded_by_input(g, a, b),
@@ -55,7 +53,6 @@ mod bsearch {
     spec fn digit_sum_bound(n: u64, r: u64) -> bool { r <= n }
 
     #[effects(pure)]
-    #[uses(digit_sum_bound)]
     fn digit_sum(n: u64) -> (r: u64)
         ensures digit_sum_bound(n, r),
         decreases n,

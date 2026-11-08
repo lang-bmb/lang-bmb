@@ -26,7 +26,7 @@ mod shapes {
 
     impl Point {
         #[effects(pure)]
-        #[uses(small_p, small)]
+        #[uses(small)]
         fn sum(self: &Point) -> i64
             requires small_p(*self),
         {
@@ -34,7 +34,7 @@ mod shapes {
         }
 
         #[effects(pure)]
-        #[uses(small_p, small)]
+        #[uses(small)]
         fn mirror(self: Point) -> (r: Point)
             requires small_p(self),
             ensures small_p(r),
@@ -44,7 +44,7 @@ mod shapes {
     }
 
     #[effects(pure)]
-    #[uses(small_s, small_p, small)]
+    #[uses(small_p, small)]
     fn area(s: &Shape) -> i64
         requires small_s(*s),
     {
@@ -64,7 +64,6 @@ mod shapes {
     }
 
     #[effects(pure)]
-    #[uses(small)]
     fn checked_div(a: i64, b: i64) -> Result<i64, bool>
         requires small(a), small(b),
     {
@@ -72,7 +71,7 @@ mod shapes {
     }
 
     #[effects(pure)]
-    #[uses(idx, all_small, small_p, small)]
+    #[uses(idx, small_p)]
     fn shift_all(a: &mut [Point], d: i64) -> ()
         requires all_small(a), small(d),
     {
@@ -95,7 +94,6 @@ mod shapes {
     }
 
     #[effects(io)]
-    #[uses(small_p, small_s, small)]
     fn main() -> () {
         let p: Point = Point { x: 1, y: 2 };
         let mut q: Point = p;

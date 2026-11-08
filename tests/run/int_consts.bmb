@@ -22,13 +22,12 @@ mod ic {
     }
 
     #[effects(io)]
-    #[uses(below)]
     fn main() -> () {
         print_i64(i64::MIN);
         print_i64(i64::MAX);
         print_u64(u64::MAX);
-        print_u64(u64::try_from(usize::MAX).unwrap());
-        print_u64(u64::try_from(u8::MAX).unwrap());
+        print_u64(usize::MAX as u64);
+        print_u64(u8::MAX as u64);
         print_u64(u64::MIN);
         let a: [i64; 3] = [-4, 17, 3];
         print_i64(largest(&a));
@@ -38,7 +37,6 @@ mod ic {
     }
 
     #[effects(pure)]
-    #[uses(below)]
     fn next(x: u64) -> u64
         requires below(x),
     {

@@ -13,7 +13,6 @@ mod tr {
 
     impl Area for Off {
         #[effects(pure)]
-        #[uses(nonneg)]
         fn area(self: &Off) -> (r: i64)
             ensures nonneg(r),
         {
@@ -33,7 +32,7 @@ mod tr {
 
     impl Area for Sq {
         #[effects(pure)]
-        #[uses(Area::model, is_model, nonneg, pos)]
+        #[uses(Area::model, nonneg)]
         fn area(self: &Sq) -> (r: i64)
             requires pos(self.s),
             ensures is_model(r, self.s),

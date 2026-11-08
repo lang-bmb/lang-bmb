@@ -3,7 +3,6 @@ mod g {
     struct Acc { total: i64, flag: bool, b: u8 }
 
     #[effects(pure)]
-    #[uses(grew, small)]
     fn bump(x: &mut i64) -> ()
         requires small(*x),
         ensures grew(*old(x), *x),
@@ -33,7 +32,6 @@ mod g {
     }
 
     #[effects(io)]
-    #[uses(grew, small)]
     fn main() -> () {
         let mut a: i64 = 5;
         print_i64(get::<i64>(&a));
@@ -58,12 +56,12 @@ mod g {
         } else {
             print_i64(0);
         }
-        print_u64(u64::try_from(acc.b).unwrap());
+        print_u64(acc.b as u64);
         let mut xs: [u8; 3] = [1, 2, 255];
         inc8(&mut xs[0]);
         inc8(&mut xs[2]);
-        print_u64(u64::try_from(xs[0]).unwrap());
-        print_u64(u64::try_from(get::<u8>(&xs[2])).unwrap());
+        print_u64(xs[0] as u64);
+        print_u64(get::<u8>(&xs[2]) as u64);
         sz::run();
     }
 

@@ -16,7 +16,7 @@ mod bm {
     fn fx_bytes(s: &[u8]) -> u64 {
         let mut h: u64 = 0;
         for i in 0..s.len() {
-            h = fx(h, u64::try_from(s[i]).unwrap());
+            h = fx(h, s[i] as u64);
         }
         h
     }
@@ -27,11 +27,11 @@ mod bm {
     fn members(set: u64) -> () {
         let mut s: u64 = set;
         let n: u32 = s.count_ones();
-        print_u64(u64::try_from(n).unwrap());
+        print_u64(n as u64);
         while s != 0
             decreases s,
         {
-            print_u64(u64::try_from(s.trailing_zeros()).unwrap());
+            print_u64(s.trailing_zeros() as u64);
             s = s & (s - 1);
         }
     }
@@ -40,7 +40,6 @@ mod bm {
     // bit of `n - 1`. The sub-proof states the facts of the bits that the
     // shift and the postcondition need.
     #[effects(pure)]
-    #[uses(small, power, pow2)]
     fn next_power(n: u32) -> (r: u32)
         requires small(n),
         ensures power(n, r),
@@ -64,7 +63,6 @@ mod bm {
     }
 
     #[effects(io)]
-    #[uses(small)]
     fn main() -> () {
         print_u64(fx_bytes(b"hello"));
         print_u64(fx_bytes(b"The quick brown fox jumps over the lazy dog"));
@@ -72,23 +70,23 @@ mod bm {
         members(0);
         let ns: [u32; 6] = [1, 2, 3, 17, 1000, 1048576];
         for i in 0..ns.len() {
-            print_u64(u64::try_from(next_power(ns[i])).unwrap());
+            print_u64(next_power(ns[i]) as u64);
         }
         let w: u32 = 0x12345678;
-        print_u64(u64::try_from(w.swap_bytes()).unwrap());
+        print_u64(w.swap_bytes() as u64);
         let s: i16 = -2;
-        print_i64(i64::try_from(s.swap_bytes()).unwrap());
-        print_i64(i64::try_from(s.rotate_right(4)).unwrap());
-        print_u64(u64::try_from(s.leading_zeros()).unwrap());
-        print_u64(u64::try_from(s.count_zeros()).unwrap());
+        print_i64(s.swap_bytes() as i64);
+        print_i64(s.rotate_right(4) as i64);
+        print_u64(s.leading_zeros() as u64);
+        print_u64(s.count_zeros() as u64);
         let mut x: u64 = 88172645463325252;
         for _r in 0..4 {
             x = xorshift(x);
             print_u64(x);
         }
         let b: u8 = 0x96;
-        print_u64(u64::try_from(b.rotate_left(3)).unwrap());
-        print_u64(u64::try_from(b.rotate_right(11)).unwrap());
-        print_u64(u64::try_from(b.wrapping_shl(9)).unwrap());
+        print_u64(b.rotate_left(3) as u64);
+        print_u64(b.rotate_right(11) as u64);
+        print_u64(b.wrapping_shl(9) as u64);
     }
 }

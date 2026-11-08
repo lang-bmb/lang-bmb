@@ -48,7 +48,7 @@ mod vp {
     }
 
     #[effects(pure)]
-    #[uses(pair, small)]
+    #[uses(small)]
     fn boxes(a: &[Box<i64>]) -> i64
         requires pair(a),
     {

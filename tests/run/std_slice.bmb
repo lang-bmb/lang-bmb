@@ -15,13 +15,13 @@ mod uses_slice {
             Ok(i) => print_str("found\n"),
             Err(j) => {
                 print_str("insert at ");
-                print_u64(u64::try_from(j).unwrap());
+                print_u64(j as u64);
             }
         }
     }
 
     #[effects(alloc, io)]
-    #[uses(copied, std::slice::ascending, std::slice::below, std::slice::before, std::slice::bounded, std::slice::ordered_but, std::slice::sorted_order)]
+    #[uses(std::slice::below, std::slice::before, std::slice::ordered_but)]
     fn main() -> () {
         let mut recs: Vec<Rec> = Vec::new();
         recs.push(Rec { key: 3, tag: b'a' });

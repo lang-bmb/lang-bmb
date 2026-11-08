@@ -7,7 +7,7 @@ mod elem_preds {
     spec fn below_five(a: &[i64]) -> bool { forall|i: usize| i < a.len() ==> #[trigger] a[i] < 5 }
 
     #[effects(pure)]
-    #[uses(all_small, small, below_five)]
+    #[uses(small)]
     fn unfold(a: &[i64]) -> (r: bool)
         requires all_small(a),
         ensures below_five(a),

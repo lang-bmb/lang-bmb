@@ -25,7 +25,7 @@ mod mg {
         v.push(3);
         let w: Wrap<Vec<i64>> = wrap::<Vec<i64>>(id::<Vec<i64>>(v));
         let back: Vec<i64> = unwrap::<Vec<i64>>(w);
-        print_u64(u64::try_from(back.len()).unwrap());
+        print_u64(back.len() as u64);
         print_i64(discard::<Box<i64>>(Box::new(1)));
         print_i64(id::<i64>(5));
         let mut b: Box<i64> = Box::new(7);

@@ -2,7 +2,7 @@
 {"code":"E0805","severity":"error","message":"index may be out of bounds in `bounds::read_len`; counterexample: a = [] (len 0)","file":"fail/bounds.bmb","line":7,"col":37,"end_line":7,"end_col":47}
 {"code":"E0805","severity":"error","message":"index may be out of bounds in `bounds::write_any`; counterexample: a = [] (len 0), i = 0","file":"fail/bounds.bmb","line":10,"col":51,"end_line":10,"end_col":55}
 {"code":"E0805","severity":"error","message":"index may be out of bounds in `bounds::local_array`","file":"fail/bounds.bmb","line":15,"col":9,"end_line":15,"end_col":13,"fix":{"message":"there is no input to show: it fails for the definition's own values or for values a loop or call left open; after a loop the prover knows only its invariants and after a call only the callee's `ensures`, so state there what this needs, or correct the claim"}}
-{"code":"E0802","severity":"error","message":"postcondition `not_seven` may not hold in `bounds::cex_after_array`; counterexample: a = [0] (len 1), x = 7","file":"fail/bounds.bmb","line":28,"col":17,"end_line":28,"end_col":29}
+{"code":"E0802","severity":"error","message":"postcondition `not_seven` may not hold in `bounds::cex_after_array`; counterexample: a = [0] (len 1), x = 7","file":"fail/bounds.bmb","line":27,"col":17,"end_line":27,"end_col":29}
 {"def":"bounds::cex_after_array","status":"failed","obligations":1,"failed":1,"rlimit":861,"rlimit_max":861}
 {"def":"bounds::local_array","status":"failed","obligations":1,"failed":1,"rlimit":115,"rlimit_max":115}
 {"def":"bounds::read_any","status":"failed","obligations":1,"failed":1,"rlimit":930,"rlimit_max":930}

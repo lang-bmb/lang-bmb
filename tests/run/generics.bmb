@@ -40,7 +40,6 @@ mod gen {
     }
 
     #[effects(pure)]
-    #[uses(idx)]
     fn get<T: Copy>(a: &[T], i: usize) -> T
         requires idx::<T>(a, i),
     {
@@ -69,7 +68,6 @@ mod gen {
     }
 
     #[effects(io)]
-    #[uses(idx)]
     fn main() -> () {
         let p: Pair<i64, bool> = Pair { first: 21, second: true };
         let q: Pair<bool, i64> = swap::<i64, bool>(p);

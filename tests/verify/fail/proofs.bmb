@@ -26,7 +26,7 @@ mod pff {
 
     // A false conclusion: an induction step that does not follow (a
     // counterexample).
-    #[uses(tri, tri_small)]
+    #[uses(tri)]
     proof fn tri_le(n: u64)
         ensures tri_small(n),
         decreases n,
@@ -38,7 +38,7 @@ mod pff {
 
     // The recursive call does not decrease the measure: an induction on
     // nothing proves anything.
-    #[uses(sum_le, sum_to, within)]
+    #[uses(sum_to)]
     proof fn circular(a: &[u64], i: usize, j: usize)
         requires within(a, i, j),
         ensures sum_le(a, i, j),
@@ -48,7 +48,7 @@ mod pff {
     }
 
     // The lemma's precondition is not established at the call.
-    #[uses(sum_le, sum_to, within)]
+    #[uses(sum_to)]
     proof fn grows(a: &[u64], i: usize, j: usize)
         requires within(a, i, j),
         ensures sum_le(a, i, j),
@@ -63,7 +63,6 @@ mod pff {
         sum_to(a, 1) <= sum_to(a, a.len())
     }
 
-    #[uses(first_le_all, sum_le)]
     proof fn unestablished(a: &[u64])
         ensures first_le_all(a),
     {
@@ -78,7 +77,6 @@ mod pff {
         x > 0
     }
 
-    #[uses(nonneg)]
     proof fn natural(x: u32)
         ensures nonneg(x),
     {
@@ -86,7 +84,6 @@ mod pff {
 
     // A parameter's type is part of what the lemma assumes: ghost
     // arithmetic is mathematical, so `x - 1` may be below `u32` (E0819).
-    #[uses(nonneg)]
     proof fn below_zero(x: u32)
         ensures nonneg(x - 1),
     {
@@ -99,7 +96,6 @@ mod pff {
 
     // A false conclusion of a lemma without recursion: a confirmed
     // counterexample.
-    #[uses(big, pos)]
     proof fn wrong(x: i64)
         requires pos(x),
         ensures big(x),
@@ -107,7 +103,6 @@ mod pff {
     }
 
     // An `assert` in ghost code is an obligation.
-    #[uses(pos)]
     proof fn asserts(x: i64)
         requires pos(x),
     {
@@ -121,7 +116,7 @@ mod pff {
     // Executable code: a lemma's precondition is an obligation at the call
     // in a `proof` block too.
     #[effects(pure)]
-    #[uses(sum_le, sum_to, within)]
+    #[uses(sum_to)]
     fn first(a: &[u64]) -> u64 {
         proof {
             grows(a, 2, 1);

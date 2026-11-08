@@ -18,19 +18,19 @@ mod conv {
 
     #[effects(pure)]
     fn clamp(x: i64) -> u64 {
-        if x < 0 { 0 } else { u64::try_from(x).unwrap() }
+        if x < 0 { 0 } else { x as u64 }
     }
 
     #[effects(io)]
     fn main() -> () {
-        print_u64(u64::try_from(index_or_max(-3)).unwrap());
-        print_u64(u64::try_from(index_or_max(42)).unwrap());
+        print_u64(index_or_max(-3) as u64);
+        print_u64(index_or_max(42) as u64);
         print_i64(as_signed(18446744073709551615));
         print_i64(as_signed(9223372036854775807));
         print_u64(clamp(-7));
         print_u64(clamp(7));
         let a: [i64; 3] = [10, 20, 30];
         let k: i64 = 2;
-        print_i64(a[usize::try_from(k).unwrap()]);
+        print_i64(a[k as usize]);
     }
 }

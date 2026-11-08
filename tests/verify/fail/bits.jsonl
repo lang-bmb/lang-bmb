@@ -1,10 +1,10 @@
 {"code":"E0803","severity":"error","message":"`<<` may overflow `u32`: the shift amount may be outside 0..32 in `bf::shl`; counterexample: x = 0, k = 32","file":"fail/bits.bmb","line":6,"col":9,"end_line":6,"end_col":15}
-{"code":"E0803","severity":"error","message":"`>>` may overflow `i16`: the shift amount may be outside 0..16 in `bf::shr`; counterexample: x = 0, k = -1","file":"fail/bits.bmb","line":19,"col":9,"end_line":19,"end_col":15}
-{"code":"E0803","severity":"error","message":"`<<` may overflow `u8`: the shift amount may be outside 0..8 in `bf::wide`; counterexample: x = 0","file":"fail/bits.bmb","line":25,"col":9,"end_line":25,"end_col":15}
-{"code":"E0803","severity":"error","message":"`+` may overflow `u16` in `bf::flip`; counterexample: x = 0","file":"fail/bits.bmb","line":31,"col":9,"end_line":31,"end_col":15}
-{"code":"E0803","severity":"error","message":"`+` may overflow `u8` in `bf::set`; counterexample: x = 255","file":"fail/bits.bmb","line":37,"col":9,"end_line":37,"end_col":20}
-{"code":"E0802","severity":"error","message":"postcondition `at_most` may not hold in `bf::or`; counterexample: a = 2147483647, b = 4294967295","file":"fail/bits.bmb","line":48,"col":17,"end_line":48,"end_col":30}
-{"code":"E0802","severity":"error","message":"postcondition `nonneg` may not hold in `bf::half`; counterexample: x = -2","file":"fail/bits.bmb","line":61,"col":17,"end_line":61,"end_col":26}
+{"code":"E0803","severity":"error","message":"`>>` may overflow `i16`: the shift amount may be outside 0..16 in `bf::shr`; counterexample: x = 0, k = -1","file":"fail/bits.bmb","line":18,"col":9,"end_line":18,"end_col":15}
+{"code":"E0803","severity":"error","message":"`<<` may overflow `u8`: the shift amount may be outside 0..8 in `bf::wide`; counterexample: x = 0","file":"fail/bits.bmb","line":24,"col":9,"end_line":24,"end_col":15}
+{"code":"E0803","severity":"error","message":"`+` may overflow `u16` in `bf::flip`; counterexample: x = 0","file":"fail/bits.bmb","line":30,"col":9,"end_line":30,"end_col":15}
+{"code":"E0803","severity":"error","message":"`+` may overflow `u8` in `bf::set`; counterexample: x = 255","file":"fail/bits.bmb","line":36,"col":9,"end_line":36,"end_col":20}
+{"code":"E0802","severity":"error","message":"postcondition `at_most` may not hold in `bf::or`; counterexample: a = 2147483647, b = 4294967295","file":"fail/bits.bmb","line":46,"col":17,"end_line":46,"end_col":30}
+{"code":"E0802","severity":"error","message":"postcondition `nonneg` may not hold in `bf::half`; counterexample: x = -2","file":"fail/bits.bmb","line":58,"col":17,"end_line":58,"end_col":26}
 {"def":"bf::flip","status":"failed","obligations":1,"failed":1,"rlimit":6567,"rlimit_max":6567}
 {"def":"bf::half","status":"failed","obligations":1,"failed":1,"rlimit":561,"rlimit_max":561}
 {"def":"bf::or","status":"failed","obligations":1,"failed":1,"rlimit":5957,"rlimit_max":5089}

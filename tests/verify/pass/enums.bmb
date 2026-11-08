@@ -27,7 +27,6 @@ mod geo {
     }
 
     #[effects(pure)]
-    #[uses(nonneg)]
     fn area(s: &Shape) -> (r: i64)
         ensures nonneg(r),
     {
@@ -39,7 +38,6 @@ mod geo {
     }
 
     #[effects(pure)]
-    #[uses(is_some, some_of)]
     fn wrap(a: i64) -> (r: Option<i64>)
         ensures is_some(r), some_of(r, a),
     {
@@ -47,7 +45,6 @@ mod geo {
     }
 
     #[effects(pure)]
-    #[uses(side)]
     fn square(n: i64) -> (r: Shape)
         ensures side(r, n),
     {
@@ -57,7 +54,6 @@ mod geo {
 
     // Nested: an enum in a payload, matched in turn.
     #[effects(pure)]
-    #[uses(nonneg)]
     fn nested(o: Option<Shape>) -> (r: i64)
         ensures nonneg(r),
     {
@@ -75,7 +71,6 @@ mod geo {
 
     // A loop keeps only what its invariant says of the enum it writes.
     #[effects(pure)]
-    #[uses(is_dot)]
     fn settle(n: i64) -> (r: Shape)
         ensures is_dot(r),
     {
@@ -89,7 +84,6 @@ mod geo {
     }
 
     #[effects(pure)]
-    #[uses(is_dot)]
     fn clear(s: &mut Shape) -> ()
         ensures is_dot(*s),
     {
@@ -97,7 +91,6 @@ mod geo {
     }
 
     #[effects(pure)]
-    #[uses(is_dot)]
     fn caller(t: Tagged) -> (r: Shape)
         ensures is_dot(r),
     {
@@ -126,7 +119,6 @@ mod cells {
     // parameter's array past the length is unknown, so SMT equality of the
     // datatype would not prove this.
     #[effects(pure)]
-    #[uses(same)]
     fn rebuild(c: Cell) -> (r: Cell)
         ensures same(r, c),
     {
@@ -137,7 +129,7 @@ mod cells {
     }
 
     #[effects(pure)]
-    #[uses(same, same_slot)]
+    #[uses(same)]
     fn rebuild_slot(s: Slot) -> (r: Slot)
         ensures same_slot(r, s),
     {

@@ -199,13 +199,53 @@ impl IdMode<'_> {
 
 const INDENT: &str = "    ";
 
+/// Precedence of `x as T`: tighter than `*`, looser than the prefix
+/// operators (`-x as u64` is `(-x) as u64`), as in Rust (ADR-0095 A4).
+const CAST: u8 = 11;
 /// Precedence of prefix operators (`-x`, `!x`, `&x`, `*p`).
-const PREFIX: u8 = 11;
+const PREFIX: u8 = 12;
 /// Precedence of postfix forms and atoms.
-const POSTFIX: u8 = 12;
+const POSTFIX: u8 = 13;
+
+/// The canonical text of `x` converted to the integer type `t`.
+pub(crate) fn cast_text(x: &Expr, t: &str) -> String {
+    let xs = expr_text(x);
+    if prec(x) < CAST {
+        format!("({xs}) as {t}")
+    } else {
+        format!("{xs} as {t}")
+    }
+}
+
+/// An integer conversion, whose canonical form is `x as T` (ADR-0095 A4):
+/// the tree of `T::try_from(x).unwrap()` with `T` an integer type. The
+/// operand and `T`.
+pub(crate) fn cast_of(e: &Expr) -> Option<(&Expr, &str)> {
+    let ExprKind::Method { recv, name, args } = &e.kind else {
+        return None;
+    };
+    if name.name != "unwrap" || !args.is_empty() {
+        return None;
+    }
+    let ExprKind::Call {
+        path, targs, args, ..
+    } = &recv.kind
+    else {
+        return None;
+    };
+    if path.len() != 2 || path[1].name != "try_from" || !targs.is_empty() || args.len() != 1 {
+        return None;
+    }
+    let t = path[0].name.as_str();
+    crate::ast::IntTy::from_name(t)?;
+    Some((&args[0], t))
+}
 
 /// Rust's operator precedence (ADR-0019 §1, ADR-0048 §2).
-fn prec(e: &Expr) -> u8 {
+pub(crate) fn prec(e: &Expr) -> u8 {
+    if cast_of(e).is_some() {
+        return CAST;
+    }
     match &e.kind {
         ExprKind::Binary(op, ..) => match op {
             BinOp::Implies => 1,
@@ -1204,6 +1244,12 @@ impl<'a> Printer<'a> {
                 }
                 format!("{}({})", segs.join("::"), a.join(", "))
             }
+            // The identity keeps the tree's own form (the hashes do not
+            // depend on the surface of a conversion).
+            _ if self.id.is_none() && cast_of(e).is_some() => {
+                let (x, t) = cast_of(e).unwrap();
+                format!("{} as {t}", self.expr(x, CAST))
+            }
             ExprKind::Method { recv, name, args } => {
                 let r = self.expr(recv, POSTFIX);
                 let a: Vec<String> = args.iter().map(|x| self.expr(x, 0)).collect();
@@ -1223,6 +1269,13 @@ impl<'a> Printer<'a> {
                     BinOp::Implies => (p + 1, p),
                     o if o.is_cmp() => (p + 1, p + 1),
                     _ => (p, p + 1),
+                };
+                // `x as u64 < y` reads `u64<..` as type arguments (in Rust
+                // too): a conversion left of `<` or `<<` is parenthesized.
+                let lm = if matches!(op, BinOp::Lt | BinOp::Shl) && cast_of(l).is_some() {
+                    POSTFIX
+                } else {
+                    lm
                 };
                 format!("{} {} {}", self.expr(l, lm), op.symbol(), self.expr(r, rm))
             }

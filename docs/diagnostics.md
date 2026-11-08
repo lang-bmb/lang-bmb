@@ -23,13 +23,13 @@
 | --- | --- |
 | E0201 | `let` requires an explicit type |
 | E0202 | macros are not allowed |
-| E0205 | `as` casts are not allowed |
+| E0205 | `as` converts between integer types only (to `f64`: `f64::from(x)`) |
 | E0207 | construct not supported in milestone 1 |
 | E0208 | lifetime annotations are not allowed |
 | E0209 | function return type is required (write `-> ()` for unit) |
 | E0210 | `mut` parameters are not allowed |
 | E0211 | comparison operators cannot be chained |
-| E0212 | `T::from(x)` / `x.into()` / `x.try_into()`: convert with `T::try_from(x).unwrap()` |
+| E0212 | `T::from(x)` / `x.into()` / `x.try_into()`: convert with `x as T` |
 | E0213 | `T::try_from(x).expect(..)` is written `.unwrap()` |
 | E0214 | `use` is not used: names are written in full |
 | E0218 | a `Vec` or `String` is passed where a slice or `&str` is expected: write `v.as_slice()` or `s.as_str()` |
@@ -74,7 +74,7 @@
 | --- | --- |
 | E0301 | unknown name |
 | E0302 | duplicate definition |
-| E0303 | name already bound in this function (shadowing is not allowed) |
+| E0303 | a local name hides a visible one (a parameter, an outer local, the result), or is bound elsewhere in the function with another type (ADR-0095 A3) |
 | E0304 | unknown function |
 | E0305 | unknown type or trait |
 | E0306 | unknown field |
@@ -130,7 +130,7 @@
 
 | 코드 | 뜻 |
 | --- | --- |
-| E0501 | contract clause must be a call to a named predicate (`spec fn ... -> bool`) |
+| E0501 | a contract clause with a quantifier must be a call to a named predicate (`spec fn ... -> bool`); one without is an expression (ADR-0095 A2) |
 | E0502 | vacuous predicate used in a contract |
 | E0503 | specification-only construct used in executable code |
 | E0504 | executable function called in a specification |
@@ -205,6 +205,11 @@
 | W0906 | a quantifier's only trigger matches a term of its own body: instances feed each other (matching loop) |
 | W0907 | a counting `while` whose canonical form is a range `for` (the fix rewrites it; `bmb fix` applies it) |
 | W0909 | an executable function declares an effect its body does not need (callers must declare it too) |
+| W0912 | a clause keyword repeated (`invariant a, invariant b,`): the canonical form lists the clauses after one keyword (an input alias, ADR-0095; `bmb fmt` and `bmb fix` rewrite it) |
+| W0913 | loop clauses at the start of the body (`while c { invariant a, .. }`): the canonical form puts them before the body (an input alias, ADR-0095; `bmb fmt` and `bmb fix` rewrite it) |
+| W0914 | a compound assignment `t op= e`: the canonical form is `t = t op e` (an input alias, backlog 2N-07, ADR-0095; `bmb fmt` and `bmb fix` rewrite it) |
+| W0915 | an integer conversion written `T::try_from(x).unwrap()`: the canonical form is `x as T` (an input alias, ADR-0095 A4; `bmb fmt` and `bmb fix` rewrite it) |
+| W0916 | a `#[uses(..)]` entry the default proof context reveals already (the spec fns the definition's own clauses, invariants, assertions and proof code and its callees' contracts name, ADR-0095 A1; `bmb fix` removes it) |
 | W0911 | a call by path of a method whose normal form is the method call `x.f(..)` (the fix rewrites it; `bmb fmt` and `bmb fix` apply it) |
 | W0910 | a loop of an `io` function prints and carries state whose every update is pure: the update can be a pure function, proved instead of tested |
 | W0908 | the contract is weaker than in the old version: a stronger `requires`, a weaker `ensures` or `pure` become `io` (`bmb weaken`, with the counterexample) |

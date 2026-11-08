@@ -19,7 +19,6 @@ mod np {
     }
 
     #[effects(alloc)]
-    #[uses(pairs, small)]
     fn grid(n: usize) -> (out: Vec<Vec<i64>>)
         requires small(n),
         ensures pairs(out.as_slice(), n),
@@ -38,7 +37,6 @@ mod np {
 
     // Writing an element keeps every length.
     #[effects(pure)]
-    #[uses(at, pairs)]
     fn set(g: &mut Vec<Vec<i64>>, x: i64) -> ()
         requires pairs(g.as_slice(), 3),
         ensures pairs(g.as_slice(), 3), at(g.as_slice(), 2, 1, x),
@@ -48,7 +46,6 @@ mod np {
 
     // `push` on one element changes that element's length only.
     #[effects(alloc)]
-    #[uses(at, len_is, pairs)]
     fn grow(g: &mut Vec<Vec<i64>>) -> ()
         requires pairs(g.as_slice(), 3),
         ensures at(g.as_slice(), 1, 2, 7), len_is(g.as_slice(), 0, 2),
@@ -57,7 +54,6 @@ mod np {
     }
 
     #[effects(alloc)]
-    #[uses(small, tagged)]
     fn row_cells(n: usize) -> (out: Vec<Row>)
         requires small(n),
         ensures tagged(out.as_slice(), n),

@@ -17,7 +17,7 @@ mod app {
             invariant exactly(v.as_slice(), i),
         {
             x = x.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-            v.push(u8::try_from(x >> 56).unwrap());
+            v.push((x >> 56) as u8);
         }
         v
     }
@@ -33,10 +33,10 @@ mod app {
         for k in 0..times
             invariant exactly(v.as_slice(), n),
         {
-            v[0] = u8::try_from(k).unwrap();
+            v[0] = k as u8;
             let d: [u8; 32] = std::sha256::digest(v.as_slice());
             for j in 0..width {
-                acc = acc.wrapping_mul(31).wrapping_add(u64::try_from(d[j]).unwrap());
+                acc = acc.wrapping_mul(31).wrapping_add(d[j] as u64);
             }
         }
         print_u64(acc);

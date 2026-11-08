@@ -16,7 +16,7 @@ mod bytes {
 
     // `a == b` byte for byte.
     #[effects(pure)]
-    #[uses(same_upto, same, eq_result, scan)]
+    #[uses(same_upto, same)]
     fn eq(a: &[u8], b: &[u8]) -> (r: bool)
         ensures eq_result(r, a, b),
     {
@@ -44,7 +44,7 @@ mod bytes {
 
     // Whether `s` starts with `p`.
     #[effects(pure)]
-    #[uses(same_upto, prefix, prefix_result, scan)]
+    #[uses(same_upto, prefix)]
     fn starts_with(s: &[u8], p: &[u8]) -> (r: bool)
         ensures prefix_result(r, s, p),
     {
@@ -84,7 +84,6 @@ mod bytes {
 
     // Appends `s` (Rust `extend_from_slice`).
     #[effects(alloc)]
-    #[uses(kept, copied, fits, appended)]
     fn extend(v: &mut Vec<u8>, s: &[u8]) -> ()
         requires fits(v.as_slice(), s),
         ensures appended(v.as_slice(), old(v).as_slice(), s),
@@ -124,7 +123,7 @@ mod bytes {
     // The first position of `p` in `s`, scanning from the start: exactly
     // Rust's `find` (an empty `p` is at 0).
     #[effects(pure)]
-    #[uses(at, found, none_before, nowhere)]
+    #[uses(nowhere)]
     fn find(s: &[u8], p: &[u8]) -> (r: Option<usize>)
         ensures found(r, s, p),
     {
@@ -169,7 +168,6 @@ mod bytes {
 
     // Appends `x` in decimal (at most 20 bytes).
     #[effects(alloc)]
-    #[uses(kept, room, grew_by)]
     fn push_u64(v: &mut Vec<u8>, x: u64) -> ()
         requires room(v.as_slice(), 20),
         ensures grew_by(v.as_slice(), old(v).as_slice(), 20),
@@ -181,7 +179,7 @@ mod bytes {
             invariant n <= 20,
             decreases 20 - n,
         {
-            buf[n] = u8::try_from(y % 10).unwrap() + b'0';
+            buf[n] = (y % 10) as u8 + b'0';
             y = y / 10;
             n = n + 1;
         }
@@ -201,7 +199,7 @@ mod bytes {
 
     // Appends `x` in decimal, with `-` when negative (at most 21 bytes).
     #[effects(alloc)]
-    #[uses(kept, room, grew_by)]
+    #[uses(kept)]
     fn push_i64(v: &mut Vec<u8>, x: i64) -> ()
         requires room(v.as_slice(), 21),
         ensures grew_by(v.as_slice(), old(v).as_slice(), 21),
@@ -209,9 +207,9 @@ mod bytes {
         if x < 0 {
             v.push(b'-');
             // `-x` overflows at `i64::MIN`; `-(x + 1)` does not.
-            push_u64(v, u64::try_from(-(x + 1)).unwrap() + 1);
+            push_u64(v, -(x + 1) as u64 + 1);
         } else {
-            push_u64(v, u64::try_from(x).unwrap());
+            push_u64(v, x as u64);
         }
     }
 
@@ -237,7 +235,7 @@ mod bytes {
     // that is not a digit, or does not fit. `Some(v)` is proved to be the
     // value of the digits.
     #[effects(pure)]
-    #[uses(digit, digits, dec, parsed)]
+    #[uses(digit)]
     fn parse_u64(s: &[u8]) -> (r: Option<u64>)
         ensures parsed(r, s),
     {
@@ -255,7 +253,7 @@ mod bytes {
                 if c < b'0' || c > b'9' {
                     ok = false;
                 } else {
-                    let d: u64 = u64::try_from(c - b'0').unwrap();
+                    let d: u64 = (c - b'0') as u64;
                     match acc.checked_mul(10) {
                         None => {
                             ok = false;

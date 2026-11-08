@@ -21,7 +21,7 @@ mod pf {
     }
 
     // Recursion to quantifier: induction on `n`.
-    #[uses(contains_prefix, has_index_below, prefix_ok)]
+    #[uses(contains_prefix)]
     proof fn contains_has_index(a: &[i64], n: usize, r: i64)
         requires prefix_ok(a, n, r),
         ensures has_index_below(a, n, r),
@@ -34,7 +34,6 @@ mod pf {
 
     // Quantifier to recursion: the other direction, with a ghost `let`
     // and an `assert` that splits the cases.
-    #[uses(contains_prefix, has_index_below, index_ok)]
     proof fn index_has_contains(a: &[i64], n: usize, r: i64)
         requires index_ok(a, n, r),
         ensures contains_prefix(a, n, r),
@@ -63,7 +62,7 @@ mod pf {
         sum_to(a, i) <= sum_to(a, j)
     }
 
-    #[uses(sum_le, sum_to, within)]
+    #[uses(sum_to)]
     proof fn sum_grows(a: &[u64], i: usize, j: usize)
         requires within(a, i, j),
         ensures sum_le(a, i, j),
@@ -85,7 +84,6 @@ mod pf {
     // The lemma, called in the loop body, keeps the running sum below
     // the total: no overflow.
     #[effects(pure)]
-    #[uses(is_sum, sum_le, sum_to, total_small, within)]
     fn total(a: &[u64]) -> (r: u64)
         requires total_small(a),
         ensures is_sum(a, r),
@@ -118,7 +116,7 @@ mod pf {
         count_pos(a, lo, hi) == count_pos(a, lo, mid) + count_pos(a, mid, hi)
     }
 
-    #[uses(count_pos, joined, ordered)]
+    #[uses(count_pos)]
     proof fn count_join(a: &[i64], lo: usize, mid: usize, hi: usize)
         requires ordered(a, lo, mid, hi),
         ensures joined(a, lo, mid, hi),
@@ -134,7 +132,6 @@ mod pf {
     }
 
     #[effects(pure)]
-    #[uses(count_pos, counted, ordered)]
     fn count_range(a: &[i64], lo: usize, hi: usize) -> (r: i64)
         requires ordered(a, lo, lo, hi),
         ensures counted(a, lo, hi, r),
@@ -152,7 +149,7 @@ mod pf {
 
     // Two halves counted apart are the whole count.
     #[effects(pure)]
-    #[uses(count_pos, counted, joined, ordered)]
+    #[uses(count_pos)]
     fn split_count(a: &[i64]) -> (r: i64)
         ensures counted(a, 0, a.len(), r),
     {
@@ -185,7 +182,7 @@ mod pf {
         size(l) >= 0
     }
 
-    #[uses(nonneg_size, size)]
+    #[uses(size)]
     proof fn size_nonneg(l: &List)
         ensures nonneg_size(l),
         decreases l,
@@ -202,7 +199,6 @@ mod pf {
         x * x >= 0
     }
 
-    #[uses(nonneg_square)]
     proof fn square_nonneg(x: i64)
         ensures nonneg_square(x),
     {
@@ -219,7 +215,6 @@ mod pg {
     }
 
     // A generic lemma is proved once over its type parameter as a sort.
-    #[uses(same)]
     proof fn refl<T: Copy>(x: T)
         ensures same::<T>(x, x),
     {
@@ -236,7 +231,6 @@ mod pg {
     // Lemmas of this unit and of another, by full path, in one block; the
     // case split is ghost code too.
     #[effects(pure)]
-    #[uses(is_copy, pf::nonneg_square, same, sq_nonneg)]
     fn copy(x: i64) -> (r: i64)
         ensures is_copy(r, x), sq_nonneg(x),
     {

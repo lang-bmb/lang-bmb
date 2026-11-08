@@ -28,7 +28,6 @@ mod strs {
 
     // The words joined by `", "`.
     #[effects(alloc)]
-    #[uses(bounded, small)]
     fn join(v: &[String]) -> String
         requires small(v),
     {
@@ -65,7 +64,6 @@ mod strs {
     }
 
     #[effects(alloc, io)]
-    #[uses(short)]
     fn main() -> () {
         show("the quick brown fox jumps over the lazy dog");
         show("  café crème  brûlée ");
@@ -75,7 +73,7 @@ mod strs {
         s.push('é');
         s.push('€');
         s.push('😀');
-        print_u64(u64::try_from(s.len()).unwrap());
+        print_u64(s.len() as u64);
         if s.as_str() == "aé€😀" && s.as_str() < "b" {
             print_str("same\n");
         }
@@ -88,12 +86,11 @@ mod strs {
 
     // The words of `t`: how many, the longest and the first, and all of them joined.
     #[effects(alloc, io)]
-    #[uses(short, small)]
     fn show(t: &str) -> ()
         requires short(t),
     {
         let v: Vec<String> = words(t);
-        print_u64(u64::try_from(v.len()).unwrap());
+        print_u64(v.len() as u64);
         if v.len() > 0 {
             let l: usize = longest(v.as_slice());
             let f: usize = first(v.as_slice());
@@ -130,7 +127,6 @@ mod strs {
 
     // The index of the first space at or after `i`, or the length.
     #[effects(pure)]
-    #[uses(at_space, between, within)]
     fn word_end(t: &str, i: usize) -> (r: usize)
         requires within(i, t),
         ensures between(i, r, t), at_space(t, r),
@@ -150,7 +146,6 @@ mod strs {
     // boundaries, as UTF-8 has an ASCII byte begin and end a character
     // (backlog 2U-06).
     #[effects(alloc)]
-    #[uses(after_space, at_space, between, short, small, within)]
     fn words(t: &str) -> (r: Vec<String>)
         requires short(t),
         ensures small(r.as_slice()),

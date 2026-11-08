@@ -48,7 +48,6 @@ mod sp {
 
     // A literal's length is its UTF-8 length.
     #[effects(pure)]
-    #[uses(three)]
     fn literal_len() -> usize
         ensures three("aé"),
     {
@@ -57,7 +56,6 @@ mod sp {
 
     // `push` of a constant adds its UTF-8 bytes; `push_str` adds the other's.
     #[effects(alloc)]
-    #[uses(grew, room)]
     fn push_lengths(s: &mut String) -> ()
         requires room(s.as_str()),
         ensures grew(old(s).len(), s.as_str()),
@@ -76,7 +74,6 @@ mod sp {
 
     // Text equality is byte equality, and the order is Rust's.
     #[effects(alloc)]
-    #[uses(before, same)]
     fn compare() -> bool
         ensures same("ab", "ab"), before("ab", "abc"), before("ab", "b"),
     {
@@ -86,7 +83,6 @@ mod sp {
 
     // A boundary check guards a slice; its length is the difference.
     #[effects(pure)]
-    #[uses(ascii_start)]
     fn first_char_len(t: &str) -> usize
         requires ascii_start(t),
     {
@@ -104,7 +100,6 @@ mod sp {
 
     // `char::from_u32` is `Some` exactly for the scalar values.
     #[effects(pure)]
-    #[uses(is_some_a, none)]
     fn scalars() -> bool
         ensures is_some_a(char::from_u32(65)), none(char::from_u32(55296)),
     {
@@ -113,7 +108,6 @@ mod sp {
 
     // `len_utf8` and the scalar value of a constant.
     #[effects(pure)]
-    #[uses(four_bytes, one_byte)]
     fn widths() -> u32
         ensures one_byte('a'.len_utf8()), four_bytes('😀'.len_utf8()),
     {

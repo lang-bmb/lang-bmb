@@ -3,7 +3,7 @@ mod av {
     struct Point { x: i64, y: i64 }
 
     #[effects(pure)]
-    #[uses(first_small, small)]
+    #[uses(small)]
     fn clobber(a: [Point; 2]) -> i64
         requires first_small(a),
     {
@@ -17,7 +17,6 @@ mod av {
     }
 
     #[effects(io)]
-    #[uses(first_small, rising, small, swapped)]
     fn main() -> () {
         let r: [i64; 3] = run_from(5);
         print_i64(r[0] + r[1] * 10 + r[2] * 100);
@@ -33,7 +32,6 @@ mod av {
     }
 
     #[effects(pure)]
-    #[uses(rising, small)]
     fn run_from(b: i64) -> (r: [i64; 3])
         requires small(b),
         ensures rising(r, b),
@@ -46,7 +44,6 @@ mod av {
     }
 
     #[effects(pure)]
-    #[uses(swapped)]
     fn swap(a: [Point; 2]) -> (r: [Point; 2])
         ensures swapped(r, a),
     {

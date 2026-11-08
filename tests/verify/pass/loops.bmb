@@ -5,7 +5,6 @@ mod loops {
     spec fn sum_bound(i: u64, s: u64) -> bool { s <= 1000000 * i }
 
     #[effects(pure)]
-    #[uses(small, sum_bound)]
     fn sum_to(n: u64) -> (r: u64)
         requires small(n),
         ensures sum_bound(n, r),
@@ -25,7 +24,6 @@ mod loops {
     spec fn at_most_len(a: &[i64], r: usize) -> bool { r <= a.len() }
 
     #[effects(pure)]
-    #[uses(at_most_len)]
     fn count_eq(a: &[i64], v: i64) -> (r: usize)
         ensures at_most_len(a, r),
     {
@@ -54,7 +52,6 @@ mod loops {
     }
 
     #[effects(pure)]
-    #[uses(nonempty, is_max_index, max_below)]
     fn max_index(a: &[i64]) -> (r: usize)
         requires nonempty(a),
         ensures is_max_index(a, r),
@@ -84,7 +81,6 @@ mod loops {
     }
 
     #[effects(pure)]
-    #[uses(same_len, copied_below, copy_of)]
     fn copy(dst: &mut [i64], src: &[i64]) -> ()
         requires same_len(dst, src),
         ensures copy_of(dst, src),
@@ -116,7 +112,6 @@ mod loops {
     }
 
     #[effects(pure)]
-    #[uses(incremented, incremented_below, unchanged_from, all_small, same_len)]
     fn increment_all(a: &mut [i64]) -> ()
         requires all_small(a),
         ensures incremented(a, old(a)),

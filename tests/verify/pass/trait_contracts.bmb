@@ -17,7 +17,6 @@ mod tr {
 
     impl Area for Sq {
         #[effects(pure)]
-        #[uses(Area::model, is_model)]
         fn area(self: &Sq) -> (r: i64)
             ensures is_model(r, self.model()),
         {
@@ -25,7 +24,6 @@ mod tr {
         }
 
         #[effects(pure)]
-        #[uses(Area::model, not_less)]
         fn grow(self: &mut Sq) -> ()
             ensures not_less((old(self)).model(), self.model()),
         {
@@ -40,7 +38,6 @@ mod tr {
     }
 
     #[effects(pure)]
-    #[uses(is_model, nonneg)]
     fn get<T: Copy + Area>(x: T) -> (r: i64)
         requires nonneg(x.model()),
         ensures is_model(r, x.model()),
@@ -53,7 +50,6 @@ mod tr {
     }
 
     #[effects(pure)]
-    #[uses(Area::model, is_model, nonneg)]
     fn known(q: Sq) -> (r: i64)
         requires nonneg(q.s),
         ensures is_model(r, q.s),

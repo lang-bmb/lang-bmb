@@ -4,7 +4,6 @@ mod am {
 
     // No obligation: the sum is cut to the type's range.
     #[effects(pure)]
-    #[uses(in_bounds)]
     fn sat_add(x: i64, y: i64) -> (r: i64)
         ensures in_bounds(r, x, y),
     {
@@ -14,7 +13,6 @@ mod am {
     spec fn floor_zero(r: u64, a: u64, b: u64) -> bool { (a < b && r == 0) || (a >= b && r == a - b) }
 
     #[effects(pure)]
-    #[uses(floor_zero)]
     fn sat_sub(a: u64, b: u64) -> (r: u64)
         ensures floor_zero(r, a, b),
     {
@@ -29,7 +27,6 @@ mod am {
     }
 
     #[effects(pure)]
-    #[uses(some_sum)]
     fn add(a: u64, b: u64) -> (r: Option<u64>)
         ensures some_sum(r, a, b),
     {
@@ -45,7 +42,6 @@ mod am {
 
     // `None` only for a zero divisor and for `i64::MIN / -1`.
     #[effects(pure)]
-    #[uses(quotient)]
     fn div(a: i64, b: i64) -> (r: Option<i64>)
         ensures quotient(r, b),
     {
@@ -58,7 +54,6 @@ mod am {
 
     // The value of `checked_rem` carries the division facts.
     #[effects(pure)]
-    #[uses(small_rem, pos)]
     fn rem_or_zero(a: u64, b: u64) -> (r: u64)
         requires pos(b),
         ensures small_rem(r, b),
@@ -73,7 +68,6 @@ mod am {
 
     // Exact values at the bounds.
     #[effects(pure)]
-    #[uses(is)]
     fn bounds() -> (r: i64)
         ensures is(r, 0),
     {

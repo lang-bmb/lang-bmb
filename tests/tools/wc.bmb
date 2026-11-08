@@ -9,7 +9,6 @@ mod wc {
     }
 
     #[effects(alloc, io, nondet)]
-    #[uses(counts)]
     fn main() -> () {
         let mut input: Vec<u8> = Vec::new();
         match std::io::read_to_end(&mut input) {
@@ -44,6 +43,6 @@ mod wc {
         }
         print_u64(lines);
         print_u64(words);
-        print_u64(u64::try_from(input.len()).unwrap());
+        print_u64(input.len() as u64);
     }
 }

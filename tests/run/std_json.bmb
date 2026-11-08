@@ -1,7 +1,7 @@
 #[summary("표준 라이브러리 std::json: 설정 문서를 노드 배열로 읽어 멤버·원소·정수·문자열(이스케이프 해독)을 꺼내고, 이름표를 JSON 문자열로 다시 쓴다 (ADR-0092 §2, backlog 4B-02 (h))")]
 mod uses_json {
     #[effects(alloc, io)]
-    #[uses(std::json::doc_sound, std::json::node_pos, std::json::nodes_in, std::json::of_text, std::json::parsed, std::json::quote_grew, std::json::quote_room, std::json::short, std::json::some_node)]
+    #[uses(std::json::doc_sound, std::json::nodes_in)]
     fn show(t: &[u8]) -> () {
         if t.len() > 1000000 {
             return;
@@ -9,7 +9,7 @@ mod uses_json {
         match std::json::parse(t) {
             None => print_str("not JSON\n"),
             Some(d) => {
-                print_u64(u64::try_from(d.count()).unwrap());
+                print_u64(d.count() as u64);
                 match d.member(t, 0, "name") {
                     None => print_str("no name\n"),
                     Some(n) => match d.string_value(t, n) {

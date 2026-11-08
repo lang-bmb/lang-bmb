@@ -22,7 +22,6 @@ mod uf {
     // True of text, but the prover states what UTF-8 holds only where a
     // boundary is asked (a slice), not at an assertion.
     #[effects(pure)]
-    #[uses(begins_char)]
     fn text_begins(t: &str) -> () {
         if t.len() > 0 {
             assert(begins_char(t.as_bytes()[0]));

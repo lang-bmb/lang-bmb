@@ -60,7 +60,6 @@ mod rf {
 
     // A list's last value need not be positive.
     #[effects(pure)]
-    #[uses(positive)]
     fn last(n: &Node) -> (r: i64)
         ensures positive(r),
         decreases n.next,

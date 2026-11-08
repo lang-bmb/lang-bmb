@@ -17,7 +17,6 @@ mod json {
 
     // The first position from `i` that is not JSON whitespace.
     #[effects(pure)]
-    #[uses(moved_on, upto)]
     fn skip_ws(t: &[u8], i: usize) -> (r: usize)
         requires upto(t, i),
         ensures moved_on(t, i, r),
@@ -44,7 +43,6 @@ mod json {
 
     // The end of the digits from `i`.
     #[effects(pure)]
-    #[uses(moved_on, upto)]
     fn digits(t: &[u8], i: usize) -> (r: usize)
         requires upto(t, i),
         ensures moved_on(t, i, r),
@@ -67,7 +65,6 @@ mod json {
     // not led by `0`, then `.` and digits, then `e` or `E`, a sign and
     // digits), none when there is none.
     #[effects(pure)]
-    #[uses(at, ended, moved_on, upto)]
     fn number_end(t: &[u8], i: usize) -> (r: Option<usize>)
         requires at(t, i),
         ensures ended(t, i, r),
@@ -109,7 +106,7 @@ mod json {
     // it is not one: no byte below 32, escapes `\"` `\\` `\/` `\b` `\f`
     // `\n` `\r` `\t` and `\u` with four hex digits, the rest UTF-8.
     #[effects(pure)]
-    #[uses(at, ended, std::utf8::at, std::utf8::seq_len, std::utf8::width_result)]
+    #[uses(std::utf8::seq_len)]
     fn string_end(t: &[u8], i: usize) -> (r: Option<usize>)
         requires at(t, i),
         ensures ended(t, i, r),
@@ -154,7 +151,6 @@ mod json {
 
     // The end of the literal `true`, `false` or `null` at `i`.
     #[effects(pure)]
-    #[uses(at, ended)]
     fn literal_end(t: &[u8], i: usize) -> (r: Option<usize>)
         requires at(t, i),
         ensures ended(t, i, r),
@@ -173,7 +169,6 @@ mod json {
 
     // The end of the scalar value (string, number, literal) at `i`.
     #[effects(pure)]
-    #[uses(at, ended)]
     fn scalar_end(t: &[u8], i: usize) -> (r: Option<usize>)
         requires at(t, i),
         ensures ended(t, i, r),
@@ -265,7 +260,7 @@ mod json {
     }
 
     // The state holds at a later byte.
-    #[uses(moved_pre, nodes_in, opens, tape)]
+    #[uses(nodes_in, opens)]
     proof fn later(v: &[Node], open: &[usize], i: usize, j: usize)
         requires moved_pre(v, open, i, j),
         ensures tape(v, open, j),
@@ -275,7 +270,7 @@ mod json {
     // Adds a node of `kind` over `start..end` with nothing in it (its
     // `next` is the node after it); the state holds at `j`.
     #[effects(alloc)]
-    #[uses(add_pre, nodes_in, one_node_more, opens, tape)]
+    #[uses(nodes_in, opens)]
     fn add(v: &mut Vec<Node>, open: &[usize], kind: u8, start: usize, end: usize, j: usize) -> ()
         requires add_pre(v.as_slice(), open, start, end, j),
         ensures tape(v.as_slice(), open, j), one_node_more(v.as_slice(), old(v).as_slice()),
@@ -287,7 +282,7 @@ mod json {
     // Opens an array (`kind` 5) or object (6) at the bracket at `i`; the
     // state holds at `j`.
     #[effects(alloc)]
-    #[uses(moved_pre, nodes_in, opens, tape)]
+    #[uses(nodes_in, opens)]
     fn open_at(v: &mut Vec<Node>, open: &mut Vec<usize>, kind: u8, i: usize, j: usize) -> ()
         requires moved_pre(v.as_slice(), open.as_slice(), i, j),
         ensures tape(v.as_slice(), open.as_slice(), j),
@@ -301,7 +296,7 @@ mod json {
     // it ends after `i`, and the node after it is the next one to come;
     // false when none is open. The state holds at `j`.
     #[effects(pure)]
-    #[uses(moved_pre, nodes_in, opens, same_len, tape)]
+    #[uses(nodes_in, opens)]
     fn close(v: &mut Vec<Node>, open: &mut Vec<usize>, i: usize, j: usize) -> (r: bool)
         requires moved_pre(v.as_slice(), open.as_slice(), i, j),
         ensures tape(v.as_slice(), open.as_slice(), j), same_len(v.as_slice(), old(v).as_slice()),
@@ -323,7 +318,7 @@ mod json {
 
     // The kind of the innermost open array or object.
     #[effects(pure)]
-    #[uses(nodes_in, opens, some_open, tape)]
+    #[uses(nodes_in, opens, tape)]
     fn top_kind(v: &[Node], open: &[usize], i: usize) -> u8
         requires some_open(v, open, i),
     {
@@ -340,7 +335,7 @@ mod json {
 
     // The parsed text of length `n`.
     #[effects(pure)]
-    #[uses(doc_of, doc_sound, done_pre, nodes_in, opens, tape)]
+    #[uses(doc_sound, nodes_in, opens, tape)]
     fn done(v: Vec<Node>, open: &[usize], n: usize) -> (d: Doc)
         requires done_pre(v.as_slice(), open, n),
         ensures doc_of(&d, n),
@@ -354,7 +349,6 @@ mod json {
     // kept by the helpers above, so this function's queries do not see its
     // quantifiers.
     #[effects(alloc)]
-    #[uses(add_pre, at, doc_of, done_pre, ended, first_pre, moved_on, moved_pre, one_node_more, parsed, same_len, short, some_open, upto)]
     fn parse(t: &[u8]) -> (r: Option<Doc>)
         requires short(t),
         ensures parsed(&r, t),
@@ -475,7 +469,7 @@ mod json {
     }
 
     // The state holds at the start.
-    #[uses(first_pre, nodes_in, opens, tape)]
+    #[uses(nodes_in, opens)]
     proof fn first(v: &[Node], open: &[usize], i: usize)
         requires first_pre(v, open, i),
         ensures tape(v, open, i),
@@ -484,7 +478,6 @@ mod json {
 
     // Whether `t` is one JSON text.
     #[effects(alloc)]
-    #[uses(parsed, short)]
     fn is_json(t: &[u8]) -> bool
         requires short(t),
     {
@@ -530,7 +523,6 @@ mod json {
     impl Doc {
         // How many nodes the text has (the whole value is node 0).
         #[effects(pure)]
-        #[uses(node_count)]
         fn count(self: &Doc) -> (r: usize)
             ensures node_count(self, r),
         {
@@ -540,7 +532,6 @@ mod json {
         // The kind of node `i`: 0 `null`, 1 `false`, 2 `true`, 3 number, 4
         // string, 5 array, 6 object.
         #[effects(pure)]
-        #[uses(node_pos)]
         fn kind(self: &Doc, i: usize) -> u8
             requires node_pos(self, i),
         {
@@ -549,7 +540,7 @@ mod json {
 
         // Where node `i` begins in the text.
         #[effects(pure)]
-        #[uses(doc_sound, node_pos, nodes_in, span_start)]
+        #[uses(doc_sound, nodes_in)]
         fn start(self: &Doc, i: usize) -> (r: usize)
             requires node_pos(self, i),
             ensures span_start(self, i, r),
@@ -559,7 +550,7 @@ mod json {
 
         // Where node `i` ends in the text.
         #[effects(pure)]
-        #[uses(doc_sound, node_pos, nodes_in, span_end)]
+        #[uses(doc_sound, nodes_in)]
         fn end(self: &Doc, i: usize) -> (r: usize)
             requires node_pos(self, i),
             ensures span_end(self, i, r),
@@ -569,7 +560,7 @@ mod json {
 
         // The node after node `i` and everything it holds.
         #[effects(pure)]
-        #[uses(after, doc_sound, node_pos, nodes_in)]
+        #[uses(doc_sound, nodes_in)]
         fn next(self: &Doc, i: usize) -> (r: usize)
             requires node_pos(self, i),
             ensures after(self, i, r),
@@ -580,7 +571,7 @@ mod json {
         // Element `n` of array node `a` (Rust's `serde_json::Value::get`
         // with an index).
         #[effects(pure)]
-        #[uses(doc_sound, node_pos, nodes_in, some_node)]
+        #[uses(doc_sound, nodes_in)]
         fn element(self: &Doc, a: usize, n: usize) -> (r: Option<usize>)
             requires node_pos(self, a),
             ensures some_node(self, r),
@@ -607,7 +598,7 @@ mod json {
         // Whether string node `i` is `k`, byte for byte between its quotes
         // (a key with an escape is not; read it with `string_value`).
         #[effects(pure)]
-        #[uses(doc_sound, node_pos, nodes_in, of_text)]
+        #[uses(doc_sound, nodes_in)]
         fn raw_is(self: &Doc, t: &[u8], i: usize, k: &str) -> bool
             requires node_pos(self, i), of_text(self, t),
         {
@@ -633,7 +624,7 @@ mod json {
         // The value of member `k` of object node `o` (Rust's
         // `serde_json::Value::get` with a key; keys compared as `raw_is`).
         #[effects(pure)]
-        #[uses(doc_sound, node_pos, nodes_in, of_text, some_node)]
+        #[uses(doc_sound, nodes_in)]
         fn member(self: &Doc, t: &[u8], o: usize, k: &str) -> (r: Option<usize>)
             requires node_pos(self, o), of_text(self, t),
             ensures some_node(self, r),
@@ -657,7 +648,7 @@ mod json {
 
         // The integer of number node `i`, when it is one that fits.
         #[effects(pure)]
-        #[uses(doc_sound, node_pos, nodes_in, of_text)]
+        #[uses(doc_sound, nodes_in)]
         fn i64_value(self: &Doc, t: &[u8], i: usize) -> Option<i64>
             requires node_pos(self, i), of_text(self, t),
         {
@@ -670,7 +661,7 @@ mod json {
         // The text of string node `i` with its escapes decoded, none when a
         // `\u` escape is a surrogate without its pair (as `serde_json`).
         #[effects(alloc)]
-        #[uses(doc_sound, grew4, node_pos, nodes_in, of_text, room4, scalar, unit_pos, unit_range)]
+        #[uses(doc_sound, nodes_in)]
         fn string_value(self: &Doc, t: &[u8], i: usize) -> Option<String>
             requires node_pos(self, i), of_text(self, t),
         {
@@ -757,11 +748,11 @@ mod json {
     #[effects(pure)]
     fn hex_value(b: u8) -> u32 {
         if b'0' <= b && b <= b'9' {
-            u32::try_from(b - b'0').unwrap()
+            (b - b'0') as u32
         } else if b'a' <= b && b <= b'f' {
-            u32::try_from(b - b'a').unwrap() + 10
+            (b - b'a') as u32 + 10
         } else if b'A' <= b && b <= b'F' {
-            u32::try_from(b - b'A').unwrap() + 10
+            (b - b'A') as u32 + 10
         } else {
             0
         }
@@ -780,7 +771,6 @@ mod json {
 
     // The code unit of the escape `\uXXXX` at `j`, when it ends by `b`.
     #[effects(pure)]
-    #[uses(unit_pos, unit_range)]
     fn unit_at(t: &[u8], j: usize, b: usize) -> (r: Option<u32>)
         requires unit_pos(t, j, b),
         ensures unit_range(r, j, b),
@@ -812,25 +802,24 @@ mod json {
 
     // Adds the UTF-8 bytes of `c` to `v`.
     #[effects(alloc)]
-    #[uses(grew4, room4, scalar)]
     fn push_utf8(v: &mut Vec<u8>, c: u32) -> ()
         requires scalar(c), room4(v.as_slice()),
         ensures grew4(v.as_slice(), old(v).as_slice()),
     {
         if c < 128 {
-            v.push(u8::try_from(c).unwrap());
+            v.push(c as u8);
         } else if c < 2048 {
-            v.push(u8::try_from(192 + c / 64).unwrap());
-            v.push(u8::try_from(128 + c % 64).unwrap());
+            v.push((192 + c / 64) as u8);
+            v.push((128 + c % 64) as u8);
         } else if c < 65536 {
-            v.push(u8::try_from(224 + c / 4096).unwrap());
-            v.push(u8::try_from(128 + c / 64 % 64).unwrap());
-            v.push(u8::try_from(128 + c % 64).unwrap());
+            v.push((224 + c / 4096) as u8);
+            v.push((128 + c / 64 % 64) as u8);
+            v.push((128 + c % 64) as u8);
         } else {
-            v.push(u8::try_from(240 + c / 262144).unwrap());
-            v.push(u8::try_from(128 + c / 4096 % 64).unwrap());
-            v.push(u8::try_from(128 + c / 64 % 64).unwrap());
-            v.push(u8::try_from(128 + c % 64).unwrap());
+            v.push((240 + c / 262144) as u8);
+            v.push((128 + c / 4096 % 64) as u8);
+            v.push((128 + c / 64 % 64) as u8);
+            v.push((128 + c % 64) as u8);
         }
     }
 
@@ -853,7 +842,6 @@ mod json {
     // the control bytes as `\b`, `\f`, `\n`, `\r`, `\t` or `\u00xx`
     // (what `serde_json` writes).
     #[effects(alloc)]
-    #[uses(digit16, one_more, one_room, quote_grew, quote_inv, quote_room)]
     fn push_string(out: &mut String, s: &str) -> ()
         requires quote_room(out.as_str(), s),
         ensures quote_grew(out.as_str(), old(out).as_str(), s),
@@ -910,7 +898,6 @@ mod json {
 
     // Adds the lowercase hex digit of `d`.
     #[effects(alloc)]
-    #[uses(digit16, one_more, one_room)]
     fn push_hex_digit(out: &mut String, d: u8) -> ()
         requires digit16(d), one_room(out.as_str()),
         ensures one_more(out.as_str(), old(out).as_str()),

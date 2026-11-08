@@ -19,7 +19,6 @@ mod geo {
 
     // The callee may change every field: nothing is known after the call.
     #[effects(pure)]
-    #[uses(same)]
     fn after_call(p: Point) -> (r: Point)
         ensures same(p, r),
     {
@@ -30,7 +29,6 @@ mod geo {
 
     // Writing `a.x` changes `a`.
     #[effects(pure)]
-    #[uses(same)]
     fn after_write(s: Seg) -> (r: Point)
         ensures same(s.a, r),
     {
@@ -41,7 +39,6 @@ mod geo {
 
     // The loop havocs `p`; its invariant does not keep `y`.
     #[effects(pure)]
-    #[uses(y_kept)]
     fn after_loop(p: Point) -> (r: Point)
         ensures y_kept(p, r),
     {
@@ -58,7 +55,6 @@ mod geo {
     }
 
     #[effects(pure)]
-    #[uses(origin)]
     fn param(p: &Point) -> ()
         requires origin(*p),
     {
@@ -71,7 +67,6 @@ mod geo {
     }
 
     #[effects(pure)]
-    #[uses(same)]
     fn branch(c: bool, p: Point, q: Point) -> (r: Point)
         ensures same(r, p),
     {
@@ -88,7 +83,6 @@ mod geo {
 
     // One element differs.
     #[effects(pure)]
-    #[uses(same_box)]
     fn element_differs(p: Box2) -> (r: Box2)
         ensures same_box(p, r),
     {
@@ -96,7 +90,7 @@ mod geo {
     }
 
     #[effects(pure)]
-    #[uses(on_diag, diag)]
+    #[uses(diag)]
     fn off_diag(a: i64) -> (r: Point)
         ensures on_diag(r),
     {
@@ -130,7 +124,6 @@ mod geo {
 
     // The copy keeps the old element.
     #[effects(pure)]
-    #[uses(first_x)]
     fn stale_copy() -> (r: i64)
         ensures first_x(r),
     {
@@ -144,7 +137,6 @@ mod geo {
 
     // An array result: the claim names the wrong element (backlog 2V-04).
     #[effects(pure)]
-    #[uses(first_is)]
     fn wrong_first(a: [Point; 2]) -> (r: [Point; 2])
         ensures first_is(r, a[0]),
     {
@@ -155,7 +147,6 @@ mod geo {
 
     // A spec array literal (backlog 2V-05): the order differs.
     #[effects(pure)]
-    #[uses(is_123)]
     fn not_123() -> (r: [i64; 3])
         ensures is_123(r),
     {
