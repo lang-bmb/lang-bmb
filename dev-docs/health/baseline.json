@@ -2,15 +2,15 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 12477407,
+    "V4_rlimit_total": 12621613,
     "V5_rlimit_headroom": 0.1244,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0,
     "V8_bench_rlimit_total": 22810907,
     "V9_bench_defs_at_limit": 0,
-    "V10_library_rlimit_total": 16188834,
-    "V11_sat_check_rlimit_total": 141024056,
-    "V12_sat_check_undecided": 147,
+    "V10_library_rlimit_total": 18555436,
+    "V11_sat_check_rlimit_total": 150880290,
+    "V12_sat_check_undecided": 155,
     "S1_external_crates": 0,
     "S2_external_processes": [
       "clang",
@@ -20,8 +20,8 @@
     "S4_stage0_rust_lines": 49021,
     "S5_tests_bound_to_rust_api": 1,
     "S6_selfhost_bmb_lines": 0,
-    "P1_runnable_programs": 69,
-    "P2_bmb_lines": 26487,
+    "P1_runnable_programs": 70,
+    "P2_bmb_lines": 27126,
     "P3_errors_with_help": 0.8907,
     "B1_baseline_binary_bytes": 101664,
     "O1_adr_index_mismatch": 0,
@@ -2220,6 +2220,36 @@
         "P3_errors_with_help": [
           0.8905,
           0.8907
+        ]
+      }
+    },
+    {
+      "date": "2026-11-08",
+      "reason": "4B-02 (f): V10 is the new library unit std::collections (lib/std/collections.bmb, 2,366,602 rlimit, largest obligation 73,787); P1-P3 up from tests/run/std_collections",
+      "changed": {
+        "V4_rlimit_total": [
+          12477407,
+          12621613
+        ],
+        "V10_library_rlimit_total": [
+          16188834,
+          18555436
+        ],
+        "V11_sat_check_rlimit_total": [
+          141024056,
+          150880290
+        ],
+        "V12_sat_check_undecided": [
+          147,
+          155
+        ],
+        "P1_runnable_programs": [
+          69,
+          70
+        ],
+        "P2_bmb_lines": [
+          26487,
+          27126
         ]
       }
     }
