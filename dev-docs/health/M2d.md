@@ -28,7 +28,7 @@
 ## 남는 것
 
 - **T3-04의 시간·크기 비교.** 공식 Rust 제출(benchmarksgame-team.pages.debian.net, salsa.debian.org)이 이 환경의 네트워크 정책에 막힌다(2026-11-08에도 `connect_rejected`). BMB 쪽(증명·출력)은 끝났고 비교 행은 조용한 머신에서 공식 출처로 채운다. M2-d 기준 3("들어온다")의 밖이다.
-- **게이트 검출력 표의 빈칸.** 변이체 99개 중 전체 게이트 기록이 없는 것이 이 감사 전 46개였다. F6 셋과 이번 세션의 변이체 여섯(`v-string-length-kept`, `k-push-str-keeps-receiver`, `v-text-targ-not-text`, `c-text-targ-not-text`, `v-utf8-char-ends-before-ascii`, `k-trait-self-copied`, `v-subslice-end-unbounded` 중 실행된 것)을 돌렸고 나머지는 후속(한 변이체에 약 14~21분)이다. 대상 시험 기록은 각 태스크에 있다.
+- **게이트 검출력 표의 빈칸.** 변이체 99개 중 전체 게이트 기록이 없는 것이 이 감사 전 46개였다. F6 셋을 돌려(셋 다 잡힘) 43개가 남았다. 한 변이체에 약 14~21분이라 나머지는 후속 `1B-57`이다. 각 변이체의 대상 시험 기록은 그것을 더한 태스크에 있다.
 
 ## 다섯 축(2026-11-08 기준선)
 
