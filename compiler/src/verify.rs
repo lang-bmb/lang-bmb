@@ -8443,6 +8443,8 @@ fn verify_pass(
                                     "check `s.is_char_boundary(a) && s.is_char_boundary(b) && a <= b` before `&s[a..b]`, or require it",
                                     None,
                                 )
+                            } else if d.fix.is_none() && cex.is_empty() {
+                                d.fix(no_inputs_help(o.code), None)
                             } else {
                                 d
                             });
@@ -9090,6 +9092,20 @@ fn hidden_predicates(
 }
 
 /// Attaches the deterministic hints that apply to a failed obligation.
+/// What helps with a refuted obligation that has no inputs to show (a
+/// definition without parameters, or one whose failure the inputs do not
+/// decide): where the prover lost the fact.
+fn no_inputs_help(code: &str) -> &'static str {
+    match code {
+        "E0813" => {
+            "the recursive call's `decreases` value must be below this call's and not below 0; with the same arguments it is the same"
+        }
+        _ => {
+            "there is no input to show: it fails for the definition's own values or for values a loop or call left open; after a loop the prover knows only its invariants and after a call only the callee's `ensures`, so state there what this needs, or correct the claim"
+        }
+    }
+}
+
 fn with_hint(d: Diag, hidden: &[String], nonlinear: bool) -> Diag {
     let mut parts = Vec::new();
     if !hidden.is_empty() {
