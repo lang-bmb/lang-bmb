@@ -1131,8 +1131,12 @@ fn compare(
     }
     let io = Ids::new(&fo.program, &fo.tables);
     let inw = Ids::new(&fnw.program, &fnw.tables);
-    let od = defs(&fo.program, &fo.tables, &io);
-    let nd = defs(&fnw.program, &fnw.tables, &inw);
+    // The program's definitions: the standard library's are the
+    // compiler's, the same in both versions (ADR-0092 §1).
+    let mut od = defs(&fo.program, &fo.tables, &io);
+    let mut nd = defs(&fnw.program, &fnw.tables, &inw);
+    od.retain(|p, _| !crate::stdlib::in_std(p));
+    nd.retain(|p, _| !crate::stdlib::in_std(p));
     let pairs = match_defs(&od, &nd, &body_ids(&fo.program), &body_ids(&fnw.program));
 
     // Each pair's row without the solver, and the paths when it needs it.

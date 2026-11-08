@@ -67,10 +67,17 @@ fn fn_names(u: &str) -> &'static BTreeSet<String> {
                 let mut d = Diags::default();
                 let toks = crate::lexer::lex(0, text, &mut d);
                 let p = crate::parser::Parser::new(toks, &mut d, text).parse_program();
+                // The executable functions taking `&str` first: the ones a
+                // method call of text can name.
                 let names = p
                     .mods
                     .iter()
                     .flat_map(|m| &m.fns)
+                    .filter(|f| f.kind == FnKind::Exec)
+                    .filter(|f| {
+                        matches!(f.params.first().map(|p| &p.ty.kind),
+                            Some(TypeKind::Ref { inner, .. }) if inner.kind == TypeKind::Str)
+                    })
                     .map(|f| f.name.name.clone())
                     .collect();
                 (*u, names)

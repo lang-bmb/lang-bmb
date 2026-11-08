@@ -68,7 +68,9 @@ def proof_metrics():
         for g in groups:
             out, r = verify_rows(g)
             outs.append(out)
-            rows += r
+            # The standard library's rows are V10's (`library_cost`): a
+            # program that uses it proves its units too (ADR-0092).
+            rows += [x for x in r if not x["def"].startswith("std::")]
     again = []
     for d in PROOF_SETS[2:]:
         files = sorted(str(p.relative_to(ROOT)) for p in (ROOT / d).glob("*.bmb"))
