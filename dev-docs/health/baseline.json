@@ -2,27 +2,27 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 11472946,
+    "V4_rlimit_total": 12060071,
     "V5_rlimit_headroom": 0.1244,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0,
     "V8_bench_rlimit_total": 22810907,
     "V9_bench_defs_at_limit": 0,
-    "V10_library_rlimit_total": 12808122,
-    "V11_sat_check_rlimit_total": 229727794,
-    "V12_sat_check_undecided": 245,
+    "V10_library_rlimit_total": 14140265,
+    "V11_sat_check_rlimit_total": 119804421,
+    "V12_sat_check_undecided": 112,
     "S1_external_crates": 0,
     "S2_external_processes": [
       "clang",
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 48602,
+    "S4_stage0_rust_lines": 48872,
     "S5_tests_bound_to_rust_api": 1,
     "S6_selfhost_bmb_lines": 0,
-    "P1_runnable_programs": 65,
-    "P2_bmb_lines": 24739,
-    "P3_errors_with_help": 0.8936,
+    "P1_runnable_programs": 66,
+    "P2_bmb_lines": 25303,
+    "P3_errors_with_help": 0.8905,
     "B1_baseline_binary_bytes": 101664,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 15
@@ -2110,6 +2110,44 @@
         "P3_errors_with_help": [
           0.8925,
           0.8936
+        ]
+      }
+    },
+    {
+      "date": "2026-11-08",
+      "reason": "4B-02: V10 +10% is the new library unit std::str (lib/std/str.bmb, about 0.64M) and std::bytes::find's exact contract. V4 now leaves std:: rows to V10 (12.06M: the new corpora std_str and utf8_facts). V11/V12 fall because each lib_run and game program is checked with the std units it names instead of all five libraries (sha256's undecided points were counted once per program), not because proofs improved. P1-P3 up from the new corpora",
+      "changed": {
+        "V4_rlimit_total": [
+          11472946,
+          12060071
+        ],
+        "V10_library_rlimit_total": [
+          12808122,
+          14140265
+        ],
+        "V11_sat_check_rlimit_total": [
+          229727794,
+          119804421
+        ],
+        "V12_sat_check_undecided": [
+          245,
+          112
+        ],
+        "S4_stage0_rust_lines": [
+          48602,
+          48872
+        ],
+        "P1_runnable_programs": [
+          65,
+          66
+        ],
+        "P2_bmb_lines": [
+          24739,
+          25303
+        ],
+        "P3_errors_with_help": [
+          0.8936,
+          0.8905
         ]
       }
     }
