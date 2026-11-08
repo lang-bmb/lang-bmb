@@ -118,12 +118,22 @@ mod strs {
         i <= t.len()
     }
 
+    // `i` is the end of the text or the index of a space.
+    spec fn at_space(t: &str, i: usize) -> bool {
+        i == t.len() || (i < t.len() && t.as_bytes()[i] == 32)
+    }
+
+    // `i` is the end of the text, its start, or follows a space.
+    spec fn after_space(t: &str, i: usize) -> bool {
+        i == 0 || i == t.len() || (i < t.len() && t.as_bytes()[i - 1] == 32)
+    }
+
     // The index of the first space at or after `i`, or the length.
     #[effects(pure)]
-    #[uses(between, within)]
+    #[uses(at_space, between, within)]
     fn word_end(t: &str, i: usize) -> (r: usize)
         requires within(i, t),
-        ensures between(i, r, t),
+        ensures between(i, r, t), at_space(t, r),
     {
         let mut j: usize = i;
         while j < t.len() && t.as_bytes()[j] != b' '
@@ -136,10 +146,11 @@ mod strs {
     }
 
     // The words of `t` (runs of bytes other than spaces), as owned strings. A
-    // word starts after a space and ends before one, so the boundary checks
-    // always hold for UTF-8 (the prover does not know the invariant yet).
+    // word starts after a space and ends before one: both are character
+    // boundaries, as UTF-8 has an ASCII byte begin and end a character
+    // (backlog 2U-06).
     #[effects(alloc)]
-    #[uses(between, short, small, within)]
+    #[uses(after_space, at_space, between, short, small, within)]
     fn words(t: &str) -> (r: Vec<String>)
         requires short(t),
         ensures small(r.as_slice()),
@@ -147,16 +158,14 @@ mod strs {
         let mut v: Vec<String> = Vec::new();
         let mut i: usize = 0;
         while i < t.len()
-            invariant within(i, t), v.len() <= i, small(v.as_slice()),
+            invariant within(i, t), after_space(t, i), v.len() <= i, small(v.as_slice()),
             decreases t.len() - i,
         {
             if t.as_bytes()[i] == b' ' {
                 i = i + 1;
             } else {
                 let e: usize = word_end(t, i);
-                if t.is_char_boundary(i) && t.is_char_boundary(e) {
-                    v.push(String::from(&t[i..e]));
-                }
+                v.push(String::from(&t[i..e]));
                 if e < t.len() {
                     i = e + 1;
                 } else {

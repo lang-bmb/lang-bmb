@@ -68,6 +68,10 @@ pub struct Tables {
     /// ADR-0050): the prover and the code generator see their bytes
     /// (`lowered`) and tell text operations from byte ones by this.
     pub text: BTreeSet<(u32, u32, u32)>,
+    /// Which parameters and whether the result of each function are text,
+    /// by path (ADR-0050 §3, backlog 2U-06): the values the prover assumes
+    /// valid UTF-8 where they enter a definition (`Enc::assume_text`).
+    pub text_sigs: BTreeMap<String, (Vec<bool>, bool)>,
 }
 
 impl Tables {
@@ -140,6 +144,7 @@ impl Tables {
             effect_needs: self.effect_needs.clone(),
             may_untrusted: self.may_untrusted.clone(),
             external: self.external.clone(),
+            text_sigs: self.text_sigs.clone(),
             calls: self.calls.clone(),
             text: self.text.clone(),
         }
@@ -243,6 +248,7 @@ impl Tables {
             effect_needs: self.effect_needs.clone(),
             may_untrusted: self.may_untrusted.clone(),
             external: self.external.clone(),
+            text_sigs: self.text_sigs.clone(),
             calls: self.calls.clone(),
             text: self.text.clone(),
         }
@@ -2114,6 +2120,9 @@ struct Enc<'p, 'q> {
     /// block. Its expressions are specifications (no overflow or index
     /// obligations); its effects are the facts it proves.
     ghost: bool,
+    /// The text values known valid UTF-8 here, bytes and length
+    /// (`assume_text`, backlog 2U-06).
+    texts: Vec<(String, String)>,
     /// Type invariants (ADR-0060 §2, `invariants.rs`): the validity
     /// symbols declared, the nesting depth of element quantifiers (their
     /// bound index: the same value gets the same text), and the definitions
@@ -3070,6 +3079,7 @@ impl<'p, 'q> Enc<'p, 'q> {
             dead: false,
             loops: Vec::new(),
             ghost: false,
+            texts: Vec::new(),
             valid_decl: BTreeSet::new(),
             valid_depth: 0,
             valid_defs: Vec::new(),
@@ -3456,9 +3466,23 @@ impl<'p, 'q> Enc<'p, 'q> {
     }
 
     fn oblige(&mut self, code: &'static str, span: Span, msg: impl Into<String>, goal: String) {
+        self.oblige_given(code, span, msg, None, goal);
+    }
+
+    /// `oblige` with `given`, a true fact this obligation alone assumes
+    /// (the path after it holds the goal, not the fact).
+    fn oblige_given(
+        &mut self,
+        code: &'static str,
+        span: Span,
+        msg: impl Into<String>,
+        given: Option<String>,
+        goal: String,
+    ) {
         if goal != "true" {
             let mut assumptions = self.pc.clone();
             assumptions.extend(self.spec_pc.iter().cloned());
+            assumptions.extend(given);
             self.obls.push(Obl {
                 code,
                 span,
@@ -6193,6 +6217,10 @@ impl<'p, 'q> Enc<'p, 'q> {
                         let root = self.place(&args[i], &mut steps, false);
                         let nv = self.fresh_val(&root, pt);
                         self.assume_valid(&nv, pt);
+                        // `read_line` appends text (ADR-0091 §1).
+                        if self.text_at(&target, Some(i)) {
+                            self.assume_text(&nv);
+                        }
                         let cur = self.vars[&root].clone();
                         let whole = self.set_at(cur, &steps, nv);
                         self.bind_var(root, whole);
@@ -6313,6 +6341,9 @@ impl<'p, 'q> Enc<'p, 'q> {
                 old_env.insert(p.name.name.clone(), argv[i].clone());
                 // The callee left it valid.
                 self.assume_valid(&nv, &param_tys[i]);
+                if self.text_at(&target, Some(i)) {
+                    self.assume_text(&nv);
+                }
                 let cur = self.vars[&root].clone();
                 let whole = self.set_at(cur, &steps, nv.clone());
                 self.bind_var(root, whole);
@@ -6323,6 +6354,9 @@ impl<'p, 'q> Enc<'p, 'q> {
         let ret_ty = crate::check::subst(&self.prog.t.fns[&target].ret, &csub);
         let result = self.fresh_val(&format!("{target}.result"), &ret_ty);
         self.assume_valid(&result, &ret_ty);
+        if self.text_at(&target, None) {
+            self.assume_text(&result);
+        }
         if let Some(n) = &f.ret.name {
             post_env.insert(n.name.clone(), result.clone());
         }
@@ -7228,11 +7262,14 @@ pub fn preconditions_satisfiable(
             axioms.push((spec_key(&u, t), ax));
             axiom_parts.extend(parts);
         }
-        for prm in &d.f.params {
+        for (i, prm) in d.f.params.iter().enumerate() {
             let ty = enc.local_ty(&prm.name.name);
             let v = enc.fresh_val(&prm.name.name, &ty);
             // The entry state the prover assumes: valid parameters too.
             enc.assume_valid(&v, &ty);
+            if enc.text_at(path, Some(i)) {
+                enc.assume_text(&v);
+            }
             enc.bind_var(prm.name.name.clone(), v);
         }
         let (env, old) = enc.cur_env();
@@ -7720,10 +7757,13 @@ fn verify_pass(
                     axioms.push((spec_key(&u, t), ax));
                     axiom_parts.extend(parts);
                 }
-                for prm in &d.f.params {
+                for (i, prm) in d.f.params.iter().enumerate() {
                     let ty = enc.local_ty(&prm.name.name);
                     let v = enc.fresh_val(&prm.name.name, &ty);
                     enc.assume_valid(&v, &ty);
+                    if enc.text_at(path, Some(i)) {
+                        enc.assume_text(&v);
+                    }
                     if let TypeKind::Ref { mutable: true, .. } = prm.ty.kind {
                         enc.old.insert(prm.name.name.clone(), v.clone());
                     }
@@ -7798,11 +7838,15 @@ fn verify_pass(
                     axioms.push((spec_key(&u, t), ax));
                     axiom_parts.extend(parts);
                 }
-                for prm in &d.f.params {
+                for (i, prm) in d.f.params.iter().enumerate() {
                     let ty = enc.local_ty(&prm.name.name);
                     let v = enc.fresh_val(&prm.name.name, &ty);
                     // A parameter is valid (ADR-0060 §2): its caller proved it.
                     enc.assume_valid(&v, &ty);
+                    // Text is valid UTF-8 (ADR-0050 §3, backlog 2U-06).
+                    if enc.text_at(path, Some(i)) {
+                        enc.assume_text(&v);
+                    }
                     if let TypeKind::Ref { mutable: true, .. } = prm.ty.kind {
                         enc.old.insert(prm.name.name.clone(), v.clone());
                     }

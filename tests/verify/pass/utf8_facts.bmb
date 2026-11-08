@@ -1,0 +1,100 @@
+#[summary("UTF-8 불변식을 사용 지점 사실로: ASCII 바이트 뒤, 온전한 글자 뒤, 첫 바이트 앞이 글자 경계임을 실행 검사 없이 증명한다 (backlog 2U-06)")]
+mod u8f {
+    spec fn within(i: usize, t: &str) -> bool {
+        i <= t.len()
+    }
+
+    // `i` starts the text or follows an ASCII space.
+    spec fn after_space(t: &str, i: usize) -> bool {
+        i == 0 || (i <= t.len() && t.as_bytes()[i - 1] == 32)
+    }
+
+    // The bytes of `p` begin `s`.
+    spec fn begins(s: &str, p: &str) -> bool {
+        p.len() <= s.len() && forall |j: usize| j < p.len() ==> #[trigger] s.as_bytes()[j] == p.as_bytes()[j]
+    }
+
+    // The first `i` bytes of `p` begin `s`.
+    spec fn agree(s: &str, p: &str, i: usize) -> bool {
+        i <= p.len() && p.len() <= s.len()
+            && forall |j: usize| j < i ==> #[trigger] s.as_bytes()[j] == p.as_bytes()[j]
+    }
+
+    #[effects(pure)]
+    fn count(t: &str) -> usize {
+        t.len()
+    }
+
+    // The length of `t` without its leading spaces: the slice after the
+    // last space is at a boundary (an ASCII byte ends a character).
+    #[effects(pure)]
+    #[uses(after_space, within)]
+    fn trim_start_len(t: &str) -> usize {
+        let mut i: usize = 0;
+        while i < t.len() && t.as_bytes()[i] == b' '
+            invariant within(i, t), after_space(t, i),
+            decreases t.len() - i,
+        {
+            i = i + 1;
+        }
+        count(&t[i..t.len()])
+    }
+
+    // The lengths before and after the first `:`.
+    struct Halves { l: usize, r: usize }
+
+    // The halves at the first `:`, or none: both slices are at boundaries
+    // (an ASCII byte begins and ends a character).
+    #[effects(pure)]
+    #[uses(within)]
+    fn split_colon(t: &str) -> Option<Halves> {
+        let mut i: usize = 0;
+        while i < t.len()
+            invariant within(i, t),
+            decreases t.len() - i,
+        {
+            if t.as_bytes()[i] == b':' {
+                return Some(Halves { l: count(&t[0..i]), r: count(&t[i + 1..t.len()]) });
+            }
+            i = i + 1;
+        }
+        None
+    }
+
+    spec fn found(r: bool, s: &str, p: &str) -> bool {
+        r ==> begins(s, p)
+    }
+
+    // Whether `p` begins `s`.
+    #[effects(pure)]
+    #[uses(agree, begins, found)]
+    fn starts_with(s: &str, p: &str) -> (r: bool)
+        ensures found(r, s, p),
+    {
+        if p.len() > s.len() {
+            return false;
+        }
+        let mut i: usize = 0;
+        while i < p.len()
+            invariant agree(s, p, i),
+            decreases p.len() - i,
+        {
+            if s.as_bytes()[i] != p.as_bytes()[i] {
+                return false;
+            }
+            i = i + 1;
+        }
+        true
+    }
+
+    // The length of `s` after the prefix `p`: `p`'s last character is
+    // whole, so the byte after it in `s` begins one.
+    #[effects(pure)]
+    #[uses(begins, found)]
+    fn strip_len(s: &str, p: &str) -> usize {
+        if starts_with(s, p) {
+            return count(&s[p.len()..s.len()]);
+        }
+        0
+    }
+}

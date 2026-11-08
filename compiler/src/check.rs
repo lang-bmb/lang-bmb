@@ -1776,8 +1776,23 @@ impl<'a> Checker<'a> {
             .filter(|(_, t)| is_text(t))
             .map(|(k, _)| *k)
             .collect();
+        let text_sigs = self
+            .fns
+            .iter()
+            .map(|(p, s)| {
+                (
+                    p.clone(),
+                    (
+                        s.params.iter().map(is_text).collect::<Vec<bool>>(),
+                        is_text(&s.ret),
+                    ),
+                )
+            })
+            .filter(|(_, (ps, r))| *r || ps.iter().any(|x| *x))
+            .collect();
         crate::verify::Tables {
             text,
+            text_sigs,
             fns: self.fns,
             types: self.types,
             recursive: self.recursive,

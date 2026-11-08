@@ -1,0 +1,41 @@
+#[summary("UTF-8 사용 지점 사실이 주지 않는 것: 첫 바이트 뒤는 경계가 아니고, 사실은 경계를 묻는 곳에만 있다 (backlog 2U-06)")]
+mod uf {
+    #[effects(pure)]
+    fn count(t: &str) -> usize {
+        t.len()
+    }
+
+    // The byte after a first byte continues its character: never a
+    // boundary, and the counterexample is valid UTF-8.
+    #[effects(pure)]
+    fn after_lead(t: &str, i: usize) -> usize {
+        if i < t.len() && t.as_bytes()[i] >= 192 {
+            return count(&t[i + 1..t.len()]);
+        }
+        0
+    }
+
+    spec fn begins_char(b: u8) -> bool {
+        b < 128 || b >= 192
+    }
+
+    // True of text, but the prover states what UTF-8 holds only where a
+    // boundary is asked (a slice), not at an assertion.
+    #[effects(pure)]
+    #[uses(begins_char)]
+    fn text_begins(t: &str) -> () {
+        if t.len() > 0 {
+            assert(begins_char(t.as_bytes()[0]));
+        }
+    }
+
+    // A slice two bytes after an ASCII byte: the byte between may begin a
+    // character of two bytes or more.
+    #[effects(pure)]
+    fn two_after_ascii(t: &str, i: usize) -> usize {
+        if t.len() > 2 && i < t.len() - 2 && t.as_bytes()[i] < 128 {
+            return count(&t[i + 2..t.len()]);
+        }
+        0
+    }
+}

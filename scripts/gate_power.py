@@ -594,6 +594,11 @@ MUTANTS = [
      '''            if let Some(sig) = self.fns.get(&fp).filter(|s| s.trait_of.is_none()).cloned() {''',
      '''            if let Some(sig) = self.fns.get(&fp).filter(|s| s.trait_of.is_none() && !self.trait_impls.iter().any(|i| i.matches(value).is_some() && self.traits.get(&i.trait_path).is_some_and(|t| t.methods.contains(&name.name)))).cloned() {''',
      "a method call names a trait's function where the type has its own of that name: the program runs another function than Rust's"),
+    # What UTF-8 holds before a boundary (backlog 2U-06).
+    ("v-utf8-char-ends-before-ascii", "unsound", VT,
+     '''    let ends = |m: i64| format!("(or (= (+ {k} {m}) {n}) (not {}))", cont(&at(m)));''',
+     '''    let ends = |m: i64| format!("(or (= (+ {k} {m}) {n}) (< {} 128))", at(m));''',
+     "a character is taken to end before an ASCII byte: a slice two bytes after an ASCII byte is proved where a character of two bytes begins between"),
     # A trait's `Self` moves like any parameter without `Copy` (backlog 2T-09).
     ("k-trait-self-copied", "miscompile", K,
      '''        .filter(|p| !p.bounds.iter().any(|b| b == "Copy"))''',

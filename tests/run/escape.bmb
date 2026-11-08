@@ -1,9 +1,9 @@
-#[summary("JSON 문자열 이스케이프: 따옴표·역슬래시·제어 문자를 바꾸고 나머지 글자는 조각으로 옮긴다. 조각마다 글자 경계를 확인하고 길이 의무를 증명한다 (backlog 2U-05)")]
+#[summary("JSON 문자열 이스케이프: 따옴표·역슬래시·제어 문자를 바꾸고 나머지 글자는 조각으로 옮긴다. 조각의 글자 경계(UTF-8 불변식에서, 2U-06)와 길이 의무를 증명한다 (backlog 2U-05)")]
 mod esc {
     // `t` as a JSON string literal: `"`, `\` and the control characters
     // escaped, everything else as it is, copied a run at a time.
     #[effects(alloc)]
-    #[uses(ascii, digit, fits, short, within)]
+    #[uses(ascii, after_ascii, digit, fits, short, within)]
     fn escape(t: &str) -> String
         requires short(t),
     {
@@ -11,16 +11,15 @@ mod esc {
         let mut a: usize = 0;
         let mut i: usize = 0;
         while i < t.len()
-            invariant a <= i, within(i, t), fits(out.len(), a),
+            invariant a <= i, within(i, t), fits(out.len(), a), after_ascii(t, a),
             decreases t.len() - i,
         {
             let b: u8 = t.as_bytes()[i];
             if b == b'"' || b == b'\\' || b < 32 {
-                // The run before the byte; a run starts after an ASCII byte
-                // and ends before one, so the checks always hold for UTF-8.
-                if t.is_char_boundary(a) && t.is_char_boundary(i) {
-                    out.push_str(&t[a..i]);
-                }
+                // The run before the byte: it starts after an ASCII byte and
+                // ends before one, both character boundaries in UTF-8
+                // (backlog 2U-06).
+                out.push_str(&t[a..i]);
                 if b == b'"' {
                     out.push_str("\\\"");
                 } else if b == b'\\' {
@@ -36,9 +35,7 @@ mod esc {
             }
             i = i + 1;
         }
-        if t.is_char_boundary(a) {
-            out.push_str(&t[a..t.len()]);
-        }
+        out.push_str(&t[a..t.len()]);
         out.push('"');
         out
     }
@@ -47,6 +44,11 @@ mod esc {
     // plus the opening quote.
     spec fn fits(n: usize, i: usize) -> bool {
         n <= 6 * i + 1
+    }
+
+    // `a` starts the text or follows an ASCII byte.
+    spec fn after_ascii(t: &str, a: usize) -> bool {
+        a == 0 || (a <= t.len() && t.as_bytes()[a - 1] < 128)
     }
 
     spec fn digit(d: u32) -> bool {

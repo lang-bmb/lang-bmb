@@ -5,8 +5,15 @@
 //! holds by construction: every way to make text is a built-in that keeps
 //! it (a literal, `String::new`, `push_str` of text, `push` of a `char`,
 //! `from_utf8` after its check, a slice at character boundaries), so it is
-//! no obligation at those points. It is not a fact either yet: no proof here
-//! needs it (open question 1 of ADR-0050, the character view, would).
+//! no obligation at those points. It is a fact where a boundary is asked
+//! (backlog 2U-06): a slice's obligation assumes what UTF-8 holds of the
+//! bytes just before each bound, of the sliced text and of every text the
+//! definition received (parameters, call results), and at the end of each
+//! received text (`utf8_window`), without a quantifier. So a boundary
+//! after an ASCII byte, after a whole character or before a first byte is
+//! proved, and a refuted one has a counterexample of valid UTF-8. A
+//! quantified fact over the whole text was tried first and left refuted
+//! boundaries without a model, or with one at half the limit.
 //!
 //! What text adds to the bytes:
 //! - `&s[a..b]` is an obligation (E0820): `a <= b` and both are character
@@ -55,6 +62,75 @@ pub fn utf8_len(c: &str) -> String {
     format!("(ite (< {c} 128) 1 (ite (< {c} 2048) 2 (ite (< {c} 65536) 3 4)))")
 }
 
+/// A continuation byte (`0x80..=0xBF`).
+fn cont(x: &str) -> String {
+    format!("(and (<= 128 {x}) (< {x} 192))")
+}
+
+/// What valid UTF-8 bytes `a` with length `n` hold at position `k`
+/// (backlog 2U-06), when it is below the length: the byte is one Rust's
+/// `str` can hold (not `0xC0`, `0xC1`, above `0xF4`); an ASCII byte or a
+/// whole character ends there or before a byte that is not a
+/// continuation; a first byte has its continuation bytes after it; a
+/// continuation byte is not the first of four in a row.
+pub fn utf8_at(a: &str, n: &str, k: &str) -> String {
+    let at = |o: i64| match o {
+        0 => format!("(select {a} {k})"),
+        o => format!("(select {a} (+ {k} {o}))"),
+    };
+    let b = at(0);
+    let ends = |m: i64| format!("(or (= (+ {k} {m}) {n}) (not {}))", cont(&at(m)));
+    let run = |m: i64| {
+        let mut parts = vec![format!("(< (+ {k} {}) {n})", m - 1)];
+        for j in 1..m {
+            parts.push(cont(&at(j)));
+        }
+        parts.push(ends(m));
+        format!("(and {})", parts.join(" "))
+    };
+    let run4 = format!(
+        "(=> (< (+ {k} 3) {n}) (not (and {} {} {})))",
+        cont(&at(1)),
+        cont(&at(2)),
+        cont(&at(3))
+    );
+    format!(
+        "(=> (and (<= 0 {k}) (< {k} {n})) (and (not (and (<= 192 {b}) (<= {b} 193))) (<= {b} 244) (=> (< {b} 128) {}) (=> (and (<= 194 {b}) (< {b} 224)) {}) (=> (and (<= 224 {b}) (< {b} 240)) {}) (=> (<= 240 {b}) {}) (=> {} {run4})))",
+        ends(1),
+        run(2),
+        run(3),
+        run(4),
+        cont(&b)
+    )
+}
+
+/// What valid UTF-8 bytes `a` with length `n` hold just before position
+/// `i` (backlog 2U-06): the first byte begins a character, a continuation
+/// byte at `i` has its first byte at most three bytes before it, and the
+/// four bytes before `i` are as `utf8_at` has them. Enough to decide
+/// whether `i` is a character boundary from the bytes before it: after an
+/// ASCII byte, after a whole character, before a first byte. No
+/// quantifier: a quantified form over the whole text left refuted
+/// boundaries with no model or one at half the limit (the solver's
+/// instances chain from byte to byte).
+pub fn utf8_before(a: &str, n: &str, i: &str) -> String {
+    let at = |o: i64| format!("(select {a} (- {i} {o}))");
+    let mut parts = vec![
+        format!("(=> (< 0 {n}) (not {}))", cont(&format!("(select {a} 0)"))),
+        format!(
+            "(=> (and (< 0 {i}) (< {i} {n}) {}) (or (and (<= 1 {i}) (<= 194 {})) (and (<= 2 {i}) (<= 194 {})) (and (<= 3 {i}) (<= 194 {}))))",
+            cont(&format!("(select {a} {i})")),
+            at(1),
+            at(2),
+            at(3)
+        ),
+    ];
+    for j in 1..=4 {
+        parts.push(utf8_at(a, n, &format!("(- {i} {j})")));
+    }
+    format!("(and {})", parts.join(" "))
+}
+
 fn parts(v: &Val) -> (String, String) {
     match v {
         Val::A { elems, len } => (elems.clone(), len.clone()),
@@ -63,6 +139,48 @@ fn parts(v: &Val) -> (String, String) {
 }
 
 impl Enc<'_, '_> {
+    /// Records text value `v` as valid UTF-8 where it enters the
+    /// definition: a parameter, a call's result, a `&mut` argument after
+    /// the call (backlog 2U-06). No obligation goes with it: every way to
+    /// make text keeps the invariant (ADR-0050 §3). What it holds is stated
+    /// where a boundary is asked (`utf8_window`).
+    pub(super) fn assume_text(&mut self, v: &Val) {
+        if let Val::A { elems, len } = v
+            && !self.texts.contains(&(elems.clone(), len.clone()))
+        {
+            self.texts.push((elems.clone(), len.clone()));
+        }
+    }
+
+    /// What UTF-8 holds where boundary `i` of text `(a, n)` is asked
+    /// (backlog 2U-06): the bytes before `i` (`utf8_before`) of that text
+    /// and of every text known valid here (another text's bytes may equal
+    /// these), and the end of each known text (its last character is
+    /// whole: a prefix that matched it ends at a boundary).
+    pub(super) fn utf8_window(&self, a: &str, n: &str, i: &str) -> String {
+        let mut parts = vec![utf8_before(a, n, i)];
+        for (b, m) in &self.texts {
+            if (b.as_str(), m.as_str()) != (a, n) {
+                parts.push(utf8_before(b, m, i));
+            }
+            parts.push(utf8_before(b, m, m));
+        }
+        format!("(and {})", parts.join(" "))
+    }
+
+    /// Whether parameter `i` (or the result, `None`) of function `path` is
+    /// text (`Tables::text_sigs`).
+    pub(super) fn text_at(&self, path: &str, i: Option<usize>) -> bool {
+        self.prog
+            .t
+            .text_sigs
+            .get(path)
+            .is_some_and(|(ps, r)| match i {
+                Some(i) => ps.get(i).copied().unwrap_or(false),
+                None => *r,
+            })
+    }
+
     /// Whether `e`'s value is text (the checker's `Tables::text`).
     pub(super) fn is_text_expr(&self, e: &Expr) -> bool {
         self.prog
@@ -91,10 +209,18 @@ impl Enc<'_, '_> {
         let v = self.eval(base);
         let (lo, hi) = (self.eval(lo).s(), self.eval(hi).s());
         let (a, n) = parts(&v);
-        self.oblige(
+        // The bytes before each bound, as UTF-8 has them (`utf8_window`),
+        // for this obligation alone.
+        let given = format!(
+            "(and {} {})",
+            self.utf8_window(&a, &n, &lo),
+            self.utf8_window(&a, &n, &hi)
+        );
+        self.oblige_given(
             "E0820",
             e.span,
             "the range may not lie on character boundaries of the string",
+            Some(given),
             format!(
                 "(and (<= {lo} {hi}) {} {})",
                 boundary(&a, &n, &lo),

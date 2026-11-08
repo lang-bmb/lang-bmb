@@ -1,0 +1,7 @@
+{"code":"E0820","severity":"error","message":"the range may not lie on character boundaries of the string in `uf::after_lead`; counterexample: t = [224, 128, 133] (len 3), i = 0","file":"fail/utf8_facts.bmb","line":13,"col":27,"end_line":13,"end_col":44,"fix":{"message":"check `s.is_char_boundary(a) && s.is_char_boundary(b) && a <= b` before `&s[a..b]`, or require it"}}
+{"code":"E0810","severity":"error","message":"assertion may not hold in `uf::text_begins`; counterexample: t = [128] (len 1)","file":"fail/utf8_facts.bmb","line":28,"col":13,"end_line":28,"end_col":50}
+{"code":"E0820","severity":"error","message":"the range may not lie on character boundaries of the string in `uf::two_after_ascii`; counterexample: t = [127, 194, 128] (len 3), i = 0","file":"fail/utf8_facts.bmb","line":37,"col":27,"end_line":37,"end_col":44,"fix":{"message":"check `s.is_char_boundary(a) && s.is_char_boundary(b) && a <= b` before `&s[a..b]`, or require it"}}
+{"def":"uf::after_lead","status":"failed","obligations":3,"failed":1,"rlimit":73431,"rlimit_max":71854}
+{"def":"uf::count","status":"verified","obligations":0,"failed":0,"rlimit":0,"rlimit_max":0}
+{"def":"uf::text_begins","status":"failed","obligations":1,"failed":1,"rlimit":1386,"rlimit_max":1386}
+{"def":"uf::two_after_ascii","status":"failed","obligations":4,"failed":1,"rlimit":55505,"rlimit_max":51309}
