@@ -2,27 +2,27 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 12295689,
+    "V4_rlimit_total": 12477407,
     "V5_rlimit_headroom": 0.1244,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0,
     "V8_bench_rlimit_total": 22810907,
     "V9_bench_defs_at_limit": 0,
-    "V10_library_rlimit_total": 15624992,
-    "V11_sat_check_rlimit_total": 136391367,
-    "V12_sat_check_undecided": 143,
+    "V10_library_rlimit_total": 16188834,
+    "V11_sat_check_rlimit_total": 141024056,
+    "V12_sat_check_undecided": 147,
     "S1_external_crates": 0,
     "S2_external_processes": [
       "clang",
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 48875,
+    "S4_stage0_rust_lines": 49021,
     "S5_tests_bound_to_rust_api": 1,
     "S6_selfhost_bmb_lines": 0,
-    "P1_runnable_programs": 67,
-    "P2_bmb_lines": 26105,
-    "P3_errors_with_help": 0.8905,
+    "P1_runnable_programs": 69,
+    "P2_bmb_lines": 26487,
+    "P3_errors_with_help": 0.8907,
     "B1_baseline_binary_bytes": 101664,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 15
@@ -2182,6 +2182,44 @@
         "P2_bmb_lines": [
           25303,
           26105
+        ]
+      }
+    },
+    {
+      "date": "2026-11-08",
+      "reason": "4B-02 (e) and 2T-10: V12 143 -> 147 is std::slice's reach points (lib/std/slice.bmb 1, tests/run/std_slice.bmb 3; T2-13); V10 the new unit std::slice; P1-P3 up from tests/run/std_slice and generic_vecs",
+      "changed": {
+        "V4_rlimit_total": [
+          12295689,
+          12477407
+        ],
+        "V10_library_rlimit_total": [
+          15624992,
+          16188834
+        ],
+        "V11_sat_check_rlimit_total": [
+          136391367,
+          141024056
+        ],
+        "V12_sat_check_undecided": [
+          143,
+          147
+        ],
+        "S4_stage0_rust_lines": [
+          48875,
+          49021
+        ],
+        "P1_runnable_programs": [
+          67,
+          69
+        ],
+        "P2_bmb_lines": [
+          26105,
+          26487
+        ],
+        "P3_errors_with_help": [
+          0.8905,
+          0.8907
         ]
       }
     }
