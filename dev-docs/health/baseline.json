@@ -2,15 +2,15 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 13644627,
+    "V4_rlimit_total": 13721465,
     "V5_rlimit_headroom": 0.1244,
     "V6_deterministic_verify": true,
-    "V7_unstable_queries": 0.0,
+    "V7_unstable_queries": 0.0004,
     "V8_bench_rlimit_total": 22810907,
     "V9_bench_defs_at_limit": 0,
-    "V10_library_rlimit_total": 19337563,
-    "V11_sat_check_rlimit_total": 149167673,
-    "V12_sat_check_undecided": 153,
+    "V10_library_rlimit_total": 27006531,
+    "V11_sat_check_rlimit_total": 217370256,
+    "V12_sat_check_undecided": 204,
     "S1_external_crates": 0,
     "S2_external_processes": [
       "clang",
@@ -20,8 +20,8 @@
     "S4_stage0_rust_lines": 49071,
     "S5_tests_bound_to_rust_api": 1,
     "S6_selfhost_bmb_lines": 0,
-    "P1_runnable_programs": 72,
-    "P2_bmb_lines": 27784,
+    "P1_runnable_programs": 73,
+    "P2_bmb_lines": 28902,
     "P3_errors_with_help": 0.9118,
     "B1_baseline_binary_bytes": 101664,
     "O1_adr_index_mismatch": 0,
@@ -2288,6 +2288,40 @@
         "P3_errors_with_help": [
           0.8907,
           0.9118
+        ]
+      }
+    },
+    {
+      "date": "2026-11-08",
+      "reason": "4B-02 (h) std::json (T4-05): V10 its unit, V11/V12 its sat-check points (json 25 undecided, counted again in tests/run/std_json; T2-13); T2-14 sha256::output without division",
+      "changed": {
+        "V4_rlimit_total": [
+          13644627,
+          13721465
+        ],
+        "V7_unstable_queries": [
+          0.0,
+          0.0004
+        ],
+        "V10_library_rlimit_total": [
+          19337563,
+          27006531
+        ],
+        "V11_sat_check_rlimit_total": [
+          149167673,
+          217370256
+        ],
+        "V12_sat_check_undecided": [
+          153,
+          204
+        ],
+        "P1_runnable_programs": [
+          72,
+          73
+        ],
+        "P2_bmb_lines": [
+          27784,
+          28902
         ]
       }
     }
