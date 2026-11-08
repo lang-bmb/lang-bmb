@@ -155,18 +155,24 @@ const SRC: &str = r#"#[summary("uses fill")]
 mod m {
     spec fn is_succ(x: i64, r: i64) -> bool { r == x + 1 }
 
+    spec fn succ(x: i64, r: i64) -> bool { is_succ(x, r) }
+
     spec fn small(x: i64) -> bool { x < 100 && x > 0 }
 
     spec fn tiny(x: i64) -> bool { small(x) }
 
+    spec fn wrap(x: i64) -> bool { tiny(x) }
+
     spec fn pos(x: i64) -> bool { x > 0 }
 
-    // Needs `small` (overflow) besides the `is_succ` it already names.
+    // The default context (ADR-0095 A1) reveals the predicates the clauses
+    // name, `tiny` and `succ`; the fill adds what their bodies name. Needs
+    // `small` (overflow) besides the `is_succ` it already names.
     #[effects(pure)]
     #[uses(is_succ)]
     fn inc(x: i64) -> (r: i64)
-        requires small(x),
-        ensures is_succ(x, r),
+        requires tiny(x),
+        ensures succ(x, r),
     {
         x + 1
     }
@@ -174,7 +180,7 @@ mod m {
     // No attribute yet; `pos` is not needed.
     #[effects(pure)]
     fn bump(x: i64) -> i64
-        requires small(x), pos(x),
+        requires tiny(x), pos(x),
     {
         x + 1
     }
@@ -183,16 +189,16 @@ mod m {
     #[effects(pure)]
     #[uses(pos)]
     fn wrong(x: i64) -> (r: i64)
-        requires small(x),
-        ensures is_succ(x, r),
+        requires tiny(x),
+        ensures succ(x, r),
     {
         x
     }
 
-    // `small` appears only in the body of `tiny`.
+    // `small` appears only in the body of `tiny`, in the body of `wrap`.
     #[effects(pure)]
     fn deep(x: i64) -> i64
-        requires tiny(x),
+        requires wrap(x),
     {
         x + 1
     }
@@ -201,7 +207,7 @@ mod m {
     #[effects(pure)]
     #[uses(pos)]
     fn swap_in(x: i64) -> i64
-        requires small(x),
+        requires tiny(x),
     {
         x + 1
     }
@@ -376,7 +382,7 @@ fn deterministic_and_idempotent() {
 
 #[test]
 fn qualified_predicates_from_other_units() {
-    let text = "#[summary(\"a\")]\nmod a {\n    spec fn small(x: i64) -> bool { x < 100 && x > 0 }\n}\n\n#[summary(\"b\")]\nmod b {\n    #[effects(pure)] fn inc(x: i64) -> i64\n        requires a::small(x),\n    {\n        x + 1\n    }\n}\n";
+    let text = "#[summary(\"a\")]\nmod a {\n    spec fn small(x: i64) -> bool { x < 100 && x > 0 }\n\n    spec fn tiny(x: i64) -> bool { small(x) }\n}\n\n#[summary(\"b\")]\nmod b {\n    #[effects(pure)] fn inc(x: i64) -> i64\n        requires a::tiny(x),\n    {\n        x + 1\n    }\n}\n";
     let out = fill_uses(&one(text)).unwrap();
     let inc = row(&out, "b::inc");
     assert_eq!(inc.status, UsesStatus::Proved);
@@ -489,11 +495,13 @@ mod l {
     let out = fill_uses(&input).unwrap();
     let r = row(&out, "l::index");
     assert_eq!(r.status, UsesStatus::Proved);
-    assert_eq!(r.uses, ["found", "ok", "upto"]);
+    // `ok` and `found` are its contract (the default context); `upto` is
+    // in `ok`'s body.
+    assert_eq!(r.uses, ["upto"]);
     assert!(
         out.files[0]
             .1
-            .contains("    #[uses(found, ok, upto)]\n    proof fn index("),
+            .contains("    #[uses(upto)]\n    proof fn index("),
         "{}",
         out.files[0].1
     );
@@ -523,6 +531,8 @@ mod b {
     let out = fill_uses(&input).unwrap();
     let r = row(&out, "b::f");
     assert_eq!(r.status, UsesStatus::Proved);
-    assert_eq!(r.uses, ["low", "twice"]);
+    // `twice` is named by the assertion (the default context); `low` is
+    // in its body.
+    assert_eq!(r.uses, ["low"]);
     assert!(verified(&out.files, "b::f"));
 }

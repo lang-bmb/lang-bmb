@@ -58,13 +58,14 @@ fn fmt_and_fix_leave_the_library_out() {
     );
     let dir = cli::fresh_dir();
     let app = dir.join("app.bmb");
-    // A fixable habit in the program: `x.len() as u64`-style casts are
-    // E0205 with a replacement; the library has none to apply.
+    // A fixable habit in the program: `u64::from(x)` is E0212 with a
+    // replacement (written `x as u64` in the end, ADR-0095 A4); the library
+    // has none to apply.
     fs::write(
         &app,
         USES.replace(
             "std::str::starts_with(s, \"ab\")",
-            "std::str::starts_with(s, \"ab\") && s.len() as u64 > 0",
+            "std::str::starts_with(s, \"ab\") && u64::from(s.len()) > 0",
         ),
     )
     .unwrap();
@@ -74,7 +75,7 @@ fn fmt_and_fix_leave_the_library_out() {
         .output()
         .unwrap();
     let text = fs::read_to_string(&app).unwrap();
-    assert!(text.contains("u64::try_from(s.len())"), "{text}\n{out:?}");
+    assert!(text.contains("s.len() as u64 > 0"), "{text}\n{out:?}");
     let written: Vec<_> = fs::read_dir(&dir)
         .unwrap()
         .map(|e| e.unwrap().file_name().into_string().unwrap())
