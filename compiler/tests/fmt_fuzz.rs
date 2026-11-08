@@ -368,7 +368,15 @@ fn check_renames(rng: &mut Rng, what: &str, base: &Files, max: usize) -> usize {
             continue;
         }
         let got = ids(&files, str::to_string);
-        let mapped = ids(base, |p| rename_word(p, w, &to, &mut Vec::new()));
+        // The standard library's text is the compiler's: renaming a word of
+        // the program does not rename its definitions (ADR-0092).
+        let mapped = ids(base, |p| {
+            if p.starts_with("std::") {
+                p.to_string()
+            } else {
+                rename_word(p, w, &to, &mut Vec::new())
+            }
+        });
         assert_eq!(got, mapped, "{what}: renaming `{w}` moved an identity");
         assert_eq!(got.len(), want.len(), "{what}");
         checked += 1;
