@@ -127,12 +127,19 @@ def classify(toks, cats, items, unit):
                     depth += 1
                 elif x in ")]":
                     depth -= 1
-                if depth == 0 and (x in CLAUSES or x == "{"):
+                if depth == 0 and (x in CLAUSES or x in ("{", ";")):
                     break
                 j += 1
             sig = toks[i:j]
+            # A trait method's declaration has no body (backlog 2R-04a).
+            if toks[j] == ";" or ";" in toks[j : toks.index("{", j) if "{" in toks[j:] else len(toks)]:
+                semi = toks.index(";", j)
+                add("sig", semi - i + 1)
+                i = semi + 1
+                continue
             # named result `-> (r: T)`: the `(`, name, `:` and `)` beyond `-> T`
-            arrow = sig.index("->")
+            # (none for a `proof fn`, ADR-0062)
+            arrow = sig.index("->") if "->" in sig else len(sig) - 1
             ret = sig[arrow + 1 :]
             if ret[:1] == ["("] and len(ret) > 2 and ret[2] == ":":
                 add("named_result", 4)
@@ -171,8 +178,9 @@ def classify_body(body, add, it):
     n = len(body)
     while i < n:
         t = body[i]
-        if t == "while":
-            # header up to `invariant`/`decreases`/`{` at depth 0
+        if t in ("while", "for"):
+            # header up to `invariant`/`decreases`/`{` at depth 0 (`for`:
+            # backlog 2R-04f, read here since 2R-04a)
             j = i + 1
             depth = 0
             while not (depth == 0 and body[j] in ("invariant", "decreases", "{")):
