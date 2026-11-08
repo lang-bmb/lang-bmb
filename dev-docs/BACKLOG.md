@@ -10,6 +10,24 @@
 
 ## 지금 할 일
 
+### 실행 계획(2026-11-08, 사람 승인: "권장안 채택, 자율 실행/검증 승인")
+
+2026-11-07 계획의 사이클 1–5와 사이 `4C-05`·`4C-06`은 끝났다(2M·③ 닫힘). 남은 6–7(`4B-02` 첫 조각)을 앞의 선행 조건 둘과 함께 이어, ④ 표준 라이브러리를 `std::collections`까지 연다(ADR-0092 결과 절의 순서).
+
+| 사이클 | 태스크 | 수순 | 내용 | 근거 |
+| --- | --- | --- | --- | --- |
+| 1 | `2T-09` | ② | 이동 타입의 trait `Self`: 검사·이동·코드 생성·퍼저 | `soundness_traits`의 이동 impl, valgrind 실행 코퍼스 |
+| 2 | `2U-06` | ② | UTF-8 불변식을 사용 지점 사실로(`std::str`에 필요) | `tests/verify` |
+| 3 | `4B-02` (a) | ④ | `lib/std/` 자동 포함, `std::` 경로 해석, 맵·질의에서 `std::` 구분(쓰지 않는 단위는 넣지 않음, ADR-0092 열린 질문 1의 첫 판) | `tests/check`, 쓰기 도구가 `std::`를 고치지 않음 |
+| 4 | `4B-02` (b) | ④ | `std::str`(`2U-07` 합침): `starts_with`·`find`·`split_once`·`trim`·`strip_prefix`·`decode_utf8` | 바이트 명세와 같음, Rust 차등 시험 |
+| 5 | `4B-02` (c) | ④ | `std::num`: `u64`·`i64` 10진·16진 `parse`와 서식 | 되읽힘 |
+| 6 | `4B-02` (d) | ④ | `lib/`의 다섯을 `std::`로 이전 | `tests/lib_run` 이름만 바뀜 |
+| 7 | `4B-02` (e) | ④ | `std::slice`: 안정 `sort_by_key`, 이진 탐색 | 순열·정렬·같은 키 순서 보존 |
+| 8–9 | `4B-02` (f) | ④ | `std::collections`: 정렬된 `Vec` 위 `BTreeMap`·`BTreeSet` | 정렬된 쌍의 열 명세, 퍼저 대상 |
+| 10 | 4B 중간 감사 | ④ | 증명 비용 예산(정의마다 rlimit ≤ 기본의 1/5, `stability --seeds 8` 불안정 0) | `dev-docs/health/4B.md` |
+
+승인 대기(이 계획과 별개): `2V-18`(상수 항목·클로저 ADR 채택), `2N-07`(복합 대입 방향).
+
 ### 실행 계획(2026-11-07, 사람 승인: "권장안 승인, 자율 실행/검증 승인")
 
 2M-01 완료(2026-11-07) 뒤의 임계 경로: 2M을 닫고(4B-02와 `spawn`·`Child`가 메서드 구문을 기다림) ③ 런타임을 닫은 뒤 ④ 표준 라이브러리를 연다. 측정 줄(T0-33, T1-41)은 따로 계속한다.
@@ -763,7 +781,7 @@ ROADMAP의 통과 기준마다 그것을 확인하는 태스크다. 빈칸이 �
 | 2T-07b | trait 계약과 정제 의무 | trait 메서드의 `requires`·`ensures`와 trait의 `spec fn`(정렬 위 비해석 함수, impl에서는 impl의 정의), 경계 호출은 trait 계약, impl 메서드는 trait 계약을 정제하는 의무 E0817(전제는 약하게, 결과는 강하게), 반례 코퍼스. 경계 `Self` 호출을 거치는 재귀(2T-07a의 E0207, `check::trait_cycles`)를 trait 메서드의 `decreases`로 풀지 정한다 | 2T-07a | ✅ 검사: trait 메서드의 계약·`spec fn` 메서드를 받고 선언은 `check_fn`으로(본문 없음), trait 메서드의 `decreases`는 E0207(결정: 경계 호출은 측도를 갖지 않으므로 경계 재귀 E0207 유지), 구문적 E0817 제거. `#[uses(Tr::m)]`(`check::uses_target`, 검사·증명·정규형·맵 공용). 증명: `Enc::refines`(정제 의무 E0817 둘: 전제 함의, 결과 함의), `spec_target`·`prepare`의 디스패치(비제네릭 impl은 인스턴스 없음), `revealed`(trait spec 메서드 → impl 정의), `refinement_of`. 증분 키: impl 함수는 trait 메서드 선언을 읽고, `#[uses(Tr::m)]`는 impl 정의 본문을 읽음. `check::defs_of`는 인스턴스 서명을 거름. 코퍼스 `tests/verify/pass/trait_contracts`(spec 메서드, `&mut` 수신자 `old(self)`, 경계·구체 호출), `tests/verify/fail/trait_contracts`(더 강한 전제·더 약한 결과 E0817, 경계 호출의 전제 E0801, 모두 반례), `tests/run/trait_contracts`(경계로 증명한 최댓값을 `Card`·`Hand`로: 11 10 6), `tests/check/err/traits`(trait 메서드 `decreases`) |
 | 2T-07c | 기본 메서드 본문 | trait의 기본 본문(`Self` 정렬로 한 번 증명, impl이 정의하지 않으면 그 타입의 인스턴스로 코드 생성), 정규형·맵 L1·L2, 실행 코퍼스 | 2T-07b | ✅ `FnSig::default`, 기본 본문은 `check::defs_of`의 정의(`Self` 정렬로 한 번 증명, `check_fn`이 본문 검사), `check::dispatch`는 정의하지 않은 impl에서 trait 메서드 경로를 돌려줌(증명은 그 계약, 코드 생성은 인스턴스), E0315는 기본 있는 메서드를 빼지 않음, spec 기본 본문은 구체 `Self` 인스턴스에서만 공개(`Prog::revealed`). 맵 단위 목록에 기본 본문. 코퍼스 `tests/run/trait_defaults`(기본 42, 재정의 10, spec 기본·재정의 7·9 증명), `tests/verify/fail/trait_defaults`(기본 본문의 자기 계약 위반 `self = Self#0`, 경계 `T`에서 기본 spec 값을 가정하지 못함) |
 | 2T-08 | 스칼라 참조 `&T`의 코드 생성과 표면 | 2T-07a 발견: `T`가 정수·`bool`인 제네릭 `&T` 인스턴스(`get::<i64>(&a)` in `fn get<T: Copy>(x: &T) -> T { *x }`)에서 코드 생성이 패닉한다(`aggregate used as scalar`, 2T-01부터, 유효한 입력에 컴파일러 충돌). 또 `&Self` 수신자 trait을 정수 타입에 impl하려면 `self: &i64`가 필요한데 비제네릭 코드의 `&i64` 매개변수는 E0402다. 코드 생성(스칼라 참조 매개변수·인자·`*x`·`*x = v`), 증명 인코딩 확인, `&i64` 매개변수 허용 여부(ADR-0015 범위, 결정 기록), 실행 코퍼스 | 2T-01 | ✅ ADR-0054(자율 채택): 정수·`bool` 참조 매개변수 허용(`check_param_type`). 코드 생성: 스칼라 참조 매개변수는 호출자 슬롯 포인터의 `Slot::Scalar`, 인자는 `Gen::scalar_ref`(지역·참조 매개변수는 슬롯 그대로, 필드·원소는 임시와 `&mut` 되쓰기 `Back`), `*x = v` 대입. 증명은 그대로이고 건전성 확인(`tests/verify/fail/scalar_refs`: 지역·필드·원소를 `&mut`로 넘긴 뒤의 단언 셋 실패, `good` 증명). `tests/run/scalar_refs`(5 6 12 1 8 0 255 2 255 8 0 16 2 0, 정수 타입·`bool`의 trait impl 포함, valgrind 깨끗). `tests/check/err/places`의 `&i64` 예는 `&()`로 |
-| 2T-09 | 이동 타입의 trait `Self` | 2M-03 발견: 검사기가 trait의 `Self`에 `Copy` 경계를 붙여(`collect_trait_sigs`의 `selfp`) `Vec`·`String`·`Box`를 담은 타입은 trait을 구현하지 못한다(E0428). ADR-0046은 타입 매개변수가 소유 규칙을 따른다고만 하고 이 제한을 적지 않았다(`tests/run/methods`는 계좌를 `Copy` 계좌와 `Vec` 기록으로 나눴다). 4B 표준 라이브러리(`std::collections`의 trait 구현)가 부딪힌다. `Self`를 경계 없는 매개변수(이동)로 두고, 값 수신자 `self: Self`는 이동, 참조 수신자는 그대로; 증명(정렬 매개변수)·코드 생성(이동 glue, ADR-0047)·퍼저(`soundness_traits`에 이동 `Self` 구현)를 맞춘다. ADR-0046 범위 안의 구현 결정 | 2M-03 | ⏳ |
+| 2T-09 | 이동 타입의 trait `Self` | 2M-03 발견: 검사기가 trait의 `Self`에 `Copy` 경계를 붙여(`collect_trait_sigs`의 `selfp`) `Vec`·`String`·`Box`를 담은 타입은 trait을 구현하지 못한다(E0428). ADR-0046은 타입 매개변수가 소유 규칙을 따른다고만 하고 이 제한을 적지 않았다(`tests/run/methods`는 계좌를 `Copy` 계좌와 `Vec` 기록으로 나눴다). 4B 표준 라이브러리(`std::collections`의 trait 구현)가 부딪힌다. `Self`를 경계 없는 매개변수(이동)로 두고, 값 수신자 `self: Self`는 이동, 참조 수신자는 그대로; 증명(정렬 매개변수)·코드 생성(이동 glue, ADR-0047)·퍼저(`soundness_traits`에 이동 `Self` 구현)를 맞춘다. ADR-0046 범위 안의 구현 결정 | 2M-03 | ✅ 2026-11-08: `collect_trait_sigs`의 `Self`는 경계가 trait 하나(`Copy` 없음)라 이동한다. 이동 검사가 기본 본문의 `self: Self`도 본다(E0413), 코드 생성은 남은 값을 그 자리에서 해제(ADR-0047). `Self`를 `T: Copy + Tr`에 넘기던 술어 셋(`scored`·`doubled`·퍼저 `got`)은 `Copy`를 뺐다. E0413의 `clone()` 안내는 `clone`이 있는 값(`String`, 복사 원소의 `Vec`)에만, 그 밖은 빌려 주기 안내(코퍼스 넷의 안내가 바로잡힘). 시험: `tests/run/move_traits`(Vec·Box를 담은 impl, 기본 본문의 이동·해제, `Pair<T: Weigh>`, Rust 번역 `move_traits_ref.rs`와 출력 동일, valgrind), `tests/check/err/move_traits`, 퍼저 `soundness_traits`의 이동 impl `M`(`f::<M>`가 인자를 받아 해제), 변이 `k-trait-self-copied`. 새 코퍼스가 증명 캐시 결함을 드러냈다: 캐시가 의무의 마지막 단계 rlimit을 `max`로 저장해 앞 단계(비트 추상)가 더 컸던 의무의 `rlimit_max`가 데운 실행에서 달랐다(`outputs_are_identical_with_and_without_the_cache`), 단계의 최댓값을 저장하도록 고침. ADR-0046 구현 시 확인 |
 | 2T-05 | 퍼저 | 데이터 퍼저에 제네릭 함수·컨테이너와 경계. 안정성(V7) 측정 | 2T-04 | ✅ 퍼저 `tests/soundness_traits.rs`(구체 `Self` 호출 `h`, 경계 호출 제네릭 `f<T: Val>`, 무작위 계약 impl `R`의 정제, 반례 재현, 두 빌드 대조; 24배치 위반 0). 게이트 검출력 35/35(`dev-docs/measurements/gate-power`, trait 변이체 넷: `v-refine-post-dropped`·`v-refine-pre-dropped`·`v-default-spec-leaks`·`c-trait-call-undispatched`; trait 퍼저가 첫째와 넷째를 잡음). 발견: 2T-02 뒤 적용되지 않던 변이체 여섯을 다시 겨누고 게이트 단계 `power` 추가, `v-default-spec-leaks`의 동치에서 기본 spec 공개의 과잉 보수 발견·수정(61105a21). V7 = 0.0(의무 1,431개) |
 | 2T-06 | 실용 프로그램과 종료 감사 | 제네릭을 쓰는 실행 프로그램 2개 이상(예: `sort<T: Ord>`, 제네릭 스택), `dev-docs/health/2T.md`, 통과 기준 하나씩 확인 | 2T-05 | ✅ `dev-docs/health/2T.md`: 통과 기준 1~3 충족. 실행 프로그램 7개(`generics`·`sort_generic`·`generic_stack`·`traits`·`trait_contracts`·`trait_defaults`·`scalar_refs`), 마찰 표 2T 행 5개 처리 |
 

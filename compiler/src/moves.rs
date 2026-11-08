@@ -205,6 +205,16 @@ impl Mv<'_> {
             .is_some_and(|t| is_move_in(t, self.adts, self.moving))
     }
 
+    /// Whether the value has a `clone` (`String`, a `Vec` of copyable
+    /// elements: `check`'s `Vec::clone` and `String::clone`).
+    fn clonable(&self, t: &TypeKind) -> bool {
+        match t {
+            TypeKind::String => true,
+            TypeKind::Vec(e) => !is_move_in(&e.kind, self.adts, self.moving),
+            _ => false,
+        }
+    }
+
     /// Whether the value of expression `e` moves.
     fn moves_ty(&self, e: &Expr) -> bool {
         self.types
@@ -356,9 +366,17 @@ impl Mv<'_> {
                         "a child process has one owner: lend it as `&mut {0}` where it is still needed, and move it last (`{0}.wait()`)",
                         id.name
                     )
-                } else {
+                } else if self.types.get(&key(span)).is_some_and(|t| self.clonable(t)) {
                     format!(
                         "move `{0}.clone()` instead, or assign `{0}` again before this use",
+                        id.name
+                    )
+                } else {
+                    // No `clone` for it (only `String` and `Vec` of copyable
+                    // elements have one): a type parameter, a trait's `Self`,
+                    // a `Box`, a data type that owns memory.
+                    format!(
+                        "lend it as `&{0}` where it is still needed and move it last, or assign `{0}` again before this use",
                         id.name
                     )
                 };
@@ -912,7 +930,11 @@ impl Mv<'_> {
                 if moves && self.moves_ty(e) && self.behind_mut(e) {
                     self.out_of_mut(e);
                 } else if moves && self.moves_ty(e) {
-                    let fix = if matches!(self.types.get(&key(e.span)), Some(TypeKind::Vec(_))) {
+                    let fix = if self
+                        .types
+                        .get(&key(e.span))
+                        .is_some_and(|t| self.clonable(t))
+                    {
                         format!("move `{}.clone()` instead", crate::fmt::expr_text(x))
                     } else {
                         "read through it (`*b` of a copyable value, `b.f`) or move the whole value"

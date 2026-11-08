@@ -70,7 +70,7 @@ mod sc {
         print_i64(hs[1].score());
     }
 
-    spec fn scored<T: Copy + Score>(x: &T, r: i64) -> bool {
+    spec fn scored<T: Score>(x: &T, r: i64) -> bool {
         r == x.value()
     }
 }

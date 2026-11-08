@@ -1,0 +1,37 @@
+#[summary("이동 타입의 trait `Self`: 이동 뒤 사용, 참조에서 꺼내기 (2T-09)")]
+mod n {
+    trait Use {
+        #[effects(pure)]
+        fn eat(self: Self) -> u64;
+
+        #[effects(pure)]
+        fn twice(self: Self) -> u64 {
+            let a: u64 = self.eat();
+            let b: u64 = self.eat();
+            0
+        }
+
+        #[effects(pure)]
+        fn steal(self: &Self) -> u64 {
+            let s: Self = *self;
+            s.eat()
+        }
+
+        #[effects(pure)]
+        fn keep(self: Self) -> Self {
+            let t: Self = self;
+            self
+        }
+    }
+
+    #[effects(pure)]
+    fn both<T: Use>(x: T) -> u64 {
+        let a: u64 = x.eat();
+        x.eat()
+    }
+
+    #[effects(pure)]
+    fn dup<T: Use>(x: &T) -> T {
+        *x
+    }
+}

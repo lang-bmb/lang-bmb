@@ -1,0 +1,120 @@
+#[summary("이동 타입의 trait `Self`: Vec·Box를 담은 타입의 impl, 값 수신자의 이동과 해제 (2T-09)")]
+mod mt {
+    trait Weigh {
+        #[effects(pure)]
+        fn weight(self: &Self) -> u64;
+
+        // Consumes the value: what it holds is freed here or by the callee.
+        #[effects(pure)]
+        fn spend(self: Self) -> u64;
+
+        // A default body on a move `Self`: the value moves into `spend`.
+        #[effects(pure)]
+        fn spend_twice_weight(self: Self) -> u64 {
+            let w: u64 = self.weight();
+            let s: u64 = self.spend();
+            if w > 1000000 || s > 1000000 {
+                return 0;
+            }
+            w + s
+        }
+
+        // A default body that drops its value without moving it.
+        #[effects(pure)]
+        fn forget(self: Self) -> u64 {
+            7
+        }
+    }
+
+    struct Bag { items: Vec<u64> }
+
+    struct Cell { b: Box<u64> }
+
+    impl Weigh for Bag {
+        #[effects(pure)]
+        fn weight(self: &Bag) -> u64 {
+            u64::try_from(self.items.len()).unwrap()
+        }
+
+        #[effects(pure)]
+        fn spend(self: Bag) -> u64 {
+            let v: Vec<u64> = self.items;
+            u64::try_from(v.len()).unwrap()
+        }
+    }
+
+    impl Weigh for Cell {
+        #[effects(pure)]
+        fn weight(self: &Cell) -> u64 {
+            if *self.b > 1000 {
+                return 1000;
+            }
+            *self.b
+        }
+
+        #[effects(pure)]
+        fn spend(self: Cell) -> u64 {
+            100
+        }
+
+        #[effects(pure)]
+        fn forget(self: Cell) -> u64 {
+            8
+        }
+    }
+
+    // A generic consumer: `b` moves into `spend`, `a` is borrowed.
+    #[effects(pure)]
+    fn total<T: Weigh>(a: &T, b: T) -> u64 {
+        let x: u64 = a.weight();
+        let y: u64 = b.spend();
+        if x > 1000000 || y > 1000000 {
+            return 0;
+        }
+        x + y
+    }
+
+    // A generic owner of a move `Self`.
+    struct Pair<T: Weigh> { l: T, r: T }
+
+    #[effects(pure)]
+    fn heavier<T: Weigh>(p: Pair<T>) -> T {
+        if p.l.weight() >= p.r.weight() {
+            return p.l;
+        }
+        p.r
+    }
+
+    spec fn few(n: u64) -> bool {
+        n <= 100
+    }
+
+    #[effects(alloc)]
+    #[uses(few)]
+    fn bag(n: u64) -> Bag
+        requires few(n),
+    {
+        let mut v: Vec<u64> = Vec::new();
+        for i in 0..n {
+            if v.len() < 1000 {
+                v.push(i);
+            }
+        }
+        Bag { items: v }
+    }
+
+    #[effects(alloc, io)]
+    #[uses(few)]
+    fn main() -> () {
+        let a: Bag = bag(3);
+        print_u64(total::<Bag>(&a, bag(2)));
+        print_u64(a.spend_twice_weight());
+        print_u64(bag(5).forget());
+        let c: Cell = Cell { b: Box::new(9) };
+        print_u64(total::<Cell>(&c, Cell { b: Box::new(1) }));
+        print_u64(c.forget());
+        let h: Bag = heavier::<Bag>(Pair { l: bag(4), r: bag(6) });
+        print_u64(h.weight());
+        print_u64(Cell { b: Box::new(2) }.spend_twice_weight());
+    }
+}

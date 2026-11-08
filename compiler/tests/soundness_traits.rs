@@ -2,10 +2,11 @@
 //! 2T-05, ADR-0046).
 //!
 //! Each batch declares a trait `Val` (a spec method `val` and an exact
-//! method `get` whose contract is `r == val(self)`), two fixed impls (`B`
-//! and the generic wrapper `N<T>`, which delegates through the bound) and
-//! one random impl `R` whose body and own postcondition are random, so its
-//! refinement obligations (E0817) may fail. Every random scalar function of
+//! method `get` whose contract is `r == val(self)`), three fixed impls (`B`,
+//! the generic wrapper `N<T>`, which delegates through the bound, and `M`,
+//! a move type that owns a `Vec`, backlog 2T-09) and one random impl `R`
+//! whose body and own postcondition are random, so its refinement
+//! obligations (E0817) may fail. Every random scalar function of
 //! `common::scalar` is written twice: `h` calls `get` on a `B` and an
 //! `N<B>` (a known `Self`: the impls' contracts), and `f<T: Val>` calls it
 //! on its parameters (a bounded `Self`: the trait's contract, proved once).
@@ -20,7 +21,8 @@
 //!   breaks it;
 //! - the compiled program, built twice (proved checks removed, and every
 //!   check kept), prints what the interpreter computes for `h`, `f::<B>`,
-//!   `f::<N<B>>` and `R::get`;
+//!   `f::<N<B>>`, `f::<M>` (its arguments move in and are dropped there)
+//!   and `R::get`;
 //! - a call the interpreter says faults runs as a program of its own
 //!   (`common::trap`, backlog 1B-54): both builds print the line before it
 //!   and end by the trap.
@@ -86,13 +88,38 @@ const PRELUDE: &str = r#"    trait Val {
             ensures got::<Self>(self, r);
     }
 
-    spec fn got<T: Copy + Val>(x: &T, r: i64) -> bool { r == Val::val(x) }
+    spec fn got<T: Val>(x: &T, r: i64) -> bool { r == Val::val(x) }
 
     struct B { v: i64 }
 
     struct N<T: Copy> { inner: T }
 
     struct R { v: i64 }
+
+    struct M { v: i64, log: Vec<i64> }
+
+    impl M {
+        #[effects(alloc)]
+        fn mk(v: i64) -> M {
+            let mut log: Vec<i64> = Vec::new();
+            log.push(v);
+            M { v: v, log: log }
+        }
+    }
+
+    impl Val for M {
+        spec fn val(self: &M) -> i64 {
+            self.v
+        }
+
+        #[effects(pure)]
+        #[uses(got, Val::val)]
+        fn get(self: &M) -> (r: i64)
+            ensures got::<M>(self, r),
+        {
+            self.v
+        }
+    }
 
     impl R {
         #[effects(pure)]
@@ -239,13 +266,13 @@ fn funcs_text(f: &Func) -> String {
     let (va, vb) = ("Val::val(a)", "Val::val(b)");
     let _ = write!(
         t,
-        "    spec fn f{k}_pre<T: Copy + Val>(a: &T, b: &T) -> bool {{ {} }}\n\n    spec fn f{k}_post<T: Copy + Val>(a: &T, b: &T, r: i64) -> bool {{ {} }}\n\n",
+        "    spec fn f{k}_pre<T: Val>(a: &T, b: &T) -> bool {{ {} }}\n\n    spec fn f{k}_post<T: Val>(a: &T, b: &T, r: i64) -> bool {{ {} }}\n\n",
         subst_xy(&pre, va, vb),
         subst_xy(&post, va, vb)
     );
     let _ = write!(
         t,
-        "    #[effects(pure)]\n    #[uses(f{k}_pre, f{k}_post, got)]\n    fn f{k}<T: Copy + Val>(a: T, b: T) -> (r: i64)\n        requires f{k}_pre::<T>(&a, &b),\n        ensures f{k}_post::<T>(&a, &b, r),\n    {{\n        let x: i64 = Val::get(&a);\n        let y: i64 = Val::get(&b);\n{}",
+        "    #[effects(pure)]\n    #[uses(f{k}_pre, f{k}_post, got)]\n    fn f{k}<T: Val>(a: T, b: T) -> (r: i64)\n        requires f{k}_pre::<T>(&a, &b),\n        ensures f{k}_post::<T>(&a, &b, r),\n    {{\n        let x: i64 = Val::get(&a);\n        let y: i64 = Val::get(&b);\n{}",
         body_text(f)
     );
     t
@@ -317,28 +344,31 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
     src.push_str("}\n\n");
     let module = src.clone();
     let main_head = format!(
-        "#[summary(\"실행\")]\nmod app {{\n    #[effects(io)]\n    #[uses({})]\n    fn main() -> () {{\n",
+        "#[summary(\"실행\")]\nmod app {{\n    #[effects(alloc, io)]\n    #[uses({})]\n    fn main() -> () {{\n",
         uses.join(", ")
     );
     src.push_str(&main_head);
     let mut expected = String::new();
     let mut n = 0;
     // Calls that fault in the interpreter (backlog 1B-54): `main` lines for
-    // `h`, `f::<B>` and `f::<N<B>>` (the kind), one form each.
+    // `h`, `f::<B>`, `f::<N<B>>` and `f::<M>` (the kind), one form each.
     let mut faults: Vec<(usize, (usize, String))> = Vec::new();
     for (fi, f) in funcs.iter().enumerate() {
         let k = &f.name[1..];
         for (x, y) in f.inputs(&mut rng) {
             let (lx, ly) = (lit(x), lit(y));
             let Ok(res) = f.run(x, y) else {
-                let form = faults.len() % 3;
+                let form = faults.len() % 4;
                 let call = match form {
                     0 => format!("        print_i64(m::h{k}({lx}, {ly}));\n"),
                     1 => format!(
                         "        let a: m::B = m::B {{ v: {lx} }};\n        let b: m::B = m::B {{ v: {ly} }};\n        print_i64(m::f{k}::<m::B>(a, b));\n"
                     ),
-                    _ => format!(
+                    2 => format!(
                         "        let c: m::N<m::B> = m::N {{ inner: m::B {{ v: {lx} }} }};\n        let d: m::N<m::B> = m::N {{ inner: m::B {{ v: {ly} }} }};\n        print_i64(m::f{k}::<m::N<m::B>>(c, d));\n"
+                    ),
+                    _ => format!(
+                        "        print_i64(m::f{k}::<m::M>(m::M::mk({lx}), m::M::mk({ly})));\n"
                     ),
                 };
                 faults.push((fi, (form, call)));
@@ -353,8 +383,12 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
                 src,
                 "        let c{n}: m::N<m::B> = m::N {{ inner: m::B {{ v: {lx} }} }};\n        let d{n}: m::N<m::B> = m::N {{ inner: m::B {{ v: {ly} }} }};\n        print_i64(m::f{k}::<m::N<m::B>>(c{n}, d{n}));"
             );
+            let _ = writeln!(
+                src,
+                "        print_i64(m::f{k}::<m::M>(m::M::mk({lx}), m::M::mk({ly})));"
+            );
             n += 1;
-            for _ in 0..3 {
+            for _ in 0..4 {
                 let _ = writeln!(expected, "{res}");
             }
         }
@@ -406,7 +440,11 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
             .find(|l| field(l, "def") == Some(def))
             .and_then(|l| field(l, "status"))
     };
-    for fixed in ["<m::B as m::Val>::get", "<m::N<T> as m::Val>::get"] {
+    for fixed in [
+        "<m::B as m::Val>::get",
+        "<m::N<T> as m::Val>::get",
+        "<m::M as m::Val>::get",
+    ] {
         assert_eq!(status(fixed), Some("verified"), "{}", ctx(fixed));
     }
 

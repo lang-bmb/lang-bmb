@@ -2071,7 +2071,7 @@ impl<'a> Checker<'a> {
             }
             let selfp = TParam {
                 name: "Self".into(),
-                bounds: vec!["Copy".into(), path.clone()],
+                bounds: vec![path.clone()],
             };
             let mut names: Vec<String> = Vec::new();
             for tf in &t.fns {

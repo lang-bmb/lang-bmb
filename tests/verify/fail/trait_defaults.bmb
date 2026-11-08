@@ -70,7 +70,7 @@ mod df {
         assert(Shape::label(&x) == 7);
     }
 
-    spec fn doubled<T: Copy + Shape>(x: &T, r: i64) -> bool {
+    spec fn doubled<T: Shape>(x: &T, r: i64) -> bool {
         r == Shape::model(x).saturating_mul(2)
     }
 
@@ -92,7 +92,7 @@ mod df {
         print_i64(Shape::twice(&b));
     }
 
-    spec fn scored<T: Copy + Shape>(x: &T, r: i64) -> bool {
+    spec fn scored<T: Shape>(x: &T, r: i64) -> bool {
         r == Shape::model(x)
     }
 }

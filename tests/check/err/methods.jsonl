@@ -5,4 +5,4 @@
 {"code":"E0408","severity":"error","message":"`p` is not mutable","file":"err/methods.bmb","line":80,"col":9,"end_line":80,"end_col":10,"fix":{"message":"declare the variable with `let mut`"}}
 {"code":"E0401","severity":"error","message":"`P::bump` takes `self: &mut`, found the shared reference `&P`","file":"err/methods.bmb","line":85,"col":9,"end_line":85,"end_col":10,"fix":{"message":"pass a `&mut P` receiver: declare `p` with that type"}}
 {"code":"E0404","severity":"error","message":"unknown method `nope` of `P`","file":"err/methods.bmb","line":90,"col":11,"end_line":90,"end_col":15,"fix":{"message":"the methods of `P` are `bump`, `name`, `pick`"}}
-{"code":"E0413","severity":"error","message":"`b` is used after it was moved","file":"err/methods.bmb","line":96,"col":13,"end_line":96,"end_col":14,"fix":{"message":"move `b.clone()` instead, or assign `b` again before this use"}}
+{"code":"E0413","severity":"error","message":"`b` is used after it was moved","file":"err/methods.bmb","line":96,"col":13,"end_line":96,"end_col":14,"fix":{"message":"lend it as `&b` where it is still needed and move it last, or assign `b` again before this use"}}

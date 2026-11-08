@@ -594,6 +594,11 @@ MUTANTS = [
      '''            if let Some(sig) = self.fns.get(&fp).filter(|s| s.trait_of.is_none()).cloned() {''',
      '''            if let Some(sig) = self.fns.get(&fp).filter(|s| s.trait_of.is_none() && !self.trait_impls.iter().any(|i| i.matches(value).is_some() && self.traits.get(&i.trait_path).is_some_and(|t| t.methods.contains(&name.name)))).cloned() {''',
      "a method call names a trait's function where the type has its own of that name: the program runs another function than Rust's"),
+    # A trait's `Self` moves like any parameter without `Copy` (backlog 2T-09).
+    ("k-trait-self-copied", "miscompile", K,
+     '''        .filter(|p| !p.bounds.iter().any(|b| b == "Copy"))''',
+     '''        .filter(|p| p.name != "Self" && !p.bounds.iter().any(|b| b == "Copy"))''',
+     "a trait's `Self` value is copied in a default body: a `Vec` it holds is freed twice"),
     # Sub-slice arguments (backlog 4C-05): the end bound of `&v[lo..hi]`.
     ("v-subslice-end-unbounded", "unsound", VT,
      '''            format!("(and (<= {lo} {hi}) (<= {hi} {n}))"),''',

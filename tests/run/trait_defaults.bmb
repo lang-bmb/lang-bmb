@@ -64,7 +64,7 @@ mod df {
         }
     }
 
-    spec fn doubled<T: Copy + Shape>(x: &T, r: i64) -> bool {
+    spec fn doubled<T: Shape>(x: &T, r: i64) -> bool {
         r == x.model().saturating_mul(2)
     }
 
@@ -108,7 +108,7 @@ mod df {
         print_i64(Big { s: 5 }.twice());
     }
 
-    spec fn scored<T: Copy + Shape>(x: &T, r: i64) -> bool {
+    spec fn scored<T: Shape>(x: &T, r: i64) -> bool {
         r == x.model()
     }
 }
