@@ -226,7 +226,24 @@ no:
 /// (lowered, a `Vec<u8>`) or `&str` (a `&[u8]`).
 impl Gen<'_> {
     pub(super) fn is_text_expr(&self, e: &Expr) -> bool {
-        self.t.text.contains(&(e.span.file, e.span.lo, e.span.hi))
+        self.t.text.contains(&(e.span.file, e.span.lo, e.span.hi)) || self.text_targ(e)
+    }
+
+    /// Whether `e` has a type parameter's type that this instance gives a
+    /// text type argument (`String`, lowered, as the only text type that is
+    /// `Ord`, backlog 4B-04): its comparisons are text's.
+    fn text_targ(&self, e: &Expr) -> bool {
+        if self.tsub.is_empty() {
+            return false;
+        }
+        let Some(TypeKind::Param(n)) = self.t.types.get(&(e.span.file, e.span.lo, e.span.hi))
+        else {
+            return false;
+        };
+        self.tsub.get(n).is_some_and(|t| {
+            crate::check::is_text(t)
+                || matches!(t, TypeKind::Vec(x) if x.kind == TypeKind::Int(IntTy::U8))
+        })
     }
 
     /// The bytes of text expression `e`: pointer and length.

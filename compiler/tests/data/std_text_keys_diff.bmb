@@ -1,0 +1,116 @@
+#[summary("std::collections 텍스트 키 차등 시험: 표준 입력의 줄마다 연산(`i 키 v` 넣기, `r 키` 빼기, `g 키` 찾기)을 BTreeMap<String, u64>와 BTreeSet<String>에 하고 결과와 끝의 내용을 순서대로 찍는다 (tests/stdlib.rs, backlog 4B-04)")]
+mod tdiff {
+    spec fn stop(t: &[u8], a: usize, r: usize) -> bool {
+        a <= r && r <= t.len() && (r == t.len() || t[r] == 32 || t[r] == 10)
+    }
+
+    spec fn within(t: &[u8], a: usize) -> bool {
+        a <= t.len()
+    }
+
+    // Where the word from `a` ends: at a space, the newline or the end.
+    #[effects(pure)]
+    #[uses(stop, within)]
+    fn word_end(t: &[u8], a: usize) -> (r: usize)
+        requires within(t, a),
+        ensures stop(t, a, r),
+    {
+        let mut b: usize = a;
+        while b < t.len() && t[b] != b' ' && t[b] != b'\n'
+            invariant a <= b, b <= t.len(),
+            decreases t.len() - b,
+        {
+            b = b + 1;
+        }
+        b
+    }
+
+    // The number in the word from `a`.
+    #[effects(pure)]
+    #[uses(stop, within)]
+    fn value(t: &[u8], a: usize) -> Option<u64>
+        requires within(t, a),
+    {
+        let e: usize = word_end(t, a);
+        std::num::parse_u64_bytes(&t[a..e])
+    }
+
+    spec fn rooms(m: &std::collections::BTreeMap<String, u64>, s: &std::collections::BTreeSet<String>) -> bool {
+        m.keys.len() < 1000000 && s.keys.len() < 1000000
+    }
+
+    #[effects(io)]
+    fn opt(r: Option<u64>) -> () {
+        match r {
+            None => print_str("-\n"),
+            Some(v) => print_u64(v),
+        }
+    }
+
+    #[effects(io)]
+    fn flag(b: bool) -> () {
+        if b {
+            print_str("1\n");
+        } else {
+            print_str("0\n");
+        }
+    }
+
+    #[effects(alloc, io, nondet)]
+    #[uses(rooms, stop, within, std::collections::empty_map, std::collections::empty_set, std::collections::key_pos, std::collections::map_grew, std::collections::map_room, std::collections::map_shrank, std::collections::map_size, std::collections::room_set, std::collections::set_grew, std::collections::set_shrank, std::collections::set_size)]
+    fn main() -> () {
+        let mut m: std::collections::BTreeMap<String, u64> = std::collections::BTreeMap::<String, u64>::new();
+        let mut s: std::collections::BTreeSet<String> = std::collections::BTreeSet::<String>::new();
+        let mut n: u64 = 0;
+        while n < 100000
+            invariant rooms(&m, &s), n <= 100000,
+            decreases 100000 - n,
+        {
+            let mut line: String = String::new();
+            match std::io::read_line(&mut line) {
+                Ok(k) => {
+                    if k == 0 {
+                        n = 100000;
+                    } else {
+                        if line.len() > 2 && line.as_bytes()[1] == b' ' {
+                            let op: u8 = line.as_bytes()[0];
+                            let e: usize = word_end(line.as_bytes(), 2);
+                            if op == b'i' && e < line.len() && m.len() + 1 < 1000000 && s.len() + 1 < 1000000 {
+                                match value(line.as_bytes(), e + 1) {
+                                    None => {}
+                                    Some(v) => {
+                                        opt(m.insert(String::from(&line[2..e]), v));
+                                        flag(s.insert(String::from(&line[2..e])));
+                                    }
+                                }
+                            } else if op == b'r' {
+                                opt(m.remove(&String::from(&line[2..e])));
+                                flag(s.remove(&String::from(&line[2..e])));
+                            } else if op == b'g' {
+                                opt(m.get(&String::from(&line[2..e])));
+                                flag(s.contains(&String::from(&line[2..e])));
+                            }
+                        }
+                        n = n + 1;
+                    }
+                }
+                Err(err) => {
+                    n = 100000;
+                }
+            }
+        }
+        for i in 0..m.len() {
+            print_u64(m.value_at(i));
+        }
+        let ks: Vec<String> = m.into_keys();
+        for q in 0..ks.len() {
+            print_str(ks[q].as_str());
+            print_str("\n");
+        }
+        let ss: Vec<String> = s.into_keys();
+        for j in 0..ss.len() {
+            print_str(ss[j].as_str());
+            print_str("\n");
+        }
+    }
+}

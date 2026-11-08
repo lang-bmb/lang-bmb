@@ -1,39 +1,22 @@
-#[summary("정렬된 모음(Rust `BTreeSet`·`BTreeMap`의 이름과 뜻): 정렬된 Vec 위의 집합과 맵, 키는 오름차순이고 유일하다. 넣기·빼기는 배열이 어떻게 바뀌는지 정확히 말한다 (ADR-0092 §2, backlog 4B-02)")]
+#[summary("정렬된 모음(Rust `BTreeSet`·`BTreeMap`의 이름과 뜻): 정렬된 Vec 위의 집합과 맵, 키는 오름차순이고 유일하며 옮겨지는 값(`String`)이어도 된다. 넣기·빼기는 배열이 어떻게 바뀌는지 정확히 말한다 (ADR-0092 §2, backlog 4B-02·4B-04)")]
 mod collections {
     // The keys are strictly ascending, so each occurs once.
-    spec fn strictly<K: Copy + Ord>(v: &[K]) -> bool {
+    spec fn strictly<K: Ord>(v: &[K]) -> bool {
         forall |i: usize, j: usize| i < j && j < v.len() ==> #[trigger] v[i] < #[trigger] v[j]
-    }
-
-    // A set of keys in ascending order (Rust's `BTreeSet<K>`).
-    #[invariant(set_sound)]
-    struct BTreeSet<K: Copy + Ord> { keys: Vec<K> }
-
-    spec fn set_sound<K: Copy + Ord>(s: &BTreeSet<K>) -> bool {
-        strictly::<K>(s.keys.as_slice()) && s.keys.len() < 1152921504606846975
-    }
-
-    // `k` is in the set.
-    spec fn holds<K: Copy + Ord>(s: &BTreeSet<K>, k: K) -> bool {
-        exists |i: usize| i < s.keys.len() && #[trigger] s.keys[i] == k
-    }
-
-    spec fn contained<K: Copy + Ord>(r: bool, s: &BTreeSet<K>, k: K) -> bool {
-        r == holds::<K>(s, k)
     }
 
     // Where `k` is, or where it would go: the keys before it are below it,
     // the keys from it on are not.
-    spec fn place<K: Copy + Ord>(v: &[K], k: K, p: usize) -> bool {
+    spec fn place<K: Ord>(v: &[K], k: &K, p: usize) -> bool {
         p <= v.len()
-            && (forall |a: usize| a < p ==> #[trigger] v[a] < k)
-            && (forall |b: usize| p <= b && b < v.len() ==> k <= #[trigger] v[b])
+            && (forall |a: usize| a < p ==> #[trigger] v[a] < *k)
+            && (forall |b: usize| p <= b && b < v.len() ==> *k <= #[trigger] v[b])
     }
 
     // The place of `k` in ascending keys, by bisection.
     #[effects(pure)]
     #[uses(place, strictly)]
-    fn locate<K: Copy + Ord>(v: &[K], k: K) -> (p: usize)
+    fn locate<K: Ord>(v: &[K], k: &K) -> (p: usize)
         requires strictly::<K>(v),
         ensures place::<K>(v, k, p),
     {
@@ -41,12 +24,12 @@ mod collections {
         let mut hi: usize = v.len();
         while lo < hi
             invariant lo <= hi, hi <= v.len(), place::<K>(v, k, lo) || lo < hi,
-                forall |a: usize| a < lo ==> #[trigger] v[a] < k,
-                forall |b: usize| hi <= b && b < v.len() ==> k <= #[trigger] v[b],
+                forall |a: usize| a < lo ==> #[trigger] v[a] < *k,
+                forall |b: usize| hi <= b && b < v.len() ==> *k <= #[trigger] v[b],
             decreases hi - lo,
         {
             let mid: usize = lo + (hi - lo) / 2;
-            if v[mid] < k {
+            if v[mid] < *k {
                 lo = mid + 1;
             } else {
                 hi = mid;
@@ -55,7 +38,96 @@ mod collections {
         lo
     }
 
-    impl<K: Copy + Ord> BTreeSet<K> {
+    // ---------- moving items in a Vec ----------
+
+    // Before `j` the items of `w`, after `j` the items of `w` one place on.
+    spec fn shifted<T>(v: &[T], w: &[T], j: usize) -> bool {
+        j <= w.len() && w.len() + 1 == v.len()
+            && (forall |i: usize| i < j ==> #[trigger] v[i] == w[i])
+            && (forall |m: usize| j < m && m <= w.len() ==> #[trigger] v[m] == w[m - 1])
+    }
+
+    // `v` is `w` with `x` at `p`.
+    spec fn inserted_at<T>(v: &[T], w: &[T], p: usize, x: &T) -> bool {
+        p <= w.len() && v[p] == *x && shifted::<T>(v, w, p)
+    }
+
+    // `v` is `w` without its item at `p`.
+    spec fn removed_at<T>(v: &[T], w: &[T], p: usize) -> bool {
+        p < w.len() && v.len() + 1 == w.len()
+            && (forall |i: usize| i < p ==> #[trigger] v[i] == w[i])
+            && (forall |m: usize| p <= m && m < v.len() ==> #[trigger] v[m] == w[m + 1])
+    }
+
+    // `r` holds the item of `w` at `p`.
+    spec fn was_at<T>(r: &Option<T>, w: &[T], p: usize) -> bool {
+        p < w.len() && *r == Some(w[p])
+    }
+
+    spec fn insert_room<T>(v: &[T], p: usize) -> bool {
+        p <= v.len() && v.len() + 1 < 1152921504606846975
+    }
+
+    spec fn remove_pos<T>(v: &[T], p: usize) -> bool {
+        p < v.len()
+    }
+
+    // Puts `x` at `i` and moves each item from `i` on one place up (Rust's
+    // `Vec::insert`). Recursive: an item moves by `std::mem::replace`, so no
+    // place is ever empty, and the contract speaks of `x` as it came in.
+    #[effects(alloc)]
+    #[uses(insert_room, inserted_at, shifted)]
+    fn shift_in<T>(v: &mut Vec<T>, i: usize, x: T) -> ()
+        requires insert_room::<T>(v.as_slice(), i),
+        ensures inserted_at::<T>(v.as_slice(), old(v).as_slice(), i, &x),
+        decreases v.len() - i,
+    {
+        if i == v.len() {
+            v.push(x);
+        } else {
+            let y: T = std::mem::replace(&mut v[i], x);
+            shift_in::<T>(v, i + 1, y);
+        }
+    }
+
+    // Takes the item at `i` out and moves each one after it a place down
+    // (Rust's `Vec::remove`, the item in `Some`).
+    #[effects(pure)]
+    #[uses(remove_pos, removed_at, was_at)]
+    fn shift_out<T>(v: &mut Vec<T>, i: usize) -> (r: Option<T>)
+        requires remove_pos::<T>(v.as_slice(), i),
+        ensures removed_at::<T>(v.as_slice(), old(v).as_slice(), i), was_at::<T>(&r, old(v).as_slice(), i),
+        decreases v.len() - i,
+    {
+        if i + 1 == v.len() {
+            return v.pop();
+        }
+        match shift_out::<T>(v, i + 1) {
+            None => None,
+            Some(z) => Some(std::mem::replace(&mut v[i], z)),
+        }
+    }
+
+    // ---------- sets ----------
+
+    // A set of keys in ascending order (Rust's `BTreeSet<K>`).
+    #[invariant(set_sound)]
+    struct BTreeSet<K: Ord> { keys: Vec<K> }
+
+    spec fn set_sound<K: Ord>(s: &BTreeSet<K>) -> bool {
+        strictly::<K>(s.keys.as_slice()) && s.keys.len() < 1152921504606846975
+    }
+
+    // `k` is in the set.
+    spec fn holds<K: Ord>(s: &BTreeSet<K>, k: &K) -> bool {
+        exists |i: usize| i < s.keys.len() && #[trigger] s.keys[i] == *k
+    }
+
+    spec fn contained<K: Ord>(r: bool, s: &BTreeSet<K>, k: &K) -> bool {
+        r == holds::<K>(s, k)
+    }
+
+    impl<K: Ord> BTreeSet<K> {
         // An empty set.
         #[effects(alloc)]
         #[uses(empty_set, set_sound, strictly)]
@@ -78,109 +150,76 @@ mod collections {
         // Whether `k` is in the set (Rust's `contains`).
         #[effects(pure)]
         #[uses(contained, holds, place, set_sound, strictly)]
-        fn contains(self: &BTreeSet<K>, k: K) -> (r: bool)
+        fn contains(self: &BTreeSet<K>, k: &K) -> (r: bool)
             ensures contained::<K>(r, self, k),
         {
             let p: usize = locate::<K>(self.keys.as_slice(), k);
-            p < self.keys.len() && self.keys[p] == k
-        }
-
-        // `k` is at position `i` (Rust's ordered iteration: `iter().nth(i)`).
-        #[effects(pure)]
-        #[uses(at_pos, set_sound, strictly)]
-        fn at(self: &BTreeSet<K>, i: usize) -> (r: K)
-            requires at_pos::<K>(self, i),
-        {
-            self.keys[i]
+            p < self.keys.len() && self.keys[p] == *k
         }
 
         // Adds `k`; whether it was new (Rust's `insert`).
         #[effects(alloc)]
-        #[uses(added, holds, in_order, insert_pre, inserted_at, kept_set, place, room_set, set_grew, set_sound, shifted, strictly)]
+        #[uses(added, holds, in_order, insert_pre, insert_room, inserted_at, kept_set, place, room_set, set_grew, set_sound, shifted, strictly)]
         fn insert(self: &mut BTreeSet<K>, k: K) -> (r: bool)
             requires room_set::<K>(self),
-            ensures added::<K>(r, self, old(self), k), set_grew::<K>(self, old(self)),
+            ensures added::<K>(r, self, old(self), &k), set_grew::<K>(self, old(self)),
         {
-            let p: usize = locate::<K>(self.keys.as_slice(), k);
+            let p: usize = locate::<K>(self.keys.as_slice(), &k);
             if p < self.keys.len() && self.keys[p] == k {
                 return false;
             }
-            // Shifted outside the set: its keys are in order at every loop head.
+            // Shifted outside the set: its keys are in order at every step.
+            // The lemma names the new key by its place, `k` having moved.
             let mut v: Vec<K> = std::mem::replace(&mut self.keys, Vec::new());
-            let n: usize = v.len();
-            v.push(k);
-            let mut j: usize = n;
-            while j > p
-                invariant p <= j, j <= n, v.len() == n + 1, old(self).keys.len() == n,
-                    shifted::<K>(v.as_slice(), old(self).keys.as_slice(), j),
-                decreases j,
-            {
-                v[j] = v[j - 1];
-                j = j - 1;
-            }
-            v[p] = k;
+            shift_in::<K>(&mut v, p, k);
             proof {
-                insert_keeps_order::<K>(v.as_slice(), old(self).keys.as_slice(), p, k);
+                insert_keeps_order::<K>(v.as_slice(), old(self).keys.as_slice(), p, &v[p]);
             }
-            assert(inserted_at::<K>(v.as_slice(), old(self).keys.as_slice(), p, k));
             self.keys = v;
             true
         }
 
         // Takes `k` out; whether it was there (Rust's `remove`).
         #[effects(alloc)]
-        #[uses(dropped, holds, in_order, kept_set, place, remove_pre, removed_at, set_shrank, set_sound, strictly, unshifted)]
-        fn remove(self: &mut BTreeSet<K>, k: K) -> (r: bool)
+        #[uses(dropped, holds, in_order, kept_set, place, remove_pos, remove_pre, removed_at, set_shrank, set_sound, strictly, was_at)]
+        fn remove(self: &mut BTreeSet<K>, k: &K) -> (r: bool)
             ensures dropped::<K>(r, self, old(self), k), set_shrank::<K>(self, old(self)),
         {
             let p: usize = locate::<K>(self.keys.as_slice(), k);
-            if p >= self.keys.len() || self.keys[p] != k {
+            if p >= self.keys.len() || self.keys[p] != *k {
                 return false;
             }
             let mut v: Vec<K> = std::mem::replace(&mut self.keys, Vec::new());
-            let n: usize = v.len();
-            let mut j: usize = p;
-            while j + 1 < n
-                invariant p <= j, j < n, v.len() == n, old(self).keys.len() == n,
-                    unshifted::<K>(v.as_slice(), old(self).keys.as_slice(), p, j),
-                decreases n - j,
-            {
-                v[j] = v[j + 1];
-                j = j + 1;
-            }
-            v.truncate(n - 1);
+            let out: Option<K> = shift_out::<K>(&mut v, p);
             proof {
                 remove_keeps_order::<K>(v.as_slice(), old(self).keys.as_slice(), p);
             }
-            assert(removed_at::<K>(v.as_slice(), old(self).keys.as_slice(), p));
             self.keys = v;
             true
         }
+
+        // The keys in ascending order (Rust's `into_iter().collect()`).
+        #[effects(pure)]
+        #[uses(set_keys, set_sound, strictly)]
+        fn into_keys(self: BTreeSet<K>) -> (r: Vec<K>)
+            ensures set_keys::<K>(r.as_slice(), &self),
+        {
+            self.keys
+        }
     }
 
-    // During the left shift: the old keys before `j` with the one at `p`
-    // left out, the old keys from `j` on.
-    spec fn unshifted<K: Copy>(v: &[K], w: &[K], p: usize, j: usize) -> bool {
-        p <= j && j < w.len() && v.len() == w.len()
-            && (forall |i: usize| i < p ==> #[trigger] v[i] == w[i])
-            && (forall |m: usize| p <= m && m < j ==> #[trigger] v[m] == w[m + 1])
-            && (forall |q: usize| j <= q && q < w.len() ==> #[trigger] v[q] == w[q])
+    // `r` is the set's keys in ascending order.
+    spec fn set_keys<K: Ord>(r: &[K], s: &BTreeSet<K>) -> bool {
+        r.len() == s.keys.len() && strictly::<K>(r) && forall |i: usize| i < r.len() ==> #[trigger] r[i] == s.keys[i]
     }
 
-    // `v` is `w` without its key at `p`.
-    spec fn removed_at<K: Copy>(v: &[K], w: &[K], p: usize) -> bool {
-        p < w.len() && v.len() + 1 == w.len()
-            && (forall |i: usize| i < p ==> #[trigger] v[i] == w[i])
-            && (forall |m: usize| p <= m && m < v.len() ==> #[trigger] v[m] == w[m + 1])
-    }
-
-    spec fn remove_pre<K: Copy + Ord>(v: &[K], w: &[K], p: usize) -> bool {
+    spec fn remove_pre<K: Ord>(v: &[K], w: &[K], p: usize) -> bool {
         strictly::<K>(w) && removed_at::<K>(v, w, p)
     }
 
     // Taking a key out keeps the keys strictly ascending.
     #[uses(in_order, remove_pre, removed_at, strictly)]
-    proof fn remove_keeps_order<K: Copy + Ord>(v: &[K], w: &[K], p: usize)
+    proof fn remove_keeps_order<K: Ord>(v: &[K], w: &[K], p: usize)
         requires remove_pre::<K>(v, w, p),
         ensures in_order::<K>(v),
     {
@@ -188,72 +227,55 @@ mod collections {
 
     // `remove`'s result: there and taken out from its place, or not there
     // and nothing changed.
-    spec fn dropped<K: Copy + Ord>(r: bool, s: &BTreeSet<K>, t: &BTreeSet<K>, k: K) -> bool {
-        (r && holds::<K>(t, k) && exists |p: usize| p < t.keys.len() && t.keys[p] == k && #[trigger] removed_at::<K>(s.keys.as_slice(), t.keys.as_slice(), p))
+    spec fn dropped<K: Ord>(r: bool, s: &BTreeSet<K>, t: &BTreeSet<K>, k: &K) -> bool {
+        (r && holds::<K>(t, k) && exists |p: usize| p < t.keys.len() && t.keys[p] == *k && #[trigger] removed_at::<K>(s.keys.as_slice(), t.keys.as_slice(), p))
             || (!r && !holds::<K>(t, k) && kept_set::<K>(s, t))
     }
 
-    spec fn insert_pre<K: Copy + Ord>(v: &[K], w: &[K], p: usize, k: K) -> bool {
-        strictly::<K>(w) && place::<K>(w, k, p) && (p == w.len() || w[p] != k) && inserted_at::<K>(v, w, p, k)
+    spec fn insert_pre<K: Ord>(v: &[K], w: &[K], p: usize, k: &K) -> bool {
+        strictly::<K>(w) && place::<K>(w, k, p) && (p == w.len() || w[p] != *k) && inserted_at::<K>(v, w, p, k)
     }
 
-    spec fn in_order<K: Copy + Ord>(v: &[K]) -> bool {
+    spec fn in_order<K: Ord>(v: &[K]) -> bool {
         strictly::<K>(v)
     }
 
     // Inserting a new key at its place keeps the keys strictly ascending.
     #[uses(in_order, insert_pre, inserted_at, place, shifted, strictly)]
-    proof fn insert_keeps_order<K: Copy + Ord>(v: &[K], w: &[K], p: usize, k: K)
+    proof fn insert_keeps_order<K: Ord>(v: &[K], w: &[K], p: usize, k: &K)
         requires insert_pre::<K>(v, w, p, k),
         ensures in_order::<K>(v),
     {
     }
 
-    spec fn empty_set<K: Copy + Ord>(s: &BTreeSet<K>) -> bool {
+    spec fn empty_set<K: Ord>(s: &BTreeSet<K>) -> bool {
         s.keys.len() == 0
     }
 
-    spec fn set_size<K: Copy + Ord>(r: usize, s: &BTreeSet<K>) -> bool {
+    spec fn set_size<K: Ord>(r: usize, s: &BTreeSet<K>) -> bool {
         r == s.keys.len()
     }
 
     // The set has at most one key more (what a caller needs to insert again).
-    spec fn set_grew<K: Copy + Ord>(s: &BTreeSet<K>, t: &BTreeSet<K>) -> bool {
+    spec fn set_grew<K: Ord>(s: &BTreeSet<K>, t: &BTreeSet<K>) -> bool {
         t.keys.len() <= s.keys.len() && s.keys.len() <= t.keys.len() + 1
     }
 
-    spec fn set_shrank<K: Copy + Ord>(s: &BTreeSet<K>, t: &BTreeSet<K>) -> bool {
+    spec fn set_shrank<K: Ord>(s: &BTreeSet<K>, t: &BTreeSet<K>) -> bool {
         s.keys.len() <= t.keys.len()
     }
 
-    spec fn at_pos<K: Copy + Ord>(s: &BTreeSet<K>, i: usize) -> bool {
-        i < s.keys.len()
-    }
-
-    spec fn room_set<K: Copy + Ord>(s: &BTreeSet<K>) -> bool {
+    spec fn room_set<K: Ord>(s: &BTreeSet<K>) -> bool {
         s.keys.len() + 1 < 1152921504606846975
     }
 
-    // During the shift: before `j` the old keys, after `j` the old keys one
-    // place on.
-    spec fn shifted<K: Copy>(v: &[K], w: &[K], j: usize) -> bool {
-        j <= w.len() && w.len() + 1 == v.len()
-            && (forall |i: usize| i < j ==> #[trigger] v[i] == w[i])
-            && (forall |m: usize| j < m && m <= w.len() ==> #[trigger] v[m] == w[m - 1])
-    }
-
-    // `v` is `w` with `k` at `p`.
-    spec fn inserted_at<K: Copy>(v: &[K], w: &[K], p: usize, k: K) -> bool {
-        p <= w.len() && v[p] == k && shifted::<K>(v, w, p)
-    }
-
-    spec fn kept_set<K: Copy + Ord>(s: &BTreeSet<K>, t: &BTreeSet<K>) -> bool {
+    spec fn kept_set<K: Ord>(s: &BTreeSet<K>, t: &BTreeSet<K>) -> bool {
         s.keys.len() == t.keys.len() && forall |i: usize| i < s.keys.len() ==> #[trigger] s.keys[i] == t.keys[i]
     }
 
     // `insert`'s result: new and inserted in order, or there already and
     // nothing changed.
-    spec fn added<K: Copy + Ord>(r: bool, s: &BTreeSet<K>, t: &BTreeSet<K>, k: K) -> bool {
+    spec fn added<K: Ord>(r: bool, s: &BTreeSet<K>, t: &BTreeSet<K>, k: &K) -> bool {
         (r && !holds::<K>(t, k) && exists |p: usize| place::<K>(t.keys.as_slice(), k, p) && #[trigger] inserted_at::<K>(s.keys.as_slice(), t.keys.as_slice(), p, k))
             || (!r && holds::<K>(t, k) && kept_set::<K>(s, t))
     }
@@ -261,36 +283,37 @@ mod collections {
     // ---------- maps ----------
 
     // A map from keys in ascending order to values (Rust's `BTreeMap<K, V>`):
-    // the value of `keys[i]` is `vals[i]`.
+    // the value of `keys[i]` is `vals[i]`. A value is copied out by `get`;
+    // one that moves goes in a `Vec` of its own, mapped to by its position.
     #[invariant(map_sound)]
-    struct BTreeMap<K: Copy + Ord, V: Copy> { keys: Vec<K>, vals: Vec<V> }
+    struct BTreeMap<K: Ord, V: Copy> { keys: Vec<K>, vals: Vec<V> }
 
-    spec fn map_sound<K: Copy + Ord, V: Copy>(m: &BTreeMap<K, V>) -> bool {
+    spec fn map_sound<K: Ord, V: Copy>(m: &BTreeMap<K, V>) -> bool {
         strictly::<K>(m.keys.as_slice()) && m.keys.len() == m.vals.len() && m.keys.len() < 1152921504606846975
     }
 
     // `m` maps `k` to `v`.
-    spec fn maps<K: Copy + Ord, V: Copy>(m: &BTreeMap<K, V>, k: K, v: V) -> bool {
-        exists |i: usize| i < m.keys.len() && #[trigger] m.keys[i] == k && m.vals[i] == v
+    spec fn maps<K: Ord, V: Copy>(m: &BTreeMap<K, V>, k: &K, v: V) -> bool {
+        exists |i: usize| i < m.keys.len() && #[trigger] m.keys[i] == *k && m.vals[i] == v
     }
 
     // `m` has the key `k`.
-    spec fn has_key<K: Copy + Ord, V: Copy>(m: &BTreeMap<K, V>, k: K) -> bool {
-        exists |i: usize| i < m.keys.len() && #[trigger] m.keys[i] == k
+    spec fn has_key<K: Ord, V: Copy>(m: &BTreeMap<K, V>, k: &K) -> bool {
+        exists |i: usize| i < m.keys.len() && #[trigger] m.keys[i] == *k
     }
 
-    spec fn got<K: Copy + Ord, V: Copy>(r: Option<V>, m: &BTreeMap<K, V>, k: K) -> bool {
+    spec fn got<K: Ord, V: Copy>(r: Option<V>, m: &BTreeMap<K, V>, k: &K) -> bool {
         match r {
             None => !has_key::<K, V>(m, k),
             Some(v) => maps::<K, V>(m, k, v),
         }
     }
 
-    spec fn key_pos<K: Copy + Ord, V: Copy>(m: &BTreeMap<K, V>, i: usize) -> bool {
+    spec fn key_pos<K: Ord, V: Copy>(m: &BTreeMap<K, V>, i: usize) -> bool {
         i < m.keys.len()
     }
 
-    spec fn map_room<K: Copy + Ord, V: Copy>(m: &BTreeMap<K, V>) -> bool {
+    spec fn map_room<K: Ord, V: Copy>(m: &BTreeMap<K, V>) -> bool {
         m.keys.len() + 1 < 1152921504606846975
     }
 
@@ -300,41 +323,41 @@ mod collections {
             && forall |i: usize| i < w.len() && i != p ==> #[trigger] v[i] == w[i]
     }
 
-    spec fn kept_map<K: Copy + Ord, V: Copy>(m: &BTreeMap<K, V>, n: &BTreeMap<K, V>) -> bool {
+    spec fn kept_map<K: Ord, V: Copy>(m: &BTreeMap<K, V>, n: &BTreeMap<K, V>) -> bool {
         m.keys.len() == n.keys.len()
             && (forall |i: usize| i < m.keys.len() ==> #[trigger] m.keys[i] == n.keys[i])
             && (forall |j: usize| j < m.vals.len() ==> #[trigger] m.vals[j] == n.vals[j])
     }
 
-    spec fn same_keys<K: Copy + Ord, V: Copy>(m: &BTreeMap<K, V>, n: &BTreeMap<K, V>) -> bool {
+    spec fn same_keys<K: Ord, V: Copy>(m: &BTreeMap<K, V>, n: &BTreeMap<K, V>) -> bool {
         m.keys.len() == n.keys.len() && forall |i: usize| i < m.keys.len() ==> #[trigger] m.keys[i] == n.keys[i]
     }
 
     // `insert`'s result: a new key in its place with its value, or the old
     // value of the key, replaced.
-    spec fn put<K: Copy + Ord, V: Copy>(r: Option<V>, m: &BTreeMap<K, V>, n: &BTreeMap<K, V>, k: K, x: V) -> bool {
+    spec fn put<K: Ord, V: Copy>(r: Option<V>, m: &BTreeMap<K, V>, n: &BTreeMap<K, V>, k: &K, x: V) -> bool {
         match r {
             None => !has_key::<K, V>(n, k)
                 && exists |p: usize| place::<K>(n.keys.as_slice(), k, p)
                     && #[trigger] inserted_at::<K>(m.keys.as_slice(), n.keys.as_slice(), p, k)
-                    && inserted_at::<V>(m.vals.as_slice(), n.vals.as_slice(), p, x),
-            Some(y) => exists |q: usize| q < n.keys.len() && n.keys[q] == k && n.vals[q] == y
+                    && inserted_at::<V>(m.vals.as_slice(), n.vals.as_slice(), p, &x),
+            Some(y) => exists |q: usize| q < n.keys.len() && n.keys[q] == *k && n.vals[q] == y
                 && same_keys::<K, V>(m, n) && #[trigger] replaced::<V>(m.vals.as_slice(), n.vals.as_slice(), q, x),
         }
     }
 
     // `remove`'s result: the key's value, the key taken out from its place,
     // or none and nothing changed.
-    spec fn took<K: Copy + Ord, V: Copy>(r: Option<V>, m: &BTreeMap<K, V>, n: &BTreeMap<K, V>, k: K) -> bool {
+    spec fn took<K: Ord, V: Copy>(r: Option<V>, m: &BTreeMap<K, V>, n: &BTreeMap<K, V>, k: &K) -> bool {
         match r {
             None => !has_key::<K, V>(n, k) && kept_map::<K, V>(m, n),
-            Some(y) => exists |p: usize| p < n.keys.len() && n.keys[p] == k && n.vals[p] == y
+            Some(y) => exists |p: usize| p < n.keys.len() && n.keys[p] == *k && n.vals[p] == y
                 && #[trigger] removed_at::<K>(m.keys.as_slice(), n.keys.as_slice(), p)
                 && removed_at::<V>(m.vals.as_slice(), n.vals.as_slice(), p),
         }
     }
 
-    impl<K: Copy + Ord, V: Copy> BTreeMap<K, V> {
+    impl<K: Ord, V: Copy> BTreeMap<K, V> {
         // An empty map.
         #[effects(alloc)]
         #[uses(empty_map, map_sound, strictly)]
@@ -358,11 +381,11 @@ mod collections {
         // The value of `k` (Rust's `get`, the value copied).
         #[effects(pure)]
         #[uses(got, has_key, map_sound, maps, place, strictly)]
-        fn get(self: &BTreeMap<K, V>, k: K) -> (r: Option<V>)
+        fn get(self: &BTreeMap<K, V>, k: &K) -> (r: Option<V>)
             ensures got::<K, V>(r, self, k),
         {
             let p: usize = locate::<K>(self.keys.as_slice(), k);
-            if p < self.keys.len() && self.keys[p] == k {
+            if p < self.keys.len() && self.keys[p] == *k {
                 return Some(self.vals[p]);
             }
             None
@@ -371,23 +394,15 @@ mod collections {
         // Whether the map has `k` (Rust's `contains_key`).
         #[effects(pure)]
         #[uses(has_key, has_result, map_sound, place, strictly)]
-        fn contains_key(self: &BTreeMap<K, V>, k: K) -> (r: bool)
+        fn contains_key(self: &BTreeMap<K, V>, k: &K) -> (r: bool)
             ensures has_result::<K, V>(r, self, k),
         {
             let p: usize = locate::<K>(self.keys.as_slice(), k);
-            p < self.keys.len() && self.keys[p] == k
+            p < self.keys.len() && self.keys[p] == *k
         }
 
-        // The key at position `i` in ascending order (Rust's `iter().nth(i)`).
-        #[effects(pure)]
-        #[uses(key_pos, map_sound)]
-        fn key_at(self: &BTreeMap<K, V>, i: usize) -> K
-            requires key_pos::<K, V>(self, i),
-        {
-            self.keys[i]
-        }
-
-        // The value at position `i` in the order of the keys.
+        // The value at position `i` in the order of the keys (Rust's
+        // `values().nth(i)`).
         #[effects(pure)]
         #[uses(key_pos, map_sound)]
         fn value_at(self: &BTreeMap<K, V>, i: usize) -> V
@@ -396,14 +411,15 @@ mod collections {
             self.vals[i]
         }
 
-        // Maps `k` to `x`; the old value (Rust's `insert`).
+        // Maps `k` to `x`; the old value (Rust's `insert`, which keeps the
+        // key there already).
         #[effects(alloc)]
-        #[uses(has_key, in_order, insert_pre, inserted_at, map_grew, map_room, map_sound, place, put, replaced, same_keys, shifted, strictly)]
+        #[uses(has_key, in_order, insert_pre, insert_room, inserted_at, map_grew, map_room, map_sound, place, put, replaced, same_keys, shifted, strictly)]
         fn insert(self: &mut BTreeMap<K, V>, k: K, x: V) -> (r: Option<V>)
             requires map_room::<K, V>(self),
-            ensures put::<K, V>(r, self, old(self), k, x), map_grew::<K, V>(self, old(self)),
+            ensures put::<K, V>(r, self, old(self), &k, x), map_grew::<K, V>(self, old(self)),
         {
-            let p: usize = locate::<K>(self.keys.as_slice(), k);
+            let p: usize = locate::<K>(self.keys.as_slice(), &k);
             if p < self.keys.len() && self.keys[p] == k {
                 let y: V = self.vals[p];
                 self.vals[p] = x;
@@ -412,28 +428,11 @@ mod collections {
             }
             let mut ks: Vec<K> = std::mem::replace(&mut self.keys, Vec::new());
             let mut vs: Vec<V> = std::mem::replace(&mut self.vals, Vec::new());
-            let n: usize = ks.len();
-            ks.push(k);
-            vs.push(x);
-            let mut j: usize = n;
-            while j > p
-                invariant p <= j, j <= n, ks.len() == n + 1, vs.len() == n + 1,
-                    old(self).keys.len() == n, old(self).vals.len() == n,
-                    shifted::<K>(ks.as_slice(), old(self).keys.as_slice(), j),
-                    shifted::<V>(vs.as_slice(), old(self).vals.as_slice(), j),
-                decreases j,
-            {
-                ks[j] = ks[j - 1];
-                vs[j] = vs[j - 1];
-                j = j - 1;
-            }
-            ks[p] = k;
-            vs[p] = x;
+            shift_in::<K>(&mut ks, p, k);
+            shift_in::<V>(&mut vs, p, x);
             proof {
-                insert_keeps_order::<K>(ks.as_slice(), old(self).keys.as_slice(), p, k);
+                insert_keeps_order::<K>(ks.as_slice(), old(self).keys.as_slice(), p, &ks[p]);
             }
-            assert(inserted_at::<K>(ks.as_slice(), old(self).keys.as_slice(), p, k));
-            assert(inserted_at::<V>(vs.as_slice(), old(self).vals.as_slice(), p, x));
             self.keys = ks;
             self.vals = vs;
             None
@@ -441,60 +440,74 @@ mod collections {
 
         // Takes `k` out; its value (Rust's `remove`).
         #[effects(alloc)]
-        #[uses(has_key, in_order, kept_map, map_shrank, map_sound, place, remove_pre, removed_at, strictly, took, unshifted)]
-        fn remove(self: &mut BTreeMap<K, V>, k: K) -> (r: Option<V>)
+        #[uses(has_key, in_order, kept_map, map_shrank, map_sound, place, remove_pos, remove_pre, removed_at, strictly, took, was_at)]
+        fn remove(self: &mut BTreeMap<K, V>, k: &K) -> (r: Option<V>)
             ensures took::<K, V>(r, self, old(self), k), map_shrank::<K, V>(self, old(self)),
         {
             let p: usize = locate::<K>(self.keys.as_slice(), k);
-            if p >= self.keys.len() || self.keys[p] != k {
+            if p >= self.keys.len() || self.keys[p] != *k {
                 return None;
             }
-            let y: V = self.vals[p];
             let mut ks: Vec<K> = std::mem::replace(&mut self.keys, Vec::new());
             let mut vs: Vec<V> = std::mem::replace(&mut self.vals, Vec::new());
-            let n: usize = ks.len();
-            let mut j: usize = p;
-            while j + 1 < n
-                invariant p <= j, j < n, ks.len() == n, vs.len() == n,
-                    old(self).keys.len() == n, old(self).vals.len() == n,
-                    unshifted::<K>(ks.as_slice(), old(self).keys.as_slice(), p, j),
-                    unshifted::<V>(vs.as_slice(), old(self).vals.as_slice(), p, j),
-                decreases n - j,
-            {
-                ks[j] = ks[j + 1];
-                vs[j] = vs[j + 1];
-                j = j + 1;
-            }
-            ks.truncate(n - 1);
-            vs.truncate(n - 1);
+            let gone: Option<K> = shift_out::<K>(&mut ks, p);
+            let y: Option<V> = shift_out::<V>(&mut vs, p);
             proof {
                 remove_keeps_order::<K>(ks.as_slice(), old(self).keys.as_slice(), p);
             }
-            assert(removed_at::<K>(ks.as_slice(), old(self).keys.as_slice(), p));
             self.keys = ks;
             self.vals = vs;
-            Some(y)
+            y
+        }
+
+        // The keys in ascending order (Rust's `into_keys().collect()`).
+        #[effects(pure)]
+        #[uses(map_keys, map_sound, strictly)]
+        fn into_keys(self: BTreeMap<K, V>) -> (r: Vec<K>)
+            ensures map_keys::<K, V>(r.as_slice(), &self),
+        {
+            self.keys
+        }
+
+        // The values in the order of their keys (Rust's
+        // `into_values().collect()`).
+        #[effects(pure)]
+        #[uses(map_sound, map_values)]
+        fn into_values(self: BTreeMap<K, V>) -> (r: Vec<V>)
+            ensures map_values::<K, V>(r.as_slice(), &self),
+        {
+            self.vals
         }
     }
 
-    spec fn empty_map<K: Copy + Ord, V: Copy>(m: &BTreeMap<K, V>) -> bool {
+    // `r` is the map's keys in ascending order.
+    spec fn map_keys<K: Ord, V: Copy>(r: &[K], m: &BTreeMap<K, V>) -> bool {
+        r.len() == m.keys.len() && strictly::<K>(r) && forall |i: usize| i < r.len() ==> #[trigger] r[i] == m.keys[i]
+    }
+
+    // `r` is the map's values in the order of their keys.
+    spec fn map_values<K: Ord, V: Copy>(r: &[V], m: &BTreeMap<K, V>) -> bool {
+        r.len() == m.keys.len() && forall |i: usize| i < r.len() ==> #[trigger] r[i] == m.vals[i]
+    }
+
+    spec fn empty_map<K: Ord, V: Copy>(m: &BTreeMap<K, V>) -> bool {
         m.keys.len() == 0
     }
 
-    spec fn map_size<K: Copy + Ord, V: Copy>(r: usize, m: &BTreeMap<K, V>) -> bool {
+    spec fn map_size<K: Ord, V: Copy>(r: usize, m: &BTreeMap<K, V>) -> bool {
         r == m.keys.len()
     }
 
     // The map has at most one key more.
-    spec fn map_grew<K: Copy + Ord, V: Copy>(m: &BTreeMap<K, V>, n: &BTreeMap<K, V>) -> bool {
+    spec fn map_grew<K: Ord, V: Copy>(m: &BTreeMap<K, V>, n: &BTreeMap<K, V>) -> bool {
         n.keys.len() <= m.keys.len() && m.keys.len() <= n.keys.len() + 1
     }
 
-    spec fn map_shrank<K: Copy + Ord, V: Copy>(m: &BTreeMap<K, V>, n: &BTreeMap<K, V>) -> bool {
+    spec fn map_shrank<K: Ord, V: Copy>(m: &BTreeMap<K, V>, n: &BTreeMap<K, V>) -> bool {
         m.keys.len() <= n.keys.len()
     }
 
-    spec fn has_result<K: Copy + Ord, V: Copy>(r: bool, m: &BTreeMap<K, V>, k: K) -> bool {
+    spec fn has_result<K: Ord, V: Copy>(r: bool, m: &BTreeMap<K, V>, k: &K) -> bool {
         r == has_key::<K, V>(m, k)
     }
 }

@@ -1,0 +1,49 @@
+#[summary("String의 Ord는 바이트 사전순이다: 대문자가 소문자 앞이고 접두가 먼저이며, 반대 주장은 증명되지 않는다 (backlog 4B-04)")]
+mod text_ord {
+    #[effects(alloc)]
+    #[uses(holds, less, same)]
+    fn case_first() -> () {
+        let a: String = String::from("a");
+        let b: String = String::from("B");
+        let r0: bool = lt::<String>(&a, &b);
+        assert(holds(r0));
+    }
+
+    spec fn holds(b: bool) -> bool {
+        b
+    }
+
+    #[effects(alloc)]
+    #[uses(holds, less, same)]
+    fn irreflexive(s: &str) -> () {
+        let a: String = String::from(s);
+        let b: String = String::from(s);
+        let r2: bool = lt::<String>(&a, &b);
+        assert(holds(r2));
+    }
+
+    spec fn less<T: Ord>(a: &T, b: &T) -> bool {
+        *a < *b
+    }
+
+    #[effects(pure)]
+    #[uses(less, same)]
+    fn lt<T: Ord>(a: &T, b: &T) -> (r: bool)
+        ensures same(r, less::<T>(a, b)),
+    {
+        *a < *b
+    }
+
+    #[effects(alloc)]
+    #[uses(holds, less, same)]
+    fn prefix_first() -> () {
+        let a: String = String::from("ab");
+        let b: String = String::from("a");
+        let r1: bool = lt::<String>(&a, &b);
+        assert(holds(r1));
+    }
+
+    spec fn same(r: bool, b: bool) -> bool {
+        r == b
+    }
+}

@@ -1,0 +1,7 @@
+{"code":"E0810","severity":"error","message":"assertion may not hold in `text_ord::case_first`","file":"fail/text_ord.bmb","line":9,"col":9,"end_line":9,"end_col":27,"fix":{"message":"there is no input to show: it fails for the definition's own values or for values a loop or call left open; after a loop the prover knows only its invariants and after a call only the callee's `ensures`, so state there what this needs, or correct the claim"}}
+{"code":"E0810","severity":"error","message":"assertion may not hold in `text_ord::irreflexive`; counterexample: s = [] (len 0)","file":"fail/text_ord.bmb","line":22,"col":9,"end_line":22,"end_col":27}
+{"code":"E0810","severity":"error","message":"assertion may not hold in `text_ord::prefix_first`","file":"fail/text_ord.bmb","line":43,"col":9,"end_line":43,"end_col":27,"fix":{"message":"there is no input to show: it fails for the definition's own values or for values a loop or call left open; after a loop the prover knows only its invariants and after a call only the callee's `ensures`, so state there what this needs, or correct the claim"}}
+{"def":"text_ord::case_first","status":"failed","obligations":1,"failed":1,"rlimit":563,"rlimit_max":563}
+{"def":"text_ord::irreflexive","status":"failed","obligations":1,"failed":1,"rlimit":923,"rlimit_max":923}
+{"def":"text_ord::lt","status":"verified","obligations":1,"failed":0,"rlimit":234,"rlimit_max":234}
+{"def":"text_ord::prefix_first","status":"failed","obligations":1,"failed":1,"rlimit":2699,"rlimit_max":2699}

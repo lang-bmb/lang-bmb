@@ -187,6 +187,20 @@ impl Enc<'_, '_> {
             .t
             .text
             .contains(&(e.span.file, e.span.lo, e.span.hi))
+            || (!self.tsub.is_empty() && self.is_lowered_text(&self.ty(e)))
+    }
+
+    /// Whether `t`, a type under this instance's substitution, is a type
+    /// argument `String` in the encoder's view: text lowers to `&[u8]`
+    /// (`Tables::lowered`), and the only `Ord` type of that form is
+    /// `String` (backlog 4B-04), whose order is Rust's byte-lexicographic
+    /// one, the order of `&[u8]`.
+    fn is_lowered_text(&self, t: &TypeKind) -> bool {
+        let TypeKind::Ref { inner, .. } = t else {
+            return false;
+        };
+        matches!(&inner.kind, TypeKind::Slice(e) if e.kind == TypeKind::Int(IntTy::U8))
+            && self.tsub.values().any(|v| v == t)
     }
 
     fn bound_name(&mut self, base: &str) -> String {

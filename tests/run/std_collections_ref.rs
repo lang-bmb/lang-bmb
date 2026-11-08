@@ -13,9 +13,11 @@ fn main() {
         }
         seen.insert(x);
     }
-    for (k, v) in &counts {
-        println!("{k}");
+    for v in counts.values() {
         println!("{v}");
+    }
+    for k in counts.keys() {
+        println!("{k}");
     }
     println!("{}", seen.len());
     if seen.contains(&7) {

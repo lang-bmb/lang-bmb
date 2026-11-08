@@ -3351,7 +3351,18 @@ impl<'p> Gen<'p> {
                 }
                 return tmp;
             }
-            _ => self.place(inner).0,
+            ExprKind::Var(_)
+            | ExprKind::Deref(_)
+            | ExprKind::Ref { .. }
+            | ExprKind::Field { .. }
+            | ExprKind::Index { .. } => self.place(inner).0,
+            // A value lent for the call (`m.contains(&7)`, backlog 4B-04):
+            // a temporary holds it.
+            _ => {
+                let v = self.expr(inner).imm();
+                self.emit(format!("store {} {v}, ptr {tmp}", llty(t)));
+                return tmp;
+            }
         };
         let v = self.read(&place, t).imm();
         self.emit(format!("store {} {v}, ptr {tmp}", llty(t)));

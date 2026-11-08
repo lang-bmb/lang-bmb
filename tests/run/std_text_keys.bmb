@@ -1,0 +1,75 @@
+#[summary("표준 라이브러리 std::collections의 텍스트 키: 낱말마다 나온 횟수를 BTreeMap<String, u64>로 세고 BTreeSet<String>으로 모아, 바이트 사전순(\"B\" < \"a\" < \"ab\" < \"é\")으로 찍는다. 낱말은 공백 사이를 실행 검사 없이 조각낸다 (ADR-0092 §2, backlog 4B-04)")]
+mod text_keys {
+    // `a` begins or ends the text, or follows a space.
+    spec fn after_space(s: &str, a: usize) -> bool {
+        a == 0 || a == s.len() || (a < s.len() && s.as_bytes()[a - 1] == 32)
+    }
+
+    spec fn short(s: &str) -> bool {
+        s.len() < 1000
+    }
+
+    // The words of `s` between single spaces: how often each occurs, in
+    // byte-lexicographic order, then the distinct words without `drop`.
+    #[effects(alloc, io)]
+    #[uses(after_space, short, std::collections::empty_map, std::collections::empty_set, std::collections::key_pos, std::collections::map_grew, std::collections::map_room, std::collections::map_size, std::collections::room_set, std::collections::set_grew, std::collections::set_shrank, std::collections::set_size)]
+    fn count(s: &str, drop: &str) -> ()
+        requires short(s),
+    {
+        let mut counts: std::collections::BTreeMap<String, u64> = std::collections::BTreeMap::<String, u64>::new();
+        let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::<String>::new();
+        let mut a: usize = 0;
+        while a < s.len()
+            invariant a <= s.len(), after_space(s, a), counts.keys.len() <= a, seen.keys.len() <= a,
+            decreases s.len() - a,
+        {
+            let mut b: usize = a;
+            while b < s.len() && s.as_bytes()[b] != b' '
+                invariant a <= b, b <= s.len(),
+                decreases s.len() - b,
+            {
+                b = b + 1;
+            }
+            let c: u64 = match counts.get(&String::from(&s[a..b])) {
+                None => 0,
+                Some(got) => got,
+            };
+            if c < 1000 {
+                counts.insert(String::from(&s[a..b]), c + 1);
+            }
+            seen.insert(String::from(&s[a..b]));
+            if b < s.len() {
+                a = b + 1;
+            } else {
+                a = b;
+            }
+        }
+        let n: usize = counts.len();
+        for i in 0..n {
+            print_u64(counts.value_at(i));
+        }
+        let words: Vec<String> = counts.into_keys();
+        for j in 0..words.len() {
+            print_str(words[j].as_str());
+            print_str("\n");
+        }
+        if seen.contains(&String::from("ab")) {
+            print_str("has ab\n");
+        }
+        seen.remove(&String::from(drop));
+        print_u64(u64::try_from(seen.len()).unwrap());
+        let left: Vec<String> = seen.into_keys();
+        for k in 0..left.len() {
+            print_str(left[k].as_str());
+            print_str("\n");
+        }
+    }
+
+    #[effects(alloc, io)]
+    #[uses(short)]
+    fn main() -> () {
+        count("a b a ab é B a ab", "a");
+        count("", "x");
+        count("x", "x");
+    }
+}

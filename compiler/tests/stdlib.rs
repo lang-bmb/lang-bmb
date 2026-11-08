@@ -499,18 +499,43 @@ fn std_slice_agrees_with_rust() {
 
 /// `std::collections` against Rust's `BTreeMap` and `BTreeSet`: random
 /// inserts (new keys and replaced values), removes and lookups over a small
-/// key range, so keys repeat, then the contents in order. The BMB program
-/// (`tests/data/std_collections_diff.bmb`) is fully proved. `BMB_SOUND_ITERS`
-/// sets the operations (default 2,000).
+/// key range, so keys repeat, then the values and the keys in order. The BMB
+/// program (`tests/data/std_collections_diff.bmb`) is fully proved.
+/// `BMB_SOUND_ITERS` sets the operations (default 2,000).
 #[test]
 fn std_collections_agree_with_rust() {
+    let keys: Vec<u64> = (0..40).collect();
+    collections_diff("std_collections_diff.bmb", &keys, 0x5DEE_CE66_D1B5_4A32);
+}
+
+/// The same with text keys (`BTreeMap<String, u64>`, backlog 4B-04): the
+/// keys are prefixes of each other, differ in case, hold characters of two
+/// to four bytes and include the empty text, so the order is Rust's
+/// byte-lexicographic one (`"B" < "a" < "ab" < "é"`), not a numeric or
+/// character-class one (`tests/data/std_text_keys_diff.bmb`).
+#[test]
+fn std_collections_text_keys_agree_with_rust() {
+    let keys: Vec<String> = [
+        "", "a", "aa", "ab", "aB", "b", "B", "ba", "é", "éa", "e", "€", "😀", "a😀", "z", "Z",
+        "10", "9", "a\u{7f}", "ü",
+    ]
+    .iter()
+    .map(|k| k.to_string())
+    .collect();
+    collections_diff("std_text_keys_diff.bmb", &keys, 0x1B5_4A32_5DEE_CE66);
+}
+
+/// Builds `tests/data/{file}`, feeds it random operations on `keys` and
+/// compares its output with Rust's `BTreeMap` and `BTreeSet` doing the same.
+fn collections_diff<K: Ord + Clone + std::fmt::Display>(file: &str, keys: &[K], seed: u64) {
     use std::collections::{BTreeMap, BTreeSet};
     let n: usize = std::env::var("BMB_SOUND_ITERS")
         .ok()
         .and_then(|v| v.parse().ok())
         .map_or(2000, |k: usize| k * 500);
     let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/data/std_collections_diff.bmb");
+        .join("tests/data")
+        .join(file);
     let dir = cli::fresh_dir();
     let exe = dir.join("diff");
     let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
@@ -525,20 +550,20 @@ fn std_collections_agree_with_rust() {
         "{}",
         String::from_utf8_lossy(&out.stdout)
     );
-    let mut rng = common::scalar::Rng(0x5DEE_CE66_D1B5_4A32);
-    let mut m: BTreeMap<u64, u64> = BTreeMap::new();
-    let mut s: BTreeSet<u64> = BTreeSet::new();
+    let mut rng = common::scalar::Rng(seed);
+    let mut m: BTreeMap<K, u64> = BTreeMap::new();
+    let mut s: BTreeSet<K> = BTreeSet::new();
     let mut input = String::new();
     let mut expected = String::new();
     let opt = |r: Option<u64>| r.map_or("-\n".to_string(), |v| format!("{v}\n"));
     let flag = |b: bool| if b { "1\n" } else { "0\n" };
     for _ in 0..n {
-        let k = rng.below(40) as u64;
+        let k = keys[rng.below(keys.len())].clone();
         match rng.below(10) {
             0..=4 => {
                 let v = rng.next() % 1000;
                 input.push_str(&format!("i {k} {v}\n"));
-                expected.push_str(&opt(m.insert(k, v)));
+                expected.push_str(&opt(m.insert(k.clone(), v)));
                 expected.push_str(flag(s.insert(k)));
             }
             5..=7 => {
@@ -553,8 +578,11 @@ fn std_collections_agree_with_rust() {
             }
         }
     }
-    for (k, v) in &m {
-        expected.push_str(&format!("{k}\n{v}\n"));
+    for v in m.values() {
+        expected.push_str(&format!("{v}\n"));
+    }
+    for k in m.keys() {
+        expected.push_str(&format!("{k}\n"));
     }
     for k in &s {
         expected.push_str(&format!("{k}\n"));
@@ -585,7 +613,7 @@ fn std_collections_agree_with_rust() {
             .position(|(a, b)| a != b)
             .unwrap_or(g.len().min(e.len()));
         panic!(
-            "std::collections differs from Rust at output line {k}: {:?} vs {:?}",
+            "{file} differs from Rust at output line {k}: {:?} vs {:?}",
             g.get(k),
             e.get(k)
         );

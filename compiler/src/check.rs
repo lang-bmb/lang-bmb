@@ -2720,15 +2720,15 @@ impl<'a> Checker<'a> {
     }
 
     /// Whether `t` has the built-in trait `b` (`Eq` or `Ord`): the integer
-    /// types, `bool`, `char`, and a type parameter in scope bounded by it
-    /// (`Ord` includes `Eq`). Not `f64`: NaN is not equal to itself
-    /// (ADR-0061 §1).
+    /// types, `bool`, `char`, `String` (Rust's byte-lexicographic order,
+    /// backlog 4B-04), and a type parameter in scope bounded by it (`Ord`
+    /// includes `Eq`). Not `f64`: NaN is not equal to itself (ADR-0061 §1).
     fn has_builtin(&self, t: &TypeKind, b: &str) -> bool {
         match t {
             TypeKind::Param(n) => self.tparams.iter().any(|p| {
                 p.name == *n && p.bounds.iter().any(|x| x == b || (b == "Eq" && x == "Ord"))
             }),
-            t => is_int(t) || matches!(t, TypeKind::Bool | TypeKind::Char),
+            t => is_int(t) || matches!(t, TypeKind::Bool | TypeKind::Char | TypeKind::String),
         }
     }
 
@@ -2784,7 +2784,7 @@ impl<'a> Checker<'a> {
                             if *t == TypeKind::F64 {
                                 format!("`f64` is not `{b}`, as in Rust: NaN is not equal to itself (ADR-0061 §1); compare `f64` values with `<`, `==` in code, or drop the bound")
                             } else {
-                                format!("`{b}` holds for the integer types, `bool` and type parameters bounded by it; for data types it is ADR-0046 open question 4")
+                                format!("`{b}` holds for the integer types, `bool`, `char`, `String` and type parameters bounded by it; for data types it is ADR-0046 open question 4")
                             },
                             None,
                         ),

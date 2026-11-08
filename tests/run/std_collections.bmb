@@ -1,7 +1,7 @@
 #[summary("표준 라이브러리 std::collections: BTreeMap으로 값마다 나온 횟수를 세고 BTreeSet으로 서로 다른 값을 모아, 키 순서대로 찍는다 (ADR-0092 §2, backlog 4B-02)")]
 mod uses_collections {
     #[effects(alloc, io)]
-    #[uses(std::collections::at_pos, std::collections::empty_map, std::collections::empty_set, std::collections::key_pos, std::collections::map_grew, std::collections::map_room, std::collections::map_size, std::collections::room_set, std::collections::set_grew, std::collections::set_size)]
+    #[uses(std::collections::empty_map, std::collections::empty_set, std::collections::key_pos, std::collections::map_grew, std::collections::map_room, std::collections::map_size, std::collections::room_set, std::collections::set_grew, std::collections::set_size)]
     fn main() -> () {
         let xs: [u64; 10] = [5, 3, 5, 1, 9, 3, 5, 7, 1, 5];
         let mut counts: std::collections::BTreeMap<u64, u64> = std::collections::BTreeMap::<u64, u64>::new();
@@ -9,7 +9,7 @@ mod uses_collections {
         for i in 0..xs.len()
             invariant counts.keys.len() <= i, seen.keys.len() <= i,
         {
-            let c: u64 = match counts.get(xs[i]) {
+            let c: u64 = match counts.get(&xs[i]) {
                 None => 0,
                 Some(n) => n,
             };
@@ -19,19 +19,23 @@ mod uses_collections {
             seen.insert(xs[i]);
         }
         for j in 0..counts.len() {
-            print_u64(counts.key_at(j));
             print_u64(counts.value_at(j));
         }
+        let ks: Vec<u64> = counts.into_keys();
+        for q in 0..ks.len() {
+            print_u64(ks[q]);
+        }
         print_u64(u64::try_from(seen.len()).unwrap());
-        if seen.contains(7) {
+        if seen.contains(&7) {
             print_str("has 7\n");
         }
-        if !seen.contains(2) {
+        if !seen.contains(&2) {
             print_str("no 2\n");
         }
-        seen.remove(5);
-        for k in 0..seen.len() {
-            print_u64(seen.at(k));
+        seen.remove(&5);
+        let left: Vec<u64> = seen.into_keys();
+        for k in 0..left.len() {
+            print_u64(left[k]);
         }
     }
 }

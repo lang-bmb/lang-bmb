@@ -608,6 +608,15 @@ MUTANTS = [
      '''    "copy_within",
 ];''',
      "a loop that `push_str`s to a `String` keeps the length before it: an invariant of the length makes the code after the loop unreachable"),
+    # A `String` type argument compares as text (backlog 4B-04).
+    ("v-text-targ-not-text", "unsound", VT,
+     '''            || (!self.tsub.is_empty() && self.is_lowered_text(&self.ty(e)))''',
+     '''            || false''',
+     "a generic comparison instantiated with `String` is encoded as a scalar one: the proof of a caller of `BTreeMap<String, V>` fails or the encoder stops"),
+    ("c-text-targ-not-text", "miscompile", CT,
+     '''        self.t.text.contains(&(e.span.file, e.span.lo, e.span.hi)) || self.text_targ(e)''',
+     '''        self.t.text.contains(&(e.span.file, e.span.lo, e.span.hi))''',
+     "a generic comparison instantiated with `String` compares the header words instead of the bytes: a text-keyed map is out of order"),
     # What UTF-8 holds before a boundary (backlog 2U-06).
     ("v-utf8-char-ends-before-ascii", "unsound", VT,
      '''    let ends = |m: i64| format!("(or (= (+ {k} {m}) {n}) (not {}))", cont(&at(m)));''',
