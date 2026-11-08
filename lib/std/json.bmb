@@ -1,0 +1,870 @@
+#[summary("JSON(RFC 8259) 읽기와 쓰기: 텍스트를 노드 배열(simdjson의 테이프)로 해석하고 쌓기로 중첩을 따라가며, 문자열을 serde_json과 같은 규칙으로 쓴다. JSONTestSuite의 y_·n_ 판정과 값이 Python json과 같다 (ADR-0092 §2, backlog 4B-02 (h)·T4-05)")]
+mod json {
+    spec fn upto(t: &[u8], i: usize) -> bool {
+        i <= t.len()
+    }
+
+    spec fn moved_on(t: &[u8], i: usize, r: usize) -> bool {
+        i <= r && r <= t.len()
+    }
+
+    spec fn ended(t: &[u8], i: usize, r: Option<usize>) -> bool {
+        match r {
+            None => true,
+            Some(e) => i < e && e <= t.len(),
+        }
+    }
+
+    // The first position from `i` that is not JSON whitespace.
+    #[effects(pure)]
+    #[uses(moved_on, upto)]
+    fn skip_ws(t: &[u8], i: usize) -> (r: usize)
+        requires upto(t, i),
+        ensures moved_on(t, i, r),
+    {
+        let mut j: usize = i;
+        while j < t.len() && (t[j] == b' ' || t[j] == b'\t' || t[j] == b'\n' || t[j] == b'\r')
+            invariant i <= j, j <= t.len(),
+            decreases t.len() - j,
+        {
+            j = j + 1;
+        }
+        j
+    }
+
+    #[effects(pure)]
+    fn is_hex(b: u8) -> bool {
+        (b'0' <= b && b <= b'9') || (b'a' <= b && b <= b'f') || (b'A' <= b && b <= b'F')
+    }
+
+    #[effects(pure)]
+    fn is_digit(b: u8) -> bool {
+        b'0' <= b && b <= b'9'
+    }
+
+    // The end of the digits from `i`.
+    #[effects(pure)]
+    #[uses(moved_on, upto)]
+    fn digits(t: &[u8], i: usize) -> (r: usize)
+        requires upto(t, i),
+        ensures moved_on(t, i, r),
+    {
+        let mut j: usize = i;
+        while j < t.len() && is_digit(t[j])
+            invariant i <= j, j <= t.len(),
+            decreases t.len() - j,
+        {
+            j = j + 1;
+        }
+        j
+    }
+
+    spec fn at(t: &[u8], i: usize) -> bool {
+        i < t.len()
+    }
+
+    // The end of the number at `i` (RFC 8259 §6: `-`, then `0` or digits
+    // not led by `0`, then `.` and digits, then `e` or `E`, a sign and
+    // digits), none when there is none.
+    #[effects(pure)]
+    #[uses(at, ended, moved_on, upto)]
+    fn number_end(t: &[u8], i: usize) -> (r: Option<usize>)
+        requires at(t, i),
+        ensures ended(t, i, r),
+    {
+        let mut j: usize = i;
+        if t[j] == b'-' {
+            j = j + 1;
+        }
+        if j >= t.len() || !is_digit(t[j]) {
+            return None;
+        }
+        if t[j] == b'0' {
+            j = j + 1;
+        } else {
+            j = digits(t, j + 1);
+        }
+        if j < t.len() && t[j] == b'.' {
+            let f: usize = digits(t, j + 1);
+            if f == j + 1 {
+                return None;
+            }
+            j = f;
+        }
+        if j < t.len() && (t[j] == b'e' || t[j] == b'E') {
+            let mut k: usize = j + 1;
+            if k < t.len() && (t[k] == b'+' || t[k] == b'-') {
+                k = k + 1;
+            }
+            let x: usize = digits(t, k);
+            if x == k {
+                return None;
+            }
+            j = x;
+        }
+        Some(j)
+    }
+
+    // The position after the string that starts at `i` (a `"`), none when
+    // it is not one: no byte below 32, escapes `\"` `\\` `\/` `\b` `\f`
+    // `\n` `\r` `\t` and `\u` with four hex digits, the rest UTF-8.
+    #[effects(pure)]
+    #[uses(at, ended, std::utf8::at, std::utf8::seq_len, std::utf8::width_result)]
+    fn string_end(t: &[u8], i: usize) -> (r: Option<usize>)
+        requires at(t, i),
+        ensures ended(t, i, r),
+    {
+        let mut j: usize = i + 1;
+        while j < t.len()
+            invariant i < j, j <= t.len(),
+            decreases t.len() - j,
+        {
+            let b: u8 = t[j];
+            if b == b'"' {
+                return Some(j + 1);
+            } else if b < 32 {
+                return None;
+            } else if b == b'\\' {
+                if j + 1 >= t.len() {
+                    return None;
+                }
+                let e: u8 = t[j + 1];
+                if e == b'u' {
+                    if j + 5 >= t.len() || !is_hex(t[j + 2]) || !is_hex(t[j + 3]) || !is_hex(t[j + 4]) || !is_hex(t[j + 5]) {
+                        return None;
+                    }
+                    j = j + 6;
+                } else if e == b'"' || e == b'\\' || e == b'/' || e == b'b' || e == b'f' || e == b'n' || e == b'r' || e == b't' {
+                    j = j + 2;
+                } else {
+                    return None;
+                }
+            } else if b < 128 {
+                j = j + 1;
+            } else {
+                let w: usize = std::utf8::width(t, j);
+                if w == 0 {
+                    return None;
+                }
+                j = j + w;
+            }
+        }
+        None
+    }
+
+    // The end of the literal `true`, `false` or `null` at `i`.
+    #[effects(pure)]
+    #[uses(at, ended)]
+    fn literal_end(t: &[u8], i: usize) -> (r: Option<usize>)
+        requires at(t, i),
+        ensures ended(t, i, r),
+    {
+        if t[i] == b't' && i + 3 < t.len() && t[i + 1] == b'r' && t[i + 2] == b'u' && t[i + 3] == b'e' {
+            return Some(i + 4);
+        }
+        if t[i] == b'f' && i + 4 < t.len() && t[i + 1] == b'a' && t[i + 2] == b'l' && t[i + 3] == b's' && t[i + 4] == b'e' {
+            return Some(i + 5);
+        }
+        if t[i] == b'n' && i + 3 < t.len() && t[i + 1] == b'u' && t[i + 2] == b'l' && t[i + 3] == b'l' {
+            return Some(i + 4);
+        }
+        None
+    }
+
+    // The end of the scalar value (string, number, literal) at `i`.
+    #[effects(pure)]
+    #[uses(at, ended)]
+    fn scalar_end(t: &[u8], i: usize) -> (r: Option<usize>)
+        requires at(t, i),
+        ensures ended(t, i, r),
+    {
+        let b: u8 = t[i];
+        if b == b'"' {
+            string_end(t, i)
+        } else if b == b'-' || is_digit(b) {
+            number_end(t, i)
+        } else {
+            literal_end(t, i)
+        }
+    }
+
+    spec fn short(t: &[u8]) -> bool {
+        t.len() < 1152921504606846975
+    }
+
+
+    // A value of a JSON text: its kind (0 `null`, 1 `false`, 2 `true`, 3
+    // number, 4 string, 5 array, 6 object), its bytes `start..end` and the
+    // node after it and all it holds (`next`). An array's elements and an
+    // object's keys and values (each key a string node before its value)
+    // follow it in order.
+    struct Node { kind: u8, start: usize, end: usize, next: usize }
+
+    // A parsed JSON text: its nodes in order, the first the whole value
+    // (simdjson's tape), and the length of the text.
+    #[invariant(doc_sound)]
+    struct Doc { nodes: Vec<Node>, len: usize }
+
+    // Every node lies in the first `len` bytes and its `next` is after it.
+    spec fn nodes_in(v: &[Node], n: usize, len: usize) -> bool {
+        n == v.len() && forall |k: usize| k < v.len() ==> #[trigger] v[k].start < v[k].end && v[k].end <= len && k < v[k].next && v[k].next <= n
+    }
+
+    spec fn doc_sound(d: &Doc) -> bool {
+        nodes_in(d.nodes.as_slice(), d.nodes.len(), d.len) && d.nodes.len() > 0 && d.len < 1152921504606846975
+    }
+
+    // The open arrays and objects are nodes.
+    spec fn opens(open: &[usize], n: usize) -> bool {
+        forall |k: usize| k < open.len() ==> #[trigger] open[k] < n
+    }
+
+    spec fn room(open: &[usize], v: &[Node], t: &[u8], i: usize) -> bool {
+        open.len() <= i && v.len() <= i && i <= t.len()
+    }
+
+    spec fn parsed(r: &Option<Doc>, t: &[u8]) -> bool {
+        match r {
+            None => true,
+            Some(d) => d.len == t.len(),
+        }
+    }
+
+    // The kind of the scalar value led by `b`.
+    #[effects(pure)]
+    fn scalar_kind(b: u8) -> u8 {
+        if b == b'n' {
+            0
+        } else if b == b'f' {
+            1
+        } else if b == b't' {
+            2
+        } else if b == b'"' {
+            4
+        } else {
+            3
+        }
+    }
+
+    spec fn close_pre(v: &[Node], open: &[usize], i: usize) -> bool {
+        i < 1152921504606846975 && nodes_in(v, v.len(), i) && opens(open, v.len())
+    }
+
+    spec fn close_post(v: &[Node], open: &[usize], i: usize) -> bool {
+        nodes_in(v, v.len(), i + 1) && opens(open, v.len())
+    }
+
+    spec fn same_len(v: &[Node], w: &[Node]) -> bool {
+        v.len() == w.len()
+    }
+
+    spec fn not_longer(v: &[usize], w: &[usize]) -> bool {
+        v.len() <= w.len()
+    }
+
+    // Closes the innermost open array or object with the bracket at `i`:
+    // it ends after `i`, and the node after it is the next one to come.
+    #[effects(pure)]
+    #[uses(close_pre, close_post, nodes_in, not_longer, opens, same_len)]
+    fn close(v: &mut Vec<Node>, open: &mut Vec<usize>, i: usize) -> (r: bool)
+        requires close_pre(v.as_slice(), open.as_slice(), i),
+        ensures close_post(v.as_slice(), open.as_slice(), i), same_len(v.as_slice(), old(v).as_slice()), not_longer(open.as_slice(), old(open).as_slice()),
+    {
+        match open.pop() {
+            None => false,
+            Some(k) => {
+                let n: usize = v.len();
+                v[k].end = i + 1;
+                v[k].next = n;
+                true
+            }
+        }
+    }
+
+    // The nodes of `t` when it is one JSON text (RFC 8259 §2: a value
+    // between whitespace), none when it is not. The open arrays and objects
+    // are a stack, so the depth is not the machine's.
+    #[effects(alloc)]
+    #[uses(at, close_post, close_pre, doc_sound, ended, moved_on, nodes_in, not_longer, opens, parsed, room, same_len, short, upto)]
+    fn parse(t: &[u8]) -> (r: Option<Doc>)
+        requires short(t),
+        ensures parsed(&r, t),
+    {
+        // `state`: 0 a value is due, 1 a value or `]` (just after `[`), 2 a
+        // key is due, 3 a key or `}` (just after `{`), 4 `:` is due, 5 a
+        // value has ended.
+        let mut nodes: Vec<Node> = Vec::new();
+        let mut open: Vec<usize> = Vec::new();
+        let mut state: u8 = 0;
+        let mut i: usize = skip_ws(t, 0);
+        while i < t.len()
+            invariant room(open.as_slice(), nodes.as_slice(), t, i), nodes_in(nodes.as_slice(), nodes.len(), i), opens(open.as_slice(), nodes.len()),
+            decreases t.len() - i,
+        {
+            let b: u8 = t[i];
+            if state == 0 || state == 1 {
+                if state == 1 && b == b']' {
+                    if !close(&mut nodes, &mut open, i) {
+                        return None;
+                    }
+                    state = 5;
+                    i = skip_ws(t, i + 1);
+                } else if b == b'[' || b == b'{' {
+                    let k: usize = nodes.len();
+                    let kind: u8 = if b == b'[' {
+                        5
+                    } else {
+                        6
+                    };
+                    nodes.push(Node { kind: kind, start: i, end: i + 1, next: k + 1 });
+                    open.push(k);
+                    state = if b == b'[' {
+                        1
+                    } else {
+                        3
+                    };
+                    i = skip_ws(t, i + 1);
+                } else {
+                    match scalar_end(t, i) {
+                        None => {
+                            return None;
+                        }
+                        Some(e) => {
+                            let ks: usize = nodes.len();
+                            nodes.push(Node { kind: scalar_kind(t[i]), start: i, end: e, next: ks + 1 });
+                            state = 5;
+                            i = skip_ws(t, e);
+                        }
+                    }
+                }
+            } else if state == 2 || state == 3 {
+                if state == 3 && b == b'}' {
+                    if !close(&mut nodes, &mut open, i) {
+                        return None;
+                    }
+                    state = 5;
+                    i = skip_ws(t, i + 1);
+                } else if b == b'"' {
+                    match string_end(t, i) {
+                        None => {
+                            return None;
+                        }
+                        Some(f) => {
+                            let kk: usize = nodes.len();
+                            nodes.push(Node { kind: 4, start: i, end: f, next: kk + 1 });
+                            state = 4;
+                            i = skip_ws(t, f);
+                        }
+                    }
+                } else {
+                    return None;
+                }
+            } else if state == 4 {
+                if b != b':' {
+                    return None;
+                }
+                state = 0;
+                i = skip_ws(t, i + 1);
+            } else {
+                let n: usize = open.len();
+                if n == 0 {
+                    return None;
+                }
+                let top: u8 = nodes[open[n - 1]].kind;
+                if b == b',' {
+                    state = if top == 5 {
+                        0
+                    } else {
+                        2
+                    };
+                    i = skip_ws(t, i + 1);
+                } else if (b == b']' && top == 5) || (b == b'}' && top == 6) {
+                    if !close(&mut nodes, &mut open, i) {
+                        return None;
+                    }
+                    i = skip_ws(t, i + 1);
+                } else {
+                    return None;
+                }
+            }
+        }
+        if state == 5 && open.len() == 0 && nodes.len() > 0 {
+            return Some(Doc { nodes: nodes, len: t.len() });
+        }
+        None
+    }
+
+    // Whether `t` is one JSON text.
+    #[effects(alloc)]
+    #[uses(parsed, short)]
+    fn is_json(t: &[u8]) -> bool
+        requires short(t),
+    {
+        match parse(t) {
+            None => false,
+            Some(d) => true,
+        }
+    }
+
+    // ---------- reading the nodes ----------
+
+    spec fn node_pos(d: &Doc, i: usize) -> bool {
+        i < d.nodes.len()
+    }
+
+    spec fn of_text(d: &Doc, t: &[u8]) -> bool {
+        d.len == t.len()
+    }
+
+    spec fn after(d: &Doc, i: usize, r: usize) -> bool {
+        i < r && r <= d.nodes.len()
+    }
+
+    spec fn node_count(d: &Doc, r: usize) -> bool {
+        r == d.nodes.len()
+    }
+
+    spec fn span_start(d: &Doc, i: usize, r: usize) -> bool {
+        r == d.nodes[i].start && r < d.nodes[i].end && d.nodes[i].end <= d.len
+    }
+
+    spec fn span_end(d: &Doc, i: usize, r: usize) -> bool {
+        r == d.nodes[i].end && d.nodes[i].start < r && r <= d.len
+    }
+
+    spec fn some_node(d: &Doc, r: Option<usize>) -> bool {
+        match r {
+            None => true,
+            Some(j) => j < d.nodes.len(),
+        }
+    }
+
+    impl Doc {
+        // How many nodes the text has (the whole value is node 0).
+        #[effects(pure)]
+        #[uses(node_count)]
+        fn count(self: &Doc) -> (r: usize)
+            ensures node_count(self, r),
+        {
+            self.nodes.len()
+        }
+
+        // The kind of node `i`: 0 `null`, 1 `false`, 2 `true`, 3 number, 4
+        // string, 5 array, 6 object.
+        #[effects(pure)]
+        #[uses(node_pos)]
+        fn kind(self: &Doc, i: usize) -> u8
+            requires node_pos(self, i),
+        {
+            self.nodes[i].kind
+        }
+
+        // Where node `i` begins in the text.
+        #[effects(pure)]
+        #[uses(doc_sound, node_pos, nodes_in, span_start)]
+        fn start(self: &Doc, i: usize) -> (r: usize)
+            requires node_pos(self, i),
+            ensures span_start(self, i, r),
+        {
+            self.nodes[i].start
+        }
+
+        // Where node `i` ends in the text.
+        #[effects(pure)]
+        #[uses(doc_sound, node_pos, nodes_in, span_end)]
+        fn end(self: &Doc, i: usize) -> (r: usize)
+            requires node_pos(self, i),
+            ensures span_end(self, i, r),
+        {
+            self.nodes[i].end
+        }
+
+        // The node after node `i` and everything it holds.
+        #[effects(pure)]
+        #[uses(after, doc_sound, node_pos, nodes_in)]
+        fn next(self: &Doc, i: usize) -> (r: usize)
+            requires node_pos(self, i),
+            ensures after(self, i, r),
+        {
+            self.nodes[i].next
+        }
+
+        // Element `n` of array node `a` (Rust's `serde_json::Value::get`
+        // with an index).
+        #[effects(pure)]
+        #[uses(doc_sound, node_pos, nodes_in, some_node)]
+        fn element(self: &Doc, a: usize, n: usize) -> (r: Option<usize>)
+            requires node_pos(self, a),
+            ensures some_node(self, r),
+        {
+            if self.nodes[a].kind != 5 {
+                return None;
+            }
+            let end: usize = self.nodes[a].next;
+            let mut c: usize = a + 1;
+            let mut k: usize = 0;
+            while c < end && k < n
+                invariant a < c, c <= self.nodes.len(), end <= self.nodes.len(),
+                decreases end - c,
+            {
+                c = self.nodes[c].next;
+                k = k + 1;
+            }
+            if c < end {
+                return Some(c);
+            }
+            None
+        }
+
+        // Whether string node `i` is `k`, byte for byte between its quotes
+        // (a key with an escape is not; read it with `string_value`).
+        #[effects(pure)]
+        #[uses(doc_sound, node_pos, nodes_in, of_text)]
+        fn raw_is(self: &Doc, t: &[u8], i: usize, k: &str) -> bool
+            requires node_pos(self, i), of_text(self, t),
+        {
+            let a: usize = self.nodes[i].start;
+            let b: usize = self.nodes[i].end;
+            if self.nodes[i].kind != 4 || b < a + 2 || b - a - 2 != k.len() {
+                return false;
+            }
+            let kb: usize = k.len();
+            let mut j: usize = 0;
+            while j < kb
+                invariant j <= kb, a + 1 + kb < b + 1, b <= t.len(),
+                decreases kb - j,
+            {
+                if t[a + 1 + j] != k.as_bytes()[j] {
+                    return false;
+                }
+                j = j + 1;
+            }
+            true
+        }
+
+        // The value of member `k` of object node `o` (Rust's
+        // `serde_json::Value::get` with a key; keys compared as `raw_is`).
+        #[effects(pure)]
+        #[uses(doc_sound, node_pos, nodes_in, of_text, some_node)]
+        fn member(self: &Doc, t: &[u8], o: usize, k: &str) -> (r: Option<usize>)
+            requires node_pos(self, o), of_text(self, t),
+            ensures some_node(self, r),
+        {
+            if self.nodes[o].kind != 6 {
+                return None;
+            }
+            let end: usize = self.nodes[o].next;
+            let mut c: usize = o + 1;
+            while c + 1 < end
+                invariant o < c, c <= self.nodes.len(), end <= self.nodes.len(),
+                decreases end - c,
+            {
+                if self.raw_is(t, c, k) {
+                    return Some(c + 1);
+                }
+                c = self.nodes[c + 1].next;
+            }
+            None
+        }
+
+        // The integer of number node `i`, when it is one that fits.
+        #[effects(pure)]
+        #[uses(doc_sound, node_pos, nodes_in, of_text)]
+        fn i64_value(self: &Doc, t: &[u8], i: usize) -> Option<i64>
+            requires node_pos(self, i), of_text(self, t),
+        {
+            if self.nodes[i].kind != 3 {
+                return None;
+            }
+            std::num::parse_i64_bytes(&t[self.nodes[i].start..self.nodes[i].end])
+        }
+
+        // The text of string node `i` with its escapes decoded, none when a
+        // `\u` escape is a surrogate without its pair (as `serde_json`).
+        #[effects(alloc)]
+        #[uses(doc_sound, grew4, node_pos, nodes_in, of_text, room4, scalar, unit_pos, unit_range)]
+        fn string_value(self: &Doc, t: &[u8], i: usize) -> Option<String>
+            requires node_pos(self, i), of_text(self, t),
+        {
+            if self.nodes[i].kind != 4 || self.nodes[i].end < self.nodes[i].start + 2 {
+                return None;
+            }
+            let b: usize = self.nodes[i].end - 1;
+            let mut v: Vec<u8> = Vec::new();
+            let mut j: usize = self.nodes[i].start + 1;
+            while j < b
+                invariant j <= b, b < t.len(), v.len() <= j,
+                decreases b - j,
+            {
+                let c: u8 = t[j];
+                if c != b'\\' || j + 1 >= b {
+                    v.push(c);
+                    j = j + 1;
+                } else {
+                    let e: u8 = t[j + 1];
+                    if e == b'u' {
+                        match unit_at(t, j, b) {
+                            None => {
+                                return None;
+                            }
+                            Some(u) => {
+                                if 55296 <= u && u <= 56319 {
+                                    // A high surrogate: its low one follows.
+                                    if j + 11 < b + 1 && t[j + 6] == b'\\' && t[j + 7] == b'u' {
+                                        match unit_at(t, j + 6, b) {
+                                            None => {
+                                                return None;
+                                            }
+                                            Some(w) => {
+                                                if 56320 <= w && w <= 57343 {
+                                                    push_utf8(&mut v, 65536 + (u - 55296) * 1024 + (w - 56320));
+                                                    j = j + 12;
+                                                } else {
+                                                    return None;
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        return None;
+                                    }
+                                } else if 56320 <= u && u <= 57343 {
+                                    return None;
+                                } else {
+                                    push_utf8(&mut v, u);
+                                    j = j + 6;
+                                }
+                            }
+                        }
+                    } else {
+                        v.push(unescaped(e));
+                        j = j + 2;
+                    }
+                }
+            }
+            match String::from_utf8(v) {
+                Ok(s) => Some(s),
+                Err(x) => None,
+            }
+        }
+    }
+
+    // The byte an escape `\e` stands for (`e` one of `"\/bfnrt`).
+    #[effects(pure)]
+    fn unescaped(e: u8) -> u8 {
+        if e == b'b' {
+            8
+        } else if e == b'f' {
+            12
+        } else if e == b'n' {
+            10
+        } else if e == b'r' {
+            13
+        } else if e == b't' {
+            9
+        } else {
+            e
+        }
+    }
+
+    #[effects(pure)]
+    fn hex_value(b: u8) -> u32 {
+        if b'0' <= b && b <= b'9' {
+            u32::try_from(b - b'0').unwrap()
+        } else if b'a' <= b && b <= b'f' {
+            u32::try_from(b - b'a').unwrap() + 10
+        } else if b'A' <= b && b <= b'F' {
+            u32::try_from(b - b'A').unwrap() + 10
+        } else {
+            0
+        }
+    }
+
+    spec fn unit_pos(t: &[u8], j: usize, b: usize) -> bool {
+        j < b && b <= t.len()
+    }
+
+    spec fn unit_range(r: Option<u32>, j: usize, b: usize) -> bool {
+        match r {
+            None => true,
+            Some(u) => u <= 65535 && j + 6 <= b,
+        }
+    }
+
+    // The code unit of the escape `\uXXXX` at `j`, when it ends by `b`.
+    #[effects(pure)]
+    #[uses(unit_pos, unit_range)]
+    fn unit_at(t: &[u8], j: usize, b: usize) -> (r: Option<u32>)
+        requires unit_pos(t, j, b),
+        ensures unit_range(r, j, b),
+    {
+        if j + 6 > b {
+            return None;
+        }
+        let a: u32 = hex_value(t[j + 2]);
+        let c: u32 = hex_value(t[j + 3]);
+        let d: u32 = hex_value(t[j + 4]);
+        let e: u32 = hex_value(t[j + 5]);
+        if a > 15 || c > 15 || d > 15 || e > 15 {
+            return None;
+        }
+        Some(a * 4096 + c * 256 + d * 16 + e)
+    }
+
+    spec fn scalar(c: u32) -> bool {
+        c <= 1114111
+    }
+
+    spec fn grew4(v: &[u8], w: &[u8]) -> bool {
+        v.len() <= w.len() + 4
+    }
+
+    spec fn room4(v: &[u8]) -> bool {
+        v.len() + 4 < 4611686018427387904
+    }
+
+    // Adds the UTF-8 bytes of `c` to `v`.
+    #[effects(alloc)]
+    #[uses(grew4, room4, scalar)]
+    fn push_utf8(v: &mut Vec<u8>, c: u32) -> ()
+        requires scalar(c), room4(v.as_slice()),
+        ensures grew4(v.as_slice(), old(v).as_slice()),
+    {
+        if c < 128 {
+            v.push(u8::try_from(c).unwrap());
+        } else if c < 2048 {
+            v.push(u8::try_from(192 + c / 64).unwrap());
+            v.push(u8::try_from(128 + c % 64).unwrap());
+        } else if c < 65536 {
+            v.push(u8::try_from(224 + c / 4096).unwrap());
+            v.push(u8::try_from(128 + c / 64 % 64).unwrap());
+            v.push(u8::try_from(128 + c % 64).unwrap());
+        } else {
+            v.push(u8::try_from(240 + c / 262144).unwrap());
+            v.push(u8::try_from(128 + c / 4096 % 64).unwrap());
+            v.push(u8::try_from(128 + c / 64 % 64).unwrap());
+            v.push(u8::try_from(128 + c % 64).unwrap());
+        }
+    }
+
+    // ---------- writing ----------
+
+    spec fn quote_room(out: &str, s: &str) -> bool {
+        out.len() + 6 * s.len() + 2 < 9223372036854775807
+    }
+
+    spec fn quote_grew(out: &str, before: &str, s: &str) -> bool {
+        before.len() + 2 <= out.len() && out.len() <= before.len() + 6 * s.len() + 2
+    }
+
+    spec fn quote_inv(out: &str, l: usize, a: usize, j: usize, s: &str) -> bool {
+        a <= j && j <= s.len() && l + 1 <= out.len() && out.len() + (j - a) <= l + 1 + 6 * j
+            && (a == 0 || s.as_bytes()[a - 1] < 128)
+    }
+
+    // Adds `s` to `out` as a JSON string: in quotes, `"` and `\` escaped,
+    // the control bytes as `\b`, `\f`, `\n`, `\r`, `\t` or `\u00xx`
+    // (what `serde_json` writes).
+    #[effects(alloc)]
+    #[uses(digit16, one_more, one_room, quote_grew, quote_inv, quote_room)]
+    fn push_string(out: &mut String, s: &str) -> ()
+        requires quote_room(out.as_str(), s),
+        ensures quote_grew(out.as_str(), old(out).as_str(), s),
+    {
+        let l: usize = out.len();
+        out.push('"');
+        let mut a: usize = 0;
+        let mut j: usize = 0;
+        while j < s.len()
+            invariant quote_inv(out.as_str(), l, a, j, s), l + 6 * s.len() + 2 < 9223372036854775807,
+            decreases s.len() - j,
+        {
+            let b: u8 = s.as_bytes()[j];
+            if b == b'"' || b == b'\\' || b < 32 {
+                out.push_str(&s[a..j]);
+                if b == b'"' {
+                    out.push_str("\\\"");
+                } else if b == b'\\' {
+                    out.push_str("\\\\");
+                } else if b == 8 {
+                    out.push_str("\\b");
+                } else if b == 12 {
+                    out.push_str("\\f");
+                } else if b == 10 {
+                    out.push_str("\\n");
+                } else if b == 13 {
+                    out.push_str("\\r");
+                } else if b == 9 {
+                    out.push_str("\\t");
+                } else {
+                    out.push_str("\\u00");
+                    push_hex_digit(out, b / 16);
+                    push_hex_digit(out, b % 16);
+                }
+                a = j + 1;
+            }
+            j = j + 1;
+        }
+        out.push_str(&s[a..s.len()]);
+        out.push('"');
+    }
+
+    spec fn digit16(d: u8) -> bool {
+        d < 16
+    }
+
+    spec fn one_room(out: &str) -> bool {
+        out.len() + 1 < 9223372036854775807
+    }
+
+    spec fn one_more(out: &str, before: &str) -> bool {
+        out.len() == before.len() + 1
+    }
+
+    // Adds the lowercase hex digit of `d`.
+    #[effects(alloc)]
+    #[uses(digit16, one_more, one_room)]
+    fn push_hex_digit(out: &mut String, d: u8) -> ()
+        requires digit16(d), one_room(out.as_str()),
+        ensures one_more(out.as_str(), old(out).as_str()),
+    {
+        if d < 8 {
+            if d < 4 {
+                if d == 0 {
+                    out.push_str("0");
+                } else if d == 1 {
+                    out.push_str("1");
+                } else if d == 2 {
+                    out.push_str("2");
+                } else {
+                    out.push_str("3");
+                }
+            } else if d == 4 {
+                out.push_str("4");
+            } else if d == 5 {
+                out.push_str("5");
+            } else if d == 6 {
+                out.push_str("6");
+            } else {
+                out.push_str("7");
+            }
+        } else if d < 12 {
+            if d == 8 {
+                out.push_str("8");
+            } else if d == 9 {
+                out.push_str("9");
+            } else if d == 10 {
+                out.push_str("a");
+            } else {
+                out.push_str("b");
+            }
+        } else if d == 12 {
+            out.push_str("c");
+        } else if d == 13 {
+            out.push_str("d");
+        } else if d == 14 {
+            out.push_str("e");
+        } else {
+            out.push_str("f");
+        }
+    }
+}

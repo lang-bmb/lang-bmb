@@ -1,0 +1,69 @@
+#[summary("표준 라이브러리 std::json: 설정 문서를 노드 배열로 읽어 멤버·원소·정수·문자열(이스케이프 해독)을 꺼내고, 이름표를 JSON 문자열로 다시 쓴다 (ADR-0092 §2, backlog 4B-02 (h))")]
+mod uses_json {
+    #[effects(alloc, io)]
+    #[uses(std::json::doc_sound, std::json::node_pos, std::json::nodes_in, std::json::of_text, std::json::parsed, std::json::quote_grew, std::json::quote_room, std::json::short, std::json::some_node)]
+    fn show(t: &[u8]) -> () {
+        if t.len() > 1000000 {
+            return;
+        }
+        match std::json::parse(t) {
+            None => print_str("not JSON\n"),
+            Some(d) => {
+                print_u64(u64::try_from(d.count()).unwrap());
+                match d.member(t, 0, "name") {
+                    None => print_str("no name\n"),
+                    Some(n) => match d.string_value(t, n) {
+                        None => print_str("bad name\n"),
+                        Some(s) => {
+                            let mut out: String = String::new();
+                            if s.len() < 1000000 {
+                                out.push_str("name=");
+                                std::json::push_string(&mut out, s.as_str());
+                            }
+                            print_str(out.as_str());
+                            print_str("\n");
+                        }
+                    },
+                }
+                match d.member(t, 0, "ports") {
+                    None => print_str("no ports\n"),
+                    Some(p) => {
+                        let mut i: usize = 0;
+                        let mut go: bool = true;
+                        while go && i < 100
+                            decreases 100 - i,
+                        {
+                            match d.element(p, i) {
+                                None => {
+                                    go = false;
+                                }
+                                Some(e) => match d.i64_value(t, e) {
+                                    None => print_str("not an integer\n"),
+                                    Some(v) => print_i64(v),
+                                },
+                            }
+                            i = i + 1;
+                        }
+                    }
+                }
+                match d.member(t, 0, "debug") {
+                    None => print_str("no debug\n"),
+                    Some(b) => {
+                        if d.kind(b) == 2 {
+                            print_str("debug on\n");
+                        } else {
+                            print_str("debug off\n");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[effects(alloc, io)]
+    fn main() -> () {
+        show(b"{\"name\": \"caf\\u00e9 \\\"main\\\"\\n\", \"ports\": [80, -443, 1e3, 8080], \"debug\": true}");
+        show(b"[1, 2,]");
+        show(b" {\"ports\": []} ");
+    }
+}

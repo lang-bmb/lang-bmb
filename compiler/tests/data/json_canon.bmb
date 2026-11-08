@@ -1,0 +1,155 @@
+#[summary("std::json 정규화: 표준 입력의 JSON 텍스트를 한 줄에 토큰 하나로 찍는다(키 `k\"..\"`, 문자열 `s\"..\"`는 해독해 std::json::push_string으로 다시 씀, 숫자 `n`과 쓴 그대로). JSONTestSuite 대조(scripts/json_suite.py)와 차등 시험(tests/stdlib.rs)이 쓴다 (backlog 4B-02 (h))")]
+mod canon {
+    spec fn walk_inv(d: &std::json::Doc, ends: &[usize], kinds: &[u8], counts: &[usize], k: usize, n: usize) -> bool {
+        ends.len() == kinds.len() && kinds.len() == counts.len() && k <= n && n == d.nodes.len()
+    }
+
+    spec fn same3(ends: &[usize], kinds: &[u8], counts: &[usize]) -> bool {
+        ends.len() == kinds.len() && kinds.len() == counts.len()
+    }
+
+    // Prints `]` or `}` for each open array or object that ends by `k`.
+    #[effects(io)]
+    #[uses(same3)]
+    fn close_until(ends: &mut Vec<usize>, kinds: &mut Vec<u8>, counts: &mut Vec<usize>, k: usize) -> ()
+        requires same3(ends.as_slice(), kinds.as_slice(), counts.as_slice()),
+        ensures same3(ends.as_slice(), kinds.as_slice(), counts.as_slice()),
+    {
+        let mut m: usize = ends.len();
+        while m > 0 && ends[m - 1] <= k
+            invariant m == ends.len(), ends.len() == kinds.len(), kinds.len() == counts.len(),
+            decreases m,
+        {
+            if kinds[m - 1] == 5 {
+                print_str("]\n");
+            } else {
+                print_str("}\n");
+            }
+            ends.truncate(m - 1);
+            kinds.truncate(m - 1);
+            counts.truncate(m - 1);
+            m = m - 1;
+        }
+    }
+
+    spec fn shorter(v: &[usize], w: &[usize]) -> bool {
+        v.len() <= w.len()
+    }
+
+    // Prints `s` as a JSON string (std::json's writer) and a newline.
+    #[effects(alloc, io)]
+    #[uses(std::json::quote_grew, std::json::quote_room)]
+    fn print_quoted(tag: &str, s: &str) -> () {
+        let mut out: String = String::new();
+        if s.len() < 1000000000 && tag.len() < 10 {
+            out.push_str(tag);
+            std::json::push_string(&mut out, s);
+        }
+        print_str(out.as_str());
+        print_str("\n");
+    }
+
+    // Prints the document one token a line: `[`, `]`, `{`, `}`, `k"..."`
+    // (a key), `s"..."` (a string, decoded and written again), `n` and the
+    // number as written, `true`, `false`, `null`.
+    #[effects(alloc, io)]
+    #[uses(same3, std::json::after, std::json::doc_sound, std::json::node_count, std::json::node_pos, std::json::nodes_in, std::json::of_text, walk_inv)]
+    fn print_doc(d: &std::json::Doc, t: &[u8]) -> ()
+        requires std::json::of_text(d, t),
+    {
+        let mut ends: Vec<usize> = Vec::new();
+        let mut kinds: Vec<u8> = Vec::new();
+        let mut counts: Vec<usize> = Vec::new();
+        let n: usize = d.count();
+        let mut k: usize = 0;
+        while k < n
+            invariant walk_inv(d, ends.as_slice(), kinds.as_slice(), counts.as_slice(), k, n),
+            decreases n - k,
+        {
+            close_until(&mut ends, &mut kinds, &mut counts, k);
+            let m: usize = ends.len();
+            let key: bool = m > 0 && kinds[m - 1] == 6 && counts[m - 1] % 2 == 0;
+            if m > 0 && counts[m - 1] < 1000000000 {
+                counts[m - 1] = counts[m - 1] + 1;
+            }
+            let c: u8 = d.kind(k);
+            if c == 5 || c == 6 {
+                if c == 5 {
+                    print_str("[\n");
+                } else {
+                    print_str("{\n");
+                }
+                if ends.len() < 1000000000 {
+                    ends.push(d.next(k));
+                    kinds.push(c);
+                    counts.push(0);
+                }
+            } else if c == 4 {
+                match d.string_value(t, k) {
+                    None => print_str("bad string\n"),
+                    Some(v) => {
+                        if key {
+                            print_quoted("k", v.as_str());
+                        } else {
+                            print_quoted("s", v.as_str());
+                        }
+                    }
+                }
+            } else if c == 3 {
+                print_number(d, t, k);
+            } else if c == 2 {
+                print_str("true\n");
+            } else if c == 1 {
+                print_str("false\n");
+            } else {
+                print_str("null\n");
+            }
+            k = k + 1;
+        }
+        close_until(&mut ends, &mut kinds, &mut counts, n);
+    }
+
+    // Prints `n` and number node `k` as written.
+    #[effects(alloc, io)]
+    #[uses(std::json::doc_sound, std::json::node_pos, std::json::nodes_in, std::json::of_text, std::json::span_end, std::json::span_start)]
+    fn print_number(d: &std::json::Doc, t: &[u8], k: usize) -> ()
+        requires std::json::node_pos(d, k), std::json::of_text(d, t),
+    {
+        let a: usize = d.start(k);
+        let b: usize = d.end(k);
+        let mut raw: Vec<u8> = Vec::new();
+        let mut j: usize = a;
+        while j < b
+            invariant a <= j, j <= b, b <= t.len(), raw.len() <= j,
+            decreases b - j,
+        {
+            raw.push(t[j]);
+            j = j + 1;
+        }
+        match String::from_utf8(raw) {
+            Ok(text) => {
+                print_str("n");
+                print_str(text.as_str());
+                print_str("\n");
+            }
+            Err(x) => print_str("bad number\n"),
+        }
+    }
+
+    #[effects(alloc, io, nondet)]
+    #[uses(std::json::of_text, std::json::parsed, std::json::short)]
+    fn main() -> () {
+        let mut all: Vec<u8> = Vec::new();
+        match std::io::read_to_end(&mut all) {
+            Ok(r) => {
+                if all.len() < 1000000000 {
+                    match std::json::parse(all.as_slice()) {
+                        None => print_str("invalid\n"),
+                        Some(d) => print_doc(&d, all.as_slice()),
+                    }
+                }
+            }
+            Err(e) => print_str("error\n"),
+        }
+    }
+}

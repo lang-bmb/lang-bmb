@@ -693,3 +693,254 @@ fn collections_diff<K: Ord + Clone + std::fmt::Display>(file: &str, keys: &[K], 
         );
     }
 }
+
+/// A JSON value of the differential test below.
+enum Json {
+    Null,
+    Bool(bool),
+    Num(String),
+    Str(String),
+    Arr(Vec<Json>),
+    Obj(Vec<(String, Json)>),
+}
+
+/// `s` as `std::json::push_string` writes it (`serde_json`'s escapes).
+fn json_quoted(s: &str) -> String {
+    let mut o = String::from("\"");
+    for c in s.chars() {
+        match c {
+            '"' => o.push_str("\\\""),
+            '\\' => o.push_str("\\\\"),
+            '\u{8}' => o.push_str("\\b"),
+            '\u{c}' => o.push_str("\\f"),
+            '\n' => o.push_str("\\n"),
+            '\r' => o.push_str("\\r"),
+            '\t' => o.push_str("\\t"),
+            c if (c as u32) < 32 => o.push_str(&format!("\\u{:04x}", c as u32)),
+            c => o.push(c),
+        }
+    }
+    o.push('"');
+    o
+}
+
+fn json_gen(rng: &mut common::scalar::Rng, depth: usize) -> Json {
+    const CHARS: &[char] = &[
+        'a',
+        'Z',
+        '0',
+        ' ',
+        '"',
+        '\\',
+        '/',
+        '\n',
+        '\t',
+        '\u{1}',
+        '\u{1f}',
+        '\u{7f}',
+        'é',
+        '€',
+        '😀',
+        '\u{ffff}',
+        '\u{10000}',
+    ];
+    let text = |rng: &mut common::scalar::Rng| -> String {
+        (0..rng.below(5))
+            .map(|_| CHARS[rng.below(CHARS.len())])
+            .collect()
+    };
+    match rng.below(if depth < 3 { 8 } else { 5 }) {
+        0 => Json::Null,
+        1 => Json::Bool(rng.chance(50)),
+        2 => {
+            let mut n = String::new();
+            if rng.chance(30) {
+                n.push('-');
+            }
+            if rng.chance(30) {
+                n.push('0');
+            } else {
+                n.push_str(&(1 + rng.below(99_999)).to_string());
+            }
+            if rng.chance(30) {
+                n.push('.');
+                n.push_str(&rng.below(1000).to_string());
+            }
+            if rng.chance(20) {
+                n.push(['e', 'E'][rng.below(2)]);
+                n.push_str(["", "+", "-"][rng.below(3)]);
+                n.push_str(&rng.below(30).to_string());
+            }
+            Json::Num(n)
+        }
+        3 | 4 => Json::Str(text(rng)),
+        5 | 6 => Json::Arr(
+            (0..rng.below(4))
+                .map(|_| json_gen(rng, depth + 1))
+                .collect(),
+        ),
+        _ => Json::Obj(
+            (0..rng.below(4))
+                .map(|_| (text(rng), json_gen(rng, depth + 1)))
+                .collect(),
+        ),
+    }
+}
+
+/// `s` as a JSON string with escapes chosen at random: `\\uXXXX` (a
+/// surrogate pair past the BMP), the short escapes, or the character.
+fn json_write_str(rng: &mut common::scalar::Rng, s: &str, o: &mut String) {
+    o.push('"');
+    for c in s.chars() {
+        let must = c == '"' || c == '\\' || (c as u32) < 32;
+        if must || rng.chance(25) {
+            match c {
+                '"' if rng.chance(50) => o.push_str("\\\""),
+                '\\' if rng.chance(50) => o.push_str("\\\\"),
+                '/' if rng.chance(50) => o.push_str("\\/"),
+                '\n' if rng.chance(50) => o.push_str("\\n"),
+                '\t' if rng.chance(50) => o.push_str("\\t"),
+                c => {
+                    let mut b = [0u16; 2];
+                    for u in c.encode_utf16(&mut b) {
+                        if rng.chance(50) {
+                            o.push_str(&format!("\\u{u:04x}"));
+                        } else {
+                            o.push_str(&format!("\\u{u:04X}"));
+                        }
+                    }
+                }
+            }
+        } else {
+            o.push(c);
+        }
+    }
+    o.push('"');
+}
+
+fn json_write(rng: &mut common::scalar::Rng, v: &Json, o: &mut String) {
+    let ws = |rng: &mut common::scalar::Rng, o: &mut String| {
+        for _ in 0..rng.below(3) {
+            o.push([' ', '\n', '\t', '\r'][rng.below(4)]);
+        }
+    };
+    ws(rng, o);
+    match v {
+        Json::Null => o.push_str("null"),
+        Json::Bool(b) => o.push_str(if *b { "true" } else { "false" }),
+        Json::Num(n) => o.push_str(n),
+        Json::Str(s) => json_write_str(rng, s, o),
+        Json::Arr(xs) => {
+            o.push('[');
+            ws(rng, o);
+            for (i, x) in xs.iter().enumerate() {
+                if i > 0 {
+                    o.push(',');
+                }
+                json_write(rng, x, o);
+            }
+            o.push(']');
+        }
+        Json::Obj(ms) => {
+            o.push('{');
+            ws(rng, o);
+            for (i, (k, x)) in ms.iter().enumerate() {
+                if i > 0 {
+                    o.push(',');
+                }
+                ws(rng, o);
+                json_write_str(rng, k, o);
+                ws(rng, o);
+                o.push(':');
+                json_write(rng, x, o);
+            }
+            o.push('}');
+        }
+    }
+    ws(rng, o);
+}
+
+/// The lines `tests/data/json_canon.bmb` prints for `v`.
+fn json_tokens(v: &Json, o: &mut String) {
+    match v {
+        Json::Null => o.push_str("null\n"),
+        Json::Bool(b) => o.push_str(if *b { "true\n" } else { "false\n" }),
+        Json::Num(n) => o.push_str(&format!("n{n}\n")),
+        Json::Str(s) => o.push_str(&format!("s{}\n", json_quoted(s))),
+        Json::Arr(xs) => {
+            o.push_str("[\n");
+            xs.iter().for_each(|x| json_tokens(x, o));
+            o.push_str("]\n");
+        }
+        Json::Obj(ms) => {
+            o.push_str("{\n");
+            for (k, x) in ms {
+                o.push_str(&format!("k{}\n", json_quoted(k)));
+                json_tokens(x, o);
+            }
+            o.push_str("}\n");
+        }
+    }
+}
+
+/// `std::json` against values generated in Rust: each random value (nested
+/// arrays and objects, duplicate keys, numbers with fractions and
+/// exponents, strings with quotes, backslashes, control characters and
+/// characters of two to four bytes) is written with random whitespace and
+/// random escapes (short ones, `\\u` in either case, surrogate pairs), and
+/// `tests/data/json_canon.bmb` (fully proved) must print its tokens: the
+/// structure, the numbers as written, the strings decoded and written again
+/// by `std::json::push_string` as `serde_json` would. `BMB_SOUND_ITERS` sets
+/// the documents (default 200).
+#[test]
+fn std_json_agrees_with_rust() {
+    let n: usize = std::env::var("BMB_SOUND_ITERS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .map_or(200, |k: usize| k * 50);
+    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/json_canon.bmb");
+    let dir = cli::fresh_dir();
+    let exe = dir.join("canon");
+    let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
+        .arg("build")
+        .arg(&src)
+        .arg("-o")
+        .arg(&exe)
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    let mut rng = common::scalar::Rng(0x9E37_79B9_7F4A_7C15);
+    for _ in 0..n {
+        let v = json_gen(&mut rng, 0);
+        let mut text = String::new();
+        json_write(&mut rng, &v, &mut text);
+        let mut want = String::new();
+        json_tokens(&v, &mut want);
+        let mut child = Command::new(&exe)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        {
+            use std::io::Write as _;
+            child
+                .stdin
+                .take()
+                .unwrap()
+                .write_all(text.as_bytes())
+                .unwrap();
+        }
+        let run = child.wait_with_output().unwrap();
+        assert!(run.status.success());
+        let got = String::from_utf8(run.stdout).unwrap();
+        assert!(
+            got == want,
+            "std::json differs on {text:?}:\n{got}\nwant\n{want}"
+        );
+    }
+    let _ = fs::remove_dir_all(&dir);
+}
