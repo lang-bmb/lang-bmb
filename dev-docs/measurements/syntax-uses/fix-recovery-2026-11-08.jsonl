@@ -1,0 +1,8 @@
+{"habit": "let-type", "sites": 64, "exact": 33, "normal": 0, "same": 11, "changed": 0, "stuck": 20, "codes": {"E0201": 64}}
+{"habit": "unit-ret", "sites": 68, "exact": 68, "normal": 0, "same": 0, "changed": 0, "stuck": 0, "codes": {"E0209": 68}}
+{"habit": "suffix", "sites": 21, "exact": 21, "normal": 0, "same": 0, "changed": 0, "stuck": 0, "codes": {"E0104": 21}}
+{"habit": "as-cast", "sites": 15, "exact": 0, "normal": 1, "same": 14, "changed": 0, "stuck": 0, "codes": {"E0205": 15}}
+{"habit": "mut-param", "sites": 60, "exact": 60, "normal": 0, "same": 0, "changed": 0, "stuck": 0, "codes": {"E0210": 60}}
+{"habit": "pub", "sites": 68, "exact": 68, "normal": 0, "same": 0, "changed": 0, "stuck": 0, "codes": {"E0207": 68}}
+{"habit": "effects", "sites": 55, "exact": 30, "normal": 8, "same": 17, "changed": 0, "stuck": 0, "codes": {"E0601": 55}}
+{"habit": "turbofish", "sites": 14, "exact": 14, "normal": 0, "same": 0, "changed": 0, "stuck": 0, "codes": {"E0237": 14}}

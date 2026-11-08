@@ -3964,7 +3964,7 @@ impl<'a> Checker<'a> {
                 )
                 .fix(
                     "add `#[effects(pure)]` above the function",
-                    Some("#[effects(pure)] fn".into()),
+                    Some("#[effects(pure)]\nfn".into()),
                 ),
             );
         }

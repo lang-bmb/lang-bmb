@@ -294,7 +294,9 @@ pub fn fix_sources_with(files: &[(String, String)], confirm: bool) -> FixOutput 
         rounds += 1;
         let mut next = texts.clone();
         for (f, lo, hi, _, r) in kept.iter().rev() {
-            next[*f].1.replace_range(*lo..*hi, r);
+            let (hi, r) = layout(&texts[*f].1, *lo, *hi, r);
+            let lo = layout_start(&texts[*f].1, *lo, hi);
+            next[*f].1.replace_range(lo..hi, &r);
         }
         for (f, lo, _, code, r) in kept {
             let (line, col) = fe.sm.line_col(f as u32, lo as u32);
@@ -312,6 +314,66 @@ pub fn fix_sources_with(files: &[(String, String)], confirm: bool) -> FixOutput 
             return fix_output(next, applied, rounds, fe);
         }
         texts = next;
+    }
+}
+
+/// A replacement in the layout of the text around it (backlog 2R-04e:
+/// `pub fn` and `(mut x` left a space behind, and an attribute added on the
+/// line of its `fn`): a deletion takes the spaces after it on the same line
+/// when a space, `(`, `&` or `<` is before it (`(mut x`, `&'a T`), and a line
+/// of an insertion that has no indentation of its own gets the line's.
+fn layout(text: &str, lo: usize, hi: usize, r: &str) -> (usize, String) {
+    let line_start = text[..lo].rfind('\n').map_or(0, |i| i + 1);
+    if r.is_empty() {
+        let before = text[..lo].chars().next_back();
+        // The only entry of a `<..>` list goes with its brackets; the first
+        // of several with the comma after it (a lifetime, E0208).
+        if before == Some('<') {
+            let rest = text[hi..].trim_start_matches(' ');
+            if rest.starts_with('>') {
+                // Signal the caller to take the `<` too: returned as the
+                // end past `>`, the start fixed by `layout_start`.
+                return (text.len() - rest.len() + 1, String::new());
+            }
+            if let Some(after) = rest.strip_prefix(',') {
+                let skip = after.len() - after.trim_start_matches(' ').len();
+                return (text.len() - rest.len() + 1 + skip, String::new());
+            }
+        }
+        if matches!(before, Some(' ' | '(' | '&' | '<')) || lo == line_start {
+            let after = text[hi..].len() - text[hi..].trim_start_matches(' ').len();
+            return (hi + after, String::new());
+        }
+        return (hi, String::new());
+    }
+    if r.contains('\n') {
+        let indent: String = text[line_start..lo]
+            .chars()
+            .take_while(|c| *c == ' ')
+            .collect();
+        let mut out = String::new();
+        for (k, line) in r.split('\n').enumerate() {
+            if k > 0 {
+                out.push('\n');
+                // A line that brings its own indentation keeps it.
+                if !line.starts_with(' ') && !line.is_empty() {
+                    out.push_str(&indent);
+                }
+            }
+            out.push_str(line);
+        }
+        return (hi, out);
+    }
+    (hi, r.to_string())
+}
+
+/// The start of a deletion `layout` widened over a whole `<..>` list:
+/// the `<` goes too.
+fn layout_start(text: &str, lo: usize, hi: usize) -> usize {
+    if lo > 0 && text[..lo].ends_with('<') && text[..hi].ends_with('>') {
+        lo - 1
+    } else {
+        lo
     }
 }
 

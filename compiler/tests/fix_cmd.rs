@@ -113,13 +113,13 @@ mod m {
 const FIXED: &str = r#"#[summary("Rust habits")]
 mod m {
     #[effects(pure)]
-     fn add(x: i64, y: i64) -> i64 {
+    fn add(x: i64, y: i64) -> i64 {
         let z: i64 = x + 1;
         z + y
     }
 
     #[effects(pure)]
-    fn first(a: & [i64]) -> i64 {
+    fn first(a: &[i64]) -> i64 {
         let v: [i64; 2] = [1, 2];
         v[0]
     }
@@ -641,4 +641,33 @@ fn counting_while_becomes_a_range_for() {
     assert!(verifies(&after));
     // A fixed program has nothing left to rewrite.
     assert!(fix(&after).codes.is_empty());
+}
+
+/// The fixes leave the normal form around them (backlog 2R-04e): removing
+/// `pub`, `mut` and a lifetime takes the space after it, and the effects
+/// attribute goes on a line of its own at the function's indentation.
+#[test]
+fn fixed_habits_are_in_normal_form() {
+    let input = one(r#"#[summary("habits")]
+mod m {
+    pub fn add(mut x: i64, y: i64) -> i64 {
+        x + y
+    }
+
+    #[effects(pure)]
+    fn first<'a>(a: &'a [i64]) -> i64 {
+        0
+    }
+}
+"#);
+    let out = fix(&input);
+    assert!(out.ok, "{}", out.diagnostics);
+    let text = &out.files[0].1;
+    let formatted = bmb::format_sources(&out.files).unwrap();
+    assert_eq!(formatted.values().next().unwrap(), text, "{text}");
+    assert!(
+        text.contains("    #[effects(pure)]\n    fn add(x: i64, y: i64) -> i64 {"),
+        "{text}"
+    );
+    assert!(text.contains("fn first(a: &[i64]) -> i64"), "{text}");
 }
