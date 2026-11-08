@@ -146,6 +146,31 @@ pub const RECEIVER_MUT_METHODS: &[&str] = &[
     "push_str",
 ];
 
+/// A variable or a field path on one (`a`, `m.keys`, `(*s).v`).
+fn is_place_path(e: &Expr) -> bool {
+    match &e.kind {
+        ExprKind::Var(_) => true,
+        ExprKind::Field { base, .. } | ExprKind::Deref(base) => is_place_path(base),
+        _ => false,
+    }
+}
+
+/// The span of the first `name[var]` in `body` (source order), the
+/// trigger E0511's fix marks.
+fn first_index_on(body: &Expr, var: &str) -> Option<Span> {
+    let mut found: Option<Span> = None;
+    crate::lint::each_expr(body, &mut |x| {
+        if let ExprKind::Index { base, index } = &x.kind
+            && is_place_path(base)
+            && matches!(&index.kind, ExprKind::Var(v) if v.name == var)
+            && found.is_none_or(|f| x.span.lo < f.lo)
+        {
+            found = Some(x.span);
+        }
+    });
+    found
+}
+
 /// Whether `m` is the name of a built-in method of some built-in type: a
 /// trait method of that name on a built-in type is called by path.
 fn builtin_method_name(m: &str) -> bool {
@@ -7494,12 +7519,30 @@ impl<'a> Checker<'a> {
                 let mut triggers = Vec::new();
                 collect_triggers(body, &mut triggers);
                 if triggers.is_empty() {
-                    self.diags.push(
-                        Diag::new("E0511", e.span, format!("`{kw}` has no `#[trigger]`")).fix(
-                            "mark a term that mentions every bound variable, e.g. `#[trigger] a[i]`",
-                            None,
+                    // One bound variable: its first `name[var]` term is the
+                    // trigger the written corpora chose every time (2R-02,
+                    // 36 of 36), so the fix marks it (backlog 2R-04g).
+                    let first = match binders.as_slice() {
+                        [b] => first_index_on(body, &b.name.name),
+                        _ => None,
+                    };
+                    let d = match first {
+                        Some(at) => Diag::new(
+                            "E0511",
+                            Span { hi: at.lo, ..at },
+                            format!("`{kw}` has no `#[trigger]`"),
+                        )
+                        .fix(
+                            "mark the first term indexed by the bound variable",
+                            Some("#[trigger] ".to_string()),
                         ),
-                    );
+                        None => Diag::new("E0511", e.span, format!("`{kw}` has no `#[trigger]`"))
+                            .fix(
+                                "mark a term that mentions every bound variable, e.g. `#[trigger] a[i]`",
+                                None,
+                            ),
+                    };
+                    self.diags.push(d);
                 }
                 // All triggers of one quantifier form a single multi-pattern.
                 if !triggers.is_empty() {

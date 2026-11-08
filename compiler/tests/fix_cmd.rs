@@ -671,3 +671,29 @@ mod m {
     );
     assert!(text.contains("fn first(a: &[i64]) -> i64"), "{text}");
 }
+
+/// E0511 (backlog 2R-04g): a quantifier over one variable gets its first
+/// `name[var]` term as the trigger, the one the written corpora choose
+/// (137 of 156); with two variables the fix only advises.
+#[test]
+fn a_missing_trigger_marks_the_first_indexed_term() {
+    let input = one(r#"#[summary("triggers")]
+mod t {
+    spec fn pos(a: &[i64]) -> bool {
+        forall |i: usize| i < a.len() ==> a[i] > 0
+    }
+
+    spec fn sorted(a: &[i64]) -> bool {
+        forall |i: usize, j: usize| i < j && j < a.len() ==> a[i] <= a[j]
+    }
+}
+"#);
+    let out = fix(&input);
+    let text = &out.files[0].1;
+    assert!(
+        text.contains("i < a.len() ==> #[trigger] a[i] > 0"),
+        "{text}"
+    );
+    assert!(!text.contains("#[trigger] a[i] <="), "{text}");
+    assert!(out.diagnostics.contains("E0511"), "{}", out.diagnostics);
+}
