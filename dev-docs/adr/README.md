@@ -141,5 +141,9 @@ BMB v2의 설계 결정을 한 건에 파일 하나로 남긴다. 현재 확정�
 | [0094](0094-input-driven-loops.md) | 입력이 끝날 때까지 도는 루프: `nondet` 정의의 `loop`는 `decreases`를 생략할 수 있고, 부분 정확성으로 증명하며 `termination: unproved`·`nonterminating` 표식을 남긴다 | 채택 | 4C-04 |
 | [0095](0095-syntax-decision-from-measurement.md) | 측정에 따른 문법 결정(변형 넷·입력 별칭 둘) | 채택 | 백로그 2R-06 |
 | [0096](0096-default-proof-context-without-closure.md) | 기본 증명 문맥은 본문으로 닫지 않는다(r2): 자기 절과 피호출자 계약이 부르는 `spec fn`, 불투명성은 한 단계 | 채택(승인) | 백로그 2R-11, ADR-0095 결정 1 대체 |
+| [0097](0097-inherent-impl-blocks-by-bounds.md) | 경계가 다른 고유 `impl` 블록: 경계 목록마다 블록 하나, 메서드 이름은 블록들 사이에 유일 | 제안 | 백로그 2T-11, ADR-0026 일부 대체 |
+| [0098](0098-specifications-read-moved-values.md) | 명세는 옮긴 값을 읽는다(옮긴 때의 값, 새 표면 없음) | 제안 | 백로그 2T-12 |
+| [0099](0099-spec-integer-widening.md) | 명세의 정수 넓힘: 갈래·결과는 범위가 담기면 같은 타입, 넓히는 `as`는 입력 별칭 | 제안 | 백로그 2N-08, ADR-0022 확장 |
+| [0100](0100-stage0-feature-freeze.md) | stage0 기능 동결: 대상은 받아들이는 언어, 감지는 코퍼스 결과 지문(`scripts/surface.py`), 예외는 사유와 함께 | 제안 | 백로그 4D-01, ADR-0037 §3 |
 
 채택 계획(2026-10-24 승인): 0026은 2B 착수 때, 0028은 2C 착수 때 채택한다. 0029·0030·0031은 2단계 측정(2H) 뒤로 미룬다. "제안" ADR의 진단 코드 번호는 잠정이다. 제안끼리 겹치는 번호가 있으며(예: E0212·E0412), 채택 후 구현할 때 `compiler/src/diag.rs`에서 확정한다.
