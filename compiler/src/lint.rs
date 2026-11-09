@@ -814,6 +814,7 @@ fn walk_expr(e: &mut Expr, parent: Option<Span>, f: &mut dyn FnMut(&mut Expr, Op
     f(e, parent);
     let here = e.span;
     match &mut e.kind {
+        ExprKind::Closure(_) => {}
         ExprKind::Call { args, .. } => args.iter_mut().for_each(|a| walk_expr(a, None, f)),
         ExprKind::Method { recv, args, .. } => {
             walk_expr(recv, None, f);
@@ -1504,6 +1505,7 @@ pub(crate) fn each_expr(e: &Expr, f: &mut dyn FnMut(&Expr)) {
 /// The subexpressions of `e`, specification parts included.
 fn children(e: &Expr) -> Vec<&Expr> {
     match &e.kind {
+        ExprKind::Closure(_) => Vec::new(),
         ExprKind::Call { args, .. } | ExprKind::Array(args) => args.iter().collect(),
         ExprKind::Method { recv, args, .. } => std::iter::once(&**recv).chain(args).collect(),
         ExprKind::Index { base, index } => vec![base, index],

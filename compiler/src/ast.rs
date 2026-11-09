@@ -56,6 +56,19 @@ pub struct Mod {
     pub span: Span,
 }
 
+/// A closure expression (ADR-0053 §1, §2): its parameters and result are
+/// typed, its contract is optional.
+#[derive(Debug, Clone)]
+pub struct Closure {
+    pub is_move: bool,
+    pub params: Vec<Param>,
+    pub ret: Ret,
+    pub requires: Vec<Expr>,
+    pub ensures: Vec<Expr>,
+    pub body: Block,
+    pub span: Span,
+}
+
 /// `const NAME: T = e;` (ADR-0052): a value the checker evaluates.
 #[derive(Debug, Clone)]
 pub struct ConstDef {
@@ -659,6 +672,10 @@ pub enum ExprKind {
         body: Box<Expr>,
     },
     Trigger(Box<Expr>),
+    /// `move |x: T| -> (r: R) requires P, ensures Q, { body }` (ADR-0053
+    /// §1): lowered before checking (`closures::lower`), so only the parser,
+    /// the formatter and the JSON AST meet it.
+    Closure(Box<Closure>),
     /// `Point { x: e, y: e }` (ADR-0026 §3).
     StructLit {
         path: Vec<Ident>,
@@ -912,6 +929,11 @@ pub fn has_quant(e: &Expr) -> bool {
 
 fn expr_mut(e: &mut Expr, f: &mut dyn FnMut(&mut Expr)) {
     match &mut e.kind {
+        ExprKind::Closure(c) => {
+            c.requires.iter_mut().for_each(|x| expr_mut(x, f));
+            c.ensures.iter_mut().for_each(|x| expr_mut(x, f));
+            block_mut(&mut c.body, f);
+        }
         ExprKind::Int(..)
         | ExprKind::Float(_)
         | ExprKind::ByteLit(_)

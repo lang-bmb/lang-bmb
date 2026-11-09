@@ -860,6 +860,7 @@ impl Mv<'_> {
 
     fn expr(&mut self, e: &Expr, moves: bool) {
         match &e.kind {
+            ExprKind::Closure(_) => {}
             ExprKind::Var(id) => {
                 if self.owns(&id.name) {
                     self.use_var(id, e.span, moves);

@@ -215,6 +215,7 @@ impl Walker<'_> {
     fn expr(&mut self, e: &mut Expr) {
         let span = e.span;
         match &mut e.kind {
+            ExprKind::Closure(_) => {}
             ExprKind::Call {
                 path, targs, args, ..
             } => {

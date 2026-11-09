@@ -53,6 +53,8 @@
 | E0258 | a `proof fn` is called only from ghost code: a `proof { .. }` block or another `proof fn` |
 | E0259 | a `const`'s value is not a constant expression: literals, other `const`s, operators, `if`, the wrapping and saturating methods and `as` (ADR-0052 §3) |
 | E0260 | a `const`'s evaluation failed: overflow, division by zero, a shift of the width or more, a conversion out of range (ADR-0052 §4) |
+| E0262 | a closure that captures a local is written `move`: captures move into it (ADR-0053 §2) |
+| E0263 | a closure's parameters and result have their types written (ADR-0053 §2) |
 | E0261 | a `static` item: an immutable one is a `const`, global mutable state is passed as an argument (ADR-0052 §7) |
 | E0237 | a call of a generic function names its type arguments: `f::<T>(..)` |
 | E0238 | `Rc`, `RefCell`, `Cell` and `Arc` are not used: values have one owner |

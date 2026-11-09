@@ -3532,6 +3532,7 @@ impl<'p, 'q> Enc<'p, 'q> {
 
     fn spec(&mut self, e: &Expr, env: &BTreeMap<String, Val>, old: &BTreeMap<String, Val>) -> Val {
         match &e.kind {
+            ExprKind::Closure(_) => unreachable!("lowered before checking"),
             ExprKind::Return(_)
             | ExprKind::Try(_)
             | ExprKind::Loop { .. }
@@ -4054,6 +4055,7 @@ impl<'p, 'q> Enc<'p, 'q> {
             return Val::Unit;
         }
         match &e.kind {
+            ExprKind::Closure(_) => unreachable!("lowered before checking"),
             ExprKind::Range { .. } => unreachable!("only as `copy_within`'s argument (E0435)"),
             ExprKind::Loop {
                 label,
@@ -6636,6 +6638,7 @@ fn find_let_expr(e: &Expr, name: &str, out: &mut Option<TypeKind>) {
         return;
     }
     match &e.kind {
+        ExprKind::Closure(_) => {}
         ExprKind::If { cond, then, els } => {
             find_let_expr(cond, name, out);
             find_let(then, name, out);

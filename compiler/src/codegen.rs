@@ -1446,6 +1446,7 @@ impl<'p> Gen<'p> {
 
     fn expr(&mut self, e: &Expr) -> CVal {
         match &e.kind {
+            ExprKind::Closure(_) => unreachable!("lowered before checking"),
             ExprKind::Range { .. } => unreachable!("only as `copy_within`'s argument (E0435)"),
             ExprKind::Return(x) => self.return_expr(e, x.as_deref()),
             ExprKind::Try(x) => self.try_expr(e, x),

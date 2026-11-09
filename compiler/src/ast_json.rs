@@ -839,6 +839,31 @@ impl Ex<'_> {
                     None => kv.push(("count", Value::Num(count.to_string()))),
                 }
             }
+            ExprKind::Closure(c) => {
+                k("closure");
+                if c.is_move {
+                    kv.push(("move", Value::Bool(true)));
+                }
+                if !c.params.is_empty() {
+                    kv.push(("params", self.list("params", &c.params, Ex::param)?));
+                }
+                let ret = self.under("ret", |e| {
+                    let mut r = Vec::new();
+                    if let Some(n) = &c.ret.name {
+                        r.push(("name", s(&n.name)));
+                    }
+                    r.push(("ty", e.under("ty", |e| e.ty(&c.ret.ty))?));
+                    Ok(obj(r))
+                })?;
+                kv.push(("ret", ret));
+                if !c.requires.is_empty() {
+                    kv.push(("requires", self.list("requires", &c.requires, Ex::expr)?));
+                }
+                if !c.ensures.is_empty() {
+                    kv.push(("ensures", self.list("ensures", &c.ensures, Ex::expr)?));
+                }
+                kv.push(("body", self.under("body", |e| e.block(&c.body))?));
+            }
             ExprKind::Old(e) => {
                 k("old");
                 kv.push(("expr", self.under("expr", |x| x.expr(e))?));
@@ -1999,6 +2024,35 @@ impl Im {
                     count: self.number(&o, "count")?,
                     count_span: sp(),
                 }
+            }
+            "closure" => {
+                let o = fields(
+                    self,
+                    "a closure",
+                    &["move", "params", "ret", "requires", "ensures", "body"],
+                )?;
+                let is_move = self.flag(&o, "move")?;
+                let params = self.list(&o, "params", Im::param)?;
+                let ret = self.field(&o, "ret", |m, r| {
+                    let r = m.obj(r, "a return type", &["name", "ty"])?;
+                    let name = match r.get("name") {
+                        None => None,
+                        Some(_) => Some(m.name(&r, "name")?),
+                    };
+                    Ok(Ret {
+                        name,
+                        ty: m.field(&r, "ty", Im::ty)?,
+                    })
+                })?;
+                ExprKind::Closure(Box::new(Closure {
+                    is_move,
+                    params,
+                    ret,
+                    requires: self.list(&o, "requires", Im::expr)?,
+                    ensures: self.list(&o, "ensures", Im::expr)?,
+                    body: self.field(&o, "body", Im::block)?,
+                    span: sp(),
+                }))
             }
             "old" | "trigger" | "deref" | "try" => {
                 let o = fields(self, "an expression", &["expr"])?;

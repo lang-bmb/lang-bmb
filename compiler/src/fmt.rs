@@ -1397,6 +1397,37 @@ impl<'a> Printer<'a> {
                 let text = self.capture(|p| p.expr_stmt(e, 0, ""));
                 text.lines().map(str::trim).collect::<Vec<_>>().join(" ")
             }
+            // `move |x: T| -> (r: R) requires P, ensures Q, { .. }` on one
+            // line (ADR-0053 §1).
+            ExprKind::Closure(c) => {
+                let ps: Vec<String> = c
+                    .params
+                    .iter()
+                    .map(|p| format!("{}: {}", p.name.name, self.ty(&p.ty)))
+                    .collect();
+                let ret = match &c.ret.name {
+                    Some(n) => format!("({}: {})", n.name, self.ty(&c.ret.ty)),
+                    None => self.ty(&c.ret.ty),
+                };
+                let mut head = format!(
+                    "{}|{}| -> {ret}",
+                    if c.is_move { "move " } else { "" },
+                    ps.join(", ")
+                );
+                if !c.requires.is_empty() {
+                    let r: Vec<String> = c.requires.iter().map(|x| self.expr(x, 0)).collect();
+                    head.push_str(&format!(" requires {},", r.join(", ")));
+                }
+                if !c.ensures.is_empty() {
+                    let r: Vec<String> = c.ensures.iter().map(|x| self.expr(x, 0)).collect();
+                    head.push_str(&format!(" ensures {},", r.join(", ")));
+                }
+                let body = self.capture(|p| p.block_open(&c.body, 0, "", ""));
+                format!(
+                    "{head} {}",
+                    body.lines().map(str::trim).collect::<Vec<_>>().join(" ")
+                )
+            }
             ExprKind::Error => "<error>".into(),
         }
     }

@@ -63,6 +63,8 @@
   "E0259",
   "E0260",
   "E0261",
+  "E0262",
+  "E0263",
   "E0301",
   "E0302",
   "E0303",
@@ -271,8 +273,8 @@
    "src": "324bb5d96ccb71ae"
   },
   "tests/check/err/fn_values.bmb": {
-   "out": "0415e803edd91448",
-   "src": "09ac787286779f76"
+   "out": "73e6c7f38f7dabfe",
+   "src": "59880ab658a44e1d"
   },
   "tests/check/err/generics.bmb": {
    "out": "c00e67cfaa57f647",
@@ -367,7 +369,7 @@
    "src": "5980dcf16f00fa72"
   },
   "tests/check/err/rust_paths.bmb": {
-   "out": "86b2248f75ec8abc",
+   "out": "7f0cec87a7277240",
    "src": "5314d82c4c0bbabd"
   },
   "tests/check/err/spec_mode.bmb": {
@@ -407,7 +409,7 @@
    "src": "6f24123227c3ccde"
   },
   "tests/check/err/unsupported.bmb": {
-   "out": "88b25ede8925d80a",
+   "out": "e7c7e80bd361d0a5",
    "src": "6c506b9e596c6056"
   },
   "tests/check/err/vec.bmb": {
@@ -515,8 +517,8 @@
    "src": "b764481fdcb67b0c"
   },
   "tests/run/fn_values.bmb": {
-   "out": "528ec7497a0a44a3",
-   "src": "fdbfe1bcae80eecf"
+   "out": "6b4994f722c460a6",
+   "src": "3d1912f5f25e4f78"
   },
   "tests/run/forest.bmb": {
    "out": "436932d56088aea4",
@@ -779,8 +781,8 @@
    "src": "aa05ed75d490c645"
   },
   "tests/verify/fail/fn_values.bmb": {
-   "out": "3c490cfc053698f6",
-   "src": "92fcaf68a91682a6"
+   "out": "f085bd3caf777692",
+   "src": "c9956e97171255ff"
   },
   "tests/verify/fail/generics.bmb": {
    "out": "4ae1aca6daa7ff8c",

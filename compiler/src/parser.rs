@@ -1470,6 +1470,62 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// `[move] |x: T, ..| -> R requires .., ensures .., { body }` (ADR-0053
+    /// §1, §2): the parameters' and result's types are written (E0263).
+    fn parse_closure(&mut self, is_move: bool, lo: Span) -> PResult<Expr> {
+        let mut params = Vec::new();
+        if !self.eat_p("||") {
+            self.expect_p("|")?;
+            while !self.is_p("|") && !matches!(self.peek(), Tok::Eof) {
+                let name = self.ident("closure parameter")?;
+                if !self.eat_p(":") {
+                    self.diags.push(
+                        Diag::new(
+                            "E0263",
+                            name.span,
+                            format!("closure parameter `{}` needs its type", name.name),
+                        )
+                        .fix("write `x: T` (types are written, DESIGN §4.1)", None),
+                    );
+                    return Err(());
+                }
+                let ty = self.parse_type();
+                params.push(Param { name, ty });
+                if !self.eat_p(",") {
+                    break;
+                }
+            }
+            self.expect_p("|")?;
+        }
+        if !self.eat_p("->") {
+            self.diags.push(
+                Diag::new(
+                    "E0263",
+                    lo.to(self.prev_span()),
+                    "a closure needs its result type",
+                )
+                .fix("write `-> T` or `-> (r: T)` after the parameters", None),
+            );
+            return Err(());
+        }
+        let ret = self.parse_ret()?;
+        let (requires, ensures, _) = self.parse_clauses()?;
+        let body = self.parse_block()?;
+        let span = lo.to(self.prev_span());
+        Ok(Expr {
+            kind: ExprKind::Closure(Box::new(Closure {
+                is_move,
+                params,
+                ret,
+                requires,
+                ensures,
+                body,
+                span,
+            })),
+            span,
+        })
+    }
+
     fn parse_ret(&mut self) -> PResult<Ret> {
         if self.is_p("(") {
             if matches!(self.peek_at(1), Tok::P(")")) {
@@ -3201,14 +3257,12 @@ impl<'a> Parser<'a> {
                     span,
                 })
             }
-            Tok::P("|") | Tok::P("||") => {
-                self.diags.push(
-                    Diag::new("E0207", lo, "closures are not supported").fix(
-                        "move the closure's body into a named `fn` of the unit, taking what it captures as parameters, and call that function",
-                        None,
-                    ),
-                );
-                Err(())
+            Tok::P("|") | Tok::P("||") => self.parse_closure(false, lo),
+            Tok::Ident(k)
+                if k == "move" && matches!(self.peek_at(1), Tok::P("|") | Tok::P("||")) =>
+            {
+                self.bump();
+                self.parse_closure(true, lo)
             }
             Tok::Label(_)
                 if matches!(self.peek_at(1), Tok::P(":"))

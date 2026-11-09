@@ -7079,6 +7079,9 @@ impl<'a> Checker<'a> {
             }
         }
         match &e.kind {
+            // Lowered before checking (`closures::lower`), which reports one
+            // it cannot lower.
+            ExprKind::Closure(_) => TypeKind::Error,
             ExprKind::Error => TypeKind::Error,
             ExprKind::Range { lo, hi } => {
                 for x in [lo, hi] {
@@ -10964,6 +10967,7 @@ impl<'a> Checker<'a> {
 /// True if `e` mentions variable `name` anywhere.
 pub(crate) fn mentions(e: &Expr, name: &str) -> bool {
     match &e.kind {
+        ExprKind::Closure(_) => false,
         ExprKind::Var(id) => id.name == name,
         ExprKind::Call { args, .. } | ExprKind::Array(args) => {
             args.iter().any(|a| mentions(a, name))
@@ -11009,6 +11013,7 @@ pub(crate) fn mentions(e: &Expr, name: &str) -> bool {
 /// `#[trigger]` terms of a quantifier body, not descending into nested quantifiers.
 fn collect_triggers<'e>(e: &'e Expr, out: &mut Vec<&'e Expr>) {
     match &e.kind {
+        ExprKind::Closure(_) => {}
         ExprKind::Trigger(inner) => {
             out.push(inner);
             collect_triggers(inner, out);

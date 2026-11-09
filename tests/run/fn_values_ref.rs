@@ -17,4 +17,7 @@ fn main() {
     assert!(a == 11);
     println!("{a}");
     println!("{}", apply(halve, 41));
+    let d = apply(|x: i64| -> i64 { x * 2 }, 21);
+    assert!(d == 42);
+    println!("{d}");
 }

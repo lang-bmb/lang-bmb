@@ -228,6 +228,7 @@ fn calls_in_expr<'e>(
     out: &mut Vec<(&'e [Ident], &'e [Expr], bool, Span)>,
 ) {
     match &e.kind {
+        ExprKind::Closure(_) => {}
         ExprKind::Call { path, args, .. } => {
             out.push((path, args, spec, e.span));
             args.iter().for_each(|a| calls_in_expr(a, spec, out));
@@ -508,6 +509,7 @@ fn exprs_of(f: &FnDef) -> Vec<&Expr> {
     fn expr<'e>(e: &'e Expr, out: &mut Vec<&'e Expr>) {
         out.push(e);
         match &e.kind {
+            ExprKind::Closure(_) => {}
             ExprKind::Call { args, .. } | ExprKind::Array(args) => {
                 args.iter().for_each(|a| expr(a, out))
             }
