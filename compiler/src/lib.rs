@@ -4,6 +4,7 @@ pub mod ast;
 pub mod ast_json;
 pub mod cache;
 pub mod check;
+pub mod closures;
 pub mod codegen;
 pub mod consts;
 pub mod diag;

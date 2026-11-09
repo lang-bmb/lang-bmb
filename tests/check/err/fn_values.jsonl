@@ -1,0 +1,1 @@
+{"code":"E0608","severity":"error","message":"`shout` has effect `io`, which `fve::apply` does not declare for its `F`","file":"err/fn_values.bmb","line":19,"col":30,"end_line":19,"end_col":35,"fix":{"message":"declare `io` on `fve::apply`, or pass a function without it"}}

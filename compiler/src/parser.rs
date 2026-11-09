@@ -785,8 +785,48 @@ impl<'a> Parser<'a> {
                 return out;
             };
             let mut bounds = Vec::new();
+            let mut fn_bound = None;
             if self.eat_p(":") {
                 loop {
+                    // `Fn(A, B) -> R` (ADR-0053 §1).
+                    if let Tok::Ident(n) = self.peek().clone()
+                        && matches!(n.as_str(), "Fn" | "FnMut" | "FnOnce")
+                        && matches!(self.peek_at(1), Tok::P("("))
+                    {
+                        let at = self.bump().span;
+                        let kind = match n.as_str() {
+                            "Fn" => FnTrait::Fn,
+                            "FnMut" => FnTrait::FnMut,
+                            _ => FnTrait::FnOnce,
+                        };
+                        self.bump(); // `(`
+                        let mut params = Vec::new();
+                        while !self.is_p(")") && !matches!(self.peek(), Tok::Eof) {
+                            params.push(self.parse_type());
+                            if !self.eat_p(",") {
+                                break;
+                            }
+                        }
+                        let _ = self.expect_p(")");
+                        let ret = if self.eat_p("->") {
+                            self.parse_type()
+                        } else {
+                            Type {
+                                kind: TypeKind::Unit,
+                                span: self.prev_span(),
+                            }
+                        };
+                        fn_bound = Some(FnBound {
+                            kind,
+                            params,
+                            ret,
+                            span: at.to(self.prev_span()),
+                        });
+                        if !self.eat_p("+") {
+                            break;
+                        }
+                        continue;
+                    }
                     let mut path = Vec::new();
                     while let Tok::Ident(n) = self.peek().clone() {
                         path.push(Ident {
@@ -811,7 +851,12 @@ impl<'a> Parser<'a> {
                 }
             }
             let span = name.span.to(self.prev_span());
-            out.push(TypeParam { name, bounds, span });
+            out.push(TypeParam {
+                name,
+                bounds,
+                fn_bound,
+                span,
+            });
             if !self.eat_p(",") {
                 break;
             }
@@ -2897,7 +2942,15 @@ impl<'a> Parser<'a> {
             }
             if self.is_p(".") {
                 self.bump();
-                let name = self.ident("field or method name")?;
+                // A function value's contract: `f.requires(..)`,
+                // `f.ensures(..)` (ADR-0053 §1).
+                let name = match self.peek().clone() {
+                    Tok::Ident(k) if k == "requires" || k == "ensures" => Ident {
+                        name: k,
+                        span: self.bump().span,
+                    },
+                    _ => self.ident("field or method name")?,
+                };
                 // `.expect("..")`: the message is dropped; the checker
                 // rejects or rewrites `expect` (E0213, E0229).
                 if name.name == "expect"

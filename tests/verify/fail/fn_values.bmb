@@ -1,0 +1,32 @@
+#[summary("함수 값의 계약 실패(ADR-0053, backlog 2V-20a): 넘긴 함수의 requires가 호출에서 성립하지 않으면 f.requires(x)의 E0801")]
+mod fvf {
+    #[effects(pure)]
+    fn apply<F: Fn(i64) -> i64>(f: F, x: i64) -> (r: i64)
+        requires f.requires(x),
+        ensures f.ensures(x, r),
+    {
+        f(x)
+    }
+
+    #[effects(pure)]
+    fn inc(x: i64) -> (r: i64)
+        requires x < 1000,
+        ensures r == x + 1,
+    {
+        x + 1
+    }
+
+    // `inc` needs `x < 1000`.
+    #[effects(pure)]
+    fn too_big() -> i64 {
+        apply::<_>(inc, 5000)
+    }
+
+    // `inc`'s result is `x + 1`, not `x`.
+    #[effects(pure)]
+    fn wrong_result() -> (r: i64)
+        ensures r == 10,
+    {
+        apply::<_>(inc, 10)
+    }
+}

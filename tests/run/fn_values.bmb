@@ -1,0 +1,34 @@
+#[summary("함수 값(ADR-0053, backlog 2V-20a): Fn 경계의 타입 매개변수, f(x) 호출, f.requires·f.ensures 계약, 함수 항목을 값으로 넘기기(타입 인자는 _)")]
+mod fv {
+    #[effects(pure)]
+    fn apply<F: Fn(i64) -> i64>(f: F, x: i64) -> (r: i64)
+        requires f.requires(x),
+        ensures f.ensures(x, r),
+    {
+        f(x)
+    }
+
+    #[effects(pure)]
+    fn halve(x: i64) -> (r: i64)
+        requires x >= 0,
+        ensures r <= x,
+    {
+        x / 2
+    }
+
+    #[effects(pure)]
+    fn inc(x: i64) -> (r: i64)
+        requires x < 1000,
+        ensures r == x + 1,
+    {
+        x + 1
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        let a: i64 = apply::<_>(inc, 10);
+        assert(a == 11);
+        print_i64(a);
+        print_i64(apply::<_>(halve, 41));
+    }
+}

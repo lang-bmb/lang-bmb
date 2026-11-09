@@ -6525,6 +6525,27 @@ fn bind_params(f: &FnDef, args: &[Val]) -> BTreeMap<String, Val> {
 /// own text when it is an expression (ADR-0095 A2).
 fn pred_name(e: &Expr) -> String {
     match &e.kind {
+        // A function value's contract (ADR-0053, `closures::lower`): as it
+        // was written, `f.requires(x)`.
+        ExprKind::Call { path, args, .. }
+            if path.len() >= 2
+                && path[path.len() - 2].name.starts_with("__fn_")
+                && matches!(path[path.len() - 1].name.as_str(), "pre" | "post")
+                && !args.is_empty() =>
+        {
+            let recv = crate::fmt::expr_text(&args[0]);
+            let rest: Vec<String> = args[1..].iter().map(crate::fmt::expr_text).collect();
+            let which = if path[path.len() - 1].name == "pre" {
+                "requires"
+            } else {
+                "ensures"
+            };
+            format!(
+                "{}.{which}({})",
+                recv.trim_start_matches('&'),
+                rest.join(", ")
+            )
+        }
         ExprKind::Call { path, .. } => path
             .iter()
             .map(|i| i.name.as_str())

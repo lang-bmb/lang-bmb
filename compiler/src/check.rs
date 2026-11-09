@@ -279,8 +279,10 @@ pub fn method_call(
 /// the returned program, which has no such method call left; the
 /// diagnostics are those of the last run.
 pub fn check_resolved(mut p: Program, diags: &mut Diags) -> (Program, crate::verify::Tables) {
-    // `const`s first (ADR-0052): array lengths and repeat counts written as
-    // a name take their values before any type is read.
+    // Function values first, lowered to traits and impls (ADR-0053); then
+    // `const`s (ADR-0052): array lengths and repeat counts written as a name
+    // take their values before any type is read.
+    let quiet = crate::closures::lower(&mut p, diags);
     let consts = crate::consts::resolve(&mut p, diags);
     let base = diags.clone();
     loop {
@@ -293,6 +295,9 @@ pub fn check_resolved(mut p: Program, diags: &mut Diags) -> (Program, crate::ver
         let mut tables = c.into_tables();
         if methods.is_empty() {
             *diags = d;
+            // An argument reported already (E0608) is not reported again
+            // through the items made for it.
+            diags.items.retain(|x| !quiet.contains(&x.span.file));
             // Each reference to a `const` is its value, a literal of its
             // type (the type at that span is the `const`'s).
             crate::ast::exprs_mut(&mut p, &mut |e| {

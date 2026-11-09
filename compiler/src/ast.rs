@@ -81,6 +81,36 @@ pub struct TypeParam {
     pub name: Ident,
     /// Trait bounds, each a path (`Copy`, `geo::Shape`).
     pub bounds: Vec<Vec<Ident>>,
+    /// `F: Fn(A, B) -> R` (ADR-0053 §1): a function value's bound.
+    pub fn_bound: Option<FnBound>,
+    pub span: Span,
+}
+
+/// Which of the built-in function traits a bound names (ADR-0053 §2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FnTrait {
+    Fn,
+    FnMut,
+    FnOnce,
+}
+
+impl FnTrait {
+    pub fn name(self) -> &'static str {
+        match self {
+            FnTrait::Fn => "Fn",
+            FnTrait::FnMut => "FnMut",
+            FnTrait::FnOnce => "FnOnce",
+        }
+    }
+}
+
+/// `Fn(A, B) -> R`: the parameter types and the result (`()` when no
+/// `->` is written).
+#[derive(Debug, Clone)]
+pub struct FnBound {
+    pub kind: FnTrait,
+    pub params: Vec<Type>,
+    pub ret: Type,
     pub span: Span,
 }
 

@@ -297,10 +297,7 @@ pub fn generics_str(gs: &[TypeParam]) -> String {
     let ps: Vec<String> = gs
         .iter()
         .map(|g| {
-            if g.bounds.is_empty() {
-                return g.name.name.clone();
-            }
-            let bs: Vec<String> = g
+            let mut bs: Vec<String> = g
                 .bounds
                 .iter()
                 .map(|b| {
@@ -310,6 +307,19 @@ pub fn generics_str(gs: &[TypeParam]) -> String {
                         .join("::")
                 })
                 .collect();
+            // `Fn(A, B) -> R` (ADR-0053 §1); a `()` result is not written.
+            if let Some(fb) = &g.fn_bound {
+                let ps: Vec<String> = fb.params.iter().map(type_str).collect();
+                let ret = if fb.ret.kind == TypeKind::Unit {
+                    String::new()
+                } else {
+                    format!(" -> {}", type_str(&fb.ret))
+                };
+                bs.insert(0, format!("{}({}){ret}", fb.kind.name(), ps.join(", ")));
+            }
+            if bs.is_empty() {
+                return g.name.name.clone();
+            }
             format!("{}: {}", g.name.name, bs.join(" + "))
         })
         .collect();

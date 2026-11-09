@@ -360,6 +360,10 @@ pub const CODES: &[(&str, &str)] = &[
         "E0607",
         "`pure` listed with another effect, or an effect listed twice",
     ),
+    (
+        "E0608",
+        "a function value whose effects the generic function that calls it does not declare (ADR-0053 §5)",
+    ),
     // E07xx: program structure
     ("E0701", "`main` must be `#[effects(io)] fn main() -> ()`"),
     ("E0702", "more than one `main`"),

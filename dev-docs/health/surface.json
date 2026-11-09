@@ -136,6 +136,7 @@
   "E0605",
   "E0606",
   "E0607",
+  "E0608",
   "E0701",
   "E0702",
   "E0703",
@@ -268,6 +269,10 @@
   "tests/check/err/floats.bmb": {
    "out": "0d5876644e322869",
    "src": "324bb5d96ccb71ae"
+  },
+  "tests/check/err/fn_values.bmb": {
+   "out": "0415e803edd91448",
+   "src": "09ac787286779f76"
   },
   "tests/check/err/generics.bmb": {
    "out": "c00e67cfaa57f647",
@@ -508,6 +513,10 @@
   "tests/run/floats.bmb": {
    "out": "50c347e33f0bed24",
    "src": "b764481fdcb67b0c"
+  },
+  "tests/run/fn_values.bmb": {
+   "out": "528ec7497a0a44a3",
+   "src": "fdbfe1bcae80eecf"
   },
   "tests/run/forest.bmb": {
    "out": "436932d56088aea4",
@@ -768,6 +777,10 @@
   "tests/verify/fail/floats.bmb": {
    "out": "87c1a57f76c6d637",
    "src": "aa05ed75d490c645"
+  },
+  "tests/verify/fail/fn_values.bmb": {
+   "out": "3c490cfc053698f6",
+   "src": "92fcaf68a91682a6"
   },
   "tests/verify/fail/generics.bmb": {
    "out": "4ae1aca6daa7ff8c",

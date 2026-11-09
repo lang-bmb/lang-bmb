@@ -288,6 +288,18 @@ impl Ex<'_> {
                     Value::Array(g.bounds.iter().map(|b| s(&path_text(b))).collect()),
                 ));
             }
+            if let Some(fb) = &g.fn_bound {
+                let params = e.list("params", &fb.params, Ex::ty)?;
+                let ret = e.under("ret", |e| e.ty(&fb.ret))?;
+                kv.push((
+                    "fn_bound",
+                    obj(vec![
+                        ("trait", s(fb.kind.name())),
+                        ("params", params),
+                        ("ret", ret),
+                    ]),
+                ));
+            }
             Ok(obj(kv))
         })
     }
@@ -1321,15 +1333,34 @@ impl Im {
 
     fn generics(&mut self, o: &Obj) -> Result<Vec<TypeParam>, String> {
         self.list(o, "generics", |m, v| {
-            let g = m.obj(v, "a type parameter", &["name", "bounds"])?;
+            let g = m.obj(v, "a type parameter", &["name", "bounds", "fn_bound"])?;
             let name = m.name(&g, "name")?;
             let bounds = m.list(&g, "bounds", |m, b| match b {
                 Value::Str(p) => m.path_of("", p),
                 _ => m.fail("expected a trait path"),
             })?;
+            let fn_bound = match g.get("fn_bound") {
+                None => None,
+                Some(fb) => Some(m.under("fn_bound", |m| {
+                    let o = m.obj(fb, "a function bound", &["trait", "params", "ret"])?;
+                    let kind = match m.string(&o, "trait")?.as_str() {
+                        "Fn" => FnTrait::Fn,
+                        "FnMut" => FnTrait::FnMut,
+                        "FnOnce" => FnTrait::FnOnce,
+                        _ => return m.fail("`trait` is `Fn`, `FnMut` or `FnOnce`"),
+                    };
+                    Ok(FnBound {
+                        kind,
+                        params: m.list(&o, "params", Im::ty)?,
+                        ret: m.field(&o, "ret", Im::ty)?,
+                        span: sp(),
+                    })
+                })?),
+            };
             Ok(TypeParam {
                 name,
                 bounds,
+                fn_bound,
                 span: sp(),
             })
         })

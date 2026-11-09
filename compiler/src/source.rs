@@ -23,6 +23,10 @@ pub struct SourceFile {
     line_starts: Vec<u32>,
 }
 
+/// The first file id of the text the compiler generates (counting down),
+/// out of the range of the files a source map holds.
+pub const GENERATED: u32 = u32::MAX - 1;
+
 #[derive(Default)]
 pub struct SourceMap {
     files: Vec<SourceFile>,
@@ -44,17 +48,26 @@ impl SourceMap {
         (self.files.len() - 1) as u32
     }
 
+    /// File `id`; a file the compiler made (the items `closures::lower`
+    /// generates, with ids from `GENERATED` down) reads as one empty file.
     pub fn file(&self, id: u32) -> &SourceFile {
-        &self.files[id as usize]
+        static NONE: std::sync::OnceLock<SourceFile> = std::sync::OnceLock::new();
+        self.files.get(id as usize).unwrap_or_else(|| {
+            NONE.get_or_init(|| SourceFile {
+                name: "<generated>".into(),
+                text: String::new(),
+                line_starts: vec![0],
+            })
+        })
     }
 
     pub fn name(&self, id: u32) -> &str {
-        &self.files[id as usize].name
+        &self.file(id).name
     }
 
     /// 1-based line and column; the column counts characters, not bytes.
     pub fn line_col(&self, id: u32, pos: u32) -> (u32, u32) {
-        let f = &self.files[id as usize];
+        let f = self.file(id);
         let line = match f.line_starts.binary_search(&pos) {
             Ok(i) => i,
             Err(i) => i - 1,

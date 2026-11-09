@@ -163,6 +163,7 @@
 | E0605 | unknown or misplaced attribute |
 | E0606 | the body needs an effect the function does not declare |
 | E0607 | `pure` listed with another effect, or an effect listed twice |
+| E0608 | a function value whose effects the generic function that calls it does not declare (ADR-0053 §5) |
 
 ## E07xx 프로그램 구조
 
