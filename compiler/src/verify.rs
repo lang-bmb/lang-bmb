@@ -4875,12 +4875,22 @@ impl<'p, 'q> Enc<'p, 'q> {
     /// (true of every value of code: a variable of code is in its type).
     /// Code, a `proof` block and a `proof fn` body treat it alike.
     fn sub_proof(&mut self, _prover: Prover, cond: &Expr, span: Span) {
+        // Elements, fields and the like are variables of the sub-proof
+        // (backlog 2N-11): it proves the fact for every value of them, and
+        // the assumed fact is the original term, so instantiating them is
+        // the only step between the two.
+        let mut reads = Vec::new();
+        let bv_cond = self.abstract_reads(cond, &mut Vec::new(), &mut reads);
         let mut free = BTreeMap::new();
-        self.free_scalars(cond, &mut Vec::new(), &mut free);
-        let (env, old) = self.cur_env();
+        self.free_scalars(&bv_cond, &mut Vec::new(), &mut free);
+        let (mut env, old) = self.cur_env();
+        for (name, read) in &reads {
+            let v = self.spec(read, &env, &old);
+            env.insert(name.clone(), v);
+        }
         let fresh: BTreeMap<String, Val> =
             free.keys().map(|n| (n.clone(), Val::S(sym(n)))).collect();
-        let term = self.spec(cond, &fresh, &BTreeMap::new()).s();
+        let term = self.spec(&bv_cond, &fresh, &BTreeMap::new()).s();
         let fact = self.spec(cond, &env, &old).s();
         let vars: Vec<(String, crate::subproof::Sort)> =
             free.iter().map(|(n, s)| (sym(n), *s)).collect();
@@ -4933,6 +4943,106 @@ impl<'p, 'q> Enc<'p, 'q> {
         } else {
             format!("(=> {} {fact})", and(&ante))
         });
+    }
+
+    /// `e` with each scalar read of another value (an element, a field, a
+    /// value behind a reference, a method of a non-scalar receiver) that
+    /// names no `let` of the assertion replaced by a variable, one per
+    /// distinct read (by its text), listed in `reads` with the read
+    /// (backlog 2N-11, `check::bit_vector_terms`). The variable keeps the
+    /// read's span, so it has the read's type.
+    fn abstract_reads(
+        &self,
+        e: &Expr,
+        bound: &mut Vec<String>,
+        reads: &mut Vec<(String, Expr)>,
+    ) -> Expr {
+        let read = match &e.kind {
+            ExprKind::Index { .. } | ExprKind::Field { .. } | ExprKind::Deref(_) => true,
+            ExprKind::Method { recv, .. } => !crate::check::is_scalar(&self.ty(recv)),
+            _ => false,
+        };
+        if read
+            && crate::check::is_scalar(&self.ty(e))
+            && !bound.iter().any(|b| crate::check::mentions(e, b))
+        {
+            let text = crate::fmt::expr_text(e);
+            let k = match reads
+                .iter()
+                .position(|(_, x)| crate::fmt::expr_text(x) == text)
+            {
+                Some(k) => k,
+                None => {
+                    // The read's text, which no local's name can be (it
+                    // holds `[`, `.`, `*` or `(`), names it in a
+                    // counterexample; an SMT quoted symbol cannot hold `|`.
+                    let name = if text.contains(['|', '\\']) {
+                        format!("read#{}", reads.len())
+                    } else {
+                        text.clone()
+                    };
+                    reads.push((name, e.clone()));
+                    reads.len() - 1
+                }
+            };
+            return Expr {
+                kind: ExprKind::Var(Ident {
+                    name: reads[k].0.clone(),
+                    span: e.span,
+                }),
+                span: e.span,
+            };
+        }
+        let mut out = e.clone();
+        match &mut out.kind {
+            ExprKind::Unary(_, x) => **x = self.abstract_reads(x, bound, reads),
+            ExprKind::Binary(_, a, b) => {
+                **a = self.abstract_reads(a, bound, reads);
+                **b = self.abstract_reads(b, bound, reads);
+            }
+            ExprKind::If { cond, then, els } => {
+                **cond = self.abstract_reads(cond, bound, reads);
+                *then = self.abstract_block(then, bound, reads);
+                if let Some(x) = els {
+                    **x = self.abstract_reads(x, bound, reads);
+                }
+            }
+            ExprKind::Block(b) => *b = self.abstract_block(b, bound, reads),
+            ExprKind::Call { args, .. } => {
+                for a in args.iter_mut() {
+                    *a = self.abstract_reads(a, bound, reads);
+                }
+            }
+            ExprKind::Method { recv, args, .. } => {
+                **recv = self.abstract_reads(recv, bound, reads);
+                for a in args.iter_mut() {
+                    *a = self.abstract_reads(a, bound, reads);
+                }
+            }
+            _ => {}
+        }
+        out
+    }
+
+    fn abstract_block(
+        &self,
+        b: &Block,
+        bound: &mut Vec<String>,
+        reads: &mut Vec<(String, Expr)>,
+    ) -> Block {
+        let n = bound.len();
+        let mut out = b.clone();
+        for s in out.stmts.iter_mut() {
+            if let Stmt::Let { name, init, .. } = s {
+                *init = self.abstract_reads(init, bound, reads);
+                bound.push(name.name.clone());
+            }
+        }
+        if let Some(t) = &mut out.tail {
+            **t = self.abstract_reads(t, bound, reads);
+        }
+        bound.truncate(n);
+        out
     }
 
     /// The free variables of a `by (bit_vector)` assertion (integers and

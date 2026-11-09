@@ -17,6 +17,17 @@ mod bvf {
         x
     }
 
+    // An element is a variable of the sub-proof (backlog 2N-11): what the
+    // path knows of it (`s[0] < 8`) is not seen, and two reads of the same
+    // text are one variable.
+    #[effects(pure)]
+    fn element(s: &[u8]) -> u8
+        requires s.len() > 0 && s[0] < 8,
+    {
+        assert(s[0] & 15 < 8) by (bit_vector);
+        s[0]
+    }
+
     // A ghost `let` is a variable of its type, not its definition.
     #[effects(pure)]
     fn ghost_value(x: u8) -> u8 {

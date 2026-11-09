@@ -253,4 +253,40 @@ mod bvp {
         assert(v != 0 ==> u % v < v && u / v <= u) by (bit_vector);
         x
     }
+
+    struct P { x: u32 }
+
+    // An element, a field, a value behind a reference and a length are
+    // variables of the sub-proof (backlog 2N-11).
+    #[effects(pure)]
+    fn element(s: &[u32]) -> u32 {
+        if s.len() > 0 {
+            assert(s[0] & 1 == s[0] % 2) by (bit_vector);
+        }
+        0
+    }
+
+    #[effects(pure)]
+    fn field(p: P) -> (r: u32)
+        ensures r == p.x,
+    {
+        assert(p.x | 0 == p.x) by (bit_vector);
+        p.x | 0
+    }
+
+    #[effects(pure)]
+    fn entry(x: &mut u32) -> ()
+        ensures *x ^ 1 == *old(x),
+    {
+        *x = *x ^ 1;
+        assert(*x == *old(x) ^ 1 ==> *old(x) == *x ^ 1) by (bit_vector);
+    }
+
+    #[effects(pure)]
+    fn half_len(s: &[u8]) -> (r: usize)
+        ensures r == s.len() / 2,
+    {
+        assert(s.len() >> 1 == s.len() / 2) by (bit_vector);
+        s.len() >> 1
+    }
 }

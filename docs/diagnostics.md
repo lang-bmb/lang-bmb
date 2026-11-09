@@ -139,7 +139,7 @@
 | E0507 | recursive function requires `decreases` |
 | E0513 | conversions are not used in specifications (integer types mix there) |
 | E0514 | `==` is not defined for `Vec` |
-| E0515 | `assert(..) by (bit_vector)` takes integer, `f64` and `bool` terms only (no element, field, quantifier, `old` or data value) |
+| E0515 | `assert(..) by (bit_vector)` takes integer, `f64` and `bool` terms only (no quantifier, `old` or data value; an element, field or length that names a `let` of the assertion) |
 | E0516 | unknown prover in `assert(..) by (..)` (the one prover is `bit_vector`) |
 | E0508 | `old(..)` is only allowed in `ensures`, loop invariants and `assert` on a `&mut` parameter |
 | E0509 | `#[uses(..)]` entry is not a spec function |

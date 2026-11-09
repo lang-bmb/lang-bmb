@@ -1188,7 +1188,7 @@ pub fn is_bit_count(m: &str) -> bool {
 }
 /// A scalar value: an integer, `f64` (ADR-0061 §1), `bool` or `char`
 /// (ADR-0050 §1).
-fn is_scalar(t: &TypeKind) -> bool {
+pub(crate) fn is_scalar(t: &TypeKind) -> bool {
     is_int(t) || matches!(t, TypeKind::Bool | TypeKind::F64 | TypeKind::Char)
 }
 
@@ -5254,7 +5254,7 @@ impl<'a> Checker<'a> {
                 );
                 self.expect_ty(&t, &TypeKind::Bool, cond.span);
                 if by.is_some() && t == TypeKind::Bool {
-                    self.bit_vector_terms(cond);
+                    self.bit_vector_terms(cond, &mut Vec::new());
                 }
             }
             Stmt::Assume {
@@ -6943,6 +6943,17 @@ impl<'a> Checker<'a> {
         if mode != Mode::Exec && !self.open_lets.is_empty() {
             self.spec_at.insert((e.span.file, e.span.lo, e.span.hi));
         }
+        // An untyped local where a type is expected takes that type: the
+        // argument of a generic call with type arguments, a field of a
+        // generic struct expression (2N-13, `settle_lets`).
+        if mode == Mode::Exec
+            && let ExprKind::Var(v) = &e.kind
+            && let Some(x) = expected
+            && self.open_lets.iter().any(|(n, _)| n.name == v.name)
+            && settled(x, &self.tparams)
+        {
+            self.typed_uses.push((v.name.clone(), e.span.lo, x.clone()));
+        }
         t
     }
 
@@ -8250,9 +8261,12 @@ impl<'a> Checker<'a> {
     /// literals, integer and `f64` constants,
     /// operators, `if`, `let` blocks, integer methods with an integer value
     /// and spec fn calls (whose bodies the prover unfolds, E0818 when it
-    /// cannot). Anything else (an index, a field, a quantifier, `old`, a
-    /// data value) is E0515.
-    fn bit_vector_terms(&mut self, e: &Expr) {
+    /// cannot). A scalar read of another value (an element, a field, a
+    /// value behind a reference, a method of a non-scalar receiver such as
+    /// `v.len()`) is a variable of the sub-proof (backlog 2N-11,
+    /// `verify::abstract_reads`) unless it names a `let` of the assertion.
+    /// Anything else (a quantifier, `old`, a data value) is E0515.
+    fn bit_vector_terms(&mut self, e: &Expr, bound: &mut Vec<String>) {
         let ty = self
             .types
             .get(&(e.span.file, e.span.lo, e.span.hi))
@@ -8271,36 +8285,51 @@ impl<'a> Checker<'a> {
                 None
             }
             ExprKind::Path(p) if int_const(p).is_some() || f64_const(p).is_some() => None,
+            ExprKind::Index { .. } | ExprKind::Field { .. } | ExprKind::Deref(_)
+                if scalar && !bound.iter().any(|b| mentions(e, b)) =>
+            {
+                None
+            }
+            ExprKind::Method { recv, .. }
+                if scalar
+                    && !self
+                        .types
+                        .get(&(recv.span.file, recv.span.lo, recv.span.hi))
+                        .is_some_and(is_scalar)
+                    && !bound.iter().any(|b| mentions(e, b)) =>
+            {
+                None
+            }
             ExprKind::Var(_) if scalar => None,
             ExprKind::Var(_) => Some(format!("a value of type `{}`", ty_str(&ty))),
             ExprKind::Unary(_, x) if scalar => {
-                self.bit_vector_terms(x);
+                self.bit_vector_terms(x, bound);
                 None
             }
             ExprKind::Binary(_, a, b) if scalar => {
-                self.bit_vector_terms(a);
-                self.bit_vector_terms(b);
+                self.bit_vector_terms(a, bound);
+                self.bit_vector_terms(b, bound);
                 None
             }
             ExprKind::If { cond, then, els } if scalar => {
-                self.bit_vector_terms(cond);
-                self.bit_vector_block(then);
+                self.bit_vector_terms(cond, bound);
+                self.bit_vector_block(then, bound);
                 if let Some(x) = els {
-                    self.bit_vector_terms(x);
+                    self.bit_vector_terms(x, bound);
                 }
                 None
             }
             ExprKind::Block(b) if scalar => {
-                self.bit_vector_block(b);
+                self.bit_vector_block(b, bound);
                 None
             }
             ExprKind::Call { args, .. } if scalar => {
-                args.iter().for_each(|a| self.bit_vector_terms(a));
+                args.iter().for_each(|a| self.bit_vector_terms(a, bound));
                 None
             }
             ExprKind::Method { recv, args, .. } if scalar => {
-                self.bit_vector_terms(recv);
-                args.iter().for_each(|a| self.bit_vector_terms(a));
+                self.bit_vector_terms(recv, bound);
+                args.iter().for_each(|a| self.bit_vector_terms(a, bound));
                 None
             }
             ExprKind::Index { .. } => Some("an element".to_string()),
@@ -8321,22 +8350,25 @@ impl<'a> Checker<'a> {
                 ),
             )
             .fix(
-                "bind the value to a `let` (a ghost `let` in a `proof` block) and assert over the variable; a quantified fact is a `proof fn` over one value",
+                "assert over integer and `bool` terms: an element, a field or a length is one when it names no `let` of the assertion; a quantified fact is a `proof fn` over one value",
                 None,
             );
             self.diags.push(d);
         }
     }
 
-    fn bit_vector_block(&mut self, b: &Block) {
+    fn bit_vector_block(&mut self, b: &Block, bound: &mut Vec<String>) {
+        let n = bound.len();
         for s in &b.stmts {
-            if let Stmt::Let { init, .. } = s {
-                self.bit_vector_terms(init);
+            if let Stmt::Let { name, init, .. } = s {
+                self.bit_vector_terms(init, bound);
+                bound.push(name.name.clone());
             }
         }
         if let Some(t) = &b.tail {
-            self.bit_vector_terms(t);
+            self.bit_vector_terms(t, bound);
         }
+        bound.truncate(n);
     }
 
     /// `a << s`, `a >> s` (ADR-0048 §2): `a` is an integer and so is the
@@ -10792,7 +10824,7 @@ impl<'a> Checker<'a> {
 }
 
 /// True if `e` mentions variable `name` anywhere.
-fn mentions(e: &Expr, name: &str) -> bool {
+pub(crate) fn mentions(e: &Expr, name: &str) -> bool {
     match &e.kind {
         ExprKind::Var(id) => id.name == name,
         ExprKind::Call { args, .. } | ExprKind::Array(args) => {
@@ -11085,6 +11117,21 @@ fn mentions_param(t: &TypeKind, n: &str) -> bool {
         TypeKind::Ref { inner, .. } => mentions_param(&inner.kind, n),
         TypeKind::Named { args, .. } => args.iter().any(|a| mentions_param(&a.kind, n)),
         _ => false,
+    }
+}
+
+/// Whether `t` is a written type in a definition with parameters `ps`: no
+/// error and no parameter of another definition.
+fn settled(t: &TypeKind, ps: &[TParam]) -> bool {
+    match t {
+        TypeKind::Error => false,
+        TypeKind::Param(n) => ps.iter().any(|p| p.name == *n),
+        TypeKind::Array(e, _) | TypeKind::Slice(e) | TypeKind::Vec(e) | TypeKind::Box(e) => {
+            settled(&e.kind, ps)
+        }
+        TypeKind::Ref { inner, .. } => settled(&inner.kind, ps),
+        TypeKind::Named { args, .. } => args.iter().all(|a| settled(&a.kind, ps)),
+        _ => true,
     }
 }
 

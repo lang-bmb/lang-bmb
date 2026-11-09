@@ -477,6 +477,23 @@ fn failures(c: &C, t: Ty, h: &H) -> Vec<(i128, i128)> {
     out
 }
 
+/// `text` with the variables `x` and `y` read as the fields `p.x`, `p.y`.
+fn fields(text: &str) -> String {
+    let b = text.as_bytes();
+    let word = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
+    let mut out = String::new();
+    for (i, ch) in text.char_indices() {
+        let alone = (ch == 'x' || ch == 'y')
+            && (i == 0 || !word(b[i - 1]))
+            && (i + 1 >= b.len() || !word(b[i + 1]));
+        if alone {
+            out.push_str("p.");
+        }
+        out.push(ch);
+    }
+    out
+}
+
 fn parse_cex(msg: &str) -> Option<Vec<(String, i128)>> {
     let rest = msg.split("; counterexample: ").nth(1)?;
     rest.split(", ")
@@ -505,7 +522,7 @@ fn batch(seed: u64, stats: &mut Stats) {
     let h = H { body: hb };
     let h_text = e_text(&h.body);
     let mut src = format!(
-        "#[summary(\"비트 벡터 하위 증명 건전성 퍼징\")]\nmod m {{\n    spec fn h(v: {tn}) -> {tn} {{ {h_text} }}\n\n"
+        "#[summary(\"비트 벡터 하위 증명 건전성 퍼징\")]\nmod m {{\n    struct P {{ x: {tn}, y: {tn} }}\n\n    spec fn h(v: {tn}) -> {tn} {{ {h_text} }}\n\n"
     );
     let mut cases = Vec::new();
     for k in 0..8 {
@@ -516,10 +533,19 @@ fn batch(seed: u64, stats: &mut Stats) {
         } else {
             c
         };
-        src.push_str(&format!(
-            "    #[effects(pure)]\n    #[uses(h)]\n    fn f{k}(x: {tn}, y: {tn}) -> () {{\n        assert({}) by (bit_vector);\n    }}\n\n",
-            c_text(&c)
-        ));
+        // Every odd case reads the fields of `p` instead (backlog 2N-11:
+        // a field is a variable of the sub-proof).
+        if k % 2 == 1 {
+            src.push_str(&format!(
+                "    #[effects(pure)]\n    #[uses(h)]\n    fn f{k}(p: &P) -> () {{\n        assert({}) by (bit_vector);\n    }}\n\n",
+                fields(&c_text(&c))
+            ));
+        } else {
+            src.push_str(&format!(
+                "    #[effects(pure)]\n    #[uses(h)]\n    fn f{k}(x: {tn}, y: {tn}) -> () {{\n        assert({}) by (bit_vector);\n    }}\n\n",
+                c_text(&c)
+            ));
+        }
         cases.push(c);
     }
     src.push_str("}\n");
@@ -588,7 +614,14 @@ fn batch(seed: u64, stats: &mut Stats) {
         let cex = parse_cex(msg)
             .unwrap_or_else(|| panic!("{}", ctx(&format!("{name}: no counterexample: {msg}"))));
         stats.cexes += 1;
-        let get = |v: &str| cex.iter().find(|(k, _)| k == v).map(|(_, x)| *x);
+        let get = |v: &str| {
+            let v = if k % 2 == 1 {
+                format!("p.{v}")
+            } else {
+                v.to_string()
+            };
+            cex.iter().find(|(n, _)| *n == v).map(|(_, x)| *x)
+        };
         let (lo, hi) = t.range();
         // A variable the assertion does not mention is not shown: any value
         // does.

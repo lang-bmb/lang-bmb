@@ -960,6 +960,24 @@ mod e {
     fn take(x: u8) -> u8 {
         x
     }
+
+    struct Bag<T> { items: Vec<T>, n: u64 }
+
+    #[effects(pure)]
+    fn id<T>(x: T) -> T { x }
+
+    #[effects(alloc)]
+    fn passed() -> usize {
+        let v = Vec::new();
+        let w: Vec<i16> = id::<Vec<i16>>(v);
+        w.len()
+    }
+
+    #[effects(alloc)]
+    fn bag<T>(n: u64) -> Bag<T> {
+        let items = Vec::new();
+        Bag { items: items, n: n }
+    }
 }
 "#);
     let out = fix(&input);
@@ -969,6 +987,10 @@ mod e {
         "let mut i: usize = 0;",
         "let mut v: Vec<u32> = Vec::new();",
         "let k: u8 = 3;",
+        // Through a type parameter (2N-13): the call's type argument, the
+        // struct expression's instance.
+        "let v: Vec<i16> = Vec::new();",
+        "let items: Vec<T> = Vec::new();",
     ] {
         assert!(text.contains(want), "{want}\n{text}");
     }

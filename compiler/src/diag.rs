@@ -306,7 +306,7 @@ pub const CODES: &[(&str, &str)] = &[
     ("E0514", "`==` is not defined for `Vec`"),
     (
         "E0515",
-        "`assert(..) by (bit_vector)` takes integer, `f64` and `bool` terms only (no element, field, quantifier, `old` or data value)",
+        "`assert(..) by (bit_vector)` takes integer, `f64` and `bool` terms only (no quantifier, `old` or data value; an element, field or length that names a `let` of the assertion)",
     ),
     (
         "E0516",
