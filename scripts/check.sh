@@ -44,6 +44,7 @@ grep -qF "| 작성 1회 성공률 | 10/10 |" <<< "$table" || { echo "harness sum
   --job "bench failure table (T0-16)=python3 bench/test_failures.py" \
   --job "bench repeated runs (ADR-0077)=python3 bench/test_repeat.py" \
   --job "bench utility report (T0-26)=python3 bench/test_utility.py && python3 bench/utility.py --check dev-docs/reports/utility.md" \
+  --job "surface (4D-01)=python3 scripts/test_surface.py && python3 scripts/surface.py check" \
   --job 'bench m1b oracle=tmp=$(mktemp); trap "rm -f $tmp" EXIT
 python3 bench/m1/harness.py --set bench/m1b run --agent oracle --expect all-pass --jobs 2 --out "$tmp" > /dev/null
 table=$(python3 bench/m1/harness.py summarize "$tmp")
