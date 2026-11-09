@@ -55,6 +55,8 @@
 | E0260 | a `const`'s evaluation failed: overflow, division by zero, a shift of the width or more, a conversion out of range (ADR-0052 §4) |
 | E0262 | a closure that captures a local is written `move`: captures move into it (ADR-0053 §2) |
 | E0263 | a closure's parameters and result have their types written (ADR-0053 §2) |
+| E0264 | a function pointer type, a returned closure, or a closure that is not the argument of an `Fn`-bounded parameter (ADR-0053 §1, §3) |
+| E0265 | an argument-position `impl Fn(..)`: the form is a type parameter `F: Fn(..)` (ADR-0053 §1) |
 | E0261 | a `static` item: an immutable one is a `const`, global mutable state is passed as an argument (ADR-0052 §7) |
 | E0237 | a call of a generic function names its type arguments: `f::<T>(..)` |
 | E0238 | `Rc`, `RefCell`, `Cell` and `Arc` are not used: values have one owner |

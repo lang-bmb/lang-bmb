@@ -65,6 +65,8 @@
   "E0261",
   "E0262",
   "E0263",
+  "E0264",
+  "E0265",
   "E0301",
   "E0302",
   "E0303",
@@ -273,8 +275,8 @@
    "src": "324bb5d96ccb71ae"
   },
   "tests/check/err/fn_values.bmb": {
-   "out": "494fb228ee944bad",
-   "src": "73b91f844f3e1801"
+   "out": "b04c14f3132d705c",
+   "src": "39f4386fd32c37be"
   },
   "tests/check/err/generics.bmb": {
    "out": "c00e67cfaa57f647",

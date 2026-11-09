@@ -31,6 +31,8 @@ pub struct Parser<'a> {
     units: Vec<String>,
     /// Array lengths and repeat counts written as a name (`Mod::lens`).
     lens: Vec<(Span, Vec<Ident>)>,
+    /// Reading a function's result type (a returned `impl Fn` is E0264).
+    in_ret: bool,
 }
 
 /// An `impl` block: inherent or of a trait.
@@ -122,6 +124,7 @@ impl<'a> Parser<'a> {
             generics_span: None,
             units: Vec::new(),
             lens: Vec::new(),
+            in_ret: false,
         }
     }
 
@@ -1527,6 +1530,13 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_ret(&mut self) -> PResult<Ret> {
+        let was = std::mem::replace(&mut self.in_ret, true);
+        let r = self.parse_ret_inner();
+        self.in_ret = was;
+        r
+    }
+
+    fn parse_ret_inner(&mut self) -> PResult<Ret> {
         if self.is_p("(") {
             if matches!(self.peek_at(1), Tok::P(")")) {
                 let lo = self.bump().span;
@@ -1723,6 +1733,57 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_type_inner(&mut self) -> Type {
+        // Function pointer types and `impl Fn(..)` (ADR-0053 §1): a function
+        // value is a type parameter with an `Fn` bound.
+        let lo = self.span();
+        let fn_ptr = matches!(self.peek(), Tok::Ident(k) if k == "fn")
+            && matches!(self.peek_at(1), Tok::P("("));
+        let impl_fn = matches!(self.peek(), Tok::Ident(k) if k == "impl")
+            && matches!(self.peek_at(1), Tok::Ident(k) if matches!(k.as_str(), "Fn" | "FnMut" | "FnOnce"));
+        if fn_ptr || impl_fn {
+            self.bump();
+            if impl_fn {
+                self.bump();
+            }
+            self.bump(); // `(`
+            while !self.is_p(")") && !matches!(self.peek(), Tok::Eof) {
+                self.parse_type();
+                if !self.eat_p(",") {
+                    break;
+                }
+            }
+            let _ = self.expect_p(")");
+            if self.eat_p("->") {
+                self.parse_type();
+            }
+            let span = lo.to(self.prev_span());
+            let d = if fn_ptr || self.in_ret {
+                Diag::new(
+                    "E0264",
+                    span,
+                    if fn_ptr {
+                        "function pointer types are not used"
+                    } else {
+                        "a closure is not returned: it does not leave the function that makes it"
+                    },
+                )
+                .fix(
+                    "take a type parameter `F: Fn(..) -> R` and pass the function or closure as its value (ADR-0053 §1, §3)",
+                    None,
+                )
+            } else {
+                Diag::new("E0265", span, "an argument-position `impl Fn(..)` is a type parameter")
+                    .fix(
+                        "declare `<F: Fn(..) -> R>` on the function and take `f: F` (one form, ADR-0053 §1)",
+                        None,
+                    )
+            };
+            self.diags.push(d);
+            return Type {
+                kind: TypeKind::Error,
+                span,
+            };
+        }
         let lo = self.span();
         match self.peek().clone() {
             Tok::Ident(s) if s == "Self" => {

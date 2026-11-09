@@ -127,6 +127,14 @@ pub const CODES: &[(&str, &str)] = &[
         "a closure's parameters and result have their types written (ADR-0053 §2)",
     ),
     (
+        "E0264",
+        "a function pointer type, a returned closure, or a closure that is not the argument of an `Fn`-bounded parameter (ADR-0053 §1, §3)",
+    ),
+    (
+        "E0265",
+        "an argument-position `impl Fn(..)`: the form is a type parameter `F: Fn(..)` (ADR-0053 §1)",
+    ),
+    (
         "E0261",
         "a `static` item: an immutable one is a `const`, global mutable state is passed as an argument (ADR-0052 §7)",
     ),

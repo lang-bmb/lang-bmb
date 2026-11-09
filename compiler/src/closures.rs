@@ -344,6 +344,27 @@ fn apply_call(e: &mut Expr, todo: &[(usize, String, usize, bool, Vec<String>)], 
     }
 }
 
+/// E0264 for each closure the lowering left: one that is not the argument
+/// of an `Fn`-bounded parameter (ADR-0053 §3: a closure does not leave the
+/// function that makes it, and is passed down).
+fn leftover_closures(p: &mut Program, diags: &mut Diags) {
+    crate::ast::exprs_mut(p, &mut |e| {
+        if let ExprKind::Closure(c) = &e.kind {
+            diags.push(
+                Diag::new(
+                    "E0264",
+                    c.span,
+                    "a closure is the argument of a function's `Fn`-bounded parameter",
+                )
+                .fix(
+                    "pass it directly where a function takes `f: F` with `F: Fn(..) -> R`, or name it as a `fn` of the unit",
+                    None,
+                ),
+            );
+        }
+    });
+}
+
 pub fn lower(p: &mut Program, diags: &mut Diags) -> Vec<u32> {
     // The generic functions with `Fn` bounds, and every free function.
     let mut generics: BTreeMap<String, Generic> = BTreeMap::new();
@@ -410,6 +431,7 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Vec<u32> {
         scan(m, "", &mut generics, &mut items);
     }
     if generics.is_empty() {
+        leftover_closures(p, diags);
         return Vec::new();
     }
     let mut pending: Vec<Diag> = Vec::new();
@@ -793,6 +815,8 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Vec<u32> {
             m.trait_impls.extend(made_mod.trait_impls);
         }
     }
+    // After the splices: a closure inside a closure's body is one too.
+    leftover_closures(p, diags);
     quiet
 }
 
