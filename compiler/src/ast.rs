@@ -1015,11 +1015,51 @@ pub fn types_mut(p: &mut Program, f: &mut dyn FnMut(&mut Type)) {
         for d in fns_mut(m) {
             def(d, f);
         }
+    }
+    fn all(m: &mut Mod, f: &mut dyn FnMut(&mut Type)) {
+        module(m, f);
         for s in &mut m.mods {
-            module(s, f);
+            all(s, f);
         }
     }
     for m in &mut p.mods {
-        module(m, f);
+        all(m, f);
+    }
+}
+
+/// As `types_mut`, for each unit with its path (`a::b`), not into its
+/// sub-units' items twice.
+pub fn unit_types_mut(p: &mut Program, f: &mut dyn FnMut(&str, &mut Type)) {
+    fn walk(m: &mut Mod, prefix: &str, f: &mut dyn FnMut(&str, &mut Type)) {
+        let unit = format!("{prefix}{}", m.name.name);
+        let subs = std::mem::take(&mut m.mods);
+        let mut one = Program {
+            mods: vec![std::mem::replace(
+                m,
+                Mod {
+                    name: m.name.clone(),
+                    attrs: Vec::new(),
+                    fns: Vec::new(),
+                    mods: Vec::new(),
+                    types: Vec::new(),
+                    impls: Vec::new(),
+                    traits: Vec::new(),
+                    trait_impls: Vec::new(),
+                    uses: Vec::new(),
+                    consts: Vec::new(),
+                    lens: Vec::new(),
+                    span: m.span,
+                },
+            )],
+        };
+        types_mut(&mut one, &mut |t| f(&unit, t));
+        *m = one.mods.pop().expect("one unit");
+        m.mods = subs;
+        for s in &mut m.mods {
+            walk(s, &format!("{unit}::"), f);
+        }
+    }
+    for m in &mut p.mods {
+        walk(m, "", f);
     }
 }

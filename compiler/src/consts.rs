@@ -160,27 +160,7 @@ pub fn resolve(p: &mut Program, diags: &mut Diags) -> BTreeMap<String, Const> {
             None => None,
         }
     };
-    // The unit a type is written in: the innermost unit whose span holds it.
-    let mut mod_spans: Vec<(Span, String)> = Vec::new();
-    fn mspans(m: &Mod, prefix: &str, out: &mut Vec<(Span, String)>) {
-        let unit = format!("{prefix}{}", m.name.name);
-        out.push((m.span, unit.clone()));
-        for s in &m.mods {
-            mspans(s, &format!("{unit}::"), out);
-        }
-    }
-    for m in &p.mods {
-        mspans(m, "", &mut mod_spans);
-    }
-    let unit_of = |sp: Span| -> String {
-        mod_spans
-            .iter()
-            .filter(|(m, _)| m.file == sp.file && m.lo <= sp.lo && sp.hi <= m.hi)
-            .max_by_key(|(m, _)| m.lo)
-            .map(|(_, u)| u.clone())
-            .unwrap_or_default()
-    };
-    crate::ast::types_mut(p, &mut |t| {
+    crate::ast::unit_types_mut(p, &mut |unit, t| {
         fn walk(t: &mut Type, f: &mut dyn FnMut(&mut Type)) {
             match &mut t.kind {
                 TypeKind::Array(e, _)
@@ -196,8 +176,7 @@ pub fn resolve(p: &mut Program, diags: &mut Diags) -> BTreeMap<String, Const> {
         }
         walk(t, &mut |t| {
             if let TypeKind::ArrayN(e, path) = &t.kind {
-                let unit = unit_of(t.span);
-                t.kind = match length(path, &unit, t.span, diags) {
+                t.kind = match length(path, unit, t.span, diags) {
                     Some(n) => TypeKind::Array(e.clone(), n),
                     None => TypeKind::Error,
                 };

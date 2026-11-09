@@ -176,6 +176,7 @@ enum Item {
     Trait(TraitDef),
     TraitImpl(TraitImpl),
     Use(UseItem),
+    Const(ConstDef),
 }
 
 fn items_of(m: Mod) -> Vec<Item> {
@@ -194,6 +195,7 @@ fn items_of(m: Mod) -> Vec<Item> {
             .map(|i| (i.span.lo, Item::TraitImpl(i))),
     );
     items.extend(m.uses.into_iter().map(|u| (u.span.lo, Item::Use(u))));
+    items.extend(m.consts.into_iter().map(|c| (c.span.lo, Item::Const(c))));
     items.sort_by_key(|(lo, _)| *lo);
     items.into_iter().map(|(_, i)| i).collect()
 }
@@ -214,7 +216,12 @@ fn put_item(m: &mut Mod, mp: &str, item: Item) {
             m.types.retain(|u| u.name.name != t.name.name);
             m.types.push(t);
         }
-        Item::Impl(i) => match m.impls.iter_mut().find(|b| b.ty.name == i.ty.name) {
+        // The block of the same type and bounds (ADR-0097: one block per
+        // list of bounds).
+        Item::Impl(i) => match m.impls.iter_mut().find(|b| {
+            b.ty.name == i.ty.name
+                && fmt::generics_str(&b.generics) == fmt::generics_str(&i.generics)
+        }) {
             Some(block) => {
                 block.generics = i.generics;
                 block.ty_args = i.ty_args;
@@ -241,6 +248,10 @@ fn put_item(m: &mut Mod, mp: &str, item: Item) {
             m.trait_impls.push(i);
         }
         Item::Use(u) => m.uses.push(u),
+        Item::Const(c) => {
+            m.consts.retain(|d| d.name.name != c.name.name);
+            m.consts.push(c);
+        }
     }
 }
 
@@ -277,6 +288,11 @@ fn remove_item(mods: &mut [Mod], def: &str, segs: &[&str]) -> Result<(), String>
         ));
     }
     if let Some(m) = find_mod(mods, unit) {
+        let consts = m.consts.len();
+        m.consts.retain(|c| c.name.name != *name);
+        if m.consts.len() < consts {
+            return Ok(());
+        }
         let before = (m.fns.len(), m.types.len(), m.traits.len());
         m.fns.retain(|f| f.name.name != *name);
         m.types.retain(|t| t.name.name != *name);
@@ -597,6 +613,9 @@ pub fn plan(files: &[(String, String)], ops: &[Op]) -> (Commit, Option<BTreeMap<
                     ));
                     continue;
                 }
+                // Repeat counts written as a name keep their names.
+                let lens: Vec<(crate::source::Span, Vec<Ident>)> =
+                    parsed.mods.iter().flat_map(|m| m.lens.clone()).collect();
                 let items: Vec<Item> = parsed.mods.into_iter().flat_map(items_of).collect();
                 // An `impl T { }` with no function writes nothing (ADR-0074 §4).
                 if let Some(Item::Impl(i)) = items
@@ -620,6 +639,7 @@ pub fn plan(files: &[(String, String)], ops: &[Op]) -> (Commit, Option<BTreeMap<
                     continue;
                 };
                 // Every item at its address (ADR-0074 §1, §2), in source order.
+                m.lens.extend(lens);
                 for item in items {
                     put_item(m, unit, item);
                 }
