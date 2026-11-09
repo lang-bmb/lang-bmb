@@ -177,7 +177,7 @@ mod base64 {
     fn field1(a: u8, b: u8) -> (r: u8)
         ensures is_e1(a, b, r),
     {
-        ((a & 3) << 4) | (b >> 4)
+        ((a & 3) << 4) + (b >> 4)
     }
 
     // Four bits of `b`, two of `c`.
@@ -186,7 +186,7 @@ mod base64 {
     fn field2(b: u8, c: u8) -> (r: u8)
         ensures is_e2(b, c, r),
     {
-        ((b & 15) << 2) | (c >> 6)
+        ((b & 15) << 2) + (c >> 6)
     }
 
     #[effects(pure)]
@@ -221,7 +221,7 @@ mod base64 {
         requires six(y), six(z),
         ensures is_d1(y, z, r),
     {
-        ((y & 15) << 4) | (z >> 2)
+        ((y & 15) << 4) + (z >> 2)
     }
 
     // Two bits of `z`, and `w`.
@@ -231,7 +231,7 @@ mod base64 {
         requires six(z), six(w),
         ensures is_d2(z, w, r),
     {
-        ((z & 3) << 6) | w
+        ((z & 3) << 6) + w
     }
 
     // ---------- encode ----------
