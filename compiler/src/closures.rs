@@ -74,6 +74,18 @@ fn effects_of(f: &FnDef) -> String {
         .unwrap_or_else(|| "pure".into())
 }
 
+/// `call`'s receiver for a bound of `kind` on `ty` (ADR-0053 §2), and the
+/// state its `post` reads: an `FnMut` call may change it, so `post` is of
+/// the state before (`old(self)`; after the call it is a value of its own,
+/// ADR-0053 open question 3).
+fn receiver(kind: FnTrait, ty: &str) -> (String, &'static str) {
+    match kind {
+        FnTrait::Fn => (format!("&{ty}"), "self"),
+        FnTrait::FnMut => (format!("&mut {ty}"), "old(self)"),
+        FnTrait::FnOnce => (ty.to_string(), "self"),
+    }
+}
+
 /// The trait of the `k`th `Fn`-bounded parameter of the generic function
 /// numbered `order`.
 fn trait_name(order: usize, k: usize) -> String {
@@ -453,7 +465,9 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Vec<u32> {
             let comma = |xs: &[String]| xs.iter().map(|x| format!(", {x}")).collect::<String>();
             let t = text.entry((g.unit.clone(), false)).or_default();
             t.push_str(&format!(
-                "trait {tn} {{\n    spec fn pre(self: &Self{p}) -> bool;\n\n    spec fn post(self: &Self{p}, r: {ret}) -> bool;\n\n    #[effects({e})]\n    fn call(self: &Self{p}) -> (r: {ret})\n        requires self.pre({a}),\n        ensures self.post({ar}r);\n}}\n\n",
+                "trait {tn} {{\n    spec fn pre(self: &Self{p}) -> bool;\n\n    spec fn post(self: &Self{p}, r: {ret}) -> bool;\n\n    #[effects({e})]\n    fn call(self: {rv}{p}) -> (r: {ret})\n        requires self.pre({a}),\n        ensures {st}.post({ar}r);\n}}\n\n",
+                rv = receiver(b.kind, "Self").0,
+                st = receiver(b.kind, "Self").1,
                 tn = trait_name(g.order, *k),
                 p = comma(&typed),
                 e = g.effects,
@@ -522,7 +536,7 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Vec<u32> {
                     let Some(g) = generics.get(&gp) else {
                         return;
                     };
-                    for (k, fname, _, at) in &g.bounded {
+                    for (k, fname, bnd, at) in &g.bounded {
                         for (j, by_ref) in at {
                             let Some(a) = args.get(*j) else { continue };
                             // A closure: a struct of its own and its impl
@@ -594,7 +608,9 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Vec<u32> {
                                     .collect();
                                 let t = text.entry((unit.clone(), false)).or_default();
                                 t.push_str(&format!(
-                                    "struct {sname} {{ item: bool{fields} }}\n\nimpl {tr} for {sname} {{\n    spec fn pre(self: &{sname}{typed}) -> bool {{ {pre} }}\n\n    spec fn post(self: &{sname}{typed}, {rn}: {ret}) -> bool {{ {post} }}\n\n    #[effects({e})]\n    fn call(self: &{sname}{typed}) -> ({rn}: {ret})\n        requires self.pre({a}),\n        ensures self.post({a}{sep}{rn}),\n    {{\n        {rn}\n    }}\n}}\n\n",
+                                    "struct {sname} {{ item: bool{fields} }}\n\nimpl {tr} for {sname} {{\n    spec fn pre(self: &{sname}{typed}) -> bool {{ {pre} }}\n\n    spec fn post(self: &{sname}{typed}, {rn}: {ret}) -> bool {{ {post} }}\n\n    #[effects({e})]\n    fn call(self: {rv}{typed}) -> ({rn}: {ret})\n        requires self.pre({a}),\n        ensures {st}.post({a}{sep}{rn}),\n    {{\n        {rn}\n    }}\n}}\n\n",
+                                    rv = receiver(bnd.kind, &sname).0,
+                                    st = receiver(bnd.kind, &sname).1,
                                     pre = slots(c.requires.len()),
                                     post = slots(c.ensures.len()),
                                     ret = crate::fmt::type_str(&c.ret.ty),
@@ -667,7 +683,9 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Vec<u32> {
                                 };
                                 let t = text.entry((it.unit.clone(), reported)).or_default();
                                 t.push_str(&format!(
-                                    "struct {sname} {{ item: bool }}\n\nimpl {tr} for {sname} {{\n    spec fn pre(self: &{sname}{typed}) -> bool {{ {pre} }}\n\n    spec fn post(self: &{sname}{typed}, {rn}: {ret}) -> bool {{ {post} }}\n\n    #[effects({e})]\n    fn call(self: &{sname}{typed}) -> ({rn}: {ret})\n        requires self.pre({a}),\n        ensures self.post({a}{sep}{rn}),\n    {{\n        {hn}({a})\n    }}\n}}\n\n",
+                                    "struct {sname} {{ item: bool }}\n\nimpl {tr} for {sname} {{\n    spec fn pre(self: &{sname}{typed}) -> bool {{ {pre} }}\n\n    spec fn post(self: &{sname}{typed}, {rn}: {ret}) -> bool {{ {post} }}\n\n    #[effects({e})]\n    fn call(self: {rv}{typed}) -> ({rn}: {ret})\n        requires self.pre({a}),\n        ensures {st}.post({a}{sep}{rn}),\n    {{\n        {hn}({a})\n    }}\n}}\n\n",
+                                    rv = receiver(bnd.kind, &sname).0,
+                                    st = receiver(bnd.kind, &sname).1,
                                     tr = key.1,
                                     pre = conj(&it.requires),
                                     post = conj(&it.ensures),
@@ -753,6 +771,72 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Vec<u32> {
                 }
                 _ => {}
             });
+            // An `FnMut` taken by value is called through a mutable local of
+            // the body (`call` takes `&mut self`; parameters are not `mut`).
+            let mutable: Vec<(String, Ident)> = g
+                .bounded
+                .iter()
+                .filter(|(_, _, b, _)| b.kind == FnTrait::FnMut)
+                .flat_map(|(k, _, _, at)| {
+                    at.iter()
+                        .filter(|(_, by_ref)| !by_ref)
+                        .map(|(i, _)| (f.params[*i].name.name.clone(), f.generics[*k].name.clone()))
+                        .collect::<Vec<_>>()
+                })
+                .collect();
+            if !mutable.is_empty() {
+                let (req, ens) = (
+                    std::mem::take(&mut f.requires),
+                    std::mem::take(&mut f.ensures),
+                );
+                let renamed: Vec<String> =
+                    mutable.iter().map(|(n, _)| format!("__fm_{n}")).collect();
+                crate::ast::fn_exprs_mut(f, &mut |e| {
+                    if let ExprKind::Var(v) = &mut e.kind
+                        && let Some(k) = mutable.iter().position(|(n, _)| *n == v.name)
+                    {
+                        v.name = renamed[k].clone();
+                    }
+                });
+                (f.requires, f.ensures) = (req, ens);
+                for ((n, t), r) in mutable.iter().zip(&renamed).rev() {
+                    let at = f.body.span;
+                    f.body.stmts.insert(
+                        0,
+                        Stmt::Let {
+                            mutable: true,
+                            name: Ident {
+                                name: r.clone(),
+                                span: crate::source::Span { hi: at.lo, ..at },
+                            },
+                            ty: Type {
+                                kind: TypeKind::Named {
+                                    path: vec![t.name.clone()],
+                                    args: Vec::new(),
+                                },
+                                span: t.span,
+                            },
+                            ty_missing: false,
+                            init: Expr {
+                                kind: ExprKind::Var(Ident {
+                                    name: n.clone(),
+                                    span: crate::source::Span {
+                                        lo: at.lo + 1,
+                                        hi: at.lo + 1,
+                                        ..at
+                                    },
+                                }),
+                                span: crate::source::Span {
+                                    lo: at.lo + 1,
+                                    hi: at.lo + 1,
+                                    ..at
+                                },
+                            },
+                            span: at,
+                        },
+                    );
+                }
+            }
         }
         for s in &mut m.mods {
             rewrite_generic(s, &format!("{unit}::"), generics);

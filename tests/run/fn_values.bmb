@@ -1,7 +1,15 @@
-#[summary("함수 값(ADR-0053, backlog 2V-20a·2V-20b·2V-20c): Fn 경계의 타입 매개변수, f(x) 호출, f.requires·f.ensures 계약, 함수 항목과 클로저(캡처 없음, move 캡처: 복사·이동)를 값으로 넘기기(타입 인자는 _)")]
+#[summary("함수 값(ADR-0053, backlog 2V-20a~2V-20d): Fn 경계의 타입 매개변수, f(x) 호출, f.requires·f.ensures 계약, 함수 항목과 클로저(캡처 없음, move 캡처: 복사·이동; Fn·FnMut·FnOnce)를 값으로 넘기기(타입 인자는 _)")]
 mod fv {
     #[effects(pure)]
     fn apply<F: Fn(i64) -> i64>(f: F, x: i64) -> (r: i64)
+        requires f.requires(x),
+        ensures f.ensures(x, r),
+    {
+        f(x)
+    }
+
+    #[effects(pure)]
+    fn consume<F: FnOnce(i64) -> i64>(f: F, x: i64) -> (r: i64)
         requires f.requires(x),
         ensures f.ensures(x, r),
     {
@@ -40,5 +48,20 @@ mod fv {
         let mut v: Vec<i64> = Vec::new();
         v.push(5);
         print_i64(apply::<_>(move |x: i64| -> i64 { if v.len() > 0 { x } else { 0 } }, 2));
+        let mut count: u64 = 0;
+        let m: i64 = once::<_>(move |x: i64| -> (y: i64) requires count < 100, ensures y == x, { count = count + 1; x }, 5);
+        assert(m == 5);
+        print_i64(m);
+        let mut w: Vec<i64> = Vec::new();
+        w.push(9);
+        print_i64(consume::<_>(move |x: i64| -> i64 { if w.len() > 0 { x } else { 0 } }, 3));
+    }
+
+    #[effects(pure)]
+    fn once<F: FnMut(i64) -> i64>(f: F, x: i64) -> (r: i64)
+        requires f.requires(x),
+        ensures f.ensures(x, r),
+    {
+        f(x)
     }
 }
