@@ -179,9 +179,20 @@ class Certificates(SetCase):
         self.assertIn("bmb_cert::refute is not verified", self.certify(t))
 
     def test_an_unrevealed_postcondition_proves_nothing(self):
-        # `never` is opaque: `refute` proves only from the target's contract.
+        # The target's contract is in the default proof context (ADR-0095
+        # A1): without `tasks::is_abs` in `#[uses]` the certificate still
+        # proves. A predicate one level down is opaque: behind a wrapper
+        # `w`, `witness` is seen by name only and `refute` proves nothing.
         t = copy.deepcopy(TASKS["i01-abs"])
         t["certificate"] = t["certificate"].replace("#[uses(witness, tasks::is_abs)]", "#[uses(witness)]")
+        self.assertEqual(self.certify(t), [])
+        t = copy.deepcopy(TASKS["i01-abs"])
+        t["certificate"] = (
+            t["certificate"]
+            .replace("#[uses(witness, tasks::is_abs)]", "")
+            .replace("requires witness(x),", "requires w(x),")
+            .replace("    spec fn never()", "    spec fn w(x: i64) -> bool { witness(x) }\n\n    spec fn never()")
+        )
         self.assertIn("bmb_cert::refute is not verified", self.certify(t))
 
     def test_an_unreachable_witness_is_refused(self):
