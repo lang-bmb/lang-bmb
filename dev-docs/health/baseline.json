@@ -2,14 +2,14 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 14173502,
+    "V4_rlimit_total": 14175988,
     "V5_rlimit_headroom": 0.1244,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0002,
     "V8_bench_rlimit_total": 22976379,
     "V9_bench_defs_at_limit": 0,
-    "V10_library_rlimit_total": 24636287,
-    "V11_sat_check_rlimit_total": 271649798,
+    "V10_library_rlimit_total": 23410995,
+    "V11_sat_check_rlimit_total": 271377599,
     "V12_sat_check_undecided": 216,
     "S1_external_crates": 0,
     "S2_external_processes": [
@@ -17,11 +17,11 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 49906,
+    "S4_stage0_rust_lines": 50039,
     "S5_tests_bound_to_rust_api": 1,
     "S6_selfhost_bmb_lines": 0,
     "P1_runnable_programs": 74,
-    "P2_bmb_lines": 28656,
+    "P2_bmb_lines": 28697,
     "P3_errors_with_help": 0.9113,
     "B1_baseline_binary_bytes": 101664,
     "O1_adr_index_mismatch": 0,
@@ -2400,6 +2400,32 @@
         "P3_errors_with_help": [
           0.9118,
           0.9113
+        ]
+      }
+    },
+    {
+      "date": "2026-11-09",
+      "reason": "T2-14: std::base64 bit fields joined by + (V10 -5.0%); 2N-11 bit-vector reads; 2N-13",
+      "changed": {
+        "V4_rlimit_total": [
+          14173502,
+          14175988
+        ],
+        "V10_library_rlimit_total": [
+          24636287,
+          23410995
+        ],
+        "V11_sat_check_rlimit_total": [
+          271649798,
+          271377599
+        ],
+        "S4_stage0_rust_lines": [
+          49906,
+          50039
+        ],
+        "P2_bmb_lines": [
+          28656,
+          28697
         ]
       }
     }
