@@ -1,7 +1,5 @@
 #[summary("지원하지 않는 구문")]
 mod unsupported {
-    const LIMIT: i64 = 10;
-
     static COUNT: i64 = 0;
 
     #[effects(pure)]

@@ -29,6 +29,8 @@ pub struct Parser<'a> {
     /// The units being read, outermost first (for the fix of a `super::`
     /// path, backlog 2D-29).
     units: Vec<String>,
+    /// Array lengths and repeat counts written as a name (`Mod::lens`).
+    lens: Vec<(Span, Vec<Ident>)>,
 }
 
 /// An `impl` block: inherent or of a trait.
@@ -43,15 +45,7 @@ enum ImplItem {
 pub const MAX_NESTING: usize = 256;
 
 /// Rust constructs recognised only to be rejected with a precise message.
-const UNSUPPORTED_ITEMS: &[&str] = &[
-    "const",
-    "static",
-    "type",
-    "extern",
-    "unsafe",
-    "macro_rules",
-    "union",
-];
+const UNSUPPORTED_ITEMS: &[&str] = &["static", "type", "extern", "unsafe", "macro_rules", "union"];
 
 const RESERVED: &[&str] = &[
     "fn",
@@ -127,6 +121,7 @@ impl<'a> Parser<'a> {
             decl_ok: false,
             generics_span: None,
             units: Vec::new(),
+            lens: Vec::new(),
         }
     }
 
@@ -616,11 +611,17 @@ impl<'a> Parser<'a> {
         let mut traits = Vec::new();
         let mut trait_impls = Vec::new();
         let mut uses = Vec::new();
+        let mut consts = Vec::new();
         while !self.is_p("}") && !matches!(self.peek(), Tok::Eof) {
             let start = self.pos;
             let attrs = self.attrs();
             self.no_pub();
-            if self.is_kw("mod") {
+            if self.is_kw("const") {
+                match self.parse_const() {
+                    Ok(c) => consts.push(c),
+                    Err(_) => self.recover_item(),
+                }
+            } else if self.is_kw("mod") {
                 if let Ok(m) = self.parse_mod(attrs) {
                     mods.push(m);
                 } else {
@@ -660,11 +661,23 @@ impl<'a> Parser<'a> {
                 let sp = self.span();
                 if s == "unsafe" {
                     self.diags.push(unsafe_habit(sp));
+                } else if s == "static" {
+                    // ADR-0052 §7: an immutable `static` is a `const`; a
+                    // `static mut` is global state, which BMB passes as an
+                    // argument (DESIGN §4.1 "효과").
+                    let mutable = matches!(self.peek_at(1), Tok::Ident(m) if m == "mut");
+                    let d = Diag::new("E0261", sp, "`static` items are not used");
+                    self.diags.push(if mutable {
+                        d.fix(
+                            "global mutable state is passed as an argument (DESIGN §4.1 \"효과\")",
+                            None,
+                        )
+                    } else {
+                        d.fix("write `const`", Some("const".into()))
+                    });
                 } else {
-                    let fix = match s.as_str() {
-                        "const" | "static" => "use a `spec fn` returning the value, or a literal",
-                        _ => "units hold `fn`, `spec fn`, `struct`, `enum`, `trait` and `impl`",
-                    };
+                    let fix =
+                        "units hold `fn`, `spec fn`, `const`, `struct`, `enum`, `trait` and `impl`";
                     self.diags.push(
                         Diag::new(
                             "E0207",
@@ -696,8 +709,46 @@ impl<'a> Parser<'a> {
             traits,
             trait_impls,
             uses,
+            consts,
+            // A nested unit took its own; the rest are this one's.
+            lens: std::mem::take(&mut self.lens),
             span: lo.to(hi),
         })
+    }
+
+    /// `const NAME: T = e;` (ADR-0052 §1): the type is written.
+    fn parse_const(&mut self) -> PResult<ConstDef> {
+        let lo = self.bump().span; // `const`
+        let name = self.ident("constant name")?;
+        self.expect_p(":")?;
+        let ty = self.parse_type();
+        self.expect_p("=")?;
+        let value = self.parse_expr()?;
+        let hi = self.expect_p(";")?;
+        Ok(ConstDef {
+            name,
+            ty,
+            value,
+            span: lo.to(hi),
+        })
+    }
+
+    /// An array length or repeat count written as a `const`'s name (`N`,
+    /// `unit::N`), recorded at `at` (`Mod::lens`).
+    fn length_name(&mut self, at: Span) -> Option<()> {
+        let mut path = Vec::new();
+        while let Tok::Ident(s) = self.peek().clone() {
+            let sp = self.bump().span;
+            path.push(Ident { name: s, span: sp });
+            if !self.eat_p("::") {
+                break;
+            }
+        }
+        if path.is_empty() {
+            return None;
+        }
+        self.lens.push((at, path));
+        Some(())
     }
 
     /// `<T, U: Copy + geo::Shape>` (ADR-0046 §1), or nothing. Const
@@ -1638,6 +1689,24 @@ impl<'a> Parser<'a> {
                             } else {
                                 v as u64
                             }
+                        }
+                        // A `const`'s name (ADR-0052 §4), recorded at the
+                        // type's span below.
+                        Tok::Ident(_) => {
+                            let mut path = Vec::new();
+                            while let Tok::Ident(s) = self.peek().clone() {
+                                self.bump();
+                                path.push(s);
+                                if !self.eat_p("::") {
+                                    break;
+                                }
+                            }
+                            let hi = self.span();
+                            let _ = self.expect_p("]");
+                            return Type {
+                                kind: TypeKind::ArrayN(Box::new(elem), path),
+                                span: lo.to(hi),
+                            };
                         }
                         _ => {
                             self.err_expected("array length");
@@ -3033,6 +3102,16 @@ impl<'a> Parser<'a> {
                 if self.eat_p(";") {
                     let (count, count_span) = match self.peek().clone() {
                         Tok::Int(v, _) => (v, self.bump().span),
+                        // A `const`'s name (ADR-0052 §4).
+                        Tok::Ident(_) => {
+                            let at = self.span();
+                            self.length_name(at);
+                            let sp = at.to(self.prev_span());
+                            if let Some(last) = self.lens.last_mut() {
+                                last.0 = sp;
+                            }
+                            (0, sp)
+                        }
                         _ => {
                             self.err_expected("array length literal");
                             return Err(());

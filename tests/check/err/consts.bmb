@@ -1,0 +1,26 @@
+#[summary("const 항목의 검사 오류(ADR-0052, backlog 2V-19): 평가 실패 E0260, 순환 E0318, 상수 식이 아닌 것 E0259, 쓸 수 없는 타입 E0437, static E0261, const 이름의 지역 E0303, 모르는 길이 E0301")]
+mod ke {
+    const OVER: u8 = 200 + 100;
+    const ZERO: u32 = 7 / (3 - 3);
+    const SHIFT: u16 = 1 << 16;
+    const LOOP_A: u64 = LOOP_B + 1;
+    const LOOP_B: u64 = LOOP_A + 1;
+    const CALL: u64 = f(1);
+    const ARR: [u8; 2] = [1, 2];
+    const WRONG: u64 = true;
+    const NARROW: u8 = 300 as u8;
+    static S: u64 = 1;
+    static mut M: u64 = 1;
+
+    #[effects(pure)]
+    fn f(x: u64) -> u64 { x }
+
+    #[effects(pure)]
+    fn g() -> u64 {
+        let OVER: u64 = 1;
+        OVER
+    }
+
+    #[effects(pure)]
+    fn h() -> [u8; UNKNOWN] { [0; 2] }
+}

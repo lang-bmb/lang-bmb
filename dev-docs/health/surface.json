@@ -60,6 +60,9 @@
   "E0256",
   "E0257",
   "E0258",
+  "E0259",
+  "E0260",
+  "E0261",
   "E0301",
   "E0302",
   "E0303",
@@ -77,6 +80,7 @@
   "E0315",
   "E0316",
   "E0317",
+  "E0318",
   "E0401",
   "E0402",
   "E0403",
@@ -108,6 +112,7 @@
   "E0434",
   "E0435",
   "E0436",
+  "E0437",
   "E0501",
   "E0502",
   "E0503",
@@ -216,6 +221,10 @@
    "out": "49be10e840379829",
    "src": "c6da540d558c2c15"
   },
+  "tests/check/err/consts.bmb": {
+   "out": "1c765b1ef23a57cc",
+   "src": "28d9f6276be6e72a"
+  },
   "tests/check/err/conversions.bmb": {
    "out": "f627fa72a5c2610e",
    "src": "8515b5c33fb0586c"
@@ -229,7 +238,7 @@
    "src": "f4e7d5be91de33be"
   },
   "tests/check/err/data_types.bmb": {
-   "out": "1350d2607821f22e",
+   "out": "e8055bab7b756052",
    "src": "ca10efa9d9c6162a"
   },
   "tests/check/err/data_values.bmb": {
@@ -269,7 +278,7 @@
    "src": "795fceaf46528a55"
   },
   "tests/check/err/impl_blocks.bmb": {
-   "out": "72f161519398e90a",
+   "out": "aaa6608263f71625",
    "src": "bd6c9d6e05e3f1f4"
   },
   "tests/check/err/invariants.bmb": {
@@ -393,8 +402,8 @@
    "src": "6f24123227c3ccde"
   },
   "tests/check/err/unsupported.bmb": {
-   "out": "4f24d2adeefcd609",
-   "src": "f67414242141e677"
+   "out": "88b25ede8925d80a",
+   "src": "6c506b9e596c6056"
   },
   "tests/check/err/vec.bmb": {
    "out": "a9ebcf9d4d074eeb",
@@ -472,6 +481,10 @@
    "out": "d39f1d077a351c9f",
    "src": "afe74c615c1fced8"
   },
+  "tests/run/consts.bmb": {
+   "out": "34ea25c249fb2c6c",
+   "src": "d5629bab560481bd"
+  },
   "tests/run/conversions.bmb": {
    "out": "1bbc670498e4558d",
    "src": "39f3a6453b194ed1"
@@ -519,6 +532,10 @@
   "tests/run/grid.bmb": {
    "out": "7e72c23f0f482915",
    "src": "db1718c1cead4169"
+  },
+  "tests/run/impl_blocks.bmb": {
+   "out": "ffd9f72c843a3873",
+   "src": "3901107a9addc5d0"
   },
   "tests/run/int_consts.bmb": {
    "out": "c5f86a5644381b43",
@@ -637,8 +654,8 @@
    "src": "2f59d0316984bf3f"
   },
   "tests/run/std_moved_values.bmb": {
-   "out": "65812d0e8741458c",
-   "src": "c49c55a17e7d8f6c"
+   "out": "e49e9ca126c65d62",
+   "src": "4c9843f1671480ad"
   },
   "tests/run/std_num.bmb": {
    "out": "a8a5034c8ac4cf33",

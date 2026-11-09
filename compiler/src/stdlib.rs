@@ -166,6 +166,8 @@ pub fn add(sm: &mut SourceMap, program: &mut Program, diags: &mut Diags) {
         traits: Vec::new(),
         trait_impls: Vec::new(),
         uses: Vec::new(),
+        consts: Vec::new(),
+        lens: Vec::new(),
         span,
     });
 }

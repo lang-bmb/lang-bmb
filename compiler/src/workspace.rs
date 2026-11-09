@@ -141,6 +141,8 @@ fn new_mod(name: &str, summary: &str) -> Mod {
         traits: Vec::new(),
         trait_impls: Vec::new(),
         uses: Vec::new(),
+        consts: Vec::new(),
+        lens: Vec::new(),
         name: Ident {
             name: name.to_string(),
             span: sp,

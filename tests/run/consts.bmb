@@ -1,0 +1,52 @@
+#[summary("const 항목(ADR-0052, backlog 2V-19): 검사기가 평가한 값, 배열 길이와 반복 개수, 명세와 실행 코드 양쪽, 다른 단위의 전체 경로")]
+mod konst {
+    const A: char = 'a';
+    const BIG: u64 = u64::MAX / 2 + 1;
+    const DOUBLE: usize = SIZE * 2;
+    const MASK: u32 = (1 << 8) - 1;
+    const NEG: i16 = -300;
+    const ON: bool = SIZE > 3 && MASK == 255;
+    const SIZE: usize = 4;
+
+    #[effects(io)]
+    fn main() -> () {
+        let z: [u8; SIZE] = zeros();
+        print_u64(z.len() as u64);
+        print_u64(masked(1000) as u64);
+        print_i64(NEG as i64);
+        print_u64(BIG);
+        if ON {
+            print_u64(DOUBLE as u64);
+        }
+        if A == 'a' {
+            print_str("a\n");
+        }
+        other::show();
+    }
+
+    #[effects(pure)]
+    fn masked(x: u32) -> (r: u32)
+        ensures r <= MASK,
+    {
+        x & MASK
+    }
+
+    #[effects(pure)]
+    fn zeros() -> (r: [u8; SIZE])
+        ensures r[SIZE - 1] == 0,
+    {
+        [0; SIZE]
+    }
+}
+
+#[summary("다른 단위의 const를 전체 경로로")]
+mod other {
+    const LIMIT: u64 = konst::BIG - 1;
+
+    #[effects(io)]
+    fn show() -> () {
+        print_u64(LIMIT);
+        let b: [u8; konst::SIZE] = [7; konst::SIZE];
+        print_u64(b[konst::SIZE - 1] as u64);
+    }
+}

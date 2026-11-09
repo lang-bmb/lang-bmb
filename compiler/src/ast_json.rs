@@ -17,7 +17,7 @@
 //! type, destructuring `let`, `..base`, wildcard arms) have no JSON: they never
 //! occur in a workspace that checks.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::ast::*;
 use crate::json::Value;
@@ -79,6 +79,7 @@ pub fn export(p: &Program) -> R {
     Ex {
         at: Vec::new(),
         rec: None,
+        lens: BTreeMap::new(),
     }
     .program(p)
 }
@@ -89,6 +90,7 @@ pub fn export_spans(p: &Program, spans: &mut Spans) -> R {
     Ex {
         at: Vec::new(),
         rec: Some(spans),
+        lens: BTreeMap::new(),
     }
     .program(p)
 }
@@ -96,6 +98,8 @@ pub fn export_spans(p: &Program, spans: &mut Spans) -> R {
 struct Ex<'a> {
     at: Vec<String>,
     rec: Option<&'a mut Spans>,
+    /// Repeat counts written as a `const`'s name (`Mod::lens`).
+    lens: BTreeMap<(u32, u32, u32), String>,
 }
 
 impl Ex<'_> {
@@ -195,6 +199,25 @@ impl Ex<'_> {
         if let Some(sm) = summary {
             kv.push(("summary", Value::Str(sm)));
         }
+        for (sp, path) in &m.lens {
+            let n: Vec<&str> = path.iter().map(|i| i.name.as_str()).collect();
+            self.lens.insert((sp.file, sp.lo, sp.hi), n.join("::"));
+        }
+        if !m.consts.is_empty() {
+            let v = self.keyed(
+                "consts",
+                &m.consts,
+                |c| c.name.name.clone(),
+                |e, c| {
+                    e.mark(c.span);
+                    Ok(obj(vec![
+                        ("ty", e.under("ty", |e| e.ty(&c.ty))?),
+                        ("value", e.under("value", |e| e.expr(&c.value))?),
+                    ]))
+                },
+            )?;
+            kv.push(("consts", v));
+        }
         if !m.mods.is_empty() {
             kv.push(("units", self.under("units", |e| e.keyed_root(&m.mods))?));
         }
@@ -207,7 +230,22 @@ impl Ex<'_> {
             kv.push(("types", v));
         }
         if !m.impls.is_empty() {
-            let v = self.keyed("impls", &m.impls, |i| i.ty.name.clone(), Ex::impl_block)?;
+            // A type's second and later blocks (ADR-0097) are `T#1`, `T#2`,
+            // in the order written.
+            let key = |i: &Impl| {
+                let k = m
+                    .impls
+                    .iter()
+                    .take_while(|j| !std::ptr::eq(*j, i))
+                    .filter(|j| j.ty.name == i.ty.name)
+                    .count();
+                if k == 0 {
+                    i.ty.name.clone()
+                } else {
+                    format!("{}#{k}", i.ty.name)
+                }
+            };
+            let v = self.keyed("impls", &m.impls, key, Ex::impl_block)?;
             kv.push(("impls", v));
         }
         if !m.trait_impls.is_empty() {
@@ -464,6 +502,11 @@ impl Ex<'_> {
                 ("kind", s("array")),
                 ("elem", self.under("elem", |x| x.ty(e))?),
                 ("len", Value::Num(n.to_string())),
+            ]),
+            TypeKind::ArrayN(e, n) => obj(vec![
+                ("kind", s("array")),
+                ("elem", self.under("elem", |x| x.ty(e))?),
+                ("len_const", s(&n.join("::"))),
             ]),
             TypeKind::Slice(e) => obj(vec![
                 ("kind", s("slice")),
@@ -769,10 +812,20 @@ impl Ex<'_> {
                 k("array");
                 self.exprs("elems", items, &mut kv)?;
             }
-            ExprKind::Repeat { value, count, .. } => {
+            ExprKind::Repeat {
+                value,
+                count,
+                count_span,
+            } => {
                 k("repeat");
                 kv.push(("value", self.under("value", |e| e.expr(value))?));
-                kv.push(("count", Value::Num(count.to_string())));
+                match self
+                    .lens
+                    .get(&(count_span.file, count_span.lo, count_span.hi))
+                {
+                    Some(n) => kv.push(("count_const", Value::Str(n.clone()))),
+                    None => kv.push(("count", Value::Num(count.to_string()))),
+                }
             }
             ExprKind::Old(e) => {
                 k("old");
@@ -890,7 +943,10 @@ impl Ex<'_> {
 /// prints the program in normal form and parses it back (ADR-0073), so
 /// positions and diagnostics come from that text.
 pub fn import(doc: &Value) -> Result<Program, String> {
-    let mut im = Im { at: Vec::new() };
+    let mut im = Im {
+        at: Vec::new(),
+        lens: Vec::new(),
+    };
     Ok(Program {
         mods: im.units(doc)?,
     })
@@ -898,6 +954,9 @@ pub fn import(doc: &Value) -> Result<Program, String> {
 
 struct Im {
     at: Vec<String>,
+    /// Repeat counts given as a `const`'s name, each at a span of its own
+    /// (`Mod::lens`).
+    lens: Vec<(Span, Vec<Ident>)>,
 }
 
 /// An object's fields, checked against the names a node may have.
@@ -1053,7 +1112,12 @@ impl Im {
                     if !seen.insert(n.as_str()) {
                         return self.under(k, |m| m.fail(&format!("`{n}` given twice")));
                     }
-                    if !is_name(n) {
+                    // An `impl` block after a type's first is `T#k` (ADR-0097).
+                    let base = match n.split_once('#') {
+                        Some((t, i)) if k == "impls" && i.parse::<u32>().is_ok_and(|i| i > 0) => t,
+                        _ => n.as_str(),
+                    };
+                    if !is_name(base) {
                         return self.under(k, |m| m.fail(&format!("`{n}` is not a name")));
                     }
                 }
@@ -1134,6 +1198,7 @@ impl Im {
             "a unit",
             &[
                 "summary",
+                "consts",
                 "units",
                 "traits",
                 "types",
@@ -1142,6 +1207,20 @@ impl Im {
                 "fns",
             ],
         )?;
+        let mut consts = Vec::new();
+        for (n, c) in self.keyed(&o, "consts")? {
+            consts.push(self.under("consts", |m| {
+                m.under(n, |m| {
+                    let o = m.obj(c, "a constant", &["ty", "value"])?;
+                    Ok(ConstDef {
+                        name: id(n),
+                        ty: m.field(&o, "ty", Im::ty)?,
+                        value: *m.sub(&o, "value")?,
+                        span: sp(),
+                    })
+                })
+            })?);
+        }
         let mut attrs = Vec::new();
         if o.get("summary").is_some() {
             let summary = self.string(&o, "summary")?;
@@ -1165,7 +1244,9 @@ impl Im {
         }
         let mut impls = Vec::new();
         for (n, i) in self.keyed(&o, "impls")? {
-            impls.push(self.under("impls", |m| m.under(n, |m| m.impl_block(n, i)))?);
+            // `T#k`: another block of `T` (ADR-0097).
+            let ty = n.split_once('#').map_or(n.as_str(), |(t, _)| t);
+            impls.push(self.under("impls", |m| m.under(n, |m| m.impl_block(ty, i)))?);
         }
         let trait_impls = self.list(&o, "trait_impls", Im::trait_impl)?;
         let fns = self
@@ -1183,6 +1264,9 @@ impl Im {
             traits,
             trait_impls,
             uses: Vec::new(),
+            consts,
+            // A nested unit took its own.
+            lens: std::mem::take(&mut self.lens),
             span: sp(),
         })
     }
@@ -1479,6 +1563,12 @@ impl Im {
                         "str" => TypeKind::Str,
                         _ => TypeKind::Unit,
                     }
+                }
+                "array" if v.get("len_const").is_some() => {
+                    let o = self.obj(v, "an array type", &["kind", "elem", "len_const"])?;
+                    let elem = self.field(&o, "elem", Im::ty)?;
+                    let n = self.string(&o, "len_const")?;
+                    TypeKind::ArrayN(Box::new(elem), n.split("::").map(String::from).collect())
                 }
                 "array" => {
                     let o = self.obj(v, "an array type", &["kind", "elem", "len"])?;
@@ -1854,6 +1944,22 @@ impl Im {
             "array" => {
                 let o = fields(self, "an array", &["elems"])?;
                 ExprKind::Array(self.exprs(&o, "elems")?)
+            }
+            "repeat" if v.get("count_const").is_some() => {
+                let o = fields(self, "an array repeat", &["value", "count_const"])?;
+                let n = self.string(&o, "count_const")?;
+                // A span of its own, which `Mod::lens` names.
+                let at = Span {
+                    file: u32::MAX,
+                    lo: self.lens.len() as u32,
+                    hi: self.lens.len() as u32,
+                };
+                self.lens.push((at, n.split("::").map(id).collect()));
+                ExprKind::Repeat {
+                    value: self.sub(&o, "value")?,
+                    count: 0,
+                    count_span: at,
+                }
             }
             "repeat" => {
                 let o = fields(self, "an array repeat", &["value", "count"])?;

@@ -279,15 +279,27 @@ pub fn method_call(
 /// the returned program, which has no such method call left; the
 /// diagnostics are those of the last run.
 pub fn check_resolved(mut p: Program, diags: &mut Diags) -> (Program, crate::verify::Tables) {
+    // `const`s first (ADR-0052): array lengths and repeat counts written as
+    // a name take their values before any type is read.
+    let consts = crate::consts::resolve(&mut p, diags);
     let base = diags.clone();
     loop {
         let mut d = base.clone();
         let mut c = Checker::new(&mut d);
+        c.consts = consts.clone();
         c.check_program(&p);
         let methods = std::mem::take(&mut c.methods);
+        let uses = std::mem::take(&mut c.const_uses);
         let mut tables = c.into_tables();
         if methods.is_empty() {
             *diags = d;
+            // Each reference to a `const` is its value, a literal of its
+            // type (the type at that span is the `const`'s).
+            crate::ast::exprs_mut(&mut p, &mut |e| {
+                if let Some(v) = uses.get(&(e.span.file, e.span.lo, e.span.hi)) {
+                    e.kind = crate::consts::literal(*v, e.span);
+                }
+            });
             tables.context = crate::verify::default_contexts(&p, &tables);
             return (p, tables);
         }
@@ -899,6 +911,11 @@ pub struct Checker<'a> {
     /// (`0`, `Vec::new()`): their E0201 fix waits for the first use
     /// (`settle_lets`). The name and whether it is `Vec::new()`.
     open_lets: Vec<(Ident, bool)>,
+    /// The program's `const`s, evaluated (ADR-0052, `consts::resolve`).
+    pub(crate) consts: BTreeMap<String, crate::consts::Const>,
+    /// Each reference to a `const` and its value, by span: the resolved
+    /// program holds the value there (`check_resolved`).
+    const_uses: BTreeMap<(u32, u32, u32), crate::consts::CVal>,
     /// In a specification (or ghost code): an integer type widens to one
     /// whose range holds it (ADR-0099), in `expect_ty` and at branch joins.
     spec_widen: bool,
@@ -1046,6 +1063,7 @@ pub fn ty_str(t: &TypeKind) -> String {
         TypeKind::String => "String".into(),
         TypeKind::Str => "str".into(),
         TypeKind::Array(e, n) => format!("[{}; {n}]", ty_str(&e.kind)),
+        TypeKind::ArrayN(e, n) => format!("[{}; {}]", ty_str(&e.kind), n.join("::")),
         TypeKind::Slice(e) => format!("[{}]", ty_str(&e.kind)),
         TypeKind::Ref { mutable, inner } => format!(
             "&{}{}",
@@ -1825,6 +1843,8 @@ impl<'a> Checker<'a> {
             calls: BTreeMap::new(),
             types: BTreeMap::new(),
             open_lets: Vec::new(),
+            consts: BTreeMap::new(),
+            const_uses: BTreeMap::new(),
             spec_widen: false,
             typed_uses: Vec::new(),
             spec_at: BTreeSet::new(),
@@ -3689,12 +3709,18 @@ impl<'a> Checker<'a> {
                 .collect();
             bounds.sort();
             if !with_impl.insert((ty.clone(), bounds)) {
-                self.err(
-                    "E0308",
-                    i.ty.span,
-                    format!(
-                        "`{}` already has an `impl` block with these bounds; one per list of bounds",
-                        i.ty.name
+                self.diags.push(
+                    Diag::new(
+                        "E0308",
+                        i.ty.span,
+                        format!(
+                            "`{}` already has an `impl` block with these bounds; one per list of bounds",
+                            i.ty.name
+                        ),
+                    )
+                    .fix(
+                        "move these functions into the first block with the same bounds (ADR-0097)",
+                        None,
                     ),
                 );
                 continue;
@@ -3753,12 +3779,18 @@ impl<'a> Checker<'a> {
             }
             for f in &i.fns {
                 if dup.contains(&f.name.span) {
-                    self.err(
-                        "E0302",
-                        f.name.span,
-                        format!(
-                            "`{}` is defined more than once in the `impl` blocks of `{}`",
-                            f.name.name, i.ty.name
+                    self.diags.push(
+                        Diag::new(
+                            "E0302",
+                            f.name.span,
+                            format!(
+                                "`{}` is defined more than once in the `impl` blocks of `{}`",
+                                f.name.name, i.ty.name
+                            ),
+                        )
+                        .fix(
+                            "a name is one function of the type, whichever block holds it: rename one or remove it",
+                            None,
                         ),
                     );
                     continue;
@@ -4856,7 +4888,10 @@ impl<'a> Checker<'a> {
         // A name may not hide a visible one (a parameter, an outer local,
         // the result); disjoint scopes may reuse a name with its type
         // (ADR-0095 A3): the locals' table has one type per name.
-        let hides = Self::lookup(cx, &name.name).is_some() || cx.reserved.contains(&name.name);
+        let hides = Self::lookup(cx, &name.name).is_some()
+            || cx.reserved.contains(&name.name)
+            || crate::consts::lookup(&self.consts, std::slice::from_ref(&name.name), &cx.mod_path)
+                .is_some();
         let other = if cx.all_names.contains(&name.name) {
             self.locals
                 .get(&cx.path)
@@ -4910,6 +4945,21 @@ impl<'a> Checker<'a> {
 
     /// E0301 for a local that is not in scope, with the one visible local
     /// closest to it (edit distance at most 2) as the fix (backlog 2D-18).
+    /// A reference to a `const` (ADR-0052): its type, the value kept for
+    /// the resolved program. A `const` that did not evaluate is an error
+    /// already: its references are too.
+    fn const_ref(&mut self, path: &[String], unit: &str, span: Span) -> Option<TypeKind> {
+        let full = crate::consts::lookup(&self.consts, path, unit)?;
+        let c = &self.consts[&full];
+        match c.value {
+            Some(v) => {
+                self.const_uses.insert((span.file, span.lo, span.hi), v);
+                Some(c.ty.clone())
+            }
+            None => Some(TypeKind::Error),
+        }
+    }
+
     fn unknown_local(&mut self, cx: &FnCtx, name: &str, span: Span) {
         let mut d = Diag::new("E0301", span, format!("unknown name `{name}`"));
         if cx.for_vars.contains(name) {
@@ -4947,6 +4997,10 @@ impl<'a> Checker<'a> {
 
     fn expect_ty(&mut self, found: &TypeKind, want: &TypeKind, span: Span) {
         if self.spec_widen && widens(found, want) {
+            return;
+        }
+        // A type that holds an error was reported where the error is.
+        if ty_has_error(found) || ty_has_error(want) {
             return;
         }
         if found != want
@@ -7279,6 +7333,15 @@ impl<'a> Checker<'a> {
                 let v = &path[1].name;
                 self.builtin_variant(cx, v, &[], expected, e.span, mode)
             }
+            ExprKind::Path(path)
+                if let Some(t) = self.const_ref(
+                    &path.iter().map(|i| i.name.clone()).collect::<Vec<_>>(),
+                    &cx.mod_path,
+                    e.span,
+                ) =>
+            {
+                t
+            }
             ExprKind::Path(path) => self.variant_value(cx, path, &[], expected, e.span, mode),
             ExprKind::Field { base, name } => {
                 self.deref_field(e, base, name);
@@ -7382,6 +7445,11 @@ impl<'a> Checker<'a> {
             }
             ExprKind::Var(id) => match Self::lookup(cx, &id.name) {
                 Some(l) => l.ty,
+                None if let Some(t) =
+                    self.const_ref(std::slice::from_ref(&id.name), &cx.mod_path, e.span) =>
+                {
+                    t
+                }
                 None => {
                     if id.name == "result" {
                         self.diags.push(
@@ -11429,6 +11497,21 @@ fn int_type(name: &str) -> Option<TypeKind> {
 /// Whether converting a `source` value to `target` has a range obligation
 /// (ADR-0028 §1, ADR-0044 §1): every pair but `u64` <-> `usize`, a type to
 /// itself, and a `u8` to any other type (every type holds 0..=255).
+/// Whether `t` is or holds `TypeKind::Error`.
+fn ty_has_error(t: &TypeKind) -> bool {
+    match t {
+        TypeKind::Error => true,
+        TypeKind::Array(e, _)
+        | TypeKind::ArrayN(e, _)
+        | TypeKind::Slice(e)
+        | TypeKind::Vec(e)
+        | TypeKind::Box(e) => ty_has_error(&e.kind),
+        TypeKind::Ref { inner, .. } => ty_has_error(&inner.kind),
+        TypeKind::Named { args, .. } => args.iter().any(|a| ty_has_error(&a.kind)),
+        _ => false,
+    }
+}
+
 /// Whether integer type `from` widens to another integer type `to`: every
 /// value of `from` is one of `to` (ADR-0099).
 fn widens(from: &TypeKind, to: &TypeKind) -> bool {

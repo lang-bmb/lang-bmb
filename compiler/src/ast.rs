@@ -47,6 +47,21 @@ pub struct Mod {
     /// each name they import to its full path and deletes them (E0214,
     /// backlog 2V-15).
     pub uses: Vec<UseItem>,
+    /// `const NAME: T = e;` items (ADR-0052).
+    pub consts: Vec<ConstDef>,
+    /// The repeat counts written as a `const`'s name (`[0; N]`, ADR-0052
+    /// §4), by the span of the count: the checker reads the value, the
+    /// formatter the name. The count holds 0 until then.
+    pub lens: Vec<(Span, Vec<Ident>)>,
+    pub span: Span,
+}
+
+/// `const NAME: T = e;` (ADR-0052): a value the checker evaluates.
+#[derive(Debug, Clone)]
+pub struct ConstDef {
+    pub name: Ident,
+    pub ty: Type,
+    pub value: Expr,
     pub span: Span,
 }
 
@@ -285,6 +300,9 @@ pub enum TypeKind {
     /// `str`, only behind a reference: `&str` (ADR-0050 §1).
     Str,
     Array(Box<Type>, u64),
+    /// `[T; N]` with a `const`'s name as its length (ADR-0052 §4), as
+    /// written: the checker reads it as the `Array` of the evaluated length.
+    ArrayN(Box<Type>, Vec<String>),
     Slice(Box<Type>),
     Ref {
         mutable: bool,
@@ -935,4 +953,73 @@ fn expr_mut(e: &mut Expr, f: &mut dyn FnMut(&mut Expr)) {
         }
     }
     f(e);
+}
+
+/// Visits every type written in `p` (parameters, results, `let`s, fields,
+/// payloads, `impl` heads, type arguments, quantifier binders, `const`s),
+/// outermost first; `f` sees a nested type only through the outer one.
+pub fn types_mut(p: &mut Program, f: &mut dyn FnMut(&mut Type)) {
+    fn stmts(b: &mut Block, f: &mut dyn FnMut(&mut Type)) {
+        for s in &mut b.stmts {
+            match s {
+                Stmt::Let { ty, .. } => f(ty),
+                Stmt::While { body, .. } | Stmt::For { body, .. } | Stmt::Proof { body, .. } => {
+                    stmts(body, f)
+                }
+                _ => {}
+            }
+        }
+    }
+    fn def(d: &mut FnDef, f: &mut dyn FnMut(&mut Type)) {
+        for p in &mut d.params {
+            f(&mut p.ty);
+        }
+        f(&mut d.ret.ty);
+        stmts(&mut d.body, f);
+        fn_exprs_mut(d, &mut |e| match &mut e.kind {
+            ExprKind::Block(b) | ExprKind::Loop { body: b, .. } => stmts(b, f),
+            ExprKind::If { then, .. } => stmts(then, f),
+            ExprKind::Call { targs, .. } => {
+                for t in targs {
+                    t.args.iter_mut().for_each(&mut *f);
+                }
+            }
+            ExprKind::Quant { binders, .. } => {
+                for b in binders {
+                    f(&mut b.ty);
+                }
+            }
+            _ => {}
+        });
+    }
+    fn module(m: &mut Mod, f: &mut dyn FnMut(&mut Type)) {
+        for c in &mut m.consts {
+            f(&mut c.ty);
+        }
+        for t in &mut m.types {
+            match &mut t.kind {
+                TypeDefKind::Struct(fs) => fs.iter_mut().for_each(|x| f(&mut x.ty)),
+                TypeDefKind::Enum(vs) => {
+                    for v in vs {
+                        v.payload.iter_mut().for_each(&mut *f);
+                    }
+                }
+            }
+        }
+        for i in &mut m.impls {
+            i.ty_args.iter_mut().for_each(&mut *f);
+        }
+        for i in &mut m.trait_impls {
+            f(&mut i.self_ty);
+        }
+        for d in fns_mut(m) {
+            def(d, f);
+        }
+        for s in &mut m.mods {
+            module(s, f);
+        }
+    }
+    for m in &mut p.mods {
+        module(m, f);
+    }
 }

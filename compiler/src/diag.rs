@@ -111,6 +111,18 @@ pub const CODES: &[(&str, &str)] = &[
         "a `proof fn` is called only from ghost code: a `proof { .. }` block or another `proof fn`",
     ),
     (
+        "E0259",
+        "a `const`'s value is not a constant expression: literals, other `const`s, operators, `if`, the wrapping and saturating methods and `as` (ADR-0052 §3)",
+    ),
+    (
+        "E0260",
+        "a `const`'s evaluation failed: overflow, division by zero, a shift of the width or more, a conversion out of range (ADR-0052 §4)",
+    ),
+    (
+        "E0261",
+        "a `static` item: an immutable one is a `const`, global mutable state is passed as an argument (ADR-0052 §7)",
+    ),
+    (
         "E0237",
         "a call of a generic function names its type arguments: `f::<T>(..)`",
     ),
@@ -196,6 +208,7 @@ pub const CODES: &[(&str, &str)] = &[
         "E0317",
         "a `break` or `continue` names a label no loop around it has",
     ),
+    ("E0318", "`const`s that refer to each other (ADR-0052 §3)"),
     // E04xx: types and ownership
     ("E0401", "type mismatch"),
     ("E0402", "unsupported type"),
@@ -284,6 +297,10 @@ pub const CODES: &[(&str, &str)] = &[
     (
         "E0436",
         "a `std::process::Child` built or read by its fields (it comes from `std::process::spawn`)",
+    ),
+    (
+        "E0437",
+        "a type a `const` cannot have: a `const` holds an integer, `bool` or `char` (arrays and data types: backlog 2V-19b)",
     ),
     // E05xx: specifications
     (

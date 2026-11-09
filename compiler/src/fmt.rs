@@ -18,6 +18,9 @@ pub(crate) struct Printer<'a> {
     /// The identity printer (ADR-0059 §1).
     id: Option<IdMode<'a>>,
     pub(crate) out: String,
+    /// The repeat counts written as a `const`'s name, by the count's span
+    /// (`Mod::lens`, ADR-0052 §4).
+    lens: BTreeMap<(u32, u32, u32), String>,
 }
 
 /// How the identity printer writes a reference to another definition
@@ -78,6 +81,7 @@ impl IdMode<'_> {
                 }
             }
             TypeKind::Array(e, n) => format!("[{}; {n}]", self.ty(&e.kind)),
+            TypeKind::ArrayN(e, n) => format!("[{}; {}]", self.ty(&e.kind), n.join("::")),
             TypeKind::Slice(e) => format!("[{}]", self.ty(&e.kind)),
             TypeKind::Ref { mutable, inner } => format!(
                 "&{}{}",
@@ -384,6 +388,7 @@ impl<'a> Printer<'a> {
                 next_label: 0,
             }),
             out: String::new(),
+            lens: BTreeMap::new(),
         }
     }
 
@@ -544,6 +549,10 @@ impl<'a> Printer<'a> {
             self.line(depth, &format!("#[summary(\"{}\")]", escape(&s)));
         }
         self.line(depth, &format!("mod {} {{", m.name.name));
+        for (sp, path) in &m.lens {
+            let n: Vec<&str> = path.iter().map(|i| i.name.as_str()).collect();
+            self.lens.insert((sp.file, sp.lo, sp.hi), n.join("::"));
+        }
         let mut subs: Vec<&Mod> = m.mods.iter().collect();
         subs.sort_by(|a, b| a.name.name.cmp(&b.name.name));
         let mut fns: Vec<&FnDef> = m.fns.iter().collect();
@@ -566,6 +575,17 @@ impl<'a> Printer<'a> {
         let mut timpls: Vec<&TraitImpl> = m.trait_impls.iter().collect();
         timpls.sort_by_key(|i| (path_str(&i.trait_path), type_str(&i.self_ty)));
         let mut first = true;
+        // Constants by name, first (ADR-0052 §1).
+        let mut consts: Vec<&ConstDef> = m.consts.iter().collect();
+        consts.sort_by(|a, b| a.name.name.cmp(&b.name.name));
+        if !consts.is_empty() {
+            for c in consts {
+                let ty = self.ty(&c.ty);
+                let v = self.expr(&c.value, 0);
+                self.line(depth + 1, &format!("const {}: {ty} = {v};", c.name.name));
+            }
+            first = false;
+        }
         for s in subs {
             if !first {
                 self.out.push('\n');
@@ -1290,7 +1310,19 @@ impl<'a> Printer<'a> {
                 let a: Vec<String> = items.iter().map(|x| self.expr(x, 0)).collect();
                 format!("[{}]", a.join(", "))
             }
-            ExprKind::Repeat { value, count, .. } => format!("[{}; {count}]", self.expr(value, 0)),
+            ExprKind::Repeat {
+                value,
+                count,
+                count_span,
+            } => {
+                let k = (count_span.file, count_span.lo, count_span.hi);
+                let n = self
+                    .lens
+                    .get(&k)
+                    .cloned()
+                    .unwrap_or_else(|| count.to_string());
+                format!("[{}; {n}]", self.expr(value, 0))
+            }
             ExprKind::Old(x) => format!("old({})", self.expr(x, 0)),
             ExprKind::Quant { q, binders, body } => {
                 let bs: Vec<String> = binders
@@ -1394,6 +1426,7 @@ pub fn qualified_text(
         qualify: Some((fns, unit.to_string())),
         id: None,
         out: String::new(),
+        lens: BTreeMap::new(),
     };
     // The `impl` a function is checked and proved in (backlog 2T-03): its
     // type parameters with their bounds, and for a trait's method or a
@@ -1641,6 +1674,7 @@ fn plain() -> Printer<'static> {
         qualify: None,
         id: None,
         out: String::new(),
+        lens: BTreeMap::new(),
     }
 }
 

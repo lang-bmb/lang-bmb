@@ -51,6 +51,9 @@
 | E0256 | a `proof fn` takes no effect attribute and no return type |
 | E0257 | ghost code (a `proof fn` body or a `proof { .. }` block) cannot run executable code: no executable call, assignment, `&mut` or loop |
 | E0258 | a `proof fn` is called only from ghost code: a `proof { .. }` block or another `proof fn` |
+| E0259 | a `const`'s value is not a constant expression: literals, other `const`s, operators, `if`, the wrapping and saturating methods and `as` (ADR-0052 §3) |
+| E0260 | a `const`'s evaluation failed: overflow, division by zero, a shift of the width or more, a conversion out of range (ADR-0052 §4) |
+| E0261 | a `static` item: an immutable one is a `const`, global mutable state is passed as an argument (ADR-0052 §7) |
 | E0237 | a call of a generic function names its type arguments: `f::<T>(..)` |
 | E0238 | `Rc`, `RefCell`, `Cell` and `Arc` are not used: values have one owner |
 | E0239 | an owned value is moved out from behind a `&mut`: use `std::mem::replace` |
@@ -89,6 +92,7 @@
 | E0315 | a trait impl misses a method of the trait, or has one the trait lacks |
 | E0316 | a trait impl's function does not match the trait's signature |
 | E0317 | a `break` or `continue` names a label no loop around it has |
+| E0318 | `const`s that refer to each other (ADR-0052 §3) |
 
 ## E04xx 타입·소유권
 
@@ -125,6 +129,7 @@
 | E0434 | struct literal fields must be given in declaration order (the order of evaluation) |
 | E0435 | a range `lo..hi` outside the source argument of `copy_within` and the bounds of a `&str` argument `&s[lo..hi]` |
 | E0436 | a `std::process::Child` built or read by its fields (it comes from `std::process::spawn`) |
+| E0437 | a type a `const` cannot have: a `const` holds an integer, `bool` or `char` (arrays and data types: backlog 2V-19b) |
 
 ## E05xx 명세
 

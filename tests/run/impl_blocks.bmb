@@ -1,0 +1,40 @@
+#[summary("경계가 다른 고유 impl 블록(ADR-0097, backlog 2T-11): 모든 T의 블록과 T: Copy의 블록, 옮기는 값의 인스턴스는 앞의 것만 쓴다")]
+mod iblocks {
+    struct Cell<T> { v: Vec<T>, n: u64 }
+
+    impl<T> Cell<T> {
+        #[effects(alloc)]
+        fn new(n: u64) -> Cell<T> {
+            let v: Vec<T> = Vec::new();
+            Cell { v: v, n: n }
+        }
+
+        #[effects(pure)]
+        fn size(self: &Cell<T>) -> usize {
+            self.v.len()
+        }
+    }
+
+    impl<T: Copy> Cell<T> {
+        #[effects(pure)]
+        fn first(self: &Cell<T>) -> Option<T> {
+            if self.v.len() > 0 {
+                Some(self.v[0])
+            } else {
+                None
+            }
+        }
+    }
+
+    #[effects(alloc, io)]
+    fn main() -> () {
+        let c: Cell<u64> = Cell::<u64>::new(3);
+        print_u64(c.size() as u64);
+        let s: Cell<Box<u64>> = Cell::<Box<u64>>::new(4);
+        print_u64(s.size() as u64);
+        match c.first() {
+            None => print_u64(9),
+            Some(x) => print_u64(x),
+        }
+    }
+}
