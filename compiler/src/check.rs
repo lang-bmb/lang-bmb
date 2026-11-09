@@ -3662,6 +3662,7 @@ impl<'a> Checker<'a> {
             self.collect_fn(f, path, &mp, false, &[]);
         }
         let mut with_impl = BTreeSet::new();
+        let mut impl_names: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
         for i in &m.impls {
             let ty = format!("{mp}::{}", i.ty.name);
             if !m.types.iter().any(|t| t.name.name == i.ty.name) {
@@ -3675,15 +3676,29 @@ impl<'a> Checker<'a> {
                 );
                 continue;
             }
-            if !with_impl.insert(ty.clone()) {
+            let ig = self.tparams_of(&i.generics, true, &mp);
+            // One block per list of bounds (ADR-0097): a method's block is
+            // the one with the bounds it needs.
+            let mut bounds: Vec<(String, Vec<String>)> = ig
+                .iter()
+                .map(|p| {
+                    let mut b = p.bounds.clone();
+                    b.sort();
+                    (p.name.clone(), b)
+                })
+                .collect();
+            bounds.sort();
+            if !with_impl.insert((ty.clone(), bounds)) {
                 self.err(
                     "E0308",
                     i.ty.span,
-                    format!("`{}` already has an `impl` block; one per type", i.ty.name),
+                    format!(
+                        "`{}` already has an `impl` block with these bounds; one per list of bounds",
+                        i.ty.name
+                    ),
                 );
                 continue;
             }
-            let ig = self.tparams_of(&i.generics, true, &mp);
             let arity = self.adts.get(&ty).map_or(0, |a| a.generics.len());
             let written: Vec<Option<&str>> = i
                 .ty_args
@@ -3728,14 +3743,21 @@ impl<'a> Checker<'a> {
                 );
                 continue;
             }
-            let mut fnames = BTreeSet::new();
+            // A name is one function of the type, whichever block holds it.
+            let fnames = impl_names.entry(ty.clone()).or_default();
+            let mut dup = Vec::new();
             for f in &i.fns {
                 if !fnames.insert(f.name.name.clone()) {
+                    dup.push(f.name.span);
+                }
+            }
+            for f in &i.fns {
+                if dup.contains(&f.name.span) {
                     self.err(
                         "E0302",
                         f.name.span,
                         format!(
-                            "`{}` is defined more than once in `impl {}`",
+                            "`{}` is defined more than once in the `impl` blocks of `{}`",
                             f.name.name, i.ty.name
                         ),
                     );

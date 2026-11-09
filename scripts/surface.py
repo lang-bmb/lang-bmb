@@ -89,9 +89,13 @@ def snapshot(bmb, root=ROOT):
     progs = programs(root)
     with ThreadPoolExecutor() as ex:
         seen = list(ex.map(lambda p: observe(bmb, p[1]), progs))
+    # The standard library is part of every program's input (the compiler
+    # embeds it, ADR-0092 §1): editing it is a source change, not a change
+    # of the language.
+    lib = b"".join(f.read_bytes() for f in sorted((root / LIBRARY).glob("*.bmb")))
     entries = {}
     for (name, files), out in zip(progs, seen):
-        src = digest(b"".join(f.read_bytes() for f in files))
+        src = digest(lib + b"".join(f.read_bytes() for f in files))
         entries[name] = {"src": src, "out": out}
     return {"codes": codes(bmb), "programs": entries}
 

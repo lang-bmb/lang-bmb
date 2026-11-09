@@ -1,0 +1,42 @@
+#[summary("옮기는 값의 맵(ADR-0097, backlog 2T-11): BTreeMap<u64, Vec<u64>>의 insert·remove·into_values, 값은 위치로 읽지 않고 꺼낸다")]
+mod mv {
+    #[effects(alloc, io)]
+    fn main() -> () {
+        let mut m: std::collections::BTreeMap<u64, Vec<u64>> = std::collections::BTreeMap::<u64, Vec<u64>>::new();
+        for i in 0..4 {
+            let mut v: Vec<u64> = Vec::new();
+            for j in 0..i
+                invariant v.len() == j,
+            {
+                v.push(j as u64);
+            }
+            if m.len() < 100 {
+                let prev: Option<Vec<u64>> = m.insert(10 - i as u64, v);
+                match prev {
+                    None => print_str("new\n"),
+                    Some(w) => print_u64(w.len() as u64),
+                }
+            } else {
+                print_str("full\n");
+            }
+        }
+        if m.len() < 100 {
+            let again: Vec<u64> = Vec::new();
+            match m.insert(9, again) {
+                None => print_str("new\n"),
+                Some(w) => print_u64(w.len() as u64),
+            }
+        } else {
+            print_str("full\n");
+        }
+        match m.remove(&8) {
+            None => print_str("none\n"),
+            Some(w) => print_u64(w.len() as u64),
+        }
+        print_u64(m.len() as u64);
+        let vs: Vec<Vec<u64>> = m.into_values();
+        for k in 0..vs.len() {
+            print_u64(vs[k].len() as u64);
+        }
+    }
+}

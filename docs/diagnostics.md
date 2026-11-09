@@ -79,7 +79,7 @@
 | E0305 | unknown type or trait |
 | E0306 | unknown field |
 | E0307 | unknown variant |
-| E0308 | `impl` block not in the unit of its type, or a second one |
+| E0308 | `impl` block not in the unit of its type, or a second one with the same bounds (one block per list of bounds, ADR-0097) |
 | E0309 | a built-in name cannot be defined |
 | E0310 | `self` names exactly the receiver |
 | E0311 | two impls of a trait for types that can be the same |

@@ -1,0 +1,4 @@
+{"code":"E0308","severity":"error","message":"`Cell` already has an `impl` block with these bounds; one per list of bounds","file":"err/impl_blocks.bmb","line":10,"col":13,"end_line":10,"end_col":17}
+{"code":"E0302","severity":"error","message":"`size` is defined more than once in the `impl` blocks of `Cell`","file":"err/impl_blocks.bmb","line":17,"col":12,"end_line":17,"end_col":16}
+{"code":"E0401","severity":"error","message":"expected `&ibe::Cell<{error}>`, found `&ibe::Cell<Box<u8>>`","file":"err/impl_blocks.bmb","line":27,"col":9,"end_line":27,"end_col":10}
+{"code":"E0428","severity":"error","message":"`Box<u8>` is not `Copy`, a bound of `T` in `ibe::Cell::first`","file":"err/impl_blocks.bmb","line":27,"col":11,"end_line":27,"end_col":16,"fix":{"message":"pass a `Copy` type (a scalar, a struct or enum, an array of them); a `Vec`, a `Box` and what holds them move (ADR-0047)"}}

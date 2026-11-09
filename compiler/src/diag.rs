@@ -164,7 +164,7 @@ pub const CODES: &[(&str, &str)] = &[
     ("E0307", "unknown variant"),
     (
         "E0308",
-        "`impl` block not in the unit of its type, or a second one",
+        "`impl` block not in the unit of its type, or a second one with the same bounds (one block per list of bounds, ADR-0097)",
     ),
     ("E0309", "a built-in name cannot be defined"),
     ("E0310", "`self` names exactly the receiver"),

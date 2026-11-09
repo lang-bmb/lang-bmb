@@ -1,0 +1,29 @@
+#[summary("고유 impl 블록은 경계 목록마다 하나(ADR-0097, backlog 2T-11): 같은 경계의 두 블록 E0308, 블록들 사이의 같은 이름 E0302, 블록의 경계를 만족하지 않는 인스턴스 E0428")]
+mod ibe {
+    struct Cell<T> { v: Vec<T> }
+
+    impl<T> Cell<T> {
+        #[effects(pure)]
+        fn size(self: &Cell<T>) -> usize { self.v.len() }
+    }
+
+    impl<T> Cell<T> {
+        #[effects(pure)]
+        fn other(self: &Cell<T>) -> usize { 0 }
+    }
+
+    impl<T: Copy> Cell<T> {
+        #[effects(pure)]
+        fn size(self: &Cell<T>) -> usize { 1 }
+
+        #[effects(pure)]
+        fn first(self: &Cell<T>) -> Option<T> {
+            if self.v.len() > 0 { Some(self.v[0]) } else { None }
+        }
+    }
+
+    #[effects(pure)]
+    fn moved(c: &Cell<Box<u8>>) -> Option<Box<u8>> {
+        c.first()
+    }
+}
