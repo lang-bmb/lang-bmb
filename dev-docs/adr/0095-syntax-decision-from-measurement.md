@@ -1,6 +1,6 @@
 # ADR-0095: 측정에 따른 문법 결정 (2R-06)
 
-- 상태: 채택(사람 승인 2026-11-08 "ADR-0095 채택, 2N-07 승인")
+- 상태: 채택(사람 승인 2026-11-08 "ADR-0095 채택, 2N-07 승인"). 결정 1(r2c)은 대체됨(ADR-0096: 본문으로 닫지 않는 r2)
 - 날짜: 2026-11-08
 - 관련: DESIGN.md §4, ADR-0013, ADR-0036, ADR-0026, ADR-0028, ADR-0049, ADR-0057, `dev-docs/measurements/syntax-eval-1.md`(2R-02), `syntax-eval-2.md`(2R-04), `syntax-evidence.md`(2R-03)
 
