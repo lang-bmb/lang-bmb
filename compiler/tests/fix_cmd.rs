@@ -996,3 +996,29 @@ mod e {
     }
     assert!(checks(&out.files));
 }
+
+/// A widening conversion in a specification is an input alias (ADR-0099,
+/// backlog 2N-08): W0917, and `fix` writes the value, in parentheses where
+/// the context needs them.
+#[test]
+fn widening_conversions_in_specifications_are_removed() {
+    let input = one(r#"#[summary("w")]
+mod w {
+    spec fn byte_at(msg: &[u8], i: usize) -> u64 {
+        if i < msg.len() { msg[i] as u64 } else { 256 }
+    }
+
+    spec fn twice(x: u8) -> u32 {
+        (x + 1) as u32 * 2
+    }
+}
+"#);
+    let out = fix(&input);
+    assert!(out.ok, "{}", out.diagnostics);
+    let text = &out.files[0].1;
+    for want in ["if i < msg.len() { msg[i] } else { 256 }", "(x + 1) * 2"] {
+        assert!(text.contains(want), "{want}\n{text}");
+    }
+    assert!(!text.contains(" as "), "{text}");
+    assert!(checks(&out.files));
+}

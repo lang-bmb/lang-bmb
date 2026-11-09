@@ -201,7 +201,7 @@ const INDENT: &str = "    ";
 
 /// Precedence of `x as T`: tighter than `*`, looser than the prefix
 /// operators (`-x as u64` is `(-x) as u64`), as in Rust (ADR-0095 A4).
-const CAST: u8 = 11;
+pub(crate) const CAST: u8 = 11;
 /// Precedence of prefix operators (`-x`, `!x`, `&x`, `*p`).
 const PREFIX: u8 = 12;
 /// Precedence of postfix forms and atoms.

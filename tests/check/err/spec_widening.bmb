@@ -1,0 +1,8 @@
+#[summary("명세의 정수 넓힘이 아닌 것(ADR-0099, backlog 2N-08): 좁힘과 범위가 겹치지 않는 갈래는 E0401, 좁히는 변환은 E0513")]
+mod swe {
+    spec fn small(x: u64) -> u8 { x }
+
+    spec fn cut(x: u64) -> u8 { x as u8 }
+
+    spec fn mixed(c: bool, a: i64, b: u64) -> u64 { if c { a } else { b } }
+}

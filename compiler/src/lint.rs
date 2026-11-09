@@ -90,9 +90,9 @@ pub const MAX_POST_TRIALS: usize = 32;
 pub const MAX_MUTANTS: usize = 64;
 
 /// The checks of the lint, by the code each reports (`bmb lint --select`).
-pub const CODES: [&str; 17] = [
+pub const CODES: [&str; 18] = [
     "W0901", "W0902", "W0903", "W0904", "W0905", "W0906", "W0907", "W0909", "W0910", "W0911",
-    "W0912", "W0913", "W0914", "W0915", "W0916", "W1001", "W1002",
+    "W0912", "W0913", "W0914", "W0915", "W0916", "W0917", "W1001", "W1002",
 ];
 
 pub struct LintOutput {
@@ -538,7 +538,8 @@ pub fn lint_sources_selected(
         }
     }
 
-    // W0912, W0913, W0914: input aliases the parser took (ADR-0095).
+    // W0912, W0913, W0914: input aliases the parser took (ADR-0095); W0917
+    // the checker's (ADR-0099).
     for d in fe.diags.aliases.iter().filter(|d| runs(d.code)) {
         if (d.span.file as usize) < files.len() {
             out.push(d.clone());

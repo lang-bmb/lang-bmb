@@ -176,6 +176,7 @@
   "W0914",
   "W0915",
   "W0916",
+  "W0917",
   "W1001",
   "W1002"
  ],
@@ -184,8 +185,8 @@
  "history": [],
  "programs": {
   "lib/std": {
-   "out": "fe12f4fbdc5279ab",
-   "src": "c1a07a5a2147dce2"
+   "out": "87f935d9589ecbab",
+   "src": "4e7e4a1f87551b69"
   },
   "tests/check/err/arith_methods.bmb": {
    "out": "0316b2e9f7cbdc81",
@@ -354,6 +355,10 @@
   "tests/check/err/spec_mode.bmb": {
    "out": "bbf5a52cfcbbf4bb",
    "src": "ee6201a069e07742"
+  },
+  "tests/check/err/spec_widening.bmb": {
+   "out": "d461ad5850dffe1e",
+   "src": "586b7ef2115d587d"
   },
   "tests/check/err/specs.bmb": {
    "out": "b6f1a0640d243410",
@@ -1014,6 +1019,10 @@
   "tests/verify/pass/slices.bmb": {
    "out": "4c5d62778a1fcef6",
    "src": "738597582c2a81ce"
+  },
+  "tests/verify/pass/spec_widening.bmb": {
+   "out": "e10a7fadacb87932",
+   "src": "1c40256c8543ea07"
   },
   "tests/verify/pass/strings.bmb": {
    "out": "76854270affa0906",

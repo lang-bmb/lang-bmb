@@ -1,0 +1,31 @@
+#[summary("명세의 정수 넓힘(ADR-0099, backlog 2N-08): 갈래와 결과는 범위가 담기면 같은 타입이다")]
+mod sw {
+    // A byte as a `u64` result, and a branch of the wider type.
+    spec fn byte_at(msg: &[u8], i: usize) -> u64 {
+        if i < msg.len() { msg[i] } else { 256 }
+    }
+
+    // The join of `u8` and `u32` branches is `u32`.
+    spec fn pick(c: bool, a: u8, b: u32) -> u32 {
+        if c { a } else { b }
+    }
+
+    enum Size { Small, Mid, Big }
+
+    // A `match` joins its arms the same way.
+    spec fn bound(s: Size, x: u8, k: u16) -> u32 {
+        match s {
+            Size::Small => x,
+            Size::Mid => k,
+            Size::Big => 70000,
+        }
+    }
+
+    #[effects(pure)]
+    fn first(msg: &[u8]) -> (r: u64)
+        requires msg.len() > 0,
+        ensures r == byte_at(msg, 0), r < 256,
+    {
+        msg[0] as u64
+    }
+}

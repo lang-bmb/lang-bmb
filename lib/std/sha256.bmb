@@ -58,13 +58,9 @@ mod sha256 {
         else if j == 6 { (l >> 8) & 0xff } else { l & 0xff }
     }
 
-    // A byte as a `u64` (backlog 2N-08: a specification's `if` takes one
-    // integer type, and specifications have no conversion).
-    spec fn wide(b: u64) -> u64 { b }
-
     // Byte `i` of the padded message.
     spec fn pad_byte(msg: &[u8], i: usize) -> u64 {
-        if i < msg.len() { wide(msg[i]) } else if i == msg.len() { 0x80 } else if i + 8 < padlen(msg.len()) { 0 } else { len_byte(msg.len() * 8, i + 8 - padlen(msg.len())) }
+        if i < msg.len() { msg[i] } else if i == msg.len() { 0x80 } else if i + 8 < padlen(msg.len()) { 0 } else { len_byte(msg.len() * 8, i + 8 - padlen(msg.len())) }
     }
 
     spec fn padded(msg: &[u8], p: &[u8]) -> bool {
@@ -343,7 +339,7 @@ mod sha256 {
     // The padded message (§5.1.1): `msg`, the byte 0x80, zeros, and the
     // length in bits as a big-endian 64-bit number.
     #[effects(alloc)]
-    #[uses(padlen, pad_byte, len_byte, wide)]
+    #[uses(padlen, pad_byte, len_byte)]
     fn pad(msg: &[u8]) -> (r: Vec<u8>)
         requires msg_ok(msg),
         ensures padded(msg, r.as_slice()),

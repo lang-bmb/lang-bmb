@@ -899,6 +899,9 @@ pub struct Checker<'a> {
     /// (`0`, `Vec::new()`): their E0201 fix waits for the first use
     /// (`settle_lets`). The name and whether it is `Vec::new()`.
     open_lets: Vec<(Ident, bool)>,
+    /// In a specification (or ghost code): an integer type widens to one
+    /// whose range holds it (ADR-0099), in `expect_ty` and at branch joins.
+    spec_widen: bool,
     /// Locals given as the whole initializer of a typed `let`: the name,
     /// where, and the declared type (`settle_lets`).
     typed_uses: Vec<(String, u32, TypeKind)>,
@@ -1822,6 +1825,7 @@ impl<'a> Checker<'a> {
             calls: BTreeMap::new(),
             types: BTreeMap::new(),
             open_lets: Vec::new(),
+            spec_widen: false,
             typed_uses: Vec::new(),
             spec_at: BTreeSet::new(),
             recursive: BTreeMap::new(),
@@ -4378,11 +4382,14 @@ impl<'a> Checker<'a> {
         self.typed_uses.clear();
         self.spec_at.clear();
         let t = self.block(&mut cx, &f.body, Some(&ret_ty), mode);
+        // A spec fn's or proof fn's result widens (ADR-0099).
+        self.spec_widen = mode != Mode::Exec;
         self.expect_ty(
             &t,
             &ret_ty,
             f.body.tail.as_ref().map_or(f.body.span, |e| e.span),
         );
+        self.spec_widen = false;
         self.settle_lets(f, mod_path);
         if f.kind == FnKind::Exec {
             if f.attrs.iter().any(|a| a.name.name == "external_body") {
@@ -4917,6 +4924,9 @@ impl<'a> Checker<'a> {
     }
 
     fn expect_ty(&mut self, found: &TypeKind, want: &TypeKind, span: Span) {
+        if self.spec_widen && widens(found, want) {
+            return;
+        }
         if found != want
             && *found != TypeKind::Error
             && *want != TypeKind::Error
@@ -6661,6 +6671,11 @@ impl<'a> Checker<'a> {
             // An arm that does not finish (`None => return 0`) takes the
             // others' type.
             match &ty {
+                // In a specification the join is the wider integer type
+                // (ADR-0099), unless the type was expected.
+                Some(t) if mode != Mode::Exec && expected.is_none() && widens(t, &bt) => {
+                    ty = Some(bt)
+                }
                 Some(t) if *t != TypeKind::Never => self.expect_ty(&bt, t, a.body.span),
                 _ => ty = Some(bt),
             }
@@ -6937,7 +6952,9 @@ impl<'a> Checker<'a> {
         expected: Option<&TypeKind>,
         mode: Mode,
     ) -> TypeKind {
+        let widen = std::mem::replace(&mut self.spec_widen, mode != Mode::Exec);
         let t = self.expr_inner(cx, e, expected, mode);
+        self.spec_widen = widen;
         self.types
             .insert((e.span.file, e.span.lo, e.span.hi), t.clone());
         if mode != Mode::Exec && !self.open_lets.is_empty() {
@@ -7633,6 +7650,11 @@ impl<'a> Checker<'a> {
                         );
                         // A branch that does not finish takes the other's type.
                         if tt == TypeKind::Never {
+                            return et;
+                        }
+                        // In a specification the join is the wider integer
+                        // type (ADR-0099).
+                        if mode != Mode::Exec && widens(&tt, &et) {
                             return et;
                         }
                         self.expect_ty(&et, &tt, el.span);
@@ -10157,6 +10179,27 @@ impl<'a> Checker<'a> {
         }
         let x = crate::fmt::expr_text(&args[0]);
         let unwrapped = format!("{}::try_from({x}).unwrap()", ty_str(&target));
+        // A widening conversion in a specification is the value itself (an
+        // input alias, ADR-0099): `bmb lint` reports it, `bmb fix` removes it.
+        if mode != Mode::Exec && name.name == "unwrap" && widens(&st, &target) {
+            let v = if crate::fmt::prec(&args[0]) < crate::fmt::CAST {
+                format!("({x})")
+            } else {
+                x.clone()
+            };
+            self.diags.aliases.push(
+                Diag::new(
+                    "W0917",
+                    span,
+                    format!(
+                        "`{x} as {}` in a specification: every value fits, so it is `{x}` (ADR-0099)",
+                        ty_str(&target)
+                    ),
+                )
+                .fix("remove the conversion", Some(v)),
+            );
+            return target;
+        }
         if mode != Mode::Exec {
             self.diags.push(
                 Diag::new("E0513", span, "conversions are not used in specifications").fix(
@@ -11364,6 +11407,12 @@ fn int_type(name: &str) -> Option<TypeKind> {
 /// Whether converting a `source` value to `target` has a range obligation
 /// (ADR-0028 §1, ADR-0044 §1): every pair but `u64` <-> `usize`, a type to
 /// itself, and a `u8` to any other type (every type holds 0..=255).
+/// Whether integer type `from` widens to another integer type `to`: every
+/// value of `from` is one of `to` (ADR-0099).
+fn widens(from: &TypeKind, to: &TypeKind) -> bool {
+    from != to && is_int(from) && is_int(to) && !conv_obligation(from, to)
+}
+
 pub(crate) fn conv_obligation(source: &TypeKind, target: &TypeKind) -> bool {
     let (Some(s), Some(t)) = (source.int(), target.int()) else {
         return true;

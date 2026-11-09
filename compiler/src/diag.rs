@@ -473,6 +473,10 @@ pub const CODES: &[(&str, &str)] = &[
         "a `#[uses(..)]` entry the default proof context reveals already (the spec fns the definition's own clauses, invariants, assertions and proof code and its callees' contracts name, ADR-0095 A1; `bmb fix` removes it)",
     ),
     (
+        "W0917",
+        "a widening integer conversion `x as T` in a specification: every value of `x` is one of `T`, so it is `x` (an input alias, ADR-0099; `bmb fix` removes it)",
+    ),
+    (
         "W0911",
         "a call by path of a method whose normal form is the method call `x.f(..)` (the fix rewrites it; `bmb fmt` and `bmb fix` apply it)",
     ),

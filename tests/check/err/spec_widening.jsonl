@@ -1,0 +1,5 @@
+{"code":"E0401","severity":"error","message":"expected `u8`, found `u64`","file":"err/spec_widening.bmb","line":3,"col":35,"end_line":3,"end_col":36,"fix":{"message":"convert: `x as u8` (its range is a proof obligation)"}}
+{"code":"E0401","severity":"error","message":"expected `u8`, found `u64`","file":"err/spec_widening.bmb","line":5,"col":33,"end_line":5,"end_col":40,"fix":{"message":"convert: `x as u8` (its range is a proof obligation)"}}
+{"code":"E0513","severity":"error","message":"conversions are not used in specifications","file":"err/spec_widening.bmb","line":5,"col":33,"end_line":5,"end_col":40,"fix":{"message":"integer types mix in specifications (ADR-0022): write the value","replacement":"x"}}
+{"code":"E0401","severity":"error","message":"expected `u64`, found `i64`","file":"err/spec_widening.bmb","line":7,"col":53,"end_line":7,"end_col":74,"fix":{"message":"convert: `x as u64` (its range is a proof obligation)"}}
+{"code":"E0401","severity":"error","message":"expected `i64`, found `u64`","file":"err/spec_widening.bmb","line":7,"col":69,"end_line":7,"end_col":74,"fix":{"message":"convert: `x as i64` (its range is a proof obligation)"}}
