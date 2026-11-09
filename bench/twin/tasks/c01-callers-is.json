@@ -1,0 +1,103 @@
+{
+ "id": "c01-callers-is",
+ "kind": "comprehend",
+ "fixture": "stk",
+ "prompt": "Which functions call `lex::is`, directly or through other functions? Answer with the full paths (`module::name`) of all of them.",
+ "truth": [
+  "main::main",
+  "main::run_line",
+  "main::step"
+ ],
+ "oracle": {
+  "bmb": [
+   [
+    "query",
+    {
+     "name": "edges",
+     "args": [
+      "lex::is",
+      "in",
+      "64"
+     ]
+    }
+   ],
+   [
+    "answer",
+    {
+     "defs": [
+      "main::step",
+      "main::run_line",
+      "main::main"
+     ]
+    }
+   ]
+  ],
+  "rust": [
+   [
+    "grep",
+    {
+     "pattern": "lex::is\\("
+    }
+   ],
+   [
+    "grep",
+    {
+     "pattern": "^\\s*(pub )?fn |step\\(|run_line\\(",
+     "path": "src/main.rs"
+    }
+   ],
+   [
+    "answer",
+    {
+     "defs": [
+      "main::step",
+      "main::run_line",
+      "main::main"
+     ]
+    }
+   ]
+  ]
+ },
+ "weak": [
+  {
+   "fails": "answer",
+   "bmb": [
+    [
+     "query",
+     {
+      "name": "edges",
+      "args": [
+       "lex::is",
+       "in",
+       "1"
+      ]
+     }
+    ],
+    [
+     "answer",
+     {
+      "defs": [
+       "main::step"
+      ]
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "grep",
+     {
+      "pattern": "lex::is\\("
+     }
+    ],
+    [
+     "answer",
+     {
+      "defs": [
+       "main::step"
+      ]
+     }
+    ]
+   ]
+  }
+ ]
+}

@@ -1,0 +1,6 @@
+error 1: stack underflow
+error 2: stack underflow
+error 3: division by zero
+error 4: unknown token foo
+1
+depth 2

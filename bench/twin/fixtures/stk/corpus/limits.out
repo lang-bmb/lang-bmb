@@ -1,0 +1,7 @@
+error 1: overflow
+error 2: overflow
+error 3: overflow
+error 4: unknown token 9223372036854775808
+-9223372036854775808
+5
+depth 8

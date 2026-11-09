@@ -1,0 +1,115 @@
+{
+ "id": "t01-neg",
+ "kind": "change",
+ "fixture": "stk",
+ "prompt": "Add a command `neg` that replaces the top value of the stack with its negation. On an empty stack it is a stack underflow error; when the negation does not fit (the minimum value) it is an overflow error and the stack is left as it was. Errors are reported like those of the other commands.",
+ "cases": [
+  {
+   "name": "neg-basic",
+   "in": "5 neg print\n0 neg print\n-7 neg print\n",
+   "out": "-5\n0\n7\ndepth 3\n"
+  },
+  {
+   "name": "neg-empty",
+   "in": "neg\n1 neg neg print\n",
+   "out": "error 1: stack underflow\n1\ndepth 1\n"
+  },
+  {
+   "name": "neg-min",
+   "in": "-9223372036854775808 neg\nprint\n9223372036854775807 neg print\n",
+   "out": "error 1: overflow\n-9223372036854775808\n-9223372036854775807\ndepth 2\n"
+  }
+ ],
+ "scope": {
+  "bmb": [
+   "main::step"
+  ],
+  "rust": [
+   "main::step"
+  ],
+  "new": true
+ },
+ "oracle": {
+  "bmb": [
+   [
+    "write",
+    {
+     "unit": "vm",
+     "code": "    /// Replaces the top value with its negation. On an error the stack is\n    /// left as it was.\n    #[effects(alloc)]\n    fn neg(st: &mut Vec<i64>) -> u8 {\n        match st.pop() {\n            None => 1,\n            Some(x) => {\n                let zero: i64 = 0;\n                match zero.checked_sub(x) {\n                    None => {\n                        st.push(x);\n                        2\n                    }\n                    Some(v) => {\n                        st.push(v);\n                        0\n                    }\n                }\n            }\n        }\n    }\n"
+    }
+   ],
+   [
+    "write",
+    {
+     "unit": "main",
+     "code": "    /// One token: a command word or an integer to push.\n    #[effects(alloc, io)]\n    fn step(s: &[u8], lo: usize, hi: usize, st: &mut Vec<i64>) -> u8\n        requires lo <= hi && hi <= s.len(),\n    {\n        if lex::is(s, lo, hi, \"add\") {\n            vm::binary(st, 1)\n        } else if lex::is(s, lo, hi, \"sub\") {\n            vm::binary(st, 2)\n        } else if lex::is(s, lo, hi, \"mul\") {\n            vm::binary(st, 3)\n        } else if lex::is(s, lo, hi, \"div\") {\n            vm::binary(st, 4)\n        } else if lex::is(s, lo, hi, \"dup\") {\n            vm::dup(st)\n        } else if lex::is(s, lo, hi, \"swap\") {\n            vm::swap(st)\n        } else if lex::is(s, lo, hi, \"drop\") {\n            vm::drop(st)\n        } else if lex::is(s, lo, hi, \"neg\") {\n            vm::neg(st)\n        } else if lex::is(s, lo, hi, \"print\") {\n            vm::print(st)\n        } else {\n            match std::num::parse_i64_bytes(&s[lo..hi]) {\n                None => 4,\n                Some(v) => vm::push(st, v),\n            }\n        }\n    }\n\n"
+    }
+   ]
+  ],
+  "rust": [
+   [
+    "read_file",
+    {
+     "path": "src/vm.rs"
+    }
+   ],
+   [
+    "write_file",
+    {
+     "path": "src/vm.rs",
+     "content": "//! vm: the stack and its operations; each returns 0 or an error code.\n//!\n//! Error codes: 1 stack underflow, 2 overflow, 3 division by zero,\n//! 4 unknown token (main), 5 stack full.\n\n/// The most values the stack holds.\npub const LIMIT: usize = 4096;\n\npub fn push(st: &mut Vec<i64>, v: i64) -> u8 {\n    if st.len() >= LIMIT {\n        return 5;\n    }\n    st.push(v);\n    0\n}\n\n/// `a op b` for op 1 add, 2 sub, 3 mul, 4 div; None when the result does not\n/// fit or b is 0 for div.\npub fn apply(op: u8, a: i64, b: i64) -> Option<i64> {\n    match op {\n        1 => a.checked_add(b),\n        2 => a.checked_sub(b),\n        3 => a.checked_mul(b),\n        _ => a.checked_div(b),\n    }\n}\n\n/// Replaces the two top values a, b (b on top) with `a op b`. On an error the\n/// stack is left as it was.\npub fn binary(st: &mut Vec<i64>, op: u8) -> u8 {\n    if st.len() < 2 {\n        return 1;\n    }\n    let b = st.pop().unwrap();\n    let a = st.pop().unwrap();\n    match apply(op, a, b) {\n        Some(v) => {\n            st.push(v);\n            0\n        }\n        None => {\n            st.push(a);\n            st.push(b);\n            if op == 4 && b == 0 {\n                3\n            } else {\n                2\n            }\n        }\n    }\n}\n\npub fn dup(st: &mut Vec<i64>) -> u8 {\n    if st.len() >= LIMIT {\n        return 5;\n    }\n    match st.last() {\n        Some(&x) => {\n            st.push(x);\n            0\n        }\n        None => 1,\n    }\n}\n\npub fn swap(st: &mut Vec<i64>) -> u8 {\n    let n = st.len();\n    if n < 2 {\n        return 1;\n    }\n    st.swap(n - 2, n - 1);\n    0\n}\n\npub fn drop(st: &mut Vec<i64>) -> u8 {\n    match st.pop() {\n        Some(_) => 0,\n        None => 1,\n    }\n}\n\n/// Prints the top value on a line of its own.\npub fn print(st: &mut Vec<i64>) -> u8 {\n    match st.last() {\n        Some(x) => {\n            println!(\"{x}\");\n            0\n        }\n        None => 1,\n    }\n}\n\n/// Replaces the top value with its negation. On an error the stack is left as\n/// it was.\npub fn neg(st: &mut Vec<i64>) -> u8 {\n    match st.last_mut() {\n        None => 1,\n        Some(x) => match x.checked_neg() {\n            None => 2,\n            Some(v) => {\n                *x = v;\n                0\n            }\n        },\n    }\n}\n"
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/main.rs",
+     "old": "    } else if lex::is(s, lo, hi, \"print\") {",
+     "new": "    } else if lex::is(s, lo, hi, \"neg\") {\n        vm::neg(st)\n    } else if lex::is(s, lo, hi, \"print\") {"
+    }
+   ],
+   [
+    "cargo_build",
+    {}
+   ]
+  ]
+ },
+ "weak": [
+  {
+   "fails": "corpus",
+   "bmb": [
+    [
+     "write",
+     {
+      "unit": "vm",
+      "code": "    #[effects(alloc)]\n    fn neg(st: &mut Vec<i64>) -> u8 {\n        match st.pop() {\n            None => 1,\n            Some(x) => {\n                let zero: i64 = 0;\n                st.push(zero.wrapping_sub(x));\n                0\n            }\n        }\n    }\n"
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "main",
+      "code": "    /// One token: a command word or an integer to push.\n    #[effects(alloc, io)]\n    fn step(s: &[u8], lo: usize, hi: usize, st: &mut Vec<i64>) -> u8\n        requires lo <= hi && hi <= s.len(),\n    {\n        if lex::is(s, lo, hi, \"add\") {\n            vm::binary(st, 1)\n        } else if lex::is(s, lo, hi, \"sub\") {\n            vm::binary(st, 2)\n        } else if lex::is(s, lo, hi, \"mul\") {\n            vm::binary(st, 3)\n        } else if lex::is(s, lo, hi, \"div\") {\n            vm::binary(st, 4)\n        } else if lex::is(s, lo, hi, \"dup\") {\n            vm::dup(st)\n        } else if lex::is(s, lo, hi, \"swap\") {\n            vm::swap(st)\n        } else if lex::is(s, lo, hi, \"drop\") {\n            vm::drop(st)\n        } else if lex::is(s, lo, hi, \"neg\") {\n            vm::neg(st)\n        } else if lex::is(s, lo, hi, \"print\") {\n            vm::print(st)\n        } else {\n            match std::num::parse_i64_bytes(&s[lo..hi]) {\n                None => 4,\n                Some(v) => vm::push(st, v),\n            }\n        }\n    }\n\n"
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "write_file",
+     {
+      "path": "src/vm.rs",
+      "content": "//! vm: the stack and its operations; each returns 0 or an error code.\n//!\n//! Error codes: 1 stack underflow, 2 overflow, 3 division by zero,\n//! 4 unknown token (main), 5 stack full.\n\n/// The most values the stack holds.\npub const LIMIT: usize = 4096;\n\npub fn push(st: &mut Vec<i64>, v: i64) -> u8 {\n    if st.len() >= LIMIT {\n        return 5;\n    }\n    st.push(v);\n    0\n}\n\n/// `a op b` for op 1 add, 2 sub, 3 mul, 4 div; None when the result does not\n/// fit or b is 0 for div.\npub fn apply(op: u8, a: i64, b: i64) -> Option<i64> {\n    match op {\n        1 => a.checked_add(b),\n        2 => a.checked_sub(b),\n        3 => a.checked_mul(b),\n        _ => a.checked_div(b),\n    }\n}\n\n/// Replaces the two top values a, b (b on top) with `a op b`. On an error the\n/// stack is left as it was.\npub fn binary(st: &mut Vec<i64>, op: u8) -> u8 {\n    if st.len() < 2 {\n        return 1;\n    }\n    let b = st.pop().unwrap();\n    let a = st.pop().unwrap();\n    match apply(op, a, b) {\n        Some(v) => {\n            st.push(v);\n            0\n        }\n        None => {\n            st.push(a);\n            st.push(b);\n            if op == 4 && b == 0 {\n                3\n            } else {\n                2\n            }\n        }\n    }\n}\n\npub fn dup(st: &mut Vec<i64>) -> u8 {\n    if st.len() >= LIMIT {\n        return 5;\n    }\n    match st.last() {\n        Some(&x) => {\n            st.push(x);\n            0\n        }\n        None => 1,\n    }\n}\n\npub fn swap(st: &mut Vec<i64>) -> u8 {\n    let n = st.len();\n    if n < 2 {\n        return 1;\n    }\n    st.swap(n - 2, n - 1);\n    0\n}\n\npub fn drop(st: &mut Vec<i64>) -> u8 {\n    match st.pop() {\n        Some(_) => 0,\n        None => 1,\n    }\n}\n\n/// Prints the top value on a line of its own.\npub fn print(st: &mut Vec<i64>) -> u8 {\n    match st.last() {\n        Some(x) => {\n            println!(\"{x}\");\n            0\n        }\n        None => 1,\n    }\n}\n\npub fn neg(st: &mut Vec<i64>) -> u8 {\n    match st.last_mut() {\n        None => 1,\n        Some(x) => {\n            *x = x.wrapping_neg();\n            0\n        }\n    }\n}\n"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/main.rs",
+      "old": "    } else if lex::is(s, lo, hi, \"print\") {",
+      "new": "    } else if lex::is(s, lo, hi, \"neg\") {\n        vm::neg(st)\n    } else if lex::is(s, lo, hi, \"print\") {"
+     }
+    ]
+   ]
+  }
+ ]
+}

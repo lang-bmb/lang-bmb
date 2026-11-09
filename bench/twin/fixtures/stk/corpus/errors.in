@@ -1,0 +1,6 @@
+drop
+add
+1 0 div
+foo 1 2
+swap
+print

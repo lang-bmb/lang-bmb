@@ -1,0 +1,178 @@
+{
+ "id": "r01-rename-drop",
+ "kind": "change",
+ "fixture": "stk",
+ "prompt": "Rename the stack operation `vm::drop` to `vm::discard` and update every use of it. The program's behaviour must not change.",
+ "scope": {
+  "bmb": [
+   "vm::drop",
+   "vm::discard",
+   "main::step"
+  ],
+  "rust": [
+   "vm::drop",
+   "vm::discard",
+   "main::step"
+  ]
+ },
+ "oracle": {
+  "bmb": [
+   [
+    "write",
+    {
+     "unit": "vm",
+     "code": "    #[effects(alloc)]\n    fn discard(st: &mut Vec<i64>) -> u8 {\n        match st.pop() {\n            None => 1,\n            Some(x) => 0,\n        }\n    }\n\n"
+    }
+   ],
+   [
+    "write",
+    {
+     "unit": "main",
+     "code": "    /// One token: a command word or an integer to push.\n    #[effects(alloc, io)]\n    fn step(s: &[u8], lo: usize, hi: usize, st: &mut Vec<i64>) -> u8\n        requires lo <= hi && hi <= s.len(),\n    {\n        if lex::is(s, lo, hi, \"add\") {\n            vm::binary(st, 1)\n        } else if lex::is(s, lo, hi, \"sub\") {\n            vm::binary(st, 2)\n        } else if lex::is(s, lo, hi, \"mul\") {\n            vm::binary(st, 3)\n        } else if lex::is(s, lo, hi, \"div\") {\n            vm::binary(st, 4)\n        } else if lex::is(s, lo, hi, \"dup\") {\n            vm::dup(st)\n        } else if lex::is(s, lo, hi, \"swap\") {\n            vm::swap(st)\n        } else if lex::is(s, lo, hi, \"drop\") {\n            vm::discard(st)\n        } else if lex::is(s, lo, hi, \"print\") {\n            vm::print(st)\n        } else {\n            match std::num::parse_i64_bytes(&s[lo..hi]) {\n                None => 4,\n                Some(v) => vm::push(st, v),\n            }\n        }\n    }\n\n"
+    }
+   ],
+   [
+    "write",
+    {
+     "unit": "vm",
+     "remove": [
+      "vm::drop"
+     ]
+    }
+   ]
+  ],
+  "rust": [
+   [
+    "edit_file",
+    {
+     "path": "src/vm.rs",
+     "old": "pub fn drop(",
+     "new": "pub fn discard("
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/main.rs",
+     "old": "vm::drop(st)",
+     "new": "vm::discard(st)"
+    }
+   ],
+   [
+    "cargo_build",
+    {}
+   ]
+  ]
+ },
+ "weak": [
+  {
+   "fails": "corpus",
+   "bmb": [
+    [
+     "write",
+     {
+      "unit": "vm",
+      "code": "    #[effects(alloc)]\n    fn discard(st: &mut Vec<i64>) -> u8 {\n        match st.pop() {\n            None => 0,\n            Some(x) => 0,\n        }\n    }\n\n"
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "main",
+      "code": "    /// One token: a command word or an integer to push.\n    #[effects(alloc, io)]\n    fn step(s: &[u8], lo: usize, hi: usize, st: &mut Vec<i64>) -> u8\n        requires lo <= hi && hi <= s.len(),\n    {\n        if lex::is(s, lo, hi, \"add\") {\n            vm::binary(st, 1)\n        } else if lex::is(s, lo, hi, \"sub\") {\n            vm::binary(st, 2)\n        } else if lex::is(s, lo, hi, \"mul\") {\n            vm::binary(st, 3)\n        } else if lex::is(s, lo, hi, \"div\") {\n            vm::binary(st, 4)\n        } else if lex::is(s, lo, hi, \"dup\") {\n            vm::dup(st)\n        } else if lex::is(s, lo, hi, \"swap\") {\n            vm::swap(st)\n        } else if lex::is(s, lo, hi, \"drop\") {\n            vm::discard(st)\n        } else if lex::is(s, lo, hi, \"print\") {\n            vm::print(st)\n        } else {\n            match std::num::parse_i64_bytes(&s[lo..hi]) {\n                None => 4,\n                Some(v) => vm::push(st, v),\n            }\n        }\n    }\n\n"
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "vm",
+      "remove": [
+       "vm::drop"
+      ]
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "edit_file",
+     {
+      "path": "src/vm.rs",
+      "old": "pub fn drop(",
+      "new": "pub fn discard("
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/vm.rs",
+      "old": "        Some(_) => 0,\n        None => 1,",
+      "new": "        Some(_) => 0,\n        None => 0,"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/main.rs",
+      "old": "vm::drop(st)",
+      "new": "vm::discard(st)"
+     }
+    ]
+   ]
+  },
+  {
+   "fails": "scope",
+   "bmb": [
+    [
+     "write",
+     {
+      "unit": "vm",
+      "code": "    #[effects(alloc)]\n    fn discard(st: &mut Vec<i64>) -> u8 {\n        match st.pop() {\n            None => 1,\n            Some(x) => 0,\n        }\n    }\n\n"
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "main",
+      "code": "    /// One token: a command word or an integer to push.\n    #[effects(alloc, io)]\n    fn step(s: &[u8], lo: usize, hi: usize, st: &mut Vec<i64>) -> u8\n        requires lo <= hi && hi <= s.len(),\n    {\n        if lex::is(s, lo, hi, \"add\") {\n            vm::binary(st, 1)\n        } else if lex::is(s, lo, hi, \"sub\") {\n            vm::binary(st, 2)\n        } else if lex::is(s, lo, hi, \"mul\") {\n            vm::binary(st, 3)\n        } else if lex::is(s, lo, hi, \"div\") {\n            vm::binary(st, 4)\n        } else if lex::is(s, lo, hi, \"dup\") {\n            vm::dup(st)\n        } else if lex::is(s, lo, hi, \"swap\") {\n            vm::swap(st)\n        } else if lex::is(s, lo, hi, \"drop\") {\n            vm::discard(st)\n        } else if lex::is(s, lo, hi, \"print\") {\n            vm::print(st)\n        } else {\n            match std::num::parse_i64_bytes(&s[lo..hi]) {\n                None => 4,\n                Some(v) => vm::push(st, v),\n            }\n        }\n    }\n\n"
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "vm",
+      "code": "    #[effects(alloc)]\n    fn swap(st: &mut Vec<i64>) -> u8 {\n        if 2 > st.len() {\n            return 1;\n        }\n        let b: i64 = match st.pop() {\n            None => 0,\n            Some(x) => x,\n        };\n        let a: i64 = match st.pop() {\n            None => 0,\n            Some(x) => x,\n        };\n        st.push(b);\n        st.push(a);\n        0\n    }\n",
+      "remove": [
+       "vm::drop"
+      ]
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "edit_file",
+     {
+      "path": "src/vm.rs",
+      "old": "pub fn drop(",
+      "new": "pub fn discard("
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/main.rs",
+      "old": "vm::drop(st)",
+      "new": "vm::discard(st)"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/vm.rs",
+      "old": "    if n < 2 {",
+      "new": "    if 2 > n {"
+     }
+    ]
+   ]
+  }
+ ]
+}
