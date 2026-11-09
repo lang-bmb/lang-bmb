@@ -1,4 +1,4 @@
-#[summary("함수 값(ADR-0053, backlog 2V-20a·2V-20b): Fn 경계의 타입 매개변수, f(x) 호출, f.requires·f.ensures 계약, 함수 항목과 캡처 없는 클로저를 값으로 넘기기(타입 인자는 _)")]
+#[summary("함수 값(ADR-0053, backlog 2V-20a·2V-20b·2V-20c): Fn 경계의 타입 매개변수, f(x) 호출, f.requires·f.ensures 계약, 함수 항목과 클로저(캡처 없음, move 캡처: 복사·이동)를 값으로 넘기기(타입 인자는 _)")]
 mod fv {
     #[effects(pure)]
     fn apply<F: Fn(i64) -> i64>(f: F, x: i64) -> (r: i64)
@@ -24,7 +24,7 @@ mod fv {
         x + 1
     }
 
-    #[effects(io)]
+    #[effects(alloc, io)]
     fn main() -> () {
         let a: i64 = apply::<_>(inc, 10);
         assert(a == 11);
@@ -33,5 +33,12 @@ mod fv {
         let d: i64 = apply::<_>(|x: i64| -> (y: i64) requires x < 100 && x > -100, ensures y == x * 2, { x * 2 }, 21);
         assert(d == 42);
         print_i64(d);
+        let k: i64 = 3;
+        let e: i64 = apply::<_>(move |x: i64| -> (y: i64) requires k < 10 && k > -10 && x < 10 && x > -10, ensures y == x + k, { x + k }, 4);
+        assert(e == 7);
+        print_i64(e);
+        let mut v: Vec<i64> = Vec::new();
+        v.push(5);
+        print_i64(apply::<_>(move |x: i64| -> i64 { if v.len() > 0 { x } else { 0 } }, 2));
     }
 }

@@ -32,11 +32,6 @@ use crate::diag::{Diag, Diags};
 /// `&F` (position, by reference).
 type Bounded = (usize, String, FnBound, Vec<(usize, bool)>);
 
-/// An argument to rewrite: the call's span (file, lo, hi), the argument's
-/// position, the struct that is its value, the type argument's position,
-/// the generic function, and whether the parameter takes it by reference.
-type Rewrite = (u32, u32, u32, usize, String, usize, String, bool);
-
 /// A function with `Fn`-bounded type parameters.
 struct Generic {
     unit: String,
@@ -190,6 +185,165 @@ fn captures(c: &Closure, outer: &std::collections::BTreeSet<String>) -> Vec<Stri
     used
 }
 
+/// The written type of each local of `f` (parameters and `let`s); a
+/// local without one (a `for` variable, a `match` binding) maps to `None`.
+fn local_types(f: &FnDef) -> BTreeMap<String, Option<Type>> {
+    let mut out: BTreeMap<String, Option<Type>> = BTreeMap::new();
+    let mut names = std::collections::BTreeSet::new();
+    bound_names(&f.body, &mut names);
+    for n in names {
+        out.insert(n, None);
+    }
+    for t in [&f.body] {
+        let mut g = f.clone();
+        g.body = t.clone();
+        let mut lets: Vec<(String, Type)> = Vec::new();
+        fn stmts(b: &Block, out: &mut Vec<(String, Type)>) {
+            for s in &b.stmts {
+                match s {
+                    Stmt::Let { name, ty, .. } => out.push((name.name.clone(), ty.clone())),
+                    Stmt::While { body, .. }
+                    | Stmt::For { body, .. }
+                    | Stmt::Proof { body, .. } => stmts(body, out),
+                    _ => {}
+                }
+            }
+        }
+        stmts(&g.body, &mut lets);
+        crate::ast::fn_exprs_mut(&mut g, &mut |e| match &e.kind {
+            ExprKind::Block(b) | ExprKind::Loop { body: b, .. } => stmts(b, &mut lets),
+            ExprKind::If { then, .. } => stmts(then, &mut lets),
+            _ => {}
+        });
+        for (n, t) in lets {
+            out.insert(n, Some(t));
+        }
+    }
+    for p in &f.params {
+        out.insert(p.name.name.clone(), Some(p.ty.clone()));
+    }
+    out
+}
+
+/// `e` with each read of a captured local `c` as `self.c` (the closure's
+/// struct holds it, ADR-0053 §2).
+fn through_self(e: &mut Expr, caps: &[String]) {
+    crate::ast::expr_walk(e, &mut |x| {
+        if let ExprKind::Var(v) = &x.kind
+            && caps.contains(&v.name)
+        {
+            let at = x.span;
+            let me = Expr {
+                kind: ExprKind::Var(Ident {
+                    name: "self".into(),
+                    span: crate::source::Span { hi: at.lo, ..at },
+                }),
+                span: crate::source::Span { hi: at.lo, ..at },
+            };
+            x.kind = ExprKind::Field {
+                base: Box::new(me),
+                name: v.clone(),
+            };
+        }
+    });
+}
+
+/// Writes a call's rewrites (ADR-0053 lowering): argument `j` becomes the
+/// value of struct `sname` (with the captures `caps` as its fields, `&` of
+/// it when the parameter takes `&F`) and type argument `k` its type; a
+/// type argument of a reported closure (`rej`) becomes an error type, so
+/// its `_` is not reported again (E0305).
+fn apply_call(e: &mut Expr, todo: &[(usize, String, usize, bool, Vec<String>)], rej: &[usize]) {
+    let ExprKind::Call {
+        path, targs, args, ..
+    } = &mut e.kind
+    else {
+        return;
+    };
+    let last = path.len() - 1;
+    for k in rej {
+        if let Some(t) = targs.iter_mut().find(|t| t.seg == last)
+            && let Some(a) = t.args.get_mut(*k)
+        {
+            a.kind = TypeKind::Error;
+        }
+    }
+    for (j, sname, k, by_ref, caps) in todo {
+        let (j, k, by_ref) = (*j, *k, *by_ref);
+        // Distinct spans: the types are kept by span.
+        let at = args[j].span;
+        let sp = if by_ref {
+            crate::source::Span { lo: at.hi, ..at }
+        } else {
+            at
+        };
+        let fsp = crate::source::Span { hi: at.lo, ..at };
+        let segs: Vec<Ident> = sname
+            .split("::")
+            .map(|s| Ident {
+                name: s.to_string(),
+                span: sp,
+            })
+            .collect();
+        let lit = Expr {
+            // A struct has a field (E0420): one that carries nothing.
+            kind: ExprKind::StructLit {
+                path: segs,
+                fields: std::iter::once((
+                    Ident {
+                        name: "item".into(),
+                        span: sp,
+                    },
+                    Expr {
+                        kind: ExprKind::Bool(false),
+                        span: fsp,
+                    },
+                ))
+                .chain(caps.iter().enumerate().map(|(i, n)| {
+                    // Each capture's value at a span of its own.
+                    let p = at.lo + 1 + i as u32;
+                    let vsp = crate::source::Span { lo: p, hi: p, ..at };
+                    (
+                        Ident {
+                            name: n.clone(),
+                            span: vsp,
+                        },
+                        Expr {
+                            kind: ExprKind::Var(Ident {
+                                name: n.clone(),
+                                span: vsp,
+                            }),
+                            span: vsp,
+                        },
+                    )
+                }))
+                .collect(),
+                rest: None,
+            },
+            span: sp,
+        };
+        args[j] = if by_ref {
+            Expr {
+                kind: ExprKind::Ref {
+                    mutable: false,
+                    expr: Box::new(lit),
+                },
+                span: at,
+            }
+        } else {
+            lit
+        };
+        if let Some(t) = targs.iter_mut().find(|t| t.seg == last)
+            && let Some(a) = t.args.get_mut(k)
+        {
+            a.kind = TypeKind::Named {
+                path: sname.split("::").map(String::from).collect(),
+                args: Vec::new(),
+            };
+        }
+    }
+}
+
 pub fn lower(p: &mut Program, diags: &mut Diags) -> Vec<u32> {
     // The generic functions with `Fn` bounds, and every free function.
     let mut generics: BTreeMap<String, Generic> = BTreeMap::new();
@@ -306,11 +460,9 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Vec<u32> {
         (generics.contains_key(&full) || items.contains_key(&full)).then_some(full)
     };
     // (span of the call) -> rewrites of its arguments and type arguments.
-    let mut rewrites: Vec<Rewrite> = Vec::new();
     // Each closure's struct (full path) and the closure.
-    let mut closure_bodies: BTreeMap<String, Closure> = BTreeMap::new();
-    // Calls whose closure was reported: the span and the type argument.
-    let mut rejected: Vec<(u32, u32, u32, usize)> = Vec::new();
+    let mut closure_bodies: BTreeMap<String, (Closure, Vec<String>)> = BTreeMap::new();
+    let mut done: Vec<(String, Vec<FnDef>)> = Vec::new();
     {
         fn units<'m>(m: &'m Mod, prefix: &str, out: &mut Vec<(String, &'m Mod)>) {
             let unit = format!("{prefix}{}", m.name.name);
@@ -324,6 +476,7 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Vec<u32> {
             units(m, "", &mut all);
         }
         for (unit, m) in &all {
+            let mut changed: Vec<FnDef> = Vec::new();
             for f in m
                 .fns
                 .iter()
@@ -331,10 +484,13 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Vec<u32> {
                 .chain(m.trait_impls.iter().flat_map(|i| &i.fns))
             {
                 let mut f = f.clone();
-                let mut outer: std::collections::BTreeSet<String> =
-                    f.params.iter().map(|p| p.name.name.clone()).collect();
-                bound_names(&f.body, &mut outer);
+                let decls = local_types(&f);
+                let outer: std::collections::BTreeSet<String> = decls.keys().cloned().collect();
                 crate::ast::fn_exprs_mut(&mut f, &mut |e| {
+                    // What this call's arguments become, applied in place
+                    // (not by span: a program read from JSON has none).
+                    let mut todo: Vec<(usize, String, usize, bool, Vec<String>)> = Vec::new();
+                    let mut rej: Vec<usize> = Vec::new();
                     let ExprKind::Call { path, args, .. } = &e.kind else {
                         return;
                     };
@@ -352,14 +508,18 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Vec<u32> {
                             // spliced in after parsing (`closure_bodies`).
                             if let ExprKind::Closure(c) = &a.kind {
                                 let caps = captures(c, &outer);
-                                if !caps.is_empty() {
+                                let untyped: Vec<&String> =
+                                    caps.iter().filter(|n| decls[*n].is_none()).collect();
+                                if !caps.is_empty() && (!c.is_move || !untyped.is_empty()) {
                                     let d = if c.is_move {
+                                        let u: Vec<&str> =
+                                            untyped.iter().map(|x| x.as_str()).collect();
                                         Diag::new(
-                                            "E0207",
+                                            "E0262",
                                             c.span,
-                                            format!("a closure that captures (`{}`) is not supported yet (backlog 2V-20c)", caps.join("`, `")),
+                                            format!("a closure captures `{}`, whose type is not written", u.join("`, `")),
                                         )
-                                        .fix("pass what it captures as an argument of a named function", None)
+                                        .fix(format!("bind it to a typed `let` before the closure: `let {0}2: T = {0};`", u[0]), None)
                                     } else {
                                         Diag::new(
                                             "E0262",
@@ -370,7 +530,7 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Vec<u32> {
                                     };
                                     pending.push(d);
                                     // Its `_` is not reported again (E0305).
-                                    rejected.push((e.span.file, e.span.lo, e.span.hi, *k));
+                                    rej.push(*k);
                                     continue;
                                 }
                                 let tn = trait_name(g.order, *k);
@@ -401,9 +561,18 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Vec<u32> {
                                         vec!["true"; n].join(" && ")
                                     }
                                 };
+                                let fields: String = caps
+                                    .iter()
+                                    .map(|n| {
+                                        format!(
+                                            ", {n}: {}",
+                                            crate::fmt::type_str(decls[n].as_ref().expect("typed"))
+                                        )
+                                    })
+                                    .collect();
                                 let t = text.entry((unit.clone(), false)).or_default();
                                 t.push_str(&format!(
-                                    "struct {sname} {{ item: bool }}\n\nimpl {tr} for {sname} {{\n    spec fn pre(self: &{sname}{typed}) -> bool {{ {pre} }}\n\n    spec fn post(self: &{sname}{typed}, {rn}: {ret}) -> bool {{ {post} }}\n\n    #[effects({e})]\n    fn call(self: &{sname}{typed}) -> ({rn}: {ret})\n        requires self.pre({a}),\n        ensures self.post({a}{sep}{rn}),\n    {{\n        {rn}\n    }}\n}}\n\n",
+                                    "struct {sname} {{ item: bool{fields} }}\n\nimpl {tr} for {sname} {{\n    spec fn pre(self: &{sname}{typed}) -> bool {{ {pre} }}\n\n    spec fn post(self: &{sname}{typed}, {rn}: {ret}) -> bool {{ {post} }}\n\n    #[effects({e})]\n    fn call(self: &{sname}{typed}) -> ({rn}: {ret})\n        requires self.pre({a}),\n        ensures self.post({a}{sep}{rn}),\n    {{\n        {rn}\n    }}\n}}\n\n",
                                     pre = slots(c.requires.len()),
                                     post = slots(c.ensures.len()),
                                     ret = crate::fmt::type_str(&c.ret.ty),
@@ -412,17 +581,8 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Vec<u32> {
                                     sep = if names.is_empty() { "" } else { ", " },
                                 ));
                                 let full = format!("{unit}::{sname}");
-                                closure_bodies.insert(full.clone(), (**c).clone());
-                                rewrites.push((
-                                    e.span.file,
-                                    e.span.lo,
-                                    e.span.hi,
-                                    *j,
-                                    full,
-                                    *k,
-                                    gp.clone(),
-                                    *by_ref,
-                                ));
+                                closure_bodies.insert(full.clone(), ((**c).clone(), caps.clone()));
+                                todo.push((*j, full, *k, *by_ref, caps.clone()));
                                 continue;
                             }
                             let target = match &a.kind {
@@ -497,19 +657,27 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Vec<u32> {
                                 ));
                                 format!("{}::{sname}", it.unit)
                             });
-                            rewrites.push((
-                                e.span.file,
-                                e.span.lo,
-                                e.span.hi,
-                                *j,
-                                sname.clone(),
-                                *k,
-                                gp.clone(),
-                                *by_ref,
-                            ));
+                            todo.push((*j, sname.clone(), *k, *by_ref, Vec::new()));
                         }
                     }
+                    apply_call(e, &todo, &rej);
                 });
+                changed.push(f);
+            }
+            done.push((unit.clone(), changed));
+        }
+    }
+    // The functions with their calls rewritten, back in place (same order).
+    for (unit, fs) in done {
+        let segs: Vec<&str> = unit.split("::").collect();
+        if let Some(m) = find(&mut p.mods, &segs) {
+            let slots = m
+                .fns
+                .iter_mut()
+                .chain(m.impls.iter_mut().flat_map(|i| &mut i.fns))
+                .chain(m.trait_impls.iter_mut().flat_map(|i| &mut i.fns));
+            for (slot, f) in slots.zip(fs) {
+                *slot = f;
             }
         }
     }
@@ -572,90 +740,6 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Vec<u32> {
         rewrite_generic(m, "", &generics);
     }
 
-    // The calls: the argument is the struct's value, the `_` its type.
-    crate::ast::exprs_mut(p, &mut |e| {
-        let key = (e.span.file, e.span.lo, e.span.hi);
-        for r in rejected.iter().filter(|r| (r.0, r.1, r.2) == key) {
-            if let ExprKind::Call { path, targs, .. } = &mut e.kind {
-                let last = path.len() - 1;
-                if let Some(t) = targs.iter_mut().find(|t| t.seg == last)
-                    && let Some(a) = t.args.get_mut(r.3)
-                {
-                    a.kind = TypeKind::Error;
-                }
-            }
-        }
-        let mine: Vec<_> = rewrites
-            .iter()
-            .filter(|r| (r.0, r.1, r.2) == key)
-            .cloned()
-            .collect();
-        if mine.is_empty() {
-            return;
-        }
-        let ExprKind::Call {
-            path, targs, args, ..
-        } = &mut e.kind
-        else {
-            return;
-        };
-        for (_, _, _, j, sname, k, _, by_ref) in mine {
-            // Distinct spans: the types are kept by span.
-            let at = args[j].span;
-            let sp = if by_ref {
-                crate::source::Span { lo: at.hi, ..at }
-            } else {
-                at
-            };
-            let fsp = crate::source::Span { hi: at.lo, ..at };
-            let segs: Vec<Ident> = sname
-                .split("::")
-                .map(|s| Ident {
-                    name: s.to_string(),
-                    span: sp,
-                })
-                .collect();
-            let lit = Expr {
-                // A struct has a field (E0420): one that carries nothing.
-                kind: ExprKind::StructLit {
-                    path: segs,
-                    fields: vec![(
-                        Ident {
-                            name: "item".into(),
-                            span: sp,
-                        },
-                        Expr {
-                            kind: ExprKind::Bool(false),
-                            span: fsp,
-                        },
-                    )],
-                    rest: None,
-                },
-                span: sp,
-            };
-            args[j] = if by_ref {
-                Expr {
-                    kind: ExprKind::Ref {
-                        mutable: false,
-                        expr: Box::new(lit),
-                    },
-                    span: at,
-                }
-            } else {
-                lit
-            };
-            let last = path.len() - 1;
-            if let Some(t) = targs.iter_mut().find(|t| t.seg == last)
-                && let Some(a) = t.args.get_mut(k)
-            {
-                a.kind = TypeKind::Named {
-                    path: sname.split("::").map(String::from).collect(),
-                    args: Vec::new(),
-                };
-            }
-        }
-    });
-
     for d in pending {
         diags.push(d);
     }
@@ -680,9 +764,20 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Vec<u32> {
             let TypeKind::Named { path, .. } = &i.self_ty.kind else {
                 continue;
             };
-            let Some(c) = closure_bodies.get(&format!("{unit}::{}", path.join("::"))) else {
+            let Some((c, caps)) = closure_bodies.get(&format!("{unit}::{}", path.join("::")))
+            else {
                 continue;
             };
+            // Captures are the struct's fields: `self.c` (ADR-0053 §2).
+            let mut c = c.clone();
+            let mut wrapped = Expr {
+                kind: ExprKind::Closure(Box::new(c.clone())),
+                span: c.span,
+            };
+            through_self(&mut wrapped, caps);
+            if let ExprKind::Closure(x) = wrapped.kind {
+                c = *x;
+            }
             for f in &mut i.fns {
                 match f.name.name.as_str() {
                     "pre" => splice(&mut f.body, &c.requires),

@@ -273,8 +273,8 @@
    "src": "324bb5d96ccb71ae"
   },
   "tests/check/err/fn_values.bmb": {
-   "out": "73e6c7f38f7dabfe",
-   "src": "59880ab658a44e1d"
+   "out": "494fb228ee944bad",
+   "src": "73b91f844f3e1801"
   },
   "tests/check/err/generics.bmb": {
    "out": "c00e67cfaa57f647",
@@ -517,8 +517,8 @@
    "src": "b764481fdcb67b0c"
   },
   "tests/run/fn_values.bmb": {
-   "out": "6b4994f722c460a6",
-   "src": "3d1912f5f25e4f78"
+   "out": "66fc8754db77d738",
+   "src": "2ee9c7c7cca2e24b"
   },
   "tests/run/forest.bmb": {
    "out": "436932d56088aea4",

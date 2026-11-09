@@ -20,4 +20,11 @@ fn main() {
     let d = apply(|x: i64| -> i64 { x * 2 }, 21);
     assert!(d == 42);
     println!("{d}");
+    let k: i64 = 3;
+    let e = apply(move |x: i64| -> i64 { x + k }, 4);
+    assert!(e == 7);
+    println!("{e}");
+    let mut v: Vec<i64> = Vec::new();
+    v.push(5);
+    println!("{}", apply(move |x: i64| -> i64 { if !v.is_empty() { x } else { 0 } }, 2));
 }

@@ -1,4 +1,4 @@
-#[summary("함수 값의 검사 오류(ADR-0053, backlog 2V-20a): 제네릭 함수가 선언하지 않은 효과의 함수를 넘기면 E0608, move 없이 캡처하는 클로저 E0262, 타입 없는 클로저 매개변수 E0263")]
+#[summary("함수 값의 검사 오류(ADR-0053, backlog 2V-20a): 제네릭 함수가 선언하지 않은 효과의 함수를 넘기면 E0608, move 없이 캡처하는 클로저 E0262, 타입 없는 클로저 매개변수 E0263, 타입이 적히지 않은 지역의 캡처 E0262, 클로저로 옮긴 캡처를 뒤에서 쓰면 E0413")]
 mod fve {
     #[effects(pure)]
     fn apply<F: Fn(i64) -> i64>(f: F, x: i64) -> (r: i64)
@@ -27,5 +27,22 @@ mod fve {
     #[effects(pure)]
     fn untyped() -> i64 {
         apply::<_>(|x| -> i64 { x }, 1)
+    }
+
+    #[effects(pure)]
+    fn loop_var() -> i64 {
+        let mut t: i64 = 0;
+        for i in 0..2 {
+            t = apply::<_>(move |x: i64| -> i64 { if i > 0 { x } else { 0 } }, 1);
+        }
+        t
+    }
+
+    #[effects(alloc)]
+    fn moved_away() -> usize {
+        let mut v: Vec<i64> = Vec::new();
+        v.push(1);
+        let r: i64 = apply::<_>(move |x: i64| -> i64 { if v.len() > 0 { x } else { 0 } }, 1);
+        v.len()
     }
 }
