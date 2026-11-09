@@ -624,6 +624,25 @@ fn width(elem: &str) -> u64 {
     u64::from(align(elem))
 }
 
+/// The values of array elements that are all literals (`false` is 0,
+/// `true` 1, a `char` its scalar value), or `None`.
+fn const_elems(items: &[Expr]) -> Option<Vec<i128>> {
+    items
+        .iter()
+        .map(|it| match &it.kind {
+            ExprKind::Int(v, _) => i128::try_from(*v).ok(),
+            ExprKind::Unary(UnOp::Neg, x) => match x.kind {
+                ExprKind::Int(v, _) => i128::try_from(v).ok().map(|v| -v),
+                _ => None,
+            },
+            ExprKind::Bool(b) => Some(i128::from(*b)),
+            ExprKind::CharLit(c) => Some(i128::from(*c)),
+            ExprKind::ByteLit(b) => Some(i128::from(*b)),
+            _ => None,
+        })
+        .collect()
+}
+
 fn fn_sym(path: &str) -> String {
     format!("@\"{path}\"")
 }
@@ -3097,6 +3116,44 @@ impl<'p> Gen<'p> {
 
     fn init_array(&mut self, e: &Expr, ptr: &str, elem: &str) {
         match &e.kind {
+            // Every element a literal (a `const` table, ADR-0052 §6): one
+            // private constant and a copy of it. LLVM reads a copy that is
+            // never written from the constant itself.
+            ExprKind::Array(items)
+                if items.len() > 1
+                    && let Some(vals) = const_elems(items) =>
+            {
+                let m = mem(elem);
+                let bits = if elem == "i1" {
+                    8
+                } else {
+                    narrow(elem).map_or(64, |(b, _)| b)
+                };
+                let body: Vec<String> = vals
+                    .iter()
+                    .map(|v| {
+                        let r = v.rem_euclid(1i128 << bits);
+                        let r = if r >= 1i128 << (bits - 1) {
+                            r - (1i128 << bits)
+                        } else {
+                            r
+                        };
+                        format!("{m} {r}")
+                    })
+                    .collect();
+                let name = format!("@\"{}.const.{}\"", self.path, self.globals.lines().count());
+                let _ = writeln!(
+                    self.globals,
+                    "{name} = private unnamed_addr constant [{} x {m}] [{}], align {}",
+                    vals.len(),
+                    body.join(", "),
+                    align(elem)
+                );
+                let bytes = vals.len() as u64 * width(elem);
+                self.emit(format!(
+                    "call void @llvm.memcpy.p0.p0.i64(ptr {ptr}, ptr {name}, i64 {bytes}, i1 false)"
+                ));
+            }
             ExprKind::Array(items) => {
                 // Evaluate every element before the first store: in
                 // `a = [a[1], a[0]]` the right side reads the old `a`.

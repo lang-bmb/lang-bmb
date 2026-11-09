@@ -112,11 +112,11 @@ pub const CODES: &[(&str, &str)] = &[
     ),
     (
         "E0259",
-        "a `const`'s value is not a constant expression: literals, other `const`s, operators, `if`, the wrapping and saturating methods and `as` (ADR-0052 §3)",
+        "a `const`'s value is not a constant expression: literals, other `const`s, operators, `if`, `match`, the wrapping and saturating methods, `as`, arrays, structs, variants, fields and elements (ADR-0052 §3)",
     ),
     (
         "E0260",
-        "a `const`'s evaluation failed: overflow, division by zero, a shift of the width or more, a conversion out of range (ADR-0052 §4)",
+        "a `const`'s evaluation failed: overflow, division by zero, a shift of the width or more, a conversion out of range, an index past the end (ADR-0052 §4)",
     ),
     (
         "E0262",
@@ -316,7 +316,7 @@ pub const CODES: &[(&str, &str)] = &[
     ),
     (
         "E0437",
-        "a type a `const` cannot have: a `const` holds an integer, `bool` or `char` (arrays and data types: backlog 2V-19b)",
+        "a type a `const` cannot have: a `const` holds a value type, an integer, `bool` or `char`, or an array, struct or enum of them (ADR-0052 §2)",
     ),
     // E05xx: specifications
     (

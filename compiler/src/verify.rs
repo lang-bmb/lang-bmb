@@ -75,6 +75,10 @@ pub struct Tables {
     /// by path (ADR-0050 §3, backlog 2U-06): the values the prover assumes
     /// valid UTF-8 where they enter a definition (`Enc::assume_text`).
     pub text_sigs: BTreeMap<String, (Vec<bool>, bool)>,
+    /// The program's `const`s by path (ADR-0052 §7, for the maps).
+    pub consts: BTreeMap<String, crate::consts::Const>,
+    /// The `const`s each definition reads, by the definition's path.
+    pub const_reads: BTreeMap<String, BTreeSet<String>>,
 }
 
 impl Tables {
@@ -148,6 +152,8 @@ impl Tables {
             may_untrusted: self.may_untrusted.clone(),
             external: self.external.clone(),
             text_sigs: self.text_sigs.clone(),
+            consts: self.consts.clone(),
+            const_reads: self.const_reads.clone(),
             calls: self.calls.clone(),
             context: self.context.clone(),
             text: self.text.clone(),
@@ -253,6 +259,8 @@ impl Tables {
             may_untrusted: self.may_untrusted.clone(),
             external: self.external.clone(),
             text_sigs: self.text_sigs.clone(),
+            consts: self.consts.clone(),
+            const_reads: self.const_reads.clone(),
             calls: self.calls.clone(),
             context: self.context.clone(),
             text: self.text.clone(),

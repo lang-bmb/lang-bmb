@@ -810,6 +810,21 @@ pub fn exprs_mut(p: &mut Program, f: &mut dyn FnMut(&mut Expr)) {
     }
 }
 
+/// Every expression of every `const`'s initializer (ADR-0052).
+pub fn const_exprs_mut(p: &mut Program, f: &mut dyn FnMut(&mut Expr)) {
+    fn module(m: &mut Mod, f: &mut dyn FnMut(&mut Expr)) {
+        for s in &mut m.mods {
+            module(s, f);
+        }
+        for c in &mut m.consts {
+            expr_mut(&mut c.value, f);
+        }
+    }
+    for m in &mut p.mods {
+        module(m, f);
+    }
+}
+
 /// The functions of a unit (not of its sub-units): free, inherent `impl`,
 /// trait declaration (with or without a body) and trait `impl` ones.
 pub fn fns_mut(m: &mut Mod) -> impl Iterator<Item = &mut FnDef> {
@@ -867,7 +882,7 @@ pub fn fn_exprs_mut(d: &mut FnDef, f: &mut dyn FnMut(&mut Expr)) {
     block_mut(&mut d.body, f);
 }
 
-fn block_mut(b: &mut Block, f: &mut dyn FnMut(&mut Expr)) {
+pub fn block_mut(b: &mut Block, f: &mut dyn FnMut(&mut Expr)) {
     for s in &mut b.stmts {
         match s {
             Stmt::Let { init, .. } | Stmt::LetFields { init, .. } => expr_mut(init, f),
@@ -927,7 +942,7 @@ pub fn has_quant(e: &Expr) -> bool {
     found
 }
 
-fn expr_mut(e: &mut Expr, f: &mut dyn FnMut(&mut Expr)) {
+pub fn expr_mut(e: &mut Expr, f: &mut dyn FnMut(&mut Expr)) {
     match &mut e.kind {
         ExprKind::Closure(c) => {
             c.requires.iter_mut().for_each(|x| expr_mut(x, f));

@@ -10,12 +10,18 @@
 //! E0260, with the operation and its operands. A `const` that reaches
 //! itself is E0318, another expression E0259.
 //!
-//! This first part takes integer, `bool` and `char` constants; an array or
-//! struct `const` is E0437 until backlog 2V-19b. The checker gives a
-//! reference its type and the resolved program the value as a literal at
-//! the reference's span (`Checker::const_uses`), so later stages see a
-//! literal of the `const`'s type, and a changed value changes the identity
-//! of every definition that reads it.
+//! A `const` holds a value type (ADR-0052 §2): an integer, `bool`, `char`,
+//! or an array, struct or enum of them (backlog 2V-19b). The initializer
+//! also builds arrays (`[a, b]`, `[e; N]`), structs and variants, and reads
+//! fields, elements (`T[i]`, out of range is E0260) and `match`es a
+//! variant. The evaluator types its literals from the declared type; the
+//! checker checks an array or data `const`'s initializer against it
+//! (`Checker::check_const`), so a wrong field or variant is the checker's
+//! error. The checker gives a reference its type and the resolved program
+//! the value as a literal tree at the reference (`Checker::const_uses`,
+//! `literal_tree`), so later stages see literals of the `const`'s type,
+//! and a changed value changes the identity of every definition that reads
+//! it.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -24,30 +30,72 @@ use crate::diag::{Diag, Diags};
 use crate::source::Span;
 
 /// A constant's value.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CVal {
     Int(i128, IntTy),
     Bool(bool),
     Char(u32),
+    /// `[a, b, ..]`
+    Array(Vec<CVal>),
+    /// A struct (`variant: None`, the fields in declaration order) or an
+    /// enum variant (`variant: Some(name)`, the payload as fields `0`, `1`,
+    /// ..). `ty` is the type's full path (`unit::T`), or `Option`/`Result`.
+    Data {
+        ty: String,
+        variant: Option<String>,
+        fields: Vec<(String, CVal)>,
+    },
 }
 
 impl CVal {
-    pub fn ty(self) -> TypeKind {
+    /// The type of a scalar (`Error` for an array or data value).
+    pub fn ty(&self) -> TypeKind {
         match self {
-            CVal::Int(_, t) => TypeKind::Int(t),
+            CVal::Int(_, t) => TypeKind::Int(*t),
             CVal::Bool(_) => TypeKind::Bool,
             CVal::Char(_) => TypeKind::Char,
+            CVal::Array(_) | CVal::Data { .. } => TypeKind::Error,
         }
     }
 
-    fn show(self) -> String {
+    fn scalar(&self) -> bool {
+        matches!(self, CVal::Int(..) | CVal::Bool(_) | CVal::Char(_))
+    }
+
+    fn show(&self) -> String {
         match self {
             CVal::Int(v, t) => format!("{v}_{}", t.name()),
             CVal::Bool(b) => b.to_string(),
-            CVal::Char(c) => format!("{:?}", char::from_u32(c).unwrap_or('?')),
+            CVal::Char(c) => format!("{:?}", char::from_u32(*c).unwrap_or('?')),
+            CVal::Array(vs) => format!("an array of {}", vs.len()),
+            CVal::Data {
+                ty,
+                variant: Some(v),
+                ..
+            } => format!("`{ty}::{v}`"),
+            CVal::Data { ty, .. } => format!("a `{ty}`"),
         }
     }
 }
+
+/// A struct or enum declaration as written, for typing the literals of an
+/// initializer before the checker runs: its unit (where its field types
+/// are written), type parameters and fields or variants.
+#[derive(Clone, Debug)]
+struct TyDef {
+    unit: String,
+    generics: Vec<String>,
+    kind: TyDefKind,
+}
+
+#[derive(Clone, Debug)]
+enum TyDefKind {
+    Struct(Vec<(String, TypeKind)>),
+    Enum(Vec<(String, Vec<TypeKind>)>),
+}
+
+/// The largest array a `const` builds (elements): evaluation stays small.
+const MAX_ELEMS: u128 = 1 << 16;
 
 /// A `const` item: its unit, declared type and value (`None` when it did
 /// not evaluate; the error is reported).
@@ -63,14 +111,43 @@ pub struct Const {
 pub fn resolve(p: &mut Program, diags: &mut Diags) -> BTreeMap<String, Const> {
     let mut defs: BTreeMap<String, (String, ConstDef)> = BTreeMap::new();
     let mut lens: Vec<(Span, Vec<Ident>, String)> = Vec::new();
+    let mut tydefs: BTreeMap<String, TyDef> = BTreeMap::new();
     fn collect(
         m: &Mod,
         prefix: &str,
         defs: &mut BTreeMap<String, (String, ConstDef)>,
         lens: &mut Vec<(Span, Vec<Ident>, String)>,
+        tydefs: &mut BTreeMap<String, TyDef>,
         diags: &mut Diags,
     ) {
         let unit = format!("{prefix}{}", m.name.name);
+        for t in &m.types {
+            let kind = match &t.kind {
+                TypeDefKind::Struct(fs) => TyDefKind::Struct(
+                    fs.iter()
+                        .map(|f| (f.name.name.clone(), f.ty.kind.clone()))
+                        .collect(),
+                ),
+                TypeDefKind::Enum(vs) => TyDefKind::Enum(
+                    vs.iter()
+                        .map(|v| {
+                            (
+                                v.name.name.clone(),
+                                v.payload.iter().map(|t| t.kind.clone()).collect(),
+                            )
+                        })
+                        .collect(),
+                ),
+            };
+            tydefs.insert(
+                format!("{unit}::{}", t.name.name),
+                TyDef {
+                    unit: unit.clone(),
+                    generics: t.generics.iter().map(|g| g.name.name.clone()).collect(),
+                    kind,
+                },
+            );
+        }
         let mut names: BTreeSet<String> = m
             .fns
             .iter()
@@ -95,16 +172,29 @@ pub fn resolve(p: &mut Program, diags: &mut Diags) -> BTreeMap<String, Const> {
             lens.push((*sp, path.clone(), unit.clone()));
         }
         for s in &m.mods {
-            collect(s, &format!("{unit}::"), defs, lens, diags);
+            collect(s, &format!("{unit}::"), defs, lens, tydefs, diags);
         }
     }
     for m in &p.mods {
-        collect(m, "", &mut defs, &mut lens, diags);
+        collect(m, "", &mut defs, &mut lens, &mut tydefs, diags);
     }
+    // A repeat count written as a name, by the count's span.
+    let named: BTreeMap<(u32, u32, u32), Vec<String>> = lens
+        .iter()
+        .map(|(sp, path, _)| {
+            (
+                (sp.file, sp.lo, sp.hi),
+                path.iter().map(|i| i.name.clone()).collect(),
+            )
+        })
+        .collect();
     let mut ev = Eval {
         defs: &defs,
+        tydefs: &tydefs,
+        named: &named,
         done: BTreeMap::new(),
         stack: Vec::new(),
+        env: Vec::new(),
         diags,
     };
     let paths: Vec<String> = defs.keys().cloned().collect();
@@ -112,7 +202,7 @@ pub fn resolve(p: &mut Program, diags: &mut Diags) -> BTreeMap<String, Const> {
         ev.konst(path);
     }
     let Eval { done, diags, .. } = ev;
-    let consts: BTreeMap<String, Const> = defs
+    let mut consts: BTreeMap<String, Const> = defs
         .iter()
         .map(|(path, (unit, c))| {
             (
@@ -120,7 +210,7 @@ pub fn resolve(p: &mut Program, diags: &mut Diags) -> BTreeMap<String, Const> {
                 Const {
                     unit: unit.clone(),
                     ty: c.ty.kind.clone(),
-                    value: done.get(path).copied().flatten(),
+                    value: done.get(path).cloned().flatten(),
                 },
             )
         })
@@ -139,8 +229,8 @@ pub fn resolve(p: &mut Program, diags: &mut Diags) -> BTreeMap<String, Const> {
             );
             return None;
         };
-        match consts[&full].value {
-            Some(CVal::Int(v, IntTy::Usize)) if v <= u32::MAX as i128 => Some(v as u64),
+        match &consts[&full].value {
+            Some(CVal::Int(v, IntTy::Usize)) if *v <= u32::MAX as i128 => Some(*v as u64),
             Some(CVal::Int(_, IntTy::Usize)) => {
                 diags.push(Diag::new("E0406", span, "array length is too large"));
                 None
@@ -190,7 +280,7 @@ pub fn resolve(p: &mut Program, diags: &mut Diags) -> BTreeMap<String, Const> {
             length(&names, unit, *sp, diags).map(|n| ((sp.file, sp.lo, sp.hi), n as u128))
         })
         .collect();
-    crate::ast::exprs_mut(p, &mut |e| {
+    let mut set = |e: &mut Expr| {
         if let ExprKind::Repeat {
             count, count_span, ..
         } = &mut e.kind
@@ -198,14 +288,31 @@ pub fn resolve(p: &mut Program, diags: &mut Diags) -> BTreeMap<String, Const> {
         {
             *count = *n;
         }
-    });
+    };
+    crate::ast::exprs_mut(p, &mut set);
+    crate::ast::const_exprs_mut(p, &mut set);
+    // The declared types as rewritten (a `[T; N]` holds its length).
+    fn declared(m: &Mod, prefix: &str, consts: &mut BTreeMap<String, Const>) {
+        let unit = format!("{prefix}{}", m.name.name);
+        for c in &m.consts {
+            if let Some(k) = consts.get_mut(&format!("{unit}::{}", c.name.name)) {
+                k.ty = c.ty.kind.clone();
+            }
+        }
+        for s in &m.mods {
+            declared(s, &format!("{unit}::"), consts);
+        }
+    }
+    for m in &p.mods {
+        declared(m, "", &mut consts);
+    }
     consts
 }
 
-/// `v` as an expression: a literal (a negative integer is `-` of one, at
-/// the same span, so both have the `const`'s type).
-pub fn literal(v: CVal, span: Span) -> ExprKind {
-    match v {
+/// A scalar `v` as an expression: a literal (a negative integer is `-` of
+/// one, at the same span, so both have the `const`'s type).
+pub fn literal(v: &CVal, span: Span) -> ExprKind {
+    match *v {
         CVal::Int(n, _) if n < 0 => ExprKind::Unary(
             UnOp::Neg,
             Box::new(Expr {
@@ -216,7 +323,204 @@ pub fn literal(v: CVal, span: Span) -> ExprKind {
         CVal::Int(n, _) => ExprKind::Int(n as u128, Radix::Dec),
         CVal::Bool(b) => ExprKind::Bool(b),
         CVal::Char(c) => ExprKind::CharLit(c),
+        CVal::Array(_) | CVal::Data { .. } => unreachable!("a scalar"),
     }
+}
+
+/// `v` of the checked type `ty` as an expression at `at`: literals,
+/// arrays, struct literals and variants, each node at a span of its own
+/// (file `source::CONST_VALUES`, from `next` on) with its type in `types`,
+/// as the checker would have typed it.
+pub fn literal_tree(
+    v: &CVal,
+    ty: &TypeKind,
+    at: Span,
+    adts: &BTreeMap<String, crate::check::Adt>,
+    types: &mut BTreeMap<(u32, u32, u32), TypeKind>,
+    next: &mut u32,
+) -> Expr {
+    let fresh = |next: &mut u32| {
+        *next += 1;
+        Span {
+            file: crate::source::CONST_VALUES,
+            lo: *next,
+            hi: *next,
+        }
+    };
+    let id = |name: &str, span: Span| Ident {
+        name: name.to_string(),
+        span,
+    };
+    let args_of = |ty: &TypeKind| -> Vec<TypeKind> {
+        match ty {
+            TypeKind::Named { args, .. } => args.iter().map(|a| a.kind.clone()).collect(),
+            _ => Vec::new(),
+        }
+    };
+    let kind = match v {
+        CVal::Int(..) | CVal::Bool(_) | CVal::Char(_) => literal(v, at),
+        CVal::Array(vs) => {
+            let TypeKind::Array(el, _) = ty else {
+                unreachable!("an array value of an array type")
+            };
+            ExprKind::Array(
+                vs.iter()
+                    .map(|x| {
+                        let sp = fresh(next);
+                        literal_tree(x, &el.kind, sp, adts, types, next)
+                    })
+                    .collect(),
+            )
+        }
+        CVal::Data {
+            ty: path,
+            variant,
+            fields,
+        } => {
+            let targs = args_of(ty);
+            // The field or payload types of the declaration, in `ty`'s
+            // arguments.
+            let decl: Vec<TypeKind> = match (path.as_str(), variant.as_deref()) {
+                ("Option", Some("Some")) | ("Result", Some("Ok")) => {
+                    targs.first().cloned().into_iter().collect()
+                }
+                ("Result", Some("Err")) => targs.get(1).cloned().into_iter().collect(),
+                ("Option", _) => Vec::new(),
+                _ => {
+                    let a = &adts[path.as_str()];
+                    let sub: BTreeMap<String, TypeKind> = a
+                        .generics
+                        .iter()
+                        .map(|g| g.name.clone())
+                        .zip(targs.iter().cloned())
+                        .collect();
+                    let raw: Vec<TypeKind> = match (&a.kind, variant) {
+                        (crate::check::AdtKind::Struct(fs), None) => {
+                            fs.iter().map(|(_, t)| t.clone()).collect()
+                        }
+                        (crate::check::AdtKind::Enum(vs), Some(var)) => vs
+                            .iter()
+                            .find(|(n, _)| n == var)
+                            .map(|(_, ps)| ps.clone())
+                            .unwrap_or_default(),
+                        _ => unreachable!("a checked value"),
+                    };
+                    raw.iter().map(|t| crate::check::subst(t, &sub)).collect()
+                }
+            };
+            let parts: Vec<(String, Expr)> = fields
+                .iter()
+                .zip(&decl)
+                .map(|((n, x), t)| {
+                    let sp = fresh(next);
+                    (n.clone(), literal_tree(x, t, sp, adts, types, next))
+                })
+                .collect();
+            let segs = |extra: Option<&str>, next: &mut u32| -> Vec<Ident> {
+                let mut p: Vec<Ident> = path.split("::").map(|s| id(s, fresh(next))).collect();
+                if let Some(x) = extra {
+                    p.push(id(x, fresh(next)));
+                }
+                p
+            };
+            match variant.as_deref() {
+                None => ExprKind::StructLit {
+                    path: segs(None, next),
+                    fields: parts
+                        .into_iter()
+                        .map(|(n, x)| (id(&n, fresh(next)), x))
+                        .collect(),
+                    rest: None,
+                },
+                Some("None") if path == "Option" => ExprKind::Var(id("None", fresh(next))),
+                Some(var) if path == "Option" || path == "Result" => ExprKind::Call {
+                    path: vec![id(var, fresh(next))],
+                    targs: Vec::new(),
+                    args: parts.into_iter().map(|(_, x)| x).collect(),
+                    method: None,
+                },
+                Some(var) if parts.is_empty() => ExprKind::Path(segs(Some(var), next)),
+                Some(var) => ExprKind::Call {
+                    path: segs(Some(var), next),
+                    targs: Vec::new(),
+                    args: parts.into_iter().map(|(_, x)| x).collect(),
+                    method: None,
+                },
+            }
+        }
+    };
+    types.insert((at.file, at.lo, at.hi), ty.clone());
+    Expr { kind, span: at }
+}
+
+/// A value as source text (an array of more than 32 elements shows its
+/// first 32 and its length; the map's hash is of the whole value).
+pub fn value_text(v: &CVal) -> String {
+    fn go(v: &CVal, out: &mut String) {
+        match v {
+            CVal::Int(n, _) => out.push_str(&n.to_string()),
+            CVal::Bool(b) => out.push_str(&b.to_string()),
+            CVal::Char(c) => out.push_str(&crate::lexer::str_text(
+                &char::from_u32(*c).unwrap_or('\0').to_string(),
+                '\'',
+            )),
+            CVal::Array(vs) => {
+                out.push('[');
+                for (k, x) in vs.iter().take(32).enumerate() {
+                    if k > 0 {
+                        out.push_str(", ");
+                    }
+                    go(x, out);
+                }
+                if vs.len() > 32 {
+                    out.push_str(&format!(", .. ({} elements)", vs.len()));
+                }
+                out.push(']');
+            }
+            CVal::Data {
+                ty,
+                variant,
+                fields,
+            } => {
+                let name = ty.rsplit("::").next().unwrap_or(ty);
+                match variant {
+                    None => {
+                        out.push_str(name);
+                        out.push_str(" { ");
+                        for (k, (n, x)) in fields.iter().enumerate() {
+                            if k > 0 {
+                                out.push_str(", ");
+                            }
+                            out.push_str(n);
+                            out.push_str(": ");
+                            go(x, out);
+                        }
+                        out.push_str(" }");
+                    }
+                    Some(var) => {
+                        if ty != "Option" && ty != "Result" {
+                            out.push_str(name);
+                            out.push_str("::");
+                        }
+                        out.push_str(var);
+                        if !fields.is_empty() {
+                            out.push('(');
+                            for (k, (_, x)) in fields.iter().enumerate() {
+                                if k > 0 {
+                                    out.push_str(", ");
+                                }
+                                go(x, out);
+                            }
+                            out.push(')');
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let mut out = String::new();
+    go(v, &mut out);
+    out
 }
 
 /// The `const` that `path` names from `unit`: `N` in its own unit, or a
@@ -232,22 +536,38 @@ pub fn lookup(consts: &BTreeMap<String, Const>, path: &[String], unit: &str) -> 
 
 struct Eval<'a> {
     defs: &'a BTreeMap<String, (String, ConstDef)>,
+    tydefs: &'a BTreeMap<String, TyDef>,
+    /// Repeat counts written as a name, by the count's span.
+    named: &'a BTreeMap<(u32, u32, u32), Vec<String>>,
     /// Evaluated (`None`: failed, reported).
     done: BTreeMap<String, Option<CVal>>,
     /// The `const`s being evaluated, outermost first.
     stack: Vec<String>,
+    /// The names a `match` arm binds, innermost last.
+    env: Vec<BTreeMap<String, CVal>>,
     diags: &'a mut Diags,
 }
 
-/// The declared type's kind, if a `const` may have it.
-fn scalar(t: &TypeKind) -> bool {
+/// Whether a `const` of this declared type is a scalar.
+pub fn scalar(t: &TypeKind) -> bool {
     matches!(t, TypeKind::Int(_) | TypeKind::Bool | TypeKind::Char)
+}
+
+/// Whether a `const` may be declared with this type before the checker
+/// sees it: a scalar, an array or a named type (the checker tells which
+/// named types hold only values, `Checker::check_const`).
+fn declarable(t: &TypeKind) -> bool {
+    scalar(t)
+        || matches!(
+            t,
+            TypeKind::Array(..) | TypeKind::ArrayN(..) | TypeKind::Named { .. }
+        )
 }
 
 impl Eval<'_> {
     fn konst(&mut self, path: &str) -> Option<CVal> {
         if let Some(v) = self.done.get(path) {
-            return *v;
+            return v.clone();
         }
         let (unit, c) = self.defs[path].clone();
         if self.stack.iter().any(|p| p == path) {
@@ -272,35 +592,20 @@ impl Eval<'_> {
             self.done.insert(path.to_string(), None);
             return None;
         }
-        if !scalar(&c.ty.kind) {
-            let what = match &c.ty.kind {
-                TypeKind::Array(..) | TypeKind::ArrayN(..) | TypeKind::Named { .. } => {
-                    "an array or data `const` is not available yet (backlog 2V-19b)"
-                }
-                _ => "a `const` holds a value type: an integer, `bool` or `char` (ADR-0052 §2)",
-            };
-            self.diags.push(
-                Diag::new(
-                    "E0437",
-                    c.ty.span,
-                    format!(
-                        "`{}` cannot be a `const`: {what}",
-                        crate::check::ty_str(&c.ty.kind)
-                    ),
-                )
-                .fix(
-                    "write the value where it is used, or name each scalar part as its own `const`",
-                    None,
-                ),
-            );
+        if !declarable(&c.ty.kind) {
+            self.diags.push(not_value(&c.ty.kind, c.ty.span));
             self.done.insert(path.to_string(), None);
             return None;
         }
         self.stack.push(path.to_string());
-        let v = self.expr(&c.value, Some(&c.ty.kind), &unit);
+        let want = self.norm(&c.ty.kind, &unit, &BTreeMap::new());
+        let saved = std::mem::take(&mut self.env);
+        let v = self.expr(&c.value, Some(&want), &unit);
+        self.env = saved;
         self.stack.pop();
         let v = v.and_then(|v| {
-            if v.ty() == c.ty.kind {
+            // An array or data value's shape is the checker's to judge.
+            if !scalar(&c.ty.kind) || v.ty() == c.ty.kind {
                 Some(v)
             } else {
                 self.diags.push(Diag::new(
@@ -315,8 +620,152 @@ impl Eval<'_> {
                 None
             }
         });
-        self.done.insert(path.to_string(), v);
+        self.done.insert(path.to_string(), v.clone());
         v
+    }
+
+    /// `t` with its named types as full paths (`unit::T`; `Option` and
+    /// `Result` as they are) and type parameters replaced by `sub`.
+    fn norm(&self, t: &TypeKind, unit: &str, sub: &BTreeMap<String, TypeKind>) -> TypeKind {
+        let boxed = |x: &Type| {
+            Box::new(Type {
+                kind: self.norm(&x.kind, unit, sub),
+                span: x.span,
+            })
+        };
+        match t {
+            TypeKind::Named { path, args } if path.len() == 1 && sub.contains_key(&path[0]) => {
+                sub[&path[0]].clone()
+            }
+            TypeKind::Named { path, args } => {
+                let path = match self.type_path(path, unit) {
+                    Some(full) => full.split("::").map(str::to_string).collect(),
+                    None => path.clone(),
+                };
+                TypeKind::Named {
+                    path,
+                    args: args
+                        .iter()
+                        .map(|a| Type {
+                            kind: self.norm(&a.kind, unit, sub),
+                            span: a.span,
+                        })
+                        .collect(),
+                }
+            }
+            TypeKind::Array(e, n) => TypeKind::Array(boxed(e), *n),
+            TypeKind::ArrayN(e, n) => TypeKind::ArrayN(boxed(e), n.clone()),
+            _ => t.clone(),
+        }
+    }
+
+    /// The full path of the struct or enum `path` names from `unit`.
+    fn type_path(&self, path: &[String], unit: &str) -> Option<String> {
+        let local = format!("{unit}::{}", path.join("::"));
+        if self.tydefs.contains_key(&local) {
+            return Some(local);
+        }
+        let full = path.join("::");
+        self.tydefs.contains_key(&full).then_some(full)
+    }
+
+    /// The declaration `want` names and its parameters' arguments.
+    fn decl_of(
+        &self,
+        path: &str,
+        want: Option<&TypeKind>,
+    ) -> Option<(TyDef, BTreeMap<String, TypeKind>)> {
+        let d = self.tydefs.get(path)?.clone();
+        let mut sub = BTreeMap::new();
+        if let Some(TypeKind::Named { path: wp, args }) = want
+            && wp.join("::") == path
+        {
+            for (g, a) in d.generics.iter().zip(args) {
+                sub.insert(g.clone(), a.kind.clone());
+            }
+        }
+        Some((d, sub))
+    }
+
+    /// The element type an array expected as `want` holds.
+    fn elem(want: Option<&TypeKind>) -> Option<TypeKind> {
+        match want {
+            Some(TypeKind::Array(e, _) | TypeKind::ArrayN(e, _)) => Some(e.kind.clone()),
+            _ => None,
+        }
+    }
+
+    /// The argument `k` of an expected `Option`/`Result`.
+    fn arg(want: Option<&TypeKind>, ty: &str, k: usize) -> Option<TypeKind> {
+        match want {
+            Some(TypeKind::Named { path, args }) if path.len() == 1 && path[0] == ty => {
+                args.get(k).map(|a| a.kind.clone())
+            }
+            _ => None,
+        }
+    }
+
+    /// A variant of `Option`/`Result` or of a declared enum, built from
+    /// `args` (`None` if `path` names no variant).
+    fn variant(
+        &mut self,
+        path: &[Ident],
+        args: &[Expr],
+        want: Option<&TypeKind>,
+        unit: &str,
+    ) -> Option<Option<CVal>> {
+        let names: Vec<String> = path.iter().map(|i| i.name.clone()).collect();
+        let builtin = match names.as_slice() {
+            [v] if v == "Some" => Some(("Option", vec![Self::arg(want, "Option", 0)])),
+            [v] if v == "None" => Some(("Option", vec![])),
+            [v] if v == "Ok" => Some(("Result", vec![Self::arg(want, "Result", 0)])),
+            [v] if v == "Err" => Some(("Result", vec![Self::arg(want, "Result", 1)])),
+            _ => None,
+        };
+        let (ty, payload) = if let Some((ty, payload)) = builtin {
+            (ty.to_string(), payload)
+        } else {
+            let (v, tpath) = names.split_last()?;
+            let full = self.type_path(tpath, unit)?;
+            let (d, sub) = self.decl_of(&full, want)?;
+            let TyDefKind::Enum(vs) = &d.kind else {
+                return None;
+            };
+            let (_, ps) = vs.iter().find(|(n, _)| n == v)?;
+            let ps = ps
+                .iter()
+                .map(|t| Some(self.norm(t, &d.unit, &sub)))
+                .collect();
+            (full, ps)
+        };
+        if payload.len() != args.len() {
+            return Some(None);
+        }
+        let mut fields = Vec::new();
+        for (k, (a, w)) in args.iter().zip(&payload).enumerate() {
+            let Some(x) = self.expr(a, w.as_ref(), unit) else {
+                return Some(None);
+            };
+            fields.push((k.to_string(), x));
+        }
+        Some(Some(CVal::Data {
+            ty,
+            variant: Some(names.last().expect("a path").clone()),
+            fields,
+        }))
+    }
+
+    /// The `const` or `match` binding a one-segment name reads.
+    fn name(&mut self, e: &Expr, path: &[String], unit: &str) -> Option<CVal> {
+        if let [n] = path
+            && let Some(v) = self.env.iter().rev().find_map(|m| m.get(n))
+        {
+            return Some(v.clone());
+        }
+        match lookup_defs(self.defs, path, unit) {
+            Some(p) => self.konst(&p),
+            None => self.not_const(e, "only other `const`s are named"),
+        }
     }
 
     fn not_const(&mut self, e: &Expr, what: &str) -> Option<CVal> {
@@ -330,11 +779,17 @@ impl Eval<'_> {
                 ),
             )
             .fix(
-                "a `const` is built from literals, other `const`s, operators, `if`, the wrapping and saturating methods and `as` (ADR-0052 §3)",
+                "a `const` is built from literals, other `const`s, operators, `if`, `match`, the wrapping and saturating methods, `as`, arrays, structs, variants, fields and elements (ADR-0052 §3)",
                 None,
             ),
         );
         None
+    }
+
+    /// Whether a one-segment name is a `match` binding or a `const`.
+    fn bound(&self, n: &str, unit: &str) -> bool {
+        self.env.iter().any(|m| m.contains_key(n))
+            || lookup_defs(self.defs, &[n.to_string()], unit).is_some()
     }
 
     fn fail(&mut self, span: Span, what: String) -> Option<CVal> {
@@ -377,21 +832,157 @@ impl Eval<'_> {
             ExprKind::Bool(b) => Some(CVal::Bool(*b)),
             ExprKind::CharLit(c) => Some(CVal::Char(*c)),
             ExprKind::ByteLit(b) => Some(CVal::Int(*b as i128, IntTy::U8)),
-            ExprKind::Var(id) => {
-                let path = vec![id.name.clone()];
-                match lookup_defs(self.defs, &path, unit) {
-                    Some(p) => self.konst(&p),
-                    None => self.not_const(e, "only other `const`s are named"),
-                }
-            }
+            ExprKind::Var(id) if id.name == "None" && !self.bound("None", unit) => self
+                .variant(std::slice::from_ref(id), &[], want, unit)
+                .flatten(),
+            ExprKind::Var(id) => self.name(e, std::slice::from_ref(&id.name), unit),
             ExprKind::Path(path) => {
                 if let Some((TypeKind::Int(t), v)) = crate::check::int_const(path) {
                     return Some(CVal::Int(v, t));
                 }
                 let names: Vec<String> = path.iter().map(|i| i.name.clone()).collect();
-                match lookup_defs(self.defs, &names, unit) {
-                    Some(p) => self.konst(&p),
-                    None => self.not_const(e, "only other `const`s are named"),
+                if lookup_defs(self.defs, &names, unit).is_none()
+                    && let Some(v) = self.variant(path, &[], want, unit)
+                {
+                    return v;
+                }
+                self.name(e, &names, unit)
+            }
+            ExprKind::Call { path, args, .. } => match self.variant(path, args, want, unit) {
+                Some(v) => v,
+                None => self.not_const(e, "a call (a `const` names no function, ADR-0052 §3)"),
+            },
+            ExprKind::Array(items) => {
+                let mut w = Self::elem(want);
+                let mut vals = Vec::new();
+                for it in items {
+                    let v = self.expr(it, w.as_ref(), unit)?;
+                    if w.is_none() && v.scalar() {
+                        w = Some(v.ty());
+                    }
+                    vals.push(v);
+                }
+                Some(CVal::Array(vals))
+            }
+            ExprKind::Repeat {
+                value,
+                count,
+                count_span,
+            } => {
+                let n = match self
+                    .named
+                    .get(&(count_span.file, count_span.lo, count_span.hi))
+                {
+                    Some(path) => {
+                        let p = lookup_defs(self.defs, path, unit)?;
+                        match self.konst(&p)? {
+                            CVal::Int(n, IntTy::Usize) => n as u128,
+                            v => {
+                                return self
+                                    .fail(*count_span, format!("the count is {}", v.show()));
+                            }
+                        }
+                    }
+                    None => *count,
+                };
+                if n > MAX_ELEMS {
+                    return self.fail(
+                        e.span,
+                        format!("an array of {n} elements (a `const` builds at most {MAX_ELEMS})"),
+                    );
+                }
+                let v = self.expr(value, Self::elem(want).as_ref(), unit)?;
+                Some(CVal::Array(vec![v; n as usize]))
+            }
+            ExprKind::StructLit { path, fields, rest } => {
+                if rest.is_some() {
+                    return self.not_const(e, "`..base`");
+                }
+                let names: Vec<String> = path.iter().map(|i| i.name.clone()).collect();
+                let full = self.type_path(&names, unit)?;
+                let (d, sub) = self.decl_of(&full, want)?;
+                let TyDefKind::Struct(fs) = &d.kind else {
+                    return None;
+                };
+                let mut out = Vec::new();
+                for (n, ft) in fs {
+                    let (_, x) = fields.iter().find(|(i, _)| i.name == *n)?;
+                    let w = self.norm(ft, &d.unit, &sub);
+                    out.push((n.clone(), self.expr(x, Some(&w), unit)?));
+                }
+                Some(CVal::Data {
+                    ty: full,
+                    variant: None,
+                    fields: out,
+                })
+            }
+            ExprKind::Field { base, name } => match self.expr(base, None, unit)? {
+                CVal::Data {
+                    variant: None,
+                    fields,
+                    ..
+                } => fields
+                    .into_iter()
+                    .find(|(n, _)| *n == name.name)
+                    .map(|(_, v)| v),
+                v => self.fail(e.span, format!("`.{}` of {}", name.name, v.show())),
+            },
+            ExprKind::Index { base, index } => {
+                let b = self.expr(base, None, unit)?;
+                let i = self.expr(index, Some(&TypeKind::Int(IntTy::Usize)), unit)?;
+                match (b, i) {
+                    (CVal::Array(vs), CVal::Int(k, _)) => {
+                        match usize::try_from(k).ok().and_then(|k| vs.get(k)) {
+                            Some(v) => Some(v.clone()),
+                            None => self.fail(
+                                e.span,
+                                format!("index {k} is out of bounds of an array of {}", vs.len()),
+                            ),
+                        }
+                    }
+                    (b, i) => self.fail(e.span, format!("{} indexed by {}", b.show(), i.show())),
+                }
+            }
+            ExprKind::Match { scrut, arms } => {
+                let v = self.expr(scrut, None, unit)?;
+                let CVal::Data {
+                    variant: Some(var),
+                    fields,
+                    ..
+                } = &v
+                else {
+                    return self.fail(scrut.span, format!("a `match` of {}", v.show()));
+                };
+                for a in arms {
+                    let last = &a.pat.path.last().expect("a pattern path").name;
+                    if last != "_" && last != var {
+                        continue;
+                    }
+                    let mut binds = BTreeMap::new();
+                    for (b, (_, x)) in a.pat.binds.iter().zip(fields) {
+                        if let Some(b) = b {
+                            binds.insert(b.name.clone(), x.clone());
+                        }
+                    }
+                    self.env.push(binds);
+                    let r = self.expr(&a.body, want, unit);
+                    self.env.pop();
+                    return r;
+                }
+                None
+            }
+            // `-128` is one literal of `i8`, as Rust reads it.
+            ExprKind::Unary(UnOp::Neg, x) if let ExprKind::Int(v, _) = x.kind => {
+                let t = match want {
+                    Some(TypeKind::Int(t)) => *t,
+                    _ => IntTy::I64,
+                };
+                if !t.signed() {
+                    return self.fail(e.span, format!("`-{v}` of `{}`", t.name()));
+                }
+                match i128::try_from(v) {
+                    Ok(v) => self.int(-v, t, e.span, &format!("`-{v}`")),
+                    Err(_) => self.fail(e.span, format!("`-{v}` overflows `{}`", t.name())),
                 }
             }
             ExprKind::Unary(UnOp::Neg, x) => match self.expr(x, want, unit)? {
@@ -499,11 +1090,11 @@ impl Eval<'_> {
             return None;
         }
         if cmp {
-            let o = match (x, y) {
-                (CVal::Int(p, _), CVal::Int(q, _)) => p.cmp(&q),
-                (CVal::Bool(p), CVal::Bool(q)) => p.cmp(&q),
-                (CVal::Char(p), CVal::Char(q)) => p.cmp(&q),
-                _ => unreachable!("same types"),
+            let o = match (&x, &y) {
+                (CVal::Int(p, _), CVal::Int(q, _)) => p.cmp(q),
+                (CVal::Bool(p), CVal::Bool(q)) => p.cmp(q),
+                (CVal::Char(p), CVal::Char(q)) => p.cmp(q),
+                (x, _) => return self.fail(e.span, format!("`{}` of {}", op.symbol(), x.show())),
             };
             use std::cmp::Ordering as O;
             let r = match op {
@@ -516,7 +1107,7 @@ impl Eval<'_> {
             };
             return Some(CVal::Bool(r));
         }
-        match (x, y) {
+        match (x.clone(), y.clone()) {
             (CVal::Bool(p), CVal::Bool(q)) => match op {
                 BitAnd => Some(CVal::Bool(p & q)),
                 BitOr => Some(CVal::Bool(p | q)),
@@ -534,6 +1125,10 @@ impl Eval<'_> {
                     },
                     Div | Rem if q == 0 => self.fail(e.span, format!("{shown} divides by zero")),
                     Div => self.int(p / q, t, e.span, &shown),
+                    // `MIN % -1` overflows as `MIN / -1` does (Rust).
+                    Rem if t.signed() && p == t.min_value() && q == -1 => {
+                        self.fail(e.span, format!("{shown} overflows `{}`", t.name()))
+                    }
                     Rem => self.int(p % q, t, e.span, &shown),
                     BitAnd => Some(CVal::Int(p & q, t)),
                     BitOr => Some(CVal::Int(p | q, t)),
@@ -609,6 +1204,22 @@ impl Eval<'_> {
         };
         Some(CVal::Int(r, t))
     }
+}
+
+/// E0437: a `const` of a type that holds more than values.
+pub fn not_value(t: &TypeKind, span: Span) -> Diag {
+    Diag::new(
+        "E0437",
+        span,
+        format!(
+            "`{}` cannot be a `const`: a `const` holds a value type, an integer, `bool` or `char`, or an array, struct or enum of them (ADR-0052 §2)",
+            crate::check::ty_str(t)
+        ),
+    )
+    .fix(
+        "build the value where it is used (a `const` allocates nothing: no `Vec`, `String`, `Box` or reference)",
+        None,
+    )
 }
 
 fn lookup_defs(

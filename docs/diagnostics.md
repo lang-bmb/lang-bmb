@@ -51,8 +51,8 @@
 | E0256 | a `proof fn` takes no effect attribute and no return type |
 | E0257 | ghost code (a `proof fn` body or a `proof { .. }` block) cannot run executable code: no executable call, assignment, `&mut` or loop |
 | E0258 | a `proof fn` is called only from ghost code: a `proof { .. }` block or another `proof fn` |
-| E0259 | a `const`'s value is not a constant expression: literals, other `const`s, operators, `if`, the wrapping and saturating methods and `as` (ADR-0052 §3) |
-| E0260 | a `const`'s evaluation failed: overflow, division by zero, a shift of the width or more, a conversion out of range (ADR-0052 §4) |
+| E0259 | a `const`'s value is not a constant expression: literals, other `const`s, operators, `if`, `match`, the wrapping and saturating methods, `as`, arrays, structs, variants, fields and elements (ADR-0052 §3) |
+| E0260 | a `const`'s evaluation failed: overflow, division by zero, a shift of the width or more, a conversion out of range, an index past the end (ADR-0052 §4) |
 | E0262 | a closure that captures a local is written `move`: captures move into it (ADR-0053 §2) |
 | E0263 | a closure's parameters and result have their types written (ADR-0053 §2) |
 | E0264 | a function pointer type, a returned closure, or a closure that is not the argument of an `Fn`-bounded parameter (ADR-0053 §1, §3) |
@@ -133,7 +133,7 @@
 | E0434 | struct literal fields must be given in declaration order (the order of evaluation) |
 | E0435 | a range `lo..hi` outside the source argument of `copy_within` and the bounds of a `&str` argument `&s[lo..hi]` |
 | E0436 | a `std::process::Child` built or read by its fields (it comes from `std::process::spawn`) |
-| E0437 | a type a `const` cannot have: a `const` holds an integer, `bool` or `char` (arrays and data types: backlog 2V-19b) |
+| E0437 | a type a `const` cannot have: a `const` holds a value type, an integer, `bool` or `char`, or an array, struct or enum of them (ADR-0052 §2) |
 
 ## E05xx 명세
 

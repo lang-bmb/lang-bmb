@@ -1,0 +1,32 @@
+#[summary("집합 const의 증명 실패(ADR-0052 §5, backlog 2V-19b): 표의 원소와 구조체 필드는 증명기가 아는 값이라 틀린 주장에는 반례가 나온다")]
+mod kdf {
+    struct Range { lo: u64, hi: u64 }
+
+    const STEPS: [u64; 4] = [1, 2, 4, 8];
+    const WINDOW: Range = Range { lo: 10, hi: 20 };
+
+    // The first element is 1, not above 1.
+    #[effects(pure)]
+    fn step(i: usize) -> (r: u64)
+        requires i < 4,
+        ensures r > 1,
+    {
+        STEPS[i]
+    }
+
+    // `hi - lo` is 10.
+    #[effects(pure)]
+    fn width() -> (r: u64)
+        ensures r == 11,
+    {
+        WINDOW.hi - WINDOW.lo
+    }
+
+    // Index 4 is past the table.
+    #[effects(pure)]
+    fn past(i: usize) -> u64
+        requires i <= 4,
+    {
+        STEPS[i]
+    }
+}

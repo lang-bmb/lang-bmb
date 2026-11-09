@@ -26,6 +26,9 @@ pub struct SourceFile {
 /// The first file id of the text the compiler generates (counting down),
 /// out of the range of the files a source map holds.
 pub const GENERATED: u32 = u32::MAX - 1;
+/// The file of the nodes a `const`'s value is written as where it is read
+/// (`consts::literal_tree`): each node has a span of its own there.
+pub const CONST_VALUES: u32 = 0x8000_0000;
 
 #[derive(Default)]
 pub struct SourceMap {

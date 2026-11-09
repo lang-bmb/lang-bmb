@@ -1,0 +1,28 @@
+#[summary("클로저 안의 클로저(ADR-0053, backlog 2V-20e): 바깥 클로저의 몸이 제 `call`이 된 다음 차례에 안쪽 클로저를 낮춘다. 안쪽은 바깥 몸의 지역을 캡처한다")]
+mod nest {
+    #[effects(pure)]
+    fn apply<F: Fn(i64) -> i64>(f: F, x: i64) -> (r: i64)
+        requires f.requires(x),
+        ensures f.ensures(x, r),
+    {
+        f(x)
+    }
+
+    #[effects(pure)]
+    fn twice() -> (r: i64)
+        ensures r == 8,
+    {
+        apply::<_>(
+            |x: i64| -> (y: i64) requires x == 5, ensures y == x + 3, {
+                let k: i64 = x;
+                apply::<_>(move |z: i64| -> (w: i64) requires z == 3, k == 5, ensures w == z + k, { z + k }, 3)
+            },
+            5,
+        )
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        print_i64(twice());
+    }
+}

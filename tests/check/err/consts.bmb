@@ -1,12 +1,19 @@
-#[summary("const 항목의 검사 오류(ADR-0052, backlog 2V-19): 평가 실패 E0260, 순환 E0318, 상수 식이 아닌 것 E0259, 쓸 수 없는 타입 E0437, static E0261, const 이름의 지역 E0303, 모르는 길이 E0301")]
+#[summary("const 항목의 검사 오류(ADR-0052, backlog 2V-19·2V-19b): 평가 실패 E0260(넘침, 범위 밖 원소), 순환 E0318, 상수 식이 아닌 것 E0259, 값 타입이 아닌 것 E0437, 초기화 식의 타입 오류, static E0261, const 이름의 지역 E0303, 모르는 길이 E0301")]
 mod ke {
+    struct Pair { a: u8, b: u8 }
+
     const OVER: u8 = 200 + 100;
     const ZERO: u32 = 7 / (3 - 3);
     const SHIFT: u16 = 1 << 16;
     const LOOP_A: u64 = LOOP_B + 1;
     const LOOP_B: u64 = LOOP_A + 1;
     const CALL: u64 = f(1);
-    const ARR: [u8; 2] = [1, 2];
+    const VEC: Vec<u8> = Vec::new();
+    const TABLE: [u8; 3] = [1, 2, 3];
+    const PAST: u8 = TABLE[3];
+    const PAIR: Pair = Pair { a: 1, c: 2 };
+    const READ: u8 = PAIR_OK.c;
+    const PAIR_OK: Pair = Pair { a: 1, b: 2 };
     const WRONG: u64 = true;
     const NARROW: u8 = 300 as u8;
     static S: u64 = 1;

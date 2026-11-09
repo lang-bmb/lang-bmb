@@ -227,8 +227,8 @@
    "src": "c6da540d558c2c15"
   },
   "tests/check/err/consts.bmb": {
-   "out": "1c765b1ef23a57cc",
-   "src": "28d9f6276be6e72a"
+   "out": "ffb3bc5a7a0447be",
+   "src": "8805f1e51c0d9443"
   },
   "tests/check/err/conversions.bmb": {
    "out": "f627fa72a5c2610e",
@@ -494,6 +494,10 @@
    "out": "34ea25c249fb2c6c",
    "src": "d5629bab560481bd"
   },
+  "tests/run/consts_data.bmb": {
+   "out": "03240d15b3dd803b",
+   "src": "9d0405e05c83c04f"
+  },
   "tests/run/conversions.bmb": {
    "out": "1bbc670498e4558d",
    "src": "39f3a6453b194ed1"
@@ -517,6 +521,10 @@
   "tests/run/floats.bmb": {
    "out": "50c347e33f0bed24",
    "src": "b764481fdcb67b0c"
+  },
+  "tests/run/fn_nested.bmb": {
+   "out": "92dcb95cdf0c1ef1",
+   "src": "c58f8d47286a1a65"
   },
   "tests/run/fn_values.bmb": {
    "out": "d8332c706d0068a0",
@@ -757,6 +765,10 @@
   "tests/verify/fail/bytes.bmb": {
    "out": "f00bd0fe5f338cd1",
    "src": "f5a82fd210e5cf6f"
+  },
+  "tests/verify/fail/consts_data.bmb": {
+   "out": "99d0911ed4f27f01",
+   "src": "40218f43bf334dcb"
   },
   "tests/verify/fail/contracts.bmb": {
    "out": "02486c88a96a6823",

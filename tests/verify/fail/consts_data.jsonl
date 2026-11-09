@@ -1,0 +1,6 @@
+{"code":"E0802","severity":"error","message":"postcondition `r > 1` may not hold in `kdf::step`; counterexample: i = 0","file":"fail/consts_data.bmb","line":12,"col":17,"end_line":12,"end_col":22}
+{"code":"E0802","severity":"error","message":"postcondition `r == 11` may not hold in `kdf::width`","file":"fail/consts_data.bmb","line":20,"col":17,"end_line":20,"end_col":24,"fix":{"message":"there is no input to show: it fails for the definition's own values or for values a loop or call left open; after a loop the prover knows only its invariants and after a call only the callee's `ensures`, so state there what this needs, or correct the claim"}}
+{"code":"E0805","severity":"error","message":"index may be out of bounds in `kdf::past`; counterexample: i = 4","file":"fail/consts_data.bmb","line":30,"col":9,"end_line":30,"end_col":17}
+{"def":"kdf::past","status":"failed","obligations":1,"failed":1,"rlimit":241,"rlimit_max":241}
+{"def":"kdf::step","status":"failed","obligations":2,"failed":1,"rlimit":1634,"rlimit_max":1476}
+{"def":"kdf::width","status":"failed","obligations":2,"failed":1,"rlimit":240,"rlimit_max":122}

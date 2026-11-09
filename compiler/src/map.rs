@@ -96,7 +96,7 @@ impl std::ops::Deref for Def<'_> {
 pub struct TypeEntry {
     pub path: String,
     pub unit: String,
-    /// `"struct"`, `"enum"` or `"trait"`.
+    /// `"struct"`, `"enum"`, `"trait"` or `"const"` (ADR-0052 §7).
     pub kind: &'static str,
     /// The declaration in normal form on one line.
     pub text: String,
@@ -380,6 +380,7 @@ fn walk(m: &Mod, prefix: &str, t: &Tables, units: &mut BTreeMap<String, Unit>) {
                 .map(|(i, f)| format!("{mp}::{}::{}", i.ty.name, f.name.name)),
         )
         .chain(m.types.iter().map(|t| format!("{mp}::{}", t.name.name)))
+        .chain(m.consts.iter().map(|c| format!("{mp}::{}", c.name.name)))
         .chain(m.traits.iter().map(|t| format!("{mp}::{}", t.name.name)))
         .chain(m.traits.iter().flat_map(|t| {
             let mp = &mp;
@@ -748,6 +749,17 @@ impl Index {
                     targs: None,
                 });
             }
+            // The `const`s it reads (ADR-0052 §7): its meaning changes with
+            // their values.
+            for to in t.const_reads.get(&path).into_iter().flatten() {
+                edges.insert(Edge {
+                    from: path.clone(),
+                    to: to.clone(),
+                    kind: "reads",
+                    arg: None,
+                    targs: None,
+                });
+            }
             defs.insert(
                 path.clone(),
                 Entry {
@@ -819,6 +831,67 @@ impl Index {
                     line,
                     names,
                     inv: t.adts.get(&path).and_then(|a| a.inv.clone()),
+                    unit,
+                    path,
+                },
+            );
+        }
+        // `const`s (ADR-0052 §7): the declaration with its evaluated value
+        // is the surface; one reading another is an edge.
+        fn walk_consts<'p>(
+            m: &'p Mod,
+            prefix: &str,
+            out: &mut Vec<(String, String, &'p ConstDef)>,
+        ) {
+            let mp = format!("{prefix}{}", m.name.name);
+            for c in &m.consts {
+                out.push((format!("{mp}::{}", c.name.name), mp.clone(), c));
+            }
+            for s in &m.mods {
+                walk_consts(s, &format!("{mp}::"), out);
+            }
+        }
+        let mut cl = Vec::new();
+        for m in &p.mods {
+            walk_consts(m, "", &mut cl);
+        }
+        for (path, unit, c) in cl {
+            let Some(k) = t.consts.get(&path) else {
+                continue;
+            };
+            let (line, _) = sm.line_col(c.name.span.file, c.name.span.lo);
+            let value = k
+                .value
+                .as_ref()
+                .map_or_else(|| "?".to_string(), crate::consts::value_text);
+            let text = format!(
+                "const {}: {} = {value}",
+                c.name.name,
+                crate::check::ty_str(&k.ty)
+            );
+            let hash = crate::sha256::hex(text.as_bytes());
+            for to in t.const_reads.get(&path).into_iter().flatten() {
+                edges.insert(Edge {
+                    from: path.clone(),
+                    to: to.clone(),
+                    kind: "reads",
+                    arg: None,
+                    targs: None,
+                });
+            }
+            let mut names = BTreeSet::new();
+            named_types(&k.ty, t, &mut names);
+            types.insert(
+                path.clone(),
+                TypeEntry {
+                    kind: "const",
+                    text,
+                    id: hash.clone(),
+                    hash,
+                    file: sm.name(c.name.span.file).to_string(),
+                    line,
+                    names,
+                    inv: None,
                     unit,
                     path,
                 },

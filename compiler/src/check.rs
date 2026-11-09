@@ -300,9 +300,19 @@ pub fn check_resolved(mut p: Program, diags: &mut Diags) -> (Program, crate::ver
             diags.items.retain(|x| !quiet.contains(&x.span.file));
             // Each reference to a `const` is its value, a literal of its
             // type (the type at that span is the `const`'s).
+            // An array or data value is a tree of literals, each node at a
+            // span of its own with its type (`consts::literal_tree`).
+            let mut next = 0;
             crate::ast::exprs_mut(&mut p, &mut |e| {
-                if let Some(v) = uses.get(&(e.span.file, e.span.lo, e.span.hi)) {
-                    e.kind = crate::consts::literal(*v, e.span);
+                if let Some((v, t)) = uses.get(&(e.span.file, e.span.lo, e.span.hi)) {
+                    *e = crate::consts::literal_tree(
+                        v,
+                        t,
+                        e.span,
+                        &tables.adts,
+                        &mut tables.types,
+                        &mut next,
+                    );
                 }
             });
             tables.context = crate::verify::default_contexts(&p, &tables);
@@ -920,7 +930,9 @@ pub struct Checker<'a> {
     pub(crate) consts: BTreeMap<String, crate::consts::Const>,
     /// Each reference to a `const` and its value, by span: the resolved
     /// program holds the value there (`check_resolved`).
-    const_uses: BTreeMap<(u32, u32, u32), crate::consts::CVal>,
+    const_uses: BTreeMap<(u32, u32, u32), (crate::consts::CVal, TypeKind)>,
+    /// The `const`s each definition reads (ADR-0052 §7: the map's edges).
+    const_reads: BTreeMap<String, BTreeSet<String>>,
     /// In a specification (or ghost code): an integer type widens to one
     /// whose range holds it (ADR-0099), in `expect_ty` and at branch joins.
     spec_widen: bool,
@@ -1850,6 +1862,7 @@ impl<'a> Checker<'a> {
             open_lets: Vec::new(),
             consts: BTreeMap::new(),
             const_uses: BTreeMap::new(),
+            const_reads: BTreeMap::new(),
             spec_widen: false,
             typed_uses: Vec::new(),
             spec_at: BTreeSet::new(),
@@ -1911,6 +1924,8 @@ impl<'a> Checker<'a> {
             calls: self.calls.clone(),
             context: BTreeMap::new(),
             effect_needs: self.effect_needs,
+            consts: self.consts,
+            const_reads: self.const_reads,
         }
     }
 
@@ -4119,6 +4134,9 @@ impl<'a> Checker<'a> {
         for sub in &m.mods {
             self.check_mod(sub, &format!("{mp}::"));
         }
+        for c in &m.consts {
+            self.check_const(c, &mp);
+        }
         for f in &m.fns {
             self.check_fn(f, &mp, &format!("{mp}::{}", f.name.name));
         }
@@ -4953,16 +4971,145 @@ impl<'a> Checker<'a> {
     /// A reference to a `const` (ADR-0052): its type, the value kept for
     /// the resolved program. A `const` that did not evaluate is an error
     /// already: its references are too.
-    fn const_ref(&mut self, path: &[String], unit: &str, span: Span) -> Option<TypeKind> {
+    fn const_ref(
+        &mut self,
+        from: &str,
+        path: &[String],
+        unit: &str,
+        span: Span,
+    ) -> Option<TypeKind> {
         let full = crate::consts::lookup(&self.consts, path, unit)?;
-        let c = &self.consts[&full];
-        match c.value {
-            Some(v) => {
-                self.const_uses.insert((span.file, span.lo, span.hi), v);
-                Some(c.ty.clone())
-            }
-            None => Some(TypeKind::Error),
+        self.const_reads
+            .entry(from.to_string())
+            .or_default()
+            .insert(full.clone());
+        let c = self.consts[&full].clone();
+        let Some(v) = c.value.clone() else {
+            return Some(TypeKind::Error);
+        };
+        let t = self.const_type(&c);
+        if t == TypeKind::Error {
+            return Some(t);
         }
+        self.const_uses
+            .insert((span.file, span.lo, span.hi), (v, t.clone()));
+        Some(t)
+    }
+
+    /// A `const`'s declared type with its named types resolved (read in
+    /// its own unit, outside any function's type parameters).
+    fn const_type(&mut self, c: &crate::consts::Const) -> TypeKind {
+        if crate::consts::scalar(&c.ty) {
+            return c.ty.clone();
+        }
+        let saved = std::mem::take(&mut self.tparams);
+        let t = Type {
+            kind: c.ty.clone(),
+            span: Span::default(),
+        };
+        let t = self.canon(&t, &c.unit, false);
+        self.tparams = saved;
+        if self.holds_values(&t, &mut BTreeSet::new()) {
+            t
+        } else {
+            TypeKind::Error
+        }
+    }
+
+    /// Whether `t` holds only values (ADR-0052 §2): integers, `bool`,
+    /// `char`, and arrays, structs and enums of them.
+    fn holds_values(&self, t: &TypeKind, seen: &mut BTreeSet<String>) -> bool {
+        match t {
+            TypeKind::Int(_) | TypeKind::Bool | TypeKind::Char => true,
+            TypeKind::Array(e, _) => self.holds_values(&e.kind, seen),
+            TypeKind::Named { path, args } => {
+                if !args.iter().all(|a| self.holds_values(&a.kind, seen)) {
+                    return false;
+                }
+                let full = path.join("::");
+                if full == "Option" || full == "Result" {
+                    return true;
+                }
+                let Some(a) = self.adts.get(&full) else {
+                    return false;
+                };
+                if !seen.insert(full.clone()) {
+                    return true;
+                }
+                let sub: BTreeMap<String, TypeKind> = a
+                    .generics
+                    .iter()
+                    .map(|g| g.name.clone())
+                    .zip(args.iter().map(|x| x.kind.clone()))
+                    .collect();
+                let parts: Vec<TypeKind> = match &a.kind {
+                    AdtKind::Struct(fs) => fs.iter().map(|(_, t)| t.clone()).collect(),
+                    AdtKind::Enum(vs) => vs.iter().flat_map(|(_, ps)| ps.clone()).collect(),
+                };
+                parts
+                    .iter()
+                    .all(|t| self.holds_values(&subst(t, &sub), seen))
+            }
+            _ => false,
+        }
+    }
+
+    /// A `const` (ADR-0052, backlog 2V-19b): its type holds only values
+    /// (E0437) and its initializer has that type. The evaluator
+    /// (`consts::resolve`) has reported what only evaluation finds.
+    fn check_const(&mut self, c: &ConstDef, mp: &str) {
+        let saved = std::mem::take(&mut self.tparams);
+        let t = self.canon(&c.ty, mp, true);
+        if t == TypeKind::Error || ty_has_error(&t) {
+            self.tparams = saved;
+            return;
+        }
+        // The evaluator ran first (`consts::resolve`); where the checker
+        // finds the initializer wrong, its reports there are the checker's
+        // alone.
+        let inside = |d: &Diag| {
+            d.span.file == c.value.span.file
+                && d.span.lo >= c.value.span.lo
+                && d.span.hi <= c.value.span.hi
+        };
+        let before = self.diags.items.len();
+        let drop_evaluator = |c: &mut Self| {
+            let mut k = 0;
+            c.diags.items.retain(|d| {
+                k += 1;
+                k > before || !inside(d) || !matches!(d.code, "E0259" | "E0260" | "E0401")
+            });
+        };
+        if !self.holds_values(&t, &mut BTreeSet::new()) {
+            self.diags.push(crate::consts::not_value(&t, c.ty.span));
+            drop_evaluator(self);
+            self.tparams = saved;
+            return;
+        }
+        let mut cx = FnCtx {
+            path: format!("{mp}::{}", c.name.name),
+            mod_path: mp.to_string(),
+            effect: Effects::PURE,
+            scopes: vec![BTreeMap::new()],
+            all_names: BTreeSet::new(),
+            reserved: BTreeSet::new(),
+            forall_depth: 0,
+            ret: t.clone(),
+            loops: Vec::new(),
+            for_vars: BTreeSet::new(),
+            ghost: false,
+            needs: Vec::new(),
+            own: Effects::PURE,
+        };
+        let got = self.expr(&mut cx, &c.value, Some(&t), Mode::Exec);
+        self.expect_ty(&got, &t, c.value.span);
+        if self.diags.items[before..]
+            .iter()
+            .any(|d| d.code.starts_with('E'))
+        {
+            drop_evaluator(self);
+        }
+        self.tparams = saved;
     }
 
     fn unknown_local(&mut self, cx: &FnCtx, name: &str, span: Span) {
@@ -7343,6 +7490,7 @@ impl<'a> Checker<'a> {
             }
             ExprKind::Path(path)
                 if let Some(t) = self.const_ref(
+                    &cx.path,
                     &path.iter().map(|i| i.name.clone()).collect::<Vec<_>>(),
                     &cx.mod_path,
                     e.span,
@@ -7453,8 +7601,12 @@ impl<'a> Checker<'a> {
             }
             ExprKind::Var(id) => match Self::lookup(cx, &id.name) {
                 Some(l) => l.ty,
-                None if let Some(t) =
-                    self.const_ref(std::slice::from_ref(&id.name), &cx.mod_path, e.span) =>
+                None if let Some(t) = self.const_ref(
+                    &cx.path,
+                    std::slice::from_ref(&id.name),
+                    &cx.mod_path,
+                    e.span,
+                ) =>
                 {
                     t
                 }
