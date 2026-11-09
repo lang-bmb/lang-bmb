@@ -71,10 +71,11 @@ class Guard(unittest.TestCase):
             self.assertTrue(ids(), name)
         self.assertEqual(len(run_models.brb_ids()), 24)
 
-    def test_write_variants_run_only_when_named(self):
-        # backlog T0-13: the one-call `write` sets are accepted, never a default.
-        self.assertEqual(run_models.DEFAULT, ["m1", "m1b", "bvb", "bvb-verus", "brb-bmb", "brb-rust"])
-        self.assertEqual(set(run_models.NAMES) - set(run_models.DEFAULT), set(run_models.VARIANTS))
+    def test_write_sets_are_the_default_and_originals_run_only_when_named(self):
+        # ADR-0101: the one-call `write` sets are the official surface; the
+        # transaction originals stay frozen baselines.
+        self.assertEqual(run_models.DEFAULT, ["bvb-verus", "brb-rust", "m1b-write", "bvb-write", "brb-write"])
+        self.assertEqual(set(run_models.NAMES) - set(run_models.DEFAULT), set(run_models.ORIGINALS))
         argv = dict((n, a) for n, _, a, _ in run_models.SETS)["brb-write"]("openai:m", "o.jsonl", [], True)
         self.assertEqual(argv[-2:], ["--variant", "bench/brb-write"])
         self.assertIn("bmb", argv)

@@ -17,7 +17,7 @@
 
 ## 실제 모델 측정: 명령 하나 (`run_models.py`, 백로그 INF-14)
 
-모델이 필요한 동결 과제 집합 여섯(m1, m1b, bvb, bvb-verus, brb-bmb, brb-rust)을 정해진 순서로 기존 하네스에 돌리고, 모든 요약과 지표별 채움 여부를 한 보고서로 낸다. 각 하네스가 자기 MANIFEST를 확인하고 1회·재시도 없음 규칙(ADR-0021)을 지킨다.
+모델이 필요한 동결 과제 집합을 정해진 순서로 기존 하네스에 돌리고(기본은 정식 쓰기 표면 ADR-0101: bvb-verus, brb-rust, m1b-write, bvb-write, brb-write. 트랜잭션 원판 m1·m1b·bvb·brb-bmb는 이름을 줄 때만 돌고, 지표는 쓰기 판이 있으면 그것을 읽는다), 모든 요약과 지표별 채움 여부를 한 보고서로 낸다. 각 하네스가 자기 MANIFEST를 확인하고 1회·재시도 없음 규칙(ADR-0021)을 지킨다.
 
 ```
 python3 bench/run_models.py --dry-run                     # 대본 기준 해법으로 끝까지(비용 0). 게이트는 --limit 2

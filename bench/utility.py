@@ -6,7 +6,7 @@
   utility.py --check REPORT      exit 1 if the block is stale (gate job)
 
 Official results are the files the measurement path writes (`run_models.py`,
-ADR-0066): `bench/{m1,m1b,bvb,brb}/results/<date>-<model>[-arm].jsonl` with a
+ADR-0066): `bench/{m1,m1b,bvb,brb}{,-write}/results/<date>-<model>[-arm].jsonl` with a
 summary row. Pilot files (`bench/pilot/results/`) are not read: the report
 cites them by hand. Every number here comes from the result rows; nothing is
 estimated. Standard library only.
@@ -20,7 +20,10 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-SETS = ["m1", "m1b", "bvb", "brb"]
+# The transaction originals and the one-call `write` sets (ADR-0101, the
+# official surface since 2026-11-09). Repeat files (`-repeatK`, ADR-0077) are
+# reported by `bench/repeat.py`, not here.
+SETS = ["m1", "m1b", "m1b-write", "bvb", "bvb-write", "brb", "brb-write"]
 BEGIN = "<!-- utility:data begin (bench/utility.py --write; do not edit by hand) -->"
 END = "<!-- utility:data end -->"
 # Tools that only read the workspace (BMB MCP, BVB Verus, BRB Rust).
@@ -33,6 +36,8 @@ def runs():
     out = []
     for s in SETS:
         for path in sorted(glob.glob(os.path.join(ROOT, "bench", s, "results", "*.jsonl"))):
+            if "-repeat" in os.path.basename(path):
+                continue
             with open(path) as f:
                 recs = [json.loads(line) for line in f if line.strip()]
             summary = next((r for r in recs if r.get("summary")), None)
@@ -42,7 +47,7 @@ def runs():
             model = agent.split(":", 1)[-1]
             name = os.path.basename(path)[11:-6]  # strip the date and .jsonl
             arm = name[len(model) + 1:] if name.startswith(model + "-") else ""
-            if s == "bvb":
+            if s.startswith("bvb"):
                 arm = arm or "bmb"
             out.append((s, model, arm, summary, [r for r in recs if "id" in r]))
     return sorted(out, key=lambda x: (SETS.index(x[0]), x[2] != "bmb", x[2], x[1]))
@@ -87,7 +92,7 @@ def test_code_table(rs):
     lines = ["| 모델 | 팔 | 성공 | 성공 세션의 테스트 코드 줄 | 성공 세션당 | 자기 검사 호출(중앙값) | 통과 & 숨은 실패 |",
              "| --- | --- | --- | --- | --- | --- | --- |"]
     for s, model, arm, summary, rows in rs:
-        if s != "brb":
+        if not s.startswith("brb"):
             continue
         good = [r for r in rows if r.get("success")]
         lines_ = sum((r.get("test_code") or {}).get("test_lines", 0) for r in good)
@@ -117,7 +122,7 @@ def tool_mix_table(rs):
     lines = ["| 집합 | 팔 | 모델 | 읽기 도구 | 쓰기 도구 | 검사 도구 | 읽기 비율 |",
              "| --- | --- | --- | --- | --- | --- | --- |"]
     for s, model, arm, summary, rows in rs:
-        if s != "brb":
+        if not s.startswith("brb"):
             continue
         reads = writes = checks = 0
         for r in rows:

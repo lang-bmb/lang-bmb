@@ -126,8 +126,10 @@ SETS = [
     ("brb-write", brb_ids, brb_run("bmb", "bench/brb-write"), "bench/brb-write/results"),
 ]
 NAMES = [s[0] for s in SETS]
-VARIANTS = ("m1b-write", "bvb-write", "brb-write")
-DEFAULT = [n for n in NAMES if n not in VARIANTS]
+# ADR-0101: the official surface is the one-call `write`; the transaction
+# originals stay frozen comparison baselines and run only when named.
+ORIGINALS = ("m1", "m1b", "bvb", "brb-bmb")
+DEFAULT = [n for n in NAMES if n not in ORIGINALS]
 
 
 def verus_installed():
@@ -168,29 +170,37 @@ def report(paths, skipped):
         r = subprocess.run([PY, *argv], cwd=ROOT, capture_output=True, text=True)
         return r.stdout if r.returncode == 0 else f"(실패: {r.stderr.strip()[-300:]})\n"
 
+    # A metric reads the official `write` set of its role when that set ran,
+    # else the transaction original (ADR-0101).
+    def role(write, original):
+        return write if write in paths or original not in paths else original
+    m1b, bvb, brb = role("m1b-write", "m1b"), role("bvb-write", "bvb"), role("brb-write", "brb-bmb")
+
     out = []
     for n in ("m1", "m1b", "bvb", "m1b-write", "bvb-write"):
         if n in paths:
-            out += [f"## {n}" + ("(BMB)" if n == "bvb" else ""), "", sh("bench/m1/harness.py", "summarize", paths[n])]
-    if "bvb" in paths and "bvb-verus" in paths:
-        out += ["## BVB: BMB 대 Verus", "", sh("bench/bvb/verus/harness.py", "compare", paths["bvb"], paths["bvb-verus"])]
-    elif "bvb" in paths:
-        out += ["## BVB 명세 강도(BMB만)", "", sh("bench/bvb/verus/harness.py", "strength", paths["bvb"])]
+            out += [f"## {n}" + ("(BMB)" if n in ("bvb", "bvb-write") else ""), "",
+                    sh("bench/m1/harness.py", "summarize", paths[n])]
+    if bvb in paths and "bvb-verus" in paths:
+        out += ["## BVB: BMB 대 Verus", "", sh("bench/bvb/verus/harness.py", "compare", paths[bvb], paths["bvb-verus"])]
+    elif bvb in paths:
+        out += ["## BVB 명세 강도(BMB만)", "", sh("bench/bvb/verus/harness.py", "strength", paths[bvb])]
     if "brb-bmb" in paths and "brb-rust" in paths:
         out += ["## BRB", "", sh("bench/brb/harness.py", "summarize", paths["brb-bmb"], paths["brb-rust"])]
     if "brb-write" in paths:
-        brb = [paths[n] for n in ("brb-bmb", "brb-write", "brb-rust") if n in paths]
-        out += ["## BRB 쓰기 표면", "", sh("bench/brb/harness.py", "summarize", *brb)]
+        both = [paths[n] for n in ("brb-bmb", "brb-write", "brb-rust") if n in paths]
+        out += ["## BRB 쓰기 표면", "", sh("bench/brb/harness.py", "summarize", *both)]
     text = "\n".join(out)
-    sections = {n: text.split(f"## {n}\n", 1)[1].split("\n## ", 1)[0] for n in ("m1", "m1b") if f"## {n}\n" in text}
+    sections = {n: text.split(f"## {n}\n", 1)[1].split("\n## ", 1)[0]
+                for n in ("m1", "m1b", "m1b-write") if f"## {n}\n" in text}
     checks = [
-        ("G2 작성 1회 성공률(m1·m1b)", "| 작성 1회 성공률 |", ("m1", "m1b")),
-        ("G3 명세 변이체 판별률(m1b, BSB)", "| 명세 변이체 판별률 |", ("m1b",)),
-        ("H-SPEC 보조: BVB 명세 강도", "spec_accepted" if "bvb-verus" not in paths else "| 명세 강도(", ("bvb",)),
-        ("H-FAMILIAR: BVB 1회 성공률 BMB 대 Verus", "| 1회 성공률 |", ("bvb", "bvb-verus")),
-        ("G5 결함률·총 토큰(BRB)", "G5 (", ("brb-bmb", "brb-rust")),
-        ("H-ORACLE(BRB)", "H-ORACLE (", ("brb-bmb", "brb-rust")),
-        ("G8 테스트 코드(BRB)", "G8 (", ("brb-bmb", "brb-rust")),
+        ("G2 작성 1회 성공률(m1·m1b)", "| 작성 1회 성공률 |", (("m1",) if "m1" in paths else ()) + (m1b,)),
+        ("G3 명세 변이체 판별률(m1b, BSB)", "| 명세 변이체 판별률 |", (m1b,)),
+        ("H-SPEC 보조: BVB 명세 강도", "spec_accepted" if "bvb-verus" not in paths else "| 명세 강도(", (bvb,)),
+        ("H-FAMILIAR: BVB 1회 성공률 BMB 대 Verus", "| 1회 성공률 |", (bvb, "bvb-verus")),
+        ("G5 결함률·총 토큰(BRB)", "G5 (", (brb, "brb-rust")),
+        ("H-ORACLE(BRB)", "H-ORACLE (", (brb, "brb-rust")),
+        ("G8 테스트 코드(BRB)", "G8 (", (brb, "brb-rust")),
     ]
     status, lines = {}, ["## 지표", ""]
     for label, marker, need in checks:
@@ -199,7 +209,7 @@ def report(paths, skipped):
             why = "; ".join(f"{n}: {skipped.get(n, '선택 안 됨')}" for n in missing)
             status[label] = "skipped"
             lines.append(f"- {label}: 건너뜀({why})")
-        elif all(marker in sections.get(n, text) for n in need if n in ("m1", "m1b")) and marker in text:
+        elif all(marker in sections.get(n, text) for n in need if n in sections) and marker in text:
             status[label] = "filled"
             lines.append(f"- {label}: 채움")
         else:
@@ -290,7 +300,7 @@ def main(argv=None):
     ap.add_argument("--agent", help="openai:MODEL or anthropic:MODEL (real run, ADR-0066)")
     ap.add_argument("--dry-run", action="store_true", help="scripted reference agents, no model")
     ap.add_argument("--sets", default=",".join(DEFAULT),
-                    help="comma list, in this order: " + ",".join(NAMES) + f" (default: all but {', '.join(VARIANTS)})")
+                    help="comma list, in this order: " + ",".join(NAMES) + f" (default: all but the originals {', '.join(ORIGINALS)}, ADR-0101)")
     ap.add_argument("--limit", type=int, help="first N tasks of each set (dry run only)")
     ap.add_argument("--price-in", type=float, help="USD per million input tokens")
     ap.add_argument("--price-out", type=float, help="USD per million output tokens")
