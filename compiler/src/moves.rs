@@ -114,6 +114,10 @@ struct Mv<'a> {
     /// Inside a `proof { .. }` block (ADR-0062): ghost code reads values
     /// and moves none (it is erased).
     ghost: bool,
+    /// In a specification position (an `assert`, `assume`, loop invariant,
+    /// or ghost code): a moved local is read at its value when it was moved
+    /// (ADR-0098), so the ownership state is neither checked nor changed.
+    spec: bool,
 }
 
 /// Checks the moves of an executable function and returns its diagnostics
@@ -136,6 +140,7 @@ pub fn check(
         diags: Vec::new(),
         info: MoveInfo::default(),
         ghost: false,
+        spec: false,
     };
     for p in &f.params {
         if m.owns(&p.name.name) {
@@ -321,6 +326,9 @@ impl Mv<'_> {
     /// A use of field path `p` (a local or a field of one), moving it when
     /// `moves`.
     fn use_path(&mut self, p: &str, span: Span, moves: bool) {
+        if self.spec || self.ghost {
+            return;
+        }
         match self.status(p) {
             Some(St::Owned) => {
                 if let Some(part) = self.moved_part(p) {
@@ -343,6 +351,9 @@ impl Mv<'_> {
     }
 
     fn use_var(&mut self, id: &Ident, span: Span, moves: bool) {
+        if self.spec || self.ghost {
+            return;
+        }
         let moves = moves && !self.ghost;
         if let Some(part) = self.moved_part(&id.name)
             && matches!(self.status(&id.name), Some(St::Owned))
@@ -778,7 +789,7 @@ impl Mv<'_> {
             } => {
                 let head = self.state.clone();
                 for inv in invariants {
-                    self.expr(inv, false);
+                    self.spec_expr(inv);
                 }
                 self.expr(cond, true);
                 let exit = self.state.clone();
@@ -812,7 +823,7 @@ impl Mv<'_> {
                 self.expr(hi, false);
                 let head = self.state.clone();
                 for inv in invariants {
-                    self.expr(inv, false);
+                    self.spec_expr(inv);
                 }
                 self.loops.push(MvLoop {
                     label: label.as_ref().map(|l| l.name.clone()),
@@ -830,7 +841,7 @@ impl Mv<'_> {
                     self.merge(cur, b, *span);
                 }
             }
-            Stmt::Assert { cond, .. } | Stmt::Assume { cond, .. } => self.expr(cond, false),
+            Stmt::Assert { cond, .. } | Stmt::Assume { cond, .. } => self.spec_expr(cond),
             Stmt::Expr(e) => self.expr(e, true),
             Stmt::Proof { body, .. } => {
                 let ghost = std::mem::replace(&mut self.ghost, true);
@@ -838,6 +849,13 @@ impl Mv<'_> {
                 self.ghost = ghost;
             }
         }
+    }
+
+    /// A specification expression (ADR-0098): it reads moved locals.
+    fn spec_expr(&mut self, e: &Expr) {
+        let spec = std::mem::replace(&mut self.spec, true);
+        self.expr(e, false);
+        self.spec = spec;
     }
 
     fn expr(&mut self, e: &Expr, moves: bool) {
@@ -1061,7 +1079,7 @@ impl Mv<'_> {
             } => {
                 let head = self.state.clone();
                 for inv in invariants {
-                    self.expr(inv, false);
+                    self.spec_expr(inv);
                 }
                 self.loops.push(MvLoop {
                     label: label.as_ref().map(|l| l.name.clone()),

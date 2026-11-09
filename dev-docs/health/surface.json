@@ -963,6 +963,10 @@
    "out": "015ba0e8c7f2dc38",
    "src": "2f539002adbeeb81"
   },
+  "tests/verify/pass/moved_specs.bmb": {
+   "out": "0a371fe941c652e0",
+   "src": "63d3c43b7a93f1a7"
+  },
   "tests/verify/pass/mut_match.bmb": {
    "out": "1c4e77d85f4161f2",
    "src": "31fa5cf908920538"

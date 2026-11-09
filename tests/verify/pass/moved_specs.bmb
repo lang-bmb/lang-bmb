@@ -1,0 +1,40 @@
+#[summary("명세는 옮긴 값을 읽는다(ADR-0098, backlog 2T-12): assert, 루프 불변식, proof 블록이 옮긴 때의 값을 말한다")]
+mod mvs {
+    spec fn last_is<T>(v: &[T], k: &T) -> bool {
+        v.len() > 0 && v[v.len() - 1] == *k
+    }
+
+    // `k` is moved into `v`; the assertion and the postcondition read the
+    // value it had.
+    #[effects(alloc)]
+    fn put<T>(v: &mut Vec<T>, k: T) -> ()
+        requires v.len() < 1000,
+        ensures last_is::<T>(v.as_slice(), &k),
+    {
+        v.push(k);
+        assert(last_is::<T>(v.as_slice(), &k));
+        proof {
+            assert(v.len() > 0);
+        }
+    }
+
+    // The loop's invariant names `x`, moved into `v` before the loop.
+    #[effects(alloc)]
+    fn fill(x: u64, n: usize) -> (r: Vec<Box<u64>>)
+        requires n < 1000,
+        ensures r.len() == n + 1,
+    {
+        let b: Box<u64> = Box::new(x);
+        let mut v: Vec<Box<u64>> = Vec::new();
+        v.push(b);
+        let mut i: usize = 0;
+        while i < n
+            invariant i <= n, v.len() == i + 1, *v[0] == *b,
+            decreases n - i,
+        {
+            v.push(Box::new(x));
+            i = i + 1;
+        }
+        v
+    }
+}
