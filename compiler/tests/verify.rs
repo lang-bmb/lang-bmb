@@ -681,10 +681,12 @@ mod g {
 /// `--bounded-search` (ADR-0108 §1, backlog 2D-33): an obligation the solver
 /// cannot decide is asked once more with the inputs bounded. A model there
 /// is a counterexample of the obligation itself (E0802 with the values);
-/// none is the E0811 field `bounded`. Without the flag both stay E0811.
+/// none is the E0811 field `bounded`, but only when some input within the
+/// bounds reaches the obligation (`h` admits none: no field). Without the
+/// flag all stay E0811.
 #[test]
 fn bounded_search_turns_undecided_into_a_verdict() {
-    let src = "#[summary(\"t\")]\nmod nb {\n    #[effects(pure)]\n    fn f(x: i64, y: i64, z: i64) -> i64\n        requires 0 < x && x < 1000 && 0 < y && y < 1000 && 0 < z && z < 1000,\n        ensures x * x * x + y * y * y != z * z * z,\n    {\n        0\n    }\n\n    #[effects(pure)]\n    fn g(x: i64, y: i64, z: i64) -> i64\n        requires 0 < x && x < 1000 && 0 < y && y < 1000 && 0 < z && z < 1000,\n        ensures x * x * x + y * y * y + 2 != z * z * z * x,\n    {\n        0\n    }\n}\n";
+    let src = "#[summary(\"t\")]\nmod nb {\n    #[effects(pure)]\n    fn h(x: i64, y: i64, z: i64) -> i64\n        requires 100 < x && x < 1000 && 0 < y && y < 1000 && 0 < z && z < 1000,\n        ensures x * x * x + y * y * y != z * z * z,\n    {\n        0\n    }\n\n    #[effects(pure)]\n    fn f(x: i64, y: i64, z: i64) -> i64\n        requires 0 < x && x < 1000 && 0 < y && y < 1000 && 0 < z && z < 1000,\n        ensures x * x * x + y * y * y != z * z * z,\n    {\n        0\n    }\n\n    #[effects(pure)]\n    fn g(x: i64, y: i64, z: i64) -> i64\n        requires 0 < x && x < 1000 && 0 < y && y < 1000 && 0 < z && z < 1000,\n        ensures x * x * x + y * y * y + 2 != z * z * z * x,\n    {\n        0\n    }\n}\n";
     let files = vec![("nb.bmb".to_string(), src.to_string())];
     let lines = |args: &[&str]| -> Vec<String> {
         let (ok, out) = cli::run(args, &files);
@@ -695,7 +697,7 @@ fn bounded_search_turns_undecided_into_a_verdict() {
             .collect()
     };
     let plain = lines(&["verify"]);
-    assert_eq!(plain.len(), 2, "{plain:?}");
+    assert_eq!(plain.len(), 3, "{plain:?}");
     assert!(
         plain
             .iter()
@@ -703,12 +705,35 @@ fn bounded_search_turns_undecided_into_a_verdict() {
         "{plain:?}"
     );
     let searched = lines(&["verify", "--bounded-search"]);
-    assert_eq!(searched.len(), 2, "{searched:?}");
+    assert_eq!(searched.len(), 3, "{searched:?}");
+    let h = searched.iter().find(|l| l.contains("nb::h")).unwrap();
+    assert!(
+        h.contains("\"code\":\"E0811\"") && !h.contains("\"bounded\""),
+        "{h}"
+    );
     let f = searched.iter().find(|l| l.contains("nb::f")).unwrap();
     assert!(
         f.contains("\"code\":\"E0811\"") && f.contains("\"bounded\":{\"b\":8,\"l\":4}"),
         "{f}"
     );
+    // A cached run without the flag does not answer for one with it: the
+    // search marks the query head, so the proof keys differ.
+    let dir = cli::fresh_dir();
+    let cache = dir.join("cache");
+    let c = cache.to_str().unwrap();
+    let cached = lines(&["verify", "--cache", c]);
+    assert!(
+        cached.iter().all(|l| l.contains("\"code\":\"E0811\"")),
+        "{cached:?}"
+    );
+    let after = lines(&["verify", "--cache", c, "--bounded-search"]);
+    assert!(
+        after
+            .iter()
+            .any(|l| l.contains("nb::g") && l.contains("\"code\":\"E0802\"")),
+        "{after:?}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
     let g = searched.iter().find(|l| l.contains("nb::g")).unwrap();
     assert!(
         g.contains("\"code\":\"E0802\"")

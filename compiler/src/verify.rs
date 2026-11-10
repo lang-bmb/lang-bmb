@@ -8985,7 +8985,59 @@ fn verify_pass(
                             answered = format!("{base}\n{q}\n{bounds}");
                             bounded_found = true;
                         }
-                        Ok(Answer::Unsat) => bounded_none = true,
+                        Ok(Answer::Unsat) => {
+                            // "No counterexample within the bounds" only when
+                            // some input within them reaches the obligation:
+                            // the assumptions and the bounds, without the
+                            // goal, must be satisfiable (else it is vacuous).
+                            let dom = o
+                                .assumptions
+                                .iter()
+                                .map(|a| format!("(assert {a})"))
+                                .collect::<Vec<_>>()
+                                .join("\n");
+                            let dom = valid_instances(&enc.valid_defs, dom);
+                            let dom = format!("{dom}\n{}", prog.struct_facts(&dom));
+                            // Only the definitions the assumptions reach, in
+                            // the forms of a satisfiability check (ADR-0072):
+                            // the goal's quantified definitions would leave a
+                            // model search undecided.
+                            let dom_rel = relevant_axioms(&axioms, &dom);
+                            let dom_base = probe_base(
+                                &axioms,
+                                &dom,
+                                &dom_rel,
+                                &spec_decls,
+                                &dts,
+                                &prefix,
+                                &decls,
+                                Forms::SatProbe,
+                            )
+                            .unwrap_or_else(|| {
+                                let used = needed_decls(
+                                    &spec_decls,
+                                    &dts,
+                                    &format!("{dom_rel}{decls}\n{dom}"),
+                                );
+                                format!("{prefix}{used}{dom_rel}{decls}")
+                            });
+                            script.push_str(&format!(
+                                "; bounded domain of obligation {k}\n(reset)\n{dom_base}\n{}\n{dom}\n{bounds}(check-sat)\n",
+                                bounded_limit()
+                            ));
+                            let reach = sol
+                                .run("(reset)")
+                                .and_then(|_| sol.run(&dom_base))
+                                .and_then(|_| sol.run(&bounded_limit()))
+                                .and_then(|_| sol.run(&format!("{dom}\n{bounds}")))
+                                .and_then(|_| sol.check_sat());
+                            if reach.is_ok()
+                                && let Ok(used) = sol.rlimit_used()
+                            {
+                                rlimit_total += used;
+                            }
+                            bounded_none = matches!(reach, Ok(Answer::Sat));
+                        }
                         _ => {}
                     }
                 }
