@@ -7736,6 +7736,10 @@ fn verify_impl(
     // Generated items by the names a reader knows (backlog 2V-20g).
     for d in &mut diags.items[from..] {
         d.message = t.shown(&d.message);
+        // The hint's words too; a replacement is program text, untouched.
+        if let Some(f) = &mut d.fix {
+            f.message = t.shown(&f.message);
+        }
     }
     out
 }
