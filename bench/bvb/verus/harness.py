@@ -245,7 +245,13 @@ def judge(task, code, verifier):
 
 # ---------- sessions ----------
 
-def make_agent(kind, task):
+# The repair history the model is sent (ADR-0110, backlog T0-36): `full`
+# (the default) or `stateless` (`--history`, the same rule as the BMB arm's
+# `set.json`; the state is the one file the agent writes).
+HISTORY = "full"
+
+
+def make_agent(kind, task, state=None):
     v = task["verus"]
     if kind == "oracle":
         return bmb_harness.ScriptAgent([("write_file", {"code": v["reference"]}), ("verify", {})])
@@ -256,15 +262,17 @@ def make_agent(kind, task):
     with open(os.path.join(HERE, "prompt.md")) as f:
         prompt = f.read()
     if agent := make_model_agent(kind, prompt, v["prompt"]):
-        return agent
+        from stateless import configured  # noqa: E402
+        return configured(agent, {"history": HISTORY}, v["prompt"], state)
     sys.exit(f"unknown agent {kind}")
 
 
 def run_task(task, agent_kind, verifier, agent=None, sessions=None):
-    agent = agent or make_agent(agent_kind, task)
+    code = skeleton(task)
+    # `code` as it is when the agent asks (ADR-0110's state for this arm).
+    agent = agent or make_agent(agent_kind, task, lambda: f"### main.rs\n{code}")
     if hasattr(agent, "set_tools"):
         agent.set_tools(TOOLS)
-    code = skeleton(task)
     m = {"tool_calls": 0, "writes": 0, "verify_calls": 0, "limit_hit": False}
     # Every call's tool and result size, in order, with BMB_CONTEXT_LOG=1 (backlog 2D-25).
     calls_log = []
@@ -322,11 +330,15 @@ def load_tasks(ids=None):
 
 
 def run(args, verifier):
+    global HISTORY
+    HISTORY = getattr(args, "history", None) or "full"
+    hist = {} if HISTORY == "full" else {"history": HISTORY}
     tasks = load_tasks(args.tasks)
     commit = bmb_harness.run_commit()
     log = resultlog.ResultLog(args.out, {"agent": args.agent, "task_set": "bvb-verus",
                                          "manifest": bmb_harness.manifest_digest(), "commit": commit,
-                                         "tasks": [t["id"] for t in tasks], **bmb_harness.condition_fields()})
+                                         "tasks": [t["id"] for t in tasks], **bmb_harness.condition_fields(),
+                                         **hist})
 
     def session(t):
         r = run_task(t, args.agent, verifier, sessions=args.sessions)
@@ -340,7 +352,7 @@ def run(args, verifier):
         print(json.dumps(r, ensure_ascii=False))
     summary = {"summary": True, "agent": args.agent, "tasks": len(results), "task_set": "bvb-verus",
                "manifest": bmb_harness.manifest_digest(), "verus_version": getattr(verifier, "version", None),
-               "commit": commit, **bmb_harness.condition_fields(), "jobs": args.jobs, "write_success": f"{sum(r['success'] for r in results)}/{len(results)}"}
+               "commit": commit, **bmb_harness.condition_fields(), **hist, "jobs": args.jobs, "write_success": f"{sum(r['success'] for r in results)}/{len(results)}"}
     log.finish(results, summary)
     print(json.dumps(summary, ensure_ascii=False))
     if args.expect == "all-pass" and not all(r["success"] for r in results):
@@ -422,6 +434,8 @@ def main():
     rn.add_argument("--expect", choices=["all-pass", "weak-fail"])
     rn.add_argument("--jobs", type=int, default=1)
     rn.add_argument("--sessions", help="directory for session records (backlog INF-17)")
+    rn.add_argument("--history", choices=["full", "stateless"], default="full",
+                    help="the repair history the model is sent (ADR-0110)")
     cp = sub.add_parser("compare")
     cp.add_argument("bmb")
     cp.add_argument("verus")
