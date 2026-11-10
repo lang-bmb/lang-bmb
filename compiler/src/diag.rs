@@ -514,6 +514,10 @@ pub const CODES: &[(&str, &str)] = &[
         "a widening integer conversion `x as T` in a specification: every value of `x` is one of `T`, so it is `x` (an input alias, ADR-0099; `bmb fix` removes it)",
     ),
     (
+        "W0918",
+        "the postconditions allow two different results for one input the preconditions admit (with the two results as a witness): the contract does not fix the result",
+    ),
+    (
         "W0911",
         "a call by path of a method whose normal form is the method call `x.f(..)` (the fix rewrites it; `bmb fmt` and `bmb fix` apply it)",
     ),

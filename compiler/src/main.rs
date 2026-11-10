@@ -76,7 +76,8 @@ const USAGE: &str = "usage:
                             W0901 and W0905 satisfiability checks; fails only if the program does
                             not check or the gate cannot run; --cache uses and updates the caches
                             in DIR as `verify --cache` does; --select W0901,W0905 runs only the
-                            listed checks
+                            listed checks; W0918 (postconditions that allow two results for one
+                            input, with the witness) runs only when --select names it
   bmb mutate --def PATH [--def PATH].. <file.bmb>...
                             every W0904 body mutation of the named functions, unproved, as
                             JSONL rows with the changed unit's normal form, then a summary
@@ -538,7 +539,7 @@ fn run() -> ExitCode {
         }
         Some("lint") if args.len() > 1 => {
             let mut cache = None;
-            let mut select: Vec<&str> = bmb::lint::CODES.to_vec();
+            let mut select: Vec<&str> = bmb::lint::default_codes();
             let mut paths = &args[1..];
             loop {
                 match paths {

@@ -89,10 +89,24 @@ pub const MAX_POST_TRIALS: usize = 32;
 /// Upper bound on mutants verified per run (W0904).
 pub const MAX_MUTANTS: usize = 64;
 
+/// The checks a plain `bmb lint` runs: every one but those `ON_REQUEST`.
+pub fn default_codes() -> Vec<&'static str> {
+    CODES
+        .iter()
+        .copied()
+        .filter(|c| !ON_REQUEST.contains(c))
+        .collect()
+}
+
+/// Checks that run only when `--select` names them: W0918 (the contract
+/// fixes the result, backlog T1-44a) is information, and most contracts
+/// that bound a result rather than fix it are meant so.
+pub const ON_REQUEST: [&str; 1] = ["W0918"];
+
 /// The checks of the lint, by the code each reports (`bmb lint --select`).
-pub const CODES: [&str; 18] = [
+pub const CODES: [&str; 19] = [
     "W0901", "W0902", "W0903", "W0904", "W0905", "W0906", "W0907", "W0909", "W0910", "W0911",
-    "W0912", "W0913", "W0914", "W0915", "W0916", "W0917", "W1001", "W1002",
+    "W0912", "W0913", "W0914", "W0915", "W0916", "W0917", "W0918", "W1001", "W1002",
 ];
 
 pub struct LintOutput {
@@ -118,13 +132,15 @@ pub struct LintOutput {
     pub pre_cost: Option<SatCost>,
     /// What the reach-point check (W0905) cost, if it ran.
     pub reach_cost: Option<SatCost>,
+    /// What the determinacy check (W0918) cost, if it ran.
+    pub det_cost: Option<SatCost>,
     /// False when the proof gate could not run.
     pub ok: bool,
 }
 
 impl LintOutput {
     /// JSONL: the diagnostics, then
-    /// `{"summary":true,"defs","reports","verifications","skipped","mutants","surviving","mutants_skipped","pre_rlimit","pre_undecided","reach_rlimit","reach_undecided"}`.
+    /// `{"summary":true,"defs","reports","verifications","skipped","mutants","surviving","mutants_skipped","pre_rlimit","pre_undecided","reach_rlimit","reach_undecided","det_rlimit","det_undecided"}`.
     pub fn report(&self) -> String {
         let cost = |c: Option<SatCost>| {
             c.map_or(("null".to_string(), "null".to_string()), |c| {
@@ -133,8 +149,9 @@ impl LintOutput {
         };
         let (pre_rlimit, pre_undecided) = cost(self.pre_cost);
         let (reach_rlimit, reach_undecided) = cost(self.reach_cost);
+        let (det_rlimit, det_undecided) = cost(self.det_cost);
         format!(
-            "{}{{\"summary\":true,\"defs\":{},\"reports\":{},\"verifications\":{},\"skipped\":{},\"mutants\":{},\"surviving\":{},\"mutants_skipped\":{},\"pre_rlimit\":{pre_rlimit},\"pre_undecided\":{pre_undecided},\"reach_rlimit\":{reach_rlimit},\"reach_undecided\":{reach_undecided}}}\n",
+            "{}{{\"summary\":true,\"defs\":{},\"reports\":{},\"verifications\":{},\"skipped\":{},\"mutants\":{},\"surviving\":{},\"mutants_skipped\":{},\"pre_rlimit\":{pre_rlimit},\"pre_undecided\":{pre_undecided},\"reach_rlimit\":{reach_rlimit},\"reach_undecided\":{reach_undecided},\"det_rlimit\":{det_rlimit},\"det_undecided\":{det_undecided}}}\n",
             self.diagnostics,
             self.defs,
             self.reports,
@@ -208,7 +225,7 @@ pub fn lint_sources_cached(
     files: &[(String, String)],
     cache_dir: Option<&Path>,
 ) -> Result<LintOutput, String> {
-    lint_sources_selected(files, cache_dir, &CODES)
+    lint_sources_selected(files, cache_dir, &default_codes())
 }
 
 /// As `lint_sources_cached`, running only the checks whose codes `select`
@@ -231,7 +248,9 @@ pub fn lint_sources_selected(
     let needs_base = ["W0902", "W0903", "W0904", "W0905", "W1002"]
         .iter()
         .any(|c| runs(c));
-    let needs_pre = ["W0901", "W0902", "W0904", "W0905"].iter().any(|c| runs(c));
+    let needs_pre = ["W0901", "W0902", "W0904", "W0905", "W0918"]
+        .iter()
+        .any(|c| runs(c));
     let mut cache = cache_dir.map(ProofCache::load).unwrap_or_default();
     // Only the first verification covers the whole program; the restricted
     // ones below each change the definitions they prove, so the incremental
@@ -336,6 +355,45 @@ pub fn lint_sources_selected(
         let one: BTreeSet<String> = [p.clone()].into();
         clean(&base, &fe.diags, &spans, &one)
     };
+
+    // W0918: a contract that allows two results for one input (backlog
+    // T1-44a). Information, not an error: the freedom may be meant (any
+    // index of a maximum); the witness is the example a reader checks.
+    let mut det_cost = None;
+    if runs("W0918") {
+        let (rows, cost) = crate::verify::results_determined(&fe.program, &fe.tables);
+        det_cost = Some(cost);
+        for (path, span, det) in rows {
+            if unsat.contains(&path) || !defs.contains_key(&path) {
+                continue;
+            }
+            if let Some(crate::verify::Determinacy::Two {
+                input,
+                first,
+                second,
+            }) = det
+            {
+                let at = if input.is_empty() {
+                    String::new()
+                } else {
+                    format!(" at {input}")
+                };
+                out.push(
+                    Diag::new(
+                        "W0918",
+                        span,
+                        format!(
+                            "the postconditions of `{path}` allow two results for one input{at}: {first} and {second} both hold"
+                        ),
+                    )
+                    .fix(
+                        "if one result is meant, state what tells them apart; if the freedom is meant, this is information",
+                        None,
+                    ),
+                );
+            }
+        }
+    }
 
     // W0905: points of verified functions their own proof cannot reach.
     let mut reach_cost = None;
@@ -611,6 +669,7 @@ pub fn lint_sources_selected(
         mutants_skipped,
         pre_cost,
         reach_cost,
+        det_cost,
         ok,
     })
 }

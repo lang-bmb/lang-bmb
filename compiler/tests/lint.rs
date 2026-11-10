@@ -224,7 +224,7 @@ fn each_report_and_nothing_else() {
         line.starts_with(
             "{\"summary\":true,\"defs\":5,\"reports\":3,\"verifications\":6,\"skipped\":0,\"mutants\":2,\"surviving\":0,\"mutants_skipped\":0,\"pre_rlimit\":"
         ) && line.contains(",\"pre_undecided\":0,\"reach_rlimit\":")
-            && line.ends_with(",\"reach_undecided\":0}"),
+            && line.ends_with(",\"reach_undecided\":0,\"det_rlimit\":null,\"det_undecided\":null}"),
         "{line}"
     );
     for k in ["pre_rlimit", "reach_rlimit"] {
@@ -965,5 +965,77 @@ mod w {
             .contains("fn ledger_step(bal: i64, kind: i64, amt: i64) -> (i64, i64)"),
         "{}",
         found[0].2
+    );
+}
+
+/// W0918 (backlog T1-44a): asked by `--select`, a contract that fixes its
+/// result says nothing; one that bounds it shows an input and two results
+/// its postconditions both allow; a clause through a spec fn seen by name
+/// only (`huge`, which `big`'s body names, ADR-0096) is not judged (counted
+/// undecided), nor a function with a `&mut` parameter. A plain
+/// run does not ask.
+#[test]
+fn determinacy_shows_two_results_on_request() {
+    let src = r#"#[summary("t")]
+mod d {
+    spec fn big(r: i64) -> bool { huge(r) }
+
+    spec fn huge(r: i64) -> bool { r > 10 }
+
+    #[effects(pure)]
+    fn twice(x: i64) -> (r: i64)
+        requires x < 1000 && x > -1000,
+        ensures r == 2 * x,
+    {
+        2 * x
+    }
+
+    #[effects(pure)]
+    fn above(x: i64) -> (r: i64)
+        requires x < 1000,
+        ensures r >= x,
+    {
+        x + 1
+    }
+
+    #[effects(pure)]
+    fn opaque() -> (r: i64)
+        ensures big(r),
+    {
+        11
+    }
+
+    #[effects(pure)]
+    fn bump(a: &mut i64) -> (r: i64)
+        requires *a < 1000,
+        ensures r >= 0,
+    {
+        *a = *a + 1;
+        0
+    }
+}
+"#;
+    let files = one("d.bmb", src);
+    let out = lint_args(&["lint", "--select", "W0918"], &files).unwrap();
+    let ds = rows(&out.diagnostics);
+    assert_eq!(ds.len(), 1, "{}", out.diagnostics);
+    assert_eq!(s(&ds[0], "code"), "W0918");
+    let msg = s(&ds[0], "message");
+    assert!(
+        msg.starts_with("the postconditions of `d::above` allow two results for one input at x = "),
+        "{msg}"
+    );
+    assert!(
+        msg.contains(" and r = ") && msg.ends_with(" both hold"),
+        "{msg}"
+    );
+    assert_eq!((n(&ds[0], "line"), n(&ds[0], "col")), (18, 17));
+    let last = rows(&out.report()).pop().unwrap();
+    assert_eq!(n(&last, "det_undecided"), 1, "{}", out.report());
+    let plain = lint_sources(&files).unwrap();
+    assert!(
+        !plain.diagnostics.contains("W0918"),
+        "{}",
+        plain.diagnostics
     );
 }

@@ -7617,93 +7617,19 @@ pub fn preconditions_satisfiable(
             out.push((path.clone(), span, None));
             continue;
         }
-        let decls = enc.decls.join("\n");
-        let q = enc
-            .pc
-            .iter()
-            .map(|a| format!("(assert {a})"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        let q = valid_instances(&enc.valid_defs, q);
-        let q = format!("{q}\n{}", prog.struct_facts(&q));
-        let relevant = relevant_axioms(&axioms, &q);
-        let mut base = header(0).join("\n");
-        base.push('\n');
-        base.push_str(&sort_decls(&t.fns[path]));
-        let used = needed_decls(&spec_decls, &dts, &format!("{relevant}{decls}\n{q}"));
-        let full = format!("{base}{used}{relevant}{decls}");
-        if solver.as_ref().is_some_and(|s| !s.reusable()) {
-            solver = None;
-        }
-        if solver.is_none() {
-            match Solver::start() {
-                Ok(s) => solver = Some(s),
-                Err(_) => {
-                    solver_down = true;
-                    out.push((path.clone(), span, None));
-                    continue;
-                }
-            }
-        }
-        let sol = solver.as_mut().expect("solver started");
-        // The probe first, as for an obligation (ADR-0069), in the forms of a
-        // satisfiability check (ADR-0072): the same meaning,
-        // so its `sat` is a model of the clauses and its `unsat` refutes them.
-        let probe = probe_base(
-            &axioms,
-            &q,
-            &relevant,
-            &spec_decls,
-            &dts,
-            &base,
-            &decls,
-            Forms::SatProbe,
-        );
-        let probed = probe.and_then(|pb| {
-            let a = sol
-                .run("(reset)")
-                .and_then(|_| sol.run(&pb))
-                .and_then(|_| sol.run(&probe_limit()))
-                .and_then(|_| sol.run(&q))
-                .and_then(|_| check_sat_counted(sol, &mut spent));
-            matches!(a, Ok(Answer::Unsat | Answer::Sat)).then_some(a)
+        let verdict = sat_of(&mut SatRun {
+            prog: &prog,
+            t,
+            path,
+            enc: &enc,
+            axioms: &axioms,
+            axiom_parts: &axiom_parts,
+            spec_decls: &spec_decls,
+            dts: &dts,
+            solver: &mut solver,
+            solver_down: &mut solver_down,
+            spent: &mut spent,
         });
-        let mut answer = probed.unwrap_or_else(|| {
-            sol.run("(reset)")
-                .and_then(|_| sol.run(&full))
-                .and_then(|_| sol.run(&q))
-                .and_then(|_| check_sat_counted(sol, &mut spent))
-        });
-        // Undecided with quantified definitions: ground instances follow from
-        // the definitions, so `unsat` with them is `unsat` (as in the prover),
-        // and `sat` with an instance for every application is `sat` (ADR-0075).
-        if matches!(answer, Ok(Answer::Unknown(_))) && !axiom_parts.is_empty() {
-            let (inst, complete) = ground_instances(&axiom_parts, &q, 3);
-            let inst = format!("{inst}{}", prog.struct_facts(&inst));
-            if !inst.is_empty() {
-                let used = needed_decls(&spec_decls, &dts, &format!("{decls}\n{inst}{q}"));
-                let head = format!("{base}{used}{decls}");
-                let retry = sol
-                    .run("(reset)")
-                    .and_then(|_| sol.run(&head))
-                    .and_then(|_| sol.run(&format!("{inst}{q}")))
-                    .and_then(|_| check_sat_counted(sol, &mut spent));
-                match retry {
-                    Ok(Answer::Unsat) => answer = retry,
-                    Ok(Answer::Sat) if complete => answer = retry,
-                    _ => {}
-                }
-            }
-        }
-        let verdict = match answer {
-            Ok(Answer::Unsat) => Some(false),
-            Ok(Answer::Sat) => Some(true),
-            Ok(Answer::Unknown(_)) => None,
-            Err(_) => {
-                solver = None;
-                None
-            }
-        };
         out.push((path.clone(), span, verdict));
     }
     let cost = SatCost {
@@ -7711,6 +7637,281 @@ pub fn preconditions_satisfiable(
         undecided: out.iter().filter(|(_, _, v)| v.is_none()).count(),
     };
     (out, cost)
+}
+
+/// What a function's contract says of its result (T1-44a, W0918).
+pub enum Determinacy {
+    /// One result for every input the `requires` admit.
+    One,
+    /// An input with two results the `ensures` both allow: the input and
+    /// each result, as a counterexample shows them.
+    Two {
+        input: String,
+        first: String,
+        second: String,
+    },
+}
+
+/// `a != b` of two values of one type, for scalars and structs of them;
+/// `None` for arrays and slices (no extensional disequality here).
+fn differ(a: &Val, b: &Val) -> Option<String> {
+    match (a, b) {
+        (Val::S(x), Val::S(y)) => Some(format!("(not (= {x} {y}))")),
+        (Val::Struct(xs), Val::Struct(ys)) if xs.len() == ys.len() => {
+            let parts: Option<Vec<String>> = xs.iter().zip(ys).map(|(x, y)| differ(x, y)).collect();
+            let parts = parts?;
+            Some(match parts.len() {
+                0 => "false".to_string(),
+                1 => parts[0].clone(),
+                _ => format!("(or {})", parts.join(" ")),
+            })
+        }
+        _ => None,
+    }
+}
+
+/// Whether each executable function's contract fixes its result (backlog
+/// T1-44a, AI-user feedback P7): without the body, can
+/// `requires(x) ∧ ensures(x, r1) ∧ ensures(x, r2) ∧ r1 ≠ r2` hold? The
+/// query is W0901's (the entry state, the revealed definitions, the pinned
+/// seed and `rlimit`) with two results. Only functions with a named result
+/// of a scalar or struct type, `ensures` clauses and no `&mut` parameter
+/// (whose new values would be results too). Per such function, in path
+/// order: its path, the span of its `ensures`, and `Some(One)`,
+/// `Some(Two {..})` or `None` (undecided, or the solver could not run).
+pub fn results_determined(
+    p: &Program,
+    t: &Tables,
+) -> (Vec<(String, Span, Option<Determinacy>)>, SatCost) {
+    let view = prepare(p, t);
+    let t = &view;
+    let prog = prog_of(p, t);
+    let spec_decls = prog.spec_decls();
+    let dts = datatypes(t);
+    let mut solver: Option<Solver> = None;
+    let mut solver_down = crate::toolchain::check_z3().is_err();
+    let mut out = Vec::new();
+    let mut spent = 0u64;
+    let spec_syms: Vec<(String, String)> = prog
+        .defs
+        .iter()
+        .filter(|(_, d)| d.f.kind == FnKind::Spec && !d.inst)
+        .map(|(p, _)| (p.clone(), sym(p)))
+        .collect();
+    for (path, d) in &prog.defs {
+        let f = d.f;
+        let Some(rn) = &f.ret.name else { continue };
+        if d.inst
+            || f.kind != FnKind::Exec
+            || f.ensures.is_empty()
+            || f.params
+                .iter()
+                .any(|p| matches!(p.ty.kind, TypeKind::Ref { mutable: true, .. }))
+        {
+            continue;
+        }
+        let span = f.ensures[0].span.to(f.ensures[f.ensures.len() - 1].span);
+        let mut enc = Enc::new(&prog, path, &d.mod_path);
+        let mut axioms: Vec<(String, String)> = Vec::new();
+        let mut axiom_parts: Vec<AxiomParts> = Vec::new();
+        for u in prog.revealed(path, f, &d.mod_path) {
+            let (ax, parts) = prog.axiom(&u);
+            axioms.push((spec_key(&u, t), ax));
+            axiom_parts.extend(parts);
+        }
+        let mut inputs = Vec::new();
+        for (i, prm) in f.params.iter().enumerate() {
+            let ty = enc.local_ty(&prm.name.name);
+            let v = enc.fresh_val(&prm.name.name, &ty);
+            enc.assume_valid(&v, &ty);
+            if enc.text_at(path, Some(i)) {
+                enc.assume_text(&v);
+            }
+            inputs.push((prm.name.name.clone(), v.clone(), ty));
+            enc.bind_var(prm.name.name.clone(), v);
+        }
+        let (env, old) = enc.cur_env();
+        for r in &f.requires {
+            let g = enc.spec(r, &env, &old).s();
+            enc.pc.push(g);
+        }
+        let ret = crate::check::subst(&t.fns[path].ret, &enc.tsub);
+        let (r1, r2) = (
+            enc.fresh_val("result.one", &ret),
+            enc.fresh_val("result.two", &ret),
+        );
+        let Some(neq) = differ(&r1, &r2) else {
+            continue;
+        };
+        for r in [&r1, &r2] {
+            enc.assume_valid(r, &ret);
+            let mut e = env.clone();
+            e.insert(rn.name.clone(), r.clone());
+            for en in &f.ensures {
+                let g = enc.spec(en, &e, &old).s();
+                enc.pc.push(g);
+            }
+        }
+        enc.pc.push(neq);
+        // A clause through a spec fn seen by name only allows any result
+        // of it: the answer would be the uninterpreted symbol's, not the
+        // contract's. Not judged.
+        // The revealed definitions' bodies count: a spec fn they name is not
+        // revealed with them (ADR-0096).
+        let mut text = enc.pc.join("\n");
+        for (_, ax) in &axioms {
+            text.push_str(ax);
+        }
+        if !hidden_predicates(&spec_syms, &axioms, &text, &d.mod_path).is_empty() {
+            out.push((path.clone(), span, None));
+            continue;
+        }
+        if solver_down {
+            out.push((path.clone(), span, None));
+            continue;
+        }
+        let verdict = sat_of(&mut SatRun {
+            prog: &prog,
+            t,
+            path,
+            enc: &enc,
+            axioms: &axioms,
+            axiom_parts: &axiom_parts,
+            spec_decls: &spec_decls,
+            dts: &dts,
+            solver: &mut solver,
+            solver_down: &mut solver_down,
+            spent: &mut spent,
+        });
+        let det = match verdict {
+            Some(false) => Some(Determinacy::One),
+            Some(true) => solver.as_mut().map(|sol| {
+                let one = |v: &Val| vec![(rn.name.clone(), v.clone(), ret.clone())];
+                Determinacy::Two {
+                    input: counterexample(sol, &inputs, t),
+                    first: counterexample(sol, &one(&r1), t),
+                    second: counterexample(sol, &one(&r2), t),
+                }
+            }),
+            None => None,
+        };
+        out.push((path.clone(), span, det));
+    }
+    let cost = SatCost {
+        rlimit: spent,
+        undecided: out.iter().filter(|(_, _, v)| v.is_none()).count(),
+    };
+    (out, cost)
+}
+
+/// What one satisfiability check needs (`sat_of`).
+struct SatRun<'a, 'p> {
+    prog: &'a Prog<'p>,
+    t: &'a Tables,
+    path: &'a str,
+    enc: &'a Enc<'a, 'p>,
+    axioms: &'a [(String, String)],
+    axiom_parts: &'a [AxiomParts],
+    spec_decls: &'a [(String, String, String)],
+    dts: &'a [(String, String, String)],
+    solver: &'a mut Option<Solver>,
+    solver_down: &'a mut bool,
+    spent: &'a mut u64,
+}
+
+/// Whether the facts of `enc` (its path condition) can hold together, as
+/// W0901 asks (backlog 2D-08) and T1-44a's determinacy check: the probe
+/// first in the forms of a satisfiability check (ADR-0072), then the full
+/// query, then ground instances (ADR-0075). `Some(true)` leaves the solver
+/// at that model. `None`: undecided, or the solver could not run.
+fn sat_of(r: &mut SatRun) -> Option<bool> {
+    let decls = r.enc.decls.join("\n");
+    let q = r
+        .enc
+        .pc
+        .iter()
+        .map(|a| format!("(assert {a})"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let q = valid_instances(&r.enc.valid_defs, q);
+    let q = format!("{q}\n{}", r.prog.struct_facts(&q));
+    let relevant = relevant_axioms(r.axioms, &q);
+    let mut base = header(0).join("\n");
+    base.push('\n');
+    base.push_str(&sort_decls(&r.t.fns[r.path]));
+    let used = needed_decls(r.spec_decls, r.dts, &format!("{relevant}{decls}\n{q}"));
+    let full = format!("{base}{used}{relevant}{decls}");
+    if r.solver.as_ref().is_some_and(|s| !s.reusable()) {
+        *r.solver = None;
+    }
+    if r.solver.is_none() {
+        match Solver::start() {
+            Ok(s) => *r.solver = Some(s),
+            Err(_) => {
+                *r.solver_down = true;
+                return None;
+            }
+        }
+    }
+    let sol = r.solver.as_mut().expect("solver started");
+    // The probe first, as for an obligation (ADR-0069), in the forms of a
+    // satisfiability check (ADR-0072): the same meaning,
+    // so its `sat` is a model of the clauses and its `unsat` refutes them.
+    let probe = probe_base(
+        r.axioms,
+        &q,
+        &relevant,
+        r.spec_decls,
+        r.dts,
+        &base,
+        &decls,
+        Forms::SatProbe,
+    );
+    let probed = probe.and_then(|pb| {
+        let a = sol
+            .run("(reset)")
+            .and_then(|_| sol.run(&pb))
+            .and_then(|_| sol.run(&probe_limit()))
+            .and_then(|_| sol.run(&q))
+            .and_then(|_| check_sat_counted(sol, r.spent));
+        matches!(a, Ok(Answer::Unsat | Answer::Sat)).then_some(a)
+    });
+    let mut answer = probed.unwrap_or_else(|| {
+        sol.run("(reset)")
+            .and_then(|_| sol.run(&full))
+            .and_then(|_| sol.run(&q))
+            .and_then(|_| check_sat_counted(sol, r.spent))
+    });
+    // Undecided with quantified definitions: ground instances follow from
+    // the definitions, so `unsat` with them is `unsat` (as in the prover),
+    // and `sat` with an instance for every application is `sat` (ADR-0075).
+    if matches!(answer, Ok(Answer::Unknown(_))) && !r.axiom_parts.is_empty() {
+        let (inst, complete) = ground_instances(r.axiom_parts, &q, 3);
+        let inst = format!("{inst}{}", r.prog.struct_facts(&inst));
+        if !inst.is_empty() {
+            let used = needed_decls(r.spec_decls, r.dts, &format!("{decls}\n{inst}{q}"));
+            let head = format!("{base}{used}{decls}");
+            let retry = sol
+                .run("(reset)")
+                .and_then(|_| sol.run(&head))
+                .and_then(|_| sol.run(&format!("{inst}{q}")))
+                .and_then(|_| check_sat_counted(sol, r.spent));
+            match retry {
+                Ok(Answer::Unsat) => answer = retry,
+                Ok(Answer::Sat) if complete => answer = retry,
+                _ => {}
+            }
+        }
+    }
+    match answer {
+        Ok(Answer::Unsat) => Some(false),
+        Ok(Answer::Sat) => Some(true),
+        Ok(Answer::Unknown(_)) => None,
+        Err(_) => {
+            *r.solver = None;
+            None
+        }
+    }
 }
 
 /// Proves the program's definitions (or `only` those). With an escape in
