@@ -17,15 +17,15 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 53243,
+    "S4_stage0_rust_lines": 53459,
     "S5_tests_bound_to_rust_api": 1,
     "S6_selfhost_bmb_lines": 0,
     "P1_runnable_programs": 80,
-    "P2_bmb_lines": 29561,
-    "P3_errors_with_help": 0.9146,
+    "P2_bmb_lines": 29575,
+    "P3_errors_with_help": 0.9149,
     "B1_baseline_binary_bytes": 101664,
     "O1_adr_index_mismatch": 0,
-    "O2_soundness_fuzzers": 16
+    "O2_soundness_fuzzers": 17
   },
   "history": [
     {
@@ -2464,6 +2464,28 @@
         "O2_soundness_fuzzers": [
           15,
           16
+        ]
+      }
+    },
+    {
+      "date": "2026-11-10",
+      "reason": "2V-20g/h display names and map edges; 2V-20i closure soundness fuzzer",
+      "changed": {
+        "S4_stage0_rust_lines": [
+          53243,
+          53459
+        ],
+        "P2_bmb_lines": [
+          29561,
+          29575
+        ],
+        "P3_errors_with_help": [
+          0.9146,
+          0.9149
+        ],
+        "O2_soundness_fuzzers": [
+          16,
+          17
         ]
       }
     }
