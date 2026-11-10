@@ -523,11 +523,11 @@
    "src": "b764481fdcb67b0c"
   },
   "tests/run/fn_nested.bmb": {
-   "out": "92dcb95cdf0c1ef1",
+   "out": "2cc1c96bdf8f3277",
    "src": "c58f8d47286a1a65"
   },
   "tests/run/fn_values.bmb": {
-   "out": "d8332c706d0068a0",
+   "out": "2efab6fd0a877f32",
    "src": "11ad16b676c2e397"
   },
   "tests/run/forest.bmb": {
@@ -795,8 +795,8 @@
    "src": "aa05ed75d490c645"
   },
   "tests/verify/fail/fn_values.bmb": {
-   "out": "f085bd3caf777692",
-   "src": "c9956e97171255ff"
+   "out": "9c8a097eb7137073",
+   "src": "dd4bf4450a632675"
   },
   "tests/verify/fail/generics.bmb": {
    "out": "4ae1aca6daa7ff8c",

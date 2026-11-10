@@ -7067,6 +7067,12 @@ impl<'p> Prog<'p> {
                 );
             }
         }
+        // Once each: an impl's spec method named both by its own path and
+        // through its trait's is one definition. Two copies of one macro
+        // each waited for the other in the probe's order, which then left
+        // the definition out and answered `sat` (backlog 2V-20f).
+        let mut seen = BTreeSet::new();
+        out.retain(|u| seen.insert(u.clone()));
         out
     }
 

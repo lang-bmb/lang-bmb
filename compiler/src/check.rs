@@ -298,6 +298,13 @@ pub fn check_resolved(mut p: Program, diags: &mut Diags) -> (Program, crate::ver
             // An argument reported already (E0608) is not reported again
             // through the items made for it.
             diags.items.retain(|x| !quiet.contains(&x.span.file));
+            // One finding once: a closure's clause is checked where the
+            // lowering put it, its spec method and its `call` (backlog
+            // 2V-20f), at the span written.
+            let mut seen = BTreeSet::new();
+            diags.items.retain(|x| {
+                seen.insert((x.code, x.span.file, x.span.lo, x.span.hi, x.message.clone()))
+            });
             // Each reference to a `const` is its value, a literal of its
             // type (the type at that span is the `const`'s).
             // An array or data value is a tree of literals, each node at a

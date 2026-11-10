@@ -8,6 +8,21 @@ mod fvf {
         f(x)
     }
 
+    // An `FnMut` closure's `ensures` reads its captures before the call:
+    // `count` is 0 there and 1 after, so `y == x + count` fails at its
+    // clause (backlog 2V-20f; it would hold of the state after).
+    #[effects(pure)]
+    fn counted() -> i64 {
+        let mut count: u64 = 0;
+        once::<_>(move |x: i64| -> (y: i64) requires count < 100 && x < 100 && x > -100, ensures y == x + count, { count = count + 1; x + count as i64 }, 5)
+    }
+
+    // The closure's `requires` bounds `x` above only: `x * 2` may overflow.
+    #[effects(pure)]
+    fn doubled() -> i64 {
+        apply::<_>(|x: i64| -> (y: i64) requires x < 100, ensures y == x * 2, { x * 2 }, 21)
+    }
+
     #[effects(pure)]
     fn inc(x: i64) -> (r: i64)
         requires x < 1000,
@@ -16,10 +31,25 @@ mod fvf {
         x + 1
     }
 
+    #[effects(pure)]
+    fn once<F: FnMut(i64) -> i64>(f: F, x: i64) -> (r: i64)
+        requires f.requires(x),
+        ensures f.ensures(x, r),
+    {
+        f(x)
+    }
+
     // `inc` needs `x < 1000`.
     #[effects(pure)]
     fn too_big() -> i64 {
         apply::<_>(inc, 5000)
+    }
+
+    // The closure's body doubles, its second `ensures` claims three times:
+    // E0802 at that clause (backlog 2V-20f), not at the generated `call`.
+    #[effects(pure)]
+    fn tripled() -> i64 {
+        apply::<_>(|x: i64| -> (y: i64) requires x < 100 && x > -100, ensures y % 2 == 0, y == x * 3, { x * 2 }, 21)
     }
 
     // `inc`'s result is `x + 1`, not `x`.
@@ -28,11 +58,5 @@ mod fvf {
         ensures r == 10,
     {
         apply::<_>(inc, 10)
-    }
-
-    // The closure's `requires` bounds `x` above only: `x * 2` may overflow.
-    #[effects(pure)]
-    fn doubled() -> i64 {
-        apply::<_>(|x: i64| -> (y: i64) requires x < 100, ensures y == x * 2, { x * 2 }, 21)
     }
 }

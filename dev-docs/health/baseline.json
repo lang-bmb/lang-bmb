@@ -2,14 +2,14 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 14175988,
+    "V4_rlimit_total": 14360880,
     "V5_rlimit_headroom": 0.1244,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0002,
     "V8_bench_rlimit_total": 22976379,
     "V9_bench_defs_at_limit": 0,
-    "V10_library_rlimit_total": 23410995,
-    "V11_sat_check_rlimit_total": 271377599,
+    "V10_library_rlimit_total": 23386463,
+    "V11_sat_check_rlimit_total": 271773135,
     "V12_sat_check_undecided": 216,
     "S1_external_crates": 0,
     "S2_external_processes": [
@@ -17,15 +17,15 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 50039,
+    "S4_stage0_rust_lines": 53243,
     "S5_tests_bound_to_rust_api": 1,
     "S6_selfhost_bmb_lines": 0,
-    "P1_runnable_programs": 74,
-    "P2_bmb_lines": 28697,
-    "P3_errors_with_help": 0.9113,
+    "P1_runnable_programs": 80,
+    "P2_bmb_lines": 29561,
+    "P3_errors_with_help": 0.9146,
     "B1_baseline_binary_bytes": 101664,
     "O1_adr_index_mismatch": 0,
-    "O2_soundness_fuzzers": 15
+    "O2_soundness_fuzzers": 16
   },
   "history": [
     {
@@ -2426,6 +2426,44 @@
         "P2_bmb_lines": [
           28656,
           28697
+        ]
+      }
+    },
+    {
+      "date": "2026-11-10",
+      "reason": "2V-20f: closure ensures at its clause; earlier 2V-19b/2V-20 corpus and fuzzer gains",
+      "changed": {
+        "V4_rlimit_total": [
+          14175988,
+          14360880
+        ],
+        "V10_library_rlimit_total": [
+          23410995,
+          23386463
+        ],
+        "V11_sat_check_rlimit_total": [
+          271377599,
+          271773135
+        ],
+        "S4_stage0_rust_lines": [
+          50039,
+          53243
+        ],
+        "P1_runnable_programs": [
+          74,
+          80
+        ],
+        "P2_bmb_lines": [
+          28697,
+          29561
+        ],
+        "P3_errors_with_help": [
+          0.9113,
+          0.9146
+        ],
+        "O2_soundness_fuzzers": [
+          15,
+          16
         ]
       }
     }

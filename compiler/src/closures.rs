@@ -17,6 +17,12 @@
 //!   the `impl`'s conformance). The argument is that struct's value and the
 //!   `_` its type.
 //!
+//! - A closure is a struct of its caller's unit and that trait's `impl`:
+//!   `pre` and `post` are its `requires` and `ensures`, `call` its body
+//!   with the `ensures` clauses themselves (so a failed one is reported
+//!   where it is written, backlog 2V-20f); the impl's refinement (E0817)
+//!   proves the trait's `post` from them.
+//!
 //! The generated items are text parsed under file ids of their own
 //! (`source::GENERATED` down), so every node has its own span. The source
 //! program the formatter prints is not lowered: `check::check_resolved`
@@ -938,11 +944,58 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Vec<u32> {
                 if let ExprKind::Closure(x) = wrapped.kind {
                     c = *x;
                 }
+                let post_path = format!(
+                    "<{unit}::{} as {}>::post",
+                    path.join("::"),
+                    i.trait_path
+                        .iter()
+                        .map(|s| s.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join("::")
+                );
                 for f in &mut i.fns {
                     match f.name.name.as_str() {
                         "pre" => splice(&mut f.body, &c.requires),
                         "post" => splice(&mut f.body, &c.ensures),
-                        "call" => f.body = c.body.clone(),
+                        "call" => {
+                            f.body = c.body.clone();
+                            // `call` ensures the closure's own clauses, so a
+                            // failed one is reported at the clause written
+                            // (backlog 2V-20f); the trait's `post` follows
+                            // from them (the impl's refinement, E0817). An
+                            // `FnMut`'s clauses are of the state before the
+                            // call, as its `post` is (ADR-0053 open question 3).
+                            if !c.ensures.is_empty() {
+                                let before = matches!(
+                                    f.params.first().map(|p| &p.ty.kind),
+                                    Some(TypeKind::Ref { mutable: true, .. })
+                                );
+                                f.ensures = c
+                                    .ensures
+                                    .iter()
+                                    .map(|e| {
+                                        let mut e = e.clone();
+                                        if before {
+                                            of_before(&mut e);
+                                        }
+                                        e
+                                    })
+                                    .collect();
+                                // The refinement reads `post`'s definition.
+                                let at = f.name.span;
+                                f.attrs.push(Attr {
+                                    name: Ident {
+                                        name: "uses".into(),
+                                        span: at,
+                                    },
+                                    args: vec![AttrArg::Ident(Ident {
+                                        name: post_path.clone(),
+                                        span: at,
+                                    })],
+                                    span: at,
+                                });
+                            }
+                        }
                         _ => {}
                     }
                 }
@@ -963,6 +1016,17 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Vec<u32> {
     // A closure no round lowered is not an argument of a bounded parameter.
     leftover_closures(p, diags);
     quiet
+}
+
+/// `e` with each `self` as `old(self)`: an `FnMut` closure's `ensures`
+/// read its captures as they were before the call.
+fn of_before(e: &mut Expr) {
+    crate::ast::expr_walk(e, &mut |x| {
+        if matches!(&x.kind, ExprKind::Var(v) if v.name == "self") {
+            let inner = x.clone();
+            x.kind = ExprKind::Old(Box::new(inner));
+        }
+    });
 }
 
 /// The `true && true && ..` placeholders of `body`, left to right, as the
