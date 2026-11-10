@@ -33,6 +33,7 @@ bytes (the tool arguments) are recorded separately. Fixed per-session costs
 Python 3 standard library only.
 """
 import argparse
+import concurrent.futures
 import hashlib
 import json
 import math
@@ -269,11 +270,19 @@ class RustTools:
 
 
 class BmbTools:
+    """The read tools of `bmb mcp` that the frozen prompt names (`query`,
+    `map`). The server also lists `verify`, `build` and the transaction tools;
+    they are neither shown nor callable here, as the Rust arm has no write or
+    build tool either (and sessions share one workspace)."""
+    SHOWN = ("query", "map")
+
     def __init__(self, ws):
         self.mcp = harness.Mcp(ws)
-        self.tools = self.mcp.tools
+        self.tools = [t for t in self.mcp.tools if t["name"] in self.SHOWN]
 
     def call(self, name, args):
+        if name not in self.SHOWN:
+            return f"unknown tool {name}", True
         return self.mcp.call(name, args)
 
     def close(self):
@@ -603,8 +612,9 @@ def make_agent(kind, arm, task):
 
 # ---------- sessions ----------
 
-def run_task(task, arm, agent_kind, root, want):
+def run_task(task, arm, agent_kind, root, want, sessions=None):
     tools = BmbTools(root) if arm == "bmb" else RustTools(root)
+    trace = []  # every call in full, for the session record (INF-17)
     agent = make_agent(agent_kind, arm, task)
     if hasattr(agent, "set_tools"):
         agent.set_tools(tools.tools + [harness.ANSWER_TOOL])
@@ -630,11 +640,15 @@ def run_task(task, arm, agent_kind, root, want):
                 else:
                     text, err = tools.call(name, args)
                     m["resp_bytes"] += len(text.encode())
+                trace.append({"name": name, "args": args, "error": bool(err), "text": text})
                 last.append((name, args, text, err))
             if m["limit_hit"]:
                 break
     finally:
         tools.close()
+    if sessions:
+        harness.sessionlog.write(sessions, harness.sessionlog.record(task["id"], agent_kind, agent, trace,
+                                                                  {"answer": answer}))
     got = set(answer or [])
     tp = len(want & got)
     precision = tp / len(got) if got else (1.0 if not want else 0.0)
@@ -731,11 +745,20 @@ def machine():
             "manifest": hashlib.sha256(open(os.path.join(HERE, "MANIFEST"), "rb").read()).hexdigest()[:16]}
 
 
+def manifest_digest():
+    return hashlib.sha256(open(os.path.join(HERE, "MANIFEST"), "rb").read()).hexdigest()
+
+
 def cmd_run(a):
     check_manifest()
     tasks = load_tasks()
     if a.tasks:
         tasks = [t for t in tasks if t["id"] in set(a.tasks.split(","))]
+    one = len(a.arms) == 1 and len(a.sizes) == 1 and a.out
+    if not one and (a.agent != "oracle" or a.sessions or a.jobs > 1):
+        sys.exit("bnb: a model run (or --sessions, --jobs) takes one --arms, one --sizes and --out")
+    if one:
+        return run_one(a, tasks)
     work = a.work or tempfile.mkdtemp(prefix="bnb-")
     os.makedirs(work, exist_ok=True)
     out = [machine()]
@@ -778,9 +801,55 @@ def cmd_run(a):
         sys.exit("bnb: " + "\n".join(failed))
 
 
+def run_one(a, tasks):
+    """One arm at one size, rows written as sessions finish and an interrupted
+    run resumed from `--out` (backlog INF-16, bench/m1/resultlog.py), with
+    `--sessions` records and `--jobs` sessions at a time. The measurement path
+    of real models (3A-06)."""
+    arm, n = a.arms[0], a.sizes[0]
+    commit = harness.run_commit()
+    from model_api import is_model_kind  # noqa: E402
+    if is_model_kind(a.agent) and commit.endswith("+dirty"):
+        sys.exit("bnb: a model run needs a committed tree (the row names the commit)")
+    log = harness.resultlog.ResultLog(a.out, {"agent": a.agent, "task_set": "bnb", "arm": arm, "size": n,
+                                              "manifest": manifest_digest(), "commit": commit,
+                                              "tasks": [t["id"] for t in tasks], **harness.condition_fields()})
+    work = a.work or tempfile.mkdtemp(prefix="bnb-")
+    os.makedirs(work, exist_ok=True)
+    try:
+        t = time.perf_counter()
+        ws, tw = build(work, n)
+        build_s = round(time.perf_counter() - t, 2)
+        truths = {tk["id"]: truth_bmb(tk, ws) for tk in tasks}  # also fills the workspace's map cache
+
+        def session(tk):
+            r = run_task(tk, arm, a.agent, ws if arm == "bmb" else tw, truths[tk["id"]], a.sessions)
+            r["size"] = n
+            log.add(r)
+            return r
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=a.jobs) as pool:
+            list(pool.map(session, [tk for tk in tasks if not log.done(tk["id"])]))
+    finally:
+        if not a.work:
+            shutil.rmtree(work, ignore_errors=True)
+    rows_ = [log.rows[tk["id"]] for tk in tasks]
+    summary = {"summary": True, "agent": a.agent, "task_set": "bnb", "arm": arm, "size": n, "tasks": len(rows_),
+               "manifest": manifest_digest(), "commit": commit, **harness.condition_fields(),
+               "build_s": build_s, "success": f"{sum(r['success'] for r in rows_)}/{len(rows_)}",
+               "tokens": sum(r["tokens"] for r in rows_),
+               "model_tokens": sum((r["model_usage"] or {}).get("input_tokens", 0)
+                                   + (r["model_usage"] or {}).get("output_tokens", 0) for r in rows_),
+               "limit_hit": sum(r["limit_hit"] for r in rows_)}
+    log.finish(rows_, summary)
+    print(json.dumps(summary, ensure_ascii=False))
+    if a.expect == "all-pass" and not all(r["success"] and not r["limit_hit"] for r in rows_):
+        sys.exit("bnb: expected every task to be answered exactly within the budget")
+
+
 def cmd_table(a):
     rows_ = [json.loads(x) for f in a.files for x in open(f, encoding="utf-8") if x.strip()]
-    runs = [r for r in rows_ if "arm" in r]
+    runs = [r for r in rows_ if "arm" in r and "id" in r]
     sizes = sorted({r["size"] for r in runs})
     arms = [x for x in ("bmb", "rust") if any(r["arm"] == x for r in runs)]
     builds = {r["size"]: r for r in rows_ if r.get("kind") == "build"}
@@ -846,6 +915,8 @@ def main():
     rn.add_argument("--cargo-check", action="store_true")
     rn.add_argument("--out")
     rn.add_argument("--expect", choices=["all-pass"])
+    rn.add_argument("--sessions", help="directory for session records (backlog INF-17)")
+    rn.add_argument("--jobs", type=int, default=1, help="sessions at a time (one arm, one size)")
     tb = sub.add_parser("table")
     tb.add_argument("files", nargs="+")
     a = p.parse_args()

@@ -13,7 +13,7 @@
 | --- | --- |
 | `twin.py` | Rust 쌍둥이 생성기. `gen.Unit`(이름·종류·상수)과 `gen.choose`(피호출자·결과 형태)를 BMB 생성과 함께 쓰므로 정의·호출 그래프·`&mut` 쓰기 경로·io 함수가 구성상 같다 |
 | `analyze.py` | 쌍둥이 원문만 읽는 Rust 쪽 분석기(이 생성기의 고정 배치만 다룸). 호출·쓰기 간선, 계약 술어, io, 중복 묶음을 다시 만든다 |
-| `bnb.py` | 과제 생성, 정답 계산, 두 팔의 도구, 스크립트 오라클, 세션 실행, 표 |
+| `bnb.py` | 과제 생성, 정답 계산, 두 팔의 도구(BMB 팔은 `query`·`map`만), 스크립트 오라클, 세션 실행(한 팔·한 크기 실행은 결과를 세션마다 쓰고 이어 돈다, `--sessions`·`--jobs`), 표 |
 | `tasks/` | 과제 27개(동결). `bnb.py tasks`가 계획에서 역할을 골라 만든다 |
 | `prompt-bmb.md`, `prompt-rust.md` | 팔마다의 시스템 프롬프트(동결, 실제 모델용) |
 | `MANIFEST` | 동결 파일의 SHA-256 |
@@ -26,7 +26,7 @@ python3 bench/bnb/bnb.py run --sizes 100 --check-truth --cargo-check --expect al
 BMB=target/release/bmb python3 bench/bnb/bnb.py run --sizes 100 1000 10000 \
     --check-truth --cargo-check --work W --out R.jsonl                # 측정
 python3 bench/bnb/bnb.py table R.jsonl                              # 표
-python3 bench/bnb/bnb.py run --agent anthropic:MODEL --arms bmb rust --sizes 10000 --out R.jsonl   # 실제 모델(유료, 사용자 머신)
+python3 bench/bnb/bnb.py run --agent openai:MODEL --arms bmb --sizes 10000 --jobs 2 --sessions S --out R.jsonl   # 실제 모델(ADR-0066), 팔·크기마다 한 파일, 끊기면 같은 명령으로 이어 돈다
 ```
 
 ## BMB → Rust 대응

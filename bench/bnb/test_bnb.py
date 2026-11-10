@@ -72,10 +72,48 @@ def test_oracles_n100():
             assert len(xs) == n and all(r["success"] and not r["limit_hit"] for r in xs), arm
 
 
+def test_bmb_tools_read_only():
+    with tempfile.TemporaryDirectory() as t:
+        subprocess.run([sys.executable, os.path.join(bnb.BENCH, "m3", "gen.py"), t, "--defs", "100"], check=True,
+                       capture_output=True)
+        bt = bnb.BmbTools(t)
+        try:
+            assert sorted(x["name"] for x in bt.tools) == ["map", "query"], bt.tools
+            assert bt.call("tx_begin", {}) == ("unknown tool tx_begin", True)
+            assert not bt.call("query", {"name": "units"})[1]
+        finally:
+            bt.close()
+
+
+def test_one_arm_resumes():
+    """The measurement path (one arm, one size): rows, session records, a
+    finished file that is not run again, and a refused mismatched header."""
+    pick = "n01-m1-callers,n25-io-all"
+    with tempfile.TemporaryDirectory() as t:
+        out, ses = os.path.join(t, "r.jsonl"), os.path.join(t, "s")
+        cmd = [sys.executable, os.path.join(HERE, "bnb.py"), "run", "--sizes", "100", "--arms", "bmb",
+               "--tasks", pick, "--out", out, "--sessions", ses, "--jobs", "2", "--expect", "all-pass"]
+        p = subprocess.run(cmd, capture_output=True, text=True)
+        assert p.returncode == 0, p.stdout[-3000:] + p.stderr[-3000:]
+        rows = [json.loads(x) for x in open(out)]
+        assert [r.get("id") for r in rows[:-1]] == pick.split(","), rows
+        assert rows[-1]["summary"] and rows[-1]["success"] == "2/2", rows[-1]
+        assert sorted(os.listdir(ses)) == [x + ".json.gz" for x in pick.split(",")]
+        p = subprocess.run(cmd, capture_output=True, text=True)
+        assert p.returncode != 0 and "finished run" in p.stderr, p.stderr
+        part = os.path.join(t, "p.jsonl")
+        with open(part, "w") as f:
+            f.write(json.dumps({"partial": True, "agent": "oracle"}) + "\n")
+        p = subprocess.run(cmd[:cmd.index("--out") + 1] + [part], capture_output=True, text=True)
+        assert p.returncode != 0 and "not a partial run" in p.stderr, p.stderr
+
+
 def main():
     test_tasks_frozen()
     test_twin_local()
     test_rust_tools()
+    test_bmb_tools_read_only()
+    test_one_arm_resumes()
     test_oracles_n100()
     print("bench/bnb: ok")
 
