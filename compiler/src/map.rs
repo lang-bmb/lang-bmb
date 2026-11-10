@@ -15,6 +15,14 @@ pub const HEADER: &str = "{\"schema\":\"bmb.map\",\"version\":1}";
 /// `"library":"std"` on a row of the standard library (ADR-0092 §1: the
 /// map shows its units apart from the program's; a key added only where it
 /// applies, ADR-0020 §1).
+/// `display` of a lowered definition (backlog 2V-20h), when it has one.
+fn display_key(display: &Option<String>) -> Vec<(&'static str, J)> {
+    display
+        .iter()
+        .map(|d| ("display", J::S(d.clone())))
+        .collect()
+}
+
 fn library_key(path: &str) -> Vec<(&'static str, J)> {
     if crate::stdlib::in_std(path) {
         vec![("library", J::S("std".into()))]
@@ -68,6 +76,9 @@ pub struct Entry {
     idx: usize,
     pub file: String,
     pub line: u32,
+    /// What a reader calls a definition the function-value lowering made
+    /// (`Tables::shown`, backlog 2V-20h), when that differs from `path`.
+    pub display: Option<String>,
     /// Identity, body and interface hashes (ADR-0059 §1), computed on
     /// first use: most queries never read them (backlog 3A-03).
     hashes: OnceCell<crate::identity::Hashes>,
@@ -105,6 +116,8 @@ pub struct TypeEntry {
     pub hash: String,
     pub file: String,
     pub line: u32,
+    /// As `Entry::display`.
+    pub display: Option<String>,
     /// Types its fields or payloads name.
     pub names: BTreeSet<String>,
     /// The predicate of its `#[invariant(p)]` (ADR-0060 §1), by full path.
@@ -605,8 +618,16 @@ impl Index {
         let list = crate::check::defs_of(p, &t.fns);
         let mut defs = BTreeMap::new();
         let mut edges = BTreeSet::new();
+        let shown = |path: &str| Some(t.shown(path)).filter(|s| s != path);
+        // A generated definition is where the closure, function item or
+        // bound it stands for is written (backlog 2V-20h).
+        let at = |path: &str, sp: Span| t.at.get(path).copied().unwrap_or(sp);
+        // Each executable body, for the `passes` edges below.
+        let mut bodies: Vec<(String, Span)> = Vec::new();
         for (idx, (path, unit, f)) in list.into_iter().enumerate() {
-            let (line, _) = sm.line_col(f.name.span.file, f.name.span.lo);
+            let here = at(&path, f.name.span);
+            let (line, _) = sm.line_col(here.file, here.lo);
+            bodies.push((path.clone(), f.body.span));
 
             // Edges.
             let mut calls = Vec::new();
@@ -763,14 +784,35 @@ impl Index {
             defs.insert(
                 path.clone(),
                 Entry {
+                    display: shown(&path),
                     path,
                     unit,
                     idx,
-                    file: sm.name(f.name.span.file).to_string(),
+                    file: sm.name(here.file).to_string(),
                     line,
                     hashes: OnceCell::new(),
                 },
             );
+        }
+        // A function value passed (backlog 2V-20h): from the definition
+        // whose body holds the argument (the innermost, a closure inside a
+        // closure is passed by the outer one) to the closure's `call` or the
+        // function item.
+        for (sp, to) in &t.passes {
+            let holds = |b: &Span| b.file == sp.file && b.lo <= sp.lo && sp.hi <= b.hi;
+            if let Some((from, _)) = bodies
+                .iter()
+                .filter(|(_, b)| holds(b))
+                .min_by_key(|(_, b)| b.hi - b.lo)
+            {
+                edges.insert(Edge {
+                    from: from.clone(),
+                    to: to.clone(),
+                    kind: "passes",
+                    arg: None,
+                    targs: None,
+                });
+            }
         }
         // Type and trait identities (ADR-0059 §1): they reach only types,
         // traits and the spec fns trait contracts name.
@@ -783,7 +825,8 @@ impl Index {
         }
         let mut types = BTreeMap::new();
         for (path, unit, tr) in walk_traits(p) {
-            let (line, _) = sm.line_col(tr.name.span.file, tr.name.span.lo);
+            let here = at(&path, tr.name.span);
+            let (line, _) = sm.line_col(here.file, here.lo);
             let text = crate::fmt::trait_text(tr);
             let (id, hash) = ident(crate::identity::Key::Trait(path.clone()));
             types.insert(
@@ -793,8 +836,9 @@ impl Index {
                     id,
                     hash,
                     text,
-                    file: sm.name(tr.name.span.file).to_string(),
+                    file: sm.name(here.file).to_string(),
                     line,
+                    display: shown(&path),
                     names: BTreeSet::new(),
                     inv: None,
                     unit,
@@ -803,7 +847,8 @@ impl Index {
             );
         }
         for (path, unit, td) in list {
-            let (line, _) = sm.line_col(td.name.span.file, td.name.span.lo);
+            let here = at(&path, td.name.span);
+            let (line, _) = sm.line_col(here.file, here.lo);
             let mut names = BTreeSet::new();
             if let Some(a) = t.adts.get(&path) {
                 match &a.kind {
@@ -827,8 +872,9 @@ impl Index {
                     text: crate::fmt::type_text(td),
                     id,
                     hash,
-                    file: sm.name(td.name.span.file).to_string(),
+                    file: sm.name(here.file).to_string(),
                     line,
+                    display: shown(&path),
                     names,
                     inv: t.adts.get(&path).and_then(|a| a.inv.clone()),
                     unit,
@@ -890,6 +936,7 @@ impl Index {
                     hash,
                     file: sm.name(c.name.span.file).to_string(),
                     line,
+                    display: None,
                     names,
                     inv: None,
                     unit,
@@ -1210,6 +1257,7 @@ impl<'p> Model<'p> {
                 ),
             ]
             .into_iter()
+            .chain(display_key(&d.display))
             .chain(library_key(&d.path))
             .collect(),
         )
@@ -1225,6 +1273,7 @@ impl<'p> Model<'p> {
                 ("hash", J::S(ty.hash.chars().take(7 + 12).collect())),
             ]
             .into_iter()
+            .chain(display_key(&ty.display))
             .chain(library_key(&ty.path))
             .collect(),
         )
@@ -1245,6 +1294,7 @@ impl<'p> Model<'p> {
                 ("line", J::N(ty.line as u64)),
             ]
             .into_iter()
+            .chain(display_key(&ty.display))
             .chain(library_key(&ty.path))
             .collect(),
         )
@@ -1316,6 +1366,7 @@ impl<'p> Model<'p> {
             .into_iter()
             .chain(self.escape_keys(d))
             .chain(self.termination_key(d))
+            .chain(display_key(&d.display))
             .chain(library_key(&d.path))
             .collect(),
         )

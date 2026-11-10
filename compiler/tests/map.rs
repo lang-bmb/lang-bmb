@@ -708,3 +708,65 @@ mod q {
         "{st}"
     );
 }
+
+/// Function values in the maps (backlog 2V-20h, ADR-0107): a `passes` edge
+/// from the definition whose body passes a closure or a function item to
+/// what it passes, the generated definitions at the place they stand for
+/// (the closure, the function, the bound), and `display` as diagnostics
+/// name them.
+#[test]
+fn function_values_pass_and_sit_where_written() {
+    let src = r#"#[summary("t")]
+mod u {
+    #[effects(pure)]
+    fn apply<F: Fn(i64) -> i64>(f: F, x: i64) -> (r: i64)
+        requires f.requires(x),
+        ensures f.ensures(x, r),
+    {
+        f(x)
+    }
+
+    #[effects(pure)]
+    fn inc(x: i64) -> (r: i64)
+        requires x < 1000,
+        ensures r == x + 1,
+    {
+        x + 1
+    }
+
+    #[effects(pure)]
+    fn both() -> i64 {
+        let a: i64 = apply::<_>(inc, 1);
+        apply::<_>(|x: i64| -> (y: i64) requires x == 2, ensures y == 4, { x * 2 }, a)
+    }
+}
+"#;
+    let m = run(&files(&[("u.bmb", src)]), &["map", "all"]);
+    for needle in [
+        "{\"level\":\"L2\",\"from\":\"u::both\",\"to\":\"<u::__closure_0 as u::__fn_0_0>::call\",\"kind\":\"passes\"}",
+        "{\"level\":\"L2\",\"from\":\"u::both\",\"to\":\"u::inc\",\"kind\":\"passes\"}",
+        "\"path\":\"<u::__closure_0 as u::__fn_0_0>::call\",\"def_kind\":\"fn\",\"hash\"",
+        "\"display\":\"u::both::{closure#0}\"",
+        "\"display\":\"u::both::{closure#0}::ensures\"",
+        "\"display\":\"<u::inc as u::apply::F>::call\"",
+        "\"display\":\"u::apply::F\"",
+    ] {
+        assert!(m.contains(needle), "missing {needle}\n{m}");
+    }
+    let at = |path: &str| {
+        let row = m
+            .lines()
+            .find(|l| l.contains("\"level\":\"L1\"") && l.contains(&format!("\"path\":\"{path}\"")))
+            .unwrap_or_else(|| panic!("no L1 row of {path}\n{m}"));
+        let line = row.split("\"line\":").nth(1).unwrap();
+        let n: String = line.chars().take_while(|c| c.is_ascii_digit()).collect();
+        (
+            row.contains("\"file\":\"u.bmb\""),
+            n.parse::<u32>().unwrap(),
+        )
+    };
+    assert_eq!(at("<u::__closure_0 as u::__fn_0_0>::call"), (true, 22));
+    assert_eq!(at("u::__closure_0"), (true, 22));
+    assert_eq!(at("<u::__fnitem_0 as u::__fn_0_0>::call"), (true, 12));
+    assert_eq!(at("u::__fn_0_0"), (true, 4));
+}

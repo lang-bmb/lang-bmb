@@ -275,8 +275,8 @@
    "src": "324bb5d96ccb71ae"
   },
   "tests/check/err/fn_values.bmb": {
-   "out": "b04c14f3132d705c",
-   "src": "39f4386fd32c37be"
+   "out": "1d6aa17b00b1fd30",
+   "src": "aa2d188a74f9c74c"
   },
   "tests/check/err/generics.bmb": {
    "out": "c00e67cfaa57f647",
@@ -523,11 +523,11 @@
    "src": "b764481fdcb67b0c"
   },
   "tests/run/fn_nested.bmb": {
-   "out": "2cc1c96bdf8f3277",
+   "out": "25bf9f76a3c4e79c",
    "src": "c58f8d47286a1a65"
   },
   "tests/run/fn_values.bmb": {
-   "out": "2efab6fd0a877f32",
+   "out": "dc3efc4cfcbdc980",
    "src": "11ad16b676c2e397"
   },
   "tests/run/forest.bmb": {
@@ -795,8 +795,8 @@
    "src": "aa05ed75d490c645"
   },
   "tests/verify/fail/fn_values.bmb": {
-   "out": "9c8a097eb7137073",
-   "src": "dd4bf4450a632675"
+   "out": "05ba8a6745fea1a2",
+   "src": "fe991f16eea7959f"
   },
   "tests/verify/fail/generics.bmb": {
    "out": "4ae1aca6daa7ff8c",

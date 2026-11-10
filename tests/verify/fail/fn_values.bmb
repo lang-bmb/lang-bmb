@@ -31,6 +31,14 @@ mod fvf {
         x + 1
     }
 
+    // The inner closure claims one more than it returns: reported as
+    // `fvf::nested::{closure#0}::{closure#0}` with its capture `k`
+    // (backlog 2V-20g); the outer one fails with it.
+    #[effects(pure)]
+    fn nested() -> i64 {
+        apply::<_>(|x: i64| -> (y: i64) requires x == 5, ensures y == x + 3, { let k: i64 = x; apply::<_>(move |z: i64| -> (w: i64) requires z == 3, k == 5, ensures w == z + k + 1, { z + k }, 3) }, 5)
+    }
+
     #[effects(pure)]
     fn once<F: FnMut(i64) -> i64>(f: F, x: i64) -> (r: i64)
         requires f.requires(x),

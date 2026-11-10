@@ -79,9 +79,73 @@ pub struct Tables {
     pub consts: BTreeMap<String, crate::consts::Const>,
     /// The `const`s each definition reads, by the definition's path.
     pub const_reads: BTreeMap<String, BTreeSet<String>>,
+    /// What a reader calls each item the function-value lowering made
+    /// (`closures::Lowered::names`): diagnostics show these.
+    pub names: BTreeMap<String, String>,
+    /// Where function values are passed and where generated definitions
+    /// are written (`closures::Lowered::passes`, `at`): the map's edges
+    /// and locations.
+    pub passes: Vec<(Span, String)>,
+    pub at: BTreeMap<String, Span>,
 }
 
 impl Tables {
+    /// `text` with each item the function-value lowering made named as a
+    /// reader knows it (`names`, backlog 2V-20g): a closure's
+    /// `<u::__closure_0 as u::__fn_0_0>::call` is `u::f::{closure#0}` and
+    /// its `pre`·`post` that closure's `requires`·`ensures`; a function
+    /// item's `<u::__fnitem_0 as u::__fn_0_0>::call` is
+    /// `<u::h as u::g::F>::call`; a bound's trait `u::__fn_0_0` is `u::g::F`.
+    pub fn shown(&self, text: &str) -> String {
+        if self.names.is_empty() {
+            return text.to_string();
+        }
+        let ident = |c: char| c.is_ascii_alphanumeric() || c == '_';
+        let mut out = text.to_string();
+        for (made, name) in &self.names {
+            let head = format!("<{made} as ");
+            while let Some(at) = out.find(&head) {
+                let rest = &out[at + head.len()..];
+                let Some(close) = rest.find(">::") else { break };
+                let tr = rest[..close].to_string();
+                let m: String = rest[close + 3..]
+                    .chars()
+                    .take_while(|c| ident(*c))
+                    .collect();
+                let end = at + head.len() + close + 3 + m.len();
+                let shown = if name.ends_with('}') {
+                    match m.as_str() {
+                        "call" => name.clone(),
+                        "pre" => format!("{name}::requires"),
+                        "post" => format!("{name}::ensures"),
+                        _ => format!("{name}::{m}"),
+                    }
+                } else {
+                    let tr = self.names.get(&tr).cloned().unwrap_or(tr);
+                    format!("<{name} as {tr}>::{m}")
+                };
+                out.replace_range(at..end, &shown);
+            }
+        }
+        // The bare paths, longest first so one is not a prefix of another.
+        let mut bare: Vec<(&String, &String)> = self.names.iter().collect();
+        bare.sort_by_key(|(k, _)| std::cmp::Reverse(k.len()));
+        for (made, name) in bare {
+            let mut from = 0;
+            while let Some(i) = out[from..].find(made.as_str()) {
+                let at = from + i;
+                let end = at + made.len();
+                if out[end..].chars().next().is_some_and(ident) {
+                    from = end;
+                    continue;
+                }
+                out.replace_range(at..end, name);
+                from = at + name.len();
+            }
+        }
+        out
+    }
+
     /// The tables with text as bytes and `char` as `u32` (ADR-0050 §3,
     /// §4, `check::lower`): what the prover and the code generator see.
     pub fn lowered(&self) -> Tables {
@@ -154,6 +218,9 @@ impl Tables {
             text_sigs: self.text_sigs.clone(),
             consts: self.consts.clone(),
             const_reads: self.const_reads.clone(),
+            names: self.names.clone(),
+            passes: self.passes.clone(),
+            at: self.at.clone(),
             calls: self.calls.clone(),
             context: self.context.clone(),
             text: self.text.clone(),
@@ -261,6 +328,9 @@ impl Tables {
             text_sigs: self.text_sigs.clone(),
             consts: self.consts.clone(),
             const_reads: self.const_reads.clone(),
+            names: self.names.clone(),
+            passes: self.passes.clone(),
+            at: self.at.clone(),
             calls: self.calls.clone(),
             context: self.context.clone(),
             text: self.text.clone(),
@@ -7657,11 +7727,17 @@ fn verify_impl(
     stop_at_failure: bool,
     incr: Option<&mut crate::incremental::Session>,
 ) -> Outcome {
-    if t.may_untrusted.is_empty() {
+    let from = diags.items.len();
+    let out = if t.may_untrusted.is_empty() {
         verify_pass(p, t, diags, seed, cache, only, stop_at_failure, incr)
     } else {
         verify_trusting(p, t, diags, seed, cache, only, stop_at_failure, incr)
+    };
+    // Generated items by the names a reader knows (backlog 2V-20g).
+    for d in &mut diags.items[from..] {
+        d.message = t.shown(&d.message);
     }
+    out
 }
 
 /// What one pass decided for one definition.
@@ -9882,6 +9958,27 @@ fn counterexample(sol: &mut Solver, inputs: &[(String, Val, TypeKind)], tb: &Tab
                 t.clone(),
             ),
             _ => (n.clone(), v.clone(), t.clone()),
+        })
+        .collect();
+    // A closure's or function item's `self` (`closures::lower`) is the
+    // closure's captures, each by its own name (backlog 2V-20g); its
+    // placeholder field `item` and the struct are not shown.
+    let inputs: Vec<(String, Val, TypeKind)> = inputs
+        .into_iter()
+        .flat_map(|(n, v, t)| {
+            let path = match value_ty(&t) {
+                TypeKind::Named { path, .. } => path.join("::"),
+                _ => String::new(),
+            };
+            match (&v, struct_fields(&t, tb)) {
+                (Val::Struct(vs), Some(fs)) if n == "self" && tb.names.contains_key(&path) => fs
+                    .into_iter()
+                    .zip(vs.iter().cloned())
+                    .filter(|((f, _), _)| f != "item")
+                    .map(|((f, ft), fv)| (f, fv, ft))
+                    .collect::<Vec<_>>(),
+                _ => vec![(n, v, t)],
+            }
         })
         .collect();
     let inputs = &inputs;

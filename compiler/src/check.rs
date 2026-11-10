@@ -282,7 +282,8 @@ pub fn check_resolved(mut p: Program, diags: &mut Diags) -> (Program, crate::ver
     // Function values first, lowered to traits and impls (ADR-0053); then
     // `const`s (ADR-0052): array lengths and repeat counts written as a name
     // take their values before any type is read.
-    let quiet = crate::closures::lower(&mut p, diags);
+    let lowered = crate::closures::lower(&mut p, diags);
+    let quiet = lowered.quiet.clone();
     let consts = crate::consts::resolve(&mut p, diags);
     let base = diags.clone();
     loop {
@@ -323,6 +324,9 @@ pub fn check_resolved(mut p: Program, diags: &mut Diags) -> (Program, crate::ver
                 }
             });
             tables.context = crate::verify::default_contexts(&p, &tables);
+            tables.names = lowered.names.clone();
+            tables.passes = lowered.passes.clone();
+            tables.at = lowered.at.clone();
             return (p, tables);
         }
         crate::ast::exprs_mut(&mut p, &mut |e| {
@@ -1933,6 +1937,9 @@ impl<'a> Checker<'a> {
             effect_needs: self.effect_needs,
             consts: self.consts,
             const_reads: self.const_reads,
+            names: BTreeMap::new(),
+            passes: Vec::new(),
+            at: BTreeMap::new(),
         }
     }
 

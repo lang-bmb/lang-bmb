@@ -50,11 +50,14 @@ struct Generic {
     /// (position, by reference).
     bounded: Vec<Bounded>,
     effects: String,
+    /// The span of each bounded parameter's name, by its position.
+    spans: BTreeMap<usize, crate::source::Span>,
 }
 
 /// A function's text needed to make it a value.
 struct Item {
     unit: String,
+    span: crate::source::Span,
     params: Vec<(String, String)>,
     ret_name: String,
     ret: String,
@@ -254,7 +257,11 @@ fn through_self(e: &mut Expr, caps: &[String]) {
             let me = Expr {
                 kind: ExprKind::Var(Ident {
                     name: "self".into(),
-                    span: crate::source::Span { hi: at.lo, ..at },
+                    span: crate::source::Span {
+                        file: crate::source::CAPTURE,
+                        lo: at.lo,
+                        hi: at.lo,
+                    },
                 }),
                 span: crate::source::Span { hi: at.lo, ..at },
             };
@@ -383,7 +390,29 @@ fn leftover_closures(p: &mut Program, diags: &mut Diags) {
     });
 }
 
-pub fn lower(p: &mut Program, diags: &mut Diags) -> Vec<u32> {
+/// What the lowering made: the generated files whose diagnostics repeat
+/// one already reported, and the names the items made stand for.
+#[derive(Default)]
+pub struct Lowered {
+    pub quiet: Vec<u32>,
+    /// Each generated struct and trait by full path, and what a reader
+    /// calls it (backlog 2V-20g): a closure `u::f::{closure#0}` (numbered
+    /// in source order within the definition that writes it, as rustc's
+    /// definition paths), a function item passed as a value by its own
+    /// path, a bound's trait `u::g::F` (the function and its parameter).
+    pub names: BTreeMap<String, String>,
+    /// Each place a function value is passed (backlog 2V-20h): the
+    /// argument's span and what it passes, the closure's `call` or the
+    /// function item. The map draws a `passes` edge from the definition
+    /// whose body holds the span.
+    pub passes: Vec<(crate::source::Span, String)>,
+    /// Where each generated definition is written: a closure's struct and
+    /// methods at the closure, a function item's at that function, a
+    /// bound's trait at the bound (the map's `file` and `line`).
+    pub at: BTreeMap<String, crate::source::Span>,
+}
+
+pub fn lower(p: &mut Program, diags: &mut Diags) -> Lowered {
     // The generic functions with `Fn` bounds, and every free function.
     let mut generics: BTreeMap<String, Generic> = BTreeMap::new();
     let mut items: BTreeMap<String, Item> = BTreeMap::new();
@@ -412,6 +441,10 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Vec<u32> {
                     Generic {
                         unit: unit.clone(),
                         order,
+                        spans: bounded
+                            .iter()
+                            .map(|(i, ..)| (*i, f.generics[*i].name.span))
+                            .collect(),
                         bounded,
                         effects: effects_of(f),
                     },
@@ -427,6 +460,7 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Vec<u32> {
                     path,
                     Item {
                         unit: unit.clone(),
+                        span: f.name.span,
                         params: f
                             .params
                             .iter()
@@ -450,9 +484,26 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Vec<u32> {
     }
     if generics.is_empty() {
         leftover_closures(p, diags);
-        return Vec::new();
+        return Lowered::default();
     }
     let mut pending: Vec<Diag> = Vec::new();
+    let mut names: BTreeMap<String, String> = BTreeMap::new();
+    let mut passes: Vec<(crate::source::Span, String)> = Vec::new();
+    let mut located: BTreeMap<String, crate::source::Span> = BTreeMap::new();
+    // A generated item and its methods, at one span.
+    let methods = ["call", "pre", "post"];
+    for (gp, g) in &generics {
+        for (k, fname, _, _) in &g.bounded {
+            let tr = format!("{}::{}", g.unit, trait_name(g.order, *k));
+            names.insert(tr.clone(), format!("{gp}::{fname}"));
+            for m in methods {
+                located.insert(format!("{tr}::{m}"), g.spans[k]);
+            }
+            located.insert(tr, g.spans[k]);
+        }
+    }
+    // Closures written so far in each definition, for their numbers.
+    let mut written: BTreeMap<String, usize> = BTreeMap::new();
 
     // Generated text by unit; a second file per unit holds the items made
     // for an argument already reported (E0608), whose own errors would
@@ -527,12 +578,36 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Vec<u32> {
             }
             for (unit, m) in &all {
                 let mut changed: Vec<FnDef> = Vec::new();
-                for f in m
+                // Each function with the path a reader knows it by.
+                let owned: Vec<(String, &FnDef)> = m
                     .fns
                     .iter()
-                    .chain(m.impls.iter().flat_map(|i| &i.fns))
-                    .chain(m.trait_impls.iter().flat_map(|i| &i.fns))
-                {
+                    .map(|f| (format!("{unit}::{}", f.name.name), f))
+                    .chain(m.impls.iter().flat_map(|i| {
+                        i.fns
+                            .iter()
+                            .map(move |f| (format!("{unit}::{}::{}", i.ty.name, f.name.name), f))
+                    }))
+                    .chain(m.trait_impls.iter().flat_map(|i| {
+                        let ty = crate::fmt::type_str(&i.self_ty);
+                        let tr = i
+                            .trait_path
+                            .iter()
+                            .map(|s| s.name.as_str())
+                            .collect::<Vec<_>>()
+                            .join("::");
+                        let made = names.get(&format!("{unit}::{ty}")).cloned();
+                        i.fns.iter().map(move |f| {
+                            // A closure's body is the closure.
+                            let path = match &made {
+                                Some(c) if f.name.name == "call" => c.clone(),
+                                _ => format!("<{unit}::{ty} as {tr}>::{}", f.name.name),
+                            };
+                            (path, f)
+                        })
+                    }))
+                    .collect();
+                for (owner, f) in owned {
                     let mut f = f.clone();
                     let decls = local_types(&f);
                     let outer: std::collections::BTreeSet<String> = decls.keys().cloned().collect();
@@ -623,6 +698,12 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Vec<u32> {
                                     let tr = format!("{}::{tn}", g.unit);
                                     let sname = format!("__closure_{closures_made}");
                                     closures_made += 1;
+                                    let nth = written.entry(owner.clone()).or_default();
+                                    names.insert(
+                                        format!("{unit}::{sname}"),
+                                        format!("{owner}::{{closure#{nth}}}"),
+                                    );
+                                    *nth += 1;
                                     let typed: String = c
                                         .params
                                         .iter()
@@ -672,6 +753,11 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Vec<u32> {
                                     sep = if names.is_empty() { "" } else { ", " },
                                 ));
                                     let full = format!("{unit}::{sname}");
+                                    passes.push((a.span, format!("<{full} as {tr}>::call")));
+                                    for m in methods {
+                                        located.insert(format!("<{full} as {tr}>::{m}"), c.span);
+                                    }
+                                    located.insert(full.clone(), c.span);
                                     closure_bodies
                                         .insert(full.clone(), ((**c).clone(), caps.clone()));
                                     todo.push((*j, full, *k, *by_ref, caps.clone()));
@@ -721,6 +807,7 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Vec<u32> {
                                 let hn = h.rsplit("::").next().unwrap_or_default();
                                 let sname = format!("__fnitem_{}", items_made);
                                 items_made += 1;
+                                names.insert(format!("{}::{sname}", items[&h].unit), h.clone());
                                 let it = &items[&h];
                                 let typed: String = it
                                     .params
@@ -750,8 +837,14 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Vec<u32> {
                                     a = names.join(", "),
                                     sep = if names.is_empty() { "" } else { ", " },
                                 ));
-                                format!("{}::{sname}", it.unit)
+                                let full = format!("{}::{sname}", it.unit);
+                                for m in methods {
+                                    located.insert(format!("<{full} as {}>::{m}", key.1), it.span);
+                                }
+                                located.insert(full.clone(), it.span);
+                                full
                             });
+                                passes.push((a.span, h.clone()));
                                 todo.push((*j, sname.clone(), *k, *by_ref, Vec::new()));
                             }
                         }
@@ -1015,7 +1108,25 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Vec<u32> {
     }
     // A closure no round lowered is not an argument of a bounded parameter.
     leftover_closures(p, diags);
-    quiet
+    Lowered {
+        quiet,
+        names,
+        passes,
+        at: located,
+    }
+}
+
+/// Whether `base` of a field read is a closure's own struct as
+/// `through_self` and `of_before` write it (`self` named in the file
+/// `source::CAPTURE`, or `old` of that): the read is of a capture, which
+/// the closure's text names alone (`count`, not `self.count`, backlog
+/// 2V-20g). No parsed or JSON-read `self` is in that file.
+pub fn is_capture_base(base: &Expr) -> bool {
+    let me = |e: &Expr| matches!(&e.kind, ExprKind::Var(v) if v.name == "self" && v.span.file == crate::source::CAPTURE);
+    match &base.kind {
+        ExprKind::Old(x) => me(x),
+        _ => me(base),
+    }
 }
 
 /// `e` with each `self` as `old(self)`: an `FnMut` closure's `ensures`

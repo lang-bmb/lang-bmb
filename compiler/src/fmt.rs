@@ -1387,7 +1387,11 @@ impl<'a> Printer<'a> {
                     Some((_, k)) => k.to_string(),
                     None => name.name.clone(),
                 };
-                format!("{}.{f}", self.expr(base, POSTFIX))
+                if crate::closures::is_capture_base(base) {
+                    f
+                } else {
+                    format!("{}.{f}", self.expr(base, POSTFIX))
+                }
             }
             // Nested multi-line forms are printed on one line inside expressions.
             ExprKind::If { .. }
