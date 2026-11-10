@@ -27,7 +27,7 @@ fn write_stdout(args: std::fmt::Arguments) {
 
 const USAGE: &str = "usage:
   bmb check <file.bmb>...   check sources; diagnostics as JSONL on stdout
-  bmb verify [--emit-smt DIR] [--cache DIR] [--stats FILE] [--audit] [--def PATH]... <file.bmb>...
+  bmb verify [--emit-smt DIR] [--cache DIR] [--stats FILE] [--audit] [--bounded-search] [--def PATH]... <file.bmb>...
                             check and prove; diagnostics and per-definition status as JSONL;
                             --def proves only the named definitions (the whole program is
                             still checked; each gets its whole-program status);
@@ -39,7 +39,10 @@ const USAGE: &str = "usage:
                             it too, and add the runtime checks the IR keeps);
                             --audit proves each definition the cache would reuse anyway and
                             compares (script as the solver receives it, status, proved
-                            obligations); --stats then lists the differences (audit_mismatches)
+                            obligations); --stats then lists the differences (audit_mismatches);
+                            --bounded-search asks each undecided obligation once more with the
+                            inputs bounded (|integers| <= 8, lengths <= 4, ADR-0108): a model is
+                            a counterexample, none is the E0811 field `bounded`
   bmb stability [--seeds N] <file.bmb>...
                             prove under solver seeds 0..N (default 5); per-definition verdicts
                             and rlimit as JSONL; fails if a verdict depends on the seed
@@ -76,7 +79,8 @@ const USAGE: &str = "usage:
                             W0901 and W0905 satisfiability checks; fails only if the program does
                             not check or the gate cannot run; --cache uses and updates the caches
                             in DIR as `verify --cache` does; --select W0901,W0905 runs only the
-                            listed checks
+                            listed checks; W0918 (postconditions that allow two results for one
+                            input, with the witness) runs only when --select names it
   bmb mutate --def PATH [--def PATH].. <file.bmb>...
                             every W0904 body mutation of the named functions, unproved, as
                             JSONL rows with the changed unit's normal form, then a summary
@@ -233,6 +237,11 @@ fn run() -> ExitCode {
                 match rest.first().map(String::as_str) {
                     Some("--audit") if rest.len() > 1 => {
                         audit = true;
+                        rest = &rest[1..];
+                        continue;
+                    }
+                    Some("--bounded-search") if rest.len() > 1 => {
+                        bmb::verify::set_bounded_search(true);
                         rest = &rest[1..];
                         continue;
                     }
@@ -538,7 +547,7 @@ fn run() -> ExitCode {
         }
         Some("lint") if args.len() > 1 => {
             let mut cache = None;
-            let mut select: Vec<&str> = bmb::lint::CODES.to_vec();
+            let mut select: Vec<&str> = bmb::lint::default_codes();
             let mut paths = &args[1..];
             loop {
                 match paths {

@@ -8,4 +8,12 @@ mod nl {
         requires pos3(x, y, z),
         ensures not_fermat(x, y, z),
     { 0 }
+
+    // Undecided over the whole range, false at x = 5, y = 2, z = 3:
+    // `bmb verify --bounded-search` finds it (ADR-0108 §1, tests/verify.rs).
+    #[effects(pure)]
+    fn g(x: i64, y: i64, z: i64) -> i64
+        requires pos3(x, y, z),
+        ensures x * x * x + y * y * y + 2 != z * z * z * x,
+    { 0 }
 }

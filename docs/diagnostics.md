@@ -221,6 +221,7 @@
 | W0915 | an integer conversion written `T::try_from(x).unwrap()`: the canonical form is `x as T` (an input alias, ADR-0095 A4; `bmb fmt` and `bmb fix` rewrite it) |
 | W0916 | a `#[uses(..)]` entry the default proof context reveals already (the spec fns the definition's own clauses, invariants, assertions and proof code and its callees' contracts name, ADR-0095 A1; `bmb fix` removes it) |
 | W0917 | a widening integer conversion `x as T` in a specification: every value of `x` is one of `T`, so it is `x` (an input alias, ADR-0099; `bmb fix` removes it) |
+| W0918 | the postconditions allow two different results for one input the preconditions admit (with the two results as a witness): the contract does not fix the result |
 | W0911 | a call by path of a method whose normal form is the method call `x.f(..)` (the fix rewrites it; `bmb fmt` and `bmb fix` apply it) |
 | W0910 | a loop of an `io` function prints and carries state whose every update is pure: the update can be a pure function, proved instead of tested |
 | W0908 | the contract is weaker than in the old version: a stronger `requires`, a weaker `ensures` or `pure` become `io` (`bmb weaken`, with the counterexample) |

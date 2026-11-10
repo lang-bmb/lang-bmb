@@ -7484,12 +7484,34 @@ pub fn verify_only(
 }
 
 fn header(seed: u64) -> Vec<String> {
-    vec![
+    let mut h = vec![
         "(set-option :produce-models true)".to_string(),
         format!("(set-option :smt.random_seed {seed})"),
         format!("(set-option :sat.random_seed {seed})"),
         format!("(set-option :rlimit {})", smt::rlimit()),
-    ]
+    ];
+    // Part of every proof key: a run with the search and one without do
+    // not share cached results (their diagnostics differ).
+    if bounded_search() {
+        h.push(format!(
+            "; bounded search |x| <= {BOUND}, lengths <= {BOUND_LEN}"
+        ));
+    }
+    h
+}
+
+/// The search within small bounds for undecided obligations (ADR-0108
+/// §1), off unless asked (`bmb verify --bounded-search`, `bmb mcp
+/// --undecided-info`) until its measurement (backlog T0-37) decides the
+/// default, as for the compact view (ADR-0068 §5).
+static BOUNDED_SEARCH: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn set_bounded_search(on: bool) {
+    BOUNDED_SEARCH.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+fn bounded_search() -> bool {
+    BOUNDED_SEARCH.load(std::sync::atomic::Ordering::Relaxed)
 }
 
 /// The declarations of the spec fns whose symbol occurs in `text`, one per
@@ -7617,93 +7639,19 @@ pub fn preconditions_satisfiable(
             out.push((path.clone(), span, None));
             continue;
         }
-        let decls = enc.decls.join("\n");
-        let q = enc
-            .pc
-            .iter()
-            .map(|a| format!("(assert {a})"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        let q = valid_instances(&enc.valid_defs, q);
-        let q = format!("{q}\n{}", prog.struct_facts(&q));
-        let relevant = relevant_axioms(&axioms, &q);
-        let mut base = header(0).join("\n");
-        base.push('\n');
-        base.push_str(&sort_decls(&t.fns[path]));
-        let used = needed_decls(&spec_decls, &dts, &format!("{relevant}{decls}\n{q}"));
-        let full = format!("{base}{used}{relevant}{decls}");
-        if solver.as_ref().is_some_and(|s| !s.reusable()) {
-            solver = None;
-        }
-        if solver.is_none() {
-            match Solver::start() {
-                Ok(s) => solver = Some(s),
-                Err(_) => {
-                    solver_down = true;
-                    out.push((path.clone(), span, None));
-                    continue;
-                }
-            }
-        }
-        let sol = solver.as_mut().expect("solver started");
-        // The probe first, as for an obligation (ADR-0069), in the forms of a
-        // satisfiability check (ADR-0072): the same meaning,
-        // so its `sat` is a model of the clauses and its `unsat` refutes them.
-        let probe = probe_base(
-            &axioms,
-            &q,
-            &relevant,
-            &spec_decls,
-            &dts,
-            &base,
-            &decls,
-            Forms::SatProbe,
-        );
-        let probed = probe.and_then(|pb| {
-            let a = sol
-                .run("(reset)")
-                .and_then(|_| sol.run(&pb))
-                .and_then(|_| sol.run(&probe_limit()))
-                .and_then(|_| sol.run(&q))
-                .and_then(|_| check_sat_counted(sol, &mut spent));
-            matches!(a, Ok(Answer::Unsat | Answer::Sat)).then_some(a)
+        let verdict = sat_of(&mut SatRun {
+            prog: &prog,
+            t,
+            path,
+            enc: &enc,
+            axioms: &axioms,
+            axiom_parts: &axiom_parts,
+            spec_decls: &spec_decls,
+            dts: &dts,
+            solver: &mut solver,
+            solver_down: &mut solver_down,
+            spent: &mut spent,
         });
-        let mut answer = probed.unwrap_or_else(|| {
-            sol.run("(reset)")
-                .and_then(|_| sol.run(&full))
-                .and_then(|_| sol.run(&q))
-                .and_then(|_| check_sat_counted(sol, &mut spent))
-        });
-        // Undecided with quantified definitions: ground instances follow from
-        // the definitions, so `unsat` with them is `unsat` (as in the prover),
-        // and `sat` with an instance for every application is `sat` (ADR-0075).
-        if matches!(answer, Ok(Answer::Unknown(_))) && !axiom_parts.is_empty() {
-            let (inst, complete) = ground_instances(&axiom_parts, &q, 3);
-            let inst = format!("{inst}{}", prog.struct_facts(&inst));
-            if !inst.is_empty() {
-                let used = needed_decls(&spec_decls, &dts, &format!("{decls}\n{inst}{q}"));
-                let head = format!("{base}{used}{decls}");
-                let retry = sol
-                    .run("(reset)")
-                    .and_then(|_| sol.run(&head))
-                    .and_then(|_| sol.run(&format!("{inst}{q}")))
-                    .and_then(|_| check_sat_counted(sol, &mut spent));
-                match retry {
-                    Ok(Answer::Unsat) => answer = retry,
-                    Ok(Answer::Sat) if complete => answer = retry,
-                    _ => {}
-                }
-            }
-        }
-        let verdict = match answer {
-            Ok(Answer::Unsat) => Some(false),
-            Ok(Answer::Sat) => Some(true),
-            Ok(Answer::Unknown(_)) => None,
-            Err(_) => {
-                solver = None;
-                None
-            }
-        };
         out.push((path.clone(), span, verdict));
     }
     let cost = SatCost {
@@ -7711,6 +7659,281 @@ pub fn preconditions_satisfiable(
         undecided: out.iter().filter(|(_, _, v)| v.is_none()).count(),
     };
     (out, cost)
+}
+
+/// What a function's contract says of its result (T1-44a, W0918).
+pub enum Determinacy {
+    /// One result for every input the `requires` admit.
+    One,
+    /// An input with two results the `ensures` both allow: the input and
+    /// each result, as a counterexample shows them.
+    Two {
+        input: String,
+        first: String,
+        second: String,
+    },
+}
+
+/// `a != b` of two values of one type, for scalars and structs of them;
+/// `None` for arrays and slices (no extensional disequality here).
+fn differ(a: &Val, b: &Val) -> Option<String> {
+    match (a, b) {
+        (Val::S(x), Val::S(y)) => Some(format!("(not (= {x} {y}))")),
+        (Val::Struct(xs), Val::Struct(ys)) if xs.len() == ys.len() => {
+            let parts: Option<Vec<String>> = xs.iter().zip(ys).map(|(x, y)| differ(x, y)).collect();
+            let parts = parts?;
+            Some(match parts.len() {
+                0 => "false".to_string(),
+                1 => parts[0].clone(),
+                _ => format!("(or {})", parts.join(" ")),
+            })
+        }
+        _ => None,
+    }
+}
+
+/// Whether each executable function's contract fixes its result (backlog
+/// T1-44a, AI-user feedback P7): without the body, can
+/// `requires(x) ∧ ensures(x, r1) ∧ ensures(x, r2) ∧ r1 ≠ r2` hold? The
+/// query is W0901's (the entry state, the revealed definitions, the pinned
+/// seed and `rlimit`) with two results. Only functions with a named result
+/// of a scalar or struct type, `ensures` clauses and no `&mut` parameter
+/// (whose new values would be results too). Per such function, in path
+/// order: its path, the span of its `ensures`, and `Some(One)`,
+/// `Some(Two {..})` or `None` (undecided, or the solver could not run).
+pub fn results_determined(
+    p: &Program,
+    t: &Tables,
+) -> (Vec<(String, Span, Option<Determinacy>)>, SatCost) {
+    let view = prepare(p, t);
+    let t = &view;
+    let prog = prog_of(p, t);
+    let spec_decls = prog.spec_decls();
+    let dts = datatypes(t);
+    let mut solver: Option<Solver> = None;
+    let mut solver_down = crate::toolchain::check_z3().is_err();
+    let mut out = Vec::new();
+    let mut spent = 0u64;
+    let spec_syms: Vec<(String, String)> = prog
+        .defs
+        .iter()
+        .filter(|(_, d)| d.f.kind == FnKind::Spec && !d.inst)
+        .map(|(p, _)| (p.clone(), sym(p)))
+        .collect();
+    for (path, d) in &prog.defs {
+        let f = d.f;
+        let Some(rn) = &f.ret.name else { continue };
+        if d.inst
+            || f.kind != FnKind::Exec
+            || f.ensures.is_empty()
+            || f.params
+                .iter()
+                .any(|p| matches!(p.ty.kind, TypeKind::Ref { mutable: true, .. }))
+        {
+            continue;
+        }
+        let span = f.ensures[0].span.to(f.ensures[f.ensures.len() - 1].span);
+        let mut enc = Enc::new(&prog, path, &d.mod_path);
+        let mut axioms: Vec<(String, String)> = Vec::new();
+        let mut axiom_parts: Vec<AxiomParts> = Vec::new();
+        for u in prog.revealed(path, f, &d.mod_path) {
+            let (ax, parts) = prog.axiom(&u);
+            axioms.push((spec_key(&u, t), ax));
+            axiom_parts.extend(parts);
+        }
+        let mut inputs = Vec::new();
+        for (i, prm) in f.params.iter().enumerate() {
+            let ty = enc.local_ty(&prm.name.name);
+            let v = enc.fresh_val(&prm.name.name, &ty);
+            enc.assume_valid(&v, &ty);
+            if enc.text_at(path, Some(i)) {
+                enc.assume_text(&v);
+            }
+            inputs.push((prm.name.name.clone(), v.clone(), ty));
+            enc.bind_var(prm.name.name.clone(), v);
+        }
+        let (env, old) = enc.cur_env();
+        for r in &f.requires {
+            let g = enc.spec(r, &env, &old).s();
+            enc.pc.push(g);
+        }
+        let ret = crate::check::subst(&t.fns[path].ret, &enc.tsub);
+        let (r1, r2) = (
+            enc.fresh_val("result.one", &ret),
+            enc.fresh_val("result.two", &ret),
+        );
+        let Some(neq) = differ(&r1, &r2) else {
+            continue;
+        };
+        for r in [&r1, &r2] {
+            enc.assume_valid(r, &ret);
+            let mut e = env.clone();
+            e.insert(rn.name.clone(), r.clone());
+            for en in &f.ensures {
+                let g = enc.spec(en, &e, &old).s();
+                enc.pc.push(g);
+            }
+        }
+        enc.pc.push(neq);
+        // A clause through a spec fn seen by name only allows any result
+        // of it: the answer would be the uninterpreted symbol's, not the
+        // contract's. Not judged.
+        // The revealed definitions' bodies count: a spec fn they name is not
+        // revealed with them (ADR-0096).
+        let mut text = enc.pc.join("\n");
+        for (_, ax) in &axioms {
+            text.push_str(ax);
+        }
+        if !hidden_predicates(&spec_syms, &axioms, &text, &d.mod_path).is_empty() {
+            out.push((path.clone(), span, None));
+            continue;
+        }
+        if solver_down {
+            out.push((path.clone(), span, None));
+            continue;
+        }
+        let verdict = sat_of(&mut SatRun {
+            prog: &prog,
+            t,
+            path,
+            enc: &enc,
+            axioms: &axioms,
+            axiom_parts: &axiom_parts,
+            spec_decls: &spec_decls,
+            dts: &dts,
+            solver: &mut solver,
+            solver_down: &mut solver_down,
+            spent: &mut spent,
+        });
+        let det = match verdict {
+            Some(false) => Some(Determinacy::One),
+            Some(true) => solver.as_mut().map(|sol| {
+                let one = |v: &Val| vec![(rn.name.clone(), v.clone(), ret.clone())];
+                Determinacy::Two {
+                    input: counterexample(sol, &inputs, t),
+                    first: counterexample(sol, &one(&r1), t),
+                    second: counterexample(sol, &one(&r2), t),
+                }
+            }),
+            None => None,
+        };
+        out.push((path.clone(), span, det));
+    }
+    let cost = SatCost {
+        rlimit: spent,
+        undecided: out.iter().filter(|(_, _, v)| v.is_none()).count(),
+    };
+    (out, cost)
+}
+
+/// What one satisfiability check needs (`sat_of`).
+struct SatRun<'a, 'p> {
+    prog: &'a Prog<'p>,
+    t: &'a Tables,
+    path: &'a str,
+    enc: &'a Enc<'a, 'p>,
+    axioms: &'a [(String, String)],
+    axiom_parts: &'a [AxiomParts],
+    spec_decls: &'a [(String, String, String)],
+    dts: &'a [(String, String, String)],
+    solver: &'a mut Option<Solver>,
+    solver_down: &'a mut bool,
+    spent: &'a mut u64,
+}
+
+/// Whether the facts of `enc` (its path condition) can hold together, as
+/// W0901 asks (backlog 2D-08) and T1-44a's determinacy check: the probe
+/// first in the forms of a satisfiability check (ADR-0072), then the full
+/// query, then ground instances (ADR-0075). `Some(true)` leaves the solver
+/// at that model. `None`: undecided, or the solver could not run.
+fn sat_of(r: &mut SatRun) -> Option<bool> {
+    let decls = r.enc.decls.join("\n");
+    let q = r
+        .enc
+        .pc
+        .iter()
+        .map(|a| format!("(assert {a})"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let q = valid_instances(&r.enc.valid_defs, q);
+    let q = format!("{q}\n{}", r.prog.struct_facts(&q));
+    let relevant = relevant_axioms(r.axioms, &q);
+    let mut base = header(0).join("\n");
+    base.push('\n');
+    base.push_str(&sort_decls(&r.t.fns[r.path]));
+    let used = needed_decls(r.spec_decls, r.dts, &format!("{relevant}{decls}\n{q}"));
+    let full = format!("{base}{used}{relevant}{decls}");
+    if r.solver.as_ref().is_some_and(|s| !s.reusable()) {
+        *r.solver = None;
+    }
+    if r.solver.is_none() {
+        match Solver::start() {
+            Ok(s) => *r.solver = Some(s),
+            Err(_) => {
+                *r.solver_down = true;
+                return None;
+            }
+        }
+    }
+    let sol = r.solver.as_mut().expect("solver started");
+    // The probe first, as for an obligation (ADR-0069), in the forms of a
+    // satisfiability check (ADR-0072): the same meaning,
+    // so its `sat` is a model of the clauses and its `unsat` refutes them.
+    let probe = probe_base(
+        r.axioms,
+        &q,
+        &relevant,
+        r.spec_decls,
+        r.dts,
+        &base,
+        &decls,
+        Forms::SatProbe,
+    );
+    let probed = probe.and_then(|pb| {
+        let a = sol
+            .run("(reset)")
+            .and_then(|_| sol.run(&pb))
+            .and_then(|_| sol.run(&probe_limit()))
+            .and_then(|_| sol.run(&q))
+            .and_then(|_| check_sat_counted(sol, r.spent));
+        matches!(a, Ok(Answer::Unsat | Answer::Sat)).then_some(a)
+    });
+    let mut answer = probed.unwrap_or_else(|| {
+        sol.run("(reset)")
+            .and_then(|_| sol.run(&full))
+            .and_then(|_| sol.run(&q))
+            .and_then(|_| check_sat_counted(sol, r.spent))
+    });
+    // Undecided with quantified definitions: ground instances follow from
+    // the definitions, so `unsat` with them is `unsat` (as in the prover),
+    // and `sat` with an instance for every application is `sat` (ADR-0075).
+    if matches!(answer, Ok(Answer::Unknown(_))) && !r.axiom_parts.is_empty() {
+        let (inst, complete) = ground_instances(r.axiom_parts, &q, 3);
+        let inst = format!("{inst}{}", r.prog.struct_facts(&inst));
+        if !inst.is_empty() {
+            let used = needed_decls(r.spec_decls, r.dts, &format!("{decls}\n{inst}{q}"));
+            let head = format!("{base}{used}{decls}");
+            let retry = sol
+                .run("(reset)")
+                .and_then(|_| sol.run(&head))
+                .and_then(|_| sol.run(&format!("{inst}{q}")))
+                .and_then(|_| check_sat_counted(sol, r.spent));
+            match retry {
+                Ok(Answer::Unsat) => answer = retry,
+                Ok(Answer::Sat) if complete => answer = retry,
+                _ => {}
+            }
+        }
+    }
+    match answer {
+        Ok(Answer::Unsat) => Some(false),
+        Ok(Answer::Sat) => Some(true),
+        Ok(Answer::Unknown(_)) => None,
+        Err(_) => {
+            *r.solver = None;
+            None
+        }
+    }
 }
 
 /// Proves the program's definitions (or `only` those). With an escape in
@@ -8449,7 +8672,7 @@ fn verify_pass(
                             "E0811",
                             o.span,
                             format!("{} in `{path}`: solver could not decide ({why})", o.msg),
-                        ));
+                        ).of_obligation(o.code));
                     }
                     Err(e) if e.contains("canceled") => diags.push(Diag::new(
                         "E0811",
@@ -8459,7 +8682,7 @@ fn verify_pass(
                             o.msg,
                             smt::rlimit()
                         ),
-                    )),
+                    ).of_obligation(o.code)),
                     Err(e) => {
                         diags.push(Diag::new("E0812", o.span, format!("solver error: {e}")));
                         solver = None;
@@ -8728,6 +8951,45 @@ fn verify_pass(
                     _ => {}
                 }
             }
+            // Undecided: a search within small bounds (ADR-0108 §1). Its
+            // model is a counterexample of the obligation itself; without
+            // one, the diagnostic says how far it looked.
+            let mut bounded_none = false;
+            let mut bounded_found = false;
+            let undecided = match &answer {
+                Ok(Answer::Unknown(_)) => true,
+                Err(e) => e.contains("canceled"),
+                _ => false,
+            };
+            if undecided && bounded_search() {
+                let bounds = input_bounds(&shown_inputs(&enc.inputs, o));
+                if !bounds.is_empty() {
+                    script.push_str(&format!(
+                        "; bounded search of obligation {k}\n(reset)\n{base}\n{}\n{q}\n{bounds}(check-sat)\n",
+                        bounded_limit()
+                    ));
+                    let b = sol
+                        .run("(reset)")
+                        .and_then(|_| sol.run(&base))
+                        .and_then(|_| sol.run(&bounded_limit()))
+                        .and_then(|_| sol.run(&format!("{q}\n{bounds}")))
+                        .and_then(|_| sol.check_sat());
+                    if b.is_ok()
+                        && let Ok(used) = sol.rlimit_used()
+                    {
+                        rlimit_total += used;
+                    }
+                    match b {
+                        Ok(Answer::Sat) => {
+                            answer = b;
+                            answered = format!("{base}\n{q}\n{bounds}");
+                            bounded_found = true;
+                        }
+                        Ok(Answer::Unsat) => bounded_none = true,
+                        _ => {}
+                    }
+                }
+            }
             failed += 1;
             if matches!(answer, Ok(Answer::Unsat)) {
                 proved_keys.insert(key);
@@ -8769,6 +9031,11 @@ fn verify_pass(
                             if !cex.is_empty() {
                                 msg.push_str(&format!("; counterexample: {cex}"));
                             }
+                            if bounded_found {
+                                msg.push_str(&format!(
+                                    " (found by the search within |integers| <= {BOUND}, lengths <= {BOUND_LEN}, after the solver could not decide)"
+                                ));
+                            }
                             let d = with_hint(Diag::new(o.code, o.span, msg), &hint, false);
                             // A slice off the boundaries (ADR-0050 §2): the guard that proves it.
                             diags.push(if d.fix.is_none() && o.code == "E0820" {
@@ -8797,22 +9064,33 @@ fn verify_pass(
                     if !cex.is_empty() {
                         msg.push_str(&format!("; unconfirmed counterexample: {cex}"));
                     }
+                    let mut d = Diag::new("E0811", o.span, msg).of_obligation(o.code);
+                    if bounded_none {
+                        d.bounded = Some((BOUND, BOUND_LEN));
+                    }
                     diags.push(with_hint(
-                        Diag::new("E0811", o.span, msg),
+                        d,
                         &hint,
                         has_nonlinear_product(&format!("{q}{relevant_text}")),
                     ));
                 }
                 // The resource limit can also stop a command before `check-sat`.
-                Err(e) if e.contains("canceled") => diags.push(Diag::new(
-                    "E0811",
-                    o.span,
-                    format!(
-                        "{} in `{path}`: solver could not decide (resource limit reached, rlimit {})",
-                        o.msg,
-                        smt::rlimit()
-                    ),
-                )),
+                Err(e) if e.contains("canceled") => {
+                    let mut d = Diag::new(
+                        "E0811",
+                        o.span,
+                        format!(
+                            "{} in `{path}`: solver could not decide (resource limit reached, rlimit {})",
+                            o.msg,
+                            smt::rlimit()
+                        ),
+                    )
+                    .of_obligation(o.code);
+                    if bounded_none {
+                        d.bounded = Some((BOUND, BOUND_LEN));
+                    }
+                    diags.push(d);
+                }
                 Err(e) => {
                     diags.push(Diag::new("E0812", o.span, format!("solver error: {e}")));
                     solver = None;
@@ -9683,6 +9961,69 @@ fn early_retry_text(k: usize, head: &str, limit: &str, inst: &str, q: &str) -> S
 }
 
 /// The probe's limit command (`PROBE_SHARE`), sent after its base.
+/// The bounds of the counterexample search an undecided obligation gets
+/// (ADR-0108 §1): integers in `-BOUND..=BOUND`, unfixed lengths up to
+/// `BOUND_LEN`, at a tenth of the obligation's `rlimit`.
+const BOUND: i64 = 8;
+const BOUND_LEN: usize = 4;
+const BOUND_SHARE: u64 = 10;
+
+fn bounded_limit() -> String {
+    format!("(set-option :rlimit {})", smt::rlimit() / BOUND_SHARE)
+}
+
+/// Assertions that keep `inputs` within the search bounds: each integer
+/// leaf, each unfixed length, and the integer elements below that length.
+/// A model of the bounded query is a model of the query (the bounds only
+/// narrow it), so its `sat` is a counterexample.
+fn input_bounds(inputs: &[(String, Val, TypeKind)]) -> String {
+    fn int_leaf(t: &TypeKind) -> bool {
+        match t {
+            TypeKind::Int(_) => true,
+            TypeKind::Ref { inner, .. } => int_leaf(&inner.kind),
+            _ => false,
+        }
+    }
+    fn elem_int(t: &TypeKind) -> bool {
+        match t {
+            TypeKind::Array(e, _) | TypeKind::Slice(e) => int_leaf(&e.kind),
+            TypeKind::Ref { inner, .. } => elem_int(&inner.kind),
+            TypeKind::Named { path, args } if path.len() == 1 && path[0] == "Vec" => {
+                args.first().is_some_and(|a| int_leaf(&a.kind))
+            }
+            _ => false,
+        }
+    }
+    let mut out = String::new();
+    let num = |s: &str| s.chars().all(|c| c.is_ascii_digit());
+    for (_, v, t) in inputs {
+        match v {
+            Val::S(x) if int_leaf(t) => {
+                out.push_str(&format!(
+                    "(assert (and (<= (- {BOUND}) {x}) (<= {x} {BOUND})))\n"
+                ));
+            }
+            Val::A { elems, len } => {
+                if !num(len) {
+                    out.push_str(&format!("(assert (<= {len} {BOUND_LEN}))\n"));
+                }
+                if elem_int(t) {
+                    for i in 0..BOUND_LEN {
+                        out.push_str(&format!(
+                            "(assert (=> (< {i} {len}) (and (<= (- {BOUND}) (select {elems} {i})) (<= (select {elems} {i}) {BOUND}))))\n"
+                        ));
+                    }
+                }
+            }
+            Val::Arr { len, .. } if !num(len) => {
+                out.push_str(&format!("(assert (<= {len} {BOUND_LEN}))\n"));
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
 fn probe_limit() -> String {
     format!("(set-option :rlimit {})", smt::rlimit() / PROBE_SHARE)
 }
@@ -9951,7 +10292,7 @@ fn f64_undecided(o: &Obl, path: &str, why: &str) -> Diag {
             "{} in `{path}`: solver could not decide (`f64` operations are uninterpreted here; no IEEE 754 counterexample: {why})",
             o.msg
         ),
-    )
+    ).of_obligation(o.code)
     .fix(
         "outside `by (bit_vector)` the `f64` operations are uninterpreted (ADR-0061 §5): prove the `f64` fact the obligation needs with `assert(e) by (bit_vector);` before it",
         None,

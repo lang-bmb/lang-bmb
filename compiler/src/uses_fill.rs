@@ -109,6 +109,22 @@ impl UsesOutput {
             .collect()
     }
 
+    /// One row of `report` per definition the search tried (`proved`, or
+    /// `not_found` after a verification), each as `{"uses_search":ROW}`:
+    /// what a `verify` or `write` response adds (ADR-0108 §2).
+    pub fn tried_rows(&self, original: &[(String, String)]) -> String {
+        let all = self.report(original);
+        let mut out = String::new();
+        for (r, line) in self.rows.iter().zip(all.lines()) {
+            if r.status == UsesStatus::Proved
+                || (r.status == UsesStatus::NotFound && r.verifications > 0)
+            {
+                out.push_str(&format!("{{\"uses_search\":{line}}}\n"));
+            }
+        }
+        out
+    }
+
     /// JSONL: one row per definition with a proof status
     /// `{"def","uses","status","verifications"}` (a `proved` row adds the
     /// location and a `fix` with the `replacement`, as a diagnostic would),
@@ -374,6 +390,16 @@ pub fn fill_uses_cached(
     files: &[(String, String)],
     cache_dir: Option<&Path>,
 ) -> Result<UsesOutput, String> {
+    fill_uses_limited(files, cache_dir, MAX_VERIFICATIONS)
+}
+
+/// As `fill_uses_cached` with at most `max` verifications per definition
+/// (ADR-0108 §2: the search a `verify` or `write` response carries).
+pub fn fill_uses_limited(
+    files: &[(String, String)],
+    cache_dir: Option<&Path>,
+    max: usize,
+) -> Result<UsesOutput, String> {
     let fe = crate::frontend(files);
     if fe.diags.has_errors() {
         return Err(fe.diags.to_jsonl(&fe.sm));
@@ -432,7 +458,7 @@ pub fn fill_uses_cached(
     loop {
         // Out of budget: settle what is open.
         for (path, st) in states.iter_mut() {
-            if counts[path] < MAX_VERIFICATIONS {
+            if counts[path] < max {
                 continue;
             }
             let orig = targets[path].original.clone();

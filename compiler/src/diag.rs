@@ -514,6 +514,10 @@ pub const CODES: &[(&str, &str)] = &[
         "a widening integer conversion `x as T` in a specification: every value of `x` is one of `T`, so it is `x` (an input alias, ADR-0099; `bmb fix` removes it)",
     ),
     (
+        "W0918",
+        "the postconditions allow two different results for one input the preconditions admit (with the two results as a witness): the contract does not fix the result",
+    ),
+    (
         "W0911",
         "a call by path of a method whose normal form is the method call `x.f(..)` (the fix rewrites it; `bmb fmt` and `bmb fix` apply it)",
     ),
@@ -558,6 +562,14 @@ pub struct Diag {
     pub span: Span,
     pub message: String,
     pub fix: Option<Fix>,
+    /// For E0811 (undecided): the code of the obligation the solver could
+    /// not decide (`E0802` a postcondition, `E0807` an invariant kept, ..),
+    /// as a field of its own (backlog 2D-32).
+    pub obligation: Option<&'static str>,
+    /// For E0811: the inputs' bounds under which a search found no
+    /// counterexample (`|integer| <= b`, unbounded lengths `<= l`, ADR-0108
+    /// §1). Not a proof.
+    pub bounded: Option<(i64, usize)>,
 }
 
 impl Diag {
@@ -568,7 +580,14 @@ impl Diag {
             span,
             message: message.into(),
             fix: None,
+            obligation: None,
+            bounded: None,
         }
+    }
+    /// The undecided obligation's own code (E0811's `obligation`).
+    pub fn of_obligation(mut self, code: &'static str) -> Self {
+        self.obligation = Some(code);
+        self
     }
     pub fn fix(mut self, message: impl Into<String>, replacement: Option<String>) -> Self {
         self.fix = Some(Fix {
@@ -625,6 +644,12 @@ fn render(d: &Diag, sm: &SourceMap) -> String {
     s.push_str(&format!(
         "\"line\":{line},\"col\":{col},\"end_line\":{eline},\"end_col\":{ecol}"
     ));
+    if let Some(o) = d.obligation {
+        s.push_str(&format!(",\"obligation\":{}", json_str(o)));
+    }
+    if let Some((b, l)) = d.bounded {
+        s.push_str(&format!(",\"bounded\":{{\"b\":{b},\"l\":{l}}}"));
+    }
     if let Some(f) = &d.fix {
         s.push_str(&format!(",\"fix\":{{\"message\":{}", json_str(&f.message)));
         if let Some(r) = &f.replacement {

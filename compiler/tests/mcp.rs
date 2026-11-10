@@ -1308,3 +1308,40 @@ fn sha256(text: &str) -> String {
     let out = child.wait_with_output().unwrap();
     format!("sha256:{}", &String::from_utf8(out.stdout).unwrap()[..64])
 }
+
+/// `--undecided-info` (ADR-0108 §2, backlog 2D-34): when a `write`'s proof
+/// fails and a diagnostic suggests `#[uses(..)]`, the response carries the
+/// search's row (`proved` with the list and the attribute's replacement),
+/// and the workspace is not changed; without the flag there is no row.
+#[test]
+fn undecided_info_runs_the_uses_search_in_the_response() {
+    let code = "spec fn big(r: i64) -> bool { huge(r) }\n\nspec fn huge(r: i64) -> bool { r > 10 }\n\n#[effects(pure)]\nfn eleven() -> (r: i64)\n    ensures big(r),\n{\n    11\n}";
+    let args = format!(
+        "{{\"unit\":\"u\",\"summary\":{},\"code\":{}}}",
+        q("t"),
+        q(code)
+    );
+    for (flags, row) in [
+        (&["--write-tool"][..], false),
+        (&["--write-tool", "--undecided-info"][..], true),
+    ] {
+        let root = temp_root("undecided-info");
+        let mut c = Client::start_with(&root, flags);
+        let (t, err) = c.tool("write", &args);
+        assert!(
+            err && t.contains("\"committed\":true") && t.contains("add to #[uses(huge)]"),
+            "{t}"
+        );
+        assert_eq!(t.contains("\"uses_search\""), row, "{t}");
+        if row {
+            assert!(
+                t.contains("{\"uses_search\":{\"def\":\"u::eleven\",\"uses\":[\"huge\"],\"status\":\"proved\""),
+                "{t}"
+            );
+            assert!(t.contains("\"replacement\":\"#[uses(huge)]\\n"), "{t}");
+            let src = std::fs::read_to_string(root.join("src").join("u.bmb")).unwrap();
+            assert!(!src.contains("#[uses"), "the search does not write: {src}");
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+}

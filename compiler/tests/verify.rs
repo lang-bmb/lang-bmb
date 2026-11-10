@@ -677,3 +677,42 @@ mod g {
         out.output
     );
 }
+
+/// `--bounded-search` (ADR-0108 §1, backlog 2D-33): an obligation the solver
+/// cannot decide is asked once more with the inputs bounded. A model there
+/// is a counterexample of the obligation itself (E0802 with the values);
+/// none is the E0811 field `bounded`. Without the flag both stay E0811.
+#[test]
+fn bounded_search_turns_undecided_into_a_verdict() {
+    let src = "#[summary(\"t\")]\nmod nb {\n    #[effects(pure)]\n    fn f(x: i64, y: i64, z: i64) -> i64\n        requires 0 < x && x < 1000 && 0 < y && y < 1000 && 0 < z && z < 1000,\n        ensures x * x * x + y * y * y != z * z * z,\n    {\n        0\n    }\n\n    #[effects(pure)]\n    fn g(x: i64, y: i64, z: i64) -> i64\n        requires 0 < x && x < 1000 && 0 < y && y < 1000 && 0 < z && z < 1000,\n        ensures x * x * x + y * y * y + 2 != z * z * z * x,\n    {\n        0\n    }\n}\n";
+    let files = vec![("nb.bmb".to_string(), src.to_string())];
+    let lines = |args: &[&str]| -> Vec<String> {
+        let (ok, out) = cli::run(args, &files);
+        assert!(!ok, "{out}");
+        out.lines()
+            .filter(|l| l.starts_with("{\"code\""))
+            .map(String::from)
+            .collect()
+    };
+    let plain = lines(&["verify"]);
+    assert_eq!(plain.len(), 2, "{plain:?}");
+    assert!(
+        plain
+            .iter()
+            .all(|l| l.contains("\"code\":\"E0811\"") && !l.contains("\"bounded\"")),
+        "{plain:?}"
+    );
+    let searched = lines(&["verify", "--bounded-search"]);
+    assert_eq!(searched.len(), 2, "{searched:?}");
+    let f = searched.iter().find(|l| l.contains("nb::f")).unwrap();
+    assert!(
+        f.contains("\"code\":\"E0811\"") && f.contains("\"bounded\":{\"b\":8,\"l\":4}"),
+        "{f}"
+    );
+    let g = searched.iter().find(|l| l.contains("nb::g")).unwrap();
+    assert!(
+        g.contains("\"code\":\"E0802\"")
+            && g.contains("counterexample: x = 5, y = 2, z = 3 (found by the search within"),
+        "{g}"
+    );
+}
