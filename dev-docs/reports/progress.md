@@ -52,7 +52,7 @@
 
 <!-- progress:data begin (scripts/progress.py --write; do not edit by hand) -->
 
-생성: 2026-11-10 · 기준 커밋 `fbeefe5b` · 지난 보고: 이 파일의 직전 커밋 판
+생성: 2026-11-10 · 기준 커밋 `b875df0c` · 지난 보고: 이 파일의 직전 커밋 판
 
 ### 1. 부트스트랩
 
@@ -64,7 +64,7 @@
 | S1 외부 크레이트 | 0 | 0 | 같음 | health 기준선(2026-11-10 accept) |
 | S2 컴파일러가 실행하는 외부 프로세스 | clang, z3 | clang, z3 | 같음 | health 기준선(2026-11-10 accept) |
 | S3 생성 바이너리의 libc 밖 의존 | 없음 | 없음 | 같음 | health 기준선(2026-11-10 accept) |
-| S4 stage0 Rust 줄 수 | 53,459 | 50,039 | +3,420 | health 기준선(2026-11-10 accept) |
+| S4 stage0 Rust 줄 수 | 53,459 | 53,459 | 같음 | health 기준선(2026-11-10 accept) |
 | S5 Rust API에 묶인 통합 시험 파일 | 1 | 1 | 같음 | health 기준선(2026-11-10 accept) |
 | S6 BMB로 쓴 컴파일러 줄 수 | 0 | 0 | 같음 | health 기준선(2026-11-10 accept) |
 
@@ -72,23 +72,23 @@
 
 | 항목 | 현재 | 지난 보고 | 변화 | 출처 |
 | --- | --- | --- | --- | --- |
-| 2단계 페이즈 태스크(✅/전체) | 2A 15/24 · 2B 22/23 · 2C 6/6 · 2D 26/36 · 2E 5/5 · 2F 4/5 · 2G 7/7 · 2S 3/3 · 2T 15/15 · 2O 11/11 · 2K 11/11 · 2U 7/7 · 2N 17/18 · 2M 3/3 · 2R 19/19 · 2V 29/32 · 2H 3/7 · 2P 3/6 | 2A 15/24 · 2B 22/23 · 2C 6/6 · 2D 24/30 · 2E 5/5 · 2F 4/5 · 2G 7/7 · 2S 3/3 · 2T 13/15 · 2O 11/11 · 2K 11/11 · 2U 7/7 · 2N 16/18 · 2M 3/3 · 2R 18/19 · 2V 18/19 · 2H 3/7 · 2P 3/6 | 바뀜 | 백로그 |
-| 트랙 태스크(✅/전체) | T0 29/38 · T1 33/49 · T2 12/15 · T3 1/5 · T4 5/5 · INF 29/29 | T0 26/34 · T1 32/47 · T2 12/14 · T3 1/5 · T4 5/5 · INF 27/28 | 바뀜 | 백로그 |
-| 백로그 ✅ / 🔄 / ⏳ / 🚫 | 451 / 17 / 76 / 7 | 424 / 16 / 70 / 5 | 바뀜 | 백로그 |
-| ADR 수 | 107 | 99 | +8 | `dev-docs/adr/` |
-| 진단 코드 수 | 190 | 178 | +12 | `docs/diagnostics.md` |
+| 2단계 페이즈 태스크(✅/전체) | 2A 15/24 · 2B 22/23 · 2C 6/6 · 2D 27/36 · 2E 5/5 · 2F 4/5 · 2G 7/7 · 2S 3/3 · 2T 15/15 · 2O 11/11 · 2K 11/11 · 2U 7/7 · 2N 17/18 · 2M 3/3 · 2R 19/19 · 2V 29/32 · 2H 3/7 · 2P 3/6 | 2A 15/24 · 2B 22/23 · 2C 6/6 · 2D 26/36 · 2E 5/5 · 2F 4/5 · 2G 7/7 · 2S 3/3 · 2T 15/15 · 2O 11/11 · 2K 11/11 · 2U 7/7 · 2N 17/18 · 2M 3/3 · 2R 19/19 · 2V 29/32 · 2H 3/7 · 2P 3/6 | 바뀜 | 백로그 |
+| 트랙 태스크(✅/전체) | T0 30/37 · T1 33/49 · T2 12/15 · T3 1/5 · T4 5/5 · INF 29/29 | T0 29/38 · T1 33/49 · T2 12/15 · T3 1/5 · T4 5/5 · INF 29/29 | 바뀜 | 백로그 |
+| 백로그 ✅ / 🔄 / ⏳ / 🚫 | 453 / 17 / 73 / 7 | 451 / 17 / 76 / 7 | 바뀜 | 백로그 |
+| ADR 수 | 109 | 107 | +2 | `dev-docs/adr/` |
+| 진단 코드 수 | 190 | 190 | 같음 | `docs/diagnostics.md` |
 | V3 증명되지 않은 코퍼스·시드 정의 | 0 | 0 | 같음 | health 기준선(2026-11-10 accept) |
-| V4 코퍼스·시드 증명 비용(rlimit) | 14,360,880 | 14,175,988 | +184,892 | health 기준선(2026-11-10 accept) |
+| V4 코퍼스·시드 증명 비용(rlimit) | 14,360,880 | 14,360,880 | 같음 | health 기준선(2026-11-10 accept) |
 | V5 가장 비싼 의무 / 한도 | 0.1244 | 0.1244 | 같음 | health 기준선(2026-11-10 accept) |
 | V7 판정이 흔들리는 의무 비율 | 0.0002 | 0.0002 | 같음 | health 기준선(2026-11-10 accept) |
 | V8 벤치 부하 증명 비용(rlimit) | 22,976,379 | 22,976,379 | 같음 | health 기준선(2026-11-10 accept) |
-| V10 라이브러리 증명 비용(rlimit) | 23,386,463 | 23,410,995 | -24,532 | health 기준선(2026-11-10 accept) |
-| V11 충족 가능성 검사 비용(rlimit) | 271,773,135 | 271,377,599 | +395,536 | health 기준선(2026-11-10 accept) |
+| V10 라이브러리 증명 비용(rlimit) | 23,386,463 | 23,386,463 | 같음 | health 기준선(2026-11-10 accept) |
+| V11 충족 가능성 검사 비용(rlimit) | 271,773,135 | 271,773,135 | 같음 | health 기준선(2026-11-10 accept) |
 | V12 충족 가능성 검사 미결정 수 | 216 | 216 | 같음 | health 기준선(2026-11-10 accept) |
-| O2 건전성 퍼저 수 | 17 | 15 | +2 | health 기준선(2026-11-10 accept) |
-| P1 기대 출력이 있는 실행 프로그램 | 80 | 74 | +6 | health 기준선(2026-11-10 accept) |
-| P2 저장소의 BMB 줄 수 | 29,575 | 28,697 | +878 | health 기준선(2026-11-10 accept) |
-| P3 고칠 길이 붙은 오류 진단 비율 | 0.9149 | 0.9113 | +0.0036 | health 기준선(2026-11-10 accept) |
+| O2 건전성 퍼저 수 | 17 | 17 | 같음 | health 기준선(2026-11-10 accept) |
+| P1 기대 출력이 있는 실행 프로그램 | 80 | 80 | 같음 | health 기준선(2026-11-10 accept) |
+| P2 저장소의 BMB 줄 수 | 29,575 | 29,575 | 같음 | health 기준선(2026-11-10 accept) |
+| P3 고칠 길이 붙은 오류 진단 비율 | 0.9149 | 0.9149 | 같음 | health 기준선(2026-11-10 accept) |
 
 ### 3. 성능
 
@@ -96,11 +96,11 @@
 | --- | --- | --- | --- | --- |
 | 기준 벤치 BMB/안전 Rust 시간 비(범위) | 0.962 ~ 1.041 | 0.962 ~ 1.041 | 같음 | `bench/baseline/results/2026-11-04.md` |
 | 기준 벤치 G6(≤ 1.05) 충족 | 7/7 | 7/7 | 같음 | `bench/baseline/results/2026-11-04.md` |
-| 기준 벤치 마지막 측정 | 2026-11-04 (6일 전) | 2026-11-04 (5일 전) | 바뀜 | `bench/baseline/results/2026-11-04.md` |
+| 기준 벤치 마지막 측정 | 2026-11-04 (6일 전) | 2026-11-04 (6일 전) | 같음 | `bench/baseline/results/2026-11-04.md` |
 | 라이브러리 utf8 대 `std::str::from_utf8` 시간 비 | 0.870 | 0.870 | 같음 | `bench/lib/results/2026-11-02.md` |
 | 라이브러리 sha256 대 같은 알고리즘의 Rust 시간 비 | 1.011 | 1.011 | 같음 | `bench/lib/results/2026-11-02.md` |
 | 라이브러리 sha256 대 `sha2` 크레이트 시간 비 | 1.260 | 1.260 | 같음 | `bench/lib/results/2026-11-02.md` |
-| 라이브러리 벤치 마지막 측정 | 2026-11-02 (8일 전) | 2026-11-02 (7일 전) | 바뀜 | `bench/lib/results/2026-11-02.md` |
+| 라이브러리 벤치 마지막 측정 | 2026-11-02 (8일 전) | 2026-11-02 (8일 전) | 같음 | `bench/lib/results/2026-11-02.md` |
 | B1 기준 벤치 7개 strip 크기 합(바이트) | 101,664 | 101,664 | 같음 | health 기준선(2026-11-10 accept) |
 | Benchmarks Game 공식 제출 비교(T3-01·T3-04) | 🚫 · 🚫 | 🚫 · 🚫 | 같음 | 백로그 |
 | 야간 성능 회귀 추적(INF-12) | ✅ | ✅ | 같음 | 백로그 |
@@ -112,27 +112,27 @@
 | --- | --- | --- | --- | --- |
 | 5단계 태스크(✅/전체) | 5A 0/2 · 5B 0/1 · 5C 0/4 · 5D 0/3 · 5E 0/1 | 5A 0/2 · 5B 0/1 · 5C 0/4 · 5D 0/3 · 5E 0/1 | 같음 | 백로그 |
 | 표준 라이브러리 모듈 | 11 (base64, bytes, collections, crc32, intern, json, num, sha256, slice, str, utf8) | 11 (base64, bytes, collections, crc32, intern, json, num, sha256, slice, str, utf8) | 같음 | `lib/` |
-| 표준 라이브러리 줄 수 | 4,268 | 4,269 | -1 | `lib/` |
-| CLI 명령 수 | 22 | 22 | 같음 | `compiler/src/main.rs` |
-| MCP 도구 수(기본 + 선택) | 7 + 5 | 7 + 5 | 같음 | `compiler/src/mcp.rs` |
+| 표준 라이브러리 줄 수 | 4,268 | 4,268 | 같음 | `lib/` |
+| CLI 명령 수 | 23 | 22 | +1 | `compiler/src/main.rs` |
+| MCP 도구 수(기본 + 선택) | 7 + 6 | 7 + 5 | 바뀜 | `compiler/src/mcp.rs` |
 
 ### 5. 미션 효용
 
 | 항목 | 현재 | 지난 보고 | 변화 | 출처 |
 | --- | --- | --- | --- | --- |
 | 가설: 확정 | 0 | 0 | 같음 | `docs/ROADMAP.md` 가설 등록부 |
-| 가설: 반증 | 3 (H-SCALE, H-EFFECT, H-REPAIR) | 2 (H-EFFECT, H-REPAIR) | 바뀜 | `docs/ROADMAP.md` 가설 등록부 |
+| 가설: 반증 | 3 (H-SCALE, H-EFFECT, H-REPAIR) | 3 (H-SCALE, H-EFFECT, H-REPAIR) | 같음 | `docs/ROADMAP.md` 가설 등록부 |
 | 가설: 결정론 근거 | 7 (H-STABLE, H-MAINT, H-ID, H-PAR, H-VIEW, H-COMMUTE, H-COMPAT) | 7 (H-STABLE, H-MAINT, H-ID, H-PAR, H-VIEW, H-COMMUTE, H-COMPAT) | 같음 | `docs/ROADMAP.md` 가설 등록부 |
-| 가설: 측정 중 | 3 (H-AMORT, H-GAME, H-ENCAP) | 1 (H-AMORT) | 바뀜 | `docs/ROADMAP.md` 가설 등록부 |
+| 가설: 측정 중 | 3 (H-AMORT, H-GAME, H-ENCAP) | 3 (H-AMORT, H-GAME, H-ENCAP) | 같음 | `docs/ROADMAP.md` 가설 등록부 |
 | 가설: 파일럿 | 5 (H-SPEC, H-ORACLE, H-FAMILIAR, H-NAME, H-GRAIN) | 5 (H-SPEC, H-ORACLE, H-FAMILIAR, H-NAME, H-GRAIN) | 같음 | `docs/ROADMAP.md` 가설 등록부 |
-| 가설: 미측정 | 12 | 11 | +1 | `docs/ROADMAP.md` 가설 등록부 |
+| 가설: 미측정 | 14 | 12 | +2 | `docs/ROADMAP.md` 가설 등록부 |
 | 효용 2.1 테스트가 필요 없다 (G8) | 방향 일치, 이른 판단 | 방향 일치, 이른 판단 | 같음 | `dev-docs/reports/utility.md` §2 |
 | 효용 2.2 결함이 적다 (G5 결함, H-ORACLE, H-ENCAP) | 판정 불가 | 판정 불가 | 같음 | `dev-docs/reports/utility.md` §2 |
 | 효용 2.3 도구로 읽는다 (G4, H-VIEW) | 정확도는 충족, 규모 효용은 미측정 | 정확도는 충족, 규모 효용은 미측정 | 같음 | `dev-docs/reports/utility.md` §2 |
-| 효용 2.4 도구로 쓴다 (H-GRAIN, H-EDIT) | 정식 근거, 표면 결정됨 | 파일럿 근거, 정식 대기 | 바뀜 | `dev-docs/reports/utility.md` §2 |
+| 효용 2.4 도구로 쓴다 (H-GRAIN, H-EDIT) | 정식 근거, 표면 결정됨 | 정식 근거, 표면 결정됨 | 같음 | `dev-docs/reports/utility.md` §2 |
 | 효용 2.5 바꿔도 안전하다 (H-STABLE, H-MAINT, H-ID, H-PAR, H-COMMUTE) | 결정론으로 입증 | 결정론으로 입증 | 같음 | `dev-docs/reports/utility.md` §2 |
 | 효용 2.6 명세가 뜻을 붙잡는다 (G3, H-SPEC, H-NAME) | 모델에 따라 갈림 | 모델에 따라 갈림 | 같음 | `dev-docs/reports/utility.md` §2 |
-| 효용 2.7 작성 비용 (G5 토큰, H-FAMILIAR) | 과제 단위 미충족, 수명 단위 미측정 | 수용한 비용, 목표와는 멀다 | 바뀜 | `dev-docs/reports/utility.md` §2 |
+| 효용 2.7 작성 비용 (G5 토큰, H-FAMILIAR) | 과제 단위 미충족, 수명 단위 미측정 | 과제 단위 미충족, 수명 단위 미측정 | 같음 | `dev-docs/reports/utility.md` §2 |
 | 효용 2.8 누적 비용 (G7, H-AMORT) | 미측정 | 미측정 | 같음 | `dev-docs/reports/utility.md` §2 |
 | 효용 2.9 결과물 (G6, G9) | 입증 | 입증 | 같음 | `dev-docs/reports/utility.md` §2 |
 
