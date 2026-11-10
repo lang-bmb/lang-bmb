@@ -52,11 +52,46 @@ pub struct Server {
     /// `#[uses]` search on the definitions their undecided obligations
     /// suggest it for, and add its rows.
     pub undecided_info: bool,
+    /// `--probe-tool` (ADR-0109): the read tool `probe`.
+    pub probe_tool: bool,
 }
 
 /// Verifications per definition of the `#[uses]` search a response runs
 /// under `--undecided-info` (ADR-0108 §2).
 pub const USES_SEARCH: usize = 4;
+
+/// `probe` (`--probe-tool`, ADR-0109): candidate loop invariants tried
+/// without a commit.
+fn probe_tool() -> Value {
+    obj(vec![
+        ("name", s("probe")),
+        (
+            "description",
+            s(
+                "Try candidate invariants for one loop of one function without writing anything. Each candidate is added to the loop's invariants and the function alone is proved; candidates that fail on entry, are not kept by the body, are undecided there or do not check are dropped, and the rest are tried again until none drops (the largest set that holds together). Returns one line per candidate (kept, or where it failed with a counterexample, or its error), then the kept set and whether the function proves with it.",
+            ),
+        ),
+        (
+            "inputSchema",
+            schema(
+                &[
+                    ("def", "string", "the function's full path, e.g. unit::f"),
+                    (
+                        "loop",
+                        "integer",
+                        "which loop of the function, from 0 in source order (default 0)",
+                    ),
+                    (
+                        "candidates",
+                        "array",
+                        "candidate invariants, each a boolean expression (at most 16)",
+                    ),
+                ],
+                &["def", "candidates"],
+            ),
+        ),
+    ])
+}
 
 /// The flags `bmb mcp` takes before the workspace directory.
 pub const FLAGS: &[&str] = &[
@@ -68,6 +103,7 @@ pub const FLAGS: &[&str] = &[
     "--item-docs",
     "--stats",
     "--undecided-info",
+    "--probe-tool",
 ];
 
 fn s(x: &str) -> Value {
@@ -429,6 +465,7 @@ impl Server {
             ast_tools: false,
             item_docs: false,
             undecided_info: false,
+            probe_tool: false,
         }
     }
 
@@ -563,6 +600,24 @@ impl Server {
                     .to_string();
                 let dir = self.cache_dir();
                 self.load()?.map_request(&["map".into(), level], Some(&dir))
+            }
+            "probe" if self.probe_tool => {
+                let def = str_arg("def")?;
+                let at = a.get("loop").and_then(Value::as_i64).unwrap_or(0);
+                let at = usize::try_from(at).map_err(|_| "`loop` counts from 0".to_string())?;
+                let cands: Vec<String> = match a.get("candidates") {
+                    Some(Value::Array(xs)) => xs
+                        .iter()
+                        .map(|x| {
+                            x.as_str()
+                                .map(String::from)
+                                .ok_or("`candidates` holds expressions")
+                        })
+                        .collect::<Result<_, _>>()?,
+                    _ => return Err("missing `candidates`".into()),
+                };
+                let files = workspace::relative_sources(&self.root)?;
+                crate::probe::probe(&files, &def, at, &cands)
             }
             "verify" => {
                 let dir = self.cache_dir();
@@ -882,17 +937,22 @@ impl Server {
                 ),
             ])),
             "ping" => Ok(obj(vec![])),
-            "tools/list" => Ok(obj(vec![(
-                "tools",
-                tools(
+            "tools/list" => {
+                let mut list = tools(
                     self.write_tool,
                     self.compact,
                     self.tool_docs,
                     self.file_tools,
                     self.ast_tools,
                     self.item_docs,
-                ),
-            )])),
+                );
+                if self.probe_tool
+                    && let Value::Array(xs) = &mut list
+                {
+                    xs.push(probe_tool());
+                }
+                Ok(obj(vec![("tools", list)]))
+            }
             "tools/call" => {
                 let params = msg.get("params").cloned().unwrap_or(Value::Null);
                 let name = params
@@ -968,6 +1028,9 @@ pub fn serve(root: &Path, flags: &[&str]) -> std::io::Result<()> {
     }
     if has("--item-docs") {
         server = server.item_docs();
+    }
+    if has("--probe-tool") {
+        server.probe_tool = true;
     }
     if has("--undecided-info") {
         // An undecided obligation carries a verdict (ADR-0108): the bounded

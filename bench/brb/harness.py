@@ -180,7 +180,27 @@ def variant_fields():
 
 # ---------- agents ----------
 
-def make_agent(kind, task, arm):
+# The repair history the model is sent (ADR-0110, backlog T0-36): `full`
+# (the default) or `stateless`. The BMB arm takes it from its variant's
+# `set.json`; `--history` sets it for either arm (the Rust arm has no set),
+# and must agree with the variant's. None: not given on the command line.
+HISTORY = None
+
+
+def history(arm):
+    cfg = m1.set_config() if VARIANT and arm == "bmb" else {}
+    if HISTORY is not None and cfg.get("history", HISTORY) != HISTORY:
+        sys.exit(f"--history {HISTORY} differs from the variant's set.json ({cfg['history']})")
+    return HISTORY or cfg.get("history", "full")
+
+
+def history_fields(arm):
+    """The results head's `history`, only when it is not the default."""
+    h = history(arm)
+    return {} if h == "full" else {"history": h}
+
+
+def make_agent(kind, task, arm, ws=None):
     if kind in ("oracle", "weak"):
         if arm == "bmb":
             code = task.BMB_REF if kind == "oracle" else task.BMB_WEAK
@@ -192,8 +212,13 @@ def make_agent(kind, task, arm):
     from model_api import make_model_agent  # noqa: E402
     pdir = VARIANT if VARIANT and arm == "bmb" else HERE
     prompt = read_bytes(os.path.join(pdir, f"prompt-{arm}.md")).decode()
-    if agent := make_model_agent(kind, prompt, judge.task_prompt(task, arm)):
-        return agent
+    task_prompt = judge.task_prompt(task, arm)
+    if agent := make_model_agent(kind, prompt, task_prompt):
+        # The arm's state is the files the agent can write (`delivered_sources`).
+        from stateless import configured, source_state  # noqa: E402
+        return configured(agent, {"history": history(arm)}, task_prompt,
+                          lambda: source_state(ws, ("src",) if arm == "bmb" else ("src", "tests"),
+                                               ".bmb" if arm == "bmb" else ".rs"))
     sys.exit(f"unknown agent {kind}")
 
 
@@ -219,7 +244,7 @@ def run_session(task, arm, agent_kind, rust_target, proptest, sessions=None):
                 shutil.copytree(rust_target, target, symlinks=True)
             server = RustTools(ws, target)
             check_tool = "cargo_test"
-        agent = make_agent(agent_kind, task, arm)
+        agent = make_agent(agent_kind, task, arm, ws)
         if hasattr(agent, "set_tools"):
             agent.set_tools(server.tools)
         m = {"tool_calls": 0, "tool_seconds": 0.0, "checks": 0, "last_check_ok": None,
@@ -596,6 +621,8 @@ def main():
     # default for measurements; CI runs the scripted agents with it off.
     rn.add_argument("--proptest", choices=["on", "off"], default="on")
     rn.add_argument("--variant", help="BMB arm only: a write-surface set built from BRB (bench/brb-write)")
+    rn.add_argument("--history", choices=["full", "stateless"],
+                    help="the repair history the model is sent (ADR-0110; default: the variant's, else full)")
     ad = sub.add_parser("adequacy")
     ad.add_argument("--jobs", type=int, default=1)
     ad.add_argument("--tasks")
@@ -620,6 +647,8 @@ def main():
         if args.arm != "bmb":
             sys.exit("--variant changes the BMB arm only")
         use_variant(os.path.abspath(args.variant))
+    global HISTORY
+    HISTORY = getattr(args, "history", None)
     ts = tasks()
     if args.tasks:
         wanted = set(args.tasks.split(","))
@@ -643,7 +672,8 @@ def main():
     # Rows are written as sessions finish and an interrupted run resumes (INF-16).
     log = m1.resultlog.ResultLog(args.out, {"agent": args.agent, **variant_fields(), "arm": args.arm,
                                             "manifest": manifest_digest(), "commit": commit,
-                                            "tasks": [t.ID for t in ts], **m1.condition_fields()})
+                                            "tasks": [t.ID for t in ts], **m1.condition_fields(),
+                                            **history_fields(args.arm)})
 
     def session(t):
         r = run_session(t, args.arm, args.agent, tmp_target, proptest, args.sessions)
@@ -664,7 +694,7 @@ def main():
     summary = {
         "summary": True, **variant_fields(), "arm": args.arm, "agent": args.agent, "tasks": n,
         "proptest": proptest if args.arm == "rust" else None,
-        "manifest": manifest_digest(), "commit": commit, **m1.condition_fields(),
+        "manifest": manifest_digest(), "commit": commit, **m1.condition_fields(), **history_fields(args.arm),
         "limits": {"tool_calls": MAX_TOOL_CALLS, "session_output_tokens": SESSION_OUTPUT_TOKENS,
                    "session_output_counts": "visible (ADR-0076)"},
         "success": f"{sum(r['success'] for r in results)}/{n}",

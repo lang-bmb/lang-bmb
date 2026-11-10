@@ -1039,3 +1039,28 @@ mod d {
         plain.diagnostics
     );
 }
+
+/// W0918 over the corpora (backlog T1-44a): every program of `check/ok`,
+/// `verify/pass` and `run` lints with `--select W0918` to its summary line
+/// and exit status 0 (no panic, no failure hidden by a report count).
+#[test]
+fn determinacy_runs_over_the_corpora() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests");
+    let mut n = 0;
+    for dir in ["check/ok", "verify/pass", "run"] {
+        let mut paths: Vec<_> = std::fs::read_dir(root.join(dir))
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .filter(|p| p.extension().is_some_and(|x| x == "bmb"))
+            .collect();
+        paths.sort();
+        for p in paths {
+            let files = one("p.bmb", &std::fs::read_to_string(&p).unwrap());
+            let out = lint_args(&["lint", "--select", "W0918"], &files)
+                .unwrap_or_else(|e| panic!("{}: {e}", p.display()));
+            assert!(out.ok, "{}", p.display());
+            n += 1;
+        }
+    }
+    assert!(n > 100, "{n}");
+}

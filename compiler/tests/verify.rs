@@ -681,10 +681,12 @@ mod g {
 /// `--bounded-search` (ADR-0108 §1, backlog 2D-33): an obligation the solver
 /// cannot decide is asked once more with the inputs bounded. A model there
 /// is a counterexample of the obligation itself (E0802 with the values);
-/// none is the E0811 field `bounded`. Without the flag both stay E0811.
+/// none is the E0811 field `bounded`, but only when some input within the
+/// bounds reaches the obligation (`h` admits none: no field). Without the
+/// flag all stay E0811.
 #[test]
 fn bounded_search_turns_undecided_into_a_verdict() {
-    let src = "#[summary(\"t\")]\nmod nb {\n    #[effects(pure)]\n    fn f(x: i64, y: i64, z: i64) -> i64\n        requires 0 < x && x < 1000 && 0 < y && y < 1000 && 0 < z && z < 1000,\n        ensures x * x * x + y * y * y != z * z * z,\n    {\n        0\n    }\n\n    #[effects(pure)]\n    fn g(x: i64, y: i64, z: i64) -> i64\n        requires 0 < x && x < 1000 && 0 < y && y < 1000 && 0 < z && z < 1000,\n        ensures x * x * x + y * y * y + 2 != z * z * z * x,\n    {\n        0\n    }\n}\n";
+    let src = "#[summary(\"t\")]\nmod nb {\n    #[effects(pure)]\n    fn h(x: i64, y: i64, z: i64) -> i64\n        requires 100 < x && x < 1000 && 0 < y && y < 1000 && 0 < z && z < 1000,\n        ensures x * x * x + y * y * y != z * z * z,\n    {\n        0\n    }\n\n    #[effects(pure)]\n    fn f(x: i64, y: i64, z: i64) -> i64\n        requires 0 < x && x < 1000 && 0 < y && y < 1000 && 0 < z && z < 1000,\n        ensures x * x * x + y * y * y != z * z * z,\n    {\n        0\n    }\n\n    #[effects(pure)]\n    fn g(x: i64, y: i64, z: i64) -> i64\n        requires 0 < x && x < 1000 && 0 < y && y < 1000 && 0 < z && z < 1000,\n        ensures x * x * x + y * y * y + 2 != z * z * z * x,\n    {\n        0\n    }\n}\n";
     let files = vec![("nb.bmb".to_string(), src.to_string())];
     let lines = |args: &[&str]| -> Vec<String> {
         let (ok, out) = cli::run(args, &files);
@@ -695,7 +697,7 @@ fn bounded_search_turns_undecided_into_a_verdict() {
             .collect()
     };
     let plain = lines(&["verify"]);
-    assert_eq!(plain.len(), 2, "{plain:?}");
+    assert_eq!(plain.len(), 3, "{plain:?}");
     assert!(
         plain
             .iter()
@@ -703,16 +705,142 @@ fn bounded_search_turns_undecided_into_a_verdict() {
         "{plain:?}"
     );
     let searched = lines(&["verify", "--bounded-search"]);
-    assert_eq!(searched.len(), 2, "{searched:?}");
+    assert_eq!(searched.len(), 3, "{searched:?}");
+    let h = searched.iter().find(|l| l.contains("nb::h")).unwrap();
+    assert!(
+        h.contains("\"code\":\"E0811\"") && !h.contains("\"bounded\""),
+        "{h}"
+    );
     let f = searched.iter().find(|l| l.contains("nb::f")).unwrap();
     assert!(
         f.contains("\"code\":\"E0811\"") && f.contains("\"bounded\":{\"b\":8,\"l\":4}"),
         "{f}"
     );
+    // A cached run without the flag does not answer for one with it: the
+    // search marks the query head, so the proof keys differ.
+    let dir = cli::fresh_dir();
+    let cache = dir.join("cache");
+    let c = cache.to_str().unwrap();
+    let cached = lines(&["verify", "--cache", c]);
+    assert!(
+        cached.iter().all(|l| l.contains("\"code\":\"E0811\"")),
+        "{cached:?}"
+    );
+    let after = lines(&["verify", "--cache", c, "--bounded-search"]);
+    assert!(
+        after
+            .iter()
+            .any(|l| l.contains("nb::g") && l.contains("\"code\":\"E0802\"")),
+        "{after:?}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
     let g = searched.iter().find(|l| l.contains("nb::g")).unwrap();
     assert!(
         g.contains("\"code\":\"E0802\"")
             && g.contains("counterexample: x = 5, y = 2, z = 3 (found by the search within"),
         "{g}"
     );
+}
+
+/// `bmb probe` (ADR-0109, backlog 2D-35): candidate invariants for one loop,
+/// tried without writing. A candidate false on entry or not kept by the body
+/// leaves with its counterexample; one that does not check leaves with its
+/// error; the rest are the largest set that holds together, with which the
+/// function proves. The file is unchanged.
+#[test]
+fn probe_keeps_the_largest_set_that_holds_together() {
+    let src = "#[summary(\"t\")]\nmod lp {\n    #[effects(pure)]\n    fn sum(n: u64) -> (r: u64)\n        requires n < 1000,\n        ensures r <= 1000 * n,\n    {\n        let mut s: u64 = 0;\n        let mut i: u64 = 0;\n        while i < n\n            decreases n - i,\n        {\n            s = s + i;\n            i = i + 1;\n        }\n        s\n    }\n}\n";
+    let files = vec![("lp.bmb".to_string(), src.to_string())];
+    let (ok, out) = cli::run(
+        &[
+            "probe",
+            "--def",
+            "lp::sum",
+            "--loop",
+            "0",
+            "--candidate",
+            "i <= n",
+            "--candidate",
+            "s <= 1000 * i",
+            "--candidate",
+            "s == 0",
+            "--candidate",
+            "i > 5",
+            "--candidate",
+            "x > 1",
+        ],
+        &files,
+    );
+    assert!(ok, "{out}");
+    let rows: Vec<&str> = out.lines().collect();
+    assert_eq!(rows.len(), 6, "{out}");
+    assert!(
+        rows[0].contains(
+            "\"text\":\"i <= n\",\"entry\":\"holds\",\"kept_by_body\":\"holds\",\"kept\":true"
+        ),
+        "{out}"
+    );
+    assert!(rows[1].contains("\"kept\":true"), "{out}");
+    assert!(
+        rows[2].contains("\"entry\":\"-\",\"kept_by_body\":\"fails\",\"counterexample\":")
+            && rows[2].ends_with("\"kept\":false}"),
+        "{out}"
+    );
+    assert!(
+        rows[3].contains("\"entry\":\"fails\",\"kept_by_body\":\"-\",\"counterexample\":\"n = 0\""),
+        "{out}"
+    );
+    assert!(rows[4].contains("\"error\":\"unknown name `x`\""), "{out}");
+    assert_eq!(
+        rows[5],
+        "{\"probe\":true,\"def\":\"lp::sum\",\"loop\":0,\"kept\":[0,1],\"verified\":true,\"rounds\":4}"
+    );
+    // A loop that is not there, and no candidate.
+    let (ok, out) = cli::run(
+        &[
+            "probe",
+            "--def",
+            "lp::sum",
+            "--loop",
+            "1",
+            "--candidate",
+            "true",
+        ],
+        &files,
+    );
+    assert!(!ok && out.contains("has 1 loop(s)"), "{out}");
+}
+
+/// `bmb probe` counts and fills the same loops (ADR-0109): K = 1 is the
+/// inner `while`, whose candidates reach it and nothing else; at K = 0 the
+/// inner loop's variable is not in scope (a check error, not a silent
+/// "holds"); a K past the last loop is refused.
+#[test]
+fn probe_reaches_the_inner_loop() {
+    let src = "#[summary(\"t\")]\nmod ns {\n    #[effects(pure)]\n    fn grid(n: u64) -> (r: u64)\n        requires n < 100,\n        ensures r <= n * n,\n    {\n        let mut s: u64 = 0;\n        let mut i: u64 = 0;\n        while i < n\n            invariant i <= n, s <= n * i,\n            decreases n - i,\n        {\n            let mut j: u64 = 0;\n            while j < n\n                decreases n - j,\n            {\n                s = s + 1;\n                j = j + 1;\n            }\n            i = i + 1;\n        }\n        s\n    }\n}\n";
+    let files = vec![("ns.bmb".to_string(), src.to_string())];
+    let probe = |k: &str, cands: &[&str]| {
+        let mut args = vec!["probe", "--def", "ns::grid", "--loop", k];
+        for c in cands {
+            args.extend(["--candidate", c]);
+        }
+        cli::run(&args, &files)
+    };
+    let (ok, out) = probe("1", &["j <= n", "s <= n * i + j", "j == 0"]);
+    assert!(ok, "{out}");
+    assert!(
+        out.contains("\"text\":\"j == 0\",\"round\":1,\"entry\":\"-\",\"kept_by_body\":\"fails\""),
+        "{out}"
+    );
+    assert!(
+        out.ends_with("\"loop\":1,\"kept\":[0,1],\"verified\":false,\"rounds\":2}\n"),
+        "{out}"
+    );
+    let (ok, out) = probe("0", &["j <= n"]);
+    assert!(
+        ok && out.contains("\"error\":\"unknown name `j`\""),
+        "{out}"
+    );
+    let (ok, out) = probe("2", &["true"]);
+    assert!(!ok && out.contains("has 2 loop(s)"), "{out}");
 }

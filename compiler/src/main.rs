@@ -81,6 +81,11 @@ const USAGE: &str = "usage:
                             in DIR as `verify --cache` does; --select W0901,W0905 runs only the
                             listed checks; W0918 (postconditions that allow two results for one
                             input, with the witness) runs only when --select names it
+  bmb probe --def PATH [--loop K] --candidate EXPR [--candidate EXPR].. <file.bmb>...
+                            candidate invariants for loop K (from 0, source order) of PATH,
+                            tried without changing the files (ADR-0109): per candidate its first
+                            answer on entry and kept by the body, then the largest subset that
+                            is inductive together (Houdini) and whether PATH proves with it
   bmb mutate --def PATH [--def PATH].. <file.bmb>...
                             every W0904 body mutation of the named functions, unproved, as
                             JSONL rows with the changed unit's normal form, then a summary
@@ -623,6 +628,49 @@ fn run() -> ExitCode {
                 }
                 Err(e) => {
                     print!("{e}");
+                    ExitCode::from(1)
+                }
+            }
+        }
+        Some("probe") if args.len() > 1 => {
+            let (mut def, mut at, mut cands) = (None, 0usize, Vec::new());
+            let mut rest = &args[1..];
+            loop {
+                match rest {
+                    [flag, v, tail @ ..] if flag == "--def" => {
+                        def = Some(v.clone());
+                        rest = tail;
+                    }
+                    [flag, v, tail @ ..] if flag == "--loop" => {
+                        let Ok(n) = v.parse() else {
+                            eprintln!("{USAGE}");
+                            return ExitCode::from(2);
+                        };
+                        at = n;
+                        rest = tail;
+                    }
+                    [flag, v, tail @ ..] if flag == "--candidate" => {
+                        cands.push(v.clone());
+                        rest = tail;
+                    }
+                    _ => break,
+                }
+            }
+            let Some(def) = def.filter(|_| !rest.is_empty() && !cands.is_empty()) else {
+                eprintln!("{USAGE}");
+                return ExitCode::from(2);
+            };
+            let files = match read_files(rest) {
+                Ok(f) => f,
+                Err(code) => return code,
+            };
+            match bmb::probe::probe(&files, &def, at, &cands) {
+                Ok(out) => {
+                    print!("{out}");
+                    ExitCode::SUCCESS
+                }
+                Err(e) => {
+                    println!("{e}");
                     ExitCode::from(1)
                 }
             }

@@ -30,7 +30,7 @@ def session(task, arm, calls):
     agent = harness.m1.ScriptAgent(calls)
     target = tempfile.mkdtemp(prefix="brb-effect-test-target-")
     try:
-        with mock.patch.object(harness.brb, "make_agent", lambda kind, task, arm: agent):
+        with mock.patch.object(harness.brb, "make_agent", lambda kind, task, arm, ws=None: agent):
             return harness.brb.run_session(task, arm, "scripted", target, False)
     finally:
         shutil.rmtree(target, ignore_errors=True)

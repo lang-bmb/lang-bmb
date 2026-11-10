@@ -276,7 +276,7 @@ class ModelAdapter(unittest.TestCase):
         from anthropic_agent import AnthropicAgent
         t = next(t for t in TASKS if t.ID == "t01-clamp")
         real = harness.make_agent
-        harness.make_agent = lambda kind, task, arm: AnthropicAgent("stub", "sys", judge.task_prompt(task, arm),
+        harness.make_agent = lambda kind, task, arm, ws=None: AnthropicAgent("stub", "sys", judge.task_prompt(task, arm),
                                                                    client=StubClient(responses))
         d = tempfile.mkdtemp()
         try:
@@ -330,7 +330,7 @@ class ParallelRust(unittest.TestCase):
             return harness.m1.ScriptAgent([("write_file", {"path": "src/lib.rs", "content": lib}),
                                            ("write_file", {"path": "tests/own.rs", "content": test}),
                                            ("cargo_test", {})])
-        harness.make_agent = lambda kind, task, arm: script(task, arm)
+        harness.make_agent = lambda kind, task, arm, ws=None: script(task, arm)
         try:
             target = os.path.join(d, "target")
             harness.warm_rust(target, False)
@@ -354,7 +354,7 @@ class ParallelRust(unittest.TestCase):
                 seen.append((crate, target_dir, os.path.isfile(os.path.join(target_dir, "warm"))))
                 super().__init__(crate, target_dir)
         harness.RustTools = Recorder
-        harness.make_agent = lambda kind, task, arm: harness.m1.ScriptAgent([])
+        harness.make_agent = lambda kind, task, arm, ws=None: harness.m1.ScriptAgent([])
         d = tempfile.mkdtemp()
         try:
             shared = os.path.join(d, "target")
@@ -422,6 +422,53 @@ class Proptest(unittest.TestCase):
             self.assertEqual((v["delivered"], v["failed"]), (True, 0))
         finally:
             shutil.rmtree(d)
+
+
+class History(unittest.TestCase):
+    """ADR-0110 on both BRB arms: `--history` or the variant's `set.json`
+    picks the repair history; the state is the files the arm can write."""
+
+    def tearDown(self):
+        harness.HISTORY, harness.VARIANT = None, None
+
+    def agent(self, arm, ws):
+        with unittest.mock.patch.dict(sys.modules):
+            sys.path.insert(0, harness.M1)
+            import model_api
+            with unittest.mock.patch.object(model_api, "make_model_agent", lambda kind, prompt, msg: object()):
+                return harness.make_agent("openai:m", TASKS[0], arm, ws)
+
+    def test_default_is_the_agent_itself(self):
+        self.assertEqual(harness.history("bmb"), "full")
+        self.assertEqual(harness.history_fields("rust"), {})
+        self.assertEqual(type(self.agent("rust", None)), object)
+
+    def test_stateless_state_is_the_writable_files(self):
+        harness.HISTORY = "stateless"
+        self.assertEqual(harness.history_fields("rust"), {"history": "stateless"})
+        ws = tempfile.mkdtemp()
+        try:
+            for rel, text in (("src/lib.rs", "pub fn f() {}"), ("tests/t.rs", "#[test] fn t() {}"),
+                              ("Cargo.toml", "[package]"), ("src/tasks.bmb", "unit tasks")):
+                os.makedirs(os.path.dirname(os.path.join(ws, rel)), exist_ok=True)
+                with open(os.path.join(ws, rel), "w") as f:
+                    f.write(text)
+            rust = self.agent("rust", ws).state()
+            self.assertEqual(rust, "### src/lib.rs\npub fn f() {}\n\n### tests/t.rs\n#[test] fn t() {}")
+            self.assertEqual(self.agent("bmb", ws).state(), "### src/tasks.bmb\nunit tasks")
+        finally:
+            shutil.rmtree(ws)
+
+    def test_flag_and_variant_must_agree(self):
+        harness.VARIANT, harness.HISTORY = "v", "stateless"
+        with unittest.mock.patch.object(harness.m1, "set_config", lambda: {"history": "full"}):
+            with self.assertRaises(SystemExit):
+                harness.history("bmb")
+            self.assertEqual(harness.history("rust"), "stateless")
+        harness.HISTORY = None
+        with unittest.mock.patch.object(harness.m1, "set_config", lambda: {"history": "stateless"}):
+            self.assertEqual(harness.history("bmb"), "stateless")
+            self.assertEqual(harness.history("rust"), "full")
 
 
 if __name__ == "__main__":

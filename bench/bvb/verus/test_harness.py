@@ -300,5 +300,35 @@ class Install(unittest.TestCase):
         self.assertRegex(e["VERUS_RUST_TOOLCHAIN"], r"^\d+\.\d+\.\d+-")
 
 
+class History(unittest.TestCase):
+    """ADR-0110 on the Verus arm: with `--history stateless` every request
+    is one user message whose state is the file as written so far."""
+
+    def test_stateless_requests_carry_the_file(self):
+        import model_api
+        from test_model_api import StubPost, resp
+        t = task("vb-misc-sum")
+        post = StubPost([
+            resp("tool_calls", calls=[("c1", "write_file", json.dumps({"code": "fn main() {} // v1"}))]),
+            resp("stop", "done"),
+        ])
+        real = model_api.make_model_agent
+        model_api.make_model_agent = lambda kind, system, user: model_api.OpenAIAgent(
+            "qwen", system, user, post=post, base="http://x")
+        harness.HISTORY = "stateless"
+        try:
+            r = harness.run_task(t, "openai:qwen", StubVerifier())
+        finally:
+            model_api.make_model_agent = real
+            harness.HISTORY = "full"
+        self.assertEqual(r["agent_settings"]["history"], "stateless")
+        for body in post.requests:
+            self.assertEqual([m["role"] for m in body["messages"]], ["system", "user"])
+        first, last = (b["messages"][1]["content"] for b in post.requests)
+        self.assertIn("## State now\n### main.rs\n" + harness.skeleton(t), first)
+        self.assertIn("## State now\n### main.rs\nfn main() {} // v1\n", last)
+        self.assertIn("1. write_file: ok: {\"written\":true}", last)
+
+
 if __name__ == "__main__":
     unittest.main()
