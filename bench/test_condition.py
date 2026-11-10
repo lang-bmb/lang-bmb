@@ -67,6 +67,43 @@ class Probe(unittest.TestCase):
         diffs = condition.compare(a, condition.ROOT, b, tree)
         self.assertTrue(any("differs in ['messages']" in d for d in diffs), diffs)
 
+    def test_the_stateless_history_through_the_harness(self):
+        """ADR-0110 through the real harness and adapters: a set with
+        `"history": "stateless"` sends every request as the system prompt and
+        one user message, and its row is written."""
+        tree = copy_tree(os.path.join(self.tmp, "stateless"))
+        m1 = os.path.join(tree, "bench", "m1")
+        with open(os.path.join(m1, "set.json"), "w") as f:
+            json.dump({"history": "stateless"}, f)
+        condition.subprocess.run([condition.PY, os.path.join(m1, "harness.py"), "--set", m1, "manifest", "--write"],
+                                 check=True, env={**os.environ, "BMB": BMB})
+        for provider in condition.PROVIDERS:
+            out = os.path.join(self.tmp, f"stateless-{provider}.jsonl")
+            condition.run_probe(tree, "m1", provider, "oracle", out, BMB, TASK)
+            with open(out + ".bodies.json") as f:
+                bodies = json.load(f)[TASK]
+            row = condition.result_rows(out)[TASK]
+            self.assertGreater(len(bodies), 1)
+            self.assertEqual(len(bodies), row["model_usage"]["requests"])
+            self.assertEqual(row["agent_settings"]["history"], "stateless")
+            for b in bodies:
+                users = [m for m in b["messages"] if m["role"] != "system"]
+                self.assertEqual(len(users), 1, b["messages"])
+                self.assertIsInstance(users[0]["content"], str)
+                self.assertIn("## State now\n### src/", users[0]["content"])
+            self.assertIn("## Attempts so far\n1. ", bodies[-1]["messages"][-1]["content"])
+
+    def test_an_unknown_history_stops_the_run(self):
+        tree = copy_tree(os.path.join(self.tmp, "unknown-history"))
+        m1 = os.path.join(tree, "bench", "m1")
+        with open(os.path.join(m1, "set.json"), "w") as f:
+            json.dump({"history": "recent"}, f)
+        condition.subprocess.run([condition.PY, os.path.join(m1, "harness.py"), "--set", m1, "manifest", "--write"],
+                                 check=True, env={**os.environ, "BMB": BMB})
+        with self.assertRaises(SystemExit) as e:
+            condition.run_probe(tree, "m1", "openai", "oracle", os.path.join(self.tmp, "unknown.jsonl"), BMB, TASK)
+        self.assertIn("unknown history 'recent'", str(e.exception))
+
     def rewrite(self, src, label, change):
         rows = condition.result_rows(src)
         change(rows[TASK])

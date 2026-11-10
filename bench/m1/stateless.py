@@ -24,12 +24,42 @@ self-contained. The agent's own counters (`usage`, `requests`, `stop`) are
 the provider agent's, so result rows and session records keep their shape;
 `settings` adds `"history": "stateless"`.
 
-Nothing in the harnesses uses this yet: a set opts in with
-`{"history": "stateless"}` in its `set.json` once T0-37 prepares the frozen
-arms. Python standard library only.
+A set opts in with `{"history": "stateless"}` in its `set.json`
+(`configured`); without the key, or with `"full"`, the provider agent is
+returned as it is, so the default path is unchanged. The m1 harness
+(`bench/m1/harness.py`: m1, m1b, bvb and their variants) reads it; the BRB
+harness does not yet (its code is frozen in `bench/brb/MANIFEST`, backlog
+T0-36). Python standard library only.
 """
+import os
 
 ATTEMPT_LINE = 160
+HISTORIES = ("full", "stateless")
+
+
+def source_state(ws, tops, ext):
+    """`## State now`: every file under `ws/TOP` (for each of `tops`) ending
+    in `ext`, by path, as stored (the BMB tools store normal form)."""
+    parts = []
+    for top in tops:
+        for d, dirs, fs in os.walk(os.path.join(ws, top)):
+            dirs.sort()
+            for f in sorted(fs):
+                if f.endswith(ext):
+                    path = os.path.join(d, f)
+                    with open(path, "rb") as fh:
+                        text = fh.read().decode("utf-8", "replace")
+                    parts.append(f"### {os.path.relpath(path, ws)}\n{text}")
+    return "\n\n".join(parts) or "(empty)"
+
+
+def configured(agent, cfg, task_prompt, state):
+    """The agent a set's `history` asks for: `agent` itself (`full`, the
+    default) or `Stateless(agent, ..)`. An unknown value stops the run."""
+    history = (cfg or {}).get("history", "full")
+    if history not in HISTORIES:
+        raise SystemExit(f"set.json: unknown history {history!r} (one of {', '.join(HISTORIES)})")
+    return agent if history == "full" else Stateless(agent, task_prompt, state)
 
 
 def attempt_line(n, name, text, err):

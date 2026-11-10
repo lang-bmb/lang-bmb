@@ -160,7 +160,9 @@ def set_config():
     `script` names the edit surface the scripted agents write through
     (`surface.py`, ADR-0073); without it they use the transaction tools.
     `tool_filter` names a filter of every tool result the model sees
-    (`TOOL_FILTERS`; `no-repair`, H-REPAIR's ablation). Frozen with the set."""
+    (`TOOL_FILTERS`; `no-repair`, H-REPAIR's ablation). `history` is the
+    repair history the model is sent (`stateless.HISTORIES`: `full`, the
+    default, or `stateless`, ADR-0110). Frozen with the set."""
     path = os.path.join(SET, "set.json")
     if not os.path.exists(path):
         return {}
@@ -360,7 +362,10 @@ def make_agent(kind, task, workspace):
     sys.path.insert(0, HERE)
     from model_api import make_model_agent  # noqa: E402
     if agent := make_model_agent(kind, open(os.path.join(SET, "prompt.md")).read(), task["prompt"]):
-        return agent
+        # The set's repair history (ADR-0110): the agent itself by default.
+        from stateless import configured, source_state  # noqa: E402
+        return configured(agent, set_config(), task["prompt"],
+                          lambda: source_state(workspace, ("src",), ".bmb"))
     sys.exit(f"unknown agent {kind}")
 
 
