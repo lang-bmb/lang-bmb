@@ -31,8 +31,9 @@ READS = {"query", "map", "impact", "uses", "read", "list_files", "read_file", "s
 CHECKS = {"verify", "cargo_test", "lint"}
 
 
-def runs():
-    """[(set, model, arm, summary, rows)] of the official results files, in a fixed order."""
+def runs(with_paths=False):
+    """[(set, model, arm, summary, rows)] of the official results files, in a
+    fixed order (with each file's path as a sixth item when `with_paths`)."""
     out = []
     for s in SETS:
         for path in sorted(glob.glob(os.path.join(ROOT, "bench", s, "results", "*.jsonl"))):
@@ -49,8 +50,9 @@ def runs():
             arm = name[len(model) + 1:] if name.startswith(model + "-") else ""
             if s.startswith("bvb"):
                 arm = arm or "bmb"
-            out.append((s, model, arm, summary, [r for r in recs if "id" in r]))
-    return sorted(out, key=lambda x: (SETS.index(x[0]), x[2] != "bmb", x[2], x[1]))
+            out.append((s, model, arm, summary, [r for r in recs if "id" in r], path))
+    out.sort(key=lambda x: (SETS.index(x[0]), x[2] != "bmb", x[2], x[1]))
+    return out if with_paths else [x[:5] for x in out]
 
 
 def ratio(a, b):
@@ -151,13 +153,59 @@ def undecided_table(rs):
     return lines
 
 
+def undecided_sessions(path):
+    """{session id: whether a tool result said "solver could not decide"}
+    from the session records next to a results file (`X.jsonl` →
+    `X.sessions/`, backlog INF-17); empty when there are none."""
+    import gzip
+    out = {}
+    for p in sorted(glob.glob(path[:-len(".jsonl")] + ".sessions/*.json.gz")):
+        with gzip.open(p, "rt", encoding="utf-8") as f:
+            s = json.load(f)
+        out[s["id"]] = any("could not decide" in (c.get("text") or "") for c in s.get("calls", []))
+    return out
+
+
+def distribution_table(rs, paths):
+    """Where the writing tokens are (AI-user feedback P4, backlog T0-35):
+    the median session, the share of the three costliest, the sessions that
+    got an undecided response and their share (from the session records),
+    and the share of input tokens read from the prompt cache (ADR-0093)."""
+    lines = ["| 집합 | 팔 | 모델 | 작성 세션 | 세션 토큰 중앙값 | 상위 3세션 몫 | 미결정 응답을 받은 세션 | 그 세션의 토큰 몫 | 입력 중 캐시 읽기 |",
+             "| --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
+    for (s, model, arm, summary, rows), path in zip(rs, paths):
+        write = [r for r in rows if r.get("kind", "write") != "navigate"]
+        if not write:
+            continue
+        toks = sorted((total_tokens(r) for r in write), reverse=True)
+        tot = sum(toks)
+        top3 = f"{sum(toks[:3]) / tot:.1%}" if tot else "—"
+        und = undecided_sessions(path)
+        if und:
+            hit = [r for r in write if und.get(r["id"])]
+            n_und = ratio(len(hit), len(write))
+            share = f"{sum(total_tokens(r) for r in hit) / tot:.1%}" if tot else "—"
+        else:
+            n_und, share = "기록 없음", "—"
+        inp = sum((r.get("model_usage") or {}).get("input_tokens", 0) for r in write)
+        read = sum((r.get("model_usage") or {}).get("cache_read_input_tokens", 0) for r in write)
+        cache = f"{read / inp:.1%}" if inp and any("cache_read_input_tokens" in (r.get("model_usage") or {})
+                                                   for r in write) else "—"
+        lines.append(f"| {s} | {arm or 'bmb'} | {model} | {len(write)} | {med(toks)} | {top3} | {n_und} | "
+                     f"{share} | {cache} |")
+    return lines
+
+
 def tables():
-    rs = runs()
+    full = runs(with_paths=True)
+    rs = [x[:5] for x in full]
     out = ["### A. 결과와 비용(정식 측정 전부)", ""] + outcome_table(rs)
     out += ["", "### B. 테스트 코드와 숨은 결함(BRB, G5·G8·H-ORACLE)", ""] + test_code_table(rs)
     out += ["", "### C. 탐색(m1·m1b 탐색 과제, G4)", ""] + navigation_table(rs)
     out += ["", "### D. 도구 사용의 구성(BRB 세션 합계)", ""] + tool_mix_table(rs)
     out += ["", "### E. 판정기 미결정률(숨은 명세 검사, H-DECIDE 지표, T0-28)", ""] + undecided_table(rs)
+    out += ["", "### F. 작성 토큰의 분포(성공당 평균이 가리는 꼬리, T0-35)", ""] + distribution_table(
+        rs, [x[5] for x in full])
     files = sorted({f"`bench/{s}/results/`" for s, *_ in rs})
     out += ["", f"원자료: {', '.join(files)}의 결과 파일 {len(rs)}개(요약 행이 있는 것)."]
     return "\n".join(out) + "\n"

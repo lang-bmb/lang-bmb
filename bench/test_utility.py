@@ -64,5 +64,28 @@ class Tables(unittest.TestCase):
             self.assertTrue(f.read().startswith("# r\n\n" + utility.BEGIN))
 
 
+
+class Distribution(unittest.TestCase):
+    """Table F (backlog T0-35): median, top-3 share, the sessions with an
+    undecided response from the session records, and the cache-read share."""
+
+    def test_shares_from_rows_and_session_records(self):
+        import gzip
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "2026-11-04-m-bmb.jsonl")
+            sessions = path[:-len(".jsonl")] + ".sessions"
+            os.makedirs(sessions)
+            for sid, text in (("a", "solver could not decide (rlimit)"), ("b", "ok"), ("c", "ok"), ("d", "ok")):
+                with gzip.open(os.path.join(sessions, f"{sid}.json.gz"), "wt") as f:
+                    json.dump({"id": sid, "calls": [{"text": text}]}, f)
+            rows = [{"id": "a", "total_tokens": 70, "model_usage": {"input_tokens": 60, "cache_read_input_tokens": 30}},
+                    {"id": "b", "total_tokens": 10, "model_usage": {"input_tokens": 10, "cache_read_input_tokens": 0}},
+                    {"id": "c", "total_tokens": 10, "model_usage": {"input_tokens": 10, "cache_read_input_tokens": 0}},
+                    {"id": "d", "total_tokens": 10, "model_usage": {"input_tokens": 10, "cache_read_input_tokens": 0}}]
+            lines = utility.distribution_table([("brb-write", "m", "", {}, rows)], [path])
+            self.assertEqual(lines[2], "| brb-write | bmb | m | 4 | 10 | 90.0% | 1/4 | 70.0% | 33.3% |")
+
+
 if __name__ == "__main__":
     unittest.main()
