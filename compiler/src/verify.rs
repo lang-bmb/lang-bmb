@@ -9616,6 +9616,16 @@ fn axioms_in_forms(axioms: &[(String, String)], text: &str, forms_of: Forms) -> 
             break;
         }
     }
+    // Macros that wait for each other cannot be ordered: they go in their
+    // quantified form, which names the others as declared symbols. Left
+    // out, the query lacked their definitions and a probe's `sat` was taken
+    // for a counterexample (backlog 1B-58).
+    for &k in &order {
+        if !done[k] {
+            out.push_str(quantified(&axioms[k].1));
+            out.push('\n');
+        }
+    }
     out
 }
 
@@ -10262,6 +10272,27 @@ fn show(v: &Val, t: &TypeKind, tb: &Tables, it: &mut impl Iterator<Item = String
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Two macros that wait for each other (backlog 1B-58: one definition
+    /// revealed twice, 2V-20f) are still in the query, in their quantified
+    /// form; left out, a probe's `sat` was a false counterexample.
+    #[test]
+    fn macros_that_wait_for_each_other_stay_in_the_query() {
+        let ax = format!(
+            "(define-fun |p| ((x Int)) Bool (> x 0)){QUANTIFIED}(declare-fun |p| (Int) Bool)\n(assert (forall ((x Int)) (! (= (|p| x) (> x 0)) :pattern ((|p| x)))))"
+        );
+        let axioms = vec![("|p|".to_string(), ax.clone()), ("|p|".to_string(), ax)];
+        for forms in [Forms::Full, Forms::Probe] {
+            let out = axioms_in_forms(&axioms, "(assert (not (|p| 1)))", forms);
+            assert!(out.contains("(forall ((x Int))"), "{out}");
+            assert!(!out.contains("define-fun |p|"), "{out}");
+        }
+        // One copy alone is a macro, as before.
+        let one = &axioms[..1];
+        assert!(
+            axioms_in_forms(one, "(assert (not (|p| 1)))", Forms::Full).contains("define-fun |p|")
+        );
+    }
 
     /// Congruence facts of the abstracted query (backlog 1B-49) relate a
     /// code term and a specification term of the same operation, unsigned
