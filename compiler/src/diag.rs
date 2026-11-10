@@ -558,6 +558,10 @@ pub struct Diag {
     pub span: Span,
     pub message: String,
     pub fix: Option<Fix>,
+    /// For E0811 (undecided): the code of the obligation the solver could
+    /// not decide (`E0802` a postcondition, `E0807` an invariant kept, ..),
+    /// as a field of its own (backlog 2D-32).
+    pub obligation: Option<&'static str>,
 }
 
 impl Diag {
@@ -568,7 +572,13 @@ impl Diag {
             span,
             message: message.into(),
             fix: None,
+            obligation: None,
         }
+    }
+    /// The undecided obligation's own code (E0811's `obligation`).
+    pub fn of_obligation(mut self, code: &'static str) -> Self {
+        self.obligation = Some(code);
+        self
     }
     pub fn fix(mut self, message: impl Into<String>, replacement: Option<String>) -> Self {
         self.fix = Some(Fix {
@@ -625,6 +635,9 @@ fn render(d: &Diag, sm: &SourceMap) -> String {
     s.push_str(&format!(
         "\"line\":{line},\"col\":{col},\"end_line\":{eline},\"end_col\":{ecol}"
     ));
+    if let Some(o) = d.obligation {
+        s.push_str(&format!(",\"obligation\":{}", json_str(o)));
+    }
     if let Some(f) = &d.fix {
         s.push_str(&format!(",\"fix\":{{\"message\":{}", json_str(&f.message)));
         if let Some(r) = &f.replacement {

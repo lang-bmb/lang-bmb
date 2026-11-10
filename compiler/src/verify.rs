@@ -8449,7 +8449,7 @@ fn verify_pass(
                             "E0811",
                             o.span,
                             format!("{} in `{path}`: solver could not decide ({why})", o.msg),
-                        ));
+                        ).of_obligation(o.code));
                     }
                     Err(e) if e.contains("canceled") => diags.push(Diag::new(
                         "E0811",
@@ -8459,7 +8459,7 @@ fn verify_pass(
                             o.msg,
                             smt::rlimit()
                         ),
-                    )),
+                    ).of_obligation(o.code)),
                     Err(e) => {
                         diags.push(Diag::new("E0812", o.span, format!("solver error: {e}")));
                         solver = None;
@@ -8798,7 +8798,7 @@ fn verify_pass(
                         msg.push_str(&format!("; unconfirmed counterexample: {cex}"));
                     }
                     diags.push(with_hint(
-                        Diag::new("E0811", o.span, msg),
+                        Diag::new("E0811", o.span, msg).of_obligation(o.code),
                         &hint,
                         has_nonlinear_product(&format!("{q}{relevant_text}")),
                     ));
@@ -8812,7 +8812,7 @@ fn verify_pass(
                         o.msg,
                         smt::rlimit()
                     ),
-                )),
+                ).of_obligation(o.code)),
                 Err(e) => {
                     diags.push(Diag::new("E0812", o.span, format!("solver error: {e}")));
                     solver = None;
@@ -9951,7 +9951,7 @@ fn f64_undecided(o: &Obl, path: &str, why: &str) -> Diag {
             "{} in `{path}`: solver could not decide (`f64` operations are uninterpreted here; no IEEE 754 counterexample: {why})",
             o.msg
         ),
-    )
+    ).of_obligation(o.code)
     .fix(
         "outside `by (bit_vector)` the `f64` operations are uninterpreted (ADR-0061 §5): prove the `f64` fact the obligation needs with `assert(e) by (bit_vector);` before it",
         None,
