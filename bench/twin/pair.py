@@ -98,10 +98,88 @@ def task_cases(task):
     return cases
 
 
+def strip_comments(text):
+    """Rust source without its comments (ADR-0106): `//` and `///` lines and
+    tails, `/* */` blocks (nested) and `/** */`, except the module's inner
+    doc `//!`, which mirrors the BMB unit's `#[summary]`. Strings, byte
+    strings, raw strings (`r#".."#`), chars and lifetimes are kept as they
+    are. A line left empty by a removed comment goes; other lines lose
+    their trailing spaces."""
+    out, i, n = [], 0, len(text)
+    while i < n:
+        c = text[i]
+        if text.startswith("//!", i):
+            j = text.find("\n", i)
+            j = n if j < 0 else j
+            out.append(text[i:j])
+            i = j
+        elif text.startswith("//", i):
+            j = text.find("\n", i)
+            i = n if j < 0 else j
+            out.append("\0")  # a removed comment: its line may go
+        elif text.startswith("/*", i):
+            depth, i = 1, i + 2
+            while i < n and depth:
+                if text.startswith("/*", i):
+                    depth, i = depth + 1, i + 2
+                elif text.startswith("*/", i):
+                    depth, i = depth - 1, i + 2
+                else:
+                    i += 1
+            out.append("\0")
+        elif (m := re.compile(r'b?r(#*)"').match(text, i)) and (i == 0 or not (text[i - 1].isalnum() or text[i - 1] == "_")):
+            end = text.find('"' + m.group(1), m.end())
+            end = n if end < 0 else end + 1 + len(m.group(1))
+            out.append(text[i:end])
+            i = end
+        elif c == '"' or (c == "b" and text.startswith('b"', i) and (i == 0 or not (text[i - 1].isalnum() or text[i - 1] == "_"))):
+            j = i + (2 if c == "b" else 1)
+            while j < n and text[j] != '"':
+                j += 2 if text[j] == "\\" else 1
+            out.append(text[i:j + 1])
+            i = j + 1
+        elif c == "'":
+            # A char (`'x'`, `'\n'`, `'\u{..}'`, `b'x'` reaches here at its
+            # quote) or a lifetime (`'a`, no closing quote right after).
+            m = re.compile(r"'(?:\\(?:u\{[0-9a-fA-F]+\}|x[0-9a-fA-F]{2}|.)|[^\\'\n])'").match(text, i)
+            j = m.end() if m else i + 1
+            out.append(text[i:j])
+            i = j
+        else:
+            out.append(c)
+            i += 1
+    lines = []
+    for ln in "".join(out).split("\n"):
+        if "\0" in ln:
+            ln = ln.replace("\0", "").rstrip()
+            if not ln.strip():
+                continue
+        lines.append(ln)
+    return "\n".join(lines)
+
+
+def strip_crate(crate):
+    """Every `.rs` file of `crate` through `strip_comments`."""
+    for d, _, files in os.walk(crate):
+        for f in files:
+            if f.endswith(".rs"):
+                p = os.path.join(d, f)
+                with open(p, encoding="utf-8") as h:
+                    text = h.read()
+                with open(p, "w", encoding="utf-8") as h:
+                    h.write(strip_comments(text))
+
+
+# The documentation condition of the Rust arm (ADR-0106): `strip`, the
+# measured condition, or `keep`, the control.
+RUST_COMMENTS = os.environ.get("PAIR_RUST_COMMENTS", "strip")
+
+
 def materialize(task, arm, dest):
     """The arm's starting copy of the fixture under `dest`: a workspace
-    (`bmb import`) or a crate. A task with `commit` takes the fixture from
-    that commit (`git archive`), so a task replays a fixed state."""
+    (`bmb import`) or a crate (its comments stripped unless the condition is
+    `keep`, ADR-0106). A task with `commit` takes the fixture from that
+    commit (`git archive`), so a task replays a fixed state."""
     src = os.path.join(fixture_dir(task["fixture"]), arm)
     if task.get("commit"):
         rel = os.path.relpath(src, ROOT)
@@ -116,6 +194,8 @@ def materialize(task, arm, dest):
             raise RuntimeError(f"bmb import failed: {r.stdout}{r.stderr}")
     else:
         shutil.copytree(src, dest, ignore=shutil.ignore_patterns("target"))
+        if RUST_COMMENTS == "strip":
+            strip_crate(dest)
     return dest
 
 
@@ -400,7 +480,9 @@ def rust_defs(crate):
             if f.endswith(".rs"):
                 rel = os.path.relpath(os.path.join(d, f), src)[:-3].replace(os.sep, "::")
                 with open(os.path.join(d, f), encoding="utf-8", errors="replace") as h:
-                    out.update(rust_items(h.read(), rel))
+                    # Judged without comments: BMB's normal form drops those an
+                    # agent writes, so neither arm's scope counts them (ADR-0106).
+                    out.update(rust_items(strip_comments(h.read()), rel))
     return out
 
 
@@ -538,6 +620,7 @@ def run_task(task, arm, agent_kind, script=None):
         finally:
             tools.close()
         row = {"id": task["id"], "kind": task["kind"], "fixture": task["fixture"], "arm": arm, "agent": agent_kind,
+               **({"rust_comments": RUST_COMMENTS} if arm == "rust" else {}),
                **m, "tokens": math.ceil(m["resp_bytes"] / 4), "req_tokens": math.ceil(m["req_bytes"] / 4),
                "wall_s": round(time.perf_counter() - t0, 3), "model_usage": agent.usage,
                "stop": getattr(agent, "stop", None)}
@@ -576,14 +659,21 @@ def check_twins(fixture):
         r = subprocess.run([bmb_bin(), "build", *files, "-o", exe], capture_output=True, text=True)
         if r.returncode != 0:
             return [f"{fixture}: bmb build failed: {r.stdout[-2000:]}"]
-        crate = os.path.join(work, "crate")
-        shutil.copytree(os.path.join(fixture_dir(fixture), "rust"), crate, ignore=shutil.ignore_patterns("target"))
-        code, out = cargo(crate, os.path.join(work, "target"), ["build"])
-        if code != 0:
-            return [f"{fixture}: cargo build failed: {out[-2000:]}"]
-        rexe = os.path.join(work, "target", "debug", fixture)
         cases = corpus(fixture)
-        for arm, e in (("bmb", exe), ("rust", rexe)):
+        arms = [("bmb", exe)]
+        # The Rust twin as written and without its comments (ADR-0106): the
+        # stripped crate is the measured one and must be the same program.
+        for cond in ("keep", "strip"):
+            crate = os.path.join(work, f"crate-{cond}")
+            shutil.copytree(os.path.join(fixture_dir(fixture), "rust"), crate, ignore=shutil.ignore_patterns("target"))
+            if cond == "strip":
+                strip_crate(crate)
+            tgt = os.path.join(work, f"target-{cond}")
+            code, out = cargo(crate, tgt, ["build"])
+            if code != 0:
+                return [f"{fixture}: cargo build ({cond} comments) failed: {out[-2000:]}"]
+            arms.append((f"rust ({cond} comments)", os.path.join(tgt, "debug", fixture)))
+        for arm, e in arms:
             n, fails = run_cases(e, cases)
             if fails:
                 problems.append(f"{fixture}: {arm} differs from the corpus on {fails}")

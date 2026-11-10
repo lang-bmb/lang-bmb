@@ -38,6 +38,25 @@ class Items(unittest.TestCase):
         self.assertEqual(pair.out_of_scope(task, "rust", before, after), [])
 
 
+class Comments(unittest.TestCase):
+    """The Rust arm without comments (ADR-0106)."""
+
+    def test_strip_keeps_code_and_inner_doc(self):
+        src = ("//! m doc\n/// d\npub fn f<'a>(x: &'a str) -> char { // tail\n"
+               '    let s = "// no /* \\" x"; let r = r#"y // " z"#; let b = b"//";\n'
+               "    /* a /* nested */ b */ let c = '\\''; let q = '\"'; let u = '\\u{2f}';\n"
+               "    /** block doc */\n    c\n}\n")
+        want = ("//! m doc\npub fn f<'a>(x: &'a str) -> char {\n"
+                '    let s = "// no /* \\" x"; let r = r#"y // " z"#; let b = b"//";\n'
+                "     let c = '\\''; let q = '\"'; let u = '\\u{2f}';\n    c\n}\n")
+        self.assertEqual(pair.strip_comments(src), want)
+
+    def test_scope_ignores_comment_edits(self):
+        a = pair.rust_items(pair.strip_comments("/// old\nfn f() {}\n"), "m")
+        b = pair.rust_items(pair.strip_comments("/// new words\nfn f() {} // and here\n"), "m")
+        self.assertEqual(pair.changed(a, b), [])
+
+
 class RustTools(unittest.TestCase):
     def test_sandbox_and_edit(self):
         with tempfile.TemporaryDirectory() as d:
