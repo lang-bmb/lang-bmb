@@ -19,6 +19,7 @@ pub mod map;
 pub mod mcp;
 pub mod moves;
 pub mod parser;
+pub mod probe;
 pub(crate) mod refs;
 pub mod sha256;
 pub mod smt;

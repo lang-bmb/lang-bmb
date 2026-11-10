@@ -1345,3 +1345,44 @@ fn undecided_info_runs_the_uses_search_in_the_response() {
         let _ = std::fs::remove_dir_all(&root);
     }
 }
+
+/// `probe` (ADR-0109): offered only with `--probe-tool` (the frozen tool
+/// lists stay as they were), and it does not write.
+#[test]
+fn probe_tool_on_request_and_read_only() {
+    let code = "#[effects(pure)]\nfn sum(n: u64) -> (r: u64)\n    requires n < 1000,\n    ensures r <= 1000 * n,\n{\n    let mut s: u64 = 0;\n    let mut i: u64 = 0;\n    while i < n\n        decreases n - i,\n    {\n        s = s + i;\n        i = i + 1;\n    }\n    s\n}";
+    let args = format!(
+        "{{\"unit\":\"lp\",\"summary\":{},\"code\":{}}}",
+        q("t"),
+        q(code)
+    );
+    let root = temp_root("probe-tool");
+    let mut plain = Client::start_with(&root, &["--write-tool"]);
+    assert!(
+        !plain
+            .request("tools/list", "{}")
+            .to_json()
+            .contains("\"probe\"")
+    );
+    let (_, err) = plain.tool("write", &args);
+    assert!(err, "the loop needs invariants");
+    drop(plain);
+    let before = std::fs::read_to_string(root.join("src").join("lp.bmb")).unwrap();
+    let mut c = Client::start_with(&root, &["--write-tool", "--probe-tool"]);
+    assert!(
+        c.request("tools/list", "{}")
+            .to_json()
+            .contains("\"probe\"")
+    );
+    let (t, err) = c.tool(
+        "probe",
+        "{\"def\":\"lp::sum\",\"candidates\":[\"i <= n\",\"s <= 1000 * i\",\"i > 5\"]}",
+    );
+    assert!(!err, "{t}");
+    assert!(t.contains("\"kept\":[0,1],\"verified\":true"), "{t}");
+    assert_eq!(
+        std::fs::read_to_string(root.join("src").join("lp.bmb")).unwrap(),
+        before
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
