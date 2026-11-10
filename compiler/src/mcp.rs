@@ -48,7 +48,15 @@ pub struct Server {
     /// item they write, not only definitions (`--item-docs`, ADR-0074 §6).
     /// What the tools do is the same with or without it.
     item_docs: bool,
+    /// `--undecided-info` (ADR-0108 §2): `verify` and `write` run the
+    /// `#[uses]` search on the definitions their undecided obligations
+    /// suggest it for, and add its rows.
+    pub undecided_info: bool,
 }
+
+/// Verifications per definition of the `#[uses]` search a response runs
+/// under `--undecided-info` (ADR-0108 §2).
+pub const USES_SEARCH: usize = 4;
 
 /// The flags `bmb mcp` takes before the workspace directory.
 pub const FLAGS: &[&str] = &[
@@ -59,6 +67,7 @@ pub const FLAGS: &[&str] = &[
     "--ast-tools",
     "--item-docs",
     "--stats",
+    "--undecided-info",
 ];
 
 fn s(x: &str) -> Value {
@@ -419,6 +428,7 @@ impl Server {
             file_tools: false,
             ast_tools: false,
             item_docs: false,
+            undecided_info: false,
         }
     }
 
@@ -481,6 +491,22 @@ impl Server {
     }
 
     /// Reads the workspace and brings the front-end cache up to date.
+    /// `text` and, with `--undecided-info` when the proof failed and a
+    /// diagnostic suggests `#[uses(..)]`, the rows of that search on the
+    /// workspace, at most `USES_SEARCH` verifications per definition
+    /// (ADR-0108 §2). The workspace is not changed.
+    fn with_uses_search(&mut self, text: String, ok: bool) -> Result<String, String> {
+        if !self.undecided_info || ok || !text.contains("add to #[uses(") {
+            return Ok(text);
+        }
+        let files = workspace::relative_sources(&self.root)?;
+        let dir = self.cache_dir();
+        match crate::uses_fill::fill_uses_limited(&files, Some(&dir), USES_SEARCH) {
+            Ok(u) => Ok(format!("{text}{}", u.tried_rows(&files))),
+            Err(_) => Ok(text),
+        }
+    }
+
     fn load(&mut self) -> Result<&mut crate::FrontCache, String> {
         let files = self.files()?;
         self.front.update(files);
@@ -542,6 +568,7 @@ impl Server {
                 let dir = self.cache_dir();
                 let out = self.load()?.verify(Some(&dir));
                 let text = self.positions(out.output)?;
+                let text = self.with_uses_search(text, out.ok)?;
                 if out.ok { Ok(text) } else { Err(text) }
             }
             "build" => {
@@ -624,6 +651,7 @@ impl Server {
                 let dir = self.cache_dir();
                 let out = self.load()?.verify(Some(&dir));
                 let text = format!("{line}\n{}", out.output);
+                let text = self.with_uses_search(text, out.ok)?;
                 if out.ok { Ok(text) } else { Err(text) }
             }
             "read_file" if self.file_tools => {
@@ -940,6 +968,12 @@ pub fn serve(root: &Path, flags: &[&str]) -> std::io::Result<()> {
     }
     if has("--item-docs") {
         server = server.item_docs();
+    }
+    if has("--undecided-info") {
+        // An undecided obligation carries a verdict (ADR-0108): the bounded
+        // search, and the `#[uses]` search in `verify` and `write`.
+        crate::verify::set_bounded_search(true);
+        server.undecided_info = true;
     }
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout();

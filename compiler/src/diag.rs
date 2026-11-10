@@ -566,6 +566,10 @@ pub struct Diag {
     /// not decide (`E0802` a postcondition, `E0807` an invariant kept, ..),
     /// as a field of its own (backlog 2D-32).
     pub obligation: Option<&'static str>,
+    /// For E0811: the inputs' bounds under which a search found no
+    /// counterexample (`|integer| <= b`, unbounded lengths `<= l`, ADR-0108
+    /// §1). Not a proof.
+    pub bounded: Option<(i64, usize)>,
 }
 
 impl Diag {
@@ -577,6 +581,7 @@ impl Diag {
             message: message.into(),
             fix: None,
             obligation: None,
+            bounded: None,
         }
     }
     /// The undecided obligation's own code (E0811's `obligation`).
@@ -641,6 +646,9 @@ fn render(d: &Diag, sm: &SourceMap) -> String {
     ));
     if let Some(o) = d.obligation {
         s.push_str(&format!(",\"obligation\":{}", json_str(o)));
+    }
+    if let Some((b, l)) = d.bounded {
+        s.push_str(&format!(",\"bounded\":{{\"b\":{b},\"l\":{l}}}"));
     }
     if let Some(f) = &d.fix {
         s.push_str(&format!(",\"fix\":{{\"message\":{}", json_str(&f.message)));

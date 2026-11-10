@@ -7484,12 +7484,34 @@ pub fn verify_only(
 }
 
 fn header(seed: u64) -> Vec<String> {
-    vec![
+    let mut h = vec![
         "(set-option :produce-models true)".to_string(),
         format!("(set-option :smt.random_seed {seed})"),
         format!("(set-option :sat.random_seed {seed})"),
         format!("(set-option :rlimit {})", smt::rlimit()),
-    ]
+    ];
+    // Part of every proof key: a run with the search and one without do
+    // not share cached results (their diagnostics differ).
+    if bounded_search() {
+        h.push(format!(
+            "; bounded search |x| <= {BOUND}, lengths <= {BOUND_LEN}"
+        ));
+    }
+    h
+}
+
+/// The search within small bounds for undecided obligations (ADR-0108
+/// §1), off unless asked (`bmb verify --bounded-search`, `bmb mcp
+/// --undecided-info`) until its measurement (backlog T0-37) decides the
+/// default, as for the compact view (ADR-0068 §5).
+static BOUNDED_SEARCH: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn set_bounded_search(on: bool) {
+    BOUNDED_SEARCH.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+fn bounded_search() -> bool {
+    BOUNDED_SEARCH.load(std::sync::atomic::Ordering::Relaxed)
 }
 
 /// The declarations of the spec fns whose symbol occurs in `text`, one per
@@ -8929,6 +8951,45 @@ fn verify_pass(
                     _ => {}
                 }
             }
+            // Undecided: a search within small bounds (ADR-0108 §1). Its
+            // model is a counterexample of the obligation itself; without
+            // one, the diagnostic says how far it looked.
+            let mut bounded_none = false;
+            let mut bounded_found = false;
+            let undecided = match &answer {
+                Ok(Answer::Unknown(_)) => true,
+                Err(e) => e.contains("canceled"),
+                _ => false,
+            };
+            if undecided && bounded_search() {
+                let bounds = input_bounds(&shown_inputs(&enc.inputs, o));
+                if !bounds.is_empty() {
+                    script.push_str(&format!(
+                        "; bounded search of obligation {k}\n(reset)\n{base}\n{}\n{q}\n{bounds}(check-sat)\n",
+                        bounded_limit()
+                    ));
+                    let b = sol
+                        .run("(reset)")
+                        .and_then(|_| sol.run(&base))
+                        .and_then(|_| sol.run(&bounded_limit()))
+                        .and_then(|_| sol.run(&format!("{q}\n{bounds}")))
+                        .and_then(|_| sol.check_sat());
+                    if b.is_ok()
+                        && let Ok(used) = sol.rlimit_used()
+                    {
+                        rlimit_total += used;
+                    }
+                    match b {
+                        Ok(Answer::Sat) => {
+                            answer = b;
+                            answered = format!("{base}\n{q}\n{bounds}");
+                            bounded_found = true;
+                        }
+                        Ok(Answer::Unsat) => bounded_none = true,
+                        _ => {}
+                    }
+                }
+            }
             failed += 1;
             if matches!(answer, Ok(Answer::Unsat)) {
                 proved_keys.insert(key);
@@ -8970,6 +9031,11 @@ fn verify_pass(
                             if !cex.is_empty() {
                                 msg.push_str(&format!("; counterexample: {cex}"));
                             }
+                            if bounded_found {
+                                msg.push_str(&format!(
+                                    " (found by the search within |integers| <= {BOUND}, lengths <= {BOUND_LEN}, after the solver could not decide)"
+                                ));
+                            }
                             let d = with_hint(Diag::new(o.code, o.span, msg), &hint, false);
                             // A slice off the boundaries (ADR-0050 §2): the guard that proves it.
                             diags.push(if d.fix.is_none() && o.code == "E0820" {
@@ -8998,22 +9064,33 @@ fn verify_pass(
                     if !cex.is_empty() {
                         msg.push_str(&format!("; unconfirmed counterexample: {cex}"));
                     }
+                    let mut d = Diag::new("E0811", o.span, msg).of_obligation(o.code);
+                    if bounded_none {
+                        d.bounded = Some((BOUND, BOUND_LEN));
+                    }
                     diags.push(with_hint(
-                        Diag::new("E0811", o.span, msg).of_obligation(o.code),
+                        d,
                         &hint,
                         has_nonlinear_product(&format!("{q}{relevant_text}")),
                     ));
                 }
                 // The resource limit can also stop a command before `check-sat`.
-                Err(e) if e.contains("canceled") => diags.push(Diag::new(
-                    "E0811",
-                    o.span,
-                    format!(
-                        "{} in `{path}`: solver could not decide (resource limit reached, rlimit {})",
-                        o.msg,
-                        smt::rlimit()
-                    ),
-                ).of_obligation(o.code)),
+                Err(e) if e.contains("canceled") => {
+                    let mut d = Diag::new(
+                        "E0811",
+                        o.span,
+                        format!(
+                            "{} in `{path}`: solver could not decide (resource limit reached, rlimit {})",
+                            o.msg,
+                            smt::rlimit()
+                        ),
+                    )
+                    .of_obligation(o.code);
+                    if bounded_none {
+                        d.bounded = Some((BOUND, BOUND_LEN));
+                    }
+                    diags.push(d);
+                }
                 Err(e) => {
                     diags.push(Diag::new("E0812", o.span, format!("solver error: {e}")));
                     solver = None;
@@ -9884,6 +9961,69 @@ fn early_retry_text(k: usize, head: &str, limit: &str, inst: &str, q: &str) -> S
 }
 
 /// The probe's limit command (`PROBE_SHARE`), sent after its base.
+/// The bounds of the counterexample search an undecided obligation gets
+/// (ADR-0108 §1): integers in `-BOUND..=BOUND`, unfixed lengths up to
+/// `BOUND_LEN`, at a tenth of the obligation's `rlimit`.
+const BOUND: i64 = 8;
+const BOUND_LEN: usize = 4;
+const BOUND_SHARE: u64 = 10;
+
+fn bounded_limit() -> String {
+    format!("(set-option :rlimit {})", smt::rlimit() / BOUND_SHARE)
+}
+
+/// Assertions that keep `inputs` within the search bounds: each integer
+/// leaf, each unfixed length, and the integer elements below that length.
+/// A model of the bounded query is a model of the query (the bounds only
+/// narrow it), so its `sat` is a counterexample.
+fn input_bounds(inputs: &[(String, Val, TypeKind)]) -> String {
+    fn int_leaf(t: &TypeKind) -> bool {
+        match t {
+            TypeKind::Int(_) => true,
+            TypeKind::Ref { inner, .. } => int_leaf(&inner.kind),
+            _ => false,
+        }
+    }
+    fn elem_int(t: &TypeKind) -> bool {
+        match t {
+            TypeKind::Array(e, _) | TypeKind::Slice(e) => int_leaf(&e.kind),
+            TypeKind::Ref { inner, .. } => elem_int(&inner.kind),
+            TypeKind::Named { path, args } if path.len() == 1 && path[0] == "Vec" => {
+                args.first().is_some_and(|a| int_leaf(&a.kind))
+            }
+            _ => false,
+        }
+    }
+    let mut out = String::new();
+    let num = |s: &str| s.chars().all(|c| c.is_ascii_digit());
+    for (_, v, t) in inputs {
+        match v {
+            Val::S(x) if int_leaf(t) => {
+                out.push_str(&format!(
+                    "(assert (and (<= (- {BOUND}) {x}) (<= {x} {BOUND})))\n"
+                ));
+            }
+            Val::A { elems, len } => {
+                if !num(len) {
+                    out.push_str(&format!("(assert (<= {len} {BOUND_LEN}))\n"));
+                }
+                if elem_int(t) {
+                    for i in 0..BOUND_LEN {
+                        out.push_str(&format!(
+                            "(assert (=> (< {i} {len}) (and (<= (- {BOUND}) (select {elems} {i})) (<= (select {elems} {i}) {BOUND}))))\n"
+                        ));
+                    }
+                }
+            }
+            Val::Arr { len, .. } if !num(len) => {
+                out.push_str(&format!("(assert (<= {len} {BOUND_LEN}))\n"));
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
 fn probe_limit() -> String {
     format!("(set-option :rlimit {})", smt::rlimit() / PROBE_SHARE)
 }
