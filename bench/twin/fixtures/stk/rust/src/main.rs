@@ -1,4 +1,4 @@
-//! main: runs the commands of standard input, line by line, on one stack.
+//! main: runs the commands of standard input, line by line, on one stack
 
 mod lex;
 mod vm;

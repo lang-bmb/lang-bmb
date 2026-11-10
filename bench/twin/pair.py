@@ -648,9 +648,46 @@ def load_tasks(d):
     return out
 
 
-def check_twins(fixture):
-    """Both programs of a fixture print every corpus case's expected bytes."""
+def inner_doc(text):
+    """A Rust module's inner doc `//!`, its lines joined by spaces."""
+    lines = [ln[3:].strip() for ln in text.split("\n") if ln.startswith("//!")]
+    return " ".join(x for x in lines if x)
+
+
+def summaries(src):
+    """{unit: `#[summary("..")]`} of a fixture's BMB files."""
+    out = {}
+    for f in sorted(os.listdir(src)):
+        if f.endswith(".bmb"):
+            with open(os.path.join(src, f), encoding="utf-8") as h:
+                text = h.read()
+            for m in re.finditer(r'#\[summary\("((?:\\.|[^"\\])*)"\)\]\s*mod ([A-Za-z_][A-Za-z0-9_]*)', text):
+                out[m.group(2)] = m.group(1)
+    return out
+
+
+def doc_parity(fixture):
+    """ADR-0106 decision 1: each Rust module's `//!` is its BMB unit's
+    `#[summary]`, word for word, so the arms see the same documentation once
+    comments are stripped."""
+    rust = os.path.join(fixture_dir(fixture), "rust", "src")
+    units = summaries(os.path.join(fixture_dir(fixture), "bmb"))
     problems = []
+    for f in sorted(os.listdir(rust)):
+        if not f.endswith(".rs"):
+            continue
+        with open(os.path.join(rust, f), encoding="utf-8") as h:
+            doc = inner_doc(h.read())
+        want = units.get(f[:-3])
+        if doc != want:
+            problems.append(f"{fixture}: {f}'s //! {doc!r} is not unit {f[:-3]}'s #[summary] {want!r}")
+    return problems
+
+
+def check_twins(fixture):
+    """Both programs of a fixture print every corpus case's expected bytes,
+    and their documentation agrees (`doc_parity`)."""
+    problems = doc_parity(fixture)
     work = tempfile.mkdtemp(prefix="pair-twin-")
     try:
         exe = os.path.join(work, "bmb-exe")

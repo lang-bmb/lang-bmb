@@ -51,6 +51,14 @@ class Comments(unittest.TestCase):
                 "     let c = '\\''; let q = '\"'; let u = '\\u{2f}';\n    c\n}\n")
         self.assertEqual(pair.strip_comments(src), want)
 
+    def test_inner_doc_must_be_the_summary(self):
+        self.assertEqual(pair.inner_doc("//! vm: the stack\n//!\n//! codes: 1\nfn f() {}\n"), "vm: the stack codes: 1")
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, "vm.bmb"), "w") as f:
+                f.write('#[summary("vm: the stack")]\nmod vm {\n}\n')
+            self.assertEqual(pair.summaries(d), {"vm": "vm: the stack"})
+        self.assertEqual(pair.doc_parity("stk"), [])
+
     def test_scope_ignores_comment_edits(self):
         a = pair.rust_items(pair.strip_comments("/// old\nfn f() {}\n"), "m")
         b = pair.rust_items(pair.strip_comments("/// new words\nfn f() {} // and here\n"), "m")

@@ -1,7 +1,7 @@
-//! vm: the stack and its operations; each returns 0 or an error code.
-//!
-//! Error codes: 1 stack underflow, 2 overflow, 3 division by zero,
-//! 4 unknown token (main), 5 stack full.
+//! vm: the stack and its operations; each returns 0 or an error code
+
+// Error codes: 1 stack underflow, 2 overflow, 3 division by zero,
+// 4 unknown token (main), 5 stack full.
 
 /// The most values the stack holds.
 pub const LIMIT: usize = 4096;

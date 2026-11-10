@@ -1,4 +1,4 @@
-//! lex: the tokens of a line, as byte ranges.
+//! lex: the tokens of a line, as byte ranges
 
 /// A space between tokens: space, tab or carriage return.
 pub fn space(b: u8) -> bool {
