@@ -167,6 +167,25 @@ fn renamed_definition_keeps_its_body_hash() {
 /// normal form before the checker accepts it: types by name, each followed by
 /// its `impl` (functions by name), then functions; multi-line `match`; a
 /// condition holding a struct literal in parentheses (as Rust requires).
+/// A definition's summary (ADR-0117, backlog 3P-08): `///` is its input
+/// form, the normal form writes the attribute first, and no hash reads it.
+#[test]
+fn summaries_are_kept_by_the_normal_form_and_read_by_no_hash() {
+    let body = "    #[effects(pure)]\n    fn inc(x: i64) -> (y: i64)\n        requires x < 100,\n        ensures y == x + 1,\n    {\n        x + 1\n    }\n";
+    let plain = format!("#[summary(\"s\")]\nmod u {{\n    const K: i64 = 1;\n\n{body}}}\n");
+    let doc = format!(
+        "#[summary(\"s\")]\nmod u {{\n    /// The\n    /// limit.\n    const K: i64 = 1;\n\n    /// Adds one.\n{body}}}\n"
+    );
+    let attr = format!(
+        "#[summary(\"s\")]\nmod u {{\n    #[summary(\"The limit.\")]\n    const K: i64 = 1;\n\n    #[summary(\"Adds one.\")]\n{body}}}\n"
+    );
+    assert_eq!(normal(&doc), attr);
+    assert_eq!(normal(&attr), attr);
+    assert_eq!(hashes(&one("x.bmb", &doc)), hashes(&one("x.bmb", &plain)));
+    let other = attr.replace("Adds one.", "Something else.");
+    assert_eq!(hashes(&one("x.bmb", &other)), hashes(&one("x.bmb", &plain)));
+}
+
 #[test]
 fn data_types_have_a_normal_form() {
     const SRC: &str = r#"#[summary("2B surface")]

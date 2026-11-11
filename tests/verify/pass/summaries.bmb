@@ -1,0 +1,33 @@
+#[summary("정의 요약(ADR-0117, backlog 3P-08): 상수·타입·trait·함수의 `#[summary]`, 증명과 해시는 읽지 않는다")]
+mod doc {
+    #[summary("The most values the stack holds.")]
+    const LIMIT: usize = 4096;
+
+    #[summary("Things with an area.")]
+    trait Area {
+        #[summary("Its area.")]
+        #[effects(pure)]
+        fn area(self: &Self) -> i64;
+    }
+
+    #[summary("A point on the plane.")]
+    struct P { x: i64, y: i64 }
+
+    #[summary("written as an attribute")]
+    #[effects(pure)]
+    fn dec(x: i64) -> (y: i64)
+        requires x > -100,
+        ensures y == x - 1,
+    {
+        x - 1
+    }
+
+    #[summary("Adds one; \"quoted\" and `ticked`.")]
+    #[effects(pure)]
+    fn inc(x: i64) -> (y: i64)
+        requires x < 100,
+        ensures y == x + 1,
+    {
+        x + 1
+    }
+}

@@ -66,6 +66,58 @@ fn lex_as(file: u32, text: &str, diags: &mut Diags, generated: bool) -> Vec<Toke
             continue;
         }
         if c == b'/' && b.get(i + 1) == Some(&b'/') {
+            // `/// text` is the input form of `#[summary("text")]` (ADR-0117):
+            // the lines of one run are joined by a space. `//` and `////`
+            // stay comments.
+            let doc = |at: usize| {
+                b.get(at + 2) == Some(&b'/')
+                    && b.get(at + 3) != Some(&b'/')
+                    && b[at..].starts_with(b"//")
+            };
+            if doc(i) {
+                let lo = i;
+                let mut parts: Vec<&str> = Vec::new();
+                let mut end;
+                loop {
+                    let from = i + 3;
+                    while i < b.len() && b[i] != b'\n' {
+                        i += 1;
+                    }
+                    let line = text[from..i].trim();
+                    if !line.is_empty() {
+                        parts.push(line);
+                    }
+                    end = i;
+                    // The next line of the run, after blanks on its own line.
+                    let mut j = i;
+                    if j < b.len() {
+                        j += 1;
+                    }
+                    while j < b.len() && (b[j] == b' ' || b[j] == b'\t' || b[j] == b'\r') {
+                        j += 1;
+                    }
+                    if j < b.len() && doc(j) {
+                        i = j;
+                    } else {
+                        break;
+                    }
+                }
+                if !parts.is_empty() {
+                    let span = sp(lo, end);
+                    for tok in [
+                        Tok::P("#"),
+                        Tok::P("["),
+                        Tok::Ident("summary".to_string()),
+                        Tok::P("("),
+                        Tok::Str(parts.join(" ")),
+                        Tok::P(")"),
+                        Tok::P("]"),
+                    ] {
+                        out.push(Token { tok, span });
+                    }
+                }
+                continue;
+            }
             while i < b.len() && b[i] != b'\n' {
                 i += 1;
             }

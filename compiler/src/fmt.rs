@@ -590,6 +590,7 @@ impl<'a> Printer<'a> {
         consts.sort_by(|a, b| a.name.name.cmp(&b.name.name));
         if !consts.is_empty() {
             for c in consts {
+                self.summary_line(&c.attrs, depth + 1);
                 let ty = self.ty(&c.ty);
                 let v = self.expr(&c.value, 0);
                 self.line(depth + 1, &format!("const {}: {ty} = {v};", c.name.name));
@@ -654,7 +655,22 @@ impl<'a> Printer<'a> {
         self.line(depth, "}");
     }
 
+    /// `#[summary("..")]` of a definition (ADR-0117) in the normal form
+    /// only: no hash reads it, as for a rationale.
+    fn summary_line(&mut self, attrs: &[Attr], depth: usize) {
+        if self.id.is_none()
+            && self.qualify.is_none()
+            && let Some(a) = attrs.iter().find(|a| a.name.name == "summary")
+        {
+            let args: Vec<String> = a.args.iter().map(attr_arg).collect();
+            self.line(depth, &format!("#[summary({})]", args.join(", ")));
+        }
+    }
+
     fn attr_line(&mut self, a: &Attr, depth: usize) {
+        if a.name.name == "summary" {
+            return; // `summary_line`, first
+        }
         // A type's invariant names its predicate as `#[uses]` does: by
         // full path in the qualified text, by `id` in the identity text
         // (ADR-0060 §3, ADR-0059 §1).
@@ -687,6 +703,7 @@ impl<'a> Printer<'a> {
     }
 
     pub(crate) fn type_def_as(&mut self, t: &TypeDef, depth: usize, name: &str) {
+        self.summary_line(&t.attrs, depth);
         for a in &t.attrs {
             self.attr_line(a, depth);
         }
@@ -764,6 +781,7 @@ impl<'a> Printer<'a> {
 
     /// `trait T { fn m(..) -> R; .. }`, methods by name (ADR-0046 §1).
     fn trait_def(&mut self, t: &TraitDef, depth: usize) {
+        self.summary_line(&t.attrs, depth);
         for a in &t.attrs {
             self.attr_line(a, depth);
         }
@@ -848,6 +866,7 @@ impl<'a> Printer<'a> {
         rename: Option<&str>,
         with_body: bool,
     ) {
+        self.summary_line(&f.attrs, depth);
         if let Some(a) = f.attrs.iter().find(|a| a.name.name == "rationale") {
             self.rationale_line(a, depth);
         }
@@ -1550,7 +1569,12 @@ pub fn qualified_hashes(p: &Program, fns: &BTreeMap<String, FnSig>) -> BTreeMap<
 /// A trait declaration in normal form on one line (map L1 `signature`).
 pub fn trait_text(t: &TraitDef) -> String {
     let mut pr = plain();
-    pr.trait_def(t, 0);
+    let mut t = t.clone();
+    t.attrs.retain(|a| a.name.name != "summary");
+    for tf in &mut t.fns {
+        tf.f.attrs.retain(|a| a.name.name != "summary");
+    }
+    pr.trait_def(&t, 0);
     pr.out
         .lines()
         .map(str::trim)
@@ -1562,7 +1586,9 @@ pub fn trait_text(t: &TraitDef) -> String {
 /// A type declaration in normal form on one line (map L1 `signature`).
 pub fn type_text(t: &TypeDef) -> String {
     let mut pr = plain();
-    pr.type_def(t, 0);
+    let mut t = t.clone();
+    t.attrs.retain(|a| a.name.name != "summary");
+    pr.type_def(&t, 0);
     // An attribute (`#[invariant(p)]`, ADR-0060 §3) goes before the
     // declaration on the same line.
     pr.out.trim_end().replace('\n', " ")

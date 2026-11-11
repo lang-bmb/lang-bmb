@@ -629,7 +629,7 @@ impl<'a> Parser<'a> {
             let attrs = self.attrs();
             self.no_pub();
             if self.is_kw("const") {
-                match self.parse_const() {
+                match self.parse_const(attrs) {
                     Ok(c) => consts.push(c),
                     Err(_) => self.recover_item(),
                 }
@@ -729,7 +729,7 @@ impl<'a> Parser<'a> {
     }
 
     /// `const NAME: T = e;` (ADR-0052 §1): the type is written.
-    fn parse_const(&mut self) -> PResult<ConstDef> {
+    fn parse_const(&mut self, attrs: Vec<Attr>) -> PResult<ConstDef> {
         let lo = self.bump().span; // `const`
         let name = self.ident("constant name")?;
         self.expect_p(":")?;
@@ -738,6 +738,7 @@ impl<'a> Parser<'a> {
         let value = self.parse_expr()?;
         let hi = self.expect_p(";")?;
         Ok(ConstDef {
+            attrs,
             name,
             ty,
             value,

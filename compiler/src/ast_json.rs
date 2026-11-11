@@ -210,10 +210,14 @@ impl Ex<'_> {
                 |c| c.name.name.clone(),
                 |e, c| {
                     e.mark(c.span);
-                    Ok(obj(vec![
+                    let mut kv = vec![
                         ("ty", e.under("ty", |e| e.ty(&c.ty))?),
                         ("value", e.under("value", |e| e.expr(&c.value))?),
-                    ]))
+                    ];
+                    if let Some(sm) = crate::map::summary_of(&c.attrs) {
+                        kv.push(("summary", Value::Str(sm)));
+                    }
+                    Ok(obj(kv))
                 },
             )?;
             kv.push(("consts", v));
@@ -435,6 +439,9 @@ impl Ex<'_> {
                 }
             }
             kv.push(("effects", Value::Array(xs)));
+        }
+        if let Some(sm) = crate::map::summary_of(&f.attrs) {
+            kv.push(("summary", Value::Str(sm)));
         }
         // Escapes (ADR-0029 §1): `#[external_body]` and its rationale.
         if f.attrs.iter().any(|a| a.name.name == "external_body") {
@@ -1248,8 +1255,17 @@ impl Im {
         for (n, c) in self.keyed(&o, "consts")? {
             consts.push(self.under("consts", |m| {
                 m.under(n, |m| {
-                    let o = m.obj(c, "a constant", &["ty", "value"])?;
+                    let o = m.obj(c, "a constant", &["ty", "value", "summary"])?;
+                    let mut attrs = Vec::new();
+                    if o.get("summary").is_some() {
+                        attrs.push(Attr {
+                            name: id("summary"),
+                            args: vec![AttrArg::Str(m.string(&o, "summary")?, sp())],
+                            span: sp(),
+                        });
+                    }
                     Ok(ConstDef {
+                        attrs,
                         name: id(n),
                         ty: m.field(&o, "ty", Im::ty)?,
                         value: *m.sub(&o, "value")?,
@@ -1492,6 +1508,7 @@ impl Im {
             "a function",
             &[
                 "kind",
+                "summary",
                 "external_body",
                 "rationale",
                 "effects",
@@ -1522,6 +1539,13 @@ impl Im {
             attrs.push(Attr {
                 name: id("rationale"),
                 args: self.list(&o, "rationale", Im::attr_arg)?,
+                span: sp(),
+            });
+        }
+        if o.get("summary").is_some() {
+            attrs.push(Attr {
+                name: id("summary"),
+                args: vec![AttrArg::Str(self.string(&o, "summary")?, sp())],
                 span: sp(),
             });
         }

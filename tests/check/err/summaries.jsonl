@@ -1,0 +1,4 @@
+{"code":"E0704","severity":"error","message":"`#[summary(..)]` takes exactly one string","file":"err/summaries.bmb","line":3,"col":5,"end_line":3,"end_col":25}
+{"code":"E0605","severity":"error","message":"duplicate `#[summary(..)]` attribute","file":"err/summaries.bmb","line":7,"col":5,"end_line":7,"end_col":20,"fix":{"message":"keep one: join the text","replacement":""}}
+{"code":"E1002","severity":"error","message":"`#[summary]` is not allowed here: before a statement, only `#[rationale(..)]` before `assume(..)`","file":"err/summaries.bmb","line":12,"col":9,"end_line":12,"end_col":36,"fix":{"message":"remove the attribute","replacement":""}}
+{"code":"E0605","severity":"error","message":"unknown attribute `other` on a constant","file":"err/summaries.bmb","line":17,"col":5,"end_line":17,"end_col":18,"fix":{"message":"constants take `#[summary(\"..\")]`","replacement":""}}

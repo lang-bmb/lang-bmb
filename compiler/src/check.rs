@@ -2066,13 +2066,17 @@ impl<'a> Checker<'a> {
                 );
             }
             for a in &t.attrs {
+                if a.name.name == "summary" {
+                    self.check_summary(a, &t.attrs);
+                    continue;
+                }
                 self.diags.push(
                     Diag::new(
                         "E0605",
                         a.span,
                         format!("unknown attribute `{}` on a trait", a.name.name),
                     )
-                    .fix("traits take no attributes", Some(String::new())),
+                    .fix("traits take `#[summary(\"..\")]`", Some(String::new())),
                 );
             }
             let path = format!("{mp}::{}", t.name.name);
@@ -2628,6 +2632,10 @@ impl<'a> Checker<'a> {
                             ),
                         );
                     }
+                    continue;
+                }
+                if a.name.name == "summary" {
+                    self.check_summary(a, &t.attrs);
                     continue;
                 }
                 let d = if a.name.name == "derive" {
@@ -4039,6 +4047,22 @@ impl<'a> Checker<'a> {
         e
     }
 
+    /// A definition's `#[summary("..")]` (ADR-0117): one string, once.
+    fn check_summary(&mut self, a: &Attr, all: &[Attr]) {
+        if !(a.args.len() == 1 && matches!(a.args[0], AttrArg::Str(..))) {
+            self.err("E0704", a.span, "`#[summary(..)]` takes exactly one string");
+        } else if all
+            .iter()
+            .find(|x| x.name.name == "summary")
+            .is_some_and(|first| first.span != a.span)
+        {
+            self.diags.push(
+                Diag::new("E0605", a.span, "duplicate `#[summary(..)]` attribute")
+                    .fix("keep one: join the text", Some(String::new())),
+            );
+        }
+    }
+
     /// Reads `#[effects(..)]` and reports attribute problems once, during collection.
     fn fn_effect(&mut self, f: &FnDef) -> Effects {
         let mut effect = None;
@@ -4089,6 +4113,7 @@ impl<'a> Checker<'a> {
                     }
                 }
                 "rationale" => self.check_rationale(a),
+                "summary" => self.check_summary(a, &f.attrs),
                 other => self.diags.push(
                     Diag::new(
                         "E0605",
@@ -4096,7 +4121,7 @@ impl<'a> Checker<'a> {
                         format!("unknown attribute `{other}` on a function"),
                     )
                     .fix(
-                        "remove it: functions take `#[effects(..)]`, `#[uses(..)]`, `#[external_body]` and `#[rationale(..)]`",
+                        "remove it: functions take `#[summary(\"..\")]`, `#[effects(..)]`, `#[uses(..)]`, `#[external_body]` and `#[rationale(..)]`",
                         Some(String::new()),
                     ),
                 ),
@@ -4162,6 +4187,20 @@ impl<'a> Checker<'a> {
             self.check_mod(sub, &format!("{mp}::"));
         }
         for c in &m.consts {
+            for a in &c.attrs {
+                if a.name.name == "summary" {
+                    self.check_summary(a, &c.attrs);
+                } else {
+                    self.diags.push(
+                        Diag::new(
+                            "E0605",
+                            a.span,
+                            format!("unknown attribute `{}` on a constant", a.name.name),
+                        )
+                        .fix("constants take `#[summary(\"..\")]`", Some(String::new())),
+                    );
+                }
+            }
             self.check_const(c, &mp);
         }
         for f in &m.fns {

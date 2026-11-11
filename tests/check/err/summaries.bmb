@@ -1,0 +1,19 @@
+#[summary("정의 요약의 오류(ADR-0117): 문자열 하나, 한 번, 정의 앞에만")]
+mod sm {
+    #[summary(one, two)]
+    const A: i64 = 1;
+
+    #[summary("a")]
+    #[summary("b")]
+    struct S { x: i64 }
+
+    #[effects(pure)]
+    fn f(x: i64) -> i64 {
+        /// not before a definition
+        x
+    }
+
+    //// four slashes stay a comment
+    #[other("z")]
+    const B: i64 = 2;
+}

@@ -72,6 +72,8 @@ pub struct Closure {
 /// `const NAME: T = e;` (ADR-0052): a value the checker evaluates.
 #[derive(Debug, Clone)]
 pub struct ConstDef {
+    /// `#[summary("..")]` (ADR-0117).
+    pub attrs: Vec<Attr>,
     pub name: Ident,
     pub ty: Type,
     pub value: Expr,

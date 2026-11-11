@@ -296,7 +296,7 @@
    "src": "bd1dd105282039cb"
   },
   "tests/check/err/items.bmb": {
-   "out": "a223c23aafc40806",
+   "out": "27dde3cc36809683",
    "src": "ad66da8b17955c36"
   },
   "tests/check/err/lexing.bmb": {
@@ -398,6 +398,10 @@
   "tests/check/err/subslices.bmb": {
    "out": "8c603d44e8253fef",
    "src": "faa496d36eac4966"
+  },
+  "tests/check/err/summaries.bmb": {
+   "out": "d9d5ac4e49d124eb",
+   "src": "4065e5d459ff62f6"
   },
   "tests/check/err/traits.bmb": {
    "out": "711089d71b02dc0d",
@@ -1098,6 +1102,10 @@
   "tests/verify/pass/subslices.bmb": {
    "out": "4ae3c3e46bd27a2f",
    "src": "c1c6d3dc3fed2613"
+  },
+  "tests/verify/pass/summaries.bmb": {
+   "out": "b9c54e89e2829586",
+   "src": "e607c453f2488bb5"
   },
   "tests/verify/pass/text_ord.bmb": {
    "out": "2ea3851c5ff7e279",

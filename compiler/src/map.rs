@@ -122,6 +122,24 @@ pub struct TypeEntry {
     pub names: BTreeSet<String>,
     /// The predicate of its `#[invariant(p)]` (ADR-0060 §1), by full path.
     pub inv: Option<String>,
+    /// Its `#[summary("..")]` (ADR-0117).
+    pub summary: Option<String>,
+}
+
+/// The text of a definition's `#[summary("..")]` (ADR-0117).
+pub fn summary_of(attrs: &[Attr]) -> Option<String> {
+    attrs
+        .iter()
+        .find(|a| a.name.name == "summary")
+        .and_then(|a| match a.args.first() {
+            Some(AttrArg::Str(s, _)) => Some(s.clone()),
+            _ => None,
+        })
+}
+
+/// The `summary` key of an L1 row, when the definition has one.
+fn summary_key(s: &Option<String>) -> Option<(&'static str, J)> {
+    s.as_ref().map(|s| ("summary", J::S(s.clone())))
 }
 
 #[derive(Clone)]
@@ -841,6 +859,7 @@ impl Index {
                     display: shown(&path),
                     names: BTreeSet::new(),
                     inv: None,
+                    summary: summary_of(&tr.attrs),
                     unit,
                     path,
                 },
@@ -877,6 +896,7 @@ impl Index {
                     display: shown(&path),
                     names,
                     inv: t.adts.get(&path).and_then(|a| a.inv.clone()),
+                    summary: summary_of(&td.attrs),
                     unit,
                     path,
                 },
@@ -939,6 +959,7 @@ impl Index {
                     display: None,
                     names,
                     inv: None,
+                    summary: summary_of(&c.attrs),
                     unit,
                     path,
                 },
@@ -1294,6 +1315,7 @@ impl<'p> Model<'p> {
                 ("line", J::N(ty.line as u64)),
             ]
             .into_iter()
+            .chain(summary_key(&ty.summary))
             .chain(display_key(&ty.display))
             .chain(library_key(&ty.path))
             .collect(),
@@ -1366,6 +1388,7 @@ impl<'p> Model<'p> {
             .into_iter()
             .chain(self.escape_keys(d))
             .chain(self.termination_key(d))
+            .chain(summary_key(&summary_of(&d.f.attrs)))
             .chain(display_key(&d.display))
             .chain(library_key(&d.path))
             .collect(),
