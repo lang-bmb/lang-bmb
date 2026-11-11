@@ -26,6 +26,9 @@ import sys
 import tempfile
 from pathlib import Path
 
+import backlog
+import components
+
 ROOT = Path(__file__).resolve().parent.parent
 BMB = ROOT / "target" / "debug" / "bmb"
 BASELINE = ROOT / "dev-docs" / "health" / "baseline.json"
@@ -280,6 +283,7 @@ def self_containment():
         "S4_stage0_rust_lines": rust_lines,
         "S5_tests_bound_to_rust_api": api_bound,
         "S6_selfhost_bmb_lines": bmb_compiler_lines,
+        "S7_selfhost_proved_defs": components.proved_share(ROOT),
     }
 
 
@@ -320,9 +324,23 @@ def binary_size():
     return {"B1_baseline_binary_bytes": total}
 
 
+LEDGER_KINDS = ("거짓 증명", "거짓 반례", "오컴파일")
+LEDGER_PATHS = ("퍼저", "코퍼스", "사용", "감사", "측정")
+
+
+def soundness_ledger(root=ROOT):
+    """Rows of dev-docs/health/soundness-ledger.md: (backlog id, kind, path)."""
+    text = (root / "dev-docs" / "health" / "soundness-ledger.md").read_text(encoding="utf-8")
+    rows = []
+    for line in text.split("## 원장", 1)[1].split("\n## ", 1)[0].splitlines():
+        c = [x.strip() for x in line.strip().strip("|").split("|")]
+        if line.startswith("|") and len(c) == 7 and c[0] not in ("백로그", "---"):
+            rows.append((c[0], c[1], c[2]))
+    return rows
+
+
 def process():
-    text = (ROOT / "dev-docs" / "BACKLOG.md").read_text()
-    rows = [l for l in text.splitlines() if re.match(r"^\| ~?(?:\d|INF)[A-Z]?-\d{2}[a-z]? ", l)]
+    rows = [l for l in backlog.text(ROOT).splitlines() if re.match(r"^\| ~?(?:\d|INF)[A-Z]?-\d{2}[a-z]? ", l)]
     done = sum("| ✅" in l for l in rows)
     blocked = sum("| 🚫" in l for l in rows)
     adr_dir = ROOT / "dev-docs" / "adr"
@@ -331,6 +349,10 @@ def process():
     return {
         "O1_adr_index_mismatch": len(files ^ index),
         "O2_soundness_fuzzers": len(list((ROOT / "compiler" / "tests").glob("soundness*.rs"))),
+        "O3_active_backlog_chars": backlog.size(ROOT),
+        # V13 (report only): soundness defects fixed so far, by where each first showed.
+        "_soundness_defects": ", ".join(
+            f"{p} {sum(r[2] == p for r in soundness_ledger())}" for p in LEDGER_PATHS),
         "_backlog": f"{done}/{len(rows)} done, {blocked} blocked",
     }
 
@@ -355,12 +377,16 @@ RULES = {
     "S4_stage0_rust_lines": ("report", None),
     "S5_tests_bound_to_rust_api": ("no_worse_down", None),
     "S6_selfhost_bmb_lines": ("no_worse_up", None),
+    # The proved share of the port's definitions (4D-08); None until a port exists.
+    "S7_selfhost_proved_defs": ("no_worse_up_opt", None),
     "P1_runnable_programs": ("no_worse_up", None),
     "P2_bmb_lines": ("no_worse_up", None),
     "P3_errors_with_help": ("no_worse_up", None),
     "B1_baseline_binary_bytes": ("budget", 0.05),
     "O1_adr_index_mismatch": ("fixed", 0),
     "O2_soundness_fuzzers": ("no_worse_up", None),
+    # The next session reads the active backlog whole (AUTONOMY §1, INF-30).
+    "O3_active_backlog_chars": ("fixed_max", 80000),
 }
 
 
@@ -392,15 +418,17 @@ def judge(m, base):
             bad.append(f"{k} = {v}, must be < {p}")
         elif b is None:
             continue
+        elif rule == "no_worse_up_opt" and v is None:
+            bad.append(f"{k} has no value, baseline {b}")
         elif rule == "same" and v != b:
             bad.append(f"{k} = {v!r}, baseline {b!r} (a new external dependency needs an ADR)")
         elif rule == "budget" and v > b * (1 + p):
             bad.append(f"{k} = {v}, more than {int(p * 100)}% above baseline {b}")
-        elif rule == "no_worse_up" and v < b:
+        elif rule in ("no_worse_up", "no_worse_up_opt") and v < b:
             bad.append(f"{k} = {v}, below baseline {b}")
         elif rule == "no_worse_down" and v > b:
             bad.append(f"{k} = {v}, above baseline {b}")
-        if b is not None and ((rule == "no_worse_up" and v > b) or (rule in ("no_worse_down", "budget") and v < b)):
+        if b is not None and v is not None and ((rule in ("no_worse_up", "no_worse_up_opt") and v > b) or (rule in ("no_worse_down", "budget") and v < b)):
             better.append(f"{k}: {b} -> {v}")
     return bad, better
 
@@ -443,7 +471,7 @@ def main():
         print(f"baseline updated ({len(changed)} metrics changed)")
         return 0
     bad, better = judge(m, base["metrics"])
-    missing = [k for k in RULES if k not in base["metrics"]]
+    missing = [k for k in RULES if k not in base["metrics"] and m[k] is not None]
     if missing:
         bad.append(f"baseline has no value for {', '.join(missing)}: run `health.py accept --reason ...`")
     for b in better:

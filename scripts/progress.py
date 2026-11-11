@@ -3,6 +3,8 @@
 
   progress.py                 print the generated block
   progress.py --write FILE    replace the generated block in FILE
+  progress.py --write-roadmap replace the phase status block of docs/ROADMAP.md
+                              (backlog counts per phase, INF-31)
 
 The report is one file updated in place; earlier versions are its git history.
 Every value comes from a file in the repository (the health baseline, the
@@ -21,6 +23,8 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+
+import backlog
 
 ROOT = Path(__file__).resolve().parent.parent
 BEGIN = "<!-- progress:data begin (scripts/progress.py --write; do not edit by hand) -->"
@@ -61,7 +65,7 @@ def baseline():
 def tasks():
     """Backlog rows: id -> status mark name (done/doing/todo/blocked/cancelled)."""
     out = {}
-    for line in read("dev-docs/BACKLOG.md").splitlines():
+    for line in backlog.text(ROOT).splitlines():
         if not line.startswith("|"):
             continue
         c = cells(line)
@@ -90,6 +94,46 @@ def phase_counts(ts, prefixes):
         if mine:
             parts.append(f"{p} {sum(s == 'done' for s in mine)}/{len(mine)}")
     return " · ".join(parts) if parts else "태스크 없음"
+
+
+RM_BEGIN = "<!-- roadmap:status begin (scripts/progress.py --write-roadmap; do not edit by hand) -->"
+RM_END = "<!-- roadmap:status end -->"
+ROADMAP = "docs/ROADMAP.md"
+STAGES = [
+    ("0 착수·인프라", ["0", "INF"]),
+    ("1 최소 관통 경로", ["1A", "1B", "1C", "1D", "1E", "1F"]),
+    ("2 언어 확장", ["2A", "2B", "2C", "2D", "2E", "2F", "2G", "2S", "2V", "2T", "2O", "2K", "2U", "2N", "2M", "2R", "2H", "2P"]),
+    ("트랙", ["T0", "T1", "T2", "T3", "T4"]),
+    ("3 대형 프로젝트", ["3A", "3P"]),
+    ("4 자립", ["4A", "4B", "4C", "4D", "4E", "4F", "4G"]),
+    ("5 성숙·생태계", ["5A", "5B", "5C", "5D", "5E"]),
+]
+
+
+def roadmap_block(ts=None):
+    """Phase status from the backlog: done/total and the open tasks by mark.
+    The roadmap's prose says what a phase is for; this says where it stands."""
+    ts = tasks() if ts is None else ts
+    known = {p for _, ps in STAGES for p in ps}
+    stray = sorted({phase(t) for t in ts} - known)
+    if stray:
+        fail(f"backlog phases not in progress.STAGES: {', '.join(stray)}")
+    lines = [RM_BEGIN, "", "| 단계 | 페이즈 | ✅/전체 | 🔄 진행 | ⏳ 대기 | 🚫 막힘 |", "| --- | --- | --- | --- | --- | --- |"]
+    for stage, ps in STAGES:
+        for p in ps:
+            mine = sorted((t, s) for t, s in ts.items() if phase(t) == p and s != "cancelled")
+            if not mine:
+                continue
+            ids = lambda k: ", ".join(f"`{t}`" for t, s in mine if s == k) or "—"  # noqa: E731
+            lines.append(f"| {stage} | {p} | {sum(s == 'done' for _, s in mine)}/{len(mine)} | "
+                         f"{ids('doing')} | {ids('todo')} | {ids('blocked')} |")
+    return "\n".join(lines + ["", RM_END])
+
+
+def replace_roadmap(text, new):
+    if RM_BEGIN not in text or RM_END not in text:
+        fail("ROADMAP.md has no roadmap:status markers")
+    return text[: text.index(RM_BEGIN)] + new + text[text.index(RM_END) + len(RM_END):]
 
 
 def status_of(ts, tid):
@@ -393,8 +437,13 @@ def main(argv=None):
         path.write_text(replace(path.read_text(encoding="utf-8"), block(committed(rel))), encoding="utf-8")
         print(f"updated {argv[1]}")
         return 0
+    if argv == ["--write-roadmap"]:
+        path = ROOT / ROADMAP
+        path.write_text(replace_roadmap(path.read_text(encoding="utf-8"), roadmap_block()), encoding="utf-8")
+        print(f"updated {ROADMAP}")
+        return 0
     if argv:
-        fail("usage: progress.py [--write FILE]")
+        fail("usage: progress.py [--write FILE | --write-roadmap]")
     print(block(committed(REPORT)))
     return 0
 

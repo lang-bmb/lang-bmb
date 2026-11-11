@@ -59,6 +59,24 @@ class Comments(unittest.TestCase):
             self.assertEqual(pair.summaries(d), {"vm": "vm: the stack"})
         self.assertEqual(pair.doc_parity("stk"), [])
 
+    def test_docs_condition_keeps_outer_docs_only(self):
+        src = "//! m\n/// d one\n/// d two\n//// not a doc\n#[inline]\nfn f() {} // tail\n/* b */\n"
+        self.assertEqual(pair.strip_comments(src, docs=True), "//! m\n/// d one\n/// d two\n#[inline]\nfn f() {}\n")
+        bmb = "mod m {\n    /// d one\n    /// d two\n    #[effects(pure)]\n    fn f() -> () {\n    }\n}\n"
+        self.assertEqual(pair.strip_summaries(bmb), "mod m {\n    #[effects(pure)]\n    fn f() -> () {\n    }\n}\n")
+        self.assertEqual(pair.item_docs(src), {"f": ["d one d two"]})
+        self.assertEqual(pair.item_docs(bmb), {"f": ["d one d two"]})
+        self.assertEqual(pair.item_docs("/// a\npub(crate) const N: usize = 1;\n/// b\nspec fn g() -> int;\n"),
+                         {"N": ["a"], "g": ["b"]})
+
+    def test_rust_docs_may_only_add_the_contract_in_words(self):
+        ok = lambda extra: bool(pair.EXTRA.fullmatch(extra))  # noqa: E731
+        self.assertTrue(ok(""))
+        self.assertTrue(ok(" Requires `lo < hi <= s.len()`."))
+        self.assertTrue(ok(" Requires x > 0. Ensures the result is 1.5 times x."))
+        self.assertFalse(ok(" Also note the cache."))
+        self.assertFalse(ok(" Requires x > 0. See vm."))
+
     def test_scope_ignores_comment_edits(self):
         a = pair.rust_items(pair.strip_comments("/// old\nfn f() {}\n"), "m")
         b = pair.rust_items(pair.strip_comments("/// new words\nfn f() {} // and here\n"), "m")

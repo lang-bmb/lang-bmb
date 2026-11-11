@@ -25,7 +25,8 @@
     "P3_errors_with_help": 0.9156,
     "B1_baseline_binary_bytes": 101664,
     "O1_adr_index_mismatch": 0,
-    "O2_soundness_fuzzers": 17
+    "O2_soundness_fuzzers": 17,
+    "O3_active_backlog_chars": 39740
   },
   "history": [
     {
@@ -2516,6 +2517,16 @@
         "P3_errors_with_help": [
           0.9149,
           0.9156
+        ]
+      }
+    },
+    {
+      "date": "2026-11-11",
+      "reason": "O3 활성 백로그 글자 수(INF-30): 백로그 분할",
+      "changed": {
+        "O3_active_backlog_chars": [
+          null,
+          39740
         ]
       }
     }

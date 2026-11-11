@@ -15,9 +15,10 @@ GOOD = {
     "V8_bench_rlimit_total": 5000, "V9_bench_defs_at_limit": 1, "V10_library_rlimit_total": 2000,
     "V11_sat_check_rlimit_total": 3000, "V12_sat_check_undecided": 10, "S1_external_crates": 0,
     "S2_external_processes": ["clang", "z3"], "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 100, "S5_tests_bound_to_rust_api": 30, "S6_selfhost_bmb_lines": 0,
+    "S4_stage0_rust_lines": 100, "S5_tests_bound_to_rust_api": 30, "S6_selfhost_bmb_lines": 0, "S7_selfhost_proved_defs": None,
     "P1_runnable_programs": 6, "P2_bmb_lines": 3000, "P3_errors_with_help": 0.5,
     "B1_baseline_binary_bytes": 100000, "O1_adr_index_mismatch": 0, "O2_soundness_fuzzers": 6,
+    "O3_active_backlog_chars": 40000,
 }
 
 
@@ -65,7 +66,21 @@ def sat_check_cost():
     assert ["bench/m1b/seed/src/" + f.name for f in sorted((health.ROOT / "bench/m1b/seed/src").glob("*.bmb"))] in progs
 
 
+def ledger():
+    """The soundness ledger (INF-32): every row names a backlog task and uses
+    the fixed words for its kind and path."""
+    import backlog
+    ids = {backlog.task(l)[0] for l in backlog.text().splitlines() if backlog.task(l)}
+    rows = health.soundness_ledger()
+    assert rows, "the soundness ledger has no rows"
+    for tid, kind, path in rows:
+        assert tid in ids, f"ledger row {tid}: no such backlog task"
+        assert kind in health.LEDGER_KINDS, f"ledger row {tid}: kind {kind!r}"
+        assert path in health.LEDGER_PATHS, f"ledger row {tid}: path {path!r}"
+
+
 def main():
+    ledger()
     assert bad({}) == ([], []), bad({})
     # fixed rules fail whatever the baseline says
     assert bad({"S1_external_crates": 1})[0]
@@ -75,6 +90,12 @@ def main():
     assert bad({"V7_unstable_queries": 0.025}) == ([], [])
     assert bad({"V8_bench_rlimit_total": 5501})[0]  # budget +10%
     assert bad({"V9_bench_defs_at_limit": 2})[0]  # may only go down
+    # the port's proved share (4D-08): no value until a port exists, then only up
+    assert bad({"S7_selfhost_proved_defs": 0.5}) == ([], [])
+    with_port = dict(GOOD, S7_selfhost_proved_defs=0.6)
+    assert health.judge(dict(with_port, S7_selfhost_proved_defs=0.5), with_port)[0]
+    assert health.judge(dict(with_port, S7_selfhost_proved_defs=0.7), with_port) == ([], ["S7_selfhost_proved_defs: 0.6 -> 0.7"])
+    assert health.judge(dict(with_port, S7_selfhost_proved_defs=None), with_port)[0]  # the port went away
     assert bad({"V10_library_rlimit_total": 2201})[0]  # budget +10%
     assert bad({"V10_library_rlimit_total": 2200}) == ([], [])
     assert bad({"V9_bench_defs_at_limit": 0}) == ([], ["V9_bench_defs_at_limit: 1 -> 0"])

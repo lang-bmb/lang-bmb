@@ -1,0 +1,255 @@
+{
+  "_about": "Components of the compiler (dev-docs/measurements/selfhost-port-map.md §7.1): stage0 files under compiler/src, port files under selfhost/, and the pin of ADR-0113. Edited by scripts/components.py (pin, repin) and by hand (files, ledger).",
+  "components": [
+    {
+      "id": "C0",
+      "name": "기반 라이브러리",
+      "phase": "P0",
+      "stage0": [
+        "sha256.rs",
+        "json.rs",
+        "diag.rs",
+        "source.rs"
+      ],
+      "port": [],
+      "pin": null,
+      "ledger": {
+        "session_tokens": null,
+        "rejected_writes": null,
+        "undecided": null,
+        "friction": []
+      }
+    },
+    {
+      "id": "C1",
+      "name": "렉서",
+      "phase": "P1",
+      "stage0": [
+        "lexer.rs"
+      ],
+      "port": [],
+      "pin": null,
+      "ledger": {
+        "session_tokens": null,
+        "rejected_writes": null,
+        "undecided": null,
+        "friction": []
+      }
+    },
+    {
+      "id": "C2",
+      "name": "파서·구문 트리",
+      "phase": "P2",
+      "stage0": [
+        "parser.rs",
+        "ast.rs"
+      ],
+      "port": [],
+      "pin": null,
+      "ledger": {
+        "session_tokens": null,
+        "rejected_writes": null,
+        "undecided": null,
+        "friction": []
+      }
+    },
+    {
+      "id": "C3",
+      "name": "정규형·해시·정체성",
+      "phase": "P3",
+      "stage0": [
+        "fmt.rs",
+        "identity.rs"
+      ],
+      "port": [],
+      "pin": null,
+      "ledger": {
+        "session_tokens": null,
+        "rejected_writes": null,
+        "undecided": null,
+        "friction": []
+      }
+    },
+    {
+      "id": "C4",
+      "name": "검사기",
+      "phase": "P3",
+      "stage0": [
+        "check.rs",
+        "moves.rs",
+        "consts.rs",
+        "closures.rs",
+        "refs.rs",
+        "escape.rs",
+        "stdlib.rs",
+        "check/text.rs"
+      ],
+      "port": [],
+      "pin": null,
+      "ledger": {
+        "session_tokens": null,
+        "rejected_writes": null,
+        "undecided": null,
+        "friction": []
+      }
+    },
+    {
+      "id": "C5",
+      "name": "맵·질의",
+      "phase": "P5",
+      "stage0": [
+        "map.rs",
+        "view.rs"
+      ],
+      "port": [],
+      "pin": null,
+      "ledger": {
+        "session_tokens": null,
+        "rejected_writes": null,
+        "undecided": null,
+        "friction": []
+      }
+    },
+    {
+      "id": "C6",
+      "name": "증명 인코딩",
+      "phase": "P6",
+      "stage0": [
+        "verify.rs",
+        "subproof.rs",
+        "verify/invariants.rs",
+        "verify/text.rs"
+      ],
+      "port": [],
+      "pin": null,
+      "ledger": {
+        "session_tokens": null,
+        "rejected_writes": null,
+        "undecided": null,
+        "friction": []
+      }
+    },
+    {
+      "id": "C7",
+      "name": "해법기·도구 연결",
+      "phase": "P7",
+      "stage0": [
+        "smt.rs",
+        "toolchain.rs"
+      ],
+      "port": [],
+      "pin": null,
+      "ledger": {
+        "session_tokens": null,
+        "rejected_writes": null,
+        "undecided": null,
+        "friction": []
+      }
+    },
+    {
+      "id": "C8",
+      "name": "코드 생성",
+      "phase": "P4",
+      "stage0": [
+        "codegen.rs",
+        "codegen/sys.rs",
+        "codegen/text.rs"
+      ],
+      "port": [],
+      "pin": null,
+      "ledger": {
+        "session_tokens": null,
+        "rejected_writes": null,
+        "undecided": null,
+        "friction": []
+      }
+    },
+    {
+      "id": "C9",
+      "name": "캐시·증분",
+      "phase": "P8",
+      "stage0": [
+        "cache.rs",
+        "incremental.rs"
+      ],
+      "port": [],
+      "pin": null,
+      "ledger": {
+        "session_tokens": null,
+        "rejected_writes": null,
+        "undecided": null,
+        "friction": []
+      }
+    },
+    {
+      "id": "C10",
+      "name": "도구",
+      "phase": "P9",
+      "stage0": [
+        "lint.rs",
+        "uses_fill.rs",
+        "lib.rs",
+        "weaken.rs",
+        "probe.rs",
+        "udiff.rs",
+        "ast_json.rs"
+      ],
+      "port": [],
+      "pin": null,
+      "ledger": {
+        "session_tokens": null,
+        "rejected_writes": null,
+        "undecided": null,
+        "friction": []
+      }
+    },
+    {
+      "id": "C11",
+      "name": "작업 공간·트랜잭션",
+      "phase": "P10",
+      "stage0": [
+        "workspace.rs"
+      ],
+      "port": [],
+      "pin": null,
+      "ledger": {
+        "session_tokens": null,
+        "rejected_writes": null,
+        "undecided": null,
+        "friction": []
+      }
+    },
+    {
+      "id": "C12",
+      "name": "MCP 서버",
+      "phase": "P11",
+      "stage0": [
+        "mcp.rs"
+      ],
+      "port": [],
+      "pin": null,
+      "ledger": {
+        "session_tokens": null,
+        "rejected_writes": null,
+        "undecided": null,
+        "friction": []
+      }
+    },
+    {
+      "id": "C13",
+      "name": "CLI",
+      "phase": "P11",
+      "stage0": [
+        "main.rs"
+      ],
+      "port": [],
+      "pin": null,
+      "ledger": {
+        "session_tokens": null,
+        "rejected_writes": null,
+        "undecided": null,
+        "friction": []
+      }
+    }
+  ]
+}

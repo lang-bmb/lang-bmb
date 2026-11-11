@@ -18,7 +18,7 @@ step "build"   # every test executable and target/debug/bmb, which the benches u
 built=$(mktemp)
 trap 'rm -f "$built"' EXIT
 cargo test --no-run --quiet --message-format=json-render-diagnostics > "$built"
-step "backlog"; python3 scripts/check_backlog.py
+step "backlog"; python3 scripts/test_backlog.py > /dev/null && python3 scripts/check_backlog.py
 step "docs";    target/debug/bmb codes --md | diff -u docs/diagnostics.md - > /dev/null || { echo "docs/diagnostics.md is stale: run cargo run -q -- codes --md > docs/diagnostics.md"; exit 1; }
 # Every gate-power mutant still applies to the sources (backlog 2T-05: six
 # had drifted unnoticed since 2T-02).
@@ -205,5 +205,6 @@ python3 bench/brb-hard/harness.py summarize "$b" "$r" | grep -qF "| 성공(숨�
   --job "health=python3 scripts/health.py" \
   --job "health rules=python3 scripts/test_health.py && python3 scripts/test_solver_stability.py" \
   --job "progress report (INF-24)=python3 scripts/test_progress.py" \
+  --job "components and port ledger (4D-08, 4D-10)=python3 scripts/test_components.py > /dev/null && python3 scripts/components.py check" \
   --job "baseline perf check rules (INF-25)=python3 bench/baseline/test_run.py"
 echo "all checks passed"

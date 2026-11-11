@@ -98,17 +98,19 @@ def task_cases(task):
     return cases
 
 
-def strip_comments(text):
+def strip_comments(text, docs=False):
     """Rust source without its comments (ADR-0106): `//` and `///` lines and
     tails, `/* */` blocks (nested) and `/** */`, except the module's inner
-    doc `//!`, which mirrors the BMB unit's `#[summary]`. Strings, byte
+    doc `//!`, which mirrors the BMB unit's `#[summary]`. With `docs` the
+    outer doc lines `///` stay too (ADR-0118: they mirror the definition
+    summaries of the BMB arm). Strings, byte
     strings, raw strings (`r#".."#`), chars and lifetimes are kept as they
     are. A line left empty by a removed comment goes; other lines lose
     their trailing spaces."""
     out, i, n = [], 0, len(text)
     while i < n:
         c = text[i]
-        if text.startswith("//!", i):
+        if text.startswith("//!", i) or (docs and text.startswith("///", i) and not text.startswith("////", i)):
             j = text.find("\n", i)
             j = n if j < 0 else j
             out.append(text[i:j])
@@ -158,7 +160,7 @@ def strip_comments(text):
     return "\n".join(lines)
 
 
-def strip_crate(crate):
+def strip_crate(crate, docs=False):
     """Every `.rs` file of `crate` through `strip_comments`."""
     for d, _, files in os.walk(crate):
         for f in files:
@@ -167,18 +169,47 @@ def strip_crate(crate):
                 with open(p, encoding="utf-8") as h:
                     text = h.read()
                 with open(p, "w", encoding="utf-8") as h:
-                    h.write(strip_comments(text))
+                    h.write(strip_comments(text, docs))
 
 
-# The documentation condition of the Rust arm (ADR-0106): `strip`, the
-# measured condition, or `keep`, the control.
-RUST_COMMENTS = os.environ.get("PAIR_RUST_COMMENTS", "strip")
+# The documentation condition (ADR-0118, ADR-0106):
+#   summary  the measured one: definition summaries in the BMB arm, the same
+#            text as `///` in the Rust arm; other comments stripped
+#   none     no definition documentation in either arm (the unit summaries
+#            and `//!` stay)
+#   all      the control: the Rust crate as written, the BMB arm as `summary`
+DOCS = os.environ.get("PAIR_DOCS", "summary")
+if DOCS not in ("summary", "none", "all"):
+    raise SystemExit(f"PAIR_DOCS={DOCS!r}: summary, none or all")
+
+
+def strip_summaries(text):
+    """BMB source without its definition summaries: the `///` lines go (a
+    fixture writes them only in that form, `doc_parity`)."""
+    return "".join(ln for ln in text.splitlines(keepends=True) if not ln.lstrip().startswith("///"))
+
+
+def bmb_sources(src, dest, docs):
+    """The fixture's `.bmb` files for condition `docs`: as written, or copies
+    under `dest` without definition summaries."""
+    files = sorted(f for f in os.listdir(src) if f.endswith(".bmb"))
+    if docs != "none":
+        return [os.path.join(src, f) for f in files]
+    os.makedirs(dest, exist_ok=True)
+    out = []
+    for f in files:
+        with open(os.path.join(src, f), encoding="utf-8") as h:
+            text = h.read()
+        out.append(os.path.join(dest, f))
+        with open(out[-1], "w", encoding="utf-8") as h:
+            h.write(strip_summaries(text))
+    return out
 
 
 def materialize(task, arm, dest):
-    """The arm's starting copy of the fixture under `dest`: a workspace
-    (`bmb import`) or a crate (its comments stripped unless the condition is
-    `keep`, ADR-0106). A task with `commit` takes the fixture from that
+    """The arm's starting copy of the fixture under `dest`, in the
+    documentation condition `DOCS`: a workspace (`bmb import`) or a crate.
+    A task with `commit` takes the fixture from that
     commit (`git archive`), so a task replays a fixed state."""
     src = os.path.join(fixture_dir(task["fixture"]), arm)
     if task.get("commit"):
@@ -188,14 +219,14 @@ def materialize(task, arm, dest):
         subprocess.run(["tar", "-x", "-C", tmp], input=tar, check=True)
         src = os.path.join(tmp, rel)
     if arm == "bmb":
-        files = sorted(os.path.join(src, f) for f in os.listdir(src) if f.endswith(".bmb"))
+        files = bmb_sources(src, tempfile.mkdtemp(prefix="pair-bmb-"), DOCS)
         r = subprocess.run([bmb_bin(), "import", dest, *files], capture_output=True, text=True)
         if r.returncode != 0:
             raise RuntimeError(f"bmb import failed: {r.stdout}{r.stderr}")
     else:
         shutil.copytree(src, dest, ignore=shutil.ignore_patterns("target"))
-        if RUST_COMMENTS == "strip":
-            strip_crate(dest)
+        if DOCS != "all":
+            strip_crate(dest, docs=DOCS == "summary")
     return dest
 
 
@@ -620,7 +651,7 @@ def run_task(task, arm, agent_kind, script=None):
         finally:
             tools.close()
         row = {"id": task["id"], "kind": task["kind"], "fixture": task["fixture"], "arm": arm, "agent": agent_kind,
-               **({"rust_comments": RUST_COMMENTS} if arm == "rust" else {}),
+               "docs": DOCS,
                **m, "tokens": math.ceil(m["resp_bytes"] / 4), "req_tokens": math.ceil(m["req_bytes"] / 4),
                "wall_s": round(time.perf_counter() - t0, 3), "model_usage": agent.usage,
                "stop": getattr(agent, "stop", None)}
@@ -666,21 +697,74 @@ def summaries(src):
     return out
 
 
+ITEM = re.compile(r"\s*(?:pub(?:\([a-z]+\))? )?(spec fn|proof fn|fn|struct|enum|trait|const)\s+([A-Za-z_][A-Za-z0-9_]*)")
+EXTRA = re.compile(r"(?: (?:Requires|Ensures) [^.]*(?:\.(?! |$)[^.]*)*\.)*")
+
+
+def item_docs(text):
+    """{name: [doc, ..]} of a source text in either language: each run of
+    `///` lines, joined by spaces, with the item that follows it (attribute
+    lines between them skipped). A run before no item is under `?`."""
+    out, run = {}, []
+    for ln in text.split("\n"):
+        t = ln.strip()
+        if t.startswith("///") and not t.startswith("////"):
+            run.append(t[3:].strip())
+        elif run and (t.startswith(("#[", "//")) or not t):
+            continue
+        elif run:
+            m = ITEM.match(ln)
+            out.setdefault(m.group(2) if m else "?", []).append(" ".join(x for x in run if x))
+            run = []
+    if run:
+        out.setdefault("?", []).append(" ".join(run))
+    return out
+
+
 def doc_parity(fixture):
-    """ADR-0106 decision 1: each Rust module's `//!` is its BMB unit's
-    `#[summary]`, word for word, so the arms see the same documentation once
-    comments are stripped."""
+    """The arms see the same documentation (ADR-0106 decision 1, ADR-0118):
+    each Rust module's `//!` is its BMB unit's `#[summary]`, word for word;
+    each definition's `///` in the BMB source is the `///` of the Rust item
+    of the same name, which may go on only with `Requires ..` and
+    `Ensures ..` sentences (what the BMB arm reads in the contract); a BMB
+    definition summary is written as `///`, not on a `spec fn` or a
+    `proof fn` (the Rust arm has no such item), and stays in the normal
+    form as `#[summary]`."""
     rust = os.path.join(fixture_dir(fixture), "rust", "src")
-    units = summaries(os.path.join(fixture_dir(fixture), "bmb"))
-    problems = []
+    src = os.path.join(fixture_dir(fixture), "bmb")
+    units = summaries(src)
+    problems, total = [], 0
     for f in sorted(os.listdir(rust)):
         if not f.endswith(".rs"):
             continue
         with open(os.path.join(rust, f), encoding="utf-8") as h:
-            doc = inner_doc(h.read())
-        want = units.get(f[:-3])
+            rtext = h.read()
+        doc = inner_doc(rtext)
+        unit = f[:-3]
+        want = units.get(unit)
         if doc != want:
-            problems.append(f"{fixture}: {f}'s //! {doc!r} is not unit {f[:-3]}'s #[summary] {want!r}")
+            problems.append(f"{fixture}: {f}'s //! {doc!r} is not unit {unit}'s #[summary] {want!r}")
+        b = os.path.join(src, unit + ".bmb")
+        btext = ""
+        if os.path.exists(b):
+            with open(b, encoding="utf-8") as h:
+                btext = h.read()
+        bdocs, rdocs = item_docs(btext), item_docs(rtext)
+        for name in sorted(set(bdocs) | set(rdocs)):
+            bd, rd = bdocs.get(name, []), rdocs.get(name, [])
+            if len(bd) != len(rd) or any(not r.startswith(x) or not EXTRA.fullmatch(r[len(x):]) for x, r in zip(bd, rd)):
+                problems.append(f"{fixture}: {unit}::{name}: BMB /// {bd!r}, Rust /// {rd!r}")
+        for ln in btext.split("\n"):
+            if ln.startswith((" ", "\t")) and ln.strip().startswith("#[summary("):
+                problems.append(f"{fixture}: {unit}.bmb writes a definition summary as an attribute: {ln.strip()[:60]}")
+        total += sum(len(v) for v in bdocs.values())
+        for m in re.finditer(r"///[^\n]*\n(?:\s*(?:///|#\[)[^\n]*\n)*\s*(spec fn|proof fn)\b", btext):
+            problems.append(f"{fixture}: {unit}.bmb documents a {m.group(1)}")
+    files = sorted(os.path.join(src, f) for f in os.listdir(src) if f.endswith(".bmb"))
+    r = subprocess.run([bmb_bin(), "fmt", *files], capture_output=True, text=True)
+    kept = sum(1 for ln in r.stdout.split("\n") if ln.startswith((" ", "\t")) and ln.strip().startswith("#[summary("))
+    if r.returncode != 0 or kept != total:
+        problems.append(f"{fixture}: {total} documented definitions in the BMB source, the normal form keeps {kept}")
     return problems
 
 
@@ -692,24 +776,27 @@ def check_twins(fixture):
     try:
         exe = os.path.join(work, "bmb-exe")
         src = os.path.join(fixture_dir(fixture), "bmb")
-        files = sorted(os.path.join(src, f) for f in os.listdir(src) if f.endswith(".bmb"))
-        r = subprocess.run([bmb_bin(), "build", *files, "-o", exe], capture_output=True, text=True)
-        if r.returncode != 0:
-            return [f"{fixture}: bmb build failed: {r.stdout[-2000:]}"]
         cases = corpus(fixture)
-        arms = [("bmb", exe)]
-        # The Rust twin as written and without its comments (ADR-0106): the
-        # stripped crate is the measured one and must be the same program.
-        for cond in ("keep", "strip"):
+        arms = []
+        # Each arm in every documentation condition (ADR-0106, ADR-0118): a
+        # stripped source is a measured one and must be the same program.
+        for cond in ("summary", "none"):
+            e = f"{exe}-{cond}"
+            files = bmb_sources(src, os.path.join(work, f"bmb-{cond}"), cond)
+            r = subprocess.run([bmb_bin(), "build", *files, "-o", e], capture_output=True, text=True)
+            if r.returncode != 0:
+                return [f"{fixture}: bmb build (docs {cond}) failed: {r.stdout[-2000:]}"]
+            arms.append((f"bmb (docs {cond})", e))
+        for cond in ("all", "summary", "none"):
             crate = os.path.join(work, f"crate-{cond}")
             shutil.copytree(os.path.join(fixture_dir(fixture), "rust"), crate, ignore=shutil.ignore_patterns("target"))
-            if cond == "strip":
-                strip_crate(crate)
+            if cond != "all":
+                strip_crate(crate, docs=cond == "summary")
             tgt = os.path.join(work, f"target-{cond}")
             code, out = cargo(crate, tgt, ["build"])
             if code != 0:
-                return [f"{fixture}: cargo build ({cond} comments) failed: {out[-2000:]}"]
-            arms.append((f"rust ({cond} comments)", os.path.join(tgt, "debug", fixture)))
+                return [f"{fixture}: cargo build (docs {cond}) failed: {out[-2000:]}"]
+            arms.append((f"rust (docs {cond})", os.path.join(tgt, "debug", fixture)))
         for arm, e in arms:
             n, fails = run_cases(e, cases)
             if fails:

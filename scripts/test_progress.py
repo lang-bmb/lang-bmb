@@ -59,6 +59,23 @@ def test_replace_needs_the_markers():
     assert progress.replace(text, "NEW") == "a\nNEW\nb"
 
 
+def test_roadmap_status_block():
+    ts = {"1A-01": "done", "1A-02": "doing", "1A-03": "cancelled", "4D-01": "todo", "4D-02": "blocked"}
+    block = progress.roadmap_block(ts)
+    assert "| 1 최소 관통 경로 | 1A | 1/2 | `1A-02` | — | — |" in block
+    assert "| 4 자립 | 4D | 0/2 | — | `4D-01` | `4D-02` |" in block
+    try:
+        progress.roadmap_block({"9Z-01": "todo"})
+    except SystemExit:
+        pass
+    else:
+        raise AssertionError("a phase outside STAGES was accepted")
+    # the roadmap's block is the backlog's state
+    text = progress.read(progress.ROADMAP)
+    assert progress.replace_roadmap(text, progress.roadmap_block()) == text, \
+        "docs/ROADMAP.md status block is stale: run scripts/progress.py --write-roadmap"
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
