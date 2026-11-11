@@ -1,6 +1,6 @@
 # 백로그
 
-> 갱신: 2026-11-09 · 단계와 통과 기준은 `docs/ROADMAP.md`.
+> 갱신: 2026-11-11 · 단계와 통과 기준은 `docs/ROADMAP.md`.
 > 태스크는 완료 기준이 측정·확인 가능한 크기로 쪼갠다. 완료로 바꿀 때는 근거(커밋·테스트·측정)를 적는다.
 > 선택·도출·결정 권한 규칙은 `dev-docs/AUTONOMY.md`.
 
@@ -9,6 +9,22 @@
 **ID 규칙:** `단계-번호`(예: `1B-03`). 번호는 재사용하지 않는다. 버린 태스크는 지우지 않고 ~~취소선~~과 사유를 남긴다.
 
 ## 지금 할 일
+
+### 실행 계획(2026-11-11 열째, 사람 지시: "접근법/방법론 가설 검증, 체계적인 품질관리, 언어개발 플랜 등 전체 로드맵을 검토하고 수립")
+
+종합 검토(`dev-docs/reviews/roadmap-2026-11-11.md`)의 권장안 R1~R13. ROADMAP "임계 경로와 판정 관문"·"가설 등급"·"품질 관리 체계"·"우선순위(2026-11-11)"에 반영했다. 승인이 필요한 것은 채택 전까지 "제안"으로 둔다. 아홉째·여덟째 계획의 남은 일은 그대로 유효하고, 순서는 ROADMAP 우선순위 1·2가 정한다.
+
+| 순서 | 태스크 | 내용 | 근거 |
+| --- | --- | --- | --- |
+| 승인 | `2H-08` | ADR-0111: 판정 관문 A~E, 관문 B의 결과별 조치, 이월 한 번, 가설 등급 | ADR |
+| 1 | `2V-20j`, `2V-20k`, `2D-31` | 동결 전 표면 결함(여덟째 계획에서 넘어옴) | 코퍼스, 퍼저 |
+| 2 | `4D-07` | 포팅 지도 재기준(지금 크기로) | 측정 문서 |
+| 3 | `5A-01` | 언어 레퍼런스 초안을 동결 표면으로(관문 A, 4D-02 선행 조건화는 승인) | `docs/reference/` |
+| 4 | `4D-08`, `INF-32` | 포팅 원장·S7, 건전성 결함 원장·V13 | health, 시험 |
+| 5 | `INF-30` → `INF-31`, `INF-33` | 백로그 분할·크기 예산, 로드맵 상태 생성 블록, 지표의 대리 대상 | 게이트 |
+| 병행 | `T0-39`, `T0-40`, `4D-09`, `2H-09` | ADR 초안 넷(판정 규칙, H-ORACLE 변이 점수 판, 포팅된 구성 요소의 stage0 고정, 1단계 종료 정리): 초안은 자율, 채택은 승인 | ADR |
+| 승인 | `T0-41` | sonnet 반복 3~4회(유료) | 결과 커밋 |
+| 뒤 | `2H-02`, `4D-01` | 관문 A: 여덟째 계획 그대로 | 승인, 게이트 |
 
 ### 실행 계획(2026-11-10 아홉째, 사람 승인: "권장안 채택")
 
@@ -370,6 +386,9 @@ T0-10이 남긴 행(m1·m1b 완료, BVB 20/45, 2026-10-31 00:09)에서 두 가�
 | T0-36 | 상태 없는 수리 차례의 측정 판 | 매 차례 모델이 보는 것을 고정 문맥·현재 정의·마지막 진단·시도마다 한 줄 기록으로 줄이는 하네스 조건(의견서 P3, ADR-0070의 새 조건), Rust 팔에도 같은 규칙. 상한 추정(부록 A 공식, 요청·호출 1:1 가정, 24세션 중 4개 어긋남): sonnet `brb-write` 2,188,065 → 749,725(0.34배). 판은 준비만, 실행은 T0-37 | — | 🔄 2026-11-10 ADR-0110(자율 채택), `bench/m1/stateless.py`의 `Stateless`(두 공급자), 시험 `bench/m1/test_stateless.py`(게이트 "bench m1 model agents"; 대본 팔에는 이력이 없어 오라클로는 확인할 수 없다). m1 하네스 연결(T0-37 준비의 첫 부분, 측정 세션 동의): `set.json`의 `history`(`full` 기본, `stateless`; 모르는 값은 실행을 멈춤), BMB 팔의 상태는 작업 공간 `src/*.bmb`(`stateless.configured`·`source_state`). 대본 모델로 실제 하네스·어댑터를 거친 시험 `bench/test_condition.py`의 `test_the_stateless_history_through_the_harness`·`test_an_unknown_history_stops_the_run`. BRB 두 팔과 Verus 팔: `--history full\|stateless`(BMB 팔은 변형의 `set.json`과 같아야 함), 상태는 쓸 수 있는 파일(BRB Rust 팔 `src/**.rs`·`tests/**.rs`, Verus 팔 `main.rs`), 결과 머리의 `history`는 기본이 아닐 때만. `bench/brb/harness.py`는 `bench/brb/MANIFEST`에 동결되어 있어 BRB와 그 파생 일곱 집합(brb-write·diff·ast·effect·encap·encap-b·hard)의 MANIFEST를 같은 커밋에서 다시 썼다(측정 세션 동의: 남은 BRB 계열 실행은 모두 고정 작업 트리에서). 시험 `bench/brb/test_brb.py`의 `History`, `bench/bvb/verus/test_harness.py`의 `History`. 남은 것: T0-37의 동결 판(`*-stateless`). 상태 크기: `bvb-write` 씨앗 2,438바이트, `m1b-write` 26,051바이트(요청마다) |
 | T0-37 | 미결정 정보·탐침·상태 없는 차례의 절제 측정 | `brb-write`·`bvb-write`에서 2D-33·2D-35·T0-36 각각의 판 대 원판(같은 커밋). 지표: 미결정 응답을 받은 세션의 성공당 토큰과 `write` 수, 성공률. 차이가 D 안이면 반증(사전 등록은 각 ADR) | 2H-01, 2D-33, 2D-35, T0-36 | ⏳ |
 | T0-38 | 학습 비용의 분리 측정 | qwen을 평가 집합과 겹치지 않는 코퍼스로 미세조정한 팔(의견서 P9): 일시 비용의 크기와 H-FAMILIAR의 점근선. 누출 방지 규칙 사전 등록. 주장의 기준 모델(ADR-0103 §3)의 판정은 바꾸지 않는다 | — | 🚫 승인 대기(실행: 모델 인프라 사용) |
+| T0-39 | A/B 비교의 판정 규칙 보완(ADR 초안, 채택은 승인) | 종합 검토 §2.2 M3·R3(`dev-docs/reviews/roadmap-2026-11-11.md`): 팔마다 구간을 내고 겹침으로 읽는 지금 규칙(ADR-0077 §3의 쓰임)은 검정력이 낮고, 팔당 3회는 정확 순열 검정으로 5%에 닿지 못한다. ADR 초안: (1) 같은 과제 집합의 A/B는 실행 수준 성공률 차이의 95% 구간(Welch)과 정확 순열 p를 함께 보고하고 차이의 구간으로 판정, (2) 반복은 팔당 4회 이상, (3) 토큰은 과제별 비율(로그)의 중앙값과 구간. `bench/repeat.py`에 `diff`와 시험. 이미 판정한 비교(2R-05 등)는 다시 판정하지 않고 사후 계산으로만 병기 | T0-12 | ⏳ 승인(판정 규칙 변경) |
+| T0-40 | H-ORACLE 변이 점수 판(ADR 초안, 채택은 승인) | 종합 검토 §2.2 M5·R5: 함수 단위 과제는 네 번 변별에 실패했다(T0-07 두 모델, T0-10·T0-11, `T0-08` sonnet). 모델이 결함을 내는지에 기대지 않는 판정: 같은 구현 변이체(결정론 변이 연산자, 두 언어에 같은 규칙)를 각 세션의 최종 소스에 넣고 BMB는 에이전트의 계약 + 게이트가, Rust는 에이전트의 테스트가 죽이는 비율. 판정 규칙과 변이 연산자를 계산 전에 ADR로 등록하고, 저장된 `final_sources`(`2H-04`)로 유료 실행 없이 계산. 기준 해법·약한 대조군으로 게이트 확인 | 2H-04 | ⏳ 승인(가설 판정 방식 추가) |
+| T0-41 | 주장 기준 모델의 실행 간 변동 | 종합 검토 §2.2 M4·R4: 효용 주장은 sonnet으로 판정하는데(ADR-0103 결정 3) sonnet의 변동은 재지 않았고 D = 30%p는 qwen의 것이다. `m1b-write`를 sonnet으로 같은 커밋에서 3~4회(1회 약 169만 토큰) 돌려 성공률·성공당 토큰의 변동을 `repeat.py summary`로 커밋. 새 집합을 동결할 때 주장 기준 모델이 천장·바닥이 아님을 확인하는 규칙을 `bench/README.md`에 | T0-12 | ⏳ 승인(유료 실행) |
 | T0-05 | 판정 거부 이유 기록 | 명세 강도 검사가 거부할 때 `refuted`(반례)와 `undecided`(해법기 미결정)를 행에 남김. 판정은 그대로 | T1-14 | ✅ `bench/m1/harness.py` `spec_rejection`·`spec_rejections`, `test_harness.py` `SpecRejection`·`AlsoCheck` |
 | T0-06 | 판정기 미결정의 분리 보고 | 요약(`summarize`, `compare`)에 명세 강도의 "반박"과 "미결정"을 따로 세는 열. 미결정이 같은 뜻 명세일 때 측정이 언어가 아니라 판정기를 재는 문제를 드러낸다 | T0-05 | ✅ `bench/m1/harness.py` `summarize`: "명세 강도 거부: 반박(반례)"·"미결정(해법기)" 두 행, 과제 표의 실패 칸에 이유. 시험 `SummarizeRejections` |
 
@@ -523,6 +542,10 @@ T0-10이 남긴 행(m1·m1b 완료, BVB 20/45, 2026-10-31 00:09)에서 두 가�
 | INF-27 | 측정 요청의 프롬프트 캐싱 | 2026-11-06 게이트웨이 운영자 확인: 7일간 sonnet 요청 약 4,900건·입력 약 5천만 토큰에 캐시 읽기 0. 원인은 하네스의 Anthropic 요청에 `cache_control`이 없던 것(`bench/m1/anthropic_agent.py`). 마지막 도구 표시 + 최상위 자동 캐싱(5분), `input_tokens`는 전체 프롬프트, 캐시 쓰기·읽기는 따로, `condition.py`는 캐시 필드를 조건에서 뺀다(ADR-0093). 실측에서 `cache_read_input_tokens` > 0 확인 | — | ✅ 구현 `bench/m1/anthropic_agent.py`·`bench/condition.py`, 시험 `bench/m1/test_anthropic_agent.py`(`test_prompt_caching`)·`bench/test_condition.py`(`test_prompt_caching_is_not_part_of_the_condition`). 실측(2026-11-06, 활성화된 전용 키, 하네스와 같은 요청 꼴: 도구 표시 + 최상위 자동 캐싱, 같은 접두사 넷): 요청 1이 쓰기 3,717, 요청 2가 읽기 3,717(입력 4), 요청 3·4는 다시 쓰기 3,717. 게이트웨이가 sonnet을 벤더 계정 다섯에 나눠 처음 닿는 계정마다 쓰기가 난다(운영자 안내와 같음). 측정 결과의 확인은 다음 sonnet 실행의 `cache_read_input_tokens` |
 | INF-28 | 거부된 키는 세션 결과가 아니다 | 2026-11-06 11:05 서비스 키를 전용 테넌트 키로 옮긴 직후(활성화 전) 게이트웨이가 모든 요청에 HTTP 401 "The service key is not known."을 돌려줬다. 4xx라 세션이 `api_error`로 끝나 판정됐고, 체인이 남은 qwen 반복 18개 집합을 2분 만에 실패 행으로 채웠다. 401·403은 `model_api.Unauthenticated`(`GatewayStop`, ADR-0088의 지출 한도와 같은 멈춤)로 실행을 멈추고 행을 쓰지 않는다. 401 행은 결과에서 지우고(세션 기록 포함) 재개한다 | INF-23 | ✅ `bench/m1/model_api.py`(`GatewayStop`·`Unauthenticated`), 시험 `test_a_refused_key_stops_the_run`. 측정 체크아웃(`e5247e8d`)에는 같은 멈춤만 운영 패치(오류 경로만, 행을 쓰지 않음). 401 행 제거: `brb-write` 반복 1은 10행, `bvb-write` 반복 2는 4행이 남고 나머지 17개 파일은 삭제(백업은 측정 머신). 재시작 스크립트는 키 확인(`/openai/v1/models` 200)이 아니면 띄우지 않는다. 키는 같은 날 활성화(`/openai/v1/models`·`/anthropic/v1/models` 200), 체인 재개(재개한 행에 401 없음). 재개에서 발견 둘(같은 날 12:24~12:50): (1) 측정 체크아웃에 넣은 운영 패치가 체크아웃을 dirty로 만들어 실행 머리의 `commit`이 `e5247e8d…+dirty`가 됐고, 하네스가 깨끗한 머리의 반쪽 실행을 "not a partial run"으로 거부한 채 종료 코드 0으로 끝나 체인이 다음 반복으로 넘어갔다 → 패치를 되돌리고(재시작 보호는 `day2.sh`의 키 확인), dirty 머리로 시작한 두 실행(세션 8개, 결과와 무관한 이유)은 버렸다. (2) 401 실행이 끝나며 파일을 끝난 실행 꼴로 다시 써 `partial` 머리와 `resumed` 표시가 빠졌다 → 하네스가 출력한 실행 식별(깨끗한 커밋)로 머리를 되살리고 재개 표시(`brb-write` 반복 1에 5, `bvb-write` 반복 2에 1)를 복원, 재개 확인 |
 | INF-29 | 루트 README | 처음 온 에이전트가 v0(v0.100) 설명을 받았다(의견서 P10, 루트에 README 없음). 정의 한 문단, `docs/DESIGN.md`·`docs/ROADMAP.md`·`CLAUDE.md` 링크, v0는 `legacy/v0` 브랜치라는 한 줄. 통과: 루트 `README.md` | — | ✅ 2026-11-10 루트 `README.md`(정의, v2·0.x, v0는 `legacy/v0`, 문서 표, 빌드 두 줄) |
+| INF-30 | 백로그 분할과 크기 예산 | 종합 검토 §3.2 Q4·R11: `BACKLOG.md`가 302,052자이고 완료 행이 79%라 "다음 세션은 백로그만 읽고 이어 간다"(AUTONOMY §1)가 성립하지 않는다. 완료 행을 `dev-docs/backlog/`의 보관 파일(단계·트랙별)로 옮기고 활성 백로그에는 🔄·⏳·🚫와 "지금 할 일"만 둔다. `check_backlog.py`·`progress.py`가 두 곳을 함께 읽고(ID 유일·의존·근거 규칙 그대로), 지난 실행 계획 절은 최근 둘만 남긴다. health 지표 O3(활성 백로그 글자 수, 예산)와 시험 | — | ⏳ |
+| INF-31 | 로드맵 상태 표의 생성 블록 | 종합 검토 Q4: ROADMAP의 단계·페이즈 상태가 손으로 여러 곳에 적혀 낡는다(2026-11-11에 고친 것: 한눈에 보기 그림, 2M 제목, 4단계 표). `scripts/progress.py`가 백로그·`dev-docs/health/`에서 페이즈 상태 표를 만들어 ROADMAP의 표지 사이에 쓰고(`--write-roadmap`), 게이트가 어긋남을 잡는다 | INF-30 | ⏳ |
+| INF-32 | 건전성 결함 원장 | 종합 검토 §3.2 Q1·R7: G1 "위반 0"은 알려진 미수정 위반이 0이라는 뜻이고 잠복 결함을 재지 않는다(1B-55, `push_str` 하보크, E0812, 1B-58은 페이즈가 닫힌 뒤에 나왔다). `dev-docs/health/soundness-ledger.md`: 결함마다 백로그 ID, 종류(거짓 증명·거짓 반례·오컴파일), 발견 경로(퍼저·코퍼스·사용·감사·측정), 도입 커밋과 발견 커밋, 잡았어야 할 장치와 더한 시험. 기존 결함을 백로그에서 소급해 채우고, health가 경로별 수를 보고(V13, 보고만). ROADMAP G1 행의 병기는 승인 | INF-09 | ⏳ |
+| INF-33 | 지표가 대신 재는 목표·가설 | 종합 검토 §3.2 Q5·R13: P3 래칫이 반증된 H-REPAIR 쪽으로 작업을 끌었다(ADR-0103). `HEALTH.md` §2 표에 "대신 재는 것" 열(목표 G·가설 H·원칙)을 더하고, 그 가설이 반증되면 래칫을 회귀 방지로 내린다는 규칙을 §7에 | — | ⏳ |
 
 ## 1A 프론트엔드
 
@@ -1068,6 +1091,8 @@ Rust·Verus 표면을 따른 것은 새 언어의 학습 부족을 줄이기 위
 | 2H-05 | 검토자 실험(명세 대 diff) | 같은 변경을 diff로 볼 때와 명세 요약+반례로 볼 때 사람 검토자의 결함 발견률·시간 비교(E1 수정안 검증). 사람 참여자가 필요 | 2H-04 | ⏳ 사용자 |
 | 2H-06 | G8 테스트 코드량 측정 | BRB 과제에서 같은 숨은 판정 통과 기준으로 BMB 남은 테스트 면적(2D-21)과 Rust 에이전트 테스트 코드 줄 수를 비교·보고. 오라클 팔로 CI 확인 | 2H-03, 2D-21 | 🔄 `T0-10`의 BRB 두 팔로 잰다(정식 경로 ADR-0066, 2026-10-30). 하네스 완료: `bench/brb/harness.py`가 결과 행에 `test_code`(BMB: 최종 작업 공간의 `query tests` 요약, Rust: `tests/`와 `#[cfg(test)]` 항목의 코드 줄, `rust_test_lines`)를 담고, 표에 테스트 코드 줄(전체·숨은 판정 통과 과제)과 `g8_verdict` 판정 줄. `test_brb.py`의 `test_g8_line`·`test_rust_test_lines`(약한 대조군 24개 모두 테스트 있음, 기준 해법 0)·`test_summarize`, 게이트 `bench brb oracle`(0·0, 판정 불가 줄). MANIFEST 재동결(결과 없음) |
 | 2H-07 | BRB 판정기 실행 경쟁 수정 | 병렬 판정에서 막 쓴 판정 실행 파일을 다른 스레드의 자식이 쓰기 기술자를 쥔 채 fork한 순간 exec하면 `ETXTBSY`로 실패(게이트 `bench brb oracle`, 2026-10-25 `ship.sh`가 차단). 판정 결과는 바꾸지 않고 실행만 재시도. 실제 측정 결과가 없을 때라 MANIFEST 재동결 | 2H-03 | ✅ `bench/brb/judge.py` `spawn_retrying`, `bench/brb/MANIFEST` 갱신, `python3 bench/brb/test_brb.py` |
+| 2H-08 | ADR-0111 판정 관문과 가설 등급(승인) | 종합 검토 R1·R2. 채택되면 ROADMAP "임계 경로와 판정 관문"·"가설 등급"의 "제안" 표시를 지우고, `3P-05`를 `4D-04`·`4D-06`의 의존에 더하고, 새 가설 행에 등급을 적는다 | — | ⏳ 승인. 초안 ADR-0111(제안, 2026-11-11), ROADMAP에 제안으로 반영 |
+| 2H-09 | 1단계 종료 정리 | 종합 검토 §2.2 M8·R12: 1단계가 닫히지 않은 채 4단계 선행 작업이 끝났다. (1) `1E-06` 보고서를 T0-10·T0-11·T0-12 자료로 쓰고 `1E-11` 마찰을 넣는다, (2) `1E-07`은 2단계 페이즈가 모두 끝나 뜻을 잃었으므로 사유(ADR-0058·0095가 순서를 정함)와 함께 취소하고 1E 통과 기준 3을 고친다(승인), (3) `2A-16` 미션 목표값 안건을 `2H-02`와 함께 올린다, (4) 열린 국면 감사 `2P-01`·`2P-02`·`2P-03`의 해제 조건을 관문 A 전에 정리한다(막힌 기준은 막힘으로 기록하고 기준을 낮추지 않는다) | — | ⏳ (2)·(3)은 승인 |
 
 ## 3단계 (M3) — 당겨 온 측정 준비
 
@@ -1119,11 +1144,14 @@ Rust·Verus 표면을 따른 것은 새 언어의 학습 부족을 줄이기 위
 | 4C-05 | 자리의 슬라이스 인자 | 4C-02 실제 도구에서 발견: `a[i].as_bytes()`(원소의 바이트)와 `&v[lo..hi]`(바이트 부분 슬라이스)를 인자로 넘길 수 없어 복사했다(E0409). 텍스트는 `&t[i..e]`가 되므로 같은 규칙을 바이트·`Vec` 원소 자리에 넓힌다(검사기 `ref_arg`·`slice_of_vec`, 증명의 범위 의무, 코드 생성의 (포인터, 길이)). 2급 참조 규칙(ADR-0015) 안의 확장 | 4C-02 | ✅ 원소의 바이트 `a[i].as_bytes()`는 이미 인자로 되고(`fgrep`에서 복사 지움), 정수 원소의 `&v[lo..hi]`(배열·`Vec`·슬라이스)가 `&[T]` 인자로: 검사기 `sub_slice_arg`, 증명 `elem_slice`(E0805 `lo <= hi <= len`, `bmb_shift`), 코드 생성 `elem_slice`(검사 뒤 포인터·길이). `&mut` 부분 슬라이스·정수가 아닌 원소는 안내가 붙은 E0409. 코퍼스 `tests/verify/pass/subslices`(6정의)·`fail/subslices`(반례 둘)·`tests/check/err/subslices`, `tests/tools/fgrep.bmb`의 `print_range`가 `print_bytes(&text[lo..hi])`(GNU `grep -F`와 같은 출력), 변이 `v-subslice-end-unbounded`를 틀린 코퍼스가 잡는다 |
 | 4C-06 | stage0 외부 호출의 남은 넷 | 4C 종료 감사(`dev-docs/health/4C.md`) 발견: (1) 심볼릭 링크 질의(Rust `std::fs::symlink_metadata`와 `Metadata`의 `is_symlink`·`is_dir`·`is_file`·`len`, 메서드 구문, `workspace.rs:58`), (2) 새 파일로만 쓰기(`OpenOptions::create_new`: 링크를 따라가지 않음, `workspace.rs:76`), (3) 자식의 표준 오류 버리기(`Stdio::null`, `smt.rs:294`), (4) 닫힌 표준 출력: `run`·`spawn`이 `SIGPIPE`를 무시한 뒤에도 출력 실패가 종료 코드 141로 끝나게(stage0의 `CLOSED_STDOUT`). Rust의 이름·의미로 ADR-0091 §2의 닫힌 목록에 더하고(같은 ADR 범위, 자율), 각각 Rust 프로그램과 대조하는 예제. 끝나면 4C 감사를 닫는다 | 4C-02 | ✅ 넷 모두: (1) `std::fs::metadata`·`symlink_metadata`(`stat`·`lstat`, 필드 구조체 `std::fs::Metadata`), (2) `std::fs::write_new`(`O_EXCL`, `File exists (os error 17)`, 링크를 따라가지 않음), (3) `spawn`의 셋째 인자 `std::process::Stdio`(`Inherit`·`Null`), (4) `SIGPIPE`를 시작에서 무시하고 표준 출력의 `EPIPE`는 종료 코드 141(`print_*`·`eprint_str`의 비움·`exit`·`main` 끝), 자식은 `SIGPIPE` 기본값(`posix_spawnattr_setsigdefault`). 시험 `tests/system.rs`의 `metadata_and_new_files_are_rusts`(Rust `std::fs`·`File::create_new`과 대조)·`children_inherit_or_drop_stderr_and_a_closed_stdout_ends_with_141`(자식을 띄운 뒤에도 141, 자식의 `yes \| head`가 조용히 끝남). ADR-0091 "구현 시 확인"(4C-06). 4C 감사 충족 |
 | 4D-01 | stage0 기능 동결 선언 | 동결 범위와 예외(버그 수정·부트스트랩 필수 변경) ADR, CI 검사(동결 뒤 언어 기능 변경 감지) | 4A-02, 2H-02, 2V-20j, 2V-20k, 2D-31, 3P-08 | ⏳ 승인. 초안 ADR-0100(제안, 2026-11-09): 대상은 받아들이는 언어, 감지는 코퍼스 결과 지문 `scripts/surface.py`(`dev-docs/health/surface.json`, 219 프로그램·코드 178, 게이트 단계 `surface (4D-01)`, 시험 `scripts/test_surface.py`; ADR-0095 앞 컴파일러에서 코드 5·결과 68 변화를 잡음). 선언 전제: ADR-0097~0099·0052·0053 결정, 2R-05·2H-02 |
-| 4D-02 | 기반 라이브러리·런타임·렉서·파서 포팅(포팅 지도 P0~P2) | SHA-256·JSON·서식의 차등 시험, `bmb dump tokens`·`dump parse` JSONL과 종료 코드가 코퍼스·퍼저 입력에서 stage0과 같다 | 4D-01, 4B-02, 4C-02 | ⏳ |
+| 4D-02 | 기반 라이브러리·런타임·렉서·파서 포팅(포팅 지도 P0~P2) | SHA-256·JSON·서식의 차등 시험, `bmb dump tokens`·`dump parse` JSONL과 종료 코드가 코퍼스·퍼저 입력에서 stage0과 같다 | 4D-01, 4B-02, 4C-02, 4D-07 | ⏳ |
 | 4D-03 | 검사기·정규형 포팅(P3) | `check` 진단 JSONL·종료 코드, `fmt`·`hash` 출력, `codes --md` 바이트 동일 | 4D-02 | ⏳ |
 | 4D-04 | 증명기·해법기 연결 포팅(P6·P7) | `verify --emit-smt` 스크립트·상태 줄·반례 바이트 동일, `stability` 같음 | 4E-02 | ⏳ |
 | 4D-05 | 코드 생성 포팅(P4, 전체 검사 모드) | `emit-llvm --all-checks` IR 바이트 동일, 실행 코퍼스 출력 동일. 증명된 의무 집합이 비어 증명기 없이 돈다(포팅 지도 P4) | 4D-03 | ⏳ |
 | 4D-06 | 맵·캐시·도구·작업 공간·MCP·CLI 포팅(P5, P8~P11) | 맵·질의·도구 출력 동일, 캐시 없음·콜드·웜 출력 동일, MCP 세션 기록 재생 동일 | 4D-04 | ⏳ |
+| 4D-07 | 포팅 지도 재기준 | 종합 검토 §4 L1·R9: `4A-02`는 커밋 `1e1f24f` 기준(증명 인코딩 2,203줄, 검사기 1,805줄, E1 범위 5.8K줄·42%)인데 지금 `verify.rs` 11,066줄, `check.rs` 11,871줄이다. 동결 커밋(또는 그 직전)에서 `selfhost-gap-stats.py`를 다시 돌려 구성 요소 크기·의존, E1 범위와 비율, BMB 줄 추정, 자기 증명 의무·탈출구 추정, 차등 시험 입력 목록을 `selfhost-port-map.md`에 다시 쓴다. 2T~2V·4B·4C가 바꾼 대체 가능성(`selfhost-gap.md`)도 함께 | 4A-02 | ⏳ |
+| 4D-08 | 포팅 원장과 포팅 코드의 증명 상태 | 종합 검토 §2.2 M6·§3.2 Q2·R6: 포팅은 에이전트가 BMB로 쓰는 첫 대규모 사례인데 계측이 없고, E1이 증명 없이 돌아 포팅 코드의 증명 상태를 `4F-01`까지 아무도 보지 않는다. (1) `dev-docs/measurements/port-ledger.md`: 구성 요소마다 BMB 줄·정의 수, 작성 비용(세션 토큰, 거부된 쓰기, 미결정 의무), 증명된 정의 비율, 탈출구 면적과 종류, 마찰(처리 칸 포함). 집계 스크립트와 시험. (2) health 지표 S7(`selfhost/`의 증명된 정의 비율, 증가만 래칫, `selfhost/`가 생기기 전에는 보고 없음). 4D 태스크의 완료 기준에 원장 행을 더한다 | — | ⏳ |
+| 4D-09 | 포팅된 구성 요소의 stage0 고정(ADR 초안, 채택은 승인) | 종합 검토 §4 L2·R10: ADR-0100의 동결 대상은 받아들이는 언어이고 도구는 아니라서 포팅 대상이 계속 자란다(S4 42,712 → 53,459). ADR-0100 보완 초안: 구성 요소가 차등 시험을 통과하면 그 stage0 구성 요소의 변경은 두 쪽 변경 + 차등 시험 통과로만(게이트 감지), S4 예산 초과의 `accept`는 구성 요소 단위 사유로 | 4D-01 | ⏳ 승인 |
 | 4E-02 | 부트스트랩 조기 고정점(E1) | 증명기 없는 구성 요소(C0~C4·C8, 약 42%)의 BMB 소스를 stage0 `emit-llvm --all-checks`와 clang으로 빌드(1단 stage1) → stage1로 같은 소스(2단 stage2) → stage2로(stage3). stage2 IR = stage3 IR, stage2가 P1~P4 차등 시험 통과 | 4D-05 | ⏳ |
 | 4E-01 | 부트스트랩 전체 고정점(E2) | 전체 컴파일러로 stage0→stage1→stage2→stage3, stage2 = stage3 바이트 동일, stage2로 전체 게이트 통과, CI 매 커밋(자립 사다리 L3) | 4D-06 | ⏳ |
 | 4F-01 | 자기 증명 | BMB 컴파일러가 자기 증명 게이트 통과, 미증명 면적 상한(값은 ADR) 이하 | 4E-01, 2E-03 | ⏳ |
