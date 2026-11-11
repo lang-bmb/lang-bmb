@@ -2,14 +2,14 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 14360880,
+    "V4_rlimit_total": 14384112,
     "V5_rlimit_headroom": 0.1244,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0002,
     "V8_bench_rlimit_total": 22976379,
     "V9_bench_defs_at_limit": 0,
     "V10_library_rlimit_total": 23386463,
-    "V11_sat_check_rlimit_total": 271773135,
+    "V11_sat_check_rlimit_total": 271892668,
     "V12_sat_check_undecided": 216,
     "S1_external_crates": 0,
     "S2_external_processes": [
@@ -17,12 +17,12 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 53459,
+    "S4_stage0_rust_lines": 54555,
     "S5_tests_bound_to_rust_api": 1,
     "S6_selfhost_bmb_lines": 0,
-    "P1_runnable_programs": 80,
-    "P2_bmb_lines": 29575,
-    "P3_errors_with_help": 0.9149,
+    "P1_runnable_programs": 81,
+    "P2_bmb_lines": 29777,
+    "P3_errors_with_help": 0.9156,
     "B1_baseline_binary_bytes": 101664,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 17
@@ -2486,6 +2486,36 @@
         "O2_soundness_fuzzers": [
           16,
           17
+        ]
+      }
+    },
+    {
+      "date": "2026-11-11",
+      "reason": "2V-20j·2D-31·2V-20k·3P-08: 실행 프로그램 fn_names, 코퍼스 넷(P1·P2 증가), 새 진단마다 수정 안내",
+      "changed": {
+        "V4_rlimit_total": [
+          14360880,
+          14384112
+        ],
+        "V11_sat_check_rlimit_total": [
+          271773135,
+          271892668
+        ],
+        "S4_stage0_rust_lines": [
+          53459,
+          54555
+        ],
+        "P1_runnable_programs": [
+          80,
+          81
+        ],
+        "P2_bmb_lines": [
+          29575,
+          29777
+        ],
+        "P3_errors_with_help": [
+          0.9149,
+          0.9156
         ]
       }
     }

@@ -4050,7 +4050,12 @@ impl<'a> Checker<'a> {
     /// A definition's `#[summary("..")]` (ADR-0117): one string, once.
     fn check_summary(&mut self, a: &Attr, all: &[Attr]) {
         if !(a.args.len() == 1 && matches!(a.args[0], AttrArg::Str(..))) {
-            self.err("E0704", a.span, "`#[summary(..)]` takes exactly one string");
+            self.diags.push(
+                Diag::new("E0704", a.span, "`#[summary(..)]` takes exactly one string").fix(
+                    "write the summary as one string: `#[summary(\"..\")]`",
+                    None,
+                ),
+            );
         } else if all
             .iter()
             .find(|x| x.name.name == "summary")
