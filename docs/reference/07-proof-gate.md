@@ -118,7 +118,7 @@ mod m {
 
 - `bmb build`는 모든 정의가 `verified`일 때만 실행 파일을 만든다. 하나라도 실패하면 `build refused: the program is not fully proved`로 끝나고 파일을 쓰지 않는다(종료 코드 1). 미결정(E0811)과 게이트가 돌지 못한 경우(E0812)도 여기에 든다.
 - 탈출구(`assume`, `#[external_body]`)에 기대어 `verified`가 된 정의는 상태 줄에 `"trust":"assumed"`나 `"external"`가 붙고 `build`를 막지 않는다. 그 정의와 그것이 부르는 정의는 런타임 검사를 지우지 않는다(08장, `tests/run/escapes.bmb`).
-- `bmb emit-llvm`은 증명된 의무의 검사를 지우고, 증명되지 않은 의무는 런타임 검사(trap)로 남긴 IR을 쓴다. 실패가 있으면 진단을 내고 종료 코드는 1이다.
+- `bmb emit-llvm`은 증명된 의무의 검사를 지우고, 증명되지 않은 의무는 런타임 검사(trap)로 남긴 IR을 쓴다. 실패가 있으면 진단을 내고 종료 코드는 1이다. 증명은 호출자가 세운 `requires`와 피호출자가 증명한 `ensures`를 가정하므로, 실패한 정의와 호출로 이어진 정의들(부르는 쪽과 불리는 쪽 모두)은 증명된 의무의 검사도 남긴다(`compiler/src/lib.rs`의 `usable_proofs`, 백로그 1B-31).
 - `bmb emit-llvm --all-checks`는 증명을 돌리지 않고 모든 의무를 런타임 검사로 남긴다. 계약을 믿지 않으므로 증명되지 않는 프로그램도 그대로 실행된다. E08xx 진단과 상태 줄은 나오지 않는다(`compiler/README.md`의 명령 목록).
 - 증명된 의무만이 검사를 지운다(`docs/DESIGN.md` §3 원칙 9). 실행 출력까지 고정된 프로그램은 `tests/run/`에 있다(`tests/run/collatz.bmb`).
 

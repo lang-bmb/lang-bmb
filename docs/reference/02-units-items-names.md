@@ -31,7 +31,7 @@ fn     = ["spec" | "proof"] "fn" ident [generics] "(" params ")" ["->" ret] clau
 - 함수는 세 종류다: 실행 함수 `fn`, 명세 함수 `spec fn`, 증명 함수 `proof fn`(06장). `fn`과 `spec fn`은 반환 타입을 쓴다(`-> ()` 포함, 없으면 E0209). `proof fn`은 쓰지 않는다(E0256). 받는 꼴은 `tests/run/basics.bmb`, `tests/verify/pass/proofs.bmb`.
 - `const`는 타입을 쓴다. 서로를 가리키는 `const`는 E0318 오류다(ADR-0052 §3, `tests/check/err/consts.bmb`). 값으로 올 수 있는 식은 03장에 있다.
 - 단위 안에서 상수·타입·trait·하위 단위·함수의 이름은 한 이름 공간이다. 같은 이름이 둘이면 E0302 오류다(`tests/check/err/items.bmb`). 한 구조체의 필드, 한 열거형의 변형, 한 trait의 메서드, 한 목록의 타입 매개변수, 한 타입의 `impl` 블록들의 함수도 각각 이름이 유일하다(E0302, `tests/check/err/data_types.bmb`, `tests/check/err/impl_blocks.bmb`). 열거형의 변형은 단위의 이름 공간에 들지 않는다.
-- 타입과 함수는 내장 이름 `Option`·`Result`·`Some`·`None`·`Ok`·`Err`·`Vec`·`Box`를 쓰지 못하고(ADR-0026), trait은 내장 trait의 이름 `Copy`·`Eq`·`Ord`를 쓰지 못한다(ADR-0046 §1). 둘 다 E0309 오류다(`tests/check/err/data_types.bmb`, `tests/check/err/traits.bmb`).
+- 타입·함수·trait·상수는 내장 이름 `Option`·`Result`·`Some`·`None`·`Ok`·`Err`·`Vec`·`Box`를 쓰지 못하고(ADR-0026), 타입·trait·상수는 기본 타입의 이름(`i64`, `bool`, `String` 등)도 쓰지 못한다(`tests/check/err/reserved_names.bmb`). trait은 내장 trait의 이름 `Copy`·`Eq`·`Ord`를 쓰지 못한다(ADR-0046 §1). 둘 다 E0309 오류다(`tests/check/err/data_types.bmb`, `tests/check/err/traits.bmb`).
 
 ## `impl`과 수신자
 

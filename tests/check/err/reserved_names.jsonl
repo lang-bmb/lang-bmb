@@ -1,0 +1,6 @@
+{"code":"E0309","severity":"error","message":"`Box` is a built-in name (ADR-0026)","file":"err/reserved_names.bmb","line":3,"col":11,"end_line":3,"end_col":14}
+{"code":"E0309","severity":"error","message":"`Option` is a built-in name (ADR-0026)","file":"err/reserved_names.bmb","line":5,"col":11,"end_line":5,"end_col":17}
+{"code":"E0309","severity":"error","message":"`i64` is a built-in name (ADR-0026)","file":"err/reserved_names.bmb","line":10,"col":12,"end_line":10,"end_col":15}
+{"code":"E0309","severity":"error","message":"`bool` is a built-in name (ADR-0026)","file":"err/reserved_names.bmb","line":12,"col":10,"end_line":12,"end_col":14}
+{"code":"E0233","severity":"error","message":"tuple types are not allowed","file":"err/reserved_names.bmb","line":15,"col":15,"end_line":15,"end_col":23,"fix":{"message":"use a struct with named fields"}}
+{"code":"E0212","severity":"error","message":"write `x as u32`","file":"err/reserved_names.bmb","line":18,"col":29,"end_line":18,"end_col":41,"fix":{"message":"an integer conversion has a range obligation (ADR-0028)","replacement":"x as u32"}}

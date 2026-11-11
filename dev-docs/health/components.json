@@ -15,8 +15,8 @@
       "pin": null,
       "ledger": {
         "session_tokens": null,
-        "rejected_writes": null,
-        "undecided": null,
+        "gate_runs": null,
+        "undecided_runs": null,
         "friction": []
       }
     },
@@ -31,8 +31,8 @@
       "pin": null,
       "ledger": {
         "session_tokens": null,
-        "rejected_writes": null,
-        "undecided": null,
+        "gate_runs": null,
+        "undecided_runs": null,
         "friction": []
       }
     },
@@ -48,8 +48,8 @@
       "pin": null,
       "ledger": {
         "session_tokens": null,
-        "rejected_writes": null,
-        "undecided": null,
+        "gate_runs": null,
+        "undecided_runs": null,
         "friction": []
       }
     },
@@ -65,8 +65,8 @@
       "pin": null,
       "ledger": {
         "session_tokens": null,
-        "rejected_writes": null,
-        "undecided": null,
+        "gate_runs": null,
+        "undecided_runs": null,
         "friction": []
       }
     },
@@ -88,8 +88,8 @@
       "pin": null,
       "ledger": {
         "session_tokens": null,
-        "rejected_writes": null,
-        "undecided": null,
+        "gate_runs": null,
+        "undecided_runs": null,
         "friction": []
       }
     },
@@ -105,8 +105,8 @@
       "pin": null,
       "ledger": {
         "session_tokens": null,
-        "rejected_writes": null,
-        "undecided": null,
+        "gate_runs": null,
+        "undecided_runs": null,
         "friction": []
       }
     },
@@ -124,8 +124,8 @@
       "pin": null,
       "ledger": {
         "session_tokens": null,
-        "rejected_writes": null,
-        "undecided": null,
+        "gate_runs": null,
+        "undecided_runs": null,
         "friction": []
       }
     },
@@ -141,8 +141,8 @@
       "pin": null,
       "ledger": {
         "session_tokens": null,
-        "rejected_writes": null,
-        "undecided": null,
+        "gate_runs": null,
+        "undecided_runs": null,
         "friction": []
       }
     },
@@ -159,8 +159,8 @@
       "pin": null,
       "ledger": {
         "session_tokens": null,
-        "rejected_writes": null,
-        "undecided": null,
+        "gate_runs": null,
+        "undecided_runs": null,
         "friction": []
       }
     },
@@ -176,8 +176,8 @@
       "pin": null,
       "ledger": {
         "session_tokens": null,
-        "rejected_writes": null,
-        "undecided": null,
+        "gate_runs": null,
+        "undecided_runs": null,
         "friction": []
       }
     },
@@ -198,8 +198,8 @@
       "pin": null,
       "ledger": {
         "session_tokens": null,
-        "rejected_writes": null,
-        "undecided": null,
+        "gate_runs": null,
+        "undecided_runs": null,
         "friction": []
       }
     },
@@ -214,8 +214,8 @@
       "pin": null,
       "ledger": {
         "session_tokens": null,
-        "rejected_writes": null,
-        "undecided": null,
+        "gate_runs": null,
+        "undecided_runs": null,
         "friction": []
       }
     },
@@ -230,8 +230,8 @@
       "pin": null,
       "ledger": {
         "session_tokens": null,
-        "rejected_writes": null,
-        "undecided": null,
+        "gate_runs": null,
+        "undecided_runs": null,
         "friction": []
       }
     },
@@ -246,8 +246,8 @@
       "pin": null,
       "ledger": {
         "session_tokens": null,
-        "rejected_writes": null,
-        "undecided": null,
+        "gate_runs": null,
+        "undecided_runs": null,
         "friction": []
       }
     }

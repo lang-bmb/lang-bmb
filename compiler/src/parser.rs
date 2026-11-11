@@ -1858,6 +1858,28 @@ impl<'a> Parser<'a> {
                     span: lo.to(hi),
                 }
             }
+            // A tuple type (E0233, as the tuple value).
+            Tok::P("(") => {
+                self.bump();
+                let mut depth = 1usize;
+                while depth > 0 && !matches!(self.peek(), Tok::Eof) {
+                    if self.is_p("(") {
+                        depth += 1;
+                    } else if self.is_p(")") {
+                        depth -= 1;
+                    }
+                    self.bump();
+                }
+                let span = lo.to(self.prev_span());
+                self.diags.push(
+                    Diag::new("E0233", span, "tuple types are not allowed")
+                        .fix("use a struct with named fields", None),
+                );
+                Type {
+                    kind: TypeKind::Error,
+                    span,
+                }
+            }
             Tok::P("[") => {
                 self.bump();
                 let elem = self.parse_type();

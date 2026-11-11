@@ -1,0 +1,339 @@
+#[summary("port-shape experiment, owned-tree arm: a recursive-descent parser that builds a Box/Vec tree of byte spans, and separate walks that print and count it")]
+mod tree {
+    #[summary("A parsed expression. Numbers and names are byte spans `start..end` of the line; a call holds the span of its name and its arguments.")]
+    enum Expr { Num(usize, usize), Name(usize, usize), Neg(Box<Expr>), Bin(u8, Box<Expr>, Box<Expr>), Call(usize, usize, Vec<Expr>) }
+
+    #[summary("Every element's spans are within a text of `n` bytes.")]
+    spec fn all_in(a: &[Expr], n: usize) -> bool {
+        forall|k: usize| k < a.len() ==> #[trigger] spans_in(&a[k], n)
+    }
+
+    #[summary("atom := digit+ | name | name '(' [expr (',' expr)*] ')' | '(' expr ')'")]
+    #[effects(alloc)]
+    #[uses(spans_in)]
+    fn atom(t: &[u8], pos: &mut usize, fuel: usize) -> (r: Option<Expr>)
+        requires *pos <= t.len(),
+        ensures *old(pos) <= *pos, *pos <= t.len(), good(&r, t.len()),
+        decreases fuel * 5 + 1,
+    {
+        let j: usize = skip(t, *pos);
+        *pos = j;
+        if j >= t.len() {
+            return None;
+        }
+        let c: u8 = t[j];
+        if is_digit(c) {
+            let k: usize = digits(t, j + 1);
+            *pos = k;
+            return Some(Expr::Num(j, k));
+        }
+        if is_lower(c) {
+            let k: usize = lowers(t, j + 1);
+            let p: usize = skip(t, k);
+            *pos = p;
+            if p >= t.len() || t[p] != b'(' {
+                return Some(Expr::Name(j, k));
+            }
+            *pos = p + 1;
+            return call(t, pos, fuel, j, k);
+        }
+        if c == b'(' {
+            if fuel == 0 {
+                return None;
+            }
+            *pos = j + 1;
+            let a: Expr = expr(t, pos, fuel - 1)?;
+            let s: usize = skip(t, *pos);
+            *pos = s;
+            if s < t.len() && t[s] == b')' {
+                *pos = s + 1;
+                return Some(a);
+            }
+            return None;
+        }
+        None
+    }
+
+    #[summary("The rest of a call after its `(`: [expr (',' expr)*] ')'. The name is `j..k`.")]
+    #[effects(alloc)]
+    fn call(t: &[u8], pos: &mut usize, fuel: usize, j: usize, k: usize) -> (r: Option<Expr>)
+        requires *pos <= t.len(), j < k, k <= *pos,
+        ensures *old(pos) <= *pos, *pos <= t.len(), good(&r, t.len()),
+        decreases fuel * 5,
+    {
+        let mut args: Vec<Expr> = Vec::new();
+        let q: usize = skip(t, *pos);
+        *pos = q;
+        if q < t.len() && t[q] == b')' {
+            *pos = q + 1;
+            return Some(mk_call(j, k, args, t.len()));
+        }
+        if fuel == 0 {
+            return None;
+        }
+        loop
+            invariant *old(pos) <= *pos, *pos <= t.len(), k + args.len() <= *pos, all_in(args.as_slice(), t.len()),
+            decreases t.len() - *pos,
+        {
+            let a: Expr = expr(t, pos, fuel - 1)?;
+            args.push(a);
+            let s: usize = skip(t, *pos);
+            *pos = s;
+            if s < t.len() && t[s] == b',' {
+                *pos = s + 1;
+            } else if s < t.len() && t[s] == b')' {
+                *pos = s + 1;
+                return Some(mk_call(j, k, args, t.len()));
+            } else {
+                return None;
+            }
+        }
+    }
+
+    #[summary("The number of nodes of `e`.")]
+    #[effects(pure)]
+    fn count(e: &Expr) -> usize
+        decreases e,
+    {
+        match e {
+            Expr::Num(s, f) => 1,
+            Expr::Name(s, f) => 1,
+            Expr::Neg(a) => count(&**a).saturating_add(1),
+            Expr::Bin(op, a, b) => count(&**a).saturating_add(count(&**b)).saturating_add(1),
+            Expr::Call(s, f, args) => { let mut n: usize = 1; for i in 0..args.len() { n = n.saturating_add(count(&args[i])); } n },
+        }
+    }
+
+    #[effects(pure)]
+    fn digits(t: &[u8], i: usize) -> (r: usize)
+        requires i <= t.len(),
+        ensures i <= r, r <= t.len(),
+    {
+        let mut j: usize = i;
+        while j < t.len() && is_digit(t[j])
+            invariant i <= j, j <= t.len(),
+            decreases t.len() - j,
+        {
+            j = j + 1;
+        }
+        j
+    }
+
+    #[summary("expr := term (('+' | '-') term)*. `fuel` is the nesting still allowed.")]
+    #[effects(alloc)]
+    #[uses(spans_in)]
+    fn expr(t: &[u8], pos: &mut usize, fuel: usize) -> (r: Option<Expr>)
+        requires *pos <= t.len(),
+        ensures *old(pos) <= *pos, *pos <= t.len(), good(&r, t.len()),
+        decreases fuel * 5 + 4,
+    {
+        let mut a: Expr = term(t, pos, fuel)?;
+        loop
+            invariant *old(pos) <= *pos, *pos <= t.len(), spans_in(&a, t.len()),
+            decreases t.len() - *pos,
+        {
+            let s: usize = skip(t, *pos);
+            if s < t.len() && (t[s] == b'+' || t[s] == b'-') {
+                let op: u8 = t[s];
+                *pos = s + 1;
+                let b: Expr = term(t, pos, fuel)?;
+                a = Expr::Bin(op, Box::new(a), Box::new(b));
+            } else {
+                *pos = s;
+                return Some(a);
+            }
+        }
+    }
+
+    spec fn good(r: &Option<Expr>, n: usize) -> bool {
+        match r {
+            None => true,
+            Some(e) => spans_in(e, n),
+        }
+    }
+
+    #[effects(pure)]
+    fn is_digit(b: u8) -> bool {
+        b'0' <= b && b <= b'9'
+    }
+
+    #[effects(pure)]
+    fn is_lower(b: u8) -> bool {
+        b'a' <= b && b <= b'z'
+    }
+
+    #[effects(pure)]
+    fn lowers(t: &[u8], i: usize) -> (r: usize)
+        requires i <= t.len(),
+        ensures i <= r, r <= t.len(),
+    {
+        let mut j: usize = i;
+        while j < t.len() && is_lower(t[j])
+            invariant i <= j, j <= t.len(),
+            decreases t.len() - j,
+        {
+            j = j + 1;
+        }
+        j
+    }
+
+    #[effects(alloc, io, nondet)]
+    fn main() -> () {
+        let mut input: Vec<u8> = Vec::new();
+        match std::io::read_to_end(&mut input) {
+            Ok(n) => {},
+            Err(e) => { eprint_str(e.message.as_str()); eprint_str("\n"); std::process::exit(1); },
+        }
+        let mut out: Vec<u8> = Vec::new();
+        let mut start: usize = 0;
+        for i in 0..input.len()
+            invariant start <= i,
+        {
+            if input[i] == b'\n' {
+                show(&input[start..i], &mut out);
+                start = i + 1;
+            }
+        }
+    }
+
+    #[summary("The call node of the name `s..f` and the arguments `args`.")]
+    #[effects(pure)]
+    #[uses(spans_in)]
+    fn mk_call(s: usize, f: usize, args: Vec<Expr>, n: usize) -> (r: Expr)
+        requires s < f, f <= n, all_in(args.as_slice(), n),
+        ensures spans_in(&r, n),
+    {
+        Expr::Call(s, f, args)
+    }
+
+    #[summary("The tree of the expression that is the whole of `t`, none when `t` is not one or nests deeper than 64.")]
+    #[effects(alloc)]
+    fn parse(t: &[u8]) -> (r: Option<Expr>)
+        ensures good(&r, t.len()),
+    {
+        let mut pos: usize = 0;
+        let e: Expr = expr(t, &mut pos, 63)?;
+        if skip(t, pos) != t.len() {
+            return None;
+        }
+        Some(e)
+    }
+
+    #[summary("Appends the normal form of `e`, a tree over the text `t`.")]
+    #[effects(alloc)]
+    #[uses(spans_in)]
+    fn print(t: &[u8], e: &Expr, out: &mut Vec<u8>) -> ()
+        requires spans_in(e, t.len()),
+        decreases e,
+    {
+        match e {
+            Expr::Num(s, f) => put_span(t, *s, *f, out),
+            Expr::Name(s, f) => put_span(t, *s, *f, out),
+            Expr::Neg(a) => { put(out, b'('); put(out, b'-'); print(t, &**a, out); put(out, b')'); },
+            Expr::Bin(op, a, b) => { put(out, b'('); print(t, &**a, out); put(out, *op); print(t, &**b, out); put(out, b')'); },
+            Expr::Call(s, f, args) => { put_span(t, *s, *f, out); put(out, b'('); for i in 0..args.len() { if i > 0 { put(out, b','); } print(t, &args[i], out); } put(out, b')'); },
+        }
+    }
+
+    #[summary("Appends `b`. The cap keeps the length within a `Vec`'s maximum.")]
+    #[effects(alloc)]
+    fn put(out: &mut Vec<u8>, b: u8) -> () {
+        if out.len() < 4611686018427387904 {
+            out.push(b);
+        }
+    }
+
+    #[summary("Appends `t[s..f]`.")]
+    #[effects(alloc)]
+    fn put_span(t: &[u8], s: usize, f: usize, out: &mut Vec<u8>) -> ()
+        requires s <= f, f <= t.len(),
+    {
+        for i in s..f {
+            put(out, t[i]);
+        }
+    }
+
+    #[summary("Prints the normal form of the line `t`, or `error`.")]
+    #[effects(alloc, io)]
+    fn show(t: &[u8], out: &mut Vec<u8>) -> () {
+        match parse(t) {
+            None => print_str("error\n"),
+            Some(e) => { out.truncate(0); print(t, &e, out); put(out, b'\n'); print_bytes(out.as_slice()); },
+        }
+    }
+
+    #[summary("The first position from `i` that is not a space.")]
+    #[effects(pure)]
+    fn skip(t: &[u8], i: usize) -> (r: usize)
+        requires i <= t.len(),
+        ensures i <= r, r <= t.len(),
+    {
+        let mut j: usize = i;
+        while j < t.len() && t[j] == b' '
+            invariant i <= j, j <= t.len(),
+            decreases t.len() - j,
+        {
+            j = j + 1;
+        }
+        j
+    }
+
+    #[summary("Every span of the tree is a non-empty range of a text of `n` bytes.")]
+    spec fn spans_in(e: &Expr, n: usize) -> bool
+        decreases e,
+    {
+        match e {
+            Expr::Num(s, f) => *s < *f && *f <= n,
+            Expr::Name(s, f) => *s < *f && *f <= n,
+            Expr::Neg(a) => spans_in(&**a, n),
+            Expr::Bin(op, a, b) => spans_in(&**a, n) && spans_in(&**b, n),
+            Expr::Call(s, f, args) => *s < *f && *f <= n && (forall|k: usize| k < args.len() ==> #[trigger] spans_in(&args[k], n)),
+        }
+    }
+
+    #[summary("term := unary ('*' unary)*")]
+    #[effects(alloc)]
+    #[uses(spans_in)]
+    fn term(t: &[u8], pos: &mut usize, fuel: usize) -> (r: Option<Expr>)
+        requires *pos <= t.len(),
+        ensures *old(pos) <= *pos, *pos <= t.len(), good(&r, t.len()),
+        decreases fuel * 5 + 3,
+    {
+        let mut a: Expr = unary(t, pos, fuel)?;
+        loop
+            invariant *old(pos) <= *pos, *pos <= t.len(), spans_in(&a, t.len()),
+            decreases t.len() - *pos,
+        {
+            let s: usize = skip(t, *pos);
+            if s < t.len() && t[s] == b'*' {
+                *pos = s + 1;
+                let b: Expr = unary(t, pos, fuel)?;
+                a = Expr::Bin(b'*', Box::new(a), Box::new(b));
+            } else {
+                *pos = s;
+                return Some(a);
+            }
+        }
+    }
+
+    #[summary("unary := '-' unary | atom")]
+    #[effects(alloc)]
+    #[uses(spans_in)]
+    fn unary(t: &[u8], pos: &mut usize, fuel: usize) -> (r: Option<Expr>)
+        requires *pos <= t.len(),
+        ensures *old(pos) <= *pos, *pos <= t.len(), good(&r, t.len()),
+        decreases fuel * 5 + 2,
+    {
+        let s: usize = skip(t, *pos);
+        *pos = s;
+        if s < t.len() && t[s] == b'-' {
+            if fuel == 0 {
+                return None;
+            }
+            *pos = s + 1;
+            let a: Expr = unary(t, pos, fuel - 1)?;
+            return Some(Expr::Neg(Box::new(a)));
+        }
+        atom(t, pos, fuel)
+    }
+}

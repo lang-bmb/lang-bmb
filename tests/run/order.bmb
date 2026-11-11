@@ -1,0 +1,56 @@
+#[summary("실행 예제: 연산자 우선순위, 단락 평가, for의 끝 값, 평가 순서 (백로그 5A-03)")]
+mod app {
+    #[effects(io)]
+    fn flag(b: bool) -> () {
+        if b {
+            print_i64(1)
+        } else {
+            print_i64(0)
+        }
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        flag(true || false && false);
+        flag(1 | 2 == 3);
+        print_i64(1 | 2 ^ 3 & 4);
+        print_i64(6 ^ 3 & 5);
+        print_i64(1 << 2 + 1);
+        print_i64(2 + 3 * 4);
+        print_i64(1 + 255 as u8 as i64);
+        print_i64(-2 * 3);
+        print_i64(7 - 4 - 2);
+        print_i64(64 / 4 / 2);
+        print_i64(1 << 2 << 1);
+        flag(say(10, false) && say(11, true));
+        flag(say(12, true) || say(13, false));
+        flag(say(14, true) && say(15, false) || say(16, true));
+        print_i64(num(20) - num(21));
+        print_i64(num(22).wrapping_add(num(23)));
+        for i in num(30)..num(33) {
+            print_i64(i);
+        }
+        let a: u8 = 250;
+        for j in a..=255 {
+            print_i64(j as i64);
+        }
+    }
+
+    #[effects(io)]
+    fn num(n: i64) -> (r: i64)
+        ensures same(n, r),
+    {
+        print_i64(n);
+        n
+    }
+
+    spec fn same(n: i64, r: i64) -> bool {
+        r == n
+    }
+
+    #[effects(io)]
+    fn say(n: i64, r: bool) -> bool {
+        print_i64(n);
+        r
+    }
+}

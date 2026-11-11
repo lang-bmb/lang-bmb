@@ -103,7 +103,7 @@ fn branch(c: bool) -> usize {
 - `return`·`?`·`break`·`continue`: 그 출구가 벗어나는 범위의 소유 지역.
 - 한 갈래만 이동한 `if`·`match`: 다른 갈래의 끝.
 - 값을 버리는 식 문장의 값. 읽기만 한 임시값(`mk().x`, `&mk()` 인자)은 그 영역의 끝.
-- 구조체는 필드 순서로, 열거형은 변형의 페이로드 순서로, `Vec`은 원소를 해제한 뒤 버퍼를, `Box`는 값을 해제한 뒤 메모리를 푼다.
+- 구조체는 필드 순서로, 열거형은 변형의 페이로드 순서로, `Vec`은 원소를 해제한 뒤 버퍼를, `Box`는 값을 해제한 뒤 메모리를 푼다. 사용자 소멸자가 없으므로 이 순서는 프로그램이 관찰하지 못한다(예외는 파이프를 닫는 `std::process::Child`뿐이다). 시험이 고정하는 것은 순서가 아니라 "모든 할당을 꼭 한 번 풀고 푼 메모리를 건드리지 않는다"이다(`compiler/tests/codegen.rs`의 `run_corpus_frees_every_allocation_once`).
 - 코퍼스: `tests/run/branch_drops.bmb`, `tests/run/returns.bmb`, `tests/run/owned_arrays.bmb`, `tests/run/vec_tree.bmb`.
 
 ## 참조는 매개변수에만

@@ -1,0 +1,82 @@
+#[summary("진입점")]
+mod app {
+    #[effects(io)]
+    fn main() -> () {
+        let p: m::P = m::P { x: 0 };
+        print_i64(p.f());
+        print_i64(p.len());
+        print_i64(p.g());
+        let u: u64 = 1;
+        print_i64(u.f());
+        print_i64(u.wrapping_add(1) as i64);
+    }
+}
+
+#[summary("메서드 찾기 순서")]
+mod m {
+    trait T {
+        #[effects(pure)]
+        fn f(self: &Self) -> i64;
+
+        #[effects(pure)]
+        fn g(self: &Self) -> i64;
+
+        #[effects(pure)]
+        fn len(self: &Self) -> i64;
+    }
+
+    trait W {
+        #[effects(pure)]
+        fn wrapping_add(self: &Self, o: u64) -> u64;
+    }
+
+    impl T for u64 {
+        #[effects(pure)]
+        fn f(self: &u64) -> i64 {
+            5
+        }
+
+        #[effects(pure)]
+        fn g(self: &u64) -> i64 {
+            7
+        }
+
+        #[effects(pure)]
+        fn len(self: &u64) -> i64 {
+            6
+        }
+    }
+
+    impl W for u64 {
+        #[effects(pure)]
+        fn wrapping_add(self: &u64, o: u64) -> u64 {
+            99
+        }
+    }
+
+    struct P { x: i64 }
+
+    impl P {
+        #[effects(pure)]
+        fn f(self: &P) -> i64 {
+            1
+        }
+    }
+
+    impl T for P {
+        #[effects(pure)]
+        fn f(self: &P) -> i64 {
+            2
+        }
+
+        #[effects(pure)]
+        fn g(self: &P) -> i64 {
+            4
+        }
+
+        #[effects(pure)]
+        fn len(self: &P) -> i64 {
+            3
+        }
+    }
+}

@@ -141,7 +141,7 @@
 | --- | --- |
 | E0501 | a contract clause with a quantifier must be a call to a named predicate (`spec fn ... -> bool`); one without is an expression (ADR-0095 A2) |
 | E0502 | vacuous predicate used in a contract |
-| E0503 | specification-only construct used in executable code |
+| E0503 | specification-only construct used in executable code, or an executable statement in a specification |
 | E0504 | executable function called in a specification |
 | E0505 | spec function called in executable code |
 | E0506 | `while` requires `decreases` |

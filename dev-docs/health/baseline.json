@@ -2,14 +2,14 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 14384112,
+    "V4_rlimit_total": 14433160,
     "V5_rlimit_headroom": 0.1244,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0002,
     "V8_bench_rlimit_total": 22976379,
     "V9_bench_defs_at_limit": 0,
     "V10_library_rlimit_total": 23386463,
-    "V11_sat_check_rlimit_total": 271892668,
+    "V11_sat_check_rlimit_total": 271906591,
     "V12_sat_check_undecided": 216,
     "S1_external_crates": 0,
     "S2_external_processes": [
@@ -17,16 +17,17 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 54555,
+    "S4_stage0_rust_lines": 54650,
     "S5_tests_bound_to_rust_api": 1,
     "S6_selfhost_bmb_lines": 0,
-    "P1_runnable_programs": 81,
-    "P2_bmb_lines": 29777,
-    "P3_errors_with_help": 0.9156,
+    "S7_selfhost_proved_defs": null,
+    "P1_runnable_programs": 83,
+    "P2_bmb_lines": 30656,
+    "P3_errors_with_help": 0.9121,
     "B1_baseline_binary_bytes": 101664,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 17,
-    "O3_active_backlog_chars": 39740
+    "O3_active_backlog_chars": 36557
   },
   "history": [
     {
@@ -2527,6 +2528,40 @@
         "O3_active_backlog_chars": [
           null,
           39740
+        ]
+      }
+    },
+    {
+      "date": "2026-11-11",
+      "reason": "5A-03: 실행 코퍼스 둘(order, method_order)과 검사 코퍼스 하나(reserved_names), 튜플 타입·내장 이름 진단; 백로그 열두째 계획",
+      "changed": {
+        "V4_rlimit_total": [
+          14384112,
+          14433160
+        ],
+        "V11_sat_check_rlimit_total": [
+          271892668,
+          271906591
+        ],
+        "S4_stage0_rust_lines": [
+          54555,
+          54650
+        ],
+        "P1_runnable_programs": [
+          81,
+          83
+        ],
+        "P2_bmb_lines": [
+          29777,
+          30656
+        ],
+        "P3_errors_with_help": [
+          0.9156,
+          0.9121
+        ],
+        "O3_active_backlog_chars": [
+          39740,
+          36557
         ]
       }
     }

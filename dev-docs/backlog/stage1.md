@@ -141,3 +141,6 @@
 | 1E-09 | sieve·kadane 성능 차이 원인 분석 | BMB가 Rust보다 8~16% 느린 원인을 IR·어셈블리 비교로 특정(코드 생성 대 LLVM 버전 차이)하고, 코드 생성 원인이면 태스크로 등록 | 1E-05 | ✅ 원인: `bool` 원소를 메모리에 `i1`로 저장 → 바이트로 변경, sieve 1.20→1.03, `bool_arrays_are_bytes_in_memory` |
 | 1E-12 | 결과 요약기 | `harness.py summarize RESULTS.jsonl`이 ADR-0021 §4 지표 표를 마크다운으로 출력. 대본 에이전트 결과로 테스트 | 1E-04 | ✅ `harness.py summarize`(파일마다 한 열), 게이트에서 oracle 결과로 확인, `bench/m1/README.md` |
 | 1E-13 | 보고서 초안 | 모델 실행과 무관한 부분(절차, 과제 편향, Rust 기준선, 마찰 기록)을 `dev-docs/measurements/`에 먼저 작성하고 모델 수치 자리를 비워 둠 | 1E-05 | ✅ `dev-docs/measurements/m1.md`(초안, §3 결과 자리 비움) |
+| 1E-06 | 측정 보고서 | 결과·편향·재현 방법. `dev-docs/`에 커밋 | 1E-04, 1E-05, 1E-10 | ✅ 2026-11-11 `dev-docs/measurements/m1.md` 확정: §3에 정식 경로의 m1 결과(qwen 1회 7/10·5/5, sonnet 10/10·5/5, qwen 반복 5회 평균 76.0%)와 실패 원인, 출처 `t0-10.md`·`t0-12.md` |
+| 1E-10 | 실제 모델 측정 실행 | `harness.py run --agent anthropic:MODEL`로 과제 15개를 1회씩 실행하고 결과 커밋. 유료 API라 **사용자 머신에서 실행**(2026-10-24 결정, 절차는 `bench/m1/README.md`) | 1E-03 | ✅ 정식 경로(ADR-0066)로 실행: `T0-10`(qwen, `8d569693`)·`T0-11`(sonnet)·`T0-12`(qwen 반복 5회). 결과 `bench/m1/results/`, 보고 `m1.md` §3(2026-11-11) |
+| 1E-11 | 측정 중 발견한 언어 마찰 기록 | 과제·벤치 작성 중 드러난 마찰(명세 정수 혼합 → ADR-0022, 불변식의 `old` 허용, `#[uses]` 누락 반복)을 측정 보고서에 포함 | 1E-06 | ✅ 2026-11-11 `m1.md` §6(마찰 표)과 §3의 대조(모델 실패 원인과 겹치는 것은 명세 미결정 하나, 세션 기록이 없어 원인은 가르지 못함) |

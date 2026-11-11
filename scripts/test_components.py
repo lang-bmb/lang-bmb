@@ -11,7 +11,7 @@ import components  # noqa: E402
 
 def comp(cid, stage0, port=()):
     return {"id": cid, "name": cid, "phase": "P0", "stage0": list(stage0), "port": list(port), "pin": None,
-            "ledger": {"session_tokens": None, "rejected_writes": None, "undecided": None, "friction": []}}
+            "ledger": {"session_tokens": None, "gate_runs": None, "undecided_runs": None, "friction": []}}
 
 
 def setup(t, comps):
@@ -73,6 +73,59 @@ def main():
         # a file renamed inside the component counts as a change
         doc = components.load(root)
         assert json.dumps(doc["components"][0]["pin"]) != json.dumps(components.state(comp("C0", ["sub/b.rs"], ["selfhost/a.bmb"]), root))
+
+    # gate B0: nothing to estimate from while nothing is ported
+    assert components.b0() is None
+    real = components.port_facts
+    try:
+        with tempfile.TemporaryDirectory() as t:
+            root = setup(t, [comp("C2", ["a.rs"], ["selfhost/a.bmb"]), comp("C4", ["sub/b.rs"])])
+            (root / "selfhost" / "a.bmb").write_text("mod a {\n}\n")
+            facts = {"lines": 12, "spec": 4, "defs": 4, "proved": 1, "obligations": 24, "rlimit": 1200, "escapes": 0}
+            components.port_facts = lambda c, r: facts if c["port"] else None
+            doc = components.load(root)
+            doc["components"][0]["ledger"].update(gate_runs=10, undecided_runs=6)
+            components.save(doc, root)
+            r = components.b0(root)
+            # stage0: a.rs 2 lines, b.rs 1 line; the port is 6 times C2
+            assert (r["ratio_whole"], r["ratio_exec"], r["estimate_lines"]) == (6.0, 4.0, 18), r
+            assert (r["estimate_obligations"], r["estimate_rlimit"]) == (36, 1800), r
+            assert r["missing"] == ["C0", "C1"] and len(r["stop"]) == 3, r
+    finally:
+        components.port_facts = real
+
+    # lines only the proof reads (ADR-0122)
+    src = """mod m {
+    spec fn small(x: i64) -> bool { x < 10 }
+
+    spec fn big(x: i64) -> bool
+        decreases x,
+    {
+        if x > 0 { big(x - 1) } else { true }
+    }
+
+    #[uses(small)]
+    #[effects(pure)]
+    fn f(x: i64) -> (r: i64)
+        requires small(x),
+        ensures small(r),
+    {
+        let mut i: i64 = 0;
+        while i < x
+            invariant i <= x,
+            decreases x - i,
+        {
+            assert(i < x);
+            proof {
+                lemma(i);
+            }
+            i = i + 1;
+        }
+        i
+    }
+}
+"""
+    assert components.spec_lines(src) == 1 + 5 + 3 + 2 + 1 + 3, components.spec_lines(src)
 
     assert components.replace(f"a\n{components.BEGIN}\nold\n{components.END}\nb", "NEW") == "a\nNEW\nb"
     assert "no ledger markers" in expect_exit(lambda: components.replace("none", "x"))

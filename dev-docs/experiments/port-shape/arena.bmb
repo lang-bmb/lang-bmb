@@ -1,0 +1,342 @@
+#[summary("port-shape experiment, arena arm: one expression per line of standard input, parsed into a Vec of nodes that name their children by index, printed in normal form (the reference is ref.py)")]
+mod arena {
+    const DEPTH: usize = 64;
+
+    #[summary("The nodes of a line of len bytes; the last one is the whole expression.")]
+    #[invariant(sound)]
+    struct Ast { nodes: Vec<Node>, len: usize }
+
+    #[summary("A node of a parsed line. kind: 0 number, 1 name, 2 call without arguments, 3 negation of a, 4 call whose last argument cell is a, 5 first argument cell (the argument is a), 6 a + b, 7 a - b, 8 a * b, 9 later argument cell (the argument is a, the cell before it b). start..end are its bytes in the line (the name for a call, the argument for a cell).")]
+    struct Node { kind: u8, start: usize, end: usize, a: usize, b: usize }
+
+    #[summary("Adds a node; its children are nodes already there.")]
+    #[effects(alloc)]
+    #[uses(arena, sound)]
+    fn add(ast: &mut Ast, kind: u8, start: usize, end: usize, a: usize, b: usize) -> ()
+        requires start < end, end <= ast.len, ast.nodes.len() < ast.len, kind >= 3 ==> a < ast.nodes.len(), kind >= 6 ==> b < ast.nodes.len(),
+        ensures ast.nodes.len() == old(ast).nodes.len() + 1, ast.len == old(ast).len,
+    {
+        ast.nodes.push(Node { kind: kind, start: start, end: end, a: a, b: b });
+    }
+
+    #[summary("The arena invariant: every node's bytes lie in the line and its children are before it.")]
+    spec fn arena(v: &[Node], len: usize) -> bool {
+        forall|k: usize| k < v.len() ==> #[trigger] v[k].start < v[k].end && v[k].end <= len && (v[k].kind >= 3 ==> v[k].a < k) && (v[k].kind >= 6 ==> v[k].b < k)
+    }
+
+    #[summary("atom := digit+ | name | name '(' [expr (',' expr)*] ')' | '(' expr ')'")]
+    #[effects(alloc)]
+    fn atom(t: &[u8], ast: &mut Ast, i: usize, d: usize) -> (r: Option<usize>)
+        requires ast.len == t.len(), i <= t.len(), ast.nodes.len() <= i, d <= DEPTH,
+        ensures ast.len == t.len(), stepped(r, i, old(ast).nodes.len(), ast.nodes.len(), t.len()),
+        decreases 4 * (DEPTH + 1 - d),
+    {
+        let n0: usize = ast.nodes.len();
+        let j: usize = skip(t, i);
+        if j >= t.len() {
+            return None;
+        }
+        let c: u8 = t[j];
+        if is_digit(c) {
+            let e: usize = digits(t, j + 1);
+            add(ast, 0, j, e, 0, 0);
+            return Some(e);
+        }
+        if is_lower(c) {
+            let e: usize = lowers(t, j + 1);
+            let p: usize = skip(t, e);
+            if p >= t.len() || t[p] != b'(' {
+                add(ast, 1, j, e, 0, 0);
+                return Some(e);
+            }
+            let q: usize = skip(t, p + 1);
+            if q < t.len() && t[q] == b')' {
+                add(ast, 2, j, e, 0, 0);
+                return Some(q + 1);
+            }
+            let mut pos: usize = p + 1;
+            let mut cell: usize = 0;
+            let mut first: bool = true;
+            loop
+                invariant ast.len == t.len(), j < pos, pos <= t.len(), ast.nodes.len() + i + 2 <= n0 + pos, n0 <= ast.nodes.len(), first || cell < ast.nodes.len(),
+                decreases t.len() - pos,
+            {
+                match expr(t, ast, pos, d + 1) {
+                    None => { return None; },
+                    Some(x) => { let arg: usize = ast.nodes.len() - 1; if first { add(ast, 5, pos, x, arg, 0); } else { add(ast, 9, pos, x, arg, cell); } first = false; cell = ast.nodes.len() - 1; let y: usize = skip(t, x); if y >= t.len() { return None; } if t[y] == b',' { pos = y + 1; } else if t[y] == b')' { add(ast, 4, j, e, cell, 0); return Some(y + 1); } else { return None; } },
+                }
+            }
+        }
+        if c == b'(' {
+            match expr(t, ast, j + 1, d + 1) {
+                None => { return None; },
+                Some(x) => { let y: usize = skip(t, x); if y < t.len() && t[y] == b')' { return Some(y + 1); } return None; },
+            }
+        }
+        None
+    }
+
+    #[summary("How many expression nodes are reachable from node i (argument cells are links, not expressions), saturating.")]
+    #[effects(pure)]
+    #[uses(arena, sound)]
+    fn count(ast: &Ast, i: usize) -> usize
+        requires i < ast.nodes.len(),
+        decreases i,
+    {
+        let kind: u8 = ast.nodes[i].kind;
+        if kind <= 2 {
+            1
+        } else if kind <= 4 {
+            count(ast, ast.nodes[i].a).saturating_add(1)
+        } else if kind == 5 {
+            count(ast, ast.nodes[i].a)
+        } else if kind == 9 {
+            count(ast, ast.nodes[i].a).saturating_add(count(ast, ast.nodes[i].b))
+        } else {
+            count(ast, ast.nodes[i].a).saturating_add(count(ast, ast.nodes[i].b)).saturating_add(1)
+        }
+    }
+
+    #[summary("The end of the digits from i.")]
+    #[effects(pure)]
+    fn digits(t: &[u8], i: usize) -> (r: usize)
+        requires i <= t.len(),
+        ensures moved_on(t, i, r),
+    {
+        let mut j: usize = i;
+        while j < t.len() && is_digit(t[j])
+            invariant i <= j, j <= t.len(),
+            decreases t.len() - j,
+        {
+            j = j + 1;
+        }
+        j
+    }
+
+    #[summary("Adds b to out (nothing when out is as long as a vector gets).")]
+    #[effects(alloc)]
+    fn emit(out: &mut Vec<u8>, b: u8) -> () {
+        if out.len() < 4611686018427387904 {
+            out.push(b);
+        }
+    }
+
+    #[summary("Adds t[lo..hi] to out.")]
+    #[effects(alloc)]
+    fn emit_span(t: &[u8], lo: usize, hi: usize, out: &mut Vec<u8>) -> ()
+        requires lo <= hi, hi <= t.len(),
+    {
+        for k in lo..hi {
+            emit(out, t[k]);
+        }
+    }
+
+    #[summary("expr := term (('+' | '-') term)*; none when d is over the depth.")]
+    #[effects(alloc)]
+    fn expr(t: &[u8], ast: &mut Ast, i: usize, d: usize) -> (r: Option<usize>)
+        requires ast.len == t.len(), i <= t.len(), ast.nodes.len() <= i, d <= DEPTH + 1,
+        ensures ast.len == t.len(), stepped(r, i, old(ast).nodes.len(), ast.nodes.len(), t.len()),
+        decreases 4 * (DEPTH + 1 - d) + 3,
+    {
+        if d > DEPTH {
+            return None;
+        }
+        let n0: usize = ast.nodes.len();
+        let s: usize = skip(t, i);
+        match term(t, ast, s, d) {
+            None => None,
+            Some(x0) => { let mut cur: usize = x0; loop invariant ast.len == t.len(), s < cur, cur <= t.len(), n0 < ast.nodes.len(), ast.nodes.len() + s <= n0 + cur, decreases t.len() - cur, { let y: usize = skip(t, cur); if y >= t.len() || t[y] != b'+' && t[y] != b'-' { return Some(cur); } let kind: u8 = if t[y] == b'+' { 6 } else { 7 }; let left: usize = ast.nodes.len() - 1; match term(t, ast, y + 1, d) { None => { return None; }, Some(x) => { let right: usize = ast.nodes.len() - 1; add(ast, kind, s, x, left, right); cur = x; }, } } },
+        }
+    }
+
+    #[effects(pure)]
+    fn is_digit(b: u8) -> bool {
+        b'0' <= b && b <= b'9'
+    }
+
+    #[effects(pure)]
+    fn is_lower(b: u8) -> bool {
+        b'a' <= b && b <= b'z'
+    }
+
+    #[summary("Adds the normal form of the line t, or error, and a newline.")]
+    #[effects(alloc)]
+    fn line(t: &[u8], out: &mut Vec<u8>) -> () {
+        if t.len() < 1152921504606846975 {
+            match parse(t) {
+                None => { emit_span(b"error", 0, 5, out); },
+                Some(ast) => { print(t, &ast, ast.nodes.len() - 1, out); },
+            }
+        } else {
+            emit_span(b"error", 0, 5, out);
+        }
+        emit(out, b'\n');
+    }
+
+    #[summary("The end of the lowercase letters from i.")]
+    #[effects(pure)]
+    fn lowers(t: &[u8], i: usize) -> (r: usize)
+        requires i <= t.len(),
+        ensures moved_on(t, i, r),
+    {
+        let mut j: usize = i;
+        while j < t.len() && is_lower(t[j])
+            invariant i <= j, j <= t.len(),
+            decreases t.len() - j,
+        {
+            j = j + 1;
+        }
+        j
+    }
+
+    #[effects(alloc, io, nondet)]
+    fn main() -> () {
+        let mut input: Vec<u8> = Vec::new();
+        match std::io::read_to_end(&mut input) {
+            Ok(n) => {},
+            Err(e) => { eprint_str(e.message.as_str()); eprint_str("\n"); std::process::exit(1); },
+        }
+        let mut out: Vec<u8> = Vec::new();
+        let mut start: usize = 0;
+        for i in 0..input.len()
+            invariant start <= i,
+        {
+            if input[i] == b'\n' {
+                line(&input[start..i], &mut out);
+                start = i + 1;
+            }
+        }
+        print_bytes(out.as_slice());
+    }
+
+    spec fn moved_on(t: &[u8], i: usize, r: usize) -> bool {
+        i <= r && r <= t.len()
+    }
+
+    #[summary("The nodes of t when it is one expression (the last node is the whole of it), none when it is not.")]
+    #[effects(alloc)]
+    #[uses(arena, sound)]
+    fn parse(t: &[u8]) -> (r: Option<Ast>)
+        requires short(t),
+        ensures parsed(&r, t),
+    {
+        let mut ast: Ast = Ast { nodes: Vec::new(), len: t.len() };
+        match expr(t, &mut ast, 0, 1) {
+            None => None,
+            Some(x) => { if skip(t, x) == t.len() { Some(ast) } else { None } },
+        }
+    }
+
+    spec fn parsed(r: &Option<Ast>, t: &[u8]) -> bool {
+        match r {
+            None => true,
+            Some(x) => x.len == t.len() && x.nodes.len() > 0,
+        }
+    }
+
+    #[summary("Adds the normal form of node i to out.")]
+    #[effects(alloc)]
+    #[uses(arena, sound)]
+    fn print(t: &[u8], ast: &Ast, i: usize, out: &mut Vec<u8>) -> ()
+        requires i < ast.nodes.len(), ast.len == t.len(),
+        decreases i,
+    {
+        let kind: u8 = ast.nodes[i].kind;
+        if kind <= 2 || kind == 4 {
+            emit_span(t, ast.nodes[i].start, ast.nodes[i].end, out);
+        }
+        if kind == 2 {
+            emit(out, b'(');
+            emit(out, b')');
+        } else if kind == 3 {
+            emit(out, b'(');
+            emit(out, b'-');
+            print(t, ast, ast.nodes[i].a, out);
+            emit(out, b')');
+        } else if kind == 4 {
+            emit(out, b'(');
+            print(t, ast, ast.nodes[i].a, out);
+            emit(out, b')');
+        } else if kind == 5 {
+            print(t, ast, ast.nodes[i].a, out);
+        } else if kind == 9 {
+            print(t, ast, ast.nodes[i].b, out);
+            emit(out, b',');
+            print(t, ast, ast.nodes[i].a, out);
+        } else if kind >= 6 {
+            emit(out, b'(');
+            print(t, ast, ast.nodes[i].a, out);
+            emit(out, if kind == 6 { b'+' } else if kind == 7 { b'-' } else { b'*' });
+            print(t, ast, ast.nodes[i].b, out);
+            emit(out, b')');
+        }
+    }
+
+    spec fn short(t: &[u8]) -> bool {
+        t.len() < 1152921504606846975
+    }
+
+    #[summary("The first position from i that is not a space.")]
+    #[effects(pure)]
+    fn skip(t: &[u8], i: usize) -> (r: usize)
+        requires i <= t.len(),
+        ensures moved_on(t, i, r),
+    {
+        let mut j: usize = i;
+        while j < t.len() && t[j] == b' '
+            invariant i <= j, j <= t.len(),
+            decreases t.len() - j,
+        {
+            j = j + 1;
+        }
+        j
+    }
+
+    spec fn sound(x: &Ast) -> bool {
+        arena(x.nodes.as_slice(), x.len) && x.len < 1152921504606846975
+    }
+
+    #[summary("What a parsing function that began at i with n0 nodes gives: when it read an expression, the position after it, at least one node more (the last is the expression) and no more nodes than bytes read.")]
+    spec fn stepped(r: Option<usize>, i: usize, n0: usize, n: usize, len: usize) -> bool {
+        match r {
+            None => true,
+            Some(j) => i < j && j <= len && n0 < n && n + i <= n0 + j,
+        }
+    }
+
+    #[summary("term := unary ('*' unary)*")]
+    #[effects(alloc)]
+    fn term(t: &[u8], ast: &mut Ast, i: usize, d: usize) -> (r: Option<usize>)
+        requires ast.len == t.len(), i <= t.len(), ast.nodes.len() <= i, d <= DEPTH,
+        ensures ast.len == t.len(), stepped(r, i, old(ast).nodes.len(), ast.nodes.len(), t.len()),
+        decreases 4 * (DEPTH + 1 - d) + 2,
+    {
+        let n0: usize = ast.nodes.len();
+        let s: usize = skip(t, i);
+        match unary(t, ast, s, d) {
+            None => None,
+            Some(x0) => { let mut cur: usize = x0; loop invariant ast.len == t.len(), s < cur, cur <= t.len(), n0 < ast.nodes.len(), ast.nodes.len() + s <= n0 + cur, decreases t.len() - cur, { let y: usize = skip(t, cur); if y >= t.len() || t[y] != b'*' { return Some(cur); } let left: usize = ast.nodes.len() - 1; match unary(t, ast, y + 1, d) { None => { return None; }, Some(x) => { let right: usize = ast.nodes.len() - 1; add(ast, 8, s, x, left, right); cur = x; }, } } },
+        }
+    }
+
+    #[summary("unary := '-' unary | atom")]
+    #[effects(alloc)]
+    fn unary(t: &[u8], ast: &mut Ast, i: usize, d: usize) -> (r: Option<usize>)
+        requires ast.len == t.len(), i <= t.len(), ast.nodes.len() <= i, d <= DEPTH,
+        ensures ast.len == t.len(), stepped(r, i, old(ast).nodes.len(), ast.nodes.len(), t.len()),
+        decreases 4 * (DEPTH + 1 - d) + 1,
+    {
+        let j: usize = skip(t, i);
+        if j < t.len() && t[j] == b'-' {
+            if d + 1 > DEPTH {
+                return None;
+            }
+            match unary(t, ast, j + 1, d + 1) {
+                None => None,
+                Some(x) => { let c: usize = ast.nodes.len() - 1; add(ast, 3, j, x, c, 0); Some(x) },
+            }
+        } else {
+            atom(t, ast, j, d)
+        }
+    }
+}

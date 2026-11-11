@@ -31,7 +31,7 @@
 
 ## 초안의 한계
 
-장의 서술은 `compiler/README.md`의 규칙표, 컴파일러 소스, 코퍼스에서 옮겼고, 예시와 의심스러운 규칙은 컴파일러를 돌려 확인했다. 돌려 보지 못하고 문서·소스만 근거로 적은 것이 남아 있다(백로그 `5A-03`이 목록을 갖는다): 해제 순서(05장), 연산자 우선순위 전체와 `&&`·`||`의 단락 평가(04장), 메서드 찾기 순서(04장), `emit-llvm`이 지우고 남기는 검사(07장), 근거 해시의 입력과 타입 불변식의 자리 목록(06·08장), 내장 메서드의 전체 목록(03장). 적합성 시험(5A-02)이 절마다 시험을 붙이면서 이 목록을 지운다.
+장의 서술은 `compiler/README.md`의 규칙표, 컴파일러 소스, 코퍼스에서 옮겼고, 예시와 의심스러운 규칙은 컴파일러를 돌려 확인했다. 문서·소스만 근거로 적었던 서술은 실행으로 확인했다(백로그 `5A-03`, 2026-11-11): 연산자 우선순위·단락 평가·계산 순서·`for`의 끝 값(`tests/run/order.bmb`), 메서드 찾기 순서(`tests/run/method_order.bmb`), `emit-llvm`이 남기는 검사(07장), 근거 해시의 입력(08장), 타입 불변식의 자리(06장), `Eq`·`Ord`를 가진 타입(03장). 남은 것은 내장 메서드의 전체 목록(03장은 예만 든다)과 해제 지점의 절별 시험이고, 적합성 시험(5A-02)이 절마다 시험을 붙인다.
 
 ## 진단 코드 색인
 
@@ -153,7 +153,7 @@
 | E0437 | a type a `const` cannot have: a `const` holds a value type, an integer, `bool` or `char`, or an array, struct or enum of them (ADR-0052 §2) | [03](03-types-and-values.md) |
 | E0501 | a contract clause with a quantifier must be a call to a named predicate (`spec fn ... -> bool`); one without is an expression (ADR-0095 A2) | [06](06-contracts-and-specs.md) |
 | E0502 | vacuous predicate used in a contract | [06](06-contracts-and-specs.md) |
-| E0503 | specification-only construct used in executable code | [04](04-expressions-and-control.md), [06](06-contracts-and-specs.md) |
+| E0503 | specification-only construct used in executable code, or an executable statement in a specification | [04](04-expressions-and-control.md), [06](06-contracts-and-specs.md) |
 | E0504 | executable function called in a specification | [06](06-contracts-and-specs.md), [08](08-effects-and-escape-hatches.md) |
 | E0505 | spec function called in executable code | [06](06-contracts-and-specs.md) |
 | E0506 | `while` requires `decreases` | [04](04-expressions-and-control.md), [06](06-contracts-and-specs.md) |

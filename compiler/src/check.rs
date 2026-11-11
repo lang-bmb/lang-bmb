@@ -929,6 +929,14 @@ const BUILTIN_NAMES: &[&str] = &[
     "Option", "Result", "Some", "None", "Ok", "Err", "Vec", "Box",
 ];
 
+/// A name the language gives a meaning of its own: a type, a trait or a
+/// constant of that name could not be named (E0309).
+fn reserved_name(n: &str) -> bool {
+    BUILTIN_NAMES.contains(&n)
+        || IntTy::from_name(n).is_some()
+        || matches!(n, "f64" | "bool" | "char" | "String" | "str" | "Self")
+}
+
 pub struct Checker<'a> {
     diags: &'a mut Diags,
     pub fns: BTreeMap<String, FnSig>,
@@ -3708,8 +3716,22 @@ impl<'a> Checker<'a> {
             );
         }
         let mut names = BTreeSet::new();
+        for n in m
+            .traits
+            .iter()
+            .map(|t| &t.name)
+            .chain(m.consts.iter().map(|c| &c.name))
+        {
+            if reserved_name(&n.name) {
+                self.err(
+                    "E0309",
+                    n.span,
+                    format!("`{}` is a built-in name (ADR-0026)", n.name),
+                );
+            }
+        }
         for t in &m.types {
-            if BUILTIN_NAMES.contains(&t.name.name.as_str()) {
+            if reserved_name(&t.name.name) {
                 self.err(
                     "E0309",
                     t.name.span,
@@ -7906,12 +7928,11 @@ impl<'a> Checker<'a> {
                 }
                 let x = args.first().map(crate::fmt::expr_text).unwrap_or_default();
                 if let Some(t) = from_call(path) {
-                    let r = format!("{}::try_from({x}).unwrap()", ty_str(&t));
                     let c = crate::fmt::cast_text(&args[0], &ty_str(&t));
                     self.diags
                         .push(Diag::new("E0212", e.span, format!("write `{c}`")).fix(
                             "an integer conversion has a range obligation (ADR-0028)",
-                            Some(r),
+                            Some(c),
                         ));
                     return t;
                 }

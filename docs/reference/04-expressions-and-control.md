@@ -14,7 +14,7 @@ primary = literal | path | path ["::<" types ">"] "(" args ")" | path "{" name "
         | if | match | loop | closure
 ```
 
-이항 연산자는 느슨한 것부터 `||`, `&&`, 비교(`==` `!=` `<` `<=` `>` `>=`), `|`, `^`, `&`, `<<` `>>`, `+` `-`, `*` `/` `%`, `as` 순으로 묶인다(Rust와 같다, ADR-0048 §2: `a & b == c`는 `(a & b) == c`). `return`·`break`·`continue`가 가장 느슨하다. 명세 전용인 `==>`는 실행 코드에서 E0503이다. 비교는 이어 쓰지 못한다(E0211). 구문 중첩은 256단계까지이고 넘으면 E0107이다. 코퍼스: `tests/run/basics.bmb`, `tests/check/err/rust_habits.bmb`.
+이항 연산자는 느슨한 것부터 `||`, `&&`, 비교(`==` `!=` `<` `<=` `>` `>=`), `|`, `^`, `&`, `<<` `>>`, `+` `-`, `*` `/` `%`, `as` 순으로 묶인다(Rust와 같다, ADR-0048 §2: `a & b == c`는 `(a & b) == c`). `return`·`break`·`continue`가 가장 느슨하다. 명세 전용인 `==>`는 실행 코드에서 E0503이다. 비교는 이어 쓰지 못한다(E0211). 구문 중첩은 256단계까지이고 넘으면 E0107이다. 같은 단계의 연산자는 왼쪽부터 묶인다(`7 - 4 - 2`는 1). 피연산자와 호출 인자는 왼쪽부터 계산한다. 코퍼스: `tests/run/order.bmb`(단계마다 값 하나, 계산 순서), `tests/run/basics.bmb`, `tests/check/err/rust_habits.bmb`.
 
 ## 리터럴·경로·호출
 
@@ -29,7 +29,7 @@ primary = literal | path | path ["::<" types ">"] "(" args ")" | path "{" name "
 
 `x.f(a, ..)`는 `T::f(조정(x), a, ..)`다(ADR-0051). `T`는 `x`의 타입(참조면 가리키는 타입)이고, `f`는 `T`의 고유 `impl` 함수가 먼저, 없으면 `f`를 가진 trait 하나다. 내장 메서드는 같은 이름의 trait 메서드보다 먼저다. 조정은 한 단계이고 선언된 수신자가 정한다: `self: &T`면 `&x`, `self: &mut T`면 `&mut x`(쓸 수 있는 자리가 아니면 E0408), `self: T`면 `x`. `x`가 이미 참조면 그대로 넘긴다.
 
-두 trait이 같은 이름을 가지면 E0313, 수신자가 없는 연관 함수나 자기 타입 매개변수가 있는 함수를 메서드로 부르면 E0314(둘 다 경로 호출로 쓴다), 모르는 메서드는 E0404다. 코퍼스: `tests/run/methods.bmb`, `tests/check/err/methods.bmb`.
+두 trait이 같은 이름을 가지면 E0313, 수신자가 없는 연관 함수나 자기 타입 매개변수가 있는 함수를 메서드로 부르면 E0314(둘 다 경로 호출로 쓴다), 모르는 메서드는 E0404다. 코퍼스: `tests/run/methods.bmb`, `tests/run/method_order.bmb`(고유 함수가 trait보다, 내장 메서드가 trait보다 먼저), `tests/check/err/methods.bmb`.
 
 ## 연산자와 피연산자
 
@@ -38,7 +38,7 @@ primary = literal | path | path ["::<" types ">"] "(" args ")" | path "{" name "
 | `+` `-` `*` `/` `%` | 같은 정수 타입 둘, 또는 `f64` 둘(`%` 제외) | 그 타입 |
 | 단항 `-` | 부호 있는 정수, `f64`. 부호 없는 정수는 E0411 | 그 타입 |
 | `==` `!=` `<` `<=` `>` `>=` | 같은 타입의 정수·`f64`·`char` 둘. `bool`은 `==`·`!=`만 | `bool` |
-| `&&` `\|\|` | `bool` 둘. 오른쪽은 필요할 때만 계산한다 | `bool` |
+| `&&` `\|\|` | `bool` 둘. 오른쪽은 필요할 때만 계산한다(`tests/run/order.bmb`) | `bool` |
 | `!` | `bool`(논리 부정) 또는 정수(비트 반전) | 그 타입 |
 | `&` `\|` `^` | 같은 정수 타입 둘, 또는 `bool` 둘(양쪽을 모두 계산) | 그 타입 |
 | `<<` `>>` | 미는 값은 정수, 양은 어느 정수 타입이나 | 미는 값의 타입 |
@@ -71,7 +71,7 @@ primary = literal | path | path ["::<" types ">"] "(" args ")" | path "{" name "
 
 - 구조체 값은 `T { a: e1, b: e2 }`다. 모든 필드를 선언 순서로 적는다: 빠지거나 겹치면 E0422, 순서가 다르면 E0434(적힌 순서가 평가 순서다, ADR-0080). 축약 `T { x }`는 E0222, 갱신 구문 `..p`는 E0223이다.
 - 열거형 값은 `T::V` 또는 `T::V(e, ..)`다. 페이로드 개수가 다르면 E0405, 없는 변형은 E0307이다. 내장 변형은 맨이름으로 쓴다: `Some(e)`, `None`, `Ok(e)`, `Err(e)`(`Option::Some`은 E0221).
-- 배열 값은 `[a, b, c]`와 `[v; N]`이다(03장). 튜플은 없다(E0233).
+- 배열 값은 `[a, b, c]`와 `[v; N]`이다(03장). 튜플은 값도 타입도 없다(E0233, `tests/check/err/reserved_names.bmb`).
 
 코퍼스: `tests/run/shapes.bmb`, `tests/run/points.bmb`, `tests/check/err/data_values.bmb`, `tests/check/err/field_order.bmb`.
 
@@ -157,7 +157,7 @@ loop  = [label ":"] "loop" [invariant e {"," e} ","] "decreases" e "," block
 
 - 문법은 정규형의 것이다: 절 끝의 쉼표와 블록 몸 갈래 뒤의 쉼표는 입력에서 빠져도 받고 정규형이 쓴다.
 - `while`의 조건은 `bool`이다. `while`과 `loop`는 `decreases`가 필수다(E0506). 불변식과 감소식의 뜻은 06장과 07장에 있다. `while let`은 E0226이다.
-- `for`는 정수 범위만 돈다(ADR-0049 §2). `lo..hi`는 `hi`를 빼고 `lo..=hi`는 넣는다. 변수의 타입은 두 끝의 정수 타입이고(둘 다 리터럴이면 `i64`), 두 끝은 들어갈 때 한 번 계산한다. 변수는 루프 안에서만 보이고(밖에서는 E0301) 대입할 수 없다(E0408). 반복자(`for x in v.iter()`)는 E0252, `decreases`는 E0253이다(측도는 자동). 정수가 아닌 끝은 E0401이다.
+- `for`는 정수 범위만 돈다(ADR-0049 §2). `lo..hi`는 `hi`를 빼고 `lo..=hi`는 넣는다. 변수의 타입은 두 끝의 정수 타입이고(둘 다 리터럴이면 `i64`), 두 끝은 들어갈 때 왼쪽부터 한 번 계산한다(`tests/run/order.bmb`). 변수는 루프 안에서만 보이고(밖에서는 E0301) 대입할 수 없다(E0408). 반복자(`for x in v.iter()`)는 E0252, `decreases`는 E0253이다(측도는 자동). 정수가 아닌 끝은 E0401이다.
 - `while`과 `for`는 문장이고 값이 없다. `loop`는 식이다: 값은 `break e`의 값이고, 모든 `break`의 값은 한 타입이다. `break`가 없는 `loop`의 타입은 `!`다.
 
 ```

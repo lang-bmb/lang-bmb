@@ -236,7 +236,7 @@
    "src": "8805f1e51c0d9443"
   },
   "tests/check/err/conversions.bmb": {
-   "out": "f627fa72a5c2610e",
+   "out": "f0c0717c504ef18a",
    "src": "8515b5c33fb0586c"
   },
   "tests/check/err/copy_within.bmb": {
@@ -366,6 +366,10 @@
   "tests/check/err/recursive.bmb": {
    "out": "45140137d48ac19b",
    "src": "088ad9a0da9518cf"
+  },
+  "tests/check/err/reserved_names.bmb": {
+   "out": "d2035b90d5b51b00",
+   "src": "f0a8e956ebd052ef"
   },
   "tests/check/err/returns.bmb": {
    "out": "a0b6aeb06b689686",
@@ -591,6 +595,10 @@
    "out": "6dd5ed68f16beebb",
    "src": "a710eee70a494205"
   },
+  "tests/run/method_order.bmb": {
+   "out": "84f4661b1969117f",
+   "src": "7ab95221f7a5d653"
+  },
   "tests/run/methods.bmb": {
    "out": "8734e8894a79d3c3",
    "src": "cb6752170586e047"
@@ -610,6 +618,10 @@
   "tests/run/numlist.bmb": {
    "out": "70a8d3a08b11d104",
    "src": "dd0bb85ae3d7aadc"
+  },
+  "tests/run/order.bmb": {
+   "out": "562eac4774261725",
+   "src": "ec7ce3ad4f88c306"
   },
   "tests/run/owned_arrays.bmb": {
    "out": "072b623aa656c354",
