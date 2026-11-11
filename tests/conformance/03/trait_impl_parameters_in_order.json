@@ -1,0 +1,9 @@
+{
+  "sections": [
+    "제네릭과 trait"
+  ],
+  "note": "The type parameters of a trait `impl` appear in order in the implemented type (E0420); a type that names a parameter beside a concrete type, or twice, is accepted.",
+  "check": [
+    {"code": "E0420", "line": 20}
+  ]
+}

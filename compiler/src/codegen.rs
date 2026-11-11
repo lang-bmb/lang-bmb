@@ -3500,6 +3500,11 @@ impl<'p> Gen<'p> {
                             },
                         );
                     }
+                    // `()` has no bits to keep (as in `bind`): the local
+                    // has no slot and reading it is the unit value.
+                    TypeKind::Unit => {
+                        self.expr(init);
+                    }
                     t => {
                         let lt = llty(t);
                         let ptr = self.alloca(lt);
@@ -3526,6 +3531,10 @@ impl<'p> Gen<'p> {
                     };
                     let v = self.expr(value).imm();
                     self.emit(format!("store {ty} {v}, ptr {ptr}"));
+                }
+                // A `()` local has no slot.
+                ExprKind::Var(_) if self.ty(target) == TypeKind::Unit => {
+                    self.expr(value);
                 }
                 ExprKind::Var(id) => match self.slots[&id.name].clone() {
                     Slot::Scalar { ptr, ty } => {
@@ -3939,6 +3948,9 @@ pub fn emit_with(
                         },
                     );
                 }
+                // A `()` parameter is not passed: a call drops the
+                // argument (`CVal::Unit`).
+                TypeKind::Unit => {}
                 ty => {
                     let lt = llty(ty);
                     params.push(format!("{lt} %\"{n}\""));

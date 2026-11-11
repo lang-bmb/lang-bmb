@@ -141,7 +141,7 @@ fn both<T: Area>(x: &T, q: Sq) -> i64 { larger::<i64>(x.area(), q.area()) }
 - 타입 인자는 값 타입이다(참조는 E0403). 개수가 다르면 호출은 E0429, 타입은 E0420 오류다. 인자가 경계를 채우지 못하면 E0428 오류다(`Vec<i64>`는 `Copy`가 아니다). 정의가 `Vec<T>`로 쓰는 `T`에 `Vec`의 원소가 못 되는 타입을 넣어도 E0428 오류다.
 - 재귀 호출이 자기 타입 매개변수를 더 큰 타입으로 감싸면 E0430 오류다(`f<T>` 안의 `f::<[T; 2]>`).
 - trait은 메서드의 시그니처를 선언하고 `impl Tr for T { .. }`가 구현한다. `Self`는 구현하는 타입이다. 선언과 구현의 일치는 02장.
-- 한 trait의 impl 둘이 같은 타입일 수 있으면 E0311 오류다. 타입 매개변수는 무엇과도 겹친다고 본다. 모든 타입에 대한 `impl<T> Tr for T`는 E0235, `dyn Tr`은 E0236 오류다. `impl`의 타입 매개변수는 구현하는 타입에 순서대로 나와야 한다(E0420).
+- 한 trait의 impl 둘이 같은 타입일 수 있으면 E0311 오류다. 타입 매개변수는 무엇과도 겹친다고 본다. 모든 타입에 대한 `impl<T> Tr for T`는 E0235, `dyn Tr`은 E0236 오류다. `impl`의 타입 매개변수는 구현하는 타입에 순서대로 나와야 한다(E0420): 고유 `impl`은 `impl<A, B> T<A, B>` 꼴 그대로이고, trait `impl`은 구체 타입을 섞어도 되지만(`Two<T, i64>`) 매개변수가 처음 나오는 순서가 선언 순서다(`impl<A, B> Tr for Two<B, A>`는 오류, `tests/conformance/03/trait_impl_parameters_in_order.bmb`).
 - 메서드 호출 `x.f(a)`는 `x`의 타입의 고유 `impl` 함수, 없으면 `f`를 가진 trait 하나를 가리킨다(ADR-0051). 없는 이름은 E0404, 두 trait이 같은 이름을 가지면 E0313, 수신자가 없는 함수는 E0314 오류다.
 - 코퍼스: `tests/run/generics.bmb`, `tests/run/traits.bmb`, `tests/run/methods.bmb`, `tests/check/err/generics.bmb`, `tests/check/err/traits.bmb`, `tests/check/err/vec_params.bmb`.
 

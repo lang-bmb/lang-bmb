@@ -1,0 +1,9 @@
+{
+  "sections": [
+    "클로저"
+  ],
+  "note": "A capturing closure without `move` is E0262 and nothing else: the closure is not reported a second time.",
+  "check": [
+    {"code": "E0262", "line": 10}
+  ]
+}

@@ -1022,3 +1022,18 @@ mod w {
     assert!(!text.contains(" as "), "{text}");
     assert!(checks(&out.files));
 }
+
+/// A program that passes a closure checks into generated functions with no
+/// source text (`closures`): `fix` leaves them alone (found with the conformance suite, backlog 2V-21: it
+/// indexed the generated file and ended with a panic).
+#[test]
+fn a_program_with_a_closure_is_fixed() {
+    let text = "#[summary(\"c\")]\nmod m {\n    #[effects(pure)]\n    fn apply<F: Fn(i64) -> i64>(f: F, x: i64) -> (r: i64)\n        requires f.requires(x),\n        ensures f.ensures(x, r),\n    {\n        f(x)\n    }\n\n    #[effects(pure)]\n    fn c() -> i64 {\n        let mut i: usize = 0;\n        while i < 3\n            invariant i <= 3,\n            decreases 3 - i,\n        {\n            i = i + 1;\n        }\n        apply::<_>(|x: i64| -> i64 { x.wrapping_add(1) }, 1)\n    }\n}\n";
+    let fixed = fix(&one(text));
+    assert!(fixed.ok, "{}", fixed.report);
+    assert!(
+        fixed.files[0].1.contains("|x: i64| -> i64"),
+        "{}",
+        fixed.files[0].1
+    );
+}

@@ -244,8 +244,8 @@
    "src": "78eccab9946c84a5"
   },
   "tests/check/err/data_arrays.bmb": {
-   "out": "c0ac5040a6e3cfd3",
-   "src": "f4e7d5be91de33be"
+   "out": "48319f60f8601c7a",
+   "src": "6106ffe3c23aca82"
   },
   "tests/check/err/data_types.bmb": {
    "out": "e8055bab7b756052",
@@ -280,7 +280,7 @@
    "src": "324bb5d96ccb71ae"
   },
   "tests/check/err/fn_values.bmb": {
-   "out": "ce7ba6a565f2185b",
+   "out": "c2f544540a8105c0",
    "src": "f3a25ffed1b3c1f6"
   },
   "tests/check/err/generics.bmb": {
@@ -412,8 +412,8 @@
    "src": "4065e5d459ff62f6"
   },
   "tests/check/err/traits.bmb": {
-   "out": "711089d71b02dc0d",
-   "src": "eceef4d73deccbbc"
+   "out": "d3dbcd1f9e198ef8",
+   "src": "ed894ed03661b369"
   },
   "tests/check/err/tries.bmb": {
    "out": "5e3ec1bc3a9a7741",
@@ -746,6 +746,10 @@
   "tests/run/tries.bmb": {
    "out": "23811436afb7f823",
    "src": "9354d4b528a3cdab"
+  },
+  "tests/run/unit_locals.bmb": {
+   "out": "258d579d0220304a",
+   "src": "d142fd532478c149"
   },
   "tests/run/values.bmb": {
    "out": "9006eabfdfb58e97",

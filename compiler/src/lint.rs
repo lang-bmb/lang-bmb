@@ -2290,7 +2290,11 @@ pub fn canonical_loops(p: &Program, files: &[(String, String)]) -> Vec<Diag> {
                     .map(|t| &t.f),
             );
         for f in fns {
-            out.extend(counting_whiles(f, &files[f.span.file as usize].1));
+            // A function a closure became (`closures`) lies in a generated
+            // file with no text: its loops are the closure's, not rewritten.
+            if let Some((_, text)) = files.get(f.span.file as usize) {
+                out.extend(counting_whiles(f, text));
+            }
         }
         for s in &m.mods {
             walk(s, files, out);

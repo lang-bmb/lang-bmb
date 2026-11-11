@@ -9,7 +9,7 @@
     "V8_bench_rlimit_total": 22976379,
     "V9_bench_defs_at_limit": 0,
     "V10_library_rlimit_total": 22246065,
-    "V11_sat_check_rlimit_total": 271944178,
+    "V11_sat_check_rlimit_total": 271944190,
     "V12_sat_check_undecided": 216,
     "S1_external_crates": 0,
     "S2_external_processes": [
@@ -17,17 +17,17 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 54667,
+    "S4_stage0_rust_lines": 54711,
     "S5_tests_bound_to_rust_api": 1,
     "S6_selfhost_bmb_lines": 0,
     "S7_selfhost_proved_defs": null,
-    "P1_runnable_programs": 84,
-    "P2_bmb_lines": 39456,
-    "P3_errors_with_help": 0.9115,
+    "P1_runnable_programs": 85,
+    "P2_bmb_lines": 39636,
+    "P3_errors_with_help": 0.9116,
     "B1_baseline_binary_bytes": 101664,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 17,
-    "O3_active_backlog_chars": 36203
+    "O3_active_backlog_chars": 36191
   },
   "history": [
     {
@@ -2626,6 +2626,36 @@
         "O3_active_backlog_chars": [
           36153,
           36203
+        ]
+      }
+    },
+    {
+      "date": "2026-11-11",
+      "reason": "2V-21: 적합성 시험이 찾은 결함 넷과 bmb fix 패닉 수정, 코퍼스 unit_locals",
+      "changed": {
+        "V11_sat_check_rlimit_total": [
+          271944178,
+          271944190
+        ],
+        "S4_stage0_rust_lines": [
+          54667,
+          54711
+        ],
+        "P1_runnable_programs": [
+          84,
+          85
+        ],
+        "P2_bmb_lines": [
+          39456,
+          39636
+        ],
+        "P3_errors_with_help": [
+          0.9115,
+          0.9116
+        ],
+        "O3_active_backlog_chars": [
+          36203,
+          36191
         ]
       }
     }

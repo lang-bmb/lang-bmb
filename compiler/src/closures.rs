@@ -276,9 +276,14 @@ fn through_self(e: &mut Expr, caps: &[String]) {
 /// Writes a call's rewrites (ADR-0053 lowering): argument `j` becomes the
 /// value of struct `sname` (with the captures `caps` as its fields, `&` of
 /// it when the parameter takes `&F`) and type argument `k` its type; a
-/// type argument of a reported closure (`rej`) becomes an error type, so
-/// its `_` is not reported again (E0305).
-fn apply_call(e: &mut Expr, todo: &[(usize, String, usize, bool, Vec<String>)], rej: &[usize]) {
+/// reported closure (`rej`: its type argument and argument) becomes an
+/// error type and an error expression, so its `_` (E0305) and the closure
+/// itself (E0264) are not reported again.
+fn apply_call(
+    e: &mut Expr,
+    todo: &[(usize, String, usize, bool, Vec<String>)],
+    rej: &[(usize, usize)],
+) {
     let ExprKind::Call {
         path, targs, args, ..
     } = &mut e.kind
@@ -286,12 +291,13 @@ fn apply_call(e: &mut Expr, todo: &[(usize, String, usize, bool, Vec<String>)], 
         return;
     };
     let last = path.len() - 1;
-    for k in rej {
+    for (k, j) in rej {
         if let Some(t) = targs.iter_mut().find(|t| t.seg == last)
             && let Some(a) = t.args.get_mut(*k)
         {
             a.kind = TypeKind::Error;
         }
+        args[*j].kind = ExprKind::Error;
     }
     for (j, sname, k, by_ref, caps) in todo {
         let (j, k, by_ref) = (*j, *k, *by_ref);
@@ -648,7 +654,7 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Lowered {
                         // What this call's arguments become, applied in place
                         // (not by span: a program read from JSON has none).
                         let mut todo: Vec<(usize, String, usize, bool, Vec<String>)> = Vec::new();
-                        let mut rej: Vec<usize> = Vec::new();
+                        let mut rej: Vec<(usize, usize)> = Vec::new();
                         let ExprKind::Call { path, args, .. } = &e.kind else {
                             return;
                         };
@@ -675,7 +681,7 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Lowered {
                                         )
                                         .fix("bind the captured value to a typed `let` in the outer closure's body and capture that", None),
                                     );
-                                        rej.push(*k);
+                                        rej.push((*k, *j));
                                         continue;
                                     }
                                     let untyped: Vec<&String> =
@@ -700,7 +706,7 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Lowered {
                                         };
                                         pending.push(d);
                                         // Its `_` is not reported again (E0305).
-                                        rej.push(*k);
+                                        rej.push((*k, *j));
                                         continue;
                                     }
                                     let tn = trait_name(g.order, *k);

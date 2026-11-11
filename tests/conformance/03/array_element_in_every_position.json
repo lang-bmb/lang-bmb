@@ -1,0 +1,15 @@
+{
+  "sections": [
+    "배열과 슬라이스"
+  ],
+  "note": "`Vec` and `String` are not array elements wherever the array type is written: a parameter, a result, a type argument, a spec fn parameter, a local (E0402, once per type).",
+  "check": [
+    {"code": "E0402", "line": 6},
+    {"code": "E0402", "line": 9},
+    {"code": "E0402", "line": 12},
+    {"code": "E0402", "line": 15},
+    {"code": "E0402", "line": 18},
+    {"code": "E0402", "line": 20},
+    {"code": "E0402", "line": 24}
+  ]
+}

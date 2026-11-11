@@ -1,0 +1,34 @@
+#[summary("`()` 타입의 지역과 매개변수: 자리 없이 묶고, 대입하고, 넘긴다 (backlog 2V-21)")]
+mod ul {
+    #[effects(io)]
+    fn show(n: i64) -> () { print_i64(n); }
+
+    #[effects(pure)]
+    fn pass(u: (), n: i64, v: ()) -> () { u }
+
+    #[effects(io)]
+    fn open(x: Option<()>) -> () {
+        match x {
+            None => { print_i64(0); }
+            Some(u) => {
+                let w: () = u;
+                w
+            }
+        }
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        let u: () = ();
+        let v: () = show(1);
+        u;
+        pass(v, 2, u);
+        let mut w: () = pass(u, 3, show(2));
+        w = show(3);
+        w = u;
+        let y: () = if true { show(4) } else { w };
+        open(Some(y));
+        open(None);
+        y
+    }
+}

@@ -64,24 +64,24 @@ python3 scripts/conformance.py table --write  # 아래 표를 다시 쓴다
 | 03 | 타입을 적는 자리 | 2 | `type_arguments`, `types_are_written` |
 | 03 | 연산자와 피연산자 | 7 | `arithmetic_obligations`, `builtin_methods_closed_list`, `equality_of_aggregates`, `index_type_is_usize`, `no_implicit_conversion`, `operator_results`, `type_parameter_comparison` |
 | 03 | 변환 | 5 | `as_range_obligation`, `as_target_not_integer`, `conversion_source_not_integer`, `conversions_accepted`, `rust_conversion_habits` |
-| 03 | 배열과 슬라이스 | 5 | `array_element_and_slice_types`, `array_length_in_type`, `arrays_and_slices`, `not_indexable`, `range_is_not_a_value` |
+| 03 | 배열과 슬라이스 | 6 | `array_element_and_slice_types`, `array_element_in_every_position`, `array_length_in_type`, `arrays_and_slices`, `not_indexable`, `range_is_not_a_value` |
 | 03 | 텍스트 | 4 | `str_arguments`, `string_literal_places`, `text_not_indexable_closed_methods`, `text_operations` |
 | 03 | 구조체와 열거형 | 6 | `match_rules`, `recursive_types`, `struct_and_match_values`, `struct_enum_declarations`, `struct_values`, `type_invariant_attribute` |
 | 03 | `Option`과 `Result` | 4 | `no_unwrap`, `option_result_names_reserved`, `option_result_types`, `option_result_variants` |
-| 03 | 제네릭과 trait | 6 | `builtin_bounds`, `generics_and_traits_run`, `impl_parameters_in_order`, `polymorphic_recursion`, `trait_impl_overlap`, `type_argument_rules` |
+| 03 | 제네릭과 trait | 7 | `builtin_bounds`, `generics_and_traits_run`, `impl_parameters_in_order`, `polymorphic_recursion`, `trait_impl_overlap`, `trait_impl_parameters_in_order`, `type_argument_rules` |
 | 03 | 함수 값 | 2 | `function_value_places`, `function_values` |
 | 03 | 소유 타입 | 4 | `owned_closed_methods`, `owned_element_types`, `owned_types_run`, `spec_fn_no_owned_parameters` |
 | 03 | 상수의 타입 | 2 | `const_type_errors`, `const_types_run` |
 | 04 | 식의 문법과 우선순위 | 5 | `comparison_not_chained`, `evaluation_order`, `left_associativity`, `precedence_levels`, `return_binds_loosest` |
-| 04 | 리터럴·경로·호출 | 3 | `call_errors`, `calls_by_path`, `unit_value` |
+| 04 | 리터럴·경로·호출 | 4 | `call_errors`, `calls_by_path`, `unit_locals_run`, `unit_value` |
 | 04 | 메서드 호출 | 3 | `builtin_method_before_trait`, `method_call_errors`, `receiver_adjustment` |
 | 04 | 연산자와 피연산자 | 6 | `compound_assignment`, `compound_assignment_place_calls`, `mixed_integer_types`, `operator_values`, `shift_by_known_local`, `short_circuit` |
 | 04 | 변환 | 3 | `conversion_aliases`, `conversion_errors`, `try_from_unwrap_obligation` |
 | 04 | 색인·필드·역참조 | 3 | `index_obligation`, `place_errors`, `places` |
 | 04 | 구조체·열거형 값 | 3 | `enum_value_errors`, `struct_field_evaluation_order`, `struct_value_errors` |
 | 04 | 블록과 꼬리 식 | 2 | `block_scope_and_type`, `block_values` |
-| 04 | 클로저 | 2 | `closure_errors`, `closures_accepted` |
-| 04 | 문장 | 5 | `assert_errors`, `assert_statement`, `assignment_targets`, `expression_statements`, `let_statement` |
+| 04 | 클로저 | 3 | `closure_capture_needs_move`, `closure_errors`, `closures_accepted` |
+| 04 | 문장 | 6 | `assert_errors`, `assert_statement`, `assignment_targets`, `expression_statements`, `let_statement`, `unit_locals_run` |
 | 04 | if와 match | 4 | `if_and_match_values`, `if_errors`, `match_arm_rules`, `match_pattern_rules` |
 | 04 | 루프 | 4 | `for_variable`, `loop_clauses`, `loop_types`, `loops_run` |
 | 04 | 조기 탈출: return, break, continue, ? | 4 | `exit_errors`, `labels_and_exits_run`, `question_mark_errors`, `question_mark_run` |
@@ -128,6 +128,6 @@ python3 scripts/conformance.py table --write  # 아래 표를 다시 쓴다
 | 08 | 근거: `#[rationale(..)]` | 6 | `assume_needs_rationale`, `external_body_needs_rationale`, `rationale_hash_not_an_error`, `rationale_kinds`, `rationale_malformed`, `statement_attributes` |
 | 08 | 탈출구와 증명의 신뢰 등급 | 3 | `no_escape_no_trust`, `trust_does_not_spread`, `trusted_definitions_are_verified` |
 
-절 86개, 사례 404개, 사례도 면제도 없는 절 0개.
+절 86개, 사례 408개, 사례도 면제도 없는 절 0개.
 
 <!-- conformance:table end -->

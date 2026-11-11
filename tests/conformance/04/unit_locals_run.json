@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "리터럴·경로·호출",
+    "문장"
+  ],
+  "note": "A local or parameter of type `()` holds the unit value: it is bound, assigned, passed and returned, and its initializer runs once.",
+  "check": [],
+  "verify": {
+    "diags": []
+  },
+  "run": "1\n2\n3\n4\n0\n"
+}

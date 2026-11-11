@@ -157,3 +157,20 @@ mod other {
         }
     }
 }
+
+#[summary("trait impl의 타입 매개변수는 구현하는 타입에 나오는 순서로 (backlog 2V-21)")]
+mod order {
+    struct Two<A: Copy, B: Copy> { a: A, b: B }
+
+    trait Tr {
+        #[effects(pure)]
+        fn m(self: &Self) -> i64;
+    }
+
+    impl<A: Copy, B: Copy> Tr for Two<B, A> {
+        #[effects(pure)]
+        fn m(self: &Two<B, A>) -> i64 {
+            2
+        }
+    }
+}

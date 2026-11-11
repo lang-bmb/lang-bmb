@@ -14,3 +14,16 @@ mod da {
         [v][0].len()
     }
 }
+
+#[summary("배열 타입을 적는 모든 자리의 원소 규칙: 매개변수, 결과, 타입 인자 (backlog 2V-21)")]
+mod dp {
+    #[effects(pure)]
+    fn param(a: [Vec<i64>; 2], b: [String; 2]) -> usize {
+        0
+    }
+
+    #[effects(alloc)]
+    fn nested(a: Option<[String; 2]>) -> [Vec<i64>; 2] {
+        [Vec::new(), Vec::new()]
+    }
+}

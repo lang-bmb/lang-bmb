@@ -1756,6 +1756,8 @@ fn array_elem_ok(e: &TypeKind) -> bool {
         }
         TypeKind::String => false,
         TypeKind::Array(inner, _) => array_elem_ok(&inner.kind),
+        // The resolved forms: `canon` reads its own results too.
+        TypeKind::Box(_) | TypeKind::Param(_) => true,
         TypeKind::Error => true,
         t => is_scalar(t),
     }
@@ -2170,6 +2172,30 @@ impl<'a> Checker<'a> {
                         ),
                     )
                     .fix("remove it, or use it in the implemented type", None),
+                );
+                continue;
+            }
+            // One way to write an impl (as the inherent `impl<A, B> T<A, B>`):
+            // the parameters are declared in the order the type names them.
+            let mut seen = Vec::new();
+            params_in(&head, &mut seen);
+            if !seen.iter().eq(gens.iter().map(|p| &p.name)) {
+                self.diags.push(
+                    Diag::new(
+                        "E0420",
+                        span,
+                        format!(
+                            "the `impl` for `{}` takes its type parameters in order",
+                            ty_str_in(&head, &mp)
+                        ),
+                    )
+                    .fix(
+                        format!(
+                            "declare them in the order the type names them: `{}`",
+                            seen.join("`, `")
+                        ),
+                        None,
+                    ),
                 );
                 continue;
             }
@@ -3017,18 +3043,6 @@ impl<'a> Checker<'a> {
                 );
                 TypeKind::Error
             }
-            TypeKind::Array(e, _) if !array_elem_ok(&e.kind) => {
-                self.diags.push(
-                    Diag::new(
-                        "E0402",
-                        t.span,
-                        "array elements must be scalars, structs, enums or arrays",
-                    )
-                    .fix(ARRAY_ELEMENT_HELP, None),
-                );
-                TypeKind::Error
-            }
-            TypeKind::Array(..) => self.canon(t, mp, true),
             TypeKind::Unit => {
                 self.err("E0402", t.span, "a field cannot have type `()`");
                 TypeKind::Error
@@ -3510,6 +3524,22 @@ impl<'a> Checker<'a> {
                 }
             }
             TypeKind::Array(e, n) => {
+                // Here and not where a type is used: every position a
+                // type is written in (parameters, results, type
+                // arguments) has the same element rule.
+                if !array_elem_ok(&e.kind) {
+                    if report {
+                        self.diags.push(
+                            Diag::new(
+                                "E0402",
+                                t.span,
+                                "array elements must be scalars, structs, enums or arrays",
+                            )
+                            .fix(ARRAY_ELEMENT_HELP, None),
+                        );
+                    }
+                    return TypeKind::Error;
+                }
                 let el = sub(self, e);
                 TypeKind::Array(Box::new(el), *n)
             }
@@ -4733,8 +4763,6 @@ impl<'a> Checker<'a> {
             {
                 self.spec_string(t.span)
             }
-            // Checked after canonicalization (`data_array`).
-            TypeKind::Array(e, _) if matches!(e.kind, TypeKind::Named { .. }) => {}
             _ => self.check_value_type(t, "parameter type"),
         }
     }
@@ -4812,16 +4840,6 @@ impl<'a> Checker<'a> {
                 t.span,
                 "a bare `str` is unsized; use `&str` as a parameter or `String`",
             ),
-            TypeKind::Array(e, _) if !array_elem_ok(&e.kind) => {
-                self.diags.push(
-                    Diag::new(
-                        "E0402",
-                        t.span,
-                        "array elements must be scalars, structs, enums or arrays",
-                    )
-                    .fix(ARRAY_ELEMENT_HELP, None),
-                );
-            }
             _ => {}
         }
     }
@@ -8062,6 +8080,9 @@ impl<'a> Checker<'a> {
             ExprKind::Array(items) => {
                 let want_elem = match expected {
                     Some(TypeKind::Array(el, _)) => Some(el.kind.clone()),
+                    // The written type is wrong and reported: so are
+                    // its elements.
+                    Some(TypeKind::Error) => Some(TypeKind::Error),
                     _ => None,
                 };
                 let mut elem = want_elem.clone();
@@ -8092,6 +8113,7 @@ impl<'a> Checker<'a> {
             } => {
                 let want_elem = match expected {
                     Some(TypeKind::Array(el, _)) => Some(el.kind.clone()),
+                    Some(TypeKind::Error) => Some(TypeKind::Error),
                     _ => None,
                 };
                 let t = self.expr(cx, value, want_elem.as_ref(), mode);
@@ -11561,6 +11583,24 @@ fn mentions_param(t: &TypeKind, n: &str) -> bool {
         TypeKind::Ref { inner, .. } => mentions_param(&inner.kind, n),
         TypeKind::Named { args, .. } => args.iter().any(|a| mentions_param(&a.kind, n)),
         _ => false,
+    }
+}
+
+/// The type parameters `t` names, each once, in the order it first names
+/// them.
+fn params_in(t: &TypeKind, out: &mut Vec<String>) {
+    match t {
+        TypeKind::Param(x) => {
+            if !out.contains(x) {
+                out.push(x.clone());
+            }
+        }
+        TypeKind::Array(e, _) | TypeKind::Slice(e) | TypeKind::Vec(e) | TypeKind::Box(e) => {
+            params_in(&e.kind, out)
+        }
+        TypeKind::Ref { inner, .. } => params_in(&inner.kind, out),
+        TypeKind::Named { args, .. } => args.iter().for_each(|a| params_in(&a.kind, out)),
+        _ => {}
     }
 }
 

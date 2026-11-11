@@ -1,0 +1,30 @@
+#[summary("s")]
+mod a {
+    struct G<T> { x: T }
+
+    #[effects(pure)]
+    fn e1(a: [Vec<i64>; 2]) -> i64 { 1 }
+
+    #[effects(pure)]
+    fn e2(a: [String; 2]) -> i64 { 1 }
+
+    #[effects(alloc)]
+    fn e3() -> [Vec<i64>; 2] { [Vec::new(), Vec::new()] }
+
+    #[effects(pure)]
+    fn e4(a: Option<[String; 2]>) -> i64 { 1 }
+
+    #[effects(pure)]
+    fn e5(a: G<[[Vec<i64>; 2]; 2]>) -> i64 { 1 }
+
+    spec fn e6(a: [String; 2]) -> bool { a == a }
+
+    #[effects(alloc)]
+    fn e7() -> i64 {
+        let a: [Vec<i64>; 2] = [Vec::new(), Vec::new()];
+        1
+    }
+
+    #[effects(pure)]
+    fn ok(a: [Box<i64>; 2], b: [[i64; 2]; 2], c: [G<i64>; 2]) -> i64 { 1 }
+}
