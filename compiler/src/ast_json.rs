@@ -1538,7 +1538,18 @@ impl Im {
             }
             let args = self.list(&o, field, |m, x| match x {
                 Value::Str(t) => {
-                    m.path_of("", t)?;
+                    // A trait impl's method, `<a::T as b::Tr>::name`, as the
+                    // parser keeps it (backlog 2D-31).
+                    let impl_path = attr == "uses"
+                        && t.strip_prefix('<')
+                            .and_then(|r| r.split_once(">::"))
+                            .and_then(|(h, n)| h.split_once(" as ").map(|(ty, tr)| (ty, tr, n)))
+                            .is_some_and(|(ty, tr, n)| {
+                                is_name(n) && [ty, tr].iter().all(|p| p.split("::").all(is_name))
+                            });
+                    if !impl_path {
+                        m.path_of("", t)?;
+                    }
                     Ok(AttrArg::Ident(id(t)))
                 }
                 _ => m.fail("expected a name"),
