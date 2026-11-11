@@ -3415,6 +3415,32 @@ impl<'a> Checker<'a> {
                         return TypeKind::Error;
                     }
                     let args: Vec<Type> = args.iter().map(|a| sub(self, a)).collect();
+                    // The payload is a value, as a user type's argument is
+                    // (`targ_ok`): a reference is stored nowhere (ADR-0015).
+                    if let Some(a) = args.iter().find(|a| {
+                        matches!(
+                            a.kind,
+                            TypeKind::Ref { .. } | TypeKind::Slice(_) | TypeKind::Str
+                        )
+                    }) {
+                        if report {
+                            self.diags.push(
+                                Diag::new(
+                                    "E0403",
+                                    a.span,
+                                    format!(
+                                        "type argument `{}` of `{name}` is not a value type",
+                                        ty_str(&a.kind)
+                                    ),
+                                )
+                                .fix(
+                                    "type arguments are value types: references are second-class (ADR-0015)",
+                                    None,
+                                ),
+                            );
+                        }
+                        return TypeKind::Error;
+                    }
                     return TypeKind::Named {
                         path: path.clone(),
                         args,
@@ -4117,6 +4143,21 @@ impl<'a> Checker<'a> {
                         self.missing_rationale(a.span, "`#[external_body]`");
                     }
                 }
+                // A rationale states why an escape holds (ADR-0029): on a
+                // function it belongs to `#[external_body]`.
+                "rationale" if !f.attrs.iter().any(|r| r.name.name == "external_body") => {
+                    self.diags.push(
+                        Diag::new(
+                            "E1002",
+                            a.span,
+                            "a rationale on a function that is not `#[external_body]`",
+                        )
+                        .fix(
+                            "remove it: a rationale stands before `#[external_body]` or an `assume`",
+                            Some(String::new()),
+                        ),
+                    );
+                }
                 "rationale" => self.check_rationale(a),
                 "summary" => self.check_summary(a, &f.attrs),
                 other => self.diags.push(
@@ -4160,6 +4201,12 @@ impl<'a> Checker<'a> {
                 && a.args.len() == 1
                 && matches!(a.args[0], AttrArg::Str(..))
             {
+                if has_summary {
+                    self.diags.push(
+                        Diag::new("E0605", a.span, "duplicate `#[summary(..)]` attribute")
+                            .fix("keep one: join the text", Some(String::new())),
+                    );
+                }
                 has_summary = true;
             } else if a.name.name == "summary" {
                 self.err("E0704", a.span, "`#[summary(..)]` takes exactly one string");

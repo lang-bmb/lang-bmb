@@ -653,6 +653,21 @@ impl<'a> Parser<'a> {
                     Err(_) => self.recover_item(),
                 }
             } else if self.is_kw("impl") {
+                // An `impl` block is no definition: its attributes would
+                // be read by nothing.
+                for a in &attrs {
+                    self.diags.push(
+                        Diag::new(
+                            "E0605",
+                            a.span,
+                            format!("unknown attribute `{}` on an `impl` block", a.name.name),
+                        )
+                        .fix(
+                            "an `impl` block takes no attributes: write it on the functions inside",
+                            Some(String::new()),
+                        ),
+                    );
+                }
                 match self.parse_impl() {
                     Ok(ImplItem::Inherent(i)) => impls.push(i),
                     Ok(ImplItem::Trait(i)) => trait_impls.push(i),

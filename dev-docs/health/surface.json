@@ -203,6 +203,10 @@
    "out": "0316b2e9f7cbdc81",
    "src": "3c9818fbd0d9e858"
   },
+  "tests/check/err/attr_places.bmb": {
+   "out": "010af9b1da8506ee",
+   "src": "17a8c53a661b6bd2"
+  },
   "tests/check/err/attrs.bmb": {
    "out": "a9b321987049b3dc",
    "src": "99b7413d4ac551f0"

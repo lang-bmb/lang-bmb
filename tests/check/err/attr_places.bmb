@@ -1,0 +1,41 @@
+#[summary("속성과 타입 인자의 자리(백로그 2V-20l): 단위 요약의 중복, impl 블록 앞의 속성, 내장 Option·Result의 참조 인자, 탈출구 없는 함수의 근거")]
+#[summary("둘째 요약")]
+mod attr_places {
+    struct P {
+        x: i64,
+    }
+
+    #[bogus]
+    impl P {
+        #[effects(pure)]
+        fn get(self: &P) -> i64 {
+            self.x
+        }
+    }
+
+    /// 문서는 정의에 단다.
+    impl P {
+        #[effects(pure)]
+        fn twice(self: &P) -> i64
+            requires self.x < 1000 && self.x > -1000,
+        {
+            self.x + self.x
+        }
+    }
+
+    #[effects(pure)]
+    fn first(o: Option<&P>) -> i64 {
+        0
+    }
+
+    #[effects(pure)]
+    fn text(r: Result<&str, i64>) -> i64 {
+        0
+    }
+
+    #[rationale(kind = boundary, "탈출구가 없다")]
+    #[effects(pure)]
+    fn lone() -> i64 {
+        0
+    }
+}

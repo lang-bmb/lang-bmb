@@ -205,6 +205,7 @@ python3 bench/brb-hard/harness.py summarize "$b" "$r" | grep -qF "| 성공(숨�
   --job "health=python3 scripts/health.py" \
   --job "health rules=python3 scripts/test_health.py && python3 scripts/test_solver_stability.py" \
   --job "progress report (INF-24)=python3 scripts/test_progress.py" \
+  --job "language reference links (5A-01)=python3 scripts/reference.py check" \
   --job "components and port ledger (4D-08, 4D-10)=python3 scripts/test_components.py > /dev/null && python3 scripts/components.py check" \
   --job "baseline perf check rules (INF-25)=python3 bench/baseline/test_run.py"
 echo "all checks passed"
