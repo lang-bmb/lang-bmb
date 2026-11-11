@@ -1,0 +1,13 @@
+#[summary("s")]
+mod a {
+    spec fn p(x: i64) -> bool { x as u8 == 1 }
+
+    #[effects(pure)]
+    fn e1(x: i64) -> u8 { u8::from(x) }
+
+    #[effects(pure)]
+    fn e2(x: i64) -> u8 { x.into() }
+
+    #[effects(pure)]
+    fn e3(x: i64) -> u8 { x.try_into() }
+}

@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "자리에서 꺼내기와 부분 이동"
+  ],
+  "note": "Assigning a moved-out field again makes the struct whole; a field of a wholly moved struct cannot be assigned (E0413).",
+  "check": [
+    {
+      "code": "E0413",
+      "line": 20
+    }
+  ]
+}

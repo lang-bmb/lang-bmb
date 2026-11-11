@@ -1,0 +1,32 @@
+{
+  "sections": [
+    "구조체와 열거형"
+  ],
+  "note": "A struct has one or more named fields and an enum one or more variants (E0420); no tuple structs or struct-like variants (E0233); fields and payloads hold no references or slices (E0403).",
+  "check": [
+    {
+      "code": "E0420",
+      "line": 7
+    },
+    {
+      "code": "E0420",
+      "line": 9
+    },
+    {
+      "code": "E0233",
+      "line": 11
+    },
+    {
+      "code": "E0233",
+      "line": 13
+    },
+    {
+      "code": "E0403",
+      "line": 15
+    },
+    {
+      "code": "E0403",
+      "line": 17
+    }
+  ]
+}

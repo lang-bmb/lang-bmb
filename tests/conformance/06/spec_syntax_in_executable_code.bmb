@@ -1,0 +1,17 @@
+#[summary("specification syntax in code")]
+mod m {
+    #[effects(pure)]
+    fn quantifier(x: i64) -> bool {
+        forall|i: u64| i < 3 ==> true
+    }
+
+    #[effects(pure)]
+    fn implies(x: i64) -> bool {
+        x > 0 ==> x > 1
+    }
+
+    #[effects(pure)]
+    fn entry(x: &mut i64) -> i64 {
+        *old(x)
+    }
+}

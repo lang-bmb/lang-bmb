@@ -1,0 +1,26 @@
+#[summary("old")]
+mod m {
+    #[effects(pure)]
+    fn in_requires(x: &mut i64) -> ()
+        requires *old(x) > 0,
+    {
+    }
+
+    #[effects(pure)]
+    fn on_shared(x: &i64) -> ()
+        ensures *old(x) == *x,
+    {
+    }
+
+    #[effects(pure)]
+    fn on_value(x: i64) -> (r: i64)
+        ensures r == old(x),
+    {
+        x
+    }
+
+    #[effects(pure)]
+    fn in_code(x: &mut i64) -> i64 {
+        *old(x)
+    }
+}

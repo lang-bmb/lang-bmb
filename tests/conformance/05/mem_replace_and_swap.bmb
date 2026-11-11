@@ -1,0 +1,26 @@
+#[summary("replace and swap")]
+mod m {
+    #[effects(pure)]
+    fn take(v: Vec<i64>) -> usize { v.len() }
+
+    #[effects(alloc, io)]
+    fn main() -> () {
+        let mut a: Vec<i64> = Vec::new();
+        a.push(1);
+        let prev: Vec<i64> = std::mem::replace(&mut a, Vec::new());
+        print_u64(take(prev) as u64);
+        print_u64(a.len() as u64);
+        let mut b: Vec<i64> = Vec::new();
+        b.push(1);
+        b.push(2);
+        a.push(3);
+        std::mem::swap(&mut a, &mut b);
+        print_u64(a.len() as u64);
+        print_u64(b.len() as u64);
+        let mut x: i64 = 5;
+        let mut y: i64 = 7;
+        std::mem::swap(&mut x, &mut y);
+        print_i64(x);
+        print_i64(y);
+    }
+}

@@ -1,0 +1,13 @@
+#[summary("s")]
+mod a {
+    enum Result { Good, Bad }
+
+    struct None { x: i64 }
+
+    #[effects(pure)]
+    fn Ok(x: i64) -> i64 { x }
+
+    const Err: i64 = 1;
+
+    struct Box { x: i64 }
+}

@@ -1,0 +1,10 @@
+#[summary("missing triggers")]
+mod m {
+    spec fn all(a: &[i64]) -> bool {
+        forall|i: usize| i < a.len() ==> a[i] > 0
+    }
+
+    spec fn some(a: &[i64]) -> bool {
+        exists|i: usize| i < a.len() && a[i] > 0
+    }
+}

@@ -1,0 +1,24 @@
+{
+  "sections": [
+    "의무의 종류"
+  ],
+  "note": "Each loop invariant clause must hold again at the end of the loop body, including at a `continue` (E0807).",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::bad": "failed",
+      "m::bad_continue": "failed",
+      "m::good": "verified"
+    },
+    "diags": [
+      {
+        "code": "E0807",
+        "line": 9
+      },
+      {
+        "code": "E0807",
+        "line": 24
+      }
+    ]
+  }
+}

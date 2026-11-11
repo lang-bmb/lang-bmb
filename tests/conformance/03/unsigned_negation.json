@@ -1,0 +1,16 @@
+{
+  "sections": [
+    "스칼라 타입"
+  ],
+  "note": "Unary `-` on an unsigned value is E0411.",
+  "check": [
+    {
+      "code": "E0411",
+      "line": 4
+    },
+    {
+      "code": "E0411",
+      "line": 7
+    }
+  ]
+}

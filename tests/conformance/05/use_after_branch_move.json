@@ -1,0 +1,16 @@
+{
+  "sections": [
+    "갈래와 루프의 이동"
+  ],
+  "note": "After a join where one arm moved a value, the value is moved: a use is E0413 whichever arm ran.",
+  "check": [
+    {
+      "code": "E0413",
+      "line": 9
+    },
+    {
+      "code": "E0413",
+      "line": 18
+    }
+  ]
+}

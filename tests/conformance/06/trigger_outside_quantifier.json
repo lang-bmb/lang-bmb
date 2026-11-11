@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "수량자와 트리거"
+  ],
+  "note": "`#[trigger]` on a term outside a quantifier is E0510.",
+  "check": [
+    {
+      "code": "E0510",
+      "line": 3
+    }
+  ]
+}

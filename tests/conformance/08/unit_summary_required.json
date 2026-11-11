@@ -1,0 +1,16 @@
+{
+  "sections": [
+    "항목이 받는 속성"
+  ],
+  "note": "A unit needs `#[summary(\"..\")]` and its argument is one string (E0704).",
+  "check": [
+    {
+      "code": "E0704",
+      "line": 1
+    },
+    {
+      "code": "E0704",
+      "line": 4
+    }
+  ]
+}

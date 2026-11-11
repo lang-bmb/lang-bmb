@@ -1,0 +1,16 @@
+{
+  "sections": [
+    "참조 인자"
+  ],
+  "note": "Passing `&v` (a Vec) where a slice is expected or `&s` (a String) where a `&str` is expected is E0218.",
+  "check": [
+    {
+      "code": "E0218",
+      "line": 11
+    },
+    {
+      "code": "E0218",
+      "line": 16
+    }
+  ]
+}

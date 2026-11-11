@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "문자·문자열·바이트 리터럴"
+  ],
+  "note": "Character and string literals take the listed escapes; a string holds non-ASCII characters and line breaks as written.",
+  "check": [],
+  "verify": {
+    "diags": []
+  },
+  "run": "97\n10\n65\n128512\n39\n0\nx\ty\\\"\r\ntwo\nlines é\n"
+}

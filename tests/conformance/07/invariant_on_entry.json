@@ -1,0 +1,19 @@
+{
+  "sections": [
+    "의무의 종류"
+  ],
+  "note": "Each loop invariant clause must hold where the loop is entered (E0806).",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::bad": "failed",
+      "m::good": "verified"
+    },
+    "diags": [
+      {
+        "code": "E0806",
+        "line": 7
+      }
+    ]
+  }
+}

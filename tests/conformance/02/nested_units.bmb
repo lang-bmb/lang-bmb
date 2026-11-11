@@ -1,0 +1,19 @@
+#[summary("s")]
+mod outer {
+    #[summary("i")]
+    mod inner {
+        #[summary("j")]
+        mod leaf {
+            #[effects(pure)]
+            fn three() -> i64 { 3 }
+        }
+    }
+}
+
+#[summary("s")]
+mod app {
+    #[effects(io)]
+    fn main() -> () {
+        print_i64(outer::inner::leaf::three());
+    }
+}

@@ -1,0 +1,20 @@
+{
+  "sections": [
+    "식별자와 예약어"
+  ],
+  "note": "A reserved word in a name position is E0103, also one BMB's own syntax never uses.",
+  "check": [
+    {
+      "code": "E0103",
+      "line": 4
+    },
+    {
+      "code": "E0103",
+      "line": 7
+    },
+    {
+      "code": "E0103",
+      "line": 10
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "문장"
+  ],
+  "note": "`e;` drops the value; `if`, `match` and `loop` in statement position end at their closing `}`, so `if c { return; } *x = 1;` is two statements.",
+  "check": [],
+  "verify": {
+    "diags": []
+  },
+  "run": "0\n1\n"
+}

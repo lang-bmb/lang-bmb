@@ -1,0 +1,13 @@
+{
+  "sections": [
+    "계약 절"
+  ],
+  "note": "A function with requires, ensures and decreases clauses in that order is accepted and proved.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::down": "verified"
+    },
+    "diags": []
+  }
+}

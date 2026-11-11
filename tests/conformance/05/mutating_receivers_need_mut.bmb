@@ -1,0 +1,38 @@
+#[summary("writable receivers")]
+mod m {
+    struct C { n: i64 }
+
+    impl C {
+        #[effects(pure)]
+        fn set(self: &mut C, v: i64) -> () {
+            self.n = v;
+        }
+    }
+
+    #[effects(pure)]
+    fn zero(x: &mut i64) -> () {
+        *x = 0;
+    }
+
+    #[effects(pure)]
+    fn builtin(v: Vec<i64>) -> () {
+        v.truncate(0);
+    }
+
+    #[effects(pure)]
+    fn popped(v: &Vec<i64>) -> Option<i64> {
+        v.pop()
+    }
+
+    #[effects(pure)]
+    fn method() -> () {
+        let c: C = C { n: 1 };
+        c.set(2);
+    }
+
+    #[effects(pure)]
+    fn argument() -> () {
+        let k: i64 = 1;
+        zero(&mut k);
+    }
+}

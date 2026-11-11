@@ -1,0 +1,24 @@
+{
+  "sections": [
+    "제네릭과 trait"
+  ],
+  "note": "Type arguments are value types (E0403); a wrong number is E0429 on a call and E0420 on a type; `where` is E0240.",
+  "check": [
+    {
+      "code": "E0240",
+      "line": 9
+    },
+    {
+      "code": "E0429",
+      "line": 12
+    },
+    {
+      "code": "E0420",
+      "line": 15
+    },
+    {
+      "code": "E0403",
+      "line": 19
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "연산자와 피연산자"
+  ],
+  "note": "`&&` and `||` evaluate the right operand only when needed; `&` and `|` on `bool` evaluate both.",
+  "check": [],
+  "verify": {
+    "diags": []
+  },
+  "run": "10\n0\n12\n1\n14\n15\n16\n1\n20\n21\n0\n22\n23\n1\n"
+}

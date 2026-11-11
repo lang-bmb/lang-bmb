@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "경로와 이름 찾기"
+  ],
+  "note": "There is no `use` (E0214).",
+  "check": [
+    {
+      "code": "E0214",
+      "line": 3
+    }
+  ]
+}

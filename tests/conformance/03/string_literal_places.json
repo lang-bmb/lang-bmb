@@ -1,0 +1,16 @@
+{
+  "sections": [
+    "텍스트"
+  ],
+  "note": "A string literal is a `&str` and comes only as a call argument or a comparison operand (E0409 elsewhere).",
+  "check": [
+    {
+      "code": "E0409",
+      "line": 11
+    },
+    {
+      "code": "E0409",
+      "line": 16
+    }
+  ]
+}

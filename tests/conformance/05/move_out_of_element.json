@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "자리에서 꺼내기와 부분 이동"
+  ],
+  "note": "An owned element cannot be moved out by indexing (E0413); reading through it is accepted.",
+  "check": [
+    {
+      "code": "E0413",
+      "line": 5
+    }
+  ]
+}

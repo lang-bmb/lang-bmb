@@ -1,0 +1,20 @@
+{
+  "sections": [
+    "식의 문법과 우선순위"
+  ],
+  "note": "Comparisons do not chain (E0211); the specification-only `==>` in executable code is E0503.",
+  "check": [
+    {
+      "code": "E0211",
+      "line": 4
+    },
+    {
+      "code": "E0211",
+      "line": 7
+    },
+    {
+      "code": "E0503",
+      "line": 10
+    }
+  ]
+}

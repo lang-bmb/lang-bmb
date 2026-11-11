@@ -1,0 +1,41 @@
+#[summary("s")]
+mod a {
+    trait Area {
+        #[effects(pure)]
+        fn area(self: &Self) -> i64;
+    }
+
+    struct Sq { s: i64 }
+
+    #[effects(pure)]
+    fn larger<T: Ord>(a: T, b: T) -> T { if a < b { b } else { a } }
+
+    #[effects(pure)]
+    fn same<T: Eq>(a: &T, b: &T) -> bool { *a == *b }
+
+    #[effects(pure)]
+    fn area_of<T: Area>(x: &T) -> i64 { x.area() }
+
+    #[effects(pure)]
+    fn ok(a: bool, b: char, c: u8, s: &String) -> bool {
+        larger::<bool>(a, a) && larger::<char>(b, b) == b && larger::<u8>(c, c) == c && same::<String>(s, s)
+    }
+
+    #[effects(pure)]
+    fn e1(a: f64) -> f64 { larger::<f64>(a, a) }
+
+    #[effects(pure)]
+    fn e2(a: Sq, b: Sq) -> Sq { larger::<Sq>(a, b) }
+
+    #[effects(pure)]
+    fn e3(a: [i64; 2]) -> bool { same::<[i64; 2]>(&a, &a) }
+
+    #[effects(alloc)]
+    fn e4(a: Vec<i64>) -> usize {
+        let b: Vec<i64> = larger::<Vec<i64>>(a, Vec::new());
+        b.len()
+    }
+
+    #[effects(pure)]
+    fn e5(a: i64) -> i64 { area_of::<i64>(&a) }
+}

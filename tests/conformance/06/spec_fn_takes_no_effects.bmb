@@ -1,0 +1,7 @@
+#[summary("spec fn attributes")]
+mod m {
+    #[effects(pure)]
+    spec fn pos(x: i64) -> bool { x > 0 }
+
+    spec fn neg(x: i64) -> bool { x < 0 }
+}

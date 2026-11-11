@@ -1,0 +1,9 @@
+#[summary("external_body needs panic")]
+mod m {
+    #[rationale(kind = boundary, "outside")]
+    #[external_body]
+    #[effects(pure)]
+    fn outside() -> i64 {
+        0
+    }
+}

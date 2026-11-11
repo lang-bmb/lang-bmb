@@ -1,0 +1,14 @@
+#[summary("contracts without escapes")]
+mod m {
+    #[effects(pure)]
+    fn claims(x: i64) -> (r: i64)
+        ensures 0 <= r && r <= 10,
+    {
+        x
+    }
+
+    #[effects(pure)]
+    fn caller(x: i64) -> i64 {
+        claims(x) + 1
+    }
+}

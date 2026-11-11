@@ -1,0 +1,17 @@
+{
+  "sections": [
+    "효과의 집합",
+    "탈출구: `assume`"
+  ],
+  "note": "An `assume` statement is a source of `panic`: its function must declare `panic` (E0606), and so must a caller of that function.",
+  "check": [
+    {
+      "code": "E0606",
+      "line": 5
+    },
+    {
+      "code": "E0606",
+      "line": 19
+    }
+  ]
+}

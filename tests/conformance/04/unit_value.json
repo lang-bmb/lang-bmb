@@ -1,0 +1,13 @@
+{
+  "sections": [
+    "리터럴·경로·호출"
+  ],
+  "note": "`()` is the unit value.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "a::f": "verified"
+    },
+    "diags": []
+  }
+}

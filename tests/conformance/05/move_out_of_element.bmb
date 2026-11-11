@@ -1,0 +1,15 @@
+#[summary("elements")]
+mod m {
+    #[effects(pure)]
+    fn out(g: Vec<Vec<i64>>) -> usize {
+        let row: Vec<i64> = g[0];
+        row.len()
+    }
+
+    #[effects(pure)]
+    fn read(g: Vec<Vec<i64>>) -> usize
+        requires g.len() > 0,
+    {
+        g[0].len()
+    }
+}

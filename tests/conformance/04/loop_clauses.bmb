@@ -1,0 +1,48 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn ok(n: i64) -> i64 {
+        let mut i: i64 = 0;
+        while i < n
+            invariant i >= 0
+            decreases n - i
+        {
+            i = i.wrapping_add(1);
+        }
+        i
+    }
+
+    #[effects(pure)]
+    fn e1(n: i64) -> i64 {
+        let mut i: i64 = 0;
+        while i < n { i = i.wrapping_add(1); }
+        i
+    }
+
+    #[effects(pure)]
+    fn e2() -> i64 { loop { } }
+
+    #[effects(pure)]
+    fn e3(n: i64) -> i64 {
+        for i in 0..n decreases n, { }
+        1
+    }
+
+    #[effects(pure)]
+    fn e4(o: Option<i64>) -> i64 {
+        while let Some(v) = o decreases 1, { }
+        1
+    }
+
+    #[effects(alloc)]
+    fn e5(v: Vec<i64>) -> i64 {
+        for x in v.iter() { }
+        1
+    }
+
+    #[effects(alloc)]
+    fn e6(v: Vec<i64>) -> i64 {
+        for x in &v { }
+        1
+    }
+}

@@ -1,0 +1,8 @@
+{
+  "sections": [
+    "쓸 수 있는 자리"
+  ],
+  "note": "`let mut` locals, what a `&mut` parameter points to, and the field, element and `*b` paths below them are writable.",
+  "check": [],
+  "run": "2\n3\n4\n5\n6\n0\n"
+}

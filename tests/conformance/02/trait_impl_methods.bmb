@@ -1,0 +1,32 @@
+#[summary("s")]
+mod a {
+    trait U {
+        #[effects(pure)]
+        fn u(self: &Self, k: i64) -> i64;
+    }
+
+    struct S { x: i64 }
+
+    struct P { x: i64 }
+
+    impl U for S {
+    }
+
+    impl U for P {
+        #[effects(pure)]
+        fn u(self: &P, k: i64) -> i64 { k }
+
+        #[effects(pure)]
+        fn extra(self: &P) -> i64 { self.x }
+    }
+
+    impl U for i64 {
+        #[effects(pure)]
+        fn u(self: &i64, k: bool) -> i64 { 1 }
+    }
+
+    impl U for bool {
+        #[effects(io)]
+        fn u(self: &bool, k: i64) -> i64 { k }
+    }
+}

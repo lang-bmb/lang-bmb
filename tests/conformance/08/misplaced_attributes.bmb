@@ -1,0 +1,14 @@
+#[summary("misplaced attributes")]
+mod m {
+    spec fn pos(p: &P) -> bool { p.x > 0 }
+
+    #[effects(pure)]
+    struct P { x: i64 }
+
+    #[uses(pos)]
+    struct Q { x: i64 }
+
+    #[invariant(pos)]
+    #[effects(pure)]
+    fn f() -> () {}
+}

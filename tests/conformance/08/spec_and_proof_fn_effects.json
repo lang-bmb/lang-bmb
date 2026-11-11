@@ -1,0 +1,16 @@
+{
+  "sections": [
+    "명세와 유령 코드의 효과"
+  ],
+  "note": "A `spec fn` takes no effect attribute (E0604) and neither does a `proof fn` (E0256).",
+  "check": [
+    {
+      "code": "E0604",
+      "line": 3
+    },
+    {
+      "code": "E0256",
+      "line": 6
+    }
+  ]
+}

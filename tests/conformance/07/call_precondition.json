@@ -1,0 +1,19 @@
+{
+  "sections": [
+    "의무의 종류"
+  ],
+  "note": "Each `requires` clause of a callee is an obligation at every call (E0801).",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::good": "verified",
+      "m::bad": "failed"
+    },
+    "diags": [
+      {
+        "code": "E0801",
+        "line": 17
+      }
+    ]
+  }
+}

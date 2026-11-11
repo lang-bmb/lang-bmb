@@ -1,0 +1,19 @@
+{
+  "sections": [
+    "호출자가 가정하는 것"
+  ],
+  "note": "A call proves the callee's `requires` from what the caller knows, including an earlier callee's `ensures`.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::chain": "verified",
+      "m::broken_chain": "failed"
+    },
+    "diags": [
+      {
+        "code": "E0801",
+        "line": 27
+      }
+    ]
+  }
+}

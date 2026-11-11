@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "참조 `match`"
+  ],
+  "note": "Moving an owned value out of a binding of a reference match is E0413.",
+  "check": [
+    {
+      "code": "E0413",
+      "line": 10
+    }
+  ]
+}

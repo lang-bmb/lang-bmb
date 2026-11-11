@@ -1,0 +1,26 @@
+#[summary("forms of old")]
+mod m {
+    #[effects(pure)]
+    fn set_first(a: &mut [i64], v: i64) -> ()
+        requires a.len() > 1,
+        ensures a.len() == old(a).len(), a[0] == v, a[1] == old(a)[1],
+    {
+        a[0] = v;
+    }
+
+    #[effects(pure)]
+    fn twice(x: &mut i64) -> ()
+        requires 0 <= *x && *x < 100,
+        ensures *x == *old(x) + 2,
+    {
+        let mut i: u8 = 0;
+        while i < 2
+            invariant i <= 2, *x == *old(x) + i,
+            decreases 2 - i,
+        {
+            *x = *x + 1;
+            i = i + 1;
+        }
+        assert(*x > *old(x));
+    }
+}

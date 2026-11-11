@@ -1,0 +1,19 @@
+{
+  "sections": [
+    "의무의 종류"
+  ],
+  "note": "`Vec::with_capacity(n)` must not exceed a Vec's maximum length (E0816).",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::any": "failed",
+      "m::small": "verified"
+    },
+    "diags": [
+      {
+        "code": "E0816",
+        "line": 5
+      }
+    ]
+  }
+}

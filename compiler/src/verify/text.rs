@@ -284,25 +284,12 @@ impl Enc<'_, '_> {
     }
 
     /// `s.push_str(t)` and `s.push(c)` on a `String` place `recv`.
-    pub(super) fn text_change(
-        &mut self,
-        e: &Expr,
-        recv: &Expr,
-        rv: Val,
-        m: &str,
-        args: &[Expr],
-    ) -> Val {
+    pub(super) fn text_change(&mut self, recv: &Expr, rv: Val, m: &str, args: &[Expr]) -> Val {
         let (a, n) = parts(&rv);
-        // The length obligation before the new bytes' facts: a query that
-        // can be satisfied without them (a counterexample) stays without
-        // their quantifier.
+        // A growth that returns left the length within the maximum: the
+        // run time ends the program otherwise (ADR-0124).
         let grown = |s: &mut Self, new_len: &str| {
-            s.oblige(
-                "E0816",
-                e.span,
-                format!("`{m}` may exceed the maximum length of a `String`"),
-                format!("(<= {new_len} {LEN_MAX_BYTE})"),
-            );
+            s.pc.push(format!("(<= {new_len} {LEN_MAX_BYTE})"));
         };
         let (elems, new_len) = if m == "push_str" {
             let t = self.eval(&args[0]);

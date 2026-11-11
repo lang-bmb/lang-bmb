@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "탈출구: `assume`"
+  ],
+  "note": "The argument of `assume` is one call of a named predicate; another expression is E1003.",
+  "check": [
+    {
+      "code": "E1003",
+      "line": 8
+    }
+  ]
+}

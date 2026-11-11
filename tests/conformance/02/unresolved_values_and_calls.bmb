@@ -1,0 +1,14 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn f1() -> i64 { nope }
+
+    #[effects(pure)]
+    fn f2() -> i64 { nope(1) }
+
+    #[effects(pure)]
+    fn f3() -> i64 { b::f1() }
+
+    #[effects(pure)]
+    fn f4() -> i64 { let g: i64 = a::f1; g }
+}

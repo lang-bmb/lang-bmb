@@ -1,0 +1,8 @@
+{
+  "sections": [
+    "복사와 이동"
+  ],
+  "note": "Scalars and arrays, structs and enums of copy types are copied by a value use, so the source stays usable.",
+  "check": [],
+  "run": "3\n3\n7\n7\n1\n1\n9\n9\n"
+}

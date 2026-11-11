@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "소유 타입"
+  ],
+  "note": "`Vec<T>` (`new`, `with_capacity`, `v[i]`, `len`, `push`, `pop`, `truncate`, `clone`) and `Box<T>` (`Box::new`, `*b`, `b.f`, `*b = v`).",
+  "check": [],
+  "verify": {
+    "diags": []
+  },
+  "run": "3\n2\n3\n1\n1\n4\n7\n0\n"
+}

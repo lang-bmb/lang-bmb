@@ -1,0 +1,29 @@
+{
+  "sections": [
+    "복사와 이동",
+    "이동한 값의 사용"
+  ],
+  "note": "An argument passed by value, an assignment's right side, a struct literal field, a block value and a self-by-value receiver each move an owned value.",
+  "check": [
+    {
+      "code": "E0413",
+      "line": 16
+    },
+    {
+      "code": "E0413",
+      "line": 23
+    },
+    {
+      "code": "E0413",
+      "line": 29
+    },
+    {
+      "code": "E0413",
+      "line": 35
+    },
+    {
+      "code": "E0413",
+      "line": 41
+    }
+  ]
+}

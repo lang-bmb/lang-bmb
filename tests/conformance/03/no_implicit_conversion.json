@@ -1,0 +1,40 @@
+{
+  "sections": [
+    "연산자와 피연산자"
+  ],
+  "note": "An expression whose type differs from the expected type is E0401: mixed widths, `char` arithmetic, `f64` `%`, an integer condition, `f64` with an integer.",
+  "check": [
+    {
+      "code": "E0401",
+      "line": 4
+    },
+    {
+      "code": "E0401",
+      "line": 7
+    },
+    {
+      "code": "E0401",
+      "line": 10
+    },
+    {
+      "code": "E0401",
+      "line": 13
+    },
+    {
+      "code": "E0401",
+      "line": 16
+    },
+    {
+      "code": "E0401",
+      "line": 19
+    },
+    {
+      "code": "E0401",
+      "line": 22
+    },
+    {
+      "code": "E0401",
+      "line": 25
+    }
+  ]
+}

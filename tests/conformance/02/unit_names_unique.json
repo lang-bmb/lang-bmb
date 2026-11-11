@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "단위"
+  ],
+  "note": "A second top-level unit of the same name is E0302: a unit is not written in several blocks.",
+  "check": [
+    {
+      "code": "E0302",
+      "line": 7
+    }
+  ]
+}

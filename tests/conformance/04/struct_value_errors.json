@@ -1,0 +1,28 @@
+{
+  "sections": [
+    "구조체·열거형 값"
+  ],
+  "note": "A missing or repeated field is E0422, another order E0434, the shorthand `T { x }` E0222, the update syntax `..p` E0223.",
+  "check": [
+    {
+      "code": "E0422",
+      "line": 6
+    },
+    {
+      "code": "E0422",
+      "line": 9
+    },
+    {
+      "code": "E0434",
+      "line": 12
+    },
+    {
+      "code": "E0222",
+      "line": 15
+    },
+    {
+      "code": "E0223",
+      "line": 18
+    }
+  ]
+}

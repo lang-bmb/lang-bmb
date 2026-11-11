@@ -1,0 +1,18 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn two(x: &mut i64, c: bool) -> () {
+        if c { return; } *x = 1;
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        let mut v: i64 = 0;
+        two(&mut v, true);
+        print_i64(v);
+        two(&mut v, false);
+        5;
+        v.wrapping_add(1);
+        print_i64(v);
+    }
+}

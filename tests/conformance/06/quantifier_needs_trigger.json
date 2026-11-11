@@ -1,0 +1,16 @@
+{
+  "sections": [
+    "수량자와 트리거"
+  ],
+  "note": "A quantifier body needs at least one `#[trigger]` term (E0511), for `forall` and `exists` alike.",
+  "check": [
+    {
+      "code": "E0511",
+      "line": 4
+    },
+    {
+      "code": "E0511",
+      "line": 8
+    }
+  ]
+}

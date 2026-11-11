@@ -1,0 +1,23 @@
+#[summary("the callee's clauses")]
+mod m {
+    spec fn small(n: u64) -> bool { n < 10 }
+
+    #[effects(pure)]
+    fn needs(n: u64) -> (r: u64)
+        requires small(n),
+        ensures small(r),
+    {
+        n
+    }
+
+    #[effects(pure)]
+    fn caller() -> u64 {
+        needs(5)
+    }
+
+    #[effects(pure)]
+    fn result() -> u64 {
+        let k: u64 = needs(5);
+        k + 1
+    }
+}

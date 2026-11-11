@@ -1745,7 +1745,7 @@ impl<'p> Gen<'p> {
                         "push_str" | "push" | "as_str" | "as_bytes" | "is_char_boundary"
                     ) =>
             {
-                self.text_method(e, recv, &name.name, args)
+                self.text_method(recv, &name.name, args)
             }
             ExprKind::Method { recv, name, .. } if name.name == "len_utf8" => self.len_utf8(recv),
             ExprKind::Method { recv, name, args } if is_vec(&self.ty(recv)) => {
@@ -2441,13 +2441,8 @@ impl<'p> Gen<'p> {
                 let cp = self.vec_field(&hdr, 2);
                 let (len, cap, full) = (self.t(), self.t(), self.t());
                 self.emit(format!("{len} = load i64, ptr {lp}"));
-                if self.proved("E0816", e) {
-                    self.emit("; proved E0816");
-                } else {
-                    let c = self.t();
-                    self.emit(format!("{c} = icmp ult i64 {len}, {}", vec_len_max(&el)));
-                    self.check(&c, "`push` may exceed the maximum length");
-                }
+                // No length check: the growth ends the program when the
+                // new size does not fit (`bmb_vec_bytes`, ADR-0124).
                 self.emit(format!("{cap} = load i64, ptr {cp}"));
                 self.emit(format!("{full} = icmp eq i64 {len}, {cap}"));
                 let grow = self.l("grow");

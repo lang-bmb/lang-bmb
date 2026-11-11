@@ -1,0 +1,19 @@
+{
+  "sections": [
+    "루프의 `invariant`와 `decreases`"
+  ],
+  "note": "Code after a loop knows only the invariant and the exit condition: without an invariant relating `s` to `i`, a fact about `s` is not provable.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::stated": "verified",
+      "m::unstated": "failed"
+    },
+    "diags": [
+      {
+        "code": "E0802",
+        "line": 21
+      }
+    ]
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "sections": [
+    "자리에서 꺼내기와 부분 이동",
+    "별칭"
+  ],
+  "note": "std::mem::swap of two places inside the same variable is E0410.",
+  "check": [
+    {
+      "code": "E0410",
+      "line": 8
+    }
+  ]
+}

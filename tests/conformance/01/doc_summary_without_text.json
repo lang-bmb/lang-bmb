@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "`///`와 요약"
+  ],
+  "note": "A `///` group without text yields no token: it is not a summary (E0704 on the unit) and not a second one either.",
+  "check": [
+    {
+      "code": "E0704",
+      "line": 2
+    }
+  ]
+}

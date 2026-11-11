@@ -1,0 +1,12 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn f() -> i64 {
+        $
+    }
+
+    #[effects(pure)]
+    fn g(x: i64) -> i64 {
+        x < < 1
+    }
+}

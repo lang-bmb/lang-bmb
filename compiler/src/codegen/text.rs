@@ -34,8 +34,8 @@ len:
 ";
 
 /// `bmb_str_append(h, src, n)` (needs `VEC_RUNTIME`): the `n` bytes at
-/// `src` after the bytes of the `String` at `h`. The length bound is the
-/// caller's (proved or checked, E0816). `bmb_str_push_char(h, c)`: the
+/// `src` after the bytes of the `String` at `h`; a length above the maximum
+/// ends the program, as a failed allocation does (ADR-0124). `bmb_str_push_char(h, c)`: the
 /// UTF-8 bytes of scalar value `c`.
 pub(super) const TEXT_GROW: &str =
     "define internal void @bmb_str_append(ptr %h, ptr %src, i64 %n) {
@@ -56,9 +56,14 @@ go:
   %fits = icmp ule i64 %need, %cap
   br i1 %fits, label %copy, label %grow
 grow:
+  %huge = icmp ugt i64 %need, 9223372036854775807
+  br i1 %huge, label %fail, label %room
+room:
   %d = shl i64 %cap, 1
   %big = icmp ugt i64 %need, %d
-  %w = select i1 %big, i64 %need, i64 %d
+  %w0 = select i1 %big, i64 %need, i64 %d
+  %over = icmp ugt i64 %w0, 9223372036854775807
+  %w = select i1 %over, i64 9223372036854775807, i64 %w0
   %small = icmp ult i64 %w, 8
   %new = select i1 %small, i64 8, i64 %w
   %p = call ptr @realloc(ptr %buf0, i64 %new)
@@ -383,33 +388,14 @@ impl Gen<'_> {
         z
     }
 
-    /// The length check of growing a `String` at `hdr` by `n` bytes
-    /// (E0816), unless proved.
-    fn grow_check(&mut self, e: &Expr, hdr: &str, n: &str, what: &str) {
-        if self.proved("E0816", e) {
-            self.emit("; proved E0816");
-            return;
-        }
-        let lp = self.vec_field(hdr, 1);
-        let (len, room, c) = (self.t(), self.t(), self.t());
-        self.emit(format!("{len} = load i64, ptr {lp}"));
-        self.emit(format!(
-            "{room} = sub i64 {}, {len}",
-            vec_len_max(&TypeKind::Int(IntTy::U8))
-        ));
-        self.emit(format!("{c} = icmp ule i64 {n}, {room}"));
-        self.check(&c, what);
-    }
-
     /// A method of text (ADR-0050 §2) other than `len` and `clone` (those
     /// are the `Vec` ones): `push_str`, `push`, `as_str`, `as_bytes`,
     /// `is_char_boundary`.
-    pub(super) fn text_method(&mut self, e: &Expr, recv: &Expr, m: &str, args: &[Expr]) -> CVal {
+    pub(super) fn text_method(&mut self, recv: &Expr, m: &str, args: &[Expr]) -> CVal {
         match m {
             "push_str" => {
                 let (src, n) = self.text_view(&args[0]);
                 let hdr = self.vec_hdr(recv);
-                self.grow_check(e, &hdr, &n, "`push_str` may exceed the maximum length");
                 self.emit(format!(
                     "call void @bmb_str_append(ptr {hdr}, ptr {src}, i64 {n})"
                 ));
@@ -418,8 +404,6 @@ impl Gen<'_> {
             "push" => {
                 let c = self.expr(&args[0]).imm();
                 let hdr = self.vec_hdr(recv);
-                let n = self.utf8_len(&c);
-                self.grow_check(e, &hdr, &n, "`push` may exceed the maximum length");
                 self.emit(format!("call void @bmb_str_push_char(ptr {hdr}, i64 {c})"));
                 CVal::Unit
             }

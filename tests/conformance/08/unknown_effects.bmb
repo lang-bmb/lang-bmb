@@ -1,0 +1,11 @@
+#[summary("unknown effects")]
+mod m {
+    #[effects(fast)]
+    fn unknown() -> () {}
+
+    #[effects()]
+    fn none() -> () {}
+
+    #[effects("io")]
+    fn quoted() -> () {}
+}

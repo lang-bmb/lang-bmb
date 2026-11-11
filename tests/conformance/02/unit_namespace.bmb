@@ -1,0 +1,22 @@
+#[summary("s")]
+mod a {
+    const X: i64 = 1; struct X { a: i64 }
+
+    #[effects(pure)] fn f() -> i64 { 1 } trait f { }
+
+    #[effects(pure)]
+    fn g() -> i64 { 1 }
+
+    #[effects(pure)]
+    fn g() -> i64 { 2 }
+
+    enum E { X, f, g, E }
+}
+
+#[summary("s")]
+mod b {
+    const X: i64 = 1;
+
+    #[effects(pure)]
+    fn g() -> i64 { 3 }
+}

@@ -1,0 +1,22 @@
+#[summary("temporary violation")]
+mod m {
+    #[invariant(ordered)]
+    struct Span { lo: i64, hi: i64 }
+
+    spec fn ordered(s: &Span) -> bool { s.lo <= s.hi }
+
+    #[effects(pure)]
+    #[uses(ordered)]
+    fn restore(s: &mut Span) -> () {
+        s.lo = 5;
+        s.hi = 0;
+        s.hi = 9;
+    }
+
+    #[effects(pure)]
+    #[uses(ordered)]
+    fn leave_broken(s: &mut Span) -> () {
+        s.lo = 5;
+        s.hi = 0;
+    }
+}

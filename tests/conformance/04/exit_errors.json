@@ -1,0 +1,32 @@
+{
+  "sections": [
+    "조기 탈출: return, break, continue, ?"
+  ],
+  "note": "`break`/`continue` outside a loop are E0250, a label of no enclosing loop E0317, `break e` in `while`/`for` E0251; the value of `return` has the function's result type (E0401).",
+  "check": [
+    {
+      "code": "E0250",
+      "line": 4
+    },
+    {
+      "code": "E0250",
+      "line": 7
+    },
+    {
+      "code": "E0251",
+      "line": 11
+    },
+    {
+      "code": "E0251",
+      "line": 17
+    },
+    {
+      "code": "E0317",
+      "line": 23
+    },
+    {
+      "code": "E0401",
+      "line": 28
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "sections": [
+    "속성"
+  ],
+  "note": "A summary is optional on functions, structs, enums, traits and constants, and on functions inside traits and impls.",
+  "check": []
+}

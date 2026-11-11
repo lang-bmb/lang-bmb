@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "부동소수 리터럴"
+  ],
+  "note": "A float literal has digits on both sides of the point and an optional exponent with digits.",
+  "check": [],
+  "verify": {
+    "diags": []
+  },
+  "run": "1.5\n1500.0\n0.25\n100.0\n"
+}

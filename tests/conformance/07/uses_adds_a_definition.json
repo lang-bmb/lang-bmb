@@ -1,0 +1,13 @@
+{
+  "sections": [
+    "증명 문맥"
+  ],
+  "note": "`#[uses(small)]` puts the body of `small` into the proof context, which proves the chapter's example.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::f": "verified"
+    },
+    "diags": []
+  }
+}

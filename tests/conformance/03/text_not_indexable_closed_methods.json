@@ -1,0 +1,24 @@
+{
+  "sections": [
+    "텍스트"
+  ],
+  "note": "Indexing text is E0407, a method outside the list is E0404, arithmetic on `char` is E0401.",
+  "check": [
+    {
+      "code": "E0407",
+      "line": 4
+    },
+    {
+      "code": "E0404",
+      "line": 7
+    },
+    {
+      "code": "E0404",
+      "line": 10
+    },
+    {
+      "code": "E0401",
+      "line": 13
+    }
+  ]
+}

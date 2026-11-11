@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "식의 문법과 우선순위"
+  ],
+  "note": "Operators of one level associate to the left: `7 - 4 - 2` is 1.",
+  "check": [],
+  "verify": {
+    "diags": []
+  },
+  "run": "1\n8\n4\n8\n91\n"
+}

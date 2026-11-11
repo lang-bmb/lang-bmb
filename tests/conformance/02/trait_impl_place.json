@@ -1,0 +1,16 @@
+{
+  "sections": [
+    "`impl`과 수신자"
+  ],
+  "note": "`impl Tr for T` comes in the unit of `Tr` or of `T` (E0312); two impls of a trait for one type are E0311.",
+  "check": [
+    {
+      "code": "E0311",
+      "line": 15
+    },
+    {
+      "code": "E0312",
+      "line": 42
+    }
+  ]
+}

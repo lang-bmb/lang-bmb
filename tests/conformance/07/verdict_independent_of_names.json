@@ -1,0 +1,25 @@
+{
+  "sections": [
+    "결정론"
+  ],
+  "note": "Definitions that differ only in the names of the definition and its locals get the same verdict and the same diagnostics, wherever they stand among other definitions.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::alpha": "failed",
+      "m::beta": "verified",
+      "m::gamma": "failed",
+      "m::delta": "verified"
+    },
+    "diags": [
+      {
+        "code": "E0803",
+        "line": 6
+      },
+      {
+        "code": "E0803",
+        "line": 18
+      }
+    ]
+  }
+}

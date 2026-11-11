@@ -1,0 +1,32 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn len(s: &[i64]) -> usize { s.len() }
+
+    #[effects(pure)]
+    fn tlen(s: &str) -> usize { s.len() }
+
+    #[effects(pure)]
+    fn ok(v: &Vec<i64>, s: &String) -> usize { len(v.as_slice()).wrapping_add(tlen(s.as_str())) }
+
+    #[effects(pure)]
+    fn e1(x: i64) -> f64 { x as f64 }
+
+    #[effects(pure)]
+    fn e2(x: u8) -> i64 { i64::from(x) }
+
+    #[effects(pure)]
+    fn e3(x: i64) -> u8 { u8::try_from(x).expect("fits") }
+
+    #[effects(pure)]
+    fn e4(v: Vec<i64>) -> usize { len(v) }
+
+    #[effects(pure)]
+    fn e5(v: Vec<i64>) -> usize { len(&v) }
+
+    #[effects(pure)]
+    fn e6(s: String) -> usize { tlen(s) }
+
+    #[effects(pure)]
+    fn e7(a: i64, b: i64, c: i64) -> bool { a < b < c }
+}

@@ -1,0 +1,8 @@
+#[effects(pure)]
+fn top() -> i64 { 1 }
+
+#[summary("s")]
+mod a {
+}
+
+const X: i64 = 1;

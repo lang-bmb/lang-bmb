@@ -1,0 +1,16 @@
+{
+  "sections": [
+    "자리에서 꺼내기와 부분 이동"
+  ],
+  "note": "An owned value cannot be moved out of `*r` (shared reference) or `*b` (Box) (E0413).",
+  "check": [
+    {
+      "code": "E0413",
+      "line": 5
+    },
+    {
+      "code": "E0413",
+      "line": 11
+    }
+  ]
+}

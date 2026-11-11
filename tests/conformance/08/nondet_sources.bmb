@@ -1,0 +1,12 @@
+#[summary("nondet")]
+mod m {
+    #[effects(io)]
+    fn clock_io() -> u64 {
+        std::time::monotonic_ms()
+    }
+
+    #[effects(io, nondet)]
+    fn clock() -> u64 {
+        std::time::monotonic_ms()
+    }
+}

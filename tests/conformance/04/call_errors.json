@@ -1,0 +1,36 @@
+{
+  "sections": [
+    "리터럴·경로·호출"
+  ],
+  "note": "An unknown name is E0301, an unknown function E0304, a wrong number of arguments E0405, a wrong argument type E0401, a generic call without type arguments E0237.",
+  "check": [
+    {
+      "code": "E0405",
+      "line": 12
+    },
+    {
+      "code": "E0401",
+      "line": 15
+    },
+    {
+      "code": "E0237",
+      "line": 18
+    },
+    {
+      "code": "E0304",
+      "line": 21
+    },
+    {
+      "code": "E0304",
+      "line": 24
+    },
+    {
+      "code": "E0301",
+      "line": 27
+    },
+    {
+      "code": "E0242",
+      "line": 30
+    }
+  ]
+}

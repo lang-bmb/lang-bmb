@@ -1,0 +1,19 @@
+#[summary("generic definitions")]
+mod m {
+    #[effects(pure)]
+    fn pick<T: Copy>(a: T, b: T, c: bool) -> T {
+        if c { a } else { b }
+    }
+
+    #[effects(pure)]
+    fn first<T: Copy>(a: &[T]) -> T
+        requires a.len() > 0,
+    {
+        a[0]
+    }
+
+    #[effects(pure)]
+    fn unsafe_first<T: Copy>(a: &[T]) -> T {
+        a[0]
+    }
+}

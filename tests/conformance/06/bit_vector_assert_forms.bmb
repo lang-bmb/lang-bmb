@@ -1,0 +1,16 @@
+#[summary("bit_vector asserts")]
+mod m {
+    #[effects(pure)]
+    fn mask(x: u32) -> u32 {
+        assert((x & 0xffff) & 0xff == x & 0xff) by (bit_vector);
+        x & 0xff
+    }
+
+    #[effects(pure)]
+    fn ghost(a: u8, b: u8) -> u8 {
+        proof {
+            assert((a ^ b) ^ b == a) by (bit_vector);
+        }
+        a
+    }
+}

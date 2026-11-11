@@ -1,0 +1,20 @@
+#[summary("vacuous clause")]
+mod m {
+    spec fn always() -> bool { true }
+
+    spec fn pos(x: i64) -> bool { x > 0 }
+
+    #[effects(pure)]
+    fn vacuous(x: i64) -> i64
+        requires always(),
+    {
+        x
+    }
+
+    #[effects(pure)]
+    fn real(x: i64) -> i64
+        requires pos(x),
+    {
+        x
+    }
+}

@@ -1,0 +1,12 @@
+#[summary("lifetimes")]
+mod m {
+    #[effects(pure)]
+    fn first(a: &'a [i64]) -> usize {
+        a.len()
+    }
+
+    #[effects(pure)]
+    fn plain(a: &[i64]) -> usize {
+        a.len()
+    }
+}

@@ -1,0 +1,20 @@
+#[summary("short circuit")]
+mod m {
+    #[effects(pure)]
+    fn take(v: Vec<i64>) -> usize { v.len() }
+
+    #[effects(pure)]
+    fn and(c: bool, v: Vec<i64>) -> bool {
+        c && take(v) > 0
+    }
+
+    #[effects(pure)]
+    fn or(c: bool, v: Vec<i64>) -> bool {
+        c || take(v) > 0
+    }
+
+    #[effects(pure)]
+    fn left(c: bool, v: Vec<i64>) -> bool {
+        take(v) > 0 && c
+    }
+}

@@ -1,0 +1,22 @@
+#[summary("s")]
+mod a {
+    struct W<T> { v: T }
+
+    #[effects(pure)]
+    fn first<A, B>(a: A, b: B) -> A { a }
+
+    #[effects(pure)]
+    fn e1<T>(a: T) -> T where T: Copy { a }
+
+    #[effects(pure)]
+    fn e2(a: i64) -> i64 { first::<i64>(a, a) }
+
+    #[effects(pure)]
+    fn e3(a: W<i64, i64>) -> i64 { 1 }
+
+    #[effects(pure)]
+    fn e4(a: &i64) -> i64 {
+        let r: i64 = *first::<&i64, i64>(a, 1);
+        r
+    }
+}

@@ -1,0 +1,38 @@
+#[summary("E0809")]
+mod m {
+    #[effects(pure)]
+    fn same(n: u64) -> u64
+        decreases n,
+    {
+        if n == 0 { 0 } else { same(n) }
+    }
+
+    #[effects(pure)]
+    fn good(n: u64) -> u64
+        decreases n,
+    {
+        if n == 0 { 0 } else { good(n - 1) }
+    }
+
+    proof fn lemma_same(n: u64)
+        decreases n,
+    {
+        if n > 0 {
+            lemma_same(n);
+        }
+    }
+
+    #[effects(pure)]
+    fn ping(n: u64) -> u64
+        decreases n,
+    {
+        if n == 0 { 0 } else { pong(n) }
+    }
+
+    #[effects(pure)]
+    fn pong(n: u64) -> u64
+        decreases n,
+    {
+        if n == 0 { 0 } else { ping(n - 1) }
+    }
+}

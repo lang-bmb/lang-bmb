@@ -1,0 +1,13 @@
+{
+  "sections": [
+    "탈출구: `assume`",
+    "근거: `#[rationale(..)]`"
+  ],
+  "note": "An `assume` without a `#[rationale(..)]` right before it is E1001.",
+  "check": [
+    {
+      "code": "E1001",
+      "line": 7
+    }
+  ]
+}

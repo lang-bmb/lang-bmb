@@ -1,0 +1,19 @@
+{
+  "sections": [
+    "판정"
+  ],
+  "note": "A definition is `failed` when any one of its obligations is not proved, even when the others are.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::mixed": "failed",
+      "m::all": "verified"
+    },
+    "diags": [
+      {
+        "code": "E0803",
+        "line": 7
+      }
+    ]
+  }
+}

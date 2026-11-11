@@ -1,0 +1,52 @@
+#[summary("s")]
+mod a {
+    struct P { x: i64 }
+
+    enum S { Dot, Sq(i64), Rect(i64, i64) }
+
+    #[effects(pure)]
+    fn e1(x: i64) -> i64 {
+        match x {
+            S::Dot => 1,
+            S::Sq(n) => n,
+            S::Rect(a, b) => a,
+        }
+    }
+
+    #[effects(pure)]
+    fn e2(s: S) -> i64 {
+        match s { S::Dot => 1, S::Rect(a, b) => a, S::Sq(n) => n, }
+    }
+
+    #[effects(pure)]
+    fn e3(s: S) -> i64 {
+        match s { S::Dot => 1, S::Sq(n) => n, }
+    }
+
+    #[effects(pure)]
+    fn e4(s: S) -> i64 {
+        match s {
+            S::Dot => 1,
+            S::Sq(n, m) => n,
+            S::Rect(a, b) => a,
+        }
+    }
+
+    #[effects(pure)]
+    fn e5(s: S) -> i64 {
+        match s {
+            S::Dot => 1,
+            S::Sq(1) => 2,
+            S::Rect(a, b) => a,
+        }
+    }
+
+    #[effects(pure)]
+    fn e6(s: S) -> i64 {
+        match s {
+            S::Dot => 1,
+            S::Sq(n) => n,
+            S::Nope(a, b) => a,
+        }
+    }
+}

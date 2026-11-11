@@ -1,0 +1,8 @@
+{
+  "sections": [
+    "복사와 이동"
+  ],
+  "note": "v.clone() makes a copy of a Vec or String, so the source stays owned after the clone is moved.",
+  "check": [],
+  "run": "1\n1\n0\n0\n"
+}

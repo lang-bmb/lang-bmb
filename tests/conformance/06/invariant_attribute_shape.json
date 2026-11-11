@@ -1,0 +1,28 @@
+{
+  "sections": [
+    "타입 불변식"
+  ],
+  "note": "`#[invariant(p)]` names a spec fn `(x: &T) -> bool` whose body is not `true` (E0254), one per type (E0255).",
+  "check": [
+    {
+      "code": "E0254",
+      "line": 3
+    },
+    {
+      "code": "E0254",
+      "line": 6
+    },
+    {
+      "code": "E0254",
+      "line": 11
+    },
+    {
+      "code": "E0254",
+      "line": 16
+    },
+    {
+      "code": "E0255",
+      "line": 22
+    }
+  ]
+}

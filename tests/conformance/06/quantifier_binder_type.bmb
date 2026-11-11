@@ -1,0 +1,14 @@
+#[summary("binder types")]
+mod m {
+    spec fn holds(b: bool) -> bool { b }
+
+    spec fn over_bool() -> bool {
+        forall|b: bool| #[trigger] holds(b) ==> b
+    }
+
+    spec fn id(i: u64) -> u64 { i }
+
+    spec fn over_int() -> bool {
+        forall|i: u64| #[trigger] id(i) == i
+    }
+}

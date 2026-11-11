@@ -1,0 +1,31 @@
+#[summary("expressions that are not plain reads")]
+mod m {
+    struct P { x: i64, y: i64 }
+
+    #[effects(pure)]
+    fn size(a: &[i64]) -> usize { a.len() }
+
+    #[effects(pure)]
+    fn fill(a: &mut [i64], n: usize) -> () {}
+
+    #[effects(pure)]
+    fn set(p: &mut P, v: i64) -> () {}
+
+    #[effects(pure)]
+    fn call() -> () {
+        let mut x: [i64; 2] = [0, 0];
+        fill(&mut x, size(&x));
+    }
+
+    #[effects(pure)]
+    fn branch() -> () {
+        let mut x: [i64; 2] = [0, 0];
+        fill(&mut x, if x[0] > 0 { 1 } else { 0 });
+    }
+
+    #[effects(pure)]
+    fn field() -> () {
+        let mut p: P = P { x: 1, y: 2 };
+        set(&mut p, p.x);
+    }
+}

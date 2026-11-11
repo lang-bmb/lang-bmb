@@ -1,0 +1,31 @@
+#[summary("unit")]
+mod a {
+    #[summary("const")]
+    const A: i64 = 1;
+
+    #[summary("struct")]
+    struct S { x: i64 }
+
+    #[summary("enum")]
+    enum E { V }
+
+    #[summary("trait")]
+    trait T {
+        #[summary("method")]
+        #[effects(pure)]
+        fn m(self: &Self) -> i64;
+    }
+
+    impl S {
+        #[summary("impl fn")]
+        #[effects(pure)]
+        fn get(self: &S) -> i64 { self.x }
+    }
+
+    #[summary("spec")]
+    spec fn p(x: i64) -> bool { x > 0 }
+
+    #[summary("fn")]
+    #[effects(pure)]
+    fn f() -> i64 { A }
+}

@@ -1,0 +1,16 @@
+#[summary("statement attributes")]
+mod m {
+    #[effects(pure)]
+    fn before_let(x: i64) -> i64 {
+        #[rationale(kind = nonlinear, "misplaced")]
+        let y: i64 = x;
+        y
+    }
+
+    #[effects(pure)]
+    fn other_attr(x: i64) -> i64 {
+        #[inline]
+        let y: i64 = x;
+        y
+    }
+}

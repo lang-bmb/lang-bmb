@@ -1,0 +1,20 @@
+{
+  "sections": [
+    "속성"
+  ],
+  "note": "A summary takes one string (E0704) and comes once per definition, on a unit too (E0605).",
+  "check": [
+    {
+      "code": "E0605",
+      "line": 2
+    },
+    {
+      "code": "E0704",
+      "line": 4
+    },
+    {
+      "code": "E0605",
+      "line": 8
+    }
+  ]
+}

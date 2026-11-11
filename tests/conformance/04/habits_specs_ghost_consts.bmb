@@ -1,0 +1,56 @@
+#[summary("s")]
+mod a {
+    spec fn not_pred(q: &Q) -> i64 { q.x }
+
+    spec fn r1(r: &R) -> bool { r.x > 0 }
+
+    spec fn r2(r: &R) -> bool { r.x > 1 }
+
+    spec fn sp(x: i64) -> bool { x > 0 }
+
+    #[invariant(not_pred)]
+    struct Q { x: i64 }
+
+    #[invariant(r1)]
+    #[invariant(r2)]
+    struct R { x: i64 }
+
+    #[effects(pure)]
+    fn ex(x: i64) -> i64 { x }
+
+    proof fn lemma(x: i64)
+        requires x > 0,
+        ensures sp(x),
+    {
+    }
+
+    proof fn typed(x: i64) -> bool { }
+
+    proof fn ghost_mut(x: i64) {
+        let mut y: i64 = x;
+    }
+
+    proof fn ghost_call(x: i64) {
+        let y: i64 = ex(x);
+    }
+
+    #[effects(pure)]
+    fn e1(x: i64) -> i64
+        requires x > 0,
+    {
+        lemma(x);
+        x
+    }
+
+    #[effects(pure)]
+    fn ok(x: i64) -> i64
+        requires x > 0,
+    {
+        proof { lemma(x); }
+        x
+    }
+
+    const C: i64 = ex(1);
+    const D: i64 = 1 / 0;
+    const E: u8 = 255 + 1;
+}

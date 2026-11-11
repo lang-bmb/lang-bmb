@@ -1,0 +1,19 @@
+{
+  "sections": [
+    "`assert`"
+  ],
+  "note": "A `by (bit_vector)` sub-proof sees only the assertion's variables, not the facts of the path: a needed bound is written into the assertion as an antecedent.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::path": "failed",
+      "m::antecedent": "verified"
+    },
+    "diags": [
+      {
+        "code": "E0818",
+        "line": 6
+      }
+    ]
+  }
+}

@@ -1,0 +1,21 @@
+#[summary("s")]
+mod a {
+    #[bogus]
+    const A: i64 = 1;
+
+    #[effects(pure)]
+    const B: i64 = 1;
+
+    fn noeff() -> i64 { 1 }
+
+    #[effects(pure)]
+    spec fn sp(x: i64) -> bool { x > 0 }
+
+    #[effects(pure)]
+    proof fn pf(x: i64) { }
+
+    struct S { x: i64 }
+
+    #[summary("on an impl block")]
+    impl S { }
+}

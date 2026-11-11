@@ -1,0 +1,20 @@
+{
+  "sections": [
+    "탈출구: `#[external_body]`"
+  ],
+  "note": "`#[external_body]` accepts a function's contract without proving its body; callers prove its `requires` and assume its `ensures`.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::outside": "verified",
+      "m::caller": "verified",
+      "m::bad_caller": "failed"
+    },
+    "diags": [
+      {
+        "code": "E0801",
+        "line": 20
+      }
+    ]
+  }
+}

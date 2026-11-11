@@ -1,0 +1,32 @@
+#[summary("s")]
+mod a {
+    #[effects(alloc)]
+    fn e1(v: Vec<i64>) -> bool { v.is_empty() }
+
+    #[effects(alloc)]
+    fn e2(v: Vec<i64>) -> i64 { v.first() }
+
+    #[effects(alloc)]
+    fn e3(v: Vec<i64>) -> i64 { v.get(0) }
+
+    #[effects(alloc)]
+    fn e4(v: Vec<i64>) -> i64 { v.iter() }
+
+    #[effects(alloc)]
+    fn e5(v: Vec<Vec<i64>>) -> usize {
+        let w: Vec<Vec<i64>> = v.clone();
+        w.len()
+    }
+
+    #[effects(pure)]
+    fn e6(v: Rc<i64>) -> usize { 1 }
+
+    #[effects(pure)]
+    fn e7(v: RefCell<i64>) -> usize { 1 }
+
+    #[effects(pure)]
+    fn e8(v: Cell<i64>) -> usize { 1 }
+
+    #[effects(pure)]
+    fn e9(v: Arc<i64>) -> usize { 1 }
+}

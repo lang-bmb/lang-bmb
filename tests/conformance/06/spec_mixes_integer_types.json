@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "명세의 정수"
+  ],
+  "note": "Specifications mix integer types without conversions; executable code does not (E0401).",
+  "check": [
+    {
+      "code": "E0401",
+      "line": 12
+    }
+  ]
+}

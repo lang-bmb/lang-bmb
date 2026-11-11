@@ -1,0 +1,5 @@
+#[summary("main without io")]
+mod m {
+    #[effects(pure)]
+    fn main() -> () {}
+}

@@ -1,0 +1,17 @@
+mod a {
+}
+
+#[summary("s", "t")]
+mod b {
+}
+
+#[effects(pure)]
+#[summary("s")]
+mod c {
+}
+
+#[summary("s")]
+mod d {
+    mod inner {
+    }
+}

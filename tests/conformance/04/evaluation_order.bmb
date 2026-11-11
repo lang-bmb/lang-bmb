@@ -1,0 +1,20 @@
+#[summary("s")]
+mod a {
+    #[effects(io)]
+    fn num(n: i64) -> (r: i64)
+        ensures r == n,
+    {
+        print_i64(n);
+        n
+    }
+
+    #[effects(pure)]
+    fn three(a: i64, b: i64, c: i64) -> i64 { b }
+
+    #[effects(io)]
+    fn main() -> () {
+        print_i64(num(20) - num(21));
+        print_i64(three(num(30), num(31), num(32)));
+        print_i64(num(1) + num(2) * num(3));
+    }
+}

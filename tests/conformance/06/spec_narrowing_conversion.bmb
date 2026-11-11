@@ -1,0 +1,16 @@
+#[summary("conversions in specifications")]
+mod m {
+    #[effects(pure)]
+    fn narrow(n: u64) -> u64
+        requires n as u8 < 10,
+    {
+        n
+    }
+
+    #[effects(pure)]
+    fn widen(b: u8) -> u8
+        requires b as u64 < 10,
+    {
+        b
+    }
+}

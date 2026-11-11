@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "구조체·열거형 값"
+  ],
+  "note": "A struct value names every field in declaration order, and the written order is the evaluation order.",
+  "check": [],
+  "verify": {
+    "diags": []
+  },
+  "run": "1\n2\n3\n6\n"
+}

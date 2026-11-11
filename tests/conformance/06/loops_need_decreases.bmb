@@ -1,0 +1,30 @@
+#[summary("loop measures")]
+mod m {
+    #[effects(pure)]
+    fn no_measure(n: u64) -> u64 {
+        let mut i: u64 = 0;
+        while i < n
+            invariant i <= n,
+        {
+            i = i + 1;
+        }
+        i
+    }
+
+    #[effects(pure)]
+    fn bare_loop() -> u64 {
+        loop {
+            break;
+        }
+        0
+    }
+
+    #[effects(pure)]
+    fn ranged(n: u64) -> u64 {
+        let mut s: u64 = 0;
+        for i in 0..n {
+            s = i;
+        }
+        s
+    }
+}

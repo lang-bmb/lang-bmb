@@ -1,0 +1,23 @@
+{
+  "sections": [
+    "의무의 단위",
+    "판정",
+    "결정론"
+  ],
+  "note": "Each definition gets its own status: one failing definition does not change the verdict of the others, and a definition without obligations is verified.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::none": "verified",
+      "m::proved": "verified",
+      "m::broken": "failed",
+      "m::after": "verified"
+    },
+    "diags": [
+      {
+        "code": "E0803",
+        "line": 14
+      }
+    ]
+  }
+}

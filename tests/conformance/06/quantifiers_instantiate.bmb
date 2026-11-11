@@ -1,0 +1,25 @@
+#[summary("forall and exists")]
+mod m {
+    spec fn all_pos(a: &[i64]) -> bool {
+        forall|i: usize| i < a.len() ==> #[trigger] a[i] > 0
+    }
+
+    spec fn some_pos(a: &[i64]) -> bool {
+        exists|i: usize| i < a.len() && #[trigger] a[i] > 0
+    }
+
+    #[effects(pure)]
+    fn read(a: &[i64], k: usize) -> (r: i64)
+        requires all_pos(a), k < a.len(),
+        ensures r > 0,
+    {
+        a[k]
+    }
+
+    #[effects(pure)]
+    fn witness(a: &[i64]) -> ()
+        requires a.len() > 2, a[1] > 0,
+        ensures some_pos(a),
+    {
+    }
+}

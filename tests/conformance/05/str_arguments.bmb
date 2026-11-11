@@ -1,0 +1,16 @@
+#[summary("str arguments")]
+mod m {
+    #[effects(pure)]
+    fn size(s: &str) -> usize { s.len() }
+
+    #[effects(pure)]
+    fn pass(s: &str) -> usize { size(s) }
+
+    #[effects(alloc, io)]
+    fn main() -> () {
+        let s: String = String::new();
+        print_u64(size("ab") as u64);
+        print_u64(size(s.as_str()) as u64);
+        print_u64(pass("cd") as u64);
+    }
+}

@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "부동소수 리터럴"
+  ],
+  "note": "A `.` after digits followed by `.` or an identifier start is not part of the literal: `0..n` is a range and `1.f()` a method call.",
+  "check": [],
+  "verify": {
+    "diags": []
+  },
+  "run": "0\n1\n3\n"
+}

@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "표준 라이브러리"
+  ],
+  "note": "A standard library unit is used by its full path `std::NAME::..` without a declaration or import.",
+  "check": [],
+  "verify": {
+    "diags": []
+  },
+  "run": "1\n"
+}

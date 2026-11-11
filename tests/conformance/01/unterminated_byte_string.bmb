@@ -1,0 +1,4 @@
+#[summary("s")]
+mod a {
+}
+b"abc

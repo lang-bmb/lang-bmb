@@ -1,0 +1,26 @@
+#[summary("renaming")]
+mod m {
+    #[effects(pure)]
+    fn alpha(x: u64, y: u64) -> u64 {
+        let s: u64 = x / 2;
+        s + y
+    }
+
+    #[effects(pure)]
+    fn beta(x: u64, y: u64) -> u64 {
+        let s: u64 = x / 2;
+        s + y / 2
+    }
+
+    #[effects(pure)]
+    fn gamma(p: u64, q: u64) -> u64 {
+        let t: u64 = p / 2;
+        t + q
+    }
+
+    #[effects(pure)]
+    fn delta(p: u64, q: u64) -> u64 {
+        let t: u64 = p / 2;
+        t + q / 2
+    }
+}

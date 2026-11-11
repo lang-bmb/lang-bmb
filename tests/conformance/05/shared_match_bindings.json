@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "참조 `match`"
+  ],
+  "note": "Bindings of a match on a `&T` parameter are references to the payload: read with `*n`, and writing them is E0408.",
+  "check": [
+    {
+      "code": "E0408",
+      "line": 18
+    }
+  ]
+}

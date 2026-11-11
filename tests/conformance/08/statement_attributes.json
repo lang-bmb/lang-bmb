@@ -1,0 +1,17 @@
+{
+  "sections": [
+    "항목이 받는 속성",
+    "근거: `#[rationale(..)]`"
+  ],
+  "note": "The only attribute before a statement is `#[rationale(..)]` before `assume(..)`: a rationale before another statement and another attribute before a statement are E1002.",
+  "check": [
+    {
+      "code": "E1002",
+      "line": 5
+    },
+    {
+      "code": "E1002",
+      "line": 12
+    }
+  ]
+}

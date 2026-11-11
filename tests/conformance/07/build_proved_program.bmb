@@ -1,0 +1,28 @@
+#[summary("a proved program")]
+mod m {
+    #[effects(pure)]
+    fn sum(n: u64) -> (r: u64)
+        requires n <= 1000,
+        ensures r <= n * 1000,
+    {
+        let mut i: u64 = 0;
+        let mut s: u64 = 0;
+        while i < n
+            invariant i <= n, s <= i * 1000,
+            decreases n - i,
+        {
+            i = i + 1;
+            s = s + i;
+        }
+        proof {
+            assert(s <= n * 1000);
+        }
+        s
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        print_u64(sum(4));
+        print_u64(sum(10));
+    }
+}

@@ -1,0 +1,46 @@
+#[summary("s")]
+mod a {
+    const N: usize = 3;
+
+    struct P { x: i64 }
+
+    #[effects(pure)]
+    fn sum(s: &[i64]) -> i64
+        requires s.len() == 3,
+    { s[0].wrapping_add(s[1]).wrapping_add(s[2]) }
+
+    #[effects(pure)]
+    fn zero(s: &mut [i64]) -> ()
+        requires s.len() > 0,
+    { s[0] = 0; }
+
+    #[effects(pure)]
+    fn pass(s: &[i64]) -> i64
+        requires s.len() == 3,
+    { sum(s) }
+
+    #[effects(alloc, io)]
+    fn main() -> () {
+        let mut a: [i64; 3] = [1, 2, 3];
+        let b: [i64; N] = [7; N];
+        let g: [[i64; 2]; 2] = [[1, 2], [3, 4]];
+        let ps: [P; 1] = [P { x: 9 }];
+        print_u64(a.len() as u64);
+        print_i64(a[2]);
+        print_i64(pass(&a));
+        zero(&mut a);
+        print_i64(sum(&a));
+        print_i64(sum(&b));
+        print_i64(g[1][0]);
+        print_i64(ps[0].x);
+        let mut v: Vec<i64> = Vec::with_capacity(4);
+        v.push(4);
+        v.push(5);
+        v.push(6);
+        print_i64(sum(v.as_slice()));
+        v.push(7);
+        print_i64(sum(&v[1..4]));
+        zero(v.as_mut_slice());
+        print_i64(v[0]);
+    }
+}

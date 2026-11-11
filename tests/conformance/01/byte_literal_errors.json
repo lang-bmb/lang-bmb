@@ -1,0 +1,20 @@
+{
+  "sections": [
+    "문자·문자열·바이트 리터럴"
+  ],
+  "note": "A byte literal with a non-ASCII character, an escape outside the byte list, or more than one byte in `b'..'` is E0101.",
+  "check": [
+    {
+      "code": "E0101",
+      "line": 4
+    },
+    {
+      "code": "E0101",
+      "line": 7
+    },
+    {
+      "code": "E0101",
+      "line": 10
+    }
+  ]
+}

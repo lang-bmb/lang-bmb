@@ -1,0 +1,20 @@
+{
+  "sections": [
+    "구조체와 열거형"
+  ],
+  "note": "`#[invariant(p)]` names a `spec fn` taking `&T` and returning `bool` (E0254), one per type (E0255).",
+  "check": [
+    {
+      "code": "E0254",
+      "line": 16
+    },
+    {
+      "code": "E0254",
+      "line": 19
+    },
+    {
+      "code": "E0255",
+      "line": 23
+    }
+  ]
+}

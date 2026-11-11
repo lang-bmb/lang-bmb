@@ -1,0 +1,20 @@
+#[summary("deref")]
+mod m {
+    #[effects(pure)]
+    fn from_ref(r: &Vec<i64>) -> usize {
+        let v: Vec<i64> = *r;
+        v.len()
+    }
+
+    #[effects(pure)]
+    fn from_box(b: Box<Vec<i64>>) -> usize {
+        let v: Vec<i64> = *b;
+        v.len()
+    }
+
+    #[effects(pure)]
+    fn copy_from_box(b: Box<i64>) -> i64 {
+        let x: i64 = *b;
+        x + *b
+    }
+}

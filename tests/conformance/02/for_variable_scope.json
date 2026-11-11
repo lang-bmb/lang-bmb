@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "지역 이름"
+  ],
+  "note": "The `for` variable is visible inside the loop only: after the loop it is E0301.",
+  "check": [
+    {
+      "code": "E0301",
+      "line": 6
+    }
+  ]
+}

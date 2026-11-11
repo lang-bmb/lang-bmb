@@ -1,0 +1,15 @@
+#[summary("mathematical integers")]
+mod m {
+    #[effects(pure)]
+    fn add(a: u8, b: u8) -> (r: u8)
+        requires a + b <= 255,
+        ensures r == a + b,
+    {
+        a + b
+    }
+
+    #[effects(pure)]
+    fn unguarded(a: u8, b: u8) -> u8 {
+        a + b
+    }
+}

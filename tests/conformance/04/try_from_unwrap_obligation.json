@@ -1,0 +1,19 @@
+{
+  "sections": [
+    "변환"
+  ],
+  "note": "`T::try_from(x).unwrap()` carries the range obligation of `x as T`; `.ok()` carries none.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "a::e1": "failed",
+      "a::ok": "verified"
+    },
+    "diags": [
+      {
+        "code": "E0815",
+        "line": 5
+      }
+    ]
+  }
+}

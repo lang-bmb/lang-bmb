@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "수량자와 트리거"
+  ],
+  "note": "The triggers of one quantifier must together mention every bound variable (E0512); two triggers form one multi-pattern.",
+  "check": [
+    {
+      "code": "E0512",
+      "line": 4
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+#[summary("Vec and String are not views")]
+mod m {
+    #[effects(pure)]
+    fn size(a: &[i64]) -> usize { a.len() }
+
+    #[effects(pure)]
+    fn chars(s: &str) -> usize { s.len() }
+
+    #[effects(pure)]
+    fn vec(v: Vec<i64>) -> usize {
+        size(&v)
+    }
+
+    #[effects(pure)]
+    fn string(s: String) -> usize {
+        chars(&s)
+    }
+
+    #[effects(pure)]
+    fn good(v: Vec<i64>, s: String) -> usize {
+        size(v.as_slice()) + chars(s.as_str())
+    }
+}

@@ -1,0 +1,20 @@
+{
+  "sections": [
+    "if와 match"
+  ],
+  "note": "The condition of `if` is a `bool` and both branches have one type (E0401); `if let` is E0225.",
+  "check": [
+    {
+      "code": "E0401",
+      "line": 4
+    },
+    {
+      "code": "E0401",
+      "line": 7
+    },
+    {
+      "code": "E0225",
+      "line": 10
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+#[summary("effects twice")]
+mod m {
+    #[effects(pure)]
+    #[effects(pure)]
+    fn twice() -> () {}
+}

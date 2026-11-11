@@ -1,0 +1,7 @@
+{
+  "sections": [
+    "중첩 한도"
+  ],
+  "note": "A hundred nested parentheses are within the nesting limit.",
+  "check": []
+}

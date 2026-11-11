@@ -1,0 +1,27 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn add(a: i64, b: i64) -> i64 {
+        a + b
+    }
+
+    #[effects(pure)]
+    fn div(a: i64, b: i64) -> i64
+        requires a >= 0,
+    {
+        a / b
+    }
+
+    #[effects(pure)]
+    fn shl(a: u8, n: u8) -> u8 {
+        a << n
+    }
+
+    #[effects(pure)]
+    fn wrap(a: i64, b: i64) -> i64 { a.wrapping_add(b) }
+
+    #[effects(pure)]
+    fn bounded(a: u8, b: u8) -> u16 {
+        (a as u16) + (b as u16)
+    }
+}

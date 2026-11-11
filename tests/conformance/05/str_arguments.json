@@ -1,0 +1,8 @@
+{
+  "sections": [
+    "참조 인자"
+  ],
+  "note": "A `&str` parameter takes a literal, `s.as_str()` and a received `&str` parameter.",
+  "check": [],
+  "run": "2\n0\n2\n"
+}

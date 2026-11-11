@@ -1,0 +1,16 @@
+#[summary("assume in ghost code")]
+mod m {
+    spec fn small(x: i64) -> bool { 0 <= x && x <= 10 }
+
+    proof fn lemma(x: i64) {
+        #[rationale(kind = nonlinear, "small")] assume(small(x));
+    }
+
+    #[effects(panic)]
+    fn block(x: i64) -> i64 {
+        proof {
+            #[rationale(kind = nonlinear, "small")] assume(small(x));
+        }
+        x
+    }
+}

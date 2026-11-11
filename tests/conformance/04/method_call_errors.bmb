@@ -1,0 +1,50 @@
+#[summary("s")]
+mod a {
+    struct C { n: i64 }
+
+    trait A {
+        #[effects(pure)]
+        fn f(self: &Self) -> i64;
+    }
+
+    trait B {
+        #[effects(pure)]
+        fn f(self: &Self) -> i64;
+    }
+
+    impl A for C {
+        #[effects(pure)]
+        fn f(self: &C) -> i64 { 1 }
+    }
+
+    impl B for C {
+        #[effects(pure)]
+        fn f(self: &C) -> i64 { 2 }
+    }
+
+    impl C {
+        #[effects(pure)]
+        fn bump(self: &mut C) -> () { self.n = 0; }
+
+        #[effects(pure)]
+        fn mk() -> C { C { n: 0 } }
+    }
+
+    #[effects(pure)]
+    fn e1(c: C) -> () { c.bump(); }
+
+    #[effects(pure)]
+    fn e2() -> () {
+        let c: C = C { n: 1 };
+        c.bump();
+    }
+
+    #[effects(pure)]
+    fn e3(c: C) -> i64 { c.nope() }
+
+    #[effects(pure)]
+    fn e4(c: C) -> i64 { c.f() }
+
+    #[effects(pure)]
+    fn e5(c: C) -> C { c.mk() }
+}

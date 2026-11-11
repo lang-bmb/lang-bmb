@@ -1,0 +1,36 @@
+{
+  "sections": [
+    "변환"
+  ],
+  "note": "`x as f64` and `as` to a non-integer type are E0205; `T::from(x)`, `x.into()`, `x.try_into()` are E0212; `try_from(..).expect(..)` is E0213; a non-integer source is E0412.",
+  "check": [
+    {
+      "code": "E0205",
+      "line": 4
+    },
+    {
+      "code": "E0205",
+      "line": 7
+    },
+    {
+      "code": "E0212",
+      "line": 10
+    },
+    {
+      "code": "E0212",
+      "line": 13
+    },
+    {
+      "code": "E0212",
+      "line": 16
+    },
+    {
+      "code": "E0213",
+      "line": 19
+    },
+    {
+      "code": "E0412",
+      "line": 22
+    }
+  ]
+}

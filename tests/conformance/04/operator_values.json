@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "연산자와 피연산자"
+  ],
+  "note": "Integer division truncates toward zero and `%` takes the dividend's sign; `!` is logical on `bool` and bitwise on integers; `bool` orders `false < true`; `&`, `|`, `^` work on `bool` too.",
+  "check": [],
+  "verify": {
+    "diags": []
+  },
+  "run": "-3\n-1\n1\n-6\n5\n0\n1\n0\n1\n1\n1\n8\n100\n-4\n"
+}

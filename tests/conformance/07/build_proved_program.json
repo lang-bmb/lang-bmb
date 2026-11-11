@@ -1,0 +1,8 @@
+{
+  "sections": [
+    "`build`와 `emit-llvm`"
+  ],
+  "note": "`bmb build` makes an executable when every definition is verified; ghost code leaves nothing in it.",
+  "check": [],
+  "run": "10\n55\n"
+}

@@ -1,0 +1,8 @@
+#[summary("s")]
+mod a_1 {
+    #[effects(pure)]
+    fn _f9(_x: i64, y_2Z: i64) -> i64 {
+        let __: i64 = _x;
+        __ + y_2Z
+    }
+}

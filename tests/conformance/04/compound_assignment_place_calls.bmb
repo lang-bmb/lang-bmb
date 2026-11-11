@@ -1,0 +1,11 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn idx(n: usize) -> usize { n }
+
+    #[effects(pure)]
+    fn e1() -> () {
+        let mut a: [i64; 2] = [1, 2];
+        a[idx(1)] += 1;
+    }
+}

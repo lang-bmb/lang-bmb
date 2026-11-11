@@ -1,0 +1,24 @@
+{
+  "sections": [
+    "복사와 이동"
+  ],
+  "note": "A struct, enum or array that holds a move type is itself a move type.",
+  "check": [
+    {
+      "code": "E0413",
+      "line": 11
+    },
+    {
+      "code": "E0413",
+      "line": 18
+    },
+    {
+      "code": "E0413",
+      "line": 25
+    },
+    {
+      "code": "E0413",
+      "line": 32
+    }
+  ]
+}

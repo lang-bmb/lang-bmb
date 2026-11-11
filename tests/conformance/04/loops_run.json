@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "루프"
+  ],
+  "note": "`while` runs while its condition holds; `for` runs an integer range, `lo..hi` without `hi` and `lo..=hi` with it, the ends evaluated once left to right on entry; `loop` is an expression whose value is that of `break e`.",
+  "check": [],
+  "verify": {
+    "diags": []
+  },
+  "run": "3\n0\n1\n2\n1\n2\n3\n10\n12\n10\n11\n254\n255\n40\n"
+}

@@ -1,0 +1,44 @@
+{
+  "sections": [
+    "받지 않는 Rust 습관"
+  ],
+  "note": "Specification, ghost and constant forms not accepted: a bad `#[invariant]` predicate (E0254) or two of them (E0255), effects or a return type on `proof fn` (E0256), executable things in ghost code (E0257), a `proof fn` called outside `proof { }` (E0258), a non-constant `const` value (E0259), a failing constant computation (E0260).",
+  "check": [
+    {
+      "code": "E0254",
+      "line": 11
+    },
+    {
+      "code": "E0255",
+      "line": 15
+    },
+    {
+      "code": "E0256",
+      "line": 27
+    },
+    {
+      "code": "E0257",
+      "line": 30
+    },
+    {
+      "code": "E0257",
+      "line": 34
+    },
+    {
+      "code": "E0258",
+      "line": 41
+    },
+    {
+      "code": "E0259",
+      "line": 53
+    },
+    {
+      "code": "E0260",
+      "line": 54
+    },
+    {
+      "code": "E0260",
+      "line": 55
+    }
+  ]
+}

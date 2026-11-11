@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "변환"
+  ],
+  "note": "`-x as u64` is `(-x) as u64`; `T::try_from(x).unwrap()` is the input alias of `x as T`; `f64::from(x)` converts an integer to `f64`.",
+  "check": [],
+  "verify": {
+    "diags": []
+  },
+  "run": "200\n3\n-3.0\n"
+}

@@ -1,0 +1,17 @@
+#[summary("rationale kinds")]
+mod m {
+    spec fn small(x: i64) -> bool { 0 <= x && x <= 10 }
+
+    #[effects(panic)]
+    fn f(x: i64) -> i64 {
+        #[rationale(kind = nonlinear, "one")]
+        assume(small(x));
+        #[rationale(kind = solver_limit, "two")]
+        assume(small(x));
+        #[rationale(kind = boundary, "three")]
+        assume(small(x));
+        #[rationale(kind = performance, "four")]
+        assume(small(x));
+        x
+    }
+}

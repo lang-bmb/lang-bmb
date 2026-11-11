@@ -1,0 +1,28 @@
+{
+  "sections": [
+    "변환"
+  ],
+  "note": "`as` and `try_from` from `bool`, `char` or `f64`, and `T::try_from(x)` without `.ok()`/`.unwrap()`, are E0412.",
+  "check": [
+    {
+      "code": "E0412",
+      "line": 4
+    },
+    {
+      "code": "E0412",
+      "line": 7
+    },
+    {
+      "code": "E0412",
+      "line": 10
+    },
+    {
+      "code": "E0412",
+      "line": 13
+    },
+    {
+      "code": "E0412",
+      "line": 17
+    }
+  ]
+}

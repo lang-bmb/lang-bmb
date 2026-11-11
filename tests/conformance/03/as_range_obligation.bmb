@@ -1,0 +1,20 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn narrow(x: i64) -> u8 {
+        x as u8
+    }
+
+    #[effects(pure)]
+    fn narrow_ok(x: i64) -> u8
+        requires 0 <= x && x <= 255,
+    {
+        x as u8
+    }
+
+    #[effects(pure)]
+    fn widen(x: u8) -> i64 { x as i64 }
+
+    #[effects(pure)]
+    fn checked(x: i64) -> Option<u8> { u8::try_from(x).ok() }
+}

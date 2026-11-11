@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "복사와 이동"
+  ],
+  "note": "A value of a type parameter without a Copy bound moves; with a Copy bound it is copied.",
+  "check": [
+    {
+      "code": "E0413",
+      "line": 7
+    }
+  ]
+}

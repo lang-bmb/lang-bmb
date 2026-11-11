@@ -1,0 +1,37 @@
+#[summary("trait effects")]
+mod m {
+    trait Make {
+        #[effects(pure)]
+        fn make(self: &Self) -> i64;
+    }
+
+    trait Build {
+        #[effects(alloc)]
+        fn build(self: &Self) -> i64;
+    }
+
+    struct A { x: i64 }
+
+    impl Make for A {
+        #[effects(alloc)]
+        fn make(self: &A) -> i64 {
+            let b: Box<i64> = Box::new(self.x);
+            *b
+        }
+    }
+
+    impl Build for A {
+        #[effects(pure)]
+        fn build(self: &A) -> i64 { self.x }
+    }
+
+    #[effects(pure)]
+    fn through<T: Build>(t: &T) -> i64 {
+        t.build()
+    }
+
+    #[effects(alloc)]
+    fn declared<T: Build>(t: &T) -> i64 {
+        t.build()
+    }
+}

@@ -1,0 +1,26 @@
+#[summary("E0803: + - *")]
+mod m {
+    #[effects(pure)]
+    fn add(x: i32) -> i32 {
+        x + 1
+    }
+
+    #[effects(pure)]
+    fn sub(x: u8) -> u8 {
+        x - 1
+    }
+
+    #[effects(pure)]
+    fn mul(x: u64) -> u64 {
+        x * 2
+    }
+
+    #[effects(pure)]
+    fn guarded(x: i32, y: u8, z: u64) -> i32
+        requires x < 100, y > 0, z < 1000,
+    {
+        let a: u8 = y - 1;
+        let b: u64 = z * 2;
+        x + 1
+    }
+}

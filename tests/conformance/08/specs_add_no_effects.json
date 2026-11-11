@@ -1,0 +1,14 @@
+{
+  "sections": [
+    "명세와 유령 코드의 효과"
+  ],
+  "note": "Contract clauses, invariants, asserts and proof blocks add nothing to a function's required effects: a `pure` function may hold them all.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::f": "verified"
+    },
+    "diags": []
+  },
+  "run": "3\n"
+}

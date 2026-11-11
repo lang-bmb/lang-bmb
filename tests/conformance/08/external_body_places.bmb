@@ -1,0 +1,16 @@
+#[summary("external_body places")]
+mod m {
+    #[rationale(kind = boundary, "never")]
+    #[external_body]
+    spec fn external_spec(x: i64) -> bool { x > 0 }
+
+    #[rationale(kind = boundary, "never")]
+    #[external_body]
+    proof fn external_lemma(x: i64) {
+    }
+
+    #[rationale(kind = boundary, "never")]
+    #[external_body]
+    #[effects(io, panic)]
+    fn main() -> () {}
+}

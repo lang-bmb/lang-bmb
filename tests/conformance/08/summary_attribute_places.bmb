@@ -1,0 +1,26 @@
+#[summary("summaries")]
+mod m {
+    #[summary("a constant")]
+    const K: i64 = 1;
+
+    #[summary("a struct")]
+    struct P { x: i64 }
+
+    #[summary("an enum")]
+    enum E { A, B }
+
+    #[summary("a trait")]
+    trait T {
+        #[effects(pure)]
+        fn t(self: &Self) -> i64;
+    }
+
+    #[summary("a function")]
+    #[effects(pure)]
+    fn f() -> i64 { K }
+
+    #[summary("one")]
+    #[summary("two")]
+    #[effects(pure)]
+    fn g() -> () {}
+}

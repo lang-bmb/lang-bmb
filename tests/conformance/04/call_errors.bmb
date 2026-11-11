@@ -1,0 +1,31 @@
+#[summary("s")]
+mod a {
+    struct S { x: i64 }
+
+    #[effects(pure)]
+    fn id<T>(x: T) -> T { x }
+
+    #[effects(pure)]
+    fn two(a: i64, b: bool) -> i64 { a }
+
+    #[effects(pure)]
+    fn e1() -> i64 { two(1) }
+
+    #[effects(pure)]
+    fn e2() -> i64 { two(1, 2) }
+
+    #[effects(pure)]
+    fn e3() -> i64 { id(1) }
+
+    #[effects(pure)]
+    fn e4() -> i64 { nope(1) }
+
+    #[effects(pure)]
+    fn e5() -> i64 { S::nope(1) }
+
+    #[effects(pure)]
+    fn e6() -> i64 { nope }
+
+    #[effects(pure)]
+    fn e7() -> i64 { self::two(1, true) }
+}

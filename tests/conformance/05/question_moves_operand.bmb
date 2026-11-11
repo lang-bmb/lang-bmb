@@ -1,0 +1,15 @@
+#[summary("? moves")]
+mod m {
+    #[effects(pure)]
+    fn f(o: Option<Vec<i64>>) -> Option<usize> {
+        let v: Vec<i64> = o?;
+        let again: Option<Vec<i64>> = o;
+        Some(v.len())
+    }
+
+    #[effects(pure)]
+    fn g(o: Option<Vec<i64>>) -> Option<usize> {
+        let v: Vec<i64> = o?;
+        Some(v.len())
+    }
+}

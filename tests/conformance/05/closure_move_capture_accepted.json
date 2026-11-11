@@ -1,0 +1,7 @@
+{
+  "sections": [
+    "클로저의 캡처"
+  ],
+  "note": "A closure that uses an outer local written with `move`, and a closure without captures written without it, are accepted.",
+  "check": []
+}

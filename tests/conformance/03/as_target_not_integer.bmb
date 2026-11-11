@@ -1,0 +1,11 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn e1(u: u32) -> char { u as char }
+
+    #[effects(pure)]
+    fn e2(x: i64) -> f64 { x as f64 }
+
+    #[effects(pure)]
+    fn e3(x: i64) -> bool { x as bool }
+}

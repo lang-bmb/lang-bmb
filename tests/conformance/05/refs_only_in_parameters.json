@@ -1,0 +1,24 @@
+{
+  "sections": [
+    "참조는 매개변수에만"
+  ],
+  "note": "A reference type as a local's type, a return type, a field type, a payload type or a type argument is E0403.",
+  "check": [
+    {
+      "code": "E0403",
+      "line": 3
+    },
+    {
+      "code": "E0403",
+      "line": 5
+    },
+    {
+      "code": "E0403",
+      "line": 8
+    },
+    {
+      "code": "E0403",
+      "line": 13
+    }
+  ]
+}

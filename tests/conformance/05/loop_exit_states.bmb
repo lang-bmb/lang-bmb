@@ -1,0 +1,35 @@
+#[summary("loop exits")]
+mod m {
+    #[effects(pure)]
+    fn take(v: Vec<i64>) -> usize { v.len() }
+
+    #[effects(pure)]
+    fn differs(n: usize, v: Vec<i64>) -> usize {
+        let mut i: usize = 0;
+        let mut s: usize = 0;
+        while i < n
+            decreases n - i,
+        {
+            if i == 3 {
+                s = take(v);
+                break;
+            }
+            i = i + 1;
+        }
+        s
+    }
+
+    #[effects(pure)]
+    fn agrees(n: usize, v: Vec<i64>) -> usize {
+        let mut i: usize = 0;
+        while i < n
+            decreases n - i,
+        {
+            if i == 3 {
+                break;
+            }
+            i = i + 1;
+        }
+        take(v)
+    }
+}

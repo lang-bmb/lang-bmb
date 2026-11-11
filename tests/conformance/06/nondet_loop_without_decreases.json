@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "루프의 `invariant`와 `decreases`"
+  ],
+  "note": "A `loop` in a function that declares `nondet` is accepted without `decreases`; in other functions it is E0506.",
+  "check": [
+    {
+      "code": "E0506",
+      "line": 18
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "배열과 슬라이스"
+  ],
+  "note": "`[T; N]` with `N` a decimal literal or a `usize` constant; values `[a, b, c]` and `[v; N]`, `a[i]`, `a.len()`; slice arguments are `&arr`, `&mut arr`, `v.as_slice()`, `v.as_mut_slice()` and `&v[lo..hi]`.",
+  "check": [],
+  "verify": {
+    "diags": []
+  },
+  "run": "3\n3\n6\n5\n21\n3\n9\n15\n18\n0\n"
+}

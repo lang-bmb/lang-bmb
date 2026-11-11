@@ -1,0 +1,8 @@
+{
+  "sections": [
+    "참조는 매개변수에만"
+  ],
+  "note": "A &T / &mut T parameter is read with `*x` and `x.f` and, when &mut, written with `*x = v` and `x.f = v`.",
+  "check": [],
+  "run": "5\n6\n2\n9\n3\n"
+}

@@ -1,0 +1,22 @@
+{
+  "sections": [
+    "의무의 단위"
+  ],
+  "note": "An obligation assumes the facts of its path: the `requires`, the parameter type's range, the conditions passed, an earlier `assert`, a callee's `ensures`.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::by_requires": "verified",
+      "m::by_type": "verified",
+      "m::by_condition": "verified",
+      "m::by_ensures": "verified",
+      "m::no_fact": "failed"
+    },
+    "diags": [
+      {
+        "code": "E0803",
+        "line": 36
+      }
+    ]
+  }
+}

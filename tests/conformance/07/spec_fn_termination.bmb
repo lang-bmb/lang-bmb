@@ -1,0 +1,14 @@
+#[summary("E0813")]
+mod m {
+    spec fn forever(n: u64) -> u64
+        decreases n,
+    {
+        forever(n)
+    }
+
+    spec fn count(n: u64) -> u64
+        decreases n,
+    {
+        if n == 0 { 0 } else { count(n - 1) + 1 }
+    }
+}

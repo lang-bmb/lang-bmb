@@ -1,0 +1,28 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn first_neg(a: &[i64]) -> i64 {
+        for i in 0..a.len() {
+            if a[i] < 0 { return a[i]; }
+        }
+        0
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        'outer: for x in 0..3 {
+            for y in 0..3 {
+                if y == 2 { continue 'outer; }
+                if x == 2 { break 'outer; }
+                print_i64(x * 10 + y);
+            }
+        }
+        for z in 0..5 {
+            if z == 1 { continue; }
+            if z == 3 { break; }
+            print_i64(z);
+        }
+        let a: [i64; 3] = [1, -2, -3];
+        print_i64(first_neg(&a));
+    }
+}

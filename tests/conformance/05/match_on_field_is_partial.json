@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "자리에서 꺼내기와 부분 이동"
+  ],
+  "note": "A match on a field of a local struct moves only that field: other fields stay usable and the whole struct is E0433.",
+  "check": [
+    {
+      "code": "E0433",
+      "line": 23
+    }
+  ]
+}

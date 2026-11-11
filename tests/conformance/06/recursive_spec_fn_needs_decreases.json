@@ -1,0 +1,13 @@
+{
+  "sections": [
+    "`spec fn`",
+    "재귀와 `decreases`"
+  ],
+  "note": "A recursive `spec fn` without `decreases` is E0507.",
+  "check": [
+    {
+      "code": "E0507",
+      "line": 3
+    }
+  ]
+}

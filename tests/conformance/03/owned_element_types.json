@@ -1,0 +1,24 @@
+{
+  "sections": [
+    "소유 타입"
+  ],
+  "note": "An array or a struct with an array is not a `Vec` element, and `Box<()>` is not a type (E0402); `Vec::new()` takes its element type from the expected type (E0401).",
+  "check": [
+    {
+      "code": "E0402",
+      "line": 6
+    },
+    {
+      "code": "E0402",
+      "line": 9
+    },
+    {
+      "code": "E0402",
+      "line": 12
+    },
+    {
+      "code": "E0401",
+      "line": 16
+    }
+  ]
+}

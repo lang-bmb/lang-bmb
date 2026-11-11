@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "이동한 값의 사용"
+  ],
+  "note": "The operand of `?` is moved; a later use is E0413.",
+  "check": [
+    {
+      "code": "E0413",
+      "line": 6
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+#[summary("no overflow obligation")]
+mod m {
+    spec fn next(x: u64) -> u64 { x + 1 }
+
+    #[effects(pure)]
+    fn wrap(x: u64, y: u64) -> u64 {
+        x.wrapping_add(y).wrapping_mul(3).wrapping_sub(1)
+    }
+
+    #[effects(pure)]
+    fn ghost(x: u64) -> u64 {
+        proof {
+            let big: u64 = x + x + 1;
+            assert(big > x);
+        }
+        x
+    }
+
+    #[effects(pure)]
+    fn stated(x: u64) -> u64 {
+        assert(next(x) > x);
+        x
+    }
+}

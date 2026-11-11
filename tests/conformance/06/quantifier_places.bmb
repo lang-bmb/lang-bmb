@@ -1,0 +1,21 @@
+#[summary("where quantifiers stand")]
+mod m {
+    spec fn zeroed(a: &[i64]) -> bool {
+        forall|j: usize| j < a.len() ==> #[trigger] a[j] == 0
+    }
+
+    #[effects(pure)]
+    fn zero(a: &mut [i64]) -> ()
+        ensures zeroed(a),
+    {
+        let mut i: usize = 0;
+        while i < a.len()
+            invariant i <= a.len(), forall|j: usize| j < i ==> #[trigger] a[j] == 0,
+            decreases a.len() - i,
+        {
+            a[i] = 0;
+            i = i + 1;
+        }
+        assert(forall|j: usize| j < a.len() ==> #[trigger] a[j] == 0);
+    }
+}

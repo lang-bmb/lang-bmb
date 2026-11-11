@@ -1,0 +1,24 @@
+{
+  "sections": [
+    "항목이 받는 속성"
+  ],
+  "note": "The attribute list is closed: unknown attributes such as `#[inline]`, `#[repr(..)]` and an unknown unit attribute are E0605; `#[derive(..)]` is E0220.",
+  "check": [
+    {
+      "code": "E0605",
+      "line": 2
+    },
+    {
+      "code": "E0605",
+      "line": 4
+    },
+    {
+      "code": "E0605",
+      "line": 8
+    },
+    {
+      "code": "E0220",
+      "line": 11
+    }
+  ]
+}

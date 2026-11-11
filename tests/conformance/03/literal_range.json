@@ -1,0 +1,24 @@
+{
+  "sections": [
+    "스칼라 타입"
+  ],
+  "note": "An integer literal takes its type from the expected type and must fit it (E0406); `-128` is one `i8` literal.",
+  "check": [
+    {
+      "code": "E0406",
+      "line": 4
+    },
+    {
+      "code": "E0406",
+      "line": 13
+    },
+    {
+      "code": "E0406",
+      "line": 16
+    },
+    {
+      "code": "E0406",
+      "line": 22
+    }
+  ]
+}

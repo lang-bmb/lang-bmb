@@ -1,0 +1,16 @@
+{
+  "sections": [
+    "`build`와 `emit-llvm`"
+  ],
+  "note": "Definitions verified through an escape (`assume`, `#[external_body]`) do not block `build`.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::outside": "verified",
+      "m::caller": "verified",
+      "m::main": "verified"
+    },
+    "diags": []
+  },
+  "run": "8\n"
+}

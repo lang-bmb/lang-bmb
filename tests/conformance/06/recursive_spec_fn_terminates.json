@@ -1,0 +1,14 @@
+{
+  "sections": [
+    "`spec fn`",
+    "재귀와 `decreases`"
+  ],
+  "note": "A recursive `spec fn` with a decreasing measure is accepted and its termination proved.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::count": "verified"
+    },
+    "diags": []
+  }
+}

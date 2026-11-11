@@ -1,0 +1,19 @@
+#[summary("specifications call no code")]
+mod m {
+    #[effects(pure)]
+    fn helper(x: i64) -> i64 { x }
+
+    spec fn body(x: i64) -> bool { helper(x) > 0 }
+
+    #[effects(pure)]
+    fn clause(x: i64) -> i64
+        requires helper(x) > 0,
+    {
+        x
+    }
+
+    #[effects(pure)]
+    fn asserted(x: i64) -> () {
+        assert(helper(x) > 0);
+    }
+}

@@ -1,0 +1,7 @@
+{
+  "sections": [
+    "별칭"
+  ],
+  "note": "Two shared borrows of one variable, a `&mut` with borrows of other variables, and a `&mut x` with a value argument that only reads `x` (`x.len()`, `x[0]`, `k + 1`) are accepted.",
+  "check": []
+}

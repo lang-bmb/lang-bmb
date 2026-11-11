@@ -1,0 +1,20 @@
+#[summary("widening is one way")]
+mod m {
+    spec fn narrowed(x: u64) -> u8 { x }
+
+    spec fn bound(x: u64) -> bool {
+        let b: u8 = x;
+        b < 10
+    }
+
+    spec fn widened(b: u8) -> u64 { b }
+
+    spec fn large(n: u64) -> bool { n < 10 }
+
+    #[effects(pure)]
+    fn narrow(b: u8) -> u8
+        requires large(b),
+    {
+        b
+    }
+}

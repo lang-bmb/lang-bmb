@@ -1,0 +1,41 @@
+#[summary("copy types")]
+mod m {
+    struct P { x: i64, y: i64 }
+
+    #[effects(pure)]
+    fn id(x: i64) -> i64 { x }
+
+    #[effects(pure)]
+    fn px(p: P) -> i64 { p.x }
+
+    #[effects(pure)]
+    fn first(a: [u8; 4]) -> u8 { a[0] }
+
+    #[effects(pure)]
+    fn get(o: Option<i64>) -> i64 {
+        match o {
+            None => 0,
+            Some(v) => v,
+        }
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        let a: i64 = 3;
+        let b: i64 = a;
+        print_i64(id(a));
+        print_i64(b);
+        let p: P = P { x: 7, y: 8 };
+        let q: P = p;
+        print_i64(px(p));
+        print_i64(q.x);
+        let arr: [u8; 4] = [1, 2, 3, 4];
+        let brr: [u8; 4] = arr;
+        print_u64(first(arr) as u64);
+        print_u64(first(brr) as u64);
+        let o: Option<i64> = Some(9);
+        let o2: Option<i64> = o;
+        print_i64(get(o));
+        print_i64(get(o2));
+    }
+}

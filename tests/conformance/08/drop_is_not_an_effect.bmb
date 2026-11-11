@@ -1,0 +1,12 @@
+#[summary("frees are pure")]
+mod m {
+    #[effects(pure)]
+    fn drops(v: Vec<i64>, b: Box<i64>) -> i64 {
+        *b
+    }
+
+    #[effects(pure)]
+    fn reads(v: &Vec<i64>) -> usize {
+        v.len()
+    }
+}

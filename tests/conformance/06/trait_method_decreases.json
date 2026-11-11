@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "재귀와 `decreases`"
+  ],
+  "note": "A trait method declaration takes no `decreases` clause (E0207).",
+  "check": [
+    {
+      "code": "E0207",
+      "line": 6
+    }
+  ]
+}

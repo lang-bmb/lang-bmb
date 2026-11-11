@@ -1,0 +1,9 @@
+#[summary("s")]
+mod a {
+    struct Two<A, B> { a: A, b: B }
+
+    impl<A, B> Two<B, A> {
+        #[effects(pure)]
+        fn m(self: &Two<B, A>) -> i64 { 2 }
+    }
+}

@@ -1,0 +1,32 @@
+{
+  "sections": [
+    "루프"
+  ],
+  "note": "`while` and `loop` need `decreases` (E0506); `for` takes none (E0253); `while let` is E0226; a `for` over an iterator is E0252; the trailing comma of a clause may be left out.",
+  "check": [
+    {
+      "code": "E0506",
+      "line": 18
+    },
+    {
+      "code": "E0506",
+      "line": 23
+    },
+    {
+      "code": "E0253",
+      "line": 27
+    },
+    {
+      "code": "E0226",
+      "line": 33
+    },
+    {
+      "code": "E0252",
+      "line": 39
+    },
+    {
+      "code": "E0252",
+      "line": 45
+    }
+  ]
+}

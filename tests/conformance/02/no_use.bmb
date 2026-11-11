@@ -1,0 +1,10 @@
+#[summary("s")]
+mod a {
+    const K: i64 = 1; use b::f;
+}
+
+#[summary("s")]
+mod b {
+    #[effects(pure)]
+    fn f() -> i64 { 1 }
+}

@@ -1,0 +1,14 @@
+{
+  "sections": [
+    "호출자가 가정하는 것"
+  ],
+  "note": "With `ensures r == 1` on the callee, the caller's postcondition and overflow obligations are proved.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::one": "verified",
+      "m::two": "verified"
+    },
+    "diags": []
+  }
+}

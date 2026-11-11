@@ -1,0 +1,8 @@
+{
+  "sections": [
+    "해제"
+  ],
+  "note": "Owned values dropped at a block end, by an assignment over an owned place and as a discarded expression value leave a program that runs to the end.",
+  "check": [],
+  "run": "1\n2\n0\n3\n"
+}

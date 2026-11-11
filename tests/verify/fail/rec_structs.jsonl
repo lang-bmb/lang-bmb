@@ -4,12 +4,11 @@
 {"code":"E0803","severity":"error","message":"`*` may overflow `i64` in `rf::built`; counterexample: x = 3074457345618258603","file":"fail/rec_structs.bmb","line":38,"col":33,"end_line":38,"end_col":38}
 {"code":"E0803","severity":"error","message":"`+` may overflow `i64` in `rf::bump`; counterexample: n = Node { v: 9223372036854775807, kids: [] (len 0) }","file":"fail/rec_structs.bmb","line":44,"col":9,"end_line":44,"end_col":16}
 {"code":"E0802","severity":"error","message":"postcondition `grew` may not hold in `rf::misplaced`; counterexample: n = Node { v: 9, kids: [Node { .. }] (len 1) }, c = Node { v: 5, kids: [Node { .. }] (len 1) }","file":"fail/rec_structs.bmb","line":51,"col":17,"end_line":51,"end_col":32}
-{"code":"E0816","severity":"error","message":"`push` may exceed the maximum length of a `Vec` in `rf::misplaced`; counterexample: n = Node { v: 9, kids: [Node { .. }] (len 1) }, c = Node { v: 5, kids: [Node { .. }] (len 1) }","file":"fail/rec_structs.bmb","line":53,"col":9,"end_line":53,"end_col":31}
 {"code":"E0802","severity":"error","message":"postcondition `labeled` may not hold in `rf::relabel`; counterexample: n = Node { v: 7, kids: [] (len 0) }, x = 0","file":"fail/rec_structs.bmb","line":58,"col":17,"end_line":58,"end_col":30}
 {"def":"rf::built","status":"failed","obligations":1,"failed":1,"rlimit":590,"rlimit_max":590}
 {"def":"rf::bump","status":"failed","obligations":1,"failed":1,"rlimit":362,"rlimit_max":362}
 {"def":"rf::first","status":"failed","obligations":1,"failed":1,"rlimit":279,"rlimit_max":279}
 {"def":"rf::fresh","status":"failed","obligations":1,"failed":1,"rlimit":518,"rlimit_max":518}
-{"def":"rf::misplaced","status":"failed","obligations":3,"failed":2,"rlimit":3337,"rlimit_max":1645}
+{"def":"rf::misplaced","status":"failed","obligations":2,"failed":1,"rlimit":1887,"rlimit_max":1645}
 {"def":"rf::relabel","status":"failed","obligations":2,"failed":1,"rlimit":1681,"rlimit_max":1446}
 {"def":"rf::same","status":"failed","obligations":1,"failed":1,"rlimit":297,"rlimit_max":297}

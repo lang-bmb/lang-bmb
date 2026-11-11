@@ -1,0 +1,38 @@
+#[summary("moves in loops")]
+mod m {
+    #[effects(pure)]
+    fn take(v: Vec<i64>) -> usize { v.len() }
+
+    #[effects(pure)]
+    fn in_while(n: usize, v: Vec<i64>) -> usize {
+        let mut i: usize = 0;
+        let mut s: usize = 0;
+        while i < n
+            decreases n - i,
+        {
+            s = take(v);
+            i = i + 1;
+        }
+        s
+    }
+
+    #[effects(pure)]
+    fn in_for(n: usize, v: Vec<i64>) -> usize {
+        let mut s: usize = 0;
+        for i in 0..n {
+            s = take(v);
+        }
+        s
+    }
+
+    #[effects(alloc)]
+    fn reassigned(n: usize, v: Vec<i64>) -> usize {
+        let mut w: Vec<i64> = v;
+        let mut s: usize = 0;
+        for i in 0..n {
+            s = take(w);
+            w = Vec::new();
+        }
+        s + w.len()
+    }
+}

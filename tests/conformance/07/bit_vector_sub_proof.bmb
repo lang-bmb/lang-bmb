@@ -1,0 +1,14 @@
+#[summary("E0818")]
+mod m {
+    #[effects(pure)]
+    fn wrong(x: u8) -> u8 {
+        assert(x & 1 == 1) by (bit_vector);
+        x
+    }
+
+    #[effects(pure)]
+    fn right(x: u8) -> u8 {
+        assert(x & 0 == 0) by (bit_vector);
+        x
+    }
+}

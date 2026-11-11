@@ -1,0 +1,16 @@
+{
+  "sections": [
+    "`spec fn`"
+  ],
+  "note": "`#[uses(..)]` takes names of spec fns only: an executable function's name and an unknown name are E0509.",
+  "check": [
+    {
+      "code": "E0509",
+      "line": 9
+    },
+    {
+      "code": "E0509",
+      "line": 13
+    }
+  ]
+}

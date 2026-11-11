@@ -1,0 +1,16 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn apply<F: Fn(i64) -> i64>(f: F, x: i64) -> i64 { f(x) }
+
+    #[effects(pure)]
+    fn e1() -> i64 { let x = 1; x }
+
+    #[effects(pure)]
+    fn e2() { }
+
+    #[effects(pure)]
+    fn e3() -> i64 { apply::<_>(|x| x, 1) }
+
+    const N = 1;
+}

@@ -1,0 +1,46 @@
+#[summary("s")]
+mod a {
+    trait T {
+        #[effects(pure)]
+        fn m(self: &Self) -> i64;
+    }
+
+    struct S { x: i64 }
+
+    impl T for S {
+        #[effects(pure)]
+        fn m(self: &S) -> i64 { self.x }
+    }
+
+    impl T for S {
+        #[effects(pure)]
+        fn m(self: &S) -> i64 { 0 }
+    }
+
+    impl T for b::Q {
+        #[effects(pure)]
+        fn m(self: &b::Q) -> i64 { self.x }
+    }
+}
+
+#[summary("s")]
+mod b {
+    struct Q { x: i64 }
+
+    struct R { x: i64 }
+
+    impl a::T for R {
+        #[effects(pure)]
+        fn m(self: &R) -> i64 { self.x }
+    }
+}
+
+#[summary("s")]
+mod c {
+    struct Z { x: i64 }
+
+    impl a::T for b::Q {
+        #[effects(pure)]
+        fn m(self: &b::Q) -> i64 { self.x }
+    }
+}

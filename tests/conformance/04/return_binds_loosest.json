@@ -1,0 +1,13 @@
+{
+  "sections": [
+    "식의 문법과 우선순위"
+  ],
+  "note": "`return` binds loosest: `return a + b` returns the sum.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "a::f": "verified"
+    },
+    "diags": []
+  }
+}

@@ -1,0 +1,23 @@
+#[summary("malformed rationales")]
+mod m {
+    spec fn small(x: i64) -> bool { 0 <= x && x <= 10 }
+
+    #[effects(panic)]
+    fn f(x: i64) -> i64 {
+        #[rationale(kind = todo, "later")]
+        assume(small(x));
+        #[rationale("no kind")]
+        assume(small(x));
+        #[rationale(kind = boundary, kind = nonlinear, "two kinds")]
+        assume(small(x));
+        #[rationale(kind = nonlinear)]
+        assume(small(x));
+        #[rationale(kind = nonlinear, "")]
+        assume(small(x));
+        #[rationale(kind = nonlinear, "one", "two")]
+        assume(small(x));
+        #[rationale(kind = nonlinear, author = "me", "text")]
+        assume(small(x));
+        x
+    }
+}

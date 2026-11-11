@@ -1,0 +1,21 @@
+{
+  "sections": [
+    "명세 문맥과 실행 문맥",
+    "`assert`"
+  ],
+  "note": "A specification context takes no `let mut`, assignment, loop, `return` or `assert` (E0503).",
+  "check": [
+    {
+      "code": "E0503",
+      "line": 4
+    },
+    {
+      "code": "E0503",
+      "line": 9
+    },
+    {
+      "code": "E0503",
+      "line": 13
+    }
+  ]
+}

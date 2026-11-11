@@ -1,0 +1,24 @@
+{
+  "sections": [
+    "배열과 슬라이스"
+  ],
+  "note": "`Vec` and `String` are not array elements (E0402); a slice without a reference is not a type (E0402); an array length too large is E0406.",
+  "check": [
+    {
+      "code": "E0402",
+      "line": 3
+    },
+    {
+      "code": "E0402",
+      "line": 5
+    },
+    {
+      "code": "E0402",
+      "line": 8
+    },
+    {
+      "code": "E0406",
+      "line": 11
+    }
+  ]
+}

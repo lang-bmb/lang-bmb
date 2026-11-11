@@ -1,0 +1,25 @@
+#[summary("s")]
+mod a {
+    struct P { a: i64, a: i64 }
+
+    enum E { V, V }
+
+    #[effects(pure)]
+    fn g<T, T>(x: i64) -> i64 { x }
+
+    trait Tr {
+        #[effects(pure)]
+        fn m(self: &Self) -> i64;
+        #[effects(pure)]
+        fn m(self: &Self) -> i64;
+    }
+
+    struct S { x: i64 }
+
+    impl S {
+        #[effects(pure)]
+        fn k(self: &S) -> i64 { 1 }
+        #[effects(pure)]
+        fn k(self: &S) -> i64 { 2 }
+    }
+}

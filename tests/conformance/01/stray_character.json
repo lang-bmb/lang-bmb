@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "문자와 공백"
+  ],
+  "note": "A character that starts no token is E0101.",
+  "check": [
+    {
+      "code": "E0101",
+      "line": 5
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+/// unit summary,
+/// second line of the same summary
+mod a {
+    /// a constant
+    const C: i64 = 1;
+
+    /// a struct
+    struct S { x: i64 }
+
+    /// a function
+    #[effects(pure)]
+    fn f() -> i64 { C }
+}

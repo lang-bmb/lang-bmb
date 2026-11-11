@@ -1,0 +1,14 @@
+#[summary("proof context")]
+mod m {
+    spec fn small(n: u64) -> bool { n < 10 }
+
+    spec fn bounded(n: u64) -> bool { small(n) && n > 0 }
+
+    #[effects(pure)]
+    fn f(n: u64) -> (r: u64)
+        requires bounded(n),
+        ensures r < 20,
+    {
+        n + n
+    }
+}

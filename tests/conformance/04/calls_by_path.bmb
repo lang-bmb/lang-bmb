@@ -1,0 +1,25 @@
+#[summary("s")]
+mod lib {
+    struct S { x: i64 }
+
+    impl S {
+        #[effects(pure)]
+        fn mk(x: i64) -> S { S { x: x } }
+    }
+
+    #[effects(pure)]
+    fn id<T>(x: T) -> T { x }
+}
+
+#[summary("s")]
+mod app {
+    #[effects(pure)]
+    fn two(a: i64, b: bool) -> i64 { if b { a } else { 0 } }
+
+    #[effects(io)]
+    fn main() -> () {
+        let s: lib::S = lib::S::mk(4);
+        print_i64(two(lib::id::<i64>(s.x), true));
+        print_i64(app::two(1, false));
+    }
+}

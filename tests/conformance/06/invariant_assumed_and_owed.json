@@ -1,0 +1,25 @@
+{
+  "sections": [
+    "타입 불변식"
+  ],
+  "note": "An executable function assumes the invariant of its parameters and owes it where a value leaves (a return); the predicate is opaque without `#[uses(p)]`.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::read": "verified",
+      "m::read_opaque": "failed",
+      "m::make": "verified",
+      "m::make_bad": "failed"
+    },
+    "diags": [
+      {
+        "code": "E0810",
+        "line": 18
+      },
+      {
+        "code": "E0823",
+        "line": 30
+      }
+    ]
+  }
+}

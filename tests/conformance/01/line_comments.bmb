@@ -1,0 +1,10 @@
+#[summary("s")] // after a token
+mod a {
+    //// four slashes
+    //! bang
+    // fn hidden() -> i64 { $ }
+    #[effects(io)]
+    fn main() -> () { // {
+        print_i64(1); // print_i64(2);
+    }
+}

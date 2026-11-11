@@ -1,0 +1,16 @@
+{
+  "sections": [
+    "소유 타입"
+  ],
+  "note": "A `spec fn` neither takes nor returns a `Vec` or `String` (E0402); it takes slices and `&str`.",
+  "check": [
+    {
+      "code": "E0402",
+      "line": 3
+    },
+    {
+      "code": "E0402",
+      "line": 5
+    }
+  ]
+}

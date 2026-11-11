@@ -1,0 +1,14 @@
+{
+  "sections": [
+    "속성"
+  ],
+  "note": "The attributes of a definition may come in any order.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "a::f": "verified",
+      "a::g": "verified"
+    },
+    "diags": []
+  }
+}

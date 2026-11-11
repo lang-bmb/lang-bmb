@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "배열과 슬라이스"
+  ],
+  "note": "A range expression `lo..hi` is not a value: outside `for`, `copy_within` and `&v[lo..hi]` arguments it is E0435.",
+  "check": [
+    {
+      "code": "E0435",
+      "line": 7
+    }
+  ]
+}

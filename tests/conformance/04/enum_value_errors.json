@@ -1,0 +1,32 @@
+{
+  "sections": [
+    "구조체·열거형 값"
+  ],
+  "note": "An enum value is `T::V` or `T::V(e, ..)`: a wrong number of payload values is E0405, an unknown variant E0307; built-in variants are bare (`Option::Some` is E0221); tuples are neither values nor types (E0233).",
+  "check": [
+    {
+      "code": "E0405",
+      "line": 12
+    },
+    {
+      "code": "E0405",
+      "line": 15
+    },
+    {
+      "code": "E0405",
+      "line": 18
+    },
+    {
+      "code": "E0307",
+      "line": 21
+    },
+    {
+      "code": "E0221",
+      "line": 24
+    },
+    {
+      "code": "E0233",
+      "line": 27
+    }
+  ]
+}

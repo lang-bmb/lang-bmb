@@ -1,0 +1,44 @@
+#[summary("s")]
+mod a {
+    struct S { x: i64 }
+
+    trait Show {
+        #[effects(pure)]
+        fn show(self: &Self) -> i64;
+
+        #[effects(pure)]
+        fn wrapping_add(self: &Self, o: i64) -> i64;
+    }
+
+    impl Show for i64 {
+        #[effects(pure)]
+        fn show(self: &i64) -> i64 { 100 }
+
+        #[effects(pure)]
+        fn wrapping_add(self: &i64, o: i64) -> i64 { 0 }
+    }
+
+    impl Show for S {
+        #[effects(pure)]
+        fn show(self: &S) -> i64 { 1 }
+
+        #[effects(pure)]
+        fn wrapping_add(self: &S, o: i64) -> i64 { 2 }
+    }
+
+    impl S {
+        #[effects(pure)]
+        fn show(self: &S) -> i64 { 3 }
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        let k: i64 = 5;
+        let s: S = S { x: 0 };
+        print_i64(k.show());
+        print_i64(k.wrapping_add(1));
+        print_i64(Show::wrapping_add(&k, 1));
+        print_i64(s.show());
+        print_i64(s.wrapping_add(1));
+    }
+}

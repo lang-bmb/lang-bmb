@@ -1,0 +1,21 @@
+{
+  "sections": [
+    "호출자가 가정하는 것"
+  ],
+  "note": "After a call, a `&mut` argument keeps only what the callee's `ensures` says about it.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::silent": "verified",
+      "m::stated": "verified",
+      "m::forgets": "failed",
+      "m::remembers": "verified"
+    },
+    "diags": [
+      {
+        "code": "E0810",
+        "line": 16
+      }
+    ]
+  }
+}

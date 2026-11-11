@@ -1,0 +1,35 @@
+#[summary("measures")]
+mod m {
+    enum List { Nil, Cons(i64, Box<List>) }
+
+    #[effects(pure)]
+    fn down(n: u64) -> u64
+        decreases n,
+    {
+        if n == 0 { 0 } else { down(n - 1) }
+    }
+
+    #[effects(pure)]
+    fn even(n: u64) -> bool
+        decreases n,
+    {
+        if n == 0 { true } else { odd(n - 1) }
+    }
+
+    #[effects(pure)]
+    fn odd(n: u64) -> bool
+        decreases n,
+    {
+        if n == 0 { false } else { even(n - 1) }
+    }
+
+    #[effects(pure)]
+    fn len(l: &List) -> u64
+        decreases l,
+    {
+        match l {
+            List::Nil => 0,
+            List::Cons(h, t) => len(&**t).wrapping_add(1),
+        }
+    }
+}

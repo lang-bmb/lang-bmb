@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "식의 문법과 우선순위"
+  ],
+  "note": "Binary operators bind, loosest first: `||`, `&&`, comparison, `|`, `^`, `&`, shifts, `+ -`, `* / %`, `as`; unary operators bind tighter.",
+  "check": [],
+  "verify": {
+    "diags": []
+  },
+  "run": "1\n1\n1\n3\n7\n8\n14\n256\n-6\n20\n5\n"
+}

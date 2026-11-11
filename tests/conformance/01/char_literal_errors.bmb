@@ -1,0 +1,14 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn a1() -> char { 'ab' }
+
+    #[effects(pure)]
+    fn a2() -> char { '\q' }
+
+    #[effects(pure)]
+    fn a3() -> char { '\xff' }
+
+    #[effects(io)]
+    fn a4() -> () { print_str("\q") }
+}

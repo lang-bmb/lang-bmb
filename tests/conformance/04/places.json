@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "색인·필드·역참조"
+  ],
+  "note": "Assignable places are paths of variables, fields, elements and dereferences: `g[i][j]`, `b.rows[i].cells[j].v`, `*r`; a field is read through a reference with `p.x`.",
+  "check": [],
+  "verify": {
+    "diags": []
+  },
+  "run": "30\n33\n5\n9\n2\n7\n"
+}

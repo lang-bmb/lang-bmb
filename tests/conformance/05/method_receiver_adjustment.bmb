@@ -1,0 +1,35 @@
+#[summary("receivers")]
+mod m {
+    struct C { n: i64 }
+
+    impl C {
+        #[effects(pure)]
+        fn get(self: &C) -> i64 { self.n }
+
+        #[effects(pure)]
+        fn set(self: &mut C, v: i64) -> () {
+            self.n = v;
+        }
+
+        #[effects(pure)]
+        fn into(self: C) -> i64 { self.n }
+    }
+
+    #[effects(pure)]
+    fn through(c: &C) -> i64 { c.get() }
+
+    #[effects(pure)]
+    fn through_mut(c: &mut C) -> i64 {
+        c.set(2);
+        c.get()
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        let mut c: C = C { n: 1 };
+        print_i64(c.get());
+        print_i64(through_mut(&mut c));
+        print_i64(through(&c));
+        print_i64(c.into());
+    }
+}

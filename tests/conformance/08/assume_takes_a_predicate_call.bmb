@@ -1,0 +1,18 @@
+#[summary("assume arguments")]
+mod m {
+    spec fn small(x: i64) -> bool { 0 <= x && x <= 10 }
+
+    #[effects(panic)]
+    fn expression(x: i64) -> i64 {
+        #[rationale(kind = nonlinear, "small")]
+        assume(x < 10);
+        x
+    }
+
+    #[effects(panic)]
+    fn predicate(x: i64) -> i64 {
+        #[rationale(kind = nonlinear, "small")]
+        assume(small(x));
+        x
+    }
+}

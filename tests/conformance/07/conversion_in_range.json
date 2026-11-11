@@ -1,0 +1,25 @@
+{
+  "sections": [
+    "의무의 종류"
+  ],
+  "note": "An executable `x as T` must keep the value inside `T` (E0815); a widening conversion always does.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::negative": "failed",
+      "m::narrow": "failed",
+      "m::guarded": "verified",
+      "m::widen": "verified"
+    },
+    "diags": [
+      {
+        "code": "E0815",
+        "line": 5
+      },
+      {
+        "code": "E0815",
+        "line": 10
+      }
+    ]
+  }
+}

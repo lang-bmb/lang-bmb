@@ -1,0 +1,20 @@
+{
+  "sections": [
+    "참조 인자"
+  ],
+  "note": "A value where a reference is expected, a reference where a value is expected, and `&` where `&mut` is expected are E0401.",
+  "check": [
+    {
+      "code": "E0401",
+      "line": 16
+    },
+    {
+      "code": "E0401",
+      "line": 21
+    },
+    {
+      "code": "E0401",
+      "line": 27
+    }
+  ]
+}

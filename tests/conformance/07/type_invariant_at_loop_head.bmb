@@ -1,0 +1,35 @@
+#[summary("E0823: loop head")]
+mod m {
+    #[invariant(ordered)]
+    struct Span { lo: i64, hi: i64 }
+
+    spec fn ordered(s: &Span) -> bool { s.lo <= s.hi }
+
+    #[effects(pure)]
+    #[uses(ordered)]
+    fn broken(n: u64) -> i64 {
+        let mut s: Span = Span { lo: 0, hi: 0 };
+        let mut i: u64 = 0;
+        while i < n
+            decreases n - i,
+        {
+            s.hi = -1;
+            i = i + 1;
+        }
+        s.lo
+    }
+
+    #[effects(pure)]
+    #[uses(ordered)]
+    fn kept(n: u64) -> i64 {
+        let mut s: Span = Span { lo: 0, hi: 0 };
+        let mut i: u64 = 0;
+        while i < n
+            decreases n - i,
+        {
+            s.hi = s.lo;
+            i = i + 1;
+        }
+        s.lo
+    }
+}

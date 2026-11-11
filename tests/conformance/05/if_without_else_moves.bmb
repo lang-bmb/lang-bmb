@@ -1,0 +1,20 @@
+#[summary("if without else")]
+mod m {
+    #[effects(pure)]
+    fn sink(v: Vec<i64>) -> () {}
+
+    #[effects(pure)]
+    fn f(c: bool, v: Vec<i64>) -> () {
+        if c {
+            sink(v);
+        }
+    }
+
+    #[effects(pure)]
+    fn g(c: bool, v: Vec<i64>) -> () {
+        if c {
+            sink(v);
+        } else {
+        }
+    }
+}

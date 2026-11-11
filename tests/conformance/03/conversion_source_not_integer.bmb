@@ -1,0 +1,20 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn e1(b: bool) -> i64 { b as i64 }
+
+    #[effects(pure)]
+    fn e2(c: char) -> u32 { c as u32 }
+
+    #[effects(pure)]
+    fn e3(f: f64) -> i64 { f as i64 }
+
+    #[effects(pure)]
+    fn e4(b: bool) -> Option<u8> { u8::try_from(b).ok() }
+
+    #[effects(pure)]
+    fn e5(x: i64) -> u8 {
+        let r: Result<u8, i64> = u8::try_from(x);
+        1
+    }
+}

@@ -1,0 +1,21 @@
+#[summary("s")]
+mod a {
+    #[effects(io)]
+    fn flag(b: bool) -> () { if b { print_i64(1) } else { print_i64(0) } }
+
+    #[effects(io)]
+    fn main() -> () {
+        flag(true || false && false);
+        flag(1 | 2 == 3);
+        flag(1 + 1 == 2 && 2 < 3);
+        print_i64(1 | 2 ^ 3 & 4);
+        print_i64(6 ^ 3 & 5);
+        print_i64(1 << 2 + 1);
+        print_i64(2 + 3 * 4);
+        print_i64(1 + 255 as u8 as i64);
+        print_i64(-2 * 3);
+        print_i64((2 + 3) * 4);
+        let x: i64 = -5;
+        print_u64(-x as u64);
+    }
+}

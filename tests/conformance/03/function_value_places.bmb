@@ -1,0 +1,17 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn e1() -> i64 {
+        let f: i64 = |x: i64| -> i64 { x };
+        1
+    }
+
+    #[effects(pure)]
+    fn e2(f: fn(i64) -> i64) -> i64 { 1 }
+
+    #[effects(pure)]
+    fn e3() -> impl Fn(i64) -> i64 { 1 }
+
+    #[effects(pure)]
+    fn e4(f: impl Fn(i64) -> i64) -> i64 { 1 }
+}

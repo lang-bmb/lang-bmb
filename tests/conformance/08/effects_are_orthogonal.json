@@ -1,0 +1,16 @@
+{
+  "sections": [
+    "효과의 집합"
+  ],
+  "note": "Effects are independent: `io` does not include `alloc`, and `alloc` does not include `io`.",
+  "check": [
+    {
+      "code": "E0606",
+      "line": 3
+    },
+    {
+      "code": "E0606",
+      "line": 9
+    }
+  ]
+}

@@ -5003,6 +5003,9 @@ impl<'a> Checker<'a> {
     fn check_contract(&mut self, cx: &mut FnCtx, e: &Expr, ensures: bool) {
         let mode = Mode::Spec { allow_old: ensures };
         let t = self.expr(cx, e, Some(&TypeKind::Bool), mode);
+        // A clause is a `bool` (found by the conformance suite, backlog
+        // 5A-02: an integer clause reached the solver).
+        self.expect_ty(&t, &TypeKind::Bool, e.span);
         let named = match &e.kind {
             ExprKind::Call { path, .. } => self
                 .resolve(path, &cx.mod_path)

@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "계약 절"
+  ],
+  "note": "`ensures` names the result only through `-> (r: T)`; an undeclared name such as `result` is E0301.",
+  "check": [
+    {
+      "code": "E0301",
+      "line": 5
+    }
+  ]
+}

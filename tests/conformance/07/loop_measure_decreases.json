@@ -1,0 +1,24 @@
+{
+  "sections": [
+    "의무의 종류"
+  ],
+  "note": "A loop's `decreases` value must get smaller at the end of the body and stay non-negative (E0808).",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::stuck": "failed",
+      "m::negative": "failed",
+      "m::good": "verified"
+    },
+    "diags": [
+      {
+        "code": "E0808",
+        "line": 7
+      },
+      {
+        "code": "E0808",
+        "line": 21
+      }
+    ]
+  }
+}

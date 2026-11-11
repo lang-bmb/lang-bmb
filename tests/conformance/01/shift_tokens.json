@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "구두점"
+  ],
+  "note": "Adjacent `<` `<` and `>` `>` read as shifts, and `>>` also closes two type argument lists.",
+  "check": [],
+  "verify": {
+    "diags": []
+  },
+  "run": "0\n16\n64\n2\n"
+}

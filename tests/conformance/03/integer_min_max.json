@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "스칼라 타입"
+  ],
+  "note": "Every integer type has the constants `MIN` and `MAX`; `isize` and `usize` are 64 bits wide.",
+  "check": [],
+  "verify": {
+    "diags": []
+  },
+  "run": "-128\n127\n255\n-32768\n65535\n-2147483648\n4294967295\n9223372036854775807\n-9223372036854775808\n18446744073709551615\n18446744073709551615\n-9223372036854775808\n"
+}

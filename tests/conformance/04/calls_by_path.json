@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "리터럴·경로·호출"
+  ],
+  "note": "A call is written by path: `f(a)` in the same unit, `unit::f(a)` from the root, `T::f(a)` for a type's function; a generic call writes its type arguments.",
+  "check": [],
+  "verify": {
+    "diags": []
+  },
+  "run": "4\n0\n"
+}

@@ -1,0 +1,16 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn first(b: &[u8]) -> u8
+        requires b.len() > 0,
+    { b[0] }
+
+    #[effects(io)]
+    fn main() -> () {
+        let x: u8 = b'a';
+        print_u64(x as u64);
+        print_u64(b'\xff' as u64);
+        print_u64(first(b"\n!") as u64);
+        print_bytes(b"ab\n");
+    }
+}

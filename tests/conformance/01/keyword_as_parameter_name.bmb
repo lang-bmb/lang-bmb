@@ -1,0 +1,11 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn f(in: i64) -> i64 { 1 }
+
+    #[effects(pure)]
+    fn g(await: i64) -> i64 { 1 }
+
+    #[effects(pure)]
+    fn match() -> i64 { 1 }
+}

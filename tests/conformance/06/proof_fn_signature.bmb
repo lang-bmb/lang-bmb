@@ -1,0 +1,21 @@
+#[summary("proof fn signature")]
+mod m {
+    #[effects(pure)]
+    proof fn with_effect(x: i64)
+        requires x > 0,
+        ensures x >= 1,
+    {
+    }
+
+    proof fn with_result(x: i64) -> bool
+        requires x > 0,
+        ensures x >= 1,
+    {
+    }
+
+    proof fn plain(x: i64)
+        requires x > 0,
+        ensures x >= 1,
+    {
+    }
+}

@@ -1,0 +1,19 @@
+{
+  "sections": [
+    "타입 불변식"
+  ],
+  "note": "A proof fn neither assumes nor owes a type invariant; a lemma that needs it states `requires p(x)`.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::unstated": "failed",
+      "m::stated": "verified"
+    },
+    "diags": [
+      {
+        "code": "E0802",
+        "line": 10
+      }
+    ]
+  }
+}

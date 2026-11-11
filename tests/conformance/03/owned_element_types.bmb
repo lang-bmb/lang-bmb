@@ -1,0 +1,19 @@
+#[summary("s")]
+mod a {
+    struct Arr { a: [i64; 2] }
+
+    #[effects(alloc)]
+    fn e1(v: Vec<[i64; 2]>) -> usize { 1 }
+
+    #[effects(alloc)]
+    fn e2(v: Vec<Arr>) -> usize { 1 }
+
+    #[effects(alloc)]
+    fn e3(v: Box<()>) -> usize { 1 }
+
+    #[effects(alloc)]
+    fn e4() -> usize {
+        let n: usize = Vec::new().len();
+        n
+    }
+}

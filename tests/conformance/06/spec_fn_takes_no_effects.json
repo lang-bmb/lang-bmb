@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "`spec fn`"
+  ],
+  "note": "A `spec fn` takes no `#[effects(..)]` attribute (E0604).",
+  "check": [
+    {
+      "code": "E0604",
+      "line": 3
+    }
+  ]
+}

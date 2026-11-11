@@ -1,0 +1,34 @@
+#[summary("s")]
+mod a {
+    struct P { x: i64, y: bool }
+
+    enum E { A, B(i64) }
+
+    const N: usize = 3;
+    const B: bool = true;
+    const C: char = 'c';
+    const A: [i64; N] = [1; N];
+    const S: P = P { x: 1, y: false };
+    const V: E = E::B(2);
+    const O: Option<i64> = Some(3);
+    const R: Result<i64, bool> = Err(true);
+    const M: i64 = if B { 4 } else { 5 };
+
+    #[effects(io)]
+    fn main() -> () {
+        let a: [i64; N] = [0; N];
+        print_u64(a.len() as u64);
+        print_i64(A[2]);
+        print_i64(S.x);
+        match V {
+            E::A => print_i64(0),
+            E::B(n) => print_i64(n),
+        }
+        match O {
+            None => print_i64(0),
+            Some(n) => print_i64(n),
+        }
+        print_i64(M);
+        print_u64(u32::from(C) as u64);
+    }
+}

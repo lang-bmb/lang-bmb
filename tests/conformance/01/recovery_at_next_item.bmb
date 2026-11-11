@@ -1,0 +1,11 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn bad1() -> i64 { 1 + }
+
+    #[effects(pure)]
+    fn ok() -> i64 { 1 }
+
+    #[effects(pure)]
+    fn bad2() -> i64 { let y: i64 = 1 y }
+}

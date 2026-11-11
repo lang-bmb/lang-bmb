@@ -1,0 +1,27 @@
+#[summary("&mut arguments after a call")]
+mod m {
+    #[effects(pure)]
+    fn silent(x: &mut i64) -> () {}
+
+    #[effects(pure)]
+    fn stated(x: &mut i64) -> ()
+        ensures *x == *old(x),
+    {
+    }
+
+    #[effects(pure)]
+    fn forgets() -> i64 {
+        let mut k: i64 = 3;
+        silent(&mut k);
+        assert(k == 3);
+        k
+    }
+
+    #[effects(pure)]
+    fn remembers() -> i64 {
+        let mut k: i64 = 3;
+        stated(&mut k);
+        assert(k == 3);
+        k
+    }
+}

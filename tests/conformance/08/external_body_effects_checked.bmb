@@ -1,0 +1,18 @@
+#[summary("external bodies have effects")]
+mod m {
+    #[rationale(kind = boundary, "outside")]
+    #[external_body]
+    #[effects(panic)]
+    fn outside() -> i64 {
+        let b: Box<i64> = Box::new(1);
+        *b
+    }
+
+    #[rationale(kind = boundary, "outside")]
+    #[external_body]
+    #[effects(alloc, panic)]
+    fn declared() -> i64 {
+        let b: Box<i64> = Box::new(1);
+        *b
+    }
+}

@@ -1,0 +1,30 @@
+#[summary("one branch moves")]
+mod m {
+    #[effects(pure)]
+    fn take(v: Vec<i64>) -> usize { v.len() }
+
+    #[effects(alloc)]
+    fn branch(c: bool) -> usize {
+        let mut v: Vec<i64> = Vec::new();
+        v.push(1);
+        if c { take(v) } else { 0 }
+    }
+
+    #[effects(alloc)]
+    fn arms(o: Option<i64>) -> usize {
+        let mut v: Vec<i64> = Vec::new();
+        v.push(1);
+        match o {
+            None => take(v),
+            Some(x) => 0,
+        }
+    }
+
+    #[effects(alloc, io)]
+    fn main() -> () {
+        print_u64(branch(true) as u64);
+        print_u64(branch(false) as u64);
+        print_u64(arms(None) as u64);
+        print_u64(arms(Some(2)) as u64);
+    }
+}

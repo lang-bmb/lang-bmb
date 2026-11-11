@@ -1,0 +1,17 @@
+#[summary("E0819")]
+mod m {
+    proof fn natural(x: u32)
+        ensures x >= 0,
+    {
+    }
+
+    proof fn below(x: u32) {
+        natural(x - 1);
+    }
+
+    proof fn inside(x: u32)
+        requires x > 0,
+    {
+        natural(x - 1);
+    }
+}

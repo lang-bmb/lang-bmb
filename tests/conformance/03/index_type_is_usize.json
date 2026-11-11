@@ -1,0 +1,16 @@
+{
+  "sections": [
+    "연산자와 피연산자"
+  ],
+  "note": "The type of an index is `usize` (E0401).",
+  "check": [
+    {
+      "code": "E0401",
+      "line": 9
+    },
+    {
+      "code": "E0401",
+      "line": 12
+    }
+  ]
+}

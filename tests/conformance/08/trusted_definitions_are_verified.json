@@ -1,0 +1,18 @@
+{
+  "sections": [
+    "탈출구와 증명의 신뢰 등급"
+  ],
+  "note": "A definition proved with a trusted fact, an `#[external_body]` function and a caller relying on its `ensures` all have status `verified`, and the program builds and runs.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::double": "verified",
+      "m::outside": "verified",
+      "m::caller": "verified",
+      "m::ignores": "verified",
+      "m::main": "verified"
+    },
+    "diags": []
+  },
+  "run": "8\n4\n0\n"
+}

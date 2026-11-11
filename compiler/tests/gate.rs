@@ -205,32 +205,16 @@ fn a_query_at_the_memory_limit_is_undecided_and_the_rest_go_on() {
         "{out}\n{starts}"
     );
 
-    // The real solver on the query that showed it: the parser of the
-    // port-shape experiment with one loop invariant too weak for the
-    // `push` after it, under a recursive predicate with a nested quantifier.
-    let src = fs::read_to_string(root().join("dev-docs/experiments/port-shape/tree.bmb")).unwrap();
-    let weak = src.replace(
-        "k + args.len() <= *pos, all_in",
-        "args.len() <= *pos, all_in",
-    );
-    assert_ne!(src, weak);
-    let file = tmp.join("tree.bmb");
-    fs::write(&file, weak).unwrap();
-    let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
-        .args(["verify", "--def", "tree::call"])
-        .arg(&file)
-        .output()
-        .unwrap();
-    let out = String::from_utf8_lossy(&out.stdout);
+    // The real solver, with a limit every query reaches: Z3 ends with the
+    // code the gate reads as its memory limit, at each obligation anew.
+    let (ok, out) = verify(SEARCH, &[("BMB_Z3_MEMORY_MB", "1")], None);
+    assert!(!ok);
     assert!(
-        out.contains("`push` may exceed the maximum length of a `Vec` in `tree::call`: solver could not decide (memory limit reached"),
+        out.contains("solver could not decide (memory limit reached, 1 MB)"),
         "{out}"
     );
-    assert!(
-        out.contains(
-            "\"def\":\"tree::call\",\"status\":\"failed\",\"obligations\":42,\"failed\":1,"
-        ),
-        "{out}"
-    );
+    assert!(!out.contains("E0812"), "{out}");
+    // A raised limit is ignored, as a raised rlimit is.
+    assert!(verify(SEARCH, &[("BMB_Z3_MEMORY_MB", "999999")], None).0);
     let _ = fs::remove_dir_all(&tmp);
 }

@@ -1,0 +1,23 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn ok(a: i64, x: f64) -> bool {
+        let b: i64 = a.wrapping_add(1).saturating_sub(2).rotate_left(3);
+        let n: u32 = a.count_ones();
+        let c: Option<i64> = a.checked_mul(b);
+        let y: f64 = x.sqrt().abs().min(x).max(1.0);
+        y.is_nan() || y.is_finite()
+    }
+
+    #[effects(pure)]
+    fn e1(a: i64) -> i64 { a.nope() }
+
+    #[effects(pure)]
+    fn e2(a: f64) -> f64 { a.floor() }
+
+    #[effects(pure)]
+    fn e3(a: i64) -> i64 { a.wrapping_add() }
+
+    #[effects(pure)]
+    fn e4(a: i64) -> i64 { e1(a, a) }
+}

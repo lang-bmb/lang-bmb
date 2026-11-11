@@ -1,0 +1,25 @@
+#[summary("match on a field")]
+mod m {
+    struct L { e: Option<Vec<i64>>, rest: Vec<i64> }
+
+    #[effects(pure)]
+    fn whole(l: L) -> usize { l.rest.len() }
+
+    #[effects(pure)]
+    fn other(l: L) -> usize {
+        let n: usize = match l.e {
+            None => 0,
+            Some(v) => v.len(),
+        };
+        n + l.rest.len()
+    }
+
+    #[effects(pure)]
+    fn all(l: L) -> usize {
+        let n: usize = match l.e {
+            None => 0,
+            Some(v) => v.len(),
+        };
+        whole(l)
+    }
+}

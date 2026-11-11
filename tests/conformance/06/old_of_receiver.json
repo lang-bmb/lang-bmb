@@ -1,0 +1,13 @@
+{
+  "sections": [
+    "`old`"
+  ],
+  "note": "A `&mut` receiver's entry value is written `old(self)`.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::C::inc": "verified"
+    },
+    "diags": []
+  }
+}

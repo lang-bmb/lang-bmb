@@ -1,0 +1,33 @@
+#[summary("s")]
+mod a {
+    struct S { x: i64 }
+
+    impl S {
+        #[effects(pure)]
+        fn by_ref(self: &S) -> i64 { self.x }
+
+        #[effects(pure)]
+        fn by_mut(self: &mut S) -> () { self.x = 1; }
+
+        #[effects(pure)]
+        fn by_value(self: S) -> i64 { self.x }
+
+        #[effects(pure)]
+        fn assoc(x: i64) -> S { S { x: x } }
+
+        #[effects(pure)]
+        fn named(this: &S) -> i64 { this.x }
+
+        #[effects(pure)]
+        fn second(a: i64, self: &S) -> i64 { a }
+
+        #[effects(pure)]
+        fn wrong_type(self: i64) -> i64 { 1 }
+
+        #[effects(pure)]
+        fn untyped(&self) -> i64 { 1 }
+    }
+
+    #[effects(pure)]
+    fn free(self: i64) -> i64 { 1 }
+}

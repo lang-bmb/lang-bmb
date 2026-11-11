@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "텍스트"
+  ],
+  "note": "`String` owns UTF-8 text and `&str` borrows it; the listed operations; comparison is by bytes.",
+  "check": [],
+  "verify": {
+    "diags": []
+  },
+  "run": "6\nhéllo! x\n1\n1\n1\n0\n1\n1\n0\n2\n104\n0\n"
+}

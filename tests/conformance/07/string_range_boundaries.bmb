@@ -1,0 +1,32 @@
+#[summary("E0820")]
+mod m {
+    #[effects(pure)]
+    fn take(t: &str) -> usize { t.len() }
+
+    #[effects(pure)]
+    fn unguarded(t: &str) -> usize {
+        if t.len() >= 2 {
+            take(&t[0..1])
+        } else {
+            0
+        }
+    }
+
+    #[effects(pure)]
+    fn reversed(t: &str, a: usize, b: usize) -> usize {
+        if t.is_char_boundary(a) && t.is_char_boundary(b) {
+            take(&t[a..b])
+        } else {
+            0
+        }
+    }
+
+    #[effects(pure)]
+    fn guarded(t: &str, a: usize, b: usize) -> usize {
+        if t.is_char_boundary(a) && t.is_char_boundary(b) && a <= b {
+            take(&t[a..b])
+        } else {
+            0
+        }
+    }
+}

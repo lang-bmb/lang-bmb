@@ -1,0 +1,24 @@
+#[summary("return leaves the join")]
+mod m {
+    #[effects(pure)]
+    fn take(v: Vec<i64>) -> usize { v.len() }
+
+    #[effects(pure)]
+    fn f(c: bool, v: Vec<i64>) -> usize {
+        if c {
+            let n: usize = take(v);
+            return 7;
+        }
+        v.len()
+    }
+
+    #[effects(alloc, io)]
+    fn main() -> () {
+        let mut a: Vec<i64> = Vec::new();
+        a.push(1);
+        print_u64(f(true, a) as u64);
+        let mut b: Vec<i64> = Vec::new();
+        b.push(1);
+        print_u64(f(false, b) as u64);
+    }
+}

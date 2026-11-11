@@ -1,0 +1,12 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn f() { }
+
+    #[effects(pure)]
+    fn u() -> () { }
+
+    proof fn p(x: i64) -> bool { }
+
+    proof fn q(x: i64) { }
+}

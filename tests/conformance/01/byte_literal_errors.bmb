@@ -1,0 +1,11 @@
+#[summary("s")]
+mod a {
+    #[effects(io)]
+    fn a1() -> () { print_bytes(b"é") }
+
+    #[effects(io)]
+    fn a2() -> () { print_bytes(b"\u{41}") }
+
+    #[effects(pure)]
+    fn a3() -> u8 { b'ab' }
+}

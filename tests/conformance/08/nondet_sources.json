@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "효과의 집합"
+  ],
+  "note": "An input built-in such as the clock has `io` and `nondet` together; declaring only `io` is E0606.",
+  "check": [
+    {
+      "code": "E0606",
+      "line": 3
+    }
+  ]
+}

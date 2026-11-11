@@ -1,0 +1,4 @@
+#[summary("stray trigger")]
+mod m {
+    spec fn bare(a: &[i64]) -> bool { #[trigger] a[0] > 0 }
+}

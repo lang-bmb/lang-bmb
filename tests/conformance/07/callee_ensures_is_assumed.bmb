@@ -1,0 +1,16 @@
+#[summary("the callee's ensures")]
+mod m {
+    #[effects(pure)]
+    fn one() -> (r: i64)
+        ensures r == 1,
+    {
+        1
+    }
+
+    #[effects(pure)]
+    fn two() -> (r: i64)
+        ensures r == 2,
+    {
+        one() + one()
+    }
+}

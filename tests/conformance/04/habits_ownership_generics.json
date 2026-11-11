@@ -1,0 +1,44 @@
+{
+  "sections": [
+    "받지 않는 Rust 습관"
+  ],
+  "note": "Ownership, generics and function values not accepted: `drop` and `std::mem::take` (E0219), `Rc` and friends (E0238), moving out from behind `&mut` (E0239), blanket impl (E0235), `dyn` (E0236), `where` (E0240), closure forms (E0262-E0265).",
+  "check": [
+    {
+      "code": "E0235",
+      "line": 7
+    },
+    {
+      "code": "E0219",
+      "line": 15
+    },
+    {
+      "code": "E0238",
+      "line": 18
+    },
+    {
+      "code": "E0239",
+      "line": 21
+    },
+    {
+      "code": "E0236",
+      "line": 24
+    },
+    {
+      "code": "E0240",
+      "line": 27
+    },
+    {
+      "code": "E0263",
+      "line": 30
+    },
+    {
+      "code": "E0264",
+      "line": 33
+    },
+    {
+      "code": "E0265",
+      "line": 36
+    }
+  ]
+}

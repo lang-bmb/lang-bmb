@@ -1,0 +1,20 @@
+{
+  "sections": [
+    "`spec fn`"
+  ],
+  "note": "A spec fn's definition is opaque unless in the proof context: a spec fn called only from another spec fn's body unfolds only when named in `#[uses(..)]`.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::hidden": "failed",
+      "m::shown": "verified",
+      "m::direct": "verified"
+    },
+    "diags": [
+      {
+        "code": "E0810",
+        "line": 11
+      }
+    ]
+  }
+}

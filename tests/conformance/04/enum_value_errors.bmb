@@ -1,0 +1,28 @@
+#[summary("s")]
+mod a {
+    enum E { A, B(i64), C(i64, bool) }
+
+    #[effects(pure)]
+    fn ok() -> E { E::C(1, true) }
+
+    #[effects(pure)]
+    fn ok2() -> Result<Option<i64>, bool> { Ok(Some(1)) }
+
+    #[effects(pure)]
+    fn e1() -> E { E::B(1, 2) }
+
+    #[effects(pure)]
+    fn e2() -> E { E::B }
+
+    #[effects(pure)]
+    fn e3() -> E { E::A(1) }
+
+    #[effects(pure)]
+    fn e4() -> E { E::Z(1) }
+
+    #[effects(pure)]
+    fn e5() -> Option<i64> { Option::Some(1) }
+
+    #[effects(pure)]
+    fn e6(t: (i64, i64)) -> i64 { 1 }
+}

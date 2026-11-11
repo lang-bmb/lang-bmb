@@ -1,0 +1,29 @@
+{
+  "sections": [
+    "의무의 종류"
+  ],
+  "note": "Unary `-`, a division of the form `MIN / -1` and a shift amount at or past the width are overflow obligations (E0803).",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::neg": "failed",
+      "m::div": "failed",
+      "m::shl": "failed",
+      "m::guarded": "verified"
+    },
+    "diags": [
+      {
+        "code": "E0803",
+        "line": 5
+      },
+      {
+        "code": "E0803",
+        "line": 12
+      },
+      {
+        "code": "E0803",
+        "line": 17
+      }
+    ]
+  }
+}

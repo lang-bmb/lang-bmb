@@ -1,0 +1,13 @@
+{
+  "sections": [
+    "명세 문맥과 실행 문맥",
+    "`spec fn`"
+  ],
+  "note": "Executable code cannot call a `spec fn` (E0505); a specification can.",
+  "check": [
+    {
+      "code": "E0505",
+      "line": 7
+    }
+  ]
+}

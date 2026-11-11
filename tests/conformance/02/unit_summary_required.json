@@ -1,0 +1,24 @@
+{
+  "sections": [
+    "단위"
+  ],
+  "note": "A unit needs a summary (E0704), nested units too; the summary takes exactly one string (E0704); another attribute on a unit is E0605.",
+  "check": [
+    {
+      "code": "E0704",
+      "line": 1
+    },
+    {
+      "code": "E0704",
+      "line": 4
+    },
+    {
+      "code": "E0605",
+      "line": 8
+    },
+    {
+      "code": "E0704",
+      "line": 15
+    }
+  ]
+}

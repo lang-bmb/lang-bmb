@@ -1,0 +1,20 @@
+#[summary("mutable sub-slice")]
+mod m {
+    #[effects(pure)]
+    fn put(a: &mut [i64]) -> () {}
+
+    #[effects(pure)]
+    fn size(a: &[i64]) -> usize { a.len() }
+
+    #[effects(pure)]
+    fn bad() -> () {
+        let mut a: [i64; 4] = [0, 0, 0, 0];
+        put(&mut a[1..3]);
+    }
+
+    #[effects(pure)]
+    fn good() -> usize {
+        let a: [i64; 4] = [0, 0, 0, 0];
+        size(&a[1..3])
+    }
+}

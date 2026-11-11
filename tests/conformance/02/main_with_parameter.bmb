@@ -1,0 +1,5 @@
+#[summary("s")]
+mod a {
+    #[effects(io)]
+    fn main(x: i64) -> () { }
+}

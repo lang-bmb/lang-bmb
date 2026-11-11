@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "갈래와 루프의 이동"
+  ],
+  "note": "Paths that meet at a loop's exit must agree on a value's move state: a move before one `break` only is E0414.",
+  "check": [
+    {
+      "code": "E0414",
+      "line": 10
+    }
+  ]
+}

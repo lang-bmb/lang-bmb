@@ -1,0 +1,22 @@
+#[summary("views outside arguments")]
+mod m {
+    #[effects(pure)]
+    fn slice(v: Vec<i64>) -> usize {
+        v.as_slice().len()
+    }
+
+    #[effects(pure)]
+    fn text(s: String) -> usize {
+        s.as_str().len()
+    }
+
+    #[effects(pure)]
+    fn literal() -> usize {
+        "abc".len()
+    }
+
+    #[effects(pure)]
+    fn compare(s: &str) -> bool {
+        s == "abc"
+    }
+}

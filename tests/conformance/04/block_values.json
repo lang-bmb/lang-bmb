@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "블록과 꼬리 식"
+  ],
+  "note": "A block is an expression: its value is the tail expression, `()` without one; a tail-less block ending in `return` has type `!` and fits any expected type.",
+  "check": [],
+  "verify": {
+    "diags": []
+  },
+  "run": "6\n7\n2\n4\n"
+}

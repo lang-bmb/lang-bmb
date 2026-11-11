@@ -1,0 +1,59 @@
+#[summary("s")]
+mod a {
+    struct P { x: i64 }
+
+    enum S { A, B(i64), C(P) }
+
+    #[effects(pure)]
+    fn e1(s: S) -> i64 {
+        match s {
+            S::A => 1,
+            S::B(n) => n,
+            S::C(a, b) => 0,
+        }
+    }
+
+    #[effects(pure)]
+    fn e2(s: S) -> i64 {
+        match s {
+            S::A => 1,
+            S::B(n) => n,
+            x => 0,
+        }
+    }
+
+    #[effects(pure)]
+    fn e3(s: S) -> i64 {
+        match s {
+            S::A => 1,
+            S::B(n) if n > 0 => n,
+            S::C(_) => 0,
+        }
+    }
+
+    #[effects(pure)]
+    fn e4(s: S) -> i64 {
+        match s {
+            S::A | S::B(_) => 1,
+            S::C(_) => 0,
+        }
+    }
+
+    #[effects(pure)]
+    fn e5(s: S) -> i64 {
+        match s {
+            S::A => 1,
+            S::B(7) => 2,
+            S::C(_) => 0,
+        }
+    }
+
+    #[effects(pure)]
+    fn e6(s: S) -> i64 {
+        match s {
+            S::A => 1,
+            S::B(n) => true,
+            S::C(_) => 0,
+        }
+    }
+}

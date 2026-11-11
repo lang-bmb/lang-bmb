@@ -1,0 +1,23 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn f1() -> u8 { 256 }
+
+    #[effects(pure)]
+    fn f2() -> u8 { 255 }
+
+    #[effects(pure)]
+    fn f3() -> i8 { -128 }
+
+    #[effects(pure)]
+    fn f4() -> i8 { -129 }
+
+    #[effects(pure)]
+    fn f5() -> i8 { 128 }
+
+    #[effects(pure)]
+    fn f6() -> i64 { -9223372036854775808 }
+
+    #[effects(pure)]
+    fn f7() -> i64 { 9223372036854775808 }
+}

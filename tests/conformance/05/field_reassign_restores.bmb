@@ -1,0 +1,23 @@
+#[summary("assigning a moved field")]
+mod m {
+    struct Buf { data: Vec<i64>, n: i64 }
+
+    #[effects(pure)]
+    fn whole(b: Buf) -> i64 { b.n }
+
+    #[effects(alloc)]
+    fn restored() -> i64 {
+        let mut b: Buf = Buf { data: Vec::new(), n: 1 };
+        let d: Vec<i64> = b.data;
+        b.data = Vec::new();
+        whole(b)
+    }
+
+    #[effects(alloc)]
+    fn gone() -> i64 {
+        let mut b: Buf = Buf { data: Vec::new(), n: 1 };
+        let k: i64 = whole(b);
+        b.data = Vec::new();
+        k
+    }
+}

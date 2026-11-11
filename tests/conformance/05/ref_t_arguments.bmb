@@ -1,0 +1,42 @@
+#[summary("&T and &mut T arguments")]
+mod m {
+    struct P { x: i64 }
+
+    #[effects(pure)]
+    fn get(x: &i64) -> i64 { *x }
+
+    #[effects(pure)]
+    fn pass(x: &i64) -> i64 { get(x) }
+
+    #[effects(pure)]
+    fn pass_mut(x: &mut i64) -> i64 { get(x) }
+
+    #[effects(pure)]
+    fn one(x: &mut i64) -> () {
+        *x = 1;
+    }
+
+    #[effects(pure)]
+    fn again(x: &mut i64) -> () {
+        one(x);
+    }
+
+    #[effects(alloc, io)]
+    fn main() -> () {
+        let mut b: Box<i64> = Box::new(5);
+        let mut k: i64 = 4;
+        print_i64(get(&3));
+        print_i64(pass(&k));
+        print_i64(get(&*b));
+        let mut p: P = P { x: 0 };
+        let mut a: [i64; 2] = [0, 0];
+        one(&mut k);
+        one(&mut p.x);
+        one(&mut a[0]);
+        again(&mut *b);
+        print_i64(pass_mut(&mut k));
+        print_i64(p.x);
+        print_i64(a[0]);
+        print_i64(*b);
+    }
+}

@@ -1,0 +1,24 @@
+{
+  "sections": [
+    "재귀와 `decreases`"
+  ],
+  "note": "A recursive executable function, mutually recursive functions and a recursive proof fn each need `decreases` (E0507).",
+  "check": [
+    {
+      "code": "E0507",
+      "line": 4
+    },
+    {
+      "code": "E0507",
+      "line": 9
+    },
+    {
+      "code": "E0507",
+      "line": 14
+    },
+    {
+      "code": "E0507",
+      "line": 18
+    }
+  ]
+}

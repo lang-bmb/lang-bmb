@@ -1,0 +1,16 @@
+{
+  "sections": [
+    "`#[effects(..)]` 선언"
+  ],
+  "note": "`pure` listed with another effect, or one effect listed twice, is E0607; a list of distinct atomic effects is accepted.",
+  "check": [
+    {
+      "code": "E0607",
+      "line": 3
+    },
+    {
+      "code": "E0607",
+      "line": 6
+    }
+  ]
+}

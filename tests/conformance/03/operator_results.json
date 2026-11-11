@@ -1,0 +1,13 @@
+{
+  "sections": [
+    "연산자와 피연산자"
+  ],
+  "note": "Arithmetic and bit operators yield the operand type, comparisons and `&&`/`||` yield `bool`, a shift yields the shifted value's type whatever the amount's integer type; `!` is logical on `bool` and bitwise on integers.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "a::ints": "verified"
+    },
+    "diags": []
+  }
+}

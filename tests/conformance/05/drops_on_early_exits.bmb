@@ -1,0 +1,47 @@
+#[summary("drops on exits")]
+mod m {
+    struct Two { a: Vec<i64>, b: Vec<i64> }
+
+    #[effects(pure)]
+    fn take(v: Vec<i64>) -> usize { v.len() }
+
+    #[effects(alloc)]
+    fn early(c: bool) -> i64 {
+        let mut v: Vec<i64> = Vec::new();
+        v.push(1);
+        if c {
+            let mut w: Vec<i64> = Vec::new();
+            w.push(2);
+            return 7;
+        }
+        3
+    }
+
+    #[effects(alloc)]
+    fn exits() -> i64 {
+        let mut n: i64 = 0;
+        for i in 0..4 {
+            let mut v: Vec<i64> = Vec::new();
+            v.push(1);
+            if i == 0 {
+                continue;
+            }
+            if i == 3 {
+                break;
+            }
+            n = n.wrapping_add(1);
+        }
+        n
+    }
+
+    #[effects(alloc, io)]
+    fn main() -> () {
+        print_i64(early(true));
+        print_i64(early(false));
+        print_i64(exits());
+        let mut x: Vec<i64> = Vec::new();
+        x.push(1);
+        let t: Two = Two { a: x, b: Vec::new() };
+        print_u64(take(t.a) as u64);
+    }
+}

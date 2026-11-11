@@ -1,0 +1,20 @@
+{
+  "sections": [
+    "참조 인자"
+  ],
+  "note": "`v.as_slice()`, `v.as_mut_slice()`, `s.as_str()` and a string literal are E0409 outside an argument position; a literal may be a comparison operand.",
+  "check": [
+    {
+      "code": "E0409",
+      "line": 5
+    },
+    {
+      "code": "E0409",
+      "line": 10
+    },
+    {
+      "code": "E0409",
+      "line": 15
+    }
+  ]
+}

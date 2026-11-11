@@ -1,0 +1,14 @@
+#[summary("E0815: f64")]
+mod m {
+    #[effects(pure)]
+    fn any(n: u64) -> f64 {
+        f64::from(n)
+    }
+
+    #[effects(pure)]
+    fn small(n: u64) -> f64
+        requires n <= 1000000,
+    {
+        f64::from(n)
+    }
+}

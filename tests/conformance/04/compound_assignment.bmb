@@ -1,0 +1,26 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn idx(n: usize) -> usize { n }
+
+    #[effects(io)]
+    fn main() -> () {
+        let mut t: i64 = 10;
+        t += 5;
+        t -= 3;
+        t *= 4;
+        t /= 5;
+        t %= 7;
+        print_i64(t);
+        let mut u: u8 = 12;
+        u &= 10;
+        u |= 1;
+        u ^= 3;
+        u <<= 2;
+        u >>= 1;
+        print_u64(u as u64);
+        let mut a: [i64; 2] = [1, 2];
+        a[1] += 40;
+        print_i64(a[1]);
+    }
+}

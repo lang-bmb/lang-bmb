@@ -1,0 +1,28 @@
+{
+  "sections": [
+    "`proof fn`과 `proof` 블록"
+  ],
+  "note": "Ghost code (a proof fn body, a proof block) cannot call executable code, assign, bind `let mut`, loop or nest a proof block (E0257).",
+  "check": [
+    {
+      "code": "E0257",
+      "line": 7
+    },
+    {
+      "code": "E0257",
+      "line": 8
+    },
+    {
+      "code": "E0257",
+      "line": 12
+    },
+    {
+      "code": "E0257",
+      "line": 22
+    },
+    {
+      "code": "E0257",
+      "line": 25
+    }
+  ]
+}

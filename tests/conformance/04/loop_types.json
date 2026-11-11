@@ -1,0 +1,16 @@
+{
+  "sections": [
+    "루프"
+  ],
+  "note": "The condition of `while` is a `bool` (E0401); every `break` of a `loop` carries one type (E0401); a `loop` without `break` has type `!`.",
+  "check": [
+    {
+      "code": "E0401",
+      "line": 20
+    },
+    {
+      "code": "E0401",
+      "line": 26
+    }
+  ]
+}

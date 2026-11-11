@@ -1,0 +1,14 @@
+{
+  "sections": [
+    "`proof fn`과 `proof` 블록"
+  ],
+  "note": "Induction is a recursive lemma call with `decreases`; ghost arithmetic is mathematical, so it has no overflow obligation.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::count_is_n": "verified",
+      "m::f": "verified"
+    },
+    "diags": []
+  }
+}

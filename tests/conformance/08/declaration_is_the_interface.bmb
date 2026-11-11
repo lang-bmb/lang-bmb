@@ -1,0 +1,24 @@
+#[summary("declared effects are the interface")]
+mod m {
+    #[effects(alloc, io)]
+    fn wider() -> () {}
+
+    #[effects(alloc)]
+    fn wide_alloc() -> i64 { 1 }
+
+    #[effects(pure)]
+    fn caller() -> i64 {
+        wide_alloc()
+    }
+
+    #[effects(pure)]
+    fn narrow() -> Box<i64> {
+        Box::new(1)
+    }
+
+    #[effects(pure)]
+    fn caller_of_narrow() -> i64 {
+        let b: Box<i64> = narrow();
+        *b
+    }
+}

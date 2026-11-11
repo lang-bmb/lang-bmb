@@ -1,0 +1,24 @@
+{
+  "sections": [
+    "의무의 종류"
+  ],
+  "note": "A trait impl's function must refine the trait's contract: no stronger precondition and no weaker postcondition (E0817).",
+  "check": [],
+  "verify": {
+    "defs": {
+      "<m::Good as m::Cap>::cap": "verified",
+      "<m::Strict as m::Cap>::cap": "failed",
+      "<m::Weak as m::Cap>::cap": "failed"
+    },
+    "diags": [
+      {
+        "code": "E0817",
+        "line": 29
+      },
+      {
+        "code": "E0817",
+        "line": 38
+      }
+    ]
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "sections": [
+    "증명 문맥"
+  ],
+  "note": "`#[uses(a)]` unfolds the body of `a` only, not the spec fns that body calls; each needed name is listed.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::one_level": "failed",
+      "m::both_levels": "verified"
+    },
+    "diags": [
+      {
+        "code": "E0803",
+        "line": 14
+      }
+    ]
+  }
+}

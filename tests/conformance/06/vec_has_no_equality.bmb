@@ -1,0 +1,19 @@
+#[summary("Vec equality")]
+mod m {
+    #[effects(pure)]
+    fn eq(a: &Vec<i64>, b: &Vec<i64>) -> ()
+        requires *a == *b,
+    {
+    }
+
+    #[effects(pure)]
+    fn ne(a: Vec<i64>, b: Vec<i64>) -> bool {
+        a != b
+    }
+
+    #[effects(pure)]
+    fn lens(a: &Vec<i64>, b: &Vec<i64>) -> ()
+        requires a.len() == b.len(),
+    {
+    }
+}

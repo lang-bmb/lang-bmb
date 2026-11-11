@@ -1,0 +1,7 @@
+{
+  "sections": [
+    "효과의 집합"
+  ],
+  "note": "Freeing an owned value is not an effect: a `pure` function may drop a Vec or a Box and read through them.",
+  "check": []
+}

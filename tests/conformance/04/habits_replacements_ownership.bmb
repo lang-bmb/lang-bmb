@@ -1,0 +1,25 @@
+#[summary("s")]
+mod a {
+    struct P { v: Vec<i64> }
+
+    #[effects(alloc)]
+    fn take(p: &mut P) -> Vec<i64> { std::mem::replace(&mut p.v, Vec::new()) }
+
+    #[effects(pure)]
+    fn swap(p: &mut P, q: &mut P) -> () { std::mem::swap(&mut p.v, &mut q.v); }
+
+    #[effects(alloc, io)]
+    fn main() -> () {
+        let mut v: Vec<i64> = Vec::with_capacity(2);
+        v.push(1);
+        v.push(2);
+        let mut p: P = P { v: v };
+        let mut q: P = P { v: Vec::new() };
+        swap(&mut p, &mut q);
+        print_u64(p.v.len() as u64);
+        print_u64(q.v.len() as u64);
+        let w: Vec<i64> = take(&mut q);
+        print_u64(w.len() as u64);
+        print_u64(q.v.len() as u64);
+    }
+}

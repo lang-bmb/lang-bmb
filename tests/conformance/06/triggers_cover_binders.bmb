@@ -1,0 +1,10 @@
+#[summary("trigger coverage")]
+mod m {
+    spec fn partial(a: &[i64]) -> bool {
+        forall|i: usize, j: usize| i < j ==> #[trigger] a[i] > 0
+    }
+
+    spec fn sorted(a: &[i64]) -> bool {
+        forall|i: usize, j: usize| i < j && j < a.len() ==> #[trigger] a[i] <= #[trigger] a[j]
+    }
+}

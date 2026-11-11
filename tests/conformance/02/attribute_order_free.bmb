@@ -1,0 +1,18 @@
+#[summary("s")]
+mod a {
+    spec fn pos(x: i64) -> bool { x > 0 }
+
+    #[effects(pure)]
+    #[uses(a::pos)]
+    #[summary("one order")]
+    fn f(x: i64) -> i64
+        requires pos(x),
+    { x }
+
+    #[summary("the other order")]
+    #[uses(a::pos)]
+    #[effects(pure)]
+    fn g(x: i64) -> i64
+        requires pos(x),
+    { x }
+}

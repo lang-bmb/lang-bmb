@@ -1,0 +1,28 @@
+#[summary("panic")]
+mod m {
+    spec fn small(x: i64) -> bool { 0 <= x && x <= 10 }
+
+    #[effects(pure)]
+    fn missing(x: i64) -> i64 {
+        #[rationale(kind = boundary, "callers pass small values")]
+        assume(small(x));
+        x
+    }
+
+    #[effects(panic)]
+    fn declared(x: i64) -> i64 {
+        #[rationale(kind = boundary, "callers pass small values")]
+        assume(small(x));
+        x
+    }
+
+    #[effects(pure)]
+    fn caller_missing(x: i64) -> i64 {
+        declared(x)
+    }
+
+    #[effects(panic)]
+    fn caller(x: i64) -> i64 {
+        declared(x)
+    }
+}

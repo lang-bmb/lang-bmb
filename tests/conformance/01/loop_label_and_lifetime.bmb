@@ -1,0 +1,16 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn f(n: i64) -> i64 {
+        let mut k: i64 = 0;
+        'outer: for i in 0..n {
+            if i == 3 { break 'outer; }
+            if i == 1 { continue 'outer; }
+            k = i;
+        }
+        k
+    }
+
+    #[effects(pure)]
+    fn g(x: &'a i64) -> i64 { *x }
+}

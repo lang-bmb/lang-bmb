@@ -1,0 +1,24 @@
+{
+  "sections": [
+    "의무의 종류"
+  ],
+  "note": "The divisor of `/` and `%` in executable code must not be zero (E0804).",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::div": "failed",
+      "m::rem": "failed",
+      "m::guarded": "verified"
+    },
+    "diags": [
+      {
+        "code": "E0804",
+        "line": 5
+      },
+      {
+        "code": "E0804",
+        "line": 10
+      }
+    ]
+  }
+}

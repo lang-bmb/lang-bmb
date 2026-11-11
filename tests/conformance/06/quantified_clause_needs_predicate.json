@@ -1,0 +1,13 @@
+{
+  "sections": [
+    "계약 절",
+    "수량자와 트리거"
+  ],
+  "note": "A contract clause that holds a quantifier must be a call of a named predicate (E0501); the same condition behind a `spec fn` is accepted.",
+  "check": [
+    {
+      "code": "E0501",
+      "line": 9
+    }
+  ]
+}

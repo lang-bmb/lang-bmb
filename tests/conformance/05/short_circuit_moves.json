@@ -1,0 +1,16 @@
+{
+  "sections": [
+    "갈래와 루프의 이동"
+  ],
+  "note": "A move on the right side of `&&` or `||` is E0414.",
+  "check": [
+    {
+      "code": "E0414",
+      "line": 8
+    },
+    {
+      "code": "E0414",
+      "line": 13
+    }
+  ]
+}

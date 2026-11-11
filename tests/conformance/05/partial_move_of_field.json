@@ -1,0 +1,16 @@
+{
+  "sections": [
+    "자리에서 꺼내기와 부분 이동"
+  ],
+  "note": "Moving a field out of a local struct is a partial move: that field again is E0413, the whole struct is E0433, other fields stay usable.",
+  "check": [
+    {
+      "code": "E0413",
+      "line": 18
+    },
+    {
+      "code": "E0433",
+      "line": 24
+    }
+  ]
+}

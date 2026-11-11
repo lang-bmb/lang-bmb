@@ -1,0 +1,16 @@
+{
+  "sections": [
+    "메서드 호출의 이름"
+  ],
+  "note": "A function without a receiver and a function with type parameters of its own are not called as methods (E0314) but by path.",
+  "check": [
+    {
+      "code": "E0314",
+      "line": 14
+    },
+    {
+      "code": "E0314",
+      "line": 17
+    }
+  ]
+}

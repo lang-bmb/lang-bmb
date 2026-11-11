@@ -1,8 +1,7 @@
 {"code":"E0802","severity":"error","message":"postcondition `same_len` may not hold in `of::add`; counterexample: b = Buf { data: [] (len 0), cap: 38 }, x = -9223372036854768089","file":"fail/owned_fields.bmb","line":12,"col":17,"end_line":12,"end_col":38}
-{"code":"E0816","severity":"error","message":"`push` may exceed the maximum length of a `Vec` in `of::add`; counterexample: b = Buf { data: [0, 0, 0, 0, ..] (len 1152921504606846975), cap: 0 }, x = 0","file":"fail/owned_fields.bmb","line":14,"col":9,"end_line":14,"end_col":23}
 {"code":"E0805","severity":"error","message":"index may be out of bounds in `of::head`; counterexample: b = Buf { data: [] (len 0), cap: 0 }","file":"fail/owned_fields.bmb","line":20,"col":9,"end_line":20,"end_col":18}
 {"code":"E0802","severity":"error","message":"postcondition `first_is` may not hold in `of::after_call`; counterexample: x = 0","file":"fail/owned_fields.bmb","line":29,"col":17,"end_line":29,"end_col":32}
-{"def":"of::add","status":"failed","obligations":2,"failed":2,"rlimit":2754,"rlimit_max":1826}
-{"def":"of::after_call","status":"failed","obligations":2,"failed":1,"rlimit":1604,"rlimit_max":1483}
+{"def":"of::add","status":"failed","obligations":1,"failed":1,"rlimit":1826,"rlimit_max":1826}
+{"def":"of::after_call","status":"failed","obligations":1,"failed":1,"rlimit":1483,"rlimit_max":1483}
 {"def":"of::head","status":"failed","obligations":1,"failed":1,"rlimit":773,"rlimit_max":773}
 {"def":"of::touch","status":"verified","obligations":0,"failed":0,"rlimit":0,"rlimit_max":0}

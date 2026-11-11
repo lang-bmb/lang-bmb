@@ -1,0 +1,12 @@
+#[summary("s")]
+mod a {
+    struct H { v: [Vec<i64>; 2] }
+
+    struct T { v: [String; 2] }
+
+    #[effects(pure)]
+    fn e1(a: [i64]) -> i64 { 1 }
+
+    #[effects(pure)]
+    fn e2(a: [i64; 99999999999999999999]) -> i64 { 1 }
+}

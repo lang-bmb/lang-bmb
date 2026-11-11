@@ -1,0 +1,19 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn len(t: &str) -> usize { t.len() }
+
+    #[effects(pure)]
+    fn ok(s: &String, t: &str) -> usize {
+        len(s.as_str()).wrapping_add(len(t))
+    }
+
+    #[effects(pure)]
+    fn e1(s: String) -> usize { len(s) }
+
+    #[effects(pure)]
+    fn e2(s: String) -> usize { len(&s) }
+
+    #[effects(pure)]
+    fn e3(s: &mut str) -> usize { 1 }
+}

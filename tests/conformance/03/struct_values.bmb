@@ -1,0 +1,24 @@
+#[summary("s")]
+mod a {
+    struct P { x: i64, y: i64 }
+
+    enum S { Dot, Sq(i64) }
+
+    #[effects(pure)]
+    fn ok() -> P { P { x: 1, y: 2 } }
+
+    #[effects(pure)]
+    fn e1() -> P { P { x: 1 } }
+
+    #[effects(pure)]
+    fn e2() -> P { P { x: 1, x: 2, y: 3 } }
+
+    #[effects(pure)]
+    fn e3() -> P { P { y: 1, x: 2 } }
+
+    #[effects(pure)]
+    fn e4() -> P { P { x: 1, y: 2, z: 3 } }
+
+    #[effects(pure)]
+    fn e5() -> S { S { x: 1 } }
+}

@@ -1,0 +1,26 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn e1(o: Option<i64>) -> i64 { o? }
+
+    #[effects(pure)]
+    fn e2() -> i64 { break; }
+
+    #[effects(pure)]
+    fn e3() -> i64 {
+        for i in 0..3 { break 5; }
+        1
+    }
+
+    #[effects(alloc)]
+    fn e4(v: Vec<i64>) -> i64 {
+        for x in v.iter() { }
+        1
+    }
+
+    #[effects(pure)]
+    fn e5(n: i64) -> i64 {
+        for i in 0..n decreases n, { }
+        1
+    }
+}

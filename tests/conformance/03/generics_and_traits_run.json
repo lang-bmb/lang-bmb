@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "제네릭과 trait"
+  ],
+  "note": "Functions, structs and impls take type parameters with bounds beside them; a trait declares signatures and `impl Tr for T` implements them; `bool` orders `false < true`.",
+  "check": [],
+  "verify": {
+    "diags": []
+  },
+  "run": "4\n9\n1\n98\n"
+}

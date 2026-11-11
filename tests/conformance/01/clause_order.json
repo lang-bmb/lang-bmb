@@ -1,0 +1,16 @@
+{
+  "sections": [
+    "구문의 뼈대"
+  ],
+  "note": "The contract clauses come in the order `requires`, `ensures`, `decreases`; another order is E0103.",
+  "check": [
+    {
+      "code": "E0103",
+      "line": 6
+    },
+    {
+      "code": "E0103",
+      "line": 12
+    }
+  ]
+}

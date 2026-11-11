@@ -1,0 +1,13 @@
+{
+  "sections": [
+    "trait의 계약과 impl의 정제"
+  ],
+  "note": "A trait may declare a body-less `spec fn` that each impl defines; the trait's contract speaks through it and the impl's contract refines it.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::known": "verified"
+    },
+    "diags": []
+  }
+}

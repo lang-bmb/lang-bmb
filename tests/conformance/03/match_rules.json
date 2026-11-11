@@ -1,0 +1,32 @@
+{
+  "sections": [
+    "구조체와 열거형"
+  ],
+  "note": "`match` takes an enum value (E0423), one arm per variant in declaration order (E0426), a pattern binding as many names as the payload (E0427); an unknown variant is E0307, another pattern form E0232.",
+  "check": [
+    {
+      "code": "E0423",
+      "line": 9
+    },
+    {
+      "code": "E0426",
+      "line": 18
+    },
+    {
+      "code": "E0426",
+      "line": 23
+    },
+    {
+      "code": "E0427",
+      "line": 30
+    },
+    {
+      "code": "E0232",
+      "line": 39
+    },
+    {
+      "code": "E0307",
+      "line": 49
+    }
+  ]
+}

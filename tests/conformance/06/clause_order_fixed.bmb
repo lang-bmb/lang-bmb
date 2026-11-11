@@ -1,0 +1,10 @@
+#[summary("clause order")]
+mod m {
+    #[effects(pure)]
+    fn order(x: i64) -> (r: i64)
+        ensures r > 0,
+        requires x > 0,
+    {
+        x
+    }
+}

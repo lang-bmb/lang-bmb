@@ -1,0 +1,14 @@
+{
+  "sections": [
+    "수량자와 트리거"
+  ],
+  "note": "`forall` and `exists` share one form and one set of rules; a `forall` fact is used at an index and an `exists` is proved by its negation's failure.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::read": "verified",
+      "m::witness": "verified"
+    },
+    "diags": []
+  }
+}

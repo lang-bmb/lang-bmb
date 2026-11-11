@@ -1,0 +1,20 @@
+{
+  "sections": [
+    "계약 절",
+    "`old`"
+  ],
+  "note": "In `ensures` a `&mut` parameter is its value at exit and `old(..)` its value at entry.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::bump": "verified",
+      "m::stale": "failed"
+    },
+    "diags": [
+      {
+        "code": "E0802",
+        "line": 14
+      }
+    ]
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "sections": [
+    "함수 값의 효과"
+  ],
+  "note": "Inside a generic function the call `f(a)` has the effects the generic function declares, so an `io` function may be passed to an `io` generic function.",
+  "check": [],
+  "run": "1\n1\n2\n2\n"
+}

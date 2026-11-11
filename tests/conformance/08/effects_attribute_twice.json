@@ -1,0 +1,13 @@
+{
+  "sections": [
+    "`#[effects(..)]` 선언",
+    "항목이 받는 속성"
+  ],
+  "note": "Two `#[effects(..)]` attributes on one function are E0605.",
+  "check": [
+    {
+      "code": "E0605",
+      "line": 4
+    }
+  ]
+}

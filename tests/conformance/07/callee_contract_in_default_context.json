@@ -1,0 +1,14 @@
+{
+  "sections": [
+    "증명 문맥"
+  ],
+  "note": "The spec fns called by a callee's `requires` and `ensures` are in the caller's default context without `#[uses(..)]`.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::caller": "verified",
+      "m::result": "verified"
+    },
+    "diags": []
+  }
+}

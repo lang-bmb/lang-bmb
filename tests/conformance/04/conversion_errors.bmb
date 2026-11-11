@@ -1,0 +1,23 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn e1(x: i64) -> f64 { x as f64 }
+
+    #[effects(pure)]
+    fn e2(x: u32) -> char { x as char }
+
+    #[effects(pure)]
+    fn e3(x: i64) -> u8 { u8::from(x) }
+
+    #[effects(pure)]
+    fn e4(x: i64) -> u8 { x.into() }
+
+    #[effects(pure)]
+    fn e5(x: i64) -> u8 { x.try_into() }
+
+    #[effects(pure)]
+    fn e6(x: i64) -> u8 { u8::try_from(x).expect("fits") }
+
+    #[effects(pure)]
+    fn e7(c: char) -> Option<u8> { u8::try_from(c).ok() }
+}

@@ -1,0 +1,24 @@
+{
+  "sections": [
+    "색인·필드·역참조"
+  ],
+  "note": "That an index is in range is a proof obligation (E0805), for arrays, slices and `Vec`.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "a::arr": "failed",
+      "a::slice": "failed",
+      "a::ok": "verified"
+    },
+    "diags": [
+      {
+        "code": "E0805",
+        "line": 5
+      },
+      {
+        "code": "E0805",
+        "line": 10
+      }
+    ]
+  }
+}

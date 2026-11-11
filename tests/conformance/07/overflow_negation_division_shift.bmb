@@ -1,0 +1,28 @@
+#[summary("E0803: negation, division, shift")]
+mod m {
+    #[effects(pure)]
+    fn neg(x: i64) -> i64 {
+        -x
+    }
+
+    #[effects(pure)]
+    fn div(a: i64, b: i64) -> i64
+        requires b != 0,
+    {
+        a / b
+    }
+
+    #[effects(pure)]
+    fn shl(x: u32, k: u32) -> u32 {
+        x << k
+    }
+
+    #[effects(pure)]
+    fn guarded(x: i64, a: i64, b: i64, y: u32, k: u32) -> i64
+        requires x > -100, b > 0, k < 32,
+    {
+        let s: u32 = y >> k;
+        let q: i64 = a / b;
+        -x
+    }
+}

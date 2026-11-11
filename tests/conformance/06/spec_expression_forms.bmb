@@ -1,0 +1,28 @@
+#[summary("specification expressions")]
+mod m {
+    struct P { x: i64, y: i64 }
+
+    spec fn first(a: &[i64]) -> i64 {
+        if a.len() > 0 { a[0] } else { 0 }
+    }
+
+    spec fn get(o: Option<i64>) -> i64 {
+        match o {
+            None => 0,
+            Some(v) => v,
+        }
+    }
+
+    spec fn sum(p: P) -> i64 {
+        let s: i64 = p.x + p.y;
+        s
+    }
+
+    #[effects(pure)]
+    fn f(a: &[i64], p: P) -> (r: i64)
+        requires a.len() > 0 ==> first(a) == 7, sum(p) == 3, get(Some(1)) == 1,
+        ensures a.len() > 0 ==> r == 7,
+    {
+        if a.len() > 0 { a[0] } else { p.x }
+    }
+}

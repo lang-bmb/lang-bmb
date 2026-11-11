@@ -1,0 +1,8 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn f() -> i64 { 5i64 }
+
+    #[effects(pure)]
+    fn g() -> i64 { 0XFF }
+}

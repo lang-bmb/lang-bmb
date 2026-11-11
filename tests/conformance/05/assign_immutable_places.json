@@ -1,0 +1,36 @@
+{
+  "sections": [
+    "쓸 수 있는 자리"
+  ],
+  "note": "Assigning to a `let` local, a value parameter, what a `&` parameter points to, or a `for` variable is E0408.",
+  "check": [
+    {
+      "code": "E0408",
+      "line": 8
+    },
+    {
+      "code": "E0408",
+      "line": 14
+    },
+    {
+      "code": "E0408",
+      "line": 15
+    },
+    {
+      "code": "E0408",
+      "line": 21
+    },
+    {
+      "code": "E0408",
+      "line": 22
+    },
+    {
+      "code": "E0408",
+      "line": 23
+    },
+    {
+      "code": "E0408",
+      "line": 29
+    }
+  ]
+}

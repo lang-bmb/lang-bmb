@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "자리에서 꺼내기와 부분 이동"
+  ],
+  "note": "Moving a field out from behind a &mut is E0239; std::mem::replace takes it and leaves a value in place.",
+  "check": [
+    {
+      "code": "E0239",
+      "line": 7
+    }
+  ]
+}

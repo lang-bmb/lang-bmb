@@ -1,0 +1,13 @@
+{
+  "sections": [
+    "이동한 값의 사용"
+  ],
+  "note": "A specification context (assert) reads a moved value without an E0413 and without changing its move state.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::f": "verified"
+    },
+    "diags": []
+  }
+}

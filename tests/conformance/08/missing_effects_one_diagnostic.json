@@ -1,0 +1,16 @@
+{
+  "sections": [
+    "선언과 몸의 관계"
+  ],
+  "note": "A function whose body needs several effects it does not declare gets one E0606 on its attribute (and, being `pure`, E0603 at its `io` call).",
+  "check": [
+    {
+      "code": "E0606",
+      "line": 3
+    },
+    {
+      "code": "E0603",
+      "line": 6
+    }
+  ]
+}

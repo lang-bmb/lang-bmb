@@ -1,0 +1,16 @@
+{
+  "sections": [
+    "명세의 정수"
+  ],
+  "note": "In a specification a wider value where a narrower type is expected is E0401; a narrower value widens.",
+  "check": [
+    {
+      "code": "E0401",
+      "line": 3
+    },
+    {
+      "code": "E0401",
+      "line": 6
+    }
+  ]
+}

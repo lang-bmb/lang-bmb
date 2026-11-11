@@ -1,0 +1,15 @@
+{
+  "sections": [
+    "의무의 종류"
+  ],
+  "note": "Specification expressions, ghost code and wrapping arithmetic carry no overflow obligation.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::wrap": "verified",
+      "m::ghost": "verified",
+      "m::stated": "verified"
+    },
+    "diags": []
+  }
+}

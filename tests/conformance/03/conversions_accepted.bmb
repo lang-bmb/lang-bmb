@@ -1,0 +1,28 @@
+#[summary("s")]
+mod a {
+    #[effects(io)]
+    fn main() -> () {
+        let x: i64 = 300;
+        let y: u8 = 200;
+        print_i64(y as i64);
+        print_u64((x - 100) as u8 as u64);
+        match u8::try_from(x).ok() {
+            None => print_i64(-1),
+            Some(v) => print_i64(v as i64),
+        }
+        match u8::try_from(x - 45).ok() {
+            None => print_i64(-1),
+            Some(v) => print_i64(v as i64),
+        }
+        print_f64(f64::from(x), 1);
+        print_u64(u32::from('A') as u64);
+        match char::from_u32(66) {
+            None => print_i64(-1),
+            Some(c) => print_u64(u32::from(c) as u64),
+        }
+        match char::from_u32(55296) {
+            None => print_i64(-1),
+            Some(c) => print_u64(u32::from(c) as u64),
+        }
+    }
+}

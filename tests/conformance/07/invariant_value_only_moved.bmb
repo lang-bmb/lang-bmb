@@ -1,0 +1,19 @@
+#[summary("moving a value with an invariant")]
+mod m {
+    #[invariant(ordered)]
+    struct Span { lo: i64, hi: i64 }
+
+    spec fn ordered(s: &Span) -> bool { s.lo <= s.hi }
+
+    #[effects(pure)]
+    fn take(s: Span) -> i64 { 0 }
+
+    #[effects(pure)]
+    fn pass(s: Span) -> Span { s }
+
+    #[effects(pure)]
+    fn forward(s: Span) -> i64 {
+        let t: Span = s;
+        take(t)
+    }
+}

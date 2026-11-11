@@ -1,0 +1,16 @@
+{
+  "sections": [
+    "참조 인자"
+  ],
+  "note": "`&e` outside a call's argument position (under a deref, inside a variant constructor) is E0409.",
+  "check": [
+    {
+      "code": "E0409",
+      "line": 10
+    },
+    {
+      "code": "E0409",
+      "line": 15
+    }
+  ]
+}

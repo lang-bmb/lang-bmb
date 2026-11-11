@@ -1,0 +1,52 @@
+{
+  "sections": [
+    "받지 않는 Rust 습관"
+  ],
+  "note": "Data and pattern forms not accepted: field shorthand (E0222), struct update (E0223), wildcard arm (E0224), `if let` (E0225), `while let`/`let else` (E0226), `unwrap` (E0229), destructuring `let` (E0230), `(*p).x` (E0231), guards (E0232), tuples (E0233).",
+  "check": [
+    {
+      "code": "E0233",
+      "line": 5
+    },
+    {
+      "code": "E0233",
+      "line": 7
+    },
+    {
+      "code": "E0222",
+      "line": 10
+    },
+    {
+      "code": "E0223",
+      "line": 13
+    },
+    {
+      "code": "E0224",
+      "line": 16
+    },
+    {
+      "code": "E0225",
+      "line": 19
+    },
+    {
+      "code": "E0226",
+      "line": 23
+    },
+    {
+      "code": "E0229",
+      "line": 28
+    },
+    {
+      "code": "E0230",
+      "line": 32
+    },
+    {
+      "code": "E0231",
+      "line": 37
+    },
+    {
+      "code": "E0232",
+      "line": 40
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "sections": [
+    "루프의 `invariant`와 `decreases`"
+  ],
+  "note": "A `while` with invariant clauses and a measure between condition and body, and a `loop` with a measure, are accepted and proved.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::count": "verified",
+      "m::spin": "verified"
+    },
+    "diags": []
+  }
+}

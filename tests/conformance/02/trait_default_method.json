@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "`impl`과 수신자"
+  ],
+  "note": "A trait method with a body may be left out of an impl, or defined by it.",
+  "check": [],
+  "verify": {
+    "diags": []
+  },
+  "run": "1\n7\n8\n"
+}

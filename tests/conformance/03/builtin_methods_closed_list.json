@@ -1,0 +1,24 @@
+{
+  "sections": [
+    "연산자와 피연산자"
+  ],
+  "note": "The methods of the integer types and of `f64` are a closed list: an unknown method is E0404, a wrong number of arguments to a method or function is E0405.",
+  "check": [
+    {
+      "code": "E0404",
+      "line": 13
+    },
+    {
+      "code": "E0404",
+      "line": 16
+    },
+    {
+      "code": "E0405",
+      "line": 19
+    },
+    {
+      "code": "E0405",
+      "line": 22
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn f1(x: u32) -> u32 { -x }
+
+    #[effects(pure)]
+    fn f2() -> u8 { -1 }
+}

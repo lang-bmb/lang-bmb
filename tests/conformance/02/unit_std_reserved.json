@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "단위"
+  ],
+  "note": "The top-level unit `std` belongs to the standard library and cannot be defined (E0309).",
+  "check": [
+    {
+      "code": "E0309",
+      "line": 2
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "단위"
+  ],
+  "note": "There is no `pub` (E0207); every definition is usable from another unit by its full path.",
+  "check": [
+    {
+      "code": "E0207",
+      "line": 3
+    }
+  ]
+}

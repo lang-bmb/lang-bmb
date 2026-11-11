@@ -1,0 +1,43 @@
+#[summary("s")]
+mod geo {
+    const N: i64 = 3;
+
+    struct P { x: i64 }
+
+    enum E { A, B(i64) }
+
+    #[effects(pure)]
+    fn origin() -> P { P { x: 0 } }
+
+    impl P {
+        #[effects(pure)]
+        fn mk(x: i64) -> P { P { x: x } }
+    }
+
+    #[summary("i")]
+    mod deep {
+        #[effects(pure)]
+        fn one() -> i64 { geo::N - 2 }
+    }
+
+    #[effects(pure)]
+    fn own() -> i64 { geo::N + N }
+}
+
+#[summary("s")]
+mod app {
+    #[effects(io)]
+    fn main() -> () {
+        let p: geo::P = geo::origin();
+        let q: geo::P = geo::P::mk(geo::N);
+        let e: geo::E = geo::E::B(4);
+        print_i64(p.x);
+        print_i64(q.x);
+        print_i64(geo::own());
+        print_i64(geo::deep::one());
+        match e {
+            geo::E::A => print_i64(0),
+            geo::E::B(n) => print_i64(n),
+        }
+    }
+}

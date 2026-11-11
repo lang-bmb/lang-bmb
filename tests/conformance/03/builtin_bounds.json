@@ -1,0 +1,28 @@
+{
+  "sections": [
+    "제네릭과 trait"
+  ],
+  "note": "Integer types, `bool`, `char` and `String` have `Eq` and `Ord`; `f64`, structs, `Vec` and arrays do not, and a type argument that misses a bound is E0428.",
+  "check": [
+    {
+      "code": "E0428",
+      "line": 25
+    },
+    {
+      "code": "E0428",
+      "line": 28
+    },
+    {
+      "code": "E0428",
+      "line": 31
+    },
+    {
+      "code": "E0428",
+      "line": 35
+    },
+    {
+      "code": "E0428",
+      "line": 40
+    }
+  ]
+}

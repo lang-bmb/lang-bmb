@@ -1,0 +1,16 @@
+{
+  "sections": [
+    "`assert`"
+  ],
+  "note": "A prover name other than `bit_vector` and the block form `assert(..) by { .. }` are E0516.",
+  "check": [
+    {
+      "code": "E0516",
+      "line": 5
+    },
+    {
+      "code": "E0516",
+      "line": 11
+    }
+  ]
+}

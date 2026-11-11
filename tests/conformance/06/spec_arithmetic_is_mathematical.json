@@ -1,0 +1,19 @@
+{
+  "sections": [
+    "명세의 정수"
+  ],
+  "note": "Specification arithmetic is over mathematical integers: `requires a + b <= 255` on `u8` means the sum is at most 255, which makes the executable sum safe.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::add": "verified",
+      "m::unguarded": "failed"
+    },
+    "diags": [
+      {
+        "code": "E0803",
+        "line": 13
+      }
+    ]
+  }
+}

@@ -1,0 +1,38 @@
+#[summary("facts of the path")]
+mod m {
+    #[effects(pure)]
+    fn small() -> (r: u64)
+        ensures r < 5,
+    {
+        4
+    }
+
+    #[effects(pure)]
+    fn by_requires(x: u64) -> u64
+        requires x < 100,
+    {
+        x + 1
+    }
+
+    #[effects(pure)]
+    fn by_type(x: u8) -> u64 {
+        let w: u64 = x as u64;
+        w + w
+    }
+
+    #[effects(pure)]
+    fn by_condition(x: u64) -> u64 {
+        if x < 100 { x + 1 } else { x }
+    }
+
+    #[effects(pure)]
+    fn by_ensures(x: u64) -> u64 {
+        let s: u64 = small();
+        s + 1
+    }
+
+    #[effects(pure)]
+    fn no_fact(x: u64) -> u64 {
+        if x > 100 { x + 1 } else { x }
+    }
+}

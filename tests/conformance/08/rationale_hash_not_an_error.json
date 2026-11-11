@@ -1,0 +1,8 @@
+{
+  "sections": [
+    "근거: `#[rationale(..)]`"
+  ],
+  "note": "A rationale takes a `hash = \"..\"` key; a missing or stale hash is not a language error and does not block `build`.",
+  "check": [],
+  "run": "4\n4\n"
+}

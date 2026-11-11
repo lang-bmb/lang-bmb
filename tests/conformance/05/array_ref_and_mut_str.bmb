@@ -1,0 +1,21 @@
+#[summary("unsupported reference types")]
+mod m {
+    #[effects(pure)]
+    fn arr(a: &[i64; 3]) -> i64 {
+        0
+    }
+
+    #[effects(pure)]
+    fn text(s: &mut str) -> usize {
+        0
+    }
+
+    #[effects(pure)]
+    fn slice(a: &[i64]) -> usize { a.len() }
+
+    #[effects(pure)]
+    fn ok() -> usize {
+        let a: [i64; 3] = [1, 2, 3];
+        slice(&a)
+    }
+}

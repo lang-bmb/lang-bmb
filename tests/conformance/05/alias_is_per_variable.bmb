@@ -1,0 +1,26 @@
+#[summary("fields and elements of one variable")]
+mod m {
+    struct P { x: i64, y: i64 }
+
+    #[effects(pure)]
+    fn add(a: &mut i64, b: &i64) -> () {}
+
+    #[effects(pure)]
+    fn fields() -> () {
+        let mut p: P = P { x: 1, y: 2 };
+        add(&mut p.x, &p.y);
+    }
+
+    #[effects(pure)]
+    fn elements() -> () {
+        let mut a: [i64; 2] = [1, 2];
+        add(&mut a[0], &a[1]);
+    }
+
+    #[effects(pure)]
+    fn distinct() -> () {
+        let mut p: P = P { x: 1, y: 2 };
+        let q: P = P { x: 3, y: 4 };
+        add(&mut p.x, &q.y);
+    }
+}

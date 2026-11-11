@@ -1,0 +1,8 @@
+{
+  "sections": [
+    "문자와 공백",
+    "주석"
+  ],
+  "note": "A file of comments alone is a program without units.",
+  "check": []
+}

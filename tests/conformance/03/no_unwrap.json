@@ -1,0 +1,16 @@
+{
+  "sections": [
+    "`Option`과 `Result`"
+  ],
+  "note": "There is no `.unwrap()` or `.expect()` on `Option` and `Result` (E0229).",
+  "check": [
+    {
+      "code": "E0229",
+      "line": 4
+    },
+    {
+      "code": "E0229",
+      "line": 7
+    }
+  ]
+}

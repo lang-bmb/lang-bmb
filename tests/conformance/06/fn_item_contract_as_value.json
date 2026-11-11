@@ -1,0 +1,19 @@
+{
+  "sections": [
+    "함수 값의 계약"
+  ],
+  "note": "A function item passed as a value carries its own `requires` and `ensures` as the value's contract.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::good": "verified",
+      "m::bad": "failed"
+    },
+    "diags": [
+      {
+        "code": "E0801",
+        "line": 28
+      }
+    ]
+  }
+}

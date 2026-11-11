@@ -1,0 +1,5 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn main() -> () { }
+}

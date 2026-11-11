@@ -1,0 +1,41 @@
+#[summary("E0808")]
+mod m {
+    #[effects(pure)]
+    fn stuck(n: u64) -> u64 {
+        let mut i: u64 = 0;
+        while i < n
+            decreases n - i,
+        {
+            i = i + 0;
+        }
+        i
+    }
+
+    #[effects(pure)]
+    fn negative(n: i64) -> i64
+        requires n < 1000,
+    {
+        let mut i: i64 = n;
+        while i > -5
+            invariant i <= n,
+            decreases i,
+        {
+            i = i - 1;
+        }
+        i
+    }
+
+    #[effects(pure)]
+    fn good(n: i64) -> i64
+        requires n < 1000,
+    {
+        let mut i: i64 = n;
+        while i > 0
+            invariant i <= n,
+            decreases i,
+        {
+            i = i - 1;
+        }
+        i
+    }
+}

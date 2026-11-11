@@ -1,0 +1,32 @@
+#[summary("type invariant")]
+mod m {
+    #[invariant(ordered)]
+    struct Span { lo: i64, hi: i64 }
+
+    spec fn ordered(s: &Span) -> bool { s.lo <= s.hi }
+
+    #[effects(pure)]
+    #[uses(ordered)]
+    fn read(s: Span) -> ()
+    {
+        assert(s.lo <= s.hi);
+    }
+
+    #[effects(pure)]
+    fn read_opaque(s: Span) -> ()
+    {
+        assert(s.lo <= s.hi);
+    }
+
+    #[effects(pure)]
+    #[uses(ordered)]
+    fn make(a: i64) -> Span {
+        Span { lo: a, hi: a }
+    }
+
+    #[effects(pure)]
+    #[uses(ordered)]
+    fn make_bad() -> Span {
+        Span { lo: 1, hi: 0 }
+    }
+}

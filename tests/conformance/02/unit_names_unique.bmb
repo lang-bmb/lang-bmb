@@ -1,0 +1,9 @@
+#[summary("s")]
+mod a {
+    const X: i64 = 1;
+}
+
+#[summary("s")]
+mod a {
+    const Y: i64 = 2;
+}

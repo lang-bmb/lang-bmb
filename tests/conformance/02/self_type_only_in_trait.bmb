@@ -1,0 +1,10 @@
+#[summary("s")]
+mod a {
+    trait T {
+        #[effects(pure)]
+        fn same(self: &Self, o: &Self) -> bool;
+    }
+
+    #[effects(pure)]
+    fn f(x: Self) -> i64 { 1 }
+}

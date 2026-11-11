@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "클로저의 캡처"
+  ],
+  "note": "A capture is a value use where the closure is made: an owned local is moved into it (later use is E0413), a copy local stays usable.",
+  "check": [
+    {
+      "code": "E0413",
+      "line": 9
+    }
+  ]
+}

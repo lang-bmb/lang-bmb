@@ -45,7 +45,7 @@
 ## 함수 값의 효과
 
 - 경계 `F: Fn(A) -> R`를 가진 제네릭 함수 `g` 안에서 `f(a)` 호출의 효과는 `g`가 선언한 효과다(ADR-0053 §5).
-- 그래서 `g`에 넘기는 함수나 클로저의 효과는 `g`의 선언 안에 있어야 한다. 넘으면 그 인자에 E0608 진단이 나온다: `` `shout` has effect `io`, which `fve::apply` does not declare for its `F` ``(`tests/check/err/fn_values.bmb`). 수정은 `g`에 그 효과를 선언하거나 그 효과가 없는 함수를 넘기는 것이다.
+- 그래서 `g`에 넘기는 함수나 클로저의 효과는 `g`의 선언 안에 있어야 한다. 넘기는 것이 함수이면 그 인자에 E0608 진단이 나온다(클로저이면 클로저 몸의 그 호출에 E0603이 나온다: 클로저의 효과는 받는 쪽 `F`의 선언이다): `` `shout` has effect `io`, which `fve::apply` does not declare for its `F` ``(`tests/check/err/fn_values.bmb`). 수정은 `g`에 그 효과를 선언하거나 그 효과가 없는 함수를 넘기는 것이다.
 - 통과하는 꼴은 `tests/run/fn_values.bmb`에 있다.
 
 ## 항목이 받는 속성

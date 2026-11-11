@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "갈래와 루프의 이동"
+  ],
+  "note": "An `if` without `else` that moves a value is E0414.",
+  "check": [
+    {
+      "code": "E0414",
+      "line": 8
+    }
+  ]
+}

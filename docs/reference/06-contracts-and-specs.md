@@ -28,7 +28,7 @@
 
 - 별도의 `int` 타입은 없다. 명세 식은 기계 정수 타입의 이름을 쓰되 산술은 수학적 정수로 읽는다(ADR-0017). 그래서 명세 식에는 넘침·0 나눗셈·인덱스 범위의 증명 의무가 없다. `requires a + b <= 255`(`a`, `b`가 `u8`)는 합이 255 이하라는 뜻 그대로다.
 - 명세와 유령 코드에서 정수 타입은 값의 범위를 담는 타입으로 넓어진다(ADR-0099, `tests/verify/pass/spec_widening.bmb`). 서로 다른 정수 타입을 변환 없이 섞어 쓴다.
-- 명세에서 범위를 좁히는 변환 `x as T`는 오류이고(E0513), 좁은 타입이 기대되는 자리에 넓은 값을 쓰면 오류다(E0401, `tests/check/err/spec_widening.bmb`, `tests/check/err/conversions.bmb`). 넓히는 `as`는 값 그대로와 같은 입력 별칭으로 받는다(`compiler/README.md`의 "입력 별칭").
+- 명세에서 범위를 좁히는 변환 `x as T`는 오류이고(E0513), 좁은 타입이 기대되는 자리(`spec fn`의 결과, 타입을 적은 `let`)에 넓은 값을 쓰면 오류다(E0401, `tests/check/err/spec_widening.bmb`, `tests/check/err/conversions.bmb`). `spec fn`의 인자는 예외다: 다른 정수 타입의 값을 넘길 수 있고, 매개변수의 범위 밖 값에서는 그 호출의 값이 정해지지 않는다(ADR-0022). 그래서 `small(b: u8)`에 `u64` 값 256을 넘긴 `small(n)`은 아무것도 말하지 않는다. 넓히는 `as`는 값 그대로와 같은 입력 별칭으로 받는다(`compiler/README.md`의 "입력 별칭").
 - `Vec`에는 `==`·`!=`가 없다(E0514, `tests/check/err/vec.bmb`). 길이와 원소를 `v.as_slice()` 위의 술어로 비교한다(ADR-0031).
 
 ## 수량자와 트리거
@@ -62,7 +62,7 @@
 ## `assert`
 
 - `assert(e);`는 실행 문맥과 유령 문맥의 문장이다. `e`는 명세 식이고 수량자를 담을 수 있다. 그 자리에서 `e`를 증명하고(07장 E0810) 그 뒤로 `e`를 사실로 쓴다. 실행 코드를 만들지 않는다. 명세 문맥 안에는 쓰지 않는다(E0503).
-- `assert(e) by (bit_vector);`는 `e`를 따로 된 비트벡터 질의로 증명한다(ADR-0048 §4). `e`에는 정수·`f64`·`bool` 항만 온다. 수량자, `old`, 참조 뒤의 값, 자료 값, 그리고 `let`으로 이름 붙이지 않은 원소·필드·길이는 오류다(E0515). `bit_vector` 말고 다른 증명기 이름과 `assert(..) by { .. }`는 오류다(E0516, `tests/check/err/bit_vector.bmb`, `tests/verify/pass/bit_vector.bmb`). 이 하위 증명은 `e`의 변수만 보고 경로의 사실을 보지 않는다. 그 실패는 07장에 있다(E0818).
+- `assert(e) by (bit_vector);`는 `e`를 따로 된 비트벡터 질의로 증명한다(ADR-0048 §4). `e`에는 정수·`f64`·`bool` 항만 온다. 수량자, `old`, 자료 값, 그리고 단언 안의 `let`을 부르는 원소·필드·길이는 오류다(E0515). 그 밖의 원소·필드·길이·참조 뒤의 값(`s[0]`, `r.x`, `*r`, `s.len()`)은 하위 증명의 변수로 받는다. `bit_vector` 말고 다른 증명기 이름과 `assert(..) by { .. }`는 오류다(E0516, `tests/check/err/bit_vector.bmb`, `tests/verify/pass/bit_vector.bmb`). 이 하위 증명은 `e`의 변수만 보고 경로의 사실을 보지 않는다. 그 실패는 07장에 있다(E0818).
 
 ## `old`
 

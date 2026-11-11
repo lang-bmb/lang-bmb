@@ -412,7 +412,10 @@ pub const CODES: &[(&str, &str)] = &[
         "E0815",
         "integer conversion may be out of range (to `f64`: a 64-bit value may be above 2^53 and inexact)",
     ),
-    ("E0816", "a `Vec` may exceed its maximum length"),
+    (
+        "E0816",
+        "the capacity of a `Vec` may exceed its maximum length",
+    ),
     (
         "E0817",
         "a trait impl's function does not refine the trait's contract",

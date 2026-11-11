@@ -1,0 +1,8 @@
+{
+  "sections": [
+    "`#[effects(..)]` 선언"
+  ],
+  "note": "`main` may declare other effects together with `io`.",
+  "check": [],
+  "run": "1\n"
+}

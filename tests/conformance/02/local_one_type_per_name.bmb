@@ -1,0 +1,13 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn f(x: i64) -> i64 {
+        if x > 0 {
+            let y: i64 = 2;
+            y
+        } else {
+            let y: bool = true;
+            1
+        }
+    }
+}

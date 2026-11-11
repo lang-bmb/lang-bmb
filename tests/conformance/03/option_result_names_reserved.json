@@ -1,0 +1,28 @@
+{
+  "sections": [
+    "`Option`과 `Result`"
+  ],
+  "note": "The six names of `Option` and `Result` and `Box` cannot be defined again (E0309).",
+  "check": [
+    {
+      "code": "E0309",
+      "line": 3
+    },
+    {
+      "code": "E0309",
+      "line": 5
+    },
+    {
+      "code": "E0309",
+      "line": 8
+    },
+    {
+      "code": "E0309",
+      "line": 10
+    },
+    {
+      "code": "E0309",
+      "line": 12
+    }
+  ]
+}

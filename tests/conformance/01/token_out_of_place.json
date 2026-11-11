@@ -1,0 +1,16 @@
+{
+  "sections": [
+    "구두점"
+  ],
+  "note": "A token of the list where the grammar cannot take it is E0103.",
+  "check": [
+    {
+      "code": "E0103",
+      "line": 5
+    },
+    {
+      "code": "E0103",
+      "line": 10
+    }
+  ]
+}

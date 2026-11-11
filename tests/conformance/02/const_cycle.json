@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "항목"
+  ],
+  "note": "Constants that refer to each other are E0318.",
+  "check": [
+    {
+      "code": "E0318",
+      "line": 3
+    }
+  ]
+}

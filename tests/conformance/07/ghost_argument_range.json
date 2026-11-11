@@ -1,0 +1,19 @@
+{
+  "sections": [
+    "의무의 종류"
+  ],
+  "note": "An argument of a `proof fn` call must lie inside its parameter's type, since ghost arithmetic is mathematical (E0819).",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::below": "failed",
+      "m::inside": "verified"
+    },
+    "diags": [
+      {
+        "code": "E0819",
+        "line": 9
+      }
+    ]
+  }
+}

@@ -1,0 +1,26 @@
+#[summary("every clause")]
+mod m {
+    #[effects(pure)]
+    fn callee(a: i64, b: i64) -> (r: i64)
+        requires a > 0, b > 0,
+        ensures r >= a, r >= b,
+    {
+        if a > b { a } else { b }
+    }
+
+    #[effects(pure)]
+    fn good() -> i64 { callee(1, 2) }
+
+    #[effects(pure)]
+    fn bad() -> i64 {
+        callee(1, 0)
+    }
+
+    #[effects(pure)]
+    fn half(a: i64, b: i64) -> (r: i64)
+        ensures r >= a,
+            r >= b,
+    {
+        a
+    }
+}

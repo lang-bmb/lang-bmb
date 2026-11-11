@@ -1,0 +1,20 @@
+{
+  "sections": [
+    "블록과 꼬리 식"
+  ],
+  "note": "A name of a block is not visible outside it (E0301); a block without a tail expression has type `()` (E0401 where another type is expected).",
+  "check": [
+    {
+      "code": "E0301",
+      "line": 6
+    },
+    {
+      "code": "E0401",
+      "line": 11
+    },
+    {
+      "code": "E0401",
+      "line": 16
+    }
+  ]
+}

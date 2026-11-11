@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "참조 인자"
+  ],
+  "note": "`&mut v[lo..hi]` is E0409: a sub-slice is read-only.",
+  "check": [
+    {
+      "code": "E0409",
+      "line": 12
+    }
+  ]
+}

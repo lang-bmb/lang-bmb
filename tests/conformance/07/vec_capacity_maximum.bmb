@@ -1,0 +1,16 @@
+#[summary("E0816: with_capacity")]
+mod m {
+    #[effects(alloc)]
+    fn any(n: usize) -> usize {
+        let v: Vec<u64> = Vec::with_capacity(n);
+        v.len()
+    }
+
+    #[effects(alloc)]
+    fn small(n: usize) -> usize
+        requires n <= 1000,
+    {
+        let v: Vec<u64> = Vec::with_capacity(n);
+        v.len()
+    }
+}

@@ -1,0 +1,8 @@
+{
+  "sections": [
+    "갈래와 루프의 이동"
+  ],
+  "note": "An if-else or match where only one arm moves a value is accepted; the other arm drops it.",
+  "check": [],
+  "run": "1\n0\n1\n0\n"
+}

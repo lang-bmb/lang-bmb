@@ -1,0 +1,30 @@
+#[summary("push의 길이는 의무가 아니라 사실이다(ADR-0124, 백로그 4D-13): 길이를 모르는 Vec과 String에 넣는다")]
+mod up {
+    #[effects(alloc)]
+    fn add(v: &mut Vec<i64>, x: i64) -> ()
+        ensures grew(v.len(), old(v).len()), within(v.len()),
+    {
+        v.push(x);
+    }
+
+    #[effects(alloc)]
+    fn fill(v: &mut Vec<u8>, t: &[u8]) -> () {
+        for i in 0..t.len() {
+            v.push(t[i]);
+        }
+    }
+
+    spec fn grew(n: usize, old_len: usize) -> bool {
+        n == old_len + 1
+    }
+
+    #[effects(alloc)]
+    fn text(s: &mut String, t: &str, c: char) -> () {
+        s.push_str(t);
+        s.push(c);
+    }
+
+    spec fn within(n: usize) -> bool {
+        n <= 1152921504606846975
+    }
+}

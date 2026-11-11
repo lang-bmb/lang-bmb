@@ -1,0 +1,8 @@
+{
+  "sections": [
+    "참조 `match`"
+  ],
+  "note": "Bindings of a match on a `&mut T` parameter are written with `*n = v`, changing the value in place.",
+  "check": [],
+  "run": "0\n8\n"
+}

@@ -1,0 +1,19 @@
+{
+  "sections": [
+    "의무의 종류"
+  ],
+  "note": "`assert(e);` is an obligation at its place (E0810).",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::bad": "failed",
+      "m::good": "verified"
+    },
+    "diags": [
+      {
+        "code": "E0810",
+        "line": 5
+      }
+    ]
+  }
+}

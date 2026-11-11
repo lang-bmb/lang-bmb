@@ -1,0 +1,8 @@
+#[summary("s")]
+mod a {
+    spec fn e1(v: Vec<i64>) -> bool { v.len() > 0 }
+
+    spec fn e2(s: String) -> bool { s.len() > 0 }
+
+    spec fn ok(s: &[i64], t: &str) -> bool { s.len() == t.len() }
+}

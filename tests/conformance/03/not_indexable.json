@@ -1,0 +1,16 @@
+{
+  "sections": [
+    "배열과 슬라이스"
+  ],
+  "note": "A value that cannot be indexed (`i64`, `&str`) is E0407.",
+  "check": [
+    {
+      "code": "E0407",
+      "line": 4
+    },
+    {
+      "code": "E0407",
+      "line": 7
+    }
+  ]
+}

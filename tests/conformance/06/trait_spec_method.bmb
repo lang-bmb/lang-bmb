@@ -1,0 +1,30 @@
+#[summary("spec methods of a trait")]
+mod m {
+    trait Area {
+        #[effects(pure)]
+        fn area(self: &Self) -> (r: i64)
+            ensures r == self.model();
+
+        spec fn model(self: &Self) -> i64;
+    }
+
+    struct Sq { s: i64 }
+
+    impl Area for Sq {
+        #[effects(pure)]
+        fn area(self: &Sq) -> (r: i64)
+            ensures r == self.model(),
+        {
+            self.s
+        }
+
+        spec fn model(self: &Sq) -> i64 { self.s }
+    }
+
+    #[effects(pure)]
+    fn known<T: Area>(x: &T) -> (r: i64)
+        ensures r == x.model(),
+    {
+        x.area()
+    }
+}

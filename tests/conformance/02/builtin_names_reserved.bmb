@@ -1,0 +1,24 @@
+#[summary("s")]
+mod a {
+    struct Option { a: i64 }
+
+    #[effects(pure)]
+    fn Some() -> i64 { 1 }
+
+    const Vec: i64 = 1;
+
+    trait Box { }
+
+    struct i64 { a: bool }
+
+    const bool: u8 = 1;
+
+    trait String { }
+
+    trait Copy { }
+
+    trait Ord { }
+
+    #[effects(pure)]
+    fn u8() -> u16 { 1 }
+}

@@ -1,0 +1,24 @@
+{
+  "sections": [
+    "쓸 수 있는 자리"
+  ],
+  "note": "The receiver of a mutating built-in method (pop, truncate) or of a `self: &mut T` method, and a `&mut` argument, must be a writable place (E0408).",
+  "check": [
+    {
+      "code": "E0408",
+      "line": 19
+    },
+    {
+      "code": "E0408",
+      "line": 24
+    },
+    {
+      "code": "E0408",
+      "line": 30
+    },
+    {
+      "code": "E0408",
+      "line": 36
+    }
+  ]
+}

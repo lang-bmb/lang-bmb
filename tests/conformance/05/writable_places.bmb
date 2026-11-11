@@ -1,0 +1,32 @@
+#[summary("writable places")]
+mod m {
+    struct P { x: i64, a: [i64; 2] }
+
+    #[effects(pure)]
+    fn through(p: &mut P, s: &mut [i64], v: &mut Vec<i64>) -> ()
+        requires s.len() > 0,
+    {
+        p.x = 3;
+        p.a[1] = 4;
+        s[0] = 5;
+        v.truncate(0);
+    }
+
+    #[effects(alloc, io)]
+    fn main() -> () {
+        let mut k: i64 = 1;
+        k = 2;
+        print_i64(k);
+        let mut p: P = P { x: 0, a: [0, 0] };
+        let mut arr: [i64; 1] = [0];
+        let mut v: Vec<i64> = Vec::new();
+        through(&mut p, &mut arr, &mut v);
+        print_i64(p.x);
+        print_i64(p.a[1]);
+        print_i64(arr[0]);
+        let mut b: Box<i64> = Box::new(0);
+        *b = 6;
+        print_i64(*b);
+        print_u64(v.len() as u64);
+    }
+}

@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "진입점"
+  ],
+  "note": "`main` is `#[effects(io)] fn main() -> ()`; other effects may come with `io`; a program without `main` is still checked.",
+  "check": [],
+  "verify": {
+    "diags": []
+  },
+  "run": "0\n"
+}

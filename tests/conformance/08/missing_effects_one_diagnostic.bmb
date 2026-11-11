@@ -1,0 +1,8 @@
+#[summary("one E0606 per function")]
+mod m {
+    #[effects(pure)]
+    fn both() -> () {
+        let b: Box<i64> = Box::new(1);
+        print_i64(*b)
+    }
+}

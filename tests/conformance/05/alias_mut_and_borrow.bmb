@@ -1,0 +1,20 @@
+#[summary("aliasing borrows")]
+mod m {
+    #[effects(pure)]
+    fn copy(a: &mut [i64], b: &[i64]) -> () {}
+
+    #[effects(pure)]
+    fn both(a: &mut [i64], b: &mut [i64]) -> () {}
+
+    #[effects(pure)]
+    fn shared() -> () {
+        let mut x: [i64; 2] = [0, 0];
+        copy(&mut x, &x);
+    }
+
+    #[effects(pure)]
+    fn twice() -> () {
+        let mut x: [i64; 2] = [0, 0];
+        both(&mut x, &mut x);
+    }
+}

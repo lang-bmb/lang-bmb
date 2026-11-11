@@ -1,0 +1,20 @@
+{
+  "sections": [
+    "명세 문맥과 실행 문맥"
+  ],
+  "note": "`forall`, `==>` and `old(..)` in executable code are E0503.",
+  "check": [
+    {
+      "code": "E0503",
+      "line": 5
+    },
+    {
+      "code": "E0503",
+      "line": 10
+    },
+    {
+      "code": "E0503",
+      "line": 15
+    }
+  ]
+}

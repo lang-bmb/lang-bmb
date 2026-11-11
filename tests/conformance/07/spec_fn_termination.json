@@ -1,0 +1,19 @@
+{
+  "sections": [
+    "의무의 종류"
+  ],
+  "note": "A recursive call in a recursive `spec fn` must decrease its measure (E0813).",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::forever": "failed",
+      "m::count": "verified"
+    },
+    "diags": [
+      {
+        "code": "E0813",
+        "line": 6
+      }
+    ]
+  }
+}

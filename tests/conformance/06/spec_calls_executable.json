@@ -1,0 +1,20 @@
+{
+  "sections": [
+    "명세 문맥과 실행 문맥"
+  ],
+  "note": "A specification context (a spec fn body, a contract clause, an assert) cannot call an executable function (E0504).",
+  "check": [
+    {
+      "code": "E0504",
+      "line": 6
+    },
+    {
+      "code": "E0504",
+      "line": 10
+    },
+    {
+      "code": "E0504",
+      "line": 17
+    }
+  ]
+}

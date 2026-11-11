@@ -1,0 +1,13 @@
+{
+  "sections": [
+    "선언과 몸의 관계",
+    "탈출구: `#[external_body]`"
+  ],
+  "note": "The body of an `#[external_body]` function is still checked for effects: effects are not trusted.",
+  "check": [
+    {
+      "code": "E0606",
+      "line": 5
+    }
+  ]
+}

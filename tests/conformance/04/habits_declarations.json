@@ -1,0 +1,48 @@
+{
+  "sections": [
+    "받지 않는 Rust 습관"
+  ],
+  "note": "Declarations and signatures not accepted: untyped `let` (E0201), no return type (E0209), `mut` parameter (E0210), lifetime (E0208), `&self` forms (E0228), `#[derive]` (E0220), `static` (E0261).",
+  "check": [
+    {
+      "code": "E0220",
+      "line": 3
+    },
+    {
+      "code": "E0261",
+      "line": 6
+    },
+    {
+      "code": "E0261",
+      "line": 8
+    },
+    {
+      "code": "E0228",
+      "line": 14
+    },
+    {
+      "code": "E0228",
+      "line": 17
+    },
+    {
+      "code": "E0228",
+      "line": 20
+    },
+    {
+      "code": "E0201",
+      "line": 24
+    },
+    {
+      "code": "E0209",
+      "line": 27
+    },
+    {
+      "code": "E0210",
+      "line": 30
+    },
+    {
+      "code": "E0208",
+      "line": 33
+    }
+  ]
+}

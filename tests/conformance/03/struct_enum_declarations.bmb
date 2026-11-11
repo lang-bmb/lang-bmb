@@ -1,0 +1,18 @@
+#[summary("s")]
+mod a {
+    struct Pt { x: i64, y: i64 }
+
+    enum Shape { Dot, Sq(i64), Rect(i64, Pt) }
+
+    struct Empty { }
+
+    enum Never { }
+
+    struct Tup(i64, i64);
+
+    enum Sv { A { x: i64 } }
+
+    struct R { r: &i64 }
+
+    enum Rs { A(&[i64]) }
+}

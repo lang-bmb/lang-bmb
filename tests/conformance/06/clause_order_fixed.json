@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "계약 절"
+  ],
+  "note": "The clause order is requires, ensures, decreases; `ensures` before `requires` is a syntax error (E0103).",
+  "check": [
+    {
+      "code": "E0103",
+      "line": 6
+    }
+  ]
+}

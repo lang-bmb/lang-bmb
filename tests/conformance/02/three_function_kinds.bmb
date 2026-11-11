@@ -1,0 +1,15 @@
+#[summary("s")]
+mod a {
+    spec fn double(x: i64) -> i64 { x + x }
+
+    proof fn double_even(x: i64)
+        ensures double(x) % 2 == 0,
+    {
+    }
+
+    #[effects(pure)]
+    fn twice(x: i64) -> (r: i64)
+        requires 0 <= x && x < 1000,
+        ensures r == double(x),
+    { x + x }
+}

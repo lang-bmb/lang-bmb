@@ -1,0 +1,15 @@
+#[summary("capturing closures")]
+mod m {
+    #[effects(pure)]
+    fn apply<F: Fn(i64) -> i64>(f: F, x: i64) -> i64 { f(x) }
+
+    #[effects(pure)]
+    fn moves(k: i64) -> i64 {
+        apply::<_>(move |x: i64| -> i64 { x.wrapping_add(k) }, 1)
+    }
+
+    #[effects(pure)]
+    fn plain() -> i64 {
+        apply::<_>(|x: i64| -> i64 { x }, 1)
+    }
+}

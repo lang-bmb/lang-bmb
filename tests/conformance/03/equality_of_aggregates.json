@@ -1,0 +1,24 @@
+{
+  "sections": [
+    "연산자와 피연산자"
+  ],
+  "note": "`==` on structs, enums and arrays exists in specifications only (E0425 in code); `==` on `Vec` is E0514.",
+  "check": [
+    {
+      "code": "E0425",
+      "line": 10
+    },
+    {
+      "code": "E0425",
+      "line": 13
+    },
+    {
+      "code": "E0425",
+      "line": 16
+    },
+    {
+      "code": "E0514",
+      "line": 19
+    }
+  ]
+}

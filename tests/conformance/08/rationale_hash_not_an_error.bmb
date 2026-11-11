@@ -1,0 +1,24 @@
+#[summary("rationale hashes")]
+mod m {
+    spec fn small(x: i64) -> bool { 0 <= x && x <= 10 }
+
+    #[effects(panic)]
+    fn stale(x: i64) -> i64 {
+        #[rationale(kind = boundary, hash = "0000000000000000", "callers pass small values")]
+        assume(small(x));
+        x + 1
+    }
+
+    #[effects(panic)]
+    fn unhashed(x: i64) -> i64 {
+        #[rationale(kind = boundary, "callers pass small values")]
+        assume(small(x));
+        x + 1
+    }
+
+    #[effects(io, panic)]
+    fn main() -> () {
+        print_i64(stale(3));
+        print_i64(unhashed(3));
+    }
+}

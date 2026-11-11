@@ -560,13 +560,21 @@ mod m {
 }
 
 #[test]
-fn a_proved_push_has_no_check_and_an_unproved_one_keeps_it() {
-    // Backlog 2G-04: E0816 like every obligation (ADR-0031 §4).
-    let text = "#[summary(\"g\")]\nmod m {\n    #[effects(alloc)]\n    fn grow(v: &mut Vec<i64>) -> () {\n        v.push(2);\n    }\n\n    #[effects(alloc)]\n    fn n() -> usize {\n        let mut v: Vec<i64> = Vec::new();\n        v.push(1);\n        v.len()\n    }\n}\n";
+fn a_push_has_no_length_check_and_a_capacity_keeps_its_own() {
+    // ADR-0124: a `push` carries no length obligation (the growth ends the
+    // program when the new size does not fit), so no check either way.
+    // `Vec::with_capacity(n)` keeps E0816 like every obligation (backlog
+    // 2G-04, ADR-0031 §4): proved for the literal, checked for the parameter.
+    let text = "#[summary(\"g\")]\nmod m {\n    #[effects(alloc)]\n    fn grow(v: &mut Vec<i64>) -> () {\n        v.push(2);\n    }\n\n    #[effects(alloc)]\n    fn n() -> usize {\n        let mut v: Vec<i64> = Vec::with_capacity(8);\n        v.push(1);\n        v.len()\n    }\n\n    #[effects(alloc)]\n    fn sized(k: usize) -> usize {\n        let v: Vec<i64> = Vec::with_capacity(k);\n        v.len()\n    }\n}\n";
     let out = emit(&src("g.bmb", text));
     let ir = out.ir.unwrap();
+    assert!(!ir.contains("`push` may exceed"), "{ir}");
     assert_eq!(ir.matches("; proved E0816").count(), 1, "{ir}");
-    assert_eq!(ir.matches("unproved: `push` may exceed").count(), 1, "{ir}");
+    assert_eq!(
+        ir.matches("unproved: the capacity may exceed").count(),
+        1,
+        "{ir}"
+    );
 }
 
 #[test]

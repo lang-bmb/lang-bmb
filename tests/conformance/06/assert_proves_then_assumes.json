@@ -1,0 +1,14 @@
+{
+  "sections": [
+    "`assert`"
+  ],
+  "note": "`assert(e);` proves `e` at its place and gives it as a fact afterwards; it may hold a quantifier.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::f": "verified",
+      "m::g": "verified"
+    },
+    "diags": []
+  }
+}

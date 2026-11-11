@@ -1,0 +1,30 @@
+#[summary("loop clauses")]
+mod m {
+    #[effects(pure)]
+    fn count(n: u64) -> (r: u64)
+        ensures r == n,
+    {
+        let mut i: u64 = 0;
+        while i < n
+            invariant i <= n, i >= 0,
+            decreases n - i,
+        {
+            i = i + 1;
+        }
+        i
+    }
+
+    #[effects(pure)]
+    fn spin(n: u64) -> u64 {
+        let mut k: u64 = n;
+        loop
+            decreases k,
+        {
+            if k == 0 {
+                break;
+            }
+            k = k - 1;
+        }
+        k
+    }
+}

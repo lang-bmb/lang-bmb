@@ -1,0 +1,26 @@
+#[summary("partial move")]
+mod m {
+    struct Buf { data: Vec<i64>, name: Vec<u8>, n: i64 }
+
+    #[effects(pure)]
+    fn whole(b: Buf) -> i64 { b.n }
+
+    #[effects(pure)]
+    fn other_fields(b: Buf) -> usize {
+        let d: Vec<i64> = b.data;
+        let k: i64 = b.n;
+        d.len() + b.name.len()
+    }
+
+    #[effects(pure)]
+    fn same_field(b: Buf) -> usize {
+        let d: Vec<i64> = b.data;
+        b.data.len()
+    }
+
+    #[effects(pure)]
+    fn whole_struct(b: Buf) -> i64 {
+        let d: Vec<i64> = b.data;
+        whole(b)
+    }
+}

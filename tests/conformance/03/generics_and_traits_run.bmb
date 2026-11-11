@@ -1,0 +1,36 @@
+#[summary("s")]
+mod a {
+    trait Area {
+        #[effects(pure)]
+        fn area(self: &Self) -> i64;
+    }
+
+    struct Sq { s: i64 }
+
+    struct W<T> { v: T }
+
+    impl<T: Copy> W<T> {
+        #[effects(pure)]
+        fn get(self: &W<T>) -> T { self.v }
+    }
+
+    impl Area for Sq {
+        #[effects(pure)]
+        fn area(self: &Sq) -> i64 { self.s }
+    }
+
+    #[effects(pure)]
+    fn larger<T: Copy + Ord>(a: T, b: T) -> T { if a < b { b } else { a } }
+
+    #[effects(pure)]
+    fn both<T: Area>(x: &T, q: Sq) -> i64 { larger::<i64>(x.area(), q.area()) }
+
+    #[effects(io)]
+    fn main() -> () {
+        let w: W<u8> = W { v: 4 };
+        print_u64(larger::<u8>(w.get(), 3) as u64);
+        print_i64(both::<Sq>(&Sq { s: 2 }, Sq { s: 9 }));
+        if larger::<bool>(true, false) { print_i64(1); } else { print_i64(0); }
+        print_u64(u32::from(larger::<char>('a', 'b')) as u64);
+    }
+}

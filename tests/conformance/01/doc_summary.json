@@ -1,0 +1,7 @@
+{
+  "sections": [
+    "`///`와 요약"
+  ],
+  "note": "`///` lines are the input form of `#[summary]`: consecutive lines are one summary, on a unit and on items.",
+  "check": []
+}

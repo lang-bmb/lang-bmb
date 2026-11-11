@@ -1,0 +1,18 @@
+#[summary("s")]
+mod a {
+    struct P { x: i64, y: i64, z: i64 }
+
+    #[effects(io)]
+    fn num(n: i64) -> (r: i64)
+        ensures r == n,
+    {
+        print_i64(n);
+        n
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        let p: P = P { x: num(1), y: num(2), z: num(3) };
+        print_i64(p.x + p.y + p.z);
+    }
+}

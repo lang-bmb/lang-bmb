@@ -1,0 +1,17 @@
+#[summary("E0804")]
+mod m {
+    #[effects(pure)]
+    fn div(a: u64, b: u64) -> u64 {
+        a / b
+    }
+
+    #[effects(pure)]
+    fn rem(a: u64, b: u64) -> u64 {
+        a % b
+    }
+
+    #[effects(pure)]
+    fn guarded(a: u64, b: u64) -> u64 {
+        if b == 0 { 0 } else { a / b + a % b }
+    }
+}

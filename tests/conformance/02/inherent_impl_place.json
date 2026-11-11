@@ -1,0 +1,20 @@
+{
+  "sections": [
+    "`impl`과 수신자"
+  ],
+  "note": "An inherent `impl T` comes in the unit that declares `T` (E0308 for another unit's or an unknown type), one block per list of bounds (E0308).",
+  "check": [
+    {
+      "code": "E0308",
+      "line": 12
+    },
+    {
+      "code": "E0308",
+      "line": 17
+    },
+    {
+      "code": "E0308",
+      "line": 33
+    }
+  ]
+}

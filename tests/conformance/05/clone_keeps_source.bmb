@@ -1,0 +1,19 @@
+#[summary("clone")]
+mod m {
+    #[effects(pure)]
+    fn take(v: Vec<i64>) -> usize { v.len() }
+
+    #[effects(pure)]
+    fn eat(s: String) -> usize { s.len() }
+
+    #[effects(alloc, io)]
+    fn main() -> () {
+        let mut v: Vec<i64> = Vec::new();
+        v.push(2);
+        print_u64(take(v.clone()) as u64);
+        print_u64(take(v) as u64);
+        let s: String = String::new();
+        print_u64(eat(s.clone()) as u64);
+        print_u64(eat(s) as u64);
+    }
+}

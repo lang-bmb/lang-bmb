@@ -1,0 +1,12 @@
+#[summary("the caller sees the contract")]
+mod m {
+    #[effects(pure)]
+    fn one() -> i64 { 1 }
+
+    #[effects(pure)]
+    fn two() -> (r: i64)
+        ensures r == 2,
+    {
+        one() + one()
+    }
+}

@@ -1,0 +1,40 @@
+#[summary("s")]
+mod a {
+    struct P { x: i64 }
+
+    enum S { A, B(i64), C(P) }
+
+    #[effects(pure)]
+    fn pick(s: S, d: i64) -> i64 {
+        match s {
+            S::A => d,
+            S::B(n) => n,
+            S::C(_) => return 0,
+        }
+    }
+
+    #[effects(pure)]
+    fn by_ref(s: &S) -> i64 {
+        match s {
+            S::A => 1,
+            S::B(n) => *n,
+            S::C(p) => p.x,
+        }
+    }
+
+    #[effects(pure)]
+    fn sign(x: i64) -> i64 { if x < 0 { -1 } else if x == 0 { 0 } else { 1 } }
+
+    #[effects(io)]
+    fn main() -> () {
+        print_i64(pick(S::A, 5));
+        print_i64(pick(S::B(6), 5));
+        print_i64(pick(S::C(P { x: 1 }), 5));
+        print_i64(by_ref(&S::C(P { x: 8 })));
+        print_i64(by_ref(&S::B(9)));
+        print_i64(sign(-9));
+        print_i64(sign(0));
+        if sign(3) == 1 { print_i64(3); }
+        if sign(3) == 0 { print_i64(4); }
+    }
+}

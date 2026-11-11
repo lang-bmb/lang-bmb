@@ -1,0 +1,26 @@
+#[summary("accepted argument lists")]
+mod m {
+    #[effects(pure)]
+    fn fill(a: &mut [i64], n: usize) -> () {}
+
+    #[effects(pure)]
+    fn store(a: &mut [i64], v: i64) -> () {}
+
+    #[effects(pure)]
+    fn same(a: &[i64], b: &[i64]) -> bool { a.len() == b.len() }
+
+    #[effects(pure)]
+    fn copy(a: &mut [i64], b: &[i64]) -> () {}
+
+    #[effects(pure)]
+    fn ok() -> bool {
+        let mut x: [i64; 2] = [0, 0];
+        let y: [i64; 2] = [1, 1];
+        let k: usize = 0;
+        fill(&mut x, x.len());
+        fill(&mut x, k + 1);
+        store(&mut x, x[0]);
+        copy(&mut x, &y);
+        same(&x, &x)
+    }
+}

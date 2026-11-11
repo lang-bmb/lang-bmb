@@ -1,0 +1,26 @@
+#[summary("s")]
+mod outer {
+    #[summary("i")]
+    mod inner {
+        #[effects(pure)]
+        fn f() -> i64 { 1 }
+
+        #[effects(pure)]
+        fn up() -> i64 { g() }
+    }
+
+    #[effects(pure)]
+    fn g() -> i64 { 2 }
+
+    #[effects(pure)]
+    fn down() -> i64 { inner::f() }
+
+    #[effects(pure)]
+    fn c() -> i64 { crate::outer::g() }
+
+    #[effects(pure)]
+    fn s() -> i64 { self::g() }
+
+    #[effects(pure)]
+    fn p() -> i64 { super::g() }
+}

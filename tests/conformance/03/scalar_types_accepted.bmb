@@ -1,0 +1,14 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn ints(a: i8, b: i16, c: i32, d: i64, e: isize, f: u8, g: u16, h: u32, i: u64, j: usize) -> () { }
+
+    #[effects(pure)]
+    fn others(x: f64, b: bool, c: char) -> () {
+        let u: () = ();
+        let y: f64 = 1.5;
+        let t: bool = true;
+        let k: char = '\u{1F600}';
+        u
+    }
+}

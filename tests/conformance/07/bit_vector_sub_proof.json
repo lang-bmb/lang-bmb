@@ -1,0 +1,19 @@
+{
+  "sections": [
+    "의무의 종류"
+  ],
+  "note": "The separate query of `assert(e) by (bit_vector);` must hold (E0818).",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::wrong": "failed",
+      "m::right": "verified"
+    },
+    "diags": [
+      {
+        "code": "E0818",
+        "line": 5
+      }
+    ]
+  }
+}

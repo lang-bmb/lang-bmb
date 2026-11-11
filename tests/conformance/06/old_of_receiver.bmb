@@ -1,0 +1,14 @@
+#[summary("old(self)")]
+mod m {
+    struct C { n: i64 }
+
+    impl C {
+        #[effects(pure)]
+        fn inc(self: &mut C) -> ()
+            requires self.n < 100,
+            ensures self.n == old(self).n + 1,
+        {
+            self.n = self.n + 1;
+        }
+    }
+}

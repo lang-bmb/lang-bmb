@@ -1,0 +1,36 @@
+{
+  "sections": [
+    "지역 이름"
+  ],
+  "note": "A local name does not hide a visible name: a parameter, an outer block's local, the result name, the unit's constant (E0303); two parameters of one name are E0303.",
+  "check": [
+    {
+      "code": "E0303",
+      "line": 8
+    },
+    {
+      "code": "E0303",
+      "line": 13
+    },
+    {
+      "code": "E0303",
+      "line": 17
+    },
+    {
+      "code": "E0303",
+      "line": 20
+    },
+    {
+      "code": "E0303",
+      "line": 23
+    },
+    {
+      "code": "E0303",
+      "line": 29
+    },
+    {
+      "code": "E0303",
+      "line": 35
+    }
+  ]
+}

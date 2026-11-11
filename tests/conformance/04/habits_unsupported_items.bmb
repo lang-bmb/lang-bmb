@@ -1,0 +1,21 @@
+#[summary("s")]
+mod a {
+    pub struct P { x: i64 }
+
+    struct Arr<const N: usize> { a: i64 }
+
+    trait Gen<T> { }
+
+    trait Sup { }
+
+    trait Sub: Sup { }
+
+    type Alias = i64;
+
+    spec fn sp(x: i64) -> bool requires x > 0, { x > 1 }
+
+    trait Dec {
+        #[effects(pure)]
+        fn m(self: &Self, n: i64) -> i64 decreases n, ;
+    }
+}

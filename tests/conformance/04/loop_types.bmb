@@ -1,0 +1,29 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn ok(n: i64) -> i64
+        requires n > 0,
+    {
+        let mut k: i64 = n;
+        loop
+            invariant k >= 0,
+            decreases k,
+        {
+            if k == 0 { return 1; }
+            k = k - 1;
+        }
+    }
+
+    #[effects(pure)]
+    fn e1(n: i64) -> i64 {
+        let mut i: i64 = 0;
+        while n decreases n, { i = 1; }
+        i
+    }
+
+    #[effects(pure)]
+    fn e2(n: i64) -> i64 {
+        let x: i64 = loop decreases n, { break 1; break true; };
+        x
+    }
+}

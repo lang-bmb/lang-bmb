@@ -1,0 +1,21 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn f(x: i64) -> (r: i64)
+        ensures r == x,
+        requires x > 0,
+    { x }
+
+    #[effects(pure)]
+    fn g(x: i64) -> i64
+        decreases x,
+        requires x > 0,
+    { x }
+
+    #[effects(pure)]
+    fn h(x: i64) -> (r: i64)
+        requires x > 0,
+        ensures r == x,
+        decreases x,
+    { x }
+}

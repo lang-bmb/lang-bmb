@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "`///`와 요약"
+  ],
+  "note": "A blank line ends a `///` group, so two groups before one unit are two summaries (E0605).",
+  "check": [
+    {
+      "code": "E0605",
+      "line": 3
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn e1(a: i64) -> i64 { a[0] }
+
+    #[effects(pure)]
+    fn e2(a: &str) -> u8 { a[0] }
+}

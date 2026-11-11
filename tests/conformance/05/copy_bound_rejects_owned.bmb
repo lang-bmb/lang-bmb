@@ -1,0 +1,13 @@
+#[summary("Copy bound")]
+mod m {
+    #[effects(pure)]
+    fn same<T: Copy>(x: T) -> T { x }
+
+    #[effects(pure)]
+    fn ok() -> i64 { same::<i64>(1) }
+
+    #[effects(alloc)]
+    fn bad() -> Vec<i64> {
+        same::<Vec<i64>>(Vec::new())
+    }
+}

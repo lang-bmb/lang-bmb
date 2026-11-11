@@ -1,0 +1,19 @@
+{
+  "sections": [
+    "의무의 종류"
+  ],
+  "note": "`f64::from` of a 64-bit integer must be exact: the value is at most 2^53 in magnitude (E0815).",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::any": "failed",
+      "m::small": "verified"
+    },
+    "diags": [
+      {
+        "code": "E0815",
+        "line": 5
+      }
+    ]
+  }
+}

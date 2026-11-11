@@ -1,0 +1,21 @@
+#[summary("fields behind a pointer")]
+mod m {
+    struct Buf { data: Vec<i64>, n: i64 }
+
+    #[effects(pure)]
+    fn behind_ref(r: &Buf) -> usize {
+        let d: Vec<i64> = r.data;
+        d.len()
+    }
+
+    #[effects(pure)]
+    fn in_box(b: Box<Buf>) -> usize {
+        let d: Vec<i64> = b.data;
+        d.len()
+    }
+
+    #[effects(pure)]
+    fn reads(r: &Buf, b: Box<Buf>) -> usize {
+        r.data.len() + b.data.len()
+    }
+}

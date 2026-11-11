@@ -1,0 +1,16 @@
+#[summary("s")]
+mod a {
+    struct Cell { v: i64 }
+
+    #[effects(pure)]
+    fn e1(p: &Cell) -> i64 { (*p).v }
+
+    #[effects(pure)]
+    fn e2(p: Cell) -> i64 { p.w }
+
+    #[effects(pure)]
+    fn e3(a: [i64; 2], i: i32) -> i64 { a[i] }
+
+    #[effects(pure)]
+    fn e4(a: bool) -> i64 { a[0] }
+}

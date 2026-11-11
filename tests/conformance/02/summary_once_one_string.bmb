@@ -1,0 +1,10 @@
+#[summary("s")]
+#[summary("t")]
+mod a {
+    #[summary(one, two)]
+    const A: i64 = 1;
+
+    #[summary("x")]
+    #[summary("y")]
+    struct S { x: i64 }
+}

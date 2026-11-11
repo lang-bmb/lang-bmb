@@ -1,0 +1,11 @@
+#[summary("s")]
+mod a {
+    #[summary("i")]
+    mod b {
+        #[effects(alloc, io)]
+        fn main() -> () {
+            let v: Vec<i64> = Vec::new();
+            print_u64(v.len() as u64);
+        }
+    }
+}

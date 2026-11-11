@@ -1,0 +1,16 @@
+#[summary("provers")]
+mod m {
+    #[effects(pure)]
+    fn other(x: u32) -> u32 {
+        assert(x >= 0) by (nonlinear_arith);
+        x
+    }
+
+    #[effects(pure)]
+    fn block(x: u32) -> u32 {
+        assert(x == x) by {
+            assert(x >= 0);
+        }
+        x
+    }
+}

@@ -1,0 +1,14 @@
+{
+  "sections": [
+    "`old`"
+  ],
+  "note": "`old` is written `*old(x)` for a scalar reference, `old(a)[i]` and `old(a).len()` for a slice, and stands in `ensures`, loop invariants and `assert`.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::set_first": "verified",
+      "m::twice": "verified"
+    },
+    "diags": []
+  }
+}

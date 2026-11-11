@@ -1,0 +1,14 @@
+{
+  "sections": [
+    "항목"
+  ],
+  "note": "The three kinds of function: `fn`, `spec fn` and `proof fn`.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "a::twice": "verified",
+      "a::double_even": "verified"
+    },
+    "diags": []
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "sections": [
+    "효과의 집합",
+    "선언과 몸의 관계"
+  ],
+  "note": "`Vec::new`, `Box::new` and a Vec's `clone` need the `alloc` effect; a function that lacks it gets E0606 on its attribute.",
+  "check": [
+    {
+      "code": "E0606",
+      "line": 3
+    },
+    {
+      "code": "E0606",
+      "line": 8
+    },
+    {
+      "code": "E0606",
+      "line": 13
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "sections": [
+    "항목"
+  ],
+  "note": "Constants, types, traits, nested units and functions of a unit share one namespace (E0302); variants are not in it.",
+  "check": [
+    {
+      "code": "E0302",
+      "line": 3
+    },
+    {
+      "code": "E0302",
+      "line": 5
+    },
+    {
+      "code": "E0302",
+      "line": 11
+    }
+  ]
+}

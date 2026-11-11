@@ -1,0 +1,20 @@
+{
+  "sections": [
+    "`proof fn`과 `proof` 블록"
+  ],
+  "note": "A lemma call proves the lemma's `requires` and gives its `ensures` as a fact afterwards.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::lemma": "verified",
+      "m::with_lemma": "verified",
+      "m::without": "failed"
+    },
+    "diags": [
+      {
+        "code": "E0810",
+        "line": 24
+      }
+    ]
+  }
+}

@@ -1,0 +1,23 @@
+#[summary("owned types move")]
+mod m {
+    #[effects(alloc)]
+    fn vec() -> usize {
+        let v: Vec<i64> = Vec::new();
+        let w: Vec<i64> = v;
+        v.len()
+    }
+
+    #[effects(alloc)]
+    fn string() -> usize {
+        let s: String = String::new();
+        let t: String = s;
+        s.len()
+    }
+
+    #[effects(alloc)]
+    fn boxed() -> i64 {
+        let b: Box<i64> = Box::new(1);
+        let c: Box<i64> = b;
+        *b
+    }
+}

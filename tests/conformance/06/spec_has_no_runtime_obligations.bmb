@@ -1,0 +1,16 @@
+#[summary("no obligations in specifications")]
+mod m {
+    spec fn big(x: i64, y: i64) -> i64 { x * 2 + y - 1 }
+
+    spec fn ratio(x: i64, y: i64) -> i64 { x / y }
+
+    spec fn at(a: &[i64], i: usize) -> i64 { a[i] }
+
+    #[effects(pure)]
+    fn f(a: &[i64], i: usize, x: i64, y: i64) -> i64
+        requires big(x, y) == x + x + y - 1 || ratio(x, y) == at(a, i),
+    {
+        assert(x + 1 > x);
+        0
+    }
+}

@@ -1,0 +1,11 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn f1(x: i128) -> i64 { 1 }
+
+    #[effects(pure)]
+    fn f2(x: u128) -> i64 { 1 }
+
+    #[effects(pure)]
+    fn f3(x: f32) -> i64 { 1 }
+}

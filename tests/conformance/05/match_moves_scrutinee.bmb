@@ -1,0 +1,26 @@
+#[summary("match moves")]
+mod m {
+    #[effects(pure)]
+    fn bound(o: Option<Vec<i64>>) -> usize {
+        let n: usize = match o {
+            None => 0,
+            Some(v) => v.len(),
+        };
+        match o {
+            None => n,
+            Some(w) => w.len(),
+        }
+    }
+
+    #[effects(pure)]
+    fn copy_payload(o: Option<i64>) -> i64 {
+        let n: i64 = match o {
+            None => 0,
+            Some(v) => v,
+        };
+        match o {
+            None => n,
+            Some(w) => w,
+        }
+    }
+}

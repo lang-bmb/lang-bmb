@@ -1,0 +1,23 @@
+#[summary("moving out of a reference match")]
+mod m {
+    enum Msg { Empty, Data(Vec<i64>) }
+
+    #[effects(pure)]
+    fn steal(m: &Msg) -> usize {
+        match m {
+            Msg::Empty => 0,
+            Msg::Data(d) => {
+                let v: Vec<i64> = *d;
+                v.len()
+            }
+        }
+    }
+
+    #[effects(pure)]
+    fn read(m: &Msg) -> usize {
+        match m {
+            Msg::Empty => 0,
+            Msg::Data(d) => d.len(),
+        }
+    }
+}

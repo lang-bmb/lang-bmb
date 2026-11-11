@@ -1,0 +1,24 @@
+{
+  "sections": [
+    "의무의 종류"
+  ],
+  "note": "Each `ensures` clause is an obligation at every exit of the function: the tail expression and each `return` (E0802).",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::good": "verified",
+      "m::bad_tail": "failed",
+      "m::bad_return": "failed"
+    },
+    "diags": [
+      {
+        "code": "E0802",
+        "line": 15
+      },
+      {
+        "code": "E0802",
+        "line": 25
+      }
+    ]
+  }
+}

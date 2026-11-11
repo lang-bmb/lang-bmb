@@ -1,0 +1,36 @@
+#[summary("lemma calls")]
+mod m {
+    proof fn fine(x: i64)
+        requires x > 0,
+        ensures x >= 1,
+    {
+    }
+
+    spec fn in_spec(x: i64) -> bool {
+        fine(x)
+    }
+
+    #[effects(pure)]
+    fn in_code(x: i64) -> i64
+        requires x > 0,
+    {
+        fine(x);
+        x
+    }
+
+    #[effects(pure)]
+    fn in_block(x: i64) -> i64
+        requires x > 0,
+    {
+        proof {
+            fine(x);
+        }
+        x
+    }
+
+    proof fn in_lemma(x: i64)
+        requires x > 1,
+    {
+        fine(x);
+    }
+}

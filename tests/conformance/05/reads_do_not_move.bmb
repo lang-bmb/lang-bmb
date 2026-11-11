@@ -1,0 +1,29 @@
+#[summary("reads are not moves")]
+mod m {
+    struct Buf { data: Vec<i64>, n: i64 }
+
+    #[effects(pure)]
+    fn count(v: &Vec<i64>) -> usize { v.len() }
+
+    #[effects(pure)]
+    fn size(a: &[i64]) -> usize { a.len() }
+
+    #[effects(pure)]
+    fn take(v: Vec<i64>) -> usize { v.len() }
+
+    #[effects(alloc, io)]
+    fn main() -> () {
+        let mut v: Vec<i64> = Vec::new();
+        v.push(5);
+        print_u64(v.len() as u64);
+        print_i64(v[0]);
+        print_u64(count(&v) as u64);
+        print_u64(size(v.as_slice()) as u64);
+        let b: Box<i64> = Box::new(4);
+        print_i64(*b);
+        print_i64(*b);
+        let s: Buf = Buf { data: v, n: 1 };
+        print_i64(s.n);
+        print_u64(take(s.data) as u64);
+    }
+}

@@ -1,0 +1,41 @@
+#[summary("trust levels")]
+mod m {
+    spec fn small(x: i64) -> bool { 0 <= x && x <= 10 }
+
+    #[effects(panic)]
+    fn double(x: i64) -> (r: i64)
+        ensures r <= 20,
+    {
+        #[rationale(kind = boundary, "callers pass small values")]
+        assume(small(x));
+        x + x
+    }
+
+    #[rationale(kind = boundary, "the outside world")]
+    #[external_body]
+    #[effects(panic)]
+    fn outside() -> (r: i64)
+        ensures small(r),
+    {
+        7
+    }
+
+    #[effects(panic)]
+    fn caller() -> i64 {
+        let v: i64 = outside();
+        v + 1
+    }
+
+    #[effects(panic)]
+    fn ignores() -> i64 {
+        let v: i64 = double(3);
+        0
+    }
+
+    #[effects(io, panic)]
+    fn main() -> () {
+        print_i64(caller());
+        print_i64(double(2));
+        print_i64(ignores());
+    }
+}

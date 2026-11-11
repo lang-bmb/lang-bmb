@@ -1,0 +1,30 @@
+{
+  "sections": [
+    "의무의 종류"
+  ],
+  "note": "A call inside one recursive component (direct or mutual, executable or proof fn) must decrease the measure (E0809).",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::same": "failed",
+      "m::good": "verified",
+      "m::lemma_same": "failed",
+      "m::ping": "failed",
+      "m::pong": "verified"
+    },
+    "diags": [
+      {
+        "code": "E0809",
+        "line": 7
+      },
+      {
+        "code": "E0809",
+        "line": 21
+      },
+      {
+        "code": "E0809",
+        "line": 29
+      }
+    ]
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "sections": [
+    "의무의 종류"
+  ],
+  "note": "A type invariant is owed for a local at a loop head (E0823).",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::broken": "failed",
+      "m::kept": "verified"
+    },
+    "diags": [
+      {
+        "code": "E0823",
+        "line": 13
+      }
+    ]
+  }
+}

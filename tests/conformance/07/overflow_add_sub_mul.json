@@ -1,0 +1,29 @@
+{
+  "sections": [
+    "의무의 종류"
+  ],
+  "note": "`+`, `-` and `*` in executable code must not overflow their type (E0803).",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::add": "failed",
+      "m::sub": "failed",
+      "m::mul": "failed",
+      "m::guarded": "verified"
+    },
+    "diags": [
+      {
+        "code": "E0803",
+        "line": 5
+      },
+      {
+        "code": "E0803",
+        "line": 10
+      },
+      {
+        "code": "E0803",
+        "line": 15
+      }
+    ]
+  }
+}

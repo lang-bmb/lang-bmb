@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "참조는 매개변수에만"
+  ],
+  "note": "Lifetime annotations are E0208.",
+  "check": [
+    {
+      "code": "E0208",
+      "line": 4
+    }
+  ]
+}

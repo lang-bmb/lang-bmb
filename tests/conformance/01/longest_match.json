@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "구두점"
+  ],
+  "note": "Punctuation is matched longest first: `..=`, `<=`, `==`, `->`, `::` are single tokens without blanks.",
+  "check": [],
+  "verify": {
+    "diags": []
+  },
+  "run": "3\n"
+}

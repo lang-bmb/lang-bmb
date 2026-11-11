@@ -1,0 +1,9 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn f(summary: i64, effects: i64) -> i64 {
+        let uses: i64 = summary;
+        let print_i64: i64 = effects;
+        if uses > print_i64 { uses } else { print_i64 }
+    }
+}

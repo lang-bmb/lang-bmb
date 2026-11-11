@@ -1,0 +1,19 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn arr(a: [i64; 2], i: usize) -> i64 {
+        a[i]
+    }
+
+    #[effects(pure)]
+    fn slice(s: &[i64]) -> i64 {
+        s[0]
+    }
+
+    #[effects(pure)]
+    fn ok(s: &[i64], i: usize) -> i64
+        requires i < s.len(),
+    {
+        s[i]
+    }
+}

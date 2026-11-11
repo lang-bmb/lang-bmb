@@ -1,0 +1,13 @@
+{
+  "sections": [
+    "명세의 정수"
+  ],
+  "note": "Specification expressions carry no overflow, division or index obligations.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::f": "verified"
+    },
+    "diags": []
+  }
+}

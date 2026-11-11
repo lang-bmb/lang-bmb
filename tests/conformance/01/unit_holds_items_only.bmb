@@ -1,0 +1,7 @@
+#[summary("s")]
+mod a {
+    let x: i64 = 1;
+
+    #[effects(pure)]
+    fn f() -> i64 { 1 }
+}

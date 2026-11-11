@@ -1,0 +1,24 @@
+#[summary("unit a")]
+mod a {
+    spec fn small(n: u64) -> bool { n < 10 }
+
+    spec fn bounded(n: u64) -> bool { small(n) }
+}
+
+#[summary("unit b")]
+mod b {
+    #[effects(pure)]
+    fn hidden(n: u64) -> u64
+        requires a::bounded(n),
+    {
+        n + 1
+    }
+
+    #[effects(pure)]
+    #[uses(a::small)]
+    fn shown(n: u64) -> u64
+        requires a::bounded(n),
+    {
+        n + 1
+    }
+}

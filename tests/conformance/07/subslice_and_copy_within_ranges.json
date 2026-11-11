@@ -1,0 +1,24 @@
+{
+  "sections": [
+    "의무의 종류"
+  ],
+  "note": "A sub-slice `&a[lo..hi]` and the ranges of `copy_within` must lie inside the slice (E0805).",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::sub": "failed",
+      "m::copy": "failed",
+      "m::guarded": "verified"
+    },
+    "diags": [
+      {
+        "code": "E0805",
+        "line": 8
+      },
+      {
+        "code": "E0805",
+        "line": 14
+      }
+    ]
+  }
+}

@@ -1,0 +1,26 @@
+#[summary("nondet loops")]
+mod m {
+    #[effects(nondet)]
+    fn unbounded(n: u64) -> u64 {
+        let mut k: u64 = n;
+        loop {
+            if k == 0 {
+                break;
+            }
+            k = k / 2;
+        }
+        k
+    }
+
+    #[effects(alloc)]
+    fn bounded(n: u64) -> u64 {
+        let mut k: u64 = n;
+        loop {
+            if k == 0 {
+                break;
+            }
+            k = k / 2;
+        }
+        k
+    }
+}

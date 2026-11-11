@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "수량자와 트리거"
+  ],
+  "note": "A quantifier's bound variable has an integer type; another type is E0402.",
+  "check": [
+    {
+      "code": "E0402",
+      "line": 6
+    }
+  ]
+}

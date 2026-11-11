@@ -1,0 +1,14 @@
+#[summary("mut parameters")]
+mod m {
+    #[effects(pure)]
+    fn bad(mut a: i64) -> i64 {
+        a
+    }
+
+    #[effects(pure)]
+    fn good(a: i64) -> i64 {
+        let mut b: i64 = a;
+        b = 2;
+        b
+    }
+}

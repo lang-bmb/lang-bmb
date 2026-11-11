@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "클로저"
+  ],
+  "note": "A closure is the argument of an `Fn`-bounded type parameter, writes its parameter and result types, and captures an outer local with `move`; a function item goes in the same place.",
+  "check": [],
+  "verify": {
+    "diags": []
+  },
+  "run": "6\n8\n-4\n12\n"
+}

@@ -1,0 +1,7 @@
+#[summary("s")]
+mod app {
+    #[effects(io)]
+    fn main() -> () {
+        if std::str::starts_with("abc", "ab") { print_i64(1); } else { print_i64(0); }
+    }
+}

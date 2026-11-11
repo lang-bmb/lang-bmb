@@ -1,0 +1,8 @@
+{
+  "sections": [
+    "갈래와 루프의 이동"
+  ],
+  "note": "A path that ends in `return` is not part of the join, so a move on it does not make the value moved afterwards.",
+  "check": [],
+  "run": "7\n1\n"
+}

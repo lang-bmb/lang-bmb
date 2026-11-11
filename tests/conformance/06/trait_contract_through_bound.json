@@ -1,0 +1,20 @@
+{
+  "sections": [
+    "trait의 계약과 impl의 정제"
+  ],
+  "note": "A call through a bound uses the trait's contract; a call on the concrete type uses the impl function's own (here stronger) contract.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::through": "verified",
+      "m::through_too_much": "failed",
+      "m::concrete": "verified"
+    },
+    "diags": [
+      {
+        "code": "E0802",
+        "line": 30
+      }
+    ]
+  }
+}

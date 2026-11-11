@@ -1,0 +1,16 @@
+{
+  "sections": [
+    "정수 리터럴"
+  ],
+  "note": "Integer literals take no suffix: a letter or `_` word right after the digits is E0104, an upper-case prefix included.",
+  "check": [
+    {
+      "code": "E0104",
+      "line": 4
+    },
+    {
+      "code": "E0104",
+      "line": 7
+    }
+  ]
+}

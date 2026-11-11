@@ -1,0 +1,19 @@
+#[summary("ghost code and invariants")]
+mod m {
+    #[invariant(ordered)]
+    struct Span { lo: i64, hi: i64 }
+
+    spec fn ordered(s: &Span) -> bool { s.lo <= s.hi }
+
+    #[uses(ordered)]
+    proof fn unstated(s: &Span)
+        ensures s.lo <= s.hi,
+    {
+    }
+
+    proof fn stated(s: &Span)
+        requires ordered(s),
+        ensures s.lo <= s.hi,
+    {
+    }
+}

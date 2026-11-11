@@ -1,0 +1,22 @@
+#[summary("E0815: integers")]
+mod m {
+    #[effects(pure)]
+    fn negative(x: i64) -> u64 {
+        x as u64
+    }
+
+    #[effects(pure)]
+    fn narrow(x: u64) -> u8 {
+        x as u8
+    }
+
+    #[effects(pure)]
+    fn guarded(x: i64) -> u8 {
+        if 0 <= x && x < 256 { x as u8 } else { 0 }
+    }
+
+    #[effects(pure)]
+    fn widen(x: u8) -> i64 {
+        x as i64
+    }
+}

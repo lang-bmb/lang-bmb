@@ -1,0 +1,20 @@
+#[summary("orthogonal effects")]
+mod m {
+    #[effects(io)]
+    fn io_only() -> () {
+        let b: Box<i64> = Box::new(1);
+        print_i64(*b);
+    }
+
+    #[effects(alloc)]
+    fn alloc_only() -> () {
+        let b: Box<i64> = Box::new(1);
+        print_i64(*b);
+    }
+
+    #[effects(alloc, io)]
+    fn both() -> () {
+        let b: Box<i64> = Box::new(1);
+        print_i64(*b);
+    }
+}

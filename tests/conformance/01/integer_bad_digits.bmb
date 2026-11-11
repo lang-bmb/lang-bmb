@@ -1,0 +1,11 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn f() -> i64 { 0b102 }
+
+    #[effects(pure)]
+    fn g() -> i64 { 0x }
+
+    #[effects(pure)]
+    fn h() -> i64 { 0o8 }
+}

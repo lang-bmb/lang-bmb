@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "중첩 한도"
+  ],
+  "note": "Unary expressions count toward the same depth as parentheses (150 pairs of `!` and `(`).",
+  "check": [
+    {
+      "code": "E0107",
+      "line": 5
+    }
+  ]
+}

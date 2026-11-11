@@ -1,0 +1,24 @@
+{
+  "sections": [
+    "`old`"
+  ],
+  "note": "`old(x)` in `requires`, or on a parameter that is not `&mut`, is E0508; in executable code it is E0503.",
+  "check": [
+    {
+      "code": "E0508",
+      "line": 5
+    },
+    {
+      "code": "E0508",
+      "line": 11
+    },
+    {
+      "code": "E0508",
+      "line": 17
+    },
+    {
+      "code": "E0503",
+      "line": 24
+    }
+  ]
+}

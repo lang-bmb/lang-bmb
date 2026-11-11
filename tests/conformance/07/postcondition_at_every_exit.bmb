@@ -1,0 +1,32 @@
+#[summary("E0802")]
+mod m {
+    #[effects(pure)]
+    fn good(x: i64) -> (r: i64)
+        ensures r >= 0,
+    {
+        if x < 0 {
+            return 0;
+        }
+        x
+    }
+
+    #[effects(pure)]
+    fn bad_tail(x: i64) -> (r: i64)
+        ensures r >= 0,
+    {
+        if x < 0 {
+            return 0;
+        }
+        x - 1
+    }
+
+    #[effects(pure)]
+    fn bad_return(x: i64) -> (r: i64)
+        ensures r >= 0,
+    {
+        if x < 0 {
+            return -1;
+        }
+        x
+    }
+}

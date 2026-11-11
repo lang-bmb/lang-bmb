@@ -1,0 +1,19 @@
+{
+  "sections": [
+    "탈출구: `assume`"
+  ],
+  "note": "`assume(p(..));` gives `p(..)` as a fact from its place on without a proof, so obligations after it that follow from it are verified.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::trusted": "verified",
+      "m::untrusted": "failed"
+    },
+    "diags": [
+      {
+        "code": "E0803",
+        "line": 14
+      }
+    ]
+  }
+}

@@ -1,0 +1,18 @@
+#[summary("assert")]
+mod m {
+    #[effects(pure)]
+    fn f(x: u8) -> (r: u64)
+        ensures r <= 510,
+    {
+        let y: u64 = x as u64;
+        assert(y <= 255);
+        y + y
+    }
+
+    #[effects(pure)]
+    fn g(a: &[i64]) -> ()
+        requires a.len() == 0,
+    {
+        assert(forall|i: usize| i < a.len() ==> #[trigger] a[i] > 0);
+    }
+}

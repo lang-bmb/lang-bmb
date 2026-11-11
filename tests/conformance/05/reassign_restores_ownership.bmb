@@ -1,0 +1,23 @@
+#[summary("assign again")]
+mod m {
+    #[effects(pure)]
+    fn take(v: Vec<i64>) -> usize { v.len() }
+
+    #[effects(alloc)]
+    fn again() -> usize {
+        let mut v: Vec<i64> = Vec::new();
+        let n: usize = take(v);
+        v = Vec::new();
+        n + v.len()
+    }
+
+    #[effects(alloc, io)]
+    fn main() -> () {
+        print_u64(again() as u64);
+        let mut w: Vec<i64> = Vec::new();
+        let n: usize = take(w);
+        w = Vec::new();
+        w.push(4);
+        print_u64(take(w) as u64);
+    }
+}

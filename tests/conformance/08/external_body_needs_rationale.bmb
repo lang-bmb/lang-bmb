@@ -1,0 +1,14 @@
+#[summary("external_body and rationale")]
+mod m {
+    #[external_body]
+    #[effects(panic)]
+    fn without() -> i64 {
+        0
+    }
+
+    #[rationale(kind = boundary, "alone")]
+    #[effects(pure)]
+    fn lone() -> i64 {
+        0
+    }
+}

@@ -1,0 +1,16 @@
+#[summary("s")]
+mod a {
+    #[effects(io)]
+    fn main() -> () { }
+}
+
+#[summary("s")]
+mod b {
+    spec fn main() -> bool { false }
+}
+
+#[summary("s")]
+mod c {
+    #[effects(io)]
+    fn main() -> () { }
+}

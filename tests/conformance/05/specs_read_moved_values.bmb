@@ -1,0 +1,16 @@
+#[summary("specs read moved values")]
+mod m {
+    #[effects(pure)]
+    fn take(v: Vec<i64>) -> (r: usize)
+        ensures r == v.len(),
+    {
+        v.len()
+    }
+
+    #[effects(pure)]
+    fn f(v: Vec<i64>) -> usize {
+        let n: usize = take(v);
+        assert(n == v.len());
+        n
+    }
+}

@@ -1,0 +1,26 @@
+#[summary("E0806")]
+mod m {
+    #[effects(pure)]
+    fn bad(n: u64) -> u64 {
+        let mut i: u64 = 0;
+        while i < n
+            invariant i >= 1,
+            decreases n - i,
+        {
+            i = i + 1;
+        }
+        i
+    }
+
+    #[effects(pure)]
+    fn good(n: u64) -> u64 {
+        let mut i: u64 = 0;
+        while i < n
+            invariant i >= 0,
+            decreases n - i,
+        {
+            i = i + 1;
+        }
+        i
+    }
+}

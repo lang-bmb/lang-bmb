@@ -1,0 +1,22 @@
+#[summary("shared reference match")]
+mod m {
+    enum Slot { Empty, Full(i64) }
+
+    #[effects(pure)]
+    fn read(s: &Slot) -> i64 {
+        match s {
+            Slot::Empty => 0,
+            Slot::Full(n) => *n,
+        }
+    }
+
+    #[effects(pure)]
+    fn write(s: &Slot) -> () {
+        match s {
+            Slot::Empty => {}
+            Slot::Full(n) => {
+                *n = 1;
+            }
+        }
+    }
+}

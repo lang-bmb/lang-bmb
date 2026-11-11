@@ -1,0 +1,24 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn apply<F: Fn(i64) -> i64>(f: F, x: i64) -> i64
+        requires f.requires(x),
+    { f(x) }
+
+    #[effects(pure)]
+    fn two<F: Fn(i64, i64) -> i64>(f: F) -> i64
+        requires f.requires(3, 4),
+    { f(3, 4) }
+
+    #[effects(pure)]
+    fn neg(x: i64) -> i64 { 0.wrapping_sub(x) }
+
+    #[effects(io)]
+    fn main() -> () {
+        let k: i64 = 5;
+        print_i64(apply::<_>(move |x: i64| -> i64 { x.wrapping_add(k) }, 1));
+        print_i64(apply::<_>(|x: i64| -> i64 { x.wrapping_mul(2) }, 4));
+        print_i64(apply::<_>(neg, 4));
+        print_i64(two::<_>(|a: i64, b: i64| -> i64 { a.wrapping_mul(b) }));
+    }
+}

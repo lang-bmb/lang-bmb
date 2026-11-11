@@ -1,0 +1,30 @@
+#[summary("ghost code")]
+mod m {
+    #[effects(pure)]
+    fn bump(x: i64) -> i64 { x }
+
+    proof fn runs(x: i64) {
+        let y: i64 = bump(x);
+        let mut z: i64 = x;
+    }
+
+    proof fn loops(x: i64) {
+        while x < 0
+            decreases 0 - x,
+        {
+        }
+    }
+
+    #[effects(pure)]
+    fn block(x: i64) -> i64 {
+        let mut k: i64 = 0;
+        proof {
+            k = 1;
+        }
+        proof {
+            proof {
+            }
+        }
+        x
+    }
+}

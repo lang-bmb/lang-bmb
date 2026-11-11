@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "조기 탈출: return, break, continue, ?"
+  ],
+  "note": "`break` and `continue` act on the innermost loop, `break 'l` and `continue 'l` on the enclosing loop labeled `'l`; `return e` leaves the function.",
+  "check": [],
+  "verify": {
+    "diags": []
+  },
+  "run": "0\n1\n10\n11\n0\n2\n-2\n"
+}

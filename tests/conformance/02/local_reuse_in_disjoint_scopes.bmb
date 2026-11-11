@@ -1,0 +1,23 @@
+#[summary("s")]
+mod a {
+    enum E { A, B(i64) }
+
+    #[effects(pure)]
+    fn f(x: i64) -> i64 { x }
+
+    #[effects(pure)]
+    fn g(c: bool, e: E) -> i64 {
+        let f: i64 = 1;
+        let E: i64 = 2;
+        let a: i64 = 3;
+        let mut t: i64 = 0;
+        if c { let y: i64 = 2; t = y; } else { let y: i64 = 3; t = y; }
+        for i in 0..2 { t = i; }
+        for i in 0..3 { t = i; }
+        match e {
+            E::A => { let w: i64 = 1; t = w; },
+            E::B(w) => { t = w; },
+        }
+        if t > f { E } else { a }
+    }
+}

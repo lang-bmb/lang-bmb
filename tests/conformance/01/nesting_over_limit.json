@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "중첩 한도"
+  ],
+  "note": "Syntax nested deeper than 256 levels is E0107 (300 parentheses).",
+  "check": [
+    {
+      "code": "E0107",
+      "line": 5
+    }
+  ]
+}

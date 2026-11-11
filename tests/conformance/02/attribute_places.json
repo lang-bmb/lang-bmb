@@ -1,0 +1,32 @@
+{
+  "sections": [
+    "속성"
+  ],
+  "note": "Attribute names are a closed list with fixed places: an unknown name or a place outside the table is E0605; `fn` needs `#[effects]` (E0601), `spec fn` takes none (E0604), `proof fn` none (E0256).",
+  "check": [
+    {
+      "code": "E0605",
+      "line": 3
+    },
+    {
+      "code": "E0605",
+      "line": 6
+    },
+    {
+      "code": "E0601",
+      "line": 9
+    },
+    {
+      "code": "E0604",
+      "line": 11
+    },
+    {
+      "code": "E0256",
+      "line": 14
+    },
+    {
+      "code": "E0605",
+      "line": 19
+    }
+  ]
+}

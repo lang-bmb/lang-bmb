@@ -1,0 +1,28 @@
+{
+  "sections": [
+    "메서드 호출"
+  ],
+  "note": "A `&mut` receiver needs a writable place (E0408); an unknown method is E0404; a method of two traits is E0313; an associated function called as a method is E0314.",
+  "check": [
+    {
+      "code": "E0408",
+      "line": 34
+    },
+    {
+      "code": "E0408",
+      "line": 39
+    },
+    {
+      "code": "E0404",
+      "line": 43
+    },
+    {
+      "code": "E0313",
+      "line": 46
+    },
+    {
+      "code": "E0314",
+      "line": 49
+    }
+  ]
+}

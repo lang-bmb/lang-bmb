@@ -1,0 +1,1 @@
+{"sections": ["계약 절"], "note": "A contract clause is a bool: an integer clause is a type error.", "check": [{"code": "E0401", "line": 5}, {"code": "E0401", "line": 12}]}

@@ -1,0 +1,11 @@
+#[summary("clause order")]
+mod m {
+    #[effects(pure)]
+    fn down(n: u64) -> (r: u64)
+        requires n < 100,
+        ensures r == 0,
+        decreases n,
+    {
+        if n == 0 { 0 } else { down(n - 1) }
+    }
+}

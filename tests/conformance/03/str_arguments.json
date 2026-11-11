@@ -1,0 +1,20 @@
+{
+  "sections": [
+    "텍스트"
+  ],
+  "note": "A `&str` argument is a literal, `s.as_str()`, `&s[a..b]` or a `&str` parameter: a `String` value or `&s` there is E0218; `&mut str` is not a type (E0402).",
+  "check": [
+    {
+      "code": "E0218",
+      "line": 12
+    },
+    {
+      "code": "E0218",
+      "line": 15
+    },
+    {
+      "code": "E0402",
+      "line": 18
+    }
+  ]
+}

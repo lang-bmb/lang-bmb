@@ -1,0 +1,8 @@
+{
+  "sections": [
+    "참조 인자"
+  ],
+  "note": "A `&[T]` parameter takes `&arr`, `v.as_slice()`, `&v[lo..hi]` and a received slice parameter; `&mut [T]` takes `&mut arr`, `v.as_mut_slice()` and a received `&mut [T]`.",
+  "check": [],
+  "run": "3\n1\n2\n3\n3\n9\n9\n"
+}

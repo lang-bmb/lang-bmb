@@ -1143,6 +1143,10 @@
    "out": "409053ddbf5a8cdd",
    "src": "dc6355fbb07a6f81"
   },
+  "tests/verify/pass/unbounded_push.bmb": {
+   "out": "0c9b328e4b520538",
+   "src": "d4633a213d907614"
+  },
   "tests/verify/pass/unsigned_elems.bmb": {
    "out": "3d6dce4cc15c3685",
    "src": "282c77ab6973f815"

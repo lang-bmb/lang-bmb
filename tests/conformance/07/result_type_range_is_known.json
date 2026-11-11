@@ -1,0 +1,19 @@
+{
+  "sections": [
+    "호출자가 가정하는 것"
+  ],
+  "note": "About the result of a contract-less function the caller knows the range of its type and nothing more.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::in_range": "verified",
+      "m::beyond": "failed"
+    },
+    "diags": [
+      {
+        "code": "E0810",
+        "line": 16
+      }
+    ]
+  }
+}

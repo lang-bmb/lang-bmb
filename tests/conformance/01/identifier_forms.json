@@ -1,0 +1,7 @@
+{
+  "sections": [
+    "식별자와 예약어"
+  ],
+  "note": "Identifiers are ASCII letters, digits and `_`, and may start with `_`.",
+  "check": []
+}

@@ -1,0 +1,12 @@
+#[summary("E0810")]
+mod m {
+    #[effects(pure)]
+    fn bad(x: u64) -> () {
+        assert(x > 0);
+    }
+
+    #[effects(pure)]
+    fn good(x: u64) -> () {
+        assert(x >= 0);
+    }
+}

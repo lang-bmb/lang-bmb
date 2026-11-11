@@ -1,0 +1,32 @@
+#[summary("immutable places")]
+mod m {
+    struct P { x: i64 }
+
+    #[effects(pure)]
+    fn local() -> i64 {
+        let a: i64 = 1;
+        a = 2;
+        a
+    }
+
+    #[effects(pure)]
+    fn param(a: i64, p: P) -> i64 {
+        a = 2;
+        p.x = 3;
+        a
+    }
+
+    #[effects(pure)]
+    fn shared(r: &i64, p: &P, s: &[i64]) -> () {
+        *r = 1;
+        p.x = 1;
+        s[0] = 1;
+    }
+
+    #[effects(pure)]
+    fn counter() -> () {
+        for i in 0..3 {
+            i = 0;
+        }
+    }
+}

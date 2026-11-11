@@ -1,0 +1,8 @@
+{
+  "sections": [
+    "이동한 값의 사용"
+  ],
+  "note": "Assigning a moved `let mut` variable again makes it owned again.",
+  "check": [],
+  "run": "0\n1\n"
+}

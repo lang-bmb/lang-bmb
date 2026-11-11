@@ -1,0 +1,20 @@
+#[summary("quantified clauses")]
+mod m {
+    spec fn has_pos(a: &[i64]) -> bool {
+        exists|i: usize| i < a.len() && #[trigger] a[i] > 0
+    }
+
+    #[effects(pure)]
+    fn raw(a: &[i64]) -> i64
+        requires exists|i: usize| i < a.len() && #[trigger] a[i] > 0,
+    {
+        0
+    }
+
+    #[effects(pure)]
+    fn named(a: &[i64]) -> i64
+        requires has_pos(a),
+    {
+        0
+    }
+}

@@ -1,0 +1,36 @@
+{
+  "sections": [
+    "받지 않는 Rust 습관"
+  ],
+  "note": "E0207: `pub`, const generics, generic traits, supertraits, items a unit does not hold (`type`), contract clauses on a `spec fn`, `decreases` on a trait method.",
+  "check": [
+    {
+      "code": "E0207",
+      "line": 3
+    },
+    {
+      "code": "E0207",
+      "line": 5
+    },
+    {
+      "code": "E0207",
+      "line": 7
+    },
+    {
+      "code": "E0207",
+      "line": 11
+    },
+    {
+      "code": "E0207",
+      "line": 13
+    },
+    {
+      "code": "E0207",
+      "line": 15
+    },
+    {
+      "code": "E0207",
+      "line": 19
+    }
+  ]
+}

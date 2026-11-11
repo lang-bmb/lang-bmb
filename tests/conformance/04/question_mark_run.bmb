@@ -1,0 +1,47 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn half(x: i64) -> Option<i64> { if x % 2 == 0 { Some(x / 2) } else { None } }
+
+    #[effects(pure)]
+    fn quarter(x: i64) -> Option<i64> {
+        let h: i64 = half(x)?;
+        half(h)
+    }
+
+    #[effects(pure)]
+    fn pos(x: i64) -> Result<i64, bool> { if x > 0 { Ok(x) } else { Err(x == 0) } }
+
+    #[effects(pure)]
+    fn both(x: i64, y: i64) -> Result<u8, bool> {
+        let a: i64 = pos(x)?;
+        let b: i64 = pos(y)?;
+        if a < b { Ok(1) } else { Ok(2) }
+    }
+
+    #[effects(io)]
+    fn show(o: Option<i64>) -> () {
+        match o {
+            None => print_i64(-1),
+            Some(v) => print_i64(v),
+        }
+    }
+
+    #[effects(io)]
+    fn show_r(r: Result<u8, bool>) -> () {
+        match r {
+            Ok(v) => print_u64(v as u64),
+            Err(e) => if e { print_i64(-1) } else { print_i64(-2) },
+        }
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        show(quarter(12));
+        show(quarter(6));
+        show(quarter(5));
+        show_r(both(1, 2));
+        show_r(both(0, 2));
+        show_r(both(3, -2));
+    }
+}

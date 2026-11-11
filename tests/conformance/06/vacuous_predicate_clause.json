@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "계약 절"
+  ],
+  "note": "A clause that is a call of a predicate whose body is `true` is E0502.",
+  "check": [
+    {
+      "code": "E0502",
+      "line": 9
+    }
+  ]
+}

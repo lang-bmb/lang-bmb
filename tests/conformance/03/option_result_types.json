@@ -1,0 +1,24 @@
+{
+  "sections": [
+    "`Option`과 `Result`"
+  ],
+  "note": "`Option<T>` and `Result<T, E>` are built-in enums whose type arguments are value types (E0403) and whose number of type arguments is fixed (E0420).",
+  "check": [
+    {
+      "code": "E0403",
+      "line": 16
+    },
+    {
+      "code": "E0403",
+      "line": 19
+    },
+    {
+      "code": "E0420",
+      "line": 22
+    },
+    {
+      "code": "E0420",
+      "line": 25
+    }
+  ]
+}

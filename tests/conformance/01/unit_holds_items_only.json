@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "구문의 뼈대"
+  ],
+  "note": "A token that starts no item inside `mod` is E0103.",
+  "check": [
+    {
+      "code": "E0103",
+      "line": 3
+    }
+  ]
+}

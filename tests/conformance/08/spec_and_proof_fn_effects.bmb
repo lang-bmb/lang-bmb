@@ -1,0 +1,12 @@
+#[summary("no effects on spec and proof fns")]
+mod m {
+    #[effects(pure)]
+    spec fn pos(x: i64) -> bool { x > 0 }
+
+    #[effects(pure)]
+    proof fn lemma(x: i64)
+        requires x > 0,
+        ensures x >= 1,
+    {
+    }
+}

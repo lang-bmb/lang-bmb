@@ -1,0 +1,44 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn ok(a: u8) -> i64 {
+        for i in 0..a { let k: u8 = i; }
+        1
+    }
+
+    #[effects(pure)]
+    fn ok2() -> i64 {
+        for i in 0..3 { let k: i64 = i; }
+        1
+    }
+
+    #[effects(pure)]
+    fn e1() -> i64 {
+        for j in 0..3 { let k: u8 = j; }
+        1
+    }
+
+    #[effects(pure)]
+    fn e2() -> i64 {
+        for j in 0..3 { j = 2; }
+        1
+    }
+
+    #[effects(pure)]
+    fn e3(n: i64) -> i64 {
+        for j in 0..n { }
+        j
+    }
+
+    #[effects(pure)]
+    fn e4() -> i64 {
+        for j in 0..true { }
+        1
+    }
+
+    #[effects(pure)]
+    fn e5(a: u8, b: i64) -> i64 {
+        for j in a..b { }
+        1
+    }
+}

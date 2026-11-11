@@ -1,0 +1,24 @@
+#[summary("s")]
+mod a {
+    struct S { x: i64 }
+
+    impl S {
+        #[effects(pure)]
+        fn mk() -> S { S { x: 0 } }
+
+        #[effects(pure)]
+        fn gen<T: Copy>(self: &S, t: T) -> T { t }
+    }
+
+    #[effects(pure)]
+    fn e1(s: S) -> S { s.mk() }
+
+    #[effects(pure)]
+    fn e2(s: S) -> i64 { s.gen(1) }
+
+    #[effects(pure)]
+    fn ok(s: S) -> i64 {
+        let t: S = S::mk();
+        S::gen::<i64>(&s, t.x)
+    }
+}

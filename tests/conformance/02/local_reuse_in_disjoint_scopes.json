@@ -1,0 +1,7 @@
+{
+  "sections": [
+    "지역 이름"
+  ],
+  "note": "Sibling blocks, two `for` loops and different `match` arms may reuse a name, and a local may share its name with a function, type or unit.",
+  "check": []
+}

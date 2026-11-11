@@ -1,0 +1,9 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn f<T: Copy>(n: i64, x: T) -> i64
+        decreases n,
+    {
+        if n <= 0 { 0 } else { f::<[T; 2]>(n - 1, [x, x]) }
+    }
+}

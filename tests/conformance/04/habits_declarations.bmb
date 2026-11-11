@@ -1,0 +1,34 @@
+#[summary("s")]
+mod a {
+    #[derive(Clone)]
+    struct D { x: i64 }
+
+    static X: i64 = 1;
+
+    static mut Y: i64 = 1;
+
+    struct S { x: i64 }
+
+    impl S {
+        #[effects(pure)]
+        fn a(&self) -> i64 { 1 }
+
+        #[effects(pure)]
+        fn b(&mut self) -> i64 { 1 }
+
+        #[effects(pure)]
+        fn c(self) -> i64 { 1 }
+    }
+
+    #[effects(pure)]
+    fn e1() -> i64 { let y = 1; y }
+
+    #[effects(pure)]
+    fn e2() { }
+
+    #[effects(pure)]
+    fn e3(mut x: i64) -> i64 { x }
+
+    #[effects(pure)]
+    fn e4(x: &'a i64) -> i64 { *x }
+}

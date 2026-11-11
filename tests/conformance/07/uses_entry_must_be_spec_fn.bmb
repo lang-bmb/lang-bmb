@@ -1,0 +1,9 @@
+#[summary("uses entries")]
+mod m {
+    #[effects(pure)]
+    fn code(x: i64) -> i64 { x }
+
+    #[effects(pure)]
+    #[uses(code)]
+    fn f(x: i64) -> i64 { x }
+}

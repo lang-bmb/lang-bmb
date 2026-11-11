@@ -1,0 +1,14 @@
+#[summary("integer types mix in specifications")]
+mod m {
+    #[effects(pure)]
+    fn spec_side(i: u8, n: u64, k: i32) -> bool
+        requires i < n, k + n > i,
+    {
+        true
+    }
+
+    #[effects(pure)]
+    fn exec_side(i: u8, n: u64) -> bool {
+        i < n
+    }
+}

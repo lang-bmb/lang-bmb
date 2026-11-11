@@ -1,0 +1,37 @@
+#[summary("s")]
+mod a {
+    struct P { v: Vec<i64> }
+
+    trait Tr { }
+
+    impl<T> Tr for T { }
+
+    #[effects(pure)]
+    fn apply<F: Fn(i64) -> i64>(f: F, x: i64) -> i64
+        requires f.requires(x),
+    { f(x) }
+
+    #[effects(alloc)]
+    fn e1(v: Vec<i64>) -> () { drop(v); }
+
+    #[effects(pure)]
+    fn e2(v: Rc<i64>) -> i64 { 1 }
+
+    #[effects(alloc)]
+    fn e3(p: &mut P) -> Vec<i64> { p.v }
+
+    #[effects(pure)]
+    fn e4(x: &dyn Tr) -> i64 { 1 }
+
+    #[effects(pure)]
+    fn e5<T>(a: T) -> T where T: Copy { a }
+
+    #[effects(pure)]
+    fn e6() -> i64 { apply::<_>(|x| -> i64 { x }, 1) }
+
+    #[effects(pure)]
+    fn e7(f: fn(i64) -> i64) -> i64 { 1 }
+
+    #[effects(pure)]
+    fn e8(f: impl Fn(i64) -> i64) -> i64 { 1 }
+}

@@ -1,0 +1,24 @@
+{
+  "sections": [
+    "`Option`과 `Result`"
+  ],
+  "note": "The built-in variants are written without a path (`Option::Some` is E0221) and matched in the order `None`, `Some` and `Ok`, `Err` (E0426).",
+  "check": [
+    {
+      "code": "E0221",
+      "line": 4
+    },
+    {
+      "code": "E0221",
+      "line": 7
+    },
+    {
+      "code": "E0426",
+      "line": 11
+    },
+    {
+      "code": "E0426",
+      "line": 16
+    }
+  ]
+}

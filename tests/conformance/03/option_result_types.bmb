@@ -1,0 +1,26 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn ok(o: Option<i64>, r: Result<i64, bool>) -> i64 {
+        let a: i64 = match o {
+            None => 0,
+            Some(v) => v,
+        };
+        match r {
+            Ok(v) => v,
+            Err(e) => a,
+        }
+    }
+
+    #[effects(pure)]
+    fn e1(o: Option<&i64>) -> i64 { 1 }
+
+    #[effects(pure)]
+    fn e2(o: Result<&str, i64>) -> i64 { 1 }
+
+    #[effects(pure)]
+    fn e3(o: Option<i64, i64>) -> i64 { 1 }
+
+    #[effects(pure)]
+    fn e4(o: Result<i64>) -> i64 { 1 }
+}

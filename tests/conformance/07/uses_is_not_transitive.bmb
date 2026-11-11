@@ -1,0 +1,24 @@
+#[summary("uses is not transitive")]
+mod m {
+    spec fn low(n: u64) -> bool { n < 10 }
+
+    spec fn mid(n: u64) -> bool { low(n) }
+
+    spec fn top(n: u64) -> bool { mid(n) }
+
+    #[effects(pure)]
+    #[uses(mid)]
+    fn one_level(n: u64) -> u64
+        requires top(n),
+    {
+        n + 1
+    }
+
+    #[effects(pure)]
+    #[uses(mid, low)]
+    fn both_levels(n: u64) -> u64
+        requires top(n),
+    {
+        n + 1
+    }
+}

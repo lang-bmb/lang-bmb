@@ -1,0 +1,28 @@
+{
+  "sections": [
+    "루프"
+  ],
+  "note": "The `for` variable has the integer type of the two ends (`i64` when both are literals), cannot be assigned (E0408) and is not visible after the loop (E0301); ends that are not integers or not of one type are E0401.",
+  "check": [
+    {
+      "code": "E0401",
+      "line": 17
+    },
+    {
+      "code": "E0408",
+      "line": 23
+    },
+    {
+      "code": "E0301",
+      "line": 30
+    },
+    {
+      "code": "E0401",
+      "line": 35
+    },
+    {
+      "code": "E0401",
+      "line": 41
+    }
+  ]
+}

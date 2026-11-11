@@ -1,0 +1,9 @@
+/// s
+mod a {
+    #[effects(pure)]
+    fn f() -> i64 {
+        /// not before a definition
+        let x: i64 = 1;
+        x
+    }
+}

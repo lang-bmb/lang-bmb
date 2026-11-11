@@ -1,0 +1,8 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn f(n: i64) -> i64 {
+        for i in 0..n { }
+        i
+    }
+}

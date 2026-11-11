@@ -1,0 +1,13 @@
+#[summary("unknown attributes")]
+#[deprecated]
+mod m {
+    #[inline]
+    #[effects(pure)]
+    fn f() -> () {}
+
+    #[repr(C)]
+    struct P { x: i64 }
+
+    #[derive(Clone)]
+    struct Q { x: i64 }
+}

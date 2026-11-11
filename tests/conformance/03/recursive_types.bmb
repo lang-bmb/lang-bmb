@@ -1,0 +1,14 @@
+#[summary("s")]
+mod a {
+    enum List { Nil, Cons(i64, Box<List>) }
+
+    struct Tree { kids: Vec<Tree> }
+
+    struct W<T> { v: T }
+
+    struct Me { m: Me }
+
+    enum Inf { More(Box<Inf>) }
+
+    struct Grow<T> { g: Option<Box<Grow<W<T>>>> }
+}

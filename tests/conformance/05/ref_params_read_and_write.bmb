@@ -1,0 +1,36 @@
+#[summary("reference parameters")]
+mod m {
+    struct P { x: i64, y: i64 }
+
+    #[effects(pure)]
+    fn get(x: &i64) -> i64 { *x }
+
+    #[effects(pure)]
+    fn set(x: &mut i64, v: i64) -> () {
+        *x = v;
+    }
+
+    #[effects(pure)]
+    fn px(p: &P) -> i64 { p.x }
+
+    #[effects(pure)]
+    fn set_x(p: &mut P, v: i64) -> () {
+        p.x = v;
+    }
+
+    #[effects(pure)]
+    fn count(v: &Vec<i64>, s: &String, b: &Box<i64>) -> usize { v.len() + 0 }
+
+    #[effects(alloc, io)]
+    fn main() -> () {
+        let mut a: i64 = 5;
+        print_i64(get(&a));
+        set(&mut a, 6);
+        print_i64(a);
+        let mut p: P = P { x: 2, y: 3 };
+        print_i64(px(&p));
+        set_x(&mut p, 9);
+        print_i64(p.x);
+        print_i64(p.y);
+    }
+}

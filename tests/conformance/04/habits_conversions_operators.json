@@ -1,0 +1,36 @@
+{
+  "sections": [
+    "받지 않는 Rust 습관"
+  ],
+  "note": "Conversions and operators not accepted: `x as f64` (E0205), `T::from`/`into`/`try_into` (E0212), `try_from(..).expect(..)` (E0213), a `Vec` or `String` where a slice or `&str` goes (E0218), chained comparison (E0211).",
+  "check": [
+    {
+      "code": "E0205",
+      "line": 13
+    },
+    {
+      "code": "E0212",
+      "line": 16
+    },
+    {
+      "code": "E0213",
+      "line": 19
+    },
+    {
+      "code": "E0218",
+      "line": 22
+    },
+    {
+      "code": "E0218",
+      "line": 25
+    },
+    {
+      "code": "E0218",
+      "line": 28
+    },
+    {
+      "code": "E0211",
+      "line": 31
+    }
+  ]
+}

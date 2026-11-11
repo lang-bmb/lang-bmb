@@ -1,0 +1,24 @@
+{
+  "sections": [
+    "문자·문자열·바이트 리터럴"
+  ],
+  "note": "A character literal of two characters and an escape outside the list (also `\\x` above 7f) are E0101.",
+  "check": [
+    {
+      "code": "E0101",
+      "line": 4
+    },
+    {
+      "code": "E0101",
+      "line": 7
+    },
+    {
+      "code": "E0101",
+      "line": 10
+    },
+    {
+      "code": "E0101",
+      "line": 13
+    }
+  ]
+}

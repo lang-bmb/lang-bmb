@@ -1,0 +1,20 @@
+{
+  "sections": [
+    "문장"
+  ],
+  "note": "`let` needs a type (E0201) and an initial value; a pattern `let` and `let .. else` are E0226, a destructuring `let` E0230.",
+  "check": [
+    {
+      "code": "E0201",
+      "line": 14
+    },
+    {
+      "code": "E0226",
+      "line": 18
+    },
+    {
+      "code": "E0230",
+      "line": 24
+    }
+  ]
+}

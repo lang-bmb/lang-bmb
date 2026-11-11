@@ -1,0 +1,45 @@
+#[summary("E0817")]
+mod m {
+    trait Cap {
+        #[effects(pure)]
+        fn cap(self: &Self, x: i64) -> (r: i64)
+            requires x >= 0,
+            ensures r >= 0;
+    }
+
+    struct Good { k: i64 }
+
+    struct Strict { k: i64 }
+
+    struct Weak { k: i64 }
+
+    impl Cap for Good {
+        #[effects(pure)]
+        fn cap(self: &Good, x: i64) -> (r: i64)
+            requires x >= -5,
+            ensures r == 1,
+        {
+            1
+        }
+    }
+
+    impl Cap for Strict {
+        #[effects(pure)]
+        fn cap(self: &Strict, x: i64) -> (r: i64)
+            requires x >= 10,
+            ensures r >= 0,
+        {
+            x
+        }
+    }
+
+    impl Cap for Weak {
+        #[effects(pure)]
+        fn cap(self: &Weak, x: i64) -> (r: i64)
+            requires x >= 0,
+            ensures r >= -1,
+        {
+            x
+        }
+    }
+}

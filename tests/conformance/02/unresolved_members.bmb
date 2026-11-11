@@ -1,0 +1,32 @@
+#[summary("s")]
+mod a {
+    struct P { x: i64 }
+
+    enum E { A, B(i64) }
+
+    #[effects(pure)]
+    fn f1(p: P) -> i64 { p.y }
+
+    #[effects(pure)]
+    fn f2() -> P { P { x: 1, y: 2 } }
+
+    #[effects(pure)]
+    fn f3() -> E { E::C }
+
+    #[effects(pure)]
+    fn f4(e: E) -> i64 {
+        match e {
+            E::A => 0,
+            E::Z(n) => n,
+        }
+    }
+
+    #[effects(pure)]
+    fn f5() -> i64 {
+        'a: for i in 0..3 {
+            for j in 0..3 { break 'a; }
+        }
+        for i in 0..3 { break 'a; }
+        1
+    }
+}

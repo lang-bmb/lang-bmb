@@ -1,0 +1,16 @@
+#[summary("any failure fails the definition")]
+mod m {
+    #[effects(pure)]
+    fn mixed(a: &[i64], i: usize) -> i64
+        requires i < a.len(),
+    {
+        a[i] + 1
+    }
+
+    #[effects(pure)]
+    fn all(a: &[i64], i: usize) -> i64
+        requires i < a.len(), a[i] < 100,
+    {
+        a[i] + 1
+    }
+}

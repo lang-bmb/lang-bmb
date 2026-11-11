@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "문자와 공백"
+  ],
+  "note": "Non-ASCII characters are accepted in comments, string literals and character literals.",
+  "check": [],
+  "verify": {
+    "diags": []
+  },
+  "run": "é한\n54620\n"
+}

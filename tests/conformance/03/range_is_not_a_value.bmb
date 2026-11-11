@@ -1,0 +1,8 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn g(n: usize) -> usize { n }
+
+    #[effects(pure)]
+    fn e1() -> usize { g(0..3) }
+}

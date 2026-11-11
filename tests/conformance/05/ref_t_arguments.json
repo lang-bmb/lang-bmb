@@ -1,0 +1,8 @@
+{
+  "sections": [
+    "참조 인자"
+  ],
+  "note": "A `&T` parameter takes `&e` of any value expression, `&*b` and received `&T` / `&mut T` parameters; `&mut T` takes `&mut` of a variable, field, element or `*b`.",
+  "check": [],
+  "run": "3\n4\n5\n1\n1\n1\n1\n"
+}

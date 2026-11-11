@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "함수 값"
+  ],
+  "note": "A function parameter is a type parameter bounded by `Fn`/`FnMut`/`FnOnce` and is called as `f(x)`; the argument is a function item or a closure and the type argument is `_`.",
+  "check": [],
+  "verify": {
+    "diags": []
+  },
+  "run": "11\n20\n15\n"
+}

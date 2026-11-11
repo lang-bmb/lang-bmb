@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "`impl`과 수신자"
+  ],
+  "note": "`Self` is a type only inside a trait declaration (E0305 elsewhere).",
+  "check": [
+    {
+      "code": "E0305",
+      "line": 9
+    }
+  ]
+}

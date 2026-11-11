@@ -1,0 +1,12 @@
+#[summary("s")]
+mod a {
+    pub const X: i64 = 1;
+
+    const Y: i64 = 2;
+}
+
+#[summary("s")]
+mod b {
+    #[effects(pure)]
+    fn f() -> i64 { a::Y }
+}

@@ -1,0 +1,19 @@
+{
+  "sections": [
+    "탈출구와 증명의 신뢰 등급"
+  ],
+  "note": "A program without escapes is proved without trusted facts: an unproved callee `ensures` is not a fact that excuses the callee, which stays `failed` while its caller may rely on the contract.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::claims": "failed",
+      "m::caller": "verified"
+    },
+    "diags": [
+      {
+        "code": "E0802",
+        "line": 5
+      }
+    ]
+  }
+}

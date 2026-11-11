@@ -1,0 +1,1 @@
+{"sections": ["연산자와 피연산자"], "note": "A shift by a local of a known value below the width is proved, and the program builds and runs.", "check": [], "verify": {"defs": {"a::main": "verified"}}, "run": "8\n16\n"}

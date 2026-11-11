@@ -1,0 +1,15 @@
+#[summary("untyped captures")]
+mod m {
+    #[effects(pure)]
+    fn apply<F: Fn(i64) -> i64>(f: F, x: i64) -> i64 { f(x) }
+
+    #[effects(pure)]
+    fn typed() -> i64 {
+        let mut t: i64 = 0;
+        for i in 0..2 {
+            let j: i64 = i;
+            t = apply::<_>(move |x: i64| -> i64 { if j > 0 { x } else { 0 } }, 1);
+        }
+        t
+    }
+}

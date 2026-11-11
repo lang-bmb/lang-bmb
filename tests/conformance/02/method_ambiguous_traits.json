@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "메서드 호출의 이름"
+  ],
+  "note": "A method name that two traits of the type have is E0313 as a method call and is called by path.",
+  "check": [
+    {
+      "code": "E0313",
+      "line": 26
+    }
+  ]
+}

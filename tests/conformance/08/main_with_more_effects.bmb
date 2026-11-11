@@ -1,0 +1,8 @@
+#[summary("main with io and alloc")]
+mod m {
+    #[effects(alloc, io)]
+    fn main() -> () {
+        let b: Box<i64> = Box::new(1);
+        print_i64(*b);
+    }
+}

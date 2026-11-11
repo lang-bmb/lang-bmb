@@ -1,0 +1,20 @@
+{
+  "sections": [
+    "제네릭과 trait"
+  ],
+  "note": "Two impls of a trait that could be the same type are E0311 (a type parameter overlaps anything); `impl<T> Tr for T` is E0235, `dyn Tr` E0236.",
+  "check": [
+    {
+      "code": "E0235",
+      "line": 10
+    },
+    {
+      "code": "E0311",
+      "line": 20
+    },
+    {
+      "code": "E0236",
+      "line": 26
+    }
+  ]
+}

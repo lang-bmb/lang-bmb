@@ -1,0 +1,24 @@
+#[summary("recursion")]
+mod m {
+    #[effects(pure)]
+    fn rec(n: u64) -> u64 {
+        if n == 0 { 0 } else { rec(n - 1) }
+    }
+
+    #[effects(pure)]
+    fn ping(n: u64) -> u64 {
+        if n == 0 { 0 } else { pong(n - 1) }
+    }
+
+    #[effects(pure)]
+    fn pong(n: u64) -> u64 {
+        if n == 0 { 0 } else { ping(n - 1) }
+    }
+
+    proof fn lemma(n: u64)
+    {
+        if n > 0 {
+            lemma(n - 1);
+        }
+    }
+}

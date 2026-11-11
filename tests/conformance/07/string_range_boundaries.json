@@ -1,0 +1,24 @@
+{
+  "sections": [
+    "의무의 종류"
+  ],
+  "note": "Both positions of a string range `&s[a..b]` must be character boundaries with `a <= b` (E0820).",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::unguarded": "failed",
+      "m::reversed": "failed",
+      "m::guarded": "verified"
+    },
+    "diags": [
+      {
+        "code": "E0820",
+        "line": 9
+      },
+      {
+        "code": "E0820",
+        "line": 18
+      }
+    ]
+  }
+}

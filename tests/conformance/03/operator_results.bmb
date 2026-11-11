@@ -1,0 +1,28 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn ints(a: u8, b: u8, n: u32) -> u8
+        requires a <= 10 && 1 <= b && b <= 10 && n < 4,
+    {
+        let s: u8 = a + b - b;
+        let m: u8 = a * b / b % 7;
+        let k: u8 = (a & b | a) ^ b;
+        let h: u8 = (a << n) >> n;
+        let i: u8 = !a;
+        let t: bool = a == b || a != b && a < b || a <= b || a > b || a >= b;
+        let u: bool = !t & true | false ^ t;
+        if u { s } else { m.wrapping_add(k).wrapping_add(h).wrapping_add(i) }
+    }
+
+    #[effects(pure)]
+    fn floats(x: f64, y: f64) -> bool {
+        let z: f64 = -(x + y - x * y / x);
+        z == x || z != y || z < x || z >= y
+    }
+
+    #[effects(pure)]
+    fn chars(c: char, d: char) -> bool { c == d || c < d }
+
+    #[effects(pure)]
+    fn texts(s: &str, t: &str) -> bool { s == t || s < t }
+}

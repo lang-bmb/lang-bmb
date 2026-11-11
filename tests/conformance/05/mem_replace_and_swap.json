@@ -1,0 +1,8 @@
+{
+  "sections": [
+    "자리에서 꺼내기와 부분 이동"
+  ],
+  "note": "std::mem::replace returns the old value and stores the new one; std::mem::swap exchanges two places.",
+  "check": [],
+  "run": "1\n0\n2\n1\n7\n5\n"
+}

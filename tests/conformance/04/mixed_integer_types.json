@@ -1,0 +1,28 @@
+{
+  "sections": [
+    "연산자와 피연산자"
+  ],
+  "note": "Mixing integers of different width or sign is E0401: there is no implicit widening and `x as T` aligns them; unary `-` on an unsigned integer is E0411; `==` on structs in code is E0425.",
+  "check": [
+    {
+      "code": "E0401",
+      "line": 9
+    },
+    {
+      "code": "E0401",
+      "line": 12
+    },
+    {
+      "code": "E0401",
+      "line": 15
+    },
+    {
+      "code": "E0411",
+      "line": 18
+    },
+    {
+      "code": "E0425",
+      "line": 21
+    }
+  ]
+}

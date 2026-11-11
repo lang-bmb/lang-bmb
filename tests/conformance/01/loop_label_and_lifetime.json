@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "식별자와 예약어"
+  ],
+  "note": "`'name` is a loop label after `break`/`continue` and before `:`; elsewhere it reads as a lifetime, E0208.",
+  "check": [
+    {
+      "code": "E0208",
+      "line": 15
+    }
+  ]
+}

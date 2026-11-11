@@ -1,0 +1,19 @@
+{
+  "sections": [
+    "문장"
+  ],
+  "note": "`assert(e);` is a proof obligation, not a run-time check (E0810 when it may not hold); `by (bit_vector)` is the one prover.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "a::ok": "verified",
+      "a::bad": "failed"
+    },
+    "diags": [
+      {
+        "code": "E0810",
+        "line": 12
+      }
+    ]
+  }
+}

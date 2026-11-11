@@ -1,0 +1,19 @@
+{
+  "sections": [
+    "증명 문맥"
+  ],
+  "note": "A spec fn of another unit is named `unit::name` in `#[uses(..)]`.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "b::hidden": "failed",
+      "b::shown": "verified"
+    },
+    "diags": [
+      {
+        "code": "E0803",
+        "line": 14
+      }
+    ]
+  }
+}

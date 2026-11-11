@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "항목이 받는 속성"
+  ],
+  "note": "`#[summary(\"..\")]` is accepted on a unit, a function, a struct, an enum, a trait and a const; twice on one definition it is E0605.",
+  "check": [
+    {
+      "code": "E0605",
+      "line": 23
+    }
+  ]
+}

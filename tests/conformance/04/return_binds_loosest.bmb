@@ -1,0 +1,10 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn f(a: i64, b: i64) -> (r: i64)
+        requires 0 <= a && a < 10 && 0 <= b && b < 10,
+        ensures r == a + b,
+    {
+        return a + b;
+    }
+}

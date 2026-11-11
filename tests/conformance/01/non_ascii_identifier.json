@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "식별자와 예약어"
+  ],
+  "note": "A non-ASCII letter in an identifier is E0101.",
+  "check": [
+    {
+      "code": "E0101",
+      "line": 4
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn len(t: &str) -> usize { t.len() }
+
+    #[effects(alloc, io)]
+    fn main() -> () {
+        let mut s: String = String::from("héllo");
+        print_u64(s.len() as u64);
+        s.push('!');
+        s.push_str(" x");
+        print_str(s.as_str());
+        print_str("\n");
+        print_u64(len(&s[0..1]) as u64);
+        let t: String = s.clone();
+        if t == s { print_i64(1); } else { print_i64(0); }
+        if "abc" < "abd" { print_i64(1); } else { print_i64(0); }
+        if s.as_str() == "x" { print_i64(1); } else { print_i64(0); }
+        if "Z" < "a" { print_i64(1); } else { print_i64(0); }
+        if "é" > "z" { print_i64(1); } else { print_i64(0); }
+        if s.is_char_boundary(2) { print_i64(1); } else { print_i64(0); }
+        print_u64('é'.len_utf8() as u64);
+        print_u64(s.as_bytes()[0] as u64);
+        let e: String = String::new();
+        let w: String = String::with_capacity(8);
+        print_u64(e.len() as u64 + w.len() as u64);
+    }
+}

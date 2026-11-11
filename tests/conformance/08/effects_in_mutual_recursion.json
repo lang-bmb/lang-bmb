@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "선언과 몸의 관계"
+  ],
+  "note": "In mutual recursion the rule holds per direct call: a `pure` function calling an `alloc` one is E0606.",
+  "check": [
+    {
+      "code": "E0606",
+      "line": 10
+    }
+  ]
+}

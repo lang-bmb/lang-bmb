@@ -1,0 +1,21 @@
+{
+  "sections": [
+    "변환"
+  ],
+  "note": "`x as T` to a type that does not hold the source's range carries a range obligation (E0815); a widening `as` and `try_from(..).ok()` carry none.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "a::narrow": "failed",
+      "a::narrow_ok": "verified",
+      "a::widen": "verified",
+      "a::checked": "verified"
+    },
+    "diags": [
+      {
+        "code": "E0815",
+        "line": 5
+      }
+    ]
+  }
+}

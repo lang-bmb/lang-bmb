@@ -1,0 +1,17 @@
+#[summary("pure calls io")]
+mod m {
+    #[effects(io)]
+    fn shout(x: i64) -> () {
+        print_i64(x);
+    }
+
+    #[effects(pure)]
+    fn builtin() -> () {
+        print_i64(1)
+    }
+
+    #[effects(pure)]
+    fn user() -> () {
+        shout(1)
+    }
+}

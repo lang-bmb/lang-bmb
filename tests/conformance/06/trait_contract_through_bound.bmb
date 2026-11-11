@@ -1,0 +1,41 @@
+#[summary("trait contracts")]
+mod m {
+    trait Cap {
+        #[effects(pure)]
+        fn cap(self: &Self, x: i64) -> (r: i64)
+            requires x >= 0,
+            ensures r >= 0;
+    }
+
+    struct One { k: i64 }
+
+    impl Cap for One {
+        #[effects(pure)]
+        fn cap(self: &One, x: i64) -> (r: i64)
+            ensures r == 1,
+        {
+            1
+        }
+    }
+
+    #[effects(pure)]
+    fn through<T: Cap>(t: &T) -> (r: i64)
+        ensures r >= 0,
+    {
+        t.cap(3)
+    }
+
+    #[effects(pure)]
+    fn through_too_much<T: Cap>(t: &T) -> (r: i64)
+        ensures r == 1,
+    {
+        t.cap(3)
+    }
+
+    #[effects(pure)]
+    fn concrete(o: &One) -> (r: i64)
+        ensures r == 1,
+    {
+        o.cap(-5)
+    }
+}

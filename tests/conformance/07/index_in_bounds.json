@@ -1,0 +1,24 @@
+{
+  "sections": [
+    "의무의 종류"
+  ],
+  "note": "An index `a[i]`, read or written, must be in bounds (E0805).",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::read": "failed",
+      "m::write": "failed",
+      "m::guarded": "verified"
+    },
+    "diags": [
+      {
+        "code": "E0805",
+        "line": 5
+      },
+      {
+        "code": "E0805",
+        "line": 10
+      }
+    ]
+  }
+}

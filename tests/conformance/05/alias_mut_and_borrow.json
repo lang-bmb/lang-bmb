@@ -1,0 +1,20 @@
+{
+  "sections": [
+    "별칭"
+  ],
+  "note": "`&mut x` together with `&x` or another `&mut x` in one call is E0410.",
+  "check": [
+    {
+      "code": "E0410",
+      "line": 12
+    },
+    {
+      "code": "E0410",
+      "line": 18
+    },
+    {
+      "code": "E0410",
+      "line": 18
+    }
+  ]
+}

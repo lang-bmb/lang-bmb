@@ -1,0 +1,20 @@
+{
+  "sections": [
+    "의무의 단위"
+  ],
+  "note": "A generic definition is proved once with its type parameter left open, so its obligations hold for every type argument.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::pick": "verified",
+      "m::first": "verified",
+      "m::unsafe_first": "failed"
+    },
+    "diags": [
+      {
+        "code": "E0805",
+        "line": 17
+      }
+    ]
+  }
+}

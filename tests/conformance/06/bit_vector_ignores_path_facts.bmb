@@ -1,0 +1,18 @@
+#[summary("bit_vector sub-proofs are closed")]
+mod m {
+    #[effects(pure)]
+    fn path(x: u32) -> u32 {
+        if x < 16 {
+            assert(x & 15 == x) by (bit_vector);
+        }
+        x
+    }
+
+    #[effects(pure)]
+    fn antecedent(x: u32) -> u32 {
+        if x < 16 {
+            assert(x < 16 ==> x & 15 == x) by (bit_vector);
+        }
+        x
+    }
+}

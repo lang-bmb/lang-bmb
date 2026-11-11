@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "제네릭과 trait"
+  ],
+  "note": "A recursive call that wraps its own type parameter in a larger type is E0430.",
+  "check": [
+    {
+      "code": "E0430",
+      "line": 7
+    }
+  ]
+}

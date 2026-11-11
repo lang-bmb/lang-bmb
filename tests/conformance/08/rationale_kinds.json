@@ -1,0 +1,7 @@
+{
+  "sections": [
+    "근거: `#[rationale(..)]`"
+  ],
+  "note": "`#[rationale(kind = K, \"text\")]` takes the kinds `nonlinear`, `solver_limit`, `boundary` and `performance`.",
+  "check": []
+}

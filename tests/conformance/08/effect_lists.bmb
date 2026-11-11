@@ -1,0 +1,14 @@
+#[summary("effect lists")]
+mod m {
+    #[effects(pure, io)]
+    fn pure_and_io() -> () {}
+
+    #[effects(io, io)]
+    fn twice() -> () {}
+
+    #[effects(alloc, io, nondet, panic)]
+    fn all() -> () {}
+
+    #[effects(pure)]
+    fn none() -> () {}
+}

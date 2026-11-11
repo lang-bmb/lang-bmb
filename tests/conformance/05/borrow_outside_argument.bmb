@@ -1,0 +1,23 @@
+#[summary("borrow positions")]
+mod m {
+    struct P { x: i64 }
+
+    #[effects(pure)]
+    fn get(x: &i64) -> i64 { *x }
+
+    #[effects(pure)]
+    fn deref(x: i64) -> i64 {
+        *(&x)
+    }
+
+    #[effects(pure)]
+    fn in_variant(x: i64) -> i64 {
+        let o: Option<i64> = Some(&x);
+        x
+    }
+
+    #[effects(pure)]
+    fn ok(x: i64) -> i64 {
+        get(&x)
+    }
+}

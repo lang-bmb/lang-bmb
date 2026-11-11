@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "이동한 값의 사용"
+  ],
+  "note": "Calling a `self: T` method twice on an owned value makes the second call E0413; a `self: &T` method can be called repeatedly.",
+  "check": [
+    {
+      "code": "E0413",
+      "line": 16
+    }
+  ]
+}

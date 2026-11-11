@@ -1,0 +1,20 @@
+{
+  "sections": [
+    "변환"
+  ],
+  "note": "`as` to a type that is not an integer type is E0205.",
+  "check": [
+    {
+      "code": "E0205",
+      "line": 4
+    },
+    {
+      "code": "E0205",
+      "line": 7
+    },
+    {
+      "code": "E0205",
+      "line": 10
+    }
+  ]
+}

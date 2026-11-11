@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "`#[effects(..)]` 선언"
+  ],
+  "note": "`main` declares `io`, possibly with other effects; a `main` without `io` is E0701.",
+  "check": [
+    {
+      "code": "E0701",
+      "line": 4
+    }
+  ]
+}

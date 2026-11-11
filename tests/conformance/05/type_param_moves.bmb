@@ -1,0 +1,14 @@
+#[summary("type parameters")]
+mod m {
+    struct Two<T> { a: T, b: T }
+
+    #[effects(pure)]
+    fn dup<T>(x: T) -> Two<T> {
+        Two { a: x, b: x }
+    }
+
+    #[effects(pure)]
+    fn dup_copy<T: Copy>(x: T) -> Two<T> {
+        Two { a: x, b: x }
+    }
+}

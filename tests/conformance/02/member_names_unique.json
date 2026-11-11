@@ -1,0 +1,28 @@
+{
+  "sections": [
+    "항목"
+  ],
+  "note": "Fields of a struct, variants of an enum, methods of a trait, type parameters of a list and the functions of a type's impl blocks are each unique (E0302).",
+  "check": [
+    {
+      "code": "E0302",
+      "line": 3
+    },
+    {
+      "code": "E0302",
+      "line": 5
+    },
+    {
+      "code": "E0302",
+      "line": 8
+    },
+    {
+      "code": "E0302",
+      "line": 14
+    },
+    {
+      "code": "E0302",
+      "line": 23
+    }
+  ]
+}

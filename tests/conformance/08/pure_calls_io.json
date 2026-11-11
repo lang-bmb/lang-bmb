@@ -1,0 +1,16 @@
+{
+  "sections": [
+    "선언과 몸의 관계"
+  ],
+  "note": "A `pure` function that calls a function with effect `io` gets E0603 at the call.",
+  "check": [
+    {
+      "code": "E0603",
+      "line": 10
+    },
+    {
+      "code": "E0603",
+      "line": 15
+    }
+  ]
+}

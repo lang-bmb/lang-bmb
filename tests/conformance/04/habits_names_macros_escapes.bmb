@@ -1,0 +1,40 @@
+#[summary("s")]
+mod a {
+    const K: i64 = 1; use b::f;
+
+    #[effects(pure)]
+    fn id<T>(x: T) -> T { x }
+
+    #[effects(pure)]
+    fn e1() -> i64 { crate::a::id::<i64>(1) }
+
+    #[effects(pure)]
+    fn e2() -> i64 { super::id::<i64>(1) }
+
+    #[effects(pure)]
+    fn e3() -> Result<i64, bool> { Result::Err(true) }
+
+    #[effects(pure)]
+    fn e4() -> i64 { id(1) }
+
+    #[effects(io)]
+    fn e5() -> () { println!("x"); }
+
+    #[effects(alloc)]
+    fn e6() -> usize {
+        let v: Vec<i64> = vec![1, 2];
+        v.len()
+    }
+
+    #[effects(pure)]
+    fn e7() -> i64 { panic!("no") }
+
+    #[effects(pure)]
+    fn e8(p: &i64) -> i64 { unsafe { *p } }
+
+    #[effects(pure)]
+    fn e9() -> i64 {
+        admit();
+        1
+    }
+}

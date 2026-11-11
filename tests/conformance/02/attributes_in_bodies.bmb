@@ -1,0 +1,13 @@
+#[summary("s")]
+mod a {
+    #[rationale(kind = boundary, "why")]
+    #[effects(pure)]
+    fn lonely() -> i64 { 1 }
+
+    #[effects(pure)]
+    fn inbody() -> i64 {
+        #[effects(pure)]
+        let x: i64 = 1;
+        x
+    }
+}

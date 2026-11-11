@@ -1,0 +1,30 @@
+#[summary("s")]
+mod a {
+    struct S { x: i64 }
+
+    trait A {
+        #[effects(pure)]
+        fn f(self: &Self) -> i64;
+    }
+
+    trait B {
+        #[effects(pure)]
+        fn f(self: &Self) -> i64;
+    }
+
+    impl A for S {
+        #[effects(pure)]
+        fn f(self: &S) -> i64 { 1 }
+    }
+
+    impl B for S {
+        #[effects(pure)]
+        fn f(self: &S) -> i64 { 2 }
+    }
+
+    #[effects(pure)]
+    fn bad(s: S) -> i64 { s.f() }
+
+    #[effects(pure)]
+    fn good(s: S) -> i64 { B::f(&s) }
+}

@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "if와 match"
+  ],
+  "note": "`if` yields the taken branch, `else if` chains; `match` yields the arm of the value's variant, binds payloads (`_` binds nothing), and matching a reference binds references; an arm of type `!` follows the other arms.",
+  "check": [],
+  "verify": {
+    "diags": []
+  },
+  "run": "5\n6\n0\n8\n9\n-1\n0\n3\n"
+}

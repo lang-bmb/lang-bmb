@@ -1,0 +1,18 @@
+#[summary("borrow and move")]
+mod m {
+    #[effects(pure)]
+    fn keep(v: &mut Vec<i64>, w: Vec<i64>) -> () {}
+
+    #[effects(alloc)]
+    fn bad() -> () {
+        let mut w: Vec<i64> = Vec::new();
+        keep(&mut w, w);
+    }
+
+    #[effects(alloc)]
+    fn good() -> () {
+        let mut w: Vec<i64> = Vec::new();
+        let u: Vec<i64> = Vec::new();
+        keep(&mut w, u);
+    }
+}

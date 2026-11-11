@@ -1,0 +1,32 @@
+#[summary("mutable reference match")]
+mod m {
+    enum Slot { Empty, Full(i64) }
+
+    #[effects(pure)]
+    fn fill(s: &mut Slot, v: i64) -> () {
+        match s {
+            Slot::Empty => {}
+            Slot::Full(n) => {
+                *n = v;
+            }
+        }
+    }
+
+    #[effects(pure)]
+    fn value(s: &Slot) -> i64 {
+        match s {
+            Slot::Empty => 0,
+            Slot::Full(n) => *n,
+        }
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        let mut e: Slot = Slot::Empty;
+        let mut f: Slot = Slot::Full(1);
+        fill(&mut e, 8);
+        fill(&mut f, 8);
+        print_i64(value(&e));
+        print_i64(value(&f));
+    }
+}

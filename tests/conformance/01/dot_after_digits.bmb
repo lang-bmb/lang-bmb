@@ -1,0 +1,8 @@
+#[summary("s")]
+mod a {
+    #[effects(io)]
+    fn main() -> () {
+        for i in 0..2 { print_i64(i); }
+        print_i64(1.wrapping_add(2));
+    }
+}

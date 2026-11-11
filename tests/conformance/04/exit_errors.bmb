@@ -1,0 +1,29 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn e1() -> i64 { break; }
+
+    #[effects(pure)]
+    fn e2() -> i64 { continue; }
+
+    #[effects(pure)]
+    fn e3() -> i64 {
+        for i in 0..3 { break 5; }
+        1
+    }
+
+    #[effects(pure)]
+    fn e4(n: i64) -> i64 {
+        while n > 0 decreases n, { break 5; }
+        1
+    }
+
+    #[effects(pure)]
+    fn e5() -> i64 {
+        for i in 0..3 { continue 'nope; }
+        1
+    }
+
+    #[effects(pure)]
+    fn e6() -> i64 { return true; }
+}

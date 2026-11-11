@@ -1,0 +1,20 @@
+{
+  "sections": [
+    "`#[effects(..)]` 선언"
+  ],
+  "note": "An executable function, a trait method declaration and an impl function each need `#[effects(..)]` (E0601).",
+  "check": [
+    {
+      "code": "E0601",
+      "line": 3
+    },
+    {
+      "code": "E0601",
+      "line": 8
+    },
+    {
+      "code": "E0601",
+      "line": 14
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+#[summary("lemma calls give facts")]
+mod m {
+    spec fn inner(x: u64) -> bool { x >= 0 }
+
+    spec fn outer(x: u64) -> bool { inner(x) }
+
+    #[uses(inner)]
+    proof fn lemma(x: u64)
+        ensures outer(x),
+    {
+    }
+
+    #[effects(pure)]
+    fn with_lemma(x: u64) -> u64 {
+        proof {
+            lemma(x);
+        }
+        assert(outer(x));
+        x
+    }
+
+    #[effects(pure)]
+    fn without(x: u64) -> u64 {
+        assert(outer(x));
+        x
+    }
+}

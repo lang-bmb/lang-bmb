@@ -1,0 +1,21 @@
+#[summary("executable statements in a specification")]
+mod m {
+    spec fn mutable(x: i64) -> i64 {
+        let mut y: i64 = x;
+        y
+    }
+
+    spec fn returns(x: i64) -> i64 {
+        return x;
+    }
+
+    spec fn asserts(x: i64) -> bool {
+        assert(x == x);
+        true
+    }
+
+    spec fn binds(x: i64) -> i64 {
+        let y: i64 = x + 1;
+        y
+    }
+}

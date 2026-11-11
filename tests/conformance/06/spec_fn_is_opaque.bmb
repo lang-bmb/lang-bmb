@@ -1,0 +1,28 @@
+#[summary("opaque definitions")]
+mod m {
+    spec fn inner(x: i64) -> bool { x > 5 }
+
+    spec fn outer(x: i64) -> bool { inner(x) }
+
+    #[effects(pure)]
+    fn hidden(x: i64) -> ()
+        requires outer(x),
+    {
+        assert(x > 0);
+    }
+
+    #[effects(pure)]
+    #[uses(inner)]
+    fn shown(x: i64) -> ()
+        requires outer(x),
+    {
+        assert(x > 0);
+    }
+
+    #[effects(pure)]
+    fn direct(x: i64) -> ()
+        requires inner(x),
+    {
+        assert(x > 0);
+    }
+}

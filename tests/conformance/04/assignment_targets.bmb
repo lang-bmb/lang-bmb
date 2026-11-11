@@ -1,0 +1,39 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn ok(r: &mut i64) -> i64 {
+        let mut a: i64 = 1;
+        a = 2;
+        *r = a;
+        a
+    }
+
+    #[effects(pure)]
+    fn e1() -> i64 {
+        let a: i64 = 1;
+        a = 2;
+        a
+    }
+
+    #[effects(pure)]
+    fn e2(a: i64) -> i64 {
+        a = 2;
+        a
+    }
+
+    #[effects(pure)]
+    fn e3() -> i64 {
+        for i in 0..3 { i = 1; }
+        1
+    }
+
+    #[effects(pure)]
+    fn e4(mut a: i64) -> i64 { a }
+
+    #[effects(pure)]
+    fn e5() -> i64 {
+        let mut a: i64 = 1;
+        let b: i64 = (a = 2);
+        a
+    }
+}

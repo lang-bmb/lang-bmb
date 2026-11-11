@@ -1,0 +1,6 @@
+#[summary("recursive spec fn")]
+mod m {
+    spec fn endless(n: u64) -> u64 {
+        if n == 0 { 0 } else { endless(n - 1) }
+    }
+}

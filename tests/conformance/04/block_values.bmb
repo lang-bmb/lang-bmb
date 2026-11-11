@@ -1,0 +1,27 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn unit() -> () { let x: i64 = 1; }
+
+    #[effects(pure)]
+    fn never(c: bool) -> i64 {
+        let y: i64 = if c { return 7; } else { 2 };
+        y
+    }
+
+    #[effects(pure)]
+    fn blk() -> i64 {
+        let x: i64 = { let t: i64 = 2; t.wrapping_mul(3) };
+        x
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        unit();
+        print_i64(blk());
+        print_i64(never(true));
+        print_i64(never(false));
+        let u: i64 = { 4 };
+        print_i64(u);
+    }
+}

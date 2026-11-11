@@ -1,0 +1,32 @@
+#[summary("s")]
+mod a {
+    struct C { n: i64 }
+
+    impl C {
+        #[effects(pure)]
+        fn get(self: &C) -> i64 { self.n }
+
+        #[effects(pure)]
+        fn bump(self: &mut C) -> () { self.n = self.n.wrapping_add(1); }
+
+        #[effects(pure)]
+        fn take(self: C) -> i64 { self.n }
+    }
+
+    #[effects(pure)]
+    fn through(c: &mut C) -> i64 {
+        c.bump();
+        c.get()
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        let mut c: C = C { n: 1 };
+        c.bump();
+        print_i64(c.get());
+        print_i64(through(&mut c));
+        C::bump(&mut c);
+        print_i64(C::get(&c));
+        print_i64(c.take());
+    }
+}

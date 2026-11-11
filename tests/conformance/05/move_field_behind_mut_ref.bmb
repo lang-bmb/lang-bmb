@@ -1,0 +1,16 @@
+#[summary("fields behind &mut")]
+mod m {
+    struct Buf { data: Vec<i64>, n: i64 }
+
+    #[effects(pure)]
+    fn steal(m: &mut Buf) -> usize {
+        let d: Vec<i64> = m.data;
+        d.len()
+    }
+
+    #[effects(alloc)]
+    fn replace(m: &mut Buf) -> usize {
+        let d: Vec<i64> = std::mem::replace(&mut m.data, Vec::new());
+        d.len()
+    }
+}

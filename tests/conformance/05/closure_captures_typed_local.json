@@ -1,0 +1,7 @@
+{
+  "sections": [
+    "클로저의 캡처"
+  ],
+  "note": "A closure captures a local whose type is written (a typed `let` holding a `for` variable's value).",
+  "check": []
+}

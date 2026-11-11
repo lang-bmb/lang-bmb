@@ -1,0 +1,17 @@
+{
+  "sections": [
+    "참조는 매개변수에만",
+    "참조 인자"
+  ],
+  "note": "A local variable cannot have a reference type (E0403), and `&x` as a let initializer is not an argument position (E0409).",
+  "check": [
+    {
+      "code": "E0403",
+      "line": 5
+    },
+    {
+      "code": "E0409",
+      "line": 5
+    }
+  ]
+}

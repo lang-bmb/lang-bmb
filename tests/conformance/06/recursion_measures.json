@@ -1,0 +1,16 @@
+{
+  "sections": [
+    "재귀와 `decreases`"
+  ],
+  "note": "A measure is an integer expression that decreases and stays non-negative, or a value of a recursive enum of which the callee's argument is a part.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::down": "verified",
+      "m::even": "verified",
+      "m::odd": "verified",
+      "m::len": "verified"
+    },
+    "diags": []
+  }
+}

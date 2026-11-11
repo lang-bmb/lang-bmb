@@ -1,0 +1,16 @@
+#[summary("code calls no spec fn")]
+mod m {
+    spec fn pos(x: i64) -> bool { x > 0 }
+
+    #[effects(pure)]
+    fn calls(x: i64) -> bool {
+        pos(x)
+    }
+
+    #[effects(pure)]
+    fn states(x: i64) -> i64
+        requires pos(x),
+    {
+        x
+    }
+}

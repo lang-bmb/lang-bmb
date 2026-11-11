@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "문자·문자열·바이트 리터럴"
+  ],
+  "note": "`b'..'` is a `u8` and `b\"..\"` a `&[u8]`; both take ASCII and the byte escapes, `\\xHH` up to ff.",
+  "check": [],
+  "verify": {
+    "diags": []
+  },
+  "run": "97\n255\n10\nab\n"
+}

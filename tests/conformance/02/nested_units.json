@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "단위"
+  ],
+  "note": "A unit holds units; the path of a nested unit's definition is `outer::inner::name`.",
+  "check": [],
+  "verify": {
+    "diags": []
+  },
+  "run": "3\n"
+}

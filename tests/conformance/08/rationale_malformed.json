@@ -1,0 +1,36 @@
+{
+  "sections": [
+    "근거: `#[rationale(..)]`"
+  ],
+  "note": "A malformed rationale is E1002: a kind outside the list, a missing or repeated kind, a missing, empty or second explanation, an unknown key.",
+  "check": [
+    {
+      "code": "E1002",
+      "line": 7
+    },
+    {
+      "code": "E1002",
+      "line": 9
+    },
+    {
+      "code": "E1002",
+      "line": 11
+    },
+    {
+      "code": "E1002",
+      "line": 13
+    },
+    {
+      "code": "E1002",
+      "line": 15
+    },
+    {
+      "code": "E1002",
+      "line": 17
+    },
+    {
+      "code": "E1002",
+      "line": 19
+    }
+  ]
+}

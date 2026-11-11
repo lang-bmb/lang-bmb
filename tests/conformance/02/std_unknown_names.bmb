@@ -1,0 +1,14 @@
+#[summary("s")]
+mod app {
+    #[effects(pure)]
+    fn f() -> i64 { std::nope::f() }
+
+    #[effects(pure)]
+    fn g() -> i64 { std::str::nope_fn() }
+
+    #[effects(pure)]
+    fn h(x: std::str::Nope) -> i64 { 1 }
+
+    #[effects(pure)]
+    fn k(x: std::nope::T) -> i64 { 1 }
+}

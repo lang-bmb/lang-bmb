@@ -1,0 +1,16 @@
+{
+  "sections": [
+    "`proof fn`과 `proof` 블록"
+  ],
+  "note": "A `proof fn` takes no return type and no effect attribute (E0256).",
+  "check": [
+    {
+      "code": "E0256",
+      "line": 3
+    },
+    {
+      "code": "E0256",
+      "line": 10
+    }
+  ]
+}

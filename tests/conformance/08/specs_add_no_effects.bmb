@@ -1,0 +1,34 @@
+#[summary("specifications are effect-free")]
+mod m {
+    spec fn small(x: u64) -> bool { x < 100 }
+
+    proof fn lemma(x: u64)
+        requires small(x),
+        ensures x + 1 < 200,
+    {
+    }
+
+    #[effects(pure)]
+    fn f(n: u64) -> (r: u64)
+        requires small(n),
+        ensures r == n,
+    {
+        let mut i: u64 = 0;
+        while i < n
+            invariant i <= n, small(n),
+            decreases n - i,
+        {
+            i = i + 1;
+        }
+        assert(small(i));
+        proof {
+            lemma(i);
+        }
+        i
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        print_u64(f(3));
+    }
+}

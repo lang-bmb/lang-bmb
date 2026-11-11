@@ -1,0 +1,19 @@
+#[summary("the result's type")]
+mod m {
+    #[effects(pure)]
+    fn byte() -> u8 { 7 }
+
+    #[effects(pure)]
+    fn in_range() -> u64 {
+        let w: u64 = byte() as u64;
+        assert(w <= 255);
+        w + 1
+    }
+
+    #[effects(pure)]
+    fn beyond() -> u64 {
+        let w: u64 = byte() as u64;
+        assert(w == 7);
+        w
+    }
+}

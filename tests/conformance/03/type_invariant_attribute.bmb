@@ -1,0 +1,25 @@
+#[summary("s")]
+mod a {
+    spec fn pos(p: &P) -> bool { p.x > 0 }
+
+    spec fn not_bool(q: &Q) -> i64 { q.x }
+
+    spec fn by_value(t: T) -> bool { t.x > 0 }
+
+    spec fn r1(r: &R) -> bool { r.x > 0 }
+
+    spec fn r2(r: &R) -> bool { r.x > 1 }
+
+    #[invariant(pos)]
+    struct P { x: i64 }
+
+    #[invariant(not_bool)]
+    struct Q { x: i64 }
+
+    #[invariant(by_value)]
+    struct T { x: i64 }
+
+    #[invariant(r1)]
+    #[invariant(r2)]
+    struct R { x: i64 }
+}

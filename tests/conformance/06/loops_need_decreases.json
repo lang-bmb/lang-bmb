@@ -1,0 +1,16 @@
+{
+  "sections": [
+    "루프의 `invariant`와 `decreases`"
+  ],
+  "note": "`while` and `loop` need a `decreases` clause (E0506); a range `for` takes none.",
+  "check": [
+    {
+      "code": "E0506",
+      "line": 6
+    },
+    {
+      "code": "E0506",
+      "line": 16
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "sections": [
+    "`impl`과 수신자"
+  ],
+  "note": "The first parameter of an `impl T` function typed `T`, `&T` or `&mut T` is the receiver and is named `self` (E0310); `self` names nothing else (E0310); the receiver writes its type (E0228).",
+  "check": [
+    {
+      "code": "E0310",
+      "line": 19
+    },
+    {
+      "code": "E0310",
+      "line": 22
+    },
+    {
+      "code": "E0310",
+      "line": 25
+    },
+    {
+      "code": "E0228",
+      "line": 28
+    },
+    {
+      "code": "E0310",
+      "line": 32
+    }
+  ]
+}

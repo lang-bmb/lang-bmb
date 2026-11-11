@@ -1,0 +1,17 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn a1() -> f64 { 1. }
+
+    #[effects(pure)]
+    fn a2() -> f64 { .5 }
+
+    #[effects(pure)]
+    fn a3() -> f64 { 1e5 }
+
+    #[effects(pure)]
+    fn a4() -> f64 { 1.0e }
+
+    #[effects(pure)]
+    fn a5() -> f64 { 1.0f64 }
+}

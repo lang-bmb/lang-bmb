@@ -1,0 +1,10 @@
+#[summary("단위 é")]
+mod a {
+    // 주석 ü
+    #[effects(io)]
+    fn main() -> () {
+        print_str("é한\n");
+        let c: char = '한';
+        print_u64(u32::from(c) as u64);
+    }
+}

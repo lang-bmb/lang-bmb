@@ -1,0 +1,23 @@
+#[summary("the scrutinee is borrowed")]
+mod m {
+    enum Slot { Empty, Full(i64) }
+
+    #[effects(pure)]
+    fn again(s: &mut Slot) -> i64 {
+        match s {
+            Slot::Empty => 0,
+            Slot::Full(x) => { *s = Slot::Empty; 0 }
+        }
+    }
+
+    #[effects(pure)]
+    fn after(s: &mut Slot) -> () {
+        match s {
+            Slot::Empty => {}
+            Slot::Full(x) => {
+                *x = 0;
+            }
+        }
+        *s = Slot::Empty;
+    }
+}

@@ -1,0 +1,16 @@
+{
+  "sections": [
+    "탈출구: `#[external_body]`"
+  ],
+  "note": "The body of an `#[external_body]` function still gets type and ownership checks.",
+  "check": [
+    {
+      "code": "E0401",
+      "line": 10
+    },
+    {
+      "code": "E0413",
+      "line": 18
+    }
+  ]
+}

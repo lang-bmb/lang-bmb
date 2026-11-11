@@ -1,0 +1,12 @@
+#[summary("s")]
+mod a {
+    #[effects(io)]
+    fn main() -> () {
+        print_i64(0xff);
+        print_i64(0xFF_00);
+        print_i64(0o17);
+        print_i64(0b1010);
+        print_i64(1_000_);
+        print_i64(007);
+    }
+}

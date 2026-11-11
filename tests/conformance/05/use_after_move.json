@@ -1,0 +1,16 @@
+{
+  "sections": [
+    "이동한 값의 사용"
+  ],
+  "note": "Using a local after it was moved into a call is E0413 (the chapter's example).",
+  "check": [
+    {
+      "code": "E0413",
+      "line": 10
+    },
+    {
+      "code": "E0413",
+      "line": 16
+    }
+  ]
+}

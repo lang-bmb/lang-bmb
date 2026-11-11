@@ -1,0 +1,19 @@
+{
+  "sections": [
+    "함수 값의 계약"
+  ],
+  "note": "A call `f(a)` of an Fn-bounded value proves `f.requires(a)` and assumes `f.ensures(a, r)`.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::apply": "verified",
+      "m::unchecked": "failed"
+    },
+    "diags": [
+      {
+        "code": "E0801",
+        "line": 13
+      }
+    ]
+  }
+}

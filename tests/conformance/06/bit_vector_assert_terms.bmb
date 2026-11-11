@@ -1,0 +1,12 @@
+#[summary("bit_vector terms")]
+mod m {
+    #[effects(pure)]
+    fn quantified() -> () {
+        assert(forall|i: usize| i < 4 ==> #[trigger] (i & 3) == i) by (bit_vector);
+    }
+
+    #[effects(pure)]
+    fn data(o: Option<u32>) -> () {
+        assert(o == o) by (bit_vector);
+    }
+}

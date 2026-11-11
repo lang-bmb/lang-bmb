@@ -1,0 +1,11 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn ok<T: Eq + Ord>(a: &T, b: &T) -> bool { *a == *b || *a < *b }
+
+    #[effects(pure)]
+    fn e1<T>(a: &T, b: &T) -> bool { *a == *b }
+
+    #[effects(pure)]
+    fn e2<T: Eq>(a: &T, b: &T) -> bool { *a < *b }
+}

@@ -1,0 +1,11 @@
+#[summary("s")]
+mod a {
+    struct P { x: i64, y: bool }
+
+    const V: Vec<i64> = Vec::new();
+    const S: String = String::new();
+    const B: Box<i64> = Box::new(1);
+    const T: bool = 1;
+    const U: u8 = 256;
+    const Q: P = P { x: 1 };
+}

@@ -1,0 +1,20 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn e1(x: i64) -> i64 {
+        assert!(x > 0);
+        x
+    }
+
+    #[effects(pure)]
+    fn e2(x: u8) -> u8 {
+        assert(x & 1 <= 1) by (nonlinear);
+        x
+    }
+
+    #[effects(pure)]
+    fn e3(x: i64) -> i64 {
+        assert(x);
+        x
+    }
+}

@@ -1,0 +1,37 @@
+#[summary("s")]
+mod a {
+    struct S { x: i64 }
+
+    struct G<T> { v: T }
+
+    impl S {
+        #[effects(pure)]
+        fn get(self: &S) -> i64 { self.x }
+    }
+
+    impl S {
+        #[effects(pure)]
+        fn two(self: &S) -> i64 { self.x }
+    }
+
+    impl Nope {
+    }
+
+    impl<T: Copy> G<T> {
+        #[effects(pure)]
+        fn v(self: &G<T>) -> T { self.v }
+    }
+
+    impl<T> G<T> {
+        #[effects(pure)]
+        fn w(self: G<T>) -> T { self.v }
+    }
+}
+
+#[summary("s")]
+mod b {
+    impl a::S {
+        #[effects(pure)]
+        fn other(self: &a::S) -> i64 { self.x }
+    }
+}

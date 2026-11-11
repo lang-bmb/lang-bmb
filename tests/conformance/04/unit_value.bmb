@@ -1,0 +1,12 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn nothing() -> () { () }
+
+    #[effects(pure)]
+    fn f() -> () {
+        let u: () = ();
+        let v: () = nothing();
+        u
+    }
+}

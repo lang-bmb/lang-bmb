@@ -1,0 +1,22 @@
+#[summary("trust is local")]
+mod m {
+    spec fn small(x: i64) -> bool { 0 <= x && x <= 10 }
+
+    #[effects(panic)]
+    fn trusted(x: i64) -> i64 {
+        #[rationale(kind = boundary, "callers pass small values")]
+        assume(small(x));
+        x + 1
+    }
+
+    #[effects(pure)]
+    fn unrelated(x: i64) -> i64 {
+        x + 1
+    }
+
+    #[effects(panic)]
+    fn caller(x: i64) -> i64 {
+        let y: i64 = trusted(x);
+        x + 1
+    }
+}

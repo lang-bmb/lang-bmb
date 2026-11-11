@@ -1,0 +1,8 @@
+{
+  "sections": [
+    "해제"
+  ],
+  "note": "return, break and continue leave scopes that own values, and a partially moved struct drops its remaining fields; the program runs to the end.",
+  "check": [],
+  "run": "7\n3\n2\n1\n"
+}

@@ -1,0 +1,19 @@
+#[summary("swap of two fields")]
+mod m {
+    struct Two { a: Vec<i64>, b: Vec<i64> }
+
+    #[effects(pure)]
+    fn bad(t: Two) -> usize {
+        let mut u: Two = t;
+        std::mem::swap(&mut u.a, &mut u.b);
+        u.a.len()
+    }
+
+    #[effects(pure)]
+    fn good(a: Vec<i64>, b: Vec<i64>) -> usize {
+        let mut x: Vec<i64> = a;
+        let mut y: Vec<i64> = b;
+        std::mem::swap(&mut x, &mut y);
+        x.len()
+    }
+}

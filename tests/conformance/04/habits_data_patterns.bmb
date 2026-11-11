@@ -1,0 +1,41 @@
+#[summary("s")]
+mod a {
+    struct P { x: i64, y: i64 }
+
+    struct T(i64, i64);
+
+    enum V { A { x: i64 } }
+
+    #[effects(pure)]
+    fn e1(x: i64, y: i64) -> P { P { x: x, y } }
+
+    #[effects(pure)]
+    fn e2(p: P) -> P { P { x: 1, ..p } }
+
+    #[effects(pure)]
+    fn e3(o: Option<i64>) -> i64 { match o { None => 0, _ => 1, } }
+
+    #[effects(pure)]
+    fn e4(o: Option<i64>) -> i64 { if let Some(v) = o { v } else { 0 } }
+
+    #[effects(pure)]
+    fn e5(o: Option<i64>) -> i64 {
+        let Some(v) = o else { return 0; };
+        v
+    }
+
+    #[effects(pure)]
+    fn e6(o: Option<i64>) -> i64 { o.unwrap() }
+
+    #[effects(pure)]
+    fn e7(p: P) -> i64 {
+        let P { x, y } = p;
+        x
+    }
+
+    #[effects(pure)]
+    fn e8(p: &P) -> i64 { (*p).x }
+
+    #[effects(pure)]
+    fn e9(o: Option<i64>) -> i64 { match o { None => 0, Some(v) if v > 0 => v, } }
+}

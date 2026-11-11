@@ -24,7 +24,7 @@
 | 단언 | `assert(e);` | E0810 |
 | `spec fn`의 종료 | 재귀하는 `spec fn`의 몸 안의 재귀 호출에서 측도가 줄어듦 | E0813 |
 | 변환의 범위 | 실행 코드의 `x as T`에서 값이 `T` 안에 있음. `f64`로는 64비트 정수가 2^53 이하여서 정확함 | E0815 |
-| `Vec`·`String`의 최대 길이 | `push`·`with_capacity`·`push_str` 등 길이를 늘리는 연산 | E0816 |
+| `Vec`의 용량 | `Vec::with_capacity(n)`의 `n`이 최대 길이 안. `push`·`push_str`에는 의무가 없다: 길이가 최대를 넘으면 프로그램이 끝나고(할당 실패와 같은 등급), 증명은 `push` 뒤에 길이가 최대 안임을 사실로 얻는다(ADR-0124, `tests/verify/pass/unbounded_push.bmb`) | E0816 |
 | trait 계약의 정제 | trait impl의 함수마다: trait의 전제가 impl의 전제를, trait 전제와 impl 결과가 trait의 결과를 함의 | E0817 |
 | 비트벡터 하위 증명 | `assert(e) by (bit_vector);`의 따로 된 질의 | E0818 |
 | 유령 인자의 범위 | `proof fn` 호출의 인자가 매개변수 타입 안에 있음 | E0819 |

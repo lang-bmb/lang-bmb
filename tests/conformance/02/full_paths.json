@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "경로와 이름 찾기"
+  ],
+  "note": "A single name is the using unit's definition; other paths start at a top-level unit (`unit::f`, `unit::T`, `unit::T::f`, `unit::N`, `outer::inner::f`), also for one's own unit.",
+  "check": [],
+  "verify": {
+    "diags": []
+  },
+  "run": "0\n3\n6\n1\n4\n"
+}

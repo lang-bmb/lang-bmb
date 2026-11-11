@@ -1,0 +1,28 @@
+{
+  "sections": [
+    "부동소수 리터럴"
+  ],
+  "note": "`1.`, `.5`, `1e5` and `1.0e` are E0109; a suffix is E0104.",
+  "check": [
+    {
+      "code": "E0109",
+      "line": 4
+    },
+    {
+      "code": "E0109",
+      "line": 7
+    },
+    {
+      "code": "E0109",
+      "line": 10
+    },
+    {
+      "code": "E0109",
+      "line": 13
+    },
+    {
+      "code": "E0104",
+      "line": 16
+    }
+  ]
+}

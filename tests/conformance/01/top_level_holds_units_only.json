@@ -1,0 +1,16 @@
+{
+  "sections": [
+    "구문의 뼈대"
+  ],
+  "note": "A function at the top level is E0703; any other token there is E0103.",
+  "check": [
+    {
+      "code": "E0703",
+      "line": 2
+    },
+    {
+      "code": "E0103",
+      "line": 8
+    }
+  ]
+}

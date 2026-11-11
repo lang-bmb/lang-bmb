@@ -1,0 +1,22 @@
+#[summary("foreign escapes")]
+mod m {
+    #[effects(pure)]
+    fn rust(x: i64) -> i64 {
+        unsafe {
+            x
+        }
+    }
+
+    #[effects(pure)]
+    fn verus(x: i64) -> i64 {
+        admit();
+        x
+    }
+
+    #[rationale(kind = boundary, "Verus spelling")]
+    #[verifier::external_body]
+    #[effects(panic)]
+    fn verus_attr() -> i64 {
+        0
+    }
+}

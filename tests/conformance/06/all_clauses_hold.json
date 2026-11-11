@@ -1,0 +1,25 @@
+{
+  "sections": [
+    "계약 절"
+  ],
+  "note": "Comma-separated clauses must all hold: a caller must establish every `requires` clause and the body every `ensures` clause.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::callee": "verified",
+      "m::good": "verified",
+      "m::bad": "failed",
+      "m::half": "failed"
+    },
+    "diags": [
+      {
+        "code": "E0801",
+        "line": 16
+      },
+      {
+        "code": "E0802",
+        "line": 22
+      }
+    ]
+  }
+}

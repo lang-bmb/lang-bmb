@@ -1,0 +1,18 @@
+#[summary("use after move")]
+mod m {
+    #[effects(pure)]
+    fn take(v: Vec<i64>) -> usize { v.len() }
+
+    #[effects(alloc)]
+    fn twice() -> usize {
+        let v: Vec<i64> = Vec::new();
+        let n: usize = take(v);
+        n + v.len()
+    }
+
+    #[effects(pure)]
+    fn param(v: Vec<i64>) -> usize {
+        let n: usize = take(v);
+        take(v)
+    }
+}

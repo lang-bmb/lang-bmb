@@ -1,0 +1,28 @@
+{
+  "sections": [
+    "구조체와 열거형"
+  ],
+  "note": "A struct value names every field once in declaration order: a non-struct, a missing or repeated field is E0422, another order E0434, an unknown field E0306.",
+  "check": [
+    {
+      "code": "E0422",
+      "line": 11
+    },
+    {
+      "code": "E0422",
+      "line": 14
+    },
+    {
+      "code": "E0434",
+      "line": 17
+    },
+    {
+      "code": "E0306",
+      "line": 20
+    },
+    {
+      "code": "E0422",
+      "line": 23
+    }
+  ]
+}

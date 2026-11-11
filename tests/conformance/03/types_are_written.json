@@ -1,0 +1,24 @@
+{
+  "sections": [
+    "타입을 적는 자리"
+  ],
+  "note": "Types are written on `let`, function results, closure parameters and `const`: E0201, E0209, E0263, E0103.",
+  "check": [
+    {
+      "code": "E0201",
+      "line": 7
+    },
+    {
+      "code": "E0209",
+      "line": 10
+    },
+    {
+      "code": "E0263",
+      "line": 13
+    },
+    {
+      "code": "E0103",
+      "line": 15
+    }
+  ]
+}

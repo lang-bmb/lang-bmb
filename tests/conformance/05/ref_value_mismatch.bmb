@@ -1,0 +1,29 @@
+#[summary("reference mismatches")]
+mod m {
+    #[effects(pure)]
+    fn get(x: &i64) -> i64 { *x }
+
+    #[effects(pure)]
+    fn id(x: i64) -> i64 { x }
+
+    #[effects(pure)]
+    fn set(x: &mut i64) -> () {
+        *x = 0;
+    }
+
+    #[effects(pure)]
+    fn value_for_ref(x: i64) -> i64 {
+        get(x)
+    }
+
+    #[effects(pure)]
+    fn ref_for_value(x: &i64) -> i64 {
+        id(x)
+    }
+
+    #[effects(pure)]
+    fn shared_for_mut() -> () {
+        let mut x: i64 = 1;
+        set(&x);
+    }
+}

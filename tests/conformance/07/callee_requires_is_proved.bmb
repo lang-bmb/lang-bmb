@@ -1,0 +1,29 @@
+#[summary("requires at the call")]
+mod m {
+    #[effects(pure)]
+    fn small() -> (r: i64)
+        ensures 0 <= r && r < 10,
+    {
+        3
+    }
+
+    #[effects(pure)]
+    fn any() -> i64 { 3 }
+
+    #[effects(pure)]
+    fn needs(x: i64) -> i64
+        requires x < 10,
+    {
+        x
+    }
+
+    #[effects(pure)]
+    fn chain() -> i64 {
+        needs(small())
+    }
+
+    #[effects(pure)]
+    fn broken_chain() -> i64 {
+        needs(any())
+    }
+}

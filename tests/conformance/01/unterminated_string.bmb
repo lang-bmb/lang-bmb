@@ -1,0 +1,7 @@
+#[summary("s")]
+mod a {
+}
+"abc
+/// the literal runs over these lines
+mod b {
+}

@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "탈출구: `#[external_body]`"
+  ],
+  "note": "An `#[external_body]` function is a source of `panic`: it must declare `panic` (E0606).",
+  "check": [
+    {
+      "code": "E0606",
+      "line": 5
+    }
+  ]
+}

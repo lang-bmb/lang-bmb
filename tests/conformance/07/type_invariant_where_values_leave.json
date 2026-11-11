@@ -1,0 +1,29 @@
+{
+  "sections": [
+    "의무의 종류"
+  ],
+  "note": "A type invariant is owed where a value leaves the function: a call argument, a return, a `&mut` parameter at exit (E0823).",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::argument": "failed",
+      "m::result": "failed",
+      "m::exit": "failed",
+      "m::good": "verified"
+    },
+    "diags": [
+      {
+        "code": "E0823",
+        "line": 14
+      },
+      {
+        "code": "E0823",
+        "line": 20
+      },
+      {
+        "code": "E0823",
+        "line": 25
+      }
+    ]
+  }
+}

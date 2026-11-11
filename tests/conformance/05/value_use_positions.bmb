@@ -1,0 +1,43 @@
+#[summary("value uses")]
+mod m {
+    struct Buf { data: Vec<i64> }
+
+    impl Buf {
+        #[effects(pure)]
+        fn into_len(self: Buf) -> usize { self.data.len() }
+    }
+
+    #[effects(pure)]
+    fn take(v: Vec<i64>) -> usize { v.len() }
+
+    #[effects(pure)]
+    fn argument(v: Vec<i64>) -> usize {
+        let n: usize = take(v);
+        take(v)
+    }
+
+    #[effects(alloc)]
+    fn assignment(v: Vec<i64>) -> usize {
+        let mut w: Vec<i64> = Vec::new();
+        w = v;
+        v.len()
+    }
+
+    #[effects(pure)]
+    fn field(v: Vec<i64>) -> usize {
+        let b: Buf = Buf { data: v };
+        v.len()
+    }
+
+    #[effects(pure)]
+    fn block(v: Vec<i64>) -> usize {
+        let w: Vec<i64> = { v };
+        v.len()
+    }
+
+    #[effects(pure)]
+    fn receiver(b: Buf) -> usize {
+        let n: usize = b.into_len();
+        b.data.len()
+    }
+}

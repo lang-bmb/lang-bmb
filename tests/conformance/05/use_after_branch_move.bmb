@@ -1,0 +1,20 @@
+#[summary("after the join")]
+mod m {
+    #[effects(pure)]
+    fn take(v: Vec<i64>) -> usize { v.len() }
+
+    #[effects(pure)]
+    fn after_if(c: bool, v: Vec<i64>) -> usize {
+        let n: usize = if c { take(v) } else { 0 };
+        n + v.len()
+    }
+
+    #[effects(pure)]
+    fn after_match(o: Option<i64>, v: Vec<i64>) -> usize {
+        let n: usize = match o {
+            None => take(v),
+            Some(x) => 0,
+        };
+        n + v.len()
+    }
+}

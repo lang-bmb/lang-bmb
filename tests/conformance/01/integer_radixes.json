@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "정수 리터럴"
+  ],
+  "note": "Decimal, `0x`, `0o` and `0b` literals; `_` between and after digits is a separator outside the value.",
+  "check": [],
+  "verify": {
+    "diags": []
+  },
+  "run": "255\n65280\n15\n10\n1000\n7\n"
+}

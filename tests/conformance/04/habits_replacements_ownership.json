@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "받지 않는 Rust 습관"
+  ],
+  "note": "The forms written instead: `std::mem::replace` and `std::mem::swap` move an owned value out from behind `&mut`.",
+  "check": [],
+  "verify": {
+    "diags": []
+  },
+  "run": "0\n2\n2\n0\n"
+}

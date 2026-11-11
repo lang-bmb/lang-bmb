@@ -1,0 +1,13 @@
+{
+  "sections": [
+    "이동한 값의 사용",
+    "클로저의 캡처"
+  ],
+  "note": "Calling an FnOnce-bounded function value twice is E0413; an Fn-bounded one can be called twice.",
+  "check": [
+    {
+      "code": "E0413",
+      "line": 6
+    }
+  ]
+}

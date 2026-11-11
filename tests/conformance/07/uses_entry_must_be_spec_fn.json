@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "증명 문맥"
+  ],
+  "note": "A `#[uses(..)]` entry that is not a spec fn is a check error (E0509).",
+  "check": [
+    {
+      "code": "E0509",
+      "line": 7
+    }
+  ]
+}

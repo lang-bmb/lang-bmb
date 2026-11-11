@@ -1,0 +1,32 @@
+#[summary("s")]
+mod a {
+    struct P { x: i64 }
+
+    #[effects(alloc, io)]
+    fn main() -> () {
+        let mut v: Vec<i64> = Vec::with_capacity(4);
+        v.push(1);
+        v.push(2);
+        v.push(3);
+        print_u64(v.len() as u64);
+        print_i64(v[1]);
+        match v.pop() {
+            None => print_i64(-1),
+            Some(x) => print_i64(x),
+        }
+        v.truncate(1);
+        print_u64(v.len() as u64);
+        let w: Vec<i64> = v.clone();
+        print_u64(w.len() as u64);
+        let mut b: Box<i64> = Box::new(5);
+        *b = *b - 1;
+        print_i64(*b);
+        let bp: Box<P> = Box::new(P { x: 7 });
+        print_i64(bp.x);
+        let vv: Vec<Vec<i64>> = Vec::new();
+        let vs: Vec<String> = Vec::new();
+        let vb: Vec<Box<i64>> = Vec::new();
+        let ba: Box<[i64; 2]> = Box::new([1, 2]);
+        print_u64((vv.len() + vs.len() + vb.len()) as u64);
+    }
+}

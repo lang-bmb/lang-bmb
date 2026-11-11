@@ -1,0 +1,14 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn e1(s: &String) -> u8 { s[0] }
+
+    #[effects(alloc)]
+    fn e2(s: &String) -> String { s.to_string() }
+
+    #[effects(pure)]
+    fn e3(s: &str) -> usize { s.chars() }
+
+    #[effects(pure)]
+    fn e4(c: char) -> char { c + 1 }
+}

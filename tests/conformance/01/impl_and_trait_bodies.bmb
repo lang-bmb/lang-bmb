@@ -1,0 +1,12 @@
+#[summary("s")]
+mod a {
+    struct S { x: i64 }
+
+    impl S {
+        const K: i64 = 1;
+    }
+
+    trait T {
+        struct Q { x: i64 }
+    }
+}

@@ -1,0 +1,44 @@
+{
+  "sections": [
+    "항목"
+  ],
+  "note": "Types, functions, traits and constants cannot take the built-in names `Option`, `Some`, `Vec`, `Box`, ..; types, traits and constants cannot take a primitive type's name; traits cannot be `Copy`, `Eq`, `Ord` (E0309).",
+  "check": [
+    {
+      "code": "E0309",
+      "line": 3
+    },
+    {
+      "code": "E0309",
+      "line": 6
+    },
+    {
+      "code": "E0309",
+      "line": 8
+    },
+    {
+      "code": "E0309",
+      "line": 10
+    },
+    {
+      "code": "E0309",
+      "line": 12
+    },
+    {
+      "code": "E0309",
+      "line": 14
+    },
+    {
+      "code": "E0309",
+      "line": 16
+    },
+    {
+      "code": "E0309",
+      "line": 18
+    },
+    {
+      "code": "E0309",
+      "line": 20
+    }
+  ]
+}

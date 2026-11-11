@@ -1,0 +1,15 @@
+#[summary("s")]
+mod a {
+    #[effects(io)]
+    fn main() -> () {
+        print_u64(u32::from('a') as u64);
+        print_u64(u32::from('\n') as u64);
+        print_u64(u32::from('\x41') as u64);
+        print_u64(u32::from('\u{1F600}') as u64);
+        print_u64(u32::from('\'') as u64);
+        print_u64(u32::from('\0') as u64);
+        print_str("x\ty\\\"\r\n");
+        print_str("two
+lines é\n");
+    }
+}

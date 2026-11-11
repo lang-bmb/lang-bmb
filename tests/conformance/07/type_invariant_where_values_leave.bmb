@@ -1,0 +1,36 @@
+#[summary("E0823")]
+mod m {
+    #[invariant(ordered)]
+    struct Span { lo: i64, hi: i64 }
+
+    spec fn ordered(s: &Span) -> bool { s.lo <= s.hi }
+
+    #[effects(pure)]
+    fn take(s: Span) -> i64 { 0 }
+
+    #[effects(pure)]
+    #[uses(ordered)]
+    fn argument(a: i64, b: i64) -> i64 {
+        take(Span { lo: a, hi: b })
+    }
+
+    #[effects(pure)]
+    #[uses(ordered)]
+    fn result(a: i64) -> Span {
+        Span { lo: a, hi: 0 }
+    }
+
+    #[effects(pure)]
+    #[uses(ordered)]
+    fn exit(s: &mut Span) -> () {
+        s.hi = 0;
+    }
+
+    #[effects(pure)]
+    #[uses(ordered)]
+    fn good(a: i64, s: &mut Span) -> Span {
+        s.hi = s.lo;
+        let k: i64 = take(Span { lo: a, hi: a });
+        Span { lo: 0, hi: 1 }
+    }
+}

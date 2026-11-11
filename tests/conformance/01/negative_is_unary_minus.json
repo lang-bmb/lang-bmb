@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "정수 리터럴"
+  ],
+  "note": "There are no negative literals: `-1` is unary minus applied to a literal, so `- 1` and `-(1)` are the same value.",
+  "check": [],
+  "verify": {
+    "diags": []
+  },
+  "run": "-1\n-1\n-1\n2\n"
+}

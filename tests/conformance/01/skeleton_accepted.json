@@ -1,0 +1,14 @@
+{
+  "sections": [
+    "구문의 뼈대"
+  ],
+  "note": "A unit holds units, constants, structs, enums, traits, impls and the three kinds of function; a trait method may end with `;`.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "a::f": "verified",
+      "a::lemma": "verified"
+    },
+    "diags": []
+  }
+}

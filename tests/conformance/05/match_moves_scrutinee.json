@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "이동한 값의 사용"
+  ],
+  "note": "A match that binds a move payload moves its scrutinee; a later use is E0413.",
+  "check": [
+    {
+      "code": "E0413",
+      "line": 9
+    }
+  ]
+}

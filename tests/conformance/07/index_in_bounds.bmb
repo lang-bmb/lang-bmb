@@ -1,0 +1,22 @@
+#[summary("E0805: index")]
+mod m {
+    #[effects(pure)]
+    fn read(a: &[i64], i: usize) -> i64 {
+        a[i]
+    }
+
+    #[effects(pure)]
+    fn write(a: &mut [i64], i: usize) -> () {
+        a[i] = 0;
+    }
+
+    #[effects(pure)]
+    fn guarded(a: &mut [i64], i: usize) -> i64 {
+        if i < a.len() {
+            a[i] = 1;
+            a[i]
+        } else {
+            0
+        }
+    }
+}

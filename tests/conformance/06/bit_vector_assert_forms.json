@@ -1,0 +1,14 @@
+{
+  "sections": [
+    "`assert`"
+  ],
+  "note": "`assert(e) by (bit_vector);` proves `e` over integer terms in a separate bit-vector query, in code and in a proof block.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::mask": "verified",
+      "m::ghost": "verified"
+    },
+    "diags": []
+  }
+}

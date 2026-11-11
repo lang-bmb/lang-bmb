@@ -1,0 +1,19 @@
+{
+  "sections": [
+    "타입 불변식"
+  ],
+  "note": "Inside a function the invariant may be broken for a while; it is owed again for a `&mut` parameter at exit.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::restore": "verified",
+      "m::leave_broken": "failed"
+    },
+    "diags": [
+      {
+        "code": "E0823",
+        "line": 18
+      }
+    ]
+  }
+}

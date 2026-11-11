@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "진입점"
+  ],
+  "note": "A `main` whose result is not `()` is E0701.",
+  "check": [
+    {
+      "code": "E0701",
+      "line": 4
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "sections": [
+    "구문의 뼈대"
+  ],
+  "note": "An item with a syntax error is skipped and reading resumes at the next item, so each broken item reports its own error.",
+  "check": [
+    {
+      "code": "E0103",
+      "line": 4
+    },
+    {
+      "code": "E0103",
+      "line": 10
+    }
+  ]
+}

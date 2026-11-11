@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "변환"
+  ],
+  "note": "`x as T` keeps the value between integer types; `T::try_from(x).ok()` is an `Option<T>`; `f64::from(x)`, `u32::from(c)` and `char::from_u32(x)` convert to `f64`, from `char` and to `Option<char>`.",
+  "check": [],
+  "verify": {
+    "diags": []
+  },
+  "run": "200\n200\n-1\n255\n300.0\n65\n66\n-1\n"
+}

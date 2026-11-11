@@ -1,0 +1,20 @@
+#[summary("external bodies are checked")]
+mod m {
+    #[effects(pure)]
+    fn take(v: Vec<i64>) -> usize { v.len() }
+
+    #[rationale(kind = boundary, "outside")]
+    #[external_body]
+    #[effects(panic)]
+    fn typed() -> i64 {
+        true
+    }
+
+    #[rationale(kind = boundary, "outside")]
+    #[external_body]
+    #[effects(panic)]
+    fn owned(v: Vec<i64>) -> usize {
+        let n: usize = take(v);
+        take(v)
+    }
+}

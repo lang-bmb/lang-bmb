@@ -1,0 +1,42 @@
+#[summary("s")]
+mod a {
+    #[summary("inner")]
+    mod b {
+        const K: i64 = 2;
+    }
+
+    const N: i64 = 1;
+
+    struct S { x: i64 }
+
+    enum E { A, B(i64) }
+
+    trait T {
+        #[effects(pure)]
+        fn m(self: &Self) -> i64;
+    }
+
+    impl T for S {
+        #[effects(pure)]
+        fn m(self: &S) -> i64 { self.x }
+    }
+
+    impl S {
+        #[effects(pure)]
+        fn get(self: &S) -> i64 { self.x }
+    }
+
+    spec fn pos(x: i64) -> bool { x > 0 }
+
+    proof fn lemma(x: i64)
+        requires x > 1,
+        ensures pos(x),
+    {
+    }
+
+    #[effects(pure)]
+    fn f(x: i64) -> (r: i64)
+        requires x > 0,
+        ensures r == x,
+    { x }
+}

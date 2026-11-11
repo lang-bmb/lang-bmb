@@ -1,0 +1,27 @@
+#[summary("s")]
+mod a {
+    struct P { x: i64, y: i64 }
+
+    #[effects(pure)]
+    fn ok() -> i64 {
+        let a: i64 = 1;
+        let mut b: i64 = a;
+        b = 2;
+        b
+    }
+
+    #[effects(pure)]
+    fn e1() -> i64 { let y = 1; y }
+
+    #[effects(pure)]
+    fn e2(o: Option<i64>) -> i64 {
+        let Some(v) = o else { return 0; };
+        v
+    }
+
+    #[effects(pure)]
+    fn e3(p: P) -> i64 {
+        let P { x, y } = p;
+        x
+    }
+}

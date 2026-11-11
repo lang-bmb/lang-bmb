@@ -1,0 +1,24 @@
+{
+  "sections": [
+    "표준 라이브러리"
+  ],
+  "note": "An unknown standard library unit or name is E0304 (call) or E0305 (type), like any other path.",
+  "check": [
+    {
+      "code": "E0304",
+      "line": 4
+    },
+    {
+      "code": "E0304",
+      "line": 7
+    },
+    {
+      "code": "E0305",
+      "line": 10
+    },
+    {
+      "code": "E0305",
+      "line": 13
+    }
+  ]
+}

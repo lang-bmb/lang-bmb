@@ -1,0 +1,16 @@
+{
+  "sections": [
+    "항목"
+  ],
+  "note": "`fn` writes its return type, `-> ()` included (E0209); `proof fn` writes none (E0256).",
+  "check": [
+    {
+      "code": "E0209",
+      "line": 4
+    },
+    {
+      "code": "E0256",
+      "line": 9
+    }
+  ]
+}

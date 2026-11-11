@@ -1,0 +1,29 @@
+#[summary("drops")]
+mod m {
+    struct Buf { data: Vec<i64>, n: i64 }
+
+    #[effects(alloc)]
+    fn make(n: i64) -> Buf {
+        let mut v: Vec<i64> = Vec::new();
+        v.push(n);
+        Buf { data: v, n: n }
+    }
+
+    #[effects(alloc, io)]
+    fn main() -> () {
+        let mut b: Buf = make(1);
+        print_i64(b.n);
+        {
+            let inner: Buf = make(5);
+            let c: Box<Buf> = Box::new(make(6));
+        }
+        b = make(2);
+        print_i64(b.n);
+        b.data = Vec::new();
+        print_u64(b.data.len() as u64);
+        make(9);
+        let mut bx: Box<Vec<i64>> = Box::new(Vec::new());
+        *bx = Vec::new();
+        print_i64(make(3).n);
+    }
+}

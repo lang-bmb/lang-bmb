@@ -1,0 +1,16 @@
+#[summary("recursion and effects")]
+mod m {
+    #[effects(alloc)]
+    fn ping(n: u64) -> u64
+        decreases n,
+    {
+        if n == 0 { 0 } else { pong(n - 1) }
+    }
+
+    #[effects(pure)]
+    fn pong(n: u64) -> u64
+        decreases n,
+    {
+        if n == 0 { 0 } else { ping(n - 1) }
+    }
+}

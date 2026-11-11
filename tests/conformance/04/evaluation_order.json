@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "식의 문법과 우선순위"
+  ],
+  "note": "Operands and call arguments are evaluated left to right.",
+  "check": [],
+  "verify": {
+    "diags": []
+  },
+  "run": "20\n21\n-1\n30\n31\n32\n31\n1\n2\n3\n7\n"
+}

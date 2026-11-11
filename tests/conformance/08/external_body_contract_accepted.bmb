@@ -1,0 +1,22 @@
+#[summary("external_body")]
+mod m {
+    #[rationale(kind = boundary, "the body is not proved")]
+    #[external_body]
+    #[effects(panic)]
+    fn outside(x: i64) -> (r: i64)
+        requires x > 0,
+        ensures 0 <= r && r <= 10,
+    {
+        x * x * x
+    }
+
+    #[effects(panic)]
+    fn caller() -> i64 {
+        outside(1) + 1
+    }
+
+    #[effects(panic)]
+    fn bad_caller() -> i64 {
+        outside(0)
+    }
+}

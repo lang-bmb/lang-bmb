@@ -2193,6 +2193,11 @@ struct Enc<'p, 'q> {
     old: BTreeMap<String, Val>,
     entry_measure: Option<(String, bool)>,
     obls: Vec<Obl>,
+    /// Obligations that hold by their own text (a goal that folded to
+    /// `true`, as a shift by a local of a known value): nothing is asked,
+    /// and code generation drops their checks as it does a proved one's
+    /// (found by the conformance suite, backlog 5A-02).
+    trivial: Vec<(&'static str, Span)>,
     /// Entry constants of the parameters, for counterexamples: (name, terms,
     /// type).
     inputs: Vec<(String, Val, TypeKind)>,
@@ -3166,6 +3171,7 @@ impl<'p, 'q> Enc<'p, 'q> {
             old: BTreeMap::new(),
             entry_measure: None,
             obls: Vec::new(),
+            trivial: Vec::new(),
             inputs: Vec::new(),
             spec_pc: Vec::new(),
             term_check: None,
@@ -3592,6 +3598,8 @@ impl<'p, 'q> Enc<'p, 'q> {
                 sub: None,
                 shown: None,
             });
+        } else {
+            self.trivial.push((code, span));
         }
         if self.term_check.is_none() {
             self.pc.push(goal);
@@ -4463,7 +4471,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                     "as_slice" | "as_mut_slice" | "clone" | "as_str" | "as_bytes" => rv,
                     // Text (ADR-0050 §2): its bytes change by characters.
                     m @ ("push_str" | "push") if self.is_text_expr(recv) => {
-                        self.text_change(e, recv, rv, m, args)
+                        self.text_change(recv, rv, m, args)
                     }
                     "is_char_boundary" => {
                         let i = self.eval(&args[0]).s();
@@ -5678,7 +5686,7 @@ impl<'p, 'q> Enc<'p, 'q> {
 
     /// `push`, `pop` and `truncate` on a `Vec` (ADR-0031 §3): the new pair
     /// is written back to the receiver's place; `push` may not pass the
-    /// maximum length (E0816); `pop` is `None` exactly on an empty `Vec`.
+    /// maximum length (a fact, ADR-0124); `pop` is `None` exactly on an empty `Vec`.
     fn vec_change(&mut self, e: &Expr, recv: &Expr, rv: Val, m: &str, args: &[Expr]) -> Val {
         let el = elem_ty(&self.ty(recv));
         let (len, elems) = match rv {
@@ -5689,12 +5697,9 @@ impl<'p, 'q> Enc<'p, 'q> {
         let (result, new_len, new_elems) = match m {
             "push" => {
                 let x = self.eval(&args[0]);
-                self.oblige(
-                    "E0816",
-                    e.span,
-                    "`push` may exceed the maximum length of a `Vec`",
-                    format!("(< {len} {})", len_max(&el)),
-                );
+                // A `push` that returns left the length within the maximum:
+                // the growth ends the program otherwise (ADR-0124).
+                self.pc.push(format!("(< {len} {})", len_max(&el)));
                 let stored = store_val(&elems, &len, &x);
                 (Val::Unit, format!("(+ {len} 1)"), stored)
             }
@@ -8572,6 +8577,11 @@ fn verify_pass(
         }
         let mut solver_down = false;
         let mut def_proved: Vec<ObKey> = Vec::new();
+        for (code, span) in &enc.trivial {
+            let key = (*code, span.file, span.lo, span.hi);
+            proved_keys.insert(key);
+            def_proved.push(key);
+        }
         for (k, o) in enc.obls.iter().enumerate() {
             if stop_at_failure && failed > 0 {
                 break;

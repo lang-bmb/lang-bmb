@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "받지 않는 Rust 습관"
+  ],
+  "note": "The forms written instead of the data and pattern habits: full field lists, one arm per variant, a `match` for `if let` and `unwrap`, field reads for destructuring.",
+  "check": [],
+  "verify": {
+    "diags": []
+  },
+  "run": "1\n7\n0\n"
+}

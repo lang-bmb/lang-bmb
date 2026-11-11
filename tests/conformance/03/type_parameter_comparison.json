@@ -1,0 +1,16 @@
+{
+  "sections": [
+    "연산자와 피연산자"
+  ],
+  "note": "A value of a type parameter `T` needs `T: Eq` for `==`/`!=` and `T: Ord` for ordering in executable code (E0428).",
+  "check": [
+    {
+      "code": "E0428",
+      "line": 7
+    },
+    {
+      "code": "E0428",
+      "line": 10
+    }
+  ]
+}

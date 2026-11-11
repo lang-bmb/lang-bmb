@@ -1,0 +1,21 @@
+{
+  "sections": [
+    "복사와 이동",
+    "이동한 값의 사용"
+  ],
+  "note": "Vec, String and Box values move at a let initializer; a later use of the source is E0413.",
+  "check": [
+    {
+      "code": "E0413",
+      "line": 7
+    },
+    {
+      "code": "E0413",
+      "line": 14
+    },
+    {
+      "code": "E0413",
+      "line": 21
+    }
+  ]
+}

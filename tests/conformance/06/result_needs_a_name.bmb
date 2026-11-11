@@ -1,0 +1,16 @@
+#[summary("result name")]
+mod m {
+    #[effects(pure)]
+    fn unnamed(x: i64) -> i64
+        ensures result == x,
+    {
+        x
+    }
+
+    #[effects(pure)]
+    fn named(x: i64) -> (r: i64)
+        ensures r == x,
+    {
+        x
+    }
+}

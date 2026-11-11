@@ -1,0 +1,25 @@
+#[summary("receiver by value")]
+mod m {
+    struct Buf { data: Vec<i64> }
+
+    impl Buf {
+        #[effects(pure)]
+        fn consume(self: Buf) -> usize { self.data.len() }
+
+        #[effects(pure)]
+        fn peek(self: &Buf) -> usize { self.data.len() }
+    }
+
+    #[effects(pure)]
+    fn twice(b: Buf) -> usize {
+        let n: usize = b.consume();
+        b.consume()
+    }
+
+    #[effects(pure)]
+    fn peeks(b: Buf) -> usize {
+        let n: usize = b.peek();
+        let k: usize = b.peek();
+        b.consume()
+    }
+}

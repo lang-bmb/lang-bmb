@@ -1,0 +1,28 @@
+{
+  "sections": [
+    "문장"
+  ],
+  "note": "Assignment goes to `let mut` locals and places through `&mut`: a `let` name, a parameter or a `for` variable is E0408, a `mut` parameter E0210; assignment is not an expression (E0103).",
+  "check": [
+    {
+      "code": "E0408",
+      "line": 14
+    },
+    {
+      "code": "E0408",
+      "line": 20
+    },
+    {
+      "code": "E0408",
+      "line": 26
+    },
+    {
+      "code": "E0210",
+      "line": 31
+    },
+    {
+      "code": "E0103",
+      "line": 36
+    }
+  ]
+}

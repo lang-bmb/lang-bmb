@@ -1,0 +1,10 @@
+mod bare {
+}
+
+#[summary(unquoted)]
+mod bad {
+}
+
+#[summary("fine")]
+mod good {
+}

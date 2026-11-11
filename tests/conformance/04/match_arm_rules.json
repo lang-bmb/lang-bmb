@@ -1,0 +1,28 @@
+{
+  "sections": [
+    "if와 match"
+  ],
+  "note": "One arm per variant in declaration order: a missing variant, a repeated one or another order is E0426; a wildcard arm is E0224; a scrutinee that is not an enum is E0423.",
+  "check": [
+    {
+      "code": "E0426",
+      "line": 8
+    },
+    {
+      "code": "E0426",
+      "line": 11
+    },
+    {
+      "code": "E0426",
+      "line": 14
+    },
+    {
+      "code": "E0224",
+      "line": 17
+    },
+    {
+      "code": "E0423",
+      "line": 20
+    }
+  ]
+}

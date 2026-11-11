@@ -1,0 +1,38 @@
+#[summary("s")]
+mod a {
+    const K: i64 = 1;
+
+    enum E { A, B(i64) }
+
+    #[effects(pure)]
+    fn f1(x: i64) -> i64 { let x: i64 = 2; x }
+
+    #[effects(pure)]
+    fn f2(x: i64) -> i64 {
+        let y: i64 = 1;
+        if x > 0 { let y: i64 = 2; y } else { y }
+    }
+
+    #[effects(pure)]
+    fn f3(x: i64) -> (r: i64) { let r: i64 = x; r }
+
+    #[effects(pure)]
+    fn f4(x: i64) -> i64 { let K: i64 = x; K }
+
+    #[effects(pure)]
+    fn f5(x: i64, x: i64) -> i64 { 1 }
+
+    #[effects(pure)]
+    fn f6(e: E, n: i64) -> i64 {
+        match e {
+            E::A => 0,
+            E::B(n) => n,
+        }
+    }
+
+    #[effects(pure)]
+    fn f7(x: i64) -> i64 {
+        for x in 0..3 { }
+        1
+    }
+}

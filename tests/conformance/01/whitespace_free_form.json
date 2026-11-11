@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "문자와 공백"
+  ],
+  "note": "Blanks, tabs and newlines between tokens carry no meaning.",
+  "check": [],
+  "verify": {
+    "diags": []
+  },
+  "run": "3\n"
+}

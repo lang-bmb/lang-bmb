@@ -1,0 +1,17 @@
+{
+  "sections": [
+    "자리에서 꺼내기와 부분 이동",
+    "해제"
+  ],
+  "note": "std::mem::take and drop(v) do not exist (E0219).",
+  "check": [
+    {
+      "code": "E0219",
+      "line": 5
+    },
+    {
+      "code": "E0219",
+      "line": 11
+    }
+  ]
+}

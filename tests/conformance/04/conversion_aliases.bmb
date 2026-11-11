@@ -1,0 +1,11 @@
+#[summary("s")]
+mod a {
+    #[effects(io)]
+    fn main() -> () {
+        let x: i64 = 200;
+        print_u64(u8::try_from(x).unwrap() as u64);
+        let y: i64 = -3;
+        print_u64(-y as u8 as u64);
+        print_f64(f64::from(y), 1);
+    }
+}

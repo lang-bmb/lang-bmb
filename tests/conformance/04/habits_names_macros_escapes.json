@@ -1,0 +1,48 @@
+{
+  "sections": [
+    "받지 않는 Rust 습관"
+  ],
+  "note": "Names, macros and escapes not accepted: `use` (E0214), `crate::`/`super::`/`self::` (E0242), `Option::Some` (E0221), a generic call without type arguments (E0237), macros (E0202), `unsafe` (E0215), `admit()` (E0217).",
+  "check": [
+    {
+      "code": "E0214",
+      "line": 3
+    },
+    {
+      "code": "E0242",
+      "line": 9
+    },
+    {
+      "code": "E0242",
+      "line": 12
+    },
+    {
+      "code": "E0221",
+      "line": 15
+    },
+    {
+      "code": "E0237",
+      "line": 18
+    },
+    {
+      "code": "E0202",
+      "line": 21
+    },
+    {
+      "code": "E0202",
+      "line": 25
+    },
+    {
+      "code": "E0202",
+      "line": 30
+    },
+    {
+      "code": "E0215",
+      "line": 33
+    },
+    {
+      "code": "E0217",
+      "line": 37
+    }
+  ]
+}

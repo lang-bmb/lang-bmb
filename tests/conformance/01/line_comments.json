@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "주석"
+  ],
+  "note": "`//`, `////` and `//!` lines are comments to the end of the line and are not part of the program.",
+  "check": [],
+  "verify": {
+    "diags": []
+  },
+  "run": "1\n"
+}

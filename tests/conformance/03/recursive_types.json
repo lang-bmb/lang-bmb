@@ -1,0 +1,20 @@
+{
+  "sections": [
+    "구조체와 열거형"
+  ],
+  "note": "A type that holds itself by value, has no finite value, or holds itself with other type arguments is E0421; under `Box` or `Vec` it may hold itself.",
+  "check": [
+    {
+      "code": "E0421",
+      "line": 9
+    },
+    {
+      "code": "E0421",
+      "line": 11
+    },
+    {
+      "code": "E0421",
+      "line": 13
+    }
+  ]
+}

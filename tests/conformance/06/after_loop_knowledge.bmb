@@ -1,0 +1,34 @@
+#[summary("what a loop leaves")]
+mod m {
+    #[effects(pure)]
+    fn stated(n: u8) -> (r: u8)
+        ensures r == n,
+    {
+        let mut i: u8 = 0;
+        let mut s: u8 = 0;
+        while i < n
+            invariant i <= n, s == i,
+            decreases n - i,
+        {
+            i = i + 1;
+            s = i;
+        }
+        s
+    }
+
+    #[effects(pure)]
+    fn unstated(n: u8) -> (r: u8)
+        ensures r == n,
+    {
+        let mut i: u8 = 0;
+        let mut s: u8 = 0;
+        while i < n
+            invariant i <= n,
+            decreases n - i,
+        {
+            i = i + 1;
+            s = i;
+        }
+        s
+    }
+}

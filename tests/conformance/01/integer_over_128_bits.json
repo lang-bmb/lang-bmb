@@ -1,0 +1,20 @@
+{
+  "sections": [
+    "정수 리터럴"
+  ],
+  "note": "A literal that does not fit in 128 bits is E0105 (and, not fitting its type either, E0406); 2^128 - 1 passes the lexer and only misses its type.",
+  "check": [
+    {
+      "code": "E0105",
+      "line": 3
+    },
+    {
+      "code": "E0406",
+      "line": 3
+    },
+    {
+      "code": "E0406",
+      "line": 4
+    }
+  ]
+}

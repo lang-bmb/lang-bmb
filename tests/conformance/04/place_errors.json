@@ -1,0 +1,24 @@
+{
+  "sections": [
+    "색인·필드·역참조"
+  ],
+  "note": "An index that is not `usize` is E0401, a value that cannot be indexed E0407, `(*p).x` E0231, an unknown field E0306.",
+  "check": [
+    {
+      "code": "E0231",
+      "line": 6
+    },
+    {
+      "code": "E0306",
+      "line": 9
+    },
+    {
+      "code": "E0401",
+      "line": 12
+    },
+    {
+      "code": "E0407",
+      "line": 15
+    }
+  ]
+}

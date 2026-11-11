@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "조기 탈출: return, break, continue, ?"
+  ],
+  "note": "`x?` on an `Option` in a function returning `Option` returns `None`, on a `Result` with the same error type returns `Err(e)`; otherwise its value is the payload.",
+  "check": [],
+  "verify": {
+    "diags": []
+  },
+  "run": "3\n-1\n-1\n1\n-1\n-2\n"
+}

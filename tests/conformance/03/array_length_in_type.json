@@ -1,0 +1,16 @@
+{
+  "sections": [
+    "배열과 슬라이스"
+  ],
+  "note": "The length is part of an array's type: arrays of different lengths are different types (E0401).",
+  "check": [
+    {
+      "code": "E0401",
+      "line": 5
+    },
+    {
+      "code": "E0401",
+      "line": 10
+    }
+  ]
+}

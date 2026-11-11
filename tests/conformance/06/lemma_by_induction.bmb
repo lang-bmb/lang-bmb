@@ -1,0 +1,31 @@
+#[summary("induction")]
+mod m {
+    spec fn count(n: u64) -> u64
+        decreases n,
+    {
+        if n == 0 { 0 } else { count(n - 1) + 1 }
+    }
+
+    spec fn is_n(n: u64) -> bool { count(n) == n }
+
+    #[uses(count)]
+    proof fn count_is_n(n: u64)
+        ensures is_n(n),
+        decreases n,
+    {
+        if n > 0 {
+            count_is_n(n - 1);
+        }
+        let big: u64 = n + n + 1;
+        assert(big > n);
+    }
+
+    #[effects(pure)]
+    fn f(n: u64) -> u64 {
+        proof {
+            count_is_n(n);
+        }
+        assert(count(n) == n);
+        n
+    }
+}

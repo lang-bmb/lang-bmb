@@ -1,0 +1,32 @@
+{
+  "sections": [
+    "조기 탈출: return, break, continue, ?"
+  ],
+  "note": "`?` with another error type, mixing `Option` and `Result`, or in a function with another result type is E0241; `.unwrap()` and `.expect()` are E0229.",
+  "check": [
+    {
+      "code": "E0241",
+      "line": 4
+    },
+    {
+      "code": "E0241",
+      "line": 7
+    },
+    {
+      "code": "E0241",
+      "line": 10
+    },
+    {
+      "code": "E0241",
+      "line": 13
+    },
+    {
+      "code": "E0229",
+      "line": 16
+    },
+    {
+      "code": "E0229",
+      "line": 19
+    }
+  ]
+}

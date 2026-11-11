@@ -1,0 +1,44 @@
+{
+  "sections": [
+    "소유 타입"
+  ],
+  "note": "Methods outside the list (`is_empty`, `first`, `get`, `iter`) and `clone` of a `Vec` of moving elements are E0404; `Rc`, `RefCell`, `Cell`, `Arc` are E0238.",
+  "check": [
+    {
+      "code": "E0404",
+      "line": 4
+    },
+    {
+      "code": "E0404",
+      "line": 7
+    },
+    {
+      "code": "E0404",
+      "line": 10
+    },
+    {
+      "code": "E0404",
+      "line": 13
+    },
+    {
+      "code": "E0404",
+      "line": 17
+    },
+    {
+      "code": "E0238",
+      "line": 22
+    },
+    {
+      "code": "E0238",
+      "line": 25
+    },
+    {
+      "code": "E0238",
+      "line": 28
+    },
+    {
+      "code": "E0238",
+      "line": 31
+    }
+  ]
+}

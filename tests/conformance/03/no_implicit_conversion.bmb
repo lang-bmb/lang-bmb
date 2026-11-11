@@ -1,0 +1,26 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn e1(a: i32, b: i64) -> i64 { a + b }
+
+    #[effects(pure)]
+    fn e2(a: char) -> char { a + 1 }
+
+    #[effects(pure)]
+    fn e3(a: f64, b: f64) -> f64 { a % b }
+
+    #[effects(pure)]
+    fn e4(a: i64) -> i64 { if a { 1 } else { 2 } }
+
+    #[effects(pure)]
+    fn e5(a: f64, b: i64) -> f64 { a + b }
+
+    #[effects(pure)]
+    fn e6(a: i64) -> bool { a && true }
+
+    #[effects(pure)]
+    fn e7(a: f64) -> f64 { a & a }
+
+    #[effects(pure)]
+    fn e8(a: u8) -> u16 { a }
+}

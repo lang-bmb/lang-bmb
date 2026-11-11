@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "연산자와 피연산자"
+  ],
+  "note": "A compound assignment whose place calls a function is E0103.",
+  "check": [
+    {
+      "code": "E0103",
+      "line": 9
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "함수 값의 효과"
+  ],
+  "note": "A function passed to a generic function must not have an effect the generic function does not declare (E0608 on the argument).",
+  "check": [
+    {
+      "code": "E0608",
+      "line": 22
+    }
+  ]
+}

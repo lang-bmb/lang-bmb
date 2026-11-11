@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "복사와 이동"
+  ],
+  "note": "A move type cannot be the type argument of a Copy-bounded type parameter (E0428).",
+  "check": [
+    {
+      "code": "E0428",
+      "line": 11
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+#[summary("s")]
+mod a {
+    struct S { x: i64 }
+
+    trait A {
+        #[effects(pure)]
+        fn g(self: &Self) -> i64;
+
+        #[effects(pure)]
+        fn only_a(self: &Self) -> i64;
+    }
+
+    impl A for S {
+        #[effects(pure)]
+        fn g(self: &S) -> i64 { 20 }
+
+        #[effects(pure)]
+        fn only_a(self: &S) -> i64 { 10 }
+    }
+
+    impl S {
+        #[effects(pure)]
+        fn g(self: &S) -> i64 { 30 }
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        let s: S = S { x: 0 };
+        print_i64(s.g());
+        print_i64(A::g(&s));
+        print_i64(s.only_a());
+    }
+}

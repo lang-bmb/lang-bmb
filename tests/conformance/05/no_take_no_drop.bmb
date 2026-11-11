@@ -1,0 +1,13 @@
+#[summary("take and drop")]
+mod m {
+    #[effects(alloc)]
+    fn taken(v: &mut Vec<i64>) -> usize {
+        let w: Vec<i64> = std::mem::take(v);
+        w.len()
+    }
+
+    #[effects(pure)]
+    fn dropped(v: Vec<i64>) -> () {
+        drop(v);
+    }
+}

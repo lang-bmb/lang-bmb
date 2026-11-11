@@ -1,0 +1,20 @@
+{
+  "sections": [
+    "클로저"
+  ],
+  "note": "A capturing closure without `move` is E0262, a closure without parameter or result types E0263, a closure bound by `let` E0264.",
+  "check": [
+    {
+      "code": "E0263",
+      "line": 9
+    },
+    {
+      "code": "E0263",
+      "line": 12
+    },
+    {
+      "code": "E0264",
+      "line": 16
+    }
+  ]
+}

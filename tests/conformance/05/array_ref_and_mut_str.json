@@ -1,0 +1,16 @@
+{
+  "sections": [
+    "참조는 매개변수에만"
+  ],
+  "note": "`&[i64; 3]` and `&mut str` are not types (E0402); an array is passed as `&[T]`.",
+  "check": [
+    {
+      "code": "E0402",
+      "line": 4
+    },
+    {
+      "code": "E0402",
+      "line": 9
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+#[summary("s")]
+mod a {
+    struct Pt { x: i64, y: i64 }
+
+    enum Shape { Dot, Sq(i64) }
+
+    #[effects(pure)]
+    fn side(s: Shape, p: Pt) -> i64 {
+        let q: Pt = Pt { x: p.y, y: 0 };
+        match s {
+            Shape::Dot => q.x,
+            Shape::Sq(n) => n,
+        }
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        print_i64(side(Shape::Dot, Pt { x: 1, y: 2 }));
+        print_i64(side(Shape::Sq(5), Pt { x: 1, y: 2 }));
+    }
+}

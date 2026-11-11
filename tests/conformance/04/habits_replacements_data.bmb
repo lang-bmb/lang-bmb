@@ -1,0 +1,30 @@
+#[summary("s")]
+mod a {
+    struct P { x: i64, y: i64 }
+
+    #[effects(pure)]
+    fn update(p: P) -> P { P { x: 1, y: p.y } }
+
+    #[effects(pure)]
+    fn or_zero(o: Option<i64>) -> i64 {
+        match o {
+            None => 0,
+            Some(v) => v,
+        }
+    }
+
+    #[effects(pure)]
+    fn first(p: &P) -> i64 {
+        let x: i64 = p.x;
+        let y: i64 = p.y;
+        if x < y { x } else { y }
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        let p: P = update(P { x: 9, y: 4 });
+        print_i64(first(&p));
+        print_i64(or_zero(Some(7)));
+        print_i64(or_zero(None));
+    }
+}

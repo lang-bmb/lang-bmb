@@ -1,0 +1,20 @@
+#[summary("s")]
+mod a {
+    #[effects(io)]
+    fn flag(b: bool) -> () { if b { print_i64(1) } else { print_i64(0) } }
+
+    #[effects(io)]
+    fn say(n: i64, r: bool) -> bool {
+        print_i64(n);
+        r
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        flag(say(10, false) && say(11, true));
+        flag(say(12, true) || say(13, false));
+        flag(say(14, true) && say(15, false) || say(16, true));
+        flag(say(20, false) & say(21, true));
+        flag(say(22, true) | say(23, false));
+    }
+}

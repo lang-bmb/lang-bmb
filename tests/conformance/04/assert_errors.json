@@ -1,0 +1,20 @@
+{
+  "sections": [
+    "문장"
+  ],
+  "note": "The condition of `assert` is a `bool` (E0401); a macro such as `assert!(..)` is E0202; a prover other than `bit_vector` is E0516.",
+  "check": [
+    {
+      "code": "E0202",
+      "line": 5
+    },
+    {
+      "code": "E0516",
+      "line": 11
+    },
+    {
+      "code": "E0401",
+      "line": 17
+    }
+  ]
+}

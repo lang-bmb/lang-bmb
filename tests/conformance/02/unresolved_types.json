@@ -1,0 +1,24 @@
+{
+  "sections": [
+    "경로와 이름 찾기"
+  ],
+  "note": "An unresolved type, trait or constant of a built-in type is E0305.",
+  "check": [
+    {
+      "code": "E0305",
+      "line": 4
+    },
+    {
+      "code": "E0305",
+      "line": 7
+    },
+    {
+      "code": "E0305",
+      "line": 10
+    },
+    {
+      "code": "E0305",
+      "line": 13
+    }
+  ]
+}

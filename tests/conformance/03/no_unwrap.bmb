@@ -1,0 +1,8 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn e1(o: Option<i64>) -> i64 { o.unwrap() }
+
+    #[effects(pure)]
+    fn e2(o: Result<i64, bool>) -> i64 { o.expect("x") }
+}

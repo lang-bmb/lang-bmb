@@ -1,0 +1,23 @@
+#[summary("alloc")]
+mod m {
+    #[effects(pure)]
+    fn grows() -> Vec<i64> {
+        Vec::new()
+    }
+
+    #[effects(pure)]
+    fn boxes() -> Box<i64> {
+        Box::new(1)
+    }
+
+    #[effects(pure)]
+    fn copies(v: &Vec<i64>) -> Vec<i64> {
+        v.clone()
+    }
+
+    #[effects(alloc)]
+    fn declared(v: &Vec<i64>) -> Vec<i64> {
+        let b: Box<i64> = Box::new(1);
+        v.clone()
+    }
+}

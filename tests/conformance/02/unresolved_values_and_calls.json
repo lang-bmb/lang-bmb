@@ -1,0 +1,24 @@
+{
+  "sections": [
+    "경로와 이름 찾기"
+  ],
+  "note": "An unresolved value name and a path to a function without call arguments are E0301; an unresolved callee is E0304.",
+  "check": [
+    {
+      "code": "E0301",
+      "line": 4
+    },
+    {
+      "code": "E0304",
+      "line": 7
+    },
+    {
+      "code": "E0304",
+      "line": 10
+    },
+    {
+      "code": "E0301",
+      "line": 13
+    }
+  ]
+}

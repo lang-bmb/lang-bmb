@@ -1,0 +1,7 @@
+{
+  "sections": [
+    "중첩 한도"
+  ],
+  "note": "Units alone nest 256 deep.",
+  "check": []
+}

@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "상수의 타입"
+  ],
+  "note": "A `const` holds an integer, `bool`, `char`, or an array, struct or enum of them (`Option`, `Result` included); a `usize` constant is an array length and a repeat count.",
+  "check": [],
+  "verify": {
+    "diags": []
+  },
+  "run": "3\n1\n1\n2\n3\n4\n99\n"
+}

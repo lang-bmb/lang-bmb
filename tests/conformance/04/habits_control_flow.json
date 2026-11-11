@@ -1,0 +1,28 @@
+{
+  "sections": [
+    "받지 않는 Rust 습관"
+  ],
+  "note": "Control flow not accepted: a `?` the function cannot return (E0241), `break`/`continue` outside a loop (E0250), `break e` in `while`/`for` (E0251), a `for` over an iterator (E0252), `decreases` on `for` (E0253).",
+  "check": [
+    {
+      "code": "E0241",
+      "line": 4
+    },
+    {
+      "code": "E0250",
+      "line": 7
+    },
+    {
+      "code": "E0251",
+      "line": 11
+    },
+    {
+      "code": "E0252",
+      "line": 17
+    },
+    {
+      "code": "E0253",
+      "line": 23
+    }
+  ]
+}

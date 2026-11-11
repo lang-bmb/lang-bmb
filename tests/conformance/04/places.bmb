@@ -1,0 +1,40 @@
+#[summary("s")]
+mod a {
+    struct Cell { v: i64 }
+
+    struct Row { cells: [Cell; 2] }
+
+    struct B { rows: [Row; 2] }
+
+    #[effects(pure)]
+    fn set(r: &mut i64, v: i64) -> () { *r = v; }
+
+    #[effects(pure)]
+    fn rd(p: &Cell) -> i64 { p.v }
+
+    #[effects(pure)]
+    fn wr(p: &mut Cell) -> () { p.v = 9; }
+
+    #[effects(alloc, io)]
+    fn main() -> () {
+        let mut g: [[i64; 2]; 2] = [[1, 2], [3, 4]];
+        g[1][0] = 30;
+        print_i64(g[1][0]);
+        let mut b: B = B { rows: [Row { cells: [Cell { v: 1 }, Cell { v: 2 }] }, Row { cells: [Cell { v: 3 }, Cell { v: 4 }] }] };
+        b.rows[1].cells[0].v = 33;
+        print_i64(b.rows[1].cells[0].v);
+        let mut x: i64 = 0;
+        set(&mut x, 5);
+        print_i64(x);
+        let mut c: Cell = Cell { v: 1 };
+        wr(&mut c);
+        print_i64(rd(&c));
+        let mut bx: Box<i64> = Box::new(1);
+        *bx = 2;
+        print_i64(*bx);
+        let mut v: Vec<i64> = Vec::with_capacity(1);
+        v.push(1);
+        v[0] = 7;
+        print_i64(v[0]);
+    }
+}

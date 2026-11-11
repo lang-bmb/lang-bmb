@@ -1,0 +1,30 @@
+{
+  "sections": [
+    "연산자와 피연산자"
+  ],
+  "note": "Overflow, division by zero and the range of a shift amount are proof obligations, not type errors; the wrapping methods carry none.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "a::add": "failed",
+      "a::div": "failed",
+      "a::shl": "failed",
+      "a::wrap": "verified",
+      "a::bounded": "verified"
+    },
+    "diags": [
+      {
+        "code": "E0803",
+        "line": 5
+      },
+      {
+        "code": "E0804",
+        "line": 12
+      },
+      {
+        "code": "E0803",
+        "line": 17
+      }
+    ]
+  }
+}

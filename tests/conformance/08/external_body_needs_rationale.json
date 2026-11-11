@@ -1,0 +1,17 @@
+{
+  "sections": [
+    "탈출구: `#[external_body]`",
+    "근거: `#[rationale(..)]`"
+  ],
+  "note": "`#[external_body]` without a `#[rationale(..)]` is E1001, and a function-level `#[rationale(..)]` without `#[external_body]` is E1002.",
+  "check": [
+    {
+      "code": "E1001",
+      "line": 3
+    },
+    {
+      "code": "E1002",
+      "line": 9
+    }
+  ]
+}
