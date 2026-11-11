@@ -98,7 +98,7 @@ fn receiver(kind: FnTrait, ty: &str) -> (String, &'static str) {
 /// The trait of the `k`th `Fn`-bounded parameter of the generic function
 /// numbered `order`.
 fn trait_name(order: usize, k: usize) -> String {
-    format!("__fn_{order}_{k}")
+    format!("__fn${order}_{k}")
 }
 
 /// The value parameters of `f` whose type is type parameter `t` or a
@@ -562,6 +562,9 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Lowered {
     loop {
         // Each closure's struct (full path) and the closure.
         let mut closure_bodies: BTreeMap<String, (Closure, Vec<String>)> = BTreeMap::new();
+        // The `#[uses(..)]` of the function a closure is written in: the
+        // closure's `call` is proved in the same context (ADR-0114).
+        let mut closure_uses: BTreeMap<String, Vec<Attr>> = BTreeMap::new();
         let mut done: Vec<(String, Vec<FnDef>)> = Vec::new();
         let before = closures_made;
         {
@@ -609,6 +612,12 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Lowered {
                     .collect();
                 for (owner, f) in owned {
                     let mut f = f.clone();
+                    let owner_uses: Vec<Attr> = f
+                        .attrs
+                        .iter()
+                        .filter(|a| a.name.name == "uses")
+                        .cloned()
+                        .collect();
                     let decls = local_types(&f);
                     let outer: std::collections::BTreeSet<String> = decls.keys().cloned().collect();
                     // A call inside a closure waits for the round after that
@@ -696,7 +705,7 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Lowered {
                                     }
                                     let tn = trait_name(g.order, *k);
                                     let tr = format!("{}::{tn}", g.unit);
-                                    let sname = format!("__closure_{closures_made}");
+                                    let sname = format!("__closure${closures_made}");
                                     closures_made += 1;
                                     let nth = written.entry(owner.clone()).or_default();
                                     names.insert(
@@ -760,6 +769,7 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Lowered {
                                     located.insert(full.clone(), c.span);
                                     closure_bodies
                                         .insert(full.clone(), ((**c).clone(), caps.clone()));
+                                    closure_uses.insert(full.clone(), owner_uses.clone());
                                     todo.push((*j, full, *k, *by_ref, caps.clone()));
                                     continue;
                                 }
@@ -805,7 +815,7 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Lowered {
                                 }
                                 let sname = made.entry(key.clone()).or_insert_with(|| {
                                 let hn = h.rsplit("::").next().unwrap_or_default();
-                                let sname = format!("__fnitem_{}", items_made);
+                                let sname = format!("__fnitem${}", items_made);
                                 items_made += 1;
                                 names.insert(format!("{}::{sname}", items[&h].unit), h.clone());
                                 let it = &items[&h];
@@ -940,7 +950,7 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Lowered {
                         std::mem::take(&mut f.ensures),
                     );
                     let renamed: Vec<String> =
-                        mutable.iter().map(|(n, _)| format!("__fm_{n}")).collect();
+                        mutable.iter().map(|(n, _)| format!("__fm${n}")).collect();
                     crate::ast::fn_exprs_mut(f, &mut |e| {
                         if let ExprKind::Var(v) = &mut e.kind
                             && let Some(k) = mutable.iter().position(|(n, _)| *n == v.name)
@@ -1012,7 +1022,7 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Lowered {
             if reported {
                 quiet.push(id);
             }
-            let toks = crate::lexer::lex(id, &src, diags);
+            let toks = crate::lexer::lex_generated(id, &src, diags);
             let parsed = crate::parser::Parser::new(toks, diags, &src).parse_program();
             let Some(made_mod) = parsed.mods.into_iter().next() else {
                 continue;
@@ -1052,6 +1062,15 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Lowered {
                         "post" => splice(&mut f.body, &c.ensures),
                         "call" => {
                             f.body = c.body.clone();
+                            // The closure is part of the function it is
+                            // written in: that function's `#[uses(..)]`
+                            // holds here too (ADR-0114). A closure inside
+                            // this one inherits it from this `call`.
+                            let inherited = closure_uses
+                                .get(&format!("{unit}::{}", path.join("::")))
+                                .cloned()
+                                .unwrap_or_default();
+                            f.attrs.extend(inherited);
                             // `call` ensures the closure's own clauses, so a
                             // failed one is reported at the clause written
                             // (backlog 2V-20f); the trait's `post` follows

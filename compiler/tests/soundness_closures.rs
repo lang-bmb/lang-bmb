@@ -286,7 +286,7 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
             format!("m::g{k}")
         } else {
             let n = closures.iter().position(|x| *x == k).unwrap();
-            let head = format!("<m::__closure_{n} as ");
+            let head = format!("<m::__closure${n} as ");
             out.output
                 .lines()
                 .filter_map(|l| field(l, "def"))

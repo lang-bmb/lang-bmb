@@ -1,0 +1,56 @@
+#[summary("함수 값의 생성 이름은 소스 이름과 겹치지 않는다(backlog 2V-20j): 낮춤이 만드는 항목 이름에는 소스에 쓸 수 없는 `$`가 들어 있어, 예전 생성 이름과 같은 사용자 정의가 함께 선다")]
+mod names {
+    trait __fn_0_0 {
+        #[effects(pure)]
+        fn call(self: &Self, x: i64) -> i64;
+    }
+
+    struct __closure_0 { a: i64 }
+
+    impl __fn_0_0 for __closure_0 {
+        #[effects(pure)]
+        fn call(self: &__closure_0, x: i64) -> i64 {
+            self.a
+        }
+    }
+
+    struct __fnitem_0 { b: i64 }
+
+    #[effects(pure)]
+    fn apply<F: Fn(i64) -> i64>(f: F, x: i64) -> (r: i64)
+        requires f.requires(x),
+        ensures f.ensures(x, r),
+    {
+        f(x)
+    }
+
+    #[effects(pure)]
+    fn bump<F: FnMut(i64) -> i64>(f: F, __fm_f: i64) -> (r: i64)
+        requires f.requires(__fm_f),
+    {
+        f(__fm_f)
+    }
+
+    #[effects(pure)]
+    fn inc(x: i64) -> (y: i64)
+        requires x < 100, x > -100,
+        ensures y == x + 1,
+    {
+        x + 1
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        let c: __closure_0 = __closure_0 { a: 7 };
+        let i: __fnitem_0 = __fnitem_0 { b: 2 };
+        print_i64(c.call(0));
+        print_i64(i.b);
+        let k: i64 = 3;
+        let e: i64 = apply::<_>(move |x: i64| -> (y: i64) requires k == 3, x == 4, ensures y == x + k, { x + k }, 4);
+        assert(e == 7);
+        print_i64(e);
+        print_i64(apply::<_>(inc, 1));
+        let mut n: i64 = 0;
+        print_i64(bump::<_>(move |x: i64| -> i64 requires n == 0, x == 5, { n = n + 1; x + n }, 5));
+    }
+}

@@ -276,8 +276,8 @@
    "src": "324bb5d96ccb71ae"
   },
   "tests/check/err/fn_values.bmb": {
-   "out": "1d6aa17b00b1fd30",
-   "src": "aa2d188a74f9c74c"
+   "out": "ce7ba6a565f2185b",
+   "src": "f3a25ffed1b3c1f6"
   },
   "tests/check/err/generics.bmb": {
    "out": "c00e67cfaa57f647",
@@ -523,12 +523,16 @@
    "out": "50c347e33f0bed24",
    "src": "b764481fdcb67b0c"
   },
+  "tests/run/fn_names.bmb": {
+   "out": "7c8cd2fee59b38b6",
+   "src": "11dcf9d355317db0"
+  },
   "tests/run/fn_nested.bmb": {
-   "out": "25bf9f76a3c4e79c",
+   "out": "dc3c5f772089d6b7",
    "src": "c58f8d47286a1a65"
   },
   "tests/run/fn_values.bmb": {
-   "out": "dc3efc4cfcbdc980",
+   "out": "6ea8475ddb9483e5",
    "src": "11ad16b676c2e397"
   },
   "tests/run/forest.bmb": {
@@ -796,7 +800,7 @@
    "src": "aa05ed75d490c645"
   },
   "tests/verify/fail/fn_values.bmb": {
-   "out": "05ba8a6745fea1a2",
+   "out": "b3f82e3d03fa8c89",
    "src": "fe991f16eea7959f"
   },
   "tests/verify/fail/generics.bmb": {
@@ -840,8 +844,8 @@
    "src": "7a59ee78e0d7ea61"
   },
   "tests/verify/fail/nonlinear.bmb": {
-   "out": "75e36cbcb1169f82",
-   "src": "7188260555915f74"
+   "out": "f9e86c73c541b132",
+   "src": "e8d12413132176ed"
   },
   "tests/verify/fail/owned_fields.bmb": {
    "out": "41480e3db8074db0",
@@ -954,6 +958,10 @@
   "tests/verify/pass/bytes.bmb": {
    "out": "eddfc7d86b6fd5bc",
    "src": "b41219a8f7a7fa8b"
+  },
+  "tests/verify/pass/closure_context.bmb": {
+   "out": "ad96f764a8e25498",
+   "src": "659b30e8086248bc"
   },
   "tests/verify/pass/conditions.bmb": {
    "out": "1994c2db8c4917e1",
@@ -1110,6 +1118,10 @@
   "tests/verify/pass/unsigned_elems.bmb": {
    "out": "3d6dce4cc15c3685",
    "src": "282c77ab6973f815"
+  },
+  "tests/verify/pass/uses_impl_path.bmb": {
+   "out": "67d323797ec879ff",
+   "src": "fcee93586589f912"
   },
   "tests/verify/pass/utf8_facts.bmb": {
    "out": "7ee5b9750824bdee",

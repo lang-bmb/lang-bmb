@@ -856,9 +856,22 @@ pub fn uses_target(name: &str, mp: &str, fns: &BTreeMap<String, FnSig>) -> Optio
     if fns.get(&local).is_some_and(|s| !s.builtin) {
         return Some(local);
     }
-    fns.get(name)
-        .filter(|s| !s.builtin)
-        .map(|_| name.to_string())
+    if fns.get(name).is_some_and(|s| !s.builtin) {
+        return Some(name.to_string());
+    }
+    // `<T as Tr>::m` with names of this unit (backlog 2D-31): each side is
+    // unit-relative when it is one segment, as a plain name is.
+    let (head, m) = name.strip_prefix('<')?.split_once(">::")?;
+    let (ty, tr) = head.split_once(" as ")?;
+    let full = |s: &str| {
+        if s.contains("::") {
+            s.to_string()
+        } else {
+            format!("{mp}::{s}")
+        }
+    };
+    let q = format!("<{} as {}>::{m}", full(ty), full(tr));
+    fns.get(&q).filter(|s| !s.builtin).map(|_| q)
 }
 
 /// The method declarations of every trait: (path `unit::Trait::f`, unit,
@@ -10045,7 +10058,13 @@ impl<'a> Checker<'a> {
         let ig = sig.impl_generics;
         let text = |ps: &[TParam]| {
             ps.iter()
-                .map(|p| ty_str_in(&m[&p.name], mp))
+                .map(|p| {
+                    // A function value's type is one the compiler made
+                    // (`closures::lower`): its name cannot be written, and
+                    // its argument is written `_` (ADR-0053, backlog 2V-20j).
+                    let s = ty_str_in(&m[&p.name], mp);
+                    if s.contains('$') { "_".to_string() } else { s }
+                })
                 .collect::<Vec<_>>()
                 .join(", ")
         };

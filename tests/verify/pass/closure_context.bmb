@@ -1,0 +1,35 @@
+#[summary("클로저의 증명 문맥(ADR-0114, backlog 2V-20k): 클로저가 적은 절의 spec fn은 기본 문맥에 들고, 바깥 함수의 `#[uses(..)]`를 물려받는다")]
+mod cctx {
+    #[effects(pure)]
+    fn apply<F: Fn(i64) -> i64>(f: F, x: i64) -> (r: i64)
+        requires f.requires(x),
+        ensures f.ensures(x, r),
+    {
+        f(x)
+    }
+
+    #[effects(pure)]
+    #[uses(bounded, small)]
+    fn both(k: i64) -> (r: i64)
+        requires bounded(k),
+        ensures r == k + k,
+    {
+        apply::<_>(move |x: i64| -> (y: i64) requires x < 100, x > -100, bounded(k), ensures y == x + k, { x + k }, k)
+    }
+
+    spec fn bounded(x: i64) -> bool {
+        small(x)
+    }
+
+    #[effects(pure)]
+    fn own(k: i64) -> (r: i64)
+        requires small(k),
+        ensures r == k + k,
+    {
+        apply::<_>(move |x: i64| -> (y: i64) requires small(x), small(k), ensures y == x + k, { x + k }, k)
+    }
+
+    spec fn small(x: i64) -> bool {
+        x < 100 && x > -100
+    }
+}

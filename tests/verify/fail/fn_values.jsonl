@@ -5,12 +5,12 @@
 {"code":"E0801","severity":"error","message":"precondition `f.requires(x)` of `fvf::apply` may not hold in `fvf::too_big`","file":"fail/fn_values.bmb","line":53,"col":9,"end_line":53,"end_col":30,"fix":{"message":"there is no input to show: it fails for the definition's own values or for values a loop or call left open; after a loop the prover knows only its invariants and after a call only the callee's `ensures`, so state there what this needs, or correct the claim"}}
 {"code":"E0802","severity":"error","message":"postcondition `y == x * 3` may not hold in `fvf::tripled::{closure#0}`; counterexample: x = 1","file":"fail/fn_values.bmb","line":60,"col":91,"end_line":60,"end_col":101}
 {"code":"E0802","severity":"error","message":"postcondition `r == 10` may not hold in `fvf::wrong_result`","file":"fail/fn_values.bmb","line":66,"col":17,"end_line":66,"end_col":24,"fix":{"message":"there is no input to show: it fails for the definition's own values or for values a loop or call left open; after a loop the prover knows only its invariants and after a call only the callee's `ensures`, so state there what this needs, or correct the claim"}}
-{"def":"<fvf::__closure_0 as fvf::__fn_1_0>::call","status":"failed","obligations":6,"failed":1,"rlimit":4425,"rlimit_max":1041}
-{"def":"<fvf::__closure_1 as fvf::__fn_0_0>::call","status":"failed","obligations":4,"failed":1,"rlimit":1222,"rlimit_max":462}
-{"def":"<fvf::__closure_2 as fvf::__fn_0_0>::call","status":"failed","obligations":4,"failed":1,"rlimit":1435,"rlimit_max":574}
-{"def":"<fvf::__closure_3 as fvf::__fn_0_0>::call","status":"failed","obligations":5,"failed":1,"rlimit":2260,"rlimit_max":640}
-{"def":"<fvf::__closure_4 as fvf::__fn_0_0>::call","status":"failed","obligations":4,"failed":1,"rlimit":1549,"rlimit_max":493}
-{"def":"<fvf::__fnitem_0 as fvf::__fn_0_0>::call","status":"verified","obligations":4,"failed":0,"rlimit":1108,"rlimit_max":380}
+{"def":"<fvf::__closure$0 as fvf::__fn$1_0>::call","status":"failed","obligations":6,"failed":1,"rlimit":4425,"rlimit_max":1041}
+{"def":"<fvf::__closure$1 as fvf::__fn$0_0>::call","status":"failed","obligations":4,"failed":1,"rlimit":1222,"rlimit_max":462}
+{"def":"<fvf::__closure$2 as fvf::__fn$0_0>::call","status":"failed","obligations":4,"failed":1,"rlimit":1435,"rlimit_max":574}
+{"def":"<fvf::__closure$3 as fvf::__fn$0_0>::call","status":"failed","obligations":5,"failed":1,"rlimit":2260,"rlimit_max":640}
+{"def":"<fvf::__closure$4 as fvf::__fn$0_0>::call","status":"failed","obligations":4,"failed":1,"rlimit":1549,"rlimit_max":493}
+{"def":"<fvf::__fnitem$0 as fvf::__fn$0_0>::call","status":"verified","obligations":4,"failed":0,"rlimit":1108,"rlimit_max":380}
 {"def":"fvf::apply","status":"verified","obligations":2,"failed":0,"rlimit":269,"rlimit_max":146}
 {"def":"fvf::counted","status":"verified","obligations":1,"failed":0,"rlimit":262,"rlimit_max":262}
 {"def":"fvf::doubled","status":"verified","obligations":1,"failed":0,"rlimit":162,"rlimit_max":162}

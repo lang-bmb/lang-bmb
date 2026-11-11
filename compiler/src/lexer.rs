@@ -40,6 +40,17 @@ const PUNCT1: &[&str] = &[
 ];
 
 pub fn lex(file: u32, text: &str, diags: &mut Diags) -> Vec<Token> {
+    lex_as(file, text, diags, false)
+}
+
+/// The text the compiler generates (`closures::lower`): its identifiers may
+/// hold `$`, which no source identifier can, so a generated item's name is
+/// never a name the user wrote (backlog 2V-20j).
+pub fn lex_generated(file: u32, text: &str, diags: &mut Diags) -> Vec<Token> {
+    lex_as(file, text, diags, true)
+}
+
+fn lex_as(file: u32, text: &str, diags: &mut Diags, generated: bool) -> Vec<Token> {
     let b = text.as_bytes();
     let mut i = 0usize;
     let mut out = Vec::new();
@@ -142,7 +153,9 @@ pub fn lex(file: u32, text: &str, diags: &mut Diags) -> Vec<Token> {
         }
         if c.is_ascii_alphabetic() || c == b'_' {
             let lo = i;
-            while i < b.len() && (b[i].is_ascii_alphanumeric() || b[i] == b'_') {
+            while i < b.len()
+                && (b[i].is_ascii_alphanumeric() || b[i] == b'_' || (generated && b[i] == b'$'))
+            {
                 i += 1;
             }
             out.push(Token {

@@ -1,0 +1,46 @@
+#[summary("trait impl의 메서드를 `#[uses(<T as Tr>::name)]`로 적는다(backlog 2D-31): 진단이 내는 전체 경로 꼴과 단위 안 이름 꼴")]
+mod uip {
+    trait Area {
+        #[effects(pure)]
+        fn area(self: &Self) -> (r: i64)
+            ensures is_model(r, self.model());
+
+        spec fn model(self: &Self) -> i64;
+    }
+
+    struct Off { s: i64 }
+
+    impl Area for Off {
+        #[effects(pure)]
+        #[uses(<uip::Off as uip::Area>::model, is_model)]
+        fn area(self: &Off) -> (r: i64)
+            ensures is_model(r, self.s),
+        {
+            self.s
+        }
+
+        spec fn model(self: &Off) -> i64 {
+            self.s
+        }
+    }
+
+    struct Sq { s: i64 }
+
+    impl Area for Sq {
+        #[effects(pure)]
+        #[uses(<Sq as Area>::model, is_model)]
+        fn area(self: &Sq) -> (r: i64)
+            ensures is_model(r, self.s),
+        {
+            self.s
+        }
+
+        spec fn model(self: &Sq) -> i64 {
+            self.s
+        }
+    }
+
+    spec fn is_model(r: i64, m: i64) -> bool {
+        r == m
+    }
+}

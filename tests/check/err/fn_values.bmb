@@ -65,4 +65,9 @@ mod fve {
         let k: u64 = 3;
         apply::<_>(move |x: i64| -> (y: i64) requires x < 10 && x > -10 && k < 10, ensures y == x + (k as i64), { x + (k as i64) }, 1)
     }
+
+    #[effects(pure)]
+    fn unwritten() -> i64 {
+        apply(|x: i64| -> (y: i64) requires x == 1, ensures y == x, { x }, 1)
+    }
 }

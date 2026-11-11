@@ -743,9 +743,9 @@ mod u {
 "#;
     let m = run(&files(&[("u.bmb", src)]), &["map", "all"]);
     for needle in [
-        "{\"level\":\"L2\",\"from\":\"u::both\",\"to\":\"<u::__closure_0 as u::__fn_0_0>::call\",\"kind\":\"passes\"}",
+        "{\"level\":\"L2\",\"from\":\"u::both\",\"to\":\"<u::__closure$0 as u::__fn$0_0>::call\",\"kind\":\"passes\"}",
         "{\"level\":\"L2\",\"from\":\"u::both\",\"to\":\"u::inc\",\"kind\":\"passes\"}",
-        "\"path\":\"<u::__closure_0 as u::__fn_0_0>::call\",\"def_kind\":\"fn\",\"hash\"",
+        "\"path\":\"<u::__closure$0 as u::__fn$0_0>::call\",\"def_kind\":\"fn\",\"hash\"",
         "\"display\":\"u::both::{closure#0}\"",
         "\"display\":\"u::both::{closure#0}::ensures\"",
         "\"display\":\"<u::inc as u::apply::F>::call\"",
@@ -765,8 +765,8 @@ mod u {
             n.parse::<u32>().unwrap(),
         )
     };
-    assert_eq!(at("<u::__closure_0 as u::__fn_0_0>::call"), (true, 22));
-    assert_eq!(at("u::__closure_0"), (true, 22));
-    assert_eq!(at("<u::__fnitem_0 as u::__fn_0_0>::call"), (true, 12));
-    assert_eq!(at("u::__fn_0_0"), (true, 4));
+    assert_eq!(at("<u::__closure$0 as u::__fn$0_0>::call"), (true, 22));
+    assert_eq!(at("u::__closure$0"), (true, 22));
+    assert_eq!(at("<u::__fnitem$0 as u::__fn$0_0>::call"), (true, 12));
+    assert_eq!(at("u::__fn$0_0"), (true, 4));
 }

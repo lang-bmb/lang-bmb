@@ -521,6 +521,15 @@ impl<'a> Parser<'a> {
                             }
                             args.push(AttrArg::Ident(Ident { name, span: sp }));
                         }
+                        Tok::P("<") => {
+                            // A trait impl's method, `<unit::T as unit::Tr>::name`
+                            // (the path diagnostics and the canonical form
+                            // print), kept as one name (backlog 2D-31).
+                            match self.attr_impl_path() {
+                                Some(i) => args.push(AttrArg::Ident(i)),
+                                None => self.err_expected("`<Type as Trait>::name`"),
+                            }
+                        }
                         Tok::Str(s) => {
                             let sp = self.bump().span;
                             args.push(AttrArg::Str(s, sp));
@@ -3664,6 +3673,45 @@ impl<'a> Parser<'a> {
     /// A path names a unit from the root (`q::g`), so the prefix is E0242
     /// with the root path as its replacement; the path is read on as the
     /// replacement would make it (the units it names come first).
+    /// `<a::T as b::Tr>::name` in an attribute argument, as one name with
+    /// single spaces around `as`. Nothing is consumed past a token that
+    /// does not fit.
+    fn attr_impl_path(&mut self) -> Option<Ident> {
+        let lo = self.bump().span; // `<`
+        let plain = |me: &mut Self| -> Option<String> {
+            let Tok::Ident(first) = me.peek().clone() else {
+                return None;
+            };
+            me.bump();
+            let mut name = first;
+            while me.is_p("::") && matches!(me.peek_at(1), Tok::Ident(_)) {
+                me.bump();
+                if let Tok::Ident(seg) = me.peek().clone() {
+                    me.bump();
+                    name = format!("{name}::{seg}");
+                }
+            }
+            Some(name)
+        };
+        let ty = plain(self)?;
+        if !self.is_kw("as") {
+            return None;
+        }
+        self.bump();
+        let tr = plain(self)?;
+        if !self.eat_p(">") || !self.eat_p("::") {
+            return None;
+        }
+        let Tok::Ident(m) = self.peek().clone() else {
+            return None;
+        };
+        let hi = self.bump().span;
+        Some(Ident {
+            name: format!("<{ty} as {tr}>::{m}"),
+            span: lo.to(hi),
+        })
+    }
+
     fn relative_path_prefix(&mut self) -> Vec<Ident> {
         let Tok::Ident(kw) = self.peek().clone() else {
             return Vec::new();

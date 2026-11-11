@@ -92,10 +92,10 @@ pub struct Tables {
 impl Tables {
     /// `text` with each item the function-value lowering made named as a
     /// reader knows it (`names`, backlog 2V-20g): a closure's
-    /// `<u::__closure_0 as u::__fn_0_0>::call` is `u::f::{closure#0}` and
+    /// `<u::__closure$0 as u::__fn$0_0>::call` is `u::f::{closure#0}` and
     /// its `pre`·`post` that closure's `requires`·`ensures`; a function
-    /// item's `<u::__fnitem_0 as u::__fn_0_0>::call` is
-    /// `<u::h as u::g::F>::call`; a bound's trait `u::__fn_0_0` is `u::g::F`.
+    /// item's `<u::__fnitem$0 as u::__fn$0_0>::call` is
+    /// `<u::h as u::g::F>::call`; a bound's trait `u::__fn$0_0` is `u::g::F`.
     pub fn shown(&self, text: &str) -> String {
         if self.names.is_empty() {
             return text.to_string();
@@ -6609,7 +6609,7 @@ fn pred_name(e: &Expr) -> String {
         // was written, `f.requires(x)`.
         ExprKind::Call { path, args, .. }
             if path.len() >= 2
-                && path[path.len() - 2].name.starts_with("__fn_")
+                && path[path.len() - 2].name.starts_with("__fn$")
                 && matches!(path[path.len() - 1].name.as_str(), "pre" | "post")
                 && !args.is_empty() =>
         {
@@ -7324,6 +7324,16 @@ pub fn default_contexts(p: &Program, t: &Tables) -> BTreeMap<String, BTreeSet<St
                 ctx.insert(c);
             } else if let Some((cu, cf)) = by_path.get(c.as_str()) {
                 ctx.extend(calls(cf, cu, true).into_iter().filter(|s| is_spec(s)));
+            }
+        }
+        // A function value's `call` (`closures::lower`): the clauses the
+        // closure was written with are the bodies of its generated `pre` and
+        // `post`, and they count as its own clauses (ADR-0114).
+        if let Some(head) = q.strip_suffix(">::call").filter(|h| h.contains('$')) {
+            for m in ["pre", "post"] {
+                if let Some((mu, mf)) = by_path.get(format!("{head}>::{m}").as_str()) {
+                    ctx.extend(calls(mf, mu, false).into_iter().filter(|s| is_spec(s)));
+                }
             }
         }
         ctx.remove(*q);
