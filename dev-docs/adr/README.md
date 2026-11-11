@@ -79,7 +79,7 @@ BMB v2의 설계 결정을 한 건에 파일 하나로 남긴다. 현재 확정�
 | [0031](0031-vec-and-ownership.md) | 힙 `Vec<T>`과 소유·이동 검사 | 채택 | 백로그 2G-01, 2G-07 |
 | [0032](0032-incremental-build-key.md) | 계약 방화벽 증분 빌드의 키 | 채택(자율) | 백로그 2D-10 |
 | [0033](0033-per-query-spec-declarations.md) | 의무별 `spec fn` 선언(질의 머리말 축소), ADR-0032 키 갱신 | 채택(자율) | 백로그 2D-14 |
-| [0034](0034-mission-goals-and-benchmarks.md) | 미션 목표와 벤치마크 체계(북극성, 목표 G1~G6, 만들 벤치마크 BVB·BRB·BNB·BSB) | 채택(승인, 목표값 잠정) | 조사 2026-10-24 |
+| [0034](0034-mission-goals-and-benchmarks.md) | 미션 목표와 벤치마크 체계(북극성, 목표 G1~G6, 만들 벤치마크 BVB·BRB·BNB·BSB) | 채택(승인, 목표값은 ADR-0115로 확정) | 조사 2026-10-24 |
 | [0035](0035-spec-strength-kill-check.md) | 명세 강도 지표(BSB)의 판별 정의 | 채택(자율) | 백로그 2A-10 |
 | [0036](0036-syntax-evaluation-scale.md) | 문법 평가 저울(기준 C1~C6, 제약 K1~K4·목적 O1~O5, 차용·확장·변형·기각 판정 규칙, 증거 기준) | 채택(자율) | 백로그 2R-01 |
 | [0037](0037-bootstrap-and-language-maturity.md) | 셀프호스팅 부트스트랩 필수(stage2=stage3 고정점, stage0 기능 동결)와 언어 성숙 단계 | 채택(사람 지시) | ADR-0012 일부 대체 |
@@ -149,7 +149,7 @@ BMB v2의 설계 결정을 한 건에 파일 하나로 남긴다. 현재 확정�
 | [0102](0102-lifecycle-unit-and-test-replacement-scope.md) | 효용의 판정 단위: G5 과제 단위(미충족 기록)와 수명 단위 G5-L, E3 판정 기준, 원칙 4의 범위(순수 핵심) | 채택(승인) | 종합 평가 2026-11-09 P4·P5, ADR-0034·0041 보완 |
 | [0103](0103-evidence-stage-before-freeze.md) | 동결 전 증거 단계(2H-01), 순차 반복의 검정력, 주장의 기준 모델, 외부 과제, 산문 수리 제안 투자 멈춤 | 채택(승인) | 종합 평가 2026-11-09 P1·P2·P7·P8·D5, ADR-0077 확장 |
 | [0104](0104-large-scale-tasks-on-the-port-twin.md) | 대규모 과업 축(H-COMPREHEND·H-REFACTOR·H-TASK)과 측정 장: 포팅 쌍둥이, 커밋 재연 | 채택(승인) | 사람 지시 2026-11-09, 백로그 3P |
-| [0105](0105-stage3-scope.md) | 3단계 범위: 판정은 포팅 쌍둥이, 3B·3C·3D는 측정된 필요로 연다, 2H-01 결과별 우선순위 사전 등록 | 제안 | 백로그 2H-02 |
+| [0105](0105-stage3-scope.md) | 3단계 범위: 판정은 포팅 쌍둥이, 3B·3C·3D는 측정된 필요로 연다, 2H-01 결과별 우선순위 사전 등록 | 채택(승인) | 백로그 2H-02 |
 | [0106](0106-twin-documentation-parity.md) | 포팅 쌍둥이의 문서 조건: Rust 팔은 주석 없이(`//!`만), 주석 있는 대조 조건 등록, 범위는 주석 없는 원문 | 채택(자율) | 여덟째 실행 계획 "3P 공정성", ADR-0104 결정 4 |
 | [0107](0107-map-function-values.md) | 맵의 함수 값: L2 `passes` 간선, 생성 정의의 위치는 대신하는 원문 자리, L0·L1 `display` | 채택(자율) | 백로그 2V-20h, ADR-0020 §1 |
 | [0108](0108-undecided-obligations-carry-a-verdict.md) | 미결정 의무가 판정 정보를 싣는다: 범위를 줄인 반례 찾기(`sat`은 확정 반례, `unsat`은 `bounded`), 응답 안의 `uses` 탐색, H-UNDECIDE 등록 | 채택(자율) | 아홉째 실행 계획, 백로그 2D-33·2D-34 |
@@ -159,5 +159,7 @@ BMB v2의 설계 결정을 한 건에 파일 하나로 남긴다. 현재 확정�
 | [0112](0112-ab-verdict-by-the-interval-of-the-difference.md) | A/B 비교는 차이의 구간으로 판정(Welch, Newcombe 바닥, 정확 순열 p 병기), 반복은 팔당 4회 이상, 토큰은 과제별 비율 | 채택(승인) | 종합 검토 R3, 백로그 T0-39, ADR-0077·0103 보완 |
 | [0113](0113-ported-components-are-fixed-in-stage0.md) | 포팅된 구성 요소는 stage0에서 고정: 변경은 두 쪽 한 커밋 + 차등 시험, S4 `accept`는 구성 요소 단위 사유 | 채택(승인) | 종합 검토 R10, 백로그 4D-09, ADR-0100 보완 |
 | [0114](0114-closure-proof-context.md) | 클로저의 증명 문맥: 클로저가 적은 절의 spec fn은 `call`의 기본 문맥, 바깥 함수의 `#[uses(..)]`를 물려받음 | 채택(자율) | 백로그 2V-20k, ADR-0096·0053 |
+| [0115](0115-mission-targets-confirmed.md) | 미션 목표값 확정: 값은 그대로, 기준 모델·구간 판정·변별 불가(비교군 90% 이상 또는 10% 이하) 규칙 | 채택(승인) | 백로그 2A-16, ADR-0034 |
+| [0116](0116-cost-checkpoint-b0-and-stage0-shrink.md) | 포팅 비용 점검 관문 B0(P2 뒤, 실측 배율로 전체 재추정), 동결 전제에 stage0 축소 조사 | 채택(승인) | 포팅 지도 §7, 백로그 4D-11·4D-12, ADR-0111 보완 |
 
 채택 계획(2026-10-24 승인): 0026은 2B 착수 때, 0028은 2C 착수 때 채택한다. 0029·0030·0031은 2단계 측정(2H) 뒤로 미룬다. "제안" ADR의 진단 코드 번호는 잠정이다. 제안끼리 겹치는 번호가 있으며(예: E0212·E0412), 채택 후 구현할 때 `compiler/src/diag.rs`에서 확정한다.
