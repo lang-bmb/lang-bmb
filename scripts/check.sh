@@ -125,6 +125,7 @@ grep -qF "BMB 0줄/24과제, Rust 0줄/24과제 → 판정 불가(Rust 테스트
 python3 bench/brb/harness.py run --arm rust --agent weak --proptest off --expect weak-fail --jobs 2 > /dev/null' \
   --job "bench brb adequacy=python3 bench/brb/harness.py adequacy --jobs 2 > /dev/null" \
   --job "bench brb tests=python3 bench/brb/test_brb.py" \
+  --job "bench brb oracle strength (ADR-0119)=python3 bench/brb/test_oracle_strength.py && python3 bench/brb/oracle_strength.py check > /dev/null" \
   --job 'bench brb-encap oracle=b=$(mktemp); r=$(mktemp); trap "rm -f $b $r" EXIT
 # H-ENCAP (backlog T0-09): the reference operation passes the hidden invariant
 # judge and its own check in both arms.

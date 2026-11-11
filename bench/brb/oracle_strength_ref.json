@@ -1,0 +1,338 @@
+{
+ "t01-clamp": {
+  "classes": [
+   "output",
+   "output",
+   "trap",
+   "output"
+  ],
+  "killed": [
+   true,
+   true,
+   true,
+   true
+  ]
+ },
+ "t02-midpoint": {
+  "classes": [
+   "output",
+   "output",
+   "output",
+   "output"
+  ],
+  "killed": [
+   true,
+   true,
+   true,
+   true
+  ]
+ },
+ "t03-sat-sum": {
+  "classes": [
+   "trap",
+   "output",
+   "output",
+   "output"
+  ],
+  "killed": [
+   true,
+   false,
+   false,
+   false
+  ]
+ },
+ "t04-count-in-range": {
+  "classes": [
+   "output",
+   "output",
+   "output",
+   "output"
+  ],
+  "killed": [
+   false,
+   false,
+   false,
+   false
+  ]
+ },
+ "t05-first-max-index": {
+  "classes": [
+   "output",
+   "output",
+   "output",
+   "output"
+  ],
+  "killed": [
+   true,
+   true,
+   true,
+   true
+  ]
+ },
+ "t06-last-min-index": {
+  "classes": [
+   "output",
+   "output",
+   "output",
+   "trap"
+  ],
+  "killed": [
+   true,
+   true,
+   true,
+   true
+  ]
+ },
+ "t07-strictly-increasing": {
+  "classes": [
+   "output",
+   "output",
+   "output",
+   "trap"
+  ],
+  "killed": [
+   true,
+   true,
+   true,
+   true
+  ]
+ },
+ "t08-lower-bound": {
+  "classes": [
+   "output",
+   "output",
+   "output",
+   "output"
+  ],
+  "killed": [
+   false,
+   false,
+   false,
+   false
+  ]
+ },
+ "t09-div-floor": {
+  "classes": [
+   "output",
+   "output",
+   "output",
+   "output"
+  ],
+  "killed": [
+   false,
+   false,
+   false,
+   false
+  ]
+ },
+ "t10-mod-floor": {
+  "classes": [
+   "trap",
+   "output",
+   "trap",
+   "output"
+  ],
+  "killed": [
+   true,
+   false,
+   true,
+   false
+  ]
+ },
+ "t11-max-subarray": {
+  "classes": [
+   "output",
+   "output",
+   "output",
+   "output"
+  ],
+  "killed": [
+   false,
+   false,
+   false,
+   false
+  ]
+ },
+ "t12-second-max": {
+  "classes": [
+   "output",
+   "output",
+   "output",
+   "output"
+  ],
+  "killed": [
+   false,
+   false,
+   false,
+   false
+  ]
+ },
+ "t13-rotate-right": {
+  "classes": [
+   "trap",
+   "output",
+   "trap",
+   "output"
+  ],
+  "killed": [
+   true,
+   false,
+   true,
+   false
+  ]
+ },
+ "t14-dedup-sorted": {
+  "classes": [
+   "output",
+   "output",
+   "output",
+   "output"
+  ],
+  "killed": [
+   false,
+   false,
+   false,
+   false
+  ]
+ },
+ "t15-move-zeros": {
+  "classes": [
+   "output",
+   "output",
+   "output",
+   "output"
+  ],
+  "killed": [
+   false,
+   false,
+   false,
+   false
+  ]
+ },
+ "t16-gcd": {
+  "classes": [
+   "output",
+   "output",
+   "output",
+   "output"
+  ],
+  "killed": [
+   false,
+   false,
+   false,
+   false
+  ]
+ },
+ "t17-isqrt": {
+  "classes": [
+   "output",
+   "output",
+   "trap",
+   "output"
+  ],
+  "killed": [
+   false,
+   false,
+   true,
+   false
+  ]
+ },
+ "t18-count-digits": {
+  "classes": [
+   "trap",
+   "output",
+   "output",
+   "output"
+  ],
+  "killed": [
+   true,
+   false,
+   false,
+   false
+  ]
+ },
+ "t19-range-sum": {
+  "classes": [
+   "trap",
+   "output",
+   "output",
+   "output"
+  ],
+  "killed": [
+   true,
+   false,
+   false,
+   false
+  ]
+ },
+ "t20-majority": {
+  "classes": [
+   "output",
+   "output",
+   "output",
+   "output"
+  ],
+  "killed": [
+   false,
+   false,
+   false,
+   false
+  ]
+ },
+ "t21-longest-run": {
+  "classes": [
+   "output",
+   "output",
+   "output",
+   "output"
+  ],
+  "killed": [
+   false,
+   false,
+   false,
+   false
+  ]
+ },
+ "t22-merge-sorted": {
+  "classes": [
+   "output",
+   "output",
+   "output",
+   "output"
+  ],
+  "killed": [
+   false,
+   false,
+   false,
+   false
+  ]
+ },
+ "t23-sort": {
+  "classes": [
+   "output",
+   "output",
+   "output",
+   "output"
+  ],
+  "killed": [
+   false,
+   false,
+   false,
+   false
+  ]
+ },
+ "t24-pow-mod": {
+  "classes": [
+   "output",
+   "output",
+   "output",
+   "trap"
+  ],
+  "killed": [
+   false,
+   false,
+   false,
+   true
+  ]
+ }
+}

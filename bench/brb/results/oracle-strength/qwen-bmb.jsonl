@@ -1,0 +1,24 @@
+{"agent": "openai:qwen3.8-27b", "arm": "bmb", "classes": ["output", "output", "trap", "output"], "id": "t01-clamp", "killed": [true, true, true, true], "source": "2026-11-02-qwen3.8-27b-bmb.jsonl"}
+{"agent": "openai:qwen3.8-27b", "arm": "bmb", "classes": ["output", "output", "output", "output"], "id": "t02-midpoint", "killed": [true, true, true, true], "source": "2026-11-02-qwen3.8-27b-bmb.jsonl"}
+{"agent": "openai:qwen3.8-27b", "arm": "bmb", "classes": ["trap", "output", "output", "output"], "id": "t03-sat-sum", "killed": [true, true, true, true], "source": "2026-11-02-qwen3.8-27b-bmb.jsonl"}
+{"agent": "openai:qwen3.8-27b", "arm": "bmb", "classes": ["output", "output", "output", "output"], "id": "t04-count-in-range", "killed": [true, true, true, true], "source": "2026-11-02-qwen3.8-27b-bmb.jsonl"}
+{"agent": "openai:qwen3.8-27b", "arm": "bmb", "classes": ["output", "output", "output", "output"], "id": "t05-first-max-index", "killed": [true, true, true, true], "source": "2026-11-02-qwen3.8-27b-bmb.jsonl"}
+{"agent": "openai:qwen3.8-27b", "arm": "bmb", "classes": ["output", "output", "output", "trap"], "id": "t06-last-min-index", "killed": [true, true, true, true], "source": "2026-11-02-qwen3.8-27b-bmb.jsonl"}
+{"agent": "openai:qwen3.8-27b", "arm": "bmb", "classes": ["output", "output", "output", "trap"], "id": "t07-strictly-increasing", "killed": [true, true, true, true], "source": "2026-11-02-qwen3.8-27b-bmb.jsonl"}
+{"agent": "openai:qwen3.8-27b", "arm": "bmb", "classes": ["output", "output", "output", "output"], "id": "t08-lower-bound", "killed": [true, true, true, true], "source": "2026-11-02-qwen3.8-27b-bmb.jsonl"}
+{"agent": "openai:qwen3.8-27b", "arm": "bmb", "classes": ["output", "output", "output", "output"], "id": "t09-div-floor", "killed": [true, true, true, true], "source": "2026-11-02-qwen3.8-27b-bmb.jsonl"}
+{"agent": "openai:qwen3.8-27b", "arm": "bmb", "classes": ["trap", "output", "trap", "output"], "id": "t10-mod-floor", "killed": [true, true, true, true], "source": "2026-11-02-qwen3.8-27b-bmb.jsonl"}
+{"agent": "openai:qwen3.8-27b", "arm": "bmb", "excluded": "the session's own check did not pass at the end", "id": "t11-max-subarray", "source": "2026-11-02-qwen3.8-27b-bmb.jsonl"}
+{"agent": "openai:qwen3.8-27b", "arm": "bmb", "classes": ["output", "output", "output", "output"], "id": "t12-second-max", "killed": [true, true, true, true], "source": "2026-11-02-qwen3.8-27b-bmb.jsonl"}
+{"agent": "openai:qwen3.8-27b", "arm": "bmb", "excluded": "the session's own check did not pass at the end", "id": "t13-rotate-right", "source": "2026-11-02-qwen3.8-27b-bmb.jsonl"}
+{"agent": "openai:qwen3.8-27b", "arm": "bmb", "excluded": "the session's own check did not pass at the end", "id": "t14-dedup-sorted", "source": "2026-11-02-qwen3.8-27b-bmb.jsonl"}
+{"agent": "openai:qwen3.8-27b", "arm": "bmb", "excluded": "the session's own check did not pass at the end", "id": "t15-move-zeros", "source": "2026-11-02-qwen3.8-27b-bmb.jsonl"}
+{"agent": "openai:qwen3.8-27b", "arm": "bmb", "classes": ["output", "output", "output", "output"], "id": "t16-gcd", "killed": [true, true, false, true], "source": "2026-11-02-qwen3.8-27b-bmb.jsonl"}
+{"agent": "openai:qwen3.8-27b", "arm": "bmb", "classes": ["output", "output", "trap", "output"], "id": "t17-isqrt", "killed": [true, true, true, true], "source": "2026-11-02-qwen3.8-27b-bmb.jsonl"}
+{"agent": "openai:qwen3.8-27b", "arm": "bmb", "classes": ["trap", "output", "output", "output"], "id": "t18-count-digits", "killed": [true, true, true, true], "source": "2026-11-02-qwen3.8-27b-bmb.jsonl"}
+{"agent": "openai:qwen3.8-27b", "arm": "bmb", "classes": ["trap", "output", "output", "output"], "id": "t19-range-sum", "killed": [true, true, true, true], "source": "2026-11-02-qwen3.8-27b-bmb.jsonl"}
+{"agent": "openai:qwen3.8-27b", "arm": "bmb", "classes": ["output", "output", "output", "output"], "id": "t20-majority", "killed": [true, true, true, true], "source": "2026-11-02-qwen3.8-27b-bmb.jsonl"}
+{"agent": "openai:qwen3.8-27b", "arm": "bmb", "classes": ["output", "output", "output", "output"], "id": "t21-longest-run", "killed": [true, true, true, true], "source": "2026-11-02-qwen3.8-27b-bmb.jsonl"}
+{"agent": "openai:qwen3.8-27b", "arm": "bmb", "excluded": "the session's own check did not pass at the end", "id": "t22-merge-sorted", "source": "2026-11-02-qwen3.8-27b-bmb.jsonl"}
+{"agent": "openai:qwen3.8-27b", "arm": "bmb", "classes": ["output", "output", "output", "output"], "id": "t23-sort", "killed": [true, true, true, true], "source": "2026-11-02-qwen3.8-27b-bmb.jsonl"}
+{"agent": "openai:qwen3.8-27b", "arm": "bmb", "excluded": "the session's own check did not pass at the end", "id": "t24-pow-mod", "source": "2026-11-02-qwen3.8-27b-bmb.jsonl"}
