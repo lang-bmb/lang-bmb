@@ -286,6 +286,39 @@ pub fn rlimit() -> u64 {
         .map_or(pinned, |v| v.min(pinned))
 }
 
+/// The pinned memory limit of a solver process in megabytes (Z3's
+/// `-memory`). A query that reaches it is undecided, as one that reaches the
+/// `rlimit` is: without it such a query grew until the system killed the
+/// process (backlog T2-16). `BMB_Z3_MEMORY_MB` may lower it (for tests); it
+/// can never raise it.
+pub fn memory_mb() -> u64 {
+    let pinned: u64 = toolchain::pinned("Z3_MEMORY_MB")
+        .parse()
+        .expect("Z3_MEMORY_MB must be an integer");
+    std::env::var("BMB_Z3_MEMORY_MB")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .map_or(pinned, |v| v.min(pinned))
+}
+
+/// Whether a solver error is the memory limit. The process has ended: the
+/// next query needs a new one.
+pub fn out_of_memory(e: &str) -> bool {
+    e.contains("out of memory")
+}
+
+/// The reason in an "undecided" diagnostic for a solver error that is a
+/// limit (the `rlimit`, the memory limit); `None` for any other error.
+pub fn limit_reason(e: &str) -> Option<String> {
+    if out_of_memory(e) {
+        Some(format!("memory limit reached, {} MB", memory_mb()))
+    } else if e.contains("canceled") {
+        Some(format!("resource limit reached, rlimit {}", rlimit()))
+    } else {
+        None
+    }
+}
+
 impl Solver {
     /// Starts the pinned Z3. Fails if it is missing or a different version.
     pub fn start() -> Result<Solver, String> {
@@ -297,6 +330,7 @@ impl Solver {
                 "-smt2",
                 &format!("-t:{}", backstop_ms()),
                 &format!("-T:{HARD_SECS}"),
+                &format!("-memory:{}", memory_mb()),
             ])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -358,7 +392,19 @@ impl Solver {
             .write_all(text.as_bytes())
             .and_then(|_| self.stdin.write_all(b"\n"))
             .and_then(|_| self.stdin.flush())
-            .map_err(|e| format!("z3 input closed: {e}"))
+            .map_err(|e| {
+                self.ended()
+                    .unwrap_or_else(|| format!("z3 input closed: {e}"))
+            })
+    }
+
+    /// The error for a process that ended at its memory limit: Z3 ends with
+    /// 101 at `-memory` and its message goes to its standard error.
+    fn ended(&mut self) -> Option<String> {
+        match self.child.wait().ok()?.code()? {
+            101 => Some("z3: out of memory".into()),
+            _ => None,
+        }
     }
 
     /// Reads one complete s-expression or atom from the solver.
@@ -372,7 +418,9 @@ impl Solver {
                 .read_line(&mut line)
                 .map_err(|e| format!("z3 output error: {e}"))?;
             if n == 0 {
-                return Err("z3 exited unexpectedly".into());
+                return Err(self
+                    .ended()
+                    .unwrap_or_else(|| "z3 exited unexpectedly".into()));
             }
             for c in line.chars() {
                 match c {

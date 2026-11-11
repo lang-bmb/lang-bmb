@@ -8678,21 +8678,29 @@ fn verify_pass(
                     }
                     Ok(Answer::Unknown(why)) => {
                         let why = smt::unknown_reason(&why);
-                        diags.push(Diag::new(
-                            "E0811",
-                            o.span,
-                            format!("{} in `{path}`: solver could not decide ({why})", o.msg),
-                        ).of_obligation(o.code));
+                        diags.push(
+                            Diag::new(
+                                "E0811",
+                                o.span,
+                                format!("{} in `{path}`: solver could not decide ({why})", o.msg),
+                            )
+                            .of_obligation(o.code),
+                        );
                     }
-                    Err(e) if e.contains("canceled") => diags.push(Diag::new(
-                        "E0811",
-                        o.span,
-                        format!(
-                            "{} in `{path}`: solver could not decide (resource limit reached, rlimit {})",
-                            o.msg,
-                            smt::rlimit()
-                        ),
-                    ).of_obligation(o.code)),
+                    Err(e) if smt::limit_reason(&e).is_some() => {
+                        let why = smt::limit_reason(&e).unwrap();
+                        diags.push(
+                            Diag::new(
+                                "E0811",
+                                o.span,
+                                format!("{} in `{path}`: solver could not decide ({why})", o.msg),
+                            )
+                            .of_obligation(o.code),
+                        );
+                        if smt::out_of_memory(&e) {
+                            solver = None;
+                        }
+                    }
                     Err(e) => {
                         diags.push(Diag::new("E0812", o.span, format!("solver error: {e}")));
                         solver = None;
@@ -8968,7 +8976,7 @@ fn verify_pass(
             let mut bounded_found = false;
             let undecided = match &answer {
                 Ok(Answer::Unknown(_)) => true,
-                Err(e) => e.contains("canceled"),
+                Err(e) => e.contains("canceled") && !smt::out_of_memory(e),
                 _ => false,
             };
             if undecided && bounded_search() {
@@ -9137,21 +9145,23 @@ fn verify_pass(
                     ));
                 }
                 // The resource limit can also stop a command before `check-sat`.
-                Err(e) if e.contains("canceled") => {
+                Err(e) if smt::limit_reason(&e).is_some() => {
+                    let why = smt::limit_reason(&e).unwrap();
                     let mut d = Diag::new(
                         "E0811",
                         o.span,
-                        format!(
-                            "{} in `{path}`: solver could not decide (resource limit reached, rlimit {})",
-                            o.msg,
-                            smt::rlimit()
-                        ),
+                        format!("{} in `{path}`: solver could not decide ({why})", o.msg),
                     )
                     .of_obligation(o.code);
                     if bounded_none {
                         d.bounded = Some((BOUND, BOUND_LEN));
                     }
                     diags.push(d);
+                    // The process ended at its memory limit: the next
+                    // obligation starts a new one (backlog T2-16).
+                    if smt::out_of_memory(&e) {
+                        solver = None;
+                    }
                 }
                 Err(e) => {
                     diags.push(Diag::new("E0812", o.span, format!("solver error: {e}")));

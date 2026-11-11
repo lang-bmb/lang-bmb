@@ -8627,8 +8627,9 @@ impl<'a> Checker<'a> {
                     // `f64`: IEEE arithmetic and comparisons; the remainder
                     // is not in the first range (ADR-0061 §3).
                     BinOp::Rem => is_int(&lt),
-                    // A `char` compares by its scalar value (Rust's `Ord`).
-                    _ if op.is_cmp() && lt == TypeKind::Char => true,
+                    // A `char` compares by its scalar value and `false < true`
+                    // (Rust's `Ord`, ADR-0046 §1; backlog 5A-04).
+                    _ if op.is_cmp() && matches!(lt, TypeKind::Char | TypeKind::Bool) => true,
                     _ => is_int(&lt) || lt == TypeKind::F64,
                 };
                 if !ok {

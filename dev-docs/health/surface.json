@@ -475,6 +475,10 @@
    "out": "2994ec6a4e643852",
    "src": "b6fa8b4788690e97"
   },
+  "tests/run/bool_order.bmb": {
+   "out": "edb6b32da1b69ff4",
+   "src": "d94f6be71349970c"
+  },
   "tests/run/bools.bmb": {
    "out": "d31ad84f5183ca12",
    "src": "648e1b991767b414"

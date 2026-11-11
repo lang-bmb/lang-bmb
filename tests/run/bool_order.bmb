@@ -1,0 +1,69 @@
+#[summary("진입점: 네 비교의 진리표")]
+mod app {
+    #[effects(io)]
+    fn main() -> () {
+        row(false, false);
+        row(false, true);
+        row(true, false);
+        row(true, true);
+    }
+
+    #[effects(io)]
+    fn row(a: bool, b: bool) -> () {
+        show(a < b);
+        show(a <= b);
+        show(a > b);
+        show(a >= b);
+        show(order::lt(a, b));
+        show(order::le(a, b));
+        show(order::generic::<bool>(a, b));
+        show(order::agrees(a, b));
+    }
+
+    #[effects(io)]
+    fn show(b: bool) -> () {
+        if b {
+            print_i64(1)
+        } else {
+            print_i64(0)
+        }
+    }
+}
+
+#[summary("실행 예제: bool의 순서 비교는 false < true (ADR-0046 §1, 백로그 5A-04)")]
+mod order {
+    #[effects(pure)]
+    fn agrees(a: bool, b: bool) -> (r: bool)
+        ensures r,
+    {
+        assert((a < b) == (!a && b)) by (bit_vector);
+        (a < b) == lt(a, b)
+    }
+
+    #[effects(pure)]
+    fn generic<T: Copy + Ord>(a: T, b: T) -> bool {
+        a < b
+    }
+
+    spec fn implies(a: bool, b: bool, r: bool) -> bool {
+        r == (a ==> b)
+    }
+
+    #[effects(pure)]
+    fn le(a: bool, b: bool) -> (r: bool)
+        ensures implies(a, b, r),
+    {
+        a <= b
+    }
+
+    #[effects(pure)]
+    fn lt(a: bool, b: bool) -> (r: bool)
+        ensures strict(a, b, r), r == (b > a), r == !(a >= b),
+    {
+        a < b
+    }
+
+    spec fn strict(a: bool, b: bool, r: bool) -> bool {
+        r == (!a && b)
+    }
+}

@@ -145,3 +145,92 @@ fn gate_fails_without_solver_or_resources() {
     // The real solver again: proofs succeed.
     assert!(verify(SEARCH, &[], None).0);
 }
+
+/// A query that reaches the solver's memory limit is undecided, and only
+/// that query: the process ends there and the next obligation starts a new
+/// one (backlog T2-16). Before, the process grew until the system killed it
+/// and every later obligation of the definition counted as failed.
+#[test]
+fn a_query_at_the_memory_limit_is_undecided_and_the_rest_go_on() {
+    let tmp = std::env::temp_dir().join(format!("bmb-gate-mem-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&tmp);
+    fs::create_dir_all(&tmp).unwrap();
+
+    // The mechanism, with a solver that ends as Z3 does at `-memory` (exit
+    // code 101) on its fourth command, every time it is started.
+    let bin = tmp.join("bin");
+    fs::create_dir_all(&bin).unwrap();
+    let log = tmp.join("starts");
+    fs::write(
+        bin.join("z3"),
+        format!(
+            "#!/bin/sh\n\
+             if [ \"$1\" = --version ]; then echo 'Z3 version {} - 64 bit'; exit 0; fi\n\
+             echo \"$@\" >> {}\n\
+             n=0\n\
+             while read -r line; do\n\
+             n=$((n+1)); if [ $n -gt 3 ]; then exit 101; fi\n\
+             echo success\n\
+             done\n",
+            pinned("Z3_VERSION"),
+            log.display()
+        ),
+    )
+    .unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(bin.join("z3"), fs::Permissions::from_mode(0o755)).unwrap();
+    let path = format!("{}:{}", bin.display(), std::env::var("PATH").unwrap());
+    let (ok, out) = verify(SEARCH, &[("PATH", &path)], None);
+    assert!(!ok);
+    let limit = pinned("Z3_MEMORY_MB");
+    assert!(
+        out.contains(&format!(
+            "solver could not decide (memory limit reached, {limit} MB)"
+        )),
+        "{out}"
+    );
+    assert!(!out.contains("E0812"), "{out}");
+    // Every start carries the limit, and each undecided obligation got a
+    // process of its own.
+    let starts = fs::read_to_string(&log).unwrap();
+    assert!(
+        starts
+            .lines()
+            .all(|l| l.contains(&format!("-memory:{limit}"))),
+        "{starts}"
+    );
+    let undecided = out.matches("\"code\":\"E0811\"").count();
+    assert!(
+        undecided > 1 && starts.lines().count() >= undecided,
+        "{out}\n{starts}"
+    );
+
+    // The real solver on the query that showed it: the parser of the
+    // port-shape experiment with one loop invariant too weak for the
+    // `push` after it, under a recursive predicate with a nested quantifier.
+    let src = fs::read_to_string(root().join("dev-docs/experiments/port-shape/tree.bmb")).unwrap();
+    let weak = src.replace(
+        "k + args.len() <= *pos, all_in",
+        "args.len() <= *pos, all_in",
+    );
+    assert_ne!(src, weak);
+    let file = tmp.join("tree.bmb");
+    fs::write(&file, weak).unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
+        .args(["verify", "--def", "tree::call"])
+        .arg(&file)
+        .output()
+        .unwrap();
+    let out = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.contains("`push` may exceed the maximum length of a `Vec` in `tree::call`: solver could not decide (memory limit reached"),
+        "{out}"
+    );
+    assert!(
+        out.contains(
+            "\"def\":\"tree::call\",\"status\":\"failed\",\"obligations\":42,\"failed\":1,"
+        ),
+        "{out}"
+    );
+    let _ = fs::remove_dir_all(&tmp);
+}

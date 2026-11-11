@@ -92,7 +92,7 @@ mod m {
 
 - **증명됨.** 해법기가 부정을 `unsat`으로 답한 경우뿐이다.
 - **반례가 있는 실패.** `sat`이면 그 의무의 코드(E0801~E0823)로 진단을 내고, 메시지 끝에 입력 값을 적는다: `counterexample: a = -9223372036854775808, b = -1`. 보일 입력이 없으면(정의 자신의 값이나 호출·루프가 열어 둔 값에서 실패) 반례 없이 낸다. 불투명한 `spec fn`이 걸려 있으면 `fix`가 그 이름을 댄다.
-- **미결정.** 해법기가 `unknown`으로 답하거나 자원 한도를 넘으면 결정하지 못한 것으로 보고한다(E0811). 진단은 원래 의무의 코드를 `"obligation":"E0802"`처럼 함께 담고, 해법기의 사유를 적는다. 확인되지 않은 반례가 있으면 `unconfirmed counterexample`로 적는다(`tests/verify/fail/nonlinear.bmb`, `tests/verify/fail/proofs.jsonl`).
+- **미결정.** 해법기가 `unknown`으로 답하거나 자원 한도(의무마다의 `rlimit`, 해법기 프로세스의 메모리 한도: ADR-0123)를 넘으면 결정하지 못한 것으로 보고한다(E0811). 진단은 원래 의무의 코드를 `"obligation":"E0802"`처럼 함께 담고, 해법기의 사유를 적는다. 확인되지 않은 반례가 있으면 `unconfirmed counterexample`로 적는다(`tests/verify/fail/nonlinear.bmb`, `tests/verify/fail/proofs.jsonl`).
 - **게이트가 돌지 못함.** 해법기가 없거나 고정 버전이 아니거나 오류로 끝나면 그 사실을 보고한다(E0812). 이 코드는 코퍼스에 고정된 사례가 없다(환경에 달린 진단).
 
 미결정(E0811)과 게이트가 돌지 못한 경우(E0812)는 실패다(`docs/DESIGN.md` §6: unknown, timeout, 솔버 부재는 모두 실패). 정의의 `status`는 의무가 하나라도 증명되지 않으면 `failed`다.

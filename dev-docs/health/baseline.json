@@ -2,14 +2,14 @@
   "metrics": {
     "V1_untested_diag_codes": 0,
     "V3_unproved_defs": 0,
-    "V4_rlimit_total": 14433160,
+    "V4_rlimit_total": 14434163,
     "V5_rlimit_headroom": 0.1244,
     "V6_deterministic_verify": true,
     "V7_unstable_queries": 0.0002,
     "V8_bench_rlimit_total": 22976379,
     "V9_bench_defs_at_limit": 0,
     "V10_library_rlimit_total": 23386463,
-    "V11_sat_check_rlimit_total": 271906591,
+    "V11_sat_check_rlimit_total": 271911640,
     "V12_sat_check_undecided": 216,
     "S1_external_crates": 0,
     "S2_external_processes": [
@@ -17,17 +17,17 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 54650,
+    "S4_stage0_rust_lines": 54691,
     "S5_tests_bound_to_rust_api": 1,
     "S6_selfhost_bmb_lines": 0,
     "S7_selfhost_proved_defs": null,
-    "P1_runnable_programs": 83,
-    "P2_bmb_lines": 30656,
+    "P1_runnable_programs": 84,
+    "P2_bmb_lines": 30725,
     "P3_errors_with_help": 0.9121,
     "B1_baseline_binary_bytes": 101664,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 17,
-    "O3_active_backlog_chars": 36557
+    "O3_active_backlog_chars": 36153
   },
   "history": [
     {
@@ -2562,6 +2562,36 @@
         "O3_active_backlog_chars": [
           39740,
           36557
+        ]
+      }
+    },
+    {
+      "date": "2026-11-11",
+      "reason": "5A-04 bool 순서 비교(실행 코퍼스 bool_order), ADR-0123 해법기 메모리 한도, 백로그 열셋째 계획",
+      "changed": {
+        "V4_rlimit_total": [
+          14433160,
+          14434163
+        ],
+        "V11_sat_check_rlimit_total": [
+          271906591,
+          271911640
+        ],
+        "S4_stage0_rust_lines": [
+          54650,
+          54691
+        ],
+        "P1_runnable_programs": [
+          83,
+          84
+        ],
+        "P2_bmb_lines": [
+          30656,
+          30725
+        ],
+        "O3_active_backlog_chars": [
+          36557,
+          36153
         ]
       }
     }
