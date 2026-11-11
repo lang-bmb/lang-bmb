@@ -2,6 +2,7 @@
 """Repeated runs of one set and the target rule (ADR-0077, backlog T0-12).
 
   repeat.py summary [--target 0.6] FILES...    Markdown: per set and task kind
+  repeat.py diff --a FILES... --b FILES...     Markdown: B minus A (ADR-0112)
 
 FILES are results of `run_models.py --repeat K` (m1 harness rows): the same
 set, model and commit, each with its own `repeat`. Files of different sets are
@@ -23,8 +24,22 @@ largest range over the sets' write tasks, in whole percentage points rounded
 up. Each set's own minimum difference (ADR-0086 §2) is its write range the
 same way. BRB results (no task `kind`, one arm per file) count as writes of
 the set named by `task_set` and `arm` (`brb-write-bmb`). Standard library only.
+
+`diff` compares two arms on the same tasks (ADR-0112): the repeated runs of A
+and of B (each side one set, model, commit and condition; the sides may differ
+in any of them). For write tasks it reports the difference of the mean run
+rates, B - A, with its 95% interval and the exact two-sided permutation p over
+the run labels. The interval is the Welch interval of the run-level rates
+(t quantile at the degrees of freedom rounded down) and never narrower than
+the Newcombe interval of the pooled trials, the same floor as the single-arm
+rule. A direction is claimed only when the interval excludes 0; with fewer
+than four runs in an arm the claim is marked provisional (three against three
+cannot reach p < 0.05 in the exact test). Tokens are compared per task: the
+ratio B / A of the task's mean session tokens, then the median over tasks with
+the exact order-statistic interval, and the geometric mean.
 """
 import argparse
+import itertools
 import json
 import math
 import sys
@@ -138,6 +153,122 @@ def summary(files, target):
     return "\n".join(out) + "\n"
 
 
+def welch(ra, rb):
+    """(B - A, lo, hi): Welch 95% interval of the difference of run-level means."""
+    ma, mb = sum(ra) / len(ra), sum(rb) / len(rb)
+    va = sum((r - ma) ** 2 for r in ra) / (len(ra) - 1) if len(ra) > 1 else 0.0
+    vb = sum((r - mb) ** 2 for r in rb) / (len(rb) - 1) if len(rb) > 1 else 0.0
+    sa, sb = va / len(ra), vb / len(rb)
+    d = mb - ma
+    if sa + sb == 0:
+        return d, d, d
+    den = (sa ** 2 / (len(ra) - 1) if len(ra) > 1 else 0.0) + (sb ** 2 / (len(rb) - 1) if len(rb) > 1 else 0.0)
+    df = (sa + sb) ** 2 / den if den else 1
+    h = T975[max(1, min(int(df), 10))] * math.sqrt(sa + sb)  # df rounded down: the wider side
+    return d, d - h, d + h
+
+
+def newcombe(ka, na, kb, nb):
+    """Newcombe's score interval of pB - pA over the pooled trials."""
+    pa, pb = ka / na, kb / nb
+    (la, ua), (lb, ub) = wilson(ka, na), wilson(kb, nb)
+    d = pb - pa
+    return d - math.sqrt((pb - lb) ** 2 + (ua - pa) ** 2), d + math.sqrt((ub - pb) ** 2 + (pa - la) ** 2)
+
+
+def permutation_p(ra, rb):
+    """Exact two-sided p of |mean(B) - mean(A)| over all relabelings of the runs."""
+    allr = ra + rb
+    if math.comb(len(allr), len(ra)) > 200_000:
+        return None
+    obs = abs(sum(rb) / len(rb) - sum(ra) / len(ra))
+    total = sum(allr)
+    hit = n = 0
+    for idx in itertools.combinations(range(len(allr)), len(ra)):
+        a = sum(allr[i] for i in idx)
+        n += 1
+        hit += abs((total - a) / len(rb) - a / len(ra)) >= obs - 1e-12
+    return hit / n
+
+
+def diff_verdict(lo, hi, na, nb):
+    """ADR-0112 §1-§2: a direction only when the interval excludes 0."""
+    if lo <= 0 <= hi:
+        return "변동 안"
+    side = "B가 높음" if lo > 0 else "A가 높음"
+    return side if min(na, nb) >= 4 else f"{side}(잠정: 팔당 4회 미만)"
+
+
+def session_tokens(r):
+    if "total_tokens" in r:
+        return r["total_tokens"]
+    u = r.get("model_usage") or {}
+    return u.get("input_tokens", 0) + u.get("output_tokens", 0)
+
+
+def median_interval(xs):
+    """Median and its exact 95% order-statistic interval (None when n is too small)."""
+    xs = sorted(xs)
+    n = len(xs)
+    med = xs[n // 2] if n % 2 else math.sqrt(xs[n // 2 - 1] * xs[n // 2])
+    # Largest j with P(Bin(n, 1/2) < j) <= 0.025: [x_(j), x_(n+1-j)] covers >= 95%.
+    cum, j = 0.0, 0
+    for k in range(n + 1):
+        cum += math.comb(n, k) / 2 ** n
+        if cum > 0.025:
+            j = k
+            break
+    return med, ((xs[j - 1], xs[n - j]) if j >= 1 else None)
+
+
+def token_ratios(runs_a, runs_b):
+    """Per write task: mean session tokens in B over mean in A (tasks in both)."""
+    def per_task(runs):
+        acc = {}
+        for _, rows in runs:
+            for r in rows:
+                if r.get("kind", "write") == "write" and session_tokens(r):
+                    acc.setdefault(r["id"], []).append(session_tokens(r))
+        return {t: sum(v) / len(v) for t, v in acc.items()}
+    a, b = per_task(runs_a), per_task(runs_b)
+    return [b[t] / a[t] for t in sorted(a) if t in b]
+
+
+def one_side(files, label):
+    sets = group(files)
+    if len(sets) != 1:
+        sys.exit(f"diff: side {label} must be the runs of one set, got {sorted(sets)}")
+    return next(iter(sets.items()))
+
+
+def diff(files_a, files_b):
+    (name_a, runs_a), (name_b, runs_b) = one_side(files_a, "A"), one_side(files_b, "B")
+    sa, sb = kind_stats(runs_a, "write"), kind_stats(runs_b, "write")
+    if not sa or not sb:
+        sys.exit("diff: no write tasks on one side")
+    if sa["tasks"] != sb["tasks"]:
+        sys.exit(f"diff: the sides have different task counts ({sa['tasks']} and {sb['tasks']})")
+    ra, rb = [k / n for k, n in sa["per_run"]], [k / n for k, n in sb["per_run"]]
+    d, lo, hi = welch(ra, rb)
+    nl, nh = newcombe(sum(k for k, _ in sa["per_run"]), sum(n for _, n in sa["per_run"]),
+                      sum(k for k, _ in sb["per_run"]), sum(n for _, n in sb["per_run"]))
+    lo, hi = min(lo, nl), max(hi, nh)
+    p = permutation_p(ra, rb)
+    out = [f"## 차이: B({name_b}, {len(rb)}회) − A({name_a}, {len(ra)}회), 작성 과제 {sa['tasks']}개 (ADR-0112)", "",
+           "| 팔 | 실행별 성공 | 평균 |", "| --- | --- | --- |",
+           f"| A | {', '.join(f'{k}/{n}' for k, n in sa['per_run'])} | {sa['mean']:.1%} |",
+           f"| B | {', '.join(f'{k}/{n}' for k, n in sb['per_run'])} | {sb['mean']:.1%} |", "",
+           f"성공률 차이: {d * 100:+.1f}%p, 95% 구간 {lo * 100:+.1f}~{hi * 100:+.1f}%p, "
+           f"정확 순열 p = {'—' if p is None else f'{p:.3f}'} → {diff_verdict(lo, hi, len(ra), len(rb))}", ""]
+    ratios = token_ratios(runs_a, runs_b)
+    if ratios:
+        med, iv = median_interval(ratios)
+        gm = math.exp(sum(math.log(r) for r in ratios) / len(ratios))
+        ivs = f"{iv[0]:.2f}~{iv[1]:.2f}" if iv else "—(과제 수 부족)"
+        out += [f"과제별 토큰 비율 B/A({len(ratios)}과제): 중앙값 {med:.2f}, 95% 구간 {ivs}, 기하 평균 {gm:.2f}", ""]
+    return "\n".join(out) + "\n"
+
+
 def points(r):
     """A range in whole percentage points, rounded up."""
     return math.ceil(r * 100 - 1e-9)
@@ -149,8 +280,11 @@ def main(argv=None):
     sm = sub.add_parser("summary")
     sm.add_argument("--target", type=float, default=0.6, help="target rate (G2: 0.6)")
     sm.add_argument("files", nargs="+")
+    df = sub.add_parser("diff")
+    df.add_argument("--a", nargs="+", required=True, help="repeated runs of arm A")
+    df.add_argument("--b", nargs="+", required=True, help="repeated runs of arm B")
     args = ap.parse_args(argv)
-    sys.stdout.write(summary(args.files, args.target))
+    sys.stdout.write(diff(args.a, args.b) if args.cmd == "diff" else summary(args.files, args.target))
 
 
 if __name__ == "__main__":

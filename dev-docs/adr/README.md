@@ -155,6 +155,8 @@ BMB v2의 설계 결정을 한 건에 파일 하나로 남긴다. 현재 확정�
 | [0108](0108-undecided-obligations-carry-a-verdict.md) | 미결정 의무가 판정 정보를 싣는다: 범위를 줄인 반례 찾기(`sat`은 확정 반례, `unsat`은 `bounded`), 응답 안의 `uses` 탐색, H-UNDECIDE 등록 | 채택(자율) | 아홉째 실행 계획, 백로그 2D-33·2D-34 |
 | [0109](0109-probe-candidate-invariants.md) | 커밋하지 않는 일괄 탐침: 후보 불변식을 Houdini로 거르는 읽기 도구(`bmb probe`, MCP `probe`는 `--probe-tool`) | 채택(자율) | 아홉째 실행 계획, 백로그 2D-35 |
 | [0110](0110-stateless-repair-condition.md) | 상태 없는 수리 차례: 매 요청이 새 대화(과제, 지금 상태, 시도마다 한 줄, 직전 결과)인 측정 조건, 두 팔에 같은 규칙, H-HISTORY 등록 | 채택(자율) | 아홉째 실행 계획, 백로그 T0-36·T0-37 |
-| [0111](0111-decision-gates-and-hypothesis-tiers.md) | 로드맵의 판정 관문 A~E(관문 B에서 E3 판정, 결과별 조치 사전 등록), 판정 이월은 한 번, 가설 등급(존재·차별·조정)과 등급순 측정 대기열 | 제안 | 사람 지시 2026-11-11, `dev-docs/reviews/roadmap-2026-11-11.md`, 백로그 2H-08 |
+| [0111](0111-decision-gates-and-hypothesis-tiers.md) | 로드맵의 판정 관문 A~E(관문 B에서 E3 판정, 결과별 조치 사전 등록), 판정 이월은 한 번, 가설 등급(존재·차별·조정)과 등급순 측정 대기열 | 채택(승인) | 사람 지시 2026-11-11, `dev-docs/reviews/roadmap-2026-11-11.md`, 백로그 2H-08 |
+| [0112](0112-ab-verdict-by-the-interval-of-the-difference.md) | A/B 비교는 차이의 구간으로 판정(Welch, Newcombe 바닥, 정확 순열 p 병기), 반복은 팔당 4회 이상, 토큰은 과제별 비율 | 채택(승인) | 종합 검토 R3, 백로그 T0-39, ADR-0077·0103 보완 |
+| [0113](0113-ported-components-are-fixed-in-stage0.md) | 포팅된 구성 요소는 stage0에서 고정: 변경은 두 쪽 한 커밋 + 차등 시험, S4 `accept`는 구성 요소 단위 사유 | 채택(승인) | 종합 검토 R10, 백로그 4D-09, ADR-0100 보완 |
 
 채택 계획(2026-10-24 승인): 0026은 2B 착수 때, 0028은 2C 착수 때 채택한다. 0029·0030·0031은 2단계 측정(2H) 뒤로 미룬다. "제안" ADR의 진단 코드 번호는 잠정이다. 제안끼리 겹치는 번호가 있으며(예: E0212·E0412), 채택 후 구현할 때 `compiler/src/diag.rs`에서 확정한다.
