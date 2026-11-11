@@ -193,7 +193,7 @@
 | E0812 | proof gate cannot run (solver missing, wrong version or failed) | [07](07-proof-gate.md) |
 | E0813 | recursive spec function may not terminate | [06](06-contracts-and-specs.md), [07](07-proof-gate.md) |
 | E0815 | integer conversion may be out of range (to `f64`: a 64-bit value may be above 2^53 and inexact) | [07](07-proof-gate.md) |
-| E0816 | a `Vec` may exceed its maximum length | [07](07-proof-gate.md) |
+| E0816 | the capacity of a `Vec` may exceed its maximum length | [07](07-proof-gate.md) |
 | E0817 | a trait impl's function does not refine the trait's contract | [06](06-contracts-and-specs.md), [07](07-proof-gate.md) |
 | E0818 | a `by (bit_vector)` sub-proof may not hold, or its assertion has no bit-vector translation | [06](06-contracts-and-specs.md), [07](07-proof-gate.md) |
 | E0819 | an argument of a `proof fn` call may be outside its parameter's type (ghost arithmetic is mathematical, ADR-0062 §2) | [06](06-contracts-and-specs.md), [07](07-proof-gate.md) |
