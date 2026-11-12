@@ -1,0 +1,13 @@
+{
+  "sections": [
+    "참조는 매개변수에만"
+  ],
+  "note": "A reference parameter whose inner type is itself rejected (an array of `Vec` or `String`, a slice as a type argument) is reported once, at the inner type; a reference to a well-formed array is E0402 for the reference.",
+  "check": [
+    {"code": "E0402", "line": 6},
+    {"code": "E0402", "line": 9},
+    {"code": "E0402", "line": 12},
+    {"code": "E0403", "line": 15},
+    {"code": "E0402", "line": 18}
+  ]
+}

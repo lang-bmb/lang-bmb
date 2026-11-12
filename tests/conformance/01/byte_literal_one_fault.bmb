@@ -1,0 +1,11 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn e1() -> u8 { b'é' }
+
+    #[effects(pure)]
+    fn e2() -> u8 { b'\u{41}' }
+
+    #[effects(pure)]
+    fn e3() -> u8 { b'ab' }
+}

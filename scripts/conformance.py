@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The conformance suite: cases that pin the language reference (5A-02).
+"""The conformance suite: cases that pin the language reference (5A-02, 5A-05).
 
   conformance.py run [--bmb PATH] [--jobs N] [NN ...]
                                  run every case (or those of the chapters
@@ -13,16 +13,52 @@ of docs/reference/NN-*.md. The .json:
   {"sections": ["<heading of a `## ` section of that chapter>", ..],
    "note": "<one sentence: the rule the case pins>",
    "check": [{"code": "E0401", "line": 12}, ..],
-   "verify": {"defs": {"unit::name": "verified" | "failed"},
+   "check_mode": "exact" | "includes",
+   "verify": {"defs": {"unit::name": "verified" | "failed" | {"status": ..,
+                       "trust": "assumed" | "external" | null,
+                       "obligations": n, "failed": k}},
               "diags": [{"code": "E0805", "line": 9}]},
-   "run": "<exact stdout>"}
+   "deterministic": ["check", "verify"],
+   "emit": {"all_checks": false, "exit": 0 | 1, "runtime_checks": n},
+   "build": "ok" | "refused",
+   "run": "<exact stdout>" | {"stdout": "..", "exit": "ok"} | {"exit": "trap"}}
 
 `check` (required) is the multiset of (code, line) of every diagnostic
-`bmb check` prints; `[]` is a program that checks clean. `verify` (only with
-a clean `check`) gives the status `bmb verify` reports for the definitions
-listed and the multiset of the diagnostics it prints beyond those of
-`check`. `run` (only for a program that is proved) is the stdout of the
-executable `bmb build` makes. Messages, columns and fix texts are not part
+`bmb check` prints; `[]` is a program that checks clean. With `check_mode`
+"includes" (only with an error in `check`) the entries listed must all be
+there and any further diagnostic must be on the line of a listed one.
+
+`verify` (only with a `check` without errors) gives what the status line of
+`bmb verify` says for the definitions listed, and the multiset of the
+diagnostics it prints beyond those of `check`. A definition maps to its
+status or to an object; of an object only the keys given are compared, and
+`"trust": null` says that the status line has no `trust`.
+
+`deterministic` lists commands (`verify` only with a `check` without
+errors) that are run twice on the case: the two exit codes and the two
+stdouts, byte for byte, must be equal. They are compared with each other,
+never with a stored text.
+
+`emit` (only with a `check` without errors; one object, or two that differ
+in `all_checks`) runs `bmb emit-llvm` (`--all-checks` when `all_checks` is
+true), which must write a non-empty IR file. `exit` is its exit code.
+`runtime_checks` is the number of that name in the line `--stats FILE`
+writes: the runtime checks kept for unproved obligations. With `all_checks`
+the stdout has no status line and no diagnostic beyond those of `check`;
+without it, in a case with `verify`, the diagnostics beyond those of
+`check` are those of `verify.diags`. The IR text is never read.
+
+`build` pins `bmb build` without running the result. "ok" (only for a
+program that checks clean and is proved): exit code 0 and the executable
+exists. "refused" (only with a `verify` that reports a failure): exit code
+1 and nothing is written to the output directory. `run` (only for a program
+that checks clean and is proved; not with `build`) builds and runs the
+executable. A string, or `"exit": "ok"`, is the exact stdout of a run that
+ends with exit code 0. `"exit": "trap"` is a run that does not end with
+exit code 0; it takes no `stdout`, since the reference does not say what a
+program has written when it traps.
+
+Messages, columns, fix texts, IR text, rlimit values and times are not part
 of a case: the suite does not depend on one implementation's wording.
 
 The rules of `check`: both files of every case exist and nothing else is in
@@ -51,8 +87,12 @@ BEGIN = "<!-- conformance:table begin (scripts/conformance.py table --write; do 
 END = "<!-- conformance:table end -->"
 NAME = re.compile(r"[a-z][a-z0-9_]*\Z")
 CODE = re.compile(r"[EW]\d{4}\Z")
-KEYS = {"sections", "note", "check", "verify", "run"}
+KEYS = {"sections", "note", "check", "check_mode", "verify", "deterministic", "emit", "build", "run"}
 STATUS = ("verified", "failed")
+TRUST = ("assumed", "external", None)
+MODES = ("exact", "includes")
+REPEATABLE = ("check", "verify")
+BUILD = ("ok", "refused")
 TIMEOUT = 300
 
 
@@ -103,6 +143,23 @@ def diag_list(v):
         and type(d["line"]) is int and d["line"] >= 1 for d in v)
 
 
+def count(v):
+    return type(v) is int and v >= 0
+
+
+def status_line(v):
+    """Whether v says what a status line holds: the status, or an object of the fields to compare."""
+    if isinstance(v, str):
+        return v in STATUS
+    return (isinstance(v, dict) and bool(v) and set(v) <= {"status", "trust", "obligations", "failed"}
+            and v.get("status", STATUS[0]) in STATUS and (v.get("trust") is None or v["trust"] in TRUST)
+            and count(v.get("obligations", 0)) and count(v.get("failed", 0)))
+
+
+def status_of(v):
+    return v.get("status") if isinstance(v, dict) else v
+
+
 def verify_problems(v, clean):
     out = []
     if not isinstance(v, dict) or not set(v) <= {"defs", "diags"} or not v:
@@ -110,8 +167,9 @@ def verify_problems(v, clean):
     if not clean:
         out.append("`verify` needs a `check` without errors")
     defs = v.get("defs", {})
-    if not isinstance(defs, dict) or not all(isinstance(k, str) and s in STATUS for k, s in defs.items()):
-        out.append("`verify.defs` maps a definition to \"verified\" or \"failed\"")
+    if not isinstance(defs, dict) or not all(isinstance(k, str) and status_line(s) for k, s in defs.items()):
+        out.append("`verify.defs` maps a definition to \"verified\", \"failed\" or an object with "
+                   "`status`, `trust`, `obligations`, `failed`")
     if not diag_list(v.get("diags", [])):
         out.append("`verify.diags` is a list of {\"code\", \"line\"}")
     return out
@@ -120,7 +178,63 @@ def verify_problems(v, clean):
 def proved(spec):
     v = spec.get("verify", {})
     return isinstance(v, dict) and not v.get("diags") and "failed" not in (
-        v["defs"].values() if isinstance(v.get("defs"), dict) else [])
+        [status_of(s) for s in v["defs"].values()] if isinstance(v.get("defs"), dict) else [])
+
+
+def mode_problems(spec, clean):
+    if spec["check_mode"] not in MODES:
+        return ["`check_mode` is \"exact\" or \"includes\""]
+    if spec["check_mode"] == "includes" and clean:
+        return ["`check_mode` \"includes\" needs an error in `check`"]
+    return []
+
+
+def deterministic_problems(v, clean):
+    if not isinstance(v, list) or not v or not all(c in REPEATABLE for c in v) or len(set(v)) != len(v):
+        return ["`deterministic` is a non-empty list of distinct commands out of \"check\", \"verify\""]
+    return ["`deterministic` with \"verify\" needs a `check` without errors"] if "verify" in v and not clean else []
+
+
+def emits(spec):
+    """The `emit` entries of a case as a list."""
+    v = spec.get("emit", [])
+    return v if isinstance(v, list) else [v]
+
+
+def emit_entry(e):
+    return (isinstance(e, dict) and set(e) <= {"all_checks", "exit", "runtime_checks"}
+            and ("exit" in e or "runtime_checks" in e) and isinstance(e.get("all_checks", False), bool)
+            and count(e.get("exit", 0)) and e.get("exit", 0) <= 1 and count(e.get("runtime_checks", 0)))
+
+
+def emit_problems(v, clean):
+    es = v if isinstance(v, list) else [v]
+    if not es or len(es) > 2 or not all(emit_entry(e) for e in es):
+        return ["`emit` is an object (or a list of two) with `exit` (0 or 1) and/or `runtime_checks`, "
+                "and an optional boolean `all_checks`"]
+    out = [] if clean else ["`emit` needs a `check` without errors"]
+    if len(es) == 2 and es[0].get("all_checks", False) == es[1].get("all_checks", False):
+        out.append("the two entries of `emit` differ in `all_checks`")
+    return out
+
+
+def build_problems(spec):
+    if spec["build"] not in BUILD:
+        return ["`build` is \"ok\" or \"refused\""]
+    if "run" in spec:
+        return ["`run` builds the program itself: `build` and `run` do not go together"]
+    if spec["build"] == "ok" and (spec["check"] or not proved(spec)):
+        return ["`build` \"ok\" needs a program that checks clean and is proved"]
+    if spec["build"] == "refused" and ("verify" not in spec or proved(spec)):
+        return ["`build` \"refused\" needs a `verify` with a failed definition or a diagnostic"]
+    return []
+
+
+def run_form(v):
+    """Whether v is the stdout, {"stdout", "exit": "ok"} or {"exit": "trap"}."""
+    if isinstance(v, dict) and set(v) <= {"stdout", "exit"}:
+        return isinstance(v.get("stdout"), str) if v.get("exit") == "ok" else v == {"exit": "trap"}
+    return isinstance(v, str)
 
 
 def spec_problems(spec, heads):
@@ -141,11 +255,19 @@ def spec_problems(spec, heads):
         out.append("`check` is a list of {\"code\", \"line\"}")
         return out
     clean = not any(d["code"].startswith("E") for d in spec["check"])
+    if "check_mode" in spec:
+        out += mode_problems(spec, clean)
     if "verify" in spec:
         out += verify_problems(spec["verify"], clean)
+    if "deterministic" in spec:
+        out += deterministic_problems(spec["deterministic"], clean)
+    if "emit" in spec:
+        out += emit_problems(spec["emit"], clean)
+    if "build" in spec:
+        out += build_problems(spec)
     if "run" in spec:
-        if not isinstance(spec["run"], str):
-            out.append("`run` is the stdout as a string")
+        if not run_form(spec["run"]):
+            out.append("`run` is the stdout as a string, {\"stdout\", \"exit\": \"ok\"} or {\"exit\": \"trap\"}")
         elif spec["check"] or not proved(spec):
             out.append("`run` needs a program that checks clean and is proved")
     return out
@@ -295,40 +417,110 @@ def differ(what, want, got):
     return [f"{what}: missing {show(want - got)}; unexpected {show(got - want)}"]
 
 
-def call(args):
+def includes(what, want, got):
+    """[] or one message: a listed entry is missing, or a diagnostic is on a line that has no listed one."""
+    lines = {line for _, line in want}
+    stray = Counter({k: n for k, n in (got - want).items() if k[1] not in lines})
+    if not want - got and not stray:
+        return []
+    return [f"{what}: missing {show(want - got)}; unexpected on other lines {show(stray)}"]
+
+
+def call(args, text=True):
     try:
-        return subprocess.run(args, capture_output=True, text=True, timeout=TIMEOUT)
+        return subprocess.run(args, capture_output=True, text=text, timeout=TIMEOUT)
     except subprocess.TimeoutExpired:
-        return subprocess.CompletedProcess(args, -1, "", f"timeout after {TIMEOUT}s")
+        return subprocess.CompletedProcess(args, -1, "" if text else b"", f"timeout after {TIMEOUT}s")
+
+
+def line_diffs(name, want, row):
+    """What a status line (None: there is none) says differently from the entry of `verify.defs`."""
+    want = {"status": want} if isinstance(want, str) else want
+    if row is None:
+        return [f"verify: {name} is not reported, expected {want.get('status', 'a status line')}"]
+    out = []
+    if "status" in want and row.get("status") != want["status"]:
+        out.append(f"verify: {name} is {row.get('status')}, expected {want['status']}")
+    return out + [f"verify: {name} has {k} {json.dumps(row.get(k))}, expected {json.dumps(want[k])}"
+                  for k in ("trust", "obligations", "failed") if k in want and row.get(k) != want[k]]
 
 
 def verify_diffs(spec, checked, r):
     rs = rows(r.stdout)
-    status = {x["def"]: x["status"] for x in rs if "def" in x and "status" in x}
-    out = [f"verify: {d} is {status.get(d, 'not reported')}, expected {s}"
-           for d, s in sorted(spec.get("defs", {}).items()) if status.get(d) != s]
+    lines = {x["def"]: x for x in rs if "def" in x and "status" in x}
+    out = [m for d, s in sorted(spec.get("defs", {}).items()) for m in line_diffs(d, s, lines.get(d))]
     return out + differ("verify", wanted(spec.get("diags", [])), diags(rs) - checked)
 
 
-def executable_diffs(exe, expected):
-    """The stdout is compared as bytes: no newline translation."""
+def repeat_diffs(bmb, cmd, src):
+    """Two runs of a command give the same exit code and the same stdout bytes."""
+    a, b = (call([bmb, cmd, str(src)], text=False) for _ in range(2))
+    if a.returncode < 0 or b.returncode < 0:
+        return [f"deterministic: `{cmd}` gave no verdict (exit {min(a.returncode, b.returncode)})"]
+    if a.returncode != b.returncode:
+        return [f"deterministic: two runs of `{cmd}` end with exit codes {a.returncode} and {b.returncode}"]
+    return [] if a.stdout == b.stdout else [f"deterministic: two runs of `{cmd}` print different bytes"]
+
+
+def kept_checks(path):
+    """The `runtime_checks` of a --stats file, or None."""
+    spec, _ = load(path)
+    return spec.get("runtime_checks") if isinstance(spec, dict) else None
+
+
+def emit_diffs(bmb, src, want, verify, checked):
+    """`bmb emit-llvm` against one entry of `emit`; `verify` is the `verify` of the case or None."""
+    flag = ["--all-checks"] if want.get("all_checks") else []
+    what = " ".join(["emit"] + flag)
+    with tempfile.TemporaryDirectory() as t:
+        ir, stats = Path(t) / "case.ll", Path(t) / "stats.json"
+        asked = ["--stats", str(stats)] if "runtime_checks" in want else []
+        r = call([bmb, "emit-llvm", *flag, *asked, str(src), "-o", str(ir)])
+        out = []
+        if "exit" in want and r.returncode != want["exit"]:
+            out.append(f"{what}: exit code {r.returncode}, expected {want['exit']}")
+        if not ir.is_file() or not ir.stat().st_size:
+            out.append(f"{what}: no IR written {r.stderr.strip()[:200]}".rstrip())
+        if asked and kept_checks(stats) != want["runtime_checks"]:
+            out.append(f"{what}: runtime_checks is {kept_checks(stats)}, expected {want['runtime_checks']}")
+    rs = rows(r.stdout)
+    if flag and any("def" in x for x in rs):
+        out.append(f"{what}: prints status lines")
+    if flag or verify is not None:
+        out += differ(what, wanted([] if flag else verify.get("diags", [])), diags(rs) - checked)
+    return out
+
+
+def refusal_diffs(r, folder):
+    out = [] if r.returncode == 1 else [f"build: exit code {r.returncode}, expected 1 (refused)"]
+    return out + [f"build: refused, but wrote {p.name}" for p in sorted(folder.iterdir())]
+
+
+def executable_diffs(exe, want):
+    """`want` is a `run`. The stdout is compared as bytes: no newline translation."""
+    expected, trap = (want, False) if isinstance(want, str) else (want.get("stdout"), want["exit"] == "trap")
     try:
         r = subprocess.run([exe], capture_output=True, timeout=TIMEOUT)
     except subprocess.TimeoutExpired:
         return [f"run: timeout after {TIMEOUT}s"]
+    if trap:
+        return [] if r.returncode != 0 else ["run: exit code 0, expected a trap"]
     if r.returncode != 0:
         return [f"run: exit code {r.returncode}"]
     got = r.stdout.decode("utf-8", errors="replace")
     return [] if got == expected else [f"run: stdout is {got!r}, expected {expected!r}"]
 
 
-def run_diffs(bmb, src, expected):
+def build_diffs(bmb, src, build, run=None):
+    """`bmb build` into an empty directory: refused, or made (and then run when `run` is given)."""
     with tempfile.TemporaryDirectory() as t:
-        exe = str(Path(t) / "case")
-        r = call([bmb, "build", str(src), "-o", exe])
-        if r.returncode != 0 or not Path(exe).is_file():
+        exe = Path(t) / "case"
+        r = call([bmb, "build", str(src), "-o", str(exe)])
+        if build == "refused":
+            return refusal_diffs(r, Path(t))
+        if r.returncode != 0 or not exe.is_file():
             return [f"build failed: {show(diags(rows(r.stdout)))} {r.stderr.strip()[:200]}".rstrip()]
-        return executable_diffs(exe, expected)
+        return [] if run is None else executable_diffs(str(exe), run)
 
 
 def run_case(bmb, src, spec):
@@ -337,13 +529,18 @@ def run_case(bmb, src, spec):
     if r.returncode < 0 or (not r.stdout.strip() and r.returncode != 0):
         return [f"check: no verdict (exit {r.returncode}) {r.stderr.strip()[:200]}".rstrip()]
     checked = diags(rows(r.stdout))
-    out = differ("check", wanted(spec["check"]), checked)
+    compare = includes if spec.get("check_mode") == "includes" else differ
+    out = compare("check", wanted(spec["check"]), checked)
     if out:
         return out
     if "verify" in spec:
         out += verify_diffs(spec["verify"], checked, call([bmb, "verify", str(src)]))
-    if "run" in spec and not out:
-        out += run_diffs(bmb, src, spec["run"])
+    for cmd in spec.get("deterministic", []):
+        out += repeat_diffs(bmb, cmd, src)
+    for e in emits(spec):
+        out += emit_diffs(bmb, src, e, spec.get("verify"), checked)
+    if ("build" in spec or "run" in spec) and not out:
+        out += build_diffs(bmb, src, spec.get("build", "ok"), spec.get("run"))
     return out
 
 

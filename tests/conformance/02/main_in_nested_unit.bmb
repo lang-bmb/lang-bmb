@@ -1,0 +1,23 @@
+#[summary("s")]
+mod a {
+    #[effects(io)]
+    fn main() -> () { }
+
+    #[summary("s")]
+    mod b {
+        #[effects(io)]
+        fn main() -> () { }
+    }
+}
+
+#[summary("s")]
+mod c {
+    #[summary("s")]
+    mod d {
+        #[effects(io)]
+        fn main() -> () { }
+    }
+
+    #[effects(io)]
+    fn main() -> () { }
+}

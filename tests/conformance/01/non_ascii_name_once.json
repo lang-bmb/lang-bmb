@@ -1,0 +1,10 @@
+{
+  "sections": [
+    "식별자와 예약어"
+  ],
+  "note": "A non-ASCII letter is E0101 once for the name it is written in, alone or after ASCII letters; the name is still read as one name.",
+  "check": [
+    {"code": "E0101", "line": 5},
+    {"code": "E0101", "line": 6}
+  ]
+}

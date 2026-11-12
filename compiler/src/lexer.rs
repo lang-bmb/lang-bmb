@@ -142,6 +142,7 @@ fn lex_as(file: u32, text: &str, diags: &mut Diags, generated: bool) -> Vec<Toke
             i += 2;
             let mut bytes = Vec::new();
             let mut non_ascii = false;
+            let mut bad_escape = false;
             while i < b.len() && b[i] != quote && !(quote == b'\'' && b[i] == b'\n') {
                 if b[i] == b'\\' {
                     match escape(b, i) {
@@ -157,6 +158,7 @@ fn lex_as(file: u32, text: &str, diags: &mut Diags, generated: bool) -> Vec<Toke
                                 "unknown escape: byte literals take \\n \\r \\t \\\\ \\' \\\" \\0 \\xHH",
                             ));
                             i += n;
+                            bad_escape = true;
                         }
                     }
                     continue;
@@ -172,23 +174,32 @@ fn lex_as(file: u32, text: &str, diags: &mut Diags, generated: bool) -> Vec<Toke
             i += 1;
             let q = if quote == b'"' { '"' } else { '\'' };
             if non_ascii {
-                // As in Rust: other bytes are written as escapes.
-                diags.push(
-                    Diag::new(
-                        "E0101",
-                        sp(lo, i),
-                        "a byte literal holds ASCII characters and escapes",
-                    )
-                    .fix(
+                // As in Rust: other bytes are written as escapes. In
+                // `b'..'` the character's bytes are more than the one byte
+                // the literal holds, so the choice is the writer's.
+                let d = Diag::new(
+                    "E0101",
+                    sp(lo, i),
+                    "a byte literal holds ASCII characters and escapes",
+                );
+                diags.push(if quote == b'"' {
+                    d.fix(
                         "write the other bytes as `\\xHH`",
                         Some(byte_text(&bytes, q)),
-                    ),
-                );
+                    )
+                } else {
+                    d.fix(
+                        "write one byte as `b'\\xHH'`, or the character's bytes as `b\"...\"`",
+                        None,
+                    )
+                });
             }
             let tok = if quote == b'"' {
                 Tok::Bytes(bytes)
             } else {
-                if bytes.len() != 1 {
+                // A character or an escape reported above is the fault:
+                // the count of what was read in its place is not another.
+                if bytes.len() != 1 && !non_ascii && !bad_escape {
                     diags.push(Diag::new(
                         "E0101",
                         sp(lo, i),
@@ -203,12 +214,34 @@ fn lex_as(file: u32, text: &str, diags: &mut Diags, generated: bool) -> Vec<Toke
             });
             continue;
         }
-        if c.is_ascii_alphabetic() || c == b'_' {
+        // A letter outside ASCII is reported (E0101) and read as part of
+        // the name it was written in: the parser sees one name, so the
+        // fault is not reported again as a missing one.
+        let letter = |i: usize| {
+            text[i..]
+                .chars()
+                .next()
+                .filter(|ch| !ch.is_ascii() && ch.is_alphanumeric())
+        };
+        if c.is_ascii_alphabetic() || c == b'_' || letter(i).is_some_and(char::is_alphabetic) {
             let lo = i;
-            while i < b.len()
-                && (b[i].is_ascii_alphanumeric() || b[i] == b'_' || (generated && b[i] == b'$'))
-            {
-                i += 1;
+            let mut reported = false;
+            while i < b.len() {
+                if b[i].is_ascii_alphanumeric() || b[i] == b'_' || (generated && b[i] == b'$') {
+                    i += 1;
+                } else if let Some(ch) = letter(i) {
+                    if !reported {
+                        diags.push(Diag::new(
+                            "E0101",
+                            sp(i, i + ch.len_utf8()),
+                            format!("unexpected character `{ch}`"),
+                        ));
+                        reported = true;
+                    }
+                    i += ch.len_utf8();
+                } else {
+                    break;
+                }
             }
             out.push(Token {
                 tok: Tok::Ident(text[lo..i].to_string()),

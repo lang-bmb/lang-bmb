@@ -1,0 +1,22 @@
+#[summary("s")]
+mod a {
+    struct G<T> { x: T }
+
+    #[effects(pure)]
+    fn e1(a: &[Vec<i64>; 2]) -> i64 { 1 }
+
+    #[effects(pure)]
+    fn e2(a: &[[String; 2]]) -> i64 { 1 }
+
+    #[effects(pure)]
+    fn e3(a: &mut [[[String; 2]; 2]]) -> i64 { 1 }
+
+    #[effects(pure)]
+    fn e4(a: &[G<[i64]>; 2]) -> i64 { 1 }
+
+    #[effects(pure)]
+    fn e5(a: &[i64; 2]) -> i64 { 1 }
+
+    #[effects(pure)]
+    fn ok(a: &[[i64; 2]], b: &[G<i64>]) -> i64 { 1 }
+}

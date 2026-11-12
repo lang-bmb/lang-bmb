@@ -1,0 +1,9 @@
+{
+  "sections": [
+    "`///`와 요약"
+  ],
+  "note": "A `///` that no item follows before the closing brace of its unit is one E0103; the brace still closes the unit.",
+  "check": [
+    {"code": "E0103", "line": 7}
+  ]
+}

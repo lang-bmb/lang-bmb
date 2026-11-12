@@ -1,0 +1,16 @@
+{
+  "sections": [
+    "근거: `#[rationale(..)]`",
+    "탈출구와 증명의 신뢰 등급"
+  ],
+  "note": "A rationale whose `hash` is not the current one is unconfirmed, which is not an error of the language: the program checks, is verified and `bmb build` makes the executable.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::bump": "verified",
+      "m::main": "verified"
+    },
+    "diags": []
+  },
+  "build": "ok"
+}

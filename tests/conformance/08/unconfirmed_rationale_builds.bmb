@@ -1,0 +1,16 @@
+#[summary("an unconfirmed rationale")]
+mod m {
+    spec fn small(x: i64) -> bool { 0 <= x && x <= 10 }
+
+    #[effects(panic)]
+    fn bump(x: i64) -> i64 {
+        #[rationale(kind = boundary, hash = "0000000000000000", "a hash that is not current")]
+        assume(small(x));
+        x + 1
+    }
+
+    #[effects(io, panic)]
+    fn main() -> () {
+        print_i64(bump(1));
+    }
+}

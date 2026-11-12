@@ -1,0 +1,30 @@
+{
+  "sections": [
+    "탈출구와 증명의 신뢰 등급"
+  ],
+  "note": "The status lines of a program without escapes have no `trust`, whether the definition is verified, failed, or verified from the `ensures` of a failed callee.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::claims": {
+        "status": "failed",
+        "trust": null
+      },
+      "m::caller": {
+        "status": "verified",
+        "trust": null
+      },
+      "m::plain": {
+        "status": "verified",
+        "trust": null,
+        "obligations": 0
+      }
+    },
+    "diags": [
+      {
+        "code": "E0802",
+        "line": 5
+      }
+    ]
+  }
+}

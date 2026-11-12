@@ -1,0 +1,26 @@
+{
+  "sections": [
+    "`build`와 `emit-llvm`",
+    "호출자가 가정하는 것"
+  ],
+  "note": "A postcondition that is true at run time but not proved from the callee's contract refuses the build: only a proof makes an executable.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::one": "verified",
+      "m::two": "failed",
+      "m::main": "verified"
+    },
+    "diags": [
+      {
+        "code": "E0802",
+        "line": 8
+      },
+      {
+        "code": "E0803",
+        "line": 10
+      }
+    ]
+  },
+  "build": "refused"
+}

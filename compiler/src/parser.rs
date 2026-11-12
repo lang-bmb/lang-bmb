@@ -313,11 +313,6 @@ impl<'a> Parser<'a> {
     /// fix (the ledger has one name per definition).
     fn parse_use(&mut self) -> Option<UseItem> {
         let lo = self.span();
-        let before = if self.pos > 0 {
-            self.prev_span().hi
-        } else {
-            lo.lo
-        };
         self.bump();
         let mut path = Vec::new();
         while let Tok::Ident(n) = self.peek().clone() {
@@ -338,11 +333,6 @@ impl<'a> Parser<'a> {
             return Some(UseItem {
                 path,
                 span: lo.to(hi),
-                del: Span {
-                    file: lo.file,
-                    lo: before,
-                    hi: hi.hi,
-                },
             });
         }
         self.diags.push(
@@ -423,6 +413,8 @@ impl<'a> Parser<'a> {
             if self.is_kw("mod") {
                 if let Ok(m) = self.parse_mod(attrs) {
                     mods.push(m);
+                } else {
+                    self.recover_item();
                 }
             } else {
                 if self.is_kw("fn") || self.is_kw("spec") || self.is_kw("proof") {
@@ -718,8 +710,12 @@ impl<'a> Parser<'a> {
                 self.recover_item();
             } else {
                 self.err_expected("`fn`, `spec fn` or `mod`");
-                self.bump();
-                self.recover_item();
+                // Attributes or `///` with no item after them: the `}`
+                // still closes the unit.
+                if !self.is_p("}") {
+                    self.bump();
+                    self.recover_item();
+                }
             }
             if self.pos == start {
                 self.bump();
@@ -2437,7 +2433,7 @@ impl<'a> Parser<'a> {
             return Err(());
         }
         let start = self.span();
-        let lo = self.cond_expr()?;
+        let lo = self.range_bound()?;
         let inclusive = if self.eat_p("..=") {
             true
         } else if self.eat_p("..") {
@@ -2457,7 +2453,7 @@ impl<'a> Parser<'a> {
             self.recover_loop_body();
             return Err(());
         };
-        let hi = self.cond_expr()?;
+        let hi = self.range_bound()?;
         let mut invariants = Vec::new();
         self.invariant_lists(&mut invariants, false)?;
         if self.is_kw("decreases") {
@@ -2567,7 +2563,26 @@ impl<'a> Parser<'a> {
 
     // ---------- expressions ----------
 
+    /// An expression, or a range `lo..hi` of two. A range is written
+    /// wherever an expression is, so that the checker names the places it
+    /// has a meaning in (E0435) instead of the parser stopping at `..`.
     fn parse_expr(&mut self) -> PResult<Expr> {
+        let lo = self.parse_no_range()?;
+        if !self.eat_p("..") {
+            return Ok(lo);
+        }
+        let hi = self.parse_no_range()?;
+        let span = lo.span.to(hi.span);
+        Ok(Expr {
+            kind: ExprKind::Range {
+                lo: Box::new(lo),
+                hi: Box::new(hi),
+            },
+            span,
+        })
+    }
+
+    fn parse_no_range(&mut self) -> PResult<Expr> {
         // `return e` binds loosest, as in Rust (ADR-0049 §1).
         if self.is_kw("return") {
             let lo = self.bump().span;
@@ -3159,22 +3174,9 @@ impl<'a> Parser<'a> {
                 };
             } else if self.is_p("[") {
                 self.bump();
-                let index = self.parse_expr()?;
                 // `s[a..b]` (ADR-0050 §2: `&s[a..b]` of text, as an
                 // argument; the checker refuses it elsewhere).
-                let index = if self.eat_p("..") {
-                    let to = self.parse_expr()?;
-                    let span = index.span.to(to.span);
-                    Expr {
-                        kind: ExprKind::Range {
-                            lo: Box::new(index),
-                            hi: Box::new(to),
-                        },
-                        span,
-                    }
-                } else {
-                    index
-                };
+                let index = self.parse_expr()?;
                 let hi = self.expect_p("]")?;
                 let span = e.span.to(hi);
                 e = Expr {
@@ -3202,23 +3204,9 @@ impl<'a> Parser<'a> {
         self.expect_p("(")?;
         let mut args = Vec::new();
         while !self.is_p(")") {
-            let a = self.parse_expr()?;
             // `lo..hi` (ADR-0083: `copy_within`'s source; the checker
             // refuses it in any other argument, E0435).
-            let a = if self.eat_p("..") {
-                let hi = self.parse_expr()?;
-                let span = a.span.to(hi.span);
-                Expr {
-                    kind: ExprKind::Range {
-                        lo: Box::new(a),
-                        hi: Box::new(hi),
-                    },
-                    span,
-                }
-            } else {
-                a
-            };
-            args.push(a);
+            args.push(self.parse_expr()?);
             if !self.eat_p(",") {
                 break;
             }
@@ -3437,6 +3425,14 @@ impl<'a> Parser<'a> {
     fn cond_expr(&mut self) -> PResult<Expr> {
         let outer = std::mem::replace(&mut self.no_struct, true);
         let r = self.parse_expr();
+        self.no_struct = outer;
+        r
+    }
+
+    /// A bound of a `for` range: the `..` after it belongs to the loop.
+    fn range_bound(&mut self) -> PResult<Expr> {
+        let outer = std::mem::replace(&mut self.no_struct, true);
+        let r = self.parse_no_range();
         self.no_struct = outer;
         r
     }

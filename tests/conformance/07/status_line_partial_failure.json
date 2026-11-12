@@ -1,0 +1,22 @@
+{
+  "sections": [
+    "판정"
+  ],
+  "note": "A definition with one proved and one unproved obligation is `failed` with `obligations` 2 and `failed` 1.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::mixed": {
+        "status": "failed",
+        "obligations": 2,
+        "failed": 1
+      }
+    },
+    "diags": [
+      {
+        "code": "E0803",
+        "line": 7
+      }
+    ]
+  }
+}

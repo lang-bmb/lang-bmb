@@ -1,0 +1,10 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn f(n: i64) -> i64 {
+        let r: i64 = 0..3;
+        let s: i64 = (0..n) + r;
+        if 0..1 { }
+        return s..2;
+    }
+}

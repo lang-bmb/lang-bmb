@@ -27,3 +27,36 @@ mod dp {
         [Vec::new(), Vec::new()]
     }
 }
+
+#[summary("배열 값의 원소 규칙은 배열 타입의 원소 규칙과 같다: `String`, `()`, 참조 (backlog 2V-22)")]
+mod dl {
+    struct P { x: i64 }
+
+    #[effects(alloc)]
+    fn text() -> usize {
+        let s: String = String::new();
+        [s].len()
+    }
+
+    #[effects(alloc)]
+    fn repeat() -> usize {
+        let s: String = String::new();
+        [s; 2].len()
+    }
+
+    #[effects(alloc)]
+    fn inner() -> usize {
+        let s: String = String::new();
+        [[s]].len()
+    }
+
+    #[effects(pure)]
+    fn unit() -> usize {
+        [()].len()
+    }
+
+    #[effects(pure)]
+    fn refs(a: &[i64], p: &P) -> usize {
+        [a].len() + [p].len()
+    }
+}

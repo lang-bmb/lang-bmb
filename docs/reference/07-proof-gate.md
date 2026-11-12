@@ -119,7 +119,9 @@ mod m {
 - `bmb build`는 모든 정의가 `verified`일 때만 실행 파일을 만든다. 하나라도 실패하면 `build refused: the program is not fully proved`로 끝나고 파일을 쓰지 않는다(종료 코드 1). 미결정(E0811)과 게이트가 돌지 못한 경우(E0812)도 여기에 든다.
 - 탈출구(`assume`, `#[external_body]`)에 기대어 `verified`가 된 정의는 상태 줄에 `"trust":"assumed"`나 `"external"`가 붙고 `build`를 막지 않는다. 그 정의와 그것이 부르는 정의는 런타임 검사를 지우지 않는다(08장, `tests/run/escapes.bmb`).
 - `bmb emit-llvm`은 증명된 의무의 검사를 지우고, 증명되지 않은 의무는 런타임 검사(trap)로 남긴 IR을 쓴다. 실패가 있으면 진단을 내고 종료 코드는 1이다. 증명은 호출자가 세운 `requires`와 피호출자가 증명한 `ensures`를 가정하므로, 실패한 정의와 호출로 이어진 정의들(부르는 쪽과 불리는 쪽 모두)은 증명된 의무의 검사도 남긴다(`compiler/src/lib.rs`의 `usable_proofs`, 백로그 1B-31).
-- `bmb emit-llvm --all-checks`는 증명을 돌리지 않고 모든 의무를 런타임 검사로 남긴다. 계약을 믿지 않으므로 증명되지 않는 프로그램도 그대로 실행된다. E08xx 진단과 상태 줄은 나오지 않는다(`compiler/README.md`의 명령 목록).
+- `bmb emit-llvm --all-checks`는 증명을 돌리지 않고 실행 의무를 모두 런타임 검사로 남긴다. 계약을 믿지 않으므로 증명되지 않는 프로그램도 그대로 실행되고 종료 코드는 0이다. E08xx 진단과 상태 줄은 나오지 않는다(`compiler/README.md`의 명령 목록).
+- 런타임 검사가 되는 것은 실행 의무다: 넘침, 0 나눗셈, 범위 밖 인덱스, 변환, 시프트 양, `with_capacity`의 용량. 계약의 의무(`requires`·`ensures`·`assert`·불변식·측도)는 실행되지 않는다. 증명되지 않은 계약은 검사로 남지 않고, 그 계약에 기댄 실행 의무가 검사로 남는다(`tests/conformance/07/emit_all_checks_skips_the_proof.bmb`).
+- `assume`도 실행되지 않는다. 거짓인 `assume`은 그것에 기대어 지워졌을 검사가 남아 있어서 trap으로 드러난다(08장, `tests/conformance/08/false_assume_ends_in_trap.bmb`).
 - 증명된 의무만이 검사를 지운다(`docs/DESIGN.md` §3 원칙 9). 실행 출력까지 고정된 프로그램은 `tests/run/`에 있다(`tests/run/collatz.bmb`).
 
 증명 캐시, 증분 증명, `--def`로 고른 정의만 증명하기, 시드를 바꿔 보는 안정성 검사, 계약 린트는 도구다. `compiler/README.md`에 있다.

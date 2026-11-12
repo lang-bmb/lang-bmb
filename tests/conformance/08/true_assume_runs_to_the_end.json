@@ -1,0 +1,25 @@
+{
+  "sections": [
+    "탈출구: `assume`",
+    "탈출구와 증명의 신뢰 등급"
+  ],
+  "note": "An escape does not block `build`, and a run in which every `assume` holds ends normally: the kept checks do not fire.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::bump": {
+        "status": "verified",
+        "trust": "assumed"
+      },
+      "m::main": {
+        "status": "verified",
+        "trust": null
+      }
+    },
+    "diags": []
+  },
+  "run": {
+    "stdout": "4\n11\n",
+    "exit": "ok"
+  }
+}

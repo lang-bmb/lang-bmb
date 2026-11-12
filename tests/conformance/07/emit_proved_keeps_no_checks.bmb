@@ -1,0 +1,12 @@
+#[summary("proved obligations erase their checks")]
+mod m {
+    #[effects(pure)]
+    fn bump(x: i64) -> i64 {
+        if x < 100 { x + 1 } else { 0 }
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        print_i64(bump(3));
+    }
+}

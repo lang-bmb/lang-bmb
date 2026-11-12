@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "배열과 슬라이스"
+  ],
+  "note": "A range `lo..hi` where a value is expected (a `let`, a condition, a returned value, an operand) is E0435 and nothing else.",
+  "check": [
+    {"code": "E0435", "line": 5},
+    {"code": "E0435", "line": 6},
+    {"code": "E0435", "line": 7},
+    {"code": "E0435", "line": 8}
+  ]
+}

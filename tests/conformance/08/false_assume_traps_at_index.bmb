@@ -1,0 +1,17 @@
+#[summary("a false assume traps at the kept bounds check")]
+mod m {
+    spec fn inside(i: usize, n: usize) -> bool { i < n }
+
+    #[effects(panic)]
+    fn pick(a: &[i64], i: usize) -> i64 {
+        #[rationale(kind = boundary, "callers pass an index inside the slice")]
+        assume(inside(i, a.len()));
+        a[i]
+    }
+
+    #[effects(io, panic)]
+    fn main() -> () {
+        let a: [i64; 3] = [1, 2, 3];
+        print_i64(pick(&a, 7));
+    }
+}

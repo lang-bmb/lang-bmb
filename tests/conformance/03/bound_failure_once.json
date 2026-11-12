@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "제네릭과 trait"
+  ],
+  "note": "A type argument that fails its bound, written or inferred, is E0428 once: the arguments of the call are not reported against it, and an inferred one is not also E0237.",
+  "check": [
+    {"code": "E0428", "line": 17},
+    {"code": "E0428", "line": 20},
+    {"code": "E0428", "line": 23},
+    {"code": "E0428", "line": 26}
+  ]
+}

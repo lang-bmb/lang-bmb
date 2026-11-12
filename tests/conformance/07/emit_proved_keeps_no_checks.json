@@ -1,0 +1,32 @@
+{
+  "sections": [
+    "`build`와 `emit-llvm`"
+  ],
+  "note": "`bmb emit-llvm` of a fully proved program ends with exit code 0 and keeps no runtime check; `--all-checks` keeps the check of its one obligation.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::bump": {
+        "status": "verified",
+        "obligations": 1
+      },
+      "m::main": {
+        "status": "verified",
+        "obligations": 0
+      }
+    },
+    "diags": []
+  },
+  "emit": [
+    {
+      "exit": 0,
+      "runtime_checks": 0
+    },
+    {
+      "all_checks": true,
+      "exit": 0,
+      "runtime_checks": 1
+    }
+  ],
+  "run": "4\n"
+}

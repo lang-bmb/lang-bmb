@@ -1,0 +1,37 @@
+{
+  "sections": [
+    "의무의 단위",
+    "판정"
+  ],
+  "note": "A status line counts the obligations of its definition and how many failed: none gives `verified` with 0, the chapter's `a / b` has 2 obligations and 2 failed.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::none": {
+        "status": "verified",
+        "obligations": 0,
+        "failed": 0
+      },
+      "m::one": {
+        "status": "verified",
+        "obligations": 1,
+        "failed": 0
+      },
+      "m::div": {
+        "status": "failed",
+        "obligations": 2,
+        "failed": 2
+      }
+    },
+    "diags": [
+      {
+        "code": "E0803",
+        "line": 14
+      },
+      {
+        "code": "E0804",
+        "line": 14
+      }
+    ]
+  }
+}

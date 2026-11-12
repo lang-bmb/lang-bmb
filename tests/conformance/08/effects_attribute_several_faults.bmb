@@ -1,0 +1,8 @@
+#[summary("several faults in one effects attribute")]
+mod m {
+    #[effects(wild, wilder)]
+    fn a() -> () { }
+
+    #[effects(pure, io, io)]
+    fn b() -> () { }
+}

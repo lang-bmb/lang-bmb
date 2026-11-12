@@ -1,0 +1,21 @@
+{
+  "sections": [
+    "탈출구와 증명의 신뢰 등급",
+    "효과의 집합"
+  ],
+  "note": "The bounds check of a definition verified through an `assume` is kept: an index the false `assume` let through ends the run in a trap, which is what the `panic` effect declares.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::pick": {
+        "status": "verified",
+        "trust": "assumed"
+      },
+      "m::main": "verified"
+    },
+    "diags": []
+  },
+  "run": {
+    "exit": "trap"
+  }
+}

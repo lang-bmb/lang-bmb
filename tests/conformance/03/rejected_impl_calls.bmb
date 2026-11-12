@@ -1,0 +1,52 @@
+#[summary("s")]
+mod a {
+    trait Tr {
+        #[effects(pure)]
+        fn m(self: &Self) -> i64;
+    }
+
+    struct P { x: i64 }
+    struct W<T> { v: T }
+    struct V<A, B> { a: A, b: B }
+
+    impl<T> Tr for P {
+        #[effects(pure)]
+        fn m(self: &P) -> i64 { 1 }
+    }
+
+    impl<B, A> Tr for V<A, B> {
+        #[effects(pure)]
+        fn m(self: &V<A, B>) -> i64 { 1 }
+    }
+
+    impl<T> Tr for W<T> {
+        #[effects(pure)]
+        fn m(self: &W<T>) -> i64 { 1 }
+    }
+
+    impl Tr for W<i64> {
+        #[effects(pure)]
+        fn m(self: &W<i64>) -> i64 { 2 }
+    }
+
+    #[effects(pure)]
+    fn need<T: Tr>(t: &T) -> i64 { t.m() }
+
+    #[effects(pure)]
+    fn calls(p: &P, v: &V<i64, bool>, w: &W<i64>, y: &c::Y) -> i64 {
+        p.m() + v.m() + w.m() + y.m() + need::<P>(p) + need::<c::Y>(y) + y.zz()
+    }
+}
+
+#[summary("s")]
+mod c {
+    struct Y { x: i64 }
+}
+
+#[summary("s")]
+mod d {
+    impl a::Tr for c::Y {
+        #[effects(pure)]
+        fn m(self: &c::Y) -> i64 { 2 }
+    }
+}

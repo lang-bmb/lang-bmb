@@ -1,0 +1,19 @@
+#[summary("s")]
+mod a {
+    use b::f;
+
+    use b::P;
+
+    #[effects(pure)]
+    fn g(p: P) -> i64 {
+        f()
+    }
+}
+
+#[summary("s")]
+mod b {
+    struct P { x: i64 }
+
+    #[effects(pure)]
+    fn f() -> i64 { 1 }
+}

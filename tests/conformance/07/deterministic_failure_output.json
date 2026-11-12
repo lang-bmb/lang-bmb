@@ -1,0 +1,41 @@
+{
+  "sections": [
+    "결정론",
+    "판정"
+  ],
+  "note": "Two runs of `bmb check` and of `bmb verify` on a program with failures print the same bytes: diagnostics with their counterexamples and the status lines.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::div": "failed",
+      "m::at": "failed",
+      "m::add": "failed"
+    },
+    "diags": [
+      {
+        "code": "E0803",
+        "line": 4
+      },
+      {
+        "code": "E0804",
+        "line": 4
+      },
+      {
+        "code": "E0805",
+        "line": 7
+      },
+      {
+        "code": "E0802",
+        "line": 11
+      },
+      {
+        "code": "E0803",
+        "line": 13
+      }
+    ]
+  },
+  "deterministic": [
+    "check",
+    "verify"
+  ]
+}

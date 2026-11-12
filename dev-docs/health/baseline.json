@@ -17,17 +17,17 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 54711,
+    "S4_stage0_rust_lines": 54744,
     "S5_tests_bound_to_rust_api": 1,
     "S6_selfhost_bmb_lines": 0,
     "S7_selfhost_proved_defs": null,
     "P1_runnable_programs": 85,
-    "P2_bmb_lines": 39636,
-    "P3_errors_with_help": 0.9116,
+    "P2_bmb_lines": 40273,
+    "P3_errors_with_help": 0.9133,
     "B1_baseline_binary_bytes": 101664,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 17,
-    "O3_active_backlog_chars": 36191
+    "O3_active_backlog_chars": 35817
   },
   "history": [
     {
@@ -2656,6 +2656,28 @@
         "O3_active_backlog_chars": [
           36203,
           36191
+        ]
+      }
+    },
+    {
+      "date": "2026-11-12",
+      "reason": "2V-22 작은 결함·진단 연쇄 수정, 5A-05 적합성 형식 확장(사례 441)",
+      "changed": {
+        "S4_stage0_rust_lines": [
+          54711,
+          54744
+        ],
+        "P2_bmb_lines": [
+          39636,
+          40273
+        ],
+        "P3_errors_with_help": [
+          0.9116,
+          0.9133
+        ],
+        "O3_active_backlog_chars": [
+          36191,
+          35817
         ]
       }
     }

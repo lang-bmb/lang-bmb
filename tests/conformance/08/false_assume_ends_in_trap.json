@@ -1,0 +1,21 @@
+{
+  "sections": [
+    "탈출구: `assume`",
+    "탈출구와 증명의 신뢰 등급"
+  ],
+  "note": "A trusted fact does not erase runtime checks: the program builds, and a false `assume` that the run reaches ends in a trap at the overflow it was assumed away, not in a wrapped value.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::bump": {
+        "status": "verified",
+        "trust": "assumed"
+      },
+      "m::main": "verified"
+    },
+    "diags": []
+  },
+  "run": {
+    "exit": "trap"
+  }
+}

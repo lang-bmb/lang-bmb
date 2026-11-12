@@ -1,0 +1,15 @@
+#[summary("the same bytes for the same input")]
+mod m {
+    #[effects(pure)]
+    fn div(a: i64, b: i64) -> i64 { a / b }
+
+    #[effects(pure)]
+    fn at(a: &[i64], i: usize) -> i64 { a[i] }
+
+    #[effects(pure)]
+    fn add(a: i64, b: i64) -> (r: i64)
+        ensures r > a,
+    {
+        a + b
+    }
+}

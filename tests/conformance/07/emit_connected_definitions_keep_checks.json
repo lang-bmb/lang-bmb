@@ -1,0 +1,45 @@
+{
+  "sections": [
+    "`build`와 `emit-llvm`"
+  ],
+  "note": "The definitions joined by calls to a failed one, its callee and its caller, keep the checks of their proved obligations too; an unconnected proved definition does not. `--all-checks` keeps all four.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::below": {
+        "status": "verified",
+        "obligations": 1
+      },
+      "m::broken": {
+        "status": "failed",
+        "obligations": 1,
+        "failed": 1
+      },
+      "m::above": {
+        "status": "verified",
+        "obligations": 1
+      },
+      "m::apart": {
+        "status": "verified",
+        "obligations": 1
+      }
+    },
+    "diags": [
+      {
+        "code": "E0803",
+        "line": 10
+      }
+    ]
+  },
+  "emit": [
+    {
+      "exit": 1,
+      "runtime_checks": 3
+    },
+    {
+      "all_checks": true,
+      "exit": 0,
+      "runtime_checks": 4
+    }
+  ]
+}

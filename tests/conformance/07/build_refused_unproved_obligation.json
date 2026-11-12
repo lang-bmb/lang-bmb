@@ -1,0 +1,21 @@
+{
+  "sections": [
+    "`build`와 `emit-llvm`",
+    "판정"
+  ],
+  "note": "`bmb build` of a program with a failed definition ends with exit code 1 and writes no file, even though the value `main` passes would not overflow.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::inc": "failed",
+      "m::main": "verified"
+    },
+    "diags": [
+      {
+        "code": "E0803",
+        "line": 4
+      }
+    ]
+  },
+  "build": "refused"
+}

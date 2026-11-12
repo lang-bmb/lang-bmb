@@ -1,0 +1,17 @@
+{
+  "sections": [
+    "결정론"
+  ],
+  "note": "Two runs of `bmb verify` on a proved program with a loop print the same bytes, the resource counts of the status lines included.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::sum": "verified",
+      "m::twice": "verified"
+    },
+    "diags": []
+  },
+  "deterministic": [
+    "verify"
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "sections": [
+    "배열과 슬라이스"
+  ],
+  "note": "The values of `[a, b]` and `[v; N]` follow the element rule of the array type: a `String` or a `Vec` is no element (E0402, once per value), a struct, a `Box`, an array and an enum are.",
+  "check": [
+    {"code": "E0402", "line": 8},
+    {"code": "E0402", "line": 14},
+    {"code": "E0402", "line": 20},
+    {"code": "E0402", "line": 26}
+  ]
+}

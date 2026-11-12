@@ -1,0 +1,21 @@
+{
+  "sections": [
+    "`build`와 `emit-llvm`"
+  ],
+  "note": "`bmb build` needs every definition `verified`: one failed definition refuses the build even when `main` does not reach it.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::unused": "failed",
+      "m::two": "verified",
+      "m::main": "verified"
+    },
+    "diags": [
+      {
+        "code": "E0805",
+        "line": 4
+      }
+    ]
+  },
+  "build": "refused"
+}

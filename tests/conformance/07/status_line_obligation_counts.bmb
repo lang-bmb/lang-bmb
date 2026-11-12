@@ -1,0 +1,15 @@
+#[summary("the fields of a status line")]
+mod m {
+    #[effects(pure)]
+    fn none(x: i64) -> i64 { x }
+
+    #[effects(pure)]
+    fn one(x: i64) -> i64
+        requires x < 10,
+    {
+        x + 1
+    }
+
+    #[effects(pure)]
+    fn div(a: i64, b: i64) -> i64 { a / b }
+}

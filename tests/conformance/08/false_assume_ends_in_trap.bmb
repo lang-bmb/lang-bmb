@@ -1,0 +1,16 @@
+#[summary("a false assume traps")]
+mod m {
+    spec fn small(x: i64) -> bool { 0 <= x && x <= 10 }
+
+    #[effects(panic)]
+    fn bump(x: i64) -> i64 {
+        #[rationale(kind = boundary, "callers pass small values")]
+        assume(small(x));
+        x + 1
+    }
+
+    #[effects(io, panic)]
+    fn main() -> () {
+        print_i64(bump(9223372036854775807));
+    }
+}

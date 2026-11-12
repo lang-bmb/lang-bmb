@@ -1,0 +1,10 @@
+#[summary("an unproved obligation refuses build")]
+mod m {
+    #[effects(pure)]
+    fn inc(x: i64) -> i64 { x + 1 }
+
+    #[effects(io)]
+    fn main() -> () {
+        print_i64(inc(1));
+    }
+}

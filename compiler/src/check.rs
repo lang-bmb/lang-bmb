@@ -988,6 +988,10 @@ pub struct Checker<'a> {
     pub traits: BTreeMap<String, TraitInfo>,
     /// `impl Trait for T` blocks the checker accepted (ADR-0046 §2).
     pub trait_impls: Vec<TraitImplInfo>,
+    /// The `impl Trait for T` blocks of one type reported for their head
+    /// (E0420, E0311, E0312): method calls still find their trait, so the one
+    /// fault is not reported again as E0404 at every call (backlog 2V-22).
+    rejected_impls: Vec<TraitImplInfo>,
     /// The type `Self` stands for in the trait `impl` being read, and its
     /// text (E0305 on `Self` writes it, and checking goes on with it).
     self_head: Option<(TypeKind, String)>,
@@ -1747,18 +1751,20 @@ pub fn is_child(t: &TypeKind) -> bool {
 /// The help of E0402 for an array inside an array element (backlog 2B-14).
 const ARRAY_ELEMENT_HELP: &str = "an array element is a scalar, a struct or enum, a `Box` or a fixed-size array; for growable elements use `Vec<Vec<T>>`";
 
-/// Whether `e` may be the element of a fixed-size array (backlog 2V-04b):
-/// a scalar, a struct or enum, or such an array again; not a `Vec`.
+/// Whether `e` may be the element of a fixed-size array (backlog 2V-04b,
+/// 2V-22): a scalar, a struct or enum, a `Box`, or such an array again; not
+/// a `Vec` or a `String`. The one rule of written array types and of the
+/// values in `[a, b]` and `[v; N]`, so it reads a type as written and as
+/// resolved.
 fn array_elem_ok(e: &TypeKind) -> bool {
     match e {
         TypeKind::Named { path, .. } => {
             !(path.len() == 1 && (path[0] == "Vec" || path[0] == "String"))
         }
-        TypeKind::String => false,
         TypeKind::Array(inner, _) => array_elem_ok(&inner.kind),
-        // The resolved forms: `canon` reads its own results too.
         TypeKind::Box(_) | TypeKind::Param(_) => true,
-        TypeKind::Error => true,
+        // A reported type, and a value that never arrives (`[return 1]`).
+        TypeKind::Error | TypeKind::Never => true,
         t => is_scalar(t),
     }
 }
@@ -1906,6 +1912,7 @@ impl<'a> Checker<'a> {
             targs: BTreeMap::new(),
             traits: BTreeMap::new(),
             trait_impls: Vec::new(),
+            rejected_impls: Vec::new(),
             self_head: None,
             tparams: Vec::new(),
             elem_params: BTreeSet::new(),
@@ -2129,6 +2136,16 @@ impl<'a> Checker<'a> {
             let head = self.canon(&i.self_ty, &mp, true);
             self.tparams.clear();
             let span = i.self_ty.span;
+            if head == TypeKind::Error {
+                continue;
+            }
+            let info = TraitImplInfo {
+                trait_path: tr.clone(),
+                generics: gens.clone(),
+                head: head.clone(),
+                unit: mp.clone(),
+                span: i.span,
+            };
             if let TypeKind::Param(n) = &head {
                 self.diags.push(
                     Diag::new(
@@ -2143,9 +2160,6 @@ impl<'a> Checker<'a> {
                         None,
                     ),
                 );
-                continue;
-            }
-            if head == TypeKind::Error {
                 continue;
             }
             let copy = TParam {
@@ -2173,6 +2187,7 @@ impl<'a> Checker<'a> {
                     )
                     .fix("remove it, or use it in the implemented type", None),
                 );
+                self.rejected_impls.push(info);
                 continue;
             }
             // One way to write an impl (as the inherent `impl<A, B> T<A, B>`):
@@ -2197,6 +2212,7 @@ impl<'a> Checker<'a> {
                         None,
                     ),
                 );
+                self.rejected_impls.push(info);
                 continue;
             }
             let trait_unit = tr.rsplit_once("::").map_or("", |x| x.0).to_string();
@@ -2224,6 +2240,7 @@ impl<'a> Checker<'a> {
                     )
                     .fix(help, None),
                 );
+                self.rejected_impls.push(info);
                 continue;
             }
             if let Some(prev) = self
@@ -2243,15 +2260,10 @@ impl<'a> Checker<'a> {
                         None,
                     ),
                 );
+                self.rejected_impls.push(info);
                 continue;
             }
-            self.trait_impls.push(TraitImplInfo {
-                trait_path: tr,
-                generics: gens,
-                head,
-                unit: mp.clone(),
-                span: i.span,
-            });
+            self.trait_impls.push(info);
         }
     }
 
@@ -2846,12 +2858,15 @@ impl<'a> Checker<'a> {
         }
         self.trait_impls
             .iter()
+            .chain(&self.rejected_impls)
             .filter(|i| i.trait_path == tr)
             .any(|i| {
+                // A parameter the head does not name is that impl's
+                // reported fault (E0420), not a bound the type fails.
                 i.matches(t).is_some_and(|m| {
                     i.generics
                         .iter()
-                        .all(|g| m.get(&g.name).is_some_and(|a| self.meets(a, &g.bounds)))
+                        .all(|g| m.get(&g.name).is_none_or(|a| self.meets(a, &g.bounds)))
                 })
             })
     }
@@ -3736,7 +3751,7 @@ impl<'a> Checker<'a> {
             self.diags.push(
                 Diag::new(
                     "E0214",
-                    u.del,
+                    u.span,
                     format!("`use {full};` is not used: write `{full}` where it is used"),
                 )
                 .fix(
@@ -4566,8 +4581,8 @@ impl<'a> Checker<'a> {
         }
 
         for p in &f.params {
-            self.check_param_type(&p.ty, f.kind);
             let ty = self.canon(&p.ty, mod_path, true);
+            self.check_param_type(&p.ty, f.kind, !ty_has_error(&ty));
             self.declare(&mut cx, &p.name, ty, false, true);
         }
         self.check_value_type(&f.ret.ty, "return type");
@@ -4698,7 +4713,10 @@ impl<'a> Checker<'a> {
         );
     }
 
-    fn check_param_type(&mut self, t: &Type, kind: FnKind) {
+    /// The shapes a parameter's type may have. `resolved` is false when the
+    /// type is already reported (a type inside it is the fault): the shape
+    /// of the reference around it is not a second one (backlog 2V-22).
+    fn check_param_type(&mut self, t: &Type, kind: FnKind, resolved: bool) {
         match &t.kind {
             TypeKind::Ref { mutable, inner } => match &inner.kind {
                 // `&[T]`, `&Point`, `&[Point]` (ADR-0026 §2), `&[Vec<T>]`
@@ -4741,6 +4759,7 @@ impl<'a> Checker<'a> {
                 ),
                 TypeKind::Str => {}
                 TypeKind::Error => {}
+                _ if !resolved => {}
                 _ => self.diags.push(
                     Diag::new(
                         "E0402",
@@ -4844,26 +4863,12 @@ impl<'a> Checker<'a> {
         }
     }
 
-    /// An element of an array literal or repeat: not a `Vec` (backlog
-    /// 1B-35, 2B-14, 2V-04b).
-    fn literal_elem(&mut self, t: &TypeKind, span: Span, repeat: bool) {
-        // `[v; N]` copies `v` (Rust: `Copy`); a literal moves each element.
-        if repeat
-            && is_move_in(t, &self.adts, &self.moving_params())
-            && !matches!(t, TypeKind::Vec(_))
-        {
-            self.diags.push(
-                Diag::new(
-                    "E0402",
-                    span,
-                    format!("`[v; N]` copies `v`, and `{}` moves", ty_str(t)),
-                )
-                .fix("write the elements one by one: `[a, b, ..]`", None),
-            );
-            return;
-        }
-        let bad = matches!(t, TypeKind::Vec(_));
-        if bad {
+    /// An element of an array literal or repeat: the element rule of the
+    /// array type (backlog 1B-35, 2B-14, 2V-04b, 2V-22), then `Copy` for a
+    /// repeat. False when the value is no element: the literal then has
+    /// the reported type, so an enclosing literal does not report it again.
+    fn literal_elem(&mut self, t: &TypeKind, span: Span, repeat: bool) -> bool {
+        if !array_elem_ok(t) {
             self.diags.push(
                 Diag::new(
                     "E0402",
@@ -4875,7 +4880,20 @@ impl<'a> Checker<'a> {
                 )
                 .fix(ARRAY_ELEMENT_HELP, None),
             );
+            return false;
         }
+        // `[v; N]` copies `v` (Rust: `Copy`); a literal moves each element.
+        if repeat && is_move_in(t, &self.adts, &self.moving_params()) {
+            self.diags.push(
+                Diag::new(
+                    "E0402",
+                    span,
+                    format!("`[v; N]` copies `v`, and `{}` moves", ty_str(t)),
+                )
+                .fix("write the elements one by one: `[a, b, ..]`", None),
+            );
+        }
+        true
     }
 
     /// `assume(p(..));` (ADR-0029 §1): in executable code, one named
@@ -8086,15 +8104,20 @@ impl<'a> Checker<'a> {
                     _ => None,
                 };
                 let mut elem = want_elem.clone();
+                let mut ok = true;
                 for it in items {
                     let t = self.expr(cx, it, elem.as_ref(), mode);
-                    self.literal_elem(&t, it.span, false);
+                    if !self.literal_elem(&t, it.span, false) {
+                        ok = false;
+                        continue;
+                    }
                     match &elem {
                         None => elem = Some(t),
                         Some(want) => self.expect_ty(&t, want, it.span),
                     }
                 }
                 match elem {
+                    _ if !ok => TypeKind::Error,
                     Some(el) => TypeKind::Array(mk(el), items.len() as u64),
                     None => {
                         self.err(
@@ -8117,9 +8140,12 @@ impl<'a> Checker<'a> {
                     _ => None,
                 };
                 let t = self.expr(cx, value, want_elem.as_ref(), mode);
-                self.literal_elem(&t, value.span, true);
+                let ok = self.literal_elem(&t, value.span, true);
                 if *count > u32::MAX as u128 {
                     self.err("E0406", *count_span, "array length is too large");
+                }
+                if !ok {
+                    return TypeKind::Error;
                 }
                 TypeKind::Array(mk(t), *count as u64)
             }
@@ -9227,6 +9253,7 @@ impl<'a> Checker<'a> {
             t => self
                 .trait_impls
                 .iter()
+                .chain(&self.rejected_impls)
                 .filter(|i| i.matches(t).is_some())
                 .map(|i| i.trait_path.clone())
                 .collect(),
@@ -10517,11 +10544,15 @@ impl<'a> Checker<'a> {
                 .iter()
                 .all(|p| tm.get(&p.name).is_some_and(|t| *t != TypeKind::Error));
             if inferred {
+                let mut ok = true;
                 for p in &sig.generics[usize::from(is_trait)..] {
                     let t = tm[&p.name].clone();
-                    if !self.targ_ok(&t, p, &name, span, true) {
-                        tm.insert(p.name.clone(), TypeKind::Error);
-                    }
+                    ok &= self.targ_ok(&t, p, &name, span, true);
+                }
+                // The inferred argument fails its bound: writing it out
+                // (E0237) is not the fault.
+                if !ok {
+                    return TypeKind::Error;
                 }
             }
             let known: BTreeMap<String, TypeKind> = tm
@@ -10691,6 +10722,12 @@ impl<'a> Checker<'a> {
         inner: &Type,
         mode: Mode,
     ) -> Option<String> {
+        // A parameter type that holds an error was reported where the
+        // error is (a type argument that fails its bound): no argument
+        // fits it, and none is a second fault.
+        if ty_has_error(&inner.kind) {
+            return None;
+        }
         let want = format!("&{}{}", if pm { "mut " } else { "" }, ty_str(&inner.kind));
         if inner.kind == TypeKind::Str {
             self.text_arg(cx, a, mode);
@@ -11259,6 +11296,9 @@ impl<'a> Checker<'a> {
         for m in &p.mods {
             walk(m, &mut mains);
         }
+        // In text order: a unit's own `main` is written before or after
+        // those of the units nested in it, and the later one is the extra.
+        mains.sort_by_key(|f| (f.name.span.file, f.name.span.lo));
         for (i, f) in mains.iter().enumerate() {
             if i > 0 {
                 self.err("E0702", f.name.span, "the program already has a `main`");

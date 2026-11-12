@@ -1,0 +1,9 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn f() -> i64 {
+        let é: i64 = 0;
+        let caféà: i64 = 1;
+        2
+    }
+}

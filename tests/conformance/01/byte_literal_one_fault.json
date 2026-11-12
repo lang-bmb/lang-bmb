@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "문자·문자열·바이트 리터럴"
+  ],
+  "note": "A non-ASCII character or an unknown escape in a byte literal is one E0101: the number of bytes read in its place is not reported as well.",
+  "check": [
+    {"code": "E0101", "line": 4},
+    {"code": "E0101", "line": 7},
+    {"code": "E0101", "line": 10}
+  ]
+}

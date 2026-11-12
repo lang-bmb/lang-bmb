@@ -1,0 +1,8 @@
+#[summary("unproved obligations keep their checks")]
+mod m {
+    #[effects(pure)]
+    fn inc(x: i64) -> i64 { x + 1 }
+
+    #[effects(pure)]
+    fn idx(a: &[i64], i: usize) -> i64 { a[i] }
+}

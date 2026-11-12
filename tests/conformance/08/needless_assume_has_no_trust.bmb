@@ -1,0 +1,20 @@
+#[summary("trust only where the proof needs it")]
+mod m {
+    spec fn small(x: i64) -> bool { 0 <= x && x <= 10 }
+
+    #[effects(panic)]
+    fn needless(x: i64) -> i64
+        requires small(x),
+    {
+        #[rationale(kind = solver_limit, "not needed")]
+        assume(small(x));
+        x + 1
+    }
+
+    #[effects(panic)]
+    fn needed(x: i64) -> i64 {
+        #[rationale(kind = boundary, "callers pass small values")]
+        assume(small(x));
+        x + 1
+    }
+}

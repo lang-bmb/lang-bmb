@@ -1,0 +1,23 @@
+#[summary("a failure keeps the checks of the definitions joined to it by calls")]
+mod m {
+    #[effects(pure)]
+    fn below(x: i64) -> i64 {
+        if 0 <= x && x < 10 { x + 1 } else { 0 }
+    }
+
+    #[effects(pure)]
+    fn broken(x: i64) -> i64 {
+        below(3) + x
+    }
+
+    #[effects(pure)]
+    fn above(x: i64) -> i64 {
+        let y: i64 = broken(x);
+        if y < 10 { y + 1 } else { 0 }
+    }
+
+    #[effects(pure)]
+    fn apart(x: i64) -> i64 {
+        if x < 10 { x + 2 } else { 0 }
+    }
+}

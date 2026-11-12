@@ -1,0 +1,17 @@
+#[summary("every definition must be verified")]
+mod m {
+    #[effects(pure)]
+    fn unused(a: &[i64]) -> i64 { a[0] }
+
+    #[effects(pure)]
+    fn two() -> (r: i64)
+        ensures r == 2,
+    {
+        2
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        print_i64(two());
+    }
+}

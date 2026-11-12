@@ -1,0 +1,17 @@
+{
+  "sections": [
+    "근거: `#[rationale(..)]`"
+  ],
+  "note": "A `#[rationale(..)]` that breaks the form in more than one way (a repeated `kind` and two explanations; an unlisted `kind` and no explanation) is an error (E1002), however many diagnostics it gets.",
+  "check": [
+    {
+      "code": "E1002",
+      "line": 7
+    },
+    {
+      "code": "E1002",
+      "line": 12
+    }
+  ],
+  "check_mode": "includes"
+}

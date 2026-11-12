@@ -1,0 +1,17 @@
+{
+  "sections": [
+    "`#[effects(..)]` 선언"
+  ],
+  "note": "An `#[effects(..)]` with unknown names is an error (E0602) and one that lists `pure` with others or repeats an effect is an error (E0607), however many diagnostics the attribute gets for its several faults.",
+  "check": [
+    {
+      "code": "E0602",
+      "line": 3
+    },
+    {
+      "code": "E0607",
+      "line": 6
+    }
+  ],
+  "check_mode": "includes"
+}

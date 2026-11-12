@@ -1,0 +1,27 @@
+#[summary("s")]
+mod a {
+    trait Tr {
+        #[effects(pure)]
+        fn m(self: &Self) -> i64;
+    }
+
+    struct P { x: i64 }
+
+    #[effects(pure)]
+    fn same<T: Copy + Eq>(a: &T, b: &T) -> bool { true }
+
+    #[effects(pure)]
+    fn need<T: Tr>(t: &T) -> i64 { t.m() }
+
+    #[effects(pure)]
+    fn e1(a: &Vec<i64>) -> bool { same::<Vec<i64>>(a, a) }
+
+    #[effects(pure)]
+    fn e2(p: &P) -> i64 { need::<P>(p) }
+
+    #[effects(pure)]
+    fn e3(p: &P) -> i64 { need(p) }
+
+    #[effects(pure)]
+    fn e4(a: &Vec<i64>) -> bool { same(a, a) }
+}

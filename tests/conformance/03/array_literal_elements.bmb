@@ -1,0 +1,34 @@
+#[summary("s")]
+mod a {
+    struct P { x: i64 }
+
+    #[effects(alloc)]
+    fn e1() -> usize {
+        let s: String = String::new();
+        [s].len()
+    }
+
+    #[effects(alloc)]
+    fn e2() -> usize {
+        let v: Vec<i64> = Vec::new();
+        [v].len()
+    }
+
+    #[effects(alloc)]
+    fn e3() -> usize {
+        let s: String = String::new();
+        [s; 2].len()
+    }
+
+    #[effects(alloc)]
+    fn e4() -> usize {
+        let s: String = String::new();
+        [[s]].len()
+    }
+
+    #[effects(alloc)]
+    fn ok(p: P) -> usize {
+        let b: Box<i64> = Box::new(1);
+        [p].len() + [b].len() + [[1, 2], [3, 4]].len() + [Some(1)].len()
+    }
+}

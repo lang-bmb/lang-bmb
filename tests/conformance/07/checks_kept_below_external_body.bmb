@@ -1,0 +1,24 @@
+#[summary("an escape does not erase checks")]
+mod m {
+    spec fn small(x: i64) -> bool { 0 <= x && x <= 10 }
+
+    #[rationale(kind = boundary, "the outside world")]
+    #[external_body]
+    #[effects(panic)]
+    fn outside() -> (r: i64)
+        ensures small(r),
+    {
+        9223372036854775807
+    }
+
+    #[effects(panic)]
+    fn caller() -> i64 {
+        let v: i64 = outside();
+        v + 1
+    }
+
+    #[effects(io, panic)]
+    fn main() -> () {
+        print_i64(caller());
+    }
+}

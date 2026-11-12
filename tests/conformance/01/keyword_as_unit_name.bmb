@@ -1,0 +1,10 @@
+#[summary("s")]
+mod while { }
+
+#[summary("s")]
+mod b {
+    #[effects(pure)]
+    fn f() -> i64 {
+        true
+    }
+}

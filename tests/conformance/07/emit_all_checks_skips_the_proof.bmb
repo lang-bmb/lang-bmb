@@ -1,0 +1,8 @@
+#[summary("all checks, no proof")]
+mod m {
+    #[effects(pure)]
+    fn div(a: i64, b: i64) -> i64 { a / b }
+
+    #[effects(pure)]
+    fn conv(x: i64) -> u8 { x as u8 }
+}

@@ -1,0 +1,13 @@
+#[summary("s")]
+mod a {
+    #[effects(pure)]
+    fn f() -> i64 { 1 }
+
+    /// nothing follows
+}
+
+#[summary("s")]
+mod b {
+    #[effects(pure)]
+    fn g() -> i64 { 1 }
+}

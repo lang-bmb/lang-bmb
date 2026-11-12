@@ -1,0 +1,35 @@
+{
+  "sections": [
+    "`build`와 `emit-llvm`"
+  ],
+  "note": "`bmb emit-llvm` of a program with failed definitions prints the diagnostics of `verify`, ends with exit code 1 and still writes IR, with one runtime check per unproved obligation.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::inc": {
+        "status": "failed",
+        "obligations": 1,
+        "failed": 1
+      },
+      "m::idx": {
+        "status": "failed",
+        "obligations": 1,
+        "failed": 1
+      }
+    },
+    "diags": [
+      {
+        "code": "E0803",
+        "line": 4
+      },
+      {
+        "code": "E0805",
+        "line": 7
+      }
+    ]
+  },
+  "emit": {
+    "exit": 1,
+    "runtime_checks": 2
+  }
+}

@@ -84,10 +84,9 @@ pub struct ConstDef {
 #[derive(Debug, Clone)]
 pub struct UseItem {
     pub path: Vec<Ident>,
+    /// From `use` to `;`: what E0214 points at and its fix deletes (the
+    /// fix layout takes the line the deletion leaves blank).
     pub span: Span,
-    /// The item with the line break and indentation before it: what the
-    /// fix deletes, so no blank line is left.
-    pub del: Span,
 }
 
 /// A type parameter `T`, `T: Copy` (ADR-0046 §1).

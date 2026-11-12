@@ -1,0 +1,46 @@
+{
+  "sections": [
+    "`build`와 `emit-llvm`"
+  ],
+  "note": "`bmb emit-llvm --all-checks` does not prove: on a program whose three obligations all fail it prints no E08xx diagnostic and no status line, ends with exit code 0 and keeps three runtime checks.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::div": {
+        "status": "failed",
+        "obligations": 2,
+        "failed": 2
+      },
+      "m::conv": {
+        "status": "failed",
+        "obligations": 1,
+        "failed": 1
+      }
+    },
+    "diags": [
+      {
+        "code": "E0803",
+        "line": 4
+      },
+      {
+        "code": "E0804",
+        "line": 4
+      },
+      {
+        "code": "E0815",
+        "line": 7
+      }
+    ]
+  },
+  "emit": [
+    {
+      "exit": 1,
+      "runtime_checks": 3
+    },
+    {
+      "all_checks": true,
+      "exit": 0,
+      "runtime_checks": 3
+    }
+  ]
+}

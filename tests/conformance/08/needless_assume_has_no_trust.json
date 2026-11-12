@@ -1,0 +1,22 @@
+{
+  "sections": [
+    "탈출구와 증명의 신뢰 등급"
+  ],
+  "note": "Every definition is first proved without trusted facts: one that is proved without its `assume` has no `trust` in its status line, one that needs it is `assumed`.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::needless": {
+        "status": "verified",
+        "trust": null,
+        "obligations": 1
+      },
+      "m::needed": {
+        "status": "verified",
+        "trust": "assumed",
+        "obligations": 1
+      }
+    },
+    "diags": []
+  }
+}

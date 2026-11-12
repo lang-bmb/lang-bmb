@@ -1,0 +1,23 @@
+#[summary("the callees of an escape keep their checks")]
+mod m {
+    spec fn small(x: i64) -> bool { 0 <= x && x <= 10 }
+
+    #[effects(pure)]
+    fn inc(x: i64) -> i64
+        requires small(x),
+    {
+        x + 1
+    }
+
+    #[effects(panic)]
+    fn entry(x: i64) -> i64 {
+        #[rationale(kind = boundary, "callers pass small values")]
+        assume(small(x));
+        inc(x)
+    }
+
+    #[effects(io, panic)]
+    fn main() -> () {
+        print_i64(entry(9223372036854775807));
+    }
+}

@@ -1,0 +1,13 @@
+{
+  "sections": [
+    "제네릭과 trait"
+  ],
+  "note": "A trait impl rejected for its head (E0420, E0311, E0312) is reported once: calls of its methods and bounds on its type still resolve; a method the trait does not have is still E0404.",
+  "check": [
+    {"code": "E0420", "line": 12},
+    {"code": "E0420", "line": 17},
+    {"code": "E0311", "line": 27},
+    {"code": "E0404", "line": 37},
+    {"code": "E0312", "line": 48}
+  ]
+}

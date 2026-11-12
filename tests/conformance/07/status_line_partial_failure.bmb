@@ -1,0 +1,9 @@
+#[summary("failed counts the unproved obligations")]
+mod m {
+    #[effects(pure)]
+    fn mixed(a: &[i64], i: usize) -> i64
+        requires i < a.len(),
+    {
+        a[i] + 1
+    }
+}

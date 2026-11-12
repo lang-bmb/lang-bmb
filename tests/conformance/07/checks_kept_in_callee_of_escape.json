@@ -1,0 +1,24 @@
+{
+  "sections": [
+    "`build`와 `emit-llvm`"
+  ],
+  "note": "A definition proved without trust but called by one that is `verified` through an `assume` keeps its runtime checks: the false `assume` ends the run in a trap at the callee's overflow.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::inc": {
+        "status": "verified",
+        "trust": null
+      },
+      "m::entry": {
+        "status": "verified",
+        "trust": "assumed"
+      },
+      "m::main": "verified"
+    },
+    "diags": []
+  },
+  "run": {
+    "exit": "trap"
+  }
+}

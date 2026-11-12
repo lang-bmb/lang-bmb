@@ -1,0 +1,33 @@
+{
+  "sections": [
+    "탈출구와 증명의 신뢰 등급"
+  ],
+  "note": "The status line of a definition proved with a trusted fact has `trust` `assumed`, an `#[external_body]` function has 0 obligations and `external`, a caller relying on either `ensures` is `assumed`, and a caller that does not rely on it has no `trust`.",
+  "check": [],
+  "verify": {
+    "defs": {
+      "m::double": {
+        "status": "verified",
+        "trust": "assumed"
+      },
+      "m::outside": {
+        "status": "verified",
+        "trust": "external",
+        "obligations": 0
+      },
+      "m::caller": {
+        "status": "verified",
+        "trust": "assumed"
+      },
+      "m::relies": {
+        "status": "verified",
+        "trust": "assumed"
+      },
+      "m::ignores": {
+        "status": "verified",
+        "trust": null
+      }
+    },
+    "diags": []
+  }
+}
