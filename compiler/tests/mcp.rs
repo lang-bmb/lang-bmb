@@ -1405,11 +1405,7 @@ fn bounded_results_are_windows_of_the_response() {
     unit.push_str("}\n");
     std::fs::write(root.join("src/many.bmb"), unit).unwrap();
     let (whole, err) = Client::start(&root).tool("query", "{\"name\":\"units\"}");
-    assert!(
-        !err && whole.len() > 2 * bmb::map::RESPONSE_BUDGET,
-        "{}",
-        whole.len()
-    );
+    assert!(!err && whole.len() > 2 * 32768, "{}", whole.len());
     let rows: Vec<&str> = whole.lines().collect();
 
     let mut c = Client::start_with(&root, &["--bounded"]);
@@ -1432,7 +1428,7 @@ fn bounded_results_are_windows_of_the_response() {
         let last = page.pop().unwrap();
         assert!(last.starts_with("{\"truncated\":true"), "{last}");
         let bytes: usize = page.iter().map(|r| r.len() + 1).sum();
-        assert!(!page.is_empty() && bytes <= bmb::map::RESPONSE_BUDGET);
+        assert!(!page.is_empty() && bytes <= 32768);
         offset += page.len();
         got.extend(page.iter().map(|r| r.to_string()));
     }
@@ -1442,7 +1438,7 @@ fn bounded_results_are_windows_of_the_response() {
     assert_eq!(two.lines().count(), 3, "{two}");
     let (map, _) = c.tool("map", "{\"level\":\"L0\"}");
     assert!(
-        map.len() <= bmb::map::RESPONSE_BUDGET + 300 && map.contains("\"truncated\":true"),
+        map.len() <= 32768 + 300 && map.contains("\"truncated\":true"),
         "{}",
         map.len()
     );
