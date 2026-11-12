@@ -2568,15 +2568,34 @@ impl<'a> Parser<'a> {
     /// has a meaning in (E0435) instead of the parser stopping at `..`.
     fn parse_expr(&mut self) -> PResult<Expr> {
         let lo = self.parse_no_range()?;
-        if !self.eat_p("..") {
+        let inclusive = self.is_p("..=");
+        if !inclusive && !self.is_p("..") {
             return Ok(lo);
         }
+        self.bump();
         let hi = self.parse_no_range()?;
         let span = lo.span.to(hi.span);
+        // `lo..=hi` is a `for` loop's (ADR-0049 §2), which reads its range
+        // itself. Anywhere else it is reported here, once, and the range is
+        // kept so that what holds it is checked as with `lo..hi`.
+        if inclusive {
+            self.diags.push(
+                Diag::new(
+                    "E0438",
+                    span,
+                    "an inclusive range `lo..=hi` is only the range of a `for` loop",
+                )
+                .fix(
+                    "where a range is taken (`copy_within`, `&s[lo..hi]`) write the end excluded, `lo..hi + 1`; to go over the values write `for i in lo..=hi { .. }`",
+                    None,
+                ),
+            );
+        }
         Ok(Expr {
             kind: ExprKind::Range {
                 lo: Box::new(lo),
                 hi: Box::new(hi),
+                inclusive,
             },
             span,
         })

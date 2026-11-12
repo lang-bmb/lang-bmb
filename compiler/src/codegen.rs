@@ -1673,7 +1673,7 @@ impl<'p> Gen<'p> {
             }
             // `&s[a..b]` (ADR-0050 §2), `&v[a..b]` of integers (4C-05).
             ExprKind::Index { base, index } if matches!(index.kind, ExprKind::Range { .. }) => {
-                let ExprKind::Range { lo, hi } = &index.kind else {
+                let ExprKind::Range { lo, hi, .. } = &index.kind else {
                     unreachable!("a range")
                 };
                 if self
@@ -2335,7 +2335,7 @@ impl<'p> Gen<'p> {
         let CVal::Arr { ptr, len } = self.array_of(recv) else {
             unreachable!("an array, a slice or a Vec")
         };
-        let ExprKind::Range { lo, hi } = &args[0].kind else {
+        let ExprKind::Range { lo, hi, .. } = &args[0].kind else {
             unreachable!("checked: `copy_within(lo..hi, dest)`")
         };
         let lo = self.expr(lo).imm();

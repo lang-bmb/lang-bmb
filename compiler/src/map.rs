@@ -276,7 +276,7 @@ fn calls_in_expr<'e>(
         | ExprKind::Ref { expr: x, .. }
         | ExprKind::Old(x)
         | ExprKind::Trigger(x) => calls_in_expr(x, spec, out),
-        ExprKind::Range { lo: l, hi: r } => {
+        ExprKind::Range { lo: l, hi: r, .. } => {
             calls_in_expr(l, spec, out);
             calls_in_expr(r, spec, out);
         }
@@ -562,7 +562,7 @@ fn exprs_of(f: &FnDef) -> Vec<&Expr> {
             | ExprKind::Field { base: x, .. }
             | ExprKind::Repeat { value: x, .. }
             | ExprKind::Quant { body: x, .. } => expr(x, out),
-            ExprKind::Range { lo: l, hi: r } => {
+            ExprKind::Range { lo: l, hi: r, .. } => {
                 expr(l, out);
                 expr(r, out);
             }

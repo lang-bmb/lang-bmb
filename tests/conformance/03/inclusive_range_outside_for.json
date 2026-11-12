@@ -1,0 +1,11 @@
+{
+  "sections": [
+    "배열과 슬라이스"
+  ],
+  "note": "An inclusive range `lo..=hi` outside a `for` loop (a value, the bounds of a part, the source of `copy_within`) is E0438 and nothing else; in a `for` it is the loop's range.",
+  "check": [
+    {"code": "E0438", "line": 10},
+    {"code": "E0438", "line": 18},
+    {"code": "E0438", "line": 26}
+  ]
+}

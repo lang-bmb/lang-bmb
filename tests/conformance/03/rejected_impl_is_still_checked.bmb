@@ -1,0 +1,23 @@
+#[summary("s")]
+mod a {
+    trait Tr {
+        #[effects(pure)]
+        fn get(self: &Self) -> i64;
+    }
+
+    struct P {
+        x: i64,
+    }
+
+    impl<T> Tr for T {
+        #[effects(pure)]
+        fn get(self: &T) -> i64 {
+            true
+        }
+    }
+
+    #[effects(pure)]
+    fn twice(p: &P) -> i64 {
+        p.get().wrapping_add(p.get())
+    }
+}

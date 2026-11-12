@@ -901,7 +901,7 @@ fn walk_expr(e: &mut Expr, parent: Option<Span>, f: &mut dyn FnMut(&mut Expr, Op
         }
         ExprKind::Unary(_, x) => walk_expr(x, Some(here), f),
         ExprKind::Ref { expr, .. } => walk_expr(expr, None, f),
-        ExprKind::Range { lo: l, hi: r } => {
+        ExprKind::Range { lo: l, hi: r, .. } => {
             walk_expr(l, Some(here), f);
             walk_expr(r, Some(here), f);
         }
@@ -1584,7 +1584,7 @@ fn children(e: &Expr) -> Vec<&Expr> {
         ExprKind::Call { args, .. } | ExprKind::Array(args) => args.iter().collect(),
         ExprKind::Method { recv, args, .. } => std::iter::once(&**recv).chain(args).collect(),
         ExprKind::Index { base, index } => vec![base, index],
-        ExprKind::Range { lo: l, hi: r } => vec![l, r],
+        ExprKind::Range { lo: l, hi: r, .. } => vec![l, r],
         ExprKind::Binary(_, l, r) => vec![l, r],
         ExprKind::Unary(_, x)
         | ExprKind::Ref { expr: x, .. }

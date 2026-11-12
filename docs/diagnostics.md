@@ -134,6 +134,7 @@
 | E0435 | a range `lo..hi` outside the source argument of `copy_within` and the bounds of a `&str` argument `&s[lo..hi]` |
 | E0436 | a `std::process::Child` built or read by its fields (it comes from `std::process::spawn`) |
 | E0437 | a type a `const` cannot have: a `const` holds a value type, an integer, `bool` or `char`, or an array, struct or enum of them (ADR-0052 §2) |
+| E0438 | an inclusive range `lo..=hi` outside the range of a `for` loop |
 
 ## E05xx 명세
 

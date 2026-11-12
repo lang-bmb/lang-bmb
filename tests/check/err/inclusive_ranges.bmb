@@ -1,0 +1,39 @@
+// `lo..=hi` outside a `for` loop is reported once (E0438) and what holds it
+// is checked as with `lo..hi` (2V-23).
+#[summary("t")]
+mod t {
+    #[effects(pure)]
+    fn len(s: &str) -> usize {
+        s.len()
+    }
+
+    #[effects(pure)]
+    fn value(n: i64) -> bool {
+        let r: i64 = 0..=n;
+        true
+    }
+
+    #[effects(pure)]
+    fn part(s: &str) -> usize
+        requires s.len() == 4,
+    {
+        let n: usize = len(&s[0..=missing]);
+        n
+    }
+
+    #[effects(pure)]
+    fn shift(a: &mut [i64]) -> ()
+        requires a.len() == 4,
+    {
+        a.copy_within(0..=1, 2);
+    }
+
+    #[effects(pure)]
+    fn last(n: u8) -> u8 {
+        let mut s: u8 = 0;
+        for i in 0..=n {
+            s = i;
+        }
+        s
+    }
+}

@@ -1,0 +1,44 @@
+// A rejected trait impl (E0235, E0420, E0311) is still an impl of its type for
+// the calls that name its methods, and its functions are checked (2V-23).
+#[summary("t")]
+mod t {
+    trait Tr {
+        #[effects(pure)]
+        fn get(self: &Self) -> i64;
+    }
+
+    struct P { x: i64 }
+
+    impl<T> Tr for T {
+        #[effects(pure)]
+        fn get(self: &T) -> i64 {
+            true
+        }
+    }
+
+    impl<U> Tr for P {
+        #[effects(pure)]
+        fn get(self: &P) -> i64 {
+            nosuch(1)
+        }
+    }
+
+    impl Tr for i64 {
+        #[effects(pure)]
+        fn get(self: &i64) -> i64 {
+            1
+        }
+    }
+
+    impl Tr for i64 {
+        #[effects(pure)]
+        fn get(self: &i64) -> i64 {
+            false
+        }
+    }
+
+    #[effects(pure)]
+    fn use_it(p: &P) -> i64 {
+        p.get()
+    }
+}

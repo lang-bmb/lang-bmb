@@ -799,7 +799,7 @@ impl Ex<'_> {
                 kv.push(("op", s(if *op == UnOp::Neg { "-" } else { "!" })));
                 kv.push(("expr", self.under("expr", |x| x.expr(e))?));
             }
-            ExprKind::Range { lo, hi } => {
+            ExprKind::Range { lo, hi, .. } => {
                 k("range");
                 kv.push(("lo", self.under("lo", |e| e.expr(lo))?));
                 kv.push(("hi", self.under("hi", |e| e.expr(hi))?));
@@ -1996,6 +1996,7 @@ impl Im {
                 ExprKind::Range {
                     lo: self.sub(&o, "lo")?,
                     hi: self.sub(&o, "hi")?,
+                    inclusive: false,
                 }
             }
             "binary" => {

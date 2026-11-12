@@ -3746,7 +3746,7 @@ impl<'p, 'q> Enc<'p, 'q> {
             }
             // `&s[a..b]` (ADR-0050 §2): the bytes between.
             ExprKind::Index { base, index } if matches!(index.kind, ExprKind::Range { .. }) => {
-                let ExprKind::Range { lo, hi } = &index.kind else {
+                let ExprKind::Range { lo, hi, .. } = &index.kind else {
                     unreachable!("a range")
                 };
                 let bv = self.spec(base, env, old);
@@ -4392,7 +4392,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                 Val::S(t)
             }
             ExprKind::Index { base, index } if matches!(index.kind, ExprKind::Range { .. }) => {
-                let ExprKind::Range { lo, hi } = &index.kind else {
+                let ExprKind::Range { lo, hi, .. } = &index.kind else {
                     unreachable!("a range")
                 };
                 if self.is_text_expr(base) {
@@ -5744,7 +5744,7 @@ impl<'p, 'q> Enc<'p, 'q> {
     /// and the old ones elsewhere (one quantified fact per leaf array,
     /// triggered by a read of the new array). The length stays.
     fn copy_within(&mut self, e: &Expr, recv: &Expr, rv: Val, args: &[Expr]) -> Val {
-        let ExprKind::Range { lo, hi } = &args[0].kind else {
+        let ExprKind::Range { lo, hi, .. } = &args[0].kind else {
             unreachable!("checked: `copy_within(lo..hi, dest)`")
         };
         let (lo, hi) = (self.eval(lo).s(), self.eval(hi).s());
@@ -6739,7 +6739,7 @@ fn find_let_expr(e: &Expr, name: &str, out: &mut Option<TypeKind>) {
             find_let_expr(base, name, out);
             find_let_expr(index, name, out);
         }
-        ExprKind::Range { lo: l, hi: r } => {
+        ExprKind::Range { lo: l, hi: r, .. } => {
             find_let_expr(l, name, out);
             find_let_expr(r, name, out);
         }

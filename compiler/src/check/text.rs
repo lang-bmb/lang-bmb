@@ -120,7 +120,7 @@ pub fn str_slice_of(e: &Expr) -> Option<(&Expr, &Expr, &Expr)> {
     let ExprKind::Index { base, index } = &expr.kind else {
         return None;
     };
-    let ExprKind::Range { lo, hi } = &index.kind else {
+    let ExprKind::Range { lo, hi, .. } = &index.kind else {
         return None;
     };
     Some((base, lo, hi))

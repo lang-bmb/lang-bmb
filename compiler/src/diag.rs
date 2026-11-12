@@ -318,6 +318,10 @@ pub const CODES: &[(&str, &str)] = &[
         "E0437",
         "a type a `const` cannot have: a `const` holds a value type, an integer, `bool` or `char`, or an array, struct or enum of them (ADR-0052 §2)",
     ),
+    (
+        "E0438",
+        "an inclusive range `lo..=hi` outside the range of a `for` loop",
+    ),
     // E05xx: specifications
     (
         "E0501",

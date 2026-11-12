@@ -992,6 +992,9 @@ pub struct Checker<'a> {
     /// (E0420, E0311, E0312): method calls still find their trait, so the one
     /// fault is not reported again as E0404 at every call (backlog 2V-22).
     rejected_impls: Vec<TraitImplInfo>,
+    /// The rejected impls that overlap an earlier one (E0311): a second
+    /// impl of the type, so what it lacks of the trait is not reported.
+    overlapping_impls: Vec<Span>,
     /// The type `Self` stands for in the trait `impl` being read, and its
     /// text (E0305 on `Self` writes it, and checking goes on with it).
     self_head: Option<(TypeKind, String)>,
@@ -1751,6 +1754,15 @@ pub fn is_child(t: &TypeKind) -> bool {
 /// The help of E0402 for an array inside an array element (backlog 2B-14).
 const ARRAY_ELEMENT_HELP: &str = "an array element is a scalar, a struct or enum, a `Box` or a fixed-size array; for growable elements use `Vec<Vec<T>>`";
 
+/// The message of E0402 for a value or a written type that is no array
+/// element (backlog 2V-23): one wording for both.
+fn array_elem_message(found: &TypeKind) -> String {
+    format!(
+        "array elements are scalars, structs, enums, `Box`es or arrays, found `{}`",
+        ty_str(found)
+    )
+}
+
 /// Whether `e` may be the element of a fixed-size array (backlog 2V-04b,
 /// 2V-22): a scalar, a struct or enum, a `Box`, or such an array again; not
 /// a `Vec` or a `String`. The one rule of written array types and of the
@@ -1913,6 +1925,7 @@ impl<'a> Checker<'a> {
             traits: BTreeMap::new(),
             trait_impls: Vec::new(),
             rejected_impls: Vec::new(),
+            overlapping_impls: Vec::new(),
             self_head: None,
             tparams: Vec::new(),
             elem_params: BTreeSet::new(),
@@ -2160,6 +2173,7 @@ impl<'a> Checker<'a> {
                         None,
                     ),
                 );
+                self.rejected_impls.push(info);
                 continue;
             }
             let copy = TParam {
@@ -2260,6 +2274,7 @@ impl<'a> Checker<'a> {
                         None,
                     ),
                 );
+                self.overlapping_impls.push(info.span);
                 self.rejected_impls.push(info);
                 continue;
             }
@@ -3545,12 +3560,8 @@ impl<'a> Checker<'a> {
                 if !array_elem_ok(&e.kind) {
                     if report {
                         self.diags.push(
-                            Diag::new(
-                                "E0402",
-                                t.span,
-                                "array elements must be scalars, structs, enums or arrays",
-                            )
-                            .fix(ARRAY_ELEMENT_HELP, None),
+                            Diag::new("E0402", t.span, array_elem_message(&e.kind))
+                                .fix(ARRAY_ELEMENT_HELP, None),
                         );
                     }
                     return TypeKind::Error;
@@ -3957,7 +3968,7 @@ impl<'a> Checker<'a> {
             self.tparams.clear();
         }
         for ti in &m.trait_impls {
-            let Some(info) = self.trait_impls.iter().find(|x| x.span == ti.span).cloned() else {
+            let Some((info, rejected)) = self.impl_info(ti.span) else {
                 continue;
             };
             let recv = match &info.head {
@@ -3975,6 +3986,11 @@ impl<'a> Checker<'a> {
                     );
                     continue;
                 }
+                // A rejected impl whose function path another impl's
+                // function has (E0311 on the same type): that one stays.
+                if rejected && self.fns.contains_key(&info.fn_path(&f.name.name)) {
+                    continue;
+                }
                 let fg = self.tparams_of(&f.generics, false, &mp);
                 self.tparams = info.generics.clone();
                 self.tparams.extend(fg);
@@ -3982,9 +3998,23 @@ impl<'a> Checker<'a> {
                 self.tparams.clear();
                 self.collect_fn(f, info.fn_path(&f.name.name), &mp, true, &info.generics);
             }
-            self.conform(&info, ti, &mp);
+            if !self.overlapping_impls.contains(&ti.span) {
+                self.conform(&info, ti, &mp);
+            }
             self.self_head = None;
         }
+    }
+
+    /// The `impl Trait for T` block at `span` and whether its head was
+    /// rejected (E0235, E0420, E0312, E0311). A rejected impl's functions
+    /// are still collected and checked (backlog 2V-23): their faults are
+    /// the program's whatever the head becomes. `None`: the head names no
+    /// trait or no type.
+    fn impl_info(&self, span: Span) -> Option<(TraitImplInfo, bool)> {
+        let find = |xs: &[TraitImplInfo]| xs.iter().find(|x| x.span == span).cloned();
+        find(&self.trait_impls)
+            .map(|i| (i, false))
+            .or_else(|| find(&self.rejected_impls).map(|i| (i, true)))
     }
 
     /// `self` names the receiver: the first parameter of an `impl T` function
@@ -4340,7 +4370,7 @@ impl<'a> Checker<'a> {
             }
         }
         for ti in &m.trait_impls {
-            let Some(info) = self.trait_impls.iter().find(|x| x.span == ti.span).cloned() else {
+            let Some((info, _)) = self.impl_info(ti.span) else {
                 continue;
             };
             self.self_head = Some((info.head.clone(), ty_str_in(&info.head, &mp)));
@@ -4870,15 +4900,7 @@ impl<'a> Checker<'a> {
     fn literal_elem(&mut self, t: &TypeKind, span: Span, repeat: bool) -> bool {
         if !array_elem_ok(t) {
             self.diags.push(
-                Diag::new(
-                    "E0402",
-                    span,
-                    format!(
-                        "array elements are scalars, structs, enums or arrays, found `{}`",
-                        ty_str(t)
-                    ),
-                )
-                .fix(ARRAY_ELEMENT_HELP, None),
+                Diag::new("E0402", span, array_elem_message(t)).fix(ARRAY_ELEMENT_HELP, None),
             );
             return false;
         }
@@ -7409,9 +7431,13 @@ impl<'a> Checker<'a> {
             // it cannot lower.
             ExprKind::Closure(_) => TypeKind::Error,
             ExprKind::Error => TypeKind::Error,
-            ExprKind::Range { lo, hi } => {
+            ExprKind::Range { lo, hi, inclusive } => {
                 for x in [lo, hi] {
                     self.expr(cx, x, None, mode);
+                }
+                // `lo..=hi` has its own report (E0438, the parser's).
+                if *inclusive {
+                    return TypeKind::Error;
                 }
                 self.diags.push(
                     Diag::new(
@@ -9555,7 +9581,7 @@ impl<'a> Checker<'a> {
     ) -> TypeKind {
         let usize_ty = TypeKind::Int(IntTy::Usize);
         let range = args.first().and_then(|a| match &a.kind {
-            ExprKind::Range { lo, hi } => Some((lo, hi)),
+            ExprKind::Range { lo, hi, .. } => Some((lo, hi)),
             _ => None,
         });
         match (range, args.len()) {
@@ -11346,7 +11372,7 @@ pub(crate) fn mentions(e: &Expr, name: &str) -> bool {
         | ExprKind::Try(x)
         | ExprKind::Trigger(x) => mentions(x, name),
         ExprKind::Repeat { value, .. } => mentions(value, name),
-        ExprKind::Range { lo: l, hi: r } => mentions(l, name) || mentions(r, name),
+        ExprKind::Range { lo: l, hi: r, .. } => mentions(l, name) || mentions(r, name),
         ExprKind::Binary(_, l, r) => mentions(l, name) || mentions(r, name),
         ExprKind::Field { base, .. } => mentions(base, name),
         ExprKind::Return(x) | ExprKind::Break { value: x, .. } => {
@@ -11399,7 +11425,7 @@ fn collect_triggers<'e>(e: &'e Expr, out: &mut Vec<&'e Expr>) {
         | ExprKind::Deref(x)
         | ExprKind::Try(x) => collect_triggers(x, out),
         ExprKind::Repeat { value, .. } => collect_triggers(value, out),
-        ExprKind::Range { lo: l, hi: r } => {
+        ExprKind::Range { lo: l, hi: r, .. } => {
             collect_triggers(l, out);
             collect_triggers(r, out);
         }

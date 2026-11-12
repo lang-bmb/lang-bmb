@@ -112,7 +112,7 @@
 | E0309 | a built-in name cannot be defined | [02](02-units-items-names.md), [03](03-types-and-values.md) |
 | E0310 | `self` names exactly the receiver | [02](02-units-items-names.md) |
 | E0311 | two impls of a trait for types that can be the same | [02](02-units-items-names.md), [03](03-types-and-values.md) |
-| E0312 | a trait impl in neither the unit of the trait nor the unit of the type | [02](02-units-items-names.md) |
+| E0312 | a trait impl in neither the unit of the trait nor the unit of the type | [02](02-units-items-names.md), [03](03-types-and-values.md) |
 | E0313 | a method call names a method of more than one trait; call by path | [02](02-units-items-names.md), [03](03-types-and-values.md), [04](04-expressions-and-control.md) |
 | E0314 | a method call names a function that has no receiver or type parameters of its own; call by path | [02](02-units-items-names.md), [03](03-types-and-values.md), [04](04-expressions-and-control.md) |
 | E0315 | a trait impl misses a method of the trait, or has one the trait lacks | [02](02-units-items-names.md) |
@@ -151,6 +151,7 @@
 | E0435 | a range `lo..hi` outside the source argument of `copy_within` and the bounds of a `&str` argument `&s[lo..hi]` | [03](03-types-and-values.md) |
 | E0436 | a `std::process::Child` built or read by its fields (it comes from `std::process::spawn`) | [03](03-types-and-values.md) |
 | E0437 | a type a `const` cannot have: a `const` holds a value type, an integer, `bool` or `char`, or an array, struct or enum of them (ADR-0052 §2) | [03](03-types-and-values.md) |
+| E0438 | an inclusive range `lo..=hi` outside the range of a `for` loop | [03](03-types-and-values.md) |
 | E0501 | a contract clause with a quantifier must be a call to a named predicate (`spec fn ... -> bool`); one without is an expression (ADR-0095 A2) | [06](06-contracts-and-specs.md) |
 | E0502 | vacuous predicate used in a contract | [06](06-contracts-and-specs.md) |
 | E0503 | specification-only construct used in executable code, or an executable statement in a specification | [04](04-expressions-and-control.md), [06](06-contracts-and-specs.md) |

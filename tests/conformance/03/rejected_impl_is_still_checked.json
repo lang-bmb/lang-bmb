@@ -1,0 +1,10 @@
+{
+  "sections": [
+    "제네릭과 trait"
+  ],
+  "note": "A blanket impl is E0235; the calls of its methods are not errors of their own, and the fault in its function is reported in the same round.",
+  "check": [
+    {"code": "E0235", "line": 12},
+    {"code": "E0401", "line": 15}
+  ]
+}

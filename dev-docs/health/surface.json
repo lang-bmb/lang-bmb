@@ -117,6 +117,7 @@
   "E0435",
   "E0436",
   "E0437",
+  "E0438",
   "E0501",
   "E0502",
   "E0503",
@@ -244,7 +245,7 @@
    "src": "78eccab9946c84a5"
   },
   "tests/check/err/data_arrays.bmb": {
-   "out": "ad81b3d1e227eae8",
+   "out": "ccbe3cd9d9cc3a2c",
    "src": "0afc4c7c5f307a4a"
   },
   "tests/check/err/data_types.bmb": {
@@ -294,6 +295,10 @@
   "tests/check/err/impl_blocks.bmb": {
    "out": "048fab48be7759d8",
    "src": "bd6c9d6e05e3f1f4"
+  },
+  "tests/check/err/inclusive_ranges.bmb": {
+   "out": "60586c9f212029e2",
+   "src": "4b225ec2425d314d"
   },
   "tests/check/err/invariants.bmb": {
    "out": "bd66d9e107febd7a",
@@ -367,6 +372,10 @@
    "out": "45140137d48ac19b",
    "src": "088ad9a0da9518cf"
   },
+  "tests/check/err/rejected_impls.bmb": {
+   "out": "a2b96e2d5c9fe8e9",
+   "src": "f0c7959e1af3de16"
+  },
   "tests/check/err/reserved_names.bmb": {
    "out": "d2035b90d5b51b00",
    "src": "f0a8e956ebd052ef"
@@ -412,7 +421,7 @@
    "src": "4065e5d459ff62f6"
   },
   "tests/check/err/traits.bmb": {
-   "out": "d3dbcd1f9e198ef8",
+   "out": "ac70dafc4ab3888f",
    "src": "ed894ed03661b369"
   },
   "tests/check/err/tries.bmb": {
@@ -438,6 +447,10 @@
   "tests/check/err/vec_recursion.bmb": {
    "out": "e3424bda6e9c731b",
    "src": "fb4ca74500f10670"
+  },
+  "tests/check/err/verus_external_body.bmb": {
+   "out": "676adf5d89ae3cb0",
+   "src": "18476cb3ec0c9dab"
   },
   "tests/check/err/widths.bmb": {
    "out": "1cd8f2fef34ab7ae",

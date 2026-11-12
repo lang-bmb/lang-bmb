@@ -81,6 +81,7 @@
 - `&[T]`·`&mut [T]`는 슬라이스 참조이고 매개변수의 타입으로만 쓴다(05장). 참조 없는 `[T]`는 타입이 아니다(E0402). 인자는 `&arr`·`&mut arr`, `v.as_slice()`·`v.as_mut_slice()`, 받은 슬라이스 매개변수, 정수 원소의 부분 `&v[lo..hi]`다.
 - 인덱스할 수 없는 값(`i64`, `&str`)은 E0407 오류다.
 - 범위 식 `lo..hi`는 값이 아니다. `for`의 범위, `copy_within`의 첫 인자, `&v[lo..hi]`·`&s[lo..hi]` 인자에만 오고 다른 자리는 E0435 오류다.
+- 끝을 포함하는 `lo..=hi`는 `for`의 범위에만 온다. 다른 자리는 E0438 오류이고(범위를 받는 자리에는 `lo..hi + 1`), 그 범위를 담은 식은 `lo..hi`일 때처럼 검사된다(`tests/check/err/inclusive_ranges.bmb`).
 - 코퍼스: `tests/run/arrays.bmb`, `tests/check/err/data_arrays.bmb`, `tests/check/err/places.bmb`, `tests/check/err/subslices.bmb`.
 
 ## 텍스트
@@ -141,7 +142,7 @@ fn both<T: Area>(x: &T, q: Sq) -> i64 { larger::<i64>(x.area(), q.area()) }
 - 타입 인자는 값 타입이다(참조는 E0403). 개수가 다르면 호출은 E0429, 타입은 E0420 오류다. 인자가 경계를 채우지 못하면 E0428 오류다(`Vec<i64>`는 `Copy`가 아니다). 정의가 `Vec<T>`로 쓰는 `T`에 `Vec`의 원소가 못 되는 타입을 넣어도 E0428 오류다.
 - 재귀 호출이 자기 타입 매개변수를 더 큰 타입으로 감싸면 E0430 오류다(`f<T>` 안의 `f::<[T; 2]>`).
 - trait은 메서드의 시그니처를 선언하고 `impl Tr for T { .. }`가 구현한다. `Self`는 구현하는 타입이다. 선언과 구현의 일치는 02장.
-- 한 trait의 impl 둘이 같은 타입일 수 있으면 E0311 오류다. 타입 매개변수는 무엇과도 겹친다고 본다. 모든 타입에 대한 `impl<T> Tr for T`는 E0235, `dyn Tr`은 E0236 오류다. `impl`의 타입 매개변수는 구현하는 타입에 순서대로 나와야 한다(E0420): 고유 `impl`은 `impl<A, B> T<A, B>` 꼴 그대로이고, trait `impl`은 구체 타입을 섞어도 되지만(`Two<T, i64>`) 매개변수가 처음 나오는 순서가 선언 순서다(`impl<A, B> Tr for Two<B, A>`는 오류, `tests/conformance/03/trait_impl_parameters_in_order.bmb`).
+- 한 trait의 impl 둘이 같은 타입일 수 있으면 E0311 오류다. 타입 매개변수는 무엇과도 겹친다고 본다. 모든 타입에 대한 `impl<T> Tr for T`는 E0235, `dyn Tr`은 E0236 오류다. 머리가 거부된 impl(E0235·E0420·E0312·E0311)도 그 타입의 impl로 남아 메서드 호출이 따로 오류가 되지 않고, 그 함수들은 검사된다(`tests/check/err/rejected_impls.bmb`). `impl`의 타입 매개변수는 구현하는 타입에 순서대로 나와야 한다(E0420): 고유 `impl`은 `impl<A, B> T<A, B>` 꼴 그대로이고, trait `impl`은 구체 타입을 섞어도 되지만(`Two<T, i64>`) 매개변수가 처음 나오는 순서가 선언 순서다(`impl<A, B> Tr for Two<B, A>`는 오류, `tests/conformance/03/trait_impl_parameters_in_order.bmb`).
 - 메서드 호출 `x.f(a)`는 `x`의 타입의 고유 `impl` 함수, 없으면 `f`를 가진 trait 하나를 가리킨다(ADR-0051). 없는 이름은 E0404, 두 trait이 같은 이름을 가지면 E0313, 수신자가 없는 함수는 E0314 오류다.
 - 코퍼스: `tests/run/generics.bmb`, `tests/run/traits.bmb`, `tests/run/methods.bmb`, `tests/check/err/generics.bmb`, `tests/check/err/traits.bmb`, `tests/check/err/vec_params.bmb`.
 

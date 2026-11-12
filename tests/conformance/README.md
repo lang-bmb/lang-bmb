@@ -77,11 +77,11 @@ python3 scripts/conformance.py table --write  # 아래 표를 다시 쓴다
 | 03 | 타입을 적는 자리 | 2 | `type_arguments`, `types_are_written` |
 | 03 | 연산자와 피연산자 | 7 | `arithmetic_obligations`, `builtin_methods_closed_list`, `equality_of_aggregates`, `index_type_is_usize`, `no_implicit_conversion`, `operator_results`, `type_parameter_comparison` |
 | 03 | 변환 | 5 | `as_range_obligation`, `as_target_not_integer`, `conversion_source_not_integer`, `conversions_accepted`, `rust_conversion_habits` |
-| 03 | 배열과 슬라이스 | 8 | `array_element_and_slice_types`, `array_element_in_every_position`, `array_length_in_type`, `array_literal_elements`, `arrays_and_slices`, `not_indexable`, `range_in_value_position`, `range_is_not_a_value` |
+| 03 | 배열과 슬라이스 | 9 | `array_element_and_slice_types`, `array_element_in_every_position`, `array_length_in_type`, `array_literal_elements`, `arrays_and_slices`, `inclusive_range_outside_for`, `not_indexable`, `range_in_value_position`, `range_is_not_a_value` |
 | 03 | 텍스트 | 4 | `str_arguments`, `string_literal_places`, `text_not_indexable_closed_methods`, `text_operations` |
 | 03 | 구조체와 열거형 | 6 | `match_rules`, `recursive_types`, `struct_and_match_values`, `struct_enum_declarations`, `struct_values`, `type_invariant_attribute` |
 | 03 | `Option`과 `Result` | 4 | `no_unwrap`, `option_result_names_reserved`, `option_result_types`, `option_result_variants` |
-| 03 | 제네릭과 trait | 9 | `bound_failure_once`, `builtin_bounds`, `generics_and_traits_run`, `impl_parameters_in_order`, `polymorphic_recursion`, `rejected_impl_calls`, `trait_impl_overlap`, `trait_impl_parameters_in_order`, `type_argument_rules` |
+| 03 | 제네릭과 trait | 10 | `bound_failure_once`, `builtin_bounds`, `generics_and_traits_run`, `impl_parameters_in_order`, `polymorphic_recursion`, `rejected_impl_calls`, `rejected_impl_is_still_checked`, `trait_impl_overlap`, `trait_impl_parameters_in_order`, `type_argument_rules` |
 | 03 | 함수 값 | 2 | `function_value_places`, `function_values` |
 | 03 | 소유 타입 | 4 | `owned_closed_methods`, `owned_element_types`, `owned_types_run`, `spec_fn_no_owned_parameters` |
 | 03 | 상수의 타입 | 2 | `const_type_errors`, `const_types_run` |
@@ -141,6 +141,6 @@ python3 scripts/conformance.py table --write  # 아래 표를 다시 쓴다
 | 08 | 근거: `#[rationale(..)]` | 8 | `assume_needs_rationale`, `external_body_needs_rationale`, `rationale_hash_not_an_error`, `rationale_kinds`, `rationale_malformed`, `rationale_several_faults`, `statement_attributes`, `unconfirmed_rationale_builds` |
 | 08 | 탈출구와 증명의 신뢰 등급 | 10 | `false_assume_ends_in_trap`, `false_assume_traps_at_index`, `needless_assume_has_no_trust`, `no_escape_no_trust`, `no_escape_no_trust_key`, `true_assume_runs_to_the_end`, `trust_does_not_spread`, `trust_field_of_status_lines`, `trusted_definitions_are_verified`, `unconfirmed_rationale_builds` |
 
-절 86개, 사례 441개, 사례도 면제도 없는 절 0개.
+절 86개, 사례 443개, 사례도 면제도 없는 절 0개.
 
 <!-- conformance:table end -->

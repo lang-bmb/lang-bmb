@@ -726,6 +726,9 @@ pub enum ExprKind {
     Range {
         lo: Box<Expr>,
         hi: Box<Expr>,
+        /// Written `lo..=hi`: the parser reported it (E0438), and the
+        /// checker reads the range as it reads `lo..hi`.
+        inclusive: bool,
     },
     Error,
 }
@@ -971,7 +974,7 @@ pub fn expr_mut(e: &mut Expr, f: &mut dyn FnMut(&mut Expr)) {
         }
         ExprKind::Index { base: a, index: b }
         | ExprKind::Binary(_, a, b)
-        | ExprKind::Range { lo: a, hi: b } => {
+        | ExprKind::Range { lo: a, hi: b, .. } => {
             expr_mut(a, f);
             expr_mut(b, f);
         }
