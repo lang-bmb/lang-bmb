@@ -1,0 +1,16 @@
+{
+ "id": "vb-mbpp-454-contains-z.restore",
+ "source": {
+  "set": "bvb",
+  "task": "vb-mbpp-454-contains-z",
+  "before": "weak_reference",
+  "after": "reference"
+ },
+ "intent": "Implement `contains_z`: `text` holds the bytes of a string (each element is a byte value). Return whether some byte is the letter z, upper case (90) or lower case (122). The contract must state the result exactly.",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "before": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn holds_below(text: &[u64], n: usize) -> bool { forall|i: usize| i < n && i < text.len() ==> !(#[trigger] text[i] == 90 || text[i] == 122) }\n\n    spec fn one_way(text: &[u64], r: bool) -> bool { r ==> !holds_below(text, text.len()) }\n\n    #[effects(pure)]\n    #[uses(holds_below, one_way)]\n    fn contains_z(text: &[u64]) -> (r: bool)\n        ensures one_way(text, r),\n    {\n        let mut idx: usize = 0;\n        while idx < text.len() && !(text[idx] == 90 || text[idx] == 122)\n            invariant idx <= text.len(), holds_below(text, idx),\n            decreases text.len() - idx,\n        {\n            idx = idx + 1;\n        }\n        idx < text.len()\n    }\n}\n",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn holds_below(text: &[u64], n: usize) -> bool { forall|i: usize| i < n && i < text.len() ==> !(#[trigger] text[i] == 90 || text[i] == 122) }\n\n    spec fn exact(text: &[u64], r: bool) -> bool { r == !holds_below(text, text.len()) }\n\n    #[effects(pure)]\n    #[uses(holds_below, exact)]\n    fn contains_z(text: &[u64]) -> (r: bool)\n        ensures exact(text, r),\n    {\n        let mut idx: usize = 0;\n        while idx < text.len() && !(text[idx] == 90 || text[idx] == 122)\n            invariant idx <= text.len(), holds_below(text, idx),\n            decreases text.len() - idx,\n        {\n            idx = idx + 1;\n        }\n        idx < text.len()\n    }\n}\n",
+ "label": "clean",
+ "kind": "contract-restored"
+}

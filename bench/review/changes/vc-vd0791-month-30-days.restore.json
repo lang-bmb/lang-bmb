@@ -1,0 +1,16 @@
+{
+ "id": "vc-vd0791-month-30-days.restore",
+ "source": {
+  "set": "bvb",
+  "task": "vc-vd0791-month-30-days",
+  "before": "weak_reference",
+  "after": "reference"
+ },
+ "intent": "Implement `is_month_with_30_days`: `month` is between 1 and 12. Return whether that month has 30 days (April, June, September or November). The contract must state the result exactly.",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "before": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn input_ok(month: i64) -> bool { 1 <= month && month <= 12 }\n\n    spec fn result_ok(month: i64, r: bool) -> bool { r ==> (month == 4 || month == 6 || month == 9 || month == 11) }\n\n    #[effects(pure)]\n    #[uses(input_ok, result_ok)]\n    fn is_month_with_30_days(month: i64) -> (r: bool)\n        requires input_ok(month),\n        ensures result_ok(month, r),\n    {\n        month == 4 || month == 6 || month == 9 || month == 11\n    }\n}\n",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn input_ok(month: i64) -> bool { 1 <= month && month <= 12 }\n\n    spec fn result_ok(month: i64, r: bool) -> bool { r == (month == 4 || month == 6 || month == 9 || month == 11) }\n\n    #[effects(pure)]\n    #[uses(input_ok, result_ok)]\n    fn is_month_with_30_days(month: i64) -> (r: bool)\n        requires input_ok(month),\n        ensures result_ok(month, r),\n    {\n        month == 4 || month == 6 || month == 9 || month == 11\n    }\n}\n",
+ "label": "clean",
+ "kind": "contract-restored"
+}

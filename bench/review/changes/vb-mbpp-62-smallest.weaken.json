@@ -1,0 +1,16 @@
+{
+ "id": "vb-mbpp-62-smallest.weaken",
+ "source": {
+  "set": "bvb",
+  "task": "vb-mbpp-62-smallest",
+  "before": "reference",
+  "after": "weak_reference"
+ },
+ "intent": "Implement `smallest_num`: `nums` is non-empty. Return its smallest element. The contract must state that the result is at most every element and equal to some element.",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "before": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn nonempty(nums: &[i64]) -> bool { nums.len() > 0 }\n\n    spec fn min_upto(nums: &[i64], m: i64, p: usize, n: usize) -> bool { p < n && nums[p] == m && (forall|i: usize| i < n ==> m <= #[trigger] nums[i]) }\n\n    spec fn is_min(nums: &[i64], r: i64) -> bool { (forall|i: usize| i < nums.len() ==> r <= #[trigger] nums[i]) && !(forall|j: usize| j < nums.len() ==> #[trigger] nums[j] != r) }\n\n    #[effects(pure)]\n    #[uses(nonempty, min_upto, is_min)]\n    fn smallest_num(nums: &[i64]) -> (r: i64)\n        requires nonempty(nums),\n        ensures is_min(nums, r),\n    {\n        let mut m: i64 = nums[0];\n        let mut p: usize = 0;\n        let mut idx: usize = 1;\n        while idx < nums.len()\n            invariant 1 <= idx, idx <= nums.len(), min_upto(nums, m, p, idx),\n            decreases nums.len() - idx,\n        {\n            if nums[idx] < m {\n                m = nums[idx];\n                p = idx;\n            }\n            idx = idx + 1;\n        }\n        m\n    }\n}\n",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn nonempty(nums: &[i64]) -> bool { nums.len() > 0 }\n\n    spec fn min_upto(nums: &[i64], m: i64, p: usize, n: usize) -> bool { p < n && nums[p] == m && (forall|i: usize| i < n ==> m <= #[trigger] nums[i]) }\n\n    spec fn lower_bound(nums: &[i64], r: i64) -> bool { forall|i: usize| i < nums.len() ==> r <= #[trigger] nums[i] }\n\n    #[effects(pure)]\n    #[uses(nonempty, min_upto, lower_bound)]\n    fn smallest_num(nums: &[i64]) -> (r: i64)\n        requires nonempty(nums),\n        ensures lower_bound(nums, r),\n    {\n        let mut m: i64 = nums[0];\n        let mut p: usize = 0;\n        let mut idx: usize = 1;\n        while idx < nums.len()\n            invariant 1 <= idx, idx <= nums.len(), min_upto(nums, m, p, idx),\n            decreases nums.len() - idx,\n        {\n            if nums[idx] < m {\n                m = nums[idx];\n                p = idx;\n            }\n            idx = idx + 1;\n        }\n        m\n    }\n}\n",
+ "label": "defect",
+ "kind": "contract-weakened"
+}

@@ -1,0 +1,16 @@
+{
+ "id": "vb-misc-reverse.weaken",
+ "source": {
+  "set": "bvb",
+  "task": "vb-misc-reverse",
+  "before": "reference",
+  "after": "weak_reference"
+ },
+ "intent": "Implement `reverse`: reverse `v` in place. The contract must state that the length is unchanged and that every position i holds the element that was at position len - 1 - i on entry.",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "before": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn swapped_upto(old_v: &[u64], v: &[u64], n: usize) -> bool { v.len() == old_v.len() && 2 * n <= v.len() && (forall|i: usize| i < v.len() ==> ((i < n ==> #[trigger] v[i] == old_v[v.len() - i - 1]) && (v.len() - n <= i ==> v[i] == old_v[v.len() - i - 1]) && (n <= i && i < v.len() - n ==> v[i] == old_v[i]))) }\n\n    spec fn reversed(old_v: &[u64], v: &[u64]) -> bool { v.len() == old_v.len() && (forall|i: usize| i < old_v.len() ==> #[trigger] v[i] == old_v[old_v.len() - i - 1]) }\n\n    #[effects(pure)]\n    #[uses(swapped_upto, reversed)]\n    fn reverse(v: &mut [u64]) -> ()\n        ensures reversed(old(v), v),\n    {\n        let len: usize = v.len();\n        let mut n: usize = 0;\n        while n < len / 2\n            invariant len == v.len(), swapped_upto(old(v), v, n),\n            decreases len / 2 - n,\n        {\n            let x: u64 = v[n];\n            let y: u64 = v[len - 1 - n];\n            v[n] = y;\n            v[len - 1 - n] = x;\n            n = n + 1;\n        }\n    }\n}\n",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn same_len(old_v: &[u64], v: &[u64]) -> bool { v.len() == old_v.len() }\n\n    #[effects(pure)]\n    #[uses(same_len)]\n    fn reverse(v: &mut [u64]) -> ()\n        ensures same_len(old(v), v),\n    {\n        let len: usize = v.len();\n        let mut n: usize = 0;\n        while n < len / 2\n            invariant len == v.len(), same_len(old(v), v),\n            decreases len / 2 - n,\n        {\n            let x: u64 = v[n];\n            let y: u64 = v[len - 1 - n];\n            v[n] = y;\n            v[len - 1 - n] = x;\n            n = n + 1;\n        }\n    }\n}\n",
+ "label": "defect",
+ "kind": "contract-weakened"
+}

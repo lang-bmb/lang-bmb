@@ -1,0 +1,16 @@
+{
+ "id": "vc-vv0135-compare.weaken",
+ "source": {
+  "set": "bvb",
+  "task": "vc-vv0135-compare",
+  "before": "reference",
+  "after": "weak_reference"
+ },
+ "intent": "Implement `compare`: return whether `a` equals `b`. The contract must state the result in both cases (equal and not equal).",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "before": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn result_ok(a: i64, b: i64, r: bool) -> bool { (a == b ==> r == true) && (a != b ==> r == false) }\n\n    #[effects(pure)]\n    #[uses(result_ok)]\n    fn compare(a: i64, b: i64) -> (r: bool)\n        ensures result_ok(a, b, r),\n    {\n        a == b\n    }\n}\n",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn result_ok(a: i64, b: i64, r: bool) -> bool { a == b ==> r == true }\n\n    #[effects(pure)]\n    #[uses(result_ok)]\n    fn compare(a: i64, b: i64) -> (r: bool)\n        ensures result_ok(a, b, r),\n    {\n        a == b\n    }\n}\n",
+ "label": "defect",
+ "kind": "contract-weakened"
+}

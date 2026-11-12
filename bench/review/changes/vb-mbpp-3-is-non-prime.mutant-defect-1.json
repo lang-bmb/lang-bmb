@@ -1,0 +1,35 @@
+{
+ "id": "vb-mbpp-3-is-non-prime.mutant-defect-1",
+ "source": {
+  "set": "bvb",
+  "task": "vb-mbpp-3-is-non-prime",
+  "before": "reference",
+  "after": "weak_reference",
+  "mutation": {
+   "def": "tasks::is_non_prime",
+   "site": 8,
+   "line": 25,
+   "col": 9,
+   "before": "d < n",
+   "after": "d <= n"
+  }
+ },
+ "intent": "Implement `is_non_prime`: `n` is at least 2. Return whether `n` has a divisor k with 2 <= k < n. The contract must state the result exactly using the given specification function.\n\nGiven specification functions in unit `given` (use them, do not change them):\n```\nspec fn is_divisible(n: u64, divisor: u64) -> bool {\n    n % divisor == 0\n}\n```",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "before": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn at_least_two(n: u64) -> bool { n >= 2 }\n\n    spec fn stopped(n: u64, d: u64) -> bool { d >= n || given::is_divisible(n, d) }\n\n    spec fn no_divisor_below(n: u64, m: u64) -> bool { forall|k: u64| 2 <= k && k < m ==> !(#[trigger] given::is_divisible(n, k)) }\n\n    spec fn non_prime_ok(n: u64, r: bool) -> bool { r == !no_divisor_below(n, n) }\n\n    #[effects(pure)]\n    #[uses(at_least_two, stopped, no_divisor_below, non_prime_ok, given::is_divisible)]\n    fn is_non_prime(n: u64) -> (r: bool)\n        requires at_least_two(n),\n        ensures non_prime_ok(n, r),\n    {\n        let mut d: u64 = 2;\n        while d < n && n % d != 0\n            invariant 2 <= d, d <= n, no_divisor_below(n, d),\n            decreases n - d,\n        {\n            d = d + 1;\n        }\n        assert(stopped(n, d));\n        d < n\n    }\n}\n",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn at_least_two(n: u64) -> bool { n >= 2 }\n\n    spec fn stopped(n: u64, d: u64) -> bool { d >= n || given::is_divisible(n, d) }\n\n    spec fn no_divisor_below(n: u64, m: u64) -> bool { forall|k: u64| 2 <= k && k < m ==> !(#[trigger] given::is_divisible(n, k)) }\n\n    spec fn non_prime_if(n: u64, r: bool) -> bool { !r ==> no_divisor_below(n, n) }\n\n    #[effects(pure)]\n    #[uses(at_least_two, stopped, no_divisor_below, non_prime_if, given::is_divisible)]\n    fn is_non_prime(n: u64) -> (r: bool)\n        requires at_least_two(n),\n        ensures non_prime_if(n, r),\n    {\n        let mut d: u64 = 2;\n        while d < n && n % d != 0\n            invariant 2 <= d, d <= n, no_divisor_below(n, d),\n            decreases n - d,\n        {\n            d = d + 1;\n        }\n        assert(stopped(n, d));\n        d <= n\n    }\n}\n",
+ "label": "defect",
+ "kind": "contract-weakened+body",
+ "witness": {
+  "input": {
+   "n": 5
+  },
+  "expected": {
+   "r": false
+  },
+  "output": {
+   "r": true
+  }
+ }
+}

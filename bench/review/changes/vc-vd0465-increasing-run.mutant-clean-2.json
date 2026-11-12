@@ -1,0 +1,24 @@
+{
+ "id": "vc-vd0465-increasing-run.mutant-clean-2",
+ "source": {
+  "set": "bvb",
+  "task": "vc-vd0465-increasing-run",
+  "before": "reference",
+  "after": "reference",
+  "mutation": {
+   "def": "tasks::longest_increasing_subsequence",
+   "site": 6,
+   "line": 21,
+   "col": 16,
+   "before": "nums[i - 1] < nums[i]",
+   "after": "nums[i - 1] <= nums[i]"
+  }
+ },
+ "intent": "Implement `longest_increasing_subsequence`: `nums` has between 1 and 2500 elements, each in [-10000, 10000]. Return the length of a longest strictly increasing subsequence. The contract must state that the result is at least 1.",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "before": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn input_ok(nums: &[i64]) -> bool { 1 <= nums.len() && nums.len() <= 2500 && (forall|i: usize| i < nums.len() ==> -10000 <= #[trigger] nums[i] && nums[i] <= 10000) }\n\n    spec fn result_ok(nums: &[i64], r: i64) -> bool { r >= 1 }\n\n    #[effects(pure)]\n    #[uses(input_ok, result_ok)]\n    fn longest_increasing_subsequence(nums: &[i64]) -> (r: i64)\n        requires input_ok(nums),\n        ensures result_ok(nums, r),\n    {\n        let mut best: i64 = 1;\n        let mut run: i64 = 1;\n        let mut i: usize = 1;\n        let mut c: i64 = 1;\n        while i < nums.len()\n            invariant 1 <= i, i <= nums.len(), nums.len() <= 2500, c == i, 1 <= run, run <= c, 1 <= best, best <= c,\n            decreases nums.len() - i,\n        {\n            if nums[i - 1] < nums[i] {\n                run = run + 1;\n            } else {\n                run = 1;\n            }\n            if run > best {\n                best = run;\n            }\n            i = i + 1;\n            c = c + 1;\n        }\n        best\n    }\n}\n",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn input_ok(nums: &[i64]) -> bool { 1 <= nums.len() && nums.len() <= 2500 && (forall|i: usize| i < nums.len() ==> -10000 <= #[trigger] nums[i] && nums[i] <= 10000) }\n\n    spec fn result_ok(nums: &[i64], r: i64) -> bool { r >= 1 }\n\n    #[effects(pure)]\n    #[uses(input_ok, result_ok)]\n    fn longest_increasing_subsequence(nums: &[i64]) -> (r: i64)\n        requires input_ok(nums),\n        ensures result_ok(nums, r),\n    {\n        let mut best: i64 = 1;\n        let mut run: i64 = 1;\n        let mut i: usize = 1;\n        let mut c: i64 = 1;\n        while i < nums.len()\n            invariant 1 <= i, i <= nums.len(), nums.len() <= 2500, c == i, 1 <= run, run <= c, 1 <= best, best <= c,\n            decreases nums.len() - i,\n        {\n            if nums[i - 1] <= nums[i] {\n                run = run + 1;\n            } else {\n                run = 1;\n            }\n            if run > best {\n                best = run;\n            }\n            i = i + 1;\n            c = c + 1;\n        }\n        best\n    }\n}\n",
+ "label": "clean",
+ "kind": "body-only"
+}

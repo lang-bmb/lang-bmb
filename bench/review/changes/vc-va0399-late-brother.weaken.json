@@ -1,0 +1,16 @@
+{
+ "id": "vc-va0399-late-brother.weaken",
+ "source": {
+  "set": "bvb",
+  "task": "vc-va0399-late-brother",
+  "before": "reference",
+  "after": "weak_reference"
+ },
+ "intent": "Implement `solve`: three brothers are numbered 1, 2 and 3; `a` and `b` are the two different brothers who arrived on time. Return the number of the brother who was late. The contract must state that the result is in [1, 3], differs from a and b, and equals 6 - a - b.",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "before": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn input_ok(a: i64, b: i64) -> bool { 1 <= a && a <= 3 && 1 <= b && b <= 3 && a != b }\n\n    spec fn result_ok(a: i64, b: i64, r: i64) -> bool { (1 <= r && r <= 3 && r != a && r != b) && r == 6 - a - b }\n\n    #[effects(pure)]\n    #[uses(input_ok, result_ok)]\n    fn solve(a: i64, b: i64) -> (r: i64)\n        requires input_ok(a, b),\n        ensures result_ok(a, b, r),\n    {\n        6 - a - b\n    }\n}\n",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn input_ok(a: i64, b: i64) -> bool { 1 <= a && a <= 3 && 1 <= b && b <= 3 && a != b }\n\n    spec fn result_ok(a: i64, b: i64, r: i64) -> bool { 1 <= r && r <= 3 }\n\n    #[effects(pure)]\n    #[uses(input_ok, result_ok)]\n    fn solve(a: i64, b: i64) -> (r: i64)\n        requires input_ok(a, b),\n        ensures result_ok(a, b, r),\n    {\n        6 - a - b\n    }\n}\n",
+ "label": "defect",
+ "kind": "contract-weakened"
+}

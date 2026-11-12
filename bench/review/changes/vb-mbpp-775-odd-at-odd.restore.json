@@ -1,0 +1,16 @@
+{
+ "id": "vb-mbpp-775-odd-at-odd.restore",
+ "source": {
+  "set": "bvb",
+  "task": "vb-mbpp-775-odd-at-odd",
+  "before": "weak_reference",
+  "after": "reference"
+ },
+ "intent": "Implement `is_odd_at_odd_index`: return whether every element of `arr` has the same parity as its index (even elements at even indices, odd elements at odd indices; true for an empty array). The contract must state the result exactly.",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "before": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn parity_below(arr: &[u64], n: usize) -> bool { forall|i: usize| i < n ==> i % 2 == #[trigger] arr[i] % 2 }\n\n    spec fn parity_if(arr: &[u64], r: bool) -> bool { r ==> parity_below(arr, arr.len()) }\n\n    #[effects(pure)]\n    #[uses(parity_below, parity_if)]\n    fn is_odd_at_odd_index(arr: &[u64]) -> (r: bool)\n        ensures parity_if(arr, r),\n    {\n        let mut idx: usize = 0;\n        let mut p: u64 = 0;\n        while idx < arr.len() && p % 2 == arr[idx] % 2\n            invariant idx <= arr.len(), p == idx, parity_below(arr, idx),\n            decreases arr.len() - idx,\n        {\n            idx = idx + 1;\n            p = p + 1;\n        }\n        idx >= arr.len()\n    }\n}\n",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn parity_below(arr: &[u64], n: usize) -> bool { forall|i: usize| i < n ==> i % 2 == #[trigger] arr[i] % 2 }\n\n    spec fn parity_ok(arr: &[u64], r: bool) -> bool { r == parity_below(arr, arr.len()) }\n\n    #[effects(pure)]\n    #[uses(parity_below, parity_ok)]\n    fn is_odd_at_odd_index(arr: &[u64]) -> (r: bool)\n        ensures parity_ok(arr, r),\n    {\n        let mut idx: usize = 0;\n        let mut p: u64 = 0;\n        while idx < arr.len() && p % 2 == arr[idx] % 2\n            invariant idx <= arr.len(), p == idx, parity_below(arr, idx),\n            decreases arr.len() - idx,\n        {\n            idx = idx + 1;\n            p = p + 1;\n        }\n        idx >= arr.len()\n    }\n}\n",
+ "label": "clean",
+ "kind": "contract-restored"
+}

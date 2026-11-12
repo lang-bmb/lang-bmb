@@ -1,0 +1,37 @@
+{
+ "id": "vb-mbpp-113-is-integer.mutant-defect-1",
+ "source": {
+  "set": "bvb",
+  "task": "vb-mbpp-113-is-integer",
+  "before": "reference",
+  "after": "weak_reference",
+  "mutation": {
+   "def": "tasks::is_integer",
+   "site": 4,
+   "line": 15,
+   "col": 33,
+   "before": "48 <= text[k]",
+   "after": "48 < text[k]"
+  }
+ },
+ "intent": "Implement `is_integer`: `text` holds the bytes of a string (each element is a byte value). Return whether every byte is an ASCII decimal digit (48 to 57 inclusive); an empty text counts as all digits. The contract must state the result exactly.",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "before": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn digit(c: u64) -> bool { c >= 48 && c <= 57 }\n\n    spec fn digits_below(text: &[u64], n: usize) -> bool { forall|i: usize| i < n ==> digit(#[trigger] text[i]) }\n\n    spec fn all_digits(text: &[u64], r: bool) -> bool { r == digits_below(text, text.len()) }\n\n    #[effects(pure)]\n    #[uses(digit, digits_below, all_digits)]\n    fn is_integer(text: &[u64]) -> (r: bool)\n        ensures all_digits(text, r),\n    {\n        let mut k: usize = 0;\n        while k < text.len() && 48 <= text[k] && text[k] <= 57\n            invariant k <= text.len(), digits_below(text, k),\n            decreases text.len() - k,\n        {\n            k = k + 1;\n        }\n        k >= text.len()\n    }\n}\n",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn digit(c: u64) -> bool { c >= 48 && c <= 57 }\n\n    spec fn digits_below(text: &[u64], n: usize) -> bool { forall|i: usize| i < n ==> digit(#[trigger] text[i]) }\n\n    spec fn only_if_digits(text: &[u64], r: bool) -> bool { r ==> digits_below(text, text.len()) }\n\n    #[effects(pure)]\n    #[uses(digit, digits_below, only_if_digits)]\n    fn is_integer(text: &[u64]) -> (r: bool)\n        ensures only_if_digits(text, r),\n    {\n        let mut k: usize = 0;\n        while k < text.len() && 48 < text[k] && text[k] <= 57\n            invariant k <= text.len(), digits_below(text, k),\n            decreases text.len() - k,\n        {\n            k = k + 1;\n        }\n        k >= text.len()\n    }\n}\n",
+ "label": "defect",
+ "kind": "contract-weakened+body",
+ "witness": {
+  "input": {
+   "text": [
+    48
+   ]
+  },
+  "expected": {
+   "r": true
+  },
+  "output": {
+   "r": false
+  }
+ }
+}

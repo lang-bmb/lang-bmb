@@ -174,3 +174,4 @@ BMB v2의 설계 결정을 한 건에 파일 하나로 남긴다. 현재 확정�
 | [0125](0125-parent-agent-with-subagents.md) | 모에이전트가 서브에이전트를 관리: 관문 단위 목표, 실행으로 검증, 병렬 둘, `compiler/` 작성자는 하나, 승인 안건은 쌓고 계속 |
 | [0126](0126-advisory-solver-memory-limit.md) | `lint`의 권고 질의는 따로 된 메모리 한도(`Z3_ADVISORY_MEMORY_MB`=128), `rlimit`은 그대로, 닿으면 미결정 |
 | [0127](0127-bounded-responses.md) | 에이전트 경계(`bmb mcp --bounded`)의 `query`·`map` 응답은 바이트 예산 안의 창: 잘림 행, `offset`·`limit`, `overview` |
+| [0128](0128-review-change-set.md) | H-REVIEW 변경 집합(`bench/review`, 143개) 동결: 명세 diff 판과 코드 diff 판, 모델 리뷰어에 한한 판정, 이 집합에서 토큰 기준은 닿지 않음 |

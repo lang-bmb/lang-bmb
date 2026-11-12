@@ -1,0 +1,36 @@
+{
+ "id": "vc-vd0727-calculate-loss.mutant-defect-1",
+ "source": {
+  "set": "bvb",
+  "task": "vc-vd0727-calculate-loss",
+  "before": "reference",
+  "after": "weak_reference",
+  "mutation": {
+   "def": "tasks::calculate_loss",
+   "site": 2,
+   "line": 14,
+   "col": 13,
+   "before": "cost_price - selling_price",
+   "after": "cost_price + selling_price"
+  }
+ },
+ "intent": "Implement `calculate_loss`: `cost_price` and `selling_price` are non-negative 32-bit integers. Return the loss: cost_price - selling_price when the cost exceeds the selling price, otherwise 0. The contract must state the result exactly in both cases.",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "before": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn input_ok(cost_price: i64, selling_price: i64) -> bool { -2147483648 <= cost_price && cost_price <= 2147483647 && -2147483648 <= selling_price && selling_price <= 2147483647 && cost_price >= 0 && selling_price >= 0 }\n\n    spec fn result_ok(cost_price: i64, selling_price: i64, r: i64) -> bool { (cost_price > selling_price ==> r == cost_price - selling_price) && (cost_price <= selling_price ==> r == 0) }\n\n    #[effects(pure)]\n    #[uses(input_ok, result_ok)]\n    fn calculate_loss(cost_price: i64, selling_price: i64) -> (r: i64)\n        requires input_ok(cost_price, selling_price),\n        ensures result_ok(cost_price, selling_price, r),\n    {\n        if cost_price > selling_price {\n            cost_price - selling_price\n        } else {\n            0\n        }\n    }\n}\n",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn input_ok(cost_price: i64, selling_price: i64) -> bool { -2147483648 <= cost_price && cost_price <= 2147483647 && -2147483648 <= selling_price && selling_price <= 2147483647 && cost_price >= 0 && selling_price >= 0 }\n\n    spec fn result_ok(cost_price: i64, selling_price: i64, r: i64) -> bool { r >= 0 }\n\n    #[effects(pure)]\n    #[uses(input_ok, result_ok)]\n    fn calculate_loss(cost_price: i64, selling_price: i64) -> (r: i64)\n        requires input_ok(cost_price, selling_price),\n        ensures result_ok(cost_price, selling_price, r),\n    {\n        if cost_price > selling_price {\n            cost_price + selling_price\n        } else {\n            0\n        }\n    }\n}\n",
+ "label": "defect",
+ "kind": "contract-weakened+body",
+ "witness": {
+  "input": {
+   "cost_price": 100,
+   "selling_price": 30
+  },
+  "expected": {
+   "r": 70
+  },
+  "output": {
+   "r": 130
+  }
+ }
+}

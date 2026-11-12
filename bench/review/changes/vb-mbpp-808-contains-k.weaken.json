@@ -1,0 +1,16 @@
+{
+ "id": "vb-mbpp-808-contains-k.weaken",
+ "source": {
+  "set": "bvb",
+  "task": "vb-mbpp-808-contains-k",
+  "before": "reference",
+  "after": "weak_reference"
+ },
+ "intent": "Implement `contains_k`: return whether `k` occurs in `arr`. The contract must state the result exactly.",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "before": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn holds_below(arr: &[i64], k: i64, n: usize) -> bool { forall|i: usize| i < n && i < arr.len() ==> !(#[trigger] arr[i] == k) }\n\n    spec fn exact(arr: &[i64], k: i64, r: bool) -> bool { r == !holds_below(arr, k, arr.len()) }\n\n    #[effects(pure)]\n    #[uses(holds_below, exact)]\n    fn contains_k(arr: &[i64], k: i64) -> (r: bool)\n        ensures exact(arr, k, r),\n    {\n        let mut idx: usize = 0;\n        while idx < arr.len() && !(arr[idx] == k)\n            invariant idx <= arr.len(), holds_below(arr, k, idx),\n            decreases arr.len() - idx,\n        {\n            idx = idx + 1;\n        }\n        idx < arr.len()\n    }\n}\n",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn holds_below(arr: &[i64], k: i64, n: usize) -> bool { forall|i: usize| i < n && i < arr.len() ==> !(#[trigger] arr[i] == k) }\n\n    spec fn one_way(arr: &[i64], k: i64, r: bool) -> bool { r ==> !holds_below(arr, k, arr.len()) }\n\n    #[effects(pure)]\n    #[uses(holds_below, one_way)]\n    fn contains_k(arr: &[i64], k: i64) -> (r: bool)\n        ensures one_way(arr, k, r),\n    {\n        let mut idx: usize = 0;\n        while idx < arr.len() && !(arr[idx] == k)\n            invariant idx <= arr.len(), holds_below(arr, k, idx),\n            decreases arr.len() - idx,\n        {\n            idx = idx + 1;\n        }\n        idx < arr.len()\n    }\n}\n",
+ "label": "defect",
+ "kind": "contract-weakened"
+}

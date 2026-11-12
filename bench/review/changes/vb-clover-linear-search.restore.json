@@ -1,0 +1,16 @@
+{
+ "id": "vb-clover-linear-search.restore",
+ "source": {
+  "set": "bvb",
+  "task": "vb-clover-linear-search",
+  "before": "weak_reference",
+  "after": "reference"
+ },
+ "intent": "Implement `linear_search`: `e` occurs in `a`. Return the first position of `e` in `a`. The contract must state that the result is a valid position holding `e` and that no earlier position holds `e`.",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "before": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn occurs(a: &[i64], e: i64) -> bool { !(forall|i: usize| i < a.len() ==> #[trigger] a[i] != e) }\n\n    spec fn absent_below(a: &[i64], e: i64, n: usize) -> bool { forall|k: usize| k < n ==> #[trigger] a[k] != e }\n\n    spec fn found_at(a: &[i64], e: i64, r: usize) -> bool { r < a.len() && a[r] == e }\n\n    #[effects(pure)]\n    #[uses(occurs, absent_below, found_at)]\n    fn linear_search(a: &[i64], e: i64) -> (r: usize)\n        requires occurs(a, e),\n        ensures found_at(a, e, r),\n    {\n        let mut n: usize = 0;\n        while n < a.len() && a[n] != e\n            invariant n <= a.len(), occurs(a, e), absent_below(a, e, n),\n            decreases a.len() - n,\n        {\n            n = n + 1;\n        }\n        n\n    }\n}\n",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn occurs(a: &[i64], e: i64) -> bool { !(forall|i: usize| i < a.len() ==> #[trigger] a[i] != e) }\n\n    spec fn absent_below(a: &[i64], e: i64, n: usize) -> bool { forall|k: usize| k < n ==> #[trigger] a[k] != e }\n\n    spec fn first_at(a: &[i64], e: i64, r: usize) -> bool { r < a.len() && a[r] == e && (forall|k: usize| k < r ==> #[trigger] a[k] != e) }\n\n    #[effects(pure)]\n    #[uses(occurs, absent_below, first_at)]\n    fn linear_search(a: &[i64], e: i64) -> (r: usize)\n        requires occurs(a, e),\n        ensures first_at(a, e, r),\n    {\n        let mut n: usize = 0;\n        while n < a.len() && a[n] != e\n            invariant n <= a.len(), occurs(a, e), absent_below(a, e, n),\n            decreases a.len() - n,\n        {\n            n = n + 1;\n        }\n        n\n    }\n}\n",
+ "label": "clean",
+ "kind": "contract-restored"
+}

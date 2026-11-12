@@ -1,0 +1,24 @@
+{
+ "id": "vb-mbpp-588-max-min-diff.mutant-clean-1",
+ "source": {
+  "set": "bvb",
+  "task": "vb-mbpp-588-max-min-diff",
+  "before": "reference",
+  "after": "reference",
+  "mutation": {
+   "def": "tasks::difference_max_min",
+   "site": 9,
+   "line": 22,
+   "col": 16,
+   "before": "arr[idx] >= hi",
+   "after": "arr[idx] > hi"
+  }
+ },
+ "intent": "Implement `difference_max_min`: `arr` is non-empty and every element x satisfies -1073741824 < x < 1073741823. Return the difference of the largest and the smallest element. The contract must state the result exactly using the given specification functions.\n\nGiven specification functions in unit `given` (use them, do not change them):\n```\nspec fn max_prefix(arr: &[i64], n: usize) -> i64\n    decreases n,\n{\n    if n <= 1 { arr[0] } else { if arr[n - 1] >= max_prefix(arr, n - 1) { arr[n - 1] } else { max_prefix(arr, n - 1) } }\n}\n\nspec fn min_prefix(arr: &[i64], n: usize) -> i64\n    decreases n,\n{\n    if n <= 1 { arr[0] } else { if arr[n - 1] <= min_prefix(arr, n - 1) { arr[n - 1] } else { min_prefix(arr, n - 1) } }\n}\n```",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "before": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn half_range(arr: &[i64]) -> bool { arr.len() > 0 && (forall|i: usize| i < arr.len() ==> -1073741824 < #[trigger] arr[i] && arr[i] < 1073741823) }\n\n    spec fn extremes(arr: &[i64], hi: i64, lo: i64, n: usize) -> bool { hi == given::max_prefix(arr, n) && lo == given::min_prefix(arr, n) && -1073741824 < lo && lo <= hi && hi < 1073741823 }\n\n    spec fn result_ok(arr: &[i64], r: i64) -> bool { r == given::max_prefix(arr, arr.len()) - given::min_prefix(arr, arr.len()) }\n\n    #[effects(pure)]\n    #[uses(half_range, extremes, result_ok, given::max_prefix, given::min_prefix)]\n    fn difference_max_min(arr: &[i64]) -> (r: i64)\n        requires half_range(arr),\n        ensures result_ok(arr, r),\n    {\n        let mut hi: i64 = arr[0];\n        let mut lo: i64 = arr[0];\n        let mut idx: usize = 1;\n        while idx < arr.len()\n            invariant 1 <= idx, idx <= arr.len(), half_range(arr), extremes(arr, hi, lo, idx),\n            decreases arr.len() - idx,\n        {\n            if arr[idx] >= hi {\n                hi = arr[idx];\n            }\n            if arr[idx] <= lo {\n                lo = arr[idx];\n            }\n            idx = idx + 1;\n        }\n        hi - lo\n    }\n}\n",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn half_range(arr: &[i64]) -> bool { arr.len() > 0 && (forall|i: usize| i < arr.len() ==> -1073741824 < #[trigger] arr[i] && arr[i] < 1073741823) }\n\n    spec fn extremes(arr: &[i64], hi: i64, lo: i64, n: usize) -> bool { hi == given::max_prefix(arr, n) && lo == given::min_prefix(arr, n) && -1073741824 < lo && lo <= hi && hi < 1073741823 }\n\n    spec fn result_ok(arr: &[i64], r: i64) -> bool { r == given::max_prefix(arr, arr.len()) - given::min_prefix(arr, arr.len()) }\n\n    #[effects(pure)]\n    #[uses(half_range, extremes, result_ok, given::max_prefix, given::min_prefix)]\n    fn difference_max_min(arr: &[i64]) -> (r: i64)\n        requires half_range(arr),\n        ensures result_ok(arr, r),\n    {\n        let mut hi: i64 = arr[0];\n        let mut lo: i64 = arr[0];\n        let mut idx: usize = 1;\n        while idx < arr.len()\n            invariant 1 <= idx, idx <= arr.len(), half_range(arr), extremes(arr, hi, lo, idx),\n            decreases arr.len() - idx,\n        {\n            if arr[idx] > hi {\n                hi = arr[idx];\n            }\n            if arr[idx] <= lo {\n                lo = arr[idx];\n            }\n            idx = idx + 1;\n        }\n        hi - lo\n    }\n}\n",
+ "label": "clean",
+ "kind": "body-only"
+}

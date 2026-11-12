@@ -1,0 +1,16 @@
+{
+ "id": "vc-vd0722-last-digit.weaken",
+ "source": {
+  "set": "bvb",
+  "task": "vc-vd0722-last-digit",
+  "before": "reference",
+  "after": "weak_reference"
+ },
+ "intent": "Implement `last_digit`: `n` is a 32-bit integer (in [-2147483648, 2147483647]) and n >= 0. Return its last decimal digit. The contract must state that the result is in [0, 10) and equals n % 10.",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "before": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn input_ok(n: i64) -> bool { -2147483648 <= n && n <= 2147483647 && n >= 0 }\n\n    spec fn result_ok(n: i64, r: i64) -> bool { 0 <= r && r < 10 && n % 10 == r }\n\n    #[effects(pure)]\n    #[uses(input_ok, result_ok)]\n    fn last_digit(n: i64) -> (r: i64)\n        requires input_ok(n),\n        ensures result_ok(n, r),\n    {\n        n % 10\n    }\n}\n",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn input_ok(n: i64) -> bool { -2147483648 <= n && n <= 2147483647 && n >= 0 }\n\n    spec fn result_ok(n: i64, r: i64) -> bool { 0 <= r && r < 10 }\n\n    #[effects(pure)]\n    #[uses(input_ok, result_ok)]\n    fn last_digit(n: i64) -> (r: i64)\n        requires input_ok(n),\n        ensures result_ok(n, r),\n    {\n        n % 10\n    }\n}\n",
+ "label": "defect",
+ "kind": "contract-weakened"
+}

@@ -1,0 +1,24 @@
+{
+ "id": "vb-misc-sum.mutant-clean-1",
+ "source": {
+  "set": "bvb",
+  "task": "vb-misc-sum",
+  "before": "reference",
+  "after": "reference",
+  "mutation": {
+   "def": "tasks::nonneg",
+   "site": 2,
+   "line": 15,
+   "col": 12,
+   "before": "i > 0",
+   "after": "i > 1"
+  }
+ },
+ "intent": "Implement `compute_arith_sum`: the sum 0 + 1 + ... + n, given by the given specification function, is below 10000. Return that sum. The contract must state the result exactly using the given specification function.\n\nGiven specification functions in unit `given` (use them, do not change them):\n```\nspec fn arith_sum(i: u64) -> u64\n    decreases i,\n{\n    if i == 0 { 0 } else { i + arith_sum(i - 1) }\n}\n```",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "before": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn small_sum(n: u64) -> bool { given::arith_sum(n) < 10000 }\n\n    spec fn sum_nonneg(i: u64) -> bool { given::arith_sum(i) >= 0 }\n\n    spec fn sum_is(n: u64, r: u64) -> bool { given::arith_sum(n) == r }\n\n    #[effects(pure)]\n    #[uses(sum_nonneg, given::arith_sum)]\n    fn nonneg(i: u64) -> ()\n        ensures sum_nonneg(i),\n        decreases i,\n    {\n        if i > 0 {\n            nonneg(i - 1);\n        }\n    }\n\n    #[effects(pure)]\n    #[uses(small_sum, sum_nonneg, sum_is, given::arith_sum)]\n    fn compute_arith_sum(n: u64) -> (r: u64)\n        requires small_sum(n),\n        ensures sum_is(n, r),\n    {\n        let mut i: u64 = n;\n        let mut s: u64 = 0;\n        while i > 0\n            invariant i <= n, small_sum(n), s + given::arith_sum(i) == given::arith_sum(n),\n            decreases i,\n        {\n            nonneg(i - 1);\n            s = s + i;\n            i = i - 1;\n        }\n        s\n    }\n}\n",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn small_sum(n: u64) -> bool { given::arith_sum(n) < 10000 }\n\n    spec fn sum_nonneg(i: u64) -> bool { given::arith_sum(i) >= 0 }\n\n    spec fn sum_is(n: u64, r: u64) -> bool { given::arith_sum(n) == r }\n\n    #[effects(pure)]\n    #[uses(sum_nonneg, given::arith_sum)]\n    fn nonneg(i: u64) -> ()\n        ensures sum_nonneg(i),\n        decreases i,\n    {\n        if i > 1 {\n            nonneg(i - 1);\n        }\n    }\n\n    #[effects(pure)]\n    #[uses(small_sum, sum_nonneg, sum_is, given::arith_sum)]\n    fn compute_arith_sum(n: u64) -> (r: u64)\n        requires small_sum(n),\n        ensures sum_is(n, r),\n    {\n        let mut i: u64 = n;\n        let mut s: u64 = 0;\n        while i > 0\n            invariant i <= n, small_sum(n), s + given::arith_sum(i) == given::arith_sum(n),\n            decreases i,\n        {\n            nonneg(i - 1);\n            s = s + i;\n            i = i - 1;\n        }\n        s\n    }\n}\n",
+ "label": "clean",
+ "kind": "body-only"
+}

@@ -1,0 +1,16 @@
+{
+ "id": "vc-vd0126-first-zero.restore",
+ "source": {
+  "set": "bvb",
+  "task": "vc-vd0126-first-zero",
+  "before": "weak_reference",
+  "after": "reference"
+ },
+ "intent": "Implement `mfirst_cero`: return the position of the first zero in `v`, or the length of `v` if it has no zero. The contract must state that the result is at most the length, no earlier element is zero, and the element at the result is zero unless the result is the length.",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "before": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn nonzero_below(v: &[i64], n: usize) -> bool { forall|j: usize| j < n ==> #[trigger] v[j] != 0 }\n\n    spec fn result_ok(v: &[i64], r: usize) -> bool { r <= v.len() && (r != v.len() ==> v[r] == 0) }\n\n    #[effects(pure)]\n    #[uses(result_ok, nonzero_below)]\n    fn mfirst_cero(v: &[i64]) -> (r: usize)\n        ensures result_ok(v, r),\n    {\n        let mut i: usize = 0;\n        while i < v.len() && v[i] != 0\n            invariant i <= v.len(), nonzero_below(v, i),\n            decreases v.len() - i,\n        {\n            i = i + 1;\n        }\n        i\n    }\n}\n",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn nonzero_below(v: &[i64], n: usize) -> bool { forall|j: usize| j < n ==> #[trigger] v[j] != 0 }\n\n    spec fn result_ok(v: &[i64], r: usize) -> bool { r <= v.len() && (forall|j: usize| j < r ==> #[trigger] v[j] != 0) && (r != v.len() ==> v[r] == 0) }\n\n    #[effects(pure)]\n    #[uses(result_ok, nonzero_below)]\n    fn mfirst_cero(v: &[i64]) -> (r: usize)\n        ensures result_ok(v, r),\n    {\n        let mut i: usize = 0;\n        while i < v.len() && v[i] != 0\n            invariant i <= v.len(), nonzero_below(v, i),\n            decreases v.len() - i,\n        {\n            i = i + 1;\n        }\n        i\n    }\n}\n",
+ "label": "clean",
+ "kind": "contract-restored"
+}

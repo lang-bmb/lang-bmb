@@ -1,0 +1,16 @@
+{
+ "id": "vb-misc-choose-odd.restore",
+ "source": {
+  "set": "bvb",
+  "task": "vb-misc-choose-odd",
+  "before": "weak_reference",
+  "after": "reference"
+ },
+ "intent": "Implement `choose_odd`: some element of `v` is odd. Return a position in `v` (the search for an odd element). The contract must state that the result is a valid position of `v`.",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "before": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn has_odd(v: &[u64]) -> bool { !(forall|q: usize| q < v.len() ==> #[trigger] v[q] % 2 != 1) }\n\n    spec fn even_below(v: &[u64], n: usize) -> bool { forall|q: usize| q < n ==> #[trigger] v[q] % 2 != 1 }\n\n    spec fn at_most_len(v: &[u64], r: usize) -> bool { r <= v.len() }\n\n    #[effects(pure)]\n    #[uses(has_odd, even_below, at_most_len)]\n    fn choose_odd(v: &[u64]) -> (r: usize)\n        requires has_odd(v),\n        ensures at_most_len(v, r),\n    {\n        let mut j: usize = 0;\n        while j < v.len() && v[j] % 2 != 1\n            invariant j <= v.len(), has_odd(v), even_below(v, j),\n            decreases v.len() - j,\n        {\n            j = j + 1;\n        }\n        j\n    }\n}\n",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn has_odd(v: &[u64]) -> bool { !(forall|q: usize| q < v.len() ==> #[trigger] v[q] % 2 != 1) }\n\n    spec fn even_below(v: &[u64], n: usize) -> bool { forall|q: usize| q < n ==> #[trigger] v[q] % 2 != 1 }\n\n    spec fn valid_index(v: &[u64], r: usize) -> bool { r < v.len() }\n\n    #[effects(pure)]\n    #[uses(has_odd, even_below, valid_index)]\n    fn choose_odd(v: &[u64]) -> (r: usize)\n        requires has_odd(v),\n        ensures valid_index(v, r),\n    {\n        let mut j: usize = 0;\n        while j < v.len() && v[j] % 2 != 1\n            invariant j <= v.len(), has_odd(v), even_below(v, j),\n            decreases v.len() - j,\n        {\n            j = j + 1;\n        }\n        j\n    }\n}\n",
+ "label": "clean",
+ "kind": "contract-restored"
+}

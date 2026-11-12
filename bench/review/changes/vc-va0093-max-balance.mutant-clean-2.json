@@ -1,0 +1,24 @@
+{
+ "id": "vc-va0093-max-balance.mutant-clean-2",
+ "source": {
+  "set": "bvb",
+  "task": "vc-va0093-max-balance",
+  "before": "reference",
+  "after": "reference",
+  "mutation": {
+   "def": "tasks::solve",
+   "site": 2,
+   "line": 19,
+   "col": 12,
+   "before": "n >= 0",
+   "after": "n >= 1"
+  }
+ },
+ "intent": "Implement `solve`: `n` is an 8-bit integer (in [-128, 127]) with n >= 10 or n <= -10. For n >= 0 return n. For negative n return the larger of floor(n / 10) and floor(n / 100) * 10 + (n mod 10), where floor division rounds toward negative infinity and n mod 10 is the remainder in [0, 10) (deleting the last digit, or the digit before it). The contract must state the result exactly.",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "before": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn fmod(n: i64, d: i64) -> i64 { (n % d + d) % d }\n\n    spec fn fdiv(n: i64, d: i64) -> i64 { (n - fmod(n, d)) / d }\n\n    spec fn balance(n: i64) -> i64 { if n >= 0 { n } else { if fdiv(n, 10) > fdiv(n, 100) * 10 + fmod(n, 10) { fdiv(n, 10) } else { fdiv(n, 100) * 10 + fmod(n, 10) } } }\n\n    spec fn input_ok(n: i64) -> bool { -128 <= n && n <= 127 && (n >= 10 || n <= -10) }\n\n    spec fn result_ok(n: i64, r: i64) -> bool { r == balance(n) }\n\n    #[effects(pure)]\n    #[uses(input_ok, result_ok, fmod, fdiv, balance)]\n    fn solve(n: i64) -> (r: i64)\n        requires input_ok(n),\n        ensures result_ok(n, r),\n    {\n        if n >= 0 {\n            n\n        } else {\n            let m10: i64 = (n % 10 + 10) % 10;\n            let m100: i64 = (n % 100 + 100) % 100;\n            let o1: i64 = (n - m10) / 10;\n            let o2: i64 = (n - m100) / 100 * 10 + m10;\n            if o1 > o2 {\n                o1\n            } else {\n                o2\n            }\n        }\n    }\n}\n",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn fmod(n: i64, d: i64) -> i64 { (n % d + d) % d }\n\n    spec fn fdiv(n: i64, d: i64) -> i64 { (n - fmod(n, d)) / d }\n\n    spec fn balance(n: i64) -> i64 { if n >= 0 { n } else { if fdiv(n, 10) > fdiv(n, 100) * 10 + fmod(n, 10) { fdiv(n, 10) } else { fdiv(n, 100) * 10 + fmod(n, 10) } } }\n\n    spec fn input_ok(n: i64) -> bool { -128 <= n && n <= 127 && (n >= 10 || n <= -10) }\n\n    spec fn result_ok(n: i64, r: i64) -> bool { r == balance(n) }\n\n    #[effects(pure)]\n    #[uses(input_ok, result_ok, fmod, fdiv, balance)]\n    fn solve(n: i64) -> (r: i64)\n        requires input_ok(n),\n        ensures result_ok(n, r),\n    {\n        if n >= 1 {\n            n\n        } else {\n            let m10: i64 = (n % 10 + 10) % 10;\n            let m100: i64 = (n % 100 + 100) % 100;\n            let o1: i64 = (n - m10) / 10;\n            let o2: i64 = (n - m100) / 100 * 10 + m10;\n            if o1 > o2 {\n                o1\n            } else {\n                o2\n            }\n        }\n    }\n}\n",
+ "label": "clean",
+ "kind": "body-only"
+}

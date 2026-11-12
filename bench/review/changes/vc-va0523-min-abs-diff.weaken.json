@@ -1,0 +1,16 @@
+{
+ "id": "vc-va0523-min-abs-diff.weaken",
+ "source": {
+  "set": "bvb",
+  "task": "vc-va0523-min-abs-diff",
+  "before": "reference",
+  "after": "weak_reference"
+ },
+ "intent": "Implement `solve`: `n` and `k` are 8-bit integers (in [-128, 127]) with n >= 0 and k >= 1. Repeatedly replacing n by |n - k| can reach any value; return the minimum, which is the smaller of n % k and k - n % k. The contract must state that the result equals that minimum and lies in [0, k).",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "before": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn input_ok(n: i64, k: i64) -> bool { -128 <= n && n <= 127 && -128 <= k && k <= 127 && n >= 0 && k >= 1 }\n\n    spec fn result_ok(n: i64, k: i64, r: i64) -> bool { r == (if n % k <= k - n % k { n % k } else { k - n % k }) && r >= 0 && r < k }\n\n    #[effects(pure)]\n    #[uses(input_ok, result_ok)]\n    fn solve(n: i64, k: i64) -> (r: i64)\n        requires input_ok(n, k),\n        ensures result_ok(n, k, r),\n    {\n        let m: i64 = n % k;\n        if m <= k - m {\n            m\n        } else {\n            k - m\n        }\n    }\n}\n",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn input_ok(n: i64, k: i64) -> bool { -128 <= n && n <= 127 && -128 <= k && k <= 127 && n >= 0 && k >= 1 }\n\n    spec fn result_ok(n: i64, k: i64, r: i64) -> bool { r >= 0 && r < k }\n\n    #[effects(pure)]\n    #[uses(input_ok, result_ok)]\n    fn solve(n: i64, k: i64) -> (r: i64)\n        requires input_ok(n, k),\n        ensures result_ok(n, k, r),\n    {\n        let m: i64 = n % k;\n        if m <= k - m {\n            m\n        } else {\n            k - m\n        }\n    }\n}\n",
+ "label": "defect",
+ "kind": "contract-weakened"
+}

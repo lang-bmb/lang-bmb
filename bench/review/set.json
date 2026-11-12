@@ -1,0 +1,10 @@
+{
+ "hypothesis": "H-REVIEW",
+ "arms": {
+  "spec": ["contract_diff", "weaken"],
+  "code": ["code_diff"]
+ },
+ "compare": {"candidate": "spec", "baseline": "code", "token_ratio": [1, 5]},
+ "generated_with": {"compiler_commit": "9938d706", "mutants_per_task_and_kind": 2},
+ "frozen": ["gen.py", "mutants.py", "views.py", "judge.py", "harness.py", "../bvb/MANIFEST"]
+}

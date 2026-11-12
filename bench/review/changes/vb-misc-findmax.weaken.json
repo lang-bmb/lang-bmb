@@ -1,0 +1,16 @@
+{
+ "id": "vb-misc-findmax.weaken",
+ "source": {
+  "set": "bvb",
+  "task": "vb-misc-findmax",
+  "before": "reference",
+  "after": "weak_reference"
+ },
+ "intent": "Implement `find_max`: `nums` is non-empty. Return its largest element. The contract must state that the result is at least every element.",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "before": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn nonempty(nums: &[i64]) -> bool { nums.len() > 0 }\n\n    spec fn max_upto(nums: &[i64], m: i64, n: usize) -> bool { forall|i: usize| i < n ==> #[trigger] nums[i] <= m }\n\n    spec fn upper_bound(nums: &[i64], r: i64) -> bool { forall|i: usize| i < nums.len() ==> #[trigger] nums[i] <= r }\n\n    #[effects(pure)]\n    #[uses(nonempty, max_upto, upper_bound)]\n    fn find_max(nums: &[i64]) -> (r: i64)\n        requires nonempty(nums),\n        ensures upper_bound(nums, r),\n    {\n        let mut m: i64 = nums[0];\n        let mut idx: usize = 1;\n        while idx < nums.len()\n            invariant 1 <= idx, idx <= nums.len(), max_upto(nums, m, idx),\n            decreases nums.len() - idx,\n        {\n            if nums[idx] > m {\n                m = nums[idx];\n            }\n            idx = idx + 1;\n        }\n        m\n    }\n}\n",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn nonempty(nums: &[i64]) -> bool { nums.len() > 0 }\n\n    spec fn at_least_first(nums: &[i64], r: i64) -> bool { nums[0] <= r }\n\n    #[effects(pure)]\n    #[uses(nonempty, at_least_first)]\n    fn find_max(nums: &[i64]) -> (r: i64)\n        requires nonempty(nums),\n        ensures at_least_first(nums, r),\n    {\n        let mut m: i64 = nums[0];\n        let mut idx: usize = 1;\n        while idx < nums.len()\n            invariant 1 <= idx, idx <= nums.len(), nums[0] <= m,\n            decreases nums.len() - idx,\n        {\n            if nums[idx] > m {\n                m = nums[idx];\n            }\n            idx = idx + 1;\n        }\n        m\n    }\n}\n",
+ "label": "defect",
+ "kind": "contract-weakened"
+}

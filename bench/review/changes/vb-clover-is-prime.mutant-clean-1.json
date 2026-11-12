@@ -1,0 +1,24 @@
+{
+ "id": "vb-clover-is-prime.mutant-clean-1",
+ "source": {
+  "set": "bvb",
+  "task": "vb-clover-is-prime",
+  "before": "reference",
+  "after": "reference",
+  "mutation": {
+   "def": "tasks::test_prime",
+   "site": 2,
+   "line": 18,
+   "col": 15,
+   "before": "f < candidate",
+   "after": "f <= candidate"
+  }
+ },
+ "intent": "Implement `test_prime`: `candidate` is greater than 1. Return whether `candidate` is prime (no factor f with 1 < f < candidate divides it). The contract must state the result exactly using the given specification functions.\n\nGiven specification functions in unit `given` (use them, do not change them):\n```\nspec fn divides(factor: u64, candidate: u64) -> bool {\n    candidate % factor == 0\n}\n\nspec fn is_prime(candidate: u64) -> bool {\n    1 < candidate && (forall|factor: u64| 1 < factor && factor < candidate ==> !#[trigger] divides(factor, candidate))\n}\n```",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "before": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn above_one(candidate: u64) -> bool { 1 < candidate }\n\n    spec fn stopped(candidate: u64, f: u64) -> bool { f >= candidate || given::divides(f, candidate) }\n\n    spec fn no_factor_below(candidate: u64, m: u64) -> bool { forall|f: u64| 1 < f && f < m ==> !(#[trigger] given::divides(f, candidate)) }\n\n    spec fn prime_ok(candidate: u64, r: bool) -> bool { r == given::is_prime(candidate) }\n\n    #[effects(pure)]\n    #[uses(above_one, stopped, no_factor_below, prime_ok, given::divides, given::is_prime)]\n    fn test_prime(candidate: u64) -> (r: bool)\n        requires above_one(candidate),\n        ensures prime_ok(candidate, r),\n    {\n        let mut f: u64 = 2;\n        while f < candidate && candidate % f != 0\n            invariant 2 <= f, f <= candidate, no_factor_below(candidate, f),\n            decreases candidate - f,\n        {\n            f = f + 1;\n        }\n        assert(stopped(candidate, f));\n        f >= candidate\n    }\n}\n",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn above_one(candidate: u64) -> bool { 1 < candidate }\n\n    spec fn stopped(candidate: u64, f: u64) -> bool { f >= candidate || given::divides(f, candidate) }\n\n    spec fn no_factor_below(candidate: u64, m: u64) -> bool { forall|f: u64| 1 < f && f < m ==> !(#[trigger] given::divides(f, candidate)) }\n\n    spec fn prime_ok(candidate: u64, r: bool) -> bool { r == given::is_prime(candidate) }\n\n    #[effects(pure)]\n    #[uses(above_one, stopped, no_factor_below, prime_ok, given::divides, given::is_prime)]\n    fn test_prime(candidate: u64) -> (r: bool)\n        requires above_one(candidate),\n        ensures prime_ok(candidate, r),\n    {\n        let mut f: u64 = 2;\n        while f <= candidate && candidate % f != 0\n            invariant 2 <= f, f <= candidate, no_factor_below(candidate, f),\n            decreases candidate - f,\n        {\n            f = f + 1;\n        }\n        assert(stopped(candidate, f));\n        f >= candidate\n    }\n}\n",
+ "label": "clean",
+ "kind": "body-only"
+}

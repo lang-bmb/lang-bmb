@@ -1,0 +1,36 @@
+{
+ "id": "vc-va0532-crackers.mutant-defect-2",
+ "source": {
+  "set": "bvb",
+  "task": "vc-va0532-crackers",
+  "before": "reference",
+  "after": "weak_reference",
+  "mutation": {
+   "def": "tasks::solve",
+   "site": 1,
+   "line": 13,
+   "col": 12,
+   "before": "n % k == 0",
+   "after": "n % k != 0"
+  }
+ },
+ "intent": "Implement `solve`: `n` and `k` are between 1 and 100. N crackers are shared among K users as evenly as possible; return the smallest possible difference between the largest and the smallest share (0 if k divides n, else 1). The contract must state the result exactly, including that it is 0 exactly when n % k == 0 and 1 exactly when n % k != 0.",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "before": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn input_ok(n: i64, k: i64) -> bool { n >= 1 && k >= 1 && n <= 100 && k <= 100 }\n\n    spec fn result_ok(n: i64, k: i64, r: i64) -> bool { r == (if n % k == 0 { 0 } else { 1 }) && ((r == 0) == (n % k == 0)) && ((r == 1) == (n % k != 0)) }\n\n    #[effects(pure)]\n    #[uses(input_ok, result_ok)]\n    fn solve(n: i64, k: i64) -> (r: i64)\n        requires input_ok(n, k),\n        ensures result_ok(n, k, r),\n    {\n        if n % k == 0 {\n            0\n        } else {\n            1\n        }\n    }\n}\n",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn input_ok(n: i64, k: i64) -> bool { n >= 1 && k >= 1 && n <= 100 && k <= 100 }\n\n    spec fn result_ok(n: i64, k: i64, r: i64) -> bool { r >= 0 && r <= 1 }\n\n    #[effects(pure)]\n    #[uses(input_ok, result_ok)]\n    fn solve(n: i64, k: i64) -> (r: i64)\n        requires input_ok(n, k),\n        ensures result_ok(n, k, r),\n    {\n        if n % k != 0 {\n            0\n        } else {\n            1\n        }\n    }\n}\n",
+ "label": "defect",
+ "kind": "contract-weakened+body",
+ "witness": {
+  "input": {
+   "n": 12,
+   "k": 2
+  },
+  "expected": {
+   "r": 0
+  },
+  "output": {
+   "r": 1
+  }
+ }
+}

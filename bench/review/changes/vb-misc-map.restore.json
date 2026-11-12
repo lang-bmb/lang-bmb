@@ -1,0 +1,16 @@
+{
+ "id": "vb-misc-map.restore",
+ "source": {
+  "set": "bvb",
+  "task": "vb-misc-map",
+  "before": "weak_reference",
+  "after": "reference"
+ },
+ "intent": "Implement `myfun2`: every element of `x` is at most 2147483643. Add 4 to every element of `x` in place. The contract must state that the length is unchanged and every element equals its value on entry plus 4.",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "before": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn small(x: &[i64]) -> bool { forall|k: usize| k < x.len() ==> #[trigger] x[k] <= 2147483643 }\n\n    spec fn added_upto(old_x: &[i64], x: &[i64], n: usize) -> bool { x.len() == old_x.len() && (forall|k: usize| k < x.len() ==> ((k < n ==> #[trigger] x[k] == old_x[k] + 4) && (n <= k ==> x[k] == old_x[k]))) }\n\n    spec fn grew(old_x: &[i64], x: &[i64]) -> bool { x.len() == old_x.len() && (forall|k: usize| k < x.len() ==> #[trigger] x[k] > old_x[k]) }\n\n    #[effects(pure)]\n    #[uses(small, added_upto, grew)]\n    fn myfun2(x: &mut [i64]) -> ()\n        requires small(x),\n        ensures grew(old(x), x),\n    {\n        let mut i: usize = 0;\n        while i < x.len()\n            invariant i <= x.len(), small(old(x)), added_upto(old(x), x, i),\n            decreases x.len() - i,\n        {\n            x[i] = x[i] + 4;\n            i = i + 1;\n        }\n    }\n}\n",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn small(x: &[i64]) -> bool { forall|k: usize| k < x.len() ==> #[trigger] x[k] <= 2147483643 }\n\n    spec fn added_upto(old_x: &[i64], x: &[i64], n: usize) -> bool { x.len() == old_x.len() && (forall|k: usize| k < x.len() ==> ((k < n ==> #[trigger] x[k] == old_x[k] + 4) && (n <= k ==> x[k] == old_x[k]))) }\n\n    spec fn added(old_x: &[i64], x: &[i64]) -> bool { x.len() == old_x.len() && (forall|k: usize| k < x.len() ==> #[trigger] x[k] == old_x[k] + 4) }\n\n    #[effects(pure)]\n    #[uses(small, added_upto, added)]\n    fn myfun2(x: &mut [i64]) -> ()\n        requires small(x),\n        ensures added(old(x), x),\n    {\n        let mut i: usize = 0;\n        while i < x.len()\n            invariant i <= x.len(), small(old(x)), added_upto(old(x), x, i),\n            decreases x.len() - i,\n        {\n            x[i] = x[i] + 4;\n            i = i + 1;\n        }\n    }\n}\n",
+ "label": "clean",
+ "kind": "contract-restored"
+}

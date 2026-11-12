@@ -1,0 +1,16 @@
+{
+ "id": "vb-misc-max-index.weaken",
+ "source": {
+  "set": "bvb",
+  "task": "vb-misc-max-index",
+  "before": "reference",
+  "after": "weak_reference"
+ },
+ "intent": "Implement `myfun1`: `x` is non-empty. Return the position of a largest element. The contract must state that the result is a valid position whose element is at least every element of `x`.",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "before": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn nonempty(x: &[i64]) -> bool { x.len() >= 1 }\n\n    spec fn max_at_upto(x: &[i64], m: usize, n: usize) -> bool { m < n && n <= x.len() && (forall|k: usize| k < n ==> x[m] >= #[trigger] x[k]) }\n\n    spec fn max_at(x: &[i64], r: usize) -> bool { r < x.len() && (forall|k: usize| k < x.len() ==> x[r] >= #[trigger] x[k]) }\n\n    #[effects(pure)]\n    #[uses(nonempty, max_at_upto, max_at)]\n    fn myfun1(x: &[i64]) -> (r: usize)\n        requires nonempty(x),\n        ensures max_at(x, r),\n    {\n        let mut m: usize = 0;\n        let mut i: usize = 1;\n        while i < x.len()\n            invariant 1 <= i, max_at_upto(x, m, i),\n            decreases x.len() - i,\n        {\n            if x[i] > x[m] {\n                m = i;\n            }\n            i = i + 1;\n        }\n        m\n    }\n}\n",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn nonempty(x: &[i64]) -> bool { x.len() >= 1 }\n\n    spec fn valid_at(x: &[i64], r: usize) -> bool { r < x.len() && x[r] >= x[0] }\n\n    #[effects(pure)]\n    #[uses(nonempty, valid_at)]\n    fn myfun1(x: &[i64]) -> (r: usize)\n        requires nonempty(x),\n        ensures valid_at(x, r),\n    {\n        let mut m: usize = 0;\n        let mut i: usize = 1;\n        while i < x.len()\n            invariant 1 <= i, m < i, i <= x.len(), x[m] >= x[0],\n            decreases x.len() - i,\n        {\n            if x[i] > x[m] {\n                m = i;\n            }\n            i = i + 1;\n        }\n        m\n    }\n}\n",
+ "label": "defect",
+ "kind": "contract-weakened"
+}

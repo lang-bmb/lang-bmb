@@ -1,0 +1,16 @@
+{
+ "id": "vb-mbpp-433-is-greater.weaken",
+ "source": {
+  "set": "bvb",
+  "task": "vb-mbpp-433-is-greater",
+  "before": "reference",
+  "after": "weak_reference"
+ },
+ "intent": "Implement `is_greater`: return whether `number` is strictly greater than every element of `arr` (true for an empty array). The contract must state the result exactly.",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "before": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn holds_below(arr: &[i64], number: i64, n: usize) -> bool { forall|i: usize| i < n && i < arr.len() ==> number > #[trigger] arr[i] }\n\n    spec fn exact(arr: &[i64], number: i64, r: bool) -> bool { r == holds_below(arr, number, arr.len()) }\n\n    #[effects(pure)]\n    #[uses(holds_below, exact)]\n    fn is_greater(arr: &[i64], number: i64) -> (r: bool)\n        ensures exact(arr, number, r),\n    {\n        let mut idx: usize = 0;\n        while idx < arr.len() && (number > arr[idx])\n            invariant idx <= arr.len(), holds_below(arr, number, idx),\n            decreases arr.len() - idx,\n        {\n            idx = idx + 1;\n        }\n        idx >= arr.len()\n    }\n}\n",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn holds_below(arr: &[i64], number: i64, n: usize) -> bool { forall|i: usize| i < n && i < arr.len() ==> number > #[trigger] arr[i] }\n\n    spec fn one_way(arr: &[i64], number: i64, r: bool) -> bool { holds_below(arr, number, arr.len()) ==> r }\n\n    #[effects(pure)]\n    #[uses(holds_below, one_way)]\n    fn is_greater(arr: &[i64], number: i64) -> (r: bool)\n        ensures one_way(arr, number, r),\n    {\n        let mut idx: usize = 0;\n        while idx < arr.len() && (number > arr[idx])\n            invariant idx <= arr.len(), holds_below(arr, number, idx),\n            decreases arr.len() - idx,\n        {\n            idx = idx + 1;\n        }\n        idx >= arr.len()\n    }\n}\n",
+ "label": "defect",
+ "kind": "contract-weakened"
+}
