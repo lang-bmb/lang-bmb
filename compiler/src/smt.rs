@@ -3,6 +3,7 @@
 //! The solver runs as a child process speaking SMT-LIB on stdin/stdout. Every
 //! answer other than `unsat` is a failure for the proof gate.
 
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
@@ -301,6 +302,56 @@ pub fn memory_mb() -> u64 {
         .map_or(pinned, |v| v.min(pinned))
 }
 
+/// The pinned memory limit in megabytes of a solver process that answers an
+/// advisory query (`advisory`): the lint's satisfiability checks and its
+/// re-verifications of changed definitions (backlog T2-16). A query that is
+/// false, or satisfiable, under a recursive predicate with a quantifier in
+/// it makes Z3 grow without reaching its `rlimit`, and the time to the
+/// limit grows with the limit: the port-shape experiment's `tree.bmb` has
+/// 44 such queries, 248 s of lint at the gate's limit and 21 s at this one.
+/// Measured on `lib/std` and that experiment (13 files, 5,575 advisory
+/// queries): no proof raised its process's peak above 21 MB, one model
+/// raised it to 72 MB, and the lint's output is the same bytes at half
+/// this limit. Never above `memory_mb`, so what lowers that lowers this.
+pub fn advisory_memory_mb() -> u64 {
+    let pinned: u64 = toolchain::pinned("Z3_ADVISORY_MEMORY_MB")
+        .parse()
+        .expect("Z3_ADVISORY_MEMORY_MB must be an integer");
+    pinned.min(memory_mb())
+}
+
+thread_local! {
+    /// Set while `advisory` runs.
+    static ADVISORY: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Runs `f` with every solver process it starts under the advisory memory
+/// limit (`advisory_memory_mb`) in place of the gate's. For queries whose
+/// answer is a report, never a verdict of the gate: a query that reaches
+/// the limit is undecided, as at the gate's limit, so the smaller limit
+/// can only leave a report out. Deterministic like the gate's limit (Z3
+/// counts its own allocations).
+pub fn advisory<R>(f: impl FnOnce() -> R) -> R {
+    struct Restore(bool);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            ADVISORY.with(|a| a.set(self.0));
+        }
+    }
+    let _restore = Restore(ADVISORY.with(|a| a.replace(true)));
+    f()
+}
+
+/// The memory limit of a solver process started now: the gate's, or the
+/// advisory one inside `advisory`.
+fn process_memory_mb() -> u64 {
+    if ADVISORY.with(|a| a.get()) {
+        advisory_memory_mb()
+    } else {
+        memory_mb()
+    }
+}
+
 /// Whether a solver error is the memory limit. The process has ended: the
 /// next query needs a new one.
 pub fn out_of_memory(e: &str) -> bool {
@@ -311,7 +362,7 @@ pub fn out_of_memory(e: &str) -> bool {
 /// limit (the `rlimit`, the memory limit); `None` for any other error.
 pub fn limit_reason(e: &str) -> Option<String> {
     if out_of_memory(e) {
-        Some(format!("memory limit reached, {} MB", memory_mb()))
+        Some(format!("memory limit reached, {} MB", process_memory_mb()))
     } else if e.contains("canceled") {
         Some(format!("resource limit reached, rlimit {}", rlimit()))
     } else {
@@ -330,7 +381,7 @@ impl Solver {
                 "-smt2",
                 &format!("-t:{}", backstop_ms()),
                 &format!("-T:{HARD_SECS}"),
-                &format!("-memory:{}", memory_mb()),
+                &format!("-memory:{}", process_memory_mb()),
             ])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -773,6 +824,27 @@ mod tests {
             })
             .collect();
         assert_eq!(vals, ["5", "-3", "true", "T#1"]);
+    }
+
+    #[test]
+    fn advisory_queries_run_under_their_own_memory_limit() {
+        // Backlog T2-16: inside `advisory` a solver process starts with the
+        // advisory limit, outside (and after it, nested or not) with the
+        // gate's; the advisory limit is the smaller.
+        let pinned = |k: &str| toolchain::pinned(k).parse::<u64>().unwrap();
+        assert!(pinned("Z3_ADVISORY_MEMORY_MB") < pinned("Z3_MEMORY_MB"));
+        assert!(advisory_memory_mb() <= memory_mb());
+        assert_eq!(process_memory_mb(), memory_mb());
+        advisory(|| {
+            assert_eq!(process_memory_mb(), advisory_memory_mb());
+            advisory(|| assert_eq!(process_memory_mb(), advisory_memory_mb()));
+            assert_eq!(process_memory_mb(), advisory_memory_mb());
+            assert_eq!(
+                limit_reason("z3: out of memory"),
+                Some(format!("memory limit reached, {} MB", advisory_memory_mb()))
+            );
+        });
+        assert_eq!(process_memory_mb(), memory_mb());
     }
 
     #[test]

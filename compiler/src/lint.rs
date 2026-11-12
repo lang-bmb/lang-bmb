@@ -62,6 +62,13 @@
 //! counted as `skipped` in the summary, in a fixed (path, clause) order. It
 //! runs only on request (`bmb lint`); `check` and `verify` are unchanged.
 //!
+//! Every query after the first verification is advisory (`smt::advisory`,
+//! backlog T2-16): its solver process has the smaller memory limit
+//! `Z3_ADVISORY_MEMORY_MB`. A query that reaches it is undecided, as at the
+//! gate's limit, so a report can be left out but none is added. The first
+//! verification runs under the gate's limit: "verified" means what the gate
+//! means.
+//!
 //! `bmb lint --select CODES` runs only the listed checks (backlog T2-12):
 //! each reports what it reports in a full run, and the first verification
 //! and the precondition check run only when a selected check needs them.
@@ -324,7 +331,9 @@ pub fn lint_sources_selected(
     // W0901: unsatisfiable preconditions.
     let mut unsat = BTreeSet::new();
     let (pre, pre_cost) = if needs_pre {
-        let (v, c) = crate::verify::preconditions_satisfiable(&fe.program, &fe.tables);
+        let (v, c) = crate::smt::advisory(|| {
+            crate::verify::preconditions_satisfiable(&fe.program, &fe.tables)
+        });
         (v, Some(c))
     } else {
         (Vec::new(), None)
@@ -361,7 +370,8 @@ pub fn lint_sources_selected(
     // index of a maximum); the witness is the example a reader checks.
     let mut det_cost = None;
     if runs("W0918") {
-        let (rows, cost) = crate::verify::results_determined(&fe.program, &fe.tables);
+        let (rows, cost) =
+            crate::smt::advisory(|| crate::verify::results_determined(&fe.program, &fe.tables));
         det_cost = Some(cost);
         for (path, span, det) in rows {
             if unsat.contains(&path) || !defs.contains_key(&path) {
@@ -398,7 +408,8 @@ pub fn lint_sources_selected(
     // W0905: points of verified functions their own proof cannot reach.
     let mut reach_cost = None;
     if runs("W0905") {
-        let (points, cost) = crate::verify::vacuous_ends(&fe.program, &fe.tables);
+        let (points, cost) =
+            crate::smt::advisory(|| crate::verify::vacuous_ends(&fe.program, &fe.tables));
         reach_cost = Some(cost);
         for (path, span, what) in points {
             if unsat.contains(&path) || external(&path) || !verified(&path) {
@@ -436,8 +447,9 @@ pub fn lint_sources_selected(
                 .remove(i);
             let only: BTreeSet<String> = [(*path).clone()].into();
             let mut diags = Diags::default();
-            let o =
-                crate::verify::verify_defs(&prog, &fe.tables, &mut diags, &only, Some(&mut cache));
+            let o = crate::smt::advisory(|| {
+                crate::verify::verify_defs(&prog, &fe.tables, &mut diags, &only, Some(&mut cache))
+            });
             if clean(&o, &diags, &spans, &only) {
                 let sp = f.requires[i].span;
                 out.push(
@@ -496,7 +508,9 @@ pub fn lint_sources_selected(
                 .ensures
                 .remove(i);
             let mut diags = Diags::default();
-            let o = crate::verify::verify_defs(&prog, &fe.tables, &mut diags, cs, Some(&mut cache));
+            let o = crate::smt::advisory(|| {
+                crate::verify::verify_defs(&prog, &fe.tables, &mut diags, cs, Some(&mut cache))
+            });
             if clean(&o, &diags, &spans, cs) {
                 let sp = f.ensures[i].span;
                 let n = cs.len();
@@ -560,7 +574,9 @@ pub fn lint_sources_selected(
         );
         let only: BTreeSet<String> = [(*path).clone()].into();
         let mut diags = Diags::default();
-        let o = crate::verify::verify_defs(&prog, &fe.tables, &mut diags, &only, Some(&mut cache));
+        let o = crate::smt::advisory(|| {
+            crate::verify::verify_defs(&prog, &fe.tables, &mut diags, &only, Some(&mut cache))
+        });
         if clean(&o, &diags, &spans, &only) {
             surviving += 1;
             let s = &ss[k];

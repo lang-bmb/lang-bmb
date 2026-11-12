@@ -8556,7 +8556,14 @@ fn verify_pass(
                 match answer {
                     Ok(Answer::Unsat) => vacuous.push((path.clone(), *span, *what)),
                     Ok(Answer::Sat) => {}
-                    _ => reach_cost.undecided += 1,
+                    Ok(Answer::Unknown(_)) => reach_cost.undecided += 1,
+                    // The process ended (at its memory limit, backlog T2-16)
+                    // or cannot be read: this point is undecided and the
+                    // next one starts a new process, as in `sat_of`.
+                    Err(_) => {
+                        reach_cost.undecided += 1;
+                        solver = None;
+                    }
                 }
             }
             continue;

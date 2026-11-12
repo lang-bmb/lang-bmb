@@ -819,6 +819,134 @@ fn index_predicates_leave_no_satisfiability_check_undecided() {
     assert_eq!(n(&summary, "reach_undecided"), 0, "{text}");
 }
 
+/// A line of `scripts/toolchain.env` (`KEY=value`).
+fn pinned(key: &str) -> String {
+    let env = Path::new(env!("CARGO_MANIFEST_DIR")).join("../scripts/toolchain.env");
+    std::fs::read_to_string(env)
+        .unwrap()
+        .lines()
+        .find_map(|l| l.strip_prefix(&format!("{key}=")).map(str::to_string))
+        .unwrap()
+}
+
+/// Backlog T2-16: the queries after the first verification are advisory and
+/// their solver processes have the advisory memory limit. In the owned-tree
+/// arm of the port-shape experiment a changed body or a dropped clause makes
+/// an obligation false under the recursive predicate `spans_in` (a
+/// quantifier inside it), and so do its reach points and two precondition
+/// checks: Z3 neither refutes nor reaches its `rlimit` there, it grows. Each
+/// such query ends at the limit and is undecided: an undecided mutant is not
+/// a surviving one, an undecided check is counted. With the gate's limit for
+/// these queries the same lint took 328 s.
+#[test]
+fn advisory_queries_end_at_their_own_memory_limit() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+    let tree = root.join("dev-docs/experiments/port-shape/tree.bmb");
+    let tmp = std::env::temp_dir().join(format!("bmb-lint-advisory-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    let bin = tmp.join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+
+    // The pinned solver behind a script that writes down every start.
+    let path = std::env::var("PATH").unwrap();
+    let z3 = std::env::split_paths(&path)
+        .map(|d| d.join("z3"))
+        .find(|p| p.is_file())
+        .expect("z3 must be installed");
+    let log = tmp.join("starts");
+    std::fs::write(
+        bin.join("z3"),
+        format!(
+            "#!/bin/sh\n\
+             if [ \"$1\" != --version ]; then echo \"$@\" >> {}; fi\n\
+             exec {} \"$@\"\n",
+            log.display(),
+            z3.display()
+        ),
+    )
+    .unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(bin.join("z3"), std::fs::Permissions::from_mode(0o755)).unwrap();
+    let logged = format!("{}:{path}", bin.display());
+
+    let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
+        .env("PATH", &logged)
+        .arg("lint")
+        .arg(&tree)
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    let text = String::from_utf8(out.stdout).unwrap();
+    let mut reports = rows(&text);
+    let summary = reports.pop().unwrap();
+    assert_eq!(
+        (
+            n(&summary, "mutants"),
+            n(&summary, "surviving"),
+            n(&summary, "mutants_skipped")
+        ),
+        (64, 13, 58),
+        "{text}"
+    );
+    assert_eq!(n(&summary, "pre_undecided"), 2, "{text}");
+    assert_eq!(n(&summary, "reach_undecided"), 7, "{text}");
+    assert_eq!(
+        reports.iter().filter(|r| s(r, "code") == "W0904").count(),
+        13
+    );
+
+    // The first verification ran under the gate's limit, everything after
+    // it under the advisory one, each query that reached it in a process
+    // of its own.
+    let gate = format!("-memory:{}", pinned("Z3_MEMORY_MB"));
+    let advisory = format!("-memory:{}", pinned("Z3_ADVISORY_MEMORY_MB"));
+    assert_ne!(gate, advisory);
+    let starts = std::fs::read_to_string(&log).unwrap();
+    let starts: Vec<&str> = starts.lines().collect();
+    let first = starts.iter().take_while(|l| l.contains(&gate)).count();
+    assert!(first >= 1, "{starts:?}");
+    assert!(
+        starts[first..].iter().all(|l| l.contains(&advisory)),
+        "{starts:?}"
+    );
+    assert!(starts.len() - first > 40, "{starts:?}");
+
+    // One of the undecided mutants, `*pos = s + 2` in `term`: not reported,
+    // and the gate does not decide it either (here at a smaller limit, the
+    // sooner to reach it), so it is neither a survivor nor killed.
+    let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
+        .args(["mutate", "--def", "tree::term"])
+        .arg(&tree)
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let mutants = rows(&String::from_utf8(out.stdout).unwrap());
+    let m = mutants
+        .iter()
+        .find(|m| (s(m, "before"), s(m, "after")) == ("s + 1", "s + 2"))
+        .unwrap();
+    assert!(
+        !reports.iter().any(|r| s(r, "code") == "W0904"
+            && (n(r, "line"), n(r, "col")) == (n(m, "line"), n(m, "col"))),
+        "{text}"
+    );
+    let file = tmp.join("tree.bmb");
+    std::fs::write(&file, s(m, "text")).unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
+        .env("BMB_Z3_MEMORY_MB", "64")
+        .args(["verify", "--def", "tree::term"])
+        .arg(&file)
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    let verdict = String::from_utf8(out.stdout).unwrap();
+    assert!(
+        verdict.contains("in `tree::term`: solver could not decide (memory limit reached, 64 MB)"),
+        "{verdict}"
+    );
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
 /// W0909 (ADR-0030 §3, backlog 2F-02): a declared effect the body does not
 /// need, from its own operations or its callees' declared effects. Not for
 /// `main`'s `io`, a trait's method or an `impl`'s function of a trait. The

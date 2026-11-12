@@ -17,7 +17,7 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 54744,
+    "S4_stage0_rust_lines": 54784,
     "S5_tests_bound_to_rust_api": 1,
     "S6_selfhost_bmb_lines": 0,
     "S7_selfhost_proved_defs": null,
@@ -27,7 +27,7 @@
     "B1_baseline_binary_bytes": 101664,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 17,
-    "O3_active_backlog_chars": 35817
+    "O3_active_backlog_chars": 35457
   },
   "history": [
     {
@@ -2678,6 +2678,20 @@
         "O3_active_backlog_chars": [
           36191,
           35817
+        ]
+      }
+    },
+    {
+      "date": "2026-11-12",
+      "reason": "ADR-0126 lint 권고 질의의 메모리 한도, 도달 지점 루프의 죽은 프로세스 결함",
+      "changed": {
+        "S4_stage0_rust_lines": [
+          54744,
+          54784
+        ],
+        "O3_active_backlog_chars": [
+          35817,
+          35457
         ]
       }
     }
