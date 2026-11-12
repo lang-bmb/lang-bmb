@@ -117,6 +117,7 @@
       "stage0": [
         "verify.rs",
         "subproof.rs",
+        "verify/examples.rs",
         "verify/invariants.rs",
         "verify/text.rs"
       ],

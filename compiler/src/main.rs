@@ -86,6 +86,22 @@ const USAGE: &str = "usage:
                             tried without changing the files (ADR-0109): per candidate its first
                             answer on entry and kept by the body, then the largest subset that
                             is inductive together (Houdini) and whether PATH proves with it
+  bmb examples [--count N] DEF.. -- <file.bmb>...
+                            examples of each named function's contract, from `requires` and
+                            `ensures` alone (the body is not read, the program is checked, not
+                            proved), as JSONL in a fixed order: per input (N of them, default 3,
+                            each different from the earlier ones, small values first) a row
+                            `allowed` (input and a result the contract allows), a second
+                            `allowed` row when it allows another result for that input, and a
+                            row `rejected` (a result it rejects for that input); then `rejected`
+                            rows at other inputs while fewer than N are shown, then up to N rows
+                            `excluded` (inputs `requires` rejects), then a summary row (rows per
+                            kind, undecided queries, rlimit); `after` holds the values behind
+                            `&mut` parameters; values are models of the gate's encoding, printed
+                            as counterexamples are, lengths at most 4; a query that is not
+                            decided shows nothing and is counted; a definition whose values
+                            cannot be shown in full (or whose contract names a spec fn that is
+                            not revealed) gets only a summary row with `reason`
   bmb mutate --def PATH [--def PATH].. <file.bmb>...
                             every W0904 body mutation of the named functions, unproved, as
                             JSONL rows with the changed unit's normal form, then a summary
@@ -671,6 +687,48 @@ fn run() -> ExitCode {
                         print!("{}", m.row());
                     }
                     println!("{{\"summary\":true,\"mutants\":{}}}", ms.len());
+                    ExitCode::SUCCESS
+                }
+                Err(e) => {
+                    print!("{e}");
+                    ExitCode::from(1)
+                }
+            }
+        }
+        Some("examples") if args.len() > 1 => {
+            let mut count = 3usize;
+            let mut rest = &args[1..];
+            if let [flag, n, tail @ ..] = rest
+                && flag == "--count"
+            {
+                match n.parse() {
+                    Ok(k) if (1..=bmb::verify::MAX_EXAMPLES).contains(&k) => count = k,
+                    _ => {
+                        eprintln!(
+                            "bmb: --count takes a number from 1 to {}",
+                            bmb::verify::MAX_EXAMPLES
+                        );
+                        return ExitCode::from(2);
+                    }
+                }
+                rest = tail;
+            }
+            let Some(sep) = rest.iter().position(|a| a == "--") else {
+                eprintln!("bmb: put `--` between the definitions and the files");
+                return ExitCode::from(2);
+            };
+            let (defs, paths) = (&rest[..sep], &rest[sep + 1..]);
+            if defs.is_empty() || paths.is_empty() {
+                eprintln!("{USAGE}");
+                return ExitCode::from(2);
+            }
+            let files = match read_files(paths) {
+                Ok(f) => f,
+                Err(code) => return code,
+            };
+            match bmb::examples_sources(&files, defs, count) {
+                Ok(out) => {
+                    print!("{out}");
                     ExitCode::SUCCESS
                 }
                 Err(e) => {

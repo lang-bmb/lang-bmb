@@ -478,10 +478,16 @@ impl Proc {
         }
     }
 
-    /// Reads one complete s-expression or atom from the solver.
+    /// Reads one complete s-expression or atom from the solver. A
+    /// parenthesis inside a string literal or a quoted symbol does not
+    /// count (an error message may quote one: `invalid pattern, '(' or
+    /// identifier expected`; counted, the read waited for a `)` that never
+    /// came).
     fn read_response(&mut self) -> Result<String, String> {
         let mut out = String::new();
         let mut depth: i64 = 0;
+        // The delimiter of the literal or quoted symbol being read.
+        let mut quoted: Option<char> = None;
         loop {
             let mut line = String::new();
             let n = self
@@ -494,14 +500,17 @@ impl Proc {
                     .unwrap_or_else(|| "z3 exited unexpectedly".into()));
             }
             for c in line.chars() {
-                match c {
-                    '(' => depth += 1,
-                    ')' => depth -= 1,
-                    _ => {}
+                match (quoted, c) {
+                    (Some(q), c) if c == q => quoted = None,
+                    (Some(_), _) => {}
+                    (None, '"' | '|') => quoted = Some(c),
+                    (None, '(') => depth += 1,
+                    (None, ')') => depth -= 1,
+                    (None, _) => {}
                 }
             }
             out.push_str(&line);
-            if depth <= 0 && !out.trim().is_empty() {
+            if depth <= 0 && quoted.is_none() && !out.trim().is_empty() {
                 return Ok(out.trim().to_string());
             }
         }
@@ -999,6 +1008,23 @@ mod tests {
         assert_eq!(working_memory_mb(memory_mb()), memory_mb() / 2);
         assert!(working_memory_mb(advisory_memory_mb()) < advisory_memory_mb());
         assert_eq!(working_memory_mb(1), 1);
+    }
+
+    /// The solver's error for a malformed pattern quotes a parenthesis:
+    /// it is one answer, and the next command is answered.
+    #[test]
+    fn an_error_that_quotes_a_parenthesis_is_one_answer() {
+        if toolchain::check_z3().is_err() {
+            return;
+        }
+        let mut s = Solver::start().unwrap();
+        s.run("(reset)").unwrap();
+        let e = s
+            .run("(assert (forall ((i Int)) (! (> i 0) :pattern (2))))")
+            .unwrap_err();
+        assert!(e.contains("invalid pattern"), "{e}");
+        s.run("(reset)\n(assert true)").unwrap();
+        assert!(matches!(s.check_sat(), Ok(Answer::Sat)));
     }
 
     #[test]

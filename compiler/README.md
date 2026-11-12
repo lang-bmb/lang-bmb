@@ -17,6 +17,7 @@ cargo run -- stability a.bmb     # Z3 시드 0..5로 증명해 판정이 시드�
 cargo run -- uses a.bmb          # 증명되지 않는 정의마다 최소 #[uses(..)] 목록을 찾아 보고. --write면 파일 수정(2D-05). --cache DIR은 verify와 같은 캐시(2D-15)
 cargo run -- lint a.bmb          # 계약 조정 린트: 불가능한 pre, 증명에 쓰이지 않는 pre, 호출자가 쓰지 않는 post, 변이가 살아남는 약한 명세(경고 W09xx, 2D-08·2D-09). --cache DIR은 verify와 같은 캐시(2D-15). --select W0901,W0905는 그 검사만(T2-12)
 cargo run -- mutate --def u::f a.bmb  # W0904 변이 전부(상한 없음, 증명 안 함)를 프로그램으로: 행마다 바뀐 단위의 정규형(BSB 생성기용, 2A-10)
+cargo run -- examples --count 3 u::f -- a.bmb  # 계약의 예시·반례(T1-44c): 본문 없이 `requires`·`ensures`만으로 허용 입출력, 거부되는 결과, 제외되는 입력을 JSONL로(아래 "계약의 예시")
 cargo run -- weaken old/ new/    # 명세 약화 감지: 두 판(파일이나 작업 공간)의 계약을 SMT 함의로 비교, 정의마다 same·refined·weakened 등과 반례, 약화는 W0908(2D-19). 약화·미결이 있으면 종료 코드 1
 cargo run -- weaken --readers r.jsonl old/ new/  # 읽는 쪽의 비교: 줄마다 정의와 그 계약을 읽는 증명의 #[uses], 그 공개 집합(과 두 계약이 부르는 spec fn: 읽는 쪽의 기본 문맥, ADR-0095 A1)으로만 정방향 판정(T1-27, ADR-0065 §3)
 cargo run -- reads a.bmb         # 정의마다 증명 키를 행으로(증명의 읽기 집합: 자기 텍스트, 피호출자 계약, 펼친 spec fn, 선언, 타입, T1-27)
@@ -183,6 +184,20 @@ ADR-0016의 부분집합을 구체화한 것이다. 모두 "선택을 필수로"
 - `--select CODES`(쉼표로 구분, `lint::CODES`의 W0901~W0907, W0909, W0910, W1001, W1002): 그 검사만 돌린다(flake8·ruff의 `--select`). 고른 검사는 전체 실행과 같은 것을 보고한다. 첫 전체 검증은 증명된 함수를 판정하는 W0902~W0905를 고를 때만, 사전조건 충족 검사는 W0901과 그 불가 함수를 빼는 W0902·W0904·W0905를 고를 때만 돈다(그때 `pre_*`도 나온다). 고르지 않은 검사의 수는 0이다. 모르는 코드는 종료 코드 2. 비용만 볼 때는 `--select W0901,W0905`(W0902~W0904의 재검증과 변이를 건너뛴다).
 - 한계: W0903은 현재 프로그램의 호출자만 본다(공개 API로 쓸 post도 보고될 수 있어 정보성이다). 기준 검증에서 실패한 함수나 호출자가 실패한 함수는 판정하지 않는다.
 - `bmb mutate --def PATH [--def PATH].. <file.bmb>..`(백로그 2A-10, `lint::mutate_sources`): W0904와 같은 변이 지점(같은 순서)마다 변이를 하나 적용한 프로그램을 만든다. 상한도 증명도 없다. 행은 `{"def","site","line","col","before","after","unit","text"}`(`text`는 바뀐 최상위 단위의 정규형, 다른 단위는 그대로)이고 마지막 줄은 `{"summary":true,"mutants"}`. 실행 함수가 아닌 경로나 검사 오류면 종료 코드 1. BSB 변이체 생성기(`bench/m1/bsb_gen.py`)가 쓴다.
+
+## 계약의 예시 (`bmb examples`, 백로그 T1-44c)
+
+`bmb examples [--count N] DEF.. -- <file.bmb>..`(`verify::examples`, `src/verify/examples.rs`)는 실행 함수의 `requires`·`ensures`만으로(본문은 읽지 않는다. 프로그램은 검사만 하고 증명하지 않는다) 명세를 읽는 검토자에게 보일 예시를 만든다(ADR-0078 H-INTENT).
+
+- **행(JSONL):** `{"def","kind","input":{매개변수: 값},"result":값,"after":{매개변수: 값}}`. `kind`는 `allowed`(입력이 `requires`를, 결과가 `ensures`를 충족), `rejected`(입력은 `requires`를 충족하고 결과는 `ensures`를 어김), `excluded`(매개변수 타입의 값이지만 `requires`가 거부. `result` 없음). `result`는 결과가 `()`이면 없고, `after`는 `&mut` 매개변수가 있을 때만 그 뒤의 값이다. 값은 문자열이고 반례와 같은 표기다(`verify::model_values` 하나가 진단의 반례, W0918, 예시를 찍는다): `-5`, `true`, `[1, 2] (len 2)`, `Point { x: 1, y: true }`.
+- **순서:** 정의는 인자 순서. 정의마다 입력 N개(기본 3, 1~64)에 대해 차례로 ① `allowed`, ② 같은 입력에서 다른 결과도 허용되면 `allowed` 한 줄 더(명세가 그 입력의 결과를 정하지 않는다는 증거. W0918의 질문을 입력 하나에 묻는 것), ③ 같은 입력의 `rejected`. 그 뒤 `rejected`가 N개보다 적으면 앞의 입력들과 다른 입력에서 `rejected`, 그 뒤 `excluded` 최대 N개(`requires`가 있을 때), 마지막에 요약 `{"def","summary":true,"allowed","rejected","excluded","undecided","rlimit","max_len":4}`(행 수, 결정하지 못한 질의 수, 보낸 모든 질의의 `rlimit` 합).
+- **질의:** 진입 상태는 게이트·W0901·W0918과 같은 함수가 만든다(`Enc::entry_params`, `Enc::entry_requires`: 매개변수의 범위·타입 불변식·`#[uses]`가 드러낸 정의). 판정은 W0901·W0918의 `verify::sat_of`(탐침, 전체 질의, 기저 인스턴스 재시도), 고정 시드와 `rlimit`, 조언용 메모리 한도(`smt::advisory`). `&mut` 뒤의 값은 호출 지점과 같은 규칙(`Enc::behind_mut_after`: 슬라이스의 길이는 그대로). 다음 입력은 앞 입력들의 값을 막는 절로 얻는다. `rejected`는 입력을 고정하고 `¬ensures`를 묻는다.
+- **작은 값 먼저:** 질의마다 범위 탐색의 범위(`verify::bound_terms`, ADR-0108: 정수 `|x| <= 8`)를 더해 먼저 묻고, 모델이 없거나 미결정이면 범위 없이 묻는다. 그 범위 안에서 n번째 입력(0부터)은 입력 길이가 모두 n 이상이기를 먼저 묻고, `bool` 결과의 `allowed`는 n이 짝수면 `true`, 홀수면 `false`를 먼저 묻는다(범위 안, 범위 밖 순). 길이는 언제나 4 이하다(반례 출력이 원소 4개까지만 온전히 보인다. `max_len`). 그래서 길이 5 이상에서만 충족되는 계약은 행이 없다.
+- **모델이 값을 주지 않을 때:** 해법기가 `bool` 값에 식을 돌려주면(한정된 술어와 같다고 한 결과) 그 항을 참으로, 안 되면 거짓으로 더해 다시 묻는다. 정수 값이 리터럴이 아니면 그 질의는 미결정이다.
+- **미결정:** `unknown`이나 한도로 끝난 질의는 행을 내지 않고 `undecided`에 센다(그 종류의 열거는 거기서 끝난다). 모델이 아닌 값은 찍지 않는다. 재귀 spec fn을 거치는 계약은 대개 이쪽이다(해법기가 한정된 정의의 모델을 찾지 못한다).
+- **예시가 없는 정의:** 요약 행에 `reason`만 낸다(질의 없음). 값이 온전히 보이지 않는 타입(지원: 정수, `bool`, 그것들의 구조체, 그것들이나 그 구조체의 배열·슬라이스·`Vec`, 고정 길이는 4 이하. 그 밖의 enum·`Option`·`f64`·텍스트·타입 매개변수·재귀 구조체는 미지원), `#[uses]`로 드러나지 않은 spec fn을 거치는 계약(W0918과 같이 판정하지 않는다. 드러낸 정의의 본문이 부르는 것 포함), `f64` 연산을 쓰는 계약.
+- **결정론:** 같은 파일이면 같은 바이트다(캐시를 쓰지 않는다). 종료 코드: 0, 실행 함수가 아닌 경로나 검사 오류는 1, 사용법 오류는 2.
+- **시험(`tests/examples.rs`, CLI로만):** `shown_examples_hold_at_the_gate`는 생성기의 질의와 다른 길로 확인한다: 행의 값을 리터럴로 묶고 주장(`allowed`는 pre와 post, `rejected`는 pre와 `!post`, `excluded`는 `!pre`)을 `assert`하는 함수를 만들어 `bmb verify`가 증명하는지 본다(정의 8개: 슬라이스 위의 정렬·상계·범위 술어, 구조체, `&mut`). `the_gate_refuses_an_exchanged_claim`(주장을 바꾸면 증명되지 않는다), `rows_and_summary_have_the_documented_shape`, `the_output_is_the_same_bytes_every_run`, `a_contract_that_fixes_the_result_has_one_allowed_row_per_input`, `a_weak_contract_shows_two_allowed_results_for_one_input`, `slice_inputs_grow_with_the_row`, `an_undecided_query_shows_nothing_and_is_counted`, `a_definition_without_examples_says_why`, `errors`.
 
 ## 명세 약화 감지 (`bmb weaken`, 백로그 2D-19)
 

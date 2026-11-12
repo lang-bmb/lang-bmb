@@ -9,8 +9,10 @@
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
 
+mod examples;
 mod invariants;
 mod text;
+pub use examples::{Example, Examples, MAX_EXAMPLES, examples};
 use invariants::Boundary;
 /// The text terms (ADR-0050 §3), for `tests/lemmas.rs`.
 pub use text::{boundary as text_boundary, scalar as char_scalar, utf8_len as char_utf8_len};
@@ -4912,6 +4914,69 @@ impl<'p, 'q> Enc<'p, 'q> {
         (self.vars.clone(), self.old.clone())
     }
 
+    /// The entry state of the executable function `f` (this encoder's
+    /// definition), the one encoding of it: the proof of the body, a
+    /// contract comparison, the satisfiability checks (W0901, W0918) and
+    /// the examples of a contract (`examples`) all start here. Each
+    /// parameter is a fresh value in its type's range, valid (ADR-0060 §2:
+    /// its caller proved it) and, where it is text, valid UTF-8 (ADR-0050
+    /// §3, backlog 2U-06); the value behind a `&mut` parameter is also its
+    /// `old`. The parameters are `inputs`, in order.
+    fn entry_params(&mut self, f: &FnDef) {
+        let path = self.path.clone();
+        for (i, prm) in f.params.iter().enumerate() {
+            let ty = self.local_ty(&prm.name.name);
+            let v = self.fresh_val(&prm.name.name, &ty);
+            self.assume_valid(&v, &ty);
+            if self.text_at(&path, Some(i)) {
+                self.assume_text(&v);
+            }
+            if let TypeKind::Ref { mutable: true, .. } = prm.ty.kind {
+                self.old.insert(prm.name.name.clone(), v.clone());
+            }
+            self.inputs.push((prm.name.name.clone(), v.clone(), ty));
+            self.bind_var(prm.name.name.clone(), v);
+        }
+    }
+
+    /// The `requires` clauses of `f` on the entry state (`entry_params`),
+    /// one term per clause.
+    fn entry_requires(&mut self, f: &FnDef) -> Vec<String> {
+        let (env, old) = self.cur_env();
+        f.requires
+            .iter()
+            .map(|r| self.spec(r, &env, &old).s())
+            .collect()
+    }
+
+    /// The value behind a `&mut` parameter after the function: the callee
+    /// may change the place, the elements of a slice but never its length;
+    /// a `&mut Vec<T>` or a `&mut String` also its length (text is bytes
+    /// here: `Tables::lowered`, backlog 4B-02). `before` is the value on
+    /// entry, `ty` the parameter's type and `grows` whether it is growable.
+    fn behind_mut_after(&mut self, base: &str, before: &Val, ty: &TypeKind, grows: bool) -> Val {
+        let e = elem_ty(ty);
+        let new_len = |s: &mut Self, len: &String| {
+            if !grows {
+                return len.clone();
+            }
+            let l = s.fresh(&format!("{base}.len"), "Int");
+            s.pc.push(format!("(and (<= 0 {l}) (<= {l} {}))", len_max(&e)));
+            l
+        };
+        match before {
+            Val::A { len, .. } => Val::A {
+                elems: self.fresh_elems(base, &e, false),
+                len: new_len(self, len),
+            },
+            Val::Arr { len, .. } => Val::Arr {
+                elem: Box::new(self.fresh_struct_elems(base, &e)),
+                len: new_len(self, len),
+            },
+            _ => self.fresh_val(base, ty),
+        }
+    }
+
     /// Ghost code (ADR-0062 §2): `if` and `match` branch on specifications
     /// (the facts proved on a side hold under its condition), a `proof fn`
     /// call proves its preconditions and assumes its `ensures`, and any
@@ -6544,30 +6609,9 @@ impl<'p, 'q> Enc<'p, 'q> {
             {
                 let mut steps = Vec::new();
                 let root = self.place(&args[i], &mut steps, false);
-                // A `&mut Vec<T>` or a `&mut String` may change its length
-                // (text is bytes here: `Tables::lowered`, backlog 4B-02).
                 let grows =
                     matches!(&p.ty.kind, TypeKind::Ref { inner, .. } if growable(&inner.kind));
-                let e = elem_ty(&param_tys[i]);
-                let new_len = |s: &mut Self, len: &String| {
-                    if !grows {
-                        return len.clone();
-                    }
-                    let l = s.fresh(&format!("{root}.len"), "Int");
-                    s.pc.push(format!("(and (<= 0 {l}) (<= {l} {}))", len_max(&e)));
-                    l
-                };
-                let nv = match &argv[i] {
-                    Val::A { len, .. } => Val::A {
-                        elems: self.fresh_elems(&root, &e, false),
-                        len: new_len(self, len),
-                    },
-                    Val::Arr { len, .. } => Val::Arr {
-                        elem: Box::new(self.fresh_struct_elems(&root, &e)),
-                        len: new_len(self, len),
-                    },
-                    _ => self.fresh_val(&root, &param_tys[i]),
-                };
+                let nv = self.behind_mut_after(&root, &argv[i], &param_tys[i], grows);
                 old_env.insert(p.name.name.clone(), argv[i].clone());
                 // The callee left it valid.
                 self.assume_valid(&nv, &param_tys[i]);
@@ -7647,21 +7691,10 @@ pub fn preconditions_satisfiable(
             axioms.push((spec_key(&u, t), ax));
             axiom_parts.extend(parts);
         }
-        for (i, prm) in d.f.params.iter().enumerate() {
-            let ty = enc.local_ty(&prm.name.name);
-            let v = enc.fresh_val(&prm.name.name, &ty);
-            // The entry state the prover assumes: valid parameters too.
-            enc.assume_valid(&v, &ty);
-            if enc.text_at(path, Some(i)) {
-                enc.assume_text(&v);
-            }
-            enc.bind_var(prm.name.name.clone(), v);
-        }
-        let (env, old) = enc.cur_env();
-        for r in &d.f.requires {
-            let g = enc.spec(r, &env, &old).s();
-            enc.pc.push(g);
-        }
+        // The entry state the prover assumes: valid parameters too.
+        enc.entry_params(d.f);
+        let req = enc.entry_requires(d.f);
+        enc.pc.extend(req);
         if solver_down {
             out.push((path.clone(), span, None));
             continue;
@@ -7768,22 +7801,11 @@ pub fn results_determined(
             axioms.push((spec_key(&u, t), ax));
             axiom_parts.extend(parts);
         }
-        let mut inputs = Vec::new();
-        for (i, prm) in f.params.iter().enumerate() {
-            let ty = enc.local_ty(&prm.name.name);
-            let v = enc.fresh_val(&prm.name.name, &ty);
-            enc.assume_valid(&v, &ty);
-            if enc.text_at(path, Some(i)) {
-                enc.assume_text(&v);
-            }
-            inputs.push((prm.name.name.clone(), v.clone(), ty));
-            enc.bind_var(prm.name.name.clone(), v);
-        }
+        enc.entry_params(f);
+        let inputs = enc.inputs.clone();
+        let req = enc.entry_requires(f);
+        enc.pc.extend(req);
         let (env, old) = enc.cur_env();
-        for r in &f.requires {
-            let g = enc.spec(r, &env, &old).s();
-            enc.pc.push(g);
-        }
         let ret = crate::check::subst(&t.fns[path].ret, &enc.tsub);
         let (r1, r2) = (
             enc.fresh_val("result.one", &ret),
@@ -8357,19 +8379,7 @@ fn verify_pass(
                     axioms.push((spec_key(&u, t), ax));
                     axiom_parts.extend(parts);
                 }
-                for (i, prm) in d.f.params.iter().enumerate() {
-                    let ty = enc.local_ty(&prm.name.name);
-                    let v = enc.fresh_val(&prm.name.name, &ty);
-                    enc.assume_valid(&v, &ty);
-                    if enc.text_at(path, Some(i)) {
-                        enc.assume_text(&v);
-                    }
-                    if let TypeKind::Ref { mutable: true, .. } = prm.ty.kind {
-                        enc.old.insert(prm.name.name.clone(), v.clone());
-                    }
-                    enc.inputs.push((prm.name.name.clone(), v.clone(), ty));
-                    enc.bind_var(prm.name.name.clone(), v);
-                }
+                enc.entry_params(d.f);
                 let at = RefineAt::Version {
                     own_domain: job.own_domain,
                 };
@@ -8438,29 +8448,13 @@ fn verify_pass(
                     axioms.push((spec_key(&u, t), ax));
                     axiom_parts.extend(parts);
                 }
-                for (i, prm) in d.f.params.iter().enumerate() {
-                    let ty = enc.local_ty(&prm.name.name);
-                    let v = enc.fresh_val(&prm.name.name, &ty);
-                    // A parameter is valid (ADR-0060 §2): its caller proved it.
-                    enc.assume_valid(&v, &ty);
-                    // Text is valid UTF-8 (ADR-0050 §3, backlog 2U-06).
-                    if enc.text_at(path, Some(i)) {
-                        enc.assume_text(&v);
-                    }
-                    if let TypeKind::Ref { mutable: true, .. } = prm.ty.kind {
-                        enc.old.insert(prm.name.name.clone(), v.clone());
-                    }
-                    enc.inputs.push((prm.name.name.clone(), v.clone(), ty));
-                    enc.bind_var(prm.name.name.clone(), v);
-                }
+                enc.entry_params(d.f);
                 if let Some((decl, rsub)) = refinement_of(t, path) {
                     enc.refines(d.f, &decl, rsub, RefineAt::Trait);
                 }
+                let req = enc.entry_requires(d.f);
+                enc.pc.extend(req);
                 let (env, old) = enc.cur_env();
-                for r in &d.f.requires {
-                    let g = enc.spec(r, &env, &old).s();
-                    enc.pc.push(g);
-                }
                 if let Some(dec) = &d.f.decreases {
                     enc.entry_measure = Some(enc.measure(dec, &env, &old));
                 }
@@ -10073,6 +10067,14 @@ fn bounded_limit() -> String {
 /// A model of the bounded query is a model of the query (the bounds only
 /// narrow it), so its `sat` is a counterexample.
 fn input_bounds(inputs: &[(String, Val, TypeKind)]) -> String {
+    bound_terms(inputs)
+        .iter()
+        .map(|t| format!("(assert {t})\n"))
+        .collect()
+}
+
+/// The terms of `input_bounds`, one per assertion.
+fn bound_terms(inputs: &[(String, Val, TypeKind)]) -> Vec<String> {
     fn int_leaf(t: &TypeKind) -> bool {
         match t {
             TypeKind::Int(_) => true,
@@ -10090,29 +10092,27 @@ fn input_bounds(inputs: &[(String, Val, TypeKind)]) -> String {
             _ => false,
         }
     }
-    let mut out = String::new();
+    let mut out = Vec::new();
     let num = |s: &str| s.chars().all(|c| c.is_ascii_digit());
     for (_, v, t) in inputs {
         match v {
             Val::S(x) if int_leaf(t) => {
-                out.push_str(&format!(
-                    "(assert (and (<= (- {BOUND}) {x}) (<= {x} {BOUND})))\n"
-                ));
+                out.push(format!("(and (<= (- {BOUND}) {x}) (<= {x} {BOUND}))"));
             }
             Val::A { elems, len } => {
                 if !num(len) {
-                    out.push_str(&format!("(assert (<= {len} {BOUND_LEN}))\n"));
+                    out.push(format!("(<= {len} {BOUND_LEN})"));
                 }
                 if elem_int(t) {
                     for i in 0..BOUND_LEN {
-                        out.push_str(&format!(
-                            "(assert (=> (< {i} {len}) (and (<= (- {BOUND}) (select {elems} {i})) (<= (select {elems} {i}) {BOUND}))))\n"
+                        out.push(format!(
+                            "(=> (< {i} {len}) (and (<= (- {BOUND}) (select {elems} {i})) (<= (select {elems} {i}) {BOUND})))"
                         ));
                     }
                 }
             }
             Val::Arr { len, .. } if !num(len) => {
-                out.push_str(&format!("(assert (<= {len} {BOUND_LEN}))\n"));
+                out.push(format!("(<= {len} {BOUND_LEN})"));
             }
             _ => {}
         }
@@ -10398,6 +10398,22 @@ fn f64_undecided(o: &Obl, path: &str, why: &str) -> Diag {
 /// `x = 5, a = [1, 2] (len 2), p = Point { x: 1, y: 2 }` from the current
 /// model.
 fn counterexample(sol: &mut Solver, inputs: &[(String, Val, TypeKind)], tb: &Tables) -> String {
+    model_values(sol, inputs, tb)
+        .unwrap_or_default()
+        .iter()
+        .map(|(name, v)| format!("{name} = {v}"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Each of `inputs` by name with its value in the current model, as a
+/// counterexample shows it: the one printer of model values (diagnostics,
+/// W0918, `examples`). `None` when the model cannot be read.
+fn model_values(
+    sol: &mut Solver,
+    inputs: &[(String, Val, TypeKind)],
+    tb: &Tables,
+) -> Option<Vec<(String, String)>> {
     // A recursive struct is shown by its fields, one level deep (backlog
     // 2O-03d): its own model value is an element of an uninterpreted sort.
     let inputs: Vec<(String, Val, TypeKind)> = inputs
@@ -10437,17 +10453,15 @@ fn counterexample(sol: &mut Solver, inputs: &[(String, Val, TypeKind)], tb: &Tab
     for (_, v, _) in inputs {
         model_terms(v, &mut terms);
     }
-    let Ok(vals) = sol.get_values(&terms) else {
-        return String::new();
-    };
+    let vals = sol.get_values(&terms).ok()?;
     let mut it = vals.into_iter();
     let mut parts = Vec::new();
     for (name, v, t) in inputs {
         if *v != Val::Unit {
-            parts.push(format!("{name} = {}", show(v, t, tb, &mut it)));
+            parts.push((name.clone(), show(v, t, tb, &mut it)));
         }
     }
-    parts.join(", ")
+    Some(parts)
 }
 
 /// Elements of an array shown in a counterexample.

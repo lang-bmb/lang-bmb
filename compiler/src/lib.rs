@@ -89,6 +89,27 @@ struct Frontend {
     tables: verify::Tables,
 }
 
+/// `bmb examples`: examples of the contracts of `defs` (backlog T1-44c,
+/// `verify::examples`), `count` inputs each, as JSONL: per definition its
+/// rows and a summary row. The program is checked, not proved: the examples
+/// come from the contracts alone. The queries are advisory
+/// (`smt::advisory`): a report, never a verdict of the gate. `Err` is the
+/// diagnostics of a program that does not check, or names a path that is
+/// not an executable function.
+pub fn examples_sources(
+    files: &[(String, String)],
+    defs: &[String],
+    count: usize,
+) -> Result<String, String> {
+    let fe = frontend(files);
+    if fe.diags.has_errors() {
+        return Err(fe.diags.to_jsonl(&fe.sm));
+    }
+    let found = smt::advisory(|| verify::examples(&fe.program, &fe.tables, defs, count))
+        .map_err(|e| format!("{e}\n"))?;
+    Ok(found.iter().map(|e| e.jsonl()).collect())
+}
+
 fn frontend(files: &[(String, String)]) -> Frontend {
     let mut sm = SourceMap::default();
     let mut diags = Diags::default();
