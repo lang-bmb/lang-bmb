@@ -12,7 +12,7 @@ mod t {
     impl<T> Tr for T {
         #[effects(pure)]
         fn get(self: &T) -> i64 {
-            true
+            absent(2)
         }
     }
 

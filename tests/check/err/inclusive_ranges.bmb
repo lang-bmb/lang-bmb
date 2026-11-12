@@ -17,7 +17,7 @@ mod t {
     fn part(s: &str) -> usize
         requires s.len() == 4,
     {
-        let n: usize = len(&s[0..=missing]);
+        let n: usize = len(&s[0..=absent(1)]);
         n
     }
 

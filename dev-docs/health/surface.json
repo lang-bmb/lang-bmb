@@ -297,8 +297,8 @@
    "src": "bd6c9d6e05e3f1f4"
   },
   "tests/check/err/inclusive_ranges.bmb": {
-   "out": "60586c9f212029e2",
-   "src": "4b225ec2425d314d"
+   "out": "dc2890169f4b92aa",
+   "src": "ea20ade690f74eeb"
   },
   "tests/check/err/invariants.bmb": {
    "out": "bd66d9e107febd7a",
@@ -373,8 +373,8 @@
    "src": "088ad9a0da9518cf"
   },
   "tests/check/err/rejected_impls.bmb": {
-   "out": "a2b96e2d5c9fe8e9",
-   "src": "f0c7959e1af3de16"
+   "out": "e5af5623a193297f",
+   "src": "92b08cd7dfa5718c"
   },
   "tests/check/err/reserved_names.bmb": {
    "out": "d2035b90d5b51b00",
