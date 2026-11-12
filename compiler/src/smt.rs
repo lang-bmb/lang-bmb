@@ -20,16 +20,41 @@ pub enum Answer {
 }
 
 pub struct Solver {
-    child: Child,
-    stdin: ChildStdin,
-    stdout: BufReader<ChildStdout>,
-    started: Instant,
+    /// The process that answers; `None` after a query ended at the memory
+    /// limit in a process of its own, until the next `(reset)`.
+    proc: Option<Proc>,
+    /// The memory limit in megabytes that decides (`query_memory_mb` when
+    /// the solver started): only a query that reaches it as the first query
+    /// of its process is undecided for memory (ADR-0129).
+    limit: u64,
+    /// The commands of the query since its `(reset)`, as sent: what a new
+    /// process is asked when the query's process ends at its memory limit.
+    query: Vec<String>,
+    /// Why there is no process (`proc` is `None`).
+    down: String,
+    /// The query before ended at a memory limit: the next one is asked
+    /// alone at once (see `ask`).
+    alone: bool,
     /// The canonical symbols of the query since the last `(reset)`
     /// (ADR-0063): what the solver sees names nothing of the program.
     canon: Canon,
     /// Queries since the last `take_timeouts` that the per-query backstop
     /// ended (`reason-unknown` "timeout", backlog INF-26).
     timeouts: usize,
+}
+
+/// One Z3 process.
+struct Proc {
+    child: Child,
+    stdin: ChildStdin,
+    stdout: BufReader<ChildStdout>,
+    started: Instant,
+    /// Its `-memory` in megabytes.
+    memory: u64,
+    /// Queries (`(reset)`s) it was sent.
+    queries: usize,
+    /// Started to answer one query alone.
+    alone: bool,
 }
 
 /// Canonical symbols of a query (ADR-0063, backlog T1-10e). Every quoted
@@ -287,8 +312,9 @@ pub fn rlimit() -> u64 {
         .map_or(pinned, |v| v.min(pinned))
 }
 
-/// The pinned memory limit of a solver process in megabytes (Z3's
-/// `-memory`). A query that reaches it is undecided, as one that reaches the
+/// The pinned memory limit of a query in megabytes (Z3's `-memory`, which
+/// counts a process: see `working_memory_mb` for how a query gets a count of
+/// its own). A query that reaches it is undecided, as one that reaches the
 /// `rlimit` is: without it such a query grew until the system killed the
 /// process (backlog T2-16). `BMB_Z3_MEMORY_MB` may lower it (for tests); it
 /// can never raise it.
@@ -302,13 +328,15 @@ pub fn memory_mb() -> u64 {
         .map_or(pinned, |v| v.min(pinned))
 }
 
-/// The pinned memory limit in megabytes of a solver process that answers an
-/// advisory query (`advisory`): the lint's satisfiability checks and its
-/// re-verifications of changed definitions (backlog T2-16). A query that is
+/// The pinned memory limit in megabytes of an advisory query (`advisory`):
+/// the lint's satisfiability checks and its re-verifications of changed
+/// definitions (backlog T2-16). A query that is
 /// false, or satisfiable, under a recursive predicate with a quantifier in
 /// it makes Z3 grow without reaching its `rlimit`, and the time to the
 /// limit grows with the limit: the port-shape experiment's `tree.bmb` has
-/// 44 such queries, 248 s of lint at the gate's limit and 21 s at this one.
+/// 44 such queries, 248 s of lint at the gate's limit and 21 s at this one
+/// (as measured then; the queries after one that ended at the limit are
+/// asked since backlog T2-17, which about doubles the solver's time there).
 /// Measured on `lib/std` and that experiment (13 files, 5,575 advisory
 /// queries): no proof raised its process's peak above 21 MB, one model
 /// raised it to 72 MB, and the lint's output is the same bytes at half
@@ -325,8 +353,8 @@ thread_local! {
     static ADVISORY: Cell<bool> = const { Cell::new(false) };
 }
 
-/// Runs `f` with every solver process it starts under the advisory memory
-/// limit (`advisory_memory_mb`) in place of the gate's. For queries whose
+/// Runs `f` with every solver it starts under the advisory memory limit
+/// (`advisory_memory_mb`) in place of the gate's. For queries whose
 /// answer is a report, never a verdict of the gate: a query that reaches
 /// the limit is undecided, as at the gate's limit, so the smaller limit
 /// can only leave a report out. Deterministic like the gate's limit (Z3
@@ -342,9 +370,10 @@ pub fn advisory<R>(f: impl FnOnce() -> R) -> R {
     f()
 }
 
-/// The memory limit of a solver process started now: the gate's, or the
-/// advisory one inside `advisory`.
-fn process_memory_mb() -> u64 {
+/// The memory limit in megabytes that decides a query asked now: the
+/// gate's, or the advisory one inside `advisory`. Part of the proof cache's
+/// key (`cache::ProofCache::key`).
+pub fn query_memory_mb() -> u64 {
     if ADVISORY.with(|a| a.get()) {
         advisory_memory_mb()
     } else {
@@ -352,17 +381,37 @@ fn process_memory_mb() -> u64 {
     }
 }
 
+/// The memory limit in megabytes of a process that answers one query after
+/// another, for the deciding limit `limit` (ADR-0129): half of it. Z3
+/// counts the allocations of its process, and a process keeps a little of
+/// each query it answered (measured on `lib/std`: 0.1 MB after the first
+/// `(reset)`, 0.45 MB after 2,213 queries), so what a query's peak is
+/// depends on what its process answered before: by less than 0.1 MB there,
+/// in both directions. A query is therefore undecided for memory only when
+/// it reaches `limit` as the first query of a new process, which is the
+/// same state for every query; and a process that has answered others is
+/// trusted only below this smaller limit, so that a query it answers would
+/// also have been answered alone (its peak there would have to be larger
+/// by the other half of the limit to differ). At least 1: Z3 reads 0 as no
+/// limit.
+pub fn working_memory_mb(limit: u64) -> u64 {
+    (limit / 2).max(1)
+}
+
 /// Whether a solver error is the memory limit. The process has ended: the
 /// next query needs a new one.
-pub fn out_of_memory(e: &str) -> bool {
+fn out_of_memory(e: &str) -> bool {
     e.contains("out of memory")
 }
+
+/// The error of a query that ended at the memory limit.
+const OUT_OF_MEMORY: &str = "z3: out of memory";
 
 /// The reason in an "undecided" diagnostic for a solver error that is a
 /// limit (the `rlimit`, the memory limit); `None` for any other error.
 pub fn limit_reason(e: &str) -> Option<String> {
     if out_of_memory(e) {
-        Some(format!("memory limit reached, {} MB", process_memory_mb()))
+        Some(format!("memory limit reached, {} MB", query_memory_mb()))
     } else if e.contains("canceled") {
         Some(format!("resource limit reached, rlimit {}", rlimit()))
     } else {
@@ -370,18 +419,17 @@ pub fn limit_reason(e: &str) -> Option<String> {
     }
 }
 
-impl Solver {
-    /// Starts the pinned Z3. Fails if it is missing or a different version.
-    pub fn start() -> Result<Solver, String> {
+impl Proc {
+    /// Starts the pinned Z3 with memory limit `memory` (megabytes).
+    fn start(memory: u64) -> Result<Proc, String> {
         STARTS.fetch_add(1, Ordering::Relaxed);
-        toolchain::check_z3()?;
         let mut child = Command::new("z3")
             .args([
                 "-in",
                 "-smt2",
                 &format!("-t:{}", backstop_ms()),
                 &format!("-T:{HARD_SECS}"),
-                &format!("-memory:{}", process_memory_mb()),
+                &format!("-memory:{memory}"),
             ])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -390,70 +438,42 @@ impl Solver {
             .map_err(|e| format!("cannot start z3: {e}"))?;
         let stdin = child.stdin.take().unwrap();
         let stdout = BufReader::new(child.stdout.take().unwrap());
-        let mut s = Solver {
+        let mut p = Proc {
             child,
             stdin,
             stdout,
             started: Instant::now(),
-            canon: Canon::default(),
-            timeouts: 0,
+            memory,
+            queries: 0,
+            alone: false,
         };
         // Every command answers, so an error is seen at the command that caused it.
-        s.send("(set-option :print-success true)")?;
-        s.expect_success("(set-option :print-success true)")?;
-        Ok(s)
-    }
-
-    /// Whether this process may take on another definition (see `REUSE_SECS`).
-    /// Every obligation starts with `(reset)` and its full base (ADR-0018),
-    /// so a reused process answers as a new one would.
-    pub fn reusable(&self) -> bool {
-        self.started.elapsed() < Duration::from_secs(REUSE_SECS)
-    }
-
-    fn expect_success(&mut self, cmd: &str) -> Result<(), String> {
-        let r = self.read_response()?;
-        if r == "success" {
-            Ok(())
-        } else {
-            Err(format!(
-                "{} (in `{}`)",
-                self.canon.back(&r),
-                truncate(cmd, 160)
-            ))
+        match p.ask("(set-option :print-success true)")?.as_str() {
+            "success" => Ok(p),
+            r => Err(format!("{r} (in `(set-option :print-success true)`)")),
         }
     }
 
-    /// Runs a sequence of top-level commands that answer `success`.
-    pub fn run(&mut self, script: &str) -> Result<(), String> {
-        for cmd in split_commands(script) {
-            // Each query starts with `(reset)` and numbers its own symbols.
-            if cmd.trim() == "(reset)" {
-                self.canon = Canon::default();
-            }
-            let sent = self.canon.forward(&cmd);
-            self.send(&sent)?;
-            self.expect_success(&cmd)?;
-        }
-        Ok(())
-    }
-
-    fn send(&mut self, text: &str) -> Result<(), String> {
-        self.stdin
+    /// Sends one command and reads its answer.
+    fn ask(&mut self, text: &str) -> Result<String, String> {
+        let sent = self
+            .stdin
             .write_all(text.as_bytes())
             .and_then(|_| self.stdin.write_all(b"\n"))
-            .and_then(|_| self.stdin.flush())
-            .map_err(|e| {
-                self.ended()
-                    .unwrap_or_else(|| format!("z3 input closed: {e}"))
-            })
+            .and_then(|_| self.stdin.flush());
+        if let Err(e) = sent {
+            return Err(self
+                .ended()
+                .unwrap_or_else(|| format!("z3 input closed: {e}")));
+        }
+        self.read_response()
     }
 
     /// The error for a process that ended at its memory limit: Z3 ends with
     /// 101 at `-memory` and its message goes to its standard error.
     fn ended(&mut self) -> Option<String> {
         match self.child.wait().ok()?.code()? {
-            101 => Some("z3: out of memory".into()),
+            101 => Some(OUT_OF_MEMORY.into()),
             _ => None,
         }
     }
@@ -486,6 +506,147 @@ impl Solver {
             }
         }
     }
+}
+
+impl Drop for Proc {
+    fn drop(&mut self) {
+        let _ = self
+            .stdin
+            .write_all(b"(exit)\n")
+            .and_then(|_| self.stdin.flush());
+        let _ = self.child.wait();
+    }
+}
+
+impl Solver {
+    /// Starts the pinned Z3. Fails if it is missing or a different version.
+    pub fn start() -> Result<Solver, String> {
+        if let Err(e) = toolchain::check_z3() {
+            STARTS.fetch_add(1, Ordering::Relaxed);
+            return Err(e);
+        }
+        let limit = query_memory_mb();
+        Ok(Solver {
+            proc: Some(Proc::start(working_memory_mb(limit))?),
+            limit,
+            query: Vec::new(),
+            down: String::new(),
+            alone: false,
+            canon: Canon::default(),
+            timeouts: 0,
+        })
+    }
+
+    /// Whether this solver may take on another definition (see `REUSE_SECS`).
+    /// Every obligation starts with `(reset)` and its full base (ADR-0018),
+    /// so a reused process answers as a new one would; where its memory
+    /// could make it answer otherwise, a new one is asked (`ask`).
+    pub fn reusable(&self) -> bool {
+        self.proc
+            .as_ref()
+            .is_none_or(|p| p.started.elapsed() < Duration::from_secs(REUSE_SECS))
+    }
+
+    /// Sends one command of the current query, as the solver receives it,
+    /// and reads its answer. A `(reset)` starts a query.
+    ///
+    /// When the process ends at its memory limit, the query is undecided
+    /// only if it was that process's first query and the limit was the
+    /// deciding one (`limit`). Otherwise what the process held from earlier
+    /// queries, or its smaller limit (`working_memory_mb`), may have ended
+    /// it: the query is asked again, from its `(reset)`, alone (the first
+    /// and only query of a new process under the deciding limit), and that
+    /// answer stands (ADR-0129).
+    ///
+    /// After a query that ended at the deciding limit the next one is asked
+    /// alone at once: the queries of one false obligation tend to end the
+    /// same way, and asked alone each pays for its way to the limit once.
+    /// Where a query is asked does not change its answer, so this is a
+    /// matter of cost only.
+    fn ask(&mut self, sent: &str) -> Result<String, String> {
+        let reset = sent.trim() == "(reset)";
+        if reset {
+            self.query.clear();
+            // A process that answered a query alone answers no other.
+            if self.proc.as_ref().is_some_and(|p| p.alone) {
+                self.proc = None;
+                self.alone = false;
+            }
+            if self.proc.is_none() {
+                let p = if self.alone {
+                    Proc::start(self.limit).map(|mut p| {
+                        p.alone = true;
+                        p
+                    })
+                } else {
+                    Proc::start(working_memory_mb(self.limit))
+                };
+                self.proc = Some(p.inspect_err(|e| self.down = e.clone())?);
+            }
+        }
+        self.query.push(sent.to_string());
+        let Some(p) = self.proc.as_mut() else {
+            // The query has ended (at the memory limit).
+            return Err(self.down.clone());
+        };
+        if reset {
+            p.queries += 1;
+        }
+        let r = p.ask(sent);
+        if !r.as_ref().is_err_and(|e| out_of_memory(e)) {
+            return r;
+        }
+        let decided = p.queries == 1 && p.memory == self.limit;
+        self.proc = None;
+        self.down = OUT_OF_MEMORY.into();
+        if decided {
+            self.alone = true;
+            return r;
+        }
+        let mut p = Proc::start(self.limit).inspect_err(|e| self.down = e.clone())?;
+        p.alone = true;
+        let mut answer = Ok(String::new());
+        for cmd in &self.query {
+            answer = p.ask(cmd);
+            if answer.is_err() {
+                break;
+            }
+        }
+        match &answer {
+            Ok(_) => self.proc = Some(p),
+            Err(e) => {
+                self.alone = out_of_memory(e);
+                self.down = e.clone();
+            }
+        }
+        answer
+    }
+
+    fn expect_success(&mut self, sent: &str, cmd: &str) -> Result<(), String> {
+        let r = self.ask(sent)?;
+        if r == "success" {
+            Ok(())
+        } else {
+            Err(format!(
+                "{} (in `{}`)",
+                self.canon.back(&r),
+                truncate(cmd, 160)
+            ))
+        }
+    }
+
+    /// Runs a sequence of top-level commands that answer `success`.
+    pub fn run(&mut self, script: &str) -> Result<(), String> {
+        for cmd in split_commands(script) {
+            // Each query starts with `(reset)` and numbers its own symbols.
+            if cmd.trim() == "(reset)" {
+                self.canon = Canon::default();
+            }
+            let sent = self.canon.forward(&cmd);
+            self.expect_success(&sent, &cmd)?;
+        }
+        Ok(())
+    }
 
     /// Resource units spent since the last `(reset)` (deterministic for a
     /// given solver version and query).
@@ -495,8 +656,7 @@ impl Solver {
     }
 
     pub fn rlimit_used(&mut self) -> Result<u64, String> {
-        self.send("(get-info :rlimit)")?;
-        let r = self.read_response()?;
+        let r = self.ask("(get-info :rlimit)")?;
         r.trim_matches(|c| c == '(' || c == ')')
             .split_whitespace()
             .nth(1)
@@ -505,14 +665,12 @@ impl Solver {
     }
 
     pub fn check_sat(&mut self) -> Result<Answer, String> {
-        self.send("(check-sat)")?;
-        let r = self.read_response()?;
+        let r = self.ask("(check-sat)")?;
         match r.as_str() {
             "unsat" => Ok(Answer::Unsat),
             "sat" => Ok(Answer::Sat),
             "unknown" => {
-                self.send("(get-info :reason-unknown)")?;
-                let why = self.read_response()?;
+                let why = self.ask("(get-info :reason-unknown)")?;
                 if reason_text(&why) == "timeout" {
                     self.timeouts += 1;
                 }
@@ -531,8 +689,7 @@ impl Solver {
         let asked = self
             .canon
             .forward(&format!("(get-value ({}))", terms.join(" ")));
-        self.send(&asked)?;
-        let raw = self.read_response()?;
+        let raw = self.ask(&asked)?;
         let r = self.canon.back(&raw);
         if r.starts_with("(error") {
             return Err(r);
@@ -559,8 +716,7 @@ impl Solver {
         let asked = self
             .canon
             .forward(&format!("(get-value ({}))", terms.join(" ")));
-        self.send(&asked)?;
-        let raw = self.read_response()?;
+        let raw = self.ask(&asked)?;
         let r = self.canon.back(&raw);
         if r.starts_with("(error") {
             return Err(r);
@@ -612,13 +768,6 @@ pub fn split_commands(text: &str) -> Vec<String> {
         }
     }
     out
-}
-
-impl Drop for Solver {
-    fn drop(&mut self) {
-        let _ = self.send("(exit)");
-        let _ = self.child.wait();
-    }
 }
 
 fn reason_text(r: &str) -> String {
@@ -834,17 +983,22 @@ mod tests {
         let pinned = |k: &str| toolchain::pinned(k).parse::<u64>().unwrap();
         assert!(pinned("Z3_ADVISORY_MEMORY_MB") < pinned("Z3_MEMORY_MB"));
         assert!(advisory_memory_mb() <= memory_mb());
-        assert_eq!(process_memory_mb(), memory_mb());
+        assert_eq!(query_memory_mb(), memory_mb());
         advisory(|| {
-            assert_eq!(process_memory_mb(), advisory_memory_mb());
-            advisory(|| assert_eq!(process_memory_mb(), advisory_memory_mb()));
-            assert_eq!(process_memory_mb(), advisory_memory_mb());
+            assert_eq!(query_memory_mb(), advisory_memory_mb());
+            advisory(|| assert_eq!(query_memory_mb(), advisory_memory_mb()));
+            assert_eq!(query_memory_mb(), advisory_memory_mb());
             assert_eq!(
                 limit_reason("z3: out of memory"),
                 Some(format!("memory limit reached, {} MB", advisory_memory_mb()))
             );
         });
-        assert_eq!(process_memory_mb(), memory_mb());
+        assert_eq!(query_memory_mb(), memory_mb());
+        // A process that answers one query after another runs under half
+        // the limit (ADR-0129), and never without one (Z3 reads 0 so).
+        assert_eq!(working_memory_mb(memory_mb()), memory_mb() / 2);
+        assert!(working_memory_mb(advisory_memory_mb()) < advisory_memory_mb());
+        assert_eq!(working_memory_mb(1), 1);
     }
 
     #[test]

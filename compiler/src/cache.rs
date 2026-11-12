@@ -1,10 +1,15 @@
 //! Proof cache (backlog 2D-01). An obligation is cached only once proved, and
 //! its key is the SHA-256 of the exact text the solver received (options,
 //! prelude, revealed definitions, declarations, query; with canonical
-//! symbols, ADR-0063, `smt::canonical`) plus the solver version. The same text gives the same answer from the pinned solver, so a
-//! hit is as good as running it. Anything that changes the query (a callee's
-//! contract, a revealed definition, the encoding, `rlimit`, the seed) changes
-//! the key; unproved obligations always run again.
+//! symbols, ADR-0063, `smt::canonical`) plus the solver version and the
+//! memory limit the query is asked under (`smt::query_memory_mb`, ADR-0129).
+//! The same text gives the same answer from the pinned solver under the same
+//! limits, so a hit is as good as running it. Anything that changes the query
+//! (a callee's contract, a revealed definition, the encoding, `rlimit`, the
+//! seed) changes the key, and so does the memory limit, which is not in the
+//! text: a proof found under the gate's limit does not answer the lint's
+//! advisory query of the same text, which runs under a smaller one (backlog
+//! T2-17). Unproved obligations always run again.
 //!
 //! The file is trusted like the source tree: whoever can write it can mark an
 //! obligation proved. It lives in the workspace (`.bmb-cache/proofs`).
@@ -13,7 +18,8 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 pub const FILE: &str = "proofs";
-const MAGIC: &str = "bmb proof cache v4";
+/// v5: the key covers the memory limit (ADR-0129); a v4 file is not read.
+const MAGIC: &str = "bmb proof cache v5";
 
 /// Stage bits of an entry: the ground-instance retry ran at the probe's
 /// share (backlog 1B-46), and after the full query (it proved).
@@ -33,11 +39,13 @@ pub struct ProofCache {
 }
 
 impl ProofCache {
-    /// The key of `query` as the encoder writes it: the text the solver
-    /// receives is its canonical form (ADR-0063), so a renamed program's
-    /// query has the same key.
+    /// The key of `query` as the encoder writes it, asked now: the text the
+    /// solver receives is its canonical form (ADR-0063), so a renamed
+    /// program's query has the same key; the memory limit is the one a query
+    /// asked now is decided under (the gate's, or the advisory one).
     pub fn key(query: &str) -> String {
         let mut text = String::from(crate::toolchain::z3_version());
+        text.push_str(&format!("\nmemory {}", crate::smt::query_memory_mb()));
         text.push('\n');
         text.push_str(&crate::smt::canonical(query));
         crate::sha256::hex(text.as_bytes())

@@ -816,6 +816,18 @@ pub struct SatCost {
     pub undecided: usize,
 }
 
+/// Whether a query's answer is undecided: `unknown`, or a limit ended the
+/// query before it answered (the `rlimit` in a command before `check-sat`,
+/// the memory limit, backlog T2-17). What follows an undecided query (the
+/// ground-instance retry, the bounded search) follows either.
+fn undecided(a: &Result<Answer, String>) -> bool {
+    match a {
+        Ok(Answer::Unknown(_)) => true,
+        Ok(_) => false,
+        Err(e) => smt::limit_reason(e).is_some(),
+    }
+}
+
 /// `check-sat`, adding the query's `rlimit` to `spent` when it answered.
 fn check_sat_counted(sol: &mut Solver, spent: &mut u64) -> Result<Answer, String> {
     let a = sol.check_sat();
@@ -7922,7 +7934,7 @@ fn sat_of(r: &mut SatRun) -> Option<bool> {
     // Undecided with quantified definitions: ground instances follow from
     // the definitions, so `unsat` with them is `unsat` (as in the prover),
     // and `sat` with an instance for every application is `sat` (ADR-0075).
-    if matches!(answer, Ok(Answer::Unknown(_))) && !r.axiom_parts.is_empty() {
+    if undecided(&answer) && !r.axiom_parts.is_empty() {
         let (inst, complete) = ground_instances(r.axiom_parts, &q, 3);
         let inst = format!("{inst}{}", r.prog.struct_facts(&inst));
         if !inst.is_empty() {
@@ -7944,6 +7956,10 @@ fn sat_of(r: &mut SatRun) -> Option<bool> {
         Ok(Answer::Unsat) => Some(false),
         Ok(Answer::Sat) => Some(true),
         Ok(Answer::Unknown(_)) => None,
+        // A limit ended the query: undecided.
+        Err(e) if smt::limit_reason(&e).is_some() => None,
+        // The solver cannot be read: undecided, and the next check starts a
+        // new one.
         Err(_) => {
             *r.solver = None;
             None
@@ -8535,7 +8551,7 @@ fn verify_pass(
                 });
                 // The ground-instance retry, as for a precondition check: its
                 // `unsat` refutes the point, its complete `sat` reaches it.
-                if matches!(answer, Ok(Answer::Unknown(_))) && !axiom_parts.is_empty() {
+                if undecided(&answer) && !axiom_parts.is_empty() {
                     let (inst, complete) = ground_instances(&axiom_parts, &q, 3);
                     let inst = format!("{inst}{}", prog.struct_facts(&inst));
                     if !inst.is_empty() {
@@ -8557,9 +8573,10 @@ fn verify_pass(
                     Ok(Answer::Unsat) => vacuous.push((path.clone(), *span, *what)),
                     Ok(Answer::Sat) => {}
                     Ok(Answer::Unknown(_)) => reach_cost.undecided += 1,
-                    // The process ended (at its memory limit, backlog T2-16)
-                    // or cannot be read: this point is undecided and the
-                    // next one starts a new process, as in `sat_of`.
+                    // A limit ended the query (backlog T2-16): undecided.
+                    Err(e) if smt::limit_reason(&e).is_some() => reach_cost.undecided += 1,
+                    // The solver cannot be read: this point is undecided and
+                    // the next one starts a new solver, as in `sat_of`.
                     Err(_) => {
                         reach_cost.undecided += 1;
                         solver = None;
@@ -8714,9 +8731,6 @@ fn verify_pass(
                             )
                             .of_obligation(o.code),
                         );
-                        if smt::out_of_memory(&e) {
-                            solver = None;
-                        }
                     }
                     Err(e) => {
                         diags.push(Diag::new("E0812", o.span, format!("solver error: {e}")));
@@ -8952,7 +8966,7 @@ fn verify_pass(
             };
             // Undecided with quantified definitions: retry quantifier-free with
             // ground instances (sound for both answers, see `ground_instances`).
-            if matches!(answer, Ok(Answer::Unknown(_)))
+            if undecided(&answer)
                 && !axiom_parts.is_empty()
                 && let Some((head, inst, complete)) = retry_script(&q)
             {
@@ -8978,7 +8992,10 @@ fn verify_pass(
                         answer = retry;
                         answered = format!("{head}\n{inst}{q}");
                     }
-                    Ok(Answer::Sat) => {
+                    // After `unknown` the solver held a candidate model
+                    // and now holds this one; after a limit ended the query
+                    // the limit stays the reason.
+                    Ok(Answer::Sat) if answer.is_ok() => {
                         answer = Ok(Answer::Unknown(
                             "a model exists for the instantiated definitions only".into(),
                         ))
@@ -8991,12 +9008,7 @@ fn verify_pass(
             // one, the diagnostic says how far it looked.
             let mut bounded_none = false;
             let mut bounded_found = false;
-            let undecided = match &answer {
-                Ok(Answer::Unknown(_)) => true,
-                Err(e) => e.contains("canceled") && !smt::out_of_memory(e),
-                _ => false,
-            };
-            if undecided && bounded_search() {
+            if undecided(&answer) && bounded_search() {
                 let bounds = input_bounds(&shown_inputs(&enc.inputs, o));
                 if !bounds.is_empty() {
                     script.push_str(&format!(
@@ -9174,11 +9186,6 @@ fn verify_pass(
                         d.bounded = Some((BOUND, BOUND_LEN));
                     }
                     diags.push(d);
-                    // The process ended at its memory limit: the next
-                    // obligation starts a new one (backlog T2-16).
-                    if smt::out_of_memory(&e) {
-                        solver = None;
-                    }
                 }
                 Err(e) => {
                     diags.push(Diag::new("E0812", o.span, format!("solver error: {e}")));

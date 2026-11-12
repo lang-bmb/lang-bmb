@@ -358,8 +358,11 @@ def emit_rules():
     def stand_in(code, stdout, ir="define\n", stats='{"encoded":[],"runtime_checks":2}'):
         def call(args, text=True):
             seen.append([a for a in args[1:-3] if not a.endswith("stats.json")])
-            if ir is not None:
-                Path(args[-1]).write_text(ir)
+            # Only a call that names an output: a `verify` call ends in the
+            # source's name, and writing there left `x.bmb` in the directory
+            # the tests run in (it was committed once, `37a2e8a6`).
+            if ir is not None and "-o" in args:
+                Path(args[args.index("-o") + 1]).write_text(ir)
             if "--stats" in args:
                 Path(args[args.index("--stats") + 1]).write_text(stats)
             return result(code, stdout)

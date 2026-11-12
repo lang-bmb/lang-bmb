@@ -896,20 +896,32 @@ fn advisory_queries_end_at_their_own_memory_limit() {
     );
 
     // The first verification ran under the gate's limit, everything after
-    // it under the advisory one, each query that reached it in a process
-    // of its own.
-    let gate = format!("-memory:{}", pinned("Z3_MEMORY_MB"));
-    let advisory = format!("-memory:{}", pinned("Z3_ADVISORY_MEMORY_MB"));
-    assert_ne!(gate, advisory);
+    // it under the advisory one: processes that answer one query after
+    // another under half the limit, and each query that ended one asked
+    // again alone under the limit itself (ADR-0129).
+    let limit = |k: &str| pinned(k).parse::<u64>().unwrap();
+    let (gate, advisory) = (limit("Z3_MEMORY_MB"), limit("Z3_ADVISORY_MEMORY_MB"));
+    assert!(advisory < gate / 2);
+    let of = |l: &str, mb: u64| {
+        l.contains(&format!("-memory:{mb} ")) || l.ends_with(&format!("-memory:{mb}"))
+    };
     let starts = std::fs::read_to_string(&log).unwrap();
     let starts: Vec<&str> = starts.lines().collect();
-    let first = starts.iter().take_while(|l| l.contains(&gate)).count();
+    let first = starts
+        .iter()
+        .take_while(|l| of(l, gate / 2) || of(l, gate))
+        .count();
     assert!(first >= 1, "{starts:?}");
     assert!(
-        starts[first..].iter().all(|l| l.contains(&advisory)),
+        starts[first..]
+            .iter()
+            .all(|l| of(l, advisory / 2) || of(l, advisory)),
         "{starts:?}"
     );
-    assert!(starts.len() - first > 40, "{starts:?}");
+    assert!(
+        starts[first..].iter().filter(|l| of(l, advisory)).count() > 40,
+        "{starts:?}"
+    );
 
     // One of the undecided mutants, `*pos = s + 2` in `term`: not reported,
     // and the gate does not decide it either (here at a smaller limit, the
@@ -944,6 +956,91 @@ fn advisory_queries_end_at_their_own_memory_limit() {
         verdict.contains("in `tree::term`: solver could not decide (memory limit reached, 64 MB)"),
         "{verdict}"
     );
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+/// Backlog T2-17 (d): a proof in `--cache DIR` answers an advisory query
+/// only when it was found under the advisory memory limit (the cache's key
+/// covers the limit, ADR-0129), so the lint's output is the same with and
+/// without a cache. Before, a proof the gate had stored for the same text
+/// (here: of the program with the clause already removed) made the lint
+/// report what it leaves undecided without the cache. The solver here ends
+/// at once under the advisory limits and is the pinned one under the
+/// gate's, so every advisory query is undecided unless the cache answers
+/// it.
+#[test]
+fn a_cached_gate_proof_does_not_answer_an_advisory_query() {
+    let tmp = std::env::temp_dir().join(format!("bmb-lint-cache-limit-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    let bin = tmp.join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let with = "        requires x < 100, x < 1000,\n";
+    let text = format!(
+        "#[summary(\"더하기\")]\nmod m {{\n    #[effects(pure)]\n    fn add1(x: u64) -> (r: u64)\n{with}        ensures r == x + 1,\n    {{\n        x + 1\n    }}\n}}\n"
+    );
+    let file = tmp.join("p.bmb");
+    std::fs::write(&file, &text).unwrap();
+    let removed = tmp.join("removed");
+    std::fs::create_dir_all(&removed).unwrap();
+    std::fs::write(
+        removed.join("p.bmb"),
+        text.replace(with, "        requires x < 100,\n"),
+    )
+    .unwrap();
+    let bmb = |args: &[&str], path: Option<&str>| {
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_bmb"));
+        if let Some(p) = path {
+            cmd.env("PATH", p);
+        }
+        let out = cmd.args(args).output().unwrap();
+        assert!(out.status.success(), "{out:?}");
+        String::from_utf8(out.stdout).unwrap()
+    };
+    let w0902 = |out: &str| rows(out).iter().filter(|r| s(r, "code") == "W0902").count();
+
+    // With the pinned solver either clause is reported: the other one
+    // keeps `x + 1` in range.
+    let cache = tmp.join("cache");
+    let (file, cache) = (file.to_str().unwrap(), cache.to_str().unwrap());
+    assert_eq!(w0902(&bmb(&["lint", file], None)), 2);
+
+    // The gate proves the program without `x < 1000` and stores its proofs.
+    bmb(
+        &[
+            "verify",
+            "--cache",
+            cache,
+            removed.join("p.bmb").to_str().unwrap(),
+        ],
+        None,
+    );
+
+    let path = std::env::var("PATH").unwrap();
+    let z3 = std::env::split_paths(&path)
+        .map(|d| d.join("z3"))
+        .find(|p| p.is_file())
+        .expect("z3 must be installed");
+    let limit = pinned("Z3_ADVISORY_MEMORY_MB").parse::<u64>().unwrap();
+    std::fs::write(
+        bin.join("z3"),
+        format!(
+            "#!/bin/sh\n\
+             case \" $* \" in *\" -memory:{} \"*|*\" -memory:{limit} \"*) exec {z3} -in -smt2 -memory:1;; esac\n\
+             exec {z3} \"$@\"\n",
+            limit / 2,
+            z3 = z3.display()
+        ),
+    )
+    .unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(bin.join("z3"), std::fs::Permissions::from_mode(0o755)).unwrap();
+    let starved = format!("{}:{path}", bin.display());
+    let without = bmb(&["lint", file], Some(&starved));
+    assert_eq!(w0902(&without), 0, "{without}");
+    let cold = bmb(&["lint", "--cache", cache, file], Some(&starved));
+    let warm = bmb(&["lint", "--cache", cache, file], Some(&starved));
+    assert_eq!(cold, without);
+    assert_eq!(warm, without);
     let _ = std::fs::remove_dir_all(&tmp);
 }
 

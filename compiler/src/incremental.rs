@@ -10,7 +10,8 @@
 //! **Proof key.** Encoding a definition `D` (`verify::verify_impl`) reads:
 //!
 //! - the query header: solver options (seed, `rlimit`) and the prelude
-//!   (`verify::query_header`);
+//!   (`verify::query_header`), and the solver's memory limit
+//!   (`smt::query_memory_mb`, backlog T2-17);
 //! - the declarations of the `spec fn`s its queries mention (backlog 2D-14:
 //!   a query declares only those). The key takes the declaration of every
 //!   `spec fn` reachable from `D`'s qualified text through executable
@@ -1166,6 +1167,12 @@ impl Session {
             let mut pk = String::from("proof\n");
             section(&mut pk, "id", id);
             section(&mut pk, "z3", z3);
+            // Not in the header's text: the limit a proof was found under.
+            section(
+                &mut pk,
+                "memory",
+                &crate::smt::query_memory_mb().to_string(),
+            );
             section(&mut pk, "header", &header);
             section(
                 &mut pk,
