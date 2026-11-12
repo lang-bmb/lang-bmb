@@ -626,7 +626,82 @@ fn exprs_of(f: &FnDef) -> Vec<&Expr> {
     out
 }
 
+/// The scope of a query (backlog 2D-17): the paths its arguments name. A
+/// path selects what it names and everything under it: `u` the unit, its
+/// definitions, types and inner units; `u::f` the definition; `u::T` the
+/// type and its `impl` functions.
+pub struct Scope(Vec<String>);
+
+impl Scope {
+    /// Whether the definition or type at `path` in unit `unit` (a unit: its
+    /// own path twice) is in the scope: the path or the unit is one of the
+    /// scope's paths or under one. The unit counts because the paths of
+    /// the definitions the function-value lowering makes do not start with
+    /// their unit's (`<u::__closure$0 as ..>::call`).
+    pub fn has(&self, path: &str, unit: &str) -> bool {
+        self.0.iter().any(|p| under(path, p) || under(unit, p))
+    }
+}
+
+/// Whether `path` is `prefix` or under it (`prefix::..`).
+fn under(path: &str, prefix: &str) -> bool {
+    path.strip_prefix(prefix)
+        .is_some_and(|rest| rest.is_empty() || rest.starts_with("::"))
+}
+
+/// Whether `path` in `unit` is in `scope`; no scope is the whole program.
+fn within(scope: Option<&Scope>, path: &str, unit: &str) -> bool {
+    scope.is_none_or(|s| s.has(path, unit))
+}
+
+/// The head of a summary row: `"summary":true`, and the scope's paths
+/// when the query was given one (its counts are then those of the scope).
+fn summary_head(scope: Option<&Scope>) -> Vec<(&'static str, J)> {
+    let mut kv = vec![("summary", J::B(true))];
+    if let Some(s) = scope {
+        kv.push(("scope", strs(s.0.clone())));
+    }
+    kv
+}
+
+/// The edge kinds of the L2 map, as `edges` filters them.
+pub const EDGE_KINDS: [&str; 11] = [
+    "calls",
+    "const",
+    "contract",
+    "passes",
+    "proof_calls",
+    "reads",
+    "spec_calls",
+    "trait",
+    "types",
+    "uses",
+    "writes",
+];
+
 impl Index {
+    /// The scope the paths `paths` name (sorted, each once), `None` for
+    /// none. A path that names no unit, definition or type and has nothing
+    /// under it is an error.
+    pub fn scope(&self, paths: &[String]) -> Result<Option<Scope>, String> {
+        if paths.is_empty() {
+            return Ok(None);
+        }
+        for p in paths {
+            let known = self
+                .units
+                .keys()
+                .chain(self.defs.keys())
+                .chain(self.types.keys())
+                .any(|k| under(k, p));
+            if !known {
+                return Err(format!("unknown definition or unit `{p}`"));
+            }
+        }
+        let paths: BTreeSet<String> = paths.iter().cloned().collect();
+        Ok(Some(Scope(paths.into_iter().collect())))
+    }
+
     /// Builds the index of a checked program.
     pub fn build(p: &Program, t: &Tables, sm: &SourceMap) -> Index {
         let mut units = BTreeMap::new();
@@ -1170,9 +1245,9 @@ impl<'p> Model<'p> {
 
     /// The `status` summary's escape keys (ADR-0029 §5): definitions by
     /// trust level, escapes, and definitions with an unconfirmed rationale.
-    fn escape_summary(&self) -> Vec<(&'static str, J)> {
+    fn escape_summary(&self, scope: Option<&Scope>) -> Vec<(&'static str, J)> {
         let (mut proved, mut assumed, mut external, mut escapes, mut unconfirmed) = (0, 0, 0, 0, 0);
-        for d in self.all_defs() {
+        for d in self.defs_in(scope) {
             let keys = self.escape_keys(&d);
             let get = |k: &str| keys.iter().find(|(n, _)| *n == k).map(|(_, v)| v);
             match get("trust") {
@@ -1226,6 +1301,18 @@ impl<'p> Model<'p> {
     /// Every definition, by path.
     pub fn all_defs(&self) -> impl Iterator<Item = Def<'_>> {
         self.ix.defs.values().map(|e| self.view_def(e))
+    }
+
+    /// The definitions in `scope`, by path.
+    fn defs_in<'m>(&'m self, scope: Option<&'m Scope>) -> impl Iterator<Item = Def<'m>> {
+        self.all_defs()
+            .filter(move |d| within(scope, &d.path, &d.unit))
+    }
+
+    /// Whether the definition at `path` is in `scope` (its unit is the
+    /// index's); no scope is the whole program.
+    fn path_in(&self, scope: Option<&Scope>, path: &str) -> bool {
+        scope.is_none_or(|s| self.defs.get(path).is_some_and(|d| s.has(&d.path, &d.unit)))
     }
 
     /// Identity, body and interface hashes of `d` (ADR-0059 §1).
@@ -1506,14 +1593,27 @@ impl<'p> Model<'p> {
     // ---------- maps ----------
 
     pub fn l0_rows(&self) -> Vec<J> {
+        self.l0_rows_in(None)
+    }
+
+    /// The L0 rows of the units, definitions and types in `scope`.
+    fn l0_rows_in(&self, scope: Option<&Scope>) -> Vec<J> {
         let mut rows: Vec<(String, J)> = Vec::new();
-        for u in self.units.values() {
+        for u in self
+            .units
+            .values()
+            .filter(|u| within(scope, &u.path, &u.path))
+        {
             rows.push((u.path.clone(), self.l0_unit(u)));
         }
-        for d in self.all_defs() {
+        for d in self.defs_in(scope) {
             rows.push((d.path.clone(), self.l0_def(&d)));
         }
-        for ty in self.types.values() {
+        for ty in self
+            .types
+            .values()
+            .filter(|t| within(scope, &t.path, &t.unit))
+        {
             rows.push((ty.path.clone(), Self::l0_type(ty)));
         }
         rows.sort_by(|a, b| a.0.cmp(&b.0));
@@ -1554,7 +1654,7 @@ impl<'p> Model<'p> {
         };
         let ty = args.first().and_then(|p| self.types.get(p));
         let body = match name {
-            "units" => Self::lines(self.l0_rows()),
+            "units" => Self::lines(self.l0_rows_in(self.scope(args)?.as_ref())),
             "surface" if ty.is_some() => Self::lines([Self::l1_type(ty.unwrap())]),
             "impact" if ty.is_some() => {
                 let change = args.get(1).map(String::as_str).unwrap_or("iface");
@@ -1563,24 +1663,12 @@ impl<'p> Model<'p> {
                 }
                 Self::lines(self.type_impact(ty.unwrap(), change))
             }
-            "edges" if ty.is_some() => {
-                let dir = args.get(1).map(String::as_str).unwrap_or("out");
-                if !matches!(dir, "out" | "in" | "both") {
-                    return Err(format!("direction must be out, in or both, not `{dir}`"));
-                }
-                let depth: usize = match args.get(2) {
-                    Some(x) => x.parse().map_err(|_| format!("bad depth `{x}`"))?,
-                    None => 1,
-                };
-                Self::lines(
-                    self.reach(&ty.unwrap().path, dir, depth)
-                        .iter()
-                        .map(Self::l2),
-                )
-            }
             "surface" => Self::lines([self.l1(&def(0)?)]),
             "edges" => {
-                let d = def(0)?;
+                let start = match ty {
+                    Some(ty) => ty.path.clone(),
+                    None => def(0)?.path.clone(),
+                };
                 let dir = args.get(1).map(String::as_str).unwrap_or("out");
                 if !matches!(dir, "out" | "in" | "both") {
                     return Err(format!("direction must be out, in or both, not `{dir}`"));
@@ -1589,7 +1677,18 @@ impl<'p> Model<'p> {
                     Some(x) => x.parse().map_err(|_| format!("bad depth `{x}`"))?,
                     None => 1,
                 };
-                Self::lines(self.reach(&d.path, dir, depth).iter().map(Self::l2))
+                // The kinds to follow (backlog 2D-17): none is every kind.
+                let mut kinds = Vec::new();
+                for k in args.get(3).iter().flat_map(|ks| ks.split(',')) {
+                    let Some(known) = EDGE_KINDS.iter().find(|x| **x == k) else {
+                        return Err(format!(
+                            "unknown edge kind `{k}` (the kinds are {})",
+                            EDGE_KINDS.join(", ")
+                        ));
+                    };
+                    kinds.push(*known);
+                }
+                Self::lines(self.reach(&start, dir, depth, &kinds).iter().map(Self::l2))
             }
             "slice" => Self::lines([self.slice(&def(0)?)]),
             "find" => {
@@ -1639,8 +1738,10 @@ impl<'p> Model<'p> {
                 ])])
             }
             "status" => {
+                let scope = self.scope(args)?;
+                let scope = scope.as_ref();
                 let mut rows: Vec<J> = self
-                    .all_defs()
+                    .defs_in(scope)
                     .map(|d| {
                         J::O(
                             vec![
@@ -1660,31 +1761,32 @@ impl<'p> Model<'p> {
                         )
                     })
                     .collect();
-                let verified = self.all_defs().filter(|d| d.status == "verified").count();
-                let failed = self.all_defs().filter(|d| d.status == "failed").count();
-                let io = self.all_defs().filter(|d| Self::declares_io(d)).count();
+                let defs = rows.len();
+                let count = |p: &dyn Fn(&Def) -> bool| self.defs_in(scope).filter(p).count();
+                let verified = count(&|d| d.status == "verified");
+                let failed = count(&|d| d.status == "failed");
+                let io = count(&|d| Self::declares_io(d));
                 let alloc = self
                     .effects
-                    .values()
-                    .filter(|e| e.declared.contains(crate::check::Effects::ALLOC))
+                    .iter()
+                    .filter(|(p, e)| {
+                        self.path_in(scope, p) && e.declared.contains(crate::check::Effects::ALLOC)
+                    })
                     .count();
-                let tested = self
-                    .all_defs()
-                    .filter(|d| !self.test_reasons(d).is_empty())
-                    .count();
+                let tested = count(&|d| !self.test_reasons(d).is_empty());
                 rows.push(J::O(
-                    vec![
-                        ("summary", J::B(true)),
-                        ("defs", J::N(self.defs.len() as u64)),
-                        ("verified", J::N(verified as u64)),
-                        ("failed", J::N(failed as u64)),
-                        ("io_defs", J::N(io as u64)),
-                        ("alloc_defs", J::N(alloc as u64)),
-                        ("test_needed_defs", J::N(tested as u64)),
-                    ]
-                    .into_iter()
-                    .chain(self.escape_summary())
-                    .collect(),
+                    summary_head(scope)
+                        .into_iter()
+                        .chain([
+                            ("defs", J::N(defs as u64)),
+                            ("verified", J::N(verified as u64)),
+                            ("failed", J::N(failed as u64)),
+                            ("io_defs", J::N(io as u64)),
+                            ("alloc_defs", J::N(alloc as u64)),
+                            ("test_needed_defs", J::N(tested as u64)),
+                        ])
+                        .chain(self.escape_summary(scope))
+                        .collect(),
                 ));
                 Self::lines(rows)
             }
@@ -1696,11 +1798,13 @@ impl<'p> Model<'p> {
                 }
                 Self::lines(self.impact(&d, change))
             }
-            "duplicates" => Self::lines(self.duplicates()),
-            "tests" => Self::lines(self.tests_needed()),
-            "effects" => match args.first() {
-                Some(_) => Self::lines(self.effects_of(&def(0)?)),
-                None => Self::lines(self.effects_all()),
+            "duplicates" => Self::lines(self.duplicates(self.scope(args)?.as_ref())),
+            "tests" => Self::lines(self.tests_needed(self.scope(args)?.as_ref())),
+            // One definition: what it reaches. Anything else (no path, a
+            // unit, several paths): the listing, of the scope's definitions.
+            "effects" => match args {
+                [one] if self.defs.contains_key(one) => Self::lines(self.effects_of(&def(0)?)),
+                _ => Self::lines(self.effects_all(self.scope(args)?.as_ref())),
             },
             "effect" => {
                 let name = args
@@ -1708,7 +1812,7 @@ impl<'p> Model<'p> {
                     .ok_or("`effect` takes an effect: `alloc` or `io`")?;
                 let e = crate::check::Effects::atom(name)
                     .ok_or_else(|| format!("unknown effect `{name}`: `alloc` or `io`"))?;
-                Self::lines(self.effect_defs(name, e))
+                Self::lines(self.effect_defs(name, e, self.scope(&args[1..])?.as_ref()))
             }
             other => return Err(format!("unknown query `{other}`")),
         };
@@ -1810,9 +1914,14 @@ impl<'p> Model<'p> {
     /// row. The effect check (E0603, E0606) already makes every such
     /// definition declare the effect; a definition that declares one but
     /// reaches no operation has no row.
-    fn effects_all(&self) -> Vec<J> {
+    fn effects_all(&self, scope: Option<&Scope>) -> Vec<J> {
         let mut rows = Vec::new();
-        for d in self.defs.values() {
+        let defs: Vec<&Entry> = self
+            .defs
+            .values()
+            .filter(|d| within(scope, &d.path, &d.unit))
+            .collect();
+        for d in &defs {
             let nearest = self
                 .io_paths(&d.path)
                 .into_iter()
@@ -1822,7 +1931,7 @@ impl<'p> Model<'p> {
             }
         }
         let n = rows.len();
-        for d in self.defs.values() {
+        for d in &defs {
             let nearest = self
                 .effect_paths(&d.path, |p| self.has_alloc(p, true))
                 .into_iter()
@@ -1832,20 +1941,20 @@ impl<'p> Model<'p> {
             }
         }
         let m = rows.len() - n;
-        let io = self.defs.keys().filter(|p| self.io.contains(*p)).count();
-        let alloc = self
-            .defs
-            .keys()
-            .filter(|p| self.has_alloc(p, false))
+        let io = defs.iter().filter(|d| self.io.contains(&d.path)).count();
+        let alloc = defs
+            .iter()
+            .filter(|d| self.has_alloc(&d.path, false))
             .count();
-        rows.push(J::O(vec![
-            ("summary", J::B(true)),
+        let mut summary = summary_head(scope);
+        summary.extend([
             ("io_reaching", J::N(n as u64)),
             ("io_defs", J::N(io as u64)),
-            ("defs", J::N(self.defs.len() as u64)),
+            ("defs", J::N(defs.len() as u64)),
             ("alloc_reaching", J::N(m as u64)),
             ("alloc_defs", J::N(alloc as u64)),
-        ]));
+        ]);
+        rows.push(J::O(summary));
         rows
     }
 
@@ -1855,10 +1964,10 @@ impl<'p> Model<'p> {
     /// `own` (the definition's own operations have it: an allocation, a
     /// call of a built-in `io` operation), `callee` (only through its
     /// calls) or `null` (declared, not needed); then a summary row.
-    fn effect_defs(&self, name: &str, e: crate::check::Effects) -> Vec<J> {
+    fn effect_defs(&self, name: &str, e: crate::check::Effects, scope: Option<&Scope>) -> Vec<J> {
         let mut rows = Vec::new();
         let (mut declares, mut requires) = (0, 0);
-        for (path, d) in &self.effects {
+        for (path, d) in self.effects.iter().filter(|(p, _)| self.path_in(scope, p)) {
             let (decl, req) = (d.declared.contains(e), d.all.contains(e));
             if !decl && !req {
                 continue;
@@ -1880,13 +1989,14 @@ impl<'p> Model<'p> {
                 ("source", source),
             ]));
         }
-        rows.push(J::O(vec![
-            ("summary", J::B(true)),
+        let mut summary = summary_head(scope);
+        summary.extend([
             ("effect", J::S(name.into())),
             ("declares", J::N(declares as u64)),
             ("requires", J::N(requires as u64)),
-            ("defs", J::N(self.defs.len() as u64)),
-        ]));
+            ("defs", J::N(self.defs_in(scope).count() as u64)),
+        ]);
+        rows.push(J::O(summary));
         rows
     }
 
@@ -1900,7 +2010,7 @@ impl<'p> Model<'p> {
     /// path: `sites` counts its own calls of built-in `io` operations (where
     /// a test aims), `lines` its normal-form lines. Then a summary row with
     /// the area in definitions, sites and lines.
-    fn tests_needed(&self) -> Vec<J> {
+    fn tests_needed(&self, scope: Option<&Scope>) -> Vec<J> {
         let builtins: Vec<&String> = self
             .io
             .iter()
@@ -1909,7 +2019,7 @@ impl<'p> Model<'p> {
         let mut rows = Vec::new();
         let (mut exec, mut sites_total, mut lines_total) = (0, 0, 0);
         let (mut io_n, mut unproved_n) = (0, 0);
-        for d in self.all_defs() {
+        for d in self.defs_in(scope) {
             if d.f.kind != FnKind::Exec {
                 continue;
             }
@@ -1939,15 +2049,16 @@ impl<'p> Model<'p> {
             ]));
         }
         let n = rows.len();
-        rows.push(J::O(vec![
-            ("summary", J::B(true)),
+        let mut summary = summary_head(scope);
+        summary.extend([
             ("exec_defs", J::N(exec as u64)),
             ("test_needed_defs", J::N(n as u64)),
             ("io_defs", J::N(io_n as u64)),
             ("unproved_defs", J::N(unproved_n as u64)),
             ("test_sites", J::N(sites_total as u64)),
             ("test_lines", J::N(lines_total as u64)),
-        ]));
+        ]);
+        rows.push(J::O(summary));
         rows
     }
 
@@ -1957,18 +2068,18 @@ impl<'p> Model<'p> {
     /// unit, with other parameter or local names, or calling definitions
     /// that are themselves the same. One row `{"hash","defs"}` per group of
     /// two or more, by identity, then a summary row.
-    fn duplicates(&self) -> Vec<J> {
-        let mut groups: BTreeMap<&str, Vec<String>> = BTreeMap::new();
+    fn duplicates(&self, scope: Option<&Scope>) -> Vec<J> {
+        // Per identity: its definitions, and whether one is in the scope.
+        let mut groups: BTreeMap<&str, (Vec<String>, bool)> = BTreeMap::new();
         for d in self.all_defs() {
-            groups
-                .entry(self.hashes(&d).id.as_str())
-                .or_default()
-                .push(d.path.clone());
+            let g = groups.entry(self.hashes(&d).id.as_str()).or_default();
+            g.0.push(d.path.clone());
+            g.1 |= within(scope, &d.path, &d.unit);
         }
         let mut rows = Vec::new();
         let mut dup_defs = 0;
-        for (hash, mut defs) in groups {
-            if defs.len() < 2 {
+        for (hash, (mut defs, in_scope)) in groups {
+            if defs.len() < 2 || !in_scope {
                 continue;
             }
             defs.sort();
@@ -1979,12 +2090,13 @@ impl<'p> Model<'p> {
             ]));
         }
         let groups = rows.len();
-        rows.push(J::O(vec![
-            ("summary", J::B(true)),
+        let mut summary = summary_head(scope);
+        summary.extend([
             ("groups", J::N(groups as u64)),
             ("duplicate_defs", J::N(dup_defs as u64)),
-            ("defs", J::N(self.defs.len() as u64)),
-        ]));
+            ("defs", J::N(self.defs_in(scope).count() as u64)),
+        ]);
+        rows.push(J::O(summary));
         rows
     }
 
@@ -2169,8 +2281,10 @@ impl<'p> Model<'p> {
         }
     }
 
-    /// Edges reachable from `start` within `depth` steps.
-    fn reach(&self, start: &str, dir: &str, depth: usize) -> BTreeSet<Edge> {
+    /// Edges reachable from `start` within `depth` steps, following only
+    /// the edges of `kinds` when it names any.
+    fn reach(&self, start: &str, dir: &str, depth: usize, kinds: &[&str]) -> BTreeSet<Edge> {
+        let follow = |e: &&Edge| kinds.is_empty() || kinds.contains(&e.kind);
         let mut seen = BTreeSet::new();
         let mut frontier: BTreeSet<String> = [start.to_string()].into();
         let mut visited: BTreeSet<String> = frontier.clone();
@@ -2184,10 +2298,11 @@ impl<'p> Model<'p> {
             // source is visited already either way.
             let mut next = BTreeSet::new();
             for at in &frontier {
-                let out = self.out_edges(at).filter(|_| dir != "in");
+                let out = self.out_edges(at).filter(|_| dir != "in").filter(follow);
                 let inn = self
                     .in_edges(at)
-                    .filter(|e| dir != "out" && (dir == "in" || !frontier.contains(&e.from)));
+                    .filter(|e| dir != "out" && (dir == "in" || !frontier.contains(&e.from)))
+                    .filter(follow);
                 for (e, other) in out.map(|e| (e, &e.to)).chain(inn.map(|e| (e, &e.from))) {
                     seen.insert(e.clone());
                     if visited.insert(other.clone()) {

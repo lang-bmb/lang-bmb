@@ -191,6 +191,26 @@ fn reads(defs: &[&str]) -> Vec<(&'static str, String)> {
             "{\"name\":\"surface\",\"args\":[\"no::such\"]}".into(),
         ),
         ("query", "{\"name\":\"nonsense\"}".into()),
+        // Scopes and edge kinds (backlog 2D-17).
+        ("query", "{\"name\":\"units\",\"args\":[\"lib\"]}".into()),
+        ("query", "{\"name\":\"status\",\"args\":[\"lib\"]}".into()),
+        (
+            "query",
+            "{\"name\":\"duplicates\",\"args\":[\"lib\"]}".into(),
+        ),
+        (
+            "query",
+            "{\"name\":\"effects\",\"args\":[\"lib\",\"app\"]}".into(),
+        ),
+        (
+            "query",
+            "{\"name\":\"effect\",\"args\":[\"io\",\"app\"]}".into(),
+        ),
+        ("query", "{\"name\":\"tests\",\"args\":[\"app\"]}".into()),
+        (
+            "query",
+            "{\"name\":\"status\",\"args\":[\"no::such\"]}".into(),
+        ),
         ("verify", "{}".into()),
         ("build", "{\"name\":\"app\"}".into()),
     ];
@@ -202,6 +222,10 @@ fn reads(defs: &[&str]) -> Vec<(&'static str, String)> {
             ("edges", ""),
             ("edges", ",\"in\""),
             ("edges", ",\"both\",\"2\""),
+            ("edges", ",\"both\",\"2\",\"calls,uses\""),
+            ("status", ""),
+            ("duplicates", ""),
+            ("tests", ""),
             ("impact", ""),
             ("impact", ",\"body\""),
             ("effects", ""),
@@ -368,6 +392,108 @@ fn surface_proves_one_definition_with_the_same_row() {
         }
         assert_eq!(cached(), want, "{path} warm");
     }
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(&cold);
+}
+
+/// `status PATH..` and `tests PATH..` prove the definitions in the scope
+/// alone (backlog 2D-17), with the rows the whole-program proof gives:
+/// without a cache, with a cold cache and with a warm one, through the CLI
+/// and through the MCP `query` tool (the same text).
+#[test]
+fn status_of_a_scope_proves_its_definitions_with_the_same_rows() {
+    let root = temp_root("scope");
+    let mut s = Server::new(&root);
+    commit(
+        &mut s,
+        &[
+            unit("lib", "도구"),
+            put("lib", SPECS),
+            put("lib", DEC),
+            put("lib", BAD),
+            put("lib", REC),
+            put("lib", ZERO),
+            unit("app", "진입점"),
+            put("app", MAIN),
+        ],
+    );
+    drop(s);
+    let ws = root.to_str().unwrap();
+    let in_scope = |path: &str, scope: &[&str]| {
+        scope
+            .iter()
+            .any(|s| path == *s || path.starts_with(&format!("{s}::")))
+    };
+    let cold = temp_root("scope-cold");
+    for query in ["status", "tests"] {
+        let whole = run(&["query", query, "--", ws]);
+        let rows: Vec<&str> = whole
+            .lines()
+            .skip(1)
+            .filter(|l| !l.starts_with("{\"summary\""))
+            .collect();
+        let scopes: [&[&str]; 5] = [
+            &["lib"],
+            &["app"],
+            &["lib::bad"],
+            &["lib::rec", "app::main"],
+            &["app", "lib"],
+        ];
+        for (n, scope) in scopes.iter().enumerate() {
+            let want: Vec<&str> = rows
+                .iter()
+                .copied()
+                .filter(|r| in_scope(&str_field(r, "path").unwrap(), scope))
+                .collect();
+            let check = |out: &str, what: &str| {
+                let got: Vec<&str> = out
+                    .lines()
+                    .skip(1)
+                    .filter(|l| !l.starts_with("{\"summary\""))
+                    .collect();
+                assert_eq!(got, want, "{query} {scope:?} {what}");
+            };
+            let mut args = vec!["query", query];
+            args.extend(*scope);
+            args.extend(["--", ws]);
+            let uncached = run(&args);
+            check(&uncached, "uncached");
+            let dir = cold.join(format!("{query}-{n}"));
+            let d = dir.to_str().unwrap();
+            let mut cached = vec!["query", "--cache", d, query];
+            cached.extend(*scope);
+            cached.extend(["--", ws]);
+            assert_eq!(run(&cached), uncached, "{query} {scope:?} cold");
+            // Only the scope was proved: the incremental cache (`defs`)
+            // holds entries of its definitions alone.
+            if let Ok(t) = std::fs::read_to_string(dir.join("defs")) {
+                for l in t.lines().skip(2) {
+                    let path = l.split(' ').nth(1).unwrap();
+                    assert!(in_scope(path, scope), "{query} {scope:?}: {l}");
+                }
+            }
+            assert_eq!(run(&cached), uncached, "{query} {scope:?} warm");
+            // The MCP tool gives the same text.
+            let list: Vec<String> = scope.iter().map(|p| q(p)).collect();
+            let call = format!("{{\"name\":\"{query}\",\"args\":[{}]}}", list.join(","));
+            let (text, err) = text(&fresh(&root, "query", &call));
+            assert!(!err, "{text}");
+            assert_eq!(text, uncached, "{query} {scope:?} mcp");
+        }
+    }
+    // The failing definition keeps its failed obligations, and the summary
+    // counts the scope.
+    let bad = run(&["query", "status", "lib::bad", "--", ws]);
+    assert!(
+        bad.contains("\"path\":\"lib::bad\",\"status\":\"failed\",\"obligations\":2,\"failed\":2,"),
+        "{bad}"
+    );
+    assert!(
+        bad.lines().last().unwrap().starts_with(
+            "{\"summary\":true,\"scope\":[\"lib::bad\"],\"defs\":1,\"verified\":0,\"failed\":1,"
+        ),
+        "{bad}"
+    );
     let _ = std::fs::remove_dir_all(&root);
     let _ = std::fs::remove_dir_all(&cold);
 }

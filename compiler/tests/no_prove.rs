@@ -52,6 +52,12 @@ fn only_proof_status_requests_start_the_solver() {
         req(&["query", "effects", "app::main"]),
         req(&["query", "effects"]),
         req(&["query", "nosuch"]),
+        // Scopes and edge kinds (backlog 2D-17).
+        req(&["query", "units", "alg"]),
+        req(&["query", "edges", "app::main", "both", "2", "calls"]),
+        req(&["query", "duplicates", "alg"]),
+        req(&["query", "effects", "alg", "app"]),
+        req(&["query", "effect", "io", "app"]),
     ];
     let with_proof = [
         req(&["map", "L1"]),
@@ -59,6 +65,8 @@ fn only_proof_status_requests_start_the_solver() {
         req(&["query", "surface", "app::main"]),
         req(&["query", "status"]),
         req(&["query", "tests"]),
+        req(&["query", "status", "alg"]),
+        req(&["query", "tests", "app::main"]),
     ];
 
     // Reference answers with the solver available.

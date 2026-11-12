@@ -179,11 +179,9 @@ fn bad_queries_are_errors() {
     assert!(req(&["query", "teleport"]).is_err());
 }
 
-#[test]
-fn duplicates_groups_equal_bodies_across_names_and_units() {
-    // `lib2::dec2` is `lib::dec` under another name and unit; the spec fns
-    // repeat too. `lib2::other` has no twin.
-    const C: &str = r#"
+// `lib2::dec2` is `lib::dec` under another name and unit; the spec fns
+// repeat too. `lib2::other` has no twin.
+const DUP: &str = r#"
 #[summary("복제")]
 mod lib2 {
     spec fn pos(x: i64) -> bool { x > 0 }
@@ -205,6 +203,10 @@ mod lib2 {
     }
 }
 "#;
+
+#[test]
+fn duplicates_groups_equal_bodies_across_names_and_units() {
+    const C: &str = DUP;
     let f = files(&[("a.bmb", A), ("b.bmb", B), ("c.bmb", C)]);
     let out = run(&f, &["query", "duplicates"]);
     let rows: Vec<&str> = out.lines().skip(1).collect();
@@ -457,12 +459,7 @@ fn effects_lists_shortest_paths_to_io() {
     assert!(req(&["query", "effects", "app::nope"]).is_err());
 }
 
-/// Data types in the maps (ADR-0026 §6, backlog 2B-07): types are L0 `def`
-/// rows with `def_kind` `struct`/`enum`, `impl` functions are `unit::T::f`,
-/// L2 `types` edges, type impact, and variant constructors are no calls.
-#[test]
-fn data_types_are_mapped() {
-    const SRC: &str = r#"#[summary("types")]
+const TYPES: &str = r#"#[summary("types")]
 mod geo {
     struct Point { x: i64, y: i64 }
 
@@ -495,6 +492,13 @@ mod geo {
     }
 }
 "#;
+
+/// Data types in the maps (ADR-0026 §6, backlog 2B-07): types are L0 `def`
+/// rows with `def_kind` `struct`/`enum`, `impl` functions are `unit::T::f`,
+/// L2 `types` edges, type impact, and variant constructors are no calls.
+#[test]
+fn data_types_are_mapped() {
+    const SRC: &str = TYPES;
     let f = files(&[("t.bmb", SRC)]);
     let l0 = run(&f, &["map", "L0"]);
     assert!(
@@ -769,4 +773,267 @@ mod u {
     assert_eq!(at("u::__closure$0"), (true, 22));
     assert_eq!(at("<u::__fnitem$0 as u::__fn$0_0>::call"), (true, 12));
     assert_eq!(at("u::__fn$0_0"), (true, 4));
+    // The generated definitions are in their unit's scope (backlog 2D-17),
+    // though their paths do not start with it.
+    let f = files(&[("u.bmb", src)]);
+    assert_eq!(
+        run(&f, &["query", "units", "u"]),
+        run(&f, &["query", "units"])
+    );
+    let status = run(&f, &["query", "status", "u"]);
+    assert!(
+        status.contains("{\"path\":\"<u::__closure$0 as u::__fn$0_0>::call\","),
+        "{status}"
+    );
+}
+
+/// The rows of `out` without the header and the summary row.
+fn rows_of(out: &str) -> Vec<&str> {
+    out.lines()
+        .skip(1)
+        .filter(|l| !l.starts_with("{\"summary\":true"))
+        .collect()
+}
+
+/// The path a row is about (`path` or `def`).
+fn row_path(row: &str) -> &str {
+    let at = ["\"path\":\"", "\"def\":\""]
+        .iter()
+        .find_map(|k| row.find(k).map(|i| i + k.len()))
+        .unwrap();
+    &row[at..at + row[at..].find('"').unwrap()]
+}
+
+fn under(path: &str, prefix: &str) -> bool {
+    path == prefix || path.starts_with(&format!("{prefix}::"))
+}
+
+/// Scope arguments (backlog 2D-17): `units`, `status`, `effects`, `effect E`
+/// and `tests` take paths and answer with the rows of the whole-program
+/// answer that are about a definition in the scope (a path names a unit, a
+/// definition or a type and everything under it), then a summary row over
+/// the scope that names it.
+#[test]
+fn a_scope_keeps_the_rows_of_its_definitions() {
+    // `lib` and the `app` of the effect fixture.
+    let f = files(&[("a.bmb", A), ("io.bmb", IO)]);
+    let scopes: [&[&str]; 5] = [
+        &["lib"],
+        &["lib::dec"],
+        &["app::main", "lib::zero"],
+        &["app", "lib"],
+        &["lib::dec", "lib", "lib::dec"],
+    ];
+    for query in [
+        vec!["units"],
+        vec!["status"],
+        vec!["effects"],
+        vec!["effect", "io"],
+        vec!["tests"],
+    ] {
+        let mut req = vec!["query"];
+        req.extend(&query);
+        let whole = run(&f, &req);
+        for scope in scopes {
+            // `effects DEF` is the reach view of one definition.
+            if query == ["effects"] && scope.len() == 1 && scope[0].contains("::") {
+                continue;
+            }
+            let mut scoped = req.clone();
+            scoped.extend(scope);
+            let out = run(&f, &scoped);
+            let want: Vec<&str> = rows_of(&whole)
+                .into_iter()
+                .filter(|r| scope.iter().any(|s| under(row_path(r), s)))
+                .collect();
+            assert_eq!(rows_of(&out), want, "{scoped:?}");
+            assert_eq!(out.lines().next(), whole.lines().next());
+            if query != ["units"] {
+                let mut names: Vec<&str> = scope.to_vec();
+                names.sort();
+                names.dedup();
+                let head = format!(
+                    "{{\"summary\":true,\"scope\":[{}],",
+                    names
+                        .iter()
+                        .map(|n| format!("\"{n}\""))
+                        .collect::<Vec<_>>()
+                        .join(",")
+                );
+                let last = out.lines().last().unwrap();
+                assert!(last.starts_with(&head), "{scoped:?}: {last}");
+            }
+        }
+    }
+    // The scope of every unit is the whole program: the same rows.
+    let whole = run(&f, &["query", "status"]);
+    let all = run(&f, &["query", "status", "app", "lib"]);
+    assert_eq!(rows_of(&all), rows_of(&whole));
+    assert_eq!(
+        all.lines()
+            .last()
+            .unwrap()
+            .replace("\"scope\":[\"app\",\"lib\"],", ""),
+        whole.lines().last().unwrap()
+    );
+
+    // The summary counts are those of the scope.
+    let last = |r: &[&str]| run(&f, r).lines().last().unwrap().to_string();
+    assert_eq!(
+        last(&["query", "status", "lib"]),
+        "{\"summary\":true,\"scope\":[\"lib\"],\"defs\":4,\"verified\":2,\"failed\":0,\"io_defs\":0,\"alloc_defs\":0,\"test_needed_defs\":0,\"proved\":4,\"assumed\":0,\"external\":0,\"escapes\":0,\"unconfirmed\":0}"
+    );
+    let g = files(&[("io.bmb", IO)]);
+    assert_eq!(
+        run(&g, &["query", "effects", "app::a_log", "app::twice"]),
+        [
+            "{\"schema\":\"bmb.map\",\"version\":1}",
+            "{\"def\":\"app::a_log\",\"effect\":\"io\",\"path\":[\"app::a_log\",\"app::emit\",\"print_i64\"]}",
+            "{\"summary\":true,\"scope\":[\"app::a_log\",\"app::twice\"],\"io_reaching\":1,\"io_defs\":1,\"defs\":2,\"alloc_reaching\":0,\"alloc_defs\":0}",
+        ]
+        .join("\n")
+            + "\n"
+    );
+    assert_eq!(
+        run(&g, &["query", "effect", "io", "app::a_log", "app::quiet", "app::twice"]),
+        [
+            "{\"schema\":\"bmb.map\",\"version\":1}",
+            "{\"def\":\"app::a_log\",\"effect\":\"io\",\"declares\":true,\"requires\":true,\"source\":\"callee\"}",
+            "{\"def\":\"app::quiet\",\"effect\":\"io\",\"declares\":true,\"requires\":false,\"source\":null}",
+            "{\"summary\":true,\"scope\":[\"app::a_log\",\"app::quiet\",\"app::twice\"],\"effect\":\"io\",\"declares\":2,\"requires\":1,\"defs\":3}",
+        ]
+        .join("\n")
+            + "\n"
+    );
+    assert_eq!(
+        last(&["query", "tests", "app::emit", "app::twice", "app::quiet"]),
+        "{\"summary\":true,\"scope\":[\"app::emit\",\"app::quiet\",\"app::twice\"],\"exec_defs\":3,\"test_needed_defs\":2,\"io_defs\":1,\"unproved_defs\":1,\"test_sites\":1,\"test_lines\":8}"
+    );
+    // `units` has no summary row: the unit row, then its definitions.
+    let units = run(&f, &["query", "units", "lib"]);
+    assert_eq!(units.lines().count(), 6, "{units}");
+    assert!(
+        units
+            .lines()
+            .nth(1)
+            .unwrap()
+            .starts_with("{\"level\":\"L0\",\"kind\":\"unit\",\"path\":\"lib\","),
+        "{units}"
+    );
+
+    // A path that names nothing is an error, whatever else is named.
+    let req = |r: &[&str]| request(&f, r);
+    for q in ["units", "status", "effects", "tests", "duplicates"] {
+        let e = req(&["query", q, "lib", "nope"]).unwrap_err();
+        assert!(e.contains("unknown definition or unit `nope`"), "{q}: {e}");
+    }
+    assert!(req(&["query", "effect", "io", "li"]).is_err());
+    // The built-in `print_i64` is no definition.
+    assert!(req(&["query", "status", "print_i64"]).is_err());
+}
+
+/// A type in a scope brings its `impl` functions (`unit::T::f`).
+#[test]
+fn a_type_scope_holds_its_impl_functions() {
+    let f = files(&[("t.bmb", TYPES)]);
+    let out = run(&f, &["query", "units", "geo::Point"]);
+    let paths: Vec<&str> = rows_of(&out).into_iter().map(row_path).collect();
+    assert_eq!(paths, ["geo::Point", "geo::Point::norm"], "{out}");
+}
+
+/// `duplicates PATH..` (backlog 2D-17): the groups that hold a definition
+/// in the scope, each whole (the twins outside the scope are the answer),
+/// as the unscoped rows.
+#[test]
+fn duplicates_of_a_scope_are_the_groups_that_touch_it() {
+    let f = files(&[("a.bmb", A), ("b.bmb", B), ("c.bmb", DUP)]);
+    let whole = run(&f, &["query", "duplicates"]);
+    let one = run(&f, &["query", "duplicates", "lib::dec"]);
+    let want: Vec<&str> = rows_of(&whole)
+        .into_iter()
+        .filter(|r| r.contains("\"lib::dec\""))
+        .collect();
+    assert_eq!(want.len(), 1);
+    assert!(want[0].ends_with("\"defs\":[\"lib2::dec2\",\"lib::dec\"]}"));
+    assert_eq!(rows_of(&one), want);
+    assert_eq!(
+        one.lines().last().unwrap(),
+        "{\"summary\":true,\"scope\":[\"lib::dec\"],\"groups\":1,\"duplicate_defs\":2,\"defs\":1}"
+    );
+    // A unit: every group one of its definitions is in.
+    let unit = run(&f, &["query", "duplicates", "lib2"]);
+    assert_eq!(rows_of(&unit), rows_of(&whole));
+    assert_eq!(
+        unit.lines().last().unwrap(),
+        "{\"summary\":true,\"scope\":[\"lib2\"],\"groups\":3,\"duplicate_defs\":6,\"defs\":4}"
+    );
+    // Definitions without a twin: only the summary row.
+    assert_eq!(
+        run(&f, &["query", "duplicates", "app", "lib2::other"]),
+        "{\"schema\":\"bmb.map\",\"version\":1}\n{\"summary\":true,\"scope\":[\"app\",\"lib2::other\"],\"groups\":0,\"duplicate_defs\":0,\"defs\":2}\n"
+    );
+}
+
+/// `edges DEF DIR DEPTH KINDS` (backlog 2D-17) follows only the edges of
+/// the named kinds: at depth 1 the rows of those kinds, deeper the closure
+/// over them (a callee's contract edges are not reached through `calls`).
+#[test]
+fn edges_follow_only_the_named_kinds() {
+    let f = files(&[("a.bmb", A), ("b.bmb", B)]);
+    let kind = |r: &str, k: &str| r.contains(&format!("\"kind\":\"{k}\""));
+    let all = run(&f, &["query", "edges", "app::main", "out", "1"]);
+    let calls = run(&f, &["query", "edges", "app::main", "out", "1", "calls"]);
+    let want: Vec<&str> = rows_of(&all)
+        .into_iter()
+        .filter(|r| kind(r, "calls"))
+        .collect();
+    assert_eq!(want.len(), 3);
+    assert_eq!(rows_of(&calls), want);
+    // Deeper: the unfiltered closure holds the contract edges of `lib::dec`,
+    // the closure over `calls` and `writes` only the calls and the write.
+    let deep = run(&f, &["query", "edges", "app::main", "out", "9"]);
+    assert!(rows_of(&deep).iter().any(|r| kind(r, "contract")), "{deep}");
+    assert_eq!(
+        run(&f, &["query", "edges", "app::main", "out", "9", "calls,writes"]),
+        [
+            "{\"schema\":\"bmb.map\",\"version\":1}",
+            "{\"level\":\"L2\",\"from\":\"app::main\",\"to\":\"lib::dec\",\"kind\":\"calls\"}",
+            "{\"level\":\"L2\",\"from\":\"app::main\",\"to\":\"lib::zero\",\"kind\":\"calls\"}",
+            "{\"level\":\"L2\",\"from\":\"app::main\",\"to\":\"lib::zero\",\"kind\":\"writes\",\"arg\":0}",
+            "{\"level\":\"L2\",\"from\":\"app::main\",\"to\":\"print_i64\",\"kind\":\"calls\"}",
+        ]
+        .join("\n")
+            + "\n"
+    );
+    // Incoming, and from a spec fn.
+    assert_eq!(
+        rows_of(&run(&f, &["query", "edges", "lib::pos", "in", "9", "uses"])),
+        [
+            "{\"level\":\"L2\",\"from\":\"app::main\",\"to\":\"lib::pos\",\"kind\":\"uses\"}",
+            "{\"level\":\"L2\",\"from\":\"lib::dec\",\"to\":\"lib::pos\",\"kind\":\"uses\"}",
+        ]
+    );
+    // Every kind named: the unfiltered answer.
+    let every = "calls,const,contract,passes,proof_calls,reads,spec_calls,trait,types,uses,writes";
+    assert_eq!(
+        run(&f, &["query", "edges", "app::main", "both", "9", every]),
+        run(&f, &["query", "edges", "app::main", "both", "9"])
+    );
+    // From a type (ADR-0026 §6).
+    let g = files(&[("t.bmb", TYPES)]);
+    let ty = run(&g, &["query", "edges", "geo::Point", "in", "1", "types"]);
+    assert_eq!(
+        rows_of(&ty),
+        rows_of(&run(&g, &["query", "edges", "geo::Point", "in", "1"]))
+            .into_iter()
+            .filter(|r| kind(r, "types"))
+            .collect::<Vec<_>>()
+    );
+    assert!(!rows_of(&ty).is_empty());
+    let e = request(
+        &f,
+        &["query", "edges", "app::main", "out", "1", "calls,jumps"],
+    )
+    .unwrap_err();
+    assert!(e.contains("unknown edge kind `jumps`"), "{e}");
 }

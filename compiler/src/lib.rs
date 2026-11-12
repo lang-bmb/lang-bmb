@@ -979,10 +979,12 @@ pub fn map_request_cached(
 }
 
 /// What a map request needs proved (backlog 1D-17, 3A-04).
-enum ProofNeed<'r> {
+enum ProofNeed {
     None,
-    /// The L1 row of one definition (`query surface DEF`).
-    One(&'r str),
+    /// The rows of these definitions: the L1 row of one (`query surface
+    /// DEF`), the definitions in a scope (`query status PATH..`, backlog
+    /// 2D-17).
+    Defs(std::collections::BTreeSet<String>),
     All,
 }
 
@@ -1003,9 +1005,22 @@ fn map_answer(
         request.get(1).map(String::as_str),
     ) {
         (Some("map"), level) if matches!(level.unwrap_or("all"), "L1" | "all") => ProofNeed::All,
-        (Some("query"), Some("status" | "tests")) => ProofNeed::All,
+        // With a scope, `status` and `tests` show the definitions in it
+        // alone, so only those are proved (backlog 2D-17).
+        (Some("query"), Some("status" | "tests")) => match ix.scope(&request[2..]) {
+            Ok(None) => ProofNeed::All,
+            Ok(Some(scope)) => ProofNeed::Defs(
+                ix.defs
+                    .values()
+                    .filter(|d| scope.has(&d.path, &d.unit))
+                    .map(|d| d.path.clone())
+                    .collect(),
+            ),
+            // A usage error: nothing is shown, so nothing is proved.
+            Err(_) => ProofNeed::None,
+        },
         (Some("query"), Some("surface")) => match request.get(2) {
-            Some(d) if ix.defs.contains_key(d) => ProofNeed::One(d),
+            Some(d) if ix.defs.contains_key(d) => ProofNeed::Defs([d.to_string()].into()),
             // A usage error: nothing is shown, so nothing is proved.
             _ => ProofNeed::None,
         },
@@ -1022,8 +1037,7 @@ fn map_answer(
             }
             o
         }
-        ProofNeed::One(d) => {
-            let only: std::collections::BTreeSet<String> = [d.to_string()].into();
+        ProofNeed::Defs(only) => {
             let mut incr = cache_dir.map(|dir| {
                 incremental::Session::new_for(dir, &fe.program, &fe.tables, &fe.sm, &only)
             });

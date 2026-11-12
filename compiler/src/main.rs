@@ -106,7 +106,13 @@ const USAGE: &str = "usage:
                             standard maps as JSONL (ADR-0020)
   bmb query [--cache DIR] <units|surface|edges|slice|find|contracts|status|impact|duplicates|effects|effect|tests> [args] -- <file.bmb>...
                             read queries as JSONL (ADR-0020); --cache as for verify (only
-                            the L1 rows, `surface` and `status` prove)
+                            the L1 rows, `surface` and `status` prove);
+                            units, status, duplicates, effects, effect E and tests take paths
+                            (units, definitions, types) and answer for what those hold alone
+                            (status and tests then prove only that; duplicates: the groups a
+                            named definition is in; effects with one definition: what it
+                            reaches); edges DEF [out|in|both] [DEPTH] [KIND,..] follows only
+                            the edges of the listed kinds (calls, contract, uses, writes ..)
   bmb import DIR <file.bmb>...
                             create or replace workspace DIR from files, in normal form
   bmb apply DIR OPS.json    commit a transaction (JSON array of unit/put/remove/remove_unit/
