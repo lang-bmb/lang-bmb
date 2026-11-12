@@ -664,6 +664,49 @@ fn summary_head(scope: Option<&Scope>) -> Vec<(&'static str, J)> {
     kv
 }
 
+/// The byte budget of a bounded response (ADR-0127).
+pub const RESPONSE_BUDGET: usize = 32 * 1024;
+
+/// A window on a JSONL response (ADR-0127): the rows from `offset`, as many
+/// whole rows as fit `budget` bytes (the first of them always, so every
+/// offset makes progress) and at most `limit`. When that is not every row
+/// of `text`, a last row says so: the offset, the rows shown, the rows and
+/// bytes of the whole response and, while rows remain, the offset to go on
+/// from. A response shown whole is returned as it is.
+pub fn bound(text: &str, budget: usize, offset: usize, limit: Option<usize>) -> String {
+    let rows: Vec<&str> = text.lines().collect();
+    let mut out = String::new();
+    let mut shown = 0;
+    for r in rows.iter().skip(offset) {
+        if limit.is_some_and(|l| shown >= l) || (shown > 0 && out.len() + r.len() + 1 > budget) {
+            break;
+        }
+        out.push_str(r);
+        out.push('\n');
+        shown += 1;
+    }
+    if shown == rows.len() {
+        return text.to_string();
+    }
+    let mut kv = vec![
+        ("truncated", J::B(true)),
+        ("offset", J::N(offset as u64)),
+        ("shown", J::N(shown as u64)),
+        ("rows", J::N(rows.len() as u64)),
+        ("bytes", J::N(text.len() as u64)),
+    ];
+    if offset + shown < rows.len() {
+        kv.push(("next", J::N((offset + shown) as u64)));
+        kv.push((
+            "hint",
+            J::S("continue from `next` with `offset`, or ask for less: scope paths, `overview`, a smaller depth or edge kinds".into()),
+        ));
+    }
+    out.push_str(&J::O(kv).render());
+    out.push('\n');
+    out
+}
+
 /// The edge kinds of the L2 map, as `edges` filters them.
 pub const EDGE_KINDS: [&str; 11] = [
     "calls",
@@ -1344,6 +1387,25 @@ impl<'p> Model<'p> {
         )
     }
 
+    /// A unit's row in `overview` (ADR-0127): what the L0 row says with the
+    /// lists as counts, so the row's size does not grow with the unit.
+    fn overview_unit(&self, u: &Unit) -> J {
+        let types = self.types.values().filter(|t| t.unit == u.path).count();
+        J::O(
+            vec![
+                ("kind", J::S("unit".into())),
+                ("path", J::S(u.path.clone())),
+                ("summary", J::S(u.summary.clone())),
+                ("units", J::N(u.units.len() as u64)),
+                ("defs", J::N(u.defs.len() as u64)),
+                ("types", J::N(types as u64)),
+            ]
+            .into_iter()
+            .chain(library_key(&u.path))
+            .collect(),
+        )
+    }
+
     fn def_kind(d: &Def) -> &'static str {
         match d.f.kind {
             FnKind::Exec => "fn",
@@ -1655,6 +1717,16 @@ impl<'p> Model<'p> {
         let ty = args.first().and_then(|p| self.types.get(p));
         let body = match name {
             "units" => Self::lines(self.l0_rows_in(self.scope(args)?.as_ref())),
+            "overview" => {
+                let scope = self.scope(args)?;
+                let scope = scope.as_ref();
+                Self::lines(
+                    self.units
+                        .values()
+                        .filter(|u| within(scope, &u.path, &u.path))
+                        .map(|u| self.overview_unit(u)),
+                )
+            }
             "surface" if ty.is_some() => Self::lines([Self::l1_type(ty.unwrap())]),
             "impact" if ty.is_some() => {
                 let change = args.get(1).map(String::as_str).unwrap_or("iface");

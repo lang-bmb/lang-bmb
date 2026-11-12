@@ -54,6 +54,7 @@ fn only_proof_status_requests_start_the_solver() {
         req(&["query", "nosuch"]),
         // Scopes and edge kinds (backlog 2D-17).
         req(&["query", "units", "alg"]),
+        req(&["query", "overview"]),
         req(&["query", "edges", "app::main", "both", "2", "calls"]),
         req(&["query", "duplicates", "alg"]),
         req(&["query", "effects", "alg", "app"]),

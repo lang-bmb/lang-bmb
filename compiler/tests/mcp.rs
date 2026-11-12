@@ -1386,3 +1386,81 @@ fn probe_tool_on_request_and_read_only() {
     );
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// `--bounded` (ADR-0127, backlog 2D-38): `query` and `map` results are
+/// windows of the CLI's response, the tools take `offset` and `limit` and
+/// say so; without the flag the response is whole and the tool lists keep
+/// their bytes (`frozen_tool_lists_keep_their_bytes`).
+#[test]
+fn bounded_results_are_windows_of_the_response() {
+    let root = temp_root("bounded");
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    // 600 definitions: `units` is well over the budget.
+    let mut unit = String::from("#[summary(\"many\")]\nmod many {\n");
+    for i in 0..600 {
+        unit.push_str(&format!(
+            "    #[effects(pure)]\n    fn definition_number_{i}(x: i64) -> i64 {{\n        x\n    }}\n\n"
+        ));
+    }
+    unit.push_str("}\n");
+    std::fs::write(root.join("src/many.bmb"), unit).unwrap();
+    let (whole, err) = Client::start(&root).tool("query", "{\"name\":\"units\"}");
+    assert!(
+        !err && whole.len() > 2 * bmb::map::RESPONSE_BUDGET,
+        "{}",
+        whole.len()
+    );
+    let rows: Vec<&str> = whole.lines().collect();
+
+    let mut c = Client::start_with(&root, &["--bounded"]);
+    let list = c.request("tools/list", "{}").to_json();
+    assert!(
+        list.contains("A result over 32768 bytes")
+            && list.contains("`overview [PATH..]`")
+            && list.contains("\"offset\":{\"type\":\"integer\""),
+        "{list}"
+    );
+    let mut got: Vec<String> = Vec::new();
+    let mut offset = 0;
+    while offset < rows.len() {
+        let (page, err) = c.tool(
+            "query",
+            &format!("{{\"name\":\"units\",\"offset\":{offset}}}"),
+        );
+        assert!(!err, "{page}");
+        let mut page: Vec<&str> = page.lines().collect();
+        let last = page.pop().unwrap();
+        assert!(last.starts_with("{\"truncated\":true"), "{last}");
+        let bytes: usize = page.iter().map(|r| r.len() + 1).sum();
+        assert!(!page.is_empty() && bytes <= bmb::map::RESPONSE_BUDGET);
+        offset += page.len();
+        got.extend(page.iter().map(|r| r.to_string()));
+    }
+    assert_eq!(got, rows);
+    // `limit`, the map, a small answer as it is, a bad count.
+    let (two, _) = c.tool("query", "{\"name\":\"units\",\"limit\":2}");
+    assert_eq!(two.lines().count(), 3, "{two}");
+    let (map, _) = c.tool("map", "{\"level\":\"L0\"}");
+    assert!(
+        map.len() <= bmb::map::RESPONSE_BUDGET + 300 && map.contains("\"truncated\":true"),
+        "{}",
+        map.len()
+    );
+    let (small, _) = c.tool("query", "{\"name\":\"overview\"}");
+    assert_eq!(
+        small,
+        "{\"schema\":\"bmb.map\",\"version\":1}\n{\"kind\":\"unit\",\"path\":\"many\",\"summary\":\"many\",\"units\":0,\"defs\":600,\"types\":0}\n"
+    );
+    let (bad, err) = c.tool("query", "{\"name\":\"units\",\"offset\":-1}");
+    assert!(err && bad.contains("`offset` is a count of rows"), "{bad}");
+    // The compact view of a window keeps the last row.
+    let mut c = Client::start_with(&root, &["--bounded", "--compact"]);
+    let (page, _) = c.tool("query", "{\"name\":\"units\"}");
+    assert!(
+        page.lines()
+            .last()
+            .unwrap()
+            .starts_with("{\"truncated\":true,\"offset\":0,"),
+        "{page}"
+    );
+}

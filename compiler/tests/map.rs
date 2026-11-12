@@ -1037,3 +1037,118 @@ fn edges_follow_only_the_named_kinds() {
     .unwrap_err();
     assert!(e.contains("unknown edge kind `jumps`"), "{e}");
 }
+
+/// A response window (ADR-0127, backlog 2D-38): whole rows from the offset
+/// within the budget, the first always; a response shown whole is the
+/// response; otherwise a last row carries the counts, and walking the
+/// offsets it names gives every row once, in order.
+#[test]
+fn a_window_shows_whole_rows_and_says_what_it_left_out() {
+    let f = files(&[("a.bmb", A), ("b.bmb", B)]);
+    let whole = request(&f, &["query", "units"]).unwrap();
+    let rows: Vec<&str> = whole.lines().collect();
+    assert!(rows.len() >= 6, "{whole}");
+    // No window, or one that holds everything: the same bytes.
+    for flags in [
+        &["--budget", "1000000"][..],
+        &["--offset", "0"],
+        &["--limit", "1000"],
+    ] {
+        let mut req = vec!["query"];
+        req.extend(flags);
+        req.push("units");
+        assert_eq!(request(&f, &req).unwrap(), whole, "{flags:?}");
+    }
+    // Every budget, from one that holds no row: the walk gives the rows back.
+    for budget in [
+        1,
+        rows[0].len() + 1,
+        rows[0].len() + rows[1].len() + 2,
+        400,
+        2000,
+    ] {
+        let mut got: Vec<String> = Vec::new();
+        let mut offset = 0;
+        loop {
+            let b = budget.to_string();
+            let o = offset.to_string();
+            let out = request(&f, &["query", "--budget", &b, "--offset", &o, "units"]).unwrap();
+            let mut page: Vec<&str> = out.lines().collect();
+            let last = *page.last().unwrap();
+            if !last.starts_with("{\"truncated\":true") {
+                got.extend(page.iter().map(|r| r.to_string()));
+                break;
+            }
+            page.pop();
+            assert!(
+                !page.is_empty(),
+                "budget {budget} offset {offset}: no progress"
+            );
+            let bytes: usize = page.iter().map(|r| r.len() + 1).sum();
+            assert!(
+                page.len() == 1 || bytes <= budget,
+                "budget {budget}: {bytes}"
+            );
+            assert!(
+                last.contains(&format!("\"offset\":{offset},\"shown\":{},", page.len()))
+                    && last.contains(&format!(
+                        "\"rows\":{},\"bytes\":{}",
+                        rows.len(),
+                        whole.len()
+                    )),
+                "{last}"
+            );
+            got.extend(page.iter().map(|r| r.to_string()));
+            offset += page.len();
+            if offset == rows.len() {
+                assert!(!last.contains("\"next\""), "{last}");
+                break;
+            }
+            assert!(
+                last.contains(&format!("\"next\":{offset},\"hint\":")),
+                "{last}"
+            );
+        }
+        assert_eq!(got, rows, "budget {budget}");
+    }
+    // A limit alone, an offset past the end, the map, a bad count.
+    let two = request(&f, &["query", "--limit", "2", "units"]).unwrap();
+    let two: Vec<&str> = two.lines().collect();
+    assert_eq!(two[..2], rows[..2]);
+    assert!(two[2].contains("\"shown\":2,") && two.len() == 3);
+    let past = request(&f, &["query", "--offset", "999", "units"]).unwrap();
+    assert_eq!(
+        past,
+        format!(
+            "{{\"truncated\":true,\"offset\":999,\"shown\":0,\"rows\":{},\"bytes\":{}}}\n",
+            rows.len(),
+            whole.len()
+        )
+    );
+    let map = request(&f, &["map", "--limit", "1", "L0"]);
+    let map = map.unwrap();
+    assert!(
+        map.starts_with("{\"schema\":\"bmb.map\"") && map.lines().count() == 2,
+        "{map}"
+    );
+    assert!(request(&f, &["query", "--budget", "x", "units"]).is_err());
+}
+
+/// `overview` (ADR-0127): one row per unit of the scope, the lists of the
+/// L0 row as counts.
+#[test]
+fn overview_lists_units_with_counts() {
+    let f = files(&[("a.bmb", A), ("b.bmb", B)]);
+    assert_eq!(
+        request(&f, &["query", "overview"]).unwrap(),
+        "{\"schema\":\"bmb.map\",\"version\":1}\n\
+         {\"kind\":\"unit\",\"path\":\"app\",\"summary\":\"호출자\",\"units\":0,\"defs\":1,\"types\":0}\n\
+         {\"kind\":\"unit\",\"path\":\"lib\",\"summary\":\"탐색 대상\",\"units\":0,\"defs\":4,\"types\":0}\n"
+    );
+    assert_eq!(
+        request(&f, &["query", "overview", "app"]).unwrap(),
+        "{\"schema\":\"bmb.map\",\"version\":1}\n\
+         {\"kind\":\"unit\",\"path\":\"app\",\"summary\":\"호출자\",\"units\":0,\"defs\":1,\"types\":0}\n"
+    );
+    assert!(request(&f, &["query", "overview", "nosuch"]).is_err());
+}

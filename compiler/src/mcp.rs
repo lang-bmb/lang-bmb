@@ -54,6 +54,10 @@ pub struct Server {
     pub undecided_info: bool,
     /// `--probe-tool` (ADR-0109): the read tool `probe`.
     pub probe_tool: bool,
+    /// `--bounded` (ADR-0127): a `query` or `map` result is a window of at
+    /// most `map::RESPONSE_BUDGET` bytes on the response, moved with
+    /// `offset` and `limit`.
+    pub bounded: bool,
 }
 
 /// Verifications per definition of the `#[uses]` search a response runs
@@ -104,6 +108,7 @@ pub const FLAGS: &[&str] = &[
     "--stats",
     "--undecided-info",
     "--probe-tool",
+    "--bounded",
 ];
 
 fn s(x: &str) -> Value {
@@ -147,7 +152,15 @@ fn schema(props: &[(&str, &str, &str)], required: &[&str]) -> Value {
 /// only way to write (what the frozen prompts' tool section said), each
 /// `write` argument is described once (in its schema), and no design
 /// reference is left.
-fn tools(write: bool, compact: bool, docs: bool, files: bool, ast: bool, items: bool) -> Value {
+fn tools(
+    write: bool,
+    compact: bool,
+    docs: bool,
+    files: bool,
+    ast: bool,
+    items: bool,
+    bounded: bool,
+) -> Value {
     let t = |name: &str, desc: &str, input: Value| {
         obj(vec![
             ("name", s(name)),
@@ -176,27 +189,43 @@ fn tools(write: bool, compact: bool, docs: bool, files: bool, ast: bool, items: 
             "Read query on the standard maps (ADR-0020): units, surface DEF, edges DEF [out|in|both] [depth], slice DEF, find NAME, contracts PRED, status. {query_form}"
         )
     };
-    let mut list = vec![
-        t(
-            "query",
-            &query,
-            schema(
-                &[
-                    ("name", "string", "query name"),
-                    ("args", "array", "query arguments"),
-                ],
-                &["name"],
+    let map = if compact {
+        "Standard map as Rust-shaped text: level L0 (units and definitions), L1 (surfaces: each definition without its body, after a `// PATH: STATUS` line), L2 (edges, `FROM KIND TO`) or all."
+    } else {
+        "Standard map as JSONL: level L0 (units and definitions), L1 (surfaces), L2 (edges) or all."
+    };
+    // The window of a bounded result (`--bounded`, ADR-0127).
+    let window = [
+        (
+            "offset",
+            "integer",
+            "rows of the result to skip (default 0)",
+        ),
+        ("limit", "integer", "rows to return at most"),
+    ];
+    let mut query_args = vec![
+        ("name", "string", "query name"),
+        ("args", "array", "query arguments"),
+    ];
+    let mut map_args = vec![("level", "string", "L0, L1, L2 or all")];
+    let (query, map) = if bounded {
+        query_args.extend(window);
+        map_args.extend(window);
+        let budget = crate::map::RESPONSE_BUDGET;
+        (
+            format!(
+                "{query} A result over {budget} bytes is cut after a whole row and ends with a `truncated` row (rows shown, rows and bytes of the whole result, `next`): go on with `offset`, or ask for less. `overview [PATH..]` lists units without their definitions; `units`, `status`, `duplicates`, `effects` and `tests` take paths (units, definitions, types) and answer for what is under them; `edges` takes a fourth argument, the edge kinds to follow (`calls,uses`)."
             ),
-        ),
-        t(
-            "map",
-            if compact {
-                "Standard map as Rust-shaped text: level L0 (units and definitions), L1 (surfaces: each definition without its body, after a `// PATH: STATUS` line), L2 (edges, `FROM KIND TO`) or all."
-            } else {
-                "Standard map as JSONL: level L0 (units and definitions), L1 (surfaces), L2 (edges) or all."
-            },
-            schema(&[("level", "string", "L0, L1, L2 or all")], &[]),
-        ),
+            format!(
+                "{map} A result over {budget} bytes is cut after a whole row and ends with a `truncated` row: go on with `offset`, or use `query` with paths."
+            ),
+        )
+    } else {
+        (query, map.to_string())
+    };
+    let mut list = vec![
+        t("query", &query, schema(&query_args, &["name"])),
+        t("map", &map, schema(&map_args, &[])),
         t(
             "verify",
             &format!(
@@ -466,6 +495,7 @@ impl Server {
             item_docs: false,
             undecided_info: false,
             probe_tool: false,
+            bounded: false,
         }
     }
 
@@ -564,6 +594,32 @@ impl Server {
         }
     }
 
+    /// With `--bounded`, the window of the response `text` that the call's
+    /// `offset` and `limit` ask for (ADR-0127); otherwise `text`.
+    fn window(&self, text: String, a: &Value) -> Result<String, String> {
+        if !self.bounded {
+            return Ok(text);
+        }
+        let count = |k: &str| -> Result<Option<usize>, String> {
+            match a.get(k) {
+                None | Some(Value::Null) => Ok(None),
+                Some(v) => v
+                    .as_i64()
+                    .and_then(|n| usize::try_from(n).ok())
+                    .map(Some)
+                    .ok_or(format!("`{k}` is a count of rows, from 0")),
+            }
+        };
+        let offset = count("offset")?.unwrap_or(0);
+        let limit = count("limit")?;
+        Ok(crate::map::bound(
+            &text,
+            crate::map::RESPONSE_BUDGET,
+            offset,
+            limit,
+        ))
+    }
+
     /// Runs one tool. `Ok(text)` is a normal result, `Err(text)` a tool error.
     fn call(&mut self, name: &str, a: &Value) -> Result<String, String> {
         // The directories the tools read and write must not lead outside the
@@ -590,7 +646,8 @@ impl Server {
                     req.extend(xs.iter().filter_map(|x| x.as_str().map(String::from)));
                 }
                 let dir = self.cache_dir();
-                self.load()?.map_request(&req, Some(&dir))
+                let text = self.load()?.map_request(&req, Some(&dir))?;
+                self.window(text, a)
             }
             "map" => {
                 let level = a
@@ -599,7 +656,10 @@ impl Server {
                     .unwrap_or("all")
                     .to_string();
                 let dir = self.cache_dir();
-                self.load()?.map_request(&["map".into(), level], Some(&dir))
+                let text = self
+                    .load()?
+                    .map_request(&["map".into(), level], Some(&dir))?;
+                self.window(text, a)
             }
             "probe" if self.probe_tool => {
                 let def = str_arg("def")?;
@@ -945,6 +1005,7 @@ impl Server {
                     self.file_tools,
                     self.ast_tools,
                     self.item_docs,
+                    self.bounded,
                 );
                 if self.probe_tool
                     && let Value::Array(xs) = &mut list
@@ -1031,6 +1092,9 @@ pub fn serve(root: &Path, flags: &[&str]) -> std::io::Result<()> {
     }
     if has("--probe-tool") {
         server.probe_tool = true;
+    }
+    if has("--bounded") {
+        server.bounded = true;
     }
     if has("--undecided-info") {
         // An undecided obligation carries a verdict (ADR-0108): the bounded

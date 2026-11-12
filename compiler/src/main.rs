@@ -102,9 +102,10 @@ const USAGE: &str = "usage:
                             own text, callee contracts, revealed spec fns, declarations, types)
                             and each type's digest, as JSONL
   bmb hash <file.bmb>...    nameless identities and hashes (id, body, iface) as JSONL
-  bmb map [--cache DIR] [L0|L1|L2|all] <file.bmb>...
-                            standard maps as JSONL (ADR-0020)
-  bmb query [--cache DIR] <units|surface|edges|slice|find|contracts|status|impact|duplicates|effects|effect|tests> [args] -- <file.bmb>...
+  bmb map [--cache DIR] [--budget BYTES] [--offset ROWS] [--limit ROWS] [L0|L1|L2|all] <file.bmb>...
+                            standard maps as JSONL (ADR-0020); the window flags as for query
+  bmb query [--cache DIR] [--budget BYTES] [--offset ROWS] [--limit ROWS]
+            <units|overview|surface|edges|slice|find|contracts|status|impact|duplicates|effects|effect|tests> [args] -- <file.bmb>...
                             read queries as JSONL (ADR-0020); --cache as for verify (only
                             the L1 rows, `surface` and `status` prove);
                             units, status, duplicates, effects, effect E and tests take paths
@@ -112,13 +113,18 @@ const USAGE: &str = "usage:
                             (status and tests then prove only that; duplicates: the groups a
                             named definition is in; effects with one definition: what it
                             reaches); edges DEF [out|in|both] [DEPTH] [KIND,..] follows only
-                            the edges of the listed kinds (calls, contract, uses, writes ..)
+                            the edges of the listed kinds (calls, contract, uses, writes ..);
+                            overview [PATH..] lists units with counts in place of their
+                            definitions; --budget, --offset and --limit print a window of
+                            the response (ADR-0127): the rows from the offset, whole rows
+                            within the budget, and a last `truncated` row (rows shown, rows
+                            and bytes of the whole response, `next`) when rows are left out
   bmb import DIR <file.bmb>...
                             create or replace workspace DIR from files, in normal form
   bmb apply DIR OPS.json    commit a transaction (JSON array of unit/put/remove/remove_unit/
                             rename/expect ops)
                             to workspace DIR; rejected as a whole on any structural or type error
-  bmb mcp [--write-tool] [--compact] [--tool-docs] [--file-tools] [--ast-tools] [--item-docs] [--stats] DIR
+  bmb mcp [--write-tool] [--compact] [--tool-docs] [--file-tools] [--ast-tools] [--item-docs] [--stats] [--bounded] DIR
                             MCP server (stdio) for workspace DIR: query, map, verify, build, tx_*;
                             --write-tool also offers `write` (unit, definitions, removals,
                             commit and proof in one call); --compact shows results in the
@@ -129,7 +135,9 @@ const USAGE: &str = "usage:
                             --file-tools offers `read_file` and `edit_file` (a unified diff,
                             committed and proved in one call); --ast-tools offers `read_ast`
                             and `edit_ast` (a JSON Patch on the JSON syntax tree, committed and
-                            proved in one call) and gives positions as pointers into the tree
+                            proved in one call) and gives positions as pointers into the tree;
+                            --bounded gives `query` and `map` results as windows of at most
+                            32768 bytes with `offset` and `limit` arguments (ADR-0127)
   bmb ast <file.bmb>...     the syntax tree as one JSON document (the JSON AST edit surface's,
                             keyed by unit; positions are not part of it)
   bmb dump tokens <file.bmb>...
@@ -147,6 +155,39 @@ fn cache_flag(args: &[String]) -> (Option<&str>, &[String]) {
     match args {
         [flag, dir, rest @ ..] if flag == "--cache" => (Some(dir.as_str()), rest),
         _ => (None, args),
+    }
+}
+
+/// The window flags of `map` and `query` (ADR-0127), in any order before
+/// the request: `--budget BYTES`, `--offset ROWS`, `--limit ROWS`. `None`
+/// when there is none, and the response is then printed whole.
+type Window = Option<(usize, usize, Option<usize>)>;
+
+fn window_flags(mut args: &[String]) -> Result<(Window, &[String]), String> {
+    let (mut budget, mut offset, mut limit) = (None, None, None);
+    while let [flag, n, rest @ ..] = args {
+        let slot = match flag.as_str() {
+            "--budget" => &mut budget,
+            "--offset" => &mut offset,
+            "--limit" => &mut limit,
+            _ => break,
+        };
+        *slot = Some(
+            n.parse::<usize>()
+                .map_err(|_| format!("{flag} takes a count, not `{n}`"))?,
+        );
+        args = rest;
+    }
+    let window = (budget.is_some() || offset.is_some() || limit.is_some())
+        .then(|| (budget.unwrap_or(usize::MAX), offset.unwrap_or(0), limit));
+    Ok((window, args))
+}
+
+/// `r` through the window, when there is one.
+fn windowed(r: Result<String, String>, w: Window) -> Result<String, String> {
+    match w {
+        Some((budget, offset, limit)) => r.map(|t| bmb::map::bound(&t, budget, offset, limit)),
+        None => r,
     }
 }
 
@@ -759,6 +800,13 @@ fn run() -> ExitCode {
         }
         Some("map") if args.len() > 1 => {
             let (cache, args) = cache_flag(&args[1..]);
+            let (window, args) = match window_flags(args) {
+                Ok(w) => w,
+                Err(e) => {
+                    eprintln!("bmb: {e}");
+                    return ExitCode::from(2);
+                }
+            };
             let Some(first) = args.first() else {
                 eprintln!("{USAGE}");
                 return ExitCode::from(2);
@@ -772,14 +820,24 @@ fn run() -> ExitCode {
                 Ok(f) => f,
                 Err(code) => return code,
             };
-            respond(bmb::map_request_cached(
-                &files,
-                &["map".into(), level],
-                cache.map(std::path::Path::new),
+            respond(windowed(
+                bmb::map_request_cached(
+                    &files,
+                    &["map".into(), level],
+                    cache.map(std::path::Path::new),
+                ),
+                window,
             ))
         }
         Some("query") if args.len() > 2 => {
             let (cache, args) = cache_flag(&args[1..]);
+            let (window, args) = match window_flags(args) {
+                Ok(w) => w,
+                Err(e) => {
+                    eprintln!("bmb: {e}");
+                    return ExitCode::from(2);
+                }
+            };
             let Some(sep) = args.iter().position(|a| a == "--") else {
                 eprintln!("bmb: put `--` between the query and the files");
                 return ExitCode::from(2);
@@ -790,10 +848,9 @@ fn run() -> ExitCode {
             };
             let mut req = vec!["query".to_string()];
             req.extend(args[..sep].iter().cloned());
-            respond(bmb::map_request_cached(
-                &files,
-                &req,
-                cache.map(std::path::Path::new),
+            respond(windowed(
+                bmb::map_request_cached(&files, &req, cache.map(std::path::Path::new)),
+                window,
             ))
         }
         Some("import") if args.len() > 2 => {
