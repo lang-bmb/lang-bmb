@@ -1,0 +1,16 @@
+{
+ "id": "vc-va0644-takahashi-dates.reference",
+ "source": {
+  "set": "bvb",
+  "task": "vc-va0644-takahashi-dates",
+  "program": "reference"
+ },
+ "intent": "Implement `solve`: `a` is a month (1 to 12) and `b` a day (1 to 31). Count the dates from 2018-1-1 through 2018-a-b on which the month number equals the day number: a - 1 if a > b, otherwise a. The contract must state the result exactly, including both cases.",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "def": "tasks::solve",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn input_ok(a: i64, b: i64) -> bool { 1 <= a && a <= 12 && 1 <= b && b <= 31 }\n\n    spec fn result_ok(a: i64, b: i64, r: i64) -> bool { r == (if a > b { a - 1 } else { a }) && (a > b ==> r == a - 1) && (a <= b ==> r == a) }\n\n    #[effects(pure)]\n    #[uses(input_ok, result_ok)]\n    fn solve(a: i64, b: i64) -> (r: i64)\n        requires input_ok(a, b),\n        ensures result_ok(a, b, r),\n    {\n        if a > b {\n            a - 1\n        } else {\n            a\n        }\n    }\n}\n",
+ "label": "clean",
+ "kind": "reference-contract",
+ "examples": "{\"def\":\"tasks::solve\",\"kind\":\"allowed\",\"input\":{\"a\":\"2\",\"b\":\"1\"},\"result\":\"1\"}\n{\"def\":\"tasks::solve\",\"kind\":\"rejected\",\"input\":{\"a\":\"2\",\"b\":\"1\"},\"result\":\"0\"}\n{\"def\":\"tasks::solve\",\"kind\":\"allowed\",\"input\":{\"a\":\"3\",\"b\":\"2\"},\"result\":\"2\"}\n{\"def\":\"tasks::solve\",\"kind\":\"rejected\",\"input\":{\"a\":\"3\",\"b\":\"2\"},\"result\":\"0\"}\n{\"def\":\"tasks::solve\",\"kind\":\"allowed\",\"input\":{\"a\":\"4\",\"b\":\"3\"},\"result\":\"3\"}\n{\"def\":\"tasks::solve\",\"kind\":\"rejected\",\"input\":{\"a\":\"4\",\"b\":\"3\"},\"result\":\"0\"}\n{\"def\":\"tasks::solve\",\"kind\":\"excluded\",\"input\":{\"a\":\"0\",\"b\":\"0\"}}\n{\"def\":\"tasks::solve\",\"kind\":\"excluded\",\"input\":{\"a\":\"1\",\"b\":\"-1\"}}\n{\"def\":\"tasks::solve\",\"kind\":\"excluded\",\"input\":{\"a\":\"2\",\"b\":\"-2\"}}\n{\"def\":\"tasks::solve\",\"summary\":true,\"allowed\":3,\"rejected\":3,\"excluded\":3,\"undecided\":0,\"rlimit\":16734,\"max_len\":4}\n"
+}

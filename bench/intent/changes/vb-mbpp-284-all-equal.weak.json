@@ -1,0 +1,16 @@
+{
+ "id": "vb-mbpp-284-all-equal.weak",
+ "source": {
+  "set": "bvb",
+  "task": "vb-mbpp-284-all-equal",
+  "program": "weak_reference"
+ },
+ "intent": "Implement `all_elements_equals`: return whether every element of `arr` equals `element` (true for an empty array). The contract must state the result exactly.",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "def": "tasks::all_elements_equals",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn equal_below(arr: &[i64], element: i64, n: usize) -> bool { forall|i: usize| i < n ==> #[trigger] arr[i] == element }\n\n    spec fn if_all_equal(arr: &[i64], element: i64, r: bool) -> bool { equal_below(arr, element, arr.len()) ==> r }\n\n    #[effects(pure)]\n    #[uses(equal_below, if_all_equal)]\n    fn all_elements_equals(arr: &[i64], element: i64) -> (r: bool)\n        ensures if_all_equal(arr, element, r),\n    {\n        let mut k: usize = 0;\n        while k < arr.len() && arr[k] == element\n            invariant k <= arr.len(), equal_below(arr, element, k),\n            decreases arr.len() - k,\n        {\n            k = k + 1;\n        }\n        k >= arr.len()\n    }\n}\n",
+ "label": "defect",
+ "kind": "weak-contract",
+ "examples": "{\"def\":\"tasks::all_elements_equals\",\"kind\":\"allowed\",\"input\":{\"arr\":\"[] (len 0)\",\"element\":\"0\"},\"result\":\"true\"}\n{\"def\":\"tasks::all_elements_equals\",\"kind\":\"rejected\",\"input\":{\"arr\":\"[] (len 0)\",\"element\":\"0\"},\"result\":\"false\"}\n{\"def\":\"tasks::all_elements_equals\",\"kind\":\"allowed\",\"input\":{\"arr\":\"[1] (len 1)\",\"element\":\"0\"},\"result\":\"false\"}\n{\"def\":\"tasks::all_elements_equals\",\"kind\":\"allowed\",\"input\":{\"arr\":\"[1] (len 1)\",\"element\":\"0\"},\"result\":\"true\"}\n{\"def\":\"tasks::all_elements_equals\",\"kind\":\"allowed\",\"input\":{\"arr\":\"[-4, -7] (len 2)\",\"element\":\"0\"},\"result\":\"true\"}\n{\"def\":\"tasks::all_elements_equals\",\"kind\":\"allowed\",\"input\":{\"arr\":\"[-4, -7] (len 2)\",\"element\":\"0\"},\"result\":\"false\"}\n{\"def\":\"tasks::all_elements_equals\",\"kind\":\"rejected\",\"input\":{\"arr\":\"[-1] (len 1)\",\"element\":\"-1\"},\"result\":\"false\"}\n{\"def\":\"tasks::all_elements_equals\",\"kind\":\"rejected\",\"input\":{\"arr\":\"[-1, -1] (len 2)\",\"element\":\"-1\"},\"result\":\"false\"}\n{\"def\":\"tasks::all_elements_equals\",\"summary\":true,\"allowed\":5,\"rejected\":3,\"excluded\":0,\"undecided\":0,\"rlimit\":40141,\"max_len\":4}\n"
+}

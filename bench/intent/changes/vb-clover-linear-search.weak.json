@@ -1,0 +1,16 @@
+{
+ "id": "vb-clover-linear-search.weak",
+ "source": {
+  "set": "bvb",
+  "task": "vb-clover-linear-search",
+  "program": "weak_reference"
+ },
+ "intent": "Implement `linear_search`: `e` occurs in `a`. Return the first position of `e` in `a`. The contract must state that the result is a valid position holding `e` and that no earlier position holds `e`.",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "def": "tasks::linear_search",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn occurs(a: &[i64], e: i64) -> bool { !(forall|i: usize| i < a.len() ==> #[trigger] a[i] != e) }\n\n    spec fn absent_below(a: &[i64], e: i64, n: usize) -> bool { forall|k: usize| k < n ==> #[trigger] a[k] != e }\n\n    spec fn found_at(a: &[i64], e: i64, r: usize) -> bool { r < a.len() && a[r] == e }\n\n    #[effects(pure)]\n    #[uses(occurs, absent_below, found_at)]\n    fn linear_search(a: &[i64], e: i64) -> (r: usize)\n        requires occurs(a, e),\n        ensures found_at(a, e, r),\n    {\n        let mut n: usize = 0;\n        while n < a.len() && a[n] != e\n            invariant n <= a.len(), occurs(a, e), absent_below(a, e, n),\n            decreases a.len() - n,\n        {\n            n = n + 1;\n        }\n        n\n    }\n}\n",
+ "label": "defect",
+ "kind": "weak-contract",
+ "examples": "{\"def\":\"tasks::linear_search\",\"kind\":\"allowed\",\"input\":{\"a\":\"[8] (len 1)\",\"e\":\"8\"},\"result\":\"0\"}\n{\"def\":\"tasks::linear_search\",\"kind\":\"rejected\",\"input\":{\"a\":\"[8] (len 1)\",\"e\":\"8\"},\"result\":\"8\"}\n{\"def\":\"tasks::linear_search\",\"kind\":\"allowed\",\"input\":{\"a\":\"[-3] (len 1)\",\"e\":\"-3\"},\"result\":\"0\"}\n{\"def\":\"tasks::linear_search\",\"kind\":\"rejected\",\"input\":{\"a\":\"[-3] (len 1)\",\"e\":\"-3\"},\"result\":\"8\"}\n{\"def\":\"tasks::linear_search\",\"kind\":\"allowed\",\"input\":{\"a\":\"[7, 7] (len 2)\",\"e\":\"7\"},\"result\":\"0\"}\n{\"def\":\"tasks::linear_search\",\"kind\":\"allowed\",\"input\":{\"a\":\"[7, 7] (len 2)\",\"e\":\"7\"},\"result\":\"1\"}\n{\"def\":\"tasks::linear_search\",\"kind\":\"rejected\",\"input\":{\"a\":\"[7, 7] (len 2)\",\"e\":\"7\"},\"result\":\"8\"}\n{\"def\":\"tasks::linear_search\",\"kind\":\"excluded\",\"input\":{\"a\":\"[] (len 0)\",\"e\":\"0\"}}\n{\"def\":\"tasks::linear_search\",\"kind\":\"excluded\",\"input\":{\"a\":\"[-1] (len 1)\",\"e\":\"-2\"}}\n{\"def\":\"tasks::linear_search\",\"kind\":\"excluded\",\"input\":{\"a\":\"[7, 5] (len 2)\",\"e\":\"6\"}}\n{\"def\":\"tasks::linear_search\",\"summary\":true,\"allowed\":4,\"rejected\":3,\"excluded\":3,\"undecided\":0,\"rlimit\":52052,\"max_len\":4}\n"
+}

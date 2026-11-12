@@ -1,0 +1,16 @@
+{
+ "id": "vc-vd0791-month-30-days.reference",
+ "source": {
+  "set": "bvb",
+  "task": "vc-vd0791-month-30-days",
+  "program": "reference"
+ },
+ "intent": "Implement `is_month_with_30_days`: `month` is between 1 and 12. Return whether that month has 30 days (April, June, September or November). The contract must state the result exactly.",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "def": "tasks::is_month_with_30_days",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn input_ok(month: i64) -> bool { 1 <= month && month <= 12 }\n\n    spec fn result_ok(month: i64, r: bool) -> bool { r == (month == 4 || month == 6 || month == 9 || month == 11) }\n\n    #[effects(pure)]\n    #[uses(input_ok, result_ok)]\n    fn is_month_with_30_days(month: i64) -> (r: bool)\n        requires input_ok(month),\n        ensures result_ok(month, r),\n    {\n        month == 4 || month == 6 || month == 9 || month == 11\n    }\n}\n",
+ "label": "clean",
+ "kind": "reference-contract",
+ "examples": "{\"def\":\"tasks::is_month_with_30_days\",\"kind\":\"allowed\",\"input\":{\"month\":\"4\"},\"result\":\"true\"}\n{\"def\":\"tasks::is_month_with_30_days\",\"kind\":\"rejected\",\"input\":{\"month\":\"4\"},\"result\":\"false\"}\n{\"def\":\"tasks::is_month_with_30_days\",\"kind\":\"allowed\",\"input\":{\"month\":\"1\"},\"result\":\"false\"}\n{\"def\":\"tasks::is_month_with_30_days\",\"kind\":\"rejected\",\"input\":{\"month\":\"1\"},\"result\":\"true\"}\n{\"def\":\"tasks::is_month_with_30_days\",\"kind\":\"allowed\",\"input\":{\"month\":\"6\"},\"result\":\"true\"}\n{\"def\":\"tasks::is_month_with_30_days\",\"kind\":\"rejected\",\"input\":{\"month\":\"6\"},\"result\":\"false\"}\n{\"def\":\"tasks::is_month_with_30_days\",\"kind\":\"excluded\",\"input\":{\"month\":\"0\"}}\n{\"def\":\"tasks::is_month_with_30_days\",\"kind\":\"excluded\",\"input\":{\"month\":\"-1\"}}\n{\"def\":\"tasks::is_month_with_30_days\",\"kind\":\"excluded\",\"input\":{\"month\":\"-2\"}}\n{\"def\":\"tasks::is_month_with_30_days\",\"summary\":true,\"allowed\":3,\"rejected\":3,\"excluded\":3,\"undecided\":0,\"rlimit\":8464,\"max_len\":4}\n"
+}

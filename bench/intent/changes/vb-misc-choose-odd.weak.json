@@ -1,0 +1,16 @@
+{
+ "id": "vb-misc-choose-odd.weak",
+ "source": {
+  "set": "bvb",
+  "task": "vb-misc-choose-odd",
+  "program": "weak_reference"
+ },
+ "intent": "Implement `choose_odd`: some element of `v` is odd. Return a position in `v` (the search for an odd element). The contract must state that the result is a valid position of `v`.",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "def": "tasks::choose_odd",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn has_odd(v: &[u64]) -> bool { !(forall|q: usize| q < v.len() ==> #[trigger] v[q] % 2 != 1) }\n\n    spec fn even_below(v: &[u64], n: usize) -> bool { forall|q: usize| q < n ==> #[trigger] v[q] % 2 != 1 }\n\n    spec fn at_most_len(v: &[u64], r: usize) -> bool { r <= v.len() }\n\n    #[effects(pure)]\n    #[uses(has_odd, even_below, at_most_len)]\n    fn choose_odd(v: &[u64]) -> (r: usize)\n        requires has_odd(v),\n        ensures at_most_len(v, r),\n    {\n        let mut j: usize = 0;\n        while j < v.len() && v[j] % 2 != 1\n            invariant j <= v.len(), has_odd(v), even_below(v, j),\n            decreases v.len() - j,\n        {\n            j = j + 1;\n        }\n        j\n    }\n}\n",
+ "label": "defect",
+ "kind": "weak-contract",
+ "examples": "{\"def\":\"tasks::choose_odd\",\"kind\":\"allowed\",\"input\":{\"v\":\"[2, 7, 3, 2] (len 4)\"},\"result\":\"0\"}\n{\"def\":\"tasks::choose_odd\",\"kind\":\"allowed\",\"input\":{\"v\":\"[2, 7, 3, 2] (len 4)\"},\"result\":\"1\"}\n{\"def\":\"tasks::choose_odd\",\"kind\":\"rejected\",\"input\":{\"v\":\"[2, 7, 3, 2] (len 4)\"},\"result\":\"5\"}\n{\"def\":\"tasks::choose_odd\",\"kind\":\"allowed\",\"input\":{\"v\":\"[7] (len 1)\"},\"result\":\"0\"}\n{\"def\":\"tasks::choose_odd\",\"kind\":\"allowed\",\"input\":{\"v\":\"[7] (len 1)\"},\"result\":\"1\"}\n{\"def\":\"tasks::choose_odd\",\"kind\":\"rejected\",\"input\":{\"v\":\"[7] (len 1)\"},\"result\":\"2\"}\n{\"def\":\"tasks::choose_odd\",\"kind\":\"allowed\",\"input\":{\"v\":\"[8, 7, 1, 8] (len 4)\"},\"result\":\"0\"}\n{\"def\":\"tasks::choose_odd\",\"kind\":\"allowed\",\"input\":{\"v\":\"[8, 7, 1, 8] (len 4)\"},\"result\":\"1\"}\n{\"def\":\"tasks::choose_odd\",\"kind\":\"rejected\",\"input\":{\"v\":\"[8, 7, 1, 8] (len 4)\"},\"result\":\"5\"}\n{\"def\":\"tasks::choose_odd\",\"kind\":\"excluded\",\"input\":{\"v\":\"[] (len 0)\"}}\n{\"def\":\"tasks::choose_odd\",\"kind\":\"excluded\",\"input\":{\"v\":\"[6] (len 1)\"}}\n{\"def\":\"tasks::choose_odd\",\"kind\":\"excluded\",\"input\":{\"v\":\"[0, 4] (len 2)\"}}\n{\"def\":\"tasks::choose_odd\",\"summary\":true,\"allowed\":6,\"rejected\":3,\"excluded\":3,\"undecided\":0,\"rlimit\":55152,\"max_len\":4}\n"
+}

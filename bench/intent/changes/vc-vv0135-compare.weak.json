@@ -1,0 +1,16 @@
+{
+ "id": "vc-vv0135-compare.weak",
+ "source": {
+  "set": "bvb",
+  "task": "vc-vv0135-compare",
+  "program": "weak_reference"
+ },
+ "intent": "Implement `compare`: return whether `a` equals `b`. The contract must state the result in both cases (equal and not equal).",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "def": "tasks::compare",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn result_ok(a: i64, b: i64, r: bool) -> bool { a == b ==> r == true }\n\n    #[effects(pure)]\n    #[uses(result_ok)]\n    fn compare(a: i64, b: i64) -> (r: bool)\n        ensures result_ok(a, b, r),\n    {\n        a == b\n    }\n}\n",
+ "label": "defect",
+ "kind": "weak-contract",
+ "examples": "{\"def\":\"tasks::compare\",\"kind\":\"allowed\",\"input\":{\"a\":\"0\",\"b\":\"0\"},\"result\":\"true\"}\n{\"def\":\"tasks::compare\",\"kind\":\"rejected\",\"input\":{\"a\":\"0\",\"b\":\"0\"},\"result\":\"false\"}\n{\"def\":\"tasks::compare\",\"kind\":\"allowed\",\"input\":{\"a\":\"-1\",\"b\":\"1\"},\"result\":\"false\"}\n{\"def\":\"tasks::compare\",\"kind\":\"allowed\",\"input\":{\"a\":\"-1\",\"b\":\"1\"},\"result\":\"true\"}\n{\"def\":\"tasks::compare\",\"kind\":\"allowed\",\"input\":{\"a\":\"-2\",\"b\":\"-1\"},\"result\":\"true\"}\n{\"def\":\"tasks::compare\",\"kind\":\"allowed\",\"input\":{\"a\":\"-2\",\"b\":\"-1\"},\"result\":\"false\"}\n{\"def\":\"tasks::compare\",\"kind\":\"rejected\",\"input\":{\"a\":\"-3\",\"b\":\"-3\"},\"result\":\"false\"}\n{\"def\":\"tasks::compare\",\"kind\":\"rejected\",\"input\":{\"a\":\"-1\",\"b\":\"-1\"},\"result\":\"false\"}\n{\"def\":\"tasks::compare\",\"summary\":true,\"allowed\":5,\"rejected\":3,\"excluded\":0,\"undecided\":0,\"rlimit\":8576,\"max_len\":4}\n"
+}

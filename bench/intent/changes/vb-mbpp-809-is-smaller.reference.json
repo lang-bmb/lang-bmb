@@ -1,0 +1,16 @@
+{
+ "id": "vb-mbpp-809-is-smaller.reference",
+ "source": {
+  "set": "bvb",
+  "task": "vb-mbpp-809-is-smaller",
+  "program": "reference"
+ },
+ "intent": "Implement `is_smaller`: `arr1` and `arr2` have the same length. Return whether every element of `arr1` is strictly greater than the element of `arr2` at the same position. The contract must state the result exactly.",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "def": "tasks::is_smaller",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn pre_ok(arr1: &[i64], arr2: &[i64]) -> bool { arr1.len() == arr2.len() }\n\n    spec fn holds_below(arr1: &[i64], arr2: &[i64], n: usize) -> bool { forall|i: usize| i < n && i < arr1.len() ==> #[trigger] arr1[i] > arr2[i] }\n\n    spec fn exact(arr1: &[i64], arr2: &[i64], r: bool) -> bool { r == holds_below(arr1, arr2, arr1.len()) }\n\n    #[effects(pure)]\n    #[uses(pre_ok, holds_below, exact)]\n    fn is_smaller(arr1: &[i64], arr2: &[i64]) -> (r: bool)\n        requires pre_ok(arr1, arr2),\n        ensures exact(arr1, arr2, r),\n    {\n        let mut idx: usize = 0;\n        while idx < arr1.len() && (arr1[idx] > arr2[idx])\n            invariant idx <= arr1.len(), holds_below(arr1, arr2, idx), arr1.len() == arr2.len(),\n            decreases arr1.len() - idx,\n        {\n            idx = idx + 1;\n        }\n        idx >= arr1.len()\n    }\n}\n",
+ "label": "clean",
+ "kind": "reference-contract",
+ "examples": "{\"def\":\"tasks::is_smaller\",\"kind\":\"allowed\",\"input\":{\"arr1\":\"[] (len 0)\",\"arr2\":\"[] (len 0)\"},\"result\":\"true\"}\n{\"def\":\"tasks::is_smaller\",\"kind\":\"rejected\",\"input\":{\"arr1\":\"[] (len 0)\",\"arr2\":\"[] (len 0)\"},\"result\":\"false\"}\n{\"def\":\"tasks::is_smaller\",\"kind\":\"allowed\",\"input\":{\"arr1\":\"[-8] (len 1)\",\"arr2\":\"[8] (len 1)\"},\"result\":\"false\"}\n{\"def\":\"tasks::is_smaller\",\"kind\":\"rejected\",\"input\":{\"arr1\":\"[-8] (len 1)\",\"arr2\":\"[8] (len 1)\"},\"result\":\"true\"}\n{\"def\":\"tasks::is_smaller\",\"kind\":\"allowed\",\"input\":{\"arr1\":\"[0, -2] (len 2)\",\"arr2\":\"[-1, -3] (len 2)\"},\"result\":\"true\"}\n{\"def\":\"tasks::is_smaller\",\"kind\":\"rejected\",\"input\":{\"arr1\":\"[0, -2] (len 2)\",\"arr2\":\"[-1, -3] (len 2)\"},\"result\":\"false\"}\n{\"def\":\"tasks::is_smaller\",\"kind\":\"excluded\",\"input\":{\"arr1\":\"[] (len 0)\",\"arr2\":\"[-4] (len 1)\"}}\n{\"def\":\"tasks::is_smaller\",\"kind\":\"excluded\",\"input\":{\"arr1\":\"[-4, -7] (len 2)\",\"arr2\":\"[-2] (len 1)\"}}\n{\"def\":\"tasks::is_smaller\",\"kind\":\"excluded\",\"input\":{\"arr1\":\"[-4, -7, -3] (len 3)\",\"arr2\":\"[-2, 7] (len 2)\"}}\n{\"def\":\"tasks::is_smaller\",\"summary\":true,\"allowed\":3,\"rejected\":3,\"excluded\":3,\"undecided\":0,\"rlimit\":65699,\"max_len\":4}\n"
+}

@@ -1,0 +1,16 @@
+{
+ "id": "vc-va0219-pyramid-height.weak",
+ "source": {
+  "set": "bvb",
+  "task": "vc-va0219-pyramid-height",
+  "program": "weak_reference"
+ },
+ "intent": "Implement `solve`: `n` is an 8-bit integer (in [-128, 127]) with n >= 1. A pyramid of height h uses h * (h + 1) * (h + 2) / 6 cubes (level i needs i * (i + 1) / 2). Return the largest height h >= 1 that can be built with n cubes. The contract must state that the result is at least 1, that its pyramid fits into n cubes and that the pyramid one level higher does not.",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "def": "tasks::solve",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn fits(n: i64, h: i64) -> bool { h * (h + 1) * (h + 2) / 6 <= n }\n\n    spec fn valid_height(n: i64, h: i64) -> bool { n >= 1 && h >= 1 && h * (h + 1) * (h + 2) / 6 <= n && (h + 1) * (h + 2) * (h + 3) / 6 > n }\n\n    spec fn input_ok(n: i64) -> bool { -128 <= n && n <= 127 && n >= 1 }\n\n    spec fn result_ok(n: i64, r: i64) -> bool { r >= 1 }\n\n    #[effects(pure)]\n    #[uses(input_ok, result_ok, fits, valid_height)]\n    fn solve(n: i64) -> (r: i64)\n        requires input_ok(n),\n        ensures result_ok(n, r),\n    {\n        let mut h: i64 = 1;\n        let mut done: bool = false;\n        while !done && h < 10\n            invariant 1 <= h, h <= 10, fits(n, h), done ==> !fits(n, h + 1),\n            decreases 2 * (10 - h) + (if done { 0 } else { 1 }),\n        {\n            let hp: i64 = h + 1;\n            let t: i64 = hp * (hp + 1) * (hp + 2) / 6;\n            if t <= n {\n                h = hp;\n            } else {\n                done = true;\n            }\n        }\n        h\n    }\n}\n",
+ "label": "defect",
+ "kind": "weak-contract",
+ "examples": "{\"def\":\"tasks::solve\",\"kind\":\"allowed\",\"input\":{\"n\":\"1\"},\"result\":\"1\"}\n{\"def\":\"tasks::solve\",\"kind\":\"allowed\",\"input\":{\"n\":\"1\"},\"result\":\"2\"}\n{\"def\":\"tasks::solve\",\"kind\":\"rejected\",\"input\":{\"n\":\"1\"},\"result\":\"0\"}\n{\"def\":\"tasks::solve\",\"kind\":\"allowed\",\"input\":{\"n\":\"2\"},\"result\":\"1\"}\n{\"def\":\"tasks::solve\",\"kind\":\"allowed\",\"input\":{\"n\":\"2\"},\"result\":\"2\"}\n{\"def\":\"tasks::solve\",\"kind\":\"rejected\",\"input\":{\"n\":\"2\"},\"result\":\"0\"}\n{\"def\":\"tasks::solve\",\"kind\":\"allowed\",\"input\":{\"n\":\"3\"},\"result\":\"1\"}\n{\"def\":\"tasks::solve\",\"kind\":\"allowed\",\"input\":{\"n\":\"3\"},\"result\":\"2\"}\n{\"def\":\"tasks::solve\",\"kind\":\"rejected\",\"input\":{\"n\":\"3\"},\"result\":\"0\"}\n{\"def\":\"tasks::solve\",\"kind\":\"excluded\",\"input\":{\"n\":\"0\"}}\n{\"def\":\"tasks::solve\",\"kind\":\"excluded\",\"input\":{\"n\":\"-1\"}}\n{\"def\":\"tasks::solve\",\"kind\":\"excluded\",\"input\":{\"n\":\"-2\"}}\n{\"def\":\"tasks::solve\",\"summary\":true,\"allowed\":6,\"rejected\":3,\"excluded\":3,\"undecided\":0,\"rlimit\":8964,\"max_len\":4}\n"
+}

@@ -1,0 +1,16 @@
+{
+ "id": "vb-misc-map.weak",
+ "source": {
+  "set": "bvb",
+  "task": "vb-misc-map",
+  "program": "weak_reference"
+ },
+ "intent": "Implement `myfun2`: every element of `x` is at most 2147483643. Add 4 to every element of `x` in place. The contract must state that the length is unchanged and every element equals its value on entry plus 4.",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "def": "tasks::myfun2",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn small(x: &[i64]) -> bool { forall|k: usize| k < x.len() ==> #[trigger] x[k] <= 2147483643 }\n\n    spec fn added_upto(old_x: &[i64], x: &[i64], n: usize) -> bool { x.len() == old_x.len() && (forall|k: usize| k < x.len() ==> ((k < n ==> #[trigger] x[k] == old_x[k] + 4) && (n <= k ==> x[k] == old_x[k]))) }\n\n    spec fn grew(old_x: &[i64], x: &[i64]) -> bool { x.len() == old_x.len() && (forall|k: usize| k < x.len() ==> #[trigger] x[k] > old_x[k]) }\n\n    #[effects(pure)]\n    #[uses(small, added_upto, grew)]\n    fn myfun2(x: &mut [i64]) -> ()\n        requires small(x),\n        ensures grew(old(x), x),\n    {\n        let mut i: usize = 0;\n        while i < x.len()\n            invariant i <= x.len(), small(old(x)), added_upto(old(x), x, i),\n            decreases x.len() - i,\n        {\n            x[i] = x[i] + 4;\n            i = i + 1;\n        }\n    }\n}\n",
+ "label": "defect",
+ "kind": "weak-contract",
+ "examples": "{\"def\":\"tasks::myfun2\",\"kind\":\"allowed\",\"input\":{\"x\":\"[] (len 0)\"},\"after\":{\"x\":\"[] (len 0)\"}}\n{\"def\":\"tasks::myfun2\",\"kind\":\"allowed\",\"input\":{\"x\":\"[-1] (len 1)\"},\"after\":{\"x\":\"[0] (len 1)\"}}\n{\"def\":\"tasks::myfun2\",\"kind\":\"allowed\",\"input\":{\"x\":\"[-1] (len 1)\"},\"after\":{\"x\":\"[1] (len 1)\"}}\n{\"def\":\"tasks::myfun2\",\"kind\":\"rejected\",\"input\":{\"x\":\"[-1] (len 1)\"},\"after\":{\"x\":\"[-8] (len 1)\"}}\n{\"def\":\"tasks::myfun2\",\"kind\":\"allowed\",\"input\":{\"x\":\"[-3, 5] (len 2)\"},\"after\":{\"x\":\"[-2, 6] (len 2)\"}}\n{\"def\":\"tasks::myfun2\",\"kind\":\"allowed\",\"input\":{\"x\":\"[-3, 5] (len 2)\"},\"after\":{\"x\":\"[-2, 7] (len 2)\"}}\n{\"def\":\"tasks::myfun2\",\"kind\":\"rejected\",\"input\":{\"x\":\"[-3, 5] (len 2)\"},\"after\":{\"x\":\"[-8, 7] (len 2)\"}}\n{\"def\":\"tasks::myfun2\",\"kind\":\"rejected\",\"input\":{\"x\":\"[8, -6] (len 2)\"},\"after\":{\"x\":\"[-8, -7] (len 2)\"}}\n{\"def\":\"tasks::myfun2\",\"kind\":\"excluded\",\"input\":{\"x\":\"[2147483644, 2147483644, 2147483644, 2147483644] (len 4)\"}}\n{\"def\":\"tasks::myfun2\",\"kind\":\"excluded\",\"input\":{\"x\":\"[2147483645, 2147483645, 2147483645, 2147485441] (len 4)\"}}\n{\"def\":\"tasks::myfun2\",\"kind\":\"excluded\",\"input\":{\"x\":\"[2147483645, 2147483645, 2147483645, 2147485442] (len 4)\"}}\n{\"def\":\"tasks::myfun2\",\"summary\":true,\"allowed\":5,\"rejected\":3,\"excluded\":3,\"undecided\":0,\"rlimit\":84671,\"max_len\":4}\n"
+}

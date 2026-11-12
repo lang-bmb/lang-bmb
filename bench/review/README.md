@@ -116,8 +116,8 @@ ADR-0078의 H-REVIEW 행 그대로:
 
 하네스는 `--set DIR`로 다른 집합을 돈다. 집합은 자료다: 디렉터리에 `set.json`, `prompt.md`, `changes/*.json`, `MANIFEST`를 둔다.
 
-- `set.json`의 `arms`는 팔 이름 → 보기 부분의 목록이다. 부분은 `contract_diff`, `weaken`, `code_diff`, `contract`(뒤 프로그램의 계약 텍스트), `code`(뒤 프로그램 파일), `field:이름`(변경 파일에 동결해 둔 텍스트, 제목은 `titles`)이다. H-INTENT는 `{"code+spec": ["code", "contract"], "spec+examples": ["contract", "field:examples"]}`, `"compare": {"candidate": "spec+examples", "baseline": "code+spec", "token_ratio": [1, 2]}`로 쓰고, 예시·반례는 생성 도구(T1-44c)의 출력을 변경의 `examples`에 넣어 동결한다.
+- `set.json`의 `arms`는 팔 이름 → 보기 부분의 목록이다. 부분은 `contract_diff`, `weaken`, `code_diff`, `contract`(뒤 프로그램의 계약 텍스트), `code`(뒤 프로그램 파일), `field:이름`(변경 파일에 동결해 둔 텍스트, 제목은 `titles`)이다. H-INTENT 집합(`bench/intent`)은 `{"code+spec": ["code"], "spec+examples": ["contract", "field:examples"]}`, `"compare": {"candidate": "spec+examples", "baseline": "code+spec", "token_ratio": [1, 2]}`이고, `bmb examples`(T1-44c)의 출력을 항목의 `examples`에 넣어 동결했다(프로그램 파일이 계약을 담으므로 `code+spec`에 `contract`를 한 번 더 붙이지 않았다).
 - `frozen`에 그 집합의 생성기와 `../review/views.py`, `../review/judge.py`, `../review/harness.py`를 적으면 MANIFEST가 함께 묶는다(`harness.py --set DIR manifest --write`는 새 집합을 만들 때만).
 - 변경 파일의 키: `id`, `intent`, `seed`(집합 디렉터리 기준 씨앗 경로, 없으면 생략), `file`, `before`, `after`, `label`(`defect`·`clean`), 그리고 `field:`로 보일 텍스트.
 - 새 부분이 필요하면 `views.py`에 더한다. `views.py`와 `harness.py`는 이 집합의 MANIFEST에 있으므로 고치면 이 집합을 다시 동결해야 하고(정식 결과가 생기기 전에만), 기존 부분의 출력은 바꾸지 않는다.
-- 게이트의 `OtherSet` 시험이 이 꼴(H-INTENT의 두 팔, 비 1/2)을 임시 집합으로 돌려 본다.
+- 게이트의 `OtherSet` 시험이 이런 꼴(다른 팔, 비 1/2)을 임시 집합으로 돌려 본다. 실제 둘째 집합의 게이트는 `bench/intent/test_intent.py`다.

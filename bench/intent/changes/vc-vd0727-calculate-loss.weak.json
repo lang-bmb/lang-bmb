@@ -1,0 +1,16 @@
+{
+ "id": "vc-vd0727-calculate-loss.weak",
+ "source": {
+  "set": "bvb",
+  "task": "vc-vd0727-calculate-loss",
+  "program": "weak_reference"
+ },
+ "intent": "Implement `calculate_loss`: `cost_price` and `selling_price` are non-negative 32-bit integers. Return the loss: cost_price - selling_price when the cost exceeds the selling price, otherwise 0. The contract must state the result exactly in both cases.",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "def": "tasks::calculate_loss",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn input_ok(cost_price: i64, selling_price: i64) -> bool { -2147483648 <= cost_price && cost_price <= 2147483647 && -2147483648 <= selling_price && selling_price <= 2147483647 && cost_price >= 0 && selling_price >= 0 }\n\n    spec fn result_ok(cost_price: i64, selling_price: i64, r: i64) -> bool { r >= 0 }\n\n    #[effects(pure)]\n    #[uses(input_ok, result_ok)]\n    fn calculate_loss(cost_price: i64, selling_price: i64) -> (r: i64)\n        requires input_ok(cost_price, selling_price),\n        ensures result_ok(cost_price, selling_price, r),\n    {\n        if cost_price > selling_price {\n            cost_price - selling_price\n        } else {\n            0\n        }\n    }\n}\n",
+ "label": "defect",
+ "kind": "weak-contract",
+ "examples": "{\"def\":\"tasks::calculate_loss\",\"kind\":\"allowed\",\"input\":{\"cost_price\":\"0\",\"selling_price\":\"0\"},\"result\":\"0\"}\n{\"def\":\"tasks::calculate_loss\",\"kind\":\"allowed\",\"input\":{\"cost_price\":\"0\",\"selling_price\":\"0\"},\"result\":\"1\"}\n{\"def\":\"tasks::calculate_loss\",\"kind\":\"rejected\",\"input\":{\"cost_price\":\"0\",\"selling_price\":\"0\"},\"result\":\"-1\"}\n{\"def\":\"tasks::calculate_loss\",\"kind\":\"allowed\",\"input\":{\"cost_price\":\"1\",\"selling_price\":\"1\"},\"result\":\"0\"}\n{\"def\":\"tasks::calculate_loss\",\"kind\":\"allowed\",\"input\":{\"cost_price\":\"1\",\"selling_price\":\"1\"},\"result\":\"1\"}\n{\"def\":\"tasks::calculate_loss\",\"kind\":\"rejected\",\"input\":{\"cost_price\":\"1\",\"selling_price\":\"1\"},\"result\":\"-1\"}\n{\"def\":\"tasks::calculate_loss\",\"kind\":\"allowed\",\"input\":{\"cost_price\":\"2\",\"selling_price\":\"0\"},\"result\":\"0\"}\n{\"def\":\"tasks::calculate_loss\",\"kind\":\"allowed\",\"input\":{\"cost_price\":\"2\",\"selling_price\":\"0\"},\"result\":\"1\"}\n{\"def\":\"tasks::calculate_loss\",\"kind\":\"rejected\",\"input\":{\"cost_price\":\"2\",\"selling_price\":\"0\"},\"result\":\"-1\"}\n{\"def\":\"tasks::calculate_loss\",\"kind\":\"excluded\",\"input\":{\"cost_price\":\"-1\",\"selling_price\":\"-1\"}}\n{\"def\":\"tasks::calculate_loss\",\"kind\":\"excluded\",\"input\":{\"cost_price\":\"0\",\"selling_price\":\"-2\"}}\n{\"def\":\"tasks::calculate_loss\",\"kind\":\"excluded\",\"input\":{\"cost_price\":\"1\",\"selling_price\":\"-3\"}}\n{\"def\":\"tasks::calculate_loss\",\"summary\":true,\"allowed\":6,\"rejected\":3,\"excluded\":3,\"undecided\":0,\"rlimit\":13334,\"max_len\":4}\n"
+}

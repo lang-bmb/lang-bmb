@@ -1,0 +1,16 @@
+{
+ "id": "vb-mbpp-414-any-value-exists.reference",
+ "source": {
+  "set": "bvb",
+  "task": "vb-mbpp-414-any-value-exists",
+  "program": "reference"
+ },
+ "intent": "Implement `any_value_exists`: return whether some element of `arr1` also occurs in `arr2`. The contract must state the result exactly.",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "def": "tasks::any_value_exists",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn absent_below(b: &[i64], x: i64, n: usize) -> bool { forall|j: usize| j < n ==> #[trigger] b[j] != x }\n\n    spec fn none_shared_below(a: &[i64], b: &[i64], n: usize) -> bool { forall|i: usize, j: usize| i < n && j < b.len() ==> #[trigger] a[i] != #[trigger] b[j] }\n\n    spec fn contains_ok(b: &[i64], x: i64, r: bool) -> bool { r == !absent_below(b, x, b.len()) }\n\n    spec fn exists_ok(a: &[i64], b: &[i64], r: bool) -> bool { r == !none_shared_below(a, b, a.len()) }\n\n    #[effects(pure)]\n    #[uses(absent_below, contains_ok)]\n    fn contains(b: &[i64], x: i64) -> (r: bool)\n        ensures contains_ok(b, x, r),\n    {\n        let mut j: usize = 0;\n        while j < b.len() && b[j] != x\n            invariant j <= b.len(), absent_below(b, x, j),\n            decreases b.len() - j,\n        {\n            j = j + 1;\n        }\n        j < b.len()\n    }\n\n    #[effects(pure)]\n    #[uses(absent_below, none_shared_below, exists_ok, contains_ok)]\n    fn any_value_exists(arr1: &[i64], arr2: &[i64]) -> (r: bool)\n        ensures exists_ok(arr1, arr2, r),\n    {\n        let mut i: usize = 0;\n        while i < arr1.len() && !contains(arr2, arr1[i])\n            invariant i <= arr1.len(), none_shared_below(arr1, arr2, i),\n            decreases arr1.len() - i,\n        {\n            i = i + 1;\n        }\n        i < arr1.len()\n    }\n}\n",
+ "label": "clean",
+ "kind": "reference-contract",
+ "examples": "{\"def\":\"tasks::any_value_exists\",\"kind\":\"allowed\",\"input\":{\"arr1\":\"[-8] (len 1)\",\"arr2\":\"[-8, -7, 1, -5] (len 4)\"},\"result\":\"true\"}\n{\"def\":\"tasks::any_value_exists\",\"kind\":\"rejected\",\"input\":{\"arr1\":\"[-8] (len 1)\",\"arr2\":\"[-8, -7, 1, -5] (len 4)\"},\"result\":\"false\"}\n{\"def\":\"tasks::any_value_exists\",\"kind\":\"allowed\",\"input\":{\"arr1\":\"[-3] (len 1)\",\"arr2\":\"[-2] (len 1)\"},\"result\":\"false\"}\n{\"def\":\"tasks::any_value_exists\",\"kind\":\"rejected\",\"input\":{\"arr1\":\"[-3] (len 1)\",\"arr2\":\"[-2] (len 1)\"},\"result\":\"true\"}\n{\"def\":\"tasks::any_value_exists\",\"kind\":\"allowed\",\"input\":{\"arr1\":\"[-3, -8] (len 2)\",\"arr2\":\"[-8, -6] (len 2)\"},\"result\":\"true\"}\n{\"def\":\"tasks::any_value_exists\",\"kind\":\"rejected\",\"input\":{\"arr1\":\"[-3, -8] (len 2)\",\"arr2\":\"[-8, -6] (len 2)\"},\"result\":\"false\"}\n{\"def\":\"tasks::any_value_exists\",\"summary\":true,\"allowed\":3,\"rejected\":3,\"excluded\":0,\"undecided\":0,\"rlimit\":72578,\"max_len\":4}\n"
+}

@@ -1,0 +1,16 @@
+{
+ "id": "vb-misc-max-index.reference",
+ "source": {
+  "set": "bvb",
+  "task": "vb-misc-max-index",
+  "program": "reference"
+ },
+ "intent": "Implement `myfun1`: `x` is non-empty. Return the position of a largest element. The contract must state that the result is a valid position whose element is at least every element of `x`.",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "def": "tasks::myfun1",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn nonempty(x: &[i64]) -> bool { x.len() >= 1 }\n\n    spec fn max_at_upto(x: &[i64], m: usize, n: usize) -> bool { m < n && n <= x.len() && (forall|k: usize| k < n ==> x[m] >= #[trigger] x[k]) }\n\n    spec fn max_at(x: &[i64], r: usize) -> bool { r < x.len() && (forall|k: usize| k < x.len() ==> x[r] >= #[trigger] x[k]) }\n\n    #[effects(pure)]\n    #[uses(nonempty, max_at_upto, max_at)]\n    fn myfun1(x: &[i64]) -> (r: usize)\n        requires nonempty(x),\n        ensures max_at(x, r),\n    {\n        let mut m: usize = 0;\n        let mut i: usize = 1;\n        while i < x.len()\n            invariant 1 <= i, max_at_upto(x, m, i),\n            decreases x.len() - i,\n        {\n            if x[i] > x[m] {\n                m = i;\n            }\n            i = i + 1;\n        }\n        m\n    }\n}\n",
+ "label": "clean",
+ "kind": "reference-contract",
+ "examples": "{\"def\":\"tasks::myfun1\",\"kind\":\"allowed\",\"input\":{\"x\":\"[-3] (len 1)\"},\"result\":\"0\"}\n{\"def\":\"tasks::myfun1\",\"kind\":\"rejected\",\"input\":{\"x\":\"[-3] (len 1)\"},\"result\":\"8\"}\n{\"def\":\"tasks::myfun1\",\"kind\":\"allowed\",\"input\":{\"x\":\"[6] (len 1)\"},\"result\":\"0\"}\n{\"def\":\"tasks::myfun1\",\"kind\":\"rejected\",\"input\":{\"x\":\"[6] (len 1)\"},\"result\":\"8\"}\n{\"def\":\"tasks::myfun1\",\"kind\":\"allowed\",\"input\":{\"x\":\"[7, 0] (len 2)\"},\"result\":\"0\"}\n{\"def\":\"tasks::myfun1\",\"kind\":\"rejected\",\"input\":{\"x\":\"[7, 0] (len 2)\"},\"result\":\"8\"}\n{\"def\":\"tasks::myfun1\",\"kind\":\"excluded\",\"input\":{\"x\":\"[] (len 0)\"}}\n{\"def\":\"tasks::myfun1\",\"summary\":true,\"allowed\":3,\"rejected\":3,\"excluded\":1,\"undecided\":0,\"rlimit\":42007,\"max_len\":4}\n"
+}

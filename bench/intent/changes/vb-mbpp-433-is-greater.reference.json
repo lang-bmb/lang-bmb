@@ -1,0 +1,16 @@
+{
+ "id": "vb-mbpp-433-is-greater.reference",
+ "source": {
+  "set": "bvb",
+  "task": "vb-mbpp-433-is-greater",
+  "program": "reference"
+ },
+ "intent": "Implement `is_greater`: return whether `number` is strictly greater than every element of `arr` (true for an empty array). The contract must state the result exactly.",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "def": "tasks::is_greater",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn holds_below(arr: &[i64], number: i64, n: usize) -> bool { forall|i: usize| i < n && i < arr.len() ==> number > #[trigger] arr[i] }\n\n    spec fn exact(arr: &[i64], number: i64, r: bool) -> bool { r == holds_below(arr, number, arr.len()) }\n\n    #[effects(pure)]\n    #[uses(holds_below, exact)]\n    fn is_greater(arr: &[i64], number: i64) -> (r: bool)\n        ensures exact(arr, number, r),\n    {\n        let mut idx: usize = 0;\n        while idx < arr.len() && (number > arr[idx])\n            invariant idx <= arr.len(), holds_below(arr, number, idx),\n            decreases arr.len() - idx,\n        {\n            idx = idx + 1;\n        }\n        idx >= arr.len()\n    }\n}\n",
+ "label": "clean",
+ "kind": "reference-contract",
+ "examples": "{\"def\":\"tasks::is_greater\",\"kind\":\"allowed\",\"input\":{\"arr\":\"[] (len 0)\",\"number\":\"0\"},\"result\":\"true\"}\n{\"def\":\"tasks::is_greater\",\"kind\":\"rejected\",\"input\":{\"arr\":\"[] (len 0)\",\"number\":\"0\"},\"result\":\"false\"}\n{\"def\":\"tasks::is_greater\",\"kind\":\"allowed\",\"input\":{\"arr\":\"[8] (len 1)\",\"number\":\"0\"},\"result\":\"false\"}\n{\"def\":\"tasks::is_greater\",\"kind\":\"rejected\",\"input\":{\"arr\":\"[8] (len 1)\",\"number\":\"0\"},\"result\":\"true\"}\n{\"def\":\"tasks::is_greater\",\"kind\":\"allowed\",\"input\":{\"arr\":\"[-2, -2] (len 2)\",\"number\":\"-1\"},\"result\":\"true\"}\n{\"def\":\"tasks::is_greater\",\"kind\":\"rejected\",\"input\":{\"arr\":\"[-2, -2] (len 2)\",\"number\":\"-1\"},\"result\":\"false\"}\n{\"def\":\"tasks::is_greater\",\"summary\":true,\"allowed\":3,\"rejected\":3,\"excluded\":0,\"undecided\":0,\"rlimit\":33505,\"max_len\":4}\n"
+}

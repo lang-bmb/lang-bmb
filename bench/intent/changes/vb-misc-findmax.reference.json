@@ -1,0 +1,16 @@
+{
+ "id": "vb-misc-findmax.reference",
+ "source": {
+  "set": "bvb",
+  "task": "vb-misc-findmax",
+  "program": "reference"
+ },
+ "intent": "Implement `find_max`: `nums` is non-empty. Return its largest element. The contract must state that the result is at least every element.",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "def": "tasks::find_max",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn nonempty(nums: &[i64]) -> bool { nums.len() > 0 }\n\n    spec fn max_upto(nums: &[i64], m: i64, n: usize) -> bool { forall|i: usize| i < n ==> #[trigger] nums[i] <= m }\n\n    spec fn upper_bound(nums: &[i64], r: i64) -> bool { forall|i: usize| i < nums.len() ==> #[trigger] nums[i] <= r }\n\n    #[effects(pure)]\n    #[uses(nonempty, max_upto, upper_bound)]\n    fn find_max(nums: &[i64]) -> (r: i64)\n        requires nonempty(nums),\n        ensures upper_bound(nums, r),\n    {\n        let mut m: i64 = nums[0];\n        let mut idx: usize = 1;\n        while idx < nums.len()\n            invariant 1 <= idx, idx <= nums.len(), max_upto(nums, m, idx),\n            decreases nums.len() - idx,\n        {\n            if nums[idx] > m {\n                m = nums[idx];\n            }\n            idx = idx + 1;\n        }\n        m\n    }\n}\n",
+ "label": "clean",
+ "kind": "reference-contract",
+ "examples": "{\"def\":\"tasks::find_max\",\"kind\":\"allowed\",\"input\":{\"nums\":\"[-1] (len 1)\"},\"result\":\"0\"}\n{\"def\":\"tasks::find_max\",\"kind\":\"allowed\",\"input\":{\"nums\":\"[-1] (len 1)\"},\"result\":\"-1\"}\n{\"def\":\"tasks::find_max\",\"kind\":\"rejected\",\"input\":{\"nums\":\"[-1] (len 1)\"},\"result\":\"-2\"}\n{\"def\":\"tasks::find_max\",\"kind\":\"allowed\",\"input\":{\"nums\":\"[0] (len 1)\"},\"result\":\"0\"}\n{\"def\":\"tasks::find_max\",\"kind\":\"allowed\",\"input\":{\"nums\":\"[0] (len 1)\"},\"result\":\"1\"}\n{\"def\":\"tasks::find_max\",\"kind\":\"rejected\",\"input\":{\"nums\":\"[0] (len 1)\"},\"result\":\"-1\"}\n{\"def\":\"tasks::find_max\",\"kind\":\"allowed\",\"input\":{\"nums\":\"[-6, -2] (len 2)\"},\"result\":\"0\"}\n{\"def\":\"tasks::find_max\",\"kind\":\"allowed\",\"input\":{\"nums\":\"[-6, -2] (len 2)\"},\"result\":\"-1\"}\n{\"def\":\"tasks::find_max\",\"kind\":\"rejected\",\"input\":{\"nums\":\"[-6, -2] (len 2)\"},\"result\":\"-7\"}\n{\"def\":\"tasks::find_max\",\"kind\":\"excluded\",\"input\":{\"nums\":\"[] (len 0)\"}}\n{\"def\":\"tasks::find_max\",\"summary\":true,\"allowed\":6,\"rejected\":3,\"excluded\":1,\"undecided\":0,\"rlimit\":34180,\"max_len\":4}\n"
+}

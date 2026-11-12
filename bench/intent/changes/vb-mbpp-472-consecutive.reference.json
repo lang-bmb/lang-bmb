@@ -1,0 +1,16 @@
+{
+ "id": "vb-mbpp-472-consecutive.reference",
+ "source": {
+  "set": "bvb",
+  "task": "vb-mbpp-472-consecutive",
+  "program": "reference"
+ },
+ "intent": "Implement `contains_consecutive_numbers`: `arr` is non-empty and every element x satisfies 0 <= x + 1 < 2147483647. Return whether every element is exactly one more than the element before it. The contract must state the result exactly in terms of adjacent positions.",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "def": "tasks::contains_consecutive_numbers",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn small_elems(arr: &[i64]) -> bool { arr.len() > 0 && (forall|i: usize| i < arr.len() ==> 0 <= #[trigger] arr[i] + 1 && arr[i] + 1 < 2147483647) }\n\n    spec fn steps_upto(arr: &[i64], n: usize) -> bool { forall|i: usize, j: usize| i < j && j <= n && j == i + 1 ==> #[trigger] arr[i] + 1 == #[trigger] arr[j] }\n\n    spec fn consecutive_ok(arr: &[i64], r: bool) -> bool { r == (forall|i: usize, j: usize| i < j && j < arr.len() && j == i + 1 ==> #[trigger] arr[i] + 1 == #[trigger] arr[j]) }\n\n    #[effects(pure)]\n    #[uses(small_elems, steps_upto, consecutive_ok)]\n    fn contains_consecutive_numbers(arr: &[i64]) -> (r: bool)\n        requires small_elems(arr),\n        ensures consecutive_ok(arr, r),\n    {\n        let mut idx: usize = 0;\n        while idx + 1 < arr.len() && arr[idx] + 1 == arr[idx + 1]\n            invariant idx < arr.len(), small_elems(arr), steps_upto(arr, idx),\n            decreases arr.len() - idx,\n        {\n            idx = idx + 1;\n        }\n        idx + 1 >= arr.len()\n    }\n}\n",
+ "label": "clean",
+ "kind": "reference-contract",
+ "examples": "{\"def\":\"tasks::contains_consecutive_numbers\",\"kind\":\"allowed\",\"input\":{\"arr\":\"[0, 1, 2, 3] (len 4)\"},\"result\":\"true\"}\n{\"def\":\"tasks::contains_consecutive_numbers\",\"kind\":\"rejected\",\"input\":{\"arr\":\"[0, 1, 2, 3] (len 4)\"},\"result\":\"false\"}\n{\"def\":\"tasks::contains_consecutive_numbers\",\"kind\":\"allowed\",\"input\":{\"arr\":\"[4, 4, 8, 0] (len 4)\"},\"result\":\"false\"}\n{\"def\":\"tasks::contains_consecutive_numbers\",\"kind\":\"rejected\",\"input\":{\"arr\":\"[4, 4, 8, 0] (len 4)\"},\"result\":\"true\"}\n{\"def\":\"tasks::contains_consecutive_numbers\",\"kind\":\"allowed\",\"input\":{\"arr\":\"[5, 6] (len 2)\"},\"result\":\"true\"}\n{\"def\":\"tasks::contains_consecutive_numbers\",\"kind\":\"rejected\",\"input\":{\"arr\":\"[5, 6] (len 2)\"},\"result\":\"false\"}\n{\"def\":\"tasks::contains_consecutive_numbers\",\"kind\":\"excluded\",\"input\":{\"arr\":\"[] (len 0)\"}}\n{\"def\":\"tasks::contains_consecutive_numbers\",\"kind\":\"excluded\",\"input\":{\"arr\":\"[-4] (len 1)\"}}\n{\"def\":\"tasks::contains_consecutive_numbers\",\"kind\":\"excluded\",\"input\":{\"arr\":\"[-2, -3] (len 2)\"}}\n{\"def\":\"tasks::contains_consecutive_numbers\",\"summary\":true,\"allowed\":3,\"rejected\":3,\"excluded\":3,\"undecided\":0,\"rlimit\":87521,\"max_len\":4}\n"
+}

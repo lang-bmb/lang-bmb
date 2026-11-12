@@ -1,0 +1,16 @@
+{
+ "id": "vb-mbpp-461-count-uppercase.reference",
+ "source": {
+  "set": "bvb",
+  "task": "vb-mbpp-461-count-uppercase",
+  "program": "reference"
+ },
+ "intent": "Implement `count_uppercase`: `text` holds the bytes of a string. Return the number of ASCII upper-case letters (bytes 65 to 90). The contract must state that the result is at most the length of `text` and equals the given specification function applied to the whole text.\n\nGiven specification functions in unit `given` (use them, do not change them):\n```\nspec fn count_upper(text: &[u64], n: usize) -> u64\n    decreases n,\n{\n    if n == 0 { 0 } else { count_upper(text, n - 1) + (if text[n - 1] >= 65 && text[n - 1] <= 90 { 1 } else { 0 }) }\n}\n```",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "def": "tasks::count_uppercase",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn counted(count: u64, text: &[u64], n: usize) -> bool { count <= n && count == given::count_upper(text, n) }\n\n    spec fn result_ok(text: &[u64], count: u64) -> bool { count <= text.len() && count == given::count_upper(text, text.len()) }\n\n    #[effects(pure)]\n    #[uses(counted, result_ok, given::count_upper)]\n    fn count_uppercase(text: &[u64]) -> (count: u64)\n        ensures result_ok(text, count),\n    {\n        let mut c: u64 = 0;\n        let mut idx: usize = 0;\n        while idx < text.len()\n            invariant idx <= text.len(), counted(c, text, idx),\n            decreases text.len() - idx,\n        {\n            if text[idx] >= 65 && text[idx] <= 90 {\n                c = c + 1;\n            }\n            idx = idx + 1;\n        }\n        c\n    }\n}\n",
+ "label": "clean",
+ "kind": "reference-contract",
+ "examples": "{\"def\":\"tasks::count_uppercase\",\"summary\":true,\"allowed\":0,\"rejected\":0,\"excluded\":0,\"undecided\":2,\"rlimit\":1421570,\"max_len\":4}\n"
+}

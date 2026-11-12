@@ -1,0 +1,11 @@
+{
+ "hypothesis": "H-INTENT",
+ "arms": {
+  "code+spec": ["code"],
+  "spec+examples": ["contract", "field:examples"]
+ },
+ "titles": {"field:examples": "Output of `bmb examples` for the function under review"},
+ "compare": {"candidate": "spec+examples", "baseline": "code+spec", "token_ratio": [1, 2]},
+ "generated_with": {"compiler_commit": "ba563ed4", "examples_count": "default (3)"},
+ "frozen": ["gen.py", "../review/gen.py", "../review/views.py", "../review/judge.py", "../review/harness.py", "../bvb/MANIFEST"]
+}

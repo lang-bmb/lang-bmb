@@ -1,0 +1,16 @@
+{
+ "id": "vb-mbpp-105-count-true.weak",
+ "source": {
+  "set": "bvb",
+  "task": "vb-mbpp-105-count-true",
+  "program": "weak_reference"
+ },
+ "intent": "Implement `count_true`: return the number of `true` elements of `arr`. The contract must state that the result is at most the length of `arr` and equals the given specification function applied to the whole array.\n\nGiven specification functions in unit `given` (use them, do not change them):\n```\nspec fn count_true(arr: &[bool], n: usize) -> u64\n    decreases n,\n{\n    if n == 0 { 0 } else { count_true(arr, n - 1) + (if arr[n - 1] { 1 } else { 0 }) }\n}\n```",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "def": "tasks::count_true",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn counted(count: u64, arr: &[bool], n: usize) -> bool { count <= n && count == given::count_true(arr, n) }\n\n    spec fn result_ok(arr: &[bool], count: u64) -> bool { count <= arr.len() }\n\n    #[effects(pure)]\n    #[uses(counted, result_ok, given::count_true)]\n    fn count_true(arr: &[bool]) -> (count: u64)\n        ensures result_ok(arr, count),\n    {\n        let mut c: u64 = 0;\n        let mut idx: usize = 0;\n        while idx < arr.len()\n            invariant idx <= arr.len(), counted(c, arr, idx),\n            decreases arr.len() - idx,\n        {\n            if arr[idx] {\n                c = c + 1;\n            }\n            idx = idx + 1;\n        }\n        c\n    }\n}\n",
+ "label": "defect",
+ "kind": "weak-contract",
+ "examples": "{\"def\":\"tasks::count_true\",\"kind\":\"allowed\",\"input\":{\"arr\":\"[] (len 0)\"},\"result\":\"0\"}\n{\"def\":\"tasks::count_true\",\"kind\":\"rejected\",\"input\":{\"arr\":\"[] (len 0)\"},\"result\":\"1\"}\n{\"def\":\"tasks::count_true\",\"kind\":\"allowed\",\"input\":{\"arr\":\"[false] (len 1)\"},\"result\":\"0\"}\n{\"def\":\"tasks::count_true\",\"kind\":\"allowed\",\"input\":{\"arr\":\"[false] (len 1)\"},\"result\":\"1\"}\n{\"def\":\"tasks::count_true\",\"kind\":\"rejected\",\"input\":{\"arr\":\"[false] (len 1)\"},\"result\":\"2\"}\n{\"def\":\"tasks::count_true\",\"kind\":\"allowed\",\"input\":{\"arr\":\"[true, true] (len 2)\"},\"result\":\"0\"}\n{\"def\":\"tasks::count_true\",\"kind\":\"allowed\",\"input\":{\"arr\":\"[true, true] (len 2)\"},\"result\":\"1\"}\n{\"def\":\"tasks::count_true\",\"kind\":\"rejected\",\"input\":{\"arr\":\"[true, true] (len 2)\"},\"result\":\"3\"}\n{\"def\":\"tasks::count_true\",\"summary\":true,\"allowed\":5,\"rejected\":3,\"excluded\":0,\"undecided\":0,\"rlimit\":7686,\"max_len\":4}\n"
+}

@@ -1,0 +1,16 @@
+{
+ "id": "vc-vd0126-first-zero.weak",
+ "source": {
+  "set": "bvb",
+  "task": "vc-vd0126-first-zero",
+  "program": "weak_reference"
+ },
+ "intent": "Implement `mfirst_cero`: return the position of the first zero in `v`, or the length of `v` if it has no zero. The contract must state that the result is at most the length, no earlier element is zero, and the element at the result is zero unless the result is the length.",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "def": "tasks::mfirst_cero",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn nonzero_below(v: &[i64], n: usize) -> bool { forall|j: usize| j < n ==> #[trigger] v[j] != 0 }\n\n    spec fn result_ok(v: &[i64], r: usize) -> bool { r <= v.len() && (r != v.len() ==> v[r] == 0) }\n\n    #[effects(pure)]\n    #[uses(result_ok, nonzero_below)]\n    fn mfirst_cero(v: &[i64]) -> (r: usize)\n        ensures result_ok(v, r),\n    {\n        let mut i: usize = 0;\n        while i < v.len() && v[i] != 0\n            invariant i <= v.len(), nonzero_below(v, i),\n            decreases v.len() - i,\n        {\n            i = i + 1;\n        }\n        i\n    }\n}\n",
+ "label": "defect",
+ "kind": "weak-contract",
+ "examples": "{\"def\":\"tasks::mfirst_cero\",\"kind\":\"allowed\",\"input\":{\"v\":\"[0] (len 1)\"},\"result\":\"0\"}\n{\"def\":\"tasks::mfirst_cero\",\"kind\":\"allowed\",\"input\":{\"v\":\"[0] (len 1)\"},\"result\":\"1\"}\n{\"def\":\"tasks::mfirst_cero\",\"kind\":\"rejected\",\"input\":{\"v\":\"[0] (len 1)\"},\"result\":\"8\"}\n{\"def\":\"tasks::mfirst_cero\",\"kind\":\"allowed\",\"input\":{\"v\":\"[0, -4] (len 2)\"},\"result\":\"0\"}\n{\"def\":\"tasks::mfirst_cero\",\"kind\":\"allowed\",\"input\":{\"v\":\"[0, -4] (len 2)\"},\"result\":\"2\"}\n{\"def\":\"tasks::mfirst_cero\",\"kind\":\"rejected\",\"input\":{\"v\":\"[0, -4] (len 2)\"},\"result\":\"1\"}\n{\"def\":\"tasks::mfirst_cero\",\"kind\":\"allowed\",\"input\":{\"v\":\"[0, -5] (len 2)\"},\"result\":\"0\"}\n{\"def\":\"tasks::mfirst_cero\",\"kind\":\"allowed\",\"input\":{\"v\":\"[0, -5] (len 2)\"},\"result\":\"2\"}\n{\"def\":\"tasks::mfirst_cero\",\"kind\":\"rejected\",\"input\":{\"v\":\"[0, -5] (len 2)\"},\"result\":\"1\"}\n{\"def\":\"tasks::mfirst_cero\",\"summary\":true,\"allowed\":6,\"rejected\":3,\"excluded\":0,\"undecided\":0,\"rlimit\":31256,\"max_len\":4}\n"
+}

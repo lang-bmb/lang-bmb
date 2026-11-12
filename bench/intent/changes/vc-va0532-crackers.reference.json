@@ -1,0 +1,16 @@
+{
+ "id": "vc-va0532-crackers.reference",
+ "source": {
+  "set": "bvb",
+  "task": "vc-va0532-crackers",
+  "program": "reference"
+ },
+ "intent": "Implement `solve`: `n` and `k` are between 1 and 100. N crackers are shared among K users as evenly as possible; return the smallest possible difference between the largest and the smallest share (0 if k divides n, else 1). The contract must state the result exactly, including that it is 0 exactly when n % k == 0 and 1 exactly when n % k != 0.",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "def": "tasks::solve",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn input_ok(n: i64, k: i64) -> bool { n >= 1 && k >= 1 && n <= 100 && k <= 100 }\n\n    spec fn result_ok(n: i64, k: i64, r: i64) -> bool { r == (if n % k == 0 { 0 } else { 1 }) && ((r == 0) == (n % k == 0)) && ((r == 1) == (n % k != 0)) }\n\n    #[effects(pure)]\n    #[uses(input_ok, result_ok)]\n    fn solve(n: i64, k: i64) -> (r: i64)\n        requires input_ok(n, k),\n        ensures result_ok(n, k, r),\n    {\n        if n % k == 0 {\n            0\n        } else {\n            1\n        }\n    }\n}\n",
+ "label": "clean",
+ "kind": "reference-contract",
+ "examples": "{\"def\":\"tasks::solve\",\"kind\":\"allowed\",\"input\":{\"n\":\"1\",\"k\":\"1\"},\"result\":\"0\"}\n{\"def\":\"tasks::solve\",\"kind\":\"rejected\",\"input\":{\"n\":\"1\",\"k\":\"1\"},\"result\":\"-1\"}\n{\"def\":\"tasks::solve\",\"kind\":\"allowed\",\"input\":{\"n\":\"2\",\"k\":\"1\"},\"result\":\"0\"}\n{\"def\":\"tasks::solve\",\"kind\":\"rejected\",\"input\":{\"n\":\"2\",\"k\":\"1\"},\"result\":\"-1\"}\n{\"def\":\"tasks::solve\",\"kind\":\"allowed\",\"input\":{\"n\":\"1\",\"k\":\"2\"},\"result\":\"1\"}\n{\"def\":\"tasks::solve\",\"kind\":\"rejected\",\"input\":{\"n\":\"1\",\"k\":\"2\"},\"result\":\"0\"}\n{\"def\":\"tasks::solve\",\"kind\":\"excluded\",\"input\":{\"n\":\"0\",\"k\":\"0\"}}\n{\"def\":\"tasks::solve\",\"kind\":\"excluded\",\"input\":{\"n\":\"-1\",\"k\":\"-1\"}}\n{\"def\":\"tasks::solve\",\"kind\":\"excluded\",\"input\":{\"n\":\"-2\",\"k\":\"-2\"}}\n{\"def\":\"tasks::solve\",\"summary\":true,\"allowed\":3,\"rejected\":3,\"excluded\":3,\"undecided\":0,\"rlimit\":21021,\"max_len\":4}\n"
+}

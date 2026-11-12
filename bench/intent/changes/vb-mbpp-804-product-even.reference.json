@@ -1,0 +1,16 @@
+{
+ "id": "vb-mbpp-804-product-even.reference",
+ "source": {
+  "set": "bvb",
+  "task": "vb-mbpp-804-product-even",
+  "program": "reference"
+ },
+ "intent": "Implement `is_product_even`: return whether the product of the elements of `arr` is even, that is, whether some element is even (false for an empty array). The contract must state the result exactly in terms of the elements.",
+ "seed": "../bvb/seed",
+ "file": "src/tasks.bmb",
+ "def": "tasks::is_product_even",
+ "after": "#[summary(\"과제 구현\")]\nmod tasks {\n    spec fn holds_below(arr: &[u64], n: usize) -> bool { forall|i: usize| i < n && i < arr.len() ==> !(#[trigger] arr[i] % 2 == 0) }\n\n    spec fn exact(arr: &[u64], r: bool) -> bool { r == !holds_below(arr, arr.len()) }\n\n    #[effects(pure)]\n    #[uses(holds_below, exact)]\n    fn is_product_even(arr: &[u64]) -> (r: bool)\n        ensures exact(arr, r),\n    {\n        let mut idx: usize = 0;\n        while idx < arr.len() && !(arr[idx] % 2 == 0)\n            invariant idx <= arr.len(), holds_below(arr, idx),\n            decreases arr.len() - idx,\n        {\n            idx = idx + 1;\n        }\n        idx < arr.len()\n    }\n}\n",
+ "label": "clean",
+ "kind": "reference-contract",
+ "examples": "{\"def\":\"tasks::is_product_even\",\"kind\":\"allowed\",\"input\":{\"arr\":\"[8, 3] (len 2)\"},\"result\":\"true\"}\n{\"def\":\"tasks::is_product_even\",\"kind\":\"rejected\",\"input\":{\"arr\":\"[8, 3] (len 2)\"},\"result\":\"false\"}\n{\"def\":\"tasks::is_product_even\",\"kind\":\"allowed\",\"input\":{\"arr\":\"[7] (len 1)\"},\"result\":\"false\"}\n{\"def\":\"tasks::is_product_even\",\"kind\":\"rejected\",\"input\":{\"arr\":\"[7] (len 1)\"},\"result\":\"true\"}\n{\"def\":\"tasks::is_product_even\",\"kind\":\"allowed\",\"input\":{\"arr\":\"[1, 8, 4, 2] (len 4)\"},\"result\":\"true\"}\n{\"def\":\"tasks::is_product_even\",\"kind\":\"rejected\",\"input\":{\"arr\":\"[1, 8, 4, 2] (len 4)\"},\"result\":\"false\"}\n{\"def\":\"tasks::is_product_even\",\"summary\":true,\"allowed\":3,\"rejected\":3,\"excluded\":0,\"undecided\":0,\"rlimit\":49254,\"max_len\":4}\n"
+}
