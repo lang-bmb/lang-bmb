@@ -286,7 +286,7 @@ pub fn unknown_reason(why: &str) -> String {
             backstop_ms()
         )
     } else if why.contains("canceled") || why.contains("resource") {
-        format!("resource limit reached, rlimit {}", rlimit())
+        format!("resource limit reached, rlimit {}", query_rlimit())
     } else {
         why.to_string()
     }
@@ -310,6 +310,35 @@ pub fn rlimit() -> u64 {
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
         .map_or(pinned, |v| v.min(pinned))
+}
+
+/// The pinned resource limit of an advisory query (`advisory`, ADR-0131):
+/// the full queries of the lint's satisfiability checks and of its
+/// re-verifications of changed definitions (`Advisory::Refutations`). Every
+/// report needs an `unsat`, and a query that is neither `unsat` nor `sat`
+/// ran to the gate's limit without a word: on `lib/std` 403 of the lint's
+/// 6,003 queries, 89% of the solver's time (backlog T2-17 (e)). The largest
+/// advisory `unsat` there used 256,942 and the largest proof of the gate
+/// 485,775. The shares that are fixed numbers stay what they are: the
+/// probe's and the bounded search's are shares of the gate's limit
+/// (`rlimit`), the reach points have their own. Never above `rlimit`, so
+/// what lowers that lowers this.
+pub fn advisory_rlimit() -> u64 {
+    let pinned: u64 = toolchain::pinned("Z3_ADVISORY_RLIMIT")
+        .parse()
+        .expect("Z3_ADVISORY_RLIMIT must be an integer");
+    pinned.min(rlimit())
+}
+
+/// The resource limit of a full query asked now: the gate's, or the
+/// advisory one inside `advisory(Advisory::Refutations, ..)`. It is in the text of the query (its
+/// header), and so in the proof cache's keys.
+pub fn query_rlimit() -> u64 {
+    if ADVISORY.with(|a| a.get()) == Some(Advisory::Refutations) {
+        advisory_rlimit()
+    } else {
+        rlimit()
+    }
 }
 
 /// The pinned memory limit of a query in megabytes (Z3's `-memory`, which
@@ -348,25 +377,42 @@ pub fn advisory_memory_mb() -> u64 {
     pinned.min(memory_mb())
 }
 
+/// Who asks an advisory query (`advisory`): what its answer is used for
+/// decides which of the gate's limits it may do without.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Advisory {
+    /// The lint's queries after its first verification: every report needs
+    /// an `unsat`, so a smaller `rlimit` can only leave a report out
+    /// (ADR-0131). Advisory memory limit and advisory `rlimit`.
+    Refutations,
+    /// `bmb examples`: every row is read from a model (`sat`), and models
+    /// are found above the advisory `rlimit` (six rows of the BVB
+    /// references need more than 1,000,000, ADR-0131). Advisory memory
+    /// limit, the gate's `rlimit`.
+    Models,
+}
+
 thread_local! {
     /// Set while `advisory` runs.
-    static ADVISORY: Cell<bool> = const { Cell::new(false) };
+    static ADVISORY: Cell<Option<Advisory>> = const { Cell::new(None) };
 }
 
 /// Runs `f` with every solver it starts under the advisory memory limit
-/// (`advisory_memory_mb`) in place of the gate's. For queries whose
-/// answer is a report, never a verdict of the gate: a query that reaches
-/// the limit is undecided, as at the gate's limit, so the smaller limit
-/// can only leave a report out. Deterministic like the gate's limit (Z3
-/// counts its own allocations).
-pub fn advisory<R>(f: impl FnOnce() -> R) -> R {
-    struct Restore(bool);
+/// (`advisory_memory_mb`) in place of the gate's and, for
+/// `Advisory::Refutations`, every full query it builds under the advisory
+/// resource limit (`advisory_rlimit`). For queries whose answer is a
+/// report, never a verdict of the gate: a query that reaches a limit is
+/// undecided, as at the gate's limit, so the smaller limits can only leave
+/// a report out. Deterministic like the gate's limits (Z3 counts its own
+/// allocations and steps).
+pub fn advisory<R>(who: Advisory, f: impl FnOnce() -> R) -> R {
+    struct Restore(Option<Advisory>);
     impl Drop for Restore {
         fn drop(&mut self) {
             ADVISORY.with(|a| a.set(self.0));
         }
     }
-    let _restore = Restore(ADVISORY.with(|a| a.replace(true)));
+    let _restore = Restore(ADVISORY.with(|a| a.replace(Some(who))));
     f()
 }
 
@@ -374,7 +420,7 @@ pub fn advisory<R>(f: impl FnOnce() -> R) -> R {
 /// gate's, or the advisory one inside `advisory`. Part of the proof cache's
 /// key (`cache::ProofCache::key`).
 pub fn query_memory_mb() -> u64 {
-    if ADVISORY.with(|a| a.get()) {
+    if ADVISORY.with(|a| a.get()).is_some() {
         advisory_memory_mb()
     } else {
         memory_mb()
@@ -413,7 +459,7 @@ pub fn limit_reason(e: &str) -> Option<String> {
     if out_of_memory(e) {
         Some(format!("memory limit reached, {} MB", query_memory_mb()))
     } else if e.contains("canceled") {
-        Some(format!("resource limit reached, rlimit {}", rlimit()))
+        Some(format!("resource limit reached, rlimit {}", query_rlimit()))
     } else {
         None
     }
@@ -993,9 +1039,40 @@ mod tests {
         assert!(pinned("Z3_ADVISORY_MEMORY_MB") < pinned("Z3_MEMORY_MB"));
         assert!(advisory_memory_mb() <= memory_mb());
         assert_eq!(query_memory_mb(), memory_mb());
-        advisory(|| {
+        // The resource limit likewise (backlog T2-18, ADR-0131).
+        assert!(pinned("Z3_ADVISORY_RLIMIT") < pinned("Z3_RLIMIT"));
+        assert!(advisory_rlimit() <= rlimit());
+        assert_eq!(query_rlimit(), rlimit());
+        advisory(Advisory::Refutations, || {
+            assert_eq!(query_rlimit(), advisory_rlimit());
+            advisory(Advisory::Refutations, || {
+                assert_eq!(query_rlimit(), advisory_rlimit())
+            });
+            assert_eq!(query_rlimit(), advisory_rlimit());
+            assert_eq!(
+                limit_reason("z3: canceled"),
+                Some(format!(
+                    "resource limit reached, rlimit {}",
+                    advisory_rlimit()
+                ))
+            );
+        });
+        assert_eq!(query_rlimit(), rlimit());
+        // A search for models has the advisory memory limit and the gate's
+        // resource limit.
+        advisory(Advisory::Models, || {
+            assert_eq!(query_rlimit(), rlimit());
             assert_eq!(query_memory_mb(), advisory_memory_mb());
-            advisory(|| assert_eq!(query_memory_mb(), advisory_memory_mb()));
+            advisory(Advisory::Refutations, || {
+                assert_eq!(query_rlimit(), advisory_rlimit())
+            });
+            assert_eq!(query_rlimit(), rlimit());
+        });
+        advisory(Advisory::Refutations, || {
+            assert_eq!(query_memory_mb(), advisory_memory_mb());
+            advisory(Advisory::Refutations, || {
+                assert_eq!(query_memory_mb(), advisory_memory_mb())
+            });
             assert_eq!(query_memory_mb(), advisory_memory_mb());
             assert_eq!(
                 limit_reason("z3: out of memory"),

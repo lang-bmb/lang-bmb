@@ -450,8 +450,19 @@ mod s {
     // query counts, the probes too.
     assert_eq!(field(&sel, "pre_undecided"), "1", "{sel}");
     assert_eq!(field(&sel, "reach_undecided"), "1", "{sel}");
+    // The precondition check's full query ends at the advisory `rlimit`
+    // (ADR-0131), not at the gate's.
+    let pinned = |key: &str| -> u64 {
+        let env = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../scripts/toolchain.env");
+        let text = std::fs::read_to_string(env).unwrap();
+        let line = text
+            .lines()
+            .find_map(|l| l.strip_prefix(&format!("{key}=")));
+        line.unwrap().parse().unwrap()
+    };
     let rlimit: u64 = field(&sel, "pre_rlimit").parse().unwrap();
-    assert!(rlimit > 5_000_000, "{sel}");
+    assert!(rlimit > pinned("Z3_ADVISORY_RLIMIT"), "{sel}");
+    assert!(rlimit < pinned("Z3_RLIMIT"), "{sel}");
     let rlimit: u64 = field(&sel, "reach_rlimit").parse().unwrap();
     assert!(rlimit > 1_000_000, "{sel}");
     assert_eq!(field(&sel, "verifications"), "0");

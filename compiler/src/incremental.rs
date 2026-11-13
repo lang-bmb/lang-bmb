@@ -9,7 +9,8 @@
 //!
 //! **Proof key.** Encoding a definition `D` (`verify::verify_impl`) reads:
 //!
-//! - the query header: solver options (seed, `rlimit`) and the prelude
+//! - the query header: solver options (seed, `rlimit`: the gate's, or an
+//!   advisory query's own, `smt::query_rlimit`, ADR-0131) and the prelude
 //!   (`verify::query_header`), and the solver's memory limit
 //!   (`smt::query_memory_mb`, backlog T2-17);
 //! - the declarations of the `spec fn`s its queries mention (backlog 2D-14:

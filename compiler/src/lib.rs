@@ -93,7 +93,8 @@ struct Frontend {
 /// `verify::examples`), `count` inputs each, as JSONL: per definition its
 /// rows and a summary row. The program is checked, not proved: the examples
 /// come from the contracts alone. The queries are advisory
-/// (`smt::advisory`): a report, never a verdict of the gate. `Err` is the
+/// (`smt::advisory`): a report, never a verdict of the gate. They look for
+/// models, so they keep the gate's `rlimit` (`smt::Advisory::Models`). `Err` is the
 /// diagnostics of a program that does not check, or names a path that is
 /// not an executable function.
 pub fn examples_sources(
@@ -105,8 +106,10 @@ pub fn examples_sources(
     if fe.diags.has_errors() {
         return Err(fe.diags.to_jsonl(&fe.sm));
     }
-    let found = smt::advisory(|| verify::examples(&fe.program, &fe.tables, defs, count))
-        .map_err(|e| format!("{e}\n"))?;
+    let found = smt::advisory(smt::Advisory::Models, || {
+        verify::examples(&fe.program, &fe.tables, defs, count)
+    })
+    .map_err(|e| format!("{e}\n"))?;
     Ok(found.iter().map(|e| e.jsonl()).collect())
 }
 

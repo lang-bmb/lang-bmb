@@ -7,8 +7,9 @@
 //! Every value shown is read from a model of a query over the entry state
 //! the proof gate assumes (`Enc::entry_params`, `Enc::entry_requires`: the
 //! one encoding W0901 and W0918 use), decided by `sat_of` as theirs are,
-//! under the pinned seed and `rlimit`. A query that is not decided shows
-//! nothing and is counted.
+//! under the pinned seed and `rlimit` (the gate's: a model may need more
+//! than the lint's advisory limit, ADR-0131). A query that is not decided
+//! shows nothing and is counted.
 //!
 //! - allowed: `requires ∧ ensures`, each next input different from all
 //!   earlier ones (a blocking clause over the input's values).

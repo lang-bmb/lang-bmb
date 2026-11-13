@@ -172,8 +172,9 @@ BMB v2의 설계 결정을 한 건에 파일 하나로 남긴다. 현재 확정�
 | [0123](0123-solver-memory-limit.md) | 해법기 프로세스에 고정 메모리 한도(`Z3_MEMORY_MB`), 닿은 질의만 미결정(E0811), 다음 의무는 새 프로세스 |
 | [0124](0124-push-length-is-a-runtime-fact.md) | `push`·`push_str`의 길이는 증명 의무가 아니라 런타임이 지키는 사실(넘으면 `abort`), E0816은 `with_capacity`에만 |
 | [0125](0125-parent-agent-with-subagents.md) | 모에이전트가 서브에이전트를 관리: 관문 단위 목표, 실행으로 검증, 병렬 둘, `compiler/` 작성자는 하나, 승인 안건은 쌓고 계속 |
-| [0126](0126-advisory-solver-memory-limit.md) | `lint`의 권고 질의는 따로 된 메모리 한도(`Z3_ADVISORY_MEMORY_MB`=128), `rlimit`은 그대로, 닿으면 미결정 |
+| [0126](0126-advisory-solver-memory-limit.md) | `lint`의 권고 질의는 따로 된 메모리 한도(`Z3_ADVISORY_MEMORY_MB`=128), 닿으면 미결정. `rlimit`은 그대로라는 결정 2는 ADR-0131이 대체 |
 | [0127](0127-bounded-responses.md) | 에이전트 경계(`bmb mcp --bounded`)의 `query`·`map` 응답은 바이트 예산 안의 창: 잘림 행, `offset`·`limit`, `overview` |
 | [0128](0128-review-change-set.md) | H-REVIEW 변경 집합(`bench/review`, 143개) 동결: 명세 diff 판과 코드 diff 판, 모델 리뷰어에 한한 판정, 이 집합에서 토큰 기준은 닿지 않음 |
 | [0129](0129-memory-verdict-in-a-fresh-process.md) | 메모리로 인한 미결정은 새 프로세스의 첫 질의에서만 판정: 작업 프로세스는 한도의 절반, 끝난 질의는 혼자 다시 묻는다. 한도가 끝낸 질의도 재시도를 받고, 증명 캐시 키에 메모리 한도(v5) |
 | [0130](0130-intent-item-set.md) | H-INTENT 항목 집합(`bench/intent`, 90개) 동결: 코드+명세 판과 명세+예시 판, 모델 리뷰어에 한한 판정, 토큰 기준은 닿지 않음, 예시의 겉모습이 라벨을 82/90 맞힘 |
+| [0131](0131-advisory-rlimit.md) | `lint`의 권고 질의(첫 증명 뒤)의 전체 질의는 따로 된 `rlimit`(`Z3_ADVISORY_RLIMIT`=1,000,000), 탐침 몫과 도달 한도는 값 그대로, 닿으면 미결정. 모형을 찾는 `bmb examples`는 게이트의 `rlimit` 그대로. ADR-0126 결정 2를 대체 |

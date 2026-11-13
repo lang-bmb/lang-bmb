@@ -9,7 +9,9 @@
 //! seed) changes the key, and so does the memory limit, which is not in the
 //! text: a proof found under the gate's limit does not answer the lint's
 //! advisory query of the same text, which runs under a smaller one (backlog
-//! T2-17). Unproved obligations always run again.
+//! T2-17). An advisory query's `rlimit` is its own too (ADR-0131), and that
+//! one is in the text (`verify::query_header`), so the two differ there as
+//! well. Unproved obligations always run again.
 //!
 //! The file is trusted like the source tree: whoever can write it can mark an
 //! obligation proved. It lives in the workspace (`.bmb-cache/proofs`).

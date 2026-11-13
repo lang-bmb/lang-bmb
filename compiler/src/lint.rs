@@ -64,10 +64,11 @@
 //!
 //! Every query after the first verification is advisory (`smt::advisory`,
 //! backlog T2-16): its solver process has the smaller memory limit
-//! `Z3_ADVISORY_MEMORY_MB`. A query that reaches it is undecided, as at the
-//! gate's limit, so a report can be left out but none is added. The first
-//! verification runs under the gate's limit: "verified" means what the gate
-//! means.
+//! `Z3_ADVISORY_MEMORY_MB`, and its full query the smaller resource limit
+//! `Z3_ADVISORY_RLIMIT` (ADR-0131, backlog T2-18). A query that reaches
+//! either is undecided, as at the gate's limit, so a report can be left out
+//! but none is added. The first verification runs under the gate's limits:
+//! "verified" means what the gate means.
 //!
 //! `bmb lint --select CODES` runs only the listed checks (backlog T2-12):
 //! each reports what it reports in a full run, and the first verification
@@ -331,7 +332,7 @@ pub fn lint_sources_selected(
     // W0901: unsatisfiable preconditions.
     let mut unsat = BTreeSet::new();
     let (pre, pre_cost) = if needs_pre {
-        let (v, c) = crate::smt::advisory(|| {
+        let (v, c) = crate::smt::advisory(crate::smt::Advisory::Refutations, || {
             crate::verify::preconditions_satisfiable(&fe.program, &fe.tables)
         });
         (v, Some(c))
@@ -370,8 +371,9 @@ pub fn lint_sources_selected(
     // index of a maximum); the witness is the example a reader checks.
     let mut det_cost = None;
     if runs("W0918") {
-        let (rows, cost) =
-            crate::smt::advisory(|| crate::verify::results_determined(&fe.program, &fe.tables));
+        let (rows, cost) = crate::smt::advisory(crate::smt::Advisory::Refutations, || {
+            crate::verify::results_determined(&fe.program, &fe.tables)
+        });
         det_cost = Some(cost);
         for (path, span, det) in rows {
             if unsat.contains(&path) || !defs.contains_key(&path) {
@@ -408,8 +410,9 @@ pub fn lint_sources_selected(
     // W0905: points of verified functions their own proof cannot reach.
     let mut reach_cost = None;
     if runs("W0905") {
-        let (points, cost) =
-            crate::smt::advisory(|| crate::verify::vacuous_ends(&fe.program, &fe.tables));
+        let (points, cost) = crate::smt::advisory(crate::smt::Advisory::Refutations, || {
+            crate::verify::vacuous_ends(&fe.program, &fe.tables)
+        });
         reach_cost = Some(cost);
         for (path, span, what) in points {
             if unsat.contains(&path) || external(&path) || !verified(&path) {
@@ -447,7 +450,7 @@ pub fn lint_sources_selected(
                 .remove(i);
             let only: BTreeSet<String> = [(*path).clone()].into();
             let mut diags = Diags::default();
-            let o = crate::smt::advisory(|| {
+            let o = crate::smt::advisory(crate::smt::Advisory::Refutations, || {
                 crate::verify::verify_defs(&prog, &fe.tables, &mut diags, &only, Some(&mut cache))
             });
             if clean(&o, &diags, &spans, &only) {
@@ -508,7 +511,7 @@ pub fn lint_sources_selected(
                 .ensures
                 .remove(i);
             let mut diags = Diags::default();
-            let o = crate::smt::advisory(|| {
+            let o = crate::smt::advisory(crate::smt::Advisory::Refutations, || {
                 crate::verify::verify_defs(&prog, &fe.tables, &mut diags, cs, Some(&mut cache))
             });
             if clean(&o, &diags, &spans, cs) {
@@ -574,7 +577,7 @@ pub fn lint_sources_selected(
         );
         let only: BTreeSet<String> = [(*path).clone()].into();
         let mut diags = Diags::default();
-        let o = crate::smt::advisory(|| {
+        let o = crate::smt::advisory(crate::smt::Advisory::Refutations, || {
             crate::verify::verify_defs(&prog, &fe.tables, &mut diags, &only, Some(&mut cache))
         });
         if clean(&o, &diags, &spans, &only) {
@@ -744,7 +747,14 @@ const INDEX_SHIFTS: [BinOp; 2] = [BinOp::Add, BinOp::Sub];
 /// node, shown as context for a changed literal.
 fn sites_of(e: &Expr, parent: Option<Span>, text: &str) -> Vec<Site> {
     if let ExprKind::Index { index, .. } = &e.kind {
-        if index.span.lo < e.span.lo || e.span.hi < index.span.hi {
+        // The shift is of an element's index. A subslice `a[lo..hi]` has
+        // none: `(lo..hi) + 1` is not a program (and its text,
+        // `a[lo..hi + 1]`, is another one); its bounds are sites of their
+        // own.
+        if matches!(index.kind, ExprKind::Range { .. })
+            || index.span.lo < e.span.lo
+            || e.span.hi < index.span.hi
+        {
             return Vec::new();
         }
         let src = &text[e.span.lo as usize..e.span.hi as usize];

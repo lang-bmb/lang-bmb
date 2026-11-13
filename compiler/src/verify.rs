@@ -7497,9 +7497,10 @@ pub fn verify_program_incremental(
     verify_impl(p, t, diags, 0, cache, None, false, Some(incr))
 }
 
-/// Every solver query starts with this text: options (seed 0, pinned
-/// `rlimit`); the datatypes the query names, the prelude and the
-/// declarations of the spec fns it mentions follow (`needed_decls`).
+/// Every solver query starts with this text: options (seed 0, the pinned
+/// `rlimit` of a query asked now, `smt::query_rlimit`); the datatypes the
+/// query names, the prelude and the declarations of the spec fns it
+/// mentions follow (`needed_decls`).
 pub fn query_header() -> String {
     format!("{}\n{PRELUDE}", header(0).join("\n"))
 }
@@ -7559,7 +7560,7 @@ fn header(seed: u64) -> Vec<String> {
         "(set-option :produce-models true)".to_string(),
         format!("(set-option :smt.random_seed {seed})"),
         format!("(set-option :sat.random_seed {seed})"),
-        format!("(set-option :rlimit {})", smt::rlimit()),
+        format!("(set-option :rlimit {})", smt::query_rlimit()),
     ];
     // Part of every proof key: a run with the search and one without do
     // not share cached results (their diagnostics differ).
@@ -10039,6 +10040,9 @@ fn quantified(ax: &str) -> &str {
 /// The share of the solver limit an obligation's probe may use (ADR-0067):
 /// 1%, so a probe that does not decide adds at most that to the full query.
 /// The vacuity and precondition checks' probes use the same (ADR-0069).
+/// A share of the gate's limit (`smt::rlimit`) for every query: an advisory
+/// query's probe has the number the gate's has (ADR-0131), 5% of its own
+/// smaller limit.
 const PROBE_SHARE: u64 = 100;
 
 /// The script text of the ground-instance retry at the probe's share
@@ -10053,7 +10057,7 @@ fn early_retry_text(k: usize, head: &str, limit: &str, inst: &str, q: &str) -> S
 /// The probe's limit command (`PROBE_SHARE`), sent after its base.
 /// The bounds of the counterexample search an undecided obligation gets
 /// (ADR-0108 §1): integers in `-BOUND..=BOUND`, unfixed lengths up to
-/// `BOUND_LEN`, at a tenth of the obligation's `rlimit`.
+/// `BOUND_LEN`, at a tenth of the gate's `rlimit`.
 const BOUND: i64 = 8;
 const BOUND_LEN: usize = 4;
 const BOUND_SHARE: u64 = 10;

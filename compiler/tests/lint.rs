@@ -1044,6 +1044,367 @@ fn a_cached_gate_proof_does_not_answer_an_advisory_query() {
     let _ = std::fs::remove_dir_all(&tmp);
 }
 
+/// The program of the two tests below: either `requires` clause can go
+/// (the other keeps `x + 1` in range), so the lint re-verifies it twice.
+const TWO_CLAUSES: &str = "#[summary(\"더하기\")]\nmod m {\n    #[effects(pure)]\n    fn add1(x: u64) -> (r: u64)\n        requires x < 100, x < 1000,\n        ensures r == x + 1,\n    {\n        x + 1\n    }\n}\n";
+
+/// The pinned solver on `PATH`.
+fn pinned_z3() -> (String, std::path::PathBuf) {
+    let path = std::env::var("PATH").unwrap();
+    let z3 = std::env::split_paths(&path)
+        .map(|d| d.join("z3"))
+        .find(|p| p.is_file())
+        .expect("z3 must be installed");
+    (path, z3)
+}
+
+fn executable(file: &Path, text: &str) {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::write(file, text).unwrap();
+    std::fs::set_permissions(file, std::fs::Permissions::from_mode(0o755)).unwrap();
+}
+
+/// Runs `bmb args..` with the pinned solver behind a script that keeps
+/// what each process was started with and sent (the filter ends with the
+/// solver, at `(exit)`). Gives the output and, for the processes of the
+/// gate (`[0]`) and the advisory ones (`[1]`, told apart by their memory
+/// limit, ADR-0126): the `rlimit` of each query header, and every `rlimit`
+/// sent.
+type Limits = [(Vec<u64>, std::collections::BTreeSet<u64>); 2];
+fn sent_limits(tmp: &Path, args: &[&str]) -> (String, Limits) {
+    let (bin, sent) = (tmp.join("bin"), tmp.join("sent"));
+    let _ = std::fs::remove_dir_all(&sent);
+    std::fs::create_dir_all(&bin).unwrap();
+    std::fs::create_dir_all(&sent).unwrap();
+    let (path, z3) = pinned_z3();
+    executable(
+        &bin.join("z3"),
+        &format!(
+            "#!/bin/sh\n\
+             if [ \"$1\" = --version ]; then exec {z3} \"$@\"; fi\n\
+             echo \"$@\" > {sent}/$$.args\n\
+             sed -u -e 'w {sent}/'$$.in -e '/^(exit)$/q' | {z3} \"$@\"\n",
+            z3 = z3.display(),
+            sent = sent.display()
+        ),
+    );
+    let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
+        .env("PATH", format!("{}:{path}", bin.display()))
+        .args(args)
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0), "{out:?}");
+    let limit = |k: &str| pinned(k).parse::<u64>().unwrap();
+    let (gate_mb, advisory_mb) = (limit("Z3_MEMORY_MB"), limit("Z3_ADVISORY_MEMORY_MB"));
+    assert!(advisory_mb < gate_mb / 2);
+    let mut limits: Limits = Default::default();
+    for e in std::fs::read_dir(&sent).unwrap() {
+        let args = e.unwrap().path();
+        if args.extension().and_then(|x| x.to_str()) != Some("args") {
+            continue;
+        }
+        let started = std::fs::read_to_string(&args).unwrap();
+        let of = |mb: u64| format!("{} ", started.trim()).contains(&format!("-memory:{mb} "));
+        let which = if of(advisory_mb) || of(advisory_mb / 2) {
+            1
+        } else {
+            assert!(of(gate_mb) || of(gate_mb / 2), "{started}");
+            0
+        };
+        let input = std::fs::read_to_string(args.with_extension("in")).unwrap();
+        let lines: Vec<&str> = input.lines().collect();
+        let value = |l: &str| {
+            l.strip_prefix("(set-option :rlimit ")
+                .and_then(|r| r.strip_suffix(')'))
+                .map(|r| r.parse::<u64>().unwrap())
+        };
+        for (i, l) in lines.iter().enumerate() {
+            if let Some(v) = value(l) {
+                limits[which].1.insert(v);
+                // The header: the limit follows the seeds.
+                if lines[i - 1].starts_with("(set-option :sat.random_seed ") {
+                    limits[which].0.push(v);
+                }
+            }
+        }
+    }
+    (String::from_utf8(out.stdout).unwrap(), limits)
+}
+
+/// Backlog T2-18 (ADR-0131): the full queries after the lint's first
+/// verification carry the advisory `rlimit` in their header, the first
+/// verification's the gate's; a probe has the same number in both (a share
+/// of the gate's limit). Read from what each solver process was sent. The
+/// output is the same bytes with a cache, cold and warm.
+#[test]
+fn advisory_queries_run_under_their_own_rlimit() {
+    let tmp = std::env::temp_dir().join(format!("bmb-lint-rlimit-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).unwrap();
+    let file = tmp.join("p.bmb");
+    std::fs::write(&file, TWO_CLAUSES).unwrap();
+    let (plain, [gates, advisories]) = sent_limits(&tmp, &["lint", file.to_str().unwrap()]);
+    let w0902 = rows(&plain)
+        .iter()
+        .filter(|r| s(r, "code") == "W0902")
+        .count();
+    assert_eq!(w0902, 2, "{plain}");
+
+    let limit = |k: &str| pinned(k).parse::<u64>().unwrap();
+    let (gate, advisory) = (limit("Z3_RLIMIT"), limit("Z3_ADVISORY_RLIMIT"));
+    assert!(advisory < gate);
+    assert!(!gates.0.is_empty() && gates.0.iter().all(|v| *v == gate));
+    assert!(
+        advisories.0.len() >= 2 && advisories.0.iter().all(|v| *v == advisory),
+        "{advisories:?}"
+    );
+    // No advisory process was sent the gate's limit and no process of the
+    // gate the advisory one; an advisory query's probe (the precondition
+    // check's) has the gate's share.
+    assert!(!advisories.1.contains(&gate), "{advisories:?}");
+    assert!(
+        gates.1.iter().all(|v| [gate, gate / 100].contains(v)),
+        "{gates:?}"
+    );
+    assert!(advisories.1.contains(&(gate / 100)), "{advisories:?}");
+
+    let cache = tmp.join("cache");
+    for round in ["cold", "warm"] {
+        let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
+            .args(["lint", "--cache"])
+            .arg(&cache)
+            .arg(&file)
+            .output()
+            .unwrap();
+        assert_eq!(String::from_utf8(out.stdout).unwrap(), plain, "{round}");
+    }
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+/// ADR-0131: `bmb examples` reads its rows from models, and a model may
+/// need more than the lint's advisory `rlimit`, so its queries keep the
+/// gate's `rlimit` under the advisory memory limit: every process it starts
+/// is an advisory one, and every header and limit it sends is the gate's
+/// (or the probe's share of it).
+#[test]
+fn examples_queries_keep_the_gates_rlimit() {
+    let tmp = std::env::temp_dir().join(format!("bmb-examples-rlimit-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).unwrap();
+    let file = tmp.join("p.bmb");
+    std::fs::write(&file, TWO_CLAUSES).unwrap();
+    let (out, [gates, advisories]) =
+        sent_limits(&tmp, &["examples", "m::add1", "--", file.to_str().unwrap()]);
+    assert!(
+        rows(&out).iter().any(|r| s(r, "kind") == "allowed"),
+        "{out}"
+    );
+    let limit = |k: &str| pinned(k).parse::<u64>().unwrap();
+    let (gate, advisory) = (limit("Z3_RLIMIT"), limit("Z3_ADVISORY_RLIMIT"));
+    assert!(gates.0.is_empty() && gates.1.is_empty(), "{gates:?}");
+    assert!(
+        !advisories.0.is_empty() && advisories.0.iter().all(|v| *v == gate),
+        "{advisories:?}"
+    );
+    assert!(
+        advisories.1.iter().all(|v| [gate, gate / 100].contains(v)),
+        "{advisories:?}"
+    );
+    assert!(!advisories.1.contains(&advisory));
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+/// Backlog T2-18 (ADR-0131): an advisory query that reaches the advisory
+/// `rlimit` is undecided and nothing is reported for it, while the first
+/// verification, under the gate's `rlimit`, proves the program; and a proof
+/// the gate stored in `--cache DIR` does not answer the advisory query of
+/// the same obligation (the limit is in the text the key is made of), so
+/// the output is the same with and without the cache. The solver here is
+/// the pinned one with the advisory limit and the probe's share rewritten
+/// to 1 in what it is sent, and the memory limits are made equal
+/// (`BMB_Z3_MEMORY_MB`), so only the `rlimit` tells the gate's queries from
+/// the advisory ones.
+#[test]
+fn a_query_at_the_advisory_rlimit_is_undecided_with_and_without_a_cache() {
+    let tmp = std::env::temp_dir().join(format!("bmb-lint-rlimit-end-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    let bin = tmp.join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let file = tmp.join("p.bmb");
+    std::fs::write(&file, TWO_CLAUSES).unwrap();
+    let removed = tmp.join("removed");
+    std::fs::create_dir_all(&removed).unwrap();
+    let without_clause = TWO_CLAUSES.replace("x < 100, x < 1000,", "x < 100,");
+    assert_ne!(without_clause, TWO_CLAUSES);
+    std::fs::write(removed.join("p.bmb"), without_clause).unwrap();
+    let memory = pinned("Z3_ADVISORY_MEMORY_MB");
+    let bmb = |args: &[&str], path: Option<&str>| {
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_bmb"));
+        cmd.env("BMB_Z3_MEMORY_MB", &memory);
+        if let Some(p) = path {
+            cmd.env("PATH", p);
+        }
+        let out = cmd.args(args).output().unwrap();
+        assert!(out.status.success(), "{out:?}");
+        String::from_utf8(out.stdout).unwrap()
+    };
+    let w0902 = |out: &str| rows(out).iter().filter(|r| s(r, "code") == "W0902").count();
+    let cache = tmp.join("cache");
+    let (file, cache) = (file.to_str().unwrap(), cache.to_str().unwrap());
+    assert_eq!(w0902(&bmb(&["lint", file], None)), 2);
+
+    // The gate proves the program without `x < 1000` and stores its proofs.
+    bmb(
+        &[
+            "verify",
+            "--cache",
+            cache,
+            removed.join("p.bmb").to_str().unwrap(),
+        ],
+        None,
+    );
+
+    let limit = |k: &str| pinned(k).parse::<u64>().unwrap();
+    let (gate, advisory) = (limit("Z3_RLIMIT"), limit("Z3_ADVISORY_RLIMIT"));
+    assert!(advisory != gate && gate / 100 != gate);
+    let (path, z3) = pinned_z3();
+    executable(
+        &bin.join("z3"),
+        &format!(
+            "#!/bin/sh\n\
+             if [ \"$1\" = --version ]; then exec {z3} \"$@\"; fi\n\
+             sed -u -e 's/^(set-option :rlimit {advisory})$/(set-option :rlimit 1)/' \
+             -e 's/^(set-option :rlimit {probe})$/(set-option :rlimit 1)/' \
+             -e '/^(exit)$/q' | {z3} \"$@\"\n",
+            z3 = z3.display(),
+            probe = gate / 100
+        ),
+    );
+    let starved = format!("{}:{path}", bin.display());
+    let without = bmb(&["lint", file], Some(&starved));
+    assert_eq!(w0902(&without), 0, "{without}");
+    let summary = rows(&without).pop().unwrap();
+    assert_eq!(n(&summary, "reports"), 0, "{without}");
+    let cold = bmb(&["lint", "--cache", cache, file], Some(&starved));
+    let warm = bmb(&["lint", "--cache", cache, file], Some(&starved));
+    assert_eq!(cold, without);
+    assert_eq!(warm, without);
+    // The gate's own queries are not the advisory ones: it proves both
+    // programs behind the same solver.
+    bmb(&["verify", file], Some(&starved));
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+/// The index shift (`a[i]` to `a[i + 1]`, `a[i - 1]`) is of an element's
+/// index: a subslice `&b[lo..hi]` has no such mutant (`(lo..hi) + 1` is not
+/// a program, and the lint's re-verification of it ended in the encoder's
+/// `unreachable!`). Its bounds are sites of their own.
+#[test]
+fn a_subslice_has_no_index_shift() {
+    const SUB: &str = "#[summary(\"부분 슬라이스\")]\nmod m {\n    #[effects(pure)]\n    fn len(b: &[u8]) -> (r: usize)\n        ensures r == b.len(),\n    {\n        b.len()\n    }\n\n    #[effects(pure)]\n    fn part(b: &[u8], lo: usize) -> (r: usize)\n        requires lo + 2 <= b.len(),\n        ensures r <= b.len(),\n    {\n        len(&b[lo..lo + 2])\n    }\n}\n";
+    let tmp = std::env::temp_dir().join(format!("bmb-lint-subslice-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).unwrap();
+    let file = tmp.join("p.bmb");
+    std::fs::write(&file, SUB).unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
+        .args(["mutate", "--def", "m::part"])
+        .arg(&file)
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{out:?}");
+    let mut mutants = rows(&String::from_utf8(out.stdout).unwrap());
+    mutants.retain(|m| m.get("text").is_some());
+    let changes: Vec<(&str, &str)> = mutants
+        .iter()
+        .map(|m| (s(m, "before"), s(m, "after")))
+        .collect();
+    // The bounds: `+` to `-`, and the literal.
+    assert_eq!(
+        changes,
+        [("lo + 2", "lo - 2"), ("lo + 2", "lo + 3")],
+        "{changes:?}"
+    );
+    // Every mutant is a program the checker accepts.
+    for m in &mutants {
+        let mutant = tmp.join("mutant.bmb");
+        std::fs::write(&mutant, s(m, "text")).unwrap();
+        let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
+            .arg("check")
+            .arg(&mutant)
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{out:?}");
+    }
+    let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
+        .arg("lint")
+        .arg(&file)
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0), "{out:?}");
+    let text = String::from_utf8(out.stdout).unwrap();
+    let summary = rows(&text).pop().unwrap();
+    assert_eq!(n(&summary, "mutants"), 2, "{text}");
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+/// `bmb lint` ends with a report over every file of the proved corpus and
+/// the standard library: exit status 0 or 1, never a panic (a mutant or a
+/// changed clause the encoder does not expect), and every line of its
+/// output is a JSON object, the last one the summary. Through the binary,
+/// as a panic there is an exit status. A subslice's index mutant went
+/// unseen in `tests/verify/pass/subslices.bmb` until the lint was run over
+/// that file by hand.
+#[test]
+fn lint_ends_with_a_report_over_the_corpora() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+    let mut paths = Vec::new();
+    for dir in ["tests/verify/pass", "lib/std"] {
+        let mut found: Vec<_> = std::fs::read_dir(root.join(dir))
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .filter(|p| p.extension().is_some_and(|x| x == "bmb"))
+            .collect();
+        found.sort();
+        paths.extend(found);
+    }
+    assert!(paths.len() > 60, "{}", paths.len());
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let failures = std::sync::Mutex::new(Vec::new());
+    let workers = std::thread::available_parallelism().map_or(2, |n| n.get());
+    std::thread::scope(|sc| {
+        for _ in 0..workers {
+            sc.spawn(|| {
+                loop {
+                    let k = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    let Some(p) = paths.get(k) else { break };
+                    let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
+                        .arg("lint")
+                        .arg(p)
+                        .output()
+                        .unwrap();
+                    let text = String::from_utf8_lossy(&out.stdout).into_owned();
+                    let lines: Vec<&str> = text.lines().collect();
+                    let well_formed = lines
+                        .iter()
+                        .all(|l| matches!(json::parse(l), Ok(Value::Object(_))))
+                        && lines.last().is_some_and(|l| l.contains("\"summary\":true"));
+                    if !matches!(out.status.code(), Some(0 | 1)) || !well_formed {
+                        failures.lock().unwrap().push(format!(
+                            "{}: {:?}\n{}",
+                            p.display(),
+                            out.status,
+                            String::from_utf8_lossy(&out.stderr)
+                        ));
+                    }
+                }
+            });
+        }
+    });
+    let failures = failures.into_inner().unwrap();
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
 /// W0909 (ADR-0030 §3, backlog 2F-02): a declared effect the body does not
 /// need, from its own operations or its callees' declared effects. Not for
 /// `main`'s `io`, a trait's method or an `impl`'s function of a trait. The
