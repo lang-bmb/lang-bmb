@@ -1449,6 +1449,29 @@ fn bounded_results_are_windows_of_the_response() {
     );
     let (bad, err) = c.tool("query", "{\"name\":\"units\",\"offset\":-1}");
     assert!(err && bad.contains("`offset` is a count of rows"), "{bad}");
+    // `--bounded-16k`: the same window at half the budget, and the description says so.
+    let mut half = Client::start_with(&root, &["--bounded-16k"]);
+    let list = half.request("tools/list", "{}").to_json();
+    assert!(list.contains("A result over 16384 bytes"), "{list}");
+    let (mut got, mut offset) = (Vec::new(), 0);
+    while offset < rows.len() {
+        let (page, _) = half.tool(
+            "query",
+            &format!("{{\"name\":\"units\",\"offset\":{offset}}}"),
+        );
+        let mut page: Vec<String> = page.lines().map(str::to_string).collect();
+        let last = page.pop().unwrap();
+        assert!(last.starts_with("{\"truncated\":true"), "{last}");
+        let bytes: usize = page.iter().map(|r| r.len() + 1).sum();
+        // A row over the budget is shown alone (the unit row names 600 definitions).
+        assert!(
+            !page.is_empty() && (bytes <= 16384 || page.len() == 1),
+            "{bytes}"
+        );
+        offset += page.len();
+        got.extend(page);
+    }
+    assert_eq!(got, rows);
     // The compact view of a window keeps the last row.
     let mut c = Client::start_with(&root, &["--bounded", "--compact"]);
     let (page, _) = c.tool("query", "{\"name\":\"units\"}");

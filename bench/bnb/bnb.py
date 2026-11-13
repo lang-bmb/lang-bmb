@@ -14,6 +14,10 @@ at most MAX_TOOL_CALLS tool calls, the `answer` tool counts as one):
   bnb.py run --sizes 100 1000 [--work DIR] [--agent oracle] [--arms bmb rust]
              [--check-truth] [--cargo-check] [--out F.jsonl] [--expect all-pass]
   bnb.py table F.jsonl..                Markdown tables (per size, per arm, per task)
+  bnb.py --set DIR manifest|run ..      a variant of the bmb arm (backlog 2D-39a):
+                                        DIR holds `set.json` (`mcp_flags`), its own
+                                        `prompt-bmb.md` and a MANIFEST over those and
+                                        this directory's MANIFEST; tasks are these
 
 Ground truth is computed from the BMB maps (`bmb query`, harness truth kinds
 where they apply). --check-truth also computes every answer from the Rust
@@ -61,7 +65,25 @@ DEPTH = "64"  # `edges` depth for closures: longer than any call chain here
 REASONS = ["changed", "calls", "uses", "names"]
 
 
+# A variant of the bmb arm (`--set DIR`): other `bmb mcp` flags and another
+# prompt over the same tasks and workspaces. None is the original set.
+VARIANT = None
+
+
+def set_dir():
+    return VARIANT or HERE
+
+
+def task_set():
+    return os.path.basename(os.path.normpath(set_dir()))
+
+
 # ---------- frozen inputs ----------
+
+def variant_manifest_text():
+    files = [os.path.join(VARIANT, "set.json"), os.path.join(VARIANT, "prompt-bmb.md"), os.path.join(HERE, "MANIFEST")]
+    return "".join(f"{hashlib.sha256(open(f, 'rb').read()).hexdigest()}  {os.path.relpath(f, VARIANT)}\n" for f in files)
+
 
 def frozen_files():
     files = [os.path.join(HERE, "prompt-bmb.md"), os.path.join(HERE, "prompt-rust.md")]
@@ -78,6 +100,10 @@ def check_manifest():
     path = os.path.join(HERE, "MANIFEST")
     if not os.path.exists(path) or open(path).read() != manifest_text():
         sys.exit("bnb: frozen inputs differ from MANIFEST: refusing to run (ADR-0021 §1)")
+    if VARIANT:
+        path = os.path.join(VARIANT, "MANIFEST")
+        if not os.path.exists(path) or open(path).read() != variant_manifest_text():
+            sys.exit(f"bnb: frozen inputs of {task_set()} differ from its MANIFEST: refusing to run (ADR-0021 §1)")
 
 
 def load_tasks():
@@ -310,8 +336,23 @@ class GenAgent:
             return []
 
 
+def truncated(text):
+    """The last row of a bounded result that is not the whole result (ADR-0127), or None."""
+    last = text.rstrip("\n").rsplit("\n", 1)[-1]
+    return json.loads(last) if last.startswith('{"truncated":true') else None
+
+
 def call(name, args):
-    return (yield [(name, args)])[0]
+    """One tool call; a bounded result is read to its end, window by window
+    (the server of the original set never cuts a result)."""
+    text = (yield [(name, args)])[0]
+    parts = []
+    while (t := truncated(text)) and "next" in t:
+        parts.append(text.rstrip("\n").rsplit("\n", 1)[0])
+        text = (yield [(name, dict(args, offset=t["next"]))])[0]
+    if parts and (t := truncated(text)):
+        text = text.rstrip("\n").rsplit("\n", 1)[0]
+    return "\n".join(parts + [text])
 
 
 def rows(text):
@@ -605,7 +646,7 @@ def make_agent(kind, arm, task):
         o = RustOracle(task)
         return GenAgent(o.run())
     from model_api import make_model_agent  # noqa: E402
-    if agent := make_model_agent(kind, open(os.path.join(HERE, f"prompt-{arm}.md")).read(), task["prompt"]):
+    if agent := make_model_agent(kind, open(os.path.join(set_dir(), f"prompt-{arm}.md")).read(), task["prompt"]):
         return agent
     sys.exit(f"unknown agent {kind}")
 
@@ -618,7 +659,8 @@ def run_task(task, arm, agent_kind, root, want, sessions=None):
     agent = make_agent(agent_kind, arm, task)
     if hasattr(agent, "set_tools"):
         agent.set_tools(tools.tools + [harness.ANSWER_TOOL])
-    m = {"tool_calls": 0, "resp_bytes": 0, "req_bytes": 0, "limit_hit": False, "calls_by_tool": {}}
+    m = {"tool_calls": 0, "resp_bytes": 0, "req_bytes": 0, "limit_hit": False, "calls_by_tool": {},
+         "truncated": 0, "continued": 0}
     answer, last = None, []
     t0 = time.perf_counter()
     try:
@@ -640,6 +682,9 @@ def run_task(task, arm, agent_kind, root, want, sessions=None):
                 else:
                     text, err = tools.call(name, args)
                     m["resp_bytes"] += len(text.encode())
+                    # windows of a bounded result (ADR-0127): cut results, and calls that go on
+                    m["truncated"] += truncated(text) is not None
+                    m["continued"] += bool(args.get("offset"))
                 trace.append({"name": name, "args": args, "error": bool(err), "text": text})
                 last.append((name, args, text, err))
             if m["limit_hit"]:
@@ -742,11 +787,11 @@ def machine():
     rev = subprocess.run(["git", "-C", ROOT, "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()
     dirty = bool(subprocess.run(["git", "-C", ROOT, "status", "--porcelain"], capture_output=True, text=True).stdout.strip())
     return {"kind": "machine", "commit": rev + ("+dirty" if dirty else ""), "bmb": harness.bmb_bin(),
-            "manifest": hashlib.sha256(open(os.path.join(HERE, "MANIFEST"), "rb").read()).hexdigest()[:16]}
+            "task_set": task_set(), "manifest": manifest_digest()[:16]}
 
 
 def manifest_digest():
-    return hashlib.sha256(open(os.path.join(HERE, "MANIFEST"), "rb").read()).hexdigest()
+    return hashlib.sha256(open(os.path.join(set_dir(), "MANIFEST"), "rb").read()).hexdigest()
 
 
 def cmd_run(a):
@@ -811,7 +856,7 @@ def run_one(a, tasks):
     from model_api import is_model_kind  # noqa: E402
     if is_model_kind(a.agent) and commit.endswith("+dirty"):
         sys.exit("bnb: a model run needs a committed tree (the row names the commit)")
-    log = harness.resultlog.ResultLog(a.out, {"agent": a.agent, "task_set": "bnb", "arm": arm, "size": n,
+    log = harness.resultlog.ResultLog(a.out, {"agent": a.agent, "task_set": task_set(), "arm": arm, "size": n,
                                               "manifest": manifest_digest(), "commit": commit,
                                               "tasks": [t["id"] for t in tasks], **harness.condition_fields()})
     work = a.work or tempfile.mkdtemp(prefix="bnb-")
@@ -834,13 +879,14 @@ def run_one(a, tasks):
         if not a.work:
             shutil.rmtree(work, ignore_errors=True)
     rows_ = [log.rows[tk["id"]] for tk in tasks]
-    summary = {"summary": True, "agent": a.agent, "task_set": "bnb", "arm": arm, "size": n, "tasks": len(rows_),
+    summary = {"summary": True, "agent": a.agent, "task_set": task_set(), "arm": arm, "size": n, "tasks": len(rows_),
                "manifest": manifest_digest(), "commit": commit, **harness.condition_fields(),
                "build_s": build_s, "success": f"{sum(r['success'] for r in rows_)}/{len(rows_)}",
                "tokens": sum(r["tokens"] for r in rows_),
                "model_tokens": sum((r["model_usage"] or {}).get("input_tokens", 0)
                                    + (r["model_usage"] or {}).get("output_tokens", 0) for r in rows_),
-               "limit_hit": sum(r["limit_hit"] for r in rows_)}
+               "limit_hit": sum(r["limit_hit"] for r in rows_),
+               "truncated": sum(r["truncated"] for r in rows_), "continued": sum(r["continued"] for r in rows_)}
     log.finish(rows_, summary)
     print(json.dumps(summary, ensure_ascii=False))
     if a.expect == "all-pass" and not all(r["success"] and not r["limit_hit"] for r in rows_):
@@ -900,6 +946,7 @@ def cmd_table(a):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    p.add_argument("--set", help="a variant of the bmb arm (its directory)")
     sub = p.add_subparsers(dest="cmd", required=True)
     tk = sub.add_parser("tasks")
     tk.add_argument("--write", action="store_true")
@@ -920,6 +967,14 @@ def main():
     tb = sub.add_parser("table")
     tb.add_argument("files", nargs="+")
     a = p.parse_args()
+    if a.set:
+        global VARIANT
+        VARIANT = os.path.abspath(a.set)
+        harness.SET = VARIANT  # `set.json`: the flags of `bmb mcp`
+        if a.cmd == "run" and a.arms != ["bmb"]:
+            sys.exit("bnb: a variant is of the bmb arm: --arms bmb")
+        if a.cmd not in ("run", "manifest"):
+            sys.exit("bnb: --set goes with run and manifest")
     if a.cmd == "tasks":
         tasks = make_tasks()
         if a.write:
@@ -932,7 +987,9 @@ def main():
         for t in tasks:
             print(t["id"], t.get("def", ""))
     elif a.cmd == "manifest":
-        if a.write:
+        if a.write and VARIANT:
+            open(os.path.join(VARIANT, "MANIFEST"), "w").write(variant_manifest_text())
+        elif a.write:
             open(os.path.join(HERE, "MANIFEST"), "w").write(manifest_text())
         else:
             check_manifest()

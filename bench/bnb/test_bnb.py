@@ -108,13 +108,83 @@ def test_one_arm_resumes():
         assert p.returncode != 0 and "not a partial run" in p.stderr, p.stderr
 
 
+VARIANTS = {"bnb-bounded": ("--bounded", 32768), "bnb-bounded-16k": ("--bounded-16k", 16384)}
+
+
+def test_variants_frozen():
+    """The bounded variants (2D-39a): frozen, the flag and the prompt name the
+    same budget, and the prompt differs from the original only where it says."""
+    base = open(os.path.join(HERE, "prompt-bmb.md")).read().splitlines()
+    for name, (flag, budget) in VARIANTS.items():
+        d = os.path.join(bnb.BENCH, name)
+        p = subprocess.run([sys.executable, os.path.join(HERE, "bnb.py"), "--set", d, "manifest"],
+                           capture_output=True, text=True)
+        assert p.returncode == 0, p.stderr
+        cfg = json.load(open(os.path.join(d, "set.json")))
+        assert cfg["mcp_flags"] == [flag] and cfg["budget_bytes"] == budget, cfg
+        prompt = open(os.path.join(d, "prompt-bmb.md")).read()
+        assert f"over {budget} bytes" in prompt and "Start with `overview`" in prompt
+        gone = [l for l in base if l not in prompt.splitlines()]
+        assert gone == ["- `query` — read the standard maps. Start with `units`, then narrow down:"], gone
+    p = subprocess.run([sys.executable, os.path.join(HERE, "bnb.py"), "--set", os.path.join(bnb.BENCH, "bnb-bounded"),
+                        "run", "--sizes", "100"], capture_output=True, text=True)
+    assert p.returncode != 0 and "--arms bmb" in p.stderr, p.stderr
+
+
+def test_oracle_reads_a_cut_result_to_its_end():
+    row = lambda i: json.dumps({"from": f"a::f{i}", "to": "a::g", "kind": "calls"})  # noqa: E731
+    cut = lambda off, shown, nxt: json.dumps(  # noqa: E731
+        {"truncated": True, "offset": off, "shown": shown, "rows": 5, "bytes": 999, **({"next": nxt} if nxt else {})},
+        separators=(",", ":"))
+    pages = {None: "\n".join([row(0), row(1), cut(0, 2, 2)]) + "\n",
+             2: "\n".join([row(2), row(3), cut(2, 2, 4)]) + "\n",
+             4: "\n".join([row(4), cut(4, 1, None)]) + "\n"}
+    g = bnb.call("query", {"name": "edges", "args": ["a::g", "in", "1"]})
+    calls, text = [], None
+    try:
+        req = next(g)
+        while True:
+            (name, args), = req
+            calls.append(args.get("offset"))
+            req = g.send([pages[args.get("offset")]])
+    except StopIteration as e:
+        text = e.value
+    assert calls == [None, 2, 4], calls
+    assert [r["from"] for r in bnb.rows(text)] == [f"a::f{i}" for i in range(5)], text
+    # a whole result is passed as it is
+    g = bnb.call("query", {"name": "units"})
+    next(g)
+    try:
+        g.send(["{\"a\":1}\n"])
+    except StopIteration as e:
+        assert e.value == "{\"a\":1}\n"
+
+
+def test_bounded_oracles_n100():
+    """Under either budget the scripted oracle answers every task exactly
+    within the call limit: a window never costs it an answer."""
+    with tempfile.TemporaryDirectory() as t:
+        for name in VARIANTS:
+            out = os.path.join(t, name + ".jsonl")
+            p = subprocess.run([sys.executable, os.path.join(HERE, "bnb.py"), "--set", os.path.join(bnb.BENCH, name),
+                                "run", "--sizes", "100", "--arms", "bmb", "--work", t, "--out", out,
+                                "--expect", "all-pass"], capture_output=True, text=True)
+            assert p.returncode == 0, p.stdout[-3000:] + p.stderr[-3000:]
+            rows = [json.loads(x) for x in open(out)]
+            n = len(bnb.load_tasks())
+            assert rows[-1]["summary"] and rows[-1]["task_set"] == name and rows[-1]["success"] == f"{n}/{n}", rows[-1]
+
+
 def main():
     test_tasks_frozen()
+    test_variants_frozen()
+    test_oracle_reads_a_cut_result_to_its_end()
     test_twin_local()
     test_rust_tools()
     test_bmb_tools_read_only()
     test_one_arm_resumes()
     test_oracles_n100()
+    test_bounded_oracles_n100()
     print("bench/bnb: ok")
 
 

@@ -35,6 +35,7 @@ cargo run -- mcp --write-tool ws # 위에 `write`(단위·정의·삭제·커밋
 cargo run -- mcp --compact ws    # 압축 에이전트 투영(ADR-0068, `src/view.rs`): 표면은 `// 경로: 상태` 뒤 본문 없는 정규형, L0·L2·slice는 텍스트, 성공한 증명은 `{"verified":N}`, 해시·위치·비용 없음. 기본은 끔(동결 측정 조건)
 cargo run -- mcp --tool-docs ws  # 도구 설명만으로 도구를 설명한다(2D-28): `query`는 질의마다 돌려주는 것, `write`는 유일한 쓰기 길(인자는 스키마에서만 설명), 설계 참조(ADR·백로그 번호) 없음. 프롬프트의 도구 절을 대신한다(ADR-0072). 기본은 끔(동결 측정 조건)
 cargo run -- mcp --bounded ws    # `query`·`map`의 결과를 32,768바이트 예산의 창으로(ADR-0127, 2D-38): 잘리면 마지막에 `truncated` 행, 두 도구가 `offset`·`limit`을 받는다. 기본은 끔(동결 측정 조건)
+cargo run -- mcp --bounded-16k ws  # 같은 창을 16,384바이트 예산으로(기본값은 2D-39가 잰다)
 cargo run -- mcp --item-docs ws  # `tx_put`·`tx_remove`·`write`의 설명이 다섯 항목과 주소를 말한다(ADR-0074 §6). 동작은 플래그와 무관하고, 플래그가 없으면 동결 집합의 도구 목록 바이트가 그대로다(`tests/mcp.rs`의 `frozen_tool_lists_keep_their_bytes`)
 cargo run -- mcp --stats ws      # 응답마다 프런트엔드 캐시의 셈(`parsed`·`reused`·`checks`·`indexes`) 한 줄을 표준 오류로(4A-04, `tests/mcp_cache.rs`). 응답 바이트는 그대로다
 cargo run -- mcp --file-tools ws # 파일 diff 편집 표면(ADR-0073, T1-06): `read_file`(단위 파일 원문)과 `edit_file`(통합 diff 적용·커밋·증명을 한 호출로). 기본은 끔(동결 측정 조건)
@@ -311,7 +312,7 @@ ADR-0020 §5의 7개 질의 외에 추가한 질의다. 기존 질의와 행 형
 
 `bmb query|map [--budget BYTES] [--offset ROWS] [--limit ROWS] ..`는 응답의 창을 낸다(`map::bound`). `offset`번째 행부터 예산 안에 드는 온전한 행들이고(첫 행은 예산을 넘어도 나온다) `limit`행을 넘지 않는다. 맵 머리 행도 행이다. 창이 응답 전체가 아니면 마지막 행이 `{"truncated":true,"offset":O,"shown":N,"rows":전체 행,"bytes":전체 바이트}`이고, 남은 행이 있으면 `"next"`(이어 받을 `offset`)와 `"hint"`가 붙는다. 전체가 창에 들면 출력은 플래그가 없을 때와 같은 바이트다. 플래그가 하나도 없으면 창이 없다.
 
-`bmb mcp --bounded`는 `query`·`map`의 결과에 예산 32,768바이트(`map::RESPONSE_BUDGET`)의 창을 걸고, 두 도구가 `offset`·`limit`(정수) 인자를 받으며, 설명문이 잘림 행·`overview`·범위 인자·`edges`의 종류 인자를 말한다. 예산은 `--compact` 뷰 전의 JSONL 바이트로 센다. 플래그가 없으면 도구 목록과 응답은 그대로다(`frozen_tool_lists_keep_their_bytes`).
+`bmb mcp --bounded`는 `query`·`map`의 결과에 예산 32,768바이트(`map::RESPONSE_BUDGET`)의 창을 걸고, 두 도구가 `offset`·`limit`(정수) 인자를 받으며, 설명문이 잘림 행·`overview`·범위 인자·`edges`의 종류 인자를 말한다. 예산은 `--compact` 뷰 전의 JSONL 바이트로 센다. 플래그가 없으면 도구 목록과 응답은 그대로다(`frozen_tool_lists_keep_their_bytes`). `--bounded-16k`는 같은 창을 예산 16,384바이트로 건다(`Server::budget`): 어느 쪽을 기본값으로 올릴지는 `2D-39`가 재고, 판정 뒤 하나만 남긴다.
 
 `query overview [PATH..]`는 단위마다 한 행을 낸다: `{"kind":"unit","path","summary","units":N,"defs":N,"types":N}`. L0 단위 행의 목록을 개수로 바꾼 것이라 행 크기가 단위 크기와 무관하다(N=10,000·단위 500개에서 67,313바이트, 범위 없는 `units`는 1,192,293바이트). 해법기를 돌리지 않는다.
 

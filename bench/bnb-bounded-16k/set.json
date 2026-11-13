@@ -1,0 +1,1 @@
+{"mcp_flags": ["--bounded-16k"], "base": "bnb", "arm": "bmb", "budget_bytes": 16384}

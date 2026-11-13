@@ -19,6 +19,7 @@
 | `MANIFEST` | 동결 파일의 SHA-256 |
 | `test_bnb.py` | 게이트: 동결 확인, 쌍둥이 결정성·국소성, 파일 도구, N=100에서 `cargo check`·정답 일치·두 오라클 전부 성공 |
 | `results/` | 측정 기록 |
+| `../bnb-bounded`, `../bnb-bounded-16k` | `bmb` 팔의 응답 창 판(`bnb.py --set DIR`, 백로그 2D-39a): 같은 과제, `bmb mcp --bounded`·`--bounded-16k`와 그 프롬프트 |
 
 ```
 python3 bench/bnb/bnb.py manifest                                   # 동결 확인

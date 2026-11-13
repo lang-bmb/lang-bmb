@@ -56,8 +56,11 @@ pub struct Server {
     pub probe_tool: bool,
     /// `--bounded` (ADR-0127): a `query` or `map` result is a window of at
     /// most `map::RESPONSE_BUDGET` bytes on the response, moved with
-    /// `offset` and `limit`.
+    /// `offset` and `limit`. `--bounded-16k` is the same window at half the
+    /// budget: which of the two becomes the default is measured (2D-39).
     pub bounded: bool,
+    /// The budget of that window, in bytes.
+    pub budget: usize,
 }
 
 /// Verifications per definition of the `#[uses]` search a response runs
@@ -109,6 +112,7 @@ pub const FLAGS: &[&str] = &[
     "--undecided-info",
     "--probe-tool",
     "--bounded",
+    "--bounded-16k",
 ];
 
 fn s(x: &str) -> Value {
@@ -159,7 +163,7 @@ fn tools(
     files: bool,
     ast: bool,
     items: bool,
-    bounded: bool,
+    bounded: Option<usize>,
 ) -> Value {
     let t = |name: &str, desc: &str, input: Value| {
         obj(vec![
@@ -208,10 +212,9 @@ fn tools(
         ("args", "array", "query arguments"),
     ];
     let mut map_args = vec![("level", "string", "L0, L1, L2 or all")];
-    let (query, map) = if bounded {
+    let (query, map) = if let Some(budget) = bounded {
         query_args.extend(window);
         map_args.extend(window);
-        let budget = crate::map::RESPONSE_BUDGET;
         (
             format!(
                 "{query} A result over {budget} bytes is cut after a whole row and ends with a `truncated` row (rows shown, rows and bytes of the whole result, `next`): go on with `offset`, or ask for less. `overview [PATH..]` lists units without their definitions; `units`, `status`, `duplicates`, `effects` and `tests` take paths (units, definitions, types) and answer for what is under them; `edges` takes a fourth argument, the edge kinds to follow (`calls,uses`)."
@@ -496,6 +499,7 @@ impl Server {
             undecided_info: false,
             probe_tool: false,
             bounded: false,
+            budget: crate::map::RESPONSE_BUDGET,
         }
     }
 
@@ -612,12 +616,7 @@ impl Server {
         };
         let offset = count("offset")?.unwrap_or(0);
         let limit = count("limit")?;
-        Ok(crate::map::bound(
-            &text,
-            crate::map::RESPONSE_BUDGET,
-            offset,
-            limit,
-        ))
+        Ok(crate::map::bound(&text, self.budget, offset, limit))
     }
 
     /// Runs one tool. `Ok(text)` is a normal result, `Err(text)` a tool error.
@@ -1005,7 +1004,7 @@ impl Server {
                     self.file_tools,
                     self.ast_tools,
                     self.item_docs,
-                    self.bounded,
+                    self.bounded.then_some(self.budget),
                 );
                 if self.probe_tool
                     && let Value::Array(xs) = &mut list
@@ -1095,6 +1094,10 @@ pub fn serve(root: &Path, flags: &[&str]) -> std::io::Result<()> {
     }
     if has("--bounded") {
         server.bounded = true;
+    }
+    if has("--bounded-16k") {
+        server.bounded = true;
+        server.budget = crate::map::RESPONSE_BUDGET / 2;
     }
     if has("--undecided-info") {
         // An undecided obligation carries a verdict (ADR-0108): the bounded
