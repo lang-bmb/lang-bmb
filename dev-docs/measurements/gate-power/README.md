@@ -111,3 +111,11 @@
 - **한 작업만 잡는 결함 8개(2O 뒤 11개, 2K 뒤 16개).** `v-min-rem-dropped`, `v-neg-overflow-dropped`, `v-decreases-unbounded`, `v-havoc-skipped`, `v-mut-param-havoc-skipped`, `v-recursion-measure-dropped`는 `test verify`(손으로 쓴 코퍼스)만, `c-bounds-check-*`는 `test codegen`만 잡는다. 건전성 퍼저(`soundness*`)는 이 여섯을 못 잡는다: 퍼저가 `%`의 `i64::MIN % -1`, 부정 오버플로, 루프 측도의 하한, 루프 havoc을 만들지 않는다는 뜻이다. 코퍼스 한 줄이 지워지면 결함이 들어와도 게이트가 통과한다.
 - **변이체는 손으로 쓴 31개다.** 실제 결함 분포를 대표한다는 근거는 없다. 2B(데이터 타입) 인코딩이 들어오면 같은 방식으로 변이체를 더한다.
 - 비용: 31개 한 바퀴 약 2.9시간(게이트 한 번 약 5분). CI에는 넣지 않는다.
+
+**1B-57 (2026-11-12~13).** 전체 게이트 기록이 없던 변이체 43개(증명 함수·타입 불변식·비트 연산·부분 증명·텍스트·표준 라이브러리·효과·탈출구 계열)를 하나씩 게이트 끝까지 돌렸다. 43개 모두 시험이 잡았고 놓친 것은 없다: `results.jsonl`은 이제 99/99다. 한 변이체에 14~33분(4코어, 앞의 다섯은 다른 작업과 겹쳐 26~49분).
+
+- 변이된 소스는 작업 트리 `9938d706`의 것이다(실행 중 저장소 HEAD는 `a68edd65`까지 나아갔고 행의 `commit`은 그 HEAD다). 99개가 지금 소스에 그대로 적용됨은 게이트의 `power` 단계가 확인한다.
+- 일곱은 첫 실행에서 시험이 아니라 clippy(`-D warnings`)에 걸렸다(종료 코드 101, 잡은 작업 없음, 6~7초). 위 "방법"대로 잡은 것으로 치지 않고, 경고 없이 컴파일되는 같은 결함으로 고쳐 다시 돌렸다: `v-subproof-range-dropped`(`.filter(|_| false)`), `v-inv-mut-exit-dropped`·`v-inv-loop-entry-dropped`·`v-inv-arg-dropped`(만들어지지 않는 `Boundary` 변형), `v-text-targ-not-text`·`c-text-targ-not-text`(불리지 않는 함수), `v-subslice-end-unbounded`(쓰이지 않는 변수). 일곱 모두 실제 시험(`test verify` 등)이 잡았다.
+- 무효 기록을 가려내는 기준: 잡았다는 행에 잡은 작업이 없으면 무효(시험 전 단계), 종료 코드 124(1시간 제한)면 무효. 이번 43개에 시간 초과는 없다.
+- 줄 수만 세는 작업(포팅 원장, health)이 함께 실패한 행이 있으나 그것만으로 잡힌 변이체는 없다.
+

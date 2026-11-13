@@ -445,7 +445,13 @@ MUTANTS = [
      "a `by (bit_vector)` assertion is assumed without its sub-proof"),
     ("v-subproof-range-dropped", "unsound", V,
      '''                crate::subproof::Sort::Int(i) => Some(range_int(*i, &env.get(n)?.s())),''',
-     '''                crate::subproof::Sort::Int(i) => Some(range_int(*i, &env.get(n)?.s())).filter(|_| false),''',
+     '''                crate::subproof::Sort::Int(i) => {
+                    // No fact, written so that the mutant compiles without a
+                    // warning: a first form (`.filter(|_| false)`) was stopped
+                    // by clippy, which is not a test catching it (1B-57).
+                    let _ = range_int(*i, &env.get(n)?.s());
+                    None
+                }''',
      "a sub-proof's fact is assumed of a variable whose value may leave its type (a ghost `let`)"),
     ("v-subproof-guard-dropped", "unsound", V,
      '''                    ante.push(smt::print(&subst_atoms(&g, &real)));''',
@@ -481,15 +487,15 @@ MUTANTS = [
     # assumes it valid.
     ("v-inv-mut-exit-dropped", "unsound", VI,
      '''                self.oblige_valid(span, Boundary::MutParam(&p.name.name, how), &v, &ty);''',
-     '''                let _ = (&v, &ty, how);''',
+     '''                let _ = (Boundary::MutParam(&p.name.name, how), &v, &ty);''',
      "a `&mut` parameter is given back without proving its type invariant (E0823)"),
     ("v-inv-loop-entry-dropped", "unsound", V,
      '''            self.oblige_valid(span, Boundary::LoopEntry(v), &cur, ty);''',
-     '''            let _ = (span, &cur, ty);''',
+     '''            let _ = (span, Boundary::LoopEntry(v), &cur, ty);''',
      "a loop assumes the havocked locals valid at its head without proving them valid on entry (E0823)"),
     ("v-inv-arg-dropped", "unsound", V,
      '''            self.oblige_valid(a.span, Boundary::Arg(a, &target), v, t);''',
-     '''            let _ = (a, v, t);''',
+     '''            let _ = (Boundary::Arg(a, &target), v, t);''',
      "a call argument is not proved valid, while the callee assumes its parameter is (E0823)"),
     # `f64` (ADR-0061 §7, backlog T2-03).
     ("c-fadd-as-fsub", "miscompile", C,
@@ -611,11 +617,20 @@ MUTANTS = [
     # A `String` type argument compares as text (backlog 4B-04).
     ("v-text-targ-not-text", "unsound", VT,
      '''            || (!self.tsub.is_empty() && self.is_lowered_text(&self.ty(e)))''',
-     '''            || false''',
+     '''            || {
+                // Asked and ignored, so that the mutant compiles without a
+                // dead-code warning (1B-57).
+                let _ = self.is_lowered_text(&self.ty(e));
+                false
+            }''',
      "a generic comparison instantiated with `String` is encoded as a scalar one: the proof of a caller of `BTreeMap<String, V>` fails or the encoder stops"),
     ("c-text-targ-not-text", "miscompile", CT,
      '''        self.t.text.contains(&(e.span.file, e.span.lo, e.span.hi)) || self.text_targ(e)''',
-     '''        self.t.text.contains(&(e.span.file, e.span.lo, e.span.hi))''',
+     '''        self.t.text.contains(&(e.span.file, e.span.lo, e.span.hi)) || {
+            // Asked and ignored (as `v-text-targ-not-text`).
+            let _ = self.text_targ(e);
+            false
+        }''',
      "a generic comparison instantiated with `String` compares the header words instead of the bytes: a text-keyed map is out of order"),
     # What UTF-8 holds before a boundary (backlog 2U-06).
     ("v-utf8-char-ends-before-ascii", "unsound", VT,
@@ -630,7 +645,12 @@ MUTANTS = [
     # Sub-slice arguments (backlog 4C-05): the end bound of `&v[lo..hi]`.
     ("v-subslice-end-unbounded", "unsound", VT,
      '''            format!("(and (<= {lo} {hi}) (<= {hi} {n}))"),''',
-     '''            format!("(<= {lo} {hi})"),''',
+     '''            {
+                // The length is read and not used, so that the mutant
+                // compiles without an unused-variable warning (1B-57).
+                let _ = &n;
+                format!("(<= {lo} {hi})")
+            },''',
      "a part of a slice that runs past its end is proved: the callee reads out of bounds"),
 ]
 
