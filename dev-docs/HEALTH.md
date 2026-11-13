@@ -9,6 +9,8 @@
 python3 scripts/health.py                     # 래칫 확인(게이트가 매 커밋 실행), 실패 시 종료 코드 1
 python3 scripts/health.py table               # 현재 값과 기준선을 표로
 python3 scripts/health.py accept --reason "…"  # 현재 값을 기준선으로(이유가 이력에 남음)
+scripts/regen.sh                              # 생성 문서를 한 번에 갱신하고 scripts/fresh.sh로 확인
+scripts/fresh.sh                              # 낡은 것과 해법기 없는 지표(health.py quick)를 수 초 안에
 scripts/ship.sh                               # 커밋된 트리에서 게이트 → 통과 시에만 푸시
 ```
 

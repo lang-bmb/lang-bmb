@@ -4,6 +4,7 @@
   progress.py                 print the generated block
   progress.py --write FILE    replace the generated block in FILE
   progress.py --write-roadmap replace the phase status block of docs/ROADMAP.md
+  progress.py --check-roadmap fail when that block is stale
                               (backlog counts per phase, INF-31)
 
 The report is one file updated in place; earlier versions are its git history.
@@ -442,8 +443,13 @@ def main(argv=None):
         path.write_text(replace_roadmap(path.read_text(encoding="utf-8"), roadmap_block()), encoding="utf-8")
         print(f"updated {ROADMAP}")
         return 0
+    if argv == ["--check-roadmap"]:
+        text = read(ROADMAP)
+        if replace_roadmap(text, roadmap_block()) != text:
+            fail(f"{ROADMAP} status block is stale: run scripts/progress.py --write-roadmap")
+        return 0
     if argv:
-        fail("usage: progress.py [--write FILE | --write-roadmap]")
+        fail("usage: progress.py [--write FILE | --write-roadmap | --check-roadmap]")
     print(block(committed(REPORT)))
     return 0
 

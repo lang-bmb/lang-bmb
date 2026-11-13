@@ -7,31 +7,45 @@
 # concurrently (backlog INF-08, scripts/gate_jobs.py): each runs to the end,
 # a failing job's output is printed with its name, and any failure makes the
 # exit code non-zero.
+#
+# One gate runs at a time (INF-35): a second one waits for the lock. What goes
+# stale is checked first, in seconds (scripts/fresh.sh, INF-34). A run that
+# leaves a file in the tree fails at the end (INF-36).
 set -euo pipefail
 cd "$(dirname "$0")/.."
+if [ -z "${BMB_GATE_LOCK_HELD:-}" ]; then
+  exec scripts/with_gate_lock.sh "$0" "$@"
+fi
 
 step() { printf '== %s\n' "$1"; }
 
+tree=$(mktemp)
+built=$(mktemp)
+trap 'rm -f "$tree" "$built"' EXIT
+python3 scripts/tree_state.py snapshot > "$tree"
+
 step "format";  cargo fmt --all --check
+# The generated documents, the backlog's form, the surface fingerprint, the
+# gate-power mutants (backlog 2T-05) and the solver-free health metrics.
+# A gate-power run applies one mutant: the documents that count source lines
+# are stale by construction and are no evidence about the mutant, so of these
+# only the surface fingerprint runs, as a job (backlog 1B-59).
+power_jobs=()
+if [ -z "${BMB_GATE_POWER_RUN:-}" ]; then
+  step "fresh"; scripts/fresh.sh
+else
+  power_jobs=(--job "surface fingerprint (4D-01)=python3 scripts/surface.py check")
+fi
 step "lint";    cargo clippy --all-targets --quiet -- -D warnings
 step "build"   # every test executable and target/debug/bmb, which the benches use
-built=$(mktemp)
-trap 'rm -f "$built"' EXIT
 cargo test --no-run --quiet --message-format=json-render-diagnostics > "$built"
-step "backlog"; python3 scripts/test_backlog.py > /dev/null && python3 scripts/check_backlog.py
-step "docs";    target/debug/bmb codes --md | diff -u docs/diagnostics.md - > /dev/null || { echo "docs/diagnostics.md is stale: run cargo run -q -- codes --md > docs/diagnostics.md"; exit 1; }
-# Every gate-power mutant still applies to the sources (backlog 2T-05: six
-# had drifted unnoticed since 2T-02).
-# A gate-power run applies one mutant, so it skips this step.
-if [ -z "${BMB_GATE_POWER_RUN:-}" ]; then
-  step "power"; python3 scripts/gate_power.py check > /dev/null
-fi
+step "backlog"; python3 scripts/test_backlog.py > /dev/null
 
 step "test, bench m1, bench m1b, bench hname, bench edit (write, diff, ast), bench view, bench lean, bench repair, bench review, bench intent, bench impossible, bench bvb, bench m3, bench bnb, bench twin, bench bcb, bench brb, bench brb-encap, bench brb-encap-b, bench brb-effect, bench brb-hard, bench run_models, bench utility report, health, progress report (concurrent)"
 # Bench sessions are independent (ADR-0025, backlog 2A-04): m1b and bvb run two at a time per agent.
 # The original-Verus side of bvb (2A-09) needs the Verus toolchain: here only its harness logic
 # runs (stub verifier); the real oracle/weak runs are the `bvb-verus` CI job.
-python3 scripts/gate_jobs.py --cargo-json "$built" \
+python3 scripts/gate_jobs.py --cargo-json "$built" "${power_jobs[@]}" \
   --job "test doc=cargo test --doc --quiet" \
   --job 'bench m1 oracle=tmp=$(mktemp); trap "rm -f $tmp" EXIT
 python3 bench/m1/harness.py run --agent oracle --expect all-pass --out "$tmp" > /dev/null
@@ -44,7 +58,7 @@ grep -qF "| 작성 1회 성공률 | 10/10 |" <<< "$table" || { echo "harness sum
   --job "bench failure table (T0-16)=python3 bench/test_failures.py" \
   --job "bench repeated runs (ADR-0077)=python3 bench/test_repeat.py" \
   --job "bench utility report (T0-26)=python3 bench/test_utility.py && python3 bench/utility.py --check dev-docs/reports/utility.md" \
-  --job "surface (4D-01)=python3 scripts/test_surface.py && python3 scripts/surface.py check" \
+  --job "surface (4D-01)=python3 scripts/test_surface.py" \
   --job 'bench m1b oracle=tmp=$(mktemp); trap "rm -f $tmp" EXIT
 python3 bench/m1/harness.py --set bench/m1b run --agent oracle --expect all-pass --jobs 2 --out "$tmp" > /dev/null
 table=$(python3 bench/m1/harness.py summarize "$tmp")
@@ -206,10 +220,12 @@ python3 bench/brb-hard/harness.py summarize "$b" "$r" | grep -qF "| 성공(숨�
   --job "bench brb-hard adequacy=python3 bench/brb-hard/harness.py adequacy --jobs 2 > /dev/null" \
   --job "bench brb-hard tests=python3 bench/brb-hard/test_brb_hard.py" \
   --job "health=python3 scripts/health.py" \
+  --job "gate scripts (INF-34..36)=python3 scripts/test_gate_scripts.py" \
+  --job "gate power rules (1B-59)=python3 scripts/test_gate_power.py" \
   --job "health rules=python3 scripts/test_health.py && python3 scripts/test_solver_stability.py" \
   --job "progress report (INF-24)=python3 scripts/test_progress.py" \
-  --job "language reference links (5A-01)=python3 scripts/reference.py check" \
-  --job "conformance suite (5A-02)=python3 scripts/test_conformance.py && python3 scripts/conformance.py check && python3 scripts/conformance.py run" \
-  --job "components and port ledger (4D-08, 4D-10)=python3 scripts/test_components.py > /dev/null && python3 scripts/components.py check" \
+  --job "conformance suite (5A-02)=python3 scripts/test_conformance.py && python3 scripts/conformance.py run" \
+  --job "components and port ledger (4D-08, 4D-10)=python3 scripts/test_components.py > /dev/null" \
   --job "baseline perf check rules (INF-25)=python3 bench/baseline/test_run.py"
+step "tree";    python3 scripts/tree_state.py left "$tree"
 echo "all checks passed"

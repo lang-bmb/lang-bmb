@@ -23,7 +23,7 @@ cargo run -- weaken --readers r.jsonl old/ new/  # 읽는 쪽의 비교: 줄마�
 cargo run -- reads a.bmb         # 정의마다 증명 키를 행으로(증명의 읽기 집합: 자기 텍스트, 피호출자 계약, 펼친 spec fn, 선언, 타입, T1-27)
 cargo run -- doctor              # 고정된 Z3·LLVM 버전 확인(scripts/toolchain.env)
 ../scripts/setup.sh              # 고정 버전 설치(새 클라우드 세션은 시작 훅이 자동 실행)
-../scripts/check.sh              # 검증 게이트: fmt·clippy·빌드·백로그·문서, 그다음 테스트 실행 파일과 벤치 검사를 동시에(INF-08, scripts/gate_jobs.py). 종료 코드로 판단
+../scripts/check.sh              # 검증 게이트: fmt, 낡는 것의 검사(scripts/fresh.sh: 생성 문서·백로그·표면 지문·빠른 health), clippy, 빌드, 그다음 테스트 실행 파일과 벤치 검사를 동시에(INF-08, scripts/gate_jobs.py), 끝에 실행이 남긴 파일 검사. 한 번에 하나만 돈다(scripts/with_gate_lock.sh). 종료 코드로 판단
 cargo run -- map all a.bmb        # 표준 맵 L0~L2(JSONL, ADR-0020; 타입·`impl` 함수·`types` 간선은 ADR-0026 §6)
 cargo run -- query slice u::f -- a.bmb  # 읽기 질의: units surface edges slice find contracts status impact duplicates effects tests
 cargo run -- query status m1 m2::f -- ws  # 범위 인자(2D-17): units·status·duplicates·effects·effect E·tests는 경로(단위·정의·타입)를 받아 그 아래 것만 답한다. edges DEF out 64 calls는 그 종류의 간선만 따라간다(아래 "질의 범위")

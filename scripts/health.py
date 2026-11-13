@@ -8,6 +8,11 @@ committed baseline `dev-docs/health/baseline.json`:
     python3 scripts/health.py            # check: exit 1 on a violated rule
     python3 scripts/health.py table      # current values as a Markdown table
     python3 scripts/health.py accept --reason "why"   # record current values
+    python3 scripts/health.py quick      # check the metrics that need no solver
+
+`quick` (INF-37) is what `scripts/fresh.sh` runs before the gate: S5 and P3
+used to show a quarter of an hour into a gate run, and both are read off the
+tree in a second.
 
 A rule either holds always (`fixed`: e.g. no external crates; `fixed_max`,
 `fixed_below`: a bound) or compares with
@@ -253,7 +258,7 @@ def helpful_errors():
     return {"P3_errors_with_help": round(helped / total, 4) if total else 0.0}
 
 
-def self_containment():
+def self_containment(quick=False):
     cargo = (ROOT / "compiler" / "Cargo.toml").read_text()
     deps = cargo.split("[dependencies]", 1)[1].split("\n[", 1)[0] if "[dependencies]" in cargo else ""
     crates = [l for l in deps.splitlines() if l.strip() and not l.strip().startswith("#")]
@@ -276,15 +281,17 @@ def self_containment():
             for line in run(["ldd", exe]).stdout.splitlines():
                 name = line.strip().split(" ")[0]
                 libs.add(os.path.basename(name))
-    return {
+    m = {
         "S1_external_crates": len(crates),
         "S2_external_processes": sorted(procs),
         "S3_runtime_libs_outside_libc": sorted(libs - ALLOWED_RUNTIME) if libs else ["<build failed>"],
         "S4_stage0_rust_lines": rust_lines,
         "S5_tests_bound_to_rust_api": api_bound,
         "S6_selfhost_bmb_lines": bmb_compiler_lines,
-        "S7_selfhost_proved_defs": components.proved_share(ROOT),
     }
+    if not quick:  # proves the port
+        m["S7_selfhost_proved_defs"] = components.proved_share(ROOT)
+    return m
 
 
 def practicality():
@@ -398,6 +405,14 @@ def compute():
     return with_library_headroom(m)
 
 
+def compute_quick():
+    """The metrics that need no solver run (INF-37)."""
+    m = {}
+    for f in (diag_coverage, helpful_errors, lambda: self_containment(quick=True), practicality, process):
+        m.update(f())
+    return m
+
+
 def with_library_headroom(m):
     """V5 covers the libraries and the game programs too (backlog T2-09): a
     library obligation near the limit breaks with a seed or a solver version
@@ -409,6 +424,8 @@ def with_library_headroom(m):
 def judge(m, base):
     bad, better = [], []
     for k, (rule, p) in RULES.items():
+        if k not in m:  # `quick` computes a part
+            continue
         v, b = m[k], base.get(k)
         if rule == "fixed" and v != p:
             bad.append(f"{k} = {v!r}, must be {p!r}")
@@ -451,7 +468,9 @@ def main():
     if not BMB.exists():
         raise SystemExit("target/debug/bmb is missing: run cargo build first")
     cmd = sys.argv[1] if len(sys.argv) > 1 else "check"
-    m = compute()
+    if cmd not in ("check", "table", "accept", "quick"):
+        raise SystemExit(__doc__)
+    m = compute_quick() if cmd == "quick" else compute()
     base = load_base()
     if cmd == "table":
         print(table(m, base))
@@ -471,7 +490,7 @@ def main():
         print(f"baseline updated ({len(changed)} metrics changed)")
         return 0
     bad, better = judge(m, base["metrics"])
-    missing = [k for k in RULES if k not in base["metrics"] and m[k] is not None]
+    missing = [k for k in RULES if k in m and k not in base["metrics"] and m[k] is not None]
     if missing:
         bad.append(f"baseline has no value for {', '.join(missing)}: run `health.py accept --reason ...`")
     for b in better:

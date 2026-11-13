@@ -3,6 +3,8 @@
 (backlog 1B-38, HEALTH.md §7).
 
   gate_power.py check                  every mutant applies to the current sources
+  gate_power.py check --compile --work DIR [--only ID,..]
+                                       and compiles without a warning (minutes each)
   gate_power.py run --work DIR --out FILE.jsonl [--only ID,..]
   gate_power.py table FILE.jsonl       Markdown table and the catch rate
 
@@ -14,8 +16,13 @@ a checker that lets ghost code run executable code.
 `run` applies them one at a time to a detached worktree of HEAD (DIR) and runs
 the whole gate there (`scripts/check.sh`) after `cargo fmt` (formatting
 must not be what catches a defect); the gate catches a mutant when it exits
-non-zero, and `detected_by` names the gate jobs that failed (empty when an
-earlier step such as clippy or the build failed; `tail` shows which). Classes: `unsound` (a false program could be proved),
+non-zero in its jobs, and `detected_by` names the jobs that failed. A run that
+ended before the jobs (formatting, clippy, the build: `stage` names the step)
+or at the time limit is `invalid`, not a catch (backlog 1B-59: seven mutants
+were once counted as caught by an unused-variable warning): the mutant is
+rewritten to compile cleanly, which `check --compile` tells without a gate
+run. The row's `commit` is the commit of the mutated tree. A run takes the
+gate lock (scripts/with_gate_lock.sh) before its clock starts. Classes: `unsound` (a false program could be proved),
 `incomplete` (a true program could fail), `encoding` (a query departs from
 the adopted encoding: true facts, at another cost), `miscompile` (a proved program could
 run wrongly). A mutant the gate misses is either a gap (a test is added for
@@ -666,7 +673,78 @@ def apply(root, m):
         f.write(text.replace(old, new))
 
 
-def check(_args):
+def classify(returncode, lines):
+    """(status, stage, detected_by) of one gate run's exit code and output.
+
+    The gate prints `== step` before each step and `failed: a, b` after its
+    concurrent jobs. A mutant is caught only by a job: a run that ended in an
+    earlier step says something about the mutant's text, not about the tests."""
+    # `== name: FAILED (..)` heads a failed job's output, not a step.
+    stage = next((x[3:].split(",")[0].strip() for x in reversed(lines)
+                  if x.startswith("== ") and ": FAILED (" not in x), "")
+    failed = next((x for x in reversed(lines) if x.startswith("failed: ")), "")
+    detected_by = [j.strip() for j in failed[len("failed: "):].split(",") if j.strip()]
+    if returncode == 0:
+        status = "missed"
+    elif returncode == 124:  # `timeout`
+        status = "invalid"
+    else:
+        status = "caught" if detected_by else "invalid"
+    return status, stage, detected_by
+
+
+def status_of(row):
+    """A row's status; rows written before `status` existed are judged the same way."""
+    if "status" in row:
+        return row["status"]
+    if not row["caught"]:
+        return "missed"
+    return "caught" if row.get("detected_by") and row.get("exit") != 124 else "invalid"
+
+
+def work_tree(work, head):
+    if not os.path.isdir(work):
+        git("worktree", "add", "--detach", work, head)
+    else:
+        # A stopped run may leave a mutant applied: discard it.
+        git("checkout", "--force", "--detach", head, cwd=work)
+    return git("rev-parse", "HEAD", cwd=work)
+
+
+def selected(only):
+    ids = set(only.split(",")) if only else None
+    unknown = (ids or set()) - {m[0] for m in MUTANTS}
+    if unknown:
+        sys.exit(f"gate_power: no mutant {sorted(unknown)}")
+    return [m for m in MUTANTS if not ids or m[0] in ids]
+
+
+def compile_check(args):
+    """Every mutant passes the steps before the tests (clippy with warnings
+    denied covers the build), so a gate run of it ends in a job."""
+    work_tree(args.work, git("rev-parse", "HEAD"))
+    bad = []
+    for m in selected(args.only):
+        git("checkout", "--", "compiler/src", cwd=args.work)
+        apply(args.work, m)
+        subprocess.run(["cargo", "fmt"], cwd=args.work, capture_output=True)
+        r = subprocess.run(["cargo", "clippy", "--all-targets", "--quiet", "--", "-D", "warnings"],
+                           cwd=args.work, capture_output=True, text=True)
+        if r.returncode != 0:
+            bad.append(m[0])
+            first = next((x for x in r.stderr.splitlines() if x.startswith(("error", "warning"))), "")
+            print(f"gate_power: {m[0]}: does not compile cleanly: {first}", flush=True)
+    git("checkout", "--", "compiler/src", cwd=args.work)
+    print(f"gate_power: {len(selected(args.only)) - len(bad)} mutants compile without a warning, {len(bad)} do not")
+    return 1 if bad else 0
+
+
+def check(args):
+    if getattr(args, "compile", False):
+        if not args.work:
+            sys.exit("gate_power: check --compile needs --work DIR")
+        check(argparse.Namespace())
+        return compile_check(args)
     for m in MUTANTS:
         for path in {m[2]}:
             n = open(os.path.join(ROOT, path)).read().count(m[3])
@@ -682,59 +760,66 @@ def git(*args, cwd=ROOT):
 
 
 def run(args):
-    head = git("rev-parse", "HEAD")
-    if not os.path.isdir(args.work):
-        git("worktree", "add", "--detach", args.work, head)
-    else:
-        # A stopped run may leave a mutant applied: discard it.
-        git("checkout", "--force", "--detach", head, cwd=args.work)
-    only = set(args.only.split(",")) if args.only else None
+    import fcntl
+    commit = work_tree(args.work, git("rev-parse", "HEAD"))
     done = set()
     if os.path.exists(args.out):
         done = {json.loads(line)["id"] for line in open(args.out) if line.strip()}
+    lock = os.environ.get("BMB_GATE_LOCK") or os.path.join(
+        git("rev-parse", "--path-format=absolute", "--git-common-dir"), "gate.lock")
     with open(args.out, "a") as out:
-        for m in MUTANTS:
-            if (only and m[0] not in only) or m[0] in done:
+        for m in selected(args.only):
+            if m[0] in done:
                 continue
             git("checkout", "--", "compiler/src", cwd=args.work)
             apply(args.work, m)
             subprocess.run(["cargo", "fmt"], cwd=args.work, capture_output=True)
-            t0 = time.monotonic()
-            env = dict(os.environ, BMB_GATE_POWER_RUN="1")
-            r = subprocess.run(["timeout", "3600", "scripts/check.sh"], cwd=args.work, capture_output=True, text=True, env=env)
+            # One gate at a time (INF-35); the wait is not the mutant's time.
+            with open(lock, "w") as held:
+                fcntl.flock(held, fcntl.LOCK_EX)
+                t0 = time.monotonic()
+                env = dict(os.environ, BMB_GATE_POWER_RUN="1", BMB_GATE_LOCK_HELD="1")
+                r = subprocess.run(["timeout", "3600", "scripts/check.sh"], cwd=args.work, capture_output=True,
+                                   text=True, env=env)
+                seconds = round(time.monotonic() - t0, 1)
             lines = (r.stdout + r.stderr).strip().splitlines()
-            tail = lines[-12:]
-            failed = next((x for x in reversed(lines) if x.startswith("failed: ")), "")
-            detected_by = [j.strip() for j in failed[len("failed: "):].split(",") if j.strip()]
-            row = {"id": m[0], "class": m[1], "file": m[2], "what": m[5], "commit": head,
-                   "caught": r.returncode != 0, "exit": r.returncode, "detected_by": detected_by,
-                   "seconds": round(time.monotonic() - t0, 1), "tail": tail}
+            status, stage, detected_by = classify(r.returncode, lines)
+            row = {"id": m[0], "class": m[1], "file": m[2], "what": m[5], "commit": commit,
+                   "status": status, "caught": status == "caught", "exit": r.returncode, "stage": stage,
+                   "detected_by": detected_by, "seconds": seconds, "tail": lines[-12:]}
             out.write(json.dumps(row, ensure_ascii=False) + "\n")
             out.flush()
-            print(f"gate_power: {m[0]}: {'caught' if row['caught'] else 'MISSED'} ({row['seconds']}s)", flush=True)
+            print(f"gate_power: {m[0]}: {status.upper() if status != 'caught' else status} ({seconds}s)", flush=True)
         git("checkout", "--", "compiler/src", cwd=args.work)
 
 
 def table(args):
     rows = [json.loads(line) for line in open(args.results) if line.strip()]
+    mark = {"missed": "**놓침**", "invalid": "무효(시험 전 단계나 시간 초과)"}
     out = ["| 변이체 | 종류 | 결함 | 게이트 |", "| --- | --- | --- | --- |"]
     for r in rows:
-        by = ", ".join(r.get("detected_by") or []) or "앞 단계"
-        out.append(f"| `{r['id']}` | {r['class']} | {r['what']} | {('잡음: ' + by) if r['caught'] else '**놓침**'} |")
-    caught = sum(r["caught"] for r in rows)
+        st = status_of(r)
+        out.append(f"| `{r['id']}` | {r['class']} | {r['what']} | "
+                   f"{mark.get(st) or '잡음: ' + ', '.join(r['detected_by'])} |")
+    valid = [r for r in rows if status_of(r) != "invalid"]
     out.append("")
-    out.append(f"검출: {caught}/{len(rows)}")
+    out.append(f"검출: {sum(status_of(r) == 'caught' for r in valid)}/{len(valid)}")
+    if len(valid) != len(rows):
+        out.append(f"무효: {len(rows) - len(valid)}")
     for cls in ("unsound", "incomplete", "encoding", "miscompile"):
-        rs = [r for r in rows if r["class"] == cls]
+        rs = [r for r in valid if r["class"] == cls]
         if rs:
-            out.append(f"- {cls}: {sum(r['caught'] for r in rs)}/{len(rs)}")
+            out.append(f"- {cls}: {sum(status_of(r) == 'caught' for r in rs)}/{len(rs)}")
     print("\n".join(out))
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("check")
+    c = sub.add_parser("check")
+    c.add_argument("--compile", action="store_true")
+    c.add_argument("--work")
+    c.add_argument("--only")
     r = sub.add_parser("run")
     r.add_argument("--work", required=True)
     r.add_argument("--out", required=True)
@@ -742,8 +827,8 @@ def main():
     t = sub.add_parser("table")
     t.add_argument("results")
     args = ap.parse_args()
-    {"check": check, "run": run, "table": table}[args.cmd](args)
+    return {"check": check, "run": run, "table": table}[args.cmd](args)
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
