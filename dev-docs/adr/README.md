@@ -178,3 +178,4 @@ BMB v2의 설계 결정을 한 건에 파일 하나로 남긴다. 현재 확정�
 | [0129](0129-memory-verdict-in-a-fresh-process.md) | 메모리로 인한 미결정은 새 프로세스의 첫 질의에서만 판정: 작업 프로세스는 한도의 절반, 끝난 질의는 혼자 다시 묻는다. 한도가 끝낸 질의도 재시도를 받고, 증명 캐시 키에 메모리 한도(v5) |
 | [0130](0130-intent-item-set.md) | H-INTENT 항목 집합(`bench/intent`, 90개) 동결: 코드+명세 판과 명세+예시 판, 모델 리뷰어에 한한 판정, 토큰 기준은 닿지 않음, 예시의 겉모습이 라벨을 82/90 맞힘 |
 | [0131](0131-advisory-rlimit.md) | `lint`의 권고 질의(첫 증명 뒤)의 전체 질의는 따로 된 `rlimit`(`Z3_ADVISORY_RLIMIT`=1,000,000), 탐침 몫과 도달 한도는 값 그대로, 닿으면 미결정. 모형을 찾는 `bmb examples`는 게이트의 `rlimit` 그대로. ADR-0126 결정 2를 대체 |
+| [0132](0132-token-criteria-of-review-and-intent.md) | H-REVIEW·H-INTENT의 토큰 기준은 그대로 두고 동결한 두 집합은 탐지율만 판정. H-REVIEW의 토큰 축은 포트의 이력으로, H-INTENT의 토큰 조건은 함수 단위에서 충족 불가로 등록 |
