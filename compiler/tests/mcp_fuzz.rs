@@ -7,6 +7,9 @@
 //!   a time limit, notifications get none, and it exits cleanly at the end;
 //! - every response is JSON-RPC 2.0 with the request's id and exactly one of
 //!   `result` / `error`; tool results carry a text item and `isError`;
+//! - the rename and expect operations of `--rename-ops` (backlog T1-20) are
+//!   operations of a transaction like the others: valid and invalid names
+//!   and identities, renames of what a transaction just put;
 //! - transaction bookkeeping follows a model: `tx_begin` ids count up, a
 //!   closed or unknown id is "no open transaction", a commit after another
 //!   commit changed the workspace is refused as stale;
@@ -162,7 +165,7 @@ struct Server {
 impl Server {
     fn start(root: &Path) -> Server {
         let mut child = Command::new(env!("CARGO_BIN_EXE_bmb"))
-            .args(["mcp", root.to_str().unwrap()])
+            .args(["mcp", "--rename-ops", root.to_str().unwrap()])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -415,8 +418,10 @@ fn session(seed: u64, calls: u64) -> (usize, usize, usize) {
                         "tx_unit",
                         format!("{{\"tx\":{{tx}},\"path\":{},\"summary\":\"s\"}}", q(u)),
                     ));
+                    let mut last = "f";
                     for _ in 0..1 + rng.below(3) {
                         let n = pick(&mut rng, &["f", "g", "h", "k", "m"]);
+                        last = n;
                         let c = format!(
                             "#[effects(pure)]\nfn {n}(x: i64) -> i64 {{ x.wrapping_add({}) }}",
                             rng.below(9)
@@ -424,6 +429,19 @@ fn session(seed: u64, calls: u64) -> (usize, usize, usize) {
                         plan.push((
                             "tx_put",
                             format!("{{\"tx\":{{tx}},\"unit\":{},\"code\":{}}}", q(u), q(&c)),
+                        ));
+                    }
+                    // A rename of what was just put (backlog T1-20): to a
+                    // free name, or to one that may be taken.
+                    if rng.chance(30) {
+                        let to = pick(&mut rng, &["r", "renamed", "f", "g"]);
+                        plan.push((
+                            "tx_rename",
+                            format!(
+                                "{{\"tx\":{{tx}},\"def\":{},\"to\":{}}}",
+                                q(&format!("{u}::{last}")),
+                                q(to)
+                            ),
                         ));
                     }
                     if rng.chance(30) {
@@ -452,9 +470,28 @@ fn session(seed: u64, calls: u64) -> (usize, usize, usize) {
                     q(&code(&mut rng))
                 ),
             ),
-            42..=47 => (
+            42..=44 => (
                 "tx_remove",
                 format!("{{\"tx\":{tx_json},\"def\":{}}}", q(pick(&mut rng, DEFS))),
+            ),
+            45..=46 => (
+                "tx_rename",
+                format!(
+                    "{{\"tx\":{tx_json},\"def\":{},\"to\":{}}}",
+                    q(pick(&mut rng, DEFS)),
+                    q(pick(
+                        &mut rng,
+                        &["f", "g", "renamed", "", "a::b", "fn", "1x"]
+                    ))
+                ),
+            ),
+            47 => (
+                "tx_expect",
+                format!(
+                    "{{\"tx\":{tx_json},\"def\":{},\"id\":{}}}",
+                    q(pick(&mut rng, DEFS)),
+                    q(pick(&mut rng, &["sha256:00", "", "nonsense"]))
+                ),
             ),
             48..=51 => (
                 "tx_remove_unit",
@@ -569,7 +606,14 @@ fn session(seed: u64, calls: u64) -> (usize, usize, usize) {
         let well_formed = !line.contains("\"arguments\":[1]");
 
         // The transaction model.
-        let tx_ops = ["tx_unit", "tx_put", "tx_remove", "tx_remove_unit"];
+        let tx_ops = [
+            "tx_unit",
+            "tx_put",
+            "tx_remove",
+            "tx_remove_unit",
+            "tx_rename",
+            "tx_expect",
+        ];
         let uses_tx = tx_ops.contains(&tool) || matches!(tool, "tx_commit" | "tx_abort");
         if tool == "tx_begin" {
             // `tx_begin` takes no arguments, so their shape does not matter.

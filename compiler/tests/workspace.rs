@@ -821,6 +821,54 @@ fn rename_rewrites_references_and_keeps_every_identity() {
     }
 }
 
+/// Backlog T1-23: `rename` of a unit renames the `mod`, the file and every
+/// path written through it, and keeps every identity.
+#[test]
+fn rename_of_a_unit_rewrites_every_path_through_it() {
+    let root = init_rich("rename_unit");
+    let before = ids(&root);
+    assert!(before.keys().any(|p| p.starts_with("app::")));
+    let c = commit(&root, &[rename("geo", "shapes")]).unwrap();
+    assert!(c.ok, "{}", c.diagnostics);
+    let want: BTreeMap<String, String> = before
+        .iter()
+        .map(|(p, v)| (p.replace("geo::", "shapes::"), v.clone()))
+        .collect();
+    assert_eq!(ids(&root), want);
+    let files = snapshot(&root);
+    assert!(
+        files.keys().any(|f| f.ends_with("shapes.bmb")),
+        "{:?}",
+        files.keys()
+    );
+    assert!(
+        !files.keys().any(|f| f.ends_with("geo.bmb")),
+        "{:?}",
+        files.keys()
+    );
+    let text: String = files.into_values().collect();
+    assert!(
+        !text
+            .split(|c: char| !(c.is_alphanumeric() || c == '_'))
+            .any(|w| w == "geo"),
+        "{text}"
+    );
+    assert!(
+        text.contains("mod shapes {") && text.contains("shapes::"),
+        "{text}"
+    );
+    let (ok, output) = bmb(&["verify", arg(&root)]);
+    assert!(ok, "{output}");
+
+    // A unit name that is taken, and a name that is not one: nothing changes.
+    let before = snapshot(&root);
+    for to in ["app", "a::b", "fn"] {
+        let c = commit(&root, &[rename("shapes", to)]).unwrap();
+        assert!(!c.ok, "{to}");
+        assert_eq!(snapshot(&root), before, "{to}");
+    }
+}
+
 #[test]
 fn rename_that_would_collide_or_capture_is_rejected() {
     let root = init_rich("rename_bad");

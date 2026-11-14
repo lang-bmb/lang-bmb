@@ -464,6 +464,11 @@ fn rename(p: &mut Program, def: &str, to: &str) -> Result<(), String> {
         checked(p).ok_or("`rename` needs a program that checks; this one does not")?;
     let fn_sig = t.fns.get(def).filter(|s| !s.builtin);
     let segs: Vec<String> = def.split("::").map(String::from).collect();
+    // A unit (backlog T1-23): its declaration and every path through it.
+    let as_strs: Vec<&str> = segs.iter().map(String::as_str).collect();
+    if find_mod(&mut p.mods, &as_strs).is_some() && !t.adts.contains_key(def) && fn_sig.is_none() {
+        return rename_unit(p, &resolved, &t, &segs, to);
+    }
     let (kind, n_local) = if t.adts.contains_key(def) {
         (TargetKind::Type, 1)
     } else if fn_sig.is_some_and(|s| s.trait_of.is_some()) {
@@ -513,6 +518,61 @@ fn rename(p: &mut Program, def: &str, to: &str) -> Result<(), String> {
             return Err(format!(
                 "renaming `{def}` to `{to}` would change what other names refer to ({})",
                 moved.join(", ")
+            ));
+        }
+    }
+    *p = renamed;
+    Ok(())
+}
+
+/// Every path through one unit, to its new name.
+struct UnitRenamer<'a> {
+    unit: &'a [String],
+    to: &'a str,
+}
+
+impl Rewrite for UnitRenamer<'_> {
+    fn path(&mut self, segs: &mut Vec<String>, _: Site, _: &[String], _: &[String]) {
+        let n = self.unit.len();
+        if segs.len() > n && segs[..n] == *self.unit {
+            segs[n - 1] = self.to.to_string();
+        }
+    }
+}
+
+/// Renames the unit at `segs` to `to` (its last segment): the `mod` and
+/// every path written through it, in every unit. As for a definition, every
+/// identity must stay as it was; a path that only looked like one through
+/// the unit (a local type of the same name) then fails the commit's check
+/// or this comparison, and nothing is renamed.
+fn rename_unit(
+    p: &mut Program,
+    resolved: &Program,
+    t: &crate::verify::Tables,
+    segs: &[String],
+    to: &str,
+) -> Result<(), String> {
+    let def = segs.join("::");
+    let mut new_path: Vec<&str> = segs.iter().map(String::as_str).collect();
+    *new_path.last_mut().expect("a unit path has a segment") = to;
+    if find_mod(&mut p.mods, &new_path).is_some() {
+        return Err(format!("unit `{}` exists", new_path.join("::")));
+    }
+    let before = identities(resolved, t);
+    let mut renamed = p.clone();
+    crate::refs::walk(&mut renamed, &mut UnitRenamer { unit: segs, to });
+    let old_path: Vec<&str> = segs.iter().map(String::as_str).collect();
+    let m = find_mod(&mut renamed.mods, &old_path).expect("the unit was found");
+    m.name.name = to.to_string();
+    if let Some((r2, t2)) = checked(&renamed) {
+        let after = identities(&r2, &t2);
+        let mut a: Vec<&String> = before.values().collect();
+        let mut b: Vec<&String> = after.values().collect();
+        a.sort();
+        b.sort();
+        if a != b {
+            return Err(format!(
+                "renaming unit `{def}` to `{to}` would change what other names refer to"
             ));
         }
     }

@@ -54,6 +54,10 @@ pub struct Server {
     pub undecided_info: bool,
     /// `--probe-tool` (ADR-0109): the read tool `probe`.
     pub probe_tool: bool,
+    /// `--rename-ops` (backlog T1-20): `tx_rename` and `tx_expect`, and
+    /// `rename` and `expect` in `write`. Off, the tool list of the frozen
+    /// sets is unchanged (ADR-0021).
+    pub rename_ops: bool,
     /// `--bounded` (ADR-0127): a `query` or `map` result is a window of at
     /// most `map::RESPONSE_BUDGET` bytes on the response, moved with
     /// `offset` and `limit`. `--bounded-16k` is the same window at half the
@@ -111,6 +115,7 @@ pub const FLAGS: &[&str] = &[
     "--stats",
     "--undecided-info",
     "--probe-tool",
+    "--rename-ops",
     "--bounded",
     "--bounded-16k",
 ];
@@ -121,6 +126,109 @@ fn s(x: &str) -> Value {
 
 fn obj(kv: Vec<(&str, Value)>) -> Value {
     Value::Object(kv.into_iter().map(|(k, v)| (k.to_string(), v)).collect())
+}
+
+/// The tools of `--rename-ops` (backlog T1-20) added to `list`: `tx_rename`
+/// and `tx_expect` before `tx_commit`, and in `write` (when it is there)
+/// the lists `rename` and `expect`, with `unit` no longer required (a write
+/// may only rename).
+fn add_rename_ops(list: &mut Vec<Value>) {
+    let name_of = |t: &Value| t.get("name").and_then(Value::as_str).map(String::from);
+    let pairs = |what: &str, a: &str, b: &str, ad: &str, bd: &str| {
+        obj(vec![
+            ("type", s("array")),
+            ("description", s(what)),
+            (
+                "items",
+                schema(&[(a, "string", ad), (b, "string", bd)], &[a, b]),
+            ),
+        ])
+    };
+    let at = list
+        .iter()
+        .position(|t| name_of(t).as_deref() == Some("tx_commit"))
+        .unwrap_or(list.len());
+    let tool = |name: &str, desc: &str, input: Value| {
+        obj(vec![
+            ("name", s(name)),
+            ("description", s(desc)),
+            ("inputSchema", input),
+        ])
+    };
+    list.insert(
+        at,
+        tool(
+            "tx_expect",
+            "In a transaction: require that definition DEF has identity ID (`id` of `query surface DEF`) in the workspace the commit starts from. The commit is rejected when it does not: the definition was changed since it was read. A rename of another definition does not change an identity; an edit of a callee's body changes its callers'.",
+            schema(
+                &[
+                    ("tx", "integer", "transaction id"),
+                    ("def", "string", "definition path"),
+                    ("id", "string", "the identity the definition must have"),
+                ],
+                &["tx", "def", "id"],
+            ),
+        ),
+    );
+    list.insert(
+        at,
+        tool(
+            "tx_rename",
+            "In a transaction: rename definition DEF to the new name TO (in its unit), in its declaration and in every reference. Rejected when the name is taken or a reference would then mean another definition. The definitions' identities do not change.",
+            schema(
+                &[
+                    ("tx", "integer", "transaction id"),
+                    ("def", "string", "definition path"),
+                    ("to", "string", "the new name (not a path)"),
+                ],
+                &["tx", "def", "to"],
+            ),
+        ),
+    );
+    for t in list.iter_mut() {
+        if name_of(t).as_deref() != Some("write") {
+            continue;
+        }
+        let Value::Object(fields) = t else { continue };
+        for (k, v) in fields.iter_mut() {
+            match (k.as_str(), v) {
+                ("description", Value::Str(d)) => d.push_str(
+                    " Each `expect` is checked against the workspace the write starts from (the write is rejected when a definition's identity is not the one given); each `rename` is applied before the items, in the declaration and every reference.",
+                ),
+                ("inputSchema", Value::Object(sch)) => {
+                    for (sk, sv) in sch.iter_mut() {
+                        match (sk.as_str(), sv) {
+                            ("properties", Value::Object(props)) => {
+                                props.push((
+                                    "rename".to_string(),
+                                    pairs(
+                                        "definitions to rename, before the items are written",
+                                        "def",
+                                        "to",
+                                        "definition path",
+                                        "the new name (not a path)",
+                                    ),
+                                ));
+                                props.push((
+                                    "expect".to_string(),
+                                    pairs(
+                                        "identities the write depends on (`id` of `query surface DEF`)",
+                                        "def",
+                                        "id",
+                                        "definition path",
+                                        "the identity the definition must have",
+                                    ),
+                                ));
+                            }
+                            ("required", req) => *req = Value::Array(Vec::new()),
+                            _ => {}
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
 }
 
 fn schema(props: &[(&str, &str, &str)], required: &[&str]) -> Value {
@@ -498,6 +606,7 @@ impl Server {
             item_docs: false,
             undecided_info: false,
             probe_tool: false,
+            rename_ops: false,
             bounded: false,
             budget: crate::map::RESPONSE_BUDGET,
         }
@@ -723,8 +832,39 @@ impl Server {
                 // One transaction and a proof in one tool call: in the pilot
                 // the separate calls (begin, unit, put, commit, verify) made
                 // BMB sessions take 2.9 times the model turns of Verus.
-                let unit = str_arg("unit")?;
                 let mut ops = Vec::new();
+                // `--rename-ops`: the identities the write depends on, then
+                // the renames, before the items (backlog T1-20).
+                if self.rename_ops {
+                    let pairs = |key: &str, other: &str| -> Result<Vec<(String, String)>, String> {
+                        let Some(Value::Array(xs)) = a.get(key) else {
+                            return Ok(Vec::new());
+                        };
+                        xs.iter()
+                            .map(|x| {
+                                let get =
+                                    |k: &str| x.get(k).and_then(Value::as_str).map(String::from);
+                                get("def").zip(get(other)).ok_or(format!(
+                                    "`{key}` holds objects with `def` and `{other}`"
+                                ))
+                            })
+                            .collect()
+                    };
+                    for (def, id) in pairs("expect", "id")? {
+                        ops.push(Op::Expect { def, id });
+                    }
+                    for (def, to) in pairs("rename", "to")? {
+                        ops.push(Op::Rename { def, to });
+                    }
+                }
+                let items = ["summary", "code", "remove"]
+                    .iter()
+                    .any(|k| a.get(k).is_some());
+                let unit = if items || !self.rename_ops {
+                    str_arg("unit")?
+                } else {
+                    String::new()
+                };
                 if let Some(summary) = a.get("summary").and_then(Value::as_str) {
                     ops.push(Op::Unit {
                         path: unit.clone(),
@@ -748,7 +888,12 @@ impl Server {
                     }
                 }
                 if ops.is_empty() {
-                    return Err("nothing to write: give `code`, `summary` or `remove`".into());
+                    return Err(if self.rename_ops {
+                        "nothing to write: give `code`, `summary`, `remove` or `rename`"
+                    } else {
+                        "nothing to write: give `code`, `summary` or `remove`"
+                    }
+                    .into());
                 }
                 let c = workspace::commit(&self.root, &ops)?;
                 let list =
@@ -867,9 +1012,18 @@ impl Server {
                 );
                 Ok(format!("{{\"tx\":{id}}}"))
             }
-            "tx_unit" | "tx_put" | "tx_remove" | "tx_remove_unit" => {
+            "tx_rename" | "tx_expect" if !self.rename_ops => Err(format!("unknown tool `{name}`")),
+            "tx_unit" | "tx_put" | "tx_remove" | "tx_remove_unit" | "tx_rename" | "tx_expect" => {
                 let id = tx_arg()?;
                 let op = match name {
+                    "tx_rename" => Op::Rename {
+                        def: str_arg("def")?,
+                        to: str_arg("to")?,
+                    },
+                    "tx_expect" => Op::Expect {
+                        def: str_arg("def")?,
+                        id: str_arg("id")?,
+                    },
                     "tx_unit" => Op::Unit {
                         path: str_arg("path")?,
                         summary: str_arg("summary")?,
@@ -1011,6 +1165,11 @@ impl Server {
                 {
                     xs.push(probe_tool());
                 }
+                if self.rename_ops
+                    && let Value::Array(xs) = &mut list
+                {
+                    add_rename_ops(xs);
+                }
                 Ok(obj(vec![("tools", list)]))
             }
             "tools/call" => {
@@ -1088,6 +1247,9 @@ pub fn serve(root: &Path, flags: &[&str]) -> std::io::Result<()> {
     }
     if has("--item-docs") {
         server = server.item_docs();
+    }
+    if has("--rename-ops") {
+        server.rename_ops = true;
     }
     if has("--probe-tool") {
         server.probe_tool = true;

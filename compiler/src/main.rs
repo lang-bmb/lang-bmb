@@ -146,7 +146,7 @@ const USAGE: &str = "usage:
   bmb apply DIR OPS.json    commit a transaction (JSON array of unit/put/remove/remove_unit/
                             rename/expect ops)
                             to workspace DIR; rejected as a whole on any structural or type error
-  bmb mcp [--write-tool] [--compact] [--tool-docs] [--file-tools] [--ast-tools] [--item-docs] [--stats] [--bounded|--bounded-16k] DIR
+  bmb mcp [--write-tool] [--compact] [--tool-docs] [--file-tools] [--ast-tools] [--item-docs] [--stats] [--bounded|--bounded-16k] [--rename-ops] DIR
                             MCP server (stdio) for workspace DIR: query, map, verify, build, tx_*;
                             --write-tool also offers `write` (unit, definitions, removals,
                             commit and proof in one call); --compact shows results in the
@@ -161,7 +161,9 @@ const USAGE: &str = "usage:
                             --bounded gives `query` and `map` results as windows of at most
                             32768 bytes with `offset` and `limit` arguments (ADR-0127);
                             --bounded-16k is the same at 16384 bytes (the default is
-                            measured, backlog 2D-39)
+                            measured, backlog 2D-39); --rename-ops offers `tx_rename` and
+                            `tx_expect`, and `rename` and `expect` lists in `write` (checked
+                            and applied before the items; a write may only rename)
   bmb ast <file.bmb>...     the syntax tree as one JSON document (the JSON AST edit surface's,
                             keyed by unit; positions are not part of it)
   bmb dump tokens <file.bmb>...

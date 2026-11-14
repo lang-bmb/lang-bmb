@@ -1483,3 +1483,125 @@ fn bounded_results_are_windows_of_the_response() {
         "{page}"
     );
 }
+
+/// `--rename-ops` (backlog T1-20): `tx_rename` and `tx_expect`, and `rename`
+/// and `expect` in `write`, offered only on request (the frozen tool lists
+/// keep their bytes). A rename rewrites the declaration and every reference
+/// and keeps the identities; an `expect` rejects a write that depends on a
+/// definition someone changed.
+#[test]
+fn rename_and_expect_on_request() {
+    let code = "#[effects(pure)]\nfn twice(x: i64) -> (r: i64)\n    requires x < 1000 && x > -1000,\n    ensures r == 2 * x,\n{\n    x + x\n}\n\n#[effects(pure)]\nfn four(x: i64) -> (r: i64)\n    requires x < 100 && x > -100,\n    ensures r == 4 * x,\n{\n    twice(twice(x))\n}\n";
+    let root = temp_root("rename-ops");
+    let mut plain = Client::start_with(&root, &["--write-tool"]);
+    let list = plain.request("tools/list", "{}").to_json();
+    assert!(
+        !list.contains("tx_rename") && !list.contains("\"expect\""),
+        "{list}"
+    );
+    let (t, err) = plain.tool(
+        "write",
+        &format!(
+            "{{\"unit\":\"m\",\"summary\":{},\"code\":{}}}",
+            q("t"),
+            q(code)
+        ),
+    );
+    assert!(!err, "{t}");
+    // Without the flag the operations are not there.
+    let (t, err) = plain.tool(
+        "write",
+        "{\"rename\":[{\"def\":\"m::twice\",\"to\":\"double\"}]}",
+    );
+    assert!(err && t.contains("missing `unit`"), "{t}");
+    let (t, err) = plain.tool(
+        "tx_rename",
+        "{\"tx\":1,\"def\":\"m::twice\",\"to\":\"double\"}",
+    );
+    assert!(err && t.contains("unknown tool"), "{t}");
+    drop(plain);
+
+    let mut c = Client::start_with(&root, &["--write-tool", "--rename-ops"]);
+    let list = c.request("tools/list", "{}").to_json();
+    for part in ["\"tx_rename\"", "\"tx_expect\"", "\"rename\"", "\"expect\""] {
+        assert!(list.contains(part), "{part}: {list}");
+    }
+    let id_of = |c: &mut Client, def: &str| -> String {
+        let (t, err) = c.tool(
+            "query",
+            &format!("{{\"name\":\"surface\",\"args\":[{}]}}", q(def)),
+        );
+        assert!(!err, "{t}");
+        let at = t.find("\"id\":\"").expect(&t) + 6;
+        t[at..].split('"').next().unwrap().to_string()
+    };
+    let (twice, four) = (id_of(&mut c, "m::twice"), id_of(&mut c, "m::four"));
+
+    // A rename alone: the declaration and both references, proved again.
+    let (t, err) = c.tool(
+        "write",
+        &format!(
+            "{{\"expect\":[{{\"def\":\"m::twice\",\"id\":{}}}],\"rename\":[{{\"def\":\"m::twice\",\"to\":\"double\"}}]}}",
+            q(&twice)
+        ),
+    );
+    assert!(!err, "{t}");
+    assert!(t.contains("\"committed\":true"), "{t}");
+    let text = std::fs::read_to_string(root.join("src").join("m.bmb")).unwrap();
+    assert!(
+        text.contains("fn double(") && text.contains("double(double(x))"),
+        "{text}"
+    );
+    assert!(!text.contains("twice"), "{text}");
+    // The identities are the ones before the rename.
+    assert_eq!(id_of(&mut c, "m::double"), twice);
+    assert_eq!(id_of(&mut c, "m::four"), four);
+
+    // An `expect` that no longer holds rejects the whole write.
+    let before = text;
+    let (t, err) = c.tool(
+        "write",
+        &format!(
+            "{{\"unit\":\"m\",\"expect\":[{{\"def\":\"m::double\",\"id\":{}}}],\"remove\":[\"m::four\"]}}",
+            q(&four)
+        ),
+    );
+    assert!(err && t.contains("\"committed\":false"), "{t}");
+    assert_eq!(
+        std::fs::read_to_string(root.join("src").join("m.bmb")).unwrap(),
+        before
+    );
+    // A name that is taken is rejected.
+    let (t, err) = c.tool(
+        "write",
+        "{\"rename\":[{\"def\":\"m::double\",\"to\":\"four\"}]}",
+    );
+    assert!(err && t.contains("\"committed\":false"), "{t}");
+    // Nothing to write, and a malformed list.
+    let (t, err) = c.tool("write", "{}");
+    assert!(err && t.contains("or `rename`"), "{t}");
+    let (t, err) = c.tool("write", "{\"rename\":[\"m::double\"]}");
+    assert!(err && t.contains("objects with `def` and `to`"), "{t}");
+
+    // The same through a transaction.
+    let (t, err) = c.tool("tx_begin", "{}");
+    assert!(!err, "{t}");
+    let (t, err) = c.tool(
+        "tx_expect",
+        &format!("{{\"tx\":1,\"def\":\"m::four\",\"id\":{}}}", q(&four)),
+    );
+    assert!(!err, "{t}");
+    let (t, err) = c.tool(
+        "tx_rename",
+        "{\"tx\":1,\"def\":\"m::double\",\"to\":\"twice\"}",
+    );
+    assert!(!err && t.contains("\"ops\":2"), "{t}");
+    let (t, err) = c.tool("tx_commit", "{\"tx\":1}");
+    assert!(!err && t.contains("\"committed\":true"), "{t}");
+    let text = std::fs::read_to_string(root.join("src").join("m.bmb")).unwrap();
+    assert!(
+        text.contains("twice(twice(x))") && !text.contains("double"),
+        "{text}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
