@@ -67,6 +67,7 @@ enum Op {
     RemoveUnit { path: String },
     Rename { def: String, to: String },
     Expect { def: String, id: String },
+    Move { def: String, to: String },
 }
 
 impl Op {
@@ -94,6 +95,9 @@ impl Op {
             }
             Op::Expect { def, id } => {
                 format!("{{\"op\":\"expect\",\"def\":{},\"id\":{}}}", q(def), q(id))
+            }
+            Op::Move { def, to } => {
+                format!("{{\"op\":\"move\",\"def\":{},\"to\":{}}}", q(def), q(to))
             }
         }
     }
@@ -794,6 +798,17 @@ fn rename_rewrites_references_and_keeps_every_identity() {
                 ("geo::Area::twice", "geo::Surface::twice"),
             ],
         ),
+        // A trait's method (backlog T1-23): the declaration, the function
+        // of every `impl` and the calls.
+        (
+            "geo::Area::area",
+            "surface",
+            // The method has no body in the trait, so no row of its own.
+            &[(
+                "<geo::Pt as geo::Area>::area",
+                "<geo::Pt as geo::Area>::surface",
+            )],
+        ),
     ];
     for (k, (def, to, moves)) in cases.iter().enumerate() {
         let root = init_rich(&format!("rename{k}"));
@@ -869,6 +884,180 @@ fn rename_of_a_unit_rewrites_every_path_through_it() {
     }
 }
 
+/// Backlog T1-23: a trait method is renamed in its declaration, in the
+/// `impl` of every unit (written by the trait's full path there), and at
+/// calls by path and by method syntax.
+#[test]
+fn rename_of_a_trait_method_reaches_every_impl_and_call() {
+    let text = r#"
+#[summary("도형")]
+mod shape {
+    trait Sized2 {
+        #[effects(pure)]
+        fn width(self: &Self) -> i64;
+    }
+
+    struct Sq { s: i64 }
+
+    impl Sized2 for Sq {
+        #[effects(pure)]
+        fn width(self: &Sq) -> i64 {
+            self.s
+        }
+    }
+
+    #[effects(pure)]
+    fn of<T: Copy + Sized2>(t: T) -> i64 {
+        Sized2::width(&t)
+    }
+}
+
+#[summary("쓰는 쪽")]
+mod user {
+    struct Bar { n: i64 }
+
+    impl shape::Sized2 for Bar {
+        #[effects(pure)]
+        fn width(self: &Bar) -> i64 {
+            self.n
+        }
+    }
+
+    #[effects(pure)]
+    fn both(b: Bar, q: shape::Sq) -> i64 {
+        b.width().saturating_add(shape::Sized2::width(&q)).saturating_add(q.width())
+    }
+}
+"#;
+    let root = temp("rename_trait_fn");
+    import(&root, &[("base.bmb".into(), text.into())]);
+    let before = ids(&root);
+    let c = commit(&root, &[rename("shape::Sized2::width", "span")]).unwrap();
+    assert!(c.ok, "{}", c.diagnostics);
+    let want: BTreeMap<String, String> = before
+        .iter()
+        .map(|(p, v)| (p.replace("::width", "::span"), v.clone()))
+        .collect();
+    assert_eq!(ids(&root), want);
+    let after: String = snapshot(&root).into_values().collect();
+    assert!(!after.contains("width"), "{after}");
+    for part in [
+        "fn span(self: &Self)",
+        "fn span(self: &Sq)",
+        "fn span(self: &Bar)",
+        "b.span()",
+        "q.span()",
+    ] {
+        assert!(after.contains(part), "{part}\n{after}");
+    }
+    let (ok, output) = bmb(&["verify", arg(&root)]);
+    assert!(ok, "{output}");
+    // An `impl`'s function is not renamed apart from the trait's.
+    let before = snapshot(&root);
+    let c = commit(&root, &[rename("<shape::Sq as shape::Sized2>::span", "x")]).unwrap();
+    assert!(!c.ok);
+    assert_eq!(snapshot(&root), before);
+}
+
+/// Backlog T1-23: `move` takes a function of one unit into another. Its
+/// references are written by the new path, what it names of its old unit by
+/// full path, and every identity stays as it was.
+#[test]
+fn move_of_a_function_keeps_every_identity() {
+    let root = init_rich("move_fn");
+    let before = ids(&root);
+    // `geo::dec` names `geo::pos` (`requires`, `#[uses]`); `app::use_dec`
+    // calls it by full path.
+    let c = commit(
+        &root,
+        &[Op::Move {
+            def: "geo::dec".into(),
+            to: "app".into(),
+        }],
+    )
+    .unwrap();
+    assert!(c.ok, "{}", c.diagnostics);
+    let mut want = before.clone();
+    let v = want.remove("geo::dec").unwrap();
+    want.insert("app::dec".into(), v);
+    assert_eq!(ids(&root), want);
+    let files = snapshot(&root);
+    let app = files
+        .iter()
+        .find(|(f, _)| f.ends_with("app.bmb"))
+        .unwrap()
+        .1;
+    let geo = files
+        .iter()
+        .find(|(f, _)| f.ends_with("geo.bmb"))
+        .unwrap()
+        .1;
+    assert!(
+        app.contains("fn dec(x: i64)") && app.contains("requires geo::pos(x)"),
+        "{app}"
+    );
+    assert!(!geo.contains("fn dec("), "{geo}");
+    assert!(!app.contains("geo::dec"), "{app}");
+    let (ok, output) = bmb(&["verify", arg(&root)]);
+    assert!(ok, "{output}");
+
+    // Back again, with a caller left in the unit it leaves: `origin` of
+    // `geo` is called from `geo` by its short name.
+    let c = commit(
+        &root,
+        &[put(
+            "geo",
+            "#[effects(pure)]\nfn start() -> Pt {\n    origin()\n}",
+        )],
+    )
+    .unwrap();
+    assert!(c.ok, "{}", c.diagnostics);
+    let before = ids(&root);
+    let c = commit(
+        &root,
+        &[Op::Move {
+            def: "geo::origin".into(),
+            to: "app".into(),
+        }],
+    )
+    .unwrap();
+    assert!(c.ok, "{}", c.diagnostics);
+    let mut want = before.clone();
+    let v = want.remove("geo::origin").unwrap();
+    want.insert("app::origin".into(), v);
+    assert_eq!(ids(&root), want);
+    let text: String = snapshot(&root).into_values().collect();
+    assert!(text.contains("app::origin()"), "{text}");
+    assert!(
+        text.contains("fn origin() -> geo::Pt") && text.contains("geo::Pt::new(0, 0)"),
+        "{text}"
+    );
+    let (ok, output) = bmb(&["verify", arg(&root)]);
+    assert!(ok, "{output}");
+
+    // What `move` does not take, a unit that is not there, a name that is
+    // taken there: nothing changes.
+    let before = snapshot(&root);
+    for (def, to) in [
+        ("geo::Pt", "app"),
+        ("geo::Pt::new", "app"),
+        ("geo::size", "nowhere"),
+        ("geo::size", "geo"),
+        ("app::origin", "std"),
+    ] {
+        let c = commit(
+            &root,
+            &[Op::Move {
+                def: def.into(),
+                to: to.into(),
+            }],
+        )
+        .unwrap();
+        assert!(!c.ok, "{def} -> {to} committed");
+        assert_eq!(snapshot(&root), before, "{def} -> {to}");
+    }
+}
+
 #[test]
 fn rename_that_would_collide_or_capture_is_rejected() {
     let root = init_rich("rename_bad");
@@ -877,10 +1066,11 @@ fn rename_that_would_collide_or_capture_is_rejected() {
         // Collides with another definition of the unit.
         ("geo::dec", "origin"),
         ("geo::Pt", "Area"),
-        // Not a name, not a definition, a trait method.
+        // Not a name, not a definition.
         ("geo::dec", "a::b"),
         ("geo::nope", "x"),
-        ("geo::Area::area", "size2"),
+        // A trait method that is taken in the trait.
+        ("geo::Area::area", "twice"),
     ] {
         let c = commit(&root, &[rename(def, to)]).unwrap();
         assert!(!c.ok, "{def} -> {to} committed");

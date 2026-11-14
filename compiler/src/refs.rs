@@ -37,6 +37,15 @@ pub(crate) enum Decl<'a> {
     ImplFn { ty: String, name: &'a mut Ident },
     /// A trait declaration.
     Trait(&'a mut Ident),
+    /// A method declared in trait `tr` of the unit (its name before any
+    /// rewrite).
+    TraitFn { tr: String, name: &'a mut Ident },
+    /// A function of an `impl Trait for T` block: the trait's path as
+    /// written there (before any rewrite).
+    TraitImplFn {
+        trait_path: Vec<String>,
+        name: &'a mut Ident,
+    },
 }
 
 /// What a walk does at each place.
@@ -374,16 +383,32 @@ impl Walker<'_> {
         for i in &mut m.trait_impls {
             let depth = self.tparams.len();
             self.generics(&mut i.generics);
+            let written: Vec<String> = i.trait_path.iter().map(|x| x.name.clone()).collect();
             self.idents(&mut i.trait_path, Site::Bound);
             self.ty(&mut i.self_ty);
             for f in &mut i.fns {
+                self.r.decl(
+                    &unit,
+                    Decl::TraitImplFn {
+                        trait_path: written.clone(),
+                        name: &mut f.name,
+                    },
+                );
                 self.function(f);
             }
             self.tparams.truncate(depth);
         }
         for tr in &mut m.traits {
+            let name = tr.name.name.clone();
             self.r.decl(&unit, Decl::Trait(&mut tr.name));
             for tf in &mut tr.fns {
+                self.r.decl(
+                    &unit,
+                    Decl::TraitFn {
+                        tr: name.clone(),
+                        name: &mut tf.f.name,
+                    },
+                );
                 self.function(&mut tf.f);
             }
         }

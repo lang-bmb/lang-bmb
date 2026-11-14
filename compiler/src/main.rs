@@ -144,7 +144,7 @@ const USAGE: &str = "usage:
   bmb import DIR <file.bmb>...
                             create or replace workspace DIR from files, in normal form
   bmb apply DIR OPS.json    commit a transaction (JSON array of unit/put/remove/remove_unit/
-                            rename/expect ops)
+                            rename/expect/move ops)
                             to workspace DIR; rejected as a whole on any structural or type error
   bmb mcp [--write-tool] [--compact] [--tool-docs] [--file-tools] [--ast-tools] [--item-docs] [--stats] [--bounded|--bounded-16k] [--rename-ops] DIR
                             MCP server (stdio) for workspace DIR: query, map, verify, build, tx_*;

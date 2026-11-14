@@ -35,6 +35,10 @@ pub enum Op {
     /// in the workspace the transaction starts from (ADR-0059 §5:
     /// optimistic concurrency).
     Expect { def: String, id: String },
+    /// Move a function or `spec fn` of a unit (full path) into the unit
+    /// `to` (backlog T1-23): references to it are written by its new path,
+    /// and what it names of its old unit by full path. No identity changes.
+    Move { def: String, to: String },
 }
 
 /// Outcome of a commit.
@@ -389,6 +393,9 @@ enum TargetKind {
     ImplFn,
     Type,
     Trait,
+    /// A trait's method (`Trait::m`): its declaration, the function of
+    /// that name in every `impl` of the trait, and its calls.
+    TraitFn,
 }
 
 /// Renames one definition and every reference to it (ADR-0059 §5).
@@ -407,7 +414,7 @@ impl Rewrite for Renamer<'_> {
         let full: Vec<String> = t.unit.iter().chain(&t.local).cloned().collect();
         // How many segments past the target's name the path has at `site`.
         let extra: &[usize] = match (t.kind, site) {
-            (TargetKind::Fn | TargetKind::ImplFn, Site::Call) => &[0],
+            (TargetKind::Fn | TargetKind::ImplFn | TargetKind::TraitFn, Site::Call) => &[0],
             (TargetKind::Type, Site::Call | Site::Variant) => &[1],
             (TargetKind::Type, Site::Type | Site::Struct) => &[0],
             (TargetKind::Trait, Site::Call) => &[1],
@@ -435,11 +442,30 @@ impl Rewrite for Renamer<'_> {
 
     /// The target's own declaration (a type's also in its `impl` head).
     fn decl(&mut self, unit: &[String], d: Decl<'_>) {
+        let (kind, local) = (self.target.kind, &self.target.local);
+        // An `impl` of the target's trait may be in any unit: by the full
+        // path of the trait, or by its name in the trait's own unit.
+        let d = match d {
+            Decl::TraitImplFn { trait_path, name } => {
+                let full: Vec<&String> = self.target.unit.iter().chain(&local[..1]).collect();
+                let names = trait_path.iter().collect::<Vec<_>>() == full
+                    || (unit == self.target.unit.as_slice() && trait_path == local[..1]);
+                if kind == TargetKind::TraitFn && names && name.name == local[1] {
+                    name.name = self.to.to_string();
+                }
+                return;
+            }
+            other => other,
+        };
         if unit != self.target.unit.as_slice() {
             return;
         }
-        let (kind, local) = (self.target.kind, &self.target.local);
         let name = match d {
+            Decl::TraitFn { tr, name }
+                if kind == TargetKind::TraitFn && tr == local[0] && name.name == local[1] =>
+            {
+                name
+            }
             Decl::Fn(n) if kind == TargetKind::Fn && n.name == local[0] => n,
             Decl::Type(n) | Decl::ImplTy(n) if kind == TargetKind::Type && n.name == local[0] => n,
             Decl::ImplFn { ty, name }
@@ -471,10 +497,15 @@ fn rename(p: &mut Program, def: &str, to: &str) -> Result<(), String> {
     }
     let (kind, n_local) = if t.adts.contains_key(def) {
         (TargetKind::Type, 1)
-    } else if fn_sig.is_some_and(|s| s.trait_of.is_some()) {
-        return Err(format!(
-            "`{def}` is a trait method: `rename` takes functions, types and traits"
-        ));
+    } else if let Some(tr) = fn_sig.and_then(|s| s.trait_of.as_ref()) {
+        // The trait's method by its own path; an `impl`'s function follows
+        // the trait's and is not renamed apart from it.
+        if !def.starts_with(&format!("{tr}::")) {
+            return Err(format!(
+                "`{def}` implements a method of `{tr}`: rename the trait's method (`{tr}::..`)"
+            ));
+        }
+        (TargetKind::TraitFn, 2)
     } else if fn_sig.is_some_and(|s| s.in_impl) {
         (TargetKind::ImplFn, 2)
     } else if fn_sig.is_some() {
@@ -580,6 +611,139 @@ fn rename_unit(
     Ok(())
 }
 
+/// References to the moved function, by its new full path.
+struct Mover<'a> {
+    from: &'a [String],
+    name: &'a str,
+    to: &'a [String],
+}
+
+impl Rewrite for Mover<'_> {
+    fn path(&mut self, segs: &mut Vec<String>, site: Site, unit: &[String], _: &[String]) {
+        if site != Site::Call {
+            return;
+        }
+        let full = segs.len() == self.from.len() + 1
+            && segs[..self.from.len()] == *self.from
+            && segs[self.from.len()] == self.name;
+        let short = unit == self.from && segs.len() == 1 && segs[0] == self.name;
+        if full || short {
+            *segs = self
+                .to
+                .iter()
+                .cloned()
+                .chain([self.name.to_string()])
+                .collect();
+        }
+    }
+}
+
+/// What the moved function names of its old unit by a short path, by the
+/// full path.
+struct Qualifier<'a> {
+    unit: &'a [String],
+    locals: &'a std::collections::BTreeSet<String>,
+}
+
+impl Rewrite for Qualifier<'_> {
+    fn path(&mut self, segs: &mut Vec<String>, site: Site, _: &[String], tparams: &[String]) {
+        let type_param = site == Site::Type && segs.len() == 1 && tparams.contains(&segs[0]);
+        if self.locals.contains(&segs[0]) && !type_param && !segs.starts_with(self.unit) {
+            *segs = self
+                .unit
+                .iter()
+                .cloned()
+                .chain(segs.iter().cloned())
+                .collect();
+        }
+    }
+}
+
+/// Moves the function at `def` into unit `to` (backlog T1-23). The moved
+/// function then names the functions, types and traits of its old unit by
+/// full path, and every reference to it is written by its new full path.
+/// As for a rename, every identity must stay as it was: otherwise (a short
+/// path that meant something else, a constant of the old unit read by
+/// name) it fails and `p` is left as it was.
+fn move_def(p: &mut Program, def: &str, to: &str) -> Result<(), String> {
+    let (resolved, t) =
+        checked(p).ok_or("`move` needs a program that checks; this one does not")?;
+    let sig = t.fns.get(def).filter(|s| !s.builtin);
+    if !sig.is_some_and(|s| !s.in_impl && s.trait_of.is_none()) {
+        return Err(format!(
+            "`move` takes a function or `spec fn` of a unit; `{def}` is not one"
+        ));
+    }
+    let segs: Vec<String> = def.split("::").map(String::from).collect();
+    let (name, from) = segs.split_last().expect("a path has a segment");
+    let to_segs: Vec<String> = to.split("::").map(String::from).collect();
+    if from.is_empty() {
+        return Err(format!("`{def}` is not a full path"));
+    }
+    if from == to_segs.as_slice() {
+        return Err(format!("`{def}` is in unit `{to}`"));
+    }
+    fn strs(xs: &[String]) -> Vec<&str> {
+        xs.iter().map(String::as_str).collect()
+    }
+    let mut renamed = p.clone();
+    let Some(src) = find_mod(&mut renamed.mods, &strs(from)) else {
+        return Err(format!("no unit `{}`", from.join("::")));
+    };
+    let locals: std::collections::BTreeSet<String> = src
+        .fns
+        .iter()
+        .map(|f| &f.name)
+        .chain(src.types.iter().map(|x| &x.name))
+        .chain(src.traits.iter().map(|x| &x.name))
+        .map(|i| i.name.clone())
+        .collect();
+    let at = src
+        .fns
+        .iter()
+        .position(|f| f.name.name == *name)
+        .ok_or(format!("no function `{def}`"))?;
+    let mut f = src.fns.remove(at);
+    crate::refs::walk_fn(
+        &mut f,
+        from,
+        &mut Qualifier {
+            unit: from,
+            locals: &locals,
+        },
+    );
+    let Some(dst) = find_mod(&mut renamed.mods, &strs(&to_segs)) else {
+        return Err(format!("no unit `{to}`: create it first"));
+    };
+    if dst.fns.iter().any(|g| g.name.name == *name) {
+        return Err(format!("unit `{to}` has a function `{name}`"));
+    }
+    dst.fns.push(f);
+    crate::refs::walk(
+        &mut renamed,
+        &mut Mover {
+            from,
+            name,
+            to: &to_segs,
+        },
+    );
+    let before = identities(&resolved, &t);
+    if let Some((r2, t2)) = checked(&renamed) {
+        let after = identities(&r2, &t2);
+        let mut a: Vec<&String> = before.values().collect();
+        let mut b: Vec<&String> = after.values().collect();
+        a.sort();
+        b.sort();
+        if a != b {
+            return Err(format!(
+                "moving `{def}` to `{to}` would change what other names refer to"
+            ));
+        }
+    }
+    *p = renamed;
+    Ok(())
+}
+
 /// The full paths of the trait declarations.
 pub(crate) fn trait_paths(p: &Program) -> std::collections::BTreeSet<String> {
     fn walk(m: &Mod, prefix: &str, out: &mut std::collections::BTreeSet<String>) {
@@ -615,7 +779,9 @@ pub fn plan(files: &[(String, String)], ops: &[Op]) -> (Commit, Option<BTreeMap<
         let target = match op {
             Op::Unit { path, .. } | Op::RemoveUnit { path } => Some(path.as_str()),
             Op::Put { unit, .. } => Some(unit.as_str()),
-            Op::Remove { def } | Op::Rename { def, .. } => Some(def.trim_start_matches('<')),
+            Op::Remove { def } | Op::Rename { def, .. } | Op::Move { def, .. } => {
+                Some(def.trim_start_matches('<'))
+            }
             Op::Expect { .. } => None,
         };
         if target.is_some_and(crate::stdlib::in_std) {
@@ -762,6 +928,21 @@ pub fn plan(files: &[(String, String)], ops: &[Op]) -> (Commit, Option<BTreeMap<
                     continue;
                 }
                 if let Err(e) = rename(&mut program, def, to) {
+                    problems.push(format!("op {k}: {e}"));
+                }
+            }
+            Op::Move { def, to } => {
+                if let Err(e) = segments(k, "definition", def).and(segments(k, "unit", to)) {
+                    problems.push(e);
+                    continue;
+                }
+                if crate::stdlib::in_std(to) {
+                    problems.push(format!(
+                        "op {k}: `std` is the standard library: a transaction does not change it"
+                    ));
+                    continue;
+                }
+                if let Err(e) = move_def(&mut program, def, to) {
                     problems.push(format!("op {k}: {e}"));
                 }
             }
@@ -1002,7 +1183,8 @@ pub fn write_units(root: &Path, units: &BTreeMap<String, String>) -> Result<(), 
 /// Parses transaction operations from a JSON array, e.g.
 /// `[{"op":"unit","path":"a","summary":"..."},{"op":"put","unit":"a","code":"fn .."},
 ///   {"op":"remove","def":"a::f"},{"op":"remove_unit","path":"a"},
-///   {"op":"rename","def":"a::f","to":"g"},{"op":"expect","def":"a::g","id":"sha256:.."}]`.
+///   {"op":"rename","def":"a::f","to":"g"},{"op":"expect","def":"a::g","id":"sha256:.."},
+///   {"op":"move","def":"a::g","to":"b"}]`.
 pub fn parse_ops(json: &str) -> Result<Vec<Op>, String> {
     let v = crate::json::parse(json)?;
     let crate::json::Value::Array(items) = v else {
@@ -1034,6 +1216,10 @@ pub fn parse_ops(json: &str) -> Result<Vec<Op>, String> {
             "expect" => Op::Expect {
                 def: get("def")?,
                 id: get("id")?,
+            },
+            "move" => Op::Move {
+                def: get("def")?,
+                to: get("to")?,
             },
             other => return Err(format!("op {k}: unknown op `{other}`")),
         };
