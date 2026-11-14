@@ -39,7 +39,7 @@ check "backlog" python3 scripts/check_backlog.py
 check "language reference index" python3 scripts/reference.py check
 check "surface fingerprint" python3 scripts/surface.py check
 check "conformance table" python3 scripts/conformance.py check
-check "components and port ledger" python3 scripts/components.py check
+check "components and port ledger" python3 scripts/components.py quick
 check "roadmap status block" python3 scripts/progress.py --check-roadmap
 # A gate-power run applies one mutant, so its mutants do not all apply.
 if [ -z "${BMB_GATE_POWER_RUN:-}" ]; then

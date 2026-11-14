@@ -4,6 +4,9 @@
   components.py check            every stage0 file is in one component, port
                                  files exist, no pinned component drifted,
                                  the ledger file is current
+  components.py quick            the same without proving the port: the
+                                 ledger's proof columns are not compared
+                                 (what scripts/fresh.sh runs, INF-37)
   components.py table            component sizes (port map §7.1)
   components.py ledger [--write] the generated block of the port ledger
   components.py b0               gate B0: the whole port estimated from the
@@ -184,7 +187,7 @@ def port_rows(root):
     return _PORT_ROWS[key]
 
 
-def port_facts(c, root):
+def port_facts(c, root, proof=True):
     """What the port files give (ADR-0122): lines and those only the proof
     reads, definitions and those proved without a trusted fact, obligations,
     the proof's cost, escape hatches. None for a component without a port."""
@@ -201,6 +204,8 @@ def port_facts(c, root):
     }
     # The port is one program: a component's units use the others', so the
     # whole port is proved once and each row goes to the file of its unit.
+    if not proof:
+        return facts
     units = {u for t in texts for u in re.findall(r"(?m)^mod (\w+)", t)}
     defs = [x for x in port_rows(root) if x["def"].split("::")[0] in units]
     facts["defs"] = len(defs)
@@ -214,7 +219,33 @@ def num(v):
     return "—" if v is None else f"{v:,}" if isinstance(v, int) else str(v)
 
 
-def ledger_block(root=ROOT):
+PROOF_COLUMNS = (8, 9, 10, 11)  # 정의, 증명된 정의, 의무, rlimit: they need the solver
+
+
+def without_proof(text):
+    """The ledger with the columns only a proof gives blanked: what `quick`
+    compares (the gate job compares all of it)."""
+    out = []
+    for line in text.splitlines():
+        cells = line.split(" | ")
+        if re.match(r"\| C\d+ ", line) and len(cells) > max(PROOF_COLUMNS):
+            for k in PROOF_COLUMNS:
+                cells[k] = "·"
+            line = " | ".join(cells)
+        out.append(line)
+    return "\n".join(out)
+
+
+def stale(root=ROOT, proof=True):
+    """Whether the ledger file differs from what the files give. Without
+    `proof` the port is not proved and the proof's columns are not compared
+    (INF-37: what runs before the gate needs no solver)."""
+    text = (root / LEDGER).read_text(encoding="utf-8")
+    new = replace(text, ledger_block(root, proof))
+    return new != text if proof else without_proof(new) != without_proof(text)
+
+
+def ledger_block(root=ROOT, proof=True):
     doc = load(root)
     head = ["ID", "구성 요소", "국면", "stage0 줄", "포트 줄", "명세 줄", "실행 배", "전체 배", "정의", "증명된 정의",
             "의무", "rlimit", "탈출구", "세션 토큰", "게이트 실행", "미결정으로 끝난 실행", "고정"]
@@ -223,7 +254,9 @@ def ledger_block(root=ROOT):
     friction = []
     for c in doc["components"]:
         s0 = sum(stage0_lines(p) for _, p in stage0_files(c, root))
-        f = port_facts(c, root)
+        f = port_facts(c, root, proof)
+        if f and not proof:
+            f.update(defs=0, proved=0, obligations=0, rlimit=0)
         p0 = ported_stage0_lines(c, root)
         total0 += s0
         total1 += f["lines"] if f else 0
@@ -317,9 +350,9 @@ def table(root=ROOT):
 
 def main():
     cmd = sys.argv[1] if len(sys.argv) > 1 else "check"
-    if cmd == "check":
+    if cmd in ("check", "quick"):
         bad = problems()
-        if not bad and replace((ROOT / LEDGER).read_text(encoding="utf-8"), ledger_block()) != (ROOT / LEDGER).read_text(encoding="utf-8"):
+        if not bad and stale(ROOT, proof=cmd == "check"):
             bad.append(f"{LEDGER} is stale: run `scripts/components.py ledger --write`")
         for b in bad:
             print(f"components: {b}", file=sys.stderr)

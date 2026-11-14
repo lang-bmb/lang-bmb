@@ -131,6 +131,11 @@ def main():
     assert "no ledger markers" in expect_exit(lambda: components.replace("none", "x"))
     # the repository's components and ledger are current
     assert components.problems() == []
+    assert not components.stale(), "the port ledger is stale: run `scripts/components.py ledger --write`"
+    # `quick` blanks the proof's columns of the component rows and nothing else
+    row = "| C1 | 렉서 | P1 | 862 | 2,004 | 139 | 2.2 | 2.3 | 78 | 78/78 | 617 | 18,381,582 | 0 | — | — | — | 고정 |"
+    assert components.without_proof(row) == "| C1 | 렉서 | P1 | 862 | 2,004 | 139 | 2.2 | 2.3 | · | · | · | · | 0 | — | — | — | 고정 |"
+    assert components.without_proof("| ID | 구성 요소 |\n마찰:") == "| ID | 구성 요소 |\n마찰:"
     print("ok")
 
 
