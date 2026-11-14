@@ -26,6 +26,11 @@ struct Fixed {
 }
 
 fn fix(files: &[(String, String)]) -> Fixed {
+    fix_with(&[], files)
+}
+
+/// As `fix`, with more flags.
+fn fix_with(flags: &[&str], files: &[(String, String)]) -> Fixed {
     static N: AtomicUsize = AtomicUsize::new(0);
     let dir = std::env::temp_dir().join(format!(
         "bmb-fix-cli-{}-{}",
@@ -40,6 +45,7 @@ fn fix(files: &[(String, String)]) -> Fixed {
     let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
         .current_dir(&dir)
         .args(["fix", "--write"])
+        .args(flags)
         .args(files.iter().map(|(n, _)| n))
         .output()
         .unwrap();
@@ -1035,5 +1041,109 @@ fn a_program_with_a_closure_is_fixed() {
         fixed.files[0].1.contains("|x: i64| -> i64"),
         "{}",
         fixed.files[0].1
+    );
+}
+
+/// `tests/run/max_list.bmb` without its induction lemma and the call.
+fn max_list_without_its_lemma() -> String {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/run/max_list.bmb");
+    let text = fs::read_to_string(path).unwrap();
+    let from = text.find("    // Recursion to quantifier").unwrap();
+    let to = text.find("    // The hidden contract of the task").unwrap();
+    let text = format!("{}{}", &text[..from], &text[to..]);
+    let call = "        proof {\n            contains_has_index(lst, lst.len(), m);\n        }\n";
+    assert!(text.contains(call));
+    text.replace(call, "")
+}
+
+/// ADR-0062 §5, ADR-0135 (backlog T1-24): `bmb fix --induction` writes the
+/// lemma from a recursive predicate to the quantified one a postcondition
+/// reaches, and its call, when the gate proves the lemma and the function
+/// with them. The function was not proved before (BVB `vc-vv0039`: the
+/// step from `contains_prefix` to the quantifier needs an induction).
+#[test]
+fn induction_writes_the_lemma_the_gate_proves() {
+    let files = one(&max_list_without_its_lemma());
+    assert!(checks(&files) && !verifies(&files));
+    // Without the flag `fix` does not run the prover and leaves the text.
+    let plain = fix(&files);
+    assert_eq!(plain.files, files, "{}", plain.report);
+
+    let fixed = fix_with(&["--induction"], &files);
+    assert!(fixed.ok, "{}", fixed.report);
+    assert_eq!(&fixed.codes[..2], ["E0811", "E0811"], "{}", fixed.report);
+    let text = &fixed.files[0].1;
+    assert!(
+        text.contains(
+            "    proof fn contains_prefix_gives_has_index_below(a: &[i64], n: usize, r: i64)
+        requires contains_prefix(a, n, r),
+        ensures has_index_below(a, n, r),
+        decreases n,
+    {
+        if n > 0 && contains_prefix(a, n - 1, r) {
+            contains_prefix_gives_has_index_below(a, n - 1, r);
+        }
+    }
+"
+        ),
+        "{text}"
+    );
+    assert!(
+        text.contains(
+            "        proof {
+            contains_prefix_gives_has_index_below(lst, lst.len(), m);
+        }
+        m
+"
+        ),
+        "{text}"
+    );
+    assert!(verifies(&fixed.files), "{text}");
+    // The same input gives the same bytes, and a second run changes nothing.
+    assert_eq!(fix_with(&["--induction"], &files).files, fixed.files);
+    let again = fix_with(&["--induction"], &fixed.files);
+    assert_eq!((again.files, again.rounds), (fixed.files.clone(), 0));
+}
+
+/// A draft that the gate does not prove is not written: here the
+/// postcondition is false, so no lemma closes it, and the two predicates
+/// of the same parameters are not related (the lemma itself fails).
+#[test]
+fn induction_writes_nothing_the_gate_does_not_prove() {
+    let text = r#"#[summary("t")]
+mod u {
+    spec fn any_below(a: &[i64], n: usize, r: i64) -> bool
+        decreases n,
+    {
+        if n == 0 { false } else { a[n - 1] == r || any_below(a, n - 1, r) }
+    }
+
+    spec fn all_below(a: &[i64], n: usize, r: i64) -> bool {
+        forall|i: usize| i < n ==> #[trigger] a[i] == r
+    }
+
+    spec fn kept(a: &[i64], n: usize, r: i64) -> bool { n <= a.len() && any_below(a, n, r) }
+
+    spec fn wanted(a: &[i64], r: i64) -> bool { all_below(a, a.len(), r) }
+
+    #[effects(pure)]
+    fn first(a: &[i64]) -> (r: i64)
+        requires a.len() > 0,
+        ensures wanted(a, r),
+    {
+        let m: i64 = a[0];
+        assert(kept(a, 1, m));
+        m
+    }
+}
+"#;
+    let files = one(text);
+    assert!(checks(&files) && !verifies(&files));
+    let fixed = fix_with(&["--induction"], &files);
+    assert_eq!(fixed.files, files, "{}", fixed.report);
+    assert!(
+        !fixed.codes.iter().any(|c| c == "E0811"),
+        "{}",
+        fixed.report
     );
 }

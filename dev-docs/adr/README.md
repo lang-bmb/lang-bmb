@@ -181,3 +181,4 @@ BMB v2의 설계 결정을 한 건에 파일 하나로 남긴다. 현재 확정�
 | [0132](0132-token-criteria-of-review-and-intent.md) | H-REVIEW·H-INTENT의 토큰 기준은 그대로 두고 동결한 두 집합은 탐지율만 판정. H-REVIEW의 토큰 축은 포트의 이력으로, H-INTENT의 토큰 조건은 함수 단위에서 충족 불가로 등록 |
 | [0133](0133-recursive-functions-in-satisfiability-checks.md) | 탐침이 결정하지 못한 충족 검사(W0901·W0905)는 닿는 재귀 정의를 `define-funs-rec`으로 쓴 질의를 탐침의 몫으로 먼저 푼다(뜻은 정량 정의와 같음). 미결정 216 → 86, V11 −38%. `bmb examples`에는 `T1-44g`에서 |
 | [0134](0134-examples-of-recursive-and-unrevealed-contracts.md) | `bmb examples`가 재귀 함수 꼴, 써 넣은 입력(배열은 값 하나), `#[uses]`와 무관한 계약의 정의로 질의. `bench/intent` 예시 재동결: `allowed` 없는 항목 12 → 0, 토큰 비 1.571 → 1.662. `lib/std` 34 → 52 |
+| [0135](0135-induction-lemma-drafts.md) | 귀납 보조 정리 초안은 `bmb fix --induction`이 후보를 만들고 게이트가 보조 정리와 함수를 함께 증명한 첫 후보만 적용. 꼴은 "재귀 술어 ⇒ 같은 매개변수의 술어" 하나. `bmb verify`의 진단과 플래그 없는 `fix`는 그대로 |

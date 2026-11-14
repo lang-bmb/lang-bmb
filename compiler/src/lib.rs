@@ -12,6 +12,7 @@ pub mod escape;
 pub mod fmt;
 pub mod identity;
 pub mod incremental;
+pub mod induct;
 pub mod json;
 pub mod lexer;
 pub mod lint;
@@ -261,6 +262,74 @@ pub fn fix_sources(files: &[(String, String)]) -> FixOutput {
 /// it in) and, with `confirm`, of each whose hash is no longer current
 /// (`bmb fix --confirm`: confirming is a judgment, §3).
 pub fn fix_sources_with(files: &[(String, String)], confirm: bool) -> FixOutput {
+    fix_sources_opts(files, confirm, false)
+}
+
+/// The texts after an induction draft, and the fixes it applied.
+type InductionStep = (Vec<(String, String)>, Vec<AppliedFix>);
+
+/// The first induction lemma draft the gate proves (`induct`, ADR-0135):
+/// for each function of `fe` the gate does not prove, in the order of its
+/// report, its drafts in order; one is kept when the lemma and the function
+/// are both proved with it written in. The texts with it, and the lemma
+/// and the call as applied fixes (code E0811: the diagnostic they answer).
+fn induction_step(
+    texts: &[(String, String)],
+    fe: &Frontend,
+    round: usize,
+) -> Option<InductionStep> {
+    let report = verify_frontend(fe, None, false, None);
+    let failed: Vec<String> = report
+        .output
+        .lines()
+        .filter_map(|l| json::parse(l).ok())
+        .filter(|r| r.get("status").and_then(|s| s.as_str()) == Some("failed"))
+        .filter_map(|r| r.get("def").and_then(|d| d.as_str()).map(str::to_string))
+        .collect();
+    for def in failed {
+        for d in induct::drafts(&fe.source, texts, &def) {
+            let mut next = texts.to_vec();
+            next[d.file].1 = d.apply(&texts[d.file].1);
+            let only: std::collections::BTreeSet<String> =
+                [d.def.clone(), d.lemma.clone()].into_iter().collect();
+            let proved = verify_sources_only(&next, None, false, &only).is_ok_and(|out| {
+                let ok = |path: &str| {
+                    out.output
+                        .lines()
+                        .filter_map(|l| json::parse(l).ok())
+                        .any(|r| {
+                            r.get("def").and_then(|x| x.as_str()) == Some(path)
+                                && r.get("status").and_then(|x| x.as_str()) == Some("verified")
+                        })
+                };
+                ok(&d.def) && ok(&d.lemma)
+            });
+            if proved {
+                let at = |pos: usize, text: &str| {
+                    let (line, col) = fe.sm.line_col(d.file as u32, pos as u32);
+                    AppliedFix {
+                        round,
+                        file: texts[d.file].0.clone(),
+                        line,
+                        col,
+                        code: "E0811",
+                        replacement: text.to_string(),
+                    }
+                };
+                return Some((
+                    next,
+                    vec![at(d.lemma_at, &d.lemma_text), at(d.call_at, &d.call_text)],
+                ));
+            }
+        }
+    }
+    None
+}
+
+/// As `fix_sources_with`; with `induction`, once no mechanical fix is left
+/// and the program checks, the induction lemma drafts the gate proves
+/// (`induction_step`, `bmb fix --induction`: this runs the prover).
+pub fn fix_sources_opts(files: &[(String, String)], confirm: bool, induction: bool) -> FixOutput {
     let mut texts: Vec<(String, String)> = files.to_vec();
     let mut applied = Vec::new();
     let mut rounds = 0;
@@ -319,6 +388,16 @@ pub fn fix_sources_with(files: &[(String, String)], confirm: bool) -> FixOutput 
             kept.push(c);
         }
         if kept.is_empty() {
+            if induction
+                && !fe.diags.has_errors()
+                && let Some((next, fixes)) = induction_step(&texts, &fe, rounds + 1)
+                && seen.insert(next.clone())
+            {
+                rounds += 1;
+                applied.extend(fixes);
+                texts = next;
+                continue;
+            }
             return fix_output(texts, applied, rounds, fe);
         }
         rounds += 1;

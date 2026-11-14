@@ -54,7 +54,7 @@ const USAGE: &str = "usage:
                             check, prove (all obligations) and build an executable
   bmb fmt [--check] <file.bmb>...
                             print the normal form (ADR-0019); --check fails if a file differs
-  bmb fix [--write|--print] [--confirm] <file.bmb>...
+  bmb fix [--write|--print] [--confirm] [--induction] <file.bmb>...
                             apply mechanical fixes (diagnostic replacements, and on a program
                             that checks the canonical `for` of counting `while` loops, W0907,
                             and the hash of each `#[rationale(..)]` that carries none;
@@ -62,7 +62,11 @@ const USAGE: &str = "usage:
                             and re-check until none applies; JSONL report of applied fixes,
                             remaining diagnostics
                             and a summary; --write rewrites changed files in place, --print
-                            prints the fixed text instead of the report; fails if errors remain
+                            prints the fixed text instead of the report; fails if errors remain;
+                            --induction also runs the prover: for a function it does not
+                            prove, the `proof fn` from a recursive predicate to a predicate
+                            of the same parameters that a postcondition reaches, and its
+                            call, written only when the gate proves both (ADR-0135)
   bmb uses [--write] [--cache DIR] <file.bmb>...
                             for each definition that fails to prove, find a minimal #[uses(..)]
                             list from its current entries and the hidden predicates its
@@ -513,12 +517,14 @@ fn run() -> ExitCode {
         }
         Some("fix") if args.len() > 1 => {
             let mut rest = &args[1..];
-            let (mut write, mut print_text, mut confirm) = (false, false, false);
+            let (mut write, mut print_text, mut confirm, mut induction) =
+                (false, false, false, false);
             loop {
                 match rest.first().map(String::as_str) {
                     Some("--write") => write = true,
                     Some("--print") => print_text = true,
                     Some("--confirm") => confirm = true,
+                    Some("--induction") => induction = true,
                     _ => break,
                 }
                 rest = &rest[1..];
@@ -531,7 +537,7 @@ fn run() -> ExitCode {
                 Ok(f) => f,
                 Err(code) => return code,
             };
-            let out = bmb::fix_sources_with(&files, confirm);
+            let out = bmb::fix_sources_opts(&files, confirm, induction);
             if print_text {
                 let text = out
                     .files
