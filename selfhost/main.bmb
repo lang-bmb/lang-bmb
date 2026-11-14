@@ -1,4 +1,4 @@
-#[summary("BMB로 쓴 컴파일러의 구동기 (stage0 compiler/src/main.rs의 포트, 백로그 4D-02). 국면마다 명령이 는다: 지금은 codes")]
+#[summary("BMB로 쓴 컴파일러의 구동기 (stage0 compiler/src/main.rs의 포트, 백로그 4D-02). 국면마다 명령이 는다: 지금은 codes와 dump tokens")]
 mod main {
     #[effects(alloc, io, nondet)]
     fn main() -> () {
@@ -11,7 +11,33 @@ mod main {
             }
             return;
         }
-        eprint_str("usage: stage1 codes [--md]\n");
+        if args.len() > 3 && args[1] == "dump" && args[2] == "tokens" {
+            let files: Vec<lib::Input> = read_files(args.as_slice(), 3);
+            let r: lib::Outcome = lib::dump_tokens(files.as_slice());
+            print_str(r.text.as_str());
+            if !r.ok {
+                std::process::exit(1);
+            }
+            return;
+        }
+        eprint_str("usage: stage1 codes [--md] | dump tokens FILE..\n");
         std::process::exit(2);
+    }
+
+    #[summary("인자의 파일들을 읽는다. 읽지 못하면 표준 오류에 적고 종료 코드 2")]
+    #[effects(alloc, io, nondet)]
+    fn read_files(args: &[String], from: usize) -> Vec<lib::Input> {
+        let mut files: Vec<lib::Input> = Vec::new();
+        let mut i: usize = from;
+        while i < args.len()
+            decreases args.len() - i,
+        {
+            match std::fs::read_to_string(args[i].as_str()) {
+                Ok(text) => files.push(lib::Input { name: args[i].clone(), text: text }),
+                Err(e) => { eprint_str("bmb: cannot read "); eprint_str(args[i].as_str()); eprint_str("\n"); std::process::exit(2); },
+            }
+            i = i + 1;
+        }
+        files
     }
 }

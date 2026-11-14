@@ -1,0 +1,2 @@
+let 名前 = 1; let héllo = 2; let x한글y = 3; é ée eé ٣ a٣ ²x x² ⅷ aⅷ → a→b ≤ x≤y 😀 a😀b ́ áb $ a$b _é __ 한 글 한글한글  x　y zw​v﻿ut
+ª º ǅ ʰ ͅ aͅ ０１ a０ 𝐀 a𝐀 󠁁

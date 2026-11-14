@@ -19,6 +19,15 @@
       "bmb": [
         "selfhost/*.bmb"
       ]
+    },
+    "unicode_ref": {
+      "rustc": "tests/port/unicode_ref.rs"
+    },
+    "unicode_classes": {
+      "bmb": [
+        "selfhost/unicode.bmb",
+        "tests/port/unicode_classes.bmb"
+      ]
     }
   },
   "cases": [
@@ -113,6 +122,87 @@
       ],
       "inputs": {
         "none": true
+      }
+    },
+    {
+      "name": "unicode-classes",
+      "component": "C1",
+      "a": [
+        "{build:unicode_ref}"
+      ],
+      "b": [
+        "{build:unicode_classes}"
+      ],
+      "inputs": {
+        "none": true
+      }
+    },
+    {
+      "name": "tokens",
+      "component": "C1",
+      "a": [
+        "{bmb}",
+        "dump",
+        "tokens",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "dump",
+        "tokens",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "*.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "tokens-together",
+      "component": "C1",
+      "a": [
+        "{bmb}",
+        "dump",
+        "tokens",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "dump",
+        "tokens",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/run/*.bmb",
+          "lib/std/*.bmb",
+          "selfhost/*.bmb"
+        ],
+        "chunk": 40
+      }
+    },
+    {
+      "name": "tokens-edges",
+      "component": "C1",
+      "a": [
+        "{bmb}",
+        "dump",
+        "tokens",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "dump",
+        "tokens",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/lexer/*.txt"
+        ],
+        "chunk": 1
       }
     }
   ]

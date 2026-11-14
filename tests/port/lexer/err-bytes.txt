@@ -1,0 +1,4 @@
+b'ab' b'' b'é' b"é" b'\q' b"\q\é\😀" b'\x' b'\xg1' b"\x+f\x++\x+g\x1" b'\u{e9}' b"한 글" b'\é' b'a
+b'b
+b"\x4é" b'\xff' b'\x+a' b"\"
+b"unterminated

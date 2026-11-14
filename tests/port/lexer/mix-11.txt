@@ -1,0 +1,44 @@
+\x80 break fn \x+f /// doc //// 0.1e0001 
+1.max(2) 
+/// \x7f*/ b'ab' // 'ab' 0x1ffffffffffffffffffffffffffffffff
+  a.5\"0o = >= 
+1.0e16b _
+9 b'ab'
+continueb'ab' & >= ;a 0.1e0001 \x7f ////0o 1.0e15 
+$ u8 :: 1.0e- $0.000001 ) + 😀 'outer. ::
+	\u{} <=
+( 1.max(2)한//  1_000
+b"\x+9" " 1e5 
+::*/~ 340282366920938463463374607431768211456# ///1.0e \u{ 😀 b'é'(1..2
+////→1.0e😀 
+2.5E10 　 'a' 0x\u{d800} 	 1.0e15 @ 
+0o */|| [ ٣ a.5 b' // 
+@b"é"
+1.0e- + 
+'a' 0.0000012.5E10 /// - 0.1e0001..9 & \u{1_F600}
+b' 1.0e+3 0.000001=> 1...'x: 글
+
+ 
+0b12 1.0_:a \u{d800}
+\n ' 
+\x+f usize b"break  , '''1.e0xffffffffffffffffffffffffffffffff !
+한 '' \"/* || [ 
+1.0_\u{}≤ ] break1 ==> 12 == \01. 0xffffffffffffffffffffffffffffffff \'
+i64\u{110000} 'a' zz 글/// - 11._1 0..n 0..n fn 
+b"é" == \'b .5 1.0e _ ///
+\u{d800} 1.0e160x1ffffffffffffffffffffffffffffffff12340282366920938463463374607431768211455 
+<ⅷ !==,1_000 ' 
+'a' \xg1 \n"　' \0 continue $|$ ^
+b' ///4.9e-324 0xfF b'é'0o78 →
+٣ + || 9 \ \" \ 
+ -> 340282366920938463463374607431768211455 2.4703282292062328e-324 
+bx.0 😀 1_000 
+0.000001 ..= + /// , 0o78한 ~ 
+'\n' 
+1__2.3__4 ==>  한*1.0e151.0e16 
+\u{1_F600} &1..2   'outer&& % b" ) 0x1ffffffffffffffffffffffffffffffff 
+==> && 0 != /1.0e 
+\x809007199254740993.0😀 😀'aa 
+||'a0x1ffffffffffffffffffffffffffffffff !
+2.4703282292062328e-324 [ 1e-400..=  1..2 :: |[continue .. ////
+u81.e ~  123456789012345678.09007199254740993.0 \' 1. !fn

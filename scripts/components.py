@@ -171,11 +171,13 @@ _PORT_ROWS = {}
 
 
 def port_rows(root):
-    """`bmb verify` over every port file of every component: the status
-    rows of the definitions (cached for the process)."""
+    """`bmb verify` over the whole port (every file under `selfhost/`, also
+    the ones no component lists yet: a unit of a later phase that an earlier
+    one already uses): the status rows of the definitions (cached for the
+    process)."""
     key = str(root)
     if key not in _PORT_ROWS:
-        files = sorted(str(p) for c in load(root)["components"] for _, p in port_files(c, root))
+        files = sorted(str(p) for p in (Path(root) / "selfhost").glob("*.bmb"))
         r = subprocess.run([bmb_bin(root), "verify", *files], capture_output=True, text=True, cwd=root)
         rows = [json.loads(l) for l in r.stdout.splitlines() if l.startswith("{")]
         _PORT_ROWS[key] = [x for x in rows if "status" in x and "def" in x]

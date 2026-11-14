@@ -1,0 +1,1158 @@
+#[summary("토큰화. 주석은 //뿐이고 버린다 (stage0 compiler/src/lexer.rs의 포트, 백로그 4D-02)")]
+mod lexer {
+    #[summary("이스케이프 하나: ok면 값 ch와 소스에서의 길이 n, 아니면 건너뛸 길이 n")]
+    struct Esc { ok: bool, ch: u32, n: usize }
+
+    #[summary("부동소수 리터럴의 부분들(자리는 _ 없이): 점이 있었는지 point, 지수 표시가 있었는지 e, 지수의 부호 neg")]
+    struct FloatParts { int: String, frac: String, point: bool, exp: String, neg: bool, e: bool, end: usize }
+
+    enum Tok { Ident(String), Int(wide::U128, ast::Radix), Float(u64), Str(String), Char(u32), Byte(u8), Bytes(Vec<u8>), P(String), Label(String), Eof }
+
+    struct Token { tok: Tok, span: source::Span }
+
+    #[summary("i부터 공백과 // 주석을 지난 자리")]
+    #[effects(pure)]
+    fn after_comments(text: &str, i: usize) -> usize {
+        let n: usize = text.len();
+        let mut j: usize = i;
+        while j < n
+            decreases n - j,
+        {
+            let k: usize = trim_lo(text, j, n);
+            if !(at(text, k, 0) == 47 && at(text, k, 1) == 47) {
+                return k;
+            }
+            let mut m: usize = k;
+            while m < n && at(text, m, 0) != 10
+                invariant m >= k, m <= n,
+                decreases n - m,
+            {
+                m = m + 1;
+            }
+            if m <= j {
+                return m;
+            }
+            j = m;
+        }
+        j
+    }
+
+    #[summary("마지막 토큰이 break나 continue인가")]
+    #[effects(pure)]
+    fn after_jump(out: &[Token]) -> bool {
+        if out.len() == 0 {
+            return false;
+        }
+        match &out[out.len() - 1].tok {
+            Tok::Ident(k) => k == "break" || k == "continue",
+            Tok::Int(v, r) => false,
+            Tok::Float(f) => false,
+            Tok::Str(s) => false,
+            Tok::Char(c) => false,
+            Tok::Byte(b) => false,
+            Tok::Bytes(bs) => false,
+            Tok::P(p) => false,
+            Tok::Label(l) => false,
+            Tok::Eof => false,
+        }
+    }
+
+    #[effects(pure)]
+    fn alpha(c: u32) -> bool {
+        c >= 65 && c <= 90 || c >= 97 && c <= 122
+    }
+
+    #[summary("text의 바이트 i + k. 끝을 넘으면 256")]
+    #[effects(pure)]
+    fn at(text: &str, i: usize, k: usize) -> (r: u32)
+        ensures r <= 256, (r == 256) == (i + k >= text.len()),
+    {
+        let j: usize = i.saturating_add(k);
+        if j < text.len() {
+            text.as_bytes()[j] as u32
+        } else {
+            256
+        }
+    }
+
+    #[summary("알 수 없는 이스케이프의 진단: 문자열과 문자 리터럴의 이스케이프 (ADR-0050 §1), Rust와 같다")]
+    #[effects(alloc)]
+    fn bad_escape(s: source::Span) -> diag::Diag {
+        diag::fix(diag::new("E0101", s, "unknown escape: string and character literals take \\n \\r \\t \\\\ \\' \\\" \\0 \\xHH (up to 7f) \\u{H..}"), "write the character itself, or one of those escapes (a code point is `\\u{e9}`)", None)
+    }
+
+    #[effects(alloc)]
+    fn block_comment(file: u32, text: &str, start: usize, diags: &mut diag::Diags) -> usize
+        requires start < text.len(),
+    {
+        let n: usize = text.len();
+        let mut i: usize = fwd(start, 2, n);
+        while i < n && !(at(text, i, 0) == 42 && at(text, i, 1) == 47)
+            invariant i <= n,
+            decreases n - i,
+        {
+            i = i + 1;
+        }
+        if n - i >= 2 {
+            i = i + 2;
+        } else {
+            i = n;
+        }
+        diags.push(diag::fix(diag::new("E0106", span(file, start, i), "block comments are not allowed"), "use `//` line comments", None));
+        i
+    }
+
+    #[effects(alloc)]
+    fn byte_lit(file: u32, text: &str, start: usize, out: &mut Vec<Token>, diags: &mut diag::Diags) -> usize
+        requires start < text.len(),
+    {
+        let n: usize = text.len();
+        let q: u32 = at(text, start, 1);
+        if q == 256 {
+            return start;
+        }
+        let mut i: usize = start + 2;
+        let mut bytes: Vec<u8> = Vec::new();
+        let mut non_ascii: bool = false;
+        let mut bad_escape: bool = false;
+        while i < n && at(text, i, 0) != q && !(q == 39 && at(text, i, 0) == 10)
+            invariant i <= n, n == text.len(),
+            decreases n - i,
+        {
+            let c: u32 = at(text, i, 0);
+            if c == 92 {
+                let e: Esc = escape(text, i);
+                if e.ok {
+                    bytes.push((e.ch % 256) as u8);
+                    i = fwd(i, e.n, n);
+                } else {
+                    let k: usize = char_len(text, i + 1).saturating_add(1);
+                    diags.push(diag::new("E0101", span(file, i, i.saturating_add(k)), "unknown escape: byte literals take \\n \\r \\t \\\\ \\' \\\" \\0 \\xHH"));
+                    i = fwd(i, k, n);
+                    bad_escape = true;
+                }
+            } else {
+                if c >= 128 {
+                    non_ascii = true;
+                }
+                bytes.push((c % 256) as u8);
+                i = i + 1;
+            }
+        }
+        if i >= n || at(text, i, 0) != q {
+            diags.push(diag::new("E0102", span(file, start, i), "unterminated byte literal"));
+            return i;
+        }
+        i = i + 1;
+        let s: source::Span = span(file, start, i);
+        if non_ascii {
+            let d: diag::Diag = diag::new("E0101", s, "a byte literal holds ASCII characters and escapes");
+            if q == 34 {
+                diags.push(diag::fix(d, "write the other bytes as `\\xHH`", Some(byte_text(bytes.as_slice(), 34))));
+            } else {
+                diags.push(diag::fix(d, "write one byte as `b'\\xHH'`, or the character's bytes as `b\"...\"`", None));
+            }
+        }
+        if q == 34 {
+            out.push(Token { tok: Tok::Bytes(bytes), span: s });
+        } else {
+            if bytes.len() != 1 && !non_ascii && !bad_escape {
+                diags.push(diag::new("E0101", s, "a byte literal holds one byte; use `b\"...\"` for several"));
+            }
+            let mut v: u8 = 0;
+            if bytes.len() > 0 {
+                v = bytes[0];
+            }
+            out.push(Token { tok: Tok::Byte(v), span: s });
+        }
+        i
+    }
+
+    #[summary("bytes를 따옴표 q(' 또는 \")의 바이트 리터럴로 쓴 글: 찍히는 ASCII는 그대로, 나머지는 이스케이프로. 정규형과 고침이 쓴다")]
+    #[effects(alloc)]
+    fn byte_text(bytes: &[u8], q: u32) -> String {
+        let mut s: String = String::from("b");
+        push_code(&mut s, q);
+        let mut i: usize = 0;
+        while i < bytes.len()
+            decreases bytes.len() - i,
+        {
+            let c: u32 = bytes[i] as u32;
+            if c == 10 {
+                s.push_str("\\n");
+            } else if c == 13 {
+                s.push_str("\\r");
+            } else if c == 9 {
+                s.push_str("\\t");
+            } else if c == 92 {
+                s.push_str("\\\\");
+            } else if c == 0 {
+                s.push_str("\\0");
+            } else if c == q {
+                s.push('\\');
+                push_code(&mut s, q);
+            } else if c >= 32 && c <= 126 {
+                push_code(&mut s, c);
+            } else {
+                s.push_str("\\x");
+                push_hex(&mut s, c / 16);
+                push_hex(&mut s, c % 16);
+            }
+            i = i + 1;
+        }
+        push_code(&mut s, q);
+        s
+    }
+
+    #[summary("i에서 시작하는 글자의 스칼라 값. 글자가 시작하지 않으면 1114112")]
+    #[effects(pure)]
+    fn char_code(text: &str, i: usize) -> u32 {
+        match std::str::decode_utf8(text, i) {
+            None => 1114112,
+            Some(d) => u32::from(d.ch),
+        }
+    }
+
+    #[summary("문자열이나 문자 리터럴의 이스케이프(i는 역슬래시): 그 글자와 길이, 이스케이프가 아니면 건너뛸 길이")]
+    #[effects(pure)]
+    fn char_escape(text: &str, i: usize) -> Esc {
+        let n: usize = text.len();
+        let e: u32 = at(text, i, 1);
+        if e == 256 {
+            return Esc { ok: false, ch: 0, n: 1 };
+        }
+        if e == 110 {
+            return Esc { ok: true, ch: 10, n: 2 };
+        }
+        if e == 114 {
+            return Esc { ok: true, ch: 13, n: 2 };
+        }
+        if e == 116 {
+            return Esc { ok: true, ch: 9, n: 2 };
+        }
+        if e == 92 || e == 39 || e == 34 {
+            return Esc { ok: true, ch: e, n: 2 };
+        }
+        if e == 48 {
+            return Esc { ok: true, ch: 0, n: 2 };
+        }
+        if e == 120 {
+            if at(text, i, 3) == 256 || !text.is_char_boundary(i + 4) {
+                return Esc { ok: false, ch: 0, n: 2 };
+            }
+            let a: u32 = hexval(at(text, i, 2));
+            let b: u32 = hexval(at(text, i, 3));
+            if a < 8 && b < 16 {
+                return Esc { ok: true, ch: a * 16 + b, n: 4 };
+            }
+            return Esc { ok: false, ch: 0, n: 4 };
+        }
+        if e == 117 && at(text, i, 2) == 123 {
+            let mut j: usize = i.saturating_add(3);
+            let mut count: u32 = 0;
+            let mut v: u32 = 0;
+            let mut hex: bool = true;
+            while j < n && at(text, j, 0) != 125
+                invariant count <= 7, v < 268435456, j >= i,
+                decreases n - j,
+            {
+                let c: u32 = at(text, j, 0);
+                if c != 95 {
+                    let h: u32 = hexval(c);
+                    if h == 16 {
+                        hex = false;
+                    } else if count < 7 {
+                        count = count + 1;
+                        v = v % 16777216 * 16 + h;
+                    }
+                }
+                j = j + 1;
+            }
+            if j >= n {
+                return Esc { ok: false, ch: 0, n: 3 };
+            }
+            let len: usize = j + 1 - i;
+            if j < i || !hex || count == 0 || count > 6 || v > 1114111 || v >= 55296 && v <= 57343 {
+                return Esc { ok: false, ch: 0, n: len };
+            }
+            return Esc { ok: true, ch: v, n: len };
+        }
+        Esc { ok: false, ch: 0, n: char_len(text, i.saturating_add(1)).saturating_add(1) }
+    }
+
+    #[summary("i에서 시작하는 글자의 바이트 수. 글자가 시작하지 않으면 0")]
+    #[effects(pure)]
+    fn char_len(text: &str, i: usize) -> usize {
+        match std::str::decode_utf8(text, i) {
+            None => 0,
+            Some(d) => { if d.next > i { d.next - i } else { 0 } },
+        }
+    }
+
+    #[summary("'a', '\\n', '\\u{e9}': 문자 리터럴 (ADR-0050 §1). 문자 리터럴이 아니면 start를 낸다")]
+    #[effects(alloc)]
+    fn char_lit(file: u32, text: &str, start: usize, out: &mut Vec<Token>, diags: &mut diag::Diags) -> usize
+        requires start < text.len(),
+    {
+        let mut have: bool = false;
+        let mut v: u32 = 0;
+        let mut j: usize = start + 1;
+        let escaped: bool = at(text, start, 1) == 92;
+        if escaped {
+            let e: Esc = char_escape(text, start + 1);
+            have = e.ok;
+            v = e.ch;
+            j = (start + 1).saturating_add(e.n);
+        } else {
+            let k: usize = char_len(text, start + 1);
+            if k > 0 {
+                have = true;
+                v = char_code(text, start + 1);
+                j = (start + 1).saturating_add(k);
+            }
+        }
+        if at(text, j, 0) == 39 && j > start + 1 {
+            let s: source::Span = span(file, start, j + 1);
+            if have && !(v == 39 && !escaped) {
+                out.push(Token { tok: Tok::Char(v), span: s });
+            } else {
+                diags.push(bad_escape(span(file, start + 1, j)));
+                out.push(Token { tok: Tok::Char(0), span: s });
+            }
+            return j + 1;
+        }
+        start
+    }
+
+    #[summary("// 주석을 버린다. /// 줄들은 한 묶음의 줄을 빈칸으로 이어 #[summary(..)]의 토큰 일곱으로 낸다")]
+    #[effects(alloc)]
+    fn comment(file: u32, text: &str, start: usize, out: &mut Vec<Token>) -> usize
+        requires start < text.len(),
+    {
+        let n: usize = text.len();
+        if !doc(text, start) {
+            let mut e: usize = start;
+            while e < n && at(text, e, 0) != 10
+                invariant e <= n,
+                decreases n - e,
+            {
+                e = e + 1;
+            }
+            return e;
+        }
+        let mut i: usize = start;
+        let mut end: usize = start;
+        let mut parts: String = String::new();
+        let mut any: bool = false;
+        let mut go: bool = true;
+        while go && i < n
+            invariant i <= n, n == text.len(),
+            decreases n - i,
+        {
+            let from: usize = fwd(i, 3, n);
+            let mut j: usize = from;
+            while j < n && at(text, j, 0) != 10
+                invariant j <= n, j >= from,
+                decreases n - j,
+            {
+                j = j + 1;
+            }
+            let a: usize = trim_lo(text, from, j);
+            if a <= j {
+                let b: usize = trim_hi(text, a, j);
+                if b > a {
+                    if any {
+                        parts.push(' ');
+                    }
+                    parts.push_str(cut(text, a, b).as_str());
+                    any = true;
+                }
+            }
+            end = j;
+            let mut k: usize = j;
+            if k < n {
+                k = k + 1;
+            }
+            while k < n && (at(text, k, 0) == 32 || at(text, k, 0) == 9 || at(text, k, 0) == 13)
+                invariant k <= n, k >= j,
+                decreases n - k,
+            {
+                k = k + 1;
+            }
+            if k < n && doc(text, k) {
+                i = k;
+            } else {
+                go = false;
+                i = j;
+            }
+        }
+        if any {
+            let s: source::Span = span(file, start, end);
+            punct(out, "#", s);
+            punct(out, "[", s);
+            out.push(Token { tok: Tok::Ident(String::from("summary")), span: s });
+            punct(out, "(", s);
+            out.push(Token { tok: Tok::Str(parts.clone()), span: s });
+            punct(out, ")", s);
+            punct(out, "]", s);
+        }
+        i
+    }
+
+    #[summary("text[a..b]의 사본. 글자 경계가 아니면 빈 글(닿지 않는 갈래: 자르는 자리는 모두 글자의 앞뒤다)")]
+    #[effects(alloc)]
+    fn cut(text: &str, a: usize, b: usize) -> String {
+        if a <= b && b <= text.len() && text.is_char_boundary(a) && text.is_char_boundary(b) {
+            String::from(&text[a..b])
+        } else {
+            String::new()
+        }
+    }
+
+    #[effects(pure)]
+    fn digit(c: u32) -> bool {
+        c >= 48 && c <= 57
+    }
+
+    #[summary("/// 글은 #[summary(\"글\")]의 입력 꼴이다 (ADR-0117). //와 ////는 주석으로 남는다")]
+    #[effects(pure)]
+    fn doc(text: &str, i: usize) -> bool {
+        at(text, i, 0) == 47 && at(text, i, 1) == 47 && at(text, i, 2) == 47 && at(text, i, 3) != 47
+    }
+
+    #[summary("바이트 리터럴 안의 이스케이프(i는 역슬래시): 값과 길이 (ADR-0044 §2, Rust와 같다). \\xHH의 두 글자는 Rust의 u8::from_str_radix가 읽는 대로다: 16진 둘, 또는 +와 16진 하나")]
+    #[effects(pure)]
+    fn escape(text: &str, i: usize) -> Esc {
+        let e: u32 = at(text, i, 1);
+        if e == 110 {
+            return Esc { ok: true, ch: 10, n: 2 };
+        }
+        if e == 114 {
+            return Esc { ok: true, ch: 13, n: 2 };
+        }
+        if e == 116 {
+            return Esc { ok: true, ch: 9, n: 2 };
+        }
+        if e == 92 || e == 39 || e == 34 {
+            return Esc { ok: true, ch: e, n: 2 };
+        }
+        if e == 48 {
+            return Esc { ok: true, ch: 0, n: 2 };
+        }
+        if e == 120 {
+            let a: u32 = at(text, i, 2);
+            let b: u32 = hexval(at(text, i, 3));
+            if b < 16 && a == 43 {
+                return Esc { ok: true, ch: b, n: 4 };
+            }
+            if b < 16 && hexval(a) < 16 {
+                return Esc { ok: true, ch: hexval(a) * 16 + b, n: 4 };
+            }
+        }
+        Esc { ok: false, ch: 0, n: 0 }
+    }
+
+    #[summary("빠진 자리를 채워 쓴 리터럴 (.5 -> 0.5, 1. -> 1.0, 1e5 -> 1.0e5)")]
+    #[effects(alloc)]
+    fn fixed(f: &FloatParts) -> String {
+        let mut s: String = String::new();
+        if f.int.len() == 0 {
+            s.push('0');
+        } else {
+            s.push_str(f.int.as_str());
+        }
+        s.push('.');
+        if f.frac.len() == 0 {
+            s.push('0');
+        } else {
+            s.push_str(f.frac.as_str());
+        }
+        if f.e {
+            s.push('e');
+            if f.neg {
+                s.push('-');
+            }
+            s.push_str(f.exp.as_str());
+        }
+        s
+    }
+
+    #[summary("부동소수 리터럴 (ADR-0061 §2), 또는 잘못 쓴 것: 필드 이름이 올 수 없는 자리의 .5, 1., 1e5 (E0109)")]
+    #[effects(alloc)]
+    fn float_lit(file: u32, text: &str, start: usize, out: &mut Vec<Token>, diags: &mut diag::Diags) -> usize {
+        let n: usize = text.len();
+        let f: FloatParts = float_parts(text, start);
+        let mut i: usize = f.end;
+        let exp_ok: bool = !f.e || f.exp.len() > 0;
+        let lit: String = cut(text, start, i);
+        let s: source::Span = span(file, start, i);
+        let mut why: String = String::new();
+        if f.int.len() == 0 {
+            why.push_str("has no digits before the point");
+        } else if !f.point {
+            why.push_str("has no point");
+        } else if f.frac.len() == 0 {
+            why.push_str("has no digits after the point");
+        }
+        if why.len() > 0 {
+            let mut m: String = joined("float literal `", lit.as_str(), "` ");
+            m.push_str(why.as_str());
+            let mut r: Option<String> = None;
+            if exp_ok {
+                r = Some(fixed(&f));
+            }
+            diags.push(diag::fix(diag::new("E0109", s, m.as_str()), "a float literal has digits on both sides of the point: `1.0`, `0.5`, `1.0e-9`", r));
+        } else if !exp_ok {
+            diags.push(diag::fix(diag::new("E0109", s, joined("float literal `", lit.as_str(), "` has no exponent digits").as_str()), "write the exponent's digits after `e`: `1.0e-9`", None));
+        }
+        let mut bits: u64 = 0;
+        if exp_ok {
+            bits = float::parse(f.int.as_bytes(), f.frac.as_bytes(), f.neg, f.exp.as_bytes());
+        }
+        if bits == 9218868437227405312 {
+            diags.push(diag::fix(diag::new("E0406", s, joined("float literal `", lit.as_str(), "` is too large for `f64`").as_str()), "the largest finite `f64` is `f64::MAX`; infinity is `f64::INFINITY`", None));
+        }
+        if word(at(text, i, 0)) {
+            let slo: usize = i;
+            while i < n && word(at(text, i, 0))
+                decreases n - i,
+            {
+                i = i + 1;
+            }
+            let suffix: String = cut(text, slo, i);
+            let d: diag::Diag = diag::new("E0104", span(file, start, i), joined("literal suffix `", suffix.as_str(), "` is not allowed").as_str());
+            if suffix == "f64" || suffix == "f32" {
+                diags.push(diag::fix(d, "remove the suffix", Some(cut(text, start, slo))));
+            } else {
+                diags.push(diag::fix(d, "a float literal is digits, a point, digits and an optional exponent: `6.02e23`", None));
+            }
+        }
+        out.push(Token { tok: Tok::Float(bits), span: span(file, start, i) });
+        i
+    }
+
+    #[effects(alloc)]
+    fn float_parts(text: &str, start: usize) -> FloatParts {
+        let mut int: String = String::new();
+        let mut frac: String = String::new();
+        let mut exp: String = String::new();
+        let mut point: bool = false;
+        let mut e: bool = false;
+        let mut neg: bool = false;
+        let mut i: usize = take_digits(text, start, &mut int);
+        if at(text, i, 0) == 46 {
+            point = true;
+            i = take_digits(text, i + 1, &mut frac);
+        }
+        let c: u32 = at(text, i, 0);
+        if c == 101 || c == 69 {
+            e = true;
+            i = i + 1;
+            let s: u32 = at(text, i, 0);
+            if s == 45 {
+                neg = true;
+                i = i + 1;
+            } else if s == 43 {
+                i = i + 1;
+            }
+            i = take_digits(text, i, &mut exp);
+        }
+        FloatParts { int: int, frac: frac, point: point, exp: exp, neg: neg, e: e, end: i }
+    }
+
+    #[summary("i의 10진 자리들이 부동소수 리터럴을 시작하는가, 잘 쓴 것이든(1.5, 2.0e-3) 아니든(1., 1e5): 점과 숫자, 구간(0..n)도 메서드나 필드 이름(1.max(2))도 시작하지 않는 점, 또는 자리 바로 뒤의 지수")]
+    #[effects(pure)]
+    fn float_start(text: &str, i: usize) -> bool
+        requires i < text.len(),
+    {
+        let n: usize = text.len();
+        let c1: u32 = at(text, i, 1);
+        if at(text, i, 0) == 48 && (c1 == 120 || c1 == 111 || c1 == 98) {
+            return false;
+        }
+        let mut j: usize = i;
+        while j < n && (digit(at(text, j, 0)) || at(text, j, 0) == 95)
+            invariant j <= n,
+            decreases n - j,
+        {
+            j = j + 1;
+        }
+        let c: u32 = at(text, j, 0);
+        let d: u32 = at(text, j, 1);
+        if c == 46 {
+            if d == 256 || digit(d) {
+                return true;
+            }
+            return !(alpha(d) || d == 95 || d == 46);
+        }
+        if c == 101 || c == 69 {
+            if digit(d) {
+                return true;
+            }
+            if d == 43 || d == 45 {
+                return digit(at(text, j, 2));
+            }
+        }
+        false
+    }
+
+    #[summary("부동소수 리터럴 값의 정규형 (ADR-0061 §2): 같은 f64로 되읽히는 가장 짧은 글(Rust의 {:?}), 가수에 점을 넣어(1e-9는 1.0e-9로 쓴다) 다시 리터럴이 되게 한다")]
+    #[effects(alloc)]
+    fn float_text(bits: u64) -> String {
+        let s: String = float::debug(bits);
+        let n: usize = s.len();
+        let mut e: usize = n;
+        let mut point: bool = false;
+        let mut i: usize = 0;
+        while i < n && e == n
+            invariant i <= n, n == s.len(),
+            decreases n - i,
+        {
+            let c: u32 = at(s.as_str(), i, 0);
+            if c == 101 {
+                e = i;
+            } else if c == 46 {
+                point = true;
+            }
+            i = i + 1;
+        }
+        if e == n || point {
+            return s;
+        }
+        let mut out: String = cut(s.as_str(), 0, e);
+        out.push_str(".0");
+        out.push_str(cut(s.as_str(), e, n).as_str());
+        out
+    }
+
+    #[summary("i에서 k만큼 나아간 자리: 적어도 하나, 많아야 끝 n까지")]
+    #[effects(pure)]
+    fn fwd(i: usize, k: usize, n: usize) -> (r: usize)
+        requires i < n,
+        ensures r > i, r <= n,
+    {
+        if k > 0 && k <= n - i {
+            i + k
+        } else {
+            i + 1
+        }
+    }
+
+    #[summary("16진 자리의 값, 아니면 16")]
+    #[effects(pure)]
+    fn hexval(c: u32) -> (r: u32)
+        ensures r <= 16,
+    {
+        if c >= 48 && c <= 57 {
+            c - 48
+        } else if c >= 97 && c <= 102 {
+            c - 87
+        } else if c >= 65 && c <= 70 {
+            c - 55
+        } else {
+            16
+        }
+    }
+
+    #[summary("start에서 시작하는 이름의 끝")]
+    #[effects(alloc)]
+    fn ident_end(file: u32, text: &str, start: usize, diags: &mut diag::Diags, generated: bool) -> usize
+        requires start < text.len(),
+    {
+        let n: usize = text.len();
+        let mut i: usize = start;
+        let mut reported: bool = false;
+        while i < n
+            invariant i <= n, n == text.len(),
+            decreases n - i,
+        {
+            let c: u32 = at(text, i, 0);
+            if word(c) || generated && c == 36 {
+                i = i + 1;
+            } else {
+                let k: usize = letter_len(text, i);
+                if k == 0 {
+                    return i;
+                }
+                if !reported {
+                    diags.push(unexpected(file, text, i, k));
+                    reported = true;
+                }
+                i = fwd(i, k, n);
+            }
+        }
+        i
+    }
+
+    #[summary("정수 리터럴: 0x, 0o, 0b와 _ 구분 (ADR-0048 §3), Rust와 같다. 자리는 0x 리터럴에서 16진, 그 밖에서는 10진이고(진법 밖의 10진 자리는 오류) 뒤따르는 것은 접미사다")]
+    #[effects(alloc)]
+    #[uses(wide::small)]
+    fn int_lit(file: u32, text: &str, start: usize, out: &mut Vec<Token>, diags: &mut diag::Diags) -> usize
+        requires start < text.len(),
+    {
+        let n: usize = text.len();
+        let c1: u32 = at(text, start, 1);
+        let mut base: u64 = 10;
+        if at(text, start, 0) == 48 {
+            if c1 == 120 {
+                base = 16;
+            } else if c1 == 111 {
+                base = 8;
+            } else if c1 == 98 {
+                base = 2;
+            }
+        }
+        let mut i: usize = start;
+        if base != 10 {
+            i = fwd(start, 2, n);
+        }
+        let mut v: wide::U128 = wide::zero();
+        let mut overflow: bool = false;
+        let mut any: bool = false;
+        let mut bad: bool = false;
+        let mut bad_at: usize = 0;
+        while i < n && (digit(at(text, i, 0)) || at(text, i, 0) == 95 || base == 16 && hexval(at(text, i, 0)) < 16)
+            invariant i <= n, base == 10 || base == 16 || base == 8 || base == 2,
+            decreases n - i,
+        {
+            let c: u32 = at(text, i, 0);
+            if c != 95 {
+                any = true;
+                let d: u64 = hexval(c) as u64;
+                if d >= base {
+                    if !bad {
+                        bad = true;
+                        bad_at = i;
+                    }
+                } else {
+                    match wide::mul_add(v, base, d) {
+                        None => { overflow = true; },
+                        Some(x) => { v = x; },
+                    }
+                }
+            }
+            i = i + 1;
+        }
+        let digits_end: usize = i;
+        let mut name: String = String::from("decimal");
+        let mut radix: ast::Radix = ast::Radix::Dec;
+        if base == 16 {
+            name = String::from("hexadecimal");
+            radix = ast::Radix::Hex;
+        } else if base == 8 {
+            name = String::from("octal");
+            radix = ast::Radix::Oct;
+        } else if base == 2 {
+            name = String::from("binary");
+            radix = ast::Radix::Bin;
+        }
+        if bad {
+            let mut m: String = joined("`", cut(text, bad_at, bad_at.saturating_add(1)).as_str(), "` is not ");
+            if base == 8 {
+                m.push_str("an ");
+            } else {
+                m.push_str("a ");
+            }
+            m.push_str(name.as_str());
+            m.push_str(" digit");
+            let mut h: String = String::from(name.as_str());
+            if base == 2 {
+                h.push_str(" digits are `0` and `1`");
+            } else {
+                h.push_str(" digits are `0` to `7`");
+            }
+            h.push_str("; write the value in another base (`0x` hexadecimal, or decimal)");
+            diags.push(diag::fix(diag::new("E0108", span(file, bad_at, bad_at.saturating_add(1)), m.as_str()), h.as_str(), None));
+        }
+        let no_digits: bool = !any && base != 10;
+        if no_digits {
+            let mut m: String = joined("`", cut(text, start, digits_end).as_str(), "` has no ");
+            m.push_str(name.as_str());
+            m.push_str(" digits");
+            let h: String = joined("write the digits after the prefix: `", ast::radix_text(radix, wide::zero()).as_str(), "`");
+            diags.push(diag::fix(diag::new("E0108", span(file, start, digits_end), m.as_str()), h.as_str(), None));
+        }
+        if word(at(text, i, 0)) {
+            let slo: usize = i;
+            while i < n && word(at(text, i, 0))
+                decreases n - i,
+            {
+                i = i + 1;
+            }
+            let suffix: String = cut(text, slo, i);
+            if !no_digits {
+                let g: diag::Diag = diag::new("E0104", span(file, start, i), joined("literal suffix `", suffix.as_str(), "` is not allowed").as_str());
+                if int_type(suffix.as_str()) {
+                    diags.push(diag::fix(g, "remove the suffix", Some(cut(text, start, digits_end))));
+                } else {
+                    diags.push(diag::fix(g, "integer literals are digits in base 10, or after `0x`, `0o` or `0b`", None));
+                }
+            }
+        }
+        if overflow {
+            diags.push(diag::new("E0105", span(file, start, i), "integer literal does not fit in 128 bits"));
+        }
+        out.push(Token { tok: Tok::Int(v, radix), span: span(file, start, i) });
+        i
+    }
+
+    #[effects(pure)]
+    fn int_type(s: &str) -> bool {
+        s == "i8" || s == "i16" || s == "i32" || s == "i64" || s == "i128" || s == "isize" || s == "u8" || s == "u16" || s == "u32" || s == "u64" || s == "u128" || s == "usize"
+    }
+
+    #[summary("a, b, c를 이은 글")]
+    #[effects(alloc)]
+    fn joined(a: &str, b: &str, c: &str) -> String {
+        let mut s: String = String::from(a);
+        s.push_str(b);
+        s.push_str(c);
+        s
+    }
+
+    #[summary("i에서 시작하는 ASCII 밖의 글자가 글자나 숫자면 그 바이트 수, 아니면 0. 그런 글자는 알린 뒤(E0101) 그것이 쓰인 이름의 일부로 읽는다: 파서는 이름 하나를 보고, 같은 잘못을 빠진 이름으로 다시 알리지 않는다")]
+    #[effects(pure)]
+    fn letter_len(text: &str, i: usize) -> usize {
+        let c: u32 = char_code(text, i);
+        if c >= 128 && c < 1114112 && unicode::alphanumeric(c) {
+            char_len(text, i)
+        } else {
+            0
+        }
+    }
+
+    #[effects(alloc)]
+    fn lex(file: u32, text: &str, diags: &mut diag::Diags) -> Vec<Token> {
+        lex_as(file, text, diags, false)
+    }
+
+    #[effects(alloc)]
+    fn lex_as(file: u32, text: &str, diags: &mut diag::Diags, generated: bool) -> Vec<Token> {
+        let mut out: Vec<Token> = Vec::new();
+        let n: usize = text.len();
+        let mut i: usize = 0;
+        while i < n
+            invariant i <= n, n == text.len(),
+            decreases n - i,
+        {
+            i = past(i, step(file, text, i, &mut out, diags, generated), n);
+        }
+        out.push(Token { tok: Tok::Eof, span: span(file, n, n) });
+        out
+    }
+
+    #[summary("컴파일러가 만든 글(closures::lower): 그 이름은 $를 가질 수 있고 소스의 이름은 그럴 수 없다. 만든 항목의 이름이 사용자가 쓴 이름과 겹치지 않는다 (백로그 2V-20j)")]
+    #[effects(alloc)]
+    fn lex_generated(file: u32, text: &str, diags: &mut diag::Diags) -> Vec<Token> {
+        lex_as(file, text, diags, true)
+    }
+
+    #[summary("j가 i보다 뒤이고 끝 n 안이면 j, 아니면 i의 다음")]
+    #[effects(pure)]
+    fn past(i: usize, j: usize, n: usize) -> (r: usize)
+        requires i < n,
+        ensures r > i, r <= n,
+    {
+        if j > i && j <= n {
+            j
+        } else {
+            i + 1
+        }
+    }
+
+    #[effects(alloc)]
+    fn punct(out: &mut Vec<Token>, p: &str, s: source::Span) -> () {
+        out.push(Token { tok: Tok::P(String::from(p)), span: s });
+    }
+
+    #[summary("구두점: 세 글자, 두 글자, 한 글자의 순서로. 아니면 뜻밖의 글자 (E0101)")]
+    #[effects(alloc)]
+    fn puncts(file: u32, text: &str, i: usize, out: &mut Vec<Token>, diags: &mut diag::Diags) -> usize
+        requires i < text.len(),
+    {
+        let n: usize = text.len();
+        let a: u32 = at(text, i, 0);
+        let b: u32 = at(text, i, 1);
+        let c: u32 = at(text, i, 2);
+        let mut k: usize = 0;
+        if a == 61 && b == 61 && c == 62 || a == 46 && b == 46 && c == 61 {
+            k = 3;
+        } else if a == 58 && b == 58 || a == 45 && b == 62 || a == 61 && b == 62 || a == 61 && b == 61 || a == 33 && b == 61 || a == 60 && b == 61 || a == 62 && b == 61 || a == 38 && b == 38 || a == 124 && b == 124 || a == 46 && b == 46 {
+            k = 2;
+        } else if a == 40 || a == 41 || a == 123 || a == 125 || a == 91 || a == 93 || a == 44 || a == 59 || a == 58 || a == 46 || a == 124 || a == 35 || a == 33 || a == 38 || a == 61 || a == 60 || a == 62 || a == 43 || a == 45 || a == 42 || a == 47 || a == 37 || a == 63 || a == 64 || a == 94 || a == 126 || a == 36 {
+            k = 1;
+        }
+        if k > 0 {
+            let end: usize = fwd(i, k, n);
+            out.push(Token { tok: Tok::P(cut(text, i, end)), span: span(file, i, end) });
+            return end;
+        }
+        let w: usize = char_len(text, i);
+        diags.push(unexpected(file, text, i, w));
+        fwd(i, w, n)
+    }
+
+    #[effects(alloc)]
+    fn push_code(out: &mut String, c: u32) -> () {
+        match char::from_u32(c) {
+            None => {},
+            Some(ch) => out.push(ch),
+        }
+    }
+
+    #[effects(alloc)]
+    fn push_hex(out: &mut String, v: u32) -> () {
+        if v < 10 {
+            push_code(out, 48 + v);
+        } else if v < 16 {
+            push_code(out, 87 + v);
+        }
+    }
+
+    #[summary("'로 시작하고 문자 리터럴이 아닌 것. 레이블: break/continue 뒤, 또는 : 앞(루프 레이블; BMB의 수명은 :를 갖지 않는다). 사이에 주석이 올 수 있다. 그 밖은 여러 글자의 문자 리터럴이거나 수명이다")]
+    #[effects(alloc)]
+    fn quote(file: u32, text: &str, start: usize, out: &mut Vec<Token>, diags: &mut diag::Diags) -> usize
+        requires start < text.len(),
+    {
+        let n: usize = text.len();
+        let mut i: usize = start + 1;
+        while i < n && word(at(text, i, 0))
+            invariant i <= n, i > start,
+            decreases n - i,
+        {
+            i = i + 1;
+        }
+        let j: usize = after_comments(text, i);
+        let before_loop: bool = at(text, j, 0) == 58 && at(text, j, 1) != 58;
+        let closed: bool = at(text, i, 0) == 39;
+        if i > start + 1 && (after_jump(out.as_slice()) || before_loop) && !closed {
+            out.push(Token { tok: Tok::Label(cut(text, start + 1, i)), span: span(file, start, i) });
+            return i;
+        }
+        if closed {
+            i = i + 1;
+            diags.push(diag::fix(diag::new("E0101", span(file, start, i), "a character literal holds one character"), "several characters are a string: `\"...\"`", None));
+            out.push(Token { tok: Tok::Char(0), span: span(file, start, i) });
+        } else {
+            diags.push(diag::fix(diag::new("E0208", span(file, start, i), "lifetime annotations are not allowed"), "remove the lifetime; references are second-class and need none", Some(String::new())));
+        }
+        i
+    }
+
+    #[summary("구간. 4GiB를 넘는 자리는 없다(소스 파일의 크기 한도): 넘으면 한도에 맞춘다")]
+    #[effects(pure)]
+    fn span(file: u32, lo: usize, hi: usize) -> source::Span {
+        let mut a: u32 = 4294967295;
+        let mut b: u32 = 4294967295;
+        if lo < 4294967295 {
+            a = lo as u32;
+        }
+        if hi < 4294967295 {
+            b = hi as u32;
+        }
+        source::Span { file: file, lo: a, hi: b }
+    }
+
+    #[summary("i에서 토큰 하나(또는 공백, 주석, 잘못된 글자)를 읽고 그 다음 자리를 낸다")]
+    #[effects(alloc)]
+    fn step(file: u32, text: &str, i: usize, out: &mut Vec<Token>, diags: &mut diag::Diags, generated: bool) -> usize
+        requires i < text.len(),
+    {
+        let c: u32 = at(text, i, 0);
+        let c1: u32 = at(text, i, 1);
+        if c == 32 || c == 9 || c == 10 || c == 12 || c == 13 {
+            return i + 1;
+        }
+        if c == 47 && c1 == 47 {
+            return comment(file, text, i, out);
+        }
+        if c == 47 && c1 == 42 {
+            return block_comment(file, text, i, diags);
+        }
+        if c == 98 && (c1 == 39 || c1 == 34) {
+            return byte_lit(file, text, i, out, diags);
+        }
+        if alpha(c) || c == 95 || letter_len(text, i) > 0 && unicode::alphabetic(char_code(text, i)) {
+            let end: usize = ident_end(file, text, i, diags, generated);
+            out.push(Token { tok: Tok::Ident(cut(text, i, end)), span: span(file, i, end) });
+            return end;
+        }
+        let mut after_value: bool = false;
+        if i > 0 {
+            let p: u32 = at(text, i - 1, 0);
+            after_value = word(p) || p == 41 || p == 93;
+        }
+        if c == 46 && !after_value && digit(c1) || digit(c) && float_start(text, i) {
+            return float_lit(file, text, i, out, diags);
+        }
+        if digit(c) {
+            return int_lit(file, text, i, out, diags);
+        }
+        if c == 34 {
+            return string_lit(file, text, i, out, diags);
+        }
+        if c == 39 {
+            let j: usize = char_lit(file, text, i, out, diags);
+            if j > i {
+                return j;
+            }
+            return quote(file, text, i, out, diags);
+        }
+        puncts(file, text, i, out, diags)
+    }
+
+    #[summary("s를 문자열 리터럴(q는 \")이나 문자 리터럴(q는 ')로 쓴 글: 글자는 그대로, 따옴표와 \\와 제어 글자는 이스케이프로. 정규형이 쓴다")]
+    #[effects(alloc)]
+    fn str_text(s: &str, q: u32) -> String {
+        let n: usize = s.len();
+        let mut o: String = String::new();
+        push_code(&mut o, q);
+        let mut i: usize = 0;
+        while i < n
+            invariant i <= n, n == s.len(),
+            decreases n - i,
+        {
+            let c: u32 = char_code(s, i);
+            if c == 10 {
+                o.push_str("\\n");
+            } else if c == 13 {
+                o.push_str("\\r");
+            } else if c == 9 {
+                o.push_str("\\t");
+            } else if c == 92 {
+                o.push_str("\\\\");
+            } else if c == 0 {
+                o.push_str("\\0");
+            } else if c == q {
+                o.push('\\');
+                push_code(&mut o, q);
+            } else if c < 32 || c == 127 {
+                o.push_str("\\u{");
+                if c >= 16 {
+                    push_hex(&mut o, c / 16);
+                }
+                push_hex(&mut o, c % 16);
+                o.push('}');
+            } else {
+                push_code(&mut o, c);
+            }
+            i = fwd(i, char_len(s, i), n);
+        }
+        push_code(&mut o, q);
+        o
+    }
+
+    #[effects(alloc)]
+    fn string_lit(file: u32, text: &str, start: usize, out: &mut Vec<Token>, diags: &mut diag::Diags) -> usize
+        requires start < text.len(),
+    {
+        let n: usize = text.len();
+        let mut i: usize = start + 1;
+        let mut s: String = String::new();
+        while i < n && at(text, i, 0) != 34
+            invariant i <= n, n == text.len(),
+            decreases n - i,
+        {
+            if at(text, i, 0) == 92 {
+                let e: Esc = char_escape(text, i);
+                if e.ok {
+                    push_code(&mut s, e.ch);
+                } else {
+                    diags.push(bad_escape(span(file, i, i.saturating_add(e.n))));
+                }
+                i = fwd(i, e.n, n);
+            } else {
+                push_code(&mut s, char_code(text, i));
+                i = fwd(i, char_len(text, i), n);
+            }
+        }
+        if i >= n {
+            diags.push(diag::new("E0102", span(file, start, i), "unterminated string literal"));
+            return n;
+        }
+        i = i + 1;
+        out.push(Token { tok: Tok::Str(s), span: span(file, start, i) });
+        i
+    }
+
+    #[summary("i부터의 자리들을 _ 없이 out에 덧붙이고 그 끝을 낸다")]
+    #[effects(alloc)]
+    fn take_digits(text: &str, i: usize, out: &mut String) -> (r: usize)
+        ensures r >= i,
+    {
+        let n: usize = text.len();
+        let mut j: usize = i;
+        while j < n && (digit(at(text, j, 0)) || at(text, j, 0) == 95)
+            invariant j >= i,
+            decreases n - j,
+        {
+            let c: u32 = at(text, j, 0);
+            if c != 95 {
+                push_code(out, c);
+            }
+            j = j + 1;
+        }
+        j
+    }
+
+    #[summary("a부터 b 앞까지에서 뒤의 공백을 뺀 끝")]
+    #[effects(pure)]
+    fn trim_hi(text: &str, a: usize, b: usize) -> (r: usize)
+        requires a <= b,
+        ensures r >= a, r <= b,
+    {
+        let mut k: usize = b;
+        while k > a
+            invariant k >= a, k <= b,
+            decreases k,
+        {
+            let mut p: usize = k - 1;
+            while p > a && at(text, p, 0) >= 128 && at(text, p, 0) < 192
+                invariant p < k, p >= a,
+                decreases p,
+            {
+                p = p - 1;
+            }
+            let c: u32 = char_code(text, p);
+            if c < 1114112 && unicode::whitespace(c) {
+                k = p;
+            } else {
+                return k;
+            }
+        }
+        k
+    }
+
+    #[summary("a부터 b 앞까지에서 앞의 공백(유니코드 White_Space)을 지난 자리")]
+    #[effects(pure)]
+    fn trim_lo(text: &str, a: usize, b: usize) -> (r: usize)
+        ensures r >= a,
+    {
+        let mut j: usize = a;
+        while j < b
+            invariant j >= a,
+            decreases b - j,
+        {
+            let c: u32 = char_code(text, j);
+            let k: usize = char_len(text, j);
+            if k > 0 && k <= b - j && c < 1114112 && unicode::whitespace(c) {
+                j = j + k;
+            } else {
+                return j;
+            }
+        }
+        j
+    }
+
+    #[effects(alloc)]
+    fn unexpected(file: u32, text: &str, i: usize, k: usize) -> diag::Diag {
+        let hi: usize = i.saturating_add(k);
+        diag::new("E0101", span(file, i, hi), joined("unexpected character `", cut(text, i, hi).as_str(), "`").as_str())
+    }
+
+    #[summary("이름을 이루는 ASCII 글자: 글자, 숫자, _")]
+    #[effects(pure)]
+    fn word(c: u32) -> bool {
+        digit(c) || alpha(c) || c == 95
+    }
+}

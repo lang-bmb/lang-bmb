@@ -1,0 +1,82 @@
+#[summary("명령들이 부르는 진입점 (stage0 compiler/src/lib.rs의 포트, 백로그 4D-02). 국면마다 는다: 지금은 dump tokens")]
+mod lib {
+    #[summary("소스 파일 하나: 이름과 글")]
+    struct Input { name: String, text: String }
+
+    #[summary("명령의 결과: ok면 표준 출력에 쓸 글, 아니면 진단의 JSONL")]
+    struct Outcome { ok: bool, text: String }
+
+    #[summary("파일들의 토큰을 JSONL로: 렉서의 차등 시험이 견주는 출력")]
+    #[effects(alloc)]
+    #[uses(source::room, source::small)]
+    fn dump_tokens(files: &[Input]) -> Outcome {
+        let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
+        let mut diags: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+        let mut out: String = String::new();
+        let mut k: usize = 0;
+        while k < files.len()
+            decreases files.len() - k,
+        {
+            if files[k].text.len() < 4294967295 && sm.files.len() < 4294967295 {
+                let id: u32 = sm.add(files[k].name.clone(), files[k].text.clone());
+                let toks: Vec<lexer::Token> = lexer::lex(id, files[k].text.as_str(), &mut diags);
+                let mut j: usize = 0;
+                while j < toks.len()
+                    decreases toks.len() - j,
+                {
+                    push_token(&mut out, files[k].name.as_str(), &toks[j]);
+                    j = j + 1;
+                }
+            }
+            k = k + 1;
+        }
+        if diags.has_errors() {
+            return Outcome { ok: false, text: diags.to_jsonl(&sm) };
+        }
+        Outcome { ok: true, text: out }
+    }
+
+    #[summary("v를 0x와 16진 열여섯 자리로 덧붙인다")]
+    #[effects(alloc)]
+    fn push_bits(out: &mut String, v: u64) -> () {
+        out.push_str("0x");
+        let mut k: u64 = 16;
+        while k > 0
+            invariant k <= 16,
+            decreases k,
+        {
+            k = k - 1;
+            let d: u32 = (v >> 4 * k & 15) as u32;
+            if d < 10 {
+                lexer::push_code(out, 48 + d);
+            } else {
+                lexer::push_code(out, 87 + d);
+            }
+        }
+    }
+
+    #[summary("토큰 하나의 JSON 줄")]
+    #[effects(alloc)]
+    fn push_token(out: &mut String, name: &str, t: &lexer::Token) -> () {
+        out.push_str("{\"file\":");
+        diag::json_str(out, name);
+        out.push_str(",\"lo\":");
+        diag::push_u64(out, t.span.lo as u64);
+        out.push_str(",\"hi\":");
+        diag::push_u64(out, t.span.hi as u64);
+        out.push_str(",\"kind\":\"");
+        match &t.tok {
+            lexer::Tok::Ident(x) => { out.push_str("ident\",\"text\":"); diag::json_str(out, x.as_str()); },
+            lexer::Tok::Int(v, r) => { out.push_str("int\",\"text\":"); diag::json_str(out, ast::radix_text(*r, *v).as_str()); out.push_str(",\"value\":\""); out.push_str(ast::radix_text(ast::Radix::Dec, *v).as_str()); out.push_str("\""); },
+            lexer::Tok::Float(b) => { out.push_str("float\",\"text\":"); diag::json_str(out, lexer::float_text(*b).as_str()); out.push_str(",\"bits\":\""); push_bits(out, *b); out.push_str("\""); },
+            lexer::Tok::Str(x) => { out.push_str("str\",\"text\":"); diag::json_str(out, x.as_str()); },
+            lexer::Tok::Char(c) => { out.push_str("char\",\"value\":"); diag::push_u64(out, *c as u64); },
+            lexer::Tok::Byte(y) => { out.push_str("byte\",\"value\":"); diag::push_u64(out, *y as u64); },
+            lexer::Tok::Bytes(bs) => { out.push_str("bytes\",\"value\":["); let mut i: usize = 0; while i < bs.len() decreases bs.len() - i, { if i > 0 { out.push(','); } diag::push_u64(out, bs[i] as u64); i = i + 1; } out.push(']'); },
+            lexer::Tok::P(x) => { out.push_str("punct\",\"text\":"); diag::json_str(out, x.as_str()); },
+            lexer::Tok::Label(x) => { out.push_str("label\",\"text\":"); diag::json_str(out, x.as_str()); },
+            lexer::Tok::Eof => out.push_str("eof\""),
+        }
+        out.push_str("}\n");
+    }
+}

@@ -1,0 +1,2 @@
+let a = 1; "a string that never ends \n
+let b = 2;

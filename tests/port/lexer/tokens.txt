@@ -1,0 +1,48 @@
+#[summary("every kind of token, written well")]
+mod m {
+    /// a doc line
+    ///   joined with the next 
+    ///
+    /// and after an empty one
+    fn f(x: u64, s: &str) -> (r: u64)
+        requires x <= 0xFFFF_ffff, x != 0o17, x >= 0b1010,
+        ensures r == x ==> true,
+    {
+        // a comment
+        //// four slashes stay a comment
+        let a: u64 = 340282366920938463463374607431768211455;
+        let b: u64 = 0xffffffffffffffffffffffffffffffff;
+        let c: u64 = 0o3777777777777777777777777777777777777777777;
+        let d: u64 = 0b11111111;
+        let e: u64 = 1_000_000;
+        let z: u64 = 000;
+        let f: f64 = 1.5 + 0.1 + 6.02e23 + 1.0e-9 + 2.5E10 + 1.0e+5 + 1_0.0_1e1_0 + 00.50;
+        let g: char = 'a';
+        let h: char = '\n';
+        let i: char = '\u{1F600}';
+        let j: char = '\'';
+        let k: char = '"';
+        let l: char = 'é';
+        let m: char = '\x7f';
+        let n: char = '\u{0_0_e9}';
+        let o: u8 = b'a';
+        let p: u8 = b'\x00';
+        let q: u8 = b'\'';
+        let t: u8 = b'"';
+        g(b"bytes \n\r\t\\\'\"\0\xff\x+f", "text \n\r\t\\\'\"\0\x41\u{e9} é 한글 😀");
+        g(b"", "");
+        'outer: while x > 0 {
+            'inner // a comment between
+              : loop {
+                break 'outer;
+            }
+            continue 'outer;
+        }
+        'again
+        : for i in 0..n { break 'again; }
+        let r: u64 = a.max(1) + v[0].0 + (x).1 + t.0 + 1..=2;
+        x ==> y; a..=b; a..b; a::b; a->b; a=>b; a==b; a!=b; a<=b; a>=b; a&&b; a||b;
+        ( ) { } [ ] , ; : . | # ! & = < > + - * / % ? @ ^ ~
+        1.max(2); 0..n; x.5; a[0].5; f().5; r#x
+    }
+}

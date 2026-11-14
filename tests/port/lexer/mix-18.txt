@@ -1,0 +1,47 @@
+//// != & x.0 '\'' '\n' != 0..n 
+-> & // && /// continue   340282366920938463463374607431768211455 @ = @ 'a' / 
+zz % ..= 12   'outer:  // 	 4.9e-324 x1 	 b"\x+9" 
+9 continue 0..n 1.0e16 'a' { 9 && 1 00.00 != // x1 
+_1 
+1_000 /// doc ! 0xffffffffffffffffffffffffffffffff zz 
+
+ [ '\n' /// >= 0xffffffffffffffffffffffffffffffff 
+ "s" '\n' // 
+; break 'outer //// 
+== , x1 ..= 1__2.3__4 
+ 1.0e15 
+{ 9007199254740993.0 & 0xfF 4.9e-324 
+0..n 1__2.3__4 1__2.3__4 b != 
+! 
+1..2 2.5E10 0.000001 || 12 x.0 0.1e0001 break 'outer "\u{1_F600}" .. break 'outer break 
+1.0e16 b"\x+9" 
+  
+1.0e15 [ 
+ b'\x41' || 0.000001 _   4.9e-324 
+ /// => 
+b"\x+9" 00.00 || 9 zz _ @ . fn . 340282366920938463463374607431768211455 ( 
+^ <= = // 
+< 0..n fn * '\''    
+ 
+_1 /// >= == 4.9e-324 ! => 
+4.9e-324 
+b x.0 x.0 >  0xffffffffffffffffffffffffffffffff ! 2.4703282292062328e-324 ! 'outer:  # 
+'\'' & _ 9 0..n || ( 1_000 fn /// doc 
+"\u{1_F600}" ] @ ) * b 
+ 
+x1 ; 2.5E10 1..2 ] ? > 
+/// doc % . { 
+; & 1.5 < 340282366920938463463374607431768211455 ~ zz 
+a   * > / <= 
+! /// ^ break 'outer ? 1 
+fn 0 '\n' 1.0e+3 0.1e0001 break '\'' 1.5 break 
+== '\n' 1.0e+3 0xffffffffffffffffffffffffffffffff 
+# @ % /// ; * >= 
+{ 
+0xffffffffffffffffffffffffffffffff ==> 9007199254740993.0 //// 
+, "s" fn 
+. / .. . '\n' //// } # 9 12 != .. 
+9007199254740993.0 
+12 9007199254740993.0 { _1 "s" 00.00 => ~ /// doc break 
+1..2 0xffffffffffffffffffffffffffffffff 0xfF 340282366920938463463374607431768211455 [ 
+'a' & ; { 4.9e-324 

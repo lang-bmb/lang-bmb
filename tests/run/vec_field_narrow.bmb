@@ -1,0 +1,60 @@
+#[summary("구조체의 Vec 필드에서 64비트보다 좁은 정수 원소를 읽는다: 원소의 폭은 Vec의 원소 타입 (코드 생성이 필드의 Vec을 8바이트 원소로 읽던 결함의 회귀 시험)")]
+mod vfn {
+    struct Limbs { w: Vec<u32>, b: Vec<u8>, h: Vec<i16> }
+
+    #[effects(alloc)]
+    fn made() -> Limbs {
+        let mut w: Vec<u32> = Vec::new();
+        w.push(5);
+        w.push(4000000000);
+        w.push(9);
+        let mut b: Vec<u8> = Vec::new();
+        b.push(200);
+        b.push(7);
+        let mut h: Vec<i16> = Vec::new();
+        h.push(-3);
+        h.push(30000);
+        Limbs { w: w, b: b, h: h }
+    }
+
+    #[effects(alloc)]
+    fn copied(a: &Limbs) -> Vec<u32> {
+        let mut v: Vec<u32> = Vec::new();
+        let mut i: usize = 0;
+        while i < a.w.len()
+            decreases a.w.len() - i,
+        {
+            v.push(a.w[i]);
+            i = i + 1;
+        }
+        v
+    }
+
+    #[effects(pure)]
+    fn second(a: &Limbs) -> u32 {
+        if a.w.len() > 1 {
+            return a.w[1];
+        }
+        0
+    }
+
+    #[effects(alloc, io)]
+    fn main() -> () {
+        let a: Limbs = made();
+        let c: Vec<u32> = copied(&a);
+        if c.len() == 3 && a.w.len() == 3 && a.b.len() == 2 && a.h.len() == 2 {
+            print_u64(c[0] as u64);
+            print_u64(c[1] as u64);
+            print_u64(c[2] as u64);
+            let x: u32 = a.w[1];
+            print_u64(x as u64);
+            let y: u8 = a.b[1];
+            print_u64(y as u64);
+            let z: i16 = a.h[0];
+            print_i64(z as i64);
+            let t: i16 = a.h[1];
+            print_i64(t as i64);
+        }
+        print_u64(second(&a) as u64);
+    }
+}

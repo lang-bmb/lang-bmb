@@ -305,6 +305,12 @@ mod diag {
         out
     }
 
+    #[summary("d에 고침을 단다: 설명과, 있으면 바꿔 쓸 글")]
+    #[effects(alloc)]
+    fn fix(d: Diag, message: &str, replacement: Option<String>) -> Diag {
+        Diag { code: d.code, span: d.span, message: d.message, fix: Some(Fix { message: String::from(message), replacement: replacement }), obligation: d.obligation, bounded: d.bounded }
+    }
+
     #[summary("참조 문서의 절: 코드 접두사와 제목")]
     #[effects(alloc)]
     fn groups() -> Vec<Code> {

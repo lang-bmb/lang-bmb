@@ -1,0 +1,19 @@
+#[summary("구문 트리 (stage0 compiler/src/ast.rs의 포트, 백로그 4D-02). 국면마다 는다: 지금은 렉서가 쓰는 정수 리터럴의 진법")]
+mod ast {
+    #[summary("정수 리터럴을 쓴 진법 (ADR-0048 §3). 정규형이 지킨다: 0xff는 0xff로 남는다")]
+    enum Radix { Dec, Hex, Oct, Bin }
+
+    #[summary("v를 진법 r의 정규형으로 쓴 글: 접두사, 소문자 자리, _ 구분 없이, 앞의 0 없이 (ADR-0019 §1)")]
+    #[effects(alloc)]
+    #[uses(wide::divisor)]
+    fn radix_text(r: Radix, v: wide::U128) -> String {
+        let mut out: String = String::new();
+        match r {
+            Radix::Dec => wide::push_radix(&mut out, v, 10),
+            Radix::Hex => { out.push_str("0x"); wide::push_radix(&mut out, v, 16); },
+            Radix::Oct => { out.push_str("0o"); wide::push_radix(&mut out, v, 8); },
+            Radix::Bin => { out.push_str("0b"); wide::push_radix(&mut out, v, 2); },
+        }
+        out
+    }
+}

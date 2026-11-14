@@ -1,0 +1,72 @@
+#[summary("차등 시험(백로그 4D-19): selfhost의 유니코드 분류표를 모든 코드 포인트에서 묻고 구간으로 낸다. 기준은 같은 일을 Rust의 char 메서드로 하는 unicode_ref.rs")]
+mod app {
+    #[summary("kind의 분류에 드는 코드 포인트(ASCII 밖, 서로게이트 제외)의 구간들")]
+    #[effects(alloc, io)]
+    fn class(name: &str, kind: u8) -> () {
+        let mut out: String = String::new();
+        let mut count: u64 = 0;
+        let mut open: bool = false;
+        let mut first: u32 = 0;
+        let mut c: u32 = 128;
+        while c <= 1114111
+            invariant c <= 1114112, c >= 128, count <= c,
+            decreases 1114112 - c,
+        {
+            let mut hit: bool = false;
+            if c < 55296 || c > 57343 {
+                if kind == 0 {
+                    hit = unicode::alphabetic(c);
+                } else if kind == 1 {
+                    hit = unicode::numeric(c);
+                } else {
+                    hit = unicode::whitespace(c);
+                }
+            }
+            if hit && !open {
+                open = true;
+                first = c;
+            }
+            if !hit && open {
+                open = false;
+                hex6(&mut out, first);
+                hex6(&mut out, c - 1);
+                count = count + 1;
+            }
+            c = c + 1;
+        }
+        if open {
+            hex6(&mut out, first);
+            hex6(&mut out, 1114111);
+            count = count + 1;
+        }
+        print_str(name);
+        print_str(" ");
+        print_u64(count);
+        print_str(out.as_str());
+        print_str("\n");
+    }
+
+    #[effects(alloc)]
+    fn hex6(out: &mut String, v: u32) -> () {
+        let digits: [u8; 16] = [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 97, 98, 99, 100, 101, 102];
+        let mut k: u32 = 6;
+        while k > 0
+            invariant k <= 6,
+            decreases k,
+        {
+            k = k - 1;
+            let d: u32 = v >> 4 * k & 15;
+            match char::from_u32(digits[d as usize] as u32) {
+                None => {},
+                Some(c) => out.push(c),
+            }
+        }
+    }
+
+    #[effects(alloc, io)]
+    fn main() -> () {
+        class("alphabetic", 0);
+        class("numeric", 1);
+        class("whitespace", 2);
+    }
+}

@@ -39,13 +39,33 @@
       "stage0": [
         "lexer.rs"
       ],
-      "port": [],
-      "pin": null,
+      "port": [
+        "selfhost/lexer.bmb",
+        "selfhost/wide.bmb",
+        "selfhost/big.bmb",
+        "selfhost/float.bmb",
+        "selfhost/unicode.bmb"
+      ],
+      "pin": {
+        "stage0": "06a281a0fa142a7f81770bfc0784994de7681139f88ef530b751ed237500e587",
+        "port": "c67cbb12132cb1f98c8e3cfe0e9e4e5668fa159e9c1947aa614af036c04e680e"
+      },
       "ledger": {
         "session_tokens": null,
         "gate_runs": null,
         "undecided_runs": null,
-        "friction": []
+        "friction": [
+          "stage0이 Rust 표준 라이브러리에서 받던 셋을 포트가 직접 든다: 정수 리터럴의 128비트 값(`wide`, `u64` 둘, `4D-17`), 10진 글과 `f64` 사이의 정확한 변환(`big`·`float`, 큰 정수로 읽기와 가장 짧게 쓰기, `4D-18`), 유니코드 글자 분류표(`unicode`, `4D-19`). 이 행의 포트 줄에 넷을 모두 센다: `lexer` 혼자는 1,159줄(stage0 862줄의 1.34배)",
+          "튜플과 `Result<(char, usize), usize>`가 없어 이스케이프의 결과는 구조체 `Esc`, 부동소수의 부분은 `FloatParts`다: 그대로 둠",
+          "클로저(`sp`, `doc`, `letter`, `digit`)는 함수가 됐고, 한 루프이던 `lex_as`는 토큰 종류마다 함수 하나로 나뉘었다(`continue 'outer`가 `return`). 각 함수가 앞으로 나아간다는 것은 증명하지 않고 부르는 한곳(`past`, 그리고 길이를 받아 나아가는 `fwd`)이 실행 때 보장한다: 그대로 둠(닿지 않는 갈래)",
+          "`b.get(i + k)`는 `at(text, i, k)`다: 끝을 넘으면 256. 자리 계산의 넘침 의무가 사라진다: 그대로 둠",
+          "`&text[a..b]`의 글자 경계 의무(E0820)는 `cut`이 실행 때 확인한다(C0의 `push_cell`과 같다): 그대로 둠",
+          "구조체·열거형에 `&'static str`이 없어 `Tok::P`는 `String`이다(구두점마다 할당 하나): 그대로 둠, 속도가 문제가 되면 구두점 번호로",
+          "`match`가 소유한 페이로드를 꺼내지 못하게 막고(E0413) `match &t.tok`을 안내했다: 안내대로",
+          "한 함수 안에서 이름 하나는 타입 하나다(E0303): `match` 갈래의 묶음 이름을 갈래마다 달리 지었다: 그대로 둠",
+          "포팅이 stage0의 코드 생성 결함을 찾았다: 구조체의 `Vec` 필드에서 64비트보다 좁은 정수 원소를 8바이트로 읽었다(전부 증명된 프로그램이 틀린 값을 냈다). stage0을 고치고 `tests/run/vec_field_narrow`로 고정",
+          "`ast.bmb`(진법)와 `lib.bmb`(`dump_tokens`)는 조각이라 C2·C10의 포트 목록에 그 국면에서 넣는다. 구동기가 읽지 못한 파일에 내는 표준 오류는 stage0의 것(운영체제의 오류 글)과 다르다: P11에서 맞춘다"
+        ]
       }
     },
     {

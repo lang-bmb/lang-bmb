@@ -1,0 +1,3 @@
+/* block */ x /* never closed
+/// doc after an error
+y /*/ z */ w /**/ /***/ /* * / */

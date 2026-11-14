@@ -1,0 +1,106 @@
+#[summary("128비트 부호 없는 정수: u64 둘(값은 hi * 2^64 + lo). stage0이 Rust의 u128로 드는 정수 리터럴의 값을 포트가 드는 꼴 (백로그 4D-17)")]
+mod wide {
+    struct DivRem { q: U128, r: u64 }
+
+    struct U128 { hi: u64, lo: u64 }
+
+    #[effects(pure)]
+    #[uses(divided, divisor)]
+    fn div_small(v: U128, d: u64) -> (o: DivRem)
+        requires divisor(d),
+        ensures divided(o, v, d),
+    {
+        let a3: u64 = v.hi / 4294967296;
+        let a2: u64 = v.hi % 4294967296;
+        let a1: u64 = v.lo / 4294967296;
+        let a0: u64 = v.lo % 4294967296;
+        let q3: u64 = a3 / d;
+        let c2: u64 = a3 % d * 4294967296 + a2;
+        let q2: u64 = c2 / d;
+        let c1: u64 = c2 % d * 4294967296 + a1;
+        let q1: u64 = c1 / d;
+        let c0: u64 = c1 % d * 4294967296 + a0;
+        let q0: u64 = c0 / d;
+        DivRem { q: U128 { hi: q3 * 4294967296 + q2, lo: q1 * 4294967296 + q0 }, r: c0 % d }
+    }
+
+    spec fn divided(o: DivRem, v: U128, d: u64) -> bool {
+        (o.q.hi * 18446744073709551616 + o.q.lo) * d + o.r == v.hi * 18446744073709551616 + v.lo && o.r < d
+    }
+
+    spec fn divisor(d: u64) -> bool {
+        2 <= d && d <= 16
+    }
+
+    #[effects(pure)]
+    #[uses(small, stepped)]
+    fn mul_add(v: U128, base: u64, d: u64) -> (r: Option<U128>)
+        requires small(base, d),
+        ensures stepped(r, v, base, d),
+    {
+        let l0: u64 = v.lo % 4294967296;
+        let l1: u64 = v.lo / 4294967296;
+        let p0: u64 = l0 * base + d;
+        let p1: u64 = l1 * base + p0 / 4294967296;
+        let lo: u64 = p1 % 4294967296 * 4294967296 + p0 % 4294967296;
+        let c: u64 = p1 / 4294967296;
+        if v.hi > (18446744073709551615 - c) / base {
+            return None;
+        }
+        Some(U128 { hi: v.hi * base + c, lo: lo })
+    }
+
+    #[effects(alloc)]
+    #[uses(divided, divisor)]
+    fn push_radix(out: &mut String, v: U128, base: u64) -> ()
+        requires divisor(base),
+    {
+        let mut digits: Vec<u8> = Vec::new();
+        let mut x: U128 = v;
+        let mut n: usize = 0;
+        while n < 128 && (x.hi != 0 || x.lo != 0)
+            invariant n <= 128,
+            decreases 128 - n,
+        {
+            let o: DivRem = div_small(x, base);
+            let d: u8 = o.r as u8;
+            if d < 10 {
+                digits.push(48 + d);
+            } else {
+                digits.push(87 + d);
+            }
+            x = o.q;
+            n = n + 1;
+        }
+        if digits.len() == 0 {
+            out.push('0');
+        }
+        let mut k: usize = digits.len();
+        while k > 0
+            invariant k <= digits.len(),
+            decreases k,
+        {
+            k = k - 1;
+            match char::from_u32(digits[k] as u32) {
+                None => {},
+                Some(c) => out.push(c),
+            }
+        }
+    }
+
+    spec fn small(base: u64, d: u64) -> bool {
+        2 <= base && base <= 16 && d < base
+    }
+
+    spec fn stepped(r: Option<U128>, v: U128, base: u64, d: u64) -> bool {
+        match r {
+            None => (v.hi * 18446744073709551616 + v.lo) * base + d >= 18446744073709551616 * 18446744073709551616,
+            Some(y) => y.hi * 18446744073709551616 + y.lo == (v.hi * 18446744073709551616 + v.lo) * base + d,
+        }
+    }
+
+    #[effects(pure)]
+    fn zero() -> U128 {
+        U128 { hi: 0, lo: 0 }
+    }
+}

@@ -1,0 +1,216 @@
+#[summary("임의 길이의 부호 없는 정수: 2^32진 자리, 낮은 자리부터. 10진 글과 f64 사이의 정확한 변환(float)이 쓴다 (백로그 4D-18)")]
+mod big {
+    struct Big { limbs: Vec<u32> }
+
+    #[summary("a + b")]
+    #[effects(alloc)]
+    fn add(a: &Big, b: &Big) -> Big {
+        let mut v: Vec<u32> = Vec::new();
+        let mut carry: u64 = 0;
+        let mut i: usize = 0;
+        while i < a.limbs.len() || i < b.limbs.len()
+            invariant carry <= 1,
+            decreases (if a.limbs.len() > b.limbs.len() { a.limbs.len() } else { b.limbs.len() }) - i,
+        {
+            let mut t: u64 = carry;
+            if i < a.limbs.len() {
+                t = t + a.limbs[i] as u64;
+            }
+            if i < b.limbs.len() {
+                t = t + b.limbs[i] as u64;
+            }
+            v.push((t % 4294967296) as u32);
+            carry = t / 4294967296;
+            i = i + 1;
+        }
+        if carry != 0 {
+            v.push(carry as u32);
+        }
+        Big { limbs: v }
+    }
+
+    #[summary("a의 비트 수(0은 0)")]
+    #[effects(pure)]
+    fn bits(a: &Big) -> usize {
+        let n: usize = a.limbs.len();
+        if n == 0 || n > 100000000 {
+            return 0;
+        }
+        let mut top: u32 = a.limbs[n - 1];
+        let mut k: usize = 0;
+        while top != 0
+            invariant k <= 32,
+            decreases top,
+        {
+            top = top / 2;
+            if k < 32 {
+                k = k + 1;
+            }
+        }
+        (n - 1) * 32 + k
+    }
+
+    #[summary("a와 b의 순서: a < b면 -1, 같으면 0, a > b면 1. 둘 다 맨 위 자리가 0이 아닌 꼴이어야 한다")]
+    #[effects(pure)]
+    fn cmp(a: &Big, b: &Big) -> i32 {
+        if a.limbs.len() < b.limbs.len() {
+            return -1;
+        }
+        if a.limbs.len() > b.limbs.len() {
+            return 1;
+        }
+        let mut i: usize = a.limbs.len();
+        while i > 0
+            invariant i <= a.limbs.len(), a.limbs.len() == b.limbs.len(),
+            decreases i,
+        {
+            i = i - 1;
+            if a.limbs[i] < b.limbs[i] {
+                return -1;
+            }
+            if a.limbs[i] > b.limbs[i] {
+                return 1;
+            }
+        }
+        0
+    }
+
+    #[effects(alloc)]
+    fn from_u64(x: u64) -> Big {
+        let mut v: Vec<u32> = Vec::new();
+        if x != 0 {
+            v.push((x % 4294967296) as u32);
+            if x >= 4294967296 {
+                v.push((x / 4294967296) as u32);
+            }
+        }
+        Big { limbs: v }
+    }
+
+    #[summary("a / 2 (내림)")]
+    #[effects(alloc)]
+    fn half(a: &Big) -> Big {
+        let n: usize = a.limbs.len();
+        let mut v: Vec<u32> = Vec::new();
+        let mut i: usize = 0;
+        while i < n
+            decreases n - i,
+        {
+            let mut t: u32 = a.limbs[i] / 2;
+            if i + 1 < n && a.limbs[i + 1] % 2 == 1 {
+                t = t + 2147483648;
+            }
+            if i + 1 < n || t != 0 {
+                v.push(t);
+            }
+            i = i + 1;
+        }
+        Big { limbs: v }
+    }
+
+    #[effects(pure)]
+    fn is_zero(a: &Big) -> bool {
+        a.limbs.len() == 0
+    }
+
+    #[summary("a * m + d")]
+    #[effects(alloc)]
+    fn mul_add_small(a: &Big, m: u32, d: u32) -> Big {
+        let mut v: Vec<u32> = Vec::new();
+        let mut carry: u64 = d as u64;
+        let mut i: usize = 0;
+        while i < a.limbs.len()
+            invariant carry <= 4294967295,
+            decreases a.limbs.len() - i,
+        {
+            let t: u64 = a.limbs[i] as u64 * m as u64 + carry;
+            v.push((t % 4294967296) as u32);
+            carry = t / 4294967296;
+            i = i + 1;
+        }
+        if carry != 0 {
+            v.push(carry as u32);
+        }
+        Big { limbs: v }
+    }
+
+    #[summary("a * 10^n")]
+    #[effects(alloc)]
+    fn mul_pow10(a: &Big, n: usize) -> Big {
+        let mut r: Big = mul_add_small(a, 1, 0);
+        let mut k: usize = n;
+        while k >= 9
+            decreases k,
+        {
+            r = mul_add_small(&r, 1000000000, 0);
+            k = k - 9;
+        }
+        while k > 0
+            decreases k,
+        {
+            r = mul_add_small(&r, 10, 0);
+            k = k - 1;
+        }
+        r
+    }
+
+    #[summary("a * 2^n")]
+    #[effects(alloc)]
+    fn shl(a: &Big, n: usize) -> Big {
+        let mut v: Vec<u32> = Vec::new();
+        if a.limbs.len() == 0 {
+            return Big { limbs: v };
+        }
+        let whole: usize = n / 32;
+        let part: u32 = (n % 32) as u32;
+        let mut z: usize = 0;
+        while z < whole
+            decreases whole - z,
+        {
+            v.push(0);
+            z = z + 1;
+        }
+        let mut carry: u64 = 0;
+        let mut i: usize = 0;
+        while i < a.limbs.len()
+            invariant carry <= 4294967295,
+            decreases a.limbs.len() - i,
+        {
+            let t: u64 = ((a.limbs[i] as u64) << part) + carry;
+            v.push((t % 4294967296) as u32);
+            carry = t / 4294967296;
+            i = i + 1;
+        }
+        if carry != 0 {
+            v.push(carry as u32);
+        }
+        Big { limbs: v }
+    }
+
+    #[summary("a - b. a >= b여야 한다(아니면 2^(32 * 자리 수)를 더한 값)")]
+    #[effects(alloc)]
+    fn sub(a: &Big, b: &Big) -> Big {
+        let mut v: Vec<u32> = Vec::new();
+        let mut borrow: u64 = 0;
+        let mut kept: usize = 0;
+        let mut i: usize = 0;
+        while i < a.limbs.len()
+            invariant borrow <= 1, kept <= v.len(), v.len() == i,
+            decreases a.limbs.len() - i,
+        {
+            let mut t: u64 = 4294967296 + a.limbs[i] as u64 - borrow;
+            if i < b.limbs.len() {
+                t = t - b.limbs[i] as u64;
+            }
+            let d: u32 = (t % 4294967296) as u32;
+            v.push(d);
+            if d != 0 {
+                kept = i + 1;
+            }
+            borrow = 1 - t / 4294967296;
+            i = i + 1;
+        }
+        v.truncate(kept);
+        Big { limbs: v }
+    }
+}

@@ -1,0 +1,443 @@
+#[summary("10진 글과 f64(비트 꼴) 사이의 정확한 변환: 읽기는 가장 가까운 값(동률은 짝수), 쓰기는 같은 값으로 되읽히는 가장 짧은 글(Rust의 str::parse와 {:?}). stage0이 Rust 표준 라이브러리에서 받던 것 (백로그 4D-18)")]
+mod float {
+    const INF: u64 = 9218868437227405312;
+    const TWO52: u64 = 4503599627370496;
+    const TWO53: u64 = 9007199254740992;
+    const TWO63: u64 = 9223372036854775808;
+
+    struct Shortest { digits: Vec<u8>, k: i64 }
+
+    #[effects(pure)]
+    fn below(c: i32, inclusive: bool) -> bool {
+        if inclusive {
+            c <= 0
+        } else {
+            c < 0
+        }
+    }
+
+    #[summary("x의 비트 수(0은 0)")]
+    #[effects(pure)]
+    fn bit_len(x: u64) -> (r: u64)
+        ensures r <= 64,
+    {
+        let mut v: u64 = x;
+        let mut k: u64 = 0;
+        while v != 0
+            invariant k <= 64,
+            decreases v,
+        {
+            v = v / 2;
+            if k < 64 {
+                k = k + 1;
+            }
+        }
+        k
+    }
+
+    #[summary("자리 글자들의 값, lim에서 멈춘다")]
+    #[effects(pure)]
+    fn capped(d: &[u8], lim: u64) -> (r: u64)
+        requires lim <= 1000000000000000000,
+        ensures r <= lim,
+    {
+        let mut v: u64 = 0;
+        let mut i: usize = 0;
+        while i < d.len()
+            invariant v <= lim,
+            decreases d.len() - i,
+        {
+            let c: u8 = d[i];
+            if c >= 48 && c <= 57 {
+                v = v * 10 + (c - 48) as u64;
+                if v > lim {
+                    return lim;
+                }
+            }
+            i = i + 1;
+        }
+        v
+    }
+
+    #[summary("비트가 bits인 f64를 Rust의 {:?}가 쓰는 글: 되읽으면 같은 값인 가장 짧은 자리들, 1e16 이상이거나 1e-4 미만이면 지수 꼴")]
+    #[effects(alloc)]
+    fn debug(bits: u64) -> String {
+        let mut out: String = String::new();
+        let neg: bool = bits >= TWO63;
+        let abs: u64 = bits % TWO63;
+        let ebits: u64 = abs / TWO52;
+        let frac: u64 = abs % TWO52;
+        if ebits == 2047 {
+            if frac != 0 {
+                out.push_str("NaN");
+            } else if neg {
+                out.push_str("-inf");
+            } else {
+                out.push_str("inf");
+            }
+            return out;
+        }
+        if neg {
+            out.push('-');
+        }
+        if abs == 0 {
+            out.push_str("0.0");
+            return out;
+        }
+        let mut s: Shortest = shortest(frac * 2, 1, 1, -1075, true);
+        if ebits != 0 {
+            let m: u64 = frac + TWO52;
+            let e: i64 = ebits as i64 - 1075;
+            if frac == 0 {
+                s = shortest(m * 4, 1, 2, e - 2, true);
+            } else {
+                s = shortest(m * 2, 1, 1, e - 1, m % 2 == 0);
+            }
+        }
+        let n: i64 = s.digits.len() as i64;
+        let k: i64 = s.k;
+        if n == 0 || n > 40 || k > 100000 || k < -100000 {
+            return out;
+        }
+        if abs >= 4846369599423283200 || abs < 4547007122018943789 {
+            push_digit(&mut out, s.digits[0]);
+            if n > 1 {
+                out.push('.');
+                let mut i: usize = 1;
+                while i < s.digits.len()
+                    decreases s.digits.len() - i,
+                {
+                    push_digit(&mut out, s.digits[i]);
+                    i = i + 1;
+                }
+            }
+            out.push('e');
+            if out.len() < 1000 {
+                std::num::push_i64(&mut out, k - 1);
+            }
+            return out;
+        }
+        if k <= 0 {
+            out.push_str("0.");
+            push_zeros(&mut out, 0 - k);
+        }
+        let mut i: usize = 0;
+        while i < s.digits.len()
+            decreases s.digits.len() - i,
+        {
+            if k > 0 && i as i64 == k {
+                out.push('.');
+            }
+            push_digit(&mut out, s.digits[i]);
+            i = i + 1;
+        }
+        if k >= n {
+            push_zeros(&mut out, k - n);
+            out.push_str(".0");
+        }
+        out
+    }
+
+    #[summary("q * 2^-s(sticky면 그보다 조금 큰 값)에 가장 가까운 f64의 비트. q는 63비트나 64비트")]
+    #[effects(pure)]
+    fn pack(q: u64, sticky: bool, s: i64) -> u64 {
+        if s > 100000 || s < -100000 {
+            return 0;
+        }
+        let l: i64 = bit_len(q) as i64;
+        let mut e: i64 = l - 1 - s;
+        if e > 1023 {
+            return INF;
+        }
+        let mut drop: i64 = l - 53;
+        let sub: bool = s - 1074 >= drop;
+        if sub {
+            drop = s - 1074;
+        }
+        if drop > 64 || drop < 1 {
+            return 0;
+        }
+        let mut mant: u64 = 0;
+        let mut r: u64 = q;
+        let mut half: u64 = TWO63;
+        if drop < 64 {
+            let unit: u64 = 1 << drop as u64;
+            half = unit / 2;
+            mant = q / unit;
+            r = q % unit;
+        }
+        if half == 0 {
+            return 0;
+        }
+        let rb: bool = r >= half;
+        let rest: bool = r % half != 0 || sticky;
+        if rb && (rest || mant % 2 == 1) {
+            if mant >= TWO53 {
+                return 0;
+            }
+            mant = mant + 1;
+        }
+        if sub {
+            return mant;
+        }
+        if mant == TWO53 {
+            mant = TWO52;
+            e = e + 1;
+        }
+        if e > 1023 {
+            return INF;
+        }
+        if e < -1022 || mant > TWO53 {
+            return 0;
+        }
+        (e + 1022) as u64 * TWO52 + mant
+    }
+
+    #[summary("리터럴 int.frac e[-]exp의 값에 가장 가까운 f64의 비트(자리는 ASCII 숫자, 다른 바이트는 건너뛴다). 너무 큰 값은 무한대의 비트")]
+    #[effects(alloc)]
+    fn parse(int: &[u8], frac: &[u8], exp_neg: bool, exp: &[u8]) -> u64 {
+        if int.len() > 4294967295 || frac.len() > 4294967295 {
+            return 0;
+        }
+        let mut sig: Vec<u8> = Vec::new();
+        let mut more: i64 = 0;
+        let mut sticky: bool = false;
+        let mut fracs: i64 = 0;
+        let total: usize = int.len() + frac.len();
+        let mut i: usize = 0;
+        while i < total
+            invariant more >= 0, more <= i, fracs >= 0, fracs <= i, i <= total, total == int.len() + frac.len(), sig.len() <= 800,
+            decreases total - i,
+        {
+            let mut c: u8 = 0;
+            if i < int.len() {
+                c = int[i];
+            } else {
+                c = frac[i - int.len()];
+            }
+            if c >= 48 && c <= 57 {
+                if i >= int.len() {
+                    fracs = fracs + 1;
+                }
+                if sig.len() > 0 || c != 48 {
+                    if sig.len() < 800 {
+                        sig.push(c - 48);
+                    } else {
+                        more = more + 1;
+                        if c != 48 {
+                            sticky = true;
+                        }
+                    }
+                }
+            }
+            i = i + 1;
+        }
+        if sig.len() == 0 {
+            return 0;
+        }
+        let mut e10: i64 = capped(exp, 1000000000000000000) as i64;
+        if exp_neg {
+            e10 = 0 - e10;
+        }
+        e10 = e10 - fracs + more;
+        if sticky {
+            sig.push(1);
+            e10 = e10 - 1;
+        }
+        let mag: i64 = sig.len() as i64 + e10;
+        if mag > 310 {
+            return INF;
+        }
+        if mag < -330 {
+            return 0;
+        }
+        let mut num: big::Big = big::from_u64(0);
+        let mut j: usize = 0;
+        while j < sig.len()
+            decreases sig.len() - j,
+        {
+            num = big::mul_add_small(&num, 10, sig[j] as u32);
+            j = j + 1;
+        }
+        let one: big::Big = big::from_u64(1);
+        if e10 >= 0 {
+            ratio(&big::mul_pow10(&num, e10 as usize), &one)
+        } else {
+            ratio(&num, &big::mul_pow10(&one, (0 - e10) as usize))
+        }
+    }
+
+    #[effects(alloc)]
+    fn push_digit(out: &mut String, d: u8) -> () {
+        if d < 10 {
+            match char::from_u32((48 + d) as u32) {
+                None => {},
+                Some(c) => out.push(c),
+            }
+        }
+    }
+
+    #[effects(alloc)]
+    fn push_zeros(out: &mut String, n: i64) -> () {
+        let mut i: i64 = 0;
+        while i < n
+            decreases n - i,
+        {
+            out.push('0');
+            i = i + 1;
+        }
+    }
+
+    #[summary("num / den에 가장 가까운 f64의 비트. den은 0이 아니다")]
+    #[effects(alloc)]
+    fn ratio(num: &big::Big, den: &big::Big) -> u64 {
+        if big::is_zero(num) || big::is_zero(den) {
+            return 0;
+        }
+        let bn: usize = big::bits(num);
+        let bd: usize = big::bits(den);
+        if bn > 1000000 || bd > 1000000 {
+            return 0;
+        }
+        let s: i64 = 63 - (bn as i64 - bd as i64);
+        let mut n: big::Big = big::shl(num, 0);
+        let mut t: big::Big = big::shl(den, 63);
+        if s >= 0 {
+            n = big::shl(num, s as usize);
+        } else {
+            t = big::shl(den, (63 - s) as usize);
+        }
+        let mut q: u64 = 0;
+        let mut k: u64 = 64;
+        while k > 0
+            invariant k <= 64,
+            decreases k,
+        {
+            k = k - 1;
+            q = q.wrapping_mul(2);
+            if big::cmp(&n, &t) >= 0 {
+                n = big::sub(&n, &t);
+                q = q.wrapping_add(1);
+            }
+            t = big::half(&t);
+        }
+        pack(q, !big::is_zero(&n), s)
+    }
+
+    #[summary("digits(자리 값들)에 1을 더한다. 모두 9면 1과 0들이 되고 자리가 하나 늘어 k가 1 는다(Rust의 round_up)")]
+    #[effects(alloc)]
+    fn rounded_up(d: &[u8], k: i64) -> Shortest
+        requires k > -100000, k < 100000,
+    {
+        let mut at: usize = d.len();
+        while at > 0 && d[at - 1] == 9
+            invariant at <= d.len(),
+            decreases at,
+        {
+            at = at - 1;
+        }
+        let mut out: Vec<u8> = Vec::new();
+        if at == 0 {
+            out.push(1);
+            let mut z: usize = 0;
+            while z < d.len()
+                decreases d.len() - z,
+            {
+                out.push(0);
+                z = z + 1;
+            }
+            return Shortest { digits: out, k: k + 1 };
+        }
+        let mut i: usize = 0;
+        while i < d.len()
+            invariant at <= d.len(), at > 0,
+            decreases d.len() - i,
+        {
+            if i + 1 < at {
+                out.push(d[i]);
+            } else if i + 1 == at {
+                if d[i] < 9 {
+                    out.push(d[i] + 1);
+                } else {
+                    out.push(0);
+                }
+            } else {
+                out.push(0);
+            }
+            i = i + 1;
+        }
+        Shortest { digits: out, k: k }
+    }
+
+    #[summary("mant * 2^exp을 그 이웃과 가르는 가장 짧은 자리들: 값은 0.d1d2.. * 10^k. 구간은 (mant - minus, mant + plus) * 2^exp이고 inclusive면 끝을 포함한다(Rust의 strategy::dragon::format_shortest)")]
+    #[effects(alloc)]
+    fn shortest(m: u64, minus: u64, plus: u64, exp: i64, inclusive: bool) -> Shortest {
+        let none: Vec<u8> = Vec::new();
+        if m == 0 || m > 36028797018963968 || plus > 2 || minus > 2 || exp > 2000 || exp < -2000 {
+            return Shortest { digits: none, k: 0 };
+        }
+        let nbits: i64 = bit_len(m + plus - 1) as i64;
+        let x: i64 = (nbits + exp) * 1292913986;
+        let mut k: i64 = 0;
+        if x >= 0 {
+            k = x / 4294967296;
+        } else {
+            k = 0 - (4294967295 - x) / 4294967296;
+        }
+        let mut mant: big::Big = big::from_u64(m);
+        let mut lo: big::Big = big::from_u64(minus);
+        let mut hi: big::Big = big::from_u64(plus);
+        let mut scale: big::Big = big::from_u64(1);
+        if exp < 0 {
+            scale = big::shl(&scale, (0 - exp) as usize);
+        } else {
+            mant = big::shl(&mant, exp as usize);
+            lo = big::shl(&lo, exp as usize);
+            hi = big::shl(&hi, exp as usize);
+        }
+        if k >= 0 {
+            scale = big::mul_pow10(&scale, k as usize);
+        } else {
+            mant = big::mul_pow10(&mant, (0 - k) as usize);
+            lo = big::mul_pow10(&lo, (0 - k) as usize);
+            hi = big::mul_pow10(&hi, (0 - k) as usize);
+        }
+        if below(big::cmp(&scale, &big::add(&mant, &hi)), inclusive) {
+            k = k + 1;
+        } else {
+            mant = big::mul_add_small(&mant, 10, 0);
+            lo = big::mul_add_small(&lo, 10, 0);
+            hi = big::mul_add_small(&hi, 10, 0);
+        }
+        let mut digits: Vec<u8> = Vec::new();
+        let mut down: bool = false;
+        let mut up: bool = false;
+        let mut n: usize = 0;
+        while n < 40 && !down && !up
+            invariant n <= 40,
+            decreases 40 - n,
+        {
+            let mut d: u8 = 0;
+            while d < 9 && big::cmp(&mant, &scale) >= 0
+                invariant d <= 9,
+                decreases 9 - d,
+            {
+                mant = big::sub(&mant, &scale);
+                d = d + 1;
+            }
+            digits.push(d);
+            down = below(big::cmp(&mant, &lo), inclusive);
+            up = below(big::cmp(&scale, &big::add(&mant, &hi)), inclusive);
+            if !down && !up {
+                mant = big::mul_add_small(&mant, 10, 0);
+                lo = big::mul_add_small(&lo, 10, 0);
+                hi = big::mul_add_small(&hi, 10, 0);
+            }
+            n = n + 1;
+        }
+        if up && (!down || big::cmp(&big::shl(&mant, 1), &scale) >= 0) {
+            return rounded_up(digits.as_slice(), k);
+        }
+        Shortest { digits: digits, k: k }
+    }
+}

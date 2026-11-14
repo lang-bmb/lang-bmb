@@ -1,0 +1,6 @@
+fn f<'a>(x: &'a u8) -> &'static str { 'x: while true { break 'x; continue 'y } }
+'outer // c
+// d
+  :: x; 'l1: loop {} break 'a' continue 'b 'c' 'de' 'f 'g: 'h :: 'i : 'j　// k
+: '9: break '_x '
+'k

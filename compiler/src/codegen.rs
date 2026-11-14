@@ -571,9 +571,9 @@ fn f64_const(bits: u64) -> String {
 
 fn elem_of(t: &TypeKind) -> TypeKind {
     match t {
-        TypeKind::Array(e, _) => e.kind.clone(),
+        TypeKind::Array(e, _) | TypeKind::Vec(e) => e.kind.clone(),
         TypeKind::Ref { inner, .. } => match &inner.kind {
-            TypeKind::Slice(e) => e.kind.clone(),
+            TypeKind::Slice(e) | TypeKind::Vec(e) => e.kind.clone(),
             o => o.clone(),
         },
         o => o.clone(),
