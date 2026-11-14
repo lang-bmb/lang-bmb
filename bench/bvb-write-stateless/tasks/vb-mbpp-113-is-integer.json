@@ -1,0 +1,58 @@
+{
+  "id": "vb-mbpp-113-is-integer",
+  "kind": "write",
+  "prompt": "Create unit `tasks` for this task.\n\nImplement `is_integer`: `text` holds the bytes of a string (each element is a byte value). Return whether every byte is an ASCII decimal digit (48 to 57 inclusive); an empty text counts as all digits. The contract must state the result exactly.\n\nRequired signature (in unit `tasks`):\nfn is_integer(text: &[u64]) -> (r: bool)",
+  "unit": "tasks",
+  "def": "tasks::is_integer",
+  "signature": "fn is_integer(text: &[u64]) -> (r: bool)",
+  "accept": {
+    "specs": "spec fn ref_is_digit(c: u64) -> bool { c >= 48 && c <= 57 }\nspec fn ref_post(text: &[u64], r: bool) -> bool { r == (forall|i: usize| i < text.len() ==> ref_is_digit(#[trigger] text[i])) }",
+    "pre": null,
+    "post": "ref_post(text, r)",
+    "args": "text"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn digit(c: u64) -> bool { c >= 48 && c <= 57 }\n\nspec fn digits_below(text: &[u64], n: usize) -> bool { forall|i: usize| i < n ==> digit(#[trigger] text[i]) }\n\nspec fn all_digits(text: &[u64], r: bool) -> bool { r == digits_below(text, text.len()) }\n\n#[effects(pure)]\n#[uses(digit, digits_below, all_digits)]\nfn is_integer(text: &[u64]) -> (r: bool)\n    ensures all_digits(text, r),\n{\n    let mut k: usize = 0;\n    while k < text.len() && 48 <= text[k] && text[k] <= 57\n        invariant k <= text.len(), digits_below(text, k),\n        decreases text.len() - k,\n    {\n        k = k + 1;\n    }\n    k >= text.len()\n}"
+    }
+  ],
+  "weak_reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn digit(c: u64) -> bool { c >= 48 && c <= 57 }\n\nspec fn digits_below(text: &[u64], n: usize) -> bool { forall|i: usize| i < n ==> digit(#[trigger] text[i]) }\n\nspec fn only_if_digits(text: &[u64], r: bool) -> bool { r ==> digits_below(text, text.len()) }\n\n#[effects(pure)]\n#[uses(digit, digits_below, only_if_digits)]\nfn is_integer(text: &[u64]) -> (r: bool)\n    ensures only_if_digits(text, r),\n{\n    let mut k: usize = 0;\n    while k < text.len() && 48 <= text[k] && text[k] <= 57\n        invariant k <= text.len(), digits_below(text, k),\n        decreases text.len() - k,\n    {\n        k = k + 1;\n    }\n    k >= text.len()\n}"
+    }
+  ],
+  "source": {
+    "benchmark": "Verus-Bench",
+    "origin": "MBPP",
+    "path": "benchmarks/Verus-Bench/MBPP/verified/task_id_113.rs",
+    "rules": [
+      "T1",
+      "T2"
+    ]
+  },
+  "verus": {
+    "prompt": "Implement `is_integer`: `text` holds the bytes of a string (each element is a byte value). Return whether every byte is an ASCII decimal digit (48 to 57 inclusive); an empty text counts as all digits. The contract must state the result exactly.\n\nRequired signature:\nfn is_integer(text: &[u8]) -> (result: bool)",
+    "signature": "fn is_integer(text: &[u8]) -> (result: bool)",
+    "target": "is_integer",
+    "specs": "spec fn bvb_ref_is_digit_sepc(c: u8) -> bool {\n    c >= 48 && c <= 57\n}",
+    "pre": null,
+    "post": "result == (forall|i: int| 0 <= i < text.len() ==> bvb_ref_is_digit_sepc(#[trigger] text[i]))",
+    "args": "text",
+    "reference": "use vstd::prelude::*;\n\nfn main() {\n    // Write a function in Rust to check if a string represents an integer or not.\n\n    assert!(!is_integer(b\"python\"));\n    assert!(is_integer(b\"1\"));\n    assert!(is_integer(b\"123\"));\n}\n\nverus! {\n\nspec fn is_digit_sepc(c: u8) -> bool {\n    c >= 48 && c <= 57\n}\n\nfn is_digit(c: u8) -> (res: bool)\n    ensures\n        res == is_digit_sepc(c),\n{\n    c >= 48 && c <= 57\n}\n\nfn is_integer(text: &[u8]) -> (result: bool)\n    ensures\n        result == (forall|i: int| 0 <= i < text.len() ==> is_digit_sepc(#[trigger] text[i])),\n{\n    let mut index = 0;\n    while index < text.len()\n        invariant\n            0 <= index <= text.len(),\n            forall|i: int| 0 <= i < index ==> is_digit_sepc(#[trigger] text[i]),\n        decreases text@.len() - index,\n    {\n        if (!is_digit(text[index])) {\n            return false;\n        }\n        index += 1;\n    }\n    true\n}\n\n} // verus!",
+    "reference_origin": "upstream-triggers"
+  }
+}

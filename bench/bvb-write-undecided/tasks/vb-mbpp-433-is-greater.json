@@ -1,0 +1,58 @@
+{
+  "id": "vb-mbpp-433-is-greater",
+  "kind": "write",
+  "prompt": "Create unit `tasks` for this task.\n\nImplement `is_greater`: return whether `number` is strictly greater than every element of `arr` (true for an empty array). The contract must state the result exactly.\n\nRequired signature (in unit `tasks`):\nfn is_greater(arr: &[i64], number: i64) -> (r: bool)",
+  "unit": "tasks",
+  "def": "tasks::is_greater",
+  "signature": "fn is_greater(arr: &[i64], number: i64) -> (r: bool)",
+  "accept": {
+    "specs": "spec fn ref_post(arr: &[i64], number: i64, r: bool) -> bool { r == (forall|i: usize| i < arr.len() ==> number > #[trigger] arr[i]) }",
+    "pre": null,
+    "post": "ref_post(arr, number, r)",
+    "args": "arr, number"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn holds_below(arr: &[i64], number: i64, n: usize) -> bool { forall|i: usize| i < n && i < arr.len() ==> number > #[trigger] arr[i] }\n\nspec fn exact(arr: &[i64], number: i64, r: bool) -> bool { r == holds_below(arr, number, arr.len()) }\n\n#[effects(pure)]\n#[uses(holds_below, exact)]\nfn is_greater(arr: &[i64], number: i64) -> (r: bool)\n    ensures exact(arr, number, r),\n{\n    let mut idx: usize = 0;\n    while idx < arr.len() && (number > arr[idx])\n        invariant idx <= arr.len(), holds_below(arr, number, idx),\n        decreases arr.len() - idx,\n    {\n        idx = idx + 1;\n    }\n    idx >= arr.len()\n}"
+    }
+  ],
+  "weak_reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn holds_below(arr: &[i64], number: i64, n: usize) -> bool { forall|i: usize| i < n && i < arr.len() ==> number > #[trigger] arr[i] }\n\nspec fn one_way(arr: &[i64], number: i64, r: bool) -> bool { holds_below(arr, number, arr.len()) ==> r }\n\n#[effects(pure)]\n#[uses(holds_below, one_way)]\nfn is_greater(arr: &[i64], number: i64) -> (r: bool)\n    ensures one_way(arr, number, r),\n{\n    let mut idx: usize = 0;\n    while idx < arr.len() && (number > arr[idx])\n        invariant idx <= arr.len(), holds_below(arr, number, idx),\n        decreases arr.len() - idx,\n    {\n        idx = idx + 1;\n    }\n    idx >= arr.len()\n}"
+    }
+  ],
+  "source": {
+    "benchmark": "Verus-Bench",
+    "origin": "MBPP",
+    "path": "benchmarks/Verus-Bench/MBPP/verified/task_id_433.rs",
+    "rules": [
+      "T1",
+      "T2"
+    ]
+  },
+  "verus": {
+    "prompt": "Implement `is_greater`: return whether `number` is strictly greater than every element of `arr` (true for an empty array). The contract must state the result exactly.\n\nRequired signature:\nfn is_greater(arr: &Vec<i32>, number: i32) -> (result: bool)",
+    "signature": "fn is_greater(arr: &Vec<i32>, number: i32) -> (result: bool)",
+    "target": "is_greater",
+    "specs": "",
+    "pre": null,
+    "post": "result == (forall|i: int| 0 <= i < arr.len() ==> number > arr[i])",
+    "args": "arr, number",
+    "reference": "use vstd::prelude::*;\n\nfn main() {\n    // Write a function in Rust to check whether the given integer is greater than the elements of the given integer array.\n\n    assert!(!is_greater(&vec![1, 2, 3, 4, 5], 4));\n    assert!(is_greater(&vec![2, 3, 4, 5, 6], 8));\n    assert!(is_greater(&vec![9, 7, 4, 8, 6, 1], 11));\n}\n\nverus! {\n\nfn is_greater(arr: &Vec<i32>, number: i32) -> (result: bool)\n    ensures\n        result == (forall|i: int| 0 <= i < arr.len() ==> number > arr[i]),\n{\n    let mut i = 0;\n    while i < arr.len()\n        invariant\n            0 <= i <= arr.len(),\n            forall|k: int| 0 <= k < i ==> number > arr[k],\n        decreases arr@.len() - i,\n    {\n        if number <= arr[i] {\n            return false;\n        }\n        i += 1;\n    }\n    true\n}\n\n} // verus!",
+    "reference_origin": "upstream"
+  }
+}

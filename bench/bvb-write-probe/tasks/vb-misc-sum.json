@@ -1,0 +1,62 @@
+{
+  "id": "vb-misc-sum",
+  "kind": "write",
+  "prompt": "Create unit `tasks` for this task.\n\nImplement `compute_arith_sum`: the sum 0 + 1 + ... + n, given by the given specification function, is below 10000. Return that sum. The contract must state the result exactly using the given specification function.\n\nGiven specification functions in unit `given` (use them, do not change them):\n```\nspec fn arith_sum(i: u64) -> u64\n    decreases i,\n{\n    if i == 0 { 0 } else { i + arith_sum(i - 1) }\n}\n```\n\nRequired signature (in unit `tasks`):\nfn compute_arith_sum(n: u64) -> (r: u64)",
+  "unit": "tasks",
+  "def": "tasks::compute_arith_sum",
+  "signature": "fn compute_arith_sum(n: u64) -> (r: u64)",
+  "accept": {
+    "specs": "spec fn ref_pre(n: u64) -> bool { given::arith_sum(n) < 10000 }\nspec fn ref_post(n: u64, r: u64) -> bool { given::arith_sum(n) == r }",
+    "pre": "ref_pre(n)",
+    "post": "ref_post(n, r)",
+    "args": "n"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn small_sum(n: u64) -> bool { given::arith_sum(n) < 10000 }\n\nspec fn sum_nonneg(i: u64) -> bool { given::arith_sum(i) >= 0 }\n\nspec fn sum_is(n: u64, r: u64) -> bool { given::arith_sum(n) == r }\n\n#[effects(pure)]\n#[uses(sum_nonneg, given::arith_sum)]\nfn nonneg(i: u64) -> ()\n    ensures sum_nonneg(i),\n    decreases i,\n{\n    if i > 0 {\n        nonneg(i - 1);\n    }\n}\n\n#[effects(pure)]\n#[uses(small_sum, sum_nonneg, sum_is, given::arith_sum)]\nfn compute_arith_sum(n: u64) -> (r: u64)\n    requires small_sum(n),\n    ensures sum_is(n, r),\n{\n    let mut i: u64 = n;\n    let mut s: u64 = 0;\n    while i > 0\n        invariant i <= n, small_sum(n), s + given::arith_sum(i) == given::arith_sum(n),\n        decreases i,\n    {\n        nonneg(i - 1);\n        s = s + i;\n        i = i - 1;\n    }\n    s\n}"
+    }
+  ],
+  "weak_reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn small_sum(n: u64) -> bool { given::arith_sum(n) < 10000 }\n\nspec fn sum_nonneg(i: u64) -> bool { given::arith_sum(i) >= 0 }\n\nspec fn below_limit(n: u64, r: u64) -> bool { r < 10000 }\n\n#[effects(pure)]\n#[uses(sum_nonneg, given::arith_sum)]\nfn nonneg(i: u64) -> ()\n    ensures sum_nonneg(i),\n    decreases i,\n{\n    if i > 0 {\n        nonneg(i - 1);\n    }\n}\n\n#[effects(pure)]\n#[uses(small_sum, sum_nonneg, below_limit, given::arith_sum)]\nfn compute_arith_sum(n: u64) -> (r: u64)\n    requires small_sum(n),\n    ensures below_limit(n, r),\n{\n    let mut i: u64 = n;\n    let mut s: u64 = 0;\n    while i > 0\n        invariant i <= n, small_sum(n), s + given::arith_sum(i) == given::arith_sum(n),\n        decreases i,\n    {\n        nonneg(i - 1);\n        s = s + i;\n        i = i - 1;\n    }\n    s\n}"
+    }
+  ],
+  "source": {
+    "benchmark": "Verus-Bench",
+    "origin": "Misc",
+    "path": "benchmarks/Verus-Bench/Misc/verified/sum.rs",
+    "rules": [
+      "T2",
+      "G1"
+    ]
+  },
+  "verus": {
+    "prompt": "Implement `compute_arith_sum`: the sum 0 + 1 + ... + n, given by the given specification function, is below 10000. Return that sum. The contract must state the result exactly using the given specification function.\n\nThe file starts with these given specification functions (use them, do not change them):\n```\nspec fn arith_sum_int(i: nat) -> nat\n    decreases i\n{\n    if i == 0 { 0 } else { i + arith_sum_int( (i - 1) as nat) }\n}\n```\n\nRequired signature:\nfn compute_arith_sum(n: u64) -> (sum: u64)",
+    "signature": "fn compute_arith_sum(n: u64) -> (sum: u64)",
+    "target": "compute_arith_sum",
+    "specs": "",
+    "pre": "arith_sum_int(n as nat) < 10000",
+    "post": "arith_sum_int(n as nat) == sum",
+    "args": "n",
+    "reference": "#[allow(unused_imports)]\nuse vstd::prelude::*;\n\nfn main() {}\n\nverus! {\n\nspec fn arith_sum_int(i: nat) -> nat\n    decreases i\n{\n    if i == 0 { 0 } else { i + arith_sum_int( (i - 1) as nat) }\n}\n\nproof fn lemma_arith_sum_monotonic(i: nat, j:nat)\n    requires\n        i <= j,\n    ensures\n        arith_sum_int(i as nat) <= arith_sum_int(j as nat),\n    decreases j\n{\n    if i<j {\n        lemma_arith_sum_monotonic(i, (j-1) as nat);\n    }\n}\n\nfn compute_arith_sum(n: u64) -> (sum: u64)\n    requires\n        arith_sum_int(n as nat) < 10000,\n    ensures\n        arith_sum_int(n as nat) == sum,\n{\n    let mut i: u64 = 0;\n    let mut sum: u64 = 0;\n    while i < n\n        invariant \n            i <= n,\n            sum == arith_sum_int(i as nat),\n            arith_sum_int(n as nat) < 10000,\n        decreases n - i,\n    {\n        i = i + 1;\n\n        assert( sum + i <= arith_sum_int(n as nat)) by {\n            lemma_arith_sum_monotonic(i as nat, n as nat);\n        }\n        sum = sum + i;\n    }\n    sum\n}\n\n\n} // verus!",
+    "reference_origin": "upstream",
+    "given": "spec fn arith_sum_int(i: nat) -> nat\n    decreases i\n{\n    if i == 0 { 0 } else { i + arith_sum_int( (i - 1) as nat) }\n}"
+  },
+  "frozen": [
+    "given::arith_sum"
+  ]
+}

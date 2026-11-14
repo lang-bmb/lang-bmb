@@ -1,0 +1,58 @@
+{
+  "id": "vb-misc-reverse",
+  "kind": "write",
+  "prompt": "Create unit `tasks` for this task.\n\nImplement `reverse`: reverse `v` in place. The contract must state that the length is unchanged and that every position i holds the element that was at position len - 1 - i on entry.\n\nRequired signature (in unit `tasks`):\nfn reverse(v: &mut [u64]) -> ()",
+  "unit": "tasks",
+  "def": "tasks::reverse",
+  "signature": "fn reverse(v: &mut [u64]) -> ()",
+  "accept": {
+    "specs": "spec fn ref_post(old_v: &[u64], v: &[u64]) -> bool { v.len() == old_v.len() && (forall|i: usize| i < old_v.len() ==> #[trigger] v[i] == old_v[old_v.len() - i - 1]) }",
+    "pre": null,
+    "post": "ref_post(old(v), v)",
+    "args": "v"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn swapped_upto(old_v: &[u64], v: &[u64], n: usize) -> bool { v.len() == old_v.len() && 2 * n <= v.len() && (forall|i: usize| i < v.len() ==> ((i < n ==> #[trigger] v[i] == old_v[v.len() - i - 1]) && (v.len() - n <= i ==> v[i] == old_v[v.len() - i - 1]) && (n <= i && i < v.len() - n ==> v[i] == old_v[i]))) }\n\nspec fn reversed(old_v: &[u64], v: &[u64]) -> bool { v.len() == old_v.len() && (forall|i: usize| i < old_v.len() ==> #[trigger] v[i] == old_v[old_v.len() - i - 1]) }\n\n#[effects(pure)]\n#[uses(swapped_upto, reversed)]\nfn reverse(v: &mut [u64]) -> ()\n    ensures reversed(old(v), v),\n{\n    let len: usize = v.len();\n    let mut n: usize = 0;\n    while n < len / 2\n        invariant len == v.len(), swapped_upto(old(v), v, n),\n        decreases len / 2 - n,\n    {\n        let x: u64 = v[n];\n        let y: u64 = v[len - 1 - n];\n        v[n] = y;\n        v[len - 1 - n] = x;\n        n = n + 1;\n    }\n}"
+    }
+  ],
+  "weak_reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn same_len(old_v: &[u64], v: &[u64]) -> bool { v.len() == old_v.len() }\n\n#[effects(pure)]\n#[uses(same_len)]\nfn reverse(v: &mut [u64]) -> ()\n    ensures same_len(old(v), v),\n{\n    let len: usize = v.len();\n    let mut n: usize = 0;\n    while n < len / 2\n        invariant len == v.len(), same_len(old(v), v),\n        decreases len / 2 - n,\n    {\n        let x: u64 = v[n];\n        let y: u64 = v[len - 1 - n];\n        v[n] = y;\n        v[len - 1 - n] = x;\n        n = n + 1;\n    }\n}"
+    }
+  ],
+  "source": {
+    "benchmark": "Verus-Bench",
+    "origin": "Misc",
+    "path": "benchmarks/Verus-Bench/Misc/verified/reverse.rs",
+    "rules": [
+      "T1",
+      "T2"
+    ]
+  },
+  "verus": {
+    "prompt": "Implement `reverse`: reverse `v` in place. The contract must state that the length is unchanged and that every position i holds the element that was at position len - 1 - i on entry.\n\nRequired signature:\nfn reverse(v: &mut Vec<u64>)",
+    "signature": "fn reverse(v: &mut Vec<u64>)",
+    "target": "reverse",
+    "specs": "",
+    "pre": null,
+    "post": "final(v).len() == old(v).len(),\nforall|i: int| 0 <= i < old(v).len() ==> final(v)[i] == old(v)[old(v).len() - i - 1]",
+    "args": "v",
+    "reference": "use vstd::prelude::*;\nfn main() {}\n\nverus!{\nfn reverse(v: &mut Vec<u64>)\nensures\n        final(v).len() == old(v).len(),\n        forall|i: int| 0 <= i < old(v).len() ==> final(v)[i] == old(v)[old(v).len() - i - 1],\n{\n    let length = v.len();\n    let mut n: usize = 0;\n    while n < length / 2\n        invariant\n            0 <= n <= length / 2,\n            v.len() == old(v).len(),\n            v.len() == length,\n            forall|i: int| 0 <= i < n ==> v[i] == old(v)[length - i - 1],\n            forall|i: int| 0 <= i < n ==> v[length - i - 1] == old(v)[i],\n            forall|i: int| n <= i < length - n ==> v[i] == old(v)[i],\n        decreases length / 2 - n\n    {\n        let x = v[n];\n        let y = v[length - 1 - n];\n        v.set(n, y);\n        v.set(length - 1 - n, x);\n\n        n = n + 1;\n    }\n}\n}",
+    "reference_origin": "upstream-migrated"
+  }
+}

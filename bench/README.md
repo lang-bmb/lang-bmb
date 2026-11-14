@@ -11,6 +11,7 @@
 | `brb-effect` | 출력과 상태가 있는 과제: 남은 테스트 면적(H-EFFECT, T1-43) | 필요(기준·약한 해법은 불필요) |
 | `brb-hard` | 테스트가 놓치기 쉬운 결함, QuixBugs에서 옮긴 과제 12개(H-ORACLE, T0-08) | 필요(기준·약한 해법은 불필요) |
 | `repair` | `m1b-write`의 절제 판 `m1b-write-norepair`(반례·`fix` 없는 도구 결과, H-REPAIR, T1-45)와 판정 | 필요(스크립트 에이전트는 불필요) |
+| `ablate` | `bvb-write`·`brb-write`의 절제 판 여섯: `-undecided`(`--undecided-info`, H-UNDECIDE), `-probe`(`--probe-tool`, H-PROBE), `-stateless`(상태 없는 수리 차례, H-HISTORY). 원판과 `set.json`의 한 가지만 다르다(T0-37, ADR-0136) | 필요(스크립트 에이전트는 불필요) |
 | `review` | 변경 검토: 명세 diff(`bmb weaken` 판정 포함) 대 코드 diff, BVB에서 만든 변경 143개(H-REVIEW, T1-44) | 필요(대본 리뷰어는 불필요) |
 | `intent` | 계약 검토: 명세 + `bmb examples`의 예시·반례 대 코드 + 명세, BVB에서 만든 항목 90개(H-INTENT, T1-44e). `review` 하네스의 둘째 집합 | 필요(대본 리뷰어는 불필요) |
 | `bnb` | 맵 도구 대 파일 도구(Rust 쌍둥이) | 오라클 팔은 불필요 |

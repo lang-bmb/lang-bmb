@@ -1,0 +1,58 @@
+{
+  "id": "vb-mbpp-472-consecutive",
+  "kind": "write",
+  "prompt": "Create unit `tasks` for this task.\n\nImplement `contains_consecutive_numbers`: `arr` is non-empty and every element x satisfies 0 <= x + 1 < 2147483647. Return whether every element is exactly one more than the element before it. The contract must state the result exactly in terms of adjacent positions.\n\nRequired signature (in unit `tasks`):\nfn contains_consecutive_numbers(arr: &[i64]) -> (r: bool)",
+  "unit": "tasks",
+  "def": "tasks::contains_consecutive_numbers",
+  "signature": "fn contains_consecutive_numbers(arr: &[i64]) -> (r: bool)",
+  "accept": {
+    "specs": "spec fn ref_pre(arr: &[i64]) -> bool { arr.len() > 0 && (forall|i: usize| i < arr.len() ==> 0 <= #[trigger] arr[i] + 1 && arr[i] + 1 < 2147483647) }\nspec fn ref_post(arr: &[i64], r: bool) -> bool { r == (forall|i: usize, j: usize| i < j && j < arr.len() && j == i + 1 ==> #[trigger] arr[i] + 1 == #[trigger] arr[j]) }",
+    "pre": "ref_pre(arr)",
+    "post": "ref_post(arr, r)",
+    "args": "arr"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn small_elems(arr: &[i64]) -> bool { arr.len() > 0 && (forall|i: usize| i < arr.len() ==> 0 <= #[trigger] arr[i] + 1 && arr[i] + 1 < 2147483647) }\n\nspec fn steps_upto(arr: &[i64], n: usize) -> bool { forall|i: usize, j: usize| i < j && j <= n && j == i + 1 ==> #[trigger] arr[i] + 1 == #[trigger] arr[j] }\n\nspec fn consecutive_ok(arr: &[i64], r: bool) -> bool { r == (forall|i: usize, j: usize| i < j && j < arr.len() && j == i + 1 ==> #[trigger] arr[i] + 1 == #[trigger] arr[j]) }\n\n#[effects(pure)]\n#[uses(small_elems, steps_upto, consecutive_ok)]\nfn contains_consecutive_numbers(arr: &[i64]) -> (r: bool)\n    requires small_elems(arr),\n    ensures consecutive_ok(arr, r),\n{\n    let mut idx: usize = 0;\n    while idx + 1 < arr.len() && arr[idx] + 1 == arr[idx + 1]\n        invariant idx < arr.len(), small_elems(arr), steps_upto(arr, idx),\n        decreases arr.len() - idx,\n    {\n        idx = idx + 1;\n    }\n    idx + 1 >= arr.len()\n}"
+    }
+  ],
+  "weak_reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn small_elems(arr: &[i64]) -> bool { arr.len() > 0 && (forall|i: usize| i < arr.len() ==> 0 <= #[trigger] arr[i] + 1 && arr[i] + 1 < 2147483647) }\n\nspec fn steps_upto(arr: &[i64], n: usize) -> bool { forall|i: usize, j: usize| i < j && j <= n && j == i + 1 ==> #[trigger] arr[i] + 1 == #[trigger] arr[j] }\n\nspec fn consecutive_if(arr: &[i64], r: bool) -> bool { r ==> (forall|i: usize, j: usize| i < j && j < arr.len() && j == i + 1 ==> #[trigger] arr[i] + 1 == #[trigger] arr[j]) }\n\n#[effects(pure)]\n#[uses(small_elems, steps_upto, consecutive_if)]\nfn contains_consecutive_numbers(arr: &[i64]) -> (r: bool)\n    requires small_elems(arr),\n    ensures consecutive_if(arr, r),\n{\n    let mut idx: usize = 0;\n    while idx + 1 < arr.len() && arr[idx] + 1 == arr[idx + 1]\n        invariant idx < arr.len(), small_elems(arr), steps_upto(arr, idx),\n        decreases arr.len() - idx,\n    {\n        idx = idx + 1;\n    }\n    idx + 1 >= arr.len()\n}"
+    }
+  ],
+  "source": {
+    "benchmark": "Verus-Bench",
+    "origin": "MBPP",
+    "path": "benchmarks/Verus-Bench/MBPP/verified/task_id_472.rs",
+    "rules": [
+      "T1",
+      "T2"
+    ]
+  },
+  "verus": {
+    "prompt": "Implement `contains_consecutive_numbers`: `arr` is non-empty and every element x satisfies 0 <= x + 1 < 2147483647. Return whether every element is exactly one more than the element before it. The contract must state the result exactly in terms of adjacent positions.\n\nRequired signature:\nfn contains_consecutive_numbers(arr: &Vec<i32>) -> (is_consecutive: bool)",
+    "signature": "fn contains_consecutive_numbers(arr: &Vec<i32>) -> (is_consecutive: bool)",
+    "target": "contains_consecutive_numbers",
+    "specs": "",
+    "pre": "arr.len() > 0,\nforall|i: int| 0 <= i < arr.len() ==> (0 <= #[trigger] arr[i] + 1 < i32::MAX)",
+    "post": "is_consecutive == (forall|i: int, j: int|\n    0 <= i < j < arr.len() && j == i + 1 ==> (arr[i] + 1 == arr[j]))",
+    "args": "arr",
+    "reference": "use vstd::prelude::*;\n\nfn main() {\n    // Write a function in Rust to check whether the given list contains consecutive numbers or not.\n\n    assert!(contains_consecutive_numbers(&vec![1, 2, 3, 4, 5]));\n    assert!(!contains_consecutive_numbers(&vec![1, 2, 3, 5, 6]));\n    assert!(!contains_consecutive_numbers(&vec![1, 2, 1]));\n}\n\nverus! {\n\nfn contains_consecutive_numbers(arr: &Vec<i32>) -> (is_consecutive: bool)\n    requires\n        arr.len() > 0,\n        forall|i: int| 0 <= i < arr.len() ==> (0 <= #[trigger] arr[i] + 1 < i32::MAX),\n    ensures\n        is_consecutive == (forall|i: int, j: int|\n            0 <= i < j < arr.len() && j == i + 1 ==> (arr[i] + 1 == arr[j])),\n{\n    let mut index = 0;\n    while (index < arr.len() - 1)\n        invariant\n            0 <= index <= arr.len() - 1,\n            forall|k: int| 0 <= k < arr.len() ==> (0 <= #[trigger] arr[k] + 1 < i32::MAX),\n            forall|k: int, l: int| (0 <= k < l <= index && l == k + 1) ==> (arr[k] + 1 == arr[l]),\n        decreases arr.len() - index - 1,\n    {\n        if (arr[index] + 1 != arr[index + 1]) {\n            return false;\n        }\n        index += 1;\n    }\n    true\n}\n\n} // verus!",
+    "reference_origin": "upstream"
+  }
+}

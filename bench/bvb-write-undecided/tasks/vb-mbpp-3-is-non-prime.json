@@ -1,0 +1,63 @@
+{
+  "id": "vb-mbpp-3-is-non-prime",
+  "kind": "write",
+  "prompt": "Create unit `tasks` for this task.\n\nImplement `is_non_prime`: `n` is at least 2. Return whether `n` has a divisor k with 2 <= k < n. The contract must state the result exactly using the given specification function.\n\nGiven specification functions in unit `given` (use them, do not change them):\n```\nspec fn is_divisible(n: u64, divisor: u64) -> bool {\n    n % divisor == 0\n}\n```\n\nRequired signature (in unit `tasks`):\nfn is_non_prime(n: u64) -> (r: bool)",
+  "unit": "tasks",
+  "def": "tasks::is_non_prime",
+  "signature": "fn is_non_prime(n: u64) -> (r: bool)",
+  "accept": {
+    "specs": "spec fn ref_pre(n: u64) -> bool { n >= 2 }\nspec fn ref_post(n: u64, r: bool) -> bool { r == !(forall|k: u64| 2 <= k && k < n ==> !(#[trigger] given::is_divisible(n, k))) }",
+    "pre": "ref_pre(n)",
+    "post": "ref_post(n, r)",
+    "args": "n"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn at_least_two(n: u64) -> bool { n >= 2 }\n\nspec fn stopped(n: u64, d: u64) -> bool { d >= n || given::is_divisible(n, d) }\n\nspec fn no_divisor_below(n: u64, m: u64) -> bool { forall|k: u64| 2 <= k && k < m ==> !(#[trigger] given::is_divisible(n, k)) }\n\nspec fn non_prime_ok(n: u64, r: bool) -> bool { r == !no_divisor_below(n, n) }\n\n#[effects(pure)]\n#[uses(at_least_two, stopped, no_divisor_below, non_prime_ok, given::is_divisible)]\nfn is_non_prime(n: u64) -> (r: bool)\n    requires at_least_two(n),\n    ensures non_prime_ok(n, r),\n{\n    let mut d: u64 = 2;\n    while d < n && n % d != 0\n        invariant 2 <= d, d <= n, no_divisor_below(n, d),\n        decreases n - d,\n    {\n        d = d + 1;\n    }\n    assert(stopped(n, d));\n    d < n\n}"
+    }
+  ],
+  "weak_reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn at_least_two(n: u64) -> bool { n >= 2 }\n\nspec fn stopped(n: u64, d: u64) -> bool { d >= n || given::is_divisible(n, d) }\n\nspec fn no_divisor_below(n: u64, m: u64) -> bool { forall|k: u64| 2 <= k && k < m ==> !(#[trigger] given::is_divisible(n, k)) }\n\nspec fn non_prime_if(n: u64, r: bool) -> bool { !r ==> no_divisor_below(n, n) }\n\n#[effects(pure)]\n#[uses(at_least_two, stopped, no_divisor_below, non_prime_if, given::is_divisible)]\nfn is_non_prime(n: u64) -> (r: bool)\n    requires at_least_two(n),\n    ensures non_prime_if(n, r),\n{\n    let mut d: u64 = 2;\n    while d < n && n % d != 0\n        invariant 2 <= d, d <= n, no_divisor_below(n, d),\n        decreases n - d,\n    {\n        d = d + 1;\n    }\n    assert(stopped(n, d));\n    d < n\n}"
+    }
+  ],
+  "source": {
+    "benchmark": "Verus-Bench",
+    "origin": "MBPP",
+    "path": "benchmarks/Verus-Bench/MBPP/verified/task_id_3.rs",
+    "rules": [
+      "T2",
+      "T3",
+      "G1"
+    ]
+  },
+  "verus": {
+    "prompt": "Implement `is_non_prime`: `n` is at least 2. Return whether `n` has a divisor k with 2 <= k < n. The contract must state the result exactly using the given specification function.\n\nThe file starts with these given specification functions (use them, do not change them):\n```\nspec fn is_divisible(n: int, divisor: int) -> bool {\n    (n % divisor) == 0\n}\n```\n\nRequired signature:\nfn is_non_prime(n: u64) -> (result: bool)",
+    "signature": "fn is_non_prime(n: u64) -> (result: bool)",
+    "target": "is_non_prime",
+    "specs": "",
+    "pre": "n >= 2",
+    "post": "result == (exists|k: int| 2 <= k < n && is_divisible(n as int, k))",
+    "args": "n",
+    "reference": "use vstd::prelude::*;\n\nfn main() {\n    // verus does not support mod(%) operation on signed integers\n    // so input should be unsigned integers\n\n    //Write a function in Rust to identify non-prime numbers.\n    assert!(is_non_prime(0));\n    assert!(is_non_prime(1));\n    assert!(!is_non_prime(2));\n    assert!(is_non_prime(10));\n    assert!(is_non_prime(35));\n    assert!(!is_non_prime(37));\n}\n\nverus! {\n\nspec fn is_divisible(n: int, divisor: int) -> bool {\n    (n % divisor) == 0\n}\n\nfn is_non_prime(n: u64) -> (result: bool)\n    requires\n        n >= 2,\n    ensures\n        result == (exists|k: int| 2 <= k < n && is_divisible(n as int, k)),\n{\n    if n <= 1 {\n        return true;\n    }\n    let mut index = 2;\n    while index < n\n        invariant\n            2 <= index,\n            forall|k: int| 2 <= k < index ==> !is_divisible(n as int, k),\n        decreases n - index,\n    {\n        if ((n % index) == 0) {\n            assert(is_divisible(n as int, index as int));\n            return true;\n        }\n        index += 1;\n    }\n    false\n}\n\n} // verus!",
+    "reference_origin": "upstream",
+    "given": "spec fn is_divisible(n: int, divisor: int) -> bool {\n    (n % divisor) == 0\n}"
+  },
+  "frozen": [
+    "given::is_divisible"
+  ]
+}

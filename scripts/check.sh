@@ -87,6 +87,7 @@ done' \
   --job "bench view (compact sets, not frozen)=python3 bench/view/test_gen.py" \
   --job "bench lean (fixed context sets, 2D-28)=python3 bench/lean/test_gen.py" \
   --job "bench repair (H-REPAIR ablation set, T1-45)=python3 bench/repair/gen.py --check > /dev/null && python3 bench/repair/test_gen.py" \
+  --job "bench ablate (H-UNDECIDE, H-PROBE, H-HISTORY sets, T0-37)=python3 bench/ablate/gen.py --check > /dev/null && python3 bench/ablate/test_gen.py" \
   --job "bench review (H-REVIEW change set, T1-44)=python3 bench/review/gen.py --check > /dev/null && python3 bench/review/test_review.py" \
   --job "bench intent (H-INTENT item set, T1-44e)=python3 bench/intent/gen.py --check > /dev/null && python3 bench/intent/test_intent.py" \
   --job 'bench hname=python3 bench/hname/gen.py --check > /dev/null

@@ -1,0 +1,57 @@
+{
+  "id": "vc-vd0727-calculate-loss",
+  "kind": "write",
+  "prompt": "Create unit `tasks` for this task.\n\nImplement `calculate_loss`: `cost_price` and `selling_price` are non-negative 32-bit integers. Return the loss: cost_price - selling_price when the cost exceeds the selling price, otherwise 0. The contract must state the result exactly in both cases.\n\nRequired signature (in unit `tasks`):\nfn calculate_loss(cost_price: i64, selling_price: i64) -> (r: i64)",
+  "unit": "tasks",
+  "def": "tasks::calculate_loss",
+  "signature": "fn calculate_loss(cost_price: i64, selling_price: i64) -> (r: i64)",
+  "accept": {
+    "specs": "spec fn ref_pre(cost_price: i64, selling_price: i64) -> bool { -2147483648 <= cost_price && cost_price <= 2147483647 && -2147483648 <= selling_price && selling_price <= 2147483647 && cost_price >= 0 && selling_price >= 0 }\nspec fn ref_post(cost_price: i64, selling_price: i64, r: i64) -> bool { (cost_price > selling_price ==> r == cost_price - selling_price) && (cost_price <= selling_price ==> r == 0) }",
+    "pre": "ref_pre(cost_price, selling_price)",
+    "post": "ref_post(cost_price, selling_price, r)",
+    "args": "cost_price, selling_price"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn input_ok(cost_price: i64, selling_price: i64) -> bool { -2147483648 <= cost_price && cost_price <= 2147483647 && -2147483648 <= selling_price && selling_price <= 2147483647 && cost_price >= 0 && selling_price >= 0 }\n\nspec fn result_ok(cost_price: i64, selling_price: i64, r: i64) -> bool { (cost_price > selling_price ==> r == cost_price - selling_price) && (cost_price <= selling_price ==> r == 0) }\n\n#[effects(pure)]\n#[uses(input_ok, result_ok)]\nfn calculate_loss(cost_price: i64, selling_price: i64) -> (r: i64)\n    requires input_ok(cost_price, selling_price),\n    ensures result_ok(cost_price, selling_price, r),\n{\n    if cost_price > selling_price {\n        cost_price - selling_price\n    } else {\n        0\n    }\n}"
+    }
+  ],
+  "weak_reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn input_ok(cost_price: i64, selling_price: i64) -> bool { -2147483648 <= cost_price && cost_price <= 2147483647 && -2147483648 <= selling_price && selling_price <= 2147483647 && cost_price >= 0 && selling_price >= 0 }\n\nspec fn result_ok(cost_price: i64, selling_price: i64, r: i64) -> bool { r >= 0 }\n\n#[effects(pure)]\n#[uses(input_ok, result_ok)]\nfn calculate_loss(cost_price: i64, selling_price: i64) -> (r: i64)\n    requires input_ok(cost_price, selling_price),\n    ensures result_ok(cost_price, selling_price, r),\n{\n    if cost_price > selling_price {\n        cost_price - selling_price\n    } else {\n        0\n    }\n}"
+    }
+  ],
+  "source": {
+    "benchmark": "Vericoding",
+    "origin": "dafnybench dafny-synthesis_task_id_452_CalculateLoss",
+    "path": "jsonl/verus_tasks.jsonl#VD0727",
+    "rules": [
+      "T2"
+    ]
+  },
+  "verus": {
+    "prompt": "Implement `calculate_loss`: `cost_price` and `selling_price` are non-negative 32-bit integers. Return the loss: cost_price - selling_price when the cost exceeds the selling price, otherwise 0. The contract must state the result exactly in both cases.\n\nRequired signature:\nfn calculate_loss(cost_price: i32, selling_price: i32) -> (loss: i32)",
+    "signature": "fn calculate_loss(cost_price: i32, selling_price: i32) -> (loss: i32)",
+    "target": "calculate_loss",
+    "specs": "",
+    "pre": "cost_price >= 0 && selling_price >= 0",
+    "post": "(cost_price > selling_price ==> loss == cost_price - selling_price) && (cost_price <= selling_price ==> loss == 0)",
+    "args": "cost_price, selling_price",
+    "reference": "use vstd::prelude::*;\n\nverus! {\n\n// <vc-helpers>\n\n// </vc-helpers>\n\n// <vc-spec>\nfn calculate_loss(cost_price: i32, selling_price: i32) -> (loss: i32)\n    requires cost_price >= 0 && selling_price >= 0,\n    ensures (cost_price > selling_price ==> loss == cost_price - selling_price) && (cost_price <= selling_price ==> loss == 0),\n// </vc-spec>\n// <vc-code>\n{\n  if cost_price > selling_price {\n    let d = cost_price - selling_price;\n    d\n  } else {\n    0\n  }\n}\n// </vc-code>\n\nfn main() {\n}\n\n}",
+    "reference_origin": "upstream"
+  }
+}

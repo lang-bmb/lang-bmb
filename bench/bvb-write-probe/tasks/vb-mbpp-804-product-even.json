@@ -1,0 +1,59 @@
+{
+  "id": "vb-mbpp-804-product-even",
+  "kind": "write",
+  "prompt": "Create unit `tasks` for this task.\n\nImplement `is_product_even`: return whether the product of the elements of `arr` is even, that is, whether some element is even (false for an empty array). The contract must state the result exactly in terms of the elements.\n\nRequired signature (in unit `tasks`):\nfn is_product_even(arr: &[u64]) -> (r: bool)",
+  "unit": "tasks",
+  "def": "tasks::is_product_even",
+  "signature": "fn is_product_even(arr: &[u64]) -> (r: bool)",
+  "accept": {
+    "specs": "spec fn ref_post(arr: &[u64], r: bool) -> bool { r == !(forall|i: usize| i < arr.len() ==> !(#[trigger] arr[i] % 2 == 0)) }",
+    "pre": null,
+    "post": "ref_post(arr, r)",
+    "args": "arr"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn holds_below(arr: &[u64], n: usize) -> bool { forall|i: usize| i < n && i < arr.len() ==> !(#[trigger] arr[i] % 2 == 0) }\n\nspec fn exact(arr: &[u64], r: bool) -> bool { r == !holds_below(arr, arr.len()) }\n\n#[effects(pure)]\n#[uses(holds_below, exact)]\nfn is_product_even(arr: &[u64]) -> (r: bool)\n    ensures exact(arr, r),\n{\n    let mut idx: usize = 0;\n    while idx < arr.len() && !(arr[idx] % 2 == 0)\n        invariant idx <= arr.len(), holds_below(arr, idx),\n        decreases arr.len() - idx,\n    {\n        idx = idx + 1;\n    }\n    idx < arr.len()\n}"
+    }
+  ],
+  "weak_reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn holds_below(arr: &[u64], n: usize) -> bool { forall|i: usize| i < n && i < arr.len() ==> !(#[trigger] arr[i] % 2 == 0) }\n\nspec fn one_way(arr: &[u64], r: bool) -> bool { r ==> !holds_below(arr, arr.len()) }\n\n#[effects(pure)]\n#[uses(holds_below, one_way)]\nfn is_product_even(arr: &[u64]) -> (r: bool)\n    ensures one_way(arr, r),\n{\n    let mut idx: usize = 0;\n    while idx < arr.len() && !(arr[idx] % 2 == 0)\n        invariant idx <= arr.len(), holds_below(arr, idx),\n        decreases arr.len() - idx,\n    {\n        idx = idx + 1;\n    }\n    idx < arr.len()\n}"
+    }
+  ],
+  "source": {
+    "benchmark": "Verus-Bench",
+    "origin": "MBPP",
+    "path": "benchmarks/Verus-Bench/MBPP/verified/task_id_804.rs",
+    "rules": [
+      "T1",
+      "T2",
+      "T3"
+    ]
+  },
+  "verus": {
+    "prompt": "Implement `is_product_even`: return whether the product of the elements of `arr` is even, that is, whether some element is even (false for an empty array). The contract must state the result exactly in terms of the elements.\n\nRequired signature:\nfn is_product_even(arr: &Vec<u32>) -> (result: bool)",
+    "signature": "fn is_product_even(arr: &Vec<u32>) -> (result: bool)",
+    "target": "is_product_even",
+    "specs": "spec fn bvb_ref_is_even(n: u32) -> bool {\n    (n % 2) == 0\n}",
+    "pre": null,
+    "post": "result <==> (exists|k: int| 0 <= k < arr.len() && bvb_ref_is_even(#[trigger] arr[k]))",
+    "args": "arr",
+    "reference": "use vstd::prelude::*;\nfn main() {\n    // Write a function in Rust to check whether the product of numbers in a list is even or not.\n    assert!(is_product_even(&vec![1, 2, 3]));\n    assert!(is_product_even(&vec![1, 2, 1, 4]));\n    assert!(!is_product_even(&vec![1, 1]));\n}\n\nverus! {\n\nspec fn is_even(n: u32) -> bool {\n    (n % 2) == 0\n}\n\nfn is_product_even(arr: &Vec<u32>) -> (result: bool)\n    ensures\n        result <==> (exists|k: int| 0 <= k < arr.len() && is_even(#[trigger] arr[k])),\n{\n    let mut index = 0;\n    while index < arr.len()\n        invariant\n            0 <= index <= arr.len(),\n            forall|k: int| 0 <= k < index ==> !(is_even(#[trigger] arr[k])),\n        decreases arr@.len() - index,\n    {\n        if (arr[index] % 2 == 0) {\n            return true;\n        }\n        index += 1;\n    }\n    false\n}\n\n} // verus!",
+    "reference_origin": "upstream"
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "id": "vb-mbpp-567-is-sorted",
+  "kind": "write",
+  "prompt": "Create unit `tasks` for this task.\n\nImplement `is_sorted`: `arr` is non-empty. Return whether `arr` is sorted in non-decreasing order, that is, arr[i] <= arr[j] for all positions i < j. The contract must state the result exactly in terms of all pairs of positions.\n\nRequired signature (in unit `tasks`):\nfn is_sorted(arr: &[i64]) -> (r: bool)",
+  "unit": "tasks",
+  "def": "tasks::is_sorted",
+  "signature": "fn is_sorted(arr: &[i64]) -> (r: bool)",
+  "accept": {
+    "specs": "spec fn ref_pre(arr: &[i64]) -> bool { arr.len() > 0 }\nspec fn ref_post(arr: &[i64], r: bool) -> bool { r == (forall|i: usize, j: usize| i < j && j < arr.len() ==> #[trigger] arr[i] <= #[trigger] arr[j]) }",
+    "pre": "ref_pre(arr)",
+    "post": "ref_post(arr, r)",
+    "args": "arr"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn nonempty(arr: &[i64]) -> bool { arr.len() > 0 }\n\nspec fn sorted_upto(arr: &[i64], n: usize) -> bool { forall|i: usize, j: usize| i < j && j <= n ==> #[trigger] arr[i] <= #[trigger] arr[j] }\n\nspec fn sorted_ok(arr: &[i64], r: bool) -> bool { r == (forall|i: usize, j: usize| i < j && j < arr.len() ==> #[trigger] arr[i] <= #[trigger] arr[j]) }\n\n#[effects(pure)]\n#[uses(nonempty, sorted_upto, sorted_ok)]\nfn is_sorted(arr: &[i64]) -> (r: bool)\n    requires nonempty(arr),\n    ensures sorted_ok(arr, r),\n{\n    let mut idx: usize = 0;\n    while idx + 1 < arr.len() && arr[idx] <= arr[idx + 1]\n        invariant idx < arr.len(), sorted_upto(arr, idx),\n        decreases arr.len() - idx,\n    {\n        idx = idx + 1;\n    }\n    idx + 1 >= arr.len()\n}"
+    }
+  ],
+  "weak_reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn nonempty(arr: &[i64]) -> bool { arr.len() > 0 }\n\nspec fn adjacent_ok(arr: &[i64], r: bool) -> bool { r ==> (forall|i: usize| i + 1 < arr.len() ==> #[trigger] arr[i] <= arr[i + 1]) }\n\nspec fn adjacent_upto(arr: &[i64], n: usize) -> bool { forall|i: usize| i < n ==> #[trigger] arr[i] <= arr[i + 1] }\n\n#[effects(pure)]\n#[uses(nonempty, adjacent_upto, adjacent_ok)]\nfn is_sorted(arr: &[i64]) -> (r: bool)\n    requires nonempty(arr),\n    ensures adjacent_ok(arr, r),\n{\n    let mut idx: usize = 0;\n    while idx + 1 < arr.len() && arr[idx] <= arr[idx + 1]\n        invariant idx < arr.len(), adjacent_upto(arr, idx),\n        decreases arr.len() - idx,\n    {\n        idx = idx + 1;\n    }\n    idx + 1 >= arr.len()\n}"
+    }
+  ],
+  "source": {
+    "benchmark": "Verus-Bench",
+    "origin": "MBPP",
+    "path": "benchmarks/Verus-Bench/MBPP/verified/task_id_567.rs",
+    "rules": [
+      "T1",
+      "T2"
+    ]
+  },
+  "verus": {
+    "prompt": "Implement `is_sorted`: `arr` is non-empty. Return whether `arr` is sorted in non-decreasing order, that is, arr[i] <= arr[j] for all positions i < j. The contract must state the result exactly in terms of all pairs of positions.\n\nRequired signature:\nfn is_sorted(arr: &Vec<i32>) -> (ret: bool)",
+    "signature": "fn is_sorted(arr: &Vec<i32>) -> (ret: bool)",
+    "target": "is_sorted",
+    "specs": "",
+    "pre": "arr.len() > 0",
+    "post": "ret == (forall|i: int, j: int| 0 <= i < j < arr.len() ==> (arr[i] <= arr[j]))",
+    "args": "arr",
+    "reference": "use vstd::prelude::*;\n\nfn main() {\n    // Write a function in Rust to check whether a specified list is sorted or not.\n\n    assert!(is_sorted(&vec![1, 2, 4, 6, 8, 10, 12, 14, 16, 17]));\n    assert!(!is_sorted(&vec![1, 2, 4, 6, 8, 10, 12, 14, 20, 17]));\n    assert!(!is_sorted(&vec![1, 2, 4, 6, 8, 10, 15, 14, 20]));\n}\n\nverus! {\n\nfn is_sorted(arr: &Vec<i32>) -> (ret: bool)\n    requires\n        arr.len() > 0,\n    ensures\n        ret == (forall|i: int, j: int| 0 <= i < j < arr.len() ==> (arr[i] <= arr[j])),\n{\n    let mut index = 0;\n    while index < arr.len() - 1\n        invariant\n            0 <= index <= arr.len() - 1,\n            forall|k: int, l: int| 0 <= k < l <= index ==> arr[k] <= arr[l],\n        decreases arr@.len() - index - 1,\n    {\n        if arr[index] > arr[index + 1] {\n            return false;\n        }\n        index += 1;\n    }\n    true\n}\n\n} // verus!",
+    "reference_origin": "upstream"
+  }
+}

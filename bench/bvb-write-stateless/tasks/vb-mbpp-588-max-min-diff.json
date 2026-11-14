@@ -1,0 +1,65 @@
+{
+  "id": "vb-mbpp-588-max-min-diff",
+  "kind": "write",
+  "prompt": "Create unit `tasks` for this task.\n\nImplement `difference_max_min`: `arr` is non-empty and every element x satisfies -1073741824 < x < 1073741823. Return the difference of the largest and the smallest element. The contract must state the result exactly using the given specification functions.\n\nGiven specification functions in unit `given` (use them, do not change them):\n```\nspec fn max_prefix(arr: &[i64], n: usize) -> i64\n    decreases n,\n{\n    if n <= 1 { arr[0] } else { if arr[n - 1] >= max_prefix(arr, n - 1) { arr[n - 1] } else { max_prefix(arr, n - 1) } }\n}\n\nspec fn min_prefix(arr: &[i64], n: usize) -> i64\n    decreases n,\n{\n    if n <= 1 { arr[0] } else { if arr[n - 1] <= min_prefix(arr, n - 1) { arr[n - 1] } else { min_prefix(arr, n - 1) } }\n}\n```\n\nRequired signature (in unit `tasks`):\nfn difference_max_min(arr: &[i64]) -> (r: i64)",
+  "unit": "tasks",
+  "def": "tasks::difference_max_min",
+  "signature": "fn difference_max_min(arr: &[i64]) -> (r: i64)",
+  "accept": {
+    "specs": "spec fn ref_pre(arr: &[i64]) -> bool { arr.len() > 0 && (forall|i: usize| i < arr.len() ==> -1073741824 < #[trigger] arr[i] && arr[i] < 1073741823) }\nspec fn ref_post(arr: &[i64], r: i64) -> bool { r == given::max_prefix(arr, arr.len()) - given::min_prefix(arr, arr.len()) }",
+    "pre": "ref_pre(arr)",
+    "post": "ref_post(arr, r)",
+    "args": "arr"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn half_range(arr: &[i64]) -> bool { arr.len() > 0 && (forall|i: usize| i < arr.len() ==> -1073741824 < #[trigger] arr[i] && arr[i] < 1073741823) }\n\nspec fn extremes(arr: &[i64], hi: i64, lo: i64, n: usize) -> bool { hi == given::max_prefix(arr, n) && lo == given::min_prefix(arr, n) && -1073741824 < lo && lo <= hi && hi < 1073741823 }\n\nspec fn result_ok(arr: &[i64], r: i64) -> bool { r == given::max_prefix(arr, arr.len()) - given::min_prefix(arr, arr.len()) }\n\n#[effects(pure)]\n#[uses(half_range, extremes, result_ok, given::max_prefix, given::min_prefix)]\nfn difference_max_min(arr: &[i64]) -> (r: i64)\n    requires half_range(arr),\n    ensures result_ok(arr, r),\n{\n    let mut hi: i64 = arr[0];\n    let mut lo: i64 = arr[0];\n    let mut idx: usize = 1;\n    while idx < arr.len()\n        invariant 1 <= idx, idx <= arr.len(), half_range(arr), extremes(arr, hi, lo, idx),\n        decreases arr.len() - idx,\n    {\n        if arr[idx] >= hi {\n            hi = arr[idx];\n        }\n        if arr[idx] <= lo {\n            lo = arr[idx];\n        }\n        idx = idx + 1;\n    }\n    hi - lo\n}"
+    }
+  ],
+  "weak_reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn half_range(arr: &[i64]) -> bool { arr.len() > 0 && (forall|i: usize| i < arr.len() ==> -1073741824 < #[trigger] arr[i] && arr[i] < 1073741823) }\n\nspec fn extremes(arr: &[i64], hi: i64, lo: i64, n: usize) -> bool { hi == given::max_prefix(arr, n) && lo == given::min_prefix(arr, n) && -1073741824 < lo && lo <= hi && hi < 1073741823 }\n\nspec fn result_ok(arr: &[i64], r: i64) -> bool { -2147483648 < r && r < 2147483646 }\n\n#[effects(pure)]\n#[uses(half_range, extremes, result_ok, given::max_prefix, given::min_prefix)]\nfn difference_max_min(arr: &[i64]) -> (r: i64)\n    requires half_range(arr),\n    ensures result_ok(arr, r),\n{\n    let mut hi: i64 = arr[0];\n    let mut lo: i64 = arr[0];\n    let mut idx: usize = 1;\n    while idx < arr.len()\n        invariant 1 <= idx, idx <= arr.len(), half_range(arr), extremes(arr, hi, lo, idx),\n        decreases arr.len() - idx,\n    {\n        if arr[idx] >= hi {\n            hi = arr[idx];\n        }\n        if arr[idx] <= lo {\n            lo = arr[idx];\n        }\n        idx = idx + 1;\n    }\n    hi - lo\n}"
+    }
+  ],
+  "source": {
+    "benchmark": "Verus-Bench",
+    "origin": "MBPP",
+    "path": "benchmarks/Verus-Bench/MBPP/verified/task_id_588.rs",
+    "rules": [
+      "T1",
+      "T2",
+      "T4",
+      "G1"
+    ]
+  },
+  "verus": {
+    "prompt": "Implement `difference_max_min`: `arr` is non-empty and every element x satisfies -1073741824 < x < 1073741823. Return the difference of the largest and the smallest element. The contract must state the result exactly using the given specification functions.\n\nThe file starts with these given specification functions (use them, do not change them):\n```\nspec fn max_rcur(seq: Seq<i32>) -> int\n    decreases seq.len(),\n{\n    if seq.len() <= 1 {\n        seq.first() as int\n    } else {\n        max(seq.last() as int, max_rcur(seq.drop_last()))\n    }\n}\n\nspec fn min_rcur(seq: Seq<i32>) -> int\n    decreases seq.len(),\n{\n    if seq.len() <= 1 {\n        seq.first() as int\n    } else {\n        min(seq.last() as int, min_rcur(seq.drop_last()))\n    }\n}\n```\n\nRequired signature:\nfn difference_max_min(arr: &Vec<i32>) -> (diff: i32)",
+    "signature": "fn difference_max_min(arr: &Vec<i32>) -> (diff: i32)",
+    "target": "difference_max_min",
+    "specs": "",
+    "pre": "arr.len() > 0,\nforall|i: int| 0 <= i < arr.len() ==> i32::MIN / 2 < #[trigger] arr[i] < i32::MAX / 2",
+    "post": "diff == max_rcur(arr@) - min_rcur(arr@)",
+    "args": "arr",
+    "reference": "#![verifier::loop_isolation(false)]\nuse vstd::math::*;\nuse vstd::prelude::*;\n\nfn main() {\n    // Write a function in Rust to find the difference between largest and smallest value in a given list.\n\n    assert_eq!(difference_max_min(&vec![1, 2, 3, 4]), 3);\n    assert_eq!(difference_max_min(&vec![4, 5, 12]), 8);\n    assert_eq!(difference_max_min(&vec![9, 2, 3]), 7);\n}\n\nverus! {\n\nspec fn max_rcur(seq: Seq<i32>) -> int\n    decreases seq.len(),\n{\n    if seq.len() <= 1 {\n        seq.first() as int\n    } else {\n        max(seq.last() as int, max_rcur(seq.drop_last()))\n    }\n}\n\nspec fn min_rcur(seq: Seq<i32>) -> int\n    decreases seq.len(),\n{\n    if seq.len() <= 1 {\n        seq.first() as int\n    } else {\n        min(seq.last() as int, min_rcur(seq.drop_last()))\n    }\n}\n\nfn difference_max_min(arr: &Vec<i32>) -> (diff: i32)\n    requires\n        arr.len() > 0,\n        forall|i: int| 0 <= i < arr.len() ==> i32::MIN / 2 < #[trigger] arr[i] < i32::MAX / 2,\n    ensures\n        diff == max_rcur(arr@) - min_rcur(arr@),\n{\n    let mut min_val = arr[0];\n    let mut max_val = arr[0];\n    let mut index = 1;\n\n    while index < arr.len()\n        invariant\n            1 <= index <= arr.len(),\n            i32::MIN / 2 < min_val < i32::MAX / 2,\n            i32::MIN / 2 < max_val < i32::MAX / 2,\n            max_val == max_rcur(arr@.subrange(0, index as int)),\n            min_val == min_rcur(arr@.subrange(0, index as int)),\n        decreases arr@.len() - index,\n    {\n        if (arr[index] <= min_val) {\n            min_val = arr[index];\n        } else if (arr[index] > max_val) {\n            max_val = arr[index];\n        }\n        index += 1;\n        assert(arr@.subrange(0, index - 1 as int) == arr@.subrange(0, index as int).drop_last());\n    }\n    assert(arr@ == arr@.subrange(0, index as int));\n    max_val - min_val\n}\n\n} // verus!",
+    "reference_origin": "upstream",
+    "given": "spec fn max_rcur(seq: Seq<i32>) -> int\n    decreases seq.len(),\n{\n    if seq.len() <= 1 {\n        seq.first() as int\n    } else {\n        max(seq.last() as int, max_rcur(seq.drop_last()))\n    }\n}\n\nspec fn min_rcur(seq: Seq<i32>) -> int\n    decreases seq.len(),\n{\n    if seq.len() <= 1 {\n        seq.first() as int\n    } else {\n        min(seq.last() as int, min_rcur(seq.drop_last()))\n    }\n}"
+  },
+  "frozen": [
+    "given::max_prefix",
+    "given::min_prefix"
+  ]
+}

@@ -1,0 +1,62 @@
+{
+  "id": "vc-va0053-aspect-pairs",
+  "kind": "write",
+  "prompt": "Create unit `tasks` for this task.\n\nImplement `solve`: `a`, `b`, `x` and `y` are positive 8-bit integers (in [1, 127]). Count the pairs (w, h) with 1 <= w <= a, 1 <= h <= b and w / h = x / y. With g the greatest common divisor of x and y (the given specification function), this is the smaller of a / (x / g) and b / (y / g). The contract must state that the result is non-negative and equals that value.\n\nGiven specification functions in unit `given` (use them, do not change them):\n```\nspec fn gcd(a: u64, b: u64) -> u64\n    decreases b,\n{\n    if b == 0 { a } else { gcd(b, a % b) }\n}\n```\n\nRequired signature (in unit `tasks`):\nfn solve(a: i64, b: i64, x: i64, y: i64) -> (r: i64)",
+  "unit": "tasks",
+  "def": "tasks::solve",
+  "signature": "fn solve(a: i64, b: i64, x: i64, y: i64) -> (r: i64)",
+  "accept": {
+    "specs": "spec fn ref_expected(a: i64, b: i64, x: i64, y: i64) -> i64 { if a / (x / given::gcd(x, y)) <= b / (y / given::gcd(x, y)) { a / (x / given::gcd(x, y)) } else { b / (y / given::gcd(x, y)) } }\nspec fn ref_pre(a: i64, b: i64, x: i64, y: i64) -> bool { 1 <= a && a <= 127 && 1 <= b && b <= 127 && 1 <= x && x <= 127 && 1 <= y && y <= 127 }\nspec fn ref_post(a: i64, b: i64, x: i64, y: i64, r: i64) -> bool { r >= 0 && r == ref_expected(a, b, x, y) }",
+    "pre": "ref_pre(a, b, x, y)",
+    "post": "ref_post(a, b, x, y, r)",
+    "args": "a, b, x, y"
+  },
+  "reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn both_nonneg(a: i64, b: i64) -> bool { a >= 0 && b >= 0 && a <= 127 && b <= 127 }\n\nspec fn gcd_ok(a: i64, b: i64, r: i64) -> bool { r == given::gcd(a, b) && (a > 0 ==> r <= a) && (b > 0 ==> r <= b) && ((a > 0 || b > 0) ==> r >= 1) }\n\nspec fn expected(a: i64, b: i64, x: i64, y: i64) -> i64 { if a / (x / given::gcd(x, y)) <= b / (y / given::gcd(x, y)) { a / (x / given::gcd(x, y)) } else { b / (y / given::gcd(x, y)) } }\n\n#[effects(pure)]\n#[uses(both_nonneg, gcd_ok, given::gcd)]\nfn gcd_exec(a: i64, b: i64) -> (r: i64)\n    requires both_nonneg(a, b),\n    ensures gcd_ok(a, b, r),\n    decreases b,\n{\n    if b == 0 {\n        a\n    } else {\n        gcd_exec(b, a % b)\n    }\n}\n\nspec fn input_ok(a: i64, b: i64, x: i64, y: i64) -> bool { 1 <= a && a <= 127 && 1 <= b && b <= 127 && 1 <= x && x <= 127 && 1 <= y && y <= 127 }\n\nspec fn result_ok(a: i64, b: i64, x: i64, y: i64, r: i64) -> bool { r >= 0 && r == expected(a, b, x, y) }\n\n#[effects(pure)]\n#[uses(input_ok, result_ok, both_nonneg, gcd_ok, expected, given::gcd)]\nfn solve(a: i64, b: i64, x: i64, y: i64) -> (r: i64)\n    requires input_ok(a, b, x, y),\n    ensures result_ok(a, b, x, y, r),\n{\n    let g: i64 = gcd_exec(x, y);\n    let p: i64 = a / (x / g);\n    let q: i64 = b / (y / g);\n    if p <= q {\n        p\n    } else {\n        q\n    }\n}"
+    }
+  ],
+  "weak_reference": [
+    {
+      "op": "unit",
+      "path": "tasks",
+      "summary": "과제 구현"
+    },
+    {
+      "op": "put",
+      "unit": "tasks",
+      "code": "spec fn both_nonneg(a: i64, b: i64) -> bool { a >= 0 && b >= 0 && a <= 127 && b <= 127 }\n\nspec fn gcd_ok(a: i64, b: i64, r: i64) -> bool { r == given::gcd(a, b) && (a > 0 ==> r <= a) && (b > 0 ==> r <= b) && ((a > 0 || b > 0) ==> r >= 1) }\n\nspec fn expected(a: i64, b: i64, x: i64, y: i64) -> i64 { if a / (x / given::gcd(x, y)) <= b / (y / given::gcd(x, y)) { a / (x / given::gcd(x, y)) } else { b / (y / given::gcd(x, y)) } }\n\n#[effects(pure)]\n#[uses(both_nonneg, gcd_ok, given::gcd)]\nfn gcd_exec(a: i64, b: i64) -> (r: i64)\n    requires both_nonneg(a, b),\n    ensures gcd_ok(a, b, r),\n    decreases b,\n{\n    if b == 0 {\n        a\n    } else {\n        gcd_exec(b, a % b)\n    }\n}\n\nspec fn input_ok(a: i64, b: i64, x: i64, y: i64) -> bool { 1 <= a && a <= 127 && 1 <= b && b <= 127 && 1 <= x && x <= 127 && 1 <= y && y <= 127 }\n\nspec fn result_ok(a: i64, b: i64, x: i64, y: i64, r: i64) -> bool { r >= 0 }\n\n#[effects(pure)]\n#[uses(input_ok, result_ok, both_nonneg, gcd_ok, expected, given::gcd)]\nfn solve(a: i64, b: i64, x: i64, y: i64) -> (r: i64)\n    requires input_ok(a, b, x, y),\n    ensures result_ok(a, b, x, y, r),\n{\n    let g: i64 = gcd_exec(x, y);\n    let p: i64 = a / (x / g);\n    let q: i64 = b / (y / g);\n    if p <= q {\n        p\n    } else {\n        q\n    }\n}"
+    }
+  ],
+  "source": {
+    "benchmark": "Vericoding",
+    "origin": "apps apps_test_204",
+    "path": "jsonl/verus_tasks.jsonl#VA0053",
+    "rules": [
+      "T2",
+      "G1"
+    ]
+  },
+  "verus": {
+    "prompt": "Implement `solve`: `a`, `b`, `x` and `y` are positive 8-bit integers (in [1, 127]). Count the pairs (w, h) with 1 <= w <= a, 1 <= h <= b and w / h = x / y. With g the greatest common divisor of x and y (the given specification function), this is the smaller of a / (x / g) and b / (y / g). The contract must state that the result is non-negative and equals that value.\n\nThe file starts with these given specification functions (use them, do not change them):\n```\nspec fn gcd(a: int, b: int) -> int\n  recommends a >= 0 && b >= 0\n  decreases b when b >= 0\n{\n  if b == 0 { a } else { gcd(b, a % b) }\n}\n```\n\nRequired signature:\nfn solve(a: i8, b: i8, x: i8, y: i8) -> (result: i8)",
+    "signature": "fn solve(a: i8, b: i8, x: i8, y: i8) -> (result: i8)",
+    "target": "solve",
+    "specs": "spec fn bvb_ref_valid_input(a: int, b: int, x: int, y: int) -> bool {\n  a > 0 && b > 0 && x > 0 && y > 0\n}\n\nspec fn bvb_ref_min(a: int, b: int) -> int {\n  if a <= b { a } else { b }\n}\n\nspec fn bvb_ref_expected_result(a: int, b: int, x: int, y: int) -> int\n  recommends bvb_ref_valid_input(a, b, x, y)\n{\n  let g = gcd(x, y);\n  let x_reduced = x / g;\n  let y_reduced = y / g;\n  bvb_ref_min(a / x_reduced, b / y_reduced)\n}",
+    "pre": "bvb_ref_valid_input(a as int, b as int, x as int, y as int)",
+    "post": "result as int >= 0,\n  result as int == bvb_ref_expected_result(a as int, b as int, x as int, y as int)",
+    "args": "a, b, x, y",
+    "reference": "use vstd::prelude::*;\n\nverus! {\n\nspec fn valid_input(a: int, b: int, x: int, y: int) -> bool {\n  a > 0 && b > 0 && x > 0 && y > 0\n}\n\nspec fn gcd(a: int, b: int) -> int\n  recommends a >= 0 && b >= 0\n  decreases b when b >= 0\n{\n  if b == 0 { a } else { gcd(b, a % b) }\n}\n\nspec fn min(a: int, b: int) -> int {\n  if a <= b { a } else { b }\n}\n\nspec fn expected_result(a: int, b: int, x: int, y: int) -> int\n  recommends valid_input(a, b, x, y)\n{\n  let g = gcd(x, y);\n  let x_reduced = x / g;\n  let y_reduced = y / g;\n  min(a / x_reduced, b / y_reduced)\n}\n\nfn gcd_exec(a: i8, b: i8) -> (r: i8)\n    requires\n        a >= 0,\n        b >= 0,\n    ensures\n        r as int == gcd(a as int, b as int),\n        a > 0 ==> r <= a,\n        b > 0 ==> r <= b,\n        (a > 0 || b > 0) ==> r >= 1,\n    decreases b,\n{\n    if b == 0 {\n        a\n    } else {\n        let m = ((a as u8) % (b as u8)) as i8;\n        assert(m as int == (a as int) % (b as int));\n        assert(gcd(a as int, b as int) == gcd(b as int, (a as int) % (b as int)));\n        if a < b {\n            assert((a as int) % (b as int) == a as int) by (nonlinear_arith)\n                requires 0 <= a < b;\n        }\n        gcd_exec(b, m)\n    }\n}\n\nfn solve(a: i8, b: i8, x: i8, y: i8) -> (result: i8)\nrequires\n  valid_input(a as int, b as int, x as int, y as int)\nensures\n  result as int >= 0,\n  result as int == expected_result(a as int, b as int, x as int, y as int)\n{\n    let g = gcd_exec(x, y);\n    let xr = x / g;\n    let yr = y / g;\n    assert(xr >= 1) by (nonlinear_arith)\n        requires 1 <= g <= x, xr == x / g;\n    assert(yr >= 1) by (nonlinear_arith)\n        requires 1 <= g <= y, yr == y / g;\n    let p = a / xr;\n    let q = b / yr;\n    if p <= q { p } else { q }\n}\n\n}\n\nfn main() {}",
+    "reference_origin": "bvb",
+    "given": "spec fn gcd(a: int, b: int) -> int\n  recommends a >= 0 && b >= 0\n  decreases b when b >= 0\n{\n  if b == 0 { a } else { gcd(b, a % b) }\n}"
+  },
+  "frozen": [
+    "given::gcd"
+  ]
+}
