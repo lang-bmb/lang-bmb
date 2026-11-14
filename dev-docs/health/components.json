@@ -189,6 +189,7 @@
       "stage0": [
         "lint.rs",
         "uses_fill.rs",
+        "induct.rs",
         "lib.rs",
         "weaken.rs",
         "probe.rs",
