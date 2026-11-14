@@ -184,3 +184,5 @@ BMB v2의 설계 결정을 한 건에 파일 하나로 남긴다. 현재 확정�
 | [0135](0135-induction-lemma-drafts.md) | 귀납 보조 정리 초안은 `bmb fix --induction`이 후보를 만들고 게이트가 보조 정리와 함수를 함께 증명한 첫 후보만 적용. 꼴은 "재귀 술어 ⇒ 같은 매개변수의 술어" 하나. `bmb verify`의 진단과 플래그 없는 `fix`는 그대로 |
 | [0136](0136-ablation-sets.md) | H-UNDECIDE·H-PROBE·H-HISTORY의 절제 판 여섯(`bvb-write`·`brb-write` × `-undecided`·`-probe`·`-stateless`) 동결: 원판과 `set.json`의 한 키만 다름, 프롬프트는 그대로 |
 | [0137](0137-gate-a-evidence-split.md) | 관문 A의 증거 전제를 받아들이는 언어를 바꿀 수 있는 측정으로 좁힘: `2H-01`의 남은 세 칸(`T0-08` qwen 반복, `T1-41` qwen, `2A-14e`)은 관문 B의 전제로 |
+| [0138](0138-stability-and-versions.md) | (제안) 안정성과 버전: 호환의 대상 넷과 그 판정 도구, `0.MINOR.PATCH`, 에디션 없이 입력 별칭을 거치는 기계 이주, 동결 선언이 `0.1.0` |
+| [0139](0139-python-in-measurement-tools.md) | (제안) 측정·게이트 도구의 Python은 선언된 신뢰 기반: 표준 라이브러리만, 버전 고정, 시험. 동결 집합의 파일은 옮기지 않는다 |

@@ -1,0 +1,53 @@
+{
+  "_about": "What waits for the measurement machine, in the order of docs/ROADMAP.md \"우선순위\" 1 (backlog INF-39). `like` names committed result files of the same kind of run; a run's tokens are estimated as their mean. `proxy` says those files are another set or surface, not this one.",
+  "entries": [
+    {"task": "T0-08", "tier": "임계 경로(관문 B)", "runs": [
+      {"what": "brb-hard BMB 팔, 반복 3", "model": "qwen", "times": 1, "like": ["bench/brb-hard/results/*-qwen-r*-bmb.jsonl"]},
+      {"what": "brb-hard Rust 팔, 반복 3", "model": "qwen", "times": 1, "like": ["bench/brb-hard/results/*-qwen-r*-rust.jsonl"]}
+    ]},
+    {"task": "2A-14e", "tier": "임계 경로(관문 B)", "runs": [
+      {"what": "BCB N=1,000 (모델 없음, CPU)", "model": "-", "times": 1, "cpu": true}
+    ]},
+    {"task": "T1-41", "tier": "임계 경로(관문 B)", "runs": [
+      {"what": "m1b-diff", "model": "qwen", "times": 1, "like": ["bench/m1b-write/results/*qwen*.jsonl"], "proxy": "m1b-write"},
+      {"what": "m1b-ast", "model": "qwen", "times": 1, "like": ["bench/m1b-write/results/*qwen*.jsonl"], "proxy": "m1b-write"},
+      {"what": "bvb-diff", "model": "qwen", "times": 1, "like": ["bench/bvb-write/results/*qwen*.jsonl"], "proxy": "bvb-write"},
+      {"what": "bvb-ast", "model": "qwen", "times": 1, "like": ["bench/bvb-write/results/*qwen*.jsonl"], "proxy": "bvb-write"},
+      {"what": "brb-diff", "model": "qwen", "times": 1, "like": ["bench/brb-write/results/*qwen*-bmb.jsonl"], "proxy": "brb-write"},
+      {"what": "brb-ast", "model": "qwen", "times": 1, "like": ["bench/brb-write/results/*qwen*-bmb.jsonl"], "proxy": "brb-write"}
+    ]},
+    {"task": "T0-41", "tier": "관문 B의 판정 품질", "runs": [
+      {"what": "m1b-write 반복 2~4", "model": "sonnet", "times": 3, "like": ["bench/m1b-write/results/*sonnet*.jsonl"]}
+    ]},
+    {"task": "T0-33", "tier": "관문 B의 판정 품질", "runs": [
+      {"what": "bvb-write 반복 2~5", "model": "qwen", "times": 4, "like": ["bench/bvb-write/results/*qwen*.jsonl"]},
+      {"what": "brb-write 반복 1~5", "model": "qwen", "times": 5, "like": ["bench/brb-write/results/*qwen*-bmb.jsonl"]},
+      {"what": "bvb 반복 1~5", "model": "qwen", "times": 5, "like": ["bench/bvb/results/*-qwen3.8-27b.jsonl"]},
+      {"what": "brb BMB 팔 반복 1~5", "model": "qwen", "times": 5, "like": ["bench/brb/results/*qwen*-bmb.jsonl"]}
+    ]},
+    {"task": "T0-37", "tier": "조정 가설", "runs": [
+      {"what": "bvb-write 원판(같은 커밋)", "model": "qwen", "times": 1, "like": ["bench/bvb-write/results/*qwen*.jsonl"]},
+      {"what": "bvb-write-{undecided,probe,stateless}", "model": "qwen", "times": 3, "like": ["bench/bvb-write/results/*qwen*.jsonl"], "proxy": "bvb-write"},
+      {"what": "brb-write 원판(같은 커밋)", "model": "qwen", "times": 1, "like": ["bench/brb-write/results/*qwen*-bmb.jsonl"]},
+      {"what": "brb-write-{undecided,probe,stateless}", "model": "qwen", "times": 3, "like": ["bench/brb-write/results/*qwen*-bmb.jsonl"], "proxy": "brb-write"}
+    ]},
+    {"task": "2D-39", "tier": "조정 가설", "runs": [
+      {"what": "BNB N=10,000 원판과 창 16K·32K", "model": "qwen", "times": 3, "like": ["bench/bnb/results/3a06/qwen-bmb-10k*.jsonl"], "proxy": "BNB 원판"},
+      {"what": "BNB N=10,000 원판과 창 16K·32K", "model": "sonnet", "times": 3, "like": ["bench/bnb/results/3a06/sonnet-bmb-10k*.jsonl"], "proxy": "BNB 원판"}
+    ]},
+    {"task": "T0-17", "tier": "조정 가설", "runs": [
+      {"what": "m1b-write-lean, bvb-write-lean", "model": "qwen", "times": 1, "like": ["bench/m1b-write/results/*qwen*.jsonl", "bench/bvb-write/results/2026-11-02-qwen*.jsonl"], "sum": true, "proxy": "원판"},
+      {"what": "m1b-write-lean, bvb-write-lean", "model": "sonnet", "times": 1, "like": ["bench/m1b-write/results/*sonnet*.jsonl", "bench/bvb-write/results/*sonnet*.jsonl"], "sum": true, "proxy": "원판"}
+    ]},
+    {"task": "T0-15", "tier": "조정 가설", "runs": [
+      {"what": "m1b-write-compact, bvb-write-compact와 원판", "model": "qwen", "times": 2, "like": ["bench/m1b-write/results/*qwen*.jsonl", "bench/bvb-write/results/2026-11-02-qwen*.jsonl"], "sum": true, "proxy": "원판"},
+      {"what": "m1b-write-compact, bvb-write-compact와 원판", "model": "sonnet", "times": 2, "like": ["bench/m1b-write/results/*sonnet*.jsonl", "bench/bvb-write/results/*sonnet*.jsonl"], "sum": true, "proxy": "원판"}
+    ]},
+    {"task": "T1-44", "tier": "보조 가설", "runs": [
+      {"what": "bench/review 두 팔(변경 143개)", "model": "qwen", "times": 1},
+      {"what": "bench/review 두 팔(변경 143개)", "model": "sonnet", "times": 1},
+      {"what": "bench/intent 두 팔(항목 90개)", "model": "qwen", "times": 1},
+      {"what": "bench/intent 두 팔(항목 90개)", "model": "sonnet", "times": 1}
+    ]}
+  ]
+}

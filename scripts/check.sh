@@ -127,6 +127,7 @@ grep -qF "\"spec_accepted\": 0, \"eligible\": 45" <<< "$st" || { echo "bvb weak:
   --job "bench m3 generator=python3 bench/m3/test_gen.py > /dev/null" \
   --job "bench bnb=python3 bench/bnb/test_bnb.py > /dev/null" \
   --job "bench twin=python3 bench/twin/test_pair.py" \
+  --job "bench waiting (measurement queue, INF-39)=python3 bench/test_waiting.py" \
   --job "bench run_models (dry run)=python3 bench/run_models.py --dry-run --limit 2 > /dev/null && python3 bench/test_run_models.py" \
   --job "bench bcb=python3 bench/bcb/test_bcb.py > /dev/null" \
   --job 'bench brb oracle=b=$(mktemp); r=$(mktemp); trap "rm -f $b $r" EXIT
