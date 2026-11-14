@@ -1,0 +1,156 @@
+#[summary("차등 시험(포팅 지도 P0, 백로그 4D-15): 표준 입력의 줄마다 std::json으로 읽어 공백 없이 다시 쓴다(stage0 json의 parse·to_json과 같은 텍스트). 읽지 못한 줄은 error")]
+mod app {
+    // An open array (kind 5) or object (kind 6): the node after it, and
+    // what came last inside it (0 nothing, 1 an element or key, 2 a value
+    // after a key).
+    struct Frame { end: usize, kind: u8, last: u8 }
+
+    spec fn within(t: &[u8], a: usize, b: usize) -> bool { a <= b && b <= t.len() }
+
+    #[effects(alloc)]
+    fn copy(out: &mut Vec<u8>, t: &[u8], a: usize, b: usize) -> ()
+        requires within(t, a, b),
+    {
+        let mut j: usize = a;
+        while j < b
+            invariant j <= b,
+            decreases b - j,
+        {
+            out.push(t[j]);
+            j = j + 1;
+        }
+    }
+
+    #[effects(alloc)]
+    fn close(out: &mut Vec<u8>, kind: u8) -> () {
+        if kind == 5 {
+            out.push(b']');
+        } else {
+            out.push(b'}');
+        }
+    }
+
+    // The text of `d` without whitespace, strings written again from their
+    // values. False when a string has no value (a lone surrogate).
+    #[effects(alloc)]
+    #[uses(std::json::node_pos, std::json::node_count, std::json::of_text, std::json::span_start, std::json::span_end, std::json::after, std::json::quote_room)]
+    fn write(d: &std::json::Doc, t: &[u8], out: &mut Vec<u8>) -> bool
+        requires std::json::of_text(d, t),
+    {
+        let mut st: Vec<Frame> = Vec::new();
+        let n: usize = d.count();
+        let mut ok: bool = true;
+        let mut i: usize = 0;
+        while i < n
+            decreases n - i,
+        {
+            while st.len() > 0 && st[st.len() - 1].end == i
+                decreases st.len(),
+            {
+                close(out, st[st.len() - 1].kind);
+                st.pop();
+            }
+            if st.len() > 0 {
+                let top: usize = st.len() - 1;
+                let last: u8 = st[top].last;
+                if st[top].kind == 6 && last == 1 {
+                    out.push(b':');
+                    st[top].last = 2;
+                } else {
+                    if last != 0 {
+                        out.push(b',');
+                    }
+                    st[top].last = 1;
+                }
+            }
+            let k: u8 = d.kind(i);
+            if k == 5 || k == 6 {
+                if k == 5 {
+                    out.push(b'[');
+                } else {
+                    out.push(b'{');
+                }
+                st.push(Frame { end: d.next(i), kind: k, last: 0 });
+            } else if k == 4 {
+                match d.string_value(t, i) {
+                    None => {
+                        ok = false;
+                    }
+                    Some(s) => {
+                        let mut q: String = String::new();
+                        if s.len() < 1000000000 {
+                            std::json::push_string(&mut q, s.as_str());
+                        }
+                        copy(out, q.as_bytes(), 0, q.len());
+                    }
+                }
+            } else {
+                copy(out, t, d.start(i), d.end(i));
+            }
+            i = i + 1;
+        }
+        while st.len() > 0
+            decreases st.len(),
+        {
+            close(out, st[st.len() - 1].kind);
+            st.pop();
+        }
+        ok
+    }
+
+    #[effects(alloc, io)]
+    #[uses(std::json::short, std::json::parsed, std::json::of_text)]
+    fn line(t: &[u8]) -> () {
+        if t.len() > 1000000000 {
+            print_str("error\n");
+            return;
+        }
+        match std::json::parse(t) {
+            None => print_str("error\n"),
+            Some(d) => {
+                let mut out: Vec<u8> = Vec::new();
+                if write(&d, t, &mut out) {
+                    out.push(10);
+                    print_bytes(out.as_slice());
+                } else {
+                    print_str("error\n");
+                }
+            }
+        }
+    }
+
+    // One line as read: without its newline.
+    #[effects(alloc, io)]
+    fn fed(b: &[u8]) -> () {
+        let mut text: Vec<u8> = Vec::new();
+        if b.len() > 0 && b[b.len() - 1] == 10 {
+            copy(&mut text, b, 0, b.len() - 1);
+        } else {
+            copy(&mut text, b, 0, b.len());
+        }
+        line(text.as_slice());
+    }
+
+    #[effects(alloc, io, nondet)]
+    fn main() -> () {
+        let mut left: usize = 1000000000;
+        while left > 0
+            decreases left,
+        {
+            let mut buf: String = String::new();
+            match std::io::read_line(&mut buf) {
+                Ok(got) => {
+                    if got == 0 {
+                        left = 0;
+                    } else {
+                        fed(buf.as_bytes());
+                        left = left - 1;
+                    }
+                }
+                Err(e) => {
+                    left = 0;
+                }
+            }
+        }
+    }
+}

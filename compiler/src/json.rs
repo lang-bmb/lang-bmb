@@ -179,21 +179,53 @@ impl P<'_> {
             }
             Some(c) if *c == b'-' || c.is_ascii_digit() => {
                 let start = self.i;
-                self.i += 1;
-                while self.i < self.b.len()
-                    && matches!(
-                        self.b[self.i],
-                        b'0'..=b'9' | b'.' | b'e' | b'E' | b'+' | b'-'
-                    )
-                {
-                    self.i += 1;
+                if self.number() {
+                    Ok(Value::Num(
+                        String::from_utf8_lossy(&self.b[start..self.i]).into_owned(),
+                    ))
+                } else {
+                    self.err("malformed number")
                 }
-                Ok(Value::Num(
-                    String::from_utf8_lossy(&self.b[start..self.i]).into_owned(),
-                ))
             }
             Some(_) => self.err("unexpected character"),
         }
+    }
+
+    /// Moves over a number (RFC 8259 §6): `-`? then `0` or digits not led
+    /// by `0`, then `.` digits, then `e`/`E`, a sign and digits. False when
+    /// the text there is not one.
+    fn number(&mut self) -> bool {
+        let digits = |p: &mut Self| {
+            let from = p.i;
+            while p.b.get(p.i).is_some_and(u8::is_ascii_digit) {
+                p.i += 1;
+            }
+            p.i > from
+        };
+        if self.b.get(self.i) == Some(&b'-') {
+            self.i += 1;
+        }
+        if self.b.get(self.i) == Some(&b'0') {
+            self.i += 1;
+        } else if !digits(self) {
+            return false;
+        }
+        if self.b.get(self.i) == Some(&b'.') {
+            self.i += 1;
+            if !digits(self) {
+                return false;
+            }
+        }
+        if matches!(self.b.get(self.i), Some(b'e' | b'E')) {
+            self.i += 1;
+            if matches!(self.b.get(self.i), Some(b'+' | b'-')) {
+                self.i += 1;
+            }
+            if !digits(self) {
+                return false;
+            }
+        }
+        true
     }
 
     fn hex4(&mut self) -> Result<u32, String> {
@@ -235,16 +267,23 @@ impl P<'_> {
                         b't' => out.push('\t'),
                         b'u' => {
                             let mut cp = self.hex4()?;
-                            if (0xD800..0xDC00).contains(&cp)
-                                && self.b[self.i..].starts_with(b"\\u")
-                            {
+                            if (0xD800..0xDC00).contains(&cp) {
+                                // A high surrogate is half a character: its
+                                // low half follows (RFC 8259 §7).
+                                if !self.b[self.i..].starts_with(b"\\u") {
+                                    return self.err("lone surrogate");
+                                }
                                 self.i += 2;
                                 let lo = self.hex4()?;
-                                cp = 0x10000
-                                    + ((cp - 0xD800) << 10)
-                                    + (lo.wrapping_sub(0xDC00) & 0x3FF);
+                                if !(0xDC00..0xE000).contains(&lo) {
+                                    return self.err("lone surrogate");
+                                }
+                                cp = 0x10000 + ((cp - 0xD800) << 10) + (lo - 0xDC00);
                             }
-                            out.push(char::from_u32(cp).unwrap_or('\u{FFFD}'));
+                            let Some(ch) = char::from_u32(cp) else {
+                                return self.err("lone surrogate");
+                            };
+                            out.push(ch);
                         }
                         _ => return self.err("bad escape"),
                     }
@@ -258,6 +297,11 @@ impl P<'_> {
                     while self.i < self.b.len() && !matches!(self.b[self.i], b'"' | b'\\') {
                         self.i += 1;
                     }
+                    // A control character is written as an escape
+                    // (RFC 8259 §7).
+                    if self.b[start..self.i].iter().any(|&b| b < 0x20) {
+                        return self.err("control character in a string");
+                    }
                     out.push_str(&self.s[start..self.i]);
                 }
             }
@@ -268,6 +312,47 @@ impl P<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// What `std::json` rejects, stage0 rejects (backlog 4D-15): numbers
+    /// outside RFC 8259 §6, half a surrogate pair, a raw control character.
+    #[test]
+    fn rejects_what_the_grammar_does() {
+        for bad in [
+            "01",
+            "1.",
+            "1e",
+            "-",
+            "1.e3",
+            "-.5",
+            "[1e]",
+            r#""\ud83d""#,
+            r#""\ude00""#,
+            r#""\ud83d\u0041""#,
+            "\"a\tb\"",
+            "\"a\u{1}b\"",
+        ] {
+            assert!(parse(bad).is_err(), "{bad}");
+        }
+        for good in [
+            "0",
+            "-0",
+            "1e10",
+            "1E+2",
+            "-1.5e-3",
+            "0e0",
+            r#""\ud83d\ude00""#,
+        ] {
+            assert!(parse(good).is_ok(), "{good}");
+        }
+    }
+
+    /// Backspace and form feed are written short, as `std::json` and
+    /// `serde_json` write them.
+    #[test]
+    fn short_escapes() {
+        let v = parse(r#""\b\f\u0001""#).unwrap();
+        assert_eq!(v.to_json(), r#""\b\f\u0001""#);
+    }
 
     #[test]
     fn round_trip() {

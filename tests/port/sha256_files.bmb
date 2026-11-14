@@ -1,0 +1,47 @@
+#[summary("차등 시험(포팅 지도 P0, 백로그 4D-15): 인자로 받은 파일마다 std::sha256의 값을 sha256sum의 줄 모양으로 낸다. 읽지 못한 파일은 표준 오류에 적고 종료 코드 1")]
+mod app {
+    // The digest in lowercase hexadecimal, then two spaces: the start of a
+    // `sha256sum` line.
+    #[effects(io)]
+    fn hex(d: [u8; 32]) -> () {
+        let digits: [u8; 16] = [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 97, 98, 99, 100, 101, 102];
+        let mut out: [u8; 66] = [32; 66];
+        let n: usize = 32;
+        for i in 0..n {
+            out[2 * i] = digits[(d[i] >> 4) as usize];
+            out[2 * i + 1] = digits[(d[i] & 15) as usize];
+        }
+        print_bytes(&out);
+    }
+
+    #[effects(alloc, io, nondet)]
+    fn main() -> () {
+        let args: Vec<String> = std::env::args();
+        let mut failed: bool = false;
+        let mut i: usize = 1;
+        while i < args.len()
+            decreases args.len() - i,
+        {
+            match std::fs::read(args[i].as_str()) {
+                Ok(data) => {
+                    if data.len() <= 1000000000 {
+                        hex(std::sha256::digest(data.as_slice()));
+                        print_str(args[i].as_str());
+                        print_str("\n");
+                    } else {
+                        failed = true;
+                    }
+                }
+                Err(e) => {
+                    eprint_str(args[i].as_str());
+                    eprint_str(": cannot read\n");
+                    failed = true;
+                }
+            }
+            i = i + 1;
+        }
+        if failed {
+            std::process::exit(1);
+        }
+    }
+}

@@ -41,7 +41,7 @@ step "build"   # every test executable and target/debug/bmb, which the benches u
 cargo test --no-run --quiet --message-format=json-render-diagnostics > "$built"
 step "backlog"; python3 scripts/test_backlog.py > /dev/null
 
-step "test, bench m1, bench m1b, bench hname, bench edit (write, diff, ast), bench view, bench lean, bench repair, bench review, bench intent, bench impossible, bench bvb, bench m3, bench bnb, bench twin, bench bcb, bench brb, bench brb-encap, bench brb-encap-b, bench brb-effect, bench brb-hard, bench run_models, bench utility report, health, progress report (concurrent)"
+step "test, bench m1, bench m1b, bench hname, bench edit (write, diff, ast), bench view, bench lean, bench repair, bench review, bench intent, bench impossible, bench bvb, bench m3, bench bnb, bench twin, bench bcb, bench brb, bench brb-encap, bench brb-encap-b, bench brb-effect, bench brb-hard, bench run_models, bench utility report, port difftest, health, progress report (concurrent)"
 # Bench sessions are independent (ADR-0025, backlog 2A-04): m1b and bvb run two at a time per agent.
 # The original-Verus side of bvb (2A-09) needs the Verus toolchain: here only its harness logic
 # runs (stub verifier); the real oracle/weak runs are the `bvb-verus` CI job.
@@ -123,6 +123,7 @@ st=$(python3 bench/bvb/verus/harness.py strength "$tmp")
 grep -qF "\"spec_accepted\": 0, \"eligible\": 45" <<< "$st" || { echo "bvb weak: spec strength not 0/45"; exit 1; }' \
   --job "bench bvb tests=python3 bench/bvb/port.py check && python3 bench/bvb/test_bvb.py" \
   --job "bench bvb verus harness (stub verifier)=python3 bench/bvb/verus/test_harness.py" \
+  --job "port difftest (4D-15)=python3 scripts/test_difftest.py && python3 scripts/difftest.py run tests/port/cases.json > /dev/null" \
   --job "bench m3 generator=python3 bench/m3/test_gen.py > /dev/null" \
   --job "bench bnb=python3 bench/bnb/test_bnb.py > /dev/null" \
   --job "bench twin=python3 bench/twin/test_pair.py" \

@@ -1,0 +1,39 @@
+{
+  "builds": {
+    "sha256_files": {"bmb": "tests/port/sha256_files.bmb"},
+    "json_roundtrip": {"bmb": "tests/port/json_roundtrip.bmb"},
+    "json_ref": {"rustc": "tests/port/json_ref.rs"},
+    "std_num": {"bmb": "tests/run/std_num.bmb"},
+    "std_num_ref": {"rustc": "tests/run/std_num_ref.rs"}
+  },
+  "cases": [
+    {
+      "name": "sha256",
+      "component": "C0",
+      "a": ["sha256sum", "{inputs}"],
+      "b": ["{build:sha256_files}", "{inputs}"],
+      "inputs": {"files": ["*"], "chunk": 200}
+    },
+    {
+      "name": "json-lines",
+      "component": "C0",
+      "a": ["{build:json_ref}"],
+      "b": ["{build:json_roundtrip}"],
+      "inputs": {"stdin_lines_of": ["*.jsonl"]}
+    },
+    {
+      "name": "json-edges",
+      "component": "C0",
+      "a": ["{build:json_ref}"],
+      "b": ["{build:json_roundtrip}"],
+      "inputs": {"stdin": ["tests/port/json_edge.txt"]}
+    },
+    {
+      "name": "integers",
+      "component": "C0",
+      "a": ["{build:std_num_ref}"],
+      "b": ["{build:std_num}"],
+      "inputs": {"none": true}
+    }
+  ]
+}

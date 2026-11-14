@@ -94,6 +94,60 @@ ADR-0037 §3의 순서(렉서→파서→검사기→증명기→코드 생성�
 | 퍼저 | `fuzz.rs`, `fmt_fuzz.rs`, `mcp_fuzz.rs`, 건전성 6종 | 생성기가 Rust 테스트 안에 있다. 생성물을 파일로 내보내는 모드가 필요하다(테스트 코드 변경이라 동결과 무관) |
 | Rust 통합 테스트 | 30개 파일, `#[test]` 113개 | 15개 파일은 CLI를 실행하고, 15개 파일(`corpus`, `fmt`, `fmt_fuzz`, `fuzz`, `gate`, `impact`, `incremental`, `map`, `mcp_cache`, `nesting`, `no_prove`, `stability`, `toolchain`, `verify`, `fixes`)은 라이브러리 API만 부른다. stage0 은퇴(4G) 뒤에도 쓰려면 CLI 기반으로 바꿔야 한다 |
 
+### 3.2 차등 시험 하네스와 P0의 이미 있는 부분 (2026-11-14, 백로그 4D-15)
+
+위의 하네스는 `scripts/difftest.py`다. 사례 파일(`tests/port/cases.json`)의 사례마다 stage0 쪽 명령(`a`)과 포트 쪽 명령(`b`)을 빈 디렉터리 하나씩에서 같은 환경·같은 표준 입력으로 돌리고 stdout·stderr·종료 코드·남긴 파일을 바이트로 견준다. 정규화는 없다. 자기 확인은 `scripts/test_difftest.py`다: 같은 프로그램끼리는 모든 통로가 같고, 통로 하나의 한 바이트를 바꾼 대역은 그 통로에서 잡힌다. 게이트 작업은 "port difftest (4D-15)"이다.
+
+첫 사례는 P0 가운데 이미 `lib/std`에 있는 것이다(4B). 포트 쪽 프로그램은 `bmb build`로 만들어 전부 증명된 것이다.
+
+| 사례 | stage0 쪽 | 포트 쪽 | 입력 | 결과 |
+| --- | --- | --- | --- | --- |
+| `sha256` | `sha256sum` | `tests/port/sha256_files.bmb`(`std::sha256`, 47줄) | 저장소의 추적 파일 5,883개(200개씩 30회) | 같음 |
+| `json-lines` | `tests/port/json_ref.rs`(stage0의 `json.rs`·`diag.rs`·`source.rs`를 `#[path]`로 그대로 컴파일) | `tests/port/json_roundtrip.bmb`(`std::json`, 156줄, 정의 6개) | 저장소의 `.jsonl` 257개의 6,344줄(4.9MB) | 같음 |
+| `json-edges` | 위와 같음 | 위와 같음 | `tests/port/json_edge.txt` 80줄(이스케이프, 수의 경계, 중첩, 받지 않는 꼴) | 같음(아래 수정 뒤) |
+| `integers` | `tests/run/std_num_ref.rs`(Rust 표준 서식) | `tests/run/std_num.bmb`(`std::num`) | 프로그램 안의 경계값(0, ±1, `i64::MIN`, `u64::MAX`의 10진·16진 읽기·쓰기) | 같음 |
+
+**처음 돌렸을 때의 어긋남 넷.** `json-edges`가 stage0 `json`과 `std::json`이 갈리는 곳을 드러냈다. 넷 다 stage0 쪽이 RFC 8259 밖이거나 `std::json`(`serde_json`의 표기)과 다른 선택이었고, stage0을 고쳤다(`compiler/src/json.rs`·`diag.rs`, 단위 시험 `rejects_what_the_grammar_does`·`short_escapes`).
+
+| 어긋남 | stage0(전) | `std::json` | 조치 |
+| --- | --- | --- | --- |
+| 수의 문법 | `01`, `1.`, `1e`, `-`를 수로 받음(수에 쓰이는 글자의 연속) | 거부(RFC 8259 §6) | stage0이 문법대로 읽는다 |
+| 짝 없는 서로게이트 `"\ud83d"` | U+FFFD로 바꿈. 높은 쪽 뒤가 낮은 쪽이 아니어도 계산 | 거부 | stage0이 거부한다 |
+| 문자열 안의 날 제어 문자 | 받음 | 거부(§7) | stage0이 거부한다 |
+| 백스페이스·폼 피드의 쓰기 | `\u0008`·`\u000c` | `\b`·`\f` | stage0이 짧은 꼴로 쓴다(진단·MCP 응답의 문자열 표기) |
+
+이것이 이 하네스의 첫 수확이다: 포팅 전에 두 쪽의 JSON이 같은 입력에 같은 바이트를 낸다. 조기 고정점 경로(`emit-llvm --all-checks` + `clang -O2`)로 만든 `json_roundtrip`도 같은 출력을 냈다.
+
+**아직 하네스 밖인 P0.** `diag`(진단 자료와 JSONL 쓰기, 762줄)와 `source`(88줄)는 `lib/std`에 없고 포트가 새로 쓴다(§3.3). MCP 퍼저 기록(`mcp_fuzz.rs`)은 내보내기가 없어 입력으로 쓰지 않았다. 저장소의 `.jsonl`이 그 자리를 채운다(진단·결과·세션 기록의 실제 줄).
+
+### 3.3 P0~P2의 포팅 순서와 `selfhost/` 배치 (2026-11-14, 백로그 4D-16)
+
+stage0 파일의 의존(`use crate::`)을 읽어 순서를 정했다. 줄 수는 `scripts/components.py table`의 것(테스트 제외)이다.
+
+| 순서 | stage0 파일(줄) | 의존 | 포트의 자리 | `lib/std`가 주는 것 | 차등 시험 |
+| --- | --- | --- | --- | --- | --- |
+| 1 | `sha256`(82) | — | 새 파일 없음: `std::sha256` | 전부 | `sha256` ✅(§3.2) |
+| 2 | `json`(311) | `diag::json_str` | 새 파일 없음: `std::json` | 읽기(노드 배열)와 문자열 쓰기 | `json-lines`·`json-edges` ✅(§3.2) |
+| 3 | `source`(88) | — | `selfhost/source.bmb` | — | 4의 진단 위치(줄·열)로 본다 |
+| 4 | `diag`(764) | `source` | `selfhost/diag.bmb` | `std::json::push_string`, `std::num` | 5·7의 진단 JSONL. 코드 표(`codes --md`)는 P3의 시험이지만 표 자체는 여기서 옮긴다 |
+| 5 | `lexer`(862) | `source`, `diag`, `ast::Radix` | `selfhost/lexer.bmb` | `std::str`, `std::utf8` | `bmb dump tokens`: 코퍼스 전체와 퍼저 내보내기(`BMB_FUZZ_EXPORT`), JSONL과 종료 코드 |
+| 6 | `ast`(1,136) | `source` | `selfhost/ast.bmb` | — | 7로 본다 |
+| 7 | `parser`(4,027) | `ast`, `lexer`, `diag`, `source`, **`fmt`** | `selfhost/parser.bmb` | `std::collections` | `bmb dump parse`: 위 입력과 중첩 경계(255·256·257) |
+| 7′ | `fmt`(1,838, C3) | `ast` | `selfhost/fmt.bmb` | `std::str`, `std::num` | 7과 함께 |
+
+**순서표가 드러낸 것 셋.**
+
+1. **P2의 차등 시험은 `fmt` 없이 닫히지 않는다.** `bmb dump parse`가 내는 것은 구문 트리의 정규 출력(`fmt::format_units`)이고, 파서 자신도 `fmt::generics_str`와 `fmt::prec`를 부른다. `fmt`는 구성 요소로는 C3(P3)이다. 그래서 `fmt`는 P2 안에서 파서와 함께 옮긴다(위 7′). 원장의 행은 그대로 C3에 적고, 관문 B0(`4D-12`)가 보는 양은 C0~C2의 5.9천 줄이 아니라 `fmt`를 더한 약 7.8천 줄이다. 정체성(`identity`, 791줄)은 P3에 남는다.
+2. **`json`의 자료 모양은 이미 stage0과 다르다.** stage0은 값 트리(`Value`)이고 `std::json`은 노드 배열이다(ADR-0092, 4B). ADR-0121(포트는 stage0의 자료 모양을 따른다)의 알려진 예외다. P0~P2가 쓰는 것은 문자열 쓰기뿐이라 지금은 걸리지 않고, 읽는 쪽(트랜잭션 P10, MCP P11)을 옮길 때 그 소비 코드가 노드 배열로 쓰인다. §3.2의 왕복 사례가 두 모양이 같은 텍스트를 낸다는 것을 고정한다.
+3. **렉서는 `ast`에서 `Radix` 하나만 쓴다.** 순서 5가 6을 기다리지 않게, 포트에서는 `Radix`를 `selfhost/lexer.bmb`에 두지 않고 `selfhost/ast.bmb`의 첫 조각으로 먼저 쓴다(stage0과 같은 자리, ADR-0121).
+
+**`selfhost/` 배치.** stage0의 파일 하나에 포트의 파일 하나, 단위 이름은 stage0의 모듈 이름이다(`selfhost/lexer.bmb`의 `mod lexer`). 구성 요소의 포트 파일 목록은 `dev-docs/health/components.json`의 `port`에 적고(게이트 `scripts/components.py check`가 `selfhost/` 아래의 파일인지 본다), 원장이 줄 수와 증명 상태를 낸다. 구동기는 `selfhost/main.bmb`이고 국면마다 명령이 는다(P1 `dump tokens`, P2 `dump parse`). 차등 사례는 `tests/port/cases.json`에 더한다: `a`는 `{bmb}`(stage0), `b`는 `{build:stage1}`.
+
+**stage1 빌드 절차.** 두 길이 있고 둘 다 지금 돈다(§3.2에서 확인).
+
+- 증명하며: `bmb build selfhost/*.bmb -o stage1`. 증명되지 않은 정의가 있으면 실패한다. 구성 요소가 증명된 뒤의 길이다.
+- 조기 고정점까지(증명 없이): `bmb emit-llvm --all-checks selfhost/*.bmb -o stage1.ll` 다음 `clang -O2 -Wno-override-module stage1.ll -o stage1`(stage0 `toolchain::build`와 같은 인자). 증명 상태는 `bmb verify selfhost/*.bmb`가 따로 내고 원장의 "증명된 정의" 열에 든다.
+
 ## 4. 결정론 차이의 원천(차등 시험이 걸릴 곳)
 
 | 원천 | 위치 | 대응 |
