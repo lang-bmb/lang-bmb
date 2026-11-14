@@ -7324,12 +7324,13 @@ impl<'p> Prog<'p> {
         let parts = spec_funs(path, self.t)
             .iter()
             .zip(&bodies)
-            .map(|((f, _), body)| AxiomParts {
+            .map(|((f, sort), body)| AxiomParts {
                 sym: f.clone(),
                 params: app_args.clone(),
                 binders: binders.clone(),
                 guard: guard.clone(),
                 body: body.clone(),
+                sort: sort.to_string(),
                 recursive,
             })
             .collect();
@@ -7707,6 +7708,7 @@ pub fn preconditions_satisfiable(
             enc: &enc,
             axioms: &axioms,
             axiom_parts: &axiom_parts,
+            rec: true,
             spec_decls: &spec_decls,
             dts: &dts,
             solver: &mut solver,
@@ -7849,6 +7851,7 @@ pub fn results_determined(
             enc: &enc,
             axioms: &axioms,
             axiom_parts: &axiom_parts,
+            rec: true,
             spec_decls: &spec_decls,
             dts: &dts,
             solver: &mut solver,
@@ -7884,6 +7887,9 @@ struct SatRun<'a, 'p> {
     enc: &'a Enc<'a, 'p>,
     axioms: &'a [(String, String)],
     axiom_parts: &'a [AxiomParts],
+    /// Whether the check may write recursive definitions as recursive
+    /// functions (`rec_base`).
+    rec: bool,
     spec_decls: &'a [(String, String, String)],
     dts: &'a [(String, String, String)],
     solver: &'a mut Option<Solver>,
@@ -7943,6 +7949,21 @@ fn sat_of(r: &mut SatRun) -> Option<bool> {
         let a = sol
             .run("(reset)")
             .and_then(|_| sol.run(&pb))
+            .and_then(|_| sol.run(&probe_limit()))
+            .and_then(|_| sol.run(&q))
+            .and_then(|_| check_sat_counted(sol, r.spent));
+        matches!(a, Ok(Answer::Unsat | Answer::Sat)).then_some(a)
+    });
+    // Recursive definitions as recursive functions, at the probe's share
+    // (backlog T2-13): the same meaning.
+    let probed = probed.or_else(|| {
+        if !r.rec {
+            return None;
+        }
+        let rb = rec_base(r.axiom_parts, &q, r.spec_decls, r.dts, &base, &decls)?;
+        let a = sol
+            .run("(reset)")
+            .and_then(|_| sol.run(&rb))
             .and_then(|_| sol.run(&probe_limit()))
             .and_then(|_| sol.run(&q))
             .and_then(|_| check_sat_counted(sol, r.spent));
@@ -8536,6 +8557,18 @@ fn verify_pass(
                         Ok(Answer::Unsat) if bq.exact => Some(a),
                         _ => None,
                     }
+                });
+                // Recursive definitions as recursive functions, at the
+                // probe's share (backlog T2-13): the same meaning.
+                let probed = probed.or_else(|| {
+                    let rb = rec_base(&axiom_parts, &q, &spec_decls, &dts, &prefix, &decls)?;
+                    let a = sol
+                        .run("(reset)")
+                        .and_then(|_| sol.run(&rb))
+                        .and_then(|_| sol.run(&probe_limit()))
+                        .and_then(|_| sol.run(&q))
+                        .and_then(|_| check_sat_counted(sol, spent));
+                    matches!(a, Ok(Answer::Unsat | Answer::Sat)).then_some(a)
                 });
                 let mut answer = probed.unwrap_or_else(|| {
                     sol.run("(reset)")
@@ -9619,6 +9652,8 @@ struct AxiomParts {
     binders: Vec<String>,
     guard: String,
     body: String,
+    /// The sort of the function's value.
+    sort: String,
     /// A recursive definition is instantiated at applications outside
     /// quantifiers only (ADR-0075).
     recursive: bool,
@@ -10126,6 +10161,94 @@ fn bound_terms(inputs: &[(String, Val, TypeKind)]) -> Vec<String> {
 
 fn probe_limit() -> String {
     format!("(set-option :rlimit {})", smt::rlimit() / PROBE_SHARE)
+}
+
+/// The base of a satisfiability check's query with the definitions `q`
+/// reaches written as recursive functions (backlog T2-13): one
+/// `define-funs-rec` of them all, each its body inside its parameters' types
+/// and its uninterpreted `!ext` outside, which is what the quantified
+/// definition says. Z3 unfolds such a definition at the applications its
+/// model search meets, where a quantified recursive definition leaves the
+/// search `unknown` (`incomplete`). `None` when `q` reaches no recursive
+/// definition: the probe's macros already define the others.
+fn rec_base(
+    parts: &[AxiomParts],
+    q: &str,
+    spec_decls: &[(String, String, String)],
+    dts: &[(String, String, String)],
+    prefix: &str,
+    decls: &str,
+) -> Option<String> {
+    // The definitions `q` reaches, in order of first use (ADR-0063 §2).
+    let mut chosen = vec![false; parts.len()];
+    let mut order: Vec<usize> = Vec::new();
+    let mut haystack = q.to_string();
+    loop {
+        let mut found: Vec<(usize, usize)> = parts
+            .iter()
+            .enumerate()
+            .filter(|(k, _)| !chosen[*k])
+            .filter_map(|(k, a)| haystack.find(a.sym.as_str()).map(|at| (at, k)))
+            .collect();
+        if found.is_empty() {
+            break;
+        }
+        found.sort();
+        for (_, k) in found {
+            chosen[k] = true;
+            order.push(k);
+            haystack.push_str(&parts[k].body);
+        }
+    }
+    if !order.iter().any(|&k| parts[k].recursive) {
+        return None;
+    }
+    let mut exts = String::new();
+    let mut sigs = Vec::new();
+    let mut bodies = Vec::new();
+    for &k in &order {
+        let a = &parts[k];
+        sigs.push(format!("({} ({}) {})", a.sym, a.binders.join(" "), a.sort));
+        if a.guard == "true" || a.binders.is_empty() {
+            bodies.push(a.body.clone());
+            continue;
+        }
+        let ext = macro_ext(&a.sym);
+        let sorts: Vec<&str> = a
+            .binders
+            .iter()
+            .map(|b| b[1..b.len() - 1].split_once(' ').map_or("", |(_, s)| s))
+            .collect();
+        exts.push_str(&format!(
+            "(declare-fun {ext} ({}) {})\n",
+            sorts.join(" "),
+            a.sort
+        ));
+        bodies.push(format!(
+            "(ite {} {} ({ext} {}))",
+            a.guard,
+            a.body,
+            a.params.join(" ")
+        ));
+    }
+    let defs = format!(
+        "{exts}(define-funs-rec ({}) ({}))\n",
+        sigs.join(" "),
+        bodies.join(" ")
+    );
+    // The declarations of the other spec fns the query names; the defined
+    // ones are not declared again.
+    let used = needed_decls(spec_decls, dts, &format!("{defs}{decls}\n{q}"));
+    let used: String = used
+        .lines()
+        .filter(|l| {
+            !order
+                .iter()
+                .any(|&k| l.starts_with(&format!("(declare-fun {} ", parts[k].sym)))
+        })
+        .map(|l| format!("{l}\n"))
+        .collect();
+    Some(format!("{prefix}{used}{defs}{decls}"))
 }
 
 /// The base of a query's probe (ADR-0067): `prefix`, the declarations the
@@ -10991,6 +11114,7 @@ mod m {
             ],
             guard: "(<= 0 |j!p|)".into(),
             body: "(= (select |a!p| |j!p|) |k!p|)".into(),
+            sort: "Bool".into(),
             recursive,
         }
     }
@@ -11048,6 +11172,7 @@ mod m {
             binders: vec!["(|a!p| (Array Int Int))".into(), "(|n!p| Int)".into()],
             guard: "true".into(),
             body: "(forall ((i Int)) (=> (< i |n!p|) (distinct (select |a!p| i) 7)))".into(),
+            sort: "Bool".into(),
             recursive: false,
         };
         let text = "(assert (not (|m::none| arr 3)))";
@@ -11091,6 +11216,80 @@ mod m {
         assert!(inst.contains(&format!("(= ({second} 5)")), "{inst}");
     }
 
+    /// Backlog T2-13: the definitions a satisfiability query reaches as
+    /// one group of recursive functions, each its body inside its
+    /// parameters' types and `!ext` outside; none without recursion.
+    #[test]
+    fn recursive_definitions_as_recursive_functions() {
+        let part = |sym: &str, guard: &str, body: &str, sort: &str, recursive| AxiomParts {
+            sym: sym.into(),
+            params: vec!["|n!p|".into()],
+            binders: vec!["(|n!p| Int)".into()],
+            guard: guard.into(),
+            body: body.into(),
+            sort: sort.into(),
+            recursive,
+        };
+        let parts = [
+            part("|m::other|", "true", "(> |n!p| 9)", "Bool", false),
+            part(
+                "|m::even|",
+                "true",
+                "(= (|m::count| |n!p|) 2)",
+                "Bool",
+                false,
+            ),
+            part(
+                "|m::count|",
+                "(<= 0 |n!p|)",
+                "(ite (= |n!p| 0) 0 (+ (|m::count| (- |n!p| 1)) 1))",
+                "Int",
+                true,
+            ),
+        ];
+        let decls = [
+            (
+                "m::other".to_string(),
+                "|m::other|".to_string(),
+                "(declare-fun |m::other| (Int) Bool)".to_string(),
+            ),
+            (
+                "m::even".to_string(),
+                "|m::even|".to_string(),
+                "(declare-fun |m::even| (Int) Bool)".to_string(),
+            ),
+            (
+                "m::count".to_string(),
+                "|m::count|".to_string(),
+                "(declare-fun |m::count| (Int) Int)".to_string(),
+            ),
+            (
+                "m::free".to_string(),
+                "|m::free|".to_string(),
+                "(declare-fun |m::free| (Int) Bool)".to_string(),
+            ),
+        ];
+        let q = "(assert (and (|m::even| x) (|m::free| x)))";
+        let base = rec_base(&parts, q, &decls, &[], "", "(declare-const x Int)").unwrap();
+        // The opaque spec fn is declared, the defined ones are not, and the
+        // one the query does not reach is absent.
+        assert!(
+            base.contains("(declare-fun |m::free| (Int) Bool)"),
+            "{base}"
+        );
+        assert!(!base.contains("(declare-fun |m::even|"), "{base}");
+        assert!(!base.contains("(declare-fun |m::count| "), "{base}");
+        assert!(!base.contains("m::other"), "{base}");
+        assert!(
+            base.contains(
+                "(declare-fun |m::count!ext| (Int) Int)\n(define-funs-rec ((|m::even| ((|n!p| Int)) Bool) (|m::count| ((|n!p| Int)) Int)) ((= (|m::count| |n!p|) 2) (ite (<= 0 |n!p|) (ite (= |n!p| 0) 0 (+ (|m::count| (- |n!p| 1)) 1)) (|m::count!ext| |n!p|))))"
+            ),
+            "{base}"
+        );
+        // A query that reaches no recursive definition has no such form.
+        assert!(rec_base(&parts, "(assert (|m::other| x))", &decls, &[], "", "").is_none());
+    }
+
     #[test]
     fn ground_instances_take_datatype_arguments() {
         let ax = AxiomParts {
@@ -11099,6 +11298,7 @@ mod m {
             binders: vec!["(|o!p| |Option<i64>|)".into()],
             guard: "true".into(),
             body: "((_ is |Option<i64>::Some|) |o!p|)".into(),
+            sort: "Bool".into(),
             recursive: false,
         };
         let text = "(assert (not (|m::is_some| (|Option<i64>::Some| (- 5)))))";

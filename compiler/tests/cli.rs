@@ -365,13 +365,7 @@ mod s {
 
     spec fn small(x: i64) -> bool { x < 100 }
 
-    spec fn sum_to(n: u64) -> u64
-        decreases n,
-    {
-        if n == 0 { 0 } else { n + sum_to(n - 1) }
-    }
-
-    spec fn odd_sum(n: u64, t: u64) -> bool { n < 1000 && t == sum_to(n) && t % 7 == 3 }
+    spec fn cubes(x: i64, y: i64, z: i64) -> bool { x * x * x + y * y * y + z * z * z == 42 }
 
     // `pos` and `neg` cannot hold together (W0901).
     #[effects(pure)]
@@ -392,13 +386,14 @@ mod s {
     }
 
     // The solver decides neither the clauses nor the end of the body
-    // (a recursive definition).
+    // (nonlinear integer arithmetic; a recursive definition was the case
+    // until the checks wrote it as a recursive function, ADR-0133).
     #[effects(pure)]
-    #[uses(odd_sum, sum_to)]
-    fn total(n: u64, t: u64) -> u64
-        requires odd_sum(n, t),
+    #[uses(cubes)]
+    fn total(x: i64, y: i64, z: i64) -> i64
+        requires cubes(x, y, z),
     {
-        t
+        x
     }
 }
 "#;

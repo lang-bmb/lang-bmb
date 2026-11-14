@@ -309,6 +309,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                 binders: vec![format!("({x} {})", sort_of(&t))],
                 guard: "true".into(),
                 body: and(&body),
+                sort: "Bool".into(),
                 // A recursive datatype's validity names itself.
                 recursive: true,
             });

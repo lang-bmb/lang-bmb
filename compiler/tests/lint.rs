@@ -819,6 +819,71 @@ fn index_predicates_leave_no_satisfiability_check_undecided() {
     assert_eq!(n(&summary, "reach_undecided"), 0, "{text}");
 }
 
+/// Backlog T2-13: a satisfiability check that the probe leaves undecided
+/// writes the definitions its query reaches as recursive functions, which
+/// the solver unfolds where a quantified recursive definition left its
+/// model search `unknown`. `reach` needs a model of `count(n) == 3`;
+/// `never` has none of `count(n) == 5` at `n == 2`, and is still reported.
+#[test]
+fn recursive_definitions_leave_no_satisfiability_check_undecided() {
+    let text = "#[summary(\"t\")]
+mod m {
+    spec fn count(n: u64) -> u64
+        decreases n,
+    {
+        if n == 0 { 0 } else { count(n - 1) + 1 }
+    }
+
+    #[effects(pure)]
+    fn reach(n: u64) -> (r: u64)
+        requires count(n) == 3,
+        ensures r == n,
+    {
+        n
+    }
+
+    #[effects(pure)]
+    fn never(n: u64) -> (r: u64)
+        requires n == 2, count(n) == 5,
+        ensures r == n,
+    {
+        n
+    }
+}
+";
+    let (_, out) = cli::run(&["lint", "--select", "W0901,W0905"], &one("r.bmb", text));
+    let mut reports = rows(&out);
+    let summary = reports.pop().unwrap();
+    assert_eq!(n(&summary, "pre_undecided"), 0, "{out}");
+    assert_eq!(n(&summary, "reach_undecided"), 0, "{out}");
+    let got: Vec<(&str, bool)> = reports
+        .iter()
+        .map(|r| (s(r, "code"), s(r, "message").contains("m::never")))
+        .collect();
+    assert_eq!(got, [("W0901", true)], "{out}");
+
+    // The recursive types and the proofs by induction of the corpus: four
+    // checks of `recursive.bmb` and eleven of `proofs.bmb` were undecided.
+    for (name, undecided) in [("recursive.bmb", 0), ("proofs.bmb", 1)] {
+        let file = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../tests/verify/pass")
+            .join(name);
+        let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
+            .args(["lint", "--select", "W0901,W0905", file.to_str().unwrap()])
+            .output()
+            .unwrap();
+        assert_eq!(out.status.code(), Some(0));
+        let text = String::from_utf8(out.stdout).unwrap();
+        let summary = rows(&text).pop().unwrap();
+        assert_eq!(n(&summary, "reports"), 0, "{text}");
+        assert_eq!(
+            n(&summary, "pre_undecided") + n(&summary, "reach_undecided"),
+            undecided,
+            "{name}: {text}"
+        );
+    }
+}
+
 /// A line of `scripts/toolchain.env` (`KEY=value`).
 fn pinned(key: &str) -> String {
     let env = Path::new(env!("CARGO_MANIFEST_DIR")).join("../scripts/toolchain.env");
@@ -888,8 +953,8 @@ fn advisory_queries_end_at_their_own_memory_limit() {
         (64, 13, 58),
         "{text}"
     );
-    assert_eq!(n(&summary, "pre_undecided"), 2, "{text}");
-    assert_eq!(n(&summary, "reach_undecided"), 7, "{text}");
+    assert_eq!(n(&summary, "pre_undecided"), 1, "{text}");
+    assert_eq!(n(&summary, "reach_undecided"), 6, "{text}");
     assert_eq!(
         reports.iter().filter(|r| s(r, "code") == "W0904").count(),
         13

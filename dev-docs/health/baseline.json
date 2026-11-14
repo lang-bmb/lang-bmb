@@ -9,15 +9,15 @@
     "V8_bench_rlimit_total": 22976379,
     "V9_bench_defs_at_limit": 0,
     "V10_library_rlimit_total": 22246065,
-    "V11_sat_check_rlimit_total": 271944190,
-    "V12_sat_check_undecided": 216,
+    "V11_sat_check_rlimit_total": 118117292,
+    "V12_sat_check_undecided": 86,
     "S1_external_crates": 0,
     "S2_external_processes": [
       "clang",
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 55084,
+    "S4_stage0_rust_lines": 56001,
     "S5_tests_bound_to_rust_api": 1,
     "S6_selfhost_bmb_lines": 0,
     "S7_selfhost_proved_defs": null,
@@ -27,7 +27,7 @@
     "B1_baseline_binary_bytes": 101664,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 17,
-    "O3_active_backlog_chars": 35436
+    "O3_active_backlog_chars": 38291
   },
   "history": [
     {
@@ -2728,6 +2728,28 @@
         "O3_active_backlog_chars": [
           35980,
           35436
+        ]
+      }
+    },
+    {
+      "date": "2026-11-14",
+      "reason": "T2-13: 충족 검사에서 재귀 정의를 재귀 함수로(ADR-0133). V12 216 -> 86, V11 -38%",
+      "changed": {
+        "V11_sat_check_rlimit_total": [
+          271944190,
+          118117292
+        ],
+        "V12_sat_check_undecided": [
+          216,
+          86
+        ],
+        "S4_stage0_rust_lines": [
+          55084,
+          56001
+        ],
+        "O3_active_backlog_chars": [
+          35436,
+          38291
         ]
       }
     }

@@ -401,6 +401,9 @@ impl Gen<'_, '_, '_> {
             enc: &self.enc,
             axioms: &self.axioms,
             axiom_parts: &self.axiom_parts,
+            // The committed examples of `bench/intent` are this cascade's
+            // (backlog T1-44g turns it on with a new freeze).
+            rec: false,
             spec_decls: self.spec_decls,
             dts: self.dts,
             solver: self.solver,
