@@ -1,0 +1,17 @@
+#[summary("BMB로 쓴 컴파일러의 구동기 (stage0 compiler/src/main.rs의 포트, 백로그 4D-02). 국면마다 명령이 는다: 지금은 codes")]
+mod main {
+    #[effects(alloc, io, nondet)]
+    fn main() -> () {
+        let args: Vec<String> = std::env::args();
+        if args.len() > 1 && args[1] == "codes" {
+            if args.len() > 2 && args[2] == "--md" {
+                print_str(diag::codes_markdown().as_str());
+            } else {
+                print_str(diag::codes_jsonl().as_str());
+            }
+            return;
+        }
+        eprint_str("usage: stage1 codes [--md]\n");
+        std::process::exit(2);
+    }
+}

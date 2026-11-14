@@ -1,0 +1,501 @@
+#[summary("진단: 안정된 코드의 표, 진단 자료, 결정론적 JSONL 쓰기, 코드 참조 문서 (stage0 compiler/src/diag.rs의 포트, 백로그 4D-02)")]
+mod diag {
+    struct Bound { b: i64, l: usize }
+
+    struct Code { code: String, text: String }
+
+    struct Diag { code: String, span: source::Span, message: String, fix: Option<Fix>, obligation: Option<String>, bounded: Option<Bound> }
+
+    struct Diags { items: Vec<Diag>, aliases: Vec<Diag> }
+
+    impl Diags {
+        #[effects(pure)]
+        fn has_errors(self: &Diags) -> bool {
+            self.items.len() > 0
+        }
+
+        #[effects(alloc)]
+        fn push(self: &mut Diags, d: Diag) -> () {
+            self.items.push(d);
+        }
+
+        #[summary("결정론적 JSONL: 위치와 코드의 순서로, 같은 줄은 한 번만")]
+        #[effects(alloc)]
+        fn to_jsonl(self: &Diags, sm: &source::SourceMap) -> String {
+            let mut rows: Vec<Row> = Vec::new();
+            let mut i: usize = 0;
+            while i < self.items.len()
+                decreases self.items.len() - i,
+            {
+                rows.push(Row { file: self.items[i].span.file, lo: self.items[i].span.lo, code: self.items[i].code.clone(), text: render(&self.items[i], sm) });
+                i = i + 1;
+            }
+            let mut ord: Vec<usize> = Vec::new();
+            let mut x: usize = 0;
+            while x < rows.len()
+                decreases rows.len() - x,
+            {
+                ord = placed(rows.as_slice(), ord.as_slice(), x);
+                x = x + 1;
+            }
+            let mut out: String = String::new();
+            let mut last: usize = rows.len();
+            let mut k: usize = 0;
+            while k < ord.len()
+                invariant last <= rows.len(),
+                decreases ord.len() - k,
+            {
+                let j: usize = ord[k];
+                if j < rows.len() {
+                    if last == rows.len() || rows[last].text != rows[j].text {
+                        out.push_str(rows[j].text.as_str());
+                        out.push_str("\n");
+                    }
+                    last = j;
+                }
+                k = k + 1;
+            }
+            out
+        }
+    }
+
+    struct Fix { message: String, replacement: Option<String> }
+
+    struct Row { file: u32, lo: u32, code: String, text: String }
+
+    #[effects(pure)]
+    fn after(rows: &[Row], x: usize, j: usize) -> bool
+        requires x < rows.len(),
+    {
+        j < rows.len() && row_lt(&rows[x], &rows[j])
+    }
+
+    #[summary("컴파일러가 내는 모든 진단 코드, 참조 문서의 순서. 코드는 안정적이다: 번호를 바꾸거나 은퇴한 코드를 다시 쓰지 않는다")]
+    #[effects(alloc)]
+    fn codes() -> Vec<Code> {
+        let mut v: Vec<Code> = Vec::new();
+        v.push(Code { code: String::from("E0101"), text: String::from("unexpected character") });
+        v.push(Code { code: String::from("E0102"), text: String::from("unterminated string literal") });
+        v.push(Code { code: String::from("E0103"), text: String::from("syntax error: unexpected token") });
+        v.push(Code { code: String::from("E0104"), text: String::from("integer literal suffix not allowed; the type comes from context") });
+        v.push(Code { code: String::from("E0105"), text: String::from("integer literal too large") });
+        v.push(Code { code: String::from("E0106"), text: String::from("block comments are not allowed; use `//`") });
+        v.push(Code { code: String::from("E0107"), text: String::from("nesting too deep") });
+        v.push(Code { code: String::from("E0108"), text: String::from("malformed integer literal: a digit outside its base, or a base prefix without digits") });
+        v.push(Code { code: String::from("E0109"), text: String::from("malformed float literal: digits on both sides of the point (`1.0`, `0.5`) and after an exponent `e` are required") });
+        v.push(Code { code: String::from("E0201"), text: String::from("`let` requires an explicit type") });
+        v.push(Code { code: String::from("E0202"), text: String::from("macros are not allowed") });
+        v.push(Code { code: String::from("E0205"), text: String::from("`as` converts between integer types only (to `f64`: `f64::from(x)`)") });
+        v.push(Code { code: String::from("E0207"), text: String::from("construct not supported in milestone 1") });
+        v.push(Code { code: String::from("E0208"), text: String::from("lifetime annotations are not allowed") });
+        v.push(Code { code: String::from("E0209"), text: String::from("function return type is required (write `-> ()` for unit)") });
+        v.push(Code { code: String::from("E0210"), text: String::from("`mut` parameters are not allowed") });
+        v.push(Code { code: String::from("E0211"), text: String::from("comparison operators cannot be chained") });
+        v.push(Code { code: String::from("E0212"), text: String::from("`T::from(x)` / `x.into()` / `x.try_into()`: convert with `x as T`") });
+        v.push(Code { code: String::from("E0213"), text: String::from("`T::try_from(x).expect(..)` is written `.unwrap()`") });
+        v.push(Code { code: String::from("E0214"), text: String::from("`use` is not used: names are written in full") });
+        v.push(Code { code: String::from("E0218"), text: String::from("a `Vec` or `String` is passed where a slice or `&str` is expected: write `v.as_slice()` or `s.as_str()`") });
+        v.push(Code { code: String::from("E0219"), text: String::from("`drop(v)` and `mem::take` are not used") });
+        v.push(Code { code: String::from("E0215"), text: String::from("`unsafe` is not used: a body that cannot be proved is `#[external_body]`") });
+        v.push(Code { code: String::from("E0216"), text: String::from("Verus's `#[verifier::external_body]`: BMB writes `#[external_body]`") });
+        v.push(Code { code: String::from("E0217"), text: String::from("Verus's `admit()`: BMB writes `assume(p(..))` with a rationale") });
+        v.push(Code { code: String::from("E0235"), text: String::from("a blanket impl `impl<T> Trait for T` is not used") });
+        v.push(Code { code: String::from("E0240"), text: String::from("a `where` clause is not used: bounds go next to the type parameter") });
+        v.push(Code { code: String::from("E0236"), text: String::from("trait objects `dyn Trait` are not used") });
+        v.push(Code { code: String::from("E0241"), text: String::from("`?` whose `None`/`Err` the function cannot return (another error type, or not an `Option`/`Result` function)") });
+        v.push(Code { code: String::from("E0242"), text: String::from("`crate::`, `super::` or `self::` path: a path names a unit from the root") });
+        v.push(Code { code: String::from("E0250"), text: String::from("`break` or `continue` outside a loop") });
+        v.push(Code { code: String::from("E0251"), text: String::from("`break` with a value outside a `loop`") });
+        v.push(Code { code: String::from("E0252"), text: String::from("`for` over something other than an integer range") });
+        v.push(Code { code: String::from("E0253"), text: String::from("`decreases` on a `for` loop (its measure is automatic)") });
+        v.push(Code { code: String::from("E0254"), text: String::from("`#[invariant(p)]`: `p` is not a spec function `(x: &T) -> bool` over the type's parameters, or states nothing") });
+        v.push(Code { code: String::from("E0255"), text: String::from("more than one `#[invariant(..)]` on a type: join the conditions with `&&` in one predicate") });
+        v.push(Code { code: String::from("E0256"), text: String::from("a `proof fn` takes no effect attribute and no return type") });
+        v.push(Code { code: String::from("E0257"), text: String::from("ghost code (a `proof fn` body or a `proof { .. }` block) cannot run executable code: no executable call, assignment, `&mut` or loop") });
+        v.push(Code { code: String::from("E0258"), text: String::from("a `proof fn` is called only from ghost code: a `proof { .. }` block or another `proof fn`") });
+        v.push(Code { code: String::from("E0259"), text: String::from("a `const`'s value is not a constant expression: literals, other `const`s, operators, `if`, `match`, the wrapping and saturating methods, `as`, arrays, structs, variants, fields and elements (ADR-0052 §3)") });
+        v.push(Code { code: String::from("E0260"), text: String::from("a `const`'s evaluation failed: overflow, division by zero, a shift of the width or more, a conversion out of range, an index past the end (ADR-0052 §4)") });
+        v.push(Code { code: String::from("E0262"), text: String::from("a closure that captures a local is written `move`: captures move into it (ADR-0053 §2)") });
+        v.push(Code { code: String::from("E0263"), text: String::from("a closure's parameters and result have their types written (ADR-0053 §2)") });
+        v.push(Code { code: String::from("E0264"), text: String::from("a function pointer type, a returned closure, or a closure that is not the argument of an `Fn`-bounded parameter (ADR-0053 §1, §3)") });
+        v.push(Code { code: String::from("E0265"), text: String::from("an argument-position `impl Fn(..)`: the form is a type parameter `F: Fn(..)` (ADR-0053 §1)") });
+        v.push(Code { code: String::from("E0261"), text: String::from("a `static` item: an immutable one is a `const`, global mutable state is passed as an argument (ADR-0052 §7)") });
+        v.push(Code { code: String::from("E0237"), text: String::from("a call of a generic function names its type arguments: `f::<T>(..)`") });
+        v.push(Code { code: String::from("E0238"), text: String::from("`Rc`, `RefCell`, `Cell` and `Arc` are not used: values have one owner") });
+        v.push(Code { code: String::from("E0239"), text: String::from("an owned value is moved out from behind a `&mut`: use `std::mem::replace`") });
+        v.push(Code { code: String::from("E0220"), text: String::from("`#[derive(..)]` is not used") });
+        v.push(Code { code: String::from("E0221"), text: String::from("built-in variants are written bare (`Some`, not `Option::Some`)") });
+        v.push(Code { code: String::from("E0222"), text: String::from("field shorthand is not allowed (`x: x`)") });
+        v.push(Code { code: String::from("E0223"), text: String::from("struct update syntax `..` is not allowed") });
+        v.push(Code { code: String::from("E0224"), text: String::from("a wildcard arm is not allowed") });
+        v.push(Code { code: String::from("E0225"), text: String::from("`if let` is not allowed; use `match`") });
+        v.push(Code { code: String::from("E0226"), text: String::from("`while let`, `let .. else` and pattern `let` are not allowed") });
+        v.push(Code { code: String::from("E0228"), text: String::from("the receiver needs its type (`self: &T`)") });
+        v.push(Code { code: String::from("E0229"), text: String::from("`.unwrap()` / `.expect()` are not allowed; `match` both cases") });
+        v.push(Code { code: String::from("E0230"), text: String::from("destructuring `let` is not allowed") });
+        v.push(Code { code: String::from("E0231"), text: String::from("`(*p).x` is written `p.x`") });
+        v.push(Code { code: String::from("E0232"), text: String::from("pattern form not allowed (guard, or, literal, nested, struct)") });
+        v.push(Code { code: String::from("E0233"), text: String::from("tuples, tuple structs and struct-like variants are not allowed") });
+        v.push(Code { code: String::from("E0301"), text: String::from("unknown name") });
+        v.push(Code { code: String::from("E0302"), text: String::from("duplicate definition") });
+        v.push(Code { code: String::from("E0303"), text: String::from("a local name hides a visible one (a parameter, an outer local, the result), or is bound elsewhere in the function with another type (ADR-0095 A3)") });
+        v.push(Code { code: String::from("E0304"), text: String::from("unknown function") });
+        v.push(Code { code: String::from("E0305"), text: String::from("unknown type or trait") });
+        v.push(Code { code: String::from("E0306"), text: String::from("unknown field") });
+        v.push(Code { code: String::from("E0307"), text: String::from("unknown variant") });
+        v.push(Code { code: String::from("E0308"), text: String::from("`impl` block not in the unit of its type, or a second one with the same bounds (one block per list of bounds, ADR-0097)") });
+        v.push(Code { code: String::from("E0309"), text: String::from("a built-in name cannot be defined") });
+        v.push(Code { code: String::from("E0310"), text: String::from("`self` names exactly the receiver") });
+        v.push(Code { code: String::from("E0311"), text: String::from("two impls of a trait for types that can be the same") });
+        v.push(Code { code: String::from("E0312"), text: String::from("a trait impl in neither the unit of the trait nor the unit of the type") });
+        v.push(Code { code: String::from("E0313"), text: String::from("a method call names a method of more than one trait; call by path") });
+        v.push(Code { code: String::from("E0314"), text: String::from("a method call names a function that has no receiver or type parameters of its own; call by path") });
+        v.push(Code { code: String::from("E0315"), text: String::from("a trait impl misses a method of the trait, or has one the trait lacks") });
+        v.push(Code { code: String::from("E0316"), text: String::from("a trait impl's function does not match the trait's signature") });
+        v.push(Code { code: String::from("E0317"), text: String::from("a `break` or `continue` names a label no loop around it has") });
+        v.push(Code { code: String::from("E0318"), text: String::from("`const`s that refer to each other (ADR-0052 §3)") });
+        v.push(Code { code: String::from("E0401"), text: String::from("type mismatch") });
+        v.push(Code { code: String::from("E0402"), text: String::from("unsupported type") });
+        v.push(Code { code: String::from("E0403"), text: String::from("references are only allowed in parameter position") });
+        v.push(Code { code: String::from("E0404"), text: String::from("unknown method (no method lookup; only built-in methods exist)") });
+        v.push(Code { code: String::from("E0405"), text: String::from("wrong number of arguments") });
+        v.push(Code { code: String::from("E0406"), text: String::from("integer literal out of range for its type") });
+        v.push(Code { code: String::from("E0407"), text: String::from("value is not indexable") });
+        v.push(Code { code: String::from("E0408"), text: String::from("assignment to an immutable place") });
+        v.push(Code { code: String::from("E0409"), text: String::from("`&` / `&mut` may only appear directly as a call argument") });
+        v.push(Code { code: String::from("E0410"), text: String::from("a `&mut` argument aliases another argument of the same call") });
+        v.push(Code { code: String::from("E0411"), text: String::from("cannot negate an unsigned value") });
+        v.push(Code { code: String::from("E0412"), text: String::from("`T::try_from(x)` takes an integer and is used as `.unwrap()` or `.ok()`") });
+        v.push(Code { code: String::from("E0413"), text: String::from("use of a moved value, or a move out of a place") });
+        v.push(Code { code: String::from("E0414"), text: String::from("a value that moves is moved on some paths and not on others") });
+        v.push(Code { code: String::from("E0420"), text: String::from("malformed data type: wrong type arguments, or no field or variant") });
+        v.push(Code { code: String::from("E0421"), text: String::from("a type contains itself") });
+        v.push(Code { code: String::from("E0422"), text: String::from("struct literal fields: not a struct, a field given twice, or a field missing") });
+        v.push(Code { code: String::from("E0423"), text: String::from("`match` needs an enum value") });
+        v.push(Code { code: String::from("E0424"), text: String::from("the type of `None` / `Ok` / `Err` is not known here") });
+        v.push(Code { code: String::from("E0425"), text: String::from("`==` on data types is not executable (compare the fields)") });
+        v.push(Code { code: String::from("E0426"), text: String::from("`match` arms: one per variant, in declaration order") });
+        v.push(Code { code: String::from("E0427"), text: String::from("a pattern names the wrong number of payload values") });
+        v.push(Code { code: String::from("E0428"), text: String::from("a type argument does not satisfy a bound of its parameter") });
+        v.push(Code { code: String::from("E0429"), text: String::from("wrong number of type arguments in a call") });
+        v.push(Code { code: String::from("E0430"), text: String::from("a recursive generic call wraps a type parameter in a larger type") });
+        v.push(Code { code: String::from("E0431"), text: String::from("`==` on a recursive type that holds a `Vec` (in a specification)") });
+        v.push(Code { code: String::from("E0432"), text: String::from("a value of a recursive struct is built in a specification") });
+        v.push(Code { code: String::from("E0433"), text: String::from("a value is used whole after one of its fields was moved") });
+        v.push(Code { code: String::from("E0434"), text: String::from("struct literal fields must be given in declaration order (the order of evaluation)") });
+        v.push(Code { code: String::from("E0435"), text: String::from("a range `lo..hi` outside the source argument of `copy_within` and the bounds of a `&str` argument `&s[lo..hi]`") });
+        v.push(Code { code: String::from("E0436"), text: String::from("a `std::process::Child` built or read by its fields (it comes from `std::process::spawn`)") });
+        v.push(Code { code: String::from("E0437"), text: String::from("a type a `const` cannot have: a `const` holds a value type, an integer, `bool` or `char`, or an array, struct or enum of them (ADR-0052 §2)") });
+        v.push(Code { code: String::from("E0438"), text: String::from("an inclusive range `lo..=hi` outside the range of a `for` loop") });
+        v.push(Code { code: String::from("E0501"), text: String::from("a contract clause with a quantifier must be a call to a named predicate (`spec fn ... -> bool`); one without is an expression (ADR-0095 A2)") });
+        v.push(Code { code: String::from("E0502"), text: String::from("vacuous predicate used in a contract") });
+        v.push(Code { code: String::from("E0503"), text: String::from("specification-only construct used in executable code, or an executable statement in a specification") });
+        v.push(Code { code: String::from("E0504"), text: String::from("executable function called in a specification") });
+        v.push(Code { code: String::from("E0505"), text: String::from("spec function called in executable code") });
+        v.push(Code { code: String::from("E0506"), text: String::from("`while` requires `decreases`") });
+        v.push(Code { code: String::from("E0507"), text: String::from("recursive function requires `decreases`") });
+        v.push(Code { code: String::from("E0513"), text: String::from("conversions are not used in specifications (integer types mix there)") });
+        v.push(Code { code: String::from("E0514"), text: String::from("`==` is not defined for `Vec`") });
+        v.push(Code { code: String::from("E0515"), text: String::from("`assert(..) by (bit_vector)` takes integer, `f64` and `bool` terms only (no quantifier, `old` or data value; an element, field or length that names a `let` of the assertion)") });
+        v.push(Code { code: String::from("E0516"), text: String::from("unknown prover in `assert(..) by (..)` (the one prover is `bit_vector`)") });
+        v.push(Code { code: String::from("E0508"), text: String::from("`old(..)` is only allowed in `ensures`, loop invariants and `assert` on a `&mut` parameter") });
+        v.push(Code { code: String::from("E0509"), text: String::from("`#[uses(..)]` entry is not a spec function") });
+        v.push(Code { code: String::from("E0510"), text: String::from("`#[trigger]` is only allowed inside `forall` or `exists`") });
+        v.push(Code { code: String::from("E0511"), text: String::from("`forall` and `exists` require at least one `#[trigger]`") });
+        v.push(Code { code: String::from("E0512"), text: String::from("the triggers of a `forall` or `exists` must together mention every bound variable") });
+        v.push(Code { code: String::from("E0601"), text: String::from("function requires an `#[effects(..)]` attribute") });
+        v.push(Code { code: String::from("E0602"), text: String::from("unknown effect") });
+        v.push(Code { code: String::from("E0603"), text: String::from("`pure` function calls a function with effect `io`") });
+        v.push(Code { code: String::from("E0604"), text: String::from("spec functions take no `#[effects(..)]` attribute") });
+        v.push(Code { code: String::from("E0605"), text: String::from("unknown or misplaced attribute") });
+        v.push(Code { code: String::from("E0606"), text: String::from("the body needs an effect the function does not declare") });
+        v.push(Code { code: String::from("E0607"), text: String::from("`pure` listed with another effect, or an effect listed twice") });
+        v.push(Code { code: String::from("E0608"), text: String::from("a function value whose effects the generic function that calls it does not declare (ADR-0053 §5)") });
+        v.push(Code { code: String::from("E0701"), text: String::from("`main` must be `#[effects(io)] fn main() -> ()`") });
+        v.push(Code { code: String::from("E0702"), text: String::from("more than one `main`") });
+        v.push(Code { code: String::from("E0703"), text: String::from("items must be declared inside a `mod`") });
+        v.push(Code { code: String::from("E0704"), text: String::from("`mod` requires a `#[summary(\"..\")]` attribute") });
+        v.push(Code { code: String::from("E0801"), text: String::from("precondition of a call may not hold") });
+        v.push(Code { code: String::from("E0802"), text: String::from("postcondition may not hold") });
+        v.push(Code { code: String::from("E0803"), text: String::from("arithmetic may overflow") });
+        v.push(Code { code: String::from("E0804"), text: String::from("divisor may be zero") });
+        v.push(Code { code: String::from("E0805"), text: String::from("index may be out of bounds") });
+        v.push(Code { code: String::from("E0806"), text: String::from("loop invariant may not hold on entry") });
+        v.push(Code { code: String::from("E0807"), text: String::from("loop invariant may not be preserved") });
+        v.push(Code { code: String::from("E0808"), text: String::from("loop `decreases` may not decrease or may be negative") });
+        v.push(Code { code: String::from("E0809"), text: String::from("recursive call may not decrease the measure") });
+        v.push(Code { code: String::from("E0810"), text: String::from("assertion may not hold") });
+        v.push(Code { code: String::from("E0811"), text: String::from("solver could not decide (resource limit or incompleteness)") });
+        v.push(Code { code: String::from("E0812"), text: String::from("proof gate cannot run (solver missing, wrong version or failed)") });
+        v.push(Code { code: String::from("E0813"), text: String::from("recursive spec function may not terminate") });
+        v.push(Code { code: String::from("E0815"), text: String::from("integer conversion may be out of range (to `f64`: a 64-bit value may be above 2^53 and inexact)") });
+        v.push(Code { code: String::from("E0816"), text: String::from("the capacity of a `Vec` may exceed its maximum length") });
+        v.push(Code { code: String::from("E0817"), text: String::from("a trait impl's function does not refine the trait's contract") });
+        v.push(Code { code: String::from("E0818"), text: String::from("a `by (bit_vector)` sub-proof may not hold, or its assertion has no bit-vector translation") });
+        v.push(Code { code: String::from("E0819"), text: String::from("an argument of a `proof fn` call may be outside its parameter's type (ghost arithmetic is mathematical, ADR-0062 §2)") });
+        v.push(Code { code: String::from("E0820"), text: String::from("a string position may not be a character boundary (`&s[a..b]` needs `s.is_char_boundary(a)`, `s.is_char_boundary(b)` and `a <= b`, ADR-0050 §2)") });
+        v.push(Code { code: String::from("E0823"), text: String::from("a type invariant may not hold where a value leaves the function's hands: a call argument, a return, a `&mut` parameter at exit, a loop head (ADR-0060 §2)") });
+        v.push(Code { code: String::from("E1001"), text: String::from("an escape (`assume`, `#[external_body]`) without a `#[rationale(..)]` before it") });
+        v.push(Code { code: String::from("E1002"), text: String::from("a malformed `#[rationale(..)]`: `kind` outside the list, no explanation, or not before an escape") });
+        v.push(Code { code: String::from("E1003"), text: String::from("`assume` takes one named predicate call, in executable code") });
+        v.push(Code { code: String::from("E1004"), text: String::from("`#[external_body]` on a spec fn, a proof fn or `main`") });
+        v.push(Code { code: String::from("W1001"), text: String::from("an unconfirmed rationale: what it is bound to changed, or it carries no hash (`bmb fix --confirm`)") });
+        v.push(Code { code: String::from("W1002"), text: String::from("an `assume` the proof does not need: the definition is proved without it") });
+        v.push(Code { code: String::from("W0901"), text: String::from("preconditions are unsatisfiable together: the function can never be called and its proofs are vacuous") });
+        v.push(Code { code: String::from("W0902"), text: String::from("precondition is not needed by this function's proof") });
+        v.push(Code { code: String::from("W0903"), text: String::from("postcondition is not used by any caller's proof") });
+        v.push(Code { code: String::from("W0904"), text: String::from("the specification does not distinguish this change to the body (the mutant still verifies)") });
+        v.push(Code { code: String::from("W0905"), text: String::from("a point of a verified function is unreachable in its proof: what follows is proved vacuously") });
+        v.push(Code { code: String::from("W0906"), text: String::from("a quantifier's only trigger matches a term of its own body: instances feed each other (matching loop)") });
+        v.push(Code { code: String::from("W0907"), text: String::from("a counting `while` whose canonical form is a range `for` (the fix rewrites it; `bmb fix` applies it)") });
+        v.push(Code { code: String::from("W0909"), text: String::from("an executable function declares an effect its body does not need (callers must declare it too)") });
+        v.push(Code { code: String::from("W0912"), text: String::from("a clause keyword repeated (`invariant a, invariant b,`): the canonical form lists the clauses after one keyword (an input alias, ADR-0095; `bmb fmt` and `bmb fix` rewrite it)") });
+        v.push(Code { code: String::from("W0913"), text: String::from("loop clauses at the start of the body (`while c { invariant a, .. }`): the canonical form puts them before the body (an input alias, ADR-0095; `bmb fmt` and `bmb fix` rewrite it)") });
+        v.push(Code { code: String::from("W0914"), text: String::from("a compound assignment `t op= e`: the canonical form is `t = t op e` (an input alias, backlog 2N-07, ADR-0095; `bmb fmt` and `bmb fix` rewrite it)") });
+        v.push(Code { code: String::from("W0915"), text: String::from("an integer conversion written `T::try_from(x).unwrap()`: the canonical form is `x as T` (an input alias, ADR-0095 A4; `bmb fmt` and `bmb fix` rewrite it)") });
+        v.push(Code { code: String::from("W0916"), text: String::from("a `#[uses(..)]` entry the default proof context reveals already (the spec fns the definition's own clauses, invariants, assertions and proof code and its callees' contracts name, ADR-0095 A1; `bmb fix` removes it)") });
+        v.push(Code { code: String::from("W0917"), text: String::from("a widening integer conversion `x as T` in a specification: every value of `x` is one of `T`, so it is `x` (an input alias, ADR-0099; `bmb fix` removes it)") });
+        v.push(Code { code: String::from("W0918"), text: String::from("the postconditions allow two different results for one input the preconditions admit (with the two results as a witness): the contract does not fix the result") });
+        v.push(Code { code: String::from("W0911"), text: String::from("a call by path of a method whose normal form is the method call `x.f(..)` (the fix rewrites it; `bmb fmt` and `bmb fix` apply it)") });
+        v.push(Code { code: String::from("W0910"), text: String::from("a loop of an `io` function prints and carries state whose every update is pure: the update can be a pure function, proved instead of tested") });
+        v.push(Code { code: String::from("W0908"), text: String::from("the contract is weaker than in the old version: a stronger `requires`, a weaker `ensures` or `pure` become `io` (`bmb weaken`, with the counterexample)") });
+        v
+    }
+
+    #[effects(alloc)]
+    fn codes_jsonl() -> String {
+        let t: Vec<Code> = codes();
+        let mut out: String = String::new();
+        let mut i: usize = 0;
+        while i < t.len()
+            decreases t.len() - i,
+        {
+            out.push_str("{\"code\":");
+            json_str(&mut out, t[i].code.as_str());
+            out.push_str(",\"severity\":\"");
+            push_severity(&mut out, t[i].code.as_str());
+            out.push_str("\",\"description\":");
+            json_str(&mut out, t[i].text.as_str());
+            out.push_str("}\n");
+            i = i + 1;
+        }
+        out
+    }
+
+    #[effects(alloc)]
+    fn codes_markdown() -> String {
+        let t: Vec<Code> = codes();
+        let g: Vec<Code> = groups();
+        let mut out: String = String::from("# 진단 코드\n\n> 생성 파일: `bmb codes --md`가 `compiler/src/diag.rs`의 `CODES`에서 만든다. 손으로 고치지 않는다.\n> 코드는 바꾸거나 재사용하지 않는다. 진단 형식은 `compiler/README.md`.\n");
+        let mut k: usize = 0;
+        while k < g.len()
+            decreases g.len() - k,
+        {
+            out.push_str("\n## ");
+            out.push_str(g[k].code.as_str());
+            out.push_str("xx ");
+            out.push_str(g[k].text.as_str());
+            out.push_str("\n\n| 코드 | 뜻 |\n| --- | --- |\n");
+            push_rows(&mut out, t.as_slice(), g[k].code.as_str());
+            k = k + 1;
+        }
+        out.push_str("\n## 은퇴한 코드(다시 쓰지 않는다)\n\n| 코드 | 뜻 |\n| --- | --- |\n");
+        let r: Vec<Code> = retired();
+        push_rows(&mut out, r.as_slice(), "");
+        out
+    }
+
+    #[summary("참조 문서의 절: 코드 접두사와 제목")]
+    #[effects(alloc)]
+    fn groups() -> Vec<Code> {
+        let mut v: Vec<Code> = Vec::new();
+        v.push(Code { code: String::from("E01"), text: String::from("어휘·구문") });
+        v.push(Code { code: String::from("E02"), text: String::from("Rust 습관(수정 제안 포함)") });
+        v.push(Code { code: String::from("E03"), text: String::from("이름") });
+        v.push(Code { code: String::from("E04"), text: String::from("타입·소유권") });
+        v.push(Code { code: String::from("E05"), text: String::from("명세") });
+        v.push(Code { code: String::from("E06"), text: String::from("효과·속성") });
+        v.push(Code { code: String::from("E07"), text: String::from("프로그램 구조") });
+        v.push(Code { code: String::from("E08"), text: String::from("증명 게이트") });
+        v.push(Code { code: String::from("W09"), text: String::from("계약 조정(경고, `bmb lint`·`bmb weaken`만)") });
+        v.push(Code { code: String::from("E10"), text: String::from("탈출구와 근거(ADR-0029)") });
+        v.push(Code { code: String::from("W10"), text: String::from("탈출구와 근거(경고, `bmb lint`만)") });
+        v
+    }
+
+    #[summary("s를 JSON 문자열로 덧붙인다. 따옴표로 쓴 글이 메모리에 들어가지 않을 길이면 쓰지 않는다(닿지 않는 갈래: std::json::push_string의 길이 전제를 여기서 확인한다)")]
+    #[effects(alloc)]
+    #[uses(std::json::quote_room)]
+    fn json_str(out: &mut String, s: &str) -> () {
+        if s.len() < 1000000000000 && out.len() < 1000000000000000 {
+            std::json::push_string(out, s);
+        }
+    }
+
+    #[effects(alloc)]
+    fn new(code: &str, span: source::Span, message: &str) -> Diag {
+        Diag { code: String::from(code), span: span, message: String::from(message), fix: None, obligation: None, bounded: None }
+    }
+
+    #[summary("ord에 x를 넣는다: x보다 뒤가 아닌 마지막 행의 다음 자리(안정 삽입 정렬의 한 걸음)")]
+    #[effects(alloc)]
+    fn placed(rows: &[Row], ord: &[usize], x: usize) -> Vec<usize>
+        requires x < rows.len(),
+    {
+        let mut at: usize = ord.len();
+        while at > 0 && after(rows, x, ord[at - 1])
+            invariant at <= ord.len(),
+            decreases at,
+        {
+            at = at - 1;
+        }
+        let mut out: Vec<usize> = Vec::new();
+        let mut k: usize = 0;
+        while k < ord.len()
+            invariant at <= ord.len(),
+            decreases ord.len() - k,
+        {
+            if k == at {
+                out.push(x);
+            }
+            out.push(ord[k]);
+            k = k + 1;
+        }
+        if at == ord.len() {
+            out.push(x);
+        }
+        out
+    }
+
+    #[summary("s를 Markdown 표의 칸으로 덧붙인다: |를 이스케이프. 자르는 자리는 한 바이트 글자의 앞뒤라 글자 경계이고, 증명이 인코딩을 따라가지 않아 실행 때 확인한다")]
+    #[effects(alloc)]
+    fn push_cell(out: &mut String, s: &str) -> () {
+        let mut a: usize = 0;
+        let mut i: usize = 0;
+        while i < s.len()
+            invariant a <= i, i <= s.len(),
+            decreases s.len() - i,
+        {
+            if s.as_bytes()[i] == b'|' {
+                if s.is_char_boundary(a) && s.is_char_boundary(i) {
+                    out.push_str(&s[a..i]);
+                }
+                out.push_str("\\|");
+                a = i + 1;
+            }
+            i = i + 1;
+        }
+        if s.is_char_boundary(a) {
+            out.push_str(&s[a..s.len()]);
+        }
+    }
+
+    #[summary("x를 10진으로 덧붙인다(std::num::push_i64의 길이 전제를 여기서 확인한다)")]
+    #[effects(alloc)]
+    #[uses(std::num::room1)]
+    fn push_i64(out: &mut String, x: i64) -> () {
+        if out.len() < 1000000000000000 {
+            std::num::push_i64(out, x);
+        }
+    }
+
+    #[effects(alloc)]
+    fn push_rows(out: &mut String, t: &[Code], prefix: &str) -> () {
+        let mut i: usize = 0;
+        while i < t.len()
+            decreases t.len() - i,
+        {
+            if std::str::starts_with(t[i].code.as_str(), prefix) {
+                out.push_str("| ");
+                out.push_str(t[i].code.as_str());
+                out.push_str(" | ");
+                push_cell(out, t[i].text.as_str());
+                out.push_str(" |\n");
+            }
+            i = i + 1;
+        }
+    }
+
+    #[effects(alloc)]
+    fn push_severity(out: &mut String, code: &str) -> () {
+        if code.len() > 0 && code.as_bytes()[0] == b'W' {
+            out.push_str("warning");
+        } else {
+            out.push_str("error");
+        }
+    }
+
+    #[summary("x를 10진으로 덧붙인다(std::num::push_u64의 길이 전제를 여기서 확인한다)")]
+    #[effects(alloc)]
+    #[uses(std::num::room)]
+    fn push_u64(out: &mut String, x: u64) -> () {
+        if out.len() < 1000000000000000 {
+            std::num::push_u64(out, x);
+        }
+    }
+
+    #[summary("진단 하나를 JSON 객체로")]
+    #[effects(alloc)]
+    fn render(d: &Diag, sm: &source::SourceMap) -> String {
+        let a: source::Pos = sm.line_col(d.span.file, d.span.lo);
+        let b: source::Pos = sm.line_col(d.span.file, d.span.hi);
+        let mut s: String = String::from("{\"code\":");
+        json_str(&mut s, d.code.as_str());
+        s.push_str(",\"severity\":\"");
+        push_severity(&mut s, d.code.as_str());
+        s.push_str("\",\"message\":");
+        json_str(&mut s, d.message.as_str());
+        s.push_str(",\"file\":");
+        sm.push_name(&mut s, d.span.file);
+        s.push_str(",\"line\":");
+        push_u64(&mut s, a.line as u64);
+        s.push_str(",\"col\":");
+        push_u64(&mut s, a.col as u64);
+        s.push_str(",\"end_line\":");
+        push_u64(&mut s, b.line as u64);
+        s.push_str(",\"end_col\":");
+        push_u64(&mut s, b.col as u64);
+        match &d.obligation {
+            None => {},
+            Some(o) => { s.push_str(",\"obligation\":"); json_str(&mut s, o.as_str()); },
+        }
+        match &d.bounded {
+            None => {},
+            Some(k) => { s.push_str(",\"bounded\":{\"b\":"); push_i64(&mut s, k.b); s.push_str(",\"l\":"); push_u64(&mut s, k.l as u64); s.push_str("}"); },
+        }
+        match &d.fix {
+            None => {},
+            Some(f) => { s.push_str(",\"fix\":{\"message\":"); json_str(&mut s, f.message.as_str()); match &f.replacement { None => {}, Some(r) => { s.push_str(",\"replacement\":"); json_str(&mut s, r.as_str()); }, } s.push_str("}"); },
+        }
+        s.push_str("}");
+        s
+    }
+
+    #[summary("더 내지 않는 코드. 다시 쓰이지 않게 적어 둔다")]
+    #[effects(alloc)]
+    fn retired() -> Vec<Code> {
+        let mut v: Vec<Code> = Vec::new();
+        v.push(Code { code: String::from("E0814"), text: String::from("construct not supported by the proof gate (retired by backlog 2V-05: every construct is encoded)") });
+        v.push(Code { code: String::from("E0203"), text: String::from("`return` is not allowed (retired by backlog 2K-01a: `return` is part of the language, ADR-0049)") });
+        v.push(Code { code: String::from("E0204"), text: String::from("`for` is not allowed (retired by backlog 2K-01d: the range `for` is part of the language, ADR-0049)") });
+        v.push(Code { code: String::from("E0206"), text: String::from("the `?` operator is not allowed (retired by backlog 2K-01e: `?` is part of the language, ADR-0049)") });
+        v.push(Code { code: String::from("E0234"), text: String::from("a string literal: text is bytes, write `b\"...\"` (retired by backlog 2U-01: `\"...\"` is a `&str`, ADR-0050)") });
+        v.push(Code { code: String::from("E0227"), text: String::from("method calls are not allowed; call by path (retired by backlog 2M-01: `x.f(..)` calls a method, ADR-0051)") });
+        v
+    }
+
+    #[summary("행 a가 b보다 앞인가: 파일, 위치, 코드, 쓴 글의 순서(Rust의 튜플 순서)")]
+    #[effects(pure)]
+    fn row_lt(a: &Row, b: &Row) -> bool {
+        if a.file != b.file {
+            return a.file < b.file;
+        }
+        if a.lo != b.lo {
+            return a.lo < b.lo;
+        }
+        if a.code != b.code {
+            return a.code < b.code;
+        }
+        a.text < b.text
+    }
+}

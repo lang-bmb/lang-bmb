@@ -16,8 +16,8 @@ run. The cases file:
      "cases": [{"name": .., "component": .., "a": [ARGV], "b": [ARGV],
                 "inputs": {..}}]}
 
-`builds` are made once: `{"bmb": FILE}` with `bmb build` (so the program is
-proved), `{"rustc": FILE}` with `rustc --edition 2021 -O`. In an argv,
+`builds` are made once: `{"bmb": FILE}` (or a list of globs, the files of one
+program) with `bmb build` (so the program is proved), `{"rustc": FILE}` with `rustc --edition 2021 -O`. In an argv,
 `{build:NAME}` is a built program, `{bmb}` the compiler under test and
 `{inputs}` the run's files (it becomes several arguments).
 
@@ -31,6 +31,7 @@ Input sets (paths are relative to the repository):
 """
 import argparse
 import fnmatch
+import glob
 import json
 import os
 import shutil
@@ -154,7 +155,12 @@ def first_difference(a, b):
 def build(spec, out, bmb):
     """Builds one program; the error text when it cannot be built."""
     if "bmb" in spec:
-        cmd = [bmb, "build", os.path.join(ROOT, spec["bmb"]), "-o", out]
+        # One file, or globs of the files of one program (in path order).
+        globs = spec["bmb"] if isinstance(spec["bmb"], list) else [spec["bmb"]]
+        files = sorted(p for g in globs for p in glob.glob(os.path.join(ROOT, g)))
+        if not files:
+            return f"no file matches {globs}"
+        cmd = [bmb, "build", *files, "-o", out]
     elif "rustc" in spec:
         cmd = ["rustc", "--edition", "2021", "-O", "--cap-lints", "allow"]
         cmd += [os.path.join(ROOT, spec["rustc"]), "-o", out]

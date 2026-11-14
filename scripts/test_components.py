@@ -74,8 +74,8 @@ def main():
         doc = components.load(root)
         assert json.dumps(doc["components"][0]["pin"]) != json.dumps(components.state(comp("C0", ["sub/b.rs"], ["selfhost/a.bmb"]), root))
 
-    # gate B0: nothing to estimate from while nothing is ported
-    assert components.b0() is None
+    # gate B0 reads the repository's port (4D-02): C0's ported files so far
+    assert "C0" in components.b0()["ported"]
     real = components.port_facts
     try:
         with tempfile.TemporaryDirectory() as t:

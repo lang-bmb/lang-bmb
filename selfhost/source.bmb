@@ -1,0 +1,138 @@
+#[summary("소스 파일과 바이트 구간: 파일 번호, 줄의 시작, 줄·열 (stage0 compiler/src/source.rs의 포트, 백로그 4D-02)")]
+mod source {
+    const CAPTURE: u32 = 1073741824;
+    const CONST_VALUES: u32 = 2147483648;
+    const GENERATED: u32 = 4294967294;
+
+    struct Pos { line: u32, col: u32 }
+
+    #[invariant(file_ok)]
+    struct SourceFile { name: String, text: String, line_starts: Vec<u32> }
+
+    struct SourceMap { files: Vec<SourceFile> }
+
+    impl SourceMap {
+        #[effects(alloc)]
+        #[uses(file_ok, small)]
+        fn add(self: &mut SourceMap, name: String, text: String) -> u32
+            requires small(text.as_str()), room(self),
+        {
+            let line_starts: Vec<u32> = starts(text.as_str());
+            self.files.push(SourceFile { name: name, text: text, line_starts: line_starts });
+            (self.files.len() - 1) as u32
+        }
+
+        #[summary("파일 id의 바이트 pos의 줄과 열(1부터, 열은 글자 수). 컴파일러가 만든 파일(표에 없는 id)은 빈 파일 하나로 읽는다")]
+        #[effects(pure)]
+        #[uses(file_ok)]
+        fn line_col(self: &SourceMap, id: u32, pos: u32) -> Pos {
+            if id as usize >= self.files.len() {
+                return Pos { line: 1, col: 1 };
+            }
+            let f: usize = id as usize;
+            let mut lo: usize = 0;
+            let mut hi: usize = self.files[f].line_starts.len();
+            while hi - lo > 1
+                invariant lo < hi, hi <= self.files[f].line_starts.len(),
+                decreases hi - lo,
+            {
+                let mid: usize = lo + (hi - lo) / 2;
+                if self.files[f].line_starts[mid] <= pos {
+                    lo = mid;
+                } else {
+                    hi = mid;
+                }
+            }
+            let start: usize = self.files[f].line_starts[lo] as usize;
+            let mut end: usize = pos as usize;
+            if end > self.files[f].text.len() {
+                end = self.files[f].text.len();
+            }
+            let mut col: usize = 0;
+            if start < end {
+                col = chars(self.files[f].text.as_str(), start, end);
+            }
+            Pos { line: (lo + 1) as u32, col: (col + 1) as u32 }
+        }
+
+        #[summary("파일 id의 이름을 JSON 문자열로 덧붙인다(컴파일러가 만든 파일은 <generated>)")]
+        #[effects(alloc)]
+        fn push_name(self: &SourceMap, out: &mut String, id: u32) -> () {
+            if id as usize >= self.files.len() {
+                out.push_str("\"<generated>\"");
+            } else {
+                diag::json_str(out, self.files[id as usize].name.as_str());
+            }
+        }
+    }
+
+    struct Span { file: u32, lo: u32, hi: u32 }
+
+    impl Span {
+        #[effects(pure)]
+        fn to(self: Span, other: Span) -> Span {
+            let mut lo: u32 = self.lo;
+            if other.lo < lo {
+                lo = other.lo;
+            }
+            let mut hi: u32 = self.hi;
+            if other.hi > hi {
+                hi = other.hi;
+            }
+            Span { file: self.file, lo: lo, hi: hi }
+        }
+    }
+
+    #[summary("text[a..b]의 글자 수: 글자를 시작하는 바이트의 수")]
+    #[effects(pure)]
+    fn chars(text: &str, a: usize, b: usize) -> (r: usize)
+        requires a <= b, b <= text.len(),
+        ensures r <= b - a,
+    {
+        let mut n: usize = 0;
+        let mut i: usize = a;
+        while i < b
+            invariant a <= i, i <= b, n <= i - a,
+            decreases b - i,
+        {
+            if text.as_bytes()[i] & 192 != 128 {
+                n = n + 1;
+            }
+            i = i + 1;
+        }
+        n
+    }
+
+    spec fn file_ok(f: &SourceFile) -> bool {
+        f.line_starts.len() > 0 && f.line_starts.len() <= f.text.len() + 1 && f.text.len() < 4294967295
+    }
+
+    spec fn room(m: &SourceMap) -> bool {
+        m.files.len() < 4294967295
+    }
+
+    spec fn small(text: &str) -> bool {
+        text.len() < 4294967295
+    }
+
+    #[summary("text의 줄들이 시작하는 바이트")]
+    #[effects(alloc)]
+    fn starts(text: &str) -> (r: Vec<u32>)
+        requires small(text),
+        ensures r.len() > 0, r.len() <= text.len() + 1,
+    {
+        let mut v: Vec<u32> = Vec::new();
+        v.push(0);
+        let mut i: usize = 0;
+        while i < text.len()
+            invariant i <= text.len(), v.len() > 0, v.len() <= i + 1,
+            decreases text.len() - i,
+        {
+            if text.as_bytes()[i] == 10 {
+                v.push((i + 1) as u32);
+            }
+            i = i + 1;
+        }
+        v
+    }
+}

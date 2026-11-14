@@ -11,13 +11,25 @@
         "diag.rs",
         "source.rs"
       ],
-      "port": [],
+      "port": [
+        "selfhost/diag.bmb",
+        "selfhost/source.bmb"
+      ],
       "pin": null,
       "ledger": {
         "session_tokens": null,
         "gate_runs": null,
         "undecided_runs": null,
-        "friction": []
+        "friction": [
+          "`const`가 `&str`을 담지 못해 진단 코드 표(185 + 6)는 `Vec<Code>`를 만드는 함수다(부를 때마다 만든다). 그대로 둠",
+          "구조체 필드에 `&'static str`이 없어 `Diag.code`는 `String`이다. 그대로 둠",
+          "`std::json::push_string`·`std::num::push_u64`의 길이 전제를 부르는 쪽이 채울 수 없어 실행 때 길이를 확인하는 감싼 함수 셋(`diag::json_str`·`push_u64`·`push_i64`)을 뒀다: 우회, 근본 해 `4D-20`",
+          "`&s[a..b]`의 글자 경계 의무(E0820)를 한 바이트 글자의 앞뒤에서도 증명이 따라가지 못해 `is_char_boundary`로 실행 때 확인(`diag::push_cell`): 그대로 둠",
+          "정렬은 색인의 삽입 정렬을 직접 썼고 색인의 범위는 실행 때 확인한다(`diag::placed`·`to_jsonl`). `std::slice::sort_indices`는 키가 `Ord` 하나라 네 겹의 순서에 쓰려면 네 번 돌려야 한다: 그대로 둠",
+          "정규형이 주석을 버린다. 설명은 항목의 `#[summary]`로 옮겼다: 그대로 둠",
+          "튜플이 없어 `line_col`은 구조체 `Pos`를 낸다: 그대로 둠",
+          "이 행의 배율은 포트 파일이 있는 `diag`·`source`(stage0 852줄)에 대한 것이다. `sha256`·`json`은 `lib/std`가 대신하고(467줄·945줄 대 82줄·311줄) 포트 줄에 세지 않는다. 구동기 `selfhost/main.bmb`는 국면마다 자라므로 C13의 포트 목록에는 P11에서 넣는다"
+        ]
       }
     },
     {

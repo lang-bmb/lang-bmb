@@ -141,7 +141,16 @@ stage0 파일의 의존(`use crate::`)을 읽어 순서를 정했다. 줄 수는
 2. **`json`의 자료 모양은 이미 stage0과 다르다.** stage0은 값 트리(`Value`)이고 `std::json`은 노드 배열이다(ADR-0092, 4B). ADR-0121(포트는 stage0의 자료 모양을 따른다)의 알려진 예외다. P0~P2가 쓰는 것은 문자열 쓰기뿐이라 지금은 걸리지 않고, 읽는 쪽(트랜잭션 P10, MCP P11)을 옮길 때 그 소비 코드가 노드 배열로 쓰인다. §3.2의 왕복 사례가 두 모양이 같은 텍스트를 낸다는 것을 고정한다.
 3. **렉서는 `ast`에서 `Radix` 하나만 쓴다.** 순서 5가 6을 기다리지 않게, 포트에서는 `Radix`를 `selfhost/lexer.bmb`에 두지 않고 `selfhost/ast.bmb`의 첫 조각으로 먼저 쓴다(stage0과 같은 자리, ADR-0121).
 
-**`selfhost/` 배치.** stage0의 파일 하나에 포트의 파일 하나, 단위 이름은 stage0의 모듈 이름이다(`selfhost/lexer.bmb`의 `mod lexer`). 구성 요소의 포트 파일 목록은 `dev-docs/health/components.json`의 `port`에 적고(게이트 `scripts/components.py check`가 `selfhost/` 아래의 파일인지 본다), 원장이 줄 수와 증명 상태를 낸다. 구동기는 `selfhost/main.bmb`이고 국면마다 명령이 는다(P1 `dump tokens`, P2 `dump parse`). 차등 사례는 `tests/port/cases.json`에 더한다: `a`는 `{bmb}`(stage0), `b`는 `{build:stage1}`.
+**포팅이 시작돼 드러난 것 넷 (2026-11-14, `4D-02`의 첫 조각).** 순서 3·4(`source`·`diag`)를 옮겼다(656줄, 정의 26개 전부 증명, `codes`·`codes --md`가 stage0과 바이트 동일). 순서 5(렉서)를 읽으며 stage0이 Rust 표준 라이브러리에서 그냥 받는 것 셋과 표준 라이브러리의 걸림돌 하나가 나왔다. 위 표의 "`lib/std`가 주는 것"에 없던 것이다.
+
+| 무엇 | stage0이 쓰는 것 | 포트에 필요한 것 | 태스크 |
+| --- | --- | --- | --- |
+| 정수 리터럴의 값 | `u128`(`checked_mul`·`checked_add`) | `u64` 둘의 구조체와 넘침을 아는 곱·덧셈 | `4D-17` |
+| 실수 리터럴의 값 | `str::parse::<f64>`(올바른 반올림) | 같은 비트를 내는 10진 → `f64` 변환 | `4D-18` |
+| ASCII 밖 글자의 분류 | `char::is_alphabetic`·`is_alphanumeric`(유니코드 표) | 같은 표, 또는 stage0의 규칙을 표 없는 것으로 | `4D-19` |
+| 쓰기 함수의 길이 전제 | 없음(`String`은 그냥 자란다) | `std`의 전제를 없애거나 부르는 쪽이 확인 | `4D-20` |
+
+**`selfhost/` 배치.** stage0의 파일 하나에 포트의 파일 하나, 단위 이름은 stage0의 모듈 이름이다(`selfhost/lexer.bmb`의 `mod lexer`). 구성 요소의 포트 파일 목록은 `dev-docs/health/components.json`의 `port`에 적고(게이트 `scripts/components.py check`가 `selfhost/` 아래의 파일인지 본다), 원장이 줄 수와 증명 상태를 낸다. 구동기는 `selfhost/main.bmb`이고 국면마다 명령이 는다(P0 `codes`, P1 `dump tokens`, P2 `dump parse`). 구동기는 C13의 포트 목록에 P11에서 넣는다(그 전에는 원장의 배율을 흐린다). 정규형은 주석을 버리므로 항목의 설명은 `#[summary]`에 쓴다. 여러 파일의 정규형 검사는 단위 이름순으로 준다(`bmb fmt --check selfhost/*.bmb`). 차등 사례는 `tests/port/cases.json`에 더한다: `a`는 `{bmb}`(stage0), `b`는 `{build:stage1}`.
 
 **stage1 빌드 절차.** 두 길이 있고 둘 다 지금 돈다(§3.2에서 확인).
 

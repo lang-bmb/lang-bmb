@@ -123,7 +123,7 @@ st=$(python3 bench/bvb/verus/harness.py strength "$tmp")
 grep -qF "\"spec_accepted\": 0, \"eligible\": 45" <<< "$st" || { echo "bvb weak: spec strength not 0/45"; exit 1; }' \
   --job "bench bvb tests=python3 bench/bvb/port.py check && python3 bench/bvb/test_bvb.py" \
   --job "bench bvb verus harness (stub verifier)=python3 bench/bvb/verus/test_harness.py" \
-  --job "port difftest (4D-15)=python3 scripts/test_difftest.py && python3 scripts/difftest.py run tests/port/cases.json > /dev/null" \
+  --job "port difftest (4D-15)=python3 scripts/test_difftest.py && python3 scripts/difftest.py run tests/port/cases.json > /dev/null && target/debug/bmb fmt --check selfhost/*.bmb" \
   --job "bench m3 generator=python3 bench/m3/test_gen.py > /dev/null" \
   --job "bench bnb=python3 bench/bnb/test_bnb.py > /dev/null" \
   --job "bench twin=python3 bench/twin/test_pair.py" \

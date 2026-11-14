@@ -159,6 +159,29 @@ def spec_lines(text):
     return n
 
 
+def ported_stage0_lines(c, root):
+    """The stage0 lines the port files stand for: a component is ported file
+    by file (`selfhost/NAME.bmb` for `NAME.rs`), and a ratio compares the
+    port with the files it replaces, not with the whole component."""
+    stems = {Path(f).stem for f in c["port"]}
+    return sum(stage0_lines(p) for _, p in stage0_files(c, root) if p.stem in stems)
+
+
+_PORT_ROWS = {}
+
+
+def port_rows(root):
+    """`bmb verify` over every port file of every component: the status
+    rows of the definitions (cached for the process)."""
+    key = str(root)
+    if key not in _PORT_ROWS:
+        files = sorted(str(p) for c in load(root)["components"] for _, p in port_files(c, root))
+        r = subprocess.run([bmb_bin(root), "verify", *files], capture_output=True, text=True, cwd=root)
+        rows = [json.loads(l) for l in r.stdout.splitlines() if l.startswith("{")]
+        _PORT_ROWS[key] = [x for x in rows if "status" in x and "def" in x]
+    return _PORT_ROWS[key]
+
+
 def port_facts(c, root):
     """What the port files give (ADR-0122): lines and those only the proof
     reads, definitions and those proved without a trusted fact, obligations,
@@ -171,11 +194,13 @@ def port_facts(c, root):
     facts = {
         "lines": len(text.splitlines()),
         "spec": sum(spec_lines(t) for t in texts),
-        "escapes": len(re.findall(r"#\[external_body\]|\bassume\(", text)),
+        # Not in a string literal: the diagnostics' texts name both.
+        "escapes": len(re.findall(r"#\[external_body\]|\bassume\(", re.sub(r'"(?:[^"\\\n]|\\.)*"', '""', text))),
     }
-    r = subprocess.run([bmb_bin(root), "verify", *map(str, files)], capture_output=True, text=True, cwd=root)
-    rows = [json.loads(l) for l in r.stdout.splitlines() if l.startswith("{")]
-    defs = [x for x in rows if "status" in x and "def" in x]
+    # The port is one program: a component's units use the others', so the
+    # whole port is proved once and each row goes to the file of its unit.
+    units = {u for t in texts for u in re.findall(r"(?m)^mod (\w+)", t)}
+    defs = [x for x in port_rows(root) if x["def"].split("::")[0] in units]
     facts["defs"] = len(defs)
     facts["proved"] = sum(x["status"] == "verified" and "trust" not in x for x in defs)
     facts["obligations"] = sum(x.get("obligations", 0) for x in defs)
@@ -197,13 +222,14 @@ def ledger_block(root=ROOT):
     for c in doc["components"]:
         s0 = sum(stage0_lines(p) for _, p in stage0_files(c, root))
         f = port_facts(c, root)
+        p0 = ported_stage0_lines(c, root)
         total0 += s0
         total1 += f["lines"] if f else 0
         led = c["ledger"]
         g = f or dict.fromkeys(("lines", "spec", "defs", "obligations", "rlimit", "escapes"))
         lines.append("| " + " | ".join([
             c["id"], c["name"], c["phase"], num(s0), num(g["lines"]), num(g["spec"]),
-            f"{(f['lines'] - f['spec']) / s0:.1f}" if f else "—", f"{f['lines'] / s0:.1f}" if f else "—",
+            f"{(f['lines'] - f['spec']) / p0:.1f}" if f and p0 else "—", f"{f['lines'] / p0:.1f}" if f and p0 else "—",
             num(g["defs"]), f"{f['proved']}/{f['defs']}" if f else "—", num(g["obligations"]), num(g["rlimit"]),
             num(g["escapes"]), num(led["session_tokens"]), num(led["gate_runs"]), num(led["undecided_runs"]),
             "고정" if c["pin"] else "—"]) + " |")
@@ -238,7 +264,10 @@ def b0(root=ROOT):
     done = [(c, s0, f) for c, s0, f in rows if f]
     if not done:
         return None
-    s0 = sum(s for _, s, _ in done)
+    # The ratio is over the stage0 files that have a port file.
+    s0 = sum(ported_stage0_lines(c, root) for c, _, _ in done)
+    if not s0:
+        return None
     lines = sum(f["lines"] for _, _, f in done)
     total0 = sum(s for _, s, _ in rows)
     whole = lines / s0

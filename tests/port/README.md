@@ -10,4 +10,4 @@
 | `json_ref.rs` | 같은 일을 stage0의 `json.rs`로(`#[path]`로 그대로 컴파일) |
 | `json_edge.txt` | JSON의 경계 입력(이스케이프, 수, 중첩, 받지 않는 꼴) |
 
-포팅이 시작되면(`4D-02`) 구성 요소마다 사례를 더한다: `a`는 `{bmb}`(stage0), `b`는 `{build:stage1}`.
+포트(`selfhost/`)의 사례는 `a`가 `{bmb}`(stage0), `b`가 `{build:stage1}`(`selfhost/*.bmb`를 `bmb build`로)이다. 지금: `codes`, `codes-md`.
