@@ -383,7 +383,9 @@ RULES = {
     "S1_external_crates": ("fixed", 0),
     "S2_external_processes": ("same", None),
     "S3_runtime_libs_outside_libc": ("fixed", []),
-    "S4_stage0_rust_lines": ("report", None),
+    # A budget from the freeze on (ADR-0100, HEALTH §4 L2); an `accept` over it
+    # names the component and why (ADR-0113 decision 4).
+    "S4_stage0_rust_lines": ("budget", 0.02),
     "S5_tests_bound_to_rust_api": ("no_worse_down", None),
     "S6_selfhost_bmb_lines": ("no_worse_up", None),
     # The proved share of the port's definitions (4D-08); None until a port exists.

@@ -193,7 +193,7 @@
   "W1002"
  ],
  "exceptions": [],
- "frozen": false,
+ "frozen": true,
  "history": [],
  "programs": {
   "lib/std": {

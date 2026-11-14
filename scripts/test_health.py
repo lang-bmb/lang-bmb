@@ -126,8 +126,9 @@ def main():
     # binary size: 5% budget
     assert bad({"B1_baseline_binary_bytes": 105001})[0]
     assert bad({"B1_baseline_binary_bytes": 105000}) == ([], [])
-    # report-only metrics never fail
-    assert bad({"S4_stage0_rust_lines": 10**6}) == ([], [])
+    # stage0 size: a 2% budget from the freeze on (ADR-0100)
+    assert bad({"S4_stage0_rust_lines": 102}) == ([], [])
+    assert bad({"S4_stage0_rust_lines": 103})[0]
     print("health rules: ok")
 
 

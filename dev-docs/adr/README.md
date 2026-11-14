@@ -144,7 +144,7 @@ BMB v2의 설계 결정을 한 건에 파일 하나로 남긴다. 현재 확정�
 | [0097](0097-inherent-impl-blocks-by-bounds.md) | 경계가 다른 고유 `impl` 블록: 경계 목록마다 블록 하나, 메서드 이름은 블록들 사이에 유일 | 채택(승인) | 백로그 2T-11, ADR-0026 일부 대체 |
 | [0098](0098-specifications-read-moved-values.md) | 명세는 옮긴 값을 읽는다(옮긴 때의 값, 새 표면 없음) | 채택(승인) | 백로그 2T-12 |
 | [0099](0099-spec-integer-widening.md) | 명세의 정수 넓힘: 갈래·결과는 범위가 담기면 같은 타입, 넓히는 `as`는 입력 별칭 | 채택(승인) | 백로그 2N-08, ADR-0022 확장 |
-| [0100](0100-stage0-feature-freeze.md) | stage0 기능 동결: 대상은 받아들이는 언어, 감지는 코퍼스 결과 지문(`scripts/surface.py`), 예외는 사유와 함께 | 승인(선언은 구현 뒤) | 백로그 4D-01, ADR-0037 §3 |
+| [0100](0100-stage0-feature-freeze.md) | stage0 기능 동결: 대상은 받아들이는 언어, 감지는 코퍼스 결과 지문(`scripts/surface.py`), 예외는 사유와 함께 | 채택, 선언 2026-11-14(앞서 승인(선언은 구현 뒤) | 백로그 4D-01, ADR-0037 §3 |
 | [0101](0101-official-write-surface.md) | 정식 측정의 쓰기 표면은 정의 단위 한 번 쓰기(`write`), 원판은 동결된 비교 기준 | 채택(승인) | 백로그 T0-13 |
 | [0102](0102-lifecycle-unit-and-test-replacement-scope.md) | 효용의 판정 단위: G5 과제 단위(미충족 기록)와 수명 단위 G5-L, E3 판정 기준, 원칙 4의 범위(순수 핵심) | 채택(승인) | 종합 평가 2026-11-09 P4·P5, ADR-0034·0041 보완 |
 | [0103](0103-evidence-stage-before-freeze.md) | 동결 전 증거 단계(2H-01), 순차 반복의 검정력, 주장의 기준 모델, 외부 과제, 산문 수리 제안 투자 멈춤 | 채택(승인) | 종합 평가 2026-11-09 P1·P2·P7·P8·D5, ADR-0077 확장 |
@@ -184,5 +184,5 @@ BMB v2의 설계 결정을 한 건에 파일 하나로 남긴다. 현재 확정�
 | [0135](0135-induction-lemma-drafts.md) | 귀납 보조 정리 초안은 `bmb fix --induction`이 후보를 만들고 게이트가 보조 정리와 함수를 함께 증명한 첫 후보만 적용. 꼴은 "재귀 술어 ⇒ 같은 매개변수의 술어" 하나. `bmb verify`의 진단과 플래그 없는 `fix`는 그대로 |
 | [0136](0136-ablation-sets.md) | H-UNDECIDE·H-PROBE·H-HISTORY의 절제 판 여섯(`bvb-write`·`brb-write` × `-undecided`·`-probe`·`-stateless`) 동결: 원판과 `set.json`의 한 키만 다름, 프롬프트는 그대로 |
 | [0137](0137-gate-a-evidence-split.md) | 관문 A의 증거 전제를 받아들이는 언어를 바꿀 수 있는 측정으로 좁힘: `2H-01`의 남은 세 칸(`T0-08` qwen 반복, `T1-41` qwen, `2A-14e`)은 관문 B의 전제로 |
-| [0138](0138-stability-and-versions.md) | (제안) 안정성과 버전: 호환의 대상 넷과 그 판정 도구, `0.MINOR.PATCH`, 에디션 없이 입력 별칭을 거치는 기계 이주, 동결 선언이 `0.1.0` |
-| [0139](0139-python-in-measurement-tools.md) | (제안) 측정·게이트 도구의 Python은 선언된 신뢰 기반: 표준 라이브러리만, 버전 고정, 시험. 동결 집합의 파일은 옮기지 않는다 |
+| [0138](0138-stability-and-versions.md) | 안정성과 버전: 호환의 대상 넷과 그 판정 도구, `0.MINOR.PATCH`, 에디션 없이 입력 별칭을 거치는 기계 이주, 동결 선언이 `0.1.0` |
+| [0139](0139-python-in-measurement-tools.md) | 측정·게이트 도구의 Python은 선언된 신뢰 기반: 표준 라이브러리만, 버전 고정, 시험. 동결 집합의 파일은 옮기지 않는다 |

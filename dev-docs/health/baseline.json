@@ -17,17 +17,17 @@
       "z3"
     ],
     "S3_runtime_libs_outside_libc": [],
-    "S4_stage0_rust_lines": 56001,
+    "S4_stage0_rust_lines": 56924,
     "S5_tests_bound_to_rust_api": 1,
     "S6_selfhost_bmb_lines": 0,
     "S7_selfhost_proved_defs": null,
     "P1_runnable_programs": 85,
-    "P2_bmb_lines": 40427,
+    "P2_bmb_lines": 40630,
     "P3_errors_with_help": 0.9144,
     "B1_baseline_binary_bytes": 101664,
     "O1_adr_index_mismatch": 0,
     "O2_soundness_fuzzers": 17,
-    "O3_active_backlog_chars": 38291
+    "O3_active_backlog_chars": 34264
   },
   "history": [
     {
@@ -2750,6 +2750,24 @@
         "O3_active_backlog_chars": [
           35436,
           38291
+        ]
+      }
+    },
+    {
+      "date": "2026-11-14",
+      "reason": "동결 선언(4D-01, ADR-0100): S4가 이 값에서 예산 +2%로 바뀐다. C0 +46줄은 stage0 json의 결함 수정(4D-15)",
+      "changed": {
+        "S4_stage0_rust_lines": [
+          56001,
+          56924
+        ],
+        "P2_bmb_lines": [
+          40427,
+          40630
+        ],
+        "O3_active_backlog_chars": [
+          38291,
+          34264
         ]
       }
     }
