@@ -20,7 +20,7 @@ use common::json::{self, Value};
 /// The spec fns of `SRC`, for the `#[uses(..)]` of a check.
 const SPECS: &str = "sorted, upper, has, all_in, pre_twice, post_twice, pre_above, post_above, \
 pre_find, post_find, pre_maxi, post_maxi, pre_within, post_within, pre_sum, post_sum, pre_bump, \
-post_bump, pre_swap, post_swap";
+post_bump, pre_swap, post_swap, tally, pre_total, post_total";
 
 /// The definitions the checks are about. Each contract is one `pre_*` and
 /// one `post_*`, so that a check states it by the same names.
@@ -80,6 +80,29 @@ mod d {
 
     spec fn post_swap(before: &[u64], after: &[u64]) -> bool {
         after[0] == before[1] && after[1] == before[0]
+    }
+
+    // A recursive definition and a quantifier over the slice (backlog
+    // T1-44g): the solver decides this contract at a written input.
+    spec fn tally(a: &[i64], n: usize) -> i64
+        decreases n,
+    {
+        if n == 0 { 0 } else { tally(a, n - 1) + a[n - 1] }
+    }
+
+    spec fn pre_total(a: &[i64]) -> bool {
+        a.len() > 0 && (forall|i: usize| i < a.len() ==> -100 < #[trigger] a[i] && a[i] < 100)
+    }
+
+    spec fn post_total(a: &[i64], r: i64) -> bool { r == tally(a, a.len()) }
+
+    #[effects(pure)]
+    #[uses(pre_total, post_total, tally)]
+    fn total(a: &[i64]) -> (r: i64)
+        requires pre_total(a),
+        ensures post_total(a, r),
+    {
+        0
     }
 
     #[effects(pure)]
@@ -445,6 +468,14 @@ const CASES: &[Case] = &[
         pre: "pre_bump(a)",
         post: "post_bump(a, a_after, r)",
     },
+    // A recursive sum under a quantified `requires`.
+    Case {
+        def: "d::total",
+        params: &[("a", "&[i64]")],
+        ret: Some("i64"),
+        pre: "pre_total(&a)",
+        post: "post_total(&a, r)",
+    },
     Case {
         def: "d::swap",
         params: &[("v", "&mut [u64]")],
@@ -572,50 +603,46 @@ fn the_gate_refuses_an_exchanged_claim() {
 }
 
 /// A query the solver does not decide shows no row and is counted; no
-/// value is printed that was not a model. A recursive spec fn is such a
-/// contract: the solver finds no model of its definition.
+/// value is printed that was not a model. Nonlinear integer arithmetic is
+/// such a contract (a recursive spec fn was, until the generator wrote it
+/// as a recursive function and tried written inputs, backlog T1-44g): no
+/// written input is a solution, and the solver finds none.
 #[test]
 fn an_undecided_query_shows_nothing_and_is_counted() {
     let text = r#"#[summary("t")]
 mod c {
-    spec fn count(a: &[bool], n: usize) -> u64
-        decreases n,
-    {
-        if n == 0 {
-            0
-        } else {
-            count(a, n - 1) + (if a[n - 1] { 1 } else { 0 })
-        }
-    }
-
-    spec fn counted(a: &[bool], c: u64) -> bool { c == count(a, a.len()) }
+    spec fn cubes(x: i64, y: i64, z: i64) -> bool { x * x * x + y * y * y + z * z * z == 42 }
 
     #[effects(pure)]
-    #[uses(count, counted)]
-    fn count_true(a: &[bool]) -> (c: u64)
-        ensures counted(a, c),
+    #[uses(cubes)]
+    fn first(x: i64, y: i64, z: i64) -> (r: i64)
+        requires cubes(x, y, z),
+        ensures r == x,
     {
-        0
+        x
     }
 }
 "#;
     let files = vec![("c.bmb".to_string(), text.to_string())];
-    let (code, out, err) = run(&["c::count_true"], &files, &[]);
+    let (code, out, err) = run(&["c::first"], &files, &[]);
     assert_eq!(code, 0, "{out}{err}");
     let all = rows(&out);
-    assert_eq!(all.len(), 1, "{out}");
-    let r = &all[0];
+    let r = all.last().unwrap();
     assert!(r.get("summary").is_some());
-    assert_eq!(n(r, "allowed") + n(r, "rejected") + n(r, "excluded"), 0);
+    assert_eq!(n(r, "allowed") + n(r, "rejected"), 0, "{out}");
     // The allowed rows and the rejected rows each ended at a query that
-    // was not decided; there is no `requires` to exclude an input.
+    // was not decided; the inputs the `requires` exclude are found.
     assert_eq!(n(r, "undecided"), 2, "{out}");
+    assert!(n(r, "excluded") >= 1, "{out}");
+    assert_eq!(all.len() as i64, 1 + n(r, "excluded"), "{out}");
     assert!(r.get("reason").is_none());
 }
 
-/// A type whose values are not shown in full, and a contract through a
-/// spec fn that is not revealed (as W0918 does not judge it): a summary
-/// row with the reason, no example, no query.
+/// A type whose values are not shown in full: a summary row with the
+/// reason, no example, no query. A contract through a spec fn the
+/// function's proof does not read (not in `#[uses]`) has the examples of
+/// the same contract with it revealed: the contract means what its spec
+/// fns are defined to be (backlog T1-44g).
 #[test]
 fn a_definition_without_examples_says_why() {
     let text = r#"#[summary("t")]
@@ -678,7 +705,7 @@ mod u {
             "parameter `a` of type `Option<i64>`: its values are not shown in full",
             "result of type `f64`: its values are not shown in full",
             "parameter `a` of type `[i64; 5]`: its values are not shown in full",
-            "the contract names `huge` by name only (not in `#[uses(..)]`)",
+            "",
             "",
         ]
     );
@@ -686,12 +713,17 @@ mod u {
         assert_eq!(n(r, "rlimit"), 0);
         assert_eq!(n(r, "undecided"), 0);
     }
-    // Only the last definition has rows: with `huge` revealed the contract
-    // says what `r` is.
-    assert!(
-        all.iter()
-            .all(|r| r.get("summary").is_some() || s(r, "def") == "u::clear")
-    );
+    // The two definitions of one contract have the same rows, whichever
+    // spec fns their proofs read.
+    let of = |def: &str| -> Vec<String> {
+        out.lines()
+            .filter(|l| l.contains(&format!("\"def\":\"{def}\"")))
+            .map(|l| l.replace(def, "u::f"))
+            .collect()
+    };
+    assert_eq!(of("u::opaque"), of("u::clear"), "{out}");
+    assert!(all.iter().all(|r| r.get("summary").is_some()
+        || ["u::opaque", "u::clear"].contains(&s(r, "def"))));
     let shown: Vec<&Value> = all.iter().filter(|r| s(r, "kind") == "allowed").collect();
     assert!(!shown.is_empty());
     for r in shown {

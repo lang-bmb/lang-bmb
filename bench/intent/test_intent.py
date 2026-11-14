@@ -202,33 +202,33 @@ class Examples(unittest.TestCase):
 
     def test_what_the_readme_states_about_the_examples(self):
         s = gen.stats(ITEMS)
-        want = {"행이 하나도 없음": (4, 1), "`allowed` 행 없음": (10, 2), "`rejected` 행 없음": (9, 4),
-                "`excluded` 행 없음": (16, 16), "`undecided` > 0": (10, 3), "요약에 `reason`(질의 없음)": (0, 0),
-                "한 입력에 `allowed` 결과가 둘": (5, 42), "`allowed` 행이 있고 입력마다 결과 하나": (30, 1)}
+        want = {"행이 하나도 없음": (0, 0), "`allowed` 행 없음": (0, 0), "`rejected` 행 없음": (0, 2),
+                "`excluded` 행 없음": (16, 16), "`undecided` > 0": (4, 3), "요약에 `reason`(질의 없음)": (0, 0),
+                "한 입력에 `allowed` 결과가 둘": (5, 44), "`allowed` 행이 있고 입력마다 결과 하나": (40, 1)}
         self.assertEqual({k: (v["clean"], v["defect"]) for k, v in s["counts"].items()}, want)
-        self.assertEqual(s["same_examples_tasks"], ["vb-clover-is-prime"])
-        self.assertEqual({k: round(v, 2) for k, v in s["mean_rows"].items()}, {"clean": 6.67, "defect": 9.58})
+        self.assertEqual(s["same_examples_tasks"], [])
+        self.assertEqual({k: round(v, 2) for k, v in s["mean_rows"].items()}, {"clean": 7.93, "defect": 9.93})
         # The rule "defect exactly when some input has two allowed results".
         right = sum(1 for i in ITEMS if (gen.features(i)["two_allowed_inputs"] > 0) == (i["label"] == "defect"))
-        self.assertEqual((right, N), (82, 90))
+        self.assertEqual((right, N), (84, 90))
         text = gen.stats_text(ITEMS)
-        self.assertIn("| 한 입력에 `allowed` 결과가 둘 | 5 | 42 |", text)
-        self.assertIn("두 항목의 예시 텍스트가 같은 과제: 1 / 45\n  vb-clover-is-prime\n", text)
+        self.assertIn("| 한 입력에 `allowed` 결과가 둘 | 5 | 44 |", text)
+        self.assertIn("두 항목의 예시 텍스트가 같은 과제: 0 / 45\n", text)
 
     def test_what_the_readme_states_about_sizes(self):
         got = {(arm, label): round(mean_tokens(arm, label), 1) for arm in (A, B) for label in (None, "clean", "defect")}
         self.assertEqual(got, {(A, None): 216.1, (A, "clean"): 221.4, (A, "defect"): 210.7,
-                               (B, None): 339.5, (B, "clean"): 310.4, (B, "defect"): 368.5})
+                               (B, None): 359.0, (B, "clean"): 341.9, (B, "defect"): 376.1})
         self.assertEqual([round(mean_tokens(B, lab) / mean_tokens(A, lab), 3) for lab in (None, "clean", "defect")],
-                         [1.571, 1.402, 1.749])
+                         [1.662, 1.544, 1.785])
         # No item is within the criterion (1/2).
         within = [i["id"] for i in ITEMS
                   if 2 * views.size(all_views(B)[i["id"]])[1] <= views.size(all_views(A)[i["id"]])[1]]
         self.assertEqual(within, [])
         sizes = harness.sizes()
-        self.assertIn("| (전체) | 90 | 1.571 | 1.419 |", sizes)
-        self.assertIn("| reference-contract | 45 | 1.402 | 1.298 |", sizes)
-        self.assertIn("| weak-contract | 45 | 1.749 | 1.546 |", sizes)
+        self.assertIn("| (전체) | 90 | 1.662 | 1.486 |", sizes)
+        self.assertIn("| reference-contract | 45 | 1.544 | 1.403 |", sizes)
+        self.assertIn("| weak-contract | 45 | 1.785 | 1.572 |", sizes)
         self.assertIn("토큰 비는 spec+examples/code+spec, 기준 ≤ 1/2", sizes)
 
 
@@ -424,8 +424,8 @@ class Results(unittest.TestCase):
         self.assertEqual((head["task_set"], head["hypothesis"], head["manifest"], len(head["changes"])),
                          ("intent", "H-INTENT", harness.manifest_digest(), N))
         t = harness.table(paths)
-        self.assertIn("spec+examples 대 code+spec: 탐지율 차이 +0.0%p (D = 30%p), 토큰 비 1.571 "
-                      "(기준 ≤ 1/2; 의도 포함 1.419), 규칙의 값: neither", t)
+        self.assertIn("spec+examples 대 code+spec: 탐지율 차이 +0.0%p (D = 30%p), 토큰 비 1.662 "
+                      "(기준 ≤ 1/2; 의도 포함 1.486), 규칙의 값: neither", t)
         self.assertTrue(t.endswith("H-INTENT 판정: not judged (scripted agent `oracle`, not a model)\n"))
         sys.stdout.write(t)
 

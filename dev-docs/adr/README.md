@@ -180,3 +180,4 @@ BMB v2의 설계 결정을 한 건에 파일 하나로 남긴다. 현재 확정�
 | [0131](0131-advisory-rlimit.md) | `lint`의 권고 질의(첫 증명 뒤)의 전체 질의는 따로 된 `rlimit`(`Z3_ADVISORY_RLIMIT`=1,000,000), 탐침 몫과 도달 한도는 값 그대로, 닿으면 미결정. 모형을 찾는 `bmb examples`는 게이트의 `rlimit` 그대로. ADR-0126 결정 2를 대체 |
 | [0132](0132-token-criteria-of-review-and-intent.md) | H-REVIEW·H-INTENT의 토큰 기준은 그대로 두고 동결한 두 집합은 탐지율만 판정. H-REVIEW의 토큰 축은 포트의 이력으로, H-INTENT의 토큰 조건은 함수 단위에서 충족 불가로 등록 |
 | [0133](0133-recursive-functions-in-satisfiability-checks.md) | 탐침이 결정하지 못한 충족 검사(W0901·W0905)는 닿는 재귀 정의를 `define-funs-rec`으로 쓴 질의를 탐침의 몫으로 먼저 푼다(뜻은 정량 정의와 같음). 미결정 216 → 86, V11 −38%. `bmb examples`에는 `T1-44g`에서 |
+| [0134](0134-examples-of-recursive-and-unrevealed-contracts.md) | `bmb examples`가 재귀 함수 꼴, 써 넣은 입력(배열은 값 하나), `#[uses]`와 무관한 계약의 정의로 질의. `bench/intent` 예시 재동결: `allowed` 없는 항목 12 → 0, 토큰 비 1.571 → 1.662. `lib/std` 34 → 52 |

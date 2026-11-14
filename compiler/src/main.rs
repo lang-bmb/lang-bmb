@@ -99,9 +99,11 @@ const USAGE: &str = "usage:
                             kind, undecided queries, rlimit); `after` holds the values behind
                             `&mut` parameters; values are models of the gate's encoding, printed
                             as counterexamples are, lengths at most 4; a query that is not
-                            decided shows nothing and is counted; a definition whose values
-                            cannot be shown in full (or whose contract names a spec fn that is
-                            not revealed) gets only a summary row with `reason`
+                            decided by the solver is asked again at written small inputs, and
+                            if still not decided shows nothing and is counted; the spec fns
+                            a contract names are read by their definitions, in `#[uses]` or
+                            not; a definition whose values cannot be shown in full gets only
+                            a summary row with `reason`
   bmb mutate --def PATH [--def PATH].. <file.bmb>...
                             every W0904 body mutation of the named functions, unproved, as
                             JSONL rows with the changed unit's normal form, then a summary

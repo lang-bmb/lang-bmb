@@ -30,6 +30,13 @@
 //! first asked to be `true` for an even n and `false` for an odd one, with
 //! and then without the integer bounds. Lengths stay within what the counterexample printer shows
 //! in full (`SHOW`): a value printed with `..` is not an example.
+//!
+//! A query the solver leaves undecided with its input free is asked again
+//! at written inputs (`written`, backlog T1-44g, ADR-0134): the solver then
+//! finds only the outputs, and decides a quantifier over a given array and
+//! a recursive predicate of given arguments. The spec fns a contract names
+//! are read by their definitions whether or not the function's `#[uses]`
+//! names them: that is what the contract means to a caller and a reader.
 
 use super::*;
 
@@ -267,6 +274,93 @@ fn flat(v: &Val, t: &TypeKind, tb: &Tables, out: &mut Vec<(String, Val, TypeKind
     }
 }
 
+/// The written inputs tried per query that the solver leaves undecided
+/// (`Gen::ask`).
+const WRITTEN: usize = 8;
+
+/// The integers of the written inputs, small and of both signs.
+const WRITTEN_INTS: [i64; 12] = [2, 3, 1, 0, 5, 4, 7, -1, 6, -2, 8, -3];
+
+/// `v` (of type `t`) equal to the `n`-th written value: a length of
+/// `1, 2, 3, 0, 4` in turn and, for the `at`-th integer of the input, the
+/// `n + 5 * at`-th of `WRITTEN_INTS` (5 and 12 share no factor, so the
+/// elements of an array differ). A value outside the type or the `requires`
+/// makes the query unsatisfiable and the next one is tried.
+fn written(v: &Val, t: &TypeKind, tb: &Tables, n: usize, at: &mut usize, out: &mut Vec<String>) {
+    let t = match t {
+        TypeKind::Ref { inner, .. } => &inner.kind,
+        t => t,
+    };
+    let int = |at: &mut usize| {
+        let x = WRITTEN_INTS[(n + 5 * *at) % WRITTEN_INTS.len()];
+        *at += 1;
+        if x < 0 {
+            format!("(- {})", -x)
+        } else {
+            x.to_string()
+        }
+    };
+    let len_of = |len: &String, out: &mut Vec<String>| {
+        if fixed_len(len) {
+            len.parse::<usize>().unwrap_or(0).min(SHOW)
+        } else {
+            let k = [1, 2, 3, 0, 4][n % 5];
+            out.push(format!("(= {len} {k})"));
+            k
+        }
+    };
+    match v {
+        Val::S(x) => {
+            if is_bool(t) {
+                out.push(if (n + *at).is_multiple_of(2) {
+                    x.clone()
+                } else {
+                    format!("(not {x})")
+                });
+                *at += 1;
+            } else {
+                out.push(format!("(= {x} {})", int(at)));
+            }
+        }
+        // An array of scalars as one array value: a quantifier over a
+        // written array is then decided, which it is not when only the
+        // elements below the length are given.
+        Val::A { elems, len } => {
+            let et = elem_ty(t);
+            let boolean = is_bool(&et);
+            let mut value = if boolean {
+                "((as const (Array Int Bool)) false)".to_string()
+            } else {
+                "((as const (Array Int Int)) 0)".to_string()
+            };
+            for k in 0..len_of(len, out) {
+                let x = if boolean {
+                    *at += 1;
+                    (n + *at).is_multiple_of(2).to_string()
+                } else {
+                    int(at)
+                };
+                value = format!("(store {value} {k} {x})");
+            }
+            out.push(format!("(= {elems} {value})"));
+        }
+        Val::Arr { elem, len } => {
+            let et = elem_ty(t);
+            for k in 0..len_of(len, out) {
+                written(&select_val(elem, &k.to_string()), &et, tb, n, at, out);
+            }
+        }
+        Val::Struct(fs) => {
+            if let Some(fts) = flat_fields(t, tb) {
+                for (f, (_, ft)) in fs.iter().zip(&fts) {
+                    written(f, ft, tb, n, at, out);
+                }
+            }
+        }
+        Val::Unit => {}
+    }
+}
+
 /// `(and ..)` of terms; `true` of none.
 fn all(terms: &[String]) -> String {
     match terms {
@@ -323,7 +417,14 @@ impl Gen<'_, '_, '_> {
     /// `bool` result is first asked to be `true` for an even `nth` and
     /// `false` for an odd one, before small values (so that the allowed
     /// rows show both where the contract allows both).
-    fn ask(&mut self, facts: &[String], outputs: bool, nth: usize, vary: bool) -> Found {
+    fn ask(
+        &mut self,
+        facts: &[String],
+        outputs: bool,
+        nth: usize,
+        vary: bool,
+        free: bool,
+    ) -> Found {
         let mut vals: Vec<&(String, Val, TypeKind)> = self.inputs.iter().collect();
         if outputs {
             vals.extend(self.result.iter());
@@ -337,6 +438,7 @@ impl Gen<'_, '_, '_> {
             caps.extend(ls.iter().map(|l| format!("(<= {l} {SHOW})")));
             flat(v, ty, self.t, &mut leaves_of);
         }
+        let length_caps = caps.clone();
         let mut longer = Vec::new();
         for (_, v, _) in &self.inputs {
             let mut ls = Vec::new();
@@ -380,8 +482,26 @@ impl Gen<'_, '_, '_> {
             match self.decide(&q) {
                 Some(true) => return self.settle(q, outputs),
                 Some(false) if k == last => return Found::None,
-                None if k == last => return Found::Undecided,
+                None if k == last => break,
                 _ => {}
+            }
+        }
+        // Undecided with the input left to the solver: written inputs, one
+        // after another (backlog T1-44g). The solver then decides a contract
+        // at given values (a quantifier over a given array, a recursive
+        // predicate of given arguments) and finds only the outputs.
+        if free {
+            let inputs = self.inputs.clone();
+            for k in 0..WRITTEN {
+                let mut given = Vec::new();
+                let mut at = 0;
+                for (_, v, ty) in &inputs {
+                    written(v, ty, self.t, nth + k, &mut at, &mut given);
+                }
+                let q = [facts, &length_caps[..], &given[..]].concat();
+                if self.decide(&q) == Some(true) {
+                    return self.settle(q, outputs);
+                }
             }
         }
         Found::Undecided
@@ -401,9 +521,7 @@ impl Gen<'_, '_, '_> {
             enc: &self.enc,
             axioms: &self.axioms,
             axiom_parts: &self.axiom_parts,
-            // The committed examples of `bench/intent` are this cascade's
-            // (backlog T1-44g turns it on with a new freeze).
-            rec: false,
+            rec: true,
             spec_decls: self.spec_decls,
             dts: self.dts,
             solver: self.solver,
@@ -623,6 +741,30 @@ pub fn examples(
         for (_, ax) in &axioms {
             text.push_str(ax);
         }
+        // The contract means what its spec fns are defined to be, whether
+        // or not this function's proof reads the definitions (`#[uses]` is
+        // the proof's context, not the contract's meaning): each one named
+        // is defined for the queries, and those its definition names
+        // (backlog T1-44g). One with no definition to give stays hidden.
+        loop {
+            let more: Vec<&String> = spec_syms
+                .iter()
+                .filter(|(_, s)| text.contains(s.as_str()) && !axioms.iter().any(|(r, _)| r == s))
+                .map(|(p, _)| p)
+                .collect();
+            let before = axioms.len();
+            for u in more {
+                if spec_key(u, t) == sym(u) {
+                    let (ax, parts) = prog.axiom(u);
+                    text.push_str(&ax);
+                    axioms.push((spec_key(u, t), ax));
+                    axiom_parts.extend(parts);
+                }
+            }
+            if axioms.len() == before {
+                break;
+            }
+        }
         let hidden = hidden_predicates(&spec_syms, &axioms, &text, &d.mod_path);
         if !hidden.is_empty() {
             ex.reason = Some(format!(
@@ -670,7 +812,7 @@ pub fn examples(
         let mut seen: Vec<String> = Vec::new();
         let mut rejected = 0;
         for nth in 0..count {
-            let m = match g.ask(&[&holds[..], &seen[..]].concat(), true, nth, true) {
+            let m = match g.ask(&[&holds[..], &seen[..]].concat(), true, nth, true, true) {
                 Found::Model(m) => m,
                 Found::None => break,
                 Found::Undecided => {
@@ -688,7 +830,7 @@ pub fn examples(
                 &[m.same_input.clone(), format!("(not {})", m.same_output)],
             ]
             .concat();
-            match g.ask(&other, true, 0, false) {
+            match g.ask(&other, true, 0, false, false) {
                 Found::Model(m2) => ex.rows.push(row("allowed", &m2)),
                 Found::None => {}
                 Found::Undecided => ex.undecided += 1,
@@ -701,6 +843,7 @@ pub fn examples(
                 true,
                 0,
                 false,
+                false,
             ) {
                 Found::Model(m3) => {
                     ex.rows.push(row("rejected", &m3));
@@ -712,7 +855,13 @@ pub fn examples(
         }
         // Rejected at other inputs, while fewer than `count` are shown.
         while has_output && !ensures.is_empty() && rejected < count {
-            match g.ask(&[&fails[..], &seen[..]].concat(), true, rejected, false) {
+            match g.ask(
+                &[&fails[..], &seen[..]].concat(),
+                true,
+                rejected,
+                false,
+                true,
+            ) {
                 Found::Model(m) => {
                     ex.rows.push(row("rejected", &m));
                     seen.push(format!("(not {})", m.same_input));
@@ -730,7 +879,7 @@ pub fn examples(
             let mut q = entry.clone();
             q.push(format!("(not {})", all(&requires)));
             for nth in 0..count {
-                match g.ask(&q, false, nth, false) {
+                match g.ask(&q, false, nth, false, true) {
                     Found::Model(m) => {
                         ex.rows.push(row("excluded", &m));
                         q.push(format!("(not {})", m.same_input));
