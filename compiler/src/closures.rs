@@ -872,9 +872,12 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Lowered {
             }
         }
         // The functions with their calls rewritten, back in place (same order).
-        for (unit, fs) in done {
-            let segs: Vec<&str> = unit.split("::").collect();
-            if let Some(m) = find(&mut p.mods, &segs) {
+        // Each unit takes its own: `done` holds them in the order of the
+        // walk above. A unit is not looked up by its path, which two units
+        // of a rejected program may share (E0302): the functions of one
+        // would land in the other (backlog 4D-29).
+        fn put_back(m: &mut Mod, done: &mut std::vec::IntoIter<(String, Vec<FnDef>)>) {
+            if let Some((_, fs)) = done.next() {
                 let slots = m
                     .fns
                     .iter_mut()
@@ -884,6 +887,13 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Lowered {
                     *slot = f;
                 }
             }
+            for s in &mut m.mods {
+                put_back(s, done);
+            }
+        }
+        let mut done = done.into_iter();
+        for m in &mut p.mods {
+            put_back(m, &mut done);
         }
 
         // The generic functions themselves: the bound is the trait, the calls
@@ -897,13 +907,22 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Lowered {
                 };
                 let mut values: Vec<String> = Vec::new();
                 for (k, _, _, at) in &g.bounded {
-                    let tp = &mut f.generics[*k];
+                    // A second function of the same name (E0302) is found
+                    // by the first one's path: it has its own parameters
+                    // (backlog 4D-29: indexed with the first one's).
+                    let Some(tp) = f.generics.get_mut(*k) else {
+                        continue;
+                    };
                     tp.fn_bound = None;
                     tp.bounds.push(vec![Ident {
                         name: trait_name(g.order, *k),
                         span: tp.name.span,
                     }]);
-                    values.extend(at.iter().map(|(i, _)| f.params[*i].name.name.clone()));
+                    values.extend(
+                        at.iter()
+                            .filter_map(|(i, _)| f.params.get(*i))
+                            .map(|p| p.name.name.clone()),
+                    );
                 }
                 crate::ast::fn_exprs_mut(f, &mut |e| match &mut e.kind {
                     ExprKind::Call { path, args, .. }
@@ -944,8 +963,11 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Lowered {
                     .flat_map(|(k, _, _, at)| {
                         at.iter()
                             .filter(|(_, by_ref)| !by_ref)
-                            .map(|(i, _)| {
-                                (f.params[*i].name.name.clone(), f.generics[*k].name.clone())
+                            .filter_map(|(i, _)| {
+                                Some((
+                                    f.params.get(*i)?.name.name.clone(),
+                                    f.generics.get(*k)?.name.clone(),
+                                ))
                             })
                             .collect::<Vec<_>>()
                     })

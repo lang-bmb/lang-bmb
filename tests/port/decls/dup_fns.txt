@@ -1,0 +1,17 @@
+#[summary("같은 이름의 함수 둘, 하나만 Fn 경계: 둘째는 제 매개변수로 읽는다 (4D-29, 고치기 전에는 stage0이 멈췄다)")]
+mod m {
+    #[effects(pure)]
+    fn plain<F: Fn(i64) -> i64>(f: F, x: i64) -> i64 { f(x) }
+
+    #[effects(pure)]
+    fn plain(x: i64) -> i64 { x }
+
+    #[effects(pure)]
+    fn twice<F: FnMut(i64) -> i64, G: Fn(i64) -> i64>(f: F, g: G, x: i64) -> i64 { g(f(x)) }
+
+    #[effects(pure)]
+    fn twice<T>(x: T) -> T { x }
+
+    #[effects(pure)]
+    fn main_like() -> i64 { plain(|y: i64| -> i64 { y }, 1) }
+}

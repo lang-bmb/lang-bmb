@@ -683,11 +683,24 @@ fn clone_glue(tb: &Tables, extra: &[TypeKind], ir: &str) -> String {
             visit(x, tb, seen, out);
         }
     }
+    // The types the IR copies, read off its calls in one pass (a search
+    // of the whole IR for each type is quadratic in the program).
+    const CALL: &str = "call void @\"bmb_clone.";
+    let called: BTreeSet<&str> = ir
+        .match_indices(CALL)
+        .filter_map(|(at, _)| {
+            let name = &ir[at + CALL.len()..];
+            name.find("\"(").map(|end| &name[..end])
+        })
+        .collect();
     let mut seen = BTreeSet::new();
     let mut out = String::new();
+    if called.is_empty() {
+        return out;
+    }
     for t in all_types(tb, extra) {
         let t = value_ty(t);
-        if ir.contains(&format!("call void {}(", clone_glue_name(t))) {
+        if called.contains(ty_str(t).as_str()) {
             visit(t, tb, &mut seen, &mut out);
         }
     }

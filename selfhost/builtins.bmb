@@ -1,0 +1,144 @@
+#[summary("검사기의 내장 선언: scripts/builtins.py가 아무것도 선언하지 않는 프로그램의 `bmb dump decls`에서 만든다(손으로 고치지 않는다). stage0의 Checker::new·system_builtins·builtin_adts의 자리 (ADR-0091, 백로그 4D-03d)")]
+mod builtins {
+    #[summary("시스템 타입들 (경로의 순서)")]
+    #[effects(alloc)]
+    fn adts() -> Vec<types::Adt> {
+        let mut out: Vec<types::Adt> = Vec::new();
+        {
+            let mut fs: Vec<types::FieldSig> = Vec::new();
+            fs.push(types::FieldSig { name: String::from("is_dir"), ty: ast::TypeKind::Bool });
+            fs.push(types::FieldSig { name: String::from("is_file"), ty: ast::TypeKind::Bool });
+            fs.push(types::FieldSig { name: String::from("is_symlink"), ty: ast::TypeKind::Bool });
+            fs.push(types::FieldSig { name: String::from("len"), ty: ast::TypeKind::Int(ast::IntTy::U64) });
+            out.push(types::Adt { path: String::from("std::fs::Metadata"), unit: String::from("std::fs"), name: String::from("Metadata"), generics: Vec::new(), kind: types::AdtKind::Struct(fs), span: source::Span { file: 0, lo: 0, hi: 0 }, inv: None });
+        }
+        {
+            let mut fs: Vec<types::FieldSig> = Vec::new();
+            fs.push(types::FieldSig { name: String::from("code"), ty: ast::TypeKind::Int(ast::IntTy::I32) });
+            fs.push(types::FieldSig { name: String::from("message"), ty: ast::TypeKind::String });
+            out.push(types::Adt { path: String::from("std::io::Error"), unit: String::from("std::io"), name: String::from("Error"), generics: Vec::new(), kind: types::AdtKind::Struct(fs), span: source::Span { file: 0, lo: 0, hi: 0 }, inv: None });
+        }
+        {
+            let mut fs: Vec<types::FieldSig> = Vec::new();
+            fs.push(types::FieldSig { name: String::from("pid"), ty: ast::TypeKind::Int(ast::IntTy::I32) });
+            fs.push(types::FieldSig { name: String::from("stdin"), ty: ast::TypeKind::Int(ast::IntTy::U64) });
+            fs.push(types::FieldSig { name: String::from("stdout"), ty: ast::TypeKind::Int(ast::IntTy::U64) });
+            out.push(types::Adt { path: String::from("std::process::Child"), unit: String::from("std::process"), name: String::from("Child"), generics: Vec::new(), kind: types::AdtKind::Struct(fs), span: source::Span { file: 0, lo: 0, hi: 0 }, inv: None });
+        }
+        {
+            let mut fs: Vec<types::FieldSig> = Vec::new();
+            fs.push(types::FieldSig { name: String::from("status"), ty: ast::TypeKind::Int(ast::IntTy::I32) });
+            fs.push(types::FieldSig { name: String::from("stdout"), ty: ast::TypeKind::Vec(types::boxed(ast::TypeKind::Int(ast::IntTy::U8))) });
+            fs.push(types::FieldSig { name: String::from("stderr"), ty: ast::TypeKind::Vec(types::boxed(ast::TypeKind::Int(ast::IntTy::U8))) });
+            out.push(types::Adt { path: String::from("std::process::Output"), unit: String::from("std::process"), name: String::from("Output"), generics: Vec::new(), kind: types::AdtKind::Struct(fs), span: source::Span { file: 0, lo: 0, hi: 0 }, inv: None });
+        }
+        {
+            let mut vs: Vec<types::VariantSig> = Vec::new();
+            vs.push(types::VariantSig { name: String::from("Inherit"), tys: tys0() });
+            vs.push(types::VariantSig { name: String::from("Null"), tys: tys0() });
+            out.push(types::Adt { path: String::from("std::process::Stdio"), unit: String::from("std::process"), name: String::from("Stdio"), generics: Vec::new(), kind: types::AdtKind::Enum(vs), span: source::Span { file: 0, lo: 0, hi: 0 }, inv: None });
+        }
+        out
+    }
+
+    #[effects(alloc)]
+    fn args0() -> Vec<ast::Type> {
+        let v: Vec<ast::Type> = Vec::new();
+        v
+    }
+
+    #[effects(alloc)]
+    fn args1(a0: ast::TypeKind) -> Vec<ast::Type> {
+        let mut v: Vec<ast::Type> = Vec::new();
+        v.push(types::ty(a0));
+        v
+    }
+
+    #[effects(alloc)]
+    fn args2(a0: ast::TypeKind, a1: ast::TypeKind) -> Vec<ast::Type> {
+        let mut v: Vec<ast::Type> = Vec::new();
+        v.push(types::ty(a0));
+        v.push(types::ty(a1));
+        v
+    }
+
+    #[summary("내장 함수들 (경로의 순서)")]
+    #[effects(alloc)]
+    fn fns() -> Vec<types::FnSig> {
+        let mut out: Vec<types::FnSig> = Vec::new();
+        out.push(sig("eprint_str", tys1(ast::TypeKind::Ref(false, types::boxed(ast::TypeKind::Str))), ast::TypeKind::Unit, types::Effects { alloc: false, io: true, nondet: false, panic: false }, false));
+        out.push(sig("print_bytes", tys1(ast::TypeKind::Ref(false, types::boxed(ast::TypeKind::Slice(types::boxed(ast::TypeKind::Int(ast::IntTy::U8)))))), ast::TypeKind::Unit, types::Effects { alloc: false, io: true, nondet: false, panic: false }, false));
+        out.push(sig("print_f64", tys2(ast::TypeKind::F64, ast::TypeKind::Int(ast::IntTy::U32)), ast::TypeKind::Unit, types::Effects { alloc: false, io: true, nondet: false, panic: false }, false));
+        out.push(sig("print_i64", tys1(ast::TypeKind::Int(ast::IntTy::I64)), ast::TypeKind::Unit, types::Effects { alloc: false, io: true, nondet: false, panic: false }, false));
+        out.push(sig("print_str", tys1(ast::TypeKind::Ref(false, types::boxed(ast::TypeKind::Str))), ast::TypeKind::Unit, types::Effects { alloc: false, io: true, nondet: false, panic: false }, false));
+        out.push(sig("print_u64", tys1(ast::TypeKind::Int(ast::IntTy::U64)), ast::TypeKind::Unit, types::Effects { alloc: false, io: true, nondet: false, panic: false }, false));
+        out.push(sig("std::env::args", tys0(), ast::TypeKind::Vec(types::boxed(ast::TypeKind::String)), types::Effects { alloc: true, io: true, nondet: true, panic: false }, false));
+        out.push(sig("std::env::var", tys1(ast::TypeKind::Ref(false, types::boxed(ast::TypeKind::Str))), ast::TypeKind::Named(refs::split_path("Option"), args1(ast::TypeKind::String)), types::Effects { alloc: true, io: true, nondet: true, panic: false }, false));
+        out.push(sig("std::fs::create_dir_all", tys1(ast::TypeKind::Ref(false, types::boxed(ast::TypeKind::Str))), ast::TypeKind::Named(refs::split_path("Result"), args2(ast::TypeKind::Unit, ast::TypeKind::Named(refs::split_path("std::io::Error"), args0()))), types::Effects { alloc: true, io: true, nondet: false, panic: false }, false));
+        out.push(sig("std::fs::metadata", tys1(ast::TypeKind::Ref(false, types::boxed(ast::TypeKind::Str))), ast::TypeKind::Named(refs::split_path("Result"), args2(ast::TypeKind::Named(refs::split_path("std::fs::Metadata"), args0()), ast::TypeKind::Named(refs::split_path("std::io::Error"), args0()))), types::Effects { alloc: true, io: true, nondet: true, panic: false }, false));
+        out.push(sig("std::fs::read", tys1(ast::TypeKind::Ref(false, types::boxed(ast::TypeKind::Str))), ast::TypeKind::Named(refs::split_path("Result"), args2(ast::TypeKind::Vec(types::boxed(ast::TypeKind::Int(ast::IntTy::U8))), ast::TypeKind::Named(refs::split_path("std::io::Error"), args0()))), types::Effects { alloc: true, io: true, nondet: true, panic: false }, false));
+        out.push(sig("std::fs::read_dir", tys1(ast::TypeKind::Ref(false, types::boxed(ast::TypeKind::Str))), ast::TypeKind::Named(refs::split_path("Result"), args2(ast::TypeKind::Vec(types::boxed(ast::TypeKind::String)), ast::TypeKind::Named(refs::split_path("std::io::Error"), args0()))), types::Effects { alloc: true, io: true, nondet: true, panic: false }, false));
+        out.push(sig("std::fs::read_to_string", tys1(ast::TypeKind::Ref(false, types::boxed(ast::TypeKind::Str))), ast::TypeKind::Named(refs::split_path("Result"), args2(ast::TypeKind::String, ast::TypeKind::Named(refs::split_path("std::io::Error"), args0()))), types::Effects { alloc: true, io: true, nondet: true, panic: false }, false));
+        out.push(sig("std::fs::remove_file", tys1(ast::TypeKind::Ref(false, types::boxed(ast::TypeKind::Str))), ast::TypeKind::Named(refs::split_path("Result"), args2(ast::TypeKind::Unit, ast::TypeKind::Named(refs::split_path("std::io::Error"), args0()))), types::Effects { alloc: true, io: true, nondet: false, panic: false }, false));
+        out.push(sig("std::fs::rename", tys2(ast::TypeKind::Ref(false, types::boxed(ast::TypeKind::Str)), ast::TypeKind::Ref(false, types::boxed(ast::TypeKind::Str))), ast::TypeKind::Named(refs::split_path("Result"), args2(ast::TypeKind::Unit, ast::TypeKind::Named(refs::split_path("std::io::Error"), args0()))), types::Effects { alloc: true, io: true, nondet: false, panic: false }, false));
+        out.push(sig("std::fs::symlink_metadata", tys1(ast::TypeKind::Ref(false, types::boxed(ast::TypeKind::Str))), ast::TypeKind::Named(refs::split_path("Result"), args2(ast::TypeKind::Named(refs::split_path("std::fs::Metadata"), args0()), ast::TypeKind::Named(refs::split_path("std::io::Error"), args0()))), types::Effects { alloc: true, io: true, nondet: true, panic: false }, false));
+        out.push(sig("std::fs::write", tys2(ast::TypeKind::Ref(false, types::boxed(ast::TypeKind::Str)), ast::TypeKind::Ref(false, types::boxed(ast::TypeKind::Slice(types::boxed(ast::TypeKind::Int(ast::IntTy::U8)))))), ast::TypeKind::Named(refs::split_path("Result"), args2(ast::TypeKind::Unit, ast::TypeKind::Named(refs::split_path("std::io::Error"), args0()))), types::Effects { alloc: true, io: true, nondet: false, panic: false }, false));
+        out.push(sig("std::fs::write_new", tys2(ast::TypeKind::Ref(false, types::boxed(ast::TypeKind::Str)), ast::TypeKind::Ref(false, types::boxed(ast::TypeKind::Slice(types::boxed(ast::TypeKind::Int(ast::IntTy::U8)))))), ast::TypeKind::Named(refs::split_path("Result"), args2(ast::TypeKind::Unit, ast::TypeKind::Named(refs::split_path("std::io::Error"), args0()))), types::Effects { alloc: true, io: true, nondet: false, panic: false }, false));
+        out.push(sig("std::io::read_line", tys1(ast::TypeKind::Ref(true, types::boxed(ast::TypeKind::String))), ast::TypeKind::Named(refs::split_path("Result"), args2(ast::TypeKind::Int(ast::IntTy::Usize), ast::TypeKind::Named(refs::split_path("std::io::Error"), args0()))), types::Effects { alloc: true, io: true, nondet: true, panic: false }, false));
+        out.push(sig("std::io::read_to_end", tys1(ast::TypeKind::Ref(true, types::boxed(ast::TypeKind::Vec(types::boxed(ast::TypeKind::Int(ast::IntTy::U8)))))), ast::TypeKind::Named(refs::split_path("Result"), args2(ast::TypeKind::Int(ast::IntTy::Usize), ast::TypeKind::Named(refs::split_path("std::io::Error"), args0()))), types::Effects { alloc: true, io: true, nondet: true, panic: false }, false));
+        out.push(sig("std::process::Child::id", tys1(ast::TypeKind::Ref(false, types::boxed(ast::TypeKind::Named(refs::split_path("std::process::Child"), args0())))), ast::TypeKind::Int(ast::IntTy::U32), types::Effects { alloc: false, io: true, nondet: true, panic: false }, true));
+        out.push(sig("std::process::Child::read_line", tys2(ast::TypeKind::Ref(true, types::boxed(ast::TypeKind::Named(refs::split_path("std::process::Child"), args0()))), ast::TypeKind::Ref(true, types::boxed(ast::TypeKind::String))), ast::TypeKind::Named(refs::split_path("Result"), args2(ast::TypeKind::Int(ast::IntTy::Usize), ast::TypeKind::Named(refs::split_path("std::io::Error"), args0()))), types::Effects { alloc: true, io: true, nondet: true, panic: false }, true));
+        out.push(sig("std::process::Child::wait", tys1(ast::TypeKind::Named(refs::split_path("std::process::Child"), args0())), ast::TypeKind::Named(refs::split_path("Result"), args2(ast::TypeKind::Int(ast::IntTy::I32), ast::TypeKind::Named(refs::split_path("std::io::Error"), args0()))), types::Effects { alloc: true, io: true, nondet: true, panic: false }, true));
+        out.push(sig("std::process::Child::write_all", tys2(ast::TypeKind::Ref(true, types::boxed(ast::TypeKind::Named(refs::split_path("std::process::Child"), args0()))), ast::TypeKind::Ref(false, types::boxed(ast::TypeKind::Slice(types::boxed(ast::TypeKind::Int(ast::IntTy::U8)))))), ast::TypeKind::Named(refs::split_path("Result"), args2(ast::TypeKind::Unit, ast::TypeKind::Named(refs::split_path("std::io::Error"), args0()))), types::Effects { alloc: true, io: true, nondet: false, panic: false }, true));
+        out.push(sig("std::process::exit", tys1(ast::TypeKind::Int(ast::IntTy::I32)), ast::TypeKind::Never, types::Effects { alloc: false, io: true, nondet: false, panic: false }, false));
+        out.push(sig("std::process::run", tys3(ast::TypeKind::Ref(false, types::boxed(ast::TypeKind::Str)), ast::TypeKind::Ref(false, types::boxed(ast::TypeKind::Slice(types::boxed(ast::TypeKind::String)))), ast::TypeKind::Ref(false, types::boxed(ast::TypeKind::Slice(types::boxed(ast::TypeKind::Int(ast::IntTy::U8)))))), ast::TypeKind::Named(refs::split_path("Result"), args2(ast::TypeKind::Named(refs::split_path("std::process::Output"), args0()), ast::TypeKind::Named(refs::split_path("std::io::Error"), args0()))), types::Effects { alloc: true, io: true, nondet: true, panic: false }, false));
+        out.push(sig("std::process::spawn", tys3(ast::TypeKind::Ref(false, types::boxed(ast::TypeKind::Str)), ast::TypeKind::Ref(false, types::boxed(ast::TypeKind::Slice(types::boxed(ast::TypeKind::String)))), ast::TypeKind::Named(refs::split_path("std::process::Stdio"), args0())), ast::TypeKind::Named(refs::split_path("Result"), args2(ast::TypeKind::Named(refs::split_path("std::process::Child"), args0()), ast::TypeKind::Named(refs::split_path("std::io::Error"), args0()))), types::Effects { alloc: true, io: true, nondet: true, panic: false }, false));
+        out.push(sig("std::time::monotonic_ms", tys0(), ast::TypeKind::Int(ast::IntTy::U64), types::Effects { alloc: false, io: true, nondet: true, panic: false }, false));
+        out
+    }
+
+    #[effects(alloc)]
+    fn sig(path: &str, params: Vec<ast::TypeKind>, ret: ast::TypeKind, effect: types::Effects, in_impl: bool) -> types::FnSig {
+        types::FnSig { path: String::from(path), kind: ast::FnKind::Exec, generics: Vec::new(), impl_generics: 0, params: params, ret: ret, effect: effect, vacuous: false, builtin: true, in_impl: in_impl, trait_of: None, default: false, span: source::Span { file: 0, lo: 0, hi: 0 } }
+    }
+
+    #[effects(alloc)]
+    fn tys0() -> Vec<ast::TypeKind> {
+        let v: Vec<ast::TypeKind> = Vec::new();
+        v
+    }
+
+    #[effects(alloc)]
+    fn tys1(a0: ast::TypeKind) -> Vec<ast::TypeKind> {
+        let mut v: Vec<ast::TypeKind> = Vec::new();
+        v.push(a0);
+        v
+    }
+
+    #[effects(alloc)]
+    fn tys2(a0: ast::TypeKind, a1: ast::TypeKind) -> Vec<ast::TypeKind> {
+        let mut v: Vec<ast::TypeKind> = Vec::new();
+        v.push(a0);
+        v.push(a1);
+        v
+    }
+
+    #[effects(alloc)]
+    fn tys3(a0: ast::TypeKind, a1: ast::TypeKind, a2: ast::TypeKind) -> Vec<ast::TypeKind> {
+        let mut v: Vec<ast::TypeKind> = Vec::new();
+        v.push(a0);
+        v.push(a1);
+        v.push(a2);
+        v
+    }
+
+    #[effects(alloc)]
+    fn tys4(a0: ast::TypeKind, a1: ast::TypeKind, a2: ast::TypeKind, a3: ast::TypeKind) -> Vec<ast::TypeKind> {
+        let mut v: Vec<ast::TypeKind> = Vec::new();
+        v.push(a0);
+        v.push(a1);
+        v.push(a2);
+        v.push(a3);
+        v
+    }
+}

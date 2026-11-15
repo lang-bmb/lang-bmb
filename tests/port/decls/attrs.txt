@@ -1,0 +1,134 @@
+#[summary("1패스의 가장자리: 속성, 효과, 근거, 불변식, 수신자의 진단 (4D-03d)")]
+mod at {
+    #[invariant]
+    struct A { x: i64 }
+
+    #[invariant(p, q)]
+    struct B { x: i64 }
+
+    #[invariant("p")]
+    struct C { x: i64 }
+
+    #[invariant(missing)]
+    struct D { x: i64 }
+
+    #[invariant(run)]
+    struct E { x: i64 }
+
+    #[invariant(wrong)]
+    struct F { x: i64 }
+
+    #[invariant(vac)]
+    struct G { x: i64 }
+
+    #[invariant(gen)]
+    #[invariant(gen)]
+    #[derive(Clone)]
+    #[inline]
+    struct H<T: Copy> { x: T }
+
+    #[invariant(tight)]
+    struct I<T> { x: T }
+
+    #[invariant(ok)]
+    struct J<T: Copy, U> { x: T, y: U }
+
+    #[effects(pure)]
+    fn run(a: &E) -> bool { true }
+
+    spec fn wrong(a: A) -> bool { a.x > 0 }
+
+    spec fn vac(a: &G) -> bool { true }
+
+    spec fn gen<T: Copy>(h: &H<T>) -> bool { false }
+
+    spec fn tight<T: Copy>(i: &I<T>) -> bool { false }
+
+    spec fn ok<T: Copy, U>(j: &J<T, U>) -> bool { false }
+
+    #[effects]
+    fn e1() -> () { }
+
+    #[effects(pure, alloc)]
+    fn e2() -> () { }
+
+    #[effects(io, io)]
+    fn e3() -> () { }
+
+    #[effects(fast, "io", k = v)]
+    fn e4() -> () { }
+
+    #[effects(pure)]
+    #[effects(io)]
+    #[inline]
+    #[summary("a")]
+    #[summary("b")]
+    #[summary]
+    fn e5() -> () { }
+
+    #[effects(pure)]
+    spec fn e6() -> bool { true }
+
+    #[effects(pure)]
+    proof fn e7()
+    {
+    }
+
+    fn e8() -> () { }
+
+    #[effects(panic)]
+    #[external_body]
+    fn x1() -> () { }
+
+    #[effects(panic)]
+    #[rationale(kind = boundary, "why")]
+    fn x2() -> () { }
+
+    #[external_body]
+    spec fn x3() -> bool { true }
+
+    #[effects(panic)]
+    #[external_body]
+    #[rationale(kind = odd, kind = boundary, kind = boundary, hash = h, other = v, lone, "", "two", "  ")]
+    fn x4() -> () { }
+
+    #[effects(panic)]
+    #[external_body]
+    #[rationale]
+    fn x5() -> () { }
+
+    #[effects(io)]
+    #[external_body]
+    #[rationale(kind = boundary, "ok")]
+    fn main() -> () { }
+
+    #[effects(pure)]
+    fn self_free(self: i64, a: A) -> i64 { self }
+
+    impl A {
+        #[effects(pure)]
+        fn get(a: &A) -> i64 { a.x }
+
+        #[effects(pure)]
+        fn two(k: i64, self: &A) -> i64 { k }
+
+        #[effects(pure)]
+        fn by_value(me: A) -> i64 { me.x }
+
+        #[effects(pure)]
+        fn own<T>(self: &A, self2: T) -> i64 { 0 }
+    }
+
+    trait Tr {
+        #[effects(pure)]
+        fn m(x: &Self) -> i64;
+
+        #[effects(pure)]
+        fn n(self: &Self, k: i64) -> i64
+            decreases k,
+        ;
+
+        #[effects(pure)]
+        fn n(self: &Self) -> i64;
+    }
+}

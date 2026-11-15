@@ -1,0 +1,76 @@
+#[summary("1패스의 가장자리: 필드와 impl 머리에 쓴 타입의 진단 (4D-03d)")]
+mod ed {
+    use std::fs::Metadata;
+    use geo::Point;
+
+    #[summary(one)]
+    trait Shape {
+        #[effects(pure)]
+        fn area(self: &Self) -> i64;
+    }
+
+    #[summary("a", "b")]
+    struct Arr { a: [i64; 2] }
+
+    struct Wrap<T> { v: Vec<T> }
+
+    struct Holder<T: Copy> { v: T }
+
+    struct F1 { a: Self, b: Point, c: Metadata, d: Option<&i64>, e: Result<i64, [u8]>, f: Wrap<Arr> }
+
+    struct F2 { a: String<i64>, b: Box<i64, i64>, c: Box<&i64>, d: Box<()>, e: Vec<i64, i64>, f: Vec<Arr>, g: (), h: Vec<()> }
+
+    struct F3 { a: Option<i64, i64>, b: Result<i64>, c: Rc<i64>, d: std::cell::RefCell<i64>, e: Wrap<i64, i64>, f: Arr<i64>, g: Holder<Vec<i64>>, h: [Vec<i64>; 2], i: Wrap<&i64> }
+
+    struct F4<T> { a: T<i64>, b: Unknown, c: other::Thing, d: Shap, e: Holder<Wrap<i64>>, f: Box<Holder<String>> }
+
+    enum E1 { A(Self), B((), &str), C(Vec<F1>, Box<Wrap<Arr>>) }
+
+    impl Shape for Self {
+        #[effects(pure)]
+        fn area(self: &Self) -> i64 { 0 }
+    }
+
+    impl Shape for Arr {
+        #[effects(pure)]
+        fn area(self: &Arr) -> i64 { 0 }
+
+        #[effects(pure)]
+        fn area(self: &Arr) -> i64 { 1 }
+
+        #[effects(pure)]
+        fn extra(self: &Arr) -> Self { Arr { a: [0, 0] } }
+    }
+
+    impl<T> Shape for Wrap<T> {
+        #[effects(pure)]
+        fn area(self: &Wrap<T>) -> i64 { 0 }
+    }
+
+    impl Shape for Wrap<i64> {
+        #[effects(pure)]
+        fn area(self: &Wrap<i64>) -> i64 { 0 }
+    }
+
+    impl<T, U> Shape for Holder<T> {
+        #[effects(pure)]
+        fn area(self: &Holder<T>) -> i64 { 0 }
+    }
+
+    impl<T> Shape for T {
+        #[effects(pure)]
+        fn area(self: &T) -> i64 { 0 }
+    }
+
+    impl Shap for Arr {
+    }
+
+    impl Arr for Arr {
+    }
+
+    impl Shape for &Arr {
+    }
+
+    impl Shape for Vec<Arr> {
+    }
+}

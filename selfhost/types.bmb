@@ -1,0 +1,1210 @@
+#[summary("검사기의 표가 담는 것과 타입에 대한 물음 (stage0 compiler/src/check.rs의 포트, 백로그 4D-03d). 타입을 걷는 함수의 f는 남은 깊이다 (ADR-0140)")]
+mod types {
+    #[summary("선언된 자료 타입. unit과 name은 path를 가른 것이다(가까운 이름을 찾을 때)")]
+    struct Adt { path: String, unit: String, name: String, generics: Vec<TParam>, kind: AdtKind, span: source::Span, inv: Option<String> }
+
+    enum AdtKind { Struct(Vec<FieldSig>), Enum(Vec<VariantSig>) }
+
+    #[summary("효과의 집합 (ADR-0030): 원자 넷")]
+    struct Effects { alloc: bool, io: bool, nondet: bool, panic: bool }
+
+    struct FieldSig { name: String, ty: ast::TypeKind }
+
+    struct FnSig { path: String, kind: ast::FnKind, generics: Vec<TParam>, impl_generics: usize, params: Vec<ast::TypeKind>, ret: ast::TypeKind, effect: Effects, vacuous: bool, builtin: bool, in_impl: bool, trait_of: Option<String>, default: bool, span: source::Span }
+
+    #[summary("타입 매개변수의 치환: names[i]를 tys[i]로")]
+    struct Subst { names: Vec<String>, tys: Vec<ast::TypeKind> }
+
+    #[summary("타입 매개변수와 그 경계 (ADR-0046)")]
+    struct TParam { name: String, bounds: Vec<String> }
+
+    struct TraitImplInfo { trait_path: String, generics: Vec<TParam>, head: ast::TypeKind, unit: String, span: source::Span }
+
+    struct TraitInfo { path: String, unit: String, name: String, methods: Vec<String>, span: source::Span }
+
+    struct VariantSig { name: String, tys: Vec<ast::TypeKind> }
+
+    #[summary("없으면 넣는다. 넣었으면 true (stage0의 BTreeSet::insert)")]
+    #[effects(alloc)]
+    fn add(xs: &mut Vec<String>, s: &str) -> bool {
+        if has(xs.as_slice(), s) {
+            return false;
+        }
+        xs.push(String::from(s));
+        true
+    }
+
+    #[summary("자료 타입 adt의 매개변수를 그 인스턴스 t의 인자로 (제네릭이 아니면 빈 것)")]
+    #[effects(alloc)]
+    fn adt_subst(adt: &Adt, t: &ast::TypeKind) -> Subst {
+        let mut m: Subst = Subst { names: Vec::new(), tys: Vec::new() };
+        match t {
+            ast::TypeKind::Int(q17_it) => {},
+            ast::TypeKind::F64 => {},
+            ast::TypeKind::Bool => {},
+            ast::TypeKind::Unit => {},
+            ast::TypeKind::Char => {},
+            ast::TypeKind::String => {},
+            ast::TypeKind::Str => {},
+            ast::TypeKind::Array(q17_ae, q17_an) => {},
+            ast::TypeKind::ArrayN(q17_ne, q17_nn) => {},
+            ast::TypeKind::Slice(q17_se) => {},
+            ast::TypeKind::Ref(q17_rm, q17_ri) => {},
+            ast::TypeKind::Named(path, args) => { for i in 0..adt.generics.len() invariant 0 <= i && i <= adt.generics.len(), { if i < args.len() && !has(m.names.as_slice(), adt.generics[i].name.as_str()) { m.names.push(adt.generics[i].name.clone()); m.tys.push(args[i].kind.clone()); } } },
+            ast::TypeKind::Vec(q17_ve) => {},
+            ast::TypeKind::Box(q17_be) => {},
+            ast::TypeKind::Param(q17_pn) => {},
+            ast::TypeKind::Never => {},
+            ast::TypeKind::Error => {},
+        }
+        m
+    }
+
+    #[summary("고정 배열의 원소가 될 수 있는가 (백로그 2V-04b): 쓴 타입과 풀린 타입 둘 다 읽는다")]
+    #[effects(pure)]
+    fn array_elem_ok(e: &ast::TypeKind, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return true;
+        }
+        match e {
+            ast::TypeKind::Int(it) => true,
+            ast::TypeKind::F64 => true,
+            ast::TypeKind::Bool => true,
+            ast::TypeKind::Unit => false,
+            ast::TypeKind::Char => true,
+            ast::TypeKind::String => false,
+            ast::TypeKind::Str => false,
+            ast::TypeKind::Array(ae, an) => array_elem_ok(&ae.kind, f - 1),
+            ast::TypeKind::ArrayN(q27_ne, q27_nn) => false,
+            ast::TypeKind::Slice(q27_se) => false,
+            ast::TypeKind::Ref(q27_rm, q27_ri) => false,
+            ast::TypeKind::Named(path, args) => !(path.len() == 1 && (path[0].as_str() == "Vec" || path[0].as_str() == "String")),
+            ast::TypeKind::Vec(q27_ve) => false,
+            ast::TypeKind::Box(be) => true,
+            ast::TypeKind::Param(pn) => true,
+            ast::TypeKind::Never => true,
+            ast::TypeKind::Error => true,
+        }
+    }
+
+    #[effects(pure)]
+    fn atom(name: &str) -> Option<Effects> {
+        if name == "alloc" {
+            return Some(Effects { alloc: true, io: false, nondet: false, panic: false });
+        }
+        if name == "io" {
+            return Some(Effects { alloc: false, io: true, nondet: false, panic: false });
+        }
+        if name == "nondet" {
+            return Some(Effects { alloc: false, io: false, nondet: true, panic: false });
+        }
+        if name == "panic" {
+            return Some(Effects { alloc: false, io: false, nondet: false, panic: true });
+        }
+        None
+    }
+
+    #[effects(alloc)]
+    fn boxed(k: ast::TypeKind) -> Box<ast::Type> {
+        Box::new(ty(k))
+    }
+
+    #[summary("언어가 뜻을 준 이름: 사용자 정의가 가질 수 없다 (ADR-0026)")]
+    #[effects(pure)]
+    fn builtin_name(n: &str) -> bool {
+        n == "Option" || n == "Result" || n == "Some" || n == "None" || n == "Ok" || n == "Err" || n == "Vec" || n == "Box"
+    }
+
+    #[effects(alloc)]
+    fn cat2(a: &str, b: &str) -> String {
+        let mut s: String = String::from(a);
+        s.push_str(b);
+        s
+    }
+
+    #[effects(alloc)]
+    fn cat3(a: &str, b: &str, c: &str) -> String {
+        let mut s: String = String::from(a);
+        s.push_str(b);
+        s.push_str(c);
+        s
+    }
+
+    #[effects(alloc)]
+    fn cat4(a: &str, b: &str, c: &str, d: &str) -> String {
+        let mut s: String = String::from(a);
+        s.push_str(b);
+        s.push_str(c);
+        s.push_str(d);
+        s
+    }
+
+    #[effects(alloc)]
+    fn cat5(a: &str, b: &str, c: &str, d: &str, e: &str) -> String {
+        let mut s: String = cat4(a, b, c, d);
+        s.push_str(e);
+        s
+    }
+
+    #[effects(alloc)]
+    fn cat7(a: &str, b: &str, c: &str, d: &str, e: &str, g: &str, h: &str) -> String {
+        let mut s: String = cat4(a, b, c, d);
+        s.push_str(e);
+        s.push_str(g);
+        s.push_str(h);
+        s
+    }
+
+    #[summary("글의 글자들 (유니코드 스칼라 값). 글은 UTF-8이다")]
+    #[effects(alloc)]
+    fn chars(s: &str) -> Vec<u32> {
+        let mut out: Vec<u32> = Vec::new();
+        let n: usize = s.len();
+        let mut i: usize = 0;
+        while i < n
+            invariant i <= n && n == s.len(),
+            decreases n - i,
+        {
+            let b: u32 = s.as_bytes()[i] as u32;
+            let mut len: usize = 1;
+            let mut c: u32 = b;
+            if b >= 240 {
+                len = 4;
+                c = b % 8;
+            } else if b >= 224 {
+                len = 3;
+                c = b % 16;
+            } else if b >= 192 {
+                len = 2;
+                c = b % 32;
+            }
+            let mut k: usize = 1;
+            while k < len && i + k < n
+                invariant 1 <= k && k <= len && len <= 4 && i < n && i + k <= n && n == s.len(),
+                decreases len - k,
+            {
+                c = c % 2097152 * 64 + s.as_bytes()[i + k] as u32 % 64;
+                k = k + 1;
+            }
+            out.push(c);
+            i = i + k;
+        }
+        out
+    }
+
+    #[summary("name에 가장 가까운 후보 하나: 편집 거리 2 이내이고 이름보다 짧을 때. 없거나 둘이 똑같이 가까우면 없다")]
+    #[effects(alloc)]
+    fn closest(name: &str, cands: &[String]) -> Option<String> {
+        let len: usize = chars(name).len();
+        let mut best: usize = 0;
+        let mut bd: usize = 0;
+        let mut found: bool = false;
+        let mut tie: bool = false;
+        for i in 0..cands.len()
+            invariant 0 <= i && i <= cands.len() && (!found || best < cands.len()),
+        {
+            let d: usize = edit_distance(name, cands[i].as_str());
+            if !(d == 0 || d > 2 || d >= len) {
+                if found && d == bd && cands[i].as_str() != cands[best].as_str() {
+                    tie = true;
+                } else if found && d >= bd {} else {
+                    best = i;
+                    bd = d;
+                    found = true;
+                    tie = false;
+                }
+            }
+        }
+        if tie || !found {
+            None
+        } else {
+            Some(cands[best].clone())
+        }
+    }
+
+    #[summary("b의 효과가 모두 a에 있는가")]
+    #[effects(pure)]
+    fn e_contains(a: Effects, b: Effects) -> bool {
+        (a.alloc || !b.alloc) && (a.io || !b.io) && (a.nondet || !b.nondet) && (a.panic || !b.panic)
+    }
+
+    #[effects(pure)]
+    fn e_minus(a: Effects, b: Effects) -> Effects {
+        Effects { alloc: a.alloc && !b.alloc, io: a.io && !b.io, nondet: a.nondet && !b.nondet, panic: a.panic && !b.panic }
+    }
+
+    #[summary("#[effects(..)]가 쓰는 꼴: pure, 또는 원자를 이름순으로")]
+    #[effects(alloc)]
+    fn e_text(e: Effects) -> String {
+        let mut s: String = String::new();
+        if is_pure(e) {
+            s.push_str("pure");
+            return s;
+        }
+        if e.alloc {
+            s.push_str("alloc");
+        }
+        if e.io {
+            if s.len() > 0 {
+                s.push_str(", ");
+            }
+            s.push_str("io");
+        }
+        if e.nondet {
+            if s.len() > 0 {
+                s.push_str(", ");
+            }
+            s.push_str("nondet");
+        }
+        if e.panic {
+            if s.len() > 0 {
+                s.push_str(", ");
+            }
+            s.push_str("panic");
+        }
+        s
+    }
+
+    #[effects(pure)]
+    fn e_union(a: Effects, b: Effects) -> Effects {
+        Effects { alloc: a.alloc || b.alloc, io: a.io || b.io, nondet: a.nondet || b.nondet, panic: a.panic || b.panic }
+    }
+
+    #[summary("두 이름의 편집 거리 (글자)")]
+    #[effects(alloc)]
+    fn edit_distance(a: &str, b: &str) -> usize {
+        let x: Vec<u32> = chars(a);
+        let y: Vec<u32> = chars(b);
+        let n: usize = y.len();
+        let mut row: Vec<usize> = Vec::new();
+        let mut k: usize = 0;
+        while k <= n
+            invariant k <= n + 1 && row.len() == k && n == y.len(),
+            decreases n + 1 - k,
+        {
+            row.push(k);
+            k = k + 1;
+        }
+        for i in 0..x.len()
+            invariant 0 <= i && i <= x.len() && row.len() == n + 1 && n == y.len(),
+        {
+            let mut prev: usize = row[0];
+            row[0] = i + 1;
+            for j in 0..n
+                invariant 0 <= j && j <= n && row.len() == n + 1 && n == y.len() && i < x.len(),
+            {
+                let cur: usize = row[j + 1];
+                let d: usize = if x[i] != y[j] {
+                    1
+                } else {
+                    0
+                };
+                row[j + 1] = min2(min2(prev.saturating_add(d), row[j].saturating_add(1)), cur.saturating_add(1));
+                prev = cur;
+            }
+        }
+        row[n]
+    }
+
+    #[summary("impl의 함수 name의 경로: <geo::Sq as geo::Shape>::area")]
+    #[effects(alloc)]
+    fn fn_path(i: &TraitImplInfo, name: &str) -> String {
+        cat7("<", text(&i.head).as_str(), " as ", i.trait_path.as_str(), ">::", name, "")
+    }
+
+    #[summary("xs에 s가 있는가")]
+    #[effects(pure)]
+    fn has(xs: &[String], s: &str) -> bool {
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            if xs[i].as_str() == s {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[effects(pure)]
+    fn int_name(n: &str) -> bool {
+        n == "i8" || n == "i16" || n == "i32" || n == "i64" || n == "isize" || n == "u8" || n == "u16" || n == "u32" || n == "u64" || n == "usize"
+    }
+
+    #[effects(pure)]
+    fn is_error(t: &ast::TypeKind) -> bool {
+        match t {
+            ast::TypeKind::Int(q2_it) => false,
+            ast::TypeKind::F64 => false,
+            ast::TypeKind::Bool => false,
+            ast::TypeKind::Unit => false,
+            ast::TypeKind::Char => false,
+            ast::TypeKind::String => false,
+            ast::TypeKind::Str => false,
+            ast::TypeKind::Array(q2_ae, q2_an) => false,
+            ast::TypeKind::ArrayN(q2_ne, q2_nn) => false,
+            ast::TypeKind::Slice(q2_se) => false,
+            ast::TypeKind::Ref(q2_rm, q2_ri) => false,
+            ast::TypeKind::Named(q2_path, q2_args) => false,
+            ast::TypeKind::Vec(q2_ve) => false,
+            ast::TypeKind::Box(q2_be) => false,
+            ast::TypeKind::Param(q2_pn) => false,
+            ast::TypeKind::Never => false,
+            ast::TypeKind::Error => true,
+        }
+    }
+
+    #[effects(pure)]
+    fn is_int(t: &ast::TypeKind) -> bool {
+        match t {
+            ast::TypeKind::Int(it) => true,
+            ast::TypeKind::F64 => false,
+            ast::TypeKind::Bool => false,
+            ast::TypeKind::Unit => false,
+            ast::TypeKind::Char => false,
+            ast::TypeKind::String => false,
+            ast::TypeKind::Str => false,
+            ast::TypeKind::Array(q3_ae, q3_an) => false,
+            ast::TypeKind::ArrayN(q3_ne, q3_nn) => false,
+            ast::TypeKind::Slice(q3_se) => false,
+            ast::TypeKind::Ref(q3_rm, q3_ri) => false,
+            ast::TypeKind::Named(q3_path, q3_args) => false,
+            ast::TypeKind::Vec(q3_ve) => false,
+            ast::TypeKind::Box(q3_be) => false,
+            ast::TypeKind::Param(q3_pn) => false,
+            ast::TypeKind::Never => false,
+            ast::TypeKind::Error => false,
+        }
+    }
+
+    #[summary("t의 값이 이동하는가 (ADR-0047 §1). moving은 Copy 없는 타입 매개변수")]
+    #[effects(alloc)]
+    fn is_move_in(t: &ast::TypeKind, adts: &table::Table<Adt>, moving: &[String]) -> bool {
+        let mut seen: Vec<String> = Vec::new();
+        move_go(t, adts, moving, &mut seen, 100000)
+    }
+
+    #[summary("한 마디 Option이나 Result인가")]
+    #[effects(pure)]
+    fn is_opt_res(t: &ast::TypeKind) -> bool {
+        match t {
+            ast::TypeKind::Int(q11_it) => false,
+            ast::TypeKind::F64 => false,
+            ast::TypeKind::Bool => false,
+            ast::TypeKind::Unit => false,
+            ast::TypeKind::Char => false,
+            ast::TypeKind::String => false,
+            ast::TypeKind::Str => false,
+            ast::TypeKind::Array(q11_ae, q11_an) => false,
+            ast::TypeKind::ArrayN(q11_ne, q11_nn) => false,
+            ast::TypeKind::Slice(q11_se) => false,
+            ast::TypeKind::Ref(q11_rm, q11_ri) => false,
+            ast::TypeKind::Named(path, args) => path.len() == 1 && (path[0].as_str() == "Option" || path[0].as_str() == "Result"),
+            ast::TypeKind::Vec(q11_ve) => false,
+            ast::TypeKind::Box(q11_be) => false,
+            ast::TypeKind::Param(q11_pn) => false,
+            ast::TypeKind::Never => false,
+            ast::TypeKind::Error => false,
+        }
+    }
+
+    #[effects(pure)]
+    fn is_param(t: &ast::TypeKind) -> bool {
+        match t {
+            ast::TypeKind::Int(q19_it) => false,
+            ast::TypeKind::F64 => false,
+            ast::TypeKind::Bool => false,
+            ast::TypeKind::Unit => false,
+            ast::TypeKind::Char => false,
+            ast::TypeKind::String => false,
+            ast::TypeKind::Str => false,
+            ast::TypeKind::Array(q19_ae, q19_an) => false,
+            ast::TypeKind::ArrayN(q19_ne, q19_nn) => false,
+            ast::TypeKind::Slice(q19_se) => false,
+            ast::TypeKind::Ref(q19_rm, q19_ri) => false,
+            ast::TypeKind::Named(q19_path, q19_args) => false,
+            ast::TypeKind::Vec(q19_ve) => false,
+            ast::TypeKind::Box(q19_be) => false,
+            ast::TypeKind::Param(pn) => true,
+            ast::TypeKind::Never => false,
+            ast::TypeKind::Error => false,
+        }
+    }
+
+    #[effects(pure)]
+    fn is_pure(e: Effects) -> bool {
+        !e.alloc && !e.io && !e.nondet && !e.panic
+    }
+
+    #[effects(pure)]
+    fn is_ref(t: &ast::TypeKind) -> bool {
+        match t {
+            ast::TypeKind::Int(q6_it) => false,
+            ast::TypeKind::F64 => false,
+            ast::TypeKind::Bool => false,
+            ast::TypeKind::Unit => false,
+            ast::TypeKind::Char => false,
+            ast::TypeKind::String => false,
+            ast::TypeKind::Str => false,
+            ast::TypeKind::Array(q6_ae, q6_an) => false,
+            ast::TypeKind::ArrayN(q6_ne, q6_nn) => false,
+            ast::TypeKind::Slice(q6_se) => false,
+            ast::TypeKind::Ref(rm, ri) => true,
+            ast::TypeKind::Named(q6_path, q6_args) => false,
+            ast::TypeKind::Vec(q6_ve) => false,
+            ast::TypeKind::Box(q6_be) => false,
+            ast::TypeKind::Param(q6_pn) => false,
+            ast::TypeKind::Never => false,
+            ast::TypeKind::Error => false,
+        }
+    }
+
+    #[effects(pure)]
+    fn is_ref_mut(t: &ast::TypeKind) -> bool {
+        match t {
+            ast::TypeKind::Int(q7_it) => false,
+            ast::TypeKind::F64 => false,
+            ast::TypeKind::Bool => false,
+            ast::TypeKind::Unit => false,
+            ast::TypeKind::Char => false,
+            ast::TypeKind::String => false,
+            ast::TypeKind::Str => false,
+            ast::TypeKind::Array(q7_ae, q7_an) => false,
+            ast::TypeKind::ArrayN(q7_ne, q7_nn) => false,
+            ast::TypeKind::Slice(q7_se) => false,
+            ast::TypeKind::Ref(rm, ri) => *rm,
+            ast::TypeKind::Named(q7_path, q7_args) => false,
+            ast::TypeKind::Vec(q7_ve) => false,
+            ast::TypeKind::Box(q7_be) => false,
+            ast::TypeKind::Param(q7_pn) => false,
+            ast::TypeKind::Never => false,
+            ast::TypeKind::Error => false,
+        }
+    }
+
+    #[effects(pure)]
+    fn is_scalar(t: &ast::TypeKind) -> bool {
+        match t {
+            ast::TypeKind::Int(it) => true,
+            ast::TypeKind::F64 => true,
+            ast::TypeKind::Bool => true,
+            ast::TypeKind::Unit => false,
+            ast::TypeKind::Char => true,
+            ast::TypeKind::String => false,
+            ast::TypeKind::Str => false,
+            ast::TypeKind::Array(q4_ae, q4_an) => false,
+            ast::TypeKind::ArrayN(q4_ne, q4_nn) => false,
+            ast::TypeKind::Slice(q4_se) => false,
+            ast::TypeKind::Ref(q4_rm, q4_ri) => false,
+            ast::TypeKind::Named(q4_path, q4_args) => false,
+            ast::TypeKind::Vec(q4_ve) => false,
+            ast::TypeKind::Box(q4_be) => false,
+            ast::TypeKind::Param(q4_pn) => false,
+            ast::TypeKind::Never => false,
+            ast::TypeKind::Error => false,
+        }
+    }
+
+    #[effects(pure)]
+    fn is_tparam(ps: &[TParam], n: &str) -> bool {
+        for i in 0..ps.len()
+            invariant 0 <= i && i <= ps.len(),
+        {
+            if ps[i].name.as_str() == n {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[summary("xs를 sep로 잇는다")]
+    #[effects(alloc)]
+    fn join(xs: &[String], sep: &str) -> String {
+        let mut s: String = String::new();
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            if i > 0 {
+                s.push_str(sep);
+            }
+            s.push_str(xs[i].as_str());
+        }
+        s
+    }
+
+    #[summary("xs의 앞 n개를 ::로 잇는다")]
+    #[effects(alloc)]
+    fn join_head(xs: &[String], n: usize) -> String {
+        let mut s: String = String::new();
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            if i < n {
+                if i > 0 {
+                    s.push_str("::");
+                }
+                s.push_str(xs[i].as_str());
+            }
+        }
+        s
+    }
+
+    #[summary("타입마다 다른 글: 같은 타입인지를 이것으로 견준다 (stage0의 TypeKind ==, 자리는 보지 않는다)")]
+    #[effects(alloc)]
+    fn key(t: &ast::TypeKind) -> String {
+        let mut s: String = String::new();
+        push_key(&mut s, t, 100000);
+        s
+    }
+
+    #[summary("경로가 단위 mp의 것이면 제 이름만, 아니면 온 경로")]
+    #[effects(alloc)]
+    fn local(path: &[String], mp: &str) -> String {
+        if path.len() >= 2 {
+            let n: usize = path.len() - 1;
+            if join_head(path, n).as_str() == mp {
+                return path[n].clone();
+            }
+        }
+        join(path, "::")
+    }
+
+    #[summary("impl의 머리가 t가 되게 하는 치환 (맞으면)")]
+    #[effects(alloc)]
+    fn matches(i: &TraitImplInfo, t: &ast::TypeKind) -> Option<Subst> {
+        let mut m: Subst = Subst { names: Vec::new(), tys: Vec::new() };
+        unify(&i.head, t, i.generics.as_slice(), &mut m, 100000);
+        if same(&subst(&i.head, &m), t) {
+            Some(m)
+        } else {
+            None
+        }
+    }
+
+    #[effects(pure)]
+    fn mentions_param(t: &ast::TypeKind, n: &str, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return false;
+        }
+        match t {
+            ast::TypeKind::Int(q23_it) => false,
+            ast::TypeKind::F64 => false,
+            ast::TypeKind::Bool => false,
+            ast::TypeKind::Unit => false,
+            ast::TypeKind::Char => false,
+            ast::TypeKind::String => false,
+            ast::TypeKind::Str => false,
+            ast::TypeKind::Array(ae, an) => mentions_param(&ae.kind, n, f - 1),
+            ast::TypeKind::ArrayN(q23_ne, q23_nn) => false,
+            ast::TypeKind::Slice(se) => mentions_param(&se.kind, n, f - 1),
+            ast::TypeKind::Ref(rm, ri) => mentions_param(&ri.kind, n, f - 1),
+            ast::TypeKind::Named(path, args) => { for i in 0..args.len() invariant 0 <= i && i <= args.len(), { if mentions_param(&args[i].kind, n, f - 1) { return true; } } false },
+            ast::TypeKind::Vec(ve) => mentions_param(&ve.kind, n, f - 1),
+            ast::TypeKind::Box(be) => mentions_param(&be.kind, n, f - 1),
+            ast::TypeKind::Param(pn) => pn.as_str() == n,
+            ast::TypeKind::Never => false,
+            ast::TypeKind::Error => false,
+        }
+    }
+
+    #[effects(pure)]
+    fn min2(a: usize, b: usize) -> usize {
+        if a < b {
+            a
+        } else {
+            b
+        }
+    }
+
+    #[effects(alloc)]
+    fn move_go(t: &ast::TypeKind, adts: &table::Table<Adt>, moving: &[String], seen: &mut Vec<String>, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return false;
+        }
+        match t {
+            ast::TypeKind::Int(q25_it) => false,
+            ast::TypeKind::F64 => false,
+            ast::TypeKind::Bool => false,
+            ast::TypeKind::Unit => false,
+            ast::TypeKind::Char => false,
+            ast::TypeKind::String => true,
+            ast::TypeKind::Str => false,
+            ast::TypeKind::Array(ae, an) => move_go(&ae.kind, adts, moving, seen, f - 1),
+            ast::TypeKind::ArrayN(q25_ne, q25_nn) => false,
+            ast::TypeKind::Slice(q25_se) => false,
+            ast::TypeKind::Ref(q25_rm, q25_ri) => false,
+            ast::TypeKind::Named(path, args) => { for i in 0..args.len() invariant 0 <= i && i <= args.len(), { if move_go(&args[i].kind, adts, moving, seen, f - 1) { return true; } } let p: String = join(path.as_slice(), "::"); if p.as_str() == "std::process::Child" { return true; } if !add(seen, p.as_str()) { return false; } match adts.find(p.as_str()) { None => false, Some(at) => move_parts(&adts.items[at].kind, adts, seen, f - 1), } },
+            ast::TypeKind::Vec(ve) => true,
+            ast::TypeKind::Box(be) => true,
+            ast::TypeKind::Param(pn) => has(moving, pn.as_str()),
+            ast::TypeKind::Never => false,
+            ast::TypeKind::Error => false,
+        }
+    }
+
+    #[summary("자료 타입의 필드나 페이로드 가운데 이동하는 것이 있는가 (타입 자신의 매개변수는 인자에 묶였다)")]
+    #[effects(alloc)]
+    fn move_parts(k: &AdtKind, adts: &table::Table<Adt>, seen: &mut Vec<String>, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return false;
+        }
+        let none: Vec<String> = Vec::new();
+        match k {
+            AdtKind::Struct(fs) => { for i in 0..fs.len() invariant 0 <= i && i <= fs.len(), { if move_go(&fs[i].ty, adts, none.as_slice(), seen, f - 1) { return true; } } false },
+            AdtKind::Enum(vs) => { for i in 0..vs.len() invariant 0 <= i && i <= vs.len(), { for j in 0..vs[i].tys.len() invariant 0 <= j && j <= vs[i].tys.len(), { if move_go(&vs[i].tys[j], adts, none.as_slice(), seen, f - 1) { return true; } } } false },
+        }
+    }
+
+    #[summary("Copy 경계가 없는 매개변수의 이름")]
+    #[effects(alloc)]
+    fn moving_of(ps: &[TParam]) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for i in 0..ps.len()
+            invariant 0 <= i && i <= ps.len(),
+        {
+            if !has(ps[i].bounds.as_slice(), "Copy") {
+                out.push(ps[i].name.clone());
+            }
+        }
+        out
+    }
+
+    #[summary("Named의 타입 인자들의 사본 (아니면 빈 것)")]
+    #[effects(alloc)]
+    fn named_args(t: &ast::TypeKind) -> Vec<ast::TypeKind> {
+        let mut out: Vec<ast::TypeKind> = Vec::new();
+        match t {
+            ast::TypeKind::Int(q10_it) => {},
+            ast::TypeKind::F64 => {},
+            ast::TypeKind::Bool => {},
+            ast::TypeKind::Unit => {},
+            ast::TypeKind::Char => {},
+            ast::TypeKind::String => {},
+            ast::TypeKind::Str => {},
+            ast::TypeKind::Array(q10_ae, q10_an) => {},
+            ast::TypeKind::ArrayN(q10_ne, q10_nn) => {},
+            ast::TypeKind::Slice(q10_se) => {},
+            ast::TypeKind::Ref(q10_rm, q10_ri) => {},
+            ast::TypeKind::Named(path, args) => { for i in 0..args.len() invariant 0 <= i && i <= args.len(), { out.push(args[i].kind.clone()); } },
+            ast::TypeKind::Vec(q10_ve) => {},
+            ast::TypeKind::Box(q10_be) => {},
+            ast::TypeKind::Param(q10_pn) => {},
+            ast::TypeKind::Never => {},
+            ast::TypeKind::Error => {},
+        }
+        out
+    }
+
+    #[summary("Named면 그 경로를 이은 글")]
+    #[effects(alloc)]
+    fn named_path(t: &ast::TypeKind) -> Option<String> {
+        match t {
+            ast::TypeKind::Int(q9_it) => None,
+            ast::TypeKind::F64 => None,
+            ast::TypeKind::Bool => None,
+            ast::TypeKind::Unit => None,
+            ast::TypeKind::Char => None,
+            ast::TypeKind::String => None,
+            ast::TypeKind::Str => None,
+            ast::TypeKind::Array(q9_ae, q9_an) => None,
+            ast::TypeKind::ArrayN(q9_ne, q9_nn) => None,
+            ast::TypeKind::Slice(q9_se) => None,
+            ast::TypeKind::Ref(q9_rm, q9_ri) => None,
+            ast::TypeKind::Named(path, args) => Some(join(path.as_slice(), "::")),
+            ast::TypeKind::Vec(q9_ve) => None,
+            ast::TypeKind::Box(q9_be) => None,
+            ast::TypeKind::Param(q9_pn) => None,
+            ast::TypeKind::Never => None,
+            ast::TypeKind::Error => None,
+        }
+    }
+
+    #[effects(alloc)]
+    fn ov_elem(x: &ast::TypeKind, n: u64, w: usize, b: &ast::TypeKind, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return false;
+        }
+        match b {
+            ast::TypeKind::Int(q20_it) => false,
+            ast::TypeKind::F64 => false,
+            ast::TypeKind::Bool => false,
+            ast::TypeKind::Unit => false,
+            ast::TypeKind::Char => false,
+            ast::TypeKind::String => false,
+            ast::TypeKind::Str => false,
+            ast::TypeKind::Array(ae, an) => w == 0 && n == *an && overlaps(x, &ae.kind, f - 1),
+            ast::TypeKind::ArrayN(q20_ne, q20_nn) => false,
+            ast::TypeKind::Slice(se) => w == 1 && overlaps(x, &se.kind, f - 1),
+            ast::TypeKind::Ref(q20_rm, q20_ri) => false,
+            ast::TypeKind::Named(q20_path, q20_args) => false,
+            ast::TypeKind::Vec(ve) => w == 2 && overlaps(x, &ve.kind, f - 1),
+            ast::TypeKind::Box(be) => w == 3 && overlaps(x, &be.kind, f - 1),
+            ast::TypeKind::Param(q20_pn) => false,
+            ast::TypeKind::Never => false,
+            ast::TypeKind::Error => false,
+        }
+    }
+
+    #[effects(alloc)]
+    fn ov_named(p: &[String], x: &[ast::Type], b: &ast::TypeKind, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return false;
+        }
+        match b {
+            ast::TypeKind::Int(q22_it) => false,
+            ast::TypeKind::F64 => false,
+            ast::TypeKind::Bool => false,
+            ast::TypeKind::Unit => false,
+            ast::TypeKind::Char => false,
+            ast::TypeKind::String => false,
+            ast::TypeKind::Str => false,
+            ast::TypeKind::Array(q22_ae, q22_an) => false,
+            ast::TypeKind::ArrayN(q22_ne, q22_nn) => false,
+            ast::TypeKind::Slice(q22_se) => false,
+            ast::TypeKind::Ref(q22_rm, q22_ri) => false,
+            ast::TypeKind::Named(path, args) => { if join(p, "::").as_str() != join(path.as_slice(), "::").as_str() || x.len() != args.len() { return false; } for i in 0..x.len() invariant 0 <= i && i <= x.len() && x.len() == args.len(), { if !overlaps(&x[i].kind, &args[i].kind, f - 1) { return false; } } true },
+            ast::TypeKind::Vec(q22_ve) => false,
+            ast::TypeKind::Box(q22_be) => false,
+            ast::TypeKind::Param(q22_pn) => false,
+            ast::TypeKind::Never => false,
+            ast::TypeKind::Error => false,
+        }
+    }
+
+    #[effects(alloc)]
+    fn ov_ref(x: &ast::TypeKind, m: bool, b: &ast::TypeKind, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return false;
+        }
+        match b {
+            ast::TypeKind::Int(q21_it) => false,
+            ast::TypeKind::F64 => false,
+            ast::TypeKind::Bool => false,
+            ast::TypeKind::Unit => false,
+            ast::TypeKind::Char => false,
+            ast::TypeKind::String => false,
+            ast::TypeKind::Str => false,
+            ast::TypeKind::Array(q21_ae, q21_an) => false,
+            ast::TypeKind::ArrayN(q21_ne, q21_nn) => false,
+            ast::TypeKind::Slice(q21_se) => false,
+            ast::TypeKind::Ref(rm, ri) => m == *rm && overlaps(x, &ri.kind, f - 1),
+            ast::TypeKind::Named(q21_path, q21_args) => false,
+            ast::TypeKind::Vec(q21_ve) => false,
+            ast::TypeKind::Box(q21_be) => false,
+            ast::TypeKind::Param(q21_pn) => false,
+            ast::TypeKind::Never => false,
+            ast::TypeKind::Error => false,
+        }
+    }
+
+    #[summary("두 타입이 같은 타입일 수 있는가 (타입 매개변수는 무엇과도 맞는다)")]
+    #[effects(alloc)]
+    fn overlaps(a: &ast::TypeKind, b: &ast::TypeKind, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return false;
+        }
+        if is_param(a) || is_param(b) {
+            return true;
+        }
+        match a {
+            ast::TypeKind::Int(q18_it) => same(a, b),
+            ast::TypeKind::F64 => same(a, b),
+            ast::TypeKind::Bool => same(a, b),
+            ast::TypeKind::Unit => same(a, b),
+            ast::TypeKind::Char => same(a, b),
+            ast::TypeKind::String => same(a, b),
+            ast::TypeKind::Str => same(a, b),
+            ast::TypeKind::Array(ae, an) => ov_elem(&ae.kind, *an, 0, b, f - 1),
+            ast::TypeKind::ArrayN(q18_ne, q18_nn) => same(a, b),
+            ast::TypeKind::Slice(se) => ov_elem(&se.kind, 0, 1, b, f - 1),
+            ast::TypeKind::Ref(rm, ri) => ov_ref(&ri.kind, *rm, b, f - 1),
+            ast::TypeKind::Named(path, args) => ov_named(path.as_slice(), args.as_slice(), b, f - 1),
+            ast::TypeKind::Vec(ve) => ov_elem(&ve.kind, 0, 2, b, f - 1),
+            ast::TypeKind::Box(be) => ov_elem(&be.kind, 0, 3, b, f - 1),
+            ast::TypeKind::Param(q18_pn) => same(a, b),
+            ast::TypeKind::Never => same(a, b),
+            ast::TypeKind::Error => same(a, b),
+        }
+    }
+
+    #[summary("Param(n)이면 n")]
+    #[effects(alloc)]
+    fn param_name(t: &ast::TypeKind) -> Option<String> {
+        match t {
+            ast::TypeKind::Int(q8_it) => None,
+            ast::TypeKind::F64 => None,
+            ast::TypeKind::Bool => None,
+            ast::TypeKind::Unit => None,
+            ast::TypeKind::Char => None,
+            ast::TypeKind::String => None,
+            ast::TypeKind::Str => None,
+            ast::TypeKind::Array(q8_ae, q8_an) => None,
+            ast::TypeKind::ArrayN(q8_ne, q8_nn) => None,
+            ast::TypeKind::Slice(q8_se) => None,
+            ast::TypeKind::Ref(q8_rm, q8_ri) => None,
+            ast::TypeKind::Named(q8_path, q8_args) => None,
+            ast::TypeKind::Vec(q8_ve) => None,
+            ast::TypeKind::Box(q8_be) => None,
+            ast::TypeKind::Param(pn) => Some(pn.clone()),
+            ast::TypeKind::Never => None,
+            ast::TypeKind::Error => None,
+        }
+    }
+
+    #[summary("t가 부르는 타입 매개변수를, 처음 부르는 차례로 한 번씩")]
+    #[effects(alloc)]
+    fn params_in(t: &ast::TypeKind, out: &mut Vec<String>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match t {
+            ast::TypeKind::Int(q24_it) => {},
+            ast::TypeKind::F64 => {},
+            ast::TypeKind::Bool => {},
+            ast::TypeKind::Unit => {},
+            ast::TypeKind::Char => {},
+            ast::TypeKind::String => {},
+            ast::TypeKind::Str => {},
+            ast::TypeKind::Array(ae, an) => params_in(&ae.kind, out, f - 1),
+            ast::TypeKind::ArrayN(q24_ne, q24_nn) => {},
+            ast::TypeKind::Slice(se) => params_in(&se.kind, out, f - 1),
+            ast::TypeKind::Ref(rm, ri) => params_in(&ri.kind, out, f - 1),
+            ast::TypeKind::Named(path, args) => { for i in 0..args.len() invariant 0 <= i && i <= args.len(), { params_in(&args[i].kind, out, f - 1); } },
+            ast::TypeKind::Vec(ve) => params_in(&ve.kind, out, f - 1),
+            ast::TypeKind::Box(be) => params_in(&be.kind, out, f - 1),
+            ast::TypeKind::Param(pn) => { let fresh: bool = add(out, pn.as_str()); },
+            ast::TypeKind::Never => {},
+            ast::TypeKind::Error => {},
+        }
+    }
+
+    #[effects(pure)]
+    fn pure() -> Effects {
+        Effects { alloc: false, io: false, nondet: false, panic: false }
+    }
+
+    #[effects(alloc)]
+    fn push_in(out: &mut String, t: &ast::TypeKind, mp: &str, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match t {
+            ast::TypeKind::Int(q26_it) => fmt::push_kind(out, t, 100000),
+            ast::TypeKind::F64 => fmt::push_kind(out, t, 100000),
+            ast::TypeKind::Bool => fmt::push_kind(out, t, 100000),
+            ast::TypeKind::Unit => fmt::push_kind(out, t, 100000),
+            ast::TypeKind::Char => fmt::push_kind(out, t, 100000),
+            ast::TypeKind::String => fmt::push_kind(out, t, 100000),
+            ast::TypeKind::Str => fmt::push_kind(out, t, 100000),
+            ast::TypeKind::Array(ae, an) => { out.push_str("["); push_in(out, &ae.kind, mp, f - 1); out.push_str("; "); std::num::push_u64(out, *an); out.push_str("]"); },
+            ast::TypeKind::ArrayN(q26_ne, q26_nn) => fmt::push_kind(out, t, 100000),
+            ast::TypeKind::Slice(se) => { out.push_str("["); push_in(out, &se.kind, mp, f - 1); out.push_str("]"); },
+            ast::TypeKind::Ref(rm, ri) => { if *rm { out.push_str("&mut "); } else { out.push_str("&"); } push_in(out, &ri.kind, mp, f - 1); },
+            ast::TypeKind::Named(path, args) => { out.push_str(local(path.as_slice(), mp).as_str()); if args.len() > 0 { out.push_str("<"); for i in 0..args.len() invariant 0 <= i && i <= args.len(), { if i > 0 { out.push_str(", "); } push_in(out, &args[i].kind, mp, f - 1); } out.push_str(">"); } },
+            ast::TypeKind::Vec(ve) => { out.push_str("Vec<"); push_in(out, &ve.kind, mp, f - 1); out.push_str(">"); },
+            ast::TypeKind::Box(be) => { out.push_str("Box<"); push_in(out, &be.kind, mp, f - 1); out.push_str(">"); },
+            ast::TypeKind::Param(q26_pn) => fmt::push_kind(out, t, 100000),
+            ast::TypeKind::Never => fmt::push_kind(out, t, 100000),
+            ast::TypeKind::Error => fmt::push_kind(out, t, 100000),
+        }
+    }
+
+    #[effects(alloc)]
+    fn push_key(out: &mut String, t: &ast::TypeKind, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match t {
+            ast::TypeKind::Int(q1_it) => fmt::push_kind(out, t, 1),
+            ast::TypeKind::F64 => fmt::push_kind(out, t, 1),
+            ast::TypeKind::Bool => fmt::push_kind(out, t, 1),
+            ast::TypeKind::Unit => fmt::push_kind(out, t, 1),
+            ast::TypeKind::Char => fmt::push_kind(out, t, 1),
+            ast::TypeKind::String => fmt::push_kind(out, t, 1),
+            ast::TypeKind::Str => fmt::push_kind(out, t, 1),
+            ast::TypeKind::Array(ae, an) => { out.push_str("["); push_key(out, &ae.kind, f - 1); out.push_str(";"); std::num::push_u64(out, *an); out.push_str("]"); },
+            ast::TypeKind::ArrayN(ne, nn) => { out.push_str("["); push_key(out, &ne.kind, f - 1); out.push_str(";;"); out.push_str(join(nn.as_slice(), "::").as_str()); out.push_str("]"); },
+            ast::TypeKind::Slice(se) => { out.push_str("["); push_key(out, &se.kind, f - 1); out.push_str("]"); },
+            ast::TypeKind::Ref(rm, ri) => { if *rm { out.push_str("&mut "); } else { out.push_str("&"); } push_key(out, &ri.kind, f - 1); },
+            ast::TypeKind::Named(path, args) => { out.push_str(join(path.as_slice(), "::").as_str()); out.push_str("<"); for i in 0..args.len() invariant 0 <= i && i <= args.len(), { if i > 0 { out.push_str(","); } push_key(out, &args[i].kind, f - 1); } out.push_str(">"); },
+            ast::TypeKind::Vec(ve) => { out.push_str("vec<"); push_key(out, &ve.kind, f - 1); out.push_str(">"); },
+            ast::TypeKind::Box(be) => { out.push_str("box<"); push_key(out, &be.kind, f - 1); out.push_str(">"); },
+            ast::TypeKind::Param(pn) => { out.push_str("'"); out.push_str(pn.as_str()); },
+            ast::TypeKind::Never => fmt::push_kind(out, t, 1),
+            ast::TypeKind::Error => fmt::push_kind(out, t, 1),
+        }
+    }
+
+    #[effects(pure)]
+    fn reserved_name(n: &str) -> bool {
+        builtin_name(n) || int_name(n) || n == "f64" || n == "bool" || n == "char" || n == "String" || n == "str" || n == "Self"
+    }
+
+    #[effects(alloc)]
+    fn same(a: &ast::TypeKind, b: &ast::TypeKind) -> bool {
+        key(a).as_str() == key(b).as_str()
+    }
+
+    #[summary("ts와 us가 자리마다 같은 타입인가")]
+    #[effects(alloc)]
+    fn same_all(ts: &[ast::TypeKind], us: &[ast::TypeKind]) -> bool {
+        if ts.len() != us.len() {
+            return false;
+        }
+        for i in 0..ts.len()
+            invariant 0 <= i && i <= ts.len() && ts.len() == us.len(),
+        {
+            if !same(&ts[i], &us[i]) {
+                return false;
+            }
+        }
+        true
+    }
+
+    #[summary("m에서 n의 자리")]
+    #[effects(pure)]
+    fn sub_at(m: &Subst, n: &str) -> (r: Option<usize>)
+        ensures match r { None => true, Some(i) => i < m.names.len() && i < m.tys.len(), },
+    {
+        for i in 0..m.names.len()
+            invariant 0 <= i && i <= m.names.len(),
+        {
+            if m.names[i].as_str() == n && i < m.tys.len() {
+                return Some(i);
+            }
+        }
+        None
+    }
+
+    #[effects(alloc)]
+    fn sub_get(m: &Subst, n: &str) -> Option<ast::TypeKind> {
+        match sub_at(m, n) {
+            None => None,
+            Some(i) => Some(m.tys[i].clone()),
+        }
+    }
+
+    #[effects(alloc)]
+    fn sub_type(x: &ast::Type, m: &Subst, f: usize) -> ast::Type
+        decreases f * 2 + 1,
+    {
+        ast::Type { kind: subst_in(&x.kind, m, f), span: x.span }
+    }
+
+    #[summary("t의 타입 매개변수를 m대로 바꾼다 (한꺼번에: 바꾼 것을 다시 바꾸지 않는다)")]
+    #[effects(alloc)]
+    fn subst(t: &ast::TypeKind, m: &Subst) -> ast::TypeKind {
+        if m.names.len() == 0 {
+            return t.clone();
+        }
+        subst_in(t, m, 100000)
+    }
+
+    #[effects(alloc)]
+    fn subst_in(t: &ast::TypeKind, m: &Subst, f: usize) -> ast::TypeKind
+        decreases f * 2,
+    {
+        if f == 0 {
+            return t.clone();
+        }
+        match t {
+            ast::TypeKind::Int(q12_it) => t.clone(),
+            ast::TypeKind::F64 => t.clone(),
+            ast::TypeKind::Bool => t.clone(),
+            ast::TypeKind::Unit => t.clone(),
+            ast::TypeKind::Char => t.clone(),
+            ast::TypeKind::String => t.clone(),
+            ast::TypeKind::Str => t.clone(),
+            ast::TypeKind::Array(ae, an) => ast::TypeKind::Array(Box::new(sub_type(&**ae, m, f - 1)), *an),
+            ast::TypeKind::ArrayN(q12_ne, q12_nn) => t.clone(),
+            ast::TypeKind::Slice(se) => ast::TypeKind::Slice(Box::new(sub_type(&**se, m, f - 1))),
+            ast::TypeKind::Ref(rm, ri) => ast::TypeKind::Ref(*rm, Box::new(sub_type(&**ri, m, f - 1))),
+            ast::TypeKind::Named(path, args) => { let mut out: Vec<ast::Type> = Vec::new(); for i in 0..args.len() invariant 0 <= i && i <= args.len(), { out.push(sub_type(&args[i], m, f - 1)); } ast::TypeKind::Named(path.clone(), out) },
+            ast::TypeKind::Vec(ve) => ast::TypeKind::Vec(Box::new(sub_type(&**ve, m, f - 1))),
+            ast::TypeKind::Box(be) => ast::TypeKind::Box(Box::new(sub_type(&**be, m, f - 1))),
+            ast::TypeKind::Param(pn) => { match sub_get(m, pn.as_str()) { None => t.clone(), Some(r) => r, } },
+            ast::TypeKind::Never => t.clone(),
+            ast::TypeKind::Error => t.clone(),
+        }
+    }
+
+    #[summary("타입의 글 (stage0 check::ty_str)")]
+    #[effects(alloc)]
+    fn text(t: &ast::TypeKind) -> String {
+        let mut s: String = String::new();
+        fmt::push_kind(&mut s, t, 100000);
+        s
+    }
+
+    #[summary("text와 같되 단위 mp의 타입은 제 이름으로 (stage0 ty_str_in)")]
+    #[effects(alloc)]
+    fn text_in(t: &ast::TypeKind, mp: &str) -> String {
+        let mut s: String = String::new();
+        push_in(&mut s, t, mp, 100000);
+        s
+    }
+
+    #[effects(alloc)]
+    fn ty(k: ast::TypeKind) -> ast::Type {
+        ast::Type { kind: k, span: source::Span { file: 0, lo: 0, hi: 0 } }
+    }
+
+    #[summary("pat에 나오는 ps의 매개변수를 t에 맞춰 묶는다 (먼저 묶인 것이 이긴다, 어긋난 자리는 아무것도 묶지 않는다)")]
+    #[effects(alloc)]
+    fn unify(pat: &ast::TypeKind, t: &ast::TypeKind, ps: &[TParam], out: &mut Subst, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match pat {
+            ast::TypeKind::Int(q13_it) => {},
+            ast::TypeKind::F64 => {},
+            ast::TypeKind::Bool => {},
+            ast::TypeKind::Unit => {},
+            ast::TypeKind::Char => {},
+            ast::TypeKind::String => {},
+            ast::TypeKind::Str => {},
+            ast::TypeKind::Array(ae, an) => unify_elem(&ae.kind, t, 0, ps, out, f - 1),
+            ast::TypeKind::ArrayN(q13_ne, q13_nn) => {},
+            ast::TypeKind::Slice(se) => unify_elem(&se.kind, t, 1, ps, out, f - 1),
+            ast::TypeKind::Ref(rm, ri) => unify_ref(&ri.kind, *rm, t, ps, out, f - 1),
+            ast::TypeKind::Named(path, args) => unify_named(path.as_slice(), args.as_slice(), t, ps, out, f - 1),
+            ast::TypeKind::Vec(ve) => unify_elem(&ve.kind, t, 2, ps, out, f - 1),
+            ast::TypeKind::Box(be) => unify_elem(&be.kind, t, 3, ps, out, f - 1),
+            ast::TypeKind::Param(pn) => { if is_tparam(ps, pn.as_str()) { if !is_error(t) && !has(out.names.as_slice(), pn.as_str()) { out.names.push(pn.clone()); out.tys.push(t.clone()); } } },
+            ast::TypeKind::Never => {},
+            ast::TypeKind::Error => {},
+        }
+    }
+
+    #[summary("unify의 원소 갈래. w는 pat의 꼴: 0 배열, 1 슬라이스(배열과 Vec도 받는다), 2 Vec, 3 Box")]
+    #[effects(alloc)]
+    fn unify_elem(a: &ast::TypeKind, t: &ast::TypeKind, w: usize, ps: &[TParam], out: &mut Subst, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match t {
+            ast::TypeKind::Int(q14_it) => {},
+            ast::TypeKind::F64 => {},
+            ast::TypeKind::Bool => {},
+            ast::TypeKind::Unit => {},
+            ast::TypeKind::Char => {},
+            ast::TypeKind::String => {},
+            ast::TypeKind::Str => {},
+            ast::TypeKind::Array(ae, an) => { if w == 0 || w == 1 { unify(a, &ae.kind, ps, out, f - 1); } },
+            ast::TypeKind::ArrayN(q14_ne, q14_nn) => {},
+            ast::TypeKind::Slice(se) => { if w == 1 { unify(a, &se.kind, ps, out, f - 1); } },
+            ast::TypeKind::Ref(q14_rm, q14_ri) => {},
+            ast::TypeKind::Named(q14_path, q14_args) => {},
+            ast::TypeKind::Vec(ve) => { if w == 2 || w == 1 { unify(a, &ve.kind, ps, out, f - 1); } },
+            ast::TypeKind::Box(be) => { if w == 3 { unify(a, &be.kind, ps, out, f - 1); } },
+            ast::TypeKind::Param(q14_pn) => {},
+            ast::TypeKind::Never => {},
+            ast::TypeKind::Error => {},
+        }
+    }
+
+    #[effects(alloc)]
+    fn unify_named(p: &[String], a: &[ast::Type], t: &ast::TypeKind, ps: &[TParam], out: &mut Subst, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match t {
+            ast::TypeKind::Int(q16_it) => {},
+            ast::TypeKind::F64 => {},
+            ast::TypeKind::Bool => {},
+            ast::TypeKind::Unit => {},
+            ast::TypeKind::Char => {},
+            ast::TypeKind::String => {},
+            ast::TypeKind::Str => {},
+            ast::TypeKind::Array(q16_ae, q16_an) => {},
+            ast::TypeKind::ArrayN(q16_ne, q16_nn) => {},
+            ast::TypeKind::Slice(q16_se) => {},
+            ast::TypeKind::Ref(q16_rm, q16_ri) => {},
+            ast::TypeKind::Named(path, args) => { if join(p, "::").as_str() == join(path.as_slice(), "::").as_str() && a.len() == args.len() { for i in 0..a.len() invariant 0 <= i && i <= a.len() && a.len() == args.len(), { unify(&a[i].kind, &args[i].kind, ps, out, f - 1); } } },
+            ast::TypeKind::Vec(q16_ve) => {},
+            ast::TypeKind::Box(q16_be) => {},
+            ast::TypeKind::Param(q16_pn) => {},
+            ast::TypeKind::Never => {},
+            ast::TypeKind::Error => {},
+        }
+    }
+
+    #[effects(alloc)]
+    fn unify_ref(a: &ast::TypeKind, m: bool, t: &ast::TypeKind, ps: &[TParam], out: &mut Subst, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match t {
+            ast::TypeKind::Int(q15_it) => {},
+            ast::TypeKind::F64 => {},
+            ast::TypeKind::Bool => {},
+            ast::TypeKind::Unit => {},
+            ast::TypeKind::Char => {},
+            ast::TypeKind::String => {},
+            ast::TypeKind::Str => {},
+            ast::TypeKind::Array(q15_ae, q15_an) => {},
+            ast::TypeKind::ArrayN(q15_ne, q15_nn) => {},
+            ast::TypeKind::Slice(q15_se) => {},
+            ast::TypeKind::Ref(rm, ri) => unify(a, &ri.kind, ps, out, f - 1),
+            ast::TypeKind::Named(q15_path, q15_args) => {},
+            ast::TypeKind::Vec(q15_ve) => {},
+            ast::TypeKind::Box(q15_be) => {},
+            ast::TypeKind::Param(q15_pn) => {},
+            ast::TypeKind::Never => {},
+            ast::TypeKind::Error => {},
+        }
+    }
+
+    #[summary("참조면 가리키는 타입의 사본, 아니면 그 타입의 사본")]
+    #[effects(alloc)]
+    fn value(t: &ast::TypeKind) -> ast::TypeKind {
+        match t {
+            ast::TypeKind::Int(q5_it) => t.clone(),
+            ast::TypeKind::F64 => t.clone(),
+            ast::TypeKind::Bool => t.clone(),
+            ast::TypeKind::Unit => t.clone(),
+            ast::TypeKind::Char => t.clone(),
+            ast::TypeKind::String => t.clone(),
+            ast::TypeKind::Str => t.clone(),
+            ast::TypeKind::Array(q5_ae, q5_an) => t.clone(),
+            ast::TypeKind::ArrayN(q5_ne, q5_nn) => t.clone(),
+            ast::TypeKind::Slice(q5_se) => t.clone(),
+            ast::TypeKind::Ref(rm, ri) => ri.kind.clone(),
+            ast::TypeKind::Named(q5_path, q5_args) => t.clone(),
+            ast::TypeKind::Vec(q5_ve) => t.clone(),
+            ast::TypeKind::Box(q5_be) => t.clone(),
+            ast::TypeKind::Param(q5_pn) => t.clone(),
+            ast::TypeKind::Never => t.clone(),
+            ast::TypeKind::Error => t.clone(),
+        }
+    }
+}

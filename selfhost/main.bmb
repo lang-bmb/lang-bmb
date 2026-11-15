@@ -29,7 +29,7 @@ mod main {
             }
             return;
         }
-        if args.len() > 3 && args[1] == "dump" && (args[2] == "std" || args[2] == "lower") {
+        if args.len() > 3 && args[1] == "dump" && (args[2] == "std" || args[2] == "lower" || args[2] == "decls") {
             let inputs: Vec<lib::Input> = read_files(args.as_slice(), 3);
             let sr: lib::Outcome = lib::dump_stage(args[2].as_str(), inputs.as_slice());
             print_str(sr.text.as_str());

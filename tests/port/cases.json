@@ -386,6 +386,74 @@
         ],
         "chunk": 1
       }
+    },
+    {
+      "name": "decls",
+      "component": "C4",
+      "a": [
+        "{bmb}",
+        "dump",
+        "decls",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "dump",
+        "decls",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "*.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "decls-together",
+      "component": "C4",
+      "a": [
+        "{bmb}",
+        "dump",
+        "decls",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "dump",
+        "decls",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/run/*.bmb",
+          "lib/std/*.bmb",
+          "selfhost/*.bmb"
+        ],
+        "chunk": 40
+      }
+    },
+    {
+      "name": "decls-edges",
+      "component": "C4",
+      "a": [
+        "{bmb}",
+        "dump",
+        "decls",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "dump",
+        "decls",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/decls/*.txt"
+        ],
+        "chunk": 1
+      }
     }
   ]
 }

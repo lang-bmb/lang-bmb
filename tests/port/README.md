@@ -14,6 +14,7 @@
 | `lexer/` | 렉서의 경계 입력(확장자는 `.txt`: BMB 프로그램이 아닌 글이 다른 코퍼스에 섞이지 않게) |
 | `parser/` | 파서의 경계 입력(같은 이유로 `.txt`) |
 | `lower/` | 함수 값과 상수를 낮추는 단계의 경계 입력(같은 이유로 `.txt`) |
+| `decls/` | 검사기 1패스(선언 수집)의 경계 입력(같은 이유로 `.txt`) |
 
 포트(`selfhost/`)의 사례는 `a`가 `{bmb}`(stage0), `b`가 `{build:stage1}`(`selfhost/*.bmb`를 `bmb build`로)이다. 지금: `codes`, `codes-md`, `tokens`(추적되는 `.bmb` 전부를 파일 하나씩), `tokens-together`(여러 파일을 한 번에), `tokens-edges`(`lexer/`의 파일 하나씩), `parse`(추적되는 `.bmb` 전부를 파일 하나씩 `dump parse`로), `parse-together`(여러 파일을 한 번에: 단위의 순서와 같은 이름의 단위), `parse-edges`(`parser/`), `std`(추적되는 `.bmb` 전부를 파일 하나씩 `dump std`로: 이름을 든 라이브러리 단위를 더한 프로그램의 정규형), `std-together`(여러 파일을 한 번에), `lower`(추적되는 `.bmb` 전부를 파일 하나씩 `dump lower`로: 함수 값과 상수를 낮춘 프로그램의 정규형, 만든 이름, 넘긴 자리, 상수의 값), `lower-together`, `lower-edges`(`lower/`).
 
@@ -56,3 +57,12 @@
 | `consts-errors.txt` | 상수의 진단: 넘침과 0으로 나눔(E0260), 상수 식이 아닌 것(E0259), 서로를 가리키는 상수(E0318), 같은 이름(E0302), 값이 아닌 타입(E0437), 길이의 진단(E0301·E0406·E0401), 타입이 다른 피연산자(E0401) |
 | `closures.txt` | 함수 값을 낮추는 꼴: `Fn`·`FnMut`·`FnOnce` 경계, 값과 참조로 받는 매개변수, 넘긴 함수(같은 함수를 두 번, 경로로), 값을 잡는 `move` 클로저와 그 계약, 클로저 안의 클로저, `impl`과 trait `impl`의 함수 안, 안 단위 |
 | `closures-errors.txt` | 함수 값의 진단: `move` 없이 잡음·타입을 쓰지 않은 값을 잡음·바깥 클로저가 잡은 값을 읽음(E0262), 받는 쪽에 없는 효과(E0608), 경계의 인자가 아닌 클로저(E0264) |
+
+`decls`·`decls-together`·`decls-edges`는 `dump decls`(검사기의 1패스가 모은 선언의 표와 그때까지의 진단)를 같은 입력 묶음으로 견준다. `decls/`의 파일:
+
+| 파일 | 내용 |
+| --- | --- |
+| `types.txt` | 필드와 `impl` 머리에 쓴 타입의 진단: `Self`·모르는 타입(E0305), 값이 아닌 타입 인자(E0403), `Vec`·`Box`·`String`·`Option`·`Result`의 인자 수와 원소(E0420·E0402), 경계(E0428), 소유자 하나(E0238), 포괄 `impl`(E0235), 머리가 부르지 않는 매개변수와 겹치는 `impl`(E0420·E0311), trait이 아닌 이름 |
+| `attrs.txt` | 속성과 시그니처의 진단: 불변식의 꼴(E0254·E0255), 효과(E0601·E0602·E0604·E0605·E0607·E0256), `#[external_body]`와 근거(E1001·E1002·E1004), 요약(E0704), 수신자의 이름(E0310), trait 메서드의 `decreases`(E0207)와 겹친 이름(E0302) |
+| `dup_units.txt` | 같은 이름의 단위 둘과 함수 값: 낮춘 함수가 제 단위로 돌아간다(`4D-29`) |
+| `dup_fns.txt` | 같은 이름의 함수 둘, 하나만 `Fn` 경계(`4D-29`: 고치기 전에는 stage0이 멈췄다) |

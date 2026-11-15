@@ -1,0 +1,2869 @@
+#[summary("검사기의 1패스: 선언을 모은다 (stage0 compiler/src/check.rs의 Checker::collect의 포트, 백로그 4D-03d). 타입, trait, impl의 머리, 시그니처, 타입 불변식을 표에 넣고 그 자리에서 나는 진단을 낸다. 단위를 걷는 함수의 f는 남은 깊이다 (ADR-0140)")]
+mod decls {
+    #[summary("검사기의 표. tparams는 지금 보는 정의의 타입 매개변수, elem_params는 Vec의 원소로 쓰이는 타입 매개변수의 자리")]
+    struct Checker { diags: Vec<diag::Diag>, fns: table::Table<types::FnSig>, adts: table::Table<types::Adt>, traits: table::Table<types::TraitInfo>, trait_impls: Vec<types::TraitImplInfo>, rejected_impls: Vec<types::TraitImplInfo>, overlapping_impls: Vec<source::Span>, imports: table::Table<table::Table<String>>, tparams: Vec<types::TParam>, elem_params: Vec<source::Span>, self_head: Option<SelfHead> }
+
+    impl Checker {
+        #[summary("Box<T> (ADR-0047 §1): T는 값 타입")]
+        #[effects(alloc)]
+        fn box_type(self: &mut Checker, span: source::Span, args: &[ast::Type], mp: &str, report: bool, f: usize) -> ast::TypeKind
+            decreases f * 2,
+        {
+            if f == 0 {
+                return ast::TypeKind::Error;
+            }
+            if args.len() != 1 {
+                if report {
+                    self.err("E0420", span, count1("`Box` takes 1 type argument, found ", args.len()).as_str());
+                }
+                return ast::TypeKind::Error;
+            }
+            let e: ast::TypeKind = self.canon(&args[0], mp, report, f - 1);
+            if types::is_error(&e) {
+                return ast::TypeKind::Error;
+            }
+            if not_value(&e) {
+                if report {
+                    self.help("E0402", args[0].span, types::cat3("a `Box` holds a value, found `", types::text(&e).as_str(), "`").as_str(), "box a scalar, a struct or enum, an array or another `Box`");
+                }
+                return ast::TypeKind::Error;
+            }
+            ast::TypeKind::Box(Box::new(ast::Type { kind: e, span: args[0].span }))
+        }
+
+        #[summary("타입의 이름을 모두 온 경로로 푼다 (ADR-0026). report면 진단을 낸다(타입을 검사하는 자리에서 한 번)")]
+        #[effects(alloc)]
+        fn canon(self: &mut Checker, t: &ast::Type, mp: &str, report: bool, f: usize) -> ast::TypeKind
+            decreases f * 2 + 1,
+        {
+            if f == 0 {
+                return ast::TypeKind::Error;
+            }
+            match &t.kind {
+                ast::TypeKind::Int(q4_it) => t.kind.clone(),
+                ast::TypeKind::F64 => t.kind.clone(),
+                ast::TypeKind::Bool => t.kind.clone(),
+                ast::TypeKind::Unit => t.kind.clone(),
+                ast::TypeKind::Char => t.kind.clone(),
+                ast::TypeKind::String => t.kind.clone(),
+                ast::TypeKind::Str => t.kind.clone(),
+                ast::TypeKind::Array(ae, an) => { if !types::array_elem_ok(&ae.kind, 100000) { if report { self.help("E0402", t.span, types::cat3("array elements are scalars, structs, enums, `Box`es or arrays, found `", types::text(&ae.kind).as_str(), "`").as_str(), "an array element is a scalar, a struct or enum, a `Box` or a fixed-size array; for growable elements use `Vec<Vec<T>>`"); } return ast::TypeKind::Error; } let k: ast::TypeKind = self.canon(&**ae, mp, report, f - 1); ast::TypeKind::Array(Box::new(ast::Type { kind: k, span: ae.span }), *an) },
+                ast::TypeKind::ArrayN(q4_ne, q4_nn) => t.kind.clone(),
+                ast::TypeKind::Slice(se) => { let k: ast::TypeKind = self.canon(&**se, mp, report, f - 1); ast::TypeKind::Slice(Box::new(ast::Type { kind: k, span: se.span })) },
+                ast::TypeKind::Ref(rm, ri) => { let k: ast::TypeKind = self.canon(&**ri, mp, report, f - 1); ast::TypeKind::Ref(*rm, Box::new(ast::Type { kind: k, span: ri.span })) },
+                ast::TypeKind::Named(path, args) => self.canon_named(t.span, path.as_slice(), args.as_slice(), mp, report, f - 1),
+                ast::TypeKind::Vec(q4_ve) => t.kind.clone(),
+                ast::TypeKind::Box(q4_be) => t.kind.clone(),
+                ast::TypeKind::Param(q4_pn) => t.kind.clone(),
+                ast::TypeKind::Never => t.kind.clone(),
+                ast::TypeKind::Error => t.kind.clone(),
+            }
+        }
+
+        #[summary("args를 하나씩 푼다")]
+        #[effects(alloc)]
+        fn canon_args(self: &mut Checker, args: &[ast::Type], mp: &str, report: bool, f: usize) -> Vec<ast::Type>
+            decreases f * 2,
+        {
+            let mut out: Vec<ast::Type> = Vec::new();
+            if f == 0 {
+                return out;
+            }
+            for i in 0..args.len()
+                invariant 0 <= i && i <= args.len(),
+            {
+                let k: ast::TypeKind = self.canon(&args[i], mp, report, f - 1);
+                out.push(ast::Type { kind: k, span: args[i].span });
+            }
+            out
+        }
+
+        #[effects(alloc)]
+        fn canon_named(self: &mut Checker, span: source::Span, path: &[String], args: &[ast::Type], mp: &str, report: bool, f: usize) -> ast::TypeKind
+            decreases f * 2,
+        {
+            if f == 0 || path.len() == 0 {
+                return ast::TypeKind::Error;
+            }
+            if path.len() == 1 && types::is_tparam(self.tparams.as_slice(), path[0].as_str()) {
+                if args.len() > 0 && report {
+                    self.fixed("E0420", span, types::cat3("type parameter `", path[0].as_str(), "` takes no type arguments").as_str(), types::cat3("write `", path[0].as_str(), "`").as_str(), path[0].as_str());
+                }
+                return ast::TypeKind::Param(path[0].clone());
+            }
+            let name: String = types::join(path, "::");
+            if name.as_str() == "Self" {
+                let head: Option<ast::TypeKind> = match &self.self_head {
+                    None => None,
+                    Some(sh) => Some(sh.head.clone()),
+                };
+                match head {
+                    None => {},
+                    Some(h) => { if report { let d: diag::Diag = self.unknown_type(path, span, mp); self.diags.push(d); } return h; },
+                }
+            }
+            if path.len() == 1 && name.as_str() == "Vec" {
+                return self.vec_type(span, args, mp, report, f - 1);
+            }
+            if path.len() == 1 && name.as_str() == "Box" {
+                return self.box_type(span, args, mp, report, f - 1);
+            }
+            let last_s: String = path[path.len() - 1].clone();
+            let here: String = types::cat3(mp, "::", name.as_str());
+            if (path.len() == 1 || path[0].as_str() == "std") && (last_s.as_str() == "Rc" || last_s.as_str() == "RefCell" || last_s.as_str() == "Cell" || last_s.as_str() == "Arc") && !self.adts.has(here.as_str()) {
+                if report {
+                    self.help("E0238", span, types::cat3("`", last_s.as_str(), "` is not used: values have one owner").as_str(), "hold the value in an owned tree (`Box`, `Vec`) or refer to it by an index into a `Vec` (ADR-0047 §5)");
+                }
+                return ast::TypeKind::Error;
+            }
+            if path.len() == 1 && name.as_str() == "String" && !self.adts.has(here.as_str()) {
+                if args.len() > 0 {
+                    if report {
+                        self.err("E0420", span, "`String` takes no type arguments");
+                    }
+                    return ast::TypeKind::Error;
+                }
+                return ast::TypeKind::String;
+            }
+            if path.len() == 1 && (name.as_str() == "Option" || name.as_str() == "Result") {
+                let want: usize = if name.as_str() == "Option" {
+                    1
+                } else {
+                    2
+                };
+                if args.len() != want {
+                    if report {
+                        self.err("E0420", span, counts(types::cat3("`", name.as_str(), "` takes ").as_str(), want, " type argument(s), found ", args.len(), "").as_str());
+                    }
+                    return ast::TypeKind::Error;
+                }
+                let out: Vec<ast::Type> = self.canon_args(args, mp, report, f - 1);
+                for i in 0..out.len()
+                    invariant 0 <= i && i <= out.len(),
+                {
+                    if is_ref_like(&out[i].kind) {
+                        if report {
+                            self.help("E0403", out[i].span, types::cat5("type argument `", types::text(&out[i].kind).as_str(), "` of `", name.as_str(), "` is not a value type").as_str(), "type arguments are value types: references are second-class (ADR-0015)");
+                        }
+                        return ast::TypeKind::Error;
+                    }
+                }
+                let mut p: Vec<String> = Vec::new();
+                p.push(path[0].clone());
+                return ast::TypeKind::Named(p, out);
+            }
+            let full: String = if path.len() == 1 {
+                here
+            } else {
+                let dropped: String = here;
+                name.clone()
+            };
+            match self.adts.find(full.as_str()) {
+                None => { if report { let d: diag::Diag = self.unknown_type(path, span, mp); self.diags.push(d); } ast::TypeKind::Error },
+                Some(at) => { let ps: Vec<types::TParam> = self.adts.items[at].generics.clone(); if args.len() != ps.len() { if report { let wanted: String = if ps.len() == 0 { types::cat5("`", name.as_str(), "` has no type parameters: write `", name.as_str(), "`") } else { types::cat5("write one type for each parameter: `", name.as_str(), "<", param_names(ps.as_slice(), ", ").as_str(), ">`") }; self.help("E0420", span, counts(types::cat3("`", name.as_str(), "` takes ").as_str(), ps.len(), " type argument(s), found ", args.len(), "").as_str(), wanted.as_str()); } return ast::TypeKind::Error; } let out: Vec<ast::Type> = self.canon_args(args, mp, report, f - 1); let mut ok: bool = true; for i in 0..out.len() invariant 0 <= i && i <= out.len(), { if i < ps.len() { if !self.targ_ok(&out[i].kind, &ps[i], name.as_str(), out[i].span, report) { ok = false; } } } if !ok { return ast::TypeKind::Error; } ast::TypeKind::Named(refs::split_path(full.as_str()), out) },
+            }
+        }
+
+        #[effects(alloc)]
+        fn check_invariant(self: &mut Checker, t: &ast::TypeDef, a: &ast::Attr, mp: &str) -> () {
+            let path: String = types::cat3(mp, "::", t.name.name.as_str());
+            let adt: types::Adt = match self.adts.find(path.as_str()) {
+                None => { return; },
+                Some(i) => self.adts.items[i].clone(),
+            };
+            let gens: Vec<String> = tparam_names(adt.generics.as_slice());
+            let applied: String = if gens.len() == 0 {
+                t.name.name.clone()
+            } else {
+                types::cat4(t.name.name.as_str(), "<", types::join(gens.as_slice(), ", ").as_str(), ">")
+            };
+            let mut g: String = String::new();
+            if adt.generics.len() > 0 {
+                g.push_str("<");
+                for k in 0..adt.generics.len()
+                    invariant 0 <= k && k <= adt.generics.len(),
+                {
+                    if k > 0 {
+                        g.push_str(", ");
+                    }
+                    g.push_str(adt.generics[k].name.as_str());
+                    if adt.generics[k].bounds.len() > 0 {
+                        g.push_str(": ");
+                        g.push_str(types::join(adt.generics[k].bounds.as_slice(), " + ").as_str());
+                    }
+                }
+                g.push_str(">");
+            }
+            let tail: String = types::cat5(g.as_str(), "(x: &", applied.as_str(), ") -> bool { .. }`", "");
+            let named: Option<ast::Ident> = if a.args.len() == 1 {
+                ident_arg(&a.args[0])
+            } else {
+                None
+            };
+            let id: ast::Ident = match named {
+                None => { self.help("E0254", a.span, "`#[invariant(..)]` takes one predicate name", types::cat2("write `#[invariant(p)]` and declare `spec fn p", tail.as_str()).as_str()); return; },
+                Some(x) => x,
+            };
+            let name: String = id.name.clone();
+            let span: source::Span = id.span;
+            let shape: String = types::cat3("declare `spec fn ", name.as_str(), tail.as_str());
+            let target: Option<String> = uses_target(name.as_str(), mp, &self.fns);
+            let known: bool = has_text(&target);
+            let sig: Option<types::FnSig> = match &target {
+                None => None,
+                Some(p) => { match self.fns.find(p.as_str()) { None => None, Some(at) => { if is_spec(&self.fns.items[at].kind) && !has_text(&self.fns.items[at].trait_of) { Some(self.fns.items[at].clone()) } else { None } }, } },
+            };
+            let s: types::FnSig = match sig {
+                None => { let what: String = if known { types::cat3("`", name.as_str(), "` is not a spec function") } else { types::cat3("no spec function `", name.as_str(), "`") }; self.help("E0254", span, types::cat4(what.as_str(), ": an invariant is a predicate of `", applied.as_str(), "`").as_str(), shape.as_str()); return; },
+                Some(y) => y,
+            };
+            let mut args: Vec<ast::Type> = Vec::new();
+            for k in 0..s.generics.len()
+                invariant 0 <= k && k <= s.generics.len(),
+            {
+                args.push(types::ty(ast::TypeKind::Param(s.generics[k].name.clone())));
+            }
+            let want: ast::TypeKind = ast::TypeKind::Ref(false, types::boxed(ast::TypeKind::Named(refs::split_path(path.as_str()), args)));
+            let mut bounds_ok: bool = s.generics.len() == adt.generics.len();
+            for k in 0..s.generics.len()
+                invariant 0 <= k && k <= s.generics.len(),
+            {
+                if k < adt.generics.len() {
+                    for b in 0..s.generics[k].bounds.len()
+                        invariant 0 <= b && b <= s.generics[k].bounds.len() && k < s.generics.len() && k < adt.generics.len(),
+                    {
+                        if !types::has(adt.generics[k].bounds.as_slice(), s.generics[k].bounds[b].as_str()) {
+                            bounds_ok = false;
+                        }
+                    }
+                }
+            }
+            if !bounds_ok || s.params.len() != 1 || !types::same(&s.params[0], &want) || !is_bool(&s.ret) {
+                self.help("E0254", span, types::cat7("`", name.as_str(), "` does not have the shape of an invariant of `", applied.as_str(), "`: one parameter `&", applied.as_str(), "` (with the type's parameters, in order) and result `bool`").as_str(), shape.as_str());
+                return;
+            }
+            if s.vacuous {
+                self.help("E0254", span, types::cat3("`", name.as_str(), "` is the constant `true`: the invariant states nothing").as_str(), "state the condition every value of the type keeps, or remove the attribute");
+                return;
+            }
+            match self.adts.find(path.as_str()) {
+                None => {},
+                Some(i) => { self.adts.items[i].inv = target; },
+            }
+        }
+
+        #[summary("타입마다 #[invariant(p)]를 푼다 (ADR-0060 §1, 시그니처가 다 모인 뒤): p는 타입의 매개변수를 가진(경계가 같은) spec fn으로 &T<..>를 bool로 보내고, 몸이 상수 true가 아니다 (E0254)")]
+        #[effects(alloc)]
+        fn check_invariants(self: &mut Checker, m: &ast::Mod, prefix: &str, f: usize) -> ()
+            decreases f,
+        {
+            if f == 0 {
+                return;
+            }
+            let mp: String = unit_path(prefix, m);
+            let sub: String = types::cat2(mp.as_str(), "::");
+            for s in 0..m.mods.len()
+                invariant 0 <= s && s <= m.mods.len(),
+            {
+                self.check_invariants(&m.mods[s], sub.as_str(), f - 1);
+            }
+            for i in 0..m.types.len()
+                invariant 0 <= i && i <= m.types.len(),
+            {
+                let mut at: usize = m.types[i].attrs.len();
+                for a in 0..m.types[i].attrs.len()
+                    invariant 0 <= a && a <= m.types[i].attrs.len() && i < m.types.len() && at <= m.types[i].attrs.len(),
+                {
+                    if at == m.types[i].attrs.len() && m.types[i].attrs[a].name.name.as_str() == "invariant" {
+                        at = a;
+                    }
+                }
+                if at < m.types[i].attrs.len() {
+                    self.check_invariant(&m.types[i], &m.types[i].attrs[at], mp.as_str());
+                }
+            }
+        }
+
+        #[summary("필드의 타입이 다 정해진 뒤: 소유 값을 담는 필드 (ADR-0047 §1)")]
+        #[effects(alloc)]
+        fn check_owned_fields(self: &mut Checker, m: &ast::Mod, prefix: &str, f: usize) -> ()
+            decreases f,
+        {
+            if f == 0 {
+                return;
+            }
+            let mp: String = unit_path(prefix, m);
+            let sub: String = types::cat2(mp.as_str(), "::");
+            for s in 0..m.mods.len()
+                invariant 0 <= s && s <= m.mods.len(),
+            {
+                self.check_owned_fields(&m.mods[s], sub.as_str(), f - 1);
+            }
+            for i in 0..m.types.len()
+                invariant 0 <= i && i <= m.types.len(),
+            {
+                let path: String = types::cat3(mp.as_str(), "::", m.types[i].name.name.as_str());
+                match self.adts.find(path.as_str()) {
+                    None => {},
+                    Some(at) => { let resolved: Vec<ast::TypeKind> = parts(&self.adts.items[at].kind); let written: Vec<source::Span> = written_spans(&m.types[i].kind); for k in 0..resolved.len() invariant 0 <= k && k <= resolved.len(), { if k < written.len() { self.owned_field(&resolved[k], written[k], 100000); } } },
+                }
+            }
+        }
+
+        #[summary("#[rationale(kind = K, hash = \"..\", \"설명\")] (ADR-0029 §1): kind는 닫힌 목록에서, 비지 않은 설명 하나, hash는 도구가 쓰는 문자열 (E1002)")]
+        #[effects(alloc)]
+        fn check_rationale(self: &mut Checker, a: &ast::Attr) -> () {
+            let mut kind: bool = false;
+            let mut kind_written: bool = false;
+            let mut text: bool = false;
+            let mut bad: Vec<String> = Vec::new();
+            for i in 0..a.args.len()
+                invariant 0 <= i && i <= a.args.len(),
+            {
+                match &a.args[i] {
+                    ast::AttrArg::Ident(id) => bad.push(types::cat3("`", id.name.as_str(), "` needs a key (`kind = ..`)")),
+                    ast::AttrArg::Str(s, sp) => { if blank(s.as_str()) { bad.push(String::from("the explanation is empty")); } if text { bad.push(String::from("one explanation, as one string")); } text = true; },
+                    ast::AttrArg::Pair(k, v) => { if k.name.as_str() == "kind" { kind_written = true; if rationale_kind(&**v) { if kind { bad.push(String::from("`kind` is given twice")); } kind = true; } else { bad.push(String::from("`kind` is one of `nonlinear`, `solver_limit`, `boundary`, `performance`")); } } else if k.name.as_str() == "hash" { if !is_str_arg(&**v) { bad.push(String::from("`hash` is a string (the tools write it)")); } } else { bad.push(types::cat3("unknown key `", k.name.as_str(), "`")); } },
+                }
+            }
+            if !kind_written {
+                bad.push(String::from("`kind = ..` is missing"));
+            }
+            if !text {
+                bad.push(String::from("the explanation (a string) is missing"));
+            }
+            if bad.len() > 0 {
+                self.help("E1002", a.span, types::cat2("malformed rationale: ", types::join(bad.as_slice(), "; ").as_str()).as_str(), "write `#[rationale(kind = K, \"why the fact holds\")]`, `K` one of `nonlinear`, `solver_limit`, `boundary`, `performance`");
+            }
+        }
+
+        #[summary("정의의 #[summary(\"..\")] (ADR-0117): 문자열 하나, 한 번")]
+        #[effects(alloc)]
+        fn check_summary(self: &mut Checker, a: &ast::Attr, all: &[ast::Attr]) -> () {
+            if !(a.args.len() == 1 && is_str_arg(&a.args[0])) {
+                self.help("E0704", a.span, "`#[summary(..)]` takes exactly one string", "write the summary as one string: `#[summary(\"..\")]`");
+                return;
+            }
+            for i in 0..all.len()
+                invariant 0 <= i && i <= all.len(),
+            {
+                if all[i].name.name.as_str() == "summary" {
+                    if !span_eq(all[i].span, a.span) {
+                        self.fixed("E0605", a.span, "duplicate `#[summary(..)]` attribute", "keep one: join the text", "");
+                    }
+                    return;
+                }
+            }
+        }
+
+        #[summary("재귀 타입 (ADR-0047 §1, 백로그 2O-02). 값으로 자기를 담으면 크기가 없고(E0421: Box에 넣는다), 모든 값이 끝없으면 값이 없다(E0421: 변형 하나에서 끝낸다). 제네릭 타입은 제 매개변수 그대로만 자기를 담는다. 재귀 타입은 아직 배열을 담지 않는다(E0402)")]
+        #[effects(alloc)]
+        fn check_type_cycles(self: &mut Checker) -> () {
+            let n: usize = self.adts.len();
+            let mut names: Vec<String> = Vec::new();
+            let mut all: Vec<types::Adt> = Vec::new();
+            for k in 0..n
+                invariant 0 <= k && k <= n,
+            {
+                match self.adts.nth(k) {
+                    None => {},
+                    Some(i) => { names.push(self.adts.items[i].path.clone()); all.push(self.adts.items[i].clone()); },
+                }
+            }
+            let mut edges: Vec<Vec<String>> = Vec::new();
+            let mut uses: Vec<Vec<Use>> = Vec::new();
+            let mut all_edges: Vec<Vec<String>> = Vec::new();
+            for a in 0..all.len()
+                invariant 0 <= a && a <= all.len() && edges.len() == a && uses.len() == a && all_edges.len() == a,
+            {
+                let ps: Vec<ast::TypeKind> = parts(&all[a].kind);
+                let mut out: Vec<String> = Vec::new();
+                let mut us: Vec<Use> = Vec::new();
+                for t in 0..ps.len()
+                    invariant 0 <= t && t <= ps.len(),
+                {
+                    contained(&ps[t], &mut out, 100000);
+                    named(&ps[t], &mut us, 100000);
+                }
+                let mut qs: Vec<String> = Vec::new();
+                for u in 0..us.len()
+                    invariant 0 <= u && u <= us.len(),
+                {
+                    qs.push(us[u].q.clone());
+                }
+                edges.push(out);
+                uses.push(us);
+                all_edges.push(qs);
+            }
+            let mut reported: Vec<String> = Vec::new();
+            for a in 0..all.len()
+                invariant 0 <= a && a <= all.len() && edges.len() == all.len(),
+            {
+                if types::has(reach(names.as_slice(), edges.as_slice(), a).as_slice(), all[a].path.as_str()) {
+                    reported.push(all[a].path.clone());
+                    self.help("E0421", all[a].span, types::cat3("`", all[a].path.as_str(), "` contains itself").as_str(), "hold the recursive part in a `Box<..>` (ADR-0047 §1)");
+                }
+            }
+            let mut ok: Vec<String> = Vec::new();
+            let mut rounds: usize = all.len() + 1;
+            let mut grew: bool = true;
+            while grew && rounds > 0
+                decreases rounds,
+            {
+                grew = false;
+                rounds = rounds - 1;
+                for a in 0..all.len()
+                    invariant 0 <= a && a <= all.len(),
+                {
+                    if finite_adt(&all[a].kind, ok.as_slice()) {
+                        if types::add(&mut ok, all[a].path.as_str()) {
+                            grew = true;
+                        }
+                    }
+                }
+            }
+            for a in 0..all.len()
+                invariant 0 <= a && a <= all.len(),
+            {
+                let p_s: String = all[a].path.clone();
+                if !types::has(ok.as_slice(), p_s.as_str()) && !types::has(reported.as_slice(), p_s.as_str()) && !empty_enum(&all[a].kind) {
+                    reported.push(all[a].path.clone());
+                    self.help("E0421", all[a].span, types::cat3("`", p_s.as_str(), "` has no finite value").as_str(), "end the recursion: an enum variant without it, or `Option<Box<..>>` (ADR-0047 §1)");
+                }
+            }
+            for a in 0..all.len()
+                invariant 0 <= a && a <= all.len() && all_edges.len() == all.len() && uses.len() == all.len(),
+            {
+                let p_s: String = all[a].path.clone();
+                if !types::has(reported.as_slice(), p_s.as_str()) {
+                    let r: Vec<String> = reach(names.as_slice(), all_edges.as_slice(), a);
+                    if types::has(r.as_slice(), p_s.as_str()) {
+                        let mut bad: bool = false;
+                        if all[a].generics.len() > 0 {
+                            let mut mutual: bool = false;
+                            for q in 0..r.len()
+                                invariant 0 <= q && q <= r.len(),
+                            {
+                                if r[q].as_str() != p_s.as_str() {
+                                    match index_of(names.as_slice(), r[q].as_str()) {
+                                        None => {},
+                                        Some(k) => { if k < all_edges.len() && types::has(reach(names.as_slice(), all_edges.as_slice(), k).as_slice(), p_s.as_str()) { mutual = true; } },
+                                    }
+                                }
+                            }
+                            let own: String = own_key(all[a].generics.as_slice());
+                            let mut changed: bool = false;
+                            for u in 0..uses[a].len()
+                                invariant 0 <= u && u <= uses[a].len() && a < uses.len(),
+                            {
+                                if uses[a][u].q.as_str() == p_s.as_str() && uses[a][u].args.as_str() != own.as_str() {
+                                    changed = true;
+                                }
+                            }
+                            if mutual || changed {
+                                bad = true;
+                                self.help("E0421", all[a].span, types::cat3("`", p_s.as_str(), "` contains itself with other type arguments or through another type").as_str(), "a generic type may contain itself only as itself (`List<T>` in `List<T>`): its instances must be finitely many");
+                            }
+                        }
+                        if !bad {
+                            let mut seen: Vec<String> = Vec::new();
+                            let me: ast::TypeKind = ast::TypeKind::Named(refs::split_path(p_s.as_str()), Vec::new());
+                            if self.holds_array(&me, &mut seen, 100000) {
+                                self.help("E0402", all[a].span, types::cat3("the recursive type `", p_s.as_str(), "` holds an array").as_str(), "hold the elements in a `Vec` or in separate fields: a recursive type with arrays is not supported yet (ADR-0047)");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        #[summary("1패스: 시그니처를 모은다")]
+        #[effects(alloc)]
+        fn collect(self: &mut Checker, p: &ast::Program) -> () {
+            self.elem_params = elem_params(p);
+            let mut seen: Vec<String> = Vec::new();
+            for i in 0..p.mods.len()
+                invariant 0 <= i && i <= p.mods.len(),
+            {
+                if !types::add(&mut seen, p.mods[i].name.name.as_str()) {
+                    self.err("E0302", p.mods[i].name.span, types::cat3("unit `", p.mods[i].name.name.as_str(), "` is defined more than once").as_str());
+                }
+            }
+            for i in 0..p.mods.len()
+                invariant 0 <= i && i <= p.mods.len(),
+            {
+                self.trait_names(&p.mods[i], "", 1000000000);
+            }
+            for i in 0..p.mods.len()
+                invariant 0 <= i && i <= p.mods.len(),
+            {
+                self.collect_types(&p.mods[i], "", 1000000000);
+            }
+            for i in 0..p.mods.len()
+                invariant 0 <= i && i <= p.mods.len(),
+            {
+                self.impl_heads(&p.mods[i], "", 1000000000);
+            }
+            for i in 0..p.mods.len()
+                invariant 0 <= i && i <= p.mods.len(),
+            {
+                self.resolve_types(&p.mods[i], "", 1000000000);
+            }
+            for i in 0..p.mods.len()
+                invariant 0 <= i && i <= p.mods.len(),
+            {
+                self.check_owned_fields(&p.mods[i], "", 1000000000);
+            }
+            self.check_type_cycles();
+            for i in 0..p.mods.len()
+                invariant 0 <= i && i <= p.mods.len(),
+            {
+                self.trait_sigs(&p.mods[i], "", 1000000000);
+            }
+            for i in 0..p.mods.len()
+                invariant 0 <= i && i <= p.mods.len(),
+            {
+                self.collect_mod(&p.mods[i], "", 1000000000);
+            }
+            for i in 0..p.mods.len()
+                invariant 0 <= i && i <= p.mods.len(),
+            {
+                self.check_invariants(&p.mods[i], "", 1000000000);
+            }
+        }
+
+        #[effects(alloc)]
+        fn collect_fn(self: &mut Checker, f: &ast::FnDef, path: &str, mp: &str, in_impl: bool, ig: &[types::TParam]) -> () {
+            let own: Vec<types::TParam> = self.tparams_of(f.generics.as_slice(), true, mp);
+            for g in 0..own.len()
+                invariant 0 <= g && g <= own.len(),
+            {
+                if g < f.generics.len() && types::is_tparam(ig, own[g].name.as_str()) {
+                    self.err("E0302", f.generics[g].name.span, types::cat3("type parameter `", own[g].name.as_str(), "` is already the `impl`'s").as_str());
+                }
+            }
+            let mut generics: Vec<types::TParam> = Vec::new();
+            for i in 0..ig.len()
+                invariant 0 <= i && i <= ig.len(),
+            {
+                generics.push(ig[i].clone());
+            }
+            ast::append::<types::TParam>(&mut generics, own);
+            self.tparams = generics.clone();
+            let mut params: Vec<ast::TypeKind> = Vec::new();
+            for p in 0..f.params.len()
+                invariant 0 <= p && p <= f.params.len(),
+            {
+                let t: ast::TypeKind = self.canon(&f.params[p].ty, mp, false, 100000);
+                params.push(t);
+            }
+            let ret: ast::TypeKind = self.canon(&f.ret.ty, mp, false, 100000);
+            self.tparams = Vec::new();
+            let effect: types::Effects = self.fn_effect(f);
+            let vacuous: bool = is_spec(&f.kind) && f.body.stmts.len() == 0 && tail_true(&f.body);
+            self.fns.insert(path, types::FnSig { path: String::from(path), kind: kind_copy(&f.kind), generics: generics, impl_generics: ig.len(), params: params, ret: ret, effect: effect, vacuous: vacuous, builtin: false, in_impl: in_impl, trait_of: None, default: false, span: f.span });
+        }
+
+        #[summary("단위 m의 i번째 impl T 블록. 경계의 목록마다 블록 하나 (ADR-0097), 이름 하나는 어느 블록에 있든 그 타입의 함수 하나")]
+        #[effects(alloc)]
+        fn collect_impl(self: &mut Checker, m: &ast::Mod, i: usize, mp: &str, with_impl: &mut Vec<String>, impl_tys: &mut Vec<String>, impl_names: &mut Vec<Vec<String>>) -> ()
+            requires i < m.impls.len() && impl_tys.len() == impl_names.len(),
+            ensures impl_tys.len() == impl_names.len(),
+        {
+            let tyname: String = m.impls[i].ty.name.clone();
+            let ty: String = types::cat3(mp, "::", tyname.as_str());
+            let mut declared: bool = false;
+            for t in 0..m.types.len()
+                invariant 0 <= t && t <= m.types.len(),
+            {
+                if m.types[t].name.name.as_str() == tyname.as_str() {
+                    declared = true;
+                }
+            }
+            if !declared {
+                self.err("E0308", m.impls[i].ty.span, types::cat5("`impl ", tyname.as_str(), "` needs the type declared in the same unit `", mp, "`").as_str());
+                return;
+            }
+            let ig: Vec<types::TParam> = self.tparams_of(m.impls[i].generics.as_slice(), true, mp);
+            let key: String = types::cat3(ty.as_str(), "\n", bounds_key(ig.as_slice()).as_str());
+            if !types::add(with_impl, key.as_str()) {
+                self.help("E0308", m.impls[i].ty.span, types::cat3("`", tyname.as_str(), "` already has an `impl` block with these bounds; one per list of bounds").as_str(), "move these functions into the first block with the same bounds (ADR-0097)");
+                return;
+            }
+            let ps: Vec<String> = match self.adts.find(ty.as_str()) {
+                None => Vec::new(),
+                Some(at) => tparam_names(self.adts.items[at].generics.as_slice()),
+            };
+            let mut in_order: bool = ig.len() == ps.len() && m.impls[i].ty_args.len() == ig.len();
+            for a in 0..m.impls[i].ty_args.len()
+                invariant 0 <= a && a <= m.impls[i].ty_args.len() && i < m.impls.len(),
+            {
+                if a < ig.len() {
+                    match plain_name(&m.impls[i].ty_args[a].kind) {
+                        None => { in_order = false; },
+                        Some(w) => { if w.as_str() != ig[a].name.as_str() { in_order = false; } },
+                    }
+                }
+            }
+            if !in_order {
+                let r: String = if ps.len() == 0 {
+                    types::cat2("impl ", tyname.as_str())
+                } else {
+                    types::cat7("impl<", copy_list(ps.as_slice()).as_str(), "> ", tyname.as_str(), "<", types::join(ps.as_slice(), ", ").as_str(), ">")
+                };
+                self.help("E0420", m.impls[i].ty.span, types::cat3("the `impl` of `", tyname.as_str(), "` takes its type parameters in order").as_str(), types::cat3("write `", r.as_str(), "`").as_str());
+                return;
+            }
+            let mut slot: usize = impl_tys.len();
+            for s in 0..impl_tys.len()
+                invariant 0 <= s && s <= impl_tys.len() && slot <= impl_tys.len(),
+            {
+                if impl_tys[s].as_str() == ty.as_str() {
+                    slot = s;
+                }
+            }
+            if slot == impl_tys.len() {
+                impl_tys.push(ty.clone());
+                impl_names.push(Vec::new());
+            }
+            let mut dup: Vec<source::Span> = Vec::new();
+            for k in 0..m.impls[i].fns.len()
+                invariant 0 <= k && k <= m.impls[i].fns.len() && i < m.impls.len() && slot < impl_names.len() && impl_tys.len() == impl_names.len(),
+            {
+                if !types::add(&mut impl_names[slot], m.impls[i].fns[k].name.name.as_str()) {
+                    dup.push(m.impls[i].fns[k].name.span);
+                }
+            }
+            for k in 0..m.impls[i].fns.len()
+                invariant 0 <= k && k <= m.impls[i].fns.len() && i < m.impls.len(),
+            {
+                let fname: String = m.impls[i].fns[k].name.name.clone();
+                if has_span(dup.as_slice(), m.impls[i].fns[k].name.span) {
+                    self.help("E0302", m.impls[i].fns[k].name.span, types::cat5("`", fname.as_str(), "` is defined more than once in the `impl` blocks of `", tyname.as_str(), "`").as_str(), "a name is one function of the type, whichever block holds it: rename one or remove it");
+                } else {
+                    let fg: Vec<types::TParam> = self.tparams_of(m.impls[i].fns[k].generics.as_slice(), false, mp);
+                    let mut tps: Vec<types::TParam> = ig.clone();
+                    ast::append::<types::TParam>(&mut tps, fg);
+                    self.tparams = tps;
+                    self.receiver_rule(&m.impls[i].fns[k], ty.as_str(), true, mp);
+                    self.tparams = Vec::new();
+                    self.collect_fn(&m.impls[i].fns[k], types::cat3(ty.as_str(), "::", fname.as_str()).as_str(), mp, true, ig.as_slice());
+                }
+            }
+        }
+
+        #[effects(alloc)]
+        fn collect_mod(self: &mut Checker, m: &ast::Mod, prefix: &str, f: usize) -> ()
+            decreases f,
+        {
+            if f == 0 {
+                return;
+            }
+            let mp: String = unit_path(prefix, m);
+            for u in 0..m.uses.len()
+                invariant 0 <= u && u <= m.uses.len(),
+            {
+                if m.uses[u].path.len() > 0 {
+                    let full: String = path_text(m.uses[u].path.as_slice());
+                    let last: String = m.uses[u].path[m.uses[u].path.len() - 1].name.clone();
+                    if !self.imports.has(mp.as_str()) {
+                        self.imports.insert(mp.as_str(), table::new::<String>());
+                    }
+                    match self.imports.find(mp.as_str()) {
+                        None => {},
+                        Some(at) => self.imports.items[at].insert(last.as_str(), full.clone()),
+                    }
+                    self.fixed("E0214", m.uses[u].span, types::cat5("`use ", full.as_str(), ";` is not used: write `", full.as_str(), "` where it is used").as_str(), "delete the `use`; its names are rewritten to full paths", "");
+                }
+            }
+            let mut names: Vec<String> = Vec::new();
+            for t in 0..m.traits.len()
+                invariant 0 <= t && t <= m.traits.len(),
+            {
+                if types::reserved_name(m.traits[t].name.name.as_str()) {
+                    self.err("E0309", m.traits[t].name.span, types::cat3("`", m.traits[t].name.name.as_str(), "` is a built-in name (ADR-0026)").as_str());
+                }
+            }
+            for c in 0..m.consts.len()
+                invariant 0 <= c && c <= m.consts.len(),
+            {
+                if types::reserved_name(m.consts[c].name.name.as_str()) {
+                    self.err("E0309", m.consts[c].name.span, types::cat3("`", m.consts[c].name.name.as_str(), "` is a built-in name (ADR-0026)").as_str());
+                }
+            }
+            for t in 0..m.types.len()
+                invariant 0 <= t && t <= m.types.len(),
+            {
+                if types::reserved_name(m.types[t].name.name.as_str()) {
+                    self.err("E0309", m.types[t].name.span, types::cat3("`", m.types[t].name.name.as_str(), "` is a built-in name (ADR-0026)").as_str());
+                }
+                if !types::add(&mut names, m.types[t].name.name.as_str()) {
+                    self.err("E0302", m.types[t].name.span, types::cat5("`", m.types[t].name.name.as_str(), "` is defined more than once in `", mp.as_str(), "`").as_str());
+                }
+            }
+            for t in 0..m.traits.len()
+                invariant 0 <= t && t <= m.traits.len(),
+            {
+                if !types::add(&mut names, m.traits[t].name.name.as_str()) {
+                    self.err("E0302", m.traits[t].name.span, types::cat5("`", m.traits[t].name.name.as_str(), "` is defined more than once in `", mp.as_str(), "`").as_str());
+                }
+            }
+            let sub: String = types::cat2(mp.as_str(), "::");
+            for s in 0..m.mods.len()
+                invariant 0 <= s && s <= m.mods.len(),
+            {
+                if !types::add(&mut names, m.mods[s].name.name.as_str()) {
+                    self.err("E0302", m.mods[s].name.span, types::cat5("`", m.mods[s].name.name.as_str(), "` is defined more than once in `", mp.as_str(), "`").as_str());
+                }
+                self.collect_mod(&m.mods[s], sub.as_str(), f - 1);
+            }
+            let none: Vec<types::TParam> = Vec::new();
+            for k in 0..m.fns.len()
+                invariant 0 <= k && k <= m.fns.len(),
+            {
+                let fname: String = m.fns[k].name.name.clone();
+                if types::builtin_name(fname.as_str()) {
+                    self.err("E0309", m.fns[k].name.span, types::cat3("`", fname.as_str(), "` is a built-in name (ADR-0026)").as_str());
+                }
+                if !types::add(&mut names, fname.as_str()) {
+                    self.err("E0302", m.fns[k].name.span, types::cat5("`", fname.as_str(), "` is defined more than once in `", mp.as_str(), "`").as_str());
+                } else {
+                    self.collect_fn(&m.fns[k], types::cat3(mp.as_str(), "::", fname.as_str()).as_str(), mp.as_str(), false, none.as_slice());
+                }
+            }
+            let mut with_impl: Vec<String> = Vec::new();
+            let mut impl_tys: Vec<String> = Vec::new();
+            let mut impl_names: Vec<Vec<String>> = Vec::new();
+            for i in 0..m.impls.len()
+                invariant 0 <= i && i <= m.impls.len() && impl_tys.len() == impl_names.len(),
+            {
+                self.collect_impl(m, i, mp.as_str(), &mut with_impl, &mut impl_tys, &mut impl_names);
+            }
+            for k in 0..m.fns.len()
+                invariant 0 <= k && k <= m.fns.len(),
+            {
+                let tps: Vec<types::TParam> = self.tparams_of(m.fns[k].generics.as_slice(), false, mp.as_str());
+                self.tparams = tps;
+                self.receiver_rule(&m.fns[k], "", false, mp.as_str());
+                self.tparams = Vec::new();
+            }
+            for t in 0..m.trait_impls.len()
+                invariant 0 <= t && t <= m.trait_impls.len(),
+            {
+                self.collect_trait_impl(&m.trait_impls[t], mp.as_str());
+            }
+        }
+
+        #[effects(alloc)]
+        fn collect_trait_impl(self: &mut Checker, ti: &ast::TraitImpl, mp: &str) -> () {
+            let found: Found = match self.impl_info(ti.span) {
+                None => { return; },
+                Some(x) => x,
+            };
+            let recv: String = match types::named_path(&found.info.head) {
+                None => types::text(&found.info.head),
+                Some(np) => np,
+            };
+            self.self_head = Some(SelfHead { head: found.info.head.clone(), text: types::text_in(&found.info.head, mp) });
+            let mut fnames: Vec<String> = Vec::new();
+            for k in 0..ti.fns.len()
+                invariant 0 <= k && k <= ti.fns.len(),
+            {
+                let fname: String = ti.fns[k].name.name.clone();
+                let fp: String = types::fn_path(&found.info, fname.as_str());
+                if !types::add(&mut fnames, fname.as_str()) {
+                    self.err("E0302", ti.fns[k].name.span, types::cat3("`", fname.as_str(), "` is defined more than once in this `impl`").as_str());
+                } else if found.rejected && self.fns.has(fp.as_str()) {} else {
+                    let fg: Vec<types::TParam> = self.tparams_of(ti.fns[k].generics.as_slice(), false, mp);
+                    let mut tps: Vec<types::TParam> = found.info.generics.clone();
+                    ast::append::<types::TParam>(&mut tps, fg);
+                    self.tparams = tps;
+                    self.receiver_rule(&ti.fns[k], recv.as_str(), true, mp);
+                    self.tparams = Vec::new();
+                    self.collect_fn(&ti.fns[k], fp.as_str(), mp, true, found.info.generics.as_slice());
+                }
+            }
+            if !has_span(self.overlapping_impls.as_slice(), ti.span) {
+                self.conform(&found.info, ti, mp);
+            }
+            self.self_head = None;
+        }
+
+        #[summary("단위의 구조체와 열거형의 이름을 올린다 (필드는 다음에)")]
+        #[effects(alloc)]
+        fn collect_types(self: &mut Checker, m: &ast::Mod, prefix: &str, f: usize) -> ()
+            decreases f,
+        {
+            if f == 0 {
+                return;
+            }
+            let mp: String = unit_path(prefix, m);
+            let sub: String = types::cat2(mp.as_str(), "::");
+            for s in 0..m.mods.len()
+                invariant 0 <= s && s <= m.mods.len(),
+            {
+                self.collect_types(&m.mods[s], sub.as_str(), f - 1);
+            }
+            for i in 0..m.types.len()
+                invariant 0 <= i && i <= m.types.len(),
+            {
+                let name: String = m.types[i].name.name.clone();
+                let path: String = types::cat3(mp.as_str(), "::", name.as_str());
+                if !self.adts.has(path.as_str()) {
+                    let kind: types::AdtKind = match &m.types[i].kind {
+                        ast::TypeDefKind::Struct(fs) => types::AdtKind::Struct(Vec::new()),
+                        ast::TypeDefKind::Enum(vs) => types::AdtKind::Enum(Vec::new()),
+                    };
+                    let generics: Vec<types::TParam> = self.tparams_of(m.types[i].generics.as_slice(), false, mp.as_str());
+                    self.adts.insert(path.as_str(), types::Adt { path: path.clone(), unit: mp.clone(), name: name.clone(), generics: generics, kind: kind, span: m.types[i].name.span, inv: None });
+                    let mut invariants: usize = 0;
+                    for a in 0..m.types[i].attrs.len()
+                        invariant 0 <= a && a <= m.types[i].attrs.len() && i < m.types.len() && invariants <= a,
+                    {
+                        let an: String = m.types[i].attrs[a].name.name.clone();
+                        if an.as_str() == "invariant" {
+                            invariants = invariants + 1;
+                            if invariants > 1 {
+                                self.help("E0255", m.types[i].attrs[a].span, types::cat3("`", name.as_str(), "` has more than one `#[invariant(..)]`").as_str(), "state every condition in one predicate joined with `&&`, and keep one attribute");
+                            }
+                        } else if an.as_str() == "summary" {
+                            self.check_summary(&m.types[i].attrs[a], m.types[i].attrs.as_slice());
+                        } else if an.as_str() == "derive" {
+                            self.fixed("E0220", m.types[i].attrs[a].span, "`#[derive(..)]` is not used", "remove it: data types copy by value and `==` is built in for specifications", "");
+                        } else {
+                            self.fixed("E0605", m.types[i].attrs[a].span, types::cat3("unknown attribute `", an.as_str(), "` on a type").as_str(), "types take no attributes", "");
+                        }
+                    }
+                }
+            }
+        }
+
+        #[summary("impl Trait for T 블록의 함수를 trait의 메서드에 견준다 (ADR-0046 §2): 저마다 정의되고(E0315), Self = T일 때의 시그니처로(E0316)")]
+        #[effects(alloc)]
+        fn conform(self: &mut Checker, info: &types::TraitImplInfo, ti: &ast::TraitImpl, mp: &str) -> () {
+            let tr: String = info.trait_path.clone();
+            let name: String = path_text(ti.trait_path.as_slice());
+            let head: String = types::text_in(&info.head, mp);
+            let methods: Vec<String> = match self.traits.find(tr.as_str()) {
+                None => Vec::new(),
+                Some(at) => self.traits.items[at].methods.clone(),
+            };
+            let mut missing: Vec<String> = Vec::new();
+            for i in 0..methods.len()
+                invariant 0 <= i && i <= methods.len(),
+            {
+                let mut defined: bool = false;
+                for k in 0..ti.fns.len()
+                    invariant 0 <= k && k <= ti.fns.len(),
+                {
+                    if ti.fns[k].name.name.as_str() == methods[i].as_str() {
+                        defined = true;
+                    }
+                }
+                let has_default: bool = match self.fns.find(types::cat3(tr.as_str(), "::", methods[i].as_str()).as_str()) {
+                    None => false,
+                    Some(at) => self.fns.items[at].default,
+                };
+                if !defined && !has_default {
+                    missing.push(methods[i].clone());
+                }
+            }
+            if missing.len() > 0 {
+                self.help("E0315", ti.self_ty.span, types::cat7("`impl ", name.as_str(), " for ", head.as_str(), "` does not define `", types::join(missing.as_slice(), "`, `").as_str(), "`").as_str(), "define every method of the trait, with the trait's signature for `Self`");
+            }
+            for k in 0..ti.fns.len()
+                invariant 0 <= k && k <= ti.fns.len(),
+            {
+                let fname: String = ti.fns[k].name.name.clone();
+                if !types::has(methods.as_slice(), fname.as_str()) {
+                    self.help("E0315", ti.fns[k].name.span, types::cat5("`", fname.as_str(), "` is not a method of `", name.as_str(), "`").as_str(), types::cat5("remove it, or declare it in `", name.as_str(), "`; a function of the type alone goes in `impl ", head.as_str(), " { .. }`").as_str());
+                } else {
+                    let ts: Option<types::FnSig> = match self.fns.find(types::cat3(tr.as_str(), "::", fname.as_str()).as_str()) {
+                        None => None,
+                        Some(at) => Some(self.fns.items[at].clone()),
+                    };
+                    let is: Option<types::FnSig> = match self.fns.find(types::fn_path(info, fname.as_str()).as_str()) {
+                        None => None,
+                        Some(at) => Some(self.fns.items[at].clone()),
+                    };
+                    match ts {
+                        None => { let dropped: Option<types::FnSig> = is; },
+                        Some(tsig) => { match is { None => { let unused: types::FnSig = tsig; }, Some(isig) => self.conform_fn(info, &ti.fns[k], &tsig, &isig, name.as_str(), head.as_str(), mp), } },
+                    }
+                }
+            }
+        }
+
+        #[effects(alloc)]
+        fn conform_fn(self: &mut Checker, info: &types::TraitImplInfo, f: &ast::FnDef, tsig: &types::FnSig, isig: &types::FnSig, name: &str, head: &str, mp: &str) -> () {
+            if tsig.impl_generics > tsig.generics.len() || isig.impl_generics > isig.generics.len() {
+                return;
+            }
+            let fname: String = f.name.name.clone();
+            let mut m: types::Subst = types::Subst { names: Vec::new(), tys: Vec::new() };
+            m.names.push(String::from("Self"));
+            m.tys.push(info.head.clone());
+            let tn: usize = if tsig.impl_generics <= tsig.generics.len() {
+                tsig.generics.len() - tsig.impl_generics
+            } else {
+                0
+            };
+            let inn: usize = if isig.impl_generics <= isig.generics.len() {
+                isig.generics.len() - isig.impl_generics
+            } else {
+                0
+            };
+            let mut same_bounds: bool = tn == inn;
+            for a in 0..tn
+                invariant 0 <= a && a <= tn && tn + tsig.impl_generics == tsig.generics.len() && inn + isig.impl_generics == isig.generics.len(),
+            {
+                if a < inn {
+                    let tg: usize = tsig.impl_generics + a;
+                    let ig: usize = isig.impl_generics + a;
+                    let slot: Option<usize> = index_of(m.names.as_slice(), tsig.generics[tg].name.as_str());
+                    match slot {
+                        None => { m.names.push(tsig.generics[tg].name.clone()); m.tys.push(ast::TypeKind::Param(isig.generics[ig].name.clone())); },
+                        Some(s) => { if s < m.tys.len() { m.tys[s] = ast::TypeKind::Param(isig.generics[ig].name.clone()); } },
+                    }
+                    if !same_set(tsig.generics[tg].bounds.as_slice(), isig.generics[ig].bounds.as_slice()) {
+                        same_bounds = false;
+                    }
+                }
+            }
+            let mut want: Vec<ast::TypeKind> = Vec::new();
+            for p in 0..tsig.params.len()
+                invariant 0 <= p && p <= tsig.params.len(),
+            {
+                want.push(types::subst(&tsig.params[p], &m));
+            }
+            let want_ret: ast::TypeKind = types::subst(&tsig.ret, &m);
+            let known: bool = !any_error(want.as_slice()) && !any_error(isig.params.as_slice()) && !types::is_error(&want_ret) && !types::is_error(&isig.ret);
+            if known && (!same_fn_kind(&tsig.kind, &isig.kind) || !same_bounds || !types::same_all(want.as_slice(), isig.params.as_slice()) || !types::same(&want_ret, &isig.ret)) {
+                let mut gs: String = String::new();
+                if tn > 0 {
+                    gs.push_str("<");
+                    for a in 0..tn
+                        invariant 0 <= a && a <= tn && tn + tsig.impl_generics == tsig.generics.len(),
+                    {
+                        if a > 0 {
+                            gs.push_str(", ");
+                        }
+                        gs.push_str(tsig.generics[tsig.impl_generics + a].name.as_str());
+                        gs.push_str(": ");
+                        gs.push_str(types::join(tsig.generics[tsig.impl_generics + a].bounds.as_slice(), " + ").as_str());
+                    }
+                    gs.push_str(">");
+                }
+                let kw_s: String = if is_spec(&tsig.kind) {
+                    String::from("spec fn")
+                } else {
+                    String::from("fn")
+                };
+                let mut ps: String = String::new();
+                for p in 0..want.len()
+                    invariant 0 <= p && p <= want.len(),
+                {
+                    if p > 0 {
+                        ps.push_str(", ");
+                    }
+                    if f.params.len() == want.len() && p < f.params.len() {
+                        ps.push_str(f.params[p].name.name.as_str());
+                    } else {
+                        ps.push_str("_");
+                    }
+                    ps.push_str(": ");
+                    ps.push_str(types::text_in(&want[p], mp).as_str());
+                }
+                let mut fix: String = types::cat5("for `Self = ", head, "` the signature is `", kw_s.as_str(), " ");
+                fix.push_str(fname.as_str());
+                fix.push_str(gs.as_str());
+                fix.push_str("(");
+                fix.push_str(ps.as_str());
+                fix.push_str(") -> ");
+                fix.push_str(types::text_in(&want_ret, mp).as_str());
+                fix.push_str("`");
+                self.help("E0316", f.name.span, types::cat5("`", fname.as_str(), "` does not match its declaration in `", name, "`").as_str(), fix.as_str());
+            }
+            if !types::e_contains(tsig.effect, isig.effect) {
+                let extra: types::Effects = types::e_minus(isig.effect, tsig.effect);
+                self.help("E0316", f.name.span, types::cat7("`", fname.as_str(), "` has effect `", types::e_text(extra).as_str(), "`, but `", name, types::cat3("` declares `", types::e_text(tsig.effect).as_str(), "`").as_str()).as_str(), types::cat3("remove the effect from the function, or declare the trait method `#[effects(", types::e_text(types::e_union(tsig.effect, isig.effect)).as_str(), ")]`").as_str());
+            }
+        }
+
+        #[summary("#[effects(..)]가 선언하는 효과의 집합 (ADR-0030 §2). pure와 다른 효과를 함께 쓰거나 한 효과를 두 번 쓰면 E0607(정규형으로 고침), 모르는 이름은 E0602")]
+        #[effects(alloc)]
+        fn effects_attr(self: &mut Checker, a: &ast::Attr) -> types::Effects {
+            let mut e: types::Effects = types::pure();
+            let mut pure: bool = false;
+            let mut repeated: bool = false;
+            if a.args.len() == 0 {
+                self.help("E0602", a.span, "`#[effects(..)]` names no effect", "write `#[effects(pure)]`, or the effects the function has");
+            }
+            for i in 0..a.args.len()
+                invariant 0 <= i && i <= a.args.len(),
+            {
+                match &a.args[i] {
+                    ast::AttrArg::Ident(id) => { if id.name.as_str() == "pure" { if pure { repeated = true; } pure = true; } else { match types::atom(id.name.as_str()) { None => { self.help("E0602", id.span, types::cat3("unknown effect `", id.name.as_str(), "`").as_str(), "effects are `pure` (none), `alloc` (the function allocates: `Vec`, `Box`), `io` (it prints or touches the system), `nondet` (it reads a value from outside: arguments, input) and `panic` (it has an escape: `assume`, `#[external_body]`)"); }, Some(at) => { if types::e_contains(e, at) { repeated = true; } e = types::e_union(e, at); }, } } },
+                    ast::AttrArg::Str(s, sp) => self.err("E0602", *sp, "effect must be an identifier"),
+                    ast::AttrArg::Pair(k, v) => self.err("E0602", k.span, "effect must be an identifier"),
+                }
+            }
+            if pure && !types::is_pure(e) || repeated {
+                let et: String = types::e_text(e);
+                let msg: String = if pure && !types::is_pure(e) {
+                    types::cat3("`pure` means no effect: it cannot be listed with `", et.as_str(), "`")
+                } else {
+                    String::from("an effect is listed twice")
+                };
+                self.fixed("E0607", a.span, msg.as_str(), types::cat3("write `#[effects(", et.as_str(), ")]`").as_str(), types::cat3("#[effects(", et.as_str(), ")]").as_str());
+            }
+            e
+        }
+
+        #[effects(alloc)]
+        fn err(self: &mut Checker, code: &str, span: source::Span, msg: &str) -> () {
+            self.diags.push(diag::new(code, span, msg));
+        }
+
+        #[summary("필드나 페이로드의 타입: 참조 없는 값 타입 (ADR-0015)")]
+        #[effects(alloc)]
+        fn field_type(self: &mut Checker, t: &ast::Type, mp: &str) -> ast::TypeKind {
+            if is_ref_like(&t.kind) {
+                self.help("E0403", t.span, "a field cannot hold a reference or a slice", "references are second-class: pass them as arguments only (ADR-0015)");
+                return ast::TypeKind::Error;
+            }
+            if is_unit(&t.kind) {
+                self.err("E0402", t.span, "a field cannot have type `()`");
+                return ast::TypeKind::Error;
+            }
+            self.canon(t, mp, true, 100000)
+        }
+
+        #[summary("바꿔 쓸 글까지 붙은 진단")]
+        #[effects(alloc)]
+        fn fixed(self: &mut Checker, code: &str, span: source::Span, msg: &str, fix: &str, to: &str) -> () {
+            self.diags.push(diag::fix(diag::new(code, span, msg), fix, Some(String::from(to))));
+        }
+
+        #[summary("#[effects(..)]를 읽고 속성의 결함을 모으는 동안 한 번 낸다")]
+        #[effects(alloc)]
+        fn fn_effect(self: &mut Checker, f: &ast::FnDef) -> types::Effects {
+            let mut effect: types::Effects = types::pure();
+            let mut have: bool = false;
+            for i in 0..f.attrs.len()
+                invariant 0 <= i && i <= f.attrs.len(),
+            {
+                let an: String = f.attrs[i].name.name.clone();
+                let span: source::Span = f.attrs[i].span;
+                if an.as_str() == "effects" {
+                    if is_proof(&f.kind) {
+                        self.fixed("E0256", span, "a `proof fn` has no effect: it is ghost code, erased before it runs", "remove the attribute", "");
+                    } else if is_spec(&f.kind) {
+                        self.fixed("E0604", span, "spec functions are pure by definition", "remove the attribute", "");
+                    } else if have {
+                        self.fixed("E0605", span, "duplicate `#[effects(..)]` attribute", "remove the attribute", "");
+                    } else {
+                        effect = self.effects_attr(&f.attrs[i]);
+                        have = true;
+                    }
+                } else if an.as_str() == "uses" {} else if an.as_str() == "external_body" {
+                    if !is_exec(&f.kind) || f.name.name.as_str() == "main" {
+                        self.fixed("E1004", span, "`#[external_body]` is for an executable function other than `main`", "remove the attribute", "");
+                    } else if !has_attr(f.attrs.as_slice(), "rationale") {
+                        self.missing_rationale(span, "`#[external_body]`");
+                    }
+                } else if an.as_str() == "rationale" {
+                    if !has_attr(f.attrs.as_slice(), "external_body") {
+                        self.fixed("E1002", span, "a rationale on a function that is not `#[external_body]`", "remove it: a rationale stands before `#[external_body]` or an `assume`", "");
+                    } else {
+                        self.check_rationale(&f.attrs[i]);
+                    }
+                } else if an.as_str() == "summary" {
+                    self.check_summary(&f.attrs[i], f.attrs.as_slice());
+                } else {
+                    self.fixed("E0605", span, types::cat3("unknown attribute `", an.as_str(), "` on a function").as_str(), "remove it: functions take `#[summary(\"..\")]`, `#[effects(..)]`, `#[uses(..)]`, `#[external_body]` and `#[rationale(..)]`", "");
+                }
+            }
+            if is_exec(&f.kind) && !have {
+                let hi: u32 = if f.span.lo < 4294967293 {
+                    f.span.lo + 2
+                } else {
+                    f.span.lo
+                };
+                self.fixed("E0601", source::Span { file: f.span.file, lo: f.span.lo, hi: hi }, types::cat3("`", f.name.name.as_str(), "` has no `#[effects(..)]` attribute").as_str(), "add `#[effects(pure)]` above the function", "#[effects(pure)]\nfn");
+            }
+            effect
+        }
+
+        #[summary("t에 내장 trait b(Eq나 Ord)가 있는가: 정수, bool, char, String, 그리고 그것으로 묶인 타입 매개변수 (Ord는 Eq를 담는다). f64는 아니다 (ADR-0061 §1)")]
+        #[effects(alloc)]
+        fn has_builtin(self: &Checker, t: &ast::TypeKind, b: &str) -> bool {
+            match types::param_name(t) {
+                None => {},
+                Some(n) => { for i in 0..self.tparams.len() invariant 0 <= i && i <= self.tparams.len(), { if self.tparams[i].name.as_str() == n.as_str() && (types::has(self.tparams[i].bounds.as_slice(), b) || b == "Eq" && types::has(self.tparams[i].bounds.as_slice(), "Ord")) { return true; } } return false; },
+            }
+            match t {
+                ast::TypeKind::Int(it) => true,
+                ast::TypeKind::F64 => false,
+                ast::TypeKind::Bool => true,
+                ast::TypeKind::Unit => false,
+                ast::TypeKind::Char => true,
+                ast::TypeKind::String => true,
+                ast::TypeKind::Str => false,
+                ast::TypeKind::Array(q1_ae, q1_an) => false,
+                ast::TypeKind::ArrayN(q1_ne, q1_nn) => false,
+                ast::TypeKind::Slice(q1_se) => false,
+                ast::TypeKind::Ref(q1_rm, q1_ri) => false,
+                ast::TypeKind::Named(q1_path, q1_args) => false,
+                ast::TypeKind::Vec(q1_ve) => false,
+                ast::TypeKind::Box(q1_be) => false,
+                ast::TypeKind::Param(q1_pn) => false,
+                ast::TypeKind::Never => false,
+                ast::TypeKind::Error => false,
+            }
+        }
+
+        #[summary("t가 사용자 trait tr을 구현하는가 (ADR-0046 §2): 그것으로 묶인 타입 매개변수, 또는 impl이 맞는 타입(impl의 경계도 선다)")]
+        #[effects(alloc)]
+        fn has_trait(self: &Checker, t: &ast::TypeKind, tr: &str, f: usize) -> bool
+            decreases f * 4 + 3,
+        {
+            if f == 0 {
+                return false;
+            }
+            match types::param_name(t) {
+                None => {},
+                Some(n) => { for i in 0..self.tparams.len() invariant 0 <= i && i <= self.tparams.len(), { if self.tparams[i].name.as_str() == n.as_str() && types::has(self.tparams[i].bounds.as_slice(), tr) { return true; } } return false; },
+            }
+            for a in 0..self.trait_impls.len()
+                invariant 0 <= a && a <= self.trait_impls.len(),
+            {
+                if self.impl_gives(&self.trait_impls[a], t, tr, f - 1) {
+                    return true;
+                }
+            }
+            for b in 0..self.rejected_impls.len()
+                invariant 0 <= b && b <= self.rejected_impls.len(),
+            {
+                if self.impl_gives(&self.rejected_impls[b], t, tr, f - 1) {
+                    return true;
+                }
+            }
+            false
+        }
+
+        #[summary("도움말이 붙은 진단")]
+        #[effects(alloc)]
+        fn help(self: &mut Checker, code: &str, span: source::Span, msg: &str, fix: &str) -> () {
+            self.diags.push(diag::fix(diag::new(code, span, msg), fix, None));
+        }
+
+        #[summary("t의 값이 배열을 담는가 (필드와 페이로드를 지나)")]
+        #[effects(alloc)]
+        fn holds_array(self: &Checker, t: &ast::TypeKind, seen: &mut Vec<String>, f: usize) -> bool
+            decreases f * 2 + 1,
+        {
+            if f == 0 {
+                return false;
+            }
+            match t {
+                ast::TypeKind::Int(q3_it) => false,
+                ast::TypeKind::F64 => false,
+                ast::TypeKind::Bool => false,
+                ast::TypeKind::Unit => false,
+                ast::TypeKind::Char => false,
+                ast::TypeKind::String => false,
+                ast::TypeKind::Str => false,
+                ast::TypeKind::Array(ae, an) => true,
+                ast::TypeKind::ArrayN(q3_ne, q3_nn) => false,
+                ast::TypeKind::Slice(q3_se) => false,
+                ast::TypeKind::Ref(q3_rm, q3_ri) => false,
+                ast::TypeKind::Named(path, args) => { for i in 0..args.len() invariant 0 <= i && i <= args.len(), { if self.holds_array(&args[i].kind, seen, f - 1) { return true; } } let p: String = types::join(path.as_slice(), "::"); if !types::add(seen, p.as_str()) { return false; } match self.adts.find(p.as_str()) { None => false, Some(at) => self.parts_hold_array(&self.adts.items[at].kind, seen, f - 1), } },
+                ast::TypeKind::Vec(q3_ve) => false,
+                ast::TypeKind::Box(q3_be) => false,
+                ast::TypeKind::Param(q3_pn) => false,
+                ast::TypeKind::Never => false,
+                ast::TypeKind::Error => false,
+            }
+        }
+
+        #[summary("impl i가 t에 trait tr을 주는가. 머리가 부르지 않는 매개변수는 그 impl의 결함(E0420)이지 타입이 어긴 경계가 아니다")]
+        #[effects(alloc)]
+        fn impl_gives(self: &Checker, i: &types::TraitImplInfo, t: &ast::TypeKind, tr: &str, f: usize) -> bool
+            decreases f * 4 + 2,
+        {
+            if f == 0 || i.trait_path.as_str() != tr {
+                return false;
+            }
+            match types::matches(i, t) {
+                None => false,
+                Some(m) => { for g in 0..i.generics.len() invariant 0 <= g && g <= i.generics.len(), { match types::sub_get(&m, i.generics[g].name.as_str()) { None => {}, Some(a) => { if !self.meets(&a, i.generics[g].bounds.as_slice(), f - 1) { return false; } }, } } true },
+            }
+        }
+
+        #[effects(alloc)]
+        fn impl_head(self: &mut Checker, i: &ast::TraitImpl, mp: &str) -> () {
+            if i.trait_path.len() == 0 {
+                return;
+            }
+            let name: String = path_text(i.trait_path.as_slice());
+            let tspan: source::Span = span_to(i.trait_path[0].span, i.trait_path[i.trait_path.len() - 1].span);
+            let found: Option<String> = self.trait_path(i.trait_path.as_slice(), mp);
+            let tr: String = match found {
+                None => { let help: String = match self.type_path(i.trait_path.as_slice(), mp) { None => String::from("a trait of another unit is named by full path, e.g. `unit::Shape`"), Some(tp) => types::cat5("`", name.as_str(), "` is a type; its own functions go in `impl ", name.as_str(), " { .. }`"), }; let d: diag::Diag = self.unknown_trait(name.as_str(), tspan, mp, help.as_str()); self.diags.push(d); return; },
+                Some(x) => x,
+            };
+            let gens: Vec<types::TParam> = self.tparams_of(i.generics.as_slice(), true, mp);
+            self.tparams = gens.clone();
+            let head: ast::TypeKind = self.canon(&i.self_ty, mp, true, 100000);
+            self.tparams = Vec::new();
+            let span: source::Span = i.self_ty.span;
+            if types::is_error(&head) {
+                return;
+            }
+            let info: types::TraitImplInfo = types::TraitImplInfo { trait_path: tr.clone(), generics: gens.clone(), head: head.clone(), unit: String::from(mp), span: i.span };
+            match types::param_name(&head) {
+                None => {},
+                Some(n) => { self.help("E0235", span, types::cat4(types::cat5("`impl<", n.as_str(), "> ", name.as_str(), " for ").as_str(), n.as_str(), types::cat3("` implements `", name.as_str(), "` for every type (a blanket impl)").as_str(), "").as_str(), types::cat5("implement it for each type: `impl ", name.as_str(), " for Point { .. }`, or bound a type parameter `T: ", name.as_str(), "` where it is used").as_str()); self.rejected_impls.push(info); return; },
+            }
+            let mut cb: Vec<String> = Vec::new();
+            cb.push(String::from("Copy"));
+            let copy: types::TParam = types::TParam { name: String::from("Self"), bounds: cb };
+            if !self.targ_ok(&head, &copy, tr.as_str(), span, true) {
+                return;
+            }
+            let ht: String = types::text_in(&head, mp);
+            for g in 0..gens.len()
+                invariant 0 <= g && g <= gens.len(),
+            {
+                if !types::mentions_param(&head, gens[g].name.as_str(), 100000) {
+                    let at: source::Span = if g < i.generics.len() {
+                        i.generics[g].span
+                    } else {
+                        span
+                    };
+                    self.help("E0420", at, types::cat5("type parameter `", gens[g].name.as_str(), "` of the impl does not appear in `", ht.as_str(), "`").as_str(), "remove it, or use it in the implemented type");
+                    self.rejected_impls.push(info);
+                    return;
+                }
+            }
+            let mut seen: Vec<String> = Vec::new();
+            types::params_in(&head, &mut seen, 100000);
+            if !same_names(seen.as_slice(), gens.as_slice()) {
+                self.help("E0420", span, types::cat3("the `impl` for `", ht.as_str(), "` takes its type parameters in order").as_str(), types::cat3("declare them in the order the type names them: `", types::join(seen.as_slice(), "`, `").as_str(), "`").as_str());
+                self.rejected_impls.push(info);
+                return;
+            }
+            let trait_unit: String = unit_of(tr.as_str());
+            let type_unit: Option<String> = match types::named_path(&head) {
+                None => None,
+                Some(hp) => { if self.adts.has(hp.as_str()) { Some(unit_of(hp.as_str())) } else { None } },
+            };
+            let in_type_unit: bool = match &type_unit {
+                None => false,
+                Some(u) => u.as_str() == mp,
+            };
+            if mp != trait_unit.as_str() && !in_type_unit {
+                let help: String = match &type_unit {
+                    None => types::cat3("move it to unit `", trait_unit.as_str(), "`"),
+                    Some(u) => { if u.as_str() != trait_unit.as_str() { types::cat5("move it to unit `", trait_unit.as_str(), "` or unit `", u.as_str(), "`") } else { types::cat3("move it to unit `", trait_unit.as_str(), "`") } },
+                };
+                self.help("E0312", span, types::cat5("`impl ", name.as_str(), " for ", ht.as_str(), "` is in neither the unit of the trait nor the unit of the type").as_str(), help.as_str());
+                self.rejected_impls.push(info);
+                return;
+            }
+            let mut prev: Option<String> = None;
+            for p in 0..self.trait_impls.len()
+                invariant 0 <= p && p <= self.trait_impls.len(),
+            {
+                if !has_text(&prev) && self.trait_impls[p].trait_path.as_str() == tr.as_str() && types::overlaps(&self.trait_impls[p].head, &head, 100000) {
+                    prev = Some(types::text_in(&self.trait_impls[p].head, mp));
+                }
+            }
+            match prev {
+                None => {},
+                Some(pt) => { self.help("E0311", span, types::cat4(types::cat5("`impl ", name.as_str(), " for ", ht.as_str(), "` overlaps `impl ").as_str(), name.as_str(), " for ", types::cat2(pt.as_str(), "`").as_str()).as_str(), "a trait has one impl for a type: remove one of them, or make their types differ"); self.overlapping_impls.push(info.span); self.rejected_impls.push(info); return; },
+            }
+            self.trait_impls.push(info);
+        }
+
+        #[summary("단위의 impl Trait for T 블록이 구현하는 타입 (ADR-0046 §2): 포괄 impl 없음(E0235), impl의 매개변수는 모두 타입에(E0420), trait이나 타입의 단위에(E0312), 같은 타입일 수 있는 둘 없음(E0311)")]
+        #[effects(alloc)]
+        fn impl_heads(self: &mut Checker, m: &ast::Mod, prefix: &str, f: usize) -> ()
+            decreases f,
+        {
+            if f == 0 {
+                return;
+            }
+            let mp: String = unit_path(prefix, m);
+            let sub: String = types::cat2(mp.as_str(), "::");
+            for s in 0..m.mods.len()
+                invariant 0 <= s && s <= m.mods.len(),
+            {
+                self.impl_heads(&m.mods[s], sub.as_str(), f - 1);
+            }
+            for i in 0..m.trait_impls.len()
+                invariant 0 <= i && i <= m.trait_impls.len(),
+            {
+                self.impl_head(&m.trait_impls[i], mp.as_str());
+            }
+        }
+
+        #[summary("자리가 span인 impl Trait for T 블록과, 그 머리가 거절됐는지 (E0235, E0420, E0312, E0311). 거절된 impl의 함수도 모으고 검사한다 (백로그 2V-23)")]
+        #[effects(alloc)]
+        fn impl_info(self: &Checker, span: source::Span) -> Option<Found> {
+            for i in 0..self.trait_impls.len()
+                invariant 0 <= i && i <= self.trait_impls.len(),
+            {
+                if span_eq(self.trait_impls[i].span, span) {
+                    return Some(Found { info: self.trait_impls[i].clone(), rejected: false });
+                }
+            }
+            for j in 0..self.rejected_impls.len()
+                invariant 0 <= j && j <= self.rejected_impls.len(),
+            {
+                if span_eq(self.rejected_impls[j].span, span) {
+                    return Some(Found { info: self.rejected_impls[j].clone(), rejected: true });
+                }
+            }
+            None
+        }
+
+        #[summary("경로의 첫 마디가 단위 mp의 use에서 온 것이면 온 경로의 글")]
+        #[effects(alloc)]
+        fn import_text(self: &Checker, segs: &[String], mp: &str) -> Option<String> {
+            if segs.len() == 0 {
+                return None;
+            }
+            match self.imports.find(mp) {
+                None => None,
+                Some(u) => { match self.imports.items[u].find(segs[0].as_str()) { None => None, Some(i) => { let mut text: String = self.imports.items[u].items[i].clone(); for k in 1..segs.len() invariant 1 <= k && k <= segs.len(), { text.push_str("::"); text.push_str(segs[k].as_str()); } Some(text) }, } },
+            }
+        }
+
+        #[summary("t의 값이 복사되는가 (Rust Copy): &mut과 이동 타입이 아닌 모든 것")]
+        #[effects(alloc)]
+        fn is_copy(self: &Checker, t: &ast::TypeKind) -> bool {
+            let mv: Vec<String> = self.moving_params();
+            !types::is_ref_mut(t) && !types::is_move_in(t, &self.adts, mv.as_slice())
+        }
+
+        #[summary("단위 mp의 trait들의 제 이름 (경로의 순서)")]
+        #[effects(alloc)]
+        fn local_traits(self: &Checker, mp: &str) -> Vec<String> {
+            let mut out: Vec<String> = Vec::new();
+            let n: usize = self.traits.len();
+            for k in 0..n
+                invariant 0 <= k && k <= n,
+            {
+                match self.traits.nth(k) {
+                    None => {},
+                    Some(i) => { if self.traits.items[i].unit.as_str() == mp { out.push(self.traits.items[i].name.clone()); } },
+                }
+            }
+            out
+        }
+
+        #[summary("단위 mp의 타입들의 제 이름 (경로의 순서)")]
+        #[effects(alloc)]
+        fn local_types(self: &Checker, mp: &str) -> Vec<String> {
+            let mut out: Vec<String> = Vec::new();
+            let n: usize = self.adts.len();
+            for k in 0..n
+                invariant 0 <= k && k <= n,
+            {
+                match self.adts.nth(k) {
+                    None => {},
+                    Some(i) => { if self.adts.items[i].unit.as_str() == mp { out.push(self.adts.items[i].name.clone()); } },
+                }
+            }
+            out
+        }
+
+        #[summary("t가 bounds의 경계를 모두 지키는가 (진단 없음)")]
+        #[effects(alloc)]
+        fn meets(self: &Checker, t: &ast::TypeKind, bounds: &[String], f: usize) -> bool
+            decreases f * 4 + 1,
+        {
+            if f == 0 {
+                return false;
+            }
+            for i in 0..bounds.len()
+                invariant 0 <= i && i <= bounds.len(),
+            {
+                let b_s: String = bounds[i].clone();
+                let ok: bool = if b_s.as_str() == "Copy" {
+                    self.is_copy(t)
+                } else if b_s.as_str() == "Eq" || b_s.as_str() == "Ord" {
+                    self.has_builtin(t, b_s.as_str())
+                } else {
+                    self.has_trait(t, b_s.as_str(), f - 1)
+                };
+                if !ok {
+                    return false;
+                }
+            }
+            true
+        }
+
+        #[effects(alloc)]
+        fn missing_rationale(self: &mut Checker, span: source::Span, what: &str) -> () {
+            self.help("E1001", span, types::cat2(what, " is an escape and needs a `#[rationale(..)]` before it").as_str(), "write `#[rationale(kind = K, \"why the fact holds\")]` before it, `K` one of `nonlinear`, `solver_limit`, `boundary`, `performance`");
+        }
+
+        #[summary("Copy 경계가 없는 지금의 타입 매개변수들")]
+        #[effects(alloc)]
+        fn moving_params(self: &Checker) -> Vec<String> {
+            types::moving_of(self.tparams.as_slice())
+        }
+
+        #[summary("소유 값을 담는 필드 (ADR-0047 §1): Copy 타입 매개변수의 인자로는 안 된다")]
+        #[effects(alloc)]
+        fn owned_field(self: &mut Checker, t: &ast::TypeKind, span: source::Span, f: usize) -> ()
+            decreases f,
+        {
+            if f == 0 {
+                return;
+            }
+            match t {
+                ast::TypeKind::Int(q5_it) => {},
+                ast::TypeKind::F64 => {},
+                ast::TypeKind::Bool => {},
+                ast::TypeKind::Unit => {},
+                ast::TypeKind::Char => {},
+                ast::TypeKind::String => {},
+                ast::TypeKind::Str => {},
+                ast::TypeKind::Array(ae, an) => self.owned_field(&ae.kind, span, f - 1),
+                ast::TypeKind::ArrayN(q5_ne, q5_nn) => {},
+                ast::TypeKind::Slice(q5_se) => {},
+                ast::TypeKind::Ref(q5_rm, q5_ri) => {},
+                ast::TypeKind::Named(path, args) => { let name: String = types::join(path.as_slice(), "::"); let ps: Vec<types::TParam> = match self.adts.find(name.as_str()) { None => Vec::new(), Some(at) => self.adts.items[at].generics.clone(), }; for i in 0..args.len() invariant 0 <= i && i <= args.len(), { if i < ps.len() { if types::has(ps[i].bounds.as_slice(), "Copy") && !self.is_copy(&args[i].kind) { let reported: bool = self.targ_ok(&args[i].kind, &ps[i], name.as_str(), span, true); } } } for j in 0..args.len() invariant 0 <= j && j <= args.len(), { self.owned_field(&args[j].kind, span, f - 1); } },
+                ast::TypeKind::Vec(q5_ve) => {},
+                ast::TypeKind::Box(be) => self.owned_field(&be.kind, span, f - 1),
+                ast::TypeKind::Param(q5_pn) => {},
+                ast::TypeKind::Never => {},
+                ast::TypeKind::Error => {},
+            }
+        }
+
+        #[effects(alloc)]
+        fn parts_hold_array(self: &Checker, k: &types::AdtKind, seen: &mut Vec<String>, f: usize) -> bool
+            decreases f * 2,
+        {
+            if f == 0 {
+                return false;
+            }
+            match k {
+                types::AdtKind::Struct(fs) => { for i in 0..fs.len() invariant 0 <= i && i <= fs.len(), { if self.holds_array(&fs[i].ty, seen, f - 1) { return true; } } false },
+                types::AdtKind::Enum(vs) => { for i in 0..vs.len() invariant 0 <= i && i <= vs.len(), { for j in 0..vs[i].tys.len() invariant 0 <= j && j <= vs[i].tys.len(), { if self.holds_array(&vs[i].tys[j], seen, f - 1) { return true; } } } false },
+            }
+        }
+
+        #[summary("self는 수신자의 이름이다: impl T 함수의 첫 매개변수로 타입이 T, &T, &mut T인 것 (ADR-0026 §3). has는 impl 안인지, impl_ty는 그 타입의 경로")]
+        #[effects(alloc)]
+        fn receiver_rule(self: &mut Checker, f: &ast::FnDef, impl_ty: &str, has: bool, mp: &str) -> () {
+            for k in 0..f.params.len()
+                invariant 0 <= k && k <= f.params.len(),
+            {
+                let ty: ast::TypeKind = self.canon(&f.params[k].ty, mp, false, 100000);
+                let v: ast::TypeKind = types::value(&ty);
+                let receiver_type: bool = has && !types::is_error(&v) && (match types::named_path(&v) { None => types::text(&v).as_str() == impl_ty, Some(np) => np.as_str() == impl_ty, });
+                let is_self: bool = f.params[k].name.name.as_str() == "self";
+                if k == 0 && receiver_type && !is_self {
+                    self.help("E0310", f.params[k].name.span, types::cat3("the receiver of `", f.name.name.as_str(), "` is named `self`").as_str(), types::cat3("rename `", f.params[k].name.name.as_str(), "` to `self` in the signature and the body").as_str());
+                } else if is_self && (k != 0 || !receiver_type) && !types::is_error(&ty) {
+                    self.help("E0310", f.params[k].name.span, "`self` names only the receiver: the first parameter of an `impl T` function, typed `T`, `&T` or `&mut T`", "choose another name");
+                }
+            }
+        }
+
+        #[effects(alloc)]
+        fn resolve_kind(self: &mut Checker, t: &ast::TypeDef, path: &str, mp: &str) -> types::AdtKind {
+            match &t.kind {
+                ast::TypeDefKind::Struct(fields) => { if fields.len() == 0 { self.err("E0420", t.name.span, "a struct needs at least one field"); } let mut seen: Vec<String> = Vec::new(); let mut out: Vec<types::FieldSig> = Vec::new(); for i in 0..fields.len() invariant 0 <= i && i <= fields.len(), { if !types::add(&mut seen, fields[i].name.name.as_str()) { self.err("E0302", fields[i].name.span, types::cat5("field `", fields[i].name.name.as_str(), "` is defined more than once in `", path, "`").as_str()); } let ty: ast::TypeKind = self.field_type(&fields[i].ty, mp); out.push(types::FieldSig { name: fields[i].name.name.clone(), ty: ty }); } types::AdtKind::Struct(out) },
+                ast::TypeDefKind::Enum(variants) => { if variants.len() == 0 { self.err("E0420", t.name.span, "an enum needs at least one variant"); } let mut seen: Vec<String> = Vec::new(); let mut vout: Vec<types::VariantSig> = Vec::new(); for i in 0..variants.len() invariant 0 <= i && i <= variants.len(), { if !types::add(&mut seen, variants[i].name.name.as_str()) { self.err("E0302", variants[i].name.span, types::cat5("variant `", variants[i].name.name.as_str(), "` is defined more than once in `", path, "`").as_str()); } let mut tys: Vec<ast::TypeKind> = Vec::new(); for j in 0..variants[i].payload.len() invariant 0 <= j && j <= variants[i].payload.len() && i < variants.len(), { let ty: ast::TypeKind = self.field_type(&variants[i].payload[j], mp); tys.push(ty); } vout.push(types::VariantSig { name: variants[i].name.name.clone(), tys: tys }); } types::AdtKind::Enum(vout) },
+            }
+        }
+
+        #[summary("필드와 페이로드의 타입을 풀고 필드가 담을 수 있는 것인지 본다")]
+        #[effects(alloc)]
+        fn resolve_types(self: &mut Checker, m: &ast::Mod, prefix: &str, f: usize) -> ()
+            decreases f,
+        {
+            if f == 0 {
+                return;
+            }
+            let mp: String = unit_path(prefix, m);
+            let sub: String = types::cat2(mp.as_str(), "::");
+            for s in 0..m.mods.len()
+                invariant 0 <= s && s <= m.mods.len(),
+            {
+                self.resolve_types(&m.mods[s], sub.as_str(), f - 1);
+            }
+            let mut done: Vec<String> = Vec::new();
+            for i in 0..m.types.len()
+                invariant 0 <= i && i <= m.types.len(),
+            {
+                let path: String = types::cat3(mp.as_str(), "::", m.types[i].name.name.as_str());
+                if types::add(&mut done, path.as_str()) {
+                    let gens: Vec<types::TParam> = self.tparams_of(m.types[i].generics.as_slice(), true, mp.as_str());
+                    self.tparams = gens;
+                    let kind: types::AdtKind = self.resolve_kind(&m.types[i], path.as_str(), mp.as_str());
+                    self.tparams = Vec::new();
+                    match self.adts.find(path.as_str()) {
+                        None => { let dropped: types::AdtKind = kind; },
+                        Some(at) => { self.adts.items[at].kind = kind; },
+                    }
+                }
+            }
+        }
+
+        #[summary("매개변수 p의 타입 인자 t의 E0428/E0403 (자리 span): 경계를 지키는 값 타입. 보고했으면 false")]
+        #[effects(alloc)]
+        fn targ_ok(self: &mut Checker, t: &ast::TypeKind, p: &types::TParam, of: &str, span: source::Span, report: bool) -> bool {
+            if types::is_error(t) {
+                return false;
+            }
+            let tt: String = types::text(t);
+            if not_value(t) {
+                if report {
+                    self.help("E0403", span, types::cat7("type argument `", tt.as_str(), "` for `", p.name.as_str(), "` of `", of, "` is not a value type").as_str(), "type arguments are value types: references are second-class (ADR-0015)");
+                }
+                return false;
+            }
+            for i in 0..p.bounds.len()
+                invariant 0 <= i && i <= p.bounds.len(),
+            {
+                let b_s: String = p.bounds[i].clone();
+                if (b_s.as_str() == "Eq" || b_s.as_str() == "Ord") && !self.has_builtin(t, b_s.as_str()) {
+                    if report {
+                        let fix: String = if is_f64(t) {
+                            types::cat3("`f64` is not `", b_s.as_str(), "`, as in Rust: NaN is not equal to itself (ADR-0061 §1); compare `f64` values with `<`, `==` in code, or drop the bound")
+                        } else {
+                            types::cat3("`", b_s.as_str(), "` holds for the integer types, `bool`, `char`, `String` and type parameters bounded by it; for data types it is ADR-0046 open question 4")
+                        };
+                        self.help("E0428", span, types::cat4(types::cat4("`", tt.as_str(), "` is not `", b_s.as_str()).as_str(), "`, a bound of `", p.name.as_str(), types::cat3("` in `", of, "`").as_str()).as_str(), fix.as_str());
+                    }
+                    return false;
+                }
+            }
+            for j in 0..p.bounds.len()
+                invariant 0 <= j && j <= p.bounds.len(),
+            {
+                let b_s: String = p.bounds[j].clone();
+                if is_path(b_s.as_str()) && !self.has_trait(t, b_s.as_str(), 100000) {
+                    if report {
+                        let what: String = if p.name.as_str() == "Self" {
+                            types::cat5("`", tt.as_str(), "` does not implement `", b_s.as_str(), "`")
+                        } else {
+                            types::cat4(types::cat4("`", tt.as_str(), "` does not implement `", b_s.as_str()).as_str(), "`, a bound of `", p.name.as_str(), types::cat3("` in `", of, "`").as_str())
+                        };
+                        let fix: String = if types::is_param(t) {
+                            types::cat5("bound the type parameter: `", tt.as_str(), ": ", b_s.as_str(), "`")
+                        } else {
+                            types::cat5("write `impl ", b_s.as_str(), " for ", tt.as_str(), " { .. }`")
+                        };
+                        self.help("E0428", span, what.as_str(), fix.as_str());
+                    }
+                    return false;
+                }
+            }
+            if types::has(p.bounds.as_slice(), "elem") && !self.vec_elem_ok(t, 100000) {
+                if report {
+                    self.help("E0428", span, types::cat7("`", tt.as_str(), "` cannot be a `Vec` element, which `", p.name.as_str(), "` is in `", of, "`").as_str(), "pass a scalar, a struct or enum without arrays, a `String`, or a `Vec` or `Box` of them (backlog 2O-03b)");
+                }
+                return false;
+            }
+            if types::has(p.bounds.as_slice(), "Copy") && !self.is_copy(t) {
+                if report {
+                    self.help("E0428", span, types::cat7("`", tt.as_str(), "` is not `Copy`, a bound of `", p.name.as_str(), "` in `", of, "`").as_str(), "pass a `Copy` type (a scalar, a struct or enum, an array of them); a `Vec`, a `Box` and what holds them move (ADR-0047)");
+                }
+                return false;
+            }
+            true
+        }
+
+        #[summary("타입 매개변수 gs (ADR-0046). report면 그 결함을 낸다(정의마다 한 번): 모르는 경계, 겹친 이름")]
+        #[effects(alloc)]
+        fn tparams_of(self: &mut Checker, gs: &[ast::TypeParam], report: bool, mp: &str) -> Vec<types::TParam> {
+            let mut out: Vec<types::TParam> = Vec::new();
+            for g in 0..gs.len()
+                invariant 0 <= g && g <= gs.len(),
+            {
+                let mut bounds: Vec<String> = Vec::new();
+                for b in 0..gs[g].bounds.len()
+                    invariant 0 <= b && b <= gs[g].bounds.len() && g < gs.len(),
+                {
+                    let name: String = path_text(gs[g].bounds[b].as_slice());
+                    if name.as_str() == "Copy" || name.as_str() == "Eq" || name.as_str() == "Ord" {
+                        bounds.push(name);
+                    } else {
+                        match self.trait_path(gs[g].bounds[b].as_slice(), mp) {
+                            None => { let dropped: String = name; if report && gs[g].bounds[b].len() > 0 { let last: usize = gs[g].bounds[b].len() - 1; let span: source::Span = span_to(gs[g].bounds[b][0].span, gs[g].bounds[b][last].span); let d: diag::Diag = self.unknown_trait(dropped.as_str(), span, mp, "the built-in bounds are `Copy`, `Eq` and `Ord`; a trait of another unit is named by full path, e.g. `unit::Shape`"); self.diags.push(d); } },
+                            Some(tr) => { let dropped: String = name; bounds.push(tr); },
+                        }
+                    }
+                }
+                if report && types::is_tparam(out.as_slice(), gs[g].name.name.as_str()) {
+                    self.help("E0302", gs[g].name.span, types::cat3("type parameter `", gs[g].name.name.as_str(), "` is declared twice").as_str(), "give each type parameter its own name");
+                }
+                if has_span(self.elem_params.as_slice(), gs[g].span) {
+                    bounds.push(String::from("elem"));
+                }
+                out.push(types::TParam { name: gs[g].name.name.clone(), bounds: bounds });
+            }
+            out
+        }
+
+        #[summary("단위의 trait 이름을 올린다 (ADR-0046 §1; 메서드는 타입 뒤에)")]
+        #[effects(alloc)]
+        fn trait_names(self: &mut Checker, m: &ast::Mod, prefix: &str, f: usize) -> ()
+            decreases f,
+        {
+            if f == 0 {
+                return;
+            }
+            let mp: String = unit_path(prefix, m);
+            let sub: String = types::cat2(mp.as_str(), "::");
+            for s in 0..m.mods.len()
+                invariant 0 <= s && s <= m.mods.len(),
+            {
+                self.trait_names(&m.mods[s], sub.as_str(), f - 1);
+            }
+            for i in 0..m.traits.len()
+                invariant 0 <= i && i <= m.traits.len(),
+            {
+                let name: String = m.traits[i].name.name.clone();
+                if name.as_str() == "Copy" || name.as_str() == "Eq" || name.as_str() == "Ord" {
+                    self.help("E0309", m.traits[i].name.span, types::cat3("`", name.as_str(), "` is a built-in trait (ADR-0046 §1)").as_str(), "choose another name");
+                }
+                for a in 0..m.traits[i].attrs.len()
+                    invariant 0 <= a && a <= m.traits[i].attrs.len() && i < m.traits.len(),
+                {
+                    if m.traits[i].attrs[a].name.name.as_str() == "summary" {
+                        self.check_summary(&m.traits[i].attrs[a], m.traits[i].attrs.as_slice());
+                    } else {
+                        self.fixed("E0605", m.traits[i].attrs[a].span, types::cat3("unknown attribute `", m.traits[i].attrs[a].name.name.as_str(), "` on a trait").as_str(), "traits take `#[summary(\"..\")]`", "");
+                    }
+                }
+                let path: String = types::cat3(mp.as_str(), "::", name.as_str());
+                if !self.traits.has(path.as_str()) {
+                    self.traits.insert(path.as_str(), types::TraitInfo { path: path.clone(), unit: mp.clone(), name: name.clone(), methods: Vec::new(), span: m.traits[i].name.span });
+                }
+            }
+        }
+
+        #[summary("segs가 단위 mp에서 부르는 trait의 온 경로")]
+        #[effects(alloc)]
+        fn trait_path(self: &Checker, segs: &[ast::Ident], mp: &str) -> Option<String> {
+            let name: String = path_text(segs);
+            let here: String = types::cat3(mp, "::", name.as_str());
+            if segs.len() == 1 && self.traits.has(here.as_str()) {
+                return Some(here);
+            }
+            if self.traits.has(name.as_str()) {
+                Some(name)
+            } else {
+                None
+            }
+        }
+
+        #[summary("단위의 trait들의 메서드 시그니처 (ADR-0046 §2): Self에 제네릭이고(그 trait으로 묶인다) 그 뒤에 제 매개변수. decreases는 E0207")]
+        #[effects(alloc)]
+        fn trait_sigs(self: &mut Checker, m: &ast::Mod, prefix: &str, f: usize) -> ()
+            decreases f,
+        {
+            if f == 0 {
+                return;
+            }
+            let mp: String = unit_path(prefix, m);
+            let sub: String = types::cat2(mp.as_str(), "::");
+            for s in 0..m.mods.len()
+                invariant 0 <= s && s <= m.mods.len(),
+            {
+                self.trait_sigs(&m.mods[s], sub.as_str(), f - 1);
+            }
+            for i in 0..m.traits.len()
+                invariant 0 <= i && i <= m.traits.len(),
+            {
+                let path: String = types::cat3(mp.as_str(), "::", m.traits[i].name.name.as_str());
+                let mine: bool = match self.traits.find(path.as_str()) {
+                    None => false,
+                    Some(at) => span_eq(self.traits.items[at].span, m.traits[i].name.span),
+                };
+                if mine {
+                    let mut sb: Vec<String> = Vec::new();
+                    sb.push(path.clone());
+                    let selfp: types::TParam = types::TParam { name: String::from("Self"), bounds: sb };
+                    let mut ig: Vec<types::TParam> = Vec::new();
+                    ig.push(selfp.clone());
+                    let mut names: Vec<String> = Vec::new();
+                    for k in 0..m.traits[i].fns.len()
+                        invariant 0 <= k && k <= m.traits[i].fns.len() && i < m.traits.len(),
+                    {
+                        let fname: String = m.traits[i].fns[k].f.name.name.clone();
+                        if types::has(names.as_slice(), fname.as_str()) {
+                            self.err("E0302", m.traits[i].fns[k].f.name.span, types::cat5("`", fname.as_str(), "` is defined more than once in trait `", m.traits[i].name.name.as_str(), "`").as_str());
+                        } else {
+                            names.push(fname.clone());
+                            match &m.traits[i].fns[k].f.measure {
+                                None => {},
+                                Some(d) => { self.help("E0207", d.span, "a trait method takes no `decreases`: recursion through a bound is not supported", "remove it; an impl's function may recurse on its own type with its own `decreases`"); },
+                            }
+                            let own: Vec<types::TParam> = self.tparams_of(m.traits[i].fns[k].f.generics.as_slice(), false, mp.as_str());
+                            let mut tps: Vec<types::TParam> = Vec::new();
+                            tps.push(selfp.clone());
+                            ast::append::<types::TParam>(&mut tps, own);
+                            self.tparams = tps;
+                            self.receiver_rule(&m.traits[i].fns[k].f, "Self", true, mp.as_str());
+                            self.tparams = Vec::new();
+                            let fp: String = types::cat3(path.as_str(), "::", fname.as_str());
+                            self.collect_fn(&m.traits[i].fns[k].f, fp.as_str(), mp.as_str(), false, ig.as_slice());
+                            match self.fns.find(fp.as_str()) {
+                                None => {},
+                                Some(at) => { self.fns.items[at].trait_of = Some(path.clone()); self.fns.items[at].default = m.traits[i].fns[k].has_body; },
+                            }
+                        }
+                    }
+                    match self.traits.find(path.as_str()) {
+                        None => { let dropped: Vec<String> = names; },
+                        Some(at) => { self.traits.items[at].methods = names; },
+                    }
+                }
+            }
+        }
+
+        #[summary("segs가 단위 mp에서 부르는 타입의 온 경로")]
+        #[effects(alloc)]
+        fn type_path(self: &Checker, segs: &[ast::Ident], mp: &str) -> Option<String> {
+            let name: String = path_text(segs);
+            let here: String = types::cat3(mp, "::", name.as_str());
+            if segs.len() == 1 && self.adts.has(here.as_str()) {
+                return Some(here);
+            }
+            if self.adts.has(name.as_str()) {
+                Some(name)
+            } else {
+                None
+            }
+        }
+
+        #[summary("trait name의 E0305: 그 단위의 가장 가까운 trait, 없으면 help")]
+        #[effects(alloc)]
+        fn unknown_trait(self: &Checker, name: &str, span: source::Span, mp: &str, help: &str) -> diag::Diag {
+            let d: diag::Diag = diag::new("E0305", span, types::cat3("unknown trait `", name, "`").as_str());
+            let cands: Vec<String> = self.local_traits(mp);
+            match types::closest(name, cands.as_slice()) {
+                None => diag::fix(d, help, None),
+                Some(near) => diag::fix(d, types::cat3("did you mean `", near.as_str(), "`?").as_str(), Some(near)),
+            }
+        }
+
+        #[summary("타입 이름의 E0305: 그 단위의 가장 가까운 타입을 고침으로")]
+        #[effects(alloc)]
+        fn unknown_type(self: &Checker, path: &[String], span: source::Span, mp: &str) -> diag::Diag {
+            let name: String = types::join(path, "::");
+            if name.as_str() == "Self" {
+                let d: diag::Diag = diag::new("E0305", span, "`Self` names the implementing type only in a trait declaration");
+                return match &self.self_head { None => diag::fix(d, "write the type", None), Some(sh) => diag::fix(d, types::cat3("write `", sh.text.as_str(), "`").as_str(), Some(sh.text.clone())), };
+            }
+            match self.import_text(path, mp) {
+                None => {},
+                Some(text) => { return diag::fix(diag::new("E0214", span, types::cat3("`", name.as_str(), "` comes from a `use`").as_str()), types::cat3("write `", text.as_str(), "`").as_str(), Some(text)); },
+            }
+            let d: diag::Diag = diag::new("E0305", span, types::cat3("unknown type `", name.as_str(), "`").as_str());
+            let cands: Vec<String> = self.local_types(mp);
+            match types::closest(name.as_str(), cands.as_slice()) {
+                None => { if path.len() == 1 { diag::fix(d, "types of other units are named by full path, e.g. `unit::Point`", None) } else { d } },
+                Some(near) => diag::fix(d, types::cat3("did you mean `", near.as_str(), "`?").as_str(), Some(near)),
+            }
+        }
+
+        #[summary("Vec의 원소가 될 수 있는가: 스칼라, 배열 없는 구조체·열거형, 또 다른 Vec이나 그것의 Box (백로그 2O-03b)")]
+        #[effects(alloc)]
+        fn vec_elem_ok(self: &Checker, e: &ast::TypeKind, f: usize) -> bool
+            decreases f,
+        {
+            if f == 0 {
+                return false;
+            }
+            match e {
+                ast::TypeKind::Int(it) => true,
+                ast::TypeKind::F64 => true,
+                ast::TypeKind::Bool => true,
+                ast::TypeKind::Unit => false,
+                ast::TypeKind::Char => true,
+                ast::TypeKind::String => true,
+                ast::TypeKind::Str => false,
+                ast::TypeKind::Array(q2_ae, q2_an) => false,
+                ast::TypeKind::ArrayN(q2_ne, q2_nn) => false,
+                ast::TypeKind::Slice(q2_se) => false,
+                ast::TypeKind::Ref(q2_rm, q2_ri) => false,
+                ast::TypeKind::Named(path, args) => { let mut seen: Vec<String> = Vec::new(); !self.holds_array(e, &mut seen, 100000) },
+                ast::TypeKind::Vec(ve) => self.vec_elem_ok(&ve.kind, f - 1),
+                ast::TypeKind::Box(be) => self.vec_elem_ok(&be.kind, f - 1),
+                ast::TypeKind::Param(pn) => true,
+                ast::TypeKind::Never => false,
+                ast::TypeKind::Error => false,
+            }
+        }
+
+        #[summary("Vec<T> (ADR-0031 §1): T는 스칼라이거나 배열 없는 구조체·열거형")]
+        #[effects(alloc)]
+        fn vec_type(self: &mut Checker, span: source::Span, args: &[ast::Type], mp: &str, report: bool, f: usize) -> ast::TypeKind
+            decreases f * 2,
+        {
+            if f == 0 {
+                return ast::TypeKind::Error;
+            }
+            if args.len() != 1 {
+                if report {
+                    self.err("E0420", span, count1("`Vec` takes 1 type argument, found ", args.len()).as_str());
+                }
+                return ast::TypeKind::Error;
+            }
+            let e: ast::TypeKind = self.canon(&args[0], mp, report, f - 1);
+            if types::is_error(&e) {
+                return ast::TypeKind::Error;
+            }
+            if !self.vec_elem_ok(&e, 100000) {
+                if report {
+                    self.err("E0402", args[0].span, types::cat3("`Vec` elements are scalars, structs and enums without arrays, or `Vec`s and `Box`es of them, found `", types::text(&e).as_str(), "`").as_str());
+                }
+                return ast::TypeKind::Error;
+            }
+            ast::TypeKind::Vec(Box::new(ast::Type { kind: e, span: args[0].span }))
+        }
+    }
+
+    #[summary("impl_info의 답")]
+    struct Found { info: types::TraitImplInfo, rejected: bool }
+
+    #[summary("함수에 쓴 타입에서 Vec의 원소로 쓰인 이름을 모으는 손님")]
+    struct Names { used: Vec<String> }
+
+    impl ast::TypeFn for Names {
+        #[effects(alloc)]
+        fn ty(self: &mut Names, unit: &str, t: &mut ast::Type) -> () {
+            elem_names(&t.kind, &mut self.used, 100000);
+        }
+    }
+
+    #[summary("trait impl 안에서 Self가 가리키는 타입과 그 글")]
+    struct SelfHead { head: ast::TypeKind, text: String }
+
+    #[summary("타입 q를 인자 args(열쇠들을 이은 글)로 쓴 자리")]
+    struct Use { q: String, args: String }
+
+    #[effects(pure)]
+    fn any_error(ts: &[ast::TypeKind]) -> bool {
+        for i in 0..ts.len()
+            invariant 0 <= i && i <= ts.len(),
+        {
+            if types::is_error(&ts[i]) {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[summary("공백뿐인가 (Rust의 trim: 유니코드 White_Space)")]
+    #[effects(alloc)]
+    fn blank(s: &str) -> bool {
+        let cs: Vec<u32> = types::chars(s);
+        for i in 0..cs.len()
+            invariant 0 <= i && i <= cs.len(),
+        {
+            let c: u32 = cs[i];
+            let ws: bool = c >= 9 && c <= 13 || c == 32 || c == 133 || c == 160 || c == 5760 || c >= 8192 && c <= 8202 || c == 8232 || c == 8233 || c == 8239 || c == 8287 || c == 12288;
+            if !ws {
+                return false;
+            }
+        }
+        true
+    }
+
+    #[summary("impl의 경계 목록의 열쇠: 매개변수마다 이름과 정렬한 경계, 그것들을 정렬해 잇는다 (ADR-0097)")]
+    #[effects(alloc)]
+    fn bounds_key(ig: &[types::TParam]) -> String {
+        let mut rows: Vec<String> = Vec::new();
+        for i in 0..ig.len()
+            invariant 0 <= i && i <= ig.len(),
+        {
+            rows.push(types::cat3(ig[i].name.as_str(), ":", types::join(sorted(ig[i].bounds.as_slice()).as_slice(), ",").as_str()));
+        }
+        types::join(sorted(rows.as_slice()).as_slice(), ";")
+    }
+
+    #[summary("t가 값으로 담는 타입들 (Box와 Vec이 끊는다)")]
+    #[effects(alloc)]
+    fn contained(t: &ast::TypeKind, out: &mut Vec<String>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match t {
+            ast::TypeKind::Int(q8_it) => {},
+            ast::TypeKind::F64 => {},
+            ast::TypeKind::Bool => {},
+            ast::TypeKind::Unit => {},
+            ast::TypeKind::Char => {},
+            ast::TypeKind::String => {},
+            ast::TypeKind::Str => {},
+            ast::TypeKind::Array(ae, an) => contained(&ae.kind, out, f - 1),
+            ast::TypeKind::ArrayN(q8_ne, q8_nn) => {},
+            ast::TypeKind::Slice(q8_se) => {},
+            ast::TypeKind::Ref(q8_rm, q8_ri) => {},
+            ast::TypeKind::Named(path, args) => { if !types::is_opt_res(t) { out.push(types::join(path.as_slice(), "::")); } for i in 0..args.len() invariant 0 <= i && i <= args.len(), { contained(&args[i].kind, out, f - 1); } },
+            ast::TypeKind::Vec(q8_ve) => {},
+            ast::TypeKind::Box(q8_be) => {},
+            ast::TypeKind::Param(q8_pn) => {},
+            ast::TypeKind::Never => {},
+            ast::TypeKind::Error => {},
+        }
+    }
+
+    #[summary("T: Copy, U: Copy")]
+    #[effects(alloc)]
+    fn copy_list(ps: &[String]) -> String {
+        let mut s: String = String::new();
+        for i in 0..ps.len()
+            invariant 0 <= i && i <= ps.len(),
+        {
+            if i > 0 {
+                s.push_str(", ");
+            }
+            s.push_str(ps[i].as_str());
+            s.push_str(": Copy");
+        }
+        s
+    }
+
+    #[effects(alloc)]
+    fn count1(a: &str, n: usize) -> String {
+        let mut s: String = String::from(a);
+        std::num::push_u64(&mut s, n as u64);
+        s
+    }
+
+    #[summary("a n b m c를 이은 글 (수는 10진)")]
+    #[effects(alloc)]
+    fn counts(a: &str, n: usize, b: &str, m: usize, c: &str) -> String {
+        let mut s: String = String::from(a);
+        std::num::push_u64(&mut s, n as u64);
+        s.push_str(b);
+        std::num::push_u64(&mut s, m as u64);
+        s.push_str(c);
+        s
+    }
+
+    #[summary("표의 글: 타입, 함수, trait, impl, use의 행 (stage0 check::dump_decls, bmb dump decls)")]
+    #[effects(alloc)]
+    fn dump(c: &Checker) -> String {
+        let mut out: String = String::new();
+        for k in 0..c.adts.len()
+            invariant 0 <= k,
+        {
+            match c.adts.nth(k) {
+                None => {},
+                Some(i) => push_adt(&mut out, &c.adts.items[i]),
+            }
+        }
+        for k in 0..c.fns.len()
+            invariant 0 <= k,
+        {
+            match c.fns.nth(k) {
+                None => {},
+                Some(i) => push_fn(&mut out, &c.fns.items[i]),
+            }
+        }
+        for k in 0..c.traits.len()
+            invariant 0 <= k,
+        {
+            match c.traits.nth(k) {
+                None => {},
+                Some(i) => { out.push_str("{\"trait\":"); std::json::push_string(&mut out, c.traits.items[i].path.as_str()); out.push_str(",\"methods\":"); push_names(&mut out, c.traits.items[i].methods.as_slice()); out.push_str("}\n"); },
+            }
+        }
+        for i in 0..c.trait_impls.len()
+            invariant 0 <= i && i <= c.trait_impls.len(),
+        {
+            out.push_str("{\"impl\":");
+            std::json::push_string(&mut out, c.trait_impls[i].trait_path.as_str());
+            out.push_str(",\"generics\":");
+            push_generics(&mut out, c.trait_impls[i].generics.as_slice());
+            out.push_str(",\"for\":");
+            std::json::push_string(&mut out, types::text(&c.trait_impls[i].head).as_str());
+            out.push_str(",\"unit\":");
+            std::json::push_string(&mut out, c.trait_impls[i].unit.as_str());
+            out.push_str("}\n");
+        }
+        for u in 0..c.imports.len()
+            invariant 0 <= u,
+        {
+            match c.imports.nth(u) {
+                None => {},
+                Some(ui) => { let unit: String = c.imports.key(u); for n in 0..c.imports.items[ui].len() invariant 0 <= n && ui < c.imports.items.len(), { match c.imports.items[ui].nth(n) { None => {}, Some(ni) => { out.push_str("{\"import\":"); std::json::push_string(&mut out, c.imports.items[ui].key(n).as_str()); out.push_str(",\"unit\":"); std::json::push_string(&mut out, unit.as_str()); out.push_str(",\"path\":"); std::json::push_string(&mut out, c.imports.items[ui].items[ni].as_str()); out.push_str("}\n"); }, } } },
+            }
+        }
+        out
+    }
+
+    #[summary("함수 하나: 제 매개변수를 표시하고 쓴 이름을 all에 더한다")]
+    #[effects(alloc)]
+    fn elem_fn(d: &ast::FnDef, out: &mut Vec<source::Span>, all: &mut Vec<String>) -> () {
+        let mut c: ast::FnDef = d.clone();
+        let mut v: Names = Names { used: Vec::new() };
+        ast::fn_types_mut::<Names>(&mut c, "", &mut v);
+        mark(d.generics.as_slice(), v.used.as_slice(), out);
+        for i in 0..v.used.len()
+            invariant 0 <= i && i <= v.used.len(),
+        {
+            let fresh: bool = types::add(all, v.used[i].as_str());
+        }
+    }
+
+    #[effects(alloc)]
+    fn elem_fns(fs: &[ast::FnDef], out: &mut Vec<source::Span>) -> Vec<String> {
+        let mut all: Vec<String> = Vec::new();
+        for i in 0..fs.len()
+            invariant 0 <= i && i <= fs.len(),
+        {
+            elem_fn(&fs[i], out, &mut all);
+        }
+        all
+    }
+
+    #[effects(alloc)]
+    fn elem_mod(m: &ast::Mod, out: &mut Vec<source::Span>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        for s in 0..m.mods.len()
+            invariant 0 <= s && s <= m.mods.len(),
+        {
+            elem_mod(&m.mods[s], out, f - 1);
+        }
+        for t in 0..m.types.len()
+            invariant 0 <= t && t <= m.types.len(),
+        {
+            let mut used: Vec<String> = Vec::new();
+            match &m.types[t].kind {
+                ast::TypeDefKind::Struct(fs) => { for i in 0..fs.len() invariant 0 <= i && i <= fs.len(), { elem_names(&fs[i].ty.kind, &mut used, 100000); } },
+                ast::TypeDefKind::Enum(vs) => { for i in 0..vs.len() invariant 0 <= i && i <= vs.len(), { for j in 0..vs[i].payload.len() invariant 0 <= j && j <= vs[i].payload.len(), { elem_names(&vs[i].payload[j].kind, &mut used, 100000); } } },
+            }
+            mark(m.types[t].generics.as_slice(), used.as_slice(), out);
+        }
+        let free: Vec<String> = elem_fns(m.fns.as_slice(), out);
+        for t in 0..m.traits.len()
+            invariant 0 <= t && t <= m.traits.len(),
+        {
+            let mut all: Vec<String> = Vec::new();
+            for k in 0..m.traits[t].fns.len()
+                invariant 0 <= k && k <= m.traits[t].fns.len() && t < m.traits.len(),
+            {
+                elem_fn(&m.traits[t].fns[k].f, out, &mut all);
+            }
+        }
+        for i in 0..m.impls.len()
+            invariant 0 <= i && i <= m.impls.len(),
+        {
+            let used: Vec<String> = elem_fns(m.impls[i].fns.as_slice(), out);
+            mark(m.impls[i].generics.as_slice(), used.as_slice(), out);
+        }
+        for i in 0..m.trait_impls.len()
+            invariant 0 <= i && i <= m.trait_impls.len(),
+        {
+            let mut used: Vec<String> = elem_fns(m.trait_impls[i].fns.as_slice(), out);
+            elem_names(&m.trait_impls[i].self_ty.kind, &mut used, 100000);
+            mark(m.trait_impls[i].generics.as_slice(), used.as_slice(), out);
+        }
+    }
+
+    #[summary("쓴 타입 t가 Vec의 원소로 부르는 한 마디 이름들")]
+    #[effects(alloc)]
+    fn elem_names(t: &ast::TypeKind, out: &mut Vec<String>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match t {
+            ast::TypeKind::Int(q6_it) => {},
+            ast::TypeKind::F64 => {},
+            ast::TypeKind::Bool => {},
+            ast::TypeKind::Unit => {},
+            ast::TypeKind::Char => {},
+            ast::TypeKind::String => {},
+            ast::TypeKind::Str => {},
+            ast::TypeKind::Array(ae, an) => elem_names(&ae.kind, out, f - 1),
+            ast::TypeKind::ArrayN(q6_ne, q6_nn) => {},
+            ast::TypeKind::Slice(se) => elem_names(&se.kind, out, f - 1),
+            ast::TypeKind::Ref(rm, ri) => elem_names(&ri.kind, out, f - 1),
+            ast::TypeKind::Named(path, args) => { if path.len() == 1 && path[0].as_str() == "Vec" && args.len() == 1 { match plain_name(&args[0].kind) { None => {}, Some(n) => { let fresh: bool = types::add(out, n.as_str()); }, } } for i in 0..args.len() invariant 0 <= i && i <= args.len(), { elem_names(&args[i].kind, out, f - 1); } },
+            ast::TypeKind::Vec(ve) => { match plain_name(&ve.kind) { None => {}, Some(n) => { let fresh: bool = types::add(out, n.as_str()); }, } elem_names(&ve.kind, out, f - 1); },
+            ast::TypeKind::Box(be) => elem_names(&be.kind, out, f - 1),
+            ast::TypeKind::Param(q6_pn) => {},
+            ast::TypeKind::Never => {},
+            ast::TypeKind::Error => {},
+        }
+    }
+
+    #[summary("정의가 Vec의 원소로 쓰는 타입 매개변수의 자리 (백로그 2T-10)")]
+    #[effects(alloc)]
+    fn elem_params(p: &ast::Program) -> Vec<source::Span> {
+        let mut out: Vec<source::Span> = Vec::new();
+        for i in 0..p.mods.len()
+            invariant 0 <= i && i <= p.mods.len(),
+        {
+            elem_mod(&p.mods[i], &mut out, 1000000000);
+        }
+        out
+    }
+
+    #[effects(pure)]
+    fn empty_enum(k: &types::AdtKind) -> bool {
+        match k {
+            types::AdtKind::Struct(fs) => false,
+            types::AdtKind::Enum(vs) => vs.len() == 0,
+        }
+    }
+
+    #[summary("유한한 값이 있는 타입인가 (ok는 이미 그렇다고 안 것)")]
+    #[effects(alloc)]
+    fn finite(t: &ast::TypeKind, ok: &[String], f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return true;
+        }
+        match t {
+            ast::TypeKind::Int(q10_it) => true,
+            ast::TypeKind::F64 => true,
+            ast::TypeKind::Bool => true,
+            ast::TypeKind::Unit => true,
+            ast::TypeKind::Char => true,
+            ast::TypeKind::String => true,
+            ast::TypeKind::Str => true,
+            ast::TypeKind::Array(ae, an) => *an == 0 || finite(&ae.kind, ok, f - 1),
+            ast::TypeKind::ArrayN(q10_ne, q10_nn) => true,
+            ast::TypeKind::Slice(q10_se) => true,
+            ast::TypeKind::Ref(q10_rm, q10_ri) => true,
+            ast::TypeKind::Named(path, args) => { if path.len() == 1 && path[0].as_str() == "Option" { return true; } if path.len() == 1 && path[0].as_str() == "Result" { for i in 0..args.len() invariant 0 <= i && i <= args.len(), { if finite(&args[i].kind, ok, f - 1) { return true; } } return false; } types::has(ok, types::join(path.as_slice(), "::").as_str()) },
+            ast::TypeKind::Vec(q10_ve) => true,
+            ast::TypeKind::Box(be) => finite(&be.kind, ok, f - 1),
+            ast::TypeKind::Param(q10_pn) => true,
+            ast::TypeKind::Never => true,
+            ast::TypeKind::Error => true,
+        }
+    }
+
+    #[effects(alloc)]
+    fn finite_adt(k: &types::AdtKind, ok: &[String]) -> bool {
+        match k {
+            types::AdtKind::Struct(fs) => { for i in 0..fs.len() invariant 0 <= i && i <= fs.len(), { if !finite(&fs[i].ty, ok, 100000) { return false; } } true },
+            types::AdtKind::Enum(vs) => { for i in 0..vs.len() invariant 0 <= i && i <= vs.len(), { let mut all: bool = true; for j in 0..vs[i].tys.len() invariant 0 <= j && j <= vs[i].tys.len(), { if !finite(&vs[i].tys[j], ok, 100000) { all = false; } } if all { return true; } } false },
+        }
+    }
+
+    #[summary("이름 name의 속성이 있는가")]
+    #[effects(pure)]
+    fn has_attr(attrs: &[ast::Attr], name: &str) -> bool {
+        for i in 0..attrs.len()
+            invariant 0 <= i && i <= attrs.len(),
+        {
+            if attrs[i].name.name.as_str() == name {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[effects(pure)]
+    fn has_span(xs: &[source::Span], s: source::Span) -> bool {
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            if span_eq(xs[i], s) {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[effects(pure)]
+    fn has_text(o: &Option<String>) -> bool {
+        match o {
+            None => false,
+            Some(s) => true,
+        }
+    }
+
+    #[effects(alloc)]
+    fn ident_arg(a: &ast::AttrArg) -> Option<ast::Ident> {
+        match a {
+            ast::AttrArg::Ident(id) => Some(id.clone()),
+            ast::AttrArg::Str(s, sp) => None,
+            ast::AttrArg::Pair(k, v) => None,
+        }
+    }
+
+    #[effects(pure)]
+    fn index_of(xs: &[String], s: &str) -> (r: Option<usize>)
+        ensures match r { None => true, Some(i) => i < xs.len(), },
+    {
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            if xs[i].as_str() == s {
+                return Some(i);
+            }
+        }
+        None
+    }
+
+    #[effects(pure)]
+    fn is_bool(t: &ast::TypeKind) -> bool {
+        match t {
+            ast::TypeKind::Int(q15_it) => false,
+            ast::TypeKind::F64 => false,
+            ast::TypeKind::Bool => true,
+            ast::TypeKind::Unit => false,
+            ast::TypeKind::Char => false,
+            ast::TypeKind::String => false,
+            ast::TypeKind::Str => false,
+            ast::TypeKind::Array(q15_ae, q15_an) => false,
+            ast::TypeKind::ArrayN(q15_ne, q15_nn) => false,
+            ast::TypeKind::Slice(q15_se) => false,
+            ast::TypeKind::Ref(q15_rm, q15_ri) => false,
+            ast::TypeKind::Named(q15_path, q15_args) => false,
+            ast::TypeKind::Vec(q15_ve) => false,
+            ast::TypeKind::Box(q15_be) => false,
+            ast::TypeKind::Param(q15_pn) => false,
+            ast::TypeKind::Never => false,
+            ast::TypeKind::Error => false,
+        }
+    }
+
+    #[effects(pure)]
+    fn is_exec(k: &ast::FnKind) -> bool {
+        match k {
+            ast::FnKind::Exec => true,
+            ast::FnKind::Spec => false,
+            ast::FnKind::Proof => false,
+        }
+    }
+
+    #[effects(pure)]
+    fn is_f64(t: &ast::TypeKind) -> bool {
+        match t {
+            ast::TypeKind::Int(q14_it) => false,
+            ast::TypeKind::F64 => true,
+            ast::TypeKind::Bool => false,
+            ast::TypeKind::Unit => false,
+            ast::TypeKind::Char => false,
+            ast::TypeKind::String => false,
+            ast::TypeKind::Str => false,
+            ast::TypeKind::Array(q14_ae, q14_an) => false,
+            ast::TypeKind::ArrayN(q14_ne, q14_nn) => false,
+            ast::TypeKind::Slice(q14_se) => false,
+            ast::TypeKind::Ref(q14_rm, q14_ri) => false,
+            ast::TypeKind::Named(q14_path, q14_args) => false,
+            ast::TypeKind::Vec(q14_ve) => false,
+            ast::TypeKind::Box(q14_be) => false,
+            ast::TypeKind::Param(q14_pn) => false,
+            ast::TypeKind::Never => false,
+            ast::TypeKind::Error => false,
+        }
+    }
+
+    #[summary("경로인가 (::가 있는 글): 사용자 trait의 경계")]
+    #[effects(pure)]
+    fn is_path(s: &str) -> bool {
+        let n: usize = s.len();
+        for i in 0..n
+            invariant 0 <= i && i <= n && n == s.len(),
+        {
+            if i + 1 < n && s.as_bytes()[i] == 58 && s.as_bytes()[i + 1] == 58 {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[effects(pure)]
+    fn is_proof(k: &ast::FnKind) -> bool {
+        match k {
+            ast::FnKind::Exec => false,
+            ast::FnKind::Spec => false,
+            ast::FnKind::Proof => true,
+        }
+    }
+
+    #[effects(pure)]
+    fn is_ref_like(t: &ast::TypeKind) -> bool {
+        match t {
+            ast::TypeKind::Int(q12_it) => false,
+            ast::TypeKind::F64 => false,
+            ast::TypeKind::Bool => false,
+            ast::TypeKind::Unit => false,
+            ast::TypeKind::Char => false,
+            ast::TypeKind::String => false,
+            ast::TypeKind::Str => true,
+            ast::TypeKind::Array(q12_ae, q12_an) => false,
+            ast::TypeKind::ArrayN(q12_ne, q12_nn) => false,
+            ast::TypeKind::Slice(se) => true,
+            ast::TypeKind::Ref(rm, ri) => true,
+            ast::TypeKind::Named(q12_path, q12_args) => false,
+            ast::TypeKind::Vec(q12_ve) => false,
+            ast::TypeKind::Box(q12_be) => false,
+            ast::TypeKind::Param(q12_pn) => false,
+            ast::TypeKind::Never => false,
+            ast::TypeKind::Error => false,
+        }
+    }
+
+    #[effects(pure)]
+    fn is_spec(k: &ast::FnKind) -> bool {
+        match k {
+            ast::FnKind::Exec => false,
+            ast::FnKind::Spec => true,
+            ast::FnKind::Proof => false,
+        }
+    }
+
+    #[effects(pure)]
+    fn is_str_arg(a: &ast::AttrArg) -> bool {
+        match a {
+            ast::AttrArg::Ident(id) => false,
+            ast::AttrArg::Str(s, sp) => true,
+            ast::AttrArg::Pair(k, v) => false,
+        }
+    }
+
+    #[effects(pure)]
+    fn is_true(e: &ast::Expr) -> bool {
+        match &e.kind {
+            ast::ExprKind::Int(q1_iv, q1_ir) => false,
+            ast::ExprKind::Float(q1_fb) => false,
+            ast::ExprKind::ByteLit(q1_by) => false,
+            ast::ExprKind::ByteStr(q1_bys) => false,
+            ast::ExprKind::StrLit(q1_st) => false,
+            ast::ExprKind::CharLit(q1_ch) => false,
+            ast::ExprKind::Bool(bo) => *bo,
+            ast::ExprKind::Unit => false,
+            ast::ExprKind::Var(q1_id) => false,
+            ast::ExprKind::Call(q1_ca) => false,
+            ast::ExprKind::Method(q1_me) => false,
+            ast::ExprKind::Index(q1_ib, q1_ii) => false,
+            ast::ExprKind::Unary(q1_uo, q1_ux) => false,
+            ast::ExprKind::Binary(q1_bop, q1_bl, q1_br) => false,
+            ast::ExprKind::Ref(q1_rm, q1_rx) => false,
+            ast::ExprKind::If(q1_ife) => false,
+            ast::ExprKind::Block(q1_blk) => false,
+            ast::ExprKind::Array(q1_ar) => false,
+            ast::ExprKind::Repeat(q1_rp) => false,
+            ast::ExprKind::Old(q1_ox) => false,
+            ast::ExprKind::Quant(q1_qu) => false,
+            ast::ExprKind::Trigger(q1_tx) => false,
+            ast::ExprKind::Closure(q1_cl) => false,
+            ast::ExprKind::StructLit(q1_sl) => false,
+            ast::ExprKind::Path(q1_pa) => false,
+            ast::ExprKind::Deref(q1_dx) => false,
+            ast::ExprKind::Field(q1_fx, q1_fnm) => false,
+            ast::ExprKind::Match(q1_ma) => false,
+            ast::ExprKind::Return(q1_rv) => false,
+            ast::ExprKind::Try(q1_tr) => false,
+            ast::ExprKind::Loop(q1_lp) => false,
+            ast::ExprKind::Break(q1_bk) => false,
+            ast::ExprKind::Continue(q1_co) => false,
+            ast::ExprKind::Range(q1_rg) => false,
+            ast::ExprKind::Error => false,
+        }
+    }
+
+    #[effects(pure)]
+    fn is_unit(t: &ast::TypeKind) -> bool {
+        match t {
+            ast::TypeKind::Int(q13_it) => false,
+            ast::TypeKind::F64 => false,
+            ast::TypeKind::Bool => false,
+            ast::TypeKind::Unit => true,
+            ast::TypeKind::Char => false,
+            ast::TypeKind::String => false,
+            ast::TypeKind::Str => false,
+            ast::TypeKind::Array(q13_ae, q13_an) => false,
+            ast::TypeKind::ArrayN(q13_ne, q13_nn) => false,
+            ast::TypeKind::Slice(q13_se) => false,
+            ast::TypeKind::Ref(q13_rm, q13_ri) => false,
+            ast::TypeKind::Named(q13_path, q13_args) => false,
+            ast::TypeKind::Vec(q13_ve) => false,
+            ast::TypeKind::Box(q13_be) => false,
+            ast::TypeKind::Param(q13_pn) => false,
+            ast::TypeKind::Never => false,
+            ast::TypeKind::Error => false,
+        }
+    }
+
+    #[effects(pure)]
+    fn kind_copy(k: &ast::FnKind) -> ast::FnKind {
+        match k {
+            ast::FnKind::Exec => ast::FnKind::Exec,
+            ast::FnKind::Spec => ast::FnKind::Spec,
+            ast::FnKind::Proof => ast::FnKind::Proof,
+        }
+    }
+
+    #[summary("gs 가운데 used에 든 이름의 자리를 out에")]
+    #[effects(alloc)]
+    fn mark(gs: &[ast::TypeParam], used: &[String], out: &mut Vec<source::Span>) -> () {
+        for i in 0..gs.len()
+            invariant 0 <= i && i <= gs.len(),
+        {
+            if types::has(used, gs[i].name.name.as_str()) && !has_span(out.as_slice(), gs[i].span) {
+                out.push(gs[i].span);
+            }
+        }
+    }
+
+    #[summary("t가 무엇을 지나서든 부르는 모든 사용자 타입")]
+    #[effects(alloc)]
+    fn named(t: &ast::TypeKind, out: &mut Vec<Use>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match t {
+            ast::TypeKind::Int(q9_it) => {},
+            ast::TypeKind::F64 => {},
+            ast::TypeKind::Bool => {},
+            ast::TypeKind::Unit => {},
+            ast::TypeKind::Char => {},
+            ast::TypeKind::String => {},
+            ast::TypeKind::Str => {},
+            ast::TypeKind::Array(ae, an) => named(&ae.kind, out, f - 1),
+            ast::TypeKind::ArrayN(q9_ne, q9_nn) => {},
+            ast::TypeKind::Slice(q9_se) => {},
+            ast::TypeKind::Ref(q9_rm, q9_ri) => {},
+            ast::TypeKind::Named(path, args) => { let mut key: String = String::new(); for i in 0..args.len() invariant 0 <= i && i <= args.len(), { key.push_str(types::key(&args[i].kind).as_str()); key.push_str("\n"); } out.push(Use { q: types::join(path.as_slice(), "::"), args: key }); for j in 0..args.len() invariant 0 <= j && j <= args.len(), { named(&args[j].kind, out, f - 1); } },
+            ast::TypeKind::Vec(ve) => named(&ve.kind, out, f - 1),
+            ast::TypeKind::Box(be) => named(&be.kind, out, f - 1),
+            ast::TypeKind::Param(q9_pn) => {},
+            ast::TypeKind::Never => {},
+            ast::TypeKind::Error => {},
+        }
+    }
+
+    #[summary("내장 선언만 든 검사기")]
+    #[effects(alloc)]
+    fn new() -> Checker {
+        let mut fns: table::Table<types::FnSig> = table::new::<types::FnSig>();
+        let fs: Vec<types::FnSig> = builtins::fns();
+        for i in 0..fs.len()
+            invariant 0 <= i && i <= fs.len(),
+        {
+            fns.insert(fs[i].path.as_str(), fs[i].clone());
+        }
+        let mut adts: table::Table<types::Adt> = table::new::<types::Adt>();
+        let ads: Vec<types::Adt> = builtins::adts();
+        for j in 0..ads.len()
+            invariant 0 <= j && j <= ads.len(),
+        {
+            adts.insert(ads[j].path.as_str(), ads[j].clone());
+        }
+        Checker { diags: Vec::new(), fns: fns, adts: adts, traits: table::new::<types::TraitInfo>(), trait_impls: Vec::new(), rejected_impls: Vec::new(), overlapping_impls: Vec::new(), imports: table::new::<table::Table<String>>(), tparams: Vec::new(), elem_params: Vec::new(), self_head: None }
+    }
+
+    #[summary("참조, 슬라이스, str, ()처럼 값 타입이 아닌 것")]
+    #[effects(pure)]
+    fn not_value(t: &ast::TypeKind) -> bool {
+        match t {
+            ast::TypeKind::Int(q11_it) => false,
+            ast::TypeKind::F64 => false,
+            ast::TypeKind::Bool => false,
+            ast::TypeKind::Unit => true,
+            ast::TypeKind::Char => false,
+            ast::TypeKind::String => false,
+            ast::TypeKind::Str => true,
+            ast::TypeKind::Array(q11_ae, q11_an) => false,
+            ast::TypeKind::ArrayN(q11_ne, q11_nn) => false,
+            ast::TypeKind::Slice(se) => true,
+            ast::TypeKind::Ref(rm, ri) => true,
+            ast::TypeKind::Named(q11_path, q11_args) => false,
+            ast::TypeKind::Vec(q11_ve) => false,
+            ast::TypeKind::Box(q11_be) => false,
+            ast::TypeKind::Param(q11_pn) => false,
+            ast::TypeKind::Never => false,
+            ast::TypeKind::Error => false,
+        }
+    }
+
+    #[summary("제 매개변수 그대로 쓴 인자들의 열쇠 (Use.args와 견준다)")]
+    #[effects(alloc)]
+    fn own_key(gs: &[types::TParam]) -> String {
+        let mut key: String = String::new();
+        for i in 0..gs.len()
+            invariant 0 <= i && i <= gs.len(),
+        {
+            key.push_str("'");
+            key.push_str(gs[i].name.as_str());
+            key.push_str("\n");
+        }
+        key
+    }
+
+    #[effects(alloc)]
+    fn param_names(ps: &[types::TParam], sep: &str) -> String {
+        types::join(tparam_names(ps).as_slice(), sep)
+    }
+
+    #[summary("자료 타입의 필드나 페이로드의 타입들 (선언의 순서)")]
+    #[effects(alloc)]
+    fn parts(k: &types::AdtKind) -> Vec<ast::TypeKind> {
+        let mut out: Vec<ast::TypeKind> = Vec::new();
+        match k {
+            types::AdtKind::Struct(fs) => { for i in 0..fs.len() invariant 0 <= i && i <= fs.len(), { out.push(fs[i].ty.clone()); } },
+            types::AdtKind::Enum(vs) => { for i in 0..vs.len() invariant 0 <= i && i <= vs.len(), { for j in 0..vs[i].tys.len() invariant 0 <= j && j <= vs[i].tys.len(), { out.push(vs[i].tys[j].clone()); } } },
+        }
+        out
+    }
+
+    #[summary("이름들의 경로 글: a::b")]
+    #[effects(alloc)]
+    fn path_text(p: &[ast::Ident]) -> String {
+        let mut s: String = String::new();
+        for i in 0..p.len()
+            invariant 0 <= i && i <= p.len(),
+        {
+            if i > 0 {
+                s.push_str("::");
+            }
+            s.push_str(p[i].name.as_str());
+        }
+        s
+    }
+
+    #[summary("인자 없는 한 마디 이름이면 그 이름")]
+    #[effects(alloc)]
+    fn plain_name(t: &ast::TypeKind) -> Option<String> {
+        match t {
+            ast::TypeKind::Int(q7_it) => None,
+            ast::TypeKind::F64 => None,
+            ast::TypeKind::Bool => None,
+            ast::TypeKind::Unit => None,
+            ast::TypeKind::Char => None,
+            ast::TypeKind::String => None,
+            ast::TypeKind::Str => None,
+            ast::TypeKind::Array(q7_ae, q7_an) => None,
+            ast::TypeKind::ArrayN(q7_ne, q7_nn) => None,
+            ast::TypeKind::Slice(q7_se) => None,
+            ast::TypeKind::Ref(q7_rm, q7_ri) => None,
+            ast::TypeKind::Named(path, args) => { if path.len() == 1 && args.len() == 0 { Some(path[0].clone()) } else { None } },
+            ast::TypeKind::Vec(q7_ve) => None,
+            ast::TypeKind::Box(q7_be) => None,
+            ast::TypeKind::Param(q7_pn) => None,
+            ast::TypeKind::Never => None,
+            ast::TypeKind::Error => None,
+        }
+    }
+
+    #[effects(alloc)]
+    fn push_adt(out: &mut String, a: &types::Adt) -> () {
+        out.push_str("{\"type\":");
+        std::json::push_string(out, a.path.as_str());
+        out.push_str(",\"generics\":");
+        push_generics(out, a.generics.as_slice());
+        match &a.kind {
+            types::AdtKind::Struct(fs) => { out.push_str(",\"kind\":\"struct\",\"body\":["); for i in 0..fs.len() invariant 0 <= i && i <= fs.len(), { if i > 0 { out.push_str(","); } out.push_str("["); std::json::push_string(out, fs[i].name.as_str()); out.push_str(","); std::json::push_string(out, types::text(&fs[i].ty).as_str()); out.push_str("]"); } },
+            types::AdtKind::Enum(vs) => { out.push_str(",\"kind\":\"enum\",\"body\":["); for i in 0..vs.len() invariant 0 <= i && i <= vs.len(), { if i > 0 { out.push_str(","); } out.push_str("["); std::json::push_string(out, vs[i].name.as_str()); out.push_str(","); push_types(out, vs[i].tys.as_slice()); out.push_str("]"); } },
+        }
+        out.push_str("],\"inv\":");
+        push_opt(out, &a.inv);
+        out.push_str("}\n");
+    }
+
+    #[effects(alloc)]
+    fn push_bool(out: &mut String, b: bool) -> () {
+        if b {
+            out.push_str("true");
+        } else {
+            out.push_str("false");
+        }
+    }
+
+    #[effects(alloc)]
+    fn push_fn(out: &mut String, s: &types::FnSig) -> () {
+        out.push_str("{\"fn\":");
+        std::json::push_string(out, s.path.as_str());
+        if is_exec(&s.kind) {
+            out.push_str(",\"kind\":\"exec\"");
+        } else if is_spec(&s.kind) {
+            out.push_str(",\"kind\":\"spec\"");
+        } else {
+            out.push_str(",\"kind\":\"proof\"");
+        }
+        out.push_str(",\"generics\":");
+        push_generics(out, s.generics.as_slice());
+        out.push_str(",\"impl_generics\":");
+        std::num::push_u64(out, s.impl_generics as u64);
+        out.push_str(",\"params\":");
+        push_types(out, s.params.as_slice());
+        out.push_str(",\"ret\":");
+        std::json::push_string(out, types::text(&s.ret).as_str());
+        out.push_str(",\"effects\":");
+        std::json::push_string(out, types::e_text(s.effect).as_str());
+        out.push_str(",\"vacuous\":");
+        push_bool(out, s.vacuous);
+        out.push_str(",\"builtin\":");
+        push_bool(out, s.builtin);
+        out.push_str(",\"in_impl\":");
+        push_bool(out, s.in_impl);
+        out.push_str(",\"trait_of\":");
+        push_opt(out, &s.trait_of);
+        out.push_str(",\"default\":");
+        push_bool(out, s.default);
+        out.push_str("}\n");
+    }
+
+    #[effects(alloc)]
+    fn push_generics(out: &mut String, gs: &[types::TParam]) -> () {
+        out.push_str("[");
+        for i in 0..gs.len()
+            invariant 0 <= i && i <= gs.len(),
+        {
+            if i > 0 {
+                out.push_str(",");
+            }
+            out.push_str("{\"name\":");
+            std::json::push_string(out, gs[i].name.as_str());
+            out.push_str(",\"bounds\":");
+            push_names(out, gs[i].bounds.as_slice());
+            out.push_str("}");
+        }
+        out.push_str("]");
+    }
+
+    #[effects(alloc)]
+    fn push_names(out: &mut String, xs: &[String]) -> () {
+        out.push_str("[");
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            if i > 0 {
+                out.push_str(",");
+            }
+            std::json::push_string(out, xs[i].as_str());
+        }
+        out.push_str("]");
+    }
+
+    #[effects(alloc)]
+    fn push_opt(out: &mut String, o: &Option<String>) -> () {
+        match o {
+            None => out.push_str("null"),
+            Some(s) => std::json::push_string(out, s.as_str()),
+        }
+    }
+
+    #[effects(alloc)]
+    fn push_types(out: &mut String, ts: &[ast::TypeKind]) -> () {
+        out.push_str("[");
+        for i in 0..ts.len()
+            invariant 0 <= i && i <= ts.len(),
+        {
+            if i > 0 {
+                out.push_str(",");
+            }
+            std::json::push_string(out, types::text(&ts[i]).as_str());
+        }
+        out.push_str("]");
+    }
+
+    #[summary("근거의 종류 (ADR-0029 §1)의 이름인가")]
+    #[effects(pure)]
+    fn rationale_kind(a: &ast::AttrArg) -> bool {
+        match a {
+            ast::AttrArg::Ident(id) => id.name.as_str() == "nonlinear" || id.name.as_str() == "solver_limit" || id.name.as_str() == "boundary" || id.name.as_str() == "performance",
+            ast::AttrArg::Str(s, sp) => false,
+            ast::AttrArg::Pair(k, v) => false,
+        }
+    }
+
+    #[summary("names[p]에서 간선을 따라 닿는 이름들. fuel은 닿을 수 없는 상한이다")]
+    #[effects(alloc)]
+    fn reach(names: &[String], edges: &[Vec<String>], p: usize) -> Vec<String> {
+        let mut seen: Vec<String> = Vec::new();
+        let mut stack: Vec<String> = if p < edges.len() {
+            edges[p].clone()
+        } else {
+            Vec::new()
+        };
+        let mut fuel: usize = 1000000000;
+        while stack.len() > 0 && fuel > 0
+            decreases fuel,
+        {
+            fuel = fuel - 1;
+            match stack.pop() {
+                None => {},
+                Some(q) => { if types::add(&mut seen, q.as_str()) { match index_of(names, q.as_str()) { None => {}, Some(k) => { if k < edges.len() { for e in 0..edges[k].len() invariant 0 <= e && e <= edges[k].len() && k < edges.len(), { stack.push(edges[k][e].clone()); } } }, } } },
+            }
+        }
+        seen
+    }
+
+    #[effects(pure)]
+    fn same_fn_kind(a: &ast::FnKind, b: &ast::FnKind) -> bool {
+        is_exec(a) && is_exec(b) || is_spec(a) && is_spec(b) || is_proof(a) && is_proof(b)
+    }
+
+    #[summary("names가 gs의 이름과 차례까지 같은가")]
+    #[effects(pure)]
+    fn same_names(names: &[String], gs: &[types::TParam]) -> bool {
+        if names.len() != gs.len() {
+            return false;
+        }
+        for i in 0..names.len()
+            invariant 0 <= i && i <= names.len() && names.len() == gs.len(),
+        {
+            if names[i].as_str() != gs[i].name.as_str() {
+                return false;
+            }
+        }
+        true
+    }
+
+    #[summary("경계의 집합이 같은가 (elem은 빼고: 몸마다 제 Vec에서 따라온다)")]
+    #[effects(pure)]
+    fn same_set(a: &[String], b: &[String]) -> bool {
+        for i in 0..a.len()
+            invariant 0 <= i && i <= a.len(),
+        {
+            if a[i].as_str() != "elem" && !types::has(b, a[i].as_str()) {
+                return false;
+            }
+        }
+        for j in 0..b.len()
+            invariant 0 <= j && j <= b.len(),
+        {
+            if b[j].as_str() != "elem" && !types::has(a, b[j].as_str()) {
+                return false;
+            }
+        }
+        true
+    }
+
+    #[summary("xs를 바이트 순서로 (삽입 정렬)")]
+    #[effects(alloc)]
+    fn sorted(xs: &[String]) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            let mut at: usize = out.len();
+            for j in 0..out.len()
+                invariant 0 <= j && j <= out.len() && at <= out.len(),
+            {
+                if at == out.len() && xs[i].as_str() < out[j].as_str() {
+                    at = j;
+                }
+            }
+            let mut next: Vec<String> = Vec::new();
+            for j in 0..out.len()
+                invariant 0 <= j && j <= out.len(),
+            {
+                if j == at {
+                    next.push(xs[i].clone());
+                }
+                next.push(out[j].clone());
+            }
+            if at == out.len() {
+                next.push(xs[i].clone());
+            }
+            out = next;
+        }
+        out
+    }
+
+    #[effects(pure)]
+    fn span_eq(a: source::Span, b: source::Span) -> bool {
+        a.file == b.file && a.lo == b.lo && a.hi == b.hi
+    }
+
+    #[summary("a의 처음부터 b의 끝까지")]
+    #[effects(pure)]
+    fn span_to(a: source::Span, b: source::Span) -> source::Span {
+        source::Span { file: a.file, lo: a.lo, hi: b.hi }
+    }
+
+    #[summary("블록의 값이 리터럴 true인가")]
+    #[effects(pure)]
+    fn tail_true(b: &ast::Block) -> bool {
+        match &b.tail {
+            None => false,
+            Some(e) => is_true(&**e),
+        }
+    }
+
+    #[effects(alloc)]
+    fn tparam_names(ps: &[types::TParam]) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for i in 0..ps.len()
+            invariant 0 <= i && i <= ps.len(),
+        {
+            out.push(ps[i].name.clone());
+        }
+        out
+    }
+
+    #[summary("경로의 마지막 마디 앞까지 (마디가 하나면 빈 글)")]
+    #[effects(alloc)]
+    fn unit_of(path: &str) -> String {
+        let segs: Vec<String> = refs::split_path(path);
+        if segs.len() == 0 {
+            return String::new();
+        }
+        types::join_head(segs.as_slice(), segs.len() - 1)
+    }
+
+    #[summary("prefix에 단위의 이름을 붙인 경로")]
+    #[effects(alloc)]
+    fn unit_path(prefix: &str, m: &ast::Mod) -> String {
+        types::cat2(prefix, m.name.name.as_str())
+    }
+
+    #[effects(alloc)]
+    fn user_fn(fns: &table::Table<types::FnSig>, p: &str) -> bool {
+        match fns.find(p) {
+            None => false,
+            Some(i) => !fns.items[i].builtin,
+        }
+    }
+
+    #[summary("단위 mp에서 #[uses(name)]이 부르는 정의: 그 단위의 f나 Trait::f, 아니면 온 경로 (ADR-0046 §4)")]
+    #[effects(alloc)]
+    fn uses_target(name: &str, mp: &str, fns: &table::Table<types::FnSig>) -> Option<String> {
+        let here: String = types::cat3(mp, "::", name);
+        if user_fn(fns, here.as_str()) {
+            return Some(here);
+        }
+        if user_fn(fns, name) {
+            return Some(String::from(name));
+        }
+        None
+    }
+
+    #[summary("쓴 필드나 페이로드의 타입의 자리들 (선언의 순서)")]
+    #[effects(alloc)]
+    fn written_spans(k: &ast::TypeDefKind) -> Vec<source::Span> {
+        let mut out: Vec<source::Span> = Vec::new();
+        match k {
+            ast::TypeDefKind::Struct(fs) => { for i in 0..fs.len() invariant 0 <= i && i <= fs.len(), { out.push(fs[i].ty.span); } },
+            ast::TypeDefKind::Enum(vs) => { for i in 0..vs.len() invariant 0 <= i && i <= vs.len(), { for j in 0..vs[i].payload.len() invariant 0 <= j && j <= vs[i].payload.len(), { out.push(vs[i].payload[j].span); } } },
+        }
+        out
+    }
+}

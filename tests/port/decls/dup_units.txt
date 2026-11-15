@@ -1,0 +1,39 @@
+#[summary("같은 이름의 단위 둘: 함수 값을 낮춘 함수가 제 단위로 돌아간다 (4D-29)")]
+mod tr {
+    trait Shape {
+        #[effects(pure)]
+        fn area(self: &Self) -> i64;
+    }
+
+    struct Sq { s: i64 }
+
+    impl Shape for Sq {
+        #[effects(pure)]
+        fn area(self: &Sq) -> i64 { self.s }
+    }
+
+    #[effects(pure)]
+    fn apply<F: Fn(i64) -> i64>(f: F, x: i64) -> i64 { f(x) }
+
+    #[effects(pure)]
+    fn inc(x: i64) -> i64 { x.wrapping_add(1) }
+
+    #[effects(pure)]
+    fn use_it() -> i64 { apply(inc, 1) }
+}
+
+#[summary("둘째")]
+mod tr {
+    #[effects(pure)]
+    fn short(x: i64) -> i64 { x }
+
+    #[effects(pure)]
+    fn digit_sum(x: i64) -> i64 { x }
+
+    impl Other {
+        #[effects(pure)]
+        fn half(self: &Other) -> i64 { self.v }
+    }
+
+    struct Other { v: i64 }
+}

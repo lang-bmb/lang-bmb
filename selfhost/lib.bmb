@@ -33,6 +33,17 @@ mod lib {
         let mut body: String = String::new();
         if stage == "std" {
             push_units(&mut body, &program);
+        } else if stage == "decls" {
+            let lowered: closures::Lowered = closures::lower(&mut program, &mut diags);
+            let consts: table::Table<consts::Const> = consts::resolve(&mut program, &mut diags);
+            let mut c: decls::Checker = decls::new();
+            c.collect(&program);
+            for d in 0..c.diags.len()
+                invariant 0 <= d && d <= c.diags.len(),
+            {
+                diags.push(c.diags[d].clone());
+            }
+            body.push_str(decls::dump(&c).as_str());
         } else {
             let lowered: closures::Lowered = closures::lower(&mut program, &mut diags);
             let consts: table::Table<consts::Const> = consts::resolve(&mut program, &mut diags);
