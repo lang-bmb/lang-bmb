@@ -1,0 +1,29 @@
+#[summary("s \"q\" \\ end")]
+mod o {
+    fn zeta() -> () {}
+    impl B { fn y() -> () {} fn x() -> () {} }
+    trait T2 { fn b(self: &Self) -> (); fn a(self: &Self) -> () requires true, ensures true,; }
+    struct B { x: i64 }
+    impl Tr for B {}
+    impl Other for a::C {}
+    impl Tr for Missing { fn q() -> () {} }
+    impl Missing {}
+    impl Aa for B {}
+    #[invariant(ok)]
+    #[summary("t")]
+    #[other]
+    struct A<T: Copy> {}
+    enum E {}
+    const Z: i64 = 0x1F;
+    #[summary("c")]
+    const A: u8 = b'a';
+    mod n2 {}
+    mod n1 { const K: usize = 3; fn f() -> [u8; 3] { [0; K] } }
+    trait T1 {}
+    #[uses(z, a, m, a)]
+    #[effects(io, alloc)]
+    #[external_body]
+    #[rationale(kind = ffi, "r")]
+    #[summary("f")]
+    spec fn alpha<T: Copy, F: Fn(T) -> T>(x: T, f: F) -> (r: T) requires true, ensures r == x, decreases 0, { x }
+}

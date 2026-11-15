@@ -1,7 +1,234 @@
-#[summary("구문 트리 (stage0 compiler/src/ast.rs의 포트, 백로그 4D-02). 국면마다 는다: 지금은 렉서가 쓰는 정수 리터럴의 진법")]
+#[summary("구문 트리 (stage0 compiler/src/ast.rs의 포트, 백로그 4D-02). 검사기가 쓰는 순회는 검사기와 함께 옮긴다")]
 mod ast {
+    #[summary("메서드 호출이 수신자를 넘기는 방식 (ADR-0051)")]
+    enum Adjust { Value, Ref, RefMut, AsStr }
+
+    #[summary("match의 갈래 하나")]
+    struct Arm { pat: Pat, body: Expr, span: source::Span }
+
+    #[summary("assert(cond); 또는 assert(cond) by (bit_vector); (ADR-0048 §4)")]
+    struct Assert { cond: Expr, by: Option<Prover>, span: source::Span }
+
+    #[summary("x = e;")]
+    struct Assign { target: Expr, value: Expr, span: source::Span }
+
+    #[summary("assume(p(..)); (ADR-0029 §1). rationale은 그 앞의 #[rationale(..)]")]
+    struct Assume { cond: Expr, rationale: Option<Attr>, span: source::Span }
+
+    struct Attr { name: Ident, args: Vec<AttrArg>, span: source::Span }
+
+    #[summary("속성의 인자: 이름, 문자열, key = value")]
+    enum AttrArg { Ident(Ident), Str(String, source::Span), Pair(Ident, Box<AttrArg>) }
+
+    enum BinOp { Add, Sub, Mul, Div, Rem, Eq, Ne, Lt, Le, Gt, Ge, And, Or, Implies, BitAnd, BitOr, BitXor, Shl, Shr }
+
+    struct Block { stmts: Vec<Stmt>, tail: Option<Box<Expr>>, span: source::Span }
+
+    #[summary("break, break 'l, break e")]
+    struct Break { label: Option<Ident>, value: Option<Box<Expr>> }
+
+    #[summary("경로로 부르는 호출 f(..), a::b::f(..). targs는 경로에 쓴 타입 인자, method는 x.f(..)로 썼을 때 수신자를 넘긴 방식")]
+    struct Call { path: Vec<Ident>, targs: Vec<TArgs>, args: Vec<Expr>, method: Option<Adjust> }
+
+    #[summary("클로저 식 (ADR-0053 §1, §2)")]
+    struct Closure { is_move: bool, params: Vec<Param>, ret: Ret, pre: Vec<Expr>, post: Vec<Expr>, body: Block, span: source::Span }
+
+    #[summary("const NAME: T = e; (ADR-0052)")]
+    struct ConstDef { attrs: Vec<Attr>, name: Ident, ty: Type, value: Expr, span: source::Span }
+
+    struct Expr { kind: ExprKind, span: source::Span }
+
+    enum ExprKind { Int(wide::U128, Radix), Float(u64), ByteLit(u8), ByteStr(Vec<u8>), StrLit(String), CharLit(u32), Bool(bool), Unit, Var(Ident), Call(Call), Method(Method), Index(Box<Expr>, Box<Expr>), Unary(UnOp, Box<Expr>), Binary(BinOp, Box<Expr>, Box<Expr>), Ref(bool, Box<Expr>), If(If), Block(Block), Array(Vec<Expr>), Repeat(Repeat), Old(Box<Expr>), Quant(Quant), Trigger(Box<Expr>), Closure(Box<Closure>), StructLit(StructLit), Path(Vec<Ident>), Deref(Box<Expr>), Field(Box<Expr>, Ident), Match(Match), Return(Option<Box<Expr>>), Try(Box<Expr>), Loop(Loop), Break(Break), Continue(Option<Ident>), Range(Range), Error }
+
+    struct Field { name: Ident, ty: Type }
+
+    #[summary("구조체 식의 필드 하나")]
+    struct FieldInit { name: Ident, value: Expr }
+
+    #[summary("Fn(A, B) -> R: 매개변수 타입들과 결과 (-> 가 없으면 ())")]
+    struct FnBound { kind: FnTrait, params: Vec<Type>, ret: Type, span: source::Span }
+
+    struct FnDef { kind: FnKind, name: Ident, generics: Vec<TypeParam>, attrs: Vec<Attr>, params: Vec<Param>, ret: Ret, pre: Vec<Expr>, post: Vec<Expr>, measure: Option<Expr>, body: Block, span: source::Span }
+
+    enum FnKind { Exec, Spec, Proof }
+
+    enum FnTrait { Fn, FnMut, FnOnce }
+
+    #[summary("'l: for i in lo..hi invariant .., { .. } (ADR-0049 §2)")]
+    struct For { label: Option<Ident>, var: Ident, lo: Expr, hi: Expr, inclusive: bool, invariants: Vec<Expr>, body: Block, span: source::Span }
+
+    struct Ident { name: String, span: source::Span }
+
+    struct If { cond: Box<Expr>, then: Block, els: Option<Box<Expr>> }
+
+    #[summary("impl T { fn .. }")]
+    struct Impl { generics: Vec<TypeParam>, ty: Ident, ty_args: Vec<Type>, fns: Vec<FnDef>, span: source::Span }
+
+    enum IntTy { I8, I16, I32, I64, Isize, U8, U16, U32, U64, Usize }
+
+    #[summary("const의 이름으로 쓴 반복 횟수 (ADR-0052 §4): 횟수의 자리와 이름")]
+    struct Len { at: source::Span, path: Vec<Ident> }
+
+    struct Let { mutable: bool, name: Ident, ty: Type, ty_missing: bool, init: Expr, span: source::Span }
+
+    #[summary("let Point { x, y } = p; (Rust 습관, E0230)")]
+    struct LetFields { path: Vec<Ident>, fields: Vec<Ident>, init: Expr, span: source::Span }
+
+    #[summary("'l: loop invariant .., decreases .., { .. } (ADR-0049 §1)")]
+    struct Loop { label: Option<Ident>, invariants: Vec<Expr>, measure: Option<Box<Expr>>, body: Block }
+
+    struct Match { scrut: Box<Expr>, arms: Vec<Arm> }
+
+    #[summary("내장 메서드 호출 a.len(), x.wrapping_add(y)")]
+    struct Method { recv: Box<Expr>, name: Ident, args: Vec<Expr> }
+
+    struct Mod { name: Ident, attrs: Vec<Attr>, fns: Vec<FnDef>, mods: Vec<Mod>, types: Vec<TypeDef>, impls: Vec<Impl>, traits: Vec<TraitDef>, trait_impls: Vec<TraitImpl>, uses: Vec<UseItem>, consts: Vec<ConstDef>, lens: Vec<Len>, span: source::Span }
+
+    struct Param { name: Ident, ty: Type }
+
+    #[summary("변형 패턴 Shape::Rect(a, _), Some(x), None. 페이로드 자리마다 새 이름이거나 _ (None)")]
+    struct Pat { path: Vec<Ident>, binds: Vec<Option<Ident>>, parens: bool, origin: PatOrigin, span: source::Span }
+
+    #[summary("패턴이 온 곳. Written만 소스가 쓴 것이다")]
+    enum PatOrigin { Written, IfLetElse, Rejected }
+
+    struct Program { mods: Vec<Mod> }
+
+    #[summary("proof { .. } (ADR-0062 §1)")]
+    struct ProofBlock { body: Block, span: source::Span }
+
+    #[summary("assert(e) by (..)의 증명기 (ADR-0048 §4)")]
+    enum Prover { BitVector }
+
+    struct Quant { q: Quantifier, binders: Vec<Param>, body: Box<Expr> }
+
+    enum Quantifier { Forall, Exists }
+
     #[summary("정수 리터럴을 쓴 진법 (ADR-0048 §3). 정규형이 지킨다: 0xff는 0xff로 남는다")]
     enum Radix { Dec, Hex, Oct, Bin }
+
+    #[summary("lo..hi. inclusive는 lo..=hi로 쓴 것")]
+    struct Range { lo: Box<Expr>, hi: Box<Expr>, inclusive: bool }
+
+    #[summary("[v; N]")]
+    struct Repeat { value: Box<Expr>, count: wide::U128, count_span: source::Span }
+
+    struct Ret { name: Option<Ident>, ty: Type }
+
+    enum Stmt { Let(Let), Assign(Assign), While(While), For(For), Assert(Assert), Assume(Assume), Proof(ProofBlock), LetFields(LetFields), Expr(Expr) }
+
+    #[summary("Point { x: e, y: e } (ADR-0026 §3). rest는 ..base (E0223)")]
+    struct StructLit { path: Vec<Ident>, fields: Vec<FieldInit>, rest: Option<Box<Expr>> }
+
+    #[summary("호출 경로의 마디 seg 뒤에 쓴 타입 인자 (ADR-0046 §3)")]
+    struct TArgs { seg: usize, args: Vec<Type>, span: source::Span }
+
+    struct TraitDef { name: Ident, attrs: Vec<Attr>, fns: Vec<TraitFn>, span: source::Span }
+
+    #[summary("trait의 메서드: 시그니처, 그리고 기본 몸을 썼는지")]
+    struct TraitFn { f: FnDef, has_body: bool }
+
+    #[summary("impl<T: Copy> geo::Shape for Wrap<T> { .. } (ADR-0046 §2)")]
+    struct TraitImpl { generics: Vec<TypeParam>, trait_path: Vec<Ident>, self_ty: Type, fns: Vec<FnDef>, span: source::Span }
+
+    struct Type { kind: TypeKind, span: source::Span }
+
+    struct TypeDef { name: Ident, generics: Vec<TypeParam>, attrs: Vec<Attr>, kind: TypeDefKind, span: source::Span }
+
+    enum TypeDefKind { Struct(Vec<Field>), Enum(Vec<Variant>) }
+
+    enum TypeKind { Int(IntTy), F64, Bool, Unit, Char, String, Str, Array(Box<Type>, u64), ArrayN(Box<Type>, Vec<String>), Slice(Box<Type>), Ref(bool, Box<Type>), Named(Vec<String>, Vec<Type>), Vec(Box<Type>), Box(Box<Type>), Param(String), Never, Error }
+
+    #[summary("타입 매개변수 T, T: Copy (ADR-0046 §1). fn_bound는 F: Fn(A, B) -> R")]
+    struct TypeParam { name: Ident, bounds: Vec<Vec<Ident>>, fn_bound: Option<FnBound>, span: source::Span }
+
+    enum UnOp { Neg, Not }
+
+    #[summary("이름 하나를 들이는 use")]
+    struct UseItem { path: Vec<Ident>, span: source::Span }
+
+    struct Variant { name: Ident, payload: Vec<Type>, span: source::Span }
+
+    struct While { label: Option<Ident>, cond: Expr, invariants: Vec<Expr>, measure: Option<Expr>, body: Block, span: source::Span }
+
+    #[summary("이름이 가리키는 정수 타입")]
+    #[effects(pure)]
+    fn int_of(s: &str) -> Option<IntTy> {
+        if s == "i8" {
+            return Some(IntTy::I8);
+        }
+        if s == "i16" {
+            return Some(IntTy::I16);
+        }
+        if s == "i32" {
+            return Some(IntTy::I32);
+        }
+        if s == "i64" {
+            return Some(IntTy::I64);
+        }
+        if s == "isize" {
+            return Some(IntTy::Isize);
+        }
+        if s == "u8" {
+            return Some(IntTy::U8);
+        }
+        if s == "u16" {
+            return Some(IntTy::U16);
+        }
+        if s == "u32" {
+            return Some(IntTy::U32);
+        }
+        if s == "u64" {
+            return Some(IntTy::U64);
+        }
+        if s == "usize" {
+            return Some(IntTy::Usize);
+        }
+        None
+    }
+
+    #[summary("이항 연산자의 글을 덧붙인다")]
+    #[effects(alloc)]
+    fn push_bin_symbol(out: &mut String, op: &BinOp) -> () {
+        match op {
+            BinOp::Add => out.push_str("+"),
+            BinOp::Sub => out.push_str("-"),
+            BinOp::Mul => out.push_str("*"),
+            BinOp::Div => out.push_str("/"),
+            BinOp::Rem => out.push_str("%"),
+            BinOp::Eq => out.push_str("=="),
+            BinOp::Ne => out.push_str("!="),
+            BinOp::Lt => out.push_str("<"),
+            BinOp::Le => out.push_str("<="),
+            BinOp::Gt => out.push_str(">"),
+            BinOp::Ge => out.push_str(">="),
+            BinOp::And => out.push_str("&&"),
+            BinOp::Or => out.push_str("||"),
+            BinOp::Implies => out.push_str("==>"),
+            BinOp::BitAnd => out.push_str("&"),
+            BinOp::BitOr => out.push_str("|"),
+            BinOp::BitXor => out.push_str("^"),
+            BinOp::Shl => out.push_str("<<"),
+            BinOp::Shr => out.push_str(">>"),
+        }
+    }
+
+    #[summary("정수 타입의 이름을 덧붙인다")]
+    #[effects(alloc)]
+    fn push_int_name(out: &mut String, t: &IntTy) -> () {
+        match t {
+            IntTy::I8 => out.push_str("i8"),
+            IntTy::I16 => out.push_str("i16"),
+            IntTy::I32 => out.push_str("i32"),
+            IntTy::I64 => out.push_str("i64"),
+            IntTy::Isize => out.push_str("isize"),
+            IntTy::U8 => out.push_str("u8"),
+            IntTy::U16 => out.push_str("u16"),
+            IntTy::U32 => out.push_str("u32"),
+            IntTy::U64 => out.push_str("u64"),
+            IntTy::Usize => out.push_str("usize"),
+        }
+    }
 
     #[summary("v를 진법 r의 정규형으로 쓴 글: 접두사, 소문자 자리, _ 구분 없이, 앞의 0 없이 (ADR-0019 §1)")]
     #[effects(alloc)]
@@ -15,5 +242,47 @@ mod ast {
             Radix::Bin => { out.push_str("0b"); wide::push_radix(&mut out, v, 2); },
         }
         out
+    }
+
+    #[summary("식의 종류의 차례(선언 순서): 0 Int .. 34 Error")]
+    #[effects(pure)]
+    fn tag(k: &ExprKind) -> u8 {
+        match k {
+            ExprKind::Int(iv, ir) => 0,
+            ExprKind::Float(fb) => 1,
+            ExprKind::ByteLit(by) => 2,
+            ExprKind::ByteStr(bys) => 3,
+            ExprKind::StrLit(st) => 4,
+            ExprKind::CharLit(ch) => 5,
+            ExprKind::Bool(bo) => 6,
+            ExprKind::Unit => 7,
+            ExprKind::Var(id) => 8,
+            ExprKind::Call(ca) => 9,
+            ExprKind::Method(me) => 10,
+            ExprKind::Index(ib, ii) => 11,
+            ExprKind::Unary(uo, ux) => 12,
+            ExprKind::Binary(bop, bl, br) => 13,
+            ExprKind::Ref(rm, rx) => 14,
+            ExprKind::If(ife) => 15,
+            ExprKind::Block(blk) => 16,
+            ExprKind::Array(ar) => 17,
+            ExprKind::Repeat(rp) => 18,
+            ExprKind::Old(ox) => 19,
+            ExprKind::Quant(qu) => 20,
+            ExprKind::Trigger(tx) => 21,
+            ExprKind::Closure(cl) => 22,
+            ExprKind::StructLit(sl) => 23,
+            ExprKind::Path(pa) => 24,
+            ExprKind::Deref(dx) => 25,
+            ExprKind::Field(fx, fnm) => 26,
+            ExprKind::Match(ma) => 27,
+            ExprKind::Return(rv) => 28,
+            ExprKind::Try(tr) => 29,
+            ExprKind::Loop(lp) => 30,
+            ExprKind::Break(bk) => 31,
+            ExprKind::Continue(co) => 32,
+            ExprKind::Range(rg) => 33,
+            ExprKind::Error => 34,
+        }
     }
 }

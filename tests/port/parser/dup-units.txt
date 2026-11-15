@@ -1,0 +1,12 @@
+#[summary("b")]
+mod b { fn f() -> () {} }
+#[summary("a")]
+mod a { fn g() -> () {} }
+mod b { fn h() -> () {} }
+#[summary(1)]
+mod c {}
+#[summary()]
+mod d {}
+#[other("x")]
+#[summary("two")]
+mod e {}

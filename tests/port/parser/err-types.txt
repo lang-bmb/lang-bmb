@@ -1,0 +1,26 @@
+#[summary("s")]
+mod t {
+    fn a(f: fn(i64, bool) -> i64) -> () {}
+    fn b(f: impl Fn(i64) -> i64) -> () {}
+    fn c() -> impl Fn(i64) -> i64 { 1 }
+    fn d() -> (r: impl FnMut()) { 1 }
+    fn e(x: dyn Shape, y: &dyn a::Shape) -> () {}
+    fn f(x: (i64, bool), y: ((i64, u8), bool)) -> (i64, i64) { 1 }
+    fn g(x: [i64; 4294967296], y: [u8; 4294967295], z: [bool; N], w: [u8; a::b::N], v: [u8; ], u: [u8; -1]) -> () {}
+    fn h(x: i128, y: u128, z: f32, w: str, v: char, u: f64, t: bool, s: isize) -> () {}
+    fn i(x: i128<T>, y: mut, z: fn, w: as<T>) -> () {}
+    fn j(x: &mut [i64], y: &[&str], z: &mut Vec<Box<Option<Result<i64, bool>>>>) -> () {}
+    fn k(x: Self, y: a::b::C<i64, [u8; 2]>, z: Vec<Vec<i64>>) -> Self { x }
+    fn l(x: , y: 1, z: +) -> () {}
+    fn m(x: [i64, y: Vec<i64) -> () {}
+    fn n(x: Option<>, y: T<,>, z: U<i64,>) -> () {}
+    fn o(x: fn(, y: impl Fn i64) -> () {}
+    fn p(x: impl FnOnce(i64, (u8, u8)) -> dyn T) -> () {}
+    fn q() -> fn() { 1 }
+    fn r() -> () { let x: fn(i64) = 1; let y: impl Fn() = 2; let z: (u8, u8) = 3; let w: = 4; }
+    fn s<T: Copy, U: Ord + Eq>(x: T, y: U) -> (r: T) { x }
+    fn u(x: ()) -> () { x }
+    fn v() -> (r: ()) {}
+    fn w() -> (fn: i64) { 1 }
+    fn y() -> (r: i64 { 1 }
+}

@@ -1,0 +1,93 @@
+fn outside() -> () {}
+spec fn also() -> bool { true }
+proof fn third() {}
+let stray = 1;
+#[summary("s")]
+mod a {
+    pub fn f() -> () {}
+    static A: i64 = 1;
+    static mut B: i64 = 2;
+    type T = i64;
+    extern "C" { fn g(); }
+    unsafe fn h() -> () {}
+    macro_rules! m { () => {} }
+    union U { a: i64 }
+    use b::c;
+    use b::{c, d};
+    use b::*;
+    use b::c as d;
+    use one;
+    let x: i64 = 1;
+    #[effects(pure)]
+}
+mod b {
+    #[effects(pure)]
+    impl T { fn f() -> () {} }
+    #[verifier::external_body]
+    fn v1() -> () {}
+    #[verifier(external_body)]
+    fn v2() -> () {}
+    #[verifier::opaque]
+    fn v3() -> () {}
+    #[verifier::spec(x)]
+    fn v4() -> () {}
+    #[rationale(kind = nonlinear, hash = "abc", "why")]
+    #[uses(a::b, c, <x::T as y::Tr>::m, <T as Tr>::n)]
+    #[uses(<T as>::n)]
+    #[uses(1)]
+    #[uses(k = 3)]
+    #[invariant(ok)]
+    #[fn]
+    #[summary("s"
+    fn v5() -> () {}
+    #[effects(alloc, io) fn v6() -> () {}
+}
+mod c {
+    struct P(i64, i64);
+    struct Q<T> where T: Copy { x: T }
+    struct R<T> where T: Copy, Vec<T>: Ord { x: T }
+    enum E { A { x: i64 }, B(i64, bool), C }
+    enum F<T: Copy + Ord, U> where U: geo::Shape + Copy, T: Copy { A(T), B(U) }
+    struct G<const N: usize> { x: i64 }
+    struct H<T: , U> { x: i64 }
+    struct I<T: Fn(i64, bool) -> i64 + Copy, F: FnMut(), G: FnOnce(u8) + a::B> { x: T }
+    struct J { x i64 }
+    struct K { fn: i64 }
+    enum L { fn }
+    enum M { A(i64 }
+    struct N<'a, T> { x: T }
+}
+mod d {
+    trait Tr<T> { fn m(self: &Self) -> T; }
+    trait Sup: Other + More { fn m(self: &Self) -> i64; }
+    trait Ok { fn a(self: &Self) -> i64; fn b(self: &Self) -> i64 { 1 } spec fn c(self: &Self) -> bool; pub fn d() -> (); let x; }
+    impl Ok for S { fn a(self: &S) -> i64 { 1 } }
+    impl<T: Copy> geo::Shape for Wrap<T> where T: Ord { fn a(self: &Wrap<T>) -> i64 { 1 } }
+    impl &S for T { }
+    impl a::b::S { fn f() -> () {} }
+    impl [i64; 3] { fn f() -> () {} }
+    impl Vec<Vec<i64>> for S {}
+    impl<T> S<T> where T: Copy { fn f(&self) -> () {} fn g(&mut self) -> () {} fn h(self) -> () {} fn i(self: &S<T>, mut x: i64) -> () {} let y; }
+    fn free(&self, &mut self, self) -> () {}
+    fn noret(x: i64) {}
+    proof fn pf(x: i64) -> bool requires x > 0, ensures x >= 0, {}
+    proof fn pg(x: i64) -> (r: bool) {}
+    fn where_fn<T, U>(x: T) -> U where T: Copy + Ord, U: Copy, requires true, { x }
+    fn where_bad<T>(x: T) -> T where Vec<T>: Copy { x }
+    fn where_none(x: i64) -> i64 where T: Copy { x }
+    fn where_colon<T>(x: T) -> T where T { x }
+    fn where_empty<T>(x: T) -> T where T: { x }
+    fn (x: i64) -> () {}
+    fn p(x i64) -> () {}
+    fn q(x: i64 -> () {}
+    const A: i64 = 1 + 2;
+    const B = 3;
+    const C: [u8; 2] = [1, 2]
+    const : i64 = 1;
+}
+mod e { mod f { mod g { fn deep() -> () {} } } }
+mod
+mod 1 {}
+mod h
+mod i { }
+}

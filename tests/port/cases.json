@@ -204,6 +204,74 @@
         ],
         "chunk": 1
       }
+    },
+    {
+      "name": "parse",
+      "component": "C2",
+      "a": [
+        "{bmb}",
+        "dump",
+        "parse",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "dump",
+        "parse",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "*.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "parse-together",
+      "component": "C2",
+      "a": [
+        "{bmb}",
+        "dump",
+        "parse",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "dump",
+        "parse",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/run/*.bmb",
+          "lib/std/*.bmb",
+          "selfhost/*.bmb"
+        ],
+        "chunk": 40
+      }
+    },
+    {
+      "name": "parse-edges",
+      "component": "C2",
+      "a": [
+        "{bmb}",
+        "dump",
+        "parse",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "dump",
+        "parse",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/parser/*.txt"
+        ],
+        "chunk": 1
+      }
     }
   ]
 }

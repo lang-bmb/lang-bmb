@@ -1,0 +1,1890 @@
+#[summary("정규형 출력기: 한 프로그램에 한 글 (ADR-0019) (stage0 compiler/src/fmt.rs의 포트, 백로그 4D-02). 지금은 쓴 그대로의 글만: 이름을 지운 정체성 글과 한정 글은 검사기와 함께 옮긴다. f는 남은 깊이다")]
+mod fmt {
+    #[summary("const의 이름으로 쓴 반복 횟수: 횟수의 자리와 그 이름")]
+    struct LenName { file: u32, lo: u32, hi: u32, name: String }
+
+    struct Printer { out: String, lens: Vec<LenName> }
+
+    impl Printer {
+        #[effects(alloc)]
+        fn attr_line(self: &mut Printer, a: &ast::Attr, depth: usize) -> () {
+            if a.name.name == "summary" {
+                return;
+            }
+            let mut row: String = String::from("#[");
+            row.push_str(a.name.name.as_str());
+            row.push_str("(");
+            row.push_str(attr_args(a.args.as_slice()).as_str());
+            row.push_str(")]");
+            self.line(depth, row.as_str());
+        }
+
+        #[summary("prefix{ ... }suffix를 찍는다, 블록의 내용은 들여써서")]
+        #[effects(alloc)]
+        fn block_open(self: &mut Printer, b: &ast::Block, depth: usize, prefix: &str, suffix: &str, f: usize) -> ()
+            decreases f,
+        {
+            if f == 0 {
+                return;
+            }
+            let mut head: String = String::from(prefix);
+            if b.stmts.len() == 0 && !is_some_box(&b.tail) {
+                head.push_str("{}");
+                head.push_str(suffix);
+                self.line(depth, head.as_str());
+                return;
+            }
+            head.push_str("{");
+            self.line(depth, head.as_str());
+            let mut i: usize = 0;
+            while i < b.stmts.len()
+                decreases b.stmts.len() - i,
+            {
+                self.stmt(&b.stmts[i], depth.saturating_add(1), f - 1);
+                i = i + 1;
+            }
+            match &b.tail {
+                None => {},
+                Some(t) => self.expr_stmt(&**t, depth.saturating_add(1), "", f - 1),
+            }
+            let mut close: String = String::from("}");
+            close.push_str(suffix);
+            self.line(depth, close.as_str());
+        }
+
+        #[effects(alloc)]
+        fn call_text(self: &mut Printer, ca: &ast::Call, f: usize) -> String
+            decreases f,
+        {
+            let mut s: String = String::new();
+            if f == 0 {
+                return s;
+            }
+            let mut written: bool = false;
+            let mut by_ref: bool = false;
+            let mut as_str: bool = false;
+            match &ca.method {
+                None => {},
+                Some(adj) => { written = ca.args.len() > 0; match adj { ast::Adjust::Value => {}, ast::Adjust::Ref => { by_ref = true; }, ast::Adjust::RefMut => { by_ref = true; }, ast::Adjust::AsStr => { as_str = true; }, } },
+            }
+            if written && ca.path.len() > 0 {
+                s.push_str(self.recv_text(&ca.args[0], by_ref, as_str, f - 1).as_str());
+                s.push_str(".");
+                s.push_str(ca.path[ca.path.len() - 1].name.as_str());
+                s.push_str("(");
+                let mut i: usize = 1;
+                while i < ca.args.len()
+                    decreases ca.args.len() - i,
+                {
+                    if i > 1 {
+                        s.push_str(", ");
+                    }
+                    s.push_str(self.expr(&ca.args[i], 0, f - 1).as_str());
+                    i = i + 1;
+                }
+                s.push_str(")");
+                return s;
+            }
+            let mut k: usize = 0;
+            while k < ca.path.len()
+                decreases ca.path.len() - k,
+            {
+                if k > 0 {
+                    s.push_str("::");
+                }
+                s.push_str(ca.path[k].name.as_str());
+                let mut t: usize = 0;
+                while t < ca.targs.len()
+                    decreases ca.targs.len() - t,
+                {
+                    if ca.targs[t].seg == k {
+                        s.push_str("::<");
+                        s.push_str(types_str(ca.targs[t].args.as_slice()).as_str());
+                        s.push_str(">");
+                    }
+                    t = t + 1;
+                }
+                k = k + 1;
+            }
+            s.push_str("(");
+            s.push_str(self.exprs(ca.args.as_slice(), f - 1).as_str());
+            s.push_str(")");
+            s
+        }
+
+        #[summary("정수 변환 T::try_from(x).unwrap()의 x를 CAST 우선순위로 찍은 글")]
+        #[effects(alloc)]
+        fn cast_operand(self: &mut Printer, recv: &ast::Expr, f: usize) -> String
+            decreases f,
+        {
+            if f == 0 {
+                return String::new();
+            }
+            match &recv.kind {
+                ast::ExprKind::Int(iv, ir) => String::new(),
+                ast::ExprKind::Float(fb) => String::new(),
+                ast::ExprKind::ByteLit(by) => String::new(),
+                ast::ExprKind::ByteStr(bys) => String::new(),
+                ast::ExprKind::StrLit(st) => String::new(),
+                ast::ExprKind::CharLit(ch) => String::new(),
+                ast::ExprKind::Bool(bo) => String::new(),
+                ast::ExprKind::Unit => String::new(),
+                ast::ExprKind::Var(id) => String::new(),
+                ast::ExprKind::Call(ca) => { if ca.args.len() == 1 { self.expr(&ca.args[0], 11, f - 1) } else { String::new() } },
+                ast::ExprKind::Method(me) => String::new(),
+                ast::ExprKind::Index(ib, ii) => String::new(),
+                ast::ExprKind::Unary(uo, ux) => String::new(),
+                ast::ExprKind::Binary(bop, bl, br) => String::new(),
+                ast::ExprKind::Ref(rm, rx) => String::new(),
+                ast::ExprKind::If(ife) => String::new(),
+                ast::ExprKind::Block(blk) => String::new(),
+                ast::ExprKind::Array(ar) => String::new(),
+                ast::ExprKind::Repeat(rp) => String::new(),
+                ast::ExprKind::Old(ox) => String::new(),
+                ast::ExprKind::Quant(qu) => String::new(),
+                ast::ExprKind::Trigger(tx) => String::new(),
+                ast::ExprKind::Closure(cl) => String::new(),
+                ast::ExprKind::StructLit(sl) => String::new(),
+                ast::ExprKind::Path(pa) => String::new(),
+                ast::ExprKind::Deref(dx) => String::new(),
+                ast::ExprKind::Field(fx, fnm) => String::new(),
+                ast::ExprKind::Match(ma) => String::new(),
+                ast::ExprKind::Return(rv) => String::new(),
+                ast::ExprKind::Try(tr) => String::new(),
+                ast::ExprKind::Loop(lp) => String::new(),
+                ast::ExprKind::Break(bk) => String::new(),
+                ast::ExprKind::Continue(co) => String::new(),
+                ast::ExprKind::Range(rg) => String::new(),
+                ast::ExprKind::Error => String::new(),
+            }
+        }
+
+        #[summary("kw와 쉼표로 이은 식들, 끝에 쉼표. 식이 없으면 쓰지 않는다")]
+        #[effects(alloc)]
+        fn clause_line(self: &mut Printer, kw: &str, items: &[ast::Expr], depth: usize, f: usize) -> ()
+            decreases f,
+        {
+            if f == 0 || items.len() == 0 {
+                return;
+            }
+            let mut row: String = String::from(kw);
+            row.push_str(self.exprs(items, f - 1).as_str());
+            row.push_str(",");
+            self.line(depth, row.as_str());
+        }
+
+        #[effects(alloc)]
+        fn clauses(self: &mut Printer, d: &ast::FnDef, depth: usize, f: usize) -> ()
+            decreases f,
+        {
+            if f == 0 {
+                return;
+            }
+            self.clause_line("requires ", d.pre.as_slice(), depth.saturating_add(1), f - 1);
+            self.clause_line("ensures ", d.post.as_slice(), depth.saturating_add(1), f - 1);
+            match &d.measure {
+                None => {},
+                Some(m) => { let mut row: String = String::from("decreases "); row.push_str(self.expr(m, 0, f - 1).as_str()); row.push_str(","); self.line(depth.saturating_add(1), row.as_str()); },
+            }
+        }
+
+        #[summary("move |x: T| -> (r: R) requires P, ensures Q, { .. }를 한 줄로 (ADR-0053 §1)")]
+        #[effects(alloc)]
+        fn closure_text(self: &mut Printer, c: &ast::Closure, f: usize) -> String
+            decreases f,
+        {
+            let mut head: String = String::new();
+            if f == 0 {
+                return head;
+            }
+            if c.is_move {
+                head.push_str("move ");
+            }
+            head.push_str("|");
+            head.push_str(params_str(c.params.as_slice()).as_str());
+            head.push_str("| -> ");
+            head.push_str(ret_str(&c.ret).as_str());
+            if c.pre.len() > 0 {
+                head.push_str(" requires ");
+                head.push_str(self.exprs(c.pre.as_slice(), f - 1).as_str());
+                head.push_str(",");
+            }
+            if c.post.len() > 0 {
+                head.push_str(" ensures ");
+                head.push_str(self.exprs(c.post.as_slice(), f - 1).as_str());
+                head.push_str(",");
+            }
+            let saved: String = std::mem::replace(&mut self.out, String::new());
+            self.block_open(&c.body, 0, "", "", f - 1);
+            let body: String = std::mem::replace(&mut self.out, saved);
+            head.push_str(" ");
+            head.push_str(joined_lines(body.as_str()).as_str());
+            head
+        }
+
+        #[summary("조건이나 match의 대상: 구조체 식을 담으면 괄호로 싼다 (Rust는 거기서 괄호 없는 것을 받지 않는다)")]
+        #[effects(alloc)]
+        fn cond(self: &mut Printer, e: &ast::Expr, f: usize) -> String
+            decreases f,
+        {
+            if f == 0 {
+                return String::new();
+            }
+            let s: String = self.expr(e, 0, f - 1);
+            if has_struct_lit(e, f - 1) {
+                paren(s.as_str())
+            } else {
+                s
+            }
+        }
+
+        #[summary("const의 이름으로 쓴 횟수면 그 이름, 아니면 수")]
+        #[effects(alloc)]
+        #[uses(wide::divisor)]
+        fn count_text(self: &Printer, rp: &ast::Repeat) -> String {
+            let mut i: usize = self.lens.len();
+            while i > 0
+                invariant i <= self.lens.len(),
+                decreases i,
+            {
+                i = i - 1;
+                if self.lens[i].file == rp.count_span.file && self.lens[i].lo == rp.count_span.lo && self.lens[i].hi == rp.count_span.hi {
+                    return self.lens[i].name.clone();
+                }
+            }
+            let mut s: String = String::new();
+            wide::push_radix(&mut s, rp.count, 10);
+            s
+        }
+
+        #[summary("e를 찍는다. 우선순위가 min보다 낮으면 괄호로 싼다")]
+        #[effects(alloc)]
+        fn expr(self: &mut Printer, e: &ast::Expr, min: u8, f: usize) -> String
+            decreases f,
+        {
+            if f == 0 {
+                return String::new();
+            }
+            let s: String = self.expr_raw(e, f - 1);
+            let p: u8 = prec(e);
+            if p < min || p == 0 && min > 0 {
+                paren(s.as_str())
+            } else {
+                s
+            }
+        }
+
+        #[effects(alloc)]
+        fn expr_raw(self: &mut Printer, e: &ast::Expr, f: usize) -> String
+            decreases f,
+        {
+            let mut s: String = String::new();
+            if f == 0 {
+                return s;
+            }
+            match &e.kind {
+                ast::ExprKind::Int(iv, ir) => { s = ast::radix_text(radix_copy(ir), *iv); },
+                ast::ExprKind::Float(fb) => { s = lexer::float_text(*fb); },
+                ast::ExprKind::ByteLit(by) => { let mut one: Vec<u8> = Vec::new(); one.push(*by); s = lexer::byte_text(one.as_slice(), 39); },
+                ast::ExprKind::ByteStr(bys) => { s = lexer::byte_text(bys.as_slice(), 34); },
+                ast::ExprKind::StrLit(st) => { s = lexer::str_text(st.as_str(), 34); },
+                ast::ExprKind::CharLit(ch) => { let mut cs: String = String::new(); match char::from_u32(*ch) { None => cs.push('\0'), Some(c) => cs.push(c), } s = lexer::str_text(cs.as_str(), 39); },
+                ast::ExprKind::Bool(bo) => { if *bo { s.push_str("true"); } else { s.push_str("false"); } },
+                ast::ExprKind::Unit => s.push_str("()"),
+                ast::ExprKind::Var(id) => s.push_str(id.name.as_str()),
+                ast::ExprKind::Call(ca) => { s = self.call_text(ca, f - 1); },
+                ast::ExprKind::Method(me) => { if is_cast(me) { s = self.cast_operand(&*me.recv, f - 1); s.push_str(" as "); s.push_str(cast_name(&*me.recv).as_str()); } else { s = self.expr(&*me.recv, 13, f - 1); s.push_str("."); s.push_str(me.name.name.as_str()); s.push_str("("); s.push_str(self.exprs(me.args.as_slice(), f - 1).as_str()); s.push_str(")"); } },
+                ast::ExprKind::Index(ib, ii) => { s = self.expr(&**ib, 13, f - 1); s.push_str("["); s.push_str(self.expr(&**ii, 0, f - 1).as_str()); s.push_str("]"); },
+                ast::ExprKind::Unary(uo, ux) => { match uo { ast::UnOp::Neg => s.push_str("-"), ast::UnOp::Not => s.push_str("!"), } s.push_str(self.expr(&**ux, 12, f - 1).as_str()); },
+                ast::ExprKind::Binary(bop, bl, br) => { let p: u8 = bin_prec(bop); let mut lm: u8 = p; let mut rm2: u8 = p + 1; if p == 1 { lm = p + 1; rm2 = p; } else if p == 4 { lm = p + 1; } if splits_cast(bop) && prec(&**bl) == 11 { lm = 13; } s = self.expr(&**bl, lm, f - 1); s.push_str(" "); ast::push_bin_symbol(&mut s, bop); s.push_str(" "); s.push_str(self.expr(&**br, rm2, f - 1).as_str()); },
+                ast::ExprKind::Ref(rm, rx) => { s.push_str("&"); if *rm { s.push_str("mut "); } s.push_str(self.expr(&**rx, 12, f - 1).as_str()); },
+                ast::ExprKind::If(ife) => { s = self.one_line(e, f - 1); },
+                ast::ExprKind::Block(blk) => { s = self.one_line(e, f - 1); },
+                ast::ExprKind::Array(ar) => { s.push_str("["); s.push_str(self.exprs(ar.as_slice(), f - 1).as_str()); s.push_str("]"); },
+                ast::ExprKind::Repeat(rp) => { s.push_str("["); s.push_str(self.expr(&*rp.value, 0, f - 1).as_str()); s.push_str("; "); s.push_str(self.count_text(rp).as_str()); s.push_str("]"); },
+                ast::ExprKind::Old(ox) => { s.push_str("old("); s.push_str(self.expr(&**ox, 0, f - 1).as_str()); s.push_str(")"); },
+                ast::ExprKind::Quant(qu) => { match &qu.q { ast::Quantifier::Forall => s.push_str("forall|"), ast::Quantifier::Exists => s.push_str("exists|"), } s.push_str(params_str(qu.binders.as_slice()).as_str()); s.push_str("| "); s.push_str(self.expr(&*qu.body, 0, f - 1).as_str()); },
+                ast::ExprKind::Trigger(tx) => { s.push_str("#[trigger] "); s.push_str(self.expr(&**tx, 12, f - 1).as_str()); },
+                ast::ExprKind::Closure(cl) => { s = self.closure_text(&**cl, f - 1); },
+                ast::ExprKind::StructLit(sl) => { s.push_str(path_str(sl.path.as_slice()).as_str()); s.push_str(" { "); let mut i: usize = 0; while i < sl.fields.len() decreases sl.fields.len() - i, { if i > 0 { s.push_str(", "); } s.push_str(sl.fields[i].name.name.as_str()); s.push_str(": "); s.push_str(self.expr(&sl.fields[i].value, 0, f - 1).as_str()); i = i + 1; } match &sl.rest { None => {}, Some(r) => { if sl.fields.len() > 0 { s.push_str(", "); } s.push_str(".."); s.push_str(self.expr(&**r, 0, f - 1).as_str()); }, } s.push_str(" }"); },
+                ast::ExprKind::Path(pa) => s.push_str(path_str(pa.as_slice()).as_str()),
+                ast::ExprKind::Deref(dx) => { s.push_str("*"); s.push_str(self.expr(&**dx, 12, f - 1).as_str()); },
+                ast::ExprKind::Field(fx, fnm) => { if !is_capture_base(&**fx) { s = self.expr(&**fx, 13, f - 1); s.push_str("."); } s.push_str(fnm.name.as_str()); },
+                ast::ExprKind::Match(ma) => { s = self.one_line(e, f - 1); },
+                ast::ExprKind::Return(rv) => { s.push_str("return"); match rv { None => {}, Some(v) => { s.push_str(" "); s.push_str(self.expr(&**v, 0, f - 1).as_str()); }, } },
+                ast::ExprKind::Try(tr) => { s = self.expr(&**tr, 13, f - 1); s.push_str("?"); },
+                ast::ExprKind::Loop(lp) => { s = self.one_line(e, f - 1); },
+                ast::ExprKind::Break(bk) => { s.push_str("break"); match &bk.label { None => {}, Some(l) => { s.push_str(" '"); s.push_str(l.name.as_str()); }, } match &bk.value { None => {}, Some(bv) => { s.push_str(" "); s.push_str(self.expr(&**bv, 0, f - 1).as_str()); }, } },
+                ast::ExprKind::Continue(co) => { s.push_str("continue"); match co { None => {}, Some(cl2) => { s.push_str(" '"); s.push_str(cl2.name.as_str()); }, } },
+                ast::ExprKind::Range(rg) => { s = self.cond(&*rg.lo, f - 1); if rg.inclusive { s.push_str("..="); } else { s.push_str(".."); } s.push_str(self.cond(&*rg.hi, f - 1).as_str()); },
+                ast::ExprKind::Error => s.push_str("<error>"),
+            }
+            s
+        }
+
+        #[summary("여러 줄에 걸칠 수 있는 식(if, 블록)을 문장으로 찍는다")]
+        #[effects(alloc)]
+        fn expr_stmt(self: &mut Printer, e: &ast::Expr, depth: usize, suffix: &str, f: usize) -> ()
+            decreases f,
+        {
+            if f == 0 {
+                return;
+            }
+            if !self.lines_of(e, depth, "", suffix, f - 1) {
+                let mut row: String = self.expr(e, 0, f - 1);
+                row.push_str(suffix);
+                self.line(depth, row.as_str());
+            }
+        }
+
+        #[summary("쉼표로 이은 식들")]
+        #[effects(alloc)]
+        fn exprs(self: &mut Printer, xs: &[ast::Expr], f: usize) -> String
+            decreases f,
+        {
+            let mut s: String = String::new();
+            if f == 0 {
+                return s;
+            }
+            let mut i: usize = 0;
+            while i < xs.len()
+                decreases xs.len() - i,
+            {
+                if i > 0 {
+                    s.push_str(", ");
+                }
+                s.push_str(self.expr(&xs[i], 0, f - 1).as_str());
+                i = i + 1;
+            }
+            s
+        }
+
+        #[summary("머리와 이름 순의 함수들: impl 블록의 몸")]
+        #[effects(alloc)]
+        fn fn_block(self: &mut Printer, head: &str, fs: &[ast::FnDef], depth: usize, f: usize) -> ()
+            decreases f,
+        {
+            if f == 0 {
+                return;
+            }
+            if fs.len() == 0 {
+                let mut empty: String = String::from(head);
+                empty.push_str(" {}");
+                self.line(depth, empty.as_str());
+                return;
+            }
+            let mut open: String = String::from(head);
+            open.push_str(" {");
+            self.line(depth, open.as_str());
+            let mut keys: Vec<String> = Vec::new();
+            let mut i: usize = 0;
+            while i < fs.len()
+                decreases fs.len() - i,
+            {
+                keys.push(fs[i].name.name.clone());
+                i = i + 1;
+            }
+            let ord: Vec<usize> = order(keys.as_slice());
+            i = 0;
+            while i < ord.len()
+                decreases ord.len() - i,
+            {
+                if ord[i] < fs.len() {
+                    if i > 0 {
+                        self.out.push_str("\n");
+                    }
+                    self.function(&fs[ord[i]], depth.saturating_add(1), true, f - 1);
+                }
+                i = i + 1;
+            }
+            self.line(depth, "}");
+        }
+
+        #[effects(alloc)]
+        fn function(self: &mut Printer, d: &ast::FnDef, depth: usize, with_body: bool, f: usize) -> ()
+            decreases f,
+        {
+            if f == 0 {
+                return;
+            }
+            self.summary_line(d.attrs.as_slice(), depth);
+            let mut i: usize = 0;
+            let mut done: bool = false;
+            while i < d.attrs.len() && !done
+                decreases d.attrs.len() - i,
+            {
+                if d.attrs[i].name.name == "rationale" {
+                    self.rationale_line(&d.attrs[i], depth);
+                    done = true;
+                }
+                i = i + 1;
+            }
+            i = 0;
+            done = false;
+            while i < d.attrs.len() && !done
+                decreases d.attrs.len() - i,
+            {
+                if d.attrs[i].name.name == "external_body" {
+                    self.line(depth, "#[external_body]");
+                    done = true;
+                }
+                i = i + 1;
+            }
+            i = 0;
+            done = false;
+            while i < d.attrs.len() && !done
+                decreases d.attrs.len() - i,
+            {
+                if d.attrs[i].name.name == "effects" {
+                    let mut names: Vec<String> = Vec::new();
+                    let mut k: usize = 0;
+                    while k < d.attrs[i].args.len()
+                        decreases d.attrs[i].args.len() - k,
+                    {
+                        names.push(attr_arg(&d.attrs[i].args[k], 100));
+                        k = k + 1;
+                    }
+                    let mut row: String = String::from("#[effects(");
+                    row.push_str(sorted_list(names.as_slice(), false).as_str());
+                    row.push_str(")]");
+                    self.line(depth, row.as_str());
+                    done = true;
+                }
+                i = i + 1;
+            }
+            let mut uses: Vec<String> = Vec::new();
+            i = 0;
+            while i < d.attrs.len()
+                decreases d.attrs.len() - i,
+            {
+                if d.attrs[i].name.name == "uses" {
+                    let mut u: usize = 0;
+                    while u < d.attrs[i].args.len()
+                        decreases d.attrs[i].args.len() - u,
+                    {
+                        match &d.attrs[i].args[u] {
+                            ast::AttrArg::Ident(id) => uses.push(id.name.clone()),
+                            ast::AttrArg::Str(s, sp) => {},
+                            ast::AttrArg::Pair(pk, pv) => {},
+                        }
+                        u = u + 1;
+                    }
+                }
+                i = i + 1;
+            }
+            if uses.len() > 0 {
+                let mut urow: String = String::from("#[uses(");
+                urow.push_str(sorted_list(uses.as_slice(), true).as_str());
+                urow.push_str(")]");
+                self.line(depth, urow.as_str());
+            }
+            let mut sig: String = String::new();
+            match &d.kind {
+                ast::FnKind::Exec => sig.push_str("fn "),
+                ast::FnKind::Spec => sig.push_str("spec fn "),
+                ast::FnKind::Proof => sig.push_str("proof fn "),
+            }
+            sig.push_str(d.name.name.as_str());
+            sig.push_str(generics_str(d.generics.as_slice()).as_str());
+            sig.push_str("(");
+            sig.push_str(params_str(d.params.as_slice()).as_str());
+            sig.push_str(")");
+            let is_proof: bool = match &d.kind {
+                ast::FnKind::Exec => false,
+                ast::FnKind::Spec => false,
+                ast::FnKind::Proof => true,
+            };
+            if !is_proof {
+                sig.push_str(" -> ");
+                sig.push_str(ret_str(&d.ret).as_str());
+            }
+            let has_clauses: bool = d.pre.len() > 0 || d.post.len() > 0 || is_some(&d.measure);
+            if !with_body {
+                self.line(depth, sig.as_str());
+                self.clauses(d, depth, f - 1);
+                return;
+            }
+            if has_clauses {
+                self.line(depth, sig.as_str());
+                self.clauses(d, depth, f - 1);
+                self.block_open(&d.body, depth, "", "", f - 1);
+            } else {
+                sig.push_str(" ");
+                self.block_open(&d.body, depth, sig.as_str(), "", f - 1);
+            }
+        }
+
+        #[effects(alloc)]
+        fn if_lines(self: &mut Printer, ife: &ast::If, depth: usize, prefix: &str, suffix: &str, f: usize) -> ()
+            decreases f,
+        {
+            if f == 0 {
+                return;
+            }
+            let mut head: String = String::from(prefix);
+            head.push_str("if ");
+            head.push_str(self.cond(&*ife.cond, f - 1).as_str());
+            head.push_str(" ");
+            match &ife.els {
+                None => self.block_open(&ife.then, depth, head.as_str(), suffix, f - 1),
+                Some(x) => { let saved: String = std::mem::replace(&mut self.out, String::new()); self.block_open(&ife.then, depth, head.as_str(), "", f - 1); let then: String = std::mem::replace(&mut self.out, String::new()); self.lines_of(&**x, depth, "", suffix, f - 1); let rest: String = std::mem::replace(&mut self.out, saved); self.out.push_str(lexer::cut(then.as_str(), 0, then.len().saturating_sub(1)).as_str()); self.out.push_str(" else "); self.out.push_str(trim_start(rest.as_str()).as_str()); },
+            }
+        }
+
+        #[effects(alloc)]
+        fn impl_block(self: &mut Printer, i: &ast::Impl, depth: usize, f: usize) -> ()
+            decreases f,
+        {
+            if f == 0 {
+                return;
+            }
+            let mut head: String = String::from("impl");
+            head.push_str(generics_str(i.generics.as_slice()).as_str());
+            head.push_str(" ");
+            head.push_str(i.ty.name.as_str());
+            if i.ty_args.len() > 0 {
+                head.push_str("<");
+                head.push_str(types_str(i.ty_args.as_slice()).as_str());
+                head.push_str(">");
+            }
+            self.fn_block(head.as_str(), i.fns.as_slice(), depth, f - 1);
+        }
+
+        #[summary("들여쓴 한 줄")]
+        #[effects(alloc)]
+        fn line(self: &mut Printer, depth: usize, text: &str) -> () {
+            let mut k: usize = 0;
+            while k < depth
+                decreases depth - k,
+            {
+                self.out.push_str("    ");
+                k = k + 1;
+            }
+            self.out.push_str(text);
+            self.out.push_str("\n");
+        }
+
+        #[summary("여러 줄에 걸치는 꼴(if, 블록, match, loop)이면 head와 suffix를 붙여 줄들로 찍고 참을 준다")]
+        #[effects(alloc)]
+        fn lines_of(self: &mut Printer, e: &ast::Expr, depth: usize, head: &str, suffix: &str, f: usize) -> bool
+            decreases f,
+        {
+            if f == 0 {
+                return false;
+            }
+            match &e.kind {
+                ast::ExprKind::Int(iv, ir) => false,
+                ast::ExprKind::Float(fb) => false,
+                ast::ExprKind::ByteLit(by) => false,
+                ast::ExprKind::ByteStr(bys) => false,
+                ast::ExprKind::StrLit(st) => false,
+                ast::ExprKind::CharLit(ch) => false,
+                ast::ExprKind::Bool(bo) => false,
+                ast::ExprKind::Unit => false,
+                ast::ExprKind::Var(id) => false,
+                ast::ExprKind::Call(ca) => false,
+                ast::ExprKind::Method(me) => false,
+                ast::ExprKind::Index(ib, ii) => false,
+                ast::ExprKind::Unary(uo, ux) => false,
+                ast::ExprKind::Binary(bop, bl, br) => false,
+                ast::ExprKind::Ref(rm, rx) => false,
+                ast::ExprKind::If(ife) => { self.if_lines(ife, depth, head, suffix, f - 1); true },
+                ast::ExprKind::Block(blk) => { self.block_open(blk, depth, head, suffix, f - 1); true },
+                ast::ExprKind::Array(ar) => false,
+                ast::ExprKind::Repeat(rp) => false,
+                ast::ExprKind::Old(ox) => false,
+                ast::ExprKind::Quant(qu) => false,
+                ast::ExprKind::Trigger(tx) => false,
+                ast::ExprKind::Closure(cl) => false,
+                ast::ExprKind::StructLit(sl) => false,
+                ast::ExprKind::Path(pa) => false,
+                ast::ExprKind::Deref(dx) => false,
+                ast::ExprKind::Field(fx, fnm) => false,
+                ast::ExprKind::Match(ma) => { self.match_lines(ma, depth, head, suffix, f - 1); true },
+                ast::ExprKind::Return(rv) => false,
+                ast::ExprKind::Try(tr) => false,
+                ast::ExprKind::Loop(lp) => { self.loop_lines(lp, depth, head, suffix, f - 1); true },
+                ast::ExprKind::Break(bk) => false,
+                ast::ExprKind::Continue(co) => false,
+                ast::ExprKind::Range(rg) => false,
+                ast::ExprKind::Error => false,
+            }
+        }
+
+        #[summary("invariant와 decreases의 줄들")]
+        #[effects(alloc)]
+        fn loop_clauses(self: &mut Printer, invariants: &[ast::Expr], measure: Option<String>, depth: usize, f: usize) -> ()
+            decreases f,
+        {
+            if f == 0 {
+                return;
+            }
+            self.clause_line("invariant ", invariants, depth.saturating_add(1), f - 1);
+            match measure {
+                None => {},
+                Some(m) => { let mut row: String = String::from("decreases "); row.push_str(m.as_str()); row.push_str(","); self.line(depth.saturating_add(1), row.as_str()); },
+            }
+        }
+
+        #[summary("head['l: ]loop, 절들은 while처럼 제 줄에, 그리고 몸")]
+        #[effects(alloc)]
+        fn loop_lines(self: &mut Printer, lp: &ast::Loop, depth: usize, head: &str, suffix: &str, f: usize) -> ()
+            decreases f,
+        {
+            if f == 0 {
+                return;
+            }
+            let mut row: String = String::from(head);
+            row.push_str(label_head(&lp.label).as_str());
+            let has: bool = is_some_box(&lp.measure);
+            if lp.invariants.len() == 0 && !has {
+                row.push_str("loop ");
+                self.block_open(&lp.body, depth, row.as_str(), suffix, f - 1);
+                return;
+            }
+            row.push_str("loop");
+            self.line(depth, row.as_str());
+            let m: Option<String> = match &lp.measure {
+                None => None,
+                Some(x) => Some(self.expr(&**x, 0, f - 1)),
+            };
+            self.loop_clauses(lp.invariants.as_slice(), m, depth, f - 1);
+            self.block_open(&lp.body, depth, "", suffix, f - 1);
+        }
+
+        #[summary("match, 갈래마다 한 줄 (갈래의 몸은 한 줄로)")]
+        #[effects(alloc)]
+        fn match_lines(self: &mut Printer, ma: &ast::Match, depth: usize, prefix: &str, suffix: &str, f: usize) -> ()
+            decreases f,
+        {
+            if f == 0 {
+                return;
+            }
+            let mut head: String = String::from(prefix);
+            head.push_str("match ");
+            head.push_str(self.cond(&*ma.scrut, f - 1).as_str());
+            head.push_str(" {");
+            self.line(depth, head.as_str());
+            let mut i: usize = 0;
+            while i < ma.arms.len()
+                decreases ma.arms.len() - i,
+            {
+                let mut row: String = pat_str(&ma.arms[i].pat);
+                row.push_str(" => ");
+                row.push_str(self.expr(&ma.arms[i].body, 0, f - 1).as_str());
+                row.push_str(",");
+                self.line(depth.saturating_add(1), row.as_str());
+                i = i + 1;
+            }
+            let mut close: String = String::from("}");
+            close.push_str(suffix);
+            self.line(depth, close.as_str());
+        }
+
+        #[effects(alloc)]
+        fn module(self: &mut Printer, m: &ast::Mod, depth: usize, f: usize) -> ()
+            decreases f,
+        {
+            if f == 0 {
+                return;
+            }
+            let mut a: usize = 0;
+            let mut found: bool = false;
+            while a < m.attrs.len() && !found
+                decreases m.attrs.len() - a,
+            {
+                if m.attrs[a].name.name == "summary" && m.attrs[a].args.len() > 0 {
+                    match &m.attrs[a].args[0] {
+                        ast::AttrArg::Ident(ai) => {},
+                        ast::AttrArg::Str(s, sp) => { found = true; let mut head: String = String::from("#[summary(\""); head.push_str(escape(s.as_str()).as_str()); head.push_str("\")]"); self.line(depth, head.as_str()); },
+                        ast::AttrArg::Pair(k, v) => {},
+                    }
+                }
+                a = a + 1;
+            }
+            let mut open: String = String::from("mod ");
+            open.push_str(m.name.name.as_str());
+            open.push_str(" {");
+            self.line(depth, open.as_str());
+            let mut l: usize = 0;
+            while l < m.lens.len()
+                decreases m.lens.len() - l,
+            {
+                self.lens.push(LenName { file: m.lens[l].at.file, lo: m.lens[l].at.lo, hi: m.lens[l].at.hi, name: path_str(m.lens[l].path.as_slice()) });
+                l = l + 1;
+            }
+            let mut keys: Vec<String> = Vec::new();
+            let mut i: usize = 0;
+            let mut first: bool = true;
+            while i < m.consts.len()
+                decreases m.consts.len() - i,
+            {
+                keys.push(m.consts[i].name.name.clone());
+                i = i + 1;
+            }
+            let consts: Vec<usize> = order(keys.as_slice());
+            i = 0;
+            while i < consts.len()
+                decreases consts.len() - i,
+            {
+                if consts[i] < m.consts.len() {
+                    self.summary_line(m.consts[consts[i]].attrs.as_slice(), depth.saturating_add(1));
+                    let mut row: String = String::from("const ");
+                    row.push_str(m.consts[consts[i]].name.name.as_str());
+                    row.push_str(": ");
+                    row.push_str(type_str(&m.consts[consts[i]].ty).as_str());
+                    row.push_str(" = ");
+                    row.push_str(self.expr(&m.consts[consts[i]].value, 0, f - 1).as_str());
+                    row.push_str(";");
+                    self.line(depth.saturating_add(1), row.as_str());
+                    first = false;
+                }
+                i = i + 1;
+            }
+            keys = Vec::new();
+            i = 0;
+            while i < m.mods.len()
+                decreases m.mods.len() - i,
+            {
+                keys.push(m.mods[i].name.name.clone());
+                i = i + 1;
+            }
+            let subs: Vec<usize> = order(keys.as_slice());
+            i = 0;
+            while i < subs.len()
+                decreases subs.len() - i,
+            {
+                if subs[i] < m.mods.len() {
+                    if !first {
+                        self.out.push_str("\n");
+                    }
+                    first = false;
+                    self.module(&m.mods[subs[i]], depth.saturating_add(1), f - 1);
+                }
+                i = i + 1;
+            }
+            keys = Vec::new();
+            i = 0;
+            while i < m.traits.len()
+                decreases m.traits.len() - i,
+            {
+                keys.push(m.traits[i].name.name.clone());
+                i = i + 1;
+            }
+            let traits: Vec<usize> = order(keys.as_slice());
+            i = 0;
+            while i < traits.len()
+                decreases traits.len() - i,
+            {
+                if traits[i] < m.traits.len() {
+                    if !first {
+                        self.out.push_str("\n");
+                    }
+                    first = false;
+                    self.trait_def(&m.traits[traits[i]], depth.saturating_add(1), f - 1);
+                }
+                i = i + 1;
+            }
+            keys = Vec::new();
+            i = 0;
+            while i < m.trait_impls.len()
+                decreases m.trait_impls.len() - i,
+            {
+                let mut key: String = path_str(m.trait_impls[i].trait_path.as_slice());
+                key.push_str("\0");
+                key.push_str(type_str(&m.trait_impls[i].self_ty).as_str());
+                keys.push(key);
+                i = i + 1;
+            }
+            let timpls: Vec<usize> = order(keys.as_slice());
+            i = 0;
+            while i < timpls.len()
+                decreases timpls.len() - i,
+            {
+                if timpls[i] < m.trait_impls.len() {
+                    let own: String = own_type(&m.trait_impls[timpls[i]].self_ty);
+                    if !has_type(m.types.as_slice(), own.as_str()) {
+                        if !first {
+                            self.out.push_str("\n");
+                        }
+                        first = false;
+                        self.trait_impl(&m.trait_impls[timpls[i]], depth.saturating_add(1), f - 1);
+                    }
+                }
+                i = i + 1;
+            }
+            keys = Vec::new();
+            i = 0;
+            while i < m.impls.len()
+                decreases m.impls.len() - i,
+            {
+                keys.push(m.impls[i].ty.name.clone());
+                i = i + 1;
+            }
+            let impls: Vec<usize> = order(keys.as_slice());
+            keys = Vec::new();
+            i = 0;
+            while i < m.types.len()
+                decreases m.types.len() - i,
+            {
+                keys.push(m.types[i].name.name.clone());
+                i = i + 1;
+            }
+            let types: Vec<usize> = order(keys.as_slice());
+            i = 0;
+            while i < types.len()
+                decreases types.len() - i,
+            {
+                if types[i] < m.types.len() {
+                    if !first {
+                        self.out.push_str("\n");
+                    }
+                    first = false;
+                    self.type_def(&m.types[types[i]], depth.saturating_add(1));
+                    let mut j: usize = 0;
+                    while j < impls.len()
+                        decreases impls.len() - j,
+                    {
+                        if impls[j] < m.impls.len() && m.impls[impls[j]].ty.name == m.types[types[i]].name.name {
+                            self.out.push_str("\n");
+                            self.impl_block(&m.impls[impls[j]], depth.saturating_add(1), f - 1);
+                        }
+                        j = j + 1;
+                    }
+                    j = 0;
+                    while j < timpls.len()
+                        decreases timpls.len() - j,
+                    {
+                        if timpls[j] < m.trait_impls.len() && own_type(&m.trait_impls[timpls[j]].self_ty) == m.types[types[i]].name.name {
+                            self.out.push_str("\n");
+                            self.trait_impl(&m.trait_impls[timpls[j]], depth.saturating_add(1), f - 1);
+                        }
+                        j = j + 1;
+                    }
+                }
+                i = i + 1;
+            }
+            i = 0;
+            while i < impls.len()
+                decreases impls.len() - i,
+            {
+                if impls[i] < m.impls.len() && !has_type(m.types.as_slice(), m.impls[impls[i]].ty.name.as_str()) {
+                    if !first {
+                        self.out.push_str("\n");
+                    }
+                    first = false;
+                    self.impl_block(&m.impls[impls[i]], depth.saturating_add(1), f - 1);
+                }
+                i = i + 1;
+            }
+            keys = Vec::new();
+            i = 0;
+            while i < m.fns.len()
+                decreases m.fns.len() - i,
+            {
+                keys.push(m.fns[i].name.name.clone());
+                i = i + 1;
+            }
+            let fns: Vec<usize> = order(keys.as_slice());
+            i = 0;
+            while i < fns.len()
+                decreases fns.len() - i,
+            {
+                if fns[i] < m.fns.len() {
+                    if !first {
+                        self.out.push_str("\n");
+                    }
+                    first = false;
+                    self.function(&m.fns[fns[i]], depth.saturating_add(1), true, f - 1);
+                }
+                i = i + 1;
+            }
+            self.line(depth, "}");
+        }
+
+        #[summary("head value suffix: 값은 여러 줄의 if나 블록일 수 있다")]
+        #[effects(alloc)]
+        fn multiline_value(self: &mut Printer, v: &ast::Expr, depth: usize, head: &str, suffix: &str, f: usize) -> ()
+            decreases f,
+        {
+            if f == 0 {
+                return;
+            }
+            if !self.lines_of(v, depth, head, suffix, f - 1) {
+                let mut row: String = String::from(head);
+                row.push_str(self.expr(v, 0, f - 1).as_str());
+                row.push_str(suffix);
+                self.line(depth, row.as_str());
+            }
+        }
+
+        #[summary("여러 줄 꼴을 식 안에서는 한 줄로: 줄마다 다듬어 빈칸으로 잇는다")]
+        #[effects(alloc)]
+        fn one_line(self: &mut Printer, e: &ast::Expr, f: usize) -> String
+            decreases f,
+        {
+            if f == 0 {
+                return String::new();
+            }
+            let saved: String = std::mem::replace(&mut self.out, String::new());
+            self.expr_stmt(e, 0, "", f - 1);
+            let text: String = std::mem::replace(&mut self.out, saved);
+            joined_lines(text.as_str())
+        }
+
+        #[summary("#[rationale(..)] (ADR-0029 §1)")]
+        #[effects(alloc)]
+        fn rationale_line(self: &mut Printer, a: &ast::Attr, depth: usize) -> () {
+            let mut row: String = String::from("#[rationale(");
+            row.push_str(attr_args(a.args.as_slice()).as_str());
+            row.push_str(")]");
+            self.line(depth, row.as_str());
+        }
+
+        #[summary("x.f(..)로 쓴 호출의 수신자: 넘긴 방식이 붙인 &나 .as_str()을 벗긴 것")]
+        #[effects(alloc)]
+        fn recv_text(self: &mut Printer, arg: &ast::Expr, by_ref: bool, as_str: bool, f: usize) -> String
+            decreases f,
+        {
+            if f == 0 {
+                return String::new();
+            }
+            match &arg.kind {
+                ast::ExprKind::Int(iv, ir) => self.expr(arg, 13, f - 1),
+                ast::ExprKind::Float(fb) => self.expr(arg, 13, f - 1),
+                ast::ExprKind::ByteLit(by) => self.expr(arg, 13, f - 1),
+                ast::ExprKind::ByteStr(bys) => self.expr(arg, 13, f - 1),
+                ast::ExprKind::StrLit(st) => self.expr(arg, 13, f - 1),
+                ast::ExprKind::CharLit(ch) => self.expr(arg, 13, f - 1),
+                ast::ExprKind::Bool(bo) => self.expr(arg, 13, f - 1),
+                ast::ExprKind::Unit => self.expr(arg, 13, f - 1),
+                ast::ExprKind::Var(id) => self.expr(arg, 13, f - 1),
+                ast::ExprKind::Call(ca) => self.expr(arg, 13, f - 1),
+                ast::ExprKind::Method(me) => { if as_str { self.expr(&*me.recv, 13, f - 1) } else { self.expr(arg, 13, f - 1) } },
+                ast::ExprKind::Index(ib, ii) => self.expr(arg, 13, f - 1),
+                ast::ExprKind::Unary(uo, ux) => self.expr(arg, 13, f - 1),
+                ast::ExprKind::Binary(bop, bl, br) => self.expr(arg, 13, f - 1),
+                ast::ExprKind::Ref(rm, rx) => { if by_ref { self.expr(&**rx, 13, f - 1) } else { self.expr(arg, 13, f - 1) } },
+                ast::ExprKind::If(ife) => self.expr(arg, 13, f - 1),
+                ast::ExprKind::Block(blk) => self.expr(arg, 13, f - 1),
+                ast::ExprKind::Array(ar) => self.expr(arg, 13, f - 1),
+                ast::ExprKind::Repeat(rp) => self.expr(arg, 13, f - 1),
+                ast::ExprKind::Old(ox) => self.expr(arg, 13, f - 1),
+                ast::ExprKind::Quant(qu) => self.expr(arg, 13, f - 1),
+                ast::ExprKind::Trigger(tx) => self.expr(arg, 13, f - 1),
+                ast::ExprKind::Closure(cl) => self.expr(arg, 13, f - 1),
+                ast::ExprKind::StructLit(sl) => self.expr(arg, 13, f - 1),
+                ast::ExprKind::Path(pa) => self.expr(arg, 13, f - 1),
+                ast::ExprKind::Deref(dx) => self.expr(arg, 13, f - 1),
+                ast::ExprKind::Field(fx, fnm) => self.expr(arg, 13, f - 1),
+                ast::ExprKind::Match(ma) => self.expr(arg, 13, f - 1),
+                ast::ExprKind::Return(rv) => self.expr(arg, 13, f - 1),
+                ast::ExprKind::Try(tr) => self.expr(arg, 13, f - 1),
+                ast::ExprKind::Loop(lp) => self.expr(arg, 13, f - 1),
+                ast::ExprKind::Break(bk) => self.expr(arg, 13, f - 1),
+                ast::ExprKind::Continue(co) => self.expr(arg, 13, f - 1),
+                ast::ExprKind::Range(rg) => self.expr(arg, 13, f - 1),
+                ast::ExprKind::Error => self.expr(arg, 13, f - 1),
+            }
+        }
+
+        #[effects(alloc)]
+        fn stmt(self: &mut Printer, s: &ast::Stmt, depth: usize, f: usize) -> ()
+            decreases f,
+        {
+            if f == 0 {
+                return;
+            }
+            match s {
+                ast::Stmt::Let(le) => { let mut head: String = String::from("let "); if le.mutable { head.push_str("mut "); } head.push_str(le.name.name.as_str()); head.push_str(": "); head.push_str(type_str(&le.ty).as_str()); head.push_str(" = "); self.multiline_value(&le.init, depth, head.as_str(), ";", f - 1); },
+                ast::Stmt::Assign(asg) => { let mut ahead: String = self.expr(&asg.target, 0, f - 1); ahead.push_str(" = "); self.multiline_value(&asg.value, depth, ahead.as_str(), ";", f - 1); },
+                ast::Stmt::While(wh) => { let mut whead: String = label_head(&wh.label); whead.push_str("while "); whead.push_str(self.cond(&wh.cond, f - 1).as_str()); self.line(depth, whead.as_str()); let wm: Option<String> = match &wh.measure { None => None, Some(x) => Some(self.expr(x, 0, f - 1)), }; self.loop_clauses(wh.invariants.as_slice(), wm, depth, f - 1); self.block_open(&wh.body, depth, "", "", f - 1); },
+                ast::Stmt::For(fo) => { let mut fhead: String = label_head(&fo.label); let a: String = self.cond(&fo.lo, f - 1); let b: String = self.cond(&fo.hi, f - 1); fhead.push_str("for "); fhead.push_str(fo.var.name.as_str()); fhead.push_str(" in "); fhead.push_str(a.as_str()); if fo.inclusive { fhead.push_str("..="); } else { fhead.push_str(".."); } fhead.push_str(b.as_str()); if fo.invariants.len() == 0 { fhead.push_str(" "); self.block_open(&fo.body, depth, fhead.as_str(), "", f - 1); } else { self.line(depth, fhead.as_str()); self.loop_clauses(fo.invariants.as_slice(), None, depth, f - 1); self.block_open(&fo.body, depth, "", "", f - 1); } },
+                ast::Stmt::Assert(asr) => { let mut row: String = String::from("assert("); row.push_str(self.expr(&asr.cond, 0, f - 1).as_str()); row.push_str(")"); match &asr.by { None => {}, Some(p) => { match p { ast::Prover::BitVector => row.push_str(" by (bit_vector)"), } }, } row.push_str(";"); self.line(depth, row.as_str()); },
+                ast::Stmt::Assume(asm) => { match &asm.rationale { None => {}, Some(ra) => self.rationale_line(ra, depth), } let mut urow: String = String::from("assume("); urow.push_str(self.expr(&asm.cond, 0, f - 1).as_str()); urow.push_str(");"); self.line(depth, urow.as_str()); },
+                ast::Stmt::Proof(pb) => self.block_open(&pb.body, depth, "proof ", "", f - 1),
+                ast::Stmt::LetFields(lf) => { let mut lhead: String = String::from("let "); lhead.push_str(path_str(lf.path.as_slice()).as_str()); lhead.push_str(" { "); lhead.push_str(path_join(lf.fields.as_slice(), ", ").as_str()); lhead.push_str(" } = "); self.multiline_value(&lf.init, depth, lhead.as_str(), ";", f - 1); },
+                ast::Stmt::Expr(e) => { if !self.lines_of(e, depth, "", "", f - 1) { let mut erow: String = self.expr(e, 0, f - 1); erow.push_str(";"); self.line(depth, erow.as_str()); } },
+            }
+        }
+
+        #[summary("정의의 #[summary(\"..\")] (ADR-0117)")]
+        #[effects(alloc)]
+        fn summary_line(self: &mut Printer, attrs: &[ast::Attr], depth: usize) -> () {
+            let mut i: usize = 0;
+            while i < attrs.len()
+                decreases attrs.len() - i,
+            {
+                if attrs[i].name.name == "summary" {
+                    let mut row: String = String::from("#[summary(");
+                    row.push_str(attr_args(attrs[i].args.as_slice()).as_str());
+                    row.push_str(")]");
+                    self.line(depth, row.as_str());
+                    return;
+                }
+                i = i + 1;
+            }
+        }
+
+        #[summary("trait T { fn m(..) -> R; .. }, 메서드는 이름 순 (ADR-0046 §1)")]
+        #[effects(alloc)]
+        fn trait_def(self: &mut Printer, t: &ast::TraitDef, depth: usize, f: usize) -> ()
+            decreases f,
+        {
+            if f == 0 {
+                return;
+            }
+            self.summary_line(t.attrs.as_slice(), depth);
+            let mut a: usize = 0;
+            while a < t.attrs.len()
+                decreases t.attrs.len() - a,
+            {
+                self.attr_line(&t.attrs[a], depth);
+                a = a + 1;
+            }
+            let mut head: String = String::from("trait ");
+            head.push_str(t.name.name.as_str());
+            if t.fns.len() == 0 {
+                head.push_str(" {}");
+                self.line(depth, head.as_str());
+                return;
+            }
+            head.push_str(" {");
+            self.line(depth, head.as_str());
+            let mut keys: Vec<String> = Vec::new();
+            let mut i: usize = 0;
+            while i < t.fns.len()
+                decreases t.fns.len() - i,
+            {
+                keys.push(t.fns[i].f.name.name.clone());
+                i = i + 1;
+            }
+            let ord: Vec<usize> = order(keys.as_slice());
+            i = 0;
+            while i < ord.len()
+                decreases ord.len() - i,
+            {
+                if ord[i] < t.fns.len() {
+                    if i > 0 {
+                        self.out.push_str("\n");
+                    }
+                    self.trait_fn(&t.fns[ord[i]], depth.saturating_add(1), f - 1);
+                }
+                i = i + 1;
+            }
+            self.line(depth, "}");
+        }
+
+        #[summary("trait 메서드: 기본 몸, 또는 ;로 끝나는 시그니처")]
+        #[effects(alloc)]
+        fn trait_fn(self: &mut Printer, tf: &ast::TraitFn, depth: usize, f: usize) -> ()
+            decreases f,
+        {
+            if f == 0 {
+                return;
+            }
+            if tf.has_body {
+                self.function(&tf.f, depth, true, f - 1);
+            } else {
+                let saved: String = std::mem::replace(&mut self.out, String::new());
+                self.function(&tf.f, depth, false, f - 1);
+                let sig: String = std::mem::replace(&mut self.out, saved);
+                let n: usize = sig.len();
+                if n >= 2 && sig.as_bytes()[n - 2] == 44 && sig.as_bytes()[n - 1] == 10 {
+                    self.out.push_str(lexer::cut(sig.as_str(), 0, n - 2).as_str());
+                } else {
+                    self.out.push_str(lexer::cut(sig.as_str(), 0, n.saturating_sub(1)).as_str());
+                }
+                self.out.push_str(";\n");
+            }
+        }
+
+        #[summary("impl<..> Trait for T { .. }, 함수는 이름 순 (ADR-0046 §2)")]
+        #[effects(alloc)]
+        fn trait_impl(self: &mut Printer, i: &ast::TraitImpl, depth: usize, f: usize) -> ()
+            decreases f,
+        {
+            if f == 0 {
+                return;
+            }
+            let mut head: String = String::from("impl");
+            head.push_str(generics_str(i.generics.as_slice()).as_str());
+            head.push_str(" ");
+            head.push_str(path_str(i.trait_path.as_slice()).as_str());
+            head.push_str(" for ");
+            head.push_str(type_str(&i.self_ty).as_str());
+            self.fn_block(head.as_str(), i.fns.as_slice(), depth, f - 1);
+        }
+
+        #[summary("struct T { f: U, .. } / enum T { A, B(U), .. }를 한 줄로. 필드와 변형은 선언 순서를 지킨다 (ADR-0026 §6)")]
+        #[effects(alloc)]
+        fn type_def(self: &mut Printer, t: &ast::TypeDef, depth: usize) -> () {
+            self.summary_line(t.attrs.as_slice(), depth);
+            let mut a: usize = 0;
+            while a < t.attrs.len()
+                decreases t.attrs.len() - a,
+            {
+                self.attr_line(&t.attrs[a], depth);
+                a = a + 1;
+            }
+            let mut items: String = String::new();
+            let mut row: String = String::new();
+            match &t.kind {
+                ast::TypeDefKind::Struct(fs) => { row.push_str("struct "); let mut i: usize = 0; while i < fs.len() decreases fs.len() - i, { if i > 0 { items.push_str(", "); } items.push_str(fs[i].name.name.as_str()); items.push_str(": "); items.push_str(type_str(&fs[i].ty).as_str()); i = i + 1; } },
+                ast::TypeDefKind::Enum(vs) => { row.push_str("enum "); let mut k: usize = 0; while k < vs.len() decreases vs.len() - k, { if k > 0 { items.push_str(", "); } items.push_str(vs[k].name.name.as_str()); if vs[k].payload.len() > 0 { items.push_str("("); items.push_str(types_str(vs[k].payload.as_slice()).as_str()); items.push_str(")"); } k = k + 1; } },
+            }
+            row.push_str(t.name.name.as_str());
+            row.push_str(generics_str(t.generics.as_slice()).as_str());
+            if items.len() == 0 {
+                row.push_str(" {}");
+            } else {
+                row.push_str(" { ");
+                row.push_str(items.as_str());
+                row.push_str(" }");
+            }
+            self.line(depth, row.as_str());
+        }
+    }
+
+    #[summary("최상위 단위 하나의 정규형")]
+    struct Unit { name: String, text: String }
+
+    #[summary("속성 인자를 쓴 대로: 이름, 문자열, key = value. f는 남은 깊이")]
+    #[effects(alloc)]
+    fn attr_arg(x: &ast::AttrArg, f: usize) -> String
+        decreases f,
+    {
+        if f == 0 {
+            return String::new();
+        }
+        match x {
+            ast::AttrArg::Ident(i) => i.name.clone(),
+            ast::AttrArg::Str(s, sp) => { let mut q: String = String::from("\""); q.push_str(escape(s.as_str()).as_str()); q.push_str("\""); q },
+            ast::AttrArg::Pair(k, v) => { let mut p: String = k.name.clone(); p.push_str(" = "); p.push_str(attr_arg(&**v, f - 1).as_str()); p },
+        }
+    }
+
+    #[summary("쉼표로 이은 속성 인자들")]
+    #[effects(alloc)]
+    fn attr_args(xs: &[ast::AttrArg]) -> String {
+        let mut s: String = String::new();
+        let mut i: usize = 0;
+        while i < xs.len()
+            decreases xs.len() - i,
+        {
+            if i > 0 {
+                s.push_str(", ");
+            }
+            s.push_str(attr_arg(&xs[i], 100).as_str());
+            i = i + 1;
+        }
+        s
+    }
+
+    #[summary("Rust의 연산자 우선순위 (ADR-0019 §1, ADR-0048 §2)")]
+    #[effects(pure)]
+    fn bin_prec(op: &ast::BinOp) -> (r: u8)
+        ensures r >= 1, r <= 10,
+    {
+        match op {
+            ast::BinOp::Add => 9,
+            ast::BinOp::Sub => 9,
+            ast::BinOp::Mul => 10,
+            ast::BinOp::Div => 10,
+            ast::BinOp::Rem => 10,
+            ast::BinOp::Eq => 4,
+            ast::BinOp::Ne => 4,
+            ast::BinOp::Lt => 4,
+            ast::BinOp::Le => 4,
+            ast::BinOp::Gt => 4,
+            ast::BinOp::Ge => 4,
+            ast::BinOp::And => 3,
+            ast::BinOp::Or => 2,
+            ast::BinOp::Implies => 1,
+            ast::BinOp::BitAnd => 7,
+            ast::BinOp::BitOr => 5,
+            ast::BinOp::BitXor => 6,
+            ast::BinOp::Shl => 8,
+            ast::BinOp::Shr => 8,
+        }
+    }
+
+    #[summary("파일이 source::CAPTURE인 self인가")]
+    #[effects(pure)]
+    fn captured_self(e: &ast::Expr) -> bool {
+        match &e.kind {
+            ast::ExprKind::Int(iv, ir) => false,
+            ast::ExprKind::Float(fb) => false,
+            ast::ExprKind::ByteLit(by) => false,
+            ast::ExprKind::ByteStr(bys) => false,
+            ast::ExprKind::StrLit(st) => false,
+            ast::ExprKind::CharLit(ch) => false,
+            ast::ExprKind::Bool(bo) => false,
+            ast::ExprKind::Unit => false,
+            ast::ExprKind::Var(id) => id.name == "self" && id.span.file == source::CAPTURE,
+            ast::ExprKind::Call(ca) => false,
+            ast::ExprKind::Method(me) => false,
+            ast::ExprKind::Index(ib, ii) => false,
+            ast::ExprKind::Unary(uo, ux) => false,
+            ast::ExprKind::Binary(bop, bl, br) => false,
+            ast::ExprKind::Ref(rm, rx) => false,
+            ast::ExprKind::If(ife) => false,
+            ast::ExprKind::Block(blk) => false,
+            ast::ExprKind::Array(ar) => false,
+            ast::ExprKind::Repeat(rp) => false,
+            ast::ExprKind::Old(ox) => false,
+            ast::ExprKind::Quant(qu) => false,
+            ast::ExprKind::Trigger(tx) => false,
+            ast::ExprKind::Closure(cl) => false,
+            ast::ExprKind::StructLit(sl) => false,
+            ast::ExprKind::Path(pa) => false,
+            ast::ExprKind::Deref(dx) => false,
+            ast::ExprKind::Field(fx, fnm) => false,
+            ast::ExprKind::Match(ma) => false,
+            ast::ExprKind::Return(rv) => false,
+            ast::ExprKind::Try(tr) => false,
+            ast::ExprKind::Loop(lp) => false,
+            ast::ExprKind::Break(bk) => false,
+            ast::ExprKind::Continue(co) => false,
+            ast::ExprKind::Range(rg) => false,
+            ast::ExprKind::Error => false,
+        }
+    }
+
+    #[summary("T::try_from(x)의 꼴(T는 정수 타입)이면 T의 이름, 아니면 빈 글")]
+    #[effects(alloc)]
+    fn cast_name(recv: &ast::Expr) -> String {
+        match &recv.kind {
+            ast::ExprKind::Int(iv, ir) => String::new(),
+            ast::ExprKind::Float(fb) => String::new(),
+            ast::ExprKind::ByteLit(by) => String::new(),
+            ast::ExprKind::ByteStr(bys) => String::new(),
+            ast::ExprKind::StrLit(st) => String::new(),
+            ast::ExprKind::CharLit(ch) => String::new(),
+            ast::ExprKind::Bool(bo) => String::new(),
+            ast::ExprKind::Unit => String::new(),
+            ast::ExprKind::Var(id) => String::new(),
+            ast::ExprKind::Call(ca) => { if ca.path.len() == 2 && ca.path[1].name == "try_from" && ca.targs.len() == 0 && ca.args.len() == 1 { match ast::int_of(ca.path[0].name.as_str()) { None => String::new(), Some(t) => ca.path[0].name.clone(), } } else { String::new() } },
+            ast::ExprKind::Method(me) => String::new(),
+            ast::ExprKind::Index(ib, ii) => String::new(),
+            ast::ExprKind::Unary(uo, ux) => String::new(),
+            ast::ExprKind::Binary(bop, bl, br) => String::new(),
+            ast::ExprKind::Ref(rm, rx) => String::new(),
+            ast::ExprKind::If(ife) => String::new(),
+            ast::ExprKind::Block(blk) => String::new(),
+            ast::ExprKind::Array(ar) => String::new(),
+            ast::ExprKind::Repeat(rp) => String::new(),
+            ast::ExprKind::Old(ox) => String::new(),
+            ast::ExprKind::Quant(qu) => String::new(),
+            ast::ExprKind::Trigger(tx) => String::new(),
+            ast::ExprKind::Closure(cl) => String::new(),
+            ast::ExprKind::StructLit(sl) => String::new(),
+            ast::ExprKind::Path(pa) => String::new(),
+            ast::ExprKind::Deref(dx) => String::new(),
+            ast::ExprKind::Field(fx, fnm) => String::new(),
+            ast::ExprKind::Match(ma) => String::new(),
+            ast::ExprKind::Return(rv) => String::new(),
+            ast::ExprKind::Try(tr) => String::new(),
+            ast::ExprKind::Loop(lp) => String::new(),
+            ast::ExprKind::Break(bk) => String::new(),
+            ast::ExprKind::Continue(co) => String::new(),
+            ast::ExprKind::Range(rg) => String::new(),
+            ast::ExprKind::Error => String::new(),
+        }
+    }
+
+    #[summary("\\와 \"를 이스케이프한 글")]
+    #[effects(alloc)]
+    fn escape(s: &str) -> String {
+        let mut o: String = String::new();
+        let mut a: usize = 0;
+        let mut i: usize = 0;
+        while i < s.len()
+            invariant a <= i,
+            decreases s.len() - i,
+        {
+            let b: u8 = s.as_bytes()[i];
+            if b == 92 || b == 34 {
+                o.push_str(lexer::cut(s, a, i).as_str());
+                o.push_str("\\");
+                a = i;
+            }
+            i = i + 1;
+        }
+        o.push_str(lexer::cut(s, a, s.len()).as_str());
+        o
+    }
+
+    #[summary("프로그램 전체의 정규형: 최상위 단위마다 글 하나, 단위 이름 순 (ADR-0019 §3). 같은 이름이면 뒤의 것")]
+    #[effects(alloc)]
+    fn format_units(p: &ast::Program) -> Vec<Unit> {
+        let mut keys: Vec<String> = Vec::new();
+        let mut i: usize = 0;
+        while i < p.mods.len()
+            decreases p.mods.len() - i,
+        {
+            keys.push(p.mods[i].name.name.clone());
+            i = i + 1;
+        }
+        let ord: Vec<usize> = order(keys.as_slice());
+        let mut out: Vec<Unit> = Vec::new();
+        i = 0;
+        while i < ord.len()
+            decreases ord.len() - i,
+        {
+            if ord[i] < p.mods.len() {
+                let mut last: bool = true;
+                if i + 1 < ord.len() && ord[i + 1] < p.mods.len() {
+                    last = p.mods[ord[i + 1]].name.name != p.mods[ord[i]].name.name;
+                }
+                if last {
+                    let mut pr: Printer = Printer { out: String::new(), lens: Vec::new() };
+                    pr.module(&p.mods[ord[i]], 0, 1000000000);
+                    out.push(Unit { name: p.mods[ord[i]].name.name.clone(), text: pr.out });
+                }
+            }
+            i = i + 1;
+        }
+        out
+    }
+
+    #[summary("<T: Copy, U: Copy + geo::Shape>, 또는 없음 (ADR-0046)")]
+    #[effects(alloc)]
+    fn generics_str(gs: &[ast::TypeParam]) -> String {
+        let mut s: String = String::new();
+        if gs.len() == 0 {
+            return s;
+        }
+        s.push_str("<");
+        let mut i: usize = 0;
+        while i < gs.len()
+            decreases gs.len() - i,
+        {
+            if i > 0 {
+                s.push_str(", ");
+            }
+            s.push_str(gs[i].name.name.as_str());
+            let mut n: usize = 0;
+            match &gs[i].fn_bound {
+                None => {},
+                Some(fb) => { s.push_str(": "); match &fb.kind { ast::FnTrait::Fn => s.push_str("Fn"), ast::FnTrait::FnMut => s.push_str("FnMut"), ast::FnTrait::FnOnce => s.push_str("FnOnce"), } s.push_str("("); s.push_str(types_str(fb.params.as_slice()).as_str()); s.push_str(")"); if !is_unit(&fb.ret) { s.push_str(" -> "); s.push_str(type_str(&fb.ret).as_str()); } n = 1; },
+            }
+            let mut k: usize = 0;
+            while k < gs[i].bounds.len()
+                decreases gs[i].bounds.len() - k,
+            {
+                if n == 0 {
+                    s.push_str(": ");
+                } else {
+                    s.push_str(" + ");
+                }
+                n = 1;
+                s.push_str(path_str(gs[i].bounds[k].as_slice()).as_str());
+                k = k + 1;
+            }
+            i = i + 1;
+        }
+        s.push_str(">");
+        s
+    }
+
+    #[summary("e 안에, 괄호로 구분된 인자 목록 밖에 구조체 식이 있는가. f는 남은 깊이")]
+    #[effects(pure)]
+    fn has_struct_lit(e: &ast::Expr, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return false;
+        }
+        match &e.kind {
+            ast::ExprKind::Int(iv, ir) => false,
+            ast::ExprKind::Float(fb) => false,
+            ast::ExprKind::ByteLit(by) => false,
+            ast::ExprKind::ByteStr(bys) => false,
+            ast::ExprKind::StrLit(st) => false,
+            ast::ExprKind::CharLit(ch) => false,
+            ast::ExprKind::Bool(bo) => false,
+            ast::ExprKind::Unit => false,
+            ast::ExprKind::Var(id) => false,
+            ast::ExprKind::Call(ca) => false,
+            ast::ExprKind::Method(me) => has_struct_lit(&*me.recv, f - 1),
+            ast::ExprKind::Index(ib, ii) => has_struct_lit(&**ib, f - 1),
+            ast::ExprKind::Unary(uo, ux) => has_struct_lit(&**ux, f - 1),
+            ast::ExprKind::Binary(bop, bl, br) => has_struct_lit(&**bl, f - 1) || has_struct_lit(&**br, f - 1),
+            ast::ExprKind::Ref(rm, rx) => has_struct_lit(&**rx, f - 1),
+            ast::ExprKind::If(ife) => false,
+            ast::ExprKind::Block(blk) => false,
+            ast::ExprKind::Array(ar) => false,
+            ast::ExprKind::Repeat(rp) => false,
+            ast::ExprKind::Old(ox) => false,
+            ast::ExprKind::Quant(qu) => false,
+            ast::ExprKind::Trigger(tx) => false,
+            ast::ExprKind::Closure(cl) => false,
+            ast::ExprKind::StructLit(sl) => true,
+            ast::ExprKind::Path(pa) => false,
+            ast::ExprKind::Deref(dx) => has_struct_lit(&**dx, f - 1),
+            ast::ExprKind::Field(fx, fnm) => has_struct_lit(&**fx, f - 1),
+            ast::ExprKind::Match(ma) => false,
+            ast::ExprKind::Return(rv) => false,
+            ast::ExprKind::Try(tr) => has_struct_lit(&**tr, f - 1),
+            ast::ExprKind::Loop(lp) => false,
+            ast::ExprKind::Break(bk) => false,
+            ast::ExprKind::Continue(co) => false,
+            ast::ExprKind::Range(rg) => false,
+            ast::ExprKind::Error => false,
+        }
+    }
+
+    #[summary("타입들 가운데 이름이 name인 것이 있는가")]
+    #[effects(pure)]
+    fn has_type(ts: &[ast::TypeDef], name: &str) -> bool {
+        let mut i: usize = 0;
+        while i < ts.len()
+            decreases ts.len() - i,
+        {
+            if ts[i].name.name == name {
+                return true;
+            }
+            i = i + 1;
+        }
+        false
+    }
+
+    #[summary("클로저가 잡은 값을 가리키는 self인가: 파일이 source::CAPTURE인 self, 또는 그것의 old")]
+    #[effects(pure)]
+    fn is_capture_base(base: &ast::Expr) -> bool {
+        match &base.kind {
+            ast::ExprKind::Int(iv, ir) => false,
+            ast::ExprKind::Float(fb) => false,
+            ast::ExprKind::ByteLit(by) => false,
+            ast::ExprKind::ByteStr(bys) => false,
+            ast::ExprKind::StrLit(st) => false,
+            ast::ExprKind::CharLit(ch) => false,
+            ast::ExprKind::Bool(bo) => false,
+            ast::ExprKind::Unit => false,
+            ast::ExprKind::Var(id) => id.name == "self" && id.span.file == source::CAPTURE,
+            ast::ExprKind::Call(ca) => false,
+            ast::ExprKind::Method(me) => false,
+            ast::ExprKind::Index(ib, ii) => false,
+            ast::ExprKind::Unary(uo, ux) => false,
+            ast::ExprKind::Binary(bop, bl, br) => false,
+            ast::ExprKind::Ref(rm, rx) => false,
+            ast::ExprKind::If(ife) => false,
+            ast::ExprKind::Block(blk) => false,
+            ast::ExprKind::Array(ar) => false,
+            ast::ExprKind::Repeat(rp) => false,
+            ast::ExprKind::Old(ox) => captured_self(&**ox),
+            ast::ExprKind::Quant(qu) => false,
+            ast::ExprKind::Trigger(tx) => false,
+            ast::ExprKind::Closure(cl) => false,
+            ast::ExprKind::StructLit(sl) => false,
+            ast::ExprKind::Path(pa) => false,
+            ast::ExprKind::Deref(dx) => false,
+            ast::ExprKind::Field(fx, fnm) => false,
+            ast::ExprKind::Match(ma) => false,
+            ast::ExprKind::Return(rv) => false,
+            ast::ExprKind::Try(tr) => false,
+            ast::ExprKind::Loop(lp) => false,
+            ast::ExprKind::Break(bk) => false,
+            ast::ExprKind::Continue(co) => false,
+            ast::ExprKind::Range(rg) => false,
+            ast::ExprKind::Error => false,
+        }
+    }
+
+    #[summary("정수 변환인가: 정본 꼴이 x as T인 (ADR-0095 A4), T::try_from(x).unwrap()의 트리 (T는 정수 타입)")]
+    #[effects(alloc)]
+    fn is_cast(me: &ast::Method) -> bool {
+        me.name.name == "unwrap" && me.args.len() == 0 && cast_name(&*me.recv).len() > 0
+    }
+
+    #[effects(pure)]
+    fn is_some(o: &Option<ast::Expr>) -> bool {
+        match o {
+            None => false,
+            Some(e) => true,
+        }
+    }
+
+    #[effects(pure)]
+    fn is_some_box(o: &Option<Box<ast::Expr>>) -> bool {
+        match o {
+            None => false,
+            Some(e) => true,
+        }
+    }
+
+    #[effects(pure)]
+    fn is_unit(t: &ast::Type) -> bool {
+        match &t.kind {
+            ast::TypeKind::Int(it) => false,
+            ast::TypeKind::F64 => false,
+            ast::TypeKind::Bool => false,
+            ast::TypeKind::Unit => true,
+            ast::TypeKind::Char => false,
+            ast::TypeKind::String => false,
+            ast::TypeKind::Str => false,
+            ast::TypeKind::Array(e, n) => false,
+            ast::TypeKind::ArrayN(e, p) => false,
+            ast::TypeKind::Slice(e) => false,
+            ast::TypeKind::Ref(m, e) => false,
+            ast::TypeKind::Named(np, a) => false,
+            ast::TypeKind::Vec(e) => false,
+            ast::TypeKind::Box(e) => false,
+            ast::TypeKind::Param(s) => false,
+            ast::TypeKind::Never => false,
+            ast::TypeKind::Error => false,
+        }
+    }
+
+    #[summary("줄마다 양끝의 공백을 떼고 빈칸 하나로 이은 글")]
+    #[effects(alloc)]
+    fn joined_lines(text: &str) -> String {
+        let mut o: String = String::new();
+        let n: usize = text.len();
+        let mut a: usize = 0;
+        let mut i: usize = 0;
+        let mut k: usize = 0;
+        while i < n
+            invariant a <= i,
+            decreases n - i,
+        {
+            if text.as_bytes()[i] == 10 {
+                if k > 0 {
+                    o.push_str(" ");
+                }
+                o.push_str(trim(lexer::cut(text, a, i).as_str()).as_str());
+                k = k.saturating_add(1);
+                a = i + 1;
+            }
+            i = i + 1;
+        }
+        if a < n {
+            if k > 0 {
+                o.push_str(" ");
+            }
+            o.push_str(trim(lexer::cut(text, a, n).as_str()).as_str());
+        }
+        o
+    }
+
+    #[summary("'l: , 또는 없음")]
+    #[effects(alloc)]
+    fn label_head(l: &Option<ast::Ident>) -> String {
+        let mut s: String = String::new();
+        match l {
+            None => {},
+            Some(i) => { s.push_str("'"); s.push_str(i.name.as_str()); s.push_str(": "); },
+        }
+        s
+    }
+
+    #[summary("키들의 안정 정렬 순서: 자리의 열. 키는 바이트 사전순")]
+    #[effects(alloc)]
+    #[uses(std::slice::bounded)]
+    fn order(keys: &[String]) -> Vec<usize> {
+        if keys.len() < 1000000000 {
+            std::slice::sort_indices::<String>(keys)
+        } else {
+            Vec::new()
+        }
+    }
+
+    #[summary("이 단위의 타입일 수 있는 이름: 인자와 무관하게 한 마디 이름의 타입이면 그 이름, 아니면 빈 글")]
+    #[effects(alloc)]
+    fn own_type(t: &ast::Type) -> String {
+        match &t.kind {
+            ast::TypeKind::Int(it) => String::new(),
+            ast::TypeKind::F64 => String::new(),
+            ast::TypeKind::Bool => String::new(),
+            ast::TypeKind::Unit => String::new(),
+            ast::TypeKind::Char => String::new(),
+            ast::TypeKind::String => String::new(),
+            ast::TypeKind::Str => String::new(),
+            ast::TypeKind::Array(e, n) => String::new(),
+            ast::TypeKind::ArrayN(e, p) => String::new(),
+            ast::TypeKind::Slice(e) => String::new(),
+            ast::TypeKind::Ref(m, e) => String::new(),
+            ast::TypeKind::Named(np, a) => { if np.len() == 1 { np[0].clone() } else { String::new() } },
+            ast::TypeKind::Vec(e) => String::new(),
+            ast::TypeKind::Box(e) => String::new(),
+            ast::TypeKind::Param(s) => String::new(),
+            ast::TypeKind::Never => String::new(),
+            ast::TypeKind::Error => String::new(),
+        }
+    }
+
+    #[summary("x: T, y: U")]
+    #[effects(alloc)]
+    fn params_str(ps: &[ast::Param]) -> String {
+        let mut s: String = String::new();
+        let mut i: usize = 0;
+        while i < ps.len()
+            decreases ps.len() - i,
+        {
+            if i > 0 {
+                s.push_str(", ");
+            }
+            s.push_str(ps[i].name.name.as_str());
+            s.push_str(": ");
+            s.push_str(type_str(&ps[i].ty).as_str());
+            i = i + 1;
+        }
+        s
+    }
+
+    #[summary("(s)")]
+    #[effects(alloc)]
+    fn paren(s: &str) -> String {
+        let mut o: String = String::from("(");
+        o.push_str(s);
+        o.push_str(")");
+        o
+    }
+
+    #[effects(alloc)]
+    fn pat_str(p: &ast::Pat) -> String {
+        let mut s: String = path_str(p.path.as_slice());
+        if !p.parens {
+            return s;
+        }
+        s.push_str("(");
+        let mut i: usize = 0;
+        while i < p.binds.len()
+            decreases p.binds.len() - i,
+        {
+            if i > 0 {
+                s.push_str(", ");
+            }
+            match &p.binds[i] {
+                None => s.push_str("_"),
+                Some(b) => s.push_str(b.name.as_str()),
+            }
+            i = i + 1;
+        }
+        s.push_str(")");
+        s
+    }
+
+    #[summary("이름들을 sep로 이은 글")]
+    #[effects(alloc)]
+    fn path_join(p: &[ast::Ident], sep: &str) -> String {
+        let mut s: String = String::new();
+        let mut i: usize = 0;
+        while i < p.len()
+            decreases p.len() - i,
+        {
+            if i > 0 {
+                s.push_str(sep);
+            }
+            s.push_str(p[i].name.as_str());
+            i = i + 1;
+        }
+        s
+    }
+
+    #[effects(alloc)]
+    fn path_str(p: &[ast::Ident]) -> String {
+        path_join(p, "::")
+    }
+
+    #[summary("식의 우선순위. 0은 안에 들 때 언제나 괄호로 싸는 꼴이다 (ADR-0019 §1)")]
+    #[effects(alloc)]
+    fn prec(e: &ast::Expr) -> u8 {
+        match &e.kind {
+            ast::ExprKind::Int(iv, ir) => 13,
+            ast::ExprKind::Float(fb) => 13,
+            ast::ExprKind::ByteLit(by) => 13,
+            ast::ExprKind::ByteStr(bys) => 13,
+            ast::ExprKind::StrLit(st) => 13,
+            ast::ExprKind::CharLit(ch) => 13,
+            ast::ExprKind::Bool(bo) => 13,
+            ast::ExprKind::Unit => 13,
+            ast::ExprKind::Var(id) => 13,
+            ast::ExprKind::Call(ca) => 13,
+            ast::ExprKind::Method(me) => { if is_cast(me) { 11 } else { 13 } },
+            ast::ExprKind::Index(ib, ii) => 13,
+            ast::ExprKind::Unary(uo, ux) => 12,
+            ast::ExprKind::Binary(bop, bl, br) => bin_prec(bop),
+            ast::ExprKind::Ref(rm, rx) => 12,
+            ast::ExprKind::If(ife) => 0,
+            ast::ExprKind::Block(blk) => 0,
+            ast::ExprKind::Array(ar) => 13,
+            ast::ExprKind::Repeat(rp) => 13,
+            ast::ExprKind::Old(ox) => 13,
+            ast::ExprKind::Quant(qu) => 0,
+            ast::ExprKind::Trigger(tx) => 12,
+            ast::ExprKind::Closure(cl) => 13,
+            ast::ExprKind::StructLit(sl) => 13,
+            ast::ExprKind::Path(pa) => 13,
+            ast::ExprKind::Deref(dx) => 12,
+            ast::ExprKind::Field(fx, fnm) => 13,
+            ast::ExprKind::Match(ma) => 0,
+            ast::ExprKind::Return(rv) => 0,
+            ast::ExprKind::Try(tr) => 13,
+            ast::ExprKind::Loop(lp) => 0,
+            ast::ExprKind::Break(bk) => 0,
+            ast::ExprKind::Continue(co) => 13,
+            ast::ExprKind::Range(rg) => 13,
+            ast::ExprKind::Error => 13,
+        }
+    }
+
+    #[summary("타입을 쓴 대로 덧붙인다. f는 남은 깊이")]
+    #[effects(alloc)]
+    fn push_type(out: &mut String, t: &ast::Type, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match &t.kind {
+            ast::TypeKind::Int(it) => ast::push_int_name(out, it),
+            ast::TypeKind::F64 => out.push_str("f64"),
+            ast::TypeKind::Bool => out.push_str("bool"),
+            ast::TypeKind::Unit => out.push_str("()"),
+            ast::TypeKind::Char => out.push_str("char"),
+            ast::TypeKind::String => out.push_str("String"),
+            ast::TypeKind::Str => out.push_str("str"),
+            ast::TypeKind::Array(e, n) => { out.push_str("["); push_type(out, &**e, f - 1); out.push_str("; "); std::num::push_u64(out, *n); out.push_str("]"); },
+            ast::TypeKind::ArrayN(e, p) => { out.push_str("["); push_type(out, &**e, f - 1); out.push_str("; "); let mut i: usize = 0; while i < p.len() decreases p.len() - i, { if i > 0 { out.push_str("::"); } out.push_str(p[i].as_str()); i = i + 1; } out.push_str("]"); },
+            ast::TypeKind::Slice(e) => { out.push_str("["); push_type(out, &**e, f - 1); out.push_str("]"); },
+            ast::TypeKind::Ref(m, e) => { out.push_str("&"); if *m { out.push_str("mut "); } push_type(out, &**e, f - 1); },
+            ast::TypeKind::Named(np, a) => { let mut k: usize = 0; while k < np.len() decreases np.len() - k, { if k > 0 { out.push_str("::"); } out.push_str(np[k].as_str()); k = k + 1; } if a.len() > 0 { out.push_str("<"); let mut j: usize = 0; while j < a.len() decreases a.len() - j, { if j > 0 { out.push_str(", "); } push_type(out, &a[j], f - 1); j = j + 1; } out.push_str(">"); } },
+            ast::TypeKind::Vec(e) => { out.push_str("Vec<"); push_type(out, &**e, f - 1); out.push_str(">"); },
+            ast::TypeKind::Box(e) => { out.push_str("Box<"); push_type(out, &**e, f - 1); out.push_str(">"); },
+            ast::TypeKind::Param(s) => out.push_str(s.as_str()),
+            ast::TypeKind::Never => out.push_str("!"),
+            ast::TypeKind::Error => out.push_str("{error}"),
+        }
+    }
+
+    #[effects(pure)]
+    fn radix_copy(r: &ast::Radix) -> ast::Radix {
+        match r {
+            ast::Radix::Dec => ast::Radix::Dec,
+            ast::Radix::Hex => ast::Radix::Hex,
+            ast::Radix::Oct => ast::Radix::Oct,
+            ast::Radix::Bin => ast::Radix::Bin,
+        }
+    }
+
+    #[summary("결과: (r: T) 또는 T")]
+    #[effects(alloc)]
+    fn ret_str(r: &ast::Ret) -> String {
+        match &r.name {
+            None => type_str(&r.ty),
+            Some(n) => { let mut s: String = String::from("("); s.push_str(n.name.as_str()); s.push_str(": "); s.push_str(type_str(&r.ty).as_str()); s.push_str(")"); s },
+        }
+    }
+
+    #[summary("이름들을 바이트 사전순으로, 쉼표로 이은 글. unique면 같은 이름은 한 번만")]
+    #[effects(alloc)]
+    fn sorted_list(names: &[String], unique: bool) -> String {
+        let ord: Vec<usize> = order(names);
+        let mut s: String = String::new();
+        let mut last: usize = names.len();
+        let mut i: usize = 0;
+        while i < ord.len()
+            decreases ord.len() - i,
+        {
+            if ord[i] < names.len() {
+                let mut skip: bool = false;
+                if unique && last < names.len() {
+                    skip = names[last] == names[ord[i]];
+                }
+                if !skip {
+                    if last < names.len() {
+                        s.push_str(", ");
+                    }
+                    s.push_str(names[ord[i]].as_str());
+                    last = ord[i];
+                }
+            }
+            i = i + 1;
+        }
+        s
+    }
+
+    #[summary("<나 <<: 왼쪽의 변환을 괄호로 싸야 하는 연산자")]
+    #[effects(pure)]
+    fn splits_cast(op: &ast::BinOp) -> bool {
+        match op {
+            ast::BinOp::Add => false,
+            ast::BinOp::Sub => false,
+            ast::BinOp::Mul => false,
+            ast::BinOp::Div => false,
+            ast::BinOp::Rem => false,
+            ast::BinOp::Eq => false,
+            ast::BinOp::Ne => false,
+            ast::BinOp::Lt => true,
+            ast::BinOp::Le => false,
+            ast::BinOp::Gt => false,
+            ast::BinOp::Ge => false,
+            ast::BinOp::And => false,
+            ast::BinOp::Or => false,
+            ast::BinOp::Implies => false,
+            ast::BinOp::BitAnd => false,
+            ast::BinOp::BitOr => false,
+            ast::BinOp::BitXor => false,
+            ast::BinOp::Shl => true,
+            ast::BinOp::Shr => false,
+        }
+    }
+
+    #[summary("양끝의 공백(유니코드)을 뗀 글")]
+    #[effects(alloc)]
+    fn trim(s: &str) -> String {
+        let mut start: usize = s.len();
+        let mut end: usize = 0;
+        let mut i: usize = 0;
+        while i < s.len()
+            decreases s.len() - i,
+        {
+            match std::str::decode_utf8(s, i) {
+                None => { i = s.len(); },
+                Some(dc) => { if dc.next <= i { i = s.len(); } else { if !unicode::whitespace(u32::from(dc.ch)) { if start > i { start = i; } end = dc.next; } i = dc.next; } },
+            }
+        }
+        lexer::cut(s, start, end)
+    }
+
+    #[summary("앞의 공백(유니코드)을 뗀 글")]
+    #[effects(alloc)]
+    fn trim_start(s: &str) -> String {
+        let mut i: usize = 0;
+        while i < s.len()
+            decreases s.len() - i,
+        {
+            match std::str::decode_utf8(s, i) {
+                None => { return lexer::cut(s, i, s.len()); },
+                Some(dc) => { if dc.next <= i || !unicode::whitespace(u32::from(dc.ch)) { return lexer::cut(s, i, s.len()); } i = dc.next; },
+            }
+        }
+        String::new()
+    }
+
+    #[effects(alloc)]
+    fn type_str(t: &ast::Type) -> String {
+        let mut s: String = String::new();
+        push_type(&mut s, t, 100000);
+        s
+    }
+
+    #[summary("쉼표로 이은 타입들")]
+    #[effects(alloc)]
+    fn types_str(ts: &[ast::Type]) -> String {
+        let mut s: String = String::new();
+        let mut i: usize = 0;
+        while i < ts.len()
+            decreases ts.len() - i,
+        {
+            if i > 0 {
+                s.push_str(", ");
+            }
+            push_type(&mut s, &ts[i], 100000);
+            i = i + 1;
+        }
+        s
+    }
+}

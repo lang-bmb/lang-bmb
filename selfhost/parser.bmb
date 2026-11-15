@@ -1,0 +1,3950 @@
+#[summary("재귀 하강 파서. 항목과 문장의 경계에서 회복해 한 번에 낼 수 있는 구문 오류를 모두 낸다 (stage0 compiler/src/parser.rs의 포트, 백로그 4D-02). 깊이 d는 stage0의 depth이고, 재귀의 측도는 남은 깊이와 함수의 차례다")]
+mod parser {
+    #[summary("impl 블록의 함수들과 닫는 }의 자리")]
+    struct Body { fns: Vec<ast::FnDef>, hi: source::Span }
+
+    #[summary("계약 절 셋")]
+    struct Clauses { pre: Vec<ast::Expr>, post: Vec<ast::Expr>, measure: Option<ast::Expr> }
+
+    #[summary("복합 대입을 읽었으면 그 문장")]
+    enum Compound { No, Yes(ast::Stmt) }
+
+    #[summary("impl 블록: 고유한 것이거나 trait의 것")]
+    enum ImplItem { Inherent(ast::Impl), Trait(ast::TraitImpl) }
+
+    #[summary("몸의 처음에 쓴 루프의 절: {의 자리와 decreases")]
+    struct Lead { open: Option<source::Span>, measure: Option<ast::Expr> }
+
+    #[summary("이름 붙은 타입의 경로와 인자")]
+    struct NamedTy { path: Vec<String>, args: Vec<ast::Type> }
+
+    struct Parser { t: Toks, diags: diag::Diags, text: String, no_struct: bool, impl_ty: Option<String>, decl_ok: bool, generics_span: Option<source::Span>, units: Vec<String>, lens: Vec<ast::Len>, in_ret: bool }
+
+    impl Parser {
+        #[summary("속성 하나. 읽지 못했거나 버리는 것(Verus의 verifier)이면 없음")]
+        #[effects(alloc)]
+        fn attr(self: &mut Parser) -> Option<ast::Attr> {
+            let lo: source::Span = self.bump();
+            self.bump();
+            let mut got: Option<ast::Ident> = None;
+            if self.is_kw("invariant") {
+                let isp: source::Span = self.bump();
+                got = Some(ast::Ident { name: String::from("invariant"), span: isp });
+            } else {
+                got = self.ident("attribute name");
+            }
+            let name: ast::Ident = match got {
+                None => { self.recover_attr(); return None; },
+                Some(i) => i,
+            };
+            let mut verus_path: Option<ast::Ident> = None;
+            if name.name == "verifier" && self.is_p("::") {
+                match self.t.ident(1) {
+                    None => {},
+                    Some(seg) => { self.bump(); let ssp: source::Span = self.bump(); verus_path = Some(ast::Ident { name: seg, span: ssp }); },
+                }
+            }
+            let mut args: Vec<ast::AttrArg> = Vec::new();
+            if self.eat_p("(") {
+                self.attr_args(&mut args);
+                match self.expect_p(")") {
+                    None => { self.recover_attr(); return None; },
+                    Some(c) => {},
+                }
+            }
+            let hi: source::Span = match self.expect_p("]") {
+                None => { self.recover_attr(); return None; },
+                Some(h) => h,
+            };
+            let span: source::Span = lo.to(hi);
+            let mut verus: String = String::new();
+            let mut is_verus: bool = false;
+            match &verus_path {
+                None => { if args.len() == 1 && name.name == "verifier" { match &args[0] { ast::AttrArg::Ident(vi) => { verus = vi.name.clone(); is_verus = true; }, ast::AttrArg::Str(s, p) => {}, ast::AttrArg::Pair(k2, v2) => {}, } } },
+                Some(vp) => { if args.len() == 0 { verus = vp.name.clone(); is_verus = true; } },
+            }
+            if is_verus && verus == "external_body" {
+                self.err_rep("E0216", span, "Verus's `verifier` attribute: BMB writes `#[external_body]`", "write `#[external_body]` (with a `#[rationale(..)]` before it)", "#[external_body]");
+                return Some(ast::Attr { name: ast::Ident { name: String::from("external_body"), span: name.span }, args: Vec::new(), span: span });
+            }
+            match verus_path {
+                None => {},
+                Some(seg2) => { self.err("E0216", span, cat3("Verus's `verifier::", seg2.name.as_str(), "` attribute is not used").as_str()); return None; },
+            }
+            Some(ast::Attr { name: name, args: args, span: span })
+        }
+
+        #[summary("속성의 인자들을 )나 끝 앞까지 읽어 args에 더한다")]
+        #[effects(alloc)]
+        fn attr_args(self: &mut Parser, args: &mut Vec<ast::AttrArg>) -> () {
+            let mut n: usize = self.left();
+            while n > 0 && !self.is_p(")") && !self.eof()
+                decreases n,
+            {
+                n = n - 1;
+                let k: u8 = self.t.kind(0);
+                let mut skip: bool = false;
+                if k == 0 && self.t.is_p(1, "=") {
+                    let key: ast::Ident = ast::Ident { name: text_of(self.t.ident(0)), span: self.bump() };
+                    self.bump();
+                    if self.t.kind(0) == 0 {
+                        let v: ast::Ident = ast::Ident { name: text_of(self.t.ident(0)), span: self.bump() };
+                        args.push(ast::AttrArg::Pair(key, Box::new(ast::AttrArg::Ident(v))));
+                    } else if self.t.kind(0) == 3 {
+                        let sv: String = text_of(self.t.string());
+                        let svp: source::Span = self.bump();
+                        args.push(ast::AttrArg::Pair(key, Box::new(ast::AttrArg::Str(sv, svp))));
+                    } else {
+                        self.err_expected("a name or a string");
+                        self.bump();
+                        skip = true;
+                    }
+                } else if k == 0 {
+                    let mut nm: String = text_of(self.t.ident(0));
+                    let mut sp: source::Span = self.bump();
+                    let mut m: usize = self.left();
+                    while m > 0 && self.is_p("::") && self.t.kind(1) == 0
+                        decreases m,
+                    {
+                        m = m - 1;
+                        self.bump();
+                        nm.push_str("::");
+                        nm.push_str(text_of(self.t.ident(0)).as_str());
+                        sp = sp.to(self.bump());
+                    }
+                    args.push(ast::AttrArg::Ident(ast::Ident { name: nm, span: sp }));
+                } else if self.is_p("<") {
+                    match self.attr_impl_path() {
+                        None => self.err_expected("`<Type as Trait>::name`"),
+                        Some(i) => args.push(ast::AttrArg::Ident(i)),
+                    }
+                } else if k == 3 {
+                    let st: String = text_of(self.t.string());
+                    let stp: source::Span = self.bump();
+                    args.push(ast::AttrArg::Str(st, stp));
+                } else {
+                    self.err_expected("attribute argument");
+                    self.bump();
+                }
+                if !skip {
+                    if !self.eat_p(",") {
+                        n = 0;
+                    }
+                }
+            }
+        }
+
+        #[summary("속성 인자의 <a::T as b::Tr>::name을 as 둘레에 빈칸 하나씩 둔 이름 하나로. 맞지 않는 토큰 너머는 읽지 않는다")]
+        #[effects(alloc)]
+        fn attr_impl_path(self: &mut Parser) -> Option<ast::Ident> {
+            let lo: source::Span = self.bump();
+            let ty: String = self.plain_path()?;
+            if !self.is_kw("as") {
+                return None;
+            }
+            self.bump();
+            let tr: String = self.plain_path()?;
+            if !self.eat_p(">") {
+                return None;
+            }
+            if !self.eat_p("::") {
+                return None;
+            }
+            let m: String = self.t.ident(0)?;
+            let hi: source::Span = self.bump();
+            let mut name: String = String::from("<");
+            name.push_str(ty.as_str());
+            name.push_str(" as ");
+            name.push_str(tr.as_str());
+            name.push_str(">::");
+            name.push_str(m.as_str());
+            Some(ast::Ident { name: name, span: lo.to(hi) })
+        }
+
+        #[summary("#[name(args)]들. 속성의 이름은 제 이름 공간이다: #[invariant(p)]는 루프 절의 키워드를 쓴다 (ADR-0060 §1)")]
+        #[effects(alloc)]
+        fn attrs(self: &mut Parser) -> Vec<ast::Attr> {
+            let mut out: Vec<ast::Attr> = Vec::new();
+            let mut n: usize = self.left();
+            while n > 0 && self.is_p("#") && self.t.is_p(1, "[")
+                decreases n,
+            {
+                n = n - 1;
+                match self.attr() {
+                    None => {},
+                    Some(a) => out.push(a),
+                }
+            }
+            out
+        }
+
+        #[summary("루프의 절을 몸의 처음에 쓴 것 (while c { invariant a, decreases d, .. }): 머리의 것으로 읽는다 (입력 별칭, ADR-0095 B6). {와 절들을 읽고 {의 자리를 준다. 나머지 블록은 부른 쪽이 읽는다. 수정은 절들을 몸 앞으로 옮긴다")]
+        #[effects(alloc)]
+        fn body_clauses(self: &mut Parser, loop_lo: source::Span, invariants: &mut Vec<ast::Expr>, has_measure: bool, d: usize) -> Option<Lead>
+            requires d <= 256,
+            decreases (256 - d) * 64 + 27,
+        {
+            let lead: bool = self.t.is_kw(1, "invariant") || self.t.is_kw(1, "decreases");
+            if !self.is_p("{") || !lead {
+                return Some(Lead { open: None, measure: None });
+            }
+            let before: source::Span = self.prev_span();
+            let open: source::Span = self.bump();
+            let first: source::Span = self.span();
+            let had: bool = invariants.len() > 0;
+            self.invariant_lists(invariants, had, d)?;
+            let mut measure: Option<ast::Expr> = None;
+            if self.is_kw("decreases") {
+                let sp: source::Span = self.bump();
+                let e: ast::Expr = self.parse_expr(d)?;
+                self.eat_p(",");
+                if has_measure {
+                    self.err("E0103", sp, "the loop has a `decreases` clause already");
+                } else {
+                    measure = Some(e);
+                }
+            }
+            let last: source::Span = self.prev_span();
+            let indent: String = indent_at(self.text.as_str(), loop_lo.lo as usize);
+            let clauses: String = lexer::cut(self.text.as_str(), first.lo as usize, last.hi as usize);
+            let mut r: String = String::from("\n");
+            r.push_str(indent.as_str());
+            r.push_str("    ");
+            r.push_str(clauses.as_str());
+            r.push_str("\n");
+            r.push_str(indent.as_str());
+            r.push_str("{");
+            self.diags.aliases.push(diag::fix(diag::new("W0913", source::Span { file: open.file, lo: before.hi, hi: last.hi }, "the loop's clauses are written at the start of its body"), "write the clauses before the body", Some(r)));
+            Some(Lead { open: Some(open), measure: measure })
+        }
+
+        #[summary("경로 a::b: 이름마다 자리와 함께. 뒤에 이름이 오는 ::만 넘는다")]
+        #[effects(alloc)]
+        fn bound_path(self: &mut Parser) -> Vec<ast::Ident> {
+            let mut path: Vec<ast::Ident> = Vec::new();
+            let mut n: usize = self.left();
+            while n > 0 && self.t.kind(0) == 0
+                decreases n,
+            {
+                n = n - 1;
+                path.push(ast::Ident { name: text_of(self.t.ident(0)), span: self.span() });
+                self.bump();
+                if !(self.is_p("::") && self.t.kind(1) == 0) {
+                    n = 0;
+                } else {
+                    self.bump();
+                }
+            }
+            path
+        }
+
+        #[effects(pure)]
+        fn bump(self: &mut Parser) -> source::Span {
+            self.t.bump()
+        }
+
+        #[summary("지금 토큰이 계약 절의 키워드면 그 차례: 0 requires, 1 ensures, 2 decreases. 아니면 3")]
+        #[effects(pure)]
+        fn clause_kw(self: &Parser) -> (r: usize)
+            ensures r <= 3,
+        {
+            if self.is_kw("requires") {
+                0
+            } else if self.is_kw("ensures") {
+                1
+            } else if self.is_kw("decreases") {
+                2
+            } else {
+                3
+            }
+        }
+
+        #[summary("쉼표로 나눈 절들을 out에 더한다")]
+        #[effects(alloc)]
+        fn clause_list(self: &mut Parser, out: &mut Vec<ast::Expr>, d: usize) -> Option<bool>
+            requires d <= 256,
+            decreases (256 - d) * 64 + 24,
+        {
+            let mut n: usize = self.left();
+            while n > 0
+                decreases n,
+            {
+                n = n - 1;
+                out.push(self.parse_expr(d)?);
+                if !self.eat_p(",") {
+                    n = 0;
+                } else if self.is_p("{") || self.is_p(";") || self.clause_kw() < 3 || self.is_kw("invariant") {
+                    n = 0;
+                }
+            }
+            Some(true)
+        }
+
+        #[effects(pure)]
+        fn cmp_op(self: &Parser) -> Option<ast::BinOp> {
+            if self.is_p("==") {
+                Some(ast::BinOp::Eq)
+            } else if self.is_p("!=") {
+                Some(ast::BinOp::Ne)
+            } else if self.is_p("<") {
+                Some(ast::BinOp::Lt)
+            } else if self.is_p("<=") {
+                Some(ast::BinOp::Le)
+            } else if self.is_p(">") {
+                Some(ast::BinOp::Gt)
+            } else if self.is_p(">=") {
+                Some(ast::BinOp::Ge)
+            } else {
+                None
+            }
+        }
+
+        #[summary("문장의 끝(;, 또는 괄호 밖의 {, }, =) 앞에 복합 대입 연산자가 오는가")]
+        #[effects(pure)]
+        #[uses(inside)]
+        fn compound_ahead(self: &Parser) -> bool {
+            let mut depth: usize = 0;
+            let mut n: usize = 0;
+            let last: usize = self.t.items.len() - 1;
+            while self.t.pos.saturating_add(n) < last
+                decreases last - self.t.pos.saturating_add(n),
+            {
+                if self.t.is_p(n, "(") || self.t.is_p(n, "[") {
+                    depth = depth.saturating_add(1);
+                } else if self.t.is_p(n, ")") || self.t.is_p(n, "]") {
+                    if depth == 0 {
+                        return false;
+                    }
+                    depth = depth - 1;
+                } else if (self.t.is_p(n, ";") || self.t.is_p(n, "{") || self.t.is_p(n, "}") || self.t.is_p(n, "=")) && depth == 0 {
+                    return false;
+                } else if self.t.kind(n) == 9 {
+                    return false;
+                } else if depth == 0 {
+                    match self.compound_op(n) {
+                        None => {},
+                        Some(o) => { return true; },
+                    }
+                }
+                n = n + 1;
+            }
+            false
+        }
+
+        #[summary("t op= e; (백로그 2N-07): t = t op e;로 읽는다, 입력 별칭 (ADR-0095, W0914). 그 꼴에서 자리는 두 번 읽히므로 아무것도 부르지 않아야 한다. 다른 것이면 아무것도 읽지 않는다")]
+        #[effects(alloc)]
+        fn compound_assign(self: &mut Parser, lo: source::Span, d: usize) -> Option<Compound>
+            requires d <= 256,
+            decreases (256 - d) * 64 + 28,
+        {
+            if !self.compound_ahead() {
+                return Some(Compound::No);
+            }
+            let pos: usize = self.t.pos;
+            let nd: usize = self.diags.items.len();
+            let na: usize = self.diags.aliases.len();
+            let first: Option<ast::Expr> = self.parse_unary(d);
+            let found: Option<ast::BinOp> = self.compound_op(0);
+            let mut ok: bool = false;
+            match &first {
+                None => {},
+                Some(f) => { match &found { None => {}, Some(o) => { ok = true; }, } },
+            }
+            if !ok {
+                self.t.back(pos);
+                self.diags.items.truncate(nd);
+                self.diags.aliases.truncate(na);
+                return Some(Compound::No);
+            }
+            let target: ast::Expr = first?;
+            let op: ast::BinOp = found?;
+            let nd2: usize = self.diags.items.len();
+            let na2: usize = self.diags.aliases.len();
+            let nl2: usize = self.lens.len();
+            self.t.back(pos);
+            let copy: ast::Expr = self.parse_unary(d)?;
+            self.diags.items.truncate(nd2);
+            self.diags.aliases.truncate(na2);
+            self.lens.truncate(nl2);
+            let op_lo: source::Span = self.span();
+            self.bump();
+            self.bump();
+            let value: ast::Expr = self.parse_expr(d)?;
+            let hi: source::Span = self.expect_p(";")?;
+            let mut sym: String = String::new();
+            ast::push_bin_symbol(&mut sym, &op);
+            if !plain_place(&target, self.left()) {
+                self.err_fix_to("E0103", op_lo, cat3("compound assignment `", sym.as_str(), "=` to a place that calls a function").as_str(), "compute the index into a local first, then write `t = t op e;`");
+                return None;
+            }
+            let t: String = lexer::cut(self.text.as_str(), target.span.lo as usize, target.span.hi as usize);
+            let mut v: String = lexer::cut(self.text.as_str(), value.span.lo as usize, value.span.hi as usize);
+            if fmt::prec(&value) <= fmt::bin_prec(&op) {
+                v = cat3("(", v.as_str(), ")");
+            }
+            let wspan: source::Span = source::Span { file: lo.file, lo: target.span.lo, hi: value.span.hi };
+            let bspan: source::Span = target.span.to(self.prev_span());
+            let mut msg: String = String::from("compound assignment `");
+            msg.push_str(sym.as_str());
+            msg.push_str("=`: the canonical form is `");
+            msg.push_str(t.as_str());
+            msg.push_str(" = ");
+            msg.push_str(t.as_str());
+            msg.push_str(" ");
+            msg.push_str(sym.as_str());
+            msg.push_str(" ..`");
+            let mut rep: String = String::new();
+            rep.push_str(t.as_str());
+            rep.push_str(" = ");
+            rep.push_str(t.as_str());
+            rep.push_str(" ");
+            rep.push_str(sym.as_str());
+            rep.push_str(" ");
+            rep.push_str(v.as_str());
+            self.diags.aliases.push(diag::fix(diag::new("W0914", wspan, msg.as_str()), "write the assignment out", Some(rep)));
+            let both: ast::Expr = ast::Expr { kind: ast::ExprKind::Binary(op, Box::new(copy), Box::new(value)), span: bspan };
+            Some(Compound::Yes(ast::Stmt::Assign(ast::Assign { target: target, value: both, span: lo.to(hi) })))
+        }
+
+        #[summary("자리에서 n째 토큰부터의 복합 대입 연산자 (+=, <<=, ..). 렉서에는 그런 토큰이 없다: +=는 붙은 +와 =, <<=는 <와 <=, >>=는 >와 >=이다")]
+        #[effects(pure)]
+        fn compound_op(self: &Parser, n: usize) -> Option<ast::BinOp> {
+            if !self.t.joined(n) {
+                return None;
+            }
+            let m: usize = n.saturating_add(1);
+            if self.t.is_p(n, "<") && self.t.is_p(m, "<=") {
+                return Some(ast::BinOp::Shl);
+            }
+            if self.t.is_p(n, ">") && self.t.is_p(m, ">=") {
+                return Some(ast::BinOp::Shr);
+            }
+            if !self.t.is_p(m, "=") {
+                return None;
+            }
+            if self.t.is_p(n, "+") {
+                Some(ast::BinOp::Add)
+            } else if self.t.is_p(n, "-") {
+                Some(ast::BinOp::Sub)
+            } else if self.t.is_p(n, "*") {
+                Some(ast::BinOp::Mul)
+            } else if self.t.is_p(n, "/") {
+                Some(ast::BinOp::Div)
+            } else if self.t.is_p(n, "%") {
+                Some(ast::BinOp::Rem)
+            } else if self.t.is_p(n, "^") {
+                Some(ast::BinOp::BitXor)
+            } else if self.t.is_p(n, "|") {
+                Some(ast::BinOp::BitOr)
+            } else if self.t.is_p(n, "&") {
+                Some(ast::BinOp::BitAnd)
+            } else {
+                None
+            }
+        }
+
+        #[summary("if/while의 조건이나 match의 대상: T {는 몸을 연다")]
+        #[effects(alloc)]
+        fn cond_expr(self: &mut Parser, d: usize) -> Option<ast::Expr>
+            requires d <= 256,
+            decreases (256 - d) * 64 + 22,
+        {
+            let outer: bool = self.no_struct;
+            self.no_struct = true;
+            let r: Option<ast::Expr> = self.parse_expr(d);
+            self.no_struct = outer;
+            r
+        }
+
+        #[effects(pure)]
+        fn eat_kw(self: &mut Parser, k: &str) -> bool {
+            if self.t.is_kw(0, k) {
+                self.t.bump();
+                true
+            } else {
+                false
+            }
+        }
+
+        #[effects(pure)]
+        fn eat_p(self: &mut Parser, p: &str) -> bool {
+            if self.t.is_p(0, p) {
+                self.t.bump();
+                true
+            } else {
+                false
+            }
+        }
+
+        #[summary("else 뒤: else if면 한 단계 깊이 읽은 if, 아니면 블록 식")]
+        #[effects(alloc)]
+        fn else_branch(self: &mut Parser, d: usize) -> Option<ast::Expr>
+            requires d <= 256,
+            decreases (256 - d) * 64 + 37,
+        {
+            if self.is_kw("if") {
+                if !self.enter(d) {
+                    return None;
+                }
+                return self.parse_if(d + 1);
+            }
+            let b: ast::Block = self.parse_block(d)?;
+            let span: source::Span = b.span;
+            Some(ast::Expr { kind: ast::ExprKind::Block(b), span: span })
+        }
+
+        #[summary("return이나 break의 값이 없는 자리인가")]
+        #[effects(pure)]
+        fn ends_value(self: &Parser) -> bool {
+            self.is_p(";") || self.is_p("}") || self.is_p(")") || self.is_p(",") || self.is_p("]") || self.eof()
+        }
+
+        #[summary("한 단계 더 깊이 들어갈 수 있는가. 한도면 E0107 (백로그 1A-11)")]
+        #[effects(alloc)]
+        fn enter(self: &mut Parser, d: usize) -> (r: bool)
+            ensures r == (d < 256),
+        {
+            if d >= 256 {
+                self.err_fix_here("E0107", "nesting deeper than 256 levels", "split the expression with `let` bindings or helper functions");
+                return false;
+            }
+            true
+        }
+
+        #[effects(pure)]
+        fn eof(self: &Parser) -> bool {
+            self.t.kind(0) == 9
+        }
+
+        #[summary("진단 하나")]
+        #[effects(alloc)]
+        fn err(self: &mut Parser, code: &str, sp: source::Span, msg: &str) -> () {
+            self.diags.push(diag::new(code, sp, msg));
+        }
+
+        #[summary("E0103: what을 기대했는데 지금 토큰이 왔다. 기대한 것이 토큰 하나면 넣으라는 안내를 붙인다 (백로그 2D-18)")]
+        #[effects(alloc)]
+        fn err_expected(self: &mut Parser, what: &str) -> () {
+            let found: String = self.t.describe();
+            let mut msg: String = String::from("expected ");
+            msg.push_str(what);
+            msg.push_str(", found ");
+            msg.push_str(found.as_str());
+            let mut d: diag::Diag = diag::new("E0103", self.span(), msg.as_str());
+            if one_token(what) {
+                let mut f: String = String::from("insert ");
+                f.push_str(what);
+                f.push_str(" before ");
+                f.push_str(found.as_str());
+                d = diag::fix(d, f.as_str(), None);
+            }
+            self.diags.push(d);
+        }
+
+        #[summary("안내가 붙은 진단")]
+        #[effects(alloc)]
+        fn err_fix(self: &mut Parser, code: &str, sp: source::Span, msg: &str, fix: &str) -> () {
+            self.diags.push(diag::fix(diag::new(code, sp, msg), fix, None));
+        }
+
+        #[summary("지금 토큰에 내는, 안내가 붙은 진단")]
+        #[effects(alloc)]
+        fn err_fix_here(self: &mut Parser, code: &str, msg: &str, fix: &str) -> () {
+            let sp: source::Span = self.span();
+            self.diags.push(diag::fix(diag::new(code, sp, msg), fix, None));
+        }
+
+        #[summary("from부터 직전 토큰까지에 내는, 안내가 붙은 진단")]
+        #[effects(alloc)]
+        fn err_fix_to(self: &mut Parser, code: &str, from: source::Span, msg: &str, fix: &str) -> () {
+            let sp: source::Span = from.to(self.prev_span());
+            self.diags.push(diag::fix(diag::new(code, sp, msg), fix, None));
+        }
+
+        #[summary("지금 토큰에 내는 진단")]
+        #[effects(alloc)]
+        fn err_here(self: &mut Parser, code: &str, msg: &str) -> () {
+            let sp: source::Span = self.span();
+            self.diags.push(diag::new(code, sp, msg));
+        }
+
+        #[summary("기계 수정이 붙은 진단")]
+        #[effects(alloc)]
+        fn err_rep(self: &mut Parser, code: &str, sp: source::Span, msg: &str, fix: &str, rep: &str) -> () {
+            self.diags.push(diag::fix(diag::new(code, sp, msg), fix, Some(String::from(rep))));
+        }
+
+        #[summary("from부터 직전 토큰까지에 내는, 기계 수정이 붙은 진단")]
+        #[effects(alloc)]
+        fn err_rep_to(self: &mut Parser, code: &str, from: source::Span, msg: &str, fix: &str, rep: &str) -> () {
+            let sp: source::Span = from.to(self.prev_span());
+            self.diags.push(diag::fix(diag::new(code, sp, msg), fix, Some(String::from(rep))));
+        }
+
+        #[effects(alloc)]
+        fn expect_p(self: &mut Parser, p: &str) -> Option<source::Span> {
+            if self.is_p(p) {
+                Some(self.bump())
+            } else {
+                self.err_expected(tick(p).as_str());
+                None
+            }
+        }
+
+        #[summary("예약어가 아닌 이름")]
+        #[effects(alloc)]
+        fn ident(self: &mut Parser, what: &str) -> Option<ast::Ident> {
+            match self.t.ident(0) {
+                None => { self.err_expected(what); None },
+                Some(name) => { if reserved(name.as_str()) { self.err_expected(what); return None; } let sp: source::Span = self.bump(); Some(ast::Ident { name: name, span: sp }) },
+            }
+        }
+
+        #[summary("impl 블록의 {부터 함수들, 그리고 }의 자리")]
+        #[effects(alloc)]
+        fn impl_body(self: &mut Parser, impl_ty: Option<String>, d: usize) -> Option<Body>
+            requires d <= 256,
+        {
+            self.expect_p("{")?;
+            let mut fns: Vec<ast::FnDef> = Vec::new();
+            let outer: Option<String> = std::mem::replace(&mut self.impl_ty, impl_ty);
+            let mut n: usize = self.left();
+            while n > 0 && !self.is_p("}") && !self.eof()
+                decreases n,
+            {
+                n = n - 1;
+                let start: usize = self.t.pos;
+                let attrs: Vec<ast::Attr> = self.attrs();
+                self.no_pub();
+                if self.is_kw("fn") || self.is_kw("spec") && self.t.is_kw(1, "fn") {
+                    match self.parse_fn(attrs, d) {
+                        None => self.recover_item(),
+                        Some(f) => fns.push(f),
+                    }
+                } else {
+                    self.err_expected("`fn` or `spec fn`");
+                    self.bump();
+                    self.recover_item();
+                }
+                if self.t.pos == start {
+                    self.bump();
+                }
+            }
+            self.impl_ty = outer;
+            let hi: source::Span = self.expect_p("}")?;
+            Some(Body { fns: fns, hi: hi })
+        }
+
+        #[summary("invariant ..,의 목록들, 키워드를 되풀이했든 아니든 (ADR-0095 B5). more는 이 목록 앞에 루프가 이미 절을 가졌을 때")]
+        #[effects(alloc)]
+        fn invariant_lists(self: &mut Parser, out: &mut Vec<ast::Expr>, more: bool, d: usize) -> Option<bool>
+            requires d <= 256,
+            decreases (256 - d) * 64 + 26,
+        {
+            let mut again: bool = more;
+            let mut n: usize = self.left();
+            while n > 0 && self.is_kw("invariant")
+                decreases n,
+            {
+                n = n - 1;
+                if again {
+                    self.repeated_keyword();
+                }
+                again = true;
+                self.bump();
+                self.clause_list(out, d)?;
+            }
+            Some(true)
+        }
+
+        #[effects(pure)]
+        fn is_kw(self: &Parser, k: &str) -> bool {
+            self.t.is_kw(0, k)
+        }
+
+        #[effects(pure)]
+        fn is_p(self: &Parser, p: &str) -> bool {
+            self.t.is_p(0, p)
+        }
+
+        #[summary("남은 걸음의 상한: 토큰을 읽는 루프의 측도")]
+        #[effects(pure)]
+        fn left(self: &Parser) -> usize {
+            self.t.items.len()
+        }
+
+        #[summary("항목 앞의 pub은 E0207")]
+        #[effects(alloc)]
+        fn no_pub(self: &mut Parser) -> () {
+            if self.is_kw("pub") {
+                let sp: source::Span = self.bump();
+                self.err_rep("E0207", sp, "`pub` is not used; every definition of a unit is part of its surface", "remove `pub`", "");
+            }
+        }
+
+        #[effects(alloc)]
+        fn parse_add(self: &mut Parser, d: usize) -> Option<ast::Expr>
+            requires d <= 256,
+            decreases (256 - d) * 64 + 11,
+        {
+            let mut lhs: ast::Expr = self.parse_mul(d)?;
+            let mut k: usize = d;
+            let mut n: usize = self.left();
+            while n > 0 && (self.is_p("+") || self.is_p("-"))
+                invariant k >= d, k <= 256,
+                decreases n,
+            {
+                n = n - 1;
+                let op: ast::BinOp = if self.is_p("+") {
+                    ast::BinOp::Add
+                } else {
+                    ast::BinOp::Sub
+                };
+                self.bump();
+                if !self.enter(k) {
+                    return None;
+                }
+                k = k + 1;
+                let rhs: ast::Expr = self.parse_mul(k)?;
+                lhs = bin(op, lhs, rhs);
+            }
+            Some(lhs)
+        }
+
+        #[effects(alloc)]
+        fn parse_and(self: &mut Parser, d: usize) -> Option<ast::Expr>
+            requires d <= 256,
+            decreases (256 - d) * 64 + 17,
+        {
+            let mut lhs: ast::Expr = self.parse_cmp(d)?;
+            let mut k: usize = d;
+            let mut n: usize = self.left();
+            while n > 0 && self.is_p("&&")
+                invariant k >= d, k <= 256,
+                decreases n,
+            {
+                n = n - 1;
+                self.bump();
+                if !self.enter(k) {
+                    return None;
+                }
+                k = k + 1;
+                let rhs: ast::Expr = self.parse_cmp(k)?;
+                lhs = bin(ast::BinOp::And, lhs, rhs);
+            }
+            Some(lhs)
+        }
+
+        #[effects(alloc)]
+        fn parse_args(self: &mut Parser, d: usize) -> Option<Vec<ast::Expr>>
+            requires d <= 256,
+            decreases (256 - d) * 64 + 23,
+        {
+            self.expect_p("(")?;
+            let mut args: Vec<ast::Expr> = Vec::new();
+            let mut n: usize = self.left();
+            while n > 0 && !self.is_p(")")
+                decreases n,
+            {
+                n = n - 1;
+                args.push(self.parse_expr(d)?);
+                if !self.eat_p(",") {
+                    n = 0;
+                }
+            }
+            self.expect_p(")")?;
+            Some(args)
+        }
+
+        #[summary("assume(p(..)); (ADR-0029 §1), assume에서")]
+        #[effects(alloc)]
+        fn parse_assume(self: &mut Parser, lo: source::Span, rationale: Option<ast::Attr>, d: usize) -> Option<StmtOrTail>
+            requires d <= 256,
+            decreases (256 - d) * 64 + 29,
+        {
+            self.bump();
+            self.bump();
+            let cond: ast::Expr = self.parse_expr(d)?;
+            self.expect_p(")")?;
+            let hi: source::Span = self.expect_p(";")?;
+            Some(StmtOrTail::Stmt(ast::Stmt::Assume(ast::Assume { cond: cond, rationale: rationale, span: lo.to(hi) })))
+        }
+
+        #[effects(alloc)]
+        fn parse_bitand(self: &mut Parser, d: usize) -> Option<ast::Expr>
+            requires d <= 256,
+            decreases (256 - d) * 64 + 13,
+        {
+            let mut lhs: ast::Expr = self.parse_shift(d)?;
+            let mut k: usize = d;
+            let mut n: usize = self.left();
+            while n > 0 && self.is_p("&")
+                invariant k >= d, k <= 256,
+                decreases n,
+            {
+                n = n - 1;
+                self.bump();
+                if !self.enter(k) {
+                    return None;
+                }
+                k = k + 1;
+                let rhs: ast::Expr = self.parse_shift(k)?;
+                lhs = bin(ast::BinOp::BitAnd, lhs, rhs);
+            }
+            Some(lhs)
+        }
+
+        #[effects(alloc)]
+        fn parse_bitor(self: &mut Parser, d: usize) -> Option<ast::Expr>
+            requires d <= 256,
+            decreases (256 - d) * 64 + 15,
+        {
+            let mut lhs: ast::Expr = self.parse_bitxor(d)?;
+            let mut k: usize = d;
+            let mut n: usize = self.left();
+            while n > 0 && self.is_p("|")
+                invariant k >= d, k <= 256,
+                decreases n,
+            {
+                n = n - 1;
+                self.bump();
+                if !self.enter(k) {
+                    return None;
+                }
+                k = k + 1;
+                let rhs: ast::Expr = self.parse_bitxor(k)?;
+                lhs = bin(ast::BinOp::BitOr, lhs, rhs);
+            }
+            Some(lhs)
+        }
+
+        #[effects(alloc)]
+        fn parse_bitxor(self: &mut Parser, d: usize) -> Option<ast::Expr>
+            requires d <= 256,
+            decreases (256 - d) * 64 + 14,
+        {
+            let mut lhs: ast::Expr = self.parse_bitand(d)?;
+            let mut k: usize = d;
+            let mut n: usize = self.left();
+            while n > 0 && self.is_p("^")
+                invariant k >= d, k <= 256,
+                decreases n,
+            {
+                n = n - 1;
+                self.bump();
+                if !self.enter(k) {
+                    return None;
+                }
+                k = k + 1;
+                let rhs: ast::Expr = self.parse_bitand(k)?;
+                lhs = bin(ast::BinOp::BitXor, lhs, rhs);
+            }
+            Some(lhs)
+        }
+
+        #[effects(alloc)]
+        fn parse_block(self: &mut Parser, d: usize) -> Option<ast::Block>
+            requires d <= 256,
+            decreases (256 - d) * 64 + 33,
+        {
+            let lo: source::Span = self.expect_p("{")?;
+            self.parse_block_rest(lo, d)
+        }
+
+        #[summary("{(자리 lo) 뒤의 블록")]
+        #[effects(alloc)]
+        fn parse_block_rest(self: &mut Parser, lo: source::Span, d: usize) -> Option<ast::Block>
+            requires d <= 256,
+            decreases (256 - d) * 64 + 32,
+        {
+            let mut stmts: Vec<ast::Stmt> = Vec::new();
+            let mut tail: Option<ast::Expr> = None;
+            let mut had_err: bool = false;
+            let mut n: usize = self.left();
+            while n > 0 && !self.is_p("}") && !self.eof()
+                decreases n,
+            {
+                n = n - 1;
+                match std::mem::replace(&mut tail, None) {
+                    None => {},
+                    Some(t) => stmts.push(ast::Stmt::Expr(t)),
+                }
+                let start: usize = self.t.pos;
+                match self.parse_stmt(d) {
+                    None => { had_err = true; self.recover_stmt(); },
+                    Some(st) => { match st { StmtOrTail::Stmt(s) => stmts.push(s), StmtOrTail::Tail(e) => { tail = Some(e); }, } },
+                }
+                if self.t.pos == start {
+                    self.bump();
+                }
+            }
+            let hi: source::Span = self.expect_p("}")?;
+            let boxed: Option<Box<ast::Expr>> = match tail {
+                None => { if had_err { Some(Box::new(ast::Expr { kind: ast::ExprKind::Error, span: hi })) } else { None } },
+                Some(t2) => Some(Box::new(t2)),
+            };
+            Some(ast::Block { stmts: stmts, tail: boxed, span: lo.to(hi) })
+        }
+
+        #[summary("assert(..) 뒤의 by (bit_vector) (ADR-0048 §4). 다른 증명기 이름이나 Verus의 by { .. }는 E0516이고 단언은 보통의 것으로 남는다")]
+        #[effects(alloc)]
+        fn parse_by(self: &mut Parser, close: source::Span) -> Option<ast::Prover> {
+            if !self.is_kw("by") {
+                return None;
+            }
+            let by: source::Span = self.bump();
+            if self.is_p("{") {
+                self.skip_group();
+                self.err_fix_to("E0516", by, "`assert(..) by { .. }` is not available", "prove the steps in a `proof { .. }` block before the `assert`, or write `assert(e) by (bit_vector);`");
+                return None;
+            }
+            if !self.is_p("(") {
+                self.err_expected("`(bit_vector)`");
+                return None;
+            }
+            let mut shown: String = String::from("..");
+            if self.t.kind(1) == 0 && self.t.is_p(2, ")") {
+                shown = text_of(self.t.ident(1));
+            }
+            self.skip_group();
+            let after: source::Span = source::Span { file: close.file, lo: close.hi, hi: self.prev_span().hi };
+            if shown == "bit_vector" {
+                return Some(ast::Prover::BitVector);
+            }
+            self.err_rep("E0516", after, cat3("unknown prover `", shown.as_str(), "` in `assert(..) by (..)`").as_str(), "the one prover is `bit_vector` (ADR-0048 §4); any other assertion is proved by the gate itself: drop `by (..)`", "");
+            None
+        }
+
+        #[summary("e as T: 전위 연산자 뒤, * 앞, Rust처럼 (-x as u64는 (-x) as u64, ADR-0095 A4)")]
+        #[effects(alloc)]
+        fn parse_cast(self: &mut Parser, d: usize) -> Option<ast::Expr>
+            requires d <= 256,
+            decreases (256 - d) * 64 + 9,
+        {
+            let mut e: ast::Expr = self.parse_unary(d)?;
+            let mut n: usize = self.left();
+            while n > 0 && self.is_kw("as")
+                decreases n,
+            {
+                n = n - 1;
+                self.bump();
+                let ty: ast::Type = self.parse_type(d);
+                let span: source::Span = e.span.to(ty.span);
+                let d0: diag::Diag = diag::new("E0205", span, "`as` converts between integer types only");
+                let mut target: String = String::new();
+                let how: u8 = cast_target(&ty, &mut target);
+                if how == 0 {
+                    let mut path: Vec<ast::Ident> = Vec::new();
+                    path.push(ast::Ident { name: target, span: span });
+                    path.push(ast::Ident { name: String::from("try_from"), span: span });
+                    let mut args: Vec<ast::Expr> = Vec::new();
+                    args.push(e);
+                    let call: ast::Expr = ast::Expr { kind: ast::ExprKind::Call(ast::Call { path: path, targs: Vec::new(), args: args, method: None }), span: span };
+                    e = ast::Expr { kind: ast::ExprKind::Method(ast::Method { recv: Box::new(call), name: ast::Ident { name: String::from("unwrap"), span: span }, args: Vec::new() }), span: span };
+                } else if how == 1 {
+                    let x: String = lexer::cut(self.text.as_str(), e.span.lo as usize, e.span.hi as usize);
+                    let r: String = cat3("f64::from(", unparen(x.as_str()).as_str(), ")");
+                    self.diags.push(diag::fix(d0, "an integer converts to `f64` with `f64::from(x)` (ADR-0061)", Some(r)));
+                    let mut fpath: Vec<ast::Ident> = Vec::new();
+                    fpath.push(ast::Ident { name: String::from("f64"), span: span });
+                    fpath.push(ast::Ident { name: String::from("from"), span: span });
+                    let mut fargs: Vec<ast::Expr> = Vec::new();
+                    fargs.push(e);
+                    e = ast::Expr { kind: ast::ExprKind::Call(ast::Call { path: fpath, targs: Vec::new(), args: fargs, method: None }), span: span };
+                } else {
+                    self.diags.push(diag::fix(d0, "integer types convert with `x as T`, integers to `f64` with `f64::from(x)`; `f64` does not convert to integers", None));
+                    e = ast::Expr { kind: ast::ExprKind::Error, span: span };
+                }
+            }
+            Some(e)
+        }
+
+        #[effects(alloc)]
+        fn parse_clauses(self: &mut Parser, d: usize) -> Option<Clauses>
+            requires d <= 256,
+            decreases (256 - d) * 64 + 25,
+        {
+            let mut stage: usize = 0;
+            let mut pre: Vec<ast::Expr> = Vec::new();
+            let mut post: Vec<ast::Expr> = Vec::new();
+            let mut measure: Option<ast::Expr> = None;
+            let mut n: usize = self.left();
+            while n > 0 && self.clause_kw() < 3
+                decreases n,
+            {
+                n = n - 1;
+                let k: usize = self.clause_kw();
+                if k + 1 == stage && k < 2 {
+                    self.repeated_keyword();
+                } else if k < stage {
+                    self.err_here("E0103", "clauses must appear in the order `requires`, `ensures`, `decreases`");
+                }
+                stage = k + 1;
+                self.bump();
+                if k == 0 {
+                    self.clause_list(&mut pre, d)?;
+                } else if k == 1 {
+                    self.clause_list(&mut post, d)?;
+                } else {
+                    let e: ast::Expr = self.parse_expr(d)?;
+                    self.eat_p(",");
+                    measure = Some(e);
+                }
+            }
+            Some(Clauses { pre: pre, post: post, measure: measure })
+        }
+
+        #[summary("[move] |x: T, ..| -> R requires .., ensures .., { body } (ADR-0053 §1, §2): 매개변수와 결과의 타입을 쓴다 (E0263)")]
+        #[effects(alloc)]
+        fn parse_closure(self: &mut Parser, is_move: bool, lo: source::Span, d: usize) -> Option<ast::Expr>
+            requires d <= 256,
+            decreases (256 - d) * 64 + 40,
+        {
+            let mut params: Vec<ast::Param> = Vec::new();
+            if !self.eat_p("||") {
+                self.expect_p("|")?;
+                let mut n: usize = self.left();
+                while n > 0 && !self.is_p("|") && !self.eof()
+                    decreases n,
+                {
+                    n = n - 1;
+                    let name: ast::Ident = self.ident("closure parameter")?;
+                    if !self.eat_p(":") {
+                        self.err_fix("E0263", name.span, cat3("closure parameter `", name.name.as_str(), "` needs its type").as_str(), "write `x: T` (types are written, DESIGN §4.1)");
+                        return None;
+                    }
+                    let ty: ast::Type = self.parse_type(d);
+                    params.push(ast::Param { name: name, ty: ty });
+                    if !self.eat_p(",") {
+                        n = 0;
+                    }
+                }
+                self.expect_p("|")?;
+            }
+            if !self.eat_p("->") {
+                self.err_fix_to("E0263", lo, "a closure needs its result type", "write `-> T` or `-> (r: T)` after the parameters");
+                return None;
+            }
+            let ret: ast::Ret = self.parse_ret(d)?;
+            let cl: Clauses = self.parse_clauses(d)?;
+            let body: ast::Block = self.parse_block(d)?;
+            let span: source::Span = lo.to(self.prev_span());
+            Some(ast::Expr { kind: ast::ExprKind::Closure(Box::new(ast::Closure { is_move: is_move, params: params, ret: ret, pre: cl.pre, post: cl.post, body: body, span: span })), span: span })
+        }
+
+        #[effects(alloc)]
+        fn parse_cmp(self: &mut Parser, d: usize) -> Option<ast::Expr>
+            requires d <= 256,
+            decreases (256 - d) * 64 + 16,
+        {
+            let lhs: ast::Expr = self.parse_bitor(d)?;
+            let op: ast::BinOp = match self.cmp_op() {
+                None => { return Some(lhs); },
+                Some(o) => o,
+            };
+            self.bump();
+            let rhs: ast::Expr = self.parse_bitor(d)?;
+            let e: ast::Expr = bin(op, lhs, rhs);
+            match self.cmp_op() {
+                None => {},
+                Some(o2) => { self.err_fix_here("E0211", "comparison operators cannot be chained", "split into two comparisons joined by `&&`"); self.bump(); self.parse_bitor(d)?; },
+            }
+            Some(e)
+        }
+
+        #[summary("const NAME: T = e; (ADR-0052 §1)")]
+        #[effects(alloc)]
+        fn parse_const(self: &mut Parser, attrs: Vec<ast::Attr>, d: usize) -> Option<ast::ConstDef>
+            requires d <= 256,
+        {
+            let lo: source::Span = self.bump();
+            let name: ast::Ident = self.ident("constant name")?;
+            self.expect_p(":")?;
+            let ty: ast::Type = self.parse_type(d);
+            self.expect_p("=")?;
+            let value: ast::Expr = self.parse_expr(d)?;
+            let hi: source::Span = self.expect_p(";")?;
+            Some(ast::ConstDef { attrs: attrs, name: name, ty: ty, value: value, span: lo.to(hi) })
+        }
+
+        #[summary("식, 또는 두 식의 범위 lo..hi. 범위는 식이 오는 어디에나 쓸 수 있고, 뜻이 있는 자리는 검사기가 가린다 (E0435)")]
+        #[effects(alloc)]
+        fn parse_expr(self: &mut Parser, d: usize) -> Option<ast::Expr>
+            requires d <= 256,
+            decreases (256 - d) * 64 + 20,
+        {
+            let lo: ast::Expr = self.parse_no_range(d)?;
+            let inclusive: bool = self.is_p("..=");
+            if !inclusive && !self.is_p("..") {
+                return Some(lo);
+            }
+            self.bump();
+            let hi: ast::Expr = self.parse_no_range(d)?;
+            let span: source::Span = lo.span.to(hi.span);
+            if inclusive {
+                self.err_fix("E0438", span, "an inclusive range `lo..=hi` is only the range of a `for` loop", "where a range is taken (`copy_within`, `&s[lo..hi]`) write the end excluded, `lo..hi + 1`; to go over the values write `for i in lo..=hi { .. }`");
+            }
+            Some(ast::Expr { kind: ast::ExprKind::Range(ast::Range { lo: Box::new(lo), hi: Box::new(hi), inclusive: inclusive }), span: span })
+        }
+
+        #[effects(alloc)]
+        fn parse_fn(self: &mut Parser, attrs: Vec<ast::Attr>, d: usize) -> Option<ast::FnDef>
+            requires d <= 256,
+        {
+            let lo: source::Span = self.span();
+            let kind: ast::FnKind = if self.eat_kw("spec") {
+                ast::FnKind::Spec
+            } else if self.eat_kw("proof") {
+                ast::FnKind::Proof
+            } else {
+                ast::FnKind::Exec
+            };
+            let is_proof: bool = match &kind {
+                ast::FnKind::Exec => false,
+                ast::FnKind::Spec => false,
+                ast::FnKind::Proof => true,
+            };
+            self.bump();
+            let name: ast::Ident = self.ident("function name")?;
+            let mut generics: Vec<ast::TypeParam> = self.parse_generics(d);
+            self.expect_p("(")?;
+            let mut params: Vec<ast::Param> = Vec::new();
+            let mut n: usize = self.left();
+            while n > 0 && !self.is_p(")")
+                decreases n,
+            {
+                n = n - 1;
+                if self.is_kw("mut") {
+                    let msp: source::Span = self.bump();
+                    self.err_rep("E0210", msp, "`mut` parameters are not allowed", "copy into a `let mut` local inside the body", "");
+                }
+                let amp: bool = self.is_p("&");
+                let short: bool = amp && self.t.is_kw(1, "self") || amp && self.t.is_kw(1, "mut") && self.t.is_kw(2, "self") || self.is_kw("self") && !self.t.is_p(1, ":");
+                if short {
+                    let slo: source::Span = self.span();
+                    let form: u8 = if amp && self.t.is_kw(1, "mut") {
+                        2
+                    } else if amp {
+                        1
+                    } else {
+                        0
+                    };
+                    let mut k: usize = self.left();
+                    while k > 0 && !self.is_kw("self")
+                        decreases k,
+                    {
+                        k = k - 1;
+                        self.bump();
+                    }
+                    let sp: source::Span = slo.to(self.bump());
+                    let d0: diag::Diag = diag::new("E0228", sp, "the receiver needs its type");
+                    let mut pkind: ast::TypeKind = ast::TypeKind::Error;
+                    match &self.impl_ty {
+                        None => self.diags.push(diag::fix(d0, "write `self: &T`, `self: &mut T` or `self: T` with the `impl` type", None)),
+                        Some(t) => { let mut one: Vec<String> = Vec::new(); one.push(t.clone()); let named: ast::Type = ast::Type { kind: ast::TypeKind::Named(one, Vec::new()), span: sp }; let mut r: String = String::from("self: "); if form == 2 { r.push_str("&mut "); } else if form == 1 { r.push_str("&"); } r.push_str(t.as_str()); if form == 0 { pkind = named.kind; } else { pkind = ast::TypeKind::Ref(form == 2, Box::new(named)); } self.diags.push(diag::fix(d0, tick_write(r.as_str()).as_str(), Some(r))); },
+                    }
+                    params.push(ast::Param { name: ast::Ident { name: String::from("self"), span: sp }, ty: ast::Type { kind: pkind, span: sp } });
+                    if !self.eat_p(",") {
+                        n = 0;
+                    }
+                } else {
+                    let pname: ast::Ident = if self.is_kw("self") {
+                        ast::Ident { name: String::from("self"), span: self.bump() }
+                    } else {
+                        self.ident("parameter name")?
+                    };
+                    self.expect_p(":")?;
+                    let pty: ast::Type = self.parse_type(d);
+                    params.push(ast::Param { name: pname, ty: pty });
+                    if !self.eat_p(",") {
+                        n = 0;
+                    }
+                }
+            }
+            self.expect_p(")")?;
+            let gspan2: Option<source::Span> = self.generics_span;
+            let mut ret: ast::Ret = ast::Ret { name: None, ty: ast::Type { kind: ast::TypeKind::Unit, span: self.prev_span() } };
+            if is_proof {
+                if self.is_p("->") {
+                    let alo: source::Span = self.span();
+                    self.bump();
+                    self.parse_ret(d)?;
+                    self.err_rep_to("E0256", alo, "a `proof fn` has no return type: what it proves is its `ensures`", "remove the return type", "");
+                }
+            } else if self.eat_p("->") {
+                ret = self.parse_ret(d)?;
+            } else {
+                let nsp: source::Span = self.prev_span();
+                self.err_rep("E0209", nsp, "function return type is required", "add `-> ()`", ") -> ()");
+            }
+            self.parse_where(&mut generics, gspan2, d);
+            let cl: Clauses = self.parse_clauses(d)?;
+            let mut body: ast::Block = ast::Block { stmts: Vec::new(), tail: None, span: self.span() };
+            if self.decl_ok && self.is_p(";") {
+                self.bump();
+            } else {
+                self.decl_ok = false;
+                body = self.parse_block(d)?;
+            }
+            let span: source::Span = lo.to(body.span);
+            Some(ast::FnDef { kind: kind, name: name, generics: generics, attrs: attrs, params: params, ret: ret, pre: cl.pre, post: cl.post, measure: cl.measure, body: body, span: span })
+        }
+
+        #[summary("for i in lo..hi [invariant ..,] { .. } / lo..=hi (ADR-0049 §2). 반복자(for x in v.iter(), for x in &v)는 E0252")]
+        #[effects(alloc)]
+        fn parse_for(self: &mut Parser, label: Option<ast::Ident>, d: usize) -> Option<ast::Stmt>
+            requires d <= 256,
+            decreases (256 - d) * 64 + 35,
+        {
+            let lo_span: source::Span = match &label {
+                None => self.span(),
+                Some(l) => l.span,
+            };
+            self.bump();
+            let var: ast::Ident = self.ident("loop variable")?;
+            if !self.eat_kw("in") {
+                self.err_expected("`in`");
+                return None;
+            }
+            let start: source::Span = self.span();
+            let lo: ast::Expr = self.range_bound(d)?;
+            let mut inclusive: bool = false;
+            if self.eat_p("..=") {
+                inclusive = true;
+            } else if !self.eat_p("..") {
+                self.err_fix("E0252", start.to(lo.span), "`for` runs over a range of integers only", "iterate over the indices: `for i in 0..v.len()` and read `v[i]`");
+                self.recover_loop_body();
+                return None;
+            }
+            let hi: ast::Expr = self.range_bound(d)?;
+            let mut invariants: Vec<ast::Expr> = Vec::new();
+            self.invariant_lists(&mut invariants, false, d)?;
+            if self.is_kw("decreases") {
+                let sp: source::Span = self.bump();
+                self.err_fix("E0253", sp, "a `for` loop's measure is automatic", "remove the `decreases` clause: the range bounds the loop");
+                self.parse_expr(d);
+                self.eat_p(",");
+            }
+            let lead: Lead = self.body_clauses(lo_span, &mut invariants, false, d)?;
+            let body: ast::Block = match lead.open {
+                None => self.parse_block(d)?,
+                Some(open) => self.parse_block_rest(open, d)?,
+            };
+            match lead.measure {
+                None => {},
+                Some(m) => self.err_fix("E0253", m.span, "a `for` loop's measure is automatic", "remove the `decreases` clause: the range bounds the loop"),
+            }
+            let span: source::Span = lo_span.to(body.span);
+            Some(ast::Stmt::For(ast::For { label: label, var: var, lo: lo, hi: hi, inclusive: inclusive, invariants: invariants, body: body, span: span }))
+        }
+
+        #[summary("<T, U: Copy + geo::Shape> (ADR-0046 §1), 또는 없음. const 매개변수는 언어 밖이다")]
+        #[effects(alloc)]
+        fn parse_generics(self: &mut Parser, d: usize) -> Vec<ast::TypeParam>
+            requires d <= 256,
+        {
+            let mut out: Vec<ast::TypeParam> = Vec::new();
+            self.generics_span = None;
+            if !self.is_p("<") {
+                return out;
+            }
+            let lo: source::Span = self.bump();
+            let mut n: usize = self.left();
+            while n > 0 && !self.is_p(">") && !self.eof()
+                decreases n,
+            {
+                n = n - 1;
+                if !self.eat_p(",") {
+                    if self.is_kw("const") {
+                        self.err_fix_here("E0207", "const generic parameters are not supported (ADR-0046 open question 1)", "take the length as a value: a slice `&[T]` and its `len()`");
+                        self.skip_angle_from();
+                        return out;
+                    }
+                    let name: ast::Ident = match self.ident("type parameter") {
+                        None => { self.skip_angle_from(); return out; },
+                        Some(i) => i,
+                    };
+                    let mut bounds: Vec<Vec<ast::Ident>> = Vec::new();
+                    let mut fn_bound: Option<ast::FnBound> = None;
+                    if self.eat_p(":") {
+                        let mut m: usize = self.left();
+                        while m > 0
+                            decreases m,
+                        {
+                            m = m - 1;
+                            if (self.is_kw("Fn") || self.is_kw("FnMut") || self.is_kw("FnOnce")) && self.t.is_p(1, "(") {
+                                let kind: ast::FnTrait = if self.is_kw("Fn") {
+                                    ast::FnTrait::Fn
+                                } else if self.is_kw("FnMut") {
+                                    ast::FnTrait::FnMut
+                                } else {
+                                    ast::FnTrait::FnOnce
+                                };
+                                let at: source::Span = self.bump();
+                                self.bump();
+                                let mut params: Vec<ast::Type> = Vec::new();
+                                let mut q: usize = self.left();
+                                while q > 0 && !self.is_p(")") && !self.eof()
+                                    decreases q,
+                                {
+                                    q = q - 1;
+                                    params.push(self.parse_type(d));
+                                    if !self.eat_p(",") {
+                                        q = 0;
+                                    }
+                                }
+                                self.expect_p(")");
+                                let ret: ast::Type = if self.eat_p("->") {
+                                    self.parse_type(d)
+                                } else {
+                                    ast::Type { kind: ast::TypeKind::Unit, span: self.prev_span() }
+                                };
+                                fn_bound = Some(ast::FnBound { kind: kind, params: params, ret: ret, span: at.to(self.prev_span()) });
+                                if !self.eat_p("+") {
+                                    m = 0;
+                                }
+                            } else {
+                                let path: Vec<ast::Ident> = self.bound_path();
+                                if path.len() == 0 {
+                                    self.err_expected("trait bound");
+                                    self.skip_angle_from();
+                                    return out;
+                                }
+                                bounds.push(path);
+                                if !self.eat_p("+") {
+                                    m = 0;
+                                }
+                            }
+                        }
+                    }
+                    let span: source::Span = name.span.to(self.prev_span());
+                    out.push(ast::TypeParam { name: name, bounds: bounds, fn_bound: fn_bound, span: span });
+                    if !self.eat_p(",") {
+                        n = 0;
+                    }
+                }
+            }
+            match self.expect_p(">") {
+                None => {},
+                Some(hi) => { self.generics_span = Some(lo.to(hi)); },
+            }
+            out
+        }
+
+        #[effects(alloc)]
+        fn parse_if(self: &mut Parser, d: usize) -> Option<ast::Expr>
+            requires d <= 256,
+            decreases (256 - d) * 64 + 39,
+        {
+            let lo: source::Span = self.bump();
+            if self.is_kw("let") {
+                return self.parse_if_let(lo, d);
+            }
+            let cond: ast::Expr = self.cond_expr(d)?;
+            let then: ast::Block = self.parse_block(d)?;
+            let mut hi: source::Span = then.span;
+            let mut els: Option<Box<ast::Expr>> = None;
+            if self.eat_kw("else") {
+                let e: ast::Expr = self.else_branch(d)?;
+                hi = e.span;
+                els = Some(Box::new(e));
+            }
+            Some(ast::Expr { kind: ast::ExprKind::If(ast::If { cond: Box::new(cond), then: then, els: els }), span: lo.to(hi) })
+        }
+
+        #[summary("Rust 습관: if let P = e { a } else { b }. 그것이 뜻하는 match로 읽는다 (P => a, 나머지 => b). 검사기가 그 match를 수정으로 E0225를 낸다")]
+        #[effects(alloc)]
+        fn parse_if_let(self: &mut Parser, lo: source::Span, d: usize) -> Option<ast::Expr>
+            requires d <= 256,
+            decreases (256 - d) * 64 + 38,
+        {
+            self.bump();
+            let pat: ast::Pat = self.parse_pat()?;
+            self.expect_p("=")?;
+            let scrut: ast::Expr = self.cond_expr(d)?;
+            let then: ast::Block = self.parse_block(d)?;
+            let then_span: source::Span = then.span;
+            let els: ast::Expr = if self.eat_kw("else") {
+                self.else_branch(d)?
+            } else {
+                ast::Expr { kind: ast::ExprKind::Unit, span: then_span }
+            };
+            let espan: source::Span = els.span;
+            let mut epath: Vec<ast::Ident> = Vec::new();
+            epath.push(ast::Ident { name: String::from("_"), span: espan });
+            let else_pat: ast::Pat = ast::Pat { path: epath, binds: Vec::new(), parens: false, origin: ast::PatOrigin::IfLetElse, span: espan };
+            let span: source::Span = lo.to(espan);
+            let mut arms: Vec<ast::Arm> = Vec::new();
+            let pspan: source::Span = pat.span.to(then_span);
+            arms.push(ast::Arm { pat: pat, body: ast::Expr { kind: ast::ExprKind::Block(then), span: then_span }, span: pspan });
+            arms.push(ast::Arm { pat: else_pat, body: els, span: espan });
+            Some(ast::Expr { kind: ast::ExprKind::Match(ast::Match { scrut: Box::new(scrut), arms: arms }), span: span })
+        }
+
+        #[summary("impl T { .. } (ADR-0026), 또는 impl Trait for T { .. } (ADR-0046 §2)")]
+        #[effects(alloc)]
+        fn parse_impl(self: &mut Parser, d: usize) -> Option<ImplItem>
+            requires d <= 256,
+        {
+            let lo: source::Span = self.bump();
+            let mut generics: Vec<ast::TypeParam> = self.parse_generics(d);
+            let gspan: Option<source::Span> = self.generics_span;
+            let first: ast::Type = self.parse_type(d);
+            let fspan: source::Span = first.span;
+            let named: Option<NamedTy> = into_named(first);
+            if self.eat_kw("for") {
+                let mut trait_path: Vec<ast::Ident> = Vec::new();
+                let mut plain: bool = false;
+                match &named {
+                    None => {},
+                    Some(nt) => { if nt.args.len() == 0 { plain = true; let mut at: u32 = fspan.lo; let mut k: usize = 0; while k < nt.path.len() decreases nt.path.len() - k, { let hi2: u32 = at.wrapping_add(len32(nt.path[k].as_str())); trait_path.push(ast::Ident { name: nt.path[k].clone(), span: source::Span { file: fspan.file, lo: at, hi: hi2 } }); at = hi2.wrapping_add(2); k = k + 1; } } },
+                }
+                if !plain {
+                    self.err_fix("E0103", fspan, "expected a trait name before `for`", "write `impl Trait for T { .. }`");
+                    return None;
+                }
+                let self_ty: ast::Type = self.parse_type(d);
+                self.parse_where(&mut generics, gspan, d);
+                let tb: Body = self.impl_body(type_text(&self_ty), d)?;
+                return Some(ImplItem::Trait(ast::TraitImpl { generics: generics, trait_path: trait_path, self_ty: self_ty, fns: tb.fns, span: lo.to(tb.hi) }));
+            }
+            let one: NamedTy = match named {
+                None => NamedTy { path: Vec::new(), args: Vec::new() },
+                Some(x) => x,
+            };
+            if one.path.len() != 1 {
+                self.err_fix("E0308", fspan, "`impl T { .. }` names a struct or enum of this unit", "declare the functions in the unit of the type, or implement a trait: `impl Trait for T { .. }`");
+                return None;
+            }
+            let tyn: ast::Ident = ast::Ident { name: one.path[0].clone(), span: source::Span { file: fspan.file, lo: fspan.lo, hi: fspan.lo.wrapping_add(len32(one.path[0].as_str())) } };
+            self.parse_where(&mut generics, gspan, d);
+            let b: Body = self.impl_body(Some(tyn.name.clone()), d)?;
+            Some(ImplItem::Inherent(ast::Impl { generics: generics, ty: tyn, ty_args: one.args, fns: b.fns, span: lo.to(b.hi) }))
+        }
+
+        #[effects(alloc)]
+        fn parse_let(self: &mut Parser, d: usize) -> Option<ast::Stmt>
+            requires d <= 256,
+            decreases (256 - d) * 64 + 30,
+        {
+            let lo: source::Span = self.bump();
+            let mutable: bool = self.eat_kw("mut");
+            if self.t.kind(0) == 0 && (self.t.is_p(1, "{") || self.t.is_p(1, "::")) {
+                let mut path: Vec<ast::Ident> = Vec::new();
+                path.push(self.ident("type name")?);
+                let mut n: usize = self.left();
+                while n > 0 && self.is_p("::")
+                    decreases n,
+                {
+                    n = n - 1;
+                    self.bump();
+                    path.push(self.ident("type name")?);
+                }
+                self.expect_p("{")?;
+                let mut fields: Vec<ast::Ident> = Vec::new();
+                let mut m: usize = self.left();
+                while m > 0 && !self.is_p("}") && !self.is_p("..")
+                    decreases m,
+                {
+                    m = m - 1;
+                    fields.push(self.ident("field name")?);
+                    if !self.eat_p(",") {
+                        m = 0;
+                    }
+                }
+                self.eat_p("..");
+                self.expect_p("}")?;
+                self.expect_p("=")?;
+                let finit: ast::Expr = self.parse_expr(d)?;
+                let fhi: source::Span = self.expect_p(";")?;
+                return Some(ast::Stmt::LetFields(ast::LetFields { path: path, fields: fields, init: finit, span: lo.to(fhi) }));
+            }
+            if self.t.kind(0) == 0 && self.t.is_p(1, "(") {
+                let mut q: usize = self.left();
+                while q > 0 && !self.is_p(";") && !self.is_p("}") && !self.eof()
+                    decreases q,
+                {
+                    q = q - 1;
+                    if self.is_p("{") || self.is_p("(") || self.is_p("[") {
+                        self.skip_group();
+                    } else {
+                        self.bump();
+                    }
+                }
+                self.err_fix_to("E0226", lo, "a pattern `let` is not allowed", "`match` the value, one arm per variant");
+                self.eat_p(";");
+                return None;
+            }
+            let name: ast::Ident = self.ident("variable name")?;
+            let ty_missing: bool = !self.is_p(":");
+            let ty: ast::Type = if self.eat_p(":") {
+                self.parse_type(d)
+            } else {
+                ast::Type { kind: ast::TypeKind::Error, span: name.span }
+            };
+            self.expect_p("=")?;
+            let init: ast::Expr = self.parse_expr(d)?;
+            if self.is_kw("else") {
+                let esp: source::Span = self.bump();
+                self.skip_group();
+                self.err_fix_to("E0226", esp, "`let .. else` is not allowed", "`match` the value, one arm per variant");
+            }
+            let hi: source::Span = self.expect_p(";")?;
+            Some(ast::Stmt::Let(ast::Let { mutable: mutable, name: name, ty: ty, ty_missing: ty_missing, init: init, span: lo.to(hi) }))
+        }
+
+        #[summary("['l:] loop [invariant ..,] [decreases ..,] { .. } (ADR-0049 §1)")]
+        #[effects(alloc)]
+        fn parse_loop(self: &mut Parser, d: usize) -> Option<ast::Expr>
+            requires d <= 256,
+            decreases (256 - d) * 64 + 36,
+        {
+            let mut label: Option<ast::Ident> = None;
+            let lo: source::Span = self.span();
+            if self.t.kind(0) == 8 {
+                let lname: String = text_of(self.t.label());
+                let lspan: source::Span = self.bump();
+                self.expect_p(":")?;
+                label = Some(ast::Ident { name: lname, span: lspan });
+            }
+            self.bump();
+            let mut invariants: Vec<ast::Expr> = Vec::new();
+            let mut measure: Option<ast::Expr> = None;
+            self.invariant_lists(&mut invariants, false, d)?;
+            let mut has: bool = false;
+            if self.eat_kw("decreases") {
+                measure = Some(self.parse_expr(d)?);
+                has = true;
+                self.eat_p(",");
+            }
+            let lead: Lead = self.body_clauses(lo, &mut invariants, has, d)?;
+            let body: ast::Block = match lead.open {
+                None => self.parse_block(d)?,
+                Some(open) => self.parse_block_rest(open, d)?,
+            };
+            match lead.measure {
+                None => {},
+                Some(m) => { measure = Some(m); },
+            }
+            let span: source::Span = lo.to(body.span);
+            let boxed: Option<Box<ast::Expr>> = match measure {
+                None => None,
+                Some(m2) => Some(Box::new(m2)),
+            };
+            Some(ast::Expr { kind: ast::ExprKind::Loop(ast::Loop { label: label, invariants: invariants, measure: boxed, body: body }), span: span })
+        }
+
+        #[summary("match e { P => e, .. } (ADR-0026 §3)")]
+        #[effects(alloc)]
+        fn parse_match(self: &mut Parser, d: usize) -> Option<ast::Expr>
+            requires d <= 256,
+            decreases (256 - d) * 64 + 37,
+        {
+            let lo: source::Span = self.bump();
+            let scrut: ast::Expr = self.cond_expr(d)?;
+            self.expect_p("{")?;
+            let mut arms: Vec<ast::Arm> = Vec::new();
+            let mut n: usize = self.left();
+            while n > 0 && !self.is_p("}") && !self.eof()
+                decreases n,
+            {
+                n = n - 1;
+                let pat: ast::Pat = self.parse_pat()?;
+                self.expect_p("=>")?;
+                let body: ast::Expr = self.parse_expr(d)?;
+                let aspan: source::Span = pat.span.to(body.span);
+                let block: bool = ast::tag(&body.kind) == 16;
+                arms.push(ast::Arm { pat: pat, body: body, span: aspan });
+                if !self.eat_p(",") && !block {
+                    n = 0;
+                }
+            }
+            let hi: source::Span = self.expect_p("}")?;
+            Some(ast::Expr { kind: ast::ExprKind::Match(ast::Match { scrut: Box::new(scrut), arms: arms }), span: lo.to(hi) })
+        }
+
+        #[effects(alloc)]
+        fn parse_mod(self: &mut Parser, attrs: Vec<ast::Attr>, d: usize) -> Option<ast::Mod>
+            requires d <= 256,
+            decreases (256 - d) * 64 + 59,
+        {
+            let depth: usize = self.units.len();
+            if !self.enter(d) {
+                return None;
+            }
+            let m: Option<ast::Mod> = self.parse_mod_inner(attrs, d + 1);
+            self.units.truncate(depth);
+            m
+        }
+
+        #[effects(alloc)]
+        fn parse_mod_inner(self: &mut Parser, attrs: Vec<ast::Attr>, d: usize) -> Option<ast::Mod>
+            requires d <= 256,
+            decreases (256 - d) * 64 + 60,
+        {
+            let lo: source::Span = self.bump();
+            let name: ast::Ident = self.ident("module name")?;
+            self.units.push(name.name.clone());
+            self.expect_p("{")?;
+            let mut fns: Vec<ast::FnDef> = Vec::new();
+            let mut mods: Vec<ast::Mod> = Vec::new();
+            let mut types: Vec<ast::TypeDef> = Vec::new();
+            let mut impls: Vec<ast::Impl> = Vec::new();
+            let mut traits: Vec<ast::TraitDef> = Vec::new();
+            let mut trait_impls: Vec<ast::TraitImpl> = Vec::new();
+            let mut uses: Vec<ast::UseItem> = Vec::new();
+            let mut consts: Vec<ast::ConstDef> = Vec::new();
+            let mut n: usize = self.left();
+            while n > 0 && !self.is_p("}") && !self.eof()
+                decreases n,
+            {
+                n = n - 1;
+                let start: usize = self.t.pos;
+                let item_attrs: Vec<ast::Attr> = self.attrs();
+                self.no_pub();
+                if self.is_kw("const") {
+                    match self.parse_const(item_attrs, d) {
+                        None => self.recover_item(),
+                        Some(c) => consts.push(c),
+                    }
+                } else if self.is_kw("mod") {
+                    match self.parse_mod(item_attrs, d) {
+                        None => self.recover_item(),
+                        Some(m) => mods.push(m),
+                    }
+                } else if self.is_kw("fn") || (self.is_kw("spec") || self.is_kw("proof")) && self.t.is_kw(1, "fn") {
+                    match self.parse_fn(item_attrs, d) {
+                        None => self.recover_item(),
+                        Some(f) => fns.push(f),
+                    }
+                } else if self.is_kw("struct") || self.is_kw("enum") {
+                    match self.parse_type_def(item_attrs, d) {
+                        None => self.recover_item(),
+                        Some(t) => types.push(t),
+                    }
+                } else if self.is_kw("impl") {
+                    let mut k: usize = 0;
+                    while k < item_attrs.len()
+                        decreases item_attrs.len() - k,
+                    {
+                        self.err_rep("E0605", item_attrs[k].span, cat3("unknown attribute `", item_attrs[k].name.name.as_str(), "` on an `impl` block").as_str(), "an `impl` block takes no attributes: write it on the functions inside", "");
+                        k = k + 1;
+                    }
+                    match self.parse_impl(d) {
+                        None => self.recover_item(),
+                        Some(it) => { match it { ImplItem::Inherent(i) => impls.push(i), ImplItem::Trait(ti) => trait_impls.push(ti), } },
+                    }
+                } else if self.is_kw("trait") {
+                    match self.parse_trait(item_attrs, d) {
+                        None => self.recover_item(),
+                        Some(tr) => traits.push(tr),
+                    }
+                } else if self.is_kw("use") {
+                    match self.parse_use() {
+                        None => {},
+                        Some(u) => uses.push(u),
+                    }
+                } else if unsupported_item(text_of(self.t.ident(0)).as_str()) {
+                    let s: String = text_of(self.t.ident(0));
+                    let sp: source::Span = self.span();
+                    if s == "unsafe" {
+                        self.unsafe_habit(sp);
+                    } else if s == "static" {
+                        if self.t.is_kw(1, "mut") {
+                            self.err_fix("E0261", sp, "`static` items are not used", "global mutable state is passed as an argument (DESIGN §4.1 \"효과\")");
+                        } else {
+                            self.err_rep("E0261", sp, "`static` items are not used", "write `const`", "const");
+                        }
+                    } else {
+                        self.err_fix("E0207", sp, cat3("`", s.as_str(), "` items are not supported in milestone 1").as_str(), "units hold `fn`, `spec fn`, `const`, `struct`, `enum`, `trait` and `impl`");
+                    }
+                    self.bump();
+                    self.recover_item();
+                } else {
+                    self.err_expected("`fn`, `spec fn` or `mod`");
+                    if !self.is_p("}") {
+                        self.bump();
+                        self.recover_item();
+                    }
+                }
+                if self.t.pos == start {
+                    self.bump();
+                }
+            }
+            let hi: source::Span = self.expect_p("}")?;
+            let lens: Vec<ast::Len> = std::mem::replace(&mut self.lens, Vec::new());
+            Some(ast::Mod { name: name, attrs: attrs, fns: fns, mods: mods, types: types, impls: impls, traits: traits, trait_impls: trait_impls, uses: uses, consts: consts, lens: lens, span: lo.to(hi) })
+        }
+
+        #[effects(alloc)]
+        fn parse_mul(self: &mut Parser, d: usize) -> Option<ast::Expr>
+            requires d <= 256,
+            decreases (256 - d) * 64 + 10,
+        {
+            let mut lhs: ast::Expr = self.parse_cast(d)?;
+            let mut k: usize = d;
+            let mut n: usize = self.left();
+            while n > 0 && (self.is_p("*") || self.is_p("/") || self.is_p("%"))
+                invariant k >= d, k <= 256,
+                decreases n,
+            {
+                n = n - 1;
+                let op: ast::BinOp = if self.is_p("*") {
+                    ast::BinOp::Mul
+                } else if self.is_p("/") {
+                    ast::BinOp::Div
+                } else {
+                    ast::BinOp::Rem
+                };
+                self.bump();
+                if !self.enter(k) {
+                    return None;
+                }
+                k = k + 1;
+                let rhs: ast::Expr = self.parse_cast(k)?;
+                lhs = bin(op, lhs, rhs);
+            }
+            Some(lhs)
+        }
+
+        #[effects(alloc)]
+        fn parse_no_range(self: &mut Parser, d: usize) -> Option<ast::Expr>
+            requires d <= 256,
+            decreases (256 - d) * 64 + 19,
+        {
+            if self.is_kw("return") {
+                let rlo: source::Span = self.bump();
+                if self.ends_value() {
+                    return Some(ast::Expr { kind: ast::ExprKind::Return(None), span: rlo });
+                }
+                if !self.enter(d) {
+                    return None;
+                }
+                let rv: ast::Expr = self.parse_expr(d + 1)?;
+                let rspan: source::Span = rlo.to(rv.span);
+                return Some(ast::Expr { kind: ast::ExprKind::Return(Some(Box::new(rv))), span: rspan });
+            }
+            if self.is_kw("break") || self.is_kw("continue") {
+                let brk: bool = self.is_kw("break");
+                let blo: source::Span = self.bump();
+                let mut bspan: source::Span = blo;
+                let mut label: Option<ast::Ident> = None;
+                if self.t.kind(0) == 8 {
+                    let lname: String = text_of(self.t.label());
+                    let lsp: source::Span = self.bump();
+                    bspan = blo.to(lsp);
+                    label = Some(ast::Ident { name: lname, span: lsp });
+                }
+                if !brk {
+                    return Some(ast::Expr { kind: ast::ExprKind::Continue(label), span: bspan });
+                }
+                let mut value: Option<Box<ast::Expr>> = None;
+                if !self.ends_value() {
+                    if !self.enter(d) {
+                        return None;
+                    }
+                    let bv: ast::Expr = self.parse_expr(d + 1)?;
+                    bspan = blo.to(bv.span);
+                    value = Some(Box::new(bv));
+                }
+                return Some(ast::Expr { kind: ast::ExprKind::Break(ast::Break { label: label, value: value }), span: bspan });
+            }
+            let lhs: ast::Expr = self.parse_or(d)?;
+            if self.eat_p("==>") {
+                if !self.enter(d) {
+                    return None;
+                }
+                let rhs: ast::Expr = self.parse_expr(d + 1)?;
+                return Some(bin(ast::BinOp::Implies, lhs, rhs));
+            }
+            Some(lhs)
+        }
+
+        #[effects(alloc)]
+        fn parse_or(self: &mut Parser, d: usize) -> Option<ast::Expr>
+            requires d <= 256,
+            decreases (256 - d) * 64 + 18,
+        {
+            let mut lhs: ast::Expr = self.parse_and(d)?;
+            let mut k: usize = d;
+            let mut n: usize = self.left();
+            while n > 0 && self.is_p("||")
+                invariant k >= d, k <= 256,
+                decreases n,
+            {
+                n = n - 1;
+                self.bump();
+                if !self.enter(k) {
+                    return None;
+                }
+                k = k + 1;
+                let rhs: ast::Expr = self.parse_and(k)?;
+                lhs = bin(ast::BinOp::Or, lhs, rhs);
+            }
+            Some(lhs)
+        }
+
+        #[summary("변형 패턴: T::V, T::V(a, _), Some(x), None, 또는 _ (와일드카드 갈래: 검사기가 그것이 뜻하는 갈래들과 함께 거부한다)")]
+        #[effects(alloc)]
+        fn parse_pat(self: &mut Parser) -> Option<ast::Pat> {
+            let lo: source::Span = self.span();
+            let k: u8 = self.t.kind(0);
+            let literal: bool = k >= 1 && k <= 6 || self.is_p("-") || self.is_kw("true") || self.is_kw("false");
+            if literal || self.is_p("(") || self.is_p("[") || self.is_p("&") {
+                return Some(self.rejected_pat(lo, "literal, tuple and reference patterns are not allowed", "`match` an enum value; compare other values with `if`"));
+            }
+            let mut path: Vec<ast::Ident> = Vec::new();
+            path.push(self.ident("variant")?);
+            let mut n: usize = self.left();
+            while n > 0 && self.is_p("::")
+                decreases n,
+            {
+                n = n - 1;
+                self.bump();
+                path.push(self.ident("variant")?);
+            }
+            if self.is_p("{") {
+                return Some(self.rejected_pat(lo, "struct patterns are not allowed", "bind the value and read its fields: `p.x`"));
+            }
+            let mut binds: Vec<Option<ast::Ident>> = Vec::new();
+            let parens: bool = self.eat_p("(");
+            if parens {
+                let mut m: usize = self.left();
+                while m > 0 && !self.is_p(")")
+                    decreases m,
+                {
+                    m = m - 1;
+                    let nested: bool = self.t.kind(0) != 0 || self.t.is_p(1, "::") || self.t.is_p(1, "(") || self.t.is_p(1, "{");
+                    if nested {
+                        return Some(self.rejected_pat(lo, "nested patterns are not allowed", "bind a name and `match` it in the arm body"));
+                    }
+                    let b: ast::Ident = self.ident("binding or `_`")?;
+                    if b.name == "_" {
+                        binds.push(None);
+                    } else {
+                        binds.push(Some(b));
+                    }
+                    if !self.eat_p(",") {
+                        m = 0;
+                    }
+                }
+                self.expect_p(")")?;
+            }
+            let pspan: source::Span = lo.to(self.prev_span());
+            let mut origin: ast::PatOrigin = ast::PatOrigin::Written;
+            if self.is_p("|") {
+                let osp: source::Span = self.span();
+                self.skip_to_arrow();
+                self.err_fix_to("E0232", osp, "or-patterns are not allowed", "one arm per variant, with the same body");
+                origin = ast::PatOrigin::Rejected;
+            } else if self.is_kw("if") {
+                let gsp: source::Span = self.span();
+                self.skip_to_arrow();
+                self.err_fix_to("E0232", gsp, "guards are not allowed", "test the condition in the arm body: `V(x) => if c { .. } else { .. }`");
+                origin = ast::PatOrigin::Rejected;
+            }
+            Some(ast::Pat { path: path, binds: binds, parens: parens, origin: origin, span: pspan })
+        }
+
+        #[effects(alloc)]
+        fn parse_path_expr(self: &mut Parser, d: usize) -> Option<ast::Expr>
+            requires d <= 256,
+            decreases (256 - d) * 64 + 42,
+        {
+            let lo: source::Span = self.span();
+            if self.t.kind(0) == 0 && self.t.is_p(1, "!") {
+                let mname: String = text_of(self.t.ident(0));
+                self.bump();
+                self.bump();
+                self.skip_group();
+                let msg: String = cat3("macro `", mname.as_str(), "!` is not allowed");
+                let mspan: source::Span = lo.to(self.prev_span());
+                if mname == "println" || mname == "print" || mname == "eprintln" {
+                    self.err_fix("E0202", mspan, msg.as_str(), "call `print_i64(x)` from an `#[effects(io)]` function");
+                } else if mname == "vec" {
+                    self.err_fix("E0202", mspan, msg.as_str(), "a fixed array is `[a, b]` or `[v; N]`; a `Vec` is `Vec::with_capacity(n)` and `push`");
+                } else if mname == "assert" || mname == "assert_eq" || mname == "debug_assert" {
+                    self.err_fix("E0202", mspan, msg.as_str(), "use `assert(cond);` (a proof obligation, not a runtime check)");
+                } else if mname == "panic" || mname == "unreachable" || mname == "todo" || mname == "unimplemented" {
+                    self.err_fix("E0202", mspan, msg.as_str(), "panics are not allowed; prove the case impossible");
+                } else {
+                    self.err_fix("E0202", mspan, msg.as_str(), "write the expansion out explicitly");
+                }
+                return Some(ast::Expr { kind: ast::ExprKind::Error, span: mspan });
+            }
+            let mut path: Vec<ast::Ident> = self.relative_path_prefix();
+            path.push(self.ident("name")?);
+            let mut targs: Vec<ast::TArgs> = Vec::new();
+            let mut n: usize = self.left();
+            while n > 0 && self.is_p("::")
+                decreases n,
+            {
+                n = n - 1;
+                let colons: source::Span = self.bump();
+                if self.is_p("<") {
+                    let targ: Vec<ast::Type> = self.parse_type_args(d);
+                    targs.push(ast::TArgs { seg: path.len().saturating_sub(1), args: targ, span: colons.to(self.prev_span()) });
+                } else {
+                    path.push(self.ident("path segment")?);
+                }
+            }
+            if targs.len() > 0 && !self.is_p("(") {
+                self.err("E0301", targs[0].span, "type arguments are written only on calls: `f::<T>(..)`");
+            }
+            if self.is_p("(") {
+                let args: Vec<ast::Expr> = self.parse_args(d)?;
+                return Some(ast::Expr { kind: ast::ExprKind::Call(ast::Call { path: path, targs: targs, args: args, method: None }), span: lo.to(self.prev_span()) });
+            }
+            let capital: bool = path.len() > 0 && upper_first(path[path.len() - 1].name.as_str());
+            let habit: bool = !self.no_struct && capital && (self.t.is_p(1, "..") || self.t.kind(1) == 0 && (self.t.is_p(2, ",") || self.t.is_p(2, "}")));
+            if self.is_p("{") && (habit || self.t.kind(1) == 0 && self.t.is_p(2, ":")) {
+                self.bump();
+                let mut fields: Vec<ast::FieldInit> = Vec::new();
+                let mut rest: Option<Box<ast::Expr>> = None;
+                let mut m: usize = self.left();
+                while m > 0 && !self.is_p("}")
+                    decreases m,
+                {
+                    m = m - 1;
+                    if self.eat_p("..") {
+                        rest = Some(Box::new(self.parse_expr(d)?));
+                        m = 0;
+                    } else {
+                        let fname: ast::Ident = self.ident("field name")?;
+                        if self.eat_p(":") {
+                            let fv: ast::Expr = self.parse_expr(d)?;
+                            fields.push(ast::FieldInit { name: fname, value: fv });
+                        } else {
+                            let mut r: String = fname.name.clone();
+                            r.push_str(": ");
+                            r.push_str(fname.name.as_str());
+                            self.diags.push(diag::fix(diag::new("E0222", fname.span, cat3("field shorthand `", fname.name.as_str(), "` is not allowed").as_str()), tick_write(r.as_str()).as_str(), Some(r)));
+                            let sv: ast::Expr = ast::Expr { kind: ast::ExprKind::Var(ast::Ident { name: fname.name.clone(), span: fname.span }), span: fname.span };
+                            fields.push(ast::FieldInit { name: fname, value: sv });
+                        }
+                        if !self.eat_p(",") {
+                            m = 0;
+                        }
+                    }
+                }
+                let shi: source::Span = self.expect_p("}")?;
+                return Some(ast::Expr { kind: ast::ExprKind::StructLit(ast::StructLit { path: path, fields: fields, rest: rest }), span: lo.to(shi) });
+            }
+            if path.len() > 1 {
+                let pspan: source::Span = lo.to(self.prev_span());
+                return Some(ast::Expr { kind: ast::ExprKind::Path(path), span: pspan });
+            }
+            let id: ast::Ident = path.pop()?;
+            let ispan: source::Span = id.span;
+            Some(ast::Expr { kind: ast::ExprKind::Var(id), span: ispan })
+        }
+
+        #[effects(alloc)]
+        fn parse_postfix(self: &mut Parser, d: usize) -> Option<ast::Expr>
+            requires d <= 256,
+            decreases (256 - d) * 64 + 44,
+        {
+            let mut e: ast::Expr = self.parse_primary(d)?;
+            let mut k: usize = d;
+            let mut n: usize = self.left();
+            while n > 0
+                invariant k >= d, k <= 256,
+                decreases n,
+            {
+                n = n - 1;
+                if self.is_p(".") || self.is_p("[") || self.is_kw("as") {
+                    if !self.enter(k) {
+                        return None;
+                    }
+                    k = k + 1;
+                }
+                if self.is_p(".") {
+                    self.bump();
+                    let name: ast::Ident = if self.is_kw("requires") || self.is_kw("ensures") {
+                        ast::Ident { name: text_of(self.t.ident(0)), span: self.bump() }
+                    } else {
+                        self.ident("field or method name")?
+                    };
+                    let espan: source::Span = e.span;
+                    if name.name == "expect" && self.is_p("(") && self.t.kind(1) == 3 && self.t.is_p(2, ")") {
+                        self.bump();
+                        self.bump();
+                        let xhi: source::Span = self.bump();
+                        e = ast::Expr { kind: ast::ExprKind::Method(ast::Method { recv: Box::new(e), name: name, args: Vec::new() }), span: espan.to(xhi) };
+                    } else if !self.is_p("(") {
+                        let fspan: source::Span = espan.to(name.span);
+                        e = ast::Expr { kind: ast::ExprKind::Field(Box::new(e), name), span: fspan };
+                    } else {
+                        let args: Vec<ast::Expr> = self.parse_args(k)?;
+                        let mspan: source::Span = espan.to(self.prev_span());
+                        e = ast::Expr { kind: ast::ExprKind::Method(ast::Method { recv: Box::new(e), name: name, args: args }), span: mspan };
+                    }
+                } else if self.is_p("[") {
+                    self.bump();
+                    let index: ast::Expr = self.parse_expr(k)?;
+                    let ihi: source::Span = self.expect_p("]")?;
+                    let ispan: source::Span = e.span.to(ihi);
+                    e = ast::Expr { kind: ast::ExprKind::Index(Box::new(e), Box::new(index)), span: ispan };
+                } else if self.is_p("?") {
+                    let qsp: source::Span = self.bump();
+                    let qspan: source::Span = e.span.to(qsp);
+                    e = ast::Expr { kind: ast::ExprKind::Try(Box::new(e)), span: qspan };
+                } else {
+                    n = 0;
+                }
+            }
+            Some(e)
+        }
+
+        #[effects(alloc)]
+        fn parse_primary(self: &mut Parser, d: usize) -> Option<ast::Expr>
+            requires d <= 256,
+            decreases (256 - d) * 64 + 43,
+        {
+            let lo: source::Span = self.span();
+            match self.t.literal() {
+                None => {},
+                Some(lit) => { self.bump(); return Some(ast::Expr { kind: lit, span: lo }); },
+            }
+            if self.is_p("(") {
+                self.bump();
+                if self.eat_p(")") {
+                    return Some(ast::Expr { kind: ast::ExprKind::Unit, span: lo.to(self.prev_span()) });
+                }
+                let pe: ast::Expr = self.parse_expr(d)?;
+                if self.is_p(",") {
+                    self.err_fix_here("E0233", "tuples are not allowed", "use a struct with named fields");
+                    let mut q: usize = self.left();
+                    while q > 0 && !self.is_p(")") && !self.eof()
+                        decreases q,
+                    {
+                        q = q - 1;
+                        if self.is_p("(") || self.is_p("[") || self.is_p("{") {
+                            self.skip_group();
+                        } else {
+                            self.bump();
+                        }
+                    }
+                    let thi: source::Span = self.expect_p(")")?;
+                    return Some(ast::Expr { kind: ast::ExprKind::Error, span: lo.to(thi) });
+                }
+                let phi: source::Span = self.expect_p(")")?;
+                return Some(ast::Expr { kind: pe.kind, span: lo.to(phi) });
+            }
+            if self.is_p("[") {
+                self.bump();
+                if self.eat_p("]") {
+                    return Some(ast::Expr { kind: ast::ExprKind::Array(Vec::new()), span: lo.to(self.prev_span()) });
+                }
+                let first: ast::Expr = self.parse_expr(d)?;
+                if self.eat_p(";") {
+                    let mut count: wide::U128 = wide::zero();
+                    let mut count_span: source::Span = self.span();
+                    match self.t.int() {
+                        None => { if self.t.kind(0) != 0 { self.err_expected("array length literal"); return None; } let at: source::Span = self.span(); let mut lpath: Vec<ast::Ident> = Vec::new(); let mut m: usize = self.left(); while m > 0 && self.t.kind(0) == 0 decreases m, { m = m - 1; let ls: String = text_of(self.t.ident(0)); let lsp: source::Span = self.bump(); lpath.push(ast::Ident { name: ls, span: lsp }); if !self.eat_p("::") { m = 0; } } count_span = at.to(self.prev_span()); self.lens.push(ast::Len { at: count_span, path: lpath }); },
+                        Some(v) => { count = v; count_span = self.bump(); },
+                    }
+                    let rhi: source::Span = self.expect_p("]")?;
+                    return Some(ast::Expr { kind: ast::ExprKind::Repeat(ast::Repeat { value: Box::new(first), count: count, count_span: count_span }), span: lo.to(rhi) });
+                }
+                let mut items: Vec<ast::Expr> = Vec::new();
+                items.push(first);
+                let mut a: usize = self.left();
+                while a > 0 && self.is_p(",")
+                    decreases a,
+                {
+                    a = a - 1;
+                    self.bump();
+                    if self.is_p("]") {
+                        a = 0;
+                    } else {
+                        items.push(self.parse_expr(d)?);
+                    }
+                }
+                let ahi: source::Span = self.expect_p("]")?;
+                return Some(ast::Expr { kind: ast::ExprKind::Array(items), span: lo.to(ahi) });
+            }
+            if self.is_p("{") {
+                let b: ast::Block = self.parse_block(d)?;
+                let bspan: source::Span = b.span;
+                return Some(ast::Expr { kind: ast::ExprKind::Block(b), span: bspan });
+            }
+            if self.is_p("|") || self.is_p("||") {
+                return self.parse_closure(false, lo, d);
+            }
+            if self.is_kw("move") && (self.t.is_p(1, "|") || self.t.is_p(1, "||")) {
+                self.bump();
+                return self.parse_closure(true, lo, d);
+            }
+            if self.t.kind(0) == 8 && self.t.is_p(1, ":") && self.t.is_kw(2, "loop") {
+                return self.parse_loop(d);
+            }
+            if self.t.kind(0) != 0 {
+                self.err_expected("expression");
+                return None;
+            }
+            if self.is_kw("true") || self.is_kw("false") {
+                let tv: bool = self.is_kw("true");
+                self.bump();
+                return Some(ast::Expr { kind: ast::ExprKind::Bool(tv), span: lo });
+            }
+            if self.is_kw("if") {
+                return self.parse_if(d);
+            }
+            if self.is_kw("loop") {
+                return self.parse_loop(d);
+            }
+            if self.is_kw("old") && self.t.is_p(1, "(") {
+                self.bump();
+                self.bump();
+                let oe: ast::Expr = self.parse_expr(d)?;
+                let ohi: source::Span = self.expect_p(")")?;
+                return Some(ast::Expr { kind: ast::ExprKind::Old(Box::new(oe)), span: lo.to(ohi) });
+            }
+            if self.is_kw("forall") {
+                return self.parse_quant(ast::Quantifier::Forall, d);
+            }
+            if self.is_kw("exists") {
+                return self.parse_quant(ast::Quantifier::Exists, d);
+            }
+            if self.is_kw("match") {
+                return self.parse_match(d);
+            }
+            if self.is_kw("unsafe") && self.t.is_p(1, "{") {
+                let usp: source::Span = self.span();
+                self.unsafe_habit(usp);
+                self.bump();
+                if !self.enter(d) {
+                    return None;
+                }
+                let ub: ast::Block = self.parse_block(d + 1)?;
+                let uspan: source::Span = ub.span;
+                return Some(ast::Expr { kind: ast::ExprKind::Block(ub), span: uspan });
+            }
+            if self.is_kw("self") && !self.t.is_p(1, "::") {
+                let ssp: source::Span = self.bump();
+                return Some(ast::Expr { kind: ast::ExprKind::Var(ast::Ident { name: String::from("self"), span: ssp }), span: ssp });
+            }
+            self.parse_path_expr(d)
+        }
+
+        #[effects(alloc)]
+        fn parse_program(self: &mut Parser) -> ast::Program {
+            let mut mods: Vec<ast::Mod> = Vec::new();
+            let mut n: usize = self.left();
+            while n > 0 && !self.eof()
+                decreases n,
+            {
+                n = n - 1;
+                let start: usize = self.t.pos;
+                let attrs: Vec<ast::Attr> = self.attrs();
+                if self.is_kw("mod") {
+                    match self.parse_mod(attrs, 0) {
+                        None => self.recover_item(),
+                        Some(m) => mods.push(m),
+                    }
+                } else {
+                    if self.is_kw("fn") || self.is_kw("spec") || self.is_kw("proof") {
+                        self.err_fix_here("E0703", "items must be declared inside a `mod`", "wrap the item in `#[summary(\"..\")] mod name { .. }`");
+                    } else {
+                        self.err_expected("`mod`");
+                    }
+                    self.bump();
+                    self.recover_item();
+                }
+                if self.t.pos == start {
+                    self.bump();
+                }
+            }
+            ast::Program { mods: mods }
+        }
+
+        #[summary("forall|x: T, ..| e와 exists|x: T, ..| e (ADR-0079)")]
+        #[effects(alloc)]
+        fn parse_quant(self: &mut Parser, q: ast::Quantifier, d: usize) -> Option<ast::Expr>
+            requires d <= 256,
+            decreases (256 - d) * 64 + 41,
+        {
+            let lo: source::Span = self.bump();
+            self.expect_p("|")?;
+            let mut binders: Vec<ast::Param> = Vec::new();
+            let mut n: usize = self.left();
+            while n > 0 && !self.is_p("|")
+                decreases n,
+            {
+                n = n - 1;
+                let name: ast::Ident = self.ident("bound variable")?;
+                self.expect_p(":")?;
+                let ty: ast::Type = self.parse_type(d);
+                binders.push(ast::Param { name: name, ty: ty });
+                if !self.eat_p(",") {
+                    n = 0;
+                }
+            }
+            self.expect_p("|")?;
+            let body: ast::Expr = self.parse_expr(d)?;
+            let span: source::Span = lo.to(body.span);
+            Some(ast::Expr { kind: ast::ExprKind::Quant(ast::Quant { q: q, binders: binders, body: Box::new(body) }), span: span })
+        }
+
+        #[effects(alloc)]
+        fn parse_ret(self: &mut Parser, d: usize) -> Option<ast::Ret>
+            requires d <= 256,
+        {
+            let was: bool = self.in_ret;
+            self.in_ret = true;
+            let r: Option<ast::Ret> = self.parse_ret_inner(d);
+            self.in_ret = was;
+            r
+        }
+
+        #[effects(alloc)]
+        fn parse_ret_inner(self: &mut Parser, d: usize) -> Option<ast::Ret>
+            requires d <= 256,
+        {
+            if self.is_p("(") {
+                if self.t.is_p(1, ")") {
+                    let lo: source::Span = self.bump();
+                    let hi: source::Span = self.bump();
+                    return Some(ast::Ret { name: None, ty: ast::Type { kind: ast::TypeKind::Unit, span: lo.to(hi) } });
+                }
+                if self.t.kind(1) == 0 && self.t.is_p(2, ":") {
+                    self.bump();
+                    let name: ast::Ident = self.ident("result name")?;
+                    self.bump();
+                    let ty: ast::Type = self.parse_type(d);
+                    self.expect_p(")")?;
+                    return Some(ast::Ret { name: Some(name), ty: ty });
+                }
+            }
+            Some(ast::Ret { name: None, ty: self.parse_type(d) })
+        }
+
+        #[effects(alloc)]
+        fn parse_shift(self: &mut Parser, d: usize) -> Option<ast::Expr>
+            requires d <= 256,
+            decreases (256 - d) * 64 + 12,
+        {
+            let mut lhs: ast::Expr = self.parse_add(d)?;
+            let mut k: usize = d;
+            let mut n: usize = self.left();
+            while n > 0
+                invariant k >= d, k <= 256,
+                decreases n,
+            {
+                n = n - 1;
+                match self.shift_op() {
+                    None => { n = 0; },
+                    Some(op) => { self.bump(); self.bump(); if !self.enter(k) { return None; } k = k + 1; let rhs: ast::Expr = self.parse_add(k)?; lhs = bin(op, lhs, rhs); },
+                }
+            }
+            Some(lhs)
+        }
+
+        #[effects(alloc)]
+        fn parse_stmt(self: &mut Parser, d: usize) -> Option<StmtOrTail>
+            requires d <= 256,
+            decreases (256 - d) * 64 + 31,
+        {
+            let lo: source::Span = self.span();
+            if self.is_p("#") && self.t.is_p(1, "[") && !self.t.is_kw(2, "trigger") {
+                let attrs: Vec<ast::Attr> = self.attrs();
+                let before_assume: bool = self.is_kw("assume") && self.t.is_p(1, "(");
+                let mut rationale: Option<ast::Attr> = None;
+                let mut taken: bool = false;
+                let mut rest: Vec<ast::Attr> = attrs;
+                let mut k: usize = rest.len();
+                let mut kept: Vec<ast::Attr> = Vec::new();
+                while k > 0
+                    decreases k,
+                {
+                    k = k - 1;
+                    match rest.pop() {
+                        None => {},
+                        Some(a) => kept.push(a),
+                    }
+                }
+                let mut j: usize = kept.len();
+                while j > 0
+                    decreases j,
+                {
+                    j = j - 1;
+                    match kept.pop() {
+                        None => {},
+                        Some(a2) => { if a2.name.name == "rationale" && before_assume && !taken { taken = true; rationale = Some(a2); } else { let mut msg: String = String::from("`#["); msg.push_str(a2.name.name.as_str()); msg.push_str("]` is not allowed here: before a statement, only `#[rationale(..)]` before `assume(..)`"); self.err_rep("E1002", a2.span, msg.as_str(), "remove the attribute", ""); } },
+                    }
+                }
+                if before_assume {
+                    return self.parse_assume(lo, rationale, d);
+                }
+            }
+            if self.is_kw("assume") && self.t.is_p(1, "(") {
+                return self.parse_assume(lo, None, d);
+            }
+            if self.is_kw("admit") && self.t.is_p(1, "(") {
+                self.bump();
+                self.bump();
+                let close: source::Span = self.expect_p(")")?;
+                let ahi: source::Span = if self.is_p(";") {
+                    self.expect_p(";")?
+                } else {
+                    close
+                };
+                self.err_fix("E0217", lo.to(ahi), "Verus's `admit()` is not used", "state what you take as given: `assume(p(..));` with a `#[rationale(kind = .., \"why\")]` before it, or prove it");
+                return Some(StmtOrTail::Stmt(ast::Stmt::Expr(ast::Expr { kind: ast::ExprKind::Block(ast::Block { stmts: Vec::new(), tail: None, span: lo.to(ahi) }), span: lo.to(ahi) })));
+            }
+            if self.is_kw("let") {
+                return Some(StmtOrTail::Stmt(self.parse_let(d)?));
+            }
+            if self.is_kw("while") {
+                if !self.enter(d) {
+                    return None;
+                }
+                return Some(StmtOrTail::Stmt(self.parse_while_inner(None, d + 1)?));
+            }
+            if self.is_kw("assert") && self.t.is_p(1, "(") {
+                self.bump();
+                self.bump();
+                let cond: ast::Expr = self.parse_expr(d)?;
+                let cclose: source::Span = self.expect_p(")")?;
+                let block: bool = self.is_kw("by") && self.t.is_p(1, "{");
+                let by: Option<ast::Prover> = self.parse_by(cclose);
+                let shi: source::Span = if block && !self.is_p(";") {
+                    self.prev_span()
+                } else {
+                    self.expect_p(";")?
+                };
+                return Some(StmtOrTail::Stmt(ast::Stmt::Assert(ast::Assert { cond: cond, by: by, span: lo.to(shi) })));
+            }
+            if self.is_kw("for") {
+                if !self.enter(d) {
+                    return None;
+                }
+                return Some(StmtOrTail::Stmt(self.parse_for(None, d + 1)?));
+            }
+            if self.is_kw("proof") && self.t.is_p(1, "{") {
+                self.bump();
+                if !self.enter(d) {
+                    return None;
+                }
+                let body: ast::Block = self.parse_block(d + 1)?;
+                let pspan: source::Span = lo.to(body.span);
+                self.eat_p(";");
+                return Some(StmtOrTail::Stmt(ast::Stmt::Proof(ast::ProofBlock { body: body, span: pspan })));
+            }
+            if self.t.kind(0) == 8 && self.t.is_p(1, ":") && (self.t.is_kw(2, "while") || self.t.is_kw(2, "for")) {
+                let lname: String = text_of(self.t.label());
+                let lspan: source::Span = self.bump();
+                self.bump();
+                let label: ast::Ident = ast::Ident { name: lname, span: lspan };
+                if !self.enter(d) {
+                    return None;
+                }
+                if self.is_kw("for") {
+                    return Some(StmtOrTail::Stmt(self.parse_for(Some(label), d + 1)?));
+                }
+                return Some(StmtOrTail::Stmt(self.parse_while_inner(Some(label), d + 1)?));
+            }
+            let labeled_loop: bool = self.t.kind(0) == 8 && self.t.is_p(1, ":") && self.t.is_kw(2, "loop");
+            if self.is_kw("if") || self.is_kw("match") || self.is_kw("loop") || labeled_loop {
+                let pos: usize = self.t.pos;
+                let nd: usize = self.diags.items.len();
+                if !self.enter(d) {
+                    return None;
+                }
+                let e: ast::Expr = if self.is_kw("if") {
+                    self.parse_if(d + 1)?
+                } else if self.is_kw("match") {
+                    self.parse_match(d + 1)?
+                } else {
+                    self.parse_loop(d + 1)?
+                };
+                let k0: u8 = self.t.kind(0);
+                let ends: bool = if k0 == 7 {
+                    self.is_p("*") || self.is_p("-") || self.is_p("&") || self.is_p("!") || self.is_p("(") || self.is_p("[") || self.is_p(";") || self.is_p("}") || self.is_p("{")
+                } else if k0 == 0 {
+                    !self.is_kw("as")
+                } else {
+                    true
+                };
+                if ends {
+                    if self.eat_p(";") {
+                        return Some(StmtOrTail::Stmt(ast::Stmt::Expr(e)));
+                    }
+                    return Some(StmtOrTail::Tail(e));
+                }
+                self.t.back(pos);
+                self.diags.items.truncate(nd);
+            }
+            match self.compound_assign(lo, d)? {
+                Compound::No => {},
+                Compound::Yes(cs) => { return Some(StmtOrTail::Stmt(cs)); },
+            }
+            let target: ast::Expr = self.parse_expr(d)?;
+            if self.eat_p("=") {
+                let value: ast::Expr = self.parse_expr(d)?;
+                let vhi: source::Span = self.expect_p(";")?;
+                return Some(StmtOrTail::Stmt(ast::Stmt::Assign(ast::Assign { target: target, value: value, span: lo.to(vhi) })));
+            }
+            if self.eat_p(";") {
+                return Some(StmtOrTail::Stmt(ast::Stmt::Expr(target)));
+            }
+            if self.is_p("}") || block_like(&target) {
+                return Some(StmtOrTail::Tail(target));
+            }
+            self.err_expected("`;`");
+            None
+        }
+
+        #[summary("trait Name { fn m(self: &Self) -> T; .. } (ADR-0046 §1). 메서드는 ;로 끝나거나 몸(기본 몸)을 가진다")]
+        #[effects(alloc)]
+        fn parse_trait(self: &mut Parser, attrs: Vec<ast::Attr>, d: usize) -> Option<ast::TraitDef>
+            requires d <= 256,
+        {
+            let lo: source::Span = self.bump();
+            let name: ast::Ident = self.ident("trait name")?;
+            if self.is_p("<") {
+                self.err_fix_here("E0207", "generic traits are not supported (ADR-0046 §1)", "put the type parameters on the methods");
+                self.skip_angle();
+            }
+            if self.is_p(":") {
+                self.err_fix_here("E0207", "supertraits are not supported (ADR-0046 §1)", "bound the type parameters by each trait: `T: A + B`");
+                let mut k: usize = self.left();
+                while k > 0 && !self.is_p("{") && !self.eof()
+                    decreases k,
+                {
+                    k = k - 1;
+                    self.bump();
+                }
+            }
+            self.expect_p("{")?;
+            let mut fns: Vec<ast::TraitFn> = Vec::new();
+            let outer: Option<String> = std::mem::replace(&mut self.impl_ty, Some(String::from("Self")));
+            let mut n: usize = self.left();
+            while n > 0 && !self.is_p("}") && !self.eof()
+                decreases n,
+            {
+                n = n - 1;
+                let start: usize = self.t.pos;
+                let fattrs: Vec<ast::Attr> = self.attrs();
+                self.no_pub();
+                if self.is_kw("fn") || self.is_kw("spec") && self.t.is_kw(1, "fn") {
+                    self.decl_ok = true;
+                    let r: Option<ast::FnDef> = self.parse_fn(fattrs, d);
+                    let has_body: bool = !self.decl_ok;
+                    self.decl_ok = false;
+                    match r {
+                        None => self.recover_item(),
+                        Some(f) => fns.push(ast::TraitFn { f: f, has_body: has_body }),
+                    }
+                } else {
+                    self.err_expected("`fn` or `spec fn`");
+                    self.bump();
+                    self.recover_item();
+                }
+                if self.t.pos == start {
+                    self.bump();
+                }
+            }
+            self.impl_ty = outer;
+            let hi: source::Span = self.expect_p("}")?;
+            Some(ast::TraitDef { name: name, attrs: attrs, fns: fns, span: lo.to(hi) })
+        }
+
+        #[effects(alloc)]
+        fn parse_type(self: &mut Parser, d: usize) -> ast::Type
+            requires d <= 256,
+            decreases (256 - d) * 64 + 2,
+        {
+            if !self.enter(d) {
+                return ast::Type { kind: ast::TypeKind::Error, span: self.span() };
+            }
+            self.parse_type_inner(d + 1)
+        }
+
+        #[summary("식의 경로에서 :: 뒤의 <A, B>")]
+        #[effects(alloc)]
+        fn parse_type_args(self: &mut Parser, d: usize) -> Vec<ast::Type>
+            requires d <= 256,
+        {
+            let mut args: Vec<ast::Type> = Vec::new();
+            self.bump();
+            let mut n: usize = self.left();
+            while n > 0 && !self.is_p(">") && !self.eof()
+                decreases n,
+            {
+                n = n - 1;
+                args.push(self.parse_type(d));
+                if !self.eat_p(",") {
+                    n = 0;
+                }
+            }
+            self.expect_p(">");
+            args
+        }
+
+        #[summary("struct T { f: U, .. } 또는 enum T { A, B(U, V), .. } (ADR-0026 §1)")]
+        #[effects(alloc)]
+        fn parse_type_def(self: &mut Parser, attrs: Vec<ast::Attr>, d: usize) -> Option<ast::TypeDef>
+            requires d <= 256,
+        {
+            let lo: source::Span = self.span();
+            let is_struct: bool = self.is_kw("struct");
+            self.bump();
+            let name: ast::Ident = self.ident("type name")?;
+            let mut generics: Vec<ast::TypeParam> = self.parse_generics(d);
+            let gspan: Option<source::Span> = self.generics_span;
+            self.parse_where(&mut generics, gspan, d);
+            if is_struct && self.is_p("(") {
+                let sp: source::Span = self.span();
+                self.skip_group();
+                self.eat_p(";");
+                self.err_fix_to("E0233", sp, "tuple structs are not allowed", "name the fields: `struct P { a: T, b: U }`");
+                return None;
+            }
+            self.expect_p("{")?;
+            let mut fields: Vec<ast::Field> = Vec::new();
+            let mut variants: Vec<ast::Variant> = Vec::new();
+            let mut n: usize = self.left();
+            if is_struct {
+                while n > 0 && !self.is_p("}")
+                    decreases n,
+                {
+                    n = n - 1;
+                    let fname: ast::Ident = self.ident("field name")?;
+                    self.expect_p(":")?;
+                    let ty: ast::Type = self.parse_type(d);
+                    fields.push(ast::Field { name: fname, ty: ty });
+                    if !self.eat_p(",") {
+                        n = 0;
+                    }
+                }
+            } else {
+                while n > 0 && !self.is_p("}")
+                    decreases n,
+                {
+                    n = n - 1;
+                    let vname: ast::Ident = self.ident("variant name")?;
+                    let mut payload: Vec<ast::Type> = Vec::new();
+                    if self.is_p("{") {
+                        self.err_fix_here("E0233", "struct-like variants are not allowed", "wrap a struct with named fields: `V(Data)`");
+                        self.skip_group();
+                    } else if self.eat_p("(") {
+                        let mut m: usize = self.left();
+                        while m > 0 && !self.is_p(")")
+                            decreases m,
+                        {
+                            m = m - 1;
+                            payload.push(self.parse_type(d));
+                            if !self.eat_p(",") {
+                                m = 0;
+                            }
+                        }
+                        self.expect_p(")")?;
+                    }
+                    let vspan: source::Span = vname.span.to(self.prev_span());
+                    variants.push(ast::Variant { name: vname, payload: payload, span: vspan });
+                    if !self.eat_p(",") {
+                        n = 0;
+                    }
+                }
+            }
+            let hi: source::Span = self.expect_p("}")?;
+            let kind: ast::TypeDefKind = if is_struct {
+                ast::TypeDefKind::Struct(fields)
+            } else {
+                ast::TypeDefKind::Enum(variants)
+            };
+            Some(ast::TypeDef { name: name, generics: generics, attrs: attrs, kind: kind, span: lo.to(hi) })
+        }
+
+        #[effects(alloc)]
+        fn parse_type_inner(self: &mut Parser, d: usize) -> ast::Type
+            requires d <= 256,
+            decreases (256 - d) * 64 + 3,
+        {
+            let lo: source::Span = self.span();
+            let fn_ptr: bool = self.is_kw("fn") && self.t.is_p(1, "(");
+            let impl_fn: bool = self.is_kw("impl") && (self.t.is_kw(1, "Fn") || self.t.is_kw(1, "FnMut") || self.t.is_kw(1, "FnOnce"));
+            if fn_ptr || impl_fn {
+                self.bump();
+                if impl_fn {
+                    self.bump();
+                }
+                self.bump();
+                let mut n: usize = self.left();
+                while n > 0 && !self.is_p(")") && !self.eof()
+                    decreases n,
+                {
+                    n = n - 1;
+                    self.parse_type(d);
+                    if !self.eat_p(",") {
+                        n = 0;
+                    }
+                }
+                self.expect_p(")");
+                if self.eat_p("->") {
+                    self.parse_type(d);
+                }
+                let fspan: source::Span = lo.to(self.prev_span());
+                if fn_ptr {
+                    self.err_fix("E0264", fspan, "function pointer types are not used", "take a type parameter `F: Fn(..) -> R` and pass the function or closure as its value (ADR-0053 §1, §3)");
+                } else if self.in_ret {
+                    self.err_fix("E0264", fspan, "a closure is not returned: it does not leave the function that makes it", "take a type parameter `F: Fn(..) -> R` and pass the function or closure as its value (ADR-0053 §1, §3)");
+                } else {
+                    self.err_fix("E0265", fspan, "an argument-position `impl Fn(..)` is a type parameter", "declare `<F: Fn(..) -> R>` on the function and take `f: F` (one form, ADR-0053 §1)");
+                }
+                return ast::Type { kind: ast::TypeKind::Error, span: fspan };
+            }
+            if self.is_kw("Self") {
+                self.bump();
+                let mut one: Vec<String> = Vec::new();
+                one.push(String::from("Self"));
+                return ast::Type { kind: ast::TypeKind::Named(one, Vec::new()), span: lo };
+            }
+            if self.is_kw("dyn") {
+                self.bump();
+                let inner: ast::Type = self.parse_type(d);
+                let dspan: source::Span = lo.to(inner.span);
+                self.err_fix("E0236", dspan, "trait objects (`dyn Trait`) are not used", "calls are static: take a type parameter bounded by the trait, or an enum of the closed set of variants");
+                return ast::Type { kind: ast::TypeKind::Error, span: dspan };
+            }
+            if self.is_p("&") {
+                self.bump();
+                let mutable: bool = self.eat_kw("mut");
+                let target: ast::Type = self.parse_type(d);
+                let rspan: source::Span = lo.to(target.span);
+                return ast::Type { kind: ast::TypeKind::Ref(mutable, Box::new(target)), span: rspan };
+            }
+            if self.is_p("(") && self.t.is_p(1, ")") {
+                self.bump();
+                let uhi: source::Span = self.bump();
+                return ast::Type { kind: ast::TypeKind::Unit, span: lo.to(uhi) };
+            }
+            if self.is_p("(") {
+                self.bump();
+                let mut depth: usize = 1;
+                let mut m: usize = self.left();
+                while m > 0 && depth > 0 && !self.eof()
+                    decreases m,
+                {
+                    m = m - 1;
+                    if self.is_p("(") {
+                        depth = depth.saturating_add(1);
+                    } else if self.is_p(")") {
+                        depth = depth - 1;
+                    }
+                    self.bump();
+                }
+                let tspan: source::Span = lo.to(self.prev_span());
+                self.err_fix("E0233", tspan, "tuple types are not allowed", "use a struct with named fields");
+                return ast::Type { kind: ast::TypeKind::Error, span: tspan };
+            }
+            if self.is_p("[") {
+                self.bump();
+                let elem: ast::Type = self.parse_type(d);
+                if self.eat_p(";") {
+                    let mut len: u64 = 0;
+                    let mut large: bool = false;
+                    match self.t.int() {
+                        None => { if self.t.kind(0) == 0 { let mut path: Vec<String> = Vec::new(); let mut q: usize = self.left(); while q > 0 && self.t.kind(0) == 0 decreases q, { q = q - 1; path.push(text_of(self.t.ident(0))); self.bump(); if !self.eat_p("::") { q = 0; } } let nhi: source::Span = self.span(); self.expect_p("]"); return ast::Type { kind: ast::TypeKind::ArrayN(Box::new(elem), path), span: lo.to(nhi) }; } self.err_expected("array length"); },
+                        Some(v) => { let isp: source::Span = self.bump(); if v.hi != 0 || v.lo > 4294967295 { self.err("E0406", isp, "array length is too large"); large = true; } else { len = v.lo; } },
+                    }
+                    let ahi: source::Span = self.span();
+                    self.expect_p("]");
+                    if large {
+                        return ast::Type { kind: ast::TypeKind::Error, span: lo.to(ahi) };
+                    }
+                    return ast::Type { kind: ast::TypeKind::Array(Box::new(elem), len), span: lo.to(ahi) };
+                }
+                let shi: source::Span = self.span();
+                self.expect_p("]");
+                return ast::Type { kind: ast::TypeKind::Slice(Box::new(elem)), span: lo.to(shi) };
+            }
+            if self.t.kind(0) != 0 {
+                self.err_expected("type");
+                return ast::Type { kind: ast::TypeKind::Error, span: lo };
+            }
+            let s: String = text_of(self.t.ident(0));
+            if !builtin_type(s.as_str()) && !reserved(s.as_str()) {
+                let mut npath: Vec<String> = Vec::new();
+                npath.push(s);
+                self.bump();
+                let mut k: usize = self.left();
+                while k > 0 && self.is_p("::") && self.t.kind(1) == 0
+                    decreases k,
+                {
+                    k = k - 1;
+                    self.bump();
+                    npath.push(text_of(self.t.ident(0)));
+                    self.bump();
+                }
+                let mut args: Vec<ast::Type> = Vec::new();
+                if self.eat_p("<") {
+                    let mut a: usize = self.left();
+                    while a > 0 && !self.is_p(">")
+                        decreases a,
+                    {
+                        a = a - 1;
+                        args.push(self.parse_type(d));
+                        if !self.eat_p(",") {
+                            a = 0;
+                        }
+                    }
+                    self.expect_p(">");
+                }
+                return ast::Type { kind: ast::TypeKind::Named(npath, args), span: lo.to(self.prev_span()) };
+            }
+            self.bump();
+            let mut kind: ast::TypeKind = ast::TypeKind::Error;
+            if s == "bool" {
+                kind = ast::TypeKind::Bool;
+            } else if s == "f64" {
+                kind = ast::TypeKind::F64;
+            } else if s == "char" {
+                kind = ast::TypeKind::Char;
+            } else if s == "str" {
+                kind = ast::TypeKind::Str;
+            } else {
+                match ast::int_of(s.as_str()) {
+                    None => { let msg: String = cat3("type `", s.as_str(), "` is not supported in milestone 1"); if s == "i128" { self.err_rep("E0402", lo, msg.as_str(), "use `i64`", "i64"); } else if s == "u128" { self.err_rep("E0402", lo, msg.as_str(), "use `u64`", "u64"); } else if s == "f32" { self.err_rep("E0402", lo, msg.as_str(), "use `f64`", "f64"); } else { self.err_fix("E0402", lo, msg.as_str(), "types: the integers i8..i64, isize, u8..u64, usize; f64, bool, char, (), [T; N], &[T], &mut [T], &str, String, Vec<T>, Box<T>, Option<T>, Result<T, E>, structs and enums"); } if self.is_p("<") { self.skip_angle(); } },
+                    Some(it) => { kind = ast::TypeKind::Int(it); },
+                }
+            }
+            ast::Type { kind: kind, span: lo.to(self.prev_span()) }
+        }
+
+        #[effects(alloc)]
+        fn parse_unary(self: &mut Parser, d: usize) -> Option<ast::Expr>
+            requires d <= 256,
+            decreases (256 - d) * 64 + 8,
+        {
+            if !self.enter(d) {
+                return None;
+            }
+            self.parse_unary_inner(d + 1)
+        }
+
+        #[effects(alloc)]
+        fn parse_unary_inner(self: &mut Parser, d: usize) -> Option<ast::Expr>
+            requires d <= 256,
+            decreases (256 - d) * 64 + 45,
+        {
+            let lo: source::Span = self.span();
+            if self.eat_p("-") {
+                let ne: ast::Expr = self.parse_unary(d)?;
+                let nspan: source::Span = lo.to(ne.span);
+                return Some(ast::Expr { kind: ast::ExprKind::Unary(ast::UnOp::Neg, Box::new(ne)), span: nspan });
+            }
+            if self.eat_p("!") {
+                let be: ast::Expr = self.parse_unary(d)?;
+                let bspan: source::Span = lo.to(be.span);
+                return Some(ast::Expr { kind: ast::ExprKind::Unary(ast::UnOp::Not, Box::new(be)), span: bspan });
+            }
+            if self.eat_p("*") {
+                let de: ast::Expr = self.parse_unary(d)?;
+                let dspan: source::Span = lo.to(de.span);
+                return Some(ast::Expr { kind: ast::ExprKind::Deref(Box::new(de)), span: dspan });
+            }
+            if self.eat_p("&") {
+                let mutable: bool = self.eat_kw("mut");
+                let re: ast::Expr = self.parse_unary(d)?;
+                let rspan: source::Span = lo.to(re.span);
+                return Some(ast::Expr { kind: ast::ExprKind::Ref(mutable, Box::new(re)), span: rspan });
+            }
+            if self.is_p("#") && self.t.is_p(1, "[") && self.t.is_kw(2, "trigger") {
+                self.bump();
+                self.bump();
+                self.bump();
+                self.expect_p("]")?;
+                let te: ast::Expr = self.parse_unary(d)?;
+                let tspan: source::Span = lo.to(te.span);
+                return Some(ast::Expr { kind: ast::ExprKind::Trigger(Box::new(te)), span: tspan });
+            }
+            self.parse_postfix(d)
+        }
+
+        #[summary("use a::b::c; (백로그 2V-15): 이름 하나는 검사기가 고쳐 쓰도록 남기고, 그 밖은 E0214")]
+        #[effects(alloc)]
+        fn parse_use(self: &mut Parser) -> Option<ast::UseItem> {
+            let lo: source::Span = self.span();
+            self.bump();
+            let mut path: Vec<ast::Ident> = Vec::new();
+            let mut n: usize = self.left();
+            while n > 0
+                decreases n,
+            {
+                n = n - 1;
+                match self.t.ident(0) {
+                    None => { n = 0; },
+                    Some(name) => { path.push(ast::Ident { name: name, span: self.span() }); self.bump(); if self.is_p("::") { self.bump(); } else { n = 0; } },
+                }
+            }
+            if self.is_p(";") && path.len() >= 2 {
+                let hi: source::Span = self.span();
+                self.bump();
+                return Some(ast::UseItem { path: path, span: lo.to(hi) });
+            }
+            self.err_fix("E0214", lo, "only a single name can be imported, and names are written in full", "write every name of another unit by its full path, e.g. `unit::f(..)`");
+            let mut depth: usize = 0;
+            let mut m: usize = self.left();
+            while m > 0
+                decreases m,
+            {
+                m = m - 1;
+                if self.eof() {
+                    return None;
+                }
+                if self.is_p("{") {
+                    depth = depth.saturating_add(1);
+                } else if self.is_p("}") {
+                    if depth == 0 {
+                        return None;
+                    }
+                    depth = depth - 1;
+                } else if self.is_p(";") && depth == 0 {
+                    self.bump();
+                    return None;
+                }
+                self.bump();
+            }
+            None
+        }
+
+        #[summary("where 절 (Rust 습관, E0240): 경계는 가리키는 타입 매개변수에 붙고, 수정이 거기에 써 넣는다 (정규형, 백로그 2T-03). gs는 앞에서 읽은 매개변수이고 수정은 그 <부터 절의 끝까지를 다시 쓴다")]
+        #[effects(alloc)]
+        fn parse_where(self: &mut Parser, gs: &mut Vec<ast::TypeParam>, gspan: Option<source::Span>, d: usize) -> ()
+            requires d <= 256,
+        {
+            if !self.is_kw("where") {
+                return;
+            }
+            let lo: source::Span = self.bump();
+            let mut ok: bool = true;
+            let mut n: usize = self.left();
+            while n > 0
+                decreases n,
+            {
+                n = n - 1;
+                if self.is_p("{") || self.is_p(";") || self.is_kw("requires") || self.is_kw("ensures") || self.is_kw("decreases") {
+                    n = 0;
+                } else {
+                    let ty: ast::Type = self.parse_type(d);
+                    let name: Option<String> = simple_name(&ty);
+                    let mut bounds: Vec<Vec<ast::Ident>> = Vec::new();
+                    match self.expect_p(":") {
+                        None => { return; },
+                        Some(c) => {},
+                    }
+                    let mut m: usize = self.left();
+                    while m > 0
+                        decreases m,
+                    {
+                        m = m - 1;
+                        let path: Vec<ast::Ident> = self.bound_path();
+                        if path.len() == 0 {
+                            self.err_expected("trait bound");
+                            return;
+                        }
+                        bounds.push(path);
+                        if !self.eat_p("+") {
+                            m = 0;
+                        }
+                    }
+                    let g: usize = match name {
+                        None => gs.len(),
+                        Some(nm) => param_named(gs.as_slice(), nm.as_str()),
+                    };
+                    if g < gs.len() {
+                        add_bounds(gs, g, bounds);
+                    } else {
+                        ok = false;
+                    }
+                    if !self.eat_p(",") {
+                        n = 0;
+                    }
+                }
+            }
+            let span: source::Span = lo.to(self.prev_span());
+            let d0: diag::Diag = diag::new("E0240", span, "a `where` clause is not used: bounds are written next to the type parameter");
+            match gspan {
+                None => self.diags.push(diag::fix(d0, "write each bound next to its type parameter: `<T: Copy + Ord>`; bounds on other types are not supported", None)),
+                Some(g2) => { if ok { let between: String = lexer::cut(self.text.as_str(), g2.hi as usize, lo.lo as usize); let mut r: String = fmt::generics_str(gs.as_slice()); r.push_str(trim_end(between.as_str()).as_str()); let d1: diag::Diag = diag::fix(d0, "write each bound next to its type parameter", Some(r)); self.diags.push(diag::Diag { code: d1.code, span: g2.to(span), message: d1.message, fix: d1.fix, obligation: d1.obligation, bounded: d1.bounded }); } else { self.diags.push(diag::fix(d0, "write each bound next to its type parameter: `<T: Copy + Ord>`; bounds on other types are not supported", None)); } },
+            }
+        }
+
+        #[effects(alloc)]
+        fn parse_while_inner(self: &mut Parser, label: Option<ast::Ident>, d: usize) -> Option<ast::Stmt>
+            requires d <= 256,
+            decreases (256 - d) * 64 + 34,
+        {
+            let lo: source::Span = self.bump();
+            if self.is_kw("let") {
+                let wsp: source::Span = lo.to(self.span());
+                self.err_fix("E0226", wsp, "`while let` is not allowed", "loop with `while` on a condition and `match` the value inside");
+                self.recover_loop_body();
+                return None;
+            }
+            let cond: ast::Expr = self.cond_expr(d)?;
+            let mut invariants: Vec<ast::Expr> = Vec::new();
+            let mut measure: Option<ast::Expr> = None;
+            self.invariant_lists(&mut invariants, false, d)?;
+            let mut has: bool = false;
+            if self.eat_kw("decreases") {
+                measure = Some(self.parse_expr(d)?);
+                has = true;
+                self.eat_p(",");
+            }
+            let lead: Lead = self.body_clauses(lo, &mut invariants, has, d)?;
+            let body: ast::Block = match lead.open {
+                None => self.parse_block(d)?,
+                Some(open) => self.parse_block_rest(open, d)?,
+            };
+            match lead.measure {
+                None => {},
+                Some(m) => { measure = Some(m); },
+            }
+            let span: source::Span = lo.to(body.span);
+            Some(ast::Stmt::While(ast::While { label: label, cond: cond, invariants: invariants, measure: measure, body: body, span: span }))
+        }
+
+        #[summary("이름과 그 뒤의 ::이름들을 한 글로. 이름이 아니면 없음")]
+        #[effects(alloc)]
+        fn plain_path(self: &mut Parser) -> Option<String> {
+            let mut name: String = self.t.ident(0)?;
+            self.bump();
+            let mut n: usize = self.left();
+            while n > 0 && self.is_p("::") && self.t.kind(1) == 0
+                decreases n,
+            {
+                n = n - 1;
+                self.bump();
+                name.push_str("::");
+                name.push_str(text_of(self.t.ident(0)).as_str());
+                self.bump();
+            }
+            Some(name)
+        }
+
+        #[effects(pure)]
+        fn prev_span(self: &Parser) -> source::Span {
+            self.t.prev_span()
+        }
+
+        #[summary("for 범위의 끝: 그 뒤의 ..는 루프의 것이다")]
+        #[effects(alloc)]
+        fn range_bound(self: &mut Parser, d: usize) -> Option<ast::Expr>
+            requires d <= 256,
+            decreases (256 - d) * 64 + 21,
+        {
+            let outer: bool = self.no_struct;
+            self.no_struct = true;
+            let r: Option<ast::Expr> = self.parse_no_range(d);
+            self.no_struct = outer;
+            r
+        }
+
+        #[effects(pure)]
+        fn recover_attr(self: &mut Parser) -> () {
+            let mut n: usize = self.left();
+            while n > 0 && !self.is_p("]") && !self.eof()
+                decreases n,
+            {
+                n = n - 1;
+                self.bump();
+            }
+            self.eat_p("]");
+        }
+
+        #[summary("단위 안에서 회복: 다음 항목의 시작이나 닫는 } 앞에서 멈춘다")]
+        #[effects(alloc)]
+        fn recover_item(self: &mut Parser) -> () {
+            let mut depth: usize = 0;
+            let mut n: usize = self.left();
+            while n > 0
+                decreases n,
+            {
+                n = n - 1;
+                if self.eof() {
+                    return;
+                }
+                let mut step: bool = true;
+                if self.is_p("{") {
+                    depth = depth.saturating_add(1);
+                } else if self.is_p("}") {
+                    if depth == 0 {
+                        return;
+                    }
+                    depth = depth - 1;
+                    if depth == 0 {
+                        self.bump();
+                        if self.starts_item() || self.is_p("}") {
+                            return;
+                        }
+                        step = false;
+                    }
+                } else if depth == 0 && self.starts_item() {
+                    return;
+                }
+                if step {
+                    self.bump();
+                }
+            }
+        }
+
+        #[summary("for/loop/match 뒤에, 몸 블록까지 건너뛴다")]
+        #[effects(pure)]
+        fn recover_loop_body(self: &mut Parser) -> () {
+            let mut n: usize = self.left();
+            while n > 0 && !self.is_p("{") && !self.is_p("}") && !self.eof()
+                decreases n,
+            {
+                n = n - 1;
+                self.bump();
+            }
+            if self.is_p("{") {
+                self.skip_group();
+            }
+        }
+
+        #[summary("블록 안에서 회복: 지금 깊이의 ; 뒤나 } 앞에서 멈춘다")]
+        #[effects(pure)]
+        fn recover_stmt(self: &mut Parser) -> () {
+            let mut depth: usize = 0;
+            let mut n: usize = self.left();
+            while n > 0
+                decreases n,
+            {
+                n = n - 1;
+                if self.eof() {
+                    return;
+                }
+                if self.is_p("{") || self.is_p("(") || self.is_p("[") {
+                    depth = depth.saturating_add(1);
+                } else if self.is_p("}") {
+                    if depth == 0 {
+                        return;
+                    }
+                    depth = depth - 1;
+                } else if self.is_p(")") || self.is_p("]") {
+                    depth = depth.saturating_sub(1);
+                } else if self.is_p(";") && depth == 0 {
+                    self.bump();
+                    return;
+                }
+                self.bump();
+            }
+        }
+
+        #[summary("BMB에 자리가 없는 패턴 꼴의 E0232. 갈래가 남은 변형을 덮어 match가 다른 것을 알리지 않는다")]
+        #[effects(alloc)]
+        fn rejected_pat(self: &mut Parser, lo: source::Span, msg: &str, fix: &str) -> ast::Pat {
+            self.skip_to_arrow();
+            let span: source::Span = lo.to(self.prev_span());
+            self.err_fix("E0232", span, msg, fix);
+            let mut path: Vec<ast::Ident> = Vec::new();
+            path.push(ast::Ident { name: String::from("_"), span: span });
+            ast::Pat { path: path, binds: Vec::new(), parens: false, origin: ast::PatOrigin::Rejected, span: span }
+        }
+
+        #[summary("Rust 습관 (백로그 2D-29): crate::q::g, super::q::g, self::g. 경로는 뿌리부터 단위를 가리키므로 (q::g) 접두사는 E0242이고 뿌리 경로가 그 대체다. 경로는 대체가 만들 대로 이어 읽는다")]
+        #[effects(alloc)]
+        fn relative_path_prefix(self: &mut Parser) -> Vec<ast::Ident> {
+            let mut out: Vec<ast::Ident> = Vec::new();
+            let kw: String = text_of(self.t.ident(0));
+            if !(kw == "crate" || kw == "super" || kw == "self") || !self.t.is_p(1, "::") {
+                return out;
+            }
+            let at: source::Span = self.bump();
+            self.bump();
+            let mut count: usize = 0;
+            if kw == "super" {
+                count = self.units.len().saturating_sub(1);
+            } else if kw == "self" {
+                count = self.units.len();
+            }
+            let mut replacement: String = String::new();
+            let mut k: usize = 0;
+            while k < count && k < self.units.len()
+                decreases count - k,
+            {
+                if k > 0 {
+                    replacement.push_str("::");
+                }
+                replacement.push_str(self.units[k].as_str());
+                k = k + 1;
+            }
+            if count > 0 {
+                replacement.push_str("::");
+            }
+            let shown: String = if replacement.len() == 0 {
+                String::from("nothing")
+            } else {
+                tick(replacement.as_str())
+            };
+            let span: source::Span = at.to(self.prev_span());
+            let msg: String = cat3("`", kw.as_str(), "::` is not used: a path names a unit from the root (`unit::f`)");
+            let mut fx: String = cat3("replace `", kw.as_str(), "::` with ");
+            fx.push_str(shown.as_str());
+            self.diags.push(diag::fix(diag::new("E0242", span, msg.as_str()), fx.as_str(), Some(replacement)));
+            let mut j: usize = 0;
+            while j < count && j < self.units.len()
+                decreases count - j,
+            {
+                out.push(ast::Ident { name: self.units[j].clone(), span: span });
+                j = j + 1;
+            }
+            out
+        }
+
+        #[summary("지금의 절 키워드가 그 목록 앞의 것을 되풀이한다 (invariant a, invariant b,: Dafny의 꼴): 목록이 이어진다 (입력 별칭, ADR-0095 B5). 수정은 키워드를 지우고 목록에 필요한 쉼표를 쓴다")]
+        #[effects(alloc)]
+        fn repeated_keyword(self: &mut Parser) -> () {
+            let kw: source::Span = self.span();
+            let prev: source::Span = self.prev_span();
+            let comma: bool = self.t.prev_is_p(",");
+            let span: source::Span = source::Span { file: kw.file, lo: prev.hi, hi: kw.hi };
+            let mut msg: String = self.t.describe();
+            msg.push_str(" repeated: one keyword lists the clauses");
+            let rep: String = if comma {
+                String::new()
+            } else {
+                String::from(",")
+            };
+            self.diags.aliases.push(diag::fix(diag::new("W0912", span, msg.as_str()), "list the clauses after one keyword", Some(rep)));
+        }
+
+        #[summary("여기의 <<나 >>: 붙은 두 < 또는 > 토큰. 렉서가 떼어 두어 Vec<Vec<i64>>가 타입 인자 목록 둘을 닫는다")]
+        #[effects(pure)]
+        fn shift_op(self: &Parser) -> Option<ast::BinOp> {
+            if !self.t.joined(0) {
+                return None;
+            }
+            if self.t.is_p(0, "<") && self.t.is_p(1, "<") {
+                Some(ast::BinOp::Shl)
+            } else if self.t.is_p(0, ">") && self.t.is_p(1, ">") {
+                Some(ast::BinOp::Shr)
+            } else {
+                None
+            }
+        }
+
+        #[effects(pure)]
+        fn skip_angle(self: &mut Parser) -> () {
+            let mut depth: usize = 0;
+            let mut n: usize = self.left();
+            while n > 0
+                decreases n,
+            {
+                n = n - 1;
+                if self.is_p("<") {
+                    depth = depth.saturating_add(1);
+                } else if self.is_p(">") {
+                    depth = depth.saturating_sub(1);
+                    if depth == 0 {
+                        self.bump();
+                        return;
+                    }
+                } else if self.eof() || self.is_p("{") || self.is_p(";") {
+                    return;
+                }
+                self.bump();
+            }
+        }
+
+        #[summary("이미 연 매개변수 목록을 닫는 >까지 건너뛴다")]
+        #[effects(pure)]
+        fn skip_angle_from(self: &mut Parser) -> () {
+            let mut depth: usize = 1;
+            let mut n: usize = self.left();
+            while n > 0
+                decreases n,
+            {
+                n = n - 1;
+                if self.is_p("<") {
+                    depth = depth.saturating_add(1);
+                } else if self.is_p(">") {
+                    depth = depth.saturating_sub(1);
+                    if depth == 0 {
+                        self.bump();
+                        return;
+                    }
+                } else if self.eof() || self.is_p("{") || self.is_p(";") || self.is_p("(") {
+                    return;
+                }
+                self.bump();
+            }
+        }
+
+        #[summary("지금 토큰에서 시작하는 균형 잡힌 괄호 묶음을 건너뛴다")]
+        #[effects(pure)]
+        fn skip_group(self: &mut Parser) -> () {
+            let which: u8 = if self.is_p("(") {
+                1
+            } else if self.is_p("[") {
+                2
+            } else if self.is_p("{") {
+                3
+            } else {
+                0
+            };
+            if which == 0 {
+                return;
+            }
+            let mut depth: usize = 0;
+            let mut n: usize = self.left();
+            while n > 0
+                decreases n,
+            {
+                n = n - 1;
+                let open: bool = which == 1 && self.is_p("(") || which == 2 && self.is_p("[") || which == 3 && self.is_p("{");
+                let close: bool = which == 1 && self.is_p(")") || which == 2 && self.is_p("]") || which == 3 && self.is_p("}");
+                if open {
+                    depth = depth.saturating_add(1);
+                } else if close {
+                    depth = depth.saturating_sub(1);
+                    if depth == 0 {
+                        self.bump();
+                        return;
+                    }
+                } else if self.eof() {
+                    return;
+                }
+                self.bump();
+            }
+        }
+
+        #[summary("패턴의 나머지를 갈래의 => 앞까지 건너뛴다")]
+        #[effects(pure)]
+        fn skip_to_arrow(self: &mut Parser) -> () {
+            let mut n: usize = self.left();
+            while n > 0 && !self.is_p("=>") && !self.is_p("}") && !self.eof()
+                decreases n,
+            {
+                n = n - 1;
+                if self.is_p("(") || self.is_p("[") || self.is_p("{") {
+                    self.skip_group();
+                } else {
+                    self.bump();
+                }
+            }
+        }
+
+        #[effects(pure)]
+        fn span(self: &Parser) -> source::Span {
+            self.t.span(0)
+        }
+
+        #[effects(alloc)]
+        fn starts_item(self: &Parser) -> bool {
+            if self.is_p("#") {
+                return true;
+            }
+            match self.t.ident(0) {
+                None => false,
+                Some(s) => s == "fn" || s == "spec" || s == "proof" || s == "mod" || s == "pub" || s == "struct" || s == "enum" || s == "impl" || s == "trait" || unsupported_item(s.as_str()),
+            }
+        }
+
+        #[summary("Rust의 unsafe (ADR-0029 §7): 증명할 수 없는 몸은 근거를 붙인 #[external_body] 함수다")]
+        #[effects(alloc)]
+        fn unsafe_habit(self: &mut Parser, sp: source::Span) -> () {
+            self.err_fix("E0215", sp, "`unsafe` is not used: BMB code is proved", "a body that cannot be proved goes in its own function marked `#[external_body]`, with a `#[rationale(kind = .., \"why\")]` before it");
+        }
+    }
+
+    #[summary("문장이거나 블록의 꼬리 식")]
+    enum StmtOrTail { Stmt(ast::Stmt), Tail(ast::Expr) }
+
+    #[summary("토큰 열과 읽는 자리. 마지막 토큰은 Eof이고 자리는 그것을 넘지 않는다")]
+    #[invariant(inside)]
+    struct Toks { items: Vec<lexer::Token>, pos: usize }
+
+    impl Toks {
+        #[summary("자리에서 n째 토큰의 색인. 끝을 넘으면 마지막 토큰")]
+        #[effects(pure)]
+        #[uses(inside)]
+        fn at(self: &Toks, n: usize) -> (r: usize)
+            ensures r < self.items.len(),
+        {
+            let i: usize = self.pos.saturating_add(n);
+            if i < self.items.len() {
+                i
+            } else {
+                self.items.len() - 1
+            }
+        }
+
+        #[summary("자리를 to로 되돌린다")]
+        #[effects(pure)]
+        #[uses(inside)]
+        fn back(self: &mut Toks, to: usize) -> () {
+            if to < self.items.len() {
+                self.pos = to;
+            }
+        }
+
+        #[summary("지금 토큰의 자리를 돌려주고 다음으로 간다. Eof에서는 머문다")]
+        #[effects(pure)]
+        #[uses(inside)]
+        fn bump(self: &mut Toks) -> source::Span {
+            let sp: source::Span = self.items[self.pos].span;
+            if self.pos + 1 < self.items.len() {
+                self.pos = self.pos + 1;
+            }
+            sp
+        }
+
+        #[summary("오류 메시지에 쓰는 지금 토큰의 이름")]
+        #[effects(alloc)]
+        #[uses(inside)]
+        fn describe(self: &Toks) -> String {
+            match &self.items[self.pos].tok {
+                lexer::Tok::Ident(s) => tick(s.as_str()),
+                lexer::Tok::Int(v, r) => tick(ast::radix_text(*r, *v).as_str()),
+                lexer::Tok::Float(f) => tick(lexer::float_text(*f).as_str()),
+                lexer::Tok::Str(s) => String::from("string literal"),
+                lexer::Tok::Char(c) => String::from("character literal"),
+                lexer::Tok::Byte(b) => String::from("byte literal"),
+                lexer::Tok::Bytes(bs) => String::from("byte string literal"),
+                lexer::Tok::P(p) => tick(p.as_str()),
+                lexer::Tok::Label(l) => cat3("`'", l.as_str(), "`"),
+                lexer::Tok::Eof => String::from("end of file"),
+            }
+        }
+
+        #[summary("n째 토큰이 이름이면 그 글")]
+        #[effects(alloc)]
+        fn ident(self: &Toks, n: usize) -> Option<String> {
+            match &self.items[self.at(n)].tok {
+                lexer::Tok::Ident(s) => Some(s.clone()),
+                lexer::Tok::Int(v, r) => None,
+                lexer::Tok::Float(f) => None,
+                lexer::Tok::Str(s) => None,
+                lexer::Tok::Char(c) => None,
+                lexer::Tok::Byte(b) => None,
+                lexer::Tok::Bytes(bs) => None,
+                lexer::Tok::P(p) => None,
+                lexer::Tok::Label(l) => None,
+                lexer::Tok::Eof => None,
+            }
+        }
+
+        #[summary("지금 토큰이 정수 리터럴이면 그 값")]
+        #[effects(pure)]
+        #[uses(inside)]
+        fn int(self: &Toks) -> Option<wide::U128> {
+            match &self.items[self.pos].tok {
+                lexer::Tok::Ident(s) => None,
+                lexer::Tok::Int(v, r) => Some(*v),
+                lexer::Tok::Float(f) => None,
+                lexer::Tok::Str(s) => None,
+                lexer::Tok::Char(c) => None,
+                lexer::Tok::Byte(b) => None,
+                lexer::Tok::Bytes(bs) => None,
+                lexer::Tok::P(p) => None,
+                lexer::Tok::Label(l) => None,
+                lexer::Tok::Eof => None,
+            }
+        }
+
+        #[summary("n째 토큰이 이름 k인가")]
+        #[effects(pure)]
+        fn is_kw(self: &Toks, n: usize, k: &str) -> bool {
+            match &self.items[self.at(n)].tok {
+                lexer::Tok::Ident(s) => s == k,
+                lexer::Tok::Int(v, r) => false,
+                lexer::Tok::Float(f) => false,
+                lexer::Tok::Str(s) => false,
+                lexer::Tok::Char(c) => false,
+                lexer::Tok::Byte(b) => false,
+                lexer::Tok::Bytes(bs) => false,
+                lexer::Tok::P(p) => false,
+                lexer::Tok::Label(l) => false,
+                lexer::Tok::Eof => false,
+            }
+        }
+
+        #[summary("n째 토큰이 구두점 p인가")]
+        #[effects(pure)]
+        fn is_p(self: &Toks, n: usize, p: &str) -> bool {
+            match &self.items[self.at(n)].tok {
+                lexer::Tok::Ident(s) => false,
+                lexer::Tok::Int(v, r) => false,
+                lexer::Tok::Float(f) => false,
+                lexer::Tok::Str(s) => false,
+                lexer::Tok::Char(c) => false,
+                lexer::Tok::Byte(b) => false,
+                lexer::Tok::Bytes(bs) => false,
+                lexer::Tok::P(q) => q == p,
+                lexer::Tok::Label(l) => false,
+                lexer::Tok::Eof => false,
+            }
+        }
+
+        #[summary("n째 토큰과 그 다음 토큰이 붙어 있는가")]
+        #[effects(pure)]
+        fn joined(self: &Toks, n: usize) -> bool {
+            self.items[self.at(n)].span.hi == self.items[self.at(n.saturating_add(1))].span.lo
+        }
+
+        #[summary("n째 토큰의 종류: 0 이름, 1 정수, 2 실수, 3 문자열, 4 문자, 5 바이트, 6 바이트 문자열, 7 구두점, 8 레이블, 9 끝")]
+        #[effects(pure)]
+        fn kind(self: &Toks, n: usize) -> u8 {
+            match &self.items[self.at(n)].tok {
+                lexer::Tok::Ident(s) => 0,
+                lexer::Tok::Int(v, r) => 1,
+                lexer::Tok::Float(f) => 2,
+                lexer::Tok::Str(s) => 3,
+                lexer::Tok::Char(c) => 4,
+                lexer::Tok::Byte(b) => 5,
+                lexer::Tok::Bytes(bs) => 6,
+                lexer::Tok::P(p) => 7,
+                lexer::Tok::Label(l) => 8,
+                lexer::Tok::Eof => 9,
+            }
+        }
+
+        #[summary("지금 토큰이 레이블이면 그 이름")]
+        #[effects(alloc)]
+        #[uses(inside)]
+        fn label(self: &Toks) -> Option<String> {
+            match &self.items[self.pos].tok {
+                lexer::Tok::Ident(s) => None,
+                lexer::Tok::Int(v, r) => None,
+                lexer::Tok::Float(f) => None,
+                lexer::Tok::Str(s) => None,
+                lexer::Tok::Char(c) => None,
+                lexer::Tok::Byte(b) => None,
+                lexer::Tok::Bytes(bs) => None,
+                lexer::Tok::P(p) => None,
+                lexer::Tok::Label(l) => Some(l.clone()),
+                lexer::Tok::Eof => None,
+            }
+        }
+
+        #[summary("지금 토큰이 리터럴이면 그 식")]
+        #[effects(alloc)]
+        #[uses(inside)]
+        fn literal(self: &Toks) -> Option<ast::ExprKind> {
+            match &self.items[self.pos].tok {
+                lexer::Tok::Ident(s) => None,
+                lexer::Tok::Int(v, r) => Some(ast::ExprKind::Int(*v, *r)),
+                lexer::Tok::Float(f) => Some(ast::ExprKind::Float(*f)),
+                lexer::Tok::Str(s) => Some(ast::ExprKind::StrLit(s.clone())),
+                lexer::Tok::Char(c) => Some(ast::ExprKind::CharLit(*c)),
+                lexer::Tok::Byte(b) => Some(ast::ExprKind::ByteLit(*b)),
+                lexer::Tok::Bytes(bs) => Some(ast::ExprKind::ByteStr(bs.clone())),
+                lexer::Tok::P(p) => None,
+                lexer::Tok::Label(l) => None,
+                lexer::Tok::Eof => None,
+            }
+        }
+
+        #[summary("직전 토큰이 구두점 p인가")]
+        #[effects(pure)]
+        #[uses(inside)]
+        fn prev_is_p(self: &Toks, p: &str) -> bool {
+            if self.pos == 0 {
+                return false;
+            }
+            match &self.items[self.pos - 1].tok {
+                lexer::Tok::Ident(s) => false,
+                lexer::Tok::Int(v, r) => false,
+                lexer::Tok::Float(f) => false,
+                lexer::Tok::Str(s) => false,
+                lexer::Tok::Char(c) => false,
+                lexer::Tok::Byte(b) => false,
+                lexer::Tok::Bytes(bs) => false,
+                lexer::Tok::P(q) => q == p,
+                lexer::Tok::Label(l) => false,
+                lexer::Tok::Eof => false,
+            }
+        }
+
+        #[summary("직전 토큰의 자리")]
+        #[effects(pure)]
+        #[uses(inside)]
+        fn prev_span(self: &Toks) -> source::Span {
+            if self.pos == 0 {
+                self.items[0].span
+            } else {
+                self.items[self.pos - 1].span
+            }
+        }
+
+        #[summary("n째 토큰의 자리")]
+        #[effects(pure)]
+        fn span(self: &Toks, n: usize) -> source::Span {
+            self.items[self.at(n)].span
+        }
+
+        #[summary("지금 토큰이 문자열 리터럴이면 그 글")]
+        #[effects(alloc)]
+        #[uses(inside)]
+        fn string(self: &Toks) -> Option<String> {
+            match &self.items[self.pos].tok {
+                lexer::Tok::Ident(s) => None,
+                lexer::Tok::Int(v, r) => None,
+                lexer::Tok::Float(f) => None,
+                lexer::Tok::Str(s) => Some(s.clone()),
+                lexer::Tok::Char(c) => None,
+                lexer::Tok::Byte(b) => None,
+                lexer::Tok::Bytes(bs) => None,
+                lexer::Tok::P(p) => None,
+                lexer::Tok::Label(l) => None,
+                lexer::Tok::Eof => None,
+            }
+        }
+    }
+
+    #[summary("gs[g]에 경계들을 더한다: 이미 있는 것(같은 글)은 빼고")]
+    #[effects(alloc)]
+    fn add_bounds(gs: &mut Vec<ast::TypeParam>, g: usize, bounds: Vec<Vec<ast::Ident>>) -> ()
+        requires g < gs.len(),
+    {
+        let mut rest: Vec<Vec<ast::Ident>> = bounds;
+        let mut flipped: Vec<Vec<ast::Ident>> = Vec::new();
+        let mut dup: Vec<Vec<ast::Ident>> = Vec::new();
+        let mut n: usize = rest.len();
+        while n > 0
+            decreases n,
+        {
+            n = n - 1;
+            match rest.pop() {
+                None => {},
+                Some(b) => flipped.push(b),
+            }
+        }
+        let mut m: usize = flipped.len();
+        while m > 0
+            invariant g < gs.len(),
+            decreases m,
+        {
+            m = m - 1;
+            match flipped.pop() {
+                None => {},
+                Some(b2) => { let want: String = path_text(b2.as_slice()); let mut seen: bool = false; let mut i: usize = 0; while i < gs[g].bounds.len() invariant g < gs.len(), decreases gs[g].bounds.len() - i, { if path_text(gs[g].bounds[i].as_slice()) == want { seen = true; } i = i + 1; } if !seen { gs[g].bounds.push(b2); } else { dup.push(b2); } },
+            }
+        }
+    }
+
+    #[summary("op로 묶은 이항 식: 자리는 두 피연산자를 덮는다")]
+    #[effects(alloc)]
+    fn bin(op: ast::BinOp, l: ast::Expr, r: ast::Expr) -> ast::Expr {
+        let span: source::Span = l.span.to(r.span);
+        ast::Expr { kind: ast::ExprKind::Binary(op, Box::new(l), Box::new(r)), span: span }
+    }
+
+    #[summary("if, 블록, match인가")]
+    #[effects(pure)]
+    fn block_like(e: &ast::Expr) -> bool {
+        let t: u8 = ast::tag(&e.kind);
+        t == 15 || t == 16 || t == 27
+    }
+
+    #[summary("언어의 타입 이름(쓰지 않는 Rust의 것 포함)인가")]
+    #[effects(pure)]
+    fn builtin_type(s: &str) -> bool {
+        s == "i64" || s == "u64" || s == "usize" || s == "bool" || s == "i8" || s == "i16" || s == "i32" || s == "i128" || s == "isize" || s == "u8" || s == "u16" || s == "u32" || s == "u128" || s == "f32" || s == "f64" || s == "char" || s == "str"
+    }
+
+    #[summary("as의 대상: 정수 타입이면 0이고 이름을 name에 쓴다. f64면 1, 그 밖은 2")]
+    #[effects(alloc)]
+    fn cast_target(t: &ast::Type, name: &mut String) -> u8 {
+        match &t.kind {
+            ast::TypeKind::Int(it) => { ast::push_int_name(name, it); 0 },
+            ast::TypeKind::F64 => 1,
+            ast::TypeKind::Bool => 2,
+            ast::TypeKind::Unit => 2,
+            ast::TypeKind::Char => 2,
+            ast::TypeKind::String => 2,
+            ast::TypeKind::Str => 2,
+            ast::TypeKind::Array(e, n) => 2,
+            ast::TypeKind::ArrayN(e, p) => 2,
+            ast::TypeKind::Slice(e) => 2,
+            ast::TypeKind::Ref(m, e) => 2,
+            ast::TypeKind::Named(p, a) => 2,
+            ast::TypeKind::Vec(e) => 2,
+            ast::TypeKind::Box(e) => 2,
+            ast::TypeKind::Param(s) => 2,
+            ast::TypeKind::Never => 2,
+            ast::TypeKind::Error => 2,
+        }
+    }
+
+    #[effects(alloc)]
+    fn cat3(a: &str, b: &str, c: &str) -> String {
+        let mut s: String = String::from(a);
+        s.push_str(b);
+        s.push_str(c);
+        s
+    }
+
+    #[summary("pos가 든 줄의 들여쓰기(줄 처음의 빈칸들)")]
+    #[effects(alloc)]
+    fn indent_at(text: &str, pos: usize) -> String {
+        let mut line: usize = 0;
+        if pos <= text.len() && text.is_char_boundary(pos) {
+            let mut i: usize = pos;
+            while i > 0 && line == 0
+                invariant i <= text.len(),
+                decreases i,
+            {
+                i = i - 1;
+                if text.as_bytes()[i] == 10 {
+                    line = i + 1;
+                    i = 0;
+                }
+            }
+        }
+        let mut out: String = String::new();
+        let mut j: usize = line;
+        while j < text.len() && text.as_bytes()[j] == 32
+            decreases text.len() - j,
+        {
+            out.push(' ');
+            j = j + 1;
+        }
+        out
+    }
+
+    spec fn inside(t: &Toks) -> bool {
+        t.pos < t.items.len()
+    }
+
+    #[summary("이름 붙은 타입이면 그 경로와 인자")]
+    #[effects(pure)]
+    fn into_named(t: ast::Type) -> Option<NamedTy> {
+        match t.kind {
+            ast::TypeKind::Int(it) => None,
+            ast::TypeKind::F64 => None,
+            ast::TypeKind::Bool => None,
+            ast::TypeKind::Unit => None,
+            ast::TypeKind::Char => None,
+            ast::TypeKind::String => None,
+            ast::TypeKind::Str => None,
+            ast::TypeKind::Array(e, n) => None,
+            ast::TypeKind::ArrayN(e, p) => None,
+            ast::TypeKind::Slice(e) => None,
+            ast::TypeKind::Ref(m, e) => None,
+            ast::TypeKind::Named(p, a) => Some(NamedTy { path: p, args: a }),
+            ast::TypeKind::Vec(e) => None,
+            ast::TypeKind::Box(e) => None,
+            ast::TypeKind::Param(s) => None,
+            ast::TypeKind::Never => None,
+            ast::TypeKind::Error => None,
+        }
+    }
+
+    #[summary("글의 길이를 u32로. 소스는 4GiB보다 작다 (source::small)")]
+    #[effects(pure)]
+    fn len32(s: &str) -> u32 {
+        if s.len() < 4294967295 {
+            s.len() as u32
+        } else {
+            4294967295
+        }
+    }
+
+    #[summary("기대한 것이 토큰 하나(`;`, `)`, ..)인가: 역따옴표로 싸였고 빈칸이 없다")]
+    #[effects(pure)]
+    fn one_token(what: &str) -> bool {
+        let n: usize = what.len();
+        if n == 0 || what.as_bytes()[0] != 96 || what.as_bytes()[n - 1] != 96 {
+            return false;
+        }
+        let mut i: usize = 0;
+        while i < n
+            decreases n - i,
+        {
+            if what.as_bytes()[i] == 32 {
+                return false;
+            }
+            i = i + 1;
+        }
+        true
+    }
+
+    #[summary("gs에서 이름이 name인 매개변수의 자리. 없으면 gs의 길이")]
+    #[effects(pure)]
+    fn param_named(gs: &[ast::TypeParam], name: &str) -> (r: usize)
+        ensures r <= gs.len(),
+    {
+        let mut i: usize = 0;
+        while i < gs.len()
+            invariant i <= gs.len(),
+            decreases gs.len() - i,
+        {
+            if gs[i].name.name == name {
+                return i;
+            }
+            i = i + 1;
+        }
+        gs.len()
+    }
+
+    #[summary("토큰들에서 프로그램을 읽는다. 진단은 diags에 더한다")]
+    #[effects(alloc)]
+    #[uses(inside)]
+    fn parse(toks: Vec<lexer::Token>, diags: &mut diag::Diags, text: &str) -> ast::Program {
+        let mut items: Vec<lexer::Token> = toks;
+        if items.len() == 0 {
+            items.push(lexer::Token { tok: lexer::Tok::Eof, span: source::Span { file: 0, lo: 0, hi: 0 } });
+        }
+        let taken: diag::Diags = std::mem::replace(diags, diag::Diags { items: Vec::new(), aliases: Vec::new() });
+        let mut p: Parser = Parser { t: Toks { items: items, pos: 0 }, diags: taken, text: String::from(text), no_struct: false, impl_ty: None, decl_ok: false, generics_span: None, units: Vec::new(), lens: Vec::new(), in_ret: false };
+        let program: ast::Program = p.parse_program();
+        let back: diag::Diags = std::mem::replace(&mut p.diags, diag::Diags { items: Vec::new(), aliases: Vec::new() });
+        std::mem::replace(diags, back);
+        program
+    }
+
+    #[summary("경로의 글: 이름들을 ::로 이은 것")]
+    #[effects(alloc)]
+    fn path_text(p: &[ast::Ident]) -> String {
+        let mut s: String = String::new();
+        let mut i: usize = 0;
+        while i < p.len()
+            decreases p.len() - i,
+        {
+            if i > 0 {
+                s.push_str("::");
+            }
+            s.push_str(p[i].name.as_str());
+            i = i + 1;
+        }
+        s
+    }
+
+    #[summary("복합 대입이 두 번 가리켜도 되는 자리: 호출이 없다. f는 남은 깊이")]
+    #[effects(pure)]
+    fn plain_place(e: &ast::Expr, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return false;
+        }
+        match &e.kind {
+            ast::ExprKind::Int(iv, ir) => false,
+            ast::ExprKind::Float(fb) => false,
+            ast::ExprKind::ByteLit(by) => false,
+            ast::ExprKind::ByteStr(bys) => false,
+            ast::ExprKind::StrLit(st) => false,
+            ast::ExprKind::CharLit(ch) => false,
+            ast::ExprKind::Bool(bo) => false,
+            ast::ExprKind::Unit => false,
+            ast::ExprKind::Var(id) => true,
+            ast::ExprKind::Call(ca) => false,
+            ast::ExprKind::Method(me) => false,
+            ast::ExprKind::Index(ib, ii) => plain_place(&**ib, f - 1) && pure_expr(&**ii, f - 1),
+            ast::ExprKind::Unary(uo, ux) => false,
+            ast::ExprKind::Binary(bop, bl, br) => false,
+            ast::ExprKind::Ref(rm, rx) => false,
+            ast::ExprKind::If(ife) => false,
+            ast::ExprKind::Block(blk) => false,
+            ast::ExprKind::Array(ar) => false,
+            ast::ExprKind::Repeat(rp) => false,
+            ast::ExprKind::Old(ox) => false,
+            ast::ExprKind::Quant(qu) => false,
+            ast::ExprKind::Trigger(tx) => false,
+            ast::ExprKind::Closure(cl) => false,
+            ast::ExprKind::StructLit(sl) => false,
+            ast::ExprKind::Path(pa) => false,
+            ast::ExprKind::Deref(dx) => plain_place(&**dx, f - 1),
+            ast::ExprKind::Field(fx, fnm) => plain_place(&**fx, f - 1),
+            ast::ExprKind::Match(ma) => false,
+            ast::ExprKind::Return(rv) => false,
+            ast::ExprKind::Try(tr) => false,
+            ast::ExprKind::Loop(lp) => false,
+            ast::ExprKind::Break(bk) => false,
+            ast::ExprKind::Continue(co) => false,
+            ast::ExprKind::Range(rg) => false,
+            ast::ExprKind::Error => false,
+        }
+    }
+
+    #[summary("호출이 없는 식인가. f는 남은 깊이")]
+    #[effects(pure)]
+    fn pure_expr(e: &ast::Expr, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return false;
+        }
+        match &e.kind {
+            ast::ExprKind::Int(iv, ir) => true,
+            ast::ExprKind::Float(fb) => false,
+            ast::ExprKind::ByteLit(by) => true,
+            ast::ExprKind::ByteStr(bys) => false,
+            ast::ExprKind::StrLit(st) => false,
+            ast::ExprKind::CharLit(ch) => true,
+            ast::ExprKind::Bool(bo) => true,
+            ast::ExprKind::Unit => false,
+            ast::ExprKind::Var(id) => true,
+            ast::ExprKind::Call(ca) => false,
+            ast::ExprKind::Method(me) => false,
+            ast::ExprKind::Index(ib, ii) => pure_expr(&**ib, f - 1) && pure_expr(&**ii, f - 1),
+            ast::ExprKind::Unary(uo, ux) => pure_expr(&**ux, f - 1),
+            ast::ExprKind::Binary(bop, bl, br) => pure_expr(&**bl, f - 1) && pure_expr(&**br, f - 1),
+            ast::ExprKind::Ref(rm, rx) => false,
+            ast::ExprKind::If(ife) => false,
+            ast::ExprKind::Block(blk) => false,
+            ast::ExprKind::Array(ar) => false,
+            ast::ExprKind::Repeat(rp) => false,
+            ast::ExprKind::Old(ox) => false,
+            ast::ExprKind::Quant(qu) => false,
+            ast::ExprKind::Trigger(tx) => false,
+            ast::ExprKind::Closure(cl) => false,
+            ast::ExprKind::StructLit(sl) => false,
+            ast::ExprKind::Path(pa) => true,
+            ast::ExprKind::Deref(dx) => pure_expr(&**dx, f - 1),
+            ast::ExprKind::Field(fx, fnm) => pure_expr(&**fx, f - 1),
+            ast::ExprKind::Match(ma) => false,
+            ast::ExprKind::Return(rv) => false,
+            ast::ExprKind::Try(tr) => false,
+            ast::ExprKind::Loop(lp) => false,
+            ast::ExprKind::Break(bk) => false,
+            ast::ExprKind::Continue(co) => false,
+            ast::ExprKind::Range(rg) => false,
+            ast::ExprKind::Error => false,
+        }
+    }
+
+    #[summary("파서가 단위나 정의의 이름으로 받지 않는 낱말")]
+    #[effects(pure)]
+    fn reserved(s: &str) -> bool {
+        s == "fn" || s == "spec" || s == "proof" || s == "mod" || s == "let" || s == "mut" || s == "while" || s == "if" || s == "else" || s == "true" || s == "false" || s == "requires" || s == "ensures" || s == "decreases" || s == "invariant" || s == "forall" || s == "exists" || s == "old" || s == "assert" || s == "assume" || s == "return" || s == "for" || s == "loop" || s == "match" || s == "break" || s == "continue" || s == "as" || s == "pub" || s == "struct" || s == "enum" || s == "impl" || s == "trait" || s == "use" || s == "const" || s == "static" || s == "type" || s == "unsafe" || s == "self" || s == "Self" || s == "crate" || s == "super" || s == "where" || s == "ref" || s == "move" || s == "dyn" || s == "in" || s == "async" || s == "await"
+    }
+
+    #[summary("인자 없는 한 마디 이름의 타입이면 그 이름")]
+    #[effects(alloc)]
+    fn simple_name(t: &ast::Type) -> Option<String> {
+        match &t.kind {
+            ast::TypeKind::Int(it) => None,
+            ast::TypeKind::F64 => None,
+            ast::TypeKind::Bool => None,
+            ast::TypeKind::Unit => None,
+            ast::TypeKind::Char => None,
+            ast::TypeKind::String => None,
+            ast::TypeKind::Str => None,
+            ast::TypeKind::Array(e, n) => None,
+            ast::TypeKind::ArrayN(e, p) => None,
+            ast::TypeKind::Slice(e) => None,
+            ast::TypeKind::Ref(m, e) => None,
+            ast::TypeKind::Named(p, a) => { if p.len() == 1 && a.len() == 0 { Some(p[0].clone()) } else { None } },
+            ast::TypeKind::Vec(e) => None,
+            ast::TypeKind::Box(e) => None,
+            ast::TypeKind::Param(s) => None,
+            ast::TypeKind::Never => None,
+            ast::TypeKind::Error => None,
+        }
+    }
+
+    #[effects(alloc)]
+    fn text_of(s: Option<String>) -> String {
+        match s {
+            None => String::new(),
+            Some(t) => t,
+        }
+    }
+
+    #[summary("`s`")]
+    #[effects(alloc)]
+    fn tick(s: &str) -> String {
+        cat3("`", s, "`")
+    }
+
+    #[summary("write `r`")]
+    #[effects(alloc)]
+    fn tick_write(r: &str) -> String {
+        cat3("write `", r, "`")
+    }
+
+    #[summary("끝의 공백(유니코드)을 뗀 글")]
+    #[effects(alloc)]
+    fn trim_end(s: &str) -> String {
+        let mut end: usize = 0;
+        let mut i: usize = 0;
+        while i < s.len()
+            decreases s.len() - i,
+        {
+            match std::str::decode_utf8(s, i) {
+                None => { i = s.len(); },
+                Some(dc) => { if dc.next <= i { i = s.len(); } else { i = dc.next; if !unicode::whitespace(u32::from(dc.ch)) { end = i; } } },
+            }
+        }
+        lexer::cut(s, 0, end)
+    }
+
+    #[effects(alloc)]
+    fn type_text(t: &ast::Type) -> Option<String> {
+        type_text_in(t, 1000)
+    }
+
+    #[summary("수신자 수정에 쓰는, 쓴 타입의 글 (단순할 때만). f는 남은 깊이")]
+    #[effects(alloc)]
+    fn type_text_in(t: &ast::Type, f: usize) -> Option<String>
+        decreases f,
+    {
+        if f == 0 {
+            return None;
+        }
+        match &t.kind {
+            ast::TypeKind::Int(it) => { let mut s: String = String::new(); ast::push_int_name(&mut s, it); Some(s) },
+            ast::TypeKind::F64 => None,
+            ast::TypeKind::Bool => Some(String::from("bool")),
+            ast::TypeKind::Unit => None,
+            ast::TypeKind::Char => None,
+            ast::TypeKind::String => None,
+            ast::TypeKind::Str => None,
+            ast::TypeKind::Array(e, n) => None,
+            ast::TypeKind::ArrayN(e, p) => None,
+            ast::TypeKind::Slice(e) => None,
+            ast::TypeKind::Ref(m, e) => None,
+            ast::TypeKind::Named(np, a) => { let mut out: String = String::new(); let mut i: usize = 0; while i < np.len() decreases np.len() - i, { if i > 0 { out.push_str("::"); } out.push_str(np[i].as_str()); i = i + 1; } if a.len() == 0 { return Some(out); } out.push_str("<"); let mut k: usize = 0; while k < a.len() decreases a.len() - k, { if k > 0 { out.push_str(", "); } out.push_str(type_text_in(&a[k], f - 1)?.as_str()); k = k + 1; } out.push_str(">"); Some(out) },
+            ast::TypeKind::Vec(e) => None,
+            ast::TypeKind::Box(e) => None,
+            ast::TypeKind::Param(ps) => None,
+            ast::TypeKind::Never => None,
+            ast::TypeKind::Error => None,
+        }
+    }
+
+    #[summary("(e)의 바깥 괄호가 글 전체를 싸면 그 안: 호출의 인자에는 괄호가 필요 없다")]
+    #[effects(alloc)]
+    fn unparen(x: &str) -> String {
+        let n: usize = x.len();
+        if n < 2 || x.as_bytes()[0] != 40 || x.as_bytes()[n - 1] != 41 {
+            return String::from(x);
+        }
+        let mut depth: usize = 0;
+        let mut i: usize = 1;
+        while i < n - 1
+            decreases n - i,
+        {
+            if x.as_bytes()[i] == 40 {
+                depth = depth.saturating_add(1);
+            } else if x.as_bytes()[i] == 41 {
+                if depth == 0 {
+                    return String::from(x);
+                }
+                depth = depth - 1;
+            }
+            i = i + 1;
+        }
+        lexer::cut(x, 1, n - 1)
+    }
+
+    #[summary("거부하려고만 알아보는 Rust의 항목")]
+    #[effects(pure)]
+    fn unsupported_item(s: &str) -> bool {
+        s == "static" || s == "type" || s == "extern" || s == "unsafe" || s == "macro_rules" || s == "union"
+    }
+
+    #[summary("ASCII 대문자로 시작하는가")]
+    #[effects(pure)]
+    fn upper_first(s: &str) -> bool {
+        s.len() > 0 && s.as_bytes()[0] >= 65 && s.as_bytes()[0] <= 90
+    }
+}

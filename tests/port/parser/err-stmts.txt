@@ -1,0 +1,106 @@
+#[summary("s")]
+mod s {
+    fn a(x: i64) -> i64 {
+        #[rationale(kind = nonlinear, "why")]
+        assume(p(x));
+        #[rationale(kind = a, "one")]
+        #[rationale(kind = b, "two")]
+        #[trusted]
+        assume(q(x));
+        #[rationale("stray")]
+        let y: i64 = 1;
+        #[inline]
+        y
+    }
+    fn b(x: i64) -> () {
+        admit();
+        admit()
+    }
+    fn c(x: i64) -> () {
+        assert(x > 0);
+        assert(x > 0) by (bit_vector);
+        assert(x > 0) by (nonlinear_arith);
+        assert(x > 0) by (a, b);
+        assert(x > 0) by { lemma(x); }
+        assert(x > 0) by { lemma(x); };
+        assert(x > 0) by bit_vector;
+        assert(x > 0) by ();
+        assert(x > 0)
+    }
+    fn d(o: Option<i64>, p: P) -> () {
+        let Some(x) = o else { return; };
+        let Some(y) = o;
+        let P { a, b } = p;
+        let geo::P { a, b, .. } = p;
+        let P { a: c } = p;
+        let (m, n) = t;
+        let z = 1;
+        let mut w: i64 = 2 else { return; };
+        let v: i64 = 3
+    }
+    fn e(o: Option<i64>, v: Vec<i64>) -> () {
+        while let Some(x) = o { }
+        for x in v.iter() { }
+        for x in &v { }
+        for i in 0..10 decreases 10 - i, { }
+        for i in 0..=10 invariant i <= 10, { }
+        for i in 0..10 { invariant true, decreases 10 - i, let z: i64 = 1; }
+        for i 0..10 { }
+        for in 0..10 { }
+        'a: for i in 0..3 { continue 'a; }
+        'b: while true decreases 1, { break 'b; }
+        'c: loop decreases 1, { break 'c 1; }
+        'd: { }
+        'e loop { }
+    }
+    fn f(n: u64) -> () {
+        let mut i: u64 = 0;
+        while i < n invariant i <= n, invariant true, decreases n - i, { i = i + 1; }
+        while i < n { invariant i <= n, decreases n - i, i = i + 1; }
+        while i < n invariant a, { invariant b, invariant c, decreases n - i, i = i + 1; }
+        while i < n decreases n - i, { decreases n, i = i + 1; }
+        loop invariant true, invariant false decreases 1, { break; }
+        loop { decreases 1, break; }
+        while i < n decreases n - i, invariant true, { }
+    }
+    fn g(x: i64) -> i64
+        ensures true,
+        requires x > 0,
+        requires x > 1, ensures x > 2,
+        decreases x,
+        decreases x,
+        requires x > 3
+    {
+        x
+    }
+    fn h(x: i64) -> i64 {
+        if x > 0 { return 1; } *p = 1;
+        if x > 0 { 1 } else { 2 } == 2;
+        match o { Some(y) => y, None => 0 } + 1;
+        if x > 0 { 1 } else { 2 }.max(3);
+        if x > 0 { 1 } else { 2 } as u8;
+        loop { break 1; } - 1;
+        if x > 0 { 1 } else { 2 }
+    }
+    fn i(x: i64) -> () {
+        proof { lemma(x); }
+        proof { lemma(x); };
+        proof lemma(x);
+        x = 1
+        y = 2;
+    }
+    fn j(x: i64) -> () {
+        x += 1;
+        a.b[i] -= 2 * 3;
+        *p *= x + 1;
+        v[f(x)] /= 2;
+        x %= 2; x ^= 3; x |= 4; x &= 5; x <<= 6; x >>= 7;
+        x + = 1;
+        x < <= 1;
+        v[i + 1] += w[j] || k;
+        a.b += c == d;
+        (x) += 1;
+        x += ;
+        x += 1
+    }
+}
