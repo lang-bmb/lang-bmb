@@ -349,6 +349,109 @@ pub fn check_resolved(mut p: Program, diags: &mut Diags) -> (Program, crate::ver
     }
 }
 
+/// The declarations the checker reads before any body (`bmb dump decls`,
+/// backlog 4D-03a): the lowering, the constants and pass 1 of
+/// `check_program`, then one JSONL row per data type, function signature,
+/// trait and accepted trait `impl`, each kind by path. Types are written by
+/// `ty_str`. A row's keys are fixed, so another implementation's rows
+/// compare byte for byte.
+pub fn dump_decls(mut p: Program, diags: &mut Diags) -> String {
+    use crate::diag::json_str as q;
+    crate::closures::lower(&mut p, diags);
+    let consts = crate::consts::resolve(&mut p, diags);
+    let mut c = Checker::new(diags);
+    c.consts = consts;
+    c.collect(&p);
+    let list = |xs: Vec<String>| format!("[{}]", xs.join(","));
+    let tys = |ts: &[TypeKind]| list(ts.iter().map(|t| q(&ty_str(t))).collect());
+    let generics = |gs: &[TParam]| {
+        list(
+            gs.iter()
+                .map(|g| {
+                    let bounds = list(g.bounds.iter().map(|b| q(b)).collect());
+                    format!("{{\"name\":{},\"bounds\":{bounds}}}", q(&g.name))
+                })
+                .collect(),
+        )
+    };
+    let opt = |o: &Option<String>| o.as_ref().map_or("null".to_string(), |x| q(x));
+    let mut out = String::new();
+    for (path, a) in &c.adts {
+        let (kind, body) = match &a.kind {
+            AdtKind::Struct(fs) => (
+                "struct",
+                list(
+                    fs.iter()
+                        .map(|(n, t)| format!("[{},{}]", q(n), q(&ty_str(t))))
+                        .collect(),
+                ),
+            ),
+            AdtKind::Enum(vs) => (
+                "enum",
+                list(
+                    vs.iter()
+                        .map(|(n, ts)| format!("[{},{}]", q(n), tys(ts)))
+                        .collect(),
+                ),
+            ),
+        };
+        out.push_str(&format!(
+            "{{\"type\":{},\"generics\":{},\"kind\":\"{kind}\",\"body\":{body},\"inv\":{}}}\n",
+            q(path),
+            generics(&a.generics),
+            opt(&a.inv)
+        ));
+    }
+    for (path, f) in &c.fns {
+        let kind = match f.kind {
+            FnKind::Exec => "exec",
+            FnKind::Spec => "spec",
+            FnKind::Proof => "proof",
+        };
+        out.push_str(&format!(
+            "{{\"fn\":{},\"kind\":\"{kind}\",\"generics\":{},\"impl_generics\":{},\"params\":{},\"ret\":{},\"effects\":{},\"vacuous\":{},\"builtin\":{},\"in_impl\":{},\"trait_of\":{},\"default\":{}}}\n",
+            q(path),
+            generics(&f.generics),
+            f.impl_generics,
+            tys(&f.params),
+            q(&ty_str(&f.ret)),
+            q(&f.effect.text()),
+            f.vacuous,
+            f.builtin,
+            f.in_impl,
+            opt(&f.trait_of),
+            f.default
+        ));
+    }
+    for (path, t) in &c.traits {
+        out.push_str(&format!(
+            "{{\"trait\":{},\"methods\":{}}}\n",
+            q(path),
+            list(t.methods.iter().map(|m| q(m)).collect())
+        ));
+    }
+    for i in &c.trait_impls {
+        out.push_str(&format!(
+            "{{\"impl\":{},\"generics\":{},\"for\":{},\"unit\":{}}}\n",
+            q(&i.trait_path),
+            generics(&i.generics),
+            q(&ty_str(&i.head)),
+            q(&i.unit)
+        ));
+    }
+    for (unit, names) in &c.imports {
+        for (name, full) in names {
+            out.push_str(&format!(
+                "{{\"import\":{},\"unit\":{},\"path\":{}}}\n",
+                q(name),
+                q(unit),
+                q(full)
+            ));
+        }
+    }
+    out
+}
+
 /// The normal form's method calls (ADR-0051, backlog 2M-02): `src` with
 /// each call by path `T::f(a, ..)` of a method written `x.f(..)`, where
 /// that names the same function the same way. `resolved` and `tables` are
@@ -2027,6 +2130,17 @@ impl<'a> Checker<'a> {
     }
 
     pub fn check_program(&mut self, p: &Program) {
+        self.collect(p);
+        // Pass 2: check bodies.
+        for m in &p.mods {
+            self.check_mod(m, "");
+        }
+        self.check_recursion(p);
+        self.check_main(p);
+    }
+
+    /// Pass 1 of `check_program`: every declaration read, no body checked.
+    fn collect(&mut self, p: &Program) {
         self.elem_params = elem_params(p);
         // Pass 1: collect signatures.
         let mut seen = BTreeMap::new();
@@ -2069,12 +2183,6 @@ impl<'a> Checker<'a> {
         for m in &p.mods {
             self.check_invariants(m, "");
         }
-        // Pass 2: check bodies.
-        for m in &p.mods {
-            self.check_mod(m, "");
-        }
-        self.check_recursion(p);
-        self.check_main(p);
     }
 
     /// Registers the unit's trait names (ADR-0046 §1; their methods come

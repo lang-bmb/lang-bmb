@@ -206,6 +206,9 @@ fn front_end_never_panics_on_mutated_programs() {
         // The stage dumps (backlog 4A-03) see every mutant too.
         let result = run(&dir, &["dump", "tokens"])
             .and_then(|_| run(&dir, &["dump", "parse"]))
+            .and_then(|_| run(&dir, &["dump", "std"]))
+            .and_then(|_| run(&dir, &["dump", "lower"]))
+            .and_then(|_| run(&dir, &["dump", "decls"]))
             .and_then(|_| run(&dir, &["check"]))
             .and_then(|ok| {
                 if ok {

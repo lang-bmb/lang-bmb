@@ -43,6 +43,7 @@ cargo run -- mcp --ast-tools ws  # JSON AST 편집 표면(ADR-0073, T1-06): `rea
 cargo run -- ast ws              # 구문 트리를 JSON 문서 하나로(JSON AST 표면이 보이는 것, 단위 이름이 키, 위치 없음)
 cargo run -- dump tokens a.bmb   # 렉서의 토큰을 JSONL로(파일, 바이트 구간, 종류, 리터럴의 정규형 `text`, 정수 `value`·부동소수 `bits`·바이트열 `value`; 4A-03: 다른 구현과 단계별 대조)
 cargo run -- dump parse a.bmb    # 파서의 프로그램을 검사 전에 정규형으로(검사기가 거부하는 프로그램도, `bmb fmt`는 검사 뒤)
+cargo run -- dump lower a.bmb    # 검사기의 몸 검사 앞 단계(4D-03a: 포트와 단계별 대조): `std`(이름을 든 라이브러리 단위를 더한 프로그램), `lower`(함수 값과 상수를 낮춘 뒤, 만든 이름과 상수의 값), `decls`(검사기가 모은 선언을 JSONL로). 그때까지의 진단, `---`, 그 단계의 글
 BMB_SOUND_ITERS=60 cargo test --release --test soundness  # 건전성 퍼징(1B-17): 증명·반례·빌드를 독립 해석기와 대조
 BMB_SOUND_ITERS=40 cargo test --release --test soundness_owned  # 소유 자료 퍼징(2O-05): 연결 리스트·Box·Vec 필드의 이동·교체·참조 match, 증명·반례·빌드·valgrind 해제를 해석기와 대조
 BMB_SOUND_ITERS=200 cargo test --release --test soundness_widths  # 정수 폭·비트 연산 퍼징(2N-04): 열 정수 타입, 섞인 폭, 비트 연산·시프트(폭 안팎의 리터럴·변수 양)·비트 메서드·변환, 증명·반례·두 빌드의 출력과 트랩을 Rust 의미의 해석기와 대조

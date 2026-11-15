@@ -272,6 +272,73 @@ mod geo {
     );
 }
 
+/// `bmb dump std|lower|decls` (backlog 4D-03a): the stages between the
+/// parser and the checker's bodies, each the same text on every run.
+#[test]
+fn stage_dumps_show_the_lowering_and_the_declarations() {
+    const SRC: &str = r#"#[summary("d")]
+mod d {
+    const N: usize = 3;
+    const T: [u8; N] = [1, 2, 3];
+    struct P { x: i64 }
+    trait Sz { #[effects(pure)] fn sz(self: &Self) -> i64; }
+    impl Sz for P { #[effects(pure)] fn sz(self: &P) -> i64 { self.x } }
+    #[effects(pure)]
+    fn ap<F: Fn(i64) -> i64>(f: F, v: i64) -> i64 { f(v) }
+    #[effects(io)]
+    fn main() -> () {
+        let r: i64 = ap(|a: i64| -> i64 { a }, 2);
+        std::io::println(std::num::i64_text(r).as_str());
+    }
+}
+"#;
+    let dump = |stage: &str, text: &str| bmb(&["dump", stage], &one("x.bmb", text));
+    for stage in ["std", "lower", "decls"] {
+        let (ok, out) = dump(stage, SRC);
+        assert!(ok && out.starts_with("---\n"), "{stage}: {out}");
+        assert_eq!(dump(stage, SRC).1, out, "{stage}");
+    }
+    // The library units the program names come with it.
+    let std = dump("std", SRC).1;
+    assert!(
+        std.contains("mod d {") && std.contains("\nmod std {"),
+        "{std}"
+    );
+    assert!(
+        std.contains("const T: [u8; N]") && std.contains("|a: i64|"),
+        "{std}"
+    );
+    // Lowered: the constant's length is its value, the closure is a struct.
+    let lower = dump("lower", SRC).1;
+    assert!(lower.contains("const T: [u8; 3]"), "{lower}");
+    for row in [
+        r#"{"made":"d::__closure$0","name":"d::main::{closure#0}","file":"x.bmb","#,
+        r#"{"passes":"<d::__closure$0 as d::__fn$0_0>::call","file":"x.bmb","#,
+        r#"{"const":"d::T","unit":"d","type":"[u8; 3]","value":"[1, 2, 3]"}"#,
+    ] {
+        assert!(lower.contains(row), "{row}\n{lower}");
+    }
+    let decls = dump("decls", SRC).1;
+    for row in [
+        r#"{"type":"d::P","generics":[],"kind":"struct","body":[["x","i64"]],"inv":null}"#,
+        r#"{"fn":"d::ap","kind":"exec","generics":[{"name":"F","bounds":["d::__fn$0_0"]}],"impl_generics":0,"params":["F","i64"],"ret":"i64","effects":"pure","vacuous":false,"builtin":false,"in_impl":false,"trait_of":null,"default":false}"#,
+        r#"{"trait":"d::Sz","methods":["sz"]}"#,
+        r#"{"impl":"d::Sz","generics":[],"for":"d::P","unit":"d"}"#,
+    ] {
+        assert!(decls.contains(row), "{row}\n{decls}");
+    }
+    // A syntax error ends every stage as it ends `dump parse`; a later
+    // error comes before the `---` line.
+    let (ok, out) = dump("decls", "mod {");
+    assert!(!ok && !out.contains("---"), "{out}");
+    let dup = "#[summary(\"a\")]\nmod a {\n    struct S { x: i64 }\n    struct S { y: i64 }\n}\n";
+    let (ok, out) = dump("decls", dup);
+    assert!(
+        !ok && out.contains("\"code\":\"E") && out.contains("\n---\n"),
+        "{out}"
+    );
+}
+
 /// A literal keeps its base; separators, leading zeros and the case of hex
 /// digits are not part of the normal form (ADR-0048 §3, ADR-0019 §1).
 /// Bit operators print with Rust's precedence: only the parentheses it

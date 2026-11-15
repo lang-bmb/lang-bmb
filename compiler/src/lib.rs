@@ -939,6 +939,95 @@ pub fn format_parsed(files: &[(String, String)]) -> Result<BTreeMap<String, Stri
     Ok(fmt::format_units(&program))
 }
 
+/// The stages between the parser and the checker's bodies, each as text
+/// another implementation's output compares with byte for byte (`bmb dump
+/// std|lower|decls`, backlog 4D-03a). Syntax errors end it as `dump parse`
+/// does. Otherwise the output is every diagnostic so far as JSONL, a line
+/// `---`, and the stage's text; `Err` when a diagnostic is an error.
+///
+/// - `std`: the program with the library units it names
+///   (`stdlib::add`), in normal form, unit by unit.
+/// - `lower`: that program after `closures::lower` and `consts::resolve`,
+///   in normal form; then a row per name the lowering made, per place a
+///   function value is passed, and per `const` with its value.
+/// - `decls`: the declarations pass 1 of the checker reads
+///   (`check::dump_decls`).
+pub fn dump_stage(stage: &str, files: &[(String, String)]) -> Result<String, String> {
+    let q = diag::json_str;
+    let mut sm = SourceMap::default();
+    let mut diags = Diags::default();
+    let mut program = ast::Program { mods: Vec::new() };
+    for (name, text) in files {
+        let id = sm.add(name.clone(), text.clone());
+        let toks = lexer::lex(id, text, &mut diags);
+        let mut p = parser::Parser::new(toks, &mut diags, text);
+        program.mods.extend(p.parse_program().mods);
+    }
+    if diags.has_errors() {
+        return Err(diags.to_jsonl(&sm));
+    }
+    stdlib::add(&mut sm, &mut program, &mut diags);
+    let units = |p: &ast::Program| {
+        fmt::format_units(p)
+            .values()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let body = match stage {
+        "std" => units(&program),
+        "lower" => {
+            let lowered = closures::lower(&mut program, &mut diags);
+            let consts = consts::resolve(&mut program, &mut diags);
+            let mut out = units(&program);
+            for (path, name) in &lowered.names {
+                let at = lowered.at.get(path).map_or(String::new(), |s| {
+                    format!(
+                        ",\"file\":{},\"lo\":{},\"hi\":{}",
+                        q(sm.name(s.file)),
+                        s.lo,
+                        s.hi
+                    )
+                });
+                out.push_str(&format!(
+                    "{{\"made\":{},\"name\":{}{at}}}\n",
+                    q(path),
+                    q(name)
+                ));
+            }
+            for (s, what) in &lowered.passes {
+                out.push_str(&format!(
+                    "{{\"passes\":{},\"file\":{},\"lo\":{},\"hi\":{}}}\n",
+                    q(what),
+                    q(sm.name(s.file)),
+                    s.lo,
+                    s.hi
+                ));
+            }
+            for (path, c) in &consts {
+                let value = c
+                    .value
+                    .as_ref()
+                    .map_or("null".to_string(), |v| q(&consts::value_text(v)));
+                out.push_str(&format!(
+                    "{{\"const\":{},\"unit\":{},\"type\":{},\"value\":{value}}}\n",
+                    q(path),
+                    q(&c.unit),
+                    q(&check::ty_str(&c.ty))
+                ));
+            }
+            out
+        }
+        _ => check::dump_decls(program, &mut diags),
+    };
+    let out = format!("{}---\n{body}", diags.to_jsonl(&sm));
+    if diags.has_errors() {
+        Err(out)
+    } else {
+        Ok(out)
+    }
+}
+
 /// The tokens of `files` as JSONL (`bmb dump tokens`, backlog 4A-03): one
 /// row per token with its file, byte span, kind and value, for comparing
 /// another lexer with this one. A literal's `text` is its normal form

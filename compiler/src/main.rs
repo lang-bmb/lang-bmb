@@ -170,6 +170,12 @@ const USAGE: &str = "usage:
                             the lexer's tokens as JSONL (file, span, kind, normal text, value)
   bmb dump parse <file.bmb>...
                             the parsed program in normal form, before any check
+  bmb dump std|lower|decls <file.bmb>...
+                            the stages before the checker's bodies: diagnostics so far, `---`,
+                            then the program with the library units it names (std), after
+                            function values and constants are lowered (lower, with the names
+                            made and each constant's value), or the declarations the checker
+                            collects as JSONL (decls)
   bmb codes [--md]          list diagnostic codes as JSONL (or the Markdown reference page)
 
 Any <file.bmb> argument may also be a workspace directory (its src/*.bmb).
@@ -1005,13 +1011,21 @@ fn run() -> ExitCode {
         // Each front-end stage's output, for comparing another
         // implementation stage by stage (backlog 4A-03): the tokens, and
         // the parsed program in normal form before any check.
-        Some("dump") if args.len() > 2 && matches!(args[1].as_str(), "tokens" | "parse") => {
+        Some("dump")
+            if args.len() > 2
+                && matches!(
+                    args[1].as_str(),
+                    "tokens" | "parse" | "std" | "lower" | "decls"
+                ) =>
+        {
             let files = match read_files(&args[2..]) {
                 Ok(f) => f,
                 Err(code) => return code,
             };
             let out = if args[1] == "tokens" {
                 bmb::dump_tokens(&files)
+            } else if args[1] != "parse" {
+                bmb::dump_stage(&args[1], &files)
             } else {
                 bmb::format_parsed(&files)
                     .map(|units| units.values().cloned().collect::<Vec<_>>().join("\n"))
