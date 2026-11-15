@@ -285,14 +285,18 @@ mod d {
     impl Sz for P { #[effects(pure)] fn sz(self: &P) -> i64 { self.x } }
     #[effects(pure)]
     fn ap<F: Fn(i64) -> i64>(f: F, v: i64) -> i64 { f(v) }
-    #[effects(io)]
+    #[effects(alloc, io)]
     fn main() -> () {
-        let r: i64 = ap(|a: i64| -> i64 { a }, 2);
-        std::io::println(std::num::i64_text(r).as_str());
+        let r: i64 = ap::<_>(|a: i64| -> i64 { a }, 2);
+        let mut s: String = String::new();
+        std::num::push_i64(&mut s, r);
+        print_str(s.as_str());
     }
 }
 "#;
     let dump = |stage: &str, text: &str| bmb(&["dump", stage], &one("x.bmb", text));
+    let (ok, out) = bmb(&["check"], &one("x.bmb", SRC));
+    assert!(ok, "{out}");
     for stage in ["std", "lower", "decls"] {
         let (ok, out) = dump(stage, SRC);
         assert!(ok && out.starts_with("---\n"), "{stage}: {out}");

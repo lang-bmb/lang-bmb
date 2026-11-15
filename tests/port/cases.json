@@ -272,6 +272,52 @@
         ],
         "chunk": 1
       }
+    },
+    {
+      "name": "std",
+      "component": "C4",
+      "a": [
+        "{bmb}",
+        "dump",
+        "std",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "dump",
+        "std",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "*.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "std-together",
+      "component": "C4",
+      "a": [
+        "{bmb}",
+        "dump",
+        "std",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "dump",
+        "std",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/run/*.bmb",
+          "lib/std/*.bmb",
+          "selfhost/*.bmb"
+        ],
+        "chunk": 40
+      }
     }
   ]
 }

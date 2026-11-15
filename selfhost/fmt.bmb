@@ -1315,6 +1315,13 @@ mod fmt {
         o
     }
 
+    #[summary("식 하나의 정규형")]
+    #[effects(alloc)]
+    fn expr_text(e: &ast::Expr) -> String {
+        let mut pr: Printer = Printer { out: String::new(), lens: Vec::new() };
+        pr.expr(e, 0, 1000000000)
+    }
+
     #[summary("프로그램 전체의 정규형: 최상위 단위마다 글 하나, 단위 이름 순 (ADR-0019 §3). 같은 이름이면 뒤의 것")]
     #[effects(alloc)]
     fn format_units(p: &ast::Program) -> Vec<Unit> {

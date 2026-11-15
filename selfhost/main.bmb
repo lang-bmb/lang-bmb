@@ -1,4 +1,4 @@
-#[summary("BMB로 쓴 컴파일러의 구동기 (stage0 compiler/src/main.rs의 포트, 백로그 4D-02). 국면마다 명령이 는다: 지금은 codes, dump tokens, dump parse")]
+#[summary("BMB로 쓴 컴파일러의 구동기 (stage0 compiler/src/main.rs의 포트, 백로그 4D-02). 국면마다 명령이 는다: 지금은 codes, dump tokens, dump parse, dump std")]
 mod main {
     #[effects(alloc, io, nondet)]
     fn main() -> () {
@@ -29,7 +29,16 @@ mod main {
             }
             return;
         }
-        eprint_str("usage: stage1 codes [--md] | dump tokens FILE.. | dump parse FILE..\n");
+        if args.len() > 3 && args[1] == "dump" && args[2] == "std" {
+            let inputs: Vec<lib::Input> = read_files(args.as_slice(), 3);
+            let sr: lib::Outcome = lib::dump_stage(args[2].as_str(), inputs.as_slice());
+            print_str(sr.text.as_str());
+            if !sr.ok {
+                std::process::exit(1);
+            }
+            return;
+        }
+        eprint_str("usage: stage1 codes [--md] | dump tokens FILE.. | dump parse FILE.. | dump std FILE..\n");
         std::process::exit(2);
     }
 

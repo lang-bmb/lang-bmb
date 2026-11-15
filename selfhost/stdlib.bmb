@@ -1,0 +1,231 @@
+#[summary("프로그램이 이름을 든 표준 라이브러리 단위를 프로그램에 더한다 (stage0 compiler/src/stdlib.rs의 포트, 백로그 4D-03b; ADR-0092 §1). 단위의 글은 std_units가 든다")]
+mod stdlib {
+    #[summary("프로그램의 메서드 호출 이름을 모으는 손님")]
+    struct Methods { names: Vec<String> }
+
+    impl ast::ExprFn for Methods {
+        #[effects(alloc)]
+        fn expr(self: &mut Methods, e: &mut ast::Expr) -> () {
+            match &e.kind {
+                ast::ExprKind::Int(iv, ir) => {},
+                ast::ExprKind::Float(fb) => {},
+                ast::ExprKind::ByteLit(by) => {},
+                ast::ExprKind::ByteStr(bys) => {},
+                ast::ExprKind::StrLit(st) => {},
+                ast::ExprKind::CharLit(ch) => {},
+                ast::ExprKind::Bool(bo) => {},
+                ast::ExprKind::Unit => {},
+                ast::ExprKind::Var(id) => {},
+                ast::ExprKind::Call(ca) => {},
+                ast::ExprKind::Method(me) => self.names.push(me.name.name.clone()),
+                ast::ExprKind::Index(ib, ii) => {},
+                ast::ExprKind::Unary(uo, ux) => {},
+                ast::ExprKind::Binary(bop, bl, br) => {},
+                ast::ExprKind::Ref(rm, rx) => {},
+                ast::ExprKind::If(ife) => {},
+                ast::ExprKind::Block(blk) => {},
+                ast::ExprKind::Array(ar) => {},
+                ast::ExprKind::Repeat(rp) => {},
+                ast::ExprKind::Old(ox) => {},
+                ast::ExprKind::Quant(qu) => {},
+                ast::ExprKind::Trigger(tx) => {},
+                ast::ExprKind::Closure(cl) => {},
+                ast::ExprKind::StructLit(sl) => {},
+                ast::ExprKind::Path(pa) => {},
+                ast::ExprKind::Deref(dx) => {},
+                ast::ExprKind::Field(fx, fnm) => {},
+                ast::ExprKind::Match(ma) => {},
+                ast::ExprKind::Return(rv) => {},
+                ast::ExprKind::Try(tr) => {},
+                ast::ExprKind::Loop(lp) => {},
+                ast::ExprKind::Break(bk) => {},
+                ast::ExprKind::Continue(co) => {},
+                ast::ExprKind::Range(rg) => {},
+                ast::ExprKind::Error => {},
+            }
+        }
+    }
+
+    #[summary("std::U로 시작하는 경로가 든 라이브러리 단위를 표시하는 손님. names는 단위의 이름들, hit는 그 차례의 표시")]
+    struct Named { names: Vec<String>, hit: Vec<bool> }
+
+    impl refs::Rewrite for Named {
+        #[effects(alloc)]
+        fn decl(self: &mut Named, unit: &[String], kind: refs::DeclKind, owner: &[String], name: &mut ast::Ident) -> () {}
+
+        #[effects(alloc)]
+        fn method(self: &mut Named, call: source::Span, name: &mut ast::Ident) -> () {}
+
+        #[effects(alloc)]
+        fn path(self: &mut Named, segs: &mut Vec<String>, site: refs::Site, unit: &[String], tparams: &[String]) -> () {
+            if segs.len() >= 2 && segs[0].as_str() == "std" {
+                let n: usize = self.hit.len();
+                for i in 0..n
+                    invariant self.hit.len() == n,
+                {
+                    if i < self.names.len() && self.names[i].as_str() == segs[1].as_str() {
+                        self.hit[i] = true;
+                    }
+                }
+            }
+        }
+
+        #[effects(alloc)]
+        fn var(self: &mut Named, name: &mut String) -> () {}
+    }
+
+    #[summary("프로그램이 이름을 든 라이브러리 단위들을, 그 단위들이 든 것까지, 단위 std 하나로 프로그램에 더한다. 프로그램에 std라는 단위가 있으면 E0309")]
+    #[effects(alloc)]
+    #[uses(source::room, source::small)]
+    fn add(sm: &mut source::SourceMap, program: &mut ast::Program, diags: &mut diag::Diags) -> () {
+        for a in 0..program.mods.len() {
+            if program.mods[a].name.name.as_str() == "std" {
+                diags.push(diag::fix(diag::new("E0309", program.mods[a].name.span, "`std` is the standard library's unit (ADR-0092)"), "name the unit otherwise; the library's units are `std::str`, `std::num`, ..", None));
+                return;
+            }
+        }
+        let n: usize = std_units::count();
+        let mut names: Vec<String> = Vec::new();
+        for b in 0..n {
+            names.push(std_units::name(b));
+        }
+        let str_fns: Vec<String> = str_fn_names();
+        let mut want: Vec<bool> = named(program, names.as_slice(), str_fns.as_slice());
+        let mut done: Vec<bool> = Vec::new();
+        for c in 0..n
+            invariant done.len() == c,
+        {
+            done.push(false);
+        }
+        let mut mods: Vec<ast::Mod> = Vec::new();
+        let mut first: Option<u32> = None;
+        for round in 0..n
+            invariant done.len() == n,
+        {
+            let mut u: usize = n;
+            let mut k: usize = n;
+            while k > 0
+                invariant k <= n && u <= n,
+                decreases k,
+            {
+                k = k - 1;
+                if k < want.len() && want[k] && !done[k] {
+                    u = k;
+                }
+            }
+            if u == n {
+                break;
+            }
+            done[u] = true;
+            let text: String = std_units::text(u);
+            if text.len() < 4294967295 && sm.files.len() < 4294967295 {
+                let mut fname: String = String::from("std/");
+                fname.push_str(std_units::name(u).as_str());
+                fname.push_str(".bmb");
+                let id: u32 = sm.add(fname, text.clone());
+                match first {
+                    None => { first = Some(id); },
+                    Some(f0) => {},
+                }
+                let toks: Vec<lexer::Token> = lexer::lex(id, text.as_str(), diags);
+                let mut parsed: ast::Program = parser::parse(toks, diags, text.as_str());
+                let more: Vec<bool> = named(&mut parsed, names.as_slice(), str_fns.as_slice());
+                let nw: usize = want.len();
+                for d in 0..nw
+                    invariant want.len() == nw,
+                {
+                    if d < more.len() && more[d] {
+                        want[d] = true;
+                    }
+                }
+                ast::append::<ast::Mod>(&mut mods, parsed.mods);
+            }
+        }
+        match first {
+            None => {},
+            Some(file) => { let span: source::Span = source::Span { file: file, lo: 0, hi: 0 }; let mut attrs: Vec<ast::Attr> = Vec::new(); let mut args: Vec<ast::AttrArg> = Vec::new(); args.push(ast::AttrArg::Str(String::from("표준 라이브러리 (ADR-0092)"), span)); attrs.push(ast::Attr { name: ast::Ident { name: String::from("summary"), span: span }, args: args, span: span }); program.mods.push(ast::Mod { name: ast::Ident { name: String::from("std"), span: span }, attrs: attrs, fns: Vec::new(), mods: mods, types: Vec::new(), impls: Vec::new(), traits: Vec::new(), trait_impls: Vec::new(), uses: Vec::new(), consts: Vec::new(), lens: Vec::new(), span: span }); },
+        }
+    }
+
+    #[summary("path가 라이브러리의 것인가: std 또는 std::로 시작")]
+    #[effects(pure)]
+    fn in_std(path: &str) -> bool {
+        path == "std" || std::str::starts_with(path, "std::")
+    }
+
+    #[summary("단위 m이 라이브러리의 단위 std인가")]
+    #[effects(pure)]
+    fn is_std(m: &ast::Mod) -> bool {
+        m.name.name.as_str() == "std"
+    }
+
+    #[summary("프로그램 p가 든 라이브러리 단위의 표시: std::U 경로, 그리고 &str을 받는 std::str의 함수를 메서드로 부른 것 (ADR-0098)")]
+    #[effects(alloc)]
+    fn named(p: &mut ast::Program, names: &[String], str_fns: &[String]) -> Vec<bool> {
+        let mut own: Vec<String> = Vec::new();
+        let mut hit: Vec<bool> = Vec::new();
+        for i in 0..names.len() {
+            own.push(names[i].clone());
+            hit.push(false);
+        }
+        let mut n: Named = Named { names: own, hit: hit };
+        refs::walk::<Named>(p, &mut n);
+        let mut ms: Methods = Methods { names: Vec::new() };
+        ast::exprs_mut::<Methods>(p, &mut ms);
+        let mut called: bool = false;
+        for j in 0..str_fns.len() {
+            for k in 0..ms.names.len() {
+                if ms.names[k].as_str() == str_fns[j].as_str() {
+                    called = true;
+                }
+            }
+        }
+        if called {
+            let nh: usize = n.hit.len();
+            for q in 0..nh
+                invariant n.hit.len() == nh,
+            {
+                if q < n.names.len() && n.names[q].as_str() == "str" {
+                    n.hit[q] = true;
+                }
+            }
+        }
+        n.hit
+    }
+
+    #[summary("std::str의 실행 함수 가운데 첫 매개변수가 &str인 것의 이름: 메서드로 부를 수 있는 것 (ADR-0098)")]
+    #[effects(alloc)]
+    fn str_fn_names() -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for i in 0..std_units::count() {
+            if std_units::name(i).as_str() == "str" {
+                let text: String = std_units::text(i);
+                let mut d: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+                let toks: Vec<lexer::Token> = lexer::lex(0, text.as_str(), &mut d);
+                let p: ast::Program = parser::parse(toks, &mut d, text.as_str());
+                for m in 0..p.mods.len() {
+                    for f in 0..p.mods[m].fns.len() {
+                        if takes_str(&p.mods[m].fns[f]) {
+                            out.push(p.mods[m].fns[f].name.name.clone());
+                        }
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    #[summary("실행 함수이고 첫 매개변수가 &str인가")]
+    #[effects(pure)]
+    fn takes_str(f: &ast::FnDef) -> bool {
+        match &f.kind {
+            ast::FnKind::Exec => {},
+            ast::FnKind::Spec => { return false; },
+            ast::FnKind::Proof => { return false; },
+        }
+        if f.params.len() == 0 {
+            return false;
+        }
+        ast::is_ref_str(&f.params[0].ty.kind)
+    }
+}

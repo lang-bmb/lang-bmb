@@ -1,0 +1,79 @@
+#[summary("글을 열쇠로 하는 표: 열쇠의 순서로 돌 수 있고 값은 자리로 읽는다 (백로그 4D-03c). stage0의 BTreeMap<String, V>의 자리다: std의 BTreeMap은 값을 복사해 내주므로(ADR-0097) 옮겨 다니는 값은 Vec에 두고 그 자리를 표에 둔다")]
+mod table {
+    #[summary("ix는 열쇠에서 items의 자리로. 같은 열쇠를 다시 넣으면 그 자리의 값을 바꾼다")]
+    struct Table<V> { ix: std::collections::BTreeMap<String, usize>, items: Vec<V> }
+
+    impl<V> Table<V> {
+        #[summary("열쇠 k의 값의 자리 (items의 색인)")]
+        #[effects(alloc)]
+        #[uses(within)]
+        fn find(self: &Table<V>, k: &str) -> (r: Option<usize>)
+            ensures within(r, self.items.len()),
+        {
+            match self.ix.get(&String::from(k)) {
+                None => None,
+                Some(i) => { if i < self.items.len() { Some(i) } else { None } },
+            }
+        }
+
+        #[summary("열쇠 k가 있는가")]
+        #[effects(alloc)]
+        fn has(self: &Table<V>, k: &str) -> bool {
+            self.ix.contains_key(&String::from(k))
+        }
+
+        #[summary("k를 v로. 있던 열쇠면 값을 바꾼다")]
+        #[effects(alloc)]
+        fn insert(self: &mut Table<V>, k: &str, v: V) -> () {
+            match self.ix.get(&String::from(k)) {
+                None => { let at: usize = self.items.len(); self.items.push(v); self.ix.insert(String::from(k), at); },
+                Some(i) => { if i < self.items.len() { self.items[i] = v; } else { self.items.push(v); } },
+            }
+        }
+
+        #[summary("열쇠의 순서로 n번째 열쇠. 범위 밖이면 빈 글")]
+        #[effects(alloc)]
+        fn key(self: &Table<V>, n: usize) -> String {
+            if n < self.ix.keys.len() {
+                return self.ix.keys[n].clone();
+            }
+            String::new()
+        }
+
+        #[summary("열쇠의 수")]
+        #[effects(pure)]
+        fn len(self: &Table<V>) -> usize {
+            self.ix.len()
+        }
+
+        #[summary("열쇠의 순서로 n번째 값의 자리 (items의 색인)")]
+        #[effects(pure)]
+        #[uses(within)]
+        fn nth(self: &Table<V>, n: usize) -> (r: Option<usize>)
+            ensures within(r, self.items.len()),
+        {
+            if n < self.ix.keys.len() && n < self.ix.vals.len() {
+                let i: usize = self.ix.vals[n];
+                if i < self.items.len() {
+                    return Some(i);
+                }
+            }
+            None
+        }
+    }
+
+    #[summary("빈 표")]
+    #[effects(alloc)]
+    fn new<V>() -> Table<V> {
+        let items: Vec<V> = Vec::new();
+        Table { ix: std::collections::BTreeMap::<String, usize>::new(), items: items }
+    }
+
+    #[summary("r이 있으면 n보다 작다")]
+    spec fn within(r: Option<usize>, n: usize) -> bool {
+        match r {
+            None => true,
+            Some(i) => i < n,
+        }
+    }
+}

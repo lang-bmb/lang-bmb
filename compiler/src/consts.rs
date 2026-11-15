@@ -66,7 +66,11 @@ impl CVal {
         match self {
             CVal::Int(v, t) => format!("{v}_{}", t.name()),
             CVal::Bool(b) => b.to_string(),
-            CVal::Char(c) => format!("{:?}", char::from_u32(*c).unwrap_or('?')),
+            // As the normal form writes a `char` (not Rust's `Debug`,
+            // whose escapes follow Rust's tables of printable characters).
+            CVal::Char(c) => {
+                crate::lexer::str_text(&char::from_u32(*c).unwrap_or('\0').to_string(), '\'')
+            }
             CVal::Array(vs) => format!("an array of {}", vs.len()),
             CVal::Data {
                 ty,

@@ -1,0 +1,445 @@
+#[summary("프로그램이 다른 정의를 이름으로 드는 모든 자리와 모든 선언 이름을 걷는다 (stage0 compiler/src/refs.rs의 포트, 백로그 4D-03b). 자리마다 손님이 이름을 고칠 수 있다")]
+mod refs {
+    #[summary("걷는 손님 (stage0의 trait Rewrite)")]
+    trait Rewrite {
+        #[summary("선언 이름")]
+        #[effects(alloc)]
+        fn decl(self: &mut Self, unit: &[String], kind: DeclKind, owner: &[String], name: &mut ast::Ident) -> ();
+
+        #[summary("메서드 호출 x.f(..)의 이름: 수신자의 타입으로만 함수를 가리킨다 (ADR-0051)")]
+        #[effects(alloc)]
+        fn method(self: &mut Self, call: source::Span, name: &mut ast::Ident) -> ();
+
+        #[summary("단위 unit에서 타입 매개변수 tparams가 보이는 자리 site에 쓴 경로 segs. 마디와 그 수를 고칠 수 있다")]
+        #[effects(alloc)]
+        fn path(self: &mut Self, segs: &mut Vec<String>, site: Site, unit: &[String], tparams: &[String]) -> ();
+
+        #[summary("변수 읽기")]
+        #[effects(alloc)]
+        fn var(self: &mut Self, name: &mut String) -> ();
+    }
+
+    #[summary("걷다가 만난 선언 이름의 종류. owner는 ImplFn이면 그 타입의 이름 하나, TraitFn이면 그 trait의 이름 하나, TraitImplFn이면 쓴 그대로의 trait 경로, 나머지는 비어 있다")]
+    enum DeclKind { Fn, Type, ImplTy, ImplFn, Trait, TraitFn, TraitImplFn }
+
+    #[summary("경로를 쓴 자리: 그 경로가 정의를 어떻게 가리킬 수 있는지를 정한다")]
+    enum Site { Call, Type, Struct, Variant, Bound }
+
+    #[summary("걷는 자리: 지금 단위와 보이는 타입 매개변수")]
+    struct Walker { unit: Vec<String>, tparams: Vec<String> }
+
+    #[summary("속성이 드는 spec fn들 (#[uses(..)], #[invariant(..)])")]
+    #[effects(alloc)]
+    fn attr_targets<R: Rewrite>(w: &Walker, r: &mut R, a: &mut ast::Attr) -> () {
+        let n: usize = a.args.len();
+        for i in 0..n
+            invariant a.args.len() == n,
+        {
+            match &mut a.args[i] {
+                ast::AttrArg::Ident(id) => { let mut s: Vec<String> = split_path(id.name.as_str()); r.path(&mut s, Site::Call, w.unit.as_slice(), w.tparams.as_slice()); id.name = join_path(s.as_slice()); },
+                ast::AttrArg::Str(st, sp) => {},
+                ast::AttrArg::Pair(pk, pv) => {},
+            }
+        }
+    }
+
+    #[summary("이름이 name인 속성마다 attr_targets")]
+    #[effects(alloc)]
+    fn attrs_named<R: Rewrite>(w: &Walker, r: &mut R, attrs: &mut Vec<ast::Attr>, name: &str) -> () {
+        let n: usize = attrs.len();
+        for i in 0..n
+            invariant attrs.len() == n,
+        {
+            if attrs[i].name.name.as_str() == name {
+                attr_targets::<R>(w, r, &mut attrs[i]);
+            }
+        }
+    }
+
+    #[summary("블록의 문장과 꼬리 식")]
+    #[effects(alloc)]
+    fn block<R: Rewrite>(w: &Walker, r: &mut R, b: &mut ast::Block, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let n: usize = b.stmts.len();
+        for i in 0..n
+            invariant b.stmts.len() == n,
+        {
+            match &mut b.stmts[i] {
+                ast::Stmt::Let(sl) => { ty::<R>(w, r, &mut sl.ty, f - 1); expr::<R>(w, r, &mut sl.init, f - 1); },
+                ast::Stmt::Assign(sa) => { expr::<R>(w, r, &mut sa.target, f - 1); expr::<R>(w, r, &mut sa.value, f - 1); },
+                ast::Stmt::While(sw) => { expr::<R>(w, r, &mut sw.cond, f - 1); exprs::<R>(w, r, &mut sw.invariants, f - 1); opt::<R>(w, r, &mut sw.measure, f - 1); block::<R>(w, r, &mut sw.body, f - 1); },
+                ast::Stmt::For(sf) => { expr::<R>(w, r, &mut sf.lo, f - 1); expr::<R>(w, r, &mut sf.hi, f - 1); exprs::<R>(w, r, &mut sf.invariants, f - 1); block::<R>(w, r, &mut sf.body, f - 1); },
+                ast::Stmt::Assert(st) => expr::<R>(w, r, &mut st.cond, f - 1),
+                ast::Stmt::Assume(su) => expr::<R>(w, r, &mut su.cond, f - 1),
+                ast::Stmt::Proof(sp) => block::<R>(w, r, &mut sp.body, f - 1),
+                ast::Stmt::LetFields(lf) => { idents::<R>(w, r, &mut lf.path, Site::Struct); expr::<R>(w, r, &mut lf.init, f - 1); },
+                ast::Stmt::Expr(se) => expr::<R>(w, r, se, f - 1),
+            }
+        }
+        opt_box::<R>(w, r, &mut b.tail, f - 1);
+    }
+
+    #[summary("식 하나와 그 안")]
+    #[effects(alloc)]
+    fn expr<R: Rewrite>(w: &Walker, r: &mut R, e: &mut ast::Expr, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let span: source::Span = e.span;
+        match &mut e.kind {
+            ast::ExprKind::Int(iv, ir) => {},
+            ast::ExprKind::Float(fb) => {},
+            ast::ExprKind::ByteLit(by) => {},
+            ast::ExprKind::ByteStr(bys) => {},
+            ast::ExprKind::StrLit(st) => {},
+            ast::ExprKind::CharLit(ch) => {},
+            ast::ExprKind::Bool(bo) => {},
+            ast::ExprKind::Unit => {},
+            ast::ExprKind::Var(id) => r.var(&mut id.name),
+            ast::ExprKind::Call(ca) => { let before: usize = ca.path.len(); idents::<R>(w, r, &mut ca.path, Site::Call); let after: usize = ca.path.len(); let nt: usize = ca.targs.len(); for i in 0..nt invariant ca.targs.len() == nt, { if after >= before { ca.targs[i].seg = ca.targs[i].seg.saturating_add(after - before); } else { ca.targs[i].seg = ca.targs[i].seg.saturating_sub(before - after); } } for j in 0..nt invariant ca.targs.len() == nt, { types::<R>(w, r, &mut ca.targs[j].args, f - 1); } exprs::<R>(w, r, &mut ca.args, f - 1); },
+            ast::ExprKind::Method(me) => { r.method(span, &mut me.name); expr::<R>(w, r, &mut *me.recv, f - 1); exprs::<R>(w, r, &mut me.args, f - 1); },
+            ast::ExprKind::Index(ib, ii) => { expr::<R>(w, r, &mut **ib, f - 1); expr::<R>(w, r, &mut **ii, f - 1); },
+            ast::ExprKind::Unary(uo, ux) => expr::<R>(w, r, &mut **ux, f - 1),
+            ast::ExprKind::Binary(bop, bl, br) => { expr::<R>(w, r, &mut **bl, f - 1); expr::<R>(w, r, &mut **br, f - 1); },
+            ast::ExprKind::Ref(rm, rx) => expr::<R>(w, r, &mut **rx, f - 1),
+            ast::ExprKind::If(ife) => { expr::<R>(w, r, &mut *ife.cond, f - 1); block::<R>(w, r, &mut ife.then, f - 1); opt_box::<R>(w, r, &mut ife.els, f - 1); },
+            ast::ExprKind::Block(blk) => block::<R>(w, r, blk, f - 1),
+            ast::ExprKind::Array(ar) => exprs::<R>(w, r, ar, f - 1),
+            ast::ExprKind::Repeat(rp) => expr::<R>(w, r, &mut *rp.value, f - 1),
+            ast::ExprKind::Old(ox) => expr::<R>(w, r, &mut **ox, f - 1),
+            ast::ExprKind::Quant(qu) => { let nb: usize = qu.binders.len(); for k in 0..nb invariant qu.binders.len() == nb, { ty::<R>(w, r, &mut qu.binders[k].ty, f - 1); } expr::<R>(w, r, &mut *qu.body, f - 1); },
+            ast::ExprKind::Trigger(tx) => expr::<R>(w, r, &mut **tx, f - 1),
+            ast::ExprKind::Closure(cl) => {},
+            ast::ExprKind::StructLit(sl) => { idents::<R>(w, r, &mut sl.path, Site::Struct); let nf: usize = sl.fields.len(); for q in 0..nf invariant sl.fields.len() == nf, { expr::<R>(w, r, &mut sl.fields[q].value, f - 1); } opt_box::<R>(w, r, &mut sl.rest, f - 1); },
+            ast::ExprKind::Path(pa) => idents::<R>(w, r, pa, Site::Variant),
+            ast::ExprKind::Deref(dx) => expr::<R>(w, r, &mut **dx, f - 1),
+            ast::ExprKind::Field(fx, fnm) => expr::<R>(w, r, &mut **fx, f - 1),
+            ast::ExprKind::Match(ma) => { expr::<R>(w, r, &mut *ma.scrut, f - 1); let na: usize = ma.arms.len(); for m in 0..na invariant ma.arms.len() == na, { idents::<R>(w, r, &mut ma.arms[m].pat.path, Site::Variant); expr::<R>(w, r, &mut ma.arms[m].body, f - 1); } },
+            ast::ExprKind::Return(rv) => opt_box::<R>(w, r, rv, f - 1),
+            ast::ExprKind::Try(tr) => expr::<R>(w, r, &mut **tr, f - 1),
+            ast::ExprKind::Loop(lp) => { exprs::<R>(w, r, &mut lp.invariants, f - 1); opt_box::<R>(w, r, &mut lp.measure, f - 1); block::<R>(w, r, &mut lp.body, f - 1); },
+            ast::ExprKind::Break(bk) => opt_box::<R>(w, r, &mut bk.value, f - 1),
+            ast::ExprKind::Continue(co) => {},
+            ast::ExprKind::Range(rg) => { expr::<R>(w, r, &mut *rg.lo, f - 1); expr::<R>(w, r, &mut *rg.hi, f - 1); },
+            ast::ExprKind::Error => {},
+        }
+    }
+
+    #[summary("식들을 차례로")]
+    #[effects(alloc)]
+    fn exprs<R: Rewrite>(w: &Walker, r: &mut R, xs: &mut Vec<ast::Expr>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let n: usize = xs.len();
+        for i in 0..n
+            invariant xs.len() == n,
+        {
+            expr::<R>(w, r, &mut xs[i], f - 1);
+        }
+    }
+
+    #[summary("함수 하나: 타입 매개변수, #[uses], 시그니처, 계약, 측도, 몸")]
+    #[effects(alloc)]
+    fn function<R: Rewrite>(w: &mut Walker, r: &mut R, d: &mut ast::FnDef) -> () {
+        let depth: usize = w.tparams.len();
+        generics::<R>(w, r, &mut d.generics);
+        attrs_named::<R>(w, r, &mut d.attrs, "uses");
+        let n: usize = d.params.len();
+        for i in 0..n
+            invariant d.params.len() == n,
+        {
+            ty::<R>(w, r, &mut d.params[i].ty, 1000000000);
+        }
+        ty::<R>(w, r, &mut d.ret.ty, 1000000000);
+        exprs::<R>(w, r, &mut d.pre, 1000000000);
+        exprs::<R>(w, r, &mut d.post, 1000000000);
+        opt::<R>(w, r, &mut d.measure, 1000000000);
+        block::<R>(w, r, &mut d.body, 1000000000);
+        w.tparams.truncate(depth);
+    }
+
+    #[summary("타입 매개변수들을 보이게 하고 그 경계를 걷는다")]
+    #[effects(alloc)]
+    fn generics<R: Rewrite>(w: &mut Walker, r: &mut R, gs: &mut Vec<ast::TypeParam>) -> () {
+        let n: usize = gs.len();
+        for i in 0..n
+            invariant gs.len() == n,
+        {
+            w.tparams.push(gs[i].name.name.clone());
+            let nb: usize = gs[i].bounds.len();
+            for j in 0..nb
+                invariant gs.len() == n && gs[i].bounds.len() == nb,
+            {
+                idents::<R>(w, r, &mut gs[i].bounds[j], Site::Bound);
+            }
+        }
+    }
+
+    #[summary("이름들의 경로를 고친다. 앞에 붙은 마디는 첫 마디의 자리를 받는다")]
+    #[effects(alloc)]
+    fn idents<R: Rewrite>(w: &Walker, r: &mut R, path: &mut Vec<ast::Ident>, site: Site) -> () {
+        let before: usize = path.len();
+        let mut s: Vec<String> = Vec::new();
+        for i in 0..before {
+            s.push(path[i].name.clone());
+        }
+        r.path(&mut s, site, w.unit.as_slice(), w.tparams.as_slice());
+        let after: usize = s.len();
+        if after == before {
+            for j in 0..before
+                invariant path.len() == before && s.len() == before,
+            {
+                path[j].name = s[j].clone();
+            }
+            return;
+        }
+        let mut span: source::Span = source::Span { file: 0, lo: 0, hi: 0 };
+        if before > 0 {
+            span = path[0].span;
+        }
+        let mut out: Vec<ast::Ident> = Vec::new();
+        for k in 0..after {
+            out.push(ast::Ident { name: s[k].clone(), span: span });
+        }
+        *path = out;
+    }
+
+    #[summary("마디들을 ::로 이은 글")]
+    #[effects(alloc)]
+    fn join_path(s: &[String]) -> String {
+        let mut out: String = String::new();
+        for i in 0..s.len() {
+            if i > 0 {
+                out.push_str("::");
+            }
+            out.push_str(s[i].as_str());
+        }
+        out
+    }
+
+    #[summary("단위 m과 그 안 단위: 선언과 모든 참조")]
+    #[effects(alloc)]
+    fn module<R: Rewrite>(w: &mut Walker, r: &mut R, m: &mut ast::Mod, prefix: &[String], f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let mut unit: Vec<String> = Vec::new();
+        for i in 0..prefix.len() {
+            unit.push(prefix[i].clone());
+        }
+        unit.push(m.name.name.clone());
+        let none: Vec<String> = Vec::new();
+        let nm: usize = m.mods.len();
+        for j in 0..nm
+            invariant m.mods.len() == nm,
+        {
+            module::<R>(w, r, &mut m.mods[j], unit.as_slice(), f - 1);
+        }
+        let mut here: Vec<String> = Vec::new();
+        for k in 0..unit.len() {
+            here.push(unit[k].clone());
+        }
+        w.unit = here;
+        let nf: usize = m.fns.len();
+        for a in 0..nf
+            invariant m.fns.len() == nf,
+        {
+            r.decl(unit.as_slice(), DeclKind::Fn, none.as_slice(), &mut m.fns[a].name);
+            function::<R>(w, r, &mut m.fns[a]);
+        }
+        let nty: usize = m.types.len();
+        for b in 0..nty
+            invariant m.types.len() == nty,
+        {
+            r.decl(unit.as_slice(), DeclKind::Type, none.as_slice(), &mut m.types[b].name);
+            attrs_named::<R>(w, r, &mut m.types[b].attrs, "invariant");
+            let depth: usize = w.tparams.len();
+            generics::<R>(w, r, &mut m.types[b].generics);
+            type_body::<R>(w, r, &mut m.types[b].kind);
+            w.tparams.truncate(depth);
+        }
+        let ni: usize = m.impls.len();
+        for c in 0..ni
+            invariant m.impls.len() == ni,
+        {
+            let mut owner: Vec<String> = Vec::new();
+            owner.push(m.impls[c].ty.name.clone());
+            r.decl(unit.as_slice(), DeclKind::ImplTy, none.as_slice(), &mut m.impls[c].ty);
+            let depth2: usize = w.tparams.len();
+            generics::<R>(w, r, &mut m.impls[c].generics);
+            types::<R>(w, r, &mut m.impls[c].ty_args, 1000000000);
+            let nif: usize = m.impls[c].fns.len();
+            for d in 0..nif
+                invariant m.impls.len() == ni && m.impls[c].fns.len() == nif,
+            {
+                r.decl(unit.as_slice(), DeclKind::ImplFn, owner.as_slice(), &mut m.impls[c].fns[d].name);
+                function::<R>(w, r, &mut m.impls[c].fns[d]);
+            }
+            w.tparams.truncate(depth2);
+        }
+        let nti: usize = m.trait_impls.len();
+        for e in 0..nti
+            invariant m.trait_impls.len() == nti,
+        {
+            let depth3: usize = w.tparams.len();
+            generics::<R>(w, r, &mut m.trait_impls[e].generics);
+            let mut written: Vec<String> = Vec::new();
+            for g in 0..m.trait_impls[e].trait_path.len() {
+                written.push(m.trait_impls[e].trait_path[g].name.clone());
+            }
+            idents::<R>(w, r, &mut m.trait_impls[e].trait_path, Site::Bound);
+            ty::<R>(w, r, &mut m.trait_impls[e].self_ty, 1000000000);
+            let ntf: usize = m.trait_impls[e].fns.len();
+            for h in 0..ntf
+                invariant m.trait_impls.len() == nti && m.trait_impls[e].fns.len() == ntf,
+            {
+                r.decl(unit.as_slice(), DeclKind::TraitImplFn, written.as_slice(), &mut m.trait_impls[e].fns[h].name);
+                function::<R>(w, r, &mut m.trait_impls[e].fns[h]);
+            }
+            w.tparams.truncate(depth3);
+        }
+        let ntr: usize = m.traits.len();
+        for p in 0..ntr
+            invariant m.traits.len() == ntr,
+        {
+            let mut tname: Vec<String> = Vec::new();
+            tname.push(m.traits[p].name.name.clone());
+            r.decl(unit.as_slice(), DeclKind::Trait, none.as_slice(), &mut m.traits[p].name);
+            let nfn: usize = m.traits[p].fns.len();
+            for q in 0..nfn
+                invariant m.traits.len() == ntr && m.traits[p].fns.len() == nfn,
+            {
+                r.decl(unit.as_slice(), DeclKind::TraitFn, tname.as_slice(), &mut m.traits[p].fns[q].f.name);
+                function::<R>(w, r, &mut m.traits[p].fns[q].f);
+            }
+        }
+    }
+
+    #[summary("있으면 그 식을")]
+    #[effects(alloc)]
+    fn opt<R: Rewrite>(w: &Walker, r: &mut R, o: &mut Option<ast::Expr>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match o {
+            None => {},
+            Some(x) => expr::<R>(w, r, x, f - 1),
+        }
+    }
+
+    #[summary("있으면 그 식을")]
+    #[effects(alloc)]
+    fn opt_box<R: Rewrite>(w: &Walker, r: &mut R, o: &mut Option<Box<ast::Expr>>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match o {
+            None => {},
+            Some(x) => expr::<R>(w, r, &mut **x, f - 1),
+        }
+    }
+
+    #[summary("a::b::c를 마디들로 (Rust의 split(\"::\")와 같다: 빈 글은 빈 마디 하나)")]
+    #[effects(alloc)]
+    fn split_path(s: &str) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        let mut start: usize = 0;
+        let mut i: usize = 0;
+        while i < s.len()
+            invariant start <= i,
+            decreases s.len() - i,
+        {
+            if i + 1 < s.len() && s.as_bytes()[i] == 58 && s.as_bytes()[i + 1] == 58 {
+                out.push(lexer::cut(s, start, i));
+                i = i + 2;
+                start = i;
+            } else {
+                i = i + 1;
+            }
+        }
+        out.push(lexer::cut(s, start, s.len()));
+        out
+    }
+
+    #[summary("타입 하나와 그 안")]
+    #[effects(alloc)]
+    fn ty<R: Rewrite>(w: &Walker, r: &mut R, t: &mut ast::Type, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match &mut t.kind {
+            ast::TypeKind::Int(it) => {},
+            ast::TypeKind::F64 => {},
+            ast::TypeKind::Bool => {},
+            ast::TypeKind::Unit => {},
+            ast::TypeKind::Char => {},
+            ast::TypeKind::String => {},
+            ast::TypeKind::Str => {},
+            ast::TypeKind::Array(ae, an) => ty::<R>(w, r, &mut **ae, f - 1),
+            ast::TypeKind::ArrayN(ne, nn) => {},
+            ast::TypeKind::Slice(se) => ty::<R>(w, r, &mut **se, f - 1),
+            ast::TypeKind::Ref(rm, ri) => ty::<R>(w, r, &mut **ri, f - 1),
+            ast::TypeKind::Named(path, args) => { r.path(path, Site::Type, w.unit.as_slice(), w.tparams.as_slice()); types::<R>(w, r, args, f - 1); },
+            ast::TypeKind::Vec(ve) => ty::<R>(w, r, &mut **ve, f - 1),
+            ast::TypeKind::Box(be) => ty::<R>(w, r, &mut **be, f - 1),
+            ast::TypeKind::Param(pn) => {},
+            ast::TypeKind::Never => {},
+            ast::TypeKind::Error => {},
+        }
+    }
+
+    #[summary("타입 선언의 필드와 페이로드의 타입")]
+    #[effects(alloc)]
+    fn type_body<R: Rewrite>(w: &Walker, r: &mut R, k: &mut ast::TypeDefKind) -> () {
+        match k {
+            ast::TypeDefKind::Struct(fs) => { let n: usize = fs.len(); for i in 0..n invariant fs.len() == n, { ty::<R>(w, r, &mut fs[i].ty, 1000000000); } },
+            ast::TypeDefKind::Enum(vs) => { let nv: usize = vs.len(); for j in 0..nv invariant vs.len() == nv, { types::<R>(w, r, &mut vs[j].payload, 1000000000); } },
+        }
+    }
+
+    #[summary("타입들을 차례로")]
+    #[effects(alloc)]
+    fn types<R: Rewrite>(w: &Walker, r: &mut R, ts: &mut Vec<ast::Type>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let n: usize = ts.len();
+        for i in 0..n
+            invariant ts.len() == n,
+        {
+            ty::<R>(w, r, &mut ts[i], f - 1);
+        }
+    }
+
+    #[summary("프로그램의 모든 단위를 손님 r로 걷는다")]
+    #[effects(alloc)]
+    fn walk<R: Rewrite>(p: &mut ast::Program, r: &mut R) -> () {
+        let mut w: Walker = Walker { unit: Vec::new(), tparams: Vec::new() };
+        let none: Vec<String> = Vec::new();
+        let n: usize = p.mods.len();
+        for i in 0..n
+            invariant p.mods.len() == n,
+        {
+            module::<R>(&mut w, r, &mut p.mods[i], none.as_slice(), 1000000000);
+        }
+    }
+}
