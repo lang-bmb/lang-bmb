@@ -1,0 +1,68 @@
+#[summary("상수의 값: 식의 꼴마다 하나")]
+mod cv {
+    const A: i64 = 3;
+    const B: i64 = A * 2 + 1 - 4 / 2 % 3;
+    const C: u8 = 0xff;
+    const D: u8 = b'a';
+    const E: bool = A < B && !(B == 7) || false;
+    const F: char = 'x';
+    const G: char = '\n';
+    const H: i8 = -128;
+    const I: u64 = u64::MAX;
+    const J: i64 = i64::MIN;
+    const K: usize = 4;
+    const L: [u8; K] = [1, 2, 3, 4];
+    const M: [i64; 3] = [A; 3];
+    const N: [bool; K] = [true; K];
+    const O: u8 = L[2];
+    const P: i64 = if E { 1 } else { 2 };
+    const Q: i64 = { 5 };
+    const R: u32 = 1 << 4;
+    const S: i32 = -16 >> 2;
+    const T: u8 = 200.wrapping_add(100);
+    const U: u8 = 200.saturating_add(100);
+    const V: i8 = (-100).saturating_sub(100);
+    const W: u8 = 16.wrapping_mul(17);
+    const X: i8 = 100.saturating_mul(-2);
+    const Y: u8 = A as u8;
+    const Z: i64 = !A;
+    const AA: u8 = !C;
+    const AB: u8 = C & 0x0f | 0x30 ^ 0x01;
+    const AC: bool = true & false | true ^ true;
+    const AD: i64 = -A;
+    const AE: Option<i64> = Some(3);
+    const AF: Option<i64> = None;
+    const AG: Result<u8, bool> = Ok(1);
+    const AH: Result<u8, bool> = Err(false);
+    const AI: Pt = Pt { x: 1, y: -2 };
+    const AJ: i64 = AI.y;
+    const AK: Sh = Sh::Rect(2, 3);
+    const AL: Sh = Sh::Dot;
+    const AM: i64 = match AK { Sh::Dot => 0, Sh::Rect(w, h) => w * h };
+    const AN: i64 = match AE { None => 0, Some(v) => v };
+    const AO: [Pt; 2] = [Pt { x: 0, y: 0 }, AI];
+    const AP: Wrap<u8> = Wrap { v: 7 };
+    const AQ: [[u8; 2]; 2] = [[1, 2], [3, 4]];
+    const AR: bool = 'a' < 'b';
+    const AS: bool = true > false;
+    const AT: i64 = i64::MAX.wrapping_add(1);
+    const AU: u16 = 0xffff.wrapping_sub(0xffff);
+    const AV: u64 = 1 << 63;
+    const AW: i64 = (-1) >> 63;
+    const AX: [u8; 40] = [9; 40];
+    const AY: isize = isize::MIN;
+    const AZ: usize = usize::MAX;
+    struct Pt { x: i64, y: i64 }
+    enum Sh { Dot, Rect(i64, i64) }
+    struct Wrap<T> { v: T }
+    #[effects(pure)]
+    fn f() -> [u8; K] { [0; K] }
+    #[effects(pure)]
+    fn g(a: [i64; K]) -> usize { let b: [u8; K] = [1; K]; K }
+    #[summary("안 단위: 바깥 단위의 이름으로 쓴 길이들 뒤에 쓴다 (백로그 4D-26)")]
+    mod inner {
+        const K2: usize = 2;
+        const R2: [u8; K2] = [0; K2];
+        const R3: usize = cv::K;
+    }
+}

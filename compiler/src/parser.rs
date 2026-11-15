@@ -598,7 +598,11 @@ impl<'a> Parser<'a> {
 
     fn parse_mod(&mut self, attrs: Vec<Attr>) -> PResult<Mod> {
         let depth = self.units.len();
+        // The lengths written so far are the enclosing unit's: the nested
+        // unit takes only its own (backlog 4D-26).
+        let outer = std::mem::take(&mut self.lens);
         let m = self.nested(|p| p.parse_mod_inner(attrs));
+        self.lens = outer;
         self.units.truncate(depth);
         m
     }
@@ -733,7 +737,8 @@ impl<'a> Parser<'a> {
             trait_impls,
             uses,
             consts,
-            // A nested unit took its own; the rest are this one's.
+            // The enclosing unit's are set aside while this one is read
+            // (`parse_mod`), so these are this unit's.
             lens: std::mem::take(&mut self.lens),
             span: lo.to(hi),
         })

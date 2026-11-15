@@ -1,0 +1,2363 @@
+#[summary("const 항목 (ADR-0052): 모으기, 평가, 그리고 이름으로 쓴 배열 길이와 반복 횟수를 값으로 고쳐 쓰기 (stage0 compiler/src/consts.rs의 포트, 백로그 4D-03c). 초기값은 상수 식이다: 호출도 루프도 없어 평가는 끝나고, Rust의 규칙을 따르며 실패(넘침, 0으로 나눔, 폭 이상의 시프트, 범위 밖 변환)는 E0260이다. 정수는 부호와 크기(Num)로 든다: 모든 정수 타입의 값이 거기 들고, 거기 들지 않는 결과는 어느 타입에서도 넘침이다")]
+mod consts {
+    #[summary("match 갈래가 묶은 이름과 값")]
+    struct Bind { name: String, v: CVal }
+
+    #[summary("variant의 결과: hit가 아니면 경로가 변형을 가리키지 않는다")]
+    struct Built { hit: bool, v: Option<CVal> }
+
+    #[summary("상수의 값")]
+    enum CVal { Int(Num, ast::IntTy), Bool(bool), Char(u32), Array(Vec<CVal>), Data(Data) }
+
+    #[summary("const 항목: 단위, 선언한 타입, 값 (평가하지 못했으면 None: 오류는 보고했다)")]
+    struct Const { unit: String, ty: ast::TypeKind, value: Option<CVal> }
+
+    #[summary("반복 횟수 [e; N]의 N을 값으로 고쳐 쓰는 손님")]
+    struct Counts { at: Vec<source::Span>, n: Vec<u64> }
+
+    impl ast::ExprFn for Counts {
+        #[effects(alloc)]
+        fn expr(self: &mut Counts, e: &mut ast::Expr) -> () {
+            match &mut e.kind {
+                ast::ExprKind::Int(iv, ir) => {},
+                ast::ExprKind::Float(fb) => {},
+                ast::ExprKind::ByteLit(by) => {},
+                ast::ExprKind::ByteStr(bys) => {},
+                ast::ExprKind::StrLit(sv) => {},
+                ast::ExprKind::CharLit(ch) => {},
+                ast::ExprKind::Bool(bo) => {},
+                ast::ExprKind::Unit => {},
+                ast::ExprKind::Var(id) => {},
+                ast::ExprKind::Call(ca) => {},
+                ast::ExprKind::Method(me) => {},
+                ast::ExprKind::Index(ib, ii) => {},
+                ast::ExprKind::Unary(uo, ux) => {},
+                ast::ExprKind::Binary(bop, bl, br) => {},
+                ast::ExprKind::Ref(rm, rx) => {},
+                ast::ExprKind::If(ife) => {},
+                ast::ExprKind::Block(blk) => {},
+                ast::ExprKind::Array(ar) => {},
+                ast::ExprKind::Repeat(rp) => set_count(rp, self.at.as_slice(), self.n.as_slice()),
+                ast::ExprKind::Old(ox) => {},
+                ast::ExprKind::Quant(qu) => {},
+                ast::ExprKind::Trigger(tx) => {},
+                ast::ExprKind::Closure(cl) => {},
+                ast::ExprKind::StructLit(sl) => {},
+                ast::ExprKind::Path(pa) => {},
+                ast::ExprKind::Deref(dx) => {},
+                ast::ExprKind::Field(fx, fnm) => {},
+                ast::ExprKind::Match(ma) => {},
+                ast::ExprKind::Return(rv) => {},
+                ast::ExprKind::Try(tr) => {},
+                ast::ExprKind::Loop(lp) => {},
+                ast::ExprKind::Break(bk) => {},
+                ast::ExprKind::Continue(co) => {},
+                ast::ExprKind::Range(rg) => {},
+                ast::ExprKind::Error => {},
+            }
+        }
+    }
+
+    #[summary("구조체(variant가 None, 필드는 선언 순서)나 열거형의 변형(페이로드는 필드 0, 1, ..). ty는 타입의 전체 경로, 또는 Option·Result")]
+    struct Data { ty: String, variant: Option<String>, fields: Vec<DataField> }
+
+    struct DataField { name: String, v: CVal }
+
+    struct Def { unit: String, c: ast::ConstDef }
+
+    #[summary("평가기. done은 평가한 것(None은 실패), stack은 평가 중인 const(바깥이 먼저), env는 match 갈래가 묶은 이름(안쪽이 뒤)")]
+    struct Eval { defs: table::Table<Def>, tydefs: table::Table<TyDef>, named: Vec<LenAt>, done: table::Table<Option<CVal>>, stack: Vec<String>, env: Vec<Vec<Bind>>, diags: diag::Diags }
+
+    #[summary("이름으로 쓴 반복 횟수: 횟수의 자리, 이름, 단위")]
+    struct LenAt { at: source::Span, path: Vec<String>, unit: String }
+
+    #[summary("이름으로 쓴 배열 길이 [T; N]을 값으로 고쳐 쓰는 손님")]
+    struct Lens { consts: table::Table<Const>, diags: Vec<diag::Diag> }
+
+    impl ast::TypeFn for Lens {
+        #[effects(alloc)]
+        fn ty(self: &mut Lens, unit: &str, t: &mut ast::Type) -> () {
+            array_lens(self, unit, t, 1000000000);
+        }
+    }
+
+    struct NamedTy { name: String, ty: ast::TypeKind }
+
+    #[summary("정수: 부호와 크기. 0은 neg가 아니다")]
+    struct Num { neg: bool, mag: u64 }
+
+    #[summary("타입 매개변수의 이름과 그 인자")]
+    struct Subst { names: Vec<String>, tys: Vec<ast::TypeKind> }
+
+    #[summary("쓴 그대로의 구조체나 열거형 선언: 검사기 전에 초기값의 리터럴에 타입을 주려고")]
+    struct TyDef { unit: String, generics: Vec<String>, kind: TyDefKind }
+
+    enum TyDefKind { Struct(Vec<NamedTy>), Enum(Vec<VariantTy>) }
+
+    struct VariantTy { name: String, tys: Vec<ast::TypeKind> }
+
+    #[summary("두 정수의 합. 부호와 크기에 들지 않으면 None")]
+    #[effects(pure)]
+    fn add(a: Num, b: Num) -> Option<Num> {
+        if a.neg == b.neg {
+            match a.mag.checked_add(b.mag) {
+                None => { return None; },
+                Some(m) => { return Some(num(a.neg, m)); },
+            }
+        }
+        if a.mag >= b.mag {
+            return Some(num(a.neg, a.mag - b.mag));
+        }
+        Some(num(b.neg, b.mag - a.mag))
+    }
+
+    #[summary("기대한 Option·Result의 k번째 인자")]
+    #[effects(alloc)]
+    fn arg(want: &Option<ast::TypeKind>, ty: &str, k: usize) -> Option<ast::TypeKind> {
+        match want {
+            None => None,
+            Some(t) => arg_of(t, ty, k),
+        }
+    }
+
+    #[effects(alloc)]
+    fn arg_of(t: &ast::TypeKind, ty: &str, k: usize) -> Option<ast::TypeKind> {
+        match t {
+            ast::TypeKind::Int(it) => None,
+            ast::TypeKind::F64 => None,
+            ast::TypeKind::Bool => None,
+            ast::TypeKind::Unit => None,
+            ast::TypeKind::Char => None,
+            ast::TypeKind::String => None,
+            ast::TypeKind::Str => None,
+            ast::TypeKind::Array(ae, an) => None,
+            ast::TypeKind::ArrayN(ne, nn) => None,
+            ast::TypeKind::Slice(se) => None,
+            ast::TypeKind::Ref(rm, ri) => None,
+            ast::TypeKind::Named(path, args) => { if path.len() == 1 && path[0].as_str() == ty && k < args.len() { Some(ast::clone_typekind(&args[k].kind, 1000000000)) } else { None } },
+            ast::TypeKind::Vec(ve) => None,
+            ast::TypeKind::Box(be) => None,
+            ast::TypeKind::Param(pn) => None,
+            ast::TypeKind::Never => None,
+            ast::TypeKind::Error => None,
+        }
+    }
+
+    #[summary("같은 타입의 두 값의 산술·비트 연산")]
+    #[effects(alloc)]
+    fn arith(ev: &mut Eval, span: source::Span, op: &ast::BinOp, l: &CVal, r: &CVal) -> Option<CVal> {
+        let mut sym: String = String::new();
+        ast::push_bin_symbol(&mut sym, op);
+        match l {
+            CVal::Int(p, t) => { match r { CVal::Int(q, u) => { return int_op(ev, span, op, *p, *q, *t, show(l).as_str(), show(r).as_str()); }, CVal::Bool(rb) => {}, CVal::Char(rc) => {}, CVal::Array(rvs) => {}, CVal::Data(rd) => {}, } },
+            CVal::Bool(pb) => { match r { CVal::Int(q2, u2) => {}, CVal::Bool(qb) => { let o: u8 = bit_class(op); if o == 1 { return Some(CVal::Bool(*pb && *qb)); } if o == 2 { return Some(CVal::Bool(*pb || *qb)); } if o == 3 { return Some(CVal::Bool(*pb != *qb)); } let mut m1: String = String::from("`"); m1.push_str(sym.as_str()); m1.push_str("` of `bool`s"); return fail(ev, span, m1.as_str()); }, CVal::Char(rc2) => {}, CVal::Array(rvs2) => {}, CVal::Data(rd2) => {}, } },
+            CVal::Char(pc) => {},
+            CVal::Array(pvs) => {},
+            CVal::Data(pd) => {},
+        }
+        let mut m2: String = String::from("`");
+        m2.push_str(sym.as_str());
+        m2.push_str("` of `");
+        m2.push_str(show(l).as_str());
+        m2.push_str("`");
+        fail(ev, span, m2.as_str())
+    }
+
+    #[summary("갈래의 패턴이 값의 필드에 묶는 이름들")]
+    #[effects(alloc)]
+    fn arm_binds(p: &ast::Pat, v: &CVal) -> Vec<Bind> {
+        let mut out: Vec<Bind> = Vec::new();
+        match v {
+            CVal::Int(n, t) => {},
+            CVal::Bool(b) => {},
+            CVal::Char(c) => {},
+            CVal::Array(vs) => {},
+            CVal::Data(d) => { for i in 0..p.binds.len() { if i < d.fields.len() { match &p.binds[i] { None => {}, Some(id) => { let mut at: usize = out.len(); for j in 0..out.len() { if out[j].name.as_str() == id.name.as_str() { at = j; } } if at < out.len() { out[at].v = clone_cval(&d.fields[i].v, 1000000000); } else { out.push(Bind { name: id.name.clone(), v: clone_cval(&d.fields[i].v, 1000000000) }); } }, } } } },
+        }
+        out
+    }
+
+    #[summary("타입 t 안의 [T; N]을, 안쪽부터, 값으로")]
+    #[effects(alloc)]
+    fn array_lens(v: &mut Lens, unit: &str, t: &mut ast::Type, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let span: source::Span = t.span;
+        let mut len: Option<u64> = None;
+        let mut named: bool = false;
+        match &mut t.kind {
+            ast::TypeKind::Int(it) => {},
+            ast::TypeKind::F64 => {},
+            ast::TypeKind::Bool => {},
+            ast::TypeKind::Unit => {},
+            ast::TypeKind::Char => {},
+            ast::TypeKind::String => {},
+            ast::TypeKind::Str => {},
+            ast::TypeKind::Array(ae, an) => array_lens(v, unit, &mut **ae, f - 1),
+            ast::TypeKind::ArrayN(ne, nn) => { array_lens(v, unit, &mut **ne, f - 1); named = true; len = length(v, nn.as_slice(), unit, span); },
+            ast::TypeKind::Slice(se) => array_lens(v, unit, &mut **se, f - 1),
+            ast::TypeKind::Ref(rm, ri) => array_lens(v, unit, &mut **ri, f - 1),
+            ast::TypeKind::Named(path, args) => { let na: usize = args.len(); for i in 0..na invariant args.len() == na, { array_lens(v, unit, &mut args[i], f - 1); } },
+            ast::TypeKind::Vec(ve) => array_lens(v, unit, &mut **ve, f - 1),
+            ast::TypeKind::Box(be) => array_lens(v, unit, &mut **be, f - 1),
+            ast::TypeKind::Param(pn) => {},
+            ast::TypeKind::Never => {},
+            ast::TypeKind::Error => {},
+        }
+        if named {
+            let was: ast::TypeKind = std::mem::replace(&mut t.kind, ast::TypeKind::Error);
+            match len {
+                None => { let dropped: ast::TypeKind = was; },
+                Some(n) => { t.kind = sized(was, n); },
+            }
+        }
+    }
+
+    #[summary("이항 연산")]
+    #[effects(alloc)]
+    fn binary(ev: &mut Eval, e: &ast::Expr, op: &ast::BinOp, a: &ast::Expr, b: &ast::Expr, want: &Option<ast::TypeKind>, unit: &str, f: usize) -> Option<CVal>
+        decreases f,
+    {
+        if f == 0 {
+            return None;
+        }
+        let k: u8 = op_class(op);
+        let boolean: Option<ast::TypeKind> = Some(ast::TypeKind::Bool);
+        if k == 1 {
+            let mut x: CVal = CVal::Bool(false);
+            match expr(ev, a, &boolean, unit, f - 1) {
+                None => { return None; },
+                Some(xv) => { x = xv; },
+            }
+            let mut p: bool = false;
+            match &x {
+                CVal::Int(n, t) => { return fail_not_bool(ev, a.span, &x); },
+                CVal::Bool(bv) => { p = *bv; },
+                CVal::Char(c) => { return fail_not_bool(ev, a.span, &x); },
+                CVal::Array(vs) => { return fail_not_bool(ev, a.span, &x); },
+                CVal::Data(d) => { return fail_not_bool(ev, a.span, &x); },
+            }
+            if is_and(op) && !p {
+                return Some(CVal::Bool(false));
+            }
+            if !is_and(op) && p {
+                return Some(CVal::Bool(true));
+            }
+            let mut y: CVal = CVal::Bool(false);
+            match expr(ev, b, &boolean, unit, f - 1) {
+                None => { return None; },
+                Some(yv) => { y = yv; },
+            }
+            if is_bool(&y) {
+                return Some(y);
+            }
+            return fail_not_bool(ev, b.span, &y);
+        }
+        if k == 2 {
+            return not_const(ev, e, "`==>` belongs to specifications");
+        }
+        if k == 3 {
+            let mut sx: CVal = CVal::Bool(false);
+            match expr(ev, a, want, unit, f - 1) {
+                None => { return None; },
+                Some(sxv) => { sx = sxv; },
+            }
+            let amount: Option<ast::TypeKind> = Some(ast::TypeKind::Int(ast::IntTy::U32));
+            let mut sk: CVal = CVal::Bool(false);
+            match expr(ev, b, &amount, unit, f - 1) {
+                None => { return None; },
+                Some(skv) => { sk = skv; },
+            }
+            return shift(ev, e.span, op, &sx, &sk);
+        }
+        let cmp_op: bool = k == 4;
+        let mut l: CVal = CVal::Bool(false);
+        let mut r: CVal = CVal::Bool(false);
+        if untyped(a) && !untyped(b) {
+            match hinted(ev, b, cmp_op, want, unit, f - 1) {
+                None => { return None; },
+                Some(rv) => { r = rv; },
+            }
+            let rt: Option<ast::TypeKind> = Some(cval_ty(&r));
+            match expr(ev, a, &rt, unit, f - 1) {
+                None => { return None; },
+                Some(lv) => { l = lv; },
+            }
+        } else {
+            match hinted(ev, a, cmp_op, want, unit, f - 1) {
+                None => { return None; },
+                Some(lv2) => { l = lv2; },
+            }
+            let lt: Option<ast::TypeKind> = Some(cval_ty(&l));
+            match expr(ev, b, &lt, unit, f - 1) {
+                None => { return None; },
+                Some(rv2) => { r = rv2; },
+            }
+        }
+        if kind_text(&cval_ty(&l)) != kind_text(&cval_ty(&r)) {
+            let mut msg: String = String::from("expected `");
+            msg.push_str(kind_text(&cval_ty(&l)).as_str());
+            msg.push_str("`, found `");
+            msg.push_str(kind_text(&cval_ty(&r)).as_str());
+            msg.push_str("`");
+            ev.diags.push(diag::new("E0401", b.span, msg.as_str()));
+            return None;
+        }
+        if cmp_op {
+            return compare(ev, e.span, op, &l, &r);
+        }
+        arith(ev, e.span, op, &l, &r)
+    }
+
+    #[summary("&, |, ^ 의 차례: 1, 2, 3. 아니면 0")]
+    #[effects(pure)]
+    fn bit_class(op: &ast::BinOp) -> u8 {
+        match op {
+            ast::BinOp::Add => 0,
+            ast::BinOp::Sub => 0,
+            ast::BinOp::Mul => 0,
+            ast::BinOp::Div => 0,
+            ast::BinOp::Rem => 0,
+            ast::BinOp::Eq => 0,
+            ast::BinOp::Ne => 0,
+            ast::BinOp::Lt => 0,
+            ast::BinOp::Le => 0,
+            ast::BinOp::Gt => 0,
+            ast::BinOp::Ge => 0,
+            ast::BinOp::And => 0,
+            ast::BinOp::Or => 0,
+            ast::BinOp::Implies => 0,
+            ast::BinOp::BitAnd => 1,
+            ast::BinOp::BitOr => 2,
+            ast::BinOp::BitXor => 3,
+            ast::BinOp::Shl => 0,
+            ast::BinOp::Shr => 0,
+        }
+    }
+
+    #[summary("한 마디 이름이 match가 묶은 것이거나 const인가")]
+    #[effects(alloc)]
+    fn bound(ev: &Eval, n: &str, unit: &str) -> bool {
+        for i in 0..ev.env.len() {
+            for j in 0..ev.env[i].len() {
+                if ev.env[i][j].name.as_str() == n {
+                    return true;
+                }
+            }
+        }
+        let mut one: Vec<String> = Vec::new();
+        one.push(String::from(n));
+        match lookup_defs(&ev.defs, one.as_slice(), unit) {
+            None => false,
+            Some(p) => true,
+        }
+    }
+
+    #[summary("x as T: 범위 밖이면 E0260")]
+    #[effects(alloc)]
+    fn cast(ev: &mut Eval, e: &ast::Expr, x: &ast::Expr, t: ast::IntTy, unit: &str, f: usize) -> Option<CVal>
+        decreases f,
+    {
+        if f == 0 {
+            return None;
+        }
+        let none: Option<ast::TypeKind> = None;
+        let mut v: CVal = CVal::Bool(false);
+        match expr(ev, x, &none, unit, f - 1) {
+            None => { return None; },
+            Some(y) => { v = y; },
+        }
+        let mut txt: String = String::from("`");
+        match &v {
+            CVal::Int(n, vt) => { push_num(&mut txt, *n); txt.push_str(" as "); ast::push_int_name(&mut txt, &t); txt.push_str("`"); return int(ev, Some(*n), t, e.span, txt.as_str()); },
+            CVal::Bool(b) => {},
+            CVal::Char(c) => {},
+            CVal::Array(vs) => {},
+            CVal::Data(d) => {},
+        }
+        txt.push_str(show(&v).as_str());
+        txt.push_str(" as ");
+        ast::push_int_name(&mut txt, &t);
+        txt.push_str("`");
+        fail(ev, e.span, txt.as_str())
+    }
+
+    #[summary("코드 포인트 c를 문자 리터럴로 쓴 글 (정규형이 쓰는 꼴)")]
+    #[effects(alloc)]
+    fn char_text(c: u32) -> String {
+        let mut s: String = String::new();
+        lexer::push_code(&mut s, c);
+        lexer::str_text(s.as_str(), 39)
+    }
+
+    #[summary("값의 깊은 사본. f는 남은 깊이")]
+    #[effects(alloc)]
+    fn clone_cval(v: &CVal, f: usize) -> CVal
+        decreases f,
+    {
+        if f == 0 {
+            return CVal::Bool(false);
+        }
+        match v {
+            CVal::Int(n, t) => CVal::Int(*n, *t),
+            CVal::Bool(b) => CVal::Bool(*b),
+            CVal::Char(c) => CVal::Char(*c),
+            CVal::Array(vs) => { let mut out: Vec<CVal> = Vec::new(); for i in 0..vs.len() { out.push(clone_cval(&vs[i], f - 1)); } CVal::Array(out) },
+            CVal::Data(d) => { let mut fs: Vec<DataField> = Vec::new(); for j in 0..d.fields.len() { fs.push(DataField { name: d.fields[j].name.clone(), v: clone_cval(&d.fields[j].v, f - 1) }); } CVal::Data(Data { ty: d.ty.clone(), variant: clone_name(&d.variant), fields: fs }) },
+        }
+    }
+
+    #[effects(alloc)]
+    fn clone_name(o: &Option<String>) -> Option<String> {
+        match o {
+            None => None,
+            Some(s) => Some(s.clone()),
+        }
+    }
+
+    #[effects(alloc)]
+    fn clone_opt(o: &Option<CVal>) -> Option<CVal> {
+        match o {
+            None => None,
+            Some(v) => Some(clone_cval(v, 1000000000)),
+        }
+    }
+
+    #[summary("두 정수의 순서: -1, 0, 1")]
+    #[effects(pure)]
+    fn cmp(a: Num, b: Num) -> i32 {
+        if a.neg != b.neg {
+            if a.neg {
+                return -1;
+            }
+            return 1;
+        }
+        if a.mag == b.mag {
+            return 0;
+        }
+        if (a.mag < b.mag) != a.neg {
+            return -1;
+        }
+        1
+    }
+
+    #[summary("순서 o(-1, 0, 1)에서 비교 op가 참인가")]
+    #[effects(pure)]
+    fn cmp_holds(op: &ast::BinOp, o: i32) -> bool {
+        match op {
+            ast::BinOp::Add => o >= 0,
+            ast::BinOp::Sub => o >= 0,
+            ast::BinOp::Mul => o >= 0,
+            ast::BinOp::Div => o >= 0,
+            ast::BinOp::Rem => o >= 0,
+            ast::BinOp::Eq => o == 0,
+            ast::BinOp::Ne => o != 0,
+            ast::BinOp::Lt => o < 0,
+            ast::BinOp::Le => o <= 0,
+            ast::BinOp::Gt => o > 0,
+            ast::BinOp::Ge => o >= 0,
+            ast::BinOp::And => o >= 0,
+            ast::BinOp::Or => o >= 0,
+            ast::BinOp::Implies => o >= 0,
+            ast::BinOp::BitAnd => o >= 0,
+            ast::BinOp::BitOr => o >= 0,
+            ast::BinOp::BitXor => o >= 0,
+            ast::BinOp::Shl => o >= 0,
+            ast::BinOp::Shr => o >= 0,
+        }
+    }
+
+    #[summary("단위 m과 그 안 단위의 타입 선언, const, 이름으로 쓴 횟수를 모은다. 같은 이름의 const는 E0302")]
+    #[effects(alloc)]
+    fn collect(m: &ast::Mod, prefix: &str, ev: &mut Eval, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let mut unit: String = String::from(prefix);
+        unit.push_str(m.name.name.as_str());
+        let mut names: Vec<String> = Vec::new();
+        for a in 0..m.fns.len() {
+            names.push(m.fns[a].name.name.clone());
+        }
+        for i in 0..m.types.len() {
+            names.push(m.types[i].name.name.clone());
+            let mut gs: Vec<String> = Vec::new();
+            for g in 0..m.types[i].generics.len() {
+                gs.push(m.types[i].generics[g].name.name.clone());
+            }
+            let mut key: String = unit.clone();
+            key.push_str("::");
+            key.push_str(m.types[i].name.name.as_str());
+            ev.tydefs.insert(key.as_str(), TyDef { unit: unit.clone(), generics: gs, kind: tydef_kind(&m.types[i].kind) });
+        }
+        for c in 0..m.consts.len() {
+            if has(names.as_slice(), m.consts[c].name.name.as_str()) {
+                let mut msg: String = String::from("`");
+                msg.push_str(m.consts[c].name.name.as_str());
+                msg.push_str("` is defined more than once in `");
+                msg.push_str(unit.as_str());
+                msg.push_str("`");
+                ev.diags.push(diag::new("E0302", m.consts[c].name.span, msg.as_str()));
+            } else {
+                names.push(m.consts[c].name.name.clone());
+                let mut ck: String = unit.clone();
+                ck.push_str("::");
+                ck.push_str(m.consts[c].name.name.as_str());
+                ev.defs.insert(ck.as_str(), Def { unit: unit.clone(), c: ast::clone_constdef(&m.consts[c], 1000000000) });
+            }
+        }
+        for l in 0..m.lens.len() {
+            let mut path: Vec<String> = Vec::new();
+            for q in 0..m.lens[l].path.len() {
+                path.push(m.lens[l].path[q].name.clone());
+            }
+            ev.named.push(LenAt { at: m.lens[l].at, path: path, unit: unit.clone() });
+        }
+        let mut sub: String = unit.clone();
+        sub.push_str("::");
+        for s in 0..m.mods.len() {
+            collect(&m.mods[s], sub.as_str(), ev, f - 1);
+        }
+    }
+
+    #[summary("같은 타입의 두 값의 비교")]
+    #[effects(alloc)]
+    fn compare(ev: &mut Eval, span: source::Span, op: &ast::BinOp, l: &CVal, r: &CVal) -> Option<CVal> {
+        let mut o: i32 = 2;
+        match l {
+            CVal::Int(p, t) => { match r { CVal::Int(q, u) => { o = cmp(*p, *q); }, CVal::Bool(rb) => {}, CVal::Char(rc) => {}, CVal::Array(rvs) => {}, CVal::Data(rd) => {}, } },
+            CVal::Bool(pb) => { match r { CVal::Int(q2, u2) => {}, CVal::Bool(qb) => { o = order_u32(flag(*pb), flag(*qb)); }, CVal::Char(rc2) => {}, CVal::Array(rvs2) => {}, CVal::Data(rd2) => {}, } },
+            CVal::Char(pc) => { match r { CVal::Int(q3, u3) => {}, CVal::Bool(rb3) => {}, CVal::Char(qc) => { o = order_u32(*pc, *qc); }, CVal::Array(rvs3) => {}, CVal::Data(rd3) => {}, } },
+            CVal::Array(pvs) => {},
+            CVal::Data(pd) => {},
+        }
+        if o == 2 {
+            let mut msg: String = String::from("`");
+            ast::push_bin_symbol(&mut msg, op);
+            msg.push_str("` of ");
+            msg.push_str(show(l).as_str());
+            return fail(ev, span, msg.as_str());
+        }
+        Some(CVal::Bool(cmp_holds(op, o)))
+    }
+
+    #[summary("스칼라 값의 타입 (배열과 자료 값은 Error)")]
+    #[effects(pure)]
+    fn cval_ty(v: &CVal) -> ast::TypeKind {
+        match v {
+            CVal::Int(n, t) => ast::TypeKind::Int(*t),
+            CVal::Bool(b) => ast::TypeKind::Bool,
+            CVal::Char(c) => ast::TypeKind::Char,
+            CVal::Array(vs) => ast::TypeKind::Error,
+            CVal::Data(d) => ast::TypeKind::Error,
+        }
+    }
+
+    #[summary("전체 경로 full의 선언이 기대한 타입 want의 것이면 그 타입 매개변수의 인자들")]
+    #[effects(alloc)]
+    fn decl_sub(ev: &Eval, di: usize, full: &str, want: &Option<ast::TypeKind>) -> Subst {
+        let mut sub: Subst = Subst { names: Vec::new(), tys: Vec::new() };
+        if di >= ev.tydefs.items.len() {
+            return sub;
+        }
+        match want {
+            None => {},
+            Some(t) => { match t { ast::TypeKind::Int(it) => {}, ast::TypeKind::F64 => {}, ast::TypeKind::Bool => {}, ast::TypeKind::Unit => {}, ast::TypeKind::Char => {}, ast::TypeKind::String => {}, ast::TypeKind::Str => {}, ast::TypeKind::Array(ae, an) => {}, ast::TypeKind::ArrayN(ne, nn) => {}, ast::TypeKind::Slice(se) => {}, ast::TypeKind::Ref(rm, ri) => {}, ast::TypeKind::Named(path, args) => { if ast::join_names(path.as_slice()).as_str() == full { for g in 0..ev.tydefs.items[di].generics.len() { if g < args.len() { sub.names.push(ev.tydefs.items[di].generics[g].clone()); sub.tys.push(ast::clone_typekind(&args[g].kind, 1000000000)); } } } }, ast::TypeKind::Vec(ve) => {}, ast::TypeKind::Box(be) => {}, ast::TypeKind::Param(pn) => {}, ast::TypeKind::Never => {}, ast::TypeKind::Error => {}, } },
+        }
+        sub
+    }
+
+    #[summary("검사기가 보기 전에 const를 이 타입으로 선언할 수 있는가: 스칼라, 배열, 이름으로 쓴 타입")]
+    #[effects(pure)]
+    fn declarable(t: &ast::TypeKind) -> bool {
+        match t {
+            ast::TypeKind::Int(it) => true,
+            ast::TypeKind::F64 => false,
+            ast::TypeKind::Bool => true,
+            ast::TypeKind::Unit => false,
+            ast::TypeKind::Char => true,
+            ast::TypeKind::String => false,
+            ast::TypeKind::Str => false,
+            ast::TypeKind::Array(ae, an) => true,
+            ast::TypeKind::ArrayN(ne, nn) => true,
+            ast::TypeKind::Slice(se) => false,
+            ast::TypeKind::Ref(rm, ri) => false,
+            ast::TypeKind::Named(path, args) => true,
+            ast::TypeKind::Vec(ve) => false,
+            ast::TypeKind::Box(be) => false,
+            ast::TypeKind::Param(pn) => false,
+            ast::TypeKind::Never => false,
+            ast::TypeKind::Error => false,
+        }
+    }
+
+    #[summary("고쳐 쓴 뒤의 선언 타입을 표에 ([T; N]이 그 길이를 든다)")]
+    #[effects(alloc)]
+    fn declared(m: &ast::Mod, prefix: &str, consts: &mut table::Table<Const>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let mut unit: String = String::from(prefix);
+        unit.push_str(m.name.name.as_str());
+        for c in 0..m.consts.len() {
+            let mut key: String = unit.clone();
+            key.push_str("::");
+            key.push_str(m.consts[c].name.name.as_str());
+            match consts.find(key.as_str()) {
+                None => {},
+                Some(i) => { consts.items[i].ty = ast::clone_typekind(&m.consts[c].ty.kind, 1000000000); },
+            }
+        }
+        let mut sub: String = unit.clone();
+        sub.push_str("::");
+        for s in 0..m.mods.len() {
+            declared(&m.mods[s], sub.as_str(), consts, f - 1);
+        }
+    }
+
+    #[summary("나눗셈 (0이 아닌 b로): 0 쪽으로 자른다")]
+    #[effects(pure)]
+    fn div(a: Num, b: Num) -> Num {
+        if b.mag == 0 {
+            return num(false, 0);
+        }
+        num(a.neg != b.neg, a.mag / b.mag)
+    }
+
+    #[summary("기대한 배열 타입의 원소 타입")]
+    #[effects(alloc)]
+    fn elem(want: &Option<ast::TypeKind>) -> Option<ast::TypeKind> {
+        match want {
+            None => None,
+            Some(t) => elem_of(t),
+        }
+    }
+
+    #[effects(alloc)]
+    fn elem_of(t: &ast::TypeKind) -> Option<ast::TypeKind> {
+        match t {
+            ast::TypeKind::Int(it) => None,
+            ast::TypeKind::F64 => None,
+            ast::TypeKind::Bool => None,
+            ast::TypeKind::Unit => None,
+            ast::TypeKind::Char => None,
+            ast::TypeKind::String => None,
+            ast::TypeKind::Str => None,
+            ast::TypeKind::Array(ae, an) => Some(ast::clone_typekind(&ae.kind, 1000000000)),
+            ast::TypeKind::ArrayN(ne, nn) => Some(ast::clone_typekind(&ne.kind, 1000000000)),
+            ast::TypeKind::Slice(se) => None,
+            ast::TypeKind::Ref(rm, ri) => None,
+            ast::TypeKind::Named(path, args) => None,
+            ast::TypeKind::Vec(ve) => None,
+            ast::TypeKind::Box(be) => None,
+            ast::TypeKind::Param(pn) => None,
+            ast::TypeKind::Never => None,
+            ast::TypeKind::Error => None,
+        }
+    }
+
+    #[summary("상수 식 하나를 평가한다. want는 문맥이 주는 타입: 리터럴은 그것으로 타입을 얻는다")]
+    #[effects(alloc)]
+    fn expr(ev: &mut Eval, e: &ast::Expr, want: &Option<ast::TypeKind>, unit: &str, f: usize) -> Option<CVal>
+        decreases f,
+    {
+        if f == 0 {
+            return None;
+        }
+        match &e.kind {
+            ast::ExprKind::Int(iv, ir) => lit_int(ev, *iv, want, e.span),
+            ast::ExprKind::Float(fb) => not_const(ev, e, "not one of the forms of ADR-0052 §3"),
+            ast::ExprKind::ByteLit(by) => Some(CVal::Int(num(false, *by as u64), ast::IntTy::U8)),
+            ast::ExprKind::ByteStr(bys) => not_const(ev, e, "not one of the forms of ADR-0052 §3"),
+            ast::ExprKind::StrLit(sv) => not_const(ev, e, "not one of the forms of ADR-0052 §3"),
+            ast::ExprKind::CharLit(ch) => Some(CVal::Char(*ch)),
+            ast::ExprKind::Bool(bo) => Some(CVal::Bool(*bo)),
+            ast::ExprKind::Unit => not_const(ev, e, "not one of the forms of ADR-0052 §3"),
+            ast::ExprKind::Var(id) => expr_var(ev, e, id, want, unit, f - 1),
+            ast::ExprKind::Call(ca) => expr_call(ev, e, ca, want, unit, f - 1),
+            ast::ExprKind::Method(me) => method(ev, e, me, want, unit, f - 1),
+            ast::ExprKind::Index(ib, ii) => expr_index(ev, e, &**ib, &**ii, unit, f - 1),
+            ast::ExprKind::Unary(uo, ux) => expr_unary(ev, e, uo, &**ux, want, unit, f - 1),
+            ast::ExprKind::Binary(bop, bl, br) => binary(ev, e, bop, &**bl, &**br, want, unit, f - 1),
+            ast::ExprKind::Ref(rm, rx) => not_const(ev, e, "not one of the forms of ADR-0052 §3"),
+            ast::ExprKind::If(ife) => expr_if(ev, e, ife, want, unit, f - 1),
+            ast::ExprKind::Block(blk) => expr_block(ev, e, blk, want, unit, f - 1),
+            ast::ExprKind::Array(ar) => expr_array(ev, ar.as_slice(), want, unit, f - 1),
+            ast::ExprKind::Repeat(rp) => expr_repeat(ev, e, rp, want, unit, f - 1),
+            ast::ExprKind::Old(ox) => not_const(ev, e, "not one of the forms of ADR-0052 §3"),
+            ast::ExprKind::Quant(qu) => not_const(ev, e, "not one of the forms of ADR-0052 §3"),
+            ast::ExprKind::Trigger(tx) => not_const(ev, e, "not one of the forms of ADR-0052 §3"),
+            ast::ExprKind::Closure(cl) => not_const(ev, e, "not one of the forms of ADR-0052 §3"),
+            ast::ExprKind::StructLit(sl) => expr_struct(ev, e, sl, want, unit, f - 1),
+            ast::ExprKind::Path(pa) => expr_path(ev, e, pa.as_slice(), want, unit, f - 1),
+            ast::ExprKind::Deref(dx) => not_const(ev, e, "not one of the forms of ADR-0052 §3"),
+            ast::ExprKind::Field(fx, fnm) => expr_field(ev, e, &**fx, fnm, unit, f - 1),
+            ast::ExprKind::Match(ma) => expr_match(ev, ma, want, unit, f - 1),
+            ast::ExprKind::Return(rv) => not_const(ev, e, "not one of the forms of ADR-0052 §3"),
+            ast::ExprKind::Try(tr) => not_const(ev, e, "not one of the forms of ADR-0052 §3"),
+            ast::ExprKind::Loop(lp) => not_const(ev, e, "not one of the forms of ADR-0052 §3"),
+            ast::ExprKind::Break(bk) => not_const(ev, e, "not one of the forms of ADR-0052 §3"),
+            ast::ExprKind::Continue(co) => not_const(ev, e, "not one of the forms of ADR-0052 §3"),
+            ast::ExprKind::Range(rg) => not_const(ev, e, "not one of the forms of ADR-0052 §3"),
+            ast::ExprKind::Error => not_const(ev, e, "not one of the forms of ADR-0052 §3"),
+        }
+    }
+
+    #[effects(alloc)]
+    fn expr_array(ev: &mut Eval, items: &[ast::Expr], want: &Option<ast::TypeKind>, unit: &str, f: usize) -> Option<CVal>
+        decreases f,
+    {
+        if f == 0 {
+            return None;
+        }
+        let mut w: Option<ast::TypeKind> = elem(want);
+        let mut vals: Vec<CVal> = Vec::new();
+        for i in 0..items.len() {
+            match expr(ev, &items[i], &w, unit, f - 1) {
+                None => { return None; },
+                Some(v) => { if !has_type(&w) && scalar_val(&v) { w = Some(cval_ty(&v)); } vals.push(v); },
+            }
+        }
+        Some(CVal::Array(vals))
+    }
+
+    #[effects(alloc)]
+    fn expr_block(ev: &mut Eval, e: &ast::Expr, b: &ast::Block, want: &Option<ast::TypeKind>, unit: &str, f: usize) -> Option<CVal>
+        decreases f,
+    {
+        if f == 0 {
+            return None;
+        }
+        if b.stmts.len() == 0 {
+            match &b.tail {
+                None => {},
+                Some(t) => { return expr(ev, &**t, want, unit, f - 1); },
+            }
+        }
+        not_const(ev, e, "not one of the forms of ADR-0052 §3")
+    }
+
+    #[effects(alloc)]
+    fn expr_call(ev: &mut Eval, e: &ast::Expr, ca: &ast::Call, want: &Option<ast::TypeKind>, unit: &str, f: usize) -> Option<CVal>
+        decreases f,
+    {
+        if f == 0 {
+            return None;
+        }
+        let names: Vec<String> = path_names(ca.path.as_slice());
+        let b: Built = variant(ev, names.as_slice(), ca.args.as_slice(), want, unit, f - 1);
+        if b.hit {
+            return b.v;
+        }
+        not_const(ev, e, "a call (a `const` names no function, ADR-0052 §3)")
+    }
+
+    #[effects(alloc)]
+    fn expr_field(ev: &mut Eval, e: &ast::Expr, base: &ast::Expr, name: &ast::Ident, unit: &str, f: usize) -> Option<CVal>
+        decreases f,
+    {
+        if f == 0 {
+            return None;
+        }
+        let none: Option<ast::TypeKind> = None;
+        let mut v: CVal = CVal::Bool(false);
+        match expr(ev, base, &none, unit, f - 1) {
+            None => { return None; },
+            Some(x) => { v = x; },
+        }
+        match &v {
+            CVal::Int(n, t) => {},
+            CVal::Bool(b) => {},
+            CVal::Char(c) => {},
+            CVal::Array(vs) => {},
+            CVal::Data(d) => { if !has_name(&d.variant) { for i in 0..d.fields.len() { if d.fields[i].name.as_str() == name.name.as_str() { return Some(clone_cval(&d.fields[i].v, 1000000000)); } } return None; } },
+        }
+        let mut msg: String = String::from("`.");
+        msg.push_str(name.name.as_str());
+        msg.push_str("` of ");
+        msg.push_str(show(&v).as_str());
+        fail(ev, e.span, msg.as_str())
+    }
+
+    #[effects(alloc)]
+    fn expr_if(ev: &mut Eval, e: &ast::Expr, ife: &ast::If, want: &Option<ast::TypeKind>, unit: &str, f: usize) -> Option<CVal>
+        decreases f,
+    {
+        if f == 0 {
+            return None;
+        }
+        if !fmt::is_some_box(&ife.els) {
+            return not_const(ev, e, "an `if` without `else`");
+        }
+        if ife.then.stmts.len() > 0 {
+            return not_const(ev, e, "a block with statements");
+        }
+        if !fmt::is_some_box(&ife.then.tail) {
+            return not_const(ev, e, "an empty block");
+        }
+        let boolean: Option<ast::TypeKind> = Some(ast::TypeKind::Bool);
+        let mut c: CVal = CVal::Bool(false);
+        match expr(ev, &*ife.cond, &boolean, unit, f - 1) {
+            None => { return None; },
+            Some(x) => { c = x; },
+        }
+        let mut take: u8 = 2;
+        match &c {
+            CVal::Int(n, nt) => {},
+            CVal::Bool(b) => { if *b { take = 1; } else { take = 0; } },
+            CVal::Char(ch) => {},
+            CVal::Array(vs) => {},
+            CVal::Data(d) => {},
+        }
+        if take == 1 {
+            match &ife.then.tail {
+                None => { return None; },
+                Some(t) => { return expr(ev, &**t, want, unit, f - 1); },
+            }
+        }
+        if take == 0 {
+            match &ife.els {
+                None => { return None; },
+                Some(x2) => { return expr(ev, &**x2, want, unit, f - 1); },
+            }
+        }
+        let mut msg: String = String::from("the condition is `");
+        msg.push_str(show(&c).as_str());
+        msg.push_str("`");
+        fail(ev, ife.cond.span, msg.as_str())
+    }
+
+    #[effects(alloc)]
+    fn expr_index(ev: &mut Eval, e: &ast::Expr, base: &ast::Expr, index: &ast::Expr, unit: &str, f: usize) -> Option<CVal>
+        decreases f,
+    {
+        if f == 0 {
+            return None;
+        }
+        let none: Option<ast::TypeKind> = None;
+        let mut b: CVal = CVal::Bool(false);
+        match expr(ev, base, &none, unit, f - 1) {
+            None => { return None; },
+            Some(x) => { b = x; },
+        }
+        let us: Option<ast::TypeKind> = Some(ast::TypeKind::Int(ast::IntTy::Usize));
+        let mut i: CVal = CVal::Bool(false);
+        match expr(ev, index, &us, unit, f - 1) {
+            None => { return None; },
+            Some(y) => { i = y; },
+        }
+        match &b {
+            CVal::Int(n, t) => {},
+            CVal::Bool(bb) => {},
+            CVal::Char(c) => {},
+            CVal::Array(vs) => { match &i { CVal::Int(k, kt) => { if !k.neg && k.mag < vs.len() as u64 { let at: usize = k.mag as usize; if at < vs.len() { return Some(clone_cval(&vs[at], 1000000000)); } } let mut m1: String = String::from("index "); push_num(&mut m1, *k); m1.push_str(" is out of bounds of an array of "); std::num::push_u64(&mut m1, vs.len() as u64); return fail(ev, e.span, m1.as_str()); }, CVal::Bool(ib) => {}, CVal::Char(ic) => {}, CVal::Array(ivs) => {}, CVal::Data(id2) => {}, } },
+            CVal::Data(d) => {},
+        }
+        let mut msg: String = show(&b);
+        msg.push_str(" indexed by ");
+        msg.push_str(show(&i).as_str());
+        fail(ev, e.span, msg.as_str())
+    }
+
+    #[effects(alloc)]
+    fn expr_match(ev: &mut Eval, ma: &ast::Match, want: &Option<ast::TypeKind>, unit: &str, f: usize) -> Option<CVal>
+        decreases f,
+    {
+        if f == 0 {
+            return None;
+        }
+        let none: Option<ast::TypeKind> = None;
+        let mut v: CVal = CVal::Bool(false);
+        match expr(ev, &*ma.scrut, &none, unit, f - 1) {
+            None => { return None; },
+            Some(x) => { v = x; },
+        }
+        let mut var: String = String::new();
+        let mut is_variant: bool = false;
+        match &v {
+            CVal::Int(n, t) => {},
+            CVal::Bool(b) => {},
+            CVal::Char(c) => {},
+            CVal::Array(vs) => {},
+            CVal::Data(d) => { match &d.variant { None => {}, Some(s) => { var = s.clone(); is_variant = true; }, } },
+        }
+        if !is_variant {
+            let mut msg: String = String::from("a `match` of ");
+            msg.push_str(show(&v).as_str());
+            return fail(ev, ma.scrut.span, msg.as_str());
+        }
+        for a in 0..ma.arms.len() {
+            let np: usize = ma.arms[a].pat.path.len();
+            if np > 0 {
+                let last: String = ma.arms[a].pat.path[np - 1].name.clone();
+                if last.as_str() == "_" || last.as_str() == var.as_str() {
+                    let binds: Vec<Bind> = arm_binds(&ma.arms[a].pat, &v);
+                    ev.env.push(binds);
+                    let r: Option<CVal> = expr(ev, &ma.arms[a].body, want, unit, f - 1);
+                    ev.env.pop();
+                    return r;
+                }
+            }
+        }
+        None
+    }
+
+    #[effects(alloc)]
+    fn expr_path(ev: &mut Eval, e: &ast::Expr, path: &[ast::Ident], want: &Option<ast::TypeKind>, unit: &str, f: usize) -> Option<CVal>
+        decreases f,
+    {
+        if f == 0 {
+            return None;
+        }
+        match int_const(path) {
+            None => {},
+            Some(c) => { return Some(c); },
+        }
+        let names: Vec<String> = path_names(path);
+        let mut known: bool = false;
+        match lookup_defs(&ev.defs, names.as_slice(), unit) {
+            None => {},
+            Some(p) => { known = true; },
+        }
+        if !known {
+            let none: Vec<ast::Expr> = Vec::new();
+            let b: Built = variant(ev, names.as_slice(), none.as_slice(), want, unit, f - 1);
+            if b.hit {
+                return b.v;
+            }
+        }
+        name(ev, e, names.as_slice(), unit, f - 1)
+    }
+
+    #[effects(alloc)]
+    fn expr_repeat(ev: &mut Eval, e: &ast::Expr, rp: &ast::Repeat, want: &Option<ast::TypeKind>, unit: &str, f: usize) -> Option<CVal>
+        decreases f,
+    {
+        if f == 0 {
+            return None;
+        }
+        let mut n: wide::U128 = rp.count;
+        let mut at: usize = ev.named.len();
+        let mut q: usize = ev.named.len();
+        while q > 0
+            invariant q <= ev.named.len() && at <= ev.named.len(),
+            decreases q,
+        {
+            q = q - 1;
+            if ev.named[q].at.file == rp.count_span.file && ev.named[q].at.lo == rp.count_span.lo && ev.named[q].at.hi == rp.count_span.hi {
+                at = q;
+            }
+        }
+        if at < ev.named.len() {
+            let path: Vec<String> = names_copy(ev.named[at].path.as_slice());
+            let mut p: String = String::new();
+            match lookup_defs(&ev.defs, path.as_slice(), unit) {
+                None => { return None; },
+                Some(full) => { p = full; },
+            }
+            let mut cv: CVal = CVal::Bool(false);
+            match konst(ev, p.as_str(), f - 1) {
+                None => { return None; },
+                Some(x) => { cv = x; },
+            }
+            let mut good: bool = false;
+            match &cv {
+                CVal::Int(k, kt) => { if is_usize(kt) { good = true; n = wide::U128 { hi: 0, lo: k.mag }; } },
+                CVal::Bool(b) => {},
+                CVal::Char(c) => {},
+                CVal::Array(vs) => {},
+                CVal::Data(d) => {},
+            }
+            if !good {
+                let mut m1: String = String::from("the count is ");
+                m1.push_str(show(&cv).as_str());
+                return fail(ev, rp.count_span, m1.as_str());
+            }
+        }
+        if n.hi != 0 || n.lo > 65536 {
+            let mut m2: String = String::from("an array of ");
+            m2.push_str(ast::radix_text(ast::Radix::Dec, n).as_str());
+            m2.push_str(" elements (a `const` builds at most 65536)");
+            return fail(ev, e.span, m2.as_str());
+        }
+        let w: Option<ast::TypeKind> = elem(want);
+        let mut v: CVal = CVal::Bool(false);
+        match expr(ev, &*rp.value, &w, unit, f - 1) {
+            None => { return None; },
+            Some(y) => { v = y; },
+        }
+        let mut out: Vec<CVal> = Vec::new();
+        let mut i: u64 = 0;
+        while i < n.lo
+            decreases n.lo - i,
+        {
+            out.push(clone_cval(&v, 1000000000));
+            i = i + 1;
+        }
+        Some(CVal::Array(out))
+    }
+
+    #[effects(alloc)]
+    fn expr_struct(ev: &mut Eval, e: &ast::Expr, sl: &ast::StructLit, want: &Option<ast::TypeKind>, unit: &str, f: usize) -> Option<CVal>
+        decreases f,
+    {
+        if f == 0 {
+            return None;
+        }
+        if fmt::is_some_box(&sl.rest) {
+            return not_const(ev, e, "`..base`");
+        }
+        let names: Vec<String> = path_names(sl.path.as_slice());
+        let mut full: String = String::new();
+        match type_path(ev, names.as_slice(), unit) {
+            None => { return None; },
+            Some(p) => { full = p; },
+        }
+        let mut di: usize = 0;
+        match ev.tydefs.find(full.as_str()) {
+            None => { return None; },
+            Some(i) => { di = i; },
+        }
+        if di >= ev.tydefs.items.len() {
+            return None;
+        }
+        let sub: Subst = decl_sub(ev, di, full.as_str(), want);
+        let dunit: String = ev.tydefs.items[di].unit.clone();
+        let mut fnames: Vec<String> = Vec::new();
+        let mut ftys: Vec<ast::TypeKind> = Vec::new();
+        match &ev.tydefs.items[di].kind {
+            TyDefKind::Struct(fs) => { for k in 0..fs.len() { fnames.push(fs[k].name.clone()); ftys.push(ast::clone_typekind(&fs[k].ty, 1000000000)); } },
+            TyDefKind::Enum(vs) => { return None; },
+        }
+        let mut out: Vec<DataField> = Vec::new();
+        for j in 0..fnames.len() {
+            if j < ftys.len() {
+                let mut at: usize = sl.fields.len();
+                let mut q: usize = sl.fields.len();
+                while q > 0
+                    invariant q <= sl.fields.len() && at <= sl.fields.len(),
+                    decreases q,
+                {
+                    q = q - 1;
+                    if sl.fields[q].name.name.as_str() == fnames[j].as_str() {
+                        at = q;
+                    }
+                }
+                if at >= sl.fields.len() {
+                    return None;
+                }
+                let w: Option<ast::TypeKind> = Some(norm(ev, &ftys[j], dunit.as_str(), &sub, 1000000000));
+                match expr(ev, &sl.fields[at].value, &w, unit, f - 1) {
+                    None => { return None; },
+                    Some(x) => out.push(DataField { name: fnames[j].clone(), v: x }),
+                }
+            }
+        }
+        Some(CVal::Data(Data { ty: full, variant: None, fields: out }))
+    }
+
+    #[effects(alloc)]
+    fn expr_unary(ev: &mut Eval, e: &ast::Expr, op: &ast::UnOp, x: &ast::Expr, want: &Option<ast::TypeKind>, unit: &str, f: usize) -> Option<CVal>
+        decreases f,
+    {
+        if f == 0 {
+            return None;
+        }
+        let neg: bool = is_neg(op);
+        if neg {
+            match int_lit(x) {
+                None => {},
+                Some(lit) => { let t: ast::IntTy = want_int(want); let mut txt: String = String::from("`-"); txt.push_str(ast::radix_text(ast::Radix::Dec, lit).as_str()); if !signed(t) { txt.push_str("` of `"); ast::push_int_name(&mut txt, &t); txt.push_str("`"); return fail(ev, e.span, txt.as_str()); } txt.push_str("`"); let mut val: Option<Num> = None; if lit.hi == 0 { val = Some(num(true, lit.lo)); } return int(ev, val, t, e.span, txt.as_str()); },
+            }
+        }
+        let mut v: CVal = CVal::Bool(false);
+        match expr(ev, x, want, unit, f - 1) {
+            None => { return None; },
+            Some(y) => { v = y; },
+        }
+        match &v {
+            CVal::Int(n, t2) => { if neg { if signed(*t2) { return int(ev, Some(negate(*n)), *t2, e.span, "`-`"); } } else { return Some(CVal::Int(from_pattern(!pattern(*n), *t2), *t2)); } },
+            CVal::Bool(b) => { if !neg { return Some(CVal::Bool(!*b)); } },
+            CVal::Char(c) => {},
+            CVal::Array(vs) => {},
+            CVal::Data(d) => {},
+        }
+        let mut msg: String = String::from("`!` of `");
+        if neg {
+            msg = String::from("`-` of `");
+        }
+        msg.push_str(show(&v).as_str());
+        msg.push_str("`");
+        fail(ev, e.span, msg.as_str())
+    }
+
+    #[effects(alloc)]
+    fn expr_var(ev: &mut Eval, e: &ast::Expr, id: &ast::Ident, want: &Option<ast::TypeKind>, unit: &str, f: usize) -> Option<CVal>
+        decreases f,
+    {
+        if f == 0 {
+            return None;
+        }
+        let mut one: Vec<String> = Vec::new();
+        one.push(id.name.clone());
+        if id.name.as_str() == "None" && !bound(ev, "None", unit) {
+            let none: Vec<ast::Expr> = Vec::new();
+            let b: Built = variant(ev, one.as_slice(), none.as_slice(), want, unit, f - 1);
+            return b.v;
+        }
+        name(ev, e, one.as_slice(), unit, f - 1)
+    }
+
+    #[summary("E0260: 상수 평가의 실패")]
+    #[effects(alloc)]
+    fn fail(ev: &mut Eval, span: source::Span, what: &str) -> Option<CVal> {
+        let mut msg: String = String::from("constant evaluation failed: ");
+        msg.push_str(what);
+        ev.diags.push(diag::fix(diag::new("E0260", span, msg.as_str()), "a `const` is evaluated as Rust evaluates it: change the value, or give the `const` a type that holds it", None));
+        None
+    }
+
+    #[effects(alloc)]
+    fn fail_not_bool(ev: &mut Eval, span: source::Span, v: &CVal) -> Option<CVal> {
+        let mut msg: String = String::from("`");
+        msg.push_str(show(v).as_str());
+        msg.push_str("` is not a `bool`");
+        fail(ev, span, msg.as_str())
+    }
+
+    #[effects(pure)]
+    fn flag(b: bool) -> u32 {
+        if b {
+            return 1;
+        }
+        0
+    }
+
+    #[summary("64비트 2의 보수 꼴 p의 아래 bits(t) 비트를 타입 t의 값으로")]
+    #[effects(pure)]
+    fn from_pattern(p: u64, t: ast::IntTy) -> Num {
+        let m: u64 = mask(t);
+        let low: u64 = p & m;
+        if signed(t) && low > m / 2 {
+            return num(true, (!low & m).wrapping_add(1));
+        }
+        num(false, low)
+    }
+
+    #[summary("xs에 s가 있는가")]
+    #[effects(pure)]
+    fn has(xs: &[String], s: &str) -> bool {
+        for i in 0..xs.len() {
+            if xs[i].as_str() == s {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[effects(pure)]
+    fn has_name(o: &Option<String>) -> bool {
+        match o {
+            None => false,
+            Some(s) => true,
+        }
+    }
+
+    #[effects(pure)]
+    fn has_type(o: &Option<ast::TypeKind>) -> bool {
+        match o {
+            None => false,
+            Some(t) => true,
+        }
+    }
+
+    #[summary("비교의 피연산자에는 문맥의 타입을 주지 않는다")]
+    #[effects(alloc)]
+    fn hinted(ev: &mut Eval, x: &ast::Expr, bare: bool, want: &Option<ast::TypeKind>, unit: &str, f: usize) -> Option<CVal>
+        decreases f,
+    {
+        if f == 0 {
+            return None;
+        }
+        if bare {
+            let none: Option<ast::TypeKind> = None;
+            return expr(ev, x, &none, unit, f - 1);
+        }
+        expr(ev, x, want, unit, f - 1)
+    }
+
+    #[summary("v가 타입 t의 범위 안이면 그 값, 아니면 op가 넘쳤다는 E0260")]
+    #[effects(alloc)]
+    fn int(ev: &mut Eval, v: Option<Num>, t: ast::IntTy, span: source::Span, op: &str) -> Option<CVal> {
+        match v {
+            None => {},
+            Some(n) => { if cmp(n, min_of(t)) >= 0 && cmp(n, max_of(t)) <= 0 { return Some(CVal::Int(n, t)); } },
+        }
+        let mut what: String = String::from(op);
+        what.push_str(" overflows `");
+        ast::push_int_name(&mut what, &t);
+        what.push_str("`");
+        fail(ev, span, what.as_str())
+    }
+
+    #[summary("+ - * / % & | ^ 의 차례: 1..8. 아니면 0")]
+    #[effects(pure)]
+    fn int_class(op: &ast::BinOp) -> u8 {
+        match op {
+            ast::BinOp::Add => 1,
+            ast::BinOp::Sub => 2,
+            ast::BinOp::Mul => 3,
+            ast::BinOp::Div => 4,
+            ast::BinOp::Rem => 5,
+            ast::BinOp::Eq => 0,
+            ast::BinOp::Ne => 0,
+            ast::BinOp::Lt => 0,
+            ast::BinOp::Le => 0,
+            ast::BinOp::Gt => 0,
+            ast::BinOp::Ge => 0,
+            ast::BinOp::And => 0,
+            ast::BinOp::Or => 0,
+            ast::BinOp::Implies => 0,
+            ast::BinOp::BitAnd => 6,
+            ast::BinOp::BitOr => 7,
+            ast::BinOp::BitXor => 8,
+            ast::BinOp::Shl => 0,
+            ast::BinOp::Shr => 0,
+        }
+    }
+
+    #[summary("T::MIN, T::MAX (Rust의 연관 상수)")]
+    #[effects(pure)]
+    fn int_const(path: &[ast::Ident]) -> Option<CVal> {
+        if path.len() != 2 {
+            return None;
+        }
+        match ast::int_of(path[0].name.as_str()) {
+            None => None,
+            Some(t) => { if path[1].name.as_str() == "MIN" { return Some(CVal::Int(min_of(t), t)); } if path[1].name.as_str() == "MAX" { return Some(CVal::Int(max_of(t), t)); } None },
+        }
+    }
+
+    #[summary("정수 리터럴이면 그 값")]
+    #[effects(pure)]
+    fn int_lit(e: &ast::Expr) -> Option<wide::U128> {
+        match &e.kind {
+            ast::ExprKind::Int(iv, ir) => Some(*iv),
+            ast::ExprKind::Float(fb) => None,
+            ast::ExprKind::ByteLit(by) => None,
+            ast::ExprKind::ByteStr(bys) => None,
+            ast::ExprKind::StrLit(sv) => None,
+            ast::ExprKind::CharLit(ch) => None,
+            ast::ExprKind::Bool(bo) => None,
+            ast::ExprKind::Unit => None,
+            ast::ExprKind::Var(id) => None,
+            ast::ExprKind::Call(ca) => None,
+            ast::ExprKind::Method(me) => None,
+            ast::ExprKind::Index(ib, ii) => None,
+            ast::ExprKind::Unary(uo, ux) => None,
+            ast::ExprKind::Binary(bop, bl, br) => None,
+            ast::ExprKind::Ref(rm, rx) => None,
+            ast::ExprKind::If(ife) => None,
+            ast::ExprKind::Block(blk) => None,
+            ast::ExprKind::Array(ar) => None,
+            ast::ExprKind::Repeat(rp) => None,
+            ast::ExprKind::Old(ox) => None,
+            ast::ExprKind::Quant(qu) => None,
+            ast::ExprKind::Trigger(tx) => None,
+            ast::ExprKind::Closure(cl) => None,
+            ast::ExprKind::StructLit(sl) => None,
+            ast::ExprKind::Path(pa) => None,
+            ast::ExprKind::Deref(dx) => None,
+            ast::ExprKind::Field(fx, fnm) => None,
+            ast::ExprKind::Match(ma) => None,
+            ast::ExprKind::Return(rv) => None,
+            ast::ExprKind::Try(tr) => None,
+            ast::ExprKind::Loop(lp) => None,
+            ast::ExprKind::Break(bk) => None,
+            ast::ExprKind::Continue(co) => None,
+            ast::ExprKind::Range(rg) => None,
+            ast::ExprKind::Error => None,
+        }
+    }
+
+    #[summary("두 정수의 산술·비트 연산. sl과 sr은 두 값을 말하는 글")]
+    #[effects(alloc)]
+    fn int_op(ev: &mut Eval, span: source::Span, op: &ast::BinOp, p: Num, q: Num, t: ast::IntTy, sl: &str, sr: &str) -> Option<CVal> {
+        let mut shown: String = String::from("`");
+        shown.push_str(sl);
+        shown.push_str(" ");
+        ast::push_bin_symbol(&mut shown, op);
+        shown.push_str(" ");
+        shown.push_str(sr);
+        shown.push_str("`");
+        let k: u8 = int_class(op);
+        if k == 1 {
+            return int(ev, add(p, q), t, span, shown.as_str());
+        }
+        if k == 2 {
+            return int(ev, add(p, negate(q)), t, span, shown.as_str());
+        }
+        if k == 3 {
+            return int(ev, mul(p, q), t, span, shown.as_str());
+        }
+        if k == 4 || k == 5 {
+            if q.mag == 0 {
+                shown.push_str(" divides by zero");
+                return fail(ev, span, shown.as_str());
+            }
+            if k == 4 {
+                return int(ev, Some(div(p, q)), t, span, shown.as_str());
+            }
+            if signed(t) && cmp(p, min_of(t)) == 0 && q.neg && q.mag == 1 {
+                return int(ev, None, t, span, shown.as_str());
+            }
+            return int(ev, Some(rem(p, q)), t, span, shown.as_str());
+        }
+        if k == 6 {
+            return Some(CVal::Int(from_pattern(pattern(p) & pattern(q), t), t));
+        }
+        if k == 7 {
+            return Some(CVal::Int(from_pattern(pattern(p) | pattern(q), t), t));
+        }
+        if k == 8 {
+            return Some(CVal::Int(from_pattern(pattern(p) ^ pattern(q), t), t));
+        }
+        let mut msg: String = String::from("`");
+        ast::push_bin_symbol(&mut msg, op);
+        msg.push_str("` of integers");
+        fail(ev, span, msg.as_str())
+    }
+
+    #[effects(pure)]
+    fn is_and(op: &ast::BinOp) -> bool {
+        match op {
+            ast::BinOp::Add => false,
+            ast::BinOp::Sub => false,
+            ast::BinOp::Mul => false,
+            ast::BinOp::Div => false,
+            ast::BinOp::Rem => false,
+            ast::BinOp::Eq => false,
+            ast::BinOp::Ne => false,
+            ast::BinOp::Lt => false,
+            ast::BinOp::Le => false,
+            ast::BinOp::Gt => false,
+            ast::BinOp::Ge => false,
+            ast::BinOp::And => true,
+            ast::BinOp::Or => false,
+            ast::BinOp::Implies => false,
+            ast::BinOp::BitAnd => false,
+            ast::BinOp::BitOr => false,
+            ast::BinOp::BitXor => false,
+            ast::BinOp::Shl => false,
+            ast::BinOp::Shr => false,
+        }
+    }
+
+    #[effects(pure)]
+    fn is_bool(v: &CVal) -> bool {
+        match v {
+            CVal::Int(n, t) => false,
+            CVal::Bool(b) => true,
+            CVal::Char(c) => false,
+            CVal::Array(vs) => false,
+            CVal::Data(d) => false,
+        }
+    }
+
+    #[effects(pure)]
+    fn is_neg(op: &ast::UnOp) -> bool {
+        match op {
+            ast::UnOp::Neg => true,
+            ast::UnOp::Not => false,
+        }
+    }
+
+    #[effects(pure)]
+    fn is_shl(op: &ast::BinOp) -> bool {
+        match op {
+            ast::BinOp::Add => false,
+            ast::BinOp::Sub => false,
+            ast::BinOp::Mul => false,
+            ast::BinOp::Div => false,
+            ast::BinOp::Rem => false,
+            ast::BinOp::Eq => false,
+            ast::BinOp::Ne => false,
+            ast::BinOp::Lt => false,
+            ast::BinOp::Le => false,
+            ast::BinOp::Gt => false,
+            ast::BinOp::Ge => false,
+            ast::BinOp::And => false,
+            ast::BinOp::Or => false,
+            ast::BinOp::Implies => false,
+            ast::BinOp::BitAnd => false,
+            ast::BinOp::BitOr => false,
+            ast::BinOp::BitXor => false,
+            ast::BinOp::Shl => true,
+            ast::BinOp::Shr => false,
+        }
+    }
+
+    #[effects(pure)]
+    fn is_usize(t: &ast::IntTy) -> bool {
+        match t {
+            ast::IntTy::I8 => false,
+            ast::IntTy::I16 => false,
+            ast::IntTy::I32 => false,
+            ast::IntTy::I64 => false,
+            ast::IntTy::Isize => false,
+            ast::IntTy::U8 => false,
+            ast::IntTy::U16 => false,
+            ast::IntTy::U32 => false,
+            ast::IntTy::U64 => false,
+            ast::IntTy::Usize => true,
+        }
+    }
+
+    #[effects(alloc)]
+    fn keep(v: Option<CVal>, ok: bool) -> Option<CVal> {
+        if ok {
+            v
+        } else {
+            let dropped: Option<CVal> = v;
+            None
+        }
+    }
+
+    #[summary("타입의 글 (stage0 check::ty_str)")]
+    #[effects(alloc)]
+    fn kind_text(t: &ast::TypeKind) -> String {
+        let mut s: String = String::new();
+        fmt::push_kind(&mut s, t, 100000);
+        s
+    }
+
+    #[summary("const 하나를 평가한다 (한 번만: done). 자기에게 닿으면 E0318")]
+    #[effects(alloc)]
+    fn konst(ev: &mut Eval, path: &str, f: usize) -> Option<CVal>
+        decreases f,
+    {
+        if f == 0 {
+            return None;
+        }
+        match ev.done.find(path) {
+            None => {},
+            Some(k) => { return clone_opt(&ev.done.items[k]); },
+        }
+        let mut di: usize = 0;
+        match ev.defs.find(path) {
+            None => { return None; },
+            Some(i) => { di = i; },
+        }
+        if di >= ev.defs.items.len() {
+            return None;
+        }
+        let unit: String = ev.defs.items[di].unit.clone();
+        let c: ast::ConstDef = ast::clone_constdef(&ev.defs.items[di].c, 1000000000);
+        if has(ev.stack.as_slice(), path) {
+            let mut msg: String = String::from("constants refer to each other: ");
+            let mut on: bool = false;
+            for s in 0..ev.stack.len() {
+                if ev.stack[s].as_str() == path {
+                    on = true;
+                }
+                if on {
+                    msg.push_str(ev.stack[s].as_str());
+                    msg.push_str(" -> ");
+                }
+            }
+            msg.push_str(path);
+            ev.diags.push(diag::fix(diag::new("E0318", c.name.span, msg.as_str()), "give one of them a value that names none of the others", None));
+            ev.done.insert(path, None);
+            return None;
+        }
+        if !declarable(&c.ty.kind) {
+            ev.diags.push(not_value(&c.ty.kind, c.ty.span));
+            ev.done.insert(path, None);
+            return None;
+        }
+        ev.stack.push(String::from(path));
+        let none: Subst = Subst { names: Vec::new(), tys: Vec::new() };
+        let want: Option<ast::TypeKind> = Some(norm(ev, &c.ty.kind, unit.as_str(), &none, 1000000000));
+        let saved: Vec<Vec<Bind>> = std::mem::replace(&mut ev.env, Vec::new());
+        let v: Option<CVal> = expr(ev, &c.value, &want, unit.as_str(), f - 1);
+        ev.env = saved;
+        ev.stack.pop();
+        let mut ok: bool = false;
+        match &v {
+            None => {},
+            Some(x) => { if !scalar(&c.ty.kind) || kind_text(&cval_ty(x)) == kind_text(&c.ty.kind) { ok = true; } else { let mut m2: String = String::from("expected `"); m2.push_str(kind_text(&c.ty.kind).as_str()); m2.push_str("`, found `"); m2.push_str(kind_text(&cval_ty(x)).as_str()); m2.push_str("`"); ev.diags.push(diag::new("E0401", c.value.span, m2.as_str())); } },
+        }
+        let kept: Option<CVal> = keep(v, ok);
+        ev.done.insert(path, clone_opt(&kept));
+        kept
+    }
+
+    #[summary("이름 path의 길이 값: usize인 const. 모르는 이름은 E0301, 너무 크면 E0406, usize가 아니면 E0401")]
+    #[effects(alloc)]
+    fn length(lens: &mut Lens, path: &[String], unit: &str, span: source::Span) -> Option<u64> {
+        let joined: String = ast::join_names(path);
+        let mut full: String = String::from(unit);
+        full.push_str("::");
+        full.push_str(joined.as_str());
+        if !(path.len() == 1 && lens.consts.has(full.as_str())) {
+            full = joined.clone();
+        }
+        match lens.consts.find(full.as_str()) {
+            None => { let mut msg: String = String::from("unknown constant `"); msg.push_str(joined.as_str()); msg.push_str("`"); lens.diags.push(diag::fix(diag::new("E0301", span, msg.as_str()), "an array length is a literal or a `usize` `const`", None)); None },
+            Some(i) => { let mut ds: Vec<diag::Diag> = Vec::new(); let mut r: Option<u64> = None; match &lens.consts.items[i].value { None => {}, Some(v) => { r = length_of(v, joined.as_str(), span, &mut ds); }, } ast::append::<diag::Diag>(&mut lens.diags, ds); r },
+        }
+    }
+
+    #[effects(alloc)]
+    fn length_of(v: &CVal, joined: &str, span: source::Span, diags: &mut Vec<diag::Diag>) -> Option<u64> {
+        match v {
+            CVal::Int(n, t) => { if is_usize(t) { if !n.neg && n.mag <= 4294967295 { return Some(n.mag); } diags.push(diag::new("E0406", span, "array length is too large")); return None; } },
+            CVal::Bool(b) => {},
+            CVal::Char(c) => {},
+            CVal::Array(vs) => {},
+            CVal::Data(d) => {},
+        }
+        let mut msg: String = String::from("an array length is a `usize`, `");
+        msg.push_str(joined);
+        msg.push_str("` is a `");
+        msg.push_str(kind_text(&cval_ty(v)).as_str());
+        msg.push_str("`");
+        diags.push(diag::new("E0401", span, msg.as_str()));
+        None
+    }
+
+    #[summary("정수 리터럴: 타입은 문맥의 것, 없으면 i64 (검사기가 읽는 대로)")]
+    #[effects(alloc)]
+    fn lit_int(ev: &mut Eval, v: wide::U128, want: &Option<ast::TypeKind>, span: source::Span) -> Option<CVal> {
+        let t: ast::IntTy = want_int(want);
+        let mut txt: String = String::from("`");
+        txt.push_str(ast::radix_text(ast::Radix::Dec, v).as_str());
+        txt.push_str("`");
+        let mut val: Option<Num> = None;
+        if v.hi == 0 {
+            val = Some(num(false, v.lo));
+        }
+        int(ev, val, t, span, txt.as_str())
+    }
+
+    #[summary("path가 unit에서 가리키는 const의 전체 경로: 그 단위의 N, 또는 전체 경로")]
+    #[effects(alloc)]
+    fn lookup_defs(defs: &table::Table<Def>, path: &[String], unit: &str) -> Option<String> {
+        let joined: String = ast::join_names(path);
+        let mut local: String = String::from(unit);
+        local.push_str("::");
+        local.push_str(joined.as_str());
+        if path.len() == 1 && defs.has(local.as_str()) {
+            return Some(local);
+        }
+        if defs.has(joined.as_str()) {
+            return Some(joined);
+        }
+        None
+    }
+
+    #[summary("타입 t의 아래 비트를 고르는 값: 2^bits - 1")]
+    #[effects(pure)]
+    fn mask(t: ast::IntTy) -> u64 {
+        match t {
+            ast::IntTy::I8 => 255,
+            ast::IntTy::I16 => 65535,
+            ast::IntTy::I32 => 4294967295,
+            ast::IntTy::I64 => 18446744073709551615,
+            ast::IntTy::Isize => 18446744073709551615,
+            ast::IntTy::U8 => 255,
+            ast::IntTy::U16 => 65535,
+            ast::IntTy::U32 => 4294967295,
+            ast::IntTy::U64 => 18446744073709551615,
+            ast::IntTy::Usize => 18446744073709551615,
+        }
+    }
+
+    #[summary("타입 t의 가장 큰 값")]
+    #[effects(pure)]
+    fn max_of(t: ast::IntTy) -> Num {
+        if signed(t) {
+            return num(false, mask(t) / 2);
+        }
+        num(false, mask(t))
+    }
+
+    #[summary("메서드: x as T (읽힌 꼴은 T::try_from(x).unwrap(), ADR-0095 A4)와 wrapping·saturating의 셋씩")]
+    #[effects(alloc)]
+    fn method(ev: &mut Eval, e: &ast::Expr, call: &ast::Method, want: &Option<ast::TypeKind>, unit: &str, f: usize) -> Option<CVal>
+        decreases f,
+    {
+        if f == 0 {
+            return None;
+        }
+        if call.name.name.as_str() == "unwrap" && call.args.len() == 0 {
+            match &call.recv.kind {
+                ast::ExprKind::Int(iv, ir) => {},
+                ast::ExprKind::Float(fb) => {},
+                ast::ExprKind::ByteLit(by) => {},
+                ast::ExprKind::ByteStr(bys) => {},
+                ast::ExprKind::StrLit(sv) => {},
+                ast::ExprKind::CharLit(ch) => {},
+                ast::ExprKind::Bool(bo) => {},
+                ast::ExprKind::Unit => {},
+                ast::ExprKind::Var(id) => {},
+                ast::ExprKind::Call(ca) => { if ca.path.len() == 2 && ca.path[1].name.as_str() == "try_from" && ca.args.len() == 1 { match ast::int_of(ca.path[0].name.as_str()) { None => {}, Some(ct) => { return cast(ev, e, &ca.args[0], ct, unit, f - 1); }, } } },
+                ast::ExprKind::Method(me) => {},
+                ast::ExprKind::Index(ib, ii) => {},
+                ast::ExprKind::Unary(uo, ux) => {},
+                ast::ExprKind::Binary(bop, bl, br) => {},
+                ast::ExprKind::Ref(rm, rx) => {},
+                ast::ExprKind::If(ife) => {},
+                ast::ExprKind::Block(blk) => {},
+                ast::ExprKind::Array(ar) => {},
+                ast::ExprKind::Repeat(rp) => {},
+                ast::ExprKind::Old(ox) => {},
+                ast::ExprKind::Quant(qu) => {},
+                ast::ExprKind::Trigger(tx) => {},
+                ast::ExprKind::Closure(cl) => {},
+                ast::ExprKind::StructLit(sl) => {},
+                ast::ExprKind::Path(pa) => {},
+                ast::ExprKind::Deref(dx) => {},
+                ast::ExprKind::Field(fx, fnm) => {},
+                ast::ExprKind::Match(ma) => {},
+                ast::ExprKind::Return(rv) => {},
+                ast::ExprKind::Try(tr) => {},
+                ast::ExprKind::Loop(lp) => {},
+                ast::ExprKind::Break(bk) => {},
+                ast::ExprKind::Continue(co) => {},
+                ast::ExprKind::Range(rg) => {},
+                ast::ExprKind::Error => {},
+            }
+        }
+        let nm: String = call.name.name.clone();
+        let wrapping: bool = nm.as_str() == "wrapping_add" || nm.as_str() == "wrapping_sub" || nm.as_str() == "wrapping_mul";
+        let saturating: bool = nm.as_str() == "saturating_add" || nm.as_str() == "saturating_sub" || nm.as_str() == "saturating_mul";
+        if !(wrapping || saturating) || call.args.len() != 1 {
+            return not_const(ev, e, "a method other than the wrapping and saturating ones");
+        }
+        let mut x: CVal = CVal::Bool(false);
+        match expr(ev, &*call.recv, want, unit, f - 1) {
+            None => { return None; },
+            Some(xv) => { x = xv; },
+        }
+        let xt: Option<ast::TypeKind> = Some(cval_ty(&x));
+        let mut y: CVal = CVal::Bool(false);
+        match expr(ev, &call.args[0], &xt, unit, f - 1) {
+            None => { return None; },
+            Some(yv) => { y = yv; },
+        }
+        let mut p: Num = num(false, 0);
+        let mut q: Num = num(false, 0);
+        let mut t: ast::IntTy = ast::IntTy::I64;
+        let mut u: ast::IntTy = ast::IntTy::I64;
+        let mut ints: u8 = 0;
+        match &x {
+            CVal::Int(pn, pt) => { p = *pn; t = *pt; ints = ints + 1; },
+            CVal::Bool(b) => {},
+            CVal::Char(c) => {},
+            CVal::Array(vs) => {},
+            CVal::Data(d) => {},
+        }
+        match &y {
+            CVal::Int(qn, qt) => { q = *qn; u = *qt; if ints == 1 { ints = 2; } },
+            CVal::Bool(b2) => {},
+            CVal::Char(c2) => {},
+            CVal::Array(vs2) => {},
+            CVal::Data(d2) => {},
+        }
+        if ints != 2 {
+            let mut m1: String = String::from("`");
+            m1.push_str(nm.as_str());
+            m1.push_str("` of non-integers");
+            return fail(ev, e.span, m1.as_str());
+        }
+        let mut tn: String = String::new();
+        ast::push_int_name(&mut tn, &t);
+        let mut un: String = String::new();
+        ast::push_int_name(&mut un, &u);
+        if tn != un {
+            let mut m2: String = String::from("expected `");
+            m2.push_str(tn.as_str());
+            m2.push_str("`, found `");
+            m2.push_str(un.as_str());
+            m2.push_str("`");
+            ev.diags.push(diag::new("E0401", call.args[0].span, m2.as_str()));
+            return None;
+        }
+        let is_add: bool = std::str::ends_with(nm.as_str(), "add");
+        let is_sub: bool = std::str::ends_with(nm.as_str(), "sub");
+        if wrapping {
+            let mut bits: u64 = pattern(p).wrapping_mul(pattern(q));
+            if is_add {
+                bits = pattern(p).wrapping_add(pattern(q));
+            }
+            if is_sub {
+                bits = pattern(p).wrapping_sub(pattern(q));
+            }
+            return Some(CVal::Int(from_pattern(bits, t), t));
+        }
+        let mut exact: Option<Num> = mul(p, q);
+        let mut low: bool = p.neg != q.neg;
+        if is_add {
+            exact = add(p, q);
+            low = p.neg;
+        }
+        if is_sub {
+            exact = add(p, negate(q));
+            low = p.neg;
+        }
+        let mut r: Num = max_of(t);
+        if low {
+            r = min_of(t);
+        }
+        match exact {
+            None => {},
+            Some(n) => { if cmp(n, min_of(t)) < 0 { r = min_of(t); } else { if cmp(n, max_of(t)) > 0 { r = max_of(t); } else { r = n; } } },
+        }
+        Some(CVal::Int(r, t))
+    }
+
+    #[summary("타입 t의 가장 작은 값")]
+    #[effects(pure)]
+    fn min_of(t: ast::IntTy) -> Num {
+        if signed(t) {
+            return num(true, mask(t) / 2 + 1);
+        }
+        num(false, 0)
+    }
+
+    #[summary("두 정수의 곱. 부호와 크기에 들지 않으면 None")]
+    #[effects(pure)]
+    fn mul(a: Num, b: Num) -> Option<Num> {
+        match a.mag.checked_mul(b.mag) {
+            None => None,
+            Some(m) => Some(num(a.neg != b.neg, m)),
+        }
+    }
+
+    #[summary("한 마디 이름이 읽는 const나 match가 묶은 값")]
+    #[effects(alloc)]
+    fn name(ev: &mut Eval, e: &ast::Expr, path: &[String], unit: &str, f: usize) -> Option<CVal>
+        decreases f,
+    {
+        if f == 0 {
+            return None;
+        }
+        if path.len() == 1 {
+            let mut i: usize = ev.env.len();
+            while i > 0
+                invariant i <= ev.env.len(),
+                decreases i,
+            {
+                i = i - 1;
+                for j in 0..ev.env[i].len() {
+                    if ev.env[i][j].name.as_str() == path[0].as_str() {
+                        return Some(clone_cval(&ev.env[i][j].v, 1000000000));
+                    }
+                }
+            }
+        }
+        match lookup_defs(&ev.defs, path, unit) {
+            None => not_const(ev, e, "only other `const`s are named"),
+            Some(p) => konst(ev, p.as_str(), f - 1),
+        }
+    }
+
+    #[effects(alloc)]
+    fn names_copy(xs: &[String]) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for i in 0..xs.len() {
+            out.push(xs[i].clone());
+        }
+        out
+    }
+
+    #[summary("부호를 바꾼 값")]
+    #[effects(pure)]
+    fn negate(a: Num) -> Num {
+        num(!a.neg, a.mag)
+    }
+
+    #[summary("t의 이름으로 쓴 타입을 전체 경로로 (Option과 Result는 그대로), 타입 매개변수를 sub의 인자로")]
+    #[effects(alloc)]
+    fn norm(ev: &Eval, t: &ast::TypeKind, unit: &str, sub: &Subst, f: usize) -> ast::TypeKind
+        decreases f,
+    {
+        if f == 0 {
+            return ast::TypeKind::Error;
+        }
+        match t {
+            ast::TypeKind::Int(it) => ast::clone_typekind(t, 1000000000),
+            ast::TypeKind::F64 => ast::clone_typekind(t, 1000000000),
+            ast::TypeKind::Bool => ast::clone_typekind(t, 1000000000),
+            ast::TypeKind::Unit => ast::clone_typekind(t, 1000000000),
+            ast::TypeKind::Char => ast::clone_typekind(t, 1000000000),
+            ast::TypeKind::String => ast::clone_typekind(t, 1000000000),
+            ast::TypeKind::Str => ast::clone_typekind(t, 1000000000),
+            ast::TypeKind::Array(ae, an) => ast::TypeKind::Array(Box::new(ast::Type { kind: norm(ev, &ae.kind, unit, sub, f - 1), span: ae.span }), *an),
+            ast::TypeKind::ArrayN(ne, nn) => ast::TypeKind::ArrayN(Box::new(ast::Type { kind: norm(ev, &ne.kind, unit, sub, f - 1), span: ne.span }), names_copy(nn.as_slice())),
+            ast::TypeKind::Slice(se) => ast::clone_typekind(t, 1000000000),
+            ast::TypeKind::Ref(rm, ri) => ast::clone_typekind(t, 1000000000),
+            ast::TypeKind::Named(path, args) => norm_named(ev, path.as_slice(), args.as_slice(), unit, sub, f - 1),
+            ast::TypeKind::Vec(ve) => ast::clone_typekind(t, 1000000000),
+            ast::TypeKind::Box(be) => ast::clone_typekind(t, 1000000000),
+            ast::TypeKind::Param(pn) => ast::clone_typekind(t, 1000000000),
+            ast::TypeKind::Never => ast::clone_typekind(t, 1000000000),
+            ast::TypeKind::Error => ast::clone_typekind(t, 1000000000),
+        }
+    }
+
+    #[effects(alloc)]
+    fn norm_named(ev: &Eval, path: &[String], args: &[ast::Type], unit: &str, sub: &Subst, f: usize) -> ast::TypeKind
+        decreases f,
+    {
+        if f == 0 {
+            return ast::TypeKind::Error;
+        }
+        if path.len() == 1 {
+            let mut at: usize = sub.names.len();
+            let mut q: usize = sub.names.len();
+            while q > 0
+                invariant q <= sub.names.len() && at <= sub.names.len(),
+                decreases q,
+            {
+                q = q - 1;
+                if sub.names[q].as_str() == path[0].as_str() {
+                    at = q;
+                }
+            }
+            if at < sub.names.len() && at < sub.tys.len() {
+                return ast::clone_typekind(&sub.tys[at], 1000000000);
+            }
+        }
+        let mut full: Vec<String> = names_copy(path);
+        match type_path(ev, path, unit) {
+            None => {},
+            Some(p) => { full = refs::split_path(p.as_str()); },
+        }
+        let mut out: Vec<ast::Type> = Vec::new();
+        for i in 0..args.len() {
+            out.push(ast::Type { kind: norm(ev, &args[i].kind, unit, sub, f - 1), span: args[i].span });
+        }
+        ast::TypeKind::Named(full, out)
+    }
+
+    #[summary("E0259: 상수 식이 아니다")]
+    #[effects(alloc)]
+    fn not_const(ev: &mut Eval, e: &ast::Expr, what: &str) -> Option<CVal> {
+        let mut msg: String = String::from("`");
+        msg.push_str(fmt::expr_text(e).as_str());
+        msg.push_str("` is not a constant expression: ");
+        msg.push_str(what);
+        ev.diags.push(diag::fix(diag::new("E0259", e.span, msg.as_str()), "a `const` is built from literals, other `const`s, operators, `if`, `match`, the wrapping and saturating methods, `as`, arrays, structs, variants, fields and elements (ADR-0052 §3)", None));
+        None
+    }
+
+    #[summary("E0437: 값보다 많은 것을 드는 타입의 const")]
+    #[effects(alloc)]
+    fn not_value(t: &ast::TypeKind, span: source::Span) -> diag::Diag {
+        let mut msg: String = String::from("`");
+        msg.push_str(kind_text(t).as_str());
+        msg.push_str("` cannot be a `const`: a `const` holds a value type, an integer, `bool` or `char`, or an array, struct or enum of them (ADR-0052 §2)");
+        diag::fix(diag::new("E0437", span, msg.as_str()), "build the value where it is used (a `const` allocates nothing: no `Vec`, `String`, `Box` or reference)", None)
+    }
+
+    #[summary("부호와 크기에서. 0은 음수가 아니다")]
+    #[effects(pure)]
+    fn num(neg: bool, mag: u64) -> Num {
+        Num { neg: neg && mag != 0, mag: mag }
+    }
+
+    #[summary("연산자의 갈래: 1 && ||, 2 ==>, 3 시프트, 4 비교, 0 나머지")]
+    #[effects(pure)]
+    fn op_class(op: &ast::BinOp) -> u8 {
+        match op {
+            ast::BinOp::Add => 0,
+            ast::BinOp::Sub => 0,
+            ast::BinOp::Mul => 0,
+            ast::BinOp::Div => 0,
+            ast::BinOp::Rem => 0,
+            ast::BinOp::Eq => 4,
+            ast::BinOp::Ne => 4,
+            ast::BinOp::Lt => 4,
+            ast::BinOp::Le => 4,
+            ast::BinOp::Gt => 4,
+            ast::BinOp::Ge => 4,
+            ast::BinOp::And => 1,
+            ast::BinOp::Or => 1,
+            ast::BinOp::Implies => 2,
+            ast::BinOp::BitAnd => 0,
+            ast::BinOp::BitOr => 0,
+            ast::BinOp::BitXor => 0,
+            ast::BinOp::Shl => 3,
+            ast::BinOp::Shr => 3,
+        }
+    }
+
+    #[effects(pure)]
+    fn order_u32(a: u32, b: u32) -> i32 {
+        if a < b {
+            return -1;
+        }
+        if a > b {
+            return 1;
+        }
+        0
+    }
+
+    #[effects(alloc)]
+    fn path_names(path: &[ast::Ident]) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for i in 0..path.len() {
+            out.push(path[i].name.clone());
+        }
+        out
+    }
+
+    #[summary("값을 64비트 2의 보수 꼴로")]
+    #[effects(pure)]
+    fn pattern(n: Num) -> u64 {
+        if n.neg {
+            return (!n.mag).wrapping_add(1);
+        }
+        n.mag
+    }
+
+    #[summary("정수의 10진 글")]
+    #[effects(alloc)]
+    fn push_num(out: &mut String, n: Num) -> () {
+        if n.neg {
+            out.push_str("-");
+        }
+        std::num::push_u64(out, n.mag);
+    }
+
+    #[effects(alloc)]
+    fn push_value(out: &mut String, v: &CVal, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match v {
+            CVal::Int(n, t) => push_num(out, *n),
+            CVal::Bool(b) => { if *b { out.push_str("true"); } else { out.push_str("false"); } },
+            CVal::Char(c) => out.push_str(char_text(*c).as_str()),
+            CVal::Array(vs) => { out.push_str("["); for k in 0..vs.len() { if k < 32 { if k > 0 { out.push_str(", "); } push_value(out, &vs[k], f - 1); } } if vs.len() > 32 { out.push_str(", .. ("); std::num::push_u64(out, vs.len() as u64); out.push_str(" elements)"); } out.push_str("]"); },
+            CVal::Data(d) => { let name: String = closures::last_seg(d.ty.as_str()); match &d.variant { None => { out.push_str(name.as_str()); out.push_str(" { "); for i in 0..d.fields.len() { if i > 0 { out.push_str(", "); } out.push_str(d.fields[i].name.as_str()); out.push_str(": "); push_value(out, &d.fields[i].v, f - 1); } out.push_str(" }"); }, Some(var) => { if d.ty.as_str() != "Option" && d.ty.as_str() != "Result" { out.push_str(name.as_str()); out.push_str("::"); } out.push_str(var.as_str()); if d.fields.len() > 0 { out.push_str("("); for j in 0..d.fields.len() { if j > 0 { out.push_str(", "); } push_value(out, &d.fields[j].v, f - 1); } out.push_str(")"); } }, } },
+        }
+    }
+
+    #[summary("나머지 (0이 아닌 b로): 부호는 나뉘는 수의 것")]
+    #[effects(pure)]
+    fn rem(a: Num, b: Num) -> Num {
+        if b.mag == 0 {
+            return num(false, 0);
+        }
+        num(a.neg, a.mag % b.mag)
+    }
+
+    #[summary("프로그램의 모든 const를 경로(unit::NAME)로, 평가해서. 이름으로 쓴 배열 길이와 반복 횟수는 그 뒤로 값을 든다")]
+    #[effects(alloc)]
+    fn resolve(p: &mut ast::Program, diags: &mut diag::Diags) -> table::Table<Const> {
+        let taken: diag::Diags = std::mem::replace(diags, diag::Diags { items: Vec::new(), aliases: Vec::new() });
+        let mut ev: Eval = Eval { defs: table::new::<Def>(), tydefs: table::new::<TyDef>(), named: Vec::new(), done: table::new::<Option<CVal>>(), stack: Vec::new(), env: Vec::new(), diags: taken };
+        for i in 0..p.mods.len() {
+            collect(&p.mods[i], "", &mut ev, 1000000000);
+        }
+        for d in 0..ev.defs.len() {
+            let path: String = ev.defs.key(d);
+            let unused: Option<CVal> = konst(&mut ev, path.as_str(), 1000000000);
+        }
+        let mut consts: table::Table<Const> = table::new::<Const>();
+        for d2 in 0..ev.defs.len() {
+            let key: String = ev.defs.key(d2);
+            match ev.defs.nth(d2) {
+                None => {},
+                Some(di) => { let mut value: Option<CVal> = None; match ev.done.find(key.as_str()) { None => {}, Some(k) => { value = clone_opt(&ev.done.items[k]); }, } consts.insert(key.as_str(), Const { unit: ev.defs.items[di].unit.clone(), ty: ast::clone_typekind(&ev.defs.items[di].c.ty.kind, 1000000000), value: value }); },
+            }
+        }
+        let back: diag::Diags = std::mem::replace(&mut ev.diags, diag::Diags { items: Vec::new(), aliases: Vec::new() });
+        std::mem::replace(diags, back);
+        let mut lens: Lens = Lens { consts: consts, diags: Vec::new() };
+        ast::unit_types_mut::<Lens>(p, &mut lens);
+        let mut counts: Counts = Counts { at: Vec::new(), n: Vec::new() };
+        for l in 0..ev.named.len() {
+            match length(&mut lens, ev.named[l].path.as_slice(), ev.named[l].unit.as_str(), ev.named[l].at) {
+                None => {},
+                Some(n) => { counts.at.push(ev.named[l].at); counts.n.push(n); },
+            }
+        }
+        ast::exprs_mut::<Counts>(p, &mut counts);
+        ast::const_exprs_mut::<Counts>(p, &mut counts);
+        let mut out: table::Table<Const> = std::mem::replace(&mut lens.consts, table::new::<Const>());
+        for m in 0..p.mods.len() {
+            declared(&p.mods[m], "", &mut out, 1000000000);
+        }
+        let ds: Vec<diag::Diag> = std::mem::replace(&mut lens.diags, Vec::new());
+        closures::push_diags(diags, ds);
+        out
+    }
+
+    #[summary("const를 이 타입으로 선언하면 스칼라인가")]
+    #[effects(pure)]
+    fn scalar(t: &ast::TypeKind) -> bool {
+        match t {
+            ast::TypeKind::Int(it) => true,
+            ast::TypeKind::F64 => false,
+            ast::TypeKind::Bool => true,
+            ast::TypeKind::Unit => false,
+            ast::TypeKind::Char => true,
+            ast::TypeKind::String => false,
+            ast::TypeKind::Str => false,
+            ast::TypeKind::Array(ae, an) => false,
+            ast::TypeKind::ArrayN(ne, nn) => false,
+            ast::TypeKind::Slice(se) => false,
+            ast::TypeKind::Ref(rm, ri) => false,
+            ast::TypeKind::Named(path, args) => false,
+            ast::TypeKind::Vec(ve) => false,
+            ast::TypeKind::Box(be) => false,
+            ast::TypeKind::Param(pn) => false,
+            ast::TypeKind::Never => false,
+            ast::TypeKind::Error => false,
+        }
+    }
+
+    #[summary("값이 스칼라인가")]
+    #[effects(pure)]
+    fn scalar_val(v: &CVal) -> bool {
+        match v {
+            CVal::Int(n, t) => true,
+            CVal::Bool(b) => true,
+            CVal::Char(c) => true,
+            CVal::Array(vs) => false,
+            CVal::Data(d) => false,
+        }
+    }
+
+    #[summary("반복 횟수의 자리가 표에 있으면 그 값으로")]
+    #[effects(alloc)]
+    fn set_count(rp: &mut ast::Repeat, at: &[source::Span], n: &[u64]) -> () {
+        for i in 0..at.len() {
+            if at[i].file == rp.count_span.file && at[i].lo == rp.count_span.lo && at[i].hi == rp.count_span.hi {
+                if i < n.len() {
+                    rp.count = wide::U128 { hi: 0, lo: n[i] };
+                }
+                return;
+            }
+        }
+    }
+
+    #[summary("정수의 시프트: 양은 폭보다 작아야 한다. <<는 타입의 폭에서 감긴다")]
+    #[effects(alloc)]
+    fn shift(ev: &mut Eval, span: source::Span, op: &ast::BinOp, x: &CVal, k: &CVal) -> Option<CVal> {
+        let mut v: Num = num(false, 0);
+        let mut t: ast::IntTy = ast::IntTy::I64;
+        let mut by: Num = num(false, 0);
+        let mut ints: u8 = 0;
+        match x {
+            CVal::Int(n, nt) => { v = *n; t = *nt; ints = 1; },
+            CVal::Bool(b) => {},
+            CVal::Char(c) => {},
+            CVal::Array(vs) => {},
+            CVal::Data(d) => {},
+        }
+        match k {
+            CVal::Int(kn, kt) => { by = *kn; if ints == 1 { ints = 2; } },
+            CVal::Bool(b2) => {},
+            CVal::Char(c2) => {},
+            CVal::Array(vs2) => {},
+            CVal::Data(d2) => {},
+        }
+        if ints != 2 {
+            return fail(ev, span, "a shift of integers");
+        }
+        let bits: u64 = width(t);
+        if by.neg || by.mag >= bits {
+            let mut msg: String = String::from("`");
+            ast::push_bin_symbol(&mut msg, op);
+            msg.push_str("` by ");
+            push_num(&mut msg, by);
+            msg.push_str(": the amount is not below ");
+            std::num::push_u64(&mut msg, bits);
+            return fail(ev, span, msg.as_str());
+        }
+        if by.mag >= 64 {
+            return None;
+        }
+        let amount: u32 = by.mag as u32;
+        if is_shl(op) {
+            return Some(CVal::Int(from_pattern(pattern(v) << amount, t), t));
+        }
+        if v.neg {
+            return Some(CVal::Int(num(true, (v.mag.saturating_sub(1) >> amount).saturating_add(1)), t));
+        }
+        Some(CVal::Int(num(false, v.mag >> amount), t))
+    }
+
+    #[summary("값을 말하는 글 (진단에 쓴다)")]
+    #[effects(alloc)]
+    fn show(v: &CVal) -> String {
+        let mut out: String = String::new();
+        match v {
+            CVal::Int(n, t) => { push_num(&mut out, *n); out.push_str("_"); ast::push_int_name(&mut out, t); },
+            CVal::Bool(b) => { if *b { out.push_str("true"); } else { out.push_str("false"); } },
+            CVal::Char(c) => out.push_str(char_text(*c).as_str()),
+            CVal::Array(vs) => { out.push_str("an array of "); std::num::push_u64(&mut out, vs.len() as u64); },
+            CVal::Data(d) => { match &d.variant { None => { out.push_str("a `"); out.push_str(d.ty.as_str()); out.push_str("`"); }, Some(var) => { out.push_str("`"); out.push_str(d.ty.as_str()); out.push_str("::"); out.push_str(var.as_str()); out.push_str("`"); }, } },
+        }
+        out
+    }
+
+    #[summary("부호 있는 타입인가")]
+    #[effects(pure)]
+    fn signed(t: ast::IntTy) -> bool {
+        match t {
+            ast::IntTy::I8 => true,
+            ast::IntTy::I16 => true,
+            ast::IntTy::I32 => true,
+            ast::IntTy::I64 => true,
+            ast::IntTy::Isize => true,
+            ast::IntTy::U8 => false,
+            ast::IntTy::U16 => false,
+            ast::IntTy::U32 => false,
+            ast::IntTy::U64 => false,
+            ast::IntTy::Usize => false,
+        }
+    }
+
+    #[summary("[T; 이름]이던 타입을 길이 n의 [T; n]으로")]
+    #[effects(alloc)]
+    fn sized(was: ast::TypeKind, n: u64) -> ast::TypeKind {
+        match was {
+            ast::TypeKind::Int(it) => ast::TypeKind::Error,
+            ast::TypeKind::F64 => ast::TypeKind::Error,
+            ast::TypeKind::Bool => ast::TypeKind::Error,
+            ast::TypeKind::Unit => ast::TypeKind::Error,
+            ast::TypeKind::Char => ast::TypeKind::Error,
+            ast::TypeKind::String => ast::TypeKind::Error,
+            ast::TypeKind::Str => ast::TypeKind::Error,
+            ast::TypeKind::Array(ae, an) => ast::TypeKind::Error,
+            ast::TypeKind::ArrayN(ne, nn) => ast::TypeKind::Array(ne, n),
+            ast::TypeKind::Slice(se) => ast::TypeKind::Error,
+            ast::TypeKind::Ref(rm, ri) => ast::TypeKind::Error,
+            ast::TypeKind::Named(path, args) => ast::TypeKind::Error,
+            ast::TypeKind::Vec(ve) => ast::TypeKind::Error,
+            ast::TypeKind::Box(be) => ast::TypeKind::Error,
+            ast::TypeKind::Param(pn) => ast::TypeKind::Error,
+            ast::TypeKind::Never => ast::TypeKind::Error,
+            ast::TypeKind::Error => ast::TypeKind::Error,
+        }
+    }
+
+    #[summary("선언의 필드나 변형을 쓴 그대로")]
+    #[effects(alloc)]
+    fn tydef_kind(k: &ast::TypeDefKind) -> TyDefKind {
+        match k {
+            ast::TypeDefKind::Struct(fs) => { let mut out: Vec<NamedTy> = Vec::new(); for i in 0..fs.len() { out.push(NamedTy { name: fs[i].name.name.clone(), ty: ast::clone_typekind(&fs[i].ty.kind, 1000000000) }); } TyDefKind::Struct(out) },
+            ast::TypeDefKind::Enum(vs) => { let mut vout: Vec<VariantTy> = Vec::new(); for j in 0..vs.len() { let mut tys: Vec<ast::TypeKind> = Vec::new(); for q in 0..vs[j].payload.len() { tys.push(ast::clone_typekind(&vs[j].payload[q].kind, 1000000000)); } vout.push(VariantTy { name: vs[j].name.name.clone(), tys: tys }); } TyDefKind::Enum(vout) },
+        }
+    }
+
+    #[summary("path가 unit에서 가리키는 구조체나 열거형의 전체 경로")]
+    #[effects(alloc)]
+    fn type_path(ev: &Eval, path: &[String], unit: &str) -> Option<String> {
+        let joined: String = ast::join_names(path);
+        let mut local: String = String::from(unit);
+        local.push_str("::");
+        local.push_str(joined.as_str());
+        if ev.tydefs.has(local.as_str()) {
+            return Some(local);
+        }
+        if ev.tydefs.has(joined.as_str()) {
+            return Some(joined);
+        }
+        None
+    }
+
+    #[summary("리터럴은 문맥이 타입을 줄 때까지 타입이 없다: 정수 리터럴과 그것의 -")]
+    #[effects(pure)]
+    fn untyped(e: &ast::Expr) -> bool {
+        match &e.kind {
+            ast::ExprKind::Int(iv, ir) => true,
+            ast::ExprKind::Float(fb) => false,
+            ast::ExprKind::ByteLit(by) => false,
+            ast::ExprKind::ByteStr(bys) => false,
+            ast::ExprKind::StrLit(sv) => false,
+            ast::ExprKind::CharLit(ch) => false,
+            ast::ExprKind::Bool(bo) => false,
+            ast::ExprKind::Unit => false,
+            ast::ExprKind::Var(id) => false,
+            ast::ExprKind::Call(ca) => false,
+            ast::ExprKind::Method(me) => false,
+            ast::ExprKind::Index(ib, ii) => false,
+            ast::ExprKind::Unary(uo, ux) => is_neg(uo) && ast::tag(&ux.kind) == 0,
+            ast::ExprKind::Binary(bop, bl, br) => false,
+            ast::ExprKind::Ref(rm, rx) => false,
+            ast::ExprKind::If(ife) => false,
+            ast::ExprKind::Block(blk) => false,
+            ast::ExprKind::Array(ar) => false,
+            ast::ExprKind::Repeat(rp) => false,
+            ast::ExprKind::Old(ox) => false,
+            ast::ExprKind::Quant(qu) => false,
+            ast::ExprKind::Trigger(tx) => false,
+            ast::ExprKind::Closure(cl) => false,
+            ast::ExprKind::StructLit(sl) => false,
+            ast::ExprKind::Path(pa) => false,
+            ast::ExprKind::Deref(dx) => false,
+            ast::ExprKind::Field(fx, fnm) => false,
+            ast::ExprKind::Match(ma) => false,
+            ast::ExprKind::Return(rv) => false,
+            ast::ExprKind::Try(tr) => false,
+            ast::ExprKind::Loop(lp) => false,
+            ast::ExprKind::Break(bk) => false,
+            ast::ExprKind::Continue(co) => false,
+            ast::ExprKind::Range(rg) => false,
+            ast::ExprKind::Error => false,
+        }
+    }
+
+    #[summary("값을 소스의 글로 (32개가 넘는 배열은 앞의 32개와 길이)")]
+    #[effects(alloc)]
+    fn value_text(v: &CVal) -> String {
+        let mut out: String = String::new();
+        push_value(&mut out, v, 1000000000);
+        out
+    }
+
+    #[summary("Option·Result나 선언한 열거형의 변형을 인자들로 짓는다. 경로가 변형을 가리키지 않으면 hit가 아니다")]
+    #[effects(alloc)]
+    fn variant(ev: &mut Eval, names: &[String], args: &[ast::Expr], want: &Option<ast::TypeKind>, unit: &str, f: usize) -> Built
+        decreases f,
+    {
+        if f == 0 || names.len() == 0 {
+            return Built { hit: false, v: None };
+        }
+        let last: String = names[names.len() - 1].clone();
+        let mut ty: String = String::new();
+        let mut payload: Vec<Option<ast::TypeKind>> = Vec::new();
+        let mut builtin: bool = false;
+        if names.len() == 1 {
+            if last.as_str() == "Some" {
+                builtin = true;
+                ty = String::from("Option");
+                payload.push(arg(want, "Option", 0));
+            }
+            if last.as_str() == "None" {
+                builtin = true;
+                ty = String::from("Option");
+            }
+            if last.as_str() == "Ok" {
+                builtin = true;
+                ty = String::from("Result");
+                payload.push(arg(want, "Result", 0));
+            }
+            if last.as_str() == "Err" {
+                builtin = true;
+                ty = String::from("Result");
+                payload.push(arg(want, "Result", 1));
+            }
+        }
+        if !builtin {
+            let mut tpath: Vec<String> = Vec::new();
+            for i in 0..names.len() - 1 {
+                tpath.push(names[i].clone());
+            }
+            match type_path(ev, tpath.as_slice(), unit) {
+                None => { return Built { hit: false, v: None }; },
+                Some(p) => { ty = p; },
+            }
+            let mut di: usize = 0;
+            match ev.tydefs.find(ty.as_str()) {
+                None => { return Built { hit: false, v: None }; },
+                Some(d) => { di = d; },
+            }
+            if di >= ev.tydefs.items.len() {
+                return Built { hit: false, v: None };
+            }
+            let sub: Subst = decl_sub(ev, di, ty.as_str(), want);
+            let dunit: String = ev.tydefs.items[di].unit.clone();
+            let mut raw: Vec<ast::TypeKind> = Vec::new();
+            let mut found: bool = false;
+            match &ev.tydefs.items[di].kind {
+                TyDefKind::Struct(fs) => { return Built { hit: false, v: None }; },
+                TyDefKind::Enum(vs) => { for k in 0..vs.len() { if !found && vs[k].name.as_str() == last.as_str() { found = true; for q in 0..vs[k].tys.len() { raw.push(ast::clone_typekind(&vs[k].tys[q], 1000000000)); } } } },
+            }
+            if !found {
+                return Built { hit: false, v: None };
+            }
+            for r in 0..raw.len() {
+                payload.push(Some(norm(ev, &raw[r], dunit.as_str(), &sub, 1000000000)));
+            }
+        }
+        if payload.len() != args.len() {
+            return Built { hit: true, v: None };
+        }
+        let mut fields: Vec<DataField> = Vec::new();
+        for a in 0..args.len() {
+            if a < payload.len() {
+                match expr(ev, &args[a], &payload[a], unit, f - 1) {
+                    None => { return Built { hit: true, v: None }; },
+                    Some(x) => { let mut n: String = String::new(); std::num::push_u64(&mut n, a as u64); fields.push(DataField { name: n, v: x }); },
+                }
+            }
+        }
+        Built { hit: true, v: Some(CVal::Data(Data { ty: ty, variant: Some(last), fields: fields })) }
+    }
+
+    #[summary("문맥이 정수 타입이면 그것, 아니면 i64")]
+    #[effects(pure)]
+    fn want_int(want: &Option<ast::TypeKind>) -> ast::IntTy {
+        match want {
+            None => ast::IntTy::I64,
+            Some(t) => want_int_of(t),
+        }
+    }
+
+    #[effects(pure)]
+    fn want_int_of(t: &ast::TypeKind) -> ast::IntTy {
+        match t {
+            ast::TypeKind::Int(it) => *it,
+            ast::TypeKind::F64 => ast::IntTy::I64,
+            ast::TypeKind::Bool => ast::IntTy::I64,
+            ast::TypeKind::Unit => ast::IntTy::I64,
+            ast::TypeKind::Char => ast::IntTy::I64,
+            ast::TypeKind::String => ast::IntTy::I64,
+            ast::TypeKind::Str => ast::IntTy::I64,
+            ast::TypeKind::Array(ae, an) => ast::IntTy::I64,
+            ast::TypeKind::ArrayN(ne, nn) => ast::IntTy::I64,
+            ast::TypeKind::Slice(se) => ast::IntTy::I64,
+            ast::TypeKind::Ref(rm, ri) => ast::IntTy::I64,
+            ast::TypeKind::Named(path, args) => ast::IntTy::I64,
+            ast::TypeKind::Vec(ve) => ast::IntTy::I64,
+            ast::TypeKind::Box(be) => ast::IntTy::I64,
+            ast::TypeKind::Param(pn) => ast::IntTy::I64,
+            ast::TypeKind::Never => ast::IntTy::I64,
+            ast::TypeKind::Error => ast::IntTy::I64,
+        }
+    }
+
+    #[summary("타입의 폭 (비트)")]
+    #[effects(pure)]
+    fn width(t: ast::IntTy) -> u64 {
+        match t {
+            ast::IntTy::I8 => 8,
+            ast::IntTy::I16 => 16,
+            ast::IntTy::I32 => 32,
+            ast::IntTy::I64 => 64,
+            ast::IntTy::Isize => 64,
+            ast::IntTy::U8 => 8,
+            ast::IntTy::U16 => 16,
+            ast::IntTy::U32 => 32,
+            ast::IntTy::U64 => 64,
+            ast::IntTy::Usize => 64,
+        }
+    }
+}

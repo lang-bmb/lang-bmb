@@ -13,8 +13,9 @@
 | `unicode_classes.bmb` | 같은 일을 포트의 표(`selfhost/unicode.bmb`)로 |
 | `lexer/` | 렉서의 경계 입력(확장자는 `.txt`: BMB 프로그램이 아닌 글이 다른 코퍼스에 섞이지 않게) |
 | `parser/` | 파서의 경계 입력(같은 이유로 `.txt`) |
+| `lower/` | 함수 값과 상수를 낮추는 단계의 경계 입력(같은 이유로 `.txt`) |
 
-포트(`selfhost/`)의 사례는 `a`가 `{bmb}`(stage0), `b`가 `{build:stage1}`(`selfhost/*.bmb`를 `bmb build`로)이다. 지금: `codes`, `codes-md`, `tokens`(추적되는 `.bmb` 전부를 파일 하나씩), `tokens-together`(여러 파일을 한 번에), `tokens-edges`(`lexer/`의 파일 하나씩), `parse`(추적되는 `.bmb` 전부를 파일 하나씩 `dump parse`로), `parse-together`(여러 파일을 한 번에: 단위의 순서와 같은 이름의 단위), `parse-edges`(`parser/`), `std`(추적되는 `.bmb` 전부를 파일 하나씩 `dump std`로: 이름을 든 라이브러리 단위를 더한 프로그램의 정규형), `std-together`(여러 파일을 한 번에).
+포트(`selfhost/`)의 사례는 `a`가 `{bmb}`(stage0), `b`가 `{build:stage1}`(`selfhost/*.bmb`를 `bmb build`로)이다. 지금: `codes`, `codes-md`, `tokens`(추적되는 `.bmb` 전부를 파일 하나씩), `tokens-together`(여러 파일을 한 번에), `tokens-edges`(`lexer/`의 파일 하나씩), `parse`(추적되는 `.bmb` 전부를 파일 하나씩 `dump parse`로), `parse-together`(여러 파일을 한 번에: 단위의 순서와 같은 이름의 단위), `parse-edges`(`parser/`), `std`(추적되는 `.bmb` 전부를 파일 하나씩 `dump std`로: 이름을 든 라이브러리 단위를 더한 프로그램의 정규형), `std-together`(여러 파일을 한 번에), `lower`(추적되는 `.bmb` 전부를 파일 하나씩 `dump lower`로: 함수 값과 상수를 낮춘 프로그램의 정규형, 만든 이름, 넘긴 자리, 상수의 값), `lower-together`, `lower-edges`(`lower/`).
 
 `lexer/`의 파일:
 
@@ -46,3 +47,12 @@
 | `empty.txt`·`only-comment.txt` | 토큰이 없는 입력 |
 
 구문 오류가 하나라도 있으면 `dump parse`는 정규형 대신 진단을 낸다. 그래서 오류 없는 파일(코퍼스의 대부분과 `order.txt`, 한도 안의 `deep-`)이 구문 트리와 정규형을, 나머지가 진단의 글·위치·순서와 회복을 견준다. 입력 별칭의 경고(W0912~W0914)는 `dump parse`에 나오지 않는다: 그 글은 `lint`를 옮길 때 견준다.
+
+`lower/`의 파일:
+
+| 파일 | 내용 |
+| --- | --- |
+| `consts-values.txt` | 상수 식의 꼴마다 하나: 리터럴과 연산, `MIN`·`MAX`, 시프트, wrapping·saturating 메서드, `as`, 배열과 반복, 구조체·변형·`Option`·`Result`, 필드·원소·`match`, 이름으로 쓴 길이와 횟수, 안 단위의 상수 |
+| `consts-errors.txt` | 상수의 진단: 넘침과 0으로 나눔(E0260), 상수 식이 아닌 것(E0259), 서로를 가리키는 상수(E0318), 같은 이름(E0302), 값이 아닌 타입(E0437), 길이의 진단(E0301·E0406·E0401), 타입이 다른 피연산자(E0401) |
+| `closures.txt` | 함수 값을 낮추는 꼴: `Fn`·`FnMut`·`FnOnce` 경계, 값과 참조로 받는 매개변수, 넘긴 함수(같은 함수를 두 번, 경로로), 값을 잡는 `move` 클로저와 그 계약, 클로저 안의 클로저, `impl`과 trait `impl`의 함수 안, 안 단위 |
+| `closures-errors.txt` | 함수 값의 진단: `move` 없이 잡음·타입을 쓰지 않은 값을 잡음·바깥 클로저가 잡은 값을 읽음(E0262), 받는 쪽에 없는 효과(E0608), 경계의 인자가 아닌 클로저(E0264) |

@@ -1,0 +1,47 @@
+#[summary("함수 값의 진단")]
+mod cx {
+    #[effects(pure)]
+    fn ap<F: Fn(i64) -> i64>(f: F, v: i64) -> i64 { f(v) }
+
+    #[effects(alloc)]
+    fn twice<F: FnMut(i64) -> ()>(f: F) -> () { f(1); }
+
+    #[effects(io)]
+    fn noisy(x: i64) -> i64 { print_str("n"); x }
+
+    #[effects(alloc, io)]
+    fn loud(x: i64) -> i64 { x }
+
+    #[effects(alloc, io)]
+    fn main() -> () {
+        let k: i64 = 2;
+        let a: i64 = ap::<_>(|x: i64| -> i64 { x + k }, 1);
+        for u in 0..3 {
+            let b: i64 = ap::<_>(move |x: i64| -> i64 { x + u }, 1);
+        }
+        let c: i64 = ap::<_>(noisy, 1);
+        let d: i64 = ap::<_>(noisy, 2);
+        let e: i64 = ap::<_>(loud, 2);
+        let f: i64 = { let g: i64 = 1; g };
+        let h: i64 = other2(|x: i64| -> i64 { x }, 1);
+        let i: i64 = ap::<_>(move |x: i64| -> i64 { ap::<_>(move |y: i64| -> i64 { y + k }, x) }, 1);
+        let j: i64 = ap(|x: i64| -> i64 { x }, 1);
+        let l: i64 = ap::<_>(unknown, 1);
+        let m: i64 = ap::<_>(1 + 2, 1);
+        let n: i64 = other(|x: i64| -> i64 { x });
+        twice::<_>(|v: i64| -> () { let w: i64 = v + k; });
+        match Some(k) {
+            None => {},
+            Some(q) => { let o: i64 = ap::<_>(move |x: i64| -> i64 { x + q }, 1); },
+        }
+    }
+
+    #[effects(pure)]
+    fn other(x: i64) -> i64 { x }
+
+    #[effects(pure)]
+    fn gen<T>(x: T) -> T { x }
+
+    #[effects(pure)]
+    fn uses_gen() -> i64 { ap::<_>(gen, 1) }
+}

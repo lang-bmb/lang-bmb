@@ -1,0 +1,1965 @@
+#[summary("함수 값 (ADR-0053): 검사 전에 Rust가 밑에 두는 trait, 구조체, impl로 낮춘다 (stage0 compiler/src/closures.rs의 포트, 백로그 4D-03c). 경계 F: Fn(A) -> R은 그 단위의 trait, 넘긴 함수와 클로저는 구조체와 그 trait의 impl이다. 만든 항목은 글로 쓰고 제 파일 번호로 읽는다")]
+mod closures {
+    #[summary("self를 old(self)로 바꾸는 손님")]
+    struct Before { n: usize }
+
+    impl ast::ExprFn for Before {
+        #[effects(alloc)]
+        fn expr(self: &mut Before, e: &mut ast::Expr) -> () {
+            let mut hit: bool = false;
+            match &e.kind {
+                ast::ExprKind::Int(iv, ir) => {},
+                ast::ExprKind::Float(fb) => {},
+                ast::ExprKind::ByteLit(by) => {},
+                ast::ExprKind::ByteStr(bys) => {},
+                ast::ExprKind::StrLit(sv) => {},
+                ast::ExprKind::CharLit(ch) => {},
+                ast::ExprKind::Bool(bo) => {},
+                ast::ExprKind::Unit => {},
+                ast::ExprKind::Var(id) => { hit = id.name.as_str() == "self"; },
+                ast::ExprKind::Call(ca) => {},
+                ast::ExprKind::Method(me) => {},
+                ast::ExprKind::Index(ib, ii) => {},
+                ast::ExprKind::Unary(uo, ux) => {},
+                ast::ExprKind::Binary(bop, bl, br) => {},
+                ast::ExprKind::Ref(rm, rx) => {},
+                ast::ExprKind::If(ife) => {},
+                ast::ExprKind::Block(blk) => {},
+                ast::ExprKind::Array(ar) => {},
+                ast::ExprKind::Repeat(rp) => {},
+                ast::ExprKind::Old(ox) => {},
+                ast::ExprKind::Quant(qu) => {},
+                ast::ExprKind::Trigger(tx) => {},
+                ast::ExprKind::Closure(cl) => {},
+                ast::ExprKind::StructLit(sl) => {},
+                ast::ExprKind::Path(pa) => {},
+                ast::ExprKind::Deref(dx) => {},
+                ast::ExprKind::Field(fx, fnm) => {},
+                ast::ExprKind::Match(ma) => {},
+                ast::ExprKind::Return(rv) => {},
+                ast::ExprKind::Try(tr) => {},
+                ast::ExprKind::Loop(lp) => {},
+                ast::ExprKind::Break(bk) => {},
+                ast::ExprKind::Continue(co) => {},
+                ast::ExprKind::Range(rg) => {},
+                ast::ExprKind::Error => {},
+            }
+            if hit {
+                let inner: ast::Expr = ast::clone_expr(e, 1000000000);
+                e.kind = ast::ExprKind::Old(Box::new(inner));
+            }
+        }
+    }
+
+    #[summary("블록이 묶는 이름을 모으는 손님: 안쪽 블록의 let과 for 변수, match가 묶는 이름, 한정자의 변수")]
+    struct Binds { names: Vec<String> }
+
+    impl ast::ExprFn for Binds {
+        #[effects(alloc)]
+        fn expr(self: &mut Binds, e: &mut ast::Expr) -> () {
+            match &e.kind {
+                ast::ExprKind::Int(iv, ir) => {},
+                ast::ExprKind::Float(fb) => {},
+                ast::ExprKind::ByteLit(by) => {},
+                ast::ExprKind::ByteStr(bys) => {},
+                ast::ExprKind::StrLit(sv) => {},
+                ast::ExprKind::CharLit(ch) => {},
+                ast::ExprKind::Bool(bo) => {},
+                ast::ExprKind::Unit => {},
+                ast::ExprKind::Var(id) => {},
+                ast::ExprKind::Call(ca) => {},
+                ast::ExprKind::Method(me) => {},
+                ast::ExprKind::Index(ib, ii) => {},
+                ast::ExprKind::Unary(uo, ux) => {},
+                ast::ExprKind::Binary(bop, bl, br) => {},
+                ast::ExprKind::Ref(rm, rx) => {},
+                ast::ExprKind::If(ife) => stmt_names(&ife.then, &mut self.names, 1000000000),
+                ast::ExprKind::Block(blk) => stmt_names(blk, &mut self.names, 1000000000),
+                ast::ExprKind::Array(ar) => {},
+                ast::ExprKind::Repeat(rp) => {},
+                ast::ExprKind::Old(ox) => {},
+                ast::ExprKind::Quant(qu) => quant_names(qu, &mut self.names),
+                ast::ExprKind::Trigger(tx) => {},
+                ast::ExprKind::Closure(cl) => {},
+                ast::ExprKind::StructLit(sl) => {},
+                ast::ExprKind::Path(pa) => {},
+                ast::ExprKind::Deref(dx) => {},
+                ast::ExprKind::Field(fx, fnm) => {},
+                ast::ExprKind::Match(ma) => arm_names(ma, &mut self.names),
+                ast::ExprKind::Return(rv) => {},
+                ast::ExprKind::Try(tr) => {},
+                ast::ExprKind::Loop(lp) => stmt_names(&lp.body, &mut self.names, 1000000000),
+                ast::ExprKind::Break(bk) => {},
+                ast::ExprKind::Continue(co) => {},
+                ast::ExprKind::Range(rg) => {},
+                ast::ExprKind::Error => {},
+            }
+        }
+    }
+
+    #[summary("클로저 하나: 식, 잡은 이름들, 그것을 쓴 함수의 #[uses]")]
+    struct Body { c: ast::Closure, caps: Vec<String>, uses: Vec<ast::Attr> }
+
+    #[summary("Fn 경계가 있는 타입 매개변수: 타입 매개변수 가운데 자리, 이름, 경계, F나 &F를 받는 값 매개변수들, 이름의 자리")]
+    struct Bounded { k: usize, name: String, bound: ast::FnBound, at: Vec<Slot>, span: source::Span }
+
+    #[summary("Fn 경계가 있는 함수. order는 소스 순서의 번호: 만든 이름은 번호라서 사용자의 이름을 바꿔도 그대로다 (ADR-0059)")]
+    struct Generic { unit: String, order: usize, bounded: Vec<Bounded>, effects: String }
+
+    #[summary("함수를 값으로 만드는 데 드는 글")]
+    struct Item { unit: String, span: source::Span, params: Vec<ItemParam>, ret_name: String, ret: String, pre: Vec<String>, post: Vec<String>, effects: String }
+
+    struct ItemParam { name: String, ty: String }
+
+    #[summary("안쪽 블록의 let과 그 타입을 모으는 손님")]
+    struct Lets { names: Vec<String>, tys: Vec<ast::Type> }
+
+    impl ast::ExprFn for Lets {
+        #[effects(alloc)]
+        fn expr(self: &mut Lets, e: &mut ast::Expr) -> () {
+            match &e.kind {
+                ast::ExprKind::Int(iv, ir) => {},
+                ast::ExprKind::Float(fb) => {},
+                ast::ExprKind::ByteLit(by) => {},
+                ast::ExprKind::ByteStr(bys) => {},
+                ast::ExprKind::StrLit(sv) => {},
+                ast::ExprKind::CharLit(ch) => {},
+                ast::ExprKind::Bool(bo) => {},
+                ast::ExprKind::Unit => {},
+                ast::ExprKind::Var(id) => {},
+                ast::ExprKind::Call(ca) => {},
+                ast::ExprKind::Method(me) => {},
+                ast::ExprKind::Index(ib, ii) => {},
+                ast::ExprKind::Unary(uo, ux) => {},
+                ast::ExprKind::Binary(bop, bl, br) => {},
+                ast::ExprKind::Ref(rm, rx) => {},
+                ast::ExprKind::If(ife) => stmt_lets(&ife.then, self, 1000000000),
+                ast::ExprKind::Block(blk) => stmt_lets(blk, self, 1000000000),
+                ast::ExprKind::Array(ar) => {},
+                ast::ExprKind::Repeat(rp) => {},
+                ast::ExprKind::Old(ox) => {},
+                ast::ExprKind::Quant(qu) => {},
+                ast::ExprKind::Trigger(tx) => {},
+                ast::ExprKind::Closure(cl) => {},
+                ast::ExprKind::StructLit(sl) => {},
+                ast::ExprKind::Path(pa) => {},
+                ast::ExprKind::Deref(dx) => {},
+                ast::ExprKind::Field(fx, fnm) => {},
+                ast::ExprKind::Match(ma) => {},
+                ast::ExprKind::Return(rv) => {},
+                ast::ExprKind::Try(tr) => {},
+                ast::ExprKind::Loop(lp) => stmt_lets(&lp.body, self, 1000000000),
+                ast::ExprKind::Break(bk) => {},
+                ast::ExprKind::Continue(co) => {},
+                ast::ExprKind::Range(rg) => {},
+                ast::ExprKind::Error => {},
+            }
+        }
+    }
+
+    #[summary("낮추기가 만든 것: 이미 보고한 진단을 되풀이할 파일들, 만든 구조체와 trait의 경로에서 읽는 이름으로, 함수 값을 넘긴 자리, 만든 정의를 쓴 자리")]
+    struct Lowered { quiet: Vec<u32>, names: table::Table<String>, passes: Vec<Pass>, at: table::Table<source::Span> }
+
+    struct Pass { span: source::Span, what: String }
+
+    #[summary("보고한 클로저: 타입 인자의 자리와 인자의 자리")]
+    struct Rej { k: usize, j: usize }
+
+    #[summary("값 매개변수의 읽기를 고쳐 쓰는 손님: from[k]를 to[k]로")]
+    struct Renamer { from: Vec<String>, to: Vec<String> }
+
+    impl ast::ExprFn for Renamer {
+        #[effects(alloc)]
+        fn expr(self: &mut Renamer, e: &mut ast::Expr) -> () {
+            match &mut e.kind {
+                ast::ExprKind::Int(iv, ir) => {},
+                ast::ExprKind::Float(fb) => {},
+                ast::ExprKind::ByteLit(by) => {},
+                ast::ExprKind::ByteStr(bys) => {},
+                ast::ExprKind::StrLit(sv) => {},
+                ast::ExprKind::CharLit(ch) => {},
+                ast::ExprKind::Bool(bo) => {},
+                ast::ExprKind::Unit => {},
+                ast::ExprKind::Var(id) => rename(id, self.from.as_slice(), self.to.as_slice()),
+                ast::ExprKind::Call(ca) => {},
+                ast::ExprKind::Method(me) => {},
+                ast::ExprKind::Index(ib, ii) => {},
+                ast::ExprKind::Unary(uo, ux) => {},
+                ast::ExprKind::Binary(bop, bl, br) => {},
+                ast::ExprKind::Ref(rm, rx) => {},
+                ast::ExprKind::If(ife) => {},
+                ast::ExprKind::Block(blk) => {},
+                ast::ExprKind::Array(ar) => {},
+                ast::ExprKind::Repeat(rp) => {},
+                ast::ExprKind::Old(ox) => {},
+                ast::ExprKind::Quant(qu) => {},
+                ast::ExprKind::Trigger(tx) => {},
+                ast::ExprKind::Closure(cl) => {},
+                ast::ExprKind::StructLit(sl) => {},
+                ast::ExprKind::Path(pa) => {},
+                ast::ExprKind::Deref(dx) => {},
+                ast::ExprKind::Field(fx, fnm) => {},
+                ast::ExprKind::Match(ma) => {},
+                ast::ExprKind::Return(rv) => {},
+                ast::ExprKind::Try(tr) => {},
+                ast::ExprKind::Loop(lp) => {},
+                ast::ExprKind::Break(bk) => {},
+                ast::ExprKind::Continue(co) => {},
+                ast::ExprKind::Range(rg) => {},
+                ast::ExprKind::Error => {},
+            }
+        }
+    }
+
+    #[summary("Fn 경계가 있는 함수의 몸을 고쳐 쓰는 손님: f(a)는 f.call(a), f.requires(..)는 f.pre(..), f.ensures(..)는 f.post(..)")]
+    struct Rewriter { values: Vec<String> }
+
+    impl ast::ExprFn for Rewriter {
+        #[effects(alloc)]
+        fn expr(self: &mut Rewriter, e: &mut ast::Expr) -> () {
+            let mut repl: Option<ast::ExprKind> = None;
+            match &mut e.kind {
+                ast::ExprKind::Int(iv, ir) => {},
+                ast::ExprKind::Float(fb) => {},
+                ast::ExprKind::ByteLit(by) => {},
+                ast::ExprKind::ByteStr(bys) => {},
+                ast::ExprKind::StrLit(sv) => {},
+                ast::ExprKind::CharLit(ch) => {},
+                ast::ExprKind::Bool(bo) => {},
+                ast::ExprKind::Unit => {},
+                ast::ExprKind::Var(id) => {},
+                ast::ExprKind::Call(ca) => { repl = call_of(ca, self.values.as_slice()); },
+                ast::ExprKind::Method(me) => pre_post(me, self.values.as_slice()),
+                ast::ExprKind::Index(ib, ii) => {},
+                ast::ExprKind::Unary(uo, ux) => {},
+                ast::ExprKind::Binary(bop, bl, br) => {},
+                ast::ExprKind::Ref(rm, rx) => {},
+                ast::ExprKind::If(ife) => {},
+                ast::ExprKind::Block(blk) => {},
+                ast::ExprKind::Array(ar) => {},
+                ast::ExprKind::Repeat(rp) => {},
+                ast::ExprKind::Old(ox) => {},
+                ast::ExprKind::Quant(qu) => {},
+                ast::ExprKind::Trigger(tx) => {},
+                ast::ExprKind::Closure(cl) => {},
+                ast::ExprKind::StructLit(sl) => {},
+                ast::ExprKind::Path(pa) => {},
+                ast::ExprKind::Deref(dx) => {},
+                ast::ExprKind::Field(fx, fnm) => {},
+                ast::ExprKind::Match(ma) => {},
+                ast::ExprKind::Return(rv) => {},
+                ast::ExprKind::Try(tr) => {},
+                ast::ExprKind::Loop(lp) => {},
+                ast::ExprKind::Break(bk) => {},
+                ast::ExprKind::Continue(co) => {},
+                ast::ExprKind::Range(rg) => {},
+                ast::ExprKind::Error => {},
+            }
+            match repl {
+                None => {},
+                Some(k) => { e.kind = k; },
+            }
+        }
+    }
+
+    #[summary("잡은 값의 읽기 c를 self.c로 바꾸는 손님 (클로저의 구조체가 그것을 든다, ADR-0053 §2)")]
+    struct SelfThrough { caps: Vec<String> }
+
+    impl ast::ExprFn for SelfThrough {
+        #[effects(alloc)]
+        fn expr(self: &mut SelfThrough, e: &mut ast::Expr) -> () {
+            let at: source::Span = e.span;
+            let mut hit: Option<ast::Ident> = None;
+            match &e.kind {
+                ast::ExprKind::Int(iv, ir) => {},
+                ast::ExprKind::Float(fb) => {},
+                ast::ExprKind::ByteLit(by) => {},
+                ast::ExprKind::ByteStr(bys) => {},
+                ast::ExprKind::StrLit(sv) => {},
+                ast::ExprKind::CharLit(ch) => {},
+                ast::ExprKind::Bool(bo) => {},
+                ast::ExprKind::Unit => {},
+                ast::ExprKind::Var(id) => { if has(self.caps.as_slice(), id.name.as_str()) { hit = Some(ast::Ident { name: id.name.clone(), span: id.span }); } },
+                ast::ExprKind::Call(ca) => {},
+                ast::ExprKind::Method(me) => {},
+                ast::ExprKind::Index(ib, ii) => {},
+                ast::ExprKind::Unary(uo, ux) => {},
+                ast::ExprKind::Binary(bop, bl, br) => {},
+                ast::ExprKind::Ref(rm, rx) => {},
+                ast::ExprKind::If(ife) => {},
+                ast::ExprKind::Block(blk) => {},
+                ast::ExprKind::Array(ar) => {},
+                ast::ExprKind::Repeat(rp) => {},
+                ast::ExprKind::Old(ox) => {},
+                ast::ExprKind::Quant(qu) => {},
+                ast::ExprKind::Trigger(tx) => {},
+                ast::ExprKind::Closure(cl) => {},
+                ast::ExprKind::StructLit(sl) => {},
+                ast::ExprKind::Path(pa) => {},
+                ast::ExprKind::Deref(dx) => {},
+                ast::ExprKind::Field(fx, fnm) => {},
+                ast::ExprKind::Match(ma) => {},
+                ast::ExprKind::Return(rv) => {},
+                ast::ExprKind::Try(tr) => {},
+                ast::ExprKind::Loop(lp) => {},
+                ast::ExprKind::Break(bk) => {},
+                ast::ExprKind::Continue(co) => {},
+                ast::ExprKind::Range(rg) => {},
+                ast::ExprKind::Error => {},
+            }
+            match hit {
+                None => {},
+                Some(v) => { let this: ast::Expr = ast::Expr { kind: ast::ExprKind::Var(ast::Ident { name: String::from("self"), span: source::Span { file: source::CAPTURE, lo: at.lo, hi: at.lo } }), span: source::Span { file: at.file, lo: at.lo, hi: at.lo } }; e.kind = ast::ExprKind::Field(Box::new(this), v); },
+            }
+        }
+    }
+
+    #[summary("값 매개변수의 자리와 참조로 받는지")]
+    struct Slot { at: usize, by_ref: bool }
+
+    #[summary("클로저 식의 자리를 모으는 손님")]
+    struct Spans { spans: Vec<source::Span> }
+
+    impl ast::ExprFn for Spans {
+        #[effects(alloc)]
+        fn expr(self: &mut Spans, e: &mut ast::Expr) -> () {
+            match &e.kind {
+                ast::ExprKind::Int(iv, ir) => {},
+                ast::ExprKind::Float(fb) => {},
+                ast::ExprKind::ByteLit(by) => {},
+                ast::ExprKind::ByteStr(bys) => {},
+                ast::ExprKind::StrLit(sv) => {},
+                ast::ExprKind::CharLit(ch) => {},
+                ast::ExprKind::Bool(bo) => {},
+                ast::ExprKind::Unit => {},
+                ast::ExprKind::Var(id) => {},
+                ast::ExprKind::Call(ca) => {},
+                ast::ExprKind::Method(me) => {},
+                ast::ExprKind::Index(ib, ii) => {},
+                ast::ExprKind::Unary(uo, ux) => {},
+                ast::ExprKind::Binary(bop, bl, br) => {},
+                ast::ExprKind::Ref(rm, rx) => {},
+                ast::ExprKind::If(ife) => {},
+                ast::ExprKind::Block(blk) => {},
+                ast::ExprKind::Array(ar) => {},
+                ast::ExprKind::Repeat(rp) => {},
+                ast::ExprKind::Old(ox) => {},
+                ast::ExprKind::Quant(qu) => {},
+                ast::ExprKind::Trigger(tx) => {},
+                ast::ExprKind::Closure(cl) => self.spans.push(cl.span),
+                ast::ExprKind::StructLit(sl) => {},
+                ast::ExprKind::Path(pa) => {},
+                ast::ExprKind::Deref(dx) => {},
+                ast::ExprKind::Field(fx, fnm) => {},
+                ast::ExprKind::Match(ma) => {},
+                ast::ExprKind::Return(rv) => {},
+                ast::ExprKind::Try(tr) => {},
+                ast::ExprKind::Loop(lp) => {},
+                ast::ExprKind::Break(bk) => {},
+                ast::ExprKind::Continue(co) => {},
+                ast::ExprKind::Range(rg) => {},
+                ast::ExprKind::Error => {},
+            }
+        }
+    }
+
+    #[summary("낮추기의 상태. unit부터는 지금 보는 함수의 것이다")]
+    struct State { generics: table::Table<Generic>, items: table::Table<Item>, pending: Vec<diag::Diag>, names: table::Table<String>, passes: Vec<Pass>, located: table::Table<source::Span>, written: table::Table<usize>, text: table::Table<Text>, made: table::Table<String>, items_made: usize, closures_made: usize, bodies: table::Table<Body>, unit: String, owner: String, owner_uses: Vec<ast::Attr>, decls: table::Table<Option<ast::Type>> }
+
+    impl ast::ExprFn for State {
+        #[summary("클로저 밖의 호출 하나: Fn 경계의 자리에 넘긴 클로저와 함수를 구조체의 값으로")]
+        #[effects(alloc)]
+        fn expr(self: &mut State, e: &mut ast::Expr) -> () {
+            let mut todo: Vec<Todo> = Vec::new();
+            let mut rej: Vec<Rej> = Vec::new();
+            match &e.kind {
+                ast::ExprKind::Int(iv, ir) => {},
+                ast::ExprKind::Float(fb) => {},
+                ast::ExprKind::ByteLit(by) => {},
+                ast::ExprKind::ByteStr(bys) => {},
+                ast::ExprKind::StrLit(sv) => {},
+                ast::ExprKind::CharLit(ch) => {},
+                ast::ExprKind::Bool(bo) => {},
+                ast::ExprKind::Unit => {},
+                ast::ExprKind::Var(id) => {},
+                ast::ExprKind::Call(ca) => plan(self, ca, &mut todo, &mut rej),
+                ast::ExprKind::Method(me) => {},
+                ast::ExprKind::Index(ib, ii) => {},
+                ast::ExprKind::Unary(uo, ux) => {},
+                ast::ExprKind::Binary(bop, bl, br) => {},
+                ast::ExprKind::Ref(rm, rx) => {},
+                ast::ExprKind::If(ife) => {},
+                ast::ExprKind::Block(blk) => {},
+                ast::ExprKind::Array(ar) => {},
+                ast::ExprKind::Repeat(rp) => {},
+                ast::ExprKind::Old(ox) => {},
+                ast::ExprKind::Quant(qu) => {},
+                ast::ExprKind::Trigger(tx) => {},
+                ast::ExprKind::Closure(cl) => {},
+                ast::ExprKind::StructLit(sl) => {},
+                ast::ExprKind::Path(pa) => {},
+                ast::ExprKind::Deref(dx) => {},
+                ast::ExprKind::Field(fx, fnm) => {},
+                ast::ExprKind::Match(ma) => {},
+                ast::ExprKind::Return(rv) => {},
+                ast::ExprKind::Try(tr) => {},
+                ast::ExprKind::Loop(lp) => {},
+                ast::ExprKind::Break(bk) => {},
+                ast::ExprKind::Continue(co) => {},
+                ast::ExprKind::Range(rg) => {},
+                ast::ExprKind::Error => {},
+            }
+            if todo.len() > 0 || rej.len() > 0 {
+                apply(e, todo.as_slice(), rej.as_slice());
+            }
+        }
+    }
+
+    #[summary("Fn 경계의 자리: 경계의 차례 b, 값 매개변수의 자리 j, 참조로 받는지")]
+    struct Target { b: usize, j: usize, by_ref: bool }
+
+    #[summary("단위에 만들어 넣을 글. reported는 이미 보고한 인자의 것")]
+    struct Text { unit: String, reported: bool, body: String }
+
+    #[summary("호출의 인자 j를 구조체 sname의 값으로, 타입 인자 k를 그 타입으로")]
+    struct Todo { j: usize, sname: String, k: usize, by_ref: bool, caps: Vec<String> }
+
+    #[summary("경계의 trait 하나: 전체 경로, 읽는 이름, 자리, 그 글과 단위")]
+    struct TraitRow { tr: String, read: String, span: source::Span, unit: String, text: String }
+
+    #[summary("읽은 변수의 이름을 처음 본 순서로 모으는 손님")]
+    struct Vars { used: Vec<String> }
+
+    impl ast::ExprFn for Vars {
+        #[effects(alloc)]
+        fn expr(self: &mut Vars, e: &mut ast::Expr) -> () {
+            match &e.kind {
+                ast::ExprKind::Int(iv, ir) => {},
+                ast::ExprKind::Float(fb) => {},
+                ast::ExprKind::ByteLit(by) => {},
+                ast::ExprKind::ByteStr(bys) => {},
+                ast::ExprKind::StrLit(sv) => {},
+                ast::ExprKind::CharLit(ch) => {},
+                ast::ExprKind::Bool(bo) => {},
+                ast::ExprKind::Unit => {},
+                ast::ExprKind::Var(id) => { if !has(self.used.as_slice(), id.name.as_str()) { self.used.push(id.name.clone()); } },
+                ast::ExprKind::Call(ca) => {},
+                ast::ExprKind::Method(me) => {},
+                ast::ExprKind::Index(ib, ii) => {},
+                ast::ExprKind::Unary(uo, ux) => {},
+                ast::ExprKind::Binary(bop, bl, br) => {},
+                ast::ExprKind::Ref(rm, rx) => {},
+                ast::ExprKind::If(ife) => {},
+                ast::ExprKind::Block(blk) => {},
+                ast::ExprKind::Array(ar) => {},
+                ast::ExprKind::Repeat(rp) => {},
+                ast::ExprKind::Old(ox) => {},
+                ast::ExprKind::Quant(qu) => {},
+                ast::ExprKind::Trigger(tx) => {},
+                ast::ExprKind::Closure(cl) => {},
+                ast::ExprKind::StructLit(sl) => {},
+                ast::ExprKind::Path(pa) => {},
+                ast::ExprKind::Deref(dx) => {},
+                ast::ExprKind::Field(fx, fnm) => {},
+                ast::ExprKind::Match(ma) => {},
+                ast::ExprKind::Return(rv) => {},
+                ast::ExprKind::Try(tr) => {},
+                ast::ExprKind::Loop(lp) => {},
+                ast::ExprKind::Break(bk) => {},
+                ast::ExprKind::Continue(co) => {},
+                ast::ExprKind::Range(rg) => {},
+                ast::ExprKind::Error => {},
+            }
+        }
+    }
+
+    #[effects(alloc)]
+    fn apply(e: &mut ast::Expr, todo: &[Todo], rej: &[Rej]) -> () {
+        match &mut e.kind {
+            ast::ExprKind::Int(iv, ir) => {},
+            ast::ExprKind::Float(fb) => {},
+            ast::ExprKind::ByteLit(by) => {},
+            ast::ExprKind::ByteStr(bys) => {},
+            ast::ExprKind::StrLit(sv) => {},
+            ast::ExprKind::CharLit(ch) => {},
+            ast::ExprKind::Bool(bo) => {},
+            ast::ExprKind::Unit => {},
+            ast::ExprKind::Var(id) => {},
+            ast::ExprKind::Call(ca) => apply_call(ca, todo, rej),
+            ast::ExprKind::Method(me) => {},
+            ast::ExprKind::Index(ib, ii) => {},
+            ast::ExprKind::Unary(uo, ux) => {},
+            ast::ExprKind::Binary(bop, bl, br) => {},
+            ast::ExprKind::Ref(rm, rx) => {},
+            ast::ExprKind::If(ife) => {},
+            ast::ExprKind::Block(blk) => {},
+            ast::ExprKind::Array(ar) => {},
+            ast::ExprKind::Repeat(rp) => {},
+            ast::ExprKind::Old(ox) => {},
+            ast::ExprKind::Quant(qu) => {},
+            ast::ExprKind::Trigger(tx) => {},
+            ast::ExprKind::Closure(cl) => {},
+            ast::ExprKind::StructLit(sl) => {},
+            ast::ExprKind::Path(pa) => {},
+            ast::ExprKind::Deref(dx) => {},
+            ast::ExprKind::Field(fx, fnm) => {},
+            ast::ExprKind::Match(ma) => {},
+            ast::ExprKind::Return(rv) => {},
+            ast::ExprKind::Try(tr) => {},
+            ast::ExprKind::Loop(lp) => {},
+            ast::ExprKind::Break(bk) => {},
+            ast::ExprKind::Continue(co) => {},
+            ast::ExprKind::Range(rg) => {},
+            ast::ExprKind::Error => {},
+        }
+    }
+
+    #[summary("호출의 고쳐 쓰기: 인자 j는 구조체 sname의 값(잡은 값이 필드, 매개변수가 &F면 그 참조), 타입 인자 k는 그 타입. 보고한 클로저는 오류 타입과 오류 식이 되어 다시 보고되지 않는다")]
+    #[effects(alloc)]
+    fn apply_call(ca: &mut ast::Call, todo: &[Todo], rej: &[Rej]) -> () {
+        if ca.path.len() == 0 {
+            return;
+        }
+        let last: usize = ca.path.len() - 1;
+        let mut ti: usize = ca.targs.len();
+        let mut q: usize = ca.targs.len();
+        while q > 0
+            invariant q <= ca.targs.len(),
+            decreases q,
+        {
+            q = q - 1;
+            if ca.targs[q].seg == last {
+                ti = q;
+            }
+        }
+        let nargs: usize = ca.args.len();
+        for r in 0..rej.len()
+            invariant ca.args.len() == nargs,
+        {
+            if ti < ca.targs.len() && rej[r].k < ca.targs[ti].args.len() {
+                ca.targs[ti].args[rej[r].k].kind = ast::TypeKind::Error;
+            }
+            if rej[r].j < nargs {
+                ca.args[rej[r].j].kind = ast::ExprKind::Error;
+            }
+        }
+        for t in 0..todo.len()
+            invariant ca.args.len() == nargs,
+        {
+            let j: usize = todo[t].j;
+            if j < nargs {
+                let at: source::Span = ca.args[j].span;
+                let mut sp: source::Span = at;
+                if todo[t].by_ref {
+                    sp = source::Span { file: at.file, lo: at.hi, hi: at.hi };
+                }
+                let fsp: source::Span = source::Span { file: at.file, lo: at.lo, hi: at.lo };
+                let names: Vec<String> = refs::split_path(todo[t].sname.as_str());
+                let mut segs: Vec<ast::Ident> = Vec::new();
+                for s in 0..names.len() {
+                    segs.push(ast::Ident { name: names[s].clone(), span: sp });
+                }
+                let mut fields: Vec<ast::FieldInit> = Vec::new();
+                fields.push(ast::FieldInit { name: ast::Ident { name: String::from("item"), span: sp }, value: ast::Expr { kind: ast::ExprKind::Bool(false), span: fsp } });
+                for c in 0..todo[t].caps.len() {
+                    let p: u32 = at.lo.wrapping_add(1).wrapping_add(low32(c));
+                    let vsp: source::Span = source::Span { file: at.file, lo: p, hi: p };
+                    fields.push(ast::FieldInit { name: ast::Ident { name: todo[t].caps[c].clone(), span: vsp }, value: ast::Expr { kind: ast::ExprKind::Var(ast::Ident { name: todo[t].caps[c].clone(), span: vsp }), span: vsp } });
+                }
+                let lit: ast::Expr = ast::Expr { kind: ast::ExprKind::StructLit(ast::StructLit { path: segs, fields: fields, rest: None }), span: sp };
+                if todo[t].by_ref {
+                    ca.args[j] = ast::Expr { kind: ast::ExprKind::Ref(false, Box::new(lit)), span: at };
+                } else {
+                    ca.args[j] = lit;
+                }
+                if ti < ca.targs.len() && todo[t].k < ca.targs[ti].args.len() {
+                    ca.targs[ti].args[todo[t].k].kind = ast::TypeKind::Named(refs::split_path(todo[t].sname.as_str()), Vec::new());
+                }
+            }
+        }
+    }
+
+    #[summary("match의 갈래가 묶는 이름")]
+    #[effects(alloc)]
+    fn arm_names(ma: &ast::Match, out: &mut Vec<String>) -> () {
+        for a in 0..ma.arms.len() {
+            for b in 0..ma.arms[a].pat.binds.len() {
+                match &ma.arms[a].pat.binds[b] {
+                    None => {},
+                    Some(id) => out.push(id.name.clone()),
+                }
+            }
+        }
+    }
+
+    #[summary("블록이 그 안 어디서든 묶는 이름: let, for 변수, match가 묶는 이름, 한정자의 변수")]
+    #[effects(alloc)]
+    fn bound_names(b: &ast::Block, out: &mut Vec<String>) -> () {
+        stmt_names(b, out, 1000000000);
+        let mut c: ast::Block = ast::clone_block(b, 1000000000);
+        let mut v: Binds = Binds { names: std::mem::replace(out, Vec::new()) };
+        ast::block_mut::<Binds>(&mut c, &mut v, true, 1000000000);
+        std::mem::replace(out, v.names);
+    }
+
+    #[summary("경로 하나짜리 호출 f(a)가 값 매개변수의 것이면 f.call(a)")]
+    #[effects(alloc)]
+    fn call_of(ca: &mut ast::Call, values: &[String]) -> Option<ast::ExprKind> {
+        if ca.path.len() == 1 && has(values, ca.path[0].name.as_str()) {
+            let sp: source::Span = ca.path[0].span;
+            let recv: ast::Expr = ast::Expr { kind: ast::ExprKind::Var(ast::Ident { name: ca.path[0].name.clone(), span: sp }), span: sp };
+            let args: Vec<ast::Expr> = std::mem::replace(&mut ca.args, Vec::new());
+            return Some(ast::ExprKind::Method(ast::Method { recv: Box::new(recv), name: ast::Ident { name: String::from("call"), span: sp }, args: args }));
+        }
+        None
+    }
+
+    #[summary("클로저가 이름으로 든, 그것을 쓴 함수의 지역 이름들 (잡은 값, ADR-0053 §2). 처음 든 순서")]
+    #[effects(alloc)]
+    fn captures(c: &ast::Closure, decls: &table::Table<Option<ast::Type>>) -> Vec<String> {
+        let mut own: Vec<String> = Vec::new();
+        for i in 0..c.params.len() {
+            own.push(c.params[i].name.name.clone());
+        }
+        bound_names(&c.body, &mut own);
+        match &c.ret.name {
+            None => {},
+            Some(n) => own.push(n.name.clone()),
+        }
+        let mut probe: ast::Closure = ast::clone_closure(c, 1000000000);
+        let mut v: Vars = Vars { used: Vec::new() };
+        ast::exprs_each::<Vars>(&mut probe.pre, &mut v, true, 1000000000);
+        ast::exprs_each::<Vars>(&mut probe.post, &mut v, true, 1000000000);
+        ast::block_mut::<Vars>(&mut probe.body, &mut v, true, 1000000000);
+        let mut out: Vec<String> = Vec::new();
+        for j in 0..v.used.len() {
+            if decls.has(v.used[j].as_str()) && !has(own.as_slice(), v.used[j].as_str()) {
+                out.push(v.used[j].clone());
+            }
+        }
+        out
+    }
+
+    #[summary("글들을 괄호로 싸서 &&로 이은 것. 없으면 true")]
+    #[effects(alloc)]
+    fn conj(xs: &[String]) -> String {
+        if xs.len() == 0 {
+            return String::from("true");
+        }
+        let mut out: String = String::new();
+        for i in 0..xs.len() {
+            if i > 0 {
+                out.push_str(" && ");
+            }
+            out.push_str("(");
+            out.push_str(xs[i].as_str());
+            out.push_str(")");
+        }
+        out
+    }
+
+    #[summary("효과의 글을 원자들로: 빈 것과 pure는 뺀다")]
+    #[effects(alloc)]
+    fn effect_set(e: &str) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        let mut start: usize = 0;
+        let mut i: usize = 0;
+        while i < e.len()
+            invariant start <= i,
+            decreases e.len() - i,
+        {
+            if i + 1 < e.len() && e.as_bytes()[i] == 44 && e.as_bytes()[i + 1] == 32 {
+                push_atom(&mut out, lexer::cut(e, start, i).as_str());
+                i = i + 2;
+                start = i;
+            } else {
+                i = i + 1;
+            }
+        }
+        push_atom(&mut out, lexer::cut(e, start, e.len()).as_str());
+        out
+    }
+
+    #[summary("함수의 #[effects(..)]의 글. 없으면 pure")]
+    #[effects(alloc)]
+    fn effects_of(d: &ast::FnDef) -> String {
+        for i in 0..d.attrs.len() {
+            if d.attrs[i].name.name.as_str() == "effects" {
+                let mut out: String = String::new();
+                for j in 0..d.attrs[i].args.len() {
+                    if j > 0 {
+                        out.push_str(", ");
+                    }
+                    match &d.attrs[i].args[j] {
+                        ast::AttrArg::Ident(id) => out.push_str(id.name.as_str()),
+                        ast::AttrArg::Str(st, sp) => {},
+                        ast::AttrArg::Pair(pk, pv) => {},
+                    }
+                }
+                return out;
+            }
+        }
+        String::from("pure")
+    }
+
+    #[summary("만든 단위 made의 trait, 타입, trait impl을 경로 segs의 단위에 더한다")]
+    #[effects(alloc)]
+    fn extend_unit(mods: &mut Vec<ast::Mod>, segs: &[String], k: usize, m: &mut ast::Mod, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 || k >= segs.len() {
+            return;
+        }
+        let n: usize = mods.len();
+        let mut at: usize = n;
+        let mut q: usize = n;
+        while q > 0
+            invariant q <= n && mods.len() == n,
+            decreases q,
+        {
+            q = q - 1;
+            if mods[q].name.name.as_str() == segs[k].as_str() {
+                at = q;
+            }
+        }
+        if at < n {
+            if k + 1 == segs.len() {
+                ast::append::<ast::TraitDef>(&mut mods[at].traits, std::mem::replace(&mut m.traits, Vec::new()));
+                ast::append::<ast::TypeDef>(&mut mods[at].types, std::mem::replace(&mut m.types, Vec::new()));
+                ast::append::<ast::TraitImpl>(&mut mods[at].trait_impls, std::mem::replace(&mut m.trait_impls, Vec::new()));
+            } else {
+                extend_unit(&mut mods[at].mods, segs, k + 1, m, f - 1);
+            }
+        }
+    }
+
+    #[summary("true && true && .. 의 자리를 왼쪽부터 절 cs로 채운다 (제 자리를 지닌 채: 실패한 절이 쓴 곳을 가리킨다)")]
+    #[effects(alloc)]
+    fn fill(e: &mut ast::Expr, cs: &[ast::Expr], next: &mut usize, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let mut put: bool = false;
+        match &mut e.kind {
+            ast::ExprKind::Int(iv, ir) => {},
+            ast::ExprKind::Float(fb) => {},
+            ast::ExprKind::ByteLit(by) => {},
+            ast::ExprKind::ByteStr(bys) => {},
+            ast::ExprKind::StrLit(sv) => {},
+            ast::ExprKind::CharLit(ch) => {},
+            ast::ExprKind::Bool(bo) => { put = *bo; },
+            ast::ExprKind::Unit => {},
+            ast::ExprKind::Var(id) => {},
+            ast::ExprKind::Call(ca) => {},
+            ast::ExprKind::Method(me) => {},
+            ast::ExprKind::Index(ib, ii) => {},
+            ast::ExprKind::Unary(uo, ux) => {},
+            ast::ExprKind::Binary(bop, bl, br) => { if is_and(bop) { fill(&mut **bl, cs, next, f - 1); fill(&mut **br, cs, next, f - 1); } },
+            ast::ExprKind::Ref(rm, rx) => {},
+            ast::ExprKind::If(ife) => {},
+            ast::ExprKind::Block(blk) => {},
+            ast::ExprKind::Array(ar) => {},
+            ast::ExprKind::Repeat(rp) => {},
+            ast::ExprKind::Old(ox) => {},
+            ast::ExprKind::Quant(qu) => {},
+            ast::ExprKind::Trigger(tx) => {},
+            ast::ExprKind::Closure(cl) => {},
+            ast::ExprKind::StructLit(sl) => {},
+            ast::ExprKind::Path(pa) => {},
+            ast::ExprKind::Deref(dx) => {},
+            ast::ExprKind::Field(fx, fnm) => {},
+            ast::ExprKind::Match(ma) => {},
+            ast::ExprKind::Return(rv) => {},
+            ast::ExprKind::Try(tr) => {},
+            ast::ExprKind::Loop(lp) => {},
+            ast::ExprKind::Break(bk) => {},
+            ast::ExprKind::Continue(co) => {},
+            ast::ExprKind::Range(rg) => {},
+            ast::ExprKind::Error => {},
+        }
+        if put && *next < cs.len() {
+            let c: ast::Expr = ast::clone_expr(&cs[*next], 1000000000);
+            *next = *next + 1;
+            *e = c;
+        }
+    }
+
+    #[summary("xs에 s가 있는가")]
+    #[effects(pure)]
+    fn has(xs: &[String], s: &str) -> bool {
+        for i in 0..xs.len() {
+            if xs[i].as_str() == s {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[effects(pure)]
+    fn has_bound(b: &Option<ast::FnBound>) -> bool {
+        match b {
+            None => false,
+            Some(fb) => true,
+        }
+    }
+
+    #[summary("만든 구조체와 그 trait impl의 글")]
+    #[effects(alloc)]
+    fn impl_text(out: &mut String, sname: &str, fields: &str, tr: &str, typed: &str, rn: &str, ret: &str, pre: &str, post: &str, eff: &str, kind: &ast::FnTrait, a: &str, body: &str) -> () {
+        out.push_str("struct ");
+        out.push_str(sname);
+        out.push_str(" { item: bool");
+        out.push_str(fields);
+        out.push_str(" }\n\nimpl ");
+        out.push_str(tr);
+        out.push_str(" for ");
+        out.push_str(sname);
+        out.push_str(" {\n    spec fn pre(self: &");
+        out.push_str(sname);
+        out.push_str(typed);
+        out.push_str(") -> bool { ");
+        out.push_str(pre);
+        out.push_str(" }\n\n    spec fn post(self: &");
+        out.push_str(sname);
+        out.push_str(typed);
+        out.push_str(", ");
+        out.push_str(rn);
+        out.push_str(": ");
+        out.push_str(ret);
+        out.push_str(") -> bool { ");
+        out.push_str(post);
+        out.push_str(" }\n\n    #[effects(");
+        out.push_str(eff);
+        out.push_str(")]\n    fn call(self: ");
+        push_receiver(out, kind, sname);
+        out.push_str(typed);
+        out.push_str(") -> (");
+        out.push_str(rn);
+        out.push_str(": ");
+        out.push_str(ret);
+        out.push_str(")\n        requires self.pre(");
+        out.push_str(a);
+        out.push_str("),\n        ensures ");
+        push_state(out, kind);
+        out.push_str(".post(");
+        out.push_str(a);
+        if a.len() > 0 {
+            out.push_str(", ");
+        }
+        out.push_str(rn);
+        out.push_str("),\n    {\n        ");
+        out.push_str(body);
+        out.push_str("\n    }\n}\n\n");
+    }
+
+    #[summary("경계의 trait마다 읽는 이름과 자리를 적는다")]
+    #[effects(alloc)]
+    fn init_names(st: &mut State) -> () {
+        let mut rows: Vec<TraitRow> = Vec::new();
+        for g in 0..st.generics.len() {
+            let gp: String = st.generics.key(g);
+            match st.generics.nth(g) {
+                None => {},
+                Some(gi) => trait_rows(gp.as_str(), &st.generics.items[gi], &mut rows),
+            }
+        }
+        for r in 0..rows.len() {
+            st.names.insert(rows[r].tr.as_str(), rows[r].read.clone());
+            locate(&mut st.located, rows[r].tr.as_str(), "", rows[r].span);
+        }
+    }
+
+    #[summary("경계의 trait마다 그 글을 단위의 만들 글에")]
+    #[effects(alloc)]
+    fn init_traits(st: &mut State) -> () {
+        let mut rows: Vec<TraitRow> = Vec::new();
+        for g in 0..st.generics.len() {
+            let gp: String = st.generics.key(g);
+            match st.generics.nth(g) {
+                None => {},
+                Some(gi) => trait_rows(gp.as_str(), &st.generics.items[gi], &mut rows),
+            }
+        }
+        for r in 0..rows.len() {
+            push_text(&mut st.text, rows[r].unit.as_str(), false, rows[r].text.as_str());
+        }
+    }
+
+    #[summary("&&인가")]
+    #[effects(pure)]
+    fn is_and(op: &ast::BinOp) -> bool {
+        match op {
+            ast::BinOp::Add => false,
+            ast::BinOp::Sub => false,
+            ast::BinOp::Mul => false,
+            ast::BinOp::Div => false,
+            ast::BinOp::Rem => false,
+            ast::BinOp::Eq => false,
+            ast::BinOp::Ne => false,
+            ast::BinOp::Lt => false,
+            ast::BinOp::Le => false,
+            ast::BinOp::Gt => false,
+            ast::BinOp::Ge => false,
+            ast::BinOp::And => true,
+            ast::BinOp::Or => false,
+            ast::BinOp::Implies => false,
+            ast::BinOp::BitAnd => false,
+            ast::BinOp::BitOr => false,
+            ast::BinOp::BitXor => false,
+            ast::BinOp::Shl => false,
+            ast::BinOp::Shr => false,
+        }
+    }
+
+    #[summary("실행 함수인가")]
+    #[effects(pure)]
+    fn is_exec(k: &ast::FnKind) -> bool {
+        match k {
+            ast::FnKind::Exec => true,
+            ast::FnKind::Spec => false,
+            ast::FnKind::Proof => false,
+        }
+    }
+
+    #[summary("FnMut인가")]
+    #[effects(pure)]
+    fn is_fn_mut(k: &ast::FnTrait) -> bool {
+        match k {
+            ast::FnTrait::Fn => false,
+            ast::FnTrait::FnMut => true,
+            ast::FnTrait::FnOnce => false,
+        }
+    }
+
+    #[summary("a::b::c의 마지막 마디")]
+    #[effects(alloc)]
+    fn last_seg(s: &str) -> String {
+        let segs: Vec<String> = refs::split_path(s);
+        if segs.len() > 0 {
+            return segs[segs.len() - 1].clone();
+        }
+        String::new()
+    }
+
+    #[summary("낮추기가 남긴 클로저마다 E0264: Fn 경계의 인자가 아닌 것 (ADR-0053 §3)")]
+    #[effects(alloc)]
+    fn leftover_closures(p: &mut ast::Program, diags: &mut diag::Diags) -> () {
+        let mut v: Spans = Spans { spans: Vec::new() };
+        ast::exprs_mut::<Spans>(p, &mut v);
+        for i in 0..v.spans.len() {
+            diags.push(diag::fix(diag::new("E0264", v.spans[i], "a closure is the argument of a function's `Fn`-bounded parameter"), "pass it directly where a function takes `f: F` with `F: Fn(..) -> R`, or name it as a `fn` of the unit", None));
+        }
+    }
+
+    #[summary("함수의 지역 이름마다 쓴 타입 (매개변수와 let). 타입을 쓰지 않은 것(for 변수, match가 묶은 이름)은 None")]
+    #[effects(alloc)]
+    fn local_types(d: &ast::FnDef) -> table::Table<Option<ast::Type>> {
+        let mut out: table::Table<Option<ast::Type>> = table::new::<Option<ast::Type>>();
+        let mut names: Vec<String> = Vec::new();
+        bound_names(&d.body, &mut names);
+        for i in 0..names.len() {
+            out.insert(names[i].as_str(), None);
+        }
+        let mut v: Lets = Lets { names: Vec::new(), tys: Vec::new() };
+        stmt_lets(&d.body, &mut v, 1000000000);
+        let mut g: ast::FnDef = ast::clone_fndef(d, 1000000000);
+        ast::fn_exprs_mut::<Lets>(&mut g, &mut v, true, 1000000000);
+        for j in 0..v.names.len() {
+            if j < v.tys.len() {
+                out.insert(v.names[j].as_str(), Some(ast::clone_type(&v.tys[j], 1000000000)));
+            }
+        }
+        for k in 0..d.params.len() {
+            out.insert(d.params[k].name.name.as_str(), Some(ast::clone_type(&d.params[k].ty, 1000000000)));
+        }
+        out
+    }
+
+    #[summary("만든 항목 path와 그 메서드 call, pre, post를 자리 sp에. head가 있으면 메서드는 <path as head>::m")]
+    #[effects(alloc)]
+    fn locate(t: &mut table::Table<source::Span>, path: &str, head: &str, sp: source::Span) -> () {
+        method_at(t, path, head, "call", sp);
+        method_at(t, path, head, "pre", sp);
+        method_at(t, path, head, "post", sp);
+        t.insert(path, sp);
+    }
+
+    #[summary("아래 32비트 (Rust의 as u32)")]
+    #[effects(pure)]
+    fn low32(n: usize) -> u32 {
+        (n % 4294967296) as u32
+    }
+
+    #[summary("프로그램의 함수 값을 낮춘다. 진단은 diags에")]
+    #[effects(alloc)]
+    fn lower(p: &mut ast::Program, diags: &mut diag::Diags) -> Lowered {
+        let mut st: State = State { generics: table::new::<Generic>(), items: table::new::<Item>(), pending: Vec::new(), names: table::new::<String>(), passes: Vec::new(), located: table::new::<source::Span>(), written: table::new::<usize>(), text: table::new::<Text>(), made: table::new::<String>(), items_made: 0, closures_made: 0, bodies: table::new::<Body>(), unit: String::new(), owner: String::new(), owner_uses: Vec::new(), decls: table::new::<Option<ast::Type>>() };
+        for i in 0..p.mods.len() {
+            scan(&p.mods[i], "", &mut st, 1000000000);
+        }
+        if st.generics.len() == 0 {
+            leftover_closures(p, diags);
+            return Lowered { quiet: Vec::new(), names: table::new::<String>(), passes: Vec::new(), at: table::new::<source::Span>() };
+        }
+        init_names(&mut st);
+        init_traits(&mut st);
+        let mut made_files: usize = 0;
+        let mut quiet: Vec<u32> = Vec::new();
+        let mut first: bool = true;
+        for round in 0..1000000000 {
+            st.bodies = table::new::<Body>();
+            let before: usize = st.closures_made;
+            let nm: usize = p.mods.len();
+            for m in 0..nm
+                invariant p.mods.len() == nm,
+            {
+                round_mod(&mut p.mods[m], "", &mut st, 1000000000);
+            }
+            if first {
+                for m2 in 0..nm
+                    invariant p.mods.len() == nm,
+                {
+                    rewrite_generic(&mut p.mods[m2], "", &st.generics, 1000000000);
+                }
+                first = false;
+            }
+            let pend: Vec<diag::Diag> = std::mem::replace(&mut st.pending, Vec::new());
+            push_diags(diags, pend);
+            made_files = splice_all(p, diags, &mut st, made_files, &mut quiet);
+            let mut left: Spans = Spans { spans: Vec::new() };
+            ast::exprs_mut::<Spans>(p, &mut left);
+            if left.spans.len() == 0 || st.closures_made == before {
+                break;
+            }
+        }
+        leftover_closures(p, diags);
+        Lowered { quiet: quiet, names: st.names, passes: st.passes, at: st.located }
+    }
+
+    #[effects(alloc)]
+    fn method_at(t: &mut table::Table<source::Span>, path: &str, head: &str, m: &str, sp: source::Span) -> () {
+        let mut k: String = String::new();
+        if head.len() > 0 {
+            k.push_str("<");
+            k.push_str(path);
+            k.push_str(" as ");
+            k.push_str(head);
+            k.push_str(">::");
+        } else {
+            k.push_str(path);
+            k.push_str("::");
+        }
+        k.push_str(m);
+        t.insert(k.as_str(), sp);
+    }
+
+    #[summary("Fn 경계의 자리에 넘긴 클로저 하나: 구조체와 impl의 글을 만들고 할 일에 올린다. 잡을 수 없는 것은 E0262")]
+    #[effects(alloc)]
+    fn pass_closure(st: &mut State, cl: &ast::Closure, aspan: source::Span, gi: usize, b: usize, j: usize, by_ref: bool, todo: &mut Vec<Todo>, rej: &mut Vec<Rej>) -> () {
+        if gi >= st.generics.items.len() || b >= st.generics.items[gi].bounded.len() {
+            return;
+        }
+        let k: usize = st.generics.items[gi].bounded[b].k;
+        let caps: Vec<String> = captures(cl, &st.decls);
+        if has(caps.as_slice(), "self") {
+            st.pending.push(diag::fix(diag::new("E0262", cl.span, "a closure inside a closure reads a value the outer one captured"), "bind the captured value to a typed `let` in the outer closure's body and capture that", None));
+            rej.push(Rej { k: k, j: j });
+            return;
+        }
+        let mut untyped: Vec<String> = Vec::new();
+        for c in 0..caps.len() {
+            match st.decls.find(caps[c].as_str()) {
+                None => {},
+                Some(di) => { if !typed_local(&st.decls.items[di]) { untyped.push(caps[c].clone()); } },
+            }
+        }
+        if caps.len() > 0 && (!cl.is_move || untyped.len() > 0) {
+            if cl.is_move {
+                let mut msg: String = String::from("a closure captures `");
+                push_joined(&mut msg, untyped.as_slice(), "`, `");
+                msg.push_str("`, whose type is not written");
+                let mut fx: String = String::from("bind it to a typed `let` before the closure: `let ");
+                if untyped.len() > 0 {
+                    fx.push_str(untyped[0].as_str());
+                    fx.push_str("2: T = ");
+                    fx.push_str(untyped[0].as_str());
+                }
+                fx.push_str(";`");
+                st.pending.push(diag::fix(diag::new("E0262", cl.span, msg.as_str()), fx.as_str(), None));
+            } else {
+                let mut msg2: String = String::from("a closure that captures (`");
+                push_joined(&mut msg2, caps.as_slice(), "`, `");
+                msg2.push_str("`) is written `move`");
+                let mut pr: fmt::Printer = fmt::Printer { out: String::new(), lens: Vec::new() };
+                let mut repl: String = String::from("move ");
+                repl.push_str(pr.closure_text(cl, 1000000000).as_str());
+                st.pending.push(diag::fix(diag::new("E0262", cl.span, msg2.as_str()), "write `move` before the closure: captures move into it (ADR-0053 §2)", Some(repl)));
+            }
+            rej.push(Rej { k: k, j: j });
+            return;
+        }
+        let mut tr: String = st.generics.items[gi].unit.clone();
+        tr.push_str("::");
+        push_trait_name(&mut tr, st.generics.items[gi].order, k);
+        let mut sname: String = String::from("__closure$");
+        std::num::push_u64(&mut sname, st.closures_made as u64);
+        st.closures_made = st.closures_made.saturating_add(1);
+        let mut nth: usize = 0;
+        match st.written.find(st.owner.as_str()) {
+            None => {},
+            Some(wi) => { nth = st.written.items[wi]; },
+        }
+        let mut full: String = st.unit.clone();
+        full.push_str("::");
+        full.push_str(sname.as_str());
+        let mut read: String = st.owner.clone();
+        read.push_str("::{closure#");
+        std::num::push_u64(&mut read, nth as u64);
+        read.push_str("}");
+        st.names.insert(full.as_str(), read);
+        let owner: String = st.owner.clone();
+        st.written.insert(owner.as_str(), nth.saturating_add(1));
+        let mut typed: String = String::new();
+        let mut a: String = String::new();
+        for q in 0..cl.params.len() {
+            typed.push_str(", ");
+            typed.push_str(cl.params[q].name.name.as_str());
+            typed.push_str(": ");
+            typed.push_str(fmt::type_str(&cl.params[q].ty).as_str());
+            if q > 0 {
+                a.push_str(", ");
+            }
+            a.push_str(cl.params[q].name.name.as_str());
+        }
+        let mut rn: String = String::from("result");
+        match &cl.ret.name {
+            None => {},
+            Some(rid) => { rn = rid.name.clone(); },
+        }
+        let mut fields: String = String::new();
+        for c2 in 0..caps.len() {
+            fields.push_str(", ");
+            fields.push_str(caps[c2].as_str());
+            fields.push_str(": ");
+            match st.decls.find(caps[c2].as_str()) {
+                None => {},
+                Some(dj) => push_local_type(&mut fields, &st.decls.items[dj]),
+            }
+        }
+        let mut t: String = String::new();
+        impl_text(&mut t, sname.as_str(), fields.as_str(), tr.as_str(), typed.as_str(), rn.as_str(), fmt::type_str(&cl.ret.ty).as_str(), slots(cl.pre.len()).as_str(), slots(cl.post.len()).as_str(), st.generics.items[gi].effects.as_str(), &st.generics.items[gi].bounded[b].bound.kind, a.as_str(), rn.as_str());
+        let unit: String = st.unit.clone();
+        push_text(&mut st.text, unit.as_str(), false, t.as_str());
+        let mut what: String = String::from("<");
+        what.push_str(full.as_str());
+        what.push_str(" as ");
+        what.push_str(tr.as_str());
+        what.push_str(">::call");
+        st.passes.push(Pass { span: aspan, what: what });
+        locate(&mut st.located, full.as_str(), tr.as_str(), cl.span);
+        let mut uses: Vec<ast::Attr> = Vec::new();
+        for u in 0..st.owner_uses.len() {
+            uses.push(ast::clone_attr(&st.owner_uses[u], 1000000000));
+        }
+        let mut caps2: Vec<String> = Vec::new();
+        for c3 in 0..caps.len() {
+            caps2.push(caps[c3].clone());
+        }
+        st.bodies.insert(full.as_str(), Body { c: ast::clone_closure(cl, 1000000000), caps: caps2, uses: uses });
+        todo.push(Todo { j: j, sname: full, k: k, by_ref: by_ref, caps: caps });
+    }
+
+    #[summary("Fn 경계의 자리에 넘긴 함수 하나: (함수, trait)마다 한 번 구조체와 impl의 글을 만들고 할 일에 올린다. 함수의 효과가 받는 쪽에 없으면 E0608")]
+    #[effects(alloc)]
+    fn pass_item(st: &mut State, full: &str, single: bool, aspan: source::Span, gp: &str, gi: usize, b: usize, j: usize, by_ref: bool, todo: &mut Vec<Todo>) -> () {
+        if gi >= st.generics.items.len() || b >= st.generics.items[gi].bounded.len() {
+            return;
+        }
+        let k: usize = st.generics.items[gi].bounded[b].k;
+        let mut h: String = String::new();
+        match resolve(&st.generics, &st.items, full, single, st.unit.as_str()) {
+            None => { return; },
+            Some(r) => { h = r; },
+        }
+        let mut hi: usize = 0;
+        match st.items.find(h.as_str()) {
+            None => { return; },
+            Some(i) => { hi = i; },
+        }
+        if hi >= st.items.items.len() {
+            return;
+        }
+        let mut tr: String = st.generics.items[gi].unit.clone();
+        tr.push_str("::");
+        push_trait_name(&mut tr, st.generics.items[gi].order, k);
+        let mut key: String = h.clone();
+        key.push_str("\0");
+        key.push_str(tr.as_str());
+        let have: Vec<String> = effect_set(st.items.items[hi].effects.as_str());
+        let allowed: Vec<String> = effect_set(st.generics.items[gi].effects.as_str());
+        let mut extra: Vec<String> = Vec::new();
+        for e in 0..have.len() {
+            if !has(allowed.as_slice(), have[e].as_str()) {
+                extra.push(have[e].clone());
+            }
+        }
+        let reported: bool = extra.len() > 0;
+        let hn: String = last_seg(h.as_str());
+        if reported {
+            let mut msg: String = String::from("`");
+            msg.push_str(hn.as_str());
+            msg.push_str("` has effect `");
+            push_joined(&mut msg, extra.as_slice(), ", ");
+            msg.push_str("`, which `");
+            msg.push_str(gp);
+            msg.push_str("` does not declare for its `");
+            msg.push_str(st.generics.items[gi].bounded[b].name.as_str());
+            msg.push_str("`");
+            let mut fx: String = String::from("declare `");
+            push_joined(&mut fx, extra.as_slice(), ", ");
+            fx.push_str("` on `");
+            fx.push_str(gp);
+            fx.push_str("`, or pass a function without it");
+            st.pending.push(diag::fix(diag::new("E0608", aspan, msg.as_str()), fx.as_str(), None));
+        }
+        let mut sname: String = String::new();
+        match st.made.find(key.as_str()) {
+            None => { let mut short: String = String::from("__fnitem$"); std::num::push_u64(&mut short, st.items_made as u64); st.items_made = st.items_made.saturating_add(1); let mut path: String = st.items.items[hi].unit.clone(); path.push_str("::"); path.push_str(short.as_str()); st.names.insert(path.as_str(), h.clone()); let mut typed: String = String::new(); let mut a: String = String::new(); for q in 0..st.items.items[hi].params.len() { typed.push_str(", "); typed.push_str(st.items.items[hi].params[q].name.as_str()); typed.push_str(": "); typed.push_str(st.items.items[hi].params[q].ty.as_str()); if q > 0 { a.push_str(", "); } a.push_str(st.items.items[hi].params[q].name.as_str()); } let mut body: String = hn.clone(); body.push_str("("); body.push_str(a.as_str()); body.push_str(")"); let mut t: String = String::new(); impl_text(&mut t, short.as_str(), "", tr.as_str(), typed.as_str(), st.items.items[hi].ret_name.as_str(), st.items.items[hi].ret.as_str(), conj(st.items.items[hi].pre.as_slice()).as_str(), conj(st.items.items[hi].post.as_slice()).as_str(), st.items.items[hi].effects.as_str(), &st.generics.items[gi].bounded[b].bound.kind, a.as_str(), body.as_str()); let unit: String = st.items.items[hi].unit.clone(); push_text(&mut st.text, unit.as_str(), reported, t.as_str()); let isp: source::Span = st.items.items[hi].span; locate(&mut st.located, path.as_str(), tr.as_str(), isp); st.made.insert(key.as_str(), path.clone()); sname = path; },
+            Some(mi) => { sname = st.made.items[mi].clone(); },
+        }
+        st.passes.push(Pass { span: aspan, what: h });
+        todo.push(Todo { j: j, sname: sname, k: k, by_ref: by_ref, caps: Vec::new() });
+    }
+
+    #[summary("호출 하나가 Fn 경계가 있는 함수의 것이면 그 자리의 인자마다 할 일을 정한다")]
+    #[effects(alloc)]
+    fn plan(st: &mut State, call: &ast::Call, todo: &mut Vec<Todo>, rej: &mut Vec<Rej>) -> () {
+        let full: String = fmt::path_join(call.path.as_slice(), "::");
+        let mut gp: String = String::new();
+        match resolve(&st.generics, &st.items, full.as_str(), call.path.len() == 1, st.unit.as_str()) {
+            None => { return; },
+            Some(r) => { gp = r; },
+        }
+        let mut gi: usize = 0;
+        match st.generics.find(gp.as_str()) {
+            None => { return; },
+            Some(i) => { gi = i; },
+        }
+        if gi >= st.generics.items.len() {
+            return;
+        }
+        let ts: Vec<Target> = targets(&st.generics.items[gi]);
+        for q in 0..ts.len() {
+            let b: usize = ts[q].b;
+            let j: usize = ts[q].j;
+            let by_ref: bool = ts[q].by_ref;
+            if j < call.args.len() {
+                let aspan: source::Span = call.args[j].span;
+                match &call.args[j].kind {
+                    ast::ExprKind::Int(iv, ir) => {},
+                    ast::ExprKind::Float(fb) => {},
+                    ast::ExprKind::ByteLit(by) => {},
+                    ast::ExprKind::ByteStr(bys) => {},
+                    ast::ExprKind::StrLit(sv) => {},
+                    ast::ExprKind::CharLit(ch) => {},
+                    ast::ExprKind::Bool(bo) => {},
+                    ast::ExprKind::Unit => {},
+                    ast::ExprKind::Var(id) => pass_item(st, id.name.as_str(), true, aspan, gp.as_str(), gi, b, j, by_ref, todo),
+                    ast::ExprKind::Call(ca) => {},
+                    ast::ExprKind::Method(me) => {},
+                    ast::ExprKind::Index(ib, ii) => {},
+                    ast::ExprKind::Unary(uo, ux) => {},
+                    ast::ExprKind::Binary(bop, bl, br) => {},
+                    ast::ExprKind::Ref(rm, rx) => {},
+                    ast::ExprKind::If(ife) => {},
+                    ast::ExprKind::Block(blk) => {},
+                    ast::ExprKind::Array(ar) => {},
+                    ast::ExprKind::Repeat(rp) => {},
+                    ast::ExprKind::Old(ox) => {},
+                    ast::ExprKind::Quant(qu) => {},
+                    ast::ExprKind::Trigger(tx) => {},
+                    ast::ExprKind::Closure(cl) => pass_closure(st, &**cl, aspan, gi, b, j, by_ref, todo, rej),
+                    ast::ExprKind::StructLit(sl) => {},
+                    ast::ExprKind::Path(pa) => pass_item(st, fmt::path_join(pa.as_slice(), "::").as_str(), pa.len() == 1, aspan, gp.as_str(), gi, b, j, by_ref, todo),
+                    ast::ExprKind::Deref(dx) => {},
+                    ast::ExprKind::Field(fx, fnm) => {},
+                    ast::ExprKind::Match(ma) => {},
+                    ast::ExprKind::Return(rv) => {},
+                    ast::ExprKind::Try(tr) => {},
+                    ast::ExprKind::Loop(lp) => {},
+                    ast::ExprKind::Break(bk) => {},
+                    ast::ExprKind::Continue(co) => {},
+                    ast::ExprKind::Range(rg) => {},
+                    ast::ExprKind::Error => {},
+                }
+            }
+        }
+    }
+
+    #[summary("f.requires(..)와 f.ensures(..)를 f.pre(..)와 f.post(..)로")]
+    #[effects(alloc)]
+    fn pre_post(me: &mut ast::Method, values: &[String]) -> () {
+        match ast::var_name(&*me.recv) {
+            None => {},
+            Some(v) => { if has(values, v.as_str()) { if me.name.name.as_str() == "requires" { me.name.name = String::from("pre"); } else { if me.name.name.as_str() == "ensures" { me.name.name = String::from("post"); } } } },
+        }
+    }
+
+    #[summary("빈 것과 pure가 아니면 넣는다")]
+    #[effects(alloc)]
+    fn push_atom(out: &mut Vec<String>, s: &str) -> () {
+        if s.len() > 0 && s != "pure" {
+            out.push(String::from(s));
+        }
+    }
+
+    #[effects(alloc)]
+    fn push_diags(diags: &mut diag::Diags, ds: Vec<diag::Diag>) -> () {
+        let mut rest: Vec<diag::Diag> = ds;
+        let mut flipped: Vec<diag::Diag> = Vec::new();
+        ast::append::<diag::Diag>(&mut flipped, rest);
+        let mut n: usize = flipped.len();
+        let mut back: Vec<diag::Diag> = Vec::new();
+        while n > 0
+            decreases n,
+        {
+            n = n - 1;
+            match flipped.pop() {
+                None => {},
+                Some(d) => back.push(d),
+            }
+        }
+        let mut k: usize = back.len();
+        while k > 0
+            decreases k,
+        {
+            k = k - 1;
+            match back.pop() {
+                None => {},
+                Some(d2) => diags.push(d2),
+            }
+        }
+    }
+
+    #[summary("글들을 sep로 이어 덧붙인다")]
+    #[effects(alloc)]
+    fn push_joined(out: &mut String, xs: &[String], sep: &str) -> () {
+        for i in 0..xs.len() {
+            if i > 0 {
+                out.push_str(sep);
+            }
+            out.push_str(xs[i].as_str());
+        }
+    }
+
+    #[summary("지역 이름의 쓴 타입의 글")]
+    #[effects(alloc)]
+    fn push_local_type(out: &mut String, t: &Option<ast::Type>) -> () {
+        match t {
+            None => {},
+            Some(ty) => out.push_str(fmt::type_str(ty).as_str()),
+        }
+    }
+
+    #[summary("call의 수신자의 타입: Fn은 &T, FnMut은 &mut T, FnOnce는 T (ADR-0053 §2)")]
+    #[effects(alloc)]
+    fn push_receiver(out: &mut String, kind: &ast::FnTrait, ty: &str) -> () {
+        match kind {
+            ast::FnTrait::Fn => out.push_str("&"),
+            ast::FnTrait::FnMut => out.push_str("&mut "),
+            ast::FnTrait::FnOnce => {},
+        }
+        out.push_str(ty);
+    }
+
+    #[summary("post가 읽는 상태: FnMut의 호출은 그것을 바꿀 수 있어 앞의 상태 old(self)다")]
+    #[effects(alloc)]
+    fn push_state(out: &mut String, kind: &ast::FnTrait) -> () {
+        match kind {
+            ast::FnTrait::Fn => out.push_str("self"),
+            ast::FnTrait::FnMut => out.push_str("old(self)"),
+            ast::FnTrait::FnOnce => out.push_str("self"),
+        }
+    }
+
+    #[summary("단위 unit의 만들 글에 body를 덧붙인다")]
+    #[effects(alloc)]
+    fn push_text(t: &mut table::Table<Text>, unit: &str, reported: bool, body: &str) -> () {
+        let mut key: String = String::from(unit);
+        if reported {
+            key.push_str("\01");
+        } else {
+            key.push_str("\00");
+        }
+        match t.find(key.as_str()) {
+            None => t.insert(key.as_str(), Text { unit: String::from(unit), reported: reported, body: String::from(body) }),
+            Some(i) => t.items[i].body.push_str(body),
+        }
+    }
+
+    #[summary("번호 order인 함수의 k번째 Fn 경계의 trait 이름")]
+    #[effects(alloc)]
+    fn push_trait_name(out: &mut String, order: usize, k: usize) -> () {
+        out.push_str("__fn$");
+        std::num::push_u64(out, order as u64);
+        out.push_str("_");
+        std::num::push_u64(out, k as u64);
+    }
+
+    #[summary("한정자가 묶는 이름")]
+    #[effects(alloc)]
+    fn quant_names(qu: &ast::Quant, out: &mut Vec<String>) -> () {
+        for i in 0..qu.binders.len() {
+            out.push(qu.binders[i].name.name.clone());
+        }
+    }
+
+    #[summary("이름이 from에 있으면 같은 자리의 to로")]
+    #[effects(alloc)]
+    fn rename(id: &mut ast::Ident, from: &[String], to: &[String]) -> () {
+        for k in 0..from.len() {
+            if from[k].as_str() == id.name.as_str() {
+                if k < to.len() {
+                    id.name = to[k].clone();
+                }
+                return;
+            }
+        }
+    }
+
+    #[summary("경로가 가리키는 Fn 경계 함수나 자유 함수의 전체 경로: 마디 하나면 단위의 것이 먼저")]
+    #[effects(alloc)]
+    fn resolve(generics: &table::Table<Generic>, items: &table::Table<Item>, full: &str, single: bool, unit: &str) -> Option<String> {
+        if single {
+            let mut local: String = String::from(unit);
+            local.push_str("::");
+            local.push_str(full);
+            if generics.has(local.as_str()) || items.has(local.as_str()) {
+                return Some(local);
+            }
+        }
+        if generics.has(full) || items.has(full) {
+            return Some(String::from(full));
+        }
+        None
+    }
+
+    #[summary("Fn 경계가 있는 함수 자신: 경계는 trait이 되고 호출은 그 메서드가 된다. 값으로 받은 FnMut은 몸의 mut 지역 변수로 부른다")]
+    #[effects(alloc)]
+    fn rewrite_generic(m: &mut ast::Mod, prefix: &str, generics: &table::Table<Generic>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let mut unit: String = String::from(prefix);
+        unit.push_str(m.name.name.as_str());
+        let nf: usize = m.fns.len();
+        for i in 0..nf
+            invariant m.fns.len() == nf,
+        {
+            let mut path: String = unit.clone();
+            path.push_str("::");
+            path.push_str(m.fns[i].name.name.as_str());
+            match generics.find(path.as_str()) {
+                None => {},
+                Some(gi) => rewrite_one(&mut m.fns[i], &generics.items[gi]),
+            }
+        }
+        let mut sub: String = unit.clone();
+        sub.push_str("::");
+        let nm: usize = m.mods.len();
+        for j in 0..nm
+            invariant m.mods.len() == nm,
+        {
+            rewrite_generic(&mut m.mods[j], sub.as_str(), generics, f - 1);
+        }
+    }
+
+    #[effects(alloc)]
+    fn rewrite_one(d: &mut ast::FnDef, g: &Generic) -> () {
+        let mut values: Vec<String> = Vec::new();
+        let mut from: Vec<String> = Vec::new();
+        let mut tys: Vec<ast::Ident> = Vec::new();
+        let ng: usize = d.generics.len();
+        for b in 0..g.bounded.len()
+            invariant d.generics.len() == ng,
+        {
+            let k: usize = g.bounded[b].k;
+            if k < ng {
+                d.generics[k].fn_bound = None;
+                let mut tn: String = String::new();
+                push_trait_name(&mut tn, g.order, k);
+                let mut one: Vec<ast::Ident> = Vec::new();
+                one.push(ast::Ident { name: tn, span: d.generics[k].name.span });
+                d.generics[k].bounds.push(one);
+                for s in 0..g.bounded[b].at.len()
+                    invariant d.generics.len() == ng,
+                {
+                    let i: usize = g.bounded[b].at[s].at;
+                    if i < d.params.len() {
+                        values.push(d.params[i].name.name.clone());
+                        if is_fn_mut(&g.bounded[b].bound.kind) && !g.bounded[b].at[s].by_ref {
+                            from.push(d.params[i].name.name.clone());
+                            tys.push(ast::Ident { name: d.generics[k].name.name.clone(), span: d.generics[k].name.span });
+                        }
+                    }
+                }
+            }
+        }
+        let mut rw: Rewriter = Rewriter { values: values };
+        ast::fn_exprs_mut::<Rewriter>(d, &mut rw, true, 1000000000);
+        if from.len() == 0 {
+            return;
+        }
+        let pre: Vec<ast::Expr> = std::mem::replace(&mut d.pre, Vec::new());
+        let post: Vec<ast::Expr> = std::mem::replace(&mut d.post, Vec::new());
+        let mut to: Vec<String> = Vec::new();
+        let mut from2: Vec<String> = Vec::new();
+        for n in 0..from.len() {
+            let mut r: String = String::from("__fm$");
+            r.push_str(from[n].as_str());
+            to.push(r);
+            from2.push(from[n].clone());
+        }
+        let mut rn: Renamer = Renamer { from: from2, to: to };
+        ast::fn_exprs_mut::<Renamer>(d, &mut rn, true, 1000000000);
+        d.pre = pre;
+        d.post = post;
+        let at: source::Span = d.body.span;
+        let one_past: u32 = at.lo.wrapping_add(1);
+        let mut stmts: Vec<ast::Stmt> = Vec::new();
+        for q in 0..from.len() {
+            if q < rn.to.len() && q < tys.len() {
+                let mut tpath: Vec<String> = Vec::new();
+                tpath.push(tys[q].name.clone());
+                let vsp: source::Span = source::Span { file: at.file, lo: one_past, hi: one_past };
+                stmts.push(ast::Stmt::Let(ast::Let { mutable: true, name: ast::Ident { name: rn.to[q].clone(), span: source::Span { file: at.file, lo: at.lo, hi: at.lo } }, ty: ast::Type { kind: ast::TypeKind::Named(tpath, Vec::new()), span: tys[q].span }, ty_missing: false, init: ast::Expr { kind: ast::ExprKind::Var(ast::Ident { name: from[q].clone(), span: vsp }), span: vsp }, span: at }));
+            }
+        }
+        ast::append::<ast::Stmt>(&mut stmts, std::mem::replace(&mut d.body.stmts, Vec::new()));
+        d.body.stmts = stmts;
+    }
+
+    #[summary("함수 하나의 클로저 밖 호출을 고쳐 쓴다. owner는 읽는 이가 아는 그 함수의 경로")]
+    #[effects(alloc)]
+    fn round_fn(d: &mut ast::FnDef, owner: String, st: &mut State) -> () {
+        st.owner = owner;
+        let mut uses: Vec<ast::Attr> = Vec::new();
+        for i in 0..d.attrs.len() {
+            if d.attrs[i].name.name.as_str() == "uses" {
+                uses.push(ast::clone_attr(&d.attrs[i], 1000000000));
+            }
+        }
+        st.owner_uses = uses;
+        st.decls = local_types(d);
+        ast::fn_exprs_mut::<State>(d, st, false, 1000000000);
+    }
+
+    #[summary("한 라운드에서 단위 m과 그 안 단위의 함수들: 클로저 밖의 호출을 고쳐 쓴다. 단위가 먼저, 안 단위가 다음")]
+    #[effects(alloc)]
+    fn round_mod(m: &mut ast::Mod, prefix: &str, st: &mut State, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let mut unit: String = String::from(prefix);
+        unit.push_str(m.name.name.as_str());
+        let nf: usize = m.fns.len();
+        for i in 0..nf
+            invariant m.fns.len() == nf,
+        {
+            let mut owner: String = unit.clone();
+            owner.push_str("::");
+            owner.push_str(m.fns[i].name.name.as_str());
+            st.unit = unit.clone();
+            round_fn(&mut m.fns[i], owner, st);
+        }
+        let ni: usize = m.impls.len();
+        for a in 0..ni
+            invariant m.impls.len() == ni,
+        {
+            let nif: usize = m.impls[a].fns.len();
+            for b in 0..nif
+                invariant m.impls.len() == ni && m.impls[a].fns.len() == nif,
+            {
+                let mut owner2: String = unit.clone();
+                owner2.push_str("::");
+                owner2.push_str(m.impls[a].ty.name.as_str());
+                owner2.push_str("::");
+                owner2.push_str(m.impls[a].fns[b].name.name.as_str());
+                st.unit = unit.clone();
+                round_fn(&mut m.impls[a].fns[b], owner2, st);
+            }
+        }
+        let nt: usize = m.trait_impls.len();
+        for c in 0..nt
+            invariant m.trait_impls.len() == nt,
+        {
+            let ty: String = fmt::type_str(&m.trait_impls[c].self_ty);
+            let tr: String = fmt::path_join(m.trait_impls[c].trait_path.as_slice(), "::");
+            let mut key: String = unit.clone();
+            key.push_str("::");
+            key.push_str(ty.as_str());
+            let mut made: Option<String> = None;
+            match st.names.find(key.as_str()) {
+                None => {},
+                Some(ni2) => { made = Some(st.names.items[ni2].clone()); },
+            }
+            let ntf: usize = m.trait_impls[c].fns.len();
+            for d in 0..ntf
+                invariant m.trait_impls.len() == nt && m.trait_impls[c].fns.len() == ntf,
+            {
+                let mut owner3: String = String::from("<");
+                owner3.push_str(key.as_str());
+                owner3.push_str(" as ");
+                owner3.push_str(tr.as_str());
+                owner3.push_str(">::");
+                owner3.push_str(m.trait_impls[c].fns[d].name.name.as_str());
+                if m.trait_impls[c].fns[d].name.name.as_str() == "call" {
+                    match &made {
+                        None => {},
+                        Some(cn) => { owner3 = cn.clone(); },
+                    }
+                }
+                st.unit = unit.clone();
+                round_fn(&mut m.trait_impls[c].fns[d], owner3, st);
+            }
+        }
+        let mut sub: String = unit.clone();
+        sub.push_str("::");
+        let nm: usize = m.mods.len();
+        for j in 0..nm
+            invariant m.mods.len() == nm,
+        {
+            round_mod(&mut m.mods[j], sub.as_str(), st, f - 1);
+        }
+    }
+
+    #[summary("Fn 경계가 있는 함수와 모든 자유 함수를 모은다: 단위의 함수가 먼저, 안 단위가 다음")]
+    #[effects(alloc)]
+    fn scan(m: &ast::Mod, prefix: &str, st: &mut State, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let mut unit: String = String::from(prefix);
+        unit.push_str(m.name.name.as_str());
+        for i in 0..m.fns.len() {
+            let mut path: String = unit.clone();
+            path.push_str("::");
+            path.push_str(m.fns[i].name.name.as_str());
+            let mut nb: usize = 0;
+            for g0 in 0..m.fns[i].generics.len() {
+                if has_bound(&m.fns[i].generics[g0].fn_bound) {
+                    nb = nb.saturating_add(1);
+                }
+            }
+            if nb > 0 {
+                let mut bounded: Vec<Bounded> = Vec::new();
+                for g in 0..m.fns[i].generics.len() {
+                    match &m.fns[i].generics[g].fn_bound {
+                        None => {},
+                        Some(fb) => bounded.push(Bounded { k: g, name: m.fns[i].generics[g].name.name.clone(), bound: ast::clone_fnbound(fb, 1000000000), at: takes(&m.fns[i], m.fns[i].generics[g].name.name.as_str()), span: m.fns[i].generics[g].name.span }),
+                    }
+                }
+                let order: usize = st.generics.len();
+                st.generics.insert(path.as_str(), Generic { unit: unit.clone(), order: order, bounded: bounded, effects: effects_of(&m.fns[i]) });
+            }
+            if is_exec(&m.fns[i].kind) && m.fns[i].generics.len() == 0 {
+                let mut ret_name: String = String::from("result");
+                match &m.fns[i].ret.name {
+                    None => {},
+                    Some(rid) => { ret_name = rid.name.clone(); },
+                }
+                let mut params: Vec<ItemParam> = Vec::new();
+                for q in 0..m.fns[i].params.len() {
+                    params.push(ItemParam { name: m.fns[i].params[q].name.name.clone(), ty: fmt::type_str(&m.fns[i].params[q].ty) });
+                }
+                let mut pre: Vec<String> = Vec::new();
+                for r in 0..m.fns[i].pre.len() {
+                    pre.push(fmt::expr_text(&m.fns[i].pre[r]));
+                }
+                let mut post: Vec<String> = Vec::new();
+                for s in 0..m.fns[i].post.len() {
+                    post.push(fmt::expr_text(&m.fns[i].post[s]));
+                }
+                st.items.insert(path.as_str(), Item { unit: unit.clone(), span: m.fns[i].name.span, params: params, ret_name: ret_name, ret: fmt::type_str(&m.fns[i].ret.ty), pre: pre, post: post, effects: effects_of(&m.fns[i]) });
+            }
+        }
+        let mut sub: String = unit.clone();
+        sub.push_str("::");
+        for j in 0..m.mods.len() {
+            scan(&m.mods[j], sub.as_str(), st, f - 1);
+        }
+    }
+
+    #[summary("true를 n개 &&로 이은 자리. 0개면 true 하나")]
+    #[effects(alloc)]
+    fn slots(n: usize) -> String {
+        let mut out: String = String::from("true");
+        for i in 1..n {
+            out.push_str(" && true");
+        }
+        out
+    }
+
+    #[summary("몸의 꼬리 식의 true 자리들을 절들로")]
+    #[effects(alloc)]
+    fn splice(body: &mut ast::Block, cs: &[ast::Expr]) -> () {
+        let mut next: usize = 0;
+        match &mut body.tail {
+            None => {},
+            Some(t) => fill(&mut **t, cs, &mut next, 1000000000),
+        }
+    }
+
+    #[summary("이번 라운드에 만든 글을 단위마다 읽어 넣는다. 파일 번호는 made_files부터 내려가고, 다음 번호를 돌려준다")]
+    #[effects(alloc)]
+    fn splice_all(p: &mut ast::Program, diags: &mut diag::Diags, st: &mut State, from: usize, quiet: &mut Vec<u32>) -> usize {
+        let mut made_files: usize = from;
+        let text: table::Table<Text> = std::mem::replace(&mut st.text, table::new::<Text>());
+        for t2 in 0..text.len() {
+            match text.nth(t2) {
+                None => {},
+                Some(ti) => { let id: u32 = source::GENERATED.wrapping_sub(low32(made_files)); made_files = made_files.saturating_add(1); if text.items[ti].reported { quiet.push(id); } splice_text(p, diags, st, text.items[ti].unit.as_str(), text.items[ti].body.as_str(), id); },
+            }
+        }
+        made_files
+    }
+
+    #[summary("만든 trait impl 하나에 그 클로저의 몸과 계약을 잇는다")]
+    #[effects(alloc)]
+    fn splice_impl(ti: &mut ast::TraitImpl, bd: &Body, unit: &str) -> () {
+        let mut c: ast::Closure = ast::clone_closure(&bd.c, 1000000000);
+        let mut caps: Vec<String> = Vec::new();
+        for i in 0..bd.caps.len() {
+            caps.push(bd.caps[i].clone());
+        }
+        let mut ts: SelfThrough = SelfThrough { caps: caps };
+        ast::exprs_each::<SelfThrough>(&mut c.pre, &mut ts, true, 1000000000);
+        ast::exprs_each::<SelfThrough>(&mut c.post, &mut ts, true, 1000000000);
+        ast::block_mut::<SelfThrough>(&mut c.body, &mut ts, true, 1000000000);
+        let mut post_path: String = String::from("<");
+        post_path.push_str(unit);
+        post_path.push_str("::");
+        match ast::named_join(&ti.self_ty.kind) {
+            None => {},
+            Some(pj) => post_path.push_str(pj.as_str()),
+        }
+        post_path.push_str(" as ");
+        post_path.push_str(fmt::path_join(ti.trait_path.as_slice(), "::").as_str());
+        post_path.push_str(">::post");
+        let nf: usize = ti.fns.len();
+        for k in 0..nf
+            invariant ti.fns.len() == nf,
+        {
+            if ti.fns[k].name.name.as_str() == "pre" {
+                splice(&mut ti.fns[k].body, c.pre.as_slice());
+            }
+            if ti.fns[k].name.name.as_str() == "post" {
+                splice(&mut ti.fns[k].body, c.post.as_slice());
+            }
+            if ti.fns[k].name.name.as_str() == "call" {
+                ti.fns[k].body = ast::clone_block(&c.body, 1000000000);
+                for u in 0..bd.uses.len()
+                    invariant ti.fns.len() == nf,
+                {
+                    ti.fns[k].attrs.push(ast::clone_attr(&bd.uses[u], 1000000000));
+                }
+                if c.post.len() > 0 {
+                    let mut before: bool = false;
+                    if ti.fns[k].params.len() > 0 {
+                        before = ast::is_ref_mut(&ti.fns[k].params[0].ty.kind);
+                    }
+                    let mut ens: Vec<ast::Expr> = Vec::new();
+                    for e in 0..c.post.len() {
+                        let mut x: ast::Expr = ast::clone_expr(&c.post[e], 1000000000);
+                        if before {
+                            let mut bf: Before = Before { n: 0 };
+                            ast::expr_mut::<Before>(&mut x, &mut bf, true, 1000000000);
+                        }
+                        ens.push(x);
+                    }
+                    ti.fns[k].post = ens;
+                    let at: source::Span = ti.fns[k].name.span;
+                    let mut args: Vec<ast::AttrArg> = Vec::new();
+                    args.push(ast::AttrArg::Ident(ast::Ident { name: post_path.clone(), span: at }));
+                    ti.fns[k].attrs.push(ast::Attr { name: ast::Ident { name: String::from("uses"), span: at }, args: args, span: at });
+                }
+            }
+        }
+    }
+
+    #[summary("단위 unit에 만든 글 body를 제 파일 번호 id로 읽어 넣는다: 클로저의 impl에는 그 몸과 계약을 잇는다")]
+    #[effects(alloc)]
+    fn splice_text(p: &mut ast::Program, diags: &mut diag::Diags, st: &State, unit: &str, body: &str, id: u32) -> () {
+        let segs: Vec<String> = refs::split_path(unit);
+        let mut src: String = String::from("#[summary(\"\")]\nmod ");
+        if segs.len() > 0 {
+            src.push_str(segs[segs.len() - 1].as_str());
+        }
+        src.push_str(" {\n");
+        src.push_str(body);
+        src.push_str("}\n");
+        let toks: Vec<lexer::Token> = lexer::lex_as(id, src.as_str(), diags, true);
+        let parsed: ast::Program = parser::parse(toks, diags, src.as_str());
+        let mut ms: Vec<ast::Mod> = parsed.mods;
+        let mut n: usize = ms.len();
+        while n > 1
+            decreases n,
+        {
+            n = n - 1;
+            ms.pop();
+        }
+        match ms.pop() {
+            None => {},
+            Some(made) => { let mut mm: ast::Mod = made; let nt: usize = mm.trait_impls.len(); for i in 0..nt invariant mm.trait_impls.len() == nt, { match ast::named_join(&mm.trait_impls[i].self_ty.kind) { None => {}, Some(pj) => { let mut key: String = String::from(unit); key.push_str("::"); key.push_str(pj.as_str()); match st.bodies.find(key.as_str()) { None => {}, Some(bi) => splice_impl(&mut mm.trait_impls[i], &st.bodies.items[bi], unit), } }, } } extend_unit(&mut p.mods, segs.as_slice(), 0, &mut mm, 1000000000); },
+        }
+    }
+
+    #[summary("블록의 let과 그 타입: 그 블록과 while, for, proof의 몸의 것")]
+    #[effects(alloc)]
+    fn stmt_lets(b: &ast::Block, v: &mut Lets, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        for i in 0..b.stmts.len() {
+            match &b.stmts[i] {
+                ast::Stmt::Let(sl) => { v.names.push(sl.name.name.clone()); v.tys.push(ast::clone_type(&sl.ty, 1000000000)); },
+                ast::Stmt::Assign(sa) => {},
+                ast::Stmt::While(sw) => stmt_lets(&sw.body, v, f - 1),
+                ast::Stmt::For(sf) => stmt_lets(&sf.body, v, f - 1),
+                ast::Stmt::Assert(st) => {},
+                ast::Stmt::Assume(su) => {},
+                ast::Stmt::Proof(sp) => stmt_lets(&sp.body, v, f - 1),
+                ast::Stmt::LetFields(lf) => {},
+                ast::Stmt::Expr(se) => {},
+            }
+        }
+    }
+
+    #[summary("블록의 let 이름과 for 변수: 그 블록과 while, for, proof의 몸의 것")]
+    #[effects(alloc)]
+    fn stmt_names(b: &ast::Block, out: &mut Vec<String>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        for i in 0..b.stmts.len() {
+            match &b.stmts[i] {
+                ast::Stmt::Let(sl) => out.push(sl.name.name.clone()),
+                ast::Stmt::Assign(sa) => {},
+                ast::Stmt::While(sw) => stmt_names(&sw.body, out, f - 1),
+                ast::Stmt::For(sf) => { out.push(sf.var.name.clone()); stmt_names(&sf.body, out, f - 1); },
+                ast::Stmt::Assert(st) => {},
+                ast::Stmt::Assume(su) => {},
+                ast::Stmt::Proof(sp) => stmt_names(&sp.body, out, f - 1),
+                ast::Stmt::LetFields(lf) => {},
+                ast::Stmt::Expr(se) => {},
+            }
+        }
+    }
+
+    #[summary("타입이 타입 매개변수 t이거나 그 참조인 값 매개변수들")]
+    #[effects(alloc)]
+    fn takes(d: &ast::FnDef, t: &str) -> Vec<Slot> {
+        let mut out: Vec<Slot> = Vec::new();
+        for i in 0..d.params.len() {
+            if ast::named_is(&d.params[i].ty.kind, t) {
+                out.push(Slot { at: i, by_ref: false });
+            } else {
+                if ast::ref_named_is(&d.params[i].ty.kind, t) {
+                    out.push(Slot { at: i, by_ref: true });
+                }
+            }
+        }
+        out
+    }
+
+    #[effects(alloc)]
+    fn targets(g: &Generic) -> Vec<Target> {
+        let mut out: Vec<Target> = Vec::new();
+        for b in 0..g.bounded.len() {
+            for s in 0..g.bounded[b].at.len() {
+                out.push(Target { b: b, j: g.bounded[b].at[s].at, by_ref: g.bounded[b].at[s].by_ref });
+            }
+        }
+        out
+    }
+
+    #[effects(alloc)]
+    fn trait_rows(gp: &str, g: &Generic, rows: &mut Vec<TraitRow>) -> () {
+        for b in 0..g.bounded.len() {
+            let mut tr: String = g.unit.clone();
+            tr.push_str("::");
+            push_trait_name(&mut tr, g.order, g.bounded[b].k);
+            let mut read: String = String::from(gp);
+            read.push_str("::");
+            read.push_str(g.bounded[b].name.as_str());
+            let mut text: String = String::new();
+            trait_text(&mut text, g, &g.bounded[b]);
+            rows.push(TraitRow { tr: tr, read: read, span: g.bounded[b].span, unit: g.unit.clone(), text: text });
+        }
+    }
+
+    #[summary("Fn 경계 하나의 trait의 글: spec 메서드 pre와 post, 그리고 그 둘을 계약으로 하는 call. call의 효과는 그 함수의 것이다 (ADR-0053 §5)")]
+    #[effects(alloc)]
+    fn trait_text(out: &mut String, g: &Generic, b: &Bounded) -> () {
+        let mut p: String = String::new();
+        let mut a: String = String::new();
+        for i in 0..b.bound.params.len() {
+            p.push_str(", a");
+            std::num::push_u64(&mut p, i as u64);
+            p.push_str(": ");
+            p.push_str(fmt::type_str(&b.bound.params[i]).as_str());
+            if i > 0 {
+                a.push_str(", ");
+            }
+            a.push_str("a");
+            std::num::push_u64(&mut a, i as u64);
+        }
+        let ret: String = fmt::type_str(&b.bound.ret);
+        out.push_str("trait ");
+        push_trait_name(out, g.order, b.k);
+        out.push_str(" {\n    spec fn pre(self: &Self");
+        out.push_str(p.as_str());
+        out.push_str(") -> bool;\n\n    spec fn post(self: &Self");
+        out.push_str(p.as_str());
+        out.push_str(", r: ");
+        out.push_str(ret.as_str());
+        out.push_str(") -> bool;\n\n    #[effects(");
+        out.push_str(g.effects.as_str());
+        out.push_str(")]\n    fn call(self: ");
+        push_receiver(out, &b.bound.kind, "Self");
+        out.push_str(p.as_str());
+        out.push_str(") -> (r: ");
+        out.push_str(ret.as_str());
+        out.push_str(")\n        requires self.pre(");
+        out.push_str(a.as_str());
+        out.push_str("),\n        ensures ");
+        push_state(out, &b.bound.kind);
+        out.push_str(".post(");
+        out.push_str(a.as_str());
+        if a.len() > 0 {
+            out.push_str(", ");
+        }
+        out.push_str("r);\n}\n\n");
+    }
+
+    #[summary("타입을 쓴 지역 이름인가")]
+    #[effects(pure)]
+    fn typed_local(t: &Option<ast::Type>) -> bool {
+        match t {
+            None => false,
+            Some(ty) => true,
+        }
+    }
+}

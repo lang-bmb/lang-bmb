@@ -64,7 +64,7 @@ python3 scripts/conformance.py table --write  # 아래 표를 다시 쓴다
 | 01 | `///`와 요약 | 6 | `doc_summary`, `doc_summary_before_closing_brace`, `doc_summary_before_statement`, `doc_summary_split_by_blank_line`, `doc_summary_without_item`, `doc_summary_without_text` |
 | 01 | 구문의 뼈대 | 6 | `clause_order`, `impl_and_trait_bodies`, `recovery_at_next_item`, `skeleton_accepted`, `top_level_holds_units_only`, `unit_holds_items_only` |
 | 01 | 중첩 한도 | 4 | `nesting_mixed_over_limit`, `nesting_over_limit`, `nesting_within_limit`, `units_nested_256_deep` |
-| 02 | 단위 | 5 | `nested_units`, `no_pub`, `unit_names_unique`, `unit_std_reserved`, `unit_summary_required` |
+| 02 | 단위 | 6 | `named_length_before_nested_unit`, `nested_units`, `no_pub`, `unit_names_unique`, `unit_std_reserved`, `unit_summary_required` |
 | 02 | 항목 | 6 | `builtin_names_reserved`, `const_cycle`, `function_return_types`, `member_names_unique`, `three_function_kinds`, `unit_namespace` |
 | 02 | `impl`과 수신자 | 6 | `inherent_impl_place`, `receiver_name`, `self_type_only_in_trait`, `trait_default_method`, `trait_impl_methods`, `trait_impl_place` |
 | 02 | 속성 | 5 | `attribute_order_free`, `attribute_places`, `attributes_in_bodies`, `summary_on_definitions`, `summary_once_one_string` |
@@ -141,6 +141,6 @@ python3 scripts/conformance.py table --write  # 아래 표를 다시 쓴다
 | 08 | 근거: `#[rationale(..)]` | 8 | `assume_needs_rationale`, `external_body_needs_rationale`, `rationale_hash_not_an_error`, `rationale_kinds`, `rationale_malformed`, `rationale_several_faults`, `statement_attributes`, `unconfirmed_rationale_builds` |
 | 08 | 탈출구와 증명의 신뢰 등급 | 10 | `false_assume_ends_in_trap`, `false_assume_traps_at_index`, `needless_assume_has_no_trust`, `no_escape_no_trust`, `no_escape_no_trust_key`, `true_assume_runs_to_the_end`, `trust_does_not_spread`, `trust_field_of_status_lines`, `trusted_definitions_are_verified`, `unconfirmed_rationale_builds` |
 
-절 86개, 사례 443개, 사례도 면제도 없는 절 0개.
+절 86개, 사례 444개, 사례도 면제도 없는 절 0개.
 
 <!-- conformance:table end -->

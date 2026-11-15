@@ -1,0 +1,75 @@
+#[summary("상수의 진단: 실패마다 하나")]
+mod ce {
+    const A: i8 = 128;
+    const B: i8 = -129;
+    const C: u8 = -1;
+    const D: i64 = 1 / 0;
+    const E: i64 = 1 % 0;
+    const F: i64 = i64::MIN / -1;
+    const G: i64 = i64::MIN % -1;
+    const H: i64 = i64::MAX + 1;
+    const I: i64 = i64::MIN - 1;
+    const J: i64 = i64::MAX * 2;
+    const K: u64 = u64::MAX * u64::MAX;
+    const L: u8 = 1 << 8;
+    const M: u8 = 1 >> 9;
+    const N: i64 = 1 << -1;
+    const O: u8 = 300 as u8;
+    const P: i64 = P2;
+    const P2: i64 = P;
+    const Q: i64 = f();
+    const R: i64 = true;
+    const S: bool = 1 + true;
+    const T: i64 = 1 + C;
+    const U: i64 = -true;
+    const V: i64 = !'a';
+    const W: i64 = if 1 { 2 } else { 3 };
+    const X: i64 = if true { 1 };
+    const Y: i64 = { let a: i64 = 1; a };
+    const Z: i64 = unknown;
+    const AA: Vec<u8> = Vec::new();
+    const AB: String = String::new();
+    const AC: [u8; 2] = [1, 2][5];
+    const AD: i64 = 5[0];
+    const AE: i64 = AF.x;
+    const AF: i64 = 1;
+    const AG: i64 = match AF { None => 0, Some(v) => v };
+    const AH: [u8; 70000] = [0; 70000];
+    const AI: [u8; NOPE] = [0; 2];
+    const AJ: [u8; BIG] = [0; 2];
+    const BIG: usize = 5000000000;
+    const AK: [u8; AF] = [0; 2];
+    const AL: [u8; 2] = [0; AF];
+    const AM: [u8; 2] = [0; NOPE];
+    const AN: bool = true ==> false;
+    const AO: i64 = 1.pow(2);
+    const AP: i64 = true.wrapping_add(1);
+    const AQ: u8 = 1.wrapping_add(AF);
+    const AR: bool = 1 < 'a';
+    const AS: bool = AT < AT;
+    const AT: [u8; 1] = [0];
+    const AU: i64 = AF;
+    const AU: i64 = 2;
+    const g: i64 = 1;
+    const AV: char = 'a' + 'b';
+    const AW: i64 = 340282366920938463463374607431768211455;
+    const AX: i64 = -340282366920938463463374607431768211455;
+    const AY: bool = !3 == 4;
+    const AZ: Pt = Pt { x: 1, ..AF };
+    const BA: bool = true << 1;
+    const BB: i64 = 1 && 2;
+    const BC: bool = true && 2;
+    const BD: u8 = -5;
+    const BE: i64 = -(C);
+    const BF: i64 = 'a' as i64;
+    const BG: &str = "x";
+    const BH: i64 = [1, 2];
+    const BI: char = '\'';
+    const BJ: i64 = !BI;
+    const BK: i64 = -BI;
+    struct Pt { x: i64 }
+    #[effects(pure)]
+    fn f() -> i64 { 1 }
+    #[effects(pure)]
+    fn g() -> i64 { 2 }
+}

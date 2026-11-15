@@ -1,0 +1,81 @@
+#[summary("함수 값: 낮추는 꼴마다 하나")]
+mod cl {
+    #[effects(pure)]
+    fn ap<F: Fn(i64) -> i64>(f: F, v: i64) -> i64
+        requires f.requires(v),
+        ensures f.ensures(v, result),
+    {
+        f(v)
+    }
+
+    #[effects(pure)]
+    fn by_ref<F: Fn(i64, i64) -> bool>(f: &F, a: i64) -> bool { f(a, a) }
+
+    #[effects(alloc)]
+    fn twice<F: FnMut(i64) -> ()>(f: F) -> () { f(1); f(2); }
+
+    #[effects(pure)]
+    fn once<F: FnOnce() -> i64>(f: F) -> i64 { f() }
+
+    #[effects(pure)]
+    fn two<F: Fn(i64) -> i64, G: Fn(i64) -> i64>(f: F, g: G, v: i64) -> i64 { g(f(v)) }
+
+    #[effects(pure)]
+    fn inc(x: i64) -> (r: i64)
+        requires x < 100,
+        ensures r == x + 1,
+    {
+        x + 1
+    }
+
+    #[effects(io)]
+    fn noisy(x: i64) -> i64 { print_str("n"); x }
+
+    #[effects(pure)]
+    fn lt(a: i64, b: i64) -> bool { a < b }
+
+    struct Acc { total: i64 }
+
+    impl Acc {
+        #[effects(pure)]
+        fn run(self: &Acc, k: i64) -> i64 { ap::<_>(move |a: i64| -> i64 { a + k }, self.total) }
+    }
+
+    trait Go { #[effects(pure)] fn go(self: &Self) -> i64; }
+
+    impl Go for Acc {
+        #[effects(pure)]
+        fn go(self: &Acc) -> i64 { ap::<_>(inc, 1) }
+    }
+
+    #[effects(alloc, io)]
+    #[uses(helper)]
+    fn main() -> () {
+        let k: i64 = 2;
+        let a: i64 = ap::<_>(|x: i64| -> i64 { x }, k);
+        let b: i64 = ap::<_>(move |x: i64| -> (r: i64) requires x < 10, ensures r == x + k, { x + k }, 1);
+        let c: i64 = ap::<_>(inc, 3);
+        let d: i64 = ap::<_>(cl::inc, 4);
+        let e: i64 = ap::<_>(inc, 5);
+        let f: bool = by_ref::<_>(&lt, 1);
+        let g: bool = by_ref::<_>(&|p: i64, q: i64| -> bool { p == q }, 2);
+        let mut total: i64 = 0;
+        twice::<_>(move |v: i64| -> () { let w: i64 = v + total; });
+        let h: i64 = once::<_>(move || -> i64 { k });
+        let i: i64 = two::<_, _>(inc, |z: i64| -> i64 { z * 2 }, 1);
+        let j: i64 = ap::<_>(move |x: i64| -> i64 { ap::<_>(move |y: i64| -> i64 { y + 1 }, x) }, 1);
+        let m: i64 = ap::<_>(move |x: i64| -> i64 { match Some(x) { None => 0, Some(q) => q + k } }, 1);
+        let n: i64 = ap::<_>(move |x: i64| -> i64 { let t: i64 = x; for u in 0..3 { let s: i64 = u; } forall |w: i64| w == w; t + k }, 1);
+        let o: i64 = inner::deep(1);
+    }
+
+    spec fn helper(x: i64) -> bool { x > 0 }
+
+    mod inner {
+        #[effects(pure)]
+        fn deep(v: i64) -> i64 { cl::ap::<_>(|x: i64| -> i64 { x }, v) + cl::ap::<_>(local, v) }
+
+        #[effects(pure)]
+        fn local(x: i64) -> i64 { x }
+    }
+}

@@ -1,9 +1,15 @@
-#[summary("구문 트리 (stage0 compiler/src/ast.rs의 포트, 백로그 4D-02). 식의 순회(expr_mut 등)는 손님 trait ExprFn을 받고, 깊은 사본(clone_*)은 타입 선언에서 기계로 만든 것이다(사용자 타입에 clone이 없다)")]
+#[summary("구문 트리 (stage0 compiler/src/ast.rs의 포트, 백로그 4D-02). 식의 순회(expr_mut 등)는 손님 trait ExprFn을, 타입의 순회(unit_types_mut)는 TypeFn을 받는다. 깊은 사본(clone_*)은 타입 선언에서 기계로 만든 것이다(사용자 타입에 clone이 없다)")]
 mod ast {
     #[summary("식 하나를 받는 순회의 손님 (stage0의 &mut dyn FnMut(&mut Expr))")]
     trait ExprFn {
         #[effects(alloc)]
         fn expr(self: &mut Self, e: &mut Expr) -> ();
+    }
+
+    #[summary("타입 하나를 받는 순회의 손님: 그 타입을 쓴 단위의 경로와 함께 (stage0 unit_types_mut의 &mut dyn FnMut(&str, &mut Type))")]
+    trait TypeFn {
+        #[effects(alloc)]
+        fn ty(self: &mut Self, unit: &str, t: &mut Type) -> ();
     }
 
     #[summary("메서드 호출이 수신자를 넘기는 방식 (ADR-0051)")]
@@ -209,6 +215,33 @@ mod ast {
             }
         }
         opt_box_mut::<V>(&mut b.tail, v, deep, f - 1);
+    }
+
+    #[summary("block_mut과 같은 차례로 블록의 식을 걸으며 타입을 손님에게")]
+    #[effects(alloc)]
+    fn block_types<V: TypeFn>(b: &mut Block, unit: &str, v: &mut V, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let n: usize = b.stmts.len();
+        for i in 0..n
+            invariant b.stmts.len() == n,
+        {
+            match &mut b.stmts[i] {
+                Stmt::Let(sl) => expr_types::<V>(&mut sl.init, unit, v, f - 1),
+                Stmt::Assign(sa) => { expr_types::<V>(&mut sa.target, unit, v, f - 1); expr_types::<V>(&mut sa.value, unit, v, f - 1); },
+                Stmt::While(sw) => { expr_types::<V>(&mut sw.cond, unit, v, f - 1); exprs_types::<V>(&mut sw.invariants, unit, v, f - 1); opt_types::<V>(&mut sw.measure, unit, v, f - 1); block_types::<V>(&mut sw.body, unit, v, f - 1); },
+                Stmt::For(sf) => { expr_types::<V>(&mut sf.lo, unit, v, f - 1); expr_types::<V>(&mut sf.hi, unit, v, f - 1); exprs_types::<V>(&mut sf.invariants, unit, v, f - 1); block_types::<V>(&mut sf.body, unit, v, f - 1); },
+                Stmt::Assert(st) => expr_types::<V>(&mut st.cond, unit, v, f - 1),
+                Stmt::Assume(su) => expr_types::<V>(&mut su.cond, unit, v, f - 1),
+                Stmt::Proof(sp) => block_types::<V>(&mut sp.body, unit, v, f - 1),
+                Stmt::LetFields(lf) => expr_types::<V>(&mut lf.init, unit, v, f - 1),
+                Stmt::Expr(se) => expr_types::<V>(se, unit, v, f - 1),
+            }
+        }
+        opt_box_types::<V>(&mut b.tail, unit, v, f - 1);
     }
 
     #[summary("Arm의 깊은 사본. f는 남은 깊이 (ADR-0140)")]
@@ -1109,6 +1142,16 @@ mod ast {
         }
     }
 
+    #[effects(alloc)]
+    fn consts_types<V: TypeFn>(cs: &mut Vec<ConstDef>, unit: &str, v: &mut V) -> () {
+        let n: usize = cs.len();
+        for i in 0..n
+            invariant cs.len() == n,
+        {
+            v.ty(unit, &mut cs[i].ty);
+        }
+    }
+
     #[summary("식 e와 그 안의 모든 식을 안쪽부터 손님에게: 자식이 먼저, 마디가 나중. deep이 아니면 클로저의 안으로 들어가지 않는다(클로저 자신은 본다)")]
     #[effects(alloc)]
     fn expr_mut<V: ExprFn>(e: &mut Expr, v: &mut V, deep: bool, f: usize) -> ()
@@ -1157,6 +1200,53 @@ mod ast {
         v.expr(e);
     }
 
+    #[summary("expr_mut과 같은 차례(자식이 먼저)로 걸으며 그 식에 쓴 타입을 손님에게: 블록·loop·if의 let, 호출의 타입 인자, 한정자의 변수")]
+    #[effects(alloc)]
+    fn expr_types<V: TypeFn>(e: &mut Expr, unit: &str, v: &mut V, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match &mut e.kind {
+            ExprKind::Int(iv, ir) => {},
+            ExprKind::Float(fb) => {},
+            ExprKind::ByteLit(by) => {},
+            ExprKind::ByteStr(bys) => {},
+            ExprKind::StrLit(st) => {},
+            ExprKind::CharLit(ch) => {},
+            ExprKind::Bool(bo) => {},
+            ExprKind::Unit => {},
+            ExprKind::Var(id) => {},
+            ExprKind::Call(ca) => { exprs_types::<V>(&mut ca.args, unit, v, f - 1); let nt: usize = ca.targs.len(); for i in 0..nt invariant ca.targs.len() == nt, { types_each::<V>(&mut ca.targs[i].args, unit, v); } },
+            ExprKind::Method(me) => { expr_types::<V>(&mut *me.recv, unit, v, f - 1); exprs_types::<V>(&mut me.args, unit, v, f - 1); },
+            ExprKind::Index(ib, ii) => { expr_types::<V>(&mut **ib, unit, v, f - 1); expr_types::<V>(&mut **ii, unit, v, f - 1); },
+            ExprKind::Unary(uo, ux) => expr_types::<V>(&mut **ux, unit, v, f - 1),
+            ExprKind::Binary(bop, bl, br) => { expr_types::<V>(&mut **bl, unit, v, f - 1); expr_types::<V>(&mut **br, unit, v, f - 1); },
+            ExprKind::Ref(rm, rx) => expr_types::<V>(&mut **rx, unit, v, f - 1),
+            ExprKind::If(ife) => { expr_types::<V>(&mut *ife.cond, unit, v, f - 1); block_types::<V>(&mut ife.then, unit, v, f - 1); opt_box_types::<V>(&mut ife.els, unit, v, f - 1); stmt_types::<V>(&mut ife.then, unit, v, 1000000000); },
+            ExprKind::Block(blk) => { block_types::<V>(blk, unit, v, f - 1); stmt_types::<V>(blk, unit, v, 1000000000); },
+            ExprKind::Array(ar) => exprs_types::<V>(ar, unit, v, f - 1),
+            ExprKind::Repeat(rp) => expr_types::<V>(&mut *rp.value, unit, v, f - 1),
+            ExprKind::Old(ox) => expr_types::<V>(&mut **ox, unit, v, f - 1),
+            ExprKind::Quant(qu) => { expr_types::<V>(&mut *qu.body, unit, v, f - 1); let nb: usize = qu.binders.len(); for j in 0..nb invariant qu.binders.len() == nb, { v.ty(unit, &mut qu.binders[j].ty); } },
+            ExprKind::Trigger(tx) => expr_types::<V>(&mut **tx, unit, v, f - 1),
+            ExprKind::Closure(cl) => { exprs_types::<V>(&mut cl.pre, unit, v, f - 1); exprs_types::<V>(&mut cl.post, unit, v, f - 1); block_types::<V>(&mut cl.body, unit, v, f - 1); },
+            ExprKind::StructLit(sl) => { let nf: usize = sl.fields.len(); for k in 0..nf invariant sl.fields.len() == nf, { expr_types::<V>(&mut sl.fields[k].value, unit, v, f - 1); } opt_box_types::<V>(&mut sl.rest, unit, v, f - 1); },
+            ExprKind::Path(pa) => {},
+            ExprKind::Deref(dx) => expr_types::<V>(&mut **dx, unit, v, f - 1),
+            ExprKind::Field(fx, fnm) => expr_types::<V>(&mut **fx, unit, v, f - 1),
+            ExprKind::Match(ma) => { expr_types::<V>(&mut *ma.scrut, unit, v, f - 1); let na: usize = ma.arms.len(); for m in 0..na invariant ma.arms.len() == na, { expr_types::<V>(&mut ma.arms[m].body, unit, v, f - 1); } },
+            ExprKind::Return(rv) => opt_box_types::<V>(rv, unit, v, f - 1),
+            ExprKind::Try(tr) => expr_types::<V>(&mut **tr, unit, v, f - 1),
+            ExprKind::Loop(lp) => { exprs_types::<V>(&mut lp.invariants, unit, v, f - 1); opt_box_types::<V>(&mut lp.measure, unit, v, f - 1); block_types::<V>(&mut lp.body, unit, v, f - 1); stmt_types::<V>(&mut lp.body, unit, v, 1000000000); },
+            ExprKind::Break(bk) => opt_box_types::<V>(&mut bk.value, unit, v, f - 1),
+            ExprKind::Continue(co) => {},
+            ExprKind::Range(rg) => { expr_types::<V>(&mut *rg.lo, unit, v, f - 1); expr_types::<V>(&mut *rg.hi, unit, v, f - 1); },
+            ExprKind::Error => {},
+        }
+    }
+
     #[summary("식들을 차례로")]
     #[effects(alloc)]
     fn exprs_each<V: ExprFn>(xs: &mut Vec<Expr>, v: &mut V, deep: bool, f: usize) -> ()
@@ -1184,6 +1274,21 @@ mod ast {
         }
     }
 
+    #[effects(alloc)]
+    fn exprs_types<V: TypeFn>(xs: &mut Vec<Expr>, unit: &str, v: &mut V, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let n: usize = xs.len();
+        for i in 0..n
+            invariant xs.len() == n,
+        {
+            expr_types::<V>(&mut xs[i], unit, v, f - 1);
+        }
+    }
+
     #[summary("함수 하나의 계약, 측도, 몸")]
     #[effects(alloc)]
     fn fn_exprs_mut<V: ExprFn>(d: &mut FnDef, v: &mut V, deep: bool, f: usize) -> () {
@@ -1191,6 +1296,23 @@ mod ast {
         exprs_each::<V>(&mut d.post, v, deep, f);
         opt_mut::<V>(&mut d.measure, v, deep, f);
         block_mut::<V>(&mut d.body, v, deep, f);
+    }
+
+    #[summary("함수 하나에 쓴 타입: 매개변수, 결과, 몸의 let(그 블록과 while·for·proof의 몸), 그리고 식을 안쪽부터 걸으며 블록·loop·if의 let, 호출의 타입 인자, 한정자의 변수")]
+    #[effects(alloc)]
+    fn fn_types_mut<V: TypeFn>(d: &mut FnDef, unit: &str, v: &mut V) -> () {
+        let n: usize = d.params.len();
+        for i in 0..n
+            invariant d.params.len() == n,
+        {
+            v.ty(unit, &mut d.params[i].ty);
+        }
+        v.ty(unit, &mut d.ret.ty);
+        stmt_types::<V>(&mut d.body, unit, v, 1000000000);
+        exprs_types::<V>(&mut d.pre, unit, v, 1000000000);
+        exprs_types::<V>(&mut d.post, unit, v, 1000000000);
+        opt_types::<V>(&mut d.measure, unit, v, 1000000000);
+        block_types::<V>(&mut d.body, unit, v, 1000000000);
     }
 
     #[summary("함수들을 차례로")]
@@ -1201,6 +1323,46 @@ mod ast {
             invariant fs.len() == n,
         {
             fn_exprs_mut::<V>(&mut fs[i], v, true, f);
+        }
+    }
+
+    #[effects(alloc)]
+    fn fns_types<V: TypeFn>(fs: &mut Vec<FnDef>, unit: &str, v: &mut V) -> () {
+        let n: usize = fs.len();
+        for i in 0..n
+            invariant fs.len() == n,
+        {
+            fn_types_mut::<V>(&mut fs[i], unit, v);
+        }
+    }
+
+    #[effects(alloc)]
+    fn impl_fns_each<V: ExprFn>(is: &mut Vec<Impl>, v: &mut V) -> () {
+        let n: usize = is.len();
+        for i in 0..n
+            invariant is.len() == n,
+        {
+            fns_each::<V>(&mut is[i].fns, v, 1000000000);
+        }
+    }
+
+    #[effects(alloc)]
+    fn impl_fns_types<V: TypeFn>(is: &mut Vec<Impl>, unit: &str, v: &mut V) -> () {
+        let n: usize = is.len();
+        for i in 0..n
+            invariant is.len() == n,
+        {
+            fns_types::<V>(&mut is[i].fns, unit, v);
+        }
+    }
+
+    #[effects(alloc)]
+    fn impl_heads_types<V: TypeFn>(is: &mut Vec<Impl>, unit: &str, v: &mut V) -> () {
+        let n: usize = is.len();
+        for i in 0..n
+            invariant is.len() == n,
+        {
+            types_each::<V>(&mut is[i].ty_args, unit, v);
         }
     }
 
@@ -1362,28 +1524,35 @@ mod ast {
             mod_exprs::<V>(&mut m.mods[i], v, f - 1);
         }
         fns_each::<V>(&mut m.fns, v, 1000000000);
-        let ni: usize = m.impls.len();
-        for j in 0..ni
-            invariant m.impls.len() == ni,
-        {
-            fns_each::<V>(&mut m.impls[j].fns, v, 1000000000);
+        impl_fns_each::<V>(&mut m.impls, v);
+        trait_fns_each::<V>(&mut m.traits, v);
+        trait_impl_fns_each::<V>(&mut m.trait_impls, v);
+    }
+
+    #[effects(alloc)]
+    fn mod_types<V: TypeFn>(m: &mut Mod, prefix: &str, v: &mut V, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
         }
-        let nt: usize = m.traits.len();
-        for k in 0..nt
-            invariant m.traits.len() == nt,
+        let mut unit: String = String::from(prefix);
+        unit.push_str(m.name.name.as_str());
+        consts_types::<V>(&mut m.consts, unit.as_str(), v);
+        typedefs_types::<V>(&mut m.types, unit.as_str(), v);
+        impl_heads_types::<V>(&mut m.impls, unit.as_str(), v);
+        trait_impl_heads_types::<V>(&mut m.trait_impls, unit.as_str(), v);
+        fns_types::<V>(&mut m.fns, unit.as_str(), v);
+        impl_fns_types::<V>(&mut m.impls, unit.as_str(), v);
+        trait_fns_types::<V>(&mut m.traits, unit.as_str(), v);
+        trait_impl_fns_types::<V>(&mut m.trait_impls, unit.as_str(), v);
+        let mut sub: String = unit.clone();
+        sub.push_str("::");
+        let nm: usize = m.mods.len();
+        for j in 0..nm
+            invariant m.mods.len() == nm,
         {
-            let nf: usize = m.traits[k].fns.len();
-            for q in 0..nf
-                invariant m.traits.len() == nt && m.traits[k].fns.len() == nf,
-            {
-                fn_exprs_mut::<V>(&mut m.traits[k].fns[q].f, v, true, 1000000000);
-            }
-        }
-        let nti: usize = m.trait_impls.len();
-        for r in 0..nti
-            invariant m.trait_impls.len() == nti,
-        {
-            fns_each::<V>(&mut m.trait_impls[r].fns, v, 1000000000);
+            mod_types::<V>(&mut m.mods[j], sub.as_str(), v, f - 1);
         }
     }
 
@@ -1449,6 +1618,19 @@ mod ast {
         }
     }
 
+    #[effects(alloc)]
+    fn opt_box_types<V: TypeFn>(o: &mut Option<Box<Expr>>, unit: &str, v: &mut V, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match o {
+            None => {},
+            Some(x) => expr_types::<V>(&mut **x, unit, v, f - 1),
+        }
+    }
+
     #[summary("있으면 그 식을")]
     #[effects(alloc)]
     fn opt_mut<V: ExprFn>(o: &mut Option<Expr>, v: &mut V, deep: bool, f: usize) -> ()
@@ -1460,6 +1642,19 @@ mod ast {
         match o {
             None => {},
             Some(x) => expr_mut::<V>(x, v, deep, f - 1),
+        }
+    }
+
+    #[effects(alloc)]
+    fn opt_types<V: TypeFn>(o: &mut Option<Expr>, unit: &str, v: &mut V, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match o {
+            None => {},
+            Some(x) => expr_types::<V>(x, unit, v, f - 1),
         }
     }
 
@@ -1544,6 +1739,32 @@ mod ast {
         }
     }
 
+    #[summary("블록의 let의 타입: 그 블록과 while, for, proof의 몸의 것")]
+    #[effects(alloc)]
+    fn stmt_types<V: TypeFn>(b: &mut Block, unit: &str, v: &mut V, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let n: usize = b.stmts.len();
+        for i in 0..n
+            invariant b.stmts.len() == n,
+        {
+            match &mut b.stmts[i] {
+                Stmt::Let(sl) => v.ty(unit, &mut sl.ty),
+                Stmt::Assign(sa) => {},
+                Stmt::While(sw) => stmt_types::<V>(&mut sw.body, unit, v, f - 1),
+                Stmt::For(sf) => stmt_types::<V>(&mut sf.body, unit, v, f - 1),
+                Stmt::Assert(st) => {},
+                Stmt::Assume(su) => {},
+                Stmt::Proof(sp) => stmt_types::<V>(&mut sp.body, unit, v, f - 1),
+                Stmt::LetFields(lf) => {},
+                Stmt::Expr(se) => {},
+            }
+        }
+    }
+
     #[summary("식의 종류의 차례(선언 순서): 0 Int .. 34 Error")]
     #[effects(pure)]
     fn tag(k: &ExprKind) -> u8 {
@@ -1583,6 +1804,105 @@ mod ast {
             ExprKind::Continue(co) => 32,
             ExprKind::Range(rg) => 33,
             ExprKind::Error => 34,
+        }
+    }
+
+    #[effects(alloc)]
+    fn trait_fns_each<V: ExprFn>(ts: &mut Vec<TraitDef>, v: &mut V) -> () {
+        let n: usize = ts.len();
+        for i in 0..n
+            invariant ts.len() == n,
+        {
+            let nf: usize = ts[i].fns.len();
+            for q in 0..nf
+                invariant ts.len() == n && ts[i].fns.len() == nf,
+            {
+                fn_exprs_mut::<V>(&mut ts[i].fns[q].f, v, true, 1000000000);
+            }
+        }
+    }
+
+    #[effects(alloc)]
+    fn trait_fns_types<V: TypeFn>(ts: &mut Vec<TraitDef>, unit: &str, v: &mut V) -> () {
+        let n: usize = ts.len();
+        for i in 0..n
+            invariant ts.len() == n,
+        {
+            let nf: usize = ts[i].fns.len();
+            for q in 0..nf
+                invariant ts.len() == n && ts[i].fns.len() == nf,
+            {
+                fn_types_mut::<V>(&mut ts[i].fns[q].f, unit, v);
+            }
+        }
+    }
+
+    #[effects(alloc)]
+    fn trait_impl_fns_each<V: ExprFn>(is: &mut Vec<TraitImpl>, v: &mut V) -> () {
+        let n: usize = is.len();
+        for i in 0..n
+            invariant is.len() == n,
+        {
+            fns_each::<V>(&mut is[i].fns, v, 1000000000);
+        }
+    }
+
+    #[effects(alloc)]
+    fn trait_impl_fns_types<V: TypeFn>(is: &mut Vec<TraitImpl>, unit: &str, v: &mut V) -> () {
+        let n: usize = is.len();
+        for i in 0..n
+            invariant is.len() == n,
+        {
+            fns_types::<V>(&mut is[i].fns, unit, v);
+        }
+    }
+
+    #[effects(alloc)]
+    fn trait_impl_heads_types<V: TypeFn>(is: &mut Vec<TraitImpl>, unit: &str, v: &mut V) -> () {
+        let n: usize = is.len();
+        for i in 0..n
+            invariant is.len() == n,
+        {
+            v.ty(unit, &mut is[i].self_ty);
+        }
+    }
+
+    #[effects(alloc)]
+    fn typedef_types<V: TypeFn>(k: &mut TypeDefKind, unit: &str, v: &mut V) -> () {
+        match k {
+            TypeDefKind::Struct(fs) => { let n: usize = fs.len(); for i in 0..n invariant fs.len() == n, { v.ty(unit, &mut fs[i].ty); } },
+            TypeDefKind::Enum(vs) => { let nv: usize = vs.len(); for j in 0..nv invariant vs.len() == nv, { types_each::<V>(&mut vs[j].payload, unit, v); } },
+        }
+    }
+
+    #[effects(alloc)]
+    fn typedefs_types<V: TypeFn>(ts: &mut Vec<TypeDef>, unit: &str, v: &mut V) -> () {
+        let n: usize = ts.len();
+        for i in 0..n
+            invariant ts.len() == n,
+        {
+            typedef_types::<V>(&mut ts[i].kind, unit, v);
+        }
+    }
+
+    #[effects(alloc)]
+    fn types_each<V: TypeFn>(ts: &mut Vec<Type>, unit: &str, v: &mut V) -> () {
+        let n: usize = ts.len();
+        for i in 0..n
+            invariant ts.len() == n,
+        {
+            v.ty(unit, &mut ts[i]);
+        }
+    }
+
+    #[summary("프로그램에 쓴 모든 타입(매개변수, 결과, let, 필드, 페이로드, impl의 머리, 타입 인자, 한정자의 변수, const)을 그것을 쓴 단위의 경로와 함께, 바깥 것만: 안의 타입은 손님이 바깥 것을 통해 본다. 단위가 먼저, 안 단위가 다음")]
+    #[effects(alloc)]
+    fn unit_types_mut<V: TypeFn>(p: &mut Program, v: &mut V) -> () {
+        let n: usize = p.mods.len();
+        for i in 0..n
+            invariant p.mods.len() == n,
+        {
+            mod_types::<V>(&mut p.mods[i], "", v, 1000000000);
         }
     }
 

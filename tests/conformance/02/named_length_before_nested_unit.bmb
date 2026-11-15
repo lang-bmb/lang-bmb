@@ -1,0 +1,27 @@
+#[summary("o")]
+mod outer {
+    const K: usize = 2;
+    const ROW: [u8; K] = [7; K];
+
+    #[summary("i")]
+    mod inner {
+        const N: usize = 3;
+
+        #[effects(pure)]
+        fn third() -> u8 {
+            let b: [u8; N] = [9; N];
+            b[2]
+        }
+    }
+
+    #[effects(alloc, io)]
+    fn main() -> () {
+        let a: [u8; K] = ROW;
+        let mut s: String = String::new();
+        std::num::push_u64(&mut s, a[1] as u64);
+        s.push_str(" ");
+        std::num::push_u64(&mut s, outer::inner::third() as u64);
+        s.push_str("\n");
+        print_str(s.as_str());
+    }
+}

@@ -79,6 +79,59 @@ fn edit_ast(ws: &Path, patch: &str) -> String {
     String::from_utf8(out.stdout).unwrap()
 }
 
+/// A repeat count written as a name belongs to the unit that writes it,
+/// whatever units come after it or beside it (backlog 4D-26): the document
+/// of a program with such counts in a unit, its nested unit and another
+/// unit commits and gives the same sources.
+#[test]
+fn named_repeat_counts_round_trip_with_nested_units() {
+    const SRC: &str = r#"#[summary("o")]
+mod outer {
+    const K: usize = 2;
+    const ROW: [u8; K] = [7; K];
+
+    #[summary("i")]
+    mod inner {
+        const N: usize = 3;
+        const COL: [u8; N] = [9; N];
+    }
+
+    #[effects(pure)]
+    fn first() -> u8 {
+        let a: [u8; K] = [1; K];
+        a[0]
+    }
+}
+
+#[summary("p")]
+mod peer {
+    const M: usize = 4;
+    const ALL: [u8; M] = [5; M];
+}
+"#;
+    let tmp = std::env::temp_dir().join(format!("bmb-ast-json-counts-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&tmp);
+    let (a, b) = (tmp.join("a"), tmp.join("b"));
+    fs::create_dir_all(&tmp).unwrap();
+    let file = tmp.join("counts.bmb");
+    fs::write(&file, SRC).unwrap();
+    let (ok, out) = bmb(&["import", a.to_str().unwrap(), file.to_str().unwrap()]);
+    assert!(ok, "{out}");
+    let (ok, doc) = bmb(&["ast", a.to_str().unwrap()]);
+    assert!(ok, "{doc}");
+    fs::create_dir_all(&b).unwrap();
+    let out = edit_ast(
+        &b,
+        &format!(
+            "[{{\"op\":\"add\",\"path\":\"\",\"value\":{}}}]",
+            doc.trim_end()
+        ),
+    );
+    assert!(out.contains("\\\"committed\\\":true"), "{out}");
+    assert_eq!(sources(&b), sources(&a));
+    let _ = fs::remove_dir_all(&tmp);
+}
+
 #[test]
 fn every_program_round_trips_through_json() {
     let tmp = std::env::temp_dir().join(format!("bmb-ast-json-{}", std::process::id()));

@@ -990,6 +990,7 @@ pub fn import(doc: &Value) -> Result<Program, String> {
     let mut im = Im {
         at: Vec::new(),
         lens: Vec::new(),
+        counts: 0,
     };
     Ok(Program {
         mods: im.units(doc)?,
@@ -1001,6 +1002,8 @@ struct Im {
     /// Repeat counts given as a `const`'s name, each at a span of its own
     /// (`Mod::lens`).
     lens: Vec<(Span, Vec<Ident>)>,
+    /// How many such counts the document has had so far: each one's span.
+    counts: u32,
 }
 
 /// An object's fields, checked against the names a node may have.
@@ -1237,6 +1240,8 @@ impl Im {
     }
 
     fn unit(&mut self, name: &str, v: &Value) -> Result<Mod, String> {
+        // The counts read so far are the enclosing unit's (backlog 4D-26).
+        let outer = std::mem::take(&mut self.lens);
         let o = self.obj(
             v,
             "a unit",
@@ -1318,8 +1323,7 @@ impl Im {
             trait_impls,
             uses: Vec::new(),
             consts,
-            // A nested unit took its own.
-            lens: std::mem::take(&mut self.lens),
+            lens: std::mem::replace(&mut self.lens, outer),
             span: sp(),
         })
     }
@@ -2040,12 +2044,15 @@ impl Im {
             "repeat" if v.get("count_const").is_some() => {
                 let o = fields(self, "an array repeat", &["value", "count_const"])?;
                 let n = self.string(&o, "count_const")?;
-                // A span of its own, which `Mod::lens` names.
+                // A span of its own in the whole document (`Mod::lens`
+                // names it; the counts of every unit are looked up by span,
+                // backlog 4D-26).
                 let at = Span {
                     file: u32::MAX,
-                    lo: self.lens.len() as u32,
-                    hi: self.lens.len() as u32,
+                    lo: self.counts,
+                    hi: self.counts,
                 };
+                self.counts += 1;
                 self.lens.push((at, n.split("::").map(id).collect()));
                 ExprKind::Repeat {
                     value: self.sub(&o, "value")?,

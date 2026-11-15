@@ -147,6 +147,18 @@ mod refs {
         }
     }
 
+    #[summary("함수들: 선언 이름을 손님에게, 그리고 함수를 걷는다")]
+    #[effects(alloc)]
+    fn fns_decl<R: Rewrite>(w: &mut Walker, r: &mut R, fs: &mut Vec<ast::FnDef>, unit: &[String], kind: DeclKind, owner: &[String]) -> () {
+        let n: usize = fs.len();
+        for i in 0..n
+            invariant fs.len() == n,
+        {
+            r.decl(unit, kind_copy(&kind), owner, &mut fs[i].name);
+            function::<R>(w, r, &mut fs[i]);
+        }
+    }
+
     #[summary("함수 하나: 타입 매개변수, #[uses], 시그니처, 계약, 측도, 몸")]
     #[effects(alloc)]
     fn function<R: Rewrite>(w: &mut Walker, r: &mut R, d: &mut ast::FnDef) -> () {
@@ -213,6 +225,20 @@ mod refs {
         *path = out;
     }
 
+    #[summary("impl T { .. }: 타입의 이름, 타입 인자, 함수들")]
+    #[effects(alloc)]
+    fn impl_block<R: Rewrite>(w: &mut Walker, r: &mut R, i: &mut ast::Impl, unit: &[String]) -> () {
+        let none: Vec<String> = Vec::new();
+        let mut owner: Vec<String> = Vec::new();
+        owner.push(i.ty.name.clone());
+        r.decl(unit, DeclKind::ImplTy, none.as_slice(), &mut i.ty);
+        let depth: usize = w.tparams.len();
+        generics::<R>(w, r, &mut i.generics);
+        types::<R>(w, r, &mut i.ty_args, 1000000000);
+        fns_decl::<R>(w, r, &mut i.fns, unit, DeclKind::ImplFn, owner.as_slice());
+        w.tparams.truncate(depth);
+    }
+
     #[summary("마디들을 ::로 이은 글")]
     #[effects(alloc)]
     fn join_path(s: &[String]) -> String {
@@ -224,6 +250,19 @@ mod refs {
             out.push_str(s[i].as_str());
         }
         out
+    }
+
+    #[effects(pure)]
+    fn kind_copy(k: &DeclKind) -> DeclKind {
+        match k {
+            DeclKind::Fn => DeclKind::Fn,
+            DeclKind::Type => DeclKind::Type,
+            DeclKind::ImplTy => DeclKind::ImplTy,
+            DeclKind::ImplFn => DeclKind::ImplFn,
+            DeclKind::Trait => DeclKind::Trait,
+            DeclKind::TraitFn => DeclKind::TraitFn,
+            DeclKind::TraitImplFn => DeclKind::TraitImplFn,
+        }
     }
 
     #[summary("단위 m과 그 안 단위: 선언과 모든 참조")]
@@ -251,78 +290,30 @@ mod refs {
             here.push(unit[k].clone());
         }
         w.unit = here;
-        let nf: usize = m.fns.len();
-        for a in 0..nf
-            invariant m.fns.len() == nf,
-        {
-            r.decl(unit.as_slice(), DeclKind::Fn, none.as_slice(), &mut m.fns[a].name);
-            function::<R>(w, r, &mut m.fns[a]);
-        }
+        fns_decl::<R>(w, r, &mut m.fns, unit.as_slice(), DeclKind::Fn, none.as_slice());
         let nty: usize = m.types.len();
         for b in 0..nty
             invariant m.types.len() == nty,
         {
-            r.decl(unit.as_slice(), DeclKind::Type, none.as_slice(), &mut m.types[b].name);
-            attrs_named::<R>(w, r, &mut m.types[b].attrs, "invariant");
-            let depth: usize = w.tparams.len();
-            generics::<R>(w, r, &mut m.types[b].generics);
-            type_body::<R>(w, r, &mut m.types[b].kind);
-            w.tparams.truncate(depth);
+            type_decl::<R>(w, r, &mut m.types[b], unit.as_slice());
         }
         let ni: usize = m.impls.len();
         for c in 0..ni
             invariant m.impls.len() == ni,
         {
-            let mut owner: Vec<String> = Vec::new();
-            owner.push(m.impls[c].ty.name.clone());
-            r.decl(unit.as_slice(), DeclKind::ImplTy, none.as_slice(), &mut m.impls[c].ty);
-            let depth2: usize = w.tparams.len();
-            generics::<R>(w, r, &mut m.impls[c].generics);
-            types::<R>(w, r, &mut m.impls[c].ty_args, 1000000000);
-            let nif: usize = m.impls[c].fns.len();
-            for d in 0..nif
-                invariant m.impls.len() == ni && m.impls[c].fns.len() == nif,
-            {
-                r.decl(unit.as_slice(), DeclKind::ImplFn, owner.as_slice(), &mut m.impls[c].fns[d].name);
-                function::<R>(w, r, &mut m.impls[c].fns[d]);
-            }
-            w.tparams.truncate(depth2);
+            impl_block::<R>(w, r, &mut m.impls[c], unit.as_slice());
         }
         let nti: usize = m.trait_impls.len();
         for e in 0..nti
             invariant m.trait_impls.len() == nti,
         {
-            let depth3: usize = w.tparams.len();
-            generics::<R>(w, r, &mut m.trait_impls[e].generics);
-            let mut written: Vec<String> = Vec::new();
-            for g in 0..m.trait_impls[e].trait_path.len() {
-                written.push(m.trait_impls[e].trait_path[g].name.clone());
-            }
-            idents::<R>(w, r, &mut m.trait_impls[e].trait_path, Site::Bound);
-            ty::<R>(w, r, &mut m.trait_impls[e].self_ty, 1000000000);
-            let ntf: usize = m.trait_impls[e].fns.len();
-            for h in 0..ntf
-                invariant m.trait_impls.len() == nti && m.trait_impls[e].fns.len() == ntf,
-            {
-                r.decl(unit.as_slice(), DeclKind::TraitImplFn, written.as_slice(), &mut m.trait_impls[e].fns[h].name);
-                function::<R>(w, r, &mut m.trait_impls[e].fns[h]);
-            }
-            w.tparams.truncate(depth3);
+            trait_impl_block::<R>(w, r, &mut m.trait_impls[e], unit.as_slice());
         }
         let ntr: usize = m.traits.len();
         for p in 0..ntr
             invariant m.traits.len() == ntr,
         {
-            let mut tname: Vec<String> = Vec::new();
-            tname.push(m.traits[p].name.name.clone());
-            r.decl(unit.as_slice(), DeclKind::Trait, none.as_slice(), &mut m.traits[p].name);
-            let nfn: usize = m.traits[p].fns.len();
-            for q in 0..nfn
-                invariant m.traits.len() == ntr && m.traits[p].fns.len() == nfn,
-            {
-                r.decl(unit.as_slice(), DeclKind::TraitFn, tname.as_slice(), &mut m.traits[p].fns[q].f.name);
-                function::<R>(w, r, &mut m.traits[p].fns[q].f);
-            }
+            trait_block::<R>(w, r, &mut m.traits[p], unit.as_slice());
         }
     }
 
@@ -376,6 +367,37 @@ mod refs {
         out
     }
 
+    #[summary("trait 선언: 이름과 메서드들")]
+    #[effects(alloc)]
+    fn trait_block<R: Rewrite>(w: &mut Walker, r: &mut R, t: &mut ast::TraitDef, unit: &[String]) -> () {
+        let none: Vec<String> = Vec::new();
+        let mut tname: Vec<String> = Vec::new();
+        tname.push(t.name.name.clone());
+        r.decl(unit, DeclKind::Trait, none.as_slice(), &mut t.name);
+        let n: usize = t.fns.len();
+        for q in 0..n
+            invariant t.fns.len() == n,
+        {
+            r.decl(unit, DeclKind::TraitFn, tname.as_slice(), &mut t.fns[q].f.name);
+            function::<R>(w, r, &mut t.fns[q].f);
+        }
+    }
+
+    #[summary("impl Trait for T { .. }: trait의 경로, 타입, 함수들 (owner는 쓴 그대로의 trait 경로)")]
+    #[effects(alloc)]
+    fn trait_impl_block<R: Rewrite>(w: &mut Walker, r: &mut R, i: &mut ast::TraitImpl, unit: &[String]) -> () {
+        let depth: usize = w.tparams.len();
+        generics::<R>(w, r, &mut i.generics);
+        let mut written: Vec<String> = Vec::new();
+        for g in 0..i.trait_path.len() {
+            written.push(i.trait_path[g].name.clone());
+        }
+        idents::<R>(w, r, &mut i.trait_path, Site::Bound);
+        ty::<R>(w, r, &mut i.self_ty, 1000000000);
+        fns_decl::<R>(w, r, &mut i.fns, unit, DeclKind::TraitImplFn, written.as_slice());
+        w.tparams.truncate(depth);
+    }
+
     #[summary("타입 하나와 그 안")]
     #[effects(alloc)]
     fn ty<R: Rewrite>(w: &Walker, r: &mut R, t: &mut ast::Type, f: usize) -> ()
@@ -412,6 +434,18 @@ mod refs {
             ast::TypeDefKind::Struct(fs) => { let n: usize = fs.len(); for i in 0..n invariant fs.len() == n, { ty::<R>(w, r, &mut fs[i].ty, 1000000000); } },
             ast::TypeDefKind::Enum(vs) => { let nv: usize = vs.len(); for j in 0..nv invariant vs.len() == nv, { types::<R>(w, r, &mut vs[j].payload, 1000000000); } },
         }
+    }
+
+    #[summary("타입 선언: 이름, #[invariant]의 술어, 필드와 페이로드의 타입")]
+    #[effects(alloc)]
+    fn type_decl<R: Rewrite>(w: &mut Walker, r: &mut R, td: &mut ast::TypeDef, unit: &[String]) -> () {
+        let none: Vec<String> = Vec::new();
+        r.decl(unit, DeclKind::Type, none.as_slice(), &mut td.name);
+        attrs_named::<R>(w, r, &mut td.attrs, "invariant");
+        let depth: usize = w.tparams.len();
+        generics::<R>(w, r, &mut td.generics);
+        type_body::<R>(w, r, &mut td.kind);
+        w.tparams.truncate(depth);
     }
 
     #[summary("타입들을 차례로")]

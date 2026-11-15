@@ -1732,15 +1732,15 @@ mod fmt {
         }
     }
 
-    #[summary("타입을 쓴 대로 덧붙인다. f는 남은 깊이")]
+    #[summary("타입을 쓴 대로 덧붙인다 (stage0 check::ty_str). f는 남은 깊이")]
     #[effects(alloc)]
-    fn push_type(out: &mut String, t: &ast::Type, f: usize) -> ()
+    fn push_kind(out: &mut String, t: &ast::TypeKind, f: usize) -> ()
         decreases f,
     {
         if f == 0 {
             return;
         }
-        match &t.kind {
+        match t {
             ast::TypeKind::Int(it) => ast::push_int_name(out, it),
             ast::TypeKind::F64 => out.push_str("f64"),
             ast::TypeKind::Bool => out.push_str("bool"),
@@ -1748,17 +1748,23 @@ mod fmt {
             ast::TypeKind::Char => out.push_str("char"),
             ast::TypeKind::String => out.push_str("String"),
             ast::TypeKind::Str => out.push_str("str"),
-            ast::TypeKind::Array(e, n) => { out.push_str("["); push_type(out, &**e, f - 1); out.push_str("; "); std::num::push_u64(out, *n); out.push_str("]"); },
-            ast::TypeKind::ArrayN(e, p) => { out.push_str("["); push_type(out, &**e, f - 1); out.push_str("; "); let mut i: usize = 0; while i < p.len() decreases p.len() - i, { if i > 0 { out.push_str("::"); } out.push_str(p[i].as_str()); i = i + 1; } out.push_str("]"); },
-            ast::TypeKind::Slice(e) => { out.push_str("["); push_type(out, &**e, f - 1); out.push_str("]"); },
-            ast::TypeKind::Ref(m, e) => { out.push_str("&"); if *m { out.push_str("mut "); } push_type(out, &**e, f - 1); },
-            ast::TypeKind::Named(np, a) => { let mut k: usize = 0; while k < np.len() decreases np.len() - k, { if k > 0 { out.push_str("::"); } out.push_str(np[k].as_str()); k = k + 1; } if a.len() > 0 { out.push_str("<"); let mut j: usize = 0; while j < a.len() decreases a.len() - j, { if j > 0 { out.push_str(", "); } push_type(out, &a[j], f - 1); j = j + 1; } out.push_str(">"); } },
-            ast::TypeKind::Vec(e) => { out.push_str("Vec<"); push_type(out, &**e, f - 1); out.push_str(">"); },
-            ast::TypeKind::Box(e) => { out.push_str("Box<"); push_type(out, &**e, f - 1); out.push_str(">"); },
+            ast::TypeKind::Array(e, n) => { out.push_str("["); push_kind(out, &e.kind, f - 1); out.push_str("; "); std::num::push_u64(out, *n); out.push_str("]"); },
+            ast::TypeKind::ArrayN(e, p) => { out.push_str("["); push_kind(out, &e.kind, f - 1); out.push_str("; "); let mut i: usize = 0; while i < p.len() decreases p.len() - i, { if i > 0 { out.push_str("::"); } out.push_str(p[i].as_str()); i = i + 1; } out.push_str("]"); },
+            ast::TypeKind::Slice(e) => { out.push_str("["); push_kind(out, &e.kind, f - 1); out.push_str("]"); },
+            ast::TypeKind::Ref(m, e) => { out.push_str("&"); if *m { out.push_str("mut "); } push_kind(out, &e.kind, f - 1); },
+            ast::TypeKind::Named(np, a) => { let mut k: usize = 0; while k < np.len() decreases np.len() - k, { if k > 0 { out.push_str("::"); } out.push_str(np[k].as_str()); k = k + 1; } if a.len() > 0 { out.push_str("<"); let mut j: usize = 0; while j < a.len() decreases a.len() - j, { if j > 0 { out.push_str(", "); } push_kind(out, &a[j].kind, f - 1); j = j + 1; } out.push_str(">"); } },
+            ast::TypeKind::Vec(e) => { out.push_str("Vec<"); push_kind(out, &e.kind, f - 1); out.push_str(">"); },
+            ast::TypeKind::Box(e) => { out.push_str("Box<"); push_kind(out, &e.kind, f - 1); out.push_str(">"); },
             ast::TypeKind::Param(s) => out.push_str(s.as_str()),
             ast::TypeKind::Never => out.push_str("!"),
             ast::TypeKind::Error => out.push_str("{error}"),
         }
+    }
+
+    #[summary("타입을 쓴 대로 덧붙인다. f는 남은 깊이")]
+    #[effects(alloc)]
+    fn push_type(out: &mut String, t: &ast::Type, f: usize) -> () {
+        push_kind(out, &t.kind, f);
     }
 
     #[effects(pure)]

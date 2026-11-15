@@ -42,9 +42,13 @@ cargo test --no-run --quiet --message-format=json-render-diagnostics > "$built"
 step "backlog"; python3 scripts/test_backlog.py > /dev/null
 # The port is proved once, into an empty cache: the jobs that read its proof
 # (port difftest, components, health S7) reuse it instead of each proving the
-# whole port again (backlog INF-40).
+# whole port again (backlog INF-40). Its definitions are proved in as many
+# processes as the machine has cores, each from an empty cache of its own,
+# and the single run below gives the verdict from the merged cache (backlog
+# INF-41).
 step "port proof"
 rm -rf target/port-proof
+python3 scripts/port_proof.py target/port-proof selfhost/*.bmb > /dev/null
 if ! target/debug/bmb verify --cache target/port-proof selfhost/*.bmb > "$built.port"; then
   grep -v '"status":"verified"' "$built.port" | head -20
   rm -f "$built.port"
@@ -134,7 +138,7 @@ st=$(python3 bench/bvb/verus/harness.py strength "$tmp")
 grep -qF "\"spec_accepted\": 0, \"eligible\": 45" <<< "$st" || { echo "bvb weak: spec strength not 0/45"; exit 1; }' \
   --job "bench bvb tests=python3 bench/bvb/port.py check && python3 bench/bvb/test_bvb.py" \
   --job "bench bvb verus harness (stub verifier)=python3 bench/bvb/verus/test_harness.py" \
-  --job "port difftest (4D-15)=python3 scripts/test_difftest.py && python3 scripts/std_units.py check > /dev/null && python3 scripts/difftest.py run tests/port/cases.json > /dev/null && target/debug/bmb fmt --check selfhost/*.bmb" \
+  --job "port difftest (4D-15)=python3 scripts/test_difftest.py && python3 scripts/test_port_proof.py > /dev/null && python3 scripts/std_units.py check > /dev/null && python3 scripts/difftest.py run tests/port/cases.json > /dev/null && target/debug/bmb fmt --check selfhost/*.bmb" \
   --job "bench m3 generator=python3 bench/m3/test_gen.py > /dev/null" \
   --job "bench bnb=python3 bench/bnb/test_bnb.py > /dev/null" \
   --job "bench twin=python3 bench/twin/test_pair.py" \

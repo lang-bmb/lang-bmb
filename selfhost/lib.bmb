@@ -1,4 +1,4 @@
-#[summary("명령들이 부르는 진입점 (stage0 compiler/src/lib.rs의 포트, 백로그 4D-02). 국면마다 는다: 지금은 dump tokens, dump parse, dump std")]
+#[summary("명령들이 부르는 진입점 (stage0 compiler/src/lib.rs의 포트, 백로그 4D-02). 국면마다 는다: 지금은 dump tokens, dump parse, dump std, dump lower")]
 mod lib {
     #[summary("소스 파일 하나: 이름과 글")]
     struct Input { name: String, text: String }
@@ -30,9 +30,18 @@ mod lib {
         }
         let mut program: ast::Program = ast::Program { mods: mods };
         stdlib::add(&mut sm, &mut program, &mut diags);
+        let mut body: String = String::new();
+        if stage == "std" {
+            push_units(&mut body, &program);
+        } else {
+            let lowered: closures::Lowered = closures::lower(&mut program, &mut diags);
+            let consts: table::Table<consts::Const> = consts::resolve(&mut program, &mut diags);
+            push_units(&mut body, &program);
+            push_lowered(&mut body, &lowered, &consts, &sm);
+        }
         let mut out: String = diags.to_jsonl(&sm);
         out.push_str("---\n");
-        push_units(&mut out, &program);
+        out.push_str(body.as_str());
         Outcome { ok: !diags.has_errors(), text: out }
     }
 
@@ -103,6 +112,17 @@ mod lib {
         Outcome { ok: true, text: out }
     }
 
+    #[summary(",\"file\":..,\"lo\":..,\"hi\":..")]
+    #[effects(alloc)]
+    fn push_at(out: &mut String, s: source::Span, sm: &source::SourceMap) -> () {
+        out.push_str(",\"file\":");
+        sm.push_name(out, s.file);
+        out.push_str(",\"lo\":");
+        std::num::push_u64(out, s.lo as u64);
+        out.push_str(",\"hi\":");
+        std::num::push_u64(out, s.hi as u64);
+    }
+
     #[summary("v를 0x와 16진 열여섯 자리로 덧붙인다")]
     #[effects(alloc)]
     fn push_bits(out: &mut String, v: u64) -> () {
@@ -119,6 +139,41 @@ mod lib {
             } else {
                 lexer::push_code(out, 87 + d);
             }
+        }
+    }
+
+    #[summary("낮추기가 만든 이름, 함수 값을 넘긴 자리, const와 그 값을 줄마다 (dump lower)")]
+    #[effects(alloc)]
+    fn push_lowered(out: &mut String, lowered: &closures::Lowered, consts: &table::Table<consts::Const>, sm: &source::SourceMap) -> () {
+        for i in 0..lowered.names.len() {
+            let path: String = lowered.names.key(i);
+            out.push_str("{\"made\":");
+            std::json::push_string(out, path.as_str());
+            out.push_str(",\"name\":");
+            match lowered.names.nth(i) {
+                None => {},
+                Some(j) => std::json::push_string(out, lowered.names.items[j].as_str()),
+            }
+            match lowered.at.find(path.as_str()) {
+                None => {},
+                Some(k) => push_at(out, lowered.at.items[k], sm),
+            }
+            out.push_str("}\n");
+        }
+        for p in 0..lowered.passes.len() {
+            out.push_str("{\"passes\":");
+            std::json::push_string(out, lowered.passes[p].what.as_str());
+            push_at(out, lowered.passes[p].span, sm);
+            out.push_str("}\n");
+        }
+        for c in 0..consts.len() {
+            out.push_str("{\"const\":");
+            std::json::push_string(out, consts.key(c).as_str());
+            match consts.nth(c) {
+                None => {},
+                Some(ci) => { out.push_str(",\"unit\":"); std::json::push_string(out, consts.items[ci].unit.as_str()); out.push_str(",\"type\":"); std::json::push_string(out, consts::kind_text(&consts.items[ci].ty).as_str()); out.push_str(",\"value\":"); match &consts.items[ci].value { None => out.push_str("null"), Some(v) => std::json::push_string(out, consts::value_text(v).as_str()), } },
+            }
+            out.push_str("}\n");
         }
     }
 

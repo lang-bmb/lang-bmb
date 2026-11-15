@@ -318,6 +318,74 @@
         ],
         "chunk": 40
       }
+    },
+    {
+      "name": "lower",
+      "component": "C4",
+      "a": [
+        "{bmb}",
+        "dump",
+        "lower",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "dump",
+        "lower",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "*.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "lower-together",
+      "component": "C4",
+      "a": [
+        "{bmb}",
+        "dump",
+        "lower",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "dump",
+        "lower",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/run/*.bmb",
+          "lib/std/*.bmb",
+          "selfhost/*.bmb"
+        ],
+        "chunk": 40
+      }
+    },
+    {
+      "name": "lower-edges",
+      "component": "C4",
+      "a": [
+        "{bmb}",
+        "dump",
+        "lower",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "dump",
+        "lower",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/lower/*.txt"
+        ],
+        "chunk": 1
+      }
     }
   ]
 }
