@@ -59,22 +59,22 @@ mod lib {
     #[effects(alloc)]
     fn push_token(out: &mut String, name: &str, t: &lexer::Token) -> () {
         out.push_str("{\"file\":");
-        diag::json_str(out, name);
+        std::json::push_string(out, name);
         out.push_str(",\"lo\":");
-        diag::push_u64(out, t.span.lo as u64);
+        std::num::push_u64(out, t.span.lo as u64);
         out.push_str(",\"hi\":");
-        diag::push_u64(out, t.span.hi as u64);
+        std::num::push_u64(out, t.span.hi as u64);
         out.push_str(",\"kind\":\"");
         match &t.tok {
-            lexer::Tok::Ident(x) => { out.push_str("ident\",\"text\":"); diag::json_str(out, x.as_str()); },
-            lexer::Tok::Int(v, r) => { out.push_str("int\",\"text\":"); diag::json_str(out, ast::radix_text(*r, *v).as_str()); out.push_str(",\"value\":\""); out.push_str(ast::radix_text(ast::Radix::Dec, *v).as_str()); out.push_str("\""); },
-            lexer::Tok::Float(b) => { out.push_str("float\",\"text\":"); diag::json_str(out, lexer::float_text(*b).as_str()); out.push_str(",\"bits\":\""); push_bits(out, *b); out.push_str("\""); },
-            lexer::Tok::Str(x) => { out.push_str("str\",\"text\":"); diag::json_str(out, x.as_str()); },
-            lexer::Tok::Char(c) => { out.push_str("char\",\"value\":"); diag::push_u64(out, *c as u64); },
-            lexer::Tok::Byte(y) => { out.push_str("byte\",\"value\":"); diag::push_u64(out, *y as u64); },
-            lexer::Tok::Bytes(bs) => { out.push_str("bytes\",\"value\":["); let mut i: usize = 0; while i < bs.len() decreases bs.len() - i, { if i > 0 { out.push(','); } diag::push_u64(out, bs[i] as u64); i = i + 1; } out.push(']'); },
-            lexer::Tok::P(x) => { out.push_str("punct\",\"text\":"); diag::json_str(out, x.as_str()); },
-            lexer::Tok::Label(x) => { out.push_str("label\",\"text\":"); diag::json_str(out, x.as_str()); },
+            lexer::Tok::Ident(x) => { out.push_str("ident\",\"text\":"); std::json::push_string(out, x.as_str()); },
+            lexer::Tok::Int(v, r) => { out.push_str("int\",\"text\":"); std::json::push_string(out, ast::radix_text(*r, *v).as_str()); out.push_str(",\"value\":\""); out.push_str(ast::radix_text(ast::Radix::Dec, *v).as_str()); out.push_str("\""); },
+            lexer::Tok::Float(b) => { out.push_str("float\",\"text\":"); std::json::push_string(out, lexer::float_text(*b).as_str()); out.push_str(",\"bits\":\""); push_bits(out, *b); out.push_str("\""); },
+            lexer::Tok::Str(x) => { out.push_str("str\",\"text\":"); std::json::push_string(out, x.as_str()); },
+            lexer::Tok::Char(c) => { out.push_str("char\",\"value\":"); std::num::push_u64(out, *c as u64); },
+            lexer::Tok::Byte(y) => { out.push_str("byte\",\"value\":"); std::num::push_u64(out, *y as u64); },
+            lexer::Tok::Bytes(bs) => { out.push_str("bytes\",\"value\":["); let mut i: usize = 0; while i < bs.len() decreases bs.len() - i, { if i > 0 { out.push(','); } std::num::push_u64(out, bs[i] as u64); i = i + 1; } out.push(']'); },
+            lexer::Tok::P(x) => { out.push_str("punct\",\"text\":"); std::json::push_string(out, x.as_str()); },
+            lexer::Tok::Label(x) => { out.push_str("label\",\"text\":"); std::json::push_string(out, x.as_str()); },
             lexer::Tok::Eof => out.push_str("eof\""),
         }
         out.push_str("}\n");

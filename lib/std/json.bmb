@@ -803,7 +803,7 @@ mod json {
     // Adds the UTF-8 bytes of `c` to `v`.
     #[effects(alloc)]
     fn push_utf8(v: &mut Vec<u8>, c: u32) -> ()
-        requires scalar(c), room4(v.as_slice()),
+        requires scalar(c),
         ensures grew4(v.as_slice(), old(v).as_slice()),
     {
         if c < 128 {
@@ -843,7 +843,6 @@ mod json {
     // (what `serde_json` writes).
     #[effects(alloc)]
     fn push_string(out: &mut String, s: &str) -> ()
-        requires quote_room(out.as_str(), s),
         ensures quote_grew(out.as_str(), old(out).as_str(), s),
     {
         let l: usize = out.len();
@@ -851,7 +850,7 @@ mod json {
         let mut a: usize = 0;
         let mut j: usize = 0;
         while j < s.len()
-            invariant quote_inv(out.as_str(), l, a, j, s), l + 6 * s.len() + 2 < 9223372036854775807,
+            invariant quote_inv(out.as_str(), l, a, j, s),
             decreases s.len() - j,
         {
             let b: u8 = s.as_bytes()[j];
@@ -899,7 +898,7 @@ mod json {
     // Adds the lowercase hex digit of `d`.
     #[effects(alloc)]
     fn push_hex_digit(out: &mut String, d: u8) -> ()
-        requires digit16(d), one_room(out.as_str()),
+        requires digit16(d),
         ensures one_more(out.as_str(), old(out).as_str()),
     {
         if d < 8 {

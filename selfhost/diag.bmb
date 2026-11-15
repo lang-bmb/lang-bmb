@@ -271,11 +271,11 @@ mod diag {
             decreases t.len() - i,
         {
             out.push_str("{\"code\":");
-            json_str(&mut out, t[i].code.as_str());
+            std::json::push_string(&mut out, t[i].code.as_str());
             out.push_str(",\"severity\":\"");
             push_severity(&mut out, t[i].code.as_str());
             out.push_str("\",\"description\":");
-            json_str(&mut out, t[i].text.as_str());
+            std::json::push_string(&mut out, t[i].text.as_str());
             out.push_str("}\n");
             i = i + 1;
         }
@@ -327,15 +327,6 @@ mod diag {
         v.push(Code { code: String::from("E10"), text: String::from("탈출구와 근거(ADR-0029)") });
         v.push(Code { code: String::from("W10"), text: String::from("탈출구와 근거(경고, `bmb lint`만)") });
         v
-    }
-
-    #[summary("s를 JSON 문자열로 덧붙인다. 따옴표로 쓴 글이 메모리에 들어가지 않을 길이면 쓰지 않는다(닿지 않는 갈래: std::json::push_string의 길이 전제를 여기서 확인한다)")]
-    #[effects(alloc)]
-    #[uses(std::json::quote_room)]
-    fn json_str(out: &mut String, s: &str) -> () {
-        if s.len() < 1000000000000 && out.len() < 1000000000000000 {
-            std::json::push_string(out, s);
-        }
     }
 
     #[effects(alloc)]
@@ -396,15 +387,6 @@ mod diag {
         }
     }
 
-    #[summary("x를 10진으로 덧붙인다(std::num::push_i64의 길이 전제를 여기서 확인한다)")]
-    #[effects(alloc)]
-    #[uses(std::num::room1)]
-    fn push_i64(out: &mut String, x: i64) -> () {
-        if out.len() < 1000000000000000 {
-            std::num::push_i64(out, x);
-        }
-    }
-
     #[effects(alloc)]
     fn push_rows(out: &mut String, t: &[Code], prefix: &str) -> () {
         let mut i: usize = 0;
@@ -431,47 +413,38 @@ mod diag {
         }
     }
 
-    #[summary("x를 10진으로 덧붙인다(std::num::push_u64의 길이 전제를 여기서 확인한다)")]
-    #[effects(alloc)]
-    #[uses(std::num::room)]
-    fn push_u64(out: &mut String, x: u64) -> () {
-        if out.len() < 1000000000000000 {
-            std::num::push_u64(out, x);
-        }
-    }
-
     #[summary("진단 하나를 JSON 객체로")]
     #[effects(alloc)]
     fn render(d: &Diag, sm: &source::SourceMap) -> String {
         let a: source::Pos = sm.line_col(d.span.file, d.span.lo);
         let b: source::Pos = sm.line_col(d.span.file, d.span.hi);
         let mut s: String = String::from("{\"code\":");
-        json_str(&mut s, d.code.as_str());
+        std::json::push_string(&mut s, d.code.as_str());
         s.push_str(",\"severity\":\"");
         push_severity(&mut s, d.code.as_str());
         s.push_str("\",\"message\":");
-        json_str(&mut s, d.message.as_str());
+        std::json::push_string(&mut s, d.message.as_str());
         s.push_str(",\"file\":");
         sm.push_name(&mut s, d.span.file);
         s.push_str(",\"line\":");
-        push_u64(&mut s, a.line as u64);
+        std::num::push_u64(&mut s, a.line as u64);
         s.push_str(",\"col\":");
-        push_u64(&mut s, a.col as u64);
+        std::num::push_u64(&mut s, a.col as u64);
         s.push_str(",\"end_line\":");
-        push_u64(&mut s, b.line as u64);
+        std::num::push_u64(&mut s, b.line as u64);
         s.push_str(",\"end_col\":");
-        push_u64(&mut s, b.col as u64);
+        std::num::push_u64(&mut s, b.col as u64);
         match &d.obligation {
             None => {},
-            Some(o) => { s.push_str(",\"obligation\":"); json_str(&mut s, o.as_str()); },
+            Some(o) => { s.push_str(",\"obligation\":"); std::json::push_string(&mut s, o.as_str()); },
         }
         match &d.bounded {
             None => {},
-            Some(k) => { s.push_str(",\"bounded\":{\"b\":"); push_i64(&mut s, k.b); s.push_str(",\"l\":"); push_u64(&mut s, k.l as u64); s.push_str("}"); },
+            Some(k) => { s.push_str(",\"bounded\":{\"b\":"); std::num::push_i64(&mut s, k.b); s.push_str(",\"l\":"); std::num::push_u64(&mut s, k.l as u64); s.push_str("}"); },
         }
         match &d.fix {
             None => {},
-            Some(f) => { s.push_str(",\"fix\":{\"message\":"); json_str(&mut s, f.message.as_str()); match &f.replacement { None => {}, Some(r) => { s.push_str(",\"replacement\":"); json_str(&mut s, r.as_str()); }, } s.push_str("}"); },
+            Some(f) => { s.push_str(",\"fix\":{\"message\":"); std::json::push_string(&mut s, f.message.as_str()); match &f.replacement { None => {}, Some(r) => { s.push_str(",\"replacement\":"); std::json::push_string(&mut s, r.as_str()); }, } s.push_str("}"); },
         }
         s.push_str("}");
         s

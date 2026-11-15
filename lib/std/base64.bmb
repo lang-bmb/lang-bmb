@@ -411,7 +411,7 @@ mod base64 {
     #[effects(alloc)]
     #[uses(kept, dec_byte)]
     fn push_bytes(v: &mut Vec<u8>, t: &[u8], g: usize, c: usize) -> ()
-        requires digits(t, g), count_ok(c), room(v.as_slice()),
+        requires digits(t, g), count_ok(c),
         ensures appended(v.as_slice(), old(v).as_slice(), t, g, c),
     {
         let x0: u8 = value(t[4 * g]);

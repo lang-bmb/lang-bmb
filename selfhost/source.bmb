@@ -61,7 +61,7 @@ mod source {
             if id as usize >= self.files.len() {
                 out.push_str("\"<generated>\"");
             } else {
-                diag::json_str(out, self.files[id as usize].name.as_str());
+                std::json::push_string(out, self.files[id as usize].name.as_str());
             }
         }
     }

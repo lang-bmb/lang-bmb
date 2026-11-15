@@ -169,7 +169,6 @@ mod bytes {
     // Appends `x` in decimal (at most 20 bytes).
     #[effects(alloc)]
     fn push_u64(v: &mut Vec<u8>, x: u64) -> ()
-        requires room(v.as_slice(), 20),
         ensures grew_by(v.as_slice(), old(v).as_slice(), 20),
     {
         let mut buf: [u8; 20] = [0; 20];
@@ -201,7 +200,6 @@ mod bytes {
     #[effects(alloc)]
     #[uses(kept)]
     fn push_i64(v: &mut Vec<u8>, x: i64) -> ()
-        requires room(v.as_slice(), 21),
         ensures grew_by(v.as_slice(), old(v).as_slice(), 21),
     {
         if x < 0 {

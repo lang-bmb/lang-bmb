@@ -518,7 +518,6 @@ mod num {
     #[effects(alloc)]
     #[uses(dig, is_dec, same, width)]
     fn push_u64(s: &mut String, x: u64) -> ()
-        requires room(s.as_bytes()),
         ensures wrote(s.as_bytes(), old(s).as_bytes(), x), grew(s.as_bytes(), old(s).as_bytes()),
         decreases x,
     {
@@ -549,7 +548,6 @@ mod num {
     #[effects(alloc)]
     #[uses(dig, is_dec, same, width)]
     fn push_i64(s: &mut String, x: i64) -> ()
-        requires room1(s.as_bytes()),
         ensures wrote_i64(s.as_bytes(), old(s).as_bytes(), x), grew(s.as_bytes(), old(s).as_bytes()),
     {
         if x < 0 {
@@ -610,7 +608,6 @@ mod num {
     #[effects(alloc)]
     #[uses(hdig, hex_char, is_hex, same, width16)]
     fn push_u64_hex(s: &mut String, x: u64) -> ()
-        requires room(s.as_bytes()),
         ensures wrote_hex(s.as_bytes(), old(s).as_bytes(), x), grew(s.as_bytes(), old(s).as_bytes()),
         decreases x,
     {
