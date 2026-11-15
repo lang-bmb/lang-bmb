@@ -1,0 +1,45 @@
+#[summary("else if의 조건이 만든 임시값은 조건을 계산한 뒤 바로 죽는다: 그 갈래에 들지 않은 반복에서 다시 해제되지 않는다 (코드 생성이 조건의 임시값을 if 전체가 끝난 자리에서 해제하던 결함의 회귀 시험)")]
+mod eit {
+    #[effects(pure)]
+    fn long(s: &str) -> bool {
+        s.len() > 3
+    }
+
+    #[effects(alloc, io)]
+    fn main() -> () {
+        let mut kept: Vec<String> = Vec::new();
+        let mut i: usize = 0;
+        let mut s: u64 = 0;
+        while i < 12
+            decreases 12 - i,
+        {
+            if i % 2 == 0 {
+                kept.push(word(i + 1));
+                s = s.wrapping_add(1);
+            } else if long(word(i).as_str()) {
+                s = s.wrapping_add(10);
+            } else {
+                s = s.wrapping_add(100);
+            }
+            i = i + 1;
+        }
+        print_u64(s);
+        let mut k: usize = 0;
+        while k < kept.len()
+            decreases kept.len() - k,
+        {
+            print_str(kept[k].as_str());
+            print_str("\n");
+            k = k + 1;
+        }
+    }
+
+    #[effects(alloc)]
+    fn word(k: usize) -> String {
+        if k % 3 == 1 {
+            String::from("let")
+        } else {
+            String::from("static")
+        }
+    }
+}

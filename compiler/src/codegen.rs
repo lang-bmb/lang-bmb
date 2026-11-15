@@ -1910,7 +1910,7 @@ impl<'p> Gen<'p> {
                 let elem = elem_kind(&el.kind);
                 let buf = self.alloca(&format!("[{n} x {}]", mem(elem)));
                 let bytes = n * width(elem);
-                let c = self.expr(cond).imm();
+                let c = self.cond(cond);
                 let lt = self.l("then");
                 let le = self.l("else");
                 let end = self.l("endif");
@@ -1943,7 +1943,7 @@ impl<'p> Gen<'p> {
             ExprKind::If { cond, then, els } => {
                 let ty = self.ty(e);
                 let slot = self.result_slot(&ty);
-                let c = self.expr(cond).imm();
+                let c = self.cond(cond);
                 let lt = self.l("then");
                 let le = self.l("else");
                 let end = self.l("endif");
@@ -2265,6 +2265,14 @@ impl<'p> Gen<'p> {
         let cell = self.temp(&t);
         self.emit(format!("store ptr {h}, ptr {cell}"));
         CVal::Ptr { ptr: cell, ty: t }
+    }
+
+    /// The value of an `if` condition. Its temporaries are freed here,
+    /// before the branch: an `else if` computes its condition only on the
+    /// path that reaches it, and a temporary freed after the whole `if`
+    /// would be freed on the paths that never made it (backlog 4D-23).
+    fn cond(&mut self, cond: &Expr) -> String {
+        self.region(|g| g.expr(cond)).imm()
     }
 
     /// Runs `f` as a region: temporaries it leaves are freed at its end. A
