@@ -548,6 +548,152 @@ fn drop_glue(tb: &Tables, extra: &[TypeKind]) -> String {
     out
 }
 
+/// The copy glue of type `t` (ADR-0141 §4).
+fn clone_glue_name(t: &TypeKind) -> String {
+    format!("@\"bmb_clone.{}\"", ty_str(t))
+}
+
+/// The copy glue of the types `ir` copies and of the types those hold
+/// (ADR-0141 §4): `@"bmb_clone.<type>"(ptr %dst, ptr %src)` builds at
+/// `%dst` a value equal to the one at `%src` that owns its own memory.
+/// The bytes are copied first, then each part that owns memory is built
+/// again: a `Vec`'s buffer and its elements, a `Box`'s value, a struct's
+/// fields, the payloads of an enum's variant.
+fn clone_glue(tb: &Tables, extra: &[TypeKind], ir: &str) -> String {
+    fn visit(t: &TypeKind, tb: &Tables, seen: &mut BTreeSet<String>, out: &mut String) {
+        if !crate::check::is_move(t, &tb.adts) || !seen.insert(ty_str(t)) {
+            return;
+        }
+        let owns = |x: &TypeKind| crate::check::is_move(x, &tb.adts);
+        let copy = format!(
+            "  call void @llvm.memcpy.p0.p0.i64(ptr %dst, ptr %src, i64 {}, i1 false)\n",
+            size_of(t)
+        );
+        let each = |n: &str, dp: &str, sp: &str, e: &TypeKind| {
+            format!(
+                "  br label %head\nhead:\n  %i = phi i64 [ 0, %entry ], [ %j, %body ]\n  %more = icmp ult i64 %i, {n}\n  br i1 %more, label %body, label %done\nbody:\n  %de = getelementptr inbounds {dp}, i64 %i\n  %se = getelementptr inbounds {sp}, i64 %i\n  call void {}(ptr %de, ptr %se)\n  %j = add nuw i64 %i, 1\n  br label %head\ndone:\n",
+                clone_glue_name(e)
+            )
+        };
+        let mut body = String::new();
+        let mut inner: Vec<TypeKind> = Vec::new();
+        match t {
+            TypeKind::Array(e, n) => {
+                let m = mem_ty(t);
+                body.push_str(&each(
+                    &n.to_string(),
+                    &format!("{m}, ptr %dst, i64 0"),
+                    &format!("{m}, ptr %src, i64 0"),
+                    &e.kind,
+                ));
+                inner.push(e.kind.clone());
+            }
+            TypeKind::Vec(e) => {
+                let _ = writeln!(
+                    body,
+                    "  call void @bmb_vec_clone(ptr %dst, ptr %src, i64 {})",
+                    size_of(&e.kind)
+                );
+                if owns(&e.kind) {
+                    let m = mem_ty(&e.kind);
+                    body.push_str("  %db = load ptr, ptr %dst\n  %sb = load ptr, ptr %src\n  %lp = getelementptr inbounds %bmb.vec, ptr %src, i32 0, i32 1\n  %n = load i64, ptr %lp\n");
+                    body.push_str(&each(
+                        "%n",
+                        &format!("{m}, ptr %db"),
+                        &format!("{m}, ptr %sb"),
+                        &e.kind,
+                    ));
+                    inner.push(e.kind.clone());
+                }
+            }
+            TypeKind::Box(e) => {
+                let _ = writeln!(
+                    body,
+                    "  %h = load ptr, ptr %src\n  %n = call ptr @bmb_box_alloc(i64 {})",
+                    size_of(&e.kind)
+                );
+                if owns(&e.kind) {
+                    let _ = writeln!(
+                        body,
+                        "  call void {}(ptr %n, ptr %h)",
+                        clone_glue_name(&e.kind)
+                    );
+                    inner.push(e.kind.clone());
+                } else {
+                    let _ = writeln!(
+                        body,
+                        "  call void @llvm.memcpy.p0.p0.i64(ptr %n, ptr %h, i64 {}, i1 false)",
+                        size_of(&e.kind)
+                    );
+                }
+                body.push_str("  store ptr %n, ptr %dst\n");
+            }
+            _ => {
+                body.push_str(&copy);
+                if let Some(fs) = struct_fields(t, tb) {
+                    for (k, (_, ft)) in fs.iter().enumerate() {
+                        if owns(ft) {
+                            let d = data_ty(t);
+                            let _ = writeln!(
+                                body,
+                                "  %d{k} = getelementptr inbounds {d}, ptr %dst, i32 0, i32 {k}\n  %s{k} = getelementptr inbounds {d}, ptr %src, i32 0, i32 {k}\n  call void {}(ptr %d{k}, ptr %s{k})",
+                                clone_glue_name(ft)
+                            );
+                            inner.push(ft.clone());
+                        }
+                    }
+                } else {
+                    let vs = enum_variants(t, tb).unwrap_or_default();
+                    let _ = writeln!(body, "  %tag = load i64, ptr %src");
+                    let mut cases = String::new();
+                    let mut arms = String::new();
+                    for (k, (v, ps)) in vs.iter().enumerate() {
+                        if !ps.iter().any(owns) {
+                            continue;
+                        }
+                        let _ = write!(cases, " i64 {k}, label %v{k}");
+                        let _ = writeln!(arms, "v{k}:");
+                        for (j, pt) in ps.iter().enumerate() {
+                            if owns(pt) {
+                                let w = view_ty(t, v);
+                                let _ = writeln!(
+                                    arms,
+                                    "  %d{k}.{j} = getelementptr inbounds {w}, ptr %dst, i32 0, i32 {f}\n  %s{k}.{j} = getelementptr inbounds {w}, ptr %src, i32 0, i32 {f}\n  call void {}(ptr %d{k}.{j}, ptr %s{k}.{j})",
+                                    clone_glue_name(pt),
+                                    f = j + 1
+                                );
+                                inner.push(pt.clone());
+                            }
+                        }
+                        let _ = writeln!(arms, "  br label %done");
+                    }
+                    let _ = write!(
+                        body,
+                        "  switch i64 %tag, label %done [{cases} ]\n{arms}done:\n"
+                    );
+                }
+            }
+        }
+        let _ = writeln!(
+            out,
+            "define internal void {}(ptr %dst, ptr %src) {{\nentry:\n{body}  ret void\n}}",
+            clone_glue_name(t)
+        );
+        for x in &inner {
+            visit(x, tb, seen, out);
+        }
+    }
+    let mut seen = BTreeSet::new();
+    let mut out = String::new();
+    for t in all_types(tb, extra) {
+        let t = value_ty(t);
+        if ir.contains(&format!("call void {}(", clone_glue_name(t))) {
+            visit(t, tb, &mut seen, &mut out);
+        }
+    }
+    out
+}
+
 /// Whether `t` is an integer type, `f64` or `bool`.
 fn is_scalar_ty(t: &TypeKind) -> bool {
     matches!(t, TypeKind::Int(_) | TypeKind::Bool | TypeKind::F64)
@@ -1748,6 +1894,26 @@ impl<'p> Gen<'p> {
                 self.text_method(recv, &name.name, args)
             }
             ExprKind::Method { recv, name, .. } if name.name == "len_utf8" => self.len_utf8(recv),
+            // The built-in copy of a value that owns memory (ADR-0141);
+            // a `Vec` of data values keeps its own path below.
+            ExprKind::Method { recv, name, .. }
+                if name.name == "clone"
+                    && {
+                        let t = self.ty(recv);
+                        let v = value_ty(&t);
+                        crate::check::is_move(v, &self.t.adts)
+                            && !matches!(v, TypeKind::Vec(el) if !crate::check::is_move(&el.kind, &self.t.adts))
+                    } =>
+            {
+                let t = value_ty(&self.ty(recv)).clone();
+                let src = self.vec_hdr(recv);
+                let dst = self.temp(&t);
+                self.emit(format!(
+                    "call void {}(ptr {dst}, ptr {src})",
+                    clone_glue_name(&t)
+                ));
+                CVal::Ptr { ptr: dst, ty: t }
+            }
             ExprKind::Method { recv, name, args } if is_vec(&self.ty(recv)) => {
                 self.vec_method(e, recv, &name.name, args)
             }
@@ -4037,7 +4203,8 @@ pub fn emit_with(
     }
 
     let extra: Vec<TypeKind> = used_types.into_values().collect();
-    let glue = drop_glue(t, &extra);
+    let mut glue = drop_glue(t, &extra);
+    glue.push_str(&clone_glue(t, &extra, &ir));
     // The `Vec` header first: data types and glue use it.
     let header = if uses_vec {
         "%bmb.vec = type { ptr, i64, i64 }\n"

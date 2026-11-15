@@ -1,0 +1,38 @@
+#[summary("clone 오류: Copy 없는 타입 매개변수, 자식 프로세스, 명세 안, 인자, 복사 타입 (ADR-0141 §2)")]
+mod cl {
+    struct Pair<T> { a: T, b: Vec<T> }
+
+    struct Job { id: i64, proc: Vec<std::process::Child> }
+
+    struct Row { cells: Vec<i64> }
+
+    struct Pt { x: i64, y: i64 }
+
+    #[effects(alloc)]
+    fn of_param<T>(p: &Pair<T>) -> Pair<T> { p.clone() }
+
+    #[effects(alloc)]
+    fn of_copy_param<T: Copy>(p: &Pair<T>) -> Pair<T> { p.clone() }
+
+    #[effects(alloc)]
+    fn of_child(j: &Job) -> Job { j.clone() }
+
+    #[effects(alloc)]
+    fn of_boxed_child(b: &Box<std::process::Child>) -> Box<std::process::Child> { b.clone() }
+
+    #[effects(alloc)]
+    fn with_arg(r: &Row) -> Row { r.clone(1) }
+
+    #[effects(pure)]
+    fn no_effect(r: &Row) -> Row { r.clone() }
+
+    #[effects(pure)]
+    fn in_spec(r: &Row) -> usize
+        requires r.clone().cells.len() == 0,
+    {
+        r.cells.len()
+    }
+
+    #[effects(alloc)]
+    fn of_copy_type(p: &Pt) -> Pt { p.clone() }
+}

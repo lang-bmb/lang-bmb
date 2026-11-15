@@ -677,6 +677,61 @@ pub fn subst(t: &TypeKind, m: &BTreeMap<String, TypeKind>) -> TypeKind {
     }
 }
 
+/// Why the language builds no copy of a value of `t` (ADR-0141 §2), if it
+/// does not: a value of a type parameter that may own memory (one of
+/// `moving`: its type is not known where the copy is written), or a child
+/// process (one resource, one owner).
+pub fn clone_blocked(
+    t: &TypeKind,
+    adts: &BTreeMap<String, Adt>,
+    moving: &BTreeSet<String>,
+) -> Option<&'static str> {
+    fn names(t: &TypeKind, moving: &BTreeSet<String>) -> bool {
+        match t {
+            TypeKind::Param(n) => moving.contains(n),
+            TypeKind::Array(e, _) | TypeKind::Slice(e) | TypeKind::Vec(e) | TypeKind::Box(e) => {
+                names(&e.kind, moving)
+            }
+            TypeKind::Ref { inner, .. } => names(&inner.kind, moving),
+            TypeKind::Named { args, .. } => args.iter().any(|a| names(&a.kind, moving)),
+            _ => false,
+        }
+    }
+    fn child(t: &TypeKind, adts: &BTreeMap<String, Adt>, seen: &mut BTreeSet<String>) -> bool {
+        match t {
+            TypeKind::Array(e, _) | TypeKind::Vec(e) | TypeKind::Box(e) => {
+                child(&e.kind, adts, seen)
+            }
+            TypeKind::Named { path, args } => {
+                let p = path.join("::");
+                if p == CHILD || args.iter().any(|a| child(&a.kind, adts, seen)) {
+                    return true;
+                }
+                if !seen.insert(p.clone()) {
+                    return false;
+                }
+                match adts.get(&p).map(|a| &a.kind) {
+                    Some(AdtKind::Struct(fs)) => fs.iter().any(|(_, ft)| child(ft, adts, seen)),
+                    Some(AdtKind::Enum(vs)) => vs
+                        .iter()
+                        .any(|(_, ps)| ps.iter().any(|pt| child(pt, adts, seen))),
+                    None => false,
+                }
+            }
+            _ => false,
+        }
+    }
+    if names(t, moving) {
+        return Some(
+            "a type parameter without `Copy` may own memory: copy the value where its type is known, or bound the parameter with `Copy`",
+        );
+    }
+    if child(t, adts, &mut BTreeSet::new()) {
+        return Some("a child process is one resource with one owner; it is not copied");
+    }
+    None
+}
+
 /// Whether `t` mentions a type parameter.
 pub fn has_param(t: &TypeKind) -> bool {
     match t {
@@ -9047,6 +9102,9 @@ impl<'a> Checker<'a> {
             }
             return TypeKind::Error;
         }
+        if name.name == "clone" && self.builtin_clone(&rt) {
+            return self.clone_method(cx, &rt, name, args, span, mode);
+        }
         match self.method_target(cx, &rt, recv, name, args, span) {
             Some(Some(t)) => {
                 // `x.f(..)` is `T::f(adjust(x), ..)` (ADR-0051): checked as
@@ -9535,7 +9593,14 @@ impl<'a> Checker<'a> {
         have.sort();
         have.dedup();
         let ty = ty_str_in(value, &cx.mod_path);
-        let fix = if have.is_empty() {
+        let copied = name.name == "clone"
+            && matches!(value, TypeKind::Named { .. })
+            && !is_move_in(value, &self.adts, &self.moving_params());
+        let fix = if copied {
+            // Only a value that owns memory has the built-in copy
+            // (ADR-0141 §1).
+            format!("a `{ty}` is copied by value; remove `.clone()`")
+        } else if have.is_empty() {
             format!(
                 "`{ty}` has no methods; define `{}` in an `impl` of it",
                 name.name
@@ -9770,6 +9835,100 @@ impl<'a> Checker<'a> {
         TypeKind::Unit
     }
 
+    /// Whether `x.clone()` on a receiver of type `rt` is the built-in deep
+    /// copy (ADR-0141 §1): a type that owns memory, a struct, enum, `Box`
+    /// or array, with no `clone` of its own (an inherent function or a
+    /// trait's method comes first, as every method does).
+    fn builtin_clone(&self, rt: &TypeKind) -> bool {
+        let value = match rt {
+            TypeKind::Ref { inner, .. } => &inner.kind,
+            t => t,
+        };
+        let own = match value {
+            TypeKind::Box(_) | TypeKind::Array(..) => false,
+            TypeKind::Named { path, .. } => {
+                let tp = path.join("::");
+                self.fns
+                    .get(&format!("{tp}::clone"))
+                    .is_some_and(|s| s.trait_of.is_none())
+                    || self
+                        .trait_impls
+                        .iter()
+                        .chain(&self.rejected_impls)
+                        .filter(|i| i.matches(value).is_some())
+                        .any(|i| {
+                            self.traits
+                                .get(&i.trait_path)
+                                .is_some_and(|t| t.methods.iter().any(|m| m == "clone"))
+                        })
+            }
+            _ => return false,
+        };
+        !own && is_move_in(value, &self.adts, &self.moving_params())
+    }
+
+    /// The built-in `clone` of a value that owns memory (ADR-0141): a new
+    /// value equal to the receiver, owning its own memory.
+    fn clone_method(
+        &mut self,
+        cx: &mut FnCtx,
+        rt: &TypeKind,
+        name: &Ident,
+        args: &[Expr],
+        span: Span,
+        mode: Mode,
+    ) -> TypeKind {
+        for a in args {
+            self.expr(cx, a, None, mode);
+        }
+        let value = match rt {
+            TypeKind::Ref { inner, .. } => inner.kind.clone(),
+            t => t.clone(),
+        };
+        if let Some(why) = clone_blocked(&value, &self.adts, &self.moving_params()) {
+            self.no_clone(name.span, &value, why);
+            return TypeKind::Error;
+        }
+        if !args.is_empty() {
+            self.diags.push(
+                Diag::new(
+                    "E0405",
+                    name.span,
+                    format!("`clone` takes 0 argument(s), found {}", args.len()),
+                )
+                .fix("write `x.clone()`", None),
+            );
+        }
+        if mode == Mode::Exec {
+            cx.need_own(Effects::ALLOC, || format!("`{}::clone`", ty_str(&value)));
+        } else {
+            self.diags.push(
+                Diag::new(
+                    "E0503",
+                    span,
+                    "`.clone()` is not allowed in a specification",
+                )
+                .fix(
+                    "a specification reads the value itself: remove `.clone()`",
+                    None,
+                ),
+            );
+        }
+        value
+    }
+
+    /// E0404 for a `clone` the language does not build (ADR-0141 §2).
+    fn no_clone(&mut self, at: Span, t: &TypeKind, why: &str) {
+        self.diags.push(
+            Diag::new(
+                "E0404",
+                at,
+                format!("`clone` is not defined for `{}`", ty_str(t)),
+            )
+            .fix(why, None),
+        );
+    }
+
     /// A built-in method of `Vec<T>` (ADR-0031 §1): `push`, `pop`, `len`,
     /// `truncate`, `clone`, `copy_within`; `as_slice` / `as_mut_slice` only
     /// as arguments.
@@ -9798,18 +9957,9 @@ impl<'a> Checker<'a> {
             "pop" => (0, true, option_of(et.clone())),
             "truncate" => (1, true, TypeKind::Unit),
             "len" => (0, false, TypeKind::Int(IntTy::Usize)),
-            "clone" if is_move(&et, &self.adts) => {
-                self.diags.push(
-                    Diag::new(
-                        "E0404",
-                        name.span,
-                        format!("`clone` of a `Vec<{}>` is not supported yet", ty_str(&et)),
-                    )
-                    .fix(
-                        "its elements own memory: build the copy with a loop that pushes new values",
-                        None,
-                    ),
-                );
+            "clone" if clone_blocked(&et, &self.adts, &self.moving_params()).is_some() => {
+                let why = clone_blocked(&et, &self.adts, &self.moving_params()).expect("a reason");
+                self.no_clone(name.span, &TypeKind::Vec(mk(et.clone())), why);
                 return TypeKind::Error;
             }
             "clone" => (0, false, TypeKind::Vec(mk(et.clone()))),

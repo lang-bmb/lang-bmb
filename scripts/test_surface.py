@@ -31,6 +31,23 @@ def test_compare():
     assert surface.compare(new, new) == []
 
 
+def test_a_record_behind_the_sources_is_stale():
+    old = state(["E0001"], {"a": ("s1", "o1"), "b": ("s2", "o2"), "gone": ("s3", "o3")})
+    new = state(["E0001"], {"a": ("s1", "o1"), "b": ("s2x", "o9"), "added": ("s4", "o4")})
+    # An edited entry is not a change of the surface, and not comparable.
+    assert surface.compare(old, new) == []
+    assert surface.stale(old, new) == ["added", "b", "gone"], surface.stale(old, new)
+    assert surface.stale(new, new) == []
+
+
+def test_an_exception_excuses_one_change():
+    old = state(["E0001"], {"a": ("s1", "o1"), "b": ("s2", "o2")})
+    new = state(["E0001"], {"a": ("s1", "o9"), "b": ("s2", "o8")})
+    assert surface.unexcused(old, new) == [("result changed", "a"), ("result changed", "b")]
+    old["exceptions"] = [{"kind": "result changed", "name": "a", "reason": "X-1"}]
+    assert surface.unexcused(old, new) == [("result changed", "b")]
+
+
 def test_programs_are_in_a_fixed_order():
     names = [n for n, _ in surface.programs(surface.ROOT)]
     assert names == [n for n, _ in surface.programs(surface.ROOT)]
@@ -43,5 +60,7 @@ def test_programs_are_in_a_fixed_order():
 
 if __name__ == "__main__":
     test_compare()
+    test_a_record_behind_the_sources_is_stale()
+    test_an_exception_excuses_one_change()
     test_programs_are_in_a_fixed_order()
     print("surface tests: ok")

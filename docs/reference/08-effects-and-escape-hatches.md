@@ -8,7 +8,7 @@
 
 | 효과 | 뜻 | 원천 |
 | --- | --- | --- |
-| `alloc` | 힙 할당. 메모리가 모자라면 중단한다 | `Vec::new`·`Vec::with_capacity`·`push`·`Vec`의 `clone`·`Box::new` 등 |
+| `alloc` | 힙 할당. 메모리가 모자라면 중단한다 | `Vec::new`·`Vec::with_capacity`·`push`·`clone`(메모리를 가진 값의 복제)·`Box::new` 등 |
 | `io` | 바깥과의 상호작용 | `print_i64` 같은 출력 내장과 시스템 내장(ADR-0091) |
 | `nondet` | 같은 프로그램과 같은 인자에서도 실행마다 다를 수 있는 값을 읽는다 | 명령줄 인자, 표준 입력, 파일 읽기, 환경 변수, 시계 |
 | `panic` | 실행 중 trap으로 끝날 수 있다 | 탈출구가 있는 정의: `assume` 문장, `#[external_body]`(ADR-0029) |

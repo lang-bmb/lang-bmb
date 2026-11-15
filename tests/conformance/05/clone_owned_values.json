@@ -1,0 +1,8 @@
+{
+  "sections": [
+    "복사와 이동"
+  ],
+  "note": "x.clone() of a struct, enum, Box or Vec that owns memory builds an equal value with its own memory: changing or moving the copy leaves the source, and the source stays owned.",
+  "check": [],
+  "run": "2\n1\n7\n1\n1\n"
+}

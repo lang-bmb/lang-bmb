@@ -164,7 +164,7 @@ fn both<T: Area>(x: &T, q: Sq) -> i64 { larger::<i64>(x.area(), q.area()) }
 
 - `Vec`의 원소가 못 되는 타입(배열, 배열을 가진 구조체), `Box<()>`는 E0402 오류다(ADR-0047).
 - `Vec::new()`의 원소 타입은 기대 타입에서 온다(없으면 E0401).
-- 목록에 없는 메서드(`is_empty`, `first`, `get`, `iter`)는 E0404, 이동하는 원소의 `Vec`에 대한 `clone`도 E0404 오류다.
+- 목록에 없는 메서드(`is_empty`, `first`, `get`, `iter`)는 E0404, `Copy` 경계가 없는 타입 매개변수가 원소인 `Vec`의 `clone`도 E0404 오류다(05장 "복사와 이동").
 - `spec fn`은 `Vec`이나 `String`을 받거나 돌려주지 않는다(E0402). 슬라이스와 `&str`을 받는다.
 - `Rc`·`RefCell`·`Cell`·`Arc`는 없다(E0238).
 - 코퍼스: `tests/run/vecs.bmb`, `tests/run/boxes.bmb`, `tests/check/err/vec.bmb`, `tests/check/err/boxes.bmb`, `tests/check/err/nested_vecs.bmb`.

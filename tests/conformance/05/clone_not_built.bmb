@@ -1,0 +1,21 @@
+#[summary("clone the language does not build")]
+mod m {
+    struct Pair<T> { a: T, b: Vec<T> }
+
+    struct Pt { x: i64, y: i64 }
+
+    #[effects(alloc)]
+    fn of_param<T>(p: &Pair<T>) -> Pair<T> { p.clone() }
+
+    #[effects(alloc)]
+    fn of_vec<T>(v: &Vec<T>) -> Vec<T> { v.clone() }
+
+    #[effects(alloc)]
+    fn of_child(b: &Box<std::process::Child>) -> Box<std::process::Child> { b.clone() }
+
+    #[effects(alloc)]
+    fn of_copy(p: &Pt) -> Pt { p.clone() }
+
+    #[effects(alloc)]
+    fn bounded<T: Copy>(p: &Pair<T>) -> Pair<T> { p.clone() }
+}

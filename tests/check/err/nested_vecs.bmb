@@ -14,10 +14,10 @@ mod ne {
         take(g[0])
     }
 
-    // Cloning a `Vec` of owned elements is not supported yet.
+    // The elements' type may own memory and is not known here (ADR-0141 §2).
     #[effects(alloc)]
-    fn copy(g: &Vec<Vec<i64>>) -> usize {
-        let h: Vec<Vec<i64>> = g.clone();
+    fn copy<T>(g: &Vec<T>) -> usize {
+        let h: Vec<T> = g.clone();
         h.len()
     }
 

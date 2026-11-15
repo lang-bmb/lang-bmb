@@ -2,7 +2,7 @@
   "sections": [
     "소유 타입"
   ],
-  "note": "Methods outside the list (`is_empty`, `first`, `get`, `iter`) and `clone` of a `Vec` of moving elements are E0404; `Rc`, `RefCell`, `Cell`, `Arc` are E0238.",
+  "note": "Methods outside the list (`is_empty`, `first`, `get`, `iter`) and `clone` of a `Vec` whose element type is a parameter without `Copy` are E0404; `Rc`, `RefCell`, `Cell`, `Arc` are E0238.",
   "check": [
     {
       "code": "E0404",

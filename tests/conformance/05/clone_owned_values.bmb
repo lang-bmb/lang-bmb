@@ -1,0 +1,42 @@
+#[summary("clone of values that own memory")]
+mod m {
+    struct Row { id: i64, cells: Vec<i64> }
+
+    enum Tree {
+        Leaf(i64),
+        Node(Box<Tree>, Box<Tree>),
+    }
+
+    #[effects(pure)]
+    fn take(r: Row) -> usize { r.cells.len() }
+
+    #[effects(pure)]
+    fn left(t: &Tree) -> i64 {
+        match t {
+            Tree::Leaf(n) => *n,
+            Tree::Node(l, r) => 0,
+        }
+    }
+
+    #[effects(alloc, io)]
+    fn main() -> () {
+        let mut cells: Vec<i64> = Vec::new();
+        cells.push(4);
+        let a: Row = Row { id: 1, cells: cells };
+        let mut b: Row = a.clone();
+        b.cells.push(5);
+        print_u64(take(b) as u64);
+        print_u64(take(a) as u64);
+        let t: Tree = Tree::Node(Box::new(Tree::Leaf(7)), Box::new(Tree::Leaf(8)));
+        let u: Tree = t.clone();
+        match u {
+            Tree::Leaf(n) => print_i64(n),
+            Tree::Node(l, r) => print_i64(left(&*l)),
+        }
+        let mut rows: Vec<Row> = Vec::new();
+        rows.push(Row { id: 2, cells: Vec::new() });
+        let copy: Vec<Row> = rows.clone();
+        print_u64(copy.len() as u64);
+        print_u64(rows.len() as u64);
+    }
+}

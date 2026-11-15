@@ -1,0 +1,122 @@
+#[summary("메모리를 가진 값의 clone: 구조체, 열거형, Box, 재귀 트리, 이동 원소의 Vec, Option, 참조 너머 (ADR-0141)")]
+mod cv {
+    struct Bag<T> { items: Vec<T>, n: i64 }
+
+    struct Counter { hits: Vec<i64> }
+
+    impl Counter {
+        #[effects(alloc)]
+        fn clone(self: &Counter) -> Counter {
+            Counter { hits: Vec::new() }
+        }
+    }
+
+    struct Doc { rows: Vec<Row>, root: Option<Box<Tree>>, tag: Option<String> }
+
+    struct Grid { cells: [Box<i64>; 2] }
+
+    struct Row { id: i64, cells: Vec<i64>, name: String }
+
+    enum Tree { Leaf(i64), Node(Box<Tree>, Box<Tree>), Many(Vec<Tree>) }
+
+    #[effects(alloc)]
+    fn dup<T: Copy>(b: &Bag<T>) -> Bag<T> {
+        b.clone()
+    }
+
+    #[effects(alloc, io)]
+    fn main() -> () {
+        let a: Row = row(7);
+        let mut b: Row = a.clone();
+        b.cells[0] = 100;
+        b.name.push_str("-copy");
+        print_i64(a.cells[0]);
+        print_i64(b.cells[0]);
+        print_str(a.name.as_str());
+        print_str(b.name.as_str());
+        let c: Row = twice(&a);
+        print_i64(c.cells.len() as i64);
+        print_i64(a.cells.len() as i64);
+        print_str(c.name.as_str());
+        let t: Tree = tree();
+        let u: Tree = t.clone();
+        print_i64(sum(&t));
+        print_i64(sum(&u));
+        let bt: Box<Tree> = Box::new(u);
+        let bu: Box<Tree> = bt.clone();
+        print_i64(sum(&*bu));
+        let mut rows: Vec<Row> = Vec::new();
+        rows.push(row(1));
+        rows.push(row(2));
+        let mut copy: Vec<Row> = rows.clone();
+        copy[1].cells[1] = 40;
+        print_i64(rows[1].cells[1]);
+        print_i64(copy[1].cells[1]);
+        print_i64(rows[0].clone().cells[1]);
+        let d: Doc = Doc { rows: rows, root: Some(Box::new(t)), tag: None };
+        let e: Doc = d.clone();
+        print_i64(e.rows.len() as i64);
+        match &e.root {
+            None => print_i64(0),
+            Some(r) => print_i64(sum(&**r)),
+        }
+        let o: Option<String> = Some(String::from("opt"));
+        let p: Option<String> = o.clone();
+        match &p {
+            None => print_i64(0),
+            Some(s) => print_str(s.as_str()),
+        }
+        let mut hits: Vec<i64> = Vec::new();
+        hits.push(1);
+        let k: Counter = Counter { hits: hits };
+        print_i64(k.clone().hits.len() as i64);
+        let mut items: Vec<u8> = Vec::new();
+        items.push(9);
+        let bag: Bag<u8> = Bag { items: items, n: 3 };
+        let bag2: Bag<u8> = dup::<u8>(&bag);
+        print_i64((bag2.items.len() as i64).wrapping_add(bag2.n));
+        let g: Grid = Grid { cells: [Box::new(5), Box::new(6)] };
+        let mut h: Grid = g.clone();
+        h.cells[0] = Box::new(50);
+        print_i64(*g.cells[0] + *h.cells[0] + *h.cells[1]);
+        let empty: Vec<Row> = Vec::new();
+        print_i64(empty.clone().len() as i64);
+    }
+
+    #[effects(alloc)]
+    fn row(id: i64) -> (r: Row)
+        ensures r.cells.len() == 2,
+    {
+        let mut cells: Vec<i64> = Vec::new();
+        cells.push(id);
+        cells.push(id.wrapping_mul(2));
+        Row { id: id, cells: cells, name: String::from("row") }
+    }
+
+    #[effects(pure)]
+    fn sum(t: &Tree) -> i64
+        decreases t,
+    {
+        match t {
+            Tree::Leaf(n) => *n,
+            Tree::Node(l, r) => sum(&**l).wrapping_add(sum(&**r)),
+            Tree::Many(xs) => { let mut s: i64 = 0; for i in 0..xs.len() invariant 0 <= i && i <= xs.len(), { s = s.wrapping_add(sum(&xs[i])); } s },
+        }
+    }
+
+    #[effects(alloc)]
+    fn tree() -> Tree {
+        let mut xs: Vec<Tree> = Vec::new();
+        xs.push(Tree::Leaf(4));
+        xs.push(Tree::Node(Box::new(Tree::Leaf(5)), Box::new(Tree::Leaf(6))));
+        Tree::Node(Box::new(Tree::Leaf(1)), Box::new(Tree::Many(xs)))
+    }
+
+    #[effects(alloc)]
+    fn twice(r: &Row) -> Row {
+        let mut c: Row = r.clone();
+        c.cells.push(99);
+        c.name.push_str("!");
+        c
+    }
+}

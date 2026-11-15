@@ -122,7 +122,7 @@
 | E0401 | type mismatch | [03](03-types-and-values.md), [04](04-expressions-and-control.md), [05](05-ownership.md), [06](06-contracts-and-specs.md) |
 | E0402 | unsupported type | [03](03-types-and-values.md), [05](05-ownership.md), [06](06-contracts-and-specs.md) |
 | E0403 | references are only allowed in parameter position | [03](03-types-and-values.md), [05](05-ownership.md) |
-| E0404 | unknown method (no method lookup; only built-in methods exist) | [03](03-types-and-values.md), [04](04-expressions-and-control.md) |
+| E0404 | unknown method (no method lookup; only built-in methods exist) | [03](03-types-and-values.md), [04](04-expressions-and-control.md), [05](05-ownership.md) |
 | E0405 | wrong number of arguments | [03](03-types-and-values.md), [04](04-expressions-and-control.md) |
 | E0406 | integer literal out of range for its type | [03](03-types-and-values.md) |
 | E0407 | value is not indexable | [03](03-types-and-values.md), [04](04-expressions-and-control.md) |
@@ -154,7 +154,7 @@
 | E0438 | an inclusive range `lo..=hi` outside the range of a `for` loop | [03](03-types-and-values.md) |
 | E0501 | a contract clause with a quantifier must be a call to a named predicate (`spec fn ... -> bool`); one without is an expression (ADR-0095 A2) | [06](06-contracts-and-specs.md) |
 | E0502 | vacuous predicate used in a contract | [06](06-contracts-and-specs.md) |
-| E0503 | specification-only construct used in executable code, or an executable statement in a specification | [04](04-expressions-and-control.md), [06](06-contracts-and-specs.md) |
+| E0503 | specification-only construct used in executable code, or an executable statement in a specification | [04](04-expressions-and-control.md), [05](05-ownership.md), [06](06-contracts-and-specs.md) |
 | E0504 | executable function called in a specification | [06](06-contracts-and-specs.md), [08](08-effects-and-escape-hatches.md) |
 | E0505 | spec function called in executable code | [06](06-contracts-and-specs.md) |
 | E0506 | `while` requires `decreases` | [04](04-expressions-and-control.md), [06](06-contracts-and-specs.md) |

@@ -99,7 +99,7 @@ python3 scripts/conformance.py table --write  # 아래 표를 다시 쓴다
 | 04 | 루프 | 4 | `for_variable`, `loop_clauses`, `loop_types`, `loops_run` |
 | 04 | 조기 탈출: return, break, continue, ? | 4 | `exit_errors`, `labels_and_exits_run`, `question_mark_errors`, `question_mark_run` |
 | 04 | 받지 않는 Rust 습관 | 10 | `habits_control_flow`, `habits_conversions_operators`, `habits_data_patterns`, `habits_declarations`, `habits_names_macros_escapes`, `habits_ownership_generics`, `habits_replacements_data`, `habits_replacements_ownership`, `habits_specs_ghost_consts`, `habits_unsupported_items` |
-| 05 | 복사와 이동 | 8 | `clone_keeps_source`, `containers_of_owned_move`, `copy_bound_rejects_owned`, `copy_types_reused`, `owned_types_move`, `reads_do_not_move`, `type_param_moves`, `value_use_positions` |
+| 05 | 복사와 이동 | 10 | `clone_keeps_source`, `clone_not_built`, `clone_owned_values`, `containers_of_owned_move`, `copy_bound_rejects_owned`, `copy_types_reused`, `owned_types_move`, `reads_do_not_move`, `type_param_moves`, `value_use_positions` |
 | 05 | 이동한 값의 사용 | 9 | `fn_once_called_twice`, `match_moves_scrutinee`, `owned_types_move`, `question_moves_operand`, `reassign_restores_ownership`, `self_by_value_twice`, `specs_read_moved_values`, `use_after_move`, `value_use_positions` |
 | 05 | 자리에서 꺼내기와 부분 이동 | 10 | `field_reassign_restores`, `match_on_field_is_partial`, `mem_replace_and_swap`, `move_field_behind_mut_ref`, `move_field_behind_ref_or_box`, `move_out_of_deref`, `move_out_of_element`, `no_take_no_drop`, `partial_move_of_field`, `swap_within_one_variable` |
 | 05 | 갈래와 루프의 이동 | 7 | `if_without_else_moves`, `loop_body_moves`, `loop_exit_states`, `one_branch_moves`, `return_leaves_the_join`, `short_circuit_moves`, `use_after_branch_move` |
@@ -141,6 +141,6 @@ python3 scripts/conformance.py table --write  # 아래 표를 다시 쓴다
 | 08 | 근거: `#[rationale(..)]` | 8 | `assume_needs_rationale`, `external_body_needs_rationale`, `rationale_hash_not_an_error`, `rationale_kinds`, `rationale_malformed`, `rationale_several_faults`, `statement_attributes`, `unconfirmed_rationale_builds` |
 | 08 | 탈출구와 증명의 신뢰 등급 | 10 | `false_assume_ends_in_trap`, `false_assume_traps_at_index`, `needless_assume_has_no_trust`, `no_escape_no_trust`, `no_escape_no_trust_key`, `true_assume_runs_to_the_end`, `trust_does_not_spread`, `trust_field_of_status_lines`, `trusted_definitions_are_verified`, `unconfirmed_rationale_builds` |
 
-절 86개, 사례 444개, 사례도 면제도 없는 절 0개.
+절 86개, 사례 446개, 사례도 면제도 없는 절 0개.
 
 <!-- conformance:table end -->

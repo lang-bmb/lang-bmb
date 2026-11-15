@@ -19,11 +19,15 @@ as `check` prints them (a bug fix, a change the bootstrap needs). `record`
 moves the exceptions to "history".
 
 Corpora: tests/check, tests/verify, tests/run (one program per file) and
-lib/std (one program). Editing a corpus file updates its entry silently
-(the source digest changed). The JSON's "frozen" is false until the freeze
-is declared (4D-01, human approval); until then a change needs no reason
-but `check` still fails until it is recorded, so the fingerprint stays
-current.
+lib/std (one program). An entry whose source was edited cannot be compared,
+so the record must follow every edit: `check` fails while an entry's source
+digest differs from the recorded one (INF-42: a stale record compares
+nothing), and `record` refuses under a freeze while a comparable entry
+changed without an exception. A program's source digest is its own files:
+an edit of the standard library leaves the other entries comparable, and a
+result it changes is a change like any other. The JSON's "frozen" is false
+until the freeze is declared (4D-01, human approval); until then a change
+needs no reason but `check` still fails until it is recorded.
 """
 import argparse
 import hashlib
@@ -89,13 +93,9 @@ def snapshot(bmb, root=ROOT):
     progs = programs(root)
     with ThreadPoolExecutor() as ex:
         seen = list(ex.map(lambda p: observe(bmb, p[1]), progs))
-    # The standard library is part of every program's input (the compiler
-    # embeds it, ADR-0092 §1): editing it is a source change, not a change
-    # of the language.
-    lib = b"".join(f.read_bytes() for f in sorted((root / LIBRARY).glob("*.bmb")))
     entries = {}
     for (name, files), out in zip(progs, seen):
-        src = digest(lib + b"".join(f.read_bytes() for f in files))
+        src = digest(b"".join(f.read_bytes() for f in files))
         entries[name] = {"src": src, "out": out}
     return {"codes": codes(bmb), "programs": entries}
 
@@ -114,6 +114,19 @@ def compare(old, new):
     return changes
 
 
+def stale(old, new):
+    """The entries the record cannot be compared on: added, removed, or
+    with another source."""
+    o, n = old["programs"], new["programs"]
+    return sorted(k for k in set(o) | set(n) if k not in o or k not in n or o[k]["src"] != n[k]["src"])
+
+
+def unexcused(old, new):
+    """The changes of the surface that have no exception."""
+    allowed = {(x["kind"], x["name"]) for x in old.get("exceptions", [])}
+    return [c for c in compare(old, new) if c not in allowed]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", choices=["record", "check"])
@@ -125,6 +138,13 @@ def main():
         for x in old.get("exceptions", []):
             if not x.get("reason"):
                 sys.exit(f"surface: exception {x} has no reason")
+        if old.get("frozen"):
+            # Recording would absorb the change: under the freeze it needs
+            # its exception first.
+            for kind, name in unexcused(old, new):
+                print(f"surface: {kind}: {name} (no exception)", file=sys.stderr)
+            if unexcused(old, new):
+                sys.exit("surface: not recorded: the freeze is on, name each change in \"exceptions\"")
         # Recording consumes the exceptions: each one allowed one change of
         # one entry, and the history keeps it.
         state = {
@@ -141,7 +161,7 @@ def main():
     old = json.loads(STATE.read_text())
     changes = compare(old, new)
     allowed = {(x["kind"], x["name"]) for x in old.get("exceptions", [])}
-    open_changes = [c for c in changes if c not in allowed]
+    open_changes = unexcused(old, new)
     for kind, name in changes:
         mark = "" if (kind, name) in allowed else " (no exception)"
         print(f"surface: {kind}: {name}{mark}")
@@ -161,6 +181,15 @@ def main():
         print(
             "surface: the fingerprint is stale: `scripts/surface.py record` "
             "(the changes above are the commit's language changes)",
+            file=sys.stderr,
+        )
+        return 1
+    behind = stale(old, new)
+    if behind:
+        print(
+            f"surface: the record is behind {len(behind)} entr{'y' if len(behind) == 1 else 'ies'} "
+            f"({', '.join(behind[:3])}{', ..' if len(behind) > 3 else ''}): "
+            "`scripts/surface.py record`",
             file=sys.stderr,
         )
         return 1

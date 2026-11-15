@@ -13,8 +13,8 @@ mod a {
     fn e4(v: Vec<i64>) -> i64 { v.iter() }
 
     #[effects(alloc)]
-    fn e5(v: Vec<Vec<i64>>) -> usize {
-        let w: Vec<Vec<i64>> = v.clone();
+    fn e5<T>(v: Vec<T>) -> usize {
+        let w: Vec<T> = v.clone();
         w.len()
     }
 

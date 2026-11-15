@@ -134,7 +134,7 @@ mod consts {
             ast::TypeKind::ArrayN(ne, nn) => None,
             ast::TypeKind::Slice(se) => None,
             ast::TypeKind::Ref(rm, ri) => None,
-            ast::TypeKind::Named(path, args) => { if path.len() == 1 && path[0].as_str() == ty && k < args.len() { Some(ast::clone_typekind(&args[k].kind, 1000000000)) } else { None } },
+            ast::TypeKind::Named(path, args) => { if path.len() == 1 && path[0].as_str() == ty && k < args.len() { Some(args[k].kind.clone()) } else { None } },
             ast::TypeKind::Vec(ve) => None,
             ast::TypeKind::Box(be) => None,
             ast::TypeKind::Param(pn) => None,
@@ -172,7 +172,7 @@ mod consts {
             CVal::Bool(b) => {},
             CVal::Char(c) => {},
             CVal::Array(vs) => {},
-            CVal::Data(d) => { for i in 0..p.binds.len() { if i < d.fields.len() { match &p.binds[i] { None => {}, Some(id) => { let mut at: usize = out.len(); for j in 0..out.len() { if out[j].name.as_str() == id.name.as_str() { at = j; } } if at < out.len() { out[at].v = clone_cval(&d.fields[i].v, 1000000000); } else { out.push(Bind { name: id.name.clone(), v: clone_cval(&d.fields[i].v, 1000000000) }); } }, } } } },
+            CVal::Data(d) => { for i in 0..p.binds.len() { if i < d.fields.len() { match &p.binds[i] { None => {}, Some(id) => { let mut at: usize = out.len(); for j in 0..out.len() { if out[j].name.as_str() == id.name.as_str() { at = j; } } if at < out.len() { out[at].v = d.fields[i].v.clone(); } else { out.push(Bind { name: id.name.clone(), v: d.fields[i].v.clone() }); } }, } } } },
         }
         out
     }
@@ -393,39 +393,6 @@ mod consts {
         lexer::str_text(s.as_str(), 39)
     }
 
-    #[summary("값의 깊은 사본. f는 남은 깊이")]
-    #[effects(alloc)]
-    fn clone_cval(v: &CVal, f: usize) -> CVal
-        decreases f,
-    {
-        if f == 0 {
-            return CVal::Bool(false);
-        }
-        match v {
-            CVal::Int(n, t) => CVal::Int(*n, *t),
-            CVal::Bool(b) => CVal::Bool(*b),
-            CVal::Char(c) => CVal::Char(*c),
-            CVal::Array(vs) => { let mut out: Vec<CVal> = Vec::new(); for i in 0..vs.len() { out.push(clone_cval(&vs[i], f - 1)); } CVal::Array(out) },
-            CVal::Data(d) => { let mut fs: Vec<DataField> = Vec::new(); for j in 0..d.fields.len() { fs.push(DataField { name: d.fields[j].name.clone(), v: clone_cval(&d.fields[j].v, f - 1) }); } CVal::Data(Data { ty: d.ty.clone(), variant: clone_name(&d.variant), fields: fs }) },
-        }
-    }
-
-    #[effects(alloc)]
-    fn clone_name(o: &Option<String>) -> Option<String> {
-        match o {
-            None => None,
-            Some(s) => Some(s.clone()),
-        }
-    }
-
-    #[effects(alloc)]
-    fn clone_opt(o: &Option<CVal>) -> Option<CVal> {
-        match o {
-            None => None,
-            Some(v) => Some(clone_cval(v, 1000000000)),
-        }
-    }
-
     #[summary("두 정수의 순서: -1, 0, 1")]
     #[effects(pure)]
     fn cmp(a: Num, b: Num) -> i32 {
@@ -508,7 +475,7 @@ mod consts {
                 let mut ck: String = unit.clone();
                 ck.push_str("::");
                 ck.push_str(m.consts[c].name.name.as_str());
-                ev.defs.insert(ck.as_str(), Def { unit: unit.clone(), c: ast::clone_constdef(&m.consts[c], 1000000000) });
+                ev.defs.insert(ck.as_str(), Def { unit: unit.clone(), c: m.consts[c].clone() });
             }
         }
         for l in 0..m.lens.len() {
@@ -567,7 +534,7 @@ mod consts {
         }
         match want {
             None => {},
-            Some(t) => { match t { ast::TypeKind::Int(it) => {}, ast::TypeKind::F64 => {}, ast::TypeKind::Bool => {}, ast::TypeKind::Unit => {}, ast::TypeKind::Char => {}, ast::TypeKind::String => {}, ast::TypeKind::Str => {}, ast::TypeKind::Array(ae, an) => {}, ast::TypeKind::ArrayN(ne, nn) => {}, ast::TypeKind::Slice(se) => {}, ast::TypeKind::Ref(rm, ri) => {}, ast::TypeKind::Named(path, args) => { if ast::join_names(path.as_slice()).as_str() == full { for g in 0..ev.tydefs.items[di].generics.len() { if g < args.len() { sub.names.push(ev.tydefs.items[di].generics[g].clone()); sub.tys.push(ast::clone_typekind(&args[g].kind, 1000000000)); } } } }, ast::TypeKind::Vec(ve) => {}, ast::TypeKind::Box(be) => {}, ast::TypeKind::Param(pn) => {}, ast::TypeKind::Never => {}, ast::TypeKind::Error => {}, } },
+            Some(t) => { match t { ast::TypeKind::Int(it) => {}, ast::TypeKind::F64 => {}, ast::TypeKind::Bool => {}, ast::TypeKind::Unit => {}, ast::TypeKind::Char => {}, ast::TypeKind::String => {}, ast::TypeKind::Str => {}, ast::TypeKind::Array(ae, an) => {}, ast::TypeKind::ArrayN(ne, nn) => {}, ast::TypeKind::Slice(se) => {}, ast::TypeKind::Ref(rm, ri) => {}, ast::TypeKind::Named(path, args) => { if ast::join_names(path.as_slice()).as_str() == full { for g in 0..ev.tydefs.items[di].generics.len() { if g < args.len() { sub.names.push(ev.tydefs.items[di].generics[g].clone()); sub.tys.push(args[g].kind.clone()); } } } }, ast::TypeKind::Vec(ve) => {}, ast::TypeKind::Box(be) => {}, ast::TypeKind::Param(pn) => {}, ast::TypeKind::Never => {}, ast::TypeKind::Error => {}, } },
         }
         sub
     }
@@ -612,7 +579,7 @@ mod consts {
             key.push_str(m.consts[c].name.name.as_str());
             match consts.find(key.as_str()) {
                 None => {},
-                Some(i) => { consts.items[i].ty = ast::clone_typekind(&m.consts[c].ty.kind, 1000000000); },
+                Some(i) => { consts.items[i].ty = m.consts[c].ty.kind.clone(); },
             }
         }
         let mut sub: String = unit.clone();
@@ -650,8 +617,8 @@ mod consts {
             ast::TypeKind::Char => None,
             ast::TypeKind::String => None,
             ast::TypeKind::Str => None,
-            ast::TypeKind::Array(ae, an) => Some(ast::clone_typekind(&ae.kind, 1000000000)),
-            ast::TypeKind::ArrayN(ne, nn) => Some(ast::clone_typekind(&ne.kind, 1000000000)),
+            ast::TypeKind::Array(ae, an) => Some(ae.kind.clone()),
+            ast::TypeKind::ArrayN(ne, nn) => Some(ne.kind.clone()),
             ast::TypeKind::Slice(se) => None,
             ast::TypeKind::Ref(rm, ri) => None,
             ast::TypeKind::Named(path, args) => None,
@@ -777,7 +744,7 @@ mod consts {
             CVal::Bool(b) => {},
             CVal::Char(c) => {},
             CVal::Array(vs) => {},
-            CVal::Data(d) => { if !has_name(&d.variant) { for i in 0..d.fields.len() { if d.fields[i].name.as_str() == name.name.as_str() { return Some(clone_cval(&d.fields[i].v, 1000000000)); } } return None; } },
+            CVal::Data(d) => { if !has_name(&d.variant) { for i in 0..d.fields.len() { if d.fields[i].name.as_str() == name.name.as_str() { return Some(d.fields[i].v.clone()); } } return None; } },
         }
         let mut msg: String = String::from("`.");
         msg.push_str(name.name.as_str());
@@ -857,7 +824,7 @@ mod consts {
             CVal::Int(n, t) => {},
             CVal::Bool(bb) => {},
             CVal::Char(c) => {},
-            CVal::Array(vs) => { match &i { CVal::Int(k, kt) => { if !k.neg && k.mag < vs.len() as u64 { let at: usize = k.mag as usize; if at < vs.len() { return Some(clone_cval(&vs[at], 1000000000)); } } let mut m1: String = String::from("index "); push_num(&mut m1, *k); m1.push_str(" is out of bounds of an array of "); std::num::push_u64(&mut m1, vs.len() as u64); return fail(ev, e.span, m1.as_str()); }, CVal::Bool(ib) => {}, CVal::Char(ic) => {}, CVal::Array(ivs) => {}, CVal::Data(id2) => {}, } },
+            CVal::Array(vs) => { match &i { CVal::Int(k, kt) => { if !k.neg && k.mag < vs.len() as u64 { let at: usize = k.mag as usize; if at < vs.len() { return Some(vs[at].clone()); } } let mut m1: String = String::from("index "); push_num(&mut m1, *k); m1.push_str(" is out of bounds of an array of "); std::num::push_u64(&mut m1, vs.len() as u64); return fail(ev, e.span, m1.as_str()); }, CVal::Bool(ib) => {}, CVal::Char(ic) => {}, CVal::Array(ivs) => {}, CVal::Data(id2) => {}, } },
             CVal::Data(d) => {},
         }
         let mut msg: String = show(&b);
@@ -998,7 +965,7 @@ mod consts {
         while i < n.lo
             decreases n.lo - i,
         {
-            out.push(clone_cval(&v, 1000000000));
+            out.push(v.clone());
             i = i + 1;
         }
         Some(CVal::Array(out))
@@ -1033,7 +1000,7 @@ mod consts {
         let mut fnames: Vec<String> = Vec::new();
         let mut ftys: Vec<ast::TypeKind> = Vec::new();
         match &ev.tydefs.items[di].kind {
-            TyDefKind::Struct(fs) => { for k in 0..fs.len() { fnames.push(fs[k].name.clone()); ftys.push(ast::clone_typekind(&fs[k].ty, 1000000000)); } },
+            TyDefKind::Struct(fs) => { for k in 0..fs.len() { fnames.push(fs[k].name.clone()); ftys.push(fs[k].ty.clone()); } },
             TyDefKind::Enum(vs) => { return None; },
         }
         let mut out: Vec<DataField> = Vec::new();
@@ -1448,7 +1415,7 @@ mod consts {
         }
         match ev.done.find(path) {
             None => {},
-            Some(k) => { return clone_opt(&ev.done.items[k]); },
+            Some(k) => { return ev.done.items[k].clone(); },
         }
         let mut di: usize = 0;
         match ev.defs.find(path) {
@@ -1459,7 +1426,7 @@ mod consts {
             return None;
         }
         let unit: String = ev.defs.items[di].unit.clone();
-        let c: ast::ConstDef = ast::clone_constdef(&ev.defs.items[di].c, 1000000000);
+        let c: ast::ConstDef = ev.defs.items[di].c.clone();
         if has(ev.stack.as_slice(), path) {
             let mut msg: String = String::from("constants refer to each other: ");
             let mut on: bool = false;
@@ -1495,7 +1462,7 @@ mod consts {
             Some(x) => { if !scalar(&c.ty.kind) || kind_text(&cval_ty(x)) == kind_text(&c.ty.kind) { ok = true; } else { let mut m2: String = String::from("expected `"); m2.push_str(kind_text(&c.ty.kind).as_str()); m2.push_str("`, found `"); m2.push_str(kind_text(&cval_ty(x)).as_str()); m2.push_str("`"); ev.diags.push(diag::new("E0401", c.value.span, m2.as_str())); } },
         }
         let kept: Option<CVal> = keep(v, ok);
-        ev.done.insert(path, clone_opt(&kept));
+        ev.done.insert(path, kept.clone());
         kept
     }
 
@@ -1759,7 +1726,7 @@ mod consts {
                 i = i - 1;
                 for j in 0..ev.env[i].len() {
                     if ev.env[i][j].name.as_str() == path[0].as_str() {
-                        return Some(clone_cval(&ev.env[i][j].v, 1000000000));
+                        return Some(ev.env[i][j].v.clone());
                     }
                 }
             }
@@ -1794,23 +1761,23 @@ mod consts {
             return ast::TypeKind::Error;
         }
         match t {
-            ast::TypeKind::Int(it) => ast::clone_typekind(t, 1000000000),
-            ast::TypeKind::F64 => ast::clone_typekind(t, 1000000000),
-            ast::TypeKind::Bool => ast::clone_typekind(t, 1000000000),
-            ast::TypeKind::Unit => ast::clone_typekind(t, 1000000000),
-            ast::TypeKind::Char => ast::clone_typekind(t, 1000000000),
-            ast::TypeKind::String => ast::clone_typekind(t, 1000000000),
-            ast::TypeKind::Str => ast::clone_typekind(t, 1000000000),
+            ast::TypeKind::Int(it) => t.clone(),
+            ast::TypeKind::F64 => t.clone(),
+            ast::TypeKind::Bool => t.clone(),
+            ast::TypeKind::Unit => t.clone(),
+            ast::TypeKind::Char => t.clone(),
+            ast::TypeKind::String => t.clone(),
+            ast::TypeKind::Str => t.clone(),
             ast::TypeKind::Array(ae, an) => ast::TypeKind::Array(Box::new(ast::Type { kind: norm(ev, &ae.kind, unit, sub, f - 1), span: ae.span }), *an),
             ast::TypeKind::ArrayN(ne, nn) => ast::TypeKind::ArrayN(Box::new(ast::Type { kind: norm(ev, &ne.kind, unit, sub, f - 1), span: ne.span }), names_copy(nn.as_slice())),
-            ast::TypeKind::Slice(se) => ast::clone_typekind(t, 1000000000),
-            ast::TypeKind::Ref(rm, ri) => ast::clone_typekind(t, 1000000000),
+            ast::TypeKind::Slice(se) => t.clone(),
+            ast::TypeKind::Ref(rm, ri) => t.clone(),
             ast::TypeKind::Named(path, args) => norm_named(ev, path.as_slice(), args.as_slice(), unit, sub, f - 1),
-            ast::TypeKind::Vec(ve) => ast::clone_typekind(t, 1000000000),
-            ast::TypeKind::Box(be) => ast::clone_typekind(t, 1000000000),
-            ast::TypeKind::Param(pn) => ast::clone_typekind(t, 1000000000),
-            ast::TypeKind::Never => ast::clone_typekind(t, 1000000000),
-            ast::TypeKind::Error => ast::clone_typekind(t, 1000000000),
+            ast::TypeKind::Vec(ve) => t.clone(),
+            ast::TypeKind::Box(be) => t.clone(),
+            ast::TypeKind::Param(pn) => t.clone(),
+            ast::TypeKind::Never => t.clone(),
+            ast::TypeKind::Error => t.clone(),
         }
     }
 
@@ -1834,7 +1801,7 @@ mod consts {
                 }
             }
             if at < sub.names.len() && at < sub.tys.len() {
-                return ast::clone_typekind(&sub.tys[at], 1000000000);
+                return sub.tys[at].clone();
             }
         }
         let mut full: Vec<String> = names_copy(path);
@@ -1981,7 +1948,7 @@ mod consts {
             let key: String = ev.defs.key(d2);
             match ev.defs.nth(d2) {
                 None => {},
-                Some(di) => { let mut value: Option<CVal> = None; match ev.done.find(key.as_str()) { None => {}, Some(k) => { value = clone_opt(&ev.done.items[k]); }, } consts.insert(key.as_str(), Const { unit: ev.defs.items[di].unit.clone(), ty: ast::clone_typekind(&ev.defs.items[di].c.ty.kind, 1000000000), value: value }); },
+                Some(di) => { let mut value: Option<CVal> = None; match ev.done.find(key.as_str()) { None => {}, Some(k) => { value = ev.done.items[k].clone(); }, } consts.insert(key.as_str(), Const { unit: ev.defs.items[di].unit.clone(), ty: ev.defs.items[di].c.ty.kind.clone(), value: value }); },
             }
         }
         let back: diag::Diags = std::mem::replace(&mut ev.diags, diag::Diags { items: Vec::new(), aliases: Vec::new() });
@@ -2161,8 +2128,8 @@ mod consts {
     #[effects(alloc)]
     fn tydef_kind(k: &ast::TypeDefKind) -> TyDefKind {
         match k {
-            ast::TypeDefKind::Struct(fs) => { let mut out: Vec<NamedTy> = Vec::new(); for i in 0..fs.len() { out.push(NamedTy { name: fs[i].name.name.clone(), ty: ast::clone_typekind(&fs[i].ty.kind, 1000000000) }); } TyDefKind::Struct(out) },
-            ast::TypeDefKind::Enum(vs) => { let mut vout: Vec<VariantTy> = Vec::new(); for j in 0..vs.len() { let mut tys: Vec<ast::TypeKind> = Vec::new(); for q in 0..vs[j].payload.len() { tys.push(ast::clone_typekind(&vs[j].payload[q].kind, 1000000000)); } vout.push(VariantTy { name: vs[j].name.name.clone(), tys: tys }); } TyDefKind::Enum(vout) },
+            ast::TypeDefKind::Struct(fs) => { let mut out: Vec<NamedTy> = Vec::new(); for i in 0..fs.len() { out.push(NamedTy { name: fs[i].name.name.clone(), ty: fs[i].ty.kind.clone() }); } TyDefKind::Struct(out) },
+            ast::TypeDefKind::Enum(vs) => { let mut vout: Vec<VariantTy> = Vec::new(); for j in 0..vs.len() { let mut tys: Vec<ast::TypeKind> = Vec::new(); for q in 0..vs[j].payload.len() { tys.push(vs[j].payload[q].kind.clone()); } vout.push(VariantTy { name: vs[j].name.name.clone(), tys: tys }); } TyDefKind::Enum(vout) },
         }
     }
 
@@ -2288,7 +2255,7 @@ mod consts {
             let mut found: bool = false;
             match &ev.tydefs.items[di].kind {
                 TyDefKind::Struct(fs) => { return Built { hit: false, v: None }; },
-                TyDefKind::Enum(vs) => { for k in 0..vs.len() { if !found && vs[k].name.as_str() == last.as_str() { found = true; for q in 0..vs[k].tys.len() { raw.push(ast::clone_typekind(&vs[k].tys[q], 1000000000)); } } } },
+                TyDefKind::Enum(vs) => { for k in 0..vs.len() { if !found && vs[k].name.as_str() == last.as_str() { found = true; for q in 0..vs[k].tys.len() { raw.push(vs[k].tys[q].clone()); } } } },
             }
             if !found {
                 return Built { hit: false, v: None };

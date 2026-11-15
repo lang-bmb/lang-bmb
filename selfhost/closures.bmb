@@ -45,7 +45,7 @@ mod closures {
                 ast::ExprKind::Error => {},
             }
             if hit {
-                let inner: ast::Expr = ast::clone_expr(e, 1000000000);
+                let inner: ast::Expr = e.clone();
                 e.kind = ast::ExprKind::Old(Box::new(inner));
             }
         }
@@ -596,7 +596,7 @@ mod closures {
     #[effects(alloc)]
     fn bound_names(b: &ast::Block, out: &mut Vec<String>) -> () {
         stmt_names(b, out, 1000000000);
-        let mut c: ast::Block = ast::clone_block(b, 1000000000);
+        let mut c: ast::Block = b.clone();
         let mut v: Binds = Binds { names: std::mem::replace(out, Vec::new()) };
         ast::block_mut::<Binds>(&mut c, &mut v, true, 1000000000);
         std::mem::replace(out, v.names);
@@ -626,7 +626,7 @@ mod closures {
             None => {},
             Some(n) => own.push(n.name.clone()),
         }
-        let mut probe: ast::Closure = ast::clone_closure(c, 1000000000);
+        let mut probe: ast::Closure = c.clone();
         let mut v: Vars = Vars { used: Vec::new() };
         ast::exprs_each::<Vars>(&mut probe.pre, &mut v, true, 1000000000);
         ast::exprs_each::<Vars>(&mut probe.post, &mut v, true, 1000000000);
@@ -780,7 +780,7 @@ mod closures {
             ast::ExprKind::Error => {},
         }
         if put && *next < cs.len() {
-            let c: ast::Expr = ast::clone_expr(&cs[*next], 1000000000);
+            let c: ast::Expr = cs[*next].clone();
             *next = *next + 1;
             *e = c;
         }
@@ -964,15 +964,15 @@ mod closures {
         }
         let mut v: Lets = Lets { names: Vec::new(), tys: Vec::new() };
         stmt_lets(&d.body, &mut v, 1000000000);
-        let mut g: ast::FnDef = ast::clone_fndef(d, 1000000000);
+        let mut g: ast::FnDef = d.clone();
         ast::fn_exprs_mut::<Lets>(&mut g, &mut v, true, 1000000000);
         for j in 0..v.names.len() {
             if j < v.tys.len() {
-                out.insert(v.names[j].as_str(), Some(ast::clone_type(&v.tys[j], 1000000000)));
+                out.insert(v.names[j].as_str(), Some(v.tys[j].clone()));
             }
         }
         for k in 0..d.params.len() {
-            out.insert(d.params[k].name.name.as_str(), Some(ast::clone_type(&d.params[k].ty, 1000000000)));
+            out.insert(d.params[k].name.name.as_str(), Some(d.params[k].ty.clone()));
         }
         out
     }
@@ -1161,13 +1161,13 @@ mod closures {
         locate(&mut st.located, full.as_str(), tr.as_str(), cl.span);
         let mut uses: Vec<ast::Attr> = Vec::new();
         for u in 0..st.owner_uses.len() {
-            uses.push(ast::clone_attr(&st.owner_uses[u], 1000000000));
+            uses.push(st.owner_uses[u].clone());
         }
         let mut caps2: Vec<String> = Vec::new();
         for c3 in 0..caps.len() {
             caps2.push(caps[c3].clone());
         }
-        st.bodies.insert(full.as_str(), Body { c: ast::clone_closure(cl, 1000000000), caps: caps2, uses: uses });
+        st.bodies.insert(full.as_str(), Body { c: cl.clone(), caps: caps2, uses: uses });
         todo.push(Todo { j: j, sname: full, k: k, by_ref: by_ref, caps: caps });
     }
 
@@ -1550,7 +1550,7 @@ mod closures {
         let mut uses: Vec<ast::Attr> = Vec::new();
         for i in 0..d.attrs.len() {
             if d.attrs[i].name.name.as_str() == "uses" {
-                uses.push(ast::clone_attr(&d.attrs[i], 1000000000));
+                uses.push(d.attrs[i].clone());
             }
         }
         st.owner_uses = uses;
@@ -1664,7 +1664,7 @@ mod closures {
                 for g in 0..m.fns[i].generics.len() {
                     match &m.fns[i].generics[g].fn_bound {
                         None => {},
-                        Some(fb) => bounded.push(Bounded { k: g, name: m.fns[i].generics[g].name.name.clone(), bound: ast::clone_fnbound(fb, 1000000000), at: takes(&m.fns[i], m.fns[i].generics[g].name.name.as_str()), span: m.fns[i].generics[g].name.span }),
+                        Some(fb) => bounded.push(Bounded { k: g, name: m.fns[i].generics[g].name.name.clone(), bound: fb.clone(), at: takes(&m.fns[i], m.fns[i].generics[g].name.name.as_str()), span: m.fns[i].generics[g].name.span }),
                     }
                 }
                 let order: usize = st.generics.len();
@@ -1735,7 +1735,7 @@ mod closures {
     #[summary("만든 trait impl 하나에 그 클로저의 몸과 계약을 잇는다")]
     #[effects(alloc)]
     fn splice_impl(ti: &mut ast::TraitImpl, bd: &Body, unit: &str) -> () {
-        let mut c: ast::Closure = ast::clone_closure(&bd.c, 1000000000);
+        let mut c: ast::Closure = bd.c.clone();
         let mut caps: Vec<String> = Vec::new();
         for i in 0..bd.caps.len() {
             caps.push(bd.caps[i].clone());
@@ -1765,11 +1765,11 @@ mod closures {
                 splice(&mut ti.fns[k].body, c.post.as_slice());
             }
             if ti.fns[k].name.name.as_str() == "call" {
-                ti.fns[k].body = ast::clone_block(&c.body, 1000000000);
+                ti.fns[k].body = c.body.clone();
                 for u in 0..bd.uses.len()
                     invariant ti.fns.len() == nf,
                 {
-                    ti.fns[k].attrs.push(ast::clone_attr(&bd.uses[u], 1000000000));
+                    ti.fns[k].attrs.push(bd.uses[u].clone());
                 }
                 if c.post.len() > 0 {
                     let mut before: bool = false;
@@ -1778,7 +1778,7 @@ mod closures {
                     }
                     let mut ens: Vec<ast::Expr> = Vec::new();
                     for e in 0..c.post.len() {
-                        let mut x: ast::Expr = ast::clone_expr(&c.post[e], 1000000000);
+                        let mut x: ast::Expr = c.post[e].clone();
                         if before {
                             let mut bf: Before = Before { n: 0 };
                             ast::expr_mut::<Before>(&mut x, &mut bf, true, 1000000000);
@@ -1832,7 +1832,7 @@ mod closures {
         }
         for i in 0..b.stmts.len() {
             match &b.stmts[i] {
-                ast::Stmt::Let(sl) => { v.names.push(sl.name.name.clone()); v.tys.push(ast::clone_type(&sl.ty, 1000000000)); },
+                ast::Stmt::Let(sl) => { v.names.push(sl.name.name.clone()); v.tys.push(sl.ty.clone()); },
                 ast::Stmt::Assign(sa) => {},
                 ast::Stmt::While(sw) => stmt_lets(&sw.body, v, f - 1),
                 ast::Stmt::For(sf) => stmt_lets(&sf.body, v, f - 1),
