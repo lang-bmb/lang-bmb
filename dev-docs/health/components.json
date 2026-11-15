@@ -89,8 +89,8 @@
       },
       "ledger": {
         "session_tokens": null,
-        "gate_runs": null,
-        "undecided_runs": null,
+        "gate_runs": 5,
+        "undecided_runs": 0,
         "friction": [
           "`ast`는 자료 타입과 이름 표만 옮겼다(288줄). 검사기가 쓰는 순회(`exprs_mut`·`types_mut` 등, stage0 `ast.rs`의 약 340줄)는 검사기와 함께 옮긴다: 이 행의 배율은 그만큼 낮게 나온다",
           "구조체 꼴 변형이 없어(E0233) `ExprKind::If { .. }` 같은 변형은 구조체 하나를 담는 변형이다(`If(If)`, `Call(Call)`): 그대로 둠. 필드 이름 `requires`·`ensures`·`decreases`는 예약어라 `pre`·`post`·`measure`다",
