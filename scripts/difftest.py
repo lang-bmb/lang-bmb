@@ -160,7 +160,9 @@ def build(spec, out, bmb):
         files = sorted(p for g in globs for p in glob.glob(os.path.join(ROOT, g)))
         if not files:
             return f"no file matches {globs}"
-        cmd = [bmb, "build", *files, "-o", out]
+        # The gate proves the port once (check.sh "port proof", INF-40): a
+        # build finds the proofs of the files it shares with it in this cache.
+        cmd = [bmb, "build", "--cache", os.path.join(ROOT, "target", "port-proof"), *files, "-o", out]
     elif "rustc" in spec:
         cmd = ["rustc", "--edition", "2021", "-O", "--cap-lints", "allow"]
         cmd += [os.path.join(ROOT, spec["rustc"]), "-o", out]

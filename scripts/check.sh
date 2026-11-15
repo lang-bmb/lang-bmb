@@ -40,6 +40,17 @@ step "lint";    cargo clippy --all-targets --quiet -- -D warnings
 step "build"   # every test executable and target/debug/bmb, which the benches use
 cargo test --no-run --quiet --message-format=json-render-diagnostics > "$built"
 step "backlog"; python3 scripts/test_backlog.py > /dev/null
+# The port is proved once, into an empty cache: the jobs that read its proof
+# (port difftest, components, health S7) reuse it instead of each proving the
+# whole port again (backlog INF-40).
+step "port proof"
+rm -rf target/port-proof
+if ! target/debug/bmb verify --cache target/port-proof selfhost/*.bmb > "$built.port"; then
+  grep -v '"status":"verified"' "$built.port" | head -20
+  rm -f "$built.port"
+  exit 1
+fi
+rm -f "$built.port"
 
 step "test, bench m1, bench m1b, bench hname, bench edit (write, diff, ast), bench view, bench lean, bench repair, bench review, bench intent, bench impossible, bench bvb, bench m3, bench bnb, bench twin, bench bcb, bench brb, bench brb-encap, bench brb-encap-b, bench brb-effect, bench brb-hard, bench run_models, bench utility report, port difftest, health, progress report (concurrent)"
 # Bench sessions are independent (ADR-0025, backlog 2A-04): m1b and bvb run two at a time per agent.

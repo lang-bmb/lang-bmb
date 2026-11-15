@@ -171,6 +171,7 @@ def ported_stage0_lines(c, root):
 
 
 _PORT_ROWS = {}
+PORT_PROOF = Path("target") / "port-proof"
 
 
 def port_rows(root):
@@ -181,7 +182,10 @@ def port_rows(root):
     key = str(root)
     if key not in _PORT_ROWS:
         files = sorted(str(p) for p in (Path(root) / "selfhost").glob("*.bmb"))
-        r = subprocess.run([bmb_bin(root), "verify", *files], capture_output=True, text=True, cwd=root)
+        # The gate proves the port once (check.sh "port proof", INF-40); the
+        # jobs that read the proof find it in this cache and get the same rows.
+        cmd = [bmb_bin(root), "verify", "--cache", str(Path(root) / PORT_PROOF), *files]
+        r = subprocess.run(cmd, capture_output=True, text=True, cwd=root)
         rows = [json.loads(l) for l in r.stdout.splitlines() if l.startswith("{")]
         _PORT_ROWS[key] = [x for x in rows if "status" in x and "def" in x]
     return _PORT_ROWS[key]
