@@ -12,7 +12,7 @@ mod intern {
     }
 
     spec fn sound(t: &Interner) -> bool {
-        consistent::<String>(&t.ids, t.names.as_slice()) && t.names.len() < 1152921504606846975
+        consistent::<String>(&t.ids, t.names.as_slice())
     }
 
     // `names` is `before` with `k` after it.
@@ -106,7 +106,6 @@ mod intern {
         #[effects(alloc)]
         #[uses(appended, sound, std::collections::has_key, std::collections::maps)]
         fn intern(self: &mut Interner, s: &str) -> (r: usize)
-            requires room(self),
             ensures named(self, r, s), grew(self, old(self)),
         {
             let known: Option<usize> = self.ids.get(&String::from(s));
@@ -146,7 +145,7 @@ mod intern {
         // which borrows it).
         #[effects(alloc)]
         fn push_name(self: &Interner, i: usize, out: &mut String) -> ()
-            requires name_room(out.as_str(), self, i),
+            requires id_pos(self, i),
             ensures pushed_name(out.as_str(), old(out).as_str(), self, i),
         {
             out.push_str(self.names[i].as_str());

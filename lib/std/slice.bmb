@@ -49,7 +49,6 @@ mod slice {
     #[effects(alloc)]
     #[uses(before)]
     fn sort_indices<T: Ord>(keys: &[T]) -> (out: Vec<usize>)
-        requires bounded::<T>(keys),
         ensures sorted_order::<T>(out.as_slice(), keys),
     {
         let mut r: Vec<usize> = Vec::new();

@@ -1581,13 +1581,8 @@ mod fmt {
 
     #[summary("키들의 안정 정렬 순서: 자리의 열. 키는 바이트 사전순")]
     #[effects(alloc)]
-    #[uses(std::slice::bounded)]
     fn order(keys: &[String]) -> Vec<usize> {
-        if keys.len() < 1000000000 {
-            std::slice::sort_indices::<String>(keys)
-        } else {
-            Vec::new()
-        }
+        std::slice::sort_indices::<String>(keys)
     }
 
     #[summary("이 단위의 타입일 수 있는 이름: 인자와 무관하게 한 마디 이름의 타입이면 그 이름, 아니면 빈 글")]
