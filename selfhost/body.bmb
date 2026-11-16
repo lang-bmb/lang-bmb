@@ -141,10 +141,21 @@ mod body {
             }
         }
 
-        #[summary("s.as_bytes()의 받는 값. 다음 조각(4D-03e6)이 채운다")]
+        #[summary("&[u8] 매개변수에 주거나 색인한 s.as_bytes() (ADR-0050 §2): 글 값의 바이트, 읽기만")]
         #[effects(alloc)]
-        fn as_bytes_arg(self: &mut Body, cx: &mut FnCtx, base: &ast::Expr, recv: &ast::Expr, mode: Mode, f: usize) -> bool {
-            false
+        fn as_bytes_arg(self: &mut Body, cx: &mut FnCtx, base: &ast::Expr, recv: &ast::Expr, mode: Mode, f: usize) -> bool
+            decreases f * 3,
+        {
+            if f == 0 {
+                return false;
+            }
+            let no: Option<ast::TypeKind> = None;
+            let rt: ast::TypeKind = self.expr(cx, recv, &no, mode, f - 1);
+            if !is_text(&rt) {
+                return false;
+            }
+            self.types.insert(span_key(base.span).as_str(), bytes_ref());
+            true
         }
 
         #[summary("assert(e); 와 assert(e) by (bit_vector); : 실행 코드, proof 블록, proof fn의 몸에 (ADR-0048 §4)")]
@@ -827,9 +838,34 @@ mod body {
             ast::TypeKind::Char
         }
 
-        #[summary("char의 메서드. 다음 조각(4D-03e6c)이 채운다")]
+        #[summary("char의 메서드 (ADR-0050 §2): len_utf8")]
         #[effects(alloc)]
-        fn char_method(self: &mut Body, cx: &mut FnCtx, name: &ast::Ident, args: &[ast::Expr], mode: Mode, f: usize) -> ast::TypeKind {
+        fn char_method(self: &mut Body, cx: &mut FnCtx, name: &ast::Ident, args: &[ast::Expr], mode: Mode, f: usize) -> ast::TypeKind
+            decreases f * 3,
+        {
+            if f == 0 {
+                return ast::TypeKind::Error;
+            }
+            let no: Option<ast::TypeKind> = None;
+            for i in 0..args.len()
+                invariant 0 <= i && i <= args.len(),
+            {
+                self.expr(cx, &args[i], &no, mode, f - 1);
+            }
+            if name.name == "len_utf8" {
+                if args.len() == 0 {
+                    return ast::TypeKind::Int(ast::IntTy::Usize);
+                }
+                self.c.err("E0405", name.span, "`len_utf8` takes no arguments");
+                return ast::TypeKind::Error;
+            }
+            let msg: String = types::cat3("unknown method `", name.name.as_str(), "` of `char`");
+            let fix: String = char_missing(name.name.as_str());
+            if fix.len() > 0 {
+                self.c.help("E0404", name.span, msg.as_str(), fix.as_str());
+            } else {
+                self.c.err("E0404", name.span, msg.as_str());
+            }
             ast::TypeKind::Error
         }
 
@@ -3699,20 +3735,207 @@ mod body {
             }
         }
 
-        #[summary("글 인자: 다음 조각(4D-03e6)이 채운다")]
+        #[summary("&str 매개변수의 인자 (ADR-0050 §2): 문자열 리터럴, String의 s.as_str(), 넘겨받은 &str, 둘 가운데 하나의 &s[a..b]. Rust의 버릇인 String의 &s와 s는 E0218")]
         #[effects(alloc)]
-        fn text_arg(self: &mut Body, cx: &mut FnCtx, a: &ast::Expr, mode: Mode, f: usize) -> () {}
-
-        #[summary("String::new 따위 글의 내장 호출. 다음 조각(4D-03e6)이 채운다")]
-        #[effects(alloc)]
-        fn text_call(self: &mut Body, cx: &mut FnCtx, path: &[ast::Ident], args: &[ast::Expr], span: source::Span, mode: Mode, f: usize) -> ast::TypeKind {
-            ast::TypeKind::Error
+        fn text_arg(self: &mut Body, cx: &mut FnCtx, a: &ast::Expr, mode: Mode, f: usize) -> ()
+            decreases f * 3,
+        {
+            if f == 0 {
+                return;
+            }
+            let no: Option<ast::TypeKind> = None;
+            let key: String = span_key(a.span);
+            if is_str_lit(&a.kind) {
+                self.types.insert(key.as_str(), str_ref());
+                return;
+            }
+            match as_str_of(a) {
+                None => {},
+                Some(m) => { let rt: ast::TypeKind = self.expr(cx, &*m.recv, &no, mode, f - 1); if m.args.len() != 0 { self.c.err("E0405", m.name.span, "`as_str` takes no arguments"); } if !owned_text(&rt) { if !types::is_error(&rt) { self.c.err("E0404", m.name.span, types::cat3("`as_str` is not defined for `", types::text(&rt).as_str(), "`").as_str()); } return; } self.types.insert(key.as_str(), str_ref()); return; },
+            }
+            match slice_of(a) {
+                None => {},
+                Some(s) => { let bt: ast::TypeKind = self.text_operand(cx, &s.base, &no, mode, f - 1); let u: ast::TypeKind = ast::TypeKind::Int(ast::IntTy::Usize); let hint: Option<ast::TypeKind> = Some(u.clone()); let lt: ast::TypeKind = self.expr(cx, &s.lo, &hint, mode, f - 1); self.expect_ty(&lt, &u, s.lo.span); let ht: ast::TypeKind = self.expr(cx, &s.hi, &hint, mode, f - 1); self.expect_ty(&ht, &u, s.hi.span); if !is_text(&bt) { if !types::is_error(&bt) { self.c.help("E0401", a.span, types::cat3("expected `&str`, found a range of `", types::text(&bt).as_str(), "`").as_str(), "a range argument `&s[a..b]` is of a `String` or a `&str`"); } return; } self.types.insert(key.as_str(), str_ref()); return; },
+            }
+            match ref_var(a) {
+                None => {},
+                Some(x) => { let t: ast::TypeKind = self.expr(cx, &x, &no, mode, f - 1); if owned_text(&t) { let r: String = types::cat2(fmt::expr_text(&x).as_str(), ".as_str()"); self.c.fixed("E0218", a.span, "a `String` is not a `&str`", types::cat3("pass `", r.as_str(), "`").as_str(), r.as_str()); } else if !types::is_error(&t) { self.c.err("E0401", a.span, types::cat3("expected `&str`, found `&", types::text(&t).as_str(), "`").as_str()); } return; },
+            }
+            let at: ast::TypeKind = self.expr(cx, a, &no, mode, f - 1);
+            if types::same(&at, &str_ref()) || types::is_error(&at) || is_never(&at) {
+                return;
+            }
+            if owned_text(&at) {
+                let r: String = types::cat2(fmt::expr_text(a).as_str(), ".as_str()");
+                self.c.fixed("E0218", a.span, "a `String` is not a `&str`", types::cat3("pass `", r.as_str(), "`").as_str(), r.as_str());
+            } else {
+                self.c.err("E0401", a.span, types::cat3("expected `&str`, found `", types::text(&at).as_str(), "`").as_str());
+            }
         }
 
-        #[summary("글의 메서드. 다음 조각(4D-03e6c)이 채운다")]
+        #[summary("String::new(), String::with_capacity(n), String::from(t), String::from_utf8(v), char::from_u32(x) (ADR-0050 §2)")]
         #[effects(alloc)]
-        fn text_method(self: &mut Body, cx: &mut FnCtx, recv: &ast::Expr, rt: &ast::TypeKind, name: &ast::Ident, args: &[ast::Expr], span: source::Span, mode: Mode, f: usize) -> ast::TypeKind {
-            ast::TypeKind::Error
+        fn text_call(self: &mut Body, cx: &mut FnCtx, path: &[ast::Ident], args: &[ast::Expr], span: source::Span, mode: Mode, f: usize) -> ast::TypeKind
+            decreases f * 3,
+        {
+            if f == 0 || path.len() != 2 {
+                return ast::TypeKind::Error;
+            }
+            let no: Option<ast::TypeKind> = None;
+            let what: String = types::cat3("`", decls::path_text(path).as_str(), "`");
+            let owner: String = path[0].name.clone();
+            let last: String = path[1].name.clone();
+            if !exec_mode(mode) && owner == "String" {
+                self.c.err("E0503", span, types::cat2(what.as_str(), " is not allowed in a specification").as_str());
+            }
+            let arity: usize = if last == "new" {
+                0
+            } else {
+                1
+            };
+            if args.len() != arity {
+                self.c.help("E0405", span, decls::counts(types::cat2(what.as_str(), " takes ").as_str(), arity, " argument(s), found ", args.len(), "").as_str(), "Rust's signatures: `String::new()`, `String::with_capacity(n)`, `String::from(t)`, `String::from_utf8(v)`, `char::from_u32(x)`");
+                for i in 0..args.len()
+                    invariant 0 <= i && i <= args.len(),
+                {
+                    self.expr(cx, &args[i], &no, mode, f - 1);
+                }
+                return ast::TypeKind::Error;
+            }
+            if exec_mode(mode) && (last == "new" || last == "with_capacity" || last == "from") {
+                need_own(cx, alloc_effect(), what.as_str());
+            }
+            if owner == "String" && last == "new" {
+                return ast::TypeKind::String;
+            }
+            if args.len() == 0 {
+                return ast::TypeKind::Error;
+            }
+            if owner == "String" && last == "with_capacity" {
+                let u: ast::TypeKind = ast::TypeKind::Int(ast::IntTy::Usize);
+                let hint: Option<ast::TypeKind> = Some(u.clone());
+                let t: ast::TypeKind = self.expr(cx, &args[0], &hint, mode, f - 1);
+                self.expect_ty(&t, &u, args[0].span);
+                return ast::TypeKind::String;
+            }
+            if owner == "String" && last == "from" {
+                self.text_arg(cx, &args[0], mode, f - 1);
+                return ast::TypeKind::String;
+            }
+            if owner == "String" && last == "from_utf8" {
+                let v: ast::TypeKind = ast::TypeKind::Vec(types::boxed(ast::TypeKind::Int(ast::IntTy::U8)));
+                let want: Option<ast::TypeKind> = Some(v.clone());
+                let vt: ast::TypeKind = self.expr(cx, &args[0], &want, mode, f - 1);
+                self.expect_ty(&vt, &v, args[0].span);
+                let mut both: Vec<ast::Type> = Vec::new();
+                both.push(types::ty(ast::TypeKind::String));
+                both.push(types::ty(v));
+                return ast::TypeKind::Named(single("Result"), both);
+            }
+            let w: ast::TypeKind = ast::TypeKind::Int(ast::IntTy::U32);
+            let scalar: Option<ast::TypeKind> = Some(w.clone());
+            let ct: ast::TypeKind = self.expr(cx, &args[0], &scalar, mode, f - 1);
+            self.expect_ty(&ct, &w, args[0].span);
+            option_of(ast::TypeKind::Char)
+        }
+
+        #[summary("글의 메서드 (ADR-0050 §2): len, is_char_boundary, String의 push_str·push·clone. as_str과 as_bytes는 인자다 (또는 색인, s.as_bytes()[i])")]
+        #[effects(alloc)]
+        fn text_method(self: &mut Body, cx: &mut FnCtx, recv: &ast::Expr, rt: &ast::TypeKind, name: &ast::Ident, args: &[ast::Expr], span: source::Span, mode: Mode, f: usize) -> ast::TypeKind
+            decreases f * 3,
+        {
+            if f == 0 {
+                return ast::TypeKind::Error;
+            }
+            let no: Option<ast::TypeKind> = None;
+            let m: String = name.name.clone();
+            let owned: bool = owned_text(rt);
+            let mut arity: usize = 0;
+            let mut mutates: bool = false;
+            let mut ret: ast::TypeKind = ast::TypeKind::Unit;
+            if m == "len" {
+                ret = ast::TypeKind::Int(ast::IntTy::Usize);
+            } else if m == "is_char_boundary" {
+                arity = 1;
+                ret = ast::TypeKind::Bool;
+            } else if (m == "push_str" || m == "push") && owned {
+                arity = 1;
+                mutates = true;
+            } else if m == "clone" && owned {
+                ret = ast::TypeKind::String;
+            } else if m == "as_str" || m == "as_bytes" {
+                for i in 0..args.len()
+                    invariant 0 <= i && i <= args.len(),
+                {
+                    self.expr(cx, &args[i], &no, mode, f - 1);
+                }
+                let msg: String = types::cat3("`.", m.as_str(), "()` may only appear directly as a call argument");
+                if m == "as_bytes" {
+                    self.c.help("E0409", span, msg.as_str(), "pass it to a `&[u8]` parameter, or read a byte: `s.as_bytes()[i]`");
+                } else {
+                    self.c.help("E0409", span, msg.as_str(), "pass it to a `&str` parameter");
+                }
+                return ast::TypeKind::Error;
+            } else {
+                for i in 0..args.len()
+                    invariant 0 <= i && i <= args.len(),
+                {
+                    self.text_operand(cx, &args[i], &no, mode, f - 1);
+                }
+                self.c.help("E0404", name.span, types::cat5("unknown method `", m.as_str(), "` of `", types::text(rt).as_str(), "`").as_str(), text_missing(m.as_str()).as_str());
+                return ast::TypeKind::Error;
+            }
+            if args.len() != arity {
+                self.c.err("E0405", name.span, decls::counts(types::cat3("`", m.as_str(), "` takes ").as_str(), arity, " argument(s), found ", args.len(), "").as_str());
+                for i in 0..args.len()
+                    invariant 0 <= i && i <= args.len(),
+                {
+                    self.expr(cx, &args[i], &no, mode, f - 1);
+                }
+                return ast::TypeKind::Error;
+            }
+            let call: String = types::cat3("`.", m.as_str(), "()`");
+            if !exec_mode(mode) && mutates {
+                if cx.ghost {
+                    self.ghost_violation(span, call.as_str(), "change the value outside the `proof` block");
+                } else {
+                    self.c.err("E0503", span, types::cat2(call.as_str(), " is not allowed in a specification").as_str());
+                }
+            }
+            if !exec_mode(mode) && m == "clone" {
+                self.c.fixed("E0503", span, "`.clone()` is not allowed in a specification", "a specification reads the value itself: drop `.clone()`", fmt::expr_text(recv).as_str());
+            }
+            if exec_mode(mode) && (m == "push_str" || m == "push" || m == "clone") {
+                need_own(cx, alloc_effect(), types::cat3("`String::", m.as_str(), "`").as_str());
+            }
+            if args.len() > 0 {
+                if m == "is_char_boundary" {
+                    let u: ast::TypeKind = ast::TypeKind::Int(ast::IntTy::Usize);
+                    let hint: Option<ast::TypeKind> = Some(u.clone());
+                    let t: ast::TypeKind = self.expr(cx, &args[0], &hint, mode, f - 1);
+                    self.expect_ty(&t, &u, args[0].span);
+                } else if m == "push_str" {
+                    self.text_arg(cx, &args[0], mode, f - 1);
+                } else if m == "push" {
+                    let c: ast::TypeKind = ast::TypeKind::Char;
+                    let want: Option<ast::TypeKind> = Some(c.clone());
+                    let pt: ast::TypeKind = self.expr(cx, &args[0], &want, mode, f - 1);
+                    if types::same(&pt, &ast::TypeKind::Int(ast::IntTy::U8)) {
+                        self.c.help("E0401", args[0].span, "expected `char`, found `u8`: a `String` holds characters", "push a character literal `'a'`, or the byte's character `char::from_u32(u32::from(b))`");
+                    } else {
+                        self.expect_ty(&pt, &c, args[0].span);
+                    }
+                }
+            }
+            if mutates && exec_mode(mode) && !writable(cx, recv, 1000000000) && !types::is_error(rt) {
+                let need: String = types::cat2(call.as_str(), " needs a mutable `String`");
+                if is_ref(rt) {
+                    self.c.help("E0408", recv.span, need.as_str(), "take the parameter as `&mut String`");
+                } else {
+                    self.c.help("E0408", recv.span, need.as_str(), "declare it with `let mut`");
+                }
+            }
+            ret
         }
 
         #[summary("견줌의 글 피연산자: 문자열 리터럴은 거기서 &str다 (Rust의 버릇 s == \"abc\", ADR-0050 §2)")]
@@ -4350,6 +4573,9 @@ mod body {
         }
     }
 
+    #[summary("&s[a..b]의 글과 두 끝")]
+    struct SliceOf { base: ast::Expr, lo: ast::Expr, hi: ast::Expr }
+
     #[summary("check_slots의 한 자리: at은 인자(또는 필드)의 차례, ty는 선언된 타입")]
     struct Slot { at: usize, ty: ast::TypeKind }
 
@@ -4596,6 +4822,48 @@ mod body {
         }
     }
 
+    #[summary("e가 x.as_str(..)면 그 메서드 호출")]
+    #[effects(alloc)]
+    fn as_str_of(e: &ast::Expr) -> Option<ast::Method> {
+        match &e.kind {
+            ast::ExprKind::Int(q4_ek_int0, q4_ek_int1) => None,
+            ast::ExprKind::Float(q4_ek_float0) => None,
+            ast::ExprKind::ByteLit(q4_ek_bytelit0) => None,
+            ast::ExprKind::ByteStr(q4_ek_bytestr0) => None,
+            ast::ExprKind::StrLit(q4_ek_strlit0) => None,
+            ast::ExprKind::CharLit(q4_ek_charlit0) => None,
+            ast::ExprKind::Bool(q4_ek_bool0) => None,
+            ast::ExprKind::Unit => None,
+            ast::ExprKind::Var(q4_ek_var0) => None,
+            ast::ExprKind::Call(q4_ek_call0) => None,
+            ast::ExprKind::Method(m) => { if m.name.name == "as_str" { Some(m.clone()) } else { None } },
+            ast::ExprKind::Index(q4_ek_index0, q4_ek_index1) => None,
+            ast::ExprKind::Unary(q4_ek_unary0, q4_ek_unary1) => None,
+            ast::ExprKind::Binary(q4_ek_binary0, q4_ek_binary1, q4_ek_binary2) => None,
+            ast::ExprKind::Ref(q4_ek_ref0, q4_ek_ref1) => None,
+            ast::ExprKind::If(q4_ek_if0) => None,
+            ast::ExprKind::Block(q4_ek_block0) => None,
+            ast::ExprKind::Array(q4_ek_array0) => None,
+            ast::ExprKind::Repeat(q4_ek_repeat0) => None,
+            ast::ExprKind::Old(q4_ek_old0) => None,
+            ast::ExprKind::Quant(q4_ek_quant0) => None,
+            ast::ExprKind::Trigger(q4_ek_trigger0) => None,
+            ast::ExprKind::Closure(q4_ek_closure0) => None,
+            ast::ExprKind::StructLit(q4_ek_structlit0) => None,
+            ast::ExprKind::Path(q4_ek_path0) => None,
+            ast::ExprKind::Deref(q4_ek_deref0) => None,
+            ast::ExprKind::Field(q4_ek_field0, q4_ek_field1) => None,
+            ast::ExprKind::Match(q4_ek_match0) => None,
+            ast::ExprKind::Return(q4_ek_return0) => None,
+            ast::ExprKind::Try(q4_ek_try0) => None,
+            ast::ExprKind::Loop(q4_ek_loop0) => None,
+            ast::ExprKind::Break(q4_ek_break0) => None,
+            ast::ExprKind::Continue(q4_ek_continue0) => None,
+            ast::ExprKind::Range(q4_ek_range0) => None,
+            ast::ExprKind::Error => None,
+        }
+    }
+
     #[summary("lo가 더 앞이면 고른 것을 바꾼다")]
     #[effects(alloc)]
     fn better(best: &mut Best, lo: u32, t: &ast::TypeKind) -> () {
@@ -4705,6 +4973,12 @@ mod body {
         segs.len() == 2 && (segs[0].name == "Option" && (segs[1].name == "Some" || segs[1].name == "None") || segs[0].name == "Result" && (segs[1].name == "Ok" || segs[1].name == "Err"))
     }
 
+    #[summary("&[u8]")]
+    #[effects(alloc)]
+    fn bytes_ref() -> ast::TypeKind {
+        ast::TypeKind::Ref(false, types::boxed(ast::TypeKind::Slice(types::boxed(ast::TypeKind::Int(ast::IntTy::U8)))))
+    }
+
     #[summary("정수의 바이트들의 타입: [u8; w / 8]")]
     #[effects(alloc)]
     fn bytes_ty(i: ast::IntTy) -> ast::TypeKind {
@@ -4762,6 +5036,18 @@ mod body {
         } else {
             types::cat3(xs.as_str(), " as ", t)
         }
+    }
+
+    #[summary("모르는 char 메서드 m의 고침 글 (없으면 빈 글)")]
+    #[effects(alloc)]
+    fn char_missing(m: &str) -> String {
+        if m == "to_digit" || m == "is_digit" || m == "is_ascii_digit" || m == "is_alphabetic" || m == "is_whitespace" {
+            return String::from("compare the scalar value: `'0' <= c && c <= '9'`");
+        }
+        if m == "to_string" {
+            return String::from("build a `String` and `push(c)`");
+        }
+        String::new()
     }
 
     #[summary("checked_add, checked_sub, checked_mul, checked_div, checked_rem: 결과가 범위 안일 때만 Some")]
@@ -6233,6 +6519,30 @@ mod body {
         }
     }
 
+    #[summary("t가 String인가")]
+    #[effects(pure)]
+    fn is_string(t: &ast::TypeKind) -> bool {
+        match t {
+            ast::TypeKind::Int(q4_tk_int0) => false,
+            ast::TypeKind::F64 => false,
+            ast::TypeKind::Bool => false,
+            ast::TypeKind::Unit => false,
+            ast::TypeKind::Char => false,
+            ast::TypeKind::String => true,
+            ast::TypeKind::Str => false,
+            ast::TypeKind::Array(q4_tk_array0, q4_tk_array1) => false,
+            ast::TypeKind::ArrayN(q4_tk_arrayn0, q4_tk_arrayn1) => false,
+            ast::TypeKind::Slice(q4_tk_slice0) => false,
+            ast::TypeKind::Ref(q4_tk_ref0, q4_tk_ref1) => false,
+            ast::TypeKind::Named(q4_tk_named0, q4_tk_named1) => false,
+            ast::TypeKind::Vec(q4_tk_vec0) => false,
+            ast::TypeKind::Box(q4_tk_box0) => false,
+            ast::TypeKind::Param(q4_tk_param0) => false,
+            ast::TypeKind::Never => false,
+            ast::TypeKind::Error => false,
+        }
+    }
+
     #[summary("글인가: String, str, 또는 그것의 참조")]
     #[effects(alloc)]
     fn is_text(t: &ast::TypeKind) -> bool {
@@ -6818,6 +7128,15 @@ mod body {
         ast::TypeKind::Named(single("Option"), targs)
     }
 
+    #[summary("t가 가진 글인가: String, 또는 그것의 참조")]
+    #[effects(alloc)]
+    fn owned_text(t: &ast::TypeKind) -> bool {
+        match ref_inner(t) {
+            None => is_string(t),
+            Some(inner) => is_string(&inner),
+        }
+    }
+
     #[summary("t가 수신자의 타입인가: by_self면 Self, 아니면 타입 owner")]
     #[effects(alloc)]
     fn owns(t: &ast::TypeKind, owner: &str, by_self: bool) -> bool {
@@ -7065,6 +7384,48 @@ mod body {
         }
     }
 
+    #[summary("e가 &x나 &mut x(x는 변수)면 x")]
+    #[effects(alloc)]
+    fn ref_var(e: &ast::Expr) -> Option<ast::Expr> {
+        match &e.kind {
+            ast::ExprKind::Int(q4_ek_int0, q4_ek_int1) => None,
+            ast::ExprKind::Float(q4_ek_float0) => None,
+            ast::ExprKind::ByteLit(q4_ek_bytelit0) => None,
+            ast::ExprKind::ByteStr(q4_ek_bytestr0) => None,
+            ast::ExprKind::StrLit(q4_ek_strlit0) => None,
+            ast::ExprKind::CharLit(q4_ek_charlit0) => None,
+            ast::ExprKind::Bool(q4_ek_bool0) => None,
+            ast::ExprKind::Unit => None,
+            ast::ExprKind::Var(q4_ek_var0) => None,
+            ast::ExprKind::Call(q4_ek_call0) => None,
+            ast::ExprKind::Method(q4_ek_method0) => None,
+            ast::ExprKind::Index(q4_ek_index0, q4_ek_index1) => None,
+            ast::ExprKind::Unary(q4_ek_unary0, q4_ek_unary1) => None,
+            ast::ExprKind::Binary(q4_ek_binary0, q4_ek_binary1, q4_ek_binary2) => None,
+            ast::ExprKind::Ref(q4_m, x) => { match ast::var_name(&**x) { None => None, Some(v) => Some((**x).clone()), } },
+            ast::ExprKind::If(q4_ek_if0) => None,
+            ast::ExprKind::Block(q4_ek_block0) => None,
+            ast::ExprKind::Array(q4_ek_array0) => None,
+            ast::ExprKind::Repeat(q4_ek_repeat0) => None,
+            ast::ExprKind::Old(q4_ek_old0) => None,
+            ast::ExprKind::Quant(q4_ek_quant0) => None,
+            ast::ExprKind::Trigger(q4_ek_trigger0) => None,
+            ast::ExprKind::Closure(q4_ek_closure0) => None,
+            ast::ExprKind::StructLit(q4_ek_structlit0) => None,
+            ast::ExprKind::Path(q4_ek_path0) => None,
+            ast::ExprKind::Deref(q4_ek_deref0) => None,
+            ast::ExprKind::Field(q4_ek_field0, q4_ek_field1) => None,
+            ast::ExprKind::Match(q4_ek_match0) => None,
+            ast::ExprKind::Return(q4_ek_return0) => None,
+            ast::ExprKind::Try(q4_ek_try0) => None,
+            ast::ExprKind::Loop(q4_ek_loop0) => None,
+            ast::ExprKind::Break(q4_ek_break0) => None,
+            ast::ExprKind::Continue(q4_ek_continue0) => None,
+            ast::ExprKind::Range(q4_ek_range0) => None,
+            ast::ExprKind::Error => None,
+        }
+    }
+
     #[summary("자리 식이 출발하는 변수: p.a.x, *p, a[i]의 p")]
     #[effects(alloc)]
     fn root_name(e: &ast::Expr, f: usize) -> Option<String>
@@ -7206,6 +7567,90 @@ mod body {
             ast::TypeKind::Param(q4_tk_param0) => None,
             ast::TypeKind::Never => None,
             ast::TypeKind::Error => None,
+        }
+    }
+
+    #[summary("x[lo..hi]면 그 셋")]
+    #[effects(alloc)]
+    fn slice_index(e: &ast::Expr) -> Option<SliceOf> {
+        match &e.kind {
+            ast::ExprKind::Int(q4_ek_int0, q4_ek_int1) => None,
+            ast::ExprKind::Float(q4_ek_float0) => None,
+            ast::ExprKind::ByteLit(q4_ek_bytelit0) => None,
+            ast::ExprKind::ByteStr(q4_ek_bytestr0) => None,
+            ast::ExprKind::StrLit(q4_ek_strlit0) => None,
+            ast::ExprKind::CharLit(q4_ek_charlit0) => None,
+            ast::ExprKind::Bool(q4_ek_bool0) => None,
+            ast::ExprKind::Unit => None,
+            ast::ExprKind::Var(q4_ek_var0) => None,
+            ast::ExprKind::Call(q4_ek_call0) => None,
+            ast::ExprKind::Method(q4_ek_method0) => None,
+            ast::ExprKind::Index(b, i) => { match range_of(&**i) { None => None, Some(r) => Some(SliceOf { base: (**b).clone(), lo: (*r.lo).clone(), hi: (*r.hi).clone() }), } },
+            ast::ExprKind::Unary(q4_ek_unary0, q4_ek_unary1) => None,
+            ast::ExprKind::Binary(q4_ek_binary0, q4_ek_binary1, q4_ek_binary2) => None,
+            ast::ExprKind::Ref(q4_ek_ref0, q4_ek_ref1) => None,
+            ast::ExprKind::If(q4_ek_if0) => None,
+            ast::ExprKind::Block(q4_ek_block0) => None,
+            ast::ExprKind::Array(q4_ek_array0) => None,
+            ast::ExprKind::Repeat(q4_ek_repeat0) => None,
+            ast::ExprKind::Old(q4_ek_old0) => None,
+            ast::ExprKind::Quant(q4_ek_quant0) => None,
+            ast::ExprKind::Trigger(q4_ek_trigger0) => None,
+            ast::ExprKind::Closure(q4_ek_closure0) => None,
+            ast::ExprKind::StructLit(q4_ek_structlit0) => None,
+            ast::ExprKind::Path(q4_ek_path0) => None,
+            ast::ExprKind::Deref(q4_ek_deref0) => None,
+            ast::ExprKind::Field(q4_ek_field0, q4_ek_field1) => None,
+            ast::ExprKind::Match(q4_ek_match0) => None,
+            ast::ExprKind::Return(q4_ek_return0) => None,
+            ast::ExprKind::Try(q4_ek_try0) => None,
+            ast::ExprKind::Loop(q4_ek_loop0) => None,
+            ast::ExprKind::Break(q4_ek_break0) => None,
+            ast::ExprKind::Continue(q4_ek_continue0) => None,
+            ast::ExprKind::Range(q4_ek_range0) => None,
+            ast::ExprKind::Error => None,
+        }
+    }
+
+    #[summary("&s[a..b]면 글과 두 끝")]
+    #[effects(alloc)]
+    fn slice_of(e: &ast::Expr) -> Option<SliceOf> {
+        match &e.kind {
+            ast::ExprKind::Int(q4_ek_int0, q4_ek_int1) => None,
+            ast::ExprKind::Float(q4_ek_float0) => None,
+            ast::ExprKind::ByteLit(q4_ek_bytelit0) => None,
+            ast::ExprKind::ByteStr(q4_ek_bytestr0) => None,
+            ast::ExprKind::StrLit(q4_ek_strlit0) => None,
+            ast::ExprKind::CharLit(q4_ek_charlit0) => None,
+            ast::ExprKind::Bool(q4_ek_bool0) => None,
+            ast::ExprKind::Unit => None,
+            ast::ExprKind::Var(q4_ek_var0) => None,
+            ast::ExprKind::Call(q4_ek_call0) => None,
+            ast::ExprKind::Method(q4_ek_method0) => None,
+            ast::ExprKind::Index(q4_ek_index0, q4_ek_index1) => None,
+            ast::ExprKind::Unary(q4_ek_unary0, q4_ek_unary1) => None,
+            ast::ExprKind::Binary(q4_ek_binary0, q4_ek_binary1, q4_ek_binary2) => None,
+            ast::ExprKind::Ref(m, x) => { if *m { None } else { slice_index(&**x) } },
+            ast::ExprKind::If(q4_ek_if0) => None,
+            ast::ExprKind::Block(q4_ek_block0) => None,
+            ast::ExprKind::Array(q4_ek_array0) => None,
+            ast::ExprKind::Repeat(q4_ek_repeat0) => None,
+            ast::ExprKind::Old(q4_ek_old0) => None,
+            ast::ExprKind::Quant(q4_ek_quant0) => None,
+            ast::ExprKind::Trigger(q4_ek_trigger0) => None,
+            ast::ExprKind::Closure(q4_ek_closure0) => None,
+            ast::ExprKind::StructLit(q4_ek_structlit0) => None,
+            ast::ExprKind::Path(q4_ek_path0) => None,
+            ast::ExprKind::Deref(q4_ek_deref0) => None,
+            ast::ExprKind::Field(q4_ek_field0, q4_ek_field1) => None,
+            ast::ExprKind::Match(q4_ek_match0) => None,
+            ast::ExprKind::Return(q4_ek_return0) => None,
+            ast::ExprKind::Try(q4_ek_try0) => None,
+            ast::ExprKind::Loop(q4_ek_loop0) => None,
+            ast::ExprKind::Break(q4_ek_break0) => None,
+            ast::ExprKind::Continue(q4_ek_continue0) => None,
+            ast::ExprKind::Range(q4_ek_range0) => None,
+            ast::ExprKind::Error => None,
         }
     }
 
@@ -7418,6 +7863,37 @@ mod body {
             ast::TypeKind::Never => false,
             ast::TypeKind::Error => false,
         }
+    }
+
+    #[summary("모르는 글 메서드 m의 고침 글")]
+    #[effects(alloc)]
+    fn text_missing(m: &str) -> String {
+        let std: String = String::from("the text methods are the built-in `len`, `as_bytes`, `as_str`, `is_char_boundary`, `push`, `push_str`, `clone`, and `std::str`'s `starts_with`, `ends_with`, `find`, `strip_prefix`, `strip_suffix`, `trim_ascii_start`, `trim_ascii_end`, `decode_utf8`");
+        if m == "push_str" || m == "push" || m == "clone" {
+            return String::from("a `&str` is read-only: build a `String` (`String::from(t)`)");
+        }
+        if m == "to_string" || m == "to_owned" || m == "into" {
+            return String::from("own it: `String::from(t)` (one form, ADR-0050 §2)");
+        }
+        if m == "chars" || m == "bytes" || m == "char_indices" || m == "iter" {
+            return String::from("read the bytes with `while` and `s.as_bytes()[i]` (no iterators, ADR-0049)");
+        }
+        if m == "is_empty" {
+            return String::from("compare `s.len() == 0`");
+        }
+        if m == "trim" || m == "trim_start" || m == "trim_end" {
+            return types::cat2("`std::str` trims ASCII whitespace and returns the position: `s.trim_ascii_start()`, `s.trim_ascii_end()`, then `&s[a..b]`; ", std.as_str());
+        }
+        if m == "contains" {
+            return types::cat2("`s.find(p)` is `Some` where `s` contains `p` (`std::str`); ", std.as_str());
+        }
+        if m == "split_once" || m == "split" || m == "lines" {
+            return types::cat2("find the separator with `s.find(p)` and slice at the position (`std::str`); ", std.as_str());
+        }
+        if m == "parse" || m == "to_uppercase" || m == "to_lowercase" || m == "replace" {
+            return types::cat2("not in the standard library yet: write it over the bytes; ", std.as_str());
+        }
+        std
     }
 
     #[effects(alloc)]
