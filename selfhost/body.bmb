@@ -1551,6 +1551,19 @@ mod body {
             }
         }
 
+        #[summary("프로그램 전체: 선언을 모으고(1패스), 단위마다 몸을 검사하고(2패스), 재귀와 main을 본다")]
+        #[effects(alloc)]
+        fn check_program(self: &mut Body, p: &ast::Program) -> () {
+            self.c.collect(p);
+            for i in 0..p.mods.len()
+                invariant 0 <= i && i <= p.mods.len(),
+            {
+                self.check_mod(&p.mods[i], "", 1000000000);
+            }
+            self.check_recursion(p);
+            self.check_main(p);
+        }
+
         #[summary("재귀: 호출 그래프의 순환마다 번호를 적고(recursive), 순환 위의 정의에 decreases가 없으면 E0507 (경계 있는 Self의 호출을 지나는 순환은 trait_cycles가 E0207로 알린다). 타입 매개변수를 더 큰 타입에 싸서 넘기는 재귀 호출은 E0430 (인스턴스가 끝나지 않는다)")]
         #[effects(alloc)]
         fn check_recursion(self: &mut Body, p: &ast::Program) -> () {
@@ -3203,6 +3216,55 @@ mod body {
                 types::AdtKind::Enum(xs) => { is_enum = true; for i2 in 0..xs.len() invariant 0 <= i2 && i2 <= xs.len(), { let mut tys: Vec<ast::TypeKind> = Vec::new(); for j in 0..xs[i2].tys.len() invariant 0 <= j && j <= xs[i2].tys.len(), { tys.push(types::subst(&xs[i2].tys[j], &m)); } vs.push(types::VariantSig { name: xs[i2].name.clone(), tys: tys }); } },
             }
             Variants { found: is_enum, path: self.c.adts.items[at].path.clone(), vs: vs }
+        }
+
+        #[summary("탈출이 있는 정의들(제 효과에 panic, ADR-0029)을 부르는 쪽으로, 그리고 그런 impl 함수가 있는 trait 메서드로 닫은 것. 이름의 순서로")]
+        #[effects(alloc)]
+        fn may_untrusted(self: &Body) -> Vec<String> {
+            let mut out: Vec<String> = Vec::new();
+            let total: usize = self.needs.len();
+            for n in 0..total
+                invariant 0 <= n && n <= total,
+            {
+                match self.needs.nth(n) {
+                    None => {},
+                    Some(at) => { if self.needs.items[at].own.panic { out.push(self.needs.key(n)); } },
+                }
+            }
+            let callers: usize = self.calls.len();
+            let mut grew: bool = true;
+            let mut fuel: usize = 1000000000;
+            while grew && fuel > 0
+                invariant 0 <= fuel,
+                decreases fuel,
+            {
+                fuel = fuel - 1;
+                grew = false;
+                for n in 0..callers
+                    invariant 0 <= n && n <= callers,
+                {
+                    match self.calls.nth(n) {
+                        None => {},
+                        Some(at) => { let caller: String = self.calls.key(n); if !types::has(out.as_slice(), caller.as_str()) && any_in(self.calls.items[at].as_slice(), out.as_slice()) { out.push(caller.clone()); grew = true; } },
+                    }
+                }
+                let mut more: Vec<String> = Vec::new();
+                for i in 0..out.len()
+                    invariant 0 <= i && i <= out.len(),
+                {
+                    match trait_decl_of(out[i].as_str()) {
+                        None => {},
+                        Some(decl) => { if !types::has(out.as_slice(), decl.as_str()) { types::add(&mut more, decl.as_str()); } },
+                    }
+                }
+                for i in 0..more.len()
+                    invariant 0 <= i && i <= more.len(),
+                {
+                    out.push(more[i].clone());
+                    grew = true;
+                }
+            }
+            decls::sorted(out.as_slice())
         }
 
         #[summary("decreases의 타입: 정수, 재귀 열거형, 또는 자기를 담는 구조체")]
@@ -5580,6 +5642,141 @@ mod body {
     #[summary("변수가 인자로 쓰인 호출: 자리, 호출의 경로, 몇 번째 인자인가")]
     struct CallUse { lo: u32, path: Vec<ast::Ident>, k: usize }
 
+    #[summary("검사를 마친 프로그램: 메서드 호출이 경로 호출로 풀리고 상수의 쓰임이 리터럴 나무가 된 프로그램, 검사기의 표, 신뢰되지 않을 수 있는 정의들")]
+    struct Checked { program: ast::Program, b: Body, untrusted: Vec<String> }
+
+    #[summary("const의 쓰임마다 그 값의 리터럴 나무로 고쳐 쓰는 손님 (stage0 consts::literal_tree): 마디마다 제 자리(파일 source::CONST_VALUES, next부터)와 타입을 types에 적는다")]
+    struct ConstTrees { uses: table::Table<ConstUse>, adts: table::Table<types::Adt>, types: table::Table<ast::TypeKind>, next: u32 }
+
+    impl ConstTrees {
+        #[summary("구조체나 변형의 값 d를 타입 ty의 식으로: 필드나 페이로드를 먼저 짓고, 이어서 경로와 필드 이름의 자리를 센다")]
+        #[effects(alloc)]
+        fn data_tree(self: &mut ConstTrees, d: &consts::Data, ty: &ast::TypeKind, f: usize) -> ast::ExprKind
+            decreases f,
+        {
+            if f == 0 {
+                return ast::ExprKind::Error;
+            }
+            let targs: Vec<ast::TypeKind> = types::named_args(ty);
+            let var: String = match &d.variant {
+                None => String::new(),
+                Some(v) => v.clone(),
+            };
+            let is_variant: bool = !no_text(&d.variant);
+            let mut decl: Vec<ast::TypeKind> = Vec::new();
+            if d.ty == "Option" && is_variant && var == "Some" || d.ty == "Result" && is_variant && var == "Ok" {
+                if targs.len() > 0 {
+                    decl.push(targs[0].clone());
+                }
+            } else if d.ty == "Result" && is_variant && var == "Err" {
+                if targs.len() > 1 {
+                    decl.push(targs[1].clone());
+                }
+            } else if d.ty != "Option" {
+                match self.adts.find(d.ty.as_str()) {
+                    None => {},
+                    Some(at) => { let mut sub: types::Subst = empty_subst(); for i in 0..self.adts.items[at].generics.len() invariant 0 <= i && i <= self.adts.items[at].generics.len(), { if i < targs.len() { sub_put(&mut sub, self.adts.items[at].generics[i].name.as_str(), targs[i].clone()); } } let raw: Vec<ast::TypeKind> = decl_types(&self.adts.items[at].kind, is_variant, var.as_str()); for i in 0..raw.len() invariant 0 <= i && i <= raw.len(), { decl.push(types::subst(&raw[i], &sub)); } },
+                }
+            }
+            let mut names: Vec<String> = Vec::new();
+            let mut parts: Vec<ast::Expr> = Vec::new();
+            for i in 0..d.fields.len()
+                invariant 0 <= i && i <= d.fields.len(),
+            {
+                if i < decl.len() {
+                    let sp: source::Span = self.fresh();
+                    names.push(d.fields[i].name.clone());
+                    parts.push(self.tree(&d.fields[i].v, &decl[i], sp, f - 1));
+                }
+            }
+            let no_targs: Vec<ast::TArgs> = Vec::new();
+            if !is_variant {
+                let path: Vec<ast::Ident> = self.segs(d.ty.as_str(), "");
+                let mut fields: Vec<ast::FieldInit> = Vec::new();
+                for i in 0..parts.len()
+                    invariant 0 <= i && i <= parts.len(),
+                {
+                    if i < names.len() {
+                        let place: source::Span = self.fresh();
+                        fields.push(ast::FieldInit { name: ast::Ident { name: names[i].clone(), span: place }, value: parts[i].clone() });
+                    }
+                }
+                return ast::ExprKind::StructLit(ast::StructLit { path: path, fields: fields, rest: None });
+            }
+            if var == "None" && d.ty == "Option" {
+                let place: source::Span = self.fresh();
+                return ast::ExprKind::Var(ast::Ident { name: String::from("None"), span: place });
+            }
+            if d.ty == "Option" || d.ty == "Result" {
+                let place: source::Span = self.fresh();
+                let mut one: Vec<ast::Ident> = Vec::new();
+                one.push(ast::Ident { name: var.clone(), span: place });
+                return ast::ExprKind::Call(ast::Call { path: one, targs: no_targs, args: parts, method: None });
+            }
+            let whole: Vec<ast::Ident> = self.segs(d.ty.as_str(), var.as_str());
+            if parts.len() == 0 {
+                return ast::ExprKind::Path(whole);
+            }
+            ast::ExprKind::Call(ast::Call { path: whole, targs: no_targs, args: parts, method: None })
+        }
+
+        #[summary("새 자리 하나")]
+        #[effects(pure)]
+        fn fresh(self: &mut ConstTrees) -> source::Span {
+            if self.next < 4294967295 {
+                self.next = self.next + 1;
+            }
+            source::Span { file: source::CONST_VALUES, lo: self.next, hi: self.next }
+        }
+
+        #[summary("경로 a::b의 마디마다 새 자리의 이름으로, extra가 있으면 그것을 끝에")]
+        #[effects(alloc)]
+        fn segs(self: &mut ConstTrees, path: &str, extra: &str) -> Vec<ast::Ident> {
+            let parts: Vec<String> = refs::split_path(path);
+            let mut out: Vec<ast::Ident> = Vec::new();
+            for i in 0..parts.len()
+                invariant 0 <= i && i <= parts.len(),
+            {
+                let at: source::Span = self.fresh();
+                out.push(ast::Ident { name: parts[i].clone(), span: at });
+            }
+            if extra.len() > 0 {
+                let at: source::Span = self.fresh();
+                out.push(ast::Ident { name: String::from(extra), span: at });
+            }
+            out
+        }
+
+        #[summary("검사된 타입 ty의 값 v를 자리 at의 식으로: 리터럴, 배열, 구조체 리터럴과 변형. 검사기가 붙였을 타입을 마디마다 적는다")]
+        #[effects(alloc)]
+        fn tree(self: &mut ConstTrees, v: &consts::CVal, ty: &ast::TypeKind, at: source::Span, f: usize) -> ast::Expr
+            decreases f,
+        {
+            if f == 0 {
+                return ast::Expr { kind: ast::ExprKind::Error, span: at };
+            }
+            let kind: ast::ExprKind = match v {
+                consts::CVal::Int(n, q4_t) => { let mag: ast::ExprKind = ast::ExprKind::Int(wide::U128 { hi: 0, lo: n.mag }, ast::Radix::Dec); if n.neg && n.mag > 0 { ast::ExprKind::Unary(ast::UnOp::Neg, Box::new(ast::Expr { kind: mag, span: at })) } else { mag } },
+                consts::CVal::Bool(b) => ast::ExprKind::Bool(*b),
+                consts::CVal::Char(c) => ast::ExprKind::CharLit(*c),
+                consts::CVal::Array(vs) => { let el: ast::TypeKind = match array_elem(ty) { None => ast::TypeKind::Error, Some(e) => e, }; let mut xs: Vec<ast::Expr> = Vec::new(); for i in 0..vs.len() invariant 0 <= i && i <= vs.len(), { let sp: source::Span = self.fresh(); xs.push(self.tree(&vs[i], &el, sp, f - 1)); } ast::ExprKind::Array(xs) },
+                consts::CVal::Data(d) => self.data_tree(d, ty, f - 1),
+            };
+            self.types.insert(span_key(at).as_str(), ty.clone());
+            ast::Expr { kind: kind, span: at }
+        }
+    }
+
+    impl ast::ExprFn for ConstTrees {
+        #[effects(alloc)]
+        fn expr(self: &mut ConstTrees, e: &mut ast::Expr) -> () {
+            match self.uses.find(span_key(e.span).as_str()) {
+                None => {},
+                Some(i) => { let u: ConstUse = self.uses.items[i].clone(); let made: ast::Expr = self.tree(&u.v, &u.ty, e.span, 1000000000); *e = made; },
+            }
+        }
+    }
+
     #[summary("해소된 프로그램이 읽을 const의 참조: 값과 타입")]
     struct ConstUse { v: consts::CVal, ty: ast::TypeKind }
 
@@ -5628,6 +5825,19 @@ mod body {
 
     #[summary("메서드 호출이 이름하는 함수 (ADR-0051), 뒤 단계가 읽는 경로 호출의 꼴로: path::<type_args>::f(adjust(x), ..). type_args는 타입의 매개변수의 인자(제네릭 타입의 impl)로, 이름 앞 마디 뒤에 쓴다")]
     struct MethodTarget { path: Vec<String>, type_args: Vec<ast::TypeKind>, adjust: ast::Adjust }
+
+    #[summary("메서드 호출 x.f(..)를 그것이 뜻하는 경로 호출로 고쳐 쓰는 손님 (ADR-0051)")]
+    struct Methodize { methods: table::Table<MethodTarget> }
+
+    impl ast::ExprFn for Methodize {
+        #[effects(alloc)]
+        fn expr(self: &mut Methodize, e: &mut ast::Expr) -> () {
+            match self.methods.find(span_key(e.span).as_str()) {
+                None => {},
+                Some(i) => { match method_of(e) { None => {}, Some(m) => { let call: ast::Expr = method_call(&*m.recv, &m.name, m.args.as_slice(), &self.methods.items[i], e.span); *e = call; }, } },
+            }
+        }
+    }
 
     #[summary("검사하는 자리: 실행 코드, 명세(Spec의 값은 old를 쓸 수 있는가), 유령 코드")]
     enum Mode { Exec, Spec(bool), Ghost }
@@ -5795,6 +6005,19 @@ mod body {
             invariant 0 <= i && i <= bound.len(),
         {
             if mentions(e, bound[i].as_str(), 1000000000) {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[summary("xs 가운데 ys에 든 것이 있는가")]
+    #[effects(pure)]
+    fn any_in(xs: &[String], ys: &[String]) -> bool {
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            if types::has(ys, xs[i].as_str()) {
                 return true;
             }
         }
@@ -6249,6 +6472,51 @@ mod body {
         String::new()
     }
 
+    #[summary("프로그램 p를 검사한다 (stage0 check::check_resolved): 함수 값을 낮추고 상수를 푼 뒤, 쓴 사람의 함수의 메서드 호출(ADR-0051)을 경로 호출로 고쳐 쓰며 하나도 남지 않을 때까지 다시 검사한다. 진단은 마지막 검사의 것이다")]
+    #[effects(alloc)]
+    fn check_resolved(p: ast::Program, diags: &mut diag::Diags) -> Checked {
+        let mut program: ast::Program = p;
+        let lowered: closures::Lowered = closures::lower(&mut program, diags);
+        let consts: table::Table<consts::Const> = consts::resolve(&mut program, diags);
+        let base: Vec<diag::Diag> = diags.items.clone();
+        let mut b: Body = checked(&program, &consts, base.as_slice());
+        let mut fuel: usize = 1000000;
+        while b.methods.len() > 0 && fuel > 0
+            invariant 0 <= fuel,
+            decreases fuel,
+        {
+            fuel = fuel - 1;
+            let mut g: Methodize = Methodize { methods: b.methods.clone() };
+            ast::exprs_mut::<Methodize>(&mut program, &mut g);
+            b = checked(&program, &consts, base.as_slice());
+        }
+        for i in 0..b.aliases.len()
+            invariant 0 <= i && i <= b.aliases.len(),
+        {
+            diags.aliases.push(b.aliases[i].clone());
+        }
+        diags.items = once_each(b.c.diags.as_slice(), lowered.quiet.as_slice());
+        let mut trees: ConstTrees = ConstTrees { uses: b.const_uses.clone(), adts: b.c.adts.clone(), types: b.types.clone(), next: 0 };
+        ast::exprs_mut::<ConstTrees>(&mut program, &mut trees);
+        b.types = trees.types;
+        let untrusted: Vec<String> = b.may_untrusted();
+        Checked { program: program, b: b, untrusted: untrusted }
+    }
+
+    #[summary("프로그램을 한 번 검사한 검사기. 진단은 그 앞 단계의 것(base)에서 시작한다: 상수의 검사가 평가기의 진단을 거기서 뺀다")]
+    #[effects(alloc)]
+    fn checked(p: &ast::Program, consts: &table::Table<consts::Const>, base: &[diag::Diag]) -> Body {
+        let mut c: decls::Checker = decls::new();
+        for i in 0..base.len()
+            invariant 0 <= i && i <= base.len(),
+        {
+            c.diags.push(base[i].clone());
+        }
+        let mut b: Body = new(c, consts.clone());
+        b.check_program(p);
+        b
+    }
+
     #[summary("checked_add, checked_sub, checked_mul, checked_div, checked_rem: 결과가 범위 안일 때만 Some")]
     #[effects(pure)]
     fn checked_arith(m: &str) -> bool {
@@ -6383,6 +6651,17 @@ mod body {
             None => true,
             Some(s) => { match int_of(target) { None => true, Some(t) => !fits(s, t), } },
         }
+    }
+
+    #[summary("선언의 필드나 페이로드의 타입들: 구조체의 필드, 또는 변형 var의 페이로드")]
+    #[effects(alloc)]
+    fn decl_types(k: &types::AdtKind, is_variant: bool, var: &str) -> Vec<ast::TypeKind> {
+        let mut out: Vec<ast::TypeKind> = Vec::new();
+        match k {
+            types::AdtKind::Struct(fs) => { if !is_variant { for i in 0..fs.len() invariant 0 <= i && i <= fs.len(), { out.push(fs[i].ty.clone()); } } },
+            types::AdtKind::Enum(vs) => { if is_variant { let mut found: bool = false; for i in 0..vs.len() invariant 0 <= i && i <= vs.len(), { if !found && vs[i].name.as_str() == var { found = true; for j in 0..vs[i].tys.len() invariant 0 <= j && j <= vs[i].tys.len(), { out.push(vs[i].tys[j].clone()); } } } } },
+        }
+        out
     }
 
     #[summary("#[effects(..)]에 io가 있는가")]
@@ -6838,6 +7117,18 @@ mod body {
             invariant 0 <= i && i <= s.len(),
         {
             if s.as_bytes()[i] == 36 {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[effects(pure)]
+    fn has_file(xs: &[u32], n: u32) -> bool {
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            if xs[i] == n {
                 return true;
             }
         }
@@ -8193,6 +8484,34 @@ mod body {
         }
     }
 
+    #[summary("열쇠의 from부터 열 자리 수")]
+    #[effects(pure)]
+    fn key_part(k: &str, from: usize) -> u32 {
+        if from > 20 {
+            return 0;
+        }
+        let mut n: u64 = 0;
+        let digits: usize = 10;
+        for i in 0..digits
+            invariant 0 <= i && i <= digits && n <= 9999999999,
+        {
+            if from + i < k.len() && k.as_bytes()[from + i] >= 48 && k.as_bytes()[from + i] <= 57 && n <= 999999999 {
+                n = n * 10 + (k.as_bytes()[from + i] - 48) as u64;
+            }
+        }
+        if n <= 4294967295 {
+            n as u32
+        } else {
+            0
+        }
+    }
+
+    #[summary("span_key가 지은 열쇠의 자리")]
+    #[effects(pure)]
+    fn key_span(k: &str) -> source::Span {
+        source::Span { file: key_part(k, 0), lo: key_part(k, 10), hi: key_part(k, 20) }
+    }
+
     #[summary("변형 k를 이름한 첫 갈래의 차례")]
     #[effects(pure)]
     fn kind_at(kinds: &[Option<usize>], k: usize) -> (r: Option<usize>)
@@ -8232,6 +8551,43 @@ mod body {
         match l {
             None => None,
             Some(i) => Some(i.name.clone()),
+        }
+    }
+
+    #[summary("s의 처음부터 upto 앞까지에서 pat이 마지막으로 시작하는 자리 (첫 바이트는 건너뛴다)")]
+    #[effects(pure)]
+    fn last_of(s: &str, pat: &str, upto: usize) -> (r: Option<usize>)
+        ensures match r { None => true, Some(i) => i + pat.len() <= s.len() && i < upto, },
+    {
+        if upto < 1 || pat.len() > s.len() || pat.len() > upto {
+            return None;
+        }
+        let room: usize = s.len() - pat.len();
+        let last: usize = upto - pat.len();
+        let mut found: bool = false;
+        let mut at: usize = 0;
+        for i in 1..upto
+            invariant 1 <= i && i <= upto && (!found || at <= room && at < i),
+        {
+            if i <= room && i <= last {
+                let mut same: bool = true;
+                for j in 0..pat.len()
+                    invariant 0 <= j && j <= pat.len(),
+                {
+                    if s.as_bytes()[i + j] != pat.as_bytes()[j] {
+                        same = false;
+                    }
+                }
+                if same {
+                    found = true;
+                    at = i;
+                }
+            }
+        }
+        if found {
+            Some(at)
+        } else {
+            None
         }
     }
 
@@ -8771,6 +9127,25 @@ mod body {
             None => None,
             Some(x) => ast::var_name(&x),
         }
+    }
+
+    #[summary("진단들에서 낮추기가 조용히 하라고 한 파일의 것을 빼고(이미 알린 E0608의 인자), 같은 발견은 한 번만 (코드·자리·글이 같은 것: 클로저의 절은 낮춘 자리마다 검사된다, 백로그 2V-20f)")]
+    #[effects(alloc)]
+    fn once_each(items: &[diag::Diag], quiet: &[u32]) -> Vec<diag::Diag> {
+        let mut seen: table::Table<bool> = table::new::<bool>();
+        let mut out: Vec<diag::Diag> = Vec::new();
+        for i in 0..items.len()
+            invariant 0 <= i && i <= items.len(),
+        {
+            if !has_file(quiet, items[i].span.file) {
+                let key: String = types::cat3(items[i].code.as_str(), span_key(items[i].span).as_str(), items[i].message.as_str());
+                if !seen.has(key.as_str()) {
+                    seen.insert(key.as_str(), true);
+                    out.push(items[i].clone());
+                }
+            }
+        }
+        out
     }
 
     #[effects(alloc)]
@@ -9843,6 +10218,26 @@ mod body {
             return types::cat2("not in the standard library yet: write it over the bytes; ", std.as_str());
         }
         std
+    }
+
+    #[summary("<T as unit::Trait>::m이면 unit::Trait::m")]
+    #[effects(alloc)]
+    fn trait_decl_of(p: &str) -> Option<String> {
+        if p.len() == 0 || p.as_bytes()[0] != 60 {
+            return None;
+        }
+        let end: usize = match last_of(p, ">::", p.len()) {
+            None => { return None; },
+            Some(i) => i,
+        };
+        let from: usize = match last_of(p, " as ", end) {
+            None => { return None; },
+            Some(j) => j,
+        };
+        if from + 4 > end || end + 3 > p.len() {
+            return None;
+        }
+        Some(types::cat3(lexer::cut(p, from + 4, end).as_str(), "::", lexer::cut(p, end + 3, p.len()).as_str()))
     }
 
     #[effects(alloc)]

@@ -1,0 +1,58 @@
+#[summary("text: String, &str, char and their built-in calls")]
+mod t {
+    #[effects(pure)]
+    fn takes(s: &str) -> usize {
+        s.len()
+    }
+
+    #[effects(pure)]
+    fn bytes(b: &[u8]) -> usize {
+        b.len()
+    }
+
+    #[effects(alloc)]
+    fn build(s: &str, o: &String, c: char, n: usize) -> String {
+        let mut out: String = String::new();
+        let cap: String = String::with_capacity(n);
+        let from: String = String::from(s);
+        let lit: String = String::from("abc");
+        let bad: String = String::from(o);
+        let worse: String = String::from(n);
+        let extra: String = String::new(1);
+        let none: String = String::with_capacity();
+        let sc: Option<char> = char::from_u32(65);
+        let sn: Option<char> = char::from_u32(c);
+        let utf: Result<String, Vec<u8>> = String::from_utf8(Vec::new());
+        out.push(c);
+        out.push(65);
+        out.push_str(s);
+        out.push_str("x");
+        out.push_str(o);
+        out.push_str(o.as_str());
+        out.push_str(&s[0..1]);
+        out.push_str(&o[0..n]);
+        out.push_str(&n[0..1]);
+        o.push(c);
+        s.push(c);
+        let a: usize = takes(s) + takes("lit") + takes(o) + takes(&o) + takes(o.as_str()) + takes(o.as_str(1)) + takes(n.as_str()) + takes(n);
+        let b: usize = bytes(s.as_bytes()) + bytes(o.as_bytes()) + bytes(n.as_bytes()) + bytes("lit") + bytes(b"lit");
+        let l: usize = s.len() + o.len() + c.len_utf8() + c.len_utf8(1) + s.len(1);
+        let k: bool = s.is_char_boundary(1) && o.is_char_boundary(c);
+        let m: String = o.clone();
+        let z: String = s.clone();
+        let q: &str = o.as_str();
+        let u: &[u8] = s.as_bytes();
+        let e: bool = s.is_empty() || s.contains("a") || c.is_digit(10) || c.to_string() == s;
+        let w: usize = s.trim() + s.chars() + s.to_string() + s.split(",") + s.parse() + s.frob();
+        let cmp: bool = s == "abc" && o.as_str() < s && &s[0..1] == "a" && c == 'a' && s.as_bytes()[0] == 97;
+        out
+    }
+
+    #[effects(pure)]
+    fn spec_text(s: &str, o: &String) -> bool
+        requires s.len() > 0 && o.len() > 0,
+        ensures r == (s == "a"),
+    {
+        s == "a"
+    }
+}

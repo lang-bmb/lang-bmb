@@ -15,8 +15,9 @@
 | `parser/` | 파서의 경계 입력(같은 이유로 `.txt`) |
 | `lower/` | 함수 값과 상수를 낮추는 단계의 경계 입력(같은 이유로 `.txt`) |
 | `decls/` | 검사기 1패스(선언 수집)의 경계 입력(같은 이유로 `.txt`) |
+| `types/` | 검사기 2패스(몸 검사)의 경계 입력(같은 이유로 `.txt`) |
 
-포트(`selfhost/`)의 사례는 `a`가 `{bmb}`(stage0), `b`가 `{build:stage1}`(`selfhost/*.bmb`를 `bmb build`로)이다. 지금: `codes`, `codes-md`, `tokens`(추적되는 `.bmb` 전부를 파일 하나씩), `tokens-together`(여러 파일을 한 번에), `tokens-edges`(`lexer/`의 파일 하나씩), `parse`(추적되는 `.bmb` 전부를 파일 하나씩 `dump parse`로), `parse-together`(여러 파일을 한 번에: 단위의 순서와 같은 이름의 단위), `parse-edges`(`parser/`), `std`(추적되는 `.bmb` 전부를 파일 하나씩 `dump std`로: 이름을 든 라이브러리 단위를 더한 프로그램의 정규형), `std-together`(여러 파일을 한 번에), `lower`(추적되는 `.bmb` 전부를 파일 하나씩 `dump lower`로: 함수 값과 상수를 낮춘 프로그램의 정규형, 만든 이름, 넘긴 자리, 상수의 값), `lower-together`, `lower-edges`(`lower/`).
+포트(`selfhost/`)의 사례는 `a`가 `{bmb}`(stage0), `b`가 `{build:stage1}`(`selfhost/*.bmb`를 `bmb build`로)이다. 지금: `codes`, `codes-md`, `tokens`(추적되는 `.bmb` 전부를 파일 하나씩), `tokens-together`(여러 파일을 한 번에), `tokens-edges`(`lexer/`의 파일 하나씩), `parse`(추적되는 `.bmb` 전부를 파일 하나씩 `dump parse`로), `parse-together`(여러 파일을 한 번에: 단위의 순서와 같은 이름의 단위), `parse-edges`(`parser/`), `std`(추적되는 `.bmb` 전부를 파일 하나씩 `dump std`로: 이름을 든 라이브러리 단위를 더한 프로그램의 정규형), `std-together`(여러 파일을 한 번에), `lower`(추적되는 `.bmb` 전부를 파일 하나씩 `dump lower`로: 함수 값과 상수를 낮춘 프로그램의 정규형, 만든 이름, 넘긴 자리, 상수의 값), `lower-together`, `lower-edges`(`lower/`). `decls`·`decls-together`·`decls-edges`(`dump decls`: 검사기 1패스가 모은 선언). `types`(추적되는 `.bmb`를 파일 하나씩 `dump types`로: 진단, 풀린 프로그램의 정규형, 몸 검사가 계산한 표), `types-together`, `types-edges`(`types/`). `check`(추적되는 `.bmb`와 `types/`의 파일을 하나씩 `check`로: 진단의 JSONL과 종료 코드). `types`와 `check`는 `moves`의 진단(E0239·E0413·E0414·E0433)이 나는 파일(35개, 37개)을 `except`로 뺀다: 포트에 `moves`가 들어오면(백로그 `4D-03e9`) 그 목록을 없앤다.
 
 `lexer/`의 파일:
 
@@ -66,3 +67,14 @@
 | `attrs.txt` | 속성과 시그니처의 진단: 불변식의 꼴(E0254·E0255), 효과(E0601·E0602·E0604·E0605·E0607·E0256), `#[external_body]`와 근거(E1001·E1002·E1004), 요약(E0704), 수신자의 이름(E0310), trait 메서드의 `decreases`(E0207)와 겹친 이름(E0302) |
 | `dup_units.txt` | 같은 이름의 단위 둘과 함수 값: 낮춘 함수가 제 단위로 돌아간다(`4D-29`) |
 | `dup_fns.txt` | 같은 이름의 함수 둘, 하나만 `Fn` 경계(`4D-29`: 고치기 전에는 stage0이 멈췄다) |
+
+`types/`의 파일:
+
+| 파일 | 내용 |
+| --- | --- |
+| `methods.txt` | 메서드 호출: 타입의 `impl`과 trait의 메서드, 수신자를 넘기는 방식, 메서드로 부를 수 없는 함수(E0314), 두 trait의 같은 이름(E0313), 모르는 메서드(E0404), 정수·비트·`f64`·`Vec`의 내장 메서드와 그 인자 수(E0405), `unwrap`(E0229) |
+| `text.txt` | 글: `String::new` 따위 내장 호출, `&str` 인자의 꼴(리터럴, `as_str()`, `&s[a..b]`, E0218), `as_bytes()`, 글과 `char`의 메서드, 명세 안의 글 |
+| `calls.txt` | 호출: 모르는 함수(E0304), 부르는 곳과 함수의 종류(E0258·E0504·E0505), 효과(E0606), 쓴 타입 인자와 추론(E0237·E0429), trait 메서드의 `Self`, 조각·구조체의 참조 인자(E0401·E0408·E0409·E0410), 정수 변환(E0412·E0213) |
+| `whole.txt` | 프로그램 전체의 검사: `decreases` 없는 재귀(E0507), 경계 있는 `Self`를 지나는 재귀(E0207), 타입 매개변수를 싸서 넘기는 재귀(E0430), `main`의 꼴과 수(E0701·E0702) |
+
+네 파일의 진단 137개에 `moves`의 것은 없다.

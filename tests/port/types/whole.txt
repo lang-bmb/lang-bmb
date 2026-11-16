@@ -1,0 +1,71 @@
+#[summary("whole-program checks: recursion, trait cycles, main")]
+mod w {
+    trait Depth {
+        #[effects(pure)]
+        fn depth(self: &Self) -> i64;
+    }
+
+    struct Leaf { v: i64 }
+
+    struct Wrap<T: Copy> { inner: T }
+
+    impl Depth for Leaf {
+        #[effects(pure)]
+        fn depth(self: &Leaf) -> i64 {
+            through(self)
+        }
+    }
+
+    #[effects(pure)]
+    fn through<T: Depth>(x: &T) -> i64 {
+        x.depth()
+    }
+
+    #[effects(pure)]
+    fn down(n: u64) -> u64 {
+        if n == 0 { 0 } else { down(n - 1) }
+    }
+
+    #[effects(pure)]
+    fn ping(n: u64) -> u64
+        decreases n,
+    {
+        if n == 0 { 0 } else { pong(n - 1) }
+    }
+
+    #[effects(pure)]
+    fn pong(n: u64) -> u64 {
+        if n == 0 { 0 } else { ping(n - 1) }
+    }
+
+    #[effects(pure)]
+    fn grows<T: Copy>(x: T, n: u64) -> u64
+        decreases n,
+    {
+        if n == 0 { 0 } else { grows::<Wrap<T>>(Wrap { inner: x }, n - 1) }
+    }
+
+    spec fn count(n: u64) -> u64 {
+        if n == 0 { 0 } else { count(n - 1) + 1 }
+    }
+
+    #[effects(pure)]
+    fn main(x: i64) -> i64 {
+        x
+    }
+
+    #[summary("inner")]
+    mod inner {
+        #[effects(io)]
+        fn main() -> () {
+            print_i64(1);
+        }
+    }
+}
+
+#[summary("a second unit with a main")]
+mod z {
+    #[effects(alloc)]
+    fn main() -> () {
+    }
+}

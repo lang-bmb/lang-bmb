@@ -1,10 +1,35 @@
-#[summary("명령들이 부르는 진입점 (stage0 compiler/src/lib.rs의 포트, 백로그 4D-02). 국면마다 는다: 지금은 dump tokens, dump parse, dump std, dump lower")]
+#[summary("명령들이 부르는 진입점 (stage0 compiler/src/lib.rs의 포트, 백로그 4D-02). 국면마다 는다: 지금은 dump tokens, dump parse, dump std, dump lower, dump decls, dump types, check (moves의 진단은 아직 없다)")]
 mod lib {
     #[summary("소스 파일 하나: 이름과 글")]
     struct Input { name: String, text: String }
 
     #[summary("명령의 결과: ok면 표준 출력에 쓸 글, 아니면 진단의 JSONL")]
     struct Outcome { ok: bool, text: String }
+
+    #[summary("파일들을 한 프로그램으로 읽고 검사한다 (stage0 lib::check_sources, bmb check): 진단의 JSONL, 오류가 없으면 ok. 구문 오류가 있어도 읽힌 만큼을 검사한다")]
+    #[effects(alloc)]
+    #[uses(source::room, source::small)]
+    fn check(files: &[Input]) -> Outcome {
+        let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
+        let mut diags: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+        let mut mods: Vec<ast::Mod> = Vec::new();
+        let mut k: usize = 0;
+        while k < files.len()
+            decreases files.len() - k,
+        {
+            if files[k].text.len() < 4294967295 && sm.files.len() < 4294967295 {
+                let id: u32 = sm.add(files[k].name.clone(), files[k].text.clone());
+                let toks: Vec<lexer::Token> = lexer::lex(id, files[k].text.as_str(), &mut diags);
+                let p: ast::Program = parser::parse(toks, &mut diags, files[k].text.as_str());
+                ast::append::<ast::Mod>(&mut mods, p.mods);
+            }
+            k = k + 1;
+        }
+        let mut program: ast::Program = ast::Program { mods: mods };
+        stdlib::add(&mut sm, &mut program, &mut diags);
+        let ck: body::Checked = body::check_resolved(program, &mut diags);
+        Outcome { ok: !diags.has_errors(), text: diags.to_jsonl(&sm) }
+    }
 
     #[summary("파서와 검사기의 몸 검사 사이의 단계를 글로 (stage0 lib::dump_stage, 백로그 4D-03a): 구문 오류면 dump parse처럼 진단만. 아니면 그때까지의 진단, --- 한 줄, 그 단계의 글. 지금은 std(이름을 든 라이브러리 단위를 더한 프로그램의 정규형)")]
     #[effects(alloc)]
@@ -44,6 +69,9 @@ mod lib {
                 diags.push(c.diags[d].clone());
             }
             body.push_str(decls::dump(&c).as_str());
+        } else if stage == "types" {
+            let ck: body::Checked = body::check_resolved(program.clone(), &mut diags);
+            push_tables(&mut body, &ck, &sm);
         } else {
             let lowered: closures::Lowered = closures::lower(&mut program, &mut diags);
             let consts: table::Table<consts::Const> = consts::resolve(&mut program, &mut diags);
@@ -153,6 +181,18 @@ mod lib {
         }
     }
 
+    #[summary("\"file\":..,\"lo\":..,\"hi\":.. (표의 열쇠 k의 자리)")]
+    #[effects(alloc)]
+    fn push_key(out: &mut String, k: &str, sm: &source::SourceMap) -> () {
+        let s: source::Span = body::key_span(k);
+        out.push_str("\"file\":");
+        sm.push_name(out, s.file);
+        out.push_str(",\"lo\":");
+        std::num::push_u64(out, s.lo as u64);
+        out.push_str(",\"hi\":");
+        std::num::push_u64(out, s.hi as u64);
+    }
+
     #[summary("낮추기가 만든 이름, 함수 값을 넘긴 자리, const와 그 값을 줄마다 (dump lower)")]
     #[effects(alloc)]
     fn push_lowered(out: &mut String, lowered: &closures::Lowered, consts: &table::Table<consts::Const>, sm: &source::SourceMap) -> () {
@@ -185,6 +225,112 @@ mod lib {
                 Some(ci) => { out.push_str(",\"unit\":"); std::json::push_string(out, consts.items[ci].unit.as_str()); out.push_str(",\"type\":"); std::json::push_string(out, consts::kind_text(&consts.items[ci].ty).as_str()); out.push_str(",\"value\":"); match &consts.items[ci].value { None => out.push_str("null"), Some(v) => std::json::push_string(out, consts::value_text(v).as_str()), } },
             }
             out.push_str("}\n");
+        }
+    }
+
+    #[summary("이름들을 순서대로 JSON 배열로")]
+    #[effects(alloc)]
+    fn push_names(out: &mut String, xs: &[String]) -> () {
+        let sorted: Vec<String> = decls::sorted(xs);
+        out.push_str("[");
+        for i in 0..sorted.len()
+            invariant 0 <= i && i <= sorted.len(),
+        {
+            if i > 0 {
+                out.push_str(",");
+            }
+            std::json::push_string(out, sorted[i].as_str());
+        }
+        out.push_str("]");
+    }
+
+    #[summary("몸 검사가 계산한 표를 글로 (stage0 check::dump_tables, bmb dump types): 풀린 프로그램의 정규형, 이어서 지역 변수, 식의 타입, 타입 인자, 호출, 효과, 재귀, 외부 몸, 신뢰되지 않을 수 있는 정의, 읽는 상수를 줄마다")]
+    #[effects(alloc)]
+    fn push_tables(out: &mut String, ck: &body::Checked, sm: &source::SourceMap) -> () {
+        let units: Vec<fmt::Unit> = fmt::format_units(&ck.program);
+        for u in 0..units.len()
+            invariant 0 <= u && u <= units.len(),
+        {
+            out.push_str(units[u].text.as_str());
+            out.push_str("\n");
+        }
+        let locals: usize = ck.b.locals.len();
+        for n in 0..locals
+            invariant 0 <= n && n <= locals,
+        {
+            match ck.b.locals.nth(n) {
+                None => {},
+                Some(at) => { out.push_str("{\"locals\":"); std::json::push_string(out, ck.b.locals.key(n).as_str()); out.push_str(",\"vars\":["); let vars: usize = ck.b.locals.items[at].len(); for v in 0..vars invariant 0 <= v && v <= vars, { match ck.b.locals.items[at].nth(v) { None => {}, Some(i) => { if v > 0 { out.push_str(","); } out.push_str("["); std::json::push_string(out, ck.b.locals.items[at].key(v).as_str()); out.push_str(","); std::json::push_string(out, types::text(&ck.b.locals.items[at].items[i]).as_str()); out.push_str("]"); }, } } out.push_str("]}\n"); },
+            }
+        }
+        let typed: usize = ck.b.types.len();
+        for n in 0..typed
+            invariant 0 <= n && n <= typed,
+        {
+            match ck.b.types.nth(n) {
+                None => {},
+                Some(at) => { out.push_str("{"); push_key(out, ck.b.types.key(n).as_str(), sm); out.push_str(",\"type\":"); std::json::push_string(out, types::text(&ck.b.types.items[at]).as_str()); out.push_str("}\n"); },
+            }
+        }
+        let with_targs: usize = ck.b.targs.len();
+        for n in 0..with_targs
+            invariant 0 <= n && n <= with_targs,
+        {
+            match ck.b.targs.nth(n) {
+                None => {},
+                Some(at) => { out.push_str("{"); push_key(out, ck.b.targs.key(n).as_str(), sm); out.push_str(",\"targs\":["); for i in 0..ck.b.targs.items[at].len() invariant 0 <= i && i <= ck.b.targs.items[at].len(), { if i > 0 { out.push_str(","); } std::json::push_string(out, types::text(&ck.b.targs.items[at][i]).as_str()); } out.push_str("]}\n"); },
+            }
+        }
+        let callers: usize = ck.b.calls.len();
+        for n in 0..callers
+            invariant 0 <= n && n <= callers,
+        {
+            match ck.b.calls.nth(n) {
+                None => {},
+                Some(at) => { out.push_str("{\"calls\":"); std::json::push_string(out, ck.b.calls.key(n).as_str()); out.push_str(",\"to\":"); push_names(out, ck.b.calls.items[at].as_slice()); out.push_str("}\n"); },
+            }
+        }
+        let needing: usize = ck.b.needs.len();
+        for n in 0..needing
+            invariant 0 <= n && n <= needing,
+        {
+            match ck.b.needs.nth(n) {
+                None => {},
+                Some(at) => { out.push_str("{\"needs\":"); std::json::push_string(out, ck.b.needs.key(n).as_str()); out.push_str(",\"own\":"); std::json::push_string(out, types::e_text(ck.b.needs.items[at].own).as_str()); out.push_str(",\"body\":"); std::json::push_string(out, types::e_text(ck.b.needs.items[at].body).as_str()); out.push_str("}\n"); },
+            }
+        }
+        let recursive: usize = ck.b.recursive.len();
+        for n in 0..recursive
+            invariant 0 <= n && n <= recursive,
+        {
+            match ck.b.recursive.nth(n) {
+                None => {},
+                Some(at) => { out.push_str("{\"recursive\":"); std::json::push_string(out, ck.b.recursive.key(n).as_str()); out.push_str(",\"scc\":"); std::num::push_u64(out, ck.b.recursive.items[at] as u64); out.push_str("}\n"); },
+            }
+        }
+        let external: Vec<String> = decls::sorted(ck.b.external.as_slice());
+        for i in 0..external.len()
+            invariant 0 <= i && i <= external.len(),
+        {
+            out.push_str("{\"external\":");
+            std::json::push_string(out, external[i].as_str());
+            out.push_str("}\n");
+        }
+        for i in 0..ck.untrusted.len()
+            invariant 0 <= i && i <= ck.untrusted.len(),
+        {
+            out.push_str("{\"untrusted\":");
+            std::json::push_string(out, ck.untrusted[i].as_str());
+            out.push_str("}\n");
+        }
+        let reading: usize = ck.b.const_reads.len();
+        for n in 0..reading
+            invariant 0 <= n && n <= reading,
+        {
+            match ck.b.const_reads.nth(n) {
+                None => {},
+                Some(at) => { out.push_str("{\"reads\":"); std::json::push_string(out, ck.b.const_reads.key(n).as_str()); out.push_str(",\"consts\":"); push_names(out, ck.b.const_reads.items[at].as_slice()); out.push_str("}\n"); },
+            }
         }
     }
 

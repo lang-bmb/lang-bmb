@@ -1,0 +1,153 @@
+#[summary("calls: resolution, kinds, type arguments, reference arguments")]
+mod c {
+    trait Zero {
+        #[effects(pure)]
+        fn zero() -> Self;
+
+        #[effects(pure)]
+        fn same(a: &Self, b: &Self) -> bool;
+    }
+
+    struct P { x: i64 }
+
+    struct Gen<T: Copy> { v: T }
+
+    impl Zero for i64 {
+        #[effects(pure)]
+        fn zero() -> i64 {
+            0
+        }
+
+        #[effects(pure)]
+        fn same(a: &i64, b: &i64) -> bool {
+            *a == *b
+        }
+    }
+
+    impl<T: Copy> Gen<T> {
+        #[effects(pure)]
+        fn make(v: T) -> Gen<T> {
+            Gen { v: v }
+        }
+
+        #[effects(pure)]
+        fn swap<U: Copy>(self: &Gen<T>, u: U) -> U {
+            u
+        }
+    }
+
+    spec fn pos(x: i64) -> bool { x > 0 }
+
+    proof fn lemma(x: i64)
+        requires x > 0,
+        ensures pos(x),
+    {
+    }
+
+    #[effects(pure)]
+    fn id<T: Copy>(x: T) -> T {
+        x
+    }
+
+    #[effects(pure)]
+    fn two<A: Copy, B: Copy>(a: A, b: B) -> A {
+        a
+    }
+
+    #[effects(io)]
+    fn shout(x: i64) -> () {
+        print_i64(x);
+    }
+
+    #[effects(pure)]
+    fn sum(xs: &[i64], n: usize) -> i64 {
+        0
+    }
+
+    #[effects(pure)]
+    fn fill(xs: &mut [i64], v: i64) -> () {
+    }
+
+    #[effects(pure)]
+    fn read(p: &P) -> i64 {
+        p.x
+    }
+
+    #[effects(pure)]
+    fn write(p: &mut P, v: i64) -> () {
+        p.x = v;
+    }
+
+    #[effects(alloc)]
+    fn kinds(x: i64) -> i64
+        requires pos(x) && id::<i64>(x) > 0 && lemma(x),
+    {
+        let a: bool = pos(x);
+        lemma(x);
+        shout(x);
+        proof {
+            lemma(x);
+            shout(x);
+            let g: bool = pos(x);
+        }
+        nothing(x) + c::missing(x) + id(x, x) + id()
+    }
+
+    #[effects(pure)]
+    fn targs(x: i64, y: u8) -> i64 {
+        let a: i64 = id::<i64>(x);
+        let b: i64 = id(x);
+        let d: u8 = two::<u8, i64>(y, x);
+        let e: u8 = two::<u8>(y, x);
+        let f: u8 = two(y, x);
+        let g: i64 = read::<i64>(&P { x: 1 });
+        let h: Gen<i64> = Gen::<i64>::make(x);
+        let i: Gen<i64> = Gen::make(x);
+        let j: u8 = h.swap(y);
+        let k: u8 = Gen::<i64>::swap::<u8>(&h, y);
+        let l: u8 = Gen::swap(&h, y);
+        let z: i64 = Zero::zero();
+        let w: bool = Zero::same(&x, &x);
+        let q: i64 = id::<Option<i64>>(x);
+        let r: i64 = id::<i64>::<i64>(x);
+        a + b
+    }
+
+    #[effects(alloc)]
+    fn refs(a: [i64; 3], v: &mut Vec<i64>, s: &[i64], p: P, q: &P, m: &mut P) -> i64 {
+        let mut arr: [i64; 3] = a;
+        let mut own: P = P { x: 1 };
+        let t: i64 = sum(&arr, 3) + sum(arr, 3) + sum(s, 1) + sum(v.as_slice(), 1) + sum(&v, 1) + sum(v, 1) + sum(&arr[0..2], 2) + sum(&s[0..1], 1) + sum(&v[0..1], 1) + sum(&mut arr, 1) + sum(&a, 3);
+        fill(&mut arr, 0);
+        fill(&arr, 0);
+        fill(v.as_mut_slice(), 0);
+        fill(v.as_slice(), 0);
+        fill(&mut arr[0..1], 0);
+        fill(&mut arr, arr[0]);
+        fill(&mut arr, arr.len() as i64);
+        let u: i64 = read(&p) + read(q) + read(p) + read(&mut own) + read(m) + read(&q) + read(5) + read(&P { x: 2 });
+        write(&mut own, 1);
+        write(&own, 1);
+        write(m, 2);
+        write(q, 3);
+        write(&mut p, 4);
+        write(&mut own, own.x);
+        write(&mut own, read(&own));
+        t + u
+    }
+
+    #[effects(pure)]
+    fn convert(x: i64, y: u8, b: bool, f: f64) -> i64
+        requires u8::try_from(x).unwrap() < 10,
+    {
+        let a: u8 = u8::try_from(x).unwrap();
+        let c: Option<u8> = u8::try_from(x).ok();
+        let d: u8 = u8::try_from(x).expect("fits");
+        let e: u8 = u8::try_from(x).nope();
+        let g: u8 = u8::try_from(b).unwrap();
+        let h: u8 = u8::try_from(f).unwrap();
+        let i: u8 = u8::try_from(x, x).unwrap();
+        let j: i64 = i64::from(y) + u8::from() + i64::from(y, y);
+        x
+    }
+}

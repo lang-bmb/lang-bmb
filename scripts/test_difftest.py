@@ -80,6 +80,11 @@ class Difftest(unittest.TestCase):
         self.assertEqual(argv, ["/b/p", "/t/bmb", "-x", "f", "g"])
 
     def test_input_sets(self):
+        runs, n = difftest.runs_of(
+            {"files": ["scripts/check.sh", "scripts/ship.sh"], "except": ["scripts/ship*"], "chunk": 1}
+        )
+        self.assertEqual((n, len(runs)), (1, 1))
+        self.assertTrue(runs[0][1][0].endswith("scripts/check.sh"))
         runs, n = difftest.runs_of({"files": ["scripts/check.sh", "scripts/ship.sh"], "chunk": 1})
         self.assertEqual((len(runs), n), (2, 2))
         self.assertTrue(all(os.path.isabs(f) for _, fs, _ in runs for f in fs))

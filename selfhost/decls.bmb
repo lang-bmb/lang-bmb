@@ -2169,6 +2169,35 @@ mod decls {
         }
     }
 
+    #[summary("s의 from부터 pat이 처음 시작하는 자리")]
+    #[effects(pure)]
+    fn first_of(s: &str, pat: &str, from: usize) -> (r: Option<usize>)
+        ensures match r { None => true, Some(i) => i + pat.len() <= s.len(), },
+    {
+        if pat.len() > s.len() {
+            return None;
+        }
+        let room: usize = s.len() - pat.len();
+        for i in from..s.len()
+            invariant from <= i,
+        {
+            if i <= room {
+                let mut same: bool = true;
+                for j in 0..pat.len()
+                    invariant 0 <= j && j <= pat.len(),
+                {
+                    if s.as_bytes()[i + j] != pat.as_bytes()[j] {
+                        same = false;
+                    }
+                }
+                if same {
+                    return Some(i);
+                }
+            }
+        }
+        None
+    }
+
     #[summary("이름 name의 속성이 있는가")]
     #[effects(pure)]
     fn has_attr(attrs: &[ast::Attr], name: &str) -> bool {
@@ -2208,6 +2237,15 @@ mod decls {
             ast::AttrArg::Ident(id) => Some(id.clone()),
             ast::AttrArg::Str(s, sp) => None,
             ast::AttrArg::Pair(k, v) => None,
+        }
+    }
+
+    #[summary("마디가 하나인 이름은 단위 mp의 것으로 (온 경로는 그대로)")]
+    #[effects(alloc)]
+    fn in_unit(s: &str, mp: &str) -> String {
+        match first_of(s, "::", 0) {
+            None => types::cat3(mp, "::", s),
+            Some(i) => String::from(s),
         }
     }
 
@@ -2852,6 +2890,24 @@ mod decls {
         }
         if user_fn(fns, name) {
             return Some(String::from(name));
+        }
+        if name.len() == 0 || name.as_bytes()[0] != 60 {
+            return None;
+        }
+        let end: usize = match first_of(name, ">::", 1) {
+            None => { return None; },
+            Some(i) => i,
+        };
+        let mid: usize = match first_of(name, " as ", 1) {
+            None => { return None; },
+            Some(j) => j,
+        };
+        if mid + 4 > end || end + 3 > name.len() {
+            return None;
+        }
+        let q: String = types::cat7("<", in_unit(lexer::cut(name, 1, mid).as_str(), mp).as_str(), " as ", in_unit(lexer::cut(name, mid + 4, end).as_str(), mp).as_str(), ">::", lexer::cut(name, end + 3, name.len()).as_str(), "");
+        if user_fn(fns, q.as_str()) {
+            return Some(q);
         }
         None
     }

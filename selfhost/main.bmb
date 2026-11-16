@@ -1,4 +1,4 @@
-#[summary("BMB로 쓴 컴파일러의 구동기 (stage0 compiler/src/main.rs의 포트, 백로그 4D-02). 국면마다 명령이 는다: 지금은 codes, dump tokens, dump parse, dump std, dump lower")]
+#[summary("BMB로 쓴 컴파일러의 구동기 (stage0 compiler/src/main.rs의 포트, 백로그 4D-02). 국면마다 명령이 는다: 지금은 codes, dump tokens, dump parse, dump std, dump lower, dump decls, dump types, check")]
 mod main {
     #[effects(alloc, io, nondet)]
     fn main() -> () {
@@ -29,7 +29,7 @@ mod main {
             }
             return;
         }
-        if args.len() > 3 && args[1] == "dump" && (args[2] == "std" || args[2] == "lower" || args[2] == "decls") {
+        if args.len() > 3 && args[1] == "dump" && (args[2] == "std" || args[2] == "lower" || args[2] == "decls" || args[2] == "types") {
             let inputs: Vec<lib::Input> = read_files(args.as_slice(), 3);
             let sr: lib::Outcome = lib::dump_stage(args[2].as_str(), inputs.as_slice());
             print_str(sr.text.as_str());
@@ -38,7 +38,16 @@ mod main {
             }
             return;
         }
-        eprint_str("usage: stage1 codes [--md] | dump tokens FILE.. | dump parse FILE.. | dump std FILE.. | dump lower FILE..\n");
+        if args.len() > 2 && args[1] == "check" {
+            let checked: Vec<lib::Input> = read_files(args.as_slice(), 2);
+            let cr: lib::Outcome = lib::check(checked.as_slice());
+            print_str(cr.text.as_str());
+            if !cr.ok {
+                std::process::exit(1);
+            }
+            return;
+        }
+        eprint_str("usage: stage1 codes [--md] | dump tokens FILE.. | dump parse FILE.. | dump std FILE.. | dump lower FILE.. | dump decls FILE.. | dump types FILE.. | check FILE..\n");
         std::process::exit(2);
     }
 

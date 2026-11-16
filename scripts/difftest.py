@@ -24,6 +24,9 @@ program) with `bmb build` (so the program is proved), `{"rustc": FILE}` with `ru
 Input sets (paths are relative to the repository):
     {"files": GLOB.., "chunk": N}   git-tracked files matching any glob, N
                                     per run, as `{inputs}`
+                                    (`"except": GLOB..` leaves files out:
+                                    the case says which and the reason is
+                                    written where the case is described)
     {"stdin_lines_of": GLOB..}      one run: the lines of those files, in
                                     path order, as standard input
     {"stdin": FILE..}               one run per file, as standard input
@@ -61,6 +64,8 @@ def runs_of(inputs):
     """The runs of an input set: (label, files, stdin bytes)."""
     if "files" in inputs:
         names = tracked(inputs["files"])
+        left_out = inputs.get("except", [])
+        names = [p for p in names if not any(fnmatch.fnmatch(p, g) for g in left_out)]
         n = inputs.get("chunk", 100)
         return [
             (f"{names[i]}..", [os.path.join(ROOT, p) for p in names[i : i + n]], b"")

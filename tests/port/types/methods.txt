@@ -1,0 +1,112 @@
+#[summary("method calls: targets, receivers, built-in methods")]
+mod m {
+    trait Shape {
+        #[effects(pure)]
+        fn area(self: &Self) -> i64;
+
+        #[effects(pure)]
+        fn name(self: &Self) -> i64;
+    }
+
+    trait Named {
+        #[effects(pure)]
+        fn name(self: &Self) -> i64;
+    }
+
+    struct Sq { s: i64 }
+
+    struct Pair<T: Copy> { a: T, b: T }
+
+    impl Sq {
+        #[effects(pure)]
+        fn new(s: i64) -> Sq {
+            Sq { s: s }
+        }
+
+        #[effects(pure)]
+        fn side(self: &Sq) -> i64 {
+            self.s
+        }
+
+        #[effects(pure)]
+        fn grow(self: &mut Sq, by: i64) -> () {
+            self.s = self.s.wrapping_add(by);
+        }
+
+        #[effects(pure)]
+        fn pick<T: Copy>(self: &Sq, x: T) -> T {
+            x
+        }
+    }
+
+    impl<T: Copy> Pair<T> {
+        #[effects(pure)]
+        fn first(self: &Pair<T>) -> T {
+            self.a
+        }
+    }
+
+    impl Shape for Sq {
+        #[effects(pure)]
+        fn area(self: &Sq) -> i64 {
+            self.s.wrapping_mul(self.s)
+        }
+
+        #[effects(pure)]
+        fn name(self: &Sq) -> i64 {
+            1
+        }
+    }
+
+    impl Named for Sq {
+        #[effects(pure)]
+        fn name(self: &Sq) -> i64 {
+            2
+        }
+    }
+
+    #[effects(pure)]
+    fn targets(q: &Sq, p: &Pair<u8>, g: &mut Sq) -> i64 {
+        g.grow(1);
+        let a: i64 = q.side() + q.area();
+        let b: u8 = p.first();
+        a + b as i64 + q.name() + q.new(3).side() + q.pick(1) + q.nothing() + q.grow(2)
+    }
+
+    #[effects(pure)]
+    fn bounded<T: Shape>(x: &T, y: T) -> i64 {
+        x.area() + x.volume() + y.area()
+    }
+
+    #[effects(pure)]
+    fn ints(x: u32, y: i64, f: f64, b: bool) -> u32 {
+        let a: u32 = x.wrapping_add(1).saturating_sub(2).rotate_left(3);
+        let c: Option<u32> = x.checked_add(1);
+        let d: Option<u32> = x.checked_shl(40);
+        let n: u32 = x.count_ones() + y.leading_zeros() + x.swap_bytes();
+        let p: bool = x.is_power_of_two() && y.is_power_of_two();
+        let by: [u8; 4] = x.to_be_bytes();
+        let e: [u8; 8] = y.to_le_bytes(1);
+        let w: u32 = x.wrapping_add() + x.rotate_left() + x.count_ones(1) + b.count_ones() + f.wrapping_add(1.0);
+        let l: usize = x.len() + by.len() + by.len(1);
+        let v: i64 = y.into() + y.try_into() + y.pow(2) + y.abs() + y.unwrap() + y.iter() + y.clone() + y.frobnicate();
+        let g: f64 = f.sqrt().abs().min(1.0).max(f) + f.floor() + f.to_bits() + f.sin() + f.sqrt(1.0);
+        let h: bool = f.is_nan() || f.is_finite();
+        a + n + w
+    }
+
+    #[effects(alloc)]
+    fn vecs(v: &mut Vec<i64>, r: &Vec<i64>, o: Option<i64>, e: Result<i64, bool>) -> i64 {
+        v.push(1);
+        v.push(true);
+        v.truncate(0);
+        r.push(2);
+        let p: Option<i64> = v.pop();
+        let n: usize = v.len() + r.len();
+        let x: i64 = o.unwrap() + e.expect("no") + v.get(0) + v.first() + v.iter() + v.sort() + v.is_empty();
+        v.copy_within(0..1, 2);
+        v.copy_within(0, 1);
+        let s: &[i64] = v.as_slice();
+        x
+    }
+}

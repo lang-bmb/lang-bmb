@@ -454,6 +454,171 @@
         ],
         "chunk": 1
       }
+    },
+    {
+      "name": "types",
+      "component": "C4",
+      "a": [
+        "{bmb}",
+        "dump",
+        "types",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "dump",
+        "types",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "*.bmb"
+        ],
+        "except": [
+          "tests/check/err/boxes.bmb",
+          "tests/check/err/child.bmb",
+          "tests/check/err/mem_moves.bmb",
+          "tests/check/err/methods.bmb",
+          "tests/check/err/move_traits.bmb",
+          "tests/check/err/moves.bmb",
+          "tests/check/err/nested_vecs.bmb",
+          "tests/check/err/owned_fields.bmb",
+          "tests/check/err/recursive.bmb",
+          "tests/check/err/tries.bmb",
+          "tests/check/err/vec_recursion.bmb",
+          "tests/conformance/05/closure_capture_moves_owned.bmb",
+          "tests/conformance/05/containers_of_owned_move.bmb",
+          "tests/conformance/05/field_reassign_restores.bmb",
+          "tests/conformance/05/fn_once_called_twice.bmb",
+          "tests/conformance/05/if_without_else_moves.bmb",
+          "tests/conformance/05/loop_body_moves.bmb",
+          "tests/conformance/05/loop_exit_states.bmb",
+          "tests/conformance/05/match_moves_scrutinee.bmb",
+          "tests/conformance/05/match_on_field_is_partial.bmb",
+          "tests/conformance/05/move_field_behind_mut_ref.bmb",
+          "tests/conformance/05/move_field_behind_ref_or_box.bmb",
+          "tests/conformance/05/move_out_of_deref.bmb",
+          "tests/conformance/05/move_out_of_element.bmb",
+          "tests/conformance/05/owned_types_move.bmb",
+          "tests/conformance/05/partial_move_of_field.bmb",
+          "tests/conformance/05/question_moves_operand.bmb",
+          "tests/conformance/05/ref_match_binding_move.bmb",
+          "tests/conformance/05/self_by_value_twice.bmb",
+          "tests/conformance/05/short_circuit_moves.bmb",
+          "tests/conformance/05/type_param_moves.bmb",
+          "tests/conformance/05/use_after_branch_move.bmb",
+          "tests/conformance/05/use_after_move.bmb",
+          "tests/conformance/05/value_use_positions.bmb",
+          "tests/conformance/08/external_body_still_checked.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "types-together",
+      "component": "C4",
+      "a": [
+        "{bmb}",
+        "dump",
+        "types",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "dump",
+        "types",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/run/*.bmb",
+          "lib/std/*.bmb",
+          "selfhost/*.bmb"
+        ],
+        "chunk": 40
+      }
+    },
+    {
+      "name": "types-edges",
+      "component": "C4",
+      "a": [
+        "{bmb}",
+        "dump",
+        "types",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "dump",
+        "types",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/types/*.txt"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "check",
+      "component": "C4",
+      "a": [
+        "{bmb}",
+        "check",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "check",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "*.bmb",
+          "tests/port/types/*.txt"
+        ],
+        "except": [
+          "tests/check/err/boxes.bmb",
+          "tests/check/err/child.bmb",
+          "tests/check/err/fn_values.bmb",
+          "tests/check/err/mem_moves.bmb",
+          "tests/check/err/methods.bmb",
+          "tests/check/err/move_traits.bmb",
+          "tests/check/err/moves.bmb",
+          "tests/check/err/nested_vecs.bmb",
+          "tests/check/err/owned_fields.bmb",
+          "tests/check/err/recursive.bmb",
+          "tests/check/err/tries.bmb",
+          "tests/check/err/vec_recursion.bmb",
+          "tests/conformance/04/habits_ownership_generics.bmb",
+          "tests/conformance/05/closure_capture_moves_owned.bmb",
+          "tests/conformance/05/containers_of_owned_move.bmb",
+          "tests/conformance/05/field_reassign_restores.bmb",
+          "tests/conformance/05/fn_once_called_twice.bmb",
+          "tests/conformance/05/if_without_else_moves.bmb",
+          "tests/conformance/05/loop_body_moves.bmb",
+          "tests/conformance/05/loop_exit_states.bmb",
+          "tests/conformance/05/match_moves_scrutinee.bmb",
+          "tests/conformance/05/match_on_field_is_partial.bmb",
+          "tests/conformance/05/move_field_behind_mut_ref.bmb",
+          "tests/conformance/05/move_field_behind_ref_or_box.bmb",
+          "tests/conformance/05/move_out_of_deref.bmb",
+          "tests/conformance/05/move_out_of_element.bmb",
+          "tests/conformance/05/owned_types_move.bmb",
+          "tests/conformance/05/partial_move_of_field.bmb",
+          "tests/conformance/05/question_moves_operand.bmb",
+          "tests/conformance/05/ref_match_binding_move.bmb",
+          "tests/conformance/05/self_by_value_twice.bmb",
+          "tests/conformance/05/short_circuit_moves.bmb",
+          "tests/conformance/05/type_param_moves.bmb",
+          "tests/conformance/05/use_after_branch_move.bmb",
+          "tests/conformance/05/use_after_move.bmb",
+          "tests/conformance/05/value_use_positions.bmb",
+          "tests/conformance/08/external_body_still_checked.bmb"
+        ],
+        "chunk": 1
+      }
     }
   ]
 }
